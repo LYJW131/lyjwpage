@@ -1,14 +1,14 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHmac, createHash } from "node:crypto";
 
 /**
- * Emby 图片代理的签名。
+ * Emby 图片代理的地址编码。
  *
  * 图片走本站域名而不是 Emby 直链，这样：
- * - 不把 Emby 源站地址暴露给浏览器
+ * - 不把 Emby 源站暴露给浏览器
  * - 页面套上 CDN 后图片也能一起被缓存
  *
- * 参数只有 id/kind/tag/h 四个，源站地址固定取自环境变量，所以不存在
- * 打到任意地址的问题；签名要挡的是「拿这个端点枚举你 Emby 里的条目」。
+ * 参数不能明文放在 URL 里 —— 那样任何人都能照着拼出 Emby 直链，
+ * 代理就形同虚设。这里把 id/kind/tag/height 整体加密成一个不透明 token。
  */
 
 /** Emby 的图片类型，只放行这几个，避免拼出意外的上游路径 */
@@ -22,63 +22,101 @@ export type ImageParams = {
   height: number;
 };
 
-function secret() {
+const ALGORITHM = "aes-256-gcm";
+const IV_LENGTH = 12;
+const TAG_LENGTH = 16;
+
+function baseSecret() {
   // 没单独配就复用 Emby 的 key —— 它本来就是密钥，零配置即可工作。
-  // 换 key 会让旧链接失效，但图片链接本来就是随 tag 变的，没影响。
+  // 换 key 会让旧链接失效，但图片链接本来就随 image tag 变，没影响。
   const value = process.env.IMAGE_PROXY_SECRET || process.env.EMBY_API_KEY;
-  if (!value) throw new Error("缺少 IMAGE_PROXY_SECRET 或 EMBY_API_KEY，无法签名图片链接");
+  if (!value) throw new Error("缺少 IMAGE_PROXY_SECRET 或 EMBY_API_KEY，无法生成图片链接");
   return value;
 }
 
-function canonical({ id, kind, tag, height }: ImageParams) {
+/** 加密和派生 IV 用两把不同的子密钥，别拿同一把干两件事 */
+function keys() {
+  const secret = baseSecret();
+  return {
+    encryption: createHash("sha256").update(`${secret}|emby-image|enc`).digest(),
+    iv: createHash("sha256").update(`${secret}|emby-image|iv`).digest(),
+  };
+}
+
+function serialize({ id, kind, tag, height }: ImageParams) {
   return `${id}|${kind}|${tag}|${height}`;
 }
 
-/** 截断到 16 个十六进制字符（64 bit）—— 够挡枚举，又不会让 URL 太长 */
-function sign(params: ImageParams) {
-  return createHmac("sha256", secret()).update(canonical(params)).digest("hex").slice(0, 16);
+/**
+ * IV 由明文推导，而不是随机生成。
+ *
+ * 随机 IV 会让同一张图每次渲染都得到不同的 URL，CDN 和浏览器缓存全部失效 ——
+ * 而缓存正是做这个代理的目的。确定性 IV 让 URL 稳定。
+ *
+ * GCM 的 nonce 复用之所以危险，是「同一个 nonce 加密不同明文」；这里 nonce
+ * 由明文哈希而来，相同明文必然得到相同 nonce、不同明文几乎不可能撞上，
+ * 构造上就排除了那种情况。
+ */
+function deriveIv(plaintext: string, ivKey: Buffer) {
+  return createHmac("sha256", ivKey).update(plaintext).digest().subarray(0, IV_LENGTH);
 }
 
 /** 生成前端用的代理地址 */
 export function embyImageUrl(params: ImageParams): string {
-  const query = new URLSearchParams({
-    id: params.id,
-    kind: params.kind,
-    tag: params.tag,
-    h: String(params.height),
-    s: sign(params),
-  });
-  return `/api/image/emby?${query}`;
+  const { encryption, iv: ivKey } = keys();
+  const plaintext = serialize(params);
+  const iv = deriveIv(plaintext, ivKey);
+
+  const cipher = createCipheriv(ALGORITHM, encryption, iv);
+  const ciphertext = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
+  const authTag = cipher.getAuthTag();
+
+  const token = Buffer.concat([iv, authTag, ciphertext]).toString("base64url");
+  return `/api/image/emby/${token}`;
 }
 
-export type VerifyResult =
+export type DecodeResult =
   | { ok: true; params: ImageParams }
   | { ok: false; reason: string };
 
-/** 校验请求参数，顺带把类型收窄 */
-export function verifyImageRequest(search: URLSearchParams): VerifyResult {
-  const id = search.get("id") ?? "";
-  const kind = search.get("kind") ?? "";
-  const tag = search.get("tag") ?? "";
-  const height = Number(search.get("h"));
-  const signature = search.get("s") ?? "";
+/**
+ * 解码 token。GCM 的 auth tag 同时承担了完整性校验，
+ * 所以不需要另外附一个签名 —— 改一个字节就解不开。
+ */
+export function decodeImageToken(token: string): DecodeResult {
+  let raw: Buffer;
+  try {
+    raw = Buffer.from(token, "base64url");
+  } catch {
+    return { ok: false, reason: "无法解析的 token" };
+  }
 
-  // 先做形状校验：id / tag 只可能是字母数字，杜绝往上游路径里塞 ../
-  if (!/^[A-Za-z0-9]+$/.test(id)) return { ok: false, reason: "非法的 id" };
-  if (!/^[A-Za-z0-9]+$/.test(tag)) return { ok: false, reason: "非法的 tag" };
+  if (raw.length <= IV_LENGTH + TAG_LENGTH) return { ok: false, reason: "token 长度不足" };
+
+  const iv = raw.subarray(0, IV_LENGTH);
+  const authTag = raw.subarray(IV_LENGTH, IV_LENGTH + TAG_LENGTH);
+  const ciphertext = raw.subarray(IV_LENGTH + TAG_LENGTH);
+
+  let plaintext: string;
+  try {
+    const decipher = createDecipheriv(ALGORITHM, keys().encryption, iv);
+    decipher.setAuthTag(authTag);
+    plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString("utf8");
+  } catch {
+    return { ok: false, reason: "token 校验失败" };
+  }
+
+  const [id, kind, tag, rawHeight] = plaintext.split("|");
+  const height = Number(rawHeight);
+
+  // token 是自己签发的，理论上不会不合法；这里仍然校验一遍，
+  // 免得将来改了序列化格式却忘了这边
+  if (!id || !/^[A-Za-z0-9]+$/.test(id)) return { ok: false, reason: "非法的 id" };
+  if (!tag || !/^[A-Za-z0-9]+$/.test(tag)) return { ok: false, reason: "非法的 tag" };
   if (!IMAGE_KINDS.includes(kind as ImageKind)) return { ok: false, reason: "非法的 kind" };
   if (!Number.isInteger(height) || height < 1 || height > 2000) {
     return { ok: false, reason: "非法的高度" };
   }
 
-  const params: ImageParams = { id, kind: kind as ImageKind, tag, height };
-  const expected = sign(params);
-
-  // 长度不等时 timingSafeEqual 会抛，先挡一道
-  if (signature.length !== expected.length) return { ok: false, reason: "签名不匹配" };
-  if (!timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) {
-    return { ok: false, reason: "签名不匹配" };
-  }
-
-  return { ok: true, params };
+  return { ok: true, params: { id, kind: kind as ImageKind, tag, height } };
 }

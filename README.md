@@ -42,11 +42,14 @@ pnpm dev
 
 #### 图片代理
 
-前端拿到的不是 Emby 直链，而是本站的 `/api/image/emby?id=…&tag=…&s=…`。这样源站地址不外泄，页面套上 CDN 后图片能跟着一起被缓存（Emby 自己没套 CDN）。
+前端拿到的不是 Emby 直链，而是本站的 `/api/image/emby/<token>`。这样源站不外泄，页面套上 CDN 后图片能跟着一起被缓存（Emby 自己没套 CDN）。
 
-- **签名**：`s` 是 `HMAC-SHA256(secret, "id|kind|tag|height")` 取前 16 位十六进制。源站地址固定取自环境变量、参数只有四个且都做了形状校验，所以不存在打到任意地址的问题；签名要挡的是拿这个端点枚举 Emby 里的条目。密钥取 `IMAGE_PROXY_SECRET`，没配就复用 `EMBY_API_KEY`。
-- **不设过期**：URL 里带着 Emby 的 image tag，图片换了 tag 就换，所以这个地址天然不可变，可以 `max-age=31536000, immutable`。加过期时间反而会让 CDN 缓存失效。
+- **token 是加密的，不是签名的**。参数若明文放在 URL 里（`?id=…&kind=…&tag=…`），任何人都能照着拼出 Emby 直链，代理就白做了 —— 签名只挡得住枚举，挡不住照抄。所以把 `id|kind|tag|height` 用 AES-256-GCM 整体加密成一个不透明 token。GCM 的 auth tag 同时承担完整性校验，不需要另附签名，改一个字节就解不开。密钥由 `IMAGE_PROXY_SECRET`（没配则 `EMBY_API_KEY`）派生，加密和派生 IV 用两把不同的子密钥。
+- **必须是确定性加密**：IV 由明文 HMAC 推导而不是随机生成。随机 IV 会让同一张图每次渲染得到不同 URL，CDN 和浏览器缓存全部失效 —— 而缓存正是做这个代理的目的。GCM 的 nonce 复用之所以危险是「同一 nonce 加密不同明文」，这里 nonce 由明文推导，构造上排除了这种情况。
+- **不设过期**：token 里带着 Emby 的 image tag，图片换了 tag 就换，所以这个地址天然不可变，可以 `max-age=31536000, immutable`。加过期时间反而会打断 CDN 缓存。
 - **条件请求**：透传 `If-None-Match` 给 Emby，命中回 304。这里有个坑 —— 转发时必须用 `cache: "no-cache"`，**undici 在 `no-store`（和默认）模式下会丢掉调用方自己设的 `If-None-Match`**，用 `no-store` 的话 304 永远命中不了。
+
+> 注意：卡片的「在 Emby 里打开」跳转链接仍然指向 `EMBY_PUBLIC_URL`，源站地址依旧会出现在页面 HTML 里。要彻底不暴露得去掉这个跳转。
 
 Apple Music 的封面没有代理，仍走 `mzstatic.com` 直链 —— 那本来就是公开 CDN，套一层反而多一跳。
 
