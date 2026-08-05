@@ -15,8 +15,11 @@ import type { ListeningItem } from "@/lib/types";
  * 两者都只存在于服务端，前端拿到的永远是已经规范化过的歌曲列表。
  */
 
-const RECENT_URL =
-  "https://api.music.apple.com/v1/me/recent/played/tracks?types=songs&limit=30";
+/**
+ * 注意这个端点返回的是「最近播放的资源」—— 专辑、歌单、电台这类容器，
+ * 不是单曲。limit 上限是 10，传更大会直接 400。
+ */
+const RECENT_URL = "https://api.music.apple.com/v1/me/recent/played?limit=10";
 const RECENT_TTL_MS = 30_000;
 
 /** Apple 上限 6 个月，这里保守取 12 小时 */
@@ -78,17 +81,29 @@ async function getDeveloperToken(credentials: Credentials): Promise<string> {
   return token;
 }
 
-type AppleTrack = {
+type AppleResource = {
   id?: string;
+  /** albums / playlists / stations / library-albums … */
+  type?: string;
   attributes?: {
     name?: string;
+    /** 专辑有这个 */
     artistName?: string;
-    albumName?: string;
+    /** 歌单是创建者 */
+    curatorName?: string;
     url?: string;
-    durationInMillis?: number;
     artwork?: { url?: string; bgColor?: string };
     playParams?: { id?: string };
   };
+};
+
+/** 已知类型的中文标签，没收录的就直接显示原始 type */
+const KIND_LABELS: Record<string, string> = {
+  albums: "专辑",
+  "library-albums": "专辑",
+  playlists: "歌单",
+  "library-playlists": "歌单",
+  stations: "电台",
 };
 
 /** 把 artwork URL 里的 {w}/{h} 占位替换成实际尺寸 */
@@ -98,30 +113,33 @@ function resolveArtwork(url: string | undefined, size = 600): string | null {
   return url.replace(/\{w\}/g, String(dimension)).replace(/\{h\}/g, String(dimension));
 }
 
-function normalize(track: AppleTrack, artworkSize: number): ListeningItem {
-  const attributes = track.attributes ?? {};
-  const artist = attributes.artistName ?? "";
-  const album = attributes.albumName ?? "";
+function normalize(resource: AppleResource, artworkSize: number): ListeningItem {
+  const attributes = resource.attributes ?? {};
+  const kind = resource.type ?? "";
+  const kindLabel = KIND_LABELS[kind] ?? kind;
+  // 专辑给 artistName，歌单给 curatorName，电台两者都没有
+  const artist = attributes.artistName ?? attributes.curatorName ?? "";
 
   return {
-    id: String(track.id ?? attributes.playParams?.id ?? ""),
+    id: String(resource.id ?? attributes.playParams?.id ?? ""),
     title: attributes.name ?? "",
-    subtitle: [artist, album].filter(Boolean).join(" · "),
+    subtitle: [kindLabel, artist].filter(Boolean).join(" · "),
     artist,
-    album,
+    kind,
+    kindLabel,
     artwork: resolveArtwork(attributes.artwork?.url, artworkSize),
     accent: attributes.artwork?.bgColor ?? null,
-    durationMs: attributes.durationInMillis ?? null,
     link: attributes.url ?? null,
   };
 }
 
+/** limit 上限 10 —— 上游端点的硬限制 */
 export async function getRecentlyPlayed(
-  { limit = 12, artworkSize = 600 } = {},
+  { limit = 10, artworkSize = 600 } = {},
 ): Promise<ListeningItem[]> {
   const credentials = await resolveCredentials();
 
-  const tracks = await cached(`apple-music:recent`, RECENT_TTL_MS, async () => {
+  const resources = await cached(`apple-music:recent`, RECENT_TTL_MS, async () => {
     const developerToken = await getDeveloperToken(credentials);
 
     const response = await fetch(RECENT_URL, {
@@ -144,11 +162,10 @@ export async function getRecentlyPlayed(
       throw new Error(`Apple Music 返回 ${response.status}：${body}`);
     }
 
-    // Apple 按播放时间倒序返回，直接用原始顺序 —— 重复播放的同一首歌会重复出现，
-    // 这正是「最近在听」想表达的。
-    const json = (await response.json()) as { data?: AppleTrack[] };
+    // Apple 按播放时间倒序返回，直接用原始顺序
+    const json = (await response.json()) as { data?: AppleResource[] };
     return Array.isArray(json?.data) ? json.data : [];
   });
 
-  return tracks.slice(0, limit).map((track) => normalize(track, artworkSize));
+  return resources.slice(0, limit).map((item) => normalize(item, artworkSize));
 }

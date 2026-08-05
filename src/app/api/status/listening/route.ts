@@ -6,5 +6,5 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export function GET() {
-  return statusRoute(() => getRecentlyPlayed({ limit: 12, artworkSize: 300 }));
+  return statusRoute(() => getRecentlyPlayed({ limit: 10, artworkSize: 300 }));
 }

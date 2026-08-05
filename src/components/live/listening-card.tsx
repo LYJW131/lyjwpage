@@ -51,7 +51,8 @@ function TrackRow({ track }: { track: ListeningItem }) {
       </div>
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm">{track.title}</div>
-        <div className="truncate text-xs text-muted-foreground">{track.artist}</div>
+        {/* 用 subtitle 而不是 artist —— 它带着「专辑 / 歌单」的类型信息 */}
+        <div className="truncate text-xs text-muted-foreground">{track.subtitle}</div>
       </div>
     </>
   );

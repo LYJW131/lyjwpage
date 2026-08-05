@@ -20,17 +20,25 @@ export type WatchingItem = {
   playedAt: string | null;
 };
 
+/**
+ * 最近在听的一项。注意这是「资源」而不是单曲 ——
+ * /v1/me/recent/played 返回的是专辑、歌单、电台这类容器。
+ */
 export type ListeningItem = {
   id: string;
+  /** 专辑名 / 歌单名 / 电台名 */
   title: string;
-  /** 「艺人 · 专辑」 */
+  /** 「专辑 · 艺人」 */
   subtitle: string;
+  /** 专辑取 artistName，歌单取 curatorName */
   artist: string;
-  album: string;
+  /** 原始类型：albums / playlists / stations … */
+  kind: string;
+  /** 给人看的类型标签 */
+  kindLabel: string;
   artwork: string | null;
   /** Apple 给的封面主色，形如 "1a1a1a"（不带 #） */
   accent: string | null;
-  durationMs: number | null;
   link: string | null;
 };
 
