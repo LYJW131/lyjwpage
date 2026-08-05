@@ -5,7 +5,7 @@ import Image from "next/image";
 import { StatusDot } from "@/components/ui/status-dot";
 import { useStatus } from "@/hooks/use-status";
 import type { WatchingItem } from "@/lib/types";
-import { cn, timeAgo } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 
 /** 续播列表是小时级变化的，但正在播放的会话要跟手 */
 const REFRESH_MS = 20_000;
@@ -68,6 +68,16 @@ function Tile({
           />
         ) : null}
 
+        {/* 压在封面右上角。海报底色不可控，所以垫一层模糊底片保证读得出来 */}
+        {live && (
+          <span className="absolute right-2 top-2 flex items-center gap-1.5 rounded-full border border-line bg-background/85 px-2 py-1 backdrop-blur-sm">
+            <StatusDot tone={paused ? "idle" : "live"} />
+            <span className="label-mono text-foreground">
+              {paused ? "已暂停" : "正在播放"}
+            </span>
+          </span>
+        )}
+
         {/* 进度条压在图片底边，所以颜色不能跟着主题走，也不能用黑白：
             海报有深有浅，只有绿色在两种底上都读得出来。
             正在播放时让它呼吸，暂停/没在播的就是静止的一条。 */}
@@ -88,23 +98,6 @@ function Tile({
         </div>
         <div className="truncate text-xs text-muted-foreground" title={item.subtitle}>
           {item.subtitle || "—"}
-        </div>
-        <div className="label-mono mt-1 flex items-center justify-between gap-2 text-muted-foreground">
-          <span>{Math.round(progress)}%</span>
-          {/* 正在播的东西显示「2 小时前」没意义，两者互斥 */}
-          {live ? (
-            <span
-              className={cn(
-                "flex items-center gap-1.5",
-                paused ? "text-live-idle" : "text-live",
-              )}
-            >
-              <StatusDot tone={paused ? "idle" : "live"} />
-              {paused ? "已暂停" : "正在播放"}
-            </span>
-          ) : (
-            item.playedAt && <span>{timeAgo(item.playedAt)}</span>
-          )}
         </div>
       </div>
     </a>
