@@ -56,19 +56,15 @@ function Tile({
           />
         ) : null}
 
-        {live && (
-          <span className="absolute left-2 top-2 flex items-center gap-1.5 rounded-full border border-line bg-background/85 px-2 py-1 backdrop-blur-sm">
-            <StatusDot tone={paused ? "idle" : "live"} />
-            <span className="label-mono text-foreground">
-              {paused ? "已暂停" : "正在播放"}
-            </span>
-          </span>
-        )}
-
-        {/* 进度条压在图片底边 */}
-        <div className="absolute inset-x-0 bottom-0 h-[3px] bg-black/40">
+        {/* 进度条压在图片底边，所以颜色不能跟着主题走，也不能用黑白：
+            海报有深有浅，只有绿色在两种底上都读得出来。
+            正在播放时让它呼吸，暂停/没在播的就是静止的一条。 */}
+        <div className="absolute inset-x-0 bottom-0 h-1">
           <div
-            className={cn("h-full transition-[width] duration-700", live ? "bg-live" : "bg-foreground/70")}
+            className={cn(
+              "h-full bg-live transition-[width] duration-700",
+              live && !paused && "[animation:progress-pulse_1.8s_ease-in-out_infinite]",
+            )}
             style={{ width: `${Math.round(progress)}%` }}
           />
         </div>
@@ -81,9 +77,22 @@ function Tile({
         <div className="truncate text-xs text-muted-foreground" title={item.subtitle}>
           {item.subtitle || "—"}
         </div>
-        <div className="label-mono mt-1 flex items-center justify-between text-muted-foreground">
+        <div className="label-mono mt-1 flex items-center justify-between gap-2 text-muted-foreground">
           <span>{Math.round(progress)}%</span>
-          {item.playedAt && <span>{timeAgo(item.playedAt)}</span>}
+          {/* 正在播的东西显示「2 小时前」没意义，两者互斥 */}
+          {live ? (
+            <span
+              className={cn(
+                "flex items-center gap-1.5",
+                paused ? "text-live-idle" : "text-live",
+              )}
+            >
+              <StatusDot tone={paused ? "idle" : "live"} />
+              {paused ? "已暂停" : "正在播放"}
+            </span>
+          ) : (
+            item.playedAt && <span>{timeAgo(item.playedAt)}</span>
+          )}
         </div>
       </div>
     </a>

@@ -202,24 +202,33 @@ export async function getWatching({ limit = 8 } = {}): Promise<WatchingPayload> 
   // Sessions 挂了不该拖垮整个列表 —— 没有实时标记只是少个锦上添花
   let nowPlaying: WatchingPayload["nowPlaying"] = null;
   try {
-    nowPlaying = await cached(`emby:sessions:${userId}`, SESSIONS_TTL_MS, async () => {
-      const sessions = await embyFetch<EmbySession[]>(`${url}/emby/Sessions`, key);
-      const session = sessions.find(
-        (entry) =>
-          entry?.NowPlayingItem?.Id && (!entry.UserId || entry.UserId === userId),
-      );
-      if (!session?.NowPlayingItem?.Id) return null;
+    const sessions = await cached(`emby:sessions`, SESSIONS_TTL_MS, () =>
+      embyFetch<EmbySession[]>(`${url}/emby/Sessions`, key),
+    );
 
+    // 必须在续播列表里反查，不能「随便找一个有 NowPlayingItem 的会话」：
+    // Sessions 里混着 DLNA 投屏、qbittorrent、auth_proxy 这些没有 UserId 的
+    // 条目，而多个会话同时有 NowPlayingItem 时 find 取到的是任意一个 ——
+    // 取错了就等于真正在看的那条拿不到实时标记。
+    const resumeIds = new Set(items.map((item) => item.id));
+    const session = sessions.find(
+      (entry) =>
+        entry.UserId === userId &&
+        entry.NowPlayingItem?.Id &&
+        resumeIds.has(String(entry.NowPlayingItem.Id)),
+    );
+
+    if (session?.NowPlayingItem?.Id) {
       const runtime = Number(session.NowPlayingItem.RunTimeTicks) || 0;
       const position = Number(session.PlayState?.PositionTicks) || 0;
 
-      return {
+      nowPlaying = {
         itemId: String(session.NowPlayingItem.Id),
         paused: Boolean(session.PlayState?.IsPaused),
         progress: runtime > 0 ? Math.min(100, (position / runtime) * 100) : null,
         device: session.Client || session.DeviceName || "",
       };
-    });
+    }
   } catch {
     nowPlaying = null;
   }
