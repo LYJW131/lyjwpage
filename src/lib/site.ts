@@ -5,8 +5,7 @@
 
 export const site = {
   name: "LYJW",
-  /** 占位 */
-  fullName: "梁杨俊炜",
+  fullName: "梁杨峻玮",
   domain: "lyjw131.com",
   url: "https://lyjw131.com",
   /** 占位：一句话介绍，会出现在 hero 和 <meta description> */
