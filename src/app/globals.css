@@ -83,6 +83,13 @@
   }
 
   body {
+    /**
+     * screen-line-* 的伪元素是 left:-100vw / width:200vw，必然溢出到视口外，
+     * 不夹住的话整页可以左右滑（宽屏尤其明显，溢出量 = 容器左边距 + 100vw）。
+     * 必须用 clip 而不是 hidden：hidden 会把 body 变成滚动容器，
+     * 吸顶导航的 position:sticky 就失效了。
+     */
+    overflow-x: clip;
     background: var(--background);
     color: var(--foreground);
     font-family: var(--font-sans);
