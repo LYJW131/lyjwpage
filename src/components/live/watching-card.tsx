@@ -10,6 +10,17 @@ import { cn, timeAgo } from "@/lib/utils";
 /** 续播列表是小时级变化的，但正在播放的会话要跟手 */
 const REFRESH_MS = 20_000;
 
+/**
+ * 卡片宽度按容器等分，保证视口里永远是整数张、不会被切一半。
+ * 分母是列数，减掉的是列间的 gap-3（0.75rem）总宽：(列数 - 1) × 0.75rem。
+ */
+const TILE_WIDTH = cn(
+  "shrink-0 snap-start",
+  "basis-[calc((100%-0.75rem)/2)]",
+  "md:basis-[calc((100%-1.5rem)/3)]",
+  "lg:basis-[calc((100%-2.25rem)/4)]",
+);
+
 type WatchingPayload = {
   items: WatchingItem[];
   nowPlaying: {
@@ -39,8 +50,9 @@ function Tile({
       target="_blank"
       rel="noreferrer noopener"
       className={cn(
-        "group relative flex w-[13.5rem] shrink-0 flex-col overflow-hidden rounded-md",
+        "group relative flex flex-col overflow-hidden rounded-md",
         "border border-line bg-surface transition-colors hover:border-line-strong",
+        TILE_WIDTH,
         live && "border-live/40",
       )}
     >
@@ -101,11 +113,14 @@ function Tile({
 
 function Skeleton() {
   return (
-    <div className="flex gap-3">
+    <div className="flex gap-3 overflow-hidden">
       {[0, 1, 2, 3].map((i) => (
         <div
           key={i}
-          className="w-[13.5rem] shrink-0 overflow-hidden rounded-md border border-line bg-surface"
+          className={cn(
+            "overflow-hidden rounded-md border border-line bg-surface",
+            TILE_WIDTH,
+          )}
         >
           <div className="aspect-video animate-pulse bg-muted" />
           <div className="space-y-2 px-3 py-3">
@@ -135,8 +150,8 @@ export function WatchingRow() {
   }
 
   return (
-    // 负 margin + padding 让卡片能滚到容器边缘之外，视觉上不被裁断
-    <div className="-mx-4 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    // 吸附到卡片起始边，手动滑动也只会停在整卡边界上
+    <div className="snap-x snap-mandatory overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       <div className="flex gap-3">
         {data.items.map((item) => {
           const live = data.nowPlaying?.itemId === item.id;
