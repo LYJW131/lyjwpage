@@ -49,7 +49,9 @@ pnpm dev
 - **不设过期**：token 里带着 Emby 的 image tag，图片换了 tag 就换，所以这个地址天然不可变，可以 `max-age=31536000, immutable`。加过期时间反而会打断 CDN 缓存。
 - **条件请求**：透传 `If-None-Match` 给 Emby，命中回 304。这里有个坑 —— 转发时必须用 `cache: "no-cache"`，**undici 在 `no-store`（和默认）模式下会丢掉调用方自己设的 `If-None-Match`**，用 `no-store` 的话 304 永远命中不了。
 
-> 注意：卡片的「在 Emby 里打开」跳转链接仍然指向 `EMBY_PUBLIC_URL`，源站地址依旧会出现在页面 HTML 里。要彻底不暴露得去掉这个跳转。
+> 卡片的「在 Emby 里打开」跳转链接仍然指向 `EMBY_PUBLIC_URL`，源站地址会出现在页面 HTML 里 —— 这是有意为之，不用改：Emby 前面有认证网关，跳过去的人会撞到认证。
+>
+> **只有图片端点是不需要认证的**，这也正是它必须走代理的原因：它是唯一一处不套代理就会被匿名直取的资源。
 
 Apple Music 的封面没有代理，仍走 `mzstatic.com` 直链 —— 那本来就是公开 CDN，套一层反而多一跳。
 
