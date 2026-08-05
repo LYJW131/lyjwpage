@@ -78,6 +78,19 @@ function TrackRow({ track }: { track: ListeningItem }) {
   );
 }
 
+/** 占位行，高度必须和 TrackRow 一致，否则加载完照样会跳 */
+function SkeletonRow() {
+  return (
+    <div className="flex h-12 shrink-0 items-center gap-2.5 px-2">
+      <div className="size-9 shrink-0 animate-pulse rounded-sm bg-muted" />
+      <div className="min-w-0 flex-1 space-y-1.5">
+        <div className="h-3 w-2/5 animate-pulse rounded bg-muted" />
+        <div className="h-2.5 w-1/4 animate-pulse rounded bg-muted" />
+      </div>
+    </div>
+  );
+}
+
 /** 有链接就整块可点，没有就退化成普通容器 */
 function HeroWrapper({ link, children }: { link: string | null; children: ReactNode }) {
   const className = "group flex gap-3 rounded-md";
@@ -160,8 +173,14 @@ export function ListeningCard({ className }: { className?: string }) {
           </div>
         </HeroWrapper>
 
-        {/* 再往前的几项。上游最多给 10 条，全部列出，放不下就滚动 */}
-        {rest.length > 0 && (
+        {/*
+          再往前的几项。上游最多给 10 条，全部列出，放不下就滚动。
+
+          加载中也要把这块的位置占住（渲染骨架行），否则卡片会先矮一截、
+          数据到了再撑高 —— 两张卡在同一 grid 行里，会一起跳。
+          高度用固定值而不是 max-height，条数多少都不影响。
+        */}
+        {(isLoading || rest.length > 0) && (
           // 边框和内边距放在外层，滚动容器本身不带 padding ——
           // 否则吸附位会被 padding 顶偏，还得再补 scroll-padding
           <div className="mt-3 border-t border-line pt-2">
@@ -173,12 +192,14 @@ export function ListeningCard({ className }: { className?: string }) {
                 "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
               )}
               // 窗口高度取行高的整数倍，视图里永远是整数行
-              style={{ maxHeight: `calc(${ROW_HEIGHT} * ${VISIBLE_ROWS})` }}
+              style={{ height: `calc(${ROW_HEIGHT} * ${VISIBLE_ROWS})` }}
             >
-              {rest.map((item, index) => (
-                // 同一张专辑可能重复出现在列表里，key 必须带上下标
-                <TrackRow key={`${item.id}-${index}`} track={item} />
-              ))}
+              {rest.length > 0
+                ? rest.map((item, index) => (
+                    // 同一张专辑可能重复出现在列表里，key 必须带上下标
+                    <TrackRow key={`${item.id}-${index}`} track={item} />
+                  ))
+                : Array.from({ length: VISIBLE_ROWS }, (_, i) => <SkeletonRow key={i} />)}
             </div>
           </div>
         )}
