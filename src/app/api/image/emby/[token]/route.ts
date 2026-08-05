@@ -1,3 +1,4 @@
+import { getCachedImage } from "@/lib/image-cache";
 import { decodeImageToken } from "@/lib/image-proxy";
 
 // 上游可能是内网地址，必须在 Node runtime 里转发
@@ -27,44 +28,42 @@ export async function GET(request: Request, ctx: RouteContext<"/api/image/emby/[
     `${base}/emby/Items/${id}/Images/${kind}` +
     `?${new URLSearchParams({ tag, maxHeight: String(height) })}`;
 
-  // 把浏览器的条件请求透传上去，命中就回 304，省一次图片传输
-  const ifNoneMatch = request.headers.get("if-none-match");
-
+  let entry;
   try {
-    const upstream = await fetch(upstreamUrl, {
-      headers: ifNoneMatch ? { "If-None-Match": ifNoneMatch } : undefined,
-      // 必须是 no-cache 而不是 no-store：undici 在 no-store（和默认）模式下
-      // 会丢掉调用方自己设的 If-None-Match，导致 304 永远命中不了。
-      // no-cache 表示「每次都回源校验」，正是这里要的语义。
-      cache: ifNoneMatch ? "no-cache" : "no-store",
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    });
-
-    if (upstream.status === 304) {
-      return new Response(null, {
-        status: 304,
-        headers: { "Cache-Control": CACHE_CONTROL },
+    // token 与 (id,kind,tag,height) 一一对应，直接拿它当缓存 key。
+    // 同一个 key 并发进来只回源一次，前端打多快都不会等比传导到 Emby。
+    entry = await getCachedImage(token, async () => {
+      const upstream = await fetch(upstreamUrl, {
+        cache: "no-store",
+        signal: AbortSignal.timeout(TIMEOUT_MS),
       });
-    }
+      if (!upstream.ok) throw new Error(`上游返回 ${upstream.status}`);
 
-    if (!upstream.ok || !upstream.body) {
-      return new Response("上游图片获取失败", { status: 502 });
-    }
-
-    const headers = new Headers({
-      "Content-Type": upstream.headers.get("content-type") ?? "image/jpeg",
-      "Cache-Control": CACHE_CONTROL,
+      return {
+        body: Buffer.from(await upstream.arrayBuffer()),
+        contentType: upstream.headers.get("content-type") ?? "image/jpeg",
+        etag: upstream.headers.get("etag"),
+      };
     });
-    const etag = upstream.headers.get("etag");
-    if (etag) headers.set("ETag", etag);
-    const length = upstream.headers.get("content-length");
-    if (length) headers.set("Content-Length", length);
-
-    // 直接把流转出去，不在内存里缓冲整张图
-    return new Response(upstream.body, { status: 200, headers });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error("[image/emby]", message);
     return new Response("上游图片获取失败", { status: 502 });
   }
+
+  if (!entry) return new Response("上游图片获取失败", { status: 502 });
+
+  const headers = new Headers({
+    "Content-Type": entry.contentType,
+    "Cache-Control": CACHE_CONTROL,
+  });
+  if (entry.etag) headers.set("ETag", entry.etag);
+
+  // 条件请求直接拿缓存里的 ETag 比对，不必再回源问一次
+  if (entry.etag && request.headers.get("if-none-match") === entry.etag) {
+    return new Response(null, { status: 304, headers });
+  }
+
+  headers.set("Content-Length", String(entry.body.byteLength));
+  return new Response(new Uint8Array(entry.body), { status: 200, headers });
 }
