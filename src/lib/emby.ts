@@ -1,4 +1,5 @@
 import { cached } from "@/lib/cache";
+import { embyImageUrl, type ImageKind } from "@/lib/image-proxy";
 import type { WatchingItem } from "@/lib/types";
 
 /**
@@ -58,7 +59,8 @@ function config() {
   if (!userId) missing.push("EMBY_USER_ID");
   if (missing.length) throw new Error(`缺少 Emby 配置：${missing.join("、")}`);
 
-  // 内网地址用于服务端取数，图片和跳转链接要用浏览器能访问到的公网地址
+  // 内网地址用于服务端取数；publicUrl 只用来拼「在 Emby 里打开」的跳转链接，
+  // 图片已经改走本站的签名代理，不再需要浏览器能直连 Emby
   const publicUrl = (process.env.EMBY_PUBLIC_URL ?? url).replace(/\/+$/, "");
   return { url, key, userId, publicUrl };
 }
@@ -73,21 +75,23 @@ async function embyFetch<T>(path: string, key: string): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+/**
+ * 图片一律走本站的签名代理，不给前端 Emby 直链 ——
+ * 既不暴露源站，页面套上 CDN 后图片也能一起被缓存。
+ */
 function imageUrl(
-  baseUrl: string,
   itemId: string | undefined,
-  kind: string,
+  kind: ImageKind,
   tag: string | undefined,
-  maxHeight: number,
+  height: number,
 ): string | null {
   if (!itemId || !tag) return null;
-  const params = new URLSearchParams({ tag, maxHeight: String(maxHeight) });
-  return `${baseUrl}/emby/Items/${itemId}/Images/${kind}?${params}`;
+  return embyImageUrl({ id: itemId, kind, tag, height });
 }
 
 /** 横版图，按 Thumb → 父级 Thumb → Backdrop → 父级 Backdrop 依次退让 */
-function resolveBackdrop(baseUrl: string, item: EmbyItem, maxHeight = 400): string | null {
-  const candidates: Array<[string | undefined, string, string | undefined]> = [
+function resolveBackdrop(item: EmbyItem, height = 400): string | null {
+  const candidates: Array<[string | undefined, ImageKind, string | undefined]> = [
     [item.Id, "Thumb", item.ImageTags?.Thumb],
     [item.ParentThumbItemId, "Thumb", item.ParentThumbImageTag],
     [item.Id, "Backdrop", item.BackdropImageTags?.[0]],
@@ -95,19 +99,19 @@ function resolveBackdrop(baseUrl: string, item: EmbyItem, maxHeight = 400): stri
   ];
 
   for (const [id, kind, tag] of candidates) {
-    const url = imageUrl(baseUrl, id, kind, tag, maxHeight);
+    const url = imageUrl(id, kind, tag, height);
     if (url) return url;
   }
   return null;
 }
 
 /** 竖版海报。剧集自身的 Primary 是剧照，所以优先取剧集所属剧的海报 */
-function resolvePoster(baseUrl: string, item: EmbyItem, maxHeight = 600): string | null {
+function resolvePoster(item: EmbyItem, height = 600): string | null {
   if (item.Type === "Episode") {
-    const series = imageUrl(baseUrl, item.SeriesId, "Primary", item.SeriesPrimaryImageTag, maxHeight);
+    const series = imageUrl(item.SeriesId, "Primary", item.SeriesPrimaryImageTag, height);
     if (series) return series;
   }
-  return imageUrl(baseUrl, item.Id, "Primary", item.ImageTags?.Primary, maxHeight);
+  return imageUrl(item.Id, "Primary", item.ImageTags?.Primary, height);
 }
 
 function resolveProgress(item: EmbyItem): number {
@@ -156,8 +160,8 @@ function normalize(item: EmbyItem, publicUrl: string): WatchingItem {
     title,
     subtitle,
     progress: resolveProgress(item),
-    poster: resolvePoster(publicUrl, item),
-    backdrop: resolveBackdrop(publicUrl, item),
+    poster: resolvePoster(item),
+    backdrop: resolveBackdrop(item),
     type: normalizeType(item.Type),
     year: item.ProductionYear ?? null,
     link: item.Id

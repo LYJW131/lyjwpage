@@ -36,9 +36,19 @@ pnpm dev
 
 ### 最近在看 — Emby
 
-`GET {EMBY_URL}/emby/Users/{userId}/Items/Resume` 拿续播列表，再用 `GET /emby/Sessions` 匹配出**此刻真正在播放**的那一条，给它打上实时标记和跟手的进度。图片和跳转链接走 `EMBY_PUBLIC_URL`（浏览器能访问到的地址），取数走 `EMBY_URL`（内网直连更快）。
+`GET {EMBY_URL}/emby/Users/{userId}/Items/Resume` 拿续播列表，再用 `GET /emby/Sessions` 匹配出**此刻真正在播放**的那一条，给它打上实时标记和跟手的进度。
 
 剧集自身的 `Primary` 图是剧照而不是海报，所以竖版海报优先取所属剧的 `SeriesPrimaryImageTag`。
+
+#### 图片代理
+
+前端拿到的不是 Emby 直链，而是本站的 `/api/image/emby?id=…&tag=…&s=…`。这样源站地址不外泄，页面套上 CDN 后图片能跟着一起被缓存（Emby 自己没套 CDN）。
+
+- **签名**：`s` 是 `HMAC-SHA256(secret, "id|kind|tag|height")` 取前 16 位十六进制。源站地址固定取自环境变量、参数只有四个且都做了形状校验，所以不存在打到任意地址的问题；签名要挡的是拿这个端点枚举 Emby 里的条目。密钥取 `IMAGE_PROXY_SECRET`，没配就复用 `EMBY_API_KEY`。
+- **不设过期**：URL 里带着 Emby 的 image tag，图片换了 tag 就换，所以这个地址天然不可变，可以 `max-age=31536000, immutable`。加过期时间反而会让 CDN 缓存失效。
+- **条件请求**：透传 `If-None-Match` 给 Emby，命中回 304。这里有个坑 —— 转发时必须用 `cache: "no-cache"`，**undici 在 `no-store`（和默认）模式下会丢掉调用方自己设的 `If-None-Match`**，用 `no-store` 的话 304 永远命中不了。
+
+Apple Music 的封面没有代理，仍走 `mzstatic.com` 直链 —— 那本来就是公开 CDN，套一层反而多一跳。
 
 ### 最近在听 — Apple Music
 
