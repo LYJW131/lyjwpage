@@ -76,6 +76,12 @@
     border-color: var(--line);
   }
 
+  html {
+    /* 导航锚点平滑滚过去，而不是硬跳。
+       下面 prefers-reduced-motion 里会用 !important 把它关掉 */
+    scroll-behavior: smooth;
+  }
+
   body {
     background: var(--background);
     color: var(--foreground);

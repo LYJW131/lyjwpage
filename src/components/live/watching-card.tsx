@@ -150,8 +150,10 @@ export function WatchingRow() {
   }
 
   return (
-    // 吸附到卡片起始边，手动滑动也只会停在整卡边界上
-    <div className="snap-x snap-mandatory overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    // 吸附到卡片起始边，手动滑动也只会停在整卡边界上。
+    // overscroll-x-contain 很关键：不然横滑到头会把滚动链给外层，
+    // 触发触控板的「滑动返回上一页」，那下手感是最生硬的。
+    <div className="snap-x snap-mandatory scroll-smooth overflow-x-auto overscroll-x-contain pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       <div className="flex gap-3">
         {data.items.map((item) => {
           const live = data.nowPlaying?.itemId === item.id;

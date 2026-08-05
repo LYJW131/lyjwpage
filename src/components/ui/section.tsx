@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import { Reveal } from "@/components/ui/reveal";
 import { cn } from "@/lib/utils";
 
 /**
@@ -24,19 +25,26 @@ export function Section({
   className?: string;
 }) {
   return (
-    <section id={id} className={cn("screen-line-top px-4 py-10 sm:py-14", className)}>
-      {(label || title) && (
-        <header className="mb-6 flex items-baseline justify-between gap-4">
-          <div className="flex items-baseline gap-3">
-            {label && <span className="label-mono text-muted-foreground">{label}</span>}
-            {title && (
-              <h2 className="text-lg font-medium tracking-tight sm:text-xl">{title}</h2>
-            )}
-          </div>
-          {note && <div className="label-mono text-muted-foreground shrink-0">{note}</div>}
-        </header>
-      )}
-      {children}
+    <section
+      id={id}
+      // 吸顶导航连边框 57px，锚点跳转时留出这段还留点余量，否则标题会贴着挡板
+      className={cn("screen-line-top scroll-mt-16 px-4 py-10 sm:py-14", className)}
+    >
+      {/* 只让内容淡入，横贯视口的分隔线保持静止 —— 图纸的框不该跟着飘 */}
+      <Reveal>
+        {(label || title) && (
+          <header className="mb-6 flex items-baseline justify-between gap-4">
+            <div className="flex items-baseline gap-3">
+              {label && <span className="label-mono text-muted-foreground">{label}</span>}
+              {title && (
+                <h2 className="text-lg font-medium tracking-tight sm:text-xl">{title}</h2>
+              )}
+            </div>
+            {note && <div className="label-mono text-muted-foreground shrink-0">{note}</div>}
+          </header>
+        )}
+        {children}
+      </Reveal>
     </section>
   );
 }
