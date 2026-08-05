@@ -1,12 +1,6 @@
 import { ThemeToggle } from "@/components/theme-toggle";
 import { site } from "@/lib/site";
 
-const NAV = [
-  { label: "状态", href: "#live" },
-  { label: "关于", href: "#about" },
-  { label: "项目", href: "#projects" },
-];
-
 export function Header() {
   return (
     // 全站唯一用磨砂的地方
@@ -17,20 +11,8 @@ export function Header() {
           <span className="text-muted-foreground">.dev</span>
         </a>
 
-        <nav className="flex items-center gap-1">
-          {NAV.map((item) => (
-            <a
-              key={item.href}
-              href={item.href}
-              className="rounded-md px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-surface-hover hover:text-foreground"
-            >
-              {item.label}
-            </a>
-          ))}
-          <div className="ml-1.5">
-            <ThemeToggle />
-          </div>
-        </nav>
+        {/* 导航等其他 section 加回来了再补 */}
+        <ThemeToggle />
       </div>
     </header>
   );
