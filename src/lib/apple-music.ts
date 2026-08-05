@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import { SignJWT, importPKCS8 } from "jose";
 
 import { cached, get as cacheGet, put as cachePut } from "@/lib/cache";
-import type { ListeningItem } from "@/lib/types";
+import type { ListeningItem, NowPlayingGuess } from "@/lib/types";
 
 /**
  * Apple Music「最近在听」。
@@ -21,6 +21,11 @@ import type { ListeningItem } from "@/lib/types";
  */
 const RECENT_URL = "https://api.music.apple.com/v1/me/recent/played?limit=10";
 const RECENT_TTL_MS = 30_000;
+
+/** 专辑/歌单的曲目时长是不会变的，缓存久一点 */
+const DURATION_TTL_MS = 24 * 60 * 60 * 1000;
+/** 歌单曲目会分页，最多翻这么多页，够长的歌单也不至于打太多次 */
+const MAX_TRACK_PAGES = 5;
 
 /** Apple 上限 6 个月，这里保守取 12 小时 */
 const TOKEN_TTL_SECONDS = 12 * 60 * 60;
@@ -85,6 +90,8 @@ type AppleResource = {
   id?: string;
   /** albums / playlists / stations / library-albums … */
   type?: string;
+  /** 形如 /v1/catalog/cn/albums/1858184006，拿它去查曲目 */
+  href?: string;
   attributes?: {
     name?: string;
     /** 专辑有这个 */
@@ -133,39 +140,131 @@ function normalize(resource: AppleResource, artworkSize: number): ListeningItem 
   };
 }
 
+async function appleFetch<T>(url: string, credentials: Credentials): Promise<T[]> {
+  const developerToken = await getDeveloperToken(credentials);
+
+  const response = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${developerToken}`,
+      "Music-User-Token": credentials.userToken,
+      Accept: "application/json",
+    },
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    const body = (await response.text()).slice(0, 300);
+    if (response.status === 401) {
+      throw new Error(`Apple Music 拒绝了 developer token（401）：${body}`);
+    }
+    if (response.status === 403) {
+      throw new Error(`Music-User-Token 已失效，需要重新授权（403）：${body}`);
+    }
+    throw new Error(`Apple Music 返回 ${response.status}：${body}`);
+  }
+
+  // Apple 按播放时间倒序返回，直接用原始顺序
+  const json = (await response.json()) as { data?: T[] };
+  return Array.isArray(json?.data) ? json.data : [];
+}
+
+function fetchResources(credentials: Credentials) {
+  return cached(`apple-music:recent`, RECENT_TTL_MS, () =>
+    appleFetch<AppleResource>(RECENT_URL, credentials),
+  );
+}
+
+type TrackRelationship = {
+  data?: Array<{ attributes?: { durationInMillis?: number } }>;
+  next?: string;
+};
+
+type ContainerDetail = {
+  relationships?: { tracks?: TrackRelationship };
+};
+
+/**
+ * 把一个专辑/歌单的所有曲目时长加起来。
+ *
+ * 容器本身没有时长字段（专辑只有 trackCount），只能顺着 href 再查一次曲目。
+ * 曲目时长不会变，所以缓存一整天，同一张专辑只查一次。
+ */
+async function getContainerDuration(
+  resource: AppleResource,
+  credentials: Credentials,
+): Promise<number> {
+  const href = resource.href;
+  const id = resource.id;
+  if (!href || !id) return 0;
+
+  return cached(`apple-music:duration:${id}`, DURATION_TTL_MS, async () => {
+    let total = 0;
+    let url: string | undefined = `${href}?include=tracks`;
+
+    for (let page = 0; page < MAX_TRACK_PAGES && url; page += 1) {
+      const detail: ContainerDetail[] = await appleFetch<ContainerDetail>(
+        url.startsWith("http") ? url : `https://api.music.apple.com${url}`,
+        credentials,
+      );
+
+      const tracks: TrackRelationship | undefined = detail[0]?.relationships?.tracks;
+      for (const track of tracks?.data ?? []) {
+        total += Number(track.attributes?.durationInMillis) || 0;
+      }
+      // 歌单很长时曲目会分页；翻不完就少算，宁可少算（会更早判定为没在听）
+      url = tracks?.next;
+    }
+
+    return total;
+  });
+}
+
 /** limit 上限 10 —— 上游端点的硬限制 */
 export async function getRecentlyPlayed(
   { limit = 10, artworkSize = 600 } = {},
 ): Promise<ListeningItem[]> {
   const credentials = await resolveCredentials();
-
-  const resources = await cached(`apple-music:recent`, RECENT_TTL_MS, async () => {
-    const developerToken = await getDeveloperToken(credentials);
-
-    const response = await fetch(RECENT_URL, {
-      headers: {
-        Authorization: `Bearer ${developerToken}`,
-        "Music-User-Token": credentials.userToken,
-        Accept: "application/json",
-      },
-      cache: "no-store",
-    });
-
-    if (!response.ok) {
-      const body = (await response.text()).slice(0, 300);
-      if (response.status === 401) {
-        throw new Error(`Apple Music 拒绝了 developer token（401）：${body}`);
-      }
-      if (response.status === 403) {
-        throw new Error(`Music-User-Token 已失效，需要重新授权（403）：${body}`);
-      }
-      throw new Error(`Apple Music 返回 ${response.status}：${body}`);
-    }
-
-    // Apple 按播放时间倒序返回，直接用原始顺序
-    const json = (await response.json()) as { data?: AppleResource[] };
-    return Array.isArray(json?.data) ? json.data : [];
-  });
+  const resources = await fetchResources(credentials);
 
   return resources.slice(0, limit).map((item) => normalize(item, artworkSize));
+}
+
+/** 上一次观测到排在最前的那一项。模块级状态，随进程存活 */
+let lastSeen: { id: string; firstSeenAt: number } | null = null;
+
+/**
+ * 推断此刻在不在听。
+ *
+ * Apple 没有服务端可查的「当前播放」接口，也不返回播放时间戳，所以只能观测：
+ * 记下最近播放列表里排第一的专辑/歌单是什么时候「变成第一」的，
+ * 在它的总时长之内就认为还在听，超过了就认为中途停了。
+ *
+ * 已知的不精确之处：
+ * - 冷启动时看到的第一项无法判断是刚开始还是早就播完，一律不认为在听
+ * - 列表缓存 30s，所以「变成第一」的时刻最多晚 30s
+ * - 一直循环同一张专辑时 id 不变，会被当成已经停了
+ * - 只听了专辑里一首歌就走开，仍会按整张时长算，这段时间内都显示在听
+ * - 状态存在进程内存里，多实例部署或重启后要重新观测到一次切换才生效
+ */
+export async function getNowPlaying(): Promise<NowPlayingGuess | null> {
+  const credentials = await resolveCredentials();
+  const resources = await fetchResources(credentials);
+
+  const top = resources[0];
+  if (!top?.id) return null;
+  const id = String(top.id);
+  const now = Date.now();
+
+  if (!lastSeen || lastSeen.id !== id) {
+    const coldStart = lastSeen === null;
+    lastSeen = { id, firstSeenAt: now };
+    // 第一次观测：它可能是刚开始播，也可能几小时前就听完了，无从分辨
+    if (coldStart) return null;
+  }
+
+  const durationMs = await getContainerDuration(top, credentials);
+  if (!durationMs) return null;
+  if (now - lastSeen.firstSeenAt >= durationMs) return null;
+
+  return { itemId: id, startedAt: lastSeen.firstSeenAt, durationMs };
 }

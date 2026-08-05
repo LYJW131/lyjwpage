@@ -42,6 +42,26 @@ export type ListeningItem = {
   link: string | null;
 };
 
+/**
+ * 推断出来的「正在听」。
+ *
+ * Apple 没有服务端可查的「当前播放」接口，这是靠观测最近播放列表的
+ * 变化 + 该专辑/歌单的总时长推出来的，只是估计，不是实况。
+ */
+export type NowPlayingGuess = {
+  /** 对应 items[0].id */
+  itemId: string;
+  /** 我们第一次观测到它排到最前的时刻（毫秒时间戳） */
+  startedAt: number;
+  /** 该专辑/歌单所有曲目时长之和 */
+  durationMs: number;
+};
+
+export type ListeningPayload = {
+  items: ListeningItem[];
+  nowPlaying: NowPlayingGuess | null;
+};
+
 export type ChargerPort = {
   /** C1 / C2 / C3 */
   id: string;

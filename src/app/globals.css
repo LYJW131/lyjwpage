@@ -173,6 +173,17 @@
 }
 
 /* 正在播放时进度条呼吸，用来和「看到一半停着的」区分开 */
+/* 推断为正在播放时，均衡器跳动 */
+@keyframes equalizer {
+  0%,
+  100% {
+    transform: scaleY(0.3);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
 @keyframes progress-pulse {
   0%,
   100% {
