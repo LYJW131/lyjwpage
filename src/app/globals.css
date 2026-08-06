@@ -178,6 +178,17 @@
   }
 }
 
+/* 播放进度：从 0 走到 100%，配合负的 animation-delay 定位到当前播放点。
+   浏览器自己逐帧推进，不需要任何 JS 计时器 */
+@keyframes progress-run {
+  from {
+    width: 0%;
+  }
+  to {
+    width: 100%;
+  }
+}
+
 /* 正在播放时进度条呼吸，用来和「看到一半停着的」区分开 */
 /* 推断为正在播放时，均衡器跳动 */
 @keyframes equalizer {

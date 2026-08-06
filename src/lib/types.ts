@@ -140,9 +140,7 @@ export type ChargerStatus = {
 /** 状态 + 服务端累积的历史，给前端画曲线用 */
 export type ChargerPayload = ChargerStatus & {
   history: ChargerSample[];
-  /** push = 由那台机器推过来；pull = 本地直接轮询遥测服务 */
-  source: "push" | "pull";
-  /** 推送模式下太久没收到新数据 */
+  /** 太久没收到新推送 */
   stale: boolean;
 };
 
