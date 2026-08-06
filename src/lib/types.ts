@@ -81,6 +81,14 @@ export type ChargerPort = {
   cable: string | null;
 };
 
+/** 总功率历史里的一个采样点 */
+export type ChargerSample = {
+  /** 毫秒时间戳 */
+  t: number;
+  /** 瓦 */
+  w: number;
+};
+
 export type ChargerStatus = {
   /** BLE 会话是否活着 */
   connected: boolean;
@@ -95,6 +103,15 @@ export type ChargerStatus = {
   };
   /** 遥测采集时刻，毫秒时间戳 */
   updatedAt: number | null;
+};
+
+/** 状态 + 服务端累积的历史，给前端画曲线用 */
+export type ChargerPayload = ChargerStatus & {
+  history: ChargerSample[];
+  /** push = 由那台机器推过来；pull = 本地直接轮询遥测服务 */
+  source: "push" | "pull";
+  /** 推送模式下太久没收到新数据 */
+  stale: boolean;
 };
 
 /** 所有 /api/status/* 的统一信封 */
