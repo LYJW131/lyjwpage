@@ -131,7 +131,9 @@ export function ChargerCard({ className }: { className?: string }) {
                       : undefined
                   }
                 >
-                  {full?.device ?? "—"}
+                  {/* 区分两种「没有设备名」：口是空的用 —，
+                      插着但 VID/PID 不在收录表里才是 Unknown */}
+                  {full?.active ? (full.device ?? "Unknown") : "—"}
                 </div>
               </div>
             );
