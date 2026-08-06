@@ -229,18 +229,28 @@ export async function getRecentlyPlayed(
   return resources.slice(0, limit).map((item) => normalize(item, artworkSize));
 }
 
-/** 上一次观测到排在最前的那一项。模块级状态，随进程存活 */
-let lastSeen: { id: string; firstSeenAt: number } | null = null;
+/**
+ * 上一次观测到排在最前的那一项。模块级状态，随进程存活。
+ *
+ * switchedAt 只有在真的看见「它从别的东西换成了它」时才有值。
+ * 冷启动时看到的第一项是 null —— 那个时间戳只是我们开始看的时刻，
+ * 不是它开始播的时刻，拿它去算时长会凭空造出一段「正在播放」。
+ */
+let lastSeen: { id: string; switchedAt: number | null } | null = null;
 
 /**
  * 推断此刻在不在听。
  *
  * Apple 没有服务端可查的「当前播放」接口，也不返回播放时间戳，所以只能观测：
  * 记下最近播放列表里排第一的专辑/歌单是什么时候「变成第一」的，
- * 在它的总时长之内就认为还在听，超过了就认为中途停了。
+ * 在它的总时长之内就认为还在听。
+ *
+ * 判定为「在听」需要同时满足两个条件，缺一个就返回 null：
+ * 1. 我们确实记录到了它变成第一的那个时刻（不是冷启动时它本来就在那儿）
+ * 2. 距那一刻还没超过这张专辑 / 这个歌单的总时长
  *
  * 已知的不精确之处：
- * - 冷启动时看到的第一项无法判断是刚开始还是早就播完，一律不认为在听
+ * - 冷启动看到的那一项在被别的东西顶掉之前，永远不判定为在听
  * - 列表缓存 30s，所以「变成第一」的时刻最多晚 30s
  * - 一直循环同一张专辑时 id 不变，会被当成已经停了
  * - 只听了专辑里一首歌就走开，仍会按整张时长算，这段时间内都显示在听
@@ -256,15 +266,17 @@ export async function getNowPlaying(): Promise<NowPlayingGuess | null> {
   const now = Date.now();
 
   if (!lastSeen || lastSeen.id !== id) {
-    const coldStart = lastSeen === null;
-    lastSeen = { id, firstSeenAt: now };
-    // 第一次观测：它可能是刚开始播，也可能几小时前就听完了，无从分辨
-    if (coldStart) return null;
+    // 冷启动：它可能是刚开始播，也可能几小时前就听完了，无从分辨，
+    // 记下 id 但不记时刻，等它被顶掉、换成下一项时才算观测到一次切换。
+    lastSeen = { id, switchedAt: lastSeen === null ? null : now };
   }
+
+  const { switchedAt } = lastSeen;
+  if (switchedAt === null) return null;
 
   const durationMs = await getContainerDuration(top, credentials);
   if (!durationMs) return null;
-  if (now - lastSeen.firstSeenAt >= durationMs) return null;
+  if (now - switchedAt >= durationMs) return null;
 
-  return { itemId: id, startedAt: lastSeen.firstSeenAt, durationMs };
+  return { itemId: id, startedAt: switchedAt, durationMs };
 }
