@@ -5,12 +5,16 @@ import Image from "next/image";
 import { useEffect, useState } from "react";
 
 import { Card } from "@/components/ui/card";
+import { ACTIVITY_PATH, useLiveStream } from "@/hooks/use-live-stream";
 import { useStatus } from "@/hooks/use-status";
 import { STATIC_TRANSITION, STATIC_VARIANTS } from "@/lib/motion";
-import type { ActivityPayload, DesktopActivity, LocalNowPlaying } from "@/lib/types";
+import type { ActivityPayload, DesktopActivity } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
+/** 推送断了才靠轮询顶着，这时要跟得紧 */
 const REFRESH_MS = 3_000;
+/** 推送正常时轮询只是兜底，压到最低 */
+const PUSHED_REFRESH_MS = 30_000;
 
 const APP_SWITCH_VARIANTS = {
   initial: {
@@ -44,84 +48,50 @@ const APP_SWITCH_TRANSITION = {
   ease: [0.22, 1, 0.36, 1] as const,
 };
 
-function formatClock(milliseconds: number) {
-  const seconds = Math.max(0, Math.floor(milliseconds / 1_000));
-  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
-}
-
-function effectivePosition(track: LocalNowPlaying, now: number) {
-  const drift = track.state === "playing" ? Math.max(0, now - track.observedAt) : 0;
-  return Math.min(track.durationMs, track.positionMs + drift);
-}
-
-function Equalizer({ active }: { active: boolean }) {
-  return (
-    <span className="flex h-4 items-end gap-[3px]" aria-hidden>
-      {[0, 1, 2].map((index) => (
-        <span
-          key={index}
-          className={cn("w-[3px] rounded-full bg-live", !active && "h-1.5 opacity-50")}
-          style={
-            active
-              ? {
-                  height: "100%",
-                  animation: `equalizer ${0.8 + index * 0.18}s ease-in-out ${index * 0.12}s infinite`,
-                }
-              : undefined
-          }
-        />
-      ))}
-    </span>
-  );
-}
-
 export function LiveDeskCard({ className }: { className?: string }) {
+  // 推送把最新状态直接写进 SWR 缓存，所以这里照旧读同一个 key 就行
+  const { connected } = useLiveStream();
   const { data, error, isLoading } = useStatus<ActivityPayload>(
-    "/api/status/activity",
-    REFRESH_MS,
+    ACTIVITY_PATH,
+    connected ? PUSHED_REFRESH_MS : REFRESH_MS,
   );
-  const [now, setNow] = useState(0);
   const [displayedDesktop, setDisplayedDesktop] = useState<DesktopActivity | null>(null);
   const reduced = useReducedMotion();
 
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 1_000);
-    return () => window.clearInterval(timer);
-  }, []);
-
   const offline = Boolean(error || data?.stale);
   const incomingDesktop = data?.desktop ?? null;
+  const incomingApplicationName = incomingDesktop?.applicationName ?? null;
+  const incomingBundleIdentifier = incomingDesktop?.bundleIdentifier ?? null;
+  const incomingIconUrl = incomingDesktop?.iconUrl ?? null;
+  const incomingObservedAt = incomingDesktop?.observedAt ?? 0;
 
   useEffect(() => {
-    if (offline || !incomingDesktop) return;
+    if (offline || !incomingApplicationName || !incomingIconUrl) return;
 
     const sameApplication =
-      displayedDesktop?.bundleIdentifier === incomingDesktop.bundleIdentifier &&
-      displayedDesktop?.applicationName === incomingDesktop.applicationName;
-    if (sameApplication && displayedDesktop?.iconUrl === incomingDesktop.iconUrl) return;
-
-    // 新应用没有图标时保留旧状态；Mac 推送器补齐图标后再整体切换。
-    if (!incomingDesktop.iconUrl) return;
+      displayedDesktop?.bundleIdentifier === incomingBundleIdentifier &&
+      displayedDesktop?.applicationName === incomingApplicationName;
+    if (sameApplication && displayedDesktop?.iconUrl === incomingIconUrl) return;
 
     let cancelled = false;
     const preload = new window.Image();
     preload.decoding = "async";
-
-    const commit = async () => {
-      try {
-        await preload.decode();
-      } catch {
-        // 某些浏览器在 onload 后仍不支持 decode；naturalWidth 足以证明可绘制。
-      }
-      if (!cancelled && preload.naturalWidth > 0) {
-        setDisplayedDesktop(incomingDesktop);
-      }
+    const nextDesktop: DesktopActivity = {
+      applicationName: incomingApplicationName,
+      bundleIdentifier: incomingBundleIdentifier,
+      iconUrl: incomingIconUrl,
+      observedAt: incomingObservedAt,
     };
 
-    preload.onload = () => void commit();
-    // 下载或解码失败时不切换，避免新状态出现空图标。
-    preload.src = incomingDesktop.iconUrl;
-    if (preload.complete && preload.naturalWidth > 0) void commit();
+    const commit = () => {
+      if (!cancelled && preload.naturalWidth > 0) setDisplayedDesktop(nextDesktop);
+    };
+
+    // onload 已保证图片完整可绘制。这里不再等待 decode()，避免部分浏览器的
+    // decode Promise 长时间不结束，把已经下载好的新活动状态永久卡住。
+    preload.onload = commit;
+    preload.src = incomingIconUrl;
+    if (preload.complete && preload.naturalWidth > 0) commit();
 
     return () => {
       cancelled = true;
@@ -129,16 +99,17 @@ export function LiveDeskCard({ className }: { className?: string }) {
     };
   }, [
     displayedDesktop,
-    incomingDesktop,
+    incomingApplicationName,
+    incomingBundleIdentifier,
+    incomingIconUrl,
+    incomingObservedAt,
     offline,
   ]);
 
-  const music = data?.music;
-  const playing = Boolean(!offline && music?.state === "playing" && music.title);
-  const position = music ? effectivePosition(music, now) : 0;
-  const progress = music?.durationMs ? (position / music.durationMs) * 100 : 0;
-  const desktop = displayedDesktop;
-  // 只在前台应用真正切换时播放动效；窗口标题变化不会反复触发。
+  // 图标预加载门控是为了避免切换应用时旧图标闪空。首屏没有「旧的」可保护，
+  // 等它只会让卡片白白多停一个网络往返，所以这时直接用刚到的数据渲染。
+  const desktop = displayedDesktop ?? (offline ? null : incomingDesktop);
+  // 只在前台应用真正切换时播放动效。
   const applicationKey = offline
     ? "offline"
     : desktop?.bundleIdentifier ?? desktop?.applicationName ?? "idle";
@@ -150,97 +121,68 @@ export function LiveDeskCard({ className }: { className?: string }) {
       action={offline ? "离线" : data ? "在线" : "等待上报"}
       className={cn("md:col-span-2", className)}
     >
-      <div className="grid gap-4 px-4 pb-4 pt-3 md:grid-cols-[minmax(0,1.4fr)_minmax(220px,0.6fr)]">
-        <div className="rounded-md border border-line bg-background/40 p-4">
-          {music?.title && music.state !== "stopped" ? (
-            <>
-              <div className="flex min-w-0 items-center gap-3">
-                <div className="relative flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-md border border-line bg-muted">
-                  {music.artworkUrl ? (
-                    <Image
-                      src={music.artworkUrl}
-                      alt={`${music.title} 封面`}
-                      fill
-                      sizes="48px"
-                      className="object-cover"
-                      unoptimized
-                    />
-                  ) : (
-                    <Equalizer active={playing} />
-                  )}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate font-medium" title={music.title ?? undefined}>
-                    {music.title}
-                  </div>
-                  <div className="truncate text-sm text-muted-foreground">
-                    {[music.artist, music.album].filter(Boolean).join(" · ")}
-                  </div>
-                  <div className="mt-0.5 text-xs text-muted-foreground">
-                    Apple Music · {playing ? "正在播放" : "已暂停"}
-                  </div>
-                </div>
-              </div>
-              <div className="mt-4 flex items-center gap-3">
-                <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
-                  <div
-                    className="h-full rounded-full bg-live transition-[width] duration-700"
-                    style={{ width: `${Math.max(0, Math.min(100, progress))}%` }}
-                  />
-                </div>
-                <span className="label-mono min-w-20 text-right text-muted-foreground">
-                  {formatClock(position)} / {formatClock(music.durationMs)}
-                </span>
-              </div>
-            </>
-          ) : (
-            <div className="flex min-h-20 items-center text-sm text-muted-foreground">
-              {isLoading ? "正在读取本机播放状态…" : "Apple Music 当前没有播放"}
-            </div>
-          )}
-        </div>
-
+      {/* 本机播放已经并进 Recently Played 那张卡，这里只剩前台应用 */}
+      <div className="px-4 pb-4 pt-3">
         <div className="flex min-h-28 flex-col justify-center rounded-md border border-line bg-background/40 p-4">
           <div className="label-mono text-muted-foreground">正在使用</div>
           <div className="relative mt-2 min-h-10 overflow-hidden">
-            <AnimatePresence initial={false} mode="popLayout">
-              <motion.div
-                key={applicationKey}
-                variants={reduced ? STATIC_VARIANTS : APP_SWITCH_VARIANTS}
-                initial="initial"
-                animate="animate"
-                exit="exit"
-                transition={reduced ? STATIC_TRANSITION : APP_SWITCH_TRANSITION}
-                className="relative flex w-full min-w-0 origin-left items-center gap-3 overflow-hidden rounded-md"
-              >
-                <div className="relative flex size-10 shrink-0 items-center justify-center overflow-hidden">
-                  {desktop?.iconUrl && !offline ? (
-                    <Image
-                      src={desktop.iconUrl}
-                      alt=""
-                      fill
-                      sizes="40px"
-                      className="object-cover"
-                      unoptimized
-                    />
-                  ) : (
+            <div className="relative w-fit max-w-full">
+              {/* 首屏占位不进 AnimatePresence：把它当成一个 child 的话，数据到达
+                  时的这次 key 变化会被当作一次真实的应用切换，非要播完 0.7 秒的
+                  模糊 + 滑入才显示出来。等有内容再挂载，initial={false} 就会直接
+                  跳过入场动画，此后真正的应用切换照常有动效。 */}
+              {!desktop && !offline ? (
+                <div className="relative flex w-max max-w-full min-w-0 items-center gap-3">
+                  <div className="relative flex size-10 shrink-0 items-center justify-center overflow-hidden">
                     <span className="text-sm text-muted-foreground">⌘</span>
-                  )}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-xl font-medium">
-                    {offline ? "—" : desktop?.applicationName ?? "暂无活动"}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-xl font-medium text-muted-foreground">
+                      {isLoading ? "读取中…" : "暂无活动"}
+                    </div>
                   </div>
                 </div>
-              </motion.div>
-            </AnimatePresence>
-            {!reduced && displayedDesktop && (
-              <span
-                key={`sheen-${applicationKey}`}
-                className="app-switch-sheen"
-                aria-hidden
-              />
-            )}
+              ) : (
+              <AnimatePresence initial={false} mode="popLayout">
+                <motion.div
+                  key={applicationKey}
+                  variants={reduced ? STATIC_VARIANTS : APP_SWITCH_VARIANTS}
+                  initial="initial"
+                  animate="animate"
+                  exit="exit"
+                  transition={reduced ? STATIC_TRANSITION : APP_SWITCH_TRANSITION}
+                  className="relative flex w-max max-w-full min-w-0 origin-left items-center gap-3 overflow-hidden rounded-md"
+                >
+                  <div className="relative flex size-10 shrink-0 items-center justify-center overflow-hidden">
+                    {desktop?.iconUrl && !offline ? (
+                      <Image
+                        src={desktop.iconUrl}
+                        alt=""
+                        fill
+                        sizes="40px"
+                        className="object-cover"
+                        unoptimized
+                      />
+                    ) : (
+                      <span className="text-sm text-muted-foreground">⌘</span>
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-xl font-medium">
+                      {offline ? "—" : desktop?.applicationName ?? "暂无活动"}
+                    </div>
+                  </div>
+                </motion.div>
+              </AnimatePresence>
+              )}
+              {!reduced && displayedDesktop && (
+                <span
+                  key={`sheen-${applicationKey}`}
+                  className="app-switch-sheen"
+                  aria-hidden
+                />
+              )}
+            </div>
           </div>
         </div>
       </div>

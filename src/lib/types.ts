@@ -62,12 +62,13 @@ export type ListeningPayload = {
   nowPlaying: NowPlayingGuess | null;
 };
 
-/** 由本机遥测应用直接观测到的前台应用，不包含提示词、文件路径等内容。 */
+/**
+ * 由本机遥测应用直接观测到的前台应用。只有应用本身的身份和图标，
+ * 不含窗口标题、文件路径、提示词等任何窗口内容。
+ */
 export type DesktopActivity = {
   applicationName: string;
   bundleIdentifier: string | null;
-  /** 用户明确开启“窗口标题”后才会上报。 */
-  windowTitle: string | null;
   iconUrl: string | null;
   observedAt: number;
 };

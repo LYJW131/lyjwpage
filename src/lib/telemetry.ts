@@ -5,6 +5,7 @@ import { join } from "node:path";
 
 import { normalizeRawStatus, type RawStatus } from "@/lib/anker";
 import { recordPushHeartbeat, recordStatus } from "@/lib/charger-store";
+import { publish } from "@/lib/live-events";
 import type {
   ActivityPayload,
   DesktopActivity,
@@ -133,7 +134,6 @@ function normalizeDesktop(value: unknown, receivedAt: number): DesktopActivity |
   return {
     applicationName,
     bundleIdentifier,
-    windowTitle: text(row.window_title),
     iconUrl: storeActivityAsset(row.icon_data) ?? previousIcon,
     observedAt: milliseconds(row.observed_at, receivedAt),
   };
@@ -221,6 +221,10 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
   }
 
   persistTelemetryState();
+
+  // 心跳包也要推：它不带模块数据，但会刷新 receivedAt，
+  // 前端据此把「上报器离线」翻回在线。
+  publish({ type: "activity", payload: getActivityPayload() });
 
   return { accepted, heartbeat: true };
 }
