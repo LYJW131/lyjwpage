@@ -1,24 +1,15 @@
-import { cached } from "@/lib/cache";
-import {
-  getStored,
-  hasPushedData,
-  lastPushReceivedAt,
-  recordStatus,
-} from "@/lib/charger-store";
+import { getStored, lastPushReceivedAt } from "@/lib/charger-store";
 import type { ChargerPayload, ChargerPort, ChargerStatus } from "@/lib/types";
 
 /**
- * Anker Prime 160W (A2687) 实时遥测。
+ * Anker Prime 160W (A2687) 遥测。
  *
- * 上游是本机常驻的 a2687-telemetry 服务，它通过 BLE 读充电器、以 HTTP 暴露快照。
- * BLE 上游本身就是 ~1Hz 推流，所以再快的轮询也拿不到新数据。
+ * 数据只有一条来路：那台机器把 a2687-telemetry 的 /status 原样 POST 到
+ * /api/ingest/charger。本站不主动轮询 —— 遥测服务在对方机器上，
+ * 只在 Tailscale 内可达，本来也拉不到。
  */
 
 const PORT_KEYS = ["C1", "C2", "C3"] as const;
-/** 与 BLE 推流速率对齐 */
-const STATUS_TTL_MS = 900;
-/** 上游在本机，超时给短一点，别让页面卡着 */
-const TIMEOUT_MS = 2_500;
 /** Anker Prime 的额定总功率 */
 const MAX_POWER = 160;
 
@@ -77,10 +68,7 @@ function toMillis(updatedAt: number | undefined): number | null {
   return value > 1e12 ? value : value * 1000;
 }
 
-/**
- * 把 a2687 的 /status 原样 JSON 规范化。
- * 推送进来的和本地轮询到的是同一份格式，共用这一个函数。
- */
+/** 把 a2687 的 /status 原样 JSON 规范化 */
 export function normalizeRawStatus(raw: RawStatus): ChargerStatus {
   return {
     connected: Boolean(raw.connected),
@@ -96,24 +84,6 @@ export function normalizeRawStatus(raw: RawStatus): ChargerStatus {
   } satisfies ChargerStatus;
 }
 
-/** 本地轮询遥测服务。上线走推送后这条路就不用了，本地开发还留着 */
-export async function pullChargerStatus(): Promise<ChargerStatus> {
-  const base = (process.env.ANKER_URL ?? "http://127.0.0.1:8787").replace(/\/+$/, "");
-
-  return cached("anker:status", STATUS_TTL_MS, async () => {
-    const response = await fetch(`${base}/status`, {
-      cache: "no-store",
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    });
-
-    if (!response.ok) {
-      throw new Error(`充电头遥测服务返回 ${response.status}`);
-    }
-
-    return normalizeRawStatus((await response.json()) as RawStatus);
-  });
-}
-
 /**
  * 太久没收到推送就认为数据不新鲜。
  * 按上报间隔的 3 倍算，默认间隔 30 秒 → 90 秒没消息就标记为 stale。
@@ -123,35 +93,18 @@ function staleAfterMs() {
   return Math.max(90_000, interval * 3);
 }
 
-/**
- * 对外的取数入口。
- *
- * 只要收到过一次推送，就以推送为准，不再去轮询本地服务 ——
- * 上线后那台机器根本不在同一台主机上，轮询必然失败。
- * 一次推送都没收到过（本地开发）才回退到轮询。
- */
 export async function getChargerPayload(): Promise<ChargerPayload> {
-  if (hasPushedData()) {
-    const stored = getStored()!;
-    // 断流看的是「最后一次推送到达」，不是 latest 的写入时刻
-    const stale = Date.now() - lastPushReceivedAt() > staleAfterMs();
-    return {
-      ...stored.status,
-      // 推送断了就不能再声称充电器在线，否则页面会一直显示旧的瓦数
-      connected: stale ? false : stored.status.connected,
-      history: stored.history,
-      source: "push",
-      stale,
-    };
-  }
+  const stored = await getStored();
+  // 还没收到过任何推送。交给 statusRoute 变成降级信封，前端显示提示
+  if (!stored) throw new Error("尚未收到充电头遥测推送");
 
-  const status = await pullChargerStatus();
-  recordStatus(status, "pull");
-  const stored = getStored();
+  const stale = Date.now() - (await lastPushReceivedAt()) > staleAfterMs();
+
   return {
-    ...status,
-    history: stored?.history ?? [],
-    source: "pull",
-    stale: false,
+    ...stored.status,
+    // 推送断了就不能再声称充电器在线，否则页面会一直显示旧的瓦数
+    connected: stale ? false : stored.status.connected,
+    history: stored.history,
+    stale,
   };
 }

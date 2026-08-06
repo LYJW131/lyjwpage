@@ -10,8 +10,8 @@ import type { ChargerPayload, ChargerPort, ChargerStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /**
- * 数据由那台机器每 30 秒推送到服务端，这里只是去取已经存好的快照，
- * 不会传导到充电头。取快一点只是为了推送到达后尽早显示。
+ * 那台机器约 5 秒推一次，前端跟着这个节奏取。
+ * 取的是服务端存好的快照，不会传导到充电头。
  */
 const REFRESH_MS = 5_000;
 
@@ -39,8 +39,6 @@ export function ChargerCard({ className }: { className?: string }) {
   const charging = connected && power > 1;
   const dot = tone(data);
   const ratio = data ? Math.min(power / data.maxPower, 1) : 0;
-  // 峰值上留 15% 余量，并给一个下限，免得空载时噪声被放大成剧烈波动
-  const scale = Math.max(20, ...history.map((s) => s.w)) * 1.15;
 
   return (
     <Card
@@ -62,7 +60,20 @@ export function ChargerCard({ className }: { className?: string }) {
       )}
     >
       <div className="flex flex-1 flex-col justify-between px-4 pb-4 pt-2">
-        <div className="flex items-end gap-2">
+        {/*
+          行高写死：NumberFlow 这个 web component 自带 1.5 行高（72px），
+          而占位文本是普通 span（48px）—— 不固定的话断开时整行塌 24px，
+          下面的说明文案和曲线跟着上移。
+          没有给数字区预留固定宽度：按 160.0 预留的话，日常两位数会在数字和 W
+          之间空出一大块。W 跟着数字宽度走是正常排版，竖直方向不跳才是关键。
+
+          单位的对齐：不能用 items-baseline —— NumberFlow 是 web component，
+          基线由浏览器合成（取盒底），实测会让 W 高出 15px。也不能给数字加
+          leading-none —— 它的滚动动画依赖行高，会把数字撕成上下两截。
+          所以 items-end 底边对齐，再按实测补 4px：两边盒底相同，但字形底
+          分别在 257 和 261（半行距 0 vs 5、字体下伸 14 vs 5）。
+        */}
+        <div className="flex h-[4.5rem] items-end gap-1.5">
           <div className="text-5xl font-medium tracking-tight tabular-nums">
             {connected ? (
               <NumberFlow
@@ -70,17 +81,17 @@ export function ChargerCard({ className }: { className?: string }) {
                 format={{ minimumFractionDigits: 1, maximumFractionDigits: 1 }}
               />
             ) : (
-              <span className="text-muted-foreground">--</span>
+              <span className="text-muted-foreground">--.-</span>
             )}
           </div>
-          <span className="pb-1.5 font-mono text-lg text-muted-foreground">W</span>
+          <span className="pb-1 font-mono text-lg text-muted-foreground">W</span>
         </div>
 
         <p className="label-mono mt-1 text-muted-foreground">
           {isLoading && !data
             ? "读取中"
             : error
-              ? "遥测服务未运行"
+              ? "尚未收到遥测推送"
               : data?.stale
                 ? "遥测已断流"
                 : connected
@@ -90,16 +101,18 @@ export function ChargerCard({ className }: { className?: string }) {
                   : "充电器未连接"}
         </p>
 
-        {/* 功率曲线：服务端累积的历史（推送模式下约 90 分钟）。
-            纵轴跟着实际峰值走而不是 160W 满量程 —— 否则日常十几瓦会被压成一条直线。 */}
-        <div className="-mx-1 mt-3 flex max-h-24 min-h-8 flex-1 items-end">
-          <Sparkline samples={history} max={scale} className="h-full min-h-8 w-full" />
+        {/* 功率曲线：服务端累积的历史。两条坐标轴都固定，不随数据缩放，
+            否则每来一个点整条曲线都会挪位 —— 细节见 sparkline.tsx */}
+        <div className="-mx-1 mt-3 flex max-h-32 min-h-8 flex-1 items-end">
+          <Sparkline samples={history} className="h-full min-h-8 w-full" />
         </div>
 
         {/* 三个 USB-C 口 */}
         <div className="mt-3 grid grid-cols-3 gap-px overflow-hidden rounded-md border border-line bg-line">
           {(data?.ports ?? [{ id: "C1" }, { id: "C2" }, { id: "C3" }]).map((port) => {
-            const full = "active" in port ? (port as ChargerPort) : null;
+            const raw = "active" in port ? (port as ChargerPort) : null;
+            // 整机断开时端口数据是上一帧的残留，不能当成还在充电照常显示
+            const full = connected ? raw : null;
             return (
               <div key={port.id} className="bg-surface px-2.5 py-2">
                 <div className="flex items-center gap-1.5">

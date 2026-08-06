@@ -15,8 +15,13 @@ import {
 import type { WatchingItem } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-/** 续播列表是小时级变化的，但正在播放的会话要跟手 */
-const REFRESH_MS = 20_000;
+/**
+ * 有东西在播时轮询要跟手 —— Emby 拖动进度条不发 webhook，只能靠问。
+ * 服务端那边同样是「正在播放才查 Sessions」（缓存 2 秒），所以前端调到 3 秒
+ * 也不会让 Emby 压力翻倍。空闲时放慢到一分钟。
+ */
+const REFRESH_PLAYING_MS = 3_000;
+const REFRESH_IDLE_MS = 60_000;
 
 /**
  * 卡片宽度按容器等分，保证视口里永远是整数张、不会被切一半。
@@ -28,14 +33,18 @@ const TILE_WIDTH = cn(
   "lg:basis-[calc((100%-2.25rem)/4)]",
 );
 
+type NowPlaying = {
+  itemId: string;
+  paused: boolean;
+  progress: number | null;
+  device: string;
+  positionMs: number | null;
+  durationMs: number | null;
+};
+
 type WatchingPayload = {
   items: WatchingItem[];
-  nowPlaying: {
-    itemId: string;
-    paused: boolean;
-    progress: number | null;
-    device: string;
-  } | null;
+  nowPlaying: NowPlaying | null;
 };
 
 function Tile({
@@ -43,13 +52,35 @@ function Tile({
   live,
   paused,
   liveProgress,
+  positionMs,
+  durationMs,
 }: {
   item: WatchingItem;
   live: boolean;
   paused: boolean;
   liveProgress: number | null;
+  positionMs: number | null;
+  durationMs: number | null;
 }) {
   const progress = live && liveProgress != null ? liveProgress : item.progress;
+
+  /**
+   * 正在播放时，进度条交给 CSS 动画逐帧走，不用 JS 计时器：
+   * 动画本身是 0 → 100%、时长等于片长，再用负的 animation-delay
+   * 把它定位到当前播放点。播放途中 Emby 不发事件、服务端也没有新数据可给，
+   * 光靠拉取的话进度条会以轮询周期为步长一跳一跳。
+   */
+  const runStyle =
+    live && positionMs != null && durationMs
+      ? {
+          animationName: "progress-run",
+          animationDuration: `${durationMs}ms`,
+          animationTimingFunction: "linear",
+          animationDelay: `-${positionMs}ms`,
+          animationFillMode: "forwards" as const,
+          animationPlayState: (paused ? "paused" : "running") as "paused" | "running",
+        }
+      : { width: `${Math.round(progress)}%` };
 
   return (
     <a
@@ -91,12 +122,11 @@ function Tile({
         <div className="absolute inset-x-0 bottom-0 h-1">
           <div
             className={cn(
-              "h-full bg-live transition-[width] duration-700",
-              live &&
-                !paused &&
-                "[animation:progress-pulse_1.8s_ease-in-out_infinite]",
+              "h-full bg-live",
+              // 没在播时才用过渡，播放中由动画接管，两者叠加会打架
+              !live && "transition-[width] duration-700",
             )}
-            style={{ width: `${Math.round(progress)}%` }}
+            style={runStyle}
           />
         </div>
       </div>
@@ -141,7 +171,7 @@ function Skeleton() {
 export function WatchingRow() {
   const { data, error, isLoading } = useStatus<WatchingPayload>(
     "/api/status/watching",
-    REFRESH_MS,
+    (payload) => (payload?.nowPlaying ? REFRESH_PLAYING_MS : REFRESH_IDLE_MS),
   );
   const reduced = useReducedMotion();
   // 对重排稳定的 key，否则列表顺序一变会被当成整批换新
@@ -184,9 +214,9 @@ export function WatchingRow() {
                   item={item}
                   live={live}
                   paused={live ? Boolean(data.nowPlaying?.paused) : false}
-                  liveProgress={
-                    live ? (data.nowPlaying?.progress ?? null) : null
-                  }
+                  liveProgress={live ? (data.nowPlaying?.progress ?? null) : null}
+                  positionMs={live ? (data.nowPlaying?.positionMs ?? null) : null}
+                  durationMs={live ? (data.nowPlaying?.durationMs ?? null) : null}
                 />
               </motion.div>
             );
