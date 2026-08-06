@@ -10,8 +10,8 @@ import type { ChargerPayload, ChargerPort, ChargerStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /**
- * 数据由那台机器每 30 秒推送到服务端，这里只是去取已经存好的快照，
- * 不会传导到充电头。取快一点只是为了推送到达后尽早显示。
+ * 只是去取服务端已经存好的快照，不会传导到充电头（本站不轮询它）。
+ * 取快一点只是为了推送到达后尽早显示。
  */
 const REFRESH_MS = 5_000;
 
@@ -77,7 +77,7 @@ export function ChargerCard({ className }: { className?: string }) {
           {isLoading && !data
             ? "读取中"
             : error
-              ? "遥测服务未运行"
+              ? "尚未收到遥测推送"
               : data?.stale
                 ? "遥测已断流"
                 : connected
@@ -85,7 +85,7 @@ export function ChargerCard({ className }: { className?: string }) {
                   : "充电器未连接"}
         </p>
 
-        {/* 功率曲线：服务端累积的历史（推送模式下约 90 分钟）。
+        {/* 功率曲线：服务端累积的历史（当前推送频率下约 24 分钟）。
             纵轴跟着实际峰值走而不是 160W 满量程 —— 否则日常十几瓦会被压成一条直线。 */}
         <div className="-mx-1 mt-3 flex max-h-24 min-h-8 flex-1 items-end">
           <Sparkline samples={history} max={scale} className="h-full min-h-8 w-full" />

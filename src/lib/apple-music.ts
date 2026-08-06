@@ -68,7 +68,7 @@ async function resolveCredentials(): Promise<Credentials> {
 
 async function getDeveloperToken(credentials: Credentials): Promise<string> {
   const cacheKey = `apple-music:jwt:${credentials.keyId}:${credentials.teamId}`;
-  const hit = cacheGet<string>(cacheKey);
+  const hit = await cacheGet<string>(cacheKey);
   if (hit) return hit;
 
   // jose 的 ES256 签名输出的就是 JWT 规范要求的裸 r‖s（P1363），
@@ -82,7 +82,7 @@ async function getDeveloperToken(credentials: Credentials): Promise<string> {
     .setExpirationTime(now + TOKEN_TTL_SECONDS)
     .sign(key);
 
-  cachePut(cacheKey, token, TOKEN_TTL_SECONDS * 1000 - TOKEN_SKEW_MS);
+  await cachePut(cacheKey, token, TOKEN_TTL_SECONDS * 1000 - TOKEN_SKEW_MS);
   return token;
 }
 

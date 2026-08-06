@@ -1,3 +1,5 @@
+import { key as redisKey, withRedis } from "@/lib/redis";
+
 /**
  * 图片的进程内缓存。
  *
@@ -54,9 +56,40 @@ function put(key: string, entry: ImageEntry) {
   evict();
 }
 
+/** Redis 里存两个键：图片本体（二进制）和它的 content-type / etag */
+async function readRedis(token: string): Promise<ImageEntry | null> {
+  return withRedis(async (redis) => {
+    const [body, meta] = await Promise.all([
+      redis.getBuffer(redisKey("image", token)),
+      redis.get(redisKey("image", token, "meta")),
+    ]);
+    if (!body || !meta) return null;
+    const parsed = JSON.parse(meta) as { contentType: string; etag: string | null };
+    return { body, contentType: parsed.contentType, etag: parsed.etag };
+  }, null);
+}
+
+async function writeRedis(token: string, entry: ImageEntry) {
+  await withRedis(async (redis) => {
+    const pipe = redis.pipeline();
+    pipe.set(redisKey("image", token), entry.body, "PX", TTL_MS);
+    pipe.set(
+      redisKey("image", token, "meta"),
+      JSON.stringify({ contentType: entry.contentType, etag: entry.etag }),
+      "PX",
+      TTL_MS,
+    );
+    await pipe.exec();
+    return null;
+  }, null);
+}
+
 /**
  * 取图。同一个 key 并发进来只会真正回源一次 ——
  * 光有缓存不够，缓存刚过期那一瞬间的并发会同时穿透。
+ *
+ * 两级：进程内存挡住绝大多数请求（省掉每张图 200KB 的 Redis 往返），
+ * Redis 让重启和多实例之间也能共享。
  *
  * loader 返回 null 表示这张不适合缓存（比如太大），此时不写缓存。
  */
@@ -78,8 +111,17 @@ export async function getCachedImage(
 
   const promise = (async () => {
     try {
+      const cached = await readRedis(key);
+      if (cached) {
+        put(key, cached);
+        return cached;
+      }
+
       const entry = await loader();
-      if (entry) put(key, entry);
+      if (entry) {
+        put(key, entry);
+        await writeRedis(key, entry);
+      }
       return entry;
     } finally {
       inflight.delete(key);

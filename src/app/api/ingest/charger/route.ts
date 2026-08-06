@@ -29,6 +29,6 @@ export async function POST(request: Request) {
     return new Response("缺少 updated_at，不像是 a2687 的 /status 数据", { status: 400 });
   }
 
-  recordStatus(normalizeRawStatus(raw), "push");
+  await recordStatus(normalizeRawStatus(raw));
   return new Response(null, { status: 204 });
 }

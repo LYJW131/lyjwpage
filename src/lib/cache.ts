@@ -1,66 +1,89 @@
+import { key, withRedis } from "@/lib/redis";
+
 /**
- * 进程内 TTL 缓存 + in-flight 去重 + 负缓存。
+ * 通用 TTL 缓存 + in-flight 去重 + 负缓存。
  *
  * 三个状态源（Emby / Apple Music / Anker）都靠它挡住重复请求：
  * - 同一个 key 并发进来时只会真正打一次上游，其余人等同一个 Promise
  * - 上游报错时短暂缓存错误，避免上游挂掉后被前端轮询打爆
+ *
+ * 值存在 Redis 里，进程重启和多实例都能共享。没配 Redis 就退回进程内存。
+ * in-flight 去重始终是进程内的 —— 它要挡的是同一进程内的并发穿透，
+ * 这件事 Redis 代劳不了。
  */
 
-type Entry<T> = { value: T; expiresAt: number };
+type Entry = { value: unknown; expiresAt: number };
 
-const store = new Map<string, Entry<unknown>>();
+const memory = new Map<string, Entry>();
 const inflight = new Map<string, Promise<unknown>>();
-const negative = new Map<string, Entry<Error>>();
 
 /** 上游报错后，多久之内不再重试 */
 const NEGATIVE_TTL_MS = 5_000;
+const NEGATIVE_PREFIX = "neg";
+
+function memoryGet<T>(k: string): T | undefined {
+  const hit = memory.get(k);
+  if (!hit) return undefined;
+  if (hit.expiresAt <= Date.now()) {
+    memory.delete(k);
+    return undefined;
+  }
+  return hit.value as T;
+}
+
+function memorySet(k: string, value: unknown, ttlMs: number) {
+  memory.set(k, { value, expiresAt: Date.now() + Math.max(1_000, ttlMs) });
+}
+
+export async function get<T>(k: string): Promise<T | undefined> {
+  const raw = await withRedis(async (redis) => redis.get(key("cache", k)), null);
+  if (raw != null) {
+    try {
+      return JSON.parse(raw) as T;
+    } catch {
+      // 存进去的一定是 JSON，解不出来说明是脏数据，当作没有
+    }
+  }
+  return memoryGet<T>(k);
+}
+
+export async function put<T>(k: string, value: T, ttlMs: number) {
+  const ttl = Math.max(1_000, ttlMs);
+  memorySet(k, value, ttl);
+  await withRedis(
+    async (redis) => redis.set(key("cache", k), JSON.stringify(value), "PX", ttl),
+    null,
+  );
+}
 
 export async function cached<T>(
-  key: string,
+  k: string,
   ttlMs: number,
   loader: () => Promise<T>,
 ): Promise<T> {
-  const now = Date.now();
+  const hit = await get<T>(k);
+  if (hit !== undefined) return hit;
 
-  const hit = store.get(key);
-  if (hit && hit.expiresAt > now) return hit.value as T;
+  const failure = await get<{ message: string }>(`${NEGATIVE_PREFIX}:${k}`);
+  if (failure) throw new Error(failure.message);
 
-  const failed = negative.get(key);
-  if (failed && failed.expiresAt > now) throw failed.value;
-
-  const running = inflight.get(key);
+  const running = inflight.get(k);
   if (running) return running as Promise<T>;
 
   const promise = (async () => {
     try {
       const value = await loader();
-      store.set(key, { value, expiresAt: Date.now() + ttlMs });
-      negative.delete(key);
+      await put(k, value, ttlMs);
       return value;
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
-      negative.set(key, { value: err, expiresAt: Date.now() + NEGATIVE_TTL_MS });
+      await put(`${NEGATIVE_PREFIX}:${k}`, { message: err.message }, NEGATIVE_TTL_MS);
       throw err;
     } finally {
-      inflight.delete(key);
+      inflight.delete(k);
     }
   })();
 
-  inflight.set(key, promise);
+  inflight.set(k, promise);
   return promise;
-}
-
-/** 手动写入，给 JWT 这类自带过期时间的值用 */
-export function put<T>(key: string, value: T, ttlMs: number) {
-  store.set(key, { value, expiresAt: Date.now() + Math.max(1_000, ttlMs) });
-}
-
-export function get<T>(key: string): T | undefined {
-  const hit = store.get(key);
-  if (!hit) return undefined;
-  if (hit.expiresAt <= Date.now()) {
-    store.delete(key);
-    return undefined;
-  }
-  return hit.value as T;
 }
