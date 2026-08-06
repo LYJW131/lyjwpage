@@ -3,10 +3,10 @@
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import Image from "next/image";
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useRef,
-  useState,
   type ReactNode,
 } from "react";
 
@@ -27,13 +27,13 @@ import { cn } from "@/lib/utils";
 const REFRESH_MS = 30_000;
 
 /**
- * 单行的最小高度。行高不是写死的：列表会填满卡片剩下的空间，
- * 再把这段空间等分成整数行 —— 见 useRowMetrics。
- * 36px 封面 + 上下留白，比这个再矮就挤了。
+ * 视口里显示几行。行高不写死：列表填满卡片剩下的空间，每行取容器的 1/N
+ * （grid-auto-rows: calc(100% / N)），所以永远是整数行、底部也不会留空。
+ * 这件事 CSS 自己就能算，不需要 JS 去量。
  */
+const VISIBLE_ROWS = 4;
+/** 单行的最小高度：36px 封面 + 上下留白，比这个再矮就挤了 */
 const MIN_ROW_HEIGHT_PX = 48;
-/** 至少留出这么多行的位置，避免卡片在极端布局下塌成一条缝 */
-const MIN_ROWS = 4;
 
 /** 三根竖条。推断为正在播时跳动，否则静止成一个普通的音乐小图标 */
 function Bars({ active }: { active: boolean }) {
@@ -103,13 +103,10 @@ function TrackRow({ track }: { track: ListeningItem }) {
   );
 }
 
-/** 占位行，高度必须和 TrackRow 一致，否则加载完照样会跳 */
-function SkeletonRow({ height }: { height: number }) {
+/** 占位行。高度由 grid 轨道给，和 TrackRow 一样，加载完不会跳 */
+function SkeletonRow() {
   return (
-    <div
-      className="flex shrink-0 items-center gap-2.5 px-2"
-      style={{ height: `${height}px` }}
-    >
+    <div className="flex h-full items-center gap-2.5 px-2">
       <div className="size-9 shrink-0 animate-pulse rounded-sm bg-muted" />
       <div className="min-w-0 flex-1 space-y-1.5">
         <div className="h-3 w-2/5 animate-pulse rounded bg-muted" />
@@ -122,39 +119,6 @@ function SkeletonRow({ height }: { height: number }) {
 // 服务端没有 layout 阶段，useLayoutEffect 会告警，这里按环境切换
 const useIsomorphicLayoutEffect =
   typeof window !== "undefined" ? useLayoutEffect : useEffect;
-
-/**
- * 让列表填满卡片剩下的高度，并把这段高度等分成整数行。
- *
- * 两张卡在同一 grid 行里、被拉成等高，而这张卡的内容比充电头矮 ——
- * 行高写死的话，多出来的十几二十像素就摊在列表底下变成一块空白。
- * 但也不能让列表直接撑满：那会在底部露出半行（实测 17px 的一条）。
- *
- * 所以量出可用高度，取能放下的整行数，再把高度平摊回每一行：
- * 行高从 48px 起浮动几像素，视口怎么变，底部都是齐的、也永远是整行。
- */
-function useRowMetrics() {
-  const hostRef = useRef<HTMLDivElement>(null);
-  const [rowHeight, setRowHeight] = useState(MIN_ROW_HEIGHT_PX);
-
-  useEffect(() => {
-    const el = hostRef.current;
-    if (!el) return;
-
-    const observer = new ResizeObserver(([entry]) => {
-      const available = entry.contentRect.height;
-      if (available < MIN_ROW_HEIGHT_PX) return;
-      const rows = Math.max(1, Math.floor(available / MIN_ROW_HEIGHT_PX));
-      const next = available / rows;
-      // 亚像素抖动会引起无限的「量→改→再量」循环，差得够多才写回
-      setRowHeight((prev) => (Math.abs(prev - next) < 0.5 ? prev : next));
-    });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
-
-  return { hostRef, rowHeight };
-}
 
 /** 用户停止滚动后多久开始对齐 */
 const SETTLE_DELAY_MS = 110;
@@ -172,8 +136,8 @@ const SUSPEND_AFTER_CHANGE_MS = 500;
  * 所以自己做：只在「用户滚动停下来之后」对齐到最近的整行，
  * 并且在数据变化后的动画窗口内跳过。浏览器不再有插手的机会。
  */
-function useRowSnap(rowHeight: number, topKey: string | undefined) {
-  const ref = useRef<HTMLDivElement>(null);
+function useRowSnap(topKey: string | undefined) {
+  const node = useRef<HTMLDivElement | null>(null);
   const previous = useRef(topKey);
   const suspendUntil = useRef(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -184,7 +148,7 @@ function useRowSnap(rowHeight: number, topKey: string | undefined) {
     previous.current = topKey;
     suspendUntil.current = Date.now() + SUSPEND_AFTER_CHANGE_MS;
 
-    const el = ref.current;
+    const el = node.current;
     if (!el || el.scrollTop === 0) return;
     // 临时关掉 scroll-smooth，否则会看到「先跳一下再滑回来」
     const saved = el.style.scrollBehavior;
@@ -193,14 +157,21 @@ function useRowSnap(rowHeight: number, topKey: string | undefined) {
     el.style.scrollBehavior = saved;
   }, [topKey]);
 
-  useEffect(() => {
-    const el = ref.current;
+  /**
+   * 用 ref 回调而不是 useEffect 挂监听：这段列表是条件渲染的
+   * （加载中/有数据才出现），挂载那一刻节点可能还不存在，
+   * 空依赖的 effect 就再也没有第二次机会去绑。ref 回调是节点一出现就调。
+   */
+  return useCallback((el: HTMLDivElement | null) => {
+    node.current = el;
     if (!el) return;
 
     const onScroll = () => {
       if (timer.current) clearTimeout(timer.current);
       timer.current = setTimeout(() => {
         if (Date.now() < suspendUntil.current) return;
+        // 行高就是容器的 1/N，跟着容器走，不用另外记
+        const rowHeight = el.clientHeight / VISIBLE_ROWS;
         const target = Math.round(el.scrollTop / rowHeight) * rowHeight;
         // 已经对齐就别再滚，否则自己触发的 scroll 会来回抖
         if (Math.abs(target - el.scrollTop) < 0.5) return;
@@ -212,10 +183,9 @@ function useRowSnap(rowHeight: number, topKey: string | undefined) {
     return () => {
       el.removeEventListener("scroll", onScroll);
       if (timer.current) clearTimeout(timer.current);
+      node.current = null;
     };
-  }, [rowHeight]);
-
-  return ref;
+  }, []);
 }
 
 /** 有链接就整块可点，没有就退化成普通容器 */
@@ -256,8 +226,7 @@ export function ListeningCard({ className }: { className?: string }) {
   );
   // 对重排稳定的 key，否则顶部插入新条目时会被当成整批换新
   const restKeys = stableKeys(rest.map((item) => item.id));
-  const { hostRef, rowHeight } = useRowMetrics();
-  const listRef = useRowSnap(rowHeight, restKeys[0]);
+  const listRef = useRowSnap(restKeys[0]);
 
   return (
     <Card label="Recently Played" action="Apple Music" className={className}>
@@ -358,14 +327,16 @@ export function ListeningCard({ className }: { className?: string }) {
               决定，这里只负责把分到的空间填满。min-height 是这块唯一的话语权。
             */}
             <div
-              ref={hostRef}
               className="relative flex-1"
-              style={{ minHeight: `${MIN_ROW_HEIGHT_PX * MIN_ROWS}px` }}
+              style={{ minHeight: `${MIN_ROW_HEIGHT_PX * VISIBLE_ROWS}px` }}
             >
               <div
                 ref={listRef}
                 className={cn(
-                  "absolute inset-0 flex flex-col overflow-y-auto",
+                  // 每行高 = 容器的 1/N。容器高度是确定的（absolute inset-0），
+                  // 百分比轨道就有得算 —— 于是「整数行」「填满」两件事同时由
+                  // CSS 保证，不需要 ResizeObserver 去量、也没有写死的行高。
+                  "absolute inset-0 grid overflow-y-auto",
                   // 这里刻意不做 scroll-snap。它会和 framer 的 layout 动画打架：
                   // popLayout 把离场元素改成绝对定位，容器高度剧变，吸附目标算飞，
                   // 实测新条目进来时 scrollTop 会被弹到 48 甚至 192 再慢慢滑回。
@@ -376,6 +347,9 @@ export function ListeningCard({ className }: { className?: string }) {
                   "[overflow-anchor:none]",
                   "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
                 )}
+                // 写成内联而不是 Tailwind 的 arbitrary value：后者必须是字面量，
+                // 行数就会在两处各写一遍
+                style={{ gridAutoRows: `calc(100% / ${VISIBLE_ROWS})` }}
               >
                 {rest.length > 0 ? (
                   // popLayout 让离场的行脱离布局流，剩下的能同时补位而不是等它消失
@@ -389,16 +363,16 @@ export function ListeningCard({ className }: { className?: string }) {
                         animate="animate"
                         exit="exit"
                         transition={reduced ? STATIC_TRANSITION : LIST_TRANSITION}
-                        className="shrink-0"
-                        style={{ height: `${rowHeight}px` }}
+                        // 高度由 grid 轨道给；min-w-0 保住行内的 truncate
+                        className="min-w-0"
                       >
                         <TrackRow track={item} />
                       </motion.div>
                     ))}
                   </AnimatePresence>
                 ) : (
-                  Array.from({ length: MIN_ROWS }, (_, i) => (
-                    <SkeletonRow key={i} height={rowHeight} />
+                  Array.from({ length: VISIBLE_ROWS }, (_, i) => (
+                    <SkeletonRow key={i} />
                   ))
                 )}
               </div>
