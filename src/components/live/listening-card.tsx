@@ -2,7 +2,7 @@
 
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import Image from "next/image";
-import type { ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
 
 import { Card } from "@/components/ui/card";
 import { useStatus } from "@/hooks/use-status";
@@ -106,6 +106,38 @@ function SkeletonRow() {
   );
 }
 
+// 服务端没有 layout 阶段，useLayoutEffect 会告警，这里按环境切换
+const useIsomorphicLayoutEffect =
+  typeof window !== "undefined" ? useLayoutEffect : useEffect;
+
+/**
+ * 列表顶部换人时把滚动位置强制拉回顶端。
+ *
+ * 不能指望浏览器自己处理：新条目插到顶部时，滚动锚定会把 scrollTop 加一行
+ * 「保持视觉位置不变」，scroll-snap 又会重新吸附到原来那个（已经下移的）元素，
+ * 两者拉扯的结果是时序相关的 —— 有时滑回顶端，有时就卡在第二行，
+ * 得手动滑回去。所以直接接管，且必须在绘制前做，否则会看到跳一下。
+ */
+function useResetScrollOnChange(topKey: string | undefined) {
+  const ref = useRef<HTMLDivElement>(null);
+  const previous = useRef(topKey);
+
+  useIsomorphicLayoutEffect(() => {
+    if (previous.current === topKey) return;
+    previous.current = topKey;
+
+    const el = ref.current;
+    if (!el || el.scrollTop === 0) return;
+    // 临时关掉 scroll-smooth，否则会看到「先跳一下再滑回来」
+    const saved = el.style.scrollBehavior;
+    el.style.scrollBehavior = "auto";
+    el.scrollTop = 0;
+    el.style.scrollBehavior = saved;
+  }, [topKey]);
+
+  return ref;
+}
+
 /** 有链接就整块可点，没有就退化成普通容器 */
 function HeroWrapper({
   link,
@@ -144,6 +176,7 @@ export function ListeningCard({ className }: { className?: string }) {
   );
   // 对重排稳定的 key，否则顶部插入新条目时会被当成整批换新
   const restKeys = stableKeys(rest.map((item) => item.id));
+  const listRef = useResetScrollOnChange(restKeys[0]);
 
   return (
     <Card label="Recently Played" action="Apple Music" className={className}>
@@ -235,10 +268,14 @@ export function ListeningCard({ className }: { className?: string }) {
           // 否则吸附位会被 padding 顶偏，还得再补 scroll-padding
           <div className="mt-3 border-t border-line pt-2">
             <div
+              ref={listRef}
               className={cn(
                 "flex flex-col overflow-y-auto",
-                // 吸附与防止滚动链外溢，和「最近在看」那一条保持一致
-                "snap-y snap-mandatory scroll-smooth overscroll-y-contain",
+                // 这里刻意不做 scroll-snap。它会和 framer 的 layout 动画打架：
+                // popLayout 把离场元素改成绝对定位，容器高度剧变，吸附目标算飞，
+                // 实测新条目进来时 scrollTop 会被弹到 48 甚至 192 再慢慢滑回。
+                // 整数行是靠容器固定高度（4 × 48px）保证的，不需要吸附。
+                "scroll-smooth overscroll-y-contain",
                 // 关掉滚动锚定：新条目插到顶部时，浏览器会为了「保持视觉位置不动」
                 // 自动把 scrollTop 加一行，结果第一行被顶出可视区，得手动滑回去
                 "[overflow-anchor:none]",
@@ -259,7 +296,7 @@ export function ListeningCard({ className }: { className?: string }) {
                       animate="animate"
                       exit="exit"
                       transition={reduced ? STATIC_TRANSITION : LIST_TRANSITION}
-                      className="h-12 shrink-0 snap-start"
+                      className="h-12 shrink-0"
                     >
                       <TrackRow track={item} />
                     </motion.div>
