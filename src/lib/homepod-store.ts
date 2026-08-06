@@ -46,7 +46,13 @@ function publicArtwork(value: unknown) {
   try {
     const homeAssistantUrl = new URL(raw, "http://home-assistant.invalid");
     const cachedArtwork = homeAssistantUrl.searchParams.get("cache");
-    const candidate = (cachedArtwork ?? raw)
+    const relativeAppleArtwork =
+      cachedArtwork &&
+      !cachedArtwork.includes("..") &&
+      /^Music\d+\/[A-Za-z0-9_./-]+\.(?:jpe?g|png)$/i.test(cachedArtwork)
+        ? `https://is1-ssl.mzstatic.com/image/thumb/${cachedArtwork}/600x600bb.jpg`
+        : null;
+    const candidate = (relativeAppleArtwork ?? cachedArtwork ?? raw)
       .replaceAll("{w}", "600")
       .replaceAll("{h}", "600")
       .replaceAll("{f}", "jpg");
