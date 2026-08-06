@@ -1,26 +1,206 @@
 @import "tailwindcss";
 
+/* 用 class 策略，不跟随系统 —— 切换零闪烁交给 next-themes 的内联脚本 */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* 高分屏上 1px 边框显得粗，可以降到 0.5px */
+@custom-variant retina (@media (min-resolution: 2x));
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --radius: 0.75rem;
+
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.18 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.53 0 0);
+
+  /* 层次靠表面色阶 + 1px 线，不靠阴影 */
+  --surface: oklch(0.985 0 0);
+  --surface-hover: oklch(0.965 0 0);
+  --line: oklch(0 0 0 / 10%);
+  --line-strong: oklch(0 0 0 / 16%);
+
+  /* 整站唯一允许出现的彩色，只给实时数据用 */
+  --live: oklch(0.65 0.17 145);
+  --live-idle: oklch(0.7 0.15 75);
+  --live-off: oklch(0.62 0 0);
+}
+
+.dark {
+  /* 不用纯黑：OLED 上滚动会拖影，也失去层次 */
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.96 0 0);
+  --muted: oklch(0.21 0 0);
+  --muted-foreground: oklch(0.62 0 0);
+
+  --surface: oklch(0.185 0 0);
+  --surface-hover: oklch(0.22 0 0);
+  --line: oklch(1 0 0 / 9%);
+  --line-strong: oklch(1 0 0 / 16%);
+
+  /* 深底上饱和度降一档，否则刺眼 */
+  --live: oklch(0.76 0.16 148);
+  --live-idle: oklch(0.8 0.13 78);
+  --live-off: oklch(0.5 0 0);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-surface: var(--surface);
+  --color-surface-hover: var(--surface-hover);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-live: var(--live);
+  --color-live-idle: var(--live-idle);
+  --color-live-off: var(--live-off);
+
+  --radius-md: calc(var(--radius) * 0.66);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+
+  /* CJK 靠字体栈顺序兜底：Geist 没有中文字形，会自动落到苹方 / 鸿蒙 */
+  --font-sans: var(--font-geist-sans), "PingFang SC", "HarmonyOS Sans SC",
+    "Microsoft YaHei", system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "SFMono-Regular", monospace;
+
+  --animate-pulse-ring: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@layer base {
+  *,
+  *::before,
+  *::after {
+    border-color: var(--line);
+  }
+
+  html {
+    /* 导航锚点平滑滚过去，而不是硬跳。
+       下面 prefers-reduced-motion 里会用 !important 把它关掉 */
+    scroll-behavior: smooth;
+  }
+
+  body {
+    /**
+     * screen-line-* 的伪元素是 left:-100vw / width:200vw，必然溢出到视口外，
+     * 不夹住的话整页可以左右滑（宽屏尤其明显，溢出量 = 容器左边距 + 100vw）。
+     * 必须用 clip 而不是 hidden：hidden 会把 body 变成滚动容器，
+     * 吸顶导航的 position:sticky 就失效了。
+     */
+    overflow-x: clip;
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    /* 全站数字等宽 + 斜杠零：实时数字跳动时不抖宽度 */
+    font-variant-numeric: tabular-nums slashed-zero;
+  }
+
+  ::selection {
+    background: var(--foreground);
+    color: var(--background);
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/**
+ * 横贯视口的分隔线：内容保持居中，线延伸到屏幕两端。
+ * 这条线是整套「制图感」的来源。
+ */
+@utility screen-line-top {
+  position: relative;
+
+  &::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: -100vw;
+    width: 200vw;
+    height: 1px;
+    background: var(--line);
+    pointer-events: none;
+  }
+}
+
+@utility screen-line-bottom {
+  position: relative;
+
+  &::after {
+    content: "";
+    position: absolute;
+    bottom: 0;
+    left: -100vw;
+    width: 200vw;
+    height: 1px;
+    background: var(--line);
+    pointer-events: none;
+  }
+}
+
+/* section 之间的 45° 斜条纹分隔，取代普通 hr */
+@utility stripe-divider {
+  background-image: repeating-linear-gradient(
+    315deg,
+    var(--line) 0,
+    var(--line) 1px,
+    transparent 0,
+    transparent 50%
+  );
+  background-size: 6px 6px;
+}
+
+/* 等宽小字标注，如 FIG_001 / LIVE / C1 */
+@utility label-mono {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+@keyframes pulse-ring {
+  0% {
+    opacity: 0.6;
+    transform: scale(1);
+  }
+  70%,
+  100% {
+    opacity: 0;
+    transform: scale(2.6);
+  }
+}
+
+/* 正在播放时进度条呼吸，用来和「看到一半停着的」区分开 */
+/* 推断为正在播放时，均衡器跳动 */
+@keyframes equalizer {
+  0%,
+  100% {
+    transform: scaleY(0.3);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+@keyframes progress-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
