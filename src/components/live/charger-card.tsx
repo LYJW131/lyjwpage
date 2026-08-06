@@ -34,6 +34,9 @@ export function ChargerCard({ className }: { className?: string }) {
 
   const connected = Boolean(data?.connected);
   const power = data?.totalPower ?? 0;
+  // mode 可能在设备刚停止取电后仍保持开启；实际功率超过空载阈值才算正在充电。
+  // 这也和状态灯的 live 判定保持一致，避免一处说“正在充”、一处显示 idle。
+  const charging = connected && power > 1;
   const dot = tone(data);
   const ratio = data ? Math.min(power / data.maxPower, 1) : 0;
   // 峰值上留 15% 余量，并给一个下限，免得空载时噪声被放大成剧烈波动
@@ -81,7 +84,9 @@ export function ChargerCard({ className }: { className?: string }) {
               : data?.stale
                 ? "遥测已断流"
                 : connected
-                  ? `${Math.round(ratio * 100)}% / ${data?.maxPower}W`
+                  ? charging
+                    ? `${Math.round(ratio * 100)}% / ${data?.maxPower}W`
+                    : "待机"
                   : "充电器未连接"}
         </p>
 

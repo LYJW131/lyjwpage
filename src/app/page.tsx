@@ -1,6 +1,8 @@
 import { Header } from "@/components/header";
 import { ChargerCard } from "@/components/live/charger-card";
 import { ListeningCard } from "@/components/live/listening-card";
+import { LiveDeskCard } from "@/components/live/live-desk-card";
+import { VibeCodingCard } from "@/components/live/vibecoding-card";
 import { WatchingRow } from "@/components/live/watching-card";
 import { Container, Section } from "@/components/ui/section";
 
@@ -13,8 +15,10 @@ export default function Home() {
         <Container>
           <Section id="live" label="FIG_001" title="此刻" note="实时">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <LiveDeskCard />
               <ChargerCard />
               <ListeningCard />
+              <VibeCodingCard />
             </div>
 
             <div className="mt-4">

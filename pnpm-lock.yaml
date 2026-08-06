@@ -11,6 +11,9 @@ importers:
       '@number-flow/react':
         specifier: ^0.6.2
         version: 0.6.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      ccusage:
+        specifier: ^20.0.19
+        version: 20.0.19
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
@@ -145,6 +148,36 @@ packages:
   '@babel/types@7.29.8':
     resolution: {integrity: sha512-Vj1jF3cPfxg7OAfoI7QnVKLoILlm2JF9pnVHrX8qx7AHMiYWT+NDAA7jChlNgRS4WTLc/fD1lXLmPixluj+3Gg==}
     engines: {node: '>=6.9.0'}
+
+  '@ccusage/ccusage-darwin-arm64@20.0.19':
+    resolution: {integrity: sha512-8b69h4tuMH1KNW+EYjFRJWpbWHXbMUtFu8cOCyFOQsR6lGxq37g0kzEGHSqG+iZEoUTHaabR5CE7ZHLhW9Q64A==}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@ccusage/ccusage-darwin-x64@20.0.19':
+    resolution: {integrity: sha512-YTsqIfsPo3qR9OMrwJtnJoq/fil7Jk5mzXV8k0Iejpiq7zysw4FfkjCeHr0UVJG8ihdqtE18o+xIk99p3v+5Ew==}
+    cpu: [x64]
+    os: [darwin]
+
+  '@ccusage/ccusage-linux-arm64@20.0.19':
+    resolution: {integrity: sha512-4e+7hV3WrEpM7hQPQkh4/zNLTUSqzpd+vSSWl2y659+xQ+JCDLWqE6gzvXLMOAT/LTtcFtlrduIWDZt8VPceqQ==}
+    cpu: [arm64]
+    os: [linux]
+
+  '@ccusage/ccusage-linux-x64@20.0.19':
+    resolution: {integrity: sha512-VPbB6onrwOGojTKutFzeahttb98ZgmdsiQpOr/BJet1i3QdrmUGXGmJSt591xXrvVOVVgsC7/5wBELdWM9/bKA==}
+    cpu: [x64]
+    os: [linux]
+
+  '@ccusage/ccusage-win32-arm64@20.0.19':
+    resolution: {integrity: sha512-oOv4mZkapxzvQeAMI+jqfTOv/zN2x2AYPAD+F4AnYHQQL4n898axhH9uPd2Ls0U5CDlvfh1zDTyNILz8X9M15A==}
+    cpu: [arm64]
+    os: [win32]
+
+  '@ccusage/ccusage-win32-x64@20.0.19':
+    resolution: {integrity: sha512-KtDlTk07uv8cu6TlizB/RptcDiQePE1YSQe6uNNZTUnwVy9zq5R3fvUUFr9/d3FYHwimSGduoHXRS8Ta+Kmkrw==}
+    cpu: [x64]
+    os: [win32]
 
   '@emnapi/core@1.10.0':
     resolution: {integrity: sha512-yq6OkJ4p82CAfPl0u9mQebQHKPJkY7WrIuk205cTYnYe+k2Z8YBh11FrbRG/H6ihirqcacOgl2BIO8oyMQLeXw==}
@@ -874,6 +907,10 @@ packages:
 
   caniuse-lite@1.0.30001806:
     resolution: {integrity: sha512-72Cuvd95zbSYPKq6Fhg8eDJRlzgWDf7/mtoZv6Qe/DYNCEBdNxoA3+rZAU2ZhGCpZlns3EssFavaZomckT5Uuw==}
+
+  ccusage@20.0.19:
+    resolution: {integrity: sha512-vyNIyctcvTKFbrsU/WJuWiII3CVw8WopU/0NcR+lKmRbh62wm0jccmkWrFCG6j7R8agc8mIBz5+YlmGbXH1RnQ==}
+    hasBin: true
 
   chalk@4.1.2:
     resolution: {integrity: sha512-oKnbhFyRIXpUuez8iBMmyEa4nbj4IOQyuhc/wy9kY7/WVPcwIO9VA668Pu8RkO7+0G76SLROeyw9CpQ061i4mA==}
@@ -2194,6 +2231,24 @@ snapshots:
       '@babel/helper-string-parser': 7.29.7
       '@babel/helper-validator-identifier': 7.29.7
 
+  '@ccusage/ccusage-darwin-arm64@20.0.19':
+    optional: true
+
+  '@ccusage/ccusage-darwin-x64@20.0.19':
+    optional: true
+
+  '@ccusage/ccusage-linux-arm64@20.0.19':
+    optional: true
+
+  '@ccusage/ccusage-linux-x64@20.0.19':
+    optional: true
+
+  '@ccusage/ccusage-win32-arm64@20.0.19':
+    optional: true
+
+  '@ccusage/ccusage-win32-x64@20.0.19':
+    optional: true
+
   '@emnapi/core@1.10.0':
     dependencies:
       '@emnapi/wasi-threads': 1.2.1
@@ -2875,6 +2930,15 @@ snapshots:
   callsites@3.1.0: {}
 
   caniuse-lite@1.0.30001806: {}
+
+  ccusage@20.0.19:
+    optionalDependencies:
+      '@ccusage/ccusage-darwin-arm64': 20.0.19
+      '@ccusage/ccusage-darwin-x64': 20.0.19
+      '@ccusage/ccusage-linux-arm64': 20.0.19
+      '@ccusage/ccusage-linux-x64': 20.0.19
+      '@ccusage/ccusage-win32-arm64': 20.0.19
+      '@ccusage/ccusage-win32-x64': 20.0.19
 
   chalk@4.1.2:
     dependencies:
