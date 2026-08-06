@@ -5,6 +5,8 @@ import { join } from "node:path";
 
 import { normalizeRawStatus, type RawStatus } from "@/lib/anker";
 import { recordPushHeartbeat, recordStatus } from "@/lib/charger-store";
+import { getHomePodNowPlaying } from "@/lib/homepod-store";
+import { number, object, text } from "@/lib/json";
 import { publish } from "@/lib/live-events";
 import type {
   ActivityPayload,
@@ -15,6 +17,9 @@ import { recordVibeCodingReport } from "@/lib/vibecoding";
 
 // The sender heartbeats every 30s; leave room for timer and network jitter.
 const ACTIVITY_STALE_MS = 45_000;
+/** 暂停超过这个时间就不再占用音乐 Hero，让下一个实时来源接管。 */
+const MUSIC_PAUSE_GRACE_MS = 30_000;
+let pauseExpiryTimer: ReturnType<typeof setTimeout> | null = null;
 
 type ActivityAsset = { body: Uint8Array; contentType: string };
 type TelemetryState = {
@@ -83,24 +88,10 @@ type TelemetryEnvelope = {
   modules?: unknown;
 };
 
-function object(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
-function number(value: unknown) {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
 function milliseconds(value: unknown, fallback = Date.now()) {
   const parsed = number(value);
   if (parsed == null) return fallback;
   return parsed > 1e12 ? parsed : parsed * 1000;
-}
-
-function text(value: unknown) {
-  return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
 function storeActivityAsset(value: unknown) {
@@ -224,26 +215,71 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
 
   // 心跳包也要推：它不带模块数据，但会刷新 receivedAt，
   // 前端据此把「上报器离线」翻回在线。
-  publish({ type: "activity", payload: getActivityPayload() });
+  await publishActivityPayload();
 
   return { accepted, heartbeat: true };
 }
 
-export function getActivityPayload(): ActivityPayload {
+export async function getActivityPayload(): Promise<ActivityPayload> {
   hydrateTelemetryState();
-  const activityEnabled =
-    telemetryState.activeModules.has("desktop") ||
-    telemetryState.activeModules.has("apple_music");
+  const telemetryStale =
+    !telemetryState.telemetryReceivedAt ||
+    Date.now() - telemetryState.telemetryReceivedAt > ACTIVITY_STALE_MS;
+  const desktopEnabled = telemetryState.activeModules.has("desktop");
+  const musicEnabled = telemetryState.activeModules.has("apple_music");
+  const macMusic = musicEnabled && !telemetryStale ? telemetryState.music : null;
+  const homePod = await getHomePodNowPlaying();
+  const homePodMusic = homePod?.music ?? null;
+  const now = Date.now();
+  const macPausedFresh =
+    macMusic?.state === "paused" &&
+    now - macMusic.observedAt < MUSIC_PAUSE_GRACE_MS;
+  const homePodPausedFresh =
+    homePodMusic?.state === "paused" &&
+    now - homePodMusic.observedAt < MUSIC_PAUSE_GRACE_MS;
+  const music =
+    (macMusic?.state === "playing" ? macMusic : null) ??
+    (macPausedFresh ? macMusic : null) ??
+    (homePodMusic?.state === "playing" ? homePodMusic : null) ??
+    (homePodPausedFresh ? homePodMusic : null);
+  const desktopStale = !desktopEnabled || telemetryStale;
+  // 没东西可显示，而不是「数据过期」—— 没在听歌时这就是常态
+  const musicIdle = !music;
+
   return {
-    desktop: telemetryState.activeModules.has("desktop") ? telemetryState.desktop : null,
-    music: telemetryState.activeModules.has("apple_music") ? telemetryState.music : null,
-    receivedAt:
-      telemetryState.activityReceivedAt || telemetryState.telemetryReceivedAt || null,
-    stale:
-      activityEnabled &&
-      (!telemetryState.telemetryReceivedAt ||
-        Date.now() - telemetryState.telemetryReceivedAt > ACTIVITY_STALE_MS),
+    desktop: desktopStale ? null : telemetryState.desktop,
+    music,
+    receivedAt: Math.max(
+      telemetryState.activityReceivedAt || telemetryState.telemetryReceivedAt || 0,
+      homePod?.receivedAt ?? 0,
+    ) || null,
+    desktopStale,
+    musicIdle,
   };
+}
+
+/**
+ * 发布当前活动，并在暂停宽限期结束时精确重算一次来源。
+ * 这样前端会直接从暂停来源切到下一实时来源，不会中途闪回 API Hero。
+ */
+export async function publishActivityPayload() {
+  const payload = await getActivityPayload();
+  publish({ type: "activity", payload });
+
+  if (pauseExpiryTimer) {
+    clearTimeout(pauseExpiryTimer);
+    pauseExpiryTimer = null;
+  }
+  if (payload.music?.state === "paused") {
+    const remaining =
+      MUSIC_PAUSE_GRACE_MS - Math.max(0, Date.now() - payload.music.observedAt);
+    pauseExpiryTimer = setTimeout(() => {
+      pauseExpiryTimer = null;
+      void publishActivityPayload();
+    }, Math.max(1, remaining + 25));
+  }
+
+  return payload;
 }
 
 /** 唯一遥测入口的鉴权；未配置密钥时保留本地开发的零配置体验。 */

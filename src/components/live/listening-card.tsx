@@ -1,6 +1,6 @@
 "use client";
 
-import { Laptop } from "lucide-react";
+import { Laptop, Speaker } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import Image from "next/image";
 import {
@@ -37,15 +37,6 @@ const REFRESH_MS = 30_000;
 const ACTIVITY_REFRESH_MS = 3_000;
 /** 推送正常时轮询只是兜底 */
 const ACTIVITY_PUSHED_REFRESH_MS = 30_000;
-
-/**
- * 暂停后还占着 hero 位置的宽限期。
- *
- * 只有「本机在播」和「暂停不到这个时长」两种情况才顶替 hero；
- * 超过之后本机这首整个让开，hero 和列表都退回 Apple Music 原本的逻辑，
- * 包括「正在播放」那套推断 —— 这一层不做任何额外干预。
- */
-const PAUSE_GRACE_MS = 30_000;
 
 /**
  * 视口里显示几行。行高不写死：列表填满卡片剩下的空间，每行取容器的 1/N
@@ -321,29 +312,12 @@ export function ListeningCard({ className }: { className?: string }) {
 
   const reduced = useReducedMotion();
 
-  // 上报器离线时本机状态已经不可信了，直接当作没有
-  const localMusic = activity?.stale ? null : activity?.music ?? null;
+  // MacBook 与 HomePod 都没有可用状态时才退回最近播放列表。
+  const localMusic = activity?.musicIdle ? null : activity?.music ?? null;
   const localTrack =
     localMusic?.title && localMusic.state !== "stopped" ? localMusic : null;
-  const localPaused = localTrack?.state === "paused";
-
-  /**
-   * 只在需要判断宽限期时才起秒级计时器 —— 在播时时间不影响任何判定。
-   * 惰性初始化而不是在 effect 里 setState：后者会被
-   * react-hooks/set-state-in-effect 拦下，而且会多一次渲染。
-   */
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!localPaused) return;
-    const timer = window.setInterval(() => setNow(Date.now()), 1_000);
-    return () => window.clearInterval(timer);
-  }, [localPaused]);
-
-  // 暂停期间上报器不会再推新快照，observedAt 就停在按下暂停的那一刻
-  const pausedForMs = localPaused ? Math.max(0, now - localTrack.observedAt) : 0;
-  const localActive = Boolean(
-    localTrack && (!localPaused || pausedForMs < PAUSE_GRACE_MS),
-  );
+  // 服务端已经按暂停宽限期选好来源；前端只渲染结果，避免两套计时器产生闪烁。
+  const localActive = Boolean(localTrack);
 
   const [latest, ...tail] = data?.items ?? [];
   // 推断出来的「正在听」，且确实指向排在最前的这一项
@@ -353,7 +327,7 @@ export function ListeningCard({ className }: { className?: string }) {
 
   const hero: Hero | null = localActive
     ? {
-        key: `local:${localTrack!.trackId ?? localTrack!.title}`,
+        key: `${localTrack!.source}:${localTrack!.trackId ?? localTrack!.title}`,
         artwork: localTrack!.artworkUrl,
         title: localTrack!.title ?? "",
         subtitle: [localTrack!.artist, localTrack!.album]
@@ -451,11 +425,17 @@ export function ListeningCard({ className }: { className?: string }) {
                   >
                     {hero.label}
                   </span>
-                  {/* 这首是从本机 Music.app 读到的，不是 Apple Music 的历史记录 */}
+                  {/* 实时曲目来自 MacBook Music.app 或 HomePod，不是历史记录。 */}
                   {hero.track && (
                     <span className="ml-0.5 inline-flex min-w-0 items-center gap-1 rounded-sm border border-line px-1.5 py-px text-[10px] leading-4 text-muted-foreground">
-                      <Laptop className="size-3 shrink-0" aria-hidden />
-                      <span className="truncate">MacBook Pro</span>
+                      {hero.track.source === "homepod" ? (
+                        <Speaker className="size-3 shrink-0" aria-hidden />
+                      ) : (
+                        <Laptop className="size-3 shrink-0" aria-hidden />
+                      )}
+                      <span className="truncate">
+                        {hero.track.source === "homepod" ? "HomePod mini" : "MacBook Pro"}
+                      </span>
                     </span>
                   )}
                 </div>

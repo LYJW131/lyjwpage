@@ -1,4 +1,4 @@
-import { type LiveEvent, subscribe } from "@/lib/live-events";
+import { type LiveEvent, publish, subscribe } from "@/lib/live-events";
 import { getActivityPayload } from "@/lib/telemetry";
 
 // 需要常驻连接和进程内订阅，不能跑在 Edge，也不能被静态化
@@ -20,6 +20,35 @@ function frame(event: string, data: unknown) {
   return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 }
 
+/**
+ * 周期重发做成整个进程一个定时器，按连接数引用计数。
+ *
+ * 每条连接各起一个的话，同一份 payload 会被算 N 遍、Redis 也被打 N 次，
+ * 而它们算出来的东西完全一样。publish 本来就会扇出给所有订阅者。
+ */
+let tickTimer: ReturnType<typeof setInterval> | null = null;
+let tickRefs = 0;
+
+function retainTick() {
+  tickRefs += 1;
+  if (tickTimer) return;
+  tickTimer = setInterval(() => {
+    void getActivityPayload()
+      .then((payload) => publish({ type: "activity", payload }))
+      .catch((error: unknown) => {
+        console.error("[stream]", error instanceof Error ? error.message : String(error));
+      });
+  }, TICK_MS);
+}
+
+function releaseTick() {
+  tickRefs -= 1;
+  if (tickRefs > 0) return;
+  tickRefs = 0;
+  if (tickTimer) clearInterval(tickTimer);
+  tickTimer = null;
+}
+
 export function GET(request: Request) {
   const encoder = new TextEncoder();
   let teardown: (() => void) | null = null;
@@ -28,12 +57,15 @@ export function GET(request: Request) {
     start(controller) {
       let closed = false;
       let release: (() => void) | null = null;
-      let timer: ReturnType<typeof setInterval> | null = null;
+      let holdsTick = false;
 
       const cleanup = () => {
         if (closed) return;
         closed = true;
-        if (timer) clearInterval(timer);
+        if (holdsTick) {
+          holdsTick = false;
+          releaseTick();
+        }
         release?.();
         release = null;
         try {
@@ -53,6 +85,16 @@ export function GET(request: Request) {
           cleanup();
         }
       };
+      const writeActivity = async () => {
+        try {
+          write(frame("activity", await getActivityPayload()));
+        } catch (error) {
+          console.error(
+            "[stream]",
+            error instanceof Error ? error.message : String(error),
+          );
+        }
+      };
 
       request.signal.addEventListener("abort", cleanup);
 
@@ -67,8 +109,10 @@ export function GET(request: Request) {
         return;
       }
 
-      write(frame("activity", getActivityPayload()));
-      timer = setInterval(() => write(frame("activity", getActivityPayload())), TICK_MS);
+      // 首帧仍是每条连接自己发：新连上的人不该干等到下一个 tick
+      void writeActivity();
+      holdsTick = true;
+      retainTick();
     },
     cancel() {
       teardown?.();

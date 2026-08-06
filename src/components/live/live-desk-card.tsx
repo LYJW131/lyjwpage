@@ -58,7 +58,7 @@ export function LiveDeskCard({ className }: { className?: string }) {
   const [displayedDesktop, setDisplayedDesktop] = useState<DesktopActivity | null>(null);
   const reduced = useReducedMotion();
 
-  const offline = Boolean(error || data?.stale);
+  const offline = Boolean(error || data?.desktopStale);
   const incomingDesktop = data?.desktop ?? null;
   const incomingApplicationName = incomingDesktop?.applicationName ?? null;
   const incomingBundleIdentifier = incomingDesktop?.bundleIdentifier ?? null;
