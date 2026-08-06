@@ -2,37 +2,46 @@
 
 import { useId } from "react";
 
+import type { ChargerSample } from "@/lib/types";
+
 /**
  * 手写 SVG 面积图 —— 为一条 40px 高的曲线引 recharts 不值得。
+ *
+ * 横坐标按时间戳映射，而不是按点的序号等距铺开：推送模式下 30 秒一个点，
+ * 漏推一次就会出现空档，等距铺开会把那段时间画得和正常间隔一样宽。
  *
  * 用 preserveAspectRatio="none" 让 viewBox 拉伸填满容器，
  * 这样不用测量 DOM 宽度就能自适应。
  */
 export function Sparkline({
-  values,
+  samples,
   max,
   className,
 }: {
-  values: number[];
+  samples: ChargerSample[];
   /** 纵轴上限，传固定值可以让曲线高度在多次采样间保持可比 */
   max: number;
   className?: string;
 }) {
   const id = useId();
 
-  if (values.length < 2) {
+  if (samples.length < 2) {
     return <div className={className} aria-hidden />;
   }
 
   const width = 100;
   const height = 32;
   const ceiling = Math.max(max, 1);
-  const step = width / (values.length - 1);
 
-  const points = values.map((value, index) => {
-    const x = index * step;
-    const y = height - (Math.min(Math.max(value, 0), ceiling) / ceiling) * height;
-    return [x, y] as const;
+  const t0 = samples[0].t;
+  const span = samples[samples.length - 1].t - t0;
+  // 所有点时间戳相同（理论上不会）时退化成等距，避免除以 0
+  const xOf = (sample: ChargerSample, index: number) =>
+    span > 0 ? ((sample.t - t0) / span) * width : (index / (samples.length - 1)) * width;
+
+  const points = samples.map((sample, index) => {
+    const y = height - (Math.min(Math.max(sample.w, 0), ceiling) / ceiling) * height;
+    return [xOf(sample, index), y] as const;
   });
 
   const line = points
