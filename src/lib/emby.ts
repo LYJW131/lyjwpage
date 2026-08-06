@@ -1,5 +1,10 @@
 import { cached } from "@/lib/cache";
-import { getNowPlaying } from "@/lib/emby-store";
+import {
+  getNowPlaying,
+  setNowPlaying,
+  TICKS_PER_MS,
+  type ResolvedNowPlaying,
+} from "@/lib/emby-store";
 import { embyImageUrl, type ImageKind } from "@/lib/image-proxy";
 import type { WatchingItem } from "@/lib/types";
 
@@ -13,6 +18,12 @@ import type { WatchingItem } from "@/lib/types";
  */
 
 const RESUME_TTL_MS = 60_000;
+/**
+ * 播放中才会用到的会话查询。
+ * Emby 拖动进度条时不发任何事件（播放事件只有 start/pause/unpause/stop），
+ * 想跟上 seek 只能主动问一次。这个查询只在「正在播放」时发生，空闲时为零。
+ */
+const SESSION_TTL_MS = 5_000;
 const TIMEOUT_MS = 6_000;
 
 type EmbyItem = {
@@ -166,12 +177,7 @@ function normalize(item: EmbyItem, publicUrl: string): WatchingItem {
 export type WatchingPayload = {
   items: WatchingItem[];
   /** 此刻正在播放的那一条，附带设备与暂停状态 */
-  nowPlaying: {
-    itemId: string;
-    paused: boolean;
-    progress: number | null;
-    device: string;
-  } | null;
+  nowPlaying: ResolvedNowPlaying | null;
 };
 
 export async function getWatching({ limit = 8 } = {}): Promise<WatchingPayload> {
@@ -195,11 +201,72 @@ export async function getWatching({ limit = 8 } = {}): Promise<WatchingPayload> 
     return (data.Items ?? []).map((item) => normalize(item, publicUrl));
   });
 
-  // 正在播放由 Emby 的 webhook 推进来，本站不再轮询 /emby/Sessions。
+  // 是否正在播放由 Emby 的 webhook 决定，本站不定时轮询。
   // 只认续播列表里有的条目：webhook 可能报的是列表外的东西（比如音乐）
   const live = await getNowPlaying();
-  const nowPlaying =
-    live && items.some((item) => item.id === live.itemId) ? live : null;
+  if (!live || !items.some((item) => item.id === live.itemId)) {
+    return { items, nowPlaying: null };
+  }
 
-  return { items, nowPlaying };
+  // 播放中才去核对一次真实位置，把 seek 造成的偏差拉回来
+  const corrected = await syncPosition(live, url, key, userId);
+  return { items, nowPlaying: corrected };
+}
+
+/**
+ * 用 Sessions 校正播放位置。
+ *
+ * 只在已知「正在播放」时才调用，所以没在看片时一次请求都不会发。
+ * 会话查不到（客户端刚退出、还没收到 stop）就沿用 webhook 的推算值。
+ */
+async function syncPosition(
+  live: ResolvedNowPlaying,
+  url: string,
+  key: string,
+  userId: string,
+): Promise<ResolvedNowPlaying> {
+  try {
+    const sessions = await cached(`emby:session-position`, SESSION_TTL_MS, () =>
+      embyFetch<
+        Array<{
+          UserId?: string;
+          NowPlayingItem?: { Id?: string; RunTimeTicks?: number };
+          PlayState?: { PositionTicks?: number; IsPaused?: boolean };
+        }>
+      >(`${url}/emby/Sessions`, key),
+    );
+
+    const session = sessions.find(
+      (entry) =>
+        entry.UserId === userId && String(entry.NowPlayingItem?.Id ?? "") === live.itemId,
+    );
+    if (!session?.NowPlayingItem?.Id) return live;
+
+    const positionTicks = Number(session.PlayState?.PositionTicks) || 0;
+    const runTimeTicks =
+      Number(session.NowPlayingItem.RunTimeTicks) || live.durationMs! * TICKS_PER_MS;
+    const paused = Boolean(session.PlayState?.IsPaused);
+
+    // 顺便把校正后的位置写回存储，这样下次没有会话时推算也是从新锚点开始
+    await setNowPlaying({
+      itemId: live.itemId,
+      paused,
+      positionTicks,
+      runTimeTicks,
+      device: live.device,
+      at: Date.now(),
+    });
+
+    return {
+      itemId: live.itemId,
+      paused,
+      progress: runTimeTicks ? Math.min(100, (positionTicks / runTimeTicks) * 100) : null,
+      device: live.device,
+      positionMs: positionTicks / TICKS_PER_MS,
+      durationMs: runTimeTicks ? runTimeTicks / TICKS_PER_MS : null,
+    };
+  } catch {
+    // Sessions 挂了不该影响展示，沿用推算值
+    return live;
+  }
 }

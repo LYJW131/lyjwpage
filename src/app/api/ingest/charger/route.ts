@@ -1,5 +1,6 @@
 import { normalizeRawStatus, type RawStatus } from "@/lib/anker";
 import { recordStatus } from "@/lib/charger-store";
+import { publishStatus } from "@/lib/events";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,5 +31,6 @@ export async function POST(request: Request) {
   }
 
   await recordStatus(normalizeRawStatus(raw));
+  await publishStatus("charger");
   return new Response(null, { status: 204 });
 }

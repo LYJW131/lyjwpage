@@ -10,10 +10,10 @@ import type { ChargerPayload, ChargerPort, ChargerStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /**
- * 只是去取服务端已经存好的快照，不会传导到充电头（本站不轮询它）。
- * 取快一点只是为了推送到达后尽早显示。
+ * 数据到达由 SSE 通知，这里的轮询只是兜底 —— 防止 SSE 断了又没重连上时
+ * 页面一直停在旧数据。所以间隔放得很宽。
  */
-const REFRESH_MS = 5_000;
+const REFRESH_MS = 60_000;
 
 function tone(status: ChargerStatus | undefined): DotTone {
   if (!status?.connected) return "off";
@@ -29,6 +29,7 @@ export function ChargerCard({ className }: { className?: string }) {
   const { data, error, isLoading } = useStatus<ChargerPayload>(
     "/api/status/charger",
     REFRESH_MS,
+    "charger",
   );
   const history = data?.history ?? [];
 
@@ -94,7 +95,9 @@ export function ChargerCard({ className }: { className?: string }) {
         {/* 三个 USB-C 口 */}
         <div className="mt-3 grid grid-cols-3 gap-px overflow-hidden rounded-md border border-line bg-line">
           {(data?.ports ?? [{ id: "C1" }, { id: "C2" }, { id: "C3" }]).map((port) => {
-            const full = "active" in port ? (port as ChargerPort) : null;
+            const raw = "active" in port ? (port as ChargerPort) : null;
+            // 整机断开时端口数据是上一帧的残留，不能当成还在充电照常显示
+            const full = connected ? raw : null;
             return (
               <div key={port.id} className="bg-surface px-2.5 py-2">
                 <div className="flex items-center gap-1.5">

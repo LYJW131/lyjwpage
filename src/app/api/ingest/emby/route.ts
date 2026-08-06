@@ -1,5 +1,6 @@
 import { invalidate } from "@/lib/cache";
 import { clearNowPlaying, setNowPlaying } from "@/lib/emby-store";
+import { publishStatus } from "@/lib/events";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -87,6 +88,7 @@ export async function POST(request: Request) {
 
   if (kind === "stop") {
     await clearNowPlaying();
+    await publishStatus("watching");
     return new Response(null, { status: 204 });
   }
 
@@ -101,6 +103,7 @@ export async function POST(request: Request) {
     device: asString(pick(session, "Client", "DeviceName", "client", "deviceName")),
     at: Date.now(),
   });
+  await publishStatus("watching");
 
   return new Response(null, { status: 204 });
 }

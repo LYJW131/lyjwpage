@@ -8,7 +8,7 @@ import { key, withRedis } from "@/lib/redis";
  */
 
 /** Emby 的 tick 是 100 纳秒，1 毫秒 = 10000 tick */
-const TICKS_PER_MS = 10_000;
+export const TICKS_PER_MS = 10_000;
 
 /** 事件之间可能隔很久（一部电影两小时只有首尾两条），保留时间要足够宽 */
 const TTL_MS = 6 * 60 * 60 * 1000;
@@ -57,9 +57,16 @@ async function readNowPlaying(): Promise<EmbyNowPlaying | null> {
 export type ResolvedNowPlaying = {
   itemId: string;
   paused: boolean;
-  /** 推算到此刻的进度，0–100；时长未知时为 null */
+  /** 推算到「响应发出时」的进度，0–100；时长未知时为 null */
   progress: number | null;
   device: string;
+  /**
+   * 响应发出时的播放位置与总时长（毫秒）。给客户端本地继续推算用 ——
+   * 播放中途 Emby 不发任何事件，光靠轮询进度条是一跳一跳的。
+   * 客户端以「收到这份数据的时刻」为锚点往前走，就不用管两边时钟差。
+   */
+  positionMs: number | null;
+  durationMs: number | null;
 };
 
 /**
@@ -84,6 +91,8 @@ export async function getNowPlaying(): Promise<ResolvedNowPlaying | null> {
         ? clampPercent((state.positionTicks / state.runTimeTicks) * 100)
         : null,
       device: state.device,
+      positionMs: state.positionTicks / TICKS_PER_MS,
+      durationMs: state.runTimeTicks ? state.runTimeTicks / TICKS_PER_MS : null,
     };
   }
 
@@ -102,6 +111,8 @@ export async function getNowPlaying(): Promise<ResolvedNowPlaying | null> {
       ? clampPercent((projected / state.runTimeTicks) * 100)
       : null,
     device: state.device,
+    positionMs: projected / TICKS_PER_MS,
+    durationMs: state.runTimeTicks ? state.runTimeTicks / TICKS_PER_MS : null,
   };
 }
 
