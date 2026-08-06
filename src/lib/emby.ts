@@ -1,4 +1,5 @@
 import { cached } from "@/lib/cache";
+import { getNowPlaying } from "@/lib/emby-store";
 import { embyImageUrl, type ImageKind } from "@/lib/image-proxy";
 import type { WatchingItem } from "@/lib/types";
 
@@ -6,13 +7,12 @@ import type { WatchingItem } from "@/lib/types";
  * Emby「最近在看」。
  *
  * 两个数据源合成：
- * - Users/{id}/Items/Resume —— 未看完的续播列表（小时级变化）
- * - Sessions               —— 此刻真正在播放的会话，用来给某一条打实时标记
+ * - Users/{id}/Items/Resume —— 未看完的续播列表，本站定时拉
+ * - Emby 的 webhook        —— 开播/暂停/停止时主动通知本站，用来打实时标记。
+ *   以前是轮询 /emby/Sessions，现在不轮询了，见 lib/emby-store.ts
  */
 
 const RESUME_TTL_MS = 60_000;
-/** 正在播放的状态要跟手一些 */
-const SESSIONS_TTL_MS = 10_000;
 const TIMEOUT_MS = 6_000;
 
 type EmbyItem = {
@@ -38,14 +38,6 @@ type EmbyItem = {
     PlaybackPositionTicks?: number;
     LastPlayedDate?: string;
   };
-};
-
-type EmbySession = {
-  UserId?: string;
-  Client?: string;
-  DeviceName?: string;
-  NowPlayingItem?: { Id?: string; RunTimeTicks?: number };
-  PlayState?: { IsPaused?: boolean; PositionTicks?: number };
 };
 
 function config() {
@@ -203,39 +195,11 @@ export async function getWatching({ limit = 8 } = {}): Promise<WatchingPayload> 
     return (data.Items ?? []).map((item) => normalize(item, publicUrl));
   });
 
-  // Sessions 挂了不该拖垮整个列表 —— 没有实时标记只是少个锦上添花
-  let nowPlaying: WatchingPayload["nowPlaying"] = null;
-  try {
-    const sessions = await cached(`emby:sessions`, SESSIONS_TTL_MS, () =>
-      embyFetch<EmbySession[]>(`${url}/emby/Sessions`, key),
-    );
-
-    // 必须在续播列表里反查，不能「随便找一个有 NowPlayingItem 的会话」：
-    // Sessions 里混着 DLNA 投屏、qbittorrent、auth_proxy 这些没有 UserId 的
-    // 条目，而多个会话同时有 NowPlayingItem 时 find 取到的是任意一个 ——
-    // 取错了就等于真正在看的那条拿不到实时标记。
-    const resumeIds = new Set(items.map((item) => item.id));
-    const session = sessions.find(
-      (entry) =>
-        entry.UserId === userId &&
-        entry.NowPlayingItem?.Id &&
-        resumeIds.has(String(entry.NowPlayingItem.Id)),
-    );
-
-    if (session?.NowPlayingItem?.Id) {
-      const runtime = Number(session.NowPlayingItem.RunTimeTicks) || 0;
-      const position = Number(session.PlayState?.PositionTicks) || 0;
-
-      nowPlaying = {
-        itemId: String(session.NowPlayingItem.Id),
-        paused: Boolean(session.PlayState?.IsPaused),
-        progress: runtime > 0 ? Math.min(100, (position / runtime) * 100) : null,
-        device: session.Client || session.DeviceName || "",
-      };
-    }
-  } catch {
-    nowPlaying = null;
-  }
+  // 正在播放由 Emby 的 webhook 推进来，本站不再轮询 /emby/Sessions。
+  // 只认续播列表里有的条目：webhook 可能报的是列表外的东西（比如音乐）
+  const live = await getNowPlaying();
+  const nowPlaying =
+    live && items.some((item) => item.id === live.itemId) ? live : null;
 
   return { items, nowPlaying };
 }

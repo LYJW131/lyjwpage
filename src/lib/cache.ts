@@ -56,6 +56,26 @@ export async function put<T>(k: string, value: T, ttlMs: number) {
   );
 }
 
+/** 让某个前缀下的缓存立即失效。用于「事件到了，下次请求必须重新取」 */
+export async function invalidate(prefix: string) {
+  for (const k of memory.keys()) {
+    if (k.startsWith(prefix)) memory.delete(k);
+  }
+  await withRedis(async (redis) => {
+    // 键数量很少（个位数），scan 一遍即可，不用担心阻塞
+    const pattern = key("cache", `${prefix}*`);
+    const keys: string[] = [];
+    let cursor = "0";
+    do {
+      const [next, batch] = await redis.scan(cursor, "MATCH", pattern, "COUNT", 100);
+      cursor = next;
+      keys.push(...batch);
+    } while (cursor !== "0");
+    if (keys.length) await redis.del(...keys);
+    return null;
+  }, null);
+}
+
 export async function cached<T>(
   k: string,
   ttlMs: number,

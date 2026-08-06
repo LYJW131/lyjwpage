@@ -36,7 +36,13 @@ pnpm dev
 
 ### 最近在看 — Emby
 
-`GET {EMBY_URL}/emby/Users/{userId}/Items/Resume` 拿续播列表，再用 `GET /emby/Sessions` 匹配出**此刻真正在播放**的那一条，给它打上实时标记和跟手的进度。
+`GET {EMBY_URL}/emby/Users/{userId}/Items/Resume` 拿续播列表（缓存 60 秒）。
+
+**「正在播放」不轮询，靠 Emby 的 webhook 推过来。** 在 Emby 后台「通知 → Webhooks」里指向 `/api/ingest/emby`，勾上播放相关事件即可。收到播放事件时顺便让续播列表缓存失效，列表顺序和进度立刻跟上。
+
+webhook 只在开始/暂停/继续/停止各来一条，中间没有消息。但事件里带着**当时的播放位置和总时长**，所以未暂停时按真实时间往前推算即可 —— 进度条不轮询也能走。这同时兼作兜底：推算位置超过总时长说明播完了而「停止」事件没收到（客户端崩了、网络断了），此时按已结束处理，不会一直挂着。
+
+各版本的事件名写法不一致（`playback.start` / `PlaybackStart` / …），接收端统一压成小写去掉分隔符再按子串判断，不和具体写法绑死；`unpause` 里也含 `pause`，必须先判 `unpause`。
 
 剧集自身的 `Primary` 图是剧照而不是海报，所以竖版海报优先取所属剧的 `SeriesPrimaryImageTag`。
 
