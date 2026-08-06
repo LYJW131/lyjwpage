@@ -24,6 +24,9 @@
   --live: oklch(0.65 0.17 145);
   --live-idle: oklch(0.7 0.15 75);
   --live-off: oklch(0.62 0 0);
+
+  /* Claude 官方橙 #D97757，只给那朵菊花用 */
+  --claude: oklch(0.672 0.131 38.8);
 }
 
 .dark {
@@ -42,6 +45,8 @@
   --live: oklch(0.76 0.16 148);
   --live-idle: oklch(0.8 0.13 78);
   --live-off: oklch(0.5 0 0);
+
+  --claude: oklch(0.74 0.115 39);
 }
 
 @theme inline {
@@ -56,6 +61,7 @@
   --color-live: var(--live);
   --color-live-idle: var(--live-idle);
   --color-live-off: var(--live-off);
+  --color-claude: var(--claude);
 
   --radius-md: calc(var(--radius) * 0.66);
   --radius-lg: var(--radius);
@@ -192,6 +198,125 @@
   50% {
     opacity: 0.4;
   }
+}
+
+/* 新旧前台应用交接的移动边界：与内容的 clip-path 揭示同步从左扫到右。 */
+@keyframes app-switch-sheen {
+  0% {
+    transform: translateX(-50%) skewX(-14deg);
+    opacity: 0;
+  }
+  8% {
+    opacity: 1;
+  }
+  88% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(367%) skewX(-14deg);
+    opacity: 0;
+  }
+}
+
+.app-switch-sheen {
+  position: absolute;
+  z-index: 20;
+  inset-block: -30%;
+  left: 0;
+  width: 24%;
+  pointer-events: none;
+  background: linear-gradient(
+    100deg,
+    transparent 0%,
+    color-mix(in oklab, var(--foreground) 5%, transparent) 25%,
+    color-mix(in oklab, var(--foreground) 20%, transparent) 50%,
+    color-mix(in oklab, var(--foreground) 5%, transparent) 75%,
+    transparent 100%
+  );
+  filter: blur(0.5px);
+  animation: app-switch-sheen 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/**
+ * Claude Code 终端里那朵菊花：spinner 在 · ✢ ✳ ∗ ✻ ✽ 之间逐帧跳，
+ * 星芒从一个点绽开、再收回去，来回循环。所以这里是「逐帧缩放」——
+ * 官方 spinner 不旋转，转起来就不是它了。
+ *
+ * 10 帧 = 6 帧绽开 + 4 帧收回（两端不重复，否则最大最小那一格会卡双倍时长），
+ * 每帧 120ms，跟终端一个节奏。
+ */
+@keyframes claude-bloom {
+  0% {
+    transform: scale(0.34);
+    opacity: 0.5;
+  }
+  10% {
+    transform: scale(0.53);
+    opacity: 0.68;
+  }
+  20% {
+    transform: scale(0.7);
+    opacity: 0.81;
+  }
+  30% {
+    transform: scale(0.84);
+    opacity: 0.9;
+  }
+  40% {
+    transform: scale(0.94);
+    opacity: 0.96;
+  }
+  50% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  60% {
+    transform: scale(0.94);
+    opacity: 0.96;
+  }
+  70% {
+    transform: scale(0.84);
+    opacity: 0.9;
+  }
+  80% {
+    transform: scale(0.7);
+    opacity: 0.81;
+  }
+  90% {
+    transform: scale(0.53);
+    opacity: 0.68;
+  }
+  100% {
+    transform: scale(0.34);
+    opacity: 0.5;
+  }
+}
+
+.claude-bloom {
+  transform-origin: center;
+  /* steps(1, end) 让每个关键帧一直保持到下一帧，硬切而不是补间 —— 终端就是这样跳的 */
+  animation: claude-bloom 1.2s steps(1, end) infinite;
+}
+
+/** Codex CLI 官方终端标题 spinner：10 帧，每帧 100ms。 */
+@keyframes codex-spinner-frame {
+  0%,
+  9.999% {
+    opacity: 1;
+  }
+  10%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.codex-spinner-frame {
+  opacity: 0;
+  animation: codex-spinner-frame 1s steps(1, end) infinite;
+}
+
+.codex-spinner-frame:first-child {
+  opacity: 1;
 }
 
 @media (prefers-reduced-motion: reduce) {

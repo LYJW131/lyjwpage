@@ -62,6 +62,38 @@ export type ListeningPayload = {
   nowPlaying: NowPlayingGuess | null;
 };
 
+/** 由本机遥测应用直接观测到的前台应用，不包含提示词、文件路径等内容。 */
+export type DesktopActivity = {
+  applicationName: string;
+  bundleIdentifier: string | null;
+  /** 用户明确开启“窗口标题”后才会上报。 */
+  windowTitle: string | null;
+  iconUrl: string | null;
+  observedAt: number;
+};
+
+/** Music.app 的本机播放实况，与 Apple Music Web API 的“最近播放”完全独立。 */
+export type LocalNowPlaying = {
+  source: "apple-music";
+  state: "playing" | "paused" | "stopped";
+  title: string | null;
+  artist: string | null;
+  album: string | null;
+  trackId: string | null;
+  artworkUrl: string | null;
+  positionMs: number;
+  durationMs: number;
+  observedAt: number;
+};
+
+export type ActivityPayload = {
+  desktop: DesktopActivity | null;
+  music: LocalNowPlaying | null;
+  receivedAt: number | null;
+  /** 本机遥测应用超过心跳窗口没有上报。 */
+  stale: boolean;
+};
+
 export type ChargerPort = {
   /** C1 / C2 / C3 */
   id: string;
@@ -111,6 +143,60 @@ export type ChargerPayload = ChargerStatus & {
   /** push = 由那台机器推过来；pull = 本地直接轮询遥测服务 */
   source: "push" | "pull";
   /** 推送模式下太久没收到新数据 */
+  stale: boolean;
+};
+
+export type VibeCodingAgentId = "claude" | "codex";
+
+export type VibeCodingDay = {
+  /** ccusage 按本机时区生成的 YYYY-MM-DD */
+  date: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheCreationTokens: number;
+  totalTokens: number;
+  /** ccusage 按公开 API 价格估算，不是订阅账单 */
+  apiEquivalentCostUSD: number;
+};
+
+export type VibeCodingAgent = {
+  id: VibeCodingAgentId;
+  label: string;
+  models: string[];
+  /** 最近活动 session 使用的模型，不是历史模型列表的排序结果 */
+  currentModel: string | null;
+  /** ccusage session 报告中最近一条活动；只公开时间，不公开会话或项目 */
+  lastActivityAt: string | null;
+  /** 最近 30 天，每 12 小时一个 session-token 聚合点 */
+  activity: Array<{ t: number; tokens: number }>;
+  today: VibeCodingDay;
+  last7Days: VibeCodingDay[];
+  last30DaysTokens: number;
+};
+
+export type VibeCodingTotals = {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheCreationTokens: number;
+  /** Codex 的 reasoning 是 output 的子集，画堆叠条时要从普通 output 中扣掉 */
+  reasoningTokens: number;
+  totalTokens: number;
+  apiEquivalentCostUSD: number;
+  activeDays: number;
+  sessions: number;
+};
+
+export type VibeCodingPayload = {
+  agents: VibeCodingAgent[];
+  totals: VibeCodingTotals;
+  /** Claude Code 与 Codex 合并后的历史累计 token 前三名。 */
+  topModels: Array<{ model: string; tokens: number }>;
+  /** ccusage 扫描完成的时间，而不是浏览器取接口的时间 */
+  collectedAt: string;
+  source: "local" | "push";
+  /** 推送超过 15 分钟没有更新 */
   stale: boolean;
 };
 

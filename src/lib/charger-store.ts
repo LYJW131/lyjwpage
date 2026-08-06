@@ -74,3 +74,8 @@ export function hasPushedData() {
 export function lastPushReceivedAt() {
   return lastPushAt;
 }
+
+/** v2 heartbeat keeps liveness fresh without resending an unchanged charger snapshot. */
+export function recordPushHeartbeat(receivedAt = Date.now()) {
+  lastPushAt = receivedAt;
+}

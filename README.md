@@ -1,6 +1,6 @@
 # lyjwpage
 
-个人主页。信息展示 + 三路实时状态：**最近在看**（Emby）、**最近在听**（Apple Music）、**充电头**（Anker Prime 160W）。
+个人主页。信息展示 + 实时状态：**最近在看**（Emby）、**最近在听**（Apple Music）、**充电头**（Anker Prime 160W）、**Vibe Coding**（Claude Code + Codex）。
 
 ## 技术栈
 
@@ -28,7 +28,9 @@ cp .env.example .env.local
 pnpm dev
 ```
 
-## 三路状态是怎么接的
+开发服务器固定使用 `http://localhost:3211`，避开已占用的 3210。
+
+## 状态是怎么接的
 
 所有凭据只存在于服务端，浏览器只看得到 `/api/status/*` 返回的规范化数据。三个路由共用 `src/lib/api.ts` 的信封：上游挂掉时返回 `{ ok: false, error }` 而不是 5xx，让某一路数据源离线不至于把整页 SWR 打成错误态。
 
@@ -71,15 +73,7 @@ Apple Music 的封面没有代理，仍走 `mzstatic.com` 直链 —— 那本�
 
 **两条来路，优先推送：**
 
-1. **推送**（部署用）—— 那台机器每 30 秒把 `/status` 原样 POST 到 `/api/ingest/charger`。用 a2687 自带的上报器即可，设两个环境变量：
-
-   ```
-   A2687_POST_URL=http://<本站>/api/ingest/charger
-   A2687_POST_INTERVAL=30
-   ```
-
-   只要收到过一次推送就固定走这条，不再尝试轮询 —— 上线后遥测服务根本不在同一台主机上。该端点**无认证**：按约定不对公网暴露，只在 Tailscale 内可达，访问控制交给网络层。（a2687 自带的上报器只发 `Content-Type` 和 `User-Agent`，本来也没法带认证头。）
-
+1. **统一推送**（部署用）—— Mac Telemetry Hub 把精简后的充电头状态放进 v2 envelope，只 POST 到 `/api/ingest/telemetry`，使用 `TELEMETRY_INGEST_SECRET` Bearer 鉴权。
 2. **本地轮询**（开发用）—— 一次推送都没收到过时，回退到直接拉 `ANKER_URL`。
 
 **总功率历史存在服务端**（`lib/charger-store.ts`）。30 秒一个采样点，如果让客户端自己累积，页面一刷新曲线就没了、而且要攒半小时才有形状。环形缓冲 180 点，推送模式下约 90 分钟；两点之间有 5 秒最小间隔，好让本地 1Hz 轮询不至于 180 个点只够 3 分钟。
@@ -95,6 +89,39 @@ Apple Music 的封面没有代理，仍走 `mzstatic.com` 直链 —— 那本�
 - 上游把 `"N/A"` 当占位符大量返回，必须过滤，否则界面上会出现一堆 N/A
 - `ports` 的 key 顺序不保证，必须按 key 取
 - **没有温度字段**，也没有历史曲线 —— 卡片上那条功率曲线是客户端自己累积的最近约两分钟采样
+
+### Vibe Coding — ccusage
+
+`ccusage` 只读取本机 `~/.claude` 和 `~/.codex` 会话日志，页面展示 Claude Code / Codex
+卡片顶部汇总两者的全量 token、API 等值费用、活跃天数和 session 数，并按 input、output、
+cache read、cache write、reasoning 画堆叠占比。下方展示各自的今日 token、7 日趋势、
+API 等值费用、缓存命中率和模型。最近 5 分钟内只要
+`ccusage session` 仍记录到活动，就会显示呼吸绿点和“正在使用”。费用来自 `ccusage` 的
+公开价格表，只是“如果这些 token 走 API”的估值，并不是 Claude/Codex 订阅账单。
+不会上传提示词、回复、项目名或文件路径。
+
+趋势图使用最近 30 天、12 小时粒度（60 个点）。`ccusage` 没有 hourly report，因此按
+session 的 `lastActivity` 把该 session 的 token 归入对应 12 小时桶；长 session 会归到
+最后活动所在的桶。图表右侧的 `30D TOTAL` 是同一 30 天窗口的准确每日累计。
+
+采集时优先让 `ccusage` 在线读取 LiteLLM 价格表，网络失败才回退它自带的缓存。
+目前价格表还不认识 Claude Code 日志里的 `claude-opus-5` 简写；只有在上游返回 0、且当天仅有这个型号时，
+本站才按当前公开 Opus 标准价兜底。一旦 `ccusage` 能返回价格，兜底会自动失效。
+
+本地开发时 `/api/status/vibecoding` 会直接运行随项目安装的 `ccusage`，结果缓存 60 秒。
+部署后只接受 Mac Telemetry Hub v2 的聚合摘要，不接受 ccusage 原始输出。
+
+### 本机实时活动 — Mac Telemetry Hub
+
+`a2687-telemetry/A2687TelemetryMac` 已从单一充电头工具扩展为可插拔的本机遥测中心。充电头、前台应用、窗口标题、本机 Apple Music 和 ccusage 都能独立开启或关闭。Apple Music 通过 macOS Apple Events 读取 Music.app 的本机播放状态，与上面的 Apple Music API“最近在听”完全独立。
+
+所有采集器统一写入：
+
+```text
+POST /api/ingest/telemetry
+```
+
+请求采用唯一的 `version: 2` envelope，模块名固定为 `charger`、`desktop`、`apple_music` 和 `vibe_coding`，`modules` 只携带发生变化的模块。`heartbeat_at` 与 `active_modules` 是固定的小型存活信息，模块都没变化时最多每 30 秒发送一次空 `modules` heartbeat。Music.app 封面和前台应用图标由 Mac 直接读取，只在内容变化时上传一次；服务端按内容哈希生成 `/api/status/activity/assets/:id` 缓存地址，普通状态心跳不会重复携带图片。公开读取仍按用途拆分为 `/api/status/charger`、`/api/status/vibecoding` 和 `/api/status/activity`。
 
 ## 改内容
 
