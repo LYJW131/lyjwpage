@@ -10,10 +10,10 @@ import type { ChargerPayload, ChargerPort, ChargerStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /**
- * 数据到达由 SSE 通知，这里的轮询只是兜底 —— 防止 SSE 断了又没重连上时
- * 页面一直停在旧数据。所以间隔放得很宽。
+ * 那台机器约 5 秒推一次，前端跟着这个节奏取。
+ * 取的是服务端存好的快照，不会传导到充电头。
  */
-const REFRESH_MS = 60_000;
+const REFRESH_MS = 5_000;
 
 function tone(status: ChargerStatus | undefined): DotTone {
   if (!status?.connected) return "off";
@@ -29,7 +29,6 @@ export function ChargerCard({ className }: { className?: string }) {
   const { data, error, isLoading } = useStatus<ChargerPayload>(
     "/api/status/charger",
     REFRESH_MS,
-    "charger",
   );
   const history = data?.history ?? [];
 
@@ -37,6 +36,11 @@ export function ChargerCard({ className }: { className?: string }) {
   const power = data?.totalPower ?? 0;
   const dot = tone(data);
   const ratio = data ? Math.min(power / data.maxPower, 1) : 0;
+  const peak = history.length ? Math.max(...history.map((s) => s.w)) : 0;
+  const average = history.length
+    ? history.reduce((sum, s) => sum + s.w, 0) / history.length
+    : 0;
+  const activePorts = connected ? (data?.ports.filter((p) => p.active).length ?? 0) : 0;
 
   return (
     <Card
@@ -62,11 +66,17 @@ export function ChargerCard({ className }: { className?: string }) {
           行高写死：NumberFlow 这个 web component 自带 1.5 行高（72px），
           而占位文本是普通 span（48px）—— 不固定的话断开时整行塌 24px，
           下面的说明文案和曲线跟着上移。
-          数字区给一个够放下 160.0 的最小宽度：否则 W 单位会跟着数字宽度左右跳
-          —— 不只是断开时，功率从 9.9 变 18.5（3 位变 4 位）同样会跳。
+          没有给数字区预留固定宽度：按 160.0 预留的话，日常两位数会在数字和 W
+          之间空出一大块。W 跟着数字宽度走是正常排版，竖直方向不跳才是关键。
+
+          单位的对齐：不能用 items-baseline —— NumberFlow 是 web component，
+          基线由浏览器合成（取盒底），实测会让 W 高出 15px。也不能给数字加
+          leading-none —— 它的滚动动画依赖行高，会把数字撕成上下两截。
+          所以 items-end 底边对齐，再按实测补 4px：两边盒底相同，但字形底
+          分别在 257 和 261（半行距 0 vs 5、字体下伸 14 vs 5）。
         */}
-        <div className="flex h-[4.5rem] items-end gap-2">
-          <div className="min-w-[4.6ch] text-5xl font-medium tracking-tight tabular-nums">
+        <div className="flex h-[4.5rem] items-end gap-1.5">
+          <div className="text-5xl font-medium tracking-tight tabular-nums">
             {connected ? (
               <NumberFlow
                 value={power}
@@ -76,7 +86,7 @@ export function ChargerCard({ className }: { className?: string }) {
               <span className="text-muted-foreground">--.-</span>
             )}
           </div>
-          <span className="pb-1.5 font-mono text-lg text-muted-foreground">W</span>
+          <span className="pb-1 font-mono text-lg text-muted-foreground">W</span>
         </div>
 
         <p className="label-mono mt-1 text-muted-foreground">
@@ -91,9 +101,27 @@ export function ChargerCard({ className }: { className?: string }) {
                   : "充电器未连接"}
         </p>
 
+        {/* 这些都是接口早就返回、但一直没展示的：曲线窗口内的峰值/均值、
+            正在输出的口数、固件版本 */}
+        {history.length > 1 && (
+          <div className="label-mono mt-3 flex items-center gap-3 text-muted-foreground">
+            <span>峰值 {peak.toFixed(1)}W</span>
+            <span className="h-2.5 w-px bg-line" />
+            <span>均值 {average.toFixed(1)}W</span>
+            <span className="h-2.5 w-px bg-line" />
+            <span>{activePorts} 口在用</span>
+            {data?.device.firmwareVersion && (
+              <>
+                <span className="h-2.5 w-px bg-line" />
+                <span className="ml-auto">{data.device.firmwareVersion}</span>
+              </>
+            )}
+          </div>
+        )}
+
         {/* 功率曲线：服务端累积的历史。两条坐标轴都固定，不随数据缩放，
             否则每来一个点整条曲线都会挪位 —— 细节见 sparkline.tsx */}
-        <div className="-mx-1 mt-3 flex max-h-24 min-h-8 flex-1 items-end">
+        <div className="-mx-1 mt-2 flex max-h-32 min-h-8 flex-1 items-end">
           <Sparkline samples={history} className="h-full min-h-8 w-full" />
         </div>
 

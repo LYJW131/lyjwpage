@@ -19,11 +19,12 @@ import type { WatchingItem } from "@/lib/types";
 
 const RESUME_TTL_MS = 60_000;
 /**
- * 播放中才会用到的会话查询。
- * Emby 拖动进度条时不发任何事件（播放事件只有 start/pause/unpause/stop），
- * 想跟上 seek 只能主动问一次。这个查询只在「正在播放」时发生，空闲时为零。
+ * 正在播放时才会用到的会话查询。
+ * Emby 拖动进度条不发任何 webhook（播放事件只有 start/pause/unpause/stop），
+ * 想跟上 seek 只能主动问。缓存很短是为了跟手；没在播时一次都不会发。
  */
-const SESSION_TTL_MS = 5_000;
+const SESSION_TTL_MS = 2_000;
+
 const TIMEOUT_MS = 6_000;
 
 type EmbyItem = {
@@ -208,17 +209,11 @@ export async function getWatching({ limit = 8 } = {}): Promise<WatchingPayload> 
     return { items, nowPlaying: null };
   }
 
-  // 播放中才去核对一次真实位置，把 seek 造成的偏差拉回来
-  const corrected = await syncPosition(live, url, key, userId);
-  return { items, nowPlaying: corrected };
+  // 正在播放：顺带核对一次真实位置，把 seek 造成的偏差拉回来
+  return { items, nowPlaying: await syncPosition(live, url, key, userId) };
 }
 
-/**
- * 用 Sessions 校正播放位置。
- *
- * 只在已知「正在播放」时才调用，所以没在看片时一次请求都不会发。
- * 会话查不到（客户端刚退出、还没收到 stop）就沿用 webhook 的推算值。
- */
+/** 用 Sessions 校正播放位置。只在已知正在播放时调用，空闲时零请求 */
 async function syncPosition(
   live: ResolvedNowPlaying,
   url: string,
@@ -243,11 +238,10 @@ async function syncPosition(
     if (!session?.NowPlayingItem?.Id) return live;
 
     const positionTicks = Number(session.PlayState?.PositionTicks) || 0;
-    const runTimeTicks =
-      Number(session.NowPlayingItem.RunTimeTicks) || live.durationMs! * TICKS_PER_MS;
+    const runTimeTicks = Number(session.NowPlayingItem.RunTimeTicks) || 0;
     const paused = Boolean(session.PlayState?.IsPaused);
 
-    // 顺便把校正后的位置写回存储，这样下次没有会话时推算也是从新锚点开始
+    // 写回存储：这样即便下一拍查不到会话，推算也是从校正后的锚点开始
     await setNowPlaying({
       itemId: live.itemId,
       paused,
@@ -270,3 +264,4 @@ async function syncPosition(
     return live;
   }
 }
+

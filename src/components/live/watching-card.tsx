@@ -16,10 +16,12 @@ import type { WatchingItem } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /**
- * 播放状态变化由 Emby webhook → SSE 通知，这里是兜底轮询。
- * 但播放中要跟上 seek（Emby 不发 seek 事件），所以不能放太宽。
+ * 有东西在播时轮询要跟手 —— Emby 拖动进度条不发 webhook，只能靠问。
+ * 服务端那边同样是「正在播放才查 Sessions」（缓存 2 秒），所以前端调到 3 秒
+ * 也不会让 Emby 压力翻倍。空闲时放慢到一分钟。
  */
-const REFRESH_MS = 15_000;
+const REFRESH_PLAYING_MS = 3_000;
+const REFRESH_IDLE_MS = 60_000;
 
 /**
  * 卡片宽度按容器等分，保证视口里永远是整数张、不会被切一半。
@@ -169,8 +171,7 @@ function Skeleton() {
 export function WatchingRow() {
   const { data, error, isLoading } = useStatus<WatchingPayload>(
     "/api/status/watching",
-    REFRESH_MS,
-    "watching",
+    (payload) => (payload?.nowPlaying ? REFRESH_PLAYING_MS : REFRESH_IDLE_MS),
   );
   const reduced = useReducedMotion();
   // 对重排稳定的 key，否则列表顺序一变会被当成整批换新

@@ -11,8 +11,13 @@ import type { ChargerSample, ChargerStatus } from "@/lib/types";
  * 存 Redis：进程重启后历史还在。没配 Redis 就退回进程内存。
  */
 
-/** 历史点数上限。按实测约 8 秒一个点算，覆盖约 24 分钟 */
-const HISTORY_LIMIT = 180;
+/**
+ * 历史点数上限。
+ * 必须保证「即使按最密的采样间隔，也能盖满曲线的时间窗」，否则曲线左边会空
+ * 一截：400 × MIN_SAMPLE_GAP(5s) = 33 分钟 > 窗口 20 分钟。
+ * 改这里要和 sparkline.tsx 的 WINDOW_MS 一起看。
+ */
+const HISTORY_LIMIT = 400;
 
 /**
  * 两个采样点之间的最小间隔，用来控制曲线的时间跨度。
