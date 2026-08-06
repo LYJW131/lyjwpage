@@ -36,11 +36,6 @@ export function ChargerCard({ className }: { className?: string }) {
   const power = data?.totalPower ?? 0;
   const dot = tone(data);
   const ratio = data ? Math.min(power / data.maxPower, 1) : 0;
-  const peak = history.length ? Math.max(...history.map((s) => s.w)) : 0;
-  const average = history.length
-    ? history.reduce((sum, s) => sum + s.w, 0) / history.length
-    : 0;
-  const activePorts = connected ? (data?.ports.filter((p) => p.active).length ?? 0) : 0;
 
   return (
     <Card
@@ -101,27 +96,9 @@ export function ChargerCard({ className }: { className?: string }) {
                   : "充电器未连接"}
         </p>
 
-        {/* 这些都是接口早就返回、但一直没展示的：曲线窗口内的峰值/均值、
-            正在输出的口数、固件版本 */}
-        {history.length > 1 && (
-          <div className="label-mono mt-3 flex items-center gap-3 text-muted-foreground">
-            <span>峰值 {peak.toFixed(1)}W</span>
-            <span className="h-2.5 w-px bg-line" />
-            <span>均值 {average.toFixed(1)}W</span>
-            <span className="h-2.5 w-px bg-line" />
-            <span>{activePorts} 口在用</span>
-            {data?.device.firmwareVersion && (
-              <>
-                <span className="h-2.5 w-px bg-line" />
-                <span className="ml-auto">{data.device.firmwareVersion}</span>
-              </>
-            )}
-          </div>
-        )}
-
         {/* 功率曲线：服务端累积的历史。两条坐标轴都固定，不随数据缩放，
             否则每来一个点整条曲线都会挪位 —— 细节见 sparkline.tsx */}
-        <div className="-mx-1 mt-2 flex max-h-32 min-h-8 flex-1 items-end">
+        <div className="-mx-1 mt-3 flex max-h-32 min-h-8 flex-1 items-end">
           <Sparkline samples={history} className="h-full min-h-8 w-full" />
         </div>
 
