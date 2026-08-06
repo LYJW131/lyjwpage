@@ -58,15 +58,22 @@ export function ChargerCard({ className }: { className?: string }) {
       )}
     >
       <div className="flex flex-1 flex-col justify-between px-4 pb-4 pt-2">
-        <div className="flex items-end gap-2">
-          <div className="text-5xl font-medium tracking-tight tabular-nums">
+        {/*
+          行高写死：NumberFlow 这个 web component 自带 1.5 行高（72px），
+          而占位文本是普通 span（48px）—— 不固定的话断开时整行塌 24px，
+          下面的说明文案和曲线跟着上移。
+          数字区给一个够放下 160.0 的最小宽度：否则 W 单位会跟着数字宽度左右跳
+          —— 不只是断开时，功率从 9.9 变 18.5（3 位变 4 位）同样会跳。
+        */}
+        <div className="flex h-[4.5rem] items-end gap-2">
+          <div className="min-w-[4.6ch] text-5xl font-medium tracking-tight tabular-nums">
             {connected ? (
               <NumberFlow
                 value={power}
                 format={{ minimumFractionDigits: 1, maximumFractionDigits: 1 }}
               />
             ) : (
-              <span className="text-muted-foreground">--</span>
+              <span className="text-muted-foreground">--.-</span>
             )}
           </div>
           <span className="pb-1.5 font-mono text-lg text-muted-foreground">W</span>
