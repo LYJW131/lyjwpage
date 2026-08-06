@@ -1,9 +1,17 @@
 "use client";
 
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import Image from "next/image";
 
 import { StatusDot } from "@/components/ui/status-dot";
 import { useStatus } from "@/hooks/use-status";
+import { stableKeys } from "@/lib/keys";
+import {
+  LIST_TRANSITION,
+  ROW_ITEM_VARIANTS,
+  STATIC_TRANSITION,
+  STATIC_VARIANTS,
+} from "@/lib/motion";
 import type { WatchingItem } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -15,7 +23,6 @@ const REFRESH_MS = 20_000;
  * 分母是列数，减掉的是列间的 gap-3（0.75rem）总宽：(列数 - 1) × 0.75rem。
  */
 const TILE_WIDTH = cn(
-  "shrink-0 snap-start",
   "basis-[calc((100%-0.75rem)/2)]",
   "md:basis-[calc((100%-1.5rem)/3)]",
   "lg:basis-[calc((100%-2.25rem)/4)]",
@@ -50,9 +57,9 @@ function Tile({
       target="_blank"
       rel="noreferrer noopener"
       className={cn(
-        "group relative flex flex-col overflow-hidden rounded-md",
+        // 宽度和吸附交给外层的 motion 包装
+        "group relative flex h-full w-full flex-col overflow-hidden rounded-md",
         "border border-line bg-surface transition-colors hover:border-line-strong",
-        TILE_WIDTH,
         live && "border-live/40",
       )}
     >
@@ -85,7 +92,9 @@ function Tile({
           <div
             className={cn(
               "h-full bg-live transition-[width] duration-700",
-              live && !paused && "[animation:progress-pulse_1.8s_ease-in-out_infinite]",
+              live &&
+                !paused &&
+                "[animation:progress-pulse_1.8s_ease-in-out_infinite]",
             )}
             style={{ width: `${Math.round(progress)}%` }}
           />
@@ -96,7 +105,10 @@ function Tile({
         <div className="truncate text-sm font-medium" title={item.title}>
           {item.title}
         </div>
-        <div className="truncate text-xs text-muted-foreground" title={item.subtitle}>
+        <div
+          className="truncate text-xs text-muted-foreground"
+          title={item.subtitle}
+        >
           {item.subtitle || "—"}
         </div>
       </div>
@@ -111,7 +123,7 @@ function Skeleton() {
         <div
           key={i}
           className={cn(
-            "overflow-hidden rounded-md border border-line bg-surface",
+            "shrink-0 overflow-hidden rounded-md border border-line bg-surface",
             TILE_WIDTH,
           )}
         >
@@ -131,6 +143,9 @@ export function WatchingRow() {
     "/api/status/watching",
     REFRESH_MS,
   );
+  const reduced = useReducedMotion();
+  // 对重排稳定的 key，否则列表顺序一变会被当成整批换新
+  const keys = stableKeys((data?.items ?? []).map((item) => item.id));
 
   if (isLoading && !data) return <Skeleton />;
 
@@ -148,18 +163,35 @@ export function WatchingRow() {
     // 触发触控板的「滑动返回上一页」，那下手感是最生硬的。
     <div className="snap-x snap-mandatory scroll-smooth overflow-x-auto overscroll-x-contain pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       <div className="flex gap-3">
-        {data.items.map((item) => {
-          const live = data.nowPlaying?.itemId === item.id;
-          return (
-            <Tile
-              key={item.id}
-              item={item}
-              live={live}
-              paused={live ? Boolean(data.nowPlaying?.paused) : false}
-              liveProgress={live ? (data.nowPlaying?.progress ?? null) : null}
-            />
-          );
-        })}
+        {/* popLayout 让离场的卡片脱离布局流，后面的能同时补位 */}
+        <AnimatePresence initial={false} mode="popLayout">
+          {data.items.map((item, index) => {
+            const live = data.nowPlaying?.itemId === item.id;
+            return (
+              <motion.div
+                key={keys[index]}
+                layout={!reduced}
+                variants={reduced ? STATIC_VARIANTS : ROW_ITEM_VARIANTS}
+                initial="initial"
+                animate="animate"
+                exit="exit"
+                transition={reduced ? STATIC_TRANSITION : LIST_TRANSITION}
+                // min-w-0 不能少：flex 子项的 min-width: auto 会取内容最小宽度，
+                // 卡片里那行 nowrap 的长副标题会把 basis 顶开、宽度变得参差不齐
+                className={cn("min-w-0 shrink-0 snap-start", TILE_WIDTH)}
+              >
+                <Tile
+                  item={item}
+                  live={live}
+                  paused={live ? Boolean(data.nowPlaying?.paused) : false}
+                  liveProgress={
+                    live ? (data.nowPlaying?.progress ?? null) : null
+                  }
+                />
+              </motion.div>
+            );
+          })}
+        </AnimatePresence>
       </div>
     </div>
   );
