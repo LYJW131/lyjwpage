@@ -128,6 +128,39 @@ POST /api/ingest/telemetry
 
 请求采用唯一的 `version: 2` envelope，模块名固定为 `charger`、`desktop`、`apple_music` 和 `vibe_coding`，`modules` 只携带发生变化的模块。`heartbeat_at` 与 `active_modules` 是固定的小型存活信息，模块都没变化时最多每 30 秒发送一次空 `modules` heartbeat。Music.app 封面和前台应用图标由 Mac 直接读取，只在内容变化时上传一次；服务端按内容哈希生成 `/api/status/activity/assets/:id` 缓存地址，普通状态心跳不会重复携带图片。公开读取仍按用途拆分为 `/api/status/charger`、`/api/status/vibecoding` 和 `/api/status/activity`。
 
+### HomePod mini 播放实况
+
+Home Assistant 在 HomePod 换歌或切换 `playing / paused / idle / off` 时，把媒体状态推到：
+
+```text
+POST /api/ingest/homepod
+Authorization: Bearer <TELEMETRY_INGEST_SECRET>
+```
+
+接收端复用统一遥测密钥，状态写入 Redis（未配置时退回进程内存）。`/api/status/activity`
+严格优先使用仍在线的 MacBook Apple Music 遥测；MacBook 没有有效曲目时才回退到 HomePod。
+事件带有进度观测时间，前端会继续推算进度；超过曲目时长后自动清掉过期的“正在播放”。
+
+Home Assistant 的 `rest_command.push_homepod_now_playing` 使用以下目标与鉴权头：
+
+```yaml
+url: "https://lyjw131.com/api/ingest/homepod"
+method: post
+content_type: "application/json"
+headers:
+  authorization: !secret telemetry_ingest_authorization
+```
+
+`secrets.yaml` 只保存完整 header 值，不把密钥写进配置或仓库：
+
+```yaml
+telemetry_ingest_authorization: "Bearer <TELEMETRY_INGEST_SECRET>"
+```
+
+Home Assistant 的 `entity_picture` 是一个带 `cache` 参数的代理地址。接收端只提取其中公开的
+Apple CDN URL，并把 `{w}`、`{h}`、`{f}` 占位符替换成 `600`、`600`、`jpg` 后交给前端；
+Home Assistant 的局域网地址和代理 token 不会公开。
+
 ## 改内容
 
 文案、社交链接、项目、时间线全在 `src/lib/site.ts`，组件里不写死内容。标了 `占位` 的是示例文案。

@@ -90,10 +90,12 @@ export function LiveDeskCard({ className }: { className?: string }) {
   }, []);
 
   const offline = Boolean(error || data?.stale);
+  const desktopOffline = Boolean(error || data?.desktopStale);
+  const musicOffline = Boolean(error || data?.musicStale);
   const incomingDesktop = data?.desktop ?? null;
 
   useEffect(() => {
-    if (offline || !incomingDesktop) return;
+    if (desktopOffline || !incomingDesktop) return;
 
     const sameApplication =
       displayedDesktop?.bundleIdentifier === incomingDesktop.bundleIdentifier &&
@@ -130,16 +132,17 @@ export function LiveDeskCard({ className }: { className?: string }) {
   }, [
     displayedDesktop,
     incomingDesktop,
-    offline,
+    desktopOffline,
   ]);
 
   const music = data?.music;
-  const playing = Boolean(!offline && music?.state === "playing" && music.title);
+  const playing = Boolean(!musicOffline && music?.state === "playing" && music.title);
+  const musicSource = music?.source === "homepod" ? "HomePod mini" : "MacBook Pro";
   const position = music ? effectivePosition(music, now) : 0;
   const progress = music?.durationMs ? (position / music.durationMs) * 100 : 0;
   const desktop = displayedDesktop;
   // 只在前台应用真正切换时播放动效；窗口标题变化不会反复触发。
-  const applicationKey = offline
+  const applicationKey = desktopOffline
     ? "offline"
     : desktop?.bundleIdentifier ?? desktop?.applicationName ?? "idle";
 
@@ -152,7 +155,7 @@ export function LiveDeskCard({ className }: { className?: string }) {
     >
       <div className="grid gap-4 px-4 pb-4 pt-3 md:grid-cols-[minmax(0,1.4fr)_minmax(220px,0.6fr)]">
         <div className="rounded-md border border-line bg-background/40 p-4">
-          {music?.title && music.state !== "stopped" ? (
+          {!musicOffline && music?.title && music.state !== "stopped" ? (
             <>
               <div className="flex min-w-0 items-center gap-3">
                 <div className="relative flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-md border border-line bg-muted">
@@ -177,7 +180,7 @@ export function LiveDeskCard({ className }: { className?: string }) {
                     {[music.artist, music.album].filter(Boolean).join(" · ")}
                   </div>
                   <div className="mt-0.5 text-xs text-muted-foreground">
-                    Apple Music · {playing ? "正在播放" : "已暂停"}
+                    {musicSource} · {playing ? "正在播放" : "已暂停"}
                   </div>
                 </div>
               </div>
@@ -195,7 +198,7 @@ export function LiveDeskCard({ className }: { className?: string }) {
             </>
           ) : (
             <div className="flex min-h-20 items-center text-sm text-muted-foreground">
-              {isLoading ? "正在读取本机播放状态…" : "Apple Music 当前没有播放"}
+              {isLoading ? "正在读取播放状态…" : "当前没有播放"}
             </div>
           )}
         </div>
@@ -214,7 +217,7 @@ export function LiveDeskCard({ className }: { className?: string }) {
                 className="relative flex w-full min-w-0 origin-left items-center gap-3 overflow-hidden rounded-md"
               >
                 <div className="relative flex size-10 shrink-0 items-center justify-center overflow-hidden">
-                  {desktop?.iconUrl && !offline ? (
+                  {desktop?.iconUrl && !desktopOffline ? (
                     <Image
                       src={desktop.iconUrl}
                       alt=""
@@ -229,7 +232,7 @@ export function LiveDeskCard({ className }: { className?: string }) {
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-xl font-medium">
-                    {offline ? "—" : desktop?.applicationName ?? "暂无活动"}
+                    {desktopOffline ? "—" : desktop?.applicationName ?? "暂无活动"}
                   </div>
                 </div>
               </motion.div>

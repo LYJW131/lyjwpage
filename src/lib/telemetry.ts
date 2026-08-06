@@ -5,6 +5,7 @@ import { join } from "node:path";
 
 import { normalizeRawStatus, type RawStatus } from "@/lib/anker";
 import { recordPushHeartbeat, recordStatus } from "@/lib/charger-store";
+import { getHomePodNowPlaying } from "@/lib/homepod-store";
 import type {
   ActivityPayload,
   DesktopActivity,
@@ -225,20 +226,36 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
   return { accepted, heartbeat: true };
 }
 
-export function getActivityPayload(): ActivityPayload {
+export async function getActivityPayload(): Promise<ActivityPayload> {
   hydrateTelemetryState();
-  const activityEnabled =
-    telemetryState.activeModules.has("desktop") ||
-    telemetryState.activeModules.has("apple_music");
+  const telemetryStale =
+    !telemetryState.telemetryReceivedAt ||
+    Date.now() - telemetryState.telemetryReceivedAt > ACTIVITY_STALE_MS;
+  const desktopEnabled = telemetryState.activeModules.has("desktop");
+  const musicEnabled = telemetryState.activeModules.has("apple_music");
+  const macMusic = musicEnabled && !telemetryStale ? telemetryState.music : null;
+  const homePod = await getHomePodNowPlaying();
+  const homePodMusic = homePod?.music ?? null;
+
+  // MacBook telemetry is authoritative whenever it has a usable track; HomePod is fallback.
+  const music =
+    (macMusic?.state === "playing" || macMusic?.state === "paused" ? macMusic : null) ??
+    (homePodMusic?.state === "playing" || homePodMusic?.state === "paused"
+      ? homePodMusic
+      : null);
+  const desktopStale = !desktopEnabled || telemetryStale;
+  const musicStale = !music;
+
   return {
-    desktop: telemetryState.activeModules.has("desktop") ? telemetryState.desktop : null,
-    music: telemetryState.activeModules.has("apple_music") ? telemetryState.music : null,
-    receivedAt:
-      telemetryState.activityReceivedAt || telemetryState.telemetryReceivedAt || null,
-    stale:
-      activityEnabled &&
-      (!telemetryState.telemetryReceivedAt ||
-        Date.now() - telemetryState.telemetryReceivedAt > ACTIVITY_STALE_MS),
+    desktop: desktopStale ? null : telemetryState.desktop,
+    music,
+    receivedAt: Math.max(
+      telemetryState.activityReceivedAt || telemetryState.telemetryReceivedAt || 0,
+      homePod?.receivedAt ?? 0,
+    ) || null,
+    desktopStale,
+    musicStale,
+    stale: desktopStale && musicStale,
   };
 }
 

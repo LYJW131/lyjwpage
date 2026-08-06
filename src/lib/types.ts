@@ -74,7 +74,7 @@ export type DesktopActivity = {
 
 /** Music.app 的本机播放实况，与 Apple Music Web API 的“最近播放”完全独立。 */
 export type LocalNowPlaying = {
-  source: "apple-music";
+  source: "apple-music" | "homepod";
   state: "playing" | "paused" | "stopped";
   title: string | null;
   artist: string | null;
@@ -90,7 +90,11 @@ export type ActivityPayload = {
   desktop: DesktopActivity | null;
   music: LocalNowPlaying | null;
   receivedAt: number | null;
-  /** 本机遥测应用超过心跳窗口没有上报。 */
+  /** MacBook 前台应用遥测是否不可用或已超过心跳窗口。 */
+  desktopStale: boolean;
+  /** MacBook 与 HomePod 都没有可展示的播放状态。 */
+  musicStale: boolean;
+  /** 所有实时活动来源都不可用。 */
   stale: boolean;
 };
 
