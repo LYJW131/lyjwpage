@@ -238,7 +238,12 @@ function AgentPanel({
         </div>
       </div>
       <div className="mt-2 h-16">
-        <Sparkline samples={samples} max={max} className="h-full w-full" />
+        <Sparkline
+          samples={samples}
+          max={max}
+          windowMs={null}
+          className="h-full w-full"
+        />
       </div>
     </div>
   );

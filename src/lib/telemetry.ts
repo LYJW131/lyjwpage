@@ -175,7 +175,7 @@ export function getActivityAsset(id: string) {
 }
 
 /** 一个 envelope 可以只更新一个模块；未出现的模块保持原快照。 */
-export function recordTelemetryEnvelope(input: unknown, receivedAt = Date.now()) {
+export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.now()) {
   const envelope = object(input) as TelemetryEnvelope | null;
   if (!envelope || envelope.version !== 2) throw new Error("遥测协议 version 必须为 2");
   if (number(envelope.heartbeat_at) == null) throw new Error("遥测请求缺少 heartbeat_at");
@@ -188,7 +188,9 @@ export function recordTelemetryEnvelope(input: unknown, receivedAt = Date.now())
   }
   telemetryState.activeModules = new Set(nextActiveModules);
   telemetryState.telemetryReceivedAt = receivedAt;
-  if (telemetryState.activeModules.has("charger")) recordPushHeartbeat(receivedAt);
+  if (telemetryState.activeModules.has("charger")) {
+    await recordPushHeartbeat(receivedAt);
+  }
   const modules = object(envelope.modules);
   if (!modules) throw new Error("遥测请求缺少 modules 对象");
 
@@ -197,7 +199,7 @@ export function recordTelemetryEnvelope(input: unknown, receivedAt = Date.now())
   if ("charger" in modules) {
     const raw = object(modules.charger) as RawStatus | null;
     if (!raw?.updated_at) throw new Error("charger 模块缺少 updated_at");
-    recordStatus(normalizeRawStatus(raw), "push", receivedAt);
+    await recordStatus(normalizeRawStatus(raw), receivedAt);
     accepted += 1;
   }
 

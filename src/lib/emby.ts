@@ -1,4 +1,10 @@
 import { cached } from "@/lib/cache";
+import {
+  getNowPlaying,
+  setNowPlaying,
+  TICKS_PER_MS,
+  type ResolvedNowPlaying,
+} from "@/lib/emby-store";
 import { embyImageUrl, type ImageKind } from "@/lib/image-proxy";
 import type { WatchingItem } from "@/lib/types";
 
@@ -6,13 +12,19 @@ import type { WatchingItem } from "@/lib/types";
  * Emby「最近在看」。
  *
  * 两个数据源合成：
- * - Users/{id}/Items/Resume —— 未看完的续播列表（小时级变化）
- * - Sessions               —— 此刻真正在播放的会话，用来给某一条打实时标记
+ * - Users/{id}/Items/Resume —— 未看完的续播列表，本站定时拉
+ * - Emby 的 webhook        —— 开播/暂停/停止时主动通知本站，用来打实时标记。
+ *   以前是轮询 /emby/Sessions，现在不轮询了，见 lib/emby-store.ts
  */
 
 const RESUME_TTL_MS = 60_000;
-/** 正在播放的状态要跟手一些 */
-const SESSIONS_TTL_MS = 10_000;
+/**
+ * 正在播放时才会用到的会话查询。
+ * Emby 拖动进度条不发任何 webhook（播放事件只有 start/pause/unpause/stop），
+ * 想跟上 seek 只能主动问。缓存很短是为了跟手；没在播时一次都不会发。
+ */
+const SESSION_TTL_MS = 2_000;
+
 const TIMEOUT_MS = 6_000;
 
 type EmbyItem = {
@@ -38,14 +50,6 @@ type EmbyItem = {
     PlaybackPositionTicks?: number;
     LastPlayedDate?: string;
   };
-};
-
-type EmbySession = {
-  UserId?: string;
-  Client?: string;
-  DeviceName?: string;
-  NowPlayingItem?: { Id?: string; RunTimeTicks?: number };
-  PlayState?: { IsPaused?: boolean; PositionTicks?: number };
 };
 
 function config() {
@@ -174,12 +178,7 @@ function normalize(item: EmbyItem, publicUrl: string): WatchingItem {
 export type WatchingPayload = {
   items: WatchingItem[];
   /** 此刻正在播放的那一条，附带设备与暂停状态 */
-  nowPlaying: {
-    itemId: string;
-    paused: boolean;
-    progress: number | null;
-    device: string;
-  } | null;
+  nowPlaying: ResolvedNowPlaying | null;
 };
 
 export async function getWatching({ limit = 8 } = {}): Promise<WatchingPayload> {
@@ -203,39 +202,65 @@ export async function getWatching({ limit = 8 } = {}): Promise<WatchingPayload> 
     return (data.Items ?? []).map((item) => normalize(item, publicUrl));
   });
 
-  // Sessions 挂了不该拖垮整个列表 —— 没有实时标记只是少个锦上添花
-  let nowPlaying: WatchingPayload["nowPlaying"] = null;
-  try {
-    const sessions = await cached(`emby:sessions`, SESSIONS_TTL_MS, () =>
-      embyFetch<EmbySession[]>(`${url}/emby/Sessions`, key),
-    );
-
-    // 必须在续播列表里反查，不能「随便找一个有 NowPlayingItem 的会话」：
-    // Sessions 里混着 DLNA 投屏、qbittorrent、auth_proxy 这些没有 UserId 的
-    // 条目，而多个会话同时有 NowPlayingItem 时 find 取到的是任意一个 ——
-    // 取错了就等于真正在看的那条拿不到实时标记。
-    const resumeIds = new Set(items.map((item) => item.id));
-    const session = sessions.find(
-      (entry) =>
-        entry.UserId === userId &&
-        entry.NowPlayingItem?.Id &&
-        resumeIds.has(String(entry.NowPlayingItem.Id)),
-    );
-
-    if (session?.NowPlayingItem?.Id) {
-      const runtime = Number(session.NowPlayingItem.RunTimeTicks) || 0;
-      const position = Number(session.PlayState?.PositionTicks) || 0;
-
-      nowPlaying = {
-        itemId: String(session.NowPlayingItem.Id),
-        paused: Boolean(session.PlayState?.IsPaused),
-        progress: runtime > 0 ? Math.min(100, (position / runtime) * 100) : null,
-        device: session.Client || session.DeviceName || "",
-      };
-    }
-  } catch {
-    nowPlaying = null;
+  // 是否正在播放由 Emby 的 webhook 决定，本站不定时轮询。
+  // 只认续播列表里有的条目：webhook 可能报的是列表外的东西（比如音乐）
+  const live = await getNowPlaying();
+  if (!live || !items.some((item) => item.id === live.itemId)) {
+    return { items, nowPlaying: null };
   }
 
-  return { items, nowPlaying };
+  // 正在播放：顺带核对一次真实位置，把 seek 造成的偏差拉回来
+  return { items, nowPlaying: await syncPosition(live, url, key, userId) };
+}
+
+/** 用 Sessions 校正播放位置。只在已知正在播放时调用，空闲时零请求 */
+async function syncPosition(
+  live: ResolvedNowPlaying,
+  url: string,
+  key: string,
+  userId: string,
+): Promise<ResolvedNowPlaying> {
+  try {
+    const sessions = await cached(`emby:session-position`, SESSION_TTL_MS, () =>
+      embyFetch<
+        Array<{
+          UserId?: string;
+          NowPlayingItem?: { Id?: string; RunTimeTicks?: number };
+          PlayState?: { PositionTicks?: number; IsPaused?: boolean };
+        }>
+      >(`${url}/emby/Sessions`, key),
+    );
+
+    const session = sessions.find(
+      (entry) =>
+        entry.UserId === userId && String(entry.NowPlayingItem?.Id ?? "") === live.itemId,
+    );
+    if (!session?.NowPlayingItem?.Id) return live;
+
+    const positionTicks = Number(session.PlayState?.PositionTicks) || 0;
+    const runTimeTicks = Number(session.NowPlayingItem.RunTimeTicks) || 0;
+    const paused = Boolean(session.PlayState?.IsPaused);
+
+    // 写回存储：这样即便下一拍查不到会话，推算也是从校正后的锚点开始
+    await setNowPlaying({
+      itemId: live.itemId,
+      paused,
+      positionTicks,
+      runTimeTicks,
+      device: live.device,
+      at: Date.now(),
+    });
+
+    return {
+      itemId: live.itemId,
+      paused,
+      progress: runTimeTicks ? Math.min(100, (positionTicks / runTimeTicks) * 100) : null,
+      device: live.device,
+      positionMs: positionTicks / TICKS_PER_MS,
+      durationMs: runTimeTicks ? runTimeTicks / TICKS_PER_MS : null,
+    };
+  } catch {
+    // Sessions 挂了不该影响展示，沿用推算值
+    return live;
+  }
 }
