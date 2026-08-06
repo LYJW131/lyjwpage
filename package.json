@@ -3,13 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -p 3211",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
   },
   "dependencies": {
     "@number-flow/react": "^0.6.2",
+    "ccusage": "^20.0.19",
     "clsx": "^2.1.1",
     "geist": "^1.7.2",
     "jose": "^6.2.8",
