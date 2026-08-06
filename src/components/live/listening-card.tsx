@@ -20,8 +20,8 @@ import { cn } from "@/lib/utils";
 /** 与服务端 30s 列表缓存对齐 */
 const REFRESH_MS = 30_000;
 
-/** 单行高度（h-12 = 3rem），必须和 TrackRow 上的 class 一致 */
-const ROW_HEIGHT = "3rem";
+/** 单行高度，必须和行上的 h-12 一致（3rem = 48px） */
+const ROW_HEIGHT_PX = 48;
 /** 列表窗口里显示几行 —— 取整数行，避免露出半行 */
 const VISIBLE_ROWS = 4;
 
@@ -110,21 +110,33 @@ function SkeletonRow() {
 const useIsomorphicLayoutEffect =
   typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
+/** 用户停止滚动后多久开始对齐 */
+const SETTLE_DELAY_MS = 110;
+/** 数据变化后这段时间内不做对齐，等重排动画落定 */
+const SUSPEND_AFTER_CHANGE_MS = 500;
+
 /**
- * 列表顶部换人时把滚动位置强制拉回顶端。
+ * 保证列表永远停在整行上，同时不和重排动画打架。
  *
- * 不能指望浏览器自己处理：新条目插到顶部时，滚动锚定会把 scrollTop 加一行
- * 「保持视觉位置不变」，scroll-snap 又会重新吸附到原来那个（已经下移的）元素，
- * 两者拉扯的结果是时序相关的 —— 有时滑回顶端，有时就卡在第二行，
- * 得手动滑回去。所以直接接管，且必须在绘制前做，否则会看到跳一下。
+ * 没有用 CSS 的 scroll-snap：它会在数据变化时重新计算吸附目标，而 popLayout
+ * 会把离场元素改成绝对定位、容器高度剧变，导致吸附算飞 —— 实测 scrollTop
+ * 会被弹到 48 甚至 192。「动画期间临时关掉吸附」也不行，装回去的那一刻
+ * 动画还没落定，照样被吸走。
+ *
+ * 所以自己做：只在「用户滚动停下来之后」对齐到最近的整行，
+ * 并且在数据变化后的动画窗口内跳过。浏览器不再有插手的机会。
  */
-function useResetScrollOnChange(topKey: string | undefined) {
+function useRowSnap(rowHeight: number, topKey: string | undefined) {
   const ref = useRef<HTMLDivElement>(null);
   const previous = useRef(topKey);
+  const suspendUntil = useRef(0);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // 顶部换人：拉回顶端，并在动画期间挂起对齐
   useIsomorphicLayoutEffect(() => {
     if (previous.current === topKey) return;
     previous.current = topKey;
+    suspendUntil.current = Date.now() + SUSPEND_AFTER_CHANGE_MS;
 
     const el = ref.current;
     if (!el || el.scrollTop === 0) return;
@@ -134,6 +146,28 @@ function useResetScrollOnChange(topKey: string | undefined) {
     el.scrollTop = 0;
     el.style.scrollBehavior = saved;
   }, [topKey]);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+
+    const onScroll = () => {
+      if (timer.current) clearTimeout(timer.current);
+      timer.current = setTimeout(() => {
+        if (Date.now() < suspendUntil.current) return;
+        const target = Math.round(el.scrollTop / rowHeight) * rowHeight;
+        // 已经对齐就别再滚，否则自己触发的 scroll 会来回抖
+        if (Math.abs(target - el.scrollTop) < 0.5) return;
+        el.scrollTo({ top: target, behavior: "smooth" });
+      }, SETTLE_DELAY_MS);
+    };
+
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      if (timer.current) clearTimeout(timer.current);
+    };
+  }, [rowHeight]);
 
   return ref;
 }
@@ -176,7 +210,7 @@ export function ListeningCard({ className }: { className?: string }) {
   );
   // 对重排稳定的 key，否则顶部插入新条目时会被当成整批换新
   const restKeys = stableKeys(rest.map((item) => item.id));
-  const listRef = useResetScrollOnChange(restKeys[0]);
+  const listRef = useRowSnap(ROW_HEIGHT_PX, restKeys[0]);
 
   return (
     <Card label="Recently Played" action="Apple Music" className={className}>
@@ -282,7 +316,7 @@ export function ListeningCard({ className }: { className?: string }) {
                 "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
               )}
               // 窗口高度取行高的整数倍，视图里永远是整数行
-              style={{ height: `calc(${ROW_HEIGHT} * ${VISIBLE_ROWS})` }}
+              style={{ height: `${ROW_HEIGHT_PX * VISIBLE_ROWS}px` }}
             >
               {rest.length > 0 ? (
                 // popLayout 让离场的行脱离布局流，剩下的能同时补位而不是等它消失
