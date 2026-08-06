@@ -37,8 +37,6 @@ export function ChargerCard({ className }: { className?: string }) {
   const power = data?.totalPower ?? 0;
   const dot = tone(data);
   const ratio = data ? Math.min(power / data.maxPower, 1) : 0;
-  // 峰值上留 15% 余量，并给一个下限，免得空载时噪声被放大成剧烈波动
-  const scale = Math.max(20, ...history.map((s) => s.w)) * 1.15;
 
   return (
     <Card
@@ -86,10 +84,10 @@ export function ChargerCard({ className }: { className?: string }) {
                   : "充电器未连接"}
         </p>
 
-        {/* 功率曲线：服务端累积的历史（当前推送频率下约 24 分钟）。
-            纵轴跟着实际峰值走而不是 160W 满量程 —— 否则日常十几瓦会被压成一条直线。 */}
+        {/* 功率曲线：服务端累积的历史。两条坐标轴都固定，不随数据缩放，
+            否则每来一个点整条曲线都会挪位 —— 细节见 sparkline.tsx */}
         <div className="-mx-1 mt-3 flex max-h-24 min-h-8 flex-1 items-end">
-          <Sparkline samples={history} max={scale} className="h-full min-h-8 w-full" />
+          <Sparkline samples={history} className="h-full min-h-8 w-full" />
         </div>
 
         {/* 三个 USB-C 口 */}
