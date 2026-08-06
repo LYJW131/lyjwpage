@@ -2,7 +2,13 @@
 
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import Image from "next/image";
-import { useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
 import { Card } from "@/components/ui/card";
 import { useStatus } from "@/hooks/use-status";
@@ -20,10 +26,14 @@ import { cn } from "@/lib/utils";
 /** 与服务端 30s 列表缓存对齐 */
 const REFRESH_MS = 30_000;
 
-/** 单行高度，必须和行上的 h-12 一致（3rem = 48px） */
-const ROW_HEIGHT_PX = 48;
-/** 列表窗口里显示几行 —— 取整数行，避免露出半行 */
-const VISIBLE_ROWS = 4;
+/**
+ * 单行的最小高度。行高不是写死的：列表会填满卡片剩下的空间，
+ * 再把这段空间等分成整数行 —— 见 useRowMetrics。
+ * 36px 封面 + 上下留白，比这个再矮就挤了。
+ */
+const MIN_ROW_HEIGHT_PX = 48;
+/** 至少留出这么多行的位置，避免卡片在极端布局下塌成一条缝 */
+const MIN_ROWS = 4;
 
 /** 三根竖条。推断为正在播时跳动，否则静止成一个普通的音乐小图标 */
 function Bars({ active }: { active: boolean }) {
@@ -94,9 +104,12 @@ function TrackRow({ track }: { track: ListeningItem }) {
 }
 
 /** 占位行，高度必须和 TrackRow 一致，否则加载完照样会跳 */
-function SkeletonRow() {
+function SkeletonRow({ height }: { height: number }) {
   return (
-    <div className="flex h-12 shrink-0 items-center gap-2.5 px-2">
+    <div
+      className="flex shrink-0 items-center gap-2.5 px-2"
+      style={{ height: `${height}px` }}
+    >
       <div className="size-9 shrink-0 animate-pulse rounded-sm bg-muted" />
       <div className="min-w-0 flex-1 space-y-1.5">
         <div className="h-3 w-2/5 animate-pulse rounded bg-muted" />
@@ -109,6 +122,39 @@ function SkeletonRow() {
 // 服务端没有 layout 阶段，useLayoutEffect 会告警，这里按环境切换
 const useIsomorphicLayoutEffect =
   typeof window !== "undefined" ? useLayoutEffect : useEffect;
+
+/**
+ * 让列表填满卡片剩下的高度，并把这段高度等分成整数行。
+ *
+ * 两张卡在同一 grid 行里、被拉成等高，而这张卡的内容比充电头矮 ——
+ * 行高写死的话，多出来的十几二十像素就摊在列表底下变成一块空白。
+ * 但也不能让列表直接撑满：那会在底部露出半行（实测 17px 的一条）。
+ *
+ * 所以量出可用高度，取能放下的整行数，再把高度平摊回每一行：
+ * 行高从 48px 起浮动几像素，视口怎么变，底部都是齐的、也永远是整行。
+ */
+function useRowMetrics() {
+  const hostRef = useRef<HTMLDivElement>(null);
+  const [rowHeight, setRowHeight] = useState(MIN_ROW_HEIGHT_PX);
+
+  useEffect(() => {
+    const el = hostRef.current;
+    if (!el) return;
+
+    const observer = new ResizeObserver(([entry]) => {
+      const available = entry.contentRect.height;
+      if (available < MIN_ROW_HEIGHT_PX) return;
+      const rows = Math.max(1, Math.floor(available / MIN_ROW_HEIGHT_PX));
+      const next = available / rows;
+      // 亚像素抖动会引起无限的「量→改→再量」循环，差得够多才写回
+      setRowHeight((prev) => (Math.abs(prev - next) < 0.5 ? prev : next));
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  return { hostRef, rowHeight };
+}
 
 /** 用户停止滚动后多久开始对齐 */
 const SETTLE_DELAY_MS = 110;
@@ -210,7 +256,8 @@ export function ListeningCard({ className }: { className?: string }) {
   );
   // 对重排稳定的 key，否则顶部插入新条目时会被当成整批换新
   const restKeys = stableKeys(rest.map((item) => item.id));
-  const listRef = useRowSnap(ROW_HEIGHT_PX, restKeys[0]);
+  const { hostRef, rowHeight } = useRowMetrics();
+  const listRef = useRowSnap(rowHeight, restKeys[0]);
 
   return (
     <Card label="Recently Played" action="Apple Music" className={className}>
@@ -295,52 +342,66 @@ export function ListeningCard({ className }: { className?: string }) {
 
           加载中也要把这块的位置占住（渲染骨架行），否则卡片会先矮一截、
           数据到了再撑高 —— 两张卡在同一 grid 行里，会一起跳。
-          高度用固定值而不是 max-height，条数多少都不影响。
+          这块吃掉卡片剩下的全部高度，行高由 useRowMetrics 平摊，
+          所以底部不会留空，也不会露出半行。
         */}
         {(isLoading || rest.length > 0) && (
           // 边框和内边距放在外层，滚动容器本身不带 padding ——
           // 否则吸附位会被 padding 顶偏，还得再补 scroll-padding
-          <div className="mt-3 border-t border-line pt-2">
+          // min-h-0 不能少：flex 子项默认 min-height:auto，会被内容撑破而不是滚动
+          <div className="mt-3 flex flex-1 flex-col border-t border-line pt-2">
+            {/*
+              滚动容器绝对定位，是为了让它对「这张卡有多高」完全没有发言权。
+              grid 行按 max-content 定高：让它参与的话，10 条 × 行高会被当成
+              卡片的固有高度，整个「此刻」区块被撑到近两倍（实测 364 → 588）。
+              绝对定位的子元素不参与固有尺寸计算，卡片高度就还是由充电头那张
+              决定，这里只负责把分到的空间填满。min-height 是这块唯一的话语权。
+            */}
             <div
-              ref={listRef}
-              className={cn(
-                "flex flex-col overflow-y-auto",
-                // 这里刻意不做 scroll-snap。它会和 framer 的 layout 动画打架：
-                // popLayout 把离场元素改成绝对定位，容器高度剧变，吸附目标算飞，
-                // 实测新条目进来时 scrollTop 会被弹到 48 甚至 192 再慢慢滑回。
-                // 整数行是靠容器固定高度（4 × 48px）保证的，不需要吸附。
-                "scroll-smooth overscroll-y-contain",
-                // 关掉滚动锚定：新条目插到顶部时，浏览器会为了「保持视觉位置不动」
-                // 自动把 scrollTop 加一行，结果第一行被顶出可视区，得手动滑回去
-                "[overflow-anchor:none]",
-                "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
-              )}
-              // 窗口高度取行高的整数倍，视图里永远是整数行
-              style={{ height: `${ROW_HEIGHT_PX * VISIBLE_ROWS}px` }}
+              ref={hostRef}
+              className="relative flex-1"
+              style={{ minHeight: `${MIN_ROW_HEIGHT_PX * MIN_ROWS}px` }}
             >
-              {rest.length > 0 ? (
-                // popLayout 让离场的行脱离布局流，剩下的能同时补位而不是等它消失
-                <AnimatePresence initial={false} mode="popLayout">
-                  {rest.map((item, index) => (
-                    <motion.div
-                      key={restKeys[index]}
-                      layout={!reduced}
-                      variants={reduced ? STATIC_VARIANTS : LIST_ITEM_VARIANTS}
-                      initial="initial"
-                      animate="animate"
-                      exit="exit"
-                      transition={reduced ? STATIC_TRANSITION : LIST_TRANSITION}
-                      className="h-12 shrink-0"
-                    >
-                      <TrackRow track={item} />
-                    </motion.div>
-                  ))}
-                </AnimatePresence>
-              ) : (
-                Array.from({ length: VISIBLE_ROWS }, (_, i) => (
-                  <SkeletonRow key={i} />
-                ))
-              )}
+              <div
+                ref={listRef}
+                className={cn(
+                  "absolute inset-0 flex flex-col overflow-y-auto",
+                  // 这里刻意不做 scroll-snap。它会和 framer 的 layout 动画打架：
+                  // popLayout 把离场元素改成绝对定位，容器高度剧变，吸附目标算飞，
+                  // 实测新条目进来时 scrollTop 会被弹到 48 甚至 192 再慢慢滑回。
+                  // 整数行是靠「容器高度正好等于行高整数倍」保证的，不需要吸附。
+                  "scroll-smooth overscroll-y-contain",
+                  // 关掉滚动锚定：新条目插到顶部时，浏览器会为了「保持视觉位置不动」
+                  // 自动把 scrollTop 加一行，结果第一行被顶出可视区，得手动滑回去
+                  "[overflow-anchor:none]",
+                  "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+                )}
+              >
+                {rest.length > 0 ? (
+                  // popLayout 让离场的行脱离布局流，剩下的能同时补位而不是等它消失
+                  <AnimatePresence initial={false} mode="popLayout">
+                    {rest.map((item, index) => (
+                      <motion.div
+                        key={restKeys[index]}
+                        layout={!reduced}
+                        variants={reduced ? STATIC_VARIANTS : LIST_ITEM_VARIANTS}
+                        initial="initial"
+                        animate="animate"
+                        exit="exit"
+                        transition={reduced ? STATIC_TRANSITION : LIST_TRANSITION}
+                        className="shrink-0"
+                        style={{ height: `${rowHeight}px` }}
+                      >
+                        <TrackRow track={item} />
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
+                ) : (
+                  Array.from({ length: MIN_ROWS }, (_, i) => (
+                    <SkeletonRow key={i} height={rowHeight} />
+                  ))
+                )}
+              </div>
             </div>
           </div>
         )}
