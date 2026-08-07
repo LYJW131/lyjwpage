@@ -370,7 +370,18 @@ function AgentPanel({
           <span className="text-sm font-medium">{agent.label}</span>
           {active && <span className="label-mono text-live">正在使用</span>}
         </div>
-        <span className="label-mono truncate text-muted-foreground" title={agent.models.join(" · ")}>
+        {/*
+          正在使用时点亮。这一格在两种状态下含义不一样 —— 用着的时候是「此刻在
+          跑什么」，闲着的时候是「历史上用得最多的是什么」。同一个位置同一种灰，
+          容易被当成同一件事读。
+        */}
+        <span
+          className={cn(
+            "label-mono truncate",
+            active ? "text-live" : "text-muted-foreground",
+          )}
+          title={agent.models.join(" · ")}
+        >
           {displayModel}
         </span>
       </div>
