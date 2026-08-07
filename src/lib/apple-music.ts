@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import { SignJWT, importPKCS8 } from "jose";
 
 import { cached, get as cacheGet, put as cachePut } from "@/lib/cache";
+import { storeImageBuffer } from "@/lib/image-store";
 import type { ListeningItem, NowPlayingGuess } from "@/lib/types";
 
 /**
@@ -124,10 +125,8 @@ async function normalize(
   const id = String(resource.id ?? attributes.playParams?.id ?? "");
 
   // 自建歌单优先用资料库那张：catalog 上就算有，也多半是自动拼的 mosaic，
-  // 不是用户自己选的封面。只在确实查得到时才给地址，否则前端会挂一张必然 404 的图
-  const fromLibrary = (await libraryPlaylistArtwork(id))
-    ? `${APPLE_IMAGE_PREFIX}${id}`
-    : null;
+  // 不是用户自己选的封面
+  const fromLibrary = await libraryPlaylistCover(id);
 
   return {
     id,
@@ -344,11 +343,11 @@ export async function resolveTrackLink(track: {
 
 /** 封面地址本身会过期（预签名 24 小时），别缓存太久 */
 const LIBRARY_ARTWORK_TTL_MS = 30 * 60 * 1000;
+const COVER_TIMEOUT_MS = 10_000;
+/** 歌单封面最大显示 80px，留到 3 倍屏 */
+const COVER_MAX_DIMENSION = 240;
 /** 自建 / 分享歌单的 id 前缀，只有这类才需要去资料库找封面 */
 const USER_PLAYLIST_PREFIX = "pl.u-";
-
-/** 前端看到的稳定地址；预签名地址只在服务端出现 */
-export const APPLE_IMAGE_PREFIX = "/api/image/apple/";
 
 type CatalogPlaylistWithLibrary = {
   relationships?: {
@@ -369,7 +368,7 @@ type CatalogPlaylistWithLibrary = {
  * 返回的是预签名 S3 地址（X-Amz-Expires=86400），没有 {w}/{h} 占位符，
  * 原样透传即可；但它会过期，所以不能直接交给浏览器。
  */
-export async function libraryPlaylistArtwork(id: string): Promise<string | null> {
+async function libraryPlaylistArtworkUrl(id: string): Promise<string | null> {
   if (!id.startsWith(USER_PLAYLIST_PREFIX)) return null;
   try {
     const credentials = await resolveCredentials();
@@ -389,6 +388,37 @@ export async function libraryPlaylistArtwork(id: string): Promise<string | null>
     }).then((url) => url || null);
   } catch {
     // 尽力而为：查不到就没有封面，不该让整个列表失败
+    return null;
+  }
+}
+
+/**
+ * 取回自定义封面，压缩后按内容哈希存下来，返回稳定地址。
+ *
+ * 地址用内容指纹而不是歌单 id：图片路由发的是 immutable，用歌单 id 的话
+ * 换了封面地址不变，浏览器会一直拿着旧的那张。指纹变了地址就变，缓存自然失效。
+ *
+ * 顺带解决了另一件事：哈希猜不出来，不像歌单 id 那样能被枚举，也就不需要
+ * 再单独给图片端点加「只服务展示中的项」这类校验。
+ */
+async function libraryPlaylistCover(id: string): Promise<string | null> {
+  const source = await libraryPlaylistArtworkUrl(id);
+  if (!source) return null;
+  try {
+    return await cached(`apple-music:cover:${id}`, LIBRARY_ARTWORK_TTL_MS, async () => {
+      const upstream = await fetch(source, {
+        cache: "no-store",
+        signal: AbortSignal.timeout(COVER_TIMEOUT_MS),
+      });
+      if (!upstream.ok) throw new Error(`封面下载失败 ${upstream.status}`);
+      const stored = await storeImageBuffer(
+        Buffer.from(await upstream.arrayBuffer()),
+        COVER_MAX_DIMENSION,
+      );
+      // 存空串而不是 null，让「取过但失败」也能被缓存住
+      return stored ?? "";
+    }).then((url) => url || null);
+  } catch {
     return null;
   }
 }

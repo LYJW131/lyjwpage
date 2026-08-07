@@ -197,6 +197,14 @@ function detectedContentType(body: Buffer) {
   ) {
     return "image/png";
   }
+  // RIFF....WEBP —— 压缩输出就是这个格式，不认的话会被当成非法内容丢掉
+  if (
+    body.length >= 12 &&
+    body.toString("ascii", 0, 4) === "RIFF" &&
+    body.toString("ascii", 8, 12) === "WEBP"
+  ) {
+    return "image/webp";
+  }
   return null;
 }
 
@@ -212,6 +220,35 @@ async function persistStoredImage(id: string, body: Buffer) {
  * 保存遥测上传的 base64 图片，返回内容寻址的统一图片 URL。
  * 同样的图片只会得到同一个 id，状态心跳无需重复携带二进制。
  */
+/**
+ * 按内容哈希存一张图，返回稳定地址。
+ *
+ * 地址取自压缩**之后**的字节，所以它就是内容指纹：图变了地址跟着变，
+ * `Cache-Control: immutable` 才站得住 —— 用歌单 id 之类的稳定标识做地址的话，
+ * 换了封面地址不变，浏览器会一直拿着旧的那张。
+ */
+export async function storeImageBuffer(
+  input: Buffer,
+  /** 最长边压到这个像素；省略则原样存 */
+  maxDimension?: number,
+): Promise<string | null> {
+  const detected = detectedContentType(input);
+  if (!input.length || input.length > MAX_ENTRY_BYTES || !detected) return null;
+
+  const entry = maxDimension
+    ? await compress({ body: input, contentType: detected, etag: null }, maxDimension)
+    : { body: input, contentType: detected, etag: null };
+
+  const id = createHash("sha256").update(entry.body).digest("hex").slice(0, 24);
+  const key = `stored:${id}`;
+  const stored = { ...entry, etag: `"${id}"` };
+
+  await persistStoredImage(id, stored.body);
+  remember(key, stored, STORED_IMAGE_TTL_MS);
+  await writeRedis(key, stored, STORED_IMAGE_TTL_MS);
+  return `${ASSET_URL_PREFIX}${id}`;
+}
+
 export async function storeUploadedImage(value: unknown): Promise<string | null> {
   if (
     typeof value !== "string" ||
@@ -219,19 +256,8 @@ export async function storeUploadedImage(value: unknown): Promise<string | null>
   ) {
     return null;
   }
-
-  const body = Buffer.from(value, "base64");
-  const contentType = detectedContentType(body);
-  if (!body.length || body.length > MAX_ENTRY_BYTES || !contentType) return null;
-
-  const id = createHash("sha256").update(body).digest("hex").slice(0, 24);
-  const key = `stored:${id}`;
-  const entry = { body, contentType, etag: `"${id}"` };
-
-  await persistStoredImage(id, body);
-  remember(key, entry, STORED_IMAGE_TTL_MS);
-  await writeRedis(key, entry, STORED_IMAGE_TTL_MS);
-  return `${ASSET_URL_PREFIX}${id}`;
+  // 不传尺寸：上报器上传的图标/封面本来就小，行为保持不变
+  return storeImageBuffer(Buffer.from(value, "base64"));
 }
 
 /**
