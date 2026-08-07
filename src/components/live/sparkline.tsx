@@ -61,10 +61,20 @@ export function Sparkline({
   const end = samples[samples.length - 1].t;
   const start = windowMs == null ? samples[0].t : end - windowMs;
 
-  const visible = samples.filter((sample) => sample.t >= start);
-  if (visible.length < 2) {
+  /**
+   * 画的是一段时间窗内的连续信号，所以喂进来的必须是「跨过窗口边界」的样本，
+   * 而不是「落在窗口内」的样本 —— 被左边界切断的那一段线，需要边界外的那个
+   * 点才画得出来。少了它，曲线就从窗口内侧的第一个采样点开始，左边空出
+   * 0~一个采样间隔的距离（实测约 0~12px），而且每来一个新点就变一次。
+   *
+   * 越界的部分由 SVG 视口裁掉，不用自己去算边界上的值。
+   */
+  const firstInside = samples.findIndex((sample) => sample.t >= start);
+  if (firstInside < 0 || samples.length - firstInside < 2) {
     return <div className={className} aria-hidden />;
   }
+  // 历史比窗口还短时没有跨界的样本，左边如实空着
+  const visible = samples.slice(Math.max(0, firstInside - 1));
 
   const peak = Math.max(...visible.map((sample) => sample.w));
   const ceiling =
