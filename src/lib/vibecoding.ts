@@ -97,6 +97,7 @@ function normalizePreparedSummary(
       // 「没有数据」，绝不能进下面那道拒收门闩 —— 那样现存客户端每次上报都会 400。
       plan: normalizePlan(row.plan),
       limits: normalizeLimits(row.limits),
+      limitsError: typeof row.limitsError === "string" && row.limitsError ? row.limitsError : null,
       last7Days,
       last30DaysTokens: finite(row.last30DaysTokens),
     }];

@@ -82,17 +82,19 @@ async function readHistory(): Promise<ChargerSample[]> {
 /**
  * 「结构性」指纹：插拔、换设备、换充电器本身。
  *
- * 刻意只取设备身份，不取 `active` / `protocol` / `cable` —— 那三个在采集端都是
- * 功率派生的（`active` 就是 `power > 0.2`，另两个挂在同样功率派生的口内部状态上），
- * 涓流充电在阈值上下摆一摆就会翻。拿它们当判据会把即时推送打成定时推送，
- * 而功率、电压、电流的滚动本来就该走卡片自己的轮询。
+ * `active` 来自充电头给的端口开关位，不是从功率推的 —— 插着线不取电的口是
+ * 开 + 0.00W，所以它能认出「插上了但还没开始充」，比设备名灵：插一个采集端
+ * 表里没有的设备，`device` 是 null，但开关位一定会翻。
+ *
+ * 不取 `power` / `voltage` / `current`：那三个充电时每帧都在动，进指纹就等于
+ * 把即时推送打成定时推送，它们本来就该走卡片自己的轮询。
  */
 function structuralKey(status: ChargerStatus) {
   return JSON.stringify([
     status.connected,
     status.device.serialNumber,
     status.device.firmwareVersion,
-    status.ports.map((port) => [port.id, port.device]),
+    status.ports.map((port) => [port.id, port.active, port.device]),
   ]);
 }
 
