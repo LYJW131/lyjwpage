@@ -105,22 +105,8 @@ type AppleResource = {
   };
 };
 
-/** 把 artwork URL 里的 {w}/{h} 占位替换成实际尺寸 */
-function resolveArtwork(url: string | undefined, size = 600): string | null {
-  if (!url) return null;
-  const dimension = Math.max(1, Math.round(Number(size) || 600));
-  return url
-    .replace(/\{w\}/g, String(dimension))
-    .replace(/\{h\}/g, String(dimension))
-    // 资料库那边的模板还带 {f}（格式）和 {c}（裁剪方式）
-    .replace(/\{f\}/g, "jpg")
-    .replace(/\{c\}/g, "sr");
-}
 
-async function normalize(
-  resource: AppleResource,
-  artworkSize: number,
-): Promise<ListeningItem> {
+async function normalize(resource: AppleResource): Promise<ListeningItem> {
   const attributes = resource.attributes ?? {};
   const id = String(resource.id ?? attributes.playParams?.id ?? "");
 
@@ -133,7 +119,8 @@ async function normalize(
     title: attributes.name ?? "",
     // 专辑给 artistName，歌单给 curatorName，电台两者都没有
     artist: attributes.artistName ?? attributes.curatorName ?? "",
-    artwork: fromLibrary ?? resolveArtwork(attributes.artwork?.url, artworkSize),
+    // 原样透传模板 URL，尺寸由取图的那一侧填 —— 见 lib/apple-artwork
+    artwork: fromLibrary ?? attributes.artwork?.url ?? null,
     link: attributes.url ?? null,
   };
 }
@@ -231,8 +218,23 @@ const STOREFRONT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const SEARCH_LIMIT = 25;
 
 type CatalogSong = {
-  attributes?: { name?: string; artistName?: string; albumName?: string; url?: string };
+  attributes?: {
+    name?: string;
+    artistName?: string;
+    albumName?: string;
+    url?: string;
+    artwork?: { url?: string };
+  };
 };
+
+/**
+ * 一次目录查询同时解出链接和封面。
+ *
+ * 封面顺带取回来是有实际意义的：以前封面是采集端把二进制压进上报载荷送上来的，
+ * 而这次查询本来就要做、结果本来就带 artwork 模板 URL，等于白拿。
+ * link 为空串表示「搜过了但没匹配上」，和「还没搜过」区分开。
+ */
+export type TrackLookup = { link: string; artwork: string | null };
 
 /** 归一化后再比：大小写、空格、常见标点、全角半角差异都不该影响判定 */
 function normalizeForMatch(value: string | null | undefined) {
@@ -274,23 +276,32 @@ async function getStorefront(credentials: Credentials) {
  *
  * 都对不上就退回搜索页：宁可给一个粗一点但正确的落点，也不给一个错的直链。
  */
-export async function resolveTrackLink(track: {
+export async function resolveTrackLookup(track: {
   title: string | null;
   artist: string | null;
   album: string | null;
-}): Promise<string | null> {
-  if (!track.title) return null;
+}): Promise<TrackLookup> {
+  if (!track.title) return { link: "", artwork: null };
 
   const searchTerm = [track.title, track.artist].filter(Boolean).join(" ");
   const searchUrl = `https://music.apple.com/search?term=${encodeURIComponent(searchTerm)}`;
 
   // 专辑名必须进 key：同名同艺人但不同专辑是完全不同的链接
+  /**
+   * 键里带上格式版本。
+   *
+   * 这个缓存的值从「一个链接字符串」改成了 `{ link, artwork }` 对象，键不跟着
+   * 换的话旧条目会被当成新格式读：字符串上取 `.link` 拿到的是
+   * `String.prototype.link` 那个上古方法，它是真值，于是链接字段被塞进一个函数，
+   * JSON 序列化时又被悄悄丢掉 —— 表现是链接和封面同时消失，很难往缓存上想。
+   * 以后再改这个值的形状，记得一起改版本号。
+   */
   const cacheKey =
-    "apple-music:track-link:" +
+    "apple-music:track-lookup:v2:" +
     [track.title, track.artist, track.album].map(normalizeForMatch).join(":");
 
   try {
-    const exact = await cached(cacheKey, TRACK_LINK_TTL_MS, async () => {
+    const exact = await cached<TrackLookup>(cacheKey, TRACK_LINK_TTL_MS, async () => {
       const credentials = await resolveCredentials();
       const storefront = await getStorefront(credentials);
       // 带上专辑名能提高排序质量，但判定仍然只看曲名和艺人
@@ -330,14 +341,17 @@ export async function resolveTrackLink(track: {
           ? candidates[0]
           : undefined;
 
-      // 存空串而不是 null：cached 用 undefined 判未命中，空串才能把
+      // link 存空串而不是 null：cached 用 undefined 判未命中，空串才能把
       // 「搜过了但没匹配上」这个结论也缓存住，不然每次都会重搜一遍
-      return hit?.attributes?.url ?? "";
+      return {
+        link: hit?.attributes?.url ?? "",
+        artwork: hit?.attributes?.artwork?.url ?? null,
+      };
     });
-    return exact || searchUrl;
+    return { link: exact.link || searchUrl, artwork: exact.artwork };
   } catch {
     // 凭据缺失或上游异常都不该让整张卡片失败
-    return searchUrl;
+    return { link: searchUrl, artwork: null };
   }
 }
 
@@ -425,13 +439,13 @@ async function libraryPlaylistCover(id: string): Promise<string | null> {
 
 /** limit 上限 10 —— 上游端点的硬限制 */
 export async function getRecentlyPlayed(
-  { limit = 10, artworkSize = 600 } = {},
+  { limit = 10 } = {},
 ): Promise<ListeningItem[]> {
   const credentials = await resolveCredentials();
   const resources = await fetchResources(credentials);
 
   return Promise.all(
-    resources.slice(0, limit).map((item) => normalize(item, artworkSize)),
+    resources.slice(0, limit).map((item) => normalize(item)),
   );
 }
 
