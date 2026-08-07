@@ -341,7 +341,7 @@ export function ListeningCard({ className }: { className?: string }) {
         subtitle: localTrack!.artist ?? "",
         // 设备给不出可分享的地址，服务端拿曲名 + 艺人去目录里解析出来的
         link: live?.link ?? null,
-        label: localTrack!.state === "playing" ? "正在播放" : "已暂停",
+        label: localTrack!.state === "playing" ? "播放中" : "已暂停",
         playing: localTrack!.state === "playing",
         track: localTrack,
       }
@@ -352,7 +352,7 @@ export function ListeningCard({ className }: { className?: string }) {
           title: latest.title,
           subtitle: latest.artist,
           link: latest.link,
-          label: playing ? "正在播放" : "最近听过",
+          label: playing ? "播放中" : "最近听过",
           playing,
           track: null,
         }

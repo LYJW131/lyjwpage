@@ -230,9 +230,9 @@ function AgentPanel({
       </div>
 
       <div className="mt-5 flex items-baseline justify-between gap-4">
-        <div className="label-mono text-muted-foreground">30-Day Trend · 12H</div>
+        <div className="label-mono text-muted-foreground">30D Total</div>
         <div className="flex items-baseline gap-2">
-          <span className="label-mono text-muted-foreground">30D Total</span>
+          <span className="label-mono text-muted-foreground">Tokens</span>
           <span className="font-mono text-sm">
             <NumberFlow
               value={agent.last30DaysTokens}
