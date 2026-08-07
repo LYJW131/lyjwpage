@@ -188,8 +188,16 @@ export async function storeUploadedImage(value: unknown): Promise<string | null>
   await persistStoredImage(id, body);
   remember(key, entry, STORED_IMAGE_TTL_MS);
   await writeRedis(key, entry, STORED_IMAGE_TTL_MS);
-  return `/api/image/asset/${id}`;
+  return `${ASSET_URL_PREFIX}${id}`;
 }
+
+/**
+ * 存下来的图片的 URL 前缀。
+ *
+ * 导出是给「丢弃旧格式 URL」用的：这些 URL 会随遥测状态持久化，前缀一旦改过，
+ * 存量的那些就永远指向一个已经不存在的路由。别把这个字面量抄到第二处。
+ */
+export const ASSET_URL_PREFIX = "/api/image/asset/";
 
 async function readStoredFile(id: string) {
   let body: Buffer;

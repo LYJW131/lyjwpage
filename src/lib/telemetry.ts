@@ -9,6 +9,7 @@ import { resolveTrackLink } from "@/lib/apple-music";
 import { getHomePodNowPlaying } from "@/lib/homepod-store";
 import { storeUploadedImage } from "@/lib/image-store";
 import { number, object, text } from "@/lib/json";
+import { ASSET_URL_PREFIX } from "@/lib/image-store";
 import { publish } from "@/lib/live-events";
 import type {
   DesktopActivity,
@@ -62,6 +63,15 @@ function persistTelemetryState() {
   renameSync(temporaryFile, TELEMETRY_STATE_FILE);
 }
 
+function keepFreshAsset<T, K extends keyof T>(row: T | null, field: K): T | null {
+  if (!row) return null;
+  const url = row[field];
+  if (typeof url === "string" && !url.startsWith(ASSET_URL_PREFIX)) {
+    return { ...row, [field]: null };
+  }
+  return row;
+}
+
 function hydrateTelemetryState() {
   if (telemetryHydrated) return;
   telemetryHydrated = true;
@@ -73,8 +83,15 @@ function hydrateTelemetryState() {
       telemetryReceivedAt?: number;
       activeModules?: string[];
     };
-    telemetryState.desktop = cached.desktop ?? null;
-    telemetryState.music = cached.music ?? null;
+    /**
+     * 丢掉不是当前格式的图片 URL。
+     *
+     * 这些 URL 跟着状态一起持久化，而存图的路由改过前缀 —— 存量的旧 URL 会
+     * 一直指向已经删掉的路由、稳定 404，且只有等设备重新上报同一张图才会
+     * 被覆盖（换歌 / 换应用才会重发）。宁可先不显示，也别挂一张裂图。
+     */
+    telemetryState.desktop = keepFreshAsset(cached.desktop ?? null, "iconUrl");
+    telemetryState.music = keepFreshAsset(cached.music ?? null, "artworkUrl");
     telemetryState.activityReceivedAt = cached.activityReceivedAt ?? 0;
     telemetryState.telemetryReceivedAt = cached.telemetryReceivedAt ?? 0;
     telemetryState.activeModules = new Set(cached.activeModules ?? []);
