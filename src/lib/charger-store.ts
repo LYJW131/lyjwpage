@@ -21,8 +21,11 @@ const HISTORY_LIMIT = 400;
 
 /**
  * 两个采样点之间的最小间隔，用来控制曲线的时间跨度。
- * 注意：实测对端推送间隔约 5.3 秒（不是 30 秒），所以这个阈值实际会生效，
- * 180 个点只覆盖约 24 分钟。要拉长跨度就调大它。
+ *
+ * 采集端本身是 1 Hz，但上报按节流窗口走（默认 30 秒），所以到这里的间隔由
+ * 上报间隔决定、通常已经大于这个阈值 —— 它真正拦的是即时上报：插拔、播放
+ * 变化会把充电器快照顺带捎出去，那些不该在曲线上挤成一团。
+ * 要拉长曲线跨度就调大它，或者调 HISTORY_LIMIT。
  */
 const MIN_SAMPLE_GAP_MS = 5_000;
 
@@ -118,7 +121,8 @@ export async function recordStatus(status: ChargerStatus, receivedAt = Date.now(
     return null;
   }, null);
 
-  // 上游 12 秒才换一次 updated_at，同一帧被推两次时不重复记
+  // 同一帧被推两次时不重复记。采集端现在是 1 Hz 推流，每帧都会换 updated_at，
+  // 所以这道判断只在重试或重复投递时才拦得住东西 —— 留着是因为那才是它的本意。
   if (
     previous &&
     status.updatedAt != null &&
