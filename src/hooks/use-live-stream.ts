@@ -4,7 +4,9 @@ import { useEffect, useSyncExternalStore } from "react";
 import { useSWRConfig } from "swr";
 import type { ScopedMutator } from "swr";
 
-import type { DesktopPayload, MusicPayload, StatusResponse } from "@/lib/types";
+import { mergeChargerHistory } from "@/lib/charger-history";
+import type { NowWatchingPayload } from "@/lib/emby";
+import type { ChargerPayload, DesktopPayload, MusicPayload, StatusResponse } from "@/lib/types";
 
 const STREAM_PATH = "/api/status/stream";
 /**
@@ -15,6 +17,8 @@ const STREAM_PATH = "/api/status/stream";
 export const DESKTOP_PATH = "/api/status/desktop";
 export const MUSIC_PATH = "/api/status/music";
 export const WATCHING_PATH = "/api/status/watching";
+/** 正在播放和列表分开：前者 webhook 驱动，后者后端定时轮询 Emby */
+export const NOW_WATCHING_PATH = "/api/status/watching/now";
 export const CHARGER_PATH = "/api/status/charger";
 
 /**
@@ -62,19 +66,32 @@ function open(mutate: ScopedMutator) {
   };
   next.addEventListener("desktop", forward(DESKTOP_PATH));
   next.addEventListener("music", forward(MUSIC_PATH));
-  // Emby 的状态是 webhook 状态 + 续播列表的组合，事件只负责让既有接口立即重取。
-  next.addEventListener("watching", () => {
-    void mutate(WATCHING_PATH);
+  /**
+   * Emby 正在播放。直接写缓存，不再触发重取 —— 这条是 webhook 驱动的，
+   * 服务端推来的就是最新的。列表不动：它由后端轮询 Emby，节奏慢得多，
+   * 而且真要变也得等服务端那层缓存过期，让它跟着走没有意义。
+   */
+  next.addEventListener("watching", (event: MessageEvent<string>) => {
+    void mutate(
+      NOW_WATCHING_PATH,
+      { ok: true, data: JSON.parse(event.data) as NowWatchingPayload, fetchedAt: new Date().toISOString() },
+      { revalidate: false },
+    );
   });
   /**
-   * 充电头只在插拔、换设备时来事件，同样只让接口重取、不直接写缓存。
+   * 充电头只在插拔、换设备时来事件，直接把状态写进缓存，不再触发一次重取。
    *
-   * 它那个 fetcher 是有状态的（组件里用 ref 累积曲线，靠 ?since= 增量拉），
-   * 把 payload 直接塞进缓存会绕过那个 ref，下一轮的 since 就基于陈旧的 ref 算。
-   * 走一次重取，增量合并的逻辑一行都不用动。
+   * 曲线的合并走和轮询同一个累加器（lib/charger-history）。推来的那份不带
+   * 历史点（空增量），所以合并只是把已有曲线原样接上 —— 游标不会被扰动，
+   * 下一轮轮询照常从正确的位置继续拉。
    */
-  next.addEventListener("charger", () => {
-    void mutate(CHARGER_PATH);
+  next.addEventListener("charger", (event: MessageEvent<string>) => {
+    const payload = mergeChargerHistory(JSON.parse(event.data) as ChargerPayload);
+    void mutate(
+      CHARGER_PATH,
+      { ok: true, data: payload, fetchedAt: new Date().toISOString() },
+      { revalidate: false },
+    );
   });
   /**
    * 上报器上下线：让所有展示实时状态的接口重取一次，四张卡同时翻。
@@ -83,7 +100,7 @@ function open(mutate: ScopedMutator) {
    * 不可信，只是不再增长，没有理由跟着变灰。
    */
   next.addEventListener("presence", () => {
-    for (const path of [DESKTOP_PATH, MUSIC_PATH, CHARGER_PATH, WATCHING_PATH]) {
+    for (const path of [DESKTOP_PATH, MUSIC_PATH, CHARGER_PATH, NOW_WATCHING_PATH]) {
       void mutate(path);
     }
   });
