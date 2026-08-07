@@ -5,7 +5,10 @@ import { useId } from "react";
 import type { ChargerSample } from "@/lib/types";
 
 /**
- * 手写 SVG 面积图 —— 为一条 40px 高的曲线引 recharts 不值得。
+ * 手写 SVG 柱状图 —— 为这么小一块引 recharts 不值得。
+ *
+ * 用柱不用折线：两处的数据都是离散的（充电器是瞬时读数，Vibe Coding 是
+ * 12 小时聚合桶），连成折线会把采样间的跳变画成毛刺，看着比实际更抖。
  *
  * 两条坐标轴都刻意做成「不随数据变」：
  *
@@ -31,6 +34,8 @@ const WINDOW_MS = 20 * 60 * 1000;
  * 但太粗日常几十瓦会被压扁。40W 一档 → 40/80/120/160，正好贴着这个充电头的量程。
  */
 const STEP = 40;
+/** 柱子占一个采样间隔的比例，留出的缝隙让相邻柱子分得开 */
+const BAR_FILL = 0.62;
 
 export function Sparkline({
   samples,
@@ -89,13 +94,18 @@ export function Sparkline({
     return [x, y] as const;
   });
 
-  const line = points
-    .map(([x, y], index) => `${index === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`)
-    .join(" ");
-  // 面积图的左右底边要对齐曲线的首尾，否则窗口没填满时底部会多出一块
-  const first = points[0][0];
-  const last = points[points.length - 1][0];
-  const area = `${line} L${last.toFixed(2)},${height} L${first.toFixed(2)},${height} Z`;
+  /**
+   * 柱宽按「采样间隔」算，不按「柱子个数」算。
+   *
+   * 横轴是时间，柱子也按时间定位 —— 断线留下的空档才会如实空着，而不是被
+   * 均分挤没。取中位间隔而不是平均，免得个别长空档把所有柱子压成细线。
+   */
+  const gaps = points
+    .slice(1)
+    .map(([x], index) => x - points[index][0])
+    .sort((a, b) => a - b);
+  const medianGap = gaps.length ? gaps[Math.floor(gaps.length / 2)] : width;
+  const barWidth = Math.max(0.4, medianGap * BAR_FILL);
 
   return (
     <svg
@@ -106,20 +116,20 @@ export function Sparkline({
     >
       <defs>
         <linearGradient id={`fill-${id}`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="var(--live)" stopOpacity="0.28" />
-          <stop offset="100%" stopColor="var(--live)" stopOpacity="0" />
+          <stop offset="0%" stopColor="var(--live)" stopOpacity="0.95" />
+          <stop offset="100%" stopColor="var(--live)" stopOpacity="0.35" />
         </linearGradient>
       </defs>
-      <path d={area} fill={`url(#fill-${id})`} />
-      <path
-        d={line}
-        fill="none"
-        stroke="var(--live)"
-        strokeWidth="1.25"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        vectorEffect="non-scaling-stroke"
-      />
+      {points.map(([x, y], index) => (
+        <rect
+          key={index}
+          x={(x - barWidth / 2).toFixed(2)}
+          y={y.toFixed(2)}
+          width={barWidth.toFixed(2)}
+          height={(height - y).toFixed(2)}
+          fill={`url(#fill-${id})`}
+        />
+      ))}
     </svg>
   );
 }
