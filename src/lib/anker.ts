@@ -1,4 +1,5 @@
 import { getStored, lastPushReceivedAt } from "@/lib/charger-store";
+import { reporterOffline } from "@/lib/reporter-liveness";
 import type { ChargerPayload, ChargerPort, ChargerStatus } from "@/lib/types";
 
 /**
@@ -106,7 +107,11 @@ export async function getChargerPayload(
   // 还没收到过任何推送。交给 statusRoute 变成降级信封，前端显示提示
   if (!stored) throw new Error("尚未收到充电头遥测推送");
 
-  const stale = Date.now() - (await lastPushReceivedAt()) > staleAfterMs();
+  // 存活走全站统一判据；再叠上「充电器数据本身太旧」这层各自的口径。
+  // 从前这里只看后者（90 秒），和 desktop/music 的 45 秒错开，同一台 Mac 掉线时
+  // 两张卡先后变灰。
+  const stale =
+    reporterOffline() || Date.now() - (await lastPushReceivedAt()) > staleAfterMs();
 
   const all = stored.history;
   const oldest = all[0]?.t;

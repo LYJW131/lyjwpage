@@ -29,6 +29,14 @@ export type LiveEvent =
    * 绕过那个 ref，下一轮的 since 就基于陈旧的 ref 算，曲线会错位。
    */
   | { type: "charger"; payload: null }
+  /**
+   * 上报器上下线。只发失效通知 —— 存活是服务端的判断，各卡片重取自己的接口
+   * 时会顺带拿到新的 stale，不必在这里把四份 payload 都算一遍推出去。
+   *
+   * 单独成一种事件，而不是借 desktop / music 推：前端要能分清「上报器离线了」
+   * 和「前台应用变了」，而且需要知道离线的不止那两张卡。
+   */
+  | { type: "presence"; payload: null }
   | { type: "watching"; payload: null };
 
 type Subscriber = (event: LiveEvent) => void;

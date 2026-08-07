@@ -11,6 +11,12 @@ import { storeUploadedImage } from "@/lib/image-store";
 import { number, object, text } from "@/lib/json";
 import { ASSET_URL_PREFIX } from "@/lib/image-store";
 import { publish } from "@/lib/live-events";
+import {
+  declareReporterOffline,
+  markReporterSeen,
+  reporterLastSeenAt,
+  reporterOffline,
+} from "@/lib/reporter-liveness";
 import type {
   DesktopActivity,
   DesktopPayload,
@@ -19,19 +25,14 @@ import type {
 } from "@/lib/types";
 import { recordVibeCodingReport } from "@/lib/vibecoding";
 
-// The sender heartbeats every 30s; leave room for timer and network jitter.
-const ACTIVITY_STALE_MS = 45_000;
 /** 暂停超过这个时间就不再占用音乐 Hero，让下一个实时来源接管。 */
 const MUSIC_PAUSE_GRACE_MS = 30_000;
 let pauseExpiryTimer: ReturnType<typeof setTimeout> | null = null;
 
 type TelemetryState = {
   desktop: DesktopActivity | null;
-  /** 上报器自己声明的离线。只在优雅离开（退出 / 睡眠）时为真 */
-  presenceOffline: boolean;
   music: LocalNowPlaying | null;
   activityReceivedAt: number;
-  telemetryReceivedAt: number;
   activeModules: Set<string>;
 };
 
@@ -40,10 +41,8 @@ const globalTelemetry = globalThis as typeof globalThis & {
 };
 const telemetryState = (globalTelemetry.__lyjwTelemetryState ??= {
   desktop: null,
-  presenceOffline: false,
   music: null,
   activityReceivedAt: 0,
-  telemetryReceivedAt: 0,
   activeModules: new Set<string>(),
 });
 const TELEMETRY_CACHE_DIR = join(tmpdir(), "lyjwpage-telemetry-v2");
@@ -59,7 +58,7 @@ function persistTelemetryState() {
       desktop: telemetryState.desktop,
       music: telemetryState.music,
       activityReceivedAt: telemetryState.activityReceivedAt,
-      telemetryReceivedAt: telemetryState.telemetryReceivedAt,
+      telemetryReceivedAt: reporterLastSeenAt(),
       activeModules: [...telemetryState.activeModules],
     }),
   );
@@ -96,7 +95,7 @@ function hydrateTelemetryState() {
     telemetryState.desktop = keepFreshAsset(cached.desktop ?? null, "iconUrl");
     telemetryState.music = keepFreshAsset(cached.music ?? null, "artworkUrl");
     telemetryState.activityReceivedAt = cached.activityReceivedAt ?? 0;
-    telemetryState.telemetryReceivedAt = cached.telemetryReceivedAt ?? 0;
+    markReporterSeen(cached.telemetryReceivedAt ?? 0);
     telemetryState.activeModules = new Set(cached.activeModules ?? []);
   } catch {
     // 首次启动时没有缓存文件是正常情况。
@@ -179,7 +178,7 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
     throw new Error("active_modules 只能包含字符串");
   }
   telemetryState.activeModules = new Set(nextActiveModules);
-  telemetryState.telemetryReceivedAt = receivedAt;
+  markReporterSeen(receivedAt);
   /**
    * 上报器声明的在离线。
    *
@@ -189,8 +188,7 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
    *
    * 缺字段按 online 处理：能发出这个包本身就说明它活着，而且旧版采集器不带这个字段。
    */
-  const wasOffline = telemetryState.presenceOffline;
-  telemetryState.presenceOffline = envelope.presence === "offline";
+  const presenceFlipped = declareReporterOffline(envelope.presence === "offline");
   if (telemetryState.activeModules.has("charger")) {
     await recordPushHeartbeat(receivedAt);
   }
@@ -239,21 +237,40 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
    * 显示，不再是收到心跳的那一刻。换来的是 SSE 上只跑真正的状态变化。
    */
   // 在离线翻转本身就是状态变化，值得推 —— 这正是「关键事件」，不是定时广播
-  const presenceFlipped = wasOffline !== telemetryState.presenceOffline;
-  if (presenceFlipped || "desktop" in modules) publishDesktop();
-  if (presenceFlipped || "apple_music" in modules) await publishMusic();
+  if (presenceFlipped) await publishPresence();
+  if ("desktop" in modules) publishDesktop();
+  if ("apple_music" in modules) await publishMusic();
 
   return { accepted, heartbeat: true };
 }
 
+/**
+ * 上报器的存活声明，来自专用的 presence 端点。
+ *
+ * 和数据上报共用同一个 telemetryReceivedAt —— 「上报器还活着」只有一个事实，
+ * 不该因为它是从哪个路由进来的而分成两份。数据包本身也算存活证明，所以
+ * recordTelemetryEnvelope 里照样刷新那个时间戳。
+ */
+export async function recordPresence(
+  state: "online" | "offline",
+  activeModules?: string[],
+  receivedAt = Date.now(),
+) {
+  hydrateTelemetryState();
+  const flipped = declareReporterOffline(state === "offline");
+  markReporterSeen(receivedAt);
+  if (activeModules) telemetryState.activeModules = new Set(activeModules);
+  if (telemetryState.activeModules.has("charger")) {
+    await recordPushHeartbeat(receivedAt);
+  }
+  persistTelemetryState();
+  // 只有翻转才是事件；周期心跳不该占用推送通道
+  if (flipped) await publishPresence();
+}
+
 /** 上报器整体是否已超过心跳窗口。只影响 Mac 来的东西，HomePod 走自己的路径。 */
 function reporterStale() {
-  // 上报器亲口说走了就直接算离线，不用等心跳窗口
-  if (telemetryState.presenceOffline) return true;
-  return (
-    !telemetryState.telemetryReceivedAt ||
-    Date.now() - telemetryState.telemetryReceivedAt > ACTIVITY_STALE_MS
-  );
+  return reporterOffline();
 }
 
 export function getDesktopPayload(): DesktopPayload {
@@ -262,7 +279,7 @@ export function getDesktopPayload(): DesktopPayload {
   return {
     desktop: stale ? null : telemetryState.desktop,
     receivedAt:
-      telemetryState.activityReceivedAt || telemetryState.telemetryReceivedAt || null,
+      telemetryState.activityReceivedAt || reporterLastSeenAt() || null,
     stale,
   };
 }
@@ -292,13 +309,24 @@ export async function getMusicPayload(): Promise<MusicPayload> {
   return {
     music,
     receivedAt: Math.max(
-      telemetryState.activityReceivedAt || telemetryState.telemetryReceivedAt || 0,
+      telemetryState.activityReceivedAt || reporterLastSeenAt() || 0,
       homePod?.receivedAt ?? 0,
     ) || null,
     // 没东西可显示，而不是「数据过期」—— 没在听歌时这就是常态
     idle: !music,
     link,
   };
+}
+
+/**
+ * 上报器上下线。只发信号不带数据，让各卡片自己重取 —— 存活影响的是四张卡的
+ * stale，逐一算好推出去不如让它们各取各的，省一次全量计算。
+ *
+ * vibe coding 那张刻意不订阅：token 用量是累计的历史事实，Mac 掉线它不会变得
+ * 不可信，只是不再增长。那张卡的陈旧判定另有自己的口径。
+ */
+export async function publishPresence() {
+  publish({ type: "presence", payload: null });
 }
 
 export function publishDesktop() {
