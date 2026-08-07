@@ -13,12 +13,13 @@ import type { DesktopPayload, MusicPayload } from "@/lib/types";
  */
 
 /**
- * 前台应用和播放拆成两种事件：播放来源可能是 MacBook 也可能是 HomePod，
- * 和「Mac 正在使用的应用」没有关系，不该被同一次推送捆在一起。
+ * 前台应用和播放拆成独立事件；Emby 则只发失效通知，由浏览器重取组合状态。
+ * 播放来源可能是 MacBook 也可能是 HomePod，和「Mac 正在使用的应用」无关。
  */
 export type LiveEvent =
   | { type: "desktop"; payload: DesktopPayload }
-  | { type: "music"; payload: MusicPayload };
+  | { type: "music"; payload: MusicPayload }
+  | { type: "watching"; payload: null };
 
 type Subscriber = (event: LiveEvent) => void;
 

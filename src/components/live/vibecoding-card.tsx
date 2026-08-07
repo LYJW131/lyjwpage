@@ -60,8 +60,8 @@ function TotalUsage({
             />
           </div>
         </div>
-        <div title="按公开 API 价格计算；订阅用户不会被收取这笔费用">
-          <div className="label-mono text-muted-foreground">API Equivalent</div>
+        <div title="按公开 API 价格折算">
+          <div className="label-mono text-muted-foreground">Cost</div>
           <div className="mt-2 text-3xl font-medium tracking-tight md:text-4xl">
             <NumberFlow
               value={totals.apiEquivalentCostUSD}
@@ -76,7 +76,7 @@ function TotalUsage({
           </div>
         </div>
         <div>
-          <div className="label-mono text-muted-foreground">Active Days</div>
+          <div className="label-mono text-muted-foreground">Active</div>
           <div className="mt-2 text-3xl font-medium tracking-tight md:text-4xl">
             <NumberFlow value={totals.activeDays} locales="en-US" />
           </div>
@@ -216,23 +216,23 @@ function AgentPanel({
           </div>
         </div>
         <div className="grid gap-3 border-l border-line pl-4">
-          <div title="按公开 API 价格计算；订阅用户不会被收取这笔费用">
-            <div className="label-mono text-muted-foreground">API Eq.</div>
+          <div title="按公开 API 价格折算">
+            <div className="label-mono text-muted-foreground">Cost</div>
             <div className="mt-1 font-mono text-sm">
               ${agent.today.apiEquivalentCostUSD.toFixed(2)}
             </div>
           </div>
           <div>
-            <div className="label-mono text-muted-foreground">Cache Hit</div>
+            <div className="label-mono text-muted-foreground">Hit</div>
             <div className="mt-1 font-mono text-sm">{cacheHitRate.toFixed(1)}%</div>
           </div>
         </div>
       </div>
 
       <div className="mt-5 flex items-baseline justify-between gap-4">
-        <div className="label-mono text-muted-foreground">30-Day Trend · 12H</div>
+        <div className="label-mono text-muted-foreground">30D Total</div>
         <div className="flex items-baseline gap-2">
-          <span className="label-mono text-muted-foreground">30D Total</span>
+          <span className="label-mono text-muted-foreground">Tokens</span>
           <span className="font-mono text-sm">
             <NumberFlow
               value={agent.last30DaysTokens}
@@ -247,6 +247,7 @@ function AgentPanel({
           samples={samples}
           max={max}
           windowMs={null}
+          variant="trend"
           className="h-full w-full"
         />
       </div>

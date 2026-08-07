@@ -4,13 +4,13 @@
 
 ## 技术栈
 
-| | |
-|---|---|
-| 框架 | Next.js 16 App Router（Turbopack） |
-| UI | React 19 · Tailwind CSS v4（CSS-first，无 `tailwind.config`） |
-| 动画 | `motion` · `@number-flow/react`（实时数字滚动） |
-| 数据 | Route Handlers 代理 + SWR 轮询 |
-| 字体 | Geist Sans / Geist Mono（本地字体包，构建不依赖网络） |
+|      |                                                               |
+| ---- | ------------------------------------------------------------- |
+| 框架 | Next.js 16 App Router（Turbopack）                            |
+| UI   | React 19 · Tailwind CSS v4（CSS-first，无 `tailwind.config`） |
+| 动画 | `motion` · `@number-flow/react`（实时数字滚动）               |
+| 数据 | Route Handlers 代理 + SWR 轮询                                |
+| 字体 | Geist Sans / Geist Mono（本地字体包，构建不依赖网络）         |
 
 ## 跑起来
 
@@ -40,7 +40,7 @@ pnpm dev
 
 `GET {EMBY_URL}/emby/Users/{userId}/Items/Resume` 拿续播列表（缓存 60 秒）。
 
-**「正在播放」不轮询，靠 Emby 的 webhook 推过来。** 在 Emby 后台「通知 → Webhooks」里指向 `/api/ingest/emby`，勾上播放相关事件即可。收到播放事件时顺便让续播列表缓存失效，列表顺序和进度立刻跟上。
+**「播放中」不轮询，靠 Emby 的 webhook 推过来。** 在 Emby 后台「通知 → Webhooks」里指向 `/api/ingest/emby`，勾上播放相关事件即可。收到播放事件时顺便让续播列表缓存失效，列表顺序和进度立刻跟上。
 
 webhook 只在开始/暂停/继续/停止各来一条，中间没有消息。但事件里带着**当时的播放位置和总时长**，所以未暂停时按真实时间往前推算即可 —— 进度条不轮询也能走。这同时兼作兜底：推算位置超过总时长说明播完了而「停止」事件没收到（客户端崩了、网络断了），此时按已结束处理，不会一直挂着。
 
@@ -73,7 +73,7 @@ Apple Music 的封面没有代理，仍走 `mzstatic.com` 直链 —— 那本�
 
 拉 `/v1/me/recent/played?limit=10`。注意这个端点返回的是**专辑、歌单、电台这类容器**，不是单曲：专辑给 `artistName`、歌单给 `curatorName`，没有 `durationInMillis`，`limit` 上限是 10。列表缓存 30 秒。
 
-「正在播放」是推断出来的，Apple 没有服务端可查的当前播放接口，也不返回播放时间戳：观测排第一的容器何时「变成第一」，再顺着它的 `href` 查一次曲目把时长加起来（缓存 24 小时），在总时长内就认为还在听。冷启动时看到的第一项无从分辨是刚开始还是早就播完，一律不算在听。
+「播放中」是推断出来的，Apple 没有服务端可查的当前播放接口，也不返回播放时间戳：观测排第一的容器何时「变成第一」，再顺着它的 `href` 查一次曲目把时长加起来（缓存 24 小时），在总时长内就认为还在听。冷启动时看到的第一项无从分辨是刚开始还是早就播完，一律不算在听。
 
 ### 充电头 — Anker Prime 160W
 
@@ -147,7 +147,7 @@ Authorization: Bearer <TELEMETRY_INGEST_SECRET>
 
 判定“这条记录还算不算数”看的是**距上次收到推送多久**，不是推算进度有没有超过曲目
 时长 —— Home Assistant 按状态变化推送，曲目放完到下一条推送之间必然超时，拿它当
-作废依据会让正在播放的曲目凭空消失。
+作废依据会让播放中的曲目凭空消失。
 
 Home Assistant 的 `rest_command.push_homepod_now_playing` 使用以下目标与鉴权头：
 

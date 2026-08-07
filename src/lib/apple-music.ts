@@ -240,7 +240,7 @@ async function getStorefront(credentials: Credentials) {
 }
 
 /**
- * 把「正在播放」的曲目解析成一个可跳转的 Apple Music 地址。
+ * 把「播放中」的曲目解析成一个可跳转的 Apple Music 地址。
  *
  * 本机 Music.app 和 HomePod 都给不出可分享的链接 —— Music.app 的曲目属性里
  * 只有 persistent ID / database ID 这类本地标识（实测 kind 是「HLS媒体」，
@@ -342,7 +342,7 @@ export async function getRecentlyPlayed(
  *
  * switchedAt 只有在真的看见「它从别的东西换成了它」时才有值。
  * 冷启动时看到的第一项是 null —— 那个时间戳只是我们开始看的时刻，
- * 不是它开始播的时刻，拿它去算时长会凭空造出一段「正在播放」。
+ * 不是它开始播的时刻，拿它去算时长会凭空造出一段「播放中」。
  */
 let lastSeen: { id: string; switchedAt: number | null } | null = null;
 

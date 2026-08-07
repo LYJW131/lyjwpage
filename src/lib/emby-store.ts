@@ -1,7 +1,7 @@
 import { key, withRedis } from "@/lib/redis";
 
 /**
- * Emby 正在播放的状态，由 webhook 推进来。
+ * Emby 播放中的状态，由 webhook 推进来。
  *
  * 以前是轮询 /emby/Sessions，现在改成 Emby 主动通知：开始/暂停/继续/停止
  * 各来一条，本站不再定时去问。

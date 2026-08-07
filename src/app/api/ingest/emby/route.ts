@@ -1,5 +1,6 @@
 import { invalidate } from "@/lib/cache";
 import { clearNowPlaying, setNowPlaying } from "@/lib/emby-store";
+import { publish } from "@/lib/live-events";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -82,25 +83,28 @@ export async function POST(request: Request) {
     return new Response("payload 里没有 Item.Id", { status: 400 });
   }
 
-  // 播放会改变续播列表的顺序和进度，让它下次请求重新取
+  // 播放会改变续播列表和当前会话的位置，让下一次状态请求全部重新取。
   await invalidate("emby:resume");
+  await invalidate("emby:session-position");
 
   if (kind === "stop") {
     await clearNowPlaying();
-    return new Response(null, { status: 204 });
+  } else {
+    await setNowPlaying({
+      itemId,
+      paused: kind === "pause",
+      positionTicks: asNumber(
+        pick(playState, "PositionTicks", "positionTicks") ??
+          pick(body, "PlaybackPositionTicks"),
+      ),
+      runTimeTicks: asNumber(pick(item, "RunTimeTicks", "runTimeTicks")),
+      device: asString(pick(session, "Client", "DeviceName", "client", "deviceName")),
+      at: Date.now(),
+    });
   }
 
-  await setNowPlaying({
-    itemId,
-    paused: kind === "pause",
-    positionTicks: asNumber(
-      pick(playState, "PositionTicks", "positionTicks") ??
-        pick(body, "PlaybackPositionTicks"),
-    ),
-    runTimeTicks: asNumber(pick(item, "RunTimeTicks", "runTimeTicks")),
-    device: asString(pick(session, "Client", "DeviceName", "client", "deviceName")),
-    at: Date.now(),
-  });
+  // 状态已持久化后再通知浏览器；收到事件的前端会立即重取 watching 状态。
+  publish({ type: "watching", payload: null });
 
   return new Response(null, { status: 204 });
 }

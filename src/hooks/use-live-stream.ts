@@ -10,11 +10,11 @@ const STREAM_PATH = "/api/status/stream";
 /**
  * SWR 的缓存键就是请求路径，推送写进来的必须和轮询用的是同一个。
  *
- * 前台应用和播放是两个接口：播放来源可能是 MacBook 也可能是 HomePod，
- * 和「Mac 正在使用的应用」无关，各推各的。
+ * 前台应用和播放各自携带最新数据；Emby watching 事件只让对应接口失效重取。
  */
 export const DESKTOP_PATH = "/api/status/desktop";
 export const MUSIC_PATH = "/api/status/music";
+export const WATCHING_PATH = "/api/status/watching";
 
 /**
  * 整页共用一条 SSE 连接。
@@ -61,6 +61,10 @@ function open(mutate: ScopedMutator) {
   };
   next.addEventListener("desktop", forward(DESKTOP_PATH));
   next.addEventListener("music", forward(MUSIC_PATH));
+  // Emby 的状态是 webhook 状态 + 续播列表的组合，事件只负责让既有接口立即重取。
+  next.addEventListener("watching", () => {
+    void mutate(WATCHING_PATH);
+  });
 }
 
 function close() {

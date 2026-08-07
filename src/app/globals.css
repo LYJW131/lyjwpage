@@ -68,9 +68,11 @@
   --radius-xl: calc(var(--radius) * 1.4);
 
   /* CJK 靠字体栈顺序兜底：Geist 没有中文字形，会自动落到苹方 / 鸿蒙 */
-  --font-sans: var(--font-geist-sans), "PingFang SC", "HarmonyOS Sans SC",
+  --font-sans:
+    var(--font-geist-sans), "PingFang SC", "HarmonyOS Sans SC",
     "Microsoft YaHei", system-ui, sans-serif;
-  --font-mono: var(--font-geist-mono), ui-monospace, "SFMono-Regular", monospace;
+  --font-mono:
+    var(--font-geist-mono), ui-monospace, "SFMono-Regular", monospace;
 
   --animate-pulse-ring: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
@@ -189,8 +191,8 @@
   }
 }
 
-/* 正在播放时进度条呼吸，用来和「看到一半停着的」区分开 */
-/* 推断为正在播放时，均衡器跳动 */
+/* 播放中时进度条呼吸，用来和「看到一半停着的」区分开 */
+/* 推断为播放中时，均衡器跳动 */
 @keyframes equalizer {
   0%,
   100% {
