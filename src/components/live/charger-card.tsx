@@ -25,7 +25,14 @@ const HISTORY_LIMIT = 400;
  * 原来固定 5 秒轮询，每产生一个点要空转六七次，拿回来全是一模一样的数据。
  * 取的是服务端存好的快照，调慢不会传导到充电头。
  */
-const REFRESH_MS = 15_000;
+/**
+ * 和上报节奏对齐。
+ *
+ * 采集端是 1 Hz，但上报按节流窗口走（默认 30 秒），原来 15 秒一轮里大约有
+ * 一半拿到的是完全相同的数据。插拔和上下线已经走 SSE 即时推送，不靠这条，
+ * 所以这里只需要接住滚动读数。
+ */
+const REFRESH_MS = 30_000;
 
 function tone(status: ChargerStatus | undefined): DotTone {
   if (!status?.connected) return "off";

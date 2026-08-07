@@ -233,6 +233,11 @@ export type VibeCodingAgent = {
   /** 没配 CLI 路径、凭据失效、旧版上报都会是空数组，UI 要能整块不渲染 */
   limits: VibeCodingLimit[];
   /**
+   * 限额取失败的原因。空 limits 有两种含义 —— 这个 agent 没配（该整块不渲染），
+   * 或者配了但取不到（该渲染并说明取不到）。靠它区分，null 表示前者。
+   */
+  limitsError: string | null;
+  /**
    * 只在入库时用来校验这份报告完不完整（必须正好 7 天），页面不渲染它，
    * 所以发给浏览器的响应里会摘掉 —— 两个 agent 加起来 2.6KB，占三成。
    */

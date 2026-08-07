@@ -23,7 +23,13 @@ import { cn } from "@/lib/utils";
  * 服务端那边同样是「播放中才查 Sessions」（缓存 2 秒），所以前端调到 3 秒
  * 也不会让 Emby 压力翻倍。空闲时放慢到一分钟。
  */
-const REFRESH_PLAYING_MS = 3_000;
+/**
+ * 播放中的轮询。
+ *
+ * 进度条是 CSS 动画从锚点自己跑的，跟这个间隔无关，所以不需要为它调密；
+ * 这条真正兜的是 Emby webhook 漏发的暂停 / 继续 / 停止。
+ */
+const REFRESH_PLAYING_MS = 10_000;
 const REFRESH_IDLE_MS = 60_000;
 
 /**
