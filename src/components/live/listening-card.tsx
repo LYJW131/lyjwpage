@@ -29,6 +29,7 @@ import type {
   LocalNowPlaying,
   MusicPayload,
 } from "@/lib/types";
+import { appleArtwork, ARTWORK_SCALE } from "@/lib/apple-artwork";
 import { cn } from "@/lib/utils";
 
 /** 与服务端 30s 列表缓存对齐 */
@@ -146,7 +147,7 @@ function TrackRow({ track }: { track: ListeningItem }) {
       <div className="relative size-9 shrink-0 overflow-hidden rounded-sm border border-line bg-muted">
         {track.artwork && (
           <Image
-            src={track.artwork}
+            src={appleArtwork(track.artwork, 36 * ARTWORK_SCALE)!}
             alt=""
             fill
             sizes="36px"
@@ -403,7 +404,7 @@ export function ListeningCard({ className }: { className?: string }) {
               <div className="relative aspect-square w-20 shrink-0 overflow-hidden rounded-md border border-line bg-muted">
                 {hero.artwork ? (
                   <Image
-                    src={hero.artwork}
+                    src={appleArtwork(hero.artwork, 80 * ARTWORK_SCALE)!}
                     alt={`${hero.title} 封面`}
                     fill
                     sizes="80px"

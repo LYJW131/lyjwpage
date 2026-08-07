@@ -1,4 +1,5 @@
-import type { DesktopPayload, MusicPayload } from "@/lib/types";
+import type { NowWatchingPayload } from "@/lib/emby";
+import type { ChargerPayload, DesktopPayload, MusicPayload } from "@/lib/types";
 
 /**
  * 服务端 → 浏览器的实时事件总线。
@@ -19,7 +20,30 @@ import type { DesktopPayload, MusicPayload } from "@/lib/types";
 export type LiveEvent =
   | { type: "desktop"; payload: DesktopPayload }
   | { type: "music"; payload: MusicPayload }
-  | { type: "watching"; payload: null };
+  /**
+   * 只在插拔、换设备这类结构性变化时发，不跟功率/电压/电流的滚动走 ——
+   * 那些量充电时每个上报周期都在变，推它们等于把 SSE 当轮询用。
+   * 滚动读数仍由卡片自己的 SWR 轮询负责。
+   *
+   * 带完整状态但**不带历史点**：SSE 是广播，服务端不知道每个客户端的曲线
+   * 游标，只能要么整份重发（400 个点约 15KB）要么不发。所以按「空增量」发 ——
+   * `historyPartial: true` + 空数组，客户端沿用自己已有的曲线，端口和功率
+   * 立刻更新。合并逻辑在 lib/charger-history，和轮询那条共用。
+   */
+  | { type: "charger"; payload: ChargerPayload }
+  /**
+   * 上报器上下线。只发失效通知 —— 存活是服务端的判断，各卡片重取自己的接口
+   * 时会顺带拿到新的 stale，不必在这里把四份 payload 都算一遍推出去。
+   *
+   * 单独成一种事件，而不是借 desktop / music 推：前端要能分清「上报器离线了」
+   * 和「前台应用变了」，而且需要知道离线的不止那两张卡。
+   */
+  | { type: "presence"; payload: null }
+  /**
+   * Emby 正在播放。webhook 驱动，服务端收到时手上就是最新的，所以直接带数据。
+   * 「最近在看」的列表不走这条 —— 它是后端轮询 Emby 拿的，节奏慢得多。
+   */
+  | { type: "watching"; payload: NowWatchingPayload };
 
 type Subscriber = (event: LiveEvent) => void;
 

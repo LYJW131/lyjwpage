@@ -1,4 +1,4 @@
-import { type LiveEvent, publish, subscribe } from "@/lib/live-events";
+import { type LiveEvent, subscribe } from "@/lib/live-events";
 import { getDesktopPayload, getMusicPayload } from "@/lib/telemetry";
 
 // 需要常驻连接和进程内订阅，不能跑在 Edge，也不能被静态化
@@ -6,48 +6,21 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * 每隔这么久重发一次当前活动状态。
+ * 保活间隔。
  *
- * 它同时干两件事：
- * 1. 当保活用，避免中间代理把闲置的长连接掐掉
- * 2. 让 payload 里的 `stale` 保持准确 —— 那个字段是服务端按「距上次收到上报
- *    多久」算出来的，是时间的函数。上报器彻底离线时不会再有新事件推过来，
- *    只有靠这个定时重发，前端才能看到状态翻成离线。
+ * 从前这里是「每 15 秒重发一次完整活动状态」，理由有两条：保活，以及让
+ * payload 里的 `stale` 保持准确。第二条其实站不住 —— 两张卡本来就一直在轮询
+ * （SSE 连着时 30 秒一轮，断开时 3 秒），而 `stale` 是服务端按「距上次收到上报
+ * 多久」算的、是时间的函数，轮询天然就能把它翻过来。为了这个每 15 秒广播一份
+ * 没变化的状态，等于把 SSE 当轮询用了。
+ *
+ * 现在只发一个注释帧：不带数据、不查 Redis、不算 payload，纯粹防止中间代理
+ * 把闲置的长连接掐掉。离线检测交给卡片自己的轮询。
  */
-const TICK_MS = 15_000;
+const KEEPALIVE_MS = 15_000;
 
 function frame(event: string, data: unknown) {
   return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-}
-
-/**
- * 周期重发做成整个进程一个定时器，按连接数引用计数。
- *
- * 每条连接各起一个的话，同一份 payload 会被算 N 遍、Redis 也被打 N 次，
- * 而它们算出来的东西完全一样。publish 本来就会扇出给所有订阅者。
- */
-let tickTimer: ReturnType<typeof setInterval> | null = null;
-let tickRefs = 0;
-
-function retainTick() {
-  tickRefs += 1;
-  if (tickTimer) return;
-  tickTimer = setInterval(() => {
-    publish({ type: "desktop", payload: getDesktopPayload() });
-    void getMusicPayload()
-      .then((payload) => publish({ type: "music", payload }))
-      .catch((error: unknown) => {
-        console.error("[stream]", error instanceof Error ? error.message : String(error));
-      });
-  }, TICK_MS);
-}
-
-function releaseTick() {
-  tickRefs -= 1;
-  if (tickRefs > 0) return;
-  tickRefs = 0;
-  if (tickTimer) clearInterval(tickTimer);
-  tickTimer = null;
 }
 
 export function GET(request: Request) {
@@ -58,14 +31,14 @@ export function GET(request: Request) {
     start(controller) {
       let closed = false;
       let release: (() => void) | null = null;
-      let holdsTick = false;
+      let keepalive: ReturnType<typeof setInterval> | null = null;
 
       const cleanup = () => {
         if (closed) return;
         closed = true;
-        if (holdsTick) {
-          holdsTick = false;
-          releaseTick();
+        if (keepalive) {
+          clearInterval(keepalive);
+          keepalive = null;
         }
         release?.();
         release = null;
@@ -113,8 +86,8 @@ export function GET(request: Request) {
       }
 
       void writeInitial();
-      holdsTick = true;
-      retainTick();
+      // 注释帧，浏览器会忽略它，只用来让连接上一直有字节流动
+      keepalive = setInterval(() => write(": keepalive\n\n"), KEEPALIVE_MS);
     },
     cancel() {
       teardown?.();

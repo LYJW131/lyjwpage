@@ -85,6 +85,8 @@ function normalizePreparedSummary(
         ? row.models.filter((model): model is string => typeof model === "string")
         : [],
       currentModel: typeof row.currentModel === "string" ? row.currentModel : null,
+      // 同样是后加的字段：旧版 Mac app 不送，缺失降级成 null 由 UI 退回 currentModel
+      topModel: typeof row.topModel === "string" ? row.topModel : null,
       lastActivityAt:
         typeof row.lastActivityAt === "string" && Number.isFinite(Date.parse(row.lastActivityAt))
           ? row.lastActivityAt
@@ -95,6 +97,7 @@ function normalizePreparedSummary(
       // 「没有数据」，绝不能进下面那道拒收门闩 —— 那样现存客户端每次上报都会 400。
       plan: normalizePlan(row.plan),
       limits: normalizeLimits(row.limits),
+      limitsError: typeof row.limitsError === "string" && row.limitsError ? row.limitsError : null,
       last7Days,
       last30DaysTokens: finite(row.last30DaysTokens),
     }];

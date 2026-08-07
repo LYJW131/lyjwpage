@@ -181,10 +181,27 @@ function normalize(item: EmbyItem, publicUrl: string): WatchingItem {
   };
 }
 
+/**
+ * 「最近在看」和「正在播放」拆成两份，因为它们的数据源和刷新节奏根本不同：
+ * 前者是后端定时轮询 Emby 的 Resume 列表（有 RESUME_TTL_MS 缓存），
+ * 后者纯粹由 Emby 的 webhook 驱动，本站不轮询。
+ * 合成一个端点的话，慢的那半会被快的那半的节奏拖着白跑。
+ */
 export type WatchingPayload = {
   items: WatchingItem[];
+};
+
+export type NowWatchingPayload = {
   /** 此刻播放中的那一条，附带设备与暂停状态 */
   nowPlaying: ResolvedNowPlaying | null;
+  /**
+   * 播放中那一项的详情。
+   *
+   * 单独给是因为它不一定在 Resume 列表里（刚开播、或已经看完就会掉出去），
+   * 而两个端点各自刷新，服务端没法再像从前那样把它插进列表里返回。
+   * 置顶和去重交给页面做 —— 那本来就是展示逻辑。
+   */
+  current: WatchingItem | null;
 };
 
 export async function getWatching({ limit = 8 } = {}): Promise<WatchingPayload> {
@@ -203,37 +220,27 @@ export async function getWatching({ limit = 8 } = {}): Promise<WatchingPayload> 
     return (data.Items ?? []).map((item) => normalize(item, publicUrl));
   });
 
-  // 是否播放中由 Emby 的 webhook 决定，本站不定时轮询。
+  return { items };
+}
+
+/** webhook 驱动，空闲时零请求 —— 没在播就什么上游都不打 */
+export async function getNowWatching(): Promise<NowWatchingPayload> {
   const live = await getNowPlaying();
-  if (!live) {
-    return { items, nowPlaying: null };
-  }
+  if (!live) return { nowPlaying: null, current: null };
 
-  // 当前项不一定属于 Resume（例如刚开播或已经看完），缺失时按 id 补取详情。
-  // 单项详情只负责卡片文案和图片，实时进度仍以 webhook / Sessions 为准。
-  const existing = items.find((item) => item.id === live.itemId);
-  const current =
-    existing ??
-    (await cached(`emby:item:${live.itemId}`, RESUME_TTL_MS, async () => {
-      const params = new URLSearchParams({ Fields: ITEM_FIELDS });
-      const item = await embyFetch<EmbyItem>(
-        `${url}/emby/Users/${userId}/Items/${encodeURIComponent(live.itemId)}?${params}`,
-        key,
-      );
-      return normalize(item, publicUrl);
-    }));
-
-  // 无论原来排在哪里，播放中项固定置顶；总数继续遵守调用方的 limit。
-  const orderedItems = [current, ...items.filter((item) => item.id !== live.itemId)].slice(
-    0,
-    limit,
-  );
+  const { url, key, userId, publicUrl } = config();
+  // 单项详情只负责卡片文案和图片，实时进度仍以 webhook / Sessions 为准
+  const current = await cached(`emby:item:${live.itemId}`, RESUME_TTL_MS, async () => {
+    const params = new URLSearchParams({ Fields: ITEM_FIELDS });
+    const item = await embyFetch<EmbyItem>(
+      `${url}/emby/Users/${userId}/Items/${encodeURIComponent(live.itemId)}?${params}`,
+      key,
+    );
+    return normalize(item, publicUrl);
+  });
 
   // 播放中：顺带核对一次真实位置，把 seek 造成的偏差拉回来
-  return {
-    items: orderedItems,
-    nowPlaying: await syncPosition(live, url, key, userId),
-  };
+  return { nowPlaying: await syncPosition(live, url, key, userId), current };
 }
 
 /** 用 Sessions 校正播放位置。只在已知播放中时调用，空闲时零请求 */

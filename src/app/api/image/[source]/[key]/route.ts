@@ -4,6 +4,26 @@ import { decodeImageToken } from "@/lib/image-proxy";
 export const runtime = "nodejs";
 
 const TIMEOUT_MS = 10_000;
+/**
+ * Emby 海报入库前压到的最长边。
+ *
+ * 上游按 maxHeight=400 给，回来是 712×400 的 JPEG，而页面上最宽的展示位是
+ * 237 CSS px —— 2 倍屏也只要 474。压在入口做，和自定义歌单封面同一个路子：
+ * 缓存里存的直接是小图，之后每次命中都省，顺带转成 WebP。
+ *
+ * 键里带版本号：存储格式变了而键不变的话，旧的未压缩条目会一直被端出来。
+ */
+/**
+ * 不降分辨率，只靠格式省。
+ *
+ * 上游给的就是 712×400，而展示位 237 CSS px 在 Retina 上要 474 —— 压到 480
+ * 一点余量都没有，窗口一宽就不够，实测肉眼可见地劣化。所以这里给到上游原始
+ * 尺寸之上（withoutEnlargement 保证不会放大），省下来的全部来自 JPEG → WebP。
+ */
+const EMBY_MAX_DIMENSION = 720;
+/** 展示尺寸比歌单封面大得多，默认那档 82 会吃掉细节 */
+const EMBY_WEBP_QUALITY = 88;
+const EMBY_CACHE_VERSION = "v3";
 const CACHE_CONTROL = "public, max-age=31536000, immutable";
 type ImageLoadResult =
   | { image: ImageEntry }
@@ -22,7 +42,7 @@ async function loadEmbyImage(token: string): Promise<ImageLoadResult> {
     `?${new URLSearchParams({ tag, maxHeight: String(height) })}`;
 
   try {
-    const image = await getCachedImage(`emby:${token}`, async () => {
+    const image = await getCachedImage(`emby:${EMBY_CACHE_VERSION}:${token}`, async () => {
       const upstream = await fetch(upstreamUrl, {
         cache: "no-store",
         signal: AbortSignal.timeout(TIMEOUT_MS),
@@ -33,7 +53,7 @@ async function loadEmbyImage(token: string): Promise<ImageLoadResult> {
         contentType: upstream.headers.get("content-type") ?? "image/jpeg",
         etag: upstream.headers.get("etag"),
       };
-    });
+    }, EMBY_MAX_DIMENSION, EMBY_WEBP_QUALITY);
     return image ? { image } : { error: "上游图片获取失败", status: 502 };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

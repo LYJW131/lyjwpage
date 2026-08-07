@@ -1,5 +1,6 @@
 import { invalidate } from "@/lib/cache";
 import { clearNowPlaying, setNowPlaying } from "@/lib/emby-store";
+import { getNowWatching } from "@/lib/emby";
 import { publish } from "@/lib/live-events";
 
 export const runtime = "nodejs";
@@ -103,8 +104,9 @@ export async function POST(request: Request) {
     });
   }
 
-  // 状态已持久化后再通知浏览器；收到事件的前端会立即重取 watching 状态。
-  publish({ type: "watching", payload: null });
+  // 状态已持久化后再推给浏览器。直接带数据，不发信号让前端回头再拉一次 ——
+  // 这条本来就是 webhook 驱动的，服务端手上已经是最新的了。
+  publish({ type: "watching", payload: await getNowWatching() });
 
   return new Response(null, { status: 204 });
 }

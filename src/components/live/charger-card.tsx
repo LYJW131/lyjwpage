@@ -6,6 +6,8 @@ import { useCallback, useRef } from "react";
 import { Sparkline } from "@/components/live/sparkline";
 import { Card } from "@/components/ui/card";
 import { StatusDot, type DotTone } from "@/components/ui/status-dot";
+import { CHARGER_PATH, useLiveStream } from "@/hooks/use-live-stream";
+import { historyCursor, mergeChargerHistory } from "@/lib/charger-history";
 import { useStatus } from "@/hooks/use-status";
 import type {
   ChargerPayload,
@@ -16,7 +18,6 @@ import type {
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-const CHARGER_PATH = "/api/status/charger";
 /** 与 charger-store 的 HISTORY_LIMIT 保持一致，别让拼出来的序列无限长 */
 const HISTORY_LIMIT = 400;
 
@@ -25,7 +26,14 @@ const HISTORY_LIMIT = 400;
  * 原来固定 5 秒轮询，每产生一个点要空转六七次，拿回来全是一模一样的数据。
  * 取的是服务端存好的快照，调慢不会传导到充电头。
  */
-const REFRESH_MS = 15_000;
+/**
+ * 和上报节奏对齐。
+ *
+ * 采集端是 1 Hz，但上报按节流窗口走（默认 30 秒），原来 15 秒一轮里大约有
+ * 一半拿到的是完全相同的数据。插拔和上下线已经走 SSE 即时推送，不靠这条，
+ * 所以这里只需要接住滚动读数。
+ */
+const REFRESH_MS = 30_000;
 
 function tone(status: ChargerStatus | undefined): DotTone {
   if (!status?.connected) return "off";
@@ -38,16 +46,9 @@ function portTone(port: ChargerPort, connected: boolean): DotTone {
 }
 
 export function ChargerCard({ className }: { className?: string }) {
-  /**
-   * 曲线自己攒着，每轮只问服务端要新增的点。
-   * 放 ref 不放 state：它不参与渲染判断，返回的 payload 里已经带着拼好的
-   * 完整序列了，再多一份 state 只会多一次渲染。
-   */
-  const historyRef = useRef<ChargerSample[]>([]);
-
+  // 曲线累加器提到了模块级（lib/charger-history），推送和轮询共用同一套合并
   const fetchCharger = useCallback(async (): Promise<StatusResponse<ChargerPayload>> => {
-    const known = historyRef.current;
-    const since = known.length ? known[known.length - 1].t : null;
+    const since = historyCursor();
     const url = since == null ? CHARGER_PATH : `${CHARGER_PATH}?since=${since}`;
 
     const response = await fetch(url, { cache: "no-store" });
@@ -55,15 +56,11 @@ export function ChargerCard({ className }: { className?: string }) {
     const envelope = (await response.json()) as StatusResponse<ChargerPayload>;
     if (!envelope.ok) return envelope;
 
-    // historyPartial 为假就是整份快照（首次，或落后太多、服务端已裁掉中间那段）
-    const merged = envelope.data.historyPartial
-      ? [...known, ...envelope.data.history]
-      : envelope.data.history;
-    historyRef.current = merged.slice(-HISTORY_LIMIT);
-
-    return { ...envelope, data: { ...envelope.data, history: historyRef.current } };
+    return { ...envelope, data: mergeChargerHistory(envelope.data) };
   }, []);
 
+  // 插拔/换设备时服务端会推一条事件让这个键立即重取；滚动读数照旧靠轮询
+  useLiveStream();
   const { data, error, isLoading } = useStatus<ChargerPayload>(
     CHARGER_PATH,
     REFRESH_MS,

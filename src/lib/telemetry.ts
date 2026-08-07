@@ -3,14 +3,20 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { normalizeRawStatus, type RawStatus } from "@/lib/anker";
+import { getChargerPayload, normalizeRawStatus, type RawStatus } from "@/lib/anker";
 import { recordPushHeartbeat, recordStatus } from "@/lib/charger-store";
-import { resolveTrackLink } from "@/lib/apple-music";
+import { resolveTrackLookup } from "@/lib/apple-music";
 import { getHomePodNowPlaying } from "@/lib/homepod-store";
 import { storeUploadedImage } from "@/lib/image-store";
 import { number, object, text } from "@/lib/json";
 import { ASSET_URL_PREFIX } from "@/lib/image-store";
 import { publish } from "@/lib/live-events";
+import {
+  declareReporterOffline,
+  markReporterSeen,
+  reporterLastSeenAt,
+  reporterOffline,
+} from "@/lib/reporter-liveness";
 import type {
   DesktopActivity,
   DesktopPayload,
@@ -19,8 +25,23 @@ import type {
 } from "@/lib/types";
 import { recordVibeCodingReport } from "@/lib/vibecoding";
 
-// The sender heartbeats every 30s; leave room for timer and network jitter.
-const ACTIVITY_STALE_MS = 45_000;
+/**
+ * 前台应用图标入库前压到的最长边。
+ *
+ * 采集端送来的是 128pt 的 PNG，Retina 上渲出来 256px、约 125KB，而页面上那个
+ * 位置只有 40 CSS px —— 2 倍屏也只要 80。和 Emby 海报、自定义歌单封面同一个
+ * 路子：压在入口，缓存里存的直接是小图。
+ *
+ * 不像 Emby 那样需要给缓存键加版本：资产地址是内容哈希，压缩换了字节哈希就换，
+ * 地址天然失效。
+ */
+const ICON_MAX_DIMENSION = 96;
+/**
+ * 图标比照片吃质量：大片纯色加硬边缘，有损压缩的振铃在这种图上最显眼，
+ * 而它本来就只有几 KB，往上调几乎不涨体积。
+ */
+const ICON_WEBP_QUALITY = 92;
+
 /** 暂停超过这个时间就不再占用音乐 Hero，让下一个实时来源接管。 */
 const MUSIC_PAUSE_GRACE_MS = 30_000;
 let pauseExpiryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -29,7 +50,6 @@ type TelemetryState = {
   desktop: DesktopActivity | null;
   music: LocalNowPlaying | null;
   activityReceivedAt: number;
-  telemetryReceivedAt: number;
   activeModules: Set<string>;
 };
 
@@ -40,7 +60,6 @@ const telemetryState = (globalTelemetry.__lyjwTelemetryState ??= {
   desktop: null,
   music: null,
   activityReceivedAt: 0,
-  telemetryReceivedAt: 0,
   activeModules: new Set<string>(),
 });
 const TELEMETRY_CACHE_DIR = join(tmpdir(), "lyjwpage-telemetry-v2");
@@ -56,7 +75,7 @@ function persistTelemetryState() {
       desktop: telemetryState.desktop,
       music: telemetryState.music,
       activityReceivedAt: telemetryState.activityReceivedAt,
-      telemetryReceivedAt: telemetryState.telemetryReceivedAt,
+      telemetryReceivedAt: reporterLastSeenAt(),
       activeModules: [...telemetryState.activeModules],
     }),
   );
@@ -93,7 +112,7 @@ function hydrateTelemetryState() {
     telemetryState.desktop = keepFreshAsset(cached.desktop ?? null, "iconUrl");
     telemetryState.music = keepFreshAsset(cached.music ?? null, "artworkUrl");
     telemetryState.activityReceivedAt = cached.activityReceivedAt ?? 0;
-    telemetryState.telemetryReceivedAt = cached.telemetryReceivedAt ?? 0;
+    markReporterSeen(cached.telemetryReceivedAt ?? 0);
     telemetryState.activeModules = new Set(cached.activeModules ?? []);
   } catch {
     // 首次启动时没有缓存文件是正常情况。
@@ -101,6 +120,7 @@ function hydrateTelemetryState() {
 }
 
 type TelemetryEnvelope = {
+  presence?: unknown;
   version?: unknown;
   heartbeat_at?: unknown;
   active_modules?: unknown;
@@ -129,7 +149,7 @@ async function normalizeDesktop(
   return {
     applicationName,
     bundleIdentifier,
-    iconUrl: (await storeUploadedImage(row.icon_data)) ?? previousIcon,
+    iconUrl: (await storeUploadedImage(row.icon_data, ICON_MAX_DIMENSION, ICON_WEBP_QUALITY)) ?? previousIcon,
     observedAt: milliseconds(row.observed_at, receivedAt),
   };
 }
@@ -143,8 +163,6 @@ async function normalizeMusic(
   const rawState = text(row.state);
   const state = rawState === "playing" || rawState === "paused" ? rawState : "stopped";
   const trackId = text(row.track_id);
-  const previousArtwork =
-    telemetryState.music?.trackId === trackId ? telemetryState.music.artworkUrl : null;
   return {
     source: "apple-music",
     state,
@@ -152,7 +170,9 @@ async function normalizeMusic(
     artist: text(row.artist),
     album: text(row.album),
     trackId,
-    artworkUrl: (await storeUploadedImage(row.artwork_data)) ?? previousArtwork,
+    // 采集端不再上传封面二进制：读取时会查一次 Apple Music 目录拿曲目链接，
+    // 那次查询的结果自带封面 URL，见 getMusicPayload
+    artworkUrl: null,
     positionMs: Math.max(0, number(row.position_ms) ?? 0),
     durationMs: Math.max(0, number(row.duration_ms) ?? 0),
     // 上报器目前不上报循环状态，缺字段时按「不循环」处理
@@ -175,7 +195,17 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
     throw new Error("active_modules 只能包含字符串");
   }
   telemetryState.activeModules = new Set(nextActiveModules);
-  telemetryState.telemetryReceivedAt = receivedAt;
+  markReporterSeen(receivedAt);
+  /**
+   * 上报器声明的在离线。
+   *
+   * 只覆盖优雅离开：退出、睡眠时它抢在断开前发一条 offline，这里立刻把状态
+   * 翻过去，不用等 45 秒心跳窗口。崩溃、断网、强制关机时它发不出这一条，
+   * 那些仍然靠下面 reporterStale 的超时兜底 —— 两条路是互补的。
+   *
+   * 缺字段按 online 处理：能发出这个包本身就说明它活着，而且旧版采集器不带这个字段。
+   */
+  const presenceFlipped = declareReporterOffline(envelope.presence === "offline");
   if (telemetryState.activeModules.has("charger")) {
     await recordPushHeartbeat(receivedAt);
   }
@@ -187,7 +217,12 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
   if ("charger" in modules) {
     const raw = object(modules.charger) as RawStatus | null;
     if (!raw?.updated_at) throw new Error("charger 模块缺少 updated_at");
-    await recordStatus(normalizeRawStatus(raw), receivedAt);
+    const structuralChanged = await recordStatus(normalizeRawStatus(raw), receivedAt);
+    // 插拔、换设备立刻推给浏览器，不等卡片下一次轮询。滚动读数不走这里。
+    // since 给当下时刻：历史点一个都不带，客户端沿用自己那份，见 live-events 的说明。
+    if (structuralChanged) {
+      publish({ type: "charger", payload: await getChargerPayload({ since: Date.now() }) });
+    }
     accepted += 1;
   }
 
@@ -210,21 +245,52 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
 
   persistTelemetryState();
 
-  // 心跳包也要推：它不带模块数据，但会刷新 receivedAt，
-  // 前端据此把「上报器离线」翻回在线。两边的 stale/idle 都是时间的函数，
-  // 所以两个都推。
-  publishDesktop();
-  await publishMusic();
+  /**
+   * 只在模块真的来了才推。
+   *
+   * 采集端本来就只在内容变化时才带上对应模块，所以「模块出现在 envelope 里」
+   * 就是变化信号本身。从前这里是无条件推 —— 连不带任何模块的纯心跳包也推，
+   * 为的是把「上报器离线」翻回在线。但 stale 是时间的函数，两张卡一直在轮询，
+   * 那件事轮询本来就在做；为它每 30 秒广播一份没变化的状态，等于把 SSE 当轮询用。
+   *
+   * 代价是上报器从离线恢复时，「在线」最迟等下一轮轮询（连着 SSE 时 30 秒）才
+   * 显示，不再是收到心跳的那一刻。换来的是 SSE 上只跑真正的状态变化。
+   */
+  // 在离线翻转本身就是状态变化，值得推 —— 这正是「关键事件」，不是定时广播
+  if (presenceFlipped) await publishPresence();
+  if ("desktop" in modules) publishDesktop();
+  if ("apple_music" in modules) await publishMusic();
 
   return { accepted, heartbeat: true };
 }
 
+/**
+ * 上报器的存活声明，来自专用的 presence 端点。
+ *
+ * 和数据上报共用同一个 telemetryReceivedAt —— 「上报器还活着」只有一个事实，
+ * 不该因为它是从哪个路由进来的而分成两份。数据包本身也算存活证明，所以
+ * recordTelemetryEnvelope 里照样刷新那个时间戳。
+ */
+export async function recordPresence(
+  state: "online" | "offline",
+  activeModules?: string[],
+  receivedAt = Date.now(),
+) {
+  hydrateTelemetryState();
+  const flipped = declareReporterOffline(state === "offline");
+  markReporterSeen(receivedAt);
+  if (activeModules) telemetryState.activeModules = new Set(activeModules);
+  if (telemetryState.activeModules.has("charger")) {
+    await recordPushHeartbeat(receivedAt);
+  }
+  persistTelemetryState();
+  // 只有翻转才是事件；周期心跳不该占用推送通道
+  if (flipped) await publishPresence();
+}
+
 /** 上报器整体是否已超过心跳窗口。只影响 Mac 来的东西，HomePod 走自己的路径。 */
 function reporterStale() {
-  return (
-    !telemetryState.telemetryReceivedAt ||
-    Date.now() - telemetryState.telemetryReceivedAt > ACTIVITY_STALE_MS
-  );
+  return reporterOffline();
 }
 
 export function getDesktopPayload(): DesktopPayload {
@@ -233,7 +299,7 @@ export function getDesktopPayload(): DesktopPayload {
   return {
     desktop: stale ? null : telemetryState.desktop,
     receivedAt:
-      telemetryState.activityReceivedAt || telemetryState.telemetryReceivedAt || null,
+      telemetryState.activityReceivedAt || reporterLastSeenAt() || null,
     stale,
   };
 }
@@ -258,18 +324,36 @@ export async function getMusicPayload(): Promise<MusicPayload> {
     (homePodMusic?.state === "playing" ? homePodMusic : null) ??
     (homePodPausedFresh ? homePodMusic : null);
   // 命中会长期缓存，绝大多数调用不会真的打上游
-  const link = music ? await resolveTrackLink(music) : null;
+  const lookup = music ? await resolveTrackLookup(music) : null;
 
   return {
-    music,
+    /**
+     * 封面优先用目录查出来的那张。
+     *
+     * 这次查询本来就要做（为了拿链接），结果本来就带 artwork，等于白拿；
+     * 而采集端为此要把 JPEG 二进制压进每个换歌的上报包里，是那个模块最大的一块。
+     * 目录里没有的曲子（本地导入、非目录内容）查不到封面，那时仍退回采集端送来的那张。
+     */
+    music: music && lookup?.artwork ? { ...music, artworkUrl: lookup.artwork } : music,
     receivedAt: Math.max(
-      telemetryState.activityReceivedAt || telemetryState.telemetryReceivedAt || 0,
+      telemetryState.activityReceivedAt || reporterLastSeenAt() || 0,
       homePod?.receivedAt ?? 0,
     ) || null,
     // 没东西可显示，而不是「数据过期」—— 没在听歌时这就是常态
     idle: !music,
-    link,
+    link: lookup?.link ?? null,
   };
+}
+
+/**
+ * 上报器上下线。只发信号不带数据，让各卡片自己重取 —— 存活影响的是四张卡的
+ * stale，逐一算好推出去不如让它们各取各的，省一次全量计算。
+ *
+ * vibe coding 那张刻意不订阅：token 用量是累计的历史事实，Mac 掉线它不会变得
+ * 不可信，只是不再增长。那张卡的陈旧判定另有自己的口径。
+ */
+export async function publishPresence() {
+  publish({ type: "presence", payload: null });
 }
 
 export function publishDesktop() {
