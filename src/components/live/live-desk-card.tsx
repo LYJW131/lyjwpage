@@ -2,7 +2,7 @@
 
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Card } from "@/components/ui/card";
 import { DESKTOP_PATH, useLiveStream } from "@/hooks/use-live-stream";
@@ -122,6 +122,30 @@ export function LiveDeskCard({ className }: { className?: string }) {
     ? "offline"
     : desktop?.bundleIdentifier ?? desktop?.applicationName ?? "idle";
 
+  /**
+   * 首屏那次不算切换。
+   *
+   * 扫光是个普通 span，CSS 动画挂载即播，靠 key 变化重新挂载来重播 —— 对
+   * 「换了应用」是对的，但首屏时 displayedDesktop 从 null 变成第一个应用，
+   * 这个元素也是第一次挂载，动画照样播。旁边那个 motion.div 有 initial={false}
+   * 挡着，它在 AnimatePresence 外面，没人管。
+   *
+   * 记住见过的第一个 key，等它真的变过一次再开始渲染扫光。用 ref 不用 state：
+   * 这个判断不该触发重渲染，而且必须在渲染扫光的同一次 render 里就为真。
+   */
+  const seenKeyRef = useRef<string | null>(null);
+  const switchedRef = useRef(false);
+  // 只在有真实应用时记基线：首屏那几帧 key 是 offline / idle，
+  // 把它们算进去的话「offline → 第一个应用」就成了一次切换，扫光照样播
+  if (displayedDesktop) {
+    if (seenKeyRef.current === null) {
+      seenKeyRef.current = applicationKey;
+    } else if (seenKeyRef.current !== applicationKey) {
+      seenKeyRef.current = applicationKey;
+      switchedRef.current = true;
+    }
+  }
+
   return (
     <Card
       label="Live Desk"
@@ -203,7 +227,7 @@ export function LiveDeskCard({ className }: { className?: string }) {
                 </motion.div>
               </AnimatePresence>
               )}
-              {!reduced && displayedDesktop && (
+              {!reduced && displayedDesktop && switchedRef.current && (
                 <span
                   key={`sheen-${applicationKey}`}
                   className="app-switch-sheen"
