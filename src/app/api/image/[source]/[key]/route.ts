@@ -6,6 +6,8 @@ export const runtime = "nodejs";
 
 const TIMEOUT_MS = 10_000;
 const CACHE_CONTROL = "public, max-age=31536000, immutable";
+/** 歌单封面最大显示 80px，留到 3 倍屏 */
+const PLAYLIST_COVER_MAX = 240;
 type ImageLoadResult =
   | { image: ImageEntry }
   | { error: string; status: 403 | 500 | 502 };
@@ -92,7 +94,7 @@ async function loadApplePlaylistImage(playlistId: string): Promise<ImageLoadResu
         contentType: upstream.headers.get("content-type") ?? "image/jpeg",
         etag: upstream.headers.get("etag"),
       };
-    });
+    }, PLAYLIST_COVER_MAX);
     return image ? { image } : { error: "封面获取失败", status: 502 };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

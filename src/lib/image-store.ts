@@ -1,3 +1,5 @@
+import sharp from "sharp";
+
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -100,10 +102,48 @@ async function writeRedis(key: string, entry: ImageEntry, ttlMs: number) {
   }, null);
 }
 
+/**
+ * 存进缓存前把图压小。
+ *
+ * 用户上传的自定义封面动辄 1179×1179 / 270KB，而页面上最大的展示窗口也就
+ * 80px。压在入口做而不是出口：缓存里存的直接就是小图，之后每次命中都省，
+ * 地址也还是我们自己的 /api/image/...，不引入第二层缓存和第二套地址。
+ *
+ * maxDimension 按用途给 —— 歌单封面和 Emby 海报的展示尺寸差好几倍，
+ * 一刀切要么糊要么白存。
+ *
+ * 尽力而为：sharp 处理不了的（动图、异常编码）原样返回，不让整条链路失败。
+ */
+async function compress(entry: ImageEntry, maxDimension: number): Promise<ImageEntry> {
+  try {
+    const image = sharp(entry.body, { animated: false });
+    const meta = await image.metadata();
+    const longest = Math.max(meta.width ?? 0, meta.height ?? 0);
+    if (!longest) return entry;
+
+    const body = await image
+      // withoutEnlargement：本来就比目标小的不要放大，白白变糊还变大
+      .resize({ width: maxDimension, height: maxDimension, fit: "inside", withoutEnlargement: true })
+      .webp({ quality: 82 })
+      .toBuffer();
+
+    // 极少数情况下重编码反而更大（本来就是高压缩的小图），那就留原样
+    if (body.byteLength >= entry.body.byteLength) return entry;
+    return { body, contentType: "image/webp", etag: entry.etag };
+  } catch (error) {
+    console.error(
+      "[image] 压缩失败，按原样缓存：",
+      error instanceof Error ? error.message : String(error),
+    );
+    return entry;
+  }
+}
+
 async function loadImage(
   key: string,
   ttlMs: number,
   loader: () => Promise<ImageEntry | null>,
+  maxDimension?: number,
 ): Promise<ImageEntry | null> {
   const memoryHit = memoryGet(key);
   if (memoryHit) return memoryHit;
@@ -119,7 +159,8 @@ async function loadImage(
         return redisHit;
       }
 
-      const entry = await loader();
+      const raw = await loader();
+      const entry = raw && maxDimension ? await compress(raw, maxDimension) : raw;
       if (entry) {
         remember(key, entry, ttlMs);
         if (entry.body.byteLength <= MAX_ENTRY_BYTES) {
@@ -140,8 +181,10 @@ async function loadImage(
 export function getCachedImage(
   key: string,
   loader: () => Promise<ImageEntry | null>,
+  /** 最长边压到这个像素；省略则原样缓存 */
+  maxDimension?: number,
 ) {
-  return loadImage(`cache:${key}`, CACHE_TTL_MS, loader);
+  return loadImage(`cache:${key}`, CACHE_TTL_MS, loader, maxDimension);
 }
 
 function detectedContentType(body: Buffer) {
