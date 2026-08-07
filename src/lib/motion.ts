@@ -1,12 +1,15 @@
 import type { Transition } from "motion/react";
 
+/** 秒。调用方要按同一条时间线安排收尾动作时拿它对齐 */
+export const LIST_DURATION = 0.32;
+
 /**
  * 列表增删和重排统一用这一组过渡。
  *
  * 位移刻意压得很小（≤8px）：这些卡片会自己刷新，动效太大就成了干扰。
  */
 export const LIST_TRANSITION: Transition = {
-  duration: 0.32,
+  duration: LIST_DURATION,
   ease: [0.22, 1, 0.36, 1],
 };
 

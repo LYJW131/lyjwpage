@@ -2,13 +2,14 @@
 
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import Image from "next/image";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { StatusDot } from "@/components/ui/status-dot";
 import { useLiveStream, WATCHING_PATH } from "@/hooks/use-live-stream";
 import { useStatus } from "@/hooks/use-status";
 import { stableKeys } from "@/lib/keys";
 import {
+  LIST_DURATION,
   LIST_TRANSITION,
   ROW_ITEM_VARIANTS,
   STATIC_TRANSITION,
@@ -24,6 +25,12 @@ import { cn } from "@/lib/utils";
  */
 const REFRESH_PLAYING_MS = 3_000;
 const REFRESH_IDLE_MS = 60_000;
+
+/**
+ * 增删卡片后要等多久才把滚动吸附装回去。
+ * 比动画本身多留一点，计时是动画开跑之后才起的。
+ */
+const UNSNAP_MS = LIST_DURATION * 1000 + 80;
 
 /**
  * 卡片宽度按容器等分，保证视口里永远是整数张、不会被切一半。
@@ -181,6 +188,34 @@ export function WatchingRow() {
   const nowPlayingId = data?.nowPlaying?.itemId;
   const firstItemId = data?.items[0]?.id;
 
+  /**
+   * 增删卡片的这一段时间里先把滚动吸附摘掉。
+   *
+   * 这一行是 scroll-snap 容器，往头部插卡片时浏览器会把「原本吸附住的那张」
+   * 钉在原地不动：滚动位置一口气跳掉整整一格，新卡被顶到视口外，然后才被
+   * 下面那个 scrollTo 平滑滚回来。于是进场是浏览器的滚动动画、离场是 motion
+   * 的位移动画，快慢和曲线都对不上，离场收尾还要再被吸附纠正一次。
+   * 动画期间没有吸附，两边就都只剩 motion 那一套。
+   *
+   * 代价是这 0.4 秒里手动滑动不吸附 —— 要正好在 Emby 推事件的同一瞬间滑，
+   * 撞上了也只是松手时不停在整卡边界，不值得为它再加一层状态。
+   */
+  const ids = (data?.items ?? []).map((item) => item.id).join("\n");
+  const [snappedIds, setSnappedIds] = useState(ids);
+  const [reflowing, setReflowing] = useState(false);
+  // 在 render 里改状态，这样摘掉吸附和插入卡片是同一次提交 ——
+  // 放进 effect 就晚了一帧，浏览器已经先把滚动位置拽走了
+  if (snappedIds !== ids) {
+    setSnappedIds(ids);
+    setReflowing(true);
+  }
+
+  useEffect(() => {
+    if (!reflowing) return;
+    const timer = setTimeout(() => setReflowing(false), UNSNAP_MS);
+    return () => clearTimeout(timer);
+  }, [reflowing, ids]);
+
   useEffect(() => {
     if (!nowPlayingId || firstItemId !== nowPlayingId) return;
     scrollerRef.current?.scrollTo({
@@ -208,7 +243,11 @@ export function WatchingRow() {
     // 触发触控板的「滑动返回上一页」，那下手感是最生硬的。
     <div
       ref={scrollerRef}
-      className="snap-x snap-mandatory scroll-smooth overflow-x-auto overscroll-x-contain pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      className={cn(
+        "scroll-smooth overflow-x-auto overscroll-x-contain pb-1",
+        "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+        reflowing ? "snap-none" : "snap-x snap-mandatory",
+      )}
     >
       <div className="flex gap-3">
         {/* popLayout 让离场的卡片脱离布局流，后面的能同时补位 */}
