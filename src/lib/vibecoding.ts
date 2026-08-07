@@ -95,7 +95,7 @@ function normalizePreparedSummary(
   });
   if (
     agents.length !== AGENTS.length ||
-    agents.some((agent) => agent.last7Days.length !== 7 || agent.activity.length !== 60)
+    agents.some((agent) => agent.last7Days?.length !== 7 || agent.activity.length !== 60)
   ) {
     return null;
   }
@@ -200,12 +200,14 @@ export async function getVibeCodingPayload(
 
   return {
     ...pushed,
-    agents: activityPartial
-      ? pushed.agents.map((agent) => ({
-          ...agent,
-          activity: agent.activity.filter((point) => point.t >= since),
-        }))
-      : pushed.agents,
+    // last7Days 只服务于入库校验，页面不用，别塞进响应
+    agents: pushed.agents.map((agent) => ({
+      ...agent,
+      last7Days: undefined,
+      activity: activityPartial
+        ? agent.activity.filter((point) => point.t >= since)
+        : agent.activity,
+    })),
     activityPartial,
     stale: Date.now() - pushedAt > PUSH_STALE_MS,
   };

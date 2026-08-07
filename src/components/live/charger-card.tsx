@@ -21,10 +21,11 @@ const CHARGER_PATH = "/api/status/charger";
 const HISTORY_LIMIT = 400;
 
 /**
- * 那台机器约 5 秒推一次，前端跟着这个节奏取。
- * 取的是服务端存好的快照，不会传导到充电头。
+ * 服务端产生新采样点的节奏跟着上报器的 postInterval 走，实测中位间隔约 32 秒。
+ * 原来固定 5 秒轮询，每产生一个点要空转六七次，拿回来全是一模一样的数据。
+ * 取的是服务端存好的快照，调慢不会传导到充电头。
  */
-const REFRESH_MS = 5_000;
+const REFRESH_MS = 15_000;
 
 function tone(status: ChargerStatus | undefined): DotTone {
   if (!status?.connected) return "off";

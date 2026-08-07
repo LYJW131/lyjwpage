@@ -189,7 +189,11 @@ export type VibeCodingAgent = {
   /** 最近 30 天，每 12 小时一个 session-token 聚合点 */
   activity: Array<{ t: number; tokens: number }>;
   today: VibeCodingDay;
-  last7Days: VibeCodingDay[];
+  /**
+   * 只在入库时用来校验这份报告完不完整（必须正好 7 天），页面不渲染它，
+   * 所以发给浏览器的响应里会摘掉 —— 两个 agent 加起来 2.6KB，占三成。
+   */
+  last7Days?: VibeCodingDay[];
   last30DaysTokens: number;
 };
 
