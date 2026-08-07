@@ -220,8 +220,17 @@
   8% {
     opacity: 1;
   }
-  88% {
+  60% {
     opacity: 1;
+  }
+  70% {
+    opacity: 0.55;
+  }
+  78% {
+    opacity: 0.15;
+  }
+  84% {
+    opacity: 0;
   }
   100% {
     transform: translateX(367%) skewX(-14deg);

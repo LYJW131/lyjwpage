@@ -5,16 +5,23 @@ import { join } from "node:path";
 
 import { normalizeRawStatus, type RawStatus } from "@/lib/anker";
 import { recordPushHeartbeat, recordStatus } from "@/lib/charger-store";
+import { resolveTrackLink } from "@/lib/apple-music";
 import { getHomePodNowPlaying } from "@/lib/homepod-store";
+import { number, object, text } from "@/lib/json";
+import { publish } from "@/lib/live-events";
 import type {
-  ActivityPayload,
   DesktopActivity,
+  DesktopPayload,
   LocalNowPlaying,
+  MusicPayload,
 } from "@/lib/types";
 import { recordVibeCodingReport } from "@/lib/vibecoding";
 
 // The sender heartbeats every 30s; leave room for timer and network jitter.
 const ACTIVITY_STALE_MS = 45_000;
+/** 暂停超过这个时间就不再占用音乐 Hero，让下一个实时来源接管。 */
+const MUSIC_PAUSE_GRACE_MS = 30_000;
+let pauseExpiryTimer: ReturnType<typeof setTimeout> | null = null;
 
 type ActivityAsset = { body: Uint8Array; contentType: string };
 type TelemetryState = {
@@ -83,24 +90,10 @@ type TelemetryEnvelope = {
   modules?: unknown;
 };
 
-function object(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
-function number(value: unknown) {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
 function milliseconds(value: unknown, fallback = Date.now()) {
   const parsed = number(value);
   if (parsed == null) return fallback;
   return parsed > 1e12 ? parsed : parsed * 1000;
-}
-
-function text(value: unknown) {
-  return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
 function storeActivityAsset(value: unknown) {
@@ -134,7 +127,6 @@ function normalizeDesktop(value: unknown, receivedAt: number): DesktopActivity |
   return {
     applicationName,
     bundleIdentifier,
-    windowTitle: text(row.window_title),
     iconUrl: storeActivityAsset(row.icon_data) ?? previousIcon,
     observedAt: milliseconds(row.observed_at, receivedAt),
   };
@@ -158,6 +150,8 @@ function normalizeMusic(value: unknown, receivedAt: number): LocalNowPlaying | n
     artworkUrl: storeActivityAsset(row.artwork_data) ?? previousArtwork,
     positionMs: Math.max(0, number(row.position_ms) ?? 0),
     durationMs: Math.max(0, number(row.duration_ms) ?? 0),
+    // 上报器目前不上报循环状态，缺字段时按「不循环」处理
+    repeatOne: text(row.repeat_one) === "true" || row.repeat_one === true,
     observedAt: milliseconds(row.observed_at, receivedAt),
   };
 }
@@ -223,40 +217,94 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
 
   persistTelemetryState();
 
+  // 心跳包也要推：它不带模块数据，但会刷新 receivedAt，
+  // 前端据此把「上报器离线」翻回在线。两边的 stale/idle 都是时间的函数，
+  // 所以两个都推。
+  publishDesktop();
+  await publishMusic();
+
   return { accepted, heartbeat: true };
 }
 
-export async function getActivityPayload(): Promise<ActivityPayload> {
-  hydrateTelemetryState();
-  const telemetryStale =
+/** 上报器整体是否已超过心跳窗口。只影响 Mac 来的东西，HomePod 走自己的路径。 */
+function reporterStale() {
+  return (
     !telemetryState.telemetryReceivedAt ||
-    Date.now() - telemetryState.telemetryReceivedAt > ACTIVITY_STALE_MS;
-  const desktopEnabled = telemetryState.activeModules.has("desktop");
+    Date.now() - telemetryState.telemetryReceivedAt > ACTIVITY_STALE_MS
+  );
+}
+
+export function getDesktopPayload(): DesktopPayload {
+  hydrateTelemetryState();
+  const stale = !telemetryState.activeModules.has("desktop") || reporterStale();
+  return {
+    desktop: stale ? null : telemetryState.desktop,
+    receivedAt:
+      telemetryState.activityReceivedAt || telemetryState.telemetryReceivedAt || null,
+    stale,
+  };
+}
+
+export async function getMusicPayload(): Promise<MusicPayload> {
+  hydrateTelemetryState();
+  const telemetryStale = reporterStale();
   const musicEnabled = telemetryState.activeModules.has("apple_music");
   const macMusic = musicEnabled && !telemetryStale ? telemetryState.music : null;
   const homePod = await getHomePodNowPlaying();
   const homePodMusic = homePod?.music ?? null;
-
-  // MacBook telemetry is authoritative whenever it has a usable track; HomePod is fallback.
+  const now = Date.now();
+  const macPausedFresh =
+    macMusic?.state === "paused" &&
+    now - macMusic.observedAt < MUSIC_PAUSE_GRACE_MS;
+  const homePodPausedFresh =
+    homePodMusic?.state === "paused" &&
+    now - homePodMusic.observedAt < MUSIC_PAUSE_GRACE_MS;
   const music =
-    (macMusic?.state === "playing" || macMusic?.state === "paused" ? macMusic : null) ??
-    (homePodMusic?.state === "playing" || homePodMusic?.state === "paused"
-      ? homePodMusic
-      : null);
-  const desktopStale = !desktopEnabled || telemetryStale;
-  const musicStale = !music;
+    (macMusic?.state === "playing" ? macMusic : null) ??
+    (macPausedFresh ? macMusic : null) ??
+    (homePodMusic?.state === "playing" ? homePodMusic : null) ??
+    (homePodPausedFresh ? homePodMusic : null);
+  // 命中会长期缓存，绝大多数调用不会真的打上游
+  const link = music ? await resolveTrackLink(music) : null;
 
   return {
-    desktop: desktopStale ? null : telemetryState.desktop,
     music,
     receivedAt: Math.max(
       telemetryState.activityReceivedAt || telemetryState.telemetryReceivedAt || 0,
       homePod?.receivedAt ?? 0,
     ) || null,
-    desktopStale,
-    musicStale,
-    stale: desktopStale && musicStale,
+    // 没东西可显示，而不是「数据过期」—— 没在听歌时这就是常态
+    idle: !music,
+    link,
   };
+}
+
+export function publishDesktop() {
+  publish({ type: "desktop", payload: getDesktopPayload() });
+}
+
+/**
+ * 推送当前播放，并在暂停宽限期结束时精确重算一次来源。
+ * 这样前端会直接从暂停来源切到下一实时来源，不会中途闪回 Apple Music 的历史 hero。
+ */
+export async function publishMusic() {
+  const payload = await getMusicPayload();
+  publish({ type: "music", payload });
+
+  if (pauseExpiryTimer) {
+    clearTimeout(pauseExpiryTimer);
+    pauseExpiryTimer = null;
+  }
+  if (payload.music?.state === "paused") {
+    const remaining =
+      MUSIC_PAUSE_GRACE_MS - Math.max(0, Date.now() - payload.music.observedAt);
+    pauseExpiryTimer = setTimeout(() => {
+      pauseExpiryTimer = null;
+      void publishMusic();
+    }, Math.max(1, remaining + 25));
+  }
+
+  return payload;
 }
 
 /** 唯一遥测入口的鉴权；未配置密钥时保留本地开发的零配置体验。 */
