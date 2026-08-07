@@ -143,7 +143,11 @@ export function ChargerCard({ className }: { className?: string }) {
         {/* 功率曲线：服务端累积的历史。两条坐标轴都固定，不随数据缩放，
             否则每来一个点整条曲线都会挪位 —— 细节见 sparkline.tsx */}
         <div className="mt-3 flex max-h-32 min-h-8 flex-1 items-end">
-          <Sparkline samples={history} className="h-full min-h-8 w-full" />
+          <Sparkline
+            samples={history}
+            formatValue={(watts) => `${watts.toFixed(1)}W`}
+            className="h-full min-h-8 w-full"
+          />
         </div>
 
         {/* 三个 USB-C 口 */}

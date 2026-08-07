@@ -1,6 +1,6 @@
 "use client";
 
-import { useId } from "react";
+import { useId, useState } from "react";
 
 import type { ChargerSample } from "@/lib/types";
 
@@ -50,6 +50,7 @@ export function Sparkline({
   windowMs = WINDOW_MS,
   step = STEP,
   variant = "bars",
+  formatValue,
   className,
 }: {
   samples: ChargerSample[];
@@ -60,9 +61,12 @@ export function Sparkline({
   step?: number;
   /** bars 适合瞬时读数，trend 适合看走向 —— 取舍见文件头 */
   variant?: "bars" | "trend";
+  /** 传了就在 bars 上启用悬停读数；返回要显示的文本 */
+  formatValue?: (value: number) => string;
   className?: string;
 }) {
   const id = useId();
+  const [hovered, setHovered] = useState<number | null>(null);
 
   if (samples.length < 2) {
     return <div className={className} aria-hidden />;
@@ -195,33 +199,78 @@ export function Sparkline({
   const slotWidth = width / slotCount;
   const barWidth = Math.max(0.4, slotWidth * BAR_FILL);
 
+  const active = hovered != null ? values[hovered] : null;
+
   return (
-    <svg
-      viewBox={`0 0 ${width} ${height}`}
-      preserveAspectRatio="none"
-      className={className}
-      aria-hidden
+    // 相对定位是给读数气泡用的：viewBox 被 preserveAspectRatio="none" 拉伸，
+    // SVG 里的文字会跟着变形，所以气泡只能是 HTML
+    <div
+      className={`relative ${className ?? ""}`}
+      onMouseLeave={formatValue ? () => setHovered(null) : undefined}
     >
-      <defs>
-        <linearGradient id={`fill-${id}`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="var(--live)" stopOpacity="0.95" />
-          <stop offset="100%" stopColor="var(--live)" stopOpacity="0.35" />
-        </linearGradient>
-      </defs>
-      {values.map((value, index) => {
-        if (value == null) return null;
-        const y = height - (Math.min(Math.max(value, 0), ceiling) / ceiling) * height;
-        return (
-          <rect
-            key={index}
-            x={(index * slotWidth + (slotWidth - barWidth) / 2).toFixed(2)}
-            y={y.toFixed(2)}
-            width={barWidth.toFixed(2)}
-            height={(height - y).toFixed(2)}
-            fill={`url(#fill-${id})`}
-          />
-        );
-      })}
-    </svg>
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        preserveAspectRatio="none"
+        className="h-full w-full"
+        aria-hidden
+      >
+        <defs>
+          <linearGradient id={`fill-${id}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--live)" stopOpacity="0.95" />
+            <stop offset="100%" stopColor="var(--live)" stopOpacity="0.35" />
+          </linearGradient>
+        </defs>
+        {values.map((value, index) => {
+          if (value == null) return null;
+          const y = height - (Math.min(Math.max(value, 0), ceiling) / ceiling) * height;
+          return (
+            <rect
+              key={index}
+              x={(index * slotWidth + (slotWidth - barWidth) / 2).toFixed(2)}
+              y={y.toFixed(2)}
+              width={barWidth.toFixed(2)}
+              height={(height - y).toFixed(2)}
+              fill={`url(#fill-${id})`}
+              opacity={hovered != null && hovered !== index ? 0.4 : 1}
+            />
+          );
+        })}
+        {/*
+          命中区：横向覆盖整列（柱子只有几像素宽，光标很难精确落上去），
+          纵向只从柱顶往下 —— 全高的话，柱子矮时光标飘在上方老远就触发了。
+        */}
+        {formatValue &&
+          values.map((value, index) => {
+            if (value == null) return null;
+            const y = height - (Math.min(Math.max(value, 0), ceiling) / ceiling) * height;
+            return (
+              <rect
+                key={`hit-${index}`}
+                x={(index * slotWidth).toFixed(2)}
+                y={y.toFixed(2)}
+                width={slotWidth.toFixed(2)}
+                height={(height - y).toFixed(2)}
+                fill="transparent"
+                onMouseEnter={() => setHovered(index)}
+              />
+            );
+          })}
+      </svg>
+
+      {formatValue && active != null && hovered != null && (
+        <div
+          className="pointer-events-none absolute z-10 -mt-1 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-sm border border-line bg-surface px-1.5 py-0.5 label-mono text-foreground"
+          style={{
+            // 贴那一列的中心；两端夹住，免得气泡被卡片边缘裁掉
+            left: `${Math.min(92, Math.max(8, ((hovered + 0.5) / slotCount) * 100))}%`,
+            // 贴柱子顶端而不是容器顶端 —— 柱子矮的时候上面空一大片，
+            // 气泡飘在那儿看不出跟谁有关系
+            top: `${(1 - Math.min(Math.max(active, 0), ceiling) / ceiling) * 100}%`,
+          }}
+        >
+          {formatValue(active)}
+        </div>
+      )}
+    </div>
   );
 }
