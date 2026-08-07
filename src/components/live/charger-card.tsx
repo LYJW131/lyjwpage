@@ -112,7 +112,7 @@ export function ChargerCard({ className }: { className?: string }) {
           所以 items-end 底边对齐，再按实测补 4px：两边盒底相同，但字形底
           分别在 257 和 261（半行距 0 vs 5、字体下伸 14 vs 5）。
         */}
-        <div className="flex h-[4.5rem] items-end gap-1.5">
+        <div className="flex h-18 items-end gap-1.5">
           <div className="text-5xl font-medium tracking-tight tabular-nums">
             {connected ? (
               <NumberFlow
