@@ -338,9 +338,8 @@ export function ListeningCard({ className }: { className?: string }) {
         key: `${localTrack!.source}:${localTrack!.trackId ?? localTrack!.title}`,
         artwork: localTrack!.artworkUrl,
         title: localTrack!.title ?? "",
-        subtitle: [localTrack!.artist, localTrack!.album]
-          .filter(Boolean)
-          .join(" · "),
+        // 只放艺人：标题已经是曲名，专辑名多半是「曲名 - Single」这种同义重复
+        subtitle: localTrack!.artist ?? "",
         // 设备给不出可分享的地址，服务端拿曲名 + 艺人去目录里解析出来的
         link: live?.link ?? null,
         label: localTrack!.state === "playing" ? "正在播放" : "已暂停",
