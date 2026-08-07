@@ -221,6 +221,8 @@ export type VibeCodingAgent = {
   models: string[];
   /** 最近活动 session 使用的模型，不是历史模型列表的排序结果 */
   currentModel: string | null;
+  /** 整份历史里 token 占比最大的模型；旧版 Mac app 不上报，取不到就是 null */
+  topModel: string | null;
   /** ccusage session 报告中最近一条活动；只公开时间，不公开会话或项目 */
   lastActivityAt: string | null;
   /** 最近 30 天，每 12 小时一个 session-token 聚合点 */

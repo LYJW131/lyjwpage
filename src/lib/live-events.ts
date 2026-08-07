@@ -19,6 +19,16 @@ import type { DesktopPayload, MusicPayload } from "@/lib/types";
 export type LiveEvent =
   | { type: "desktop"; payload: DesktopPayload }
   | { type: "music"; payload: MusicPayload }
+  /**
+   * 只在插拔、换设备这类结构性变化时发，不跟功率/电压/电流的滚动走 ——
+   * 那些量充电时每个上报周期都在变，推它们等于把 SSE 当轮询用。
+   * 滚动读数仍由卡片自己的 SWR 轮询负责。
+   *
+   * 和 watching 一样只发失效通知、不带数据：充电头那个 fetcher 是有状态的
+   * （组件里用 ref 累积曲线，靠 ?since= 增量拉），直接把 payload 塞进缓存会
+   * 绕过那个 ref，下一轮的 since 就基于陈旧的 ref 算，曲线会错位。
+   */
+  | { type: "charger"; payload: null }
   | { type: "watching"; payload: null };
 
 type Subscriber = (event: LiveEvent) => void;

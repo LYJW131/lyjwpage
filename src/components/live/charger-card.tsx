@@ -6,6 +6,7 @@ import { useCallback, useRef } from "react";
 import { Sparkline } from "@/components/live/sparkline";
 import { Card } from "@/components/ui/card";
 import { StatusDot, type DotTone } from "@/components/ui/status-dot";
+import { CHARGER_PATH, useLiveStream } from "@/hooks/use-live-stream";
 import { useStatus } from "@/hooks/use-status";
 import type {
   ChargerPayload,
@@ -16,7 +17,6 @@ import type {
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-const CHARGER_PATH = "/api/status/charger";
 /** 与 charger-store 的 HISTORY_LIMIT 保持一致，别让拼出来的序列无限长 */
 const HISTORY_LIMIT = 400;
 
@@ -64,6 +64,8 @@ export function ChargerCard({ className }: { className?: string }) {
     return { ...envelope, data: { ...envelope.data, history: historyRef.current } };
   }, []);
 
+  // 插拔/换设备时服务端会推一条事件让这个键立即重取；滚动读数照旧靠轮询
+  useLiveStream();
   const { data, error, isLoading } = useStatus<ChargerPayload>(
     CHARGER_PATH,
     REFRESH_MS,

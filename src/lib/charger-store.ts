@@ -76,9 +76,35 @@ async function readHistory(): Promise<ChargerSample[]> {
   return [...fallback.history];
 }
 
-/** 记一条快照。同一个 updatedAt 重复推送不会产生重复采样点 */
+/**
+ * 「结构性」指纹：插拔、换设备、换充电器本身。
+ *
+ * 刻意只取设备身份，不取 `active` / `protocol` / `cable` —— 那三个在采集端都是
+ * 功率派生的（`active` 就是 `power > 0.2`，另两个挂在同样功率派生的口内部状态上），
+ * 涓流充电在阈值上下摆一摆就会翻。拿它们当判据会把即时推送打成定时推送，
+ * 而功率、电压、电流的滚动本来就该走卡片自己的轮询。
+ */
+function structuralKey(status: ChargerStatus) {
+  return JSON.stringify([
+    status.connected,
+    status.device.serialNumber,
+    status.device.firmwareVersion,
+    status.ports.map((port) => [port.id, port.device]),
+  ]);
+}
+
+/**
+ * 记一条快照。同一个 updatedAt 重复推送不会产生重复采样点。
+ *
+ * 返回结构性内容变没变，调用方据此决定要不要往 SSE 推。这个 diff 必须服务端
+ * 自己做：充电时采集端每个上报周期都会带 charger 模块（功率两位小数必变），
+ * 收到就推的话 SSE 会退化成定时推送，「插拔即时」也就没了意义。
+ */
 export async function recordStatus(status: ChargerStatus, receivedAt = Date.now()) {
   const previous = await readLatest();
+  // 第一份快照也算变化：客户端手上还什么都没有，该收到一次
+  const structuralChanged =
+    !previous || structuralKey(previous.status) !== structuralKey(status);
 
   fallback.latest = status;
   fallback.receivedAt = receivedAt;
@@ -98,7 +124,7 @@ export async function recordStatus(status: ChargerStatus, receivedAt = Date.now(
     status.updatedAt != null &&
     previous.status.updatedAt === status.updatedAt
   ) {
-    return;
+    return structuralChanged;
   }
 
   const history = await readHistory();
@@ -113,7 +139,7 @@ export async function recordStatus(status: ChargerStatus, receivedAt = Date.now(
       // 对端改了时钟或换了数据源，旧历史已经没法和新的拼在一条时间轴上
       reset = true;
     } else if (at - last.t < MIN_SAMPLE_GAP_MS) {
-      return;
+      return structuralChanged;
     }
   }
 
@@ -135,6 +161,8 @@ export async function recordStatus(status: ChargerStatus, receivedAt = Date.now(
     await pipe.exec();
     return null;
   }, null);
+
+  return structuralChanged;
 }
 
 export async function getStored() {
