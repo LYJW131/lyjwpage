@@ -27,6 +27,8 @@ let pauseExpiryTimer: ReturnType<typeof setTimeout> | null = null;
 
 type TelemetryState = {
   desktop: DesktopActivity | null;
+  /** 上报器自己声明的离线。只在优雅离开（退出 / 睡眠）时为真 */
+  presenceOffline: boolean;
   music: LocalNowPlaying | null;
   activityReceivedAt: number;
   telemetryReceivedAt: number;
@@ -38,6 +40,7 @@ const globalTelemetry = globalThis as typeof globalThis & {
 };
 const telemetryState = (globalTelemetry.__lyjwTelemetryState ??= {
   desktop: null,
+  presenceOffline: false,
   music: null,
   activityReceivedAt: 0,
   telemetryReceivedAt: 0,
@@ -101,6 +104,7 @@ function hydrateTelemetryState() {
 }
 
 type TelemetryEnvelope = {
+  presence?: unknown;
   version?: unknown;
   heartbeat_at?: unknown;
   active_modules?: unknown;
@@ -176,6 +180,17 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
   }
   telemetryState.activeModules = new Set(nextActiveModules);
   telemetryState.telemetryReceivedAt = receivedAt;
+  /**
+   * 上报器声明的在离线。
+   *
+   * 只覆盖优雅离开：退出、睡眠时它抢在断开前发一条 offline，这里立刻把状态
+   * 翻过去，不用等 45 秒心跳窗口。崩溃、断网、强制关机时它发不出这一条，
+   * 那些仍然靠下面 reporterStale 的超时兜底 —— 两条路是互补的。
+   *
+   * 缺字段按 online 处理：能发出这个包本身就说明它活着，而且旧版采集器不带这个字段。
+   */
+  const wasOffline = telemetryState.presenceOffline;
+  telemetryState.presenceOffline = envelope.presence === "offline";
   if (telemetryState.activeModules.has("charger")) {
     await recordPushHeartbeat(receivedAt);
   }
@@ -187,7 +202,9 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
   if ("charger" in modules) {
     const raw = object(modules.charger) as RawStatus | null;
     if (!raw?.updated_at) throw new Error("charger 模块缺少 updated_at");
-    await recordStatus(normalizeRawStatus(raw), receivedAt);
+    const structuralChanged = await recordStatus(normalizeRawStatus(raw), receivedAt);
+    // 插拔、换设备立刻推给浏览器，不等卡片下一次轮询。滚动读数不走这里。
+    if (structuralChanged) publish({ type: "charger", payload: null });
     accepted += 1;
   }
 
@@ -210,17 +227,29 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
 
   persistTelemetryState();
 
-  // 心跳包也要推：它不带模块数据，但会刷新 receivedAt，
-  // 前端据此把「上报器离线」翻回在线。两边的 stale/idle 都是时间的函数，
-  // 所以两个都推。
-  publishDesktop();
-  await publishMusic();
+  /**
+   * 只在模块真的来了才推。
+   *
+   * 采集端本来就只在内容变化时才带上对应模块，所以「模块出现在 envelope 里」
+   * 就是变化信号本身。从前这里是无条件推 —— 连不带任何模块的纯心跳包也推，
+   * 为的是把「上报器离线」翻回在线。但 stale 是时间的函数，两张卡一直在轮询，
+   * 那件事轮询本来就在做；为它每 30 秒广播一份没变化的状态，等于把 SSE 当轮询用。
+   *
+   * 代价是上报器从离线恢复时，「在线」最迟等下一轮轮询（连着 SSE 时 30 秒）才
+   * 显示，不再是收到心跳的那一刻。换来的是 SSE 上只跑真正的状态变化。
+   */
+  // 在离线翻转本身就是状态变化，值得推 —— 这正是「关键事件」，不是定时广播
+  const presenceFlipped = wasOffline !== telemetryState.presenceOffline;
+  if (presenceFlipped || "desktop" in modules) publishDesktop();
+  if (presenceFlipped || "apple_music" in modules) await publishMusic();
 
   return { accepted, heartbeat: true };
 }
 
 /** 上报器整体是否已超过心跳窗口。只影响 Mac 来的东西，HomePod 走自己的路径。 */
 function reporterStale() {
+  // 上报器亲口说走了就直接算离线，不用等心跳窗口
+  if (telemetryState.presenceOffline) return true;
   return (
     !telemetryState.telemetryReceivedAt ||
     Date.now() - telemetryState.telemetryReceivedAt > ACTIVITY_STALE_MS

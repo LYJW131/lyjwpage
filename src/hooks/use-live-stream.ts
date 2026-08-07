@@ -15,6 +15,7 @@ const STREAM_PATH = "/api/status/stream";
 export const DESKTOP_PATH = "/api/status/desktop";
 export const MUSIC_PATH = "/api/status/music";
 export const WATCHING_PATH = "/api/status/watching";
+export const CHARGER_PATH = "/api/status/charger";
 
 /**
  * 整页共用一条 SSE 连接。
@@ -64,6 +65,16 @@ function open(mutate: ScopedMutator) {
   // Emby 的状态是 webhook 状态 + 续播列表的组合，事件只负责让既有接口立即重取。
   next.addEventListener("watching", () => {
     void mutate(WATCHING_PATH);
+  });
+  /**
+   * 充电头只在插拔、换设备时来事件，同样只让接口重取、不直接写缓存。
+   *
+   * 它那个 fetcher 是有状态的（组件里用 ref 累积曲线，靠 ?since= 增量拉），
+   * 把 payload 直接塞进缓存会绕过那个 ref，下一轮的 since 就基于陈旧的 ref 算。
+   * 走一次重取，增量合并的逻辑一行都不用动。
+   */
+  next.addEventListener("charger", () => {
+    void mutate(CHARGER_PATH);
   });
 }
 
