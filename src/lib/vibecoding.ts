@@ -2,7 +2,9 @@ import type {
   VibeCodingAgent,
   VibeCodingAgentId,
   VibeCodingDay,
+  VibeCodingLimit,
   VibeCodingPayload,
+  VibeCodingPlan,
 } from "@/lib/types";
 
 const PUSH_STALE_MS = 15 * 60_000;
@@ -89,6 +91,10 @@ function normalizePreparedSummary(
           : null,
       activity: normalizeActivity(row.activity),
       today,
+      // 这两个是后加的字段，旧版 Mac app 的上报里根本没有。缺失一律降级成
+      // 「没有数据」，绝不能进下面那道拒收门闩 —— 那样现存客户端每次上报都会 400。
+      plan: normalizePlan(row.plan),
+      limits: normalizeLimits(row.limits),
       last7Days,
       last30DaysTokens: finite(row.last30DaysTokens),
     }];
@@ -170,6 +176,41 @@ function normalizeActivity(value: unknown) {
       ? [{ t, tokens: finite(tokens) }]
       : [];
   });
+}
+
+function normalizePlan(value: unknown): VibeCodingPlan | null {
+  if (!value || typeof value !== "object") return null;
+  const { tier, label } = value as { tier?: unknown; label?: unknown };
+  if (typeof tier !== "string" || !tier) return null;
+  // 展示名缺了就退回原始枚举值：难看总好过整块套餐信息消失
+  return { tier, label: typeof label === "string" && label ? label : tier };
+}
+
+/**
+ * 窗口的个数和时长完全由上游决定（Codex 眼下只有周窗口，5 小时窗口以后可能回来），
+ * 所以这里只逐条做类型收敛，不校验数量、不认识任何具体窗口。
+ */
+function normalizeLimits(value: unknown): VibeCodingLimit[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry): VibeCodingLimit[] => {
+    if (!entry || typeof entry !== "object") return [];
+    const row = entry as Record<string, unknown>;
+    if (typeof row.key !== "string" || !row.key) return [];
+    if (typeof row.usedPercent !== "number" || !Number.isFinite(row.usedPercent)) return [];
+    return [{
+      key: row.key,
+      label: typeof row.label === "string" && row.label ? row.label : null,
+      group: typeof row.group === "string" && row.group ? row.group : null,
+      windowMinutes: positiveOrNull(row.windowMinutes),
+      // 夹到 0–100：进度条宽度直接用它，上游给出界的值会把整块布局撑坏
+      usedPercent: Math.min(100, Math.max(0, row.usedPercent)),
+      resetsAt: positiveOrNull(row.resetsAt),
+    }];
+  });
+}
+
+function positiveOrNull(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null;
 }
 
 export function recordVibeCodingReport(report: unknown, receivedAt = Date.now()) {
