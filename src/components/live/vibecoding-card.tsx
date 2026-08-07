@@ -294,9 +294,12 @@ function AgentPanel({
           {/* 套餐等级：取不到就整个不渲染，不留占位 */}
           {agent.plan && (
             <span
-              className="label-mono shrink-0 rounded-full border border-line-strong bg-muted px-1.5 py-1 text-muted-foreground"
+              className="shrink-0 text-xs text-muted-foreground"
               title={`套餐 ${agent.plan.tier}`}
             >
+              <span aria-hidden className="mr-1.5">
+                ·
+              </span>
               {agent.plan.label}
             </span>
           )}
