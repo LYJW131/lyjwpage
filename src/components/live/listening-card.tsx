@@ -106,7 +106,15 @@ function HeroProgress({
 
   // 上报器只在换歌和播放状态变化时推锚点，播放中的进度由前端按 observedAt 推算
   const drift = playing ? Math.max(0, now - track.observedAt) : 0;
-  const position = Math.min(track.durationMs, track.positionMs + drift);
+  const elapsed = track.positionMs + drift;
+  // 单曲循环时上游可能一直不推新锚点（曲目没变、状态没变），进度该绕回开头
+  // 而不是钉在 100%；不循环时超出就 clamp，等下一条锚点纠正
+  const position =
+    track.durationMs > 0
+      ? track.repeatOne
+        ? elapsed % track.durationMs
+        : Math.min(track.durationMs, elapsed)
+      : elapsed;
   const percent = track.durationMs ? (position / track.durationMs) * 100 : 0;
 
   return (
@@ -333,8 +341,8 @@ export function ListeningCard({ className }: { className?: string }) {
         subtitle: [localTrack!.artist, localTrack!.album]
           .filter(Boolean)
           .join(" · "),
-        // Music.app 的曲目没有可跳转的地址
-        link: null,
+        // 设备给不出可分享的地址，服务端拿曲名 + 艺人去目录里解析出来的
+        link: activity?.musicLink ?? null,
         label: localTrack!.state === "playing" ? "正在播放" : "已暂停",
         playing: localTrack!.state === "playing",
         track: localTrack,

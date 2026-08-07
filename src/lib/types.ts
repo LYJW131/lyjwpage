@@ -84,6 +84,12 @@ export type LocalNowPlaying = {
   artworkUrl: string | null;
   positionMs: number;
   durationMs: number;
+  /**
+   * 单曲循环。曲名、艺人、专辑在循环前后完全一样，光靠这些字段分不出
+   * 「在循环」和「上游掉线了」，只能由来源明确告知。
+   * 前端据此让进度回绕，而不是钉在 100%。
+   */
+  repeatOne: boolean;
   observedAt: number;
 };
 
@@ -95,6 +101,11 @@ export type ActivityPayload = {
   desktopStale: boolean;
   /** MacBook 与 HomePod 都没有可展示的播放状态 —— 是「没在放」，不是「数据过期」。 */
   musicIdle: boolean;
+  /**
+   * music 那首在 Apple Music 上的地址，读取时现查的，不进设备上报的快照。
+   * 目录里能精确匹配上就是直链，匹配不上退回搜索页。
+   */
+  musicLink: string | null;
 };
 
 export type ChargerPort = {
@@ -143,6 +154,12 @@ export type ChargerStatus = {
 /** 状态 + 服务端累积的历史，给前端画曲线用 */
 export type ChargerPayload = ChargerStatus & {
   history: ChargerSample[];
+  /**
+   * history 里只有 `?since=` 之后新增的采样点，要接到客户端已有序列后面。
+   * false 表示这是完整快照，直接替换 —— 首次请求，或客户端落后太多、
+   * 中间那段已被服务端裁掉时都是这种。
+   */
+  historyPartial: boolean;
   /** 太久没收到新推送 */
   stale: boolean;
 };
@@ -197,6 +214,12 @@ export type VibeCodingPayload = {
   /** ccusage 扫描完成的时间，而不是浏览器取接口的时间 */
   collectedAt: string;
   source: "local" | "push";
+  /**
+   * 各 agent 的 activity 里只有 `?since=` 起的桶，要并回客户端已有序列。
+   * 边界那个桶会重复出现并带上新值 —— 当前这 12 小时还在累加，是可变的。
+   * false 表示完整快照，直接替换。
+   */
+  activityPartial: boolean;
   /** 推送超过 15 分钟没有更新 */
   stale: boolean;
 };

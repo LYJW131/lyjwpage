@@ -129,6 +129,8 @@ function normalizePreparedSummary(
         ? root.collectedAt
         : new Date().toISOString(),
     source,
+    // 两个都是读取时才算的，存的时候只占位
+    activityPartial: false,
     stale: false,
   };
 }
@@ -177,11 +179,34 @@ export function recordVibeCodingReport(report: unknown, receivedAt = Date.now())
   pushedAt = receivedAt;
 }
 
-export async function getVibeCodingPayload(): Promise<VibeCodingPayload> {
+/**
+ * `since` 是客户端已有的最新活动桶时刻，只回传从它起的部分。
+ *
+ * 用 `>=` 而不是 `>`：桶是 12 小时聚合，边界那个还在累加，必须重发新值。
+ * 更早的桶已经封口，不会再变，不用重复传。
+ */
+export async function getVibeCodingPayload(
+  { since }: { since?: number } = {},
+): Promise<VibeCodingPayload> {
   // Mac Telemetry Hub 是唯一采集端；没有推送就明确报错，不静默切换数据源。
   if (!pushed) throw new Error("尚未收到 Mac Telemetry Hub 的 ccusage 推送");
+
+  // 客户端落后太多、最旧的桶都已经滚出窗口时拼不出连续曲线，只能整份重发
+  const oldest = Math.min(
+    ...pushed.agents.map((agent) => agent.activity[0]?.t ?? Number.POSITIVE_INFINITY),
+  );
+  const activityPartial =
+    since != null && Number.isFinite(oldest) && since >= oldest;
+
   return {
     ...pushed,
+    agents: activityPartial
+      ? pushed.agents.map((agent) => ({
+          ...agent,
+          activity: agent.activity.filter((point) => point.t >= since),
+        }))
+      : pushed.agents,
+    activityPartial,
     stale: Date.now() - pushedAt > PUSH_STALE_MS,
   };
 }

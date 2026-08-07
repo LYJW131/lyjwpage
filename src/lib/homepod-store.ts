@@ -6,6 +6,21 @@ import type { LocalNowPlaying } from "@/lib/types";
 
 const TTL_MS = 24 * 60 * 60 * 1000;
 const UNKNOWN_DURATION_STALE_MS = 12 * 60 * 60 * 1000;
+/**
+ * 曲目本该放完之后，还愿意再等 HA 多久。
+ *
+ * Home Assistant 是按状态变化推送的，不是每秒推。曲目实际放完到下一条推送
+ * 送达之间总有间隔（自动化触发延迟、单曲循环、HA 那边压根没触发），这段时间
+ * 里推算进度必然超过时长 —— 那说明的是「还没收到下一首」，不是「数据不可信」，
+ * 不该把整条记录作废。真正该判定不可信的信号是 HA 长时间完全没动静。
+ */
+const SILENCE_GRACE_MS = 5 * 60 * 1000;
+/**
+ * 单曲循环时 HA 可能一直不推新事件（曲目没变、状态没变），所以「这首该放完了」
+ * 这条判据整个不适用，只能靠一个长得多的静默窗口兜底。
+ * 真停掉时 HomePod 的 state 会变，那是状态变化，HA 照样会推。
+ */
+const REPEAT_SILENCE_GRACE_MS = 30 * 60 * 1000;
 const K_NOW_PLAYING = key("homepod", "nowPlaying");
 
 type StoredHomePod = {
@@ -125,6 +140,8 @@ export function normalizeHomePodEvent(
       artworkUrl: publicArtwork(row.artwork),
       positionMs: Math.max(0, (numberish(row.position) ?? 0) * 1000),
       durationMs: Math.max(0, (numberish(row.duration) ?? 0) * 1000),
+      // HA 的 media_player.repeat 取值是 off / all / one
+      repeatOne: text(row.repeat)?.toLowerCase() === "one",
       observedAt: timestamp(row.position_updated_at ?? row.updated_at, receivedAt),
     },
     receivedAt,
@@ -169,10 +186,18 @@ export async function getHomePodNowPlaying(now = Date.now()) {
   if (!stored || stored.music.state === "stopped" || !stored.music.title) return null;
 
   const { music } = stored;
-  const projectedPosition =
-    music.positionMs + (music.state === "playing" ? Math.max(0, now - music.observedAt) : 0);
-  if (music.durationMs > 0 && projectedPosition >= music.durationMs) return null;
-  if (!music.durationMs && now - stored.receivedAt > UNKNOWN_DURATION_STALE_MS) return null;
+
+  if (music.repeatOne) {
+    // 循环时「该放完了」不成立，只看静默多久
+    if (now - stored.receivedAt > REPEAT_SILENCE_GRACE_MS) return null;
+  } else if (music.durationMs > 0) {
+    // 预期 HA 最迟在这首放完时会推下一条；超过之后再宽限一段，还没动静才作废。
+    // 进度本身不作为判据 —— 前端展示时会回绕或 clamp，不会显示成超过 100%。
+    const remaining = Math.max(0, music.durationMs - music.positionMs);
+    if (now > stored.receivedAt + remaining + SILENCE_GRACE_MS) return null;
+  } else if (now - stored.receivedAt > UNKNOWN_DURATION_STALE_MS) {
+    return null;
+  }
 
   return stored;
 }

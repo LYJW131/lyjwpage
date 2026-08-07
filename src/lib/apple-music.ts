@@ -140,7 +140,7 @@ function normalize(resource: AppleResource, artworkSize: number): ListeningItem 
   };
 }
 
-async function appleFetch<T>(url: string, credentials: Credentials): Promise<T[]> {
+async function appleFetchRaw<T>(url: string, credentials: Credentials): Promise<T> {
   const developerToken = await getDeveloperToken(credentials);
 
   const response = await fetch(url, {
@@ -163,8 +163,12 @@ async function appleFetch<T>(url: string, credentials: Credentials): Promise<T[]
     throw new Error(`Apple Music 返回 ${response.status}：${body}`);
   }
 
-  // Apple 按播放时间倒序返回，直接用原始顺序
-  const json = (await response.json()) as { data?: T[] };
+  return (await response.json()) as T;
+}
+
+/** 大多数端点把结果放在顶层 data 里。Apple 按播放时间倒序返回，直接用原始顺序 */
+async function appleFetch<T>(url: string, credentials: Credentials): Promise<T[]> {
+  const json = await appleFetchRaw<{ data?: T[] }>(url, credentials);
   return Array.isArray(json?.data) ? json.data : [];
 }
 
@@ -217,6 +221,126 @@ async function getContainerDuration(
 
     return total;
   });
+}
+
+/** 命中的链接不会变，缓存久一点；搜不到时靠 cached 的负缓存挡住重复请求 */
+const TRACK_LINK_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const STOREFRONT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+/**
+ * 取满上限的候选。同一首歌可能同时收录在单曲、EP、精选里，相关度排序也不保证
+ * 想要的那个版本排在前面，候选取少了正确的专辑可能根本不在集合里。
+ */
+const SEARCH_LIMIT = 25;
+
+type CatalogSong = {
+  attributes?: { name?: string; artistName?: string; albumName?: string; url?: string };
+};
+
+/** 归一化后再比：大小写、空格、常见标点、全角半角差异都不该影响判定 */
+function normalizeForMatch(value: string | null | undefined) {
+  return (value ?? "")
+    .toLowerCase()
+    .normalize("NFKC")
+    .replace(/[\s\u3000]/g, "")
+    .replace(/[-\u2013\u2014_.,'"\u2018\u2019\u201c\u201d!?()\uff08\uff09\[\]\u30fb:\uff1a]/g, "");
+}
+
+async function getStorefront(credentials: Credentials) {
+  return cached("apple-music:storefront", STOREFRONT_TTL_MS, async () => {
+    const rows = await appleFetch<{ id?: string }>(
+      "https://api.music.apple.com/v1/me/storefront",
+      credentials,
+    );
+    return rows[0]?.id ?? "us";
+  });
+}
+
+/**
+ * 把「正在播放」的曲目解析成一个可跳转的 Apple Music 地址。
+ *
+ * 本机 Music.app 和 HomePod 都给不出可分享的链接 —— Music.app 的曲目属性里
+ * 只有 persistent ID / database ID 这类本地标识（实测 kind 是「HLS媒体」，
+ * 没有任何 URL 字段），HomePod 经 Home Assistant 过来的也只有文本字段。
+ * 所以只能拿曲名 + 艺人去目录里搜。
+ *
+ * 搜出来**必须按「曲名 + 艺人 + 专辑」三者校验**，少一个都不够：
+ *
+ * - 只看排序不行：即使限定了 types=songs，相关度最高的也可能不是同名曲。
+ *   实测搜「Moonshot / Hoshimachi Suisei」，排第一的是同一歌手的另一首
+ *   《Suisei (Nor ver.)》—— 艺人名和歌名撞了。
+ * - 只看曲名 + 艺人也不行：同一首歌常同时收录在单曲、EP 和精选里。实测
+ *   《ミッドナイト・リフレクション / NOMELON NOLEMON》在「- Single」「HALO - EP」
+ *   「EYE」三张专辑下各有一条，链接完全不同。
+ *
+ * 所以缓存键也必须带上专辑名，否则同名不同专辑会互相命中对方的缓存。
+ *
+ * 都对不上就退回搜索页：宁可给一个粗一点但正确的落点，也不给一个错的直链。
+ */
+export async function resolveTrackLink(track: {
+  title: string | null;
+  artist: string | null;
+  album: string | null;
+}): Promise<string | null> {
+  if (!track.title) return null;
+
+  const searchTerm = [track.title, track.artist].filter(Boolean).join(" ");
+  const searchUrl = `https://music.apple.com/search?term=${encodeURIComponent(searchTerm)}`;
+
+  // 专辑名必须进 key：同名同艺人但不同专辑是完全不同的链接
+  const cacheKey =
+    "apple-music:track-link:" +
+    [track.title, track.artist, track.album].map(normalizeForMatch).join(":");
+
+  try {
+    const exact = await cached(cacheKey, TRACK_LINK_TTL_MS, async () => {
+      const credentials = await resolveCredentials();
+      const storefront = await getStorefront(credentials);
+      // 带上专辑名能提高排序质量，但判定仍然只看曲名和艺人
+      const term = [track.title, track.artist, track.album].filter(Boolean).join(" ");
+      const url =
+        `https://api.music.apple.com/v1/catalog/${storefront}/search` +
+        `?term=${encodeURIComponent(term)}&types=songs&limit=${SEARCH_LIMIT}`;
+      const json = await appleFetchRaw<{
+        results?: { songs?: { data?: CatalogSong[] } };
+      }>(url, credentials);
+
+      const wantedTitle = normalizeForMatch(track.title);
+      const wantedArtist = normalizeForMatch(track.artist);
+      const wantedAlbum = normalizeForMatch(track.album);
+
+      const candidates = (json.results?.songs?.data ?? []).filter((song) => {
+        if (normalizeForMatch(song.attributes?.name) !== wantedTitle) return false;
+        if (!wantedArtist) return true;
+        const found = normalizeForMatch(song.attributes?.artistName);
+        // 「艺人 A feat. B」这类两边互为子串，双向包含都算对得上
+        return found.includes(wantedArtist) || wantedArtist.includes(found);
+      });
+
+      const hit = wantedAlbum
+        ? // 先要精确的。设备报的专辑名通常和目录一致（实测 Music.app 给的就是
+          // 「HALO - EP」这种完整形式），退化到包含判断只是为了容忍上游把
+          // 「- Single」这类后缀截掉的情况
+          candidates.find(
+            (song) => normalizeForMatch(song.attributes?.albumName) === wantedAlbum,
+          ) ??
+          candidates.find((song) => {
+            const found = normalizeForMatch(song.attributes?.albumName);
+            return found.includes(wantedAlbum) || wantedAlbum.includes(found);
+          })
+        : // 没有专辑名就没法消歧：只有候选唯一时才敢认，否则宁可退回搜索页
+          candidates.length === 1
+          ? candidates[0]
+          : undefined;
+
+      // 存空串而不是 null：cached 用 undefined 判未命中，空串才能把
+      // 「搜过了但没匹配上」这个结论也缓存住，不然每次都会重搜一遍
+      return hit?.attributes?.url ?? "";
+    });
+    return exact || searchUrl;
+  } catch {
+    // 凭据缺失或上游异常都不该让整张卡片失败
+    return searchUrl;
+  }
 }
 
 /** limit 上限 10 —— 上游端点的硬限制 */

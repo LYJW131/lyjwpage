@@ -5,6 +5,7 @@ import { join } from "node:path";
 
 import { normalizeRawStatus, type RawStatus } from "@/lib/anker";
 import { recordPushHeartbeat, recordStatus } from "@/lib/charger-store";
+import { resolveTrackLink } from "@/lib/apple-music";
 import { getHomePodNowPlaying } from "@/lib/homepod-store";
 import { number, object, text } from "@/lib/json";
 import { publish } from "@/lib/live-events";
@@ -148,6 +149,8 @@ function normalizeMusic(value: unknown, receivedAt: number): LocalNowPlaying | n
     artworkUrl: storeActivityAsset(row.artwork_data) ?? previousArtwork,
     positionMs: Math.max(0, number(row.position_ms) ?? 0),
     durationMs: Math.max(0, number(row.duration_ms) ?? 0),
+    // 上报器目前不上报循环状态，缺字段时按「不循环」处理
+    repeatOne: text(row.repeat_one) === "true" || row.repeat_one === true,
     observedAt: milliseconds(row.observed_at, receivedAt),
   };
 }
@@ -245,6 +248,8 @@ export async function getActivityPayload(): Promise<ActivityPayload> {
   const desktopStale = !desktopEnabled || telemetryStale;
   // 没东西可显示，而不是「数据过期」—— 没在听歌时这就是常态
   const musicIdle = !music;
+  // 命中会长期缓存，绝大多数调用不会真的打上游
+  const musicLink = music ? await resolveTrackLink(music) : null;
 
   return {
     desktop: desktopStale ? null : telemetryState.desktop,
@@ -255,6 +260,7 @@ export async function getActivityPayload(): Promise<ActivityPayload> {
     ) || null,
     desktopStale,
     musicIdle,
+    musicLink,
   };
 }
 
