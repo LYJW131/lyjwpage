@@ -1,6 +1,6 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import useSWR from "swr";
 
 import type { StatusResponse } from "@/lib/types";
@@ -46,17 +46,38 @@ export function useStatus<T>(
   path: string,
   /** 传函数可以按当前数据动态决定间隔，比如「有东西在播就调快」 */
   refreshInterval: number | ((data: T | undefined) => number),
+  /**
+   * 自定义取数。给需要增量拉取的接口用（充电头曲线就是）：SWR 的缓存键必须
+   * 保持是 path，不能把 ?since= 拼进去 —— 那样每轮都是新资源，去重、
+   * keepPreviousData、轮询计时器全部失效。所以变化的部分藏在 fetcher 里。
+   * 必须是稳定引用，否则 SWR 每次渲染都会重新取。
+   */
+  customFetcher?: (path: string) => Promise<StatusResponse<T>>,
 ): StatusState<T> {
   const active = usePageActive();
+  const refreshIntervalRef = useRef(refreshInterval);
+  useEffect(() => {
+    refreshIntervalRef.current = refreshInterval;
+  }, [refreshInterval]);
 
-  const interval = (envelope: StatusResponse<T> | undefined) => {
-    if (!active) return 0;
-    if (typeof refreshInterval === "number") return refreshInterval;
-    return refreshInterval(envelope?.ok ? envelope.data : undefined);
-  };
+  // SWR 会在 refreshInterval 函数引用变化时重置计时器。调用组件可能因为
+  // 播放进度等 UI 每秒重渲染，所以这里只让函数在可见性变化时才换引用。
+  const interval = useCallback(
+    (envelope: StatusResponse<T> | undefined) => {
+      if (!active) return 0;
+      const latestInterval = refreshIntervalRef.current;
+      if (typeof latestInterval === "number") return latestInterval;
+      return latestInterval(envelope?.ok ? envelope.data : undefined);
+    },
+    [active],
+  );
 
-  const { data, error, isLoading } = useSWR<StatusResponse<T>>(path, fetcher<T>, {
+  const { data, error, isLoading } = useSWR<StatusResponse<T>>(path, customFetcher ?? fetcher<T>, {
     refreshInterval: interval,
+    // 是否暂停由上面的 usePageActive 统一决定，避免 SWR 内置的可见性/在线
+    // 判定与应用内浏览器状态不一致，导致首次请求后再也不轮询。
+    refreshWhenHidden: true,
+    refreshWhenOffline: true,
     revalidateOnFocus: true,
     keepPreviousData: true,
     // 上游本来就会返回降级信封，重试意义不大，交给下一次轮询

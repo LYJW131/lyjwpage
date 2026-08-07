@@ -93,18 +93,36 @@ function staleAfterMs() {
   return Math.max(90_000, interval * 3);
 }
 
-export async function getChargerPayload(): Promise<ChargerPayload> {
+/**
+ * `since` 是客户端已有的最新采样点时刻，只回传比它更新的部分。
+ *
+ * 曲线有 400 个点、约 15KB，而前端 5 秒取一次、每次实际只多出一两个点 ——
+ * 整份重传的话 99% 是重复数据。
+ */
+export async function getChargerPayload(
+  { since }: { since?: number } = {},
+): Promise<ChargerPayload> {
   const stored = await getStored();
   // 还没收到过任何推送。交给 statusRoute 变成降级信封，前端显示提示
   if (!stored) throw new Error("尚未收到充电头遥测推送");
 
   const stale = Date.now() - (await lastPushReceivedAt()) > staleAfterMs();
 
+  const all = stored.history;
+  const oldest = all[0]?.t;
+  /**
+   * 只有「客户端手上最新的点」不早于「服务端还留着的最旧的点」时，增量才是
+   * 连续的。客户端离开太久的话中间那段已经被裁掉了，拼出来会是断的曲线，
+   * 这种情况只能整份重发。
+   */
+  const historyPartial = since != null && oldest != null && since >= oldest;
+
   return {
     ...stored.status,
     // 推送断了就不能再声称充电器在线，否则页面会一直显示旧的瓦数
     connected: stale ? false : stored.status.connected,
-    history: stored.history,
+    history: historyPartial ? all.filter((sample) => sample.t > since) : all,
+    historyPartial,
     stale,
   };
 }

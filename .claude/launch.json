@@ -4,8 +4,8 @@
     {
       "name": "lyjwpage",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["dev", "--port", "3210"],
-      "port": 3210
+      "runtimeArgs": ["dev"],
+      "port": 3211
     }
   ]
 }

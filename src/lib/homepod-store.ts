@@ -1,10 +1,26 @@
 import { createHash } from "node:crypto";
 
+import { numberish, object, text } from "@/lib/json";
 import { key, withRedis } from "@/lib/redis";
 import type { LocalNowPlaying } from "@/lib/types";
 
 const TTL_MS = 24 * 60 * 60 * 1000;
 const UNKNOWN_DURATION_STALE_MS = 12 * 60 * 60 * 1000;
+/**
+ * 曲目本该放完之后，还愿意再等 HA 多久。
+ *
+ * Home Assistant 是按状态变化推送的，不是每秒推。曲目实际放完到下一条推送
+ * 送达之间总有间隔（自动化触发延迟、单曲循环、HA 那边压根没触发），这段时间
+ * 里推算进度必然超过时长 —— 那说明的是「还没收到下一首」，不是「数据不可信」，
+ * 不该把整条记录作废。真正该判定不可信的信号是 HA 长时间完全没动静。
+ */
+const SILENCE_GRACE_MS = 5 * 60 * 1000;
+/**
+ * 单曲循环时 HA 可能一直不推新事件（曲目没变、状态没变），所以「这首该放完了」
+ * 这条判据整个不适用，只能靠一个长得多的静默窗口兜底。
+ * 真停掉时 HomePod 的 state 会变，那是状态变化，HA 照样会推。
+ */
+const REPEAT_SILENCE_GRACE_MS = 30 * 60 * 1000;
 const K_NOW_PLAYING = key("homepod", "nowPlaying");
 
 type StoredHomePod = {
@@ -14,30 +30,55 @@ type StoredHomePod = {
 
 let fallback: StoredHomePod | null = null;
 
-function object(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
-function text(value: unknown) {
-  return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
-function number(value: unknown) {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string" && value.trim()) {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-  return null;
-}
-
 function timestamp(value: unknown, fallbackAt: number) {
   const parsed = typeof value === "string" ? Date.parse(value) : Number.NaN;
   if (!Number.isFinite(parsed)) return fallbackAt;
   // A bad Home Assistant clock must not make the browser project progress from the future.
   return Math.min(parsed, fallbackAt);
+}
+
+/**
+ * 内网 / 环回地址判定。
+ *
+ * 这个 URL 会原样发给访客的浏览器去加载，所以指向本地网络的地址既加载不出来，
+ * 也等于把内网拓扑透给了访客。除了常见的私有段，还要挡住几个容易漏的：
+ * 链路本地 169.254（云元数据就在这一段）、CGNAT 100.64/10（Tailscale 常用）、
+ * IPv6 的环回与私有段，以及十进制/十六进制整数形式的 IP。
+ */
+function isPrivateHost(hostname: string) {
+  // URL 里的 IPv6 带方括号，先剥掉
+  const host = hostname.toLowerCase().replace(/^\[/, "").replace(/\]$/, "");
+
+  if (host === "localhost" || host.endsWith(".local") || host.endsWith(".internal")) {
+    return true;
+  }
+
+  if (host.includes(":")) {
+    if (host === "::" || host === "::1") return true;
+    // fc00::/7 唯一本地，fe80::/10 链路本地
+    if (/^f[cd][0-9a-f]{2}:/.test(host) || /^fe[89ab][0-9a-f]:/.test(host)) return true;
+    const mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/.exec(host);
+    if (!mapped) return false;
+    return isPrivateHost(mapped[1]);
+  }
+
+  const parts = host.split(".");
+  if (parts.length === 4 && parts.every((part) => /^\d{1,3}$/.test(part))) {
+    const [a, b] = parts.map(Number);
+    return (
+      a === 0 ||
+      a === 10 ||
+      a === 127 ||
+      (a === 169 && b === 254) ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168) ||
+      (a === 100 && b >= 64 && b <= 127)
+    );
+  }
+
+  // 单标签主机名（含 2130706433、0x7f000001 这类整数形式的 IP）一律不放行：
+  // 公网 CDN 不会长这样，能匹配到的只有内网名字
+  return !host.includes(".");
 }
 
 function publicArtwork(value: unknown) {
@@ -58,15 +99,7 @@ function publicArtwork(value: unknown) {
       .replaceAll("{f}", "jpg");
     const url = new URL(candidate);
     if (url.protocol !== "https:" || url.username || url.password) return null;
-    const hostname = url.hostname.toLowerCase();
-    if (
-      hostname === "localhost" ||
-      hostname.endsWith(".local") ||
-      /^(?:10|127|192\.168)\./.test(hostname) ||
-      /^172\.(?:1[6-9]|2\d|3[01])\./.test(hostname)
-    ) {
-      return null;
-    }
+    if (isPrivateHost(url.hostname)) return null;
     return url.toString();
   } catch {
     return null;
@@ -82,7 +115,13 @@ export function normalizeHomePodEvent(
   if (!row) throw new Error("HomePod 请求必须是 JSON 对象");
 
   const rawState = text(row.state)?.toLowerCase();
-  const state = rawState === "playing" || rawState === "paused" ? rawState : "stopped";
+  // buffering 是播放中的一个瞬时态，归成 stopped 会让曲目在缓冲那几秒从页面消失
+  const state =
+    rawState === "playing" || rawState === "buffering"
+      ? "playing"
+      : rawState === "paused"
+        ? "paused"
+        : "stopped";
   const title = text(row.title);
   const artist = text(row.artist);
   const album = text(row.album);
@@ -99,8 +138,10 @@ export function normalizeHomePodEvent(
         ? createHash("sha256").update(identity).digest("hex").slice(0, 24)
         : null,
       artworkUrl: publicArtwork(row.artwork),
-      positionMs: Math.max(0, (number(row.position) ?? 0) * 1000),
-      durationMs: Math.max(0, (number(row.duration) ?? 0) * 1000),
+      positionMs: Math.max(0, (numberish(row.position) ?? 0) * 1000),
+      durationMs: Math.max(0, (numberish(row.duration) ?? 0) * 1000),
+      // HA 的 media_player.repeat 取值是 off / all / one
+      repeatOne: text(row.repeat)?.toLowerCase() === "one",
       observedAt: timestamp(row.position_updated_at ?? row.updated_at, receivedAt),
     },
     receivedAt,
@@ -119,14 +160,25 @@ export async function recordHomePodEvent(input: unknown, receivedAt = Date.now()
 
 async function readStored(): Promise<StoredHomePod | null> {
   const raw = await withRedis(async (redis) => redis.get(K_NOW_PLAYING), null);
+  let cached: StoredHomePod | null = null;
   if (raw) {
     try {
-      return JSON.parse(raw) as StoredHomePod;
+      cached = JSON.parse(raw) as StoredHomePod;
     } catch {
       // Treat malformed cached state as absent.
     }
   }
-  return fallback;
+
+  /**
+   * 取两者里更新的那个，而不是无条件相信 Redis。
+   *
+   * lib/redis 在任何一次错误之后会把 Redis 停用 30 秒，那期间 set 会静默失败 ——
+   * 内存更新了、Redis 没有。等读恢复时 Redis 里还是故障前的旧值，无条件优先的话
+   * 页面会一直显示那首旧歌，直到下一次 HomePod 事件为止。
+   */
+  if (!cached) return fallback;
+  if (!fallback) return cached;
+  return cached.receivedAt >= fallback.receivedAt ? cached : fallback;
 }
 
 export async function getHomePodNowPlaying(now = Date.now()) {
@@ -134,10 +186,18 @@ export async function getHomePodNowPlaying(now = Date.now()) {
   if (!stored || stored.music.state === "stopped" || !stored.music.title) return null;
 
   const { music } = stored;
-  const projectedPosition =
-    music.positionMs + (music.state === "playing" ? Math.max(0, now - music.observedAt) : 0);
-  if (music.durationMs > 0 && projectedPosition >= music.durationMs) return null;
-  if (!music.durationMs && now - stored.receivedAt > UNKNOWN_DURATION_STALE_MS) return null;
+
+  if (music.repeatOne) {
+    // 循环时「该放完了」不成立，只看静默多久
+    if (now - stored.receivedAt > REPEAT_SILENCE_GRACE_MS) return null;
+  } else if (music.durationMs > 0) {
+    // 预期 HA 最迟在这首放完时会推下一条；超过之后再宽限一段，还没动静才作废。
+    // 进度本身不作为判据 —— 前端展示时会回绕或 clamp，不会显示成超过 100%。
+    const remaining = Math.max(0, music.durationMs - music.positionMs);
+    if (now > stored.receivedAt + remaining + SILENCE_GRACE_MS) return null;
+  } else if (now - stored.receivedAt > UNKNOWN_DURATION_STALE_MS) {
+    return null;
+  }
 
   return stored;
 }
