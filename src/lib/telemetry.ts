@@ -3,9 +3,9 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { normalizeRawStatus, type RawStatus } from "@/lib/anker";
+import { getChargerPayload, normalizeRawStatus, type RawStatus } from "@/lib/anker";
 import { recordPushHeartbeat, recordStatus } from "@/lib/charger-store";
-import { resolveTrackLink } from "@/lib/apple-music";
+import { resolveTrackLookup } from "@/lib/apple-music";
 import { getHomePodNowPlaying } from "@/lib/homepod-store";
 import { storeUploadedImage } from "@/lib/image-store";
 import { number, object, text } from "@/lib/json";
@@ -24,6 +24,23 @@ import type {
   MusicPayload,
 } from "@/lib/types";
 import { recordVibeCodingReport } from "@/lib/vibecoding";
+
+/**
+ * 前台应用图标入库前压到的最长边。
+ *
+ * 采集端送来的是 128pt 的 PNG，Retina 上渲出来 256px、约 125KB，而页面上那个
+ * 位置只有 40 CSS px —— 2 倍屏也只要 80。和 Emby 海报、自定义歌单封面同一个
+ * 路子：压在入口，缓存里存的直接是小图。
+ *
+ * 不像 Emby 那样需要给缓存键加版本：资产地址是内容哈希，压缩换了字节哈希就换，
+ * 地址天然失效。
+ */
+const ICON_MAX_DIMENSION = 96;
+/**
+ * 图标比照片吃质量：大片纯色加硬边缘，有损压缩的振铃在这种图上最显眼，
+ * 而它本来就只有几 KB，往上调几乎不涨体积。
+ */
+const ICON_WEBP_QUALITY = 92;
 
 /** 暂停超过这个时间就不再占用音乐 Hero，让下一个实时来源接管。 */
 const MUSIC_PAUSE_GRACE_MS = 30_000;
@@ -132,7 +149,7 @@ async function normalizeDesktop(
   return {
     applicationName,
     bundleIdentifier,
-    iconUrl: (await storeUploadedImage(row.icon_data)) ?? previousIcon,
+    iconUrl: (await storeUploadedImage(row.icon_data, ICON_MAX_DIMENSION, ICON_WEBP_QUALITY)) ?? previousIcon,
     observedAt: milliseconds(row.observed_at, receivedAt),
   };
 }
@@ -146,8 +163,6 @@ async function normalizeMusic(
   const rawState = text(row.state);
   const state = rawState === "playing" || rawState === "paused" ? rawState : "stopped";
   const trackId = text(row.track_id);
-  const previousArtwork =
-    telemetryState.music?.trackId === trackId ? telemetryState.music.artworkUrl : null;
   return {
     source: "apple-music",
     state,
@@ -155,7 +170,9 @@ async function normalizeMusic(
     artist: text(row.artist),
     album: text(row.album),
     trackId,
-    artworkUrl: (await storeUploadedImage(row.artwork_data)) ?? previousArtwork,
+    // 采集端不再上传封面二进制：读取时会查一次 Apple Music 目录拿曲目链接，
+    // 那次查询的结果自带封面 URL，见 getMusicPayload
+    artworkUrl: null,
     positionMs: Math.max(0, number(row.position_ms) ?? 0),
     durationMs: Math.max(0, number(row.duration_ms) ?? 0),
     // 上报器目前不上报循环状态，缺字段时按「不循环」处理
@@ -202,7 +219,10 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
     if (!raw?.updated_at) throw new Error("charger 模块缺少 updated_at");
     const structuralChanged = await recordStatus(normalizeRawStatus(raw), receivedAt);
     // 插拔、换设备立刻推给浏览器，不等卡片下一次轮询。滚动读数不走这里。
-    if (structuralChanged) publish({ type: "charger", payload: null });
+    // since 给当下时刻：历史点一个都不带，客户端沿用自己那份，见 live-events 的说明。
+    if (structuralChanged) {
+      publish({ type: "charger", payload: await getChargerPayload({ since: Date.now() }) });
+    }
     accepted += 1;
   }
 
@@ -304,17 +324,24 @@ export async function getMusicPayload(): Promise<MusicPayload> {
     (homePodMusic?.state === "playing" ? homePodMusic : null) ??
     (homePodPausedFresh ? homePodMusic : null);
   // 命中会长期缓存，绝大多数调用不会真的打上游
-  const link = music ? await resolveTrackLink(music) : null;
+  const lookup = music ? await resolveTrackLookup(music) : null;
 
   return {
-    music,
+    /**
+     * 封面优先用目录查出来的那张。
+     *
+     * 这次查询本来就要做（为了拿链接），结果本来就带 artwork，等于白拿；
+     * 而采集端为此要把 JPEG 二进制压进每个换歌的上报包里，是那个模块最大的一块。
+     * 目录里没有的曲子（本地导入、非目录内容）查不到封面，那时仍退回采集端送来的那张。
+     */
+    music: music && lookup?.artwork ? { ...music, artworkUrl: lookup.artwork } : music,
     receivedAt: Math.max(
       telemetryState.activityReceivedAt || reporterLastSeenAt() || 0,
       homePod?.receivedAt ?? 0,
     ) || null,
     // 没东西可显示，而不是「数据过期」—— 没在听歌时这就是常态
     idle: !music,
-    link,
+    link: lookup?.link ?? null,
   };
 }
 

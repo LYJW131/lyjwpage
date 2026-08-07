@@ -5,7 +5,7 @@ import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 
 import { StatusDot } from "@/components/ui/status-dot";
-import { useLiveStream, WATCHING_PATH } from "@/hooks/use-live-stream";
+import { NOW_WATCHING_PATH, useLiveStream, WATCHING_PATH } from "@/hooks/use-live-stream";
 import { useStatus } from "@/hooks/use-status";
 import { stableKeys } from "@/lib/keys";
 import {
@@ -59,7 +59,12 @@ type NowPlaying = {
 
 type WatchingPayload = {
   items: WatchingItem[];
+};
+
+type NowWatchingPayload = {
   nowPlaying: NowPlaying | null;
+  /** 播放中那一项的详情，不一定在 items 里 —— 刚开播或已看完就会掉出 Resume */
+  current: WatchingItem | null;
 };
 
 function Tile({
@@ -185,10 +190,34 @@ function Skeleton() {
 
 export function WatchingRow() {
   useLiveStream();
-  const { data, error, isLoading } = useStatus<WatchingPayload>(
+  /**
+   * 两个来源分开取，因为节奏差得远：列表是后端定时轮询 Emby 拿的，慢；
+   * 正在播放由 webhook 推，快。合在一个端点时，慢的那半只能跟着快的那半
+   * 一起被重取。
+   */
+  const { data: list, error, isLoading } = useStatus<WatchingPayload>(
     WATCHING_PATH,
+    REFRESH_IDLE_MS,
+  );
+  const { data: live } = useStatus<NowWatchingPayload>(
+    NOW_WATCHING_PATH,
     (payload) => (payload?.nowPlaying ? REFRESH_PLAYING_MS : REFRESH_IDLE_MS),
   );
+
+  /**
+   * 播放中那一项置顶并去重。
+   *
+   * 从前是服务端做的，拆成两个端点之后它做不了了 —— 两边各自刷新，服务端
+   * 手上没有另一半。这本来也是展示逻辑，放这里更合适。
+   */
+  const data = (() => {
+    if (!list) return undefined;
+    const current = live?.current;
+    const items = current
+      ? [current, ...list.items.filter((item) => item.id !== current.id)]
+      : list.items;
+    return { items, nowPlaying: live?.nowPlaying ?? null };
+  })();
   const reduced = useReducedMotion();
   const scrollerRef = useRef<HTMLDivElement>(null);
   const nowPlayingId = data?.nowPlaying?.itemId;

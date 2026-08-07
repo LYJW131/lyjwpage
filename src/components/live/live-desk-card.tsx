@@ -12,6 +12,13 @@ import type { DesktopActivity, DesktopPayload } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /** 推送断了才靠轮询顶着，这时要跟得紧 */
+/**
+ * 锁屏时前台是 loginwindow —— 那是 macOS 的锁屏进程，不是用户在用的应用。
+ * 直接把进程名摆出来既没意义又像出了 bug，换成状态本身的说法。
+ * 判据用 bundle ID 不用名字：名字会随系统语言变。
+ */
+const LOCK_SCREEN_BUNDLE_ID = "com.apple.loginwindow";
+
 const REFRESH_MS = 3_000;
 /** 推送正常时轮询只是兜底，压到最低 */
 const PUSHED_REFRESH_MS = 30_000;
@@ -109,6 +116,7 @@ export function LiveDeskCard({ className }: { className?: string }) {
   // 图标预加载门控是为了避免切换应用时旧图标闪空。首屏没有「旧的」可保护，
   // 等它只会让卡片白白多停一个网络往返，所以这时直接用刚到的数据渲染。
   const desktop = displayedDesktop ?? (offline ? null : incomingDesktop);
+  const locked = desktop?.bundleIdentifier === LOCK_SCREEN_BUNDLE_ID;
   // 只在前台应用真正切换时播放动效。
   const applicationKey = offline
     ? "offline"
@@ -154,7 +162,7 @@ export function LiveDeskCard({ className }: { className?: string }) {
                   className="relative flex w-max max-w-full min-w-0 origin-left items-center gap-3 overflow-hidden rounded-md"
                 >
                   <div className="relative flex size-10 shrink-0 items-center justify-center overflow-hidden">
-                    {desktop?.iconUrl && !offline ? (
+                    {desktop?.iconUrl && !offline && !locked ? (
                       <Image
                         src={desktop.iconUrl}
                         alt=""
@@ -163,13 +171,33 @@ export function LiveDeskCard({ className }: { className?: string }) {
                         className="object-cover"
                         unoptimized
                       />
+                    ) : locked ? (
+                      /*
+                       * 自己画的锁，不用系统那个 —— macOS 原装的 LockedIcon.icns
+                       * 是 Keychain 时代的拟物黄铜锁，跟这张卡不搭；SF Symbols
+                       * 的 lock.fill 好看但授权限定在 Apple 平台，这是公开站点。
+                       * currentColor 让它跟着主题走，和旁边那个 ⌘ 占位符同一种质感。
+                       */
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth={1.6}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="size-6 text-muted-foreground"
+                        aria-hidden
+                      >
+                        <rect x="4.5" y="10.5" width="15" height="10" rx="2.5" />
+                        <path d="M8 10.5V7.5a4 4 0 0 1 8 0v3" />
+                      </svg>
                     ) : (
                       <span className="text-sm text-muted-foreground">⌘</span>
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-xl font-medium">
-                      {offline ? "—" : desktop?.applicationName ?? "暂无活动"}
+                      {offline ? "—" : locked ? "已锁屏" : desktop?.applicationName ?? "暂无活动"}
                     </div>
                   </div>
                 </motion.div>

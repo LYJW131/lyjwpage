@@ -1,4 +1,5 @@
-import type { DesktopPayload, MusicPayload } from "@/lib/types";
+import type { NowWatchingPayload } from "@/lib/emby";
+import type { ChargerPayload, DesktopPayload, MusicPayload } from "@/lib/types";
 
 /**
  * 服务端 → 浏览器的实时事件总线。
@@ -24,11 +25,12 @@ export type LiveEvent =
    * 那些量充电时每个上报周期都在变，推它们等于把 SSE 当轮询用。
    * 滚动读数仍由卡片自己的 SWR 轮询负责。
    *
-   * 和 watching 一样只发失效通知、不带数据：充电头那个 fetcher 是有状态的
-   * （组件里用 ref 累积曲线，靠 ?since= 增量拉），直接把 payload 塞进缓存会
-   * 绕过那个 ref，下一轮的 since 就基于陈旧的 ref 算，曲线会错位。
+   * 带完整状态但**不带历史点**：SSE 是广播，服务端不知道每个客户端的曲线
+   * 游标，只能要么整份重发（400 个点约 15KB）要么不发。所以按「空增量」发 ——
+   * `historyPartial: true` + 空数组，客户端沿用自己已有的曲线，端口和功率
+   * 立刻更新。合并逻辑在 lib/charger-history，和轮询那条共用。
    */
-  | { type: "charger"; payload: null }
+  | { type: "charger"; payload: ChargerPayload }
   /**
    * 上报器上下线。只发失效通知 —— 存活是服务端的判断，各卡片重取自己的接口
    * 时会顺带拿到新的 stale，不必在这里把四份 payload 都算一遍推出去。
@@ -37,7 +39,11 @@ export type LiveEvent =
    * 和「前台应用变了」，而且需要知道离线的不止那两张卡。
    */
   | { type: "presence"; payload: null }
-  | { type: "watching"; payload: null };
+  /**
+   * Emby 正在播放。webhook 驱动，服务端收到时手上就是最新的，所以直接带数据。
+   * 「最近在看」的列表不走这条 —— 它是后端轮询 Emby 拿的，节奏慢得多。
+   */
+  | { type: "watching"; payload: NowWatchingPayload };
 
 type Subscriber = (event: LiveEvent) => void;
 
