@@ -104,15 +104,6 @@ type AppleResource = {
   };
 };
 
-/** 已知类型的中文标签，没收录的就直接显示原始 type */
-const KIND_LABELS: Record<string, string> = {
-  albums: "专辑",
-  "library-albums": "专辑",
-  playlists: "歌单",
-  "library-playlists": "歌单",
-  stations: "电台",
-};
-
 /** 把 artwork URL 里的 {w}/{h} 占位替换成实际尺寸 */
 function resolveArtwork(url: string | undefined, size = 600): string | null {
   if (!url) return null;
@@ -122,20 +113,13 @@ function resolveArtwork(url: string | undefined, size = 600): string | null {
 
 function normalize(resource: AppleResource, artworkSize: number): ListeningItem {
   const attributes = resource.attributes ?? {};
-  const kind = resource.type ?? "";
-  const kindLabel = KIND_LABELS[kind] ?? kind;
-  // 专辑给 artistName，歌单给 curatorName，电台两者都没有
-  const artist = attributes.artistName ?? attributes.curatorName ?? "";
 
   return {
     id: String(resource.id ?? attributes.playParams?.id ?? ""),
     title: attributes.name ?? "",
-    subtitle: [kindLabel, artist].filter(Boolean).join(" · "),
-    artist,
-    kind,
-    kindLabel,
+    // 专辑给 artistName，歌单给 curatorName，电台两者都没有
+    artist: attributes.artistName ?? attributes.curatorName ?? "",
     artwork: resolveArtwork(attributes.artwork?.url, artworkSize),
-    accent: attributes.artwork?.bgColor ?? null,
     link: attributes.url ?? null,
   };
 }

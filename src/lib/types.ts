@@ -28,17 +28,9 @@ export type ListeningItem = {
   id: string;
   /** 专辑名 / 歌单名 / 电台名 */
   title: string;
-  /** 「专辑 · 艺人」 */
-  subtitle: string;
   /** 专辑取 artistName，歌单取 curatorName */
   artist: string;
-  /** 原始类型：albums / playlists / stations … */
-  kind: string;
-  /** 给人看的类型标签 */
-  kindLabel: string;
   artwork: string | null;
-  /** Apple 给的封面主色，形如 "1a1a1a"（不带 #） */
-  accent: string | null;
   link: string | null;
 };
 

@@ -157,9 +157,8 @@ function TrackRow({ track }: { track: ListeningItem }) {
       </div>
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm">{track.title}</div>
-        {/* 用 subtitle 而不是 artist —— 它带着「专辑 / 歌单」的类型信息 */}
         <div className="truncate text-xs text-muted-foreground">
-          {track.subtitle}
+          {track.artist}
         </div>
       </div>
     </>
@@ -351,7 +350,7 @@ export function ListeningCard({ className }: { className?: string }) {
           key: latest.id,
           artwork: latest.artwork,
           title: latest.title,
-          subtitle: latest.subtitle,
+          subtitle: latest.artist,
           link: latest.link,
           label: playing ? "正在播放" : "最近听过",
           playing,
