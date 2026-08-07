@@ -252,6 +252,9 @@ export function Sparkline({
                 height={(height - y).toFixed(2)}
                 fill="transparent"
                 onMouseEnter={() => setHovered(index)}
+                // 也要自己负责解除：外层容器的 onMouseLeave 只在光标离开整块
+                // 图表时才触发，从柱子挪到它上方的空白仍然在容器内
+                onMouseLeave={() => setHovered(null)}
               />
             );
           })}
