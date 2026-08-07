@@ -28,17 +28,9 @@ export type ListeningItem = {
   id: string;
   /** 专辑名 / 歌单名 / 电台名 */
   title: string;
-  /** 「专辑 · 艺人」 */
-  subtitle: string;
   /** 专辑取 artistName，歌单取 curatorName */
   artist: string;
-  /** 原始类型：albums / playlists / stations … */
-  kind: string;
-  /** 给人看的类型标签 */
-  kindLabel: string;
   artwork: string | null;
-  /** Apple 给的封面主色，形如 "1a1a1a"（不带 #） */
-  accent: string | null;
   link: string | null;
 };
 
@@ -62,12 +54,13 @@ export type ListeningPayload = {
   nowPlaying: NowPlayingGuess | null;
 };
 
-/** 由本机遥测应用直接观测到的前台应用，不包含提示词、文件路径等内容。 */
+/**
+ * 由本机遥测应用直接观测到的前台应用。只有应用本身的身份和图标，
+ * 不含窗口标题、文件路径、提示词等任何窗口内容。
+ */
 export type DesktopActivity = {
   applicationName: string;
   bundleIdentifier: string | null;
-  /** 用户明确开启“窗口标题”后才会上报。 */
-  windowTitle: string | null;
   iconUrl: string | null;
   observedAt: number;
 };
@@ -83,19 +76,39 @@ export type LocalNowPlaying = {
   artworkUrl: string | null;
   positionMs: number;
   durationMs: number;
+  /**
+   * 单曲循环。曲名、艺人、专辑在循环前后完全一样，光靠这些字段分不出
+   * 「在循环」和「上游掉线了」，只能由来源明确告知。
+   * 前端据此让进度回绕，而不是钉在 100%。
+   */
+  repeatOne: boolean;
   observedAt: number;
 };
 
-export type ActivityPayload = {
+/**
+ * MacBook 的前台应用。只有这一个来源。
+ *
+ * 和播放状态拆成两个接口：播放来源可能是 MacBook，也可能是 HomePod，
+ * 两者的生命周期、上报路径、过期语义都不一样，绑在一起只会互相牵扯。
+ */
+export type DesktopPayload = {
   desktop: DesktopActivity | null;
+  receivedAt: number | null;
+  /** 上报器不可用或已超过心跳窗口。 */
+  stale: boolean;
+};
+
+/** 实时播放。来源可能是 MacBook 的 Music.app，也可能是 HomePod。 */
+export type MusicPayload = {
   music: LocalNowPlaying | null;
   receivedAt: number | null;
-  /** MacBook 前台应用遥测是否不可用或已超过心跳窗口。 */
-  desktopStale: boolean;
-  /** MacBook 与 HomePod 都没有可展示的播放状态。 */
-  musicStale: boolean;
-  /** 所有实时活动来源都不可用。 */
-  stale: boolean;
+  /** 两个来源都没有可展示的播放 —— 是「没在放」，不是「数据过期」。 */
+  idle: boolean;
+  /**
+   * 那首曲目在 Apple Music 上的地址，读取时现查的，不进设备上报的快照。
+   * 目录里能精确匹配上就是直链，匹配不上退回搜索页。
+   */
+  link: string | null;
 };
 
 export type ChargerPort = {
@@ -144,6 +157,12 @@ export type ChargerStatus = {
 /** 状态 + 服务端累积的历史，给前端画曲线用 */
 export type ChargerPayload = ChargerStatus & {
   history: ChargerSample[];
+  /**
+   * history 里只有 `?since=` 之后新增的采样点，要接到客户端已有序列后面。
+   * false 表示这是完整快照，直接替换 —— 首次请求，或客户端落后太多、
+   * 中间那段已被服务端裁掉时都是这种。
+   */
+  historyPartial: boolean;
   /** 太久没收到新推送 */
   stale: boolean;
 };
@@ -173,7 +192,11 @@ export type VibeCodingAgent = {
   /** 最近 30 天，每 12 小时一个 session-token 聚合点 */
   activity: Array<{ t: number; tokens: number }>;
   today: VibeCodingDay;
-  last7Days: VibeCodingDay[];
+  /**
+   * 只在入库时用来校验这份报告完不完整（必须正好 7 天），页面不渲染它，
+   * 所以发给浏览器的响应里会摘掉 —— 两个 agent 加起来 2.6KB，占三成。
+   */
+  last7Days?: VibeCodingDay[];
   last30DaysTokens: number;
 };
 
@@ -198,6 +221,12 @@ export type VibeCodingPayload = {
   /** ccusage 扫描完成的时间，而不是浏览器取接口的时间 */
   collectedAt: string;
   source: "local" | "push";
+  /**
+   * 各 agent 的 activity 里只有 `?since=` 起的桶，要并回客户端已有序列。
+   * 边界那个桶会重复出现并带上新值 —— 当前这 12 小时还在累加，是可变的。
+   * false 表示完整快照，直接替换。
+   */
+  activityPartial: boolean;
   /** 推送超过 15 分钟没有更新 */
   stale: boolean;
 };

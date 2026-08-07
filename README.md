@@ -130,16 +130,24 @@ POST /api/ingest/telemetry
 
 ### HomePod mini 播放实况
 
-Home Assistant 在 HomePod 换歌或切换 `playing / paused / idle / off` 时，把媒体状态推到：
+Home Assistant 在 HomePod 换歌、切换 `playing / paused / idle / off`、进度跳变
+（`media_position_updated_at`）或切换循环模式时，把媒体状态推到：
 
 ```text
 POST /api/ingest/homepod
 Authorization: Bearer <TELEMETRY_INGEST_SECRET>
 ```
 
-接收端复用统一遥测密钥，状态写入 Redis（未配置时退回进程内存）。`/api/status/activity`
-严格优先使用仍在线的 MacBook Apple Music 遥测；MacBook 没有有效曲目时才回退到 HomePod。
-事件带有进度观测时间，前端会继续推算进度；超过曲目时长后自动清掉过期的“正在播放”。
+进度跳变那条触发器不能少：单曲循环时曲名和播放状态都不变，只有进度归零，
+少了它服务端就不知道这首又从头开始了。
+
+接收端复用统一遥测密钥，状态写入 Redis（未配置时退回进程内存）。`/api/status/music`
+按「MacBook 在播 → MacBook 暂停未满 30 秒 → HomePod 在播 → HomePod 暂停未满 30 秒」
+选来源。事件带有进度观测时间，前端据此自己推算进度。
+
+判定“这条记录还算不算数”看的是**距上次收到推送多久**，不是推算进度有没有超过曲目
+时长 —— Home Assistant 按状态变化推送，曲目放完到下一条推送之间必然超时，拿它当
+作废依据会让正在播放的曲目凭空消失。
 
 Home Assistant 的 `rest_command.push_homepod_now_playing` 使用以下目标与鉴权头：
 

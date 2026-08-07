@@ -1,5 +1,6 @@
 "use client";
 
+import { Laptop, Speaker } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import Image from "next/image";
 import {
@@ -7,10 +8,12 @@ import {
   useEffect,
   useLayoutEffect,
   useRef,
+  useState,
   type ReactNode,
 } from "react";
 
 import { Card } from "@/components/ui/card";
+import { MUSIC_PATH, useLiveStream } from "@/hooks/use-live-stream";
 import { useStatus } from "@/hooks/use-status";
 import { stableKeys } from "@/lib/keys";
 import {
@@ -20,11 +23,20 @@ import {
   STATIC_TRANSITION,
   STATIC_VARIANTS,
 } from "@/lib/motion";
-import type { ListeningItem, ListeningPayload } from "@/lib/types";
+import type {
+  ListeningItem,
+  ListeningPayload,
+  LocalNowPlaying,
+  MusicPayload,
+} from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /** 与服务端 30s 列表缓存对齐 */
 const REFRESH_MS = 30_000;
+/** 实时播放：推送断了才靠轮询顶着 */
+const MUSIC_REFRESH_MS = 3_000;
+/** 推送正常时轮询只是兜底 */
+const MUSIC_PUSHED_REFRESH_MS = 30_000;
 
 /**
  * 视口里显示几行。行高不写死：列表填满卡片剩下的空间，每行取容器的 1/N
@@ -60,6 +72,74 @@ function Bars({ active }: { active: boolean }) {
   );
 }
 
+function formatClock(milliseconds: number) {
+  const seconds = Math.max(0, Math.floor(milliseconds / 1_000));
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+/**
+ * 本机曲目的副标题行 + 进度条。
+ *
+ * 挤进 hero 而不撑高它：hero 的高度由 80px 封面定死，文字列实测只用掉 67px，
+ * 剩 13px。时间放进副标题行右侧（那一行本来就存在，label-mono 是 11px/行高 1，
+ * 比 text-sm 的 20px 行盒矮，只占宽度不占高度），进度条另起一行占 3+6=9px，
+ * 合计 76px，仍在 80px 之内。
+ *
+ * 秒级计时器留在这个组件里，不放到 ListeningCard —— 否则下面那个带布局动画的
+ * 列表会跟着每秒重渲染一次。
+ */
+function HeroProgress({
+  track,
+  subtitle,
+}: {
+  track: LocalNowPlaying;
+  subtitle: string;
+}) {
+  const playing = track.state === "playing";
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!playing) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, [playing]);
+
+  // 上报器只在换歌和播放状态变化时推锚点，播放中的进度由前端按 observedAt 推算
+  const drift = playing ? Math.max(0, now - track.observedAt) : 0;
+  const elapsed = track.positionMs + drift;
+  // 单曲循环时上游可能一直不推新锚点（曲目没变、状态没变），进度该绕回开头
+  // 而不是钉在 100%；不循环时超出就 clamp，等下一条锚点纠正
+  const position =
+    track.durationMs > 0
+      ? track.repeatOne
+        ? elapsed % track.durationMs
+        : Math.min(track.durationMs, elapsed)
+      : elapsed;
+  const percent = track.durationMs ? (position / track.durationMs) * 100 : 0;
+
+  return (
+    <>
+      <div className="mt-px flex items-baseline gap-2 text-sm text-muted-foreground">
+        <span className="min-w-0 flex-1 truncate" title={subtitle}>
+          {subtitle}
+        </span>
+        <span className="label-mono shrink-0 tabular-nums">
+          {formatClock(position)} / {formatClock(track.durationMs)}
+        </span>
+      </div>
+      <div className="mt-1.5 h-[3px] overflow-hidden rounded-full bg-muted">
+        <div
+          className={cn(
+            "h-full rounded-full transition-[width] duration-700 ease-linear",
+            playing ? "bg-live" : "bg-muted-foreground",
+          )}
+          style={{ width: `${Math.max(0, Math.min(100, percent))}%` }}
+        />
+      </div>
+    </>
+  );
+}
+
 function TrackRow({ track }: { track: ListeningItem }) {
   const content = (
     <>
@@ -77,9 +157,8 @@ function TrackRow({ track }: { track: ListeningItem }) {
       </div>
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm">{track.title}</div>
-        {/* 用 subtitle 而不是 artist —— 它带着「专辑 / 歌单」的类型信息 */}
         <div className="truncate text-xs text-muted-foreground">
-          {track.subtitle}
+          {track.artist}
         </div>
       </div>
     </>
@@ -211,19 +290,76 @@ function HeroWrapper({
   );
 }
 
+/** hero 那一格的统一形状：本机曲目和 Apple Music 条目共用同一套渲染 */
+type Hero = {
+  key: string;
+  artwork: string | null;
+  title: string;
+  subtitle: string;
+  link: string | null;
+  label: string;
+  playing: boolean;
+  /**
+   * 本机 Music.app 正在放的那首（而不是 Apple Music 的历史记录）。
+   * 有值就说明能拿到播放进度，副标题行会换成带进度条的版本。
+   */
+  track: LocalNowPlaying | null;
+};
+
 export function ListeningCard({ className }: { className?: string }) {
   const { data, error, isLoading } = useStatus<ListeningPayload>(
     "/api/status/listening",
     REFRESH_MS,
   );
+  const { connected } = useLiveStream();
+  const { data: live } = useStatus<MusicPayload>(
+    MUSIC_PATH,
+    connected ? MUSIC_PUSHED_REFRESH_MS : MUSIC_REFRESH_MS,
+  );
 
   const reduced = useReducedMotion();
 
-  const [latest, ...rest] = data?.items ?? [];
+  // MacBook 与 HomePod 都没有可用状态时才退回最近播放列表。
+  const localMusic = live?.idle ? null : live?.music ?? null;
+  const localTrack =
+    localMusic?.title && localMusic.state !== "stopped" ? localMusic : null;
+  // 服务端已经按暂停宽限期选好来源；前端只渲染结果，避免两套计时器产生闪烁。
+  const localActive = Boolean(localTrack);
+
+  const [latest, ...tail] = data?.items ?? [];
   // 推断出来的「正在听」，且确实指向排在最前的这一项
   const playing = Boolean(
     data?.nowPlaying && data.nowPlaying.itemId === latest?.id,
   );
+
+  const hero: Hero | null = localActive
+    ? {
+        key: `${localTrack!.source}:${localTrack!.trackId ?? localTrack!.title}`,
+        artwork: localTrack!.artworkUrl,
+        title: localTrack!.title ?? "",
+        // 只放艺人：标题已经是曲名，专辑名多半是「曲名 - Single」这种同义重复
+        subtitle: localTrack!.artist ?? "",
+        // 设备给不出可分享的地址，服务端拿曲名 + 艺人去目录里解析出来的
+        link: live?.link ?? null,
+        label: localTrack!.state === "playing" ? "正在播放" : "已暂停",
+        playing: localTrack!.state === "playing",
+        track: localTrack,
+      }
+    : latest
+      ? {
+          key: latest.id,
+          artwork: latest.artwork,
+          title: latest.title,
+          subtitle: latest.artist,
+          link: latest.link,
+          label: playing ? "正在播放" : "最近听过",
+          playing,
+          track: null,
+        }
+      : null;
+
+  // 本机那首顶替 hero 时，Apple Music 原来的第一首下沉回列表
+  const rest = localActive ? (data?.items ?? []) : tail;
   // 对重排稳定的 key，否则顶部插入新条目时会被当成整批换新
   const restKeys = stableKeys(rest.map((item) => item.id));
   const listRef = useRowSnap(restKeys[0]);
@@ -232,10 +368,29 @@ export function ListeningCard({ className }: { className?: string }) {
     <Card label="Recently Played" action="Apple Music" className={className}>
       <div className="flex flex-1 flex-col px-4 pb-4 pt-3">
         {/* 最近的一项放大展示。整块都是链接 —— 点封面也能跳转。
-            换专辑/歌单时整块交叉淡入，不硬跳 */}
+            换专辑/歌单时整块交叉淡入，不硬跳。
+
+            首屏「读取中」不进 AnimatePresence：mode="wait" 要求旧 child 退场
+            动画跑完新 child 才进场，把占位态算作一个 child 的话，数据到了以后
+            hero 还要再等一个来回，肉眼可见地落在下面那个列表后面。
+            让它等到有数据再挂载，initial={false} 就会直接跳过入场动画。 */}
+        {!hero ? (
+          <HeroWrapper link={null}>
+            <div className="relative aspect-square w-20 shrink-0 overflow-hidden rounded-md border border-line bg-muted" />
+            <div className="flex min-w-0 flex-1 flex-col justify-center">
+              <div className="text-sm text-muted-foreground">
+                {isLoading
+                  ? "读取中…"
+                  : error
+                    ? "Apple Music 未连接"
+                    : "最近没有播放记录"}
+              </div>
+            </div>
+          </HeroWrapper>
+        ) : (
         <AnimatePresence mode="wait" initial={false}>
           <motion.div
-            key={latest?.id ?? "empty"}
+            key={hero.key}
             variants={reduced ? STATIC_VARIANTS : HERO_VARIANTS}
             initial="initial"
             animate="animate"
@@ -244,12 +399,12 @@ export function ListeningCard({ className }: { className?: string }) {
               reduced ? STATIC_TRANSITION : { duration: 0.22, ease: "easeOut" }
             }
           >
-            <HeroWrapper link={latest?.link ?? null}>
+            <HeroWrapper link={hero.link}>
               <div className="relative aspect-square w-20 shrink-0 overflow-hidden rounded-md border border-line bg-muted">
-                {latest?.artwork ? (
+                {hero.artwork ? (
                   <Image
-                    src={latest.artwork}
-                    alt={`${latest.title} 封面`}
+                    src={hero.artwork}
+                    alt={`${hero.title} 封面`}
                     fill
                     sizes="80px"
                     className="object-cover transition-transform duration-500 group-hover:scale-[1.04]"
@@ -264,47 +419,56 @@ export function ListeningCard({ className }: { className?: string }) {
             这里按实测的 leading 差额补偿，让两处视觉间隙都落在 8px 左右。
           */}
               <div className="flex min-w-0 flex-1 flex-col justify-center">
-                {latest ? (
-                  <>
-                    {/* 图标在左、文字在右，和 CHARGER / C1 那些标签行一致：
+                {/* 图标在左、文字在右，和 CHARGER / C1 那些标签行一致：
                     对齐的是图标的左边界，标签文字本身缩进 */}
-                    <div className="flex items-center gap-1.5">
-                      <Bars active={playing} />
-                      <span
-                        className={cn(
-                          "label-mono",
-                          playing ? "text-live" : "text-muted-foreground",
-                        )}
-                      >
-                        {playing ? "正在播放" : "最近听过"}
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <Bars active={hero.playing} />
+                  <span
+                    className={cn(
+                      "label-mono shrink-0",
+                      hero.playing ? "text-live" : "text-muted-foreground",
+                    )}
+                  >
+                    {hero.label}
+                  </span>
+                  {/* 实时曲目来自 MacBook Music.app 或 HomePod，不是历史记录。 */}
+                  {hero.track && (
+                    <span className="ml-0.5 inline-flex min-w-0 items-center gap-1 rounded-sm border border-line px-1.5 py-px text-[10px] leading-4 text-muted-foreground">
+                      {hero.track.source === "homepod" ? (
+                        <Speaker className="size-3 shrink-0" aria-hidden />
+                      ) : (
+                        <Laptop className="size-3 shrink-0" aria-hidden />
+                      )}
+                      <span className="truncate">
+                        {hero.track.source === "homepod" ? "HomePod mini" : "MacBook Pro"}
                       </span>
-                    </div>
-                    <div
-                      className="mt-1 truncate font-medium leading-snug group-hover:underline"
-                      title={latest.title}
-                    >
-                      {latest.title}
-                    </div>
-                    <div
-                      className="mt-px truncate text-sm text-muted-foreground"
-                      title={latest.subtitle}
-                    >
-                      {latest.subtitle}
-                    </div>
-                  </>
+                    </span>
+                  )}
+                </div>
+                <div
+                  className={cn(
+                    "mt-1 truncate font-medium leading-snug",
+                    hero.link && "group-hover:underline",
+                  )}
+                  title={hero.title}
+                >
+                  {hero.title}
+                </div>
+                {hero.track ? (
+                  <HeroProgress track={hero.track} subtitle={hero.subtitle} />
                 ) : (
-                  <div className="text-sm text-muted-foreground">
-                    {isLoading
-                      ? "读取中…"
-                      : error
-                        ? "Apple Music 未连接"
-                        : "最近没有播放记录"}
+                  <div
+                    className="mt-px truncate text-sm text-muted-foreground"
+                    title={hero.subtitle}
+                  >
+                    {hero.subtitle}
                   </div>
                 )}
               </div>
             </HeroWrapper>
           </motion.div>
         </AnimatePresence>
+        )}
 
         {/*
           再往前的几项。上游最多给 10 条，全部列出，放不下就滚动。
