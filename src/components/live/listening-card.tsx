@@ -51,12 +51,12 @@ const MIN_ROW_HEIGHT_PX = 48;
 function Bars({ active }: { active: boolean }) {
   const idleHeights = ["h-2", "h-3", "h-1.5"];
   return (
-    <span className="flex h-3 items-end gap-[2px]" aria-hidden>
+    <span className="flex h-3 items-end gap-0.5" aria-hidden>
       {[0, 1, 2].map((i) => (
         <span
           key={i}
           className={cn(
-            "w-[2px] origin-bottom rounded-full",
+            "w-0.5 origin-bottom rounded-full",
             active ? "h-full bg-live" : `bg-muted-foreground ${idleHeights[i]}`,
           )}
           style={
@@ -127,7 +127,7 @@ function HeroProgress({
           {formatClock(position)} / {formatClock(track.durationMs)}
         </span>
       </div>
-      <div className="mt-1.5 h-[3px] overflow-hidden rounded-full bg-muted">
+      <div className="mt-1.5 h-0.75 overflow-hidden rounded-full bg-muted">
         <div
           className={cn(
             "h-full rounded-full transition-[width] duration-700 ease-linear",
@@ -341,7 +341,7 @@ export function ListeningCard({ className }: { className?: string }) {
         subtitle: localTrack!.artist ?? "",
         // 设备给不出可分享的地址，服务端拿曲名 + 艺人去目录里解析出来的
         link: live?.link ?? null,
-        label: localTrack!.state === "playing" ? "正在播放" : "已暂停",
+        label: localTrack!.state === "playing" ? "播放中" : "已暂停",
         playing: localTrack!.state === "playing",
         track: localTrack,
       }
@@ -352,7 +352,7 @@ export function ListeningCard({ className }: { className?: string }) {
           title: latest.title,
           subtitle: latest.artist,
           link: latest.link,
-          label: playing ? "正在播放" : "最近听过",
+          label: playing ? "播放中" : "最近听过",
           playing,
           track: null,
         }
@@ -509,7 +509,7 @@ export function ListeningCard({ className }: { className?: string }) {
                   // 关掉滚动锚定：新条目插到顶部时，浏览器会为了「保持视觉位置不动」
                   // 自动把 scrollTop 加一行，结果第一行被顶出可视区，得手动滑回去
                   "[overflow-anchor:none]",
-                  "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+                  "scrollbar-none [&::-webkit-scrollbar]:hidden",
                 )}
                 // 写成内联而不是 Tailwind 的 arbitrary value：后者必须是字面量，
                 // 行数就会在两处各写一遍

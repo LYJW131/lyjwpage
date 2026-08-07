@@ -19,13 +19,19 @@ import type { WatchingItem } from "@/lib/types";
 
 const RESUME_TTL_MS = 60_000;
 /**
- * 正在播放时才会用到的会话查询。
+ * 播放中时才会用到的会话查询。
  * Emby 拖动进度条不发任何 webhook（播放事件只有 start/pause/unpause/stop），
  * 想跟上 seek 只能主动问。缓存很短是为了跟手；没在播时一次都不会发。
  */
 const SESSION_TTL_MS = 2_000;
 
 const TIMEOUT_MS = 6_000;
+const ITEM_FIELDS = [
+  "ProductionYear",
+  "SeriesPrimaryImage",
+  "BasicSyncInfo",
+  "UserDataPlayCount",
+].join(",");
 
 type EmbyItem = {
   Id?: string;
@@ -177,7 +183,7 @@ function normalize(item: EmbyItem, publicUrl: string): WatchingItem {
 
 export type WatchingPayload = {
   items: WatchingItem[];
-  /** 此刻正在播放的那一条，附带设备与暂停状态 */
+  /** 此刻播放中的那一条，附带设备与暂停状态 */
   nowPlaying: ResolvedNowPlaying | null;
 };
 
@@ -188,12 +194,7 @@ export async function getWatching({ limit = 8 } = {}): Promise<WatchingPayload> 
     const params = new URLSearchParams({
       Limit: String(limit),
       MediaTypes: "Video",
-      Fields: [
-        "ProductionYear",
-        "SeriesPrimaryImage",
-        "BasicSyncInfo",
-        "UserDataPlayCount",
-      ].join(","),
+      Fields: ITEM_FIELDS,
     });
     const data = await embyFetch<{ Items?: EmbyItem[] }>(
       `${url}/emby/Users/${userId}/Items/Resume?${params}`,
@@ -202,18 +203,40 @@ export async function getWatching({ limit = 8 } = {}): Promise<WatchingPayload> 
     return (data.Items ?? []).map((item) => normalize(item, publicUrl));
   });
 
-  // 是否正在播放由 Emby 的 webhook 决定，本站不定时轮询。
-  // 只认续播列表里有的条目：webhook 可能报的是列表外的东西（比如音乐）
+  // 是否播放中由 Emby 的 webhook 决定，本站不定时轮询。
   const live = await getNowPlaying();
-  if (!live || !items.some((item) => item.id === live.itemId)) {
+  if (!live) {
     return { items, nowPlaying: null };
   }
 
-  // 正在播放：顺带核对一次真实位置，把 seek 造成的偏差拉回来
-  return { items, nowPlaying: await syncPosition(live, url, key, userId) };
+  // 当前项不一定属于 Resume（例如刚开播或已经看完），缺失时按 id 补取详情。
+  // 单项详情只负责卡片文案和图片，实时进度仍以 webhook / Sessions 为准。
+  const existing = items.find((item) => item.id === live.itemId);
+  const current =
+    existing ??
+    (await cached(`emby:item:${live.itemId}`, RESUME_TTL_MS, async () => {
+      const params = new URLSearchParams({ Fields: ITEM_FIELDS });
+      const item = await embyFetch<EmbyItem>(
+        `${url}/emby/Users/${userId}/Items/${encodeURIComponent(live.itemId)}?${params}`,
+        key,
+      );
+      return normalize(item, publicUrl);
+    }));
+
+  // 无论原来排在哪里，播放中项固定置顶；总数继续遵守调用方的 limit。
+  const orderedItems = [current, ...items.filter((item) => item.id !== live.itemId)].slice(
+    0,
+    limit,
+  );
+
+  // 播放中：顺带核对一次真实位置，把 seek 造成的偏差拉回来
+  return {
+    items: orderedItems,
+    nowPlaying: await syncPosition(live, url, key, userId),
+  };
 }
 
-/** 用 Sessions 校正播放位置。只在已知正在播放时调用，空闲时零请求 */
+/** 用 Sessions 校正播放位置。只在已知播放中时调用，空闲时零请求 */
 async function syncPosition(
   live: ResolvedNowPlaying,
   url: string,

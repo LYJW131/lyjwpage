@@ -112,7 +112,7 @@ export function ChargerCard({ className }: { className?: string }) {
           所以 items-end 底边对齐，再按实测补 4px：两边盒底相同，但字形底
           分别在 257 和 261（半行距 0 vs 5、字体下伸 14 vs 5）。
         */}
-        <div className="flex h-[4.5rem] items-end gap-1.5">
+        <div className="flex h-18 items-end gap-1.5">
           <div className="text-5xl font-medium tracking-tight tabular-nums">
             {connected ? (
               <NumberFlow
@@ -142,8 +142,12 @@ export function ChargerCard({ className }: { className?: string }) {
 
         {/* 功率曲线：服务端累积的历史。两条坐标轴都固定，不随数据缩放，
             否则每来一个点整条曲线都会挪位 —— 细节见 sparkline.tsx */}
-        <div className="-mx-1 mt-3 flex max-h-32 min-h-8 flex-1 items-end">
-          <Sparkline samples={history} className="h-full min-h-8 w-full" />
+        <div className="mt-3 flex max-h-32 min-h-8 flex-1 items-end">
+          <Sparkline
+            samples={history}
+            formatValue={(watts) => `${watts.toFixed(1)}W`}
+            className="h-full min-h-8 w-full"
+          />
         </div>
 
         {/* 三个 USB-C 口 */}

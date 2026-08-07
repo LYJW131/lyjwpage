@@ -2,8 +2,10 @@
 
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import Image from "next/image";
+import { useEffect, useRef } from "react";
 
 import { StatusDot } from "@/components/ui/status-dot";
+import { useLiveStream, WATCHING_PATH } from "@/hooks/use-live-stream";
 import { useStatus } from "@/hooks/use-status";
 import { stableKeys } from "@/lib/keys";
 import {
@@ -17,7 +19,7 @@ import { cn } from "@/lib/utils";
 
 /**
  * 有东西在播时轮询要跟手 —— Emby 拖动进度条不发 webhook，只能靠问。
- * 服务端那边同样是「正在播放才查 Sessions」（缓存 2 秒），所以前端调到 3 秒
+ * 服务端那边同样是「播放中才查 Sessions」（缓存 2 秒），所以前端调到 3 秒
  * 也不会让 Emby 压力翻倍。空闲时放慢到一分钟。
  */
 const REFRESH_PLAYING_MS = 3_000;
@@ -65,7 +67,7 @@ function Tile({
   const progress = live && liveProgress != null ? liveProgress : item.progress;
 
   /**
-   * 正在播放时，进度条交给 CSS 动画逐帧走，不用 JS 计时器：
+   * 播放中时，进度条交给 CSS 动画逐帧走，不用 JS 计时器：
    * 动画本身是 0 → 100%、时长等于片长，再用负的 animation-delay
    * 把它定位到当前播放点。播放途中 Emby 不发事件、服务端也没有新数据可给，
    * 光靠拉取的话进度条会以轮询周期为步长一跳一跳。
@@ -111,14 +113,14 @@ function Tile({
           <span className="absolute right-2 top-2 flex items-center gap-1.5 rounded-full border border-line bg-background/85 px-2 py-1 backdrop-blur-sm">
             <StatusDot tone={paused ? "idle" : "live"} />
             <span className="label-mono text-foreground">
-              {paused ? "已暂停" : "正在播放"}
+              {paused ? "已暂停" : "播放中"}
             </span>
           </span>
         )}
 
         {/* 进度条压在图片底边，所以颜色不能跟着主题走，也不能用黑白：
             海报有深有浅，只有绿色在两种底上都读得出来。
-            正在播放时让它呼吸，暂停/没在播的就是静止的一条。 */}
+            播放中时让它呼吸，暂停/没在播的就是静止的一条。 */}
         <div className="absolute inset-x-0 bottom-0 h-1">
           <div
             className={cn(
@@ -169,11 +171,24 @@ function Skeleton() {
 }
 
 export function WatchingRow() {
+  useLiveStream();
   const { data, error, isLoading } = useStatus<WatchingPayload>(
-    "/api/status/watching",
+    WATCHING_PATH,
     (payload) => (payload?.nowPlaying ? REFRESH_PLAYING_MS : REFRESH_IDLE_MS),
   );
   const reduced = useReducedMotion();
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const nowPlayingId = data?.nowPlaying?.itemId;
+  const firstItemId = data?.items[0]?.id;
+
+  useEffect(() => {
+    if (!nowPlayingId || firstItemId !== nowPlayingId) return;
+    scrollerRef.current?.scrollTo({
+      left: 0,
+      behavior: reduced ? "auto" : "smooth",
+    });
+  }, [firstItemId, nowPlayingId, reduced]);
+
   // 对重排稳定的 key，否则列表顺序一变会被当成整批换新
   const keys = stableKeys((data?.items ?? []).map((item) => item.id));
 
@@ -191,7 +206,10 @@ export function WatchingRow() {
     // 吸附到卡片起始边，手动滑动也只会停在整卡边界上。
     // overscroll-x-contain 很关键：不然横滑到头会把滚动链给外层，
     // 触发触控板的「滑动返回上一页」，那下手感是最生硬的。
-    <div className="snap-x snap-mandatory scroll-smooth overflow-x-auto overscroll-x-contain pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    <div
+      ref={scrollerRef}
+      className="snap-x snap-mandatory scroll-smooth overflow-x-auto overscroll-x-contain pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+    >
       <div className="flex gap-3">
         {/* popLayout 让离场的卡片脱离布局流，后面的能同时补位 */}
         <AnimatePresence initial={false} mode="popLayout">
