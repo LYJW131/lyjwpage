@@ -116,23 +116,25 @@ function resolveArtwork(url: string | undefined, size = 600): string | null {
     .replace(/\{c\}/g, "sr");
 }
 
-function normalize(
+async function normalize(
   resource: AppleResource,
   artworkSize: number,
-  libraryArtwork: Record<string, string>,
-): ListeningItem {
+): Promise<ListeningItem> {
   const attributes = resource.attributes ?? {};
   const id = String(resource.id ?? attributes.playParams?.id ?? "");
-  const own = resolveArtwork(attributes.artwork?.url, artworkSize);
+
+  // 自建歌单优先用资料库那张：catalog 上就算有，也多半是自动拼的 mosaic，
+  // 不是用户自己选的封面。只在确实查得到时才给地址，否则前端会挂一张必然 404 的图
+  const fromLibrary = (await libraryPlaylistArtwork(id))
+    ? `${APPLE_IMAGE_PREFIX}${id}`
+    : null;
 
   return {
     id,
     title: attributes.name ?? "",
     // 专辑给 artistName，歌单给 curatorName，电台两者都没有
     artist: attributes.artistName ?? attributes.curatorName ?? "",
-    // 自建歌单自己没有封面，但资料库里有；只在确实查得到时才给地址，
-    // 否则前端会挂一张必然 404 的图
-    artwork: own ?? (libraryArtwork[id] ? `${APPLE_IMAGE_PREFIX}${id}` : null),
+    artwork: fromLibrary ?? resolveArtwork(attributes.artwork?.url, artworkSize),
     link: attributes.url ?? null,
   };
 }
@@ -340,63 +342,55 @@ export async function resolveTrackLink(track: {
   }
 }
 
-/** 资料库歌单列表。内容变得不勤，但封面地址本身会过期，别缓存太久 */
-const LIBRARY_TTL_MS = 30 * 60 * 1000;
-const LIBRARY_PAGE = 100;
-/** 翻页上限，够覆盖几百个歌单 */
-const MAX_LIBRARY_PAGES = 5;
+/** 封面地址本身会过期（预签名 24 小时），别缓存太久 */
+const LIBRARY_ARTWORK_TTL_MS = 30 * 60 * 1000;
+/** 自建 / 分享歌单的 id 前缀，只有这类才需要去资料库找封面 */
+const USER_PLAYLIST_PREFIX = "pl.u-";
 
-/** 前端看到的稳定地址；真正的预签名地址只在服务端出现 */
+/** 前端看到的稳定地址；预签名地址只在服务端出现 */
 export const APPLE_IMAGE_PREFIX = "/api/image/apple/";
 
-type LibraryPlaylist = {
-  attributes?: {
-    artwork?: { url?: string };
-    playParams?: { globalId?: string };
+type CatalogPlaylistWithLibrary = {
+  relationships?: {
+    library?: { data?: Array<{ attributes?: { artwork?: { url?: string } } }> };
   };
 };
 
 /**
- * 自建歌单封面：catalog 端点没有，资料库端点有。
+ * 自建歌单的封面，从**这一个歌单**的资料库副本里取。
  *
- * `/v1/me/recent/played` 和 `/v1/catalog/{sf}/playlists/{id}` 对自建歌单
- * 都**不返回 artwork 字段**（实测只有官方策展歌单才有）。但
- * `/v1/me/library/playlists` 带上 Music-User-Token 就能拿到，靠 playParams
- * 里的 globalId 和 catalog 那边的 id 对上。
+ * catalog 端点对 pl.u- 歌单要么不给 artwork，要么给的是 Apple 按曲目自动拼的
+ * mosaic；用户自己设的那张封面只挂在资料库副本上，得带 Music-User-Token
+ * 请求 `?include=library`，从 relationships.library 里读。
  *
- * 返回的是 globalId → 封面地址模板。注意那是一条**预签名的 S3 地址**
- * （X-Amz-Expires=86400），24 小时后失效，所以不能直接交给浏览器，
- * 得由服务端取回、经图片代理转发。
+ * 刻意按 id 单查而不是列 /v1/me/library/playlists ——那样等于把整个资料库的
+ * 歌单和它们的预签名封面地址全拉回来缓存着，而实际只用得上最近播放里的一两个。
+ *
+ * 返回的是预签名 S3 地址（X-Amz-Expires=86400），没有 {w}/{h} 占位符，
+ * 原样透传即可；但它会过期，所以不能直接交给浏览器。
  */
-async function getLibraryPlaylistArtwork(credentials: Credentials) {
-  return cached(`apple-music:library-playlists`, LIBRARY_TTL_MS, async () => {
-    const map: Record<string, string> = {};
-    let url: string | undefined =
-      `https://api.music.apple.com/v1/me/library/playlists?limit=${LIBRARY_PAGE}`;
-
-    for (let page = 0; page < MAX_LIBRARY_PAGES && url; page += 1) {
-      // 显式标注：url 在循环里被 json.next 重新赋值，不标注会绕成循环推断
-      const json: { data?: LibraryPlaylist[]; next?: string } = await appleFetchRaw(
-        url.startsWith("http") ? url : `https://api.music.apple.com${url}`,
+export async function libraryPlaylistArtwork(id: string): Promise<string | null> {
+  if (!id.startsWith(USER_PLAYLIST_PREFIX)) return null;
+  try {
+    const credentials = await resolveCredentials();
+    const storefront = await getStorefront(credentials);
+    return await cached(`apple-music:library-art:${id}`, LIBRARY_ARTWORK_TTL_MS, async () => {
+      const rows = await appleFetch<CatalogPlaylistWithLibrary>(
+        `https://api.music.apple.com/v1/catalog/${storefront}/playlists/${id}?include=library`,
         credentials,
       );
-      for (const row of json.data ?? []) {
-        const globalId = row.attributes?.playParams?.globalId;
-        const artwork = row.attributes?.artwork?.url;
-        if (globalId && artwork) map[globalId] = artwork;
+      for (const copy of rows[0]?.relationships?.library?.data ?? []) {
+        const url = copy.attributes?.artwork?.url;
+        if (url) return url;
       }
-      url = json.next;
-    }
-    return map;
-  });
-}
-
-/** 给图片路由用：把 globalId 换成此刻有效的预签名地址 */
-export async function resolveLibraryPlaylistArtwork(globalId: string, size = 600) {
-  const credentials = await resolveCredentials();
-  const map = await getLibraryPlaylistArtwork(credentials);
-  const template = map[globalId];
-  return template ? resolveArtwork(template, size) : null;
+      // 存空串而不是 null：cached 用 undefined 判未命中，空串才能把
+      // 「查过了但没有」也缓存住
+      return "";
+    }).then((url) => url || null);
+  } catch {
+    // 尽力而为：查不到就没有封面，不该让整个列表失败
+    return null;
+  }
 }
 
 /** limit 上限 10 —— 上游端点的硬限制 */
@@ -405,12 +399,10 @@ export async function getRecentlyPlayed(
 ): Promise<ListeningItem[]> {
   const credentials = await resolveCredentials();
   const resources = await fetchResources(credentials);
-  // 整份取一次就够，不用每个歌单各查一遍
-  const libraryArtwork = await getLibraryPlaylistArtwork(credentials).catch(() => ({}));
 
-  return resources
-    .slice(0, limit)
-    .map((item) => normalize(item, artworkSize, libraryArtwork));
+  return Promise.all(
+    resources.slice(0, limit).map((item) => normalize(item, artworkSize)),
+  );
 }
 
 /**

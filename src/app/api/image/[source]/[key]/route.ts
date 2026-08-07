@@ -1,4 +1,4 @@
-import { resolveLibraryPlaylistArtwork } from "@/lib/apple-music";
+import { getRecentlyPlayed, libraryPlaylistArtwork } from "@/lib/apple-music";
 import { getCachedImage, getStoredImage, type ImageEntry } from "@/lib/image-store";
 import { decodeImageToken } from "@/lib/image-proxy";
 
@@ -65,10 +65,22 @@ function imageResponse(request: Request, image: ImageEntry) {
  * 而且带着签名，不该直接出现在公开页面上。所以由服务端换取、取回字节再转发，
  * 前端只看到 /api/image/apple/<globalId> 这个稳定地址。
  */
-async function loadApplePlaylistImage(globalId: string): Promise<ImageLoadResult> {
+async function loadApplePlaylistImage(playlistId: string): Promise<ImageLoadResult> {
   try {
-    const image = await getCachedImage(`apple-playlist:${globalId}`, async () => {
-      const url = await resolveLibraryPlaylistArtwork(globalId);
+    /**
+     * 只服务当前最近播放列表里出现过的歌单。
+     *
+     * 这个端点没有鉴权，不加这道限制的话，知道 id 就能取到资料库里**任意**
+     * 歌单的封面 —— 页面根本不展示的那些也包括在内。列表本身有 30 秒缓存，
+     * 这次校验基本不产生额外请求。
+     */
+    const items = await getRecentlyPlayed();
+    if (!items.some((item) => item.id === playlistId)) {
+      return { error: "不在当前展示的列表里", status: 403 } as const;
+    }
+
+    const image = await getCachedImage(`apple-playlist:${playlistId}`, async () => {
+      const url = await libraryPlaylistArtwork(playlistId);
       if (!url) throw new Error("资料库里没有这个歌单的封面");
       const upstream = await fetch(url, {
         cache: "no-store",
