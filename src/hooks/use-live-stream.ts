@@ -4,11 +4,17 @@ import { useEffect, useSyncExternalStore } from "react";
 import { useSWRConfig } from "swr";
 import type { ScopedMutator } from "swr";
 
-import type { ActivityPayload, StatusResponse } from "@/lib/types";
+import type { DesktopPayload, MusicPayload, StatusResponse } from "@/lib/types";
 
 const STREAM_PATH = "/api/status/stream";
-/** SWR 的缓存键就是请求路径，推送写进来的必须和轮询用的是同一个 */
-export const ACTIVITY_PATH = "/api/status/activity";
+/**
+ * SWR 的缓存键就是请求路径，推送写进来的必须和轮询用的是同一个。
+ *
+ * 前台应用和播放是两个接口：播放来源可能是 MacBook 也可能是 HomePod，
+ * 和「Mac 正在使用的应用」无关，各推各的。
+ */
+export const DESKTOP_PATH = "/api/status/desktop";
+export const MUSIC_PATH = "/api/status/music";
 
 /**
  * 整页共用一条 SSE 连接。
@@ -44,15 +50,17 @@ function open(mutate: ScopedMutator) {
   next.onopen = () => setConnected(true);
   next.onerror = () => setConnected(false);
 
-  next.addEventListener("activity", (event) => {
-    const envelope: StatusResponse<ActivityPayload> = {
+  // revalidate: false —— 推来的就是最新的，没必要再回源确认一次
+  const forward = (path: string) => (event: MessageEvent<string>) => {
+    const envelope: StatusResponse<DesktopPayload | MusicPayload> = {
       ok: true,
-      data: JSON.parse(event.data) as ActivityPayload,
+      data: JSON.parse(event.data) as DesktopPayload | MusicPayload,
       fetchedAt: new Date().toISOString(),
     };
-    // revalidate: false —— 推来的就是最新的，没必要再回源确认一次
-    void mutate(ACTIVITY_PATH, envelope, { revalidate: false });
-  });
+    void mutate(path, envelope, { revalidate: false });
+  };
+  next.addEventListener("desktop", forward(DESKTOP_PATH));
+  next.addEventListener("music", forward(MUSIC_PATH));
 }
 
 function close() {

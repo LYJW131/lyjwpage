@@ -13,7 +13,7 @@ import {
 } from "react";
 
 import { Card } from "@/components/ui/card";
-import { ACTIVITY_PATH, useLiveStream } from "@/hooks/use-live-stream";
+import { MUSIC_PATH, useLiveStream } from "@/hooks/use-live-stream";
 import { useStatus } from "@/hooks/use-status";
 import { stableKeys } from "@/lib/keys";
 import {
@@ -24,19 +24,19 @@ import {
   STATIC_VARIANTS,
 } from "@/lib/motion";
 import type {
-  ActivityPayload,
   ListeningItem,
   ListeningPayload,
   LocalNowPlaying,
+  MusicPayload,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /** 与服务端 30s 列表缓存对齐 */
 const REFRESH_MS = 30_000;
-/** 本机活动状态：推送断了才靠轮询顶着 */
-const ACTIVITY_REFRESH_MS = 3_000;
+/** 实时播放：推送断了才靠轮询顶着 */
+const MUSIC_REFRESH_MS = 3_000;
 /** 推送正常时轮询只是兜底 */
-const ACTIVITY_PUSHED_REFRESH_MS = 30_000;
+const MUSIC_PUSHED_REFRESH_MS = 30_000;
 
 /**
  * 视口里显示几行。行高不写死：列表填满卡片剩下的空间，每行取容器的 1/N
@@ -313,15 +313,15 @@ export function ListeningCard({ className }: { className?: string }) {
     REFRESH_MS,
   );
   const { connected } = useLiveStream();
-  const { data: activity } = useStatus<ActivityPayload>(
-    ACTIVITY_PATH,
-    connected ? ACTIVITY_PUSHED_REFRESH_MS : ACTIVITY_REFRESH_MS,
+  const { data: live } = useStatus<MusicPayload>(
+    MUSIC_PATH,
+    connected ? MUSIC_PUSHED_REFRESH_MS : MUSIC_REFRESH_MS,
   );
 
   const reduced = useReducedMotion();
 
   // MacBook 与 HomePod 都没有可用状态时才退回最近播放列表。
-  const localMusic = activity?.musicIdle ? null : activity?.music ?? null;
+  const localMusic = live?.idle ? null : live?.music ?? null;
   const localTrack =
     localMusic?.title && localMusic.state !== "stopped" ? localMusic : null;
   // 服务端已经按暂停宽限期选好来源；前端只渲染结果，避免两套计时器产生闪烁。
@@ -342,7 +342,7 @@ export function ListeningCard({ className }: { className?: string }) {
           .filter(Boolean)
           .join(" · "),
         // 设备给不出可分享的地址，服务端拿曲名 + 艺人去目录里解析出来的
-        link: activity?.musicLink ?? null,
+        link: live?.link ?? null,
         label: localTrack!.state === "playing" ? "正在播放" : "已暂停",
         playing: localTrack!.state === "playing",
         track: localTrack,

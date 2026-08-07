@@ -1,5 +1,5 @@
 import { type LiveEvent, publish, subscribe } from "@/lib/live-events";
-import { getActivityPayload } from "@/lib/telemetry";
+import { getDesktopPayload, getMusicPayload } from "@/lib/telemetry";
 
 // 需要常驻连接和进程内订阅，不能跑在 Edge，也不能被静态化
 export const runtime = "nodejs";
@@ -33,8 +33,9 @@ function retainTick() {
   tickRefs += 1;
   if (tickTimer) return;
   tickTimer = setInterval(() => {
-    void getActivityPayload()
-      .then((payload) => publish({ type: "activity", payload }))
+    publish({ type: "desktop", payload: getDesktopPayload() });
+    void getMusicPayload()
+      .then((payload) => publish({ type: "music", payload }))
       .catch((error: unknown) => {
         console.error("[stream]", error instanceof Error ? error.message : String(error));
       });
@@ -85,9 +86,11 @@ export function GET(request: Request) {
           cleanup();
         }
       };
-      const writeActivity = async () => {
+      // 首帧仍是每条连接自己发：新连上的人不该干等到下一个 tick
+      const writeInitial = async () => {
         try {
-          write(frame("activity", await getActivityPayload()));
+          write(frame("desktop", getDesktopPayload()));
+          write(frame("music", await getMusicPayload()));
         } catch (error) {
           console.error(
             "[stream]",
@@ -109,8 +112,7 @@ export function GET(request: Request) {
         return;
       }
 
-      // 首帧仍是每条连接自己发：新连上的人不该干等到下一个 tick
-      void writeActivity();
+      void writeInitial();
       holdsTick = true;
       retainTick();
     },

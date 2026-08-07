@@ -10,9 +10,10 @@ import { getHomePodNowPlaying } from "@/lib/homepod-store";
 import { number, object, text } from "@/lib/json";
 import { publish } from "@/lib/live-events";
 import type {
-  ActivityPayload,
   DesktopActivity,
+  DesktopPayload,
   LocalNowPlaying,
+  MusicPayload,
 } from "@/lib/types";
 import { recordVibeCodingReport } from "@/lib/vibecoding";
 
@@ -217,18 +218,36 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
   persistTelemetryState();
 
   // 心跳包也要推：它不带模块数据，但会刷新 receivedAt，
-  // 前端据此把「上报器离线」翻回在线。
-  await publishActivityPayload();
+  // 前端据此把「上报器离线」翻回在线。两边的 stale/idle 都是时间的函数，
+  // 所以两个都推。
+  publishDesktop();
+  await publishMusic();
 
   return { accepted, heartbeat: true };
 }
 
-export async function getActivityPayload(): Promise<ActivityPayload> {
-  hydrateTelemetryState();
-  const telemetryStale =
+/** 上报器整体是否已超过心跳窗口。只影响 Mac 来的东西，HomePod 走自己的路径。 */
+function reporterStale() {
+  return (
     !telemetryState.telemetryReceivedAt ||
-    Date.now() - telemetryState.telemetryReceivedAt > ACTIVITY_STALE_MS;
-  const desktopEnabled = telemetryState.activeModules.has("desktop");
+    Date.now() - telemetryState.telemetryReceivedAt > ACTIVITY_STALE_MS
+  );
+}
+
+export function getDesktopPayload(): DesktopPayload {
+  hydrateTelemetryState();
+  const stale = !telemetryState.activeModules.has("desktop") || reporterStale();
+  return {
+    desktop: stale ? null : telemetryState.desktop,
+    receivedAt:
+      telemetryState.activityReceivedAt || telemetryState.telemetryReceivedAt || null,
+    stale,
+  };
+}
+
+export async function getMusicPayload(): Promise<MusicPayload> {
+  hydrateTelemetryState();
+  const telemetryStale = reporterStale();
   const musicEnabled = telemetryState.activeModules.has("apple_music");
   const macMusic = musicEnabled && !telemetryStale ? telemetryState.music : null;
   const homePod = await getHomePodNowPlaying();
@@ -245,32 +264,32 @@ export async function getActivityPayload(): Promise<ActivityPayload> {
     (macPausedFresh ? macMusic : null) ??
     (homePodMusic?.state === "playing" ? homePodMusic : null) ??
     (homePodPausedFresh ? homePodMusic : null);
-  const desktopStale = !desktopEnabled || telemetryStale;
-  // 没东西可显示，而不是「数据过期」—— 没在听歌时这就是常态
-  const musicIdle = !music;
   // 命中会长期缓存，绝大多数调用不会真的打上游
-  const musicLink = music ? await resolveTrackLink(music) : null;
+  const link = music ? await resolveTrackLink(music) : null;
 
   return {
-    desktop: desktopStale ? null : telemetryState.desktop,
     music,
     receivedAt: Math.max(
       telemetryState.activityReceivedAt || telemetryState.telemetryReceivedAt || 0,
       homePod?.receivedAt ?? 0,
     ) || null,
-    desktopStale,
-    musicIdle,
-    musicLink,
+    // 没东西可显示，而不是「数据过期」—— 没在听歌时这就是常态
+    idle: !music,
+    link,
   };
 }
 
+export function publishDesktop() {
+  publish({ type: "desktop", payload: getDesktopPayload() });
+}
+
 /**
- * 发布当前活动，并在暂停宽限期结束时精确重算一次来源。
- * 这样前端会直接从暂停来源切到下一实时来源，不会中途闪回 API Hero。
+ * 推送当前播放，并在暂停宽限期结束时精确重算一次来源。
+ * 这样前端会直接从暂停来源切到下一实时来源，不会中途闪回 Apple Music 的历史 hero。
  */
-export async function publishActivityPayload() {
-  const payload = await getActivityPayload();
-  publish({ type: "activity", payload });
+export async function publishMusic() {
+  const payload = await getMusicPayload();
+  publish({ type: "music", payload });
 
   if (pauseExpiryTimer) {
     clearTimeout(pauseExpiryTimer);
@@ -281,7 +300,7 @@ export async function publishActivityPayload() {
       MUSIC_PAUSE_GRACE_MS - Math.max(0, Date.now() - payload.music.observedAt);
     pauseExpiryTimer = setTimeout(() => {
       pauseExpiryTimer = null;
-      void publishActivityPayload();
+      void publishMusic();
     }, Math.max(1, remaining + 25));
   }
 

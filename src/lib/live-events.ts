@@ -1,4 +1,4 @@
-import type { ActivityPayload } from "@/lib/types";
+import type { DesktopPayload, MusicPayload } from "@/lib/types";
 
 /**
  * 服务端 → 浏览器的实时事件总线。
@@ -12,7 +12,13 @@ import type { ActivityPayload } from "@/lib/types";
  * 把收到的消息喂回 dispatch。dispatch 已经和 publish 分开了，就是留给这个用的。
  */
 
-export type LiveEvent = { type: "activity"; payload: ActivityPayload };
+/**
+ * 前台应用和播放拆成两种事件：播放来源可能是 MacBook 也可能是 HomePod，
+ * 和「Mac 正在使用的应用」没有关系，不该被同一次推送捆在一起。
+ */
+export type LiveEvent =
+  | { type: "desktop"; payload: DesktopPayload }
+  | { type: "music"; payload: MusicPayload };
 
 type Subscriber = (event: LiveEvent) => void;
 

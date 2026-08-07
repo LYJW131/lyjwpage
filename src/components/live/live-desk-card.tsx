@@ -5,10 +5,10 @@ import Image from "next/image";
 import { useEffect, useState } from "react";
 
 import { Card } from "@/components/ui/card";
-import { ACTIVITY_PATH, useLiveStream } from "@/hooks/use-live-stream";
+import { DESKTOP_PATH, useLiveStream } from "@/hooks/use-live-stream";
 import { useStatus } from "@/hooks/use-status";
 import { STATIC_TRANSITION, STATIC_VARIANTS } from "@/lib/motion";
-import type { ActivityPayload, DesktopActivity } from "@/lib/types";
+import type { DesktopActivity, DesktopPayload } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /** 推送断了才靠轮询顶着，这时要跟得紧 */
@@ -51,14 +51,14 @@ const APP_SWITCH_TRANSITION = {
 export function LiveDeskCard({ className }: { className?: string }) {
   // 推送把最新状态直接写进 SWR 缓存，所以这里照旧读同一个 key 就行
   const { connected } = useLiveStream();
-  const { data, error, isLoading } = useStatus<ActivityPayload>(
-    ACTIVITY_PATH,
+  const { data, error, isLoading } = useStatus<DesktopPayload>(
+    DESKTOP_PATH,
     connected ? PUSHED_REFRESH_MS : REFRESH_MS,
   );
   const [displayedDesktop, setDisplayedDesktop] = useState<DesktopActivity | null>(null);
   const reduced = useReducedMotion();
 
-  const offline = Boolean(error || data?.desktopStale);
+  const offline = Boolean(error || data?.stale);
   const incomingDesktop = data?.desktop ?? null;
   const incomingApplicationName = incomingDesktop?.applicationName ?? null;
   const incomingBundleIdentifier = incomingDesktop?.bundleIdentifier ?? null;

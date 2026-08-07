@@ -93,19 +93,30 @@ export type LocalNowPlaying = {
   observedAt: number;
 };
 
-export type ActivityPayload = {
+/**
+ * MacBook 的前台应用。只有这一个来源。
+ *
+ * 和播放状态拆成两个接口：播放来源可能是 MacBook，也可能是 HomePod，
+ * 两者的生命周期、上报路径、过期语义都不一样，绑在一起只会互相牵扯。
+ */
+export type DesktopPayload = {
   desktop: DesktopActivity | null;
+  receivedAt: number | null;
+  /** 上报器不可用或已超过心跳窗口。 */
+  stale: boolean;
+};
+
+/** 实时播放。来源可能是 MacBook 的 Music.app，也可能是 HomePod。 */
+export type MusicPayload = {
   music: LocalNowPlaying | null;
   receivedAt: number | null;
-  /** MacBook 前台应用遥测是否不可用或已超过心跳窗口。 */
-  desktopStale: boolean;
-  /** MacBook 与 HomePod 都没有可展示的播放状态 —— 是「没在放」，不是「数据过期」。 */
-  musicIdle: boolean;
+  /** 两个来源都没有可展示的播放 —— 是「没在放」，不是「数据过期」。 */
+  idle: boolean;
   /**
-   * music 那首在 Apple Music 上的地址，读取时现查的，不进设备上报的快照。
+   * 那首曲目在 Apple Music 上的地址，读取时现查的，不进设备上报的快照。
    * 目录里能精确匹配上就是直链，匹配不上退回搜索页。
    */
-  musicLink: string | null;
+  link: string | null;
 };
 
 export type ChargerPort = {
