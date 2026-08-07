@@ -76,6 +76,17 @@ function open(mutate: ScopedMutator) {
   next.addEventListener("charger", () => {
     void mutate(CHARGER_PATH);
   });
+  /**
+   * 上报器上下线：让所有展示实时状态的接口重取一次，四张卡同时翻。
+   *
+   * vibe coding 不在其中 —— token 用量是累计的历史事实，Mac 掉线它不会变得
+   * 不可信，只是不再增长，没有理由跟着变灰。
+   */
+  next.addEventListener("presence", () => {
+    for (const path of [DESKTOP_PATH, MUSIC_PATH, CHARGER_PATH, WATCHING_PATH]) {
+      void mutate(path);
+    }
+  });
 }
 
 function close() {
