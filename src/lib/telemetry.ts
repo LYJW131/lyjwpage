@@ -1,4 +1,4 @@
-import { createHash, timingSafeEqual } from "node:crypto";
+import { timingSafeEqual } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -7,6 +7,7 @@ import { normalizeRawStatus, type RawStatus } from "@/lib/anker";
 import { recordPushHeartbeat, recordStatus } from "@/lib/charger-store";
 import { resolveTrackLink } from "@/lib/apple-music";
 import { getHomePodNowPlaying } from "@/lib/homepod-store";
+import { storeUploadedImage } from "@/lib/image-store";
 import { number, object, text } from "@/lib/json";
 import { publish } from "@/lib/live-events";
 import type {
@@ -23,14 +24,12 @@ const ACTIVITY_STALE_MS = 45_000;
 const MUSIC_PAUSE_GRACE_MS = 30_000;
 let pauseExpiryTimer: ReturnType<typeof setTimeout> | null = null;
 
-type ActivityAsset = { body: Uint8Array; contentType: string };
 type TelemetryState = {
   desktop: DesktopActivity | null;
   music: LocalNowPlaying | null;
   activityReceivedAt: number;
   telemetryReceivedAt: number;
   activeModules: Set<string>;
-  activityAssets: Map<string, ActivityAsset>;
 };
 
 const globalTelemetry = globalThis as typeof globalThis & {
@@ -42,11 +41,10 @@ const telemetryState = (globalTelemetry.__lyjwTelemetryState ??= {
   activityReceivedAt: 0,
   telemetryReceivedAt: 0,
   activeModules: new Set<string>(),
-  activityAssets: new Map<string, ActivityAsset>(),
 });
-const MAX_ACTIVITY_ASSET_BYTES = 5 * 1024 * 1024;
 const TELEMETRY_CACHE_DIR = join(tmpdir(), "lyjwpage-telemetry-v2");
 const TELEMETRY_STATE_FILE = join(TELEMETRY_CACHE_DIR, "activity.json");
+let telemetryHydrated = false;
 
 function persistTelemetryState() {
   mkdirSync(TELEMETRY_CACHE_DIR, { recursive: true });
@@ -65,6 +63,8 @@ function persistTelemetryState() {
 }
 
 function hydrateTelemetryState() {
+  if (telemetryHydrated) return;
+  telemetryHydrated = true;
   try {
     const cached = JSON.parse(readFileSync(TELEMETRY_STATE_FILE, "utf8")) as {
       desktop?: DesktopActivity | null;
@@ -96,25 +96,10 @@ function milliseconds(value: unknown, fallback = Date.now()) {
   return parsed > 1e12 ? parsed : parsed * 1000;
 }
 
-function storeActivityAsset(value: unknown) {
-  if (typeof value !== "string" || value.length > MAX_ACTIVITY_ASSET_BYTES * 2) return null;
-  const body = Buffer.from(value, "base64");
-  if (!body.length || body.length > MAX_ACTIVITY_ASSET_BYTES) return null;
-  const contentType =
-    body[0] === 0xff && body[1] === 0xd8
-      ? "image/jpeg"
-      : body[0] === 0x89 && body[1] === 0x50 && body[2] === 0x4e && body[3] === 0x47
-        ? "image/png"
-        : null;
-  if (!contentType) return null;
-  const id = createHash("sha256").update(body).digest("hex").slice(0, 24);
-  telemetryState.activityAssets.set(id, { body, contentType });
-  mkdirSync(TELEMETRY_CACHE_DIR, { recursive: true });
-  writeFileSync(join(TELEMETRY_CACHE_DIR, id), body);
-  return `/api/status/activity/assets/${id}`;
-}
-
-function normalizeDesktop(value: unknown, receivedAt: number): DesktopActivity | null {
+async function normalizeDesktop(
+  value: unknown,
+  receivedAt: number,
+): Promise<DesktopActivity | null> {
   const row = object(value);
   if (!row) return null;
   const applicationName = text(row.application_name);
@@ -127,12 +112,15 @@ function normalizeDesktop(value: unknown, receivedAt: number): DesktopActivity |
   return {
     applicationName,
     bundleIdentifier,
-    iconUrl: storeActivityAsset(row.icon_data) ?? previousIcon,
+    iconUrl: (await storeUploadedImage(row.icon_data)) ?? previousIcon,
     observedAt: milliseconds(row.observed_at, receivedAt),
   };
 }
 
-function normalizeMusic(value: unknown, receivedAt: number): LocalNowPlaying | null {
+async function normalizeMusic(
+  value: unknown,
+  receivedAt: number,
+): Promise<LocalNowPlaying | null> {
   const row = object(value);
   if (!row) return null;
   const rawState = text(row.state);
@@ -147,7 +135,7 @@ function normalizeMusic(value: unknown, receivedAt: number): LocalNowPlaying | n
     artist: text(row.artist),
     album: text(row.album),
     trackId,
-    artworkUrl: storeActivityAsset(row.artwork_data) ?? previousArtwork,
+    artworkUrl: (await storeUploadedImage(row.artwork_data)) ?? previousArtwork,
     positionMs: Math.max(0, number(row.position_ms) ?? 0),
     durationMs: Math.max(0, number(row.duration_ms) ?? 0),
     // 上报器目前不上报循环状态，缺字段时按「不循环」处理
@@ -156,21 +144,9 @@ function normalizeMusic(value: unknown, receivedAt: number): LocalNowPlaying | n
   };
 }
 
-export function getActivityAsset(id: string) {
-  const memory = telemetryState.activityAssets.get(id);
-  if (memory) return memory;
-  if (!/^[a-f0-9]{24}$/.test(id)) return null;
-  try {
-    const body = readFileSync(join(TELEMETRY_CACHE_DIR, id));
-    const contentType = body[0] === 0xff ? "image/jpeg" : "image/png";
-    return { body, contentType };
-  } catch {
-    return null;
-  }
-}
-
 /** 一个 envelope 可以只更新一个模块；未出现的模块保持原快照。 */
 export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.now()) {
+  hydrateTelemetryState();
   const envelope = object(input) as TelemetryEnvelope | null;
   if (!envelope || envelope.version !== 2) throw new Error("遥测协议 version 必须为 2");
   if (number(envelope.heartbeat_at) == null) throw new Error("遥测请求缺少 heartbeat_at");
@@ -199,13 +175,13 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
   }
 
   if ("desktop" in modules) {
-    telemetryState.desktop = normalizeDesktop(modules.desktop, receivedAt);
+    telemetryState.desktop = await normalizeDesktop(modules.desktop, receivedAt);
     telemetryState.activityReceivedAt = receivedAt;
     accepted += 1;
   }
 
   if ("apple_music" in modules) {
-    telemetryState.music = normalizeMusic(modules.apple_music, receivedAt);
+    telemetryState.music = await normalizeMusic(modules.apple_music, receivedAt);
     telemetryState.activityReceivedAt = receivedAt;
     accepted += 1;
   }
