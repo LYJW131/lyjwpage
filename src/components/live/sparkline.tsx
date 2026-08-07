@@ -44,6 +44,66 @@ const BAR_FILL = 0.62;
 /** 连续这么多个空槽还没有新读数，就认为是断流而不是「值没变」 */
 const HOLD_SLOTS = 2;
 
+/**
+ * 单调三次插值（Fritsch–Carlson），输出三次贝塞尔路径。
+ *
+ * 不用普通的 Catmull-Rom：它会在急剧起落处冲过头，在数据里根本没有的地方
+ * 画出峰谷 —— token 用量不可能为负，冲出去的下摆是彻头彻尾的假信息。
+ * 单调插值保证曲线不越过相邻两点的取值范围，只是把折角磨圆。
+ */
+function smoothPath(points: readonly (readonly [number, number])[]) {
+  const n = points.length;
+  const move = `M${points[0][0].toFixed(2)},${points[0][1].toFixed(2)}`;
+  if (n === 2) {
+    return `${move} L${points[1][0].toFixed(2)},${points[1][1].toFixed(2)}`;
+  }
+
+  const dx: number[] = [];
+  const slope: number[] = [];
+  for (let i = 0; i < n - 1; i += 1) {
+    const h = points[i + 1][0] - points[i][0];
+    dx.push(h);
+    slope.push(h === 0 ? 0 : (points[i + 1][1] - points[i][1]) / h);
+  }
+
+  // 端点取相邻斜率；内部取平均，但极值点（左右斜率异号）强制置零，
+  // 这样曲线在峰谷处是平的，不会翘出去
+  const m: number[] = new Array(n);
+  m[0] = slope[0];
+  m[n - 1] = slope[n - 2];
+  for (let i = 1; i < n - 1; i += 1) {
+    m[i] = slope[i - 1] * slope[i] <= 0 ? 0 : (slope[i - 1] + slope[i]) / 2;
+  }
+
+  // Fritsch–Carlson 限幅：把切线拉回单调区间内
+  for (let i = 0; i < n - 1; i += 1) {
+    if (slope[i] === 0) {
+      m[i] = 0;
+      m[i + 1] = 0;
+      continue;
+    }
+    const a = m[i] / slope[i];
+    const b = m[i + 1] / slope[i];
+    const magnitude = a * a + b * b;
+    if (magnitude > 9) {
+      const scale = 3 / Math.sqrt(magnitude);
+      m[i] = scale * a * slope[i];
+      m[i + 1] = scale * b * slope[i];
+    }
+  }
+
+  let d = move;
+  for (let i = 0; i < n - 1; i += 1) {
+    const h = dx[i] / 3;
+    const c1x = points[i][0] + h;
+    const c1y = points[i][1] + m[i] * h;
+    const c2x = points[i + 1][0] - h;
+    const c2y = points[i + 1][1] - m[i + 1] * h;
+    d += ` C${c1x.toFixed(2)},${c1y.toFixed(2)} ${c2x.toFixed(2)},${c2y.toFixed(2)} ${points[i + 1][0].toFixed(2)},${points[i + 1][1].toFixed(2)}`;
+  }
+  return d;
+}
+
 export function Sparkline({
   samples,
   max,
@@ -108,9 +168,7 @@ export function Sparkline({
       const y = height - (Math.min(Math.max(sample.w, 0), ceiling) / ceiling) * height;
       return [x, y] as const;
     });
-    const line = points
-      .map(([x, y], index) => `${index === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`)
-      .join(" ");
+    const line = smoothPath(points);
     // 面积的左右底边要对齐折线的首尾，否则窗口没填满时底部会多出一块
     const first = points[0][0];
     const last = points[points.length - 1][0];
@@ -125,8 +183,8 @@ export function Sparkline({
       >
         <defs>
           <linearGradient id={`trend-${id}`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="var(--live)" stopOpacity="0.28" />
-            <stop offset="100%" stopColor="var(--live)" stopOpacity="0" />
+            <stop offset="0%" stopColor="var(--live)" stopOpacity="0.45" />
+            <stop offset="100%" stopColor="var(--live)" stopOpacity="0.02" />
           </linearGradient>
         </defs>
         <path d={area} fill={`url(#trend-${id})`} />
@@ -134,7 +192,8 @@ export function Sparkline({
           d={line}
           fill="none"
           stroke="var(--live)"
-          strokeWidth="1.25"
+          strokeWidth="1.5"
+          strokeOpacity="0.75"
           strokeLinecap="round"
           strokeLinejoin="round"
           vectorEffect="non-scaling-stroke"
