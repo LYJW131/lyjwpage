@@ -36,6 +36,8 @@ const WINDOW_MS = 20 * 60 * 1000;
 const STEP = 40;
 /** 柱子占一个采样间隔的比例，留出的缝隙让相邻柱子分得开 */
 const BAR_FILL = 0.62;
+/** 连续这么多个空槽还没有新读数，就认为是断流而不是「值没变」 */
+const HOLD_SLOTS = 2;
 
 export function Sparkline({
   samples,
@@ -81,31 +83,62 @@ export function Sparkline({
   // 历史比窗口还短时没有跨界的样本，左边如实空着
   const visible = samples.slice(Math.max(0, firstInside - 1));
 
-  const peak = Math.max(...visible.map((sample) => sample.w));
+  const span = Math.max(1, end - start);
+  const gaps = visible
+    .slice(1)
+    .map((sample, index) => sample.t - visible[index].t)
+    .sort((a, b) => a - b);
+  const medianGap = gaps.length ? gaps[Math.floor(gaps.length / 2)] : span;
+
+  /**
+   * 把窗口切成等宽时间槽，再一槽一柱。
+   *
+   * 采样是不规则的：实测间隔 5.1~37.2 秒、中位 29.9 秒。一个采样一根柱、
+   * 柱宽取中位间隔的话，密集处会互相压住 —— 最近的一对只差 5.1 秒，按中位数
+   * 画会重叠 83%，看起来就是一片乱。柱状图隐含「等宽的离散区间」，那就真的
+   * 按等宽区间来分，而不是反过来去凑柱宽。
+   *
+   * 槽数由数据自己的节奏决定（跨度 ÷ 中位间隔）：充电器 20 分钟 / 30 秒得到
+   * 约 41 槽；Vibe Coding 30 天 / 12 小时正好得到 60 槽 —— 它本来就在规则网格
+   * 上，这样不会被重新聚合而失真。
+   */
+  const slotCount = Math.min(72, Math.max(8, Math.round(span / medianGap) + 1));
+  const slotSpan = span / slotCount;
+
+  const bucketed: (number | null)[] = new Array(slotCount).fill(null);
+  for (const sample of visible) {
+    const index = Math.floor((sample.t - start) / slotSpan);
+    if (index < 0 || index >= slotCount) continue;
+    // 同槽多个读数取峰值：功率图上尖峰比均值更有意义
+    bucketed[index] = Math.max(bucketed[index] ?? 0, sample.w);
+  }
+
+  /**
+   * 空槽沿用上一个读数 —— 功率在下次上报前就是维持不变的，不是零。
+   * 但连续 HOLD_SLOTS 槽都没有新读数就当断流，如实空着，不拿旧值糊过去。
+   */
+  const values: (number | null)[] = [];
+  // 窗口左边界外那个读数是槽 0 的沿用来源
+  let held: number | null = visible[0].t < start ? visible[0].w : null;
+  let idle = 0;
+  for (const slot of bucketed) {
+    if (slot != null) {
+      held = slot;
+      idle = 0;
+    } else {
+      idle += 1;
+    }
+    values.push(slot ?? (held != null && idle <= HOLD_SLOTS ? held : null));
+  }
+
+  const peak = Math.max(0, ...values.filter((v): v is number => v != null));
   const ceiling =
     max == null
       ? Math.max(step, Math.ceil(peak / step) * step)
       : Math.max(max, 1);
-  const span = Math.max(1, end - start);
 
-  const points = visible.map((sample) => {
-    const x = ((sample.t - start) / span) * width;
-    const y = height - (Math.min(Math.max(sample.w, 0), ceiling) / ceiling) * height;
-    return [x, y] as const;
-  });
-
-  /**
-   * 柱宽按「采样间隔」算，不按「柱子个数」算。
-   *
-   * 横轴是时间，柱子也按时间定位 —— 断线留下的空档才会如实空着，而不是被
-   * 均分挤没。取中位间隔而不是平均，免得个别长空档把所有柱子压成细线。
-   */
-  const gaps = points
-    .slice(1)
-    .map(([x], index) => x - points[index][0])
-    .sort((a, b) => a - b);
-  const medianGap = gaps.length ? gaps[Math.floor(gaps.length / 2)] : width;
-  const barWidth = Math.max(0.4, medianGap * BAR_FILL);
+  const slotWidth = width / slotCount;
+  const barWidth = Math.max(0.4, slotWidth * BAR_FILL);
 
   return (
     <svg
@@ -120,16 +153,20 @@ export function Sparkline({
           <stop offset="100%" stopColor="var(--live)" stopOpacity="0.35" />
         </linearGradient>
       </defs>
-      {points.map(([x, y], index) => (
-        <rect
-          key={index}
-          x={(x - barWidth / 2).toFixed(2)}
-          y={y.toFixed(2)}
-          width={barWidth.toFixed(2)}
-          height={(height - y).toFixed(2)}
-          fill={`url(#fill-${id})`}
-        />
-      ))}
+      {values.map((value, index) => {
+        if (value == null) return null;
+        const y = height - (Math.min(Math.max(value, 0), ceiling) / ceiling) * height;
+        return (
+          <rect
+            key={index}
+            x={(index * slotWidth + (slotWidth - barWidth) / 2).toFixed(2)}
+            y={y.toFixed(2)}
+            width={barWidth.toFixed(2)}
+            height={(height - y).toFixed(2)}
+            fill={`url(#fill-${id})`}
+          />
+        );
+      })}
     </svg>
   );
 }
