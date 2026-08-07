@@ -21,8 +21,11 @@ const HISTORY_LIMIT = 400;
 
 /**
  * 两个采样点之间的最小间隔，用来控制曲线的时间跨度。
- * 注意：实测对端推送间隔约 5.3 秒（不是 30 秒），所以这个阈值实际会生效，
- * 180 个点只覆盖约 24 分钟。要拉长跨度就调大它。
+ *
+ * 采集端本身是 1 Hz，但上报按节流窗口走（默认 30 秒），所以到这里的间隔由
+ * 上报间隔决定、通常已经大于这个阈值 —— 它真正拦的是即时上报：插拔、播放
+ * 变化会把充电器快照顺带捎出去，那些不该在曲线上挤成一团。
+ * 要拉长曲线跨度就调大它，或者调 HISTORY_LIMIT。
  */
 const MIN_SAMPLE_GAP_MS = 5_000;
 
@@ -76,9 +79,37 @@ async function readHistory(): Promise<ChargerSample[]> {
   return [...fallback.history];
 }
 
-/** 记一条快照。同一个 updatedAt 重复推送不会产生重复采样点 */
+/**
+ * 「结构性」指纹：插拔、换设备、换充电器本身。
+ *
+ * `active` 来自充电头给的端口开关位，不是从功率推的 —— 插着线不取电的口是
+ * 开 + 0.00W，所以它能认出「插上了但还没开始充」，比设备名灵：插一个采集端
+ * 表里没有的设备，`device` 是 null，但开关位一定会翻。
+ *
+ * 不取 `power` / `voltage` / `current`：那三个充电时每帧都在动，进指纹就等于
+ * 把即时推送打成定时推送，它们本来就该走卡片自己的轮询。
+ */
+function structuralKey(status: ChargerStatus) {
+  return JSON.stringify([
+    status.connected,
+    status.device.serialNumber,
+    status.device.firmwareVersion,
+    status.ports.map((port) => [port.id, port.active, port.device]),
+  ]);
+}
+
+/**
+ * 记一条快照。同一个 updatedAt 重复推送不会产生重复采样点。
+ *
+ * 返回结构性内容变没变，调用方据此决定要不要往 SSE 推。这个 diff 必须服务端
+ * 自己做：充电时采集端每个上报周期都会带 charger 模块（功率两位小数必变），
+ * 收到就推的话 SSE 会退化成定时推送，「插拔即时」也就没了意义。
+ */
 export async function recordStatus(status: ChargerStatus, receivedAt = Date.now()) {
   const previous = await readLatest();
+  // 第一份快照也算变化：客户端手上还什么都没有，该收到一次
+  const structuralChanged =
+    !previous || structuralKey(previous.status) !== structuralKey(status);
 
   fallback.latest = status;
   fallback.receivedAt = receivedAt;
@@ -92,13 +123,14 @@ export async function recordStatus(status: ChargerStatus, receivedAt = Date.now(
     return null;
   }, null);
 
-  // 上游 12 秒才换一次 updated_at，同一帧被推两次时不重复记
+  // 同一帧被推两次时不重复记。采集端现在是 1 Hz 推流，每帧都会换 updated_at，
+  // 所以这道判断只在重试或重复投递时才拦得住东西 —— 留着是因为那才是它的本意。
   if (
     previous &&
     status.updatedAt != null &&
     previous.status.updatedAt === status.updatedAt
   ) {
-    return;
+    return structuralChanged;
   }
 
   const history = await readHistory();
@@ -113,7 +145,7 @@ export async function recordStatus(status: ChargerStatus, receivedAt = Date.now(
       // 对端改了时钟或换了数据源，旧历史已经没法和新的拼在一条时间轴上
       reset = true;
     } else if (at - last.t < MIN_SAMPLE_GAP_MS) {
-      return;
+      return structuralChanged;
     }
   }
 
@@ -135,6 +167,8 @@ export async function recordStatus(status: ChargerStatus, receivedAt = Date.now(
     await pipe.exec();
     return null;
   }, null);
+
+  return structuralChanged;
 }
 
 export async function getStored() {

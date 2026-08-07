@@ -1,5 +1,14 @@
 import sharp from "sharp";
 
+/**
+ * WebP 默认质量。
+ *
+ * 这一档是按小图定的（歌单封面 240px、应用图标 96px），在那个尺寸上看不出来。
+ * 展示尺寸大的（Emby 海报能到 237 CSS px、Retina 上 474）要单独往上调，
+ * 否则细节会被吃掉 —— 实测 480px + 82 已经肉眼可见地劣化。
+ */
+const DEFAULT_WEBP_QUALITY = 82;
+
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -114,7 +123,11 @@ async function writeRedis(key: string, entry: ImageEntry, ttlMs: number) {
  *
  * 尽力而为：sharp 处理不了的（动图、异常编码）原样返回，不让整条链路失败。
  */
-async function compress(entry: ImageEntry, maxDimension: number): Promise<ImageEntry> {
+async function compress(
+  entry: ImageEntry,
+  maxDimension: number,
+  quality: number,
+): Promise<ImageEntry> {
   try {
     const image = sharp(entry.body, { animated: false });
     const meta = await image.metadata();
@@ -124,7 +137,7 @@ async function compress(entry: ImageEntry, maxDimension: number): Promise<ImageE
     const body = await image
       // withoutEnlargement：本来就比目标小的不要放大，白白变糊还变大
       .resize({ width: maxDimension, height: maxDimension, fit: "inside", withoutEnlargement: true })
-      .webp({ quality: 82 })
+      .webp({ quality })
       .toBuffer();
 
     // 极少数情况下重编码反而更大（本来就是高压缩的小图），那就留原样
@@ -144,6 +157,7 @@ async function loadImage(
   ttlMs: number,
   loader: () => Promise<ImageEntry | null>,
   maxDimension?: number,
+  quality = DEFAULT_WEBP_QUALITY,
 ): Promise<ImageEntry | null> {
   const memoryHit = memoryGet(key);
   if (memoryHit) return memoryHit;
@@ -160,7 +174,7 @@ async function loadImage(
       }
 
       const raw = await loader();
-      const entry = raw && maxDimension ? await compress(raw, maxDimension) : raw;
+      const entry = raw && maxDimension ? await compress(raw, maxDimension, quality) : raw;
       if (entry) {
         remember(key, entry, ttlMs);
         if (entry.body.byteLength <= MAX_ENTRY_BYTES) {
@@ -183,8 +197,10 @@ export function getCachedImage(
   loader: () => Promise<ImageEntry | null>,
   /** 最长边压到这个像素；省略则原样缓存 */
   maxDimension?: number,
+  /** WebP 质量。默认那档是按小图（歌单封面）定的，展示尺寸大的要往上调 */
+  quality = DEFAULT_WEBP_QUALITY,
 ) {
-  return loadImage(`cache:${key}`, CACHE_TTL_MS, loader, maxDimension);
+  return loadImage(`cache:${key}`, CACHE_TTL_MS, loader, maxDimension, quality);
 }
 
 function detectedContentType(body: Buffer) {
@@ -231,12 +247,13 @@ export async function storeImageBuffer(
   input: Buffer,
   /** 最长边压到这个像素；省略则原样存 */
   maxDimension?: number,
+  quality: number = DEFAULT_WEBP_QUALITY,
 ): Promise<string | null> {
   const detected = detectedContentType(input);
   if (!input.length || input.length > MAX_ENTRY_BYTES || !detected) return null;
 
   const entry = maxDimension
-    ? await compress({ body: input, contentType: detected, etag: null }, maxDimension)
+    ? await compress({ body: input, contentType: detected, etag: null }, maxDimension, quality)
     : { body: input, contentType: detected, etag: null };
 
   const id = createHash("sha256").update(entry.body).digest("hex").slice(0, 24);
@@ -249,15 +266,19 @@ export async function storeImageBuffer(
   return `${ASSET_URL_PREFIX}${id}`;
 }
 
-export async function storeUploadedImage(value: unknown): Promise<string | null> {
+export async function storeUploadedImage(
+  value: unknown,
+  /** 最长边压到这个像素；省略则原样存 */
+  maxDimension?: number,
+  quality?: number,
+): Promise<string | null> {
   if (
     typeof value !== "string" ||
     value.length > Math.ceil((MAX_ENTRY_BYTES * 4) / 3) + 4
   ) {
     return null;
   }
-  // 不传尺寸：上报器上传的图标/封面本来就小，行为保持不变
-  return storeImageBuffer(Buffer.from(value, "base64"));
+  return storeImageBuffer(Buffer.from(value, "base64"), maxDimension, quality);
 }
 
 /**

@@ -10,7 +10,8 @@ export function GET() {
   return statusRoute<ListeningPayload>(async () => {
     // 两者共用同一份缓存的列表，不会多打一次上游
     const [items, nowPlaying] = await Promise.all([
-      getRecentlyPlayed({ limit: 10, artworkSize: 300 }),
+      // 封面 URL 原样透传，尺寸由前端按各自位置填 —— 服务端不知道谁要多大
+      getRecentlyPlayed({ limit: 10 }),
       getNowPlaying(),
     ]);
     return { items, nowPlaying };

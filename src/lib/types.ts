@@ -221,6 +221,8 @@ export type VibeCodingAgent = {
   models: string[];
   /** 最近活动 session 使用的模型，不是历史模型列表的排序结果 */
   currentModel: string | null;
+  /** 整份历史里 token 占比最大的模型；旧版 Mac app 不上报，取不到就是 null */
+  topModel: string | null;
   /** ccusage session 报告中最近一条活动；只公开时间，不公开会话或项目 */
   lastActivityAt: string | null;
   /** 最近 30 天，每 12 小时一个 session-token 聚合点 */
@@ -230,6 +232,11 @@ export type VibeCodingAgent = {
   plan: VibeCodingPlan | null;
   /** 没配 CLI 路径、凭据失效、旧版上报都会是空数组，UI 要能整块不渲染 */
   limits: VibeCodingLimit[];
+  /**
+   * 限额取失败的原因。空 limits 有两种含义 —— 这个 agent 没配（该整块不渲染），
+   * 或者配了但取不到（该渲染并说明取不到）。靠它区分，null 表示前者。
+   */
+  limitsError: string | null;
   /**
    * 只在入库时用来校验这份报告完不完整（必须正好 7 天），页面不渲染它，
    * 所以发给浏览器的响应里会摘掉 —— 两个 agent 加起来 2.6KB，占三成。
