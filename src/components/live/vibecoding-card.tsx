@@ -11,6 +11,7 @@ import { useStatus } from "@/hooks/use-status";
 import type {
   StatusResponse,
   VibeCodingAgent,
+  VibeCodingLimit,
   VibeCodingPayload,
   VibeCodingTotals,
 } from "@/lib/types";
@@ -21,6 +22,16 @@ const VIBECODING_PATH = "/api/status/vibecoding";
 const ACTIVITY_LIMIT = 60;
 const REFRESH_MS = 60_000;
 const ACTIVE_WINDOW_MS = 5 * 60_000;
+
+/** 用到这个百分比就算「快用完」。条和数字共用一个阈值，别在两处各写一遍。 */
+const LIMIT_ALERT_PERCENT = 90;
+/**
+ * 跟同文件的 TOKEN_SEGMENTS 一样直接写 oklch 字面量、不进主题变量：
+ * 这是数据编码色，不该被亮暗主题改掉 —— 尤其告警那支，红就得是红。
+ * 常态色沿用 TOKEN_SEGMENTS 里 Input 那支蓝，同一张卡里不再多引入一种色相。
+ */
+const LIMIT_BAR_COLOR = "oklch(0.63 0.18 250)";
+const LIMIT_ALERT_COLOR = "oklch(0.62 0.21 25)";
 
 const TOKEN_SEGMENTS = [
   { key: "inputTokens", label: "Input", color: "oklch(0.63 0.18 250)" },
@@ -157,6 +168,89 @@ function TotalUsage({
   );
 }
 
+/**
+ * 窗口时长一律从分钟现算，不预设有哪几档 —— 上游的窗口组合是会变的。
+ * 只有整天数才说「天」：1440 分钟按「24 小时」读着更顺，而且它跟 5 小时窗口
+ * 是同一类（当日额度），说成「1 天」反而像周额度。
+ */
+function formatWindow(minutes: number | null) {
+  if (minutes == null || minutes <= 0) return null;
+  if (minutes % 1440 === 0 && minutes > 1440) return `${minutes / 1440} 天`;
+  if (minutes % 60 === 0) return `${minutes / 60} 小时`;
+  return `${minutes} 分钟`;
+}
+
+/** 只认识这两个分组，其余原样回显 —— 上游加新分组时不至于显示成空白 */
+const LIMIT_GROUP_NAMES: Record<string, string> = {
+  session: "会话窗口",
+  weekly: "周窗口",
+};
+
+/**
+ * 窗口名：有时长就按时长说，没有才退回分组。两者不会同时缺，
+ * 但真缺了也得渲染这一条 —— 用量数字本身仍然有意义。
+ */
+function formatLimitTitle(limit: VibeCodingLimit) {
+  const window =
+    formatWindow(limit.windowMinutes) ??
+    (limit.group ? (LIMIT_GROUP_NAMES[limit.group] ?? limit.group) : null);
+  // label 非 null 就是子额度桶，附在窗口名后面把它和主额度区分开
+  const parts = [window, limit.label].filter(Boolean);
+  return parts.length > 0 ? parts.join(" · ") : "主额度";
+}
+
+/** resetsAt 是 Unix 秒，不是毫秒 */
+function formatReset(resetsAt: number | null, referenceTime: number) {
+  if (resetsAt == null) return null;
+  const remain = resetsAt * 1000 - referenceTime;
+  // 已经过点了就不显示：这份快照只是还没刷新，倒计时写成负数更容易让人误会
+  if (remain <= 0) return null;
+  const totalMinutes = Math.floor(remain / 60_000);
+  const days = Math.floor(totalMinutes / 1440);
+  const hours = Math.floor((totalMinutes % 1440) / 60);
+  const minutes = totalMinutes % 60;
+  // 只保留最粗的两级，且跳过为零的那级
+  const parts = days > 0 ? [`${days} 天`, `${hours} 小时`] : [`${hours} 小时`, `${minutes} 分钟`];
+  const text = parts.filter((part) => !part.startsWith("0 ")).join(" ");
+  return `${text || "不到 1 分钟"}后重置`;
+}
+
+function LimitMeter({
+  limit,
+  referenceTime,
+}: {
+  limit: VibeCodingLimit;
+  /** 与面板其它部分同源，避免渲染期间读取不稳定的系统时钟 */
+  referenceTime: number;
+}) {
+  const alert = limit.usedPercent >= LIMIT_ALERT_PERCENT;
+  const color = alert ? LIMIT_ALERT_COLOR : LIMIT_BAR_COLOR;
+  const title = formatLimitTitle(limit);
+  const reset = formatReset(limit.resetsAt, referenceTime);
+
+  return (
+    <div>
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="truncate text-xs text-muted-foreground" title={title}>
+          {title}
+        </span>
+        <span className="shrink-0 font-mono text-xs tabular-nums" style={{ color }}>
+          {Math.round(limit.usedPercent)}%
+        </span>
+      </div>
+      <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted">
+        <div
+          className="h-full rounded-full transition-[width] duration-700"
+          style={{ width: `${limit.usedPercent}%`, backgroundColor: color }}
+        />
+      </div>
+      {reset && (
+        <div className="label-mono mt-1.5 text-muted-foreground">{reset}</div>
+      )}
+    </div>
+  );
+}
+
 function AgentPanel({
   agent,
   stale,
@@ -197,6 +291,15 @@ function AgentPanel({
             <CodexActivityIndicator active={active} stale={stale} />
           )}
           <span className="text-sm font-medium">{agent.label}</span>
+          {/* 套餐等级：取不到就整个不渲染，不留占位 */}
+          {agent.plan && (
+            <span
+              className="label-mono shrink-0 rounded-full border border-line-strong bg-muted px-1.5 py-1 text-muted-foreground"
+              title={`套餐 ${agent.plan.tier}`}
+            >
+              {agent.plan.label}
+            </span>
+          )}
           {active && <span className="label-mono text-live">正在使用</span>}
         </div>
         <span className="label-mono truncate text-muted-foreground" title={agent.models.join(" · ")}>
@@ -228,6 +331,16 @@ function AgentPanel({
           </div>
         </div>
       </div>
+
+      {/* 限额：条数和窗口组合都由上游决定，取不到就整块不渲染，不留占位 */}
+      {agent.limits.length > 0 && (
+        <div className="mt-5 grid gap-3 border-t border-line pt-4">
+          <div className="label-mono text-muted-foreground">Limits</div>
+          {agent.limits.map((limit) => (
+            <LimitMeter key={limit.key} limit={limit} referenceTime={referenceTime} />
+          ))}
+        </div>
+      )}
 
       <div className="mt-5 flex items-baseline justify-between gap-4">
         <div className="label-mono text-muted-foreground">30D Total</div>
@@ -348,8 +461,14 @@ export function VibeCodingCard({ className }: { className?: string }) {
           <div className="grid min-h-64 grid-cols-1 divide-y divide-line md:grid-cols-2 md:divide-x md:divide-y-0">
             {["Claude Code", "Codex"].map((label) => (
               <div key={label} className="animate-pulse px-5 py-4">
-                <div className="h-4 w-24 rounded bg-muted" />
+                <div className="flex items-center gap-2">
+                  <div className="h-4 w-24 rounded bg-muted" />
+                  {/* 套餐 badge 的位置 */}
+                  <div className="h-4 w-14 rounded-full bg-muted" />
+                </div>
                 <div className="mt-6 h-12 w-36 rounded bg-muted" />
+                {/* 限额条：占位只放一条 —— 条数由上游决定，多占的话数据回来会塌一截 */}
+                <div className="mt-6 h-1.5 rounded-full bg-muted" />
                 <div className="mt-6 h-16 rounded bg-muted" />
               </div>
             ))}

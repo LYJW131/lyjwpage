@@ -181,6 +181,40 @@ export type VibeCodingDay = {
   apiEquivalentCostUSD: number;
 };
 
+/** 订阅套餐等级。tier 是上游原始枚举值，label 是给人看的展示名。 */
+export type VibeCodingPlan = {
+  /** 如 "prolite" / "max"，用来加 title 提示，页面主体不直接显示 */
+  tier: string;
+  /** 如 "Pro Lite" / "Max 5x" */
+  label: string;
+};
+
+/**
+ * 一个限额桶在一个时间窗口内的用量。
+ *
+ * 刻意做成数组而不是 `fiveHour` / `weekly` 这种固定字段：窗口的个数和时长是
+ * 上游随时会调的（OpenAI 眼下就临时撤掉了 5 小时窗口，以后可能加回来），
+ * 写死字段名的话每次变动都要改契约、改渲染、还得处理旧数据。
+ */
+export type VibeCodingLimit = {
+  /** 桶 + 窗口的稳定标识，如 "codex.primary"，只用来当 React key */
+  key: string;
+  /** 子额度桶名如 "GPT-5.3-Codex-Spark"；主额度桶没有名字，为 null */
+  label: string | null;
+  /**
+   * 粗分组，如 "session" / "weekly"。Claude 的限额接口只给分组不给时长，
+   * Codex 反过来只给时长不给分组 —— 两者不会同时为 null，窗口名优先用时长算，
+   * 没时长才回退到分组。不许由分组反推分钟数，官方没公开那个数。
+   */
+  group: string | null;
+  /** 窗口时长，展示用的「5 小时 / 7 天」由它现算；上游没给就是 null */
+  windowMinutes: number | null;
+  /** 0–100 */
+  usedPercent: number;
+  /** Unix 秒（不是毫秒），上游没给就是 null */
+  resetsAt: number | null;
+};
+
 export type VibeCodingAgent = {
   id: VibeCodingAgentId;
   label: string;
@@ -192,6 +226,10 @@ export type VibeCodingAgent = {
   /** 最近 30 天，每 12 小时一个 session-token 聚合点 */
   activity: Array<{ t: number; tokens: number }>;
   today: VibeCodingDay;
+  /** 旧版 Mac app 不会上报，取不到套餐时也是 null —— 不渲染，不占位 */
+  plan: VibeCodingPlan | null;
+  /** 没配 CLI 路径、凭据失效、旧版上报都会是空数组，UI 要能整块不渲染 */
+  limits: VibeCodingLimit[];
   /**
    * 只在入库时用来校验这份报告完不完整（必须正好 7 天），页面不渲染它，
    * 所以发给浏览器的响应里会摘掉 —— 两个 agent 加起来 2.6KB，占三成。
