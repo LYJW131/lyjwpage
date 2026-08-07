@@ -247,6 +247,7 @@ function AgentPanel({
           samples={samples}
           max={max}
           windowMs={null}
+          variant="trend"
           className="h-full w-full"
         />
       </div>

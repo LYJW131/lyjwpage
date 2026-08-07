@@ -5,10 +5,15 @@ import { useId } from "react";
 import type { ChargerSample } from "@/lib/types";
 
 /**
- * 手写 SVG 柱状图 —— 为这么小一块引 recharts 不值得。
+ * 手写 SVG 迷你图 —— 为这么小一块引 recharts 不值得。
  *
- * 用柱不用折线：两处的数据都是离散的（充电器是瞬时读数，Vibe Coding 是
- * 12 小时聚合桶），连成折线会把采样间的跳变画成毛刺，看着比实际更抖。
+ * 两种形态，按「这张图要回答什么问题」选：
+ *
+ * - bars：充电器的瞬时功率。读者关心的是「此刻多少瓦、刚才有没有尖峰」，
+ *   一根柱就是一次读数；连成折线等于声称采样之间也有连续取值，把跳变
+ *   画成毛刺，看着比实际更抖。
+ * - trend：Vibe Coding 的 30 天用量。读者关心的是走向，折线 + 面积能一眼
+ *   看出趋势，而 60 根柱子只是 60 个孤立的数。
  *
  * 两条坐标轴都刻意做成「不随数据变」：
  *
@@ -44,6 +49,7 @@ export function Sparkline({
   max,
   windowMs = WINDOW_MS,
   step = STEP,
+  variant = "bars",
   className,
 }: {
   samples: ChargerSample[];
@@ -52,6 +58,8 @@ export function Sparkline({
   /** 固定横轴窗口；传 null 时使用全部样本的实际时间跨度。 */
   windowMs?: number | null;
   step?: number;
+  /** bars 适合瞬时读数，trend 适合看走向 —— 取舍见文件头 */
+  variant?: "bars" | "trend";
   className?: string;
 }) {
   const id = useId();
@@ -84,6 +92,53 @@ export function Sparkline({
   const visible = samples.slice(Math.max(0, firstInside - 1));
 
   const span = Math.max(1, end - start);
+
+  if (variant === "trend") {
+    const peak = Math.max(...visible.map((sample) => sample.w));
+    const ceiling =
+      max == null
+        ? Math.max(step, Math.ceil(peak / step) * step)
+        : Math.max(max, 1);
+    const points = visible.map((sample) => {
+      const x = ((sample.t - start) / span) * width;
+      const y = height - (Math.min(Math.max(sample.w, 0), ceiling) / ceiling) * height;
+      return [x, y] as const;
+    });
+    const line = points
+      .map(([x, y], index) => `${index === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`)
+      .join(" ");
+    // 面积的左右底边要对齐折线的首尾，否则窗口没填满时底部会多出一块
+    const first = points[0][0];
+    const last = points[points.length - 1][0];
+    const area = `${line} L${last.toFixed(2)},${height} L${first.toFixed(2)},${height} Z`;
+
+    return (
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        preserveAspectRatio="none"
+        className={className}
+        aria-hidden
+      >
+        <defs>
+          <linearGradient id={`trend-${id}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--live)" stopOpacity="0.28" />
+            <stop offset="100%" stopColor="var(--live)" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <path d={area} fill={`url(#trend-${id})`} />
+        <path
+          d={line}
+          fill="none"
+          stroke="var(--live)"
+          strokeWidth="1.25"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          vectorEffect="non-scaling-stroke"
+        />
+      </svg>
+    );
+  }
+
   const gaps = visible
     .slice(1)
     .map((sample, index) => sample.t - visible[index].t)
