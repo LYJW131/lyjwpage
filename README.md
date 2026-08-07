@@ -55,8 +55,8 @@ webhook 只在开始/暂停/继续/停止各来一条，中间没有消息。但
 - **token 是加密的，不是签名的**。参数若明文放在 URL 里（`?id=…&kind=…&tag=…`），任何人都能照着拼出 Emby 直链，代理就白做了 —— 签名只挡得住枚举，挡不住照抄。所以把 `id|kind|tag|height` 用 AES-256-GCM 整体加密成一个不透明 token。GCM 的 auth tag 同时承担完整性校验，不需要另附签名，改一个字节就解不开。密钥由 `IMAGE_PROXY_SECRET`（没配则 `EMBY_API_KEY`）派生，加密和派生 IV 用两把不同的子密钥。
 - **必须是确定性加密**：IV 由明文 HMAC 推导而不是随机生成。随机 IV 会让同一张图每次渲染得到不同 URL，CDN 和浏览器缓存全部失效 —— 而缓存正是做这个代理的目的。GCM 的 nonce 复用之所以危险是「同一 nonce 加密不同明文」，这里 nonce 由明文推导，构造上排除了这种情况。
 - **不设过期**：token 里带着 Emby 的 image tag，图片换了 tag 就换，所以这个地址天然不可变，可以 `max-age=31536000, immutable`。加过期时间反而会打断 CDN 缓存。
-- **两级缓存**（`lib/image-cache.ts`）：和状态接口同一个原则 —— 前端打多快，回源频率都不变。进程内存做 L1（省掉每张图 200KB 的 Redis 往返），Redis 做 L2（重启和多实例共享），缓存 10 分钟。同一个 token 并发只回源一次；条件请求直接拿缓存里的 ETag 比对，命中回 304，不必再问 Emby。
-  - 存二进制必须自己管住上界，否则 token 随 image tag 变化会无限堆积：**32 条 / 单张 2MB / 总量 16MB 上限，LRU 淘汰**。实际用量的上界是「续播列表 8 条 × (poster + backdrop) = 16 张」，实测一张约 200KB。
+- **统一图片存储**（`lib/image-store.ts`）：Emby 回源图和遥测上传图统一走 `/api/image/<source>/<key>`，共用进程内 LRU、Redis、ETag 和 in-flight 去重。Emby 图缓存 10 分钟后可以重新回源；遥测原图无法回源，额外持久化到 `IMAGE_STORE_DIR`（默认是系统临时目录下的 `lyjwpage-images-v1`），Redis 保留 30 天。
+  - 二进制缓存统一限制为 **64 条 / 单张 5MB / 总量 32MB，LRU 淘汰**，避免 image tag 和本机活动变化导致进程内存无限增长。
 
 > 卡片的「在 Emby 里打开」跳转链接仍然指向 `EMBY_PUBLIC_URL`，源站地址会出现在页面 HTML 里 —— 这是有意为之，不用改：Emby 前面有认证网关，跳过去的人会撞到认证。
 >
@@ -126,7 +126,7 @@ session 的 `lastActivity` 把该 session 的 token 归入对应 12 小时桶；
 POST /api/ingest/telemetry
 ```
 
-请求采用唯一的 `version: 2` envelope，模块名固定为 `charger`、`desktop`、`apple_music` 和 `vibe_coding`，`modules` 只携带发生变化的模块。`heartbeat_at` 与 `active_modules` 是固定的小型存活信息，模块都没变化时最多每 30 秒发送一次空 `modules` heartbeat。Music.app 封面和前台应用图标由 Mac 直接读取，只在内容变化时上传一次；服务端按内容哈希生成 `/api/status/activity/assets/:id` 缓存地址，普通状态心跳不会重复携带图片。公开读取仍按用途拆分为 `/api/status/charger`、`/api/status/vibecoding` 和 `/api/status/activity`。
+请求采用唯一的 `version: 2` envelope，模块名固定为 `charger`、`desktop`、`apple_music` 和 `vibe_coding`，`modules` 只携带发生变化的模块。`heartbeat_at` 与 `active_modules` 是固定的小型存活信息，模块都没变化时最多每 30 秒发送一次空 `modules` heartbeat。Music.app 封面和前台应用图标由 Mac 直接读取，只在内容变化时上传一次；服务端按内容哈希生成 `/api/image/asset/:id` 地址，普通状态心跳不会重复携带图片。公开读取仍按用途拆分为 `/api/status/charger`、`/api/status/vibecoding` 和 `/api/status/activity`。
 
 ### HomePod mini 播放实况
 
