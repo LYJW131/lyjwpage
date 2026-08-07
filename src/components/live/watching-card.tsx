@@ -214,10 +214,11 @@ export function WatchingRow() {
     // 触发触控板的「滑动返回上一页」，那下手感是最生硬的。
     <div
       ref={scrollerRef}
-      className="snap-x snap-mandatory scroll-smooth overflow-x-auto overscroll-x-contain pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      className="snap-x snap-mandatory scroll-smooth overflow-x-auto overscroll-x-contain pb-1 scrollbar-none [&::-webkit-scrollbar]:hidden"
     >
-      <div className="flex gap-3">
-        {/* popLayout 让离场的卡片脱离布局流，后面的能同时补位 */}
+      <div className="relative flex gap-3">
+        {/* popLayout 会把离场卡片临时绝对定位；relative 保证它留在滚动轨道内，
+            后面的卡片才能一边补位、一边看着它平滑退场。 */}
         <AnimatePresence initial={false} mode="popLayout">
           {data.items.map((item, index) => {
             const live = data.nowPlaying?.itemId === item.id;
