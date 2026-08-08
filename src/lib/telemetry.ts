@@ -181,6 +181,39 @@ async function normalizeMusic(
   };
 }
 
+/**
+ * 上报器每次露面时的共同记账：谁在采、什么时候来的、有没有声明离线。
+ *
+ * 数据上报和 presence 心跳都要做这一整套 —— 「上报器还活着」只有一个事实，
+ * 不该因为它从哪个路由进来而分成两份实现。从前两边各写了一遍，连顺序都是
+ * 随手排的（一个先 declare 后 mark，一个反过来）。
+ *
+ * 顺序里只有一处是必须的：activeModules 要先落，下面判断充电头在不在采时
+ * 读的就是它。
+ *
+ * 返回在离线声明有没有翻转。持久化和往 SSE 推都不在这里 —— 两条路各有各的
+ * 时机（presence 立刻推，envelope 要等模块都处理完一起推），留给调用方。
+ */
+async function recordReporterBeat({
+  offline,
+  activeModules,
+  receivedAt,
+}: {
+  offline: boolean;
+  /** 缺省表示这次没带，沿用上一次的 —— presence 心跳允许不带 */
+  activeModules?: string[];
+  receivedAt: number;
+}) {
+  if (activeModules) telemetryState.activeModules = new Set(activeModules);
+  markReporterSeen(receivedAt);
+  const flipped = declareReporterOffline(offline);
+  // 充电头按「多久没收到推送」判断断流，心跳也得给它续上
+  if (telemetryState.activeModules.has("charger")) {
+    await recordPushHeartbeat(receivedAt);
+  }
+  return flipped;
+}
+
 /** 一个 envelope 可以只更新一个模块；未出现的模块保持原快照。 */
 export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.now()) {
   hydrateTelemetryState();
@@ -194,10 +227,8 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
   if (nextActiveModules.length !== envelope.active_modules.length) {
     throw new Error("active_modules 只能包含字符串");
   }
-  telemetryState.activeModules = new Set(nextActiveModules);
-  markReporterSeen(receivedAt);
   /**
-   * 上报器声明的在离线。
+   * envelope.presence 是上报器声明的在离线。
    *
    * 只覆盖优雅离开：退出、睡眠时它抢在断开前发一条 offline，这里立刻把状态
    * 翻过去，不用等 45 秒心跳窗口。崩溃、断网、强制关机时它发不出这一条，
@@ -205,10 +236,11 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
    *
    * 缺字段按 online 处理：能发出这个包本身就说明它活着，而且旧版采集器不带这个字段。
    */
-  const presenceFlipped = declareReporterOffline(envelope.presence === "offline");
-  if (telemetryState.activeModules.has("charger")) {
-    await recordPushHeartbeat(receivedAt);
-  }
+  const presenceFlipped = await recordReporterBeat({
+    offline: envelope.presence === "offline",
+    activeModules: nextActiveModules,
+    receivedAt,
+  });
   const modules = object(envelope.modules);
   if (!modules) throw new Error("遥测请求缺少 modules 对象");
 
@@ -277,12 +309,11 @@ export async function recordPresence(
   receivedAt = Date.now(),
 ) {
   hydrateTelemetryState();
-  const flipped = declareReporterOffline(state === "offline");
-  markReporterSeen(receivedAt);
-  if (activeModules) telemetryState.activeModules = new Set(activeModules);
-  if (telemetryState.activeModules.has("charger")) {
-    await recordPushHeartbeat(receivedAt);
-  }
+  const flipped = await recordReporterBeat({
+    offline: state === "offline",
+    activeModules,
+    receivedAt,
+  });
   persistTelemetryState();
   // 只有翻转才是事件；周期心跳不该占用推送通道
   if (flipped) await publishPresence();
