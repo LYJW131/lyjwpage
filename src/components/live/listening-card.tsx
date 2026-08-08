@@ -594,9 +594,13 @@ export function ListeningCard({ className }: { className?: string }) {
                     >
                       {hero.subtitle}
                     </div>
-                    {/* 占位，尺寸和 HeroProgress 那根进度条一模一样。历史条目没有
-                        进度可显示，但两版 hero 的高度必须一致，理由同上面那段。 */}
-                    <div className="mt-1.5 h-0.75" aria-hidden />
+                    {/* 尺寸和 HeroProgress 那根进度条一模一样。历史条目没有进度可
+                        显示，但两版 hero 的高度必须一致，理由同上面那段 —— 与其留
+                        一道不可见的空档，不如填满，见 globals.css 的 .rainbow-bar。 */}
+                    <div
+                      className="rainbow-bar mt-1.5 h-0.75 rounded-full"
+                      aria-hidden
+                    />
                   </>
                 )}
               </div>
