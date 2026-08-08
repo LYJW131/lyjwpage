@@ -66,19 +66,35 @@ const MIN_ROW_HEIGHT_PX = 48;
  */
 const BAR_PERIODS = [0.9, 1.15, 1.4];
 
-function Bars({ active }: { active: boolean }) {
+/**
+ * 三种状态，不是两种。
+ *
+ * - playing 在跳
+ * - paused  就地冻住。keyframes 动的是 transform: scaleY，所以只要保住 h-full
+ *   这个基准盒、把 animation-play-state 切成 paused，浏览器就停在当前那一帧上。
+ *   从前这一档和 idle 合并了，一按暂停三根条会弹回固定形状 —— 明明只是暂停，
+ *   看起来却像换了个东西。
+ * - idle    历史条目，从来没跳过，没有「当前姿态」可冻，用固定形状
+ */
+type BarsState = "playing" | "paused" | "idle";
+
+function Bars({ state }: { state: BarsState }) {
   const idleHeights = ["h-2", "h-3", "h-1.5"];
+  const animated = state !== "idle";
 
   /**
    * 在 ref 回调里对相位，不在渲染里。
    *
    * Date.now 是不纯的，渲染期调用会被 react-hooks 拦下（结果也确实不稳定）。
    * ref 回调跑在 commit 阶段、绘制之前，既保住渲染纯粹，也不会先闪一帧相位 0。
-   * active 进依赖：从暂停切回播放时要重新对一次。
+   *
+   * paused 也要对：直接以暂停态挂载时（刷新页面时曲子正暂停着），不对的话三根
+   * 条会齐刷刷停在 scaleY(0.3)，像根本没播过。playing→paused 那次重跑是幂等的，
+   * 算出来还是当前相位，冻住的姿态不会被挪动。
    */
   const alignPhase = useCallback(
     (node: HTMLSpanElement | null) => {
-      if (!node || !active) return;
+      if (!node || !animated) return;
       const seconds = Date.now() / 1000;
       [...node.children].forEach((child, i) => {
         const period = BAR_PERIODS[i];
@@ -87,7 +103,7 @@ function Bars({ active }: { active: boolean }) {
           `${(-((seconds % period) + i * 0.15)).toFixed(3)}s`;
       });
     },
-    [active],
+    [animated],
   );
 
   return (
@@ -97,11 +113,19 @@ function Bars({ active }: { active: boolean }) {
           key={i}
           className={cn(
             "w-0.5 origin-bottom rounded-full",
-            active ? "h-full bg-live" : `bg-muted-foreground ${idleHeights[i]}`,
+            state === "idle"
+              ? `bg-muted-foreground ${idleHeights[i]}`
+              : state === "playing"
+                ? "h-full bg-live"
+                : "h-full bg-muted-foreground",
           )}
           style={
-            active
-              ? { animation: `equalizer ${BAR_PERIODS[i]}s ease-in-out infinite` }
+            animated
+              ? {
+                  animation: `equalizer ${BAR_PERIODS[i]}s ease-in-out infinite`,
+                  // 值本身不变，React 只会补上这一条，动画不会被重置
+                  animationPlayState: state === "paused" ? "paused" : "running",
+                }
               : undefined
           }
         />
@@ -402,6 +426,29 @@ export function ListeningCard({ className }: { className?: string }) {
 
   const [latest, ...tail] = data?.items ?? [];
 
+  /**
+   * 记住实时源刚才解析到的那张专辑 ID。
+   *
+   * 宽限期一过，服务端会把 music 和 id 一并清空，客户端从此分不清「Mac 刚暂停」
+   * 和「Mac 根本没开过」—— 而这两种情况下该不该信推断，答案正好相反。
+   */
+  // 渲染期直接调整，不放 useEffect —— 那样要多渲染一轮，而且 set-state-in-effect
+  // 本来就是反模式。React 对「props 变了顺手修 state」推荐的就是这个写法。
+  const [lastLiveId, setLastLiveId] = useState<string | null>(null);
+  if (live?.id && live.id !== lastLiveId) setLastLiveId(live.id);
+
+  /**
+   * 推断出来的「正在听」，且确实指向排在最前的这一项。
+   *
+   * 但如果排在最前的就是实时源刚才在放的那张，就不信这个推断 —— 我们比它知道得
+   * 多：设备亲口说了暂停/停止，而推断只会按「这个容器什么时候排到第一」加曲目
+   * 总时长去算，于是刚按下暂停、宽限期一过，卡片反而从「已暂停」翻成绿色的
+   * 「播放中」。等别的条目顶上来，这层压制自然就解除了。
+   */
+  const backFromLive = lastLiveId != null && lastLiveId === latest?.id;
+  const playing =
+    !backFromLive && Boolean(data?.nowPlaying && data.nowPlaying.itemId === latest?.id);
+
   const hero: Hero | null = localActive
     ? {
         key: `${localTrack!.source}:${localTrack!.trackId ?? localTrack!.title}`,
@@ -422,17 +469,8 @@ export function ListeningCard({ className }: { className?: string }) {
           title: latest.title,
           subtitle: latest.artist,
           link: latest.link,
-          /**
-           * 历史条目一律「最近听过」，不再拿推断值当播放状态。
-           *
-           * 这一支只在没有任何实时来源时才走 —— 真在播的时候上面那支就接管了。
-           * 也就是说这里的「播放中」从来只是猜的：服务端按「这个容器什么时候排到
-           * 第一」加上曲目总时长推算，Apple 没有可查的当前播放接口。猜错的代价还
-           * 不对称：在 Mac 上按下暂停、宽限期一过，卡片会从「已暂停」翻成绿色的
-           * 「播放中」，比不显示状态更糟。
-           */
-          label: "最近听过",
-          playing: false,
+          label: playing ? "播放中" : "最近听过",
+          playing,
           track: null,
         }
       : null;
@@ -509,7 +547,12 @@ export function ListeningCard({ className }: { className?: string }) {
                     切换时整列上下挪一下 —— 交叉淡入让新旧同时可见，那一挪就成了
                     肉眼可见的滑动。 */}
                 <div className="flex min-h-5 min-w-0 items-center gap-1.5">
-                  <Bars active={hero.playing} />
+                  {/* 有 track 就是实时源：没在放就是暂停，冻住而不是弹回固定形状 */}
+                  <Bars
+                    state={
+                      hero.playing ? "playing" : hero.track ? "paused" : "idle"
+                    }
+                  />
                   <span
                     className={cn(
                       "label-mono shrink-0",
