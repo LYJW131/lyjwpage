@@ -51,6 +51,23 @@ const VISIBLE_ROWS = 4;
 const MIN_ROW_HEIGHT_PX = 48;
 
 /**
+ * 专辑 / 歌单总时长。超过一小时给 h:mm:ss，否则 m:ss。
+ *
+ * 不用上面那个 Clock：那个是给会走的进度用的，滚动数字有意义；总时长是死的，
+ * 而且 hero 一换就整个重挂、NumberFlow 拿不到上一个值，本来也滚不起来。
+ * 歌单动辄一两个小时，75:09 这种写法读起来别扭。
+ */
+function formatDuration(milliseconds: number) {
+  const total = Math.max(0, Math.round(milliseconds / 1000));
+  const seconds = String(total % 60).padStart(2, "0");
+  const minutes = Math.floor(total / 60) % 60;
+  const hours = Math.floor(total / 3600);
+  return hours > 0
+    ? `${hours}:${String(minutes).padStart(2, "0")}:${seconds}`
+    : `${minutes}:${seconds}`;
+}
+
+/**
  * 把封面取色拼成那条彩虹的渐变。
  *
  * Apple 给的五个色不能直接用：textColor 是设计来叠在 bgColor 上的，浅色封面
@@ -418,6 +435,8 @@ type Hero = {
   playing: boolean;
   /** 封面取色，只有历史条目那一支用得上 */
   palette: string[];
+  /** 整张专辑 / 歌单的总时长。实时那一支不用（它显示的是曲目进度） */
+  durationMs: number | null;
   /**
    * 本机 Music.app 正在放的那首（而不是 Apple Music 的历史记录）。
    * 有值就说明能拿到播放进度，副标题行会换成带进度条的版本。
@@ -482,6 +501,7 @@ export function ListeningCard({ className }: { className?: string }) {
         label: localTrack!.state === "playing" ? "播放中" : "已暂停",
         playing: localTrack!.state === "playing",
         palette: [],
+        durationMs: null,
         track: localTrack,
       }
     : latest
@@ -494,6 +514,7 @@ export function ListeningCard({ className }: { className?: string }) {
           label: playing ? "播放中" : "最近听过",
           playing,
           palette: latest.palette,
+          durationMs: latest.durationMs,
           track: null,
         }
       : null;
@@ -611,11 +632,17 @@ export function ListeningCard({ className }: { className?: string }) {
                   <HeroProgress track={hero.track} subtitle={hero.subtitle} />
                 ) : (
                   <>
-                    <div
-                      className="mt-px truncate text-sm text-muted-foreground"
-                      title={hero.subtitle}
-                    >
-                      {hero.subtitle}
+                    {/* 和实时那版的副标题行同构：左边艺人，右边时间。那边是
+                        「已播 / 总长」，这边没有进度，只放总长。 */}
+                    <div className="mt-px flex items-baseline gap-2 text-sm text-muted-foreground">
+                      <span className="min-w-0 flex-1 truncate" title={hero.subtitle}>
+                        {hero.subtitle}
+                      </span>
+                      {hero.durationMs != null && (
+                        <span className="label-mono shrink-0 tabular-nums">
+                          {formatDuration(hero.durationMs)}
+                        </span>
+                      )}
                     </div>
                     {/* 尺寸和 HeroProgress 那根进度条一模一样。历史条目没有进度可
                         显示，但两版 hero 的高度必须一致，理由同上面那段 —— 与其留

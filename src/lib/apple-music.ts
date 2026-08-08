@@ -105,6 +105,8 @@ async function normalize(resource: AppleResource): Promise<ListeningItem> {
     artwork: fromLibrary ?? attributes.artwork?.url ?? null,
     link: attributes.url ?? null,
     palette: artworkPalette(attributes.artwork),
+    // 只有排在最前那项会被算，见 getRecentlyPlayed
+    durationMs: null,
   };
 }
 
@@ -488,9 +490,24 @@ export async function getRecentlyPlayed(
   const credentials = await resolveCredentials();
   const resources = await fetchResources(credentials);
 
-  return Promise.all(
+  const items = await Promise.all(
     resources.slice(0, limit).map((item) => normalize(item)),
   );
+
+  /**
+   * 只给第一项补上总时长 —— hero 上那一格要显示它。
+   *
+   * 十项全算就是十次上游请求（歌单还要翻页），而列表行根本不显示时长。缓存一天，
+   * 所以稳定状态下这里通常一次请求都不打；「正在听」的推断本来也在算同一个数，
+   * 走的是同一个缓存键。
+   */
+  const [top] = resources;
+  if (top && items[0]) {
+    const durationMs = await getContainerDuration(top, credentials);
+    if (durationMs > 0) items[0] = { ...items[0], durationMs };
+  }
+
+  return items;
 }
 
 /**
