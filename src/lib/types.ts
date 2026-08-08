@@ -104,6 +104,8 @@ export type MusicPayload = {
   receivedAt: number | null;
   /** 两个来源都没有可展示的播放 —— 是「没在放」，不是「数据过期」。 */
   idle: boolean;
+  /** 与 /api/status/listening 的 items[].id 对应的 Apple Music 资源 ID。 */
+  id: string | null;
   /**
    * 那首曲目在 Apple Music 上的地址，读取时现查的，不进设备上报的快照。
    * 目录里能精确匹配上就是直链，匹配不上退回搜索页。

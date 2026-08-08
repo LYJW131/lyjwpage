@@ -51,3 +51,19 @@ export function reporterOffline() {
   if (liveness.declaredOffline) return true;
   return !liveness.lastSeenAt || Date.now() - liveness.lastSeenAt > HEARTBEAT_WINDOW_MS;
 }
+
+/**
+ * 整份存活记录的读写，给持久化用。
+ *
+ * 存活得跟着遥测状态一起落 Redis：只存状态不存存活的话，进程重启后页面会拿着
+ * 上一次的前台应用、却认为上报器从没出现过，两者对不上。`declaredOffline` 尤其
+ * 要存 —— 上报器睡前那声「我走了」不该因为站点重启就丢掉。
+ */
+export function livenessSnapshot(): Liveness {
+  return { ...liveness };
+}
+
+export function restoreLiveness(next: Partial<Liveness>) {
+  if (next.lastSeenAt != null) liveness.lastSeenAt = next.lastSeenAt;
+  if (next.declaredOffline != null) liveness.declaredOffline = next.declaredOffline;
+}

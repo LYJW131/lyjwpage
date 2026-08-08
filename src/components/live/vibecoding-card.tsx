@@ -33,7 +33,7 @@ const fetchVibeCoding = incrementalFetcher<VibeCodingPayload>(
  * 这两个数是拍的，不是上游给的：Codex 的响应带 severity 字段，Claude 那边没有，
  * 两边口径对不齐，索性都按百分比自己判，至少行为一致。
  */
-const LIMIT_WARN_PERCENT = 80;
+const LIMIT_WARN_PERCENT = 75;
 const LIMIT_ALERT_PERCENT = 90;
 /**
  * 跟同文件的 TOKEN_SEGMENTS 一样直接写 oklch 字面量、不进主题变量：

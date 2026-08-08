@@ -1,7 +1,4 @@
-import fs from "node:fs/promises";
-
-import { SignJWT, importPKCS8 } from "jose";
-
+import { readAppleMusicCredentials } from "@/lib/apple-music-credentials";
 import { cached, get as cacheGet, put as cachePut } from "@/lib/cache";
 import { storeImageBuffer } from "@/lib/image-store";
 import type { ListeningItem, NowPlayingGuess } from "@/lib/types";
@@ -9,9 +6,8 @@ import type { ListeningItem, NowPlayingGuess } from "@/lib/types";
 /**
  * Apple Music「最近在听」。
  *
- * 两条独立凭据：
- * 1. Developer Token —— 用 .p8 私钥自签的 ES256 JWT，服务端可再生
- * 2. Music-User-Token —— 用户在 MusicKit 授权后产出的长期 token，只能手动获取
+ * 需要 Developer Token 和 Music-User-Token 两条凭据，都由 Mac 上报器推来 ——
+ * MusicKit 现签，.p8 私钥不出那台机器。服务端不签也没有回落，见 resolveCredentials。
  *
  * 两者都只存在于服务端，前端拿到的永远是已经规范化过的歌曲列表。
  */
@@ -28,63 +24,39 @@ const DURATION_TTL_MS = 24 * 60 * 60 * 1000;
 /** 歌单曲目会分页，最多翻这么多页，够长的歌单也不至于打太多次 */
 const MAX_TRACK_PAGES = 5;
 
-/** Apple 上限 6 个月，这里保守取 12 小时 */
-const TOKEN_TTL_SECONDS = 12 * 60 * 60;
-/** 提前 5 分钟换新，避开边界失效 */
-const TOKEN_SKEW_MS = 5 * 60 * 1000;
-
+/**
+ * 凭据只有一个来源：Mac 上报器推来的那份。
+ *
+ * 服务器上不放 .p8 —— 签名密钥留在那台机器的钥匙串里由系统保管，这边拿到的是
+ * MusicKit 现签的 developer token 和同一次授权产出的 music user token。
+ *
+ * 没有本地签名的回落。有回落就意味着私钥仍然得躺在服务器上，那这套东西就白做了。
+ * 代价是上报器长期离线且 Redis 也丢了凭据时，「最近在听」直接失败 —— 这是明摆着
+ * 的取舍，不是疏漏。
+ */
 type Credentials = {
-  privateKey: string;
-  keyId: string;
-  teamId: string;
+  developerToken: string;
   userToken: string;
+  /** developer token 的到期时刻，Unix 秒。只用来在报错里说清楚，不做提前判断 */
+  expiresAt: number;
 };
 
 async function resolveCredentials(): Promise<Credentials> {
-  const keyId = process.env.APPLE_MUSIC_KEY_ID ?? "";
-  const teamId = process.env.APPLE_MUSIC_TEAM_ID ?? "";
-  const userToken = process.env.APPLE_MUSIC_USER_TOKEN ?? "";
-
-  // 两种给私钥的方式：直接给 PEM 内容（Vercel 这类无持久盘的部署），
-  // 或给 .p8 文件路径（本地 / 自建）。前者优先。
-  let privateKey = process.env.APPLE_MUSIC_PRIVATE_KEY ?? "";
-  if (privateKey) {
-    // .env 里多行不好写，允许用字面量 \n 转义
-    privateKey = privateKey.replace(/\\n/g, "\n");
-  } else if (process.env.APPLE_MUSIC_PRIVATE_KEY_PATH) {
-    privateKey = await fs.readFile(process.env.APPLE_MUSIC_PRIVATE_KEY_PATH, "utf8");
+  const result = await readAppleMusicCredentials();
+  if (!result.ok) {
+    // 两种没有，修法相反：一个去看 Redis，一个去点授权按钮
+    throw new Error(
+      result.reason === "redis-unreachable"
+        ? "读不到 Apple Music 凭据 —— Redis 连不上，凭据本身可能还在"
+        : "没有收到 Mac 上报器的 Apple Music 凭据 —— 在上报器的设置里授权 Apple Music",
+    );
   }
-
-  const missing: string[] = [];
-  if (!privateKey) missing.push("APPLE_MUSIC_PRIVATE_KEY 或 APPLE_MUSIC_PRIVATE_KEY_PATH");
-  if (!keyId) missing.push("APPLE_MUSIC_KEY_ID");
-  if (!teamId) missing.push("APPLE_MUSIC_TEAM_ID");
-  if (!userToken) missing.push("APPLE_MUSIC_USER_TOKEN");
-  if (missing.length) {
-    throw new Error(`缺少 Apple Music 凭据：${missing.join("、")}`);
-  }
-
-  return { privateKey, keyId, teamId, userToken };
-}
-
-async function getDeveloperToken(credentials: Credentials): Promise<string> {
-  const cacheKey = `apple-music:jwt:${credentials.keyId}:${credentials.teamId}`;
-  const hit = await cacheGet<string>(cacheKey);
-  if (hit) return hit;
-
-  // jose 的 ES256 签名输出的就是 JWT 规范要求的裸 r‖s（P1363），
-  // 不像 node:crypto 默认吐 DER —— 那样 Apple 会直接 401。
-  const key = await importPKCS8(credentials.privateKey, "ES256");
-  const now = Math.floor(Date.now() / 1000);
-  const token = await new SignJWT({})
-    .setProtectedHeader({ alg: "ES256", kid: credentials.keyId, typ: "JWT" })
-    .setIssuer(credentials.teamId)
-    .setIssuedAt(now)
-    .setExpirationTime(now + TOKEN_TTL_SECONDS)
-    .sign(key);
-
-  await cachePut(cacheKey, token, TOKEN_TTL_SECONDS * 1000 - TOKEN_SKEW_MS);
-  return token;
+  const { credentials } = result;
+  return {
+    developerToken: credentials.developerToken,
+    userToken: credentials.musicUserToken,
+    expiresAt: credentials.expiresAt,
+  };
 }
 
 type AppleResource = {
@@ -126,11 +98,9 @@ async function normalize(resource: AppleResource): Promise<ListeningItem> {
 }
 
 async function appleFetchRaw<T>(url: string, credentials: Credentials): Promise<T> {
-  const developerToken = await getDeveloperToken(credentials);
-
   const response = await fetch(url, {
     headers: {
-      Authorization: `Bearer ${developerToken}`,
+      Authorization: `Bearer ${credentials.developerToken}`,
       "Music-User-Token": credentials.userToken,
       Accept: "application/json",
     },
@@ -139,11 +109,13 @@ async function appleFetchRaw<T>(url: string, credentials: Credentials): Promise<
 
   if (!response.ok) {
     const body = (await response.text()).slice(0, 300);
+    // 带上标称到期时刻：401 多半就是上报器没能按时续上，写出来省一次排查
+    const origin = `凭据来自 Mac 上报器，标称 ${new Date(credentials.expiresAt * 1000).toISOString()} 到期`;
     if (response.status === 401) {
-      throw new Error(`Apple Music 拒绝了 developer token（401）：${body}`);
+      throw new Error(`Apple Music 拒绝了 developer token（401，${origin}）：${body}`);
     }
     if (response.status === 403) {
-      throw new Error(`Music-User-Token 已失效，需要重新授权（403）：${body}`);
+      throw new Error(`Music-User-Token 已失效，需要重新授权（403，${origin}）：${body}`);
     }
     throw new Error(`Apple Music 返回 ${response.status}：${body}`);
   }
@@ -218,6 +190,11 @@ const STOREFRONT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const SEARCH_LIMIT = 25;
 
 type CatalogSong = {
+  id?: string;
+  relationships?: {
+    /** 搜索歌曲时 Apple 直接返回其所属专辑的资源 ID。 */
+    albums?: { data?: Array<{ id?: string }> };
+  };
   attributes?: {
     name?: string;
     artistName?: string;
@@ -234,7 +211,12 @@ type CatalogSong = {
  * 而这次查询本来就要做、结果本来就带 artwork 模板 URL，等于白拿。
  * link 为空串表示「搜过了但没匹配上」，和「还没搜过」区分开。
  */
-export type TrackLookup = { link: string; artwork: string | null };
+export type TrackLookup = {
+  link: string;
+  artwork: string | null;
+  /** 与最近播放资源对应的专辑 ID。 */
+  id: string | null;
+};
 
 /** 归一化后再比：大小写、空格、常见标点、全角半角差异都不该影响判定 */
 function normalizeForMatch(value: string | null | undefined) {
@@ -281,7 +263,7 @@ export async function resolveTrackLookup(track: {
   artist: string | null;
   album: string | null;
 }): Promise<TrackLookup> {
-  if (!track.title) return { link: "", artwork: null };
+  if (!track.title) return { link: "", artwork: null, id: null };
 
   const searchTerm = [track.title, track.artist].filter(Boolean).join(" ");
   const searchUrl = `https://music.apple.com/search?term=${encodeURIComponent(searchTerm)}`;
@@ -297,7 +279,7 @@ export async function resolveTrackLookup(track: {
    * 以后再改这个值的形状，记得一起改版本号。
    */
   const cacheKey =
-    "apple-music:track-lookup:v2:" +
+    "apple-music:track-lookup:v5:" +
     [track.title, track.artist, track.album].map(normalizeForMatch).join(":");
 
   try {
@@ -308,7 +290,7 @@ export async function resolveTrackLookup(track: {
       const term = [track.title, track.artist, track.album].filter(Boolean).join(" ");
       const url =
         `https://api.music.apple.com/v1/catalog/${storefront}/search` +
-        `?term=${encodeURIComponent(term)}&types=songs&limit=${SEARCH_LIMIT}`;
+        `?term=${encodeURIComponent(term)}&types=songs&limit=${SEARCH_LIMIT}&relate=albums`;
       const json = await appleFetchRaw<{
         results?: { songs?: { data?: CatalogSong[] } };
       }>(url, credentials);
@@ -341,17 +323,28 @@ export async function resolveTrackLookup(track: {
           ? candidates[0]
           : undefined;
 
+      let albumId = hit?.relationships?.albums?.data?.[0]?.id ?? null;
+      if (hit?.id && !albumId) {
+        // 搜索结果有时只带歌曲本身，歌曲所属专辑关系要从资源元数据里取。
+        const detail = await appleFetchRaw<{ data?: CatalogSong[] }>(
+          `https://api.music.apple.com/v1/catalog/${storefront}/songs/${hit.id}?relate=albums`,
+          credentials,
+        );
+        albumId = detail.data?.[0]?.relationships?.albums?.data?.[0]?.id ?? null;
+      }
+
       // link 存空串而不是 null：cached 用 undefined 判未命中，空串才能把
       // 「搜过了但没匹配上」这个结论也缓存住，不然每次都会重搜一遍
       return {
         link: hit?.attributes?.url ?? "",
         artwork: hit?.attributes?.artwork?.url ?? null,
+        id: albumId,
       };
     });
-    return { link: exact.link || searchUrl, artwork: exact.artwork };
+    return { link: exact.link || searchUrl, artwork: exact.artwork, id: exact.id };
   } catch {
     // 凭据缺失或上游异常都不该让整张卡片失败
-    return { link: searchUrl, artwork: null };
+    return { link: searchUrl, artwork: null, id: null };
   }
 }
 

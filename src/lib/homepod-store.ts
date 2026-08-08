@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { numberish, object, text } from "@/lib/json";
-import { key, withRedis } from "@/lib/redis";
+import { mirrorKey } from "@/lib/redis";
 import type { LocalNowPlaying } from "@/lib/types";
 
 const TTL_MS = 24 * 60 * 60 * 1000;
@@ -21,14 +21,23 @@ const SILENCE_GRACE_MS = 5 * 60 * 1000;
  * 真停掉时 HomePod 的 state 会变，那是状态变化，HA 照样会推。
  */
 const REPEAT_SILENCE_GRACE_MS = 30 * 60 * 1000;
-const K_NOW_PLAYING = key("homepod", "nowPlaying");
 
 type StoredHomePod = {
   music: LocalNowPlaying;
   receivedAt: number;
 };
 
-let fallback: StoredHomePod | null = null;
+/**
+ * Redis 为主、进程内存为辅，规则见 lib/redis 的 mirrorKey。
+ *
+ * 「内存那份更新就不被 Redis 的旧值盖回去」原来是这里手写的，现在归到工厂里 ——
+ * 其它几个 store 有同一个问题，只有这里当初发现了。
+ */
+const mirror = mirrorKey<StoredHomePod>(
+  ["homepod", "nowPlaying"],
+  (state) => state.receivedAt,
+  { ttlMs: TTL_MS },
+);
 
 function timestamp(value: unknown, fallbackAt: number) {
   const parsed = typeof value === "string" ? Date.parse(value) : Number.NaN;
@@ -150,39 +159,12 @@ export function normalizeHomePodEvent(
 
 export async function recordHomePodEvent(input: unknown, receivedAt = Date.now()) {
   const stored = normalizeHomePodEvent(input, receivedAt);
-  fallback = stored;
-  await withRedis(
-    async (redis) => redis.set(K_NOW_PLAYING, JSON.stringify(stored), "PX", TTL_MS),
-    null,
-  );
+  await mirror.put(stored);
   return stored;
 }
 
-async function readStored(): Promise<StoredHomePod | null> {
-  const raw = await withRedis(async (redis) => redis.get(K_NOW_PLAYING), null);
-  let cached: StoredHomePod | null = null;
-  if (raw) {
-    try {
-      cached = JSON.parse(raw) as StoredHomePod;
-    } catch {
-      // Treat malformed cached state as absent.
-    }
-  }
-
-  /**
-   * 取两者里更新的那个，而不是无条件相信 Redis。
-   *
-   * lib/redis 在任何一次错误之后会把 Redis 停用 30 秒，那期间 set 会静默失败 ——
-   * 内存更新了、Redis 没有。等读恢复时 Redis 里还是故障前的旧值，无条件优先的话
-   * 页面会一直显示那首旧歌，直到下一次 HomePod 事件为止。
-   */
-  if (!cached) return fallback;
-  if (!fallback) return cached;
-  return cached.receivedAt >= fallback.receivedAt ? cached : fallback;
-}
-
 export async function getHomePodNowPlaying(now = Date.now()) {
-  const stored = await readStored();
+  const stored = await mirror.get();
   if (!stored || stored.music.state === "stopped" || !stored.music.title) return null;
 
   const { music } = stored;

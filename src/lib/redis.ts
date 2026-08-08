@@ -67,3 +67,130 @@ export async function withRedis<T>(
     return fallback;
   }
 }
+
+/** Redis 不可达时的应答。模块级常量，不是每次新建的字面量 */
+const UNREACHABLE = { reachable: false } as const;
+
+export type RedisAnswer<T> = { reachable: true; value: T } | typeof UNREACHABLE;
+
+/**
+ * 问一次 Redis，把「它说没有」和「它答不上来」分开。
+ *
+ * `reachable: false` 表示 Redis 不可达 —— 没配 REDIS_URL、连不上、或正落在
+ * 出错后那 30 秒停用窗里。包一层才能和「Redis 好好答了，值就是 null」区分：
+ * 直接用 `withRedis(get, null)` 的话这两种情况在外面长得一模一样，只能一律
+ * 退回进程内存副本，于是清空 Redis 之后数据还从内存里活着。实测踩到过。
+ *
+ * 为什么用判别字段而不是「返回 null 表示不可达」：Turbopack 会内联分析同一
+ * 模块内的调用，只跟到 `return await run(redis)` 这条返回对象字面量的路径，
+ * 就断定结果恒为真，把调用方的 `if (!answered)` 整个当成死代码删掉 —— 编译
+ * 产物里是 `if ("TURBOPACK compile-time falsy", 0)`。tsc 全绿、跨模块调用也
+ * 正常，只有同模块的 mirrorKey 中招，Redis 一断就抛
+ * 「Cannot read properties of null」。两条返回路径都给对象就没有这个可乘之机。
+ */
+export async function askRedis<T>(
+  load: (redis: Redis) => Promise<T>,
+): Promise<RedisAnswer<T>> {
+  return withRedis<RedisAnswer<T>>(
+    async (redis) => ({ reachable: true, value: await load(redis) }),
+    UNREACHABLE,
+  );
+}
+
+/** 写一次 Redis，返回是否真的落进去了。false 表示这份目前只存在于进程内存 */
+export async function tellRedis(run: (redis: Redis) => Promise<unknown>): Promise<boolean> {
+  return withRedis(async (redis) => {
+    await run(redis);
+    return true;
+  }, false);
+}
+
+/**
+ * 一份「Redis 为主、进程内存为辅」的单键状态。
+ *
+ * 内存副本只是替补，不是第二份真相。四种情况：
+ *
+ * 1. Redis 不可达 —— 只能信内存副本。
+ * 2. Redis 答了值 —— Redis 赢，刷新内存副本。唯一的例外是上次写没落进去
+ *    （`persisted` 为假）且内存那份更新：Redis 停用窗里 set 会静默失败，等它
+ *    恢复时里面还是故障前的旧值，无条件优先会把页面钉在旧状态上。
+ * 3. Redis 答「没有」且我们写进去过 —— 是真被删了，内存跟着清。
+ * 4. Redis 答「没有」且我们没写进去过 —— 写从来没成功，内存是唯一真相，留着。
+ *
+ * 已知缺陷（沿用旧行为，没修）：删除动作若落在 Redis 停用窗里，等恢复后旧值
+ * 会从 Redis 复活。要根治得写墓碑，为这个场景不值当。
+ */
+export function mirrorKey<T>(
+  parts: string[],
+  /** 取「这份有多新」。用来在 Redis 写失败过时，挡住旧值把内存里的新值盖回去 */
+  stampOf: (value: T) => number,
+  { ttlMs }: { ttlMs?: number } = {},
+) {
+  const k = key(...parts);
+  /**
+   * 内存副本挂 globalThis，不用模块作用域的变量。
+   *
+   * Next 的 dev server 里每个路由各有一份模块实例：写进 ingest 那份的内存，
+   * status 那份看不见。于是 Redis 一断，读的一侧发现自己手上什么都没有，
+   * 就把状态当成空的 —— 实测就是这样，停掉 Redis 后前台应用直接归零，而
+   * 规则 1 本该让它继续供数。
+   *
+   * 这个坑代码库里早有先例：telemetryState 和 reporterLiveness 都是为此挂的
+   * globalThis，只是新写的镜像没跟上。
+   */
+  const cells = ((globalThis as typeof globalThis & {
+    __lyjwMirrors?: Map<string, { memory: unknown; persisted: boolean }>;
+  }).__lyjwMirrors ??= new Map());
+  let cell = cells.get(k);
+  if (!cell) {
+    cell = { memory: null, persisted: false };
+    cells.set(k, cell);
+  }
+  const state = cell as { memory: T | null; persisted: boolean };
+
+  return {
+    async put(value: T): Promise<void> {
+      state.memory = value;
+      state.persisted = await tellRedis((redis) =>
+        ttlMs ? redis.set(k, JSON.stringify(value), "PX", ttlMs) : redis.set(k, JSON.stringify(value)),
+      );
+    },
+
+    async drop(): Promise<void> {
+      state.memory = null;
+      state.persisted = await tellRedis((redis) => redis.del(k));
+    },
+
+    async get(): Promise<T | null> {
+      const answered = await askRedis((redis) => redis.get(k));
+      if (!answered.reachable) return state.memory;
+
+      if (answered.value) {
+        let stored: T;
+        try {
+          stored = JSON.parse(answered.value) as T;
+        } catch {
+          // 脏数据按「答不上来」算，不按「没有」—— 否则会连累好好的内存副本
+          return state.memory;
+        }
+        if (!state.persisted && state.memory && stampOf(state.memory) > stampOf(stored)) {
+          return state.memory;
+        }
+        state.memory = stored;
+        state.persisted = true;
+        return stored;
+      }
+
+      if (state.persisted) {
+        state.memory = null;
+        return null;
+      }
+      return state.memory;
+    },
+
+    /** Redis 此刻答不答得上话。用来把「里面没有」和「问不到」在报错里分开 */
+    async reachable(): Promise<boolean> {
+      return (await askRedis(async () => true)).reachable;
+    },
+  };
+}

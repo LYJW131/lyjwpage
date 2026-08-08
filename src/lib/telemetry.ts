@@ -1,7 +1,4 @@
 import { timingSafeEqual } from "node:crypto";
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
 import { getChargerPayload, normalizeRawStatus, type RawStatus } from "@/lib/anker";
 import { recordPushHeartbeat, recordStatus } from "@/lib/charger-store";
@@ -11,10 +8,13 @@ import { storeUploadedImage } from "@/lib/image-store";
 import { number, object, text } from "@/lib/json";
 import { ASSET_URL_PREFIX } from "@/lib/image-store";
 import { publish } from "@/lib/live-events";
+import { mirrorKey } from "@/lib/redis";
 import {
   declareReporterOffline,
+  livenessSnapshot,
   markReporterSeen,
   reporterLastSeenAt,
+  restoreLiveness,
   reporterOffline,
 } from "@/lib/reporter-liveness";
 import type {
@@ -62,24 +62,41 @@ const telemetryState = (globalTelemetry.__lyjwTelemetryState ??= {
   activityReceivedAt: 0,
   activeModules: new Set<string>(),
 });
-const TELEMETRY_CACHE_DIR = join(tmpdir(), "lyjwpage-telemetry-v2");
-const TELEMETRY_STATE_FILE = join(TELEMETRY_CACHE_DIR, "activity.json");
-let telemetryHydrated = false;
+/**
+ * 遥测状态的持久化。
+ *
+ * 从前写的是临时文件（$TMPDIR/lyjwpage-telemetry-v2/activity.json），全站只有
+ * 这一处这么干 —— 于是清空 Redis 对它毫无作用，连重启 dev server 都清不掉，
+ * 排查冷启动时会以为清干净了其实没有。现在和别的 store 一样落 Redis，
+ * 「Redis 为主、进程内存为辅」的规则见 lib/redis 的 mirrorKey。
+ *
+ * 存活记录跟着一起走：只存状态不存存活的话，重启后页面拿着上一次的前台应用、
+ * 却认为上报器从没出现过。
+ */
+type PersistedTelemetry = {
+  desktop: DesktopActivity | null;
+  music: LocalNowPlaying | null;
+  activityReceivedAt: number;
+  telemetryReceivedAt: number;
+  declaredOffline: boolean;
+  activeModules: string[];
+};
 
-function persistTelemetryState() {
-  mkdirSync(TELEMETRY_CACHE_DIR, { recursive: true });
-  const temporaryFile = `${TELEMETRY_STATE_FILE}.${process.pid}.tmp`;
-  writeFileSync(
-    temporaryFile,
-    JSON.stringify({
-      desktop: telemetryState.desktop,
-      music: telemetryState.music,
-      activityReceivedAt: telemetryState.activityReceivedAt,
-      telemetryReceivedAt: reporterLastSeenAt(),
-      activeModules: [...telemetryState.activeModules],
-    }),
-  );
-  renameSync(temporaryFile, TELEMETRY_STATE_FILE);
+const mirror = mirrorKey<PersistedTelemetry>(
+  ["telemetry", "state"],
+  // 「有多新」看最后一次收到上报的时刻：每次心跳都会推进它
+  (state) => state.telemetryReceivedAt,
+);
+
+async function persistTelemetryState() {
+  await mirror.put({
+    desktop: telemetryState.desktop,
+    music: telemetryState.music,
+    activityReceivedAt: telemetryState.activityReceivedAt,
+    telemetryReceivedAt: reporterLastSeenAt(),
+    declaredOffline: livenessSnapshot().declaredOffline,
+    activeModules: [...telemetryState.activeModules],
+  });
 }
 
 function keepFreshAsset<T, K extends keyof T>(row: T | null, field: K): T | null {
@@ -91,32 +108,39 @@ function keepFreshAsset<T, K extends keyof T>(row: T | null, field: K): T | null
   return row;
 }
 
-function hydrateTelemetryState() {
-  if (telemetryHydrated) return;
-  telemetryHydrated = true;
-  try {
-    const cached = JSON.parse(readFileSync(TELEMETRY_STATE_FILE, "utf8")) as {
-      desktop?: DesktopActivity | null;
-      music?: LocalNowPlaying | null;
-      activityReceivedAt?: number;
-      telemetryReceivedAt?: number;
-      activeModules?: string[];
-    };
-    /**
-     * 丢掉不是当前格式的图片 URL。
-     *
-     * 这些 URL 跟着状态一起持久化，而存图的路由改过前缀 —— 存量的旧 URL 会
-     * 一直指向已经删掉的路由、稳定 404，且只有等设备重新上报同一张图才会
-     * 被覆盖（换歌 / 换应用才会重发）。宁可先不显示，也别挂一张裂图。
-     */
-    telemetryState.desktop = keepFreshAsset(cached.desktop ?? null, "iconUrl");
-    telemetryState.music = keepFreshAsset(cached.music ?? null, "artworkUrl");
-    telemetryState.activityReceivedAt = cached.activityReceivedAt ?? 0;
-    markReporterSeen(cached.telemetryReceivedAt ?? 0);
-    telemetryState.activeModules = new Set(cached.activeModules ?? []);
-  } catch {
-    // 首次启动时没有缓存文件是正常情况。
+/**
+ * 从持久层同步一次工作副本。每个入口都先调它。
+ *
+ * 不是「只在启动时 hydrate 一次」—— 那正是这轮要消灭的东西：读一次就再也不问，
+ * 等于让进程内存变成第二份真相，清空 Redis 也翻不动它。mirrorKey 自己会处理
+ * 「Redis 不可达就用内存副本」，所以每次问的代价只是一次 GET。
+ */
+async function syncTelemetryState() {
+  const stored = await mirror.get();
+  if (!stored) {
+    // 真被清空了（或从没写过），工作副本跟着归零
+    telemetryState.desktop = null;
+    telemetryState.music = null;
+    telemetryState.activityReceivedAt = 0;
+    telemetryState.activeModules = new Set();
+    restoreLiveness({ lastSeenAt: 0, declaredOffline: false });
+    return;
   }
+  /**
+   * 丢掉不是当前格式的图片 URL。
+   *
+   * 这些 URL 跟着状态一起持久化，而存图的路由改过前缀 —— 存量的旧 URL 会
+   * 一直指向已经删掉的路由、稳定 404，且只有等设备重新上报同一张图才会
+   * 被覆盖（换歌 / 换应用才会重发）。宁可先不显示，也别挂一张裂图。
+   */
+  telemetryState.desktop = keepFreshAsset(stored.desktop ?? null, "iconUrl");
+  telemetryState.music = keepFreshAsset(stored.music ?? null, "artworkUrl");
+  telemetryState.activityReceivedAt = stored.activityReceivedAt ?? 0;
+  telemetryState.activeModules = new Set(stored.activeModules ?? []);
+  restoreLiveness({
+    lastSeenAt: stored.telemetryReceivedAt ?? 0,
+    declaredOffline: stored.declaredOffline ?? false,
+  });
 }
 
 type TelemetryEnvelope = {
@@ -216,7 +240,7 @@ async function recordReporterBeat({
 
 /** 一个 envelope 可以只更新一个模块；未出现的模块保持原快照。 */
 export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.now()) {
-  hydrateTelemetryState();
+  await syncTelemetryState();
   const envelope = object(input) as TelemetryEnvelope | null;
   if (!envelope || envelope.version !== 2) throw new Error("遥测协议 version 必须为 2");
   if (number(envelope.heartbeat_at) == null) throw new Error("遥测请求缺少 heartbeat_at");
@@ -271,11 +295,11 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
   }
 
   if ("vibe_coding" in modules) {
-    recordVibeCodingReport(modules.vibe_coding, receivedAt);
+    await recordVibeCodingReport(modules.vibe_coding, receivedAt);
     accepted += 1;
   }
 
-  persistTelemetryState();
+  await persistTelemetryState();
 
   /**
    * 只在模块真的来了才推。
@@ -290,7 +314,7 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
    */
   // 在离线翻转本身就是状态变化，值得推 —— 这正是「关键事件」，不是定时广播
   if (presenceFlipped) await publishPresence();
-  if ("desktop" in modules) publishDesktop();
+  if ("desktop" in modules) await publishDesktop();
   if ("apple_music" in modules) await publishMusic();
 
   return { accepted, heartbeat: true };
@@ -308,13 +332,13 @@ export async function recordPresence(
   activeModules?: string[],
   receivedAt = Date.now(),
 ) {
-  hydrateTelemetryState();
+  await syncTelemetryState();
   const flipped = await recordReporterBeat({
     offline: state === "offline",
     activeModules,
     receivedAt,
   });
-  persistTelemetryState();
+  await persistTelemetryState();
   // 只有翻转才是事件；周期心跳不该占用推送通道
   if (flipped) await publishPresence();
 }
@@ -324,8 +348,8 @@ function reporterStale() {
   return reporterOffline();
 }
 
-export function getDesktopPayload(): DesktopPayload {
-  hydrateTelemetryState();
+export async function getDesktopPayload(): Promise<DesktopPayload> {
+  await syncTelemetryState();
   const stale = !telemetryState.activeModules.has("desktop") || reporterStale();
   return {
     desktop: stale ? null : telemetryState.desktop,
@@ -336,7 +360,7 @@ export function getDesktopPayload(): DesktopPayload {
 }
 
 export async function getMusicPayload(): Promise<MusicPayload> {
-  hydrateTelemetryState();
+  await syncTelemetryState();
   const telemetryStale = reporterStale();
   const musicEnabled = telemetryState.activeModules.has("apple_music");
   const macMusic = musicEnabled && !telemetryStale ? telemetryState.music : null;
@@ -356,6 +380,7 @@ export async function getMusicPayload(): Promise<MusicPayload> {
     (homePodPausedFresh ? homePodMusic : null);
   // 命中会长期缓存，绝大多数调用不会真的打上游
   const lookup = music ? await resolveTrackLookup(music) : null;
+  const link = lookup?.link ?? null;
 
   return {
     /**
@@ -372,7 +397,8 @@ export async function getMusicPayload(): Promise<MusicPayload> {
     ) || null,
     // 没东西可显示，而不是「数据过期」—— 没在听歌时这就是常态
     idle: !music,
-    link: lookup?.link ?? null,
+    id: lookup?.id ?? null,
+    link,
   };
 }
 
@@ -387,8 +413,8 @@ export async function publishPresence() {
   publish({ type: "presence", payload: null });
 }
 
-export function publishDesktop() {
-  publish({ type: "desktop", payload: getDesktopPayload() });
+export async function publishDesktop() {
+  publish({ type: "desktop", payload: await getDesktopPayload() });
 }
 
 /**
