@@ -401,10 +401,6 @@ export function ListeningCard({ className }: { className?: string }) {
   const localActive = Boolean(localTrack);
 
   const [latest, ...tail] = data?.items ?? [];
-  // 推断出来的「正在听」，且确实指向排在最前的这一项
-  const playing = Boolean(
-    data?.nowPlaying && data.nowPlaying.itemId === latest?.id,
-  );
 
   const hero: Hero | null = localActive
     ? {
@@ -426,8 +422,17 @@ export function ListeningCard({ className }: { className?: string }) {
           title: latest.title,
           subtitle: latest.artist,
           link: latest.link,
-          label: playing ? "播放中" : "最近听过",
-          playing,
+          /**
+           * 历史条目一律「最近听过」，不再拿推断值当播放状态。
+           *
+           * 这一支只在没有任何实时来源时才走 —— 真在播的时候上面那支就接管了。
+           * 也就是说这里的「播放中」从来只是猜的：服务端按「这个容器什么时候排到
+           * 第一」加上曲目总时长推算，Apple 没有可查的当前播放接口。猜错的代价还
+           * 不对称：在 Mac 上按下暂停、宽限期一过，卡片会从「已暂停」翻成绿色的
+           * 「播放中」，比不显示状态更糟。
+           */
+          label: "最近听过",
+          playing: false,
           track: null,
         }
       : null;
