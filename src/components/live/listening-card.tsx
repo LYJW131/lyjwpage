@@ -1,5 +1,6 @@
 "use client";
 
+import NumberFlow, { NumberFlowGroup } from "@number-flow/react";
 import { Laptop, Speaker } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import Image from "next/image";
@@ -74,9 +75,29 @@ function Bars({ active }: { active: boolean }) {
   );
 }
 
-function formatClock(milliseconds: number) {
+/**
+ * 时钟的一格，秒进位时和充电头的瓦数一样滚动。
+ *
+ * 分秒拆成两个 NumberFlow 而不是把 "2:19" 当一个数字：冒号不是千分位那类
+ * 分隔符，Intl 也没有 mm:ss 的格式，只能自己拼。外面套 NumberFlowGroup 才能
+ * 让 59→00 那一下两格同时翻，否则各滚各的、时间差看得出来。
+ *
+ * 秒补零交给 minimumIntegerDigits，不用 padStart —— 字符串补出来的零是静态
+ * 文本，滚动时那一位不会动。
+ */
+function Clock({ milliseconds }: { milliseconds: number }) {
   const seconds = Math.max(0, Math.floor(milliseconds / 1_000));
-  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+  return (
+    <>
+      <NumberFlow value={Math.floor(seconds / 60)} locales="en-US" />
+      <span>:</span>
+      <NumberFlow
+        value={seconds % 60}
+        locales="en-US"
+        format={{ minimumIntegerDigits: 2 }}
+      />
+    </>
+  );
 }
 
 /**
@@ -125,9 +146,13 @@ function HeroProgress({
         <span className="min-w-0 flex-1 truncate" title={subtitle}>
           {subtitle}
         </span>
-        <span className="label-mono shrink-0 tabular-nums">
-          {formatClock(position)} / {formatClock(track.durationMs)}
-        </span>
+        <NumberFlowGroup>
+          <span className="label-mono shrink-0 tabular-nums">
+            <Clock milliseconds={position} />
+            <span> / </span>
+            <Clock milliseconds={track.durationMs} />
+          </span>
+        </NumberFlowGroup>
       </div>
       <div className="mt-1.5 h-0.75 overflow-hidden rounded-full bg-muted">
         <div
