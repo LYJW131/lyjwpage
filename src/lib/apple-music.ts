@@ -306,7 +306,7 @@ export async function resolveTrackLookup(track: {
    * 以后再改这个值的形状，记得一起改版本号。
    */
   const cacheKey =
-    "apple-music:track-lookup:v5:" +
+    "apple-music:track-lookup:v6:" +
     [track.title, track.artist, track.album].map(normalizeForMatch).join(":");
 
   try {
@@ -326,13 +326,28 @@ export async function resolveTrackLookup(track: {
       const wantedArtist = normalizeForMatch(track.artist);
       const wantedAlbum = normalizeForMatch(track.album);
 
-      const candidates = (json.results?.songs?.data ?? []).filter((song) => {
-        if (normalizeForMatch(song.attributes?.name) !== wantedTitle) return false;
+      const titleMatches = (json.results?.songs?.data ?? []).filter(
+        (song) => normalizeForMatch(song.attributes?.name) === wantedTitle,
+      );
+      const byArtist = titleMatches.filter((song) => {
         if (!wantedArtist) return true;
         const found = normalizeForMatch(song.attributes?.artistName);
         // 「艺人 A feat. B」这类两边互为子串，双向包含都算对得上
         return found.includes(wantedArtist) || wantedArtist.includes(found);
       });
+
+      /**
+       * 艺人名对不上时退回「曲名 + 专辑」。
+       *
+       * 目录里的艺人名和设备报的常常不是一种写法：实测 Music.app 报
+       * 「宇多田ヒカル」，目录里写的是「Utada」，两边毫无字面交集，25 个候选
+       * 全被筛掉 —— 而正确的那条就在里面。日文艺人尤其常见。
+       *
+       * 少了艺人这层身份，专辑那层就得卡严：只认完全相等，不再退化到包含判断，
+       * 也不接受「只有一个候选就认」。宁可退回搜索页，也不给一个错的直链。
+       */
+      const artistMatched = byArtist.length > 0;
+      const candidates = artistMatched ? byArtist : titleMatches;
 
       const hit = wantedAlbum
         ? // 先要精确的。设备报的专辑名通常和目录一致（实测 Music.app 给的就是
@@ -341,12 +356,14 @@ export async function resolveTrackLookup(track: {
           candidates.find(
             (song) => normalizeForMatch(song.attributes?.albumName) === wantedAlbum,
           ) ??
-          candidates.find((song) => {
-            const found = normalizeForMatch(song.attributes?.albumName);
-            return found.includes(wantedAlbum) || wantedAlbum.includes(found);
-          })
-        : // 没有专辑名就没法消歧：只有候选唯一时才敢认，否则宁可退回搜索页
-          candidates.length === 1
+          (artistMatched
+            ? candidates.find((song) => {
+                const found = normalizeForMatch(song.attributes?.albumName);
+                return found.includes(wantedAlbum) || wantedAlbum.includes(found);
+              })
+            : undefined)
+        : // 没有专辑名就没法消歧：只有候选唯一、且艺人也对得上时才敢认
+          artistMatched && candidates.length === 1
           ? candidates[0]
           : undefined;
 
