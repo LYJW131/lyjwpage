@@ -126,7 +126,19 @@ session 的 `lastActivity` 把该 session 的 token 归入对应 12 小时桶；
 POST /api/ingest/telemetry
 ```
 
-请求采用唯一的 `version: 2` envelope，模块名固定为 `charger`、`desktop`、`apple_music` 和 `vibe_coding`，`modules` 只携带发生变化的模块。`heartbeat_at` 与 `active_modules` 是固定的小型存活信息，模块都没变化时最多每 30 秒发送一次空 `modules` heartbeat。Music.app 封面和前台应用图标由 Mac 直接读取，只在内容变化时上传一次；服务端按内容哈希生成 `/api/image/asset/:id` 地址，普通状态心跳不会重复携带图片。公开读取仍按用途拆分为 `/api/status/charger`、`/api/status/vibecoding` 和 `/api/status/activity`。
+请求采用唯一的 `version: 2` envelope，模块名固定为 `charger`、`desktop`、`apple_music` 和 `vibe_coding`，`modules` 只携带发生变化的模块。
+
+四个模块的指纹一个都没变时，整个 POST 直接跳过——**不发空 `modules` 的信封**，这个端点上只跑真正的变化。存活改走另一条路：
+
+```text
+POST /api/ingest/presence
+```
+
+无变化时每 ≥30 秒一条，只带 `state` 和 `active_modules`。有数据要发时不走这条——那个包本身就证明上报器活着。崩溃、断网、强制关机时上报器什么都发不出来，那些靠服务端「多久没收到心跳」的超时兜底。
+
+各模块的指纹粒度决定了「无变化」有多容易达成：`charger` 含功率/电压/电流，充电中几乎每轮都变；`desktop` 是应用名 + bundleID + 图标，不切应用就不变；`apple_music` 的进度**不入签名**，所以播放中也不变，只有 seek 偏离锚点超过容差才算；`vibe_coding` 看 `ccusage` 的刷新时间戳。真正的零 telemetry 场景是充电头没接、不切前台应用、音乐不换曲不 seek、ccusage 未刷新——此时只有每 30 秒一条 presence。
+
+Music.app 封面和前台应用图标由 Mac 直接读取，只在内容变化时上传一次；服务端按内容哈希生成 `/api/image/asset/:id` 地址，普通状态心跳不会重复携带图片。公开读取按用途拆分为 `/api/status/charger`、`/api/status/desktop`、`/api/status/music` 和 `/api/status/vibecoding`。
 
 ### HomePod mini 播放实况
 
