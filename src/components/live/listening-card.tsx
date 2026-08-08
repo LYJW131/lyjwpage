@@ -496,8 +496,14 @@ export function ListeningCard({ className }: { className?: string }) {
           */}
               <div className="flex min-w-0 flex-1 flex-col justify-center">
                 {/* 图标在左、文字在右，和 CHARGER / C1 那些标签行一致：
-                    对齐的是图标的左边界，标签文字本身缩进 */}
-                <div className="flex min-w-0 items-center gap-1.5">
+                    对齐的是图标的左边界，标签文字本身缩进。
+
+                    min-h-5 锁死行高：设备标签只在实时曲目那一版出现，它自带
+                    边框和内距（20px），比光秃秃的 label-mono（约 12px）高一截。
+                    不锁的话两版 hero 高度不同，外层 justify-center 会重新居中，
+                    切换时整列上下挪一下 —— 交叉淡入让新旧同时可见，那一挪就成了
+                    肉眼可见的滑动。 */}
+                <div className="flex min-h-5 min-w-0 items-center gap-1.5">
                   <Bars active={hero.playing} />
                   <span
                     className={cn(
@@ -533,12 +539,17 @@ export function ListeningCard({ className }: { className?: string }) {
                 {hero.track ? (
                   <HeroProgress track={hero.track} subtitle={hero.subtitle} />
                 ) : (
-                  <div
-                    className="mt-px truncate text-sm text-muted-foreground"
-                    title={hero.subtitle}
-                  >
-                    {hero.subtitle}
-                  </div>
+                  <>
+                    <div
+                      className="mt-px truncate text-sm text-muted-foreground"
+                      title={hero.subtitle}
+                    >
+                      {hero.subtitle}
+                    </div>
+                    {/* 占位，尺寸和 HeroProgress 那根进度条一模一样。历史条目没有
+                        进度可显示，但两版 hero 的高度必须一致，理由同上面那段。 */}
+                    <div className="mt-1.5 h-0.75" aria-hidden />
+                  </>
                 )}
               </div>
             </HeroWrapper>
