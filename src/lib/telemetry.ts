@@ -356,6 +356,7 @@ export async function getMusicPayload(): Promise<MusicPayload> {
     (homePodPausedFresh ? homePodMusic : null);
   // 命中会长期缓存，绝大多数调用不会真的打上游
   const lookup = music ? await resolveTrackLookup(music) : null;
+  const link = lookup?.link ?? null;
 
   return {
     /**
@@ -372,7 +373,8 @@ export async function getMusicPayload(): Promise<MusicPayload> {
     ) || null,
     // 没东西可显示，而不是「数据过期」—— 没在听歌时这就是常态
     idle: !music,
-    link: lookup?.link ?? null,
+    id: lookup?.id ?? null,
+    link,
   };
 }
 

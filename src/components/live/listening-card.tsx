@@ -184,6 +184,18 @@ function TrackRow({ track }: { track: ListeningItem }) {
   );
 }
 
+function dedupeListeningItems(items: ListeningItem[], currentId: string | null) {
+  const seen = new Set<string>();
+
+  return items.filter((item) => {
+    if (currentId && item.id === currentId) return false;
+    if (!item.id) return true;
+    if (seen.has(item.id)) return false;
+    seen.add(item.id);
+    return true;
+  });
+}
+
 /** 占位行。高度由 grid 轨道给，和 TrackRow 一样，加载完不会跳 */
 function SkeletonRow() {
   return (
@@ -360,8 +372,12 @@ export function ListeningCard({ className }: { className?: string }) {
         }
       : null;
 
-  // 本机那首顶替 hero 时，Apple Music 原来的第一首下沉回列表
-  const rest = localActive ? (data?.items ?? []) : tail;
+  // 本机那首顶替 hero 时，Apple Music 原来的第一首下沉回列表；
+  // 但和实时资源 ID 相同的条目不再重复展示。
+  const rest = dedupeListeningItems(
+    localActive ? (data?.items ?? []) : tail,
+    localActive ? (live?.id ?? null) : null,
+  );
   // 对重排稳定的 key，否则顶部插入新条目时会被当成整批换新
   const restKeys = stableKeys(rest.map((item) => item.id));
   const listRef = useRowSnap(restKeys[0]);

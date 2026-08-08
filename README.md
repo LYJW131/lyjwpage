@@ -66,10 +66,10 @@ Apple Music 的封面没有代理，仍走 `mzstatic.com` 直链 —— 那本�
 
 ### 最近在听 — Apple Music
 
-两条独立凭据：
+需要 **Developer Token** 和 **Music-User-Token** 两条凭据，有两种拿法，优先前者：
 
-1. **Developer Token** —— 用 `.p8` 私钥签的 ES256 JWT，服务端可再生，缓存 12 小时（提前 5 分钟换新）。用 `jose` 签而不是 `node:crypto`，因为后者默认输出 DER 编码，而 JWT 要的是裸 r‖s（P1363）—— 这点搞错 Apple 会直接 401。
-2. **Music-User-Token** —— MusicKit 授权后产出，服务端无法自助生成，过期只能重新获取。
+1. **Mac 上报器推送**（默认）—— Mac Telemetry Hub 用本机 MusicKit 现签一对，POST 到 `/api/ingest/apple-music/credentials`。`.p8` 私钥留在那台机器的钥匙串里由系统保管，服务器上一份都没有。代价是 developer token 会过期，由上报器按它自己 JWT 里的 `exp`、过了寿命中点就重签重发。凭据存 Redis，和 `telemetryState` 严格分开——后者会经 `/api/status/*` 发到浏览器。
+2. **服务端自签**（回落）—— 收不到推送时，用 `.p8` 私钥签 ES256 JWT，缓存 12 小时（提前 5 分钟换新），Music-User-Token 读 `APPLE_MUSIC_USER_TOKEN`。用 `jose` 签而不是 `node:crypto`，因为后者默认输出 DER 编码，而 JWT 要的是裸 r‖s（P1363）—— 这点搞错 Apple 会直接 401。
 
 拉 `/v1/me/recent/played?limit=10`。注意这个端点返回的是**专辑、歌单、电台这类容器**，不是单曲：专辑给 `artistName`、歌单给 `curatorName`，没有 `durationInMillis`，`limit` 上限是 10。列表缓存 30 秒。
 
