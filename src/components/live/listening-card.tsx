@@ -13,7 +13,7 @@ import {
 } from "react";
 
 import { Card } from "@/components/ui/card";
-import { MUSIC_PATH, useLiveStream } from "@/hooks/use-live-stream";
+import { useLiveStream } from "@/hooks/use-live-stream";
 import { useStatus } from "@/hooks/use-status";
 import { stableKeys } from "@/lib/keys";
 import {
@@ -23,6 +23,7 @@ import {
   STATIC_TRANSITION,
   STATIC_VARIANTS,
 } from "@/lib/motion";
+import { LISTENING_PATH, MUSIC_PATH } from "@/lib/paths";
 import type {
   ListeningItem,
   ListeningPayload,
@@ -309,7 +310,7 @@ type Hero = {
 
 export function ListeningCard({ className }: { className?: string }) {
   const { data, error, isLoading } = useStatus<ListeningPayload>(
-    "/api/status/listening",
+    LISTENING_PATH,
     REFRESH_MS,
   );
   const { connected } = useLiveStream();

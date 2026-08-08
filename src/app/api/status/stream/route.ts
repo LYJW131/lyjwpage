@@ -1,5 +1,4 @@
 import { type LiveEvent, subscribe } from "@/lib/live-events";
-import { getDesktopPayload, getMusicPayload } from "@/lib/telemetry";
 
 // 需要常驻连接和进程内订阅，不能跑在 Edge，也不能被静态化
 export const runtime = "nodejs";
@@ -59,19 +58,6 @@ export function GET(request: Request) {
           cleanup();
         }
       };
-      // 首帧仍是每条连接自己发：新连上的人不该干等到下一个 tick
-      const writeInitial = async () => {
-        try {
-          write(frame("desktop", getDesktopPayload()));
-          write(frame("music", await getMusicPayload()));
-        } catch (error) {
-          console.error(
-            "[stream]",
-            error instanceof Error ? error.message : String(error),
-          );
-        }
-      };
-
       request.signal.addEventListener("abort", cleanup);
 
       release = subscribe((event: LiveEvent) => {
@@ -85,8 +71,16 @@ export function GET(request: Request) {
         return;
       }
 
-      void writeInitial();
-      // 注释帧，浏览器会忽略它，只用来让连接上一直有字节流动
+      /*
+       * 不发首帧。
+       *
+       * 卡片挂载时 SWR 本来就会拉一次，首帧只是把同一份状态再送一遍；
+       * 而且算 music 那份要顺带查 HomePod 和 Apple Music 目录，等于每建立
+       * 一条连接就白跑一遍。断线重连同理 —— 断开期间卡片是 3 秒一轮的快节奏，
+       * 手上的状态最多差 3 秒。
+       *
+       * 下面这个是注释帧，浏览器会忽略它，只用来让连接上一直有字节流动。
+       */
       keepalive = setInterval(() => write(": keepalive\n\n"), KEEPALIVE_MS);
     },
     cancel() {

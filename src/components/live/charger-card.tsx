@@ -1,39 +1,31 @@
 "use client";
 
 import NumberFlow from "@number-flow/react";
-import { useCallback, useRef } from "react";
 
 import { Sparkline } from "@/components/live/sparkline";
 import { Card } from "@/components/ui/card";
 import { StatusDot, type DotTone } from "@/components/ui/status-dot";
-import { CHARGER_PATH, useLiveStream } from "@/hooks/use-live-stream";
+import { useLiveStream } from "@/hooks/use-live-stream";
+import { incrementalFetcher, useStatus } from "@/hooks/use-status";
 import { historyCursor, mergeChargerHistory } from "@/lib/charger-history";
-import { useStatus } from "@/hooks/use-status";
-import type {
-  ChargerPayload,
-  ChargerPort,
-  ChargerSample,
-  ChargerStatus,
-  StatusResponse,
-} from "@/lib/types";
+import { CHARGER_PATH } from "@/lib/paths";
+import type { ChargerPayload, ChargerPort, ChargerStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-/** 与 charger-store 的 HISTORY_LIMIT 保持一致，别让拼出来的序列无限长 */
-const HISTORY_LIMIT = 400;
-
-/**
- * 服务端产生新采样点的节奏跟着上报器的 postInterval 走，实测中位间隔约 32 秒。
- * 原来固定 5 秒轮询，每产生一个点要空转六七次，拿回来全是一模一样的数据。
- * 取的是服务端存好的快照，调慢不会传导到充电头。
- */
 /**
  * 和上报节奏对齐。
  *
- * 采集端是 1 Hz，但上报按节流窗口走（默认 30 秒），原来 15 秒一轮里大约有
- * 一半拿到的是完全相同的数据。插拔和上下线已经走 SSE 即时推送，不靠这条，
- * 所以这里只需要接住滚动读数。
+ * 采集端是 1 Hz，但上报按上报器的节流窗口走（那边可配，代码默认 10 秒、本机
+ * 配的是 30 秒），原来 15 秒一轮里大约有一半拿到的是完全相同的数据。插拔和
+ * 上下线已经走 SSE 即时推送，不靠这条，所以这里只需要接住滚动读数。
  */
 const REFRESH_MS = 30_000;
+
+/**
+ * 曲线增量拉取。游标和合并都在 lib/charger-history，推送和轮询共用同一套 ——
+ * 所以这个壳子在模块作用域就能造好，天然是稳定引用。
+ */
+const fetchCharger = incrementalFetcher<ChargerPayload>(historyCursor, mergeChargerHistory);
 
 function tone(status: ChargerStatus | undefined): DotTone {
   if (!status?.connected) return "off";
@@ -46,20 +38,12 @@ function portTone(port: ChargerPort, connected: boolean): DotTone {
 }
 
 export function ChargerCard({ className }: { className?: string }) {
-  // 曲线累加器提到了模块级（lib/charger-history），推送和轮询共用同一套合并
-  const fetchCharger = useCallback(async (): Promise<StatusResponse<ChargerPayload>> => {
-    const since = historyCursor();
-    const url = since == null ? CHARGER_PATH : `${CHARGER_PATH}?since=${since}`;
-
-    const response = await fetch(url, { cache: "no-store" });
-    if (!response.ok) throw new Error(`请求 ${url} 失败：${response.status}`);
-    const envelope = (await response.json()) as StatusResponse<ChargerPayload>;
-    if (!envelope.ok) return envelope;
-
-    return { ...envelope, data: mergeChargerHistory(envelope.data) };
-  }, []);
-
-  // 插拔/换设备时服务端会推一条事件让这个键立即重取；滚动读数照旧靠轮询
+  /**
+   * 插拔/换设备时服务端会推一条事件，直接写进这个键；滚动读数照旧靠轮询。
+   *
+   * 这里刻意不看 connected：和 desktop / music 不同，这张卡的轮询本来就不是
+   * 推送的兜底，它自己就是数据来源，断不断连都得按同一个节奏问。
+   */
   useLiveStream();
   const { data, error, isLoading } = useStatus<ChargerPayload>(
     CHARGER_PATH,
