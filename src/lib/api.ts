@@ -36,7 +36,9 @@ export async function statusRoute<T>(
     );
   } catch (error) {
     const message = reason(error);
-    console.error("[status]", message);
+    // 带上栈：降级信封只把 message 发给页面，没有栈的话服务端日志里
+    // 一句「Cannot read properties of null」根本定位不到是哪一处
+    console.error("[status]", error instanceof Error ? (error.stack ?? message) : message);
     return NextResponse.json(
       { ok: false as const, error: message, fetchedAt },
       { status: 200, headers: { "Cache-Control": "no-store" } },

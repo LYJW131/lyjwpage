@@ -1,4 +1,4 @@
-import { key, withRedis } from "@/lib/redis";
+import { mirrorKey } from "@/lib/redis";
 
 /**
  * Emby 播放中的状态，由 webhook 推进来。
@@ -13,7 +13,6 @@ export const TICKS_PER_MS = 10_000;
 /** 事件之间可能隔很久（一部电影两小时只有首尾两条），保留时间要足够宽 */
 const TTL_MS = 6 * 60 * 60 * 1000;
 
-const K_NOW_PLAYING = key("emby", "nowPlaying");
 
 export type EmbyNowPlaying = {
   itemId: string;
@@ -27,31 +26,17 @@ export type EmbyNowPlaying = {
   at: number;
 };
 
-let fallback: EmbyNowPlaying | null = null;
+/** Redis 为主、进程内存为辅，规则见 lib/redis 的 mirrorKey */
+const mirror = mirrorKey<EmbyNowPlaying>(["emby", "nowPlaying"], (state) => state.at, {
+  ttlMs: TTL_MS,
+});
 
 export async function setNowPlaying(state: EmbyNowPlaying) {
-  fallback = state;
-  await withRedis(
-    async (redis) => redis.set(K_NOW_PLAYING, JSON.stringify(state), "PX", TTL_MS),
-    null,
-  );
+  await mirror.put(state);
 }
 
 export async function clearNowPlaying() {
-  fallback = null;
-  await withRedis(async (redis) => redis.del(K_NOW_PLAYING), null);
-}
-
-async function readNowPlaying(): Promise<EmbyNowPlaying | null> {
-  const raw = await withRedis(async (redis) => redis.get(K_NOW_PLAYING), null);
-  if (raw) {
-    try {
-      return JSON.parse(raw) as EmbyNowPlaying;
-    } catch {
-      // 脏数据当作没有
-    }
-  }
-  return fallback;
+  await mirror.drop();
 }
 
 export type ResolvedNowPlaying = {
@@ -80,7 +65,7 @@ export type ResolvedNowPlaying = {
  * 没收到（客户端崩了、网络断了），此时按已结束处理，不会一直挂着。
  */
 export async function getNowPlaying(): Promise<ResolvedNowPlaying | null> {
-  const state = await readNowPlaying();
+  const state = await mirror.get();
   if (!state) return null;
 
   if (state.paused) {
