@@ -32,6 +32,13 @@ export type ListeningItem = {
   artist: string;
   artwork: string | null;
   link: string | null;
+  /**
+   * 封面取色，Apple 随 artwork 一起给：bgColor 加 textColor1..4，最多五个。
+   *
+   * 注意 textColor 是设计来叠在 bgColor 上的 —— 浅色封面配的是近黑，深色封面
+   * 配的是浅色。所以不能直接拿来画东西，用之前必须把亮度拉齐，见前端那条彩虹条。
+   */
+  palette: string[];
 };
 
 /**

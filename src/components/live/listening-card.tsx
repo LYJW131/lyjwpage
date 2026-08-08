@@ -51,6 +51,25 @@ const VISIBLE_ROWS = 4;
 const MIN_ROW_HEIGHT_PX = 48;
 
 /**
+ * 把封面取色拼成那条彩虹的渐变。
+ *
+ * Apple 给的五个色不能直接用：textColor 是设计来叠在 bgColor 上的，浅色封面
+ * 配近黑、深色封面配浅色，原样画出来一半的专辑会得到一条几乎全黑的线。
+ * `oklch(from …)` 只留色相、把亮度和彩度按住在可见区间，这样每张封面都出一条
+ * 看得见、又确实是它自己颜色的带子。换算交给 CSS，不在 JS 里写颜色数学。
+ *
+ * 首尾补回第一个色，配 background-size: 200% 才能无缝循环。取不到调色板就返回
+ * undefined，让 .rainbow-bar 自带的那条通用彩虹兜底。
+ */
+function paletteGradient(palette: string[]): string | undefined {
+  if (palette.length < 2) return undefined;
+  const stops = [...palette, palette[0]]
+    .map((color) => `oklch(from ${color} 0.74 max(c, 0.09) h)`)
+    .join(", ");
+  return `linear-gradient(90deg, ${stops})`;
+}
+
+/**
  * 三根竖条。推断为正在播时跳动，否则静止成一个普通的音乐小图标。
  *
  * 动画相位挂在墙上时钟，不挂在挂载时刻。换歌时整个 hero 会重新挂载，CSS 动画
@@ -397,6 +416,8 @@ type Hero = {
   link: string | null;
   label: string;
   playing: boolean;
+  /** 封面取色，只有历史条目那一支用得上 */
+  palette: string[];
   /**
    * 本机 Music.app 正在放的那首（而不是 Apple Music 的历史记录）。
    * 有值就说明能拿到播放进度，副标题行会换成带进度条的版本。
@@ -460,6 +481,7 @@ export function ListeningCard({ className }: { className?: string }) {
         link: live?.link ?? null,
         label: localTrack!.state === "playing" ? "播放中" : "已暂停",
         playing: localTrack!.state === "playing",
+        palette: [],
         track: localTrack,
       }
     : latest
@@ -471,6 +493,7 @@ export function ListeningCard({ className }: { className?: string }) {
           link: latest.link,
           label: playing ? "播放中" : "最近听过",
           playing,
+          palette: latest.palette,
           track: null,
         }
       : null;
@@ -599,6 +622,7 @@ export function ListeningCard({ className }: { className?: string }) {
                         一道不可见的空档，不如填满，见 globals.css 的 .rainbow-bar。 */}
                     <div
                       className="rainbow-bar mt-1.5 h-0.75 rounded-full"
+                      style={{ backgroundImage: paletteGradient(hero.palette) }}
                       aria-hidden
                     />
                   </>

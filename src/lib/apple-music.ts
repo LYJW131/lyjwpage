@@ -59,6 +59,16 @@ async function resolveCredentials(): Promise<Credentials> {
   };
 }
 
+type AppleArtwork = {
+  url?: string;
+  /** 以下五个都是不带 # 的六位十六进制 */
+  bgColor?: string;
+  textColor1?: string;
+  textColor2?: string;
+  textColor3?: string;
+  textColor4?: string;
+};
+
 type AppleResource = {
   id?: string;
   /** albums / playlists / stations / library-albums … */
@@ -72,7 +82,7 @@ type AppleResource = {
     /** 歌单是创建者 */
     curatorName?: string;
     url?: string;
-    artwork?: { url?: string; bgColor?: string };
+    artwork?: AppleArtwork;
     playParams?: { id?: string };
   };
 };
@@ -94,7 +104,22 @@ async function normalize(resource: AppleResource): Promise<ListeningItem> {
     // 原样透传模板 URL，尺寸由取图的那一侧填 —— 见 lib/apple-artwork
     artwork: fromLibrary ?? attributes.artwork?.url ?? null,
     link: attributes.url ?? null,
+    palette: artworkPalette(attributes.artwork),
   };
+}
+
+/** 只挑出六位十六进制的那几个，补上 # 。取不到就是空数组，前端自己兜底 */
+function artworkPalette(artwork?: AppleArtwork): string[] {
+  if (!artwork) return [];
+  return [
+    artwork.bgColor,
+    artwork.textColor1,
+    artwork.textColor2,
+    artwork.textColor3,
+    artwork.textColor4,
+  ]
+    .filter((value): value is string => typeof value === "string" && /^[0-9a-f]{6}$/i.test(value))
+    .map((value) => `#${value}`);
 }
 
 async function appleFetchRaw<T>(url: string, credentials: Credentials): Promise<T> {
