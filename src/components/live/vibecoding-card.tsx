@@ -213,17 +213,19 @@ const LIMIT_GROUP_NAMES: Record<string, string> = {
 };
 
 /**
- * 主额度桶的后缀。
+ * 主额度桶的后缀，只认上游自己声明的那一个。
  *
- * 没有 label 就是没有模型作用域，也就是「所有模型合计」；有 label 的是按模型
- * 细分的子桶（Claude 的 Fable、Codex 的 Spark）。光写 Weekly 两者分不清，
- * 所以给主桶补一个和官方面板一样的后缀。
+ * 「没有 label 就是所有模型合计」这个归纳是错的 —— 它只在 Claude 那边成立：
+ * 那边 weekly_scoped（Fable）是 weekly_all 的子集，所以后者确实是合计。
+ * Codex 的 codex 和 codex_bengalfox（Spark）是并列的独立配额，主桶根本不含
+ * Spark，写「all models」等于说了个假话。
  *
- * 按语义判而不是按 key 列白名单：两边的 key 长得完全不一样（weekly_all
- * 和 codex.primary），列白名单等于每加一个额度桶都要回来补一行。
- * 只给周额度补 —— 5 小时那档官方面板就写 "5-hour limit"，没有这个后缀。
+ * 两边的桶结构不一样，就别指望一条语义规则同时套住。这里只给上游明确叫
+ * weekly_all 的那个加后缀，其余原样。
  */
-const ALL_MODELS_SUFFIX = "all models";
+const LIMIT_KEY_SUFFIXES: Record<string, string> = {
+  weekly_all: "all models",
+};
 
 /** 判定「当日档」的上限。跨过一天的窗口按周额度那类算，不该顶替 5 小时档 */
 const SESSION_WINDOW_MAX_MINUTES = 1440;
@@ -253,7 +255,7 @@ function formatLimitTitle(limit: VibeCodingLimit) {
     formatWindow(limit.windowMinutes) ??
     (limit.group ? (LIMIT_GROUP_NAMES[limit.group] ?? limit.group) : null);
   // label 非 null 就是子额度桶，附在窗口名后面把它和主额度区分开
-  const suffix = limit.label ?? (isSessionWindow(limit) ? null : ALL_MODELS_SUFFIX);
+  const suffix = limit.label ?? LIMIT_KEY_SUFFIXES[limit.key];
   const parts = [window, suffix].filter(Boolean);
   return parts.length > 0 ? parts.join(" · ") : limit.key;
 }
