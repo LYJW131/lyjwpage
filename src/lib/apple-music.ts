@@ -1,4 +1,4 @@
-import { getAppleMusicCredentials } from "@/lib/apple-music-credentials";
+import { readAppleMusicCredentials } from "@/lib/apple-music-credentials";
 import { cached, get as cacheGet, put as cachePut } from "@/lib/cache";
 import { storeImageBuffer } from "@/lib/image-store";
 import type { ListeningItem, NowPlayingGuess } from "@/lib/types";
@@ -42,16 +42,20 @@ type Credentials = {
 };
 
 async function resolveCredentials(): Promise<Credentials> {
-  const pushed = await getAppleMusicCredentials();
-  if (!pushed) {
+  const result = await readAppleMusicCredentials();
+  if (!result.ok) {
+    // 两种没有，修法相反：一个去看 Redis，一个去点授权按钮
     throw new Error(
-      "没有收到 Mac 上报器的 Apple Music 凭据 —— 在上报器的设置里授权 Apple Music",
+      result.reason === "redis-unreachable"
+        ? "读不到 Apple Music 凭据 —— Redis 连不上，凭据本身可能还在"
+        : "没有收到 Mac 上报器的 Apple Music 凭据 —— 在上报器的设置里授权 Apple Music",
     );
   }
+  const { credentials } = result;
   return {
-    developerToken: pushed.developerToken,
-    userToken: pushed.musicUserToken,
-    expiresAt: pushed.expiresAt,
+    developerToken: credentials.developerToken,
+    userToken: credentials.musicUserToken,
+    expiresAt: credentials.expiresAt,
   };
 }
 

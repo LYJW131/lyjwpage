@@ -1,4 +1,4 @@
-import { key, withRedis } from "@/lib/redis";
+import { mirrorKey } from "@/lib/redis";
 
 /**
  * Mac 上报器送来的 Apple Music 凭据。
@@ -20,36 +20,34 @@ export type StoredAppleMusicCredentials = {
   receivedAt: number;
 };
 
-const K = key("apple-music", "credentials");
-
-/** 没配 Redis 时退回进程内存。重启就没了，届时等上报器下一次续期补上 */
-let memory: StoredAppleMusicCredentials | null = null;
+const mirror = mirrorKey<StoredAppleMusicCredentials>(
+  ["apple-music", "credentials"],
+  (value) => value.receivedAt,
+);
 
 export async function putAppleMusicCredentials(
   credentials: StoredAppleMusicCredentials,
 ): Promise<void> {
-  memory = credentials;
-  await withRedis(async (redis) => {
-    await redis.set(K, JSON.stringify(credentials));
-  }, undefined);
+  await mirror.put(credentials);
 }
 
+/** null 有两种含义，调用方分不开也不需要分：都是「现在用不了」。见 readAppleMusicCredentials */
 export async function getAppleMusicCredentials(): Promise<StoredAppleMusicCredentials | null> {
-  /**
-   * 包一层再返回，是为了把「Redis 说没有」和「Redis 用不了」分开。
-   *
-   * withRedis 的 fallback 只在后者触发，但内层直接返回 null 的话两种情况在外面
-   * 长得一模一样，就只能一律退回进程内存 —— 那样从 Redis 里删掉的凭据还会从
-   * 内存里活过来，实测踩到过。
-   */
-  const answered = await withRedis(async (redis) => {
-    const raw = await redis.get(K);
-    return { value: raw ? (JSON.parse(raw) as StoredAppleMusicCredentials) : null };
-  }, null);
-  if (answered) {
-    // Redis 是权威：它说没有就是没有，顺手把内存里那份也丢掉
-    if (!answered.value) memory = null;
-    return answered.value;
-  }
-  return memory;
+  return mirror.get();
+}
+
+/**
+ * 带原因的读取。
+ *
+ * 「Redis 连不上」和「上报器还没授权过」都表现为拿不到凭据，但修法完全相反 ——
+ * 前者去看 Redis，后者去点授权按钮。报错里指错方向会白白浪费一轮排查，实测
+ * 遇到过：凭据明明在 Redis 里，只是容器重建那几秒断连，页面却说「去授权」。
+ */
+export async function readAppleMusicCredentials(): Promise<
+  | { ok: true; credentials: StoredAppleMusicCredentials }
+  | { ok: false; reason: "redis-unreachable" | "never-pushed" }
+> {
+  const credentials = await mirror.get();
+  if (credentials) return { ok: true, credentials };
+  return { ok: false, reason: (await mirror.reachable()) ? "never-pushed" : "redis-unreachable" };
 }

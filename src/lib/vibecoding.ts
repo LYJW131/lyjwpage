@@ -1,4 +1,5 @@
 import { VIBECODING_ACTIVITY_LIMIT } from "@/lib/limits";
+import { mirrorKey } from "@/lib/redis";
 import type {
   VibeCodingAgent,
   VibeCodingAgentId,
@@ -25,8 +26,17 @@ type RawAgentDay = {
   reasoningOutputTokens?: unknown;
 };
 
-let pushed: VibeCodingPayload | null = null;
-let pushedAt = 0;
+/**
+ * Redis 为主、进程内存为辅，规则见 lib/redis 的 mirrorKey。
+ *
+ * 从前这里只有进程内存，没碰 Redis —— 于是清空 Redis 之后 vibe coding 还照常
+ * 显示，和别的模块行为不一致。落到 Redis 还顺带白得一样好处：dev server 重启
+ * 后不用干等下一次推送。
+ */
+const mirror = mirrorKey<{ payload: VibeCodingPayload; pushedAt: number }>(
+  ["vibecoding", "pushed"],
+  (state) => state.pushedAt,
+);
 
 function finite(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
@@ -221,11 +231,10 @@ function positiveOrNull(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null;
 }
 
-export function recordVibeCodingReport(report: unknown, receivedAt = Date.now()) {
+export async function recordVibeCodingReport(report: unknown, receivedAt = Date.now()) {
   const prepared = normalizePreparedSummary(report, "push");
   if (!prepared) throw new Error("vibe_coding 必须是 Mac Telemetry Hub v2 聚合摘要");
-  pushed = prepared;
-  pushedAt = receivedAt;
+  await mirror.put({ payload: prepared, pushedAt: receivedAt });
 }
 
 /**
@@ -238,7 +247,9 @@ export async function getVibeCodingPayload(
   { since }: { since?: number } = {},
 ): Promise<VibeCodingPayload> {
   // Mac Telemetry Hub 是唯一采集端；没有推送就明确报错，不静默切换数据源。
-  if (!pushed) throw new Error("尚未收到 Mac Telemetry Hub 的 ccusage 推送");
+  const state = await mirror.get();
+  if (!state) throw new Error("尚未收到 Mac Telemetry Hub 的 ccusage 推送");
+  const { payload: pushed, pushedAt } = state;
 
   // 客户端落后太多、最旧的桶都已经滚出窗口时拼不出连续曲线，只能整份重发
   const oldest = Math.min(

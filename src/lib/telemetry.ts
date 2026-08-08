@@ -271,7 +271,7 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
   }
 
   if ("vibe_coding" in modules) {
-    recordVibeCodingReport(modules.vibe_coding, receivedAt);
+    await recordVibeCodingReport(modules.vibe_coding, receivedAt);
     accepted += 1;
   }
 

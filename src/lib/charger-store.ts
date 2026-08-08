@@ -1,5 +1,5 @@
 import { CHARGER_HISTORY_LIMIT } from "@/lib/limits";
-import { key, withRedis } from "@/lib/redis";
+import { askRedis, key, tellRedis, withRedis } from "@/lib/redis";
 import type { ChargerSample, ChargerStatus } from "@/lib/types";
 
 /**
@@ -30,45 +30,86 @@ const K_LATEST = key("charger", "latest");
 const K_HISTORY = key("charger", "history");
 const K_LAST_PUSH = key("charger", "lastPush");
 
-// 没有 Redis 时的退路
+/**
+ * Redis 不可达时的退路。规则和 lib/redis 的 mirrorKey 一致，这里手写是因为
+ * 充电头是两个 string 键加一条 list，套不进单键那个工厂。
+ *
+ * `persisted` 记的是内存这份有没有真落进 Redis：没落进去时它就是唯一真相，
+ * Redis 说「没有」不能当成「被删了」。
+ */
 const fallback = {
   latest: null as ChargerStatus | null,
   receivedAt: 0,
   lastPushAt: 0,
   history: [] as ChargerSample[],
+  persisted: false,
 };
 
 type Stored = { status: ChargerStatus; receivedAt: number };
 
-async function readLatest(): Promise<Stored | null> {
-  const raw = await withRedis(async (redis) => redis.get(K_LATEST), null);
-  if (raw) {
-    try {
-      return JSON.parse(raw) as Stored;
-    } catch {
-      // 脏数据当作没有
-    }
-  }
+function fromMemory(): Stored | null {
   return fallback.latest
     ? { status: fallback.latest, receivedAt: fallback.receivedAt }
     : null;
 }
 
+async function readLatest(): Promise<Stored | null> {
+  const answered = await askRedis((redis) => redis.get(K_LATEST));
+  // Redis 答不上话，只能信内存
+  if (!answered) return fromMemory();
+
+  if (answered.value) {
+    let stored: Stored;
+    try {
+      stored = JSON.parse(answered.value) as Stored;
+    } catch {
+      // 脏数据按「答不上来」算，不按「没有」—— 否则会连累好好的内存副本
+      return fromMemory();
+    }
+    // 写失败过时内存这份更新，别被 Redis 里故障前的旧值盖回去
+    if (!fallback.persisted && fallback.latest && fallback.receivedAt > stored.receivedAt) {
+      return fromMemory();
+    }
+    fallback.latest = stored.status;
+    fallback.receivedAt = stored.receivedAt;
+    fallback.persisted = true;
+    return stored;
+  }
+
+  // Redis 说没有：写进去过就是真被删了
+  if (fallback.persisted) {
+    fallback.latest = null;
+    fallback.receivedAt = 0;
+    fallback.history.length = 0;
+    return null;
+  }
+  return fromMemory();
+}
+
+/**
+ * 曲线不比时间戳，比 latest 那份就够 —— 两者同一次写入、同生共死。Redis 故障
+ * 窗里漏掉几个功率点在图上看不出来，为它单独记一套新旧不值当。
+ */
 async function readHistory(): Promise<ChargerSample[]> {
-  const raw = await withRedis(
-    async (redis) => redis.lrange(K_HISTORY, 0, -1),
-    null as string[] | null,
-  );
-  if (raw && raw.length) {
+  const answered = await askRedis((redis) => redis.lrange(K_HISTORY, 0, -1));
+  if (!answered) return [...fallback.history];
+
+  if (answered.value.length) {
     const parsed: ChargerSample[] = [];
-    for (const item of raw) {
+    for (const item of answered.value) {
       try {
         parsed.push(JSON.parse(item) as ChargerSample);
       } catch {
         // 跳过坏点，不因为一条脏数据丢掉整条曲线
       }
     }
+    fallback.history = [...parsed];
     return parsed;
+  }
+
+  if (fallback.persisted) {
+    fallback.history.length = 0;
+    return [];
   }
   return [...fallback.history];
 }
@@ -109,13 +150,12 @@ export async function recordStatus(status: ChargerStatus, receivedAt = Date.now(
   fallback.receivedAt = receivedAt;
   fallback.lastPushAt = receivedAt;
 
-  await withRedis(async (redis) => {
+  fallback.persisted = await tellRedis(async (redis) => {
     const pipe = redis.pipeline();
     pipe.set(K_LATEST, JSON.stringify({ status, receivedAt }), "PX", TTL_MS);
     pipe.set(K_LAST_PUSH, String(receivedAt), "PX", TTL_MS);
-    await pipe.exec();
-    return null;
-  }, null);
+    return pipe.exec();
+  });
 
   // 同一帧被推两次时不重复记。采集端现在是 1 Hz 推流，每帧都会换 updated_at，
   // 所以这道判断只在重试或重复投递时才拦得住东西 —— 留着是因为那才是它的本意。
