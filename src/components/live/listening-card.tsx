@@ -594,9 +594,17 @@ export function ListeningCard({ className }: { className?: string }) {
                     >
                       {hero.subtitle}
                     </div>
-                    {/* 占位，尺寸和 HeroProgress 那根进度条一模一样。历史条目没有
-                        进度可显示，但两版 hero 的高度必须一致，理由同上面那段。 */}
-                    <div className="mt-1.5 h-0.75" aria-hidden />
+                    {/*
+                      进度条的底槽，只是没有填充。
+
+                      历史条目拿不到进度（列表接口只给 id/标题/艺人/封面/链接，
+                      没有播放时间也没有时长），但这一行的高度必须和实时那版一致，
+                      否则外层 justify-center 会重新居中、切换时整列上下挪。
+
+                      留一根空槽而不是留白：两版那一行就完全同构，交叉淡入时这根线
+                      不会凭空出现又消失，只是失去彩色填充。
+                    */}
+                    <div className="mt-1.5 h-0.75 rounded-full bg-muted" aria-hidden />
                   </>
                 )}
               </div>
