@@ -1,15 +1,15 @@
 "use client";
 
 import NumberFlow from "@number-flow/react";
-import { useCallback, useRef } from "react";
 
 import { ClaudeSpinner } from "@/components/live/claude-spinner";
 import { CodexActivityIndicator } from "@/components/live/codex-activity-indicator";
 import { Sparkline } from "@/components/live/sparkline";
 import { Card } from "@/components/ui/card";
-import { useStatus } from "@/hooks/use-status";
+import { incrementalFetcher, useStatus } from "@/hooks/use-status";
+import { VIBECODING_PATH } from "@/lib/paths";
+import { activityCursor, mergeVibeCodingActivity } from "@/lib/vibecoding-activity";
 import type {
-  StatusResponse,
   VibeCodingAgent,
   VibeCodingLimit,
   VibeCodingPayload,
@@ -17,11 +17,14 @@ import type {
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-const VIBECODING_PATH = "/api/status/vibecoding";
-/** 上游给 30 天 × 12 小时一桶，别让并出来的序列无限长 */
-const ACTIVITY_LIMIT = 60;
 const REFRESH_MS = 60_000;
 const ACTIVE_WINDOW_MS = 5 * 60_000;
+
+/** 活动曲线增量拉取，和充电头共用同一个壳子。累加器在 lib/vibecoding-activity */
+const fetchVibeCoding = incrementalFetcher<VibeCodingPayload>(
+  activityCursor,
+  mergeVibeCodingActivity,
+);
 
 /**
  * 分档阈值。条和数字共用同一组，别在两处各写一遍 —— 分开写迟早改漏一个，
@@ -213,17 +216,19 @@ const LIMIT_GROUP_NAMES: Record<string, string> = {
 };
 
 /**
- * 主额度桶的后缀。
+ * 主额度桶的后缀，只认上游自己声明的那一个。
  *
- * 没有 label 就是没有模型作用域，也就是「所有模型合计」；有 label 的是按模型
- * 细分的子桶（Claude 的 Fable、Codex 的 Spark）。光写 Weekly 两者分不清，
- * 所以给主桶补一个和官方面板一样的后缀。
+ * 「没有 label 就是所有模型合计」这个归纳是错的 —— 它只在 Claude 那边成立：
+ * 那边 weekly_scoped（Fable）是 weekly_all 的子集，所以后者确实是合计。
+ * Codex 的 codex 和 codex_bengalfox（Spark）是并列的独立配额，主桶根本不含
+ * Spark，写「all models」等于说了个假话。
  *
- * 按语义判而不是按 key 列白名单：两边的 key 长得完全不一样（weekly_all
- * 和 codex.primary），列白名单等于每加一个额度桶都要回来补一行。
- * 只给周额度补 —— 5 小时那档官方面板就写 "5-hour limit"，没有这个后缀。
+ * 两边的桶结构不一样，就别指望一条语义规则同时套住。这里只给上游明确叫
+ * weekly_all 的那个加后缀，其余原样。
  */
-const ALL_MODELS_SUFFIX = "all models";
+const LIMIT_KEY_SUFFIXES: Record<string, string> = {
+  weekly_all: "all models",
+};
 
 /** 判定「当日档」的上限。跨过一天的窗口按周额度那类算，不该顶替 5 小时档 */
 const SESSION_WINDOW_MAX_MINUTES = 1440;
@@ -253,7 +258,7 @@ function formatLimitTitle(limit: VibeCodingLimit) {
     formatWindow(limit.windowMinutes) ??
     (limit.group ? (LIMIT_GROUP_NAMES[limit.group] ?? limit.group) : null);
   // label 非 null 就是子额度桶，附在窗口名后面把它和主额度区分开
-  const suffix = limit.label ?? (isSessionWindow(limit) ? null : ALL_MODELS_SUFFIX);
+  const suffix = limit.label ?? LIMIT_KEY_SUFFIXES[limit.key];
   const parts = [window, suffix].filter(Boolean);
   return parts.length > 0 ? parts.join(" · ") : limit.key;
 }
@@ -505,49 +510,8 @@ function AgentPanel({
 }
 
 export function VibeCodingCard({ className }: { className?: string }) {
-  /**
-   * 各 agent 的活动曲线自己攒着，每轮只问服务端要边界之后的桶。
-   * 放 ref 不放 state：返回的 payload 里已经带着并好的完整序列，
-   * 再存一份 state 只会多一次渲染。
-   */
-  const activityRef = useRef<Map<string, VibeCodingAgent["activity"]>>(new Map());
-
-  const fetchVibeCoding = useCallback(async (): Promise<
-    StatusResponse<VibeCodingPayload>
-  > => {
-    // 各 agent 的桶边界是对齐的，取其中最新的那个当水位线就够
-    let since: number | null = null;
-    for (const points of activityRef.current.values()) {
-      const newest = points[points.length - 1]?.t;
-      if (newest != null && (since == null || newest > since)) since = newest;
-    }
-    const url = since == null ? VIBECODING_PATH : `${VIBECODING_PATH}?since=${since}`;
-
-    const response = await fetch(url, { cache: "no-store" });
-    if (!response.ok) throw new Error(`请求 ${url} 失败：${response.status}`);
-    const envelope = (await response.json()) as StatusResponse<VibeCodingPayload>;
-    if (!envelope.ok) return envelope;
-
-    const agents = envelope.data.agents.map((agent) => {
-      if (!envelope.data.activityPartial) {
-        activityRef.current.set(agent.id, agent.activity);
-        return agent;
-      }
-      // 按 t 合并：边界那个桶还在累加，新值要覆盖旧值而不是追加
-      const merged = new Map(
-        (activityRef.current.get(agent.id) ?? []).map((point) => [point.t, point]),
-      );
-      for (const point of agent.activity) merged.set(point.t, point);
-      const activity = [...merged.values()]
-        .sort((a, b) => a.t - b.t)
-        .slice(-ACTIVITY_LIMIT);
-      activityRef.current.set(agent.id, activity);
-      return { ...agent, activity };
-    });
-
-    return { ...envelope, data: { ...envelope.data, agents } };
-  }, []);
-
+  // 不订阅 SSE：token 用量是累计的历史事实，Mac 掉线它不会变得不可信，
+  // 只是不再增长，没有理由跟着变灰
   const { data, error, isLoading } = useStatus<VibeCodingPayload>(
     VIBECODING_PATH,
     REFRESH_MS,

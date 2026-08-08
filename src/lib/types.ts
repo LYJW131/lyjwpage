@@ -280,3 +280,15 @@ export type VibeCodingPayload = {
 export type StatusResponse<T> =
   | { ok: true; data: T; fetchedAt: string }
   | { ok: false; error: string; fetchedAt: string };
+
+/** 上报被拒。不带 data，且与 T 无关 —— 各 ingest 端点共用同一种失败形状 */
+export type IngestFailure = { ok: false; error: string };
+
+/**
+ * 所有 /api/ingest/* 的统一信封。
+ *
+ * 和 StatusResponse 分开是因为语义不同：status 那边 ok:false 也返回 200
+ * （降级态给页面看），ingest 这边失败就是失败，状态码得让上报器能据此决定
+ * 重不重试。
+ */
+export type IngestResponse<T = null> = { ok: true; data: T } | IngestFailure;

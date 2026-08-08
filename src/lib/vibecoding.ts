@@ -1,3 +1,4 @@
+import { VIBECODING_ACTIVITY_LIMIT } from "@/lib/limits";
 import type {
   VibeCodingAgent,
   VibeCodingAgentId,
@@ -104,7 +105,11 @@ function normalizePreparedSummary(
   });
   if (
     agents.length !== AGENTS.length ||
-    agents.some((agent) => agent.last7Days?.length !== 7 || agent.activity.length !== 60)
+    agents.some(
+      (agent) =>
+        agent.last7Days?.length !== 7 ||
+        agent.activity.length !== VIBECODING_ACTIVITY_LIMIT,
+    )
   ) {
     return null;
   }

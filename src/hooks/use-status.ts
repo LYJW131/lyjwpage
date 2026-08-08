@@ -25,6 +25,32 @@ async function fetcher<T>(url: string): Promise<StatusResponse<T>> {
   return response.json();
 }
 
+/**
+ * 增量拉取的取数壳子。
+ *
+ * 曲线类的接口（充电头功率、vibe coding 活动）每轮只问服务端要游标之后的新
+ * 点，本地拼成完整序列。两张卡从前各写了一遍一模一样的「算游标 → 拼 URL →
+ * fetch → 检查 ok → 合并」，连错误文案都是复制的。
+ *
+ * 关键是 SWR 的缓存键必须保持是 path，不能把 `?since=` 拼进去 —— 那样每轮都
+ * 是一个新资源，去重、keepPreviousData、轮询计时器会全部失效。所以变化的部分
+ * 藏在这里面，外面看到的始终是同一个键。
+ *
+ * `cursor` 和 `merge` 都取模块级函数（charger-history / vibecoding-activity），
+ * 所以这个壳子可以在模块作用域构造好、天然是稳定引用，调用方不需要 useCallback。
+ */
+export function incrementalFetcher<T>(
+  cursor: () => number | null,
+  merge: (data: T) => T,
+): (path: string) => Promise<StatusResponse<T>> {
+  return async (path) => {
+    const since = cursor();
+    const envelope = await fetcher<T>(since == null ? path : `${path}?since=${since}`);
+    // 降级信封原样透出，别往合并器里塞 —— 它手上没有 data
+    return envelope.ok ? { ...envelope, data: merge(envelope.data) } : envelope;
+  };
+}
+
 export type StatusState<T> = {
   data: T | undefined;
   /** 上游报错 —— 注意这与「还在加载」是两回事 */
@@ -47,9 +73,7 @@ export function useStatus<T>(
   /** 传函数可以按当前数据动态决定间隔，比如「有东西在播就调快」 */
   refreshInterval: number | ((data: T | undefined) => number),
   /**
-   * 自定义取数。给需要增量拉取的接口用（充电头曲线就是）：SWR 的缓存键必须
-   * 保持是 path，不能把 ?since= 拼进去 —— 那样每轮都是新资源，去重、
-   * keepPreviousData、轮询计时器全部失效。所以变化的部分藏在 fetcher 里。
+   * 自定义取数。增量拉取的接口用 incrementalFetcher 造一个传进来。
    * 必须是稳定引用，否则 SWR 每次渲染都会重新取。
    */
   customFetcher?: (path: string) => Promise<StatusResponse<T>>,

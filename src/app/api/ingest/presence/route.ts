@@ -1,3 +1,4 @@
+import { ingestFailed, ingestRoute, jsonBody } from "@/lib/api";
 import { recordPresence, telemetryAuthorized } from "@/lib/telemetry";
 
 export const runtime = "nodejs";
@@ -15,23 +16,20 @@ export const dynamic = "force-dynamic";
  * 兜底。所以这个端点同时承担两件事：周期心跳，和优雅离开时的显式声明。
  */
 export async function POST(request: Request) {
-  if (!telemetryAuthorized(request)) {
-    return Response.json({ error: "unauthorized" }, { status: 401 });
-  }
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return Response.json({ error: "请求体不是有效 JSON" }, { status: 400 });
-  }
-  const row = (body ?? {}) as { state?: unknown; active_modules?: unknown };
-  if (row.state !== "online" && row.state !== "offline") {
-    return Response.json({ error: "state 必须是 online 或 offline" }, { status: 400 });
-  }
-  const activeModules = Array.isArray(row.active_modules)
-    ? row.active_modules.filter((value): value is string => typeof value === "string")
-    : undefined;
+  if (!telemetryAuthorized(request)) return ingestFailed("未授权", 401);
+  return ingestRoute(async () => {
+    const row = ((await jsonBody(request)) ?? {}) as {
+      state?: unknown;
+      active_modules?: unknown;
+    };
+    if (row.state !== "online" && row.state !== "offline") {
+      throw new Error("state 必须是 online 或 offline");
+    }
+    const activeModules = Array.isArray(row.active_modules)
+      ? row.active_modules.filter((value): value is string => typeof value === "string")
+      : undefined;
 
-  await recordPresence(row.state, activeModules);
-  return Response.json({ ok: true }, { status: 202 });
+    await recordPresence(row.state, activeModules);
+    return null;
+  });
 }

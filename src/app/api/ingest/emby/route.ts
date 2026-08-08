@@ -1,3 +1,4 @@
+import { ingestRoute } from "@/lib/api";
 import { invalidate } from "@/lib/cache";
 import { clearNowPlaying, setNowPlaying } from "@/lib/emby-store";
 import { getNowWatching } from "@/lib/emby";
@@ -12,7 +13,8 @@ export const dynamic = "force-dynamic";
  * 在 Emby 后台「通知 → 添加通知 → Webhooks」里填本站地址，勾上播放相关事件。
  * 配好后本站不再轮询 /emby/Sessions。
  *
- * 没有做认证：和充电头那个端点一样，按约定只在 Tailscale 内可达。
+ * 唯一一个不校验密钥的 ingest 端点：部署时 Emby 和本站在同一个容器网络里直连，
+ * 这个路径不对外暴露，所以不需要。别把它挂到公网上。
  */
 
 type Unknown = Record<string, unknown>;
@@ -53,60 +55,61 @@ function classify(event: string): "start" | "pause" | "resume" | "stop" | null {
 }
 
 export async function POST(request: Request) {
+  // 先原样读出来：出错时要把原文打进日志，对着真实 payload 调字段名
   const text = await request.text();
 
-  let body: Unknown;
-  try {
-    body = JSON.parse(text) as Unknown;
-  } catch {
-    console.error("[emby-webhook] 请求体不是 JSON:", text.slice(0, 400));
-    return new Response("请求体不是合法 JSON", { status: 400 });
-  }
+  return ingestRoute(async () => {
+    let body: Unknown;
+    try {
+      body = JSON.parse(text) as Unknown;
+    } catch {
+      console.error("[emby-webhook] 请求体不是 JSON:", text.slice(0, 400));
+      throw new Error("请求体不是合法 JSON");
+    }
 
-  const event = asString(pick(body, "Event", "event", "NotificationType", "Type"));
-  const kind = classify(event);
+    const event = asString(pick(body, "Event", "event", "NotificationType", "Type"));
+    const kind = classify(event);
 
-  if (!kind) {
-    // 不是播放事件（媒体库更新之类），直接忽略但不报错，免得 Emby 反复重试
-    return new Response(null, { status: 204 });
-  }
+    // 不是播放事件（媒体库更新之类），照收不误但什么都不做 —— 回 4xx 会让 Emby 反复重试
+    if (!kind) return { handled: false as const };
 
-  const item = asRecord(pick(body, "Item", "item"));
-  const session = asRecord(pick(body, "Session", "session"));
-  const playState = asRecord(
-    pick(session, "PlayState", "playState") ?? pick(body, "PlayState", "PlaybackInfo"),
-  );
+    const item = asRecord(pick(body, "Item", "item"));
+    const session = asRecord(pick(body, "Session", "session"));
+    const playState = asRecord(
+      pick(session, "PlayState", "playState") ?? pick(body, "PlayState", "PlaybackInfo"),
+    );
 
-  const itemId = asString(pick(item, "Id", "id", "ItemId"));
-  if (!itemId) {
-    // 结构和预期不符，把原文打出来，方便对着真实 payload 调整
-    console.error("[emby-webhook] 取不到 Item.Id，原始 payload:", text.slice(0, 1200));
-    return new Response("payload 里没有 Item.Id", { status: 400 });
-  }
+    const itemId = asString(pick(item, "Id", "id", "ItemId"));
+    if (!itemId) {
+      // 结构和预期不符，把原文打出来，方便对着真实 payload 调整
+      console.error("[emby-webhook] 取不到 Item.Id，原始 payload:", text.slice(0, 1200));
+      throw new Error("payload 里没有 Item.Id");
+    }
 
-  // 播放会改变续播列表和当前会话的位置，让下一次状态请求全部重新取。
-  await invalidate("emby:resume");
-  await invalidate("emby:session-position");
+    // 播放会改变续播列表和当前会话的位置，让下一次状态请求全部重新取。
+    await invalidate("emby:resume");
+    await invalidate("emby:session-position");
 
-  if (kind === "stop") {
-    await clearNowPlaying();
-  } else {
-    await setNowPlaying({
-      itemId,
-      paused: kind === "pause",
-      positionTicks: asNumber(
-        pick(playState, "PositionTicks", "positionTicks") ??
-          pick(body, "PlaybackPositionTicks"),
-      ),
-      runTimeTicks: asNumber(pick(item, "RunTimeTicks", "runTimeTicks")),
-      device: asString(pick(session, "Client", "DeviceName", "client", "deviceName")),
-      at: Date.now(),
-    });
-  }
+    if (kind === "stop") {
+      await clearNowPlaying();
+    } else {
+      await setNowPlaying({
+        itemId,
+        paused: kind === "pause",
+        positionTicks: asNumber(
+          pick(playState, "PositionTicks", "positionTicks") ??
+            pick(body, "PlaybackPositionTicks"),
+        ),
+        runTimeTicks: asNumber(pick(item, "RunTimeTicks", "runTimeTicks")),
+        device: asString(pick(session, "Client", "DeviceName", "client", "deviceName")),
+        at: Date.now(),
+      });
+    }
 
-  // 状态已持久化后再推给浏览器。直接带数据，不发信号让前端回头再拉一次 ——
-  // 这条本来就是 webhook 驱动的，服务端手上已经是最新的了。
-  publish({ type: "watching", payload: await getNowWatching() });
+    // 状态已持久化后再推给浏览器。直接带数据，不发信号让前端回头再拉一次 ——
+    // 这条本来就是 webhook 驱动的，服务端手上已经是最新的了。
+    publish({ type: "watching", payload: await getNowWatching() });
 
-  return new Response(null, { status: 204 });
+    return { handled: true as const, kind };
+  });
 }
