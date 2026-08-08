@@ -50,11 +50,48 @@ const VISIBLE_ROWS = 4;
 /** 单行的最小高度：36px 封面 + 上下留白，比这个再矮就挤了 */
 const MIN_ROW_HEIGHT_PX = 48;
 
-/** 三根竖条。推断为正在播时跳动，否则静止成一个普通的音乐小图标 */
+/**
+ * 三根竖条。推断为正在播时跳动，否则静止成一个普通的音乐小图标。
+ *
+ * 动画相位挂在墙上时钟，不挂在挂载时刻。换歌时整个 hero 会重新挂载，CSS 动画
+ * 默认从头开始，三根条齐刷刷跳回起点 —— 从前 mode="wait" 中间空一拍把这一下
+ * 盖住了，改成交叉淡入后新旧同时可见，顿挫就露出来了。
+ *
+ * 负的 animation-delay 表示「已经播过这么久」：取 now % period，任何时刻新挂载
+ * 的实例都落在和旧实例相同的相位上，接得上。重渲染时重算也是幂等的 —— 算出来
+ * 的还是当前相位，不会自己把自己顿一下。
+ *
+ * 不用担心和服务端对不上：hero 要等 SWR 拿到数据才存在，服务端那一遍走的是
+ * 占位分支，这段根本不参与首屏 HTML。
+ */
+const BAR_PERIODS = [0.9, 1.15, 1.4];
+
 function Bars({ active }: { active: boolean }) {
   const idleHeights = ["h-2", "h-3", "h-1.5"];
+
+  /**
+   * 在 ref 回调里对相位，不在渲染里。
+   *
+   * Date.now 是不纯的，渲染期调用会被 react-hooks 拦下（结果也确实不稳定）。
+   * ref 回调跑在 commit 阶段、绘制之前，既保住渲染纯粹，也不会先闪一帧相位 0。
+   * active 进依赖：从暂停切回播放时要重新对一次。
+   */
+  const alignPhase = useCallback(
+    (node: HTMLSpanElement | null) => {
+      if (!node || !active) return;
+      const seconds = Date.now() / 1000;
+      [...node.children].forEach((child, i) => {
+        const period = BAR_PERIODS[i];
+        // 错开的起点保留原来的观感；周期本来就各不相同，跳起来不会齐步走
+        (child as HTMLElement).style.animationDelay =
+          `${(-((seconds % period) + i * 0.15)).toFixed(3)}s`;
+      });
+    },
+    [active],
+  );
+
   return (
-    <span className="flex h-3 items-end gap-0.5" aria-hidden>
+    <span className="flex h-3 items-end gap-0.5" aria-hidden ref={alignPhase}>
       {[0, 1, 2].map((i) => (
         <span
           key={i}
@@ -64,9 +101,7 @@ function Bars({ active }: { active: boolean }) {
           )}
           style={
             active
-              ? {
-                  animation: `equalizer ${0.9 + i * 0.25}s ease-in-out ${i * 0.15}s infinite`,
-                }
+              ? { animation: `equalizer ${BAR_PERIODS[i]}s ease-in-out infinite` }
               : undefined
           }
         />
@@ -411,12 +446,11 @@ export function ListeningCard({ className }: { className?: string }) {
     <Card label="Recently Played" action="Apple Music" className={className}>
       <div className="flex flex-1 flex-col px-4 pb-4 pt-3">
         {/* 最近的一项放大展示。整块都是链接 —— 点封面也能跳转。
-            换专辑/歌单时整块交叉淡入，不硬跳。
+            换专辑/歌单时新旧叠着交叉淡入，见 HERO_VARIANTS。
 
-            首屏「读取中」不进 AnimatePresence：mode="wait" 要求旧 child 退场
-            动画跑完新 child 才进场，把占位态算作一个 child 的话，数据到了以后
-            hero 还要再等一个来回，肉眼可见地落在下面那个列表后面。
-            让它等到有数据再挂载，initial={false} 就会直接跳过入场动画。 */}
+            首屏「读取中」不进 AnimatePresence：占位态和 hero 根本不是同一个东西，
+            让它们互相淡入淡出没有意义，只会在数据到达时糊一下。等有数据再挂载，
+            initial={false} 就会直接跳过入场动画，首屏不播这一下。 */}
         {!hero ? (
           <HeroWrapper link={null}>
             <div className="relative aspect-square w-20 shrink-0 overflow-hidden rounded-md border border-line bg-muted" />
@@ -431,16 +465,15 @@ export function ListeningCard({ className }: { className?: string }) {
             </div>
           </HeroWrapper>
         ) : (
-        <AnimatePresence mode="wait" initial={false}>
+        <AnimatePresence mode="popLayout" initial={false}>
           <motion.div
             key={hero.key}
             variants={reduced ? STATIC_VARIANTS : HERO_VARIANTS}
             initial="initial"
             animate="animate"
             exit="exit"
-            transition={
-              reduced ? STATIC_TRANSITION : { duration: 0.22, ease: "easeOut" }
-            }
+            // 非对称时长写在 variant 里，这里传统一的 transition 会把它抹平
+            transition={reduced ? STATIC_TRANSITION : undefined}
           >
             <HeroWrapper link={hero.link}>
               <div className="relative aspect-square w-20 shrink-0 overflow-hidden rounded-md border border-line bg-muted">
