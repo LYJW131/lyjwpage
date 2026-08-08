@@ -56,7 +56,7 @@ function fromMemory(): Stored | null {
 async function readLatest(): Promise<Stored | null> {
   const answered = await askRedis((redis) => redis.get(K_LATEST));
   // Redis 答不上话，只能信内存
-  if (!answered) return fromMemory();
+  if (!answered.reachable) return fromMemory();
 
   if (answered.value) {
     let stored: Stored;
@@ -92,7 +92,7 @@ async function readLatest(): Promise<Stored | null> {
  */
 async function readHistory(): Promise<ChargerSample[]> {
   const answered = await askRedis((redis) => redis.lrange(K_HISTORY, 0, -1));
-  if (!answered) return [...fallback.history];
+  if (!answered.reachable) return [...fallback.history];
 
   if (answered.value.length) {
     const parsed: ChargerSample[] = [];

@@ -68,19 +68,33 @@ export async function withRedis<T>(
   }
 }
 
+/** Redis 不可达时的应答。模块级常量，不是每次新建的字面量 */
+const UNREACHABLE = { reachable: false } as const;
+
+export type RedisAnswer<T> = { reachable: true; value: T } | typeof UNREACHABLE;
+
 /**
  * 问一次 Redis，把「它说没有」和「它答不上来」分开。
  *
- * 返回 null 表示 Redis 不可达 —— 没配 REDIS_URL、连不上、或正落在出错后那
- * 30 秒停用窗里。包一层 `{ value }` 才能和「Redis 好好答了，值就是 null」区分。
- *
+ * `reachable: false` 表示 Redis 不可达 —— 没配 REDIS_URL、连不上、或正落在
+ * 出错后那 30 秒停用窗里。包一层才能和「Redis 好好答了，值就是 null」区分：
  * 直接用 `withRedis(get, null)` 的话这两种情况在外面长得一模一样，只能一律
- * 退回进程内存副本 —— 结果是清空 Redis 之后数据还从内存里活着。实测踩到过。
+ * 退回进程内存副本，于是清空 Redis 之后数据还从内存里活着。实测踩到过。
+ *
+ * 为什么用判别字段而不是「返回 null 表示不可达」：Turbopack 会内联分析同一
+ * 模块内的调用，只跟到 `return await run(redis)` 这条返回对象字面量的路径，
+ * 就断定结果恒为真，把调用方的 `if (!answered)` 整个当成死代码删掉 —— 编译
+ * 产物里是 `if ("TURBOPACK compile-time falsy", 0)`。tsc 全绿、跨模块调用也
+ * 正常，只有同模块的 mirrorKey 中招，Redis 一断就抛
+ * 「Cannot read properties of null」。两条返回路径都给对象就没有这个可乘之机。
  */
 export async function askRedis<T>(
   load: (redis: Redis) => Promise<T>,
-): Promise<{ value: T } | null> {
-  return withRedis(async (redis) => ({ value: await load(redis) }), null);
+): Promise<RedisAnswer<T>> {
+  return withRedis<RedisAnswer<T>>(
+    async (redis) => ({ reachable: true, value: await load(redis) }),
+    UNREACHABLE,
+  );
 }
 
 /** 写一次 Redis，返回是否真的落进去了。false 表示这份目前只存在于进程内存 */
@@ -113,25 +127,43 @@ export function mirrorKey<T>(
   { ttlMs }: { ttlMs?: number } = {},
 ) {
   const k = key(...parts);
-  let memory: T | null = null;
-  let persisted = false;
+  /**
+   * 内存副本挂 globalThis，不用模块作用域的变量。
+   *
+   * Next 的 dev server 里每个路由各有一份模块实例：写进 ingest 那份的内存，
+   * status 那份看不见。于是 Redis 一断，读的一侧发现自己手上什么都没有，
+   * 就把状态当成空的 —— 实测就是这样，停掉 Redis 后前台应用直接归零，而
+   * 规则 1 本该让它继续供数。
+   *
+   * 这个坑代码库里早有先例：telemetryState 和 reporterLiveness 都是为此挂的
+   * globalThis，只是新写的镜像没跟上。
+   */
+  const cells = ((globalThis as typeof globalThis & {
+    __lyjwMirrors?: Map<string, { memory: unknown; persisted: boolean }>;
+  }).__lyjwMirrors ??= new Map());
+  let cell = cells.get(k);
+  if (!cell) {
+    cell = { memory: null, persisted: false };
+    cells.set(k, cell);
+  }
+  const state = cell as { memory: T | null; persisted: boolean };
 
   return {
     async put(value: T): Promise<void> {
-      memory = value;
-      persisted = await tellRedis((redis) =>
+      state.memory = value;
+      state.persisted = await tellRedis((redis) =>
         ttlMs ? redis.set(k, JSON.stringify(value), "PX", ttlMs) : redis.set(k, JSON.stringify(value)),
       );
     },
 
     async drop(): Promise<void> {
-      memory = null;
-      persisted = await tellRedis((redis) => redis.del(k));
+      state.memory = null;
+      state.persisted = await tellRedis((redis) => redis.del(k));
     },
 
     async get(): Promise<T | null> {
       const answered = await askRedis((redis) => redis.get(k));
-      if (!answered) return memory;
+      if (!answered.reachable) return state.memory;
 
       if (answered.value) {
         let stored: T;
@@ -139,24 +171,26 @@ export function mirrorKey<T>(
           stored = JSON.parse(answered.value) as T;
         } catch {
           // 脏数据按「答不上来」算，不按「没有」—— 否则会连累好好的内存副本
-          return memory;
+          return state.memory;
         }
-        if (!persisted && memory && stampOf(memory) > stampOf(stored)) return memory;
-        memory = stored;
-        persisted = true;
+        if (!state.persisted && state.memory && stampOf(state.memory) > stampOf(stored)) {
+          return state.memory;
+        }
+        state.memory = stored;
+        state.persisted = true;
         return stored;
       }
 
-      if (persisted) {
-        memory = null;
+      if (state.persisted) {
+        state.memory = null;
         return null;
       }
-      return memory;
+      return state.memory;
     },
 
     /** Redis 此刻答不答得上话。用来把「里面没有」和「问不到」在报错里分开 */
     async reachable(): Promise<boolean> {
-      return (await askRedis(async () => true)) != null;
+      return (await askRedis(async () => true)).reachable;
     },
   };
 }
