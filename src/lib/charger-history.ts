@@ -1,3 +1,4 @@
+import { CHARGER_HISTORY_LIMIT } from "@/lib/limits";
 import type { ChargerPayload, ChargerSample } from "@/lib/types";
 
 /**
@@ -7,10 +8,7 @@ import type { ChargerPayload, ChargerSample } from "@/lib/types";
  * 这份状态从组件的 ref 提到模块级，是为了让 SSE 推送也能用同一套合并逻辑 ——
  * 从前推送只能发一个失效通知、让卡片自己重新拉一次，就是因为转发那段在模块
  * 单例里，够不着组件内部的 ref。整个页面只有一张充电头卡，单例不会串。
- *
- * 与 charger-store 的 HISTORY_LIMIT 保持一致，别让拼出来的序列无限长。
  */
-const HISTORY_LIMIT = 400;
 
 let history: ChargerSample[] = [];
 
@@ -27,6 +25,6 @@ export function historyCursor(): number | null {
  */
 export function mergeChargerHistory(payload: ChargerPayload): ChargerPayload {
   const merged = payload.historyPartial ? [...history, ...payload.history] : payload.history;
-  history = merged.slice(-HISTORY_LIMIT);
+  history = merged.slice(-CHARGER_HISTORY_LIMIT);
   return { ...payload, history };
 }

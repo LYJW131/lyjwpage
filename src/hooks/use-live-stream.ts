@@ -5,21 +5,57 @@ import { useSWRConfig } from "swr";
 import type { ScopedMutator } from "swr";
 
 import { mergeChargerHistory } from "@/lib/charger-history";
-import type { NowWatchingPayload } from "@/lib/emby";
-import type { ChargerPayload, DesktopPayload, MusicPayload, StatusResponse } from "@/lib/types";
+import type { LiveEvent } from "@/lib/live-events";
+import {
+  CHARGER_PATH,
+  DESKTOP_PATH,
+  MUSIC_PATH,
+  NOW_WATCHING_PATH,
+  STREAM_PATH,
+} from "@/lib/paths";
+import type { ChargerPayload, StatusResponse } from "@/lib/types";
 
-const STREAM_PATH = "/api/status/stream";
 /**
- * SWR 的缓存键就是请求路径，推送写进来的必须和轮询用的是同一个。
+ * 事件名 → 写哪个 SWR 缓存键，以及写进去之前要不要先过一道合并。
  *
- * 前台应用和播放各自携带最新数据；Emby watching 事件只让对应接口失效重取。
+ * 四条以前是四段几乎一样的 addEventListener，只有键和「要不要合并」不同。
+ * 表化之后加一种推送就是加一行。
+ *
+ * 全都 revalidate: false —— 推来的就是最新的，没必要再回源确认一次。
  */
-export const DESKTOP_PATH = "/api/status/desktop";
-export const MUSIC_PATH = "/api/status/music";
-export const WATCHING_PATH = "/api/status/watching";
-/** 正在播放和列表分开：前者 webhook 驱动，后者后端定时轮询 Emby */
-export const NOW_WATCHING_PATH = "/api/status/watching/now";
-export const CHARGER_PATH = "/api/status/charger";
+const FORWARDS: ReadonlyArray<{
+  event: LiveEvent["type"];
+  path: string;
+  merge?: (data: unknown) => unknown;
+}> = [
+  { event: "desktop", path: DESKTOP_PATH },
+  { event: "music", path: MUSIC_PATH },
+  // Emby 正在播放：webhook 驱动，服务端手上已经是最新的。列表不动 —— 它由后端
+  // 轮询 Emby，节奏慢得多，真要变也得等服务端那层缓存过期，跟着走没有意义。
+  { event: "watching", path: NOW_WATCHING_PATH },
+  /**
+   * 充电头只在插拔、换设备时来事件。曲线的合并走和轮询同一个累加器
+   * （lib/charger-history）：推来的那份不带历史点（空增量），所以合并只是把
+   * 已有曲线原样接上 —— 游标不会被扰动，下一轮轮询照常从正确的位置继续拉。
+   */
+  {
+    event: "charger",
+    path: CHARGER_PATH,
+    merge: (data) => mergeChargerHistory(data as ChargerPayload),
+  },
+];
+
+/**
+ * 上报器上下线时要重取的键。
+ *
+ * 只有 Mac 上报器供数的那几张卡在列。Emby 正在看不在其中 —— 那条由 Emby 的
+ * webhook 驱动，getNowWatching 从头到尾不碰上报器，Mac 睡了不影响你在 Emby 上
+ * 看什么，跟着重取纯属白跑一趟。
+ *
+ * vibe coding 也不在：token 用量是累计的历史事实，Mac 掉线它不会变得不可信，
+ * 只是不再增长，没有理由跟着变灰。
+ */
+const PRESENCE_PATHS = [DESKTOP_PATH, MUSIC_PATH, CHARGER_PATH];
 
 /**
  * 整页共用一条 SSE 连接。
@@ -55,54 +91,21 @@ function open(mutate: ScopedMutator) {
   next.onopen = () => setConnected(true);
   next.onerror = () => setConnected(false);
 
-  // revalidate: false —— 推来的就是最新的，没必要再回源确认一次
-  const forward = (path: string) => (event: MessageEvent<string>) => {
-    const envelope: StatusResponse<DesktopPayload | MusicPayload> = {
-      ok: true,
-      data: JSON.parse(event.data) as DesktopPayload | MusicPayload,
-      fetchedAt: new Date().toISOString(),
-    };
-    void mutate(path, envelope, { revalidate: false });
-  };
-  next.addEventListener("desktop", forward(DESKTOP_PATH));
-  next.addEventListener("music", forward(MUSIC_PATH));
-  /**
-   * Emby 正在播放。直接写缓存，不再触发重取 —— 这条是 webhook 驱动的，
-   * 服务端推来的就是最新的。列表不动：它由后端轮询 Emby，节奏慢得多，
-   * 而且真要变也得等服务端那层缓存过期，让它跟着走没有意义。
-   */
-  next.addEventListener("watching", (event: MessageEvent<string>) => {
-    void mutate(
-      NOW_WATCHING_PATH,
-      { ok: true, data: JSON.parse(event.data) as NowWatchingPayload, fetchedAt: new Date().toISOString() },
-      { revalidate: false },
-    );
-  });
-  /**
-   * 充电头只在插拔、换设备时来事件，直接把状态写进缓存，不再触发一次重取。
-   *
-   * 曲线的合并走和轮询同一个累加器（lib/charger-history）。推来的那份不带
-   * 历史点（空增量），所以合并只是把已有曲线原样接上 —— 游标不会被扰动，
-   * 下一轮轮询照常从正确的位置继续拉。
-   */
-  next.addEventListener("charger", (event: MessageEvent<string>) => {
-    const payload = mergeChargerHistory(JSON.parse(event.data) as ChargerPayload);
-    void mutate(
-      CHARGER_PATH,
-      { ok: true, data: payload, fetchedAt: new Date().toISOString() },
-      { revalidate: false },
-    );
-  });
-  /**
-   * 上报器上下线：让所有展示实时状态的接口重取一次，四张卡同时翻。
-   *
-   * vibe coding 不在其中 —— token 用量是累计的历史事实，Mac 掉线它不会变得
-   * 不可信，只是不再增长，没有理由跟着变灰。
-   */
+  for (const { event, path, merge } of FORWARDS) {
+    next.addEventListener(event, (message: MessageEvent<string>) => {
+      const parsed: unknown = JSON.parse(message.data);
+      const envelope: StatusResponse<unknown> = {
+        ok: true,
+        data: merge ? merge(parsed) : parsed,
+        fetchedAt: new Date().toISOString(),
+      };
+      void mutate(path, envelope, { revalidate: false });
+    });
+  }
+
+  // 上报器上下线：不带数据，只让它供数的那几张卡重取一次，同时翻
   next.addEventListener("presence", () => {
-    for (const path of [DESKTOP_PATH, MUSIC_PATH, CHARGER_PATH, NOW_WATCHING_PATH]) {
-      void mutate(path);
-    }
+    for (const path of PRESENCE_PATHS) void mutate(path);
   });
 }
 

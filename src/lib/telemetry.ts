@@ -28,9 +28,9 @@ import { recordVibeCodingReport } from "@/lib/vibecoding";
 /**
  * 前台应用图标入库前压到的最长边。
  *
- * 采集端送来的是 128pt 的 PNG，Retina 上渲出来 256px、约 125KB，而页面上那个
- * 位置只有 40 CSS px —— 2 倍屏也只要 80。和 Emby 海报、自定义歌单封面同一个
- * 路子：压在入口，缓存里存的直接是小图。
+ * 采集端送来的是 64pt 的 PNG（Retina 上 128px），而页面上那个位置只有 40 CSS px
+ * —— 2 倍屏也只要 80。和 Emby 海报、自定义歌单封面同一个路子：压在入口，
+ * 缓存里存的直接是小图。
  *
  * 不像 Emby 那样需要给缓存键加版本：资产地址是内容哈希，压缩换了字节哈希就换，
  * 地址天然失效。
@@ -175,7 +175,7 @@ async function normalizeMusic(
     artworkUrl: null,
     positionMs: Math.max(0, number(row.position_ms) ?? 0),
     durationMs: Math.max(0, number(row.duration_ms) ?? 0),
-    // 上报器目前不上报循环状态，缺字段时按「不循环」处理
+    // 上报器发的是布尔值，字符串那支是给旧版采集器留的；缺字段按「不循环」处理
     repeatOne: text(row.repeat_one) === "true" || row.repeat_one === true,
     observedAt: milliseconds(row.observed_at, receivedAt),
   };

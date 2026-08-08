@@ -5,9 +5,10 @@ import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 
 import { Card } from "@/components/ui/card";
-import { DESKTOP_PATH, useLiveStream } from "@/hooks/use-live-stream";
+import { useLiveStream } from "@/hooks/use-live-stream";
 import { useStatus } from "@/hooks/use-status";
 import { STATIC_TRANSITION, STATIC_VARIANTS } from "@/lib/motion";
+import { DESKTOP_PATH } from "@/lib/paths";
 import type { DesktopActivity, DesktopPayload } from "@/lib/types";
 import { cn } from "@/lib/utils";
 

@@ -1,15 +1,15 @@
 "use client";
 
 import NumberFlow from "@number-flow/react";
-import { useCallback, useRef } from "react";
 
 import { ClaudeSpinner } from "@/components/live/claude-spinner";
 import { CodexActivityIndicator } from "@/components/live/codex-activity-indicator";
 import { Sparkline } from "@/components/live/sparkline";
 import { Card } from "@/components/ui/card";
-import { useStatus } from "@/hooks/use-status";
+import { incrementalFetcher, useStatus } from "@/hooks/use-status";
+import { VIBECODING_PATH } from "@/lib/paths";
+import { activityCursor, mergeVibeCodingActivity } from "@/lib/vibecoding-activity";
 import type {
-  StatusResponse,
   VibeCodingAgent,
   VibeCodingLimit,
   VibeCodingPayload,
@@ -17,11 +17,14 @@ import type {
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-const VIBECODING_PATH = "/api/status/vibecoding";
-/** 上游给 30 天 × 12 小时一桶，别让并出来的序列无限长 */
-const ACTIVITY_LIMIT = 60;
 const REFRESH_MS = 60_000;
 const ACTIVE_WINDOW_MS = 5 * 60_000;
+
+/** 活动曲线增量拉取，和充电头共用同一个壳子。累加器在 lib/vibecoding-activity */
+const fetchVibeCoding = incrementalFetcher<VibeCodingPayload>(
+  activityCursor,
+  mergeVibeCodingActivity,
+);
 
 /**
  * 分档阈值。条和数字共用同一组，别在两处各写一遍 —— 分开写迟早改漏一个，
@@ -507,49 +510,8 @@ function AgentPanel({
 }
 
 export function VibeCodingCard({ className }: { className?: string }) {
-  /**
-   * 各 agent 的活动曲线自己攒着，每轮只问服务端要边界之后的桶。
-   * 放 ref 不放 state：返回的 payload 里已经带着并好的完整序列，
-   * 再存一份 state 只会多一次渲染。
-   */
-  const activityRef = useRef<Map<string, VibeCodingAgent["activity"]>>(new Map());
-
-  const fetchVibeCoding = useCallback(async (): Promise<
-    StatusResponse<VibeCodingPayload>
-  > => {
-    // 各 agent 的桶边界是对齐的，取其中最新的那个当水位线就够
-    let since: number | null = null;
-    for (const points of activityRef.current.values()) {
-      const newest = points[points.length - 1]?.t;
-      if (newest != null && (since == null || newest > since)) since = newest;
-    }
-    const url = since == null ? VIBECODING_PATH : `${VIBECODING_PATH}?since=${since}`;
-
-    const response = await fetch(url, { cache: "no-store" });
-    if (!response.ok) throw new Error(`请求 ${url} 失败：${response.status}`);
-    const envelope = (await response.json()) as StatusResponse<VibeCodingPayload>;
-    if (!envelope.ok) return envelope;
-
-    const agents = envelope.data.agents.map((agent) => {
-      if (!envelope.data.activityPartial) {
-        activityRef.current.set(agent.id, agent.activity);
-        return agent;
-      }
-      // 按 t 合并：边界那个桶还在累加，新值要覆盖旧值而不是追加
-      const merged = new Map(
-        (activityRef.current.get(agent.id) ?? []).map((point) => [point.t, point]),
-      );
-      for (const point of agent.activity) merged.set(point.t, point);
-      const activity = [...merged.values()]
-        .sort((a, b) => a.t - b.t)
-        .slice(-ACTIVITY_LIMIT);
-      activityRef.current.set(agent.id, activity);
-      return { ...agent, activity };
-    });
-
-    return { ...envelope, data: { ...envelope.data, agents } };
-  }, []);
-
+  // 不订阅 SSE：token 用量是累计的历史事实，Mac 掉线它不会变得不可信，
+  // 只是不再增长，没有理由跟着变灰
   const { data, error, isLoading } = useStatus<VibeCodingPayload>(
     VIBECODING_PATH,
     REFRESH_MS,

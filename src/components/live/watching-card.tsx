@@ -5,8 +5,9 @@ import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 
 import { StatusDot } from "@/components/ui/status-dot";
-import { NOW_WATCHING_PATH, useLiveStream, WATCHING_PATH } from "@/hooks/use-live-stream";
+import { useLiveStream } from "@/hooks/use-live-stream";
 import { useStatus } from "@/hooks/use-status";
+import { NOW_WATCHING_PATH, WATCHING_PATH } from "@/lib/paths";
 import { stableKeys } from "@/lib/keys";
 import {
   LIST_DURATION,
@@ -19,11 +20,6 @@ import type { WatchingItem } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /**
- * 有东西在播时轮询要跟手 —— Emby 拖动进度条不发 webhook，只能靠问。
- * 服务端那边同样是「播放中才查 Sessions」（缓存 2 秒），所以前端调到 3 秒
- * 也不会让 Emby 压力翻倍。空闲时放慢到一分钟。
- */
-/**
  * 播放中的轮询。
  *
  * 进度条是 CSS 动画从锚点自己跑的，跟这个间隔无关，所以不需要为它调密；
@@ -31,6 +27,14 @@ import { cn } from "@/lib/utils";
  */
 const REFRESH_PLAYING_MS = 10_000;
 const REFRESH_IDLE_MS = 60_000;
+/**
+ * SSE 断开时的空闲轮询，和 desktop / music 对齐。
+ *
+ * 「开始看片」是 webhook 推的，长连接一断就没人告诉页面了，只能靠问。空闲时
+ * getNowWatching 读到 emby-store 里没有正在播放就直接返回，一个 Emby 请求都
+ * 不打，所以调到 3 秒的代价只是一次 Redis 读。
+ */
+const REFRESH_DISCONNECTED_MS = 3_000;
 
 /**
  * 增删卡片后要等多久才把滚动吸附装回去。
@@ -189,7 +193,7 @@ function Skeleton() {
 }
 
 export function WatchingRow() {
-  useLiveStream();
+  const { connected } = useLiveStream();
   /**
    * 两个来源分开取，因为节奏差得远：列表是后端定时轮询 Emby 拿的，慢；
    * 正在播放由 webhook 推，快。合在一个端点时，慢的那半只能跟着快的那半
@@ -199,9 +203,18 @@ export function WatchingRow() {
     WATCHING_PATH,
     REFRESH_IDLE_MS,
   );
+  /**
+   * 正在播放。空闲时的节奏取决于推送还在不在：连着就一分钟问一次意思意思，
+   * 断了就得靠自己盯着，否则「开始看片」最长要等一分钟才翻。
+   */
   const { data: live } = useStatus<NowWatchingPayload>(
     NOW_WATCHING_PATH,
-    (payload) => (payload?.nowPlaying ? REFRESH_PLAYING_MS : REFRESH_IDLE_MS),
+    (payload) =>
+      payload?.nowPlaying
+        ? REFRESH_PLAYING_MS
+        : connected
+          ? REFRESH_IDLE_MS
+          : REFRESH_DISCONNECTED_MS,
   );
 
   /**

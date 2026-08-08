@@ -1,3 +1,4 @@
+import { CHARGER_HISTORY_LIMIT } from "@/lib/limits";
 import { key, withRedis } from "@/lib/redis";
 import type { ChargerSample, ChargerStatus } from "@/lib/types";
 
@@ -12,20 +13,13 @@ import type { ChargerSample, ChargerStatus } from "@/lib/types";
  */
 
 /**
- * 历史点数上限。
- * 必须保证「即使按最密的采样间隔，也能盖满曲线的时间窗」，否则曲线左边会空
- * 一截：400 × MIN_SAMPLE_GAP(5s) = 33 分钟 > 窗口 20 分钟。
- * 改这里要和 sparkline.tsx 的 WINDOW_MS 一起看。
- */
-const HISTORY_LIMIT = 400;
-
-/**
  * 两个采样点之间的最小间隔，用来控制曲线的时间跨度。
  *
- * 采集端本身是 1 Hz，但上报按节流窗口走（默认 30 秒），所以到这里的间隔由
+ * 采集端本身是 1 Hz，但上报按上报器的节流窗口走（代码默认 10 秒，本机配的是
+ * 30 秒），所以到这里的间隔由
  * 上报间隔决定、通常已经大于这个阈值 —— 它真正拦的是即时上报：插拔、播放
  * 变化会把充电器快照顺带捎出去，那些不该在曲线上挤成一团。
- * 要拉长曲线跨度就调大它，或者调 HISTORY_LIMIT。
+ * 要拉长曲线跨度就调大它，或者调 CHARGER_HISTORY_LIMIT。
  */
 const MIN_SAMPLE_GAP_MS = 5_000;
 
@@ -153,16 +147,16 @@ export async function recordStatus(status: ChargerStatus, receivedAt = Date.now(
 
   if (reset) fallback.history.length = 0;
   fallback.history.push(sample);
-  if (fallback.history.length > HISTORY_LIMIT) {
-    fallback.history.splice(0, fallback.history.length - HISTORY_LIMIT);
+  if (fallback.history.length > CHARGER_HISTORY_LIMIT) {
+    fallback.history.splice(0, fallback.history.length - CHARGER_HISTORY_LIMIT);
   }
 
   await withRedis(async (redis) => {
     const pipe = redis.pipeline();
     if (reset) pipe.del(K_HISTORY);
     pipe.rpush(K_HISTORY, JSON.stringify(sample));
-    // 只留最近 HISTORY_LIMIT 条，用 Redis 自己的裁剪，不用把整条读回来重写
-    pipe.ltrim(K_HISTORY, -HISTORY_LIMIT, -1);
+    // 只留最近 CHARGER_HISTORY_LIMIT 条，用 Redis 自己的裁剪，不用把整条读回来重写
+    pipe.ltrim(K_HISTORY, -CHARGER_HISTORY_LIMIT, -1);
     pipe.pexpire(K_HISTORY, TTL_MS);
     await pipe.exec();
     return null;

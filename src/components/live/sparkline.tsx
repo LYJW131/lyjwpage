@@ -30,7 +30,7 @@ import type { ChargerSample } from "@/lib/types";
 /**
  * 横轴时间窗：显示最近这段时间。
  * 必须短于「环形缓冲能覆盖的时长」，否则数据不够铺满，曲线左边会空一截。
- * charger-store 的 HISTORY_LIMIT(400) × 最密采样间隔(5s) = 33 分钟，留足余量。
+ * lib/limits 的 CHARGER_HISTORY_LIMIT(400) × 最密采样间隔(5s) = 33 分钟，留足余量。
  */
 const WINDOW_MS = 20 * 60 * 1000;
 /**
