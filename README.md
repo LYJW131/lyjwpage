@@ -118,7 +118,7 @@ session 的 `lastActivity` 把该 session 的 token 归入对应 12 小时桶；
 
 ### 本机实时活动 — Mac Telemetry Hub
 
-`a2687-telemetry/A2687TelemetryMac` 已从单一充电头工具扩展为可插拔的本机遥测中心。充电头、前台应用、窗口标题、本机 Apple Music 和 ccusage 都能独立开启或关闭。Apple Music 通过 macOS Apple Events 读取 Music.app 的本机播放状态，与上面的 Apple Music API“最近在听”完全独立。
+`a2687-telemetry/A2687TelemetryMac` 已从单一充电头工具扩展为可插拔的本机遥测中心。充电头、前台应用、本机 Apple Music 和 ccusage 都能独立开启或关闭。Apple Music 通过 macOS Apple Events 读取 Music.app 的本机播放状态，与上面的 Apple Music API“最近在听”完全独立。
 
 所有采集器统一写入：
 
