@@ -66,10 +66,13 @@ Apple Music 的封面没有代理，仍走 `mzstatic.com` 直链 —— 那本�
 
 ### 最近在听 — Apple Music
 
-需要 **Developer Token** 和 **Music-User-Token** 两条凭据，有两种拿法，优先前者：
+需要 **Developer Token** 和 **Music-User-Token** 两条凭据，**全部由 Mac 上报器推来**：Mac Telemetry Hub 用本机 MusicKit 现签一对，POST 到 `/api/ingest/apple-music/credentials`。`.p8` 私钥留在那台机器的钥匙串里由系统保管，服务器上一份都没有，本站也不含任何 JWT 签名代码。
 
-1. **Mac 上报器推送**（默认）—— Mac Telemetry Hub 用本机 MusicKit 现签一对，POST 到 `/api/ingest/apple-music/credentials`。`.p8` 私钥留在那台机器的钥匙串里由系统保管，服务器上一份都没有。代价是 developer token 会过期，由上报器按它自己 JWT 里的 `exp`、过了寿命中点就重签重发。凭据存 Redis，和 `telemetryState` 严格分开——后者会经 `/api/status/*` 发到浏览器。
-2. **服务端自签**（回落）—— 收不到推送时，用 `.p8` 私钥签 ES256 JWT，缓存 12 小时（提前 5 分钟换新），Music-User-Token 读 `APPLE_MUSIC_USER_TOKEN`。用 `jose` 签而不是 `node:crypto`，因为后者默认输出 DER 编码，而 JWT 要的是裸 r‖s（P1363）—— 这点搞错 Apple 会直接 401。
+MusicKit 签出来的 developer token 实测寿命 **30 天**，上报器从它自己的 JWT 解出 `exp`，过了「上报时刻 → 到期时刻」的中点（即 15 天）就重签重发。取相对中点而不是写死提前量，是因为 Apple 没承诺这个寿命，写死在两个方向上都可能错。实践中上报器重启比 15 天频繁得多，所以多数情况是每次启动重传一份新的。
+
+凭据存 Redis，和 `telemetryState` 严格分开 —— 后者会经 `/api/status/*` 发到浏览器。那个 ingest 路由也不打印请求体。
+
+**没有服务端自签的回落。** 有回落就意味着私钥仍得躺在服务器上，这套东西就白做了。代价是上报器长期离线且 Redis 也丢了凭据时「最近在听」直接失败，这是明摆着的取舍。
 
 拉 `/v1/me/recent/played?limit=10`。注意这个端点返回的是**专辑、歌单、电台这类容器**，不是单曲：专辑给 `artistName`、歌单给 `curatorName`，没有 `durationInMillis`，`limit` 上限是 10。列表缓存 30 秒。
 

@@ -1,7 +1,3 @@
-import fs from "node:fs/promises";
-
-import { SignJWT, importPKCS8 } from "jose";
-
 import { getAppleMusicCredentials } from "@/lib/apple-music-credentials";
 import { cached, get as cacheGet, put as cachePut } from "@/lib/cache";
 import { storeImageBuffer } from "@/lib/image-store";
@@ -10,9 +6,8 @@ import type { ListeningItem, NowPlayingGuess } from "@/lib/types";
 /**
  * Apple Music「最近在听」。
  *
- * 需要两条凭据：Developer Token 和 Music-User-Token。默认由 Mac 上报器一起推来
- * （MusicKit 现签，私钥不出那台机器），拿不到时才回落到服务端用 .p8 自签 —— 两条
- * 路的取舍见 resolveCredentials。
+ * 需要 Developer Token 和 Music-User-Token 两条凭据，都由 Mac 上报器推来 ——
+ * MusicKit 现签，.p8 私钥不出那台机器。服务端不签也没有回落，见 resolveCredentials。
  *
  * 两者都只存在于服务端，前端拿到的永远是已经规范化过的歌曲列表。
  */
@@ -29,87 +24,35 @@ const DURATION_TTL_MS = 24 * 60 * 60 * 1000;
 /** 歌单曲目会分页，最多翻这么多页，够长的歌单也不至于打太多次 */
 const MAX_TRACK_PAGES = 5;
 
-/** Apple 上限 6 个月，这里保守取 12 小时 */
-const TOKEN_TTL_SECONDS = 12 * 60 * 60;
-/** 提前 5 分钟换新，避开边界失效 */
-const TOKEN_SKEW_MS = 5 * 60 * 1000;
-
 /**
- * 两种拿到凭据的方式。
+ * 凭据只有一个来源：Mac 上报器推来的那份。
  *
- * `pushed` 是 Mac 上报器推来的：那边用 MusicKit 现签 developer token，私钥留在
- * 那台机器的钥匙串里，服务器上一份都没有。代价是这份会过期，靠上报器续。
+ * 服务器上不放 .p8 —— 签名密钥留在那台机器的钥匙串里由系统保管，这边拿到的是
+ * MusicKit 现签的 developer token 和同一次授权产出的 music user token。
  *
- * `local` 是服务器自己拿 .p8 签，能无限再生，但要求私钥躺在服务器上。
- *
- * 优先前者：这套东西存在的全部目的就是让私钥不用离开那台 Mac。
+ * 没有本地签名的回落。有回落就意味着私钥仍然得躺在服务器上，那这套东西就白做了。
+ * 代价是上报器长期离线且 Redis 也丢了凭据时，「最近在听」直接失败 —— 这是明摆着
+ * 的取舍，不是疏漏。
  */
-type Credentials =
-  | { source: "pushed"; developerToken: string; userToken: string; expiresAt: number }
-  | { source: "local"; privateKey: string; keyId: string; teamId: string; userToken: string };
+type Credentials = {
+  developerToken: string;
+  userToken: string;
+  /** developer token 的到期时刻，Unix 秒。只用来在报错里说清楚，不做提前判断 */
+  expiresAt: number;
+};
 
 async function resolveCredentials(): Promise<Credentials> {
   const pushed = await getAppleMusicCredentials();
-  if (pushed) {
-    return {
-      source: "pushed",
-      developerToken: pushed.developerToken,
-      userToken: pushed.musicUserToken,
-      expiresAt: pushed.expiresAt,
-    };
-  }
-
-  const keyId = process.env.APPLE_MUSIC_KEY_ID ?? "";
-  const teamId = process.env.APPLE_MUSIC_TEAM_ID ?? "";
-  const userToken = process.env.APPLE_MUSIC_USER_TOKEN ?? "";
-
-  // 两种给私钥的方式：直接给 PEM 内容（Vercel 这类无持久盘的部署），
-  // 或给 .p8 文件路径（本地 / 自建）。前者优先。
-  let privateKey = process.env.APPLE_MUSIC_PRIVATE_KEY ?? "";
-  if (privateKey) {
-    // .env 里多行不好写，允许用字面量 \n 转义
-    privateKey = privateKey.replace(/\\n/g, "\n");
-  } else if (process.env.APPLE_MUSIC_PRIVATE_KEY_PATH) {
-    privateKey = await fs.readFile(process.env.APPLE_MUSIC_PRIVATE_KEY_PATH, "utf8");
-  }
-
-  const missing: string[] = [];
-  if (!privateKey) missing.push("APPLE_MUSIC_PRIVATE_KEY 或 APPLE_MUSIC_PRIVATE_KEY_PATH");
-  if (!keyId) missing.push("APPLE_MUSIC_KEY_ID");
-  if (!teamId) missing.push("APPLE_MUSIC_TEAM_ID");
-  if (!userToken) missing.push("APPLE_MUSIC_USER_TOKEN");
-  if (missing.length) {
+  if (!pushed) {
     throw new Error(
-      `没有收到 Mac 上报器的 Apple Music 凭据，回落本地签名也缺少：${missing.join("、")}`,
+      "没有收到 Mac 上报器的 Apple Music 凭据 —— 在上报器的设置里授权 Apple Music",
     );
   }
-
-  return { source: "local", privateKey, keyId, teamId, userToken };
-}
-
-async function getDeveloperToken(credentials: Credentials): Promise<string> {
-  // 上报器推来的那份是 MusicKit 现签的，这边没有私钥也不需要再生 —— 直接用。
-  // 过期由上报器负责续；真过了期 Apple 会回 401，下面 appleFetchRaw 那条分支
-  // 会把话说清楚，比在这里提前判一次更准（时钟不一定同步）。
-  if (credentials.source === "pushed") return credentials.developerToken;
-
-  const cacheKey = `apple-music:jwt:${credentials.keyId}:${credentials.teamId}`;
-  const hit = await cacheGet<string>(cacheKey);
-  if (hit) return hit;
-
-  // jose 的 ES256 签名输出的就是 JWT 规范要求的裸 r‖s（P1363），
-  // 不像 node:crypto 默认吐 DER —— 那样 Apple 会直接 401。
-  const key = await importPKCS8(credentials.privateKey, "ES256");
-  const now = Math.floor(Date.now() / 1000);
-  const token = await new SignJWT({})
-    .setProtectedHeader({ alg: "ES256", kid: credentials.keyId, typ: "JWT" })
-    .setIssuer(credentials.teamId)
-    .setIssuedAt(now)
-    .setExpirationTime(now + TOKEN_TTL_SECONDS)
-    .sign(key);
-
-  await cachePut(cacheKey, token, TOKEN_TTL_SECONDS * 1000 - TOKEN_SKEW_MS);
-  return token;
+  return {
+    developerToken: pushed.developerToken,
+    userToken: pushed.musicUserToken,
+    expiresAt: pushed.expiresAt,
+  };
 }
 
 type AppleResource = {
@@ -151,11 +94,9 @@ async function normalize(resource: AppleResource): Promise<ListeningItem> {
 }
 
 async function appleFetchRaw<T>(url: string, credentials: Credentials): Promise<T> {
-  const developerToken = await getDeveloperToken(credentials);
-
   const response = await fetch(url, {
     headers: {
-      Authorization: `Bearer ${developerToken}`,
+      Authorization: `Bearer ${credentials.developerToken}`,
       "Music-User-Token": credentials.userToken,
       Accept: "application/json",
     },
@@ -164,11 +105,8 @@ async function appleFetchRaw<T>(url: string, credentials: Credentials): Promise<
 
   if (!response.ok) {
     const body = (await response.text()).slice(0, 300);
-    // 两个来源的修法完全不同，把话说到位，别让人去翻另一半才知道该动哪儿
-    const origin =
-      credentials.source === "pushed"
-        ? `凭据来自 Mac 上报器，标称 ${new Date(credentials.expiresAt * 1000).toISOString()} 到期`
-        : "凭据由服务端 .p8 自签";
+    // 带上标称到期时刻：401 多半就是上报器没能按时续上，写出来省一次排查
+    const origin = `凭据来自 Mac 上报器，标称 ${new Date(credentials.expiresAt * 1000).toISOString()} 到期`;
     if (response.status === 401) {
       throw new Error(`Apple Music 拒绝了 developer token（401，${origin}）：${body}`);
     }
