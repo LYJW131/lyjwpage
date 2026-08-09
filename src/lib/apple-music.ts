@@ -59,6 +59,16 @@ async function resolveCredentials(): Promise<Credentials> {
   };
 }
 
+type AppleArtwork = {
+  url?: string;
+  /** 以下五个都是不带 # 的六位十六进制 */
+  bgColor?: string;
+  textColor1?: string;
+  textColor2?: string;
+  textColor3?: string;
+  textColor4?: string;
+};
+
 type AppleResource = {
   id?: string;
   /** albums / playlists / stations / library-albums … */
@@ -72,7 +82,7 @@ type AppleResource = {
     /** 歌单是创建者 */
     curatorName?: string;
     url?: string;
-    artwork?: { url?: string; bgColor?: string };
+    artwork?: AppleArtwork;
     playParams?: { id?: string };
   };
 };
@@ -94,7 +104,24 @@ async function normalize(resource: AppleResource): Promise<ListeningItem> {
     // 原样透传模板 URL，尺寸由取图的那一侧填 —— 见 lib/apple-artwork
     artwork: fromLibrary ?? attributes.artwork?.url ?? null,
     link: attributes.url ?? null,
+    palette: artworkPalette(attributes.artwork),
+    // 只有排在最前那项会被算，见 getRecentlyPlayed
+    durationMs: null,
   };
+}
+
+/** 只挑出六位十六进制的那几个，补上 # 。取不到就是空数组，前端自己兜底 */
+function artworkPalette(artwork?: AppleArtwork): string[] {
+  if (!artwork) return [];
+  return [
+    artwork.bgColor,
+    artwork.textColor1,
+    artwork.textColor2,
+    artwork.textColor3,
+    artwork.textColor4,
+  ]
+    .filter((value): value is string => typeof value === "string" && /^[0-9a-f]{6}$/i.test(value))
+    .map((value) => `#${value}`);
 }
 
 async function appleFetchRaw<T>(url: string, credentials: Credentials): Promise<T> {
@@ -279,7 +306,7 @@ export async function resolveTrackLookup(track: {
    * 以后再改这个值的形状，记得一起改版本号。
    */
   const cacheKey =
-    "apple-music:track-lookup:v5:" +
+    "apple-music:track-lookup:v6:" +
     [track.title, track.artist, track.album].map(normalizeForMatch).join(":");
 
   try {
@@ -299,13 +326,28 @@ export async function resolveTrackLookup(track: {
       const wantedArtist = normalizeForMatch(track.artist);
       const wantedAlbum = normalizeForMatch(track.album);
 
-      const candidates = (json.results?.songs?.data ?? []).filter((song) => {
-        if (normalizeForMatch(song.attributes?.name) !== wantedTitle) return false;
+      const titleMatches = (json.results?.songs?.data ?? []).filter(
+        (song) => normalizeForMatch(song.attributes?.name) === wantedTitle,
+      );
+      const byArtist = titleMatches.filter((song) => {
         if (!wantedArtist) return true;
         const found = normalizeForMatch(song.attributes?.artistName);
         // 「艺人 A feat. B」这类两边互为子串，双向包含都算对得上
         return found.includes(wantedArtist) || wantedArtist.includes(found);
       });
+
+      /**
+       * 艺人名对不上时退回「曲名 + 专辑」。
+       *
+       * 目录里的艺人名和设备报的常常不是一种写法：实测 Music.app 报
+       * 「宇多田ヒカル」，目录里写的是「Utada」，两边毫无字面交集，25 个候选
+       * 全被筛掉 —— 而正确的那条就在里面。日文艺人尤其常见。
+       *
+       * 少了艺人这层身份，专辑那层就得卡严：只认完全相等，不再退化到包含判断，
+       * 也不接受「只有一个候选就认」。宁可退回搜索页，也不给一个错的直链。
+       */
+      const artistMatched = byArtist.length > 0;
+      const candidates = artistMatched ? byArtist : titleMatches;
 
       const hit = wantedAlbum
         ? // 先要精确的。设备报的专辑名通常和目录一致（实测 Music.app 给的就是
@@ -314,12 +356,14 @@ export async function resolveTrackLookup(track: {
           candidates.find(
             (song) => normalizeForMatch(song.attributes?.albumName) === wantedAlbum,
           ) ??
-          candidates.find((song) => {
-            const found = normalizeForMatch(song.attributes?.albumName);
-            return found.includes(wantedAlbum) || wantedAlbum.includes(found);
-          })
-        : // 没有专辑名就没法消歧：只有候选唯一时才敢认，否则宁可退回搜索页
-          candidates.length === 1
+          (artistMatched
+            ? candidates.find((song) => {
+                const found = normalizeForMatch(song.attributes?.albumName);
+                return found.includes(wantedAlbum) || wantedAlbum.includes(found);
+              })
+            : undefined)
+        : // 没有专辑名就没法消歧：只有候选唯一、且艺人也对得上时才敢认
+          artistMatched && candidates.length === 1
           ? candidates[0]
           : undefined;
 
@@ -463,9 +507,24 @@ export async function getRecentlyPlayed(
   const credentials = await resolveCredentials();
   const resources = await fetchResources(credentials);
 
-  return Promise.all(
+  const items = await Promise.all(
     resources.slice(0, limit).map((item) => normalize(item)),
   );
+
+  /**
+   * 只给第一项补上总时长 —— hero 上那一格要显示它。
+   *
+   * 十项全算就是十次上游请求（歌单还要翻页），而列表行根本不显示时长。缓存一天，
+   * 所以稳定状态下这里通常一次请求都不打；「正在听」的推断本来也在算同一个数，
+   * 走的是同一个缓存键。
+   */
+  const [top] = resources;
+  if (top && items[0]) {
+    const durationMs = await getContainerDuration(top, credentials);
+    if (durationMs > 0) items[0] = { ...items[0], durationMs };
+  }
+
+  return items;
 }
 
 /**

@@ -22,6 +22,8 @@ import type {
   DesktopPayload,
   LocalNowPlaying,
   MusicPayload,
+  TimezoneActivity,
+  TimezonePayload,
 } from "@/lib/types";
 import { recordVibeCodingReport } from "@/lib/vibecoding";
 
@@ -48,8 +50,10 @@ let pauseExpiryTimer: ReturnType<typeof setTimeout> | null = null;
 
 type TelemetryState = {
   desktop: DesktopActivity | null;
+  timezone: TimezoneActivity | null;
   music: LocalNowPlaying | null;
   activityReceivedAt: number;
+  timezoneReceivedAt: number;
   activeModules: Set<string>;
 };
 
@@ -58,8 +62,10 @@ const globalTelemetry = globalThis as typeof globalThis & {
 };
 const telemetryState = (globalTelemetry.__lyjwTelemetryState ??= {
   desktop: null,
+  timezone: null,
   music: null,
   activityReceivedAt: 0,
+  timezoneReceivedAt: 0,
   activeModules: new Set<string>(),
 });
 /**
@@ -75,8 +81,10 @@ const telemetryState = (globalTelemetry.__lyjwTelemetryState ??= {
  */
 type PersistedTelemetry = {
   desktop: DesktopActivity | null;
+  timezone: TimezoneActivity | null;
   music: LocalNowPlaying | null;
   activityReceivedAt: number;
+  timezoneReceivedAt: number;
   telemetryReceivedAt: number;
   declaredOffline: boolean;
   activeModules: string[];
@@ -91,8 +99,10 @@ const mirror = mirrorKey<PersistedTelemetry>(
 async function persistTelemetryState() {
   await mirror.put({
     desktop: telemetryState.desktop,
+    timezone: telemetryState.timezone,
     music: telemetryState.music,
     activityReceivedAt: telemetryState.activityReceivedAt,
+    timezoneReceivedAt: telemetryState.timezoneReceivedAt,
     telemetryReceivedAt: reporterLastSeenAt(),
     declaredOffline: livenessSnapshot().declaredOffline,
     activeModules: [...telemetryState.activeModules],
@@ -120,8 +130,10 @@ async function syncTelemetryState() {
   if (!stored) {
     // 真被清空了（或从没写过），工作副本跟着归零
     telemetryState.desktop = null;
+    telemetryState.timezone = null;
     telemetryState.music = null;
     telemetryState.activityReceivedAt = 0;
+    telemetryState.timezoneReceivedAt = 0;
     telemetryState.activeModules = new Set();
     restoreLiveness({ lastSeenAt: 0, declaredOffline: false });
     return;
@@ -134,8 +146,10 @@ async function syncTelemetryState() {
    * 被覆盖（换歌 / 换应用才会重发）。宁可先不显示，也别挂一张裂图。
    */
   telemetryState.desktop = keepFreshAsset(stored.desktop ?? null, "iconUrl");
+  telemetryState.timezone = stored.timezone ?? null;
   telemetryState.music = keepFreshAsset(stored.music ?? null, "artworkUrl");
   telemetryState.activityReceivedAt = stored.activityReceivedAt ?? 0;
+  telemetryState.timezoneReceivedAt = stored.timezoneReceivedAt ?? 0;
   telemetryState.activeModules = new Set(stored.activeModules ?? []);
   restoreLiveness({
     lastSeenAt: stored.telemetryReceivedAt ?? 0,
@@ -174,6 +188,22 @@ async function normalizeDesktop(
     applicationName,
     bundleIdentifier,
     iconUrl: (await storeUploadedImage(row.icon_data, ICON_MAX_DIMENSION, ICON_WEBP_QUALITY)) ?? previousIcon,
+    observedAt: milliseconds(row.observed_at, receivedAt),
+  };
+}
+
+function normalizeTimezone(
+  value: unknown,
+  receivedAt: number,
+): TimezoneActivity | null {
+  const row = object(value);
+  if (!row) return null;
+  const identifier = text(row.identifier);
+  if (!identifier) return null;
+  return {
+    identifier,
+    abbreviation: text(row.abbreviation),
+    secondsFromGMT: Math.trunc(number(row.seconds_from_gmt) ?? 0),
     observedAt: milliseconds(row.observed_at, receivedAt),
   };
 }
@@ -288,6 +318,12 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
     accepted += 1;
   }
 
+  if ("timezone" in modules) {
+    telemetryState.timezone = normalizeTimezone(modules.timezone, receivedAt);
+    telemetryState.timezoneReceivedAt = receivedAt;
+    accepted += 1;
+  }
+
   if ("apple_music" in modules) {
     telemetryState.music = await normalizeMusic(modules.apple_music, receivedAt);
     telemetryState.activityReceivedAt = receivedAt;
@@ -355,6 +391,17 @@ export async function getDesktopPayload(): Promise<DesktopPayload> {
     desktop: stale ? null : telemetryState.desktop,
     receivedAt:
       telemetryState.activityReceivedAt || reporterLastSeenAt() || null,
+    stale,
+  };
+}
+
+export async function getTimezonePayload(): Promise<TimezonePayload> {
+  await syncTelemetryState();
+  const stale = !telemetryState.activeModules.has("timezone") || reporterStale();
+  return {
+    timezone: stale ? null : telemetryState.timezone,
+    receivedAt:
+      telemetryState.timezoneReceivedAt || reporterLastSeenAt() || null,
     stale,
   };
 }
