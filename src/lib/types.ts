@@ -112,6 +112,22 @@ export type DesktopPayload = {
   stale: boolean;
 };
 
+/** Mac 当前系统时区。只在 timezone 模块启用且上报器在线时展示。 */
+export type TimezoneActivity = {
+  /** IANA 时区标识，如 Asia/Singapore */
+  identifier: string;
+  abbreviation: string | null;
+  /** 当前 UTC 偏移，秒 */
+  secondsFromGMT: number;
+  observedAt: number;
+};
+
+export type TimezonePayload = {
+  timezone: TimezoneActivity | null;
+  receivedAt: number | null;
+  stale: boolean;
+};
+
 /** 实时播放。来源可能是 MacBook 的 Music.app，也可能是 HomePod。 */
 export type MusicPayload = {
   music: LocalNowPlaying | null;

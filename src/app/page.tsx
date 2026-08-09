@@ -2,6 +2,7 @@ import { Header } from "@/components/header";
 import { ChargerCard } from "@/components/live/charger-card";
 import { ListeningCard } from "@/components/live/listening-card";
 import { LiveDeskCard } from "@/components/live/live-desk-card";
+import { TimezoneCard } from "@/components/live/timezone-card";
 import { VibeCodingCard } from "@/components/live/vibecoding-card";
 import { WatchingRow } from "@/components/live/watching-card";
 import { Container, Section } from "@/components/ui/section";
@@ -19,6 +20,7 @@ export default function Home() {
               <ChargerCard />
               <ListeningCard />
               <VibeCodingCard />
+              <TimezoneCard />
             </div>
 
             <div className="mt-4">
