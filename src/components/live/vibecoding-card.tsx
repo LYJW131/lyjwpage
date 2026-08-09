@@ -1,6 +1,7 @@
 "use client";
 
 import NumberFlow from "@number-flow/react";
+import { useEffect, useState } from "react";
 
 import { ClaudeSpinner } from "@/components/live/claude-spinner";
 import { CodexActivityIndicator } from "@/components/live/codex-activity-indicator";
@@ -294,17 +295,48 @@ function formatReset(resetsAt: number | null, referenceTime: number) {
   return `Resets in ${parts.filter(Boolean).join(" ")}`;
 }
 
-function LimitMeter({
-  limit,
-  referenceTime,
-}: {
-  limit: VibeCodingLimit;
-  /** 与面板其它部分同源，避免渲染期间读取不稳定的系统时钟 */
-  referenceTime: number;
-}) {
-  const color = limitColor(limit.usedPercent);
+function LimitMeter({ limit }: { limit: VibeCodingLimit }) {
+  /**
+   * 自己盯着重置时刻，不跟面板其它部分共用快照时间。
+   *
+   * 快照时间是采集那一刻，用它当基准的话「重置到点了」这件事前端永远感知不到 ——
+   * 倒计时是冻住的，只在新数据到达时跳一下。而上报器五分钟才重取一次限额、
+   * 再搭 ccusage 的包发出、站点再轮询一轮，最坏六分多钟里这根条一直显示上一个
+   * 周期的百分比。那个数是确定错的：周期已经翻篇了。
+   *
+   * 到点归零不是编数据 —— 重置那一刻用量就是零。之后至多低估这几分钟新用掉的
+   * 量，比挂着一个上个周期的旧值准得多。
+   *
+   * 用一次性 setTimeout 而不是轮询式计时器：数据没变时轮询不会触发重渲染
+   * （响应体已经不带时间戳了），光靠重渲染永远跨不过那个时刻；而定时器只在
+   * 边界醒这一次，中间一点开销都没有。
+   */
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (limit.resetsAt == null) return;
+    const target = limit.resetsAt * 1000;
+    // 已经跨过去了就不再排，否则下面每轮都会重排一个 500ms 的定时器，停不下来
+    if (now >= target) return;
+    /**
+     * 延迟按真实当下算，不能用 now 去减。
+     *
+     * now 是挂载那一刻的快照，之后只被这个定时器推进；拿它算差值，等于把
+     * 「now 已经落后多久」又加了一遍，定时器会排到远超重置时刻之后。
+     * 多等半秒是为了避开时钟精度，醒来时刚好差几毫秒没过点。
+     */
+    const timer = window.setTimeout(
+      () => setNow(Date.now()),
+      Math.max(0, target - Date.now()) + 500,
+    );
+    return () => window.clearTimeout(timer);
+  }, [limit.resetsAt, now]);
+
+  const expired = limit.resetsAt != null && limit.resetsAt * 1000 <= now;
+  const usedPercent = expired ? 0 : limit.usedPercent;
+  const color = limitColor(usedPercent);
   const title = formatLimitTitle(limit);
-  const reset = formatReset(limit.resetsAt, referenceTime);
+  // 基准跟着上面那个 now，条和文案才会在同一刻翻面
+  const reset = formatReset(limit.resetsAt, now);
 
   return (
     <div>
@@ -315,14 +347,14 @@ function LimitMeter({
         <span className="flex shrink-0 items-baseline gap-2">
           {reset && <span className="text-xs text-muted-foreground">{reset}</span>}
           <span className="font-mono text-xs tabular-nums" style={{ color }}>
-            {Math.round(limit.usedPercent)}%
+            {Math.round(usedPercent)}%
           </span>
         </span>
       </div>
       <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted">
         <div
           className="h-full rounded-full transition-[width] duration-700"
-          style={{ width: `${limit.usedPercent}%`, backgroundColor: color }}
+          style={{ width: `${usedPercent}%`, backgroundColor: color }}
         />
       </div>
     </div>
@@ -478,7 +510,7 @@ function AgentPanel({
             </div>
           )}
           {agent.limits.map((limit) => (
-            <LimitMeter key={limit.key} limit={limit} referenceTime={referenceTime} />
+            <LimitMeter key={limit.key} limit={limit} />
           ))}
         </div>
       )}
