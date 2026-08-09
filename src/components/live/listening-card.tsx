@@ -36,10 +36,8 @@ import { cn } from "@/lib/utils";
 
 /** 与服务端 30s 列表缓存对齐 */
 const REFRESH_MS = 30_000;
-/** 实时播放：推送断了才靠轮询顶着 */
-const MUSIC_REFRESH_MS = 3_000;
-/** 推送正常时轮询只是兜底 */
-const MUSIC_PUSHED_REFRESH_MS = 30_000;
+/** 实时播放由 SSE 推来，轮询只是兜底 */
+const MUSIC_REFRESH_MS = 30_000;
 
 /**
  * 视口里显示几行。行高不写死：列表填满卡片剩下的空间，每行取容器的 1/N
@@ -449,11 +447,8 @@ export function ListeningCard({ className }: { className?: string }) {
     LISTENING_PATH,
     REFRESH_MS,
   );
-  const { connected } = useLiveStream();
-  const { data: live } = useStatus<MusicPayload>(
-    MUSIC_PATH,
-    connected ? MUSIC_PUSHED_REFRESH_MS : MUSIC_REFRESH_MS,
-  );
+  useLiveStream();
+  const { data: live } = useStatus<MusicPayload>(MUSIC_PATH, MUSIC_REFRESH_MS);
 
   const reduced = useReducedMotion();
 
