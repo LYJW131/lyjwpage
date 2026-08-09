@@ -295,6 +295,22 @@ function formatReset(resetsAt: number | null, referenceTime: number) {
   return `Resets in ${parts.filter(Boolean).join(" ")}`;
 }
 
+/**
+ * 距离下一次「显示会变」还有多久。
+ *
+ * 只在文案真的会变的时刻醒，不做无谓的定时重渲染：
+ *
+ * - 超过一天时显示的是「Resets Mon 11:00 AM」，那句话跟时间流逝无关，
+ *   一直等到它跌破一天、要换成相对写法时才需要醒。周额度因此几小时才醒一次。
+ * - 一天以内显示到分钟，所以在每个整分边界醒一次。
+ * - 剩不到一分钟时直接等到点，那一下要同时翻文案和把条归零。
+ */
+function nextTickDelay(remain: number) {
+  if (remain > 86_400_000) return remain - 86_400_000;
+  if (remain <= 60_000) return Math.max(0, remain);
+  return remain % 60_000 || 60_000;
+}
+
 function LimitMeter({ limit }: { limit: VibeCodingLimit }) {
   /**
    * 自己盯着重置时刻，不跟面板其它部分共用快照时间。
@@ -315,18 +331,18 @@ function LimitMeter({ limit }: { limit: VibeCodingLimit }) {
   useEffect(() => {
     if (limit.resetsAt == null) return;
     const target = limit.resetsAt * 1000;
-    // 已经跨过去了就不再排，否则下面每轮都会重排一个 500ms 的定时器，停不下来
+    // 已经跨过去了就不再排，否则下面每轮都会重排定时器，停不下来
     if (now >= target) return;
     /**
      * 延迟按真实当下算，不能用 now 去减。
      *
-     * now 是挂载那一刻的快照，之后只被这个定时器推进；拿它算差值，等于把
-     * 「now 已经落后多久」又加了一遍，定时器会排到远超重置时刻之后。
-     * 多等半秒是为了避开时钟精度，醒来时刚好差几毫秒没过点。
+     * now 是上一次醒来时的快照；拿它算差值等于把「now 已经落后多久」又加了
+     * 一遍，定时器会排到远超目标时刻之后。实测那样会晚三分钟才归零。
      */
     const timer = window.setTimeout(
       () => setNow(Date.now()),
-      Math.max(0, target - Date.now()) + 500,
+      // 多等半秒，避开时钟精度导致醒来时刚好差几毫秒没到点
+      nextTickDelay(target - Date.now()) + 500,
     );
     return () => window.clearTimeout(timer);
   }, [limit.resetsAt, now]);
