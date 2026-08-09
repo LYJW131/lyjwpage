@@ -32,6 +32,20 @@ export type ListeningItem = {
   artist: string;
   artwork: string | null;
   link: string | null;
+  /**
+   * 封面取色，Apple 随 artwork 一起给：bgColor 加 textColor1..4，最多五个。
+   *
+   * 注意 textColor 是设计来叠在 bgColor 上的 —— 浅色封面配的是近黑，深色封面
+   * 配的是浅色。所以不能直接拿来画东西，用之前必须把亮度拉齐，见前端那条彩虹条。
+   */
+  palette: string[];
+  /**
+   * 这张专辑 / 歌单所有曲目时长之和，毫秒。
+   *
+   * **只有列表第一项有**，其余一律 null：算它要顺着 href 再查一次曲目（歌单还
+   * 要翻页），十项全算就是十次上游请求，而页面只在 hero 上显示这一个数。
+   */
+  durationMs: number | null;
 };
 
 /**
@@ -95,6 +109,22 @@ export type DesktopPayload = {
   desktop: DesktopActivity | null;
   receivedAt: number | null;
   /** 上报器不可用或已超过心跳窗口。 */
+  stale: boolean;
+};
+
+/** Mac 当前系统时区。只在 timezone 模块启用且上报器在线时展示。 */
+export type TimezoneActivity = {
+  /** IANA 时区标识，如 Asia/Singapore */
+  identifier: string;
+  abbreviation: string | null;
+  /** 当前 UTC 偏移，秒 */
+  secondsFromGMT: number;
+  observedAt: number;
+};
+
+export type TimezonePayload = {
+  timezone: TimezoneActivity | null;
+  receivedAt: number | null;
   stale: boolean;
 };
 
@@ -278,10 +308,19 @@ export type VibeCodingPayload = {
   stale: boolean;
 };
 
-/** 所有 /api/status/* 的统一信封 */
+/**
+ * 所有 /api/status/* 的统一信封。
+ *
+ * 刻意不带时间戳。从前每个响应都盖一个 fetchedAt，结果是**任何两次响应在字节
+ * 层面都不同** —— 而 SWR 靠深比较决定要不要更新缓存，于是数据一个字节没变，
+ * 每轮轮询也会让所有卡片重渲染一遍（充电头那条 400 点曲线、最近在听那个带布局
+ * 动画的列表、vibe coding 那几条 sparkline，全都白跑）。
+ *
+ * 而且全站没有任何组件读它。真要知道服务端什么时候算的，看响应头 X-Fetched-At。
+ */
 export type StatusResponse<T> =
-  | { ok: true; data: T; fetchedAt: string }
-  | { ok: false; error: string; fetchedAt: string };
+  | { ok: true; data: T }
+  | { ok: false; error: string };
 
 /** 上报被拒。不带 data，且与 T 无关 —— 各 ingest 端点共用同一种失败形状 */
 export type IngestFailure = { ok: false; error: string };

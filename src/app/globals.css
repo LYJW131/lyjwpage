@@ -191,7 +191,6 @@
   }
 }
 
-/* 播放中时进度条呼吸，用来和「看到一半停着的」区分开 */
 /* 推断为播放中时，均衡器跳动 */
 @keyframes equalizer {
   0%,
@@ -210,6 +209,38 @@
   }
   50% {
     opacity: 0.4;
+  }
+}
+
+/*
+ * 历史条目那一行的彩虹条。
+ *
+ * 那个位置在实时那版是进度条；历史条目没有进度可显示，但高度必须占住 ——
+ * 两版只要差一点高度，外层的 justify-center 就会重新居中，切换时整列上下挪。
+ * 从前留的是不可见的空占位，看着是道没来由的空档。填一条缓慢流动的彩虹，
+ * 既补上那道空档，又不多占一个像素（仍是 3px）。
+ *
+ * 首尾同色是无缝循环的前提：配合 background-size 200%，位移到 200% 时正好接回
+ * 起点。各段的亮度和彩度取得接近，免得在深色卡片上某几段忽明忽暗。
+ */
+.rainbow-bar {
+  background-image: linear-gradient(
+    90deg,
+    oklch(0.72 0.16 25),
+    oklch(0.78 0.15 75),
+    oklch(0.8 0.15 140),
+    oklch(0.75 0.13 200),
+    oklch(0.68 0.16 265),
+    oklch(0.72 0.17 330),
+    oklch(0.72 0.16 25)
+  );
+  background-size: 200% 100%;
+  animation: rainbow-drift 9s linear infinite;
+}
+
+@keyframes rainbow-drift {
+  to {
+    background-position: 200% center;
   }
 }
 

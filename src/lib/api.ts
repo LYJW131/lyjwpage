@@ -27,21 +27,25 @@ export function sinceParam(request: Request): number | undefined {
 export async function statusRoute<T>(
   loader: () => Promise<T>,
 ): Promise<NextResponse<StatusResponse<T>>> {
-  const fetchedAt = new Date().toISOString();
+  /**
+   * 时间戳放响应头，不进 body：进了 body 就等于每次响应都不一样，
+   * 前端再想判断「数据变没变」永远为假 —— 见 StatusResponse 的注释。
+   */
+  const headers = {
+    "Cache-Control": "no-store",
+    "X-Fetched-At": new Date().toISOString(),
+  };
   try {
     const data = await loader();
-    return NextResponse.json(
-      { ok: true as const, data, fetchedAt },
-      { headers: { "Cache-Control": "no-store" } },
-    );
+    return NextResponse.json({ ok: true as const, data }, { headers });
   } catch (error) {
     const message = reason(error);
     // 带上栈：降级信封只把 message 发给页面，没有栈的话服务端日志里
     // 一句「Cannot read properties of null」根本定位不到是哪一处
     console.error("[status]", error instanceof Error ? (error.stack ?? message) : message);
     return NextResponse.json(
-      { ok: false as const, error: message, fetchedAt },
-      { status: 200, headers: { "Cache-Control": "no-store" } },
+      { ok: false as const, error: message },
+      { status: 200, headers },
     );
   }
 }

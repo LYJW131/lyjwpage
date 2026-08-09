@@ -12,7 +12,6 @@ import { DESKTOP_PATH } from "@/lib/paths";
 import type { DesktopActivity, DesktopPayload } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-/** 推送断了才靠轮询顶着，这时要跟得紧 */
 /**
  * 锁屏时前台是 loginwindow —— 那是 macOS 的锁屏进程，不是用户在用的应用。
  * 直接把进程名摆出来既没意义又像出了 bug，换成状态本身的说法。
@@ -20,9 +19,8 @@ import { cn } from "@/lib/utils";
  */
 const LOCK_SCREEN_BUNDLE_ID = "com.apple.loginwindow";
 
-const REFRESH_MS = 3_000;
-/** 推送正常时轮询只是兜底，压到最低 */
-const PUSHED_REFRESH_MS = 30_000;
+/** 轮询只是兜底：状态变化由 SSE 推来，长连接断了 EventSource 自己会重连 */
+const REFRESH_MS = 30_000;
 
 const APP_SWITCH_VARIANTS = {
   initial: {
@@ -58,11 +56,8 @@ const APP_SWITCH_TRANSITION = {
 
 export function LiveDeskCard({ className }: { className?: string }) {
   // 推送把最新状态直接写进 SWR 缓存，所以这里照旧读同一个 key 就行
-  const { connected } = useLiveStream();
-  const { data, error, isLoading } = useStatus<DesktopPayload>(
-    DESKTOP_PATH,
-    connected ? PUSHED_REFRESH_MS : REFRESH_MS,
-  );
+  useLiveStream();
+  const { data, error, isLoading } = useStatus<DesktopPayload>(DESKTOP_PATH, REFRESH_MS);
   const [displayedDesktop, setDisplayedDesktop] = useState<DesktopActivity | null>(null);
   const reduced = useReducedMotion();
 

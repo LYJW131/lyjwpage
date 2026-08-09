@@ -1,5 +1,6 @@
 "use client";
 
+import NumberFlow, { NumberFlowGroup } from "@number-flow/react";
 import { Laptop, Speaker } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import Image from "next/image";
@@ -35,10 +36,8 @@ import { cn } from "@/lib/utils";
 
 /** 与服务端 30s 列表缓存对齐 */
 const REFRESH_MS = 30_000;
-/** 实时播放：推送断了才靠轮询顶着 */
-const MUSIC_REFRESH_MS = 3_000;
-/** 推送正常时轮询只是兜底 */
-const MUSIC_PUSHED_REFRESH_MS = 30_000;
+/** 实时播放由 SSE 推来，轮询只是兜底 */
+const MUSIC_REFRESH_MS = 30_000;
 
 /**
  * 视口里显示几行。行高不写死：列表填满卡片剩下的空间，每行取容器的 1/N
@@ -49,22 +48,117 @@ const VISIBLE_ROWS = 4;
 /** 单行的最小高度：36px 封面 + 上下留白，比这个再矮就挤了 */
 const MIN_ROW_HEIGHT_PX = 48;
 
-/** 三根竖条。推断为正在播时跳动，否则静止成一个普通的音乐小图标 */
-function Bars({ active }: { active: boolean }) {
+/**
+ * 专辑 / 歌单总时长。超过一小时给 h:mm:ss，否则 m:ss。
+ *
+ * 不用上面那个 Clock：那个是给会走的进度用的，滚动数字有意义；总时长是死的，
+ * 而且 hero 一换就整个重挂、NumberFlow 拿不到上一个值，本来也滚不起来。
+ * 歌单动辄一两个小时，75:09 这种写法读起来别扭。
+ */
+function formatDuration(milliseconds: number) {
+  const total = Math.max(0, Math.round(milliseconds / 1000));
+  const seconds = String(total % 60).padStart(2, "0");
+  const minutes = Math.floor(total / 60) % 60;
+  const hours = Math.floor(total / 3600);
+  return hours > 0
+    ? `${hours}:${String(minutes).padStart(2, "0")}:${seconds}`
+    : `${minutes}:${seconds}`;
+}
+
+/**
+ * 把封面取色拼成那条彩虹的渐变。
+ *
+ * Apple 给的五个色不能直接用：textColor 是设计来叠在 bgColor 上的，浅色封面
+ * 配近黑、深色封面配浅色，原样画出来一半的专辑会得到一条几乎全黑的线。
+ * `oklch(from …)` 只留色相、把亮度和彩度按住在可见区间，这样每张封面都出一条
+ * 看得见、又确实是它自己颜色的带子。换算交给 CSS，不在 JS 里写颜色数学。
+ *
+ * 首尾补回第一个色，配 background-size: 200% 才能无缝循环。取不到调色板就返回
+ * undefined，让 .rainbow-bar 自带的那条通用彩虹兜底。
+ */
+function paletteGradient(palette: string[]): string | undefined {
+  if (palette.length < 2) return undefined;
+  const stops = [...palette, palette[0]]
+    .map((color) => `oklch(from ${color} 0.74 max(c, 0.09) h)`)
+    .join(", ");
+  return `linear-gradient(90deg, ${stops})`;
+}
+
+/**
+ * 三根竖条。推断为正在播时跳动，否则静止成一个普通的音乐小图标。
+ *
+ * 动画相位挂在墙上时钟，不挂在挂载时刻。换歌时整个 hero 会重新挂载，CSS 动画
+ * 默认从头开始，三根条齐刷刷跳回起点 —— 从前 mode="wait" 中间空一拍把这一下
+ * 盖住了，改成交叉淡入后新旧同时可见，顿挫就露出来了。
+ *
+ * 负的 animation-delay 表示「已经播过这么久」：取 now % period，任何时刻新挂载
+ * 的实例都落在和旧实例相同的相位上，接得上。重渲染时重算也是幂等的 —— 算出来
+ * 的还是当前相位，不会自己把自己顿一下。
+ *
+ * 不用担心和服务端对不上：hero 要等 SWR 拿到数据才存在，服务端那一遍走的是
+ * 占位分支，这段根本不参与首屏 HTML。
+ */
+const BAR_PERIODS = [0.9, 1.15, 1.4];
+
+/**
+ * 三种状态，不是两种。
+ *
+ * - playing 在跳
+ * - paused  就地冻住。keyframes 动的是 transform: scaleY，所以只要保住 h-full
+ *   这个基准盒、把 animation-play-state 切成 paused，浏览器就停在当前那一帧上。
+ *   从前这一档和 idle 合并了，一按暂停三根条会弹回固定形状 —— 明明只是暂停，
+ *   看起来却像换了个东西。
+ * - idle    历史条目，从来没跳过，没有「当前姿态」可冻，用固定形状
+ */
+type BarsState = "playing" | "paused" | "idle";
+
+function Bars({ state }: { state: BarsState }) {
   const idleHeights = ["h-2", "h-3", "h-1.5"];
+  const animated = state !== "idle";
+
+  /**
+   * 在 ref 回调里对相位，不在渲染里。
+   *
+   * Date.now 是不纯的，渲染期调用会被 react-hooks 拦下（结果也确实不稳定）。
+   * ref 回调跑在 commit 阶段、绘制之前，既保住渲染纯粹，也不会先闪一帧相位 0。
+   *
+   * paused 也要对：直接以暂停态挂载时（刷新页面时曲子正暂停着），不对的话三根
+   * 条会齐刷刷停在 scaleY(0.3)，像根本没播过。playing→paused 那次重跑是幂等的，
+   * 算出来还是当前相位，冻住的姿态不会被挪动。
+   */
+  const alignPhase = useCallback(
+    (node: HTMLSpanElement | null) => {
+      if (!node || !animated) return;
+      const seconds = Date.now() / 1000;
+      [...node.children].forEach((child, i) => {
+        const period = BAR_PERIODS[i];
+        // 错开的起点保留原来的观感；周期本来就各不相同，跳起来不会齐步走
+        (child as HTMLElement).style.animationDelay =
+          `${(-((seconds % period) + i * 0.15)).toFixed(3)}s`;
+      });
+    },
+    [animated],
+  );
+
   return (
-    <span className="flex h-3 items-end gap-0.5" aria-hidden>
+    <span className="flex h-3 items-end gap-0.5" aria-hidden ref={alignPhase}>
       {[0, 1, 2].map((i) => (
         <span
           key={i}
           className={cn(
             "w-0.5 origin-bottom rounded-full",
-            active ? "h-full bg-live" : `bg-muted-foreground ${idleHeights[i]}`,
+            state === "idle"
+              ? `bg-muted-foreground ${idleHeights[i]}`
+              : state === "playing"
+                ? "h-full bg-live"
+                : "h-full bg-muted-foreground",
           )}
           style={
-            active
+            animated
               ? {
-                  animation: `equalizer ${0.9 + i * 0.25}s ease-in-out ${i * 0.15}s infinite`,
+                  animation: `equalizer ${BAR_PERIODS[i]}s ease-in-out infinite`,
+                  // 值本身不变，React 只会补上这一条，动画不会被重置
+                  animationPlayState: state === "paused" ? "paused" : "running",
                 }
               : undefined
           }
@@ -74,9 +168,29 @@ function Bars({ active }: { active: boolean }) {
   );
 }
 
-function formatClock(milliseconds: number) {
+/**
+ * 时钟的一格，秒进位时和充电头的瓦数一样滚动。
+ *
+ * 分秒拆成两个 NumberFlow 而不是把 "2:19" 当一个数字：冒号不是千分位那类
+ * 分隔符，Intl 也没有 mm:ss 的格式，只能自己拼。外面套 NumberFlowGroup 才能
+ * 让 59→00 那一下两格同时翻，否则各滚各的、时间差看得出来。
+ *
+ * 秒补零交给 minimumIntegerDigits，不用 padStart —— 字符串补出来的零是静态
+ * 文本，滚动时那一位不会动。
+ */
+function Clock({ milliseconds }: { milliseconds: number }) {
   const seconds = Math.max(0, Math.floor(milliseconds / 1_000));
-  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+  return (
+    <>
+      <NumberFlow value={Math.floor(seconds / 60)} locales="en-US" />
+      <span>:</span>
+      <NumberFlow
+        value={seconds % 60}
+        locales="en-US"
+        format={{ minimumIntegerDigits: 2 }}
+      />
+    </>
+  );
 }
 
 /**
@@ -125,9 +239,13 @@ function HeroProgress({
         <span className="min-w-0 flex-1 truncate" title={subtitle}>
           {subtitle}
         </span>
-        <span className="label-mono shrink-0 tabular-nums">
-          {formatClock(position)} / {formatClock(track.durationMs)}
-        </span>
+        <NumberFlowGroup>
+          <span className="label-mono shrink-0 tabular-nums">
+            <Clock milliseconds={position} />
+            <span> / </span>
+            <Clock milliseconds={track.durationMs} />
+          </span>
+        </NumberFlowGroup>
       </div>
       <div className="mt-1.5 h-0.75 overflow-hidden rounded-full bg-muted">
         <div
@@ -313,6 +431,10 @@ type Hero = {
   link: string | null;
   label: string;
   playing: boolean;
+  /** 封面取色，只有历史条目那一支用得上 */
+  palette: string[];
+  /** 整张专辑 / 歌单的总时长。实时那一支不用（它显示的是曲目进度） */
+  durationMs: number | null;
   /**
    * 本机 Music.app 正在放的那首（而不是 Apple Music 的历史记录）。
    * 有值就说明能拿到播放进度，副标题行会换成带进度条的版本。
@@ -325,11 +447,8 @@ export function ListeningCard({ className }: { className?: string }) {
     LISTENING_PATH,
     REFRESH_MS,
   );
-  const { connected } = useLiveStream();
-  const { data: live } = useStatus<MusicPayload>(
-    MUSIC_PATH,
-    connected ? MUSIC_PUSHED_REFRESH_MS : MUSIC_REFRESH_MS,
-  );
+  useLiveStream();
+  const { data: live } = useStatus<MusicPayload>(MUSIC_PATH, MUSIC_REFRESH_MS);
 
   const reduced = useReducedMotion();
 
@@ -341,10 +460,29 @@ export function ListeningCard({ className }: { className?: string }) {
   const localActive = Boolean(localTrack);
 
   const [latest, ...tail] = data?.items ?? [];
-  // 推断出来的「正在听」，且确实指向排在最前的这一项
-  const playing = Boolean(
-    data?.nowPlaying && data.nowPlaying.itemId === latest?.id,
-  );
+
+  /**
+   * 记住实时源刚才解析到的那张专辑 ID。
+   *
+   * 宽限期一过，服务端会把 music 和 id 一并清空，客户端从此分不清「Mac 刚暂停」
+   * 和「Mac 根本没开过」—— 而这两种情况下该不该信推断，答案正好相反。
+   */
+  // 渲染期直接调整，不放 useEffect —— 那样要多渲染一轮，而且 set-state-in-effect
+  // 本来就是反模式。React 对「props 变了顺手修 state」推荐的就是这个写法。
+  const [lastLiveId, setLastLiveId] = useState<string | null>(null);
+  if (live?.id && live.id !== lastLiveId) setLastLiveId(live.id);
+
+  /**
+   * 推断出来的「正在听」，且确实指向排在最前的这一项。
+   *
+   * 但如果排在最前的就是实时源刚才在放的那张，就不信这个推断 —— 我们比它知道得
+   * 多：设备亲口说了暂停/停止，而推断只会按「这个容器什么时候排到第一」加曲目
+   * 总时长去算，于是刚按下暂停、宽限期一过，卡片反而从「已暂停」翻成绿色的
+   * 「播放中」。等别的条目顶上来，这层压制自然就解除了。
+   */
+  const backFromLive = lastLiveId != null && lastLiveId === latest?.id;
+  const playing =
+    !backFromLive && Boolean(data?.nowPlaying && data.nowPlaying.itemId === latest?.id);
 
   const hero: Hero | null = localActive
     ? {
@@ -357,6 +495,8 @@ export function ListeningCard({ className }: { className?: string }) {
         link: live?.link ?? null,
         label: localTrack!.state === "playing" ? "播放中" : "已暂停",
         playing: localTrack!.state === "playing",
+        palette: [],
+        durationMs: null,
         track: localTrack,
       }
     : latest
@@ -368,6 +508,8 @@ export function ListeningCard({ className }: { className?: string }) {
           link: latest.link,
           label: playing ? "播放中" : "最近听过",
           playing,
+          palette: latest.palette,
+          durationMs: latest.durationMs,
           track: null,
         }
       : null;
@@ -386,12 +528,11 @@ export function ListeningCard({ className }: { className?: string }) {
     <Card label="Recently Played" action="Apple Music" className={className}>
       <div className="flex flex-1 flex-col px-4 pb-4 pt-3">
         {/* 最近的一项放大展示。整块都是链接 —— 点封面也能跳转。
-            换专辑/歌单时整块交叉淡入，不硬跳。
+            换专辑/歌单时新旧叠着交叉淡入，见 HERO_VARIANTS。
 
-            首屏「读取中」不进 AnimatePresence：mode="wait" 要求旧 child 退场
-            动画跑完新 child 才进场，把占位态算作一个 child 的话，数据到了以后
-            hero 还要再等一个来回，肉眼可见地落在下面那个列表后面。
-            让它等到有数据再挂载，initial={false} 就会直接跳过入场动画。 */}
+            首屏「读取中」不进 AnimatePresence：占位态和 hero 根本不是同一个东西，
+            让它们互相淡入淡出没有意义，只会在数据到达时糊一下。等有数据再挂载，
+            initial={false} 就会直接跳过入场动画，首屏不播这一下。 */}
         {!hero ? (
           <HeroWrapper link={null}>
             <div className="relative aspect-square w-20 shrink-0 overflow-hidden rounded-md border border-line bg-muted" />
@@ -406,16 +547,15 @@ export function ListeningCard({ className }: { className?: string }) {
             </div>
           </HeroWrapper>
         ) : (
-        <AnimatePresence mode="wait" initial={false}>
+        <AnimatePresence mode="popLayout" initial={false}>
           <motion.div
             key={hero.key}
             variants={reduced ? STATIC_VARIANTS : HERO_VARIANTS}
             initial="initial"
             animate="animate"
             exit="exit"
-            transition={
-              reduced ? STATIC_TRANSITION : { duration: 0.22, ease: "easeOut" }
-            }
+            // 非对称时长写在 variant 里，这里传统一的 transition 会把它抹平
+            transition={reduced ? STATIC_TRANSITION : undefined}
           >
             <HeroWrapper link={hero.link}>
               <div className="relative aspect-square w-20 shrink-0 overflow-hidden rounded-md border border-line bg-muted">
@@ -438,9 +578,20 @@ export function ListeningCard({ className }: { className?: string }) {
           */}
               <div className="flex min-w-0 flex-1 flex-col justify-center">
                 {/* 图标在左、文字在右，和 CHARGER / C1 那些标签行一致：
-                    对齐的是图标的左边界，标签文字本身缩进 */}
-                <div className="flex min-w-0 items-center gap-1.5">
-                  <Bars active={hero.playing} />
+                    对齐的是图标的左边界，标签文字本身缩进。
+
+                    min-h-5 锁死行高：设备标签只在实时曲目那一版出现，它自带
+                    边框和内距（20px），比光秃秃的 label-mono（约 12px）高一截。
+                    不锁的话两版 hero 高度不同，外层 justify-center 会重新居中，
+                    切换时整列上下挪一下 —— 交叉淡入让新旧同时可见，那一挪就成了
+                    肉眼可见的滑动。 */}
+                <div className="flex min-h-5 min-w-0 items-center gap-1.5">
+                  {/* 有 track 就是实时源：没在放就是暂停，冻住而不是弹回固定形状 */}
+                  <Bars
+                    state={
+                      hero.playing ? "playing" : hero.track ? "paused" : "idle"
+                    }
+                  />
                   <span
                     className={cn(
                       "label-mono shrink-0",
@@ -475,12 +626,28 @@ export function ListeningCard({ className }: { className?: string }) {
                 {hero.track ? (
                   <HeroProgress track={hero.track} subtitle={hero.subtitle} />
                 ) : (
-                  <div
-                    className="mt-px truncate text-sm text-muted-foreground"
-                    title={hero.subtitle}
-                  >
-                    {hero.subtitle}
-                  </div>
+                  <>
+                    {/* 和实时那版的副标题行同构：左边艺人，右边时间。那边是
+                        「已播 / 总长」，这边没有进度，只放总长。 */}
+                    <div className="mt-px flex items-baseline gap-2 text-sm text-muted-foreground">
+                      <span className="min-w-0 flex-1 truncate" title={hero.subtitle}>
+                        {hero.subtitle}
+                      </span>
+                      {hero.durationMs != null && (
+                        <span className="label-mono shrink-0 tabular-nums">
+                          {formatDuration(hero.durationMs)}
+                        </span>
+                      )}
+                    </div>
+                    {/* 尺寸和 HeroProgress 那根进度条一模一样。历史条目没有进度可
+                        显示，但两版 hero 的高度必须一致，理由同上面那段 —— 与其留
+                        一道不可见的空档，不如填满，见 globals.css 的 .rainbow-bar。 */}
+                    <div
+                      className="rainbow-bar mt-1.5 h-0.75 rounded-full"
+                      style={{ backgroundImage: paletteGradient(hero.palette) }}
+                      aria-hidden
+                    />
+                  </>
                 )}
               </div>
             </HeroWrapper>

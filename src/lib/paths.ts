@@ -11,6 +11,7 @@
 
 export const STREAM_PATH = "/api/status/stream";
 export const DESKTOP_PATH = "/api/status/desktop";
+export const TIMEZONE_PATH = "/api/status/timezone";
 export const MUSIC_PATH = "/api/status/music";
 export const LISTENING_PATH = "/api/status/listening";
 export const CHARGER_PATH = "/api/status/charger";
