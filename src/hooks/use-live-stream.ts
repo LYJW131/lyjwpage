@@ -97,7 +97,6 @@ function open(mutate: ScopedMutator) {
       const envelope: StatusResponse<unknown> = {
         ok: true,
         data: merge ? merge(parsed) : parsed,
-        fetchedAt: new Date().toISOString(),
       };
       void mutate(path, envelope, { revalidate: false });
     });

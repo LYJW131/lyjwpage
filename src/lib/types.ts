@@ -308,10 +308,19 @@ export type VibeCodingPayload = {
   stale: boolean;
 };
 
-/** 所有 /api/status/* 的统一信封 */
+/**
+ * 所有 /api/status/* 的统一信封。
+ *
+ * 刻意不带时间戳。从前每个响应都盖一个 fetchedAt，结果是**任何两次响应在字节
+ * 层面都不同** —— 而 SWR 靠深比较决定要不要更新缓存，于是数据一个字节没变，
+ * 每轮轮询也会让所有卡片重渲染一遍（充电头那条 400 点曲线、最近在听那个带布局
+ * 动画的列表、vibe coding 那几条 sparkline，全都白跑）。
+ *
+ * 而且全站没有任何组件读它。真要知道服务端什么时候算的，看响应头 X-Fetched-At。
+ */
 export type StatusResponse<T> =
-  | { ok: true; data: T; fetchedAt: string }
-  | { ok: false; error: string; fetchedAt: string };
+  | { ok: true; data: T }
+  | { ok: false; error: string };
 
 /** 上报被拒。不带 data，且与 T 无关 —— 各 ingest 端点共用同一种失败形状 */
 export type IngestFailure = { ok: false; error: string };
