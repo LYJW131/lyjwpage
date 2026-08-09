@@ -1,6 +1,6 @@
 "use client";
 
-import NumberFlow from "@number-flow/react";
+import NumberFlow, { NumberFlowGroup } from "@number-flow/react";
 import { useEffect, useState } from "react";
 
 import { ClaudeSpinner } from "@/components/live/claude-spinner";
@@ -273,7 +273,13 @@ function formatLimitTitle(limit: VibeCodingLimit) {
  *
  * resetsAt 是 Unix 秒，不是毫秒。
  */
-function formatReset(resetsAt: number | null, referenceTime: number) {
+type ResetDisplay =
+  /** 一天以内：时和分要滚，所以拆成数字，不拼成整句 */
+  | { kind: "relative"; hours: number; minutes: number }
+  /** 超过一天：是个固定时刻，不随时间变，也就没有可滚的 */
+  | { kind: "absolute"; text: string };
+
+function formatReset(resetsAt: number | null, referenceTime: number): ResetDisplay | null {
   if (resetsAt == null) return null;
   const remain = resetsAt * 1000 - referenceTime;
   // 已经过点了就不显示：这份快照只是还没刷新，倒计时写成负数更容易让人误会
@@ -285,14 +291,14 @@ function formatReset(resetsAt: number | null, referenceTime: number) {
     // 分两次格式化：合在一起 en-US 会插一个逗号（"Mon, 11:00 AM"）
     const weekday = at.toLocaleString("en-US", { weekday: "short" });
     const clock = at.toLocaleString("en-US", { hour: "numeric", minute: "2-digit" });
-    return `Resets ${weekday} ${clock}`;
+    return { kind: "absolute", text: `Resets ${weekday} ${clock}` };
   }
   const totalMinutes = Math.floor(remain / 60_000);
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  // 整点时不写「0 min」，读着像没写完
-  const parts = [hours > 0 ? `${hours} hr` : null, minutes > 0 || hours === 0 ? `${minutes} min` : null];
-  return `Resets in ${parts.filter(Boolean).join(" ")}`;
+  return {
+    kind: "relative",
+    hours: Math.floor(totalMinutes / 60),
+    minutes: totalMinutes % 60,
+  };
 }
 
 /**
@@ -361,9 +367,31 @@ function LimitMeter({ limit }: { limit: VibeCodingLimit }) {
           {title}
         </span>
         <span className="flex shrink-0 items-baseline gap-2">
-          {reset && <span className="text-xs text-muted-foreground">{reset}</span>}
+          {reset?.kind === "absolute" && (
+            <span className="text-xs text-muted-foreground">{reset.text}</span>
+          )}
+          {reset?.kind === "relative" && (
+            /* 和充电头的瓦数同一种滚动。套 NumberFlowGroup 才能让 59→00 那一下
+               时和分同时翻，否则各滚各的、时间差看得出来 */
+            <NumberFlowGroup>
+              <span className="text-xs tabular-nums text-muted-foreground">
+                Resets in{" "}
+                {reset.hours > 0 && (
+                  <>
+                    <NumberFlow value={reset.hours} locales="en-US" /> hr{" "}
+                  </>
+                )}
+                {/* 整点时不写「0 min」，读着像没写完 */}
+                {(reset.minutes > 0 || reset.hours === 0) && (
+                  <>
+                    <NumberFlow value={reset.minutes} locales="en-US" /> min
+                  </>
+                )}
+              </span>
+            </NumberFlowGroup>
+          )}
           <span className="font-mono text-xs tabular-nums" style={{ color }}>
-            {Math.round(usedPercent)}%
+            <NumberFlow value={Math.round(usedPercent)} locales="en-US" />%
           </span>
         </span>
       </div>
