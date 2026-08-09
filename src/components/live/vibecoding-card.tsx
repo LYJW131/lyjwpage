@@ -1,6 +1,7 @@
 "use client";
 
-import NumberFlow from "@number-flow/react";
+import NumberFlow, { NumberFlowGroup } from "@number-flow/react";
+import { useEffect, useState } from "react";
 
 import { ClaudeSpinner } from "@/components/live/claude-spinner";
 import { CodexActivityIndicator } from "@/components/live/codex-activity-indicator";
@@ -272,7 +273,13 @@ function formatLimitTitle(limit: VibeCodingLimit) {
  *
  * resetsAt 是 Unix 秒，不是毫秒。
  */
-function formatReset(resetsAt: number | null, referenceTime: number) {
+type ResetDisplay =
+  /** 一天以内：时和分要滚，所以拆成数字，不拼成整句 */
+  | { kind: "relative"; hours: number; minutes: number }
+  /** 超过一天：是个固定时刻，不随时间变，也就没有可滚的 */
+  | { kind: "absolute"; text: string };
+
+function formatReset(resetsAt: number | null, referenceTime: number): ResetDisplay | null {
   if (resetsAt == null) return null;
   const remain = resetsAt * 1000 - referenceTime;
   // 已经过点了就不显示：这份快照只是还没刷新，倒计时写成负数更容易让人误会
@@ -284,45 +291,124 @@ function formatReset(resetsAt: number | null, referenceTime: number) {
     // 分两次格式化：合在一起 en-US 会插一个逗号（"Mon, 11:00 AM"）
     const weekday = at.toLocaleString("en-US", { weekday: "short" });
     const clock = at.toLocaleString("en-US", { hour: "numeric", minute: "2-digit" });
-    return `Resets ${weekday} ${clock}`;
+    return { kind: "absolute", text: `Resets ${weekday} ${clock}` };
   }
   const totalMinutes = Math.floor(remain / 60_000);
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  // 整点时不写「0 min」，读着像没写完
-  const parts = [hours > 0 ? `${hours} hr` : null, minutes > 0 || hours === 0 ? `${minutes} min` : null];
-  return `Resets in ${parts.filter(Boolean).join(" ")}`;
+  return {
+    kind: "relative",
+    hours: Math.floor(totalMinutes / 60),
+    minutes: totalMinutes % 60,
+  };
 }
 
-function LimitMeter({
-  limit,
-  referenceTime,
-}: {
-  limit: VibeCodingLimit;
-  /** 与面板其它部分同源，避免渲染期间读取不稳定的系统时钟 */
-  referenceTime: number;
-}) {
-  const color = limitColor(limit.usedPercent);
+/**
+ * 距离下一次「显示会变」还有多久。
+ *
+ * 只在文案真的会变的时刻醒，不做无谓的定时重渲染：
+ *
+ * - 超过一天时显示的是「Resets Mon 11:00 AM」，那句话跟时间流逝无关，
+ *   一直等到它跌破一天、要换成相对写法时才需要醒。周额度因此几小时才醒一次。
+ * - 一天以内显示到分钟，所以在每个整分边界醒一次。
+ * - 剩不到一分钟时直接等到点，那一下要同时翻文案和把条归零。
+ */
+function nextTickDelay(remain: number) {
+  if (remain > 86_400_000) return remain - 86_400_000;
+  if (remain <= 60_000) return Math.max(0, remain);
+  return remain % 60_000 || 60_000;
+}
+
+function LimitMeter({ limit }: { limit: VibeCodingLimit }) {
+  /**
+   * 自己盯着重置时刻，不跟面板其它部分共用快照时间。
+   *
+   * 快照时间是采集那一刻，用它当基准的话「重置到点了」这件事前端永远感知不到 ——
+   * 倒计时是冻住的，只在新数据到达时跳一下。而上报器五分钟才重取一次限额、
+   * 再搭 ccusage 的包发出、站点再轮询一轮，最坏六分多钟里这根条一直显示上一个
+   * 周期的百分比。那个数是确定错的：周期已经翻篇了。
+   *
+   * 到点归零不是编数据 —— 重置那一刻用量就是零。之后至多低估这几分钟新用掉的
+   * 量，比挂着一个上个周期的旧值准得多。
+   *
+   * 用一次性 setTimeout 而不是轮询式计时器：数据没变时轮询不会触发重渲染
+   * （响应体已经不带时间戳了），光靠重渲染永远跨不过那个时刻；而定时器只在
+   * 边界醒这一次，中间一点开销都没有。
+   */
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (limit.resetsAt == null) return;
+    const target = limit.resetsAt * 1000;
+    // 已经跨过去了就不再排，否则下面每轮都会重排定时器，停不下来
+    if (now >= target) return;
+    /**
+     * 延迟按真实当下算，不能用 now 去减。
+     *
+     * now 是上一次醒来时的快照；拿它算差值等于把「now 已经落后多久」又加了
+     * 一遍，定时器会排到远超目标时刻之后。实测那样会晚三分钟才归零。
+     */
+    const timer = window.setTimeout(
+      () => setNow(Date.now()),
+      // 多等半秒，避开时钟精度导致醒来时刚好差几毫秒没到点
+      nextTickDelay(target - Date.now()) + 500,
+    );
+    return () => window.clearTimeout(timer);
+  }, [limit.resetsAt, now]);
+
+  const expired = limit.resetsAt != null && limit.resetsAt * 1000 <= now;
+  const usedPercent = expired ? 0 : limit.usedPercent;
+  const color = limitColor(usedPercent);
   const title = formatLimitTitle(limit);
-  const reset = formatReset(limit.resetsAt, referenceTime);
+  // 基准跟着上面那个 now，条和文案才会在同一刻翻面
+  const reset = formatReset(limit.resetsAt, now);
 
   return (
     <div>
-      <div className="flex items-baseline justify-between gap-2">
+      {/*
+        行高钉死，不让内容决定。
+
+        NumberFlow 是个 inline-block 的 web component，会把 text-xs 的行盒从
+        16px 撑到 20px。而「Unlimited」那种行一个 NumberFlow 都没有，于是两侧
+        面板的行高不一样，Codex 和 Claude Code 的进度条整列对不齐。
+
+        改 items-center：几个子元素都是 text-xs，视觉上和原来的 items-baseline
+        没有区别，但不再受 NumberFlow 合成基线的影响。
+      */}
+      <div className="flex h-5 items-center justify-between gap-2">
         <span className="truncate text-xs" title={title}>
           {title}
         </span>
         <span className="flex shrink-0 items-baseline gap-2">
-          {reset && <span className="text-xs text-muted-foreground">{reset}</span>}
+          {reset?.kind === "absolute" && (
+            <span className="text-xs text-muted-foreground">{reset.text}</span>
+          )}
+          {reset?.kind === "relative" && (
+            /* 和充电头的瓦数同一种滚动。套 NumberFlowGroup 才能让 59→00 那一下
+               时和分同时翻，否则各滚各的、时间差看得出来 */
+            <NumberFlowGroup>
+              <span className="text-xs tabular-nums text-muted-foreground">
+                Resets in{" "}
+                {reset.hours > 0 && (
+                  <>
+                    <NumberFlow value={reset.hours} locales="en-US" /> hr{" "}
+                  </>
+                )}
+                {/* 整点时不写「0 min」，读着像没写完 */}
+                {(reset.minutes > 0 || reset.hours === 0) && (
+                  <>
+                    <NumberFlow value={reset.minutes} locales="en-US" /> min
+                  </>
+                )}
+              </span>
+            </NumberFlowGroup>
+          )}
           <span className="font-mono text-xs tabular-nums" style={{ color }}>
-            {Math.round(limit.usedPercent)}%
+            <NumberFlow value={Math.round(usedPercent)} locales="en-US" />%
           </span>
         </span>
       </div>
       <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted">
         <div
           className="h-full rounded-full transition-[width] duration-700"
-          style={{ width: `${limit.usedPercent}%`, backgroundColor: color }}
+          style={{ width: `${usedPercent}%`, backgroundColor: color }}
         />
       </div>
     </div>
@@ -446,7 +532,8 @@ function AgentPanel({
           */}
           {agent.limits.length > 0 && !hasSessionWindow(agent.limits) && (
             <div>
-              <div className="flex items-baseline justify-between gap-2">
+              {/* 行高和 LimitMeter 那边一致，否则两个 agent 并排时下面几行错开 */}
+              <div className="flex h-5 items-center justify-between gap-2">
                 <span className="truncate text-xs">{LIMIT_GROUP_NAMES.session}</span>
                 <span className="flex shrink-0 items-baseline gap-2">
                   {/* 占重置时刻那个位置：这一档不会重置，写它不受限 */}
@@ -478,7 +565,7 @@ function AgentPanel({
             </div>
           )}
           {agent.limits.map((limit) => (
-            <LimitMeter key={limit.key} limit={limit} referenceTime={referenceTime} />
+            <LimitMeter key={limit.key} limit={limit} />
           ))}
         </div>
       )}
