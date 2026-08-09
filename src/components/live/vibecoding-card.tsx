@@ -362,7 +362,17 @@ function LimitMeter({ limit }: { limit: VibeCodingLimit }) {
 
   return (
     <div>
-      <div className="flex items-baseline justify-between gap-2">
+      {/*
+        行高钉死，不让内容决定。
+
+        NumberFlow 是个 inline-block 的 web component，会把 text-xs 的行盒从
+        16px 撑到 20px。而「Unlimited」那种行一个 NumberFlow 都没有，于是两侧
+        面板的行高不一样，Codex 和 Claude Code 的进度条整列对不齐。
+
+        改 items-center：几个子元素都是 text-xs，视觉上和原来的 items-baseline
+        没有区别，但不再受 NumberFlow 合成基线的影响。
+      */}
+      <div className="flex h-5 items-center justify-between gap-2">
         <span className="truncate text-xs" title={title}>
           {title}
         </span>
@@ -522,7 +532,8 @@ function AgentPanel({
           */}
           {agent.limits.length > 0 && !hasSessionWindow(agent.limits) && (
             <div>
-              <div className="flex items-baseline justify-between gap-2">
+              {/* 行高和 LimitMeter 那边一致，否则两个 agent 并排时下面几行错开 */}
+              <div className="flex h-5 items-center justify-between gap-2">
                 <span className="truncate text-xs">{LIMIT_GROUP_NAMES.session}</span>
                 <span className="flex shrink-0 items-baseline gap-2">
                   {/* 占重置时刻那个位置：这一档不会重置，写它不受限 */}
