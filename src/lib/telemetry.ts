@@ -1,10 +1,10 @@
-import { timingSafeEqual } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 
 import { getChargerPayload, normalizeRawStatus, type RawStatus } from "@/lib/anker";
 import { recordPushHeartbeat, recordStatus } from "@/lib/charger-store";
 import { resolveTrackLookup } from "@/lib/apple-music";
 import { getHomePodNowPlaying } from "@/lib/homepod-store";
-import { storeUploadedImage } from "@/lib/image-store";
+import { storeImageBuffer } from "@/lib/image-store";
 import { number, object, text } from "@/lib/json";
 import { ASSET_URL_PREFIX } from "@/lib/image-store";
 import { publish } from "@/lib/live-events";
@@ -44,12 +44,16 @@ const ICON_MAX_DIMENSION = 96;
  */
 const ICON_WEBP_QUALITY = 92;
 
+/** 与采集端一致；缓存的是很短的内容哈希 URL，64 项也足够覆盖日常应用。 */
+const DESKTOP_ICON_CACHE_LIMIT = 64;
+
 /** 暂停超过这个时间就不再占用音乐 Hero，让下一个实时来源接管。 */
 const MUSIC_PAUSE_GRACE_MS = 30_000;
 let pauseExpiryTimer: ReturnType<typeof setTimeout> | null = null;
 
 type TelemetryState = {
   desktop: DesktopActivity | null;
+  desktopIconAssets: Map<string, string>;
   timezone: TimezoneActivity | null;
   music: LocalNowPlaying | null;
   activityReceivedAt: number;
@@ -62,12 +66,15 @@ const globalTelemetry = globalThis as typeof globalThis & {
 };
 const telemetryState = (globalTelemetry.__lyjwTelemetryState ??= {
   desktop: null,
+  desktopIconAssets: new Map(),
   timezone: null,
   music: null,
   activityReceivedAt: 0,
   timezoneReceivedAt: 0,
   activeModules: new Set<string>(),
 });
+// 开发态热更新可能复用加字段前的 globalThis 对象。
+telemetryState.desktopIconAssets ??= new Map();
 /**
  * 遥测状态的持久化。
  *
@@ -81,6 +88,7 @@ const telemetryState = (globalTelemetry.__lyjwTelemetryState ??= {
  */
 type PersistedTelemetry = {
   desktop: DesktopActivity | null;
+  desktopIconAssets?: [string, string][];
   timezone: TimezoneActivity | null;
   music: LocalNowPlaying | null;
   activityReceivedAt: number;
@@ -99,6 +107,7 @@ const mirror = mirrorKey<PersistedTelemetry>(
 async function persistTelemetryState() {
   await mirror.put({
     desktop: telemetryState.desktop,
+    desktopIconAssets: [...telemetryState.desktopIconAssets],
     timezone: telemetryState.timezone,
     music: telemetryState.music,
     activityReceivedAt: telemetryState.activityReceivedAt,
@@ -130,6 +139,7 @@ async function syncTelemetryState() {
   if (!stored) {
     // 真被清空了（或从没写过），工作副本跟着归零
     telemetryState.desktop = null;
+    telemetryState.desktopIconAssets = new Map();
     telemetryState.timezone = null;
     telemetryState.music = null;
     telemetryState.activityReceivedAt = 0;
@@ -146,6 +156,16 @@ async function syncTelemetryState() {
    * 被覆盖（换歌 / 换应用才会重发）。宁可先不显示，也别挂一张裂图。
    */
   telemetryState.desktop = keepFreshAsset(stored.desktop ?? null, "iconUrl");
+  telemetryState.desktopIconAssets = new Map(
+    (stored.desktopIconAssets ?? [])
+      .filter((entry): entry is [string, string] =>
+        Array.isArray(entry) &&
+        typeof entry[0] === "string" &&
+        typeof entry[1] === "string" &&
+        entry[1].startsWith(ASSET_URL_PREFIX),
+      )
+      .slice(-DESKTOP_ICON_CACHE_LIMIT),
+  );
   telemetryState.timezone = stored.timezone ?? null;
   telemetryState.music = keepFreshAsset(stored.music ?? null, "artworkUrl");
   telemetryState.activityReceivedAt = stored.activityReceivedAt ?? 0;
@@ -171,24 +191,56 @@ function milliseconds(value: unknown, fallback = Date.now()) {
   return parsed > 1e12 ? parsed : parsed * 1000;
 }
 
+/** Map 的插入顺序顺便充当 LRU；每次命中或更新都把该项移到末尾。 */
+function rememberDesktopIcon(hash: string, url: string) {
+  telemetryState.desktopIconAssets.delete(hash);
+  telemetryState.desktopIconAssets.set(hash, url);
+  if (telemetryState.desktopIconAssets.size > DESKTOP_ICON_CACHE_LIMIT) {
+    const oldest = telemetryState.desktopIconAssets.keys().next().value;
+    if (oldest !== undefined) telemetryState.desktopIconAssets.delete(oldest);
+  }
+}
+
 async function normalizeDesktop(
   value: unknown,
   receivedAt: number,
-): Promise<DesktopActivity | null> {
+): Promise<{ activity: DesktopActivity | null; iconAvailable: boolean }> {
   const row = object(value);
-  if (!row) return null;
+  if (!row) return { activity: null, iconAvailable: true };
   const applicationName = text(row.application_name);
-  if (!applicationName) return null;
+  if (!applicationName) throw new Error("desktop 模块缺少 application_name");
   const bundleIdentifier = text(row.bundle_identifier);
-  const previousIcon =
-    telemetryState.desktop?.bundleIdentifier === bundleIdentifier
-      ? telemetryState.desktop.iconUrl
-      : null;
+  const iconHash = text(row.icon_hash);
+  if (iconHash != null && !/^[a-f0-9]{64}$/.test(iconHash)) {
+    throw new Error("desktop.icon_hash 必须是 SHA-256 十六进制字符串");
+  }
+
+  if (row.icon_data != null) {
+    if (!iconHash || typeof row.icon_data !== "string") {
+      throw new Error("desktop.icon_data 必须和 icon_hash 一起上传");
+    }
+    const iconData = Buffer.from(row.icon_data, "base64");
+    const actualHash = createHash("sha256").update(iconData).digest("hex");
+    if (actualHash !== iconHash) throw new Error("desktop 图标内容与 icon_hash 不一致");
+    const uploadedIcon = await storeImageBuffer(
+      iconData,
+      ICON_MAX_DIMENSION,
+      ICON_WEBP_QUALITY,
+    );
+    if (!uploadedIcon) throw new Error("desktop.icon_data 不是有效图片");
+    rememberDesktopIcon(iconHash, uploadedIcon);
+  }
+
+  const iconUrl = iconHash ? (telemetryState.desktopIconAssets.get(iconHash) ?? null) : null;
+  if (iconHash && iconUrl) rememberDesktopIcon(iconHash, iconUrl);
   return {
-    applicationName,
-    bundleIdentifier,
-    iconUrl: (await storeUploadedImage(row.icon_data, ICON_MAX_DIMENSION, ICON_WEBP_QUALITY)) ?? previousIcon,
-    observedAt: milliseconds(row.observed_at, receivedAt),
+    activity: {
+      applicationName,
+      bundleIdentifier,
+      iconUrl,
+      observedAt: milliseconds(row.observed_at, receivedAt),
+    },
+    iconAvailable: iconHash == null || iconUrl != null,
   };
 }
 
@@ -272,7 +324,7 @@ async function recordReporterBeat({
 export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.now()) {
   await syncTelemetryState();
   const envelope = object(input) as TelemetryEnvelope | null;
-  if (!envelope || envelope.version !== 2) throw new Error("遥测协议 version 必须为 2");
+  if (!envelope || envelope.version !== 3) throw new Error("遥测协议 version 必须为 3");
   if (number(envelope.heartbeat_at) == null) throw new Error("遥测请求缺少 heartbeat_at");
   if (!Array.isArray(envelope.active_modules)) throw new Error("遥测请求缺少 active_modules");
   const nextActiveModules = envelope.active_modules.filter(
@@ -281,6 +333,10 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
   if (nextActiveModules.length !== envelope.active_modules.length) {
     throw new Error("active_modules 只能包含字符串");
   }
+  const presence = text(envelope.presence);
+  if (presence !== "online" && presence !== "offline") {
+    throw new Error("遥测请求的 presence 必须是 online 或 offline");
+  }
   /**
    * envelope.presence 是上报器声明的在离线。
    *
@@ -288,10 +344,10 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
    * 翻过去，不用等 45 秒心跳窗口。崩溃、断网、强制关机时它发不出这一条，
    * 那些仍然靠下面 reporterStale 的超时兜底 —— 两条路是互补的。
    *
-   * 缺字段按 online 处理：能发出这个包本身就说明它活着，而且旧版采集器不带这个字段。
+   * 数据包本身也算一次在线心跳；offline 只用于睡眠、退出这类优雅离开。
    */
   const presenceFlipped = await recordReporterBeat({
-    offline: envelope.presence === "offline",
+    offline: presence === "offline",
     activeModules: nextActiveModules,
     receivedAt,
   });
@@ -299,6 +355,7 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
   if (!modules) throw new Error("遥测请求缺少 modules 对象");
 
   let accepted = 0;
+  let desktopIconAvailable: boolean | undefined;
 
   if ("charger" in modules) {
     const raw = object(modules.charger) as RawStatus | null;
@@ -313,9 +370,14 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
   }
 
   if ("desktop" in modules) {
-    telemetryState.desktop = await normalizeDesktop(modules.desktop, receivedAt);
-    telemetryState.activityReceivedAt = receivedAt;
-    accepted += 1;
+    const normalized = await normalizeDesktop(modules.desktop, receivedAt);
+    desktopIconAvailable = normalized.iconAvailable;
+    // 图标引用失效时先让采集端补传，避免向浏览器发布一个短暂的无图中间状态。
+    if (desktopIconAvailable) {
+      telemetryState.desktop = normalized.activity;
+      telemetryState.activityReceivedAt = receivedAt;
+      accepted += 1;
+    }
   }
 
   if ("timezone" in modules) {
@@ -350,10 +412,10 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
    */
   // 在离线翻转本身就是状态变化，值得推 —— 这正是「关键事件」，不是定时广播
   if (presenceFlipped) await publishPresence();
-  if ("desktop" in modules) await publishDesktop();
+  if ("desktop" in modules && desktopIconAvailable) await publishDesktop();
   if ("apple_music" in modules) await publishMusic();
 
-  return { accepted, heartbeat: true };
+  return { accepted, heartbeat: true, desktopIconAvailable };
 }
 
 /**
