@@ -20,13 +20,15 @@ import type { WatchingItem } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /**
- * 播放中的轮询。
+ * 「正在看」的轮询，不分在播还是空闲。
  *
- * 进度条是 CSS 动画从锚点自己跑的，跟这个间隔无关，所以不需要为它调密；
- * 这条真正兜的是 Emby webhook 漏发的暂停 / 继续 / 停止。
+ * 开始/暂停/继续/停止都由 Emby webhook 推来，这条只兜漏发。进度条是 CSS 动画
+ * 从锚点自己跑的，跟这个间隔无关，所以在播时也没有调密的理由。
  */
-const REFRESH_PLAYING_MS = 10_000;
-const REFRESH_IDLE_MS = 60_000;
+const NOW_REFRESH_MS = 30_000;
+
+/** 列表是后端定时轮询 Emby 拿的，本身带 60 秒缓存，问更勤也拿不到新东西 */
+const LIST_REFRESH_MS = 60_000;
 
 /**
  * 增删卡片后要等多久才把滚动吸附装回去。
@@ -193,12 +195,11 @@ export function WatchingRow() {
    */
   const { data: list, error, isLoading } = useStatus<WatchingPayload>(
     WATCHING_PATH,
-    REFRESH_IDLE_MS,
+    LIST_REFRESH_MS,
   );
-  // 「开始看片」由 webhook 推来，轮询只兜底；在播时跟紧一点，接住 Emby 漏发的暂停/停止
   const { data: live } = useStatus<NowWatchingPayload>(
     NOW_WATCHING_PATH,
-    (payload) => (payload?.nowPlaying ? REFRESH_PLAYING_MS : REFRESH_IDLE_MS),
+    NOW_REFRESH_MS,
   );
 
   /**
