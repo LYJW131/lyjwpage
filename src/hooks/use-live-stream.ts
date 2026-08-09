@@ -12,6 +12,7 @@ import {
   MUSIC_PATH,
   NOW_WATCHING_PATH,
   STREAM_PATH,
+  TIMEZONE_PATH,
 } from "@/lib/paths";
 import type { ChargerPayload, StatusResponse } from "@/lib/types";
 
@@ -55,7 +56,7 @@ const FORWARDS: ReadonlyArray<{
  * vibe coding 也不在：token 用量是累计的历史事实，Mac 掉线它不会变得不可信，
  * 只是不再增长，没有理由跟着变灰。
  */
-const PRESENCE_PATHS = [DESKTOP_PATH, MUSIC_PATH, CHARGER_PATH];
+const PRESENCE_PATHS = [DESKTOP_PATH, TIMEZONE_PATH, MUSIC_PATH, CHARGER_PATH];
 
 /**
  * 整页共用一条 SSE 连接。
