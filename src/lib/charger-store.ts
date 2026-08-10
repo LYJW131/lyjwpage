@@ -23,6 +23,9 @@ import type { ChargerSample, ChargerStatus } from "@/lib/types";
  */
 const MIN_SAMPLE_GAP_MS = 5_000;
 
+/** 连续断联满半小时后，旧曲线不再属于下一次连接。 */
+const DISCONNECTED_HISTORY_AFTER_MS = 30 * 60 * 1000;
+
 /** 历史和快照的保留时长，比断流阈值宽松得多，重启后仍能接上 */
 const TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -40,16 +43,26 @@ const K_LAST_PUSH = key("charger", "lastPush");
 const fallback = {
   latest: null as ChargerStatus | null,
   receivedAt: 0,
+  disconnectedAt: 0,
   lastPushAt: 0,
   history: [] as ChargerSample[],
   persisted: false,
 };
 
-type Stored = { status: ChargerStatus; receivedAt: number };
+type Stored = {
+  status: ChargerStatus;
+  receivedAt: number;
+  /** 首次收到 connected=false 的时刻；旧数据没有这一列时退回 receivedAt。 */
+  disconnectedAt?: number | null;
+};
 
 function fromMemory(): Stored | null {
   return fallback.latest
-    ? { status: fallback.latest, receivedAt: fallback.receivedAt }
+    ? {
+        status: fallback.latest,
+        receivedAt: fallback.receivedAt,
+        disconnectedAt: fallback.disconnectedAt || null,
+      }
     : null;
 }
 
@@ -70,16 +83,21 @@ async function readLatest(): Promise<Stored | null> {
     if (!fallback.persisted && fallback.latest && fallback.receivedAt > stored.receivedAt) {
       return fromMemory();
     }
+    const disconnectedAt = stored.status.connected
+      ? 0
+      : stored.disconnectedAt ?? stored.receivedAt;
     fallback.latest = stored.status;
     fallback.receivedAt = stored.receivedAt;
+    fallback.disconnectedAt = disconnectedAt;
     fallback.persisted = true;
-    return stored;
+    return { ...stored, disconnectedAt: disconnectedAt || null };
   }
 
   // Redis 说没有：写进去过就是真被删了
   if (fallback.persisted) {
     fallback.latest = null;
     fallback.receivedAt = 0;
+    fallback.disconnectedAt = 0;
     fallback.history.length = 0;
     return null;
   }
@@ -114,6 +132,30 @@ async function readHistory(): Promise<ChargerSample[]> {
   return [...fallback.history];
 }
 
+async function clearHistory() {
+  fallback.history.length = 0;
+  await withRedis(async (redis) => redis.del(K_HISTORY), 0);
+}
+
+function disconnectedHistoryExpired(stored: Stored, now: number) {
+  if (stored.status.connected) return false;
+  const disconnectedAt = stored.disconnectedAt ?? stored.receivedAt;
+  return now - disconnectedAt >= DISCONNECTED_HISTORY_AFTER_MS;
+}
+
+/**
+ * 断联后即使状态不再变化，presence 心跳仍会走到这里；因此不依赖新的 charger
+ * 快照，也能在断联满半小时后把服务端历史清空。
+ */
+async function clearExpiredDisconnectedHistory(now: number) {
+  const latest = await readLatest();
+  if (!latest || !disconnectedHistoryExpired(latest, now)) return false;
+  const history = await readHistory();
+  if (!history.length) return false;
+  await clearHistory();
+  return true;
+}
+
 /**
  * 「结构性」指纹：插拔、换设备、换充电器本身。
  *
@@ -142,20 +184,44 @@ function structuralKey(status: ChargerStatus) {
  */
 export async function recordStatus(status: ChargerStatus, receivedAt = Date.now()) {
   const previous = await readLatest();
+  const previousDisconnectedAt =
+    previous && !previous.status.connected
+      ? previous.disconnectedAt ?? previous.receivedAt
+      : null;
+  const disconnectedAt = status.connected
+    ? 0
+    : previousDisconnectedAt ?? receivedAt;
+  const resetAfterDisconnect =
+    previousDisconnectedAt != null &&
+    receivedAt - previousDisconnectedAt >= DISCONNECTED_HISTORY_AFTER_MS;
   // 第一份快照也算变化：客户端手上还什么都没有，该收到一次
   const structuralChanged =
     !previous || structuralKey(previous.status) !== structuralKey(status);
 
   fallback.latest = status;
   fallback.receivedAt = receivedAt;
+  fallback.disconnectedAt = disconnectedAt;
   fallback.lastPushAt = receivedAt;
 
   fallback.persisted = await tellRedis(async (redis) => {
     const pipe = redis.pipeline();
-    pipe.set(K_LATEST, JSON.stringify({ status, receivedAt }), "PX", TTL_MS);
+    pipe.set(
+      K_LATEST,
+      JSON.stringify({ status, receivedAt, disconnectedAt: disconnectedAt || null }),
+      "PX",
+      TTL_MS,
+    );
     pipe.set(K_LAST_PUSH, String(receivedAt), "PX", TTL_MS);
     return pipe.exec();
   });
+
+  let history = await readHistory();
+  if (resetAfterDisconnect) {
+    // 超时后持续断联的 0W 快照也不再入库；重连的这一帧则从空历史重新起步。
+    if (history.length) await clearHistory();
+    history = [];
+    if (!status.connected) return structuralChanged;
+  }
 
   // 同一帧被推两次时不重复记。采集端现在是 1 Hz 推流，每帧都会换 updated_at，
   // 所以这道判断只在重试或重复投递时才拦得住东西 —— 留着是因为那才是它的本意。
@@ -167,7 +233,6 @@ export async function recordStatus(status: ChargerStatus, receivedAt = Date.now(
     return structuralChanged;
   }
 
-  const history = await readHistory();
   const last = history[history.length - 1];
   const at = status.updatedAt ?? receivedAt;
   let reset = false;
@@ -208,10 +273,15 @@ export async function recordStatus(status: ChargerStatus, receivedAt = Date.now(
 export async function getStored() {
   const latest = await readLatest();
   if (!latest) return null;
+  let history = await readHistory();
+  if (disconnectedHistoryExpired(latest, Date.now()) && history.length) {
+    await clearHistory();
+    history = [];
+  }
   return {
     status: latest.status,
     receivedAt: latest.receivedAt,
-    history: await readHistory(),
+    history,
   };
 }
 
@@ -229,4 +299,5 @@ export async function recordPushHeartbeat(receivedAt = Date.now()) {
     async (redis) => redis.set(K_LAST_PUSH, String(receivedAt), "PX", TTL_MS),
     null,
   );
+  await clearExpiredDisconnectedHistory(receivedAt);
 }

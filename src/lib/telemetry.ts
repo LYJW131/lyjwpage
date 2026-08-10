@@ -3,6 +3,7 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { getChargerPayload, normalizeRawStatus, type RawStatus } from "@/lib/anker";
 import { recordPushHeartbeat, recordStatus } from "@/lib/charger-store";
 import { resolveTrackLookup } from "@/lib/apple-music";
+import { putAppleMusicCredentials } from "@/lib/apple-music-credentials";
 import { getHomePodNowPlaying } from "@/lib/homepod-store";
 import { storeImageBuffer } from "@/lib/image-store";
 import { number, object, text } from "@/lib/json";
@@ -389,6 +390,33 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
   if ("apple_music" in modules) {
     telemetryState.music = await normalizeMusic(modules.apple_music, receivedAt);
     telemetryState.activityReceivedAt = receivedAt;
+    accepted += 1;
+  }
+
+  if ("apple_music_credentials" in modules) {
+    const row = object(modules.apple_music_credentials);
+    if (!row) throw new Error("apple_music_credentials 必须是对象");
+    const hasMusicUserToken = "music_user_token" in row;
+    const hasDeveloperToken = "developer_token" in row;
+    if (!hasMusicUserToken && !hasDeveloperToken) {
+      throw new Error("apple_music_credentials 至少包含一个 token");
+    }
+
+    const musicUserToken = hasMusicUserToken ? text(row.music_user_token) : undefined;
+    const developerToken = hasDeveloperToken ? text(row.developer_token) : undefined;
+    if (hasMusicUserToken && !musicUserToken) throw new Error("music_user_token 不能为空");
+    if (hasDeveloperToken && !developerToken) throw new Error("developer_token 不能为空");
+
+    const expiresAt = hasDeveloperToken ? number(row.expires_at) : undefined;
+    if (hasDeveloperToken && (expiresAt == null || !Number.isFinite(expiresAt) || expiresAt <= 0)) {
+      throw new Error("developer_token 必须带有效的 expires_at");
+    }
+    await putAppleMusicCredentials({
+      musicUserToken: musicUserToken ?? undefined,
+      developerToken: developerToken ?? undefined,
+      expiresAt: expiresAt ?? undefined,
+      receivedAt,
+    });
     accepted += 1;
   }
 
