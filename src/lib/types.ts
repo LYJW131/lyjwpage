@@ -293,6 +293,8 @@ export type VibeCodingTotals = {
   totalTokens: number;
   apiEquivalentCostUSD: number;
   activeDays: number;
+  /** Claude Code 与 Codex 的历史 session 数合计；不包含 session ID。 */
+  sessionCount: number;
 };
 
 export type VibeCodingPayload = {

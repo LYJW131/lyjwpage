@@ -69,12 +69,105 @@ function limitColor(usedPercent: number) {
 }
 
 const TOKEN_SEGMENTS = [
-  { key: "inputTokens", label: "Input", color: "oklch(0.63 0.18 250)" },
-  { key: "regularOutputTokens", label: "Output", color: "oklch(0.68 0.15 175)" },
-  { key: "cacheReadTokens", label: "Cache read", color: "oklch(0.72 0.16 75)" },
-  { key: "cacheCreationTokens", label: "Cache write", color: "oklch(0.65 0.18 315)" },
-  { key: "reasoningTokens", label: "Reasoning", color: "oklch(0.65 0.17 145)" },
+  { key: "inputTokens", label: "Input", shortLabel: "IN", color: "oklch(0.63 0.18 250)" },
+  { key: "outputTokens", label: "Output", shortLabel: "OUT", color: "oklch(0.68 0.15 175)" },
+  {
+    key: "cacheReadTokens",
+    label: "Cache read",
+    shortLabel: "CR",
+    color: "oklch(0.72 0.16 75)",
+  },
+  {
+    key: "cacheCreationTokens",
+    label: "Cache write",
+    shortLabel: "CW",
+    color: "oklch(0.65 0.18 315)",
+  },
 ] as const;
+
+function AnthropicCompanyMark() {
+  return (
+    <svg
+      viewBox="0 0 92 64"
+      className="h-4 w-[23px] text-[#141413] dark:text-[#faf9f5]"
+      aria-hidden
+    >
+      <path d="M66.4915 0H52.5029L78.0115 64H92.0001L66.4915 0Z" fill="currentColor" />
+      <path
+        d="M26.08 0L.571 64h14.263l5.217-13.44h26.686L51.954 64h14.263L40.709 0H26.08Zm-1.415 38.674 8.729-22.491 8.73 22.491H24.665Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
+function OpenAICompanyMark() {
+  return (
+    <svg viewBox="0 0 41 41" className="size-4 text-foreground" aria-hidden>
+      <path
+        d="M37.532 16.871a10.12 10.12 0 0 0-.856-8.185 10.08 10.08 0 0 0-10.854-4.835A10.1 10.1 0 0 0 8.692 7.478a10.1 10.1 0 0 0-5.424 16.651 10.12 10.12 0 0 0 .856 8.185 10.08 10.08 0 0 0 10.855 4.835 10.1 10.1 0 0 0 17.133-3.631 10.1 10.1 0 0 0 5.42-16.647Zm-15.034 21.014a7.48 7.48 0 0 1-4.799-1.735l8.201-4.734c.2-.114.366-.279.481-.478.115-.199.175-.426.174-.655V19.054l3.366 1.944a.13.13 0 0 1 .066.092v9.299a7.51 7.51 0 0 1-7.489 7.496ZM6.392 31.006a7.48 7.48 0 0 1-.894-5.023l8.201 4.742c.199.116.424.177.654.177s.456-.061.654-.177l9.724-5.615v3.888a.13.13 0 0 1-.048.103l-8.051 4.649a7.51 7.51 0 0 1-10.24-2.744ZM4.297 13.619a7.48 7.48 0 0 1 3.902-3.286v9.475c-.002.23.058.456.173.655.115.199.281.364.48.477l9.72 5.614-3.366 1.944a.13.13 0 0 1-.114.01L7.04 23.856a7.51 7.51 0 0 1-2.743-10.237Zm27.658 6.437-9.724-5.615 3.367-1.943a.13.13 0 0 1 .113-.01l8.052 4.648a7.51 7.51 0 0 1-1.158 13.528V21.188c.002-.229-.057-.455-.171-.654a1.31 1.31 0 0 0-.479-.478Zm3.351-5.043-8.202-4.742a1.31 1.31 0 0 0-1.308 0l-9.723 5.615v-3.888a.13.13 0 0 1 .048-.103l8.051-4.645a7.51 7.51 0 0 1 11.134 7.763Zm-21.064 6.929-3.367-1.944a.13.13 0 0 1-.065-.092v-9.299a7.51 7.51 0 0 1 12.293-5.756l-8.201 4.734c-.2.114-.366.279-.481.478-.115.199-.175.425-.173.655l-.006 11.224Zm1.829-3.943 4.331-2.501 4.331 2.5v5l-4.331 2.5-4.331-2.5v-4.999Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
+function ModelProviderIcon({ model }: { model: string }) {
+  const mark = model.toLowerCase().startsWith("claude")
+    ? <AnthropicCompanyMark />
+    : /^(gpt|codex|chatgpt|o\d)/i.test(model)
+      ? <OpenAICompanyMark />
+      : null;
+  if (!mark) return null;
+  return (
+    <span className="flex size-6 shrink-0 items-center justify-center" aria-hidden>
+      {mark}
+    </span>
+  );
+}
+
+/**
+ * 名次色跟 AIHOT 排行榜一致：无底色圆，只是等宽加粗数字上色。
+ * https://aihot.virxact.com/leaderboard
+ */
+const RANK_MARK_COLOR = ["#d86a52", "#d18a5e", "#d3b26a"] as const;
+
+function RankMark({ rank }: { rank: number }) {
+  return (
+    <span
+      className="shrink-0 font-mono text-sm font-bold tracking-[0.02em] text-muted-foreground"
+      style={
+        rank < RANK_MARK_COLOR.length
+          ? { color: RANK_MARK_COLOR[rank] }
+          : undefined
+      }
+    >
+      {String(rank + 1).padStart(2, "0")}
+    </span>
+  );
+}
+
+function formatModelName(model: string) {
+  const claude = /^claude-([a-z]+)-(\d+)(?:-(\d+))?$/i.exec(model);
+  if (claude) {
+    const [, family, major, minor] = claude;
+    return `Claude ${family[0].toUpperCase()}${family.slice(1)} ${major}${minor ? `.${minor}` : ""}`;
+  }
+  const gpt = /^gpt-(\d+(?:\.\d+)?)(?:-(.+))?$/i.exec(model);
+  if (gpt) {
+    const [, version, variant] = gpt;
+    const suffix = variant
+      ? ` ${variant.split("-").map((part) =>
+          `${part[0].toUpperCase()}${part.slice(1)}`,
+        ).join(" ")}`
+      : "";
+    return `GPT ${version}${suffix}`;
+  }
+  return model
+    .split("-")
+    .map((part) => `${part[0].toUpperCase()}${part.slice(1)}`)
+    .join(" ");
+}
 
 function TotalUsage({
   totals,
@@ -83,19 +176,22 @@ function TotalUsage({
   totals: VibeCodingTotals;
   topModels: VibeCodingPayload["topModels"];
 }) {
-  // reasoning 是 output 的子集；拆出来单独着色时，普通 output 要扣掉它。
   const values = {
     inputTokens: totals.inputTokens,
-    regularOutputTokens: Math.max(0, totals.outputTokens - totals.reasoningTokens),
+    outputTokens: totals.outputTokens,
     cacheReadTokens: totals.cacheReadTokens,
     cacheCreationTokens: totals.cacheCreationTokens,
-    reasoningTokens: totals.reasoningTokens,
   };
   const stackTotal = Object.values(values).reduce((sum, value) => sum + value, 0);
 
   return (
-    <div className="border-b border-line px-4 pb-5 pt-5 md:px-5">
-      <div className="grid grid-cols-2 gap-x-5 gap-y-5 md:grid-cols-3">
+    <div
+      className={cn(
+        "border-b border-line px-4 pt-5 md:px-5",
+        topModels.length === 0 && "pb-5",
+      )}
+    >
+      <div className="grid grid-cols-4 gap-5">
         <div>
           <div className="label-mono text-muted-foreground">Tokens</div>
           <div className="mt-2 text-3xl font-medium tracking-tight md:text-4xl">
@@ -127,6 +223,12 @@ function TotalUsage({
             <NumberFlow value={totals.activeDays} locales="en-US" />
           </div>
         </div>
+        <div>
+          <div className="label-mono text-muted-foreground">Sessions</div>
+          <div className="mt-2 text-3xl font-medium tracking-tight md:text-4xl">
+            <NumberFlow value={totals.sessionCount} locales="en-US" />
+          </div>
+        </div>
       </div>
 
       <div className="mt-6 flex h-2 overflow-hidden rounded-full bg-muted" aria-hidden>
@@ -144,15 +246,16 @@ function TotalUsage({
         })}
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2">
+      <div className="mt-3 flex flex-wrap gap-x-3 gap-y-2 md:gap-x-5">
         {TOKEN_SEGMENTS.map((segment) => (
-          <div key={segment.key} className="flex items-center gap-2 text-xs">
+          <div key={segment.key} className="flex items-center gap-1.5 text-xs md:gap-2">
             <span
               className="size-2 rounded-full"
               style={{ backgroundColor: segment.color }}
               aria-hidden
             />
-            <span className="text-muted-foreground">{segment.label}</span>
+            <span className="text-muted-foreground md:hidden">{segment.shortLabel}</span>
+            <span className="hidden text-muted-foreground md:inline">{segment.label}</span>
             <span className="font-mono">
               <NumberFlow
                 value={values[segment.key]}
@@ -165,20 +268,20 @@ function TotalUsage({
       </div>
 
       {topModels.length > 0 && (
-        <div className="mt-4 border-t border-line pt-4">
-          <div className="label-mono text-muted-foreground">Model Usage · All Time</div>
-          <div className="mt-3 grid gap-2 md:grid-cols-3">
+        <div className="mt-3 border-t border-line md:py-3">
+          <div className="grid divide-y divide-line md:grid-cols-3 md:divide-x md:divide-y-0">
             {topModels.map((item, index) => (
               <div
                 key={item.model}
-                className="flex min-w-0 items-center gap-3 rounded-md border border-line-strong bg-muted/60 px-3 py-2.5"
+                className="flex min-w-0 items-center gap-3 py-3 md:px-4 md:py-0 md:first:pl-0 md:last:pr-0"
               >
-                <span className="label-mono flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-foreground">
-                  {index + 1}
-                </span>
-                <div className="flex min-w-0 flex-1 items-baseline justify-between gap-2">
-                  <div className="truncate text-sm font-medium" title={item.model}>
-                    {item.model}
+                <RankMark rank={index} />
+                <div className="flex min-w-0 flex-1 items-center justify-between gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <ModelProviderIcon model={item.model} />
+                    <div className="truncate text-sm font-medium" title={item.model}>
+                      {formatModelName(item.model)}
+                    </div>
                   </div>
                   <div className="shrink-0 font-mono text-xs text-muted-foreground">
                     <NumberFlow
@@ -590,51 +693,44 @@ function AgentPanel({
 
 function QuotaProviders({ providers }: { providers: VibeCodingQuotaProvider[] }) {
   if (providers.length === 0) return null;
+  const sortedProviders = [...providers].sort(
+    (left, right) => (right.usedPercent ?? -1) - (left.usedPercent ?? -1),
+  );
   return (
     <div className="border-t border-line px-4 py-4 md:px-5">
-      <div className="label-mono text-muted-foreground">Total quota used</div>
-      <div className="mt-3 grid gap-3 md:grid-cols-3">
-        {providers.map((provider) => {
+      <div className="grid divide-y divide-line">
+        {sortedProviders.map((provider) => {
           const usedPercent = provider.usedPercent;
           const color = usedPercent == null ? undefined : limitColor(usedPercent);
           const icon = QUOTA_PROVIDER_ICONS[provider.id];
           return (
             <div
               key={provider.id}
-              className="rounded-md border border-line-strong bg-muted/30 px-3 py-3"
+              className="grid min-w-0 grid-cols-[minmax(0,9rem)_minmax(2rem,1fr)_4ch] items-center gap-3 py-3"
               title={provider.limitsError ?? undefined}
             >
-              <div className="flex h-5 items-center justify-between gap-3">
-                <div className="flex min-w-0 items-center gap-2">
-                  <span className="relative size-5 shrink-0" aria-hidden>
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="relative size-5 shrink-0" aria-hidden>
+                  <Image
+                    src={icon.light}
+                    alt=""
+                    fill
+                    sizes="20px"
+                    className={cn("object-contain", icon.dark && "dark:hidden")}
+                  />
+                  {icon.dark && (
                     <Image
-                      src={icon.light}
+                      src={icon.dark}
                       alt=""
                       fill
                       sizes="20px"
-                      className={cn("object-contain", icon.dark && "dark:hidden")}
+                      className="hidden object-contain dark:block"
                     />
-                    {icon.dark && (
-                      <Image
-                        src={icon.dark}
-                        alt=""
-                        fill
-                        sizes="20px"
-                        className="hidden object-contain dark:block"
-                      />
-                    )}
-                  </span>
-                  <span className="truncate text-sm font-medium">{provider.label}</span>
-                </div>
-                {usedPercent == null ? (
-                  <span className="label-mono text-muted-foreground">Unavailable</span>
-                ) : (
-                  <span className="font-mono text-xs tabular-nums" style={{ color }}>
-                    <NumberFlow value={Math.round(usedPercent)} locales="en-US" />%
-                  </span>
-                )}
+                  )}
+                </span>
+                <span className="truncate text-sm font-medium">{provider.label}</span>
               </div>
-              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
+              <div className="h-1.5 min-w-8 flex-1 overflow-hidden rounded-full bg-muted">
                 {usedPercent != null && (
                   <div
                     className="h-full rounded-full transition-[width] duration-700"
@@ -642,6 +738,21 @@ function QuotaProviders({ providers }: { providers: VibeCodingQuotaProvider[] })
                   />
                 )}
               </div>
+              {usedPercent == null ? (
+                <span
+                  className="label-mono text-right text-muted-foreground"
+                  title="Unavailable"
+                >
+                  —
+                </span>
+              ) : (
+                <span
+                  className="text-right font-mono text-xs tabular-nums"
+                  style={{ color }}
+                >
+                  <NumberFlow value={Math.round(usedPercent)} locales="en-US" />%
+                </span>
+              )}
             </div>
           );
         })}
