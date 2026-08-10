@@ -92,7 +92,7 @@ function TotalUsage({
 
   return (
     <div className="border-b border-line px-4 pb-5 pt-5 md:px-5">
-      <div className="grid grid-cols-3 gap-5">
+      <div className="grid grid-cols-4 gap-5">
         <div>
           <div className="label-mono text-muted-foreground">Tokens</div>
           <div className="mt-2 text-3xl font-medium tracking-tight md:text-4xl">
@@ -116,6 +116,12 @@ function TotalUsage({
                 maximumFractionDigits: 1,
               }}
             />
+          </div>
+        </div>
+        <div>
+          <div className="label-mono text-muted-foreground">Active</div>
+          <div className="mt-2 text-3xl font-medium tracking-tight md:text-4xl">
+            <NumberFlow value={totals.activeDays} locales="en-US" />
           </div>
         </div>
         <div>
