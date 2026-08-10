@@ -202,14 +202,14 @@ export type ChargerPayload = ChargerStatus & {
 export type VibeCodingAgentId = "claude" | "codex";
 
 export type VibeCodingDay = {
-  /** ccusage 按本机时区生成的 YYYY-MM-DD */
+  /** CodexBar 按本机时区生成的 YYYY-MM-DD */
   date: string;
   inputTokens: number;
   outputTokens: number;
   cacheReadTokens: number;
   cacheCreationTokens: number;
   totalTokens: number;
-  /** ccusage 按公开 API 价格估算，不是订阅账单 */
+  /** CodexBar 按公开 API 价格估算，不是订阅账单 */
   apiEquivalentCostUSD: number;
 };
 
@@ -234,9 +234,8 @@ export type VibeCodingLimit = {
   /** 子额度桶名如 "GPT-5.3-Codex-Spark"；主额度桶没有名字，为 null */
   label: string | null;
   /**
-   * 粗分组，如 "session" / "weekly"。Claude 的限额接口只给分组不给时长，
-   * Codex 反过来只给时长不给分组 —— 两者不会同时为 null，窗口名优先用时长算，
-   * 没时长才回退到分组。不许由分组反推分钟数，官方没公开那个数。
+   * 粗分组，如 "session" / "weekly"。CodexBar 没给时为 null；展示层不得
+   * 由分组反推窗口时长。
    */
   group: string | null;
   /** 窗口时长，展示用的「5 小时 / 7 天」由它现算；上游没给就是 null */
@@ -251,13 +250,11 @@ export type VibeCodingAgent = {
   id: VibeCodingAgentId;
   label: string;
   models: string[];
-  /** 最近活动 session 使用的模型，不是历史模型列表的排序结果 */
+  /** 最近一个有用量日里的主力模型。 */
   currentModel: string | null;
-  /** 整份历史里 token 占比最大的模型；旧版 Mac app 不上报，取不到就是 null */
+  /** 整份历史里 token 占比最大的模型。 */
   topModel: string | null;
-  /** ccusage session 报告中最近一条活动；只公开时间，不公开会话或项目 */
-  lastActivityAt: string | null;
-  /** 最近 60 天，一天一个 session-token 聚合点 */
+  /** 最近 60 天，一天一个 token 聚合点。 */
   activity: Array<{ t: number; tokens: number }>;
   today: VibeCodingDay;
   /** 旧版 Mac app 不会上报，取不到套餐时也是 null —— 不渲染，不占位 */
@@ -282,7 +279,6 @@ export type VibeCodingTotals = {
   totalTokens: number;
   apiEquivalentCostUSD: number;
   activeDays: number;
-  sessions: number;
 };
 
 export type VibeCodingPayload = {
@@ -290,7 +286,7 @@ export type VibeCodingPayload = {
   totals: VibeCodingTotals;
   /** Claude Code 与 Codex 合并后的历史累计 token 前三名。 */
   topModels: Array<{ model: string; tokens: number }>;
-  /** ccusage 扫描完成的时间，而不是浏览器取接口的时间 */
+  /** CodexBar 扫描完成的时间，而不是浏览器取接口的时间。 */
   collectedAt: string;
   source: "local" | "push";
   /**
