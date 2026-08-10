@@ -75,6 +75,47 @@ const TOKEN_SEGMENTS = [
   { key: "cacheCreationTokens", label: "Cache write", color: "oklch(0.65 0.18 315)" },
 ] as const;
 
+function AnthropicCompanyMark() {
+  return (
+    <svg
+      viewBox="0 0 92 64"
+      className="h-4 w-[23px] text-[#141413] dark:text-[#faf9f5]"
+      aria-hidden
+    >
+      <path d="M66.4915 0H52.5029L78.0115 64H92.0001L66.4915 0Z" fill="currentColor" />
+      <path
+        d="M26.08 0L.571 64h14.263l5.217-13.44h26.686L51.954 64h14.263L40.709 0H26.08Zm-1.415 38.674 8.729-22.491 8.73 22.491H24.665Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
+function OpenAICompanyMark() {
+  return (
+    <svg viewBox="0 0 41 41" className="size-4 text-foreground" aria-hidden>
+      <path
+        d="M37.532 16.871a10.12 10.12 0 0 0-.856-8.185 10.08 10.08 0 0 0-10.854-4.835A10.1 10.1 0 0 0 8.692 7.478a10.1 10.1 0 0 0-5.424 16.651 10.12 10.12 0 0 0 .856 8.185 10.08 10.08 0 0 0 10.855 4.835 10.1 10.1 0 0 0 17.133-3.631 10.1 10.1 0 0 0 5.42-16.647Zm-15.034 21.014a7.48 7.48 0 0 1-4.799-1.735l8.201-4.734c.2-.114.366-.279.481-.478.115-.199.175-.426.174-.655V19.054l3.366 1.944a.13.13 0 0 1 .066.092v9.299a7.51 7.51 0 0 1-7.489 7.496ZM6.392 31.006a7.48 7.48 0 0 1-.894-5.023l8.201 4.742c.199.116.424.177.654.177s.456-.061.654-.177l9.724-5.615v3.888a.13.13 0 0 1-.048.103l-8.051 4.649a7.51 7.51 0 0 1-10.24-2.744ZM4.297 13.619a7.48 7.48 0 0 1 3.902-3.286v9.475c-.002.23.058.456.173.655.115.199.281.364.48.477l9.72 5.614-3.366 1.944a.13.13 0 0 1-.114.01L7.04 23.856a7.51 7.51 0 0 1-2.743-10.237Zm27.658 6.437-9.724-5.615 3.367-1.943a.13.13 0 0 1 .113-.01l8.052 4.648a7.51 7.51 0 0 1-1.158 13.528V21.188c.002-.229-.057-.455-.171-.654a1.31 1.31 0 0 0-.479-.478Zm3.351-5.043-8.202-4.742a1.31 1.31 0 0 0-1.308 0l-9.723 5.615v-3.888a.13.13 0 0 1 .048-.103l8.051-4.645a7.51 7.51 0 0 1 11.134 7.763Zm-21.064 6.929-3.367-1.944a.13.13 0 0 1-.065-.092v-9.299a7.51 7.51 0 0 1 12.293-5.756l-8.201 4.734c-.2.114-.366.279-.481.478-.115.199-.175.425-.173.655l-.006 11.224Zm1.829-3.943 4.331-2.501 4.331 2.5v5l-4.331 2.5-4.331-2.5v-4.999Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
+function ModelProviderIcon({ model }: { model: string }) {
+  const mark = model.toLowerCase().startsWith("claude")
+    ? <AnthropicCompanyMark />
+    : /^(gpt|codex|chatgpt|o\d)/i.test(model)
+      ? <OpenAICompanyMark />
+      : null;
+  if (!mark) return null;
+  return (
+    <span className="flex size-6 shrink-0 items-center justify-center" aria-hidden>
+      {mark}
+    </span>
+  );
+}
+
 function TotalUsage({
   totals,
   topModels,
@@ -179,9 +220,12 @@ function TotalUsage({
                 <span className="label-mono flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-foreground">
                   {index + 1}
                 </span>
-                <div className="flex min-w-0 flex-1 items-baseline justify-between gap-2">
-                  <div className="truncate text-sm font-medium" title={item.model}>
-                    {item.model}
+                <div className="flex min-w-0 flex-1 items-center justify-between gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <ModelProviderIcon model={item.model} />
+                    <div className="truncate text-sm font-medium" title={item.model}>
+                      {item.model}
+                    </div>
                   </div>
                   <div className="shrink-0 font-mono text-xs text-muted-foreground">
                     <NumberFlow
