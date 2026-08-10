@@ -119,9 +119,9 @@ function TotalUsage({
           </div>
         </div>
         <div>
-          <div className="label-mono text-muted-foreground">Active</div>
+          <div className="label-mono text-muted-foreground">Sessions</div>
           <div className="mt-2 text-3xl font-medium tracking-tight md:text-4xl">
-            <NumberFlow value={totals.activeDays} locales="en-US" />
+            <NumberFlow value={totals.sessionCount} locales="en-US" />
           </div>
         </div>
       </div>

@@ -159,6 +159,7 @@ function normalizePreparedSummary(
       totalTokens: finite(rawTotals.totalTokens),
       apiEquivalentCostUSD: finite(rawTotals.apiEquivalentCostUSD),
       activeDays: finite(rawTotals.activeDays),
+      sessionCount: finite(rawTotals.sessionCount),
     },
     topModels,
     collectedAt:
