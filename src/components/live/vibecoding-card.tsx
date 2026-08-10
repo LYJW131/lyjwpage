@@ -590,51 +590,45 @@ function AgentPanel({
 
 function QuotaProviders({ providers }: { providers: VibeCodingQuotaProvider[] }) {
   if (providers.length === 0) return null;
+  const sortedProviders = [...providers].sort(
+    (left, right) => (right.usedPercent ?? -1) - (left.usedPercent ?? -1),
+  );
   return (
     <div className="border-t border-line px-4 py-4 md:px-5">
       <div className="label-mono text-muted-foreground">Total quota used</div>
-      <div className="mt-3 grid gap-3 md:grid-cols-3">
-        {providers.map((provider) => {
+      <div className="mt-1 grid divide-y divide-line">
+        {sortedProviders.map((provider) => {
           const usedPercent = provider.usedPercent;
           const color = usedPercent == null ? undefined : limitColor(usedPercent);
           const icon = QUOTA_PROVIDER_ICONS[provider.id];
           return (
             <div
               key={provider.id}
-              className="rounded-md border border-line-strong bg-muted/30 px-3 py-3"
+              className="grid min-w-0 grid-cols-[minmax(0,9rem)_minmax(2rem,1fr)_4ch] items-center gap-3 py-3"
               title={provider.limitsError ?? undefined}
             >
-              <div className="flex h-5 items-center justify-between gap-3">
-                <div className="flex min-w-0 items-center gap-2">
-                  <span className="relative size-5 shrink-0" aria-hidden>
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="relative size-5 shrink-0" aria-hidden>
+                  <Image
+                    src={icon.light}
+                    alt=""
+                    fill
+                    sizes="20px"
+                    className={cn("object-contain", icon.dark && "dark:hidden")}
+                  />
+                  {icon.dark && (
                     <Image
-                      src={icon.light}
+                      src={icon.dark}
                       alt=""
                       fill
                       sizes="20px"
-                      className={cn("object-contain", icon.dark && "dark:hidden")}
+                      className="hidden object-contain dark:block"
                     />
-                    {icon.dark && (
-                      <Image
-                        src={icon.dark}
-                        alt=""
-                        fill
-                        sizes="20px"
-                        className="hidden object-contain dark:block"
-                      />
-                    )}
-                  </span>
-                  <span className="truncate text-sm font-medium">{provider.label}</span>
-                </div>
-                {usedPercent == null ? (
-                  <span className="label-mono text-muted-foreground">Unavailable</span>
-                ) : (
-                  <span className="font-mono text-xs tabular-nums" style={{ color }}>
-                    <NumberFlow value={Math.round(usedPercent)} locales="en-US" />%
-                  </span>
-                )}
+                  )}
+                </span>
+                <span className="truncate text-sm font-medium">{provider.label}</span>
               </div>
-              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
+              <div className="h-1.5 min-w-8 flex-1 overflow-hidden rounded-full bg-muted">
                 {usedPercent != null && (
                   <div
                     className="h-full rounded-full transition-[width] duration-700"
@@ -642,6 +636,21 @@ function QuotaProviders({ providers }: { providers: VibeCodingQuotaProvider[] })
                   />
                 )}
               </div>
+              {usedPercent == null ? (
+                <span
+                  className="label-mono text-right text-muted-foreground"
+                  title="Unavailable"
+                >
+                  —
+                </span>
+              ) : (
+                <span
+                  className="text-right font-mono text-xs tabular-nums"
+                  style={{ color }}
+                >
+                  <NumberFlow value={Math.round(usedPercent)} locales="en-US" />%
+                </span>
+              )}
             </div>
           );
         })}
