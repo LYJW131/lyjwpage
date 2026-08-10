@@ -252,6 +252,10 @@ export type VibeCodingAgent = {
   models: string[];
   /** 最近一个有用量日里的主力模型。 */
   currentModel: string | null;
+  /** ccusage 最近一次 session 活动；不含 session ID 或项目路径。 */
+  lastActivityAt: string | null;
+  /** 上报器按最近五分钟是否有 session 活动计算。 */
+  active: boolean;
   /** 整份历史里 token 占比最大的模型。 */
   topModel: string | null;
   /** 最近 60 天，一天一个 token 聚合点。 */

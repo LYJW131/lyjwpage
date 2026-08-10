@@ -89,6 +89,11 @@ function normalizePreparedSummary(
         ? row.models.filter((model): model is string => typeof model === "string")
         : [],
       currentModel: typeof row.currentModel === "string" ? row.currentModel : null,
+      lastActivityAt:
+        typeof row.lastActivityAt === "string" && Number.isFinite(Date.parse(row.lastActivityAt))
+          ? row.lastActivityAt
+          : null,
+      active: row.active === true,
       topModel: typeof row.topModel === "string" ? row.topModel : null,
       activity: normalizeActivity(row.activity),
       today,

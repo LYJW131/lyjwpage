@@ -447,23 +447,28 @@ function AgentPanel({
   const cacheHitRate = promptTokens
     ? (agent.today.cacheReadTokens / promptTokens) * 100
     : 0;
-  // CodexBar cost 不公开实时 session 状态；只显示历史主力模型，避免把日级数据
-  // 误读成「正在使用」。
-  const displayModel = agent.topModel ?? agent.currentModel ?? "暂无模型";
+  const active = agent.active && !stale;
+  // 正在使用时显示 ccusage 最近 session 的模型；闲置时仍显示 CodexBar 的历史主力。
+  const displayModel =
+    (active ? agent.currentModel : agent.topModel ?? agent.currentModel) ?? "暂无模型";
   const limits = orderedLimits(agent);
   return (
     <div className="flex min-w-0 flex-col px-4 py-4 md:px-5">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           {agent.id === "claude" ? (
-            <ClaudeSpinner active={false} stale={stale} />
+            <ClaudeSpinner active={active} stale={stale} />
           ) : (
-            <CodexActivityIndicator active={false} stale={stale} />
+            <CodexActivityIndicator active={active} stale={stale} />
           )}
           <span className="text-sm font-medium">{agent.label}</span>
+          {active && <span className="label-mono text-live">正在使用</span>}
         </div>
         <span
-          className="label-mono truncate text-muted-foreground"
+          className={cn(
+            "label-mono truncate",
+            active ? "text-live" : "text-muted-foreground",
+          )}
           title={agent.models.join(" · ")}
         >
           {displayModel}
