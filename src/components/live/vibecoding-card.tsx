@@ -70,10 +70,9 @@ function limitColor(usedPercent: number) {
 
 const TOKEN_SEGMENTS = [
   { key: "inputTokens", label: "Input", color: "oklch(0.63 0.18 250)" },
-  { key: "regularOutputTokens", label: "Output", color: "oklch(0.68 0.15 175)" },
+  { key: "outputTokens", label: "Output", color: "oklch(0.68 0.15 175)" },
   { key: "cacheReadTokens", label: "Cache read", color: "oklch(0.72 0.16 75)" },
   { key: "cacheCreationTokens", label: "Cache write", color: "oklch(0.65 0.18 315)" },
-  { key: "reasoningTokens", label: "Reasoning", color: "oklch(0.65 0.17 145)" },
 ] as const;
 
 function TotalUsage({
@@ -83,19 +82,17 @@ function TotalUsage({
   totals: VibeCodingTotals;
   topModels: VibeCodingPayload["topModels"];
 }) {
-  // reasoning 是 output 的子集；拆出来单独着色时，普通 output 要扣掉它。
   const values = {
     inputTokens: totals.inputTokens,
-    regularOutputTokens: Math.max(0, totals.outputTokens - totals.reasoningTokens),
+    outputTokens: totals.outputTokens,
     cacheReadTokens: totals.cacheReadTokens,
     cacheCreationTokens: totals.cacheCreationTokens,
-    reasoningTokens: totals.reasoningTokens,
   };
   const stackTotal = Object.values(values).reduce((sum, value) => sum + value, 0);
 
   return (
     <div className="border-b border-line px-4 pb-5 pt-5 md:px-5">
-      <div className="grid grid-cols-2 gap-x-5 gap-y-5 md:grid-cols-3">
+      <div className="grid grid-cols-3 gap-5">
         <div>
           <div className="label-mono text-muted-foreground">Tokens</div>
           <div className="mt-2 text-3xl font-medium tracking-tight md:text-4xl">
