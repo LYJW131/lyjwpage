@@ -101,14 +101,15 @@ MusicKit 签出来的 developer token 实测寿命 **30 天**，上报器从它�
 ### Vibe Coding — CodexBar
 
 Mac Telemetry Hub 通过 CodexBar CLI 的一条 `cost --provider both` 命令聚合本机
-Claude Code / Codex 日志，再通过一条 `usage --provider both --source web` 命令读取
+Claude Code / Codex 日志，再通过一条 `usage --provider both --source auto` 命令读取
 两者套餐和限额。网站只接受上报器生成的展示摘要，不在服务端运行任何本地采集命令。
 
 卡片顶部汇总全量 token、API 等值费用和活跃天数，并按 input、output、cache read、
 cache write、reasoning 展示占比；下方展示每个 provider 的今日 token、30 日累计、
 缓存命中率、历史主力模型、套餐和上游实际返回的限额。CodexBar 不公开 session 数和
-精确最近活动时刻，因此页面不再伪造 session 总数或“正在使用”状态；缺失的限额窗口也
-不会被推断成 Unlimited。
+精确最近活动时刻，因此页面不再伪造 session 总数或“正在使用”状态。CodexBar 的
+`auto` 模式会为 Claude 选择 Web、为 Codex 选择 OAuth，后者包含真实的 Spark 周限额；
+Codex 没有 5 小时桶时，页面按产品档位显示 `Unlimited`。
 
 趋势图是最近 60 天的日级聚合。费用来自 CodexBar 的公开 API 等值估算，只表示这些
 token 如果走 API 的价格，不是 Claude/Codex 订阅账单。上报摘要不含提示词、回复、

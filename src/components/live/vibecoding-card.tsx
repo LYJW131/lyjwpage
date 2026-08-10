@@ -45,6 +45,7 @@ const LIMIT_BAR_COLOR = "oklch(0.63 0.18 250)";
 const LIMIT_WARN_COLOR = "oklch(0.72 0.16 75)";
 const LIMIT_ALERT_COLOR = "oklch(0.62 0.21 25)";
 /** 不受限那一档。沿用同文件 Reasoning 那支绿（也是 --live 用的那支），不再多引入一种色相。 */
+const LIMIT_UNLIMITED_COLOR = "oklch(0.65 0.17 145)";
 
 /** 蓝 → 琥珀 → 红，只有三档没有渐变：中间色会让人去猜具体数，而数就写在旁边 */
 function limitColor(usedPercent: number) {
@@ -222,6 +223,43 @@ const LIMIT_GROUP_NAMES: Record<string, string> = {
 const LIMIT_KEY_SUFFIXES: Record<string, string> = {
   weekly_all: "all models",
 };
+
+/** 判定「当日档」的上限。跨过一天的窗口按周额度那类算，不该顶替 5 小时档。 */
+const SESSION_WINDOW_MAX_MINUTES = 1440;
+
+function isSessionWindow(limit: VibeCodingLimit) {
+  return (
+    limit.group === "session" ||
+    (limit.windowMinutes != null && limit.windowMinutes < SESSION_WINDOW_MAX_MINUTES)
+  );
+}
+
+function isNamedLimit(limit: VibeCodingLimit, name: string) {
+  return `${limit.key} ${limit.label ?? ""}`.toLowerCase().includes(name);
+}
+
+function isSparkWindow(limit: VibeCodingLimit) {
+  return (
+    limit.key.endsWith(".tertiary") ||
+    isNamedLimit(limit, "spark") ||
+    isNamedLimit(limit, "bengalfox")
+  );
+}
+
+function limitRank(agent: VibeCodingAgent, limit: VibeCodingLimit) {
+  if (isSessionWindow(limit)) return 0;
+  if (agent.id === "claude" && isNamedLimit(limit, "fable")) return 2;
+  if (agent.id === "codex" && isSparkWindow(limit)) return 2;
+  return 1;
+}
+
+function orderedLimits(agent: VibeCodingAgent) {
+  const limits = [...agent.limits];
+  return limits.sort((left, right) => {
+    const rank = limitRank(agent, left) - limitRank(agent, right);
+    return rank || left.key.localeCompare(right.key);
+  });
+}
 
 /**
  * 窗口名：有时长就按时长说，没有才退回分组。两者不会同时缺，
@@ -412,6 +450,7 @@ function AgentPanel({
   // CodexBar cost 不公开实时 session 状态；只显示历史主力模型，避免把日级数据
   // 误读成「正在使用」。
   const displayModel = agent.topModel ?? agent.currentModel ?? "暂无模型";
+  const limits = orderedLimits(agent);
   return (
     <div className="flex min-w-0 flex-col px-4 py-4 md:px-5">
       <div className="flex items-center justify-between gap-3">
@@ -476,7 +515,29 @@ function AgentPanel({
               </span>
             )}
           </div>
-          {agent.limits.map((limit) => (
+          {agent.id === "codex" &&
+            agent.limits.length > 0 &&
+            !limits.some(isSessionWindow) && (
+              <div>
+                <div className="flex h-5 items-center justify-between gap-2">
+                  <span className="truncate text-xs">5-hour limit</span>
+                  <span className="flex shrink-0 items-baseline gap-2">
+                    <span className="text-xs text-muted-foreground">Unlimited</span>
+                    <span
+                      className="font-mono text-xs tabular-nums"
+                      style={{ color: LIMIT_UNLIMITED_COLOR }}
+                    >
+                      <span className="inline-block origin-right scale-[1.6]">∞</span>
+                    </span>
+                  </span>
+                </div>
+                <div
+                  className="mt-1.5 h-1.5 rounded-full"
+                  style={{ backgroundColor: LIMIT_UNLIMITED_COLOR }}
+                />
+              </div>
+            )}
+          {limits.map((limit) => (
             <LimitMeter key={limit.key} limit={limit} />
           ))}
         </div>
