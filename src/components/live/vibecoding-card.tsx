@@ -69,10 +69,20 @@ function limitColor(usedPercent: number) {
 }
 
 const TOKEN_SEGMENTS = [
-  { key: "inputTokens", label: "Input", color: "oklch(0.63 0.18 250)" },
-  { key: "outputTokens", label: "Output", color: "oklch(0.68 0.15 175)" },
-  { key: "cacheReadTokens", label: "Cache read", color: "oklch(0.72 0.16 75)" },
-  { key: "cacheCreationTokens", label: "Cache write", color: "oklch(0.65 0.18 315)" },
+  { key: "inputTokens", label: "Input", shortLabel: "IN", color: "oklch(0.63 0.18 250)" },
+  { key: "outputTokens", label: "Output", shortLabel: "OUT", color: "oklch(0.68 0.15 175)" },
+  {
+    key: "cacheReadTokens",
+    label: "Cache read",
+    shortLabel: "CR",
+    color: "oklch(0.72 0.16 75)",
+  },
+  {
+    key: "cacheCreationTokens",
+    label: "Cache write",
+    shortLabel: "CW",
+    color: "oklch(0.65 0.18 315)",
+  },
 ] as const;
 
 function AnthropicCompanyMark() {
@@ -210,15 +220,16 @@ function TotalUsage({
         })}
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2">
+      <div className="mt-3 flex flex-wrap gap-x-3 gap-y-2 md:gap-x-5">
         {TOKEN_SEGMENTS.map((segment) => (
-          <div key={segment.key} className="flex items-center gap-2 text-xs">
+          <div key={segment.key} className="flex items-center gap-1.5 text-xs md:gap-2">
             <span
               className="size-2 rounded-full"
               style={{ backgroundColor: segment.color }}
               aria-hidden
             />
-            <span className="text-muted-foreground">{segment.label}</span>
+            <span className="text-muted-foreground md:hidden">{segment.shortLabel}</span>
+            <span className="hidden text-muted-foreground md:inline">{segment.label}</span>
             <span className="font-mono">
               <NumberFlow
                 value={values[segment.key]}
