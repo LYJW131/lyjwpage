@@ -51,18 +51,14 @@ const LIMIT_UNLIMITED_COLOR = "oklch(0.65 0.17 145)";
 
 const QUOTA_PROVIDER_ICONS: Record<
   VibeCodingQuotaProvider["id"],
-  { light: string; dark?: string; className?: string }
+  { light: string; dark?: string }
 > = {
   cursor: { light: "/provider-icons/cursor-25d.svg" },
   opencodego: {
     light: "/provider-icons/opencodego-light.svg",
     dark: "/provider-icons/opencodego-dark.svg",
   },
-  // 官方 PNG 是 540px 方形画布，实际图形仅高 372px；补偿透明留白后可见高度为 20px。
-  antigravity: {
-    light: "/provider-icons/antigravity-full-color.png",
-    className: "scale-[1.452]",
-  },
+  antigravity: { light: "/provider-icons/antigravity-full-color.png" },
 };
 
 /** 蓝 → 琥珀 → 红，只有三档没有渐变：中间色会让人去猜具体数，而数就写在旁边 */
@@ -616,11 +612,7 @@ function QuotaProviders({ providers }: { providers: VibeCodingQuotaProvider[] })
                       alt=""
                       fill
                       sizes="20px"
-                      className={cn(
-                        "object-contain",
-                        icon.className,
-                        icon.dark && "dark:hidden",
-                      )}
+                      className={cn("object-contain", icon.dark && "dark:hidden")}
                     />
                     {icon.dark && (
                       <Image
@@ -628,10 +620,7 @@ function QuotaProviders({ providers }: { providers: VibeCodingQuotaProvider[] })
                         alt=""
                         fill
                         sizes="20px"
-                        className={cn(
-                          "hidden object-contain dark:block",
-                          icon.className,
-                        )}
+                        className="hidden object-contain dark:block"
                       />
                     )}
                   </span>
