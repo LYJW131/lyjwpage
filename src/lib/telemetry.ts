@@ -181,8 +181,8 @@ async function syncTelemetryState() {
 type TelemetryEnvelope = {
   presence?: unknown;
   version?: unknown;
-  heartbeat_at?: unknown;
-  active_modules?: unknown;
+  heartbeatAt?: unknown;
+  activeModules?: unknown;
   modules?: unknown;
 };
 
@@ -208,27 +208,27 @@ async function normalizeDesktop(
 ): Promise<{ activity: DesktopActivity | null; iconAvailable: boolean }> {
   const row = object(value);
   if (!row) return { activity: null, iconAvailable: true };
-  const applicationName = text(row.application_name);
-  if (!applicationName) throw new Error("desktop 模块缺少 application_name");
-  const bundleIdentifier = text(row.bundle_identifier);
-  const iconHash = text(row.icon_hash);
+  const applicationName = text(row.applicationName);
+  if (!applicationName) throw new Error("desktop 模块缺少 applicationName");
+  const bundleIdentifier = text(row.bundleIdentifier);
+  const iconHash = text(row.iconHash);
   if (iconHash != null && !/^[a-f0-9]{64}$/.test(iconHash)) {
-    throw new Error("desktop.icon_hash 必须是 SHA-256 十六进制字符串");
+    throw new Error("desktop.iconHash 必须是 SHA-256 十六进制字符串");
   }
 
-  if (row.icon_data != null) {
-    if (!iconHash || typeof row.icon_data !== "string") {
-      throw new Error("desktop.icon_data 必须和 icon_hash 一起上传");
+  if (row.iconData != null) {
+    if (!iconHash || typeof row.iconData !== "string") {
+      throw new Error("desktop.iconData 必须和 iconHash 一起上传");
     }
-    const iconData = Buffer.from(row.icon_data, "base64");
+    const iconData = Buffer.from(row.iconData, "base64");
     const actualHash = createHash("sha256").update(iconData).digest("hex");
-    if (actualHash !== iconHash) throw new Error("desktop 图标内容与 icon_hash 不一致");
+    if (actualHash !== iconHash) throw new Error("desktop 图标内容与 iconHash 不一致");
     const uploadedIcon = await storeImageBuffer(
       iconData,
       ICON_MAX_DIMENSION,
       ICON_WEBP_QUALITY,
     );
-    if (!uploadedIcon) throw new Error("desktop.icon_data 不是有效图片");
+    if (!uploadedIcon) throw new Error("desktop.iconData 不是有效图片");
     rememberDesktopIcon(iconHash, uploadedIcon);
   }
 
@@ -239,7 +239,7 @@ async function normalizeDesktop(
       applicationName,
       bundleIdentifier,
       iconUrl,
-      observedAt: milliseconds(row.observed_at, receivedAt),
+      observedAt: milliseconds(row.observedAt, receivedAt),
     },
     iconAvailable: iconHash == null || iconUrl != null,
   };
@@ -256,8 +256,8 @@ function normalizeTimezone(
   return {
     identifier,
     abbreviation: text(row.abbreviation),
-    secondsFromGMT: Math.trunc(number(row.seconds_from_gmt) ?? 0),
-    observedAt: milliseconds(row.observed_at, receivedAt),
+    secondsFromGMT: Math.trunc(number(row.secondsFromGMT) ?? 0),
+    observedAt: milliseconds(row.observedAt, receivedAt),
   };
 }
 
@@ -269,7 +269,7 @@ async function normalizeMusic(
   if (!row) return null;
   const rawState = text(row.state);
   const state = rawState === "playing" || rawState === "paused" ? rawState : "stopped";
-  const trackId = text(row.track_id);
+  const trackId = text(row.trackId);
   return {
     source: "apple-music",
     state,
@@ -280,11 +280,11 @@ async function normalizeMusic(
     // 采集端不再上传封面二进制：读取时会查一次 Apple Music 目录拿曲目链接，
     // 那次查询的结果自带封面 URL，见 getMusicPayload
     artworkUrl: null,
-    positionMs: Math.max(0, number(row.position_ms) ?? 0),
-    durationMs: Math.max(0, number(row.duration_ms) ?? 0),
+    positionMs: Math.max(0, number(row.positionMs) ?? 0),
+    durationMs: Math.max(0, number(row.durationMs) ?? 0),
     // 上报器发的是布尔值，字符串那支是给旧版采集器留的；缺字段按「不循环」处理
-    repeatOne: text(row.repeat_one) === "true" || row.repeat_one === true,
-    observedAt: milliseconds(row.observed_at, receivedAt),
+    repeatOne: text(row.repeatOne) === "true" || row.repeatOne === true,
+    observedAt: milliseconds(row.observedAt, receivedAt),
   };
 }
 
@@ -326,13 +326,13 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
   await syncTelemetryState();
   const envelope = object(input) as TelemetryEnvelope | null;
   if (!envelope || envelope.version !== 3) throw new Error("遥测协议 version 必须为 3");
-  if (number(envelope.heartbeat_at) == null) throw new Error("遥测请求缺少 heartbeat_at");
-  if (!Array.isArray(envelope.active_modules)) throw new Error("遥测请求缺少 active_modules");
-  const nextActiveModules = envelope.active_modules.filter(
+  if (number(envelope.heartbeatAt) == null) throw new Error("遥测请求缺少 heartbeatAt");
+  if (!Array.isArray(envelope.activeModules)) throw new Error("遥测请求缺少 activeModules");
+  const nextActiveModules = envelope.activeModules.filter(
     (value): value is string => typeof value === "string",
   );
-  if (nextActiveModules.length !== envelope.active_modules.length) {
-    throw new Error("active_modules 只能包含字符串");
+  if (nextActiveModules.length !== envelope.activeModules.length) {
+    throw new Error("activeModules 只能包含字符串");
   }
   const presence = text(envelope.presence);
   if (presence !== "online" && presence !== "offline") {
@@ -360,7 +360,7 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
 
   if ("charger" in modules) {
     const raw = object(modules.charger) as RawStatus | null;
-    if (!raw?.updated_at) throw new Error("charger 模块缺少 updated_at");
+    if (!raw?.updatedAt) throw new Error("charger 模块缺少 updatedAt");
     const structuralChanged = await recordStatus(normalizeRawStatus(raw), receivedAt);
     // 插拔、换设备立刻推给浏览器，不等卡片下一次轮询。滚动读数不走这里。
     // since 给当下时刻：历史点一个都不带，客户端沿用自己那份，见 live-events 的说明。
@@ -387,31 +387,33 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
     accepted += 1;
   }
 
-  if ("apple_music" in modules) {
-    telemetryState.music = await normalizeMusic(modules.apple_music, receivedAt);
+  if ("appleMusic" in modules) {
+    telemetryState.music = await normalizeMusic(modules.appleMusic, receivedAt);
     telemetryState.activityReceivedAt = receivedAt;
     accepted += 1;
   }
 
-  if ("apple_music_credentials" in modules) {
-    const row = object(modules.apple_music_credentials);
-    if (!row) throw new Error("apple_music_credentials 必须是对象");
-    const hasMusicUserToken = "music_user_token" in row;
-    const hasDeveloperToken = "developer_token" in row;
+  if ("appleMusicCredentials" in modules) {
+    const row = object(modules.appleMusicCredentials);
+    if (!row) throw new Error("appleMusicCredentials 必须是对象");
+    const hasMusicUserToken = "musicUserToken" in row;
+    const hasDeveloperToken = "developerToken" in row;
     if (!hasMusicUserToken && !hasDeveloperToken) {
-      throw new Error("apple_music_credentials 至少包含一个 token");
+      throw new Error("appleMusicCredentials 至少包含一个 token");
     }
 
-    const musicUserToken = hasMusicUserToken ? text(row.music_user_token) : undefined;
-    const developerToken = hasDeveloperToken ? text(row.developer_token) : undefined;
-    if (hasMusicUserToken && !musicUserToken) throw new Error("music_user_token 不能为空");
-    if (hasDeveloperToken && !developerToken) throw new Error("developer_token 不能为空");
+    const musicUserToken = hasMusicUserToken ? text(row.musicUserToken) : undefined;
+    const developerToken = hasDeveloperToken ? text(row.developerToken) : undefined;
+    if (hasMusicUserToken && !musicUserToken) throw new Error("musicUserToken 不能为空");
+    if (hasDeveloperToken && !developerToken) throw new Error("developerToken 不能为空");
 
-    const expiresAt = hasDeveloperToken ? number(row.expires_at) : undefined;
+    const expiresAt = hasDeveloperToken ? number(row.expiresAt) : undefined;
     if (hasDeveloperToken && (expiresAt == null || !Number.isFinite(expiresAt) || expiresAt <= 0)) {
-      throw new Error("developer_token 必须带有效的 expires_at");
+      throw new Error("developerToken 必须带有效的 expiresAt");
     }
     await putAppleMusicCredentials({
+      // 上面几道守卫已经保证「带了这个字段就一定非空」，但 text() 的返回类型是
+      // string | null，TS 收窄不到这一步，只能把 null 折成 undefined
       musicUserToken: musicUserToken ?? undefined,
       developerToken: developerToken ?? undefined,
       expiresAt: expiresAt ?? undefined,
@@ -420,8 +422,8 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
     accepted += 1;
   }
 
-  if ("vibe_coding" in modules) {
-    await recordVibeCodingReport(modules.vibe_coding, receivedAt);
+  if ("vibeCoding" in modules) {
+    await recordVibeCodingReport(modules.vibeCoding, receivedAt);
     accepted += 1;
   }
 
@@ -441,7 +443,7 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
   // 在离线翻转本身就是状态变化，值得推 —— 这正是「关键事件」，不是定时广播
   if (presenceFlipped) await publishPresence();
   if ("desktop" in modules && desktopIconAvailable) await publishDesktop();
-  if ("apple_music" in modules) await publishMusic();
+  if ("appleMusic" in modules) await publishMusic();
 
   return { accepted, heartbeat: true, desktopIconAvailable };
 }
@@ -499,7 +501,7 @@ export async function getTimezonePayload(): Promise<TimezonePayload> {
 export async function getMusicPayload(): Promise<MusicPayload> {
   await syncTelemetryState();
   const telemetryStale = reporterStale();
-  const musicEnabled = telemetryState.activeModules.has("apple_music");
+  const musicEnabled = telemetryState.activeModules.has("appleMusic");
   const macMusic = musicEnabled && !telemetryStale ? telemetryState.music : null;
   const homePod = await getHomePodNowPlaying();
   const homePodMusic = homePod?.music ?? null;
