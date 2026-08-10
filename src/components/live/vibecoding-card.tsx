@@ -1,6 +1,7 @@
 "use client";
 
 import NumberFlow, { NumberFlowGroup } from "@number-flow/react";
+import Image from "next/image";
 import { useEffect, useState } from "react";
 
 import { ClaudeSpinner } from "@/components/live/claude-spinner";
@@ -14,14 +15,12 @@ import type {
   VibeCodingAgent,
   VibeCodingLimit,
   VibeCodingPayload,
+  VibeCodingQuotaProvider,
   VibeCodingTotals,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-import styles from "./vibecoding-card.module.css";
-
 const REFRESH_MS = 60_000;
-const ACTIVE_WINDOW_MS = 5 * 60_000;
 
 /** 活动曲线增量拉取，和充电头共用同一个壳子。累加器在 lib/vibecoding-activity */
 const fetchVibeCoding = incrementalFetcher<VibeCodingPayload>(
@@ -49,6 +48,18 @@ const LIMIT_WARN_COLOR = "oklch(0.72 0.16 75)";
 const LIMIT_ALERT_COLOR = "oklch(0.62 0.21 25)";
 /** 不受限那一档。沿用同文件 Reasoning 那支绿（也是 --live 用的那支），不再多引入一种色相。 */
 const LIMIT_UNLIMITED_COLOR = "oklch(0.65 0.17 145)";
+
+const QUOTA_PROVIDER_ICONS: Record<
+  VibeCodingQuotaProvider["id"],
+  { light: string; dark?: string }
+> = {
+  cursor: { light: "/provider-icons/cursor-25d.svg" },
+  opencodego: {
+    light: "/provider-icons/opencodego-light.svg",
+    dark: "/provider-icons/opencodego-dark.svg",
+  },
+  antigravity: { light: "/provider-icons/antigravity-full-color.png" },
+};
 
 /** 蓝 → 琥珀 → 红，只有三档没有渐变：中间色会让人去猜具体数，而数就写在旁边 */
 function limitColor(usedPercent: number) {
@@ -84,7 +95,7 @@ function TotalUsage({
 
   return (
     <div className="border-b border-line px-4 pb-5 pt-5 md:px-5">
-      <div className="grid grid-cols-2 gap-x-5 gap-y-5 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-x-5 gap-y-5 md:grid-cols-3">
         <div>
           <div className="label-mono text-muted-foreground">Tokens</div>
           <div className="mt-2 text-3xl font-medium tracking-tight md:text-4xl">
@@ -114,12 +125,6 @@ function TotalUsage({
           <div className="label-mono text-muted-foreground">Active</div>
           <div className="mt-2 text-3xl font-medium tracking-tight md:text-4xl">
             <NumberFlow value={totals.activeDays} locales="en-US" />
-          </div>
-        </div>
-        <div>
-          <div className="label-mono text-muted-foreground">Sessions</div>
-          <div className="mt-2 text-3xl font-medium tracking-tight md:text-4xl">
-            <NumberFlow value={totals.sessions} locales="en-US" />
           </div>
         </div>
       </div>
@@ -233,14 +238,9 @@ const LIMIT_KEY_SUFFIXES: Record<string, string> = {
   weekly_all: "all models",
 };
 
-/** 判定「当日档」的上限。跨过一天的窗口按周额度那类算，不该顶替 5 小时档 */
+/** 判定「当日档」的上限。跨过一天的窗口按周额度那类算，不该顶替 5 小时档。 */
 const SESSION_WINDOW_MAX_MINUTES = 1440;
 
-/**
- * 是不是 5 小时那一档。
- *
- * 两种来源的判据不一样：Claude 给 group，Codex 给时长，所以两个都认。
- */
 function isSessionWindow(limit: VibeCodingLimit) {
   return (
     limit.group === "session" ||
@@ -248,8 +248,31 @@ function isSessionWindow(limit: VibeCodingLimit) {
   );
 }
 
-function hasSessionWindow(limits: VibeCodingLimit[]) {
-  return limits.some(isSessionWindow);
+function isNamedLimit(limit: VibeCodingLimit, name: string) {
+  return `${limit.key} ${limit.label ?? ""}`.toLowerCase().includes(name);
+}
+
+function isSparkWindow(limit: VibeCodingLimit) {
+  return (
+    limit.key.endsWith(".tertiary") ||
+    isNamedLimit(limit, "spark") ||
+    isNamedLimit(limit, "bengalfox")
+  );
+}
+
+function limitRank(agent: VibeCodingAgent, limit: VibeCodingLimit) {
+  if (isSessionWindow(limit)) return 0;
+  if (agent.id === "claude" && isNamedLimit(limit, "fable")) return 2;
+  if (agent.id === "codex" && isSparkWindow(limit)) return 2;
+  return 1;
+}
+
+function orderedLimits(agent: VibeCodingAgent) {
+  const limits = [...agent.limits];
+  return limits.sort((left, right) => {
+    const rank = limitRank(agent, left) - limitRank(agent, right);
+    return rank || left.key.localeCompare(right.key);
+  });
 }
 
 /**
@@ -325,7 +348,7 @@ function LimitMeter({ limit }: { limit: VibeCodingLimit }) {
    *
    * 快照时间是采集那一刻，用它当基准的话「重置到点了」这件事前端永远感知不到 ——
    * 倒计时是冻住的，只在新数据到达时跳一下。而上报器五分钟才重取一次限额、
-   * 再搭 ccusage 的包发出、站点再轮询一轮，最坏六分多钟里这根条一直显示上一个
+   * 再搭 CodexBar 的包发出、站点再轮询一轮，最坏六分多钟里这根条一直显示上一个
    * 周期的百分比。那个数是确定错的：周期已经翻篇了。
    *
    * 到点归零不是编数据 —— 重置那一刻用量就是零。之后至多低估这几分钟新用掉的
@@ -368,8 +391,8 @@ function LimitMeter({ limit }: { limit: VibeCodingLimit }) {
         行高钉死，不让内容决定。
 
         NumberFlow 是个 inline-block 的 web component，会把 text-xs 的行盒从
-        16px 撑到 20px。而「Unlimited」那种行一个 NumberFlow 都没有，于是两侧
-        面板的行高不一样，Codex 和 Claude Code 的进度条整列对不齐。
+        16px 撑到 20px。限额窗口有的带重置倒计时、有的没有，因此两侧面板的
+        行高可能不一样，Codex 和 Claude Code 的进度条整列也会跟着错位。
 
         改 items-center：几个子元素都是 text-xs，视觉上和原来的 items-baseline
         没有区别，但不再受 NumberFlow 合成基线的影响。
@@ -420,12 +443,9 @@ function LimitMeter({ limit }: { limit: VibeCodingLimit }) {
 function AgentPanel({
   agent,
   stale,
-  referenceTime,
 }: {
   agent: VibeCodingAgent;
   stale: boolean;
-  /** 采集时间由数据携带，避免渲染期间读取不稳定的系统时钟。 */
-  referenceTime: number;
 }) {
   const samples = agent.activity.map((sample) => ({
     t: sample.t,
@@ -441,16 +461,11 @@ function AgentPanel({
   const cacheHitRate = promptTokens
     ? (agent.today.cacheReadTokens / promptTokens) * 100
     : 0;
-  const lastActivity = agent.lastActivityAt ? Date.parse(agent.lastActivityAt) : 0;
-  const active =
-    !stale &&
-    lastActivity > 0 &&
-    referenceTime - lastActivity >= 0 &&
-    referenceTime - lastActivity <= ACTIVE_WINDOW_MS;
-  // 正在使用时关心「此刻在跑什么」，闲着时这个瞬时值没有代表性，改看历史主力模型。
-  // topModel 取不到（旧版 Mac app 不上报）就退回原来的取法，不留空。
+  const active = agent.active && !stale;
+  // 正在使用时显示 ccusage 最近 session 的模型；闲置时仍显示 CodexBar 的历史主力。
   const displayModel =
     (active ? agent.currentModel : agent.topModel ?? agent.currentModel) ?? "暂无模型";
+  const limits = orderedLimits(agent);
   return (
     <div className="flex min-w-0 flex-col px-4 py-4 md:px-5">
       <div className="flex items-center justify-between gap-3">
@@ -463,11 +478,6 @@ function AgentPanel({
           <span className="text-sm font-medium">{agent.label}</span>
           {active && <span className="label-mono text-live">正在使用</span>}
         </div>
-        {/*
-          正在使用时点亮。这一格在两种状态下含义不一样 —— 用着的时候是「此刻在
-          跑什么」，闲着的时候是「历史上用得最多的是什么」。同一个位置同一种灰，
-          容易被当成同一件事读。
-        */}
         <span
           className={cn(
             "label-mono truncate",
@@ -483,28 +493,11 @@ function AgentPanel({
         <div className="min-w-0">
           <div className="label-mono text-muted-foreground">Today Tokens</div>
           <div className="mt-1 text-3xl font-medium tracking-tight tabular-nums md:text-5xl">
-            <span className={styles.todayTokenValue}>
-              <span
-                aria-hidden
-                className={cn(
-                  styles.todayTokenGlowShell,
-                  active && styles.todayTokenGlowShellActive,
-                )}
-              >
-                <NumberFlow
-                  className={styles.todayTokenGlow}
-                  value={agent.today.totalTokens}
-                  locales="en-US"
-                  format={{ notation: "compact", maximumFractionDigits: 1 }}
-                />
-              </span>
-              <NumberFlow
-                className={styles.todayTokenForeground}
-                value={agent.today.totalTokens}
-                locales="en-US"
-                format={{ notation: "compact", maximumFractionDigits: 1 }}
-              />
-            </span>
+            <NumberFlow
+              value={agent.today.totalTokens}
+              locales="en-US"
+              format={{ notation: "compact", maximumFractionDigits: 1 }}
+            />
           </div>
         </div>
         <div className="grid gap-3 border-l border-line pl-4">
@@ -541,49 +534,29 @@ function AgentPanel({
               </span>
             )}
           </div>
-          {/*
-            缺 5 小时档时补一条「不限」。OpenAI 眼下临时撤掉了 Codex 的这个窗口，
-            接口里就没有这一条 —— 但「接口没给」和「这一档不受限」在页面上是两回事，
-            整条不显示会让人以为漏了。窗口回来那天上游自然会带上它，这里也就不再触发。
-
-            只在已经拿到限额时补：limits 整个为空说明这次压根没取到（接口挂了 /
-            没配路径），那是「不知道」，不是「不限」，不能替用户下这个结论。
-          */}
-          {agent.limits.length > 0 && !hasSessionWindow(agent.limits) && (
-            <div>
-              {/* 行高和 LimitMeter 那边一致，否则两个 agent 并排时下面几行错开 */}
-              <div className="flex h-5 items-center justify-between gap-2">
-                <span className="truncate text-xs">{LIMIT_GROUP_NAMES.session}</span>
-                <span className="flex shrink-0 items-baseline gap-2">
-                  {/* 占重置时刻那个位置：这一档不会重置，写它不受限 */}
-                  <span className="text-xs text-muted-foreground">Unlimited</span>
-                  <span
-                    className="font-mono text-xs tabular-nums"
-                    style={{ color: LIMIT_UNLIMITED_COLOR }}
-                  >
-                    {/*
-                      ∞ 在等宽字体里画得又扁又小，和隔壁那些两位数放一起完全不成比例。
-                      放大要同时躲开两个坑：调字号会把这一行从 16px 顶到 18px，两个
-                      agent 并排时下面几行就跟隔壁错开（钉行高也没用，大字号的
-                      ascent/descent 照样把行盒撑开）；而 transform 缩放不占布局宽度，
-                      默认从中心放大就会顶出右边缘。所以缩放 + 把原点挪到右边：
-                      向左长进本来就有的间距里，右边缘和上面那些百分数天然齐平。
-                    */}
-                    <span className="inline-block origin-right scale-[1.6]">∞</span>
+          {agent.id === "codex" &&
+            agent.limits.length > 0 &&
+            !limits.some(isSessionWindow) && (
+              <div>
+                <div className="flex h-5 items-center justify-between gap-2">
+                  <span className="truncate text-xs">5-hour limit</span>
+                  <span className="flex shrink-0 items-baseline gap-2">
+                    <span className="text-xs text-muted-foreground">Unlimited</span>
+                    <span
+                      className="font-mono text-xs tabular-nums"
+                      style={{ color: LIMIT_UNLIMITED_COLOR }}
+                    >
+                      <span className="inline-block origin-right scale-[1.6]">∞</span>
+                    </span>
                   </span>
-                </span>
+                </div>
+                <div
+                  className="mt-1.5 h-1.5 rounded-full"
+                  style={{ backgroundColor: LIMIT_UNLIMITED_COLOR }}
+                />
               </div>
-              {/*
-                整条铺满绿：这一档没有可填的量，铺满不是「用了 100%」而是「随便用」。
-                同时占住位置 —— 两个 agent 并排，这一条少了轨道下面几行就跟隔壁错开。
-              */}
-              <div
-                className="mt-1.5 h-1.5 rounded-full"
-                style={{ backgroundColor: LIMIT_UNLIMITED_COLOR }}
-              />
-            </div>
-          )}
-          {agent.limits.map((limit) => (
+            )}
+          {limits.map((limit) => (
             <LimitMeter key={limit.key} limit={limit} />
           ))}
         </div>
@@ -615,6 +588,68 @@ function AgentPanel({
   );
 }
 
+function QuotaProviders({ providers }: { providers: VibeCodingQuotaProvider[] }) {
+  if (providers.length === 0) return null;
+  return (
+    <div className="border-t border-line px-4 py-4 md:px-5">
+      <div className="label-mono text-muted-foreground">Total quota used</div>
+      <div className="mt-3 grid gap-3 md:grid-cols-3">
+        {providers.map((provider) => {
+          const usedPercent = provider.usedPercent;
+          const color = usedPercent == null ? undefined : limitColor(usedPercent);
+          const icon = QUOTA_PROVIDER_ICONS[provider.id];
+          return (
+            <div
+              key={provider.id}
+              className="rounded-md border border-line-strong bg-muted/30 px-3 py-3"
+              title={provider.limitsError ?? undefined}
+            >
+              <div className="flex h-5 items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="relative size-5 shrink-0" aria-hidden>
+                    <Image
+                      src={icon.light}
+                      alt=""
+                      fill
+                      sizes="20px"
+                      className={cn("object-contain", icon.dark && "dark:hidden")}
+                    />
+                    {icon.dark && (
+                      <Image
+                        src={icon.dark}
+                        alt=""
+                        fill
+                        sizes="20px"
+                        className="hidden object-contain dark:block"
+                      />
+                    )}
+                  </span>
+                  <span className="truncate text-sm font-medium">{provider.label}</span>
+                </div>
+                {usedPercent == null ? (
+                  <span className="label-mono text-muted-foreground">Unavailable</span>
+                ) : (
+                  <span className="font-mono text-xs tabular-nums" style={{ color }}>
+                    <NumberFlow value={Math.round(usedPercent)} locales="en-US" />%
+                  </span>
+                )}
+              </div>
+              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
+                {usedPercent != null && (
+                  <div
+                    className="h-full rounded-full transition-[width] duration-700"
+                    style={{ width: `${usedPercent}%`, backgroundColor: color }}
+                  />
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function VibeCodingCard({ className }: { className?: string }) {
   // 不订阅 SSE：token 用量是累计的历史事实，Mac 掉线它不会变得不可信，
   // 只是不再增长，没有理由跟着变灰
@@ -631,12 +666,12 @@ export function VibeCodingCard({ className }: { className?: string }) {
       tone={stale ? "off" : data ? "live" : "idle"}
       action={
         error
-          ? "ccusage 离线"
+          ? "CodexBar 离线"
           : isLoading && !data
             ? "读取中"
             : data
-              ? `ccusage · ${data.source === "local" ? "本机" : "推送"}`
-              : "ccusage"
+              ? `CodexBar · ${data.source === "local" ? "本机" : "推送"}`
+              : "CodexBar"
       }
       className={cn("md:col-span-2", stale && "opacity-70", className)}
     >
@@ -649,15 +684,15 @@ export function VibeCodingCard({ className }: { className?: string }) {
                 key={agent.id}
                 agent={agent}
                 stale={stale}
-                referenceTime={Date.parse(data.collectedAt)}
               />
             ))}
           </div>
+          <QuotaProviders providers={data.quotaProviders} />
         </>
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-5 border-b border-line px-5 py-5 md:grid-cols-4">
-            {[0, 1, 2, 3].map((index) => (
+          <div className="grid grid-cols-2 gap-5 border-b border-line px-5 py-5 md:grid-cols-3">
+            {[0, 1, 2].map((index) => (
               <div key={index} className="animate-pulse">
                 <div className="h-3 w-20 rounded bg-muted" />
                 <div className="mt-3 h-9 w-24 rounded bg-muted" />

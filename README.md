@@ -98,30 +98,29 @@ MusicKit 签出来的 developer token 实测寿命 **30 天**，上报器从它�
 - 设备名靠 (VID, PID) 查表，表是逐条实机观察积累的。查不到时显示 `Unknown`（口空着才显示 `—`）
 - **没有温度字段，上游也不给历史** —— 曲线是本站自己攒的
 
-### Vibe Coding — ccusage
+### Vibe Coding — CodexBar
 
-`ccusage` 只读取本机 `~/.claude` 和 `~/.codex` 会话日志，页面展示 Claude Code / Codex
-卡片顶部汇总两者的全量 token、API 等值费用、活跃天数和 session 数，并按 input、output、
-cache read、cache write、reasoning 画堆叠占比。下方展示各自的今日 token、7 日趋势、
-API 等值费用、缓存命中率和模型。最近 5 分钟内只要
-`ccusage session` 仍记录到活动，就会显示呼吸绿点和“正在使用”。费用来自 `ccusage` 的
-公开价格表，只是“如果这些 token 走 API”的估值，并不是 Claude/Codex 订阅账单。
-不会上传提示词、回复、项目名或文件路径。
+Mac Telemetry Hub 通过 CodexBar CLI 的一条 `cost --provider both` 命令聚合本机
+Claude Code / Codex 日志，再通过 `usage` 读取两者套餐和限额，以及 Cursor、
+OpenCode Go、Antigravity 的总限额用量；另以 ccusage 的两条离线 `session` 命令读取最近活动时间与模型，
+只用来判断“正在使用”。网站只接受上报器生成的展示摘要，不在服务端运行采集命令。
+会话状态每 60 秒扫描一次；CodexBar 的 Token、费用和限额每 10 分钟刷新一次。
 
-趋势图使用最近 30 天、12 小时粒度（60 个点）。`ccusage` 没有 hourly report，因此按
-session 的 `lastActivity` 把该 session 的 token 归入对应 12 小时桶；长 session 会归到
-最后活动所在的桶。图表右侧的 `30D TOTAL` 是同一 30 天窗口的准确每日累计。
+卡片顶部汇总全量 token、API 等值费用和活跃天数，并按 input、output、cache read、
+cache write、reasoning 展示占比；下方展示每个 provider 的今日 token、30 日累计、
+缓存命中率、历史主力模型、套餐和上游实际返回的限额。Cursor、OpenCode Go 和
+Antigravity 只显示一条总限额进度，不显示 Token、费用和模型明细。最近活动时刻由
+ccusage 的离线 session 摘要提供，用于真实的“正在使用”状态。CodexBar 的
+`auto` 模式会为 Claude 选择 Web、为 Codex 选择 OAuth，后者包含真实的 Spark 周限额；
+Codex 没有 5 小时桶时，页面按产品档位显示 `Unlimited`。
 
-采集时优先让 `ccusage` 在线读取 LiteLLM 价格表，网络失败才回退它自带的缓存。
-目前价格表还不认识 Claude Code 日志里的 `claude-opus-5` 简写；只有在上游返回 0、且当天仅有这个型号时，
-本站才按当前公开 Opus 标准价兜底。一旦 `ccusage` 能返回价格，兜底会自动失效。
-
-本地开发时 `/api/status/vibecoding` 会直接运行随项目安装的 `ccusage`，结果缓存 60 秒。
-部署后只接受 Mac Telemetry Hub v2 的聚合摘要，不接受 ccusage 原始输出。
+趋势图是最近 60 天的日级聚合。费用来自 CodexBar 的公开 API 等值估算，只表示这些
+token 如果走 API 的价格，不是 Claude/Codex 订阅账单。上报摘要不含提示词、回复、
+session ID、项目名或文件路径。
 
 ### 本机实时活动 — Mac Telemetry Hub
 
-`a2687-telemetry/A2687TelemetryMac` 已从单一充电头工具扩展为可插拔的本机遥测中心。充电头、前台应用、本机 Apple Music、Mac 时区和 ccusage 都能独立开启或关闭。Apple Music 通过 macOS Apple Events 读取 Music.app 的本机播放状态，与上面的 Apple Music API“最近在听”完全独立。
+`a2687-telemetry/A2687TelemetryMac` 已从单一充电头工具扩展为可插拔的本机遥测中心。充电头、前台应用、本机 Apple Music、Mac 时区和 CodexBar 都能独立开启或关闭。Apple Music 通过 macOS Apple Events 读取 Music.app 的本机播放状态，与上面的 Apple Music API“最近在听”完全独立。
 
 所有采集器统一写入：
 
@@ -139,7 +138,7 @@ POST /api/ingest/presence
 
 无变化时每 ≥30 秒一条，只带 `state` 和 `active_modules`。有数据要发时不走这条——那个包本身就证明上报器活着。崩溃、断网、强制关机时上报器什么都发不出来，那些靠服务端「多久没收到心跳」的超时兜底。
 
-各模块的指纹粒度决定了「无变化」有多容易达成：`charger` 含功率/电压/电流，充电中几乎每轮都变；`desktop` 是应用名 + bundleID + 图标，不切应用就不变；`apple_music` 的进度**不入签名**，所以播放中也不变，只有 seek 偏离锚点超过容差才算；`timezone` 只有 IANA 标识、当前 UTC 偏移或缩写变化时才重发；`vibe_coding` 看 `ccusage` 的刷新时间戳。真正的零 telemetry 场景是充电头没接、不切前台应用、音乐不换曲不 seek、时区不变、ccusage 未刷新——此时只有每 30 秒一条 presence。
+各模块的指纹粒度决定了「无变化」有多容易达成：`charger` 含功率/电压/电流，充电中几乎每轮都变；`desktop` 是应用名 + bundleID + 图标，不切应用就不变；`apple_music` 的进度**不入签名**，所以播放中也不变，只有 seek 偏离锚点超过容差才算；`timezone` 只有 IANA 标识、当前 UTC 偏移或缩写变化时才重发；`vibe_coding` 看 CodexBar 的刷新时间戳。真正的零 telemetry 场景是充电头没接、不切前台应用、音乐不换曲不 seek、时区不变、CodexBar 未刷新——此时只有每 30 秒一条 presence。
 
 Music.app 封面和前台应用图标由 Mac 直接读取，只在内容变化时上传一次；服务端按内容哈希生成 `/api/image/asset/:id` 地址，普通状态心跳不会重复携带图片。时区模块只上传 IANA 标识、当前偏移和缩写，不上传地址。公开读取按用途拆分为 `/api/status/charger`、`/api/status/desktop`、`/api/status/timezone`、`/api/status/music` 和 `/api/status/vibecoding`。
 

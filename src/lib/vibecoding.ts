@@ -7,10 +7,17 @@ import type {
   VibeCodingLimit,
   VibeCodingPayload,
   VibeCodingPlan,
+  VibeCodingQuotaProvider,
+  VibeCodingQuotaProviderId,
 } from "@/lib/types";
 
 const PUSH_STALE_MS = 15 * 60_000;
 const AGENTS: VibeCodingAgentId[] = ["claude", "codex"];
+const QUOTA_PROVIDERS: Array<{ id: VibeCodingQuotaProviderId; label: string }> = [
+  { id: "cursor", label: "Cursor" },
+  { id: "opencodego", label: "OpenCode Go" },
+  { id: "antigravity", label: "Antigravity" },
+];
 
 type RawAgentDay = {
   agent?: unknown;
@@ -89,12 +96,12 @@ function normalizePreparedSummary(
         ? row.models.filter((model): model is string => typeof model === "string")
         : [],
       currentModel: typeof row.currentModel === "string" ? row.currentModel : null,
-      // 同样是后加的字段：旧版 Mac app 不送，缺失降级成 null 由 UI 退回 currentModel
-      topModel: typeof row.topModel === "string" ? row.topModel : null,
       lastActivityAt:
         typeof row.lastActivityAt === "string" && Number.isFinite(Date.parse(row.lastActivityAt))
           ? row.lastActivityAt
           : null,
+      active: row.active === true,
+      topModel: typeof row.topModel === "string" ? row.topModel : null,
       activity: normalizeActivity(row.activity),
       today,
       // 这两个是后加的字段，旧版 Mac app 的上报里根本没有。缺失一律降级成
@@ -113,6 +120,24 @@ function normalizePreparedSummary(
   }
 
   const rawTotals = root.totals as Record<string, unknown>;
+  const rawQuotaProviders = Array.isArray(root.quotaProviders) ? root.quotaProviders : [];
+  const quotaProviders = QUOTA_PROVIDERS.flatMap(({ id, label }): VibeCodingQuotaProvider[] => {
+    const raw = rawQuotaProviders.find(
+      (value) => value && typeof value === "object" && (value as { id?: unknown }).id === id,
+    );
+    if (!raw || typeof raw !== "object") return [];
+    const row = raw as Record<string, unknown>;
+    const usedPercent = typeof row.usedPercent === "number" && Number.isFinite(row.usedPercent)
+      ? Math.min(100, Math.max(0, row.usedPercent))
+      : null;
+    return [{
+      id,
+      label,
+      usedPercent,
+      limitsError:
+        typeof row.limitsError === "string" && row.limitsError ? row.limitsError : null,
+    }];
+  });
   const topModels = Array.isArray(root.topModels)
     ? root.topModels.flatMap((value) => {
         if (!value || typeof value !== "object") return [];
@@ -124,6 +149,7 @@ function normalizePreparedSummary(
     : [];
   return {
     agents,
+    quotaProviders,
     totals: {
       inputTokens: finite(rawTotals.inputTokens),
       outputTokens: finite(rawTotals.outputTokens),
@@ -133,7 +159,6 @@ function normalizePreparedSummary(
       totalTokens: finite(rawTotals.totalTokens),
       apiEquivalentCostUSD: finite(rawTotals.apiEquivalentCostUSD),
       activeDays: finite(rawTotals.activeDays),
-      sessions: finite(rawTotals.sessions),
     },
     topModels,
     collectedAt:
@@ -236,7 +261,7 @@ export async function getVibeCodingPayload(
 ): Promise<VibeCodingPayload> {
   // Mac Telemetry Hub 是唯一采集端；没有推送就明确报错，不静默切换数据源。
   const state = await mirror.get();
-  if (!state) throw new Error("尚未收到 Mac Telemetry Hub 的 ccusage 推送");
+  if (!state) throw new Error("尚未收到 Mac Telemetry Hub 的 CodexBar 推送");
   const { payload: pushed, pushedAt } = state;
 
   // 客户端落后太多、最旧的桶都已经滚出窗口时拼不出连续曲线，只能整份重发
