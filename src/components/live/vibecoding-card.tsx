@@ -126,6 +126,27 @@ function ModelProviderIcon({ model }: { model: string }) {
   );
 }
 
+/**
+ * 名次色跟 AIHOT 排行榜一致：无底色圆，只是等宽加粗数字上色。
+ * https://aihot.virxact.com/leaderboard
+ */
+const RANK_MARK_COLOR = ["#d86a52", "#d18a5e", "#d3b26a"] as const;
+
+function RankMark({ rank }: { rank: number }) {
+  return (
+    <span
+      className="shrink-0 font-mono text-sm font-bold tracking-[0.02em] text-muted-foreground"
+      style={
+        rank < RANK_MARK_COLOR.length
+          ? { color: RANK_MARK_COLOR[rank] }
+          : undefined
+      }
+    >
+      {String(rank + 1).padStart(2, "0")}
+    </span>
+  );
+}
+
 function formatModelName(model: string) {
   const claude = /^claude-([a-z]+)-(\d+)(?:-(\d+))?$/i.exec(model);
   if (claude) {
@@ -164,7 +185,12 @@ function TotalUsage({
   const stackTotal = Object.values(values).reduce((sum, value) => sum + value, 0);
 
   return (
-    <div className="border-b border-line px-4 pb-5 pt-5 md:px-5">
+    <div
+      className={cn(
+        "border-b border-line px-4 pt-5 md:px-5",
+        topModels.length === 0 && "pb-5",
+      )}
+    >
       <div className="grid grid-cols-4 gap-5">
         <div>
           <div className="label-mono text-muted-foreground">Tokens</div>
@@ -242,16 +268,14 @@ function TotalUsage({
       </div>
 
       {topModels.length > 0 && (
-        <div className="mt-4 border-t border-line pt-4">
+        <div className="mt-3 border-t border-line md:py-3">
           <div className="grid divide-y divide-line md:grid-cols-3 md:divide-x md:divide-y-0">
             {topModels.map((item, index) => (
               <div
                 key={item.model}
-                className="flex min-w-0 items-center gap-3 py-3 md:px-4 md:first:pl-0 md:last:pr-0"
+                className="flex min-w-0 items-center gap-3 py-3 md:px-4 md:py-0 md:first:pl-0 md:last:pr-0"
               >
-                <span className="label-mono flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-foreground">
-                  {index + 1}
-                </span>
+                <RankMark rank={index} />
                 <div className="flex min-w-0 flex-1 items-center justify-between gap-2">
                   <div className="flex min-w-0 items-center gap-2">
                     <ModelProviderIcon model={item.model} />
