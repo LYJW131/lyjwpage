@@ -72,13 +72,6 @@ function normalizePreparedSummary(
     );
     if (!raw || typeof raw !== "object") return [];
     const row = raw as Record<string, unknown>;
-    const last7Days = Array.isArray(row.last7Days)
-      ? row.last7Days.flatMap((value) => {
-          if (!value || typeof value !== "object") return [];
-          const day = value as RawAgentDay & { date?: unknown };
-          return typeof day.date === "string" ? [normalizePreparedDay(day.date, day)] : [];
-        })
-      : [];
     const today =
       row.today && typeof row.today === "object"
         ? normalizePreparedDay(
@@ -109,17 +102,12 @@ function normalizePreparedSummary(
       plan: normalizePlan(row.plan),
       limits: normalizeLimits(row.limits),
       limitsError: typeof row.limitsError === "string" && row.limitsError ? row.limitsError : null,
-      last7Days,
       last30DaysTokens: finite(row.last30DaysTokens),
     }];
   });
   if (
     agents.length !== AGENTS.length ||
-    agents.some(
-      (agent) =>
-        agent.last7Days?.length !== 7 ||
-        agent.activity.length !== VIBECODING_ACTIVITY_LIMIT,
-    )
+    agents.some((agent) => agent.activity.length !== VIBECODING_ACTIVITY_LIMIT)
   ) {
     return null;
   }
@@ -240,7 +228,7 @@ export async function recordVibeCodingReport(report: unknown, receivedAt = Date.
 /**
  * `since` 是客户端已有的最新活动桶时刻，只回传从它起的部分。
  *
- * 用 `>=` 而不是 `>`：桶是 12 小时聚合，边界那个还在累加，必须重发新值。
+ * 用 `>=` 而不是 `>`：桶是一天一个，边界那个还在累加，必须重发新值。
  * 更早的桶已经封口，不会再变，不用重复传。
  */
 export async function getVibeCodingPayload(
@@ -260,10 +248,8 @@ export async function getVibeCodingPayload(
 
   return {
     ...pushed,
-    // last7Days 只服务于入库校验，页面不用，别塞进响应
     agents: pushed.agents.map((agent) => ({
       ...agent,
-      last7Days: undefined,
       activity: activityPartial
         ? agent.activity.filter((point) => point.t >= since)
         : agent.activity,

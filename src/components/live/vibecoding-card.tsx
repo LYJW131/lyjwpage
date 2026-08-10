@@ -18,6 +18,8 @@ import type {
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
+import styles from "./vibecoding-card.module.css";
+
 const REFRESH_MS = 60_000;
 const ACTIVE_WINDOW_MS = 5 * 60_000;
 
@@ -481,11 +483,28 @@ function AgentPanel({
         <div className="min-w-0">
           <div className="label-mono text-muted-foreground">Today Tokens</div>
           <div className="mt-1 text-3xl font-medium tracking-tight tabular-nums md:text-5xl">
-            <NumberFlow
-              value={agent.today.totalTokens}
-              locales="en-US"
-              format={{ notation: "compact", maximumFractionDigits: 1 }}
-            />
+            <span className={styles.todayTokenValue}>
+              <span
+                aria-hidden
+                className={cn(
+                  styles.todayTokenGlowShell,
+                  active && styles.todayTokenGlowShellActive,
+                )}
+              >
+                <NumberFlow
+                  className={styles.todayTokenGlow}
+                  value={agent.today.totalTokens}
+                  locales="en-US"
+                  format={{ notation: "compact", maximumFractionDigits: 1 }}
+                />
+              </span>
+              <NumberFlow
+                className={styles.todayTokenForeground}
+                value={agent.today.totalTokens}
+                locales="en-US"
+                format={{ notation: "compact", maximumFractionDigits: 1 }}
+              />
+            </span>
           </div>
         </div>
         <div className="grid gap-3 border-l border-line pl-4">

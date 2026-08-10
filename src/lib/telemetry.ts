@@ -1,10 +1,11 @@
-import { timingSafeEqual } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 
 import { getChargerPayload, normalizeRawStatus, type RawStatus } from "@/lib/anker";
 import { recordPushHeartbeat, recordStatus } from "@/lib/charger-store";
 import { resolveTrackLookup } from "@/lib/apple-music";
+import { putAppleMusicCredentials } from "@/lib/apple-music-credentials";
 import { getHomePodNowPlaying } from "@/lib/homepod-store";
-import { storeUploadedImage } from "@/lib/image-store";
+import { storeImageBuffer } from "@/lib/image-store";
 import { number, object, text } from "@/lib/json";
 import { ASSET_URL_PREFIX } from "@/lib/image-store";
 import { publish } from "@/lib/live-events";
@@ -44,12 +45,16 @@ const ICON_MAX_DIMENSION = 96;
  */
 const ICON_WEBP_QUALITY = 92;
 
-/** 暂停超过这个时间就不再占用音乐 Hero，让下一个实时来源接管。 */
-const MUSIC_PAUSE_GRACE_MS = 30_000;
+/** 与采集端一致；缓存的是很短的内容哈希 URL，64 项也足够覆盖日常应用。 */
+const DESKTOP_ICON_CACHE_LIMIT = 64;
+
+/** 暂停超过 10 秒就不再占用音乐 Hero，让下一个实时来源接管。 */
+const MUSIC_PAUSE_GRACE_MS = 10_000;
 let pauseExpiryTimer: ReturnType<typeof setTimeout> | null = null;
 
 type TelemetryState = {
   desktop: DesktopActivity | null;
+  desktopIconAssets: Map<string, string>;
   timezone: TimezoneActivity | null;
   music: LocalNowPlaying | null;
   activityReceivedAt: number;
@@ -62,12 +67,15 @@ const globalTelemetry = globalThis as typeof globalThis & {
 };
 const telemetryState = (globalTelemetry.__lyjwTelemetryState ??= {
   desktop: null,
+  desktopIconAssets: new Map(),
   timezone: null,
   music: null,
   activityReceivedAt: 0,
   timezoneReceivedAt: 0,
   activeModules: new Set<string>(),
 });
+// 开发态热更新可能复用加字段前的 globalThis 对象。
+telemetryState.desktopIconAssets ??= new Map();
 /**
  * 遥测状态的持久化。
  *
@@ -81,6 +89,7 @@ const telemetryState = (globalTelemetry.__lyjwTelemetryState ??= {
  */
 type PersistedTelemetry = {
   desktop: DesktopActivity | null;
+  desktopIconAssets?: [string, string][];
   timezone: TimezoneActivity | null;
   music: LocalNowPlaying | null;
   activityReceivedAt: number;
@@ -99,6 +108,7 @@ const mirror = mirrorKey<PersistedTelemetry>(
 async function persistTelemetryState() {
   await mirror.put({
     desktop: telemetryState.desktop,
+    desktopIconAssets: [...telemetryState.desktopIconAssets],
     timezone: telemetryState.timezone,
     music: telemetryState.music,
     activityReceivedAt: telemetryState.activityReceivedAt,
@@ -130,6 +140,7 @@ async function syncTelemetryState() {
   if (!stored) {
     // 真被清空了（或从没写过），工作副本跟着归零
     telemetryState.desktop = null;
+    telemetryState.desktopIconAssets = new Map();
     telemetryState.timezone = null;
     telemetryState.music = null;
     telemetryState.activityReceivedAt = 0;
@@ -146,6 +157,16 @@ async function syncTelemetryState() {
    * 被覆盖（换歌 / 换应用才会重发）。宁可先不显示，也别挂一张裂图。
    */
   telemetryState.desktop = keepFreshAsset(stored.desktop ?? null, "iconUrl");
+  telemetryState.desktopIconAssets = new Map(
+    (stored.desktopIconAssets ?? [])
+      .filter((entry): entry is [string, string] =>
+        Array.isArray(entry) &&
+        typeof entry[0] === "string" &&
+        typeof entry[1] === "string" &&
+        entry[1].startsWith(ASSET_URL_PREFIX),
+      )
+      .slice(-DESKTOP_ICON_CACHE_LIMIT),
+  );
   telemetryState.timezone = stored.timezone ?? null;
   telemetryState.music = keepFreshAsset(stored.music ?? null, "artworkUrl");
   telemetryState.activityReceivedAt = stored.activityReceivedAt ?? 0;
@@ -160,8 +181,8 @@ async function syncTelemetryState() {
 type TelemetryEnvelope = {
   presence?: unknown;
   version?: unknown;
-  heartbeat_at?: unknown;
-  active_modules?: unknown;
+  heartbeatAt?: unknown;
+  activeModules?: unknown;
   modules?: unknown;
 };
 
@@ -171,24 +192,56 @@ function milliseconds(value: unknown, fallback = Date.now()) {
   return parsed > 1e12 ? parsed : parsed * 1000;
 }
 
+/** Map 的插入顺序顺便充当 LRU；每次命中或更新都把该项移到末尾。 */
+function rememberDesktopIcon(hash: string, url: string) {
+  telemetryState.desktopIconAssets.delete(hash);
+  telemetryState.desktopIconAssets.set(hash, url);
+  if (telemetryState.desktopIconAssets.size > DESKTOP_ICON_CACHE_LIMIT) {
+    const oldest = telemetryState.desktopIconAssets.keys().next().value;
+    if (oldest !== undefined) telemetryState.desktopIconAssets.delete(oldest);
+  }
+}
+
 async function normalizeDesktop(
   value: unknown,
   receivedAt: number,
-): Promise<DesktopActivity | null> {
+): Promise<{ activity: DesktopActivity | null; iconAvailable: boolean }> {
   const row = object(value);
-  if (!row) return null;
-  const applicationName = text(row.application_name);
-  if (!applicationName) return null;
-  const bundleIdentifier = text(row.bundle_identifier);
-  const previousIcon =
-    telemetryState.desktop?.bundleIdentifier === bundleIdentifier
-      ? telemetryState.desktop.iconUrl
-      : null;
+  if (!row) return { activity: null, iconAvailable: true };
+  const applicationName = text(row.applicationName);
+  if (!applicationName) throw new Error("desktop 模块缺少 applicationName");
+  const bundleIdentifier = text(row.bundleIdentifier);
+  const iconHash = text(row.iconHash);
+  if (iconHash != null && !/^[a-f0-9]{64}$/.test(iconHash)) {
+    throw new Error("desktop.iconHash 必须是 SHA-256 十六进制字符串");
+  }
+
+  if (row.iconData != null) {
+    if (!iconHash || typeof row.iconData !== "string") {
+      throw new Error("desktop.iconData 必须和 iconHash 一起上传");
+    }
+    const iconData = Buffer.from(row.iconData, "base64");
+    const actualHash = createHash("sha256").update(iconData).digest("hex");
+    if (actualHash !== iconHash) throw new Error("desktop 图标内容与 iconHash 不一致");
+    const uploadedIcon = await storeImageBuffer(
+      iconData,
+      ICON_MAX_DIMENSION,
+      ICON_WEBP_QUALITY,
+    );
+    if (!uploadedIcon) throw new Error("desktop.iconData 不是有效图片");
+    rememberDesktopIcon(iconHash, uploadedIcon);
+  }
+
+  const iconUrl = iconHash ? (telemetryState.desktopIconAssets.get(iconHash) ?? null) : null;
+  if (iconHash && iconUrl) rememberDesktopIcon(iconHash, iconUrl);
   return {
-    applicationName,
-    bundleIdentifier,
-    iconUrl: (await storeUploadedImage(row.icon_data, ICON_MAX_DIMENSION, ICON_WEBP_QUALITY)) ?? previousIcon,
-    observedAt: milliseconds(row.observed_at, receivedAt),
+    activity: {
+      applicationName,
+      bundleIdentifier,
+      iconUrl,
+      observedAt: milliseconds(row.observedAt, receivedAt),
+    },
+    iconAvailable: iconHash == null || iconUrl != null,
   };
 }
 
@@ -203,8 +256,8 @@ function normalizeTimezone(
   return {
     identifier,
     abbreviation: text(row.abbreviation),
-    secondsFromGMT: Math.trunc(number(row.seconds_from_gmt) ?? 0),
-    observedAt: milliseconds(row.observed_at, receivedAt),
+    secondsFromGMT: Math.trunc(number(row.secondsFromGMT) ?? 0),
+    observedAt: milliseconds(row.observedAt, receivedAt),
   };
 }
 
@@ -216,7 +269,7 @@ async function normalizeMusic(
   if (!row) return null;
   const rawState = text(row.state);
   const state = rawState === "playing" || rawState === "paused" ? rawState : "stopped";
-  const trackId = text(row.track_id);
+  const trackId = text(row.trackId);
   return {
     source: "apple-music",
     state,
@@ -227,11 +280,11 @@ async function normalizeMusic(
     // 采集端不再上传封面二进制：读取时会查一次 Apple Music 目录拿曲目链接，
     // 那次查询的结果自带封面 URL，见 getMusicPayload
     artworkUrl: null,
-    positionMs: Math.max(0, number(row.position_ms) ?? 0),
-    durationMs: Math.max(0, number(row.duration_ms) ?? 0),
+    positionMs: Math.max(0, number(row.positionMs) ?? 0),
+    durationMs: Math.max(0, number(row.durationMs) ?? 0),
     // 上报器发的是布尔值，字符串那支是给旧版采集器留的；缺字段按「不循环」处理
-    repeatOne: text(row.repeat_one) === "true" || row.repeat_one === true,
-    observedAt: milliseconds(row.observed_at, receivedAt),
+    repeatOne: text(row.repeatOne) === "true" || row.repeatOne === true,
+    observedAt: milliseconds(row.observedAt, receivedAt),
   };
 }
 
@@ -272,14 +325,18 @@ async function recordReporterBeat({
 export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.now()) {
   await syncTelemetryState();
   const envelope = object(input) as TelemetryEnvelope | null;
-  if (!envelope || envelope.version !== 2) throw new Error("遥测协议 version 必须为 2");
-  if (number(envelope.heartbeat_at) == null) throw new Error("遥测请求缺少 heartbeat_at");
-  if (!Array.isArray(envelope.active_modules)) throw new Error("遥测请求缺少 active_modules");
-  const nextActiveModules = envelope.active_modules.filter(
+  if (!envelope || envelope.version !== 3) throw new Error("遥测协议 version 必须为 3");
+  if (number(envelope.heartbeatAt) == null) throw new Error("遥测请求缺少 heartbeatAt");
+  if (!Array.isArray(envelope.activeModules)) throw new Error("遥测请求缺少 activeModules");
+  const nextActiveModules = envelope.activeModules.filter(
     (value): value is string => typeof value === "string",
   );
-  if (nextActiveModules.length !== envelope.active_modules.length) {
-    throw new Error("active_modules 只能包含字符串");
+  if (nextActiveModules.length !== envelope.activeModules.length) {
+    throw new Error("activeModules 只能包含字符串");
+  }
+  const presence = text(envelope.presence);
+  if (presence !== "online" && presence !== "offline") {
+    throw new Error("遥测请求的 presence 必须是 online 或 offline");
   }
   /**
    * envelope.presence 是上报器声明的在离线。
@@ -288,10 +345,10 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
    * 翻过去，不用等 45 秒心跳窗口。崩溃、断网、强制关机时它发不出这一条，
    * 那些仍然靠下面 reporterStale 的超时兜底 —— 两条路是互补的。
    *
-   * 缺字段按 online 处理：能发出这个包本身就说明它活着，而且旧版采集器不带这个字段。
+   * 数据包本身也算一次在线心跳；offline 只用于睡眠、退出这类优雅离开。
    */
   const presenceFlipped = await recordReporterBeat({
-    offline: envelope.presence === "offline",
+    offline: presence === "offline",
     activeModules: nextActiveModules,
     receivedAt,
   });
@@ -299,10 +356,11 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
   if (!modules) throw new Error("遥测请求缺少 modules 对象");
 
   let accepted = 0;
+  let desktopIconAvailable: boolean | undefined;
 
   if ("charger" in modules) {
     const raw = object(modules.charger) as RawStatus | null;
-    if (!raw?.updated_at) throw new Error("charger 模块缺少 updated_at");
+    if (!raw?.updatedAt) throw new Error("charger 模块缺少 updatedAt");
     const structuralChanged = await recordStatus(normalizeRawStatus(raw), receivedAt);
     // 插拔、换设备立刻推给浏览器，不等卡片下一次轮询。滚动读数不走这里。
     // since 给当下时刻：历史点一个都不带，客户端沿用自己那份，见 live-events 的说明。
@@ -313,9 +371,14 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
   }
 
   if ("desktop" in modules) {
-    telemetryState.desktop = await normalizeDesktop(modules.desktop, receivedAt);
-    telemetryState.activityReceivedAt = receivedAt;
-    accepted += 1;
+    const normalized = await normalizeDesktop(modules.desktop, receivedAt);
+    desktopIconAvailable = normalized.iconAvailable;
+    // 图标引用失效时先让采集端补传，避免向浏览器发布一个短暂的无图中间状态。
+    if (desktopIconAvailable) {
+      telemetryState.desktop = normalized.activity;
+      telemetryState.activityReceivedAt = receivedAt;
+      accepted += 1;
+    }
   }
 
   if ("timezone" in modules) {
@@ -324,14 +387,43 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
     accepted += 1;
   }
 
-  if ("apple_music" in modules) {
-    telemetryState.music = await normalizeMusic(modules.apple_music, receivedAt);
+  if ("appleMusic" in modules) {
+    telemetryState.music = await normalizeMusic(modules.appleMusic, receivedAt);
     telemetryState.activityReceivedAt = receivedAt;
     accepted += 1;
   }
 
-  if ("vibe_coding" in modules) {
-    await recordVibeCodingReport(modules.vibe_coding, receivedAt);
+  if ("appleMusicCredentials" in modules) {
+    const row = object(modules.appleMusicCredentials);
+    if (!row) throw new Error("appleMusicCredentials 必须是对象");
+    const hasMusicUserToken = "musicUserToken" in row;
+    const hasDeveloperToken = "developerToken" in row;
+    if (!hasMusicUserToken && !hasDeveloperToken) {
+      throw new Error("appleMusicCredentials 至少包含一个 token");
+    }
+
+    const musicUserToken = hasMusicUserToken ? text(row.musicUserToken) : undefined;
+    const developerToken = hasDeveloperToken ? text(row.developerToken) : undefined;
+    if (hasMusicUserToken && !musicUserToken) throw new Error("musicUserToken 不能为空");
+    if (hasDeveloperToken && !developerToken) throw new Error("developerToken 不能为空");
+
+    const expiresAt = hasDeveloperToken ? number(row.expiresAt) : undefined;
+    if (hasDeveloperToken && (expiresAt == null || !Number.isFinite(expiresAt) || expiresAt <= 0)) {
+      throw new Error("developerToken 必须带有效的 expiresAt");
+    }
+    await putAppleMusicCredentials({
+      // 上面几道守卫已经保证「带了这个字段就一定非空」，但 text() 的返回类型是
+      // string | null，TS 收窄不到这一步，只能把 null 折成 undefined
+      musicUserToken: musicUserToken ?? undefined,
+      developerToken: developerToken ?? undefined,
+      expiresAt: expiresAt ?? undefined,
+      receivedAt,
+    });
+    accepted += 1;
+  }
+
+  if ("vibeCoding" in modules) {
+    await recordVibeCodingReport(modules.vibeCoding, receivedAt);
     accepted += 1;
   }
 
@@ -350,10 +442,10 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
    */
   // 在离线翻转本身就是状态变化，值得推 —— 这正是「关键事件」，不是定时广播
   if (presenceFlipped) await publishPresence();
-  if ("desktop" in modules) await publishDesktop();
-  if ("apple_music" in modules) await publishMusic();
+  if ("desktop" in modules && desktopIconAvailable) await publishDesktop();
+  if ("appleMusic" in modules) await publishMusic();
 
-  return { accepted, heartbeat: true };
+  return { accepted, heartbeat: true, desktopIconAvailable };
 }
 
 /**
@@ -409,7 +501,7 @@ export async function getTimezonePayload(): Promise<TimezonePayload> {
 export async function getMusicPayload(): Promise<MusicPayload> {
   await syncTelemetryState();
   const telemetryStale = reporterStale();
-  const musicEnabled = telemetryState.activeModules.has("apple_music");
+  const musicEnabled = telemetryState.activeModules.has("appleMusic");
   const macMusic = musicEnabled && !telemetryStale ? telemetryState.music : null;
   const homePod = await getHomePodNowPlaying();
   const homePodMusic = homePod?.music ?? null;

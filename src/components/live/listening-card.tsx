@@ -1,7 +1,6 @@
 "use client";
 
 import NumberFlow, { NumberFlowGroup } from "@number-flow/react";
-import { Laptop, Speaker } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import Image from "next/image";
 import {
@@ -14,6 +13,7 @@ import {
 } from "react";
 
 import { Card } from "@/components/ui/card";
+import { HomePodMiniIcon, MacBookProIcon } from "@/components/ui/device-icons";
 import { useLiveStream } from "@/hooks/use-live-stream";
 import { useStatus } from "@/hooks/use-status";
 import { stableKeys } from "@/lib/keys";
@@ -604,9 +604,9 @@ export function ListeningCard({ className }: { className?: string }) {
                   {hero.track && (
                     <span className="ml-0.5 inline-flex min-w-0 items-center gap-1 rounded-sm border border-line px-1.5 py-px text-[10px] leading-4 text-muted-foreground">
                       {hero.track.source === "homepod" ? (
-                        <Speaker className="size-3 shrink-0" aria-hidden />
+                        <HomePodMiniIcon className="size-3 shrink-0" aria-hidden />
                       ) : (
-                        <Laptop className="size-3 shrink-0" aria-hidden />
+                        <MacBookProIcon className="size-3 shrink-0" aria-hidden />
                       )}
                       <span className="truncate">
                         {hero.track.source === "homepod" ? "HomePod mini" : "MacBook Pro"}

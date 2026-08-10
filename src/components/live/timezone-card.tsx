@@ -1,10 +1,11 @@
 "use client";
 
 import NumberFlow, { NumberFlowGroup } from "@number-flow/react";
-import { Laptop, Server } from "lucide-react";
+import { Server } from "lucide-react";
 import { useEffect, useState, useSyncExternalStore } from "react";
 
 import { Card } from "@/components/ui/card";
+import { MacBookProIcon } from "@/components/ui/device-icons";
 import { useStatus } from "@/hooks/use-status";
 import { TIMEZONE_PATH } from "@/lib/paths";
 import { site } from "@/lib/site";
@@ -178,7 +179,7 @@ export function TimezoneCard() {
 
             <span className="inline-flex max-w-32 shrink-0 items-center gap-1 rounded-sm border border-line px-1.5 py-px text-[10px] leading-4 text-muted-foreground">
               {usingMac ? (
-                <Laptop className="size-3 shrink-0" aria-hidden />
+                <MacBookProIcon className="size-3 shrink-0" aria-hidden />
               ) : (
                 <Server className="size-3 shrink-0" aria-hidden />
               )}

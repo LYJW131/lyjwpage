@@ -22,7 +22,7 @@ export const CHARGER_HISTORY_LIMIT = 400;
 /**
  * vibe coding 活动曲线的桶数。
  *
- * 上游固定给 30 天 × 12 小时一桶 = 60 个，入库时按这个数校验，客户端按这个数
+ * 上游固定给 60 个：一天一桶，也就是 60 天。入库时按这个数校验，客户端按这个数
  * 裁剪。不是可调参数 —— 要改得先改上游的产出。
  */
 export const VIBECODING_ACTIVITY_LIMIT = 60;

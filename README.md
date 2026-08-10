@@ -82,7 +82,7 @@ MusicKit 签出来的 developer token 实测寿命 **30 天**，上报器从它�
 
 数据来自 a2687-telemetry，它通过 BLE 读充电器、以 HTTP 暴露快照。`GET /status` 一次拿到整机功率 + 三个 USB-C 口的电压/电流/功率/协议/线缆/设备识别。
 
-**本站不轮询充电头，只接收统一遥测推送。** Mac Telemetry Hub 从本机 a2687 服务读取 `/status`，把精简后的状态放进 v2 envelope，只 POST 到 `/api/ingest/telemetry`，并使用 `TELEMETRY_INGEST_SECRET` Bearer 鉴权。旧的 `/api/ingest/charger` 入口已经删除，也没有本地轮询回退。
+**本站不轮询充电头，只接收统一遥测推送。** Mac Telemetry Hub 从本机 a2687 服务读取 `/status`，把精简后的状态放进 v3 envelope，只 POST 到 `/api/ingest/telemetry`，并使用 `TELEMETRY_INGEST_SECRET` Bearer 鉴权。旧的 `/api/ingest/charger` 入口已经删除，也没有本地轮询回退。
 
 **总功率历史存在服务端**（`lib/charger-store.ts`，Redis；未配置 Redis 时退回进程内存）。客户端自己累积的话页面一刷新曲线就没了、还要攒很久才有形状。环形缓冲保留 400 点，两点之间至少间隔 `MIN_SAMPLE_GAP_MS`（当前 5 秒），足以覆盖固定 20 分钟图表窗口。
 
@@ -129,7 +129,7 @@ session 的 `lastActivity` 把该 session 的 token 归入对应 12 小时桶；
 POST /api/ingest/telemetry
 ```
 
-请求采用唯一的 `version: 2` envelope，模块名固定为 `charger`、`desktop`、`apple_music`、`timezone` 和 `vibe_coding`，`modules` 只携带发生变化的模块。
+请求采用唯一的 `version: 3` envelope，模块名固定为 `charger`、`desktop`、`apple_music`、`timezone` 和 `vibe_coding`，`modules` 只携带发生变化的模块。前台应用图标始终带 SHA-256，二进制只在该哈希尚未被服务端保存时上传。
 
 五个模块的指纹一个都没变时，整个 POST 直接跳过——**不发空 `modules` 的信封**，这个端点上只跑真正的变化。存活改走另一条路：
 

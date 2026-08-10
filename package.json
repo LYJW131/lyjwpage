@@ -10,7 +10,6 @@
   },
   "dependencies": {
     "@number-flow/react": "^0.6.2",
-    "ccusage": "^20.0.19",
     "clsx": "^2.1.1",
     "geist": "^1.7.2",
     "ioredis": "^6.0.0",
