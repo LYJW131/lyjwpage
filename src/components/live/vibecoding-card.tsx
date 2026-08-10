@@ -595,8 +595,7 @@ function QuotaProviders({ providers }: { providers: VibeCodingQuotaProvider[] })
   );
   return (
     <div className="border-t border-line px-4 py-4 md:px-5">
-      <div className="label-mono text-muted-foreground">Total quota used</div>
-      <div className="mt-1 grid divide-y divide-line">
+      <div className="grid divide-y divide-line">
         {sortedProviders.map((provider) => {
           const usedPercent = provider.usedPercent;
           const color = usedPercent == null ? undefined : limitColor(usedPercent);
