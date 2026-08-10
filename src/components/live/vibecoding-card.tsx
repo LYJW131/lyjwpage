@@ -1,6 +1,7 @@
 "use client";
 
 import NumberFlow, { NumberFlowGroup } from "@number-flow/react";
+import Image from "next/image";
 import { useEffect, useState } from "react";
 
 import { ClaudeSpinner } from "@/components/live/claude-spinner";
@@ -47,6 +48,18 @@ const LIMIT_WARN_COLOR = "oklch(0.72 0.16 75)";
 const LIMIT_ALERT_COLOR = "oklch(0.62 0.21 25)";
 /** 不受限那一档。沿用同文件 Reasoning 那支绿（也是 --live 用的那支），不再多引入一种色相。 */
 const LIMIT_UNLIMITED_COLOR = "oklch(0.65 0.17 145)";
+
+const QUOTA_PROVIDER_ICONS: Record<
+  VibeCodingQuotaProvider["id"],
+  { light: string; dark?: string }
+> = {
+  cursor: { light: "/provider-icons/cursor-25d.svg" },
+  opencodego: {
+    light: "/provider-icons/opencodego-light.svg",
+    dark: "/provider-icons/opencodego-dark.svg",
+  },
+  antigravity: { light: "/provider-icons/antigravity-full-color.png" },
+};
 
 /** 蓝 → 琥珀 → 红，只有三档没有渐变：中间色会让人去猜具体数，而数就写在旁边 */
 function limitColor(usedPercent: number) {
@@ -584,6 +597,7 @@ function QuotaProviders({ providers }: { providers: VibeCodingQuotaProvider[] })
         {providers.map((provider) => {
           const usedPercent = provider.usedPercent;
           const color = usedPercent == null ? undefined : limitColor(usedPercent);
+          const icon = QUOTA_PROVIDER_ICONS[provider.id];
           return (
             <div
               key={provider.id}
@@ -591,7 +605,27 @@ function QuotaProviders({ providers }: { providers: VibeCodingQuotaProvider[] })
               title={provider.limitsError ?? undefined}
             >
               <div className="flex h-5 items-center justify-between gap-3">
-                <span className="truncate text-sm font-medium">{provider.label}</span>
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="relative size-5 shrink-0" aria-hidden>
+                    <Image
+                      src={icon.light}
+                      alt=""
+                      fill
+                      sizes="20px"
+                      className={cn("object-contain", icon.dark && "dark:hidden")}
+                    />
+                    {icon.dark && (
+                      <Image
+                        src={icon.dark}
+                        alt=""
+                        fill
+                        sizes="20px"
+                        className="hidden object-contain dark:block"
+                      />
+                    )}
+                  </span>
+                  <span className="truncate text-sm font-medium">{provider.label}</span>
+                </div>
                 {usedPercent == null ? (
                   <span className="label-mono text-muted-foreground">Unavailable</span>
                 ) : (
