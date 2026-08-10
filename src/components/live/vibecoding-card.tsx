@@ -116,6 +116,28 @@ function ModelProviderIcon({ model }: { model: string }) {
   );
 }
 
+function formatModelName(model: string) {
+  const claude = /^claude-([a-z]+)-(\d+)(?:-(\d+))?$/i.exec(model);
+  if (claude) {
+    const [, family, major, minor] = claude;
+    return `Claude ${family[0].toUpperCase()}${family.slice(1)} ${major}${minor ? `.${minor}` : ""}`;
+  }
+  const gpt = /^gpt-(\d+(?:\.\d+)?)(?:-(.+))?$/i.exec(model);
+  if (gpt) {
+    const [, version, variant] = gpt;
+    const suffix = variant
+      ? ` ${variant.split("-").map((part) =>
+          `${part[0].toUpperCase()}${part.slice(1)}`,
+        ).join(" ")}`
+      : "";
+    return `GPT ${version}${suffix}`;
+  }
+  return model
+    .split("-")
+    .map((part) => `${part[0].toUpperCase()}${part.slice(1)}`)
+    .join(" ");
+}
+
 function TotalUsage({
   totals,
   topModels,
@@ -210,12 +232,11 @@ function TotalUsage({
 
       {topModels.length > 0 && (
         <div className="mt-4 border-t border-line pt-4">
-          <div className="label-mono text-muted-foreground">Model Usage · All Time</div>
-          <div className="mt-3 grid gap-2 md:grid-cols-3">
+          <div className="grid divide-y divide-line md:grid-cols-3 md:divide-x md:divide-y-0">
             {topModels.map((item, index) => (
               <div
                 key={item.model}
-                className="flex min-w-0 items-center gap-3 rounded-md border border-line-strong bg-muted/60 px-3 py-2.5"
+                className="flex min-w-0 items-center gap-3 py-3 md:px-4 md:first:pl-0 md:last:pr-0"
               >
                 <span className="label-mono flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-foreground">
                   {index + 1}
@@ -224,7 +245,7 @@ function TotalUsage({
                   <div className="flex min-w-0 items-center gap-2">
                     <ModelProviderIcon model={item.model} />
                     <div className="truncate text-sm font-medium" title={item.model}>
-                      {item.model}
+                      {formatModelName(item.model)}
                     </div>
                   </div>
                   <div className="shrink-0 font-mono text-xs text-muted-foreground">
