@@ -47,8 +47,8 @@ const ICON_WEBP_QUALITY = 92;
 /** 与采集端一致；缓存的是很短的内容哈希 URL，64 项也足够覆盖日常应用。 */
 const DESKTOP_ICON_CACHE_LIMIT = 64;
 
-/** 暂停超过这个时间就不再占用音乐 Hero，让下一个实时来源接管。 */
-const MUSIC_PAUSE_GRACE_MS = 30_000;
+/** 暂停超过 10 秒就不再占用音乐 Hero，让下一个实时来源接管。 */
+const MUSIC_PAUSE_GRACE_MS = 10_000;
 let pauseExpiryTimer: ReturnType<typeof setTimeout> | null = null;
 
 type TelemetryState = {

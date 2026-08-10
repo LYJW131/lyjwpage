@@ -1,7 +1,6 @@
 "use client";
 
 import NumberFlow, { NumberFlowGroup } from "@number-flow/react";
-import { Laptop, Speaker } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import Image from "next/image";
 import {
@@ -11,6 +10,7 @@ import {
   useRef,
   useState,
   type ReactNode,
+  type SVGProps,
 } from "react";
 
 import { Card } from "@/components/ui/card";
@@ -38,6 +38,34 @@ import { cn } from "@/lib/utils";
 const REFRESH_MS = 30_000;
 /** 实时播放由 SSE 推来，轮询只是兜底 */
 const MUSIC_REFRESH_MS = 30_000;
+
+function HomePodMiniIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" {...props}>
+      <path d="M0 0h24v24H0z" fill="none" />
+      <path
+        d="M18.012 5.303A9 9 0 1 1 6 5.293M18.4 6c0 1.105-2.865 2-6.4 2s-6.4-.895-6.4-2S8.465 4 12 4s6.4.895 6.4 2Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+      />
+    </svg>
+  );
+}
+
+function MacBookProIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" {...props}>
+      <path d="M0 0h16v16H0z" fill="none" />
+      <path
+        d="M11.8 2c1.12 0 1.68 0 2.11.218c.376.192.682.498.874.874c.218.428.218.988.218 2.11v4.6c0 1.12 0 1.68-.218 2.11l-.052.092h.77a.5.5 0 0 1 0 1h-15a.5.5 0 0 1 0-1h.77l-.052-.092c-.218-.428-.218-.988-.218-2.11v-4.6c0-1.12 0-1.68.218-2.11c.192-.376.498-.682.874-.874c.321-.163.716-.205 1.37-.215L4.206 2h7.6zM4.2 3c-.577 0-.949.001-1.23.024c-.272.023-.372.06-.422.085a1 1 0 0 0-.437.437c-.025.05-.063.15-.085.422c-.023.283-.024.656-.024 1.23v4.6c0 .577 0 .95.024 1.23c.022.272.06.372.085.422a1 1 0 0 0 .437.436c.05.026.15.063.422.085c.283.024.656.025 1.23.025h7.6c.577 0 .949-.001 1.23-.025c.272-.022.372-.06.422-.085a1 1 0 0 0 .436-.436c.025-.049.063-.15.085-.422c.023-.283.024-.656.024-1.23v-4.6c0-.577 0-.949-.024-1.23c-.022-.272-.06-.372-.085-.422a1 1 0 0 0-.436-.437c-.05-.025-.15-.062-.422-.085A17 17 0 0 0 11.8 3H10l-.058.115c-.16.321-.24.482-.36.6a1 1 0 0 1-.374.23C9.05 4 8.87 4 8.511 4h-1.02c-.359 0-.539 0-.697-.055a1 1 0 0 1-.374-.23c-.12-.117-.2-.279-.36-.6L6.003 3h-1.8z"
+        fill="currentColor"
+        fillRule="evenodd"
+        clipRule="evenodd"
+      />
+    </svg>
+  );
+}
 
 /**
  * 视口里显示几行。行高不写死：列表填满卡片剩下的空间，每行取容器的 1/N
@@ -604,9 +632,9 @@ export function ListeningCard({ className }: { className?: string }) {
                   {hero.track && (
                     <span className="ml-0.5 inline-flex min-w-0 items-center gap-1 rounded-sm border border-line px-1.5 py-px text-[10px] leading-4 text-muted-foreground">
                       {hero.track.source === "homepod" ? (
-                        <Speaker className="size-3 shrink-0" aria-hidden />
+                        <HomePodMiniIcon className="size-3 shrink-0" aria-hidden />
                       ) : (
-                        <Laptop className="size-3 shrink-0" aria-hidden />
+                        <MacBookProIcon className="size-3 shrink-0" aria-hidden />
                       )}
                       <span className="truncate">
                         {hero.track.source === "homepod" ? "HomePod mini" : "MacBook Pro"}
