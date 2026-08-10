@@ -200,6 +200,7 @@ export type ChargerPayload = ChargerStatus & {
 };
 
 export type VibeCodingAgentId = "claude" | "codex";
+export type VibeCodingQuotaProviderId = "cursor" | "opencodego" | "antigravity";
 
 export type VibeCodingDay = {
   /** CodexBar 按本机时区生成的 YYYY-MM-DD */
@@ -273,6 +274,15 @@ export type VibeCodingAgent = {
   last30DaysTokens: number;
 };
 
+/** 只展示总限额的附加 CodexBar provider，不携带 Token、费用或模型明细。 */
+export type VibeCodingQuotaProvider = {
+  id: VibeCodingQuotaProviderId;
+  label: string;
+  /** 0–100；本轮和历史都没有成功值时为 null。 */
+  usedPercent: number | null;
+  limitsError: string | null;
+};
+
 export type VibeCodingTotals = {
   inputTokens: number;
   outputTokens: number;
@@ -287,6 +297,7 @@ export type VibeCodingTotals = {
 
 export type VibeCodingPayload = {
   agents: VibeCodingAgent[];
+  quotaProviders: VibeCodingQuotaProvider[];
   totals: VibeCodingTotals;
   /** Claude Code 与 Codex 合并后的历史累计 token 前三名。 */
   topModels: Array<{ model: string; tokens: number }>;

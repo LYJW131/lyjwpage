@@ -7,10 +7,17 @@ import type {
   VibeCodingLimit,
   VibeCodingPayload,
   VibeCodingPlan,
+  VibeCodingQuotaProvider,
+  VibeCodingQuotaProviderId,
 } from "@/lib/types";
 
 const PUSH_STALE_MS = 15 * 60_000;
 const AGENTS: VibeCodingAgentId[] = ["claude", "codex"];
+const QUOTA_PROVIDERS: Array<{ id: VibeCodingQuotaProviderId; label: string }> = [
+  { id: "cursor", label: "Cursor" },
+  { id: "opencodego", label: "OpenCode Go" },
+  { id: "antigravity", label: "Antigravity" },
+];
 
 type RawAgentDay = {
   agent?: unknown;
@@ -113,6 +120,24 @@ function normalizePreparedSummary(
   }
 
   const rawTotals = root.totals as Record<string, unknown>;
+  const rawQuotaProviders = Array.isArray(root.quotaProviders) ? root.quotaProviders : [];
+  const quotaProviders = QUOTA_PROVIDERS.flatMap(({ id, label }): VibeCodingQuotaProvider[] => {
+    const raw = rawQuotaProviders.find(
+      (value) => value && typeof value === "object" && (value as { id?: unknown }).id === id,
+    );
+    if (!raw || typeof raw !== "object") return [];
+    const row = raw as Record<string, unknown>;
+    const usedPercent = typeof row.usedPercent === "number" && Number.isFinite(row.usedPercent)
+      ? Math.min(100, Math.max(0, row.usedPercent))
+      : null;
+    return [{
+      id,
+      label,
+      usedPercent,
+      limitsError:
+        typeof row.limitsError === "string" && row.limitsError ? row.limitsError : null,
+    }];
+  });
   const topModels = Array.isArray(root.topModels)
     ? root.topModels.flatMap((value) => {
         if (!value || typeof value !== "object") return [];
@@ -124,6 +149,7 @@ function normalizePreparedSummary(
     : [];
   return {
     agents,
+    quotaProviders,
     totals: {
       inputTokens: finite(rawTotals.inputTokens),
       outputTokens: finite(rawTotals.outputTokens),

@@ -14,6 +14,7 @@ import type {
   VibeCodingAgent,
   VibeCodingLimit,
   VibeCodingPayload,
+  VibeCodingQuotaProvider,
   VibeCodingTotals,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -574,6 +575,47 @@ function AgentPanel({
   );
 }
 
+function QuotaProviders({ providers }: { providers: VibeCodingQuotaProvider[] }) {
+  if (providers.length === 0) return null;
+  return (
+    <div className="border-t border-line px-4 py-4 md:px-5">
+      <div className="label-mono text-muted-foreground">Total quota used</div>
+      <div className="mt-3 grid gap-3 md:grid-cols-3">
+        {providers.map((provider) => {
+          const usedPercent = provider.usedPercent;
+          const color = usedPercent == null ? undefined : limitColor(usedPercent);
+          return (
+            <div
+              key={provider.id}
+              className="rounded-md border border-line-strong bg-muted/30 px-3 py-3"
+              title={provider.limitsError ?? undefined}
+            >
+              <div className="flex h-5 items-center justify-between gap-3">
+                <span className="truncate text-sm font-medium">{provider.label}</span>
+                {usedPercent == null ? (
+                  <span className="label-mono text-muted-foreground">Unavailable</span>
+                ) : (
+                  <span className="font-mono text-xs tabular-nums" style={{ color }}>
+                    <NumberFlow value={Math.round(usedPercent)} locales="en-US" />%
+                  </span>
+                )}
+              </div>
+              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
+                {usedPercent != null && (
+                  <div
+                    className="h-full rounded-full transition-[width] duration-700"
+                    style={{ width: `${usedPercent}%`, backgroundColor: color }}
+                  />
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function VibeCodingCard({ className }: { className?: string }) {
   // 不订阅 SSE：token 用量是累计的历史事实，Mac 掉线它不会变得不可信，
   // 只是不再增长，没有理由跟着变灰
@@ -611,6 +653,7 @@ export function VibeCodingCard({ className }: { className?: string }) {
               />
             ))}
           </div>
+          <QuotaProviders providers={data.quotaProviders} />
         </>
       ) : (
         <>
