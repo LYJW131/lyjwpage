@@ -134,7 +134,7 @@ export function normalizeHomePodEvent(
   const title = text(row.title);
   const artist = text(row.artist);
   const album = text(row.album);
-  const identity = [text(row.entity_id), title, artist, album].filter(Boolean).join("\n");
+  const identity = [text(row.entityId), title, artist, album].filter(Boolean).join("\n");
 
   return {
     music: {
@@ -151,7 +151,7 @@ export function normalizeHomePodEvent(
       durationMs: Math.max(0, (numberish(row.duration) ?? 0) * 1000),
       // HA 的 media_player.repeat 取值是 off / all / one
       repeatOne: text(row.repeat)?.toLowerCase() === "one",
-      observedAt: timestamp(row.position_updated_at ?? row.updated_at, receivedAt),
+      observedAt: timestamp(row.positionUpdatedAt ?? row.updatedAt, receivedAt),
     },
     receivedAt,
   };

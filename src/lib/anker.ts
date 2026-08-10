@@ -16,35 +16,32 @@ const MAX_POWER = 160;
 
 type RawPort = {
   mode?: boolean;
-  voltage_v?: number;
-  current_a?: number;
-  power_w?: number;
+  voltageV?: number;
+  currentA?: number;
+  powerW?: number;
   cable?: string | null;
-  charging_info?: string | null;
+  chargingInfo?: string | null;
   model?: string | null;
   vendor?: string | null;
 };
 
 export type RawStatus = {
   connected?: boolean;
-  updated_at?: number;
-  total_output_power_w?: number;
+  updatedAt?: number;
+  totalOutputPowerW?: number;
   device?: {
-    serial_number?: string | null;
-    firmware_version?: string | null;
-    mac_address?: string | null;
+    serialNumber?: string | null;
+    firmwareVersion?: string | null;
+    macAddress?: string | null;
   };
   ports?: Record<string, RawPort>;
 };
 
-/**
- * 上游把 "N/A" 当占位符大量返回，不过滤 UI 上会出现一堆 N/A。
- */
+/** 空串和纯空白都当没有。上报器那边取不到值时给的就是 null，不再有 "N/A" 占位符 */
 function displayText(value: string | null | undefined): string | null {
   if (value == null) return null;
   const text = String(value).trim();
-  if (!text || text.toUpperCase() === "N/A") return null;
-  return text;
+  return text || null;
 }
 
 function normalizePort(id: string, port: RawPort = {}): ChargerPort {
@@ -53,11 +50,11 @@ function normalizePort(id: string, port: RawPort = {}): ChargerPort {
     id,
     active,
     // 没在输出的口，读数没有意义 —— 统一置 null 交给 UI 显示 “闲置”
-    voltage: active ? Number(port.voltage_v) || 0 : null,
-    current: active ? Number(port.current_a) || 0 : null,
-    power: active ? Number(port.power_w) || 0 : null,
+    voltage: active ? Number(port.voltageV) || 0 : null,
+    current: active ? Number(port.currentA) || 0 : null,
+    power: active ? Number(port.powerW) || 0 : null,
     device: displayText(port.model) ?? displayText(port.vendor),
-    protocol: displayText(port.charging_info),
+    protocol: displayText(port.chargingInfo),
     cable: displayText(port.cable),
   };
 }
@@ -73,15 +70,15 @@ function toMillis(updatedAt: number | undefined): number | null {
 export function normalizeRawStatus(raw: RawStatus): ChargerStatus {
   return {
     connected: Boolean(raw.connected),
-    totalPower: Number(raw.total_output_power_w) || 0,
+    totalPower: Number(raw.totalOutputPowerW) || 0,
     maxPower: MAX_POWER,
     // ports 的 key 顺序不保证，必须按 key 取
     ports: PORT_KEYS.map((key) => normalizePort(key, raw.ports?.[key])),
     device: {
-      serialNumber: displayText(raw.device?.serial_number),
-      firmwareVersion: displayText(raw.device?.firmware_version),
+      serialNumber: displayText(raw.device?.serialNumber),
+      firmwareVersion: displayText(raw.device?.firmwareVersion),
     },
-    updatedAt: toMillis(raw.updated_at),
+    updatedAt: toMillis(raw.updatedAt),
   } satisfies ChargerStatus;
 }
 

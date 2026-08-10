@@ -257,7 +257,7 @@ export type VibeCodingAgent = {
   topModel: string | null;
   /** ccusage session 报告中最近一条活动；只公开时间，不公开会话或项目 */
   lastActivityAt: string | null;
-  /** 最近 30 天，每 12 小时一个 session-token 聚合点 */
+  /** 最近 60 天，一天一个 session-token 聚合点 */
   activity: Array<{ t: number; tokens: number }>;
   today: VibeCodingDay;
   /** 旧版 Mac app 不会上报，取不到套餐时也是 null —— 不渲染，不占位 */
@@ -269,11 +269,6 @@ export type VibeCodingAgent = {
    * 或者配了但取不到（该渲染并说明取不到）。靠它区分，null 表示前者。
    */
   limitsError: string | null;
-  /**
-   * 只在入库时用来校验这份报告完不完整（必须正好 7 天），页面不渲染它，
-   * 所以发给浏览器的响应里会摘掉 —— 两个 agent 加起来 2.6KB，占三成。
-   */
-  last7Days?: VibeCodingDay[];
   last30DaysTokens: number;
 };
 
@@ -300,7 +295,7 @@ export type VibeCodingPayload = {
   source: "local" | "push";
   /**
    * 各 agent 的 activity 里只有 `?since=` 起的桶，要并回客户端已有序列。
-   * 边界那个桶会重复出现并带上新值 —— 当前这 12 小时还在累加，是可变的。
+   * 边界那个桶会重复出现并带上新值 —— 当天那个还在累加，是可变的。
    * false 表示完整快照，直接替换。
    */
   activityPartial: boolean;

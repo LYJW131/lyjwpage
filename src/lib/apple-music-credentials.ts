@@ -8,8 +8,9 @@ import { mirrorKey } from "@/lib/redis";
  * 的 music user token。代价是这份会过期 —— 上报器按 `expiresAt` 在到期前重签
  * 重发，这边只负责收下最新的一份。
  *
- * 严格和 telemetryState 分开存。那份东西最终会经 /api/status/* 发到浏览器，
- * 凭据一旦沾上那条路就是迟早泄露。这里的读取只发生在服务端调 Apple 的时候。
+ * 和 telemetryState 分开存，只是复用统一遥测入口接收。两个 token 在采集端各自
+ * 判变，因此一次更新可以只带其中一个；这里必须把缺省字段和旧值合并，不能把
+ * 「这次没变」误当成「清空」。
  */
 export type StoredAppleMusicCredentials = {
   musicUserToken: string;
@@ -20,20 +21,54 @@ export type StoredAppleMusicCredentials = {
   receivedAt: number;
 };
 
-const mirror = mirrorKey<StoredAppleMusicCredentials>(
+export type AppleMusicCredentialsUpdate = {
+  musicUserToken?: string;
+  developerToken?: string;
+  /** developerToken 出现时必须一起更新 */
+  expiresAt?: number;
+  receivedAt: number;
+};
+
+type StoredAppleMusicCredentialState = {
+  musicUserToken?: string;
+  developerToken?: string;
+  expiresAt?: number;
+  receivedAt: number;
+};
+
+const mirror = mirrorKey<StoredAppleMusicCredentialState>(
   ["apple-music", "credentials"],
   (value) => value.receivedAt,
 );
 
 export async function putAppleMusicCredentials(
-  credentials: StoredAppleMusicCredentials,
+  update: AppleMusicCredentialsUpdate,
 ): Promise<void> {
-  await mirror.put(credentials);
+  const previous = await mirror.get();
+  const musicUserToken = update.musicUserToken ?? previous?.musicUserToken;
+  const developerToken = update.developerToken ?? previous?.developerToken;
+  const expiresAt = update.expiresAt ?? previous?.expiresAt;
+
+  // 半成品也要存：两个字段是独立变化、独立发送的，Redis 恰好清空后收到的第一
+  // 个字段不能丢。读取侧只有凑齐后才会把它交给 Apple API。
+  await mirror.put({ musicUserToken, developerToken, expiresAt, receivedAt: update.receivedAt });
+}
+
+function completeCredentials(
+  state: StoredAppleMusicCredentialState | null,
+): StoredAppleMusicCredentials | null {
+  if (!state?.musicUserToken || !state.developerToken || !state.expiresAt) return null;
+  return {
+    musicUserToken: state.musicUserToken,
+    developerToken: state.developerToken,
+    expiresAt: state.expiresAt,
+    receivedAt: state.receivedAt,
+  };
 }
 
 /** null 有两种含义，调用方分不开也不需要分：都是「现在用不了」。见 readAppleMusicCredentials */
 export async function getAppleMusicCredentials(): Promise<StoredAppleMusicCredentials | null> {
-  return mirror.get();
+  return completeCredentials(await mirror.get());
 }
 
 /**
@@ -47,7 +82,7 @@ export async function readAppleMusicCredentials(): Promise<
   | { ok: true; credentials: StoredAppleMusicCredentials }
   | { ok: false; reason: "redis-unreachable" | "never-pushed" }
 > {
-  const credentials = await mirror.get();
+  const credentials = completeCredentials(await mirror.get());
   if (credentials) return { ok: true, credentials };
   return { ok: false, reason: (await mirror.reachable()) ? "never-pushed" : "redis-unreachable" };
 }
