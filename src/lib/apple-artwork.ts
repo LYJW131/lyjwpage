@@ -21,3 +21,18 @@ export function appleArtwork(url: string | null | undefined, size: number): stri
 
 /** 位图按 2 倍取，Retina 上才不糊；再高在这些尺寸下肉眼已经看不出差别 */
 export const ARTWORK_SCALE = 2;
+
+/**
+ * 这张图要不要过 Next 的图片优化。
+ *
+ * 全站只有自建歌单封面需要：Apple 给的是 blobstore 上的**原图**地址
+ * （实测 274KB PNG），既没有 `{w}x{h}` 占位可填，也没法要小图，只能由站点
+ * 这侧缩一道。放行的来源见 next.config.ts 的 remotePatterns。
+ *
+ * 其余一律不优化 —— 目录封面自带尺寸模板、R2 上的是上报器压好的最终尺寸且
+ * 带 immutable，再送进优化器只是多一次转码、多一份配额，还把本来直连 CDN 的
+ * 请求绕回自己的函数。
+ */
+export function needsOptimizing(url: string | null | undefined): boolean {
+  return Boolean(url?.includes(".blobstore.apple.com/"));
+}

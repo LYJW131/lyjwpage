@@ -11,7 +11,7 @@
 | --- | --- | --- |
 | 续播列表（`Users/{id}/Items/Resume`，含单集详情） | 60 秒一轮 | 列表内容有变化时；另外每 10 分钟兜底整推一次 |
 | 播放位置（`/Sessions`） | 在播时 2 秒一轮，空闲时 5 分钟 | 换片、暂停状态变了、或位置偏离站点推算值超过 1.5 秒（也就是拖了进度条） |
-| 海报（`Items/{id}/Images/...`） | 跟着上面两条走 | 只推站点还没有的那些，按 Emby 的 ImageTag 判变 |
+| 海报（`Items/{id}/Images/...`） | 跟着上面两条走 | 上报器一次压成 WebP 并直传 R2；只把对象键推给站点，按 Emby 的 ImageTag 判变 |
 | 转发 Emby 的播放通知 | 事件驱动 | 收到就转 |
 
 **Emby 的 webhook 现在发给这个代理，不再直发站点。** Emby 后台那个配置项加不了
@@ -40,6 +40,10 @@ webhook 各版本的字段位置本来就不一致，用它带的值等于把版
 | `SITE_URL` | ✅ | 站点地址，如 `https://lyjw131.com`。端点路径由代理自己拼 |
 | `SITE_INGEST_URL` | | 直接给完整端点，给了就不用 `SITE_URL` |
 | `TELEMETRY_INGEST_SECRET` | ✅ | 和站点同名变量对上，作 Bearer 鉴权。站点没配时才可留空 |
+| `R2_ENDPOINT` | ✅ | R2 S3 API 地址，如 `https://<account>.r2.cloudflarestorage.com` |
+| `R2_BUCKET` | ✅ | 图片 bucket 名称 |
+| `R2_ACCESS_KEY_ID` | ✅ | 只授予该 bucket 写权限的访问密钥 ID |
+| `R2_SECRET_ACCESS_KEY` | ✅ | 对应的访问密钥；只留在 NAS 上报器环境变量中 |
 | `WEBHOOK_PORT` | | 默认 `8787`，Emby 的播放通知发到这里 |
 | `RESUME_INTERVAL_MS` | | 默认 `60000` |
 | `RESUME_LIMIT` | | 默认 `8`，站点也只展示这么多 |
@@ -62,6 +66,10 @@ docker run -d --name emby-reporter --restart unless-stopped \
   -e EMBY_USER_ID=... \
   -e SITE_URL=https://lyjw131.com \
   -e TELEMETRY_INGEST_SECRET=... \
+  -e R2_ENDPOINT=https://ACCOUNT_ID.r2.cloudflarestorage.com \
+  -e R2_BUCKET=... \
+  -e R2_ACCESS_KEY_ID=... \
+  -e R2_SECRET_ACCESS_KEY=... \
   emby-reporter
 ```
 
@@ -80,6 +88,10 @@ services:
       EMBY_USER_ID: ${EMBY_USER_ID}
       SITE_URL: https://lyjw131.com
       TELEMETRY_INGEST_SECRET: ${TELEMETRY_INGEST_SECRET}
+      R2_ENDPOINT: ${R2_ENDPOINT}
+      R2_BUCKET: ${R2_BUCKET}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY}
 ```
 
 那个端口只需在局域网里可达，**别映射到公网**：Emby 的 webhook 带不了鉴权，
@@ -112,5 +124,5 @@ Emby 和代理在同一台 NAS 上时填 `http://localhost:8787/webhook`；Emby 
   免得 `docker logs` 被同一条「连接被拒绝」刷满。
 - 站点的响应里带 `missingImages`（它引用了却没有的图片键）。Redis 被清空、
   容器换了机器之后，代理据此把图补传回去，不需要人工干预。
-- 同一张图连着送三次站点还说没有，就不再送了 —— 那是它存不下（编码不认之类），
+- 同一张图连着送三次站点还说没有，就不再送了 —— 那是 R2 对象校验没有通过，
   而图片键跟着 ImageTag 走不会自己变，一直重试只会变成死循环。

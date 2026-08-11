@@ -205,12 +205,12 @@ export async function fetchSession(): Promise<EmbySession | null> {
   );
 }
 
-/** 站点那边按内容哈希落地，这里只负责把字节原样送过去 */
-export async function fetchImage(ref: ImageRef): Promise<string> {
+/** 取原始字节；压缩和 R2 上传由上报器的 r2 模块一次完成。 */
+export async function fetchImage(ref: ImageRef): Promise<Buffer> {
   const params = new URLSearchParams({ tag: ref.tag, maxHeight: String(ref.height) });
   const buffer = (await embyFetch(
     `/emby/Items/${ref.itemId}/Images/${ref.kind}?${params}`,
     "binary",
   )) as ArrayBuffer;
-  return Buffer.from(buffer).toString("base64");
+  return Buffer.from(buffer);
 }

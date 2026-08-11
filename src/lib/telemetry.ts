@@ -1,13 +1,12 @@
-import { createHash, timingSafeEqual } from "node:crypto";
+import { timingSafeEqual } from "node:crypto";
 
 import { getChargerPayload, normalizeRawStatus, type RawStatus } from "@/lib/anker";
 import { recordPushHeartbeat, recordStatus } from "@/lib/charger-store";
 import { resolveTrackLookup } from "@/lib/apple-music";
 import { putAppleMusicCredentials } from "@/lib/apple-music-credentials";
 import { getHomePodNowPlaying } from "@/lib/homepod-store";
-import { storeImageBuffer } from "@/lib/image-store";
+import { ASSET_URL_PREFIX, hasStoredImage, IMAGE_OBJECT_KEY } from "@/lib/r2-assets";
 import { number, object, text } from "@/lib/json";
-import { ASSET_URL_PREFIX } from "@/lib/image-store";
 import { publish } from "@/lib/live-events";
 import { mirrorKey } from "@/lib/redis";
 import {
@@ -25,23 +24,6 @@ import type {
   TimezonePayload,
 } from "@/lib/types";
 import { recordVibeCodingReport } from "@/lib/vibecoding";
-
-/**
- * 前台应用图标入库前压到的最长边。
- *
- * 采集端送来的是 64pt 的 PNG（Retina 上 128px），而页面上那个位置只有 40 CSS px
- * —— 2 倍屏也只要 80。和 Emby 海报、自定义歌单封面同一个路子：压在入口，
- * 缓存里存的直接是小图。
- *
- * 不像 Emby 那样需要给缓存键加版本：资产地址是内容哈希，压缩换了字节哈希就换，
- * 地址天然失效。
- */
-const ICON_MAX_DIMENSION = 96;
-/**
- * 图标比照片吃质量：大片纯色加硬边缘，有损压缩的振铃在这种图上最显眼，
- * 而它本来就只有几 KB，往上调几乎不涨体积。
- */
-const ICON_WEBP_QUALITY = 92;
 
 /** 与采集端一致；缓存的是很短的内容哈希 URL，64 项也足够覆盖日常应用。 */
 const DESKTOP_ICON_CACHE_LIMIT = 64;
@@ -207,21 +189,36 @@ async function normalizeDesktop(
   if (iconHash != null && !/^[a-f0-9]{64}$/.test(iconHash)) {
     throw new Error("desktop.iconHash 必须是 SHA-256 十六进制字符串");
   }
+  /**
+   * 两个哈希各司其职，不是同一个东西，别再把它们对等起来。
+   *
+   * - `iconHash` 是**这个应用的图标**的身份：应用有图标它就非空，哪怕编码失败、
+   *   还没传上去。站点靠它当 desktopIconAssets 的键。
+   * - `iconObjectKey` 是**已经躺在 R2 里的那份字节**的内容地址，直传成功才有。
+   *
+   * 从前两者都取自压缩后的字节，于是「这个应用没有图标」和「图标没准备好」
+   * 都表现为 iconHash 为空 —— 下面的 iconAvailable 把后者也当成了「一切正常」，
+   * 上报器再也收不到补传信号。实测因此静默丢了整整一批图标。
+   */
+  const iconObjectKey = text(row.iconObjectKey);
+  if (iconObjectKey != null && !IMAGE_OBJECT_KEY.test(iconObjectKey)) {
+    throw new Error("desktop.iconObjectKey 必须是 <sha256>.png 或 <sha256>.webp");
+  }
+  if (iconObjectKey != null && iconHash == null) {
+    throw new Error("desktop.iconObjectKey 必须和 iconHash 一起上报");
+  }
 
-  if (row.iconData != null) {
-    if (!iconHash || typeof row.iconData !== "string") {
-      throw new Error("desktop.iconData 必须和 iconHash 一起上传");
+  if (row.iconData != null) throw new Error("desktop.iconData 已停用，请由上报器直传 R2");
+
+  // 上报器一次性编好小图并直传 R2，只把对象键发回来。
+  // URL 由服务端的 R2_PUBLIC_BASE_URL 组出，避免客户端自己伪造任意展示地址。
+  if (iconObjectKey && iconHash && process.env.R2_PUBLIC_BASE_URL) {
+    if (await hasStoredImage(iconObjectKey)) {
+      rememberDesktopIcon(iconHash, `${ASSET_URL_PREFIX}${iconObjectKey}`);
+    } else {
+      // 对象不在了（比如桶被清空）：忘掉旧地址，否则下面会拿着它继续发 404
+      telemetryState.desktopIconAssets.delete(iconHash);
     }
-    const iconData = Buffer.from(row.iconData, "base64");
-    const actualHash = createHash("sha256").update(iconData).digest("hex");
-    if (actualHash !== iconHash) throw new Error("desktop 图标内容与 iconHash 不一致");
-    const uploadedIcon = await storeImageBuffer(
-      iconData,
-      ICON_MAX_DIMENSION,
-      ICON_WEBP_QUALITY,
-    );
-    if (!uploadedIcon) throw new Error("desktop.iconData 不是有效图片");
-    rememberDesktopIcon(iconHash, uploadedIcon);
   }
 
   const iconUrl = iconHash ? (telemetryState.desktopIconAssets.get(iconHash) ?? null) : null;

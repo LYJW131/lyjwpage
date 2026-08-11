@@ -58,7 +58,7 @@ const QUOTA_PROVIDER_ICONS: Record<
     light: "/provider-icons/opencodego-light.svg",
     dark: "/provider-icons/opencodego-dark.svg",
   },
-  antigravity: { light: "/provider-icons/antigravity-full-color.png" },
+  antigravity: { light: "/provider-icons/antigravity-full-color.svg" },
 };
 
 /** 蓝 → 琥珀 → 红，只有三档没有渐变：中间色会让人去猜具体数，而数就写在旁边 */
@@ -711,11 +711,15 @@ function QuotaProviders({ providers }: { providers: VibeCodingQuotaProvider[] })
             >
               <div className="flex min-w-0 items-center gap-2">
                 <span className="relative size-5 shrink-0" aria-hidden>
+                  {/* 全是仓库里的静态矢量图，直接当静态文件发。
+                      Next 默认也不优化 SVG（怕 XSS），标上 unoptimized
+                      是把这个意图写明，免得日后换成位图时悄悄进了管道 */}
                   <Image
                     src={icon.light}
                     alt=""
                     fill
                     sizes="20px"
+                    unoptimized
                     className={cn("object-contain", icon.dark && "dark:hidden")}
                   />
                   {icon.dark && (
@@ -724,6 +728,7 @@ function QuotaProviders({ providers }: { providers: VibeCodingQuotaProvider[] })
                       alt=""
                       fill
                       sizes="20px"
+                      unoptimized
                       className="hidden object-contain dark:block"
                     />
                   )}

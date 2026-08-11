@@ -6,6 +6,11 @@
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["dev"],
       "port": 3211
+    },
+    {
+      "name": "lyjwpage-attach",
+      "url": "http://localhost:3211",
+      "port": 3211
     }
   ]
 }

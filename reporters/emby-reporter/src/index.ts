@@ -9,6 +9,7 @@ import {
   type MappedItem,
 } from "./emby.js";
 import { failure, info, recovered } from "./log.js";
+import { uploadImage } from "./r2.js";
 import { push, type PlayingReport, type PushPayload } from "./site.js";
 import { startWebhookServer } from "./webhook.js";
 
@@ -64,7 +65,7 @@ function serial<T>(task: () => Promise<T>): Promise<T> {
 /**
  * 送了几次站点还是说没有的图，就不再送了。
  *
- * 多半是那张图站点存不下（sharp 认不出的编码之类），而键是跟着 ImageTag 走的、
+ * 多半是 R2 对象校验失败，而键是跟着 ImageTag 走的、
  * 不会自己变，不设上限的话补传队列会永远空不掉，每 2 秒空推一次。
  */
 const MAX_IMAGE_ATTEMPTS = 3;
@@ -77,11 +78,12 @@ function queueImage(ref: ImageRef) {
 }
 
 /** 取这一批要补传的图。取不到的留在队列里，下一轮再说 */
-async function collectImages(): Promise<Array<{ key: string; data: string }>> {
-  const images: Array<{ key: string; data: string }> = [];
+async function collectImages(): Promise<Array<{ key: string; objectKey: string }>> {
+  const images: Array<{ key: string; objectKey: string }> = [];
   for (const ref of [...pendingImages.values()].slice(0, config.imagesPerPush)) {
     try {
-      images.push({ key: ref.key, data: await fetchImage(ref) });
+      const source = await fetchImage(ref);
+      images.push({ key: ref.key, objectKey: await uploadImage(source, ref.height) });
       recovered("emby-image");
     } catch (error) {
       // 取不到就先不带这张，条目照样推 —— 少张海报比整条状态断了强

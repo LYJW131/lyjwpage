@@ -38,18 +38,25 @@ export function CodexActivityIndicator({
         ))
       ) : (
         <>
+          {/*
+            深浅两版只差圆角底的颜色，靠 CSS 换 —— 底色要跟着主题翻，
+            浅色页面上用深色底、深色页面上用白底，图标才始终有对比。
+            两张都是矢量，加起来还不到从前一张位图大。
+          */}
           <Image
-            src="/codex-icon-dark.png"
+            src="/codex-icon-dark.svg"
             width={20}
             height={20}
             alt=""
+            unoptimized
             className={cn("size-5 dark:hidden", stale && "grayscale opacity-40")}
           />
           <Image
-            src="/codex-icon-light.png"
+            src="/codex-icon-light.svg"
             width={20}
             height={20}
             alt=""
+            unoptimized
             className={cn("hidden size-5 dark:block", stale && "grayscale opacity-40")}
           />
         </>
