@@ -181,7 +181,11 @@ Authorization: Bearer <TELEMETRY_INGEST_SECRET>
 时长 —— Home Assistant 按状态变化推送，曲目放完到下一条推送之间必然超时，拿它当
 作废依据会让播放中的曲目凭空消失。
 
-Home Assistant 的 `rest_command.push_homepod_now_playing` 使用以下目标与鉴权头：
+推送的是**两台 HA**，实体和目标地址各不相同，但契约完全一样：家里那台在 DS923+
+上（`media_player.wo_shi`），宿舍那台在 N100 上（`media_player.wo_shi_homepod_mini`）。
+两处不会同时在线，指向同一个站点端点，互不冲突。
+
+`rest_command.push_homepod_now_playing` 的形状（`<E>` 换成对应实体）：
 
 ```yaml
 url: "https://lyjw131.com/api/ingest/homepod"
@@ -190,23 +194,29 @@ content_type: "application/json"
 headers:
   authorization: !secret telemetry_ingest_authorization
 payload: >-
-  {
-    "entityId": {{ entity_id | tojson }},
-    "state": {{ states(entity_id) | tojson }},
-    "title": {{ state_attr(entity_id, 'media_title') | tojson }},
-    "artist": {{ state_attr(entity_id, 'media_artist') | tojson }},
-    "album": {{ state_attr(entity_id, 'media_album_name') | tojson }},
-    "artworkUrl": {{ state_attr(entity_id, 'entity_picture') | tojson }},
-    "positionMs": {{ (state_attr(entity_id, 'media_position') | float(0) * 1000) | round }},
-    "durationMs": {{ (state_attr(entity_id, 'media_duration') | float(0) * 1000) | round }},
-    "repeatOne": {{ (state_attr(entity_id, 'repeat') == 'one') | tojson }},
-    "observedAt": {{ (as_timestamp(state_attr(entity_id, 'media_position_updated_at'), 0) * 1000) | round }}
-  }
+  {{
+    {
+      "entityId": "<E>",
+      "state": states("<E>"),
+      "title": state_attr("<E>", "media_title"),
+      "artist": state_attr("<E>", "media_artist"),
+      "album": state_attr("<E>", "media_album_name"),
+      "artworkUrl": state_attr("<E>", "entity_picture"),
+      "positionMs": ((state_attr("<E>", "media_position") | float(0)) * 1000) | round | int,
+      "durationMs": ((state_attr("<E>", "media_duration") | float(0)) * 1000) | round | int,
+      "repeatOne": state_attr("<E>", "repeat") == "one",
+      "observedAt": (as_timestamp(state_attr("<E>", "media_position_updated_at"), as_timestamp(now())) * 1000) | round | int
+    } | to_json
+  }}
 ```
 
-字符串一律走 `| tojson` **而且不要自己加引号** —— 引号由 `tojson` 自己带上。手写
-`"{{ ... }}"` 的话，曲名里只要有一个 `"` 就拼出非法 JSON、整条推送 400；属性缺失时
-还会渲染成字符串 `None` 而不是 `null`。`tojson` 两件事一起解决。
+**先拼 Jinja 字典再整个 `| to_json`，别手写引号。** 手写 `"{{ ... }}"` 的话，曲名里
+只要有一个 `"` 就拼出非法 JSON、整条推送 400；属性缺失还会渲染成字符串 `None`
+而不是 `null`。`to_json` 两件事一起解决。
+
+`observedAt` 的兜底值取 `now()` 而不是 `0`：HomePod 刚上线时
+`media_position_updated_at` 可能还没有，落成 `0` 会被站点当成 1970 年的锚点，
+进度条直接推算飞掉。
 
 `secrets.yaml` 只保存完整 header 值，不把密钥写进配置或仓库：
 
