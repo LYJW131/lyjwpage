@@ -5,7 +5,8 @@
       "name": "lyjwpage",
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["dev"],
-      "port": 3211
+      "port": 3211,
+      "autoPort": false
     },
     {
       "name": "lyjwpage-attach",
