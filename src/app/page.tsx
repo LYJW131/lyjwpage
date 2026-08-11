@@ -18,8 +18,14 @@ export default function Home() {
           <Section id="live" label="FIG_001" title="此刻" note="实时">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <LiveDeskCard />
-              <ChargerCard />
-              <ListeningCard />
+              {/*
+                充电头和听歌绑成一对：同一行里 items-stretch + 各自 h-full，
+                避免两张卡各算各的固有高度、加载完一边突然变高。
+              */}
+              <div className="grid grid-cols-1 gap-4 md:col-span-2 md:grid-cols-2 md:items-stretch">
+                <ChargerCard className="h-full" />
+                <ListeningCard className="h-full" />
+              </div>
               <VibeCodingCard />
               <TimezoneCard />
               <ContactCard />
