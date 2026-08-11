@@ -1,3 +1,5 @@
+import { mirrorKey } from "@/lib/redis";
+
 /**
  * 上报器还活不活着 —— 全站唯一的判据。
  *
@@ -16,54 +18,66 @@
 /** 上报器每 30 秒心跳一次，留出定时器和网络抖动的余量 */
 const HEARTBEAT_WINDOW_MS = 45_000;
 
-type Liveness = {
+export type Liveness = {
   /** 最近一次收到任何上报或心跳的时刻 */
   lastSeenAt: number;
   /** 上报器亲口声明的离线，只在优雅离开（退出 / 睡眠）时为真 */
   declaredOffline: boolean;
 };
 
-const store = globalThis as typeof globalThis & {
-  __lyjwReporterLiveness?: Liveness;
-};
-const liveness = (store.__lyjwReporterLiveness ??= {
-  lastSeenAt: 0,
-  declaredOffline: false,
-});
+/**
+ * 存活单独占一个 Redis key，读写都直查 Redis。
+ *
+ * 从前它是纯进程内存，靠遥测状态那份镜像搭车持久化 —— 于是两个进程各有一份
+ * 各自的「上次见到」：多实例部署时，没接过上报的那个实例手上永远是零，四张卡
+ * 全被判成离线，而另一个实例好好的。存活是全站共享的一个事实，得存在共享的
+ * 地方。
+ *
+ * 「Redis 为主、进程内存为辅」的规则见 lib/redis 的 mirrorKey：Redis 答得上话
+ * 就以它为准，不可达才退回内存副本 —— 单机部署因此和从前一样能跑，Redis 没配
+ * 或挂掉都只是退化成进程内的判断，不会把页面打成离线。
+ */
+const mirror = mirrorKey<Liveness>(
+  ["reporter", "liveness"],
+  // 「有多新」看最后一次露面：每条信封都会推进它
+  (state) => state.lastSeenAt,
+);
 
-export function markReporterSeen(at = Date.now()) {
-  liveness.lastSeenAt = at;
+/** 从没见过上报器。也是 Redis 被清空后的样子 */
+function neverSeen(): Liveness {
+  return { lastSeenAt: 0, declaredOffline: false };
 }
 
-export function reporterLastSeenAt() {
-  return liveness.lastSeenAt;
+export async function readLiveness(): Promise<Liveness> {
+  return (await mirror.get()) ?? neverSeen();
 }
 
-/** 返回声明值是否发生了翻转，调用方据此决定要不要往 SSE 推 */
-export function declareReporterOffline(offline: boolean) {
-  const flipped = liveness.declaredOffline !== offline;
-  liveness.declaredOffline = offline;
-  return flipped;
+/**
+ * 记一次露面：刷新存活时刻，并落下这条信封声明的在离线。
+ *
+ * 返回离线声明有没有翻转，调用方据此决定要不要往 SSE 推。读-改-写不是原子的，
+ * 但写它的只有唯一的上报入口，且同一台 Mac 的信封本来就是串行发的，不存在
+ * 两个写者互相盖。
+ */
+export async function recordReporterBeat({
+  offline,
+  at = Date.now(),
+}: {
+  offline: boolean;
+  at?: number;
+}): Promise<{ flipped: boolean }> {
+  const previous = await readLiveness();
+  await mirror.put({ lastSeenAt: at, declaredOffline: offline });
+  return { flipped: previous.declaredOffline !== offline };
 }
 
-export function reporterOffline() {
+/** 拿在手上的那份存活算不算离线。取数路径上已经读过就用这个，别再问一次 Redis */
+export function offlineByLiveness(liveness: Liveness) {
   // 亲口说走了就直接算离线，不用等心跳窗口
   if (liveness.declaredOffline) return true;
   return !liveness.lastSeenAt || Date.now() - liveness.lastSeenAt > HEARTBEAT_WINDOW_MS;
 }
 
-/**
- * 整份存活记录的读写，给持久化用。
- *
- * 存活得跟着遥测状态一起落 Redis：只存状态不存存活的话，进程重启后页面会拿着
- * 上一次的前台应用、却认为上报器从没出现过，两者对不上。`declaredOffline` 尤其
- * 要存 —— 上报器睡前那声「我走了」不该因为站点重启就丢掉。
- */
-export function livenessSnapshot(): Liveness {
-  return { ...liveness };
-}
-
-export function restoreLiveness(next: Partial<Liveness>) {
-  if (next.lastSeenAt != null) liveness.lastSeenAt = next.lastSeenAt;
-  if (next.declaredOffline != null) liveness.declaredOffline = next.declaredOffline;
+export async function reporterOffline() {
+  return offlineByLiveness(await readLiveness());
 }

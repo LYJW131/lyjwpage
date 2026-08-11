@@ -11,12 +11,10 @@ import { ASSET_URL_PREFIX } from "@/lib/image-store";
 import { publish } from "@/lib/live-events";
 import { mirrorKey } from "@/lib/redis";
 import {
-  declareReporterOffline,
-  livenessSnapshot,
-  markReporterSeen,
-  reporterLastSeenAt,
-  restoreLiveness,
-  reporterOffline,
+  offlineByLiveness,
+  readLiveness,
+  recordReporterBeat,
+  type Liveness,
 } from "@/lib/reporter-liveness";
 import type {
   DesktopActivity,
@@ -84,8 +82,8 @@ telemetryState.desktopIconAssets ??= new Map();
  * 排查冷启动时会以为清干净了其实没有。现在和别的 store 一样落 Redis，
  * 「Redis 为主、进程内存为辅」的规则见 lib/redis 的 mirrorKey。
  *
- * 存活记录跟着一起走：只存状态不存存活的话，重启后页面拿着上一次的前台应用、
- * 却认为上报器从没出现过。
+ * 存活不在这份里：它自己占一个 key，见 lib/reporter-liveness。从前它搭这趟车
+ * 持久化，于是同一件事有两个写入点，还得靠 restoreLiveness 把进程内存灌回去。
  */
 type PersistedTelemetry = {
   desktop: DesktopActivity | null;
@@ -94,8 +92,8 @@ type PersistedTelemetry = {
   music: LocalNowPlaying | null;
   activityReceivedAt: number;
   timezoneReceivedAt: number;
+  /** 只给下面的 stampOf 用：这份快照对应的那条信封是什么时候收到的 */
   telemetryReceivedAt: number;
-  declaredOffline: boolean;
   activeModules: string[];
 };
 
@@ -105,7 +103,7 @@ const mirror = mirrorKey<PersistedTelemetry>(
   (state) => state.telemetryReceivedAt,
 );
 
-async function persistTelemetryState() {
+async function persistTelemetryState(receivedAt: number) {
   await mirror.put({
     desktop: telemetryState.desktop,
     desktopIconAssets: [...telemetryState.desktopIconAssets],
@@ -113,8 +111,7 @@ async function persistTelemetryState() {
     music: telemetryState.music,
     activityReceivedAt: telemetryState.activityReceivedAt,
     timezoneReceivedAt: telemetryState.timezoneReceivedAt,
-    telemetryReceivedAt: reporterLastSeenAt(),
-    declaredOffline: livenessSnapshot().declaredOffline,
+    telemetryReceivedAt: receivedAt,
     activeModules: [...telemetryState.activeModules],
   });
 }
@@ -146,7 +143,6 @@ async function syncTelemetryState() {
     telemetryState.activityReceivedAt = 0;
     telemetryState.timezoneReceivedAt = 0;
     telemetryState.activeModules = new Set();
-    restoreLiveness({ lastSeenAt: 0, declaredOffline: false });
     return;
   }
   /**
@@ -172,10 +168,6 @@ async function syncTelemetryState() {
   telemetryState.activityReceivedAt = stored.activityReceivedAt ?? 0;
   telemetryState.timezoneReceivedAt = stored.timezoneReceivedAt ?? 0;
   telemetryState.activeModules = new Set(stored.activeModules ?? []);
-  restoreLiveness({
-    lastSeenAt: stored.telemetryReceivedAt ?? 0,
-    declaredOffline: stored.declaredOffline ?? false,
-  });
 }
 
 type TelemetryEnvelope = {
@@ -289,43 +281,19 @@ async function normalizeMusic(
 }
 
 /**
- * 上报器每次露面时的共同记账：谁在采、什么时候来的、有没有声明离线。
+ * Mac 上报器的唯一入口。
  *
- * 数据上报和 presence 心跳都要做这一整套 —— 「上报器还活着」只有一个事实，
- * 不该因为它从哪个路由进来而分成两份实现。从前两边各写了一遍，连顺序都是
- * 随手排的（一个先 declare 后 mark，一个反过来）。
+ * 一个 envelope 可以只更新一个模块，未出现的模块保持原快照；modules 整个省略
+ * （或给个空对象）就是一次纯心跳 —— 靠 presence 和 heartbeatAt 起作用。
  *
- * 顺序里只有一处是必须的：activeModules 要先落，下面判断充电头在不在采时
- * 读的就是它。
- *
- * 返回在离线声明有没有翻转。持久化和往 SSE 推都不在这里 —— 两条路各有各的
- * 时机（presence 立刻推，envelope 要等模块都处理完一起推），留给调用方。
+ * 从前心跳和优雅下线走另一个 presence 端点，于是「上报器还活着」这一件事有
+ * 两份实现，连记账顺序都是各排各的（一个先 declare 后 mark，一个反过来）。
+ * 现在只有这一条路：每条信封都刷新存活，声明翻转时发一次 presence 事件。
  */
-async function recordReporterBeat({
-  offline,
-  activeModules,
-  receivedAt,
-}: {
-  offline: boolean;
-  /** 缺省表示这次没带，沿用上一次的 —— presence 心跳允许不带 */
-  activeModules?: string[];
-  receivedAt: number;
-}) {
-  if (activeModules) telemetryState.activeModules = new Set(activeModules);
-  markReporterSeen(receivedAt);
-  const flipped = declareReporterOffline(offline);
-  // 充电头按「多久没收到推送」判断断流，心跳也得给它续上
-  if (telemetryState.activeModules.has("charger")) {
-    await recordPushHeartbeat(receivedAt);
-  }
-  return flipped;
-}
-
-/** 一个 envelope 可以只更新一个模块；未出现的模块保持原快照。 */
 export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.now()) {
   await syncTelemetryState();
   const envelope = object(input) as TelemetryEnvelope | null;
-  if (!envelope || envelope.version !== 3) throw new Error("遥测协议 version 必须为 3");
+  if (!envelope || envelope.version !== 4) throw new Error("遥测协议 version 必须为 4");
   if (number(envelope.heartbeatAt) == null) throw new Error("遥测请求缺少 heartbeatAt");
   if (!Array.isArray(envelope.activeModules)) throw new Error("遥测请求缺少 activeModules");
   const nextActiveModules = envelope.activeModules.filter(
@@ -338,22 +306,35 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
   if (presence !== "online" && presence !== "offline") {
     throw new Error("遥测请求的 presence 必须是 online 或 offline");
   }
+  // 先落 activeModules：下面判断充电头在不在采时读的就是它
+  telemetryState.activeModules = new Set(nextActiveModules);
   /**
    * envelope.presence 是上报器声明的在离线。
    *
    * 只覆盖优雅离开：退出、睡眠时它抢在断开前发一条 offline，这里立刻把状态
    * 翻过去，不用等 45 秒心跳窗口。崩溃、断网、强制关机时它发不出这一条，
-   * 那些仍然靠下面 reporterStale 的超时兜底 —— 两条路是互补的。
+   * 那些仍然靠 offlineByLiveness 里的心跳窗口兜底 —— 两条路是互补的。
    *
-   * 数据包本身也算一次在线心跳；offline 只用于睡眠、退出这类优雅离开。
+   * 任何一条信封本身都算一次在线心跳；offline 只用于睡眠、退出这类优雅离开。
    */
-  const presenceFlipped = await recordReporterBeat({
+  const { flipped: presenceFlipped } = await recordReporterBeat({
     offline: presence === "offline",
-    activeModules: nextActiveModules,
-    receivedAt,
+    at: receivedAt,
   });
-  const modules = object(envelope.modules);
-  if (!modules) throw new Error("遥测请求缺少 modules 对象");
+  // 充电头按「多久没收到推送」判断断流，纯心跳也得给它续上
+  if (telemetryState.activeModules.has("charger")) {
+    await recordPushHeartbeat(receivedAt);
+  }
+  /**
+   * modules 省略或为空 = 纯心跳。
+   *
+   * 只有「给了但不是对象」才算写坏 —— 那是上报器组包出了错，不能默默当成心跳
+   * 收下，否则真实的模块数据丢了也没人知道。
+   */
+  if (envelope.modules != null && !object(envelope.modules)) {
+    throw new Error("遥测请求的 modules 必须是对象");
+  }
+  const modules = object(envelope.modules) ?? {};
 
   let accepted = 0;
   let desktopIconAvailable: boolean | undefined;
@@ -427,7 +408,7 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
     accepted += 1;
   }
 
-  await persistTelemetryState();
+  await persistTelemetryState(receivedAt);
 
   /**
    * 只在模块真的来了才推。
@@ -449,58 +430,42 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
 }
 
 /**
- * 上报器的存活声明，来自专用的 presence 端点。
+ * 取数路径上先把状态和存活各读一次。
  *
- * 和数据上报共用同一个 telemetryReceivedAt —— 「上报器还活着」只有一个事实，
- * 不该因为它是从哪个路由进来的而分成两份。数据包本身也算存活证明，所以
- * recordTelemetryEnvelope 里照样刷新那个时间戳。
+ * 存活是另一个 Redis key，两者都要，所以一起读 —— 各自 await 一次的话同一个
+ * 请求里会多一趟往返。「上报器整体是否已超过心跳窗口」只影响 Mac 来的东西，
+ * HomePod 走自己的路径。
  */
-export async function recordPresence(
-  state: "online" | "offline",
-  activeModules?: string[],
-  receivedAt = Date.now(),
-) {
-  await syncTelemetryState();
-  const flipped = await recordReporterBeat({
-    offline: state === "offline",
-    activeModules,
-    receivedAt,
-  });
-  await persistTelemetryState();
-  // 只有翻转才是事件；周期心跳不该占用推送通道
-  if (flipped) await publishPresence();
-}
-
-/** 上报器整体是否已超过心跳窗口。只影响 Mac 来的东西，HomePod 走自己的路径。 */
-function reporterStale() {
-  return reporterOffline();
+async function syncForRead(): Promise<Liveness> {
+  const [, liveness] = await Promise.all([syncTelemetryState(), readLiveness()]);
+  return liveness;
 }
 
 export async function getDesktopPayload(): Promise<DesktopPayload> {
-  await syncTelemetryState();
-  const stale = !telemetryState.activeModules.has("desktop") || reporterStale();
+  const liveness = await syncForRead();
+  const stale = !telemetryState.activeModules.has("desktop") || offlineByLiveness(liveness);
   return {
     desktop: stale ? null : telemetryState.desktop,
     receivedAt:
-      telemetryState.activityReceivedAt || reporterLastSeenAt() || null,
+      telemetryState.activityReceivedAt || liveness.lastSeenAt || null,
     stale,
   };
 }
 
 export async function getTimezonePayload(): Promise<TimezonePayload> {
-  await syncTelemetryState();
-  const stale = !telemetryState.activeModules.has("timezone") || reporterStale();
+  const liveness = await syncForRead();
+  const stale = !telemetryState.activeModules.has("timezone") || offlineByLiveness(liveness);
   return {
     timezone: stale ? null : telemetryState.timezone,
     receivedAt:
-      telemetryState.timezoneReceivedAt || reporterLastSeenAt() || null,
+      telemetryState.timezoneReceivedAt || liveness.lastSeenAt || null,
     stale,
   };
 }
 
 export async function getMusicPayload(): Promise<MusicPayload> {
-  await syncTelemetryState();
-  const telemetryStale = reporterStale();
+  const liveness = await syncForRead();
+  const telemetryStale = offlineByLiveness(liveness);
   const musicEnabled = telemetryState.activeModules.has("appleMusic");
   const macMusic = musicEnabled && !telemetryStale ? telemetryState.music : null;
   const homePod = await getHomePodNowPlaying();
@@ -531,7 +496,7 @@ export async function getMusicPayload(): Promise<MusicPayload> {
      */
     music: music && lookup?.artwork ? { ...music, artworkUrl: lookup.artwork } : music,
     receivedAt: Math.max(
-      telemetryState.activityReceivedAt || reporterLastSeenAt() || 0,
+      telemetryState.activityReceivedAt || liveness.lastSeenAt || 0,
       homePod?.receivedAt ?? 0,
     ) || null,
     // 没东西可显示，而不是「数据过期」—— 没在听歌时这就是常态
