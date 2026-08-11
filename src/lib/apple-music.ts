@@ -391,8 +391,19 @@ export async function resolveTrackLookup(track: {
   }
 }
 
-/** 资料库返回的预签名地址有效 24 小时；只缓存一小时，避免交给浏览器过期 URL。 */
-const LIBRARY_ARTWORK_TTL_MS = 60 * 60 * 1000;
+/**
+ * 自建歌单封面地址的缓存时长。
+ *
+ * 资料库返回的是预签名地址，实测 `X-Amz-Expires=86400`（24 小时），所以上限
+ * 是它。取一半：既留足余量不会把将过期的 URL 交出去，又尽量少换地址 ——
+ * 这些图要过 Next 的图片优化，而优化结果是**按 URL 做缓存键**的。地址一换就是
+ * 一次缓存未命中，得重新下 274KB 原图再转一遍。从前定的 1 小时等于每小时白转
+ * 一轮，把这条路的收益吃掉了大半。
+ *
+ * 换了封面最迟 12 小时生效。要立刻生效就删掉 Redis 里
+ * `cache:apple-music:library-art:<id>`。
+ */
+const LIBRARY_ARTWORK_TTL_MS = 12 * 60 * 60 * 1000;
 /** 自建 / 分享歌单的 id 前缀，只有这类才需要去资料库找封面 */
 const USER_PLAYLIST_PREFIX = "pl.u-";
 
