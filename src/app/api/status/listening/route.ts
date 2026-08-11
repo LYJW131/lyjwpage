@@ -2,7 +2,8 @@ import { statusRoute } from "@/lib/api";
 import { getNowPlaying, getRecentlyPlayed } from "@/lib/apple-music";
 import type { ListeningPayload } from "@/lib/types";
 
-// 需要 node:fs 与 ES256 签名，不能跑在 Edge
+// ioredis 是 TCP 客户端，Edge 上没有 net 模块。凭据早就不在这边签了
+// （.p8 留在 Mac 上，见 lib/apple-music-credentials），从前那条理由已经不成立
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
