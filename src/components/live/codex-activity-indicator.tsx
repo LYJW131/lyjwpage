@@ -38,18 +38,22 @@ export function CodexActivityIndicator({
         ))
       ) : (
         <>
+          {/* 静态图，仓库里存的就是压好的 64px WebP（3 倍屏够用），
+              不必再过一遍图片管道 —— 那只是把同一份字节换个地方算一遍 */}
           <Image
-            src="/codex-icon-dark.png"
+            src="/codex-icon-dark.webp"
             width={20}
             height={20}
             alt=""
+            unoptimized
             className={cn("size-5 dark:hidden", stale && "grayscale opacity-40")}
           />
           <Image
-            src="/codex-icon-light.png"
+            src="/codex-icon-light.webp"
             width={20}
             height={20}
             alt=""
+            unoptimized
             className={cn("hidden size-5 dark:block", stale && "grayscale opacity-40")}
           />
         </>
