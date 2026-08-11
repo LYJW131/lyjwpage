@@ -191,18 +191,22 @@ headers:
   authorization: !secret telemetry_ingest_authorization
 payload: >-
   {
-    "entityId": "{{ entity_id }}",
-    "state": "{{ states(entity_id) }}",
-    "title": "{{ state_attr(entity_id, 'media_title') }}",
-    "artist": "{{ state_attr(entity_id, 'media_artist') }}",
-    "album": "{{ state_attr(entity_id, 'media_album_name') }}",
-    "artworkUrl": "{{ state_attr(entity_id, 'entity_picture') }}",
+    "entityId": {{ entity_id | tojson }},
+    "state": {{ states(entity_id) | tojson }},
+    "title": {{ state_attr(entity_id, 'media_title') | tojson }},
+    "artist": {{ state_attr(entity_id, 'media_artist') | tojson }},
+    "album": {{ state_attr(entity_id, 'media_album_name') | tojson }},
+    "artworkUrl": {{ state_attr(entity_id, 'entity_picture') | tojson }},
     "positionMs": {{ (state_attr(entity_id, 'media_position') | float(0) * 1000) | round }},
     "durationMs": {{ (state_attr(entity_id, 'media_duration') | float(0) * 1000) | round }},
     "repeatOne": {{ (state_attr(entity_id, 'repeat') == 'one') | tojson }},
     "observedAt": {{ (as_timestamp(state_attr(entity_id, 'media_position_updated_at'), 0) * 1000) | round }}
   }
 ```
+
+字符串一律走 `| tojson` **而且不要自己加引号** —— 引号由 `tojson` 自己带上。手写
+`"{{ ... }}"` 的话，曲名里只要有一个 `"` 就拼出非法 JSON、整条推送 400；属性缺失时
+还会渲染成字符串 `None` 而不是 `null`。`tojson` 两件事一起解决。
 
 `secrets.yaml` 只保存完整 header 值，不把密钥写进配置或仓库：
 
