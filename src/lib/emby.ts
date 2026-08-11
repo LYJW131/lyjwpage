@@ -21,7 +21,7 @@ import type { WatchingItem } from "@/lib/types";
  *
  * 本站不发任何 Emby 请求 —— 站点将来跑在 Vercel 上，内网里的 Emby 那时根本
  * 够不着。续播列表、播放位置、海报全部由 NAS 上的推送代理送进来
- * （reporters/emby-reporter → api/ingest/emby-reporter）。Emby 自己的播放
+ * （reporters/emby-reporter → api/ingest/emby）。Emby 自己的播放
  * webhook 也先发给那个代理，再由它带着密钥转发过来 —— Emby 的 webhook 配置项
  * 加不了自定义请求头，直发站点就只能开一个不鉴权的入口。
  *
@@ -191,7 +191,9 @@ async function storeImages(value: unknown): Promise<{ urls: Record<string, strin
   let stored = 0;
   for (const entry of value) {
     const raw = object(entry);
-    const key = imageKey(raw?.key);
+    // imageKey 是 Emby 侧的键（itemId:kind:tag:height），objectKey 是 R2 上那份
+    // 字节的内容地址。两个键挨在一起，名字必须各自说清是谁的键。
+    const key = imageKey(raw?.imageKey);
     if (!key || !raw) continue;
 
     const objectKey = text(raw.objectKey);

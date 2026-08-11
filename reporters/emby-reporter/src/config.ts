@@ -32,7 +32,7 @@ export const config = {
     /** 直接给完整端点也行，省得为了改路径去动代码 */
     ingestUrl:
       process.env.SITE_INGEST_URL?.trim() ||
-      `${trimSlash(required("SITE_URL"))}/api/ingest/emby-reporter`,
+      `${trimSlash(required("SITE_URL"))}/api/ingest/emby`,
     /** 和站点的 TELEMETRY_INGEST_SECRET 对上。站点没配时才允许留空 */
     secret: process.env.TELEMETRY_INGEST_SECRET?.trim() ?? "",
   },

@@ -39,10 +39,17 @@ const mirror = mirrorKey<StoredHomePod>(
   { ttlMs: TTL_MS },
 );
 
-function timestamp(value: unknown, fallbackAt: number) {
-  const parsed = typeof value === "string" ? Date.parse(value) : Number.NaN;
-  if (!Number.isFinite(parsed)) return fallbackAt;
-  // A bad Home Assistant clock must not make the browser project progress from the future.
+/**
+ * 观测时刻，epoch 毫秒。
+ *
+ * 和 Mac 上报器的 `observedAt` 同名同单位 —— 两个入口喂的是同一个
+ * LocalNowPlaying，字段名和单位就不该各说各话。HA 那边的
+ * `media_position_updated_at` 是 ISO 串，模板里 `as_timestamp() * 1000` 转好再发。
+ */
+function observedAt(value: unknown, fallbackAt: number) {
+  const parsed = numberish(value);
+  if (parsed == null) return fallbackAt;
+  // HA 的时钟不准时，不能让浏览器从未来开始推算进度
   return Math.min(parsed, fallbackAt);
 }
 
@@ -115,7 +122,17 @@ function publicArtwork(value: unknown) {
   }
 }
 
-/** Normalize the Home Assistant rest_command payload into the card's shared contract. */
+/**
+ * 把 Home Assistant 的 rest_command 报文收敛成卡片的共用契约。
+ *
+ * 字段名和单位跟 Mac 上报器的 appleMusic 模块对齐（positionMs / durationMs /
+ * repeatOne / observedAt），两个入口产出的都是 LocalNowPlaying，同一个概念
+ * 不该有两套叫法。转换放在 HA 的模板里做 —— 那边本来就要写模板，而站点这侧
+ * 一旦按来源分叉，往后每加一个播放来源就多一套字段要记。
+ *
+ * `entityId` 是 HomePod 独有的：它没有 Apple Music 的 trackId，只能拿实体加
+ * 曲目信息哈希出一个身份。
+ */
 export function normalizeHomePodEvent(
   input: unknown,
   receivedAt = Date.now(),
@@ -146,12 +163,12 @@ export function normalizeHomePodEvent(
       trackId: identity
         ? createHash("sha256").update(identity).digest("hex").slice(0, 24)
         : null,
-      artworkUrl: publicArtwork(row.artwork),
-      positionMs: Math.max(0, (numberish(row.position) ?? 0) * 1000),
-      durationMs: Math.max(0, (numberish(row.duration) ?? 0) * 1000),
-      // HA 的 media_player.repeat 取值是 off / all / one
-      repeatOne: text(row.repeat)?.toLowerCase() === "one",
-      observedAt: timestamp(row.positionUpdatedAt ?? row.updatedAt, receivedAt),
+      artworkUrl: publicArtwork(row.artworkUrl),
+      positionMs: Math.max(0, numberish(row.positionMs) ?? 0),
+      durationMs: Math.max(0, numberish(row.durationMs) ?? 0),
+      // HA 的 media_player.repeat 取值是 off / all / one，模板里判完再发布尔值
+      repeatOne: row.repeatOne === true || text(row.repeatOne)?.toLowerCase() === "true",
+      observedAt: observedAt(row.observedAt, receivedAt),
     },
     receivedAt,
   };

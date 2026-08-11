@@ -1,7 +1,7 @@
 import { config } from "./config.js";
 import type { ReportItem } from "./emby.js";
 
-/** 站点 /api/ingest/emby-reporter 的请求体。三部分各推各的，都可以省略 */
+/** 站点 /api/ingest/emby 的请求体。三部分各推各的，都可以省略 */
 export type PushPayload = {
   resume?: { items: ReportItem[] };
   /**
@@ -9,7 +9,11 @@ export type PushPayload = {
    * JSON.stringify 会把 undefined 的键整个丢掉，正好是我们要的语义。
    */
   playing?: PlayingReport | null;
-  images?: Array<{ key: string; objectKey: string }>;
+  /**
+   * imageKey 是 Emby 侧的键（itemId:kind:tag:height），objectKey 是这份字节
+   * 在 R2 上的内容地址。两个键挨在一起，名字得各自说清是谁的键。
+   */
+  images?: Array<{ imageKey: string; objectKey: string }>;
 };
 
 export type PlayingReport = {

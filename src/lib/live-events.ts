@@ -1,5 +1,5 @@
 import type { NowWatchingPayload } from "@/lib/emby";
-import type { ChargerPayload, DesktopPayload, MusicPayload } from "@/lib/types";
+import type { ChargerPayload, DesktopPayload, NowListeningPayload } from "@/lib/types";
 
 /**
  * 服务端 → 浏览器的实时事件总线。
@@ -19,7 +19,7 @@ import type { ChargerPayload, DesktopPayload, MusicPayload } from "@/lib/types";
  */
 export type LiveEvent =
   | { type: "desktop"; payload: DesktopPayload }
-  | { type: "music"; payload: MusicPayload }
+  | { type: "listening"; payload: NowListeningPayload }
   /**
    * 只在插拔、换设备这类结构性变化时发，不跟功率/电压/电流的滚动走 ——
    * 那些量充电时每个上报周期都在变，推它们等于把 SSE 当轮询用。

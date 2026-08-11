@@ -5,9 +5,9 @@ import type { ChargerPayload, ChargerPort, ChargerStatus } from "@/lib/types";
 /**
  * Anker Prime 160W (A2687) 遥测。
  *
- * 数据只有一条来路：那台机器把 a2687-telemetry 的 /status 原样 POST 到
- * /api/ingest/charger。本站不主动轮询 —— 遥测服务在对方机器上，
- * 只在 Tailscale 内可达，本来也拉不到。
+ * 数据只有一条来路：Mac 上报器读本机 a2687-telemetry 的 /status，作为
+ * `charger` 模块塞进 /api/ingest/mac 的信封。本站不主动轮询 —— 遥测服务在
+ * 对方机器上，只在 Tailscale 内可达，本来也拉不到。
  */
 
 const PORT_KEYS = ["C1", "C2", "C3"] as const;
