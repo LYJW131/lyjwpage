@@ -3,7 +3,7 @@ import { key, withRedis } from "@/lib/redis";
 /**
  * 通用 TTL 缓存 + in-flight 去重 + 负缓存。
  *
- * 三个状态源（Emby / Apple Music / Anker）都靠它挡住重复请求：
+ * 给还需要本站主动去拉的上游用（如今只剩 Apple Music，其余状态源都是推进来的）：
  * - 同一个 key 并发进来时只会真正打一次上游，其余人等同一个 Promise
  * - 上游报错时短暂缓存错误，避免上游挂掉后被前端轮询打爆
  *
@@ -54,26 +54,6 @@ export async function put<T>(k: string, value: T, ttlMs: number) {
     async (redis) => redis.set(key("cache", k), JSON.stringify(value), "PX", ttl),
     null,
   );
-}
-
-/** 让某个前缀下的缓存立即失效。用于「事件到了，下次请求必须重新取」 */
-export async function invalidate(prefix: string) {
-  for (const k of memory.keys()) {
-    if (k.startsWith(prefix)) memory.delete(k);
-  }
-  await withRedis(async (redis) => {
-    // 键数量很少（个位数），scan 一遍即可，不用担心阻塞
-    const pattern = key("cache", `${prefix}*`);
-    const keys: string[] = [];
-    let cursor = "0";
-    do {
-      const [next, batch] = await redis.scan(cursor, "MATCH", pattern, "COUNT", 100);
-      cursor = next;
-      keys.push(...batch);
-    } while (cursor !== "0");
-    if (keys.length) await redis.del(...keys);
-    return null;
-  }, null);
 }
 
 export async function cached<T>(

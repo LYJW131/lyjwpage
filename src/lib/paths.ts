@@ -18,7 +18,7 @@ export const CHARGER_PATH = "/api/status/charger";
 export const VIBECODING_PATH = "/api/status/vibecoding";
 
 /**
- * 正在看和列表分开：前者 webhook 驱动、快，后者后端定时轮询 Emby、慢。
+ * 正在看和列表分开：前者跟着播放事件走、快，后者 60 秒才推一次、慢。
  * 合在一个端点时慢的那半只能跟着快的那半一起被重取。
  */
 export const WATCHING_PATH = "/api/status/watching";
