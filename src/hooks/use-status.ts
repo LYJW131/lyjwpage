@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
-import useSWR from "swr";
+import useSWR, { useSWRConfig } from "swr";
 
 import type { StatusResponse } from "@/lib/types";
 
@@ -113,4 +113,31 @@ export function useStatus<T>(
     error: data && !data.ok ? data.error : error ? String(error.message ?? error) : undefined,
     isLoading,
   };
+}
+
+/**
+ * payload 自己说了「多久之后就不成立」时，把一次重取排在那一刻。
+ *
+ * 有些结论会光靠时间流逝失效 —— 当前只有播放来源的暂停宽限期（见
+ * getNowListening 的 expiresInMs）。那个到期时刻不对应任何一次上报，
+ * 服务端不会为它推送，也不该为它挂定时器：serverless 上响应一返回实例就冻结，
+ * 挂了也不执行。
+ *
+ * 为什么不复用 useStatus 的 refreshInterval（它本来就能按数据动态给间隔）：
+ * SWR 只在**真的取过一次数**之后才重算那个间隔，而推送走的是
+ * `mutate(path, envelope, { revalidate: false })` —— 直接写缓存、不发请求，
+ * 于是间隔根本不会被重算。偏偏「暂停」这件事几乎总是推来的，正好落在那条
+ * 够不着的路径上。所以这里单独排一个一次性定时器，推来的还是轮询来的都管用。
+ */
+export function useExpiryRefetch(path: string, expiresInMs: number | null | undefined) {
+  const { mutate } = useSWRConfig();
+  useEffect(() => {
+    if (expiresInMs == null) return;
+    const timer = setTimeout(
+      () => void mutate(path),
+      // 多等 250ms：到期时刻在服务端是绝对的，早问一下只会拿回同一份还没过期的
+      Math.max(250, expiresInMs + 250),
+    );
+    return () => clearTimeout(timer);
+  }, [path, expiresInMs, mutate]);
 }
