@@ -1,4 +1,16 @@
+import { createHash } from "node:crypto";
+
+import { HeadObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import sharp from "sharp";
+
+/**
+ * 所有推进来的图片经这里压缩、按内容哈希写入 R2，状态里只存最终的公开 URL。
+ *
+ * 站点自己没有读路径：浏览器直连 R2 的公开域名取图，字节不经过任何路由。
+ * 从前的三层缓存（进程内 LRU / Redis 二进制 / 本地磁盘）为的都是「站点要把
+ * 字节吐给浏览器」，读路径没了它们就整个没了存在理由 —— Redis 里也不再放
+ * 任何图片二进制，那是无服务器部署下最贵的存量。
+ */
 
 /**
  * WebP 默认质量。
@@ -9,114 +21,69 @@ import sharp from "sharp";
  */
 const DEFAULT_WEBP_QUALITY = 82;
 
-import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+const MAX_ENTRY_BYTES = 5 * 1024 * 1024;
 
-import { key as redisKey, withRedis } from "@/lib/redis";
+function trimSlash(url: string) {
+  return url.replace(/\/+$/, "");
+}
 
 /**
- * 所有由本站提供的图片都从这里进出。
+ * 存下来的图片的 URL 前缀。
  *
- * - L1 是有字节上限的进程内 LRU，挡住绝大多数二进制 Redis 往返。
- * - L2 是 Redis，供重启和多实例共享。
- * - 遥测上传的原图无法回源，因此额外写入唯一的本地持久目录；Emby 图可以
- *   随时回源，不重复落盘。
+ * 导出是给「丢弃旧格式 URL」用的（见 telemetry 的 keepFreshAsset）：这些 URL
+ * 会随遥测状态持久化，前缀一旦改过，存量的那些就永远指向不存在的地方，靠
+ * startsWith 这一道校验在恢复时把它们清掉、等下一次推送重新补上。
+ *
+ * 没配 R2 时给一个不可能被任何真实 URL 匹配到的占位前缀，而不是空串 ——
+ * 空串会让 startsWith 放行一切，校验形同虚设。
  */
+export const ASSET_URL_PREFIX = `${trimSlash(
+  process.env.R2_PUBLIC_BASE_URL ?? "https://r2-not-configured.invalid",
+)}/`;
 
-const MAX_ENTRIES = 64;
-const MAX_ENTRY_BYTES = 5 * 1024 * 1024;
-const MAX_TOTAL_BYTES = 32 * 1024 * 1024;
-const CACHE_TTL_MS = 10 * 60 * 1000;
-const STORED_IMAGE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-const STORED_IMAGE_ID = /^[a-f0-9]{24}$/;
+let client: S3Client | null = null;
+let warned = false;
 
-const IMAGE_STORE_DIR =
-  process.env.IMAGE_STORE_DIR ?? join(tmpdir(), "lyjwpage-images-v1");
+/** R2 没配就整条链路安静降级：图片存不了，但状态本身照常流转 */
+function getR2(): { s3: S3Client; bucket: string } | null {
+  const endpoint = process.env.R2_ENDPOINT;
+  const bucket = process.env.R2_BUCKET;
+  const accessKeyId = process.env.R2_ACCESS_KEY_ID;
+  const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
+  if (!endpoint || !bucket || !accessKeyId || !secretAccessKey || !process.env.R2_PUBLIC_BASE_URL) {
+    if (!warned) {
+      warned = true;
+      console.error("[image] R2 环境变量不全，图片存储已停用");
+    }
+    return null;
+  }
+  client ??= new S3Client({
+    region: "auto",
+    endpoint,
+    credentials: { accessKeyId, secretAccessKey },
+  });
+  return { s3: client, bucket };
+}
 
-export type ImageEntry = {
+/**
+ * 本进程已确认存在于 R2 的对象。
+ *
+ * 内容寻址的对象不可变，「存在」这个事实一旦成立就永远成立，所以可以放心地
+ * 在进程内记住，把同一张图反复推送时的 HEAD 往返省掉。进程重启丢了也无妨，
+ * 代价只是每张图多一次 HEAD。
+ */
+const uploaded = new Set<string>();
+
+type ImageEntry = {
   body: Buffer;
   contentType: string;
-  etag: string | null;
 };
 
-type StoredEntry = ImageEntry & { expiresAt: number };
-
-const memory = new Map<string, StoredEntry>();
-const inflight = new Map<string, Promise<ImageEntry | null>>();
-let totalBytes = 0;
-
-function drop(key: string) {
-  const entry = memory.get(key);
-  if (!entry) return;
-  totalBytes -= entry.body.byteLength;
-  memory.delete(key);
-}
-
-function evict() {
-  while (memory.size > MAX_ENTRIES || totalBytes > MAX_TOTAL_BYTES) {
-    const oldest = memory.keys().next();
-    if (oldest.done) break;
-    drop(oldest.value);
-  }
-}
-
-function remember(key: string, entry: ImageEntry, ttlMs: number) {
-  if (entry.body.byteLength > MAX_ENTRY_BYTES) return;
-  drop(key);
-  memory.set(key, { ...entry, expiresAt: Date.now() + ttlMs });
-  totalBytes += entry.body.byteLength;
-  evict();
-}
-
-function memoryGet(key: string) {
-  const entry = memory.get(key);
-  if (!entry) return null;
-  if (entry.expiresAt <= Date.now()) {
-    drop(key);
-    return null;
-  }
-
-  memory.delete(key);
-  memory.set(key, entry);
-  return entry;
-}
-
-async function readRedis(key: string): Promise<ImageEntry | null> {
-  return withRedis(async (redis) => {
-    const [body, meta] = await Promise.all([
-      redis.getBuffer(redisKey("image", key)),
-      redis.get(redisKey("image", key, "meta")),
-    ]);
-    if (!body || !meta) return null;
-    const parsed = JSON.parse(meta) as { contentType: string; etag: string | null };
-    if (typeof parsed.contentType !== "string") return null;
-    return { body, contentType: parsed.contentType, etag: parsed.etag ?? null };
-  }, null);
-}
-
-async function writeRedis(key: string, entry: ImageEntry, ttlMs: number) {
-  await withRedis(async (redis) => {
-    const pipe = redis.pipeline();
-    pipe.set(redisKey("image", key), entry.body, "PX", ttlMs);
-    pipe.set(
-      redisKey("image", key, "meta"),
-      JSON.stringify({ contentType: entry.contentType, etag: entry.etag }),
-      "PX",
-      ttlMs,
-    );
-    await pipe.exec();
-    return null;
-  }, null);
-}
-
 /**
- * 存进缓存前把图压小。
+ * 存进 R2 前把图压小。
  *
- * 用户上传的自定义封面动辄 1179×1179 / 270KB，而页面上最大的展示窗口也就
- * 80px。压在入口做而不是出口：缓存里存的直接就是小图，之后每次命中都省，
- * 地址也还是我们自己的 /api/image/...，不引入第二层缓存和第二套地址。
+ * 上传的自定义封面动辄 1179×1179 / 270KB，而页面上最大的展示窗口也就 80px。
+ * 压在入口做：R2 里存的直接就是小图，浏览器每次取图都省。
  *
  * maxDimension 按用途给 —— 歌单封面和 Emby 海报的展示尺寸差好几倍，
  * 一刀切要么糊要么白存。
@@ -142,65 +109,14 @@ async function compress(
 
     // 极少数情况下重编码反而更大（本来就是高压缩的小图），那就留原样
     if (body.byteLength >= entry.body.byteLength) return entry;
-    return { body, contentType: "image/webp", etag: entry.etag };
+    return { body, contentType: "image/webp" };
   } catch (error) {
     console.error(
-      "[image] 压缩失败，按原样缓存：",
+      "[image] 压缩失败，按原样存储：",
       error instanceof Error ? error.message : String(error),
     );
     return entry;
   }
-}
-
-async function loadImage(
-  key: string,
-  ttlMs: number,
-  loader: () => Promise<ImageEntry | null>,
-  maxDimension?: number,
-  quality = DEFAULT_WEBP_QUALITY,
-): Promise<ImageEntry | null> {
-  const memoryHit = memoryGet(key);
-  if (memoryHit) return memoryHit;
-
-  const running = inflight.get(key);
-  if (running) return running;
-
-  const promise = (async () => {
-    try {
-      const redisHit = await readRedis(key);
-      if (redisHit) {
-        remember(key, redisHit, ttlMs);
-        return redisHit;
-      }
-
-      const raw = await loader();
-      const entry = raw && maxDimension ? await compress(raw, maxDimension, quality) : raw;
-      if (entry) {
-        remember(key, entry, ttlMs);
-        if (entry.body.byteLength <= MAX_ENTRY_BYTES) {
-          await writeRedis(key, entry, ttlMs);
-        }
-      }
-      return entry;
-    } finally {
-      inflight.delete(key);
-    }
-  })();
-
-  inflight.set(key, promise);
-  return promise;
-}
-
-/** 同一个 key 并发回源时只执行一次 loader。 */
-export function getCachedImage(
-  key: string,
-  loader: () => Promise<ImageEntry | null>,
-  /** 最长边压到这个像素；省略则原样缓存 */
-  maxDimension?: number,
-  /** WebP 质量。默认那档是按小图（歌单封面）定的，展示尺寸大的要往上调 */
-  quality = DEFAULT_WEBP_QUALITY,
-) {
-  return loadImage(`cache:${key}`, CACHE_TTL_MS, loader, maxDimension, quality);
 }
 
 function detectedContentType(body: Buffer) {
@@ -224,24 +140,14 @@ function detectedContentType(body: Buffer) {
   return null;
 }
 
-async function persistStoredImage(id: string, body: Buffer) {
-  await mkdir(IMAGE_STORE_DIR, { recursive: true });
-  const destination = join(IMAGE_STORE_DIR, id);
-  const temporary = join(IMAGE_STORE_DIR, `.${id}.${process.pid}.${randomUUID()}.tmp`);
-  await writeFile(temporary, body);
-  await rename(temporary, destination);
-}
-
 /**
- * 保存遥测上传的 base64 图片，返回内容寻址的统一图片 URL。
- * 同样的图片只会得到同一个 id，状态心跳无需重复携带二进制。
- */
-/**
- * 按内容哈希存一张图，返回稳定地址。
+ * 按内容哈希存一张图，返回稳定的公开地址。
  *
  * 地址取自压缩**之后**的字节，所以它就是内容指纹：图变了地址跟着变，
- * `Cache-Control: immutable` 才站得住 —— 用歌单 id 之类的稳定标识做地址的话，
- * 换了封面地址不变，浏览器会一直拿着旧的那张。
+ * 对象配 `Cache-Control: immutable` 才站得住 —— 用歌单 id 之类的稳定标识做
+ * 地址的话，换了封面地址不变，浏览器会一直拿着旧的那张。
+ *
+ * 同 id 的对象内容必然相同，已存在就跳过上传（先查进程内记录，再 HEAD）。
  */
 export async function storeImageBuffer(
   input: Buffer,
@@ -249,21 +155,40 @@ export async function storeImageBuffer(
   maxDimension?: number,
   quality: number = DEFAULT_WEBP_QUALITY,
 ): Promise<string | null> {
+  const r2 = getR2();
   const detected = detectedContentType(input);
-  if (!input.length || input.length > MAX_ENTRY_BYTES || !detected) return null;
+  if (!r2 || !input.length || input.length > MAX_ENTRY_BYTES || !detected) return null;
 
   const entry = maxDimension
-    ? await compress({ body: input, contentType: detected, etag: null }, maxDimension, quality)
-    : { body: input, contentType: detected, etag: null };
+    ? await compress({ body: input, contentType: detected }, maxDimension, quality)
+    : { body: input, contentType: detected };
 
   const id = createHash("sha256").update(entry.body).digest("hex").slice(0, 24);
-  const key = `stored:${id}`;
-  const stored = { ...entry, etag: `"${id}"` };
+  const url = `${ASSET_URL_PREFIX}${id}`;
+  if (uploaded.has(id)) return url;
 
-  await persistStoredImage(id, stored.body);
-  remember(key, stored, STORED_IMAGE_TTL_MS);
-  await writeRedis(key, stored, STORED_IMAGE_TTL_MS);
-  return `${ASSET_URL_PREFIX}${id}`;
+  try {
+    try {
+      await r2.s3.send(new HeadObjectCommand({ Bucket: r2.bucket, Key: id }));
+    } catch {
+      await r2.s3.send(
+        new PutObjectCommand({
+          Bucket: r2.bucket,
+          Key: id,
+          Body: entry.body,
+          ContentType: entry.contentType,
+          // 内容寻址 = 不可变，让浏览器和 CDN 边缘放心缓存一年
+          CacheControl: "public, max-age=31536000, immutable",
+        }),
+      );
+    }
+    uploaded.add(id);
+    return url;
+  } catch (error) {
+    // R2 抖一下不该让整条上报链路失败；这张图等下一次推送再试
+    console.error("[image] R2 写入失败：", error instanceof Error ? error.message : String(error));
+    return null;
+  }
 }
 
 export async function storeUploadedImage(
@@ -279,34 +204,4 @@ export async function storeUploadedImage(
     return null;
   }
   return storeImageBuffer(Buffer.from(value, "base64"), maxDimension, quality);
-}
-
-/**
- * 存下来的图片的 URL 前缀。
- *
- * 导出是给「丢弃旧格式 URL」用的：这些 URL 会随遥测状态持久化，前缀一旦改过，
- * 存量的那些就永远指向一个已经不存在的路由。别把这个字面量抄到第二处。
- */
-export const ASSET_URL_PREFIX = "/api/image/asset/";
-
-async function readStoredFile(id: string) {
-  let body: Buffer;
-  try {
-    body = await readFile(join(IMAGE_STORE_DIR, id));
-  } catch {
-    return null;
-  }
-
-  const contentType = detectedContentType(body);
-  if (!contentType || body.byteLength > MAX_ENTRY_BYTES) return null;
-  return { body, contentType, etag: `"${id}"` };
-}
-
-export function getStoredImage(id: string) {
-  if (!STORED_IMAGE_ID.test(id)) return Promise.resolve(null);
-  return loadImage(`stored:${id}`, STORED_IMAGE_TTL_MS, () => readStoredFile(id));
-}
-
-export function imageStoreStats() {
-  return { entries: memory.size, totalBytes, maxEntries: MAX_ENTRIES };
 }
