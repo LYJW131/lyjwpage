@@ -9,7 +9,7 @@
 | 框架 | Next.js 16 App Router（Turbopack）                            |
 | UI   | React 19 · Tailwind CSS v4（CSS-first，无 `tailwind.config`） |
 | 动画 | `motion` · `@number-flow/react`（实时数字滚动）               |
-| 数据 | Route Handlers 代理 + SWR 轮询                                |
+| 数据 | Route Handlers 代理 + SWR 轮询 + Pusher 协议推送              |
 | 字体 | Geist Sans / Geist Mono（本地字体包，构建不依赖网络）         |
 
 ## 跑起来
@@ -37,6 +37,27 @@ pnpm dev
 除 Apple Music 外，各路数据都是**推进来**的，本站不主动轮询任何上游。推送入口共用 `/api/ingest/*` 和同一个 `TELEMETRY_INGEST_SECRET`，状态落在 `lib/redis.ts` 的 mirrorKey 里（Redis 为主、进程内存为辅，没配 `REDIS_URL` 也能跑）。
 
 还需要本站去拉的那一路（Apple Music）走 `src/lib/cache.ts`：带 TTL、in-flight 去重和 5 秒负缓存。**核心原则：前端轮询多快，回源频率都不变**，由各自的 TTL 决定。值存 Redis（进程重启和多实例共享）；in-flight 去重始终在进程内，它挡的是同一进程的并发穿透，Redis 代劳不了。
+
+### 推给浏览器 — Pusher 协议
+
+状态落库之后，`lib/live-events.ts` 往实时服务发一次 HTTP；浏览器直连那个服务收推送（`hooks/use-live-events.ts` 把收到的写进 SWR 缓存，卡片照旧用 `useStatus` 读，不用管数据是推来的还是轮询来的）。**本站不持有任何长连接** —— 从前这里是一条自建的 SSE，但在 serverless 上每条 SSE 连接都钉死一个函数调用、到 maxDuration 被掐断再重连，全程计费。
+
+连哪边只是环境变量的区别，代码只有一份：
+
+|                              | 自部署               | 云 Pusher      |
+| ---------------------------- | -------------------- | -------------- |
+| `NEXT_PUBLIC_PUSHER_URL`     | Sockudo 的 ws 地址   | 不设           |
+| `NEXT_PUBLIC_PUSHER_CLUSTER` | 不设                 | 控制台给的     |
+
+自部署用 [Sockudo](https://github.com/sockudo/sockudo)（Rust 写的 Pusher 协议实现，soketi 那个老牌选择已基本停止维护）：
+
+```bash
+docker run -d --name sockudo --restart unless-stopped -p 127.0.0.1:6001:6001 ghcr.io/sockudo/sockudo:4.7.0
+```
+
+镜像自带 `app-id` / `app-key` / `app-secret` 这个默认 app，本地开发拿来就用。要给公网访客用的话它得自己暴露公网 + 有效 TLS（https 页面只肯连 wss），那样长连接又落回自己的服务器 —— 所以合理的组合是「自己服务器部署 → Sockudo，Vercel → 云 Pusher」，不交叉混搭。
+
+推送上只跑「状态翻面」：换前台应用、换曲子、插拔充电头、上报器上下线。滚动读数（功率曲线、token 用量）仍由卡片自己 30 秒一轮地取 —— 推它们等于把推送当轮询用。丢一条也不至于卡住页面，轮询是兜底。
 
 ### 最近在看 — Emby
 

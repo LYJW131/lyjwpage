@@ -79,7 +79,7 @@ export function ingestFailed(message: string, status: number): NextResponse<Inge
 /**
  * 把一次上报的落库过程包成统一响应。
  *
- * 成功一律 202：数据已收下，但后续的扇出（SSE 推送、缓存失效）是异步的，
+ * 成功一律 202：数据已收下，但后续的扇出（实时推送、缓存失效）是异步的，
  * 200 会给人「全部生效」的错觉。handler 里抛出来的按 400 处理 —— 到这一步
  * 还失败的都是 payload 本身的问题，上报器重发同一份也不会变好。
  */

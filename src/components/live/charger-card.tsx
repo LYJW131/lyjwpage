@@ -5,7 +5,7 @@ import NumberFlow from "@number-flow/react";
 import { Sparkline } from "@/components/live/sparkline";
 import { Card } from "@/components/ui/card";
 import { StatusDot, type DotTone } from "@/components/ui/status-dot";
-import { useLiveStream } from "@/hooks/use-live-stream";
+import { useLiveEvents } from "@/hooks/use-live-events";
 import { incrementalFetcher, useStatus } from "@/hooks/use-status";
 import { historyCursor, mergeChargerHistory } from "@/lib/charger-history";
 import { CHARGER_PATH } from "@/lib/paths";
@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
  *
  * 采集端是 1 Hz，但上报按上报器的节流窗口走（那边可配，代码默认 10 秒、本机
  * 配的是 30 秒），原来 15 秒一轮里大约有一半拿到的是完全相同的数据。插拔和
- * 上下线已经走 SSE 即时推送，不靠这条，所以这里只需要接住滚动读数。
+ * 上下线已经走实时推送，不靠这条，所以这里只需要接住滚动读数。
  */
 const REFRESH_MS = 30_000;
 
@@ -44,7 +44,7 @@ export function ChargerCard({ className }: { className?: string }) {
    * 这里刻意不看 connected：和 desktop / music 不同，这张卡的轮询本来就不是
    * 推送的兜底，它自己就是数据来源，断不断连都得按同一个节奏问。
    */
-  useLiveStream();
+  useLiveEvents();
   const { data, error, isLoading } = useStatus<ChargerPayload>(
     CHARGER_PATH,
     REFRESH_MS,

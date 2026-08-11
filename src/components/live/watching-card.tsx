@@ -5,7 +5,7 @@ import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 
 import { StatusDot } from "@/components/ui/status-dot";
-import { useLiveStream } from "@/hooks/use-live-stream";
+import { useLiveEvents } from "@/hooks/use-live-events";
 import { useStatus } from "@/hooks/use-status";
 import { NOW_WATCHING_PATH, WATCHING_PATH } from "@/lib/paths";
 import { stableKeys } from "@/lib/keys";
@@ -188,7 +188,7 @@ function Skeleton() {
 }
 
 export function WatchingRow() {
-  useLiveStream();
+  useLiveEvents();
   /**
    * 两个来源分开取，因为节奏差得远：列表是后端定时轮询 Emby 拿的，慢；
    * 正在播放由 webhook 推，快。合在一个端点时，慢的那半只能跟着快的那半
