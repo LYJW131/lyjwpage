@@ -79,7 +79,7 @@ export function ChargerCard({ className }: { className?: string }) {
         className,
       )}
     >
-      <div className="flex flex-1 flex-col justify-between px-4 pb-4 pt-2">
+      <div className="flex min-h-0 flex-1 flex-col justify-between px-4 pb-4 pt-2">
         {/*
           行高写死：NumberFlow 这个 web component 自带 1.5 行高（72px），
           而占位文本是普通 span（48px）—— 不固定的话断开时整行塌 24px，
@@ -121,13 +121,14 @@ export function ChargerCard({ className }: { className?: string }) {
                   : "充电器未连接"}
         </p>
 
-        {/* 功率曲线：服务端累积的历史。两条坐标轴都固定，不随数据缩放，
-            否则每来一个点整条曲线都会挪位 —— 细节见 sparkline.tsx */}
-        <div className="mt-3 flex max-h-32 min-h-8 flex-1 items-end">
+        {/* 功率曲线：高度写死 h-32。以前用 flex-1 + min-h-8，没数据时只占
+            32px、有历史后又撑到 128px，整张卡（连带旁边听歌那张）跟着跳。
+            两条坐标轴都固定，不随数据缩放 —— 细节见 sparkline.tsx */}
+        <div className="mt-3 h-32 shrink-0">
           <Sparkline
             samples={history}
             formatValue={(watts) => `${watts.toFixed(1)}W`}
-            className="h-full min-h-8 w-full"
+            className="h-full w-full"
           />
         </div>
 
