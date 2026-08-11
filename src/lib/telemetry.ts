@@ -5,7 +5,7 @@ import { recordPushHeartbeat, recordStatus } from "@/lib/charger-store";
 import { resolveTrackLookup } from "@/lib/apple-music";
 import { putAppleMusicCredentials } from "@/lib/apple-music-credentials";
 import { getHomePodNowPlaying } from "@/lib/homepod-store";
-import { ASSET_URL_PREFIX, hasStoredImage } from "@/lib/r2-assets";
+import { ASSET_URL_PREFIX, hasStoredImage, IMAGE_OBJECT_KEY } from "@/lib/r2-assets";
 import { number, object, text } from "@/lib/json";
 import { publish } from "@/lib/live-events";
 import { mirrorKey } from "@/lib/redis";
@@ -189,25 +189,36 @@ async function normalizeDesktop(
   if (iconHash != null && !/^[a-f0-9]{64}$/.test(iconHash)) {
     throw new Error("desktop.iconHash 必须是 SHA-256 十六进制字符串");
   }
+  /**
+   * 两个哈希各司其职，不是同一个东西，别再把它们对等起来。
+   *
+   * - `iconHash` 是**这个应用的图标**的身份：应用有图标它就非空，哪怕编码失败、
+   *   还没传上去。站点靠它当 desktopIconAssets 的键。
+   * - `iconObjectKey` 是**已经躺在 R2 里的那份字节**的内容地址，直传成功才有。
+   *
+   * 从前两者都取自压缩后的字节，于是「这个应用没有图标」和「图标没准备好」
+   * 都表现为 iconHash 为空 —— 下面的 iconAvailable 把后者也当成了「一切正常」，
+   * 上报器再也收不到补传信号。实测因此静默丢了整整一批图标。
+   */
   const iconObjectKey = text(row.iconObjectKey);
-  const directIconHash = iconObjectKey?.match(/^([a-f0-9]{64})\.webp$/)?.[1] ?? null;
-  if (iconObjectKey != null && directIconHash == null) {
-    throw new Error("desktop.iconObjectKey 必须是 <sha256>.webp");
+  if (iconObjectKey != null && !IMAGE_OBJECT_KEY.test(iconObjectKey)) {
+    throw new Error("desktop.iconObjectKey 必须是 <sha256>.png 或 <sha256>.webp");
   }
-  if (directIconHash != null && iconHash !== directIconHash) {
-    throw new Error("desktop.iconObjectKey 的哈希必须和 iconHash 一致");
+  if (iconObjectKey != null && iconHash == null) {
+    throw new Error("desktop.iconObjectKey 必须和 iconHash 一起上报");
   }
 
   if (row.iconData != null) throw new Error("desktop.iconData 已停用，请由上报器直传 R2");
 
-  // Mac 上报器一次性生成小尺寸 WebP 并直传 R2，只把内容哈希发回来。
+  // 上报器一次性编好小图并直传 R2，只把对象键发回来。
   // URL 由服务端的 R2_PUBLIC_BASE_URL 组出，避免客户端自己伪造任意展示地址。
-  if (
-    iconObjectKey &&
-    process.env.R2_PUBLIC_BASE_URL &&
-    await hasStoredImage(iconObjectKey)
-  ) {
-    rememberDesktopIcon(iconHash ?? iconObjectKey, `${ASSET_URL_PREFIX}${iconObjectKey}`);
+  if (iconObjectKey && iconHash && process.env.R2_PUBLIC_BASE_URL) {
+    if (await hasStoredImage(iconObjectKey)) {
+      rememberDesktopIcon(iconHash, `${ASSET_URL_PREFIX}${iconObjectKey}`);
+    } else {
+      // 对象不在了（比如桶被清空）：忘掉旧地址，否则下面会拿着它继续发 404
+      telemetryState.desktopIconAssets.delete(iconHash);
+    }
   }
 
   const iconUrl = iconHash ? (telemetryState.desktopIconAssets.get(iconHash) ?? null) : null;

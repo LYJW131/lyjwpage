@@ -11,7 +11,7 @@ import {
   type ResolvedNowPlaying,
   type StoredWatchingItem,
 } from "@/lib/emby-store";
-import { ASSET_URL_PREFIX, hasStoredImage } from "@/lib/r2-assets";
+import { ASSET_URL_PREFIX, hasStoredImage, IMAGE_OBJECT_KEY } from "@/lib/r2-assets";
 import { number, object, text } from "@/lib/json";
 import { publish } from "@/lib/live-events";
 import type { WatchingItem } from "@/lib/types";
@@ -30,9 +30,6 @@ import type { WatchingItem } from "@/lib/types";
 
 /** 图片键由代理拼（itemId:kind:tag:height），这里只挡住不像键的东西 */
 const IMAGE_KEY = /^[A-Za-z0-9:_.-]{1,160}$/;
-/** 最终对象由上报器一次性编码，必须带可缓存的真实扩展名。 */
-const IMAGE_OBJECT_KEY = /^[a-f0-9]{64}\.webp$/;
-
 /**
  * 「最近在看」和「正在播放」拆成两份，因为它们的刷新节奏根本不同：
  * 前者一天可能只变几次，后者跟着播放走。
