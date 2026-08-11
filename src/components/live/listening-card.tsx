@@ -31,7 +31,7 @@ import type {
   LocalNowPlaying,
   MusicPayload,
 } from "@/lib/types";
-import { appleArtwork, ARTWORK_SCALE } from "@/lib/apple-artwork";
+import { appleArtwork, ARTWORK_SCALE, needsOptimizing } from "@/lib/apple-artwork";
 import { cn } from "@/lib/utils";
 
 /** 与服务端 30s 列表缓存对齐 */
@@ -271,7 +271,7 @@ function TrackRow({ track }: { track: ListeningItem }) {
             fill
             sizes="36px"
             className="object-cover"
-            unoptimized
+            unoptimized={!needsOptimizing(track.artwork)}
           />
         )}
       </div>
@@ -566,7 +566,7 @@ export function ListeningCard({ className }: { className?: string }) {
                     fill
                     sizes="80px"
                     className="object-cover transition-transform duration-500 group-hover:scale-[1.04]"
-                    unoptimized
+                    unoptimized={!needsOptimizing(hero.artwork)}
                   />
                 ) : null}
               </div>

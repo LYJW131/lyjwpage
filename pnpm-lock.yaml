@@ -83,6 +83,10 @@ importers:
         version: 5.9.3
 
   reporters/emby-reporter:
+    dependencies:
+      sharp:
+        specifier: ^0.35.3
+        version: 0.35.3(@types/node@20.19.43)
     devDependencies:
       '@types/node':
         specifier: ^20

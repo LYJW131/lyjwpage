@@ -9,7 +9,7 @@ export type PushPayload = {
    * JSON.stringify 会把 undefined 的键整个丢掉，正好是我们要的语义。
    */
   playing?: PlayingReport | null;
-  images?: Array<{ key: string; data: string }>;
+  images?: Array<{ key: string; objectKey: string }>;
 };
 
 export type PlayingReport = {

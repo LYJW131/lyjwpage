@@ -37,6 +37,13 @@ export const config = {
     secret: process.env.TELEMETRY_INGEST_SECRET?.trim() ?? "",
   },
 
+  r2: {
+    endpoint: trimSlash(required("R2_ENDPOINT")),
+    bucket: required("R2_BUCKET"),
+    accessKeyId: required("R2_ACCESS_KEY_ID"),
+    secretAccessKey: required("R2_SECRET_ACCESS_KEY"),
+  },
+
   /** Emby 的播放通知发到这个端口，见 webhook.ts */
   webhookPort: Math.max(1, Number(process.env.WEBHOOK_PORT) || 8787),
 
