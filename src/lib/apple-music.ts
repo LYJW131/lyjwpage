@@ -1,6 +1,5 @@
 import { readAppleMusicCredentials } from "@/lib/apple-music-credentials";
-import { cached, get as cacheGet, put as cachePut } from "@/lib/cache";
-import { storeImageBuffer } from "@/lib/image-store";
+import { cached } from "@/lib/cache";
 import type { ListeningItem, NowPlayingGuess } from "@/lib/types";
 
 /**
@@ -392,30 +391,8 @@ export async function resolveTrackLookup(track: {
   }
 }
 
-/** 封面地址本身会过期（预签名 24 小时），别缓存太久 */
-/**
- * 自建歌单封面的复查间隔。
- *
- * 从前是 30 分钟，短得没道理 —— 封面只有用户自己去改才会变，比曲目链接
- * （7 天）还稳定，却每半小时就要重查目录接口、重下原图、重压一遍，而存下来的
- * 图是按内容哈希存的，多半算出同一个哈希，等于白干一轮。
- *
- * 给一天：换封面最迟隔天生效，而刷新次数少 48 倍。要立刻生效就删掉 Redis 里
- * `cache:apple-music:cover:<id>` 和 `library-art:<id>` 两个键。
- */
-const LIBRARY_ARTWORK_TTL_MS = 24 * 60 * 60 * 1000;
-
-/**
- * 最后一次成功拿到的封面地址，单独存、活得比复查间隔久得多。
- *
- * 复查失败时用它兜底，而不是退回 catalog 那张 —— catalog 给自建歌单的是
- * Apple 按曲目自动拼的四宫格，和用户自选的封面视觉上完全两回事，一次瞬时
- * 失败就变脸太扎眼。图片本身按内容哈希存在本地，地址一直有效，兜底不会指空。
- */
-const COVER_LAST_GOOD_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-const COVER_TIMEOUT_MS = 10_000;
-/** 歌单封面最大显示 80px，留到 3 倍屏 */
-const COVER_MAX_DIMENSION = 240;
+/** 资料库返回的预签名地址有效 24 小时；只缓存一小时，避免交给浏览器过期 URL。 */
+const LIBRARY_ARTWORK_TTL_MS = 60 * 60 * 1000;
 /** 自建 / 分享歌单的 id 前缀，只有这类才需要去资料库找封面 */
 const USER_PLAYLIST_PREFIX = "pl.u-";
 
@@ -435,8 +412,8 @@ type CatalogPlaylistWithLibrary = {
  * 刻意按 id 单查而不是列 /v1/me/library/playlists ——那样等于把整个资料库的
  * 歌单和它们的预签名封面地址全拉回来缓存着，而实际只用得上最近播放里的一两个。
  *
- * 返回的是预签名 S3 地址（X-Amz-Expires=86400），没有 {w}/{h} 占位符，
- * 原样透传即可；但它会过期，所以不能直接交给浏览器。
+ * 返回的是预签名 S3 地址（X-Amz-Expires=86400），没有 {w}/{h} 占位符。
+ * 站点不再下载或转码图片，只短时缓存这个地址并直接交给浏览器。
  */
 async function libraryPlaylistArtworkUrl(id: string): Promise<string | null> {
   if (!id.startsWith(USER_PLAYLIST_PREFIX)) return null;
@@ -462,42 +439,8 @@ async function libraryPlaylistArtworkUrl(id: string): Promise<string | null> {
   }
 }
 
-/**
- * 取回自定义封面，压缩后按内容哈希存下来，返回稳定地址。
- *
- * 地址用内容指纹而不是歌单 id：图片路由发的是 immutable，用歌单 id 的话
- * 换了封面地址不变，浏览器会一直拿着旧的那张。指纹变了地址就变，缓存自然失效。
- *
- * 顺带解决了另一件事：哈希猜不出来，不像歌单 id 那样能被枚举，也就不需要
- * 再单独给图片端点加「只服务展示中的项」这类校验。
- */
 async function libraryPlaylistCover(id: string): Promise<string | null> {
-  if (!id.startsWith(USER_PLAYLIST_PREFIX)) return null;
-  const lastGoodKey = `apple-music:cover-last:${id}`;
-  const lastGood = () => cacheGet<string>(lastGoodKey).then((url) => url || null);
-
-  const source = await libraryPlaylistArtworkUrl(id);
-  if (!source) return lastGood();
-  try {
-    const url = await cached(`apple-music:cover:${id}`, LIBRARY_ARTWORK_TTL_MS, async () => {
-      const upstream = await fetch(source, {
-        cache: "no-store",
-        signal: AbortSignal.timeout(COVER_TIMEOUT_MS),
-      });
-      if (!upstream.ok) throw new Error(`封面下载失败 ${upstream.status}`);
-      const stored = await storeImageBuffer(
-        Buffer.from(await upstream.arrayBuffer()),
-        COVER_MAX_DIMENSION,
-      );
-      // 存空串而不是 null，让「取过但失败」也能被缓存住
-      return stored ?? "";
-    });
-    if (!url) return lastGood();
-    await cachePut(lastGoodKey, url, COVER_LAST_GOOD_TTL_MS);
-    return url;
-  } catch {
-    return lastGood();
-  }
+  return libraryPlaylistArtworkUrl(id);
 }
 
 /** limit 上限 10 —— 上游端点的硬限制 */

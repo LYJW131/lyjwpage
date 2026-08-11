@@ -11,7 +11,7 @@ import {
   type ResolvedNowPlaying,
   type StoredWatchingItem,
 } from "@/lib/emby-store";
-import { storeUploadedImage } from "@/lib/image-store";
+import { ASSET_URL_PREFIX, hasStoredImage } from "@/lib/r2-assets";
 import { number, object, text } from "@/lib/json";
 import { publish } from "@/lib/live-events";
 import type { WatchingItem } from "@/lib/types";
@@ -28,20 +28,10 @@ import type { WatchingItem } from "@/lib/types";
  * 于是这个文件只剩两件事：把推来的东西规范化存下，以及读出来拼成前端要的形状。
  */
 
-/**
- * 海报入库前压到的最长边。
- *
- * 代理按 maxHeight 取图，回来是 712×400 上下的 JPEG，而页面上最宽的展示位是
- * 237 CSS px —— 2 倍屏要 474。压到 480 一点余量都没有，窗口一宽就不够、实测
- * 肉眼可见地劣化，所以给到上游原始尺寸之上（storeUploadedImage 内部
- * withoutEnlargement，不会放大），省下来的全部来自 JPEG → WebP。
- */
-const POSTER_MAX_DIMENSION = 720;
-/** 展示尺寸比歌单封面大得多，默认那档 82 会吃掉细节 */
-const POSTER_WEBP_QUALITY = 88;
-
 /** 图片键由代理拼（itemId:kind:tag:height），这里只挡住不像键的东西 */
 const IMAGE_KEY = /^[A-Za-z0-9:_.-]{1,160}$/;
+/** 最终对象由上报器一次性编码，必须带可缓存的真实扩展名。 */
+const IMAGE_OBJECT_KEY = /^[a-f0-9]{64}\.webp$/;
 
 /**
  * 「最近在看」和「正在播放」拆成两份，因为它们的刷新节奏根本不同：
@@ -196,7 +186,7 @@ function normalize(item: ReportItem): StoredWatchingItem {
   };
 }
 
-/** 把这一批 base64 图片落地，返回更新后的键 → 地址映射 */
+/** 接收上报器已经写入 R2 的对象键；站点不再接触图片字节。 */
 async function storeImages(value: unknown): Promise<{ urls: Record<string, string>; stored: number }> {
   const urls = await getImageUrls();
   if (!Array.isArray(value) || !value.length) return { urls, stored: 0 };
@@ -207,8 +197,10 @@ async function storeImages(value: unknown): Promise<{ urls: Record<string, strin
     const key = imageKey(raw?.key);
     if (!key || !raw) continue;
 
-    const url = await storeUploadedImage(raw.data, POSTER_MAX_DIMENSION, POSTER_WEBP_QUALITY);
-    if (!url) continue;
+    const objectKey = text(raw.objectKey);
+    if (!objectKey || !IMAGE_OBJECT_KEY.test(objectKey)) continue;
+    if (!(await hasStoredImage(objectKey))) continue;
+    const url = `${ASSET_URL_PREFIX}${objectKey}`;
     // 重新插入，让它排到末尾：淘汰的总是最久没被推过的那些
     delete urls[key];
     urls[key] = url;
