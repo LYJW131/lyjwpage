@@ -32,35 +32,42 @@ pnpm dev
 
 ## 状态是怎么接的
 
-所有凭据只存在于服务端，浏览器只看得到 `/api/status/*` 返回的规范化数据。三个路由共用 `src/lib/api.ts` 的信封：上游挂掉时返回 `{ ok: false, error }` 而不是 5xx，让某一路数据源离线不至于把整页 SWR 打成错误态。
+所有凭据只存在于服务端，浏览器只看得到 `/api/status/*` 返回的规范化数据。这些路由共用 `src/lib/api.ts` 的信封：上游挂掉时返回 `{ ok: false, error }` 而不是 5xx，让某一路数据源离线不至于把整页 SWR 打成错误态。
 
-`src/lib/cache.ts` 是共用缓存，带 TTL、in-flight 去重和 5 秒负缓存。**核心原则：前端轮询多快，回源频率都不变**，由各自的 TTL 决定。值存 Redis（进程重启和多实例共享），没配 `REDIS_URL` 就整体退回进程内存；in-flight 去重始终在进程内，它挡的是同一进程的并发穿透，Redis 代劳不了。
+除 Apple Music 外，各路数据都是**推进来**的，本站不主动轮询任何上游。推送入口共用 `/api/ingest/*` 和同一个 `TELEMETRY_INGEST_SECRET`，状态落在 `lib/redis.ts` 的 mirrorKey 里（Redis 为主、进程内存为辅，没配 `REDIS_URL` 也能跑）。
+
+还需要本站去拉的那一路（Apple Music）走 `src/lib/cache.ts`：带 TTL、in-flight 去重和 5 秒负缓存。**核心原则：前端轮询多快，回源频率都不变**，由各自的 TTL 决定。值存 Redis（进程重启和多实例共享）；in-flight 去重始终在进程内，它挡的是同一进程的并发穿透，Redis 代劳不了。
 
 ### 最近在看 — Emby
 
-`GET {EMBY_URL}/emby/Users/{userId}/Items/Resume` 拿续播列表（缓存 60 秒）。
+**本站不向 Emby 发任何请求。** 站点将来要部署到 Vercel，那时它够不着局域网里的 Emby（`http://emby.local:8096`），所以续播列表、播放位置和海报全部由 NAS 上的推送代理送进来：
 
-**「播放中」不轮询，靠 Emby 的 webhook 推过来。** 在 Emby 后台「通知 → Webhooks」里指向 `/api/ingest/emby`，勾上播放相关事件即可。收到播放事件时顺便让续播列表缓存失效，列表顺序和进度立刻跟上。
+```text
+POST /api/ingest/emby-reporter
+Authorization: Bearer <TELEMETRY_INGEST_SECRET>
+```
 
-webhook 只在开始/暂停/继续/停止各来一条，中间没有消息。但事件里带着**当时的播放位置和总时长**，所以未暂停时按真实时间往前推算即可 —— 进度条不轮询也能走。这同时兼作兜底：推算位置超过总时长说明播完了而「停止」事件没收到（客户端崩了、网络断了），此时按已结束处理，不会一直挂着。
+代理的代码、配置和部署方式在 `reporters/emby-reporter/`。请求体的三部分都可省略、各推各的：`resume`（续播列表，60 秒一轮、有变化才推）、`playing`（播放位置，缺席表示这次不谈、显式 `null` 表示确认没人在看了）、`images`（海报的 base64，只带站点还没有的那些）。
 
-各版本的事件名写法不一致（`playback.start` / `PlaybackStart` / …），接收端统一压成小写去掉分隔符再按子串判断，不和具体写法绑死；`unpause` 里也含 `pause`，必须先判 `unpause`。
+**Emby 的播放通知也先发给代理，再由它转发过来。** Emby 后台那个 webhook 配置项加不了自定义请求头，直发站点就只能开一个不鉴权的入口 —— 从前的 `/api/ingest/emby` 就是那样，现在整个删掉了，站点只剩 `TELEMETRY_INGEST_SECRET` 一种鉴权方式。Emby 侧该怎么填见代理的 README。
 
-剧集自身的 `Primary` 图是剧照而不是海报，所以竖版海报优先取所属剧的 `SeriesPrimaryImageTag`。
+推送只在开始/暂停/继续/停止、以及代理发现**拖了进度条**时才来，中间没有消息。但每条都带着当时的播放位置和总时长，所以未暂停时按真实时间往前推算即可 —— 进度条不轮询也能走。这同时兼作兜底：推算位置超过总时长说明播完了而「停止」没收到（客户端崩了、网络断了），此时按已结束处理，不会一直挂着。
 
-#### 图片代理
+Emby 对拖动进度条不发任何通知，那部分只能查会话。查的人是代理不是站点：它在播时每 2 秒问一次 `/Sessions`，但只在位置偏离站点的推算值超过 1.5 秒时才推 —— 站点算得准的时候推它等于白花一次函数调用。
 
-前端拿到的不是 Emby 直链，而是本站的 `/api/image/emby/<token>`。这样源站不外泄，页面套上 CDN 后图片能跟着一起被缓存（Emby 自己没套 CDN）。
+状态存在 Redis（`lib/emby-store.ts` 的 mirrorKey，Redis 为主、进程内存为辅），不再有任何拉取缓存。前端契约没变，`/api/status/watching` 和 `/api/status/watching/now` 仍是分开的两条：前者跟着 60 秒的推送走，后者跟着播放事件走，合在一起的话慢的那半只能跟着快的那半一起被重取。
 
-- **token 是加密的，不是签名的**。参数若明文放在 URL 里（`?id=…&kind=…&tag=…`），任何人都能照着拼出 Emby 直链，代理就白做了 —— 签名只挡得住枚举，挡不住照抄。所以把 `id|kind|tag|height` 用 AES-256-GCM 整体加密成一个不透明 token。GCM 的 auth tag 同时承担完整性校验，不需要另附签名，改一个字节就解不开。密钥由 `IMAGE_PROXY_SECRET`（没配则 `EMBY_API_KEY`）派生，加密和派生 IV 用两把不同的子密钥。
-- **必须是确定性加密**：IV 由明文 HMAC 推导而不是随机生成。随机 IV 会让同一张图每次渲染得到不同 URL，CDN 和浏览器缓存全部失效 —— 而缓存正是做这个代理的目的。GCM 的 nonce 复用之所以危险是「同一 nonce 加密不同明文」，这里 nonce 由明文推导，构造上排除了这种情况。
-- **不设过期**：token 里带着 Emby 的 image tag，图片换了 tag 就换，所以这个地址天然不可变，可以 `max-age=31536000, immutable`。加过期时间反而会打断 CDN 缓存。
-- **统一图片存储**（`lib/image-store.ts`）：Emby 回源图和遥测上传图统一走 `/api/image/<source>/<key>`，共用进程内 LRU、Redis、ETag 和 in-flight 去重。Emby 图缓存 10 分钟后可以重新回源；遥测原图无法回源，额外持久化到 `IMAGE_STORE_DIR`（默认是系统临时目录下的 `lyjwpage-images-v1`），Redis 保留 30 天。
-  - 二进制缓存统一限制为 **64 条 / 单张 5MB / 总量 32MB，LRU 淘汰**，避免 image tag 和本机活动变化导致进程内存无限增长。
+剧集自身的 `Primary` 图是剧照而不是海报，所以竖版海报优先取所属剧的 `SeriesPrimaryImageTag`。这个选择在代理那侧做 —— 字节是它下载的，挑哪张的逻辑跟着走才不会分家。
 
-> 卡片的「在 Emby 里打开」跳转链接仍然指向 `EMBY_PUBLIC_URL`，源站地址会出现在页面 HTML 里 —— 这是有意为之，不用改：Emby 前面有认证网关，跳过去的人会撞到认证。
->
-> **只有图片端点是不需要认证的**，这也正是它必须走代理的原因：它是唯一一处不套代理就会被匿名直取的资源。
+#### 图片
+
+海报和其它推来的图走同一条路：`storeUploadedImage` 压成 WebP、按内容哈希写入 R2，状态里存的就是公开桶的直链（`R2_PUBLIC_BASE_URL`）。地址即内容指纹，所以对象带 `max-age=31536000, immutable`，浏览器直连 R2 取图，站点没有图片读路径。
+
+- **条目里存的是「图片键」而不是地址**（键由代理按 `itemId:kind:tag:height` 拼，图换了 ImageTag 键就换），读取时才换成地址。图片和列表是分两次推来的：列表先到、图片可能还在路上，或者 Redis 被清空后只需补图。晚到的那批图能把已经存着的列表一起点亮，不用整份重推。
+- **响应里回 `missingImages`**：站点引用了却没有的键。代理据此补传，Redis 清空、容器换机器之后不需要人工干预。
+- **统一图片存储**（`lib/image-store.ts`）：压缩、内容哈希、写 R2，一条直线。R2 就是唯一的持久层 —— 图都是推来的、本站无从回源，但推送方带着自愈（`missingImages`、图标哈希重传），桶在数据就在。Redis 里不存任何图片二进制，单张上限 5MB。
+
+> 卡片的「在 Emby 里打开」跳转链接指向 `EMBY_PUBLIC_URL`，源站地址会出现在页面 HTML 里 —— 这是有意为之，不用改：Emby 前面有认证网关，跳过去的人会撞到认证。没配这个变量就不给链接，没有内网地址可退，退了也是个点不开的链接。
 
 Apple Music 的封面没有代理，仍走 `mzstatic.com` 直链 —— 那本来就是公开 CDN，套一层反而多一跳。
 
@@ -82,7 +89,7 @@ MusicKit 签出来的 developer token 实测寿命 **30 天**，上报器从它�
 
 数据来自 a2687-telemetry，它通过 BLE 读充电器、以 HTTP 暴露快照。`GET /status` 一次拿到整机功率 + 三个 USB-C 口的电压/电流/功率/协议/线缆/设备识别。
 
-**本站不轮询充电头，只接收统一遥测推送。** Mac Telemetry Hub 从本机 a2687 服务读取 `/status`，把精简后的状态放进 v3 envelope，只 POST 到 `/api/ingest/telemetry`，并使用 `TELEMETRY_INGEST_SECRET` Bearer 鉴权。旧的 `/api/ingest/charger` 入口已经删除，也没有本地轮询回退。
+**本站不轮询充电头，只接收统一遥测推送。** Mac Telemetry Hub 从本机 a2687 服务读取 `/status`，把精简后的状态放进 v4 envelope，只 POST 到 `/api/ingest/mac`，并使用 `TELEMETRY_INGEST_SECRET` Bearer 鉴权。旧的 `/api/ingest/charger`、`/api/ingest/telemetry` 和 `/api/ingest/presence` 入口都已经删除，没有兼容路径，也没有本地轮询回退。
 
 **总功率历史存在服务端**（`lib/charger-store.ts`，Redis；未配置 Redis 时退回进程内存）。客户端自己累积的话页面一刷新曲线就没了、还要攒很久才有形状。环形缓冲保留 400 点，两点之间至少间隔 `MIN_SAMPLE_GAP_MS`（当前 5 秒），足以覆盖固定 20 分钟图表窗口。
 
@@ -125,22 +132,18 @@ session ID、项目名或文件路径。
 所有采集器统一写入：
 
 ```text
-POST /api/ingest/telemetry
+POST /api/ingest/mac
 ```
 
-请求采用唯一的 `version: 3` envelope，模块名固定为 `charger`、`desktop`、`apple_music`、`timezone` 和 `vibe_coding`，`modules` 只携带发生变化的模块。前台应用图标始终带 SHA-256，二进制只在该哈希尚未被服务端保存时上传。
+请求采用唯一的 `version: 4` envelope，顶层带 `heartbeatAt`、`presence`（`online` / `offline`）和 `activeModules`；模块名固定为 `charger`、`desktop`、`appleMusic`、`timezone` 和 `vibeCoding`，`modules` 只携带发生变化的模块。前台应用图标始终带 SHA-256，二进制只在该哈希尚未被服务端保存时上传。
 
-五个模块的指纹一个都没变时，整个 POST 直接跳过——**不发空 `modules` 的信封**，这个端点上只跑真正的变化。存活改走另一条路：
+五个模块的指纹一个都没变时，发的是**空 `modules` 的信封**，也就是一次纯心跳：只刷新存活，不动任何模块的时间戳。心跳无变化时每 ≥30 秒一条，有数据要发时不补——那个包本身就证明上报器活着。
 
-```text
-POST /api/ingest/presence
-```
+从前心跳和优雅下线走独立的 `/api/ingest/presence`，于是「上报器还活着」这一件事在服务端有两个写入点。现在只有这一条路：`presence: "offline"` 覆盖退出、睡眠这类优雅离开，崩溃、断网、强制关机时上报器什么都发不出来，那些仍靠服务端「多久没收到」的超时兜底，两者互补。存活本身单独存一个 Redis key（`lib/reporter-liveness`），不再搭遥测状态那份镜像的车——那样多实例部署时，没接过上报的实例手上永远是零，会把卡片全判成离线。
 
-无变化时每 ≥30 秒一条，只带 `state` 和 `active_modules`。有数据要发时不走这条——那个包本身就证明上报器活着。崩溃、断网、强制关机时上报器什么都发不出来，那些靠服务端「多久没收到心跳」的超时兜底。
+各模块的指纹粒度决定了「无变化」有多容易达成：`charger` 含功率/电压/电流，充电中几乎每轮都变；`desktop` 是应用名 + bundleID + 图标，不切应用就不变；`appleMusic` 的进度**不入签名**，所以播放中也不变，只有 seek 偏离锚点超过容差才算；`timezone` 只有 IANA 标识、当前 UTC 偏移或缩写变化时才重发；`vibeCoding` 看 CodexBar 的刷新时间戳。真正的零 telemetry 场景是充电头没接、不切前台应用、音乐不换曲不 seek、时区不变、CodexBar 未刷新——此时只有每 30 秒一条空 `modules` 的心跳。
 
-各模块的指纹粒度决定了「无变化」有多容易达成：`charger` 含功率/电压/电流，充电中几乎每轮都变；`desktop` 是应用名 + bundleID + 图标，不切应用就不变；`apple_music` 的进度**不入签名**，所以播放中也不变，只有 seek 偏离锚点超过容差才算；`timezone` 只有 IANA 标识、当前 UTC 偏移或缩写变化时才重发；`vibe_coding` 看 CodexBar 的刷新时间戳。真正的零 telemetry 场景是充电头没接、不切前台应用、音乐不换曲不 seek、时区不变、CodexBar 未刷新——此时只有每 30 秒一条 presence。
-
-Music.app 封面和前台应用图标由 Mac 直接读取，只在内容变化时上传一次；服务端按内容哈希生成 `/api/image/asset/:id` 地址，普通状态心跳不会重复携带图片。时区模块只上传 IANA 标识、当前偏移和缩写，不上传地址。公开读取按用途拆分为 `/api/status/charger`、`/api/status/desktop`、`/api/status/timezone`、`/api/status/music` 和 `/api/status/vibecoding`。
+Music.app 封面和前台应用图标由 Mac 直接读取，只在内容变化时上传一次；服务端压缩后按内容哈希写入 R2、状态里存公开直链，普通状态心跳不会重复携带图片。时区模块只上传 IANA 标识、当前偏移和缩写，不上传地址。公开读取按用途拆分为 `/api/status/charger`、`/api/status/desktop`、`/api/status/timezone`、`/api/status/music` 和 `/api/status/vibecoding`。
 
 ### HomePod mini 播放实况
 

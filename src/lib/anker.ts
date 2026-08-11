@@ -108,7 +108,7 @@ export async function getChargerPayload(
   // 从前这里只看后者（90 秒），和 desktop/music 的 45 秒错开，同一台 Mac 掉线时
   // 两张卡先后变灰。
   const stale =
-    reporterOffline() || Date.now() - (await lastPushReceivedAt()) > staleAfterMs();
+    (await reporterOffline()) || Date.now() - (await lastPushReceivedAt()) > staleAfterMs();
 
   const all = stored.history;
   const oldest = all[0]?.t;
