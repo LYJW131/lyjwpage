@@ -38,10 +38,13 @@ export function CodexActivityIndicator({
         ))
       ) : (
         <>
-          {/* 静态图，仓库里存的就是压好的 64px WebP（3 倍屏够用），
-              不必再过一遍图片管道 —— 那只是把同一份字节换个地方算一遍 */}
+          {/*
+            深浅两版只差圆角底的颜色，靠 CSS 换 —— 底色要跟着主题翻，
+            浅色页面上用深色底、深色页面上用白底，图标才始终有对比。
+            两张都是矢量，加起来还不到从前一张位图大。
+          */}
           <Image
-            src="/codex-icon-dark.webp"
+            src="/codex-icon-dark.svg"
             width={20}
             height={20}
             alt=""
@@ -49,7 +52,7 @@ export function CodexActivityIndicator({
             className={cn("size-5 dark:hidden", stale && "grayscale opacity-40")}
           />
           <Image
-            src="/codex-icon-light.webp"
+            src="/codex-icon-light.svg"
             width={20}
             height={20}
             alt=""
