@@ -129,7 +129,7 @@ export type TimezonePayload = {
 };
 
 /** 实时播放。来源可能是 MacBook 的 Music.app，也可能是 HomePod。 */
-export type MusicPayload = {
+export type NowListeningPayload = {
   music: LocalNowPlaying | null;
   receivedAt: number | null;
   /** 两个来源都没有可展示的播放 —— 是「没在放」，不是「数据过期」。 */

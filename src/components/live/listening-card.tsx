@@ -24,12 +24,12 @@ import {
   STATIC_TRANSITION,
   STATIC_VARIANTS,
 } from "@/lib/motion";
-import { LISTENING_PATH, MUSIC_PATH } from "@/lib/paths";
+import { LISTENING_PATH, NOW_LISTENING_PATH } from "@/lib/paths";
 import type {
   ListeningItem,
   ListeningPayload,
   LocalNowPlaying,
-  MusicPayload,
+  NowListeningPayload,
 } from "@/lib/types";
 import { appleArtwork, ARTWORK_SCALE, needsOptimizing } from "@/lib/apple-artwork";
 import { cn } from "@/lib/utils";
@@ -448,7 +448,7 @@ export function ListeningCard({ className }: { className?: string }) {
     REFRESH_MS,
   );
   useLiveStream();
-  const { data: live } = useStatus<MusicPayload>(MUSIC_PATH, MUSIC_REFRESH_MS);
+  const { data: live } = useStatus<NowListeningPayload>(NOW_LISTENING_PATH, MUSIC_REFRESH_MS);
 
   const reduced = useReducedMotion();
 

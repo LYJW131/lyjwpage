@@ -43,13 +43,13 @@ pnpm dev
 **本站不向 Emby 发任何请求。** 站点将来要部署到 Vercel，那时它够不着局域网里的 Emby（`http://192.168.3.42:8096`），所以续播列表、播放位置和海报全部由 NAS 上的推送代理送进来：
 
 ```text
-POST /api/ingest/emby-reporter
+POST /api/ingest/emby
 Authorization: Bearer <TELEMETRY_INGEST_SECRET>
 ```
 
-代理的代码、配置和部署方式在 `reporters/emby-reporter/`。请求体的三部分都可省略、各推各的：`resume`（续播列表，60 秒一轮、有变化才推）、`playing`（播放位置，缺席表示这次不谈、显式 `null` 表示确认没人在看了）、`images`（海报的 base64，只带站点还没有的那些）。
+代理的代码、配置和部署方式在 `reporters/emby-reporter/`。请求体的三部分都可省略、各推各的：`resume`（续播列表，60 秒一轮、有变化才推）、`playing`（播放位置，缺席表示这次不谈、显式 `null` 表示确认没人在看了）、`images`（`{ imageKey, objectKey }`，代理直传 R2 之后回报的对象键，只带站点还没有的那些）。
 
-**Emby 的播放通知也先发给代理，再由它转发过来。** Emby 后台那个 webhook 配置项加不了自定义请求头，直发站点就只能开一个不鉴权的入口 —— 从前的 `/api/ingest/emby` 就是那样，现在整个删掉了，站点只剩 `TELEMETRY_INGEST_SECRET` 一种鉴权方式。Emby 侧该怎么填见代理的 README。
+**Emby 的播放通知也先发给代理，再由它转发过来。** Emby 后台那个 webhook 配置项加不了自定义请求头，直发站点就只能开一个不鉴权的入口 —— 这个路径从前就是那样直收 webhook 的，那条路已经删了，现在站点只剩 `TELEMETRY_INGEST_SECRET` 一种鉴权方式。Emby 侧该怎么填见代理的 README。
 
 推送只在开始/暂停/继续/停止、以及代理发现**拖了进度条**时才来，中间没有消息。但每条都带着当时的播放位置和总时长，所以未暂停时按真实时间往前推算即可 —— 进度条不轮询也能走。这同时兼作兜底：推算位置超过总时长说明播完了而「停止」没收到（客户端崩了、网络断了），此时按已结束处理，不会一直挂着。
 
@@ -63,7 +63,7 @@ Emby 对拖动进度条不发任何通知，那部分只能查会话。查的人
 
 海报由 Emby 上报器一次压成 WebP，以 `<sha256>.webp` 直传 R2；站点只接收对象键并保存公开桶直链（`R2_PUBLIC_BASE_URL`）。上报器传之前先 HEAD 问一次桶里有没有，所以桶被清空、换机器、重启都能自己发现要补传，不必等站点回执。地址即内容指纹，所以对象带 `max-age=31536000, immutable`，浏览器直连 R2 取图，站点没有图片读写或转码路径。
 
-- **条目里存的是「图片键」而不是地址**（键由代理按 `itemId:kind:tag:height` 拼，图换了 ImageTag 键就换），读取时才换成地址。图片和列表是分两次推来的：列表先到、图片可能还在路上，或者 Redis 被清空后只需补图。晚到的那批图能把已经存着的列表一起点亮，不用整份重推。
+- **条目里存的是「图片键」而不是地址**（`imageKey`，由代理按 `itemId:kind:tag:height` 拼，图换了 ImageTag 键就换），读取时才换成地址。图片和列表是分两次推来的：列表先到、图片可能还在路上，或者 Redis 被清空后只需补图。晚到的那批图能把已经存着的列表一起点亮，不用整份重推。
 - **响应里回 `missingImages`**：站点引用了却没有的键。代理据此补传，Redis 清空、容器换机器之后不需要人工干预。
 - **上报器直传图片**：Emby 海报在代理侧用 sharp 压成 `<sha256>.webp`、Mac 图标用系统原生编码器压成 `<sha256>.png`，都由上报器直传 R2。站点只 HEAD 校验对象键并保存公开 URL，不读取、不压缩也不写图片字节；Redis 里不存任何图片二进制。HEAD 结果只缓存 5 分钟——桶被清空后站点要能重新发现对象没了，否则会一直发指向已删对象的 URL。
 
@@ -143,7 +143,7 @@ POST /api/ingest/mac
 
 各模块的指纹粒度决定了「无变化」有多容易达成：`charger` 含功率/电压/电流，充电中几乎每轮都变；`desktop` 是应用名 + bundleID + 图标，不切应用就不变；`appleMusic` 的进度**不入签名**，所以播放中也不变，只有 seek 偏离锚点超过容差才算；`timezone` 只有 IANA 标识、当前 UTC 偏移或缩写变化时才重发；`vibeCoding` 看 CodexBar 的刷新时间戳。真正的零 telemetry 场景是充电头没接、不切前台应用、音乐不换曲不 seek、时区不变、CodexBar 未刷新——此时只有每 30 秒一条空 `modules` 的心跳。
 
-前台应用图标由 Mac 一次缩放成 96px PNG（系统原生编码，不依赖任何外部二进制）并直传 R2，网站只接收对象键 `<sha256>.png`、HEAD 确认后组出公开直链。**没有服务端接收图片二进制的回退**：`iconData` 一旦出现在信封里就直接报错。`iconHash` 标识「哪个应用的图标」（应用有图标就非空，编码或上传失败也照样有），对象键标识「哪份字节」，两者分开才能让站点回执区分「这个应用没图标」和「图标还没准备好」——从前它们是同一个哈希，编码一失败就静默丢图、永不重试。状态里只存公开直链，普通状态心跳不会重复携带图片。时区模块只上传 IANA 标识、当前偏移和缩写，不上传地址。公开读取按用途拆分为 `/api/status/charger`、`/api/status/desktop`、`/api/status/timezone`、`/api/status/music` 和 `/api/status/vibecoding`。
+前台应用图标由 Mac 一次缩放成 96px PNG（系统原生编码，不依赖任何外部二进制）并直传 R2，网站只接收对象键 `<sha256>.png`、HEAD 确认后组出公开直链。**没有服务端接收图片二进制的回退**：`iconData` 一旦出现在信封里就直接报错。`iconHash` 标识「哪个应用的图标」（应用有图标就非空，编码或上传失败也照样有），对象键标识「哪份字节」，两者分开才能让站点回执区分「这个应用没图标」和「图标还没准备好」——从前它们是同一个哈希，编码一失败就静默丢图、永不重试。状态里只存公开直链，普通状态心跳不会重复携带图片。时区模块只上传 IANA 标识、当前偏移和缩写，不上传地址。公开读取按用途拆分为 `/api/status/charger`、`/api/status/desktop`、`/api/status/timezone`、`/api/status/listening/now` 和 `/api/status/vibecoding`。
 
 ### HomePod mini 播放实况
 
@@ -158,9 +158,24 @@ Authorization: Bearer <TELEMETRY_INGEST_SECRET>
 进度跳变那条触发器不能少：单曲循环时曲名和播放状态都不变，只有进度归零，
 少了它服务端就不知道这首又从头开始了。
 
-接收端复用统一遥测密钥，状态写入 Redis（未配置时退回进程内存）。`/api/status/music`
+接收端复用统一遥测密钥，状态写入 Redis（未配置时退回进程内存）。`/api/status/listening/now`
 按「MacBook 在播 → MacBook 暂停未满 30 秒 → HomePod 在播 → HomePod 暂停未满 30 秒」
 选来源。事件带有进度观测时间，前端据此自己推算进度。
+
+请求体的字段名和单位**和 Mac 上报器的 `appleMusic` 模块一致** —— 两个入口产出的
+是同一个 `LocalNowPlaying`，同一个概念不该有两套叫法。所以毫秒就是毫秒、时间戳
+就是 epoch 毫秒，HA 那边在模板里转好再发：
+
+| 字段 | 类型 | 来源 |
+| --- | --- | --- |
+| `state` | `playing` / `buffering` / `paused` / 其它 | 实体状态，`buffering` 按播放中处理 |
+| `title` / `artist` / `album` | 字符串 | `media_title` / `media_artist` / `media_album_name` |
+| `entityId` | 字符串 | 实体 ID，和曲目信息一起哈希出 HomePod 侧的曲目身份 |
+| `artworkUrl` | 字符串 | `entity_picture` |
+| `positionMs` | 毫秒 | `media_position × 1000` |
+| `durationMs` | 毫秒 | `media_duration × 1000` |
+| `repeatOne` | 布尔 | `repeat == 'one'` |
+| `observedAt` | epoch 毫秒 | `media_position_updated_at`，模板里 `as_timestamp() × 1000` |
 
 判定“这条记录还算不算数”看的是**距上次收到推送多久**，不是推算进度有没有超过曲目
 时长 —— Home Assistant 按状态变化推送，曲目放完到下一条推送之间必然超时，拿它当
@@ -174,6 +189,19 @@ method: post
 content_type: "application/json"
 headers:
   authorization: !secret telemetry_ingest_authorization
+payload: >-
+  {
+    "entityId": "{{ entity_id }}",
+    "state": "{{ states(entity_id) }}",
+    "title": "{{ state_attr(entity_id, 'media_title') }}",
+    "artist": "{{ state_attr(entity_id, 'media_artist') }}",
+    "album": "{{ state_attr(entity_id, 'media_album_name') }}",
+    "artworkUrl": "{{ state_attr(entity_id, 'entity_picture') }}",
+    "positionMs": {{ (state_attr(entity_id, 'media_position') | float(0) * 1000) | round }},
+    "durationMs": {{ (state_attr(entity_id, 'media_duration') | float(0) * 1000) | round }},
+    "repeatOne": {{ (state_attr(entity_id, 'repeat') == 'one') | tojson }},
+    "observedAt": {{ (as_timestamp(state_attr(entity_id, 'media_position_updated_at'), 0) * 1000) | round }}
+  }
 ```
 
 `secrets.yaml` 只保存完整 header 值，不把密钥写进配置或仓库：
@@ -182,9 +210,9 @@ headers:
 telemetry_ingest_authorization: "Bearer <TELEMETRY_INGEST_SECRET>"
 ```
 
-Home Assistant 的 `entity_picture` 是一个带 `cache` 参数的代理地址。接收端只提取其中公开的
-Apple CDN URL，并把 `{w}`、`{h}`、`{f}` 占位符替换成 `600`、`600`、`jpg` 后交给前端；
-Home Assistant 的局域网地址和代理 token 不会公开。
+`artworkUrl` 收的是 Home Assistant 的 `entity_picture`，那是一个带 `cache` 参数的代理地址。
+接收端只提取其中公开的 Apple CDN URL，并把 `{w}`、`{h}`、`{f}` 占位符替换成
+`600`、`600`、`jpg` 后交给前端；Home Assistant 的局域网地址和代理 token 不会公开。
 
 ## 改内容
 

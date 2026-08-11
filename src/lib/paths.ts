@@ -12,14 +12,18 @@
 export const STREAM_PATH = "/api/status/stream";
 export const DESKTOP_PATH = "/api/status/desktop";
 export const TIMEZONE_PATH = "/api/status/timezone";
-export const MUSIC_PATH = "/api/status/music";
-export const LISTENING_PATH = "/api/status/listening";
 export const CHARGER_PATH = "/api/status/charger";
 export const VIBECODING_PATH = "/api/status/vibecoding";
 
 /**
- * 正在看和列表分开：前者跟着播放事件走、快，后者 60 秒才推一次、慢。
- * 合在一个端点时慢的那半只能跟着快的那半一起被重取。
+ * 「此刻」和「列表」分开：前者跟着播放事件走、快，后者节奏慢得多
+ * （听歌 30 秒、看片 60 秒才推一次）。合在一个端点时慢的那半只能跟着
+ * 快的那半一起被重取。
+ *
+ * 两路用同一套命名：`X` 是列表，`X/now` 是此刻。听歌那路从前叫
+ * /api/status/music，和看片那对的叫法对不上。
  */
+export const LISTENING_PATH = "/api/status/listening";
+export const NOW_LISTENING_PATH = "/api/status/listening/now";
 export const WATCHING_PATH = "/api/status/watching";
 export const NOW_WATCHING_PATH = "/api/status/watching/now";

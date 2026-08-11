@@ -8,6 +8,28 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 <!-- END:nextjs-agent-rules -->
 
+# API 命名
+
+加端点、加字段之前先对一遍这四条。这些是站点、`reporters/emby-reporter`、
+MacTelemetryHub、Home Assistant 四方共用的约定，改一处就得四处对齐。
+
+1. **`/api/ingest/<来源>`** —— 按**数据是谁产生的**命名，不是按上报程序命名。
+   现有的三个是 `mac`、`homepod`、`emby`。Emby 那个曾经叫 `emby-reporter`，
+   泄漏了实现细节：换个代理程序名字就得跟着改。
+2. **`/api/status/<主题>`** —— `X` 是列表 / 历史，`X/now` 是此刻。
+   听歌是 `listening` + `listening/now`，看片是 `watching` + `watching/now`。
+   一对一对地加，别给「此刻」另起一个词（从前 `listening` 的搭档叫 `music`）。
+3. **URL 段全小写，JSON 字段 camelCase。** 这不是不一致：`/api/status/vibecoding`
+   和信封里的 `vibeCoding` 模块名各守各的惯例，别去统一它俩。
+4. **同一个概念，跨来源必须同名同单位。** HomePod 和 Mac 喂的都是
+   `LocalNowPlaying`，所以两边一律 `positionMs` / `durationMs` / `repeatOne` /
+   `observedAt`（epoch 毫秒），秒转毫秒这种事在上报侧做完再发。
+   R2 上那份字节的内容地址一律叫 `objectKey`；和它并排的来源侧键要自报家门
+   （`imageKey`、`iconHash`），两个键挨在一起时光看 `key` 分不出是谁的。
+
+**不留兼容路径。** 改了名就是改了，不接受旧字段、不留旧路由 —— 双份接收意味着
+两条路都得一直维护，而且坏掉的那条要等很久才会被发现。改完把四方一起更新。
+
 # 图标
 
 要加品牌 / 产品图标时，**先去 LobeHub 的图标集找**，别自己画、也别随手扒一张位图：

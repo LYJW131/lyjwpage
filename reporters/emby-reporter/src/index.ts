@@ -78,12 +78,12 @@ function queueImage(ref: ImageRef) {
 }
 
 /** 取这一批要补传的图。取不到的留在队列里，下一轮再说 */
-async function collectImages(): Promise<Array<{ key: string; objectKey: string }>> {
-  const images: Array<{ key: string; objectKey: string }> = [];
+async function collectImages(): Promise<Array<{ imageKey: string; objectKey: string }>> {
+  const images: Array<{ imageKey: string; objectKey: string }> = [];
   for (const ref of [...pendingImages.values()].slice(0, config.imagesPerPush)) {
     try {
       const source = await fetchImage(ref);
-      images.push({ key: ref.key, objectKey: await uploadImage(source, ref.height) });
+      images.push({ imageKey: ref.key, objectKey: await uploadImage(source, ref.height) });
       recovered("emby-image");
     } catch (error) {
       // 取不到就先不带这张，条目照样推 —— 少张海报比整条状态断了强
@@ -105,9 +105,9 @@ async function deliver(payload: PushPayload, referenced: ImageRef[]) {
   const result = await push(images.length ? { ...payload, images } : payload);
 
   for (const image of images) {
-    knownImages.add(image.key);
-    pendingImages.delete(image.key);
-    attempts.set(image.key, (attempts.get(image.key) ?? 0) + 1);
+    knownImages.add(image.imageKey);
+    pendingImages.delete(image.imageKey);
+    attempts.set(image.imageKey, (attempts.get(image.imageKey) ?? 0) + 1);
   }
   // 站点说没有的，从「已有」里划掉排进补传队列（多半是它那边被清空过）
   for (const key of result.missingImages) {
@@ -117,7 +117,7 @@ async function deliver(payload: PushPayload, referenced: ImageRef[]) {
   }
   // 这一轮站点没抱怨的，说明真收下了，重新计数
   for (const image of images) {
-    if (!result.missingImages.includes(image.key)) attempts.delete(image.key);
+    if (!result.missingImages.includes(image.imageKey)) attempts.delete(image.imageKey);
   }
 
   recovered("push");
