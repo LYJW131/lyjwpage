@@ -261,8 +261,8 @@ export async function recordEmbyReport(body: unknown) {
   const referenced = [...((await getResume())?.items ?? []), ...(current ? [current] : [])];
   const missing = missingKeys(referenced, urls);
 
-  // 播放状态变了就直接把新数据推给浏览器；列表不走 SSE，它慢得多，跟着轮询就够
-  if (playing) publish({ type: "watching", payload: await getNowWatching() });
+  // 播放状态变了就直接把新数据推给浏览器；列表不走推送，它慢得多，跟着轮询就够
+  if (playing) await publish({ type: "watching", payload: await getNowWatching() });
 
   return { items, playing, images: stored, missingImages: missing };
 }

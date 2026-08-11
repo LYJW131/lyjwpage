@@ -767,7 +767,7 @@ function QuotaProviders({ providers }: { providers: VibeCodingQuotaProvider[] })
 }
 
 export function VibeCodingCard({ className }: { className?: string }) {
-  // 不订阅 SSE：token 用量是累计的历史事实，Mac 掉线它不会变得不可信，
+  // 不订阅实时推送：token 用量是累计的历史事实，Mac 掉线它不会变得不可信，
   // 只是不再增长，没有理由跟着变灰
   const { data, error, isLoading } = useStatus<VibeCodingPayload>(
     VIBECODING_PATH,

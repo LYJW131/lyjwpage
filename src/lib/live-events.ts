@@ -1,16 +1,20 @@
+import Pusher from "pusher";
+
 import type { NowWatchingPayload } from "@/lib/emby";
+import { LIVE_CHANNEL, liveEndpoint } from "@/lib/live-channel";
 import type { ChargerPayload, DesktopPayload, NowListeningPayload } from "@/lib/types";
 
 /**
- * 服务端 → 浏览器的实时事件总线。
+ * 服务端 → 浏览器的实时推送。
  *
- * 只做进程内扇出：遥测入口收到上报后 publish，所有打开着的 SSE 连接立刻拿到。
- * 浏览器不需要往回发任何东西，所以这里是单向的。
+ * 走 Pusher 协议：遥测入口收到上报、状态落库之后，往实时服务发一次 HTTP
+ * 请求就结束了，长连接全部挂在那边（自部署的 Sockudo 或云上的 Pusher）。
+ * 本站因此不持有任何常驻连接，也就不要求自己是个常驻进程 —— 换成 serverless
+ * 部署时这条链路一个字都不用改，连哪边只是环境变量的区别，见
+ * [live-channel](src/lib/live-channel.ts)。
  *
- * 多实例扩展点：事件在收到 POST 的那个进程里产生，但连接可能挂在别的进程上。
- * 要跨实例的话，在 publish 里补一次 `redis.publish`，再用一条**独立的**订阅连接
- * （ioredis 进入 subscribe 模式后不能再发普通命令，不能复用 lib/redis 那个）
- * 把收到的消息喂回 dispatch。dispatch 已经和 publish 分开了，就是留给这个用的。
+ * 浏览器不需要往回发任何东西，所以是单向广播，公开频道就够，
+ * 不碰 private channel 和那套鉴权。
  */
 
 /**
@@ -22,10 +26,10 @@ export type LiveEvent =
   | { type: "listening"; payload: NowListeningPayload }
   /**
    * 只在插拔、换设备这类结构性变化时发，不跟功率/电压/电流的滚动走 ——
-   * 那些量充电时每个上报周期都在变，推它们等于把 SSE 当轮询用。
+   * 那些量充电时每个上报周期都在变，推它们等于把推送当轮询用。
    * 滚动读数仍由卡片自己的 SWR 轮询负责。
    *
-   * 带完整状态但**不带历史点**：SSE 是广播，服务端不知道每个客户端的曲线
+   * 带完整状态但**不带历史点**：推送是广播，服务端不知道每个客户端的曲线
    * 游标，只能要么整份重发（400 个点约 15KB）要么不发。所以按「空增量」发 ——
    * `historyPartial: true` + 空数组，客户端沿用自己已有的曲线，端口和功率
    * 立刻更新。合并逻辑在 lib/charger-history，和轮询那条共用。
@@ -35,8 +39,8 @@ export type LiveEvent =
    * 上报器上下线。只发失效通知 —— 存活是服务端的判断，各卡片重取自己的接口
    * 时会顺带拿到新的 stale，不必在这里把四份 payload 都算一遍推出去。
    *
-   * 单独成一种事件，而不是借 desktop / music 推：前端要能分清「上报器离线了」
-   * 和「前台应用变了」，而且需要知道离线的不止那两张卡。
+   * 单独成一种事件，而不是借 desktop / listening 推：前端要能分清「上报器
+   * 离线了」和「前台应用变了」，而且需要知道离线的不止那两张卡。
    */
   | { type: "presence"; payload: null }
   /**
@@ -45,35 +49,51 @@ export type LiveEvent =
    */
   | { type: "watching"; payload: NowWatchingPayload };
 
-type Subscriber = (event: LiveEvent) => void;
+let client: Pusher | null = null;
+let initialised = false;
 
-const subscribers = new Set<Subscriber>();
+/** 没配全凭据就一直是 null，只在第一次抱怨一句，不是每条事件都刷屏 */
+function getClient(): Pusher | null {
+  if (initialised) return client;
+  initialised = true;
 
-/** 只往本进程的订阅者投递，不再触发 publish —— 跨实例接入时从这里进来 */
-function dispatch(event: LiveEvent) {
-  // 复制一份再遍历：投递过程中可能有连接断开并 unsubscribe
-  for (const subscriber of [...subscribers]) {
-    try {
-      subscriber(event);
-    } catch (error) {
-      // 单个连接写失败不能影响其他连接
-      console.error("[live]", error instanceof Error ? error.message : String(error));
-    }
+  const endpoint = liveEndpoint();
+  const appId = process.env.PUSHER_APP_ID;
+  const secret = process.env.PUSHER_SECRET;
+  if (!endpoint || !appId || !secret) {
+    console.warn("[live] 没配 Pusher 凭据，实时推送停用，页面只靠轮询更新");
+    return null;
   }
+
+  client = new Pusher({
+    appId,
+    secret,
+    key: endpoint.key,
+    ...("cluster" in endpoint
+      ? { cluster: endpoint.cluster, useTLS: true }
+      : // 自部署：发布用的 HTTP API 和浏览器连的 WebSocket 同一个地址同一个端口
+        { host: endpoint.host, port: String(endpoint.port), useTLS: endpoint.tls }),
+  });
+  return client;
 }
 
-export function publish(event: LiveEvent) {
-  dispatch(event);
-}
+/**
+ * 把事件交给实时服务。
+ *
+ * 失败只记一行日志，不往上抛：调用点都在 ingest 路由里、且**状态已经落库了**，
+ * 推送丢一条页面靠轮询也能翻过来。为这个回 500 只会让上报器重试、把同一份
+ * 数据再写一遍。
+ *
+ * 调用点一律 `await`：serverless 上响应一发出，没等完的后台工作随时可能被
+ * 掐掉，fire-and-forget 会变成「偶尔推不出去」。
+ */
+export async function publish(event: LiveEvent): Promise<void> {
+  const pusher = getClient();
+  if (!pusher) return;
 
-/** 返回退订函数 */
-export function subscribe(subscriber: Subscriber): () => void {
-  subscribers.add(subscriber);
-
-  let released = false;
-  return () => {
-    if (released) return;
-    released = true;
-    subscribers.delete(subscriber);
-  };
+  try {
+    await pusher.trigger(LIVE_CHANNEL, event.type, event.payload);
+  } catch (error) {
+    console.error("[live]", error instanceof Error ? error.message : String(error));
+  }
 }

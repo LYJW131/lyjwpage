@@ -5,7 +5,7 @@ import Image from "next/image";
 import { useEffect, useState } from "react";
 
 import { Card } from "@/components/ui/card";
-import { useLiveStream } from "@/hooks/use-live-stream";
+import { useLiveEvents } from "@/hooks/use-live-events";
 import { useStatus } from "@/hooks/use-status";
 import { STATIC_TRANSITION, STATIC_VARIANTS } from "@/lib/motion";
 import { DESKTOP_PATH } from "@/lib/paths";
@@ -19,7 +19,7 @@ import { cn } from "@/lib/utils";
  */
 const LOCK_SCREEN_BUNDLE_ID = "com.apple.loginwindow";
 
-/** 轮询只是兜底：状态变化由 SSE 推来，长连接断了 EventSource 自己会重连 */
+/** 轮询只是兜底：状态变化由实时推送送来，断线由 pusher-js 自己重连 */
 const REFRESH_MS = 30_000;
 
 const APP_SWITCH_VARIANTS = {
@@ -56,7 +56,7 @@ const APP_SWITCH_TRANSITION = {
 
 export function LiveDeskCard({ className }: { className?: string }) {
   // 推送把最新状态直接写进 SWR 缓存，所以这里照旧读同一个 key 就行
-  useLiveStream();
+  useLiveEvents();
   const { data, error, isLoading } = useStatus<DesktopPayload>(DESKTOP_PATH, REFRESH_MS);
   const [displayedDesktop, setDisplayedDesktop] = useState<DesktopActivity | null>(null);
   const reduced = useReducedMotion();
