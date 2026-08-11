@@ -343,7 +343,7 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
     // 插拔、换设备立刻推给浏览器，不等卡片下一次轮询。滚动读数不走这里。
     // since 给当下时刻：历史点一个都不带，客户端沿用自己那份，见 live-events 的说明。
     if (structuralChanged) {
-      publish({ type: "charger", payload: await getChargerPayload({ since: Date.now() }) });
+      await publish({ type: "charger", payload: await getChargerPayload({ since: Date.now() }) });
     }
     accepted += 1;
   }
@@ -413,10 +413,10 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
    * 采集端本来就只在内容变化时才带上对应模块，所以「模块出现在 envelope 里」
    * 就是变化信号本身。从前这里是无条件推 —— 连不带任何模块的纯心跳包也推，
    * 为的是把「上报器离线」翻回在线。但 stale 是时间的函数，两张卡一直在轮询，
-   * 那件事轮询本来就在做；为它每 30 秒广播一份没变化的状态，等于把 SSE 当轮询用。
+   * 那件事轮询本来就在做；为它每 30 秒广播一份没变化的状态，等于把推送当轮询用。
    *
-   * 代价是上报器从离线恢复时，「在线」最迟等下一轮轮询（连着 SSE 时 30 秒）才
-   * 显示，不再是收到心跳的那一刻。换来的是 SSE 上只跑真正的状态变化。
+   * 代价是上报器从离线恢复时，「在线」最迟等下一轮轮询（30 秒）才显示，不再是
+   * 收到心跳的那一刻。换来的是推送通道上只跑真正的状态变化。
    */
   // 在离线翻转本身就是状态变化，值得推 —— 这正是「关键事件」，不是定时广播
   if (presenceFlipped) await publishPresence();
@@ -511,11 +511,11 @@ export async function getNowListening(): Promise<NowListeningPayload> {
  * 不可信，只是不再增长。那张卡的陈旧判定另有自己的口径。
  */
 export async function publishPresence() {
-  publish({ type: "presence", payload: null });
+  await publish({ type: "presence", payload: null });
 }
 
 export async function publishDesktop() {
-  publish({ type: "desktop", payload: await getDesktopPayload() });
+  await publish({ type: "desktop", payload: await getDesktopPayload() });
 }
 
 /**
@@ -524,7 +524,7 @@ export async function publishDesktop() {
  */
 export async function publishListening() {
   const payload = await getNowListening();
-  publish({ type: "listening", payload });
+  await publish({ type: "listening", payload });
 
   if (pauseExpiryTimer) {
     clearTimeout(pauseExpiryTimer);

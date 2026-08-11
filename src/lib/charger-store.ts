@@ -178,9 +178,9 @@ function structuralKey(status: ChargerStatus) {
 /**
  * 记一条快照。同一个 updatedAt 重复推送不会产生重复采样点。
  *
- * 返回结构性内容变没变，调用方据此决定要不要往 SSE 推。这个 diff 必须服务端
+ * 返回结构性内容变没变，调用方据此决定要不要推送。这个 diff 必须服务端
  * 自己做：充电时采集端每个上报周期都会带 charger 模块（功率两位小数必变），
- * 收到就推的话 SSE 会退化成定时推送，「插拔即时」也就没了意义。
+ * 收到就推的话推送会退化成定时广播，「插拔即时」也就没了意义。
  */
 export async function recordStatus(status: ChargerStatus, receivedAt = Date.now()) {
   const previous = await readLatest();

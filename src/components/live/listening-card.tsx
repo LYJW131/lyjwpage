@@ -14,7 +14,7 @@ import {
 
 import { Card } from "@/components/ui/card";
 import { HomePodMiniIcon, MacBookProIcon } from "@/components/ui/device-icons";
-import { useLiveStream } from "@/hooks/use-live-stream";
+import { useLiveEvents } from "@/hooks/use-live-events";
 import { useStatus } from "@/hooks/use-status";
 import { stableKeys } from "@/lib/keys";
 import {
@@ -36,7 +36,7 @@ import { cn } from "@/lib/utils";
 
 /** 与服务端 30s 列表缓存对齐 */
 const REFRESH_MS = 30_000;
-/** 实时播放由 SSE 推来，轮询只是兜底 */
+/** 实时播放由推送送来，轮询只是兜底 */
 const MUSIC_REFRESH_MS = 30_000;
 
 /**
@@ -447,7 +447,7 @@ export function ListeningCard({ className }: { className?: string }) {
     LISTENING_PATH,
     REFRESH_MS,
   );
-  useLiveStream();
+  useLiveEvents();
   const { data: live } = useStatus<NowListeningPayload>(NOW_LISTENING_PATH, MUSIC_REFRESH_MS);
 
   const reduced = useReducedMotion();
