@@ -57,59 +57,52 @@ webhook 各版本的字段位置本来就不一致，用它带的值等于把版
 
 ## 在 NAS 上跑
 
+部署单元是同目录的 [compose.yaml](compose.yaml)：把这个目录整个拷到 NAS、旁边放一份
+`.env`，就地 build。**别在 Mac 上 build 完把镜像拷过去** —— Mac 是 arm64、群晖是
+x86_64，架构对不上。
+
+容器里的端口固定 8787，宿主端口由 `.env` 的 `WEBHOOK_HOST_PORT` 决定：
+nas-host 上 8787 已经归 `homepage-reporter`，那台填 8788。
+
+拷过去（nas-host 的 sftp 子系统是关的，`scp` 用不了，走 tar 管道）：
+
 ```bash
-docker build -t emby-reporter reporters/emby-reporter
-docker run -d --name emby-reporter --restart unless-stopped \
-  -p 8787:8787 \
-  -e EMBY_URL=http://emby.local:8096 \
-  -e EMBY_API_KEY=... \
-  -e EMBY_USER_ID=... \
-  -e SITE_URL=https://lyjw131.com \
-  -e TELEMETRY_INGEST_SECRET=... \
-  -e R2_ENDPOINT=https://ACCOUNT_ID.r2.cloudflarestorage.com \
-  -e R2_BUCKET=... \
-  -e R2_ACCESS_KEY_ID=... \
-  -e R2_SECRET_ACCESS_KEY=... \
-  emby-reporter
+COPYFILE_DISABLE=1 tar czf - -C reporters --exclude node_modules --exclude dist emby-reporter | ssh nas-host 'mkdir -p /srv/lyjwpage && tar xzf - -C /srv/lyjwpage'
 ```
 
-compose 版本：
+`.env` 单独送，别混进源码目录一起打包：
 
-```yaml
-services:
-  emby-reporter:
-    build: ./reporters/emby-reporter
-    restart: unless-stopped
-    ports:
-      - "8787:8787"
-    environment:
-      EMBY_URL: http://emby.local:8096
-      EMBY_API_KEY: ${EMBY_API_KEY}
-      EMBY_USER_ID: ${EMBY_USER_ID}
-      SITE_URL: https://lyjw131.com
-      TELEMETRY_INGEST_SECRET: ${TELEMETRY_INGEST_SECRET}
-      R2_ENDPOINT: ${R2_ENDPOINT}
-      R2_BUCKET: ${R2_BUCKET}
-      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID}
-      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY}
+```bash
+ssh nas-host 'cat > /srv/lyjwpage/emby-reporter/.env && chmod 600 /srv/lyjwpage/emby-reporter/.env' < 本机那份.env
 ```
 
-那个端口只需在局域网里可达，**别映射到公网**：Emby 的 webhook 带不了鉴权，
-这个入口也就没法校验来路。
+起：
+
+```bash
+ssh nas-host '/usr/local/bin/docker compose -f /srv/lyjwpage/emby-reporter/compose.yaml up -d --build'
+```
+
+（`docker` 不在群晖的非交互 PATH 里，得写绝对路径。`-f` 指到哪个文件，compose 就拿
+那个目录当项目目录 —— `.env` 和项目名都从那儿取，不会和 NAS 上别的 compose 项目串。）
+
+`SITE_URL` 指到站点跑的那台机器。站点在 MacBook 上时填它的局域网地址
+`http://site.local:3211` —— 从前那份跟站点同机，填的是 `host.docker.internal`，
+那是「同机 Docker」才有的名字，换台机器必须改。
 
 不进容器直接跑也行（Node ≥ 20），在仓库根目录：
 `pnpm --filter @lyjwpage/emby-reporter build && node reporters/emby-reporter/dist/index.js`。
 
 ## Emby 侧怎么配
 
-后台「通知 → 添加通知 → Webhooks」，地址填**代理**而不是站点：
+后台「通知 → 添加通知 → Webhooks」，地址填**代理**而不是站点。代理在 nas-host 上、
+Emby 在 emby-host 上，所以填 nas-host 的局域网地址和上面那个宿主端口：
 
 ```text
-http://<NAS 地址>:8787/webhook
+http://reporter.local:8788/webhook
 ```
 
-Emby 和代理在同一台 NAS 上时填 `http://localhost:8787/webhook`；Emby 跑在容器里的话
-用容器网络里的服务名。请求方式 POST、内容 JSON，勾上播放开始 / 暂停 / 继续 / 停止。
+（哪天两者同机就填 `http://localhost:<宿主端口>/webhook`；Emby 自己跑在容器里的话
+用容器网络里的服务名。）请求方式 POST、内容 JSON，勾上播放开始 / 暂停 / 继续 / 停止。
 路径其实不校验，POST 到哪个路径都收 —— 各版本的 Emby 对地址的处理不太一样，
 少一个能配错的地方。
 

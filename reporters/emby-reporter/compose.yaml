@@ -1,0 +1,33 @@
+# NAS 上的部署单元。把这个目录整个拷到 NAS，旁边放一份 .env（含密钥，别进仓库），
+# 然后 `docker compose up -d --build`。完整步骤见 README。
+#
+# 自成一个 compose project（项目名取自目录名），不要并进 NAS 上别的
+# compose 文件 —— 同一个 project 里 `up` 会顺带重建兄弟容器。
+
+services:
+  emby-reporter:
+    build: .
+    image: emby-reporter
+    container_name: emby-reporter
+    restart: unless-stopped
+    ports:
+      # 只需在局域网里可达，**别映射到公网**：Emby 的 webhook 带不了鉴权，
+      # 这个入口也就没法校验来路。
+      # 宿主端口走变量是因为它可能被占：nas-host 上 8787 归 homepage-reporter，那边填 8788。
+      - "${WEBHOOK_HOST_PORT:-8787}:8787"
+    environment:
+      EMBY_URL: ${EMBY_URL}
+      EMBY_API_KEY: ${EMBY_API_KEY}
+      EMBY_USER_ID: ${EMBY_USER_ID}
+      SITE_URL: ${SITE_URL}
+      # 站点没配同名变量时可以空着，那时它不校验
+      TELEMETRY_INGEST_SECRET: ${TELEMETRY_INGEST_SECRET:-}
+      R2_ENDPOINT: ${R2_ENDPOINT}
+      R2_BUCKET: ${R2_BUCKET}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY}
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
