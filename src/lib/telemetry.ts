@@ -19,7 +19,7 @@ import type {
   DesktopActivity,
   DesktopPayload,
   LocalNowPlaying,
-  MusicPayload,
+  NowListeningPayload,
   TimezoneActivity,
   TimezonePayload,
 } from "@/lib/types";
@@ -267,7 +267,7 @@ async function normalizeMusic(
     album: text(row.album),
     trackId,
     // 采集端不再上传封面二进制：读取时会查一次 Apple Music 目录拿曲目链接，
-    // 那次查询的结果自带封面 URL，见 getMusicPayload
+    // 那次查询的结果自带封面 URL，见 getNowListening
     artworkUrl: null,
     positionMs: Math.max(0, number(row.positionMs) ?? 0),
     durationMs: Math.max(0, number(row.durationMs) ?? 0),
@@ -421,7 +421,7 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
   // 在离线翻转本身就是状态变化，值得推 —— 这正是「关键事件」，不是定时广播
   if (presenceFlipped) await publishPresence();
   if ("desktop" in modules && desktopIconAvailable) await publishDesktop();
-  if ("appleMusic" in modules) await publishMusic();
+  if ("appleMusic" in modules) await publishListening();
 
   return { accepted, heartbeat: true, desktopIconAvailable };
 }
@@ -460,7 +460,7 @@ export async function getTimezonePayload(): Promise<TimezonePayload> {
   };
 }
 
-export async function getMusicPayload(): Promise<MusicPayload> {
+export async function getNowListening(): Promise<NowListeningPayload> {
   const liveness = await syncForRead();
   const telemetryStale = offlineByLiveness(liveness);
   const musicEnabled = telemetryState.activeModules.has("appleMusic");
@@ -522,9 +522,9 @@ export async function publishDesktop() {
  * 推送当前播放，并在暂停宽限期结束时精确重算一次来源。
  * 这样前端会直接从暂停来源切到下一实时来源，不会中途闪回 Apple Music 的历史 hero。
  */
-export async function publishMusic() {
-  const payload = await getMusicPayload();
-  publish({ type: "music", payload });
+export async function publishListening() {
+  const payload = await getNowListening();
+  publish({ type: "listening", payload });
 
   if (pauseExpiryTimer) {
     clearTimeout(pauseExpiryTimer);
@@ -535,7 +535,7 @@ export async function publishMusic() {
       MUSIC_PAUSE_GRACE_MS - Math.max(0, Date.now() - payload.music.observedAt);
     pauseExpiryTimer = setTimeout(() => {
       pauseExpiryTimer = null;
-      void publishMusic();
+      void publishListening();
     }, Math.max(1, remaining + 25));
   }
 
