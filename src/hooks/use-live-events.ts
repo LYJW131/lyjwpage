@@ -11,9 +11,11 @@ import type { LiveEvent } from "@/lib/live-events";
 import {
   CHARGER_PATH,
   DESKTOP_PATH,
+  LISTENING_PATH,
   NOW_LISTENING_PATH,
   NOW_WATCHING_PATH,
   TIMEZONE_PATH,
+  WATCHING_PATH,
 } from "@/lib/paths";
 import type { ChargerPayload, StatusResponse } from "@/lib/types";
 
@@ -31,10 +33,9 @@ const FORWARDS: ReadonlyArray<{
   merge?: (data: unknown) => unknown;
 }> = [
   { event: "desktop", path: DESKTOP_PATH },
-  { event: "listening", path: NOW_LISTENING_PATH },
-  // Emby 正在播放：webhook 和推送代理驱动，服务端手上已经是最新的。列表不动 ——
-  // 它由代理 60 秒一轮地推，节奏慢得多，跟着走没有意义。
-  { event: "watching", path: NOW_WATCHING_PATH },
+  { event: "listening-now", path: NOW_LISTENING_PATH },
+  // Emby 正在播放：webhook 和推送代理驱动，服务端手上已经是最新的
+  { event: "watching-now", path: NOW_WATCHING_PATH },
   /**
    * 充电头只在插拔、换设备时来事件。曲线的合并走和轮询同一个累加器
    * （lib/charger-history）：推来的那份不带历史点（空增量），所以合并只是把
@@ -58,6 +59,23 @@ const FORWARDS: ReadonlyArray<{
  * 只是不再增长，没有理由跟着变灰。
  */
 const PRESENCE_PATHS = [DESKTOP_PATH, TIMEZONE_PATH, NOW_LISTENING_PATH, CHARGER_PATH];
+
+/**
+ * 不带数据的事件 → 收到后要重取哪几个键。
+ *
+ * 两张列表卡走这条路而不是像上面那样直接把数据写进缓存：整份列表十几 KB，
+ * 而浏览器手上多半已经有一份几乎相同的，让它自己回来取一次更省。它们的轮询
+ * 兜底是 5 分钟一轮，即时性全靠这里。
+ */
+const INVALIDATIONS: ReadonlyArray<{
+  event: LiveEvent["type"];
+  paths: readonly string[];
+}> = [
+  // 上报器上下线：不带数据，只让它供数的那几张卡重取一次，同时翻 stale
+  { event: "presence", paths: PRESENCE_PATHS },
+  { event: "listening", paths: [LISTENING_PATH] },
+  { event: "watching", paths: [WATCHING_PATH] },
+];
 
 /**
  * 整页共用一条连接。
@@ -105,10 +123,11 @@ function open(mutate: ScopedMutator) {
     });
   }
 
-  // 上报器上下线：不带数据，只让它供数的那几张卡重取一次，同时翻 stale
-  channel.bind("presence", () => {
-    for (const path of PRESENCE_PATHS) void mutate(path);
-  });
+  for (const { event, paths } of INVALIDATIONS) {
+    channel.bind(event, () => {
+      for (const path of paths) void mutate(path);
+    });
+  }
 }
 
 function close() {

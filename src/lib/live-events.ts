@@ -18,12 +18,24 @@ import type { ChargerPayload, DesktopPayload, NowListeningPayload } from "@/lib/
  */
 
 /**
- * 前台应用和播放拆成独立事件；Emby 则只发失效通知，由浏览器重取组合状态。
- * 播放来源可能是 MacBook 也可能是 HomePod，和「Mac 正在使用的应用」无关。
+ * 前台应用和播放拆成独立事件。播放来源可能是 MacBook 也可能是 HomePod，
+ * 和「Mac 正在使用的应用」无关。
+ *
+ * 事件名和 /api/status/* 的路径一一对应：**`X` 是列表，`X/now` 是此刻**，
+ * 事件这边写成 `X` 和 `X-now`。从前此刻那两条就叫 `listening` / `watching`，
+ * 而同名的端点指的是列表，加上列表事件之后两套名字会正好错位。
  */
 export type LiveEvent =
   | { type: "desktop"; payload: DesktopPayload }
-  | { type: "listening"; payload: NowListeningPayload }
+  | { type: "listening-now"; payload: NowListeningPayload }
+  /**
+   * 「最近在听」列表变了。只发失效通知，由浏览器自己回来取。
+   *
+   * 整份十几 KB，而浏览器手上多半已经有一份几乎相同的；带数据推等于每次换歌
+   * 都把整个列表重发一遍。上报器每 10 分钟兜底整推一次，那次内容没变，
+   * 站点比对过才发，不会退化成定时广播。
+   */
+  | { type: "listening"; payload: null }
   /**
    * 只在插拔、换设备这类结构性变化时发，不跟功率/电压/电流的滚动走 ——
    * 那些量充电时每个上报周期都在变，推它们等于把推送当轮询用。
@@ -45,9 +57,11 @@ export type LiveEvent =
   | { type: "presence"; payload: null }
   /**
    * Emby 正在播放。webhook 和推送代理驱动，服务端收到时手上就是最新的，
-   * 所以直接带数据。「最近在看」的列表不走这条 —— 它 60 秒才推一次，节奏慢得多。
+   * 所以直接带数据。
    */
-  | { type: "watching"; payload: NowWatchingPayload };
+  | { type: "watching-now"; payload: NowWatchingPayload }
+  /** 「最近在看」列表变了。和上面那条 listening 同一个形状、同一个理由 */
+  | { type: "watching"; payload: null };
 
 let client: Pusher | null = null;
 let initialised = false;

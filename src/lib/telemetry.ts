@@ -551,7 +551,7 @@ export async function publishDesktop() {
  */
 export async function publishListening() {
   const payload = await getNowListening();
-  await publish({ type: "listening", payload });
+  await publish({ type: "listening-now", payload });
   return payload;
 }
 
