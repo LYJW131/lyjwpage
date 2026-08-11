@@ -141,6 +141,13 @@ export type NowListeningPayload = {
    * 目录里能精确匹配上就是直链，匹配不上退回搜索页。
    */
   link: string | null;
+  /**
+   * 这份选择还能成立多久（毫秒）。null = 不会因为单纯的时间流逝而改变。
+   *
+   * 只有暂停宽限期会给出非 null 值。客户端据此把下一次取数排在到期那一刻，
+   * 不要自己拿 music.observedAt 去算 —— 那是设备的时钟，见 getNowListening。
+   */
+  expiresInMs: number | null;
 };
 
 export type ChargerPort = {

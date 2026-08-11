@@ -15,7 +15,7 @@ import {
 import { Card } from "@/components/ui/card";
 import { HomePodMiniIcon, MacBookProIcon } from "@/components/ui/device-icons";
 import { useLiveEvents } from "@/hooks/use-live-events";
-import { useStatus } from "@/hooks/use-status";
+import { useExpiryRefetch, useStatus } from "@/hooks/use-status";
 import { stableKeys } from "@/lib/keys";
 import {
   HERO_VARIANTS,
@@ -449,6 +449,15 @@ export function ListeningCard({ className }: { className?: string }) {
   );
   useLiveEvents();
   const { data: live } = useStatus<NowListeningPayload>(NOW_LISTENING_PATH, MUSIC_REFRESH_MS);
+  /**
+   * 暂停宽限期到点时再问一次。
+   *
+   * 那一刻服务端会把来源让给下一个实时源，但它不对应任何一次上报，没有推送
+   * 会到 —— 从前是服务端挂 setTimeout 补一条，serverless 上不成立。剩多少毫秒
+   * 由服务端算好放在 expiresInMs 里，这边只管排队，不重算规则、也不拿本机时钟
+   * 去减设备时钟。
+   */
+  useExpiryRefetch(NOW_LISTENING_PATH, live?.expiresInMs);
 
   const reduced = useReducedMotion();
 
@@ -456,7 +465,8 @@ export function ListeningCard({ className }: { className?: string }) {
   const localMusic = live?.idle ? null : live?.music ?? null;
   const localTrack =
     localMusic?.title && localMusic.state !== "stopped" ? localMusic : null;
-  // 服务端已经按暂停宽限期选好来源；前端只渲染结果，避免两套计时器产生闪烁。
+  // 来源仍然只由服务端选，前端不重算宽限期，只负责在它到期时再问一次
+  // （见上面的 nowListeningInterval），所以这里渲染的始终是服务端的结论。
   const localActive = Boolean(localTrack);
 
   const [latest, ...tail] = data?.items ?? [];
