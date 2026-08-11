@@ -28,9 +28,13 @@ import { recordVibeCodingReport } from "@/lib/vibecoding";
 /** 与采集端一致；缓存的是很短的内容哈希 URL，64 项也足够覆盖日常应用。 */
 const DESKTOP_ICON_CACHE_LIMIT = 64;
 
-/** 暂停超过 10 秒就不再占用音乐 Hero，让下一个实时来源接管。 */
+/**
+ * 暂停超过 10 秒就不再占用音乐 Hero，让下一个实时来源接管。
+ *
+ * 这条规则只在这里实现。浏览器不重算它，只按 payload 里的 expiresInMs
+ * 把下一次取数排在到期那一刻，见 getNowListening。
+ */
 const MUSIC_PAUSE_GRACE_MS = 10_000;
-let pauseExpiryTimer: ReturnType<typeof setTimeout> | null = null;
 
 type TelemetryState = {
   desktop: DesktopActivity | null;
@@ -500,6 +504,23 @@ export async function getNowListening(): Promise<NowListeningPayload> {
     idle: !music,
     id: lookup?.id ?? null,
     link,
+    /**
+     * 这份选择还能成立多久。
+     *
+     * 全站只有暂停宽限期这一条规则「不靠新上报、光靠时间流逝就会改变结果」：
+     * 暂停满 MUSIC_PAUSE_GRACE_MS 之后来源要让给下一个实时源，而那个时刻本身
+     * 不对应任何一次上报，没有推送会到。所以由服务端把还剩多少毫秒告诉浏览器，
+     * 浏览器到点重新问一次就行。
+     *
+     * 为什么不让浏览器拿 observedAt 自己算：那是**设备**的时钟，浏览器再拿
+     * **自己**的时钟去减，是一次跨两个时钟的比较。偏差大到超过宽限期时，浏览器
+     * 会算出「早就过期了」而服务端仍然认为没过期，于是一直重问 —— 变成热轮询。
+     * 服务端用同一个时钟算差值，把结果发出来，这个坑就不存在。
+     */
+    expiresInMs:
+      music?.state === "paused"
+        ? Math.max(0, MUSIC_PAUSE_GRACE_MS - (now - music.observedAt))
+        : null,
   };
 }
 
@@ -519,26 +540,18 @@ export async function publishDesktop() {
 }
 
 /**
- * 推送当前播放，并在暂停宽限期结束时精确重算一次来源。
- * 这样前端会直接从暂停来源切到下一实时来源，不会中途闪回 Apple Music 的历史 hero。
+ * 推送当前播放。
+ *
+ * 暂停宽限期结束时不再由这里补一条 —— 从前是挂一个 setTimeout 到点重推，
+ * 那要求进程在响应发出之后还活着。serverless 上响应一返回实例就被冻结，
+ * 那个定时器根本不会执行，表现是暂停后 hero 一直挂到下一次轮询才翻。
+ *
+ * 现在改成 payload 自带 expiresInMs，由浏览器把下一次取数排在那一刻，
+ * 服务端只对「收到上报」这一件事做出反应，不欠任何未来的动作。
  */
 export async function publishListening() {
   const payload = await getNowListening();
   await publish({ type: "listening", payload });
-
-  if (pauseExpiryTimer) {
-    clearTimeout(pauseExpiryTimer);
-    pauseExpiryTimer = null;
-  }
-  if (payload.music?.state === "paused") {
-    const remaining =
-      MUSIC_PAUSE_GRACE_MS - Math.max(0, Date.now() - payload.music.observedAt);
-    pauseExpiryTimer = setTimeout(() => {
-      pauseExpiryTimer = null;
-      void publishListening();
-    }, Math.max(1, remaining + 25));
-  }
-
   return payload;
 }
 
