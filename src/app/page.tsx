@@ -1,4 +1,5 @@
 import { Header } from "@/components/header";
+import { ContactCard } from "@/components/contact-card";
 import { ChargerCard } from "@/components/live/charger-card";
 import { ListeningCard } from "@/components/live/listening-card";
 import { LiveDeskCard } from "@/components/live/live-desk-card";
@@ -21,6 +22,7 @@ export default function Home() {
               <ListeningCard />
               <VibeCodingCard />
               <TimezoneCard />
+              <ContactCard />
             </div>
 
             <div className="mt-4">
