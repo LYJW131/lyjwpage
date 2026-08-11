@@ -1,190 +1,51 @@
-import { cached } from "@/lib/cache";
 import {
+  clearNowPlaying,
+  getCurrentItem,
+  getImageUrls,
   getNowPlaying,
+  getResume,
+  setCurrentItem,
+  setImageUrls,
   setNowPlaying,
-  TICKS_PER_MS,
+  setResume,
   type ResolvedNowPlaying,
+  type StoredWatchingItem,
 } from "@/lib/emby-store";
-import { embyImageUrl, type ImageKind } from "@/lib/image-proxy";
+import { storeUploadedImage } from "@/lib/image-store";
+import { number, object, text } from "@/lib/json";
+import { publish } from "@/lib/live-events";
 import type { WatchingItem } from "@/lib/types";
 
 /**
  * Emby「最近在看」。
  *
- * 两个数据源合成：
- * - Users/{id}/Items/Resume —— 未看完的续播列表，本站定时拉
- * - Emby 的 webhook        —— 开播/暂停/停止时主动通知本站，用来打实时标记。
- *   以前是轮询 /emby/Sessions，现在不轮询了，见 lib/emby-store.ts
+ * 本站不发任何 Emby 请求 —— 站点将来跑在 Vercel 上，内网里的 Emby 那时根本
+ * 够不着。续播列表、播放位置、海报全部由 NAS 上的推送代理送进来
+ * （reporters/emby-reporter → api/ingest/emby-reporter）。Emby 自己的播放
+ * webhook 也先发给那个代理，再由它带着密钥转发过来 —— Emby 的 webhook 配置项
+ * 加不了自定义请求头，直发站点就只能开一个不鉴权的入口。
+ *
+ * 于是这个文件只剩两件事：把推来的东西规范化存下，以及读出来拼成前端要的形状。
  */
 
-const RESUME_TTL_MS = 60_000;
 /**
- * 播放中时才会用到的会话查询。
- * Emby 拖动进度条不发任何 webhook（播放事件只有 start/pause/unpause/stop），
- * 想跟上 seek 只能主动问。缓存很短是为了跟手；没在播时一次都不会发。
+ * 海报入库前压到的最长边。
+ *
+ * 代理按 maxHeight 取图，回来是 712×400 上下的 JPEG，而页面上最宽的展示位是
+ * 237 CSS px —— 2 倍屏要 474。压到 480 一点余量都没有，窗口一宽就不够、实测
+ * 肉眼可见地劣化，所以给到上游原始尺寸之上（storeUploadedImage 内部
+ * withoutEnlargement，不会放大），省下来的全部来自 JPEG → WebP。
  */
-const SESSION_TTL_MS = 2_000;
+const POSTER_MAX_DIMENSION = 720;
+/** 展示尺寸比歌单封面大得多，默认那档 82 会吃掉细节 */
+const POSTER_WEBP_QUALITY = 88;
 
-const TIMEOUT_MS = 6_000;
-const ITEM_FIELDS = [
-  "ProductionYear",
-  "SeriesPrimaryImage",
-  "BasicSyncInfo",
-  "UserDataPlayCount",
-].join(",");
-
-type EmbyItem = {
-  Id?: string;
-  Name?: string;
-  ServerId?: string;
-  Type?: string;
-  SeriesName?: string;
-  ParentIndexNumber?: number;
-  IndexNumber?: number;
-  ProductionYear?: number;
-  RunTimeTicks?: number;
-  ImageTags?: { Primary?: string; Thumb?: string };
-  BackdropImageTags?: string[];
-  ParentBackdropImageTags?: string[];
-  ParentBackdropItemId?: string;
-  ParentThumbItemId?: string;
-  ParentThumbImageTag?: string;
-  SeriesPrimaryImageTag?: string;
-  SeriesId?: string;
-  UserData?: {
-    PlayedPercentage?: number;
-    PlaybackPositionTicks?: number;
-    LastPlayedDate?: string;
-  };
-};
-
-function config() {
-  const url = (process.env.EMBY_URL ?? "").replace(/\/+$/, "");
-  const key = process.env.EMBY_API_KEY ?? "";
-  const userId = process.env.EMBY_USER_ID ?? "";
-
-  const missing: string[] = [];
-  if (!url) missing.push("EMBY_URL");
-  if (!key) missing.push("EMBY_API_KEY");
-  if (!userId) missing.push("EMBY_USER_ID");
-  if (missing.length) throw new Error(`缺少 Emby 配置：${missing.join("、")}`);
-
-  // 内网地址用于服务端取数；publicUrl 只用来拼「在 Emby 里打开」的跳转链接，
-  // 图片已经改走本站的签名代理，不再需要浏览器能直连 Emby
-  const publicUrl = (process.env.EMBY_PUBLIC_URL ?? url).replace(/\/+$/, "");
-  return { url, key, userId, publicUrl };
-}
-
-async function embyFetch<T>(path: string, key: string): Promise<T> {
-  const separator = path.includes("?") ? "&" : "?";
-  const response = await fetch(`${path}${separator}api_key=${encodeURIComponent(key)}`, {
-    cache: "no-store",
-    signal: AbortSignal.timeout(TIMEOUT_MS),
-  });
-  if (!response.ok) throw new Error(`Emby 返回 ${response.status}`);
-  return response.json() as Promise<T>;
-}
+/** 图片键由代理拼（itemId:kind:tag:height），这里只挡住不像键的东西 */
+const IMAGE_KEY = /^[A-Za-z0-9:_.-]{1,160}$/;
 
 /**
- * 图片一律走本站的签名代理，不给前端 Emby 直链 ——
- * 既不暴露源站，页面套上 CDN 后图片也能一起被缓存。
- */
-function imageUrl(
-  itemId: string | undefined,
-  kind: ImageKind,
-  tag: string | undefined,
-  height: number,
-): string | null {
-  if (!itemId || !tag) return null;
-  return embyImageUrl({ id: itemId, kind, tag, height });
-}
-
-/** 横版图，按 Thumb → 父级 Thumb → Backdrop → 父级 Backdrop 依次退让 */
-function resolveBackdrop(item: EmbyItem, height = 400): string | null {
-  const candidates: Array<[string | undefined, ImageKind, string | undefined]> = [
-    [item.Id, "Thumb", item.ImageTags?.Thumb],
-    [item.ParentThumbItemId, "Thumb", item.ParentThumbImageTag],
-    [item.Id, "Backdrop", item.BackdropImageTags?.[0]],
-    [item.ParentBackdropItemId, "Backdrop", item.ParentBackdropImageTags?.[0]],
-  ];
-
-  for (const [id, kind, tag] of candidates) {
-    const url = imageUrl(id, kind, tag, height);
-    if (url) return url;
-  }
-  return null;
-}
-
-/** 竖版海报。剧集自身的 Primary 是剧照，所以优先取剧集所属剧的海报 */
-function resolvePoster(item: EmbyItem, height = 600): string | null {
-  if (item.Type === "Episode") {
-    const series = imageUrl(item.SeriesId, "Primary", item.SeriesPrimaryImageTag, height);
-    if (series) return series;
-  }
-  return imageUrl(item.Id, "Primary", item.ImageTags?.Primary, height);
-}
-
-function resolveProgress(item: EmbyItem): number {
-  const userData = item.UserData ?? {};
-  const percentage = Number(userData.PlayedPercentage);
-  if (userData.PlayedPercentage != null && !Number.isNaN(percentage)) {
-    return Math.min(100, Math.max(0, percentage));
-  }
-
-  const position = Number(userData.PlaybackPositionTicks) || 0;
-  const runtime = Number(item.RunTimeTicks) || 0;
-  if (!runtime) return 0;
-  return Math.min(100, Math.max(0, (position / runtime) * 100));
-}
-
-function normalizeType(type: string | undefined): WatchingItem["type"] {
-  if (type === "Episode" || type === "Movie" || type === "Series") return type;
-  return "Other";
-}
-
-function normalize(item: EmbyItem, publicUrl: string): WatchingItem {
-  const name = item.Name ?? "";
-  const season = item.ParentIndexNumber;
-  const episode = item.IndexNumber;
-
-  let title: string;
-  let subtitle: string;
-
-  if (item.Type === "Episode") {
-    // 剧集展示剧名当标题，「S1:E5 - 集标题」当副标题
-    title = item.SeriesName || name;
-    const label =
-      season != null && episode != null
-        ? `S${season}:E${episode}`
-        : episode != null
-          ? `E${episode}`
-          : null;
-    subtitle = [label, name].filter(Boolean).join(" · ");
-  } else {
-    title = name;
-    subtitle = item.ProductionYear != null ? String(item.ProductionYear) : "";
-  }
-
-  return {
-    id: item.Id ?? "",
-    title,
-    subtitle,
-    progress: resolveProgress(item),
-    poster: resolvePoster(item),
-    backdrop: resolveBackdrop(item),
-    type: normalizeType(item.Type),
-    year: item.ProductionYear ?? null,
-    link: item.Id
-      ? `${publicUrl}/web/index.html#!/item?id=${item.Id}${item.ServerId ? `&serverId=${item.ServerId}` : ""}`
-      : null,
-    playedAt: item.UserData?.LastPlayedDate ?? null,
-  };
-}
-
-/**
- * 「最近在看」和「正在播放」拆成两份，因为它们的数据源和刷新节奏根本不同：
- * 前者是后端定时轮询 Emby 的 Resume 列表（有 RESUME_TTL_MS 缓存），
- * 后者纯粹由 Emby 的 webhook 驱动，本站不轮询。
+ * 「最近在看」和「正在播放」拆成两份，因为它们的刷新节奏根本不同：
+ * 前者一天可能只变几次，后者跟着播放走。
  * 合成一个端点的话，慢的那半会被快的那半的节奏拖着白跑。
  */
 export type WatchingPayload = {
@@ -204,93 +65,240 @@ export type NowWatchingPayload = {
   current: WatchingItem | null;
 };
 
-export async function getWatching({ limit = 8 } = {}): Promise<WatchingPayload> {
-  const { url, key, userId, publicUrl } = config();
-
-  const items = await cached(`emby:resume:${limit}`, RESUME_TTL_MS, async () => {
-    const params = new URLSearchParams({
-      Limit: String(limit),
-      MediaTypes: "Video",
-      Fields: ITEM_FIELDS,
-    });
-    const data = await embyFetch<{ Items?: EmbyItem[] }>(
-      `${url}/emby/Users/${userId}/Items/Resume?${params}`,
-      key,
-    );
-    return (data.Items ?? []).map((item) => normalize(item, publicUrl));
-  });
-
-  return { items };
+/** 把存下来的条目里的图片键换成真地址。键还没对应上图就先空着 */
+function resolve(item: StoredWatchingItem, urls: Record<string, string>): WatchingItem {
+  const { posterKey, backdropKey, ...rest } = item;
+  return {
+    ...rest,
+    poster: (posterKey && urls[posterKey]) || null,
+    backdrop: (backdropKey && urls[backdropKey]) || null,
+  };
 }
 
-/** webhook 驱动，空闲时零请求 —— 没在播就什么上游都不打 */
+export async function getWatching({ limit = 8 } = {}): Promise<WatchingPayload> {
+  const stored = await getResume();
+  // 还没收到过推送。交给 statusRoute 变成降级信封，前端显示提示
+  if (!stored) throw new Error("尚未收到 Emby 推送");
+
+  const urls = await getImageUrls();
+  return { items: stored.items.slice(0, limit).map((item) => resolve(item, urls)) };
+}
+
+/** 全靠推送，空闲时零上游请求 —— 没在播就只读一次自家存储 */
 export async function getNowWatching(): Promise<NowWatchingPayload> {
   const live = await getNowPlaying();
   if (!live) return { nowPlaying: null, current: null };
 
-  const { url, key, userId, publicUrl } = config();
-  // 单项详情只负责卡片文案和图片，实时进度仍以 webhook / Sessions 为准
-  const current = await cached(`emby:item:${live.itemId}`, RESUME_TTL_MS, async () => {
-    const params = new URLSearchParams({ Fields: ITEM_FIELDS });
-    const item = await embyFetch<EmbyItem>(
-      `${url}/emby/Users/${userId}/Items/${encodeURIComponent(live.itemId)}?${params}`,
-      key,
-    );
-    return normalize(item, publicUrl);
-  });
+  const stored = await getCurrentItem();
+  // 详情比 webhook 晚到一拍很正常（代理下一轮才把这一项推来），对不上就先不给
+  const current =
+    stored?.item.id === live.itemId ? resolve(stored.item, await getImageUrls()) : null;
 
-  // 播放中：顺带核对一次真实位置，把 seek 造成的偏差拉回来
-  return { nowPlaying: await syncPosition(live, url, key, userId), current };
+  return { nowPlaying: live, current };
 }
 
-/** 用 Sessions 校正播放位置。只在已知播放中时调用，空闲时零请求 */
-async function syncPosition(
-  live: ResolvedNowPlaying,
-  url: string,
-  key: string,
-  userId: string,
-): Promise<ResolvedNowPlaying> {
-  try {
-    const sessions = await cached(`emby:session-position`, SESSION_TTL_MS, () =>
-      embyFetch<
-        Array<{
-          UserId?: string;
-          NowPlayingItem?: { Id?: string; RunTimeTicks?: number };
-          PlayState?: { PositionTicks?: number; IsPaused?: boolean };
-        }>
-      >(`${url}/emby/Sessions`, key),
-    );
+/* ── 以下是推送代理那一侧的入口 ──────────────────────────────── */
 
-    const session = sessions.find(
-      (entry) =>
-        entry.UserId === userId && String(entry.NowPlayingItem?.Id ?? "") === live.itemId,
-    );
-    if (!session?.NowPlayingItem?.Id) return live;
+/**
+ * 代理推来的一项。
+ *
+ * 只带 Emby 说了什么，不带怎么显示：标题拼法和「在 Emby 里打开」的链接都在
+ * 这一侧做 —— 前者是展示逻辑，后者要用 EMBY_PUBLIC_URL，那是浏览器侧的地址，
+ * 代理不该知道。
+ */
+type ReportItem = {
+  id: string;
+  name: string;
+  type: string | null;
+  serverId: string | null;
+  seriesName: string | null;
+  season: number | null;
+  episode: number | null;
+  year: number | null;
+  progress: number;
+  playedAt: string | null;
+  posterKey: string | null;
+  backdropKey: string | null;
+};
 
-    const positionTicks = Number(session.PlayState?.PositionTicks) || 0;
-    const runTimeTicks = Number(session.NowPlayingItem.RunTimeTicks) || 0;
-    const paused = Boolean(session.PlayState?.IsPaused);
+function imageKey(value: unknown): string | null {
+  const key = text(value);
+  return key && IMAGE_KEY.test(key) ? key : null;
+}
 
-    // 写回存储：这样即便下一拍查不到会话，推算也是从校正后的锚点开始
-    await setNowPlaying({
-      itemId: live.itemId,
-      paused,
-      positionTicks,
-      runTimeTicks,
-      device: live.device,
-      at: Date.now(),
-    });
+function reportItem(value: unknown): ReportItem | null {
+  const raw = object(value);
+  const id = text(raw?.id);
+  if (!raw || !id) return null;
 
-    return {
-      itemId: live.itemId,
-      paused,
-      progress: runTimeTicks ? Math.min(100, (positionTicks / runTimeTicks) * 100) : null,
-      device: live.device,
-      positionMs: positionTicks / TICKS_PER_MS,
-      durationMs: runTimeTicks ? runTimeTicks / TICKS_PER_MS : null,
-    };
-  } catch {
-    // Sessions 挂了不该影响展示，沿用推算值
-    return live;
+  return {
+    id,
+    name: text(raw.name) ?? "",
+    type: text(raw.type),
+    serverId: text(raw.serverId),
+    seriesName: text(raw.seriesName),
+    season: number(raw.season),
+    episode: number(raw.episode),
+    year: number(raw.year),
+    progress: Math.min(100, Math.max(0, number(raw.progress) ?? 0)),
+    playedAt: text(raw.playedAt),
+    posterKey: imageKey(raw.posterKey),
+    backdropKey: imageKey(raw.backdropKey),
+  };
+}
+
+function normalizeType(type: string | null): WatchingItem["type"] {
+  if (type === "Episode" || type === "Movie" || type === "Series") return type;
+  return "Other";
+}
+
+/**
+ * 跳转链接指向 EMBY_PUBLIC_URL，那是浏览器能访问到的地址。
+ * 没配就不给链接 —— 这里再没有内网地址可退，退了也是个点不开的链接。
+ */
+function link(item: ReportItem): string | null {
+  const base = (process.env.EMBY_PUBLIC_URL ?? "").replace(/\/+$/, "");
+  if (!base || !item.id) return null;
+  const server = item.serverId ? `&serverId=${item.serverId}` : "";
+  return `${base}/web/index.html#!/item?id=${item.id}${server}`;
+}
+
+function normalize(item: ReportItem): StoredWatchingItem {
+  let title: string;
+  let subtitle: string;
+
+  if (item.type === "Episode") {
+    // 剧集展示剧名当标题，「S1:E5 - 集标题」当副标题
+    title = item.seriesName || item.name;
+    const label =
+      item.season != null && item.episode != null
+        ? `S${item.season}:E${item.episode}`
+        : item.episode != null
+          ? `E${item.episode}`
+          : null;
+    subtitle = [label, item.name].filter(Boolean).join(" · ");
+  } else {
+    title = item.name;
+    subtitle = item.year != null ? String(item.year) : "";
   }
+
+  return {
+    id: item.id,
+    title,
+    subtitle,
+    progress: item.progress,
+    posterKey: item.posterKey,
+    backdropKey: item.backdropKey,
+    type: normalizeType(item.type),
+    year: item.year,
+    link: link(item),
+    playedAt: item.playedAt,
+  };
+}
+
+/** 把这一批 base64 图片落地，返回更新后的键 → 地址映射 */
+async function storeImages(value: unknown): Promise<{ urls: Record<string, string>; stored: number }> {
+  const urls = await getImageUrls();
+  if (!Array.isArray(value) || !value.length) return { urls, stored: 0 };
+
+  let stored = 0;
+  for (const entry of value) {
+    const raw = object(entry);
+    const key = imageKey(raw?.key);
+    if (!key || !raw) continue;
+
+    const url = await storeUploadedImage(raw.data, POSTER_MAX_DIMENSION, POSTER_WEBP_QUALITY);
+    if (!url) continue;
+    // 重新插入，让它排到末尾：淘汰的总是最久没被推过的那些
+    delete urls[key];
+    urls[key] = url;
+    stored += 1;
+  }
+
+  if (stored) await setImageUrls(urls);
+  return { urls, stored };
+}
+
+/** 引用了却还没有图的键。回给代理，让它下一次把这些补上 */
+function missingKeys(items: StoredWatchingItem[], urls: Record<string, string>): string[] {
+  const missing = new Set<string>();
+  for (const item of items) {
+    for (const key of [item.posterKey, item.backdropKey]) {
+      if (key && !urls[key]) missing.add(key);
+    }
+  }
+  return [...missing];
+}
+
+/**
+ * 收下推送代理的一次上报。
+ *
+ * 三个部分都可省略，各推各的：续播列表 60 秒一轮且只在有变化时推，播放位置
+ * 只在拖动进度条偏离推算值时推，图片则只在没推过或 ImageTag 变了时才带。
+ */
+export async function recordEmbyReport(body: unknown) {
+  const root = object(body);
+  if (!root) throw new Error("请求体不是对象");
+
+  const { urls, stored } = await storeImages(root.images);
+
+  const resume = object(root.resume);
+  let items: number | null = null;
+  if (resume && Array.isArray(resume.items)) {
+    const list = resume.items
+      .map(reportItem)
+      .filter((item): item is ReportItem => item != null)
+      .map(normalize);
+    await setResume(list);
+    items = list.length;
+  }
+
+  /**
+   * `playing` 缺席和为 null 是两回事：缺席表示这次不谈播放状态（比如只补图），
+   * null 表示代理确认没有会话在播了，要清掉。所以判存在而不是判真假。
+   */
+  let playing: "updated" | "cleared" | null = null;
+  if ("playing" in root) {
+    playing = (await recordPlaying(root.playing)) ? "updated" : "cleared";
+  }
+
+  /**
+   * 缺哪些图要按「落地后的全部状态」算，而不是只看这次推来的部分：
+   * Redis 被清空时代理往往只推了个位置更新，得靠这份回执才知道图也没了。
+   */
+  const current = playing === "updated" ? (await getCurrentItem())?.item : null;
+  const referenced = [...((await getResume())?.items ?? []), ...(current ? [current] : [])];
+  const missing = missingKeys(referenced, urls);
+
+  // 播放状态变了就直接把新数据推给浏览器；列表不走 SSE，它慢得多，跟着轮询就够
+  if (playing) publish({ type: "watching", payload: await getNowWatching() });
+
+  return { items, playing, images: stored, missingImages: missing };
+}
+
+/** 返回是否仍在播放中 */
+async function recordPlaying(value: unknown): Promise<boolean> {
+  const raw = object(value);
+  const itemId = text(raw?.itemId);
+  if (!raw || !itemId) {
+    await clearNowPlaying();
+    return false;
+  }
+
+  const item = reportItem(raw.item);
+  if (item) await setCurrentItem(normalize(item));
+
+  /**
+   * 时间戳取本站收到的时刻，不用代理给的。
+   * 进度是从这个锚点按真实时间往前推算的，两台机器的时钟差多少，推算就偏多少。
+   */
+  await setNowPlaying({
+    itemId,
+    paused: raw.paused === true,
+    positionTicks: number(raw.positionTicks) ?? 0,
+    runTimeTicks: number(raw.runTimeTicks) ?? 0,
+    device: text(raw.device) ?? "",
+    at: Date.now(),
+  });
+  return true;
 }
