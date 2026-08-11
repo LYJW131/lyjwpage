@@ -31,8 +31,8 @@ const FORWARDS: ReadonlyArray<{
 }> = [
   { event: "desktop", path: DESKTOP_PATH },
   { event: "music", path: MUSIC_PATH },
-  // Emby 正在播放：webhook 驱动，服务端手上已经是最新的。列表不动 —— 它由后端
-  // 轮询 Emby，节奏慢得多，真要变也得等服务端那层缓存过期，跟着走没有意义。
+  // Emby 正在播放：webhook 和推送代理驱动，服务端手上已经是最新的。列表不动 ——
+  // 它由代理 60 秒一轮地推，节奏慢得多，跟着走没有意义。
   { event: "watching", path: NOW_WATCHING_PATH },
   /**
    * 充电头只在插拔、换设备时来事件。曲线的合并走和轮询同一个累加器
@@ -49,9 +49,9 @@ const FORWARDS: ReadonlyArray<{
 /**
  * 上报器上下线时要重取的键。
  *
- * 只有 Mac 上报器供数的那几张卡在列。Emby 正在看不在其中 —— 那条由 Emby 的
- * webhook 驱动，getNowWatching 从头到尾不碰上报器，Mac 睡了不影响你在 Emby 上
- * 看什么，跟着重取纯属白跑一趟。
+ * 只有 Mac 上报器供数的那几张卡在列。Emby 正在看不在其中 —— 那条的数据来自
+ * Emby 的 webhook 和 NAS 上的推送代理，和 Mac 上报器无关，Mac 睡了不影响你在
+ * Emby 上看什么，跟着重取纯属白跑一趟。
  *
  * vibe coding 也不在：token 用量是累计的历史事实，Mac 掉线它不会变得不可信，
  * 只是不再增长，没有理由跟着变灰。

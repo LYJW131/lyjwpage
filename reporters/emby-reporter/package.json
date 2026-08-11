@@ -1,0 +1,20 @@
+{
+  "name": "@lyjwpage/emby-reporter",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "把内网 Emby 的续播列表、播放位置和海报推送到 lyjwpage",
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/index.js"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "typescript": "^5"
+  }
+}

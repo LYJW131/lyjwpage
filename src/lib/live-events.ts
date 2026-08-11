@@ -40,8 +40,8 @@ export type LiveEvent =
    */
   | { type: "presence"; payload: null }
   /**
-   * Emby 正在播放。webhook 驱动，服务端收到时手上就是最新的，所以直接带数据。
-   * 「最近在看」的列表不走这条 —— 它是后端轮询 Emby 拿的，节奏慢得多。
+   * Emby 正在播放。webhook 和推送代理驱动，服务端收到时手上就是最新的，
+   * 所以直接带数据。「最近在看」的列表不走这条 —— 它 60 秒才推一次，节奏慢得多。
    */
   | { type: "watching"; payload: NowWatchingPayload };
 
