@@ -9,6 +9,8 @@ export const site = {
   /** 用于 header 和 <head> metadata */
   name: "LYJW",
   url: "https://lyjw131.com",
+  /** 页脚的 commit 链接拼在它后面 */
+  repo: "https://github.com/LYJW131/lyjwpage",
   /** 占位：会进 <meta description> */
   tagline: "折腾流媒体、自建服务和一切会发光的小玩意。",
 

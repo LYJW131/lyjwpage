@@ -2,7 +2,7 @@
 
 import PusherJs from "pusher-js";
 import { useEffect } from "react";
-import { useSWRConfig } from "swr";
+import useSWR, { useSWRConfig } from "swr";
 import type { ScopedMutator } from "swr";
 
 import { mergeChargerHistory } from "@/lib/charger-history";
@@ -84,6 +84,20 @@ const INVALIDATIONS: ReadonlyArray<{
 ];
 
 /**
+ * 「此刻多少人在看这个页面」的缓存键。
+ *
+ * 不是路径，故意的 —— 它没有对应的 HTTP 端点，数字全靠推送写进来，所以也
+ * 不在 lib/paths 那份路径常量里。键只在这个文件里用，外面读 useOnlineCount。
+ */
+const ONLINE_KEY = "live:online";
+
+/** 连接通没通。同上，纯客户端的键。 */
+const CONNECTION_KEY = "live:connected";
+
+/** Pusher 协议自带的事件负载，字段名是协议定的，不归站点的 camelCase 约定管 */
+type SubscriptionCount = { subscription_count: number };
+
+/**
  * 整页共用一条连接。
  *
  * 现在有多个组件要读活动状态（Live Desk 的前台应用、Recently Played 的本机
@@ -117,6 +131,19 @@ function open(mutate: ScopedMutator) {
   });
   client = next;
 
+  /**
+   * 连接状态只喂给页脚那个说明浮层。
+   *
+   * 人数是推来的，断开之后它会停在最后一个值上 —— 不说一声的话，一个冻住的
+   * 数字和实时的数字长得一模一样。
+   *
+   * 这不是把从前那个 connected 加回来（见下面 useLiveEvents 的注释）：那次去
+   * 掉的是「断开时把各卡的轮询压到 3 秒」这个行为，不是不让人看见状态。
+   */
+  next.connection.bind("state_change", ({ current }: { current: string }) => {
+    void mutate(CONNECTION_KEY, current === "connected", { revalidate: false });
+  });
+
   const channel = next.subscribe(LIVE_CHANNEL);
 
   for (const { event, path, merge } of FORWARDS) {
@@ -134,6 +161,19 @@ function open(mutate: ScopedMutator) {
       for (const path of paths) void mutate(path);
     });
   }
+
+  /**
+   * 在线人数单独绑，不进上面那两张表：那两张登记的是站点自己发的 LiveEvent，
+   * 这条是 Pusher 协议自带的事件，塞进表里会把 LiveEvent["type"] 弄脏。
+   *
+   * 订阅成功时先给一次，之后人数每变一次推一次 —— 站点这侧不用加端点、不用
+   * 轮询、也不用再开一条长连接。前提是 Pusher 后台「subscription counting」
+   * 和「subscription count events」两个开关都开着，只开前者的话就只有 HTTP
+   * API 能问、这里一条事件都收不到。
+   */
+  channel.bind("pusher:subscription_count", (payload: SubscriptionCount) => {
+    void mutate(ONLINE_KEY, payload.subscription_count, { revalidate: false });
+  });
 }
 
 function close() {
@@ -167,4 +207,20 @@ export function useLiveEvents() {
       }
     };
   }, [mutate]);
+}
+
+/**
+ * 此刻有多少人开着这个页面，以及那条连接此刻通不通。
+ *
+ * 人数数的是**订阅数**：一个标签页一条连接算一个，同一个人开两个标签页算两个。
+ * 页面上有几张卡不影响 —— 整页共用一条连接（见上面 open 的注释）。
+ * 连上之前、以及没配实时服务时 count 是 undefined。
+ *
+ * 两个键都不传 fetcher：它们没有端点可回源，只有推送会写。
+ */
+export function useOnlineCount(): { count: number | undefined; connected: boolean } {
+  useLiveEvents();
+  const { data: count } = useSWR<number>(ONLINE_KEY, null);
+  const { data: connected } = useSWR<boolean>(CONNECTION_KEY, null);
+  return { count, connected: connected ?? false };
 }

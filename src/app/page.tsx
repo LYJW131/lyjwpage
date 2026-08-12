@@ -1,3 +1,4 @@
+import { Footer } from "@/components/footer";
 import { Header } from "@/components/header";
 import { ContactCard } from "@/components/contact-card";
 import { ChargerCard } from "@/components/live/charger-card";
@@ -81,6 +82,8 @@ export default async function Home() {
           </Section>
         </Container>
       </main>
+
+      <Footer />
     </>
   );
 }

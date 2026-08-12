@@ -1,6 +1,40 @@
 import type { NextConfig } from "next";
+import { execSync } from "node:child_process";
+
+/**
+ * 页脚那行构建信息。两个值都必须在**构建期**求值、以字面量内联进产物。
+ *
+ * 别改成在服务端组件里现算 —— 首页的静态壳不是构建期就冻住的：每次上报进来
+ * 都会按 tag 失效，下一个请求在服务端重新生成一遍（见下面 cacheComponents
+ * 那段）。在模块作用域写 `new Date()`，拿到的是「最后那台实例的冷启动时刻」，
+ * 会跟着上报一整天悄悄往前漂，而且页面上看不出来它是错的。
+ *
+ * 走 `env` 是因为它是 DefinePlugin 式的文本替换：值在构建时焊死，之后无论
+ * 冷启动还是重新生成都不会再变。（这个字段的文档标了 legacy，指的是「读配置」
+ * 这个用途该用 .env 文件；.env 算不出值，构建期常量还是只能走这里。）
+ */
+const BUILD_TIME = new Date().toISOString();
+
+/** Vercel 自动注入完整 sha；本地开发没有这个变量，回退问 git */
+function resolveCommitSha(): string {
+  const fromVercel = process.env.VERCEL_GIT_COMMIT_SHA;
+  if (fromVercel) return fromVercel;
+  try {
+    return execSync("git rev-parse HEAD", {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+  } catch {
+    // 拿不到就留空（浅克隆、tarball 部署），页脚那一段整个不显示
+    return "";
+  }
+}
 
 const nextConfig: NextConfig = {
+  env: {
+    BUILD_TIME,
+    COMMIT_SHA: resolveCommitSha(),
+  },
   /**
    * 首屏那八份数据走 `use cache` + `cacheTag`，上报进来时按 tag 失效。
    *
