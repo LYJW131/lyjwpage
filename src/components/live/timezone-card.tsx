@@ -108,7 +108,12 @@ function timezoneOffsetSeconds(now: number, timezone: string) {
 const TWO_DIGITS = { minimumIntegerDigits: 2, useGrouping: false } as const;
 
 export function TimezoneCard({ fallback }: { fallback: StatusResponse<TimezonePayload> }) {
-  const { data, error } = useStatus<TimezonePayload>(TIMEZONE_PATH, REFRESH_MS, { fallback });
+  const { data, error } = useStatus<TimezonePayload>(TIMEZONE_PATH, REFRESH_MS, {
+    fallback,
+    // 首屏信封已经带着 Mac 时区和存活结论；挂载时不重复问，presence 事件和
+    // 60 秒兜底轮询仍会及时纠正之后发生的上下线变化。
+    revalidateOnMount: false,
+  });
   /**
    * 首帧（服务端那一遍和 hydrate 那一遍）now 是 0，钟面和偏移都画占位，
    * 挂载后才开始走 —— 理由见 useMountedAt。
