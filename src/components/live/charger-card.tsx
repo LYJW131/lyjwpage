@@ -7,7 +7,11 @@ import { Card } from "@/components/ui/card";
 import { StatusDot, type DotTone } from "@/components/ui/status-dot";
 import { useLiveEvents } from "@/hooks/use-live-events";
 import { incrementalFetcher, useStatus } from "@/hooks/use-status";
-import { historyCursor, mergeChargerHistory } from "@/lib/charger-history";
+import {
+  historyCursor,
+  mergeChargerHistory,
+  seedChargerHistory,
+} from "@/lib/charger-history";
 import { CHARGER_PATH } from "@/lib/paths";
 import type {
   ChargerPayload,
@@ -59,6 +63,7 @@ export function ChargerCard({
   const { data, error, isLoading } = useStatus<ChargerPayload>(CHARGER_PATH, REFRESH_MS, {
     fallback,
     fetcher: fetchCharger,
+    seedFallback: seedChargerHistory,
   });
   const history = data?.history ?? [];
 

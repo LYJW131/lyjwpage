@@ -11,7 +11,11 @@ import { Card } from "@/components/ui/card";
 import { useMountedAt } from "@/hooks/use-mounted-at";
 import { incrementalFetcher, useStatus } from "@/hooks/use-status";
 import { VIBECODING_PATH } from "@/lib/paths";
-import { activityCursor, mergeVibeCodingActivity } from "@/lib/vibecoding-activity";
+import {
+  activityCursor,
+  mergeVibeCodingActivity,
+  seedVibeCodingActivity,
+} from "@/lib/vibecoding-activity";
 import type {
   StatusResponse,
   VibeCodingAgent,
@@ -788,6 +792,7 @@ export function VibeCodingCard({
   const { data, error, isLoading } = useStatus<VibeCodingPayload>(VIBECODING_PATH, REFRESH_MS, {
     fallback,
     fetcher: fetchVibeCoding,
+    seedFallback: seedVibeCodingActivity,
   });
   const stale = Boolean(data?.stale || error);
 

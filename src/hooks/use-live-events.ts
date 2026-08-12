@@ -1,8 +1,9 @@
 "use client";
 
-import PusherJs from "pusher-js";
+// 只要类型，实现在 open 里动态 import —— import type 编译后整条擦掉，不进 bundle
+import type Pusher from "pusher-js";
 import { useEffect } from "react";
-import { useSWRConfig } from "swr";
+import useSWR, { useSWRConfig } from "swr";
 import type { ScopedMutator } from "swr";
 
 import { mergeChargerHistory } from "@/lib/charger-history";
@@ -84,59 +85,150 @@ const INVALIDATIONS: ReadonlyArray<{
 ];
 
 /**
+ * 「此刻多少人在看这个页面」的缓存键。
+ *
+ * 不是路径，故意的 —— 它没有对应的 HTTP 端点，数字全靠推送写进来，所以也
+ * 不在 lib/paths 那份路径常量里。键只在这个文件里用，外面读 useOnlineCount。
+ */
+const ONLINE_KEY = "live:online";
+
+/** 连接通没通。同上，纯客户端的键。 */
+const CONNECTION_KEY = "live:connected";
+
+/** Pusher 协议自带的事件负载，字段名是协议定的，不归站点的 camelCase 约定管 */
+type SubscriptionCount = { subscription_count: number };
+
+/**
  * 整页共用一条连接。
  *
  * 现在有多个组件要读活动状态（Live Desk 的前台应用、Recently Played 的本机
  * 播放），如果每个都自己建一条 WebSocket，一个页面就会占掉好几条长连接。
  * 所以连接做成模块级单例，按订阅者数量开关。
  */
-let client: PusherJs | null = null;
+let client: Pusher | null = null;
 let refCount = 0;
 
+/**
+ * 连接的代号，close() 每关一次 +1。
+ *
+ * pusher-js 是动态 import 来的（26KB 的实时推送不该躺在首屏的关键 chunk 里，
+ * 这条连接本来就是挂载之后才需要的增强），于是 open 从同步变成了跨 await 的。
+ * 跨过去之后世界可能已经变了：整页的订阅者在这期间全卸载、close() 已经跑完 ——
+ * 那这次 open 就不作数了，再把 client 赋回去等于留下一条没人管、也没人关的
+ * WebSocket。await 回来先对一遍代号，对不上就直接扔掉。
+ */
+let generation = 0;
+
+/**
+ * 有一次 open 正在等 import。
+ *
+ * 从前靠 `if (client) return` 挡住并发的第二次 open —— 那时 client 是同一个
+ * 同步块里赋上的，第二个组件挂载时它已经在了。现在 client 要等 import 落地才有，
+ * 同一轮 effect 里的两次 open 会双双穿过那个检查、各建一条连接。
+ */
+let opening = false;
+
 function open(mutate: ScopedMutator) {
-  if (client) return;
+  if (client || opening) return;
   const endpoint = liveEndpoint();
-  // 没配实时服务：卡片照常轮询，只是不会被推着翻
+  // 没配实时服务：卡片照常轮询，只是不会被推着翻。这一步留在 await 之前，
+  // 没配的时候连那个 chunk 都不用去拉
   if (!endpoint) return;
 
   const selfHosted = "cluster" in endpoint ? null : endpoint;
   const transport: "ws" | "wss" = selfHosted?.tls ? "wss" : "ws";
 
-  const next = new PusherJs(endpoint.key, {
-    // 自部署时 cluster 用不上，但 pusher-js 校验它必填，给个占位
-    cluster: "cluster" in endpoint ? endpoint.cluster : "self-hosted",
-    ...(selfHosted && {
-      wsHost: selfHosted.host,
-      wsPort: selfHosted.port,
-      wssPort: selfHosted.port,
-      forceTLS: selfHosted.tls,
-      // 只留 WebSocket：自部署的地址没有云 Pusher 那套 HTTP 回退端点，
-      // 让它去试只会在连不上时多打几个必然失败的请求
-      enabledTransports: [transport],
-    }),
-  });
-  client = next;
+  opening = true;
+  const attempt = generation;
 
-  const channel = next.subscribe(LIVE_CHANNEL);
+  void (async () => {
+    try {
+      // 拉不到 chunk（部署轮换、断网）就当没有实时推送：各卡照常轮询，
+      // 下一次挂载还会再试一次。只吞这一步的失败，构造 Pusher 时的报错照旧抛
+      const loaded = await import("pusher-js").catch(() => null);
+      if (!loaded) return;
+      // 等 import 的这段时间里关过：这次 open 已经作废，什么都别建
+      if (attempt !== generation) return;
 
-  for (const { event, path, merge } of FORWARDS) {
-    channel.bind(event, (payload: unknown) => {
-      const envelope: StatusResponse<unknown> = {
-        ok: true,
-        data: merge ? merge(payload) : payload,
-      };
-      void mutate(path, envelope, { revalidate: false });
-    });
-  }
+      const PusherJs = loaded.default;
+      const next = new PusherJs(endpoint.key, {
+        // 自部署时 cluster 用不上，但 pusher-js 校验它必填，给个占位
+        cluster: "cluster" in endpoint ? endpoint.cluster : "self-hosted",
+        ...(selfHosted && {
+          wsHost: selfHosted.host,
+          wsPort: selfHosted.port,
+          wssPort: selfHosted.port,
+          forceTLS: selfHosted.tls,
+          // 只留 WebSocket：自部署的地址没有云 Pusher 那套 HTTP 回退端点，
+          // 让它去试只会在连不上时多打几个必然失败的请求
+          enabledTransports: [transport],
+        }),
+      });
+      client = next;
 
-  for (const { event, paths } of INVALIDATIONS) {
-    channel.bind(event, () => {
-      for (const path of paths) void mutate(path);
-    });
-  }
+      /**
+       * 连接状态只喂给页脚那个说明浮层。
+       *
+       * 人数是推来的，断开之后它会停在最后一个值上 —— 不说一声的话，一个冻住的
+       * 数字和实时的数字长得一模一样。
+       *
+       * 这不是把从前那个 connected 加回来（见下面 useLiveEvents 的注释）：那次去
+       * 掉的是「断开时把各卡的轮询压到 3 秒」这个行为，不是不让人看见状态。
+       */
+      next.connection.bind("state_change", ({ current }: { current: string }) => {
+        void mutate(CONNECTION_KEY, current === "connected", { revalidate: false });
+      });
+
+      const channel = next.subscribe(LIVE_CHANNEL);
+
+      for (const { event, path, merge } of FORWARDS) {
+        channel.bind(event, (payload: unknown) => {
+          const envelope: StatusResponse<unknown> = {
+            ok: true,
+            data: merge ? merge(payload) : payload,
+          };
+          void mutate(path, envelope, { revalidate: false });
+        });
+      }
+
+      for (const { event, paths } of INVALIDATIONS) {
+        channel.bind(event, () => {
+          for (const path of paths) void mutate(path);
+        });
+      }
+
+      /**
+       * 在线人数单独绑，不进上面那两张表：那两张登记的是站点自己发的 LiveEvent，
+       * 这条是 Pusher 协议自带的事件，塞进表里会把 LiveEvent["type"] 弄脏。
+       *
+       * 订阅成功时先给一次，之后人数每变一次推一次 —— 站点这侧不用加端点、不用
+       * 轮询、也不用再开一条长连接。前提是 Pusher 后台「subscription counting」
+       * 和「subscription count events」两个开关都开着，只开前者的话就只有 HTTP
+       * API 能问、这里一条事件都收不到。
+       */
+      channel.bind("pusher:subscription_count", (payload: SubscriptionCount) => {
+        void mutate(ONLINE_KEY, payload.subscription_count, { revalidate: false });
+      });
+    } finally {
+      /**
+       * 只有仍然是当前这一代才收旗。
+       *
+       * 中途 close 过的话 opening 已经被它清掉，而且很可能已经有新的一次 open
+       * 举着这面旗在等自己的 import（组件卸载又立刻挂回来就是这个形状，
+       * React 严格模式下每次挂载都会走一遍 mount → cleanup → mount）。
+       * 不加这一句的话，作废的这一代会顺手把新那一代的旗放掉，
+       * 于是下一个挂载的组件又能穿过 opening 检查，再建一条连接。
+       */
+      if (attempt === generation) opening = false;
+    }
+  })();
 }
 
 function close() {
+  // 先换代号再断：在途的那次 open（如果有）await 回来会看到对不上，自行作废。
+  // opening 也一并清掉，否则「关完再开」会被那面还举着的旗永久挡住
+  generation += 1;
+  opening = false;
   client?.disconnect();
   client = null;
 }
@@ -167,4 +259,20 @@ export function useLiveEvents() {
       }
     };
   }, [mutate]);
+}
+
+/**
+ * 此刻有多少人开着这个页面，以及那条连接此刻通不通。
+ *
+ * 人数数的是**订阅数**：一个标签页一条连接算一个，同一个人开两个标签页算两个。
+ * 页面上有几张卡不影响 —— 整页共用一条连接（见上面 open 的注释）。
+ * 连上之前、以及没配实时服务时 count 是 undefined。
+ *
+ * 两个键都不传 fetcher：它们没有端点可回源，只有推送会写。
+ */
+export function useOnlineCount(): { count: number | undefined; connected: boolean } {
+  useLiveEvents();
+  const { data: count } = useSWR<number>(ONLINE_KEY, null);
+  const { data: connected } = useSWR<boolean>(CONNECTION_KEY, null);
+  return { count, connected: connected ?? false };
 }

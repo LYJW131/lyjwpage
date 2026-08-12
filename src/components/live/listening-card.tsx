@@ -606,6 +606,9 @@ export function ListeningCard({
                         alt={`${hero.title} 封面`}
                         fill
                         sizes="80px"
+                        // 这张是全站 LCP 元素：默认的 lazy 会让预加载扫描器跳过它
+                        loading="eager"
+                        fetchPriority="high"
                         className="object-cover transition-transform duration-500 group-hover:scale-[1.04]"
                         unoptimized={!needsOptimizing(hero.artwork)}
                       />
