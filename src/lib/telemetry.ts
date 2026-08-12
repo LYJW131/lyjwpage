@@ -23,7 +23,11 @@ import type {
   TimezoneActivity,
   TimezonePayload,
 } from "@/lib/types";
-import { recordVibeCodingReport } from "@/lib/vibecoding";
+import {
+  recordVibeCodingLimits,
+  recordVibeCodingSessions,
+  recordVibeCodingUsage,
+} from "@/lib/vibecoding";
 
 /** 与采集端一致；缓存的是很短的内容哈希 URL，64 项也足够覆盖日常应用。 */
 const DESKTOP_ICON_CACHE_LIMIT = 64;
@@ -404,8 +408,25 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
     accepted += 1;
   }
 
-  if ("vibeCoding" in modules) {
-    await recordVibeCodingReport(modules.vibeCoding, receivedAt);
+  /**
+   * Vibe coding 三个模块各收各的。
+   *
+   * 从前只有一个 `vibeCoding`，用量扫描把限额和会话状态一起烤了进去 —— 那个
+   * 十几秒的扫描一失败，刚取到的限额也跟着发不出来。三条独立的分支之后，
+   * 「只更新限额」是能表达的一件事。
+   */
+  if ("vibeCodingUsage" in modules) {
+    await recordVibeCodingUsage(modules.vibeCodingUsage, receivedAt);
+    accepted += 1;
+  }
+
+  if ("vibeCodingLimits" in modules) {
+    await recordVibeCodingLimits(modules.vibeCodingLimits, receivedAt);
+    accepted += 1;
+  }
+
+  if ("vibeCodingSessions" in modules) {
+    await recordVibeCodingSessions(modules.vibeCodingSessions, receivedAt);
     accepted += 1;
   }
 
