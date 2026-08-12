@@ -1,7 +1,7 @@
 "use client";
 
 import NumberFlow, { NumberFlowGroup } from "@number-flow/react";
-import { AnimatePresence, LazyMotion, m, useReducedMotion } from "motion/react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import Image from "next/image";
 import {
   useCallback,
@@ -43,15 +43,6 @@ import { cn } from "@/lib/utils";
 const REFRESH_MS = 5 * 60_000;
 /** 实时播放由推送送来，轮询只是兜底 */
 const MUSIC_REFRESH_MS = 30_000;
-
-/**
- * 动画特性异步加载，配 LazyMotion + m 用。
- *
- * 必须写成「返回 import() 的函数」：静态导入的话 lib/motion-features 会被并回
- * 这个 chunk，等于没拆。特性到位之前 m.* 直接呈现 animate 终态 —— 首屏本来就
- * 不该动（hero 那块 SSR 出来就是 opacity:1），等换歌时特性早就加载完了。
- */
-const loadFeatures = () => import("@/lib/motion-features").then((mod) => mod.default);
 
 /**
  * 视口里显示几行。行高不写死：列表填满卡片剩下的空间，每行取容器的 1/N
@@ -570,220 +561,218 @@ export function ListeningCard({
 
   return (
     <Card label="Recently Played" action="Apple Music" className={className}>
-      <LazyMotion features={loadFeatures}>
-        <div className="flex min-h-0 flex-1 flex-col px-4 pb-4 pt-3">
-          {/* 最近的一项放大展示。整块都是链接 —— 点封面也能跳转。
-              换专辑/歌单时新旧叠着交叉淡入，见 HERO_VARIANTS。
+      <div className="flex min-h-0 flex-1 flex-col px-4 pb-4 pt-3">
+        {/* 最近的一项放大展示。整块都是链接 —— 点封面也能跳转。
+            换专辑/歌单时新旧叠着交叉淡入，见 HERO_VARIANTS。
 
-              外层 h-20 钉死高度：封面是 w-20 方块，整块 hero 设计上就是 80px。
-              子项一律 absolute inset-0 —— 新旧叠在同一个槽里淡入淡出，不挤文档流，
-              也就不需要 popLayout（它和 overflow / 固定高度容器打架，动画会被吃掉）。
+            外层 h-20 钉死高度：封面是 w-20 方块，整块 hero 设计上就是 80px。
+            子项一律 absolute inset-0 —— 新旧叠在同一个槽里淡入淡出，不挤文档流，
+            也就不需要 popLayout（它和 overflow / 固定高度容器打架，动画会被吃掉）。
 
-              首屏「读取中」不进 AnimatePresence：占位态和 hero 根本不是同一个东西，
-              让它们互相淡入淡出没有意义，只会在数据到达时糊一下。等有数据再挂载，
-              initial={false} 就会直接跳过入场动画，首屏不播这一下。 */}
-          <div className="relative h-20 shrink-0">
-            {!hero ? (
-              <HeroWrapper link={null}>
-                <div className="relative aspect-square w-20 shrink-0 overflow-hidden rounded-md border border-line bg-muted" />
-                <div className="flex min-w-0 flex-1 flex-col justify-center">
-                  <div className="text-sm text-muted-foreground">
-                    {isLoading
-                      ? "读取中…"
-                      : error
-                        ? "Apple Music 未连接"
-                        : "最近没有播放记录"}
-                  </div>
+            首屏「读取中」不进 AnimatePresence：占位态和 hero 根本不是同一个东西，
+            让它们互相淡入淡出没有意义，只会在数据到达时糊一下。等有数据再挂载，
+            initial={false} 就会直接跳过入场动画，首屏不播这一下。 */}
+        <div className="relative h-20 shrink-0">
+          {!hero ? (
+            <HeroWrapper link={null}>
+              <div className="relative aspect-square w-20 shrink-0 overflow-hidden rounded-md border border-line bg-muted" />
+              <div className="flex min-w-0 flex-1 flex-col justify-center">
+                <div className="text-sm text-muted-foreground">
+                  {isLoading
+                    ? "读取中…"
+                    : error
+                      ? "Apple Music 未连接"
+                      : "最近没有播放记录"}
                 </div>
-              </HeroWrapper>
-            ) : (
-              <AnimatePresence initial={false}>
-                <m.div
-                  key={hero.key}
-                  className="absolute inset-0"
-                  variants={reduced ? STATIC_VARIANTS : HERO_VARIANTS}
-                  initial="initial"
-                  animate="animate"
-                  exit="exit"
-                  // 非对称时长写在 variant 里，这里传统一的 transition 会把它抹平
-                  transition={reduced ? STATIC_TRANSITION : undefined}
-                >
-                  <HeroWrapper link={hero.link}>
-                    <div className="relative aspect-square w-20 shrink-0 overflow-hidden rounded-md border border-line bg-muted">
-                      {hero.artwork ? (
-                        <Image
-                          src={appleArtwork(hero.artwork, 80 * ARTWORK_SCALE)!}
-                          alt={`${hero.title} 封面`}
-                          fill
-                          sizes="80px"
-                          // 这张是全站 LCP 元素：默认的 lazy 会让预加载扫描器跳过它
-                          loading="eager"
-                          fetchPriority="high"
-                          className="object-cover transition-transform duration-500 group-hover:scale-[1.04]"
-                          unoptimized={!needsOptimizing(hero.artwork)}
-                        />
-                      ) : null}
-                    </div>
+              </div>
+            </HeroWrapper>
+          ) : (
+            <AnimatePresence initial={false}>
+              <motion.div
+                key={hero.key}
+                className="absolute inset-0"
+                variants={reduced ? STATIC_VARIANTS : HERO_VARIANTS}
+                initial="initial"
+                animate="animate"
+                exit="exit"
+                // 非对称时长写在 variant 里，这里传统一的 transition 会把它抹平
+                transition={reduced ? STATIC_TRANSITION : undefined}
+              >
+                <HeroWrapper link={hero.link}>
+                  <div className="relative aspect-square w-20 shrink-0 overflow-hidden rounded-md border border-line bg-muted">
+                    {hero.artwork ? (
+                      <Image
+                        src={appleArtwork(hero.artwork, 80 * ARTWORK_SCALE)!}
+                        alt={`${hero.title} 封面`}
+                        fill
+                        sizes="80px"
+                        // 这张是全站 LCP 元素：默认的 lazy 会让预加载扫描器跳过它
+                        loading="eager"
+                        fetchPriority="high"
+                        className="object-cover transition-transform duration-500 group-hover:scale-[1.04]"
+                        unoptimized={!needsOptimizing(hero.artwork)}
+                      />
+                    ) : null}
+                  </div>
 
-                    {/*
-                  不用统一的 gap：三行的行内 leading 不一样（标签行盒高贴合文字，
-                  标题和副标题各自还有 3px 内部余白），统一 gap 会让视觉间隙一宽一窄。
-                  这里按实测的 leading 差额补偿，让两处视觉间隙都落在 8px 左右。
-                */}
-                    <div className="flex min-w-0 flex-1 flex-col justify-center overflow-hidden">
-                      {/* 图标在左、文字在右，和 CHARGER / C1 那些标签行一致：
-                          对齐的是图标的左边界，标签文字本身缩进。
+                  {/*
+                不用统一的 gap：三行的行内 leading 不一样（标签行盒高贴合文字，
+                标题和副标题各自还有 3px 内部余白），统一 gap 会让视觉间隙一宽一窄。
+                这里按实测的 leading 差额补偿，让两处视觉间隙都落在 8px 左右。
+              */}
+                  <div className="flex min-w-0 flex-1 flex-col justify-center overflow-hidden">
+                    {/* 图标在左、文字在右，和 CHARGER / C1 那些标签行一致：
+                        对齐的是图标的左边界，标签文字本身缩进。
 
-                          min-h-5 锁死行高：设备标签只在实时曲目那一版出现，它自带
-                          边框和内距（20px），比光秃秃的 label-mono（约 12px）高一截。
-                          不锁的话两版 hero 高度不同，外层 justify-center 会重新居中，
-                          切换时整列上下挪一下 —— 交叉淡入让新旧同时可见，那一挪就成了
-                          肉眼可见的滑动。 */}
-                      <div className="flex min-h-5 min-w-0 items-center gap-1.5">
-                        {/* 有 track 就是实时源：没在放就是暂停，冻住而不是弹回固定形状 */}
-                        <Bars
-                          state={
-                            hero.playing ? "playing" : hero.track ? "paused" : "idle"
-                          }
-                        />
-                        <span
-                          className={cn(
-                            "label-mono shrink-0",
-                            hero.playing ? "text-live" : "text-muted-foreground",
-                          )}
-                        >
-                          {hero.label}
-                        </span>
-                        {/* 实时曲目来自 MacBook Music.app 或 HomePod，不是历史记录。 */}
-                        {hero.track && (
-                          <span className="ml-0.5 inline-flex min-w-0 items-center gap-1 rounded-sm border border-line px-1.5 py-px text-[10px] leading-4 text-muted-foreground">
-                            {hero.track.source === "homepod" ? (
-                              <HomePodMiniIcon className="size-3 shrink-0" aria-hidden />
-                            ) : (
-                              <MacBookProIcon className="size-3 shrink-0" aria-hidden />
-                            )}
-                            <span className="truncate">
-                              {hero.track.source === "homepod" ? "HomePod mini" : "MacBook Pro"}
-                            </span>
-                          </span>
-                        )}
-                      </div>
-                      <div
+                        min-h-5 锁死行高：设备标签只在实时曲目那一版出现，它自带
+                        边框和内距（20px），比光秃秃的 label-mono（约 12px）高一截。
+                        不锁的话两版 hero 高度不同，外层 justify-center 会重新居中，
+                        切换时整列上下挪一下 —— 交叉淡入让新旧同时可见，那一挪就成了
+                        肉眼可见的滑动。 */}
+                    <div className="flex min-h-5 min-w-0 items-center gap-1.5">
+                      {/* 有 track 就是实时源：没在放就是暂停，冻住而不是弹回固定形状 */}
+                      <Bars
+                        state={
+                          hero.playing ? "playing" : hero.track ? "paused" : "idle"
+                        }
+                      />
+                      <span
                         className={cn(
-                          "mt-1 truncate font-medium leading-snug",
-                          hero.link && "group-hover:underline",
+                          "label-mono shrink-0",
+                          hero.playing ? "text-live" : "text-muted-foreground",
                         )}
-                        title={hero.title}
                       >
-                        {hero.title}
-                      </div>
-                      {hero.track ? (
-                        <HeroProgress track={hero.track} subtitle={hero.subtitle} />
-                      ) : (
-                        <>
-                          {/* 和实时那版的副标题行同构：左边艺人，右边时间。那边是
-                              「已播 / 总长」，这边没有进度，只放总长。 */}
-                          <div className="mt-px flex items-baseline gap-2 text-sm text-muted-foreground">
-                            <span className="min-w-0 flex-1 truncate" title={hero.subtitle}>
-                              {hero.subtitle}
-                            </span>
-                            {hero.durationMs != null && (
-                              <span className="label-mono shrink-0 tabular-nums">
-                                {formatDuration(hero.durationMs)}
-                              </span>
-                            )}
-                          </div>
-                          {/* 尺寸和 HeroProgress 那根进度条一模一样。历史条目没有进度可
-                              显示，但两版 hero 的高度必须一致，理由同上面那段 —— 与其留
-                              一道不可见的空档，不如填满，见 globals.css 的 .rainbow-bar。 */}
-                          <div
-                            className="rainbow-bar mt-1.5 h-0.75 rounded-full"
-                            style={{ backgroundImage: paletteGradient(hero.palette) }}
-                            aria-hidden
-                          />
-                        </>
+                        {hero.label}
+                      </span>
+                      {/* 实时曲目来自 MacBook Music.app 或 HomePod，不是历史记录。 */}
+                      {hero.track && (
+                        <span className="ml-0.5 inline-flex min-w-0 items-center gap-1 rounded-sm border border-line px-1.5 py-px text-[10px] leading-4 text-muted-foreground">
+                          {hero.track.source === "homepod" ? (
+                            <HomePodMiniIcon className="size-3 shrink-0" aria-hidden />
+                          ) : (
+                            <MacBookProIcon className="size-3 shrink-0" aria-hidden />
+                          )}
+                          <span className="truncate">
+                            {hero.track.source === "homepod" ? "HomePod mini" : "MacBook Pro"}
+                          </span>
+                        </span>
                       )}
                     </div>
-                  </HeroWrapper>
-                </m.div>
-              </AnimatePresence>
-            )}
-          </div>
+                    <div
+                      className={cn(
+                        "mt-1 truncate font-medium leading-snug",
+                        hero.link && "group-hover:underline",
+                      )}
+                      title={hero.title}
+                    >
+                      {hero.title}
+                    </div>
+                    {hero.track ? (
+                      <HeroProgress track={hero.track} subtitle={hero.subtitle} />
+                    ) : (
+                      <>
+                        {/* 和实时那版的副标题行同构：左边艺人，右边时间。那边是
+                            「已播 / 总长」，这边没有进度，只放总长。 */}
+                        <div className="mt-px flex items-baseline gap-2 text-sm text-muted-foreground">
+                          <span className="min-w-0 flex-1 truncate" title={hero.subtitle}>
+                            {hero.subtitle}
+                          </span>
+                          {hero.durationMs != null && (
+                            <span className="label-mono shrink-0 tabular-nums">
+                              {formatDuration(hero.durationMs)}
+                            </span>
+                          )}
+                        </div>
+                        {/* 尺寸和 HeroProgress 那根进度条一模一样。历史条目没有进度可
+                            显示，但两版 hero 的高度必须一致，理由同上面那段 —— 与其留
+                            一道不可见的空档，不如填满，见 globals.css 的 .rainbow-bar。 */}
+                        <div
+                          className="rainbow-bar mt-1.5 h-0.75 rounded-full"
+                          style={{ backgroundImage: paletteGradient(hero.palette) }}
+                          aria-hidden
+                        />
+                      </>
+                    )}
+                  </div>
+                </HeroWrapper>
+              </motion.div>
+            </AnimatePresence>
+          )}
+        </div>
 
+        {/*
+          再往前的几项。上游最多给 10 条，全部列出，放不下就滚动。
+
+          视口必须始终挂着：列表为空时 isLoading 也是 false、rest 也是空的 ——
+          以前用 (isLoading || rest.length) 包一层，那种情况下首屏 HTML 就把
+          这块省掉了，客户端补上数据再插进来，整行一起被撑高。
+
+          高度用 minHeight 而不是写死：充电头那边 sparkline 钉在 h-32，
+          整行由它定高；这边列表吃掉剩余，行高由 grid-auto-rows 平摊。
+        */}
+        {/* 边框和内边距放在外层，滚动容器本身不带 padding ——
+            否则吸附位会被 padding 顶偏，还得再补 scroll-padding
+            min-h-0 不能少：flex 子项默认 min-height:auto，会被内容撑破而不是滚动 */}
+        <div className="mt-3 flex min-h-0 flex-1 flex-col border-t border-line pt-2">
           {/*
-            再往前的几项。上游最多给 10 条，全部列出，放不下就滚动。
-
-            视口必须始终挂着：列表为空时 isLoading 也是 false、rest 也是空的 ——
-            以前用 (isLoading || rest.length) 包一层，那种情况下首屏 HTML 就把
-            这块省掉了，客户端补上数据再插进来，整行一起被撑高。
-
-            高度用 minHeight 而不是写死：充电头那边 sparkline 钉在 h-32，
-            整行由它定高；这边列表吃掉剩余，行高由 grid-auto-rows 平摊。
+            滚动容器绝对定位，是为了让它对「这张卡有多高」完全没有发言权。
+            grid 行按 max-content 定高：让它参与的话，10 条 × 行高会被当成
+            卡片的固有高度，整个「此刻」区块被撑到近两倍（实测 364 → 588）。
+            绝对定位的子元素不参与固有尺寸计算；min-height 是这块唯一的话语权。
           */}
-          {/* 边框和内边距放在外层，滚动容器本身不带 padding ——
-              否则吸附位会被 padding 顶偏，还得再补 scroll-padding
-              min-h-0 不能少：flex 子项默认 min-height:auto，会被内容撑破而不是滚动 */}
-          <div className="mt-3 flex min-h-0 flex-1 flex-col border-t border-line pt-2">
-            {/*
-              滚动容器绝对定位，是为了让它对「这张卡有多高」完全没有发言权。
-              grid 行按 max-content 定高：让它参与的话，10 条 × 行高会被当成
-              卡片的固有高度，整个「此刻」区块被撑到近两倍（实测 364 → 588）。
-              绝对定位的子元素不参与固有尺寸计算；min-height 是这块唯一的话语权。
-            */}
+          <div
+            className="relative min-h-0 flex-1"
+            style={{ minHeight: `${MIN_ROW_HEIGHT_PX * VISIBLE_ROWS}px` }}
+          >
             <div
-              className="relative min-h-0 flex-1"
-              style={{ minHeight: `${MIN_ROW_HEIGHT_PX * VISIBLE_ROWS}px` }}
+              ref={listRef}
+              className={cn(
+                // 每行高 = 容器的 1/N。容器高度是确定的（absolute inset-0），
+                // 百分比轨道就有得算 —— 于是「整数行」「填满」两件事同时由
+                // CSS 保证，不需要 ResizeObserver 去量、也没有写死的行高。
+                "absolute inset-0 grid overflow-y-auto",
+                // 这里刻意不做 scroll-snap。它会和 framer 的 layout 动画打架：
+                // popLayout 把离场元素改成绝对定位，容器高度剧变，吸附目标算飞，
+                // 实测新条目进来时 scrollTop 会被弹到 48 甚至 192 再慢慢滑回。
+                // 整数行是靠「容器高度正好等于行高整数倍」保证的，不需要吸附。
+                "scroll-smooth overscroll-y-contain",
+                // 关掉滚动锚定：新条目插到顶部时，浏览器会为了「保持视觉位置不动」
+                // 自动把 scrollTop 加一行，结果第一行被顶出可视区，得手动滑回去
+                "[overflow-anchor:none]",
+                "scrollbar-none [&::-webkit-scrollbar]:hidden",
+              )}
+              // 写成内联而不是 Tailwind 的 arbitrary value：后者必须是字面量，
+              // 行数就会在两处各写一遍
+              style={{ gridAutoRows: `calc(100% / ${VISIBLE_ROWS})` }}
             >
-              <div
-                ref={listRef}
-                className={cn(
-                  // 每行高 = 容器的 1/N。容器高度是确定的（absolute inset-0），
-                  // 百分比轨道就有得算 —— 于是「整数行」「填满」两件事同时由
-                  // CSS 保证，不需要 ResizeObserver 去量、也没有写死的行高。
-                  "absolute inset-0 grid overflow-y-auto",
-                  // 这里刻意不做 scroll-snap。它会和 framer 的 layout 动画打架：
-                  // popLayout 把离场元素改成绝对定位，容器高度剧变，吸附目标算飞，
-                  // 实测新条目进来时 scrollTop 会被弹到 48 甚至 192 再慢慢滑回。
-                  // 整数行是靠「容器高度正好等于行高整数倍」保证的，不需要吸附。
-                  "scroll-smooth overscroll-y-contain",
-                  // 关掉滚动锚定：新条目插到顶部时，浏览器会为了「保持视觉位置不动」
-                  // 自动把 scrollTop 加一行，结果第一行被顶出可视区，得手动滑回去
-                  "[overflow-anchor:none]",
-                  "scrollbar-none [&::-webkit-scrollbar]:hidden",
-                )}
-                // 写成内联而不是 Tailwind 的 arbitrary value：后者必须是字面量，
-                // 行数就会在两处各写一遍
-                style={{ gridAutoRows: `calc(100% / ${VISIBLE_ROWS})` }}
-              >
-                {rest.length > 0 ? (
-                  // popLayout 让离场的行脱离布局流，剩下的能同时补位而不是等它消失
-                  <AnimatePresence initial={false} mode="popLayout">
-                    {rest.map((item, index) => (
-                      <m.div
-                        key={restKeys[index]}
-                        layout={!reduced}
-                        variants={reduced ? STATIC_VARIANTS : LIST_ITEM_VARIANTS}
-                        initial="initial"
-                        animate="animate"
-                        exit="exit"
-                        transition={reduced ? STATIC_TRANSITION : LIST_TRANSITION}
-                        // 高度由 grid 轨道给；min-w-0 保住行内的 truncate
-                        className="min-w-0"
-                      >
-                        <TrackRow track={item} />
-                      </m.div>
-                    ))}
-                  </AnimatePresence>
-                ) : isLoading ? (
-                  Array.from({ length: VISIBLE_ROWS }, (_, i) => (
-                    <SkeletonRow key={i} />
-                  ))
-                ) : null}
-              </div>
+              {rest.length > 0 ? (
+                // popLayout 让离场的行脱离布局流，剩下的能同时补位而不是等它消失
+                <AnimatePresence initial={false} mode="popLayout">
+                  {rest.map((item, index) => (
+                    <motion.div
+                      key={restKeys[index]}
+                      layout={!reduced}
+                      variants={reduced ? STATIC_VARIANTS : LIST_ITEM_VARIANTS}
+                      initial="initial"
+                      animate="animate"
+                      exit="exit"
+                      transition={reduced ? STATIC_TRANSITION : LIST_TRANSITION}
+                      // 高度由 grid 轨道给；min-w-0 保住行内的 truncate
+                      className="min-w-0"
+                    >
+                      <TrackRow track={item} />
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+              ) : isLoading ? (
+                Array.from({ length: VISIBLE_ROWS }, (_, i) => (
+                  <SkeletonRow key={i} />
+                ))
+              ) : null}
             </div>
           </div>
         </div>
-      </LazyMotion>
+      </div>
     </Card>
   );
 }
