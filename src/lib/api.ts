@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { connection, NextResponse } from "next/server";
 
 import type { IngestFailure, IngestResponse, StatusResponse } from "@/lib/types";
 
@@ -20,34 +20,54 @@ export function sinceParam(request: Request): number | undefined {
 }
 
 /**
- * 把一个取数函数包成统一的 Route Handler 响应。
- * 上游挂了不返回 5xx —— 前端拿到 ok:false 后渲染降级态即可，
+ * 把一个取数函数包成统一的 status 信封。
+ * 上游挂了不往上抛 —— 前端拿到 ok:false 后渲染降级态即可，
  * 不让一个离线的充电头把整页 SWR 变成错误状态。
+ *
+ * 路由和首屏服务端渲染共用这一份：两处的降级形状必须一模一样，
+ * 否则同一张卡在首屏和轮询之后会走不同的分支。
  */
-export async function statusRoute<T>(
+export async function statusEnvelope<T>(
   loader: () => Promise<T>,
-): Promise<NextResponse<StatusResponse<T>>> {
-  /**
-   * 时间戳放响应头，不进 body：进了 body 就等于每次响应都不一样，
-   * 前端再想判断「数据变没变」永远为假 —— 见 StatusResponse 的注释。
-   */
-  const headers = {
-    "Cache-Control": "no-store",
-    "X-Fetched-At": new Date().toISOString(),
-  };
+): Promise<StatusResponse<T>> {
   try {
-    const data = await loader();
-    return NextResponse.json({ ok: true as const, data }, { headers });
+    return { ok: true, data: await loader() };
   } catch (error) {
     const message = reason(error);
     // 带上栈：降级信封只把 message 发给页面，没有栈的话服务端日志里
     // 一句「Cannot read properties of null」根本定位不到是哪一处
     console.error("[status]", error instanceof Error ? (error.stack ?? message) : message);
-    return NextResponse.json(
-      { ok: false as const, error: message },
-      { status: 200, headers },
-    );
+    return { ok: false, error: message };
   }
+}
+
+/** 把 status 信封包成 Route Handler 响应。失败也是 200，见 statusEnvelope */
+export async function statusRoute<T>(
+  loader: () => Promise<T>,
+): Promise<NextResponse<StatusResponse<T>>> {
+  /**
+   * 这八条一律现算，不进任何缓存 —— 它们是客户端轮询和挂载回源走的活路径。
+   *
+   * cacheComponents 下没有 force-dynamic 可写了，「每次请求都得跑一遍」只能由
+   * connection() 明说。少了它 Next 会试着在构建期把这些 GET 预渲染成静态响应，
+   * 而下面 statusEnvelope 的 try/catch 会把预渲染的中断信号一并吞掉（内置文档
+   * 专门警告过这一点），构建期那份 ok:false 就被烤进静态响应，客户端从此永远
+   * 轮询到同一个错误。
+   *
+   * 首屏服务端渲染那份数据是另一条路、另有缓存，见 lib/status-cache。
+   */
+  await connection();
+  return NextResponse.json(await statusEnvelope(loader), {
+    status: 200,
+    /**
+     * 时间戳放响应头，不进 body：进了 body 就等于每次响应都不一样，
+     * 前端再想判断「数据变没变」永远为假 —— 见 StatusResponse 的注释。
+     */
+    headers: {
+      "Cache-Control": "no-store",
+      "X-Fetched-At": new Date().toISOString(),
+    },
+  });
 }
 
 /**

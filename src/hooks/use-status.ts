@@ -58,6 +58,30 @@ export type StatusState<T> = {
   isLoading: boolean;
 };
 
+export type StatusOptions<T> = {
+  /**
+   * 服务端渲染时取好的信封，当 SWR 的 fallbackData —— 首屏 HTML 自带数据，
+   * 没有骨架期。由 app/page.tsx 直接调 lib 里的取数函数拿到，见那边。
+   */
+  fallback: StatusResponse<T>;
+  /**
+   * 自定义取数。增量拉取的接口用 incrementalFetcher 造一个传进来。
+   * 必须是稳定引用，否则 SWR 每次渲染都会重新取。
+   */
+  fetcher?: (path: string) => Promise<StatusResponse<T>>;
+  /**
+   * 挂载时要不要立刻回源一次。默认要。
+   *
+   * 「此刻」类的信封里有服务端按当时的时钟算出来的结论（在不在线、陈没陈旧、
+   * 宽限期还剩多久），HTML 在浏览器手上放一会儿就不成立了；Pusher 连上之前的
+   * 那段空窗里发生的事也只能靠这一次补回来。
+   *
+   * 只有列表类该关掉 —— 内容不会随时间自己变质，首屏那份就是最新的，
+   * 那一次请求是纯粹省得掉的。
+   */
+  revalidateOnMount?: boolean;
+};
+
 /**
  * 统一的状态数据 hook。
  *
@@ -72,11 +96,7 @@ export function useStatus<T>(
   path: string,
   /** 传函数可以按当前数据动态决定间隔，比如「有东西在播就调快」 */
   refreshInterval: number | ((data: T | undefined) => number),
-  /**
-   * 自定义取数。增量拉取的接口用 incrementalFetcher 造一个传进来。
-   * 必须是稳定引用，否则 SWR 每次渲染都会重新取。
-   */
-  customFetcher?: (path: string) => Promise<StatusResponse<T>>,
+  { fallback, fetcher: customFetcher, revalidateOnMount }: StatusOptions<T>,
 ): StatusState<T> {
   const active = usePageActive();
   const refreshIntervalRef = useRef(refreshInterval);
@@ -97,6 +117,16 @@ export function useStatus<T>(
   );
 
   const { data, error, isLoading } = useSWR<StatusResponse<T>>(path, customFetcher ?? fetcher<T>, {
+    fallbackData: fallback,
+    /**
+     * SWR 的默认是「有 fallbackData 也照样在挂载时回源」—— revalidateIfStale
+     * 默认 true，它判的是 `isUndefined(data) || revalidateIfStale`。要真省掉
+     * 首屏那次请求，只能显式关掉。
+     *
+     * 服务端那一路当时就挂了的话不关：降级信封得靠挂载这一次去纠正，
+     * 不然一张卡会顶着「未连接」等满一个轮询周期。
+     */
+    revalidateOnMount: revalidateOnMount === false && fallback.ok ? false : undefined,
     refreshInterval: interval,
     // 是否暂停由上面的 usePageActive 统一决定，避免 SWR 内置的可见性/在线
     // 判定与应用内浏览器状态不一致，导致首次请求后再也不轮询。

@@ -1,3 +1,4 @@
+import { revalidateTag } from "next/cache";
 import Pusher from "pusher";
 
 import type { NowWatchingPayload, WatchingPayload } from "@/lib/emby";
@@ -74,6 +75,40 @@ export type LiveEvent =
   | { type: "watching-now"; payload: NowWatchingPayload }
   /** 「最近在看」列表变了。和上面那条 listening 同一个形状、同一个理由。实测 2.8 KB */
   | { type: "watching"; payload: WatchingPayload };
+
+/**
+ * 首屏服务端渲染那八份数据的缓存 tag。
+ *
+ * 名字和上面的事件名逐字相同，也就和 /api/status/* 的路径同一套：`X` 是列表、
+ * `X-now` 是此刻，URL 里的 `/` 在名字里写成 `-`（AGENTS.md 第 2 条，路径常量在
+ * lib/paths）。timezone 和 vibecoding 没有对应的推送事件 —— 那两张卡不靠推送
+ * 翻面 —— 但按同一条规则取名，不为缓存另起一套。
+ *
+ * 摆在这个文件里，是因为失效和推送是同一个变化的两条腿：一条刷缓存给下一个
+ * 访客，一条推给当前访客。名字和触发点挨着，改一条时另一条就在眼前。
+ */
+export const DESKTOP_TAG = "desktop";
+export const TIMEZONE_TAG = "timezone";
+export const CHARGER_TAG = "charger";
+export const VIBECODING_TAG = "vibecoding";
+export const LISTENING_TAG = "listening";
+export const NOW_LISTENING_TAG = "listening-now";
+export const WATCHING_TAG = "watching";
+export const NOW_WATCHING_TAG = "watching-now";
+
+/**
+ * 让首屏缓存里的这几份过期，下一个请求重算。
+ *
+ * cacheComponents 下 revalidateTag 的第二个参数是必填的 —— 它是「失效之后旧的
+ * 还能顶多久」。给 max 拿到的是 stale-while-revalidate：请求立刻拿到旧的那份、
+ * 新的在后台重建，上报这条路径上一个字节都不用等。
+ *
+ * 和 publish 一样不往上抛：状态已经落库了，缓存没刷掉最多是下一个访客的首屏
+ * 旧一点，卡片挂载后照样会自己回源纠正。
+ */
+export function expireStatus(...tags: string[]): void {
+  for (const tag of tags) revalidateTag(tag, "max");
+}
 
 let client: Pusher | null = null;
 let initialised = false;

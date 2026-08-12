@@ -15,6 +15,7 @@ import {
 import { Card } from "@/components/ui/card";
 import { HomePodMiniIcon, MacBookProIcon } from "@/components/ui/device-icons";
 import { useLiveEvents } from "@/hooks/use-live-events";
+import { useMountedAt } from "@/hooks/use-mounted-at";
 import { useExpiryRefetch, useStatus } from "@/hooks/use-status";
 import { stableKeys } from "@/lib/keys";
 import {
@@ -30,6 +31,7 @@ import type {
   ListeningPayload,
   LocalNowPlaying,
   NowListeningPayload,
+  StatusResponse,
 } from "@/lib/types";
 import { appleArtwork, ARTWORK_SCALE, needsOptimizing } from "@/lib/apple-artwork";
 import { cn } from "@/lib/utils";
@@ -98,8 +100,8 @@ function paletteGradient(palette: string[]): string | undefined {
  * 的实例都落在和旧实例相同的相位上，接得上。重渲染时重算也是幂等的 —— 算出来
  * 的还是当前相位，不会自己把自己顿一下。
  *
- * 不用担心和服务端对不上：hero 要等 SWR 拿到数据才存在，服务端那一遍走的是
- * 占位分支，这段根本不参与首屏 HTML。
+ * 不用担心和服务端对不上：相位是在 ref 回调（提交阶段）里写进 DOM 的，
+ * 服务端根本不跑那一段，首屏 HTML 里这三根条不带 animation-delay。
  */
 const BAR_PERIODS = [0.9, 1.15, 1.4];
 
@@ -215,11 +217,20 @@ function HeroProgress({
   subtitle: string;
 }) {
   const playing = track.state === "playing";
-  const [now, setNow] = useState(() => Date.now());
+  /**
+   * 首帧 now 是 0（见 useMountedAt），服务端只画锚点、进度不往前推 —— 服务端算
+   * 的偏移和 hydrate 那一刻算的必然差着毫秒，时间文本和进度条宽度都会对不上。
+   * 往前推留给客户端，和「最近在看」那排卡片的进度条同一个思路。
+   *
+   * 不用为首帧另开分支：下面 max(0, 0 - observedAt) 本来就是 0。
+   */
+  const mountedAt = useMountedAt();
+  const [ticked, setTicked] = useState(0);
+  const now = ticked || mountedAt;
 
   useEffect(() => {
     if (!playing) return;
-    const timer = window.setInterval(() => setNow(Date.now()), 1_000);
+    const timer = window.setInterval(() => setTicked(Date.now()), 1_000);
     return () => window.clearInterval(timer);
   }, [playing]);
 
@@ -445,13 +456,24 @@ type Hero = {
   track: LocalNowPlaying | null;
 };
 
-export function ListeningCard({ className }: { className?: string }) {
-  const { data, error, isLoading } = useStatus<ListeningPayload>(
-    LISTENING_PATH,
-    REFRESH_MS,
-  );
+export function ListeningCard({
+  fallback,
+  nowFallback,
+  className,
+}: {
+  fallback: StatusResponse<ListeningPayload>;
+  nowFallback: StatusResponse<NowListeningPayload>;
+  className?: string;
+}) {
+  const { data, error, isLoading } = useStatus<ListeningPayload>(LISTENING_PATH, REFRESH_MS, {
+    fallback,
+    // 列表不会随时间自己变质，服务端刚取的那份就是最新的
+    revalidateOnMount: false,
+  });
   useLiveEvents();
-  const { data: live } = useStatus<NowListeningPayload>(NOW_LISTENING_PATH, MUSIC_REFRESH_MS);
+  const { data: live } = useStatus<NowListeningPayload>(NOW_LISTENING_PATH, MUSIC_REFRESH_MS, {
+    fallback: nowFallback,
+  });
   /**
    * 暂停宽限期到点时再问一次。
    *
@@ -678,9 +700,9 @@ export function ListeningCard({ className }: { className?: string }) {
         {/*
           再往前的几项。上游最多给 10 条，全部列出，放不下就滚动。
 
-          视口必须始终挂着：SSR 时 SWR 还没发请求，isLoading 是 false、
-          rest 也是空的 —— 以前用 (isLoading || rest.length) 包一层，首屏
-          HTML 就把这块省掉了，客户端加载完再插进来，整行一起被撑高。
+          视口必须始终挂着：列表为空时 isLoading 也是 false、rest 也是空的 ——
+          以前用 (isLoading || rest.length) 包一层，那种情况下首屏 HTML 就把
+          这块省掉了，客户端补上数据再插进来，整行一起被撑高。
 
           高度用 minHeight 而不是写死：充电头那边 sparkline 钉在 h-32，
           整行由它定高；这边列表吃掉剩余，行高由 grid-auto-rows 平摊。

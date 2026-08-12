@@ -9,7 +9,12 @@ import { useLiveEvents } from "@/hooks/use-live-events";
 import { incrementalFetcher, useStatus } from "@/hooks/use-status";
 import { historyCursor, mergeChargerHistory } from "@/lib/charger-history";
 import { CHARGER_PATH } from "@/lib/paths";
-import type { ChargerPayload, ChargerPort, ChargerStatus } from "@/lib/types";
+import type {
+  ChargerPayload,
+  ChargerPort,
+  ChargerStatus,
+  StatusResponse,
+} from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /**
@@ -37,7 +42,13 @@ function portTone(port: ChargerPort, connected: boolean): DotTone {
   return (port.power ?? 0) > 1 ? "live" : "idle";
 }
 
-export function ChargerCard({ className }: { className?: string }) {
+export function ChargerCard({
+  fallback,
+  className,
+}: {
+  fallback: StatusResponse<ChargerPayload>;
+  className?: string;
+}) {
   /**
    * 插拔/换设备时服务端会推一条事件，直接写进这个键；滚动读数照旧靠轮询。
    *
@@ -45,11 +56,10 @@ export function ChargerCard({ className }: { className?: string }) {
    * 推送的兜底，它自己就是数据来源，断不断连都得按同一个节奏问。
    */
   useLiveEvents();
-  const { data, error, isLoading } = useStatus<ChargerPayload>(
-    CHARGER_PATH,
-    REFRESH_MS,
-    fetchCharger,
-  );
+  const { data, error, isLoading } = useStatus<ChargerPayload>(CHARGER_PATH, REFRESH_MS, {
+    fallback,
+    fetcher: fetchCharger,
+  });
   const history = data?.history ?? [];
 
   const connected = Boolean(data?.connected);

@@ -8,10 +8,12 @@ import { ClaudeSpinner } from "@/components/live/claude-spinner";
 import { CodexActivityIndicator } from "@/components/live/codex-activity-indicator";
 import { Sparkline } from "@/components/live/sparkline";
 import { Card } from "@/components/ui/card";
+import { useMountedAt } from "@/hooks/use-mounted-at";
 import { incrementalFetcher, useStatus } from "@/hooks/use-status";
 import { VIBECODING_PATH } from "@/lib/paths";
 import { activityCursor, mergeVibeCodingActivity } from "@/lib/vibecoding-activity";
 import type {
+  StatusResponse,
   VibeCodingAgent,
   VibeCodingLimit,
   VibeCodingPayload,
@@ -460,10 +462,18 @@ function LimitMeter({ limit }: { limit: VibeCodingLimit }) {
    * 用一次性 setTimeout 而不是轮询式计时器：数据没变时轮询不会触发重渲染
    * （响应体已经不带时间戳了），光靠重渲染永远跨不过那个时刻；而定时器只在
    * 边界醒这一次，中间一点开销都没有。
+   *
+   * 首帧 now 是 0（见 useMountedAt），倒计时整块不画：它和「已过期」都是拿当下
+   * 时刻算的，服务端那一遍算不得数 —— 超过一天的那支写成绝对时刻，
+   * toLocaleString 不带 timeZone，服务端和访客各按各的时区格式化，水合必然对不
+   * 上。行高由下面的 h-5 钉着，晚一拍出现也不会把版面顶开。
    */
-  const [now, setNow] = useState(() => Date.now());
+  const mountedAt = useMountedAt();
+  const [ticked, setTicked] = useState(0);
+  const now = ticked || mountedAt;
   useEffect(() => {
-    if (limit.resetsAt == null) return;
+    // 还没挂载就没有基准可排，等 now 落地这个 effect 会再跑一遍
+    if (!now || limit.resetsAt == null) return;
     const target = limit.resetsAt * 1000;
     // 已经跨过去了就不再排，否则下面每轮都会重排定时器，停不下来
     if (now >= target) return;
@@ -474,7 +484,7 @@ function LimitMeter({ limit }: { limit: VibeCodingLimit }) {
      * 一遍，定时器会排到远超目标时刻之后。实测那样会晚三分钟才归零。
      */
     const timer = window.setTimeout(
-      () => setNow(Date.now()),
+      () => setTicked(Date.now()),
       // 多等半秒，避开时钟精度导致醒来时刚好差几毫秒没到点
       nextTickDelay(target - Date.now()) + 500,
     );
@@ -486,7 +496,7 @@ function LimitMeter({ limit }: { limit: VibeCodingLimit }) {
   const color = limitColor(usedPercent);
   const title = formatLimitTitle(limit);
   // 基准跟着上面那个 now，条和文案才会在同一刻翻面
-  const reset = formatReset(limit.resetsAt, now);
+  const reset = now ? formatReset(limit.resetsAt, now) : null;
 
   return (
     <div>
@@ -766,14 +776,19 @@ function QuotaProviders({ providers }: { providers: VibeCodingQuotaProvider[] })
   );
 }
 
-export function VibeCodingCard({ className }: { className?: string }) {
+export function VibeCodingCard({
+  fallback,
+  className,
+}: {
+  fallback: StatusResponse<VibeCodingPayload>;
+  className?: string;
+}) {
   // 不订阅实时推送：token 用量是累计的历史事实，Mac 掉线它不会变得不可信，
   // 只是不再增长，没有理由跟着变灰
-  const { data, error, isLoading } = useStatus<VibeCodingPayload>(
-    VIBECODING_PATH,
-    REFRESH_MS,
-    fetchVibeCoding,
-  );
+  const { data, error, isLoading } = useStatus<VibeCodingPayload>(VIBECODING_PATH, REFRESH_MS, {
+    fallback,
+    fetcher: fetchVibeCoding,
+  });
   const stale = Boolean(data?.stale || error);
 
   return (

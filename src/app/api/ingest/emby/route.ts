@@ -2,9 +2,6 @@ import { ingestFailed, ingestRoute, jsonBody } from "@/lib/api";
 import { recordEmbyReport } from "@/lib/emby";
 import { telemetryAuthorized } from "@/lib/telemetry";
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
-
 /**
  * Emby 相关的全部数据都从这一个门进来，推送方是 NAS 上的代理
  * （reporters/emby-reporter）。路径按**数据来源**命名而不是按上报程序命名，

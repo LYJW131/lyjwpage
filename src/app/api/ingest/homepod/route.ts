@@ -2,9 +2,6 @@ import { ingestFailed, ingestRoute, jsonBody } from "@/lib/api";
 import { recordHomePodEvent } from "@/lib/homepod-store";
 import { publishListening, telemetryAuthorized } from "@/lib/telemetry";
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
-
 /** Home Assistant pushes HomePod track and playback-state changes here. */
 export async function POST(request: Request) {
   if (!telemetryAuthorized(request)) return ingestFailed("未授权", 401);

@@ -1,9 +1,6 @@
 import { statusRoute } from "@/lib/api";
 import { getNowWatching } from "@/lib/emby";
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
-
 /**
  * 正在播放，和「最近在看」的列表分开。
  *
