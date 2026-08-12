@@ -7,7 +7,15 @@ import { putAppleMusicCredentials } from "@/lib/apple-music-credentials";
 import { getHomePodNowPlaying } from "@/lib/homepod-store";
 import { ASSET_URL_PREFIX, hasStoredImage, IMAGE_OBJECT_KEY } from "@/lib/r2-assets";
 import { number, object, text } from "@/lib/json";
-import { publish } from "@/lib/live-events";
+import {
+  CHARGER_TAG,
+  DESKTOP_TAG,
+  expireStatus,
+  NOW_LISTENING_TAG,
+  publish,
+  TIMEZONE_TAG,
+  VIBECODING_TAG,
+} from "@/lib/live-events";
 import { mirrorKey } from "@/lib/redis";
 import {
   offlineByLiveness,
@@ -348,6 +356,7 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
     // since 给当下时刻：历史点一个都不带，客户端沿用自己那份，见 live-events 的说明。
     if (structuralChanged) {
       await publish({ type: "charger", payload: await getChargerPayload({ since: Date.now() }) });
+      expireStatus(CHARGER_TAG);
     }
     accepted += 1;
   }
@@ -366,6 +375,9 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
   if ("timezone" in modules) {
     telemetryState.timezone = normalizeTimezone(modules.timezone, receivedAt);
     telemetryState.timezoneReceivedAt = receivedAt;
+    // 没有对应的推送事件（时区一年变两次，不值得为它开一路广播），
+    // 但首屏那份缓存得知道自己过期了 —— 失效是白给的，广播才是按人头付钱的
+    expireStatus(TIMEZONE_TAG);
     accepted += 1;
   }
 
@@ -406,6 +418,9 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
 
   if ("vibeCoding" in modules) {
     await recordVibeCodingReport(modules.vibeCoding, receivedAt);
+    // 同上，这张卡也不订阅推送（token 用量是累计的历史事实，不需要被推着翻），
+    // 但缓存里那份该换了
+    expireStatus(VIBECODING_TAG);
     accepted += 1;
   }
 
@@ -533,10 +548,14 @@ export async function getNowListening(): Promise<NowListeningPayload> {
  */
 export async function publishPresence() {
   await publish({ type: "presence", payload: null });
+  // 和浏览器那侧收到 presence 后重取的键是同一份名单（见 use-live-events 的
+  // PRESENCE_PATHS）：Mac 上报器供数的那四份，它们的 stale 会跟着翻
+  expireStatus(DESKTOP_TAG, TIMEZONE_TAG, NOW_LISTENING_TAG, CHARGER_TAG);
 }
 
 export async function publishDesktop() {
   await publish({ type: "desktop", payload: await getDesktopPayload() });
+  expireStatus(DESKTOP_TAG);
 }
 
 /**
@@ -552,6 +571,7 @@ export async function publishDesktop() {
 export async function publishListening() {
   const payload = await getNowListening();
   await publish({ type: "listening-now", payload });
+  expireStatus(NOW_LISTENING_TAG);
   return payload;
 }
 

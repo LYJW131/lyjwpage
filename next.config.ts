@@ -1,6 +1,17 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  /**
+   * 首屏那八份数据走 `use cache` + `cacheTag`，上报进来时按 tag 失效。
+   *
+   * 开了它之后 `dynamic` / `revalidate` / `fetchCache` **以及 `runtime`** 这几个
+   * 段配置一律不能再导出，写了就是构建期报错 —— 官方迁移文档只写了前三个和
+   * `runtime = "edge"`，但 `runtime = "nodejs"`（默认值）照样被拒。全站的渲染
+   * 意图改由 `use cache` 和 `<Suspense>` 表达：取数缓存见 lib/status-cache，
+   * 失效点见 lib/live-events 的 expireStatus，八条 status 路由要现算，
+   * 靠 lib/api 里 statusRoute 的 connection()。
+   */
+  cacheComponents: true,
   allowedDevOrigins: ["test.lyjw.dev"],
   images: {
     /**

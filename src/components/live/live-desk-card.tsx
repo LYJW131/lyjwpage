@@ -9,7 +9,7 @@ import { useLiveEvents } from "@/hooks/use-live-events";
 import { useStatus } from "@/hooks/use-status";
 import { STATIC_TRANSITION, STATIC_VARIANTS } from "@/lib/motion";
 import { DESKTOP_PATH } from "@/lib/paths";
-import type { DesktopActivity, DesktopPayload } from "@/lib/types";
+import type { DesktopActivity, DesktopPayload, StatusResponse } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /**
@@ -54,10 +54,18 @@ const APP_SWITCH_TRANSITION = {
   ease: [0.22, 1, 0.36, 1] as const,
 };
 
-export function LiveDeskCard({ className }: { className?: string }) {
+export function LiveDeskCard({
+  fallback,
+  className,
+}: {
+  fallback: StatusResponse<DesktopPayload>;
+  className?: string;
+}) {
   // 推送把最新状态直接写进 SWR 缓存，所以这里照旧读同一个 key 就行
   useLiveEvents();
-  const { data, error, isLoading } = useStatus<DesktopPayload>(DESKTOP_PATH, REFRESH_MS);
+  const { data, error, isLoading } = useStatus<DesktopPayload>(DESKTOP_PATH, REFRESH_MS, {
+    fallback,
+  });
   const [displayedDesktop, setDisplayedDesktop] = useState<DesktopActivity | null>(null);
   const reduced = useReducedMotion();
 

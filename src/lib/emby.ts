@@ -13,7 +13,7 @@ import {
 } from "@/lib/emby-store";
 import { ASSET_URL_PREFIX, hasStoredImage, IMAGE_OBJECT_KEY } from "@/lib/r2-assets";
 import { number, object, text } from "@/lib/json";
-import { publish } from "@/lib/live-events";
+import { expireStatus, NOW_WATCHING_TAG, publish, WATCHING_TAG } from "@/lib/live-events";
 import type { WatchingItem } from "@/lib/types";
 
 /**
@@ -269,7 +269,10 @@ export async function recordEmbyReport(body: unknown) {
   const missing = missingKeys(referenced, urls);
 
   // 播放状态变了就直接把新数据推给浏览器 —— 服务端手上已经是最新的
-  if (playing) await publish({ type: "watching-now", payload: await getNowWatching() });
+  if (playing) {
+    await publish({ type: "watching-now", payload: await getNowWatching() });
+    expireStatus(NOW_WATCHING_TAG);
+  }
   /**
    * 列表也带整份数据推（2.8 KB），理由见 lib/live-events 的事件定义。
    *
@@ -279,6 +282,7 @@ export async function recordEmbyReport(body: unknown) {
    */
   if (resumeChanged || stored > 0) {
     await publish({ type: "watching", payload: await getWatching() });
+    expireStatus(WATCHING_TAG);
   }
 
   return { items, playing, images: stored, missingImages: missing };

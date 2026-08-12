@@ -16,7 +16,7 @@ import {
   STATIC_TRANSITION,
   STATIC_VARIANTS,
 } from "@/lib/motion";
-import type { WatchingItem } from "@/lib/types";
+import type { StatusResponse, WatchingItem } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /**
@@ -190,7 +190,13 @@ function Skeleton() {
   );
 }
 
-export function WatchingRow() {
+export function WatchingRow({
+  fallback,
+  nowFallback,
+}: {
+  fallback: StatusResponse<WatchingPayload>;
+  nowFallback: StatusResponse<NowWatchingPayload>;
+}) {
   useLiveEvents();
   /**
    * 两个来源分开取，因为节奏差得远：列表是后端定时轮询 Emby 拿的，慢；
@@ -200,11 +206,15 @@ export function WatchingRow() {
   const { data: list, error, isLoading } = useStatus<WatchingPayload>(
     WATCHING_PATH,
     LIST_REFRESH_MS,
+    {
+      fallback,
+      // 列表不会随时间自己变质，服务端刚取的那份就是最新的
+      revalidateOnMount: false,
+    },
   );
-  const { data: live } = useStatus<NowWatchingPayload>(
-    NOW_WATCHING_PATH,
-    NOW_REFRESH_MS,
-  );
+  const { data: live } = useStatus<NowWatchingPayload>(NOW_WATCHING_PATH, NOW_REFRESH_MS, {
+    fallback: nowFallback,
+  });
 
   /**
    * 播放中那一项置顶并去重。

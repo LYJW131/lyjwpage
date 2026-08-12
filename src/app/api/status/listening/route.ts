@@ -1,9 +1,6 @@
 import { statusRoute } from "@/lib/api";
 import { getRecentlyPlayed } from "@/lib/apple-music-store";
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
-
 /**
  * 「最近在听」。
  *

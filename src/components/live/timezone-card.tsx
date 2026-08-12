@@ -2,14 +2,15 @@
 
 import NumberFlow, { NumberFlowGroup } from "@number-flow/react";
 import { Server } from "lucide-react";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useState } from "react";
 
 import { Card } from "@/components/ui/card";
 import { MacBookProIcon } from "@/components/ui/device-icons";
+import { useMountedAt } from "@/hooks/use-mounted-at";
 import { useStatus } from "@/hooks/use-status";
 import { TIMEZONE_PATH } from "@/lib/paths";
 import { site } from "@/lib/site";
-import type { TimezonePayload } from "@/lib/types";
+import type { StatusResponse, TimezonePayload } from "@/lib/types";
 
 /**
  * 时区内容变化不单独推送，平时只需慢速轮询。
@@ -23,20 +24,6 @@ import type { TimezonePayload } from "@/lib/types";
  * 窗口，一分钟一问足够在下一轮把 stale 翻过来。
  */
 const REFRESH_MS = 60_000;
-
-const emptySubscribe = () => () => {};
-
-/**
- * Client Component 首屏仍会在服务端预渲染。时钟若直接用 Date.now()，服务端画出的
- * 秒数和 hydrate 时的秒数可能不同；首屏两边都先画占位，挂载后再开始走钟。
- */
-function useHydrated() {
-  return useSyncExternalStore(
-    emptySubscribe,
-    () => true,
-    () => false,
-  );
-}
 
 function validTimezone(identifier: string) {
   try {
@@ -120,17 +107,25 @@ function timezoneOffsetSeconds(now: number, timezone: string) {
 
 const TWO_DIGITS = { minimumIntegerDigits: 2, useGrouping: false } as const;
 
-export function TimezoneCard() {
-  const { data, error } = useStatus<TimezonePayload>(TIMEZONE_PATH, REFRESH_MS);
-  const hydrated = useHydrated();
-  const [now, setNow] = useState(() => Date.now());
+export function TimezoneCard({ fallback }: { fallback: StatusResponse<TimezonePayload> }) {
+  const { data, error } = useStatus<TimezonePayload>(TIMEZONE_PATH, REFRESH_MS, { fallback });
+  /**
+   * 首帧（服务端那一遍和 hydrate 那一遍）now 是 0，钟面和偏移都画占位，
+   * 挂载后才开始走 —— 理由见 useMountedAt。
+   *
+   * 0 只当哨兵，绝不能拿去算：那是 1970 年，同一个时区当时的偏移未必和今天一样
+   * （Asia/Singapore 那会儿还是 +07:30），会先画错一帧再跳。
+   */
+  const mountedAt = useMountedAt();
+  const [ticked, setTicked] = useState(0);
+  const now = ticked || mountedAt;
 
   useEffect(() => {
     // 对齐整秒再开始跑，避免从挂载时刻起每次都在半秒处翻数字。
     let interval: number | undefined;
     const timeout = window.setTimeout(() => {
-      setNow(Date.now());
-      interval = window.setInterval(() => setNow(Date.now()), 1_000);
+      setTicked(Date.now());
+      interval = window.setInterval(() => setTicked(Date.now()), 1_000);
     }, 1_000 - (Date.now() % 1_000));
 
     return () => {
@@ -151,13 +146,19 @@ export function TimezoneCard() {
   // 的时区绝不参与选择，否则同一页面在不同访客眼里会显示不同的“本机时间”。
   const backendTimezone = validTimezone(site.timezone) ? site.timezone : "UTC";
   const timezone = usingMac ? reportedTimezone!.identifier : backendTimezone;
-  const clock = hydrated ? clockParts(now, timezone) : null;
+  const clock = now ? clockParts(now, timezone) : null;
+  // 上报器在线时这两个值由 payload 直接给，服务端也画得出来；退回后端时区那一支
+  // 只能现算，得等挂载
   const abbreviation = usingMac
     ? reportedTimezone!.abbreviation
-    : timezoneAbbreviation(now, timezone);
+    : now
+      ? timezoneAbbreviation(now, timezone)
+      : null;
   const offsetSeconds = usingMac
     ? reportedTimezone!.secondsFromGMT
-    : timezoneOffsetSeconds(now, timezone);
+    : now
+      ? timezoneOffsetSeconds(now, timezone)
+      : null;
 
   return (
     <Card
@@ -215,7 +216,9 @@ export function TimezoneCard() {
           <div className="mt-5 flex items-center justify-between gap-3 border-t border-line pt-3">
             <span className="label-mono text-muted-foreground">系统时区</span>
             <span className="truncate text-right text-sm text-muted-foreground">
-              {[formatUTCOffset(offsetSeconds), abbreviation].filter(Boolean).join(" · ")}
+              {[offsetSeconds == null ? null : formatUTCOffset(offsetSeconds), abbreviation]
+                .filter(Boolean)
+                .join(" · ")}
             </span>
           </div>
         </div>
