@@ -34,8 +34,11 @@ import type {
 import { appleArtwork, ARTWORK_SCALE, needsOptimizing } from "@/lib/apple-artwork";
 import { cn } from "@/lib/utils";
 
-/** 与服务端 30s 列表缓存对齐 */
-const REFRESH_MS = 30_000;
+/**
+ * 列表变了会推失效通知过来，轮询只兜「推送整体停用」这一种情况，所以给得很松。
+ * 从前是 30 秒，那时列表要靠轮询才会翻 —— 服务端还得现打 Apple 的目录接口。
+ */
+const REFRESH_MS = 5 * 60_000;
 /** 实时播放由推送送来，轮询只是兜底 */
 const MUSIC_REFRESH_MS = 30_000;
 

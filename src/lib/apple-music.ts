@@ -1,38 +1,24 @@
 import { readAppleMusicCredentials } from "@/lib/apple-music-credentials";
 import { cached } from "@/lib/cache";
-import type { ListeningItem, NowPlayingGuess } from "@/lib/types";
 
 /**
- * Apple Music「最近在听」。
+ * Apple Music 目录查询 —— 站点这侧只剩这一件事。
  *
- * 需要 Developer Token 和 Music-User-Token 两条凭据，都由 Mac 上报器推来 ——
- * MusicKit 现签，.p8 私钥不出那台机器。服务端不签也没有回落，见 resolveCredentials。
+ * 「最近在听」那份列表已经改由 reporters/apple-music-reporter 推来，见
+ * lib/apple-music-store。留在这里的是**给此刻在播的那首曲子找一个可跳转的地址**：
+ * 本机 Music.app 和 HomePod 都给不出可分享的链接，只能拿曲名 + 艺人去目录里搜，
+ * 而这件事是读取时按当前播放的曲子现查的，没法交给按固定节奏轮询的上报器。
  *
- * 两者都只存在于服务端，前端拿到的永远是已经规范化过的歌曲列表。
+ * 也就是说这是全站唯一还会打 Apple 的路径。命中长期缓存，绝大多数请求不会真的
+ * 出网。真要把它也搬走，该搬去 Mac 上报器 —— 它有 MusicKit，换歌的那一刻就能
+ * 把链接一起算好塞进信封，这里连缓存都不用留。
+ *
+ * 凭据只有一个来源：Mac 上报器推来的那份。服务器上不放 .p8 —— 签名密钥留在那台
+ * 机器的钥匙串里由系统保管，这边拿到的是 MusicKit 现签的 developer token 和
+ * 同一次授权产出的 music user token。没有本地签名的回落：有回落就意味着私钥
+ * 仍然得躺在服务器上，那这套东西就白做了。
  */
 
-/**
- * 注意这个端点返回的是「最近播放的资源」—— 专辑、歌单、电台这类容器，
- * 不是单曲。limit 上限是 10，传更大会直接 400。
- */
-const RECENT_URL = "https://api.music.apple.com/v1/me/recent/played?limit=10";
-const RECENT_TTL_MS = 30_000;
-
-/** 专辑/歌单的曲目时长是不会变的，缓存久一点 */
-const DURATION_TTL_MS = 24 * 60 * 60 * 1000;
-/** 歌单曲目会分页，最多翻这么多页，够长的歌单也不至于打太多次 */
-const MAX_TRACK_PAGES = 5;
-
-/**
- * 凭据只有一个来源：Mac 上报器推来的那份。
- *
- * 服务器上不放 .p8 —— 签名密钥留在那台机器的钥匙串里由系统保管，这边拿到的是
- * MusicKit 现签的 developer token 和同一次授权产出的 music user token。
- *
- * 没有本地签名的回落。有回落就意味着私钥仍然得躺在服务器上，那这套东西就白做了。
- * 代价是上报器长期离线且 Redis 也丢了凭据时，「最近在听」直接失败 —— 这是明摆着
- * 的取舍，不是疏漏。
- */
 type Credentials = {
   developerToken: string;
   userToken: string;
@@ -56,71 +42,6 @@ async function resolveCredentials(): Promise<Credentials> {
     userToken: credentials.musicUserToken,
     expiresAt: credentials.expiresAt,
   };
-}
-
-type AppleArtwork = {
-  url?: string;
-  /** 以下五个都是不带 # 的六位十六进制 */
-  bgColor?: string;
-  textColor1?: string;
-  textColor2?: string;
-  textColor3?: string;
-  textColor4?: string;
-};
-
-type AppleResource = {
-  id?: string;
-  /** albums / playlists / stations / library-albums … */
-  type?: string;
-  /** 形如 /v1/catalog/cn/albums/1858184006，拿它去查曲目 */
-  href?: string;
-  attributes?: {
-    name?: string;
-    /** 专辑有这个 */
-    artistName?: string;
-    /** 歌单是创建者 */
-    curatorName?: string;
-    url?: string;
-    artwork?: AppleArtwork;
-    playParams?: { id?: string };
-  };
-};
-
-
-async function normalize(resource: AppleResource): Promise<ListeningItem> {
-  const attributes = resource.attributes ?? {};
-  const id = String(resource.id ?? attributes.playParams?.id ?? "");
-
-  // 自建歌单优先用资料库那张：catalog 上就算有，也多半是自动拼的 mosaic，
-  // 不是用户自己选的封面
-  const fromLibrary = await libraryPlaylistCover(id);
-
-  return {
-    id,
-    title: attributes.name ?? "",
-    // 专辑给 artistName，歌单给 curatorName，电台两者都没有
-    artist: attributes.artistName ?? attributes.curatorName ?? "",
-    // 原样透传模板 URL，尺寸由取图的那一侧填 —— 见 lib/apple-artwork
-    artwork: fromLibrary ?? attributes.artwork?.url ?? null,
-    link: attributes.url ?? null,
-    palette: artworkPalette(attributes.artwork),
-    // 只有排在最前那项会被算，见 getRecentlyPlayed
-    durationMs: null,
-  };
-}
-
-/** 只挑出六位十六进制的那几个，补上 # 。取不到就是空数组，前端自己兜底 */
-function artworkPalette(artwork?: AppleArtwork): string[] {
-  if (!artwork) return [];
-  return [
-    artwork.bgColor,
-    artwork.textColor1,
-    artwork.textColor2,
-    artwork.textColor3,
-    artwork.textColor4,
-  ]
-    .filter((value): value is string => typeof value === "string" && /^[0-9a-f]{6}$/i.test(value))
-    .map((value) => `#${value}`);
 }
 
 async function appleFetchRaw<T>(url: string, credentials: Credentials): Promise<T> {
@@ -149,61 +70,10 @@ async function appleFetchRaw<T>(url: string, credentials: Credentials): Promise<
   return (await response.json()) as T;
 }
 
-/** 大多数端点把结果放在顶层 data 里。Apple 按播放时间倒序返回，直接用原始顺序 */
+/** 大多数端点把结果放在顶层 data 里 */
 async function appleFetch<T>(url: string, credentials: Credentials): Promise<T[]> {
   const json = await appleFetchRaw<{ data?: T[] }>(url, credentials);
   return Array.isArray(json?.data) ? json.data : [];
-}
-
-function fetchResources(credentials: Credentials) {
-  return cached(`apple-music:recent`, RECENT_TTL_MS, () =>
-    appleFetch<AppleResource>(RECENT_URL, credentials),
-  );
-}
-
-type TrackRelationship = {
-  data?: Array<{ attributes?: { durationInMillis?: number } }>;
-  next?: string;
-};
-
-type ContainerDetail = {
-  relationships?: { tracks?: TrackRelationship };
-};
-
-/**
- * 把一个专辑/歌单的所有曲目时长加起来。
- *
- * 容器本身没有时长字段（专辑只有 trackCount），只能顺着 href 再查一次曲目。
- * 曲目时长不会变，所以缓存一整天，同一张专辑只查一次。
- */
-async function getContainerDuration(
-  resource: AppleResource,
-  credentials: Credentials,
-): Promise<number> {
-  const href = resource.href;
-  const id = resource.id;
-  if (!href || !id) return 0;
-
-  return cached(`apple-music:duration:${id}`, DURATION_TTL_MS, async () => {
-    let total = 0;
-    let url: string | undefined = `${href}?include=tracks`;
-
-    for (let page = 0; page < MAX_TRACK_PAGES && url; page += 1) {
-      const detail: ContainerDetail[] = await appleFetch<ContainerDetail>(
-        url.startsWith("http") ? url : `https://api.music.apple.com${url}`,
-        credentials,
-      );
-
-      const tracks: TrackRelationship | undefined = detail[0]?.relationships?.tracks;
-      for (const track of tracks?.data ?? []) {
-        total += Number(track.attributes?.durationInMillis) || 0;
-      }
-      // 歌单很长时曲目会分页；翻不完就少算，宁可少算（会更早判定为没在听）
-      url = tracks?.next;
-    }
-
-    return total;
-  });
 }
 
 /** 命中的链接不会变，缓存久一点；搜不到时靠 cached 的负缓存挡住重复请求 */
@@ -249,8 +119,8 @@ function normalizeForMatch(value: string | null | undefined) {
   return (value ?? "")
     .toLowerCase()
     .normalize("NFKC")
-    .replace(/[\s\u3000]/g, "")
-    .replace(/[-\u2013\u2014_.,'"\u2018\u2019\u201c\u201d!?()\uff08\uff09\[\]\u30fb:\uff1a]/g, "");
+    .replace(/[\s　]/g, "")
+    .replace(/[-–—_.,'"‘’“”!?()（）\[\]・:：]/g, "");
 }
 
 async function getStorefront(credentials: Credentials) {
@@ -265,11 +135,6 @@ async function getStorefront(credentials: Credentials) {
 
 /**
  * 把「播放中」的曲目解析成一个可跳转的 Apple Music 地址。
- *
- * 本机 Music.app 和 HomePod 都给不出可分享的链接 —— Music.app 的曲目属性里
- * 只有 persistent ID / database ID 这类本地标识（实测 kind 是「HLS媒体」，
- * 没有任何 URL 字段），HomePod 经 Home Assistant 过来的也只有文本字段。
- * 所以只能拿曲名 + 艺人去目录里搜。
  *
  * 搜出来**必须按「曲名 + 艺人 + 专辑」三者校验**，少一个都不够：
  *
@@ -389,146 +254,4 @@ export async function resolveTrackLookup(track: {
     // 凭据缺失或上游异常都不该让整张卡片失败
     return { link: searchUrl, artwork: null, id: null };
   }
-}
-
-/**
- * 自建歌单封面地址的缓存时长。
- *
- * 资料库返回的是预签名地址，实测 `X-Amz-Expires=86400`（24 小时），所以上限
- * 是它。取一半：既留足余量不会把将过期的 URL 交出去，又尽量少换地址 ——
- * 这些图要过 Next 的图片优化，而优化结果是**按 URL 做缓存键**的。地址一换就是
- * 一次缓存未命中，得重新下 274KB 原图再转一遍。从前定的 1 小时等于每小时白转
- * 一轮，把这条路的收益吃掉了大半。
- *
- * 换了封面最迟 12 小时生效。要立刻生效就删掉 Redis 里
- * `cache:apple-music:library-art:<id>`。
- */
-const LIBRARY_ARTWORK_TTL_MS = 12 * 60 * 60 * 1000;
-/** 自建 / 分享歌单的 id 前缀，只有这类才需要去资料库找封面 */
-const USER_PLAYLIST_PREFIX = "pl.u-";
-
-type CatalogPlaylistWithLibrary = {
-  relationships?: {
-    library?: { data?: Array<{ attributes?: { artwork?: { url?: string } } }> };
-  };
-};
-
-/**
- * 自建歌单的封面，从**这一个歌单**的资料库副本里取。
- *
- * catalog 端点对 pl.u- 歌单要么不给 artwork，要么给的是 Apple 按曲目自动拼的
- * mosaic；用户自己设的那张封面只挂在资料库副本上，得带 Music-User-Token
- * 请求 `?include=library`，从 relationships.library 里读。
- *
- * 刻意按 id 单查而不是列 /v1/me/library/playlists ——那样等于把整个资料库的
- * 歌单和它们的预签名封面地址全拉回来缓存着，而实际只用得上最近播放里的一两个。
- *
- * 返回的是预签名 S3 地址（X-Amz-Expires=86400），没有 {w}/{h} 占位符。
- * 站点不再下载或转码图片，只短时缓存这个地址并直接交给浏览器。
- */
-async function libraryPlaylistArtworkUrl(id: string): Promise<string | null> {
-  if (!id.startsWith(USER_PLAYLIST_PREFIX)) return null;
-  try {
-    const credentials = await resolveCredentials();
-    const storefront = await getStorefront(credentials);
-    return await cached(`apple-music:library-art:${id}`, LIBRARY_ARTWORK_TTL_MS, async () => {
-      const rows = await appleFetch<CatalogPlaylistWithLibrary>(
-        `https://api.music.apple.com/v1/catalog/${storefront}/playlists/${id}?include=library`,
-        credentials,
-      );
-      for (const copy of rows[0]?.relationships?.library?.data ?? []) {
-        const url = copy.attributes?.artwork?.url;
-        if (url) return url;
-      }
-      // 存空串而不是 null：cached 用 undefined 判未命中，空串才能把
-      // 「查过了但没有」也缓存住
-      return "";
-    }).then((url) => url || null);
-  } catch {
-    // 尽力而为：查不到就没有封面，不该让整个列表失败
-    return null;
-  }
-}
-
-async function libraryPlaylistCover(id: string): Promise<string | null> {
-  return libraryPlaylistArtworkUrl(id);
-}
-
-/** limit 上限 10 —— 上游端点的硬限制 */
-export async function getRecentlyPlayed(
-  { limit = 10 } = {},
-): Promise<ListeningItem[]> {
-  const credentials = await resolveCredentials();
-  const resources = await fetchResources(credentials);
-
-  const items = await Promise.all(
-    resources.slice(0, limit).map((item) => normalize(item)),
-  );
-
-  /**
-   * 只给第一项补上总时长 —— hero 上那一格要显示它。
-   *
-   * 十项全算就是十次上游请求（歌单还要翻页），而列表行根本不显示时长。缓存一天，
-   * 所以稳定状态下这里通常一次请求都不打；「正在听」的推断本来也在算同一个数，
-   * 走的是同一个缓存键。
-   */
-  const [top] = resources;
-  if (top && items[0]) {
-    const durationMs = await getContainerDuration(top, credentials);
-    if (durationMs > 0) items[0] = { ...items[0], durationMs };
-  }
-
-  return items;
-}
-
-/**
- * 上一次观测到排在最前的那一项。模块级状态，随进程存活。
- *
- * switchedAt 只有在真的看见「它从别的东西换成了它」时才有值。
- * 冷启动时看到的第一项是 null —— 那个时间戳只是我们开始看的时刻，
- * 不是它开始播的时刻，拿它去算时长会凭空造出一段「播放中」。
- */
-let lastSeen: { id: string; switchedAt: number | null } | null = null;
-
-/**
- * 推断此刻在不在听。
- *
- * Apple 没有服务端可查的「当前播放」接口，也不返回播放时间戳，所以只能观测：
- * 记下最近播放列表里排第一的专辑/歌单是什么时候「变成第一」的，
- * 在它的总时长之内就认为还在听。
- *
- * 判定为「在听」需要同时满足两个条件，缺一个就返回 null：
- * 1. 我们确实记录到了它变成第一的那个时刻（不是冷启动时它本来就在那儿）
- * 2. 距那一刻还没超过这张专辑 / 这个歌单的总时长
- *
- * 已知的不精确之处：
- * - 冷启动看到的那一项在被别的东西顶掉之前，永远不判定为在听
- * - 列表缓存 30s，所以「变成第一」的时刻最多晚 30s
- * - 一直循环同一张专辑时 id 不变，会被当成已经停了
- * - 只听了专辑里一首歌就走开，仍会按整张时长算，这段时间内都显示在听
- * - 状态存在进程内存里，多实例部署或重启后要重新观测到一次切换才生效
- */
-export async function getNowPlaying(): Promise<NowPlayingGuess | null> {
-  const credentials = await resolveCredentials();
-  const resources = await fetchResources(credentials);
-
-  const top = resources[0];
-  if (!top?.id) return null;
-  const id = String(top.id);
-  const now = Date.now();
-
-  if (!lastSeen || lastSeen.id !== id) {
-    // 冷启动：它可能是刚开始播，也可能几小时前就听完了，无从分辨，
-    // 记下 id 但不记时刻，等它被顶掉、换成下一项时才算观测到一次切换。
-    lastSeen = { id, switchedAt: lastSeen === null ? null : now };
-  }
-
-  const { switchedAt } = lastSeen;
-  if (switchedAt === null) return null;
-
-  const durationMs = await getContainerDuration(top, credentials);
-  if (!durationMs) return null;
-  if (now - switchedAt >= durationMs) return null;
-
-  return { itemId: id, startedAt: switchedAt, durationMs };
 }

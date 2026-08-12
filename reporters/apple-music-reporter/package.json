@@ -1,0 +1,20 @@
+{
+  "name": "@lyjwpage/apple-music-reporter",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "把 Apple Music 的最近播放列表和「此刻在不在听」的推断推送到 lyjwpage",
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/index.js"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "typescript": "^5"
+  }
+}

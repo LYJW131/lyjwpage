@@ -11,9 +11,11 @@ import type { LiveEvent } from "@/lib/live-events";
 import {
   CHARGER_PATH,
   DESKTOP_PATH,
+  LISTENING_PATH,
   NOW_LISTENING_PATH,
   NOW_WATCHING_PATH,
   TIMEZONE_PATH,
+  WATCHING_PATH,
 } from "@/lib/paths";
 import type { ChargerPayload, StatusResponse } from "@/lib/types";
 
@@ -31,10 +33,18 @@ const FORWARDS: ReadonlyArray<{
   merge?: (data: unknown) => unknown;
 }> = [
   { event: "desktop", path: DESKTOP_PATH },
-  { event: "listening", path: NOW_LISTENING_PATH },
-  // Emby 正在播放：webhook 和推送代理驱动，服务端手上已经是最新的。列表不动 ——
-  // 它由代理 60 秒一轮地推，节奏慢得多，跟着走没有意义。
-  { event: "watching", path: NOW_WATCHING_PATH },
+  { event: "listening-now", path: NOW_LISTENING_PATH },
+  // Emby 正在播放：webhook 和推送代理驱动，服务端手上已经是最新的
+  { event: "watching-now", path: NOW_WATCHING_PATH },
+  /**
+   * 两张列表也直接带数据来。
+   *
+   * 从前它们只发失效通知、由这里 mutate 一次重取，理由是「整份太大」——
+   * 实测 4.4 KB 和 2.8 KB，而重取要付的是每个在线标签页各一次回源。
+   * 服务端那侧只在内容真的变了时才发，所以这两行不会退化成定时广播。
+   */
+  { event: "listening", path: LISTENING_PATH },
+  { event: "watching", path: WATCHING_PATH },
   /**
    * 充电头只在插拔、换设备时来事件。曲线的合并走和轮询同一个累加器
    * （lib/charger-history）：推来的那份不带历史点（空增量），所以合并只是把
@@ -58,6 +68,20 @@ const FORWARDS: ReadonlyArray<{
  * 只是不再增长，没有理由跟着变灰。
  */
 const PRESENCE_PATHS = [DESKTOP_PATH, TIMEZONE_PATH, NOW_LISTENING_PATH, CHARGER_PATH];
+
+/**
+ * 不带数据的事件 → 收到后要重取哪几个键。
+ *
+ * 只剩存活这一条：它翻的是「上报器还在不在」，而各卡片的 stale 是服务端按各自
+ * 的数据现算的，服务端没法在一条事件里把四份 payload 都算好推出来。
+ */
+const INVALIDATIONS: ReadonlyArray<{
+  event: LiveEvent["type"];
+  paths: readonly string[];
+}> = [
+  // 上报器上下线：不带数据，只让它供数的那几张卡重取一次，同时翻 stale
+  { event: "presence", paths: PRESENCE_PATHS },
+];
 
 /**
  * 整页共用一条连接。
@@ -105,10 +129,11 @@ function open(mutate: ScopedMutator) {
     });
   }
 
-  // 上报器上下线：不带数据，只让它供数的那几张卡重取一次，同时翻 stale
-  channel.bind("presence", () => {
-    for (const path of PRESENCE_PATHS) void mutate(path);
-  });
+  for (const { event, paths } of INVALIDATIONS) {
+    channel.bind(event, () => {
+      for (const path of paths) void mutate(path);
+    });
+  }
 }
 
 function close() {
