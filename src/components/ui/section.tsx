@@ -27,14 +27,14 @@ export function Section({
     <section
       id={id}
       // 吸顶导航连边框 57px，锚点跳转时留出这段还留点余量，否则标题会贴着挡板
-      className={cn("screen-line-top scroll-mt-16 px-4 py-10 sm:py-14", className)}
+      className={cn("scroll-mt-28 px-4 py-8 sm:px-6 sm:py-10", className)}
     >
       {(label || title) && (
-        <header className="mb-6 flex items-baseline justify-between gap-4">
+        <header className="mb-5 flex items-baseline justify-between gap-4 border-b border-line pb-3">
           <div className="flex items-baseline gap-3">
             {label && <span className="label-mono text-muted-foreground">{label}</span>}
             {title && (
-              <h2 className="text-lg font-medium tracking-tight sm:text-xl">{title}</h2>
+              <h2 className="text-lg font-bold tracking-tight sm:text-xl">{title}</h2>
             )}
           </div>
           {note && <div className="label-mono text-muted-foreground shrink-0">{note}</div>}
@@ -65,7 +65,7 @@ export function Container({
   return (
     <div
       className={cn(
-        "mx-auto w-full max-w-5xl border-x border-line",
+        "mx-auto w-[calc(100%-2rem)] max-w-5xl border-x border-line-strong",
         className,
       )}
     >

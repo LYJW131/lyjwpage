@@ -26,7 +26,7 @@ import type {
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-const REFRESH_MS = 60_000;
+const REFRESH_MS = 2 * 60_000;
 
 /** 活动曲线增量拉取，和充电头共用同一个壳子。累加器在 lib/vibecoding-activity */
 const fetchVibeCoding = incrementalFetcher<VibeCodingPayload>(
@@ -197,7 +197,7 @@ function TotalUsage({
         topModels.length === 0 && "pb-5",
       )}
     >
-      <div className="grid grid-cols-4 gap-5">
+      <div className="grid grid-cols-2 gap-5 md:grid-cols-4">
         <div>
           <div className="label-mono text-muted-foreground">Tokens</div>
           <div className="mt-2 text-3xl font-medium tracking-tight md:text-4xl">
@@ -237,7 +237,7 @@ function TotalUsage({
         </div>
       </div>
 
-      <div className="mt-6 flex h-2 overflow-hidden rounded-full bg-muted" aria-hidden>
+      <div className="mt-6 flex h-2 overflow-hidden bg-muted" aria-hidden>
         {TOKEN_SEGMENTS.map((segment) => {
           const value = values[segment.key];
           return value > 0 ? (
@@ -252,7 +252,7 @@ function TotalUsage({
         })}
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-x-3 gap-y-2 md:gap-x-5">
+      <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 md:flex md:flex-wrap md:gap-x-5">
         {TOKEN_SEGMENTS.map((segment) => (
           <div key={segment.key} className="flex items-center gap-1.5 text-xs md:gap-2">
             <span
@@ -547,9 +547,9 @@ function LimitMeter({ limit }: { limit: VibeCodingLimit }) {
           </span>
         </span>
       </div>
-      <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted">
+      <div className="mt-1.5 h-1.5 overflow-hidden bg-muted">
         <div
-          className="h-full rounded-full transition-[width] duration-700"
+          className="h-full transition-[width] duration-700"
           style={{ width: `${usedPercent}%`, backgroundColor: color }}
         />
       </div>
@@ -668,7 +668,7 @@ function AgentPanel({
                   </span>
                 </div>
                 <div
-                  className="mt-1.5 h-1.5 rounded-full"
+                  className="mt-1.5 h-1.5"
                   style={{ backgroundColor: LIMIT_UNLIMITED_COLOR }}
                 />
               </div>
@@ -749,10 +749,10 @@ function QuotaProviders({ providers }: { providers: VibeCodingQuotaProvider[] })
                 </span>
                 <span className="truncate text-sm font-medium">{provider.label}</span>
               </div>
-              <div className="h-1.5 min-w-8 flex-1 overflow-hidden rounded-full bg-muted">
+              <div className="h-1.5 min-w-8 flex-1 overflow-hidden bg-muted">
                 {usedPercent != null && (
                   <div
-                    className="h-full rounded-full transition-[width] duration-700"
+                    className="h-full transition-[width] duration-700"
                     style={{ width: `${usedPercent}%`, backgroundColor: color }}
                   />
                 )}
@@ -798,6 +798,7 @@ export function VibeCodingCard({
 
   return (
     <Card
+      id="vibe-coding"
       label="Vibe Coding"
       tone={stale ? "off" : data ? "live" : "idle"}
       action={
@@ -841,11 +842,11 @@ export function VibeCodingCard({
                 <div className="flex items-center gap-2">
                   <div className="h-4 w-24 rounded bg-muted" />
                   {/* 套餐 badge 的位置 */}
-                  <div className="h-4 w-14 rounded-full bg-muted" />
+                  <div className="h-4 w-14 bg-muted" />
                 </div>
                 <div className="mt-6 h-12 w-36 rounded bg-muted" />
                 {/* 限额条：占位只放一条 —— 条数由上游决定，多占的话数据回来会塌一截 */}
-                <div className="mt-6 h-1.5 rounded-full bg-muted" />
+                <div className="mt-6 h-1.5 bg-muted" />
                 <div className="mt-6 h-16 rounded bg-muted" />
               </div>
             ))}

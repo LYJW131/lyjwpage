@@ -26,13 +26,13 @@ import { cn } from "@/lib/utils";
  * 这条只兜漏发。进度条是 CSS 动画从锚点自己跑的，跟这个间隔无关，所以在播时
  * 也没有调密的理由。
  */
-const NOW_REFRESH_MS = 30_000;
+const NOW_REFRESH_MS = 60_000;
 
 /**
- * 列表变了（包括晚到的海报落地）会推失效通知过来，轮询只兜「推送整体停用」
+ * 列表变了（包括晚到的海报落地）会把完整数据推过来，轮询只兜「推送整体停用」
  * 这一种情况。从前是 60 秒，对齐代理的推送节奏 —— 那时列表根本不走推送。
  */
-const LIST_REFRESH_MS = 5 * 60_000;
+const LIST_REFRESH_MS = 10 * 60_000;
 
 /**
  * 增删卡片后要等多久才把滚动吸附装回去。
@@ -111,8 +111,8 @@ function Tile({
       rel="noreferrer noopener"
       className={cn(
         // 宽度和吸附交给外层的 motion 包装
-        "group relative flex h-full w-full flex-col overflow-hidden rounded-md",
-        "border border-line bg-surface transition-colors hover:border-line-strong",
+        "paper-card group relative flex h-full w-full flex-col overflow-hidden rounded-md",
+        "border border-line-strong bg-surface",
         live && "border-live/40",
       )}
     >
@@ -130,7 +130,7 @@ function Tile({
 
         {/* 压在封面右上角。海报底色不可控，所以垫一层模糊底片保证读得出来 */}
         {live && (
-          <span className="absolute right-2 top-2 flex items-center gap-1.5 rounded-full border border-line bg-background/85 px-2 py-1 backdrop-blur-sm">
+          <span className="absolute right-2 top-2 flex items-center gap-1.5 border border-line bg-background/85 px-2 py-1 backdrop-blur-sm">
             <StatusDot tone={paused ? "idle" : "live"} />
             <span className="label-mono text-foreground">
               {paused ? "已暂停" : "播放中"}

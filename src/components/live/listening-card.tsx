@@ -37,12 +37,12 @@ import { appleArtwork, ARTWORK_SCALE, needsOptimizing } from "@/lib/apple-artwor
 import { cn } from "@/lib/utils";
 
 /**
- * 列表变了会推失效通知过来，轮询只兜「推送整体停用」这一种情况，所以给得很松。
+ * 列表变了会把完整数据推过来，轮询只兜「推送整体停用」这一种情况，所以给得很松。
  * 从前是 30 秒，那时列表要靠轮询才会翻 —— 服务端还得现打 Apple 的目录接口。
  */
-const REFRESH_MS = 5 * 60_000;
+const REFRESH_MS = 10 * 60_000;
 /** 实时播放由推送送来，轮询只是兜底 */
-const MUSIC_REFRESH_MS = 30_000;
+const MUSIC_REFRESH_MS = 60_000;
 
 /**
  * 视口里显示几行。行高不写死：列表填满卡片剩下的空间，每行取容器的 1/N
@@ -151,7 +151,7 @@ function Bars({ state }: { state: BarsState }) {
         <span
           key={i}
           className={cn(
-            "w-0.5 origin-bottom rounded-full",
+            "w-0.5 origin-bottom",
             state === "idle"
               ? `bg-muted-foreground ${idleHeights[i]}`
               : state === "playing"
@@ -261,10 +261,10 @@ function HeroProgress({
           </span>
         </NumberFlowGroup>
       </div>
-      <div className="mt-1.5 h-0.75 overflow-hidden rounded-full bg-muted">
+      <div className="mt-1.5 h-0.75 overflow-hidden bg-muted">
         <div
           className={cn(
-            "h-full rounded-full transition-[width] duration-700 ease-linear",
+            "h-full transition-[width] duration-700 ease-linear",
             playing ? "bg-live" : "bg-muted-foreground",
           )}
           style={{ width: `${Math.max(0, Math.min(100, percent))}%` }}
@@ -361,7 +361,7 @@ const SUSPEND_AFTER_CHANGE_MS = 500;
  * 所以自己做：只在「用户滚动停下来之后」对齐到最近的整行，
  * 并且在数据变化后的动画窗口内跳过。浏览器不再有插手的机会。
  */
-function useRowSnap(topKey: string | undefined) {
+function useRowSnap(topKey: string | undefined, wide: boolean) {
   const node = useRef<HTMLDivElement | null>(null);
   const previous = useRef(topKey);
   const suspendUntil = useRef(0);
@@ -381,6 +381,13 @@ function useRowSnap(topKey: string | undefined) {
     el.scrollTop = 0;
     el.style.scrollBehavior = saved;
   }, [topKey]);
+
+  // 展开为两列时只展示最前面的八项，必须先回到 scrollTop 0；否则用户之前
+  // 在单列里滚过以后，overflow:hidden 会把列表定格在中间一段。
+  useIsomorphicLayoutEffect(() => {
+    if (!wide || !node.current) return;
+    node.current.scrollTop = 0;
+  }, [wide]);
 
   /**
    * 用 ref 回调挂监听：节点一出现就绑，卸载时清掉。
@@ -460,10 +467,13 @@ export function ListeningCard({
   fallback,
   nowFallback,
   className,
+  wide = false,
 }: {
   fallback: StatusResponse<ListeningPayload>;
   nowFallback: StatusResponse<NowListeningPayload>;
   className?: string;
+  /** 充电卡隐藏、桌面端横跨两列时，列表切成 4 × 2 的无滚动布局。 */
+  wide?: boolean;
 }) {
   const { data, error, isLoading } = useStatus<ListeningPayload>(LISTENING_PATH, REFRESH_MS, {
     fallback,
@@ -557,7 +567,7 @@ export function ListeningCard({
   );
   // 对重排稳定的 key，否则顶部插入新条目时会被当成整批换新
   const restKeys = stableKeys(rest.map((item) => item.id));
-  const listRef = useRowSnap(restKeys[0]);
+  const listRef = useRowSnap(restKeys[0], wide);
 
   return (
     <Card label="Recently Played" action="Apple Music" className={className}>
@@ -687,7 +697,7 @@ export function ListeningCard({
                             显示，但两版 hero 的高度必须一致，理由同上面那段 —— 与其留
                             一道不可见的空档，不如填满，见 globals.css 的 .rainbow-bar。 */}
                         <div
-                          className="rainbow-bar mt-1.5 h-0.75 rounded-full"
+                          className="rainbow-bar mt-1.5 h-0.75"
                           style={{ backgroundImage: paletteGradient(hero.palette) }}
                           aria-hidden
                         />
@@ -731,6 +741,8 @@ export function ListeningCard({
                 // 百分比轨道就有得算 —— 于是「整数行」「填满」两件事同时由
                 // CSS 保证，不需要 ResizeObserver 去量、也没有写死的行高。
                 "absolute inset-0 grid overflow-y-auto",
+                "recent-tracks",
+                wide && "is-wide",
                 // 这里刻意不做 scroll-snap。它会和 framer 的 layout 动画打架：
                 // popLayout 把离场元素改成绝对定位，容器高度剧变，吸附目标算飞，
                 // 实测新条目进来时 scrollTop 会被弹到 48 甚至 192 再慢慢滑回。

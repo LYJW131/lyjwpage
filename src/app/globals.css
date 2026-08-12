@@ -7,18 +7,26 @@
 @custom-variant retina (@media (min-resolution: 2x));
 
 :root {
-  --radius: 0.75rem;
+  --radius: 0rem;
 
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.18 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.53 0 0);
+  /* 暖灰工作台 + 墨色描边：比纯白更像一张长期使用的记录纸。 */
+  --background: oklch(0.94 0.007 92);
+  --foreground: oklch(0.19 0.006 80);
+  --muted: oklch(0.965 0.008 92);
+  --muted-foreground: oklch(0.48 0.008 80);
 
-  /* 层次靠表面色阶 + 1px 线，不靠阴影 */
-  --surface: oklch(0.985 0 0);
-  --surface-hover: oklch(0.965 0 0);
-  --line: oklch(0 0 0 / 10%);
-  --line-strong: oklch(0 0 0 / 16%);
+  --surface: oklch(0.995 0.006 92);
+  --surface-hover: oklch(0.945 0.012 90);
+  --line: oklch(0.19 0.006 80 / 24%);
+  --line-strong: oklch(0.19 0.006 80 / 88%);
+  --paper-shadow: oklch(0.19 0.006 80 / 18%);
+
+  --signal-red: #c84d3d;
+  --signal-orange: #d66b35;
+  --signal-yellow: #d0a22c;
+  --signal-green: #3d7f50;
+  --signal-blue: #3e70c9;
+  --signal-violet: #8255c7;
 
   /* 整站唯一允许出现的彩色，只给实时数据用 */
   --live: oklch(0.65 0.17 145);
@@ -31,15 +39,16 @@
 
 .dark {
   /* 不用纯黑：OLED 上滚动会拖影，也失去层次 */
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.96 0 0);
-  --muted: oklch(0.21 0 0);
-  --muted-foreground: oklch(0.62 0 0);
+  --background: oklch(0.15 0.008 85);
+  --foreground: oklch(0.93 0.012 90);
+  --muted: oklch(0.205 0.008 85);
+  --muted-foreground: oklch(0.66 0.012 90);
 
-  --surface: oklch(0.185 0 0);
-  --surface-hover: oklch(0.22 0 0);
-  --line: oklch(1 0 0 / 9%);
-  --line-strong: oklch(1 0 0 / 16%);
+  --surface: oklch(0.185 0.008 85);
+  --surface-hover: oklch(0.235 0.01 85);
+  --line: oklch(0.93 0.012 90 / 20%);
+  --line-strong: oklch(0.93 0.012 90 / 76%);
+  --paper-shadow: oklch(0 0 0 / 52%);
 
   /* 深底上饱和度降一档，否则刺眼 */
   --live: oklch(0.76 0.16 148);
@@ -63,9 +72,14 @@
   --color-live-off: var(--live-off);
   --color-claude: var(--claude);
 
-  --radius-md: calc(var(--radius) * 0.66);
+  --radius-xs: var(--radius);
+  --radius-sm: var(--radius);
+  --radius-md: var(--radius);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-xl: var(--radius);
+  --radius-2xl: var(--radius);
+  --radius-3xl: var(--radius);
+  --radius-4xl: var(--radius);
 
   /* CJK 靠字体栈顺序兜底：Geist 没有中文字形，会自动落到苹方 / 鸿蒙 */
   --font-sans:
@@ -98,9 +112,13 @@
      * 吸顶导航的 position:sticky 就失效了。
      */
     overflow-x: clip;
-    background: var(--background);
+    background-color: var(--background);
+    background-image:
+      linear-gradient(to right, color-mix(in oklab, var(--foreground) 3%, transparent) 1px, transparent 1px),
+      linear-gradient(to bottom, color-mix(in oklab, var(--foreground) 3%, transparent) 1px, transparent 1px);
+    background-size: 24px 24px;
     color: var(--foreground);
-    font-family: var(--font-sans);
+    font-family: var(--font-mono);
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
     /* 全站数字等宽 + 斜杠零：实时数字跳动时不抖宽度 */
@@ -108,8 +126,106 @@
   }
 
   ::selection {
-    background: var(--foreground);
-    color: var(--background);
+    background: var(--signal-yellow);
+    color: oklch(0.16 0.01 80);
+  }
+}
+
+/*
+ * 主题切换走 View Transition（见 theme-toggle）：只对 root 做交叉淡入。
+ * 不要给 * 上 color/background transition —— 全页同时插值会把帧率打穿。
+ */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 280ms;
+  animation-timing-function: ease;
+}
+
+/* 参考终端面板的硬边纸片：阴影不是漂浮，而是印刷套版般的固定错位。
+   卡片保持静态；按压缩进只给真正的 button（主题切换等）。 */
+.paper-card {
+  box-shadow: 3px 3px 0 var(--paper-shadow);
+}
+
+button.paper-card {
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease,
+    transform 120ms ease;
+}
+
+@media (hover: hover) {
+  button.paper-card:hover {
+    box-shadow: 1px 1px 0 var(--paper-shadow);
+    transform: translate(2px, 2px);
+  }
+}
+
+.page-frame {
+  background: var(--surface);
+  box-shadow: 5px 5px 0 var(--paper-shadow);
+}
+
+/* 单列下用可插值的网格轨道收起充电卡，高度不用猜 max-height；
+   gap 同步归零，最近播放和后续卡片才会一起连续上移。 */
+.live-media-pair {
+  gap: 0.75rem;
+  transition: gap 480ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.live-media-pair > .charger-shell {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 480ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.live-media-pair.is-disconnected {
+  gap: 0;
+}
+
+.live-media-pair.is-disconnected > .charger-shell {
+  grid-template-rows: 0fr;
+}
+
+/* 双列下保留充电卡的轨道撑住原高；最近播放始终贴着右边，直接插值 left。
+   这样每一帧都是真实宽度，不会用 scaleX 压缩整张卡，文字也就不会在结尾跳动。 */
+@media (min-width: 48rem) {
+  .live-media-pair,
+  .live-media-pair.is-disconnected {
+    position: relative;
+    gap: 0.75rem;
+  }
+
+  .live-media-pair > .charger-shell,
+  .live-media-pair.is-disconnected > .charger-shell {
+    grid-column: 1;
+    grid-row: 1;
+    grid-template-rows: 1fr;
+  }
+
+  .live-media-pair > .listening-shell {
+    position: absolute;
+    inset-block: 0;
+    right: 0;
+    left: calc(50% + 0.375rem);
+    transition: left 480ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .live-media-pair.is-disconnected > .listening-shell {
+    z-index: 1;
+    left: 0;
+  }
+
+  /* 横跨整行后正好容纳 4 × 2：DOM 仍保留第九项供窄态滚动，但宽态不展示它。 */
+  .recent-tracks.is-wide {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: repeat(4, minmax(0, 1fr));
+    grid-auto-rows: auto !important;
+    overflow: hidden;
+  }
+
+  .recent-tracks.is-wide > :nth-child(n + 9) {
+    display: none;
   }
 }
 
@@ -242,52 +358,6 @@
   to {
     background-position: 200% center;
   }
-}
-
-/* 新旧前台应用交接的移动边界：与内容的 clip-path 揭示同步从左扫到右。 */
-@keyframes app-switch-sheen {
-  0% {
-    transform: translateX(-50%) skewX(-14deg);
-    opacity: 0;
-  }
-  8% {
-    opacity: 1;
-  }
-  60% {
-    opacity: 1;
-  }
-  70% {
-    opacity: 0.55;
-  }
-  78% {
-    opacity: 0.15;
-  }
-  84% {
-    opacity: 0;
-  }
-  100% {
-    transform: translateX(367%) skewX(-14deg);
-    opacity: 0;
-  }
-}
-
-.app-switch-sheen {
-  position: absolute;
-  z-index: 20;
-  inset-block: -30%;
-  left: 0;
-  width: 24%;
-  pointer-events: none;
-  background: linear-gradient(
-    100deg,
-    transparent 0%,
-    color-mix(in oklab, var(--foreground) 5%, transparent) 25%,
-    color-mix(in oklab, var(--foreground) 20%, transparent) 50%,
-    color-mix(in oklab, var(--foreground) 5%, transparent) 75%,
-    transparent 100%
-  );
-  filter: blur(0.5px);
-  animation: app-switch-sheen 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 /**

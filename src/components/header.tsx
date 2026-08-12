@@ -1,17 +1,27 @@
+import { HeaderTimezone } from "@/components/header-timezone";
+import { HeaderDesktop } from "@/components/live/live-desk-card";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { site } from "@/lib/site";
+import type { DesktopPayload, StatusResponse, TimezonePayload } from "@/lib/types";
 
-export function Header() {
+export function Header({
+  desktop,
+  timezone,
+}: {
+  desktop: StatusResponse<DesktopPayload>;
+  timezone: StatusResponse<TimezonePayload>;
+}) {
   return (
-    // 全站唯一用磨砂的地方
-    <header className="sticky top-0 z-50 border-b border-line bg-background/72 backdrop-blur-xl">
-      <div className="mx-auto flex h-14 w-full max-w-5xl items-center justify-between gap-4 px-4">
-        <a href="#top" className="font-mono text-sm font-medium tracking-tight">
-          {site.name}
-        </a>
-
-        {/* 导航等其他 section 加回来了再补 */}
-        <ThemeToggle />
+    <header id="top" className="sticky top-0 z-50 bg-background/95 backdrop-blur-sm">
+      <div className="mx-auto w-[calc(100%-2rem)] max-w-5xl py-3 sm:py-4">
+        <div className="flex min-h-10 items-center gap-3">
+          <a href="#top" className="shrink-0 text-sm font-bold tracking-tight">
+            {site.name}
+          </a>
+          <HeaderDesktop fallback={desktop} className="flex-1" />
+          <HeaderTimezone fallback={timezone} />
+          <ThemeToggle />
+        </div>
       </div>
     </header>
   );
