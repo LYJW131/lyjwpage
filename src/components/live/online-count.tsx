@@ -22,14 +22,24 @@ export function OnlineCount() {
       <span className="flex items-center gap-1">
         此刻在线
         {/* SSR 就保留数字位置；不能写 0，那会把“还没连上”伪装成真实人数。 */}
-        <span className="inline-flex min-w-[2ch] justify-end text-foreground" aria-live="polite">
-          {count == null ? (
-            <span className="text-muted-foreground" aria-label="正在获取在线人数">
-              --
-            </span>
-          ) : (
-            <NumberFlow value={count} locales="en-US" format={{ minimumIntegerDigits: 2 }} />
-          )}
+        <span className="inline-grid text-foreground" aria-live="polite">
+          {/* 两层始终在同一个格子里参与尺寸计算，只切 visibility，替换时宽度不变。 */}
+          <span
+            className={`col-start-1 row-start-1 justify-self-end text-muted-foreground ${count == null ? "" : "invisible"}`}
+            aria-hidden
+          >
+            --
+          </span>
+          <NumberFlow
+            value={count ?? 0}
+            locales="en-US"
+            format={{ minimumIntegerDigits: 2 }}
+            className={`col-start-1 row-start-1 justify-self-end ${count == null ? "invisible" : ""}`}
+            aria-hidden
+          />
+          <span className="sr-only">
+            {count == null ? "正在获取在线人数" : count.toLocaleString("en-US")}
+          </span>
         </span>
       </span>
       <SourceHint connected={connected} />
