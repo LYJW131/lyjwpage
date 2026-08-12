@@ -18,6 +18,17 @@ export function historyCursor(): number | null {
 }
 
 /**
+ * 用首屏 SSR 的完整快照初始化累加器，让挂载后的第一次请求直接带游标。
+ *
+ * 只在空累加器上接一次：React 严格模式会重放 effect，客户端路由返回首页时模块
+ * 状态也可能仍在；两种情况都不该拿一份可能更旧的 fallback 覆盖现有序列。
+ */
+export function seedChargerHistory(payload: ChargerPayload): void {
+  if (history.length || payload.historyPartial) return;
+  history = payload.history.slice(-CHARGER_HISTORY_LIMIT);
+}
+
+/**
  * 把一份响应并进本地序列，返回带完整曲线的那份。
  *
  * `historyPartial` 为假就是整份快照（首次请求，或落后太多、服务端已经把中间

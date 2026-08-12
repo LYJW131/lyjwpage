@@ -29,6 +29,14 @@ export function activityCursor(): number | null {
   return since;
 }
 
+/** 用首屏 SSR 的完整快照初始化累加器，让挂载后的第一次请求直接带游标。 */
+export function seedVibeCodingActivity(payload: VibeCodingPayload): void {
+  if (activity.size || payload.activityPartial) return;
+  for (const agent of payload.agents) {
+    activity.set(agent.id, agent.activity.slice(-VIBECODING_ACTIVITY_LIMIT));
+  }
+}
+
 /**
  * 把一份响应并进本地序列，返回带完整曲线的那份。
  *
