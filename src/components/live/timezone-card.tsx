@@ -62,7 +62,12 @@ function clockParts(now: number, timezone: string) {
 const TWO_DIGITS = { minimumIntegerDigits: 2, useGrouping: false } as const;
 
 export function TimezoneCard({ fallback }: { fallback: StatusResponse<TimezonePayload> }) {
-  const { data, error } = useStatus<TimezonePayload>(TIMEZONE_PATH, REFRESH_MS, { fallback });
+  const { data, error } = useStatus<TimezonePayload>(TIMEZONE_PATH, REFRESH_MS, {
+    fallback,
+    // 首屏信封已经带着 Mac 时区和存活结论；挂载时不重复问，presence 事件会
+    // 立即纠正上下线变化，十分钟兜底轮询只用于实时通道不可用的情况。
+    revalidateOnMount: false,
+  });
   /**
    * 首帧（服务端那一遍和 hydrate 那一遍）now 是 0，钟面和偏移都画占位，
    * 挂载后才开始走 —— 理由见 useMountedAt。
