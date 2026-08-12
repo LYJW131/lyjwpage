@@ -1,9 +1,7 @@
 import { Footer } from "@/components/footer";
 import { Header } from "@/components/header";
 import { ContactCard } from "@/components/contact-card";
-import { ChargerCard } from "@/components/live/charger-card";
-import { ListeningCard } from "@/components/live/listening-card";
-import { LiveDeskCard } from "@/components/live/live-desk-card";
+import { LiveMediaPair } from "@/components/live/media-pair";
 import { TimezoneCard } from "@/components/live/timezone-card";
 import { VibeCodingCard } from "@/components/live/vibecoding-card";
 import { WatchingRow } from "@/components/live/watching-card";
@@ -42,10 +40,10 @@ export default async function Home() {
 
   return (
     <>
-      <Header />
+      <Header desktop={desktop} timezone={timezone} />
 
       <main className="flex-1">
-        <Container>
+        <Container className="page-frame my-5 border-y border-line-strong sm:my-6">
           <Section
             id="live"
             label="FIG_001"
@@ -53,26 +51,18 @@ export default async function Home() {
             note="实时"
             className="pt-6 sm:pt-8"
           >
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <LiveDeskCard fallback={desktop} />
-              {/*
-                充电头和听歌绑成一对：同一行里 items-stretch + 各自 h-full，
-                避免两张卡各算各的固有高度、加载完一边突然变高。
-              */}
-              <div className="grid grid-cols-1 gap-4 md:col-span-2 md:grid-cols-2 md:items-stretch">
-                <ChargerCard fallback={charger} className="h-full" />
-                <ListeningCard
-                  fallback={listening}
-                  nowFallback={nowListening}
-                  className="h-full"
-                />
-              </div>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <LiveMediaPair
+                chargerFallback={charger}
+                listeningFallback={listening}
+                nowListeningFallback={nowListening}
+              />
               <VibeCodingCard fallback={vibeCoding} />
               <TimezoneCard fallback={timezone} />
               <ContactCard />
             </div>
 
-            <div className="mt-4">
+            <div id="watching" className="mt-6 scroll-mt-28 border-t border-line pt-5">
               <div className="mb-3 flex items-baseline justify-between">
                 <h3 className="text-sm font-medium">最近在看</h3>
                 <span className="label-mono text-muted-foreground">Emby</span>
