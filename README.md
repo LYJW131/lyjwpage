@@ -34,9 +34,9 @@ pnpm dev
 
 所有凭据只存在于服务端，浏览器只看得到 `/api/status/*` 返回的规范化数据。这些路由共用 `src/lib/api.ts` 的信封：上游挂掉时返回 `{ ok: false, error }` 而不是 5xx，让某一路数据源离线不至于把整页 SWR 打成错误态。
 
-除 Apple Music 外，各路数据都是**推进来**的，本站不主动轮询任何上游。推送入口共用 `/api/ingest/*` 和同一个 `TELEMETRY_INGEST_SECRET`，状态落在 `lib/redis.ts` 的 mirrorKey 里（Redis 为主、进程内存为辅，没配 `REDIS_URL` 也能跑）。
+各路数据全是**推进来**的，本站不主动轮询任何上游。推送入口共用 `/api/ingest/*` 和同一个 `TELEMETRY_INGEST_SECRET`，状态落在 `lib/redis.ts` 的 mirrorKey 里（Redis 为主、进程内存为辅，没配 `REDIS_URL` 也能跑）。四个上报侧：Mac Telemetry Hub、Home Assistant（HomePod）、Emby 推送代理、Apple Music 上报器。
 
-还需要本站去拉的那一路（Apple Music）走 `src/lib/cache.ts`：带 TTL、in-flight 去重和 5 秒负缓存。**核心原则：前端轮询多快，回源频率都不变**，由各自的 TTL 决定。值存 Redis（进程重启和多实例共享）；in-flight 去重始终在进程内，它挡的是同一进程的并发穿透，Redis 代劳不了。
+站点仍会出网的只剩一处：给此刻在播的曲子查一个可跳转的地址，走 `src/lib/cache.ts`（带 TTL、in-flight 去重和 5 秒负缓存）。**核心原则：前端轮询多快，回源频率都不变**，由各自的 TTL 决定。值存 Redis（进程重启和多实例共享）；in-flight 去重始终在进程内，它挡的是同一进程的并发穿透，Redis 代劳不了。
 
 ### 推给浏览器 — Pusher 协议
 
@@ -57,7 +57,22 @@ docker run -d --name sockudo --restart unless-stopped -p 127.0.0.1:6001:6001 ghc
 
 镜像自带 `app-id` / `app-key` / `app-secret` 这个默认 app，本地开发拿来就用。要给公网访客用的话它得自己暴露公网 + 有效 TLS（https 页面只肯连 wss），那样长连接又落回自己的服务器 —— 所以合理的组合是「自己服务器部署 → Sockudo，Vercel → 云 Pusher」，不交叉混搭。
 
-推送上只跑「状态翻面」：换前台应用、换曲子、插拔充电头、上报器上下线。滚动读数（功率曲线、token 用量）仍由卡片自己 30 秒一轮地取 —— 推它们等于把推送当轮询用。丢一条也不至于卡住页面，轮询是兜底。
+推送上只跑「状态翻面」：换前台应用、换曲子、插拔充电头、上报器上下线、两张列表变了。滚动读数（功率曲线、token 用量）仍由卡片自己 30 秒一轮地取 —— 推它们等于把推送当轮询用。丢一条也不至于卡住页面，轮询是兜底。
+
+事件名和 `/api/status/*` 的路径一一对应：**`X` 是列表，`X-now` 是此刻**。带不带数据分两类：
+
+| 事件 | 形状 |
+| --- | --- |
+| `desktop` · `listening-now` · `watching-now` · `charger` · `listening` · `watching` | 带数据，浏览器直接写进 SWR 缓存 |
+| `presence` | 只发失效通知（payload 为 `null`），浏览器自己回来取 |
+
+**一律带数据。** 两张列表曾经只发失效通知，理由是「整份太大」——实测 4.4 KB 和 2.8 KB（Pusher 单条上限 10 KB），而发通知之后浏览器照样把整份取回来，字节一点没省，反倒多出一次请求头、一次往返、一个函数调用和一次 Redis 读，**而且是按在线人头乘的**。
+
+只有 `presence` 仍是失效通知：它翻的是「上报器还在不在」，而各卡片的 stale 由服务端按各自的数据现算，没法在一条事件里把四份 payload 都算好。
+
+充电头那条带状态但**不带历史点**，是另一回事：曲线是增量同步的，服务端不知道各客户端的游标，只能要么整份重发要么发空增量。列表是整份替换，没有游标这回事。
+
+两张列表的轮询兜底因此放到了 5 分钟一轮 —— 即时性由推送负责，轮询只兜「推送整体停用」这一种情况。
 
 ### 最近在看 — Emby
 
@@ -94,7 +109,11 @@ Apple Music 的封面没有代理，仍走 `mzstatic.com` 直链 —— 那本�
 
 ### 最近在听 — Apple Music
 
-需要 **Developer Token** 和 **Music-User-Token** 两条凭据，**全部由 Mac 上报器推来**：Mac Telemetry Hub 用本机 MusicKit 现签一对，POST 到 `/api/ingest/apple-music/credentials`。`.p8` 私钥留在那台机器的钥匙串里由系统保管，服务器上一份都没有，本站也不含任何 JWT 签名代码。
+列表由 [reporters/apple-music-reporter](reporters/apple-music-reporter) 推来，站点这侧只是一次 Redis 读。它自己也不签凭据：`GET /api/ingest/apple-music` 取一份 Mac 推上来的 token，`POST` 同一个地址交算好的列表——同一把锁，同一个门。
+
+**为什么要一个常驻进程。** 省下站点那十几趟 Redis 只是顺带；真正的原因是「此刻在不在听」这个推断需要**连续观测**。Apple 没有可查的当前播放接口，只能看最近播放列表里排第一的那项什么时候变成第一的——这个状态从前存在站点的进程内存里，serverless 上每个实例各有一份、活不到下一次切换，等于永远推断不出来。搬到上报器之后它按固定节奏一直看着，重启才会重新进入「冷启动不算在听」那一档。
+
+需要 **Developer Token** 和 **Music-User-Token** 两条凭据，**全部由 Mac 上报器推来**：Mac Telemetry Hub 用本机 MusicKit 现签一对，作为 `appleMusicCredentials` 模块随 `/api/ingest/mac` 的信封送上来。`.p8` 私钥留在那台机器的钥匙串里由系统保管，服务器上一份都没有，本站也不含任何 JWT 签名代码。
 
 MusicKit 签出来的 developer token 实测寿命 **30 天**，上报器从它自己的 JWT 解出 `exp`，过了「上报时刻 → 到期时刻」的中点（即 15 天）就重签重发。取相对中点而不是写死提前量，是因为 Apple 没承诺这个寿命，写死在两个方向上都可能错。实践中上报器重启比 15 天频繁得多，所以多数情况是每次启动重传一份新的。
 
@@ -102,9 +121,11 @@ MusicKit 签出来的 developer token 实测寿命 **30 天**，上报器从它�
 
 **没有服务端自签的回落。** 有回落就意味着私钥仍得躺在服务器上，这套东西就白做了。代价是上报器长期离线且 Redis 也丢了凭据时「最近在听」直接失败，这是明摆着的取舍。
 
-拉 `/v1/me/recent/played?limit=10`。注意这个端点返回的是**专辑、歌单、电台这类容器**，不是单曲：专辑给 `artistName`、歌单给 `curatorName`，没有 `durationInMillis`，`limit` 上限是 10。列表缓存 30 秒。
+上报器拉 `/v1/me/recent/played?limit=10`，60 秒一轮。注意这个端点返回的是**专辑、歌单、电台这类容器**，不是单曲：专辑给 `artistName`、歌单给 `curatorName`，没有 `durationInMillis`，`limit` 上限是 10。时长要顺着容器的 `href` 再查一次曲目加起来，封面对自建歌单还要去资料库副本取——这些查询的缓存全在上报器进程里，站点的 Redis 不再存它们。
 
-「播放中」是推断出来的，Apple 没有服务端可查的当前播放接口，也不返回播放时间戳：观测排第一的容器何时「变成第一」，再顺着它的 `href` 查一次曲目把时长加起来（缓存 24 小时），在总时长内就认为还在听。冷启动时看到的第一项无从分辨是刚开始还是早就播完，一律不算在听。
+只在内容真的变了时才推给站点，另外每 10 分钟兜底整推一次（防 Redis 被清空）。站点收到后也自己比对一遍，变了才往浏览器发失效通知——所以兜底那次不会变成定时广播。
+
+**站点这侧唯一还会打 Apple 的地方**是「此刻在播的那首曲子」的跳转链接：Music.app 和 HomePod 都给不出可分享的链接，只能拿曲名 + 艺人现查目录，而这件事跟着当前播放走，交不给按固定节奏轮询的上报器。命中缓存 7 天，绝大多数请求不会真的出网。要连它也搬走，该搬去 Mac 上报器——那边有 MusicKit，换歌那一刻就能把链接一起算好。
 
 ### 充电头 — Anker Prime 160W
 

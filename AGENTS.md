@@ -14,11 +14,15 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 MacTelemetryHub、Home Assistant 四方共用的约定，改一处就得四处对齐。
 
 1. **`/api/ingest/<来源>`** —— 按**数据是谁产生的**命名，不是按上报程序命名。
-   现有的三个是 `mac`、`homepod`、`emby`。Emby 那个曾经叫 `emby-reporter`，
-   泄漏了实现细节：换个代理程序名字就得跟着改。
+   现有的四个是 `mac`、`homepod`、`emby`、`apple-music`。Emby 那个曾经叫
+   `emby-reporter`，泄漏了实现细节：换个代理程序名字就得跟着改。
+   `apple-music` 那条两个方向都走：POST 交数据，GET 取上报器干活要用的凭据，
+   同一把锁。上报器要从站点拿东西时优先这么办，别为它另开一个 URL 家族。
 2. **`/api/status/<主题>`** —— `X` 是列表 / 历史，`X/now` 是此刻。
    听歌是 `listening` + `listening/now`，看片是 `watching` + `watching/now`。
    一对一对地加，别给「此刻」另起一个词（从前 `listening` 的搭档叫 `music`）。
+   **推送事件名跟着这套走**：`X` 和 `X-now`（URL 里的 `/` 在事件名里写成 `-`）。
+   两边错位过一次 —— 事件 `listening` 指此刻、端点 `listening` 指列表。
 3. **URL 段全小写，JSON 字段 camelCase。** 这不是不一致：`/api/status/vibecoding`
    和信封里的 `vibeCoding` 模块名各守各的惯例，别去统一它俩。
 4. **同一个概念，跨来源必须同名同单位。** HomePod 和 Mac 喂的都是

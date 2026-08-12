@@ -66,6 +66,14 @@ export type NowPlayingGuess = {
 export type ListeningPayload = {
   items: ListeningItem[];
   nowPlaying: NowPlayingGuess | null;
+  /**
+   * 上报器已经很久没推了。
+   *
+   * 和别的卡的 stale 含义不同，别照搬那边整张变灰的处理：那些卡陈旧意味着显示的
+   * 是错的（人早走了还显示着前台应用），而一份冻住的「最近在听」本身没有错，
+   * 只是可能漏掉了这段时间在别处的播放。
+   */
+  stale: boolean;
 };
 
 /**

@@ -91,6 +91,15 @@ importers:
         specifier: ^5
         version: 5.9.3
 
+  reporters/apple-music-reporter:
+    devDependencies:
+      '@types/node':
+        specifier: ^20
+        version: 20.19.43
+      typescript:
+        specifier: ^5
+        version: 5.9.3
+
   reporters/emby-reporter:
     dependencies:
       sharp:

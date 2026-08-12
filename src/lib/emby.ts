@@ -235,11 +235,18 @@ export async function recordEmbyReport(body: unknown) {
 
   const resume = object(root.resume);
   let items: number | null = null;
+  /**
+   * 列表内容变没变。代理只在有变化时推列表，但每 10 分钟还会兜底整推一次，
+   * 收到就发失效通知的话推送会退化成定时广播，所以这里自己比一遍。
+   */
+  let resumeChanged = false;
   if (resume && Array.isArray(resume.items)) {
     const list = resume.items
       .map(reportItem)
       .filter((item): item is ReportItem => item != null)
       .map(normalize);
+    const previous = await getResume();
+    resumeChanged = JSON.stringify(previous?.items) !== JSON.stringify(list);
     await setResume(list);
     items = list.length;
   }
@@ -261,8 +268,18 @@ export async function recordEmbyReport(body: unknown) {
   const referenced = [...((await getResume())?.items ?? []), ...(current ? [current] : [])];
   const missing = missingKeys(referenced, urls);
 
-  // 播放状态变了就直接把新数据推给浏览器；列表不走推送，它慢得多，跟着轮询就够
-  if (playing) await publish({ type: "watching", payload: await getNowWatching() });
+  // 播放状态变了就直接把新数据推给浏览器 —— 服务端手上已经是最新的
+  if (playing) await publish({ type: "watching-now", payload: await getNowWatching() });
+  /**
+   * 列表也带整份数据推（2.8 KB），理由见 lib/live-events 的事件定义。
+   *
+   * 新落地的图片也要发。列表里存的是图片键、地址在读取时才拼，所以图片单独补推
+   * 的那一次 resume 根本没变，但 /api/status/watching 的输出确实变了（裂图变成
+   * 封面）—— 不发的话得等下一轮轮询，而列表的轮询现在是 5 分钟一次。
+   */
+  if (resumeChanged || stored > 0) {
+    await publish({ type: "watching", payload: await getWatching() });
+  }
 
   return { items, playing, images: stored, missingImages: missing };
 }
