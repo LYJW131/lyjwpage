@@ -8,11 +8,10 @@
 export const site = {
   /** 用于 header 和 <head> metadata */
   name: "LYJW's Homepage",
-  url: "https://lyjw131.com",
+  url: "https://lyjw.me",
+  description: "实时展示设备、应用、音乐、影视与 AI 编程状态的个人主页。",
   /** 页脚的 commit 链接拼在它后面 */
   repo: "https://github.com/LYJW131/lyjwpage",
-  /** 占位：会进 <meta description> */
-  // tagline: "",
 
   /** Mac 时区遥测不可用时，时间卡片回退到这个后端默认时区。 */
   timezone: "Asia/Shanghai",

@@ -157,18 +157,21 @@ async function clearExpiredDisconnectedHistory(now: number) {
 }
 
 /**
- * 「结构性」指纹：插拔、换设备、换充电器本身。
+ * 「需要即时通知」的指纹：插拔、换设备、换充电器，以及卡片显隐边界。
  *
  * `active` 来自充电头给的端口开关位，不是从功率推的 —— 插着线不取电的口是
  * 开 + 0.00W，所以它能认出「插上了但还没开始充」，比设备名灵：插一个采集端
  * 表里没有的设备，`device` 是 null，但开关位一定会翻。
  *
- * 不取 `power` / `voltage` / `current`：那三个充电时每帧都在动，进指纹就等于
- * 把即时推送打成定时推送，它们本来就该走卡片自己的轮询。
+ * 原始 `power` / `voltage` / `current` 仍然不进指纹：那三个充电时每帧都在动，
+ * 进来就等于把即时推送打成定时推送。这里只额外记「总功率是否越过 1W」这个
+ * 展示边界，因为它直接决定卡片显隐；待机时端口开关可能不变，少了这位就只能
+ * 等下一次轮询才能把卡收起来。
  */
 function structuralKey(status: ChargerStatus) {
   return JSON.stringify([
     status.connected,
+    status.totalPower > 1,
     status.device.serialNumber,
     status.device.firmwareVersion,
     status.ports.map((port) => [port.id, port.active, port.device]),
@@ -178,7 +181,7 @@ function structuralKey(status: ChargerStatus) {
 /**
  * 记一条快照。同一个 updatedAt 重复推送不会产生重复采样点。
  *
- * 返回结构性内容变没变，调用方据此决定要不要推送。这个 diff 必须服务端
+ * 返回需要即时通知的内容变没变，调用方据此决定要不要推送。这个 diff 必须服务端
  * 自己做：充电时采集端每个上报周期都会带 charger 模块（功率两位小数必变），
  * 收到就推的话推送会退化成定时广播，「插拔即时」也就没了意义。
  */

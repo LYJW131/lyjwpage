@@ -13,7 +13,12 @@ export function HeaderTimezone({
 }: {
   fallback: StatusResponse<TimezonePayload>;
 }) {
-  const { data, error } = useStatus<TimezonePayload>(TIMEZONE_PATH, REFRESH_MS, { fallback });
+  const { data, error } = useStatus<TimezonePayload>(TIMEZONE_PATH, REFRESH_MS, {
+    fallback,
+    // TimezoneCard 共用这个 SWR 键且已经信任首屏快照；页头也关掉挂载回源，
+    // 否则先挂载的页头仍会把那次本来省掉的请求重新发出去。
+    revalidateOnMount: false,
+  });
   const { identifier } = resolveTimezoneDisplay(data, error, 0);
 
   return (

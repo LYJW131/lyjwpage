@@ -110,6 +110,17 @@ export function expireStatus(...tags: string[]): void {
   for (const tag of tags) revalidateTag(tag, "max");
 }
 
+/**
+ * 立即让首屏缓存失效。
+ *
+ * 充电卡是否存在会改变首屏两列布局，实时播放则直接决定 LCP hero；这两份不能
+ * 像普通文字数据一样先给下一位访客旧值再后台重建。上报来自 Route Handler，
+ * 按 Next 16 的约定用 `{ expire: 0 }`；下一次页面请求只为指定 tag 阻塞重算。
+ */
+export function expireStatusImmediately(...tags: string[]): void {
+  for (const tag of tags) revalidateTag(tag, { expire: 0 });
+}
+
 let client: Pusher | null = null;
 let initialised = false;
 
