@@ -1,6 +1,6 @@
 "use client";
 
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { AnimatePresence, LazyMotion, m, useReducedMotion } from "motion/react";
 import Image from "next/image";
 import { useEffect, useState } from "react";
 
@@ -21,6 +21,15 @@ const LOCK_SCREEN_BUNDLE_ID = "com.apple.loginwindow";
 
 /** 轮询只是兜底：状态变化由实时推送送来，断线由 pusher-js 自己重连 */
 const REFRESH_MS = 30_000;
+
+/**
+ * 动画特性异步加载，配 LazyMotion + m 用。
+ *
+ * 必须写成「返回 import() 的函数」：静态导入的话 lib/motion-features 会被并回
+ * 这个 chunk，等于没拆。特性到位之前 m.* 直接呈现 animate 终态 —— 首屏本来就
+ * 不该动，等应用切换时特性早就加载完了。
+ */
+const loadFeatures = () => import("@/lib/motion-features").then((mod) => mod.default);
 
 const APP_SWITCH_VARIANTS = {
   initial: {
@@ -131,7 +140,7 @@ export function LiveDeskCard({
    *
    * 扫光是个普通 span，CSS 动画挂载即播，靠 key 变化重新挂载来重播 —— 对
    * 「换了应用」是对的，但首屏时 displayedDesktop 从 null 变成第一个应用，
-   * 这个元素也是第一次挂载，动画照样播。旁边那个 motion.div 有 initial={false}
+   * 这个元素也是第一次挂载，动画照样播。旁边那个 m.div 有 initial={false}
    * 挡着，它在 AnimatePresence 外面，没人管。
    *
    * 记住见过的第一个 key，等它真的变过一次再开始渲染扫光。用的是「渲染期
@@ -180,57 +189,59 @@ export function LiveDeskCard({
                   </div>
                 </div>
               ) : (
-              <AnimatePresence initial={false} mode="popLayout">
-                <motion.div
-                  key={applicationKey}
-                  variants={reduced ? STATIC_VARIANTS : APP_SWITCH_VARIANTS}
-                  initial="initial"
-                  animate="animate"
-                  exit="exit"
-                  transition={reduced ? STATIC_TRANSITION : APP_SWITCH_TRANSITION}
-                  className="relative flex w-max max-w-full min-w-0 origin-left items-center gap-3 overflow-hidden rounded-md"
-                >
-                  <div className="relative flex size-10 shrink-0 items-center justify-center overflow-hidden">
-                    {desktop?.iconUrl && !offline && !locked ? (
-                      <Image
-                        src={desktop.iconUrl}
-                        alt=""
-                        fill
-                        sizes="40px"
-                        className="object-cover"
-                        unoptimized
-                      />
-                    ) : locked ? (
-                      /*
-                       * 自己画的锁，不用系统那个 —— macOS 原装的 LockedIcon.icns
-                       * 是 Keychain 时代的拟物黄铜锁，跟这张卡不搭；SF Symbols
-                       * 的 lock.fill 好看但授权限定在 Apple 平台，这是公开站点。
-                       * currentColor 让它跟着主题走，和旁边那个 ⌘ 占位符同一种质感。
-                       */
-                      <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth={1.6}
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        className="size-6 text-muted-foreground"
-                        aria-hidden
-                      >
-                        <rect x="4.5" y="10.5" width="15" height="10" rx="2.5" />
-                        <path d="M8 10.5V7.5a4 4 0 0 1 8 0v3" />
-                      </svg>
-                    ) : (
-                      <span className="text-sm text-muted-foreground">⌘</span>
-                    )}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-xl font-medium">
-                      {offline ? "—" : locked ? "已锁屏" : desktop?.applicationName ?? "暂无活动"}
+              <LazyMotion features={loadFeatures}>
+                <AnimatePresence initial={false} mode="popLayout">
+                  <m.div
+                    key={applicationKey}
+                    variants={reduced ? STATIC_VARIANTS : APP_SWITCH_VARIANTS}
+                    initial="initial"
+                    animate="animate"
+                    exit="exit"
+                    transition={reduced ? STATIC_TRANSITION : APP_SWITCH_TRANSITION}
+                    className="relative flex w-max max-w-full min-w-0 origin-left items-center gap-3 overflow-hidden rounded-md"
+                  >
+                    <div className="relative flex size-10 shrink-0 items-center justify-center overflow-hidden">
+                      {desktop?.iconUrl && !offline && !locked ? (
+                        <Image
+                          src={desktop.iconUrl}
+                          alt=""
+                          fill
+                          sizes="40px"
+                          className="object-cover"
+                          unoptimized
+                        />
+                      ) : locked ? (
+                        /*
+                         * 自己画的锁，不用系统那个 —— macOS 原装的 LockedIcon.icns
+                         * 是 Keychain 时代的拟物黄铜锁，跟这张卡不搭；SF Symbols
+                         * 的 lock.fill 好看但授权限定在 Apple 平台，这是公开站点。
+                         * currentColor 让它跟着主题走，和旁边那个 ⌘ 占位符同一种质感。
+                         */
+                        <svg
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth={1.6}
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          className="size-6 text-muted-foreground"
+                          aria-hidden
+                        >
+                          <rect x="4.5" y="10.5" width="15" height="10" rx="2.5" />
+                          <path d="M8 10.5V7.5a4 4 0 0 1 8 0v3" />
+                        </svg>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">⌘</span>
+                      )}
                     </div>
-                  </div>
-                </motion.div>
-              </AnimatePresence>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-xl font-medium">
+                        {offline ? "—" : locked ? "已锁屏" : desktop?.applicationName ?? "暂无活动"}
+                      </div>
+                    </div>
+                  </m.div>
+                </AnimatePresence>
+              </LazyMotion>
               )}
               {!reduced && displayedDesktop && seen?.switched && (
                 <span

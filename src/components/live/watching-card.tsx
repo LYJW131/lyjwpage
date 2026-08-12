@@ -1,6 +1,6 @@
 "use client";
 
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { AnimatePresence, LazyMotion, m, useReducedMotion } from "motion/react";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 
@@ -27,6 +27,15 @@ import { cn } from "@/lib/utils";
  * 也没有调密的理由。
  */
 const NOW_REFRESH_MS = 30_000;
+
+/**
+ * 动画特性异步加载，配 LazyMotion + m 用。
+ *
+ * 必须写成「返回 import() 的函数」：静态导入的话 lib/motion-features 会被并回
+ * 这个 chunk，等于没拆。特性到位之前 m.* 直接呈现 animate 终态 —— 首屏本来就
+ * 不该动，等数据变化时特性早就加载完了。
+ */
+const loadFeatures = () => import("@/lib/motion-features").then((mod) => mod.default);
 
 /**
  * 列表变了（包括晚到的海报落地）会推失效通知过来，轮询只兜「推送整体停用」
@@ -299,34 +308,36 @@ export function WatchingRow({
       <div className="relative flex gap-3">
         {/* popLayout 会把离场卡片临时绝对定位；relative 保证它留在滚动轨道内，
             后面的卡片才能一边补位、一边看着它平滑退场。 */}
-        <AnimatePresence initial={false} mode="popLayout">
-          {data.items.map((item, index) => {
-            const live = data.nowPlaying?.itemId === item.id;
-            return (
-              <motion.div
-                key={keys[index]}
-                layout={!reduced}
-                variants={reduced ? STATIC_VARIANTS : ROW_ITEM_VARIANTS}
-                initial="initial"
-                animate="animate"
-                exit="exit"
-                transition={reduced ? STATIC_TRANSITION : LIST_TRANSITION}
-                // min-w-0 不能少：flex 子项的 min-width: auto 会取内容最小宽度，
-                // 卡片里那行 nowrap 的长副标题会把 basis 顶开、宽度变得参差不齐
-                className={cn("min-w-0 shrink-0 snap-start", TILE_WIDTH)}
-              >
-                <Tile
-                  item={item}
-                  live={live}
-                  paused={live ? Boolean(data.nowPlaying?.paused) : false}
-                  liveProgress={live ? (data.nowPlaying?.progress ?? null) : null}
-                  positionMs={live ? (data.nowPlaying?.positionMs ?? null) : null}
-                  durationMs={live ? (data.nowPlaying?.durationMs ?? null) : null}
-                />
-              </motion.div>
-            );
-          })}
-        </AnimatePresence>
+        <LazyMotion features={loadFeatures}>
+          <AnimatePresence initial={false} mode="popLayout">
+            {data.items.map((item, index) => {
+              const live = data.nowPlaying?.itemId === item.id;
+              return (
+                <m.div
+                  key={keys[index]}
+                  layout={!reduced}
+                  variants={reduced ? STATIC_VARIANTS : ROW_ITEM_VARIANTS}
+                  initial="initial"
+                  animate="animate"
+                  exit="exit"
+                  transition={reduced ? STATIC_TRANSITION : LIST_TRANSITION}
+                  // min-w-0 不能少：flex 子项的 min-width: auto 会取内容最小宽度，
+                  // 卡片里那行 nowrap 的长副标题会把 basis 顶开、宽度变得参差不齐
+                  className={cn("min-w-0 shrink-0 snap-start", TILE_WIDTH)}
+                >
+                  <Tile
+                    item={item}
+                    live={live}
+                    paused={live ? Boolean(data.nowPlaying?.paused) : false}
+                    liveProgress={live ? (data.nowPlaying?.progress ?? null) : null}
+                    positionMs={live ? (data.nowPlaying?.positionMs ?? null) : null}
+                    durationMs={live ? (data.nowPlaying?.durationMs ?? null) : null}
+                  />
+                </m.div>
+              );
+            })}
+          </AnimatePresence>
+        </LazyMotion>
       </div>
     </div>
   );
