@@ -188,30 +188,34 @@ export function TimezoneCard({ fallback }: { fallback: StatusResponse<TimezonePa
             </span>
           </div>
 
-          {clock ? (
-            <NumberFlowGroup>
-              <time
-                className="mt-5 flex items-baseline whitespace-nowrap text-[3.25rem] font-medium leading-none tracking-[-0.055em]"
-                dateTime={new Date(now).toISOString()}
-                aria-label={`${clock.hour} 时 ${clock.minute} 分 ${clock.second} 秒`}
-              >
-                <NumberFlow value={clock.hour} locales="en-US" format={TWO_DIGITS} />
-                <span className="mx-0.5 text-muted-foreground">:</span>
-                <NumberFlow value={clock.minute} locales="en-US" format={TWO_DIGITS} />
-                <span className="mx-0.5 text-xl text-muted-foreground">:</span>
-                <NumberFlow
-                  value={clock.second}
-                  locales="en-US"
-                  format={TWO_DIGITS}
-                  className="text-xl tracking-normal text-muted-foreground"
-                />
-              </time>
-            </NumberFlowGroup>
-          ) : (
-            <div className="mt-5 text-[3.25rem] font-medium leading-none tracking-[-0.055em] text-muted-foreground">
-              --:--<span className="text-xl tracking-normal">:--</span>
-            </div>
-          )}
+          {/* NumberFlow 的上下 mask padding 会把 52px 行盒撑到 80px；SSR 占位也用
+              同一个固定槽，否则时间卡片进入视口后水合会整张长高 28px，产生 CLS。 */}
+          <div className="mt-5 flex h-20 shrink-0 items-center">
+            {clock ? (
+              <NumberFlowGroup>
+                <time
+                  className="flex items-baseline whitespace-nowrap text-[3.25rem] font-medium leading-none tracking-[-0.055em]"
+                  dateTime={new Date(now).toISOString()}
+                  aria-label={`${clock.hour} 时 ${clock.minute} 分 ${clock.second} 秒`}
+                >
+                  <NumberFlow value={clock.hour} locales="en-US" format={TWO_DIGITS} />
+                  <span className="mx-0.5 text-muted-foreground">:</span>
+                  <NumberFlow value={clock.minute} locales="en-US" format={TWO_DIGITS} />
+                  <span className="mx-0.5 text-xl text-muted-foreground">:</span>
+                  <NumberFlow
+                    value={clock.second}
+                    locales="en-US"
+                    format={TWO_DIGITS}
+                    className="text-xl tracking-normal text-muted-foreground"
+                  />
+                </time>
+              </NumberFlowGroup>
+            ) : (
+              <div className="text-[3.25rem] font-medium leading-none tracking-[-0.055em] text-muted-foreground">
+                --:--<span className="text-xl tracking-normal">:--</span>
+              </div>
+            )}
+          </div>
 
           <div className="mt-5 flex items-center justify-between gap-3 border-t border-line pt-3">
             <span className="label-mono text-muted-foreground">系统时区</span>
