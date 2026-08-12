@@ -10,12 +10,12 @@ import { buildTime, commit } from "@/lib/build-info";
  */
 export function Footer() {
   return (
-    <footer className="screen-line-top">
+    <footer>
       {/*
         间隔点用相邻兄弟的伪元素画，不写成一个个 <span>：构建信息取不到时对应
         元素整个不渲染，相邻关系会自动重排，不用把「前面还有没有东西」一路传下去。
       */}
-      <Container className="label-mono flex flex-wrap items-center justify-center gap-x-2 gap-y-2 px-4 py-6 text-muted-foreground [&>*+*]:before:mr-2 [&>*+*]:before:text-muted-foreground/50 [&>*+*]:before:content-['·']">
+      <Container className="label-mono mb-6 flex flex-wrap items-center justify-center gap-x-2 gap-y-2 border-y border-line-strong bg-surface px-4 py-4 text-muted-foreground shadow-[3px_3px_0_var(--paper-shadow)] [&>*+*]:before:mr-2 [&>*+*]:before:text-muted-foreground/50 [&>*+*]:before:content-['·']">
         {commit && (
           <a
             href={commit.url}

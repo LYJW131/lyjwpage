@@ -111,8 +111,8 @@ function Tile({
       rel="noreferrer noopener"
       className={cn(
         // 宽度和吸附交给外层的 motion 包装
-        "group relative flex h-full w-full flex-col overflow-hidden rounded-md",
-        "border border-line bg-surface transition-colors hover:border-line-strong",
+        "paper-card group relative flex h-full w-full flex-col overflow-hidden rounded-md",
+        "border border-line-strong bg-surface",
         live && "border-live/40",
       )}
     >

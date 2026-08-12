@@ -798,6 +798,7 @@ export function VibeCodingCard({
 
   return (
     <Card
+      id="vibe-coding"
       label="Vibe Coding"
       tone={stale ? "off" : data ? "live" : "idle"}
       action={

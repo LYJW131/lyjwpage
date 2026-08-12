@@ -7,18 +7,26 @@
 @custom-variant retina (@media (min-resolution: 2x));
 
 :root {
-  --radius: 0.75rem;
+  --radius: 0.125rem;
 
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.18 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.53 0 0);
+  /* 暖灰工作台 + 墨色描边：比纯白更像一张长期使用的记录纸。 */
+  --background: oklch(0.94 0.007 92);
+  --foreground: oklch(0.19 0.006 80);
+  --muted: oklch(0.965 0.008 92);
+  --muted-foreground: oklch(0.48 0.008 80);
 
-  /* 层次靠表面色阶 + 1px 线，不靠阴影 */
-  --surface: oklch(0.985 0 0);
-  --surface-hover: oklch(0.965 0 0);
-  --line: oklch(0 0 0 / 10%);
-  --line-strong: oklch(0 0 0 / 16%);
+  --surface: oklch(0.995 0.006 92);
+  --surface-hover: oklch(0.945 0.012 90);
+  --line: oklch(0.19 0.006 80 / 24%);
+  --line-strong: oklch(0.19 0.006 80 / 88%);
+  --paper-shadow: oklch(0.19 0.006 80 / 18%);
+
+  --signal-red: #c84d3d;
+  --signal-orange: #d66b35;
+  --signal-yellow: #d0a22c;
+  --signal-green: #3d7f50;
+  --signal-blue: #3e70c9;
+  --signal-violet: #8255c7;
 
   /* 整站唯一允许出现的彩色，只给实时数据用 */
   --live: oklch(0.65 0.17 145);
@@ -31,15 +39,16 @@
 
 .dark {
   /* 不用纯黑：OLED 上滚动会拖影，也失去层次 */
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.96 0 0);
-  --muted: oklch(0.21 0 0);
-  --muted-foreground: oklch(0.62 0 0);
+  --background: oklch(0.15 0.008 85);
+  --foreground: oklch(0.93 0.012 90);
+  --muted: oklch(0.205 0.008 85);
+  --muted-foreground: oklch(0.66 0.012 90);
 
-  --surface: oklch(0.185 0 0);
-  --surface-hover: oklch(0.22 0 0);
-  --line: oklch(1 0 0 / 9%);
-  --line-strong: oklch(1 0 0 / 16%);
+  --surface: oklch(0.185 0.008 85);
+  --surface-hover: oklch(0.235 0.01 85);
+  --line: oklch(0.93 0.012 90 / 20%);
+  --line-strong: oklch(0.93 0.012 90 / 76%);
+  --paper-shadow: oklch(0 0 0 / 52%);
 
   /* 深底上饱和度降一档，否则刺眼 */
   --live: oklch(0.76 0.16 148);
@@ -63,9 +72,9 @@
   --color-live-off: var(--live-off);
   --color-claude: var(--claude);
 
-  --radius-md: calc(var(--radius) * 0.66);
+  --radius-md: var(--radius);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-xl: calc(var(--radius) * 2);
 
   /* CJK 靠字体栈顺序兜底：Geist 没有中文字形，会自动落到苹方 / 鸿蒙 */
   --font-sans:
@@ -98,9 +107,13 @@
      * 吸顶导航的 position:sticky 就失效了。
      */
     overflow-x: clip;
-    background: var(--background);
+    background-color: var(--background);
+    background-image:
+      linear-gradient(to right, color-mix(in oklab, var(--foreground) 3%, transparent) 1px, transparent 1px),
+      linear-gradient(to bottom, color-mix(in oklab, var(--foreground) 3%, transparent) 1px, transparent 1px);
+    background-size: 24px 24px;
     color: var(--foreground);
-    font-family: var(--font-sans);
+    font-family: var(--font-mono);
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
     /* 全站数字等宽 + 斜杠零：实时数字跳动时不抖宽度 */
@@ -108,8 +121,78 @@
   }
 
   ::selection {
-    background: var(--foreground);
-    color: var(--background);
+    background: var(--signal-yellow);
+    color: oklch(0.16 0.01 80);
+  }
+}
+
+/* 参考终端面板的硬边纸片：阴影不是漂浮，而是印刷套版般的固定错位。 */
+.paper-card {
+  box-shadow: 3px 3px 0 var(--paper-shadow);
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease,
+    transform 120ms ease;
+}
+
+@media (hover: hover) {
+  .paper-card:hover {
+    box-shadow: 1px 1px 0 var(--paper-shadow);
+    transform: translate(2px, 2px);
+  }
+}
+
+.page-frame {
+  background: var(--surface);
+  box-shadow: 5px 5px 0 var(--paper-shadow);
+}
+
+.signal-spectrum {
+  background-image: linear-gradient(
+    90deg,
+    var(--signal-red) 0 7%,
+    var(--signal-orange) 7% 14%,
+    var(--signal-blue) 14% 23%,
+    color-mix(in oklab, var(--signal-blue) 58%, white) 23% 30%,
+    var(--signal-yellow) 30% 38%,
+    var(--signal-violet) 38% 45%,
+    var(--foreground) 45% 52%,
+    var(--muted) 52% 62%,
+    color-mix(in oklab, var(--foreground) 28%, var(--surface)) 62% 76%,
+    var(--foreground) 76% 82%,
+    var(--signal-green) 82% 88%,
+    var(--signal-blue) 88% 94%,
+    var(--signal-red) 94% 100%
+  );
+}
+
+.nav-cell {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  padding: 0.45rem 0.65rem;
+  color: var(--foreground);
+  box-shadow: 2px 2px 0 var(--paper-shadow);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition:
+    background-color 120ms ease,
+    box-shadow 120ms ease,
+    transform 120ms ease;
+}
+
+@media (hover: hover) {
+  .nav-cell:hover {
+    background: var(--surface-hover);
+    box-shadow: 1px 1px 0 var(--paper-shadow);
+    transform: translate(1px, 1px);
   }
 }
 

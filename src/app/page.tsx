@@ -45,7 +45,7 @@ export default async function Home() {
       <Header />
 
       <main className="flex-1">
-        <Container>
+        <Container className="page-frame my-5 border-y border-line-strong sm:my-6">
           <Section
             id="live"
             label="FIG_001"
@@ -53,13 +53,13 @@ export default async function Home() {
             note="实时"
             className="pt-6 sm:pt-8"
           >
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <LiveDeskCard fallback={desktop} />
               {/*
                 充电头和听歌绑成一对：同一行里 items-stretch + 各自 h-full，
                 避免两张卡各算各的固有高度、加载完一边突然变高。
               */}
-              <div className="grid grid-cols-1 gap-4 md:col-span-2 md:grid-cols-2 md:items-stretch">
+              <div className="grid grid-cols-1 gap-3 md:col-span-2 md:grid-cols-2 md:items-stretch">
                 <ChargerCard fallback={charger} className="h-full" />
                 <ListeningCard
                   fallback={listening}
@@ -72,7 +72,7 @@ export default async function Home() {
               <ContactCard />
             </div>
 
-            <div className="mt-4">
+            <div id="watching" className="mt-6 scroll-mt-28 border-t border-line pt-5">
               <div className="mb-3 flex items-baseline justify-between">
                 <h3 className="text-sm font-medium">最近在看</h3>
                 <span className="label-mono text-muted-foreground">Emby</span>

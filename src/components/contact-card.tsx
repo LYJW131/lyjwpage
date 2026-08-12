@@ -29,7 +29,7 @@ function GitHubIcon({ className }: { className?: string }) {
 
 export function ContactCard() {
   return (
-    <Card label="Contact" action="Say hello">
+    <Card id="contact" label="Contact" action="Say hello">
       <div className="grid min-h-44 grid-rows-2 divide-y divide-line px-4 pb-4 pt-3">
         {CONTACTS.map((contact) => {
           const Icon = contact.icon;
