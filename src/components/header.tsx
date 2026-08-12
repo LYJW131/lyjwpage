@@ -16,19 +16,24 @@ export function Header({
           <a href="#top" className="shrink-0 text-sm font-bold tracking-tight">
             {site.name}
           </a>
-          <span className="signal-spectrum h-3 min-w-8 flex-1 border-y border-line-strong" aria-hidden />
+          <nav
+            className="flex min-w-0 flex-1 items-center gap-1"
+            aria-label="页面区块"
+          >
+            <a href="#live" className="nav-cell flex-1">
+              <StatusDot tone="live" />
+              <span>Live</span>
+            </a>
+            <a href="#vibe-coding" className="nav-cell flex-1">
+              Vibe Coding
+            </a>
+            <a href="#watching" className="nav-cell flex-1">
+              Media
+            </a>
+          </nav>
           <HeaderTimezone fallback={timezone} />
           <ThemeToggle />
         </div>
-
-        <nav className="mt-2 grid grid-cols-3 gap-1" aria-label="页面区块">
-          <a href="#live" className="nav-cell">
-            <StatusDot tone="live" />
-            <span>Live</span>
-          </a>
-          <a href="#vibe-coding" className="nav-cell">Vibe Coding</a>
-          <a href="#watching" className="nav-cell">Media</a>
-        </nav>
       </div>
     </header>
   );

@@ -131,6 +131,16 @@
   }
 }
 
+/*
+ * 主题切换走 View Transition（见 theme-toggle）：只对 root 做交叉淡入。
+ * 不要给 * 上 color/background transition —— 全页同时插值会把帧率打穿。
+ */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 280ms;
+  animation-timing-function: ease;
+}
+
 /* 参考终端面板的硬边纸片：阴影不是漂浮，而是印刷套版般的固定错位。
    卡片保持静态；按压缩进只给真正的 button（主题切换等）。 */
 .paper-card {
@@ -154,25 +164,6 @@ button.paper-card {
 .page-frame {
   background: var(--surface);
   box-shadow: 5px 5px 0 var(--paper-shadow);
-}
-
-.signal-spectrum {
-  background-image: linear-gradient(
-    90deg,
-    var(--signal-red) 0 7%,
-    var(--signal-orange) 7% 14%,
-    var(--signal-blue) 14% 23%,
-    color-mix(in oklab, var(--signal-blue) 58%, white) 23% 30%,
-    var(--signal-yellow) 30% 38%,
-    var(--signal-violet) 38% 45%,
-    var(--foreground) 45% 52%,
-    var(--muted) 52% 62%,
-    color-mix(in oklab, var(--foreground) 28%, var(--surface)) 62% 76%,
-    var(--foreground) 76% 82%,
-    var(--signal-green) 82% 88%,
-    var(--signal-blue) 88% 94%,
-    var(--signal-red) 94% 100%
-  );
 }
 
 .nav-cell {
