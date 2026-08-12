@@ -15,7 +15,9 @@ export function appleArtwork(url: string | null | undefined, size: number): stri
     .replace(/\{w\}/g, String(dimension))
     .replace(/\{h\}/g, String(dimension))
     // 资料库那边的模板还带 {f}（格式）和 {c}（裁剪方式）
-    .replace(/\{f\}/g, "jpg")
+    // Apple CDN 能直接把目录封面编码成 WebP。这些图不走 Next 图片优化，
+    // 在源地址就选较小的格式，Vercel 和 EdgeOne 两边都能少传一半左右的字节。
+    .replace(/\{f\}/g, "webp")
     .replace(/\{c\}/g, "sr");
 }
 
