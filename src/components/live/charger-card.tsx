@@ -1,6 +1,7 @@
 "use client";
 
 import NumberFlow from "@number-flow/react";
+import { useEffect } from "react";
 
 import { Sparkline } from "@/components/live/sparkline";
 import { Card } from "@/components/ui/card";
@@ -19,7 +20,6 @@ import type {
   ChargerStatus,
   StatusResponse,
 } from "@/lib/types";
-import { cn } from "@/lib/utils";
 
 /**
  * 和上报节奏对齐。
@@ -49,9 +49,11 @@ function portTone(port: ChargerPort, connected: boolean): DotTone {
 export function ChargerCard({
   fallback,
   className,
+  onActiveChange,
 }: {
   fallback: StatusResponse<ChargerPayload>;
   className?: string;
+  onActiveChange?: (active: boolean) => void;
 }) {
   /**
    * 插拔/换设备时服务端会推一条事件，直接写进这个键；滚动读数照旧靠轮询。
@@ -72,6 +74,13 @@ export function ChargerCard({
   // mode 可能在设备刚停止取电后仍保持开启；实际功率超过空载阈值才算正在充电。
   // 这也和状态灯的 live 判定保持一致，避免一处说“正在充”、一处显示 idle。
   const charging = connected && power > 1;
+
+  // 卡片自己最先拿到轮询/推送后的供电态；把它交给外层只为协调两张卡的布局动画。
+  // 不在这里卸载组件，否则隐藏后就收不到下一次轮询或“重新连接”的实时推送了。
+  useEffect(() => {
+    onActiveChange?.(charging);
+  }, [charging, onActiveChange]);
+
   const dot = tone(data);
   const ratio = data ? Math.min(power / data.maxPower, 1) : 0;
 
@@ -86,13 +95,7 @@ export function ChargerCard({
           "Prime 160W"
         )
       }
-      className={cn(
-        // 功率越高边框越亮，是那种「看一眼就知道在充」的细节
-        "transition-[border-color] duration-500",
-        dot === "live" && "border-live/30",
-        !connected && "opacity-70",
-        className,
-      )}
+      className={className}
     >
       <div className="flex min-h-0 flex-1 flex-col justify-between px-4 pb-4 pt-2">
         {/*

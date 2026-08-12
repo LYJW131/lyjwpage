@@ -1,36 +1,24 @@
 import { HeaderTimezone } from "@/components/header-timezone";
+import { HeaderDesktop } from "@/components/live/live-desk-card";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { StatusDot } from "@/components/ui/status-dot";
 import { site } from "@/lib/site";
-import type { StatusResponse, TimezonePayload } from "@/lib/types";
+import type { DesktopPayload, StatusResponse, TimezonePayload } from "@/lib/types";
 
 export function Header({
+  desktop,
   timezone,
 }: {
+  desktop: StatusResponse<DesktopPayload>;
   timezone: StatusResponse<TimezonePayload>;
 }) {
   return (
-    <header id="top" className="relative z-50">
-      <div className="mx-auto w-[calc(100%-2rem)] max-w-5xl pt-4 sm:pt-6">
+    <header id="top" className="sticky top-0 z-50 bg-background/95 backdrop-blur-sm">
+      <div className="mx-auto w-[calc(100%-2rem)] max-w-5xl py-3 sm:py-4">
         <div className="flex min-h-10 items-center gap-3">
           <a href="#top" className="shrink-0 text-sm font-bold tracking-tight">
             {site.name}
           </a>
-          <nav
-            className="flex min-w-0 flex-1 items-center gap-1"
-            aria-label="页面区块"
-          >
-            <a href="#live" className="nav-cell flex-1">
-              <StatusDot tone="live" />
-              <span>Live</span>
-            </a>
-            <a href="#vibe-coding" className="nav-cell flex-1">
-              Vibe Coding
-            </a>
-            <a href="#watching" className="nav-cell flex-1">
-              Media
-            </a>
-          </nav>
+          <HeaderDesktop fallback={desktop} className="flex-1" />
           <HeaderTimezone fallback={timezone} />
           <ThemeToggle />
         </div>
