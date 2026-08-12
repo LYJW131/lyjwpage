@@ -151,7 +151,7 @@ function Bars({ state }: { state: BarsState }) {
         <span
           key={i}
           className={cn(
-            "w-0.5 origin-bottom rounded-full",
+            "w-0.5 origin-bottom",
             state === "idle"
               ? `bg-muted-foreground ${idleHeights[i]}`
               : state === "playing"
@@ -261,10 +261,10 @@ function HeroProgress({
           </span>
         </NumberFlowGroup>
       </div>
-      <div className="mt-1.5 h-0.75 overflow-hidden rounded-full bg-muted">
+      <div className="mt-1.5 h-0.75 overflow-hidden bg-muted">
         <div
           className={cn(
-            "h-full rounded-full transition-[width] duration-700 ease-linear",
+            "h-full transition-[width] duration-700 ease-linear",
             playing ? "bg-live" : "bg-muted-foreground",
           )}
           style={{ width: `${Math.max(0, Math.min(100, percent))}%` }}
@@ -687,7 +687,7 @@ export function ListeningCard({
                             显示，但两版 hero 的高度必须一致，理由同上面那段 —— 与其留
                             一道不可见的空档，不如填满，见 globals.css 的 .rainbow-bar。 */}
                         <div
-                          className="rainbow-bar mt-1.5 h-0.75 rounded-full"
+                          className="rainbow-bar mt-1.5 h-0.75"
                           style={{ backgroundImage: paletteGradient(hero.palette) }}
                           aria-hidden
                         />

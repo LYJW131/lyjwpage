@@ -7,7 +7,7 @@
 @custom-variant retina (@media (min-resolution: 2x));
 
 :root {
-  --radius: 0.125rem;
+  --radius: 0rem;
 
   /* 暖灰工作台 + 墨色描边：比纯白更像一张长期使用的记录纸。 */
   --background: oklch(0.94 0.007 92);
@@ -72,9 +72,14 @@
   --color-live-off: var(--live-off);
   --color-claude: var(--claude);
 
+  --radius-xs: var(--radius);
+  --radius-sm: var(--radius);
   --radius-md: var(--radius);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 2);
+  --radius-xl: var(--radius);
+  --radius-2xl: var(--radius);
+  --radius-3xl: var(--radius);
+  --radius-4xl: var(--radius);
 
   /* CJK 靠字体栈顺序兜底：Geist 没有中文字形，会自动落到苹方 / 鸿蒙 */
   --font-sans:

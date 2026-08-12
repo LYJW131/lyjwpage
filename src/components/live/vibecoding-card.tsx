@@ -237,7 +237,7 @@ function TotalUsage({
         </div>
       </div>
 
-      <div className="mt-6 flex h-2 overflow-hidden rounded-full bg-muted" aria-hidden>
+      <div className="mt-6 flex h-2 overflow-hidden bg-muted" aria-hidden>
         {TOKEN_SEGMENTS.map((segment) => {
           const value = values[segment.key];
           return value > 0 ? (
@@ -547,9 +547,9 @@ function LimitMeter({ limit }: { limit: VibeCodingLimit }) {
           </span>
         </span>
       </div>
-      <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted">
+      <div className="mt-1.5 h-1.5 overflow-hidden bg-muted">
         <div
-          className="h-full rounded-full transition-[width] duration-700"
+          className="h-full transition-[width] duration-700"
           style={{ width: `${usedPercent}%`, backgroundColor: color }}
         />
       </div>
@@ -668,7 +668,7 @@ function AgentPanel({
                   </span>
                 </div>
                 <div
-                  className="mt-1.5 h-1.5 rounded-full"
+                  className="mt-1.5 h-1.5"
                   style={{ backgroundColor: LIMIT_UNLIMITED_COLOR }}
                 />
               </div>
@@ -749,10 +749,10 @@ function QuotaProviders({ providers }: { providers: VibeCodingQuotaProvider[] })
                 </span>
                 <span className="truncate text-sm font-medium">{provider.label}</span>
               </div>
-              <div className="h-1.5 min-w-8 flex-1 overflow-hidden rounded-full bg-muted">
+              <div className="h-1.5 min-w-8 flex-1 overflow-hidden bg-muted">
                 {usedPercent != null && (
                   <div
-                    className="h-full rounded-full transition-[width] duration-700"
+                    className="h-full transition-[width] duration-700"
                     style={{ width: `${usedPercent}%`, backgroundColor: color }}
                   />
                 )}
@@ -842,11 +842,11 @@ export function VibeCodingCard({
                 <div className="flex items-center gap-2">
                   <div className="h-4 w-24 rounded bg-muted" />
                   {/* 套餐 badge 的位置 */}
-                  <div className="h-4 w-14 rounded-full bg-muted" />
+                  <div className="h-4 w-14 bg-muted" />
                 </div>
                 <div className="mt-6 h-12 w-36 rounded bg-muted" />
                 {/* 限额条：占位只放一条 —— 条数由上游决定，多占的话数据回来会塌一截 */}
-                <div className="mt-6 h-1.5 rounded-full bg-muted" />
+                <div className="mt-6 h-1.5 bg-muted" />
                 <div className="mt-6 h-16 rounded bg-muted" />
               </div>
             ))}

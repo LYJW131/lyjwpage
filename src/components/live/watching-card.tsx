@@ -130,7 +130,7 @@ function Tile({
 
         {/* 压在封面右上角。海报底色不可控，所以垫一层模糊底片保证读得出来 */}
         {live && (
-          <span className="absolute right-2 top-2 flex items-center gap-1.5 rounded-full border border-line bg-background/85 px-2 py-1 backdrop-blur-sm">
+          <span className="absolute right-2 top-2 flex items-center gap-1.5 border border-line bg-background/85 px-2 py-1 backdrop-blur-sm">
             <StatusDot tone={paused ? "idle" : "live"} />
             <span className="label-mono text-foreground">
               {paused ? "已暂停" : "播放中"}

@@ -28,7 +28,7 @@ const APP_SWITCH_VARIANTS = {
     x: -18,
     scale: 1.06,
     filter: "blur(8px)",
-    clipPath: "inset(0 100% 0 0 round 6px)",
+    clipPath: "inset(0 100% 0 0)",
     zIndex: 0,
   },
   animate: {
@@ -36,7 +36,7 @@ const APP_SWITCH_VARIANTS = {
     x: 0,
     scale: 1,
     filter: "blur(0px)",
-    clipPath: "inset(0 0% 0 0 round 6px)",
+    clipPath: "inset(0 0% 0 0)",
     zIndex: 0,
   },
   exit: {
@@ -44,7 +44,7 @@ const APP_SWITCH_VARIANTS = {
     x: 20,
     scale: 1.06,
     filter: "blur(7px)",
-    clipPath: "inset(0 0% 0 0 round 6px)",
+    clipPath: "inset(0 0% 0 0)",
     zIndex: 10,
   },
 };
