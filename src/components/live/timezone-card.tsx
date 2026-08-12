@@ -23,10 +23,10 @@ import type { StatusResponse, TimezonePayload } from "@/lib/types";
  * 的事情铺路。上报器上下线是例外：整页共用的 presence 事件会让这张卡立即重取，
  * 不必等下面的轮询周期才翻转 stale。
  *
- * 60 秒这个数由「上报器掉线多久该变灰」定，不是由时区定：存活判据是 45 秒的心跳
- * 窗口，一分钟一问足够在下一轮把 stale 翻过来。
+ * 正常上下线由整页共用的 presence 事件立即重取；固定轮询只兜实时通道不可用，
+ * 以及崩溃、断网这种来不及声明离线的情况。时区内容极少变化，可以给到十分钟。
  */
-const REFRESH_MS = 60_000;
+const REFRESH_MS = 10 * 60_000;
 
 function part(parts: Intl.DateTimeFormatPart[], type: Intl.DateTimeFormatPartTypes) {
   return parts.find((item) => item.type === type)?.value ?? "00";

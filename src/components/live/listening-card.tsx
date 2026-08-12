@@ -37,12 +37,12 @@ import { appleArtwork, ARTWORK_SCALE, needsOptimizing } from "@/lib/apple-artwor
 import { cn } from "@/lib/utils";
 
 /**
- * 列表变了会推失效通知过来，轮询只兜「推送整体停用」这一种情况，所以给得很松。
+ * 列表变了会把完整数据推过来，轮询只兜「推送整体停用」这一种情况，所以给得很松。
  * 从前是 30 秒，那时列表要靠轮询才会翻 —— 服务端还得现打 Apple 的目录接口。
  */
-const REFRESH_MS = 5 * 60_000;
+const REFRESH_MS = 10 * 60_000;
 /** 实时播放由推送送来，轮询只是兜底 */
-const MUSIC_REFRESH_MS = 30_000;
+const MUSIC_REFRESH_MS = 60_000;
 
 /**
  * 视口里显示几行。行高不写死：列表填满卡片剩下的空间，每行取容器的 1/N

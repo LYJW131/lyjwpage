@@ -26,7 +26,7 @@ import type {
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-const REFRESH_MS = 60_000;
+const REFRESH_MS = 2 * 60_000;
 
 /** 活动曲线增量拉取，和充电头共用同一个壳子。累加器在 lib/vibecoding-activity */
 const fetchVibeCoding = incrementalFetcher<VibeCodingPayload>(
