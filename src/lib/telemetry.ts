@@ -11,6 +11,7 @@ import {
   CHARGER_TAG,
   DESKTOP_TAG,
   expireStatus,
+  expireStatusImmediately,
   NOW_LISTENING_TAG,
   publish,
   TIMEZONE_TAG,
@@ -360,7 +361,7 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
     // since 给当下时刻：历史点一个都不带，客户端沿用自己那份，见 live-events 的说明。
     if (structuralChanged) {
       await publish({ type: "charger", payload: await getChargerPayload({ since: Date.now() }) });
-      expireStatus(CHARGER_TAG);
+      expireStatusImmediately(CHARGER_TAG);
     }
     accepted += 1;
   }
@@ -575,7 +576,8 @@ export async function publishPresence() {
   await publish({ type: "presence", payload: null });
   // 和浏览器那侧收到 presence 后重取的键是同一份名单（见 use-live-events 的
   // PRESENCE_PATHS）：Mac 上报器供数的那四份，它们的 stale 会跟着翻
-  expireStatus(DESKTOP_TAG, TIMEZONE_TAG, NOW_LISTENING_TAG, CHARGER_TAG);
+  expireStatus(DESKTOP_TAG, TIMEZONE_TAG);
+  expireStatusImmediately(NOW_LISTENING_TAG, CHARGER_TAG);
 }
 
 export async function publishDesktop() {
@@ -596,7 +598,7 @@ export async function publishDesktop() {
 export async function publishListening() {
   const payload = await getNowListening();
   await publish({ type: "listening-now", payload });
-  expireStatus(NOW_LISTENING_TAG);
+  expireStatusImmediately(NOW_LISTENING_TAG);
   return payload;
 }
 

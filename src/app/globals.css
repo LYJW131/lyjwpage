@@ -81,10 +81,10 @@
   --radius-3xl: var(--radius);
   --radius-4xl: var(--radius);
 
-  /* CJK 靠字体栈顺序兜底：Geist 没有中文字形，会自动落到苹方 / 鸿蒙 */
+  /* 全站只用 Mono；唯一的 sans 标签直接走系统字体，避免预加载一整套未用 Geist Sans。 */
   --font-sans:
-    var(--font-geist-sans), "PingFang SC", "HarmonyOS Sans SC",
-    "Microsoft YaHei", system-ui, sans-serif;
+    system-ui, -apple-system, "PingFang SC", "HarmonyOS Sans SC",
+    "Microsoft YaHei", sans-serif;
   --font-mono:
     var(--font-geist-mono), ui-monospace, "SFMono-Regular", monospace;
 

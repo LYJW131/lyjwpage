@@ -43,6 +43,26 @@ import { getVibeCodingPayload } from "@/lib/vibecoding";
  * 退化成请求时的动态洞，那就等于没缓存。
  */
 const STATUS_LIFE = "minutes";
+const CHARGER_FALLBACK_WINDOW_MS = 20 * 60_000;
+
+/**
+ * 首屏曲线只画最近 20 分钟；保留窗口左边界之前的一个点，SVG 才能把跨界线段
+ * 连续地裁到边缘。完整 400 点仍留在 Redis 和状态端点，挂载后继续从最新游标
+ * 增量同步，这里只缩小 RSC/HTML 里的首屏投影。
+ */
+async function getChargerFallback() {
+  const payload = await getChargerPayload();
+  const { history } = payload;
+  if (history.length < 2) return payload;
+
+  const end = history[history.length - 1].t;
+  const firstInside = history.findIndex(
+    (sample) => sample.t >= end - CHARGER_FALLBACK_WINDOW_MS,
+  );
+  if (firstInside <= 0) return payload;
+
+  return { ...payload, history: history.slice(firstInside - 1) };
+}
 
 export async function cachedDesktop() {
   "use cache";
@@ -63,7 +83,7 @@ export async function cachedCharger() {
   "use cache";
   cacheLife(STATUS_LIFE);
   cacheTag(CHARGER_TAG);
-  return statusEnvelope(getChargerPayload);
+  return statusEnvelope(getChargerFallback);
 }
 
 /** 同上，活动曲线也发全量 */

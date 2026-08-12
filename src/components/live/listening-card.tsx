@@ -483,6 +483,9 @@ export function ListeningCard({
   useLiveEvents();
   const { data: live } = useStatus<NowListeningPayload>(NOW_LISTENING_PATH, MUSIC_REFRESH_MS, {
     fallback: nowFallback,
+    // 这份缓存会在播放/暂停/换曲时立即失效，当前访客又有实时事件；首屏不再
+    // 为同一份 hero 主动回源，避免 LCP 图片在挂载后被第二次状态提交打断。
+    revalidateOnMount: false,
   });
   /**
    * 暂停宽限期到点时再问一次。
