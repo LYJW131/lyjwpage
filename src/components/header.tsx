@@ -1,8 +1,14 @@
+import { HeaderTimezone } from "@/components/header-timezone";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { StatusDot } from "@/components/ui/status-dot";
 import { site } from "@/lib/site";
+import type { StatusResponse, TimezonePayload } from "@/lib/types";
 
-export function Header() {
+export function Header({
+  timezone,
+}: {
+  timezone: StatusResponse<TimezonePayload>;
+}) {
   return (
     <header id="top" className="relative z-50">
       <div className="mx-auto w-[calc(100%-2rem)] max-w-5xl pt-4 sm:pt-6">
@@ -11,9 +17,7 @@ export function Header() {
             {site.name}
           </a>
           <span className="signal-spectrum h-3 min-w-8 flex-1 border-y border-line-strong" aria-hidden />
-          <span className="label-mono hidden shrink-0 text-muted-foreground sm:inline">
-            SG / UTC+8
-          </span>
+          <HeaderTimezone fallback={timezone} />
           <ThemeToggle />
         </div>
 

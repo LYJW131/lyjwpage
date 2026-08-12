@@ -42,7 +42,7 @@ export default async function Home() {
 
   return (
     <>
-      <Header />
+      <Header timezone={timezone} />
 
       <main className="flex-1">
         <Container className="page-frame my-5 border-y border-line-strong sm:my-6">

@@ -9,7 +9,10 @@ import { MacBookProIcon } from "@/components/ui/device-icons";
 import { useMountedAt } from "@/hooks/use-mounted-at";
 import { useStatus } from "@/hooks/use-status";
 import { TIMEZONE_PATH } from "@/lib/paths";
-import { site } from "@/lib/site";
+import {
+  formatUTCOffset,
+  resolveTimezoneDisplay,
+} from "@/lib/timezone-display";
 import type { StatusResponse, TimezonePayload } from "@/lib/types";
 
 /**
@@ -24,23 +27,6 @@ import type { StatusResponse, TimezonePayload } from "@/lib/types";
  * 窗口，一分钟一问足够在下一轮把 stale 翻过来。
  */
 const REFRESH_MS = 60_000;
-
-function validTimezone(identifier: string) {
-  try {
-    new Intl.DateTimeFormat("en-US", { timeZone: identifier }).format();
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function formatUTCOffset(seconds: number) {
-  const sign = seconds < 0 ? "−" : "+";
-  const absolute = Math.abs(seconds);
-  const hours = Math.floor(absolute / 3_600);
-  const minutes = Math.floor((absolute % 3_600) / 60);
-  return `UTC${sign}${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
-}
 
 function part(parts: Intl.DateTimeFormatPart[], type: Intl.DateTimeFormatPartTypes) {
   return parts.find((item) => item.type === type)?.value ?? "00";
@@ -73,38 +59,6 @@ function clockParts(now: number, timezone: string) {
   };
 }
 
-function timezoneAbbreviation(now: number, timezone: string) {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: timezone,
-    timeZoneName: "short",
-  }).formatToParts(new Date(now));
-  return parts.find((item) => item.type === "timeZoneName")?.value ?? null;
-}
-
-/** 算任意 IANA 时区在这一刻的偏移，不能用浏览器的 getTimezoneOffset。 */
-function timezoneOffsetSeconds(now: number, timezone: string) {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: timezone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(new Date(now));
-  const value = (type: Intl.DateTimeFormatPartTypes) => Number(part(parts, type));
-  const representedAsUTC = Date.UTC(
-    value("year"),
-    value("month") - 1,
-    value("day"),
-    value("hour"),
-    value("minute"),
-    value("second"),
-  );
-  return representedAsUTC / 1_000 - Math.floor(now / 1_000);
-}
-
 const TWO_DIGITS = { minimumIntegerDigits: 2, useGrouping: false } as const;
 
 export function TimezoneCard({ fallback }: { fallback: StatusResponse<TimezonePayload> }) {
@@ -134,31 +88,10 @@ export function TimezoneCard({ fallback }: { fallback: StatusResponse<TimezonePa
     };
   }, []);
 
-  const reportedTimezone = data?.timezone ?? null;
-  const usingMac = Boolean(
-    !error &&
-      data &&
-      !data.stale &&
-      reportedTimezone &&
-      validTimezone(reportedTimezone.identifier),
-  );
-  // Mac 停报、状态接口报错或给出无效 IANA 标识时，都回到后端配置；访客浏览器
-  // 的时区绝不参与选择，否则同一页面在不同访客眼里会显示不同的“本机时间”。
-  const backendTimezone = validTimezone(site.timezone) ? site.timezone : "UTC";
-  const timezone = usingMac ? reportedTimezone!.identifier : backendTimezone;
+  // Mac 停报 / 报错 / 无效 IANA 时回退 site.timezone；规则见 resolveTimezoneDisplay。
+  const { identifier: timezone, abbreviation, offsetSeconds, usingMac } =
+    resolveTimezoneDisplay(data, error, now);
   const clock = now ? clockParts(now, timezone) : null;
-  // 上报器在线时这两个值由 payload 直接给，服务端也画得出来；退回后端时区那一支
-  // 只能现算，得等挂载
-  const abbreviation = usingMac
-    ? reportedTimezone!.abbreviation
-    : now
-      ? timezoneAbbreviation(now, timezone)
-      : null;
-  const offsetSeconds = usingMac
-    ? reportedTimezone!.secondsFromGMT
-    : now
-      ? timezoneOffsetSeconds(now, timezone)
-      : null;
 
   return (
     <Card
