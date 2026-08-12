@@ -37,6 +37,15 @@ const FORWARDS: ReadonlyArray<{
   // Emby 正在播放：webhook 和推送代理驱动，服务端手上已经是最新的
   { event: "watching-now", path: NOW_WATCHING_PATH },
   /**
+   * 两张列表也直接带数据来。
+   *
+   * 从前它们只发失效通知、由这里 mutate 一次重取，理由是「整份太大」——
+   * 实测 4.4 KB 和 2.8 KB，而重取要付的是每个在线标签页各一次回源。
+   * 服务端那侧只在内容真的变了时才发，所以这两行不会退化成定时广播。
+   */
+  { event: "listening", path: LISTENING_PATH },
+  { event: "watching", path: WATCHING_PATH },
+  /**
    * 充电头只在插拔、换设备时来事件。曲线的合并走和轮询同一个累加器
    * （lib/charger-history）：推来的那份不带历史点（空增量），所以合并只是把
    * 已有曲线原样接上 —— 游标不会被扰动，下一轮轮询照常从正确的位置继续拉。
@@ -63,9 +72,8 @@ const PRESENCE_PATHS = [DESKTOP_PATH, TIMEZONE_PATH, NOW_LISTENING_PATH, CHARGER
 /**
  * 不带数据的事件 → 收到后要重取哪几个键。
  *
- * 两张列表卡走这条路而不是像上面那样直接把数据写进缓存：整份列表十几 KB，
- * 而浏览器手上多半已经有一份几乎相同的，让它自己回来取一次更省。它们的轮询
- * 兜底是 5 分钟一轮，即时性全靠这里。
+ * 只剩存活这一条：它翻的是「上报器还在不在」，而各卡片的 stale 是服务端按各自
+ * 的数据现算的，服务端没法在一条事件里把四份 payload 都算好推出来。
  */
 const INVALIDATIONS: ReadonlyArray<{
   event: LiveEvent["type"];
@@ -73,8 +81,6 @@ const INVALIDATIONS: ReadonlyArray<{
 }> = [
   // 上报器上下线：不带数据，只让它供数的那几张卡重取一次，同时翻 stale
   { event: "presence", paths: PRESENCE_PATHS },
-  { event: "listening", paths: [LISTENING_PATH] },
-  { event: "watching", paths: [WATCHING_PATH] },
 ];
 
 /**

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { ingestFailed, ingestRoute, jsonBody } from "@/lib/api";
 import { readAppleMusicCredentials } from "@/lib/apple-music-credentials";
-import { recordRecentlyPlayedReport } from "@/lib/apple-music-store";
+import { getRecentlyPlayed, recordRecentlyPlayedReport } from "@/lib/apple-music-store";
 import { publish } from "@/lib/live-events";
 import { telemetryAuthorized } from "@/lib/telemetry";
 
@@ -27,13 +27,14 @@ export async function POST(request: Request) {
   return ingestRoute(async () => {
     const result = await recordRecentlyPlayedReport(await jsonBody(request));
     /**
-     * 只发失效通知，不带数据。
+     * 带整份数据推。省掉每个在线访客各一次回源 —— 发失效通知的话，成本是按
+     * 人头乘的，而这份整份才 4.4 KB。理由详见 lib/live-events 的事件定义。
      *
-     * 列表整份有十几 KB，而浏览器手上多半已经有一份几乎相同的；让它自己回来取
-     * 一次更省，也和 presence 那条一个形状。只在内容真的变了时发 —— 上报器
-     * 每 10 分钟兜底整推一次，跟着发就成了定时广播。
+     * 只在内容真的变了时发：上报器每 10 分钟兜底整推一次，跟着发就成了定时广播。
      */
-    if (result.changed) await publish({ type: "listening", payload: null });
+    if (result.changed) {
+      await publish({ type: "listening", payload: await getRecentlyPlayed() });
+    }
     return result;
   });
 }

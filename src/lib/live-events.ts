@@ -1,8 +1,13 @@
 import Pusher from "pusher";
 
-import type { NowWatchingPayload } from "@/lib/emby";
+import type { NowWatchingPayload, WatchingPayload } from "@/lib/emby";
 import { LIVE_CHANNEL, liveEndpoint } from "@/lib/live-channel";
-import type { ChargerPayload, DesktopPayload, NowListeningPayload } from "@/lib/types";
+import type {
+  ChargerPayload,
+  DesktopPayload,
+  ListeningPayload,
+  NowListeningPayload,
+} from "@/lib/types";
 
 /**
  * 服务端 → 浏览器的实时推送。
@@ -29,13 +34,20 @@ export type LiveEvent =
   | { type: "desktop"; payload: DesktopPayload }
   | { type: "listening-now"; payload: NowListeningPayload }
   /**
-   * 「最近在听」列表变了。只发失效通知，由浏览器自己回来取。
+   * 「最近在听」列表变了，带整份数据。
    *
-   * 整份十几 KB，而浏览器手上多半已经有一份几乎相同的；带数据推等于每次换歌
-   * 都把整个列表重发一遍。上报器每 10 分钟兜底整推一次，那次内容没变，
-   * 站点比对过才发，不会退化成定时广播。
+   * 这里曾经只发失效通知、让浏览器自己回来取，理由是「整份十几 KB，浏览器手上
+   * 多半只差一两项」—— 两句都不对。实测 4.4 KB；而且发通知之后浏览器照样把整份
+   * 取回来，字节一点没省，反倒多出一次请求头、一次往返、一个函数调用和一次
+   * Redis 读，**并且是按在线人头乘的**。带数据推是严格更省的。
+   *
+   * 充电头那条不带历史点是另一回事：那是增量同步，服务端不知道各客户端的游标。
+   * 列表是整份替换，没有游标这回事，不适用。
+   *
+   * 已知的天花板：Pusher 单条事件上限 10 KB，超了直接拒收、而 publish 只记一行
+   * 日志，表现是这条推送静默消失、要等轮询兜底。当前 4.4 KB，两倍余量。
    */
-  | { type: "listening"; payload: null }
+  | { type: "listening"; payload: ListeningPayload }
   /**
    * 只在插拔、换设备这类结构性变化时发，不跟功率/电压/电流的滚动走 ——
    * 那些量充电时每个上报周期都在变，推它们等于把推送当轮询用。
@@ -60,8 +72,8 @@ export type LiveEvent =
    * 所以直接带数据。
    */
   | { type: "watching-now"; payload: NowWatchingPayload }
-  /** 「最近在看」列表变了。和上面那条 listening 同一个形状、同一个理由 */
-  | { type: "watching"; payload: null };
+  /** 「最近在看」列表变了。和上面那条 listening 同一个形状、同一个理由。实测 2.8 KB */
+  | { type: "watching"; payload: WatchingPayload };
 
 let client: Pusher | null = null;
 let initialised = false;

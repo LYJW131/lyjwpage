@@ -271,14 +271,15 @@ export async function recordEmbyReport(body: unknown) {
   // 播放状态变了就直接把新数据推给浏览器 —— 服务端手上已经是最新的
   if (playing) await publish({ type: "watching-now", payload: await getNowWatching() });
   /**
-   * 列表只发失效通知，不带数据：整份带图片地址十几 KB，而浏览器手上多半只差
-   * 一两项。
+   * 列表也带整份数据推（2.8 KB），理由见 lib/live-events 的事件定义。
    *
    * 新落地的图片也要发。列表里存的是图片键、地址在读取时才拼，所以图片单独补推
    * 的那一次 resume 根本没变，但 /api/status/watching 的输出确实变了（裂图变成
    * 封面）—— 不发的话得等下一轮轮询，而列表的轮询现在是 5 分钟一次。
    */
-  if (resumeChanged || stored > 0) await publish({ type: "watching", payload: null });
+  if (resumeChanged || stored > 0) {
+    await publish({ type: "watching", payload: await getWatching() });
+  }
 
   return { items, playing, images: stored, missingImages: missing };
 }
