@@ -1,9 +1,6 @@
 import { ingestFailed, ingestRoute, jsonBody } from "@/lib/api";
 import { recordTelemetryEnvelope, telemetryAuthorized } from "@/lib/telemetry";
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
-
 /**
  * Mac 上报器的唯一入口：数据、心跳、优雅下线都是同一个 v4 信封。
  *

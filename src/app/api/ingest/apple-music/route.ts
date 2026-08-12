@@ -3,11 +3,8 @@ import { NextResponse } from "next/server";
 import { ingestFailed, ingestRoute, jsonBody } from "@/lib/api";
 import { readAppleMusicCredentials } from "@/lib/apple-music-credentials";
 import { getRecentlyPlayed, recordRecentlyPlayedReport } from "@/lib/apple-music-store";
-import { publish } from "@/lib/live-events";
+import { expireStatus, LISTENING_TAG, publish } from "@/lib/live-events";
 import { telemetryAuthorized } from "@/lib/telemetry";
-
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
 
 /**
  * 「最近在听」的上报入口，推送方是 reporters/apple-music-reporter。
@@ -34,6 +31,7 @@ export async function POST(request: Request) {
      */
     if (result.changed) {
       await publish({ type: "listening", payload: await getRecentlyPlayed() });
+      expireStatus(LISTENING_TAG);
     }
     return result;
   });

@@ -19,8 +19,11 @@ export function appleArtwork(url: string | null | undefined, size: number): stri
     .replace(/\{c\}/g, "sr");
 }
 
-/** 位图按 2 倍取，Retina 上才不糊；再高在这些尺寸下肉眼已经看不出差别 */
-export const ARTWORK_SCALE = 2;
+/**
+ * Apple CDN 直链按 3 倍取：手机常见 3× DPR，2 倍图会被浏览器再放大一截而发虚。
+ * 最大那张 hero 也只有 80px，取 240px 仍然足够小；不带尺寸模板的封面不受影响。
+ */
+export const ARTWORK_SCALE = 3;
 
 /**
  * 这张图要不要过 Next 的图片优化。
