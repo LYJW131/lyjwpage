@@ -107,12 +107,12 @@ function publicArtwork(value: unknown) {
       cachedArtwork &&
       !cachedArtwork.includes("..") &&
       /^Music\d+\/[A-Za-z0-9_./-]+\.(?:jpe?g|png)$/i.test(cachedArtwork)
-        ? `https://is1-ssl.mzstatic.com/image/thumb/${cachedArtwork}/600x600bb.jpg`
+        ? `https://is1-ssl.mzstatic.com/image/thumb/${cachedArtwork}/600x600bb.webp`
         : null;
     const candidate = (relativeAppleArtwork ?? cachedArtwork ?? raw)
       .replaceAll("{w}", "600")
       .replaceAll("{h}", "600")
-      .replaceAll("{f}", "jpg");
+      .replaceAll("{f}", "webp");
     const url = new URL(candidate);
     if (url.protocol !== "https:" || url.username || url.password) return null;
     if (isPrivateHost(url.hostname)) return null;
