@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useSyncExternalStore } from "react";
 import useSWR, { useSWRConfig } from "swr";
 
 import type { StatusResponse } from "@/lib/types";
@@ -70,6 +70,15 @@ export type StatusOptions<T> = {
    */
   fetcher?: (path: string) => Promise<StatusResponse<T>>;
   /**
+   * 把服务端传来的完整快照灌进增量 fetcher 的客户端累加器。
+   *
+   * fallbackData 只会初始化 SWR 缓存，不会自动初始化 fetcher 自己维护的游标。
+   * 不接这一步的话，曲线虽已在首屏 HTML 里，挂载校验仍会因为游标为空再拉一遍
+   * 全量。layout effect 必须排在下面的 useSWR 之前：SWR 也在 layout effect 里注册
+   * 挂载校验，这样它第一次调用 fetcher 时已经能从 SSR 末点开始增量拉。
+   */
+  seedFallback?: (data: T) => void;
+  /**
    * 挂载时要不要立刻回源一次。默认要。
    *
    * 「此刻」类的信封里有服务端按当时的时钟算出来的结论（在不在线、陈没陈旧、
@@ -96,7 +105,7 @@ export function useStatus<T>(
   path: string,
   /** 传函数可以按当前数据动态决定间隔，比如「有东西在播就调快」 */
   refreshInterval: number | ((data: T | undefined) => number),
-  { fallback, fetcher: customFetcher, revalidateOnMount }: StatusOptions<T>,
+  { fallback, fetcher: customFetcher, seedFallback, revalidateOnMount }: StatusOptions<T>,
 ): StatusState<T> {
   const active = usePageActive();
   const refreshIntervalRef = useRef(refreshInterval);
@@ -115,6 +124,10 @@ export function useStatus<T>(
     },
     [active],
   );
+
+  useLayoutEffect(() => {
+    if (fallback.ok) seedFallback?.(fallback.data);
+  }, [fallback, seedFallback]);
 
   const { data, error, isLoading } = useSWR<StatusResponse<T>>(path, customFetcher ?? fetcher<T>, {
     fallbackData: fallback,

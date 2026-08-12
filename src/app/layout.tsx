@@ -13,13 +13,11 @@ import "./globals.css";
 export const metadata: Metadata = {
   metadataBase: new URL(site.url),
   title: {
-    default: `${site.name} — ${site.tagline}`,
+    default: site.name,
     template: `%s — ${site.name}`,
   },
-  description: site.tagline,
   openGraph: {
     title: site.name,
-    description: site.tagline,
     url: site.url,
     siteName: site.name,
     type: "website",
@@ -28,6 +26,10 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#ffffff" },
     { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
@@ -43,6 +45,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${GeistSans.variable} ${GeistMono.variable} h-full`}
     >
       <body className="flex min-h-full flex-col">
+        {/* 封面图（LCP）和剧照的域名，由 React 提升进 head。
+            不能加 crossOrigin：这两处都是普通 <img> 的 no-cors 请求，
+            带 crossorigin 的连接它们复用不上，等于白连一次 */}
+        <link rel="preconnect" href="https://is1-ssl.mzstatic.com" />
+        <link rel="preconnect" href="https://r2.homepage.lyjw.llc" />
         <ThemeProvider>{children}</ThemeProvider>
         <Analytics />
         <SpeedInsights />
