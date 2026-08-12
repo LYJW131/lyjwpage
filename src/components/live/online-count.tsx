@@ -16,18 +16,21 @@ import { useOnlineCount } from "@/hooks/use-live-events";
 export function OnlineCount() {
   const { count, connected } = useOnlineCount();
 
-  /*
-   * 拿到数字之前整段不渲染，而不是显示 0 或骨架 —— 「在线 0 人」是个假的、
-   * 而且必然错的结论（至少你自己在看）。没配实时服务时它就一直不出现。
-   */
-  if (count == null) return null;
-
   return (
     <span className="label-mono flex items-center gap-2 text-muted-foreground">
       <StatusDot tone={connected ? "live" : "off"} />
       <span className="flex items-center gap-1">
         此刻在线
-        <NumberFlow value={count} locales="en-US" className="text-foreground" />
+        {/* SSR 就保留数字位置；不能写 0，那会把“还没连上”伪装成真实人数。 */}
+        <span className="inline-flex min-w-[2ch] justify-end text-foreground" aria-live="polite">
+          {count == null ? (
+            <span className="text-muted-foreground" aria-label="正在获取在线人数">
+              --
+            </span>
+          ) : (
+            <NumberFlow value={count} locales="en-US" format={{ minimumIntegerDigits: 2 }} />
+          )}
+        </span>
       </span>
       <SourceHint connected={connected} />
     </span>
