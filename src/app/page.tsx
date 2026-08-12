@@ -45,7 +45,13 @@ export default async function Home() {
 
       <main className="flex-1">
         <Container>
-          <Section id="live" label="FIG_001" title="此刻" note="实时">
+          <Section
+            id="live"
+            label="FIG_001"
+            title="此刻"
+            note="实时"
+            className="pt-6 sm:pt-8"
+          >
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <LiveDeskCard fallback={desktop} />
               {/*
