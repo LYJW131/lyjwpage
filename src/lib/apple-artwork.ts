@@ -1,7 +1,9 @@
 /**
  * Apple Music CDN 封面模板 URL 的尺寸替换。
  *
- * 目录接口给的是带占位的模板（`.../{w}x{h}{c}.{f}`），真正的尺寸由取图的人填。
+ * 目录接口给的是带占位的模板，格式有两种：一部分是
+ * `.../{w}x{h}{c}.{f}`，另一部分直接把输出格式写成
+ * `.../{w}x{h}bb.jpg` / `cc.jpg`。真正的尺寸和格式都由取图的人填。
  * 所以服务端**原样透传**，不在那边定死一个尺寸 —— 它不知道每个位置要多大，
  * 从前统一填 600，结果 36px 的列表缩略图也在下 600px 的图。
  *
@@ -12,6 +14,9 @@ export function appleArtwork(url: string | null | undefined, size: number): stri
   if (!url) return null;
   const dimension = Math.max(1, Math.round(size));
   return url
+    // 只改尺寸模板这一段最后的输出后缀。前一段经常是源文件名（.jpg/.png），
+    // 改它既没用还会让 Apple CDN 找不到原图；无占位的签名链接也不会命中。
+    .replace(/(\/\{w\}x\{h\}[^/?]*\.)jpe?g(?=[?#]|$)/gi, "$1webp")
     .replace(/\{w\}/g, String(dimension))
     .replace(/\{h\}/g, String(dimension))
     // 资料库那边的模板还带 {f}（格式）和 {c}（裁剪方式）
