@@ -8,7 +8,6 @@ export function Header() {
       <div className="mx-auto flex h-14 w-full max-w-5xl items-center justify-between gap-4 px-4">
         <a href="#top" className="font-mono text-sm font-medium tracking-tight">
           {site.name}
-          <span className="text-muted-foreground">.dev</span>
         </a>
 
         {/* 导航等其他 section 加回来了再补 */}
