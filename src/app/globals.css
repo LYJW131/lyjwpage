@@ -131,9 +131,13 @@
   }
 }
 
-/* 参考终端面板的硬边纸片：阴影不是漂浮，而是印刷套版般的固定错位。 */
+/* 参考终端面板的硬边纸片：阴影不是漂浮，而是印刷套版般的固定错位。
+   卡片保持静态；按压缩进只给真正的 button（主题切换等）。 */
 .paper-card {
   box-shadow: 3px 3px 0 var(--paper-shadow);
+}
+
+button.paper-card {
   transition:
     border-color 120ms ease,
     box-shadow 120ms ease,
@@ -141,7 +145,7 @@
 }
 
 @media (hover: hover) {
-  .paper-card:hover {
+  button.paper-card:hover {
     box-shadow: 1px 1px 0 var(--paper-shadow);
     transform: translate(2px, 2px);
   }

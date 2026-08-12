@@ -197,7 +197,7 @@ function TotalUsage({
         topModels.length === 0 && "pb-5",
       )}
     >
-      <div className="grid grid-cols-4 gap-5">
+      <div className="grid grid-cols-2 gap-5 md:grid-cols-4">
         <div>
           <div className="label-mono text-muted-foreground">Tokens</div>
           <div className="mt-2 text-3xl font-medium tracking-tight md:text-4xl">
@@ -252,7 +252,7 @@ function TotalUsage({
         })}
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-x-3 gap-y-2 md:gap-x-5">
+      <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 md:flex md:flex-wrap md:gap-x-5">
         {TOKEN_SEGMENTS.map((segment) => (
           <div key={segment.key} className="flex items-center gap-1.5 text-xs md:gap-2">
             <span
