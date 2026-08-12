@@ -1,5 +1,6 @@
 import { VIBECODING_ACTIVITY_LIMIT } from "@/lib/limits";
 import { mirrorKey } from "@/lib/redis";
+import { offlineByLiveness, readLiveness } from "@/lib/reporter-liveness";
 import type {
   VibeCodingAgent,
   VibeCodingAgentId,
@@ -9,6 +10,7 @@ import type {
   VibeCodingPlan,
   VibeCodingQuotaProvider,
   VibeCodingQuotaProviderId,
+  VibeCodingTotals,
 } from "@/lib/types";
 
 const PUSH_STALE_MS = 15 * 60_000;
@@ -34,16 +36,73 @@ type RawAgentDay = {
 };
 
 /**
- * Redis 为主、进程内存为辅，规则见 lib/redis 的 mirrorKey。
+ * 三个采集器三份存储，一份一个 key。
  *
- * 从前这里只有进程内存，没碰 Redis —— 于是清空 Redis 之后 vibe coding 还照常
- * 显示，和别的模块行为不一致。落到 Redis 还顺带白得一样好处：dev server 重启
- * 后不用干等下一次推送。
+ * 从前是一份：CodexBar 那个十几秒的用量扫描顺手把限额和会话状态烤进自己的载荷
+ * 里，站点这边也就只有一个写入点。代价是三件事被绑成一件 —— 扫描失败时刚取到的
+ * 限额连收都收不到，而「只更新限额」在协议上根本无法表达（校验是全有或全无的）。
+ *
+ * 现在各写各的，读的时候按 agent id 并回一份 VibeCodingPayload。读侧契约没变：
+ * 一张卡、一个端点、一个形状。
+ *
+ * Redis 为主、进程内存为辅，规则见 lib/redis 的 mirrorKey。
  */
-const mirror = mirrorKey<{ payload: VibeCodingPayload; pushedAt: number }>(
-  ["vibecoding", "pushed"],
+const usageMirror = mirrorKey<{ payload: StoredUsage; pushedAt: number }>(
+  ["vibecoding", "usage"],
   (state) => state.pushedAt,
 );
+const limitsMirror = mirrorKey<{ payload: StoredLimits; pushedAt: number }>(
+  ["vibecoding", "limits"],
+  (state) => state.pushedAt,
+);
+const sessionsMirror = mirrorKey<{ payload: StoredSessions; pushedAt: number }>(
+  ["vibecoding", "sessions"],
+  (state) => state.pushedAt,
+);
+
+/** `codexbar cost` 出的本地用量。展示名不存 —— 读的时候由这边给。 */
+type StoredUsage = {
+  agents: Array<{
+    id: VibeCodingAgentId;
+    models: string[];
+    /** 最近一个有用量日里的主力模型，是 sessions 那份取不到时的退路 */
+    currentModel: string | null;
+    topModel: string | null;
+    activity: Array<{ t: number; tokens: number }>;
+    today: VibeCodingDay;
+    last30DaysTokens: number;
+  }>;
+  /** sessionCount 来自 ccusage，不在这份里 */
+  totals: Omit<VibeCodingTotals, "sessionCount">;
+  topModels: Array<{ model: string; tokens: number }>;
+  collectedAt: string;
+};
+
+/** `codexbar usage` 出的套餐与限额窗口。 */
+type StoredLimits = {
+  agents: Array<{
+    id: VibeCodingAgentId;
+    plan: VibeCodingPlan | null;
+    limits: VibeCodingLimit[];
+    limitsError: string | null;
+  }>;
+  quotaProviders: Array<{
+    id: VibeCodingQuotaProviderId;
+    usedPercent: number | null;
+    limitsError: string | null;
+  }>;
+};
+
+/** `ccusage session` 出的此刻状态。 */
+type StoredSessions = {
+  agents: Array<{
+    id: VibeCodingAgentId;
+    currentModel: string | null;
+    lastActivityAt: string | null;
+    active: boolean;
+  }>;
+  sessionCount: number;
+};
 
 function finite(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
@@ -61,54 +120,50 @@ function emptyDay(date: string): VibeCodingDay {
   };
 }
 
-/** Accept the bounded, display-ready summary produced by Mac Telemetry Hub. */
-function normalizePreparedSummary(
-  input: unknown,
-  source: VibeCodingPayload["source"],
-): VibeCodingPayload | null {
-  if (!input || typeof input !== "object") return null;
-  const root = input as Record<string, unknown>;
-  if (!Array.isArray(root.agents) || !root.totals || typeof root.totals !== "object") {
-    return null;
-  }
-  const rawAgents = root.agents as unknown[];
+function object(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
 
-  const agents = AGENTS.flatMap((id): VibeCodingAgent[] => {
-    const raw = rawAgents.find(
-      (value) => value && typeof value === "object" && (value as { id?: unknown }).id === id,
-    );
-    if (!raw || typeof raw !== "object") return [];
-    const row = raw as Record<string, unknown>;
-    const today =
-      row.today && typeof row.today === "object"
-        ? normalizePreparedDay(
-            typeof (row.today as { date?: unknown }).date === "string"
-              ? ((row.today as { date: string }).date)
-              : localDate(),
-            row.today as RawAgentDay,
-          )
-        : emptyDay(localDate());
+/** 在一个 raw 数组里按 `id` 找这个 agent / provider 那条 */
+function rowById(rows: unknown, id: string): Record<string, unknown> | null {
+  if (!Array.isArray(rows)) return null;
+  const found = rows.find(
+    (value) => object(value)?.id === id,
+  );
+  return object(found);
+}
 
+function text(value: unknown): string | null {
+  return typeof value === "string" && value ? value : null;
+}
+
+/**
+ * `vibeCodingUsage`：Mac Telemetry Hub 备好的、可直接展示的用量摘要。
+ *
+ * 这份的校验仍是全有或全无 —— 曲线和总量是一体的，缺一个 agent 或者桶数对不上
+ * 就拼不出完整的一张图。限额和会话状态各有各的宽松校验，不受这道门闩牵连。
+ */
+function normalizeUsage(input: unknown): StoredUsage | null {
+  const root = object(input);
+  if (!root || !Array.isArray(root.agents) || !object(root.totals)) return null;
+
+  const agents = AGENTS.flatMap((id): StoredUsage["agents"] => {
+    const row = rowById(root.agents, id);
+    if (!row) return [];
+    const today = object(row.today);
     return [{
       id,
-      label: id === "claude" ? "Claude Code" : "Codex",
       models: Array.isArray(row.models)
         ? row.models.filter((model): model is string => typeof model === "string")
         : [],
-      currentModel: typeof row.currentModel === "string" ? row.currentModel : null,
-      lastActivityAt:
-        typeof row.lastActivityAt === "string" && Number.isFinite(Date.parse(row.lastActivityAt))
-          ? row.lastActivityAt
-          : null,
-      active: row.active === true,
-      topModel: typeof row.topModel === "string" ? row.topModel : null,
+      currentModel: text(row.currentModel),
+      topModel: text(row.topModel),
       activity: normalizeActivity(row.activity),
-      today,
-      // 这两个是后加的字段，旧版 Mac app 的上报里根本没有。缺失一律降级成
-      // 「没有数据」，绝不能进下面那道拒收门闩 —— 那样现存客户端每次上报都会 400。
-      plan: normalizePlan(row.plan),
-      limits: normalizeLimits(row.limits),
-      limitsError: typeof row.limitsError === "string" && row.limitsError ? row.limitsError : null,
+      today: today
+        ? normalizePreparedDay(text(today.date) ?? localDate(), today as RawAgentDay)
+        : emptyDay(localDate()),
       last30DaysTokens: finite(row.last30DaysTokens),
     }];
   });
@@ -120,36 +175,8 @@ function normalizePreparedSummary(
   }
 
   const rawTotals = root.totals as Record<string, unknown>;
-  const rawQuotaProviders = Array.isArray(root.quotaProviders) ? root.quotaProviders : [];
-  const quotaProviders = QUOTA_PROVIDERS.flatMap(({ id, label }): VibeCodingQuotaProvider[] => {
-    const raw = rawQuotaProviders.find(
-      (value) => value && typeof value === "object" && (value as { id?: unknown }).id === id,
-    );
-    if (!raw || typeof raw !== "object") return [];
-    const row = raw as Record<string, unknown>;
-    const usedPercent = typeof row.usedPercent === "number" && Number.isFinite(row.usedPercent)
-      ? Math.min(100, Math.max(0, row.usedPercent))
-      : null;
-    return [{
-      id,
-      label,
-      usedPercent,
-      limitsError:
-        typeof row.limitsError === "string" && row.limitsError ? row.limitsError : null,
-    }];
-  });
-  const topModels = Array.isArray(root.topModels)
-    ? root.topModels.flatMap((value) => {
-        if (!value || typeof value !== "object") return [];
-        const row = value as Record<string, unknown>;
-        return typeof row.model === "string"
-          ? [{ model: row.model, tokens: finite(row.tokens) }]
-          : [];
-      }).slice(0, 3)
-    : [];
   return {
     agents,
-    quotaProviders,
     totals: {
       inputTokens: finite(rawTotals.inputTokens),
       outputTokens: finite(rawTotals.outputTokens),
@@ -159,17 +186,76 @@ function normalizePreparedSummary(
       totalTokens: finite(rawTotals.totalTokens),
       apiEquivalentCostUSD: finite(rawTotals.apiEquivalentCostUSD),
       activeDays: finite(rawTotals.activeDays),
-      sessionCount: finite(rawTotals.sessionCount),
     },
-    topModels,
+    topModels: Array.isArray(root.topModels)
+      ? root.topModels.flatMap((value) => {
+          const row = object(value);
+          const model = row ? text(row.model) : null;
+          return model ? [{ model, tokens: finite(row?.tokens) }] : [];
+        }).slice(0, 3)
+      : [],
     collectedAt:
       typeof root.collectedAt === "string" && Number.isFinite(Date.parse(root.collectedAt))
         ? root.collectedAt
         : new Date().toISOString(),
-    source,
-    // 两个都是读取时才算的，存的时候只占位
-    activityPartial: false,
-    stale: false,
+  };
+}
+
+/**
+ * `vibeCodingLimits`：套餐、限额窗口，以及只占一行总额度的附加 provider。
+ *
+ * 这份**不**要求两个 agent 齐全：一边取到、一边没取到是常态，缺的那边按
+ * 「没配」渲染。整条命令全挂时上报器仍会发一份只有 limitsError 的载荷 ——
+ * 空 limits 加上错误原因才是「配了但取不到」。
+ */
+function normalizeLimitsReport(input: unknown): StoredLimits | null {
+  const root = object(input);
+  if (!root || !Array.isArray(root.agents)) return null;
+  return {
+    agents: AGENTS.flatMap((id): StoredLimits["agents"] => {
+      const row = rowById(root.agents, id);
+      if (!row) return [];
+      return [{
+        id,
+        plan: normalizePlan(row.plan),
+        limits: normalizeLimits(row.limits),
+        limitsError: text(row.limitsError),
+      }];
+    }),
+    quotaProviders: QUOTA_PROVIDERS.flatMap(({ id }): StoredLimits["quotaProviders"] => {
+      const row = rowById(root.quotaProviders, id);
+      if (!row) return [];
+      return [{
+        id,
+        // 夹到 0–100：进度条宽度直接用它
+        usedPercent: typeof row.usedPercent === "number" && Number.isFinite(row.usedPercent)
+          ? Math.min(100, Math.max(0, row.usedPercent))
+          : null,
+        limitsError: text(row.limitsError),
+      }];
+    }),
+  };
+}
+
+/** `vibeCodingSessions`：此刻在用哪个模型、活没活着、历史会话总数。 */
+function normalizeSessions(input: unknown): StoredSessions | null {
+  const root = object(input);
+  if (!root || !Array.isArray(root.agents)) return null;
+  return {
+    agents: AGENTS.flatMap((id): StoredSessions["agents"] => {
+      const row = rowById(root.agents, id);
+      if (!row) return [];
+      return [{
+        id,
+        currentModel: text(row.currentModel),
+        lastActivityAt:
+          typeof row.lastActivityAt === "string" && Number.isFinite(Date.parse(row.lastActivityAt))
+            ? row.lastActivityAt
+            : null,
+        active: row.active === true,
+      }];
+    }),
+    sessionCount: finite(root.sessionCount),
   };
 }
 
@@ -202,8 +288,9 @@ function localDate(date = new Date()) {
 function normalizeActivity(value: unknown) {
   if (!Array.isArray(value)) return [];
   return value.flatMap((sample) => {
-    if (!sample || typeof sample !== "object") return [];
-    const { t, tokens } = sample as { t?: unknown; tokens?: unknown };
+    const row = object(sample);
+    if (!row) return [];
+    const { t, tokens } = row as { t?: unknown; tokens?: unknown };
     return typeof t === "number" && Number.isFinite(t)
       ? [{ t, tokens: finite(tokens) }]
       : [];
@@ -211,11 +298,12 @@ function normalizeActivity(value: unknown) {
 }
 
 function normalizePlan(value: unknown): VibeCodingPlan | null {
-  if (!value || typeof value !== "object") return null;
-  const { tier, label } = value as { tier?: unknown; label?: unknown };
-  if (typeof tier !== "string" || !tier) return null;
+  const row = object(value);
+  if (!row) return null;
+  const tier = text(row.tier);
+  if (!tier) return null;
   // 展示名缺了就退回原始枚举值：难看总好过整块套餐信息消失
-  return { tier, label: typeof label === "string" && label ? label : tier };
+  return { tier, label: text(row.label) ?? tier };
 }
 
 /**
@@ -225,14 +313,15 @@ function normalizePlan(value: unknown): VibeCodingPlan | null {
 function normalizeLimits(value: unknown): VibeCodingLimit[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((entry): VibeCodingLimit[] => {
-    if (!entry || typeof entry !== "object") return [];
-    const row = entry as Record<string, unknown>;
-    if (typeof row.key !== "string" || !row.key) return [];
+    const row = object(entry);
+    if (!row) return [];
+    const key = text(row.key);
+    if (!key) return [];
     if (typeof row.usedPercent !== "number" || !Number.isFinite(row.usedPercent)) return [];
     return [{
-      key: row.key,
-      label: typeof row.label === "string" && row.label ? row.label : null,
-      group: typeof row.group === "string" && row.group ? row.group : null,
+      key,
+      label: text(row.label),
+      group: text(row.group),
       windowMinutes: positiveOrNull(row.windowMinutes),
       // 夹到 0–100：进度条宽度直接用它，上游给出界的值会把整块布局撑坏
       usedPercent: Math.min(100, Math.max(0, row.usedPercent)),
@@ -245,10 +334,22 @@ function positiveOrNull(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null;
 }
 
-export async function recordVibeCodingReport(report: unknown, receivedAt = Date.now()) {
-  const prepared = normalizePreparedSummary(report, "push");
-  if (!prepared) throw new Error("vibe_coding 必须是 Mac Telemetry Hub v2 聚合摘要");
-  await mirror.put({ payload: prepared, pushedAt: receivedAt });
+export async function recordVibeCodingUsage(report: unknown, receivedAt = Date.now()) {
+  const prepared = normalizeUsage(report);
+  if (!prepared) throw new Error("vibeCodingUsage 必须是 Mac Telemetry Hub 的用量摘要");
+  await usageMirror.put({ payload: prepared, pushedAt: receivedAt });
+}
+
+export async function recordVibeCodingLimits(report: unknown, receivedAt = Date.now()) {
+  const prepared = normalizeLimitsReport(report);
+  if (!prepared) throw new Error("vibeCodingLimits 必须带 agents 数组");
+  await limitsMirror.put({ payload: prepared, pushedAt: receivedAt });
+}
+
+export async function recordVibeCodingSessions(report: unknown, receivedAt = Date.now()) {
+  const prepared = normalizeSessions(report);
+  if (!prepared) throw new Error("vibeCodingSessions 必须带 agents 数组");
+  await sessionsMirror.put({ payload: prepared, pushedAt: receivedAt });
 }
 
 /**
@@ -260,27 +361,82 @@ export async function recordVibeCodingReport(report: unknown, receivedAt = Date.
 export async function getVibeCodingPayload(
   { since }: { since?: number } = {},
 ): Promise<VibeCodingPayload> {
-  // Mac Telemetry Hub 是唯一采集端；没有推送就明确报错，不静默切换数据源。
-  const state = await mirror.get();
-  if (!state) throw new Error("尚未收到 Mac Telemetry Hub 的 CodexBar 推送");
-  const { payload: pushed, pushedAt } = state;
+  const [usageState, limitsState, sessionsState, liveness] = await Promise.all([
+    usageMirror.get(),
+    limitsMirror.get(),
+    sessionsMirror.get(),
+    readLiveness(),
+  ]);
+  // 用量是主干：曲线、总量、模型排行都在它那份里，缺了就没有卡片可言。
+  // 限额和会话状态缺了只是少两块，各自降级，不连累整张卡。
+  if (!usageState) throw new Error("尚未收到 Mac Telemetry Hub 的 CodexBar 推送");
+
+  const limitsById = new Map(
+    (limitsState?.payload.agents ?? []).map((agent) => [agent.id, agent]),
+  );
+  const sessionsById = new Map(
+    (sessionsState?.payload.agents ?? []).map((agent) => [agent.id, agent]),
+  );
 
   // 客户端落后太多、最旧的桶都已经滚出窗口时拼不出连续曲线，只能整份重发
   const oldest = Math.min(
-    ...pushed.agents.map((agent) => agent.activity[0]?.t ?? Number.POSITIVE_INFINITY),
+    ...usageState.payload.agents.map((agent) => agent.activity[0]?.t ?? Number.POSITIVE_INFINITY),
   );
-  const activityPartial =
-    since != null && Number.isFinite(oldest) && since >= oldest;
+  const activityPartial = since != null && Number.isFinite(oldest) && since >= oldest;
 
-  return {
-    ...pushed,
-    agents: pushed.agents.map((agent) => ({
-      ...agent,
+  const agents: VibeCodingAgent[] = usageState.payload.agents.map((agent) => {
+    const limits = limitsById.get(agent.id);
+    const session = sessionsById.get(agent.id);
+    return {
+      id: agent.id,
+      label: agent.id === "claude" ? "Claude Code" : "Codex",
+      models: agent.models,
+      // ccusage 说的是「此刻在用哪个」，取不到才退回用量那份的「最近一个有用量日
+      // 的主力模型」。两个模块各送各的，优先级在这里定，采集端互不知情。
+      currentModel: session?.currentModel ?? agent.currentModel,
+      lastActivityAt: session?.lastActivityAt ?? null,
+      active: session?.active ?? false,
+      topModel: agent.topModel,
       activity: activityPartial
         ? agent.activity.filter((point) => point.t >= since)
         : agent.activity,
-    })),
+      today: agent.today,
+      plan: limits?.plan ?? null,
+      // 没收到限额推送时是空数组加 null：页面据此当成「没配」，整块不渲染。
+      // 「配了但取不到」由上报器送来的 limitsError 表达。
+      limits: limits?.limits ?? [],
+      limitsError: limits?.limitsError ?? null,
+      last30DaysTokens: agent.last30DaysTokens,
+    };
+  });
+
+  const quotaProviders: VibeCodingQuotaProvider[] = QUOTA_PROVIDERS.flatMap(({ id, label }) => {
+    const row = limitsState?.payload.quotaProviders.find((provider) => provider.id === id);
+    return row ? [{ id, label, usedPercent: row.usedPercent, limitsError: row.limitsError }] : [];
+  });
+
+  return {
+    agents,
+    quotaProviders,
+    totals: {
+      ...usageState.payload.totals,
+      sessionCount: sessionsState?.payload.sessionCount ?? 0,
+    },
+    topModels: usageState.payload.topModels,
+    collectedAt: usageState.payload.collectedAt,
+    source: "push",
     activityPartial,
-    stale: Date.now() - pushedAt > PUSH_STALE_MS,
+    /**
+     * 上报器掉线，或者用量那份太久没更新。
+     *
+     * 两者取或，规则见 lib/reporter-liveness 的说明：存活只回答「Mac 在不在」，
+     * 「这张卡的数据够不够新」仍由模块自己判。
+     *
+     * 只看用量那份的推送时刻：它带着 collectedAt，每采一次都算变化，健康时
+     * 10 分钟必发一次。限额和会话状态是没变就不发的，拿它们的时刻当新鲜度会
+     * 把「一天没写代码」误判成「数据过期」。
+     */
+    stale:
+      offlineByLiveness(liveness) || Date.now() - usageState.pushedAt > PUSH_STALE_MS,
   };
 }

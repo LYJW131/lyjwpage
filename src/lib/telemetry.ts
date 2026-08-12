@@ -31,7 +31,11 @@ import type {
   TimezoneActivity,
   TimezonePayload,
 } from "@/lib/types";
-import { recordVibeCodingReport } from "@/lib/vibecoding";
+import {
+  recordVibeCodingLimits,
+  recordVibeCodingSessions,
+  recordVibeCodingUsage,
+} from "@/lib/vibecoding";
 
 /** 与采集端一致；缓存的是很短的内容哈希 URL，64 项也足够覆盖日常应用。 */
 const DESKTOP_ICON_CACHE_LIMIT = 64;
@@ -416,10 +420,31 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
     accepted += 1;
   }
 
-  if ("vibeCoding" in modules) {
-    await recordVibeCodingReport(modules.vibeCoding, receivedAt);
-    // 同上，这张卡也不订阅推送（token 用量是累计的历史事实，不需要被推着翻），
-    // 但缓存里那份该换了
+  /**
+   * Vibe coding 三个模块各收各的。
+   *
+   * 从前只有一个 `vibeCoding`，用量扫描把限额和会话状态一起烤了进去 —— 那个
+   * 十几秒的扫描一失败，刚取到的限额也跟着发不出来。三条独立的分支之后，
+   * 「只更新限额」是能表达的一件事。
+   *
+   * 三份最终拼成同一张首屏卡片，所以任意一份成功写入都要让同一个缓存 tag
+   * 失效。同一信封带多份时重复失效是幂等的；逐份做还能保证后续一份校验失败时，
+   * 前面已经落库的更新不会继续被旧缓存遮住。
+   */
+  if ("vibeCodingUsage" in modules) {
+    await recordVibeCodingUsage(modules.vibeCodingUsage, receivedAt);
+    expireStatus(VIBECODING_TAG);
+    accepted += 1;
+  }
+
+  if ("vibeCodingLimits" in modules) {
+    await recordVibeCodingLimits(modules.vibeCodingLimits, receivedAt);
+    expireStatus(VIBECODING_TAG);
+    accepted += 1;
+  }
+
+  if ("vibeCodingSessions" in modules) {
+    await recordVibeCodingSessions(modules.vibeCodingSessions, receivedAt);
     expireStatus(VIBECODING_TAG);
     accepted += 1;
   }
