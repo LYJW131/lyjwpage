@@ -1,6 +1,6 @@
 import { getStored, lastPushReceivedAt } from "@/lib/charger-store";
 import { CHARGER_STALE_MS } from "@/lib/freshness";
-import { readLiveness, withPresence } from "@/lib/reporter-liveness";
+import { offlineByLiveness, readLiveness, withPresence } from "@/lib/reporter-liveness";
 import type { ChargerPayload, ChargerPort, ChargerStatus } from "@/lib/types";
 
 /**
@@ -90,13 +90,31 @@ export function chargerStaleAfterMs() {
 }
 
 /**
+ * 和 main 同一套收卡口径：上报器离线或充电头自己太久没推，就把 connected
+ * 打成 false。卡片只看这个字段，不在浏览器再算一遍过期。
+ *
+ * 快照里留 Redis 原样的 connected；过期是时间函数，在取数出口现盖
+ * （首页填缓存、API overlay、推送），不要写进 cachedChargerSnapshot。
+ */
+export function withChargerFreshness(
+  payload: ChargerPayload,
+  now = Date.now(),
+): ChargerPayload {
+  const stale =
+    offlineByLiveness(payload) || now - payload.pushedAt > payload.staleAfterMs;
+  return {
+    ...payload,
+    connected: stale ? false : payload.connected,
+  };
+}
+
+/**
  * `since` 是客户端已有的最新采样点时刻，只回传比它更新的部分。
  *
  * 曲线有 400 个点、约 15KB，而前端 5 秒取一次、每次实际只多出一两个点 ——
  * 整份重传的话 99% 是重复数据。
  *
- * 新鲜度字段（pushedAt / lastSeenAt / declaredOffline）是源站盖章，
- * stale 和「过期时把 connected 打成 false」都由浏览器现算。
+ * 快照只盖时间戳、不改 connected。过期收卡见 withChargerFreshness。
  */
 export async function getChargerSnapshot(): Promise<ChargerPayload> {
   const stored = await getStored();
@@ -137,5 +155,5 @@ export function sliceChargerHistory(payload: ChargerPayload, since?: number): Ch
 export async function getChargerPayload(
   { since }: { since?: number } = {},
 ): Promise<ChargerPayload> {
-  return sliceChargerHistory(await getChargerSnapshot(), since);
+  return withChargerFreshness(sliceChargerHistory(await getChargerSnapshot(), since));
 }
