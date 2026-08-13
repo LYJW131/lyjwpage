@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-/* 用 class 策略，不跟随系统 —— 切换零闪烁交给 next-themes 的内联脚本 */
+/* 用 class 策略；系统偏好由 next-themes 写成 .dark / .light，切换零闪烁交给它的内联脚本 */
 @custom-variant dark (&:where(.dark, .dark *));
 
 /* 高分屏上 1px 边框显得粗，可以降到 0.5px */
