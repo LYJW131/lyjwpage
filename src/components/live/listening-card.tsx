@@ -751,16 +751,14 @@ export function ListeningCard({
                 // 每行高 = 容器的 1/N。容器高度是确定的（absolute inset-0），
                 // 百分比轨道就有得算 —— 于是「整数行」「填满」两件事同时由
                 // CSS 保证，不需要 ResizeObserver 去量、也没有写死的行高。
-                "absolute inset-0 grid",
+                "absolute inset-0 grid overflow-y-auto",
                 "recent-tracks",
-                wide ? "is-wide overflow-hidden" : "overflow-y-auto",
+                wide && "is-wide",
                 // 这里刻意不做 scroll-snap。它会和 framer 的 layout 动画打架：
                 // popLayout 把离场元素改成绝对定位，容器高度剧变，吸附目标算飞，
                 // 实测新条目进来时 scrollTop 会被弹到 48 甚至 192 再慢慢滑回。
                 // 整数行是靠「容器高度正好等于行高整数倍」保证的，不需要吸附。
-                // 展开成 4×2 后列表不再是滚动容器：overscroll-contain 会把
-                // 滚轮/触摸吞掉，整页也跟着锁死。只在单列可滚时 contain。
-                !wide && "scroll-smooth overscroll-y-contain",
+                "scroll-smooth overscroll-y-contain",
                 // 关掉滚动锚定：新条目插到顶部时，浏览器会为了「保持视觉位置不动」
                 // 自动把 scrollTop 加一行，结果第一行被顶出可视区，得手动滑回去
                 "[overflow-anchor:none]",

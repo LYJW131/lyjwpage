@@ -318,6 +318,8 @@ button.paper-card {
     grid-template-rows: repeat(4, minmax(0, 1fr));
     grid-auto-rows: auto !important;
     overflow: hidden;
+    /* 盖过单列的 overscroll-contain，不然 4×2 仍是滚动盒，整页滑不动。 */
+    overscroll-behavior: auto;
   }
 
   .recent-tracks.is-wide > :nth-child(n + 9) {
