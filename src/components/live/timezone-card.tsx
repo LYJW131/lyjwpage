@@ -81,7 +81,7 @@ export function TimezoneCard({ fallback }: { fallback: StatusResponse<TimezonePa
       action={usingMac ? "Mac 时区" : "后端时区"}
     >
       <div className="px-4 pb-4 pt-3">
-        <div className="flex min-h-44 flex-col justify-between rounded-md border border-line bg-background/40 p-4">
+        <div className="flex min-h-44 flex-col justify-between">
           <div className="flex min-w-0 items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="text-sm font-medium">
