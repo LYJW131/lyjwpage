@@ -19,8 +19,8 @@ import {
 
 export default async function Home() {
   /**
-   * 八份数据在服务端并行读一遍，结果当各卡片 SWR 的 fallbackData —— 首屏 HTML
-   * 自带数据，不再是「静态壳子 + 挂载后八个请求」。
+   * 八份数据在服务端并行读一遍。七份当各卡片 SWR 的 fallbackData；时区没有
+   * status 端点，只给首屏用。不再是「静态壳子 + 挂载后一串请求」。
    *
    * 每份都是缓存过的（见 lib/status-cache）：整页因此能预渲染成静态壳，
    * 上报进来时按 tag 失效，Redis 从「每访客读一轮」变成「每次上报后读一轮」。

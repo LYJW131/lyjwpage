@@ -111,7 +111,7 @@ export function withChargerFreshness(
 /**
  * `since` 是客户端已有的最新采样点时刻，只回传比它更新的部分。
  *
- * 曲线有 400 个点、约 15KB，而前端 5 秒取一次、每次实际只多出一两个点 ——
+ * 曲线有 400 个点、约 15KB，而前端 30 秒取一次、每次实际只多出一两个点 ——
  * 整份重传的话 99% 是重复数据。
  *
  * 快照只盖时间戳、不改 connected。过期收卡见 withChargerFreshness。

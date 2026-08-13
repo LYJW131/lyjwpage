@@ -1,5 +1,5 @@
 import { site } from "@/lib/site";
-import type { TimezonePayload } from "@/lib/types";
+import type { TimezoneActivity } from "@/lib/types";
 
 export function validTimezone(identifier: string) {
   try {
@@ -64,40 +64,22 @@ export function timezoneOffsetSeconds(now: number, timezone: string) {
 }
 
 /**
- * Mac 上报在线且 IANA 合法时用上报；否则回退 site.timezone。
+ * 有合法的 Mac IANA 就用；没有或无效才回退 site.timezone。
+ * 不看上报器在不在线 —— 时区不是会过期的快照，是一个地点。
  * 访客浏览器时区绝不参与，否则同一页在不同访客眼里会显示不同「本机时间」。
+ *
+ * 缩写和偏移按 `now` 从标识现算，不沿用上报那一刻的值，夏令时才能自己翻。
+ * `now === 0` 是首帧哨兵，不算（1970 年的偏移会和今天不一样）。
  */
-export function resolveTimezoneDisplay(
-  data: TimezonePayload | undefined,
-  error: string | undefined,
-  now: number,
-  stale: boolean,
-) {
-  const reportedTimezone = data?.timezone ?? null;
-  const usingMac = Boolean(
-    !error &&
-      data &&
-      !stale &&
-      reportedTimezone &&
-      validTimezone(reportedTimezone.identifier),
-  );
-
+export function resolveTimezoneDisplay(reported: TimezoneActivity | null | undefined, now: number) {
+  const usingMac = Boolean(reported && validTimezone(reported.identifier));
   const backendTimezone = validTimezone(site.timezone) ? site.timezone : "UTC";
-  const identifier = usingMac ? reportedTimezone!.identifier : backendTimezone;
-
-  if (usingMac) {
-    return {
-      identifier,
-      abbreviation: reportedTimezone!.abbreviation,
-      offsetSeconds: reportedTimezone!.secondsFromGMT,
-      usingMac: true as const,
-    };
-  }
+  const identifier = usingMac ? reported!.identifier : backendTimezone;
 
   return {
     identifier,
     abbreviation: now ? timezoneAbbreviation(now, identifier) : null,
     offsetSeconds: now ? timezoneOffsetSeconds(now, identifier) : null,
-    usingMac: false as const,
+    usingMac,
   };
 }

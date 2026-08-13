@@ -7,27 +7,8 @@ import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { MacBookProIcon } from "@/components/ui/device-icons";
 import { useMountedAt } from "@/hooks/use-mounted-at";
-import { useReporterStale } from "@/hooks/use-stale";
-import { useStatus } from "@/hooks/use-status";
-import { TIMEZONE_PATH } from "@/lib/paths";
-import {
-  formatUTCOffset,
-  resolveTimezoneDisplay,
-} from "@/lib/timezone-display";
+import { formatUTCOffset, resolveTimezoneDisplay } from "@/lib/timezone-display";
 import type { StatusResponse, TimezonePayload } from "@/lib/types";
-
-/**
- * 时区内容变化不单独推送，平时只需慢速轮询。
- *
- * 推送承载的是「状态翻面」—— 换了前台应用、换了曲子、插拔充电头，晚一秒都看得
- * 出来。时区一年变两次，为它单开一路事件、再让断线时 3 秒问一遍，纯属为不会发生
- * 的事情铺路。上报器上下线是例外：整页共用的 presence 事件会让这张卡立即重取
- * declaredOffline；超时那条浏览器拿 lastSeenAt 自己翻，不必等轮询。
- *
- * 正常上下线由整页共用的 presence 事件立即重取；固定轮询只兜实时通道不可用，
- * 以及崩溃、断网这种来不及声明离线的情况。时区内容极少变化，可以给到十分钟。
- */
-const REFRESH_MS = 10 * 60_000;
 
 function part(parts: Intl.DateTimeFormatPart[], type: Intl.DateTimeFormatPartTypes) {
   return parts.find((item) => item.type === type)?.value ?? "00";
@@ -63,13 +44,6 @@ function clockParts(now: number, timezone: string) {
 const TWO_DIGITS = { minimumIntegerDigits: 2, useGrouping: false } as const;
 
 export function TimezoneCard({ fallback }: { fallback: StatusResponse<TimezonePayload> }) {
-  const { data, error } = useStatus<TimezonePayload>(TIMEZONE_PATH, REFRESH_MS, {
-    fallback,
-    // 首屏信封已经带着 Mac 时区和存活结论；挂载时不重复问，presence 事件会
-    // 立即纠正上下线变化，十分钟兜底轮询只用于实时通道不可用的情况。
-    revalidateOnMount: false,
-  });
-  const stale = useReporterStale(data);
   /**
    * 首帧（服务端那一遍和 hydrate 那一遍）now 是 0，钟面和偏移都画占位，
    * 挂载后才开始走 —— 理由见 useMountedAt。
@@ -95,9 +69,9 @@ export function TimezoneCard({ fallback }: { fallback: StatusResponse<TimezonePa
     };
   }, []);
 
-  // Mac 停报 / 报错 / 无效 IANA 时回退 site.timezone；规则见 resolveTimezoneDisplay。
+  // 有合法 Mac IANA 就用，没有才回退 site.timezone。不看上报器在不在线。
   const { identifier: timezone, abbreviation, offsetSeconds, usingMac } =
-    resolveTimezoneDisplay(data, error, now, stale);
+    resolveTimezoneDisplay(fallback.ok ? fallback.data.timezone : null, now);
   const clock = now ? clockParts(now, timezone) : null;
 
   return (

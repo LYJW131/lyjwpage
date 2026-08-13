@@ -10,6 +10,7 @@ import type {
   VibeCodingPlan,
   VibeCodingQuotaProvider,
   VibeCodingQuotaProviderId,
+  VibeCodingSessionsPayload,
   VibeCodingTotals,
 } from "@/lib/types";
 
@@ -349,6 +350,16 @@ export async function recordVibeCodingSessions(report: unknown, receivedAt = Dat
   const prepared = normalizeSessions(report);
   if (!prepared) throw new Error("vibeCodingSessions 必须带 agents 数组");
   await sessionsMirror.put({ payload: prepared, pushedAt: receivedAt });
+}
+
+/** 推给浏览器的会话补丁。用量还没到过也推得出来 —— 它不依赖那份。 */
+export async function getVibeCodingSessionsPayload(): Promise<VibeCodingSessionsPayload | null> {
+  const stored = await sessionsMirror.get();
+  if (!stored) return null;
+  return {
+    agents: stored.payload.agents,
+    sessionCount: stored.payload.sessionCount,
+  };
 }
 
 /**

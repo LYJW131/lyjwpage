@@ -10,7 +10,6 @@
  */
 
 export const DESKTOP_PATH = "/api/status/desktop";
-export const TIMEZONE_PATH = "/api/status/timezone";
 export const CHARGER_PATH = "/api/status/charger";
 export const VIBECODING_PATH = "/api/status/vibecoding";
 

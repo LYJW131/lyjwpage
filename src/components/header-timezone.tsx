@@ -1,27 +1,15 @@
-"use client";
-
-import { useReporterStale } from "@/hooks/use-stale";
-import { useStatus } from "@/hooks/use-status";
-import { TIMEZONE_PATH } from "@/lib/paths";
 import { formatTimezoneRegion, resolveTimezoneDisplay } from "@/lib/timezone-display";
 import type { StatusResponse, TimezonePayload } from "@/lib/types";
-
-/** 存活由 lastSeenAt 在本地翻；这一分钟一轮只把冻在首屏里的 lastSeenAt 换成现读的。 */
-const REFRESH_MS = 60_000;
 
 export function HeaderTimezone({
   fallback,
 }: {
   fallback: StatusResponse<TimezonePayload>;
 }) {
-  const { data, error } = useStatus<TimezonePayload>(TIMEZONE_PATH, REFRESH_MS, {
-    fallback,
-    // TimezoneCard 共用这个 SWR 键且已经信任首屏快照；页头也关掉挂载回源，
-    // 否则先挂载的页头仍会把那次本来省掉的请求重新发出去。
-    revalidateOnMount: false,
-  });
-  const stale = useReporterStale(data);
-  const { identifier } = resolveTimezoneDisplay(data, error, 0, stale);
+  const { identifier } = resolveTimezoneDisplay(
+    fallback.ok ? fallback.data.timezone : null,
+    0,
+  );
 
   return (
     <span

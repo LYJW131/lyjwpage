@@ -8,6 +8,7 @@ import { ClaudeSpinner } from "@/components/live/claude-spinner";
 import { CodexActivityIndicator } from "@/components/live/codex-activity-indicator";
 import { Sparkline } from "@/components/live/sparkline";
 import { Card } from "@/components/ui/card";
+import { useLiveEvents } from "@/hooks/use-live-events";
 import { useMountedAt } from "@/hooks/use-mounted-at";
 import { useReporterStale, useStale } from "@/hooks/use-stale";
 import { incrementalFetcher, useStatus } from "@/hooks/use-status";
@@ -789,8 +790,9 @@ export function VibeCodingCard({
   fallback: StatusResponse<VibeCodingPayload>;
   className?: string;
 }) {
-  // 不订阅实时推送：token 用量是累计的历史事实，Mac 掉线它不会变得不可信，
-  // 只是不再增长，没有理由跟着变灰
+  // 会话状态（正在用 / 换模型）走推送；token 用量仍靠轮询。Mac 掉线不让这张
+  // 卡变灰 —— 用量是累计的历史事实，只是不再增长。
+  useLiveEvents();
   const { data, error, isLoading } = useStatus<VibeCodingPayload>(VIBECODING_PATH, REFRESH_MS, {
     fallback,
     fetcher: fetchVibeCoding,

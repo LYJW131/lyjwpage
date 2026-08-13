@@ -34,6 +34,7 @@ import type {
   TimezonePayload,
 } from "@/lib/types";
 import {
+  getVibeCodingSessionsPayload,
   recordVibeCodingLimits,
   recordVibeCodingSessions,
   recordVibeCodingUsage,
@@ -460,6 +461,7 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
   if (presenceFlipped) await publishPresence();
   if ("desktop" in modules && desktopIconAvailable) await publishDesktop();
   if ("appleMusic" in modules) await publishListening();
+  if ("vibeCodingSessions" in modules) await publishVibeCoding();
 
   return { accepted, heartbeat: true, desktopIconAvailable };
 }
@@ -488,14 +490,10 @@ export async function getDesktopPayload(): Promise<DesktopPayload> {
 }
 
 export async function getTimezonePayload(): Promise<TimezonePayload> {
-  const liveness = await syncForRead();
-  return withPresence(
-    {
-      timezone: telemetryState.activeModules.has("timezone") ? telemetryState.timezone : null,
-      receivedAt: telemetryState.timezoneReceivedAt || liveness.lastSeenAt || null,
-    },
-    liveness,
-  );
+  await syncTelemetryState();
+  return {
+    timezone: telemetryState.activeModules.has("timezone") ? telemetryState.timezone : null,
+  };
 }
 
 async function decorateCandidate(
@@ -561,15 +559,22 @@ export async function getNowListening(): Promise<NowListeningPayload> {
  */
 export async function publishPresence() {
   await publish({ type: "presence", payload: null });
-  // 和浏览器那侧收到 presence 后重取的键是同一份名单（见 use-live-events 的
-  // PRESENCE_PATHS）：Mac 上报器供数的那四份，换上新的 declaredOffline
-  expireStatus(DESKTOP_TAG, TIMEZONE_TAG);
+  // 浏览器那侧收到 presence 后重取的是 PRESENCE_PATHS 那三份（desktop /
+  // listening-now / charger）。时区不看存活，上下线不用刷它的首屏缓存。
+  expireStatus(DESKTOP_TAG);
   expireStatusImmediately(NOW_LISTENING_TAG, CHARGER_TAG);
 }
 
 export async function publishDesktop() {
   await publish({ type: "desktop", payload: await getDesktopPayload() });
   expireStatus(DESKTOP_TAG);
+}
+
+/** 只推会话那四个字段。用量还没到过也推，客户端没整份卡片时丢掉补丁即可。 */
+export async function publishVibeCoding() {
+  const payload = await getVibeCodingSessionsPayload();
+  if (!payload) return;
+  await publish({ type: "vibecoding", payload });
 }
 
 /**

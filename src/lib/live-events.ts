@@ -8,6 +8,7 @@ import type {
   DesktopPayload,
   ListeningPayload,
   NowListeningPayload,
+  VibeCodingSessionsPayload,
 } from "@/lib/types";
 
 /**
@@ -61,6 +62,11 @@ export type LiveEvent =
    */
   | { type: "charger"; payload: ChargerPayload }
   /**
+   * 会话状态变了。只带扫描那四个字段，客户端并进手上已有的整份卡片。
+   * 用量曲线和限额不走这里 —— 那是 10 分钟的事，推它们等于把推送当轮询用。
+   */
+  | { type: "vibecoding"; payload: VibeCodingSessionsPayload }
+  /**
    * 上报器上下线。只发失效通知 —— 亲口离线是布尔值，得把新的
    * declaredOffline 取回来；超时那条浏览器拿手上的 lastSeenAt 自己就能翻。
    *
@@ -81,8 +87,8 @@ export type LiveEvent =
  *
  * 名字和上面的事件名逐字相同，也就和 /api/status/* 的路径同一套：`X` 是列表、
  * `X-now` 是此刻，URL 里的 `/` 在名字里写成 `-`（AGENTS.md 第 2 条，路径常量在
- * lib/paths）。timezone 和 vibecoding 没有对应的推送事件 —— 那两张卡不靠推送
- * 翻面 —— 但按同一条规则取名，不为缓存另起一套。
+ * lib/paths）。timezone 没有 status 端点、也没有推送事件，只给首屏用；
+ * vibecoding 有推送，但只在会话状态变了时发，用量曲线仍靠轮询。
  *
  * 摆在这个文件里，是因为失效和推送是同一个变化的两条腿：一条刷缓存给下一个
  * 访客，一条推给当前访客。名字和触发点挨着，改一条时另一条就在眼前。
