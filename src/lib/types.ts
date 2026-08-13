@@ -143,6 +143,8 @@ export type TimezoneActivity = {
 
 export type TimezonePayload = {
   timezone: TimezoneActivity | null;
+  /** 缓存填充时刻。时间卡首帧用它画钟，页面里不能 Date.now()。 */
+  snapshotAt: number;
 };
 
 /** 实时播放。来源可能是 MacBook 的 Music.app，也可能是 HomePod。 */

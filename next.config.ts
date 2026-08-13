@@ -49,27 +49,28 @@ const nextConfig: NextConfig = {
   allowedDevOrigins: ["test.lyjw.dev"],
   images: {
     /**
-     * 只放行自建歌单封面这一个来源。
+     * 只有「源图比展示格大、源站又缩不了」才放行优化器。
      *
-     * 那些封面是 Apple 直接给的**原图**（实测 274KB PNG，没有 {w}x{h} 尺寸
-     * 参数可填），而页面上那格只有 80px —— 全站唯一一处需要站点这侧缩放的图。
-     * 其余图片一律不走优化器：R2 上的已经是压好的最终尺寸且 immutable，
-     * mzstatic 的公开封面自带尺寸模板，再转一道是纯浪费。
+     * 自建歌单封面：Apple blobstore 上的原图（实测 274KB PNG，没有 {w}x{h}），
+     * 页面上那格只有 80px。host 用通配是因为散在 store-030 ~ store-037。
      *
-     * host 用通配是因为 Apple 把这些图散在 store-030 ~ store-037 好几台上。
+     * GitHub 头像：avatars 给的是整图 JPEG，卡片也是 80px，同样过优化器缩。
      *
-     * pathname 只能写 `/**`：`**` 匹配的是完整路径段，段内通配（写成
-     * `/sq-mq-**` 想框住那批桶）不成立 —— 拿 next 自己的 matchRemotePattern
-     * 对真实地址试过，返回 false，线上表现是「"url" parameter is not allowed」。
+     * 其余一律不走：R2 已经是压好的最终尺寸且 immutable，mzstatic 自带尺寸
+     * 模板，再转一道是纯浪费。
      *
-     * 已知折扣：`search` 也锁不死。预签名地址必须带 X-Amz-* 参数，而按文档
-     * 省略 search 等于放行任意查询串。合起来的风险是别人能拿这条规则转码
-     * 同一批 Apple 存储桶里的图 —— 范围仅限这个 host，可以接受。
+     * pathname 只能写 `/**`：`**` 匹配的是完整路径段，段内通配不成立。
+     * search 省略等于放行任意查询串（预签名必须带 X-Amz-*，头像带 s=）。
      */
     remotePatterns: [
       {
         protocol: "https",
         hostname: "*.blobstore.apple.com",
+        pathname: "/**",
+      },
+      {
+        protocol: "https",
+        hostname: "avatars.githubusercontent.com",
         pathname: "/**",
       },
     ],

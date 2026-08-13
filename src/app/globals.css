@@ -161,6 +161,71 @@ button.paper-card {
   }
 }
 
+/* clock-ui 默认是浅色教学钟。只在这张卡里改成跟主题走，别污染 :root。 */
+.clock-ui-host {
+  --cui-bg-color: transparent;
+  --cui-face-color: transparent;
+  --cui-primary-color: var(--foreground);
+  --cui-accent-color: var(--signal-red);
+  --cui-pin-color: var(--foreground);
+  --cui-tick-color: var(--foreground);
+}
+
+.clock-ui-host .clock-ui {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+}
+
+/*
+ * 库把针和刻度的长度绑在 --cui-width 上，这个数要等 ResizeObserver。
+ * 改成跟表盘走；没有 .is-live 时藏针，避免 --angle 还没写时指到 12 点。
+ */
+.clock-ui-host:not(.is-live) .clock-ui__hand {
+  opacity: 0;
+}
+
+.clock-ui-host .clock-ui__face {
+  container-type: inline-size;
+}
+
+.clock-ui-host .clock-ui--bordered {
+  padding: 3.3%;
+}
+
+.clock-ui-host .clock-ui--bordered .clock-ui__face:before {
+  box-shadow: inset 0.5cqi 0.5cqi 3.3cqi -1.25cqi #000c;
+}
+
+.clock-ui-host .clock-ui__hand {
+  --offset: 5cqi;
+  --height: 2.5cqi;
+}
+
+.clock-ui-host .clock-ui__hand--second {
+  --offset: 10cqi;
+  --height: 0.5cqi;
+}
+
+.clock-ui-host .clock-ui__hand--second:before {
+  --size: 3.3cqi;
+}
+
+.clock-ui-host .clock-ui__center {
+  --size: 1.25cqi;
+}
+
+.clock-ui-host .clock-ui__tick {
+  --width: 0.5cqi;
+  --height: 2cqi;
+  transform: rotate(calc(var(--i) * 6deg)) translateY(-47.619cqi);
+}
+
+.clock-ui-host .clock-ui__tick--major {
+  --width: 1.0101cqi;
+  --height: 3.33333cqi;
+}
+
 /* 单列下用可插值的网格轨道收起充电卡，高度不用猜 max-height；
    gap 同步归零，最近播放和后续卡片才会一起连续上移。 */
 .live-media-pair {
