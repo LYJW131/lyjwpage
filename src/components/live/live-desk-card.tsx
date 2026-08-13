@@ -114,11 +114,16 @@ export function HeaderDesktop({
 
   return (
     <div
-      className={cn("relative h-8 min-w-0 overflow-hidden", className)}
+      className={cn("relative h-8 max-w-[min(20rem,calc(100vw-9rem))] overflow-hidden", className)}
       aria-label={offline ? "Mac 上报器已离线" : `正在使用：${applicationName}`}
       aria-live="polite"
       title={offline ? "Mac 上报器已离线" : applicationName}
     >
+      {/* 内容绝对定位做切换动画，宽度得另开一行量，否则中间栏只剩 1/3 就开始省略。 */}
+      <div className="pointer-events-none invisible flex items-center gap-2" aria-hidden>
+        <span className="size-7 shrink-0" />
+        <span className="min-w-0 truncate text-sm font-medium">{applicationName}</span>
+      </div>
       {!desktop && !offline ? (
         <div className="absolute inset-0 flex min-w-0 items-center justify-center gap-2">
           <span className="flex size-7 shrink-0 items-center justify-center text-xs text-muted-foreground">
