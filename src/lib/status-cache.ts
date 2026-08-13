@@ -36,7 +36,8 @@ import { getVibeCodingSnapshot } from "@/lib/vibecoding";
  * stale 5 分钟 / revalidate 1 分钟 / expire 1 小时。
  *
  * 主力失效手段是 tag。1 分钟兜底留给首屏 HTML：上报器悄无声息死掉不会触发
- * tag，存活窗口 45 秒，首屏那份 lastSeenAt 最多冻一分钟。API 路径会现读存活。
+ * tag，存活窗口默认 90 秒（HEARTBEAT_WINDOW_MS），首屏那份 lastSeenAt 最多冻
+ * 一分钟。API 路径会现读存活。
  *
  * 不能再短：revalidate 为 0 或 expire 短于 5 分钟的缓存会被排除在预渲染之外、
  * 退化成请求时的动态洞，那就等于没缓存。

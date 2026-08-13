@@ -5,8 +5,20 @@
  * （选择本身不进缓存），浏览器翻灰用的也是它。
  */
 
-/** 上报器每 30 秒心跳一次，留出定时器和网络抖动的余量 */
-export const HEARTBEAT_WINDOW_MS = 45_000;
+/**
+ * 上报器每 30 秒心跳一次。窗口默认三倍间隔：漏一条或 ingest 冷启动慢一点
+ * 都不该翻掉线，连续三次没到才算崩溃 / 断网。优雅离开走 declaredOffline，
+ * 不等这个窗口。
+ *
+ * 服务端可用 HEARTBEAT_WINDOW_MS 改；浏览器用 payload 里盖上的那份，
+ * 和充电头的 staleAfterMs 同一套。
+ */
+export const HEARTBEAT_WINDOW_MS = 90_000;
+
+export function heartbeatWindowMs() {
+  const configured = Number(process.env.HEARTBEAT_WINDOW_MS);
+  return Number.isFinite(configured) && configured > 0 ? configured : HEARTBEAT_WINDOW_MS;
+}
 
 /**
  * Apple Music 上报器 60 秒轮一次上游、10 分钟兜底整推一次，

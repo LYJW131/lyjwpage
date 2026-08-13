@@ -6,7 +6,8 @@ import type { ListeningItem, ListeningPayload, NowPlayingGuess } from "@/lib/typ
  * 「最近在听」的落库。
  *
  * 这份列表从前是站点自己去 api.music.apple.com 拉的 —— 全站唯一一路主动回源。
- * 现在由 reporters/apple-music-reporter 推来，站点这侧只剩一次 Redis 读。
+ * 现在由 reporters/apple-music-reporter 推来，站点这侧命中数据缓存就不打 Redis，
+ * 也不再打 Apple。
  *
  * 换掉的理由不只是省调用：判断「此刻在不在听」要靠观测最近播放列表里排第一的
  * 那项**什么时候变成第一的**，而那个观测状态从前存在进程内存里 —— serverless

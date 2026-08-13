@@ -67,11 +67,14 @@ export type NowPlayingGuess = {
  * Mac 上报器的存活。源站盖章，stale 由浏览器用 Date.now() 现算。
  *
  * lastSeenAt 是 ingest 收到时的源站钟，不是设备 observedAt。
+ * 心跳窗口跟 payload 走，别在浏览器再读一份常量 —— 和充电头的 staleAfterMs 一样。
  */
 export type ReporterPresence = {
   lastSeenAt: number;
   /** 上报器亲口声明的离线，只在优雅离开（退出 / 睡眠）时为真 */
   declaredOffline: boolean;
+  /** 超过这么久没心跳就算掉线。源站按 HEARTBEAT_WINDOW_MS 现算，默认 90 秒。 */
+  heartbeatWindowMs: number;
 };
 
 export type ListeningPayload = {

@@ -13,7 +13,8 @@ import { fetchCredentials, push, type Credentials, type ListeningReport } from "
  * 「最近在听」上报器。
  *
  * 站点从前自己去 api.music.apple.com 拉这份列表 —— 全站唯一一路主动回源，
- * 而且每个访客的每一轮轮询都要重走一遍缓存。搬到这里之后站点只剩一次 Redis 读。
+ * 而且每个访客的每一轮轮询都要重走一遍缓存。搬到这里之后站点读自己的
+ * 数据缓存，不再打 Apple。
  *
  * 更要紧的是「此刻在不在听」：Apple 没有可查的「当前播放」接口，只能观测最近
  * 播放列表里排第一的那项**什么时候变成第一的**。这个观测状态在站点里存在进程
