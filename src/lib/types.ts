@@ -131,7 +131,7 @@ export type DesktopPayload = ReporterPresence & {
   receivedAt: number | null;
 };
 
-/** Mac 当前系统时区。只在 timezone 模块启用且上报器在线时展示。 */
+/** Mac 当前系统时区。只在 timezone 模块启用时展示，不看上报器在不在线。 */
 export type TimezoneActivity = {
   /** IANA 时区标识，如 Asia/Singapore */
   identifier: string;
@@ -141,9 +141,8 @@ export type TimezoneActivity = {
   observedAt: number;
 };
 
-export type TimezonePayload = ReporterPresence & {
+export type TimezonePayload = {
   timezone: TimezoneActivity | null;
-  receivedAt: number | null;
 };
 
 /** 实时播放。来源可能是 MacBook 的 Music.app，也可能是 HomePod。 */
@@ -321,6 +320,20 @@ export type VibeCodingTotals = {
   apiEquivalentCostUSD: number;
   activeDays: number;
   /** Claude Code 与 Codex 的历史 session 数合计；不包含 session ID。 */
+  sessionCount: number;
+};
+
+/**
+ * 会话扫描推给浏览器的那一小份。只有这四个会在 60 秒那轮变，
+ * 用量曲线和限额不在这里。
+ */
+export type VibeCodingSessionsPayload = {
+  agents: Array<{
+    id: VibeCodingAgentId;
+    currentModel: string | null;
+    lastActivityAt: string | null;
+    active: boolean;
+  }>;
   sessionCount: number;
 };
 

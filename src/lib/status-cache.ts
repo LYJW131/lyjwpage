@@ -20,11 +20,12 @@ import { getDesktopPayload, getNowListeningSnapshot, getTimezonePayload } from "
 import { getVibeCodingSnapshot } from "@/lib/vibecoding";
 
 /**
- * 首屏那八份数据的缓存层。状态路由除 listening/now 的现选 overlay 外也读这里。
+ * 首屏那八份数据的缓存层。状态路由（时区除外，它只给首屏）除 listening/now
+ * 的现选 overlay 外也读这里。
  *
  * listening/now 的两个候选进缓存；来源选择和 expiresInMs 在路由里现算。
  * Mac 存活（lastSeenAt / declaredOffline）以及充电头的 pushedAt 也在路由里
- * 现盖一层，因为心跳不触发 tag 失效。
+ * 现盖一层，因为心跳不触发 tag 失效。时区不看存活，只在 timezone 模块上报时失效。
  *
  * 一个主题一个缓存条目、一个 tag：充电头插拔只让充电头那份重算，不牵连另外七份。
  *

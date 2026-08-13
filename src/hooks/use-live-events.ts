@@ -7,6 +7,7 @@ import useSWR, { useSWRConfig } from "swr";
 import type { ScopedMutator } from "swr";
 
 import { mergeChargerHistory } from "@/lib/charger-history";
+import { applyVibeCodingSessions } from "@/lib/vibecoding-activity";
 import { LIVE_CHANNEL, liveEndpoint } from "@/lib/live-channel";
 import type { LiveEvent } from "@/lib/live-events";
 import {
@@ -15,10 +16,10 @@ import {
   LISTENING_PATH,
   NOW_LISTENING_PATH,
   NOW_WATCHING_PATH,
-  TIMEZONE_PATH,
+  VIBECODING_PATH,
   WATCHING_PATH,
 } from "@/lib/paths";
-import type { ChargerPayload, StatusResponse } from "@/lib/types";
+import type { ChargerPayload, StatusResponse, VibeCodingSessionsPayload } from "@/lib/types";
 
 /**
  * 事件名 → 写哪个 SWR 缓存键，以及写进去之前要不要先过一道合并。
@@ -31,7 +32,7 @@ import type { ChargerPayload, StatusResponse } from "@/lib/types";
 const FORWARDS: ReadonlyArray<{
   event: LiveEvent["type"];
   path: string;
-  merge?: (data: unknown) => unknown;
+  merge?: (data: unknown) => unknown | null;
 }> = [
   { event: "desktop", path: DESKTOP_PATH },
   { event: "listening-now", path: NOW_LISTENING_PATH },
@@ -56,19 +57,28 @@ const FORWARDS: ReadonlyArray<{
     path: CHARGER_PATH,
     merge: (data) => mergeChargerHistory(data as ChargerPayload),
   },
+  /**
+   * 只带会话四个字段。并进手上已有的整份；还没有整份就丢掉，等轮询。
+   */
+  {
+    event: "vibecoding",
+    path: VIBECODING_PATH,
+    merge: (data) => applyVibeCodingSessions(data as VibeCodingSessionsPayload),
+  },
 ];
 
 /**
  * 上报器上下线时要重取的键。
  *
- * 只有 Mac 上报器供数的那几张卡在列。Emby 正在看不在其中 —— 那条的数据来自
- * Emby 的 webhook 和 NAS 上的推送代理，和 Mac 上报器无关，Mac 睡了不影响你在
- * Emby 上看什么，跟着重取纯属白跑一趟。
+ * 只有 Mac 上报器供数、并且还在轮询的那几张卡在列。时区只吃首屏，没有
+ * status 端点可重取。Emby 正在看不在其中 —— 那条的数据来自 Emby 的 webhook
+ * 和 NAS 上的推送代理，和 Mac 上报器无关，Mac 睡了不影响你在 Emby 上看什么，
+ * 跟着重取纯属白跑一趟。
  *
  * vibe coding 也不在：token 用量是累计的历史事实，Mac 掉线它不会变得不可信，
  * 只是不再增长，没有理由跟着变灰。
  */
-const PRESENCE_PATHS = [DESKTOP_PATH, TIMEZONE_PATH, NOW_LISTENING_PATH, CHARGER_PATH];
+const PRESENCE_PATHS = [DESKTOP_PATH, NOW_LISTENING_PATH, CHARGER_PATH];
 
 /**
  * 不带数据的事件 → 收到后要重取哪几个键。
@@ -183,10 +193,9 @@ function open(mutate: ScopedMutator) {
 
       for (const { event, path, merge } of FORWARDS) {
         channel.bind(event, (payload: unknown) => {
-          const envelope: StatusResponse<unknown> = {
-            ok: true,
-            data: merge ? merge(payload) : payload,
-          };
+          const data = merge ? merge(payload) : payload;
+          if (data == null) return;
+          const envelope: StatusResponse<unknown> = { ok: true, data };
           void mutate(path, envelope, { revalidate: false });
         });
       }

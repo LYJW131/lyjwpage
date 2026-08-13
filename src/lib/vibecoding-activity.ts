@@ -1,5 +1,5 @@
 import { VIBECODING_ACTIVITY_LIMIT } from "@/lib/limits";
-import type { VibeCodingAgent, VibeCodingPayload } from "@/lib/types";
+import type { VibeCodingAgent, VibeCodingPayload, VibeCodingSessionsPayload } from "@/lib/types";
 
 /**
  * vibe coding 活动曲线的客户端累加器。
@@ -10,9 +10,12 @@ import type { VibeCodingAgent, VibeCodingPayload } from "@/lib/types";
  * 能在模块作用域构造出来、天然是稳定引用，不用每个卡片自己 useCallback。
  *
  * 整个页面只有一张 vibe coding 卡，单例不会串。
+ *
+ * `latest` 是为会话推送留的：那条只带四个字段，得并进手上已有的整份。
  */
 
 const activity = new Map<string, VibeCodingAgent["activity"]>();
+let latest: VibeCodingPayload | null = null;
 
 /**
  * 下次增量拉取的游标。
@@ -35,6 +38,7 @@ export function seedVibeCodingActivity(payload: VibeCodingPayload): void {
   for (const agent of payload.agents) {
     activity.set(agent.id, agent.activity.slice(-VIBECODING_ACTIVITY_LIMIT));
   }
+  latest = payload;
 }
 
 /**
@@ -62,5 +66,32 @@ export function mergeVibeCodingActivity(payload: VibeCodingPayload): VibeCodingP
     activity.set(agent.id, next);
     return { ...agent, activity: next };
   });
-  return { ...payload, agents };
+  latest = { ...payload, agents };
+  return latest;
+}
+
+/**
+ * 把会话补丁盖进手上的整份。还没有整份（首屏没种上）就返回 null，
+ * 调用方别把空卡片写进 SWR。
+ */
+export function applyVibeCodingSessions(
+  patch: VibeCodingSessionsPayload,
+): VibeCodingPayload | null {
+  if (!latest) return null;
+  const byId = new Map(patch.agents.map((row) => [row.id, row]));
+  latest = {
+    ...latest,
+    agents: latest.agents.map((agent) => {
+      const session = byId.get(agent.id);
+      if (!session) return agent;
+      return {
+        ...agent,
+        currentModel: session.currentModel ?? agent.currentModel,
+        lastActivityAt: session.lastActivityAt,
+        active: session.active,
+      };
+    }),
+    totals: { ...latest.totals, sessionCount: patch.sessionCount },
+  };
+  return latest;
 }
