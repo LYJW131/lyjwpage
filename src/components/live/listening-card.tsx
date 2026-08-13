@@ -9,6 +9,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type MouseEvent,
   type ReactNode,
 } from "react";
 
@@ -419,6 +420,16 @@ function useRowSnap(topKey: string | undefined, wide: boolean) {
   }, []);
 }
 
+/** 移动端遮罩挡住封面以右，点击仍要落到下面的链接上。 */
+function passClickThrough(event: MouseEvent<HTMLDivElement>) {
+  const overlay = event.currentTarget;
+  overlay.style.pointerEvents = "none";
+  const under = document.elementFromPoint(event.clientX, event.clientY);
+  overlay.style.pointerEvents = "";
+  const link = under?.closest("a");
+  if (link instanceof HTMLAnchorElement) link.click();
+}
+
 /** 有链接就整块可点，没有就退化成普通容器 */
 function HeroWrapper({
   link,
@@ -782,6 +793,16 @@ export function ListeningCard({
                 ))
               ) : null}
             </div>
+            {/*
+              歌名那一侧盖一层，把滑动交给页面。Safari 上 overflow 容器一旦
+              pointer-events:none，连点到 pointer-events:auto 的子项也划不动，
+              所以滚动容器本身必须能接收触摸，改用遮罩挡住封面以右。
+            */}
+            <div
+              className="recent-tracks-page-pan"
+              aria-hidden
+              onClick={passClickThrough}
+            />
           </div>
         </div>
       </div>

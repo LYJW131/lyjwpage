@@ -187,6 +187,19 @@ button.paper-card {
   grid-template-rows: 0fr;
 }
 
+/*
+ * 移动端列表只在封面附近滑动：遮罩盖住封面以右，触摸落在遮罩上时
+ * 最近的可滚祖先是页面，而不是 overflow 列表。
+ *
+ * 不能把 pointer-events:none 写在滚动容器上 —— Safari 里那样整块都划不动。
+ */
+.recent-tracks-page-pan {
+  position: absolute;
+  inset: 0 0 0 3.5rem;
+  z-index: 1;
+  touch-action: pan-y;
+}
+
 /* 双列下保留充电卡的轨道撑住原高；最近播放始终贴着右边，直接插值 left。
    这样每一帧都是真实宽度，不会用 scaleX 压缩整张卡，文字也就不会在结尾跳动。 */
 @media (min-width: 48rem) {
@@ -227,10 +240,13 @@ button.paper-card {
   .recent-tracks.is-wide > :nth-child(n + 9) {
     display: none;
   }
+
+  .recent-tracks-page-pan {
+    display: none;
+  }
 }
 
-/**
- * 横贯视口的分隔线：内容保持居中，线延伸到屏幕两端。
+/* 横贯视口的分隔线：内容保持居中，线延伸到屏幕两端。
  * 这条线是整套「制图感」的来源。
  */
 @utility screen-line-top {
