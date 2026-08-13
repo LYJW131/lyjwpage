@@ -10,7 +10,7 @@ export function validTimezone(identifier: string) {
   }
 }
 
-/** Header 用：保留 IANA 前缀，城市段把 `_` 换成空格，如 Asia/Shanghai、America/New York。 */
+/** 保留 IANA 前缀，城市段把 `_` 换成空格，如 Asia/Shanghai、America/New York。 */
 export function formatTimezoneRegion(identifier: string) {
   const slash = identifier.indexOf("/");
   if (slash === -1) return identifier;

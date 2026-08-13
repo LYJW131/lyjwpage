@@ -1,26 +1,24 @@
-import { HeaderTimezone } from "@/components/header-timezone";
 import { HeaderDesktop } from "@/components/live/live-desk-card";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { site } from "@/lib/site";
-import type { DesktopPayload, StatusResponse, TimezonePayload } from "@/lib/types";
+import type { DesktopPayload, StatusResponse } from "@/lib/types";
 
-export function Header({
-  desktop,
-  timezone,
-}: {
-  desktop: StatusResponse<DesktopPayload>;
-  timezone: StatusResponse<TimezonePayload>;
-}) {
+export function Header({ desktop }: { desktop: StatusResponse<DesktopPayload> }) {
   return (
     <header id="top" className="sticky top-0 z-50 bg-background/95 backdrop-blur-sm">
       <div className="mx-auto w-[calc(100%-2rem)] max-w-5xl py-3 sm:py-4">
-        <div className="flex min-h-10 items-center gap-3">
-          <a href="#top" className="shrink-0 text-sm font-bold tracking-tight">
-            {site.name}
+        <div className="grid min-h-10 grid-cols-3 items-center gap-3">
+          <a
+            href="#top"
+            className="min-w-0 justify-self-start truncate text-sm font-bold tracking-tight"
+          >
+            <span className="sm:hidden">{site.shortName}</span>
+            <span className="hidden sm:inline">{site.name}</span>
           </a>
-          <HeaderDesktop fallback={desktop} className="flex-1" />
-          <HeaderTimezone fallback={timezone} />
-          <ThemeToggle />
+          <HeaderDesktop fallback={desktop} className="min-w-0" />
+          <div className="justify-self-end">
+            <ThemeToggle />
+          </div>
         </div>
       </div>
     </header>

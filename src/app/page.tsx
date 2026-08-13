@@ -40,7 +40,7 @@ export default async function Home() {
 
   return (
     <>
-      <Header desktop={desktop} timezone={timezone} />
+      <Header desktop={desktop} />
 
       <main className="flex-1">
         <div className="mx-auto my-5 w-[calc(100%-2rem)] max-w-5xl sm:my-6">

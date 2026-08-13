@@ -8,6 +8,8 @@
 export const site = {
   /** 用于 header 和 <head> metadata */
   name: "LYJW's Homepage",
+  /** 窄屏页头只留这四个字母 */
+  shortName: "LYJW",
   url: "https://lyjw.me",
   description: "实时展示设备、应用、音乐、影视与 AI 编程状态的个人主页。",
   /** 页脚的 commit 链接拼在它后面 */
