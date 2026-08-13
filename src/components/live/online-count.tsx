@@ -85,11 +85,10 @@ function SourceHint({ connected }: { connected: boolean }) {
         <span className="absolute bottom-full left-1/2 z-50 mb-2 w-64 -translate-x-1/2 rounded-lg border border-line bg-surface p-3">
           <span className="label-mono block text-foreground">数据来源</span>
           <span className="mt-2 block text-xs normal-case leading-relaxed text-muted-foreground">
-            复用卡片那条 Pusher 长连接：订阅 <code>live</code> 频道，服务端推{" "}
-            <code>subscription_count</code>。按标签页计数。
+            复用实时推送的 Pusher 长连接：订阅 <code>live</code> 频道，按标签页计数。
           </span>
           <span className="mt-3 flex items-center justify-between border-t border-line pt-2.5">
-            <span className="label-mono text-muted-foreground">连接</span>
+            <span className="label-mono text-muted-foreground">WebSocket</span>
             <span className="label-mono flex items-center gap-1.5 text-foreground">
               <StatusDot tone={connected ? "live" : "off"} />
               {connected ? "已连接" : "已断开"}

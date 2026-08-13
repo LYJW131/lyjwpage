@@ -10,9 +10,7 @@ import { Sparkline } from "@/components/live/sparkline";
 import { Card } from "@/components/ui/card";
 import { useLiveEvents } from "@/hooks/use-live-events";
 import { useMountedAt } from "@/hooks/use-mounted-at";
-import { useReporterStale, useStale } from "@/hooks/use-stale";
 import { incrementalFetcher, useStatus } from "@/hooks/use-status";
-import { VIBECODING_STALE_MS } from "@/lib/freshness";
 import { VIBECODING_PATH } from "@/lib/paths";
 import {
   activityCursor,
@@ -560,13 +558,7 @@ function LimitMeter({ limit }: { limit: VibeCodingLimit }) {
   );
 }
 
-function AgentPanel({
-  agent,
-  stale,
-}: {
-  agent: VibeCodingAgent;
-  stale: boolean;
-}) {
+function AgentPanel({ agent }: { agent: VibeCodingAgent }) {
   const samples = agent.activity.map((sample) => ({
     t: sample.t,
     w: sample.tokens,
@@ -581,7 +573,7 @@ function AgentPanel({
   const cacheHitRate = promptTokens
     ? (agent.today.cacheReadTokens / promptTokens) * 100
     : 0;
-  const active = agent.active && !stale;
+  const active = agent.active;
   // 正在使用时显示 ccusage 最近 session 的模型；闲置时仍显示 CodexBar 的历史主力。
   const displayModel =
     (active ? agent.currentModel : agent.topModel ?? agent.currentModel) ?? "暂无模型";
@@ -591,9 +583,9 @@ function AgentPanel({
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           {agent.id === "claude" ? (
-            <ClaudeSpinner active={active} stale={stale} />
+            <ClaudeSpinner active={active} />
           ) : (
-            <CodexActivityIndicator active={active} stale={stale} />
+            <CodexActivityIndicator active={active} />
           )}
           <span className="text-sm font-medium">{agent.label}</span>
           {active && <span className="label-mono text-live">正在使用</span>}
@@ -790,44 +782,28 @@ export function VibeCodingCard({
   fallback: StatusResponse<VibeCodingPayload>;
   className?: string;
 }) {
-  // 会话状态（正在用 / 换模型）走推送；token 用量仍靠轮询。Mac 掉线不让这张
-  // 卡变灰 —— 用量是累计的历史事实，只是不再增长。
+  // 会话状态（正在用 / 换模型）走推送；token 用量仍靠轮询。
+  // 这张卡不当实时源：不点灯、不因 Mac 掉线变灰，用量是累计事实。
   useLiveEvents();
-  const { data, error, isLoading } = useStatus<VibeCodingPayload>(VIBECODING_PATH, REFRESH_MS, {
+  const { data } = useStatus<VibeCodingPayload>(VIBECODING_PATH, REFRESH_MS, {
     fallback,
     fetcher: fetchVibeCoding,
     seedFallback: seedVibeCodingActivity,
   });
-  const reporterStale = useReporterStale(data);
-  const usageStale = useStale(data?.pushedAt, VIBECODING_STALE_MS);
-  const stale = Boolean(error || reporterStale || usageStale);
 
   return (
     <Card
       id="vibe-coding"
       label="Vibe Coding"
-      tone={stale ? "off" : data ? "live" : "idle"}
-      action={
-        error
-          ? "CodexBar 离线"
-          : isLoading && !data
-            ? "读取中"
-            : data
-              ? `CodexBar · ${data.source === "local" ? "本机" : "推送"}`
-              : "CodexBar"
-      }
-      className={cn("md:col-span-2", stale && "opacity-70", className)}
+      action="MacBook Pro"
+      className={cn("md:col-span-2", className)}
     >
       {data ? (
         <>
           <TotalUsage totals={data.totals} topModels={data.topModels} />
           <div className="grid grid-cols-1 divide-y divide-line md:grid-cols-2 md:divide-x md:divide-y-0">
             {data.agents.map((agent) => (
-              <AgentPanel
-                key={agent.id}
-                agent={agent}
-                stale={stale}
-              />
+              <AgentPanel key={agent.id} agent={agent} />
             ))}
           </div>
           <QuotaProviders providers={data.quotaProviders} />
