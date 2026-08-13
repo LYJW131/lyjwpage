@@ -4,7 +4,7 @@ import { getChargerPayload, normalizeRawStatus, type RawStatus } from "@/lib/ank
 import { recordPushHeartbeat, recordStatus } from "@/lib/charger-store";
 import { resolveTrackLookup } from "@/lib/apple-music";
 import { putAppleMusicCredentials } from "@/lib/apple-music-credentials";
-import { getHomePodNowPlaying } from "@/lib/homepod-store";
+import { getHomePodSnapshot } from "@/lib/homepod-store";
 import { ASSET_URL_PREFIX, hasStoredImage, IMAGE_OBJECT_KEY } from "@/lib/r2-assets";
 import { number, object, text } from "@/lib/json";
 import {
@@ -17,9 +17,9 @@ import {
   TIMEZONE_TAG,
   VIBECODING_TAG,
 } from "@/lib/live-events";
+import { pickNowListening, type NowListeningCandidate, type NowListeningSnapshot } from "@/lib/now-listening";
 import { mirrorKey } from "@/lib/redis";
 import {
-  offlineByLiveness,
   readLiveness,
   recordReporterBeat,
   withPresence,
@@ -41,14 +41,6 @@ import {
 
 /** 与采集端一致；缓存的是很短的内容哈希 URL，64 项也足够覆盖日常应用。 */
 const DESKTOP_ICON_CACHE_LIMIT = 64;
-
-/**
- * 暂停超过 10 秒就不再占用音乐 Hero，让下一个实时来源接管。
- *
- * 这条规则只在这里实现。浏览器不重算它，只按 payload 里的 expiresInMs
- * 把下一次取数排在到期那一刻，见 getNowListening。
- */
-const MUSIC_PAUSE_GRACE_MS = 10_000;
 
 type TelemetryState = {
   desktop: DesktopActivity | null;
@@ -506,29 +498,12 @@ export async function getTimezonePayload(): Promise<TimezonePayload> {
   );
 }
 
-export async function getNowListening(): Promise<NowListeningPayload> {
-  const liveness = await syncForRead();
-  const telemetryStale = offlineByLiveness(liveness);
-  const musicEnabled = telemetryState.activeModules.has("appleMusic");
-  const macMusic = musicEnabled && !telemetryStale ? telemetryState.music : null;
-  const homePod = await getHomePodNowPlaying();
-  const homePodMusic = homePod?.music ?? null;
-  const now = Date.now();
-  const macPausedFresh =
-    macMusic?.state === "paused" &&
-    now - macMusic.observedAt < MUSIC_PAUSE_GRACE_MS;
-  const homePodPausedFresh =
-    homePodMusic?.state === "paused" &&
-    now - homePodMusic.observedAt < MUSIC_PAUSE_GRACE_MS;
-  const music =
-    (macMusic?.state === "playing" ? macMusic : null) ??
-    (macPausedFresh ? macMusic : null) ??
-    (homePodMusic?.state === "playing" ? homePodMusic : null) ??
-    (homePodPausedFresh ? homePodMusic : null);
-  // 命中会长期缓存，绝大多数调用不会真的打上游
-  const lookup = music ? await resolveTrackLookup(music) : null;
-  const link = lookup?.link ?? null;
-
+async function decorateCandidate(
+  music: LocalNowPlaying | null,
+  receivedAt: number,
+): Promise<NowListeningCandidate | null> {
+  if (!music || music.state === "stopped" || !music.title) return null;
+  const lookup = await resolveTrackLookup(music);
   return {
     /**
      * 封面优先用目录查出来的那张。
@@ -537,33 +512,44 @@ export async function getNowListening(): Promise<NowListeningPayload> {
      * 而采集端为此要把 JPEG 二进制压进每个换歌的上报包里，是那个模块最大的一块。
      * 目录里没有的曲子（本地导入、非目录内容）查不到封面，那时仍退回采集端送来的那张。
      */
-    music: music && lookup?.artwork ? { ...music, artworkUrl: lookup.artwork } : music,
-    receivedAt: Math.max(
-      telemetryState.activityReceivedAt || liveness.lastSeenAt || 0,
-      homePod?.receivedAt ?? 0,
-    ) || null,
-    // 没东西可显示，而不是「数据过期」—— 没在听歌时这就是常态
-    idle: !music,
-    id: lookup?.id ?? null,
-    link,
-    /**
-     * 这份选择还能成立多久。
-     *
-     * 全站只有暂停宽限期这一条规则「不靠新上报、光靠时间流逝就会改变结果」：
-     * 暂停满 MUSIC_PAUSE_GRACE_MS 之后来源要让给下一个实时源，而那个时刻本身
-     * 不对应任何一次上报，没有推送会到。所以由服务端把还剩多少毫秒告诉浏览器，
-     * 浏览器到点重新问一次就行。
-     *
-     * 为什么不让浏览器拿 observedAt 自己算：那是**设备**的时钟，浏览器再拿
-     * **自己**的时钟去减，是一次跨两个时钟的比较。偏差大到超过宽限期时，浏览器
-     * 会算出「早就过期了」而服务端仍然认为没过期，于是一直重问 —— 变成热轮询。
-     * 服务端用同一个时钟算差值，把结果发出来，这个坑就不存在。
-     */
-    expiresInMs:
-      music?.state === "paused"
-        ? Math.max(0, MUSIC_PAUSE_GRACE_MS - (now - music.observedAt))
-        : null,
+    music: lookup.artwork ? { ...music, artworkUrl: lookup.artwork } : music,
+    receivedAt,
+    id: lookup.id,
+    link: lookup.link || null,
   };
+}
+
+/**
+ * 两个候选从 Redis 读出并查好目录链接。不选 Hero、不看存活。
+ *
+ * 换歌 / HA 推送才变，所以能进 `'use cache'`。暂停宽限期和 HomePod 静默在
+ * pickNowListening 里现算。
+ */
+export async function getNowListeningSnapshot(): Promise<NowListeningSnapshot> {
+  await syncTelemetryState();
+  const musicEnabled = telemetryState.activeModules.has("appleMusic");
+  const homePodStored = await getHomePodSnapshot();
+  const [mac, homePod] = await Promise.all([
+    musicEnabled
+      ? decorateCandidate(telemetryState.music, telemetryState.activityReceivedAt)
+      : null,
+    homePodStored
+      ? decorateCandidate(homePodStored.music, homePodStored.receivedAt)
+      : null,
+  ]);
+  return {
+    mac,
+    homePod,
+    macReceivedAt: telemetryState.activityReceivedAt,
+  };
+}
+
+export async function getNowListening(): Promise<NowListeningPayload> {
+  const [snapshot, liveness] = await Promise.all([
+    getNowListeningSnapshot(),
+    readLiveness(),
+  ]);
+  return pickNowListening(snapshot, liveness);
 }
 
 /**

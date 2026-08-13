@@ -42,9 +42,8 @@ const nextConfig: NextConfig = {
    * 段配置一律不能再导出，写了就是构建期报错 —— 官方迁移文档只写了前三个和
    * `runtime = "edge"`，但 `runtime = "nodejs"`（默认值）照样被拒。全站的渲染
    * 意图改由 `use cache` 和 `<Suspense>` 表达：取数缓存见 lib/status-cache，
-   * 失效点见 lib/live-events 的 expireStatus，状态路由除 listening/now 外
-   * 也读 lib/status-cache；listening/now 仍靠 lib/api 里 statusRoute 的
-   * connection() 现算。
+   * 失效点见 lib/live-events 的 expireStatus，状态路由读 lib/status-cache；
+   * listening/now 缓存两个候选，来源选择和 expiresInMs 在路由里现算。
    */
   cacheComponents: true,
   allowedDevOrigins: ["test.lyjw.dev"],

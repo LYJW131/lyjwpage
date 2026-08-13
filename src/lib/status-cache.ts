@@ -14,15 +14,17 @@ import {
   VIBECODING_TAG,
   WATCHING_TAG,
 } from "@/lib/live-events";
-import { getDesktopPayload, getNowListening, getTimezonePayload } from "@/lib/telemetry";
+import { pickNowListening } from "@/lib/now-listening";
+import { readLiveness } from "@/lib/reporter-liveness";
+import { getDesktopPayload, getNowListeningSnapshot, getTimezonePayload } from "@/lib/telemetry";
 import { getVibeCodingSnapshot } from "@/lib/vibecoding";
 
 /**
- * 首屏那八份数据的缓存层。状态路由除 listening/now 外也读这里。
+ * 首屏那八份数据的缓存层。状态路由除 listening/now 的现选 overlay 外也读这里。
  *
- * listening/now 仍走现算：来源选择和 expiresInMs 是时间函数，不能冻。
- * 其余七条的快照进缓存；Mac 存活（lastSeenAt / declaredOffline）以及充电头
- * 的 pushedAt 在路由里现盖一层，因为心跳不触发 tag 失效。
+ * listening/now 的两个候选进缓存；来源选择和 expiresInMs 在路由里现算。
+ * Mac 存活（lastSeenAt / declaredOffline）以及充电头的 pushedAt 也在路由里
+ * 现盖一层，因为心跳不触发 tag 失效。
  *
  * 一个主题一个缓存条目、一个 tag：充电头插拔只让充电头那份重算，不牵连另外七份。
  *
@@ -106,11 +108,24 @@ export async function cachedListening() {
   return statusEnvelope(getRecentlyPlayed);
 }
 
+/** 状态端点用的两个候选。和首屏那份同 tag，换歌时一起失效。 */
+export async function cachedNowListeningSnapshot() {
+  "use cache";
+  cacheLife(STATUS_LIFE);
+  cacheTag(NOW_LISTENING_TAG);
+  return statusEnvelope(getNowListeningSnapshot);
+}
+
 export async function cachedNowListening() {
   "use cache";
   cacheLife(STATUS_LIFE);
   cacheTag(NOW_LISTENING_TAG);
-  return statusEnvelope(getNowListening);
+  // 首屏冻住选好的 Hero，避免 LCP 闪。挂载后 SWR 打 listening/now 现选。
+  const envelope = await cachedNowListeningSnapshot();
+  if (!envelope.ok) return envelope;
+  return statusEnvelope(async () =>
+    pickNowListening(envelope.data, await readLiveness()),
+  );
 }
 
 /** 条数用 getWatching 自己的默认值，理由同 /api/status/watching：别在两处各写一遍 */
