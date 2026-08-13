@@ -56,8 +56,9 @@ function statusJson<T>(envelope: StatusResponse<T>): NextResponse<StatusResponse
 }
 
 /**
- * 活路径：每次进函数。listening/now 的来源选择和 expiresInMs 是时间函数，
- * 必须走这条。其余七条走 statusCachedRoute。
+ * 活路径：每次进函数。目前没有路由走整段现算；listening/now 的候选走
+ * `'use cache'`，来源选择和 expiresInMs 在缓存外现算。connection() 现算的
+ * 写法还留着，以免以后又有不能冻的整段取数。
  *
  * cacheComponents 下没有 force-dynamic 可写了，「每次请求都得跑一遍」只能由
  * connection() 明说。少了它 Next 会试着在构建期把这些 GET 预渲染成静态响应，
@@ -79,8 +80,15 @@ export async function statusRoute<T>(
  */
 export async function statusCachedRoute<T>(
   load: () => Promise<StatusResponse<T>>,
-  overlay?: (data: T) => Promise<T> | T,
-): Promise<NextResponse<StatusResponse<T>>> {
+): Promise<NextResponse<StatusResponse<T>>>;
+export async function statusCachedRoute<T, U>(
+  load: () => Promise<StatusResponse<T>>,
+  overlay: (data: T) => Promise<U> | U,
+): Promise<NextResponse<StatusResponse<U>>>;
+export async function statusCachedRoute<T, U>(
+  load: () => Promise<StatusResponse<T>>,
+  overlay?: (data: T) => Promise<U> | U,
+): Promise<NextResponse<StatusResponse<T | U>>> {
   await connection();
   const envelope = await load();
   if (!envelope.ok || !overlay) return statusJson(envelope);

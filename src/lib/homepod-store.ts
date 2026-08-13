@@ -180,23 +180,34 @@ export async function recordHomePodEvent(input: unknown, receivedAt = Date.now()
   return stored;
 }
 
-export async function getHomePodNowPlaying(now = Date.now()) {
+/**
+ * HomePod 上一份还在放的快照。停了或没标题就不给。
+ *
+ * 静默、放完由调用方按 receivedAt 现算（homePodVisibleAt），这里不按墙上的钟
+ * 过滤 —— 过滤了就没法把 Redis 那份冻进缓存。
+ */
+export async function getHomePodSnapshot() {
   const stored = await mirror.get();
   if (!stored || stored.music.state === "stopped" || !stored.music.title) return null;
-
-  const { music } = stored;
-
-  if (music.repeatOne) {
-    // 循环时「该放完了」不成立，只看静默多久
-    if (now - stored.receivedAt > REPEAT_SILENCE_GRACE_MS) return null;
-  } else if (music.durationMs > 0) {
-    // 预期 HA 最迟在这首放完时会推下一条；超过之后再宽限一段，还没动静才作废。
-    // 进度本身不作为判据 —— 前端展示时会回绕或 clamp，不会显示成超过 100%。
-    const remaining = Math.max(0, music.durationMs - music.positionMs);
-    if (now > stored.receivedAt + remaining + SILENCE_GRACE_MS) return null;
-  } else if (now - stored.receivedAt > UNKNOWN_DURATION_STALE_MS) {
-    return null;
-  }
-
   return stored;
 }
+
+/**
+ * 这份 HomePod 快照在 `now` 这一刻还算不算活的。
+ *
+ * Home Assistant 按状态变化推，不是每秒推。放完到下一条送达之间进度会超过
+ * 时长，那是「还没收到下一首」，不是数据不可信。
+ */
+export function homePodVisibleAt(
+  stored: { music: LocalNowPlaying; receivedAt: number },
+  now: number,
+) {
+  const { music, receivedAt } = stored;
+  if (music.repeatOne) return now - receivedAt <= REPEAT_SILENCE_GRACE_MS;
+  if (music.durationMs > 0) {
+    const remaining = Math.max(0, music.durationMs - music.positionMs);
+    return now <= receivedAt + remaining + SILENCE_GRACE_MS;
+  }
+  return now - receivedAt <= UNKNOWN_DURATION_STALE_MS;
+}
+
