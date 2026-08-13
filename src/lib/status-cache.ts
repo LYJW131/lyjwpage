@@ -1,6 +1,6 @@
 import { cacheLife, cacheTag } from "next/cache";
 
-import { getChargerSnapshot } from "@/lib/anker";
+import { getChargerSnapshot, withChargerFreshness } from "@/lib/anker";
 import { statusEnvelope } from "@/lib/api";
 import { getRecentlyPlayed } from "@/lib/apple-music-store";
 import { getNowWatching, getWatching } from "@/lib/emby";
@@ -48,7 +48,7 @@ const CHARGER_FALLBACK_WINDOW_MS = 20 * 60_000;
  * 增量同步，这里只缩小 RSC/HTML 里的首屏投影。
  */
 async function getChargerFallback() {
-  const payload = await getChargerSnapshot();
+  const payload = withChargerFreshness(await getChargerSnapshot());
   const { history } = payload;
   if (history.length < 2) return payload;
 
