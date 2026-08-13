@@ -161,6 +161,22 @@ button.paper-card {
   }
 }
 
+/*
+ * Safari 把未注册的自定义属性当成 token，calc(var(--angle) - 90) 整段失效，
+ * 针就停在默认方向或干脆不画。Chrome 会按数字算。
+ */
+@property --angle {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+
+@property --i {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 0;
+}
+
 /* clock-ui 默认是浅色教学钟。只在这张卡里改成跟主题走，别污染 :root。 */
 .clock-ui-host {
   --cui-bg-color: transparent;
@@ -185,8 +201,15 @@ button.paper-card {
   opacity: 0;
 }
 
+/*
+ * 库用 padding-bottom: 100% 撑方盘。Safari 对这种盒子建不成 inline 容器，
+ * cqi 变成 0，针和刻度都没尺寸；脸又是透明的，整只钟消失。
+ * 外框已经是方的，脸用实高即可。
+ */
 .clock-ui-host .clock-ui__face {
   container-type: inline-size;
+  height: 100%;
+  padding-bottom: 0;
 }
 
 .clock-ui-host .clock-ui--bordered {

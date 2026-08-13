@@ -1,7 +1,7 @@
 "use client";
 
 import NumberFlow, { NumberFlowGroup } from "@number-flow/react";
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
 import "@clock-ui/react/base.css";
 
@@ -143,10 +143,7 @@ function AnalogClock({
   }, [live, timezone]);
 
   return (
-    <div
-      aria-hidden
-      className="clock-ui-host is-live relative z-0 aspect-square h-auto shrink-0 self-stretch"
-    >
+    <ClockShell live>
       <div className="clock-ui clock-ui--bordered">
         <div className="clock-ui__face">
           {MAJOR_TICKS.map((tick) => (
@@ -174,6 +171,28 @@ function AnalogClock({
           <div className="clock-ui__center" />
         </div>
       </div>
+    </ClockShell>
+  );
+}
+
+/**
+ * 宽高写死。Safari 对 stretch + aspect-ratio / h-full 会把方盘按剩余行宽放大，
+ * 圆心被挤出卡片，只剩左侧一条边。
+ * size-36 对齐这张卡 min-h-44 扣掉 py-4 后的内容盒。
+ */
+function ClockShell({
+  live = false,
+  children,
+}: {
+  live?: boolean;
+  children?: ReactNode;
+}) {
+  return (
+    <div
+      aria-hidden
+      className={`clock-ui-host relative z-0 size-36 shrink-0${live ? " is-live" : ""}`}
+    >
+      {children}
     </div>
   );
 }
@@ -281,10 +300,7 @@ export function TimezoneCard({
             live={Boolean(mountedAt || ticked)}
           />
         ) : (
-          <div
-            aria-hidden
-            className="clock-ui-host relative z-0 aspect-square h-auto shrink-0 self-stretch"
-          />
+          <ClockShell />
         )}
       </div>
     </Card>
