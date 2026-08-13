@@ -1,6 +1,6 @@
 import { cacheLife, cacheTag } from "next/cache";
 
-import { getChargerPayload } from "@/lib/anker";
+import { getChargerSnapshot } from "@/lib/anker";
 import { statusEnvelope } from "@/lib/api";
 import { getRecentlyPlayed } from "@/lib/apple-music-store";
 import { getNowWatching, getWatching } from "@/lib/emby";
@@ -15,17 +15,16 @@ import {
   WATCHING_TAG,
 } from "@/lib/live-events";
 import { getDesktopPayload, getNowListening, getTimezonePayload } from "@/lib/telemetry";
-import { getVibeCodingPayload } from "@/lib/vibecoding";
+import { getVibeCodingSnapshot } from "@/lib/vibecoding";
 
 /**
- * 首屏那八份数据的缓存层。
+ * 首屏那八份数据的缓存层。状态路由除 listening/now 外也读这里。
  *
- * 页面服务端渲染时读的是这里，不是 /api/status/* —— 那八条路由是客户端轮询和
- * 挂载回源走的活路径，一律现算、no-store，别把它们和这里搞混。同一个取数函数
- * 两边共用，信封形状也共用（statusEnvelope），只是这一侧多了一层缓存。
+ * listening/now 仍走现算：来源选择和 expiresInMs 是时间函数，不能冻。
+ * 其余七条的快照进缓存；Mac 存活（lastSeenAt / declaredOffline）以及充电头
+ * 的 pushedAt 在路由里现盖一层，因为心跳不触发 tag 失效。
  *
  * 一个主题一个缓存条目、一个 tag：充电头插拔只让充电头那份重算，不牵连另外七份。
- * 合成一个条目的话，任何一条上报都会把整页的 Redis 读全部重来。
  *
  * 为什么不能写成 `cached(tag, loader)` 这样一个泛用壳子：`use cache` 的缓存键由
  * 参数算出来，而参数必须可序列化 —— 函数不行。所以只能一个主题写一遍。
@@ -34,10 +33,8 @@ import { getVibeCodingPayload } from "@/lib/vibecoding";
 /**
  * stale 5 分钟 / revalidate 1 分钟 / expire 1 小时。
  *
- * 主力失效手段是 tag，这个时长是兜底：payload 里的 stale 是「上报器多久没露面」
- * 算出来的，而上报器悄无声息地死掉（崩溃、断网、拔电）不会产生任何一次上报，
- * 也就没有任何 tag 会因此失效。存活窗口是 45 秒（lib/reporter-liveness），
- * 1 分钟重算一次正好接得上。
+ * 主力失效手段是 tag。1 分钟兜底留给首屏 HTML：上报器悄无声息死掉不会触发
+ * tag，存活窗口 45 秒，首屏那份 lastSeenAt 最多冻一分钟。API 路径会现读存活。
  *
  * 不能再短：revalidate 为 0 或 expire 短于 5 分钟的缓存会被排除在预渲染之外、
  * 退化成请求时的动态洞，那就等于没缓存。
@@ -51,7 +48,7 @@ const CHARGER_FALLBACK_WINDOW_MS = 20 * 60_000;
  * 增量同步，这里只缩小 RSC/HTML 里的首屏投影。
  */
 async function getChargerFallback() {
-  const payload = await getChargerPayload();
+  const payload = await getChargerSnapshot();
   const { history } = payload;
   if (history.length < 2) return payload;
 
@@ -86,12 +83,20 @@ export async function cachedCharger() {
   return statusEnvelope(getChargerFallback);
 }
 
+/** 状态端点用的完整 400 点。和首屏那份同 tag，插拔时一起失效。 */
+export async function cachedChargerSnapshot() {
+  "use cache";
+  cacheLife(STATUS_LIFE);
+  cacheTag(CHARGER_TAG);
+  return statusEnvelope(getChargerSnapshot);
+}
+
 /** 同上，活动曲线也发全量 */
 export async function cachedVibeCoding() {
   "use cache";
   cacheLife(STATUS_LIFE);
   cacheTag(VIBECODING_TAG);
-  return statusEnvelope(getVibeCodingPayload);
+  return statusEnvelope(getVibeCodingSnapshot);
 }
 
 export async function cachedListening() {

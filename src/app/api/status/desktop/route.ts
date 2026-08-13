@@ -1,6 +1,9 @@
-import { statusRoute } from "@/lib/api";
-import { getDesktopPayload } from "@/lib/telemetry";
+import { statusCachedRoute } from "@/lib/api";
+import { readLiveness, withPresence } from "@/lib/reporter-liveness";
+import { cachedDesktop } from "@/lib/status-cache";
 
 export function GET() {
-  return statusRoute(async () => getDesktopPayload());
+  return statusCachedRoute(cachedDesktop, async (data) =>
+    withPresence(data, await readLiveness()),
+  );
 }

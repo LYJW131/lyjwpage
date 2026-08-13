@@ -1,6 +1,13 @@
-import { getChargerPayload } from "@/lib/anker";
-import { sinceParam, statusRoute } from "@/lib/api";
+import { sliceChargerHistory } from "@/lib/anker";
+import { sinceParam, statusCachedRoute } from "@/lib/api";
+import { lastPushReceivedAt } from "@/lib/charger-store";
+import { readLiveness, withPresence } from "@/lib/reporter-liveness";
+import { cachedChargerSnapshot } from "@/lib/status-cache";
 
 export function GET(request: Request) {
-  return statusRoute(() => getChargerPayload({ since: sinceParam(request) }));
+  const since = sinceParam(request);
+  return statusCachedRoute(cachedChargerSnapshot, async (data) => {
+    const [pushedAt, live] = await Promise.all([lastPushReceivedAt(), readLiveness()]);
+    return withPresence({ ...sliceChargerHistory(data, since), pushedAt }, live);
+  });
 }

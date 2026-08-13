@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useEffect, useState } from "react";
 
 import { useLiveEvents } from "@/hooks/use-live-events";
+import { useReporterStale } from "@/hooks/use-stale";
 import { useStatus } from "@/hooks/use-status";
 import { STATIC_TRANSITION, STATIC_VARIANTS } from "@/lib/motion";
 import { DESKTOP_PATH } from "@/lib/paths";
@@ -51,7 +52,8 @@ export function HeaderDesktop({
   const [displayedDesktop, setDisplayedDesktop] = useState<DesktopActivity | null>(null);
   const reduced = useReducedMotion();
 
-  const offline = Boolean(error || data?.stale);
+  const reporterStale = useReporterStale(data);
+  const offline = Boolean(error || reporterStale);
   const incomingDesktop = data?.desktop ?? null;
   const incomingApplicationName = incomingDesktop?.applicationName ?? null;
   const incomingBundleIdentifier = incomingDesktop?.bundleIdentifier ?? null;

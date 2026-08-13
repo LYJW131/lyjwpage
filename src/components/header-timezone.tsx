@@ -1,11 +1,12 @@
 "use client";
 
+import { useReporterStale } from "@/hooks/use-stale";
 import { useStatus } from "@/hooks/use-status";
 import { TIMEZONE_PATH } from "@/lib/paths";
 import { formatTimezoneRegion, resolveTimezoneDisplay } from "@/lib/timezone-display";
 import type { StatusResponse, TimezonePayload } from "@/lib/types";
 
-/** 与 TimezoneCard 同频：存活窗口 45s，一分钟一问足够翻 stale。 */
+/** 存活由 lastSeenAt 在本地翻；这一分钟一轮只把冻在首屏里的 lastSeenAt 换成现读的。 */
 const REFRESH_MS = 60_000;
 
 export function HeaderTimezone({
@@ -19,7 +20,8 @@ export function HeaderTimezone({
     // 否则先挂载的页头仍会把那次本来省掉的请求重新发出去。
     revalidateOnMount: false,
   });
-  const { identifier } = resolveTimezoneDisplay(data, error, 0);
+  const stale = useReporterStale(data);
+  const { identifier } = resolveTimezoneDisplay(data, error, 0, stale);
 
   return (
     <span

@@ -9,7 +9,9 @@ import { CodexActivityIndicator } from "@/components/live/codex-activity-indicat
 import { Sparkline } from "@/components/live/sparkline";
 import { Card } from "@/components/ui/card";
 import { useMountedAt } from "@/hooks/use-mounted-at";
+import { useReporterStale, useStale } from "@/hooks/use-stale";
 import { incrementalFetcher, useStatus } from "@/hooks/use-status";
+import { VIBECODING_STALE_MS } from "@/lib/freshness";
 import { VIBECODING_PATH } from "@/lib/paths";
 import {
   activityCursor,
@@ -794,7 +796,9 @@ export function VibeCodingCard({
     fetcher: fetchVibeCoding,
     seedFallback: seedVibeCodingActivity,
   });
-  const stale = Boolean(data?.stale || error);
+  const reporterStale = useReporterStale(data);
+  const usageStale = useStale(data?.pushedAt, VIBECODING_STALE_MS);
+  const stale = Boolean(error || reporterStale || usageStale);
 
   return (
     <Card

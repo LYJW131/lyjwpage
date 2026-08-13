@@ -1,5 +1,6 @@
 import { getStored, lastPushReceivedAt } from "@/lib/charger-store";
-import { reporterOffline } from "@/lib/reporter-liveness";
+import { CHARGER_STALE_MS } from "@/lib/freshness";
+import { readLiveness, withPresence } from "@/lib/reporter-liveness";
 import type { ChargerPayload, ChargerPort, ChargerStatus } from "@/lib/types";
 
 /**
@@ -82,13 +83,10 @@ export function normalizeRawStatus(raw: RawStatus): ChargerStatus {
   } satisfies ChargerStatus;
 }
 
-/**
- * 太久没收到推送就认为数据不新鲜。
- * 按上报间隔的 3 倍算，默认间隔 30 秒 → 90 秒没消息就标记为 stale。
- */
-function staleAfterMs() {
+/** 默认 90 秒；上报间隔配得更长时按 3 倍加长，不能短于默认。 */
+export function chargerStaleAfterMs() {
   const interval = Number(process.env.CHARGER_PUSH_INTERVAL_MS) || 30_000;
-  return Math.max(90_000, interval * 3);
+  return Math.max(CHARGER_STALE_MS, interval * 3);
 }
 
 /**
@@ -96,21 +94,32 @@ function staleAfterMs() {
  *
  * 曲线有 400 个点、约 15KB，而前端 5 秒取一次、每次实际只多出一两个点 ——
  * 整份重传的话 99% 是重复数据。
+ *
+ * 新鲜度字段（pushedAt / lastSeenAt / declaredOffline）是源站盖章，
+ * stale 和「过期时把 connected 打成 false」都由浏览器现算。
  */
-export async function getChargerPayload(
-  { since }: { since?: number } = {},
-): Promise<ChargerPayload> {
+export async function getChargerSnapshot(): Promise<ChargerPayload> {
   const stored = await getStored();
   // 还没收到过任何推送。交给 statusRoute 变成降级信封，前端显示提示
   if (!stored) throw new Error("尚未收到充电头遥测推送");
 
-  // 存活走全站统一判据；再叠上「充电器数据本身太旧」这层各自的口径。
-  // 从前这里只看后者（90 秒），和 desktop/music 的 45 秒错开，同一台 Mac 掉线时
-  // 两张卡先后变灰。
-  const stale =
-    (await reporterOffline()) || Date.now() - (await lastPushReceivedAt()) > staleAfterMs();
+  const [pushedAt, live] = await Promise.all([lastPushReceivedAt(), readLiveness()]);
 
-  const all = stored.history;
+  return withPresence(
+    {
+      ...stored.status,
+      history: stored.history,
+      historyPartial: false,
+      pushedAt,
+      staleAfterMs: chargerStaleAfterMs(),
+    },
+    live,
+  );
+}
+
+/** 按客户端游标切历史。不重读 Redis，给缓存命中之后的增量路径用。 */
+export function sliceChargerHistory(payload: ChargerPayload, since?: number): ChargerPayload {
+  const all = payload.history;
   const oldest = all[0]?.t;
   /**
    * 只有「客户端手上最新的点」不早于「服务端还留着的最旧的点」时，增量才是
@@ -118,13 +127,15 @@ export async function getChargerPayload(
    * 这种情况只能整份重发。
    */
   const historyPartial = since != null && oldest != null && since >= oldest;
-
   return {
-    ...stored.status,
-    // 推送断了就不能再声称充电器在线，否则页面会一直显示旧的瓦数
-    connected: stale ? false : stored.status.connected,
+    ...payload,
     history: historyPartial ? all.filter((sample) => sample.t > since) : all,
     historyPartial,
-    stale,
   };
+}
+
+export async function getChargerPayload(
+  { since }: { since?: number } = {},
+): Promise<ChargerPayload> {
+  return sliceChargerHistory(await getChargerSnapshot(), since);
 }

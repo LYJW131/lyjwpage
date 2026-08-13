@@ -1,6 +1,6 @@
 import { VIBECODING_ACTIVITY_LIMIT } from "@/lib/limits";
 import { mirrorKey } from "@/lib/redis";
-import { offlineByLiveness, readLiveness } from "@/lib/reporter-liveness";
+import { readLiveness, withPresence } from "@/lib/reporter-liveness";
 import type {
   VibeCodingAgent,
   VibeCodingAgentId,
@@ -13,7 +13,6 @@ import type {
   VibeCodingTotals,
 } from "@/lib/types";
 
-const PUSH_STALE_MS = 15 * 60_000;
 const AGENTS: VibeCodingAgentId[] = ["claude", "codex"];
 const QUOTA_PROVIDERS: Array<{ id: VibeCodingQuotaProviderId; label: string }> = [
   { id: "cursor", label: "Cursor" },
@@ -357,10 +356,10 @@ export async function recordVibeCodingSessions(report: unknown, receivedAt = Dat
  *
  * 用 `>=` 而不是 `>`：桶是一天一个，边界那个还在累加，必须重发新值。
  * 更早的桶已经封口，不会再变，不用重复传。
+ *
+ * 新鲜度只盖 pushedAt / lastSeenAt / declaredOffline，stale 由浏览器现算。
  */
-export async function getVibeCodingPayload(
-  { since }: { since?: number } = {},
-): Promise<VibeCodingPayload> {
+export async function getVibeCodingSnapshot(): Promise<VibeCodingPayload> {
   const [usageState, limitsState, sessionsState, liveness] = await Promise.all([
     usageMirror.get(),
     limitsMirror.get(),
@@ -378,12 +377,6 @@ export async function getVibeCodingPayload(
     (sessionsState?.payload.agents ?? []).map((agent) => [agent.id, agent]),
   );
 
-  // 客户端落后太多、最旧的桶都已经滚出窗口时拼不出连续曲线，只能整份重发
-  const oldest = Math.min(
-    ...usageState.payload.agents.map((agent) => agent.activity[0]?.t ?? Number.POSITIVE_INFINITY),
-  );
-  const activityPartial = since != null && Number.isFinite(oldest) && since >= oldest;
-
   const agents: VibeCodingAgent[] = usageState.payload.agents.map((agent) => {
     const limits = limitsById.get(agent.id);
     const session = sessionsById.get(agent.id);
@@ -397,9 +390,7 @@ export async function getVibeCodingPayload(
       lastActivityAt: session?.lastActivityAt ?? null,
       active: session?.active ?? false,
       topModel: agent.topModel,
-      activity: activityPartial
-        ? agent.activity.filter((point) => point.t >= since)
-        : agent.activity,
+      activity: agent.activity,
       today: agent.today,
       plan: limits?.plan ?? null,
       // 没收到限额推送时是空数组加 null：页面据此当成「没配」，整块不渲染。
@@ -415,28 +406,47 @@ export async function getVibeCodingPayload(
     return row ? [{ id, label, usedPercent: row.usedPercent, limitsError: row.limitsError }] : [];
   });
 
-  return {
-    agents,
-    quotaProviders,
-    totals: {
-      ...usageState.payload.totals,
-      sessionCount: sessionsState?.payload.sessionCount ?? 0,
+  return withPresence(
+    {
+      agents,
+      quotaProviders,
+      totals: {
+        ...usageState.payload.totals,
+        sessionCount: sessionsState?.payload.sessionCount ?? 0,
+      },
+      topModels: usageState.payload.topModels,
+      collectedAt: usageState.payload.collectedAt,
+      source: "push" as const,
+      activityPartial: false,
+      pushedAt: usageState.pushedAt,
     },
-    topModels: usageState.payload.topModels,
-    collectedAt: usageState.payload.collectedAt,
-    source: "push",
-    activityPartial,
-    /**
-     * 上报器掉线，或者用量那份太久没更新。
-     *
-     * 两者取或，规则见 lib/reporter-liveness 的说明：存活只回答「Mac 在不在」，
-     * 「这张卡的数据够不够新」仍由模块自己判。
-     *
-     * 只看用量那份的推送时刻：它带着 collectedAt，每采一次都算变化，健康时
-     * 10 分钟必发一次。限额和会话状态是没变就不发的，拿它们的时刻当新鲜度会
-     * 把「一天没写代码」误判成「数据过期」。
-     */
-    stale:
-      offlineByLiveness(liveness) || Date.now() - usageState.pushedAt > PUSH_STALE_MS,
+    liveness,
+  );
+}
+
+/** 按客户端游标切活动曲线。不重读 Redis。 */
+export function sliceVibeCodingActivity(
+  payload: VibeCodingPayload,
+  since?: number,
+): VibeCodingPayload {
+  const oldest = Math.min(
+    ...payload.agents.map((agent) => agent.activity[0]?.t ?? Number.POSITIVE_INFINITY),
+  );
+  const activityPartial = since != null && Number.isFinite(oldest) && since >= oldest;
+  if (!activityPartial) return { ...payload, activityPartial: false };
+
+  return {
+    ...payload,
+    activityPartial: true,
+    agents: payload.agents.map((agent) => ({
+      ...agent,
+      activity: agent.activity.filter((point) => point.t >= since),
+    })),
   };
+}
+
+export async function getVibeCodingPayload(
+  { since }: { since?: number } = {},
+): Promise<VibeCodingPayload> {
+  return sliceVibeCodingActivity(await getVibeCodingSnapshot(), since);
 }

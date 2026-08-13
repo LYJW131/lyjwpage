@@ -71,12 +71,13 @@ export function resolveTimezoneDisplay(
   data: TimezonePayload | undefined,
   error: string | undefined,
   now: number,
+  stale: boolean,
 ) {
   const reportedTimezone = data?.timezone ?? null;
   const usingMac = Boolean(
     !error &&
       data &&
-      !data.stale &&
+      !stale &&
       reportedTimezone &&
       validTimezone(reportedTimezone.identifier),
   );

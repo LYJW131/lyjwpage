@@ -41,23 +41,8 @@ export async function statusEnvelope<T>(
   }
 }
 
-/** 把 status 信封包成 Route Handler 响应。失败也是 200，见 statusEnvelope */
-export async function statusRoute<T>(
-  loader: () => Promise<T>,
-): Promise<NextResponse<StatusResponse<T>>> {
-  /**
-   * 这八条一律现算，不进任何缓存 —— 它们是客户端轮询和挂载回源走的活路径。
-   *
-   * cacheComponents 下没有 force-dynamic 可写了，「每次请求都得跑一遍」只能由
-   * connection() 明说。少了它 Next 会试着在构建期把这些 GET 预渲染成静态响应，
-   * 而下面 statusEnvelope 的 try/catch 会把预渲染的中断信号一并吞掉（内置文档
-   * 专门警告过这一点），构建期那份 ok:false 就被烤进静态响应，客户端从此永远
-   * 轮询到同一个错误。
-   *
-   * 首屏服务端渲染那份数据是另一条路、另有缓存，见 lib/status-cache。
-   */
-  await connection();
-  return NextResponse.json(await statusEnvelope(loader), {
+function statusJson<T>(envelope: StatusResponse<T>): NextResponse<StatusResponse<T>> {
+  return NextResponse.json(envelope, {
     status: 200,
     /**
      * 时间戳放响应头，不进 body：进了 body 就等于每次响应都不一样，
@@ -68,6 +53,38 @@ export async function statusRoute<T>(
       "X-Fetched-At": new Date().toISOString(),
     },
   });
+}
+
+/**
+ * 活路径：每次进函数。listening/now 的来源选择和 expiresInMs 是时间函数，
+ * 必须走这条。其余七条走 statusCachedRoute。
+ *
+ * cacheComponents 下没有 force-dynamic 可写了，「每次请求都得跑一遍」只能由
+ * connection() 明说。少了它 Next 会试着在构建期把这些 GET 预渲染成静态响应，
+ * 而下面 statusEnvelope 的 try/catch 会把预渲染的中断信号一并吞掉（内置文档
+ * 专门警告过这一点），构建期那份 ok:false 就被烤进静态响应，客户端从此永远
+ * 轮询到同一个错误。
+ */
+export async function statusRoute<T>(
+  loader: () => Promise<T>,
+): Promise<NextResponse<StatusResponse<T>>> {
+  await connection();
+  return statusJson(await statusEnvelope(loader));
+}
+
+/**
+ * 快照走 `'use cache'`（见 lib/status-cache），函数仍然每次进 —— connection()
+ * 防止构建期把 GET 烤死。overlay 在缓存外跑，给存活这种心跳更新、不能冻进
+ * 快照的字段现盖一层。
+ */
+export async function statusCachedRoute<T>(
+  load: () => Promise<StatusResponse<T>>,
+  overlay?: (data: T) => Promise<T> | T,
+): Promise<NextResponse<StatusResponse<T>>> {
+  await connection();
+  const envelope = await load();
+  if (!envelope.ok || !overlay) return statusJson(envelope);
+  return statusJson({ ok: true, data: await overlay(envelope.data) });
 }
 
 /**

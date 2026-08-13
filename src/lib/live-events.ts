@@ -61,8 +61,8 @@ export type LiveEvent =
    */
   | { type: "charger"; payload: ChargerPayload }
   /**
-   * 上报器上下线。只发失效通知 —— 存活是服务端的判断，各卡片重取自己的接口
-   * 时会顺带拿到新的 stale，不必在这里把四份 payload 都算一遍推出去。
+   * 上报器上下线。只发失效通知 —— 亲口离线是布尔值，得把新的
+   * declaredOffline 取回来；超时那条浏览器拿手上的 lastSeenAt 自己就能翻。
    *
    * 单独成一种事件，而不是借 desktop / listening 推：前端要能分清「上报器
    * 离线了」和「前台应用变了」，而且需要知道离线的不止那两张卡。

@@ -98,7 +98,7 @@ export type StatusOptions<T> = {
  * 让「上游挂了」和「网络请求失败」走同一条渲染分支。
  *
  * refreshInterval 由调用方按当前状态给：有播放中/正在充电的东西就调快，
- * 空闲时调慢。真正打到上游的频率由服务端各自的缓存 TTL 决定，前端调快
+ * 空闲时调慢。真正打到 Redis 的频率由服务端快照缓存决定，前端调快
  * 不会等比传导过去。
  */
 export function useStatus<T>(

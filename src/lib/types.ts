@@ -63,17 +63,27 @@ export type NowPlayingGuess = {
   durationMs: number;
 };
 
+/**
+ * Mac 上报器的存活。源站盖章，stale 由浏览器用 Date.now() 现算。
+ *
+ * lastSeenAt 是 ingest 收到时的源站钟，不是设备 observedAt。
+ */
+export type ReporterPresence = {
+  lastSeenAt: number;
+  /** 上报器亲口声明的离线，只在优雅离开（退出 / 睡眠）时为真 */
+  declaredOffline: boolean;
+};
+
 export type ListeningPayload = {
   items: ListeningItem[];
   nowPlaying: NowPlayingGuess | null;
   /**
-   * 上报器已经很久没推了。
+   * 源站收到这份列表的时刻。陈旧窗口 30 分钟，由浏览器现算。
    *
-   * 和别的卡的 stale 含义不同，别照搬那边整张变灰的处理：那些卡陈旧意味着显示的
-   * 是错的（人早走了还显示着前台应用），而一份冻住的「最近在听」本身没有错，
-   * 只是可能漏掉了这段时间在别处的播放。
+   * 和别的卡不同：一份冻住的「最近在听」本身没有错，只是可能漏掉了
+   * 这段时间在别处的播放，调用方不该照搬整张变灰的处理。
    */
-  stale: boolean;
+  pushedAt: number;
 };
 
 /**
@@ -113,11 +123,9 @@ export type LocalNowPlaying = {
  * 和播放状态拆成两个接口：播放来源可能是 MacBook，也可能是 HomePod，
  * 两者的生命周期、上报路径、过期语义都不一样，绑在一起只会互相牵扯。
  */
-export type DesktopPayload = {
+export type DesktopPayload = ReporterPresence & {
   desktop: DesktopActivity | null;
   receivedAt: number | null;
-  /** 上报器不可用或已超过心跳窗口。 */
-  stale: boolean;
 };
 
 /** Mac 当前系统时区。只在 timezone 模块启用且上报器在线时展示。 */
@@ -130,10 +138,9 @@ export type TimezoneActivity = {
   observedAt: number;
 };
 
-export type TimezonePayload = {
+export type TimezonePayload = ReporterPresence & {
   timezone: TimezoneActivity | null;
   receivedAt: number | null;
-  stale: boolean;
 };
 
 /** 实时播放。来源可能是 MacBook 的 Music.app，也可能是 HomePod。 */
@@ -210,9 +217,11 @@ export type ChargerPayload = ChargerStatus & {
    * 中间那段已被服务端裁掉时都是这种。
    */
   historyPartial: boolean;
-  /** 太久没收到新推送 */
-  stale: boolean;
-};
+  /** 源站最近一次收到充电头模块或给它续上的心跳 */
+  pushedAt: number;
+  /** 这份数据自己的过期窗口；默认 90 秒，服务端可按上报间隔加长 */
+  staleAfterMs: number;
+} & ReporterPresence;
 
 export type VibeCodingAgentId = "claude" | "codex";
 export type VibeCodingQuotaProviderId = "cursor" | "opencodego" | "antigravity";
@@ -327,9 +336,9 @@ export type VibeCodingPayload = {
    * false 表示完整快照，直接替换。
    */
   activityPartial: boolean;
-  /** 推送超过 15 分钟没有更新 */
-  stale: boolean;
-};
+  /** 源站收到用量那份的时刻。限额和会话没变就不发，新鲜度只看这份。 */
+  pushedAt: number;
+} & ReporterPresence;
 
 /**
  * 所有 /api/status/* 的统一信封。
