@@ -13,7 +13,7 @@ export function HeaderTimezone({
 
   return (
     <span
-      className="label-mono hidden shrink-0 text-muted-foreground sm:inline"
+      className="label-mono hidden shrink-0 text-muted-foreground normal-case sm:inline"
       title={identifier}
     >
       {formatTimezoneRegion(identifier)}

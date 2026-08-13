@@ -76,6 +76,7 @@ function Tile({
   liveProgress,
   positionMs,
   durationMs,
+  eager,
 }: {
   item: WatchingItem;
   live: boolean;
@@ -83,6 +84,7 @@ function Tile({
   liveProgress: number | null;
   positionMs: number | null;
   durationMs: number | null;
+  eager?: boolean;
 }) {
   const progress = live && liveProgress != null ? liveProgress : item.progress;
 
@@ -118,9 +120,14 @@ function Tile({
     >
       <div className="relative aspect-video overflow-hidden bg-muted">
         {item.backdrop || item.poster ? (
-          <DeferredArtwork
+          <Image
             src={(item.backdrop ?? item.poster)!}
             alt={item.title}
+            fill
+            sizes="216px"
+            loading={eager ? "eager" : "lazy"}
+            className="object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+            unoptimized
           />
         ) : null}
 
@@ -161,52 +168,6 @@ function Tile({
         </div>
       </div>
     </a>
-  );
-}
-
-/**
- * 影视列表离首屏很远，但原生 loading="lazy" 的预取窗口会在移动端把整条横向
- * 列表都提前下载。先用一个稳定的空盒占住图片区域，接近视口时才把真实图片
- * 挂上去；横向还没滑到的卡片也不会抢首屏封面和字体的带宽。
- */
-function DeferredArtwork({ src, alt }: { src: string; alt: string }) {
-  const frameRef = useRef<HTMLSpanElement>(null);
-  const [visible, setVisible] = useState(false);
-
-  useEffect(() => {
-    const frame = frameRef.current;
-    if (!frame) return;
-
-    if (!("IntersectionObserver" in window)) {
-      const animationFrame = requestAnimationFrame(() => setVisible(true));
-      return () => cancelAnimationFrame(animationFrame);
-    }
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (!entry?.isIntersecting) return;
-        setVisible(true);
-        observer.disconnect();
-      },
-      { rootMargin: "320px" },
-    );
-    observer.observe(frame);
-    return () => observer.disconnect();
-  }, []);
-
-  return (
-    <span ref={frameRef} className="absolute inset-0">
-      {visible ? (
-        <Image
-          src={src}
-          alt={alt}
-          fill
-          sizes="216px"
-          className="object-cover transition-transform duration-500 group-hover:scale-[1.03]"
-          unoptimized
-        />
-      ) : null}
-    </span>
   );
 }
 
@@ -364,6 +325,7 @@ export function WatchingRow({
                   liveProgress={live ? (data.nowPlaying?.progress ?? null) : null}
                   positionMs={live ? (data.nowPlaying?.positionMs ?? null) : null}
                   durationMs={live ? (data.nowPlaying?.durationMs ?? null) : null}
+                  eager={index < 4}
                 />
               </motion.div>
             );

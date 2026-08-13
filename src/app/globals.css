@@ -161,11 +161,6 @@ button.paper-card {
   }
 }
 
-.page-frame {
-  background: var(--surface);
-  box-shadow: 5px 5px 0 var(--paper-shadow);
-}
-
 /* 单列下用可插值的网格轨道收起充电卡，高度不用猜 max-height；
    gap 同步归零，最近播放和后续卡片才会一起连续上移。 */
 .live-media-pair {

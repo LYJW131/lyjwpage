@@ -5,7 +5,7 @@ import { LiveMediaPair } from "@/components/live/media-pair";
 import { TimezoneCard } from "@/components/live/timezone-card";
 import { VibeCodingCard } from "@/components/live/vibecoding-card";
 import { WatchingRow } from "@/components/live/watching-card";
-import { Container, Section } from "@/components/ui/section";
+import { Section } from "@/components/ui/section";
 import {
   cachedCharger,
   cachedDesktop,
@@ -43,14 +43,8 @@ export default async function Home() {
       <Header desktop={desktop} timezone={timezone} />
 
       <main className="flex-1">
-        <Container className="page-frame my-5 border-y border-line-strong sm:my-6">
-          <Section
-            id="live"
-            label="FIG_001"
-            title="此刻"
-            note="实时"
-            className="pt-6 sm:pt-8"
-          >
+        <div className="mx-auto my-5 w-[calc(100%-2rem)] max-w-5xl sm:my-6">
+          <Section id="live" className="px-0 pt-6 sm:px-0 sm:pt-8">
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <LiveMediaPair
                 chargerFallback={charger}
@@ -70,7 +64,7 @@ export default async function Home() {
               <WatchingRow fallback={watching} nowFallback={nowWatching} />
             </div>
           </Section>
-        </Container>
+        </div>
       </main>
 
       <Footer />

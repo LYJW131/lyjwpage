@@ -54,22 +54,3 @@ export function StripeDivider() {
   );
 }
 
-/** 页面主容器：两侧 1px 竖线把内容框住 */
-export function Container({
-  children,
-  className,
-}: {
-  children: ReactNode;
-  className?: string;
-}) {
-  return (
-    <div
-      className={cn(
-        "mx-auto w-[calc(100%-2rem)] max-w-5xl border-x border-line-strong",
-        className,
-      )}
-    >
-      {children}
-    </div>
-  );
-}
