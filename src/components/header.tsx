@@ -7,7 +7,7 @@ export function Header({ desktop }: { desktop: StatusResponse<DesktopPayload> })
   return (
     <header id="top" className="sticky top-0 z-50 bg-background/95 backdrop-blur-sm">
       <div className="mx-auto w-[calc(100%-2rem)] max-w-5xl py-3 sm:py-4">
-        <div className="grid min-h-10 grid-cols-3 items-center gap-3">
+        <div className="grid min-h-10 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3">
           <a
             href="#top"
             className="min-w-0 justify-self-start truncate text-sm font-bold tracking-tight"
@@ -15,7 +15,7 @@ export function Header({ desktop }: { desktop: StatusResponse<DesktopPayload> })
             <span className="sm:hidden">{site.shortName}</span>
             <span className="hidden sm:inline">{site.name}</span>
           </a>
-          <HeaderDesktop fallback={desktop} className="min-w-0" />
+          <HeaderDesktop fallback={desktop} />
           <div className="justify-self-end">
             <ThemeToggle />
           </div>
