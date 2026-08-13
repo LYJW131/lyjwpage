@@ -4,6 +4,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import Image from "next/image";
 import { useEffect, useState } from "react";
 
+import { MacBookProIcon } from "@/components/ui/device-icons";
 import { useLiveEvents } from "@/hooks/use-live-events";
 import { useReporterStale } from "@/hooks/use-stale";
 import { useStatus } from "@/hooks/use-status";
@@ -106,7 +107,7 @@ export function HeaderDesktop({
     ? "offline"
     : desktop?.bundleIdentifier ?? desktop?.applicationName ?? "idle";
   const applicationName = offline
-    ? "—"
+    ? "已离线"
     : locked
       ? "已锁屏"
       : desktop?.applicationName ?? (isLoading ? "读取中…" : "暂无活动");
@@ -114,9 +115,9 @@ export function HeaderDesktop({
   return (
     <div
       className={cn("relative h-8 min-w-0 overflow-hidden", className)}
-      aria-label={`正在使用：${applicationName}`}
+      aria-label={offline ? "Mac 上报器已离线" : `正在使用：${applicationName}`}
       aria-live="polite"
-      title={applicationName}
+      title={offline ? "Mac 上报器已离线" : applicationName}
     >
       {!desktop && !offline ? (
         <div className="absolute inset-0 flex min-w-0 items-center justify-center gap-2">
@@ -139,7 +140,9 @@ export function HeaderDesktop({
             className="absolute inset-0 flex min-w-0 items-center justify-center gap-2"
           >
             <span className="flex size-7 shrink-0 items-center justify-center">
-              {desktop?.iconUrl && !offline && !locked ? (
+              {offline ? (
+                <MacBookProIcon className="size-5 text-muted-foreground" aria-hidden />
+              ) : desktop?.iconUrl && !locked ? (
                 <Image
                   src={desktop.iconUrl}
                   alt=""
@@ -166,7 +169,14 @@ export function HeaderDesktop({
                 <span className="text-xs text-muted-foreground">⌘</span>
               )}
             </span>
-            <span className="truncate text-sm font-medium">{applicationName}</span>
+            <span
+              className={cn(
+                "truncate text-sm font-medium",
+                offline && "text-muted-foreground",
+              )}
+            >
+              {applicationName}
+            </span>
           </motion.div>
         </AnimatePresence>
       )}
