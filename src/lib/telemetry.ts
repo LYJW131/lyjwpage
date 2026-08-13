@@ -22,6 +22,7 @@ import {
   offlineByLiveness,
   readLiveness,
   recordReporterBeat,
+  withPresence,
   type Liveness,
 } from "@/lib/reporter-liveness";
 import type {
@@ -457,7 +458,7 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
    *
    * 采集端本来就只在内容变化时才带上对应模块，所以「模块出现在 envelope 里」
    * 就是变化信号本身。从前这里是无条件推 —— 连不带任何模块的纯心跳包也推，
-   * 为的是把「上报器离线」翻回在线。但 stale 是时间的函数，两张卡一直在轮询，
+   * 为的是把「上报器离线」翻回在线。但过期是时间的函数，两张卡一直在轮询，
    * 那件事轮询本来就在做；为它每 30 秒广播一份没变化的状态，等于把推送当轮询用。
    *
    * 代价是上报器从离线恢复时，「在线」最迟等下一轮轮询（30 秒）才显示，不再是
@@ -485,24 +486,24 @@ async function syncForRead(): Promise<Liveness> {
 
 export async function getDesktopPayload(): Promise<DesktopPayload> {
   const liveness = await syncForRead();
-  const stale = !telemetryState.activeModules.has("desktop") || offlineByLiveness(liveness);
-  return {
-    desktop: stale ? null : telemetryState.desktop,
-    receivedAt:
-      telemetryState.activityReceivedAt || liveness.lastSeenAt || null,
-    stale,
-  };
+  return withPresence(
+    {
+      desktop: telemetryState.activeModules.has("desktop") ? telemetryState.desktop : null,
+      receivedAt: telemetryState.activityReceivedAt || liveness.lastSeenAt || null,
+    },
+    liveness,
+  );
 }
 
 export async function getTimezonePayload(): Promise<TimezonePayload> {
   const liveness = await syncForRead();
-  const stale = !telemetryState.activeModules.has("timezone") || offlineByLiveness(liveness);
-  return {
-    timezone: stale ? null : telemetryState.timezone,
-    receivedAt:
-      telemetryState.timezoneReceivedAt || liveness.lastSeenAt || null,
-    stale,
-  };
+  return withPresence(
+    {
+      timezone: telemetryState.activeModules.has("timezone") ? telemetryState.timezone : null,
+      receivedAt: telemetryState.timezoneReceivedAt || liveness.lastSeenAt || null,
+    },
+    liveness,
+  );
 }
 
 export async function getNowListening(): Promise<NowListeningPayload> {
@@ -566,8 +567,8 @@ export async function getNowListening(): Promise<NowListeningPayload> {
 }
 
 /**
- * 上报器上下线。只发信号不带数据，让各卡片自己重取 —— 存活影响的是四张卡的
- * stale，逐一算好推出去不如让它们各取各的，省一次全量计算。
+ * 上报器上下线。只发信号不带数据，让各卡片自己重取 —— 亲口离线是布尔值，
+ * 得把新的 declaredOffline 取回来；逐一算好推出去不如让它们各取各的。
  *
  * vibe coding 那张刻意不订阅：token 用量是累计的历史事实，Mac 掉线它不会变得
  * 不可信，只是不再增长。那张卡的陈旧判定另有自己的口径。
@@ -575,7 +576,7 @@ export async function getNowListening(): Promise<NowListeningPayload> {
 export async function publishPresence() {
   await publish({ type: "presence", payload: null });
   // 和浏览器那侧收到 presence 后重取的键是同一份名单（见 use-live-events 的
-  // PRESENCE_PATHS）：Mac 上报器供数的那四份，它们的 stale 会跟着翻
+  // PRESENCE_PATHS）：Mac 上报器供数的那四份，换上新的 declaredOffline
   expireStatus(DESKTOP_TAG, TIMEZONE_TAG);
   expireStatusImmediately(NOW_LISTENING_TAG, CHARGER_TAG);
 }

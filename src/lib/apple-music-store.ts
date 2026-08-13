@@ -16,8 +16,8 @@ import type { ListeningItem, ListeningPayload, NowPlayingGuess } from "@/lib/typ
  * Redis 为主、进程内存为辅，规则见 lib/redis 的 mirrorKey。
  */
 
-/** 存的是内容本身；stale 是「多久没推了」，读的时候现算，不落库 */
-type StoredListening = Omit<ListeningPayload, "stale">;
+/** 存的是内容本身；新鲜度看 pushedAt，由浏览器现算 */
+type StoredListening = Omit<ListeningPayload, "pushedAt">;
 
 const mirror = mirrorKey<{ payload: StoredListening; pushedAt: number }>(
   ["apple-music", "recent"],
@@ -25,13 +25,9 @@ const mirror = mirrorKey<{ payload: StoredListening; pushedAt: number }>(
 );
 
 /**
- * 上报器没推的时间超过这个就算陈旧。
- *
- * 它 60 秒轮一次上游、10 分钟兜底整推一次，所以三倍兜底间隔还没消息就是它出事了。
- * 注意陈旧在这张卡上和别处含义不同：一份冻住的「最近在听」本身没有错，只是可能
- * 漏掉了在别处的播放，所以调用方不该照搬别的卡那种整张变灰的处理。
+ * 上报器没推的时间超过 LISTENING_STALE_MS（lib/freshness）就算陈旧。
+ * 浏览器拿 pushedAt 现算，这里不再产出布尔值。
  */
-const PUSH_STALE_MS = 30 * 60_000;
 
 /** 只比内容，不比推送时刻 —— 上报器每 10 分钟会整份重推一次，那次不该算变化 */
 function sameContent(a: StoredListening, b: StoredListening) {
@@ -113,5 +109,5 @@ export async function getRecentlyPlayed(): Promise<ListeningPayload> {
         : "读不到「最近在听」—— Redis 连不上，数据本身可能还在",
     );
   }
-  return { ...state.payload, stale: Date.now() - state.pushedAt > PUSH_STALE_MS };
+  return { ...state.payload, pushedAt: state.pushedAt };
 }

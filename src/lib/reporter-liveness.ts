@@ -1,4 +1,6 @@
+import { HEARTBEAT_WINDOW_MS } from "@/lib/freshness";
 import { mirrorKey } from "@/lib/redis";
+import type { ReporterPresence } from "@/lib/types";
 
 /**
  * 上报器还活不活着 —— 全站唯一的判据。
@@ -15,15 +17,7 @@ import { mirrorKey } from "@/lib/redis";
  * 那张卡也该显示为陈旧。
  */
 
-/** 上报器每 30 秒心跳一次，留出定时器和网络抖动的余量 */
-const HEARTBEAT_WINDOW_MS = 45_000;
-
-export type Liveness = {
-  /** 最近一次收到任何上报或心跳的时刻 */
-  lastSeenAt: number;
-  /** 上报器亲口声明的离线，只在优雅离开（退出 / 睡眠）时为真 */
-  declaredOffline: boolean;
-};
+export type Liveness = ReporterPresence;
 
 /**
  * 存活单独占一个 Redis key，读写都直查 Redis。
@@ -78,6 +72,11 @@ export function offlineByLiveness(liveness: Liveness) {
   return !liveness.lastSeenAt || Date.now() - liveness.lastSeenAt > HEARTBEAT_WINDOW_MS;
 }
 
-export async function reporterOffline() {
-  return offlineByLiveness(await readLiveness());
+/** 把源站刚读到的存活盖进快照。stale 仍然不在这里算。 */
+export function withPresence<T extends object>(data: T, live: Liveness): T & ReporterPresence {
+  return {
+    ...data,
+    lastSeenAt: live.lastSeenAt,
+    declaredOffline: live.declaredOffline,
+  };
 }

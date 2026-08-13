@@ -8,11 +8,13 @@ import { Card } from "@/components/ui/card";
 import { StatusDot, type DotTone } from "@/components/ui/status-dot";
 import { useLiveEvents } from "@/hooks/use-live-events";
 import { incrementalFetcher, useStatus } from "@/hooks/use-status";
+import { useReporterStale, useStale } from "@/hooks/use-stale";
 import {
   historyCursor,
   mergeChargerHistory,
   seedChargerHistory,
 } from "@/lib/charger-history";
+import { CHARGER_STALE_MS } from "@/lib/freshness";
 import { CHARGER_PATH } from "@/lib/paths";
 import type {
   ChargerPayload,
@@ -67,9 +69,12 @@ export function ChargerCard({
     fetcher: fetchCharger,
     seedFallback: seedChargerHistory,
   });
+  const reporterStale = useReporterStale(data);
+  const dataStale = useStale(data?.pushedAt, data?.staleAfterMs ?? CHARGER_STALE_MS);
+  const stale = reporterStale || dataStale;
   const history = data?.history ?? [];
 
-  const connected = Boolean(data?.connected);
+  const connected = Boolean(data?.connected) && !stale;
   const power = data?.totalPower ?? 0;
   // mode 可能在设备刚停止取电后仍保持开启；实际功率超过空载阈值才算正在充电。
   // 这也和状态灯的 live 判定保持一致，避免一处说“正在充”、一处显示 idle。
@@ -81,7 +86,7 @@ export function ChargerCard({
     onActiveChange?.(charging);
   }, [charging, onActiveChange]);
 
-  const dot = tone(data);
+  const dot = tone(connected ? data : undefined);
   const ratio = data ? Math.min(power / data.maxPower, 1) : 0;
 
   return (
@@ -130,7 +135,7 @@ export function ChargerCard({
             ? "读取中"
             : error
               ? "尚未收到遥测推送"
-              : data?.stale
+              : stale
                 ? "遥测已断流"
                 : connected
                   ? charging

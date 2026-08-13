@@ -73,14 +73,14 @@ const PRESENCE_PATHS = [DESKTOP_PATH, TIMEZONE_PATH, NOW_LISTENING_PATH, CHARGER
 /**
  * 不带数据的事件 → 收到后要重取哪几个键。
  *
- * 只剩存活这一条：它翻的是「上报器还在不在」，而各卡片的 stale 是服务端按各自
- * 的数据现算的，服务端没法在一条事件里把四份 payload 都算好推出来。
+ * 只剩存活这一条：亲口离线要重取 declaredOffline；超时那条浏览器拿
+ * lastSeenAt 现算，但优雅离开发生在心跳窗口内，本地钟还没走到。
  */
 const INVALIDATIONS: ReadonlyArray<{
   event: LiveEvent["type"];
   paths: readonly string[];
 }> = [
-  // 上报器上下线：不带数据，只让它供数的那几张卡重取一次，同时翻 stale
+  // 上报器上下线：不带数据，只让它供数的那几张卡重取一次，换新的 declaredOffline
   { event: "presence", paths: PRESENCE_PATHS },
 ];
 

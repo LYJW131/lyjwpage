@@ -1,6 +1,11 @@
-import { sinceParam, statusRoute } from "@/lib/api";
-import { getVibeCodingPayload } from "@/lib/vibecoding";
+import { sinceParam, statusCachedRoute } from "@/lib/api";
+import { readLiveness, withPresence } from "@/lib/reporter-liveness";
+import { cachedVibeCoding } from "@/lib/status-cache";
+import { sliceVibeCodingActivity } from "@/lib/vibecoding";
 
 export function GET(request: Request) {
-  return statusRoute(() => getVibeCodingPayload({ since: sinceParam(request) }));
+  const since = sinceParam(request);
+  return statusCachedRoute(cachedVibeCoding, async (data) =>
+    withPresence(sliceVibeCodingActivity(data, since), await readLiveness()),
+  );
 }
