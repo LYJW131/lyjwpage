@@ -319,7 +319,7 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
    * envelope.presence 是上报器声明的在离线。
    *
    * 只覆盖优雅离开：退出、睡眠时它抢在断开前发一条 offline，这里立刻把状态
-   * 翻过去，不用等 45 秒心跳窗口。崩溃、断网、强制关机时它发不出这一条，
+   * 翻过去，不用等心跳窗口。崩溃、断网、强制关机时它发不出这一条，
    * 那些仍然靠 offlineByLiveness 里的心跳窗口兜底 —— 两条路是互补的。
    *
    * 任何一条信封本身都算一次在线心跳；offline 只用于睡眠、退出这类优雅离开。

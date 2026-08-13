@@ -34,11 +34,11 @@ export function useStale(
   return stale;
 }
 
-/** Mac 上报器那一层：心跳 45 秒，或亲口离线。 */
+/** Mac 上报器那一层：窗口跟 payload 里的 heartbeatWindowMs，或亲口离线。 */
 export function useReporterStale(presence: ReporterPresence | undefined) {
   return useStale(
     presence?.lastSeenAt,
-    HEARTBEAT_WINDOW_MS,
+    presence?.heartbeatWindowMs ?? HEARTBEAT_WINDOW_MS,
     Boolean(presence?.declaredOffline),
   );
 }

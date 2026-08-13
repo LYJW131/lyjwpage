@@ -1,4 +1,4 @@
-import { HEARTBEAT_WINDOW_MS } from "@/lib/freshness";
+import { heartbeatWindowMs } from "@/lib/freshness";
 import { mirrorKey } from "@/lib/redis";
 import type { ReporterPresence } from "@/lib/types";
 
@@ -17,7 +17,7 @@ import type { ReporterPresence } from "@/lib/types";
  * 那张卡也该显示为陈旧。
  */
 
-export type Liveness = ReporterPresence;
+export type Liveness = Pick<ReporterPresence, "lastSeenAt" | "declaredOffline">;
 
 /**
  * 存活单独占一个 Redis key，读写都直查 Redis。
@@ -69,7 +69,7 @@ export async function recordReporterBeat({
 export function offlineByLiveness(liveness: Liveness) {
   // 亲口说走了就直接算离线，不用等心跳窗口
   if (liveness.declaredOffline) return true;
-  return !liveness.lastSeenAt || Date.now() - liveness.lastSeenAt > HEARTBEAT_WINDOW_MS;
+  return !liveness.lastSeenAt || Date.now() - liveness.lastSeenAt > heartbeatWindowMs();
 }
 
 /** 把源站刚读到的存活盖进快照。stale 仍然不在这里算。 */
@@ -78,5 +78,6 @@ export function withPresence<T extends object>(data: T, live: Liveness): T & Rep
     ...data,
     lastSeenAt: live.lastSeenAt,
     declaredOffline: live.declaredOffline,
+    heartbeatWindowMs: heartbeatWindowMs(),
   };
 }
