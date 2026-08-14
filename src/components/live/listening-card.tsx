@@ -9,13 +9,16 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type CSSProperties,
   type MouseEvent,
   type ReactNode,
 } from "react";
 
 import { Card } from "@/components/ui/card";
 import { HomePodMiniIcon, MacBookProIcon } from "@/components/ui/device-icons";
+import { HeroMotionArtwork } from "@/components/live/hero-motion-artwork";
 import { useLiveEvents } from "@/hooks/use-live-events";
+import { useMotionArtwork } from "@/hooks/use-motion-artwork";
 import { useMountedAt } from "@/hooks/use-mounted-at";
 import { useExpiryRefetch, useStatus } from "@/hooks/use-status";
 import { stableKeys } from "@/lib/keys";
@@ -85,9 +88,53 @@ function formatDuration(milliseconds: number) {
 function paletteGradient(palette: string[]): string | undefined {
   if (palette.length < 2) return undefined;
   const stops = [...palette, palette[0]]
+    .map((color) => (color.startsWith("#") ? color : `#${color}`))
     .map((color) => `oklch(from ${color} 0.74 max(c, 0.09) h)`)
     .join(", ");
   return `linear-gradient(90deg, ${stops})`;
+}
+
+/**
+ * 一条跟着封面配色走的带子，两层叠着交叉淡入。
+ *
+ * 动态封面的取色比静态封面晚到几百毫秒，而 `background-image` 不参与过渡 ——
+ * 直接换那一下颜色是「啪」地跳过去的。所以底层始终画静态封面那套
+ * （没有调色板就退回兜底纯色），动态那套取到了再淡进来，时长和封面的淡入对齐。
+ *
+ * 上层从一开始就挂着、只是 opacity 0：两层的 rainbow-drift 得同时起步才同相。
+ * 等要用时才挂载的话新层动画从头跑，和底层错开，交叉淡入的中途会看出两道颜色
+ * 在互相错动。
+ */
+function PaletteBar({
+  base,
+  motion: motionGradient,
+  idleClassName,
+  className,
+  style,
+}: {
+  base?: string;
+  motion?: string;
+  idleClassName?: string;
+  className?: string;
+  style?: CSSProperties;
+}) {
+  return (
+    <div className={cn("relative", className)} style={style} aria-hidden>
+      <div
+        className={cn("absolute inset-0", base ? "rainbow-bar" : idleClassName)}
+        style={{ backgroundImage: base }}
+      />
+      {/* rainbow-bar 不能跟着 opacity 一起切：CSS 动画从元素命中规则那刻起算，
+          等淡入时才加就等于让上层的 drift 从头跑，和底层错开相位。 */}
+      <div
+        className={cn(
+          "rainbow-bar absolute inset-0 transition-opacity duration-700 ease-out",
+          motionGradient ? "opacity-100" : "opacity-0",
+        )}
+        style={{ backgroundImage: motionGradient }}
+      />
+    </div>
+  );
 }
 
 /**
@@ -213,9 +260,13 @@ function Clock({ milliseconds }: { milliseconds: number }) {
 function HeroProgress({
   track,
   subtitle,
+  palette,
+  motionGradient,
 }: {
   track: LocalNowPlaying;
   subtitle: string;
+  palette?: string[];
+  motionGradient?: string;
 }) {
   const playing = track.state === "playing";
   /**
@@ -247,6 +298,7 @@ function HeroProgress({
         : Math.min(track.durationMs, elapsed)
       : elapsed;
   const percent = track.durationMs ? (position / track.durationMs) * 100 : 0;
+  const gradient = palette && palette.length >= 2 ? paletteGradient(palette) : undefined;
 
   return (
     <>
@@ -263,11 +315,12 @@ function HeroProgress({
         </NumberFlowGroup>
       </div>
       <div className="mt-1.5 h-0.75 overflow-hidden bg-muted">
-        <div
-          className={cn(
-            "h-full transition-[width] duration-700 ease-linear",
-            playing ? "bg-live" : "bg-muted-foreground",
-          )}
+        {/* 暂停时不分层：一条静的灰带子，没有颜色好过渡 */}
+        <PaletteBar
+          className="h-full transition-[width] duration-700 ease-linear"
+          base={playing ? gradient : undefined}
+          motion={playing ? motionGradient : undefined}
+          idleClassName={playing ? "bg-live" : "bg-muted-foreground"}
           style={{ width: `${Math.max(0, Math.min(100, percent))}%` }}
         />
       </div>
@@ -580,6 +633,13 @@ export function ListeningCard({
   const restKeys = stableKeys(rest.map((item) => item.id));
   const listRef = useRowSnap(restKeys[0], wide);
 
+  const { data: motionData } = useMotionArtwork(hero?.link);
+  // 动态封面自带一套取色，比静态封面那套晚到；交给 PaletteBar 淡进来，别直接顶掉
+  const motionGradient =
+    motionData?.colors && motionData.colors.length >= 2
+      ? paletteGradient(motionData.colors)
+      : undefined;
+
   return (
     <Card
       label="Recently Played"
@@ -624,21 +684,12 @@ export function ListeningCard({
                 transition={reduced ? STATIC_TRANSITION : undefined}
               >
                 <HeroWrapper link={hero.link}>
-                  <div className="relative aspect-square w-20 shrink-0 overflow-hidden rounded-md border border-line bg-muted">
-                    {hero.artwork ? (
-                      <Image
-                        src={appleArtwork(hero.artwork, 80 * ARTWORK_SCALE)!}
-                        alt={`${hero.title} 封面`}
-                        fill
-                        sizes="80px"
-                        // 这张是全站 LCP 元素：默认的 lazy 会让预加载扫描器跳过它
-                        loading="eager"
-                        fetchPriority="high"
-                        className="object-cover transition-transform duration-500 group-hover:scale-[1.04]"
-                        unoptimized={!needsOptimizing(hero.artwork)}
-                      />
-                    ) : null}
-                  </div>
+                  <HeroMotionArtwork
+                    artwork={hero.artwork}
+                    title={hero.title}
+                    videoUrl={motionData?.hasMotion ? motionData.videoUrl : null}
+                    reduced={Boolean(reduced)}
+                  />
 
                   {/*
                 不用统一的 gap：三行的行内 leading 不一样（标签行盒高贴合文字，
@@ -693,7 +744,12 @@ export function ListeningCard({
                       {hero.title}
                     </div>
                     {hero.track ? (
-                      <HeroProgress track={hero.track} subtitle={hero.subtitle} />
+                      <HeroProgress
+                        track={hero.track}
+                        subtitle={hero.subtitle}
+                        palette={hero.palette}
+                        motionGradient={motionGradient}
+                      />
                     ) : (
                       <>
                         {/* 和实时那版的副标题行同构：左边艺人，右边时间。那边是
@@ -711,10 +767,12 @@ export function ListeningCard({
                         {/* 尺寸和 HeroProgress 那根进度条一模一样。历史条目没有进度可
                             显示，但两版 hero 的高度必须一致，理由同上面那段 —— 与其留
                             一道不可见的空档，不如填满，见 globals.css 的 .rainbow-bar。 */}
-                        <div
-                          className="rainbow-bar mt-1.5 h-0.75"
-                          style={{ backgroundImage: paletteGradient(hero.palette) }}
-                          aria-hidden
+                        <PaletteBar
+                          className="mt-1.5 h-0.75"
+                          base={paletteGradient(hero.palette)}
+                          motion={motionGradient}
+                          // 取不到调色板时露出 .rainbow-bar 自带的那条通用彩虹
+                          idleClassName="rainbow-bar"
                         />
                       </>
                     )}
