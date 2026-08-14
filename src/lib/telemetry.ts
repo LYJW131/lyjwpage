@@ -563,6 +563,9 @@ async function decorateCandidate(
     receivedAt,
     id: lookup.id,
     link: lookup.link || null,
+    motionVideoUrl: lookup.motionVideoUrl || null,
+    motionCoverUrl: lookup.motionCoverUrl || null,
+    motionColors: lookup.motionColors || null,
   };
 }
 

@@ -472,6 +472,10 @@ type Hero = {
    * 有值就说明能拿到播放进度，副标题行会换成带进度条的版本。
    */
   track: LocalNowPlaying | null;
+  /** 1:1 动态封面视频流 */
+  motionVideoUrl?: string | null;
+  /** 1:1 动态封面静止帧 */
+  motionCoverUrl?: string | null;
 };
 
 export function ListeningCard({
@@ -551,9 +555,11 @@ export function ListeningCard({
         link: live?.link ?? null,
         label: localTrack!.state === "playing" ? "播放中" : "已暂停",
         playing: localTrack!.state === "playing",
-        palette: [],
+        palette: live?.motionColors && live.motionColors.length > 0 ? live.motionColors : [],
         durationMs: null,
         track: localTrack,
+        motionVideoUrl: live?.motionVideoUrl ?? null,
+        motionCoverUrl: live?.motionCoverUrl ?? null,
       }
     : latest
       ? {
@@ -621,7 +627,21 @@ export function ListeningCard({
               >
                 <HeroWrapper link={hero.link}>
                   <div className="relative aspect-square w-20 shrink-0 overflow-hidden rounded-md border border-line bg-muted">
-                    {hero.artwork ? (
+                    {hero.motionVideoUrl ? (
+                      <video
+                        key={hero.motionVideoUrl}
+                        src={hero.motionVideoUrl}
+                        poster={
+                          hero.motionCoverUrl ||
+                          (hero.artwork ? appleArtwork(hero.artwork, 80 * ARTWORK_SCALE)! : undefined)
+                        }
+                        autoPlay
+                        loop
+                        muted
+                        playsInline
+                        className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.04]"
+                      />
+                    ) : hero.artwork ? (
                       <Image
                         src={appleArtwork(hero.artwork, 80 * ARTWORK_SCALE)!}
                         alt={`${hero.title} 封面`}

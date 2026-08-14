@@ -93,8 +93,34 @@ type CatalogSong = {
   };
 };
 
+type CatalogEditorialVideoClip = {
+  video?: string;
+  previewFrame?: {
+    url?: string;
+    width?: number;
+    height?: number;
+    bgColor?: string;
+    textColor1?: string;
+    textColor2?: string;
+    textColor3?: string;
+    textColor4?: string;
+  };
+};
+
+type CatalogAlbum = {
+  id?: string;
+  attributes?: {
+    name?: string;
+    artistName?: string;
+    editorialVideo?: {
+      motionDetailSquare?: CatalogEditorialVideoClip;
+      motionSquareVideo1x1?: CatalogEditorialVideoClip;
+    };
+  };
+};
+
 /**
- * 一次目录查询同时解出链接和封面。
+ * 一次目录查询同时解出链接、封面与 1:1 动态视频封面。
  *
  * 封面顺带取回来是有实际意义的：以前封面是采集端把二进制压进上报载荷送上来的，
  * 而这次查询本来就要做、结果本来就带 artwork 模板 URL，等于白拿。
@@ -105,6 +131,12 @@ export type TrackLookup = {
   artwork: string | null;
   /** 与最近播放资源对应的专辑 ID。 */
   id: string | null;
+  /** 1:1 动态视频流播放链接 (.m3u8) */
+  motionVideoUrl: string | null;
+  /** 1:1 动态视频预览帧静态图 */
+  motionCoverUrl: string | null;
+  /** 动态封面调色板 */
+  motionColors: string[] | null;
 };
 
 /** 归一化后再比：大小写、空格、常见标点、全角半角差异都不该影响判定 */
@@ -114,6 +146,17 @@ function normalizeForMatch(value: string | null | undefined) {
     .normalize("NFKC")
     .replace(/[\s　]/g, "")
     .replace(/[-–—_.,'"‘’“”!?()（）\[\]・:：]/g, "");
+}
+
+function extractAlbumIdFromUrl(songUrl?: string): string | null {
+  if (!songUrl) return null;
+  try {
+    const u = new URL(songUrl);
+    const parts = u.pathname.split("/").filter(Boolean);
+    return parts[parts.length - 1] || null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -137,7 +180,16 @@ export async function resolveTrackLookup(track: {
   artist: string | null;
   album: string | null;
 }): Promise<TrackLookup> {
-  if (!track.title) return { link: "", artwork: null, id: null };
+  if (!track.title) {
+    return {
+      link: "",
+      artwork: null,
+      id: null,
+      motionVideoUrl: null,
+      motionCoverUrl: null,
+      motionColors: null,
+    };
+  }
 
   const searchTerm = [track.title, track.artist].filter(Boolean).join(" ");
   const searchUrl = `https://music.apple.com/search?term=${encodeURIComponent(searchTerm)}`;
@@ -153,7 +205,7 @@ export async function resolveTrackLookup(track: {
    * 以后再改这个值的形状，记得一起改版本号。
    */
   const cacheKey =
-    "apple-music:track-lookup:v6:" +
+    "apple-music:track-lookup:v7:" +
     [track.title, track.artist, track.album].map(normalizeForMatch).join(":");
 
   try {
@@ -164,9 +216,12 @@ export async function resolveTrackLookup(track: {
       const term = [track.title, track.artist, track.album].filter(Boolean).join(" ");
       const url =
         `https://api.music.apple.com/v1/catalog/${storefront}/search` +
-        `?term=${encodeURIComponent(term)}&types=songs&limit=${SEARCH_LIMIT}&relate=albums`;
+        `?term=${encodeURIComponent(term)}&types=songs,albums&limit=${SEARCH_LIMIT}&relate=albums&extend=editorialVideo`;
       const json = await appleFetchRaw<{
-        results?: { songs?: { data?: CatalogSong[] } };
+        results?: {
+          songs?: { data?: CatalogSong[] };
+          albums?: { data?: CatalogAlbum[] };
+        };
       }>(url, credentials);
 
       const wantedTitle = normalizeForMatch(track.title);
@@ -216,12 +271,60 @@ export async function resolveTrackLookup(track: {
 
       let albumId = hit?.relationships?.albums?.data?.[0]?.id ?? null;
       if (hit?.id && !albumId) {
-        // 搜索结果有时只带歌曲本身，歌曲所属专辑关系要从资源元数据里取。
-        const detail = await appleFetchRaw<{ data?: CatalogSong[] }>(
-          `https://api.music.apple.com/v1/catalog/${storefront}/songs/${hit.id}?relate=albums`,
-          credentials,
-        );
-        albumId = detail.data?.[0]?.relationships?.albums?.data?.[0]?.id ?? null;
+        albumId = extractAlbumIdFromUrl(hit.attributes?.url);
+        if (!albumId) {
+          // 搜索结果有时只带歌曲本身，歌曲所属专辑关系要从资源元数据里取。
+          const detail = await appleFetchRaw<{ data?: CatalogSong[] }>(
+            `https://api.music.apple.com/v1/catalog/${storefront}/songs/${hit.id}?relate=albums`,
+            credentials,
+          );
+          albumId = detail.data?.[0]?.relationships?.albums?.data?.[0]?.id ?? null;
+        }
+      }
+
+      // 解析 1:1 动态封面
+      let motionVideoUrl: string | null = null;
+      let motionCoverUrl: string | null = null;
+      let motionColors: string[] | null = null;
+
+      if (albumId) {
+        const albumsMap = new Map<string, CatalogAlbum>();
+        for (const alb of json.results?.albums?.data ?? []) {
+          if (alb.id) albumsMap.set(alb.id, alb);
+        }
+
+        let videoData = albumsMap.get(albumId)?.attributes?.editorialVideo;
+        if (!videoData) {
+          try {
+            const albumDetail = await appleFetchRaw<{ data?: CatalogAlbum[] }>(
+              `https://api.music.apple.com/v1/catalog/${storefront}/albums/${albumId}?extend=editorialVideo`,
+              credentials,
+            );
+            videoData = albumDetail.data?.[0]?.attributes?.editorialVideo;
+          } catch {
+            // 忽略单个专辑扩展查询异常
+          }
+        }
+
+        const squareClip = videoData?.motionDetailSquare?.video
+          ? videoData.motionDetailSquare
+          : videoData?.motionSquareVideo1x1;
+
+        if (squareClip?.video) {
+          motionVideoUrl = squareClip.video;
+          const pf = squareClip.previewFrame;
+          if (pf?.url) {
+            motionCoverUrl = pf.url.replace("{w}x{h}", `${pf.width || 3000}x${pf.height || 3000}`);
+            const clrs = [
+              pf.bgColor,
+              pf.textColor1,
+              pf.textColor2,
+              pf.textColor3,
+              pf.textColor4,
+            ].filter(Boolean) as string[];
+            motionColors = clrs.length > 0 ? clrs : null;
+          }
+        }
       }
 
       // link 存空串而不是 null：cached 用 undefined 判未命中，空串才能把
@@ -230,11 +333,28 @@ export async function resolveTrackLookup(track: {
         link: hit?.attributes?.url ?? "",
         artwork: hit?.attributes?.artwork?.url ?? null,
         id: albumId,
+        motionVideoUrl,
+        motionCoverUrl,
+        motionColors,
       };
     });
-    return { link: exact.link || searchUrl, artwork: exact.artwork, id: exact.id };
+    return {
+      link: exact.link || searchUrl,
+      artwork: exact.artwork,
+      id: exact.id,
+      motionVideoUrl: exact.motionVideoUrl ?? null,
+      motionCoverUrl: exact.motionCoverUrl ?? null,
+      motionColors: exact.motionColors ?? null,
+    };
   } catch {
     // 凭据缺失或上游异常都不该让整张卡片失败
-    return { link: searchUrl, artwork: null, id: null };
+    return {
+      link: searchUrl,
+      artwork: null,
+      id: null,
+      motionVideoUrl: null,
+      motionCoverUrl: null,
+      motionColors: null,
+    };
   }
 }
