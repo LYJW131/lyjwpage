@@ -54,8 +54,8 @@ export default async function Home() {
       <Header desktop={desktop} />
 
       <main className="flex-1">
-        <div className="mx-auto my-5 w-[calc(100%-2rem)] max-w-5xl sm:my-6">
-          <Section id="live" className="px-0 pt-6 sm:px-0 sm:pt-8">
+        <div className="mx-auto my-3.5 w-[calc(100%-2rem)] max-w-5xl sm:my-4">
+          <Section id="live" className="p-0 sm:p-0">
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <ContactCard chartSvg={githubChart} />
               <TimezoneCard fallback={timezone} />
