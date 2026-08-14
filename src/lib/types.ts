@@ -418,6 +418,13 @@ export type PowerBankStatus = {
   outputPower: number;
   /** 两个温度传感器，摄氏度 */
   temperatures: number[];
+  /**
+   * 充电底座（Pogo Pin）正在进电。不在用时是 null。
+   *
+   * 它不混进 ports：没有线、不协商，用户也插不了别的东西。而且底座进电时三个
+   * USB 口全是空闲的，没有这个字段就只能靠「有输入功率但没有口在进电」反推。
+   */
+  dock: PowerBankPort | null;
   ports: PowerBankPort[];
   device: {
     serialNumber: string | null;
