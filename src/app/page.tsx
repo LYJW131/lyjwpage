@@ -9,6 +9,7 @@ import { Section } from "@/components/ui/section";
 import {
   cachedCharger,
   cachedDesktop,
+  cachedGithubChart,
   cachedListening,
   cachedNowListening,
   cachedNowWatching,
@@ -19,24 +20,34 @@ import {
 
 export default async function Home() {
   /**
-   * 八份数据在服务端并行读一遍。七份当各卡片 SWR 的 fallbackData；时区没有
-   * status 端点，只给首屏用。不再是「静态壳子 + 挂载后一串请求」。
+   * 服务端并行读首屏数据。状态卡片使用 fallbackData；时区与 GitHub 图表没有
+   * status 轮询端点，在服务端预渲染时直接烧进静态 HTML。
    *
    * 每份都是缓存过的（见 lib/status-cache）：整页因此能预渲染成静态壳，
    * 上报进来时按 tag 失效，Redis 从「每访客读一轮」变成「每次上报后读一轮」。
    * 一份读失败只让那张卡拿到 ok:false，信封不会 reject，Promise.all 不会被拖垮。
    */
-  const [desktop, charger, listening, nowListening, timezone, vibeCoding, watching, nowWatching] =
-    await Promise.all([
-      cachedDesktop(),
-      cachedCharger(),
-      cachedListening(),
-      cachedNowListening(),
-      cachedTimezone(),
-      cachedVibeCoding(),
-      cachedWatching(),
-      cachedNowWatching(),
-    ]);
+  const [
+    desktop,
+    charger,
+    listening,
+    nowListening,
+    timezone,
+    vibeCoding,
+    watching,
+    nowWatching,
+    githubChart,
+  ] = await Promise.all([
+    cachedDesktop(),
+    cachedCharger(),
+    cachedListening(),
+    cachedNowListening(),
+    cachedTimezone(),
+    cachedVibeCoding(),
+    cachedWatching(),
+    cachedNowWatching(),
+    cachedGithubChart(),
+  ]);
 
   return (
     <>
@@ -46,14 +57,14 @@ export default async function Home() {
         <div className="mx-auto my-5 w-[calc(100%-2rem)] max-w-5xl sm:my-6">
           <Section id="live" className="px-0 pt-6 sm:px-0 sm:pt-8">
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <ContactCard chartSvg={githubChart} />
+              <TimezoneCard fallback={timezone} />
               <LiveMediaPair
                 chargerFallback={charger}
                 listeningFallback={listening}
                 nowListeningFallback={nowListening}
               />
               <VibeCodingCard fallback={vibeCoding} />
-              <TimezoneCard fallback={timezone} />
-              <ContactCard />
             </div>
 
             <div id="watching" className="mt-6 scroll-mt-28 border-t border-line pt-5">

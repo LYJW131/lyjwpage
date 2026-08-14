@@ -29,55 +29,64 @@ function GitHubIcon({ className }: { className?: string }) {
   );
 }
 
-export function ContactCard() {
+export function ContactCard({ chartSvg }: { chartSvg?: string | null }) {
   return (
-    <Card id="contact" className="md:col-span-2">
-      <div className="flex min-h-44 flex-col justify-center gap-5 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-8">
-        <a
-          href={site.github}
-          target="_blank"
-          rel="noreferrer noopener"
-          className="group flex min-w-0 items-center gap-4"
-        >
-          <span className="relative size-20 shrink-0 overflow-hidden rounded-md border border-line bg-muted">
-            <Image
-              src={site.githubAvatar}
-              alt={`${site.githubLogin} 的 GitHub 头像`}
-              fill
-              sizes="80px"
-              className="object-cover transition-transform duration-500 group-hover:scale-[1.04]"
-            />
-          </span>
-          <div className="min-w-0">
-            <div className="text-xs text-muted-foreground">个人信息</div>
-            <div className="mt-1 truncate text-sm font-medium">{site.githubLogin}</div>
-            <div className="mt-1 text-xs text-muted-foreground">github.com</div>
-          </div>
-        </a>
+    <Card id="contact" className="h-full">
+      <div className="flex h-full flex-col justify-between gap-4 p-4 sm:p-5">
+        {/* 顶部个人信息与联系方式 */}
+        <div className="flex items-center justify-between gap-4">
+          <a
+            href={site.github}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="group flex min-w-0 items-center gap-4"
+          >
+            <span className="relative size-16 shrink-0 overflow-hidden rounded-lg border border-line bg-muted">
+              <Image
+                src={site.githubAvatar}
+                alt={`${site.githubLogin} 的 GitHub 头像`}
+                fill
+                sizes="64px"
+                className="object-cover transition-transform duration-500 group-hover:scale-[1.04]"
+              />
+            </span>
+            <div className="min-w-0">
+              <div className="truncate text-xl font-bold tracking-tight sm:text-2xl">
+                {site.githubLogin}
+              </div>
+              <div className="mt-1 text-xs text-muted-foreground">github.com</div>
+            </div>
+          </a>
 
-        <div className="grid min-w-0 flex-1 grid-rows-2 divide-y divide-line sm:max-w-sm">
-          {CONTACTS.map((contact) => {
-            const Icon = contact.icon;
-            return (
-              <a
-                key={contact.label}
-                href={contact.href}
-                target={contact.external ? "_blank" : undefined}
-                rel={contact.external ? "noreferrer" : undefined}
-                className="group flex min-w-0 items-center justify-between gap-4 py-3 first:pt-0 last:pb-0"
-              >
-                <div className="flex min-w-0 items-center gap-3">
-                  <Icon className="size-5 shrink-0 text-muted-foreground transition-colors group-hover:text-foreground" />
-                  <div className="min-w-0">
-                    <div className="label-mono text-muted-foreground">{contact.label}</div>
-                    <div className="mt-1 truncate text-sm font-medium">{contact.value}</div>
-                  </div>
-                </div>
-                <ArrowUpRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-foreground" />
-              </a>
-            );
-          })}
+          <div className="flex shrink-0 flex-col items-end gap-2">
+            <a
+              href={`mailto:${site.email}`}
+              className="group flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <Mail className="size-3.5 shrink-0" />
+              <span className="font-mono">{site.email}</span>
+              <ArrowUpRight className="size-3 shrink-0 text-muted-foreground transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-foreground" />
+            </a>
+            <a
+              href={site.github}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="group flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <GitHubIcon className="size-3.5 shrink-0" />
+              <span className="font-mono">{site.githubLogin}</span>
+              <ArrowUpRight className="size-3 shrink-0 text-muted-foreground transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-foreground" />
+            </a>
+          </div>
         </div>
+
+        {/* 底部 GitHub 提交热力图 */}
+        {chartSvg ? (
+          <div
+            className="github-chart w-full"
+            dangerouslySetInnerHTML={{ __html: chartSvg }}
+          />
+        ) : null}
       </div>
     </Card>
   );

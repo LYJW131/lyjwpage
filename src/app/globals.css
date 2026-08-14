@@ -543,6 +543,22 @@ button.paper-card {
   opacity: 1;
 }
 
+/* GitHub 贡献热力图：适配全站主题色与等宽字体 */
+.github-chart svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.github-chart svg rect[data-score="0"] {
+  fill: var(--muted) !important;
+}
+
+.github-chart svg text {
+  fill: var(--muted-foreground) !important;
+  font-family: var(--font-mono) !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

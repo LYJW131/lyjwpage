@@ -6,12 +6,16 @@ import { useEffect, useState } from "react";
 import { flushSync } from "react-dom";
 
 const OPTIONS = [
-  { value: "light", label: "明亮", Icon: Sun },
-  { value: "dark", label: "深色", Icon: Moon },
-  { value: "system", label: "自动", Icon: Monitor },
+  { value: "light", label: "明亮" },
+  { value: "dark", label: "深色" },
+  { value: "system", label: "自动" },
 ] as const;
 
 function applyTheme(setTheme: (theme: string) => void, next: string) {
+  if (typeof document !== "undefined") {
+    document.documentElement.dataset.themeChoice = next;
+  }
+
   // View Transition：整页拍两张快照做交叉淡入，比给每个元素上 color transition 便宜得多
   if (
     typeof document !== "undefined" &&
@@ -29,32 +33,22 @@ function applyTheme(setTheme: (theme: string) => void, next: string) {
 
 export function ThemeToggle() {
   const { theme, setTheme } = useTheme();
-  const [mounted, setMounted] = useState(false);
-  const selected = OPTIONS.find((option) => option.value === theme) ?? OPTIONS[2];
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   return (
     <button
       type="button"
-      aria-label={`主题：${selected.label}，点击切换`}
+      aria-label="切换主题（明亮 / 深色 / 自动）"
       onClick={() => {
-        const index = OPTIONS.findIndex((option) => option.value === selected.value);
-        applyTheme(setTheme, OPTIONS[(index + 1) % OPTIONS.length].value);
+        const current = theme ?? "system";
+        const index = OPTIONS.findIndex((option) => option.value === current);
+        const next = OPTIONS[(index + 1) % OPTIONS.length].value;
+        applyTheme(setTheme, next);
       }}
       className="paper-card flex size-8 items-center justify-center rounded-md border border-line-strong bg-surface text-muted-foreground hover:bg-surface-hover hover:text-foreground"
     >
-      {mounted ? (
-        <selected.Icon className="size-4" />
-      ) : (
-        <>
-          {/* 首帧跟页面实际明暗走：亮出太阳、暗出月亮 */}
-          <Sun className="size-4 dark:hidden" />
-          <Moon className="hidden size-4 dark:block" />
-        </>
-      )}
+      <Sun className="hidden size-4 [html[data-theme-choice='light']_&]:block" />
+      <Moon className="hidden size-4 [html[data-theme-choice='dark']_&]:block" />
+      <Monitor className="hidden size-4 [html:not([data-theme-choice])_&]:block [html[data-theme-choice='system']_&]:block" />
     </button>
   );
 }
