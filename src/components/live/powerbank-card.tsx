@@ -1,6 +1,7 @@
 "use client";
 
 import NumberFlow from "@number-flow/react";
+import { useEffect } from "react";
 
 import { Card } from "@/components/ui/card";
 import { StatusDot, type DotTone } from "@/components/ui/status-dot";
@@ -68,9 +69,11 @@ function Metric({ label, value, muted }: { label: string; value: string; muted?:
 export function PowerBankCard({
   fallback,
   className,
+  onActiveChange,
 }: {
   fallback: StatusResponse<PowerBankPayload>;
   className?: string;
+  onActiveChange?: (active: boolean) => void;
 }) {
   useLiveEvents();
   const { data, error, isLoading } = useStatus<PowerBankPayload>(POWERBANK_PATH, REFRESH_MS, {
@@ -82,6 +85,17 @@ export function PowerBankCard({
   const charging = connected && Boolean(data?.charging);
   const limited = connected && Boolean(data?.thermalLimited);
   const discharging = connected && (data?.outputPower ?? 0) > 1;
+  /**
+   * 「真的在动」——和状态灯的 live 判定同一个条件。充电宝大部分时间是插着但
+   * 不收不放的，那种状态不该占住共享的那个格子。
+   *
+   * 和充电头一样，这只用来协调外层布局，不在这里卸载组件：隐藏之后还得继续
+   * 收轮询和推送，否则它永远不知道自己该回来了。
+   */
+  const flowing = charging || discharging;
+  useEffect(() => {
+    onActiveChange?.(flowing);
+  }, [flowing, onActiveChange]);
   /**
    * 两个口同时供电。固件不报这个状态 —— 它只给每个口自己的方向，和两个互相
    * 独立的总量（总输入、总输出），所以「双枪超充」「边充边放」都得这边数出来。
@@ -158,12 +172,16 @@ export function PowerBankCard({
         <p className="label-mono mt-1 text-muted-foreground">{summary}</p>
 
         {/*
-          电量条。充电宝没有历史曲线，这条就是这张卡唯一的「一眼看懂」的图形 ——
-          百分比是它最主要的状态，直角边框与整体工整设计对齐。
-          充放电绿、过热琥珀、其余中性：颜色和状态灯用同一套语义，不另造一套。
+          电量条 + 指标网格合起来占一格，高度写死 h-32 —— 和充电头那条功率曲线
+          完全一样。两张卡轮流出现在同一个位置，只要行高差几像素，换卡时每一行都
+          会挪一下，右边那张最近播放（它是 inset-block:0 贴着这一行的）也跟着跳。
+          充电头当初把曲线从 flex-1 改成 h-32，就是为了同一件事，见 charger-card.tsx。
+
+          电量条本身：充电宝没有历史曲线，这条就是这张卡唯一「一眼看懂」的图形。
+          充放电绿、过热琥珀、其余中性 —— 颜色和状态灯用同一套语义，不另造一套。
         */}
-        <div className="mt-4">
-          <div className="h-3.5 overflow-hidden border border-line bg-muted/40">
+        <div className="mt-3 flex h-32 shrink-0 flex-col">
+          <div className="h-3.5 shrink-0 overflow-hidden border border-line bg-muted/40">
             <div
               className={cn(
                 "h-full transition-[width] duration-700",
@@ -178,52 +196,52 @@ export function PowerBankCard({
               style={{ width: `${Math.min(Math.max(battery ?? 0, 0), 100)}%` }}
             />
           </div>
-        </div>
 
-        {/* 指标网格：2×3 结构，紧凑有序地展现进出功率、预计时间、温度与规格 */}
-        <div className="mt-3 grid grid-cols-3 gap-x-3 gap-y-2">
-          <Metric
-            label={dualInput ? "总输入" : onDock ? "底座输入" : "输入"}
-            value={connected ? watts(data?.inputPower) : "—"}
-            muted={!charging}
-          />
-          <Metric
-            label="输出"
-            value={connected ? watts(data?.outputPower) : "—"}
-            muted={!discharging}
-          />
-          <Metric
-            label="充满还需"
-            value={(charging && timeToFull(data?.timeToFullMinutes)) || "—"}
-            muted={!charging}
-          />
-          <Metric
-            label="机身温度"
-            value={
-              connected && data && data.temperatures.length > 0
-                ? `${data.temperatures.join(" / ")}°C`
-                : "—"
-            }
-            muted={!connected}
-          />
-          {/*
-            电池健康度，不是规格常量 —— 上报器每次连上时从设备读一次。这一格
-            换掉了原来写死的「额定能量 72.36 Wh」：同一个位置，真数据比铭牌值有用。
-          */}
-          <Metric
-            label="电池健康"
-            value={connected && data?.batteryHealth != null ? `${data.batteryHealth}%` : "—"}
-            muted={!connected}
-          />
-          {/*
-            规格里只留额定能量：220W 是端口那一行随时能看到的量级，而 72.36 Wh 是
-            电量百分比的分母 —— 没有它，「36%」换不成任何一个能用的数。
-          */}
-          <Metric
-            label="额定能量"
-            value="72.36 Wh"
-            muted={!connected}
-          />
+          {/* 指标网格：2×3。content-center 让两行在剩下的高度里居中，不靠边 */}
+          <div className="mt-3 grid flex-1 grid-cols-3 content-center gap-x-3 gap-y-2">
+            <Metric
+              label={dualInput ? "总输入" : onDock ? "底座输入" : "输入"}
+              value={connected ? watts(data?.inputPower) : "—"}
+              muted={!charging}
+            />
+            <Metric
+              label="输出"
+              value={connected ? watts(data?.outputPower) : "—"}
+              muted={!discharging}
+            />
+            <Metric
+              label="充满还需"
+              value={(charging && timeToFull(data?.timeToFullMinutes)) || "—"}
+              muted={!charging}
+            />
+            <Metric
+              label="机身温度"
+              value={
+                connected && data && data.temperatures.length > 0
+                  ? `${data.temperatures.join(" / ")}°C`
+                  : "—"
+              }
+              muted={!connected}
+            />
+            {/*
+              电池健康度，不是规格常量 —— 上报器每次连上时从设备读一次。这一格
+              换掉了原来写死的「额定能量 72.36 Wh」：同一个位置，真数据比铭牌值有用。
+            */}
+            <Metric
+              label="电池健康"
+              value={connected && data?.batteryHealth != null ? `${data.batteryHealth}%` : "—"}
+              muted={!connected}
+            />
+            {/*
+              规格里只留额定能量：220W 是端口那一行随时能看到的量级，而 72.36 Wh 是
+              电量百分比的分母 —— 没有它，「36%」换不成任何一个能用的数。
+            */}
+            <Metric
+              label="额定能量"
+              value="72.36 Wh"
+              muted={!connected}
+            />
+          </div>
         </div>
 
         {/*
