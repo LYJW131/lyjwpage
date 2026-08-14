@@ -141,12 +141,7 @@ export async function getPowerBankSnapshot(): Promise<PowerBankPayload> {
   const [pushedAt, live] = await Promise.all([lastPushReceivedAt(), readLiveness()]);
 
   return withPresence(
-    {
-      ...stored.status,
-      history: stored.history,
-      pushedAt,
-      staleAfterMs: powerBankStaleAfterMs(),
-    } as PowerBankPayload,
+    { ...stored.status, pushedAt, staleAfterMs: powerBankStaleAfterMs() } as PowerBankPayload,
     live,
   );
 }

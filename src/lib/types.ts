@@ -404,14 +404,6 @@ export type PowerBankPort = {
   current: number | null;
 };
 
-/** 电量历史里的一个采样点 */
-export type PowerBankSample = {
-  /** 毫秒时间戳 */
-  t: number;
-  /** 电量百分比，两位小数 */
-  p: number;
-};
-
 export type PowerBankStatus = {
   connected: boolean;
   /** 电量百分比，固件给到两位小数 */
@@ -434,12 +426,13 @@ export type PowerBankStatus = {
   updatedAt: number | null;
 };
 
+/**
+ * 充电宝不存历史。
+ *
+ * 卡片上没有曲线 —— 电量的变化尺度以小时计，一条几乎水平的线不如把空间让给
+ * 电量条和收放电数字。既然没人消费，采样、裁剪、增量游标那一整套就都不该存在。
+ */
 export type PowerBankPayload = PowerBankStatus & {
-  /**
-   * 电量曲线整份发。采样间隔 20 秒、400 个点覆盖两个多小时，也才几 KB ——
-   * 不像充电头的功率曲线那样值得做增量游标。
-   */
-  history: PowerBankSample[];
   /** 源站最近一次收到充电宝模块的时刻 */
   pushedAt: number;
   /** 这份数据自己的过期窗口；默认 90 秒，服务端可按上报间隔加长 */
