@@ -414,6 +414,13 @@ export type PowerBankStatus = {
   timeToFullMinutes: number | null;
   /** 机身过热、拒绝充电。插着线也不进电，所以要单独暴露 */
   thermalLimited: boolean;
+  /**
+   * 电池健康度，整数百分比（剩余容量 / 出厂容量）。
+   *
+   * 上报器只在每次连上充电宝时收到一次，之后整个会话都不会再变，所以它不参与
+   * 「有没有变化」的判断，断开期间也保留上一次的值。
+   */
+  batteryHealth: number | null;
   inputPower: number;
   outputPower: number;
   /** 两个温度传感器，摄氏度 */
