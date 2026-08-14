@@ -146,26 +146,13 @@ export function PowerBankCard({
             {connected && battery != null ? (
               <NumberFlow
                 value={battery}
-                format={{ minimumFractionDigits: 1, maximumFractionDigits: 1 }}
+                format={{ minimumFractionDigits: 2, maximumFractionDigits: 2 }}
               />
             ) : (
-              <span className="text-muted-foreground">--.-</span>
+              <span className="text-muted-foreground">--.--</span>
             )}
           </div>
           <span className="pb-1 font-mono text-lg text-muted-foreground">%</span>
-
-          {/* 温度靠右。它不是主读数，但过热时是最该被看到的一条，所以跟着变色 */}
-          {connected && data && data.temperatures.length > 0 ? (
-            <span
-              className={cn(
-                "ml-auto pb-1.5 font-mono text-xs",
-                limited ? "text-live-idle" : "text-muted-foreground",
-              )}
-              title="机身温度传感器"
-            >
-              {data.temperatures.map((value) => `${value}°`).join(" / ")}C
-            </span>
-          ) : null}
         </div>
 
         <p className="label-mono mt-1 text-muted-foreground">{summary}</p>
@@ -193,8 +180,8 @@ export function PowerBankCard({
           </div>
         </div>
 
-        {/* 三个数字。放电时「充满还需」没有意义，那一格换成输出 */}
-        <div className="mt-4 grid grid-cols-3 gap-3">
+        {/* 指标网格：2×3 结构，紧凑有序地展现进出功率、预计时间、温度与规格 */}
+        <div className="mt-3 grid grid-cols-3 gap-x-3 gap-y-2">
           <Metric
             label={dualInput ? "总输入" : onDock ? "底座输入" : "输入"}
             value={connected ? watts(data?.inputPower) : "—"}
@@ -209,6 +196,25 @@ export function PowerBankCard({
             label="充满还需"
             value={(charging && timeToFull(data?.timeToFullMinutes)) || "—"}
             muted={!charging}
+          />
+          <Metric
+            label="机身温度"
+            value={
+              connected && data && data.temperatures.length > 0
+                ? `${data.temperatures.join(" / ")}°C`
+                : "—"
+            }
+            muted={!connected}
+          />
+          <Metric
+            label="额定能量"
+            value="72.36 Wh"
+            muted={!connected}
+          />
+          <Metric
+            label="最大输出"
+            value="220W MAX"
+            muted={!connected}
           />
         </div>
 
@@ -237,7 +243,7 @@ export function PowerBankCard({
           const displayPorts = [portC1, portC2, thirdPort];
 
           return (
-            <div className="mt-4 grid grid-cols-3 gap-px overflow-hidden rounded-md border border-line bg-line">
+            <div className="mt-3 grid grid-cols-3 gap-px overflow-hidden rounded-md border border-line bg-line">
               {displayPorts.map((port) => {
                 const raw = "active" in port ? (port as PowerBankPort) : null;
                 // 整机断开时端口数据是上一帧的残留，不能当成还在工作照常显示
@@ -259,19 +265,15 @@ export function PowerBankCard({
                       )}
                     </div>
                     <div className="mt-0.5 truncate font-mono text-[0.6875rem] text-muted-foreground">
-                      {/*
-                        和充电头那张卡对齐：第三行只讲「这个口现在在干什么」，没在
-                        工作就是一个破折号。原来空闲时写的是端口能力（仅输出 / 双向）
-                        —— 那是一条永远为真的静态事实，占着一个本该反映当下状态的
-                        位置，还让同一行在中英之间跳。
-
-                        方向用大写：这一行是等宽小字号，大写更像状态标签而不是散句。
-                      */}
-                      {full?.direction === "in"
-                        ? "INPUT"
-                        : full?.direction === "out"
-                          ? "OUTPUT"
-                          : "—"}
+                      {full?.active && full.voltage != null && full.current != null ? (
+                        `${full.voltage.toFixed(1)}V · ${full.current.toFixed(2)}A`
+                      ) : full?.direction === "in" ? (
+                        "INPUT"
+                      ) : full?.direction === "out" ? (
+                        "OUTPUT"
+                      ) : (
+                        "—"
+                      )}
                     </div>
                   </div>
                 );

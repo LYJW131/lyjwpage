@@ -117,10 +117,10 @@ export function ChargerCard({
             {connected ? (
               <NumberFlow
                 value={power}
-                format={{ minimumFractionDigits: 1, maximumFractionDigits: 1 }}
+                format={{ minimumFractionDigits: 2, maximumFractionDigits: 2 }}
               />
             ) : (
-              <span className="text-muted-foreground">--.-</span>
+              <span className="text-muted-foreground">--.--</span>
             )}
           </div>
           <span className="pb-1 font-mono text-lg text-muted-foreground">W</span>
