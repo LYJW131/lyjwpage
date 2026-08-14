@@ -9,6 +9,7 @@ import type {
   ListeningPayload,
   NowListeningPayload,
   VibeCodingSessionsPayload,
+  PowerBankPayload,
 } from "@/lib/types";
 
 /**
@@ -61,6 +62,8 @@ export type LiveEvent =
    * 立刻更新。合并逻辑在 lib/charger-history，和轮询那条共用。
    */
   | { type: "charger"; payload: ChargerPayload }
+  /** 充电宝：插拔、充放电切换、热控翻转、整数电量跳格时推一条 */
+  | { type: "powerbank"; payload: PowerBankPayload }
   /**
    * 会话状态变了。只带扫描那四个字段，客户端并进手上已有的整份卡片。
    * 用量曲线和限额不走这里 —— 那是 10 分钟的事，推它们等于把推送当轮询用。
@@ -96,6 +99,7 @@ export type LiveEvent =
 export const DESKTOP_TAG = "desktop";
 export const TIMEZONE_TAG = "timezone";
 export const CHARGER_TAG = "charger";
+export const POWERBANK_TAG = "powerbank";
 export const VIBECODING_TAG = "vibecoding";
 export const LISTENING_TAG = "listening";
 export const NOW_LISTENING_TAG = "listening-now";

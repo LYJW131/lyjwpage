@@ -11,6 +11,7 @@
 
 export const DESKTOP_PATH = "/api/status/desktop";
 export const CHARGER_PATH = "/api/status/charger";
+export const POWERBANK_PATH = "/api/status/powerbank";
 export const VIBECODING_PATH = "/api/status/vibecoding";
 
 /**

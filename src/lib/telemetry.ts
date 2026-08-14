@@ -6,6 +6,8 @@ import {
   pickCharger,
   type RawChargingDevices,
 } from "@/lib/anker";
+import { getPowerBankSnapshot, normalizePowerBank, pickPowerBank } from "@/lib/powerbank";
+import { recordStatus as recordPowerBankStatus } from "@/lib/powerbank-store";
 import { recordPushHeartbeat, recordStatus } from "@/lib/charger-store";
 import { resolveTrackLookup } from "@/lib/apple-music";
 import { putAppleMusicCredentials } from "@/lib/apple-music-credentials";
@@ -15,6 +17,7 @@ import { number, object, text } from "@/lib/json";
 import {
   CHARGER_TAG,
   DESKTOP_TAG,
+  POWERBANK_TAG,
   expireStatus,
   expireStatusImmediately,
   NOW_LISTENING_TAG,
@@ -356,8 +359,8 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
    * 充电设备。
    *
    * 上报器 v5 起送的是 `chargingDevices`：一个设备列表，充电头和充电宝在同一个
-   * 数组里，靠 `kind` 区分。本站目前只画充电头 —— 充电宝的那条照收不误，只是没
-   * 有地方展示，先不落库。
+   * 数组里，靠 `kind` 区分。两台各自落库、各自推送 —— 一台没在列表里不影响另
+   * 一台，那正是「只开了其中一个模块」的正常情况。
    *
    * 旧的 `charger` 键已经停发。这里不做兼容：留一条读不到新字段的旧路径，只会
    * 在上报器回滚时安静地写进半截数据。
@@ -378,6 +381,21 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
       if (structuralChanged) {
         await publish({ type: "charger", payload: await getChargerPayload({ since: Date.now() }) });
         expireStatusImmediately(CHARGER_TAG);
+      }
+    }
+
+    const powerBank = pickPowerBank(raw);
+    if (powerBank) {
+      if (!powerBank.updatedAt) throw new Error("chargingDevices 里的充电宝缺少 updatedAt");
+      const structuralChanged = await recordPowerBankStatus(
+        normalizePowerBank(powerBank),
+        receivedAt,
+      );
+      // 和充电头同一套：插拔、充放电切换、热控翻转、整数电量跳格才即时推，
+      // 缓慢滚动的电量和功率等下一次轮询。
+      if (structuralChanged) {
+        await publish({ type: "powerbank", payload: await getPowerBankSnapshot() });
+        expireStatusImmediately(POWERBANK_TAG);
       }
     }
     accepted += 1;

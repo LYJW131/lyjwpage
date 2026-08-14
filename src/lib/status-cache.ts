@@ -1,11 +1,13 @@
 import { cacheLife, cacheTag } from "next/cache";
 
 import { getChargerSnapshot, withChargerFreshness } from "@/lib/anker";
+import { getPowerBankSnapshot, withPowerBankFreshness } from "@/lib/powerbank";
 import { statusEnvelope } from "@/lib/api";
 import { getRecentlyPlayed } from "@/lib/apple-music-store";
 import { getNowWatching, getWatching } from "@/lib/emby";
 import {
   CHARGER_TAG,
+  POWERBANK_TAG,
   DESKTOP_TAG,
   LISTENING_TAG,
   NOW_LISTENING_TAG,
@@ -87,12 +89,32 @@ export async function cachedCharger() {
   return statusEnvelope(getChargerFallback);
 }
 
+/**
+ * 充电宝首屏。
+ *
+ * 不像充电头那样裁窗口：电量曲线的采样间隔是 20 秒，400 个点覆盖两个多小时，
+ * 整份也就几 KB，而首屏就该直接看到完整的充放电形状。
+ */
+export async function cachedPowerBank() {
+  "use cache";
+  cacheLife(STATUS_LIFE);
+  cacheTag(POWERBANK_TAG);
+  return statusEnvelope(async () => withPowerBankFreshness(await getPowerBankSnapshot()));
+}
+
 /** 状态端点用的完整 400 点。和首屏那份同 tag，插拔时一起失效。 */
 export async function cachedChargerSnapshot() {
   "use cache";
   cacheLife(STATUS_LIFE);
   cacheTag(CHARGER_TAG);
   return statusEnvelope(getChargerSnapshot);
+}
+
+export async function cachedPowerBankSnapshot() {
+  "use cache";
+  cacheLife(STATUS_LIFE);
+  cacheTag(POWERBANK_TAG);
+  return statusEnvelope(getPowerBankSnapshot);
 }
 
 /** 同上，活动曲线也发全量 */
