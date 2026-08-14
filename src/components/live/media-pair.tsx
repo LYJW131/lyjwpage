@@ -16,6 +16,21 @@ import type {
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
+/**
+ * 这一格的高度权威，三种形态共用一个数：充电头独占、充电宝独占、两张上下平分。
+ *
+ * 高度只能定在这里，不能定在卡片里 —— 两张卡平分时各自只有一半高，谁都撑不住这
+ * 一行；而这一行一矮，右边那张 inset-block:0 贴着它的最近播放就得重排下半部分。
+ *
+ * **写死高度，不用 min-h。** min-h 只是个下限：独占时整格由卡片内容撑出 374.5px，
+ * 平分时两张精炼卡够不着下限、正好落在 374px —— 半个像素的差，每切一次就把右边
+ * 那张列表推一下。写死之后三种形态量出来是同一个数，和内容无关。
+ *
+ * 取 380 而不是 374：完整态内容实测 372.5px，留 7.5px 余量，字体度量有出入时也不
+ * 会顶到卡片的 overflow-hidden 上、把端口格的下边框切掉。
+ */
+const SLOT_HEIGHT = "h-[380px]";
+
 const CHARGER_TRANSITION = {
   duration: 0.36,
   ease: [0.22, 1, 0.36, 1] as const,
@@ -29,9 +44,12 @@ type Slot = "charger" | "powerBank";
  * - 单列时，充电卡所在的网格轨道收拢，最近播放顺势上移；
  * - 双列时，充电卡保留行高但淡出，最近播放用 FLIP 从右格铺满整行。
  *
- * **充电头和充电宝共用左边这一格。** 谁真的在收放电就显示谁，两个都在动时充电头
- * 优先 —— 它是插在墙上的那台，出现的理由更强。两张卡都始终挂载，只是把没轮到的
- * 那张 display:none：卸载了它就收不到下一次轮询和推送，也就永远不知道该回来了。
+ * **充电头和充电宝共用左边这一格。** 谁真的在收放电就显示谁，两台都在动时上下平
+ * 分、各自切到精炼形态 —— 整格高度始终不变，右边那张最近播放贴着这一行，一涨它
+ * 就得重排。都不在动时整格收起。
+ *
+ * 两张卡都始终挂载，只是把没轮到的那张 display:none：卸载了它就收不到下一次轮询
+ * 和推送，也就永远不知道自己该回来了。
  */
 export function LiveMediaPair({
   chargerFallback,
@@ -62,6 +80,8 @@ export function LiveMediaPair({
   const powerBankOn =
     isDev && powerBankOverride !== null ? powerBankOverride : powerBankActive;
   const isVisible = chargerOn || powerBankOn;
+  /** 两台都在动：这一格上下平分，两张卡各自切到精炼形态 */
+  const both = chargerOn && powerBankOn;
 
   /**
    * 淡出期间继续显示刚才那张卡。不记住的话，充电宝停下的那一刻格子会先闪回充电头
@@ -107,19 +127,27 @@ export function LiveMediaPair({
           aria-hidden={!isVisible}
         >
           <div className="charger-collapse min-h-0 overflow-hidden md:h-full md:overflow-visible">
-            <div className={cn("h-full", shown !== "charger" && "hidden")}>
-              <ChargerCard
-                fallback={chargerFallback}
-                className="h-full"
-                onActiveChange={handleChargerActive}
-              />
-            </div>
-            <div className={cn("h-full", shown !== "powerBank" && "hidden")}>
-              <PowerBankCard
-                fallback={powerBankFallback}
-                className="h-full"
-                onActiveChange={handlePowerBankActive}
-              />
+            {/*
+              两台都在动时上下平分这一格，各自切到精炼形态。整格高度不变 ——
+              旁边那张最近播放是 inset-block:0 贴着这一行的，这里一涨它就得重排。
+            */}
+            <div className={cn("flex flex-col", SLOT_HEIGHT, both && "gap-3")}>
+              <div className={cn("min-h-0", both ? "flex-1" : "h-full", !both && shown !== "charger" && "hidden")}>
+                <ChargerCard
+                  fallback={chargerFallback}
+                  className="h-full"
+                  onActiveChange={handleChargerActive}
+                  compact={both}
+                />
+              </div>
+              <div className={cn("min-h-0", both ? "flex-1" : "h-full", !both && shown !== "powerBank" && "hidden")}>
+                <PowerBankCard
+                  fallback={powerBankFallback}
+                  className="h-full"
+                  onActiveChange={handlePowerBankActive}
+                  compact={both}
+                />
+              </div>
             </div>
           </div>
         </motion.div>
