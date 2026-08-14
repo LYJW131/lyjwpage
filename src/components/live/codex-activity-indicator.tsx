@@ -44,7 +44,7 @@ export function CodexActivityIndicator({
             两张都是矢量，加起来还不到从前一张位图大。
           */}
           <Image
-            src="/codex-icon-dark.svg"
+            src="/codex-icon-light.svg"
             width={20}
             height={20}
             alt=""
@@ -52,7 +52,7 @@ export function CodexActivityIndicator({
             className={cn("size-5 dark:hidden", stale && "grayscale opacity-40")}
           />
           <Image
-            src="/codex-icon-light.svg"
+            src="/codex-icon-dark.svg"
             width={20}
             height={20}
             alt=""
