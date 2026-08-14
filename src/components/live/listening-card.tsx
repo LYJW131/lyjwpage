@@ -581,7 +581,11 @@ export function ListeningCard({
   const listRef = useRowSnap(restKeys[0], wide);
 
   return (
-    <Card label="Recently Played" action="Apple Music" className={className}>
+    <Card
+      label="Recently Played"
+      action="Apple Music"
+      className={cn("h-full min-h-[374px]", className)}
+    >
       <div className="flex min-h-0 flex-1 flex-col px-4 pb-4 pt-3">
         {/* 最近的一项放大展示。整块都是链接 —— 点封面也能跳转。
             换专辑/歌单时新旧叠着交叉淡入，见 HERO_VARIANTS。

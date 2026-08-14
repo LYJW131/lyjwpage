@@ -160,12 +160,6 @@ export type NowListeningPayload = {
    * 目录里能精确匹配上就是直链，匹配不上退回搜索页。
    */
   link: string | null;
-  /** 1:1 动态视频流播放链接 (.m3u8) */
-  motionVideoUrl?: string | null;
-  /** 1:1 动态视频预览帧封面 */
-  motionCoverUrl?: string | null;
-  /** 动态封面调色板 */
-  motionColors?: string[] | null;
   /**
    * 这份选择还能成立多久（毫秒）。null = 不会因为单纯的时间流逝而改变。
    *
