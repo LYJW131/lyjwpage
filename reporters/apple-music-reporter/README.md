@@ -49,6 +49,7 @@ Apple 没有服务端可查的「当前播放」接口，也不返回播放时�
 | `SITE_URL` | ✅ | 站点地址，如 `https://lyjw131.com`。端点路径由它自己拼 |
 | `SITE_INGEST_URL` | | 直接给完整端点，给了就不用 `SITE_URL` |
 | `TELEMETRY_INGEST_SECRET` | ✅ | 和站点同名变量对上。站点没配时才可留空 |
+| `APPLE_MUSIC_STOREFRONT` | | 目录查询地区，默认 `cn` |
 | `RECENT_INTERVAL_MS` | | 默认 `60000`。这也是「换歌时刻」的观测精度 |
 | `FULL_PUSH_INTERVAL_MS` | | 默认 `600000`，没变化也兜底整推的间隔 |
 | `REQUEST_TIMEOUT_MS` | | 默认 `10000`，问 Apple 和取凭据用 |
