@@ -60,14 +60,6 @@ export function ContactCard({ chartSvg }: { chartSvg?: string | null }) {
 
           <div className="flex shrink-0 flex-col items-end gap-2">
             <a
-              href={`mailto:${site.email}`}
-              className="group flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
-            >
-              <Mail className="size-3.5 shrink-0" />
-              <span className="font-mono">{site.email}</span>
-              <ArrowUpRight className="size-3 shrink-0 text-muted-foreground transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-foreground" />
-            </a>
-            <a
               href={site.github}
               target="_blank"
               rel="noreferrer noopener"
@@ -75,6 +67,14 @@ export function ContactCard({ chartSvg }: { chartSvg?: string | null }) {
             >
               <GitHubIcon className="size-3.5 shrink-0" />
               <span className="font-mono">{site.githubLogin}</span>
+              <ArrowUpRight className="size-3 shrink-0 text-muted-foreground transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-foreground" />
+            </a>
+            <a
+              href={`mailto:${site.email}`}
+              className="group flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <Mail className="size-3.5 shrink-0" />
+              <span className="font-mono">{site.email}</span>
               <ArrowUpRight className="size-3 shrink-0 text-muted-foreground transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-foreground" />
             </a>
           </div>
