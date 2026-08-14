@@ -67,16 +67,11 @@ async function readLatest(): Promise<Stored | null> {
  * ——最后这个是显示边界，卡片上就写着整数，跳一格该立刻更新。
  */
 function structuralKey(status: PowerBankStatus) {
-  /**
-   * 电量**不在**这里。曾经按整数百分比进过指纹，理由是「卡片显示整数」——
-   * 卡片显示的是两位小数，那条理由本来就不成立。更要命的是它会跳：90W 输出下
-   * 电压下垂，电量计重算，实测四秒内从 34.32% 掉到 33.32%（物理上要三十秒）。
-   * 于是整数每跳一格就判定为结构变化，即时推送退化成定时广播。
-   */
   return JSON.stringify([
     status.connected,
     status.charging,
     status.thermalLimited,
+    status.battery == null ? null : Math.round(status.battery),
     status.device.serialNumber,
     status.device.firmwareVersion,
     Boolean(status.dock?.active),
