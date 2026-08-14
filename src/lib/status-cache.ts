@@ -92,8 +92,7 @@ export async function cachedCharger() {
 /**
  * 充电宝首屏。
  *
- * 不像充电头那样裁窗口：电量曲线的采样间隔是 20 秒，400 个点覆盖两个多小时，
- * 整份也就几 KB，而首屏就该直接看到完整的充放电形状。
+ * 不需要像充电头那样裁历史窗口 —— 这张卡没有曲线，快照本身就是全部内容。
  */
 export async function cachedPowerBank() {
   "use cache";
