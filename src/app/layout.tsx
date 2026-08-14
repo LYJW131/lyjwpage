@@ -49,6 +49,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             __html: `try{var t=localStorage.getItem("theme")||"system";document.documentElement.dataset.themeChoice=t}catch(e){}`,
           }}
         />
+        <style
+          dangerouslySetInnerHTML={{
+            __html: `.theme-toggle-icon{display:none!important}html[data-theme-choice="light"] .theme-toggle-icon-light{display:block!important}html[data-theme-choice="dark"] .theme-toggle-icon-dark{display:block!important}html:not([data-theme-choice]) .theme-toggle-icon-system,html[data-theme-choice="system"] .theme-toggle-icon-system{display:block!important}`,
+          }}
+        />
       </head>
       <body className="flex min-h-full flex-col">
         {/* 封面图（LCP）和剧照的域名，由 React 提升进 head。

@@ -2,7 +2,6 @@
 
 import { Monitor, Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
-import { useEffect, useState } from "react";
 import { flushSync } from "react-dom";
 
 const OPTIONS = [
@@ -39,16 +38,16 @@ export function ThemeToggle() {
       type="button"
       aria-label="切换主题（明亮 / 深色 / 自动）"
       onClick={() => {
-        const current = theme ?? "system";
-        const index = OPTIONS.findIndex((option) => option.value === current);
+        const currentChoice = theme ?? "system";
+        const index = OPTIONS.findIndex((option) => option.value === currentChoice);
         const next = OPTIONS[(index + 1) % OPTIONS.length].value;
         applyTheme(setTheme, next);
       }}
       className="paper-card flex size-8 items-center justify-center rounded-md border border-line-strong bg-surface text-muted-foreground hover:bg-surface-hover hover:text-foreground"
     >
-      <Sun className="hidden size-4 [html[data-theme-choice='light']_&]:block" />
-      <Moon className="hidden size-4 [html[data-theme-choice='dark']_&]:block" />
-      <Monitor className="hidden size-4 [html:not([data-theme-choice])_&]:block [html[data-theme-choice='system']_&]:block" />
+      <Sun className="theme-toggle-icon theme-toggle-icon-light size-4" />
+      <Moon className="theme-toggle-icon theme-toggle-icon-dark size-4" />
+      <Monitor className="theme-toggle-icon theme-toggle-icon-system size-4" />
     </button>
   );
 }
