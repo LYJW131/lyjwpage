@@ -236,7 +236,11 @@ export function TimezoneCard({
   }, []);
 
   // 有合法 Mac IANA 就用，没有才回退 site.timezone。不看上报器在不在线。
-  const { identifier: timezone, offsetSeconds } = resolveTimezoneDisplay(
+  const {
+    identifier: timezone,
+    offsetSeconds,
+    usingMac,
+  } = resolveTimezoneDisplay(
     fallback.ok ? fallback.data.timezone : null,
     now,
   );
@@ -252,6 +256,10 @@ export function TimezoneCard({
     <Card className={cn("h-full", className)}>
       <div className="flex h-full min-h-44 items-center justify-between gap-4 p-4 pl-5 sm:p-5">
         <div className="relative z-10 flex min-w-0 flex-col justify-center gap-1.5 sm:gap-2">
+          <div className="text-xs text-muted-foreground">
+            {usingMac ? "Mac 时间" : "服务器时间"}
+          </div>
+
           {/* 大时钟数字 */}
           <div className="flex items-baseline overflow-x-visible overflow-y-clip">
             {clock ? (
