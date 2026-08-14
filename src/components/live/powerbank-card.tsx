@@ -89,10 +89,22 @@ export function PowerBankCard({
    * 进电侧不做同样的判断：这台机器规格上就是单口 100W 输入，十一份抓包里也从
    * 没出现过两个口同时进电。凭空写一个没见过的状态，只会在真出现时误导人。
    */
-  const dualOutput =
-    connected && (data?.ports ?? []).filter((port) => port.direction === "out").length >= 2;
   /** 底座进电。上报器只在它真的在用时才带这个字段，所以有值即在用 */
   const onDock = connected && Boolean(data?.dock?.active);
+  /**
+   * 同时在进电的来路数。底座和 USB-C 口是平等的两种来路 —— 实测底座 35.0W 加
+   * C1 32.9W 合成总输入 67.9W，两路一起喂。
+   *
+   * 这台机器规格上写的是「USB-C 输入 100W」，读起来像只能单口进电，所以一开始
+   * 这里没做多路判断。那是把「抓包里没见过」当成了「设备不支持」—— 手上十一份
+   * 抓包恰好全是单一来源，它们根本没有能力区分这两件事。
+   */
+  const inputSources =
+    (connected ? (data?.ports ?? []).filter((port) => port.direction === "in").length : 0) +
+    (onDock ? 1 : 0);
+  const dualInput = inputSources >= 2;
+  const dualOutput =
+    connected && (data?.ports ?? []).filter((port) => port.direction === "out").length >= 2;
 
   /**
    * 副标题按「现在发生的最重要的事」排优先级：过热 > 充电 > 放电 > 待机。
@@ -103,16 +115,22 @@ export function PowerBankCard({
     if (error) return "尚未收到遥测推送";
     if (!connected) return "充电宝未连接";
     if (limited) return "过热保护中，暂停充电";
-    // 边充边放、双枪超充、底座快充可以叠加：底座进电的同时两个口在往外供电。
-    // 叠加时都说出来 —— 每一条都是独立的事实，省略哪条都会让另一条显得像全部。
+    /**
+     * 进电和出电是两件独立的事，各自可能有个更具体的名字（双路、底座）。
+     * 两个方向同时在流时都要说出来 —— 只说一边会让那一边看起来像全部。
+     *
+     * 「边充边放」是这种双向状态本身的名字，所以只在进电侧没有更具体的说法时
+     * 才用它：来路是双枪或底座的话，那个信息更值钱，别被这个词盖掉。
+     */
+    const inflow = dualInput ? "双枪超充" : onDock ? "底座快充" : null;
+    const outflow = dualOutput ? "双枪供电" : null;
     if (charging && discharging) {
-      const how = onDock ? "底座快充" : "边充边放";
-      return dualOutput ? `${how} · 双枪超充` : onDock ? `${how} · 边充边放` : how;
+      const head = inflow ?? "边充边放";
+      const tail = outflow ?? (inflow ? "供电中" : null);
+      return tail ? `${head} · ${tail}` : head;
     }
-    if (dualOutput) return "双枪超充";
-    if (onDock) return "底座快充";
-    if (charging) return "充电中";
-    if (discharging) return "供电中";
+    if (charging) return inflow ?? "充电中";
+    if (discharging) return outflow ?? "供电中";
     return "待机";
   })();
 
