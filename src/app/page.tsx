@@ -3,7 +3,6 @@ import { Header } from "@/components/header";
 import { ContactCard } from "@/components/contact-card";
 import { LiveMediaPair } from "@/components/live/media-pair";
 import { TimezoneCard } from "@/components/live/timezone-card";
-import { PowerBankCard } from "@/components/live/powerbank-card";
 import { VibeCodingCard } from "@/components/live/vibecoding-card";
 import { WatchingRow } from "@/components/live/watching-card";
 import { Section } from "@/components/ui/section";
@@ -65,10 +64,10 @@ export default async function Home() {
               <TimezoneCard fallback={timezone} />
               <LiveMediaPair
                 chargerFallback={charger}
+                powerBankFallback={powerBank}
                 listeningFallback={listening}
                 nowListeningFallback={nowListening}
               />
-              <PowerBankCard fallback={powerBank} />
               <VibeCodingCard fallback={vibeCoding} />
             </div>
 
