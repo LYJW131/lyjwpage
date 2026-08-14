@@ -1,18 +1,25 @@
 import { timingSafeEqual } from "node:crypto";
 
 import {
-  getChargerPayload,
+  chargerPushPayload,
   normalizeChargingDevice,
   pickCharger,
   type RawChargingDevices,
 } from "@/lib/anker";
-import { shouldPublishCharging } from "@/lib/charging-settling";
-import { getPowerBankSnapshot, normalizePowerBank, pickPowerBank } from "@/lib/powerbank";
-import { recordStatus as recordPowerBankStatus } from "@/lib/powerbank-store";
-import { recordPushHeartbeat, recordStatus } from "@/lib/charger-store";
+import { prepareHeartbeat, prepareStatus, readChargerState } from "@/lib/charger-store";
+import { askSettlingAt, settlingDecision, writeSettlingAt } from "@/lib/charging-settling";
+import { normalizePowerBank, pickPowerBank, powerBankPushPayload } from "@/lib/powerbank";
+import {
+  prepareStatus as preparePowerBankStatus,
+  readPowerBankState,
+} from "@/lib/powerbank-store";
 import { resolveTrackLookup } from "@/lib/apple-music";
 import { putAppleMusicCredentials } from "@/lib/apple-music-credentials";
-import { getHomePodSnapshot } from "@/lib/homepod-store";
+import {
+  getHomePodSnapshot,
+  playableHomePod,
+  type StoredHomePod,
+} from "@/lib/homepod-store";
 import { ASSET_URL_PREFIX, hasStoredImage, IMAGE_OBJECT_KEY } from "@/lib/r2-assets";
 import { number, object, text } from "@/lib/json";
 import {
@@ -21,17 +28,21 @@ import {
   POWERBANK_TAG,
   expireStatus,
   expireStatusImmediately,
+  fanout,
   NOW_LISTENING_TAG,
   publish,
   TIMEZONE_TAG,
   VIBECODING_TAG,
+  type LiveEvent,
+  type PendingEvent,
 } from "@/lib/live-events";
 import { pickNowListening, type NowListeningCandidate, type NowListeningSnapshot } from "@/lib/now-listening";
 import { mirrorKey } from "@/lib/redis";
 import {
+  nextLiveness,
   readLiveness,
-  recordReporterBeat,
   withPresence,
+  writeLiveness,
   type Liveness,
 } from "@/lib/reporter-liveness";
 import type {
@@ -43,10 +54,9 @@ import type {
   TimezonePayload,
 } from "@/lib/types";
 import {
-  getVibeCodingSessionsPayload,
-  recordVibeCodingLimits,
-  recordVibeCodingSessions,
-  recordVibeCodingUsage,
+  prepareVibeCodingLimits,
+  prepareVibeCodingSessions,
+  prepareVibeCodingUsage,
 } from "@/lib/vibecoding";
 
 /** 与采集端一致；缓存的是很短的内容哈希 URL，64 项也足够覆盖日常应用。 */
@@ -308,7 +318,7 @@ async function normalizeMusic(
  * 现在只有这一条路：每条信封都刷新存活，声明翻转时发一次 presence 事件。
  */
 export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.now()) {
-  await syncTelemetryState();
+  // 校验排在任何 I/O 之前：纯计算，不值得为一封写坏的报文先跑一趟 Redis
   const envelope = object(input) as TelemetryEnvelope | null;
   if (!envelope || envelope.version !== 4) throw new Error("遥测协议 version 必须为 4");
   if (number(envelope.heartbeatAt) == null) throw new Error("遥测请求缺少 heartbeatAt");
@@ -323,25 +333,6 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
   if (presence !== "online" && presence !== "offline") {
     throw new Error("遥测请求的 presence 必须是 online 或 offline");
   }
-  // 先落 activeModules：下面判断充电头在不在采时读的就是它
-  telemetryState.activeModules = new Set(nextActiveModules);
-  /**
-   * envelope.presence 是上报器声明的在离线。
-   *
-   * 只覆盖优雅离开：退出、睡眠时它抢在断开前发一条 offline，这里立刻把状态
-   * 翻过去，不用等心跳窗口。崩溃、断网、强制关机时它发不出这一条，
-   * 那些仍然靠 offlineByLiveness 里的心跳窗口兜底 —— 两条路是互补的。
-   *
-   * 任何一条信封本身都算一次在线心跳；offline 只用于睡眠、退出这类优雅离开。
-   */
-  const { flipped: presenceFlipped } = await recordReporterBeat({
-    offline: presence === "offline",
-    at: receivedAt,
-  });
-  // 充电头按「多久没收到推送」判断断流，纯心跳也得给它续上
-  if (telemetryState.activeModules.has("charger")) {
-    await recordPushHeartbeat(receivedAt);
-  }
   /**
    * modules 省略或为空 = 纯心跳。
    *
@@ -353,162 +344,293 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
   }
   const modules = object(envelope.modules) ?? {};
 
+  /**
+   * 这封信封用得着的键，**全部在这里一起发车**。
+   *
+   * 同一条 ioredis 连接上并发发出的命令在网络上是重叠的，所以这几条加起来
+   * 只花一个来回 —— 不用真去组 pipeline。关键是「决定读什么」必须早于
+   * 「分发模块」：从前充电头那两条读是分支里现读的，于是它排在状态和存活
+   * 后面，一封带充电头的信封要三个背靠背的来回才轮到推送。
+   *
+   * 只读这封用得上的：`charger:history` 是 400 个采样点、十几 KB，无条件读回来
+   * 再丢掉，比多一个来回还亏。
+   */
+  const hasChargingDevices = "chargingDevices" in modules;
+  const wantsCharger = hasChargingDevices || nextActiveModules.includes("charger");
+  const charger = wantsCharger ? readChargerState() : null;
+  /**
+   * 两台设备各自的「上一次结构变化在什么时候」，收敛窗口要用（lib/charging-settling）。
+   * 结构真变了的话这两条是白读的，但它们和上面几条在同一批里，不多花来回。
+   */
+  const settling = hasChargingDevices
+    ? { charger: askSettlingAt("charger"), powerbank: askSettlingAt("powerbank") }
+    : null;
+  const powerBank = hasChargingDevices ? readPowerBankState() : null;
+  const homePod = "appleMusic" in modules ? getHomePodSnapshot() : null;
+  const [, previousLiveness] = await Promise.all([syncTelemetryState(), readLiveness()]);
+
+  // 落 activeModules 必须排在 syncTelemetryState 后面 —— 它会从库里那份覆盖回来
+  telemetryState.activeModules = new Set(nextActiveModules);
+  /**
+   * envelope.presence 是上报器声明的在离线。
+   *
+   * 只覆盖优雅离开：退出、睡眠时它抢在断开前发一条 offline，这里立刻把状态
+   * 翻过去，不用等心跳窗口。崩溃、断网、强制关机时它发不出这一条，
+   * 那些仍然靠 offlineByLiveness 里的心跳窗口兜底 —— 两条路是互补的。
+   *
+   * 任何一条信封本身都算一次在线心跳；offline 只用于睡眠、退出这类优雅离开。
+   */
+  const { next: liveness, flipped: presenceFlipped } = nextLiveness(previousLiveness, {
+    offline: presence === "offline",
+    at: receivedAt,
+  });
+
+  /**
+   * 这一轮要做的三件事，收集起来一起交给 fanout：写和推同时发车，缓存失效排在
+   * 它们之后。先后为什么必须是这样，见 lib/live-events 的 fanout。
+   *
+   * 从前是逐个 await：每一次推送前面都压着一串 Redis 往返，而推送本身要的东西
+   * 这时早就在手上了。
+   */
+  const writes: Promise<unknown>[] = [];
+  const events: PendingEvent[] = [];
+  const tags: string[] = [];
+  const urgentTags: string[] = [];
+
   let accepted = 0;
   let desktopIconAvailable: boolean | undefined;
 
   /**
-   * 充电设备。
+   * 存活第一个发车，而且排在模块处理**外面**。
    *
-   * 上报器 v5 起送的是 `chargingDevices`：一个设备列表，充电头和充电宝在同一个
-   * 数组里，靠 `kind` 区分。两台各自落库、各自推送 —— 一台没在列表里不影响另
-   * 一台，那正是「只开了其中一个模块」的正常情况。
+   * 「任何一条信封本身都算一次在线心跳」—— 哪怕其中一个模块写坏了。放进下面
+   * 那个 try 里的话，上报器一旦带出个格式错误，每封都 400、每封都不记心跳，
+   * 90 秒后整台 Mac 的卡全变灰，而它其实活得好好的、别的模块也还在正常落库。
+   * 从前 recordReporterBeat 就排在模块前面，这里保持不变。
    *
-   * 旧的 `charger` 键已经停发。这里不做兼容：留一条读不到新字段的旧路径，只会
-   * 在上报器回滚时安静地写进半截数据。
+   * 代价（也是从前就有的）：落在一封失败信封里的在离线翻转会写进去，但
+   * publishPresence 在下面抛出去之前跑不到，浏览器只能等下一轮轮询翻过来。
    */
-  if ("chargingDevices" in modules) {
-    const raw = object(modules.chargingDevices) as RawChargingDevices | null;
-    if (!raw) throw new Error("chargingDevices 模块必须是对象");
-    const charger = pickCharger(raw);
-    // 只开了充电宝模块时列表里就没有充电头。那不是错误，收下心跳即可。
-    if (charger) {
-      if (!charger.updatedAt) throw new Error("chargingDevices 里的充电头缺少 updatedAt");
-      const structuralChanged = await recordStatus(
-        normalizeChargingDevice(charger),
-        receivedAt,
-      );
-      /**
-       * 插拔、换设备立刻推给浏览器，不等卡片下一次轮询。滚动读数照旧不走这里 ——
-       * 除了插拔后那几十秒：采集端在那段时间会追发，功率还在往稳定值收敛，
-       * 那几帧值得推。窗口的判断见 lib/charging-settling。
-       *
-       * since 给当下时刻：历史点一个都不带，客户端沿用自己那份，见 live-events。
-       */
-      if (await shouldPublishCharging("charger", structuralChanged, receivedAt)) {
-        await publish({ type: "charger", payload: await getChargerPayload({ since: Date.now() }) });
-        expireStatusImmediately(CHARGER_TAG);
-      }
-    }
+  writes.push(writeLiveness(liveness));
 
-    const powerBank = pickPowerBank(raw);
-    if (powerBank) {
-      if (!powerBank.updatedAt) throw new Error("chargingDevices 里的充电宝缺少 updatedAt");
-      const structuralChanged = await recordPowerBankStatus(
-        normalizePowerBank(powerBank),
-        receivedAt,
-      );
-      // 和充电头同一套：插拔、充放电切换、热控翻转、整数电量跳格即时推，加上
-      // 插拔之后那段收敛窗口；缓慢滚动的电量和功率仍然等下一次轮询。
-      if (await shouldPublishCharging("powerbank", structuralChanged, receivedAt)) {
-        await publish({ type: "powerbank", payload: await getPowerBankSnapshot() });
-        expireStatusImmediately(POWERBANK_TAG);
-      }
-    }
-    accepted += 1;
-  }
+  /**
+   * 模块处理整个包起来，是为了保证「已经发车的写」一定被等到。
+   *
+   * 下面的写是 push 进 writes 就开跑的，而后面的模块还可能校验失败抛出去 ——
+   * 不等的话，响应带着 400 提前返回，serverless 随手就把没等完的那几个写掐了，
+   * 表现是「上报器报了个格式错误，顺带丢了同一封里已经收下的另外几份数据」。
+   * 错误照样往上抛，只是先把该落的落完。
+   */
+  try {
+    /**
+     * 充电设备。
+     *
+     * 上报器 v5 起送的是 `chargingDevices`：一个设备列表，充电头和充电宝在同一个
+     * 数组里，靠 `kind` 区分。两台各自落库、各自推送 —— 一台没在列表里不影响另
+     * 一台，那正是「只开了其中一个模块」的正常情况。
+     *
+     * 旧的 `charger` 键已经停发。这里不做兼容：留一条读不到新字段的旧路径，只会
+     * 在上报器回滚时安静地写进半截数据。
+     */
+    let chargerWritten = false;
+    if ("chargingDevices" in modules) {
+      const raw = object(modules.chargingDevices) as RawChargingDevices | null;
+      if (!raw) throw new Error("chargingDevices 模块必须是对象");
 
-  if ("desktop" in modules) {
-    const normalized = await normalizeDesktop(modules.desktop, receivedAt);
-    desktopIconAvailable = normalized.iconAvailable;
-    // 图标引用失效时先让采集端补传，避免向浏览器发布一个短暂的无图中间状态。
-    if (desktopIconAvailable) {
-      telemetryState.desktop = normalized.activity;
-      telemetryState.activityReceivedAt = receivedAt;
+      const device = pickCharger(raw);
+      // 只开了充电宝模块时列表里就没有充电头。那不是错误，收下心跳即可。
+      if (device) {
+        if (!device.updatedAt) throw new Error("chargingDevices 里的充电头缺少 updatedAt");
+        const status = normalizeChargingDevice(device);
+        // 上面早就发车了，这里只是把它接住
+        const landing = prepareStatus(status, receivedAt, await (charger ?? readChargerState()));
+        writes.push(landing.commit());
+        chargerWritten = true;
+        /**
+         * 插拔、换设备立刻推给浏览器，不等卡片下一次轮询。滚动读数照旧不走这里 ——
+         * 除了插拔后那几十秒：采集端在那段时间会追发，功率还在往稳定值收敛，
+         * 那几帧值得推。窗口的判断见 lib/charging-settling。
+         */
+        const window = settlingDecision(
+          landing.structuralChanged,
+          receivedAt,
+          await (settling?.charger ?? askSettlingAt("charger")),
+        );
+        if (window.restart) writes.push(writeSettlingAt("charger", receivedAt));
+        if (window.publish) {
+          events.push({
+            type: "charger",
+            payload: chargerPushPayload({
+              status,
+              receivedAt,
+              historyCount: landing.historyCount,
+              liveness,
+            }),
+          });
+          urgentTags.push(CHARGER_TAG);
+        }
+      }
+
+      const bank = pickPowerBank(raw);
+      if (bank) {
+        if (!bank.updatedAt) throw new Error("chargingDevices 里的充电宝缺少 updatedAt");
+        const status = normalizePowerBank(bank);
+        const landing = preparePowerBankStatus(
+          status,
+          receivedAt,
+          await (powerBank ?? readPowerBankState()),
+        );
+        writes.push(landing.commit());
+        // 和充电头同一套：插拔、充放电切换、热控翻转、整数电量跳格即时推，加上
+        // 插拔之后那段收敛窗口；缓慢滚动的电量和功率仍然等下一次轮询。
+        const window = settlingDecision(
+          landing.structuralChanged,
+          receivedAt,
+          await (settling?.powerbank ?? askSettlingAt("powerbank")),
+        );
+        if (window.restart) writes.push(writeSettlingAt("powerbank", receivedAt));
+        if (window.publish) {
+          events.push({
+            type: "powerbank",
+            payload: powerBankPushPayload({ status, receivedAt, liveness }),
+          });
+          urgentTags.push(POWERBANK_TAG);
+        }
+      }
       accepted += 1;
     }
-  }
-
-  if ("timezone" in modules) {
-    telemetryState.timezone = normalizeTimezone(modules.timezone, receivedAt);
-    telemetryState.timezoneReceivedAt = receivedAt;
-    // 没有对应的推送事件（时区一年变两次，不值得为它开一路广播），
-    // 但首屏那份缓存得知道自己过期了 —— 失效是白给的，广播才是按人头付钱的
-    expireStatus(TIMEZONE_TAG);
-    accepted += 1;
-  }
-
-  if ("appleMusic" in modules) {
-    telemetryState.music = await normalizeMusic(modules.appleMusic, receivedAt);
-    telemetryState.activityReceivedAt = receivedAt;
-    accepted += 1;
-  }
-
-  if ("appleMusicCredentials" in modules) {
-    const row = object(modules.appleMusicCredentials);
-    if (!row) throw new Error("appleMusicCredentials 必须是对象");
-    const hasMusicUserToken = "musicUserToken" in row;
-    const hasDeveloperToken = "developerToken" in row;
-    if (!hasMusicUserToken && !hasDeveloperToken) {
-      throw new Error("appleMusicCredentials 至少包含一个 token");
+    /**
+     * 充电头按「多久没收到推送」判断断流，纯心跳也得给它续上。
+     *
+     * 上面真收下快照时不用再来一次：prepareStatus 那条 pipeline 里已经把这个心跳
+     * 一起落了。从前两条都发，于是每个带充电头的信封都白跑一次写加两次读。
+     */
+    if (!chargerWritten && charger && nextActiveModules.includes("charger")) {
+      writes.push(prepareHeartbeat(receivedAt, await charger).commit());
     }
 
-    const musicUserToken = hasMusicUserToken ? text(row.musicUserToken) : undefined;
-    const developerToken = hasDeveloperToken ? text(row.developerToken) : undefined;
-    if (hasMusicUserToken && !musicUserToken) throw new Error("musicUserToken 不能为空");
-    if (hasDeveloperToken && !developerToken) throw new Error("developerToken 不能为空");
-
-    const expiresAt = hasDeveloperToken ? number(row.expiresAt) : undefined;
-    if (hasDeveloperToken && (expiresAt == null || !Number.isFinite(expiresAt) || expiresAt <= 0)) {
-      throw new Error("developerToken 必须带有效的 expiresAt");
+    if ("desktop" in modules) {
+      const normalized = await normalizeDesktop(modules.desktop, receivedAt);
+      desktopIconAvailable = normalized.iconAvailable;
+      // 图标引用失效时先让采集端补传，避免向浏览器发布一个短暂的无图中间状态。
+      if (desktopIconAvailable) {
+        telemetryState.desktop = normalized.activity;
+        telemetryState.activityReceivedAt = receivedAt;
+        accepted += 1;
+        events.push({ type: "desktop", payload: desktopPayload(liveness) });
+        tags.push(DESKTOP_TAG);
+      }
     }
-    await putAppleMusicCredentials({
-      // 上面几道守卫已经保证「带了这个字段就一定非空」，但 text() 的返回类型是
-      // string | null，TS 收窄不到这一步，只能把 null 折成 undefined
-      musicUserToken: musicUserToken ?? undefined,
-      developerToken: developerToken ?? undefined,
-      expiresAt: expiresAt ?? undefined,
-      receivedAt,
-    });
-    accepted += 1;
+
+    if ("timezone" in modules) {
+      telemetryState.timezone = normalizeTimezone(modules.timezone, receivedAt);
+      telemetryState.timezoneReceivedAt = receivedAt;
+      // 没有对应的推送事件（时区一年变两次，不值得为它开一路广播），
+      // 但首屏那份缓存得知道自己过期了 —— 失效是白给的，广播才是按人头付钱的
+      tags.push(TIMEZONE_TAG);
+      accepted += 1;
+    }
+
+    if ("appleMusic" in modules) {
+      telemetryState.music = await normalizeMusic(modules.appleMusic, receivedAt);
+      telemetryState.activityReceivedAt = receivedAt;
+      accepted += 1;
+      /**
+       * 这一份还要现算：曲目链接和封面要查一次 Apple 目录。整个交给 fanout 和
+       * 写库并行 —— 慢的是那次目录查询，等它的同时写库正好也在跑。
+       * HomePod 那份快照上面已经发车了（另一个 key，这次上报没碰它）。
+       */
+      events.push(listeningEvent(liveness, homePod ?? getHomePodSnapshot()));
+      urgentTags.push(NOW_LISTENING_TAG);
+    }
+
+    if ("appleMusicCredentials" in modules) {
+      const row = object(modules.appleMusicCredentials);
+      if (!row) throw new Error("appleMusicCredentials 必须是对象");
+      const hasMusicUserToken = "musicUserToken" in row;
+      const hasDeveloperToken = "developerToken" in row;
+      if (!hasMusicUserToken && !hasDeveloperToken) {
+        throw new Error("appleMusicCredentials 至少包含一个 token");
+      }
+
+      const musicUserToken = hasMusicUserToken ? text(row.musicUserToken) : undefined;
+      const developerToken = hasDeveloperToken ? text(row.developerToken) : undefined;
+      if (hasMusicUserToken && !musicUserToken) throw new Error("musicUserToken 不能为空");
+      if (hasDeveloperToken && !developerToken) throw new Error("developerToken 不能为空");
+
+      const expiresAt = hasDeveloperToken ? number(row.expiresAt) : undefined;
+      if (hasDeveloperToken && (expiresAt == null || !Number.isFinite(expiresAt) || expiresAt <= 0)) {
+        throw new Error("developerToken 必须带有效的 expiresAt");
+      }
+      writes.push(
+        putAppleMusicCredentials({
+          // 上面几道守卫已经保证「带了这个字段就一定非空」，但 text() 的返回类型是
+          // string | null，TS 收窄不到这一步，只能把 null 折成 undefined
+          musicUserToken: musicUserToken ?? undefined,
+          developerToken: developerToken ?? undefined,
+          expiresAt: expiresAt ?? undefined,
+          receivedAt,
+        }),
+      );
+      accepted += 1;
+    }
+
+    /**
+     * Vibe coding 三个模块各收各的。
+     *
+     * 从前只有一个 `vibeCoding`，用量扫描把限额和会话状态一起烤了进去 —— 那个
+     * 十几秒的扫描一失败，刚取到的限额也跟着发不出来。三条独立的分支之后，
+     * 「只更新限额」是能表达的一件事。
+     *
+     * 三份最终拼成同一张首屏卡片，所以任意一份进来都让同一个缓存 tag 失效。
+     * 重复失效是幂等的。「某一份校验失败」不再需要靠逐份落库来兜：prepare* 的校验
+     * 全排在写之前，一份写坏时前面几份根本还没发车。
+     */
+    if ("vibeCodingUsage" in modules) {
+      writes.push(prepareVibeCodingUsage(modules.vibeCodingUsage, receivedAt).commit());
+      tags.push(VIBECODING_TAG);
+      accepted += 1;
+    }
+
+    if ("vibeCodingLimits" in modules) {
+      writes.push(prepareVibeCodingLimits(modules.vibeCodingLimits, receivedAt).commit());
+      tags.push(VIBECODING_TAG);
+      accepted += 1;
+    }
+
+    if ("vibeCodingSessions" in modules) {
+      const { sessions, commit } = prepareVibeCodingSessions(modules.vibeCodingSessions, receivedAt);
+      writes.push(commit());
+      events.push({ type: "vibecoding", payload: sessions });
+      tags.push(VIBECODING_TAG);
+      accepted += 1;
+    }
+
+    // 整封都收下了才落状态。中途抛出去时这份不写 —— 从前也是这样，
+    // persistTelemetryState 就排在所有模块之后。存活不同，见上面
+    writes.push(persistTelemetryState(receivedAt));
+  } finally {
+    /**
+     * 只在模块真的来了才推。
+     *
+     * 采集端本来就只在内容变化时才带上对应模块，所以「模块出现在 envelope 里」
+     * 就是变化信号本身。从前这里是无条件推 —— 连不带任何模块的纯心跳包也推，
+     * 为的是把「上报器离线」翻回在线。但过期是时间的函数，两张卡一直在轮询，
+     * 那件事轮询本来就在做；为它每 30 秒广播一份没变化的状态，等于把推送当轮询用。
+     *
+     * 代价是上报器从离线恢复时，「在线」最迟等下一轮轮询（30 秒）才显示，不再是
+     * 收到心跳的那一刻。换来的是推送通道上只跑真正的状态变化。
+     */
+    await fanout({ writes, events, tags, urgentTags });
   }
 
   /**
-   * Vibe coding 三个模块各收各的。
+   * 在离线翻转本身就是状态变化，值得推 —— 这正是「关键事件」，不是定时广播。
    *
-   * 从前只有一个 `vibeCoding`，用量扫描把限额和会话状态一起烤了进去 —— 那个
-   * 十几秒的扫描一失败，刚取到的限额也跟着发不出来。三条独立的分支之后，
-   * 「只更新限额」是能表达的一件事。
-   *
-   * 三份最终拼成同一张首屏卡片，所以任意一份成功写入都要让同一个缓存 tag
-   * 失效。同一信封带多份时重复失效是幂等的；逐份做还能保证后续一份校验失败时，
-   * 前面已经落库的更新不会继续被旧缓存遮住。
+   * 只有它排在写后面：这一条不带数据，浏览器收到后要回源重取三份，早发的话
+   * 那三次回源读到的还是写之前的 Redis。带数据的那几条没有这个问题。
    */
-  if ("vibeCodingUsage" in modules) {
-    await recordVibeCodingUsage(modules.vibeCodingUsage, receivedAt);
-    expireStatus(VIBECODING_TAG);
-    accepted += 1;
-  }
-
-  if ("vibeCodingLimits" in modules) {
-    await recordVibeCodingLimits(modules.vibeCodingLimits, receivedAt);
-    expireStatus(VIBECODING_TAG);
-    accepted += 1;
-  }
-
-  if ("vibeCodingSessions" in modules) {
-    await recordVibeCodingSessions(modules.vibeCodingSessions, receivedAt);
-    expireStatus(VIBECODING_TAG);
-    accepted += 1;
-  }
-
-  await persistTelemetryState(receivedAt);
-
-  /**
-   * 只在模块真的来了才推。
-   *
-   * 采集端本来就只在内容变化时才带上对应模块，所以「模块出现在 envelope 里」
-   * 就是变化信号本身。从前这里是无条件推 —— 连不带任何模块的纯心跳包也推，
-   * 为的是把「上报器离线」翻回在线。但过期是时间的函数，两张卡一直在轮询，
-   * 那件事轮询本来就在做；为它每 30 秒广播一份没变化的状态，等于把推送当轮询用。
-   *
-   * 代价是上报器从离线恢复时，「在线」最迟等下一轮轮询（30 秒）才显示，不再是
-   * 收到心跳的那一刻。换来的是推送通道上只跑真正的状态变化。
-   */
-  // 在离线翻转本身就是状态变化，值得推 —— 这正是「关键事件」，不是定时广播
   if (presenceFlipped) await publishPresence();
-  if ("desktop" in modules && desktopIconAvailable) await publishDesktop();
-  if ("appleMusic" in modules) await publishListening();
-  if ("vibeCodingSessions" in modules) await publishVibeCoding();
 
   return { accepted, heartbeat: true, desktopIconAvailable };
 }
@@ -525,8 +647,14 @@ async function syncForRead(): Promise<Liveness> {
   return liveness;
 }
 
-export async function getDesktopPayload(): Promise<DesktopPayload> {
-  const liveness = await syncForRead();
+/**
+ * 拿工作副本现拼一份前台应用。
+ *
+ * 取数那侧先 syncForRead 再调它；上报那侧直接调 —— 工作副本这时正是这条信封
+ * 刚更新好的样子，而存活也是刚算出来的。**上报路径上绝不能再 sync 一次**：
+ * 那会拿写之前的 Redis 把刚更新的工作副本盖回去，而且和还在飞的那次写撞车。
+ */
+function desktopPayload(liveness: Liveness): DesktopPayload {
   return withPresence(
     {
       desktop: telemetryState.activeModules.has("desktop") ? telemetryState.desktop : null,
@@ -534,6 +662,10 @@ export async function getDesktopPayload(): Promise<DesktopPayload> {
     },
     liveness,
   );
+}
+
+export async function getDesktopPayload(): Promise<DesktopPayload> {
+  return desktopPayload(await syncForRead());
 }
 
 export async function getTimezonePayload(): Promise<TimezonePayload> {
@@ -572,10 +704,9 @@ async function decorateCandidate(
  * 换歌 / HA 推送才变，所以能进 `'use cache'`。暂停宽限期和 HomePod 静默在
  * pickNowListening 里现算。
  */
-export async function getNowListeningSnapshot(): Promise<NowListeningSnapshot> {
-  await syncTelemetryState();
+/** 工作副本 + 一份 HomePod 快照 → 两个查好链接的候选。谁都不再回 Redis 取 */
+async function snapshotFrom(homePodStored: StoredHomePod | null): Promise<NowListeningSnapshot> {
   const musicEnabled = telemetryState.activeModules.has("appleMusic");
-  const homePodStored = await getHomePodSnapshot();
   const [mac, homePod] = await Promise.all([
     musicEnabled
       ? decorateCandidate(telemetryState.music, telemetryState.activityReceivedAt)
@@ -589,6 +720,11 @@ export async function getNowListeningSnapshot(): Promise<NowListeningSnapshot> {
     homePod,
     macReceivedAt: telemetryState.activityReceivedAt,
   };
+}
+
+export async function getNowListeningSnapshot(): Promise<NowListeningSnapshot> {
+  await syncTelemetryState();
+  return snapshotFrom(await getHomePodSnapshot());
 }
 
 export async function getNowListening(): Promise<NowListeningPayload> {
@@ -614,33 +750,39 @@ export async function publishPresence() {
   expireStatusImmediately(NOW_LISTENING_TAG, CHARGER_TAG);
 }
 
-export async function publishDesktop() {
-  await publish({ type: "desktop", payload: await getDesktopPayload() });
-  expireStatus(DESKTOP_TAG);
-}
-
-/** 只推会话那四个字段。用量还没到过也推，客户端没整份卡片时丢掉补丁即可。 */
-export async function publishVibeCoding() {
-  const payload = await getVibeCodingSessionsPayload();
-  if (!payload) return;
-  await publish({ type: "vibecoding", payload });
-}
-
 /**
  * 推送当前播放。
  *
- * 暂停宽限期结束时不再由这里补一条 —— 从前是挂一个 setTimeout 到点重推，
+ * 暂停宽限期结束时不由这里补一条 —— 从前是挂一个 setTimeout 到点重推，
  * 那要求进程在响应发出之后还活着。serverless 上响应一返回实例就被冻结，
  * 那个定时器根本不会执行，表现是暂停后 hero 一直挂到下一次轮询才翻。
  *
  * 现在改成 payload 自带 expiresInMs，由浏览器把下一次取数排在那一刻，
  * 服务端只对「收到上报」这一件事做出反应，不欠任何未来的动作。
+ *
+ * `homePod` 收的是一个还没落地的读 —— 调用方在信封解析完就把它发车了，这里
+ * 只负责接住。HomePod 那条入口传的则是刚收下的那份（`Promise.resolve`）：那正是
+ * 它自己要写的 key，读回来只会更慢，还可能读到写之前的。
  */
-export async function publishListening() {
-  const payload = await getNowListening();
-  await publish({ type: "listening-now", payload });
-  expireStatusImmediately(NOW_LISTENING_TAG);
-  return payload;
+async function listeningEvent(
+  liveness: Liveness,
+  homePod: Promise<StoredHomePod | null>,
+): Promise<LiveEvent> {
+  return {
+    type: "listening-now",
+    payload: pickNowListening(await snapshotFrom(await homePod), liveness),
+  };
+}
+
+/**
+ * HomePod 那条入口的推送。
+ *
+ * Mac 那份工作副本要现同步一次（另一个 key，这次上报没碰），存活也要现读；
+ * 两个都是读，一起发车。
+ */
+export async function homePodListeningEvent(stored: StoredHomePod): Promise<LiveEvent> {
+  const [, liveness] = await Promise.all([syncTelemetryState(), readLiveness()]);
+  return listeningEvent(liveness, Promise.resolve(playableHomePod(stored)));
 }
 
 /** 唯一遥测入口的鉴权；未配置密钥时保留本地开发的零配置体验。 */

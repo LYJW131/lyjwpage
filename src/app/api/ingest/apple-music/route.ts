@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 
 import { ingestFailed, ingestRoute, jsonBody } from "@/lib/api";
 import { readAppleMusicCredentials } from "@/lib/apple-music-credentials";
-import { getRecentlyPlayed, recordRecentlyPlayedReport } from "@/lib/apple-music-store";
-import { expireStatus, LISTENING_TAG, publish } from "@/lib/live-events";
+import { prepareRecentlyPlayedReport } from "@/lib/apple-music-store";
+import { fanout, LISTENING_TAG } from "@/lib/live-events";
 import { withRedisScope } from "@/lib/redis";
 import { telemetryAuthorized } from "@/lib/telemetry";
 
@@ -23,18 +23,22 @@ import { telemetryAuthorized } from "@/lib/telemetry";
 export async function POST(request: Request) {
   if (!telemetryAuthorized(request)) return ingestFailed("未授权", 401);
   return ingestRoute(async () => {
-    const result = await recordRecentlyPlayedReport(await jsonBody(request));
+    const { items, changed, listening, commit } = await prepareRecentlyPlayedReport(
+      await jsonBody(request),
+    );
     /**
      * 带整份数据推。省掉每个在线访客各一次回源 —— 发失效通知的话，成本是按
      * 人头乘的，而这份整份才 4.4 KB。理由详见 lib/live-events 的事件定义。
      *
      * 只在内容真的变了时发：上报器每 10 分钟兜底整推一次，跟着发就成了定时广播。
+     * 推的那份和落库那份同源，所以两件事同时做，见 fanout。
      */
-    if (result.changed) {
-      await publish({ type: "listening", payload: await getRecentlyPlayed() });
-      expireStatus(LISTENING_TAG);
-    }
-    return result;
+    await fanout({
+      writes: [commit()],
+      events: changed ? [{ type: "listening", payload: listening }] : [],
+      tags: changed ? [LISTENING_TAG] : [],
+    });
+    return { items, changed };
   });
 }
 

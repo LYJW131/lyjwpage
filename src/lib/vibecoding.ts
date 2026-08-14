@@ -334,31 +334,35 @@ function positiveOrNull(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null;
 }
 
-export async function recordVibeCodingUsage(report: unknown, receivedAt = Date.now()) {
-  const prepared = normalizeUsage(report);
-  if (!prepared) throw new Error("vibeCodingUsage 必须是 Mac Telemetry Hub 的用量摘要");
-  await usageMirror.put({ payload: prepared, pushedAt: receivedAt });
+/**
+ * 三个模块一律「先校验，后落库」，写留给 commit。
+ *
+ * 校验是同步的，所以整条信封的校验全部排在任何一次写之前 —— 后面一份写坏时，
+ * 前面几份根本还没落库，不会留下半截状态（从前是逐份 await 落库、逐份失效缓存
+ * 来补这个洞的）。而且写不再挡着推送，见 lib/live-events 的 fanout。
+ */
+export function prepareVibeCodingUsage(report: unknown, receivedAt = Date.now()) {
+  const payload = normalizeUsage(report);
+  if (!payload) throw new Error("vibeCodingUsage 必须是 Mac Telemetry Hub 的用量摘要");
+  return { commit: () => usageMirror.put({ payload, pushedAt: receivedAt }) };
 }
 
-export async function recordVibeCodingLimits(report: unknown, receivedAt = Date.now()) {
-  const prepared = normalizeLimitsReport(report);
-  if (!prepared) throw new Error("vibeCodingLimits 必须带 agents 数组");
-  await limitsMirror.put({ payload: prepared, pushedAt: receivedAt });
+export function prepareVibeCodingLimits(report: unknown, receivedAt = Date.now()) {
+  const payload = normalizeLimitsReport(report);
+  if (!payload) throw new Error("vibeCodingLimits 必须带 agents 数组");
+  return { commit: () => limitsMirror.put({ payload, pushedAt: receivedAt }) };
 }
 
-export async function recordVibeCodingSessions(report: unknown, receivedAt = Date.now()) {
-  const prepared = normalizeSessions(report);
-  if (!prepared) throw new Error("vibeCodingSessions 必须带 agents 数组");
-  await sessionsMirror.put({ payload: prepared, pushedAt: receivedAt });
-}
-
-/** 推给浏览器的会话补丁。用量还没到过也推得出来 —— 它不依赖那份。 */
-export async function getVibeCodingSessionsPayload(): Promise<VibeCodingSessionsPayload | null> {
-  const stored = await sessionsMirror.get();
-  if (!stored) return null;
+export function prepareVibeCodingSessions(report: unknown, receivedAt = Date.now()) {
+  const payload = normalizeSessions(report);
+  if (!payload) throw new Error("vibeCodingSessions 必须带 agents 数组");
   return {
-    agents: stored.payload.agents,
-    sessionCount: stored.payload.sessionCount,
+    /** 推给浏览器的会话补丁。用量还没到过也推 —— 它不依赖那份 */
+    sessions: {
+      agents: payload.agents,
+      sessionCount: payload.sessionCount,
+    } satisfies VibeCodingSessionsPayload,
+    commit: () => sessionsMirror.put({ payload, pushedAt: receivedAt }),
   };
 }
 

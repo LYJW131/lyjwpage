@@ -4,16 +4,23 @@ import {
   getImageUrls,
   getNowPlaying,
   getResume,
+  resolveNowPlaying,
   setCurrentItem,
   setImageUrls,
   setNowPlaying,
   setResume,
+  type EmbyNowPlaying,
   type ResolvedNowPlaying,
   type StoredWatchingItem,
 } from "@/lib/emby-store";
 import { ASSET_URL_PREFIX, hasStoredImage, IMAGE_OBJECT_KEY } from "@/lib/r2-assets";
 import { number, object, text } from "@/lib/json";
-import { expireStatus, NOW_WATCHING_TAG, publish, WATCHING_TAG } from "@/lib/live-events";
+import {
+  fanout,
+  NOW_WATCHING_TAG,
+  WATCHING_TAG,
+  type PendingEvent,
+} from "@/lib/live-events";
 import type { WatchingItem } from "@/lib/types";
 
 /**
@@ -62,13 +69,37 @@ function resolve(item: StoredWatchingItem, urls: Record<string, string>): Watchi
   };
 }
 
-export async function getWatching({ limit = 8 } = {}): Promise<WatchingPayload> {
+/**
+ * 拼装和取数分开：上报那条路上这些东西全在手上（刚规范化好的列表、刚落下的
+ * 播放状态），不必等它们写进 Redis 再读回来。条数的默认值只在这里写一遍。
+ */
+export function watchingPayload(
+  items: StoredWatchingItem[],
+  urls: Record<string, string>,
+  { limit = 8 } = {},
+): WatchingPayload {
+  return { items: items.slice(0, limit).map((item) => resolve(item, urls)) };
+}
+
+export function nowWatchingPayload(
+  live: ResolvedNowPlaying | null,
+  current: StoredWatchingItem | null,
+  urls: Record<string, string>,
+): NowWatchingPayload {
+  if (!live) return { nowPlaying: null, current: null };
+  // 详情比 webhook 晚到一拍很正常（代理下一轮才把这一项推来），对不上就先不给
+  return {
+    nowPlaying: live,
+    current: current?.id === live.itemId ? resolve(current, urls) : null,
+  };
+}
+
+export async function getWatching(options: { limit?: number } = {}): Promise<WatchingPayload> {
   const stored = await getResume();
   // 还没收到过推送。交给 statusRoute 变成降级信封，前端显示提示
   if (!stored) throw new Error("尚未收到 Emby 推送");
 
-  const urls = await getImageUrls();
-  return { items: stored.items.slice(0, limit).map((item) => resolve(item, urls)) };
+  return watchingPayload(stored.items, await getImageUrls(), options);
 }
 
 /** 全靠推送，空闲时零上游请求 —— 没在播就只读一次自家存储 */
@@ -76,12 +107,7 @@ export async function getNowWatching(): Promise<NowWatchingPayload> {
   const live = await getNowPlaying();
   if (!live) return { nowPlaying: null, current: null };
 
-  const stored = await getCurrentItem();
-  // 详情比 webhook 晚到一拍很正常（代理下一轮才把这一项推来），对不上就先不给
-  const current =
-    stored?.item.id === live.itemId ? resolve(stored.item, await getImageUrls()) : null;
-
-  return { nowPlaying: live, current };
+  return nowWatchingPayload(live, (await getCurrentItem())?.item ?? null, await getImageUrls());
 }
 
 /* ── 以下是推送代理那一侧的入口 ──────────────────────────────── */
@@ -183,9 +209,16 @@ function normalize(item: ReportItem): StoredWatchingItem {
   };
 }
 
-/** 接收上报器已经写入 R2 的对象键；站点不再接触图片字节。 */
-async function storeImages(value: unknown): Promise<{ urls: Record<string, string>; stored: number }> {
-  const urls = await getImageUrls();
+/**
+ * 接收上报器已经写入 R2 的对象键；站点不再接触图片字节。
+ *
+ * 映射由调用方读好传进来 —— 那条读要和续播列表、播放中那两条一起发车。
+ * 返回的 `urls` 是就地改过的同一个对象。
+ */
+async function storeImages(
+  value: unknown,
+  urls: Record<string, string>,
+): Promise<{ urls: Record<string, string>; stored: number }> {
   if (!Array.isArray(value) || !value.length) return { urls, stored: 0 };
 
   let stored = 0;
@@ -231,48 +264,76 @@ export async function recordEmbyReport(body: unknown) {
   const root = object(body);
   if (!root) throw new Error("请求体不是对象");
 
-  const { urls, stored } = await storeImages(root.images);
+  const writes: Promise<unknown>[] = [];
+  const events: PendingEvent[] = [];
+  const tags: string[] = [];
 
+  /**
+   * 这次用得着的三个键一起发车。
+   *
+   * 同一条连接上并发的命令在网络上是重叠的，加起来只花一个来回。从前是
+   * 「读图片映射 → 读续播列表 → …→ 读播放中那一项」，三个背靠背，而它们
+   * 互不相干。三个都读满：图片映射两份 payload 都要用，续播列表既要 diff
+   * 又是 missingImages 的底，播放中那一项在代理只推了个位置更新时要拿来配详情。
+   */
   const resume = object(root.resume);
-  let items: number | null = null;
+  const [images, previousResume, storedCurrent] = await Promise.all([
+    getImageUrls(),
+    getResume(),
+    "playing" in root ? getCurrentItem() : null,
+  ]);
+
+  const { urls, stored } = await storeImages(root.images, images);
+
+  let list: StoredWatchingItem[] | null = null;
   /**
    * 列表内容变没变。代理只在有变化时推列表，但每 10 分钟还会兜底整推一次，
    * 收到就发失效通知的话推送会退化成定时广播，所以这里自己比一遍。
    */
   let resumeChanged = false;
   if (resume && Array.isArray(resume.items)) {
-    const list = resume.items
+    list = resume.items
       .map(reportItem)
       .filter((item): item is ReportItem => item != null)
       .map(normalize);
-    const previous = await getResume();
-    resumeChanged = JSON.stringify(previous?.items) !== JSON.stringify(list);
-    await setResume(list);
-    items = list.length;
+    resumeChanged = JSON.stringify(previousResume?.items) !== JSON.stringify(list);
+    writes.push(setResume(list));
   }
 
   /**
    * `playing` 缺席和为 null 是两回事：缺席表示这次不谈播放状态（比如只补图），
    * null 表示代理确认没有会话在播了，要清掉。所以判存在而不是判真假。
    */
-  let playing: "updated" | "cleared" | null = null;
-  if ("playing" in root) {
-    playing = (await recordPlaying(root.playing)) ? "updated" : "cleared";
+  const played = "playing" in root ? preparePlaying(root.playing) : null;
+  if (played) {
+    writes.push(played.commit());
+    // 播放状态变了就直接把新数据推给浏览器 —— 手上这份就是最新的
+    events.push({
+      type: "watching-now",
+      payload: nowWatchingPayload(
+        resolveNowPlaying(played.state),
+        // 这次没带详情就用存着的那份；对不上会被 nowWatchingPayload 挡掉
+        played.item ?? storedCurrent?.item ?? null,
+        urls,
+      ),
+    });
+    tags.push(NOW_WATCHING_TAG);
   }
 
   /**
    * 缺哪些图要按「落地后的全部状态」算，而不是只看这次推来的部分：
    * Redis 被清空时代理往往只推了个位置更新，得靠这份回执才知道图也没了。
+   *
+   * 这次带了列表就用手上这份 —— 它正是要写下去的那份，读回来只会更慢，
+   * 还可能读到写之前的。
    */
-  const current = playing === "updated" ? (await getCurrentItem())?.item : null;
-  const referenced = [...((await getResume())?.items ?? []), ...(current ? [current] : [])];
-  const missing = missingKeys(referenced, urls);
+  const referenced = list ?? previousResume?.items ?? null;
+  const current = played?.item ?? null;
+  const missing = missingKeys(
+    [...(referenced ?? []), ...(current ? [current] : [])],
+    urls,
+  );
 
-  // 播放状态变了就直接把新数据推给浏览器 —— 服务端手上已经是最新的
-  if (playing) {
-    await publish({ type: "watching-now", payload: await getNowWatching() });
-    expireStatus(NOW_WATCHING_TAG);
-  }
   /**
    * 列表也带整份数据推（2.8 KB），理由见 lib/live-events 的事件定义。
    *
@@ -280,37 +341,51 @@ export async function recordEmbyReport(body: unknown) {
    * 的那一次 resume 根本没变，但 /api/status/watching 的输出确实变了（裂图变成
    * 封面）—— 不发的话得等下一轮轮询，而列表的轮询现在是 5 分钟一次。
    */
-  if (resumeChanged || stored > 0) {
-    await publish({ type: "watching", payload: await getWatching() });
-    expireStatus(WATCHING_TAG);
+  if ((resumeChanged || stored > 0) && referenced) {
+    events.push({ type: "watching", payload: watchingPayload(referenced, urls) });
+    tags.push(WATCHING_TAG);
   }
 
-  return { items, playing, images: stored, missingImages: missing };
+  // 落库和推送同时发车，失效等它们完成，见 lib/live-events 的 fanout
+  await fanout({ writes, events, tags });
+
+  return { items: list?.length ?? null, playing: played?.outcome ?? null, images: stored, missingImages: missing };
 }
 
-/** 返回是否仍在播放中 */
-async function recordPlaying(value: unknown): Promise<boolean> {
+/** 收下一次播放状态：先算，写留给 commit。`state` 为 null 表示没有会话在播了 */
+function preparePlaying(value: unknown): {
+  outcome: "updated" | "cleared";
+  state: EmbyNowPlaying | null;
+  item: StoredWatchingItem | null;
+  commit: () => Promise<void>;
+} {
   const raw = object(value);
   const itemId = text(raw?.itemId);
   if (!raw || !itemId) {
-    await clearNowPlaying();
-    return false;
+    return { outcome: "cleared", state: null, item: null, commit: clearNowPlaying };
   }
 
-  const item = reportItem(raw.item);
-  if (item) await setCurrentItem(normalize(item));
-
+  const reported = reportItem(raw.item);
+  const item = reported ? normalize(reported) : null;
   /**
    * 时间戳取本站收到的时刻，不用代理给的。
    * 进度是从这个锚点按真实时间往前推算的，两台机器的时钟差多少，推算就偏多少。
    */
-  await setNowPlaying({
+  const state: EmbyNowPlaying = {
     itemId,
     paused: raw.paused === true,
     positionTicks: number(raw.positionTicks) ?? 0,
     runTimeTicks: number(raw.runTimeTicks) ?? 0,
     device: text(raw.device) ?? "",
     at: Date.now(),
-  });
-  return true;
+  };
+
+  return {
+    outcome: "updated",
+    state,
+    item,
+    commit: async () => {
+      await Promise.all([item ? setCurrentItem(item) : null, setNowPlaying(state)]);
+    },
+  };
 }

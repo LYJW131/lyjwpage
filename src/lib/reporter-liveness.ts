@@ -47,22 +47,25 @@ export async function readLiveness(): Promise<Liveness> {
 }
 
 /**
- * 记一次露面：刷新存活时刻，并落下这条信封声明的在离线。
+ * 记一次露面：这条信封之后的存活，以及离线声明有没有翻转。
  *
- * 返回离线声明有没有翻转，调用方据此决定要不要推送。读-改-写不是原子的，
- * 但写它的只有唯一的上报入口，且同一台 Mac 的信封本来就是串行发的，不存在
- * 两个写者互相盖。
+ * 纯计算，读在调用方、写在 writeLiveness。拆成三段是为了让写能和推送同时进行 ——
+ * 推给浏览器的那几份状态都带着存活，而存活的新值这里就算得出来，用不着等它落库
+ * 再从 Redis 读回来。读-改-写因此仍然不是原子的，但写它的只有唯一的上报入口，
+ * 且同一台 Mac 的信封本来就是串行发的，不存在两个写者互相盖。
  */
-export async function recordReporterBeat({
-  offline,
-  at = Date.now(),
-}: {
-  offline: boolean;
-  at?: number;
-}): Promise<{ flipped: boolean }> {
-  const previous = await readLiveness();
-  await mirror.put({ lastSeenAt: at, declaredOffline: offline });
-  return { flipped: previous.declaredOffline !== offline };
+export function nextLiveness(
+  previous: Liveness,
+  { offline, at }: { offline: boolean; at: number },
+): { next: Liveness; flipped: boolean } {
+  return {
+    next: { lastSeenAt: at, declaredOffline: offline },
+    flipped: previous.declaredOffline !== offline,
+  };
+}
+
+export function writeLiveness(liveness: Liveness): Promise<void> {
+  return mirror.put(liveness);
 }
 
 /** 拿在手上的那份存活算不算离线。取数路径上已经读过就用这个，别再问一次 Redis */

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useSyncExternalStore } from "react";
 import useSWR, { useSWRConfig } from "swr";
 
+import { freshest } from "@/lib/live-freshness";
 import type { StatusResponse } from "@/lib/types";
 
 function subscribeVisibility(onChange: () => void) {
@@ -130,7 +131,18 @@ export function useStatus<T>(
     if (fallback.ok) seedFallback?.(fallback.data);
   }, [fallback, seedFallback]);
 
-  const { data, error, isLoading, isValidating } = useSWR<StatusResponse<T>>(path, customFetcher ?? fetcher<T>, {
+  /**
+   * 取回来的这份要是比推来的旧，就换回推来的那份。
+   *
+   * 包在最外面而不是塞进 fetcher 里：增量拉取那条的请求地址带着 `?since=`，
+   * 和 SWR 的键不是一个字符串，而这里认的是键。为什么要挡见 lib/live-freshness。
+   */
+  const guarded = useCallback(
+    async (key: string) => freshest(key, await (customFetcher ?? fetcher<T>)(key)),
+    [customFetcher],
+  );
+
+  const { data, error, isLoading, isValidating } = useSWR<StatusResponse<T>>(path, guarded, {
     fallbackData: fallback,
     /**
      * SWR 的默认是「有 fallbackData 也照样在挂载时回源」—— revalidateIfStale

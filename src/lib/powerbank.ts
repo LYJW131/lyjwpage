@@ -1,5 +1,10 @@
 import { getStored, lastPushReceivedAt } from "@/lib/powerbank-store";
-import { offlineByLiveness, readLiveness, withPresence } from "@/lib/reporter-liveness";
+import {
+  offlineByLiveness,
+  readLiveness,
+  withPresence,
+  type Liveness,
+} from "@/lib/reporter-liveness";
 import type { PowerBankPayload, PowerBankPort, PowerBankStatus } from "@/lib/types";
 
 /**
@@ -133,6 +138,30 @@ export function withPowerBankFreshness(
   const stale =
     offlineByLiveness(payload) || now - payload.pushedAt > payload.staleAfterMs;
   return { ...payload, connected: stale ? false : payload.connected };
+}
+
+/**
+ * 推给浏览器的那一份，全部拿手上现成的东西拼，一次 Redis 都不读。
+ *
+ * 和充电头的 chargerPushPayload 同一个理由：从前这里是 getPowerBankSnapshot()，
+ * 它读的正是这次上报刚写下去的那个键 —— 既白等一个来回，又逼得推送只能排在
+ * 写库后面。状态是刚收到的，pushedAt 就是收到的时刻，存活也是刚算出来的。
+ */
+export function powerBankPushPayload({
+  status,
+  receivedAt,
+  liveness,
+}: {
+  status: PowerBankStatus;
+  receivedAt: number;
+  liveness: Liveness;
+}): PowerBankPayload {
+  return withPowerBankFreshness(
+    withPresence(
+      { ...status, pushedAt: receivedAt, staleAfterMs: powerBankStaleAfterMs() },
+      liveness,
+    ) as PowerBankPayload,
+  );
 }
 
 export async function getPowerBankSnapshot(): Promise<PowerBankPayload> {

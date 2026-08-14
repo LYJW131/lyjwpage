@@ -68,14 +68,24 @@ function reportNowPlaying(value: unknown): NowPlayingGuess | null {
 }
 
 /**
- * 收下上报器的一次推送。
+ * 收下上报器的一次推送：先校验、先比，写留给 commit。
  *
- * 返回内容变没变，调用方据此决定要不要推给浏览器 —— 兜底整推每 10 分钟就来一次，
- * 收到就推的话推送会退化成定时广播。
+ * `changed` 是内容变没变，调用方据此决定要不要推给浏览器 —— 兜底整推每 10 分钟
+ * 就来一次，收到就推的话推送会退化成定时广播。
+ *
+ * `listening` 就是要推的那整份，和落库那份同源。从前推送这一步是
+ * `await getRecentlyPlayed()`，把刚写进去的东西再读回来 —— 白等一个来回，
+ * 而且因为是「读刚写的」，推送只能排在写后面。
  */
-export async function recordRecentlyPlayedReport(
+export async function prepareRecentlyPlayedReport(
   body: unknown,
-): Promise<{ items: number; changed: boolean }> {
+  pushedAt = Date.now(),
+): Promise<{
+  items: number;
+  changed: boolean;
+  listening: ListeningPayload;
+  commit: () => Promise<void>;
+}> {
   const root = object(body);
   if (!root) throw new Error("请求体不是对象");
   if (!Array.isArray(root.items)) throw new Error("items 必须是数组");
@@ -90,9 +100,13 @@ export async function recordRecentlyPlayedReport(
 
   const previous = await mirror.get();
   const changed = !previous || !sameContent(previous.payload, payload);
-  await mirror.put({ payload, pushedAt: Date.now() });
 
-  return { items: payload.items.length, changed };
+  return {
+    items: payload.items.length,
+    changed,
+    listening: { ...payload, pushedAt },
+    commit: () => mirror.put({ payload, pushedAt }),
+  };
 }
 
 /**
