@@ -20,6 +20,7 @@ import type {
   ChargerStatus,
   StatusResponse,
 } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 /**
  * 滚动读数的低频兜底。
@@ -95,7 +96,7 @@ export function ChargerCard({
           "Prime 160W"
         )
       }
-      className={className}
+      className={cn("h-full min-h-[374px]", className)}
     >
       <div className="flex min-h-0 flex-1 flex-col justify-between px-4 pb-4 pt-2">
         {/*
