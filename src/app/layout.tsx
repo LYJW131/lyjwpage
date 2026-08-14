@@ -43,6 +43,13 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       suppressHydrationWarning
       className={`${GeistMono.variable} h-full`}
     >
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{var t=localStorage.getItem("theme")||"system";document.documentElement.dataset.themeChoice=t}catch(e){}`,
+          }}
+        />
+      </head>
       <body className="flex min-h-full flex-col">
         {/* 封面图（LCP）和剧照的域名，由 React 提升进 head。
             不能加 crossOrigin：这两处都是普通 <img> 的 no-cors 请求，

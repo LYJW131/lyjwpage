@@ -144,3 +144,5 @@ export async function cachedNowWatching() {
   cacheTag(NOW_WATCHING_TAG);
   return statusEnvelope(getNowWatching);
 }
+
+export { cachedGithubChart } from "@/lib/github-chart";

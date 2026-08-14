@@ -13,6 +13,7 @@ import {
   resolveTimezoneDisplay,
 } from "@/lib/timezone-display";
 import type { StatusResponse, TimezonePayload } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 function part(parts: Intl.DateTimeFormatPart[], type: Intl.DateTimeFormatPartTypes) {
   return parts.find((item) => item.type === type)?.value ?? "00";
@@ -178,19 +179,25 @@ function AnalogClock({
 /**
  * 宽高写死。Safari 对 stretch + aspect-ratio / h-full 会把方盘按剩余行宽放大，
  * 圆心被挤出卡片，只剩左侧一条边。
- * size-36 对齐这张卡 min-h-44 扣掉 py-4 后的内容盒。
+ * size-36 (144px) / sm:size-40 (160px) 对齐这张卡扣掉 padding 后的正方形内容盒。
  */
 function ClockShell({
   live = false,
   children,
+  className,
 }: {
   live?: boolean;
   children?: ReactNode;
+  className?: string;
 }) {
   return (
     <div
       aria-hidden
-      className={`clock-ui-host relative z-0 size-36 shrink-0${live ? " is-live" : ""}`}
+      className={cn(
+        "clock-ui-host relative z-0 size-36 shrink-0 sm:size-40",
+        live && "is-live",
+        className,
+      )}
     >
       {children}
     </div>
@@ -199,8 +206,10 @@ function ClockShell({
 
 export function TimezoneCard({
   fallback,
+  className,
 }: {
   fallback: StatusResponse<TimezonePayload>;
+  className?: string;
 }) {
   /**
    * 首帧用缓存里的 snapshotAt，不能在页面里 Date.now()（挡预渲染），
@@ -240,68 +249,73 @@ export function TimezoneCard({
     .join(" · ");
 
   return (
-    <Card>
-      <div className="flex min-h-44 items-stretch justify-between gap-4 py-4 pr-4 pl-5">
-        <div className="relative z-10 flex min-w-0 flex-col justify-center">
-          <div className="text-xs text-muted-foreground">当前时间</div>
-          {/* 高度钉死挡住 NumberFlow 的上下 mask；横向放开，秒数可以探进表盘方框的空角。 */}
-          <div className="mt-2 flex h-16 items-center overflow-x-visible overflow-y-clip">
+    <Card className={cn("h-full", className)}>
+      <div className="flex h-full min-h-44 items-center justify-between gap-4 p-4 pl-5 sm:p-5">
+        <div className="relative z-10 flex min-w-0 flex-col justify-center gap-1.5 sm:gap-2">
+          {/* 大时钟数字 */}
+          <div className="flex items-baseline overflow-x-visible overflow-y-clip">
             {clock ? (
               <NumberFlowGroup>
                 <time
-                  className="flex items-baseline whitespace-nowrap text-[2.75rem] font-semibold leading-none tracking-[-0.04em]"
+                  className="flex items-baseline whitespace-nowrap text-4xl font-semibold leading-none tracking-[-0.03em] sm:text-5xl"
                   dateTime={new Date(now).toISOString()}
                   aria-label={`${clock.hour} 时 ${clock.minute} 分 ${clock.second} 秒`}
                 >
                   <NumberFlow value={clock.hour} locales="en-US" format={TWO_DIGITS} />
                   <span className="mx-0.5 text-muted-foreground">:</span>
                   <NumberFlow value={clock.minute} locales="en-US" format={TWO_DIGITS} />
-                  <span className="mx-0.5 text-[1.35rem] font-medium text-muted-foreground/55">
+                  <span className="mx-0.5 text-xl font-normal text-muted-foreground/50 sm:text-2xl">
                     :
                   </span>
                   <NumberFlow
                     value={clock.second}
                     locales="en-US"
                     format={TWO_DIGITS}
-                    className="text-[1.35rem] font-medium tracking-normal text-muted-foreground/55"
+                    className="text-xl font-normal tracking-normal text-muted-foreground/50 sm:text-2xl"
                   />
                 </time>
               </NumberFlowGroup>
             ) : (
               <div
-                className="flex items-baseline whitespace-nowrap text-[2.75rem] font-semibold leading-none tracking-[-0.04em] text-muted-foreground"
+                className="flex items-baseline whitespace-nowrap text-4xl font-semibold leading-none tracking-[-0.03em] text-muted-foreground sm:text-5xl"
                 aria-hidden
               >
                 --:--
-                <span className="mx-0.5 text-[1.35rem] font-medium text-muted-foreground/55">
+                <span className="mx-0.5 text-xl font-normal text-muted-foreground/50 sm:text-2xl">
                   :
                 </span>
-                <span className="text-[1.35rem] font-medium tracking-normal text-muted-foreground/55">
+                <span className="text-xl font-normal tracking-normal text-muted-foreground/50 sm:text-2xl">
                   --
                 </span>
               </div>
             )}
           </div>
-          <div className="mt-2 min-h-5 text-sm text-muted-foreground">
-            {clock ? `${clock.date} ${clock.weekday}` : null}
+
+          {/* 日期与星期 */}
+          <div className="text-sm font-medium text-muted-foreground">
+            {clock ? `${clock.date} ${clock.weekday}` : "--"}
           </div>
-          <div className="mt-1 whitespace-nowrap text-xs text-muted-foreground" title={timezone}>
+
+          {/* 时区标识与 UTC 偏移 */}
+          <div className="truncate font-mono text-xs text-muted-foreground" title={timezone}>
             {zoneLabel}
           </div>
         </div>
 
-        {clock ? (
-          <AnalogClock
-            timezone={timezone}
-            hour={clock.hour}
-            minute={clock.minute}
-            second={clock.second}
-            now={now}
-            live={Boolean(mountedAt || ticked)}
-          />
-        ) : (
-          <ClockShell />
-        )}
+        <div className="flex shrink-0 items-center justify-center">
+          {clock ? (
+            <AnalogClock
+              timezone={timezone}
+              hour={clock.hour}
+              minute={clock.minute}
+              second={clock.second}
+              now={now}
+              live={Boolean(mountedAt || ticked)}
+            />
+          ) : (
+            <ClockShell />
+          )}
+        </div>
       </div>
     </Card>
   );
