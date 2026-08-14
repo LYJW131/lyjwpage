@@ -74,7 +74,6 @@ function structuralKey(status: PowerBankStatus) {
     status.battery == null ? null : Math.round(status.battery),
     status.device.serialNumber,
     status.device.firmwareVersion,
-    Boolean(status.dock?.active),
     status.ports.map((port) => [port.id, port.active, port.direction, port.attached]),
   ]);
 }

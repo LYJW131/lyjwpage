@@ -48,12 +48,10 @@ export type RawPowerBank = {
     thermalLimited?: boolean | null;
   } | null;
   temperaturesC?: number[] | null;
-  /** 上报器只在底座真的在进电时才带这个字段 */
-  dock?: RawPort | null;
   ports?: RawPort[];
 };
 
-const PORT_IDS = ["C1", "C2", "A"] as const;
+const PORT_IDS = ["C1", "C2", "A", "B"] as const;
 
 function displayText(value: string | null | undefined): string | null {
   if (value == null) return null;
@@ -107,7 +105,6 @@ export function normalizePowerBank(raw: RawPowerBank): PowerBankStatus {
     inputPower: Number(raw.totalInputW) || 0,
     outputPower: Number(raw.totalOutputW) || 0,
     temperatures,
-    dock: raw.dock ? normalizePort("DOCK", raw.dock) : null,
     ports: PORT_IDS.map((id) => normalizePort(id, byName.get(id))),
     device: {
       serialNumber: displayText(raw.id),

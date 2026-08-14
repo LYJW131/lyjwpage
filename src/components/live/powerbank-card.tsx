@@ -89,19 +89,12 @@ export function PowerBankCard({
    * 进电侧不做同样的判断：这台机器规格上就是单口 100W 输入，十一份抓包里也从
    * 没出现过两个口同时进电。凭空写一个没见过的状态，只会在真出现时误导人。
    */
-  /** 底座进电。上报器只在它真的在用时才带这个字段，所以有值即在用 */
-  const onDock = connected && Boolean(data?.dock?.active);
-  /**
-   * 同时在进电的来路数。底座和 USB-C 口是平等的两种来路 —— 实测底座 35.0W 加
-   * C1 32.9W 合成总输入 67.9W，两路一起喂。
-   *
-   * 这台机器规格上写的是「USB-C 输入 100W」，读起来像只能单口进电，所以一开始
-   * 这里没做多路判断。那是把「抓包里没见过」当成了「设备不支持」—— 手上十一份
-   * 抓包恰好全是单一来源，它们根本没有能力区分这两件事。
-   */
-  const inputSources =
-    (connected ? (data?.ports ?? []).filter((port) => port.direction === "in").length : 0) +
-    (onDock ? 1 : 0);
+  /** 底座进电（端口 B 活跃） */
+  const onDock = connected && Boolean((data?.ports ?? []).find((p) => p.id === "B")?.active);
+  /** 同时在进电的来路数（C1/C2/B） */
+  const inputSources = connected
+    ? (data?.ports ?? []).filter((port) => port.direction === "in").length
+    : 0;
   const dualInput = inputSources >= 2;
 
   /**
@@ -139,7 +132,7 @@ export function PowerBankCard({
           "Prime 20K"
         )
       }
-      className={className}
+      className={cn("h-full min-h-[374px]", className)}
     >
       <div className="flex min-h-0 flex-1 flex-col justify-between px-4 pb-4 pt-2">
         {/*
@@ -219,47 +212,73 @@ export function PowerBankCard({
           />
         </div>
 
-        {/* 三个口：C1/C2 双向，A 只出 */}
-        <div className="mt-4 grid grid-cols-3 gap-px overflow-hidden rounded-md border border-line bg-line">
-          {(data?.ports ?? [{ id: "C1" }, { id: "C2" }, { id: "A" }]).map((port) => {
-            const raw = "active" in port ? (port as PowerBankPort) : null;
-            // 整机断开时端口数据是上一帧的残留，不能当成还在工作照常显示
-            const full = connected ? raw : null;
-            return (
-              <div key={port.id} className="bg-surface px-2.5 py-2">
-                <div className="flex items-center gap-1.5">
-                  <StatusDot tone={full ? portTone(full, connected) : "off"} />
-                  <span className="label-mono text-muted-foreground">{port.id}</span>
-                </div>
-                <div className="mt-1.5 font-mono text-sm">
-                  {full?.active && full.power != null ? (
-                    `${full.power.toFixed(1)}W`
-                  ) : (
-                    <span className="text-muted-foreground">
-                      {/* 插着线但没协商上供电，和什么都没插是两回事 */}
-                      {full?.attached ? "已插线" : "闲置"}
-                    </span>
-                  )}
-                </div>
-                <div className="mt-0.5 truncate font-mono text-[0.6875rem] text-muted-foreground">
-                  {/*
-                    和充电头那张卡对齐：第三行只讲「这个口现在在干什么」，没在
-                    工作就是一个破折号。原来空闲时写的是端口能力（仅输出 / 双向）
-                    —— 那是一条永远为真的静态事实，占着一个本该反映当下状态的
-                    位置，还让同一行在中英之间跳。
+        {/*
+          端口槽固定显示三格：C1 与 C2 恒定，第三格在 A 与 B 之间切换。
+          优先级：哪个有活动显示哪个；两个都有活动时优先显示 B；都空闲时默认显示 A。
+        */}
+        {(() => {
+          const portC1 = data?.ports.find((p) => p.id === "C1") ?? { id: "C1" };
+          const portC2 = data?.ports.find((p) => p.id === "C2") ?? { id: "C2" };
+          const portA = data?.ports.find((p) => p.id === "A") ?? { id: "A" };
+          const portB = data?.ports.find((p) => p.id === "B") ?? { id: "B" };
 
-                    方向用大写：这一行是等宽小字号，大写更像状态标签而不是散句。
-                  */}
-                  {full?.direction === "in"
-                    ? "INPUT"
-                    : full?.direction === "out"
-                      ? "OUTPUT"
-                      : "—"}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+          const hasActivity = (port: PowerBankPort | { id: string }) =>
+            "active" in port && Boolean(port.active || port.attached);
+
+          const thirdPort =
+            "active" in portB && portB.active
+              ? portB
+              : hasActivity(portA)
+                ? portA
+                : hasActivity(portB)
+                  ? portB
+                  : portA;
+
+          const displayPorts = [portC1, portC2, thirdPort];
+
+          return (
+            <div className="mt-4 grid grid-cols-3 gap-px overflow-hidden rounded-md border border-line bg-line">
+              {displayPorts.map((port) => {
+                const raw = "active" in port ? (port as PowerBankPort) : null;
+                // 整机断开时端口数据是上一帧的残留，不能当成还在工作照常显示
+                const full = connected ? raw : null;
+                return (
+                  <div key={port.id} className="bg-surface px-2.5 py-2">
+                    <div className="flex items-center gap-1.5">
+                      <StatusDot tone={full ? portTone(full, connected) : "off"} />
+                      <span className="label-mono text-muted-foreground">{port.id}</span>
+                    </div>
+                    <div className="mt-1.5 font-mono text-sm">
+                      {full?.active && full.power != null ? (
+                        `${full.power.toFixed(1)}W`
+                      ) : (
+                        <span className="text-muted-foreground">
+                          {/* 插着线但没协商上供电，和什么都没插是两回事 */}
+                          {full?.attached ? "已插线" : "闲置"}
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-0.5 truncate font-mono text-[0.6875rem] text-muted-foreground">
+                      {/*
+                        和充电头那张卡对齐：第三行只讲「这个口现在在干什么」，没在
+                        工作就是一个破折号。原来空闲时写的是端口能力（仅输出 / 双向）
+                        —— 那是一条永远为真的静态事实，占着一个本该反映当下状态的
+                        位置，还让同一行在中英之间跳。
+
+                        方向用大写：这一行是等宽小字号，大写更像状态标签而不是散句。
+                      */}
+                      {full?.direction === "in"
+                        ? "INPUT"
+                        : full?.direction === "out"
+                          ? "OUTPUT"
+                          : "—"}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
       </div>
     </Card>
   );
