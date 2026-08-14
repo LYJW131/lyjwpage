@@ -15,27 +15,44 @@ const PORT_KEYS = ["C1", "C2", "C3"] as const;
 /** Anker Prime 的额定总功率 */
 const MAX_POWER = 160;
 
-type RawPort = {
-  mode?: boolean;
-  voltageV?: number;
-  currentA?: number;
-  powerW?: number;
+/**
+ * 上报器 `modules.chargingDevices` 里的一台设备。
+ *
+ * 这个形状是多设备通用的：充电头、充电宝，以后还有别的，公共字段都在顶层，
+ * 设备特有的收在子对象里（充电宝的 `battery`、`temperaturesC`）。本站现在只画
+ * 充电头，所以下面只声明用得上的部分 —— 充电宝的字段照样会送来，忽略即可。
+ *
+ * 端口是**数组**不是字典：JSON 对象无序，而且两台设备端口名都不一样
+ * （充电头 C1/C2/C3，充电宝 C1/C2/A）。
+ */
+type RawDevicePort = {
+  name?: string;
+  active?: boolean;
+  /** "in" / "out"。充电头永远是 "out"，充电宝才双向。 */
+  direction?: string | null;
+  voltageV?: number | null;
+  currentA?: number | null;
+  powerW?: number | null;
   cable?: string | null;
   chargingInfo?: string | null;
-  model?: string | null;
-  vendor?: string | null;
+  attachedDevice?: { model?: string | null; vendor?: string | null } | null;
 };
 
-export type RawStatus = {
+export type RawChargingDevice = {
+  id?: string;
+  /** "charger" / "powerBank"。判别字段，决定这台设备该怎么解读。 */
+  kind?: string;
+  model?: string | null;
   connected?: boolean;
   updatedAt?: number;
-  totalOutputPowerW?: number;
-  device?: {
-    serialNumber?: string | null;
-    firmwareVersion?: string | null;
-    macAddress?: string | null;
-  };
-  ports?: Record<string, RawPort>;
+  firmware?: string | null;
+  totalInputW?: number | null;
+  totalOutputW?: number | null;
+  ports?: RawDevicePort[];
+};
+
+export type RawChargingDevices = {
+  devices?: RawChargingDevice[];
 };
 
 /** 空串和纯空白都当没有。上报器那边取不到值时给的就是 null，不再有 "N/A" 占位符 */
@@ -45,8 +62,8 @@ function displayText(value: string | null | undefined): string | null {
   return text || null;
 }
 
-function normalizePort(id: string, port: RawPort = {}): ChargerPort {
-  const active = Boolean(port.mode);
+function normalizePort(id: string, port: RawDevicePort = {}): ChargerPort {
+  const active = Boolean(port.active);
   return {
     id,
     active,
@@ -54,7 +71,7 @@ function normalizePort(id: string, port: RawPort = {}): ChargerPort {
     voltage: active ? Number(port.voltageV) || 0 : null,
     current: active ? Number(port.currentA) || 0 : null,
     power: active ? Number(port.powerW) || 0 : null,
-    device: displayText(port.model) ?? displayText(port.vendor),
+    device: displayText(port.attachedDevice?.model) ?? displayText(port.attachedDevice?.vendor),
     protocol: displayText(port.chargingInfo),
     cable: displayText(port.cable),
   };
@@ -68,16 +85,33 @@ function toMillis(updatedAt: number | undefined): number | null {
 }
 
 /** 把 a2687 的 /status 原样 JSON 规范化 */
-export function normalizeRawStatus(raw: RawStatus): ChargerStatus {
+/**
+ * 从多设备负载里挑出充电头。
+ *
+ * 上报器现在会同时送充电头和充电宝，本站只画充电头 —— 用 `kind` 认，不要靠
+ * 数组顺序，那个顺序取决于上报器里链路的排列，不是契约的一部分。
+ *
+ * 一台充电头都没有就返回 null（比如用户只开了充电宝模块），调用方按「这次没带
+ * 充电头数据」处理，不要当成错误。
+ */
+export function pickCharger(raw: RawChargingDevices): RawChargingDevice | null {
+  return raw.devices?.find((device) => device.kind === "charger") ?? null;
+}
+
+export function normalizeChargingDevice(raw: RawChargingDevice): ChargerStatus {
+  // 端口按名字取。上报器是按 C1/C2/C3 顺序发的，但顺序不进契约，认名字更稳。
+  const byName = new Map(
+    (raw.ports ?? []).map((port) => [String(port.name ?? "").toUpperCase(), port]),
+  );
   return {
     connected: Boolean(raw.connected),
-    totalPower: Number(raw.totalOutputPowerW) || 0,
+    totalPower: Number(raw.totalOutputW) || 0,
     maxPower: MAX_POWER,
-    // ports 的 key 顺序不保证，必须按 key 取
-    ports: PORT_KEYS.map((key) => normalizePort(key, raw.ports?.[key])),
+    ports: PORT_KEYS.map((key) => normalizePort(key, byName.get(key))),
     device: {
-      serialNumber: displayText(raw.device?.serialNumber),
-      firmwareVersion: displayText(raw.device?.firmwareVersion),
+      // 新契约里设备身份就是 id，不再嵌一层 device 对象。
+      serialNumber: displayText(raw.id),
+      firmwareVersion: displayText(raw.firmware),
     },
     updatedAt: toMillis(raw.updatedAt),
   } satisfies ChargerStatus;
