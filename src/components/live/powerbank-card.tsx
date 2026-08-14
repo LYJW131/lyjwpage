@@ -215,9 +215,13 @@ export function PowerBankCard({
             value={connected && data?.batteryHealth != null ? `${data.batteryHealth}%` : "—"}
             muted={!connected}
           />
+          {/*
+            规格里只留额定能量：220W 是端口那一行随时能看到的量级，而 72.36 Wh 是
+            电量百分比的分母 —— 没有它，「36%」换不成任何一个能用的数。
+          */}
           <Metric
-            label="最大输出"
-            value="220W MAX"
+            label="额定能量"
+            value="72.36 Wh"
             muted={!connected}
           />
         </div>
