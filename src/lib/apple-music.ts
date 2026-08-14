@@ -93,34 +93,8 @@ type CatalogSong = {
   };
 };
 
-type CatalogEditorialVideoClip = {
-  video?: string;
-  previewFrame?: {
-    url?: string;
-    width?: number;
-    height?: number;
-    bgColor?: string;
-    textColor1?: string;
-    textColor2?: string;
-    textColor3?: string;
-    textColor4?: string;
-  };
-};
-
-type CatalogAlbum = {
-  id?: string;
-  attributes?: {
-    name?: string;
-    artistName?: string;
-    editorialVideo?: {
-      motionDetailSquare?: CatalogEditorialVideoClip;
-      motionSquareVideo1x1?: CatalogEditorialVideoClip;
-    };
-  };
-};
-
 /**
- * 一次目录查询同时解出链接、封面与 1:1 动态视频封面。
+ * 一次目录查询同时解出链接和封面。
  *
  * 封面顺带取回来是有实际意义的：以前封面是采集端把二进制压进上报载荷送上来的，
  * 而这次查询本来就要做、结果本来就带 artwork 模板 URL，等于白拿。
@@ -131,12 +105,6 @@ export type TrackLookup = {
   artwork: string | null;
   /** 与最近播放资源对应的专辑 ID。 */
   id: string | null;
-  /** 1:1 动态视频流播放链接 (.m3u8) */
-  motionVideoUrl: string | null;
-  /** 1:1 动态视频预览帧静态图 */
-  motionCoverUrl: string | null;
-  /** 动态封面调色板 */
-  motionColors: string[] | null;
 };
 
 /** 归一化后再比：大小写、空格、常见标点、全角半角差异都不该影响判定 */
@@ -146,110 +114,6 @@ function normalizeForMatch(value: string | null | undefined) {
     .normalize("NFKC")
     .replace(/[\s　]/g, "")
     .replace(/[-–—_.,'"‘’“”!?()（）\[\]・:：]/g, "");
-}
-
-function extractAlbumIdFromUrl(songUrl?: string): string | null {
-  if (!songUrl) return null;
-  try {
-    const u = new URL(songUrl);
-    const parts = u.pathname.split("/").filter(Boolean);
-    return parts[parts.length - 1] || null;
-  } catch {
-    return null;
-  }
-}
-
-let cachedWebToken: string | null = null;
-let tokenExpiresAt = 0;
-
-/**
- * 获取 Apple Music Web 端 JWT 凭据（用于请求 amp-api 提取动态封面）。
- * JWT 有效期约 60 天，带内存缓存。
- */
-async function getWebToken(): Promise<string> {
-  const now = Date.now();
-  if (cachedWebToken && now < tokenExpiresAt - 5 * 60 * 1000) {
-    return cachedWebToken;
-  }
-  const htmlResp = await fetch("https://music.apple.com/cn/browse", {
-    headers: {
-      "User-Agent":
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    },
-  });
-  const html = await htmlResp.text();
-  const jsMatch = html.match(/\/assets\/index~[^"']+\.js/);
-  if (!jsMatch) throw new Error("No Apple Music JS bundle found");
-
-  const jsResp = await fetch("https://music.apple.com" + jsMatch[0]);
-  const jsContent = await jsResp.text();
-  const jwtMatch = jsContent.match(/eyJ[A-Za-z0-9_\-=]+\.[A-Za-z0-9_\-=]+\.[A-Za-z0-9_\-=]+/);
-  if (!jwtMatch) throw new Error("No Apple Music Web JWT found");
-
-  cachedWebToken = jwtMatch[0];
-  try {
-    const payload = JSON.parse(Buffer.from(cachedWebToken.split(".")[1], "base64").toString());
-    tokenExpiresAt = (payload.exp || 0) * 1000;
-  } catch {
-    tokenExpiresAt = Date.now() + 24 * 60 * 60 * 1000;
-  }
-  return cachedWebToken;
-}
-
-/**
- * 向 amp-api 查询专辑的 1:1 动态视频封面与调色板。
- */
-async function fetchMotionArtwork(
-  storefront: string,
-  albumId: string,
-): Promise<{
-  motionVideoUrl: string | null;
-  motionCoverUrl: string | null;
-  motionColors: string[] | null;
-}> {
-  try {
-    const token = await getWebToken();
-    const res = await fetch(
-      `https://amp-api.music.apple.com/v1/catalog/${storefront}/albums/${albumId}?extend=editorialVideo`,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Origin: "https://music.apple.com",
-          Referer: "https://music.apple.com/",
-        },
-      },
-    );
-    if (!res.ok) return { motionVideoUrl: null, motionCoverUrl: null, motionColors: null };
-    const json = (await res.json()) as {
-      data?: CatalogAlbum[];
-    };
-    const videoData = json.data?.[0]?.attributes?.editorialVideo;
-    const squareClip = videoData?.motionDetailSquare?.video
-      ? videoData.motionDetailSquare
-      : videoData?.motionSquareVideo1x1;
-
-    if (!squareClip?.video) {
-      return { motionVideoUrl: null, motionCoverUrl: null, motionColors: null };
-    }
-
-    const pf = squareClip.previewFrame;
-    const motionCoverUrl = pf?.url
-      ? pf.url.replace("{w}x{h}", `${pf.width || 3000}x${pf.height || 3000}`)
-      : null;
-    const motionColors = pf
-      ? ([pf.bgColor, pf.textColor1, pf.textColor2, pf.textColor3, pf.textColor4].filter(
-          Boolean,
-        ) as string[])
-      : null;
-
-    return {
-      motionVideoUrl: squareClip.video,
-      motionCoverUrl,
-      motionColors: motionColors && motionColors.length > 0 ? motionColors : null,
-    };
-  } catch {
-    return { motionVideoUrl: null, motionCoverUrl: null, motionColors: null };
-  }
 }
 
 /**
@@ -273,16 +137,7 @@ export async function resolveTrackLookup(track: {
   artist: string | null;
   album: string | null;
 }): Promise<TrackLookup> {
-  if (!track.title) {
-    return {
-      link: "",
-      artwork: null,
-      id: null,
-      motionVideoUrl: null,
-      motionCoverUrl: null,
-      motionColors: null,
-    };
-  }
+  if (!track.title) return { link: "", artwork: null, id: null };
 
   const searchTerm = [track.title, track.artist].filter(Boolean).join(" ");
   const searchUrl = `https://music.apple.com/search?term=${encodeURIComponent(searchTerm)}`;
@@ -298,7 +153,7 @@ export async function resolveTrackLookup(track: {
    * 以后再改这个值的形状，记得一起改版本号。
    */
   const cacheKey =
-    "apple-music:track-lookup:v8:" +
+    "apple-music:track-lookup:v6:" +
     [track.title, track.artist, track.album].map(normalizeForMatch).join(":");
 
   try {
@@ -311,9 +166,7 @@ export async function resolveTrackLookup(track: {
         `https://api.music.apple.com/v1/catalog/${storefront}/search` +
         `?term=${encodeURIComponent(term)}&types=songs&limit=${SEARCH_LIMIT}&relate=albums`;
       const json = await appleFetchRaw<{
-        results?: {
-          songs?: { data?: CatalogSong[] };
-        };
+        results?: { songs?: { data?: CatalogSong[] } };
       }>(url, credentials);
 
       const wantedTitle = normalizeForMatch(track.title);
@@ -363,27 +216,12 @@ export async function resolveTrackLookup(track: {
 
       let albumId = hit?.relationships?.albums?.data?.[0]?.id ?? null;
       if (hit?.id && !albumId) {
-        albumId = extractAlbumIdFromUrl(hit.attributes?.url);
-        if (!albumId) {
-          // 搜索结果有时只带歌曲本身，歌曲所属专辑关系要从资源元数据里取。
-          const detail = await appleFetchRaw<{ data?: CatalogSong[] }>(
-            `https://api.music.apple.com/v1/catalog/${storefront}/songs/${hit.id}?relate=albums`,
-            credentials,
-          );
-          albumId = detail.data?.[0]?.relationships?.albums?.data?.[0]?.id ?? null;
-        }
-      }
-
-      // 解析 1:1 动态封面
-      let motionVideoUrl: string | null = null;
-      let motionCoverUrl: string | null = null;
-      let motionColors: string[] | null = null;
-
-      if (albumId) {
-        const motion = await fetchMotionArtwork(storefront, albumId);
-        motionVideoUrl = motion.motionVideoUrl;
-        motionCoverUrl = motion.motionCoverUrl;
-        motionColors = motion.motionColors;
+        // 搜索结果有时只带歌曲本身，歌曲所属专辑关系要从资源元数据里取。
+        const detail = await appleFetchRaw<{ data?: CatalogSong[] }>(
+          `https://api.music.apple.com/v1/catalog/${storefront}/songs/${hit.id}?relate=albums`,
+          credentials,
+        );
+        albumId = detail.data?.[0]?.relationships?.albums?.data?.[0]?.id ?? null;
       }
 
       // link 存空串而不是 null：cached 用 undefined 判未命中，空串才能把
@@ -392,28 +230,11 @@ export async function resolveTrackLookup(track: {
         link: hit?.attributes?.url ?? "",
         artwork: hit?.attributes?.artwork?.url ?? null,
         id: albumId,
-        motionVideoUrl,
-        motionCoverUrl,
-        motionColors,
       };
     });
-    return {
-      link: exact.link || searchUrl,
-      artwork: exact.artwork,
-      id: exact.id,
-      motionVideoUrl: exact.motionVideoUrl ?? null,
-      motionCoverUrl: exact.motionCoverUrl ?? null,
-      motionColors: exact.motionColors ?? null,
-    };
+    return { link: exact.link || searchUrl, artwork: exact.artwork, id: exact.id };
   } catch {
     // 凭据缺失或上游异常都不该让整张卡片失败
-    return {
-      link: searchUrl,
-      artwork: null,
-      id: null,
-      motionVideoUrl: null,
-      motionCoverUrl: null,
-      motionColors: null,
-    };
+    return { link: searchUrl, artwork: null, id: null };
   }
 }
