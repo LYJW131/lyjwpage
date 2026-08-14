@@ -48,6 +48,8 @@ export type RawPowerBank = {
     thermalLimited?: boolean | null;
   } | null;
   temperaturesC?: number[] | null;
+  /** 上报器只在底座真的在进电时才带这个字段 */
+  dock?: RawPort | null;
   ports?: RawPort[];
 };
 
@@ -105,6 +107,7 @@ export function normalizePowerBank(raw: RawPowerBank): PowerBankStatus {
     inputPower: Number(raw.totalInputW) || 0,
     outputPower: Number(raw.totalOutputW) || 0,
     temperatures,
+    dock: raw.dock ? normalizePort("DOCK", raw.dock) : null,
     ports: PORT_IDS.map((id) => normalizePort(id, byName.get(id))),
     device: {
       serialNumber: displayText(raw.id),

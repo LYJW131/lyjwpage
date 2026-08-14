@@ -82,6 +82,17 @@ export function PowerBankCard({
   const charging = connected && Boolean(data?.charging);
   const limited = connected && Boolean(data?.thermalLimited);
   const discharging = connected && (data?.outputPower ?? 0) > 1;
+  /**
+   * 两个口同时供电。固件不报这个状态 —— 它只给每个口自己的方向，和两个互相
+   * 独立的总量（总输入、总输出），所以「双枪超充」「边充边放」都得这边数出来。
+   *
+   * 进电侧不做同样的判断：这台机器规格上就是单口 100W 输入，十一份抓包里也从
+   * 没出现过两个口同时进电。凭空写一个没见过的状态，只会在真出现时误导人。
+   */
+  const dualOutput =
+    connected && (data?.ports ?? []).filter((port) => port.direction === "out").length >= 2;
+  /** 底座进电。上报器只在它真的在用时才带这个字段，所以有值即在用 */
+  const onDock = connected && Boolean(data?.dock?.active);
 
   /**
    * 副标题按「现在发生的最重要的事」排优先级：过热 > 充电 > 放电 > 待机。
@@ -92,6 +103,14 @@ export function PowerBankCard({
     if (error) return "尚未收到遥测推送";
     if (!connected) return "充电宝未连接";
     if (limited) return "过热保护中，暂停充电";
+    // 边充边放、双枪超充、底座快充可以叠加：底座进电的同时两个口在往外供电。
+    // 叠加时都说出来 —— 每一条都是独立的事实，省略哪条都会让另一条显得像全部。
+    if (charging && discharging) {
+      const how = onDock ? "底座快充" : "边充边放";
+      return dualOutput ? `${how} · 双枪超充` : onDock ? `${how} · 边充边放` : how;
+    }
+    if (dualOutput) return "双枪超充";
+    if (onDock) return "底座快充";
     if (charging) return "充电中";
     if (discharging) return "供电中";
     return "待机";
@@ -171,7 +190,11 @@ export function PowerBankCard({
 
         {/* 三个数字。放电时「充满还需」没有意义，那一格换成输出 */}
         <div className="mt-4 grid grid-cols-3 gap-3">
-          <Metric label="输入" value={connected ? watts(data?.inputPower) : "—"} muted={!charging} />
+          <Metric
+            label={onDock ? "底座输入" : "输入"}
+            value={connected ? watts(data?.inputPower) : "—"}
+            muted={!charging}
+          />
           <Metric
             label="输出"
             value={connected ? watts(data?.outputPower) : "—"}
