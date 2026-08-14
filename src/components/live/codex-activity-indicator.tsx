@@ -10,23 +10,21 @@ const CODEX_SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "
  */
 export function CodexActivityIndicator({
   active,
-  stale,
   className,
 }: {
   active: boolean;
-  stale?: boolean;
   className?: string;
 }) {
   return (
     <span
       className={cn(
         "relative grid size-5 shrink-0 place-items-center font-mono text-base leading-none",
-        stale ? "text-live-off" : active ? "text-live" : "",
+        active && "text-live",
         className,
       )}
       aria-hidden
     >
-      {active && !stale ? (
+      {active ? (
         CODEX_SPINNER_FRAMES.map((frame, index) => (
           <span
             key={frame}
@@ -49,7 +47,7 @@ export function CodexActivityIndicator({
             height={20}
             alt=""
             unoptimized
-            className={cn("size-5 dark:hidden", stale && "grayscale opacity-40")}
+            className="size-5 dark:hidden"
           />
           <Image
             src="/codex-icon-dark.svg"
@@ -57,7 +55,7 @@ export function CodexActivityIndicator({
             height={20}
             alt=""
             unoptimized
-            className={cn("hidden size-5 dark:block", stale && "grayscale opacity-40")}
+            className="hidden size-5 dark:block"
           />
         </>
       )}
