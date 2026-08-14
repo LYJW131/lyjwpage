@@ -56,6 +56,7 @@ export type StatusState<T> = {
   /** 上游报错 —— 注意这与「还在加载」是两回事 */
   error: string | undefined;
   isLoading: boolean;
+  isValidating: boolean;
 };
 
 export type StatusOptions<T> = {
@@ -129,7 +130,7 @@ export function useStatus<T>(
     if (fallback.ok) seedFallback?.(fallback.data);
   }, [fallback, seedFallback]);
 
-  const { data, error, isLoading } = useSWR<StatusResponse<T>>(path, customFetcher ?? fetcher<T>, {
+  const { data, error, isLoading, isValidating } = useSWR<StatusResponse<T>>(path, customFetcher ?? fetcher<T>, {
     fallbackData: fallback,
     /**
      * SWR 的默认是「有 fallbackData 也照样在挂载时回源」—— revalidateIfStale
@@ -155,6 +156,7 @@ export function useStatus<T>(
     data: data?.ok ? data.data : undefined,
     error: data && !data.ok ? data.error : error ? String(error.message ?? error) : undefined,
     isLoading,
+    isValidating,
   };
 }
 

@@ -47,14 +47,18 @@ export function HeaderDesktop({
   className?: string;
 }) {
   useLiveEvents();
-  const { data, error, isLoading } = useStatus<DesktopPayload>(DESKTOP_PATH, REFRESH_MS, {
+  const { data, error, isLoading, isValidating } = useStatus<DesktopPayload>(DESKTOP_PATH, REFRESH_MS, {
     fallback,
   });
   const [displayedDesktop, setDisplayedDesktop] = useState<DesktopActivity | null>(null);
   const reduced = useReducedMotion();
 
   const reporterStale = useReporterStale(data);
-  const offline = Boolean(error || reporterStale);
+  // 当标签页从后台唤醒时，SWR 会立即触发回源校验（isValidating）。
+  // 在回源未完成前，若非 Mac 明确上报离线（declaredOffline），不根据休眠期间老化的客户端时间戳误判离线。
+  const offline = Boolean(
+    error || data?.declaredOffline || (reporterStale && !isValidating),
+  );
   const incomingDesktop = data?.desktop ?? null;
   const incomingApplicationName = incomingDesktop?.applicationName ?? null;
   const incomingBundleIdentifier = incomingDesktop?.bundleIdentifier ?? null;
