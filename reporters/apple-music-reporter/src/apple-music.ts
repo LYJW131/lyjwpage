@@ -29,7 +29,6 @@ const RECENT_URL = `https://api.music.apple.com/v1/me/recent/played?limit=${conf
 const DURATION_TTL_MS = 24 * 60 * 60 * 1000;
 /** 歌单曲目会分页，最多翻这么多页，够长的歌单也不至于打太多次 */
 const MAX_TRACK_PAGES = 5;
-const STOREFRONT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 /**
  * 自建歌单封面地址的缓存时长。
  *
@@ -131,16 +130,6 @@ function artworkPalette(artwork?: AppleArtwork): string[] {
     .map((value) => `#${value}`);
 }
 
-async function getStorefront(credentials: Credentials): Promise<string> {
-  return memo("storefront", STOREFRONT_TTL_MS, async () => {
-    const rows = await appleFetch<{ id?: string }>(
-      "https://api.music.apple.com/v1/me/storefront",
-      credentials,
-    );
-    return rows[0]?.id ?? "us";
-  });
-}
-
 /**
  * 自建歌单的封面，从**这一个歌单**的资料库副本里取。
  *
@@ -157,7 +146,7 @@ async function libraryPlaylistCover(
 ): Promise<string | null> {
   if (!id.startsWith(USER_PLAYLIST_PREFIX)) return null;
   try {
-    const storefront = await getStorefront(credentials);
+    const storefront = config.storefront;
     const url = await memo(`library-art:${id}`, LIBRARY_ARTWORK_TTL_MS, async () => {
       const rows = await appleFetch<CatalogPlaylistWithLibrary>(
         `https://api.music.apple.com/v1/catalog/${storefront}/playlists/${id}?include=library`,

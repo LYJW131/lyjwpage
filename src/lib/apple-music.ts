@@ -70,15 +70,8 @@ async function appleFetchRaw<T>(url: string, credentials: Credentials): Promise<
   return (await response.json()) as T;
 }
 
-/** 大多数端点把结果放在顶层 data 里 */
-async function appleFetch<T>(url: string, credentials: Credentials): Promise<T[]> {
-  const json = await appleFetchRaw<{ data?: T[] }>(url, credentials);
-  return Array.isArray(json?.data) ? json.data : [];
-}
-
 /** 命中的链接不会变，缓存久一点；搜不到时靠 cached 的负缓存挡住重复请求 */
 const TRACK_LINK_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const STOREFRONT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 /**
  * 取满上限的候选。同一首歌可能同时收录在单曲、EP、精选里，相关度排序也不保证
  * 想要的那个版本排在前面，候选取少了正确的专辑可能根本不在集合里。
@@ -121,16 +114,6 @@ function normalizeForMatch(value: string | null | undefined) {
     .normalize("NFKC")
     .replace(/[\s　]/g, "")
     .replace(/[-–—_.,'"‘’“”!?()（）\[\]・:：]/g, "");
-}
-
-async function getStorefront(credentials: Credentials) {
-  return cached("apple-music:storefront", STOREFRONT_TTL_MS, async () => {
-    const rows = await appleFetch<{ id?: string }>(
-      "https://api.music.apple.com/v1/me/storefront",
-      credentials,
-    );
-    return rows[0]?.id ?? "us";
-  });
 }
 
 /**
@@ -176,7 +159,7 @@ export async function resolveTrackLookup(track: {
   try {
     const exact = await cached<TrackLookup>(cacheKey, TRACK_LINK_TTL_MS, async () => {
       const credentials = await resolveCredentials();
-      const storefront = await getStorefront(credentials);
+      const storefront = (process.env.APPLE_MUSIC_STOREFRONT?.trim() || "cn").toLowerCase();
       // 带上专辑名能提高排序质量，但判定仍然只看曲名和艺人
       const term = [track.title, track.artist, track.album].filter(Boolean).join(" ");
       const url =

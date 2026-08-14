@@ -34,6 +34,9 @@ export const config = {
     secret: process.env.TELEMETRY_INGEST_SECRET?.trim() ?? "",
   },
 
+  /** Apple Music 目录查询地区，默认 cn */
+  storefront: (process.env.APPLE_MUSIC_STOREFRONT?.trim() || "cn").toLowerCase(),
+
   /**
    * 轮询 Apple 的节奏。
    *
