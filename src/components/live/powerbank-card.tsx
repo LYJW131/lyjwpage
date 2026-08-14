@@ -103,8 +103,6 @@ export function PowerBankCard({
     (connected ? (data?.ports ?? []).filter((port) => port.direction === "in").length : 0) +
     (onDock ? 1 : 0);
   const dualInput = inputSources >= 2;
-  const dualOutput =
-    connected && (data?.ports ?? []).filter((port) => port.direction === "out").length >= 2;
 
   /**
    * 副标题按「现在发生的最重要的事」排优先级：过热 > 充电 > 放电 > 待机。
@@ -116,21 +114,17 @@ export function PowerBankCard({
     if (!connected) return "充电宝未连接";
     if (limited) return "过热保护中，暂停充电";
     /**
-     * 进电和出电是两件独立的事，各自可能有个更具体的名字（双路、底座）。
-     * 两个方向同时在流时都要说出来 —— 只说一边会让那一边看起来像全部。
+     * 只有进电侧分状态：单口、双枪、底座是三件不同的事，充电速度和插法都不一样。
+     * 出电侧不分 —— 一个口出还是两个口出，对着看的人来说都是「在往外供电」，
+     * 端口格里已经逐口写着瓦数，标题再拆一遍只是多一个要记的词。
      *
-     * 「边充边放」是这种双向状态本身的名字，所以只在进电侧没有更具体的说法时
-     * 才用它：来路是双枪或底座的话，那个信息更值钱，别被这个词盖掉。
+     * 「边充边放」是双向状态本身的名字，只在进电侧没有更具体说法时才用：来路是
+     * 双枪或底座的话，那个信息更值钱，别被这个词盖掉。
      */
     const inflow = dualInput ? "双枪超充" : onDock ? "底座快充" : null;
-    const outflow = dualOutput ? "双枪供电" : null;
-    if (charging && discharging) {
-      const head = inflow ?? "边充边放";
-      const tail = outflow ?? (inflow ? "供电中" : null);
-      return tail ? `${head} · ${tail}` : head;
-    }
+    if (charging && discharging) return inflow ? `${inflow} · 输出中` : "边充边放";
     if (charging) return inflow ?? "充电中";
-    if (discharging) return outflow ?? "供电中";
+    if (discharging) return "输出中";
     return "待机";
   })();
 
