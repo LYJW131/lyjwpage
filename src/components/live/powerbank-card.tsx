@@ -207,15 +207,19 @@ export function PowerBankCard({
                   )}
                 </div>
                 <div className="mt-0.5 truncate font-mono text-[0.6875rem] text-muted-foreground">
-                  {/* 方向用 input/output：上面那行「输入/输出」讲的是整机总量，
-                      这里讲的是单个口，换一种写法免得两处看起来在说同一件事 */}
+                  {/*
+                    和充电头那张卡对齐：第三行只讲「这个口现在在干什么」，没在
+                    工作就是一个破折号。原来空闲时写的是端口能力（仅输出 / 双向）
+                    —— 那是一条永远为真的静态事实，占着一个本该反映当下状态的
+                    位置，还让同一行在中英之间跳。
+
+                    方向用大写：这一行是等宽小字号，大写更像状态标签而不是散句。
+                  */}
                   {full?.direction === "in"
-                    ? "input"
+                    ? "INPUT"
                     : full?.direction === "out"
-                      ? "output"
-                      : port.id === "A"
-                        ? "仅输出"
-                        : "双向"}
+                      ? "OUTPUT"
+                      : "—"}
                 </div>
               </div>
             );
