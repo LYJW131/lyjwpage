@@ -305,7 +305,10 @@ export function TimezoneCard({
           </div>
 
           {/* 时区标识与 UTC 偏移 */}
-          <div className="truncate font-mono text-xs text-muted-foreground" title={timezone}>
+          <div
+            className="whitespace-nowrap font-mono text-xs text-muted-foreground"
+            title={timezone}
+          >
             {zoneLabel}
           </div>
         </div>
