@@ -207,10 +207,12 @@ export function PowerBankCard({
                   )}
                 </div>
                 <div className="mt-0.5 truncate font-mono text-[0.6875rem] text-muted-foreground">
+                  {/* 方向用 input/output：上面那行「输入/输出」讲的是整机总量，
+                      这里讲的是单个口，换一种写法免得两处看起来在说同一件事 */}
                   {full?.direction === "in"
-                    ? "取电中"
+                    ? "input"
                     : full?.direction === "out"
-                      ? "供电中"
+                      ? "output"
                       : port.id === "A"
                         ? "仅输出"
                         : "双向"}
