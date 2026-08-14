@@ -1,5 +1,6 @@
 "use client";
 
+import { Anthropic, Antigravity, OpenAI } from "@lobehub/icons";
 import NumberFlow, { NumberFlowGroup } from "@number-flow/react";
 import { useEffect, useState } from "react";
 
@@ -79,33 +80,6 @@ const TOKEN_SEGMENTS = [
   },
 ] as const;
 
-function AnthropicCompanyMark() {
-  return (
-    <svg
-      viewBox="0 0 92 64"
-      className="h-4 w-[23px] text-[#141413] dark:text-[#faf9f5]"
-      aria-hidden
-    >
-      <path d="M66.4915 0H52.5029L78.0115 64H92.0001L66.4915 0Z" fill="currentColor" />
-      <path
-        d="M26.08 0L.571 64h14.263l5.217-13.44h26.686L51.954 64h14.263L40.709 0H26.08Zm-1.415 38.674 8.729-22.491 8.73 22.491H24.665Z"
-        fill="currentColor"
-      />
-    </svg>
-  );
-}
-
-function OpenAICompanyMark() {
-  return (
-    <svg viewBox="0 0 41 41" className="size-4 text-foreground" aria-hidden>
-      <path
-        d="M37.532 16.871a10.12 10.12 0 0 0-.856-8.185 10.08 10.08 0 0 0-10.854-4.835A10.1 10.1 0 0 0 8.692 7.478a10.1 10.1 0 0 0-5.424 16.651 10.12 10.12 0 0 0 .856 8.185 10.08 10.08 0 0 0 10.855 4.835 10.1 10.1 0 0 0 17.133-3.631 10.1 10.1 0 0 0 5.42-16.647Zm-15.034 21.014a7.48 7.48 0 0 1-4.799-1.735l8.201-4.734c.2-.114.366-.279.481-.478.115-.199.175-.426.174-.655V19.054l3.366 1.944a.13.13 0 0 1 .066.092v9.299a7.51 7.51 0 0 1-7.489 7.496ZM6.392 31.006a7.48 7.48 0 0 1-.894-5.023l8.201 4.742c.199.116.424.177.654.177s.456-.061.654-.177l9.724-5.615v3.888a.13.13 0 0 1-.048.103l-8.051 4.649a7.51 7.51 0 0 1-10.24-2.744ZM4.297 13.619a7.48 7.48 0 0 1 3.902-3.286v9.475c-.002.23.058.456.173.655.115.199.281.364.48.477l9.72 5.614-3.366 1.944a.13.13 0 0 1-.114.01L7.04 23.856a7.51 7.51 0 0 1-2.743-10.237Zm27.658 6.437-9.724-5.615 3.367-1.943a.13.13 0 0 1 .113-.01l8.052 4.648a7.51 7.51 0 0 1-1.158 13.528V21.188c.002-.229-.057-.455-.171-.654a1.31 1.31 0 0 0-.479-.478Zm3.351-5.043-8.202-4.742a1.31 1.31 0 0 0-1.308 0l-9.723 5.615v-3.888a.13.13 0 0 1 .048-.103l8.051-4.645a7.51 7.51 0 0 1 11.134 7.763Zm-21.064 6.929-3.367-1.944a.13.13 0 0 1-.065-.092v-9.299a7.51 7.51 0 0 1 12.293-5.756l-8.201 4.734c-.2.114-.366.279-.481.478-.115.199-.175.425-.173.655l-.006 11.224Zm1.829-3.943 4.331-2.501 4.331 2.5v5l-4.331 2.5-4.331-2.5v-4.999Z"
-        fill="currentColor"
-      />
-    </svg>
-  );
-}
-
 function CursorProviderMark({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 466.73 533.32" className={className} aria-hidden>
@@ -145,200 +119,6 @@ function OpenCodeProviderMark({ className }: { className?: string }) {
   );
 }
 
-function AntigravityProviderMark({ className }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      className={className}
-      aria-hidden
-    >
-      <title>Antigravity</title>
-      <mask id="ag-quota-mask" maskUnits="userSpaceOnUse" x="0" y="1" width="24" height="23">
-        <path
-          d="M21.751 22.607c1.34 1.005 3.35.335 1.508-1.508C17.73 15.74 18.904 1 12.037 1 5.17 1 6.342 15.74.815 21.1c-2.01 2.009.167 2.511 1.507 1.506 5.192-3.517 4.857-9.714 9.714-9.714 4.857 0 4.522 6.197 9.714 9.715z"
-          fill="#fff"
-        />
-      </mask>
-      <g mask="url(#ag-quota-mask)">
-        <g filter="url(#ag-quota-f1)">
-          <path
-            d="M-1.018-3.992c-.408 3.591 2.686 6.89 6.91 7.37 4.225.48 7.98-2.043 8.387-5.633.408-3.59-2.686-6.89-6.91-7.37-4.225-.479-7.98 2.043-8.387 5.633z"
-            fill="#FFE432"
-          />
-        </g>
-        <g filter="url(#ag-quota-f2)">
-          <path
-            d="M15.269 7.747c1.058 4.557 5.691 7.374 10.348 6.293 4.657-1.082 7.575-5.653 6.516-10.21-1.058-4.556-5.691-7.374-10.348-6.292-4.657 1.082-7.575 5.653-6.516 10.21z"
-            fill="#FC413D"
-          />
-        </g>
-        <g filter="url(#ag-quota-f3)">
-          <path
-            d="M-12.443 10.804c1.338 4.703 7.36 7.11 13.453 5.378 6.092-1.733 9.947-6.95 8.61-11.652C8.282-.173 2.26-2.58-3.833-.848-9.925.884-13.78 6.1-12.443 10.804z"
-            fill="#00B95C"
-          />
-        </g>
-        <g filter="url(#ag-quota-f4)">
-          <path
-            d="M-7.608 14.703c3.352 3.424 9.126 3.208 12.896-.483 3.77-3.69 4.108-9.459.756-12.883C2.69-2.087-3.083-1.871-6.853 1.82c-3.77 3.69-4.108 9.458-.755 12.883z"
-            fill="#00B95C"
-          />
-        </g>
-        <g filter="url(#ag-quota-f5)">
-          <path
-            d="M9.932 27.617c1.04 4.482 5.384 7.303 9.7 6.3 4.316-1.002 6.971-5.448 5.93-9.93-1.04-4.483-5.384-7.304-9.7-6.301-4.316 1.002-6.971 5.448-5.93 9.93z"
-            fill="#3186FF"
-          />
-        </g>
-        <g filter="url(#ag-quota-f6)">
-          <path
-            d="M2.572-8.185C.392-3.329 2.778 2.472 7.9 4.771c5.122 2.3 11.042.227 13.222-4.63 2.18-4.855-.205-10.656-5.327-12.955-5.122-2.3-11.042-.227-13.222 4.63z"
-            fill="#FBBC04"
-          />
-        </g>
-        <g filter="url(#ag-quota-f7)">
-          <path
-            d="M-3.267 38.686c-5.277-2.072 3.742-19.117 5.984-24.83 2.243-5.712 8.34-8.664 13.616-6.592 5.278 2.071 11.533 13.482 9.29 19.195-2.242 5.713-23.613 14.298-28.89 12.227z"
-            fill="#3186FF"
-          />
-        </g>
-        <g filter="url(#ag-quota-f8)">
-          <path
-            d="M28.71 17.471c-1.413 1.649-5.1.808-8.236-1.878-3.135-2.687-4.531-6.201-3.118-7.85 1.412-1.649 5.1-.808 8.235 1.878s4.532 6.2 3.119 7.85z"
-            fill="#749BFF"
-          />
-        </g>
-        <g filter="url(#ag-quota-f9)">
-          <path
-            d="M18.163 9.077c5.81 3.93 12.502 4.19 14.946.577 2.443-3.612-.287-9.727-6.098-13.658-5.81-3.931-12.502-4.19-14.946-.577-2.443 3.612.287 9.727 6.098 13.658z"
-            fill="#FC413D"
-          />
-        </g>
-        <g filter="url(#ag-quota-f10)">
-          <path
-            d="M-.915 2.684c-1.44 3.473-.97 6.967 1.05 7.804 2.02.837 4.824-1.3 6.264-4.772 1.44-3.473.97-6.967-1.05-7.804-2.02-.837-4.824 1.3-6.264 4.772z"
-            fill="#FFEE48"
-          />
-        </g>
-      </g>
-      <defs>
-        <filter
-          id="ag-quota-f1"
-          x="-3.288"
-          y="-11.917"
-          width="19.838"
-          height="17.587"
-          filterUnits="userSpaceOnUse"
-          colorInterpolationFilters="sRGB"
-        >
-          <feGaussianBlur stdDeviation="1.117" />
-        </filter>
-        <filter
-          id="ag-quota-f2"
-          x="4.251"
-          y="-13.493"
-          width="38.9"
-          height="38.565"
-          filterUnits="userSpaceOnUse"
-          colorInterpolationFilters="sRGB"
-        >
-          <feGaussianBlur stdDeviation="5.4" />
-        </filter>
-        <filter
-          id="ag-quota-f3"
-          x="-21.889"
-          y="-10.592"
-          width="40.955"
-          height="36.517"
-          filterUnits="userSpaceOnUse"
-          colorInterpolationFilters="sRGB"
-        >
-          <feGaussianBlur stdDeviation="4.591" />
-        </filter>
-        <filter
-          id="ag-quota-f4"
-          x="-19.099"
-          y="-10.278"
-          width="36.632"
-          height="36.595"
-          filterUnits="userSpaceOnUse"
-          colorInterpolationFilters="sRGB"
-        >
-          <feGaussianBlur stdDeviation="4.591" />
-        </filter>
-        <filter
-          id="ag-quota-f5"
-          x=".981"
-          y="8.758"
-          width="33.533"
-          height="34.087"
-          filterUnits="userSpaceOnUse"
-          colorInterpolationFilters="sRGB"
-        >
-          <feGaussianBlur stdDeviation="4.363" />
-        </filter>
-        <filter
-          id="ag-quota-f6"
-          x="-6.143"
-          y="-21.659"
-          width="35.978"
-          height="35.276"
-          filterUnits="userSpaceOnUse"
-          colorInterpolationFilters="sRGB"
-        >
-          <feGaussianBlur stdDeviation="3.954" />
-        </filter>
-        <filter
-          id="ag-quota-f7"
-          x="-11.96"
-          y="-.46"
-          width="45.114"
-          height="46.523"
-          filterUnits="userSpaceOnUse"
-          colorInterpolationFilters="sRGB"
-        >
-          <feGaussianBlur stdDeviation="3.531" />
-        </filter>
-        <filter
-          id="ag-quota-f8"
-          x="10.485"
-          y=".58"
-          width="25.094"
-          height="24.054"
-          filterUnits="userSpaceOnUse"
-          colorInterpolationFilters="sRGB"
-        >
-          <feGaussianBlur stdDeviation="3.159" />
-        </filter>
-        <filter
-          id="ag-quota-f9"
-          x="5.833"
-          y="-12.467"
-          width="33.508"
-          height="30.007"
-          filterUnits="userSpaceOnUse"
-          colorInterpolationFilters="sRGB"
-        >
-          <feGaussianBlur stdDeviation="2.669" />
-        </filter>
-        <filter
-          id="ag-quota-f10"
-          x="-8.355"
-          y="-8.876"
-          width="22.194"
-          height="26.151"
-          filterUnits="userSpaceOnUse"
-          colorInterpolationFilters="sRGB"
-        >
-          <feGaussianBlur stdDeviation="3.303" />
-        </filter>
-      </defs>
-    </svg>
-  );
-}
-
 function QuotaProviderMark({
   providerId,
   className,
@@ -352,19 +132,19 @@ function QuotaProviderMark({
     case "opencodego":
       return <OpenCodeProviderMark className={className} />;
     case "antigravity":
-      return <AntigravityProviderMark className={className} />;
+      return <Antigravity.Color size={20} className={className} />;
   }
 }
 
 function ModelProviderIcon({ model }: { model: string }) {
   const mark = model.toLowerCase().startsWith("claude")
-    ? <AnthropicCompanyMark />
+    ? <Anthropic size={16} />
     : /^(gpt|codex|chatgpt|o\d)/i.test(model)
-      ? <OpenAICompanyMark />
+      ? <OpenAI size={16} />
       : null;
   if (!mark) return null;
   return (
-    <span className="flex size-6 shrink-0 items-center justify-center" aria-hidden>
+    <span className="flex size-6 shrink-0 items-center justify-center text-foreground" aria-hidden>
       {mark}
     </span>
   );

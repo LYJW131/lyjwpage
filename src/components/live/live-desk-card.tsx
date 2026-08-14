@@ -8,6 +8,7 @@ import { MacBookProIcon } from "@/components/ui/device-icons";
 import { useLiveEvents } from "@/hooks/use-live-events";
 import { useReporterStale } from "@/hooks/use-stale";
 import { useStatus } from "@/hooks/use-status";
+import { findDesktopOverride } from "@/lib/desktop-app-overrides";
 import { STATIC_TRANSITION, STATIC_VARIANTS } from "@/lib/motion";
 import { DESKTOP_PATH } from "@/lib/paths";
 import type { DesktopActivity, DesktopPayload, StatusResponse } from "@/lib/types";
@@ -60,17 +61,32 @@ export function HeaderDesktop({
     error || data?.declaredOffline || (reporterStale && !isValidating),
   );
   const incomingDesktop = data?.desktop ?? null;
-  const incomingApplicationName = incomingDesktop?.applicationName ?? null;
   const incomingBundleIdentifier = incomingDesktop?.bundleIdentifier ?? null;
+  const incomingOverride = findDesktopOverride(incomingBundleIdentifier);
+  const incomingApplicationName =
+    incomingOverride?.displayName ?? incomingDesktop?.applicationName ?? null;
   const incomingIconUrl = incomingDesktop?.iconUrl ?? null;
   const incomingObservedAt = incomingDesktop?.observedAt ?? 0;
 
   useEffect(() => {
-    if (offline || !incomingApplicationName || !incomingIconUrl) return;
+    if (offline || !incomingApplicationName) return;
 
     const sameApplication =
       displayedDesktop?.bundleIdentifier === incomingBundleIdentifier &&
       displayedDesktop?.applicationName === incomingApplicationName;
+
+    if (incomingOverride) {
+      if (sameApplication) return;
+      setDisplayedDesktop({
+        applicationName: incomingOverride.displayName,
+        bundleIdentifier: incomingBundleIdentifier,
+        iconUrl: incomingIconUrl ?? "",
+        observedAt: incomingObservedAt,
+      });
+      return;
+    }
+
+    if (!incomingIconUrl) return;
     if (sameApplication && displayedDesktop?.iconUrl === incomingIconUrl) return;
 
     let cancelled = false;
@@ -96,25 +112,29 @@ export function HeaderDesktop({
       preload.onload = null;
     };
   }, [
-    displayedDesktop,
+    displayedDesktop?.applicationName,
+    displayedDesktop?.bundleIdentifier,
+    displayedDesktop?.iconUrl,
     incomingApplicationName,
     incomingBundleIdentifier,
     incomingIconUrl,
     incomingObservedAt,
+    incomingOverride,
     offline,
   ]);
 
   // 首屏直接用服务端 fallback；之后仍等新图标预加载好再交接，避免切换时闪空。
   const desktop = displayedDesktop ?? (offline ? null : incomingDesktop);
+  const activeOverride = findDesktopOverride(desktop?.bundleIdentifier);
   const locked = desktop?.bundleIdentifier === LOCK_SCREEN_BUNDLE_ID;
   const applicationKey = offline
     ? "offline"
-    : desktop?.bundleIdentifier ?? desktop?.applicationName ?? "idle";
+    : activeOverride?.key ?? desktop?.bundleIdentifier ?? desktop?.applicationName ?? "idle";
   const applicationName = offline
     ? "已离线"
     : locked
       ? "已锁屏"
-      : desktop?.applicationName ?? (isLoading ? "读取中…" : "暂无活动");
+      : activeOverride?.displayName ?? desktop?.applicationName ?? (isLoading ? "读取中…" : "暂无活动");
 
   return (
     <div
@@ -126,7 +146,13 @@ export function HeaderDesktop({
       {/* 内容绝对定位做切换动画，宽度得另开一行量，否则中间栏只剩 1/3 就开始省略。 */}
       <div className="pointer-events-none invisible flex items-center gap-2" aria-hidden>
         <span className="size-7 shrink-0" />
-        <span className="min-w-0 truncate text-sm font-medium">{applicationName}</span>
+        {activeOverride?.renderText ? (
+          <span className="flex shrink-0 items-center">
+            {activeOverride.renderText({ size: 20 })}
+          </span>
+        ) : (
+          <span className="min-w-0 truncate text-sm font-medium">{applicationName}</span>
+        )}
       </div>
       {!desktop && !offline ? (
         <div className="absolute inset-0 flex min-w-0 items-center justify-center gap-2">
@@ -151,6 +177,8 @@ export function HeaderDesktop({
             <span className="flex size-7 shrink-0 items-center justify-center">
               {offline ? (
                 <MacBookProIcon className="size-5 text-muted-foreground" aria-hidden />
+              ) : activeOverride ? (
+                activeOverride.renderIcon({ size: 24 })
               ) : desktop?.iconUrl && !locked ? (
                 <Image
                   src={desktop.iconUrl}
@@ -178,14 +206,20 @@ export function HeaderDesktop({
                 <span className="text-xs text-muted-foreground">⌘</span>
               )}
             </span>
-            <span
-              className={cn(
-                "truncate text-sm font-medium",
-                offline && "text-muted-foreground",
-              )}
-            >
-              {applicationName}
-            </span>
+            {activeOverride?.renderText ? (
+              <span className="flex shrink-0 items-center text-foreground">
+                {activeOverride.renderText({ size: 20 })}
+              </span>
+            ) : (
+              <span
+                className={cn(
+                  "truncate text-sm font-medium",
+                  offline && "text-muted-foreground",
+                )}
+              >
+                {applicationName}
+              </span>
+            )}
           </motion.div>
         </AnimatePresence>
       )}
