@@ -6,6 +6,7 @@ import {
   pickCharger,
   type RawChargingDevices,
 } from "@/lib/anker";
+import { shouldPublishCharging } from "@/lib/charging-settling";
 import { getPowerBankSnapshot, normalizePowerBank, pickPowerBank } from "@/lib/powerbank";
 import { recordStatus as recordPowerBankStatus } from "@/lib/powerbank-store";
 import { recordPushHeartbeat, recordStatus } from "@/lib/charger-store";
@@ -376,9 +377,14 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
         normalizeChargingDevice(charger),
         receivedAt,
       );
-      // 插拔、换设备立刻推给浏览器，不等卡片下一次轮询。滚动读数不走这里。
-      // since 给当下时刻：历史点一个都不带，客户端沿用自己那份，见 live-events 的说明。
-      if (structuralChanged) {
+      /**
+       * 插拔、换设备立刻推给浏览器，不等卡片下一次轮询。滚动读数照旧不走这里 ——
+       * 除了插拔后那几十秒：采集端在那段时间会追发，功率还在往稳定值收敛，
+       * 那几帧值得推。窗口的判断见 lib/charging-settling。
+       *
+       * since 给当下时刻：历史点一个都不带，客户端沿用自己那份，见 live-events。
+       */
+      if (await shouldPublishCharging("charger", structuralChanged, receivedAt)) {
         await publish({ type: "charger", payload: await getChargerPayload({ since: Date.now() }) });
         expireStatusImmediately(CHARGER_TAG);
       }
@@ -391,9 +397,9 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
         normalizePowerBank(powerBank),
         receivedAt,
       );
-      // 和充电头同一套：插拔、充放电切换、热控翻转、整数电量跳格才即时推，
-      // 缓慢滚动的电量和功率等下一次轮询。
-      if (structuralChanged) {
+      // 和充电头同一套：插拔、充放电切换、热控翻转、整数电量跳格即时推，加上
+      // 插拔之后那段收敛窗口；缓慢滚动的电量和功率仍然等下一次轮询。
+      if (await shouldPublishCharging("powerbank", structuralChanged, receivedAt)) {
         await publish({ type: "powerbank", payload: await getPowerBankSnapshot() });
         expireStatusImmediately(POWERBANK_TAG);
       }
