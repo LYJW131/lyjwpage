@@ -78,7 +78,16 @@ export type ResolvedNowPlaying = {
  * 没收到（客户端崩了、网络断了），此时按已结束处理，不会一直挂着。
  */
 export async function getNowPlaying(): Promise<ResolvedNowPlaying | null> {
-  const state = await mirror.get();
+  return resolveNowPlaying(await mirror.get());
+}
+
+/**
+ * 推算部分单拎出来，不带取数。
+ *
+ * 上报那条路上刚写下去的那份就在手上，用不着等它落库再从 Redis 读回来 ——
+ * 读回来的还可能是写之前的那份。
+ */
+export function resolveNowPlaying(state: EmbyNowPlaying | null): ResolvedNowPlaying | null {
   if (!state) return null;
 
   if (state.paused) {

@@ -10,6 +10,7 @@ import { mergeChargerHistory } from "@/lib/charger-history";
 import { applyVibeCodingSessions } from "@/lib/vibecoding-activity";
 import { LIVE_CHANNEL, liveEndpoint } from "@/lib/live-channel";
 import type { LiveEvent } from "@/lib/live-events";
+import { rememberPushed } from "@/lib/live-freshness";
 import {
   CHARGER_PATH,
   POWERBANK_PATH,
@@ -202,6 +203,9 @@ function open(mutate: ScopedMutator) {
           const data = merge ? merge(payload) : payload;
           if (data == null) return;
           const envelope: StatusResponse<unknown> = { ok: true, data };
+          // 登记这一代，好让之后回来的旧轮询结果被挡掉（lib/live-freshness）。
+          // 顺手也挡住乱序到达的推送本身
+          if (!rememberPushed(path, envelope)) return;
           void mutate(path, envelope, { revalidate: false });
         });
       }

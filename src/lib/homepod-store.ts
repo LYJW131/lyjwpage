@@ -22,7 +22,7 @@ const SILENCE_GRACE_MS = 5 * 60 * 1000;
  */
 const REPEAT_SILENCE_GRACE_MS = 30 * 60 * 1000;
 
-type StoredHomePod = {
+export type StoredHomePod = {
   music: LocalNowPlaying;
   receivedAt: number;
 };
@@ -174,22 +174,29 @@ export function normalizeHomePodEvent(
   };
 }
 
-export async function recordHomePodEvent(input: unknown, receivedAt = Date.now()) {
-  const stored = normalizeHomePodEvent(input, receivedAt);
-  await mirror.put(stored);
+export function writeHomePodEvent(stored: StoredHomePod): Promise<void> {
+  return mirror.put(stored);
+}
+
+/**
+ * 停了或没标题的那份不参与选择。
+ *
+ * 单独拎出来是因为上报那条路上快照就在手上（刚规范化好的那份），不必等它落库
+ * 再从 Redis 读回来，但过滤口径必须和读取那条路一模一样。
+ */
+export function playableHomePod(stored: StoredHomePod | null): StoredHomePod | null {
+  if (!stored || stored.music.state === "stopped" || !stored.music.title) return null;
   return stored;
 }
 
 /**
- * HomePod 上一份还在放的快照。停了或没标题就不给。
+ * HomePod 上一份还在放的快照。
  *
  * 静默、放完由调用方按 receivedAt 现算（homePodVisibleAt），这里不按墙上的钟
  * 过滤 —— 过滤了就没法把 Redis 那份冻进缓存。
  */
 export async function getHomePodSnapshot() {
-  const stored = await mirror.get();
-  if (!stored || stored.music.state === "stopped" || !stored.music.title) return null;
-  return stored;
+  return playableHomePod(await mirror.get());
 }
 
 /**

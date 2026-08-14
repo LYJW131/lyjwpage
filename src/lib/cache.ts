@@ -61,10 +61,19 @@ export async function cached<T>(
   ttlMs: number,
   loader: () => Promise<T>,
 ): Promise<T> {
-  const hit = await get<T>(k);
+  /**
+   * 值和负缓存一起问，不串着问。
+   *
+   * 命中时那条负缓存的 GET 是白问的 —— 但它和值那条在同一条连接上并发发出、
+   * 在网络上重叠，多花的是 Redis 的一点点力气，不是一个来回。没命中时省下的
+   * 才是实打实的一个来回，而那正是要紧的时候：换歌那一刻要现查目录，
+   * 「此刻在听」的推送就压在这条链路上。
+   */
+  const [hit, failure] = await Promise.all([
+    get<T>(k),
+    get<{ message: string }>(`${NEGATIVE_PREFIX}:${k}`),
+  ]);
   if (hit !== undefined) return hit;
-
-  const failure = await get<{ message: string }>(`${NEGATIVE_PREFIX}:${k}`);
   if (failure) throw new Error(failure.message);
 
   const running = inflight.get(k);

@@ -79,28 +79,42 @@ function structuralKey(status: PowerBankStatus) {
 }
 
 /**
- * 记一条快照，返回「需要即时通知的内容变没变」。
- *
- * diff 必须服务端自己做：采集端 1 Hz 推流，每个上报周期都会带这个模块，收到就
- * 推的话推送会退化成定时广播。
+ * 上一份快照。和充电头那边的 readChargerState 同一个用法：调用方在信封解析完
+ * 就发车，和这封的其它读重叠，到充电宝分支再接住。
  */
-export async function recordStatus(status: PowerBankStatus, receivedAt = Date.now()) {
-  const previous = await readLatest();
+export function readPowerBankState(): Promise<Stored | null> {
+  return readLatest();
+}
+
+/**
+ * 收一条快照：读已经在外面做完了，这里只算，写留给 commit。
+ *
+ * `structuralChanged` 的 diff 必须服务端自己做：采集端 1 Hz 推流，每个上报周期
+ * 都会带这个模块，收到就推的话推送会退化成定时广播。
+ */
+export function prepareStatus(
+  status: PowerBankStatus,
+  receivedAt: number,
+  previous: Stored | null,
+): { structuralChanged: boolean; commit: () => Promise<void> } {
   const structuralChanged =
     !previous || structuralKey(previous.status) !== structuralKey(status);
 
-  fallback.latest = status;
-  fallback.receivedAt = receivedAt;
-  fallback.lastPushAt = receivedAt;
+  return {
+    structuralChanged,
+    commit: async () => {
+      fallback.latest = status;
+      fallback.receivedAt = receivedAt;
+      fallback.lastPushAt = receivedAt;
 
-  fallback.persisted = await tellRedis(async (redis) => {
-    const pipe = redis.pipeline();
-    pipe.set(K_LATEST, JSON.stringify({ status, receivedAt }), "PX", TTL_MS);
-    pipe.set(K_LAST_PUSH, String(receivedAt), "PX", TTL_MS);
-    return pipe.exec();
-  });
-
-  return structuralChanged;
+      fallback.persisted = await tellRedis(async (redis) => {
+        const pipe = redis.pipeline();
+        pipe.set(K_LATEST, JSON.stringify({ status, receivedAt }), "PX", TTL_MS);
+        pipe.set(K_LAST_PUSH, String(receivedAt), "PX", TTL_MS);
+        return pipe.exec();
+      });
+    },
+  };
 }
 
 export async function getStored() {

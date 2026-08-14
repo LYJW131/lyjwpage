@@ -1,6 +1,11 @@
 import { getStored, lastPushReceivedAt } from "@/lib/charger-store";
 import { CHARGER_STALE_MS } from "@/lib/freshness";
-import { offlineByLiveness, readLiveness, withPresence } from "@/lib/reporter-liveness";
+import {
+  offlineByLiveness,
+  readLiveness,
+  withPresence,
+  type Liveness,
+} from "@/lib/reporter-liveness";
 import type { ChargerPayload, ChargerPort, ChargerStatus } from "@/lib/types";
 
 /**
@@ -186,8 +191,39 @@ export function sliceChargerHistory(payload: ChargerPayload, since?: number): Ch
   };
 }
 
-export async function getChargerPayload(
-  { since }: { since?: number } = {},
-): Promise<ChargerPayload> {
-  return withChargerFreshness(sliceChargerHistory(await getChargerSnapshot(), since));
+/**
+ * 插拔时推给浏览器的那一份，全部拿手上现成的东西拼，一次 Redis 都不读。
+ *
+ * 从前这里是 `getChargerPayload({ since: Date.now() })`：为了得到一份「不带历史
+ * 点的增量」，先要把整条 400 点曲线读回来，再让 sliceChargerHistory 原样丢掉 ——
+ * 三次往返换一个空数组。更要命的是它读的是这次上报刚写的那个键，于是推送只能
+ * 排在写库后面。而这三样其实都在手上：状态是刚收到的，pushedAt 就是收到的时刻，
+ * 曲线只需要知道服务端那边还有没有点。
+ *
+ * `historyCount` 为 0 时发的是整份（空的）快照，让客户端把自己那条也清掉 ——
+ * 服务端手上什么都没有时，客户端不该继续画一条谁也对不上的曲线。
+ */
+export function chargerPushPayload({
+  status,
+  receivedAt,
+  historyCount,
+  liveness,
+}: {
+  status: ChargerStatus;
+  receivedAt: number;
+  historyCount: number;
+  liveness: Liveness;
+}): ChargerPayload {
+  return withChargerFreshness(
+    withPresence(
+      {
+        ...status,
+        history: [],
+        historyPartial: historyCount > 0,
+        pushedAt: receivedAt,
+        staleAfterMs: chargerStaleAfterMs(),
+      },
+      liveness,
+    ),
+  );
 }

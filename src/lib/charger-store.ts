@@ -1,5 +1,5 @@
 import { CHARGER_HISTORY_LIMIT } from "@/lib/limits";
-import { askRedis, key, tellRedis, withRedis } from "@/lib/redis";
+import { askRedis, key, tellRedis, withRedis, type RedisAnswer } from "@/lib/redis";
 import type { ChargerSample, ChargerStatus } from "@/lib/types";
 
 /**
@@ -107,9 +107,12 @@ async function readLatest(): Promise<Stored | null> {
 /**
  * 曲线不比时间戳，比 latest 那份就够 —— 两者同一次写入、同生共死。Redis 故障
  * 窗里漏掉几个功率点在图上看不出来，为它单独记一套新旧不值当。
+ *
+ * 裁决和取数分开：两条命令要能和快照那条同时发车（见 readChargerState），
+ * 而裁决里要看 `fallback.persisted`，那是快照那条读完才定的 —— 顺序不能靠
+ * 「谁先 await」碰运气，只能等两条都回来了再算。
  */
-async function readHistory(): Promise<ChargerSample[]> {
-  const answered = await askRedis((redis) => redis.lrange(K_HISTORY, 0, -1));
+function acceptHistory(answered: RedisAnswer<string[]>): ChargerSample[] {
   if (!answered.reachable) return [...fallback.history];
 
   if (answered.value.length) {
@@ -132,28 +135,47 @@ async function readHistory(): Promise<ChargerSample[]> {
   return [...fallback.history];
 }
 
+function askHistory() {
+  return askRedis((redis) => redis.lrange(K_HISTORY, 0, -1));
+}
+
+async function readHistory(): Promise<ChargerSample[]> {
+  return acceptHistory(await askHistory());
+}
+
 async function clearHistory() {
   fallback.history.length = 0;
   await withRedis(async (redis) => redis.del(K_HISTORY), 0);
 }
 
+export type ChargerState = {
+  previous: Stored | null;
+  history: ChargerSample[];
+};
+
+/**
+ * 这次上报要用到的两份，同时发车。
+ *
+ * 两条命令写进同一条连接，在网络上是重叠的 —— 一个来回拿回两份，不用真去组
+ * pipeline。调用方在信封解析完的那一刻就该调它，然后揣着这个 promise 往下走，
+ * 到充电头分支再 await：那样它和状态、存活那两条读也是重叠的。
+ */
+export async function readChargerState(): Promise<ChargerState> {
+  const [previous, history] = await Promise.all([readLatest(), askHistory()]);
+  return { previous, history: acceptHistory(history) };
+}
+
+/** 这一帧对曲线做什么。算好再一次性写下去，别读一次写一次 */
+type HistoryPlan =
+  | { kind: "keep" }
+  | { kind: "clear" }
+  /** `reset` 为真时先清空：断联太久重新起步，或者对端时钟倒流、旧曲线接不上了 */
+  | { kind: "append"; sample: ChargerSample; reset: boolean };
+
 function disconnectedHistoryExpired(stored: Stored, now: number) {
   if (stored.status.connected) return false;
   const disconnectedAt = stored.disconnectedAt ?? stored.receivedAt;
   return now - disconnectedAt >= DISCONNECTED_HISTORY_AFTER_MS;
-}
-
-/**
- * 断联后即使状态不再变化，presence 心跳仍会走到这里；因此不依赖新的 charger
- * 快照，也能在断联满半小时后把服务端历史清空。
- */
-async function clearExpiredDisconnectedHistory(now: number) {
-  const latest = await readLatest();
-  if (!latest || !disconnectedHistoryExpired(latest, now)) return false;
-  const history = await readHistory();
-  if (!history.length) return false;
-  await clearHistory();
-  return true;
 }
 
 /**
@@ -179,61 +201,28 @@ function structuralKey(status: ChargerStatus) {
 }
 
 /**
- * 记一条快照。同一个 updatedAt 重复推送不会产生重复采样点。
+ * 这一帧该往曲线里加什么。同一个 updatedAt 重复推送不会产生重复采样点。
  *
- * 返回需要即时通知的内容变没变，调用方据此决定要不要推送。这个 diff 必须服务端
- * 自己做：充电时采集端每个上报周期都会带 charger 模块（功率两位小数必变），
- * 收到就推的话推送会退化成定时广播，「插拔即时」也就没了意义。
+ * `history` 传的是**落库前**服务端手上那条，函数不改它。
  */
-export async function recordStatus(status: ChargerStatus, receivedAt = Date.now()) {
-  const previous = await readLatest();
-  const previousDisconnectedAt =
-    previous && !previous.status.connected
-      ? previous.disconnectedAt ?? previous.receivedAt
-      : null;
-  const disconnectedAt = status.connected
-    ? 0
-    : previousDisconnectedAt ?? receivedAt;
-  const resetAfterDisconnect =
-    previousDisconnectedAt != null &&
-    receivedAt - previousDisconnectedAt >= DISCONNECTED_HISTORY_AFTER_MS;
-  // 第一份快照也算变化：客户端手上还什么都没有，该收到一次
-  const structuralChanged =
-    !previous || structuralKey(previous.status) !== structuralKey(status);
-
-  fallback.latest = status;
-  fallback.receivedAt = receivedAt;
-  fallback.disconnectedAt = disconnectedAt;
-  fallback.lastPushAt = receivedAt;
-
-  fallback.persisted = await tellRedis(async (redis) => {
-    const pipe = redis.pipeline();
-    pipe.set(
-      K_LATEST,
-      JSON.stringify({ status, receivedAt, disconnectedAt: disconnectedAt || null }),
-      "PX",
-      TTL_MS,
-    );
-    pipe.set(K_LAST_PUSH, String(receivedAt), "PX", TTL_MS);
-    return pipe.exec();
-  });
-
-  let history = await readHistory();
-  if (resetAfterDisconnect) {
-    // 超时后持续断联的 0W 快照也不再入库；重连的这一帧则从空历史重新起步。
-    if (history.length) await clearHistory();
-    history = [];
-    if (!status.connected) return structuralChanged;
-  }
+function planHistory(
+  previous: Stored | null,
+  status: ChargerStatus,
+  receivedAt: number,
+  stored: ChargerSample[],
+  resetAfterDisconnect: boolean,
+): HistoryPlan {
+  // 断联超时后重新起步：旧曲线不属于下一次连接
+  const clear = resetAfterDisconnect && stored.length > 0;
+  const nothing: HistoryPlan = clear ? { kind: "clear" } : { kind: "keep" };
+  // 超时后持续断联的 0W 快照也不再入库
+  if (resetAfterDisconnect && !status.connected) return nothing;
+  const history = resetAfterDisconnect ? [] : stored;
 
   // 同一帧被推两次时不重复记。采集端现在是 1 Hz 推流，每帧都会换 updated_at，
   // 所以这道判断只在重试或重复投递时才拦得住东西 —— 留着是因为那才是它的本意。
-  if (
-    previous &&
-    status.updatedAt != null &&
-    previous.status.updatedAt === status.updatedAt
-  ) {
-    return structuralChanged;
+  if (previous && status.updatedAt != null && previous.status.updatedAt === status.updatedAt) {
+    return nothing;
   }
 
   const last = history[history.length - 1];
@@ -247,30 +236,95 @@ export async function recordStatus(status: ChargerStatus, receivedAt = Date.now(
       // 对端改了时钟或换了数据源，旧历史已经没法和新的拼在一条时间轴上
       reset = true;
     } else if (at - last.t < MIN_SAMPLE_GAP_MS) {
-      return structuralChanged;
+      return nothing;
     }
   }
 
-  const sample: ChargerSample = { t: at, w: status.totalPower };
+  return { kind: "append", sample: { t: at, w: status.totalPower }, reset: reset || clear };
+}
 
-  if (reset) fallback.history.length = 0;
-  fallback.history.push(sample);
-  if (fallback.history.length > CHARGER_HISTORY_LIMIT) {
-    fallback.history.splice(0, fallback.history.length - CHARGER_HISTORY_LIMIT);
-  }
+export type ChargerLanding = {
+  /**
+   * 需要即时通知的内容变没变。这个 diff 必须服务端自己做：充电时采集端每个上报
+   * 周期都会带 charger 模块（功率两位小数必变），收到就推的话推送会退化成定时
+   * 广播，「插拔即时」也就没了意义。
+   */
+  structuralChanged: boolean;
+  /** 落库之后服务端还留着几个采样点。推送靠它决定发空增量还是发整份 */
+  historyCount: number;
+  /** 把这一帧写下去。和推送同时进行，见 lib/live-events 的 fanout */
+  commit: () => Promise<void>;
+};
 
-  await withRedis(async (redis) => {
-    const pipe = redis.pipeline();
-    if (reset) pipe.del(K_HISTORY);
-    pipe.rpush(K_HISTORY, JSON.stringify(sample));
-    // 只留最近 CHARGER_HISTORY_LIMIT 条，用 Redis 自己的裁剪，不用把整条读回来重写
-    pipe.ltrim(K_HISTORY, -CHARGER_HISTORY_LIMIT, -1);
-    pipe.pexpire(K_HISTORY, TTL_MS);
-    await pipe.exec();
-    return null;
-  }, null);
+/**
+ * 收一条快照：读已经在外面做完了，这里只算，写留给 commit。
+ *
+ * 从前这是一个 recordStatus，里面读一次写一次读一次写一次，四个来回全压在推送
+ * 前面。现在两次读由调用方在信封解析完时和别的键一起发车（readChargerState），
+ * 两次写并成一条 pipeline，而且和推送一起发车。
+ */
+export function prepareStatus(
+  status: ChargerStatus,
+  receivedAt: number,
+  { previous, history }: ChargerState,
+): ChargerLanding {
+  const previousDisconnectedAt =
+    previous && !previous.status.connected
+      ? previous.disconnectedAt ?? previous.receivedAt
+      : null;
+  const disconnectedAt = status.connected ? 0 : previousDisconnectedAt ?? receivedAt;
+  const resetAfterDisconnect =
+    previousDisconnectedAt != null &&
+    receivedAt - previousDisconnectedAt >= DISCONNECTED_HISTORY_AFTER_MS;
+  // 第一份快照也算变化：客户端手上还什么都没有，该收到一次
+  const structuralChanged =
+    !previous || structuralKey(previous.status) !== structuralKey(status);
 
-  return structuralChanged;
+  const plan = planHistory(previous, status, receivedAt, history, resetAfterDisconnect);
+
+  const kept =
+    plan.kind === "keep" ? history.length : plan.kind === "clear" ? 0 : plan.reset ? 0 : history.length;
+  const historyCount = Math.min(
+    kept + (plan.kind === "append" ? 1 : 0),
+    CHARGER_HISTORY_LIMIT,
+  );
+
+  return {
+    structuralChanged,
+    historyCount,
+    commit: async () => {
+      fallback.latest = status;
+      fallback.receivedAt = receivedAt;
+      fallback.disconnectedAt = disconnectedAt;
+      fallback.lastPushAt = receivedAt;
+      if (plan.kind !== "keep") {
+        if (plan.kind === "clear" || plan.reset) fallback.history.length = 0;
+        if (plan.kind === "append") fallback.history.push(plan.sample);
+        if (fallback.history.length > CHARGER_HISTORY_LIMIT) {
+          fallback.history.splice(0, fallback.history.length - CHARGER_HISTORY_LIMIT);
+        }
+      }
+
+      fallback.persisted = await tellRedis(async (redis) => {
+        const pipe = redis.pipeline();
+        pipe.set(
+          K_LATEST,
+          JSON.stringify({ status, receivedAt, disconnectedAt: disconnectedAt || null }),
+          "PX",
+          TTL_MS,
+        );
+        pipe.set(K_LAST_PUSH, String(receivedAt), "PX", TTL_MS);
+        if (plan.kind === "clear" || (plan.kind === "append" && plan.reset)) pipe.del(K_HISTORY);
+        if (plan.kind === "append") {
+          pipe.rpush(K_HISTORY, JSON.stringify(plan.sample));
+          // 只留最近 CHARGER_HISTORY_LIMIT 条，用 Redis 自己的裁剪，不用把整条读回来重写
+          pipe.ltrim(K_HISTORY, -CHARGER_HISTORY_LIMIT, -1);
+          pipe.pexpire(K_HISTORY, TTL_MS);
+        }
+        return pipe.exec();
+      });
+    },
+  };
 }
 
 export async function getStored() {
@@ -295,12 +349,34 @@ export async function lastPushReceivedAt() {
   return Math.max(fromRedis || 0, fallback.lastPushAt);
 }
 
-/** v2 heartbeat keeps liveness fresh without resending an unchanged charger snapshot. */
-export async function recordPushHeartbeat(receivedAt = Date.now()) {
-  fallback.lastPushAt = receivedAt;
-  await withRedis(
-    async (redis) => redis.set(K_LAST_PUSH, String(receivedAt), "PX", TTL_MS),
-    null,
-  );
-  await clearExpiredDisconnectedHistory(receivedAt);
+/**
+ * 没带充电头快照的那种信封（纯心跳）：只续上「最近一次收到推送」的时刻。
+ *
+ * 断联后即使状态不再变化，心跳仍会走到这里；所以断联满半小时把曲线清空这件事
+ * 也挂在它身上，不依赖新的快照。读同样在外面做完了 —— 从前它自己去读一次快照
+ * 再读一次曲线，每 30 秒一封的心跳白白多两个来回。
+ */
+export function prepareHeartbeat(
+  receivedAt: number,
+  { previous, history }: ChargerState,
+): { commit: () => Promise<void> } {
+  const expired =
+    previous != null &&
+    disconnectedHistoryExpired(previous, receivedAt) &&
+    history.length > 0;
+
+  return {
+    commit: async () => {
+      fallback.lastPushAt = receivedAt;
+      if (expired) fallback.history.length = 0;
+      // 不走 tellRedis：`persisted` 说的是「快照那份落进去了没有」，
+      // 这里写的是心跳时刻，不该由它来翻那个标志
+      await withRedis(async (redis) => {
+        const pipe = redis.pipeline();
+        pipe.set(K_LAST_PUSH, String(receivedAt), "PX", TTL_MS);
+        if (expired) pipe.del(K_HISTORY);
+        return pipe.exec();
+      }, null);
+    },
+  };
 }

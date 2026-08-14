@@ -162,9 +162,8 @@ function getClient(): Pusher | null {
 /**
  * 把事件交给实时服务。
  *
- * 失败只记一行日志，不往上抛：调用点都在 ingest 路由里、且**状态已经落库了**，
- * 推送丢一条页面靠轮询也能翻过来。为这个回 500 只会让上报器重试、把同一份
- * 数据再写一遍。
+ * 失败只记一行日志，不往上抛：调用点都在 ingest 路由里，推送丢一条页面靠轮询
+ * 也能翻过来。为这个回 500 只会让上报器重试、把同一份数据再写一遍。
  *
  * 调用点一律 `await`：serverless 上响应一发出，没等完的后台工作随时可能被
  * 掐掉，fire-and-forget 会变成「偶尔推不出去」。
@@ -177,5 +176,69 @@ export async function publish(event: LiveEvent): Promise<void> {
     await pusher.trigger(LIVE_CHANNEL, event.type, event.payload);
   } catch (error) {
     console.error("[live]", error instanceof Error ? error.message : String(error));
+  }
+}
+
+/**
+ * 一份还要现算的推送。算它可能要读另一个 store、查一次 Apple 目录，
+ * 那些和写库互不相干，所以整个交给 fanout 去和写库并行。
+ */
+export type PendingEvent = LiveEvent | null | Promise<LiveEvent | null>;
+
+export type Fanout = {
+  /** 落库。**已经发车了的** promise —— fanout 只负责等，不负责启动 */
+  writes?: ReadonlyArray<Promise<unknown>>;
+  /** 带数据的推送 */
+  events?: ReadonlyArray<PendingEvent>;
+  /** 首屏缓存失效 */
+  tags?: readonly string[];
+  /** 同上，但不给旧值宽限期，见 expireStatusImmediately */
+  urgentTags?: readonly string[];
+};
+
+/**
+ * 一次上报的扇出：落库、推送、失效。
+ *
+ * 先后不是随便排的，两条规则：
+ *
+ * 1. **写库和带数据的推送同时做。** 推来的整份数据浏览器直接写进 SWR 缓存
+ *    （`revalidate: false`，见 hooks/use-live-events），不会回头问服务端，
+ *    所以它压根不关心那一刻 Redis 写完没有。串着做的话，Vercel 到 Redis 的那
+ *    一个来回是白等的 —— 而这条链路上本来就已经压着好几个来回了。
+ *
+ *    前提是**推送的那份不能是从 Redis 读回来的**：读回来的话它当然得排在写
+ *    之后。所以各处都改成拿手上现成的数据现拼，见各 store 的 prepare*。
+ *
+ * 2. **失效必须等写完。** revalidateTag 会让下一次请求回源重算，早于写库触发
+ *    的话，重算读到的是改动之前的 Redis，然后把那个旧值连同一个崭新的有效期
+ *    一起缓存起来 —— 比不失效还糟。不带数据、只让浏览器重取的事件（presence）
+ *    同理，它触发的也是一次回源。
+ *
+ * 「同时」不是 fire-and-forget：一律 await 到底再返回，理由见 publish。
+ */
+export async function fanout({
+  writes = [],
+  events = [],
+  tags = [],
+  urgentTags = [],
+}: Fanout): Promise<void> {
+  try {
+    await Promise.all([
+      ...writes,
+      ...events.map(async (pending) => {
+        try {
+          const event = await pending;
+          if (event) await publish(event);
+        } catch (error) {
+          // 拼不出推送的那份不该把一次成功的上报变成 400 —— 数据照样落库了，
+          // 页面靠轮询也能翻过来。和 publish 自己吞错误是同一个理由。
+          console.error("[live]", error instanceof Error ? error.message : String(error));
+        }
+      }),
+    ]);
+  } finally {
+    // 写抛出来了也照样失效：已经落库的那几份不该继续被旧缓存遮着
+    if (tags.length) expireStatus(...tags);
+    if (urgentTags.length) expireStatusImmediately(...urgentTags);
   }
 }
