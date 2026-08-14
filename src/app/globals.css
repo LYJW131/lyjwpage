@@ -98,6 +98,24 @@
     border-color: var(--line);
   }
 
+  /* @lobehub/ui Flexbox Safari 兼容布局 */
+  .lobe-flex {
+    display: inline-flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    flex-wrap: nowrap !important;
+    white-space: nowrap !important;
+  }
+
+  .lobe-flex > svg {
+    display: inline-block !important;
+    vertical-align: middle !important;
+    flex-shrink: 0 !important;
+    width: auto !important;
+    max-height: 100% !important;
+  }
+
   html {
     /* 导航锚点平滑滚过去，而不是硬跳。
        下面 prefers-reduced-motion 里会用 !important 把它关掉 */
