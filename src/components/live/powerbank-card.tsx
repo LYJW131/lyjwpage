@@ -179,19 +179,19 @@ export function PowerBankCard({
 
         {/*
           电量条。充电宝没有历史曲线，这条就是这张卡唯一的「一眼看懂」的图形 ——
-          百分比是它最主要的状态，用长度表达比只给数字更快。
-          充电绿、过热琥珀、其余中性：颜色和状态灯用同一套语义，不另造一套。
+          百分比是它最主要的状态，直角边框与整体工整设计对齐。
+          充放电绿、过热琥珀、其余中性：颜色和状态灯用同一套语义，不另造一套。
         */}
         <div className="mt-4">
-          <div className="h-1.5 overflow-hidden rounded-full bg-line">
+          <div className="h-3.5 overflow-hidden border border-line bg-muted/40">
             <div
               className={cn(
-                "h-full rounded-full transition-[width] duration-700",
+                "h-full transition-[width] duration-700",
                 !connected
                   ? "bg-live-off"
                   : limited
                     ? "bg-live-idle"
-                    : charging
+                    : charging || discharging
                       ? "bg-live"
                       : "bg-muted-foreground",
               )}
@@ -203,7 +203,7 @@ export function PowerBankCard({
         {/* 三个数字。放电时「充满还需」没有意义，那一格换成输出 */}
         <div className="mt-4 grid grid-cols-3 gap-3">
           <Metric
-            label={onDock ? "底座输入" : "输入"}
+            label={dualInput ? "总输入" : onDock ? "底座输入" : "输入"}
             value={connected ? watts(data?.inputPower) : "—"}
             muted={!charging}
           />
