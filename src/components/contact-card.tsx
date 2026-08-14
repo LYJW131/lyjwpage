@@ -32,38 +32,38 @@ function GitHubIcon({ className }: { className?: string }) {
 export function ContactCard({ chartSvg }: { chartSvg?: string | null }) {
   return (
     <Card id="contact" className="h-full">
-      <div className="flex h-full flex-col justify-between gap-4 p-4 sm:p-5">
+      <div className="flex h-full flex-col justify-between gap-4 p-4 lg:p-5">
         {/* 顶部个人信息与联系方式 */}
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center justify-between gap-3 sm:gap-4">
           <a
             href={site.github}
             target="_blank"
             rel="noreferrer noopener"
-            className="group flex min-w-0 items-center gap-4"
+            className="group flex min-w-0 items-center gap-3 lg:gap-4"
           >
-            <span className="relative size-16 shrink-0 overflow-hidden rounded-lg border border-line bg-muted">
+            <span className="relative size-14 lg:size-16 shrink-0 overflow-hidden rounded-lg border border-line bg-muted">
               <Image
                 src={site.githubAvatar}
                 alt={`${site.githubLogin} 的 GitHub 头像`}
                 fill
-                sizes="64px"
+                sizes="(min-width: 1024px) 64px, 56px"
                 className="object-cover transition-transform duration-500 group-hover:scale-[1.04]"
               />
             </span>
             <div className="min-w-0">
-              <div className="truncate text-xl font-bold tracking-tight sm:text-2xl">
+              <div className="truncate text-lg font-bold tracking-tight sm:text-xl lg:text-2xl leading-tight">
                 {site.githubLogin}
               </div>
-              <div className="mt-1 text-xs text-muted-foreground">github.com</div>
+              <div className="mt-1 text-xs text-muted-foreground leading-none">github.com</div>
             </div>
           </a>
 
-          <div className="flex shrink-0 flex-col items-end gap-2">
+          <div className="flex shrink-0 flex-col items-end gap-2 lg:gap-2.5">
             <a
               href={site.github}
               target="_blank"
               rel="noreferrer noopener"
-              className="group flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+              className="group mt-0.5 lg:mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground leading-tight"
             >
               <GitHubIcon className="size-3.5 shrink-0" />
               <span className="font-mono">{site.githubLogin}</span>
@@ -71,7 +71,7 @@ export function ContactCard({ chartSvg }: { chartSvg?: string | null }) {
             </a>
             <a
               href={`mailto:${site.email}`}
-              className="group flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+              className="group flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground leading-none"
             >
               <Mail className="size-3.5 shrink-0" />
               <span className="font-mono">{site.email}</span>
