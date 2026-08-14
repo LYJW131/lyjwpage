@@ -206,9 +206,13 @@ export function PowerBankCard({
             }
             muted={!connected}
           />
+          {/*
+            电池健康度，不是规格常量 —— 上报器每次连上时从设备读一次。这一格
+            换掉了原来写死的「额定能量 72.36 Wh」：同一个位置，真数据比铭牌值有用。
+          */}
           <Metric
-            label="额定能量"
-            value="72.36 Wh"
+            label="电池健康"
+            value={connected && data?.batteryHealth != null ? `${data.batteryHealth}%` : "—"}
             muted={!connected}
           />
           <Metric

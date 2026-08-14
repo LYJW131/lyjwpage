@@ -46,6 +46,7 @@ export type RawPowerBank = {
     charging?: boolean | null;
     timeToFullMinutes?: number | null;
     thermalLimited?: boolean | null;
+    healthPercent?: number | null;
   } | null;
   temperaturesC?: number[] | null;
   ports?: RawPort[];
@@ -102,6 +103,7 @@ export function normalizePowerBank(raw: RawPowerBank): PowerBankStatus {
     charging: Boolean(raw.battery?.charging),
     timeToFullMinutes: raw.battery?.timeToFullMinutes ?? null,
     thermalLimited: Boolean(raw.battery?.thermalLimited),
+    batteryHealth: raw.battery?.healthPercent ?? null,
     inputPower: Number(raw.totalInputW) || 0,
     outputPower: Number(raw.totalOutputW) || 0,
     temperatures,
