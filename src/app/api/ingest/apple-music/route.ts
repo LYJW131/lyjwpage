@@ -4,6 +4,7 @@ import { ingestFailed, ingestRoute, jsonBody } from "@/lib/api";
 import { readAppleMusicCredentials } from "@/lib/apple-music-credentials";
 import { getRecentlyPlayed, recordRecentlyPlayedReport } from "@/lib/apple-music-store";
 import { expireStatus, LISTENING_TAG, publish } from "@/lib/live-events";
+import { withRedisScope } from "@/lib/redis";
 import { telemetryAuthorized } from "@/lib/telemetry";
 
 /**
@@ -41,20 +42,22 @@ export async function POST(request: Request) {
 export async function GET(request: Request) {
   if (!telemetryAuthorized(request)) return ingestFailed("未授权", 401);
 
-  const result = await readAppleMusicCredentials();
-  if (!result.ok) {
-    // 两种没有，修法相反，别让上报器只看见一句「没有凭据」
-    return ingestFailed(
-      result.reason === "redis-unreachable"
-        ? "读不到 Apple Music 凭据 —— Redis 连不上，凭据本身可能还在"
-        : "没有收到 Mac 上报器的 Apple Music 凭据 —— 在上报器的设置里授权 Apple Music",
-      503,
-    );
-  }
+  return withRedisScope(async () => {
+    const result = await readAppleMusicCredentials();
+    if (!result.ok) {
+      // 两种没有，修法相反，别让上报器只看见一句「没有凭据」
+      return ingestFailed(
+        result.reason === "redis-unreachable"
+          ? "读不到 Apple Music 凭据 —— Redis 连不上，凭据本身可能还在"
+          : "没有收到 Mac 上报器的 Apple Music 凭据 —— 在上报器的设置里授权 Apple Music",
+        503,
+      );
+    }
 
-  const { developerToken, musicUserToken, expiresAt } = result.credentials;
-  return NextResponse.json({
-    ok: true as const,
-    data: { developerToken, musicUserToken, expiresAt },
+    const { developerToken, musicUserToken, expiresAt } = result.credentials;
+    return NextResponse.json({
+      ok: true as const,
+      data: { developerToken, musicUserToken, expiresAt },
+    });
   });
 }

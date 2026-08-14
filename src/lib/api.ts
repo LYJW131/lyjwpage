@@ -1,5 +1,6 @@
 import { connection, NextResponse } from "next/server";
 
+import { withRedisScope } from "@/lib/redis";
 import type { IngestFailure, IngestResponse, StatusResponse } from "@/lib/types";
 
 function reason(error: unknown): string {
@@ -30,15 +31,17 @@ export function sinceParam(request: Request): number | undefined {
 export async function statusEnvelope<T>(
   loader: () => Promise<T>,
 ): Promise<StatusResponse<T>> {
-  try {
-    return { ok: true, data: await loader() };
-  } catch (error) {
-    const message = reason(error);
-    // 带上栈：降级信封只把 message 发给页面，没有栈的话服务端日志里
-    // 一句「Cannot read properties of null」根本定位不到是哪一处
-    console.error("[status]", error instanceof Error ? (error.stack ?? message) : message);
-    return { ok: false, error: message };
-  }
+  return withRedisScope(async () => {
+    try {
+      return { ok: true, data: await loader() };
+    } catch (error) {
+      const message = reason(error);
+      // 带上栈：降级信封只把 message 发给页面，没有栈的话服务端日志里
+      // 一句「Cannot read properties of null」根本定位不到是哪一处
+      console.error("[status]", error instanceof Error ? (error.stack ?? message) : message);
+      return { ok: false, error: message };
+    }
+  });
 }
 
 function statusJson<T>(envelope: StatusResponse<T>): NextResponse<StatusResponse<T>> {
@@ -90,9 +93,11 @@ export async function statusCachedRoute<T, U>(
   overlay?: (data: T) => Promise<U> | U,
 ): Promise<NextResponse<StatusResponse<T | U>>> {
   await connection();
-  const envelope = await load();
-  if (!envelope.ok || !overlay) return statusJson(envelope);
-  return statusJson({ ok: true, data: await overlay(envelope.data) });
+  return withRedisScope(async () => {
+    const envelope = await load();
+    if (!envelope.ok || !overlay) return statusJson(envelope);
+    return statusJson({ ok: true, data: await overlay(envelope.data) });
+  });
 }
 
 /**
@@ -131,11 +136,13 @@ export function ingestFailed(message: string, status: number): NextResponse<Inge
 export async function ingestRoute<T>(
   handler: () => Promise<T>,
 ): Promise<NextResponse<IngestResponse<T>>> {
-  try {
-    return NextResponse.json({ ok: true as const, data: await handler() }, { status: 202 });
-  } catch (error) {
-    const message = reason(error);
-    console.error("[ingest]", message);
-    return ingestFailed(message, 400);
-  }
+  return withRedisScope(async () => {
+    try {
+      return NextResponse.json({ ok: true as const, data: await handler() }, { status: 202 });
+    } catch (error) {
+      const message = reason(error);
+      console.error("[ingest]", message);
+      return ingestFailed(message, 400);
+    }
+  });
 }

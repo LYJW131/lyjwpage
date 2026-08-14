@@ -1,5 +1,7 @@
 import Redis from "ioredis";
 
+import { ConnectionLeases } from "@/lib/connection-leases";
+
 /**
  * Redis 连接。没配 REDIS_URL 就返回 null，各处缓存自动退回进程内存 ——
  * 本地开发不装 Redis 也能跑，线上 Redis 挂掉也只是丢缓存，不会让页面 500。
@@ -7,21 +9,41 @@ import Redis from "ioredis";
 
 const PREFIX = process.env.REDIS_PREFIX ?? "lyjwpage";
 
-let client: Redis | null = null;
-let initialised = false;
 /** 连不上时先停用一段时间，避免每次请求都卡在重连上 */
-let disabledUntil = 0;
 const DISABLE_MS = 30_000;
 
+type RedisState = {
+  leases: ConnectionLeases<Redis>;
+  disabledUntil: number;
+};
+
+/**
+ * 挂 globalThis，保证同一 Node 实例里被不同 Next bundle 引到时仍共用一条连接。
+ * 连接本身不永久挂着：最后一个请求 / 命令结束后由租约主动断开。
+ */
+const state = ((globalThis as typeof globalThis & { __lyjwRedis?: RedisState }).__lyjwRedis ??= {
+  leases: new ConnectionLeases<Redis>(),
+  disabledUntil: 0,
+});
+
+function connectionName(): string {
+  const environment = process.env.VERCEL_ENV ?? "local";
+  const sha = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? "local";
+  const region = process.env.VERCEL_REGION ?? "local";
+  return `lyjwpage:${environment}:${sha}:${region}`;
+}
+
 export function getRedis(): Redis | null {
-  if (Date.now() < disabledUntil) return null;
+  if (Date.now() < state.disabledUntil) return null;
 
-  if (!initialised) {
-    initialised = true;
-    const url = process.env.REDIS_URL;
-    if (!url) return null;
+  const current = state.leases.current();
+  if (current) return current;
 
-    client = new Redis(url, {
+  const url = process.env.REDIS_URL;
+  if (!url) return null;
+
+  const client = state.leases.use(
+    new Redis(url, {
       maxRetriesPerRequest: 1,
       /**
        * 必须让命令排队等连接建立。
@@ -34,18 +56,26 @@ export function getRedis(): Redis | null {
       connectTimeout: 2_000,
       // 排队也不能无限等：Redis 真挂了要尽快失败，退回内存而不是拖住请求
       commandTimeout: 2_000,
-    });
+      connectionName: connectionName(),
+    }),
+  );
 
-    client.on("error", (error) => {
-      // ioredis 会自己重连，这里只是别让未捕获的 error 事件把进程带崩
-      if (Date.now() >= disabledUntil) {
-        console.error("[redis]", error.message);
-        disabledUntil = Date.now() + DISABLE_MS;
-      }
-    });
-  }
+  client.on("error", (error) => {
+    if (Date.now() >= state.disabledUntil) console.error("[redis]", error.message);
+    state.disabledUntil = Date.now() + DISABLE_MS;
+    // 业务停用时必须同时关 socket；否则 ioredis 仍会在后台自动重连、继续占槽。
+    state.leases.disconnect(client);
+  });
 
   return client;
+}
+
+/**
+ * 一次请求或一次缓存重建共用同一条连接；嵌套和 Fluid 同实例并发都安全。
+ * 最后一个 scope 与命令结束后立即断开，不靠 serverless 暂停时不会跑的 idle timer。
+ */
+export function withRedisScope<T>(run: () => Promise<T>): Promise<T> {
+  return state.leases.scope(run);
 }
 
 /** 统一加前缀，方便和同一个 Redis 里的其它东西区分开 */
@@ -58,10 +88,8 @@ export async function withRedis<T>(
   run: (redis: Redis) => Promise<T>,
   fallback: T,
 ): Promise<T> {
-  const redis = getRedis();
-  if (!redis) return fallback;
   try {
-    return await run(redis);
+    return await state.leases.operation(getRedis, run, fallback);
   } catch (error) {
     console.error("[redis]", error instanceof Error ? error.message : String(error));
     return fallback;
