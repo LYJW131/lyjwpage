@@ -194,7 +194,7 @@ function ClockShell({
     <div
       aria-hidden
       className={cn(
-        "clock-ui-host relative z-0 size-36 shrink-0 sm:size-40",
+        "clock-ui-host relative z-0 size-32 shrink-0 md:size-36 lg:size-40",
         live && "is-live",
         className,
       )}
@@ -254,7 +254,7 @@ export function TimezoneCard({
 
   return (
     <Card className={cn("h-full", className)}>
-      <div className="flex h-full min-h-44 items-center justify-between gap-4 p-4 pl-5 sm:p-5">
+      <div className="flex h-full min-h-44 items-center justify-between gap-3 p-4 pl-4.5 lg:p-5 lg:gap-4">
         <div className="relative z-10 flex min-w-0 flex-col justify-center gap-1.5 sm:gap-2">
           <div className="text-xs text-muted-foreground">
             {usingMac ? "Mac 时间" : "服务器时间"}
@@ -265,34 +265,34 @@ export function TimezoneCard({
             {clock ? (
               <NumberFlowGroup>
                 <time
-                  className="flex items-baseline whitespace-nowrap text-4xl font-semibold leading-none tracking-[-0.03em] sm:text-5xl"
+                  className="flex items-baseline whitespace-nowrap text-3xl font-semibold leading-none tracking-[-0.03em] sm:text-4xl lg:text-5xl"
                   dateTime={new Date(now).toISOString()}
                   aria-label={`${clock.hour} 时 ${clock.minute} 分 ${clock.second} 秒`}
                 >
                   <NumberFlow value={clock.hour} locales="en-US" format={TWO_DIGITS} />
                   <span className="mx-0.5 text-muted-foreground">:</span>
                   <NumberFlow value={clock.minute} locales="en-US" format={TWO_DIGITS} />
-                  <span className="mx-0.5 text-xl font-normal text-muted-foreground/50 sm:text-2xl">
+                  <span className="mx-0.5 text-lg font-normal text-muted-foreground/50 sm:text-xl lg:text-2xl">
                     :
                   </span>
                   <NumberFlow
                     value={clock.second}
                     locales="en-US"
                     format={TWO_DIGITS}
-                    className="text-xl font-normal tracking-normal text-muted-foreground/50 sm:text-2xl"
+                    className="text-lg font-normal tracking-normal text-muted-foreground/50 sm:text-xl lg:text-2xl"
                   />
                 </time>
               </NumberFlowGroup>
             ) : (
               <div
-                className="flex items-baseline whitespace-nowrap text-4xl font-semibold leading-none tracking-[-0.03em] text-muted-foreground sm:text-5xl"
+                className="flex items-baseline whitespace-nowrap text-3xl font-semibold leading-none tracking-[-0.03em] text-muted-foreground sm:text-4xl lg:text-5xl"
                 aria-hidden
               >
                 --:--
-                <span className="mx-0.5 text-xl font-normal text-muted-foreground/50 sm:text-2xl">
+                <span className="mx-0.5 text-lg font-normal text-muted-foreground/50 sm:text-xl lg:text-2xl">
                   :
                 </span>
-                <span className="text-xl font-normal tracking-normal text-muted-foreground/50 sm:text-2xl">
+                <span className="text-lg font-normal tracking-normal text-muted-foreground/50 sm:text-xl lg:text-2xl">
                   --
                 </span>
               </div>
