@@ -1,6 +1,11 @@
 import { timingSafeEqual } from "node:crypto";
 
-import { getChargerPayload, normalizeRawStatus, type RawStatus } from "@/lib/anker";
+import {
+  getChargerPayload,
+  normalizeChargingDevice,
+  pickCharger,
+  type RawChargingDevices,
+} from "@/lib/anker";
 import { recordPushHeartbeat, recordStatus } from "@/lib/charger-store";
 import { resolveTrackLookup } from "@/lib/apple-music";
 import { putAppleMusicCredentials } from "@/lib/apple-music-credentials";
@@ -347,15 +352,33 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
   let accepted = 0;
   let desktopIconAvailable: boolean | undefined;
 
-  if ("charger" in modules) {
-    const raw = object(modules.charger) as RawStatus | null;
-    if (!raw?.updatedAt) throw new Error("charger 模块缺少 updatedAt");
-    const structuralChanged = await recordStatus(normalizeRawStatus(raw), receivedAt);
-    // 插拔、换设备立刻推给浏览器，不等卡片下一次轮询。滚动读数不走这里。
-    // since 给当下时刻：历史点一个都不带，客户端沿用自己那份，见 live-events 的说明。
-    if (structuralChanged) {
-      await publish({ type: "charger", payload: await getChargerPayload({ since: Date.now() }) });
-      expireStatusImmediately(CHARGER_TAG);
+  /**
+   * 充电设备。
+   *
+   * 上报器 v5 起送的是 `chargingDevices`：一个设备列表，充电头和充电宝在同一个
+   * 数组里，靠 `kind` 区分。本站目前只画充电头 —— 充电宝的那条照收不误，只是没
+   * 有地方展示，先不落库。
+   *
+   * 旧的 `charger` 键已经停发。这里不做兼容：留一条读不到新字段的旧路径，只会
+   * 在上报器回滚时安静地写进半截数据。
+   */
+  if ("chargingDevices" in modules) {
+    const raw = object(modules.chargingDevices) as RawChargingDevices | null;
+    if (!raw) throw new Error("chargingDevices 模块必须是对象");
+    const charger = pickCharger(raw);
+    // 只开了充电宝模块时列表里就没有充电头。那不是错误，收下心跳即可。
+    if (charger) {
+      if (!charger.updatedAt) throw new Error("chargingDevices 里的充电头缺少 updatedAt");
+      const structuralChanged = await recordStatus(
+        normalizeChargingDevice(charger),
+        receivedAt,
+      );
+      // 插拔、换设备立刻推给浏览器，不等卡片下一次轮询。滚动读数不走这里。
+      // since 给当下时刻：历史点一个都不带，客户端沿用自己那份，见 live-events 的说明。
+      if (structuralChanged) {
+        await publish({ type: "charger", payload: await getChargerPayload({ since: Date.now() }) });
+        expireStatusImmediately(CHARGER_TAG);
+      }
     }
     accepted += 1;
   }
