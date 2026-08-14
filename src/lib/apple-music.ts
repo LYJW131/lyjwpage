@@ -159,6 +159,99 @@ function extractAlbumIdFromUrl(songUrl?: string): string | null {
   }
 }
 
+let cachedWebToken: string | null = null;
+let tokenExpiresAt = 0;
+
+/**
+ * 获取 Apple Music Web 端 JWT 凭据（用于请求 amp-api 提取动态封面）。
+ * JWT 有效期约 60 天，带内存缓存。
+ */
+async function getWebToken(): Promise<string> {
+  const now = Date.now();
+  if (cachedWebToken && now < tokenExpiresAt - 5 * 60 * 1000) {
+    return cachedWebToken;
+  }
+  const htmlResp = await fetch("https://music.apple.com/cn/browse", {
+    headers: {
+      "User-Agent":
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    },
+  });
+  const html = await htmlResp.text();
+  const jsMatch = html.match(/\/assets\/index~[^"']+\.js/);
+  if (!jsMatch) throw new Error("No Apple Music JS bundle found");
+
+  const jsResp = await fetch("https://music.apple.com" + jsMatch[0]);
+  const jsContent = await jsResp.text();
+  const jwtMatch = jsContent.match(/eyJ[A-Za-z0-9_\-=]+\.[A-Za-z0-9_\-=]+\.[A-Za-z0-9_\-=]+/);
+  if (!jwtMatch) throw new Error("No Apple Music Web JWT found");
+
+  cachedWebToken = jwtMatch[0];
+  try {
+    const payload = JSON.parse(Buffer.from(cachedWebToken.split(".")[1], "base64").toString());
+    tokenExpiresAt = (payload.exp || 0) * 1000;
+  } catch {
+    tokenExpiresAt = Date.now() + 24 * 60 * 60 * 1000;
+  }
+  return cachedWebToken;
+}
+
+/**
+ * 向 amp-api 查询专辑的 1:1 动态视频封面与调色板。
+ */
+async function fetchMotionArtwork(
+  storefront: string,
+  albumId: string,
+): Promise<{
+  motionVideoUrl: string | null;
+  motionCoverUrl: string | null;
+  motionColors: string[] | null;
+}> {
+  try {
+    const token = await getWebToken();
+    const res = await fetch(
+      `https://amp-api.music.apple.com/v1/catalog/${storefront}/albums/${albumId}?extend=editorialVideo`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Origin: "https://music.apple.com",
+          Referer: "https://music.apple.com/",
+        },
+      },
+    );
+    if (!res.ok) return { motionVideoUrl: null, motionCoverUrl: null, motionColors: null };
+    const json = (await res.json()) as {
+      data?: CatalogAlbum[];
+    };
+    const videoData = json.data?.[0]?.attributes?.editorialVideo;
+    const squareClip = videoData?.motionDetailSquare?.video
+      ? videoData.motionDetailSquare
+      : videoData?.motionSquareVideo1x1;
+
+    if (!squareClip?.video) {
+      return { motionVideoUrl: null, motionCoverUrl: null, motionColors: null };
+    }
+
+    const pf = squareClip.previewFrame;
+    const motionCoverUrl = pf?.url
+      ? pf.url.replace("{w}x{h}", `${pf.width || 3000}x${pf.height || 3000}`)
+      : null;
+    const motionColors = pf
+      ? ([pf.bgColor, pf.textColor1, pf.textColor2, pf.textColor3, pf.textColor4].filter(
+          Boolean,
+        ) as string[])
+      : null;
+
+    return {
+      motionVideoUrl: squareClip.video,
+      motionCoverUrl,
+      motionColors: motionColors && motionColors.length > 0 ? motionColors : null,
+    };
+  } catch {
+    return { motionVideoUrl: null, motionCoverUrl: null, motionColors: null };
+  }
+}
+
 /**
  * 把「播放中」的曲目解析成一个可跳转的 Apple Music 地址。
  *
@@ -205,7 +298,7 @@ export async function resolveTrackLookup(track: {
    * 以后再改这个值的形状，记得一起改版本号。
    */
   const cacheKey =
-    "apple-music:track-lookup:v7:" +
+    "apple-music:track-lookup:v8:" +
     [track.title, track.artist, track.album].map(normalizeForMatch).join(":");
 
   try {
@@ -216,11 +309,10 @@ export async function resolveTrackLookup(track: {
       const term = [track.title, track.artist, track.album].filter(Boolean).join(" ");
       const url =
         `https://api.music.apple.com/v1/catalog/${storefront}/search` +
-        `?term=${encodeURIComponent(term)}&types=songs,albums&limit=${SEARCH_LIMIT}&relate=albums&extend=editorialVideo`;
+        `?term=${encodeURIComponent(term)}&types=songs&limit=${SEARCH_LIMIT}&relate=albums`;
       const json = await appleFetchRaw<{
         results?: {
           songs?: { data?: CatalogSong[] };
-          albums?: { data?: CatalogAlbum[] };
         };
       }>(url, credentials);
 
@@ -288,43 +380,10 @@ export async function resolveTrackLookup(track: {
       let motionColors: string[] | null = null;
 
       if (albumId) {
-        const albumsMap = new Map<string, CatalogAlbum>();
-        for (const alb of json.results?.albums?.data ?? []) {
-          if (alb.id) albumsMap.set(alb.id, alb);
-        }
-
-        let videoData = albumsMap.get(albumId)?.attributes?.editorialVideo;
-        if (!videoData) {
-          try {
-            const albumDetail = await appleFetchRaw<{ data?: CatalogAlbum[] }>(
-              `https://api.music.apple.com/v1/catalog/${storefront}/albums/${albumId}?extend=editorialVideo`,
-              credentials,
-            );
-            videoData = albumDetail.data?.[0]?.attributes?.editorialVideo;
-          } catch {
-            // 忽略单个专辑扩展查询异常
-          }
-        }
-
-        const squareClip = videoData?.motionDetailSquare?.video
-          ? videoData.motionDetailSquare
-          : videoData?.motionSquareVideo1x1;
-
-        if (squareClip?.video) {
-          motionVideoUrl = squareClip.video;
-          const pf = squareClip.previewFrame;
-          if (pf?.url) {
-            motionCoverUrl = pf.url.replace("{w}x{h}", `${pf.width || 3000}x${pf.height || 3000}`);
-            const clrs = [
-              pf.bgColor,
-              pf.textColor1,
-              pf.textColor2,
-              pf.textColor3,
-              pf.textColor4,
-            ].filter(Boolean) as string[];
-            motionColors = clrs.length > 0 ? clrs : null;
-          }
-        }
+        const motion = await fetchMotionArtwork(storefront, albumId);
+        motionVideoUrl = motion.motionVideoUrl;
+        motionCoverUrl = motion.motionCoverUrl;
+        motionColors = motion.motionColors;
       }
 
       // link 存空串而不是 null：cached 用 undefined 判未命中，空串才能把
