@@ -1,7 +1,6 @@
 "use client";
 
 import NumberFlow, { NumberFlowGroup } from "@number-flow/react";
-import Image from "next/image";
 import { useEffect, useState } from "react";
 
 import { ClaudeSpinner } from "@/components/live/claude-spinner";
@@ -56,18 +55,6 @@ const LIMIT_ALERT_COLOR = "oklch(0.62 0.21 25)";
 /** 不受限那一档。沿用同文件 Reasoning 那支绿（也是 --live 用的那支），不再多引入一种色相。 */
 const LIMIT_UNLIMITED_COLOR = "oklch(0.65 0.17 145)";
 
-const QUOTA_PROVIDER_ICONS: Record<
-  VibeCodingQuotaProvider["id"],
-  { light: string; dark?: string }
-> = {
-  cursor: { light: "/provider-icons/cursor-25d.svg" },
-  opencodego: {
-    light: "/provider-icons/opencodego-light.svg",
-    dark: "/provider-icons/opencodego-dark.svg",
-  },
-  antigravity: { light: "/provider-icons/antigravity-full-color.svg" },
-};
-
 /** 蓝 → 琥珀 → 红，只有三档没有渐变：中间色会让人去猜具体数，而数就写在旁边 */
 function limitColor(usedPercent: number) {
   if (usedPercent >= LIMIT_ALERT_PERCENT) return LIMIT_ALERT_COLOR;
@@ -117,6 +104,256 @@ function OpenAICompanyMark() {
       />
     </svg>
   );
+}
+
+function CursorProviderMark({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 466.73 533.32" className={className} aria-hidden>
+      <path
+        fill="#72716d"
+        d="M233.37,266.66l231.16,133.46c-1.42,2.46-3.48,4.56-6.03,6.03l-216.06,124.74c-5.61,3.24-12.53,3.24-18.14,0L8.24,406.15c-2.55-1.47-4.61-3.57-6.03-6.03l231.16-133.46h0Z"
+      />
+      <path
+        fill="#55544f"
+        d="M233.37,0v266.66L2.21,400.12c-1.42-2.46-2.21-5.3-2.21-8.24v-250.44c0-5.89,3.14-11.32,8.24-14.27L224.29,2.43c2.81-1.62,5.94-2.43,9.07-2.43h.01Z"
+      />
+      <path
+        fill="#43413c"
+        d="M464.52,133.2c-1.42-2.46-3.48-4.56-6.03-6.03L242.43,2.43c-2.8-1.62-5.93-2.43-9.06-2.43v266.66l231.16,133.46c1.42-2.46,2.21-5.3,2.21-8.24v-250.44c0-2.95-.78-5.77-2.21-8.24h-.01Z"
+      />
+      <path
+        fill="#d6d5d2"
+        d="M448.35,142.54c1.31,2.26,1.49,5.16,0,7.74l-209.83,363.42c-1.41,2.46-5.16,1.45-5.16-1.38v-239.48c0-1.91-.51-3.75-1.44-5.36l216.42-124.95h.01Z"
+      />
+      <path
+        fill="#fff"
+        d="M448.35,142.54l-216.42,124.95c-.92-1.6-2.26-2.96-3.92-3.92L20.62,143.83c-2.46-1.41-1.45-5.16,1.38-5.16h419.65c2.98,0,5.4,1.61,6.7,3.87Z"
+      />
+    </svg>
+  );
+}
+
+function OpenCodeProviderMark({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 240 300" fill="none" className={className} aria-hidden>
+      <path d="M180 240H60V120H180V240Z" className="fill-[#CFCECD] dark:fill-[#4B4646]" />
+      <path
+        d="M180 60H60V240H180V60ZM240 300H0V0H240V300Z"
+        className="fill-[#211E1E] dark:fill-[#F1ECEC]"
+      />
+    </svg>
+  );
+}
+
+function AntigravityProviderMark({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+      aria-hidden
+    >
+      <title>Antigravity</title>
+      <mask id="ag-quota-mask" maskUnits="userSpaceOnUse" x="0" y="1" width="24" height="23">
+        <path
+          d="M21.751 22.607c1.34 1.005 3.35.335 1.508-1.508C17.73 15.74 18.904 1 12.037 1 5.17 1 6.342 15.74.815 21.1c-2.01 2.009.167 2.511 1.507 1.506 5.192-3.517 4.857-9.714 9.714-9.714 4.857 0 4.522 6.197 9.714 9.715z"
+          fill="#fff"
+        />
+      </mask>
+      <g mask="url(#ag-quota-mask)">
+        <g filter="url(#ag-quota-f1)">
+          <path
+            d="M-1.018-3.992c-.408 3.591 2.686 6.89 6.91 7.37 4.225.48 7.98-2.043 8.387-5.633.408-3.59-2.686-6.89-6.91-7.37-4.225-.479-7.98 2.043-8.387 5.633z"
+            fill="#FFE432"
+          />
+        </g>
+        <g filter="url(#ag-quota-f2)">
+          <path
+            d="M15.269 7.747c1.058 4.557 5.691 7.374 10.348 6.293 4.657-1.082 7.575-5.653 6.516-10.21-1.058-4.556-5.691-7.374-10.348-6.292-4.657 1.082-7.575 5.653-6.516 10.21z"
+            fill="#FC413D"
+          />
+        </g>
+        <g filter="url(#ag-quota-f3)">
+          <path
+            d="M-12.443 10.804c1.338 4.703 7.36 7.11 13.453 5.378 6.092-1.733 9.947-6.95 8.61-11.652C8.282-.173 2.26-2.58-3.833-.848-9.925.884-13.78 6.1-12.443 10.804z"
+            fill="#00B95C"
+          />
+        </g>
+        <g filter="url(#ag-quota-f4)">
+          <path
+            d="M-7.608 14.703c3.352 3.424 9.126 3.208 12.896-.483 3.77-3.69 4.108-9.459.756-12.883C2.69-2.087-3.083-1.871-6.853 1.82c-3.77 3.69-4.108 9.458-.755 12.883z"
+            fill="#00B95C"
+          />
+        </g>
+        <g filter="url(#ag-quota-f5)">
+          <path
+            d="M9.932 27.617c1.04 4.482 5.384 7.303 9.7 6.3 4.316-1.002 6.971-5.448 5.93-9.93-1.04-4.483-5.384-7.304-9.7-6.301-4.316 1.002-6.971 5.448-5.93 9.93z"
+            fill="#3186FF"
+          />
+        </g>
+        <g filter="url(#ag-quota-f6)">
+          <path
+            d="M2.572-8.185C.392-3.329 2.778 2.472 7.9 4.771c5.122 2.3 11.042.227 13.222-4.63 2.18-4.855-.205-10.656-5.327-12.955-5.122-2.3-11.042-.227-13.222 4.63z"
+            fill="#FBBC04"
+          />
+        </g>
+        <g filter="url(#ag-quota-f7)">
+          <path
+            d="M-3.267 38.686c-5.277-2.072 3.742-19.117 5.984-24.83 2.243-5.712 8.34-8.664 13.616-6.592 5.278 2.071 11.533 13.482 9.29 19.195-2.242 5.713-23.613 14.298-28.89 12.227z"
+            fill="#3186FF"
+          />
+        </g>
+        <g filter="url(#ag-quota-f8)">
+          <path
+            d="M28.71 17.471c-1.413 1.649-5.1.808-8.236-1.878-3.135-2.687-4.531-6.201-3.118-7.85 1.412-1.649 5.1-.808 8.235 1.878s4.532 6.2 3.119 7.85z"
+            fill="#749BFF"
+          />
+        </g>
+        <g filter="url(#ag-quota-f9)">
+          <path
+            d="M18.163 9.077c5.81 3.93 12.502 4.19 14.946.577 2.443-3.612-.287-9.727-6.098-13.658-5.81-3.931-12.502-4.19-14.946-.577-2.443 3.612.287 9.727 6.098 13.658z"
+            fill="#FC413D"
+          />
+        </g>
+        <g filter="url(#ag-quota-f10)">
+          <path
+            d="M-.915 2.684c-1.44 3.473-.97 6.967 1.05 7.804 2.02.837 4.824-1.3 6.264-4.772 1.44-3.473.97-6.967-1.05-7.804-2.02-.837-4.824 1.3-6.264 4.772z"
+            fill="#FFEE48"
+          />
+        </g>
+      </g>
+      <defs>
+        <filter
+          id="ag-quota-f1"
+          x="-3.288"
+          y="-11.917"
+          width="19.838"
+          height="17.587"
+          filterUnits="userSpaceOnUse"
+          colorInterpolationFilters="sRGB"
+        >
+          <feGaussianBlur stdDeviation="1.117" />
+        </filter>
+        <filter
+          id="ag-quota-f2"
+          x="4.251"
+          y="-13.493"
+          width="38.9"
+          height="38.565"
+          filterUnits="userSpaceOnUse"
+          colorInterpolationFilters="sRGB"
+        >
+          <feGaussianBlur stdDeviation="5.4" />
+        </filter>
+        <filter
+          id="ag-quota-f3"
+          x="-21.889"
+          y="-10.592"
+          width="40.955"
+          height="36.517"
+          filterUnits="userSpaceOnUse"
+          colorInterpolationFilters="sRGB"
+        >
+          <feGaussianBlur stdDeviation="4.591" />
+        </filter>
+        <filter
+          id="ag-quota-f4"
+          x="-19.099"
+          y="-10.278"
+          width="36.632"
+          height="36.595"
+          filterUnits="userSpaceOnUse"
+          colorInterpolationFilters="sRGB"
+        >
+          <feGaussianBlur stdDeviation="4.591" />
+        </filter>
+        <filter
+          id="ag-quota-f5"
+          x=".981"
+          y="8.758"
+          width="33.533"
+          height="34.087"
+          filterUnits="userSpaceOnUse"
+          colorInterpolationFilters="sRGB"
+        >
+          <feGaussianBlur stdDeviation="4.363" />
+        </filter>
+        <filter
+          id="ag-quota-f6"
+          x="-6.143"
+          y="-21.659"
+          width="35.978"
+          height="35.276"
+          filterUnits="userSpaceOnUse"
+          colorInterpolationFilters="sRGB"
+        >
+          <feGaussianBlur stdDeviation="3.954" />
+        </filter>
+        <filter
+          id="ag-quota-f7"
+          x="-11.96"
+          y="-.46"
+          width="45.114"
+          height="46.523"
+          filterUnits="userSpaceOnUse"
+          colorInterpolationFilters="sRGB"
+        >
+          <feGaussianBlur stdDeviation="3.531" />
+        </filter>
+        <filter
+          id="ag-quota-f8"
+          x="10.485"
+          y=".58"
+          width="25.094"
+          height="24.054"
+          filterUnits="userSpaceOnUse"
+          colorInterpolationFilters="sRGB"
+        >
+          <feGaussianBlur stdDeviation="3.159" />
+        </filter>
+        <filter
+          id="ag-quota-f9"
+          x="5.833"
+          y="-12.467"
+          width="33.508"
+          height="30.007"
+          filterUnits="userSpaceOnUse"
+          colorInterpolationFilters="sRGB"
+        >
+          <feGaussianBlur stdDeviation="2.669" />
+        </filter>
+        <filter
+          id="ag-quota-f10"
+          x="-8.355"
+          y="-8.876"
+          width="22.194"
+          height="26.151"
+          filterUnits="userSpaceOnUse"
+          colorInterpolationFilters="sRGB"
+        >
+          <feGaussianBlur stdDeviation="3.303" />
+        </filter>
+      </defs>
+    </svg>
+  );
+}
+
+function QuotaProviderMark({
+  providerId,
+  className,
+}: {
+  providerId: VibeCodingQuotaProvider["id"];
+  className?: string;
+}) {
+  switch (providerId) {
+    case "cursor":
+      return <CursorProviderMark className={className} />;
+    case "opencodego":
+      return <OpenCodeProviderMark className={className} />;
+    case "antigravity":
+      return <AntigravityProviderMark className={className} />;
+  }
 }
 
 function ModelProviderIcon({ model }: { model: string }) {
@@ -711,7 +948,6 @@ function QuotaProviders({ providers }: { providers: VibeCodingQuotaProvider[] })
         {sortedProviders.map((provider) => {
           const usedPercent = provider.usedPercent;
           const color = usedPercent == null ? undefined : limitColor(usedPercent);
-          const icon = QUOTA_PROVIDER_ICONS[provider.id];
           return (
             <div
               key={provider.id}
@@ -719,28 +955,8 @@ function QuotaProviders({ providers }: { providers: VibeCodingQuotaProvider[] })
               title={provider.limitsError ?? undefined}
             >
               <div className="flex min-w-0 items-center gap-2">
-                <span className="relative size-5 shrink-0" aria-hidden>
-                  {/* 全是仓库里的静态矢量图，直接当静态文件发。
-                      Next 默认也不优化 SVG（怕 XSS），标上 unoptimized
-                      是把这个意图写明，免得日后换成位图时悄悄进了管道 */}
-                  <Image
-                    src={icon.light}
-                    alt=""
-                    fill
-                    sizes="20px"
-                    unoptimized
-                    className={cn("object-contain", icon.dark && "dark:hidden")}
-                  />
-                  {icon.dark && (
-                    <Image
-                      src={icon.dark}
-                      alt=""
-                      fill
-                      sizes="20px"
-                      unoptimized
-                      className="hidden object-contain dark:block"
-                    />
-                  )}
+                <span className="flex size-5 shrink-0 items-center justify-center" aria-hidden>
+                  <QuotaProviderMark providerId={provider.id} className="size-5" />
                 </span>
                 <span className="truncate text-sm font-medium">{provider.label}</span>
               </div>
