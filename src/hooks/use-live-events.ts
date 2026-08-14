@@ -12,6 +12,7 @@ import { LIVE_CHANNEL, liveEndpoint } from "@/lib/live-channel";
 import type { LiveEvent } from "@/lib/live-events";
 import {
   CHARGER_PATH,
+  POWERBANK_PATH,
   DESKTOP_PATH,
   LISTENING_PATH,
   NOW_LISTENING_PATH,
@@ -57,6 +58,11 @@ const FORWARDS: ReadonlyArray<{
     path: CHARGER_PATH,
     merge: (data) => mergeChargerHistory(data as ChargerPayload),
   },
+  /**
+   * 充电宝：插拔、充放电切换、热控翻转、整数电量跳格时来事件。曲线整份发，
+   * 直接替换即可，不用像充电头那样合并增量。
+   */
+  { event: "powerbank", path: POWERBANK_PATH },
   /**
    * 只带会话四个字段。并进手上已有的整份；还没有整份就丢掉，等轮询。
    */

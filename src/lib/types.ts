@@ -383,3 +383,65 @@ export type IngestFailure = { ok: false; error: string };
  * 重不重试。
  */
 export type IngestResponse<T = null> = { ok: true; data: T } | IngestFailure;
+
+/**
+ * 充电宝的一个端口。
+ *
+ * 和充电头的 `ChargerPort` 形状接近但不一样：C1/C2 是**双向**的，所以多一个
+ * `direction`；固件不上报插在上面的设备是什么（充电头会），所以没有 `device`。
+ */
+export type PowerBankPort = {
+  /** C1 / C2 / A */
+  id: string;
+  /** 该口是否有功率在流。空闲口的读数是过期的，一律置 null */
+  active: boolean;
+  /** "in" 取电 / "out" 供电 / null 空闲 */
+  direction: "in" | "out" | null;
+  /** 线插着，不管有没有协商上供电 */
+  attached: boolean;
+  power: number | null;
+  voltage: number | null;
+  current: number | null;
+};
+
+/** 电量历史里的一个采样点 */
+export type PowerBankSample = {
+  /** 毫秒时间戳 */
+  t: number;
+  /** 电量百分比，两位小数 */
+  p: number;
+};
+
+export type PowerBankStatus = {
+  connected: boolean;
+  /** 电量百分比，固件给到两位小数 */
+  battery: number | null;
+  /** 正在进电。放电和待机都是 false */
+  charging: boolean;
+  /** 充满还需多少分钟。只在充电时有意义，其余为 null */
+  timeToFullMinutes: number | null;
+  /** 机身过热、拒绝充电。插着线也不进电，所以要单独暴露 */
+  thermalLimited: boolean;
+  inputPower: number;
+  outputPower: number;
+  /** 两个温度传感器，摄氏度 */
+  temperatures: number[];
+  ports: PowerBankPort[];
+  device: {
+    serialNumber: string | null;
+    firmwareVersion: string | null;
+  };
+  updatedAt: number | null;
+};
+
+export type PowerBankPayload = PowerBankStatus & {
+  /**
+   * 电量曲线整份发。采样间隔 20 秒、400 个点覆盖两个多小时，也才几 KB ——
+   * 不像充电头的功率曲线那样值得做增量游标。
+   */
+  history: PowerBankSample[];
+  /** 源站最近一次收到充电宝模块的时刻 */
+  pushedAt: number;
+  /** 这份数据自己的过期窗口；默认 90 秒，服务端可按上报间隔加长 */
+  staleAfterMs: number;
+} & ReporterPresence;
