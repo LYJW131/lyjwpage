@@ -1,0 +1,12 @@
+.claude/
+.vercel/
+.next/
+.pnpm-store/
+node_modules/
+tsconfig.tsbuildinfo
+
+**/.env*
+**/.git/
+**/.next/
+**/node_modules/
+**/tsconfig.tsbuildinfo
