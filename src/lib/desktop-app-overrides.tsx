@@ -6,7 +6,11 @@ import CodexColor from "@lobehub/icons/es/Codex/components/Color";
 import CodexText from "@lobehub/icons/es/Codex/components/Text";
 import CursorIcon from "@lobehub/icons/es/Cursor/components/Mono";
 import CursorText from "@lobehub/icons/es/Cursor/components/Text";
+import { EyeOff } from "lucide-react";
 import type { ReactNode } from "react";
+
+export const HIDDEN_DESKTOP_BUNDLE_ID =
+  "com.liangyangjunwei.MacTelemetryHub.hidden";
 
 export interface DesktopAppOverride {
   /** 唯一标识，用于动画与缓存 key */
@@ -26,6 +30,14 @@ export interface DesktopAppOverride {
  * 新增或修改特定应用的展示规则，只需在此配置即可。
  */
 export const DESKTOP_APP_OVERRIDES: readonly DesktopAppOverride[] = [
+  {
+    key: "hidden",
+    displayName: "已隐藏",
+    match: (id) => id === HIDDEN_DESKTOP_BUNDLE_ID,
+    renderIcon: ({ size = 24, className }) => (
+      <EyeOff size={size} className={className} aria-hidden />
+    ),
+  },
   {
     key: "antigravity",
     displayName: "Google Antigravity",
