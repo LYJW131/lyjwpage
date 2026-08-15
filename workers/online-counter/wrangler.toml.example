@@ -1,0 +1,19 @@
+name = "online-counter"
+main = "src/index.ts"
+compatibility_date = "2024-12-30"
+workers_dev = true
+
+# routes = [
+#   { pattern = "online.example.com", custom_domain = true }
+# ]
+
+[[durable_objects.bindings]]
+name = "ONLINE_COUNTER"
+class_name = "OnlineCounterRoom"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["OnlineCounterRoom"]
+
+[observability]
+enabled = true
