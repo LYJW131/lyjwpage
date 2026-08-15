@@ -37,11 +37,10 @@ export async function fetchMotionArtwork(
 
   const promise = (async () => {
     try {
-      const response = await fetch(MOTION_ENDPOINT, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url }),
-      });
+      const targetUrl = new URL(MOTION_ENDPOINT);
+      targetUrl.searchParams.set("url", url);
+
+      const response = await fetch(targetUrl.toString());
 
       if (!response.ok) {
         return null;
