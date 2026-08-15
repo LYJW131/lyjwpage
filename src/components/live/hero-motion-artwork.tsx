@@ -193,41 +193,45 @@ export function HeroMotionArtwork({
         }
       }}
     >
-      {artwork && (
-        <Image
-          src={appleArtwork(artwork, 80 * ARTWORK_SCALE)!}
-          alt={`${title} 封面`}
-          fill
-          sizes="80px"
-          // 这张是全站 LCP 元素：默认的 lazy 会让预加载扫描器跳过它
-          loading="eager"
-          fetchPriority="high"
-          className="object-cover transition-transform duration-500 group-hover:scale-[1.04]"
-          unoptimized={!needsOptimizing(artwork)}
-        />
-      )}
+      {/* hover 缩放放在普通 div 上：<video> 的 transition-opacity 管不了 scale，
+          而且有的浏览器对 video 自身的 transform 插值不稳定。 */}
+      <div className="absolute inset-0 transition-transform duration-500 group-hover:scale-[1.04]">
+        {artwork && (
+          <Image
+            src={appleArtwork(artwork, 80 * ARTWORK_SCALE)!}
+            alt={`${title} 封面`}
+            fill
+            sizes="80px"
+            // 这张是全站 LCP 元素：默认的 lazy 会让预加载扫描器跳过它
+            loading="eager"
+            fetchPriority="high"
+            className="object-cover"
+            unoptimized={!needsOptimizing(artwork)}
+          />
+        )}
 
-      {videoUrl && !reduced && (
-        <video
-          ref={videoRef}
-          autoPlay
-          loop
-          muted
-          playsInline
-          aria-hidden
-          /*
-           * 没有 poster 的 <video> 在首帧到达前是「空媒体」，Safari 会给它画一个
-           * 问号占位符（Chrome 画的是透明，所以只在 Safari 上看得见）。指到同一张
-           * 静态封面上，这一层在任何时刻都和底下那张图长得一样：占位符没了，
-           * 动态接管的那一下也不会闪。
-           */
-          poster={artwork ? (appleArtwork(artwork, 80 * ARTWORK_SCALE) ?? undefined) : undefined}
-          className={cn(
-            "absolute inset-0 size-full object-cover transition-opacity duration-700 group-hover:scale-[1.04]",
-            isPlaying ? "opacity-100" : "pointer-events-none opacity-0",
-          )}
-        />
-      )}
+        {videoUrl && !reduced && (
+          <video
+            ref={videoRef}
+            autoPlay
+            loop
+            muted
+            playsInline
+            aria-hidden
+            /*
+             * 没有 poster 的 <video> 在首帧到达前是「空媒体」，Safari 会给它画一个
+             * 问号占位符（Chrome 画的是透明，所以只在 Safari 上看得见）。指到同一张
+             * 静态封面上，这一层在任何时刻都和底下那张图长得一样：占位符没了，
+             * 动态接管的那一下也不会闪。
+             */
+            poster={artwork ? (appleArtwork(artwork, 80 * ARTWORK_SCALE) ?? undefined) : undefined}
+            className={cn(
+              "absolute inset-0 size-full object-cover transition-opacity duration-700",
+              isPlaying ? "opacity-100" : "pointer-events-none opacity-0",
+            )}
+          />
+        )}
+      </div>
     </div>
   );
 }
