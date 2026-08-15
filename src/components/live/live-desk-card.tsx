@@ -146,7 +146,11 @@ export function HeaderDesktop({
 
   return (
     <div
-      className={cn("relative h-8 max-w-[min(20rem,calc(100vw-9rem))] overflow-hidden", className)}
+      className={cn(
+        "relative h-8 max-w-[min(20rem,calc(100vw-9rem))]",
+        activeOverride?.key === "claude-code" ? "overflow-visible" : "overflow-hidden",
+        className,
+      )}
       aria-label={offline ? "Mac 上报器已离线" : `正在使用：${applicationName}`}
       aria-live="polite"
       title={offline ? "Mac 上报器已离线" : applicationName}
