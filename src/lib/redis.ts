@@ -222,3 +222,136 @@ export function mirrorKey<T>(
     },
   };
 }
+
+function overlayHashBlob<T extends object>(
+  hash: Record<string, string>,
+  blob: string | null,
+): T | null {
+  let base: Record<string, unknown> | null = null;
+  if (blob) {
+    try {
+      const parsed: unknown = JSON.parse(blob);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        base = parsed as Record<string, unknown>;
+      }
+    } catch {
+      if (Object.keys(hash).length === 0) throw new Error("dirty blob");
+    }
+  }
+
+  const fields = Object.keys(hash);
+  if (fields.length === 0) return (base as T | null) ?? null;
+
+  const next: Record<string, unknown> = { ...(base ?? {}) };
+  for (const field of fields) {
+    next[field] = JSON.parse(hash[field]!);
+  }
+  return next as T;
+}
+
+function patchHash<T extends object>(base: T | null, incoming: T, fields: readonly (keyof T & string)[]): T {
+  const next = { ...(base ?? incoming) } as T;
+  for (const field of fields) next[field] = incoming[field];
+  return next;
+}
+
+function hashFieldValues<T extends object>(
+  incoming: T,
+  fields: readonly (keyof T & string)[],
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const field of fields) {
+    out[field] = JSON.stringify(incoming[field] ?? null);
+  }
+  return out;
+}
+
+/**
+ * 字段级镜像。每个字段一份 JSON，HSET 只动列出的那些键。
+ *
+ * 遥测信封按模块到：换歌只带 appleMusic，心跳只带存活。从前整包 SET，后到的
+ * 心跳会把 Redis 里刚写进去的正在播盖回上一首 —— 推送用的是内存，刷新 /now
+ * 读的是 Redis，于是页面先翻到新歌、一刷新又回去。
+ *
+ * 旧的整包 JSON（`blobParts`）只读不写，用来补齐还没按字段落过的模块。
+ */
+export function overlayHashKey<T extends object>(
+  hashParts: string[],
+  blobParts: string[],
+  stampOf: (value: T) => number,
+) {
+  const hashK = key(...hashParts);
+  const blobK = key(...blobParts);
+  const cells = ((globalThis as typeof globalThis & {
+    __lyjwMirrors?: Map<string, { memory: unknown; persisted: boolean }>;
+  }).__lyjwMirrors ??= new Map());
+  let cell = cells.get(hashK);
+  if (!cell) {
+    cell = { memory: null, persisted: false };
+    cells.set(hashK, cell);
+  }
+  const state = cell as { memory: T | null; persisted: boolean };
+
+  return {
+    async merge(incoming: T, fields: readonly (keyof T & string)[]): Promise<void> {
+      state.persisted = await tellRedis(async (redis) => {
+        const rows = await redis
+          .multi()
+          .hset(hashK, hashFieldValues(incoming, fields))
+          .hgetall(hashK)
+          .get(blobK)
+          .exec();
+        if (!rows) throw new Error("telemetry hash merge discarded");
+        const hashRow = rows[1];
+        const blobRow = rows[2];
+        if (!hashRow || !blobRow) throw new Error("telemetry hash merge incomplete");
+        if (hashRow[0]) throw hashRow[0];
+        if (blobRow[0]) throw blobRow[0];
+        state.memory = overlayHashBlob<T>(
+          hashRow[1] as Record<string, string>,
+          blobRow[1] as string | null,
+        );
+      });
+      if (!state.persisted) state.memory = patchHash(state.memory, incoming, fields);
+    },
+
+    async get(): Promise<T | null> {
+      const answered = await askRedis(async (redis) => {
+        const rows = await redis.multi().hgetall(hashK).get(blobK).exec();
+        if (!rows) return { hash: {} as Record<string, string>, blob: null as string | null };
+        const hashRow = rows[0];
+        const blobRow = rows[1];
+        if (!hashRow || !blobRow) return { hash: {} as Record<string, string>, blob: null as string | null };
+        if (hashRow[0]) throw hashRow[0];
+        if (blobRow[0]) throw blobRow[0];
+        return {
+          hash: hashRow[1] as Record<string, string>,
+          blob: blobRow[1] as string | null,
+        };
+      });
+      if (!answered.reachable) return state.memory;
+
+      let stored: T | null;
+      try {
+        stored = overlayHashBlob<T>(answered.value.hash, answered.value.blob);
+      } catch {
+        return state.memory;
+      }
+
+      if (stored) {
+        if (!state.persisted && state.memory && stampOf(state.memory) > stampOf(stored)) {
+          return state.memory;
+        }
+        state.memory = stored;
+        state.persisted = true;
+        return stored;
+      }
+
+      if (state.persisted) {
+        state.memory = null;
+        return null;
+      }
+      return state.memory;
+    },
+  };
+}
