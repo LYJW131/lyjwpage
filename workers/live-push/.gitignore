@@ -1,0 +1,7 @@
+node_modules/
+.wrangler/
+dist/
+wrangler.toml
+wrangler.json
+.dev.vars*
+!wrangler.toml.example

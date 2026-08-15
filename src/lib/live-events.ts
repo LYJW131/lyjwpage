@@ -1,8 +1,7 @@
 import { revalidateTag } from "next/cache";
-import Pusher from "pusher";
 
 import type { NowWatchingPayload, WatchingPayload } from "@/lib/emby";
-import { LIVE_CHANNEL, liveEndpoint } from "@/lib/live-channel";
+import { livePublishUrl } from "@/lib/live-socket";
 import type {
   ChargerPayload,
   DesktopPayload,
@@ -15,14 +14,12 @@ import type {
 /**
  * 服务端 → 浏览器的实时推送。
  *
- * 走 Pusher 协议：遥测入口收到上报、状态落库之后，往实时服务发一次 HTTP
- * 请求就结束了，长连接全部挂在那边（自部署的 Sockudo 或云上的 Pusher）。
- * 本站因此不持有任何常驻连接，也就不要求自己是个常驻进程 —— 换成 serverless
- * 部署时这条链路一个字都不用改，连哪边只是环境变量的区别，见
- * [live-channel](src/lib/live-channel.ts)。
+ * 遥测入口收到上报、状态落库之后，往自己那个 Cloudflare Worker
+ * （`workers/live-push`）发一次 HTTP 请求就结束了，长连接全部挂在那边。
+ * 本站因此不持有任何常驻连接，也就不要求自己是个常驻进程 —— serverless
+ * 部署下这条链路一个字都不用改。地址见 [live-socket](src/lib/live-socket.ts)。
  *
- * 浏览器不需要往回发任何东西，所以是单向广播，公开频道就够，
- * 不碰 private channel 和那套鉴权。
+ * 浏览器不需要往回发任何东西，所以是单向广播，Worker 那边一个全站房间就够。
  */
 
 /**
@@ -47,8 +44,8 @@ export type LiveEvent =
    * 充电头那条不带历史点是另一回事：那是增量同步，服务端不知道各客户端的游标。
    * 列表是整份替换，没有游标这回事，不适用。
    *
-   * 已知的天花板：Pusher 单条事件上限 10 KB，超了直接拒收、而 publish 只记一行
-   * 日志，表现是这条推送静默消失、要等轮询兜底。当前 4.4 KB，两倍余量。
+   * 天花板从前是 Pusher 单条事件的 10 KB（4.4 KB 只有两倍余量）。换成自己的
+   * Worker 之后是 Cloudflare 的单条 WebSocket 消息上限 1 MiB，这条约束不再逼近。
    */
   | { type: "listening"; payload: ListeningPayload }
   /**
@@ -130,9 +127,10 @@ export function isStatusTag(value: string): value is StatusTag {
  * 对端源站。`revalidateTag` 只打本部署的 `'use cache'`，Vercel 和 EdgeOne
  * 各有一份，共用 Redis 也刷不到对面。
  *
- * 只认 `STATUS_CACHE_PEERS`（逗号分隔，空字符串关掉）。两边各自配对面，
- * 不在代码里写死谁通知谁：Vercel 生产 `https://lyjw131.com`，EdgeOne
- * `https://lyjw.me`。没配就不通知，本地 dev 也因此不会去敲线上。
+ * 只认 `STATUS_CACHE_PEERS`（逗号分隔，空字符串关掉）：**每一份部署在自己的
+ * 环境变量里填对面那份的源**，不在代码里写死谁通知谁。地址属于部署环境，
+ * 写进源码只会和现实脱节 —— 从前这里举过两个具体域名，还正好举反了。
+ * 没配就不通知，本地 dev 也因此不会去敲线上。
  */
 function cachePeers(): string[] {
   const raw = process.env.STATUS_CACHE_PEERS;
@@ -230,36 +228,38 @@ export async function expireStatusImmediately(...tags: string[]): Promise<void> 
   await notifyCachePeers(tags, true);
 }
 
-let client: Pusher | null = null;
-let initialised = false;
+type PushTarget = { url: string; secret: string };
 
-/** 没配全凭据就一直是 null，只在第一次抱怨一句，不是每条事件都刷屏 */
-function getClient(): Pusher | null {
-  if (initialised) return client;
-  initialised = true;
+let target: PushTarget | null = null;
+let resolved = false;
 
-  const endpoint = liveEndpoint();
-  const appId = process.env.PUSHER_APP_ID;
-  const secret = process.env.PUSHER_SECRET;
-  if (!endpoint || !appId || !secret) {
-    console.warn("[live] 没配 Pusher 凭据，实时推送停用，页面只靠轮询更新");
+/** 没配全就一直是 null，只在第一次抱怨一句，不是每条事件都刷屏 */
+function pushTarget(): PushTarget | null {
+  if (resolved) return target;
+  resolved = true;
+
+  const url = livePublishUrl();
+  const secret = process.env.LIVE_PUSH_SECRET;
+  if (!url || !secret) {
+    console.warn("[live] 没配 live-push Worker，实时推送停用，页面只靠轮询更新");
     return null;
   }
 
-  client = new Pusher({
-    appId,
-    secret,
-    key: endpoint.key,
-    ...("cluster" in endpoint
-      ? { cluster: endpoint.cluster, useTLS: true }
-      : // 自部署：发布用的 HTTP API 和浏览器连的 WebSocket 同一个地址同一个端口
-        { host: endpoint.host, port: String(endpoint.port), useTLS: endpoint.tls }),
-  });
-  return client;
+  target = { url, secret };
+  return target;
 }
 
 /**
- * 把事件交给实时服务。
+ * 单条推送最多等多久。
+ *
+ * 必须自己设：SDK 时代那个超时是 pusher 包自带的，换成裸 fetch 之后没人管，
+ * Worker 一挂就会把每一次上报都吊在这里 —— 而上报是有真实数据在等着落库的。
+ * 推送本来就是尽力而为，宁可丢一条让轮询兜底。
+ */
+const PUBLISH_TIMEOUT_MS = 3_000;
+
+/**
+ * 把事件交给 live-push Worker，由它广播给所有连着的浏览器。
  *
  * 失败只记一行日志，不往上抛：调用点都在 ingest 路由里，推送丢一条页面靠轮询
  * 也能翻过来。为这个回 500 只会让上报器重试、把同一份数据再写一遍。
@@ -268,11 +268,22 @@ function getClient(): Pusher | null {
  * 掐掉，fire-and-forget 会变成「偶尔推不出去」。
  */
 export async function publish(event: LiveEvent): Promise<void> {
-  const pusher = getClient();
-  if (!pusher) return;
+  const push = pushTarget();
+  if (!push) return;
 
   try {
-    await pusher.trigger(LIVE_CHANNEL, event.type, event.payload);
+    const response = await fetch(push.url, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${push.secret}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(event),
+      signal: AbortSignal.timeout(PUBLISH_TIMEOUT_MS),
+    });
+    if (!response.ok) {
+      console.error("[live] publish", event.type, response.status);
+    }
   } catch (error) {
     console.error("[live]", error instanceof Error ? error.message : String(error));
   }

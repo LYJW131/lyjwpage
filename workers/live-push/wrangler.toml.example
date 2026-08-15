@@ -1,0 +1,27 @@
+name = "live-push"
+main = "src/index.ts"
+compatibility_date = "2025-02-14"
+workers_dev = true
+
+# routes = [
+#   { pattern = "live.example.com", custom_domain = true }
+# ]
+
+[vars]
+# 逗号分隔。留空则不限来源（本地 localhost 始终放行）。
+# 预览域名每次部署都换，用后缀通配收进来。
+ALLOWED_ORIGINS = "https://example.com,https://*.vercel.app"
+
+[[durable_objects.bindings]]
+name = "LIVE_PUSH"
+class_name = "LivePushRoom"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["LivePushRoom"]
+
+[observability]
+enabled = true
+
+# LIVE_PUSH_SECRET 不写在这里，用 `wrangler secret put LIVE_PUSH_SECRET` 存进去 ——
+# 站点带着同一个值 POST /publish。没配的话 /publish 一律 503。

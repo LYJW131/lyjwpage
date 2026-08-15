@@ -1,0 +1,247 @@
+import { DurableObject } from "cloudflare:workers";
+
+/**
+ * 服务端 → 浏览器的实时推送。
+ *
+ * 站点把一条事件 POST 到 /publish，这里广播给所有连在 /ws 上的浏览器。
+ * 站点自己不持有任何长连接，所以它照旧可以是 serverless 的。
+ *
+ * 和隔壁 online-counter 分开部署：那个只数人头，谁连上谁断开就是全部输入；
+ * 这个要接站点的写入、要鉴权、要转发任意负载。两件事挤在一个 Worker 里的话，
+ * 人数广播的改动会和推送的鉴权面互相牵连。
+ */
+
+export interface Env {
+  LIVE_PUSH: DurableObjectNamespace<LivePushRoom>;
+  /** 发布用的共享密钥。没配则 /publish 一律拒绝 —— 见 worker.fetch 里的说明 */
+  LIVE_PUSH_SECRET?: string;
+  ALLOWED_ORIGINS?: string;
+}
+
+const WS_PATH = "/ws";
+const PUBLISH_PATH = "/publish";
+
+/** 全站一个房间：浏览器不往回发东西，事件类型已经把内容分开了 */
+const ROOM_ID = "global";
+
+const LOCAL_ORIGIN_RE = /^https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/;
+
+function getAllowedOrigins(env: Env): string[] {
+  return (env.ALLOWED_ORIGINS || "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+}
+
+/**
+ * 允许 `https://*.vercel.app` 这样的后缀通配。
+ *
+ * Vercel 的预览域名每次部署都换一个（`lyjwpage-<hash>-....vercel.app`），
+ * 像隔壁那样只做全等匹配的话，预览环境永远连不上。
+ *
+ * 按 hostname 的后缀比，不是按字符串包含 —— 后者会把
+ * `https://vercel.app.evil.com` 也放进来。
+ */
+function originMatches(origin: string, pattern: string): boolean {
+  if (origin === pattern) return true;
+  if (!pattern.includes("*")) return false;
+
+  const wildcard = pattern.match(/^(https?:)\/\/\*\.(.+)$/);
+  if (!wildcard) return false;
+  const [, protocol, suffix] = wildcard;
+
+  try {
+    const url = new URL(origin);
+    return url.protocol === protocol && url.hostname.endsWith(`.${suffix}`);
+  } catch {
+    return false;
+  }
+}
+
+function isAllowedOriginValue(origin: string, allowed: string[]): boolean {
+  if (LOCAL_ORIGIN_RE.test(origin)) return true;
+  return allowed.some((pattern) => originMatches(origin, pattern));
+}
+
+function isAllowedOrigin(request: Request, env: Env): boolean {
+  const allowed = getAllowedOrigins(env);
+  if (allowed.length === 0) return true;
+  const origin = request.headers.get("Origin");
+  return origin ? isAllowedOriginValue(origin, allowed) : true;
+}
+
+function getCorsHeaders(request: Request, env: Env): Headers {
+  const headers = new Headers();
+  const origin = request.headers.get("Origin");
+  const allowed = getAllowedOrigins(env);
+  if (origin && (allowed.length === 0 || isAllowedOriginValue(origin, allowed))) {
+    headers.set("Access-Control-Allow-Origin", origin);
+    headers.set("Vary", "Origin");
+  } else if (allowed.length === 0) {
+    headers.set("Access-Control-Allow-Origin", "*");
+  }
+  headers.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  headers.set("Access-Control-Max-Age", "86400");
+  return headers;
+}
+
+function jsonResponse(data: unknown, init: ResponseInit = {}): Response {
+  const headers = new Headers(init.headers);
+  headers.set("Content-Type", "application/json; charset=utf-8");
+  headers.set("Cache-Control", "no-store");
+  return new Response(JSON.stringify(data), { ...init, headers });
+}
+
+/** 逐字节等时比较，别让 401 的返回快慢把密钥一位一位漏出去 */
+function secretMatches(provided: string, expected: string): boolean {
+  const a = new TextEncoder().encode(provided);
+  const b = new TextEncoder().encode(expected);
+  if (a.byteLength !== b.byteLength) return false;
+  return crypto.subtle.timingSafeEqual(a, b);
+}
+
+function bearerToken(request: Request): string | null {
+  const header = request.headers.get("Authorization");
+  if (!header) return null;
+  const match = header.match(/^Bearer\s+(.+)$/i);
+  return match ? match[1].trim() : null;
+}
+
+function getRoom(env: Env): DurableObjectStub<LivePushRoom> {
+  return env.LIVE_PUSH.getByName(ROOM_ID);
+}
+
+export class LivePushRoom extends DurableObject<Env> {
+  /**
+   * 用休眠版的 acceptWebSocket，不是 accept() + 自己攒一个 Set。
+   *
+   * 这些连接绝大多数时间是空转的（上报器几十秒才来一条），休眠之后实例可以被
+   * 回收、连接照样挂着，事件到了再唤醒。代价是**不能把连接存在实例字段里** ——
+   * 休眠会把内存清掉，醒来时构造函数重跑一遍，那个 Set 就空了。
+   * 连接列表一律现问 ctx.getWebSockets()。
+   */
+  async fetch(request: Request): Promise<Response> {
+    if (request.headers.get("Upgrade") !== "websocket") {
+      return new Response("Expected WebSocket upgrade", { status: 426 });
+    }
+
+    const pair = new WebSocketPair();
+    const [client, server] = Object.values(pair);
+
+    this.ctx.acceptWebSocket(server);
+    /**
+     * 心跳由运行时直接回，不唤醒实例。
+     *
+     * 浏览器那侧要定时发点东西，否则中间的代理会把这条空转的连接掐掉；
+     * 但要是每次心跳都把休眠的实例叫醒，休眠就白做了。
+     */
+    this.ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
+
+    return new Response(null, { status: 101, webSocket: client });
+  }
+
+  /** 广播一条已经序列化好的事件，返回发出去的连接数 */
+  broadcast(message: string): number {
+    let delivered = 0;
+    for (const socket of this.ctx.getWebSockets()) {
+      try {
+        socket.send(message);
+        delivered += 1;
+      } catch {
+        // 已经断了但还没收到 close 的，丢掉这一条即可，运行时随后会清理
+      }
+    }
+    return delivered;
+  }
+
+  connectionCount(): number {
+    return this.ctx.getWebSockets().length;
+  }
+
+  /**
+   * 浏览器发来的消息一律不理。
+   *
+   * 这是单向广播：页面上没有任何东西需要往回说。"ping" 已经被上面的
+   * 自动回复接走了，走到这里的都是意料之外的内容。
+   */
+  async webSocketMessage(): Promise<void> {}
+
+  async webSocketClose(ws: WebSocket, code: number): Promise<void> {
+    // 1005（没给关闭码）和 1006（没收到 close 帧）都是"保留码"：
+    // 它们描述的是连接怎么断的，不能拿来当自己要发出去的关闭码，传进去会抛
+    ws.close(code === 1005 || code === 1006 ? 1000 : code);
+  }
+}
+
+const worker = {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const url = new URL(request.url);
+
+    if (request.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: getCorsHeaders(request, env) });
+    }
+
+    if (url.pathname === WS_PATH) {
+      if (!isAllowedOrigin(request, env)) {
+        return new Response("Forbidden", { status: 403 });
+      }
+      if (request.headers.get("Upgrade") !== "websocket") {
+        return new Response("Expected WebSocket upgrade", { status: 426 });
+      }
+      return getRoom(env).fetch(request);
+    }
+
+    if (url.pathname === PUBLISH_PATH) {
+      if (request.method !== "POST") {
+        return jsonResponse({ ok: false, error: "只接受 POST" }, { status: 405 });
+      }
+
+      /**
+       * 没配密钥就拒绝，不是放行。
+       *
+       * 和 /ws 的来源白名单反着来是故意的：那边放开顶多是别的站点蹭一份本来就
+       * 公开的广播，这边放开等于让任何人往所有访客的页面里塞任意内容。
+       */
+      const expected = env.LIVE_PUSH_SECRET;
+      if (!expected) {
+        return jsonResponse({ ok: false, error: "Worker 未配置 LIVE_PUSH_SECRET" }, { status: 503 });
+      }
+      const provided = bearerToken(request);
+      if (!provided || !secretMatches(provided, expected)) {
+        return jsonResponse({ ok: false, error: "未授权" }, { status: 401 });
+      }
+
+      let event: unknown;
+      try {
+        event = await request.json();
+      } catch {
+        return jsonResponse({ ok: false, error: "请求体不是合法 JSON" }, { status: 400 });
+      }
+      if (
+        typeof event !== "object" ||
+        event === null ||
+        typeof (event as { type?: unknown }).type !== "string" ||
+        !(event as { type: string }).type
+      ) {
+        return jsonResponse({ ok: false, error: "事件缺少 type" }, { status: 400 });
+      }
+
+      /**
+       * 负载不校验形状，原样转发：事件种类和字段是站点和它自己前端之间的约定，
+       * 在这里再抄一份就等于同一份契约维护两处，加一种事件得改两个仓库。
+       */
+      const delivered = await getRoom(env).broadcast(JSON.stringify(event));
+      return jsonResponse({ ok: true, delivered }, { headers: getCorsHeaders(request, env) });
+    }
+
+    if (url.pathname === "/") {
+      const online = await getRoom(env).connectionCount();
+      return jsonResponse({ ok: true, service: "live-push", connections: online });
+    }
+
+    return new Response("Not found", { status: 404 });
+  },
+};
+
+export default worker;
