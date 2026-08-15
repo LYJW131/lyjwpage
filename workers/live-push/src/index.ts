@@ -26,6 +26,14 @@ const ROOM_ID = "global";
 
 const LOCAL_ORIGIN_RE = /^https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/;
 
+/*
+ * 下面这四个函数和 online-counter 那个 worker 逐字一样
+ * （workers/online-counter/src/index.ts），改一处记得同步另一处。
+ *
+ * 没抽成共享包是故意的：域名名单本来就得在两份 wrangler.toml 里各配一次，
+ * 抽包省不掉那份重复，却要多一个包和一层依赖解析。
+ */
+
 function getAllowedOrigins(env: Env): string[] {
   return (env.ALLOWED_ORIGINS || "")
     .split(",")
@@ -37,7 +45,7 @@ function getAllowedOrigins(env: Env): string[] {
  * 允许 `https://*.vercel.app` 这样的后缀通配。
  *
  * Vercel 的预览域名每次部署都换一个（`lyjwpage-<hash>-....vercel.app`），
- * 像隔壁那样只做全等匹配的话，预览环境永远连不上。
+ * 只做全等匹配的话，预览环境永远连不上。
  *
  * 按 hostname 的后缀比，不是按字符串包含 —— 后者会把
  * `https://vercel.app.evil.com` 也放进来。
@@ -63,11 +71,18 @@ function isAllowedOriginValue(origin: string, allowed: string[]): boolean {
   return allowed.some((pattern) => originMatches(origin, pattern));
 }
 
+/**
+ * 没配 ALLOWED_ORIGINS 就不限制 —— `wrangler dev` 不配也要能跑，而 localhost
+ * 本来就始终放行。**配了之后，不带 Origin 头一律拒绝**：浏览器发 WebSocket
+ * 握手时一定带这个头，所以卡死它对真实访客零代价，却堵上了「curl 不带头就
+ * 绕过白名单」这个口子。
+ */
 function isAllowedOrigin(request: Request, env: Env): boolean {
   const allowed = getAllowedOrigins(env);
   if (allowed.length === 0) return true;
   const origin = request.headers.get("Origin");
-  return origin ? isAllowedOriginValue(origin, allowed) : true;
+  if (!origin) return false;
+  return isAllowedOriginValue(origin, allowed);
 }
 
 function getCorsHeaders(request: Request, env: Env): Headers {
