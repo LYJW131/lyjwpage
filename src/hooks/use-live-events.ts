@@ -1,7 +1,5 @@
 "use client";
 
-// 只要类型，实现在 open 里动态 import —— import type 编译后整条擦掉，不进 bundle
-import type Pusher from "pusher-js";
 import { useEffect } from "react";
 import { useSWRConfig } from "swr";
 
@@ -11,9 +9,9 @@ import { mergeChargerHistory } from "@/lib/charger-history";
 import { assetUrl, objectKeyFromAssetUrl } from "@/lib/asset-url";
 import type { NowWatchingPayload, WatchingPayload } from "@/lib/emby";
 import { applyVibeCodingSessions } from "@/lib/vibecoding-activity";
-import { LIVE_CHANNEL, liveEndpoint } from "@/lib/live-channel";
 import type { LiveEvent } from "@/lib/live-events";
 import { rememberPushed } from "@/lib/live-freshness";
+import { liveSocketUrl } from "@/lib/live-socket";
 import {
   CHARGER_PATH,
   POWERBANK_PATH,
@@ -152,19 +150,31 @@ const INVALIDATIONS: ReadonlyArray<{
   { event: "presence", paths: PRESENCE_PATHS },
 ];
 
-/**
- * 「此刻多少人在看这个页面」的缓存键。
- *
- * 不是路径，故意的 —— 它没有对应的 HTTP 端点，数字全靠推送写进来，所以也
- * 不在 lib/paths 那份路径常量里。键只在这个文件里用，外面读 useOnlineCount。
- */
-const ONLINE_KEY = "live:online";
+const FORWARD_BY_EVENT = new Map(FORWARDS.map((entry) => [entry.event, entry]));
+const INVALIDATION_BY_EVENT = new Map(INVALIDATIONS.map((entry) => [entry.event, entry]));
 
-/** 连接通没通。同上，纯客户端的键。 */
-const CONNECTION_KEY = "live:connected";
+/** live-push Worker 广播过来的信封，形状就是服务端那份 LiveEvent */
+type Incoming = { type: LiveEvent["type"]; payload: unknown };
 
-/** Pusher 协议自带的事件负载，字段名是协议定的，不归站点的 camelCase 约定管 */
-type SubscriptionCount = { subscription_count: number };
+function dispatch(mutate: ScopedMutator, message: Incoming): void {
+  const forward = FORWARD_BY_EVENT.get(message.type);
+  if (forward) {
+    const localized = localizeAssets(message.type, message.payload);
+    const data = forward.merge ? forward.merge(localized) : localized;
+    if (data == null) return;
+    const envelope: StatusResponse<unknown> = { ok: true, data };
+    // 登记这一代，好让之后回来的旧轮询结果被挡掉（lib/live-freshness）。
+    // 顺手也挡住乱序到达的推送本身
+    if (!rememberPushed(forward.path, envelope)) return;
+    void mutate(forward.path, envelope, { revalidate: false });
+    return;
+  }
+
+  const invalidation = INVALIDATION_BY_EVENT.get(message.type);
+  if (invalidation) {
+    for (const path of invalidation.paths) void mutate(path);
+  }
+}
 
 /**
  * 整页共用一条连接。
@@ -173,149 +183,123 @@ type SubscriptionCount = { subscription_count: number };
  * 播放），如果每个都自己建一条 WebSocket，一个页面就会占掉好几条长连接。
  * 所以连接做成模块级单例，按订阅者数量开关。
  */
-let client: Pusher | null = null;
+let socket: WebSocket | null = null;
 let refCount = 0;
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+let retryAttempts = 0;
 
 /**
- * 连接的代号，close() 每关一次 +1。
- *
- * pusher-js 是动态 import 来的（26KB 的实时推送不该躺在首屏的关键 chunk 里，
- * 这条连接本来就是挂载之后才需要的增强），于是 open 从同步变成了跨 await 的。
- * 跨过去之后世界可能已经变了：整页的订阅者在这期间全卸载、close() 已经跑完 ——
- * 那这次 open 就不作数了，再把 client 赋回去等于留下一条没人管、也没人关的
- * WebSocket。await 回来先对一遍代号，对不上就直接扔掉。
+ * 心跳间隔。Worker 那侧用 setWebSocketAutoResponse 直接回 "pong"，不唤醒实例，
+ * 所以这条保活对它是免费的；没有它中间的代理会把空转的连接掐掉。
  */
-let generation = 0;
+const HEARTBEAT_MS = 30_000;
+const MAX_BACKOFF_MS = 30_000;
 
-/**
- * 有一次 open 正在等 import。
- *
- * 从前靠 `if (client) return` 挡住并发的第二次 open —— 那时 client 是同一个
- * 同步块里赋上的，第二个组件挂载时它已经在了。现在 client 要等 import 落地才有，
- * 同一轮 effect 里的两次 open 会双双穿过那个检查、各建一条连接。
- */
-let opening = false;
-
-function open(mutate: ScopedMutator) {
-  if (client || opening) return;
-  const endpoint = liveEndpoint();
-  // 没配实时服务：卡片照常轮询，只是不会被推着翻。这一步留在 await 之前，
-  // 没配的时候连那个 chunk 都不用去拉
-  if (!endpoint) return;
-
-  const selfHosted = "cluster" in endpoint ? null : endpoint;
-  const transport: "ws" | "wss" = selfHosted?.tls ? "wss" : "ws";
-
-  opening = true;
-  const attempt = generation;
-
-  void (async () => {
-    try {
-      // 拉不到 chunk（部署轮换、断网）就当没有实时推送：各卡照常轮询，
-      // 下一次挂载还会再试一次。只吞这一步的失败，构造 Pusher 时的报错照旧抛
-      const loaded = await import("pusher-js").catch(() => null);
-      if (!loaded) return;
-      // 等 import 的这段时间里关过：这次 open 已经作废，什么都别建
-      if (attempt !== generation) return;
-
-      const PusherJs = loaded.default;
-      const next = new PusherJs(endpoint.key, {
-        // 自部署时 cluster 用不上，但 pusher-js 校验它必填，给个占位
-        cluster: "cluster" in endpoint ? endpoint.cluster : "self-hosted",
-        ...(selfHosted && {
-          wsHost: selfHosted.host,
-          wsPort: selfHosted.port,
-          wssPort: selfHosted.port,
-          forceTLS: selfHosted.tls,
-          // 只留 WebSocket：自部署的地址没有云 Pusher 那套 HTTP 回退端点，
-          // 让它去试只会在连不上时多打几个必然失败的请求
-          enabledTransports: [transport],
-        }),
-      });
-      client = next;
-
-      /**
-       * 连接状态只喂给页脚那个说明浮层。
-       *
-       * 人数是推来的，断开之后它会停在最后一个值上 —— 不说一声的话，一个冻住的
-       * 数字和实时的数字长得一模一样。
-       *
-       * 这不是把从前那个 connected 加回来（见下面 useLiveEvents 的注释）：那次去
-       * 掉的是「断开时把各卡的轮询压到 3 秒」这个行为，不是不让人看见状态。
-       */
-      next.connection.bind("state_change", ({ current }: { current: string }) => {
-        void mutate(CONNECTION_KEY, current === "connected", { revalidate: false });
-      });
-
-      const channel = next.subscribe(LIVE_CHANNEL);
-
-      for (const { event, path, merge } of FORWARDS) {
-        channel.bind(event, (payload: unknown) => {
-          const localized = localizeAssets(event, payload);
-          const data = merge ? merge(localized) : localized;
-          if (data == null) return;
-          const envelope: StatusResponse<unknown> = { ok: true, data };
-          // 登记这一代，好让之后回来的旧轮询结果被挡掉（lib/live-freshness）。
-          // 顺手也挡住乱序到达的推送本身
-          if (!rememberPushed(path, envelope)) return;
-          void mutate(path, envelope, { revalidate: false });
-        });
-      }
-
-      for (const { event, paths } of INVALIDATIONS) {
-        channel.bind(event, () => {
-          for (const path of paths) void mutate(path);
-        });
-      }
-
-      /**
-       * 在线人数单独绑，不进上面那两张表：那两张登记的是站点自己发的 LiveEvent，
-       * 这条是 Pusher 协议自带的事件，塞进表里会把 LiveEvent["type"] 弄脏。
-       *
-       * 订阅成功时先给一次，之后人数每变一次推一次 —— 站点这侧不用加端点、不用
-       * 轮询、也不用再开一条长连接。前提是 Pusher 后台「subscription counting」
-       * 和「subscription count events」两个开关都开着，只开前者的话就只有 HTTP
-       * API 能问、这里一条事件都收不到。
-       */
-      channel.bind("pusher:subscription_count", (payload: SubscriptionCount) => {
-        void mutate(ONLINE_KEY, payload.subscription_count, { revalidate: false });
-      });
-    } finally {
-      /**
-       * 只有仍然是当前这一代才收旗。
-       *
-       * 中途 close 过的话 opening 已经被它清掉，而且很可能已经有新的一次 open
-       * 举着这面旗在等自己的 import（组件卸载又立刻挂回来就是这个形状，
-       * React 严格模式下每次挂载都会走一遍 mount → cleanup → mount）。
-       * 不加这一句的话，作废的这一代会顺手把新那一代的旗放掉，
-       * 于是下一个挂载的组件又能穿过 opening 检查，再建一条连接。
-       */
-      if (attempt === generation) opening = false;
-    }
-  })();
+function clearTimers(): void {
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
+  }
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
 }
 
-function close() {
-  // 先换代号再断：在途的那次 open（如果有）await 回来会看到对不上，自行作废。
-  // opening 也一并清掉，否则「关完再开」会被那面还举着的旗永久挡住
-  generation += 1;
-  opening = false;
-  client?.disconnect();
-  client = null;
+function teardown(): void {
+  clearTimers();
+  if (!socket) return;
+  // 先摘监听再关：否则自己调的 close 会触发 onclose、排一次不该有的重连
+  socket.onopen = null;
+  socket.onmessage = null;
+  socket.onclose = null;
+  socket.onerror = null;
+  try {
+    socket.close();
+  } catch {}
+  socket = null;
+}
+
+function open(mutate: ScopedMutator): void {
+  if (socket) return;
+  const url = liveSocketUrl();
+  // 没配实时服务：卡片照常轮询，只是不会被推着翻
+  if (!url || typeof window === "undefined") return;
+
+  let ws: WebSocket;
+  try {
+    ws = new WebSocket(url);
+  } catch (error) {
+    console.error("[live]", error instanceof Error ? error.message : String(error));
+    return;
+  }
+  socket = ws;
+
+  ws.onopen = () => {
+    retryAttempts = 0;
+    heartbeatTimer = setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) {
+        try {
+          ws.send("ping");
+        } catch {}
+      }
+    }, HEARTBEAT_MS);
+  };
+
+  ws.onmessage = (event) => {
+    // 心跳的 "pong" 也从这里过，不是 JSON，解析失败就当没看见
+    if (typeof event.data !== "string" || event.data === "pong") return;
+    let message: Incoming;
+    try {
+      message = JSON.parse(event.data) as Incoming;
+    } catch {
+      return;
+    }
+    if (!message || typeof message.type !== "string") return;
+    dispatch(mutate, message);
+  };
+
+  ws.onerror = () => {
+    // onerror 之后紧跟着就是 onclose，重连排在那里，这里不重复排
+    try {
+      ws.close();
+    } catch {}
+  };
+
+  ws.onclose = () => {
+    teardown();
+    if (refCount <= 0) return;
+    /**
+     * 退避重连。pusher-js 时代这是 SDK 自带的，裸 WebSocket 得自己来 ——
+     * 少了它，实时服务重启一次页面就再也不会被推着翻，直到下一次整页刷新。
+     */
+    const delay = Math.min(1_000 * Math.pow(1.5, retryAttempts), MAX_BACKOFF_MS);
+    retryAttempts += 1;
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      if (refCount > 0) open(mutate);
+    }, delay);
+  };
+}
+
+function close(): void {
+  retryAttempts = 0;
+  teardown();
 }
 
 /**
  * 订阅服务端推送。
  *
  * 推来的活动状态直接写进 SWR 缓存，所以组件那边照旧用 useStatus 读，
- * 不用管数据是推来的还是轮询来的。收到的 payload 已经是解析好的对象。
+ * 不用管数据是推来的还是轮询来的。
  *
  * 不对外暴露连接状态。从前暴露了一个 connected，让几张卡在断开时把轮询从
- * 30 秒压到 3 秒 —— 但 pusher-js 自带断线重连（还带退避），断线基本几秒内
- * 自愈，那次加速几乎只发得出一轮；实时服务真挂了的话压到 3 秒也换不来新数据，
- * 只是把请求翻十倍。
+ * 30 秒压到 3 秒 —— 但断线几秒内就会被上面那个退避重连自愈，那次加速几乎只
+ * 发得出一轮；实时服务真挂了的话压到 3 秒也换不来新数据，只是把请求翻十倍。
  *
- * 不随页面可见性断开：连接闲置时只有协议自带的心跳，成本远低于反复重连。
+ * 不随页面可见性断开：连接闲置时只有心跳，成本远低于反复重连。
+ * （在线人数那条是另一套取舍，它按可见性开关 —— 见 use-online-count。）
  */
 export function useLiveEvents() {
   const { mutate } = useSWRConfig();
@@ -331,6 +315,3 @@ export function useLiveEvents() {
     };
   }, [mutate]);
 }
-
-export { useOnlineCount } from "./use-online-count";
-

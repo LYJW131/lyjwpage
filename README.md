@@ -9,7 +9,7 @@
 | 框架 | Next.js 16 App Router（Turbopack）                            |
 | UI   | React 19 · Tailwind CSS v4（CSS-first，无 `tailwind.config`） |
 | 动画 | `motion` · `@number-flow/react`（实时数字滚动）               |
-| 数据 | Route Handlers 代理 + SWR 轮询 + Pusher 协议推送              |
+| 数据 | Route Handlers 代理 + SWR 轮询 + 自建 Worker 推送             |
 | 字体 | Geist Sans / Geist Mono（本地字体包，构建不依赖网络）         |
 
 ## 跑起来
@@ -42,24 +42,22 @@ Redis TCP 连接按请求作用域租用：同一 Node 实例里的并发请求�
 
 站点仍会出网的只剩一处：给此刻在播的曲子查一个可跳转的地址，走 `src/lib/cache.ts`（带 TTL、in-flight 去重和 5 秒负缓存）。**核心原则：前端轮询多快，回源频率都不变**，由各自的 TTL 决定。值存 Redis（进程重启和多实例共享）；in-flight 去重始终在进程内，它挡的是同一进程的并发穿透，Redis 代劳不了。
 
-### 推给浏览器 — Pusher 协议
+### 推给浏览器 — 自建 Worker
 
-状态落库之后，`lib/live-events.ts` 往实时服务发一次 HTTP；浏览器直连那个服务收推送（`hooks/use-live-events.ts` 把收到的写进 SWR 缓存，卡片照旧用 `useStatus` 读，不用管数据是推来的还是轮询来的）。**本站不持有任何长连接** —— 从前这里是一条自建的 SSE，但在 serverless 上每条 SSE 连接都钉死一个函数调用、到 maxDuration 被掐断再重连，全程计费。
+状态落库之后，`lib/live-events.ts` 往 `workers/live-push` POST 一条事件；浏览器直连那个 Worker 收推送（`hooks/use-live-events.ts` 把收到的写进 SWR 缓存，卡片照旧用 `useStatus` 读，不用管数据是推来的还是轮询来的）。**本站不持有任何长连接** —— 从前这里是一条自建的 SSE，但在 serverless 上每条 SSE 连接都钉死一个函数调用、到 maxDuration 被掐断再重连，全程计费。
 
-连哪边只是环境变量的区别，代码只有一份：
+长连接挂在 Cloudflare 的 Durable Object 上，一个全站房间：
 
-|                              | 自部署               | 云 Pusher      |
-| ---------------------------- | -------------------- | -------------- |
-| `NEXT_PUBLIC_PUSHER_URL`     | Sockudo 的 ws 地址   | 不设           |
-| `NEXT_PUBLIC_PUSHER_CLUSTER` | 不设                 | 控制台给的     |
+| 方法 | 路径       | 谁在用                                                    |
+| ---- | ---------- | --------------------------------------------------------- |
+| GET  | `/ws`      | 浏览器。按 `ALLOWED_ORIGINS` 校验来源，支持后缀通配        |
+| POST | `/publish` | 站点。`Authorization: Bearer <LIVE_PUSH_SECRET>`          |
 
-自部署用 [Sockudo](https://github.com/sockudo/sockudo)（Rust 写的 Pusher 协议实现，soketi 那个老牌选择已基本停止维护）：
+站点这侧只配一个 `NEXT_PUBLIC_LIVE_PUSH_URL`（Worker 的源）加一个 `LIVE_PUSH_SECRET`，两条路径写在代码里 —— 它们和事件名一样，本来就是站点和自己那个 Worker 之间的约定。
 
-```bash
-docker run -d --name sockudo --restart unless-stopped -p 127.0.0.1:6001:6001 ghcr.io/sockudo/sockudo:4.7.0
-```
+这里从前走 Pusher 协议（云 Pusher，或自部署 [Sockudo](https://github.com/sockudo/sockudo)）。换掉的理由不是它不好用，而是这条链路上唯一还托在别人手里的一环：单条事件 10 KB 的上限就近在眼前（两张列表 4.4 KB / 2.8 KB），免费额度按连接数和消息数计，而在线人数那条已经在自己的 Worker 上跑着了（`workers/online-counter`）。两个 Worker 分开部署：那个只数人头，谁连上谁断开就是全部输入；这个要接站点的写入、要鉴权、要转发任意负载。
 
-镜像自带 `app-id` / `app-key` / `app-secret` 这个默认 app，本地开发拿来就用。要给公网访客用的话它得自己暴露公网 + 有效 TLS（https 页面只肯连 wss），那样长连接又落回自己的服务器 —— 所以合理的组合是「自己服务器部署 → Sockudo，Vercel → 云 Pusher」，不交叉混搭。
+连接走休眠版的 `ctx.acceptWebSocket()`，心跳用 `setWebSocketAutoResponse` 由运行时直接回 —— 这些连接绝大多数时间空转（上报器几十秒才来一条），实例可以被回收、连接照样挂着。
 
 推送上只跑「状态翻面」：换前台应用、换曲子、插拔充电头、上报器上下线、两张列表变了。滚动读数（功率曲线、token 用量）仍由卡片自己 30 秒一轮地取 —— 推它们等于把推送当轮询用。丢一条也不至于卡住页面，轮询是兜底。
 
@@ -70,7 +68,7 @@ docker run -d --name sockudo --restart unless-stopped -p 127.0.0.1:6001:6001 ghc
 | `desktop` · `listening-now` · `watching-now` · `charger` · `listening` · `watching` | 带数据，浏览器直接写进 SWR 缓存 |
 | `presence` | 只发失效通知（payload 为 `null`），浏览器自己回来取 |
 
-**一律带数据。** 两张列表曾经只发失效通知，理由是「整份太大」——实测 4.4 KB 和 2.8 KB（Pusher 单条上限 10 KB），而发通知之后浏览器照样把整份取回来，字节一点没省，反倒多出一次请求头、一次往返、一个函数调用和一次 Redis 读，**而且是按在线人头乘的**。
+**一律带数据。** 两张列表曾经只发失效通知，理由是「整份太大」——实测 4.4 KB 和 2.8 KB，而发通知之后浏览器照样把整份取回来，字节一点没省，反倒多出一次请求头、一次往返、一个函数调用和一次 Redis 读，**而且是按在线人头乘的**。（那时的天花板是 Pusher 单条 10 KB，只有两倍余量；现在是 Cloudflare 单条 WebSocket 消息 1 MiB。）
 
 只有 `presence` 仍是失效通知：它翻的是「上报器还在不在」。亲口离线是布尔值，浏览器要重取 `declaredOffline`；超时那条拿 payload 里的 `lastSeenAt` 和 `heartbeatWindowMs` 自己就能翻，源站不再算 `stale`。窗口默认 90 秒（三倍心跳），可用 `HEARTBEAT_WINDOW_MS` 改。
 

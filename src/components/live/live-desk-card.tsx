@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils";
 
 const LOCK_SCREEN_BUNDLE_ID = "com.apple.loginwindow";
 
-/** 轮询只是兜底：状态变化由实时推送送来，断线由 pusher-js 自己重连。 */
+/** 轮询只是兜底：状态变化由实时推送送来，断线由 use-live-events 退避重连。 */
 const REFRESH_MS = 60_000;
 
 const APP_SWITCH_VARIANTS = {
