@@ -120,7 +120,7 @@ export function HeroMotionArtwork({
     /*
      * 淡入的起点必须是「已经上屏的真帧」，不能是 playing。
      *
-     * Safari 的 playing 早于首帧合成：那时候开始淡，700ms 淡完的是 poster——
+     * Safari 的 playing 早于首帧合成：那时候开始淡，淡完的是 poster——
      * 和底下那张静态图一模一样，看不出来——等首帧真来了再无过渡地顶上去。
      * 动态封面的构图跟静态封面差一点点，这一下换就是肉眼可见的位移。Chrome 的
      * playing 来得晚，帧已经在了，所以那边一直是好的。
@@ -226,7 +226,7 @@ export function HeroMotionArtwork({
              */
             poster={artwork ? (appleArtwork(artwork, 80 * ARTWORK_SCALE) ?? undefined) : undefined}
             className={cn(
-              "absolute inset-0 size-full object-cover transition-opacity duration-700",
+              "absolute inset-0 size-full object-cover transition-opacity duration-[1.2s] ease-[cubic-bezier(0.45,0,0.55,1)]",
               isPlaying ? "opacity-100" : "pointer-events-none opacity-0",
             )}
           />
