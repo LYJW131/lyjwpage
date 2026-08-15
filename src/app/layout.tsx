@@ -36,6 +36,14 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
+  const assetBaseUrl = process.env.R2_PUBLIC_BASE_URL ?? "";
+  let assetOrigin: string | null = null;
+  try {
+    assetOrigin = assetBaseUrl ? new URL(assetBaseUrl).origin : null;
+  } catch {
+    // 配坏时不预连接；状态响应里的图片地址也会按原有降级逻辑为空。
+  }
+
   return (
     <html
       lang="zh-CN"
@@ -44,6 +52,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${GeistMono.variable} h-full`}
     >
       <head>
+        <meta name="asset-base-url" content={assetBaseUrl} />
         <script
           dangerouslySetInnerHTML={{
             __html: `try{var t=localStorage.getItem("theme")||"system";document.documentElement.dataset.themeChoice=t}catch(e){}`,
@@ -60,7 +69,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             不能加 crossOrigin：这两处都是普通 <img> 的 no-cors 请求，
             带 crossorigin 的连接它们复用不上，等于白连一次 */}
         <link rel="preconnect" href="https://is1-ssl.mzstatic.com" />
-        <link rel="preconnect" href="https://r2.homepage.lyjw.llc" />
+        {assetOrigin ? <link rel="preconnect" href={assetOrigin} /> : null}
         <ThemeProvider>{children}</ThemeProvider>
         <Analytics />
         <SpeedInsights />

@@ -20,7 +20,7 @@ import {
   playableHomePod,
   type StoredHomePod,
 } from "@/lib/homepod-store";
-import { ASSET_URL_PREFIX, hasStoredImage, IMAGE_OBJECT_KEY } from "@/lib/r2-assets";
+import { hasStoredImage, IMAGE_OBJECT_KEY, publicAssetUrl } from "@/lib/r2-assets";
 import { number, object, text } from "@/lib/json";
 import {
   CHARGER_TAG,
@@ -59,11 +59,16 @@ import {
   prepareVibeCodingUsage,
 } from "@/lib/vibecoding";
 
-/** 与采集端一致；缓存的是很短的内容哈希 URL，64 项也足够覆盖日常应用。 */
+/** 与采集端一致；缓存的是很短的内容对象键，64 项也足够覆盖日常应用。 */
 const DESKTOP_ICON_CACHE_LIMIT = 64;
 
+type StoredDesktopActivity = Omit<DesktopActivity, "iconUrl"> & {
+  iconObjectKey: string | null;
+};
+
 type TelemetryState = {
-  desktop: DesktopActivity | null;
+  desktop: StoredDesktopActivity | null;
+  /** iconHash → objectKey；公开 URL 到读取/推送响应时才按当前部署拼 */
   desktopIconAssets: Map<string, string>;
   timezone: TimezoneActivity | null;
   music: LocalNowPlaying | null;
@@ -98,7 +103,7 @@ telemetryState.desktopIconAssets ??= new Map();
  * 持久化，于是同一件事有两个写入点，还得靠 restoreLiveness 把进程内存灌回去。
  */
 type PersistedTelemetry = {
-  desktop: DesktopActivity | null;
+  desktop: StoredDesktopActivity | null;
   desktopIconAssets?: [string, string][];
   timezone: TimezoneActivity | null;
   music: LocalNowPlaying | null;
@@ -128,15 +133,6 @@ async function persistTelemetryState(receivedAt: number) {
   });
 }
 
-function keepFreshAsset<T, K extends keyof T>(row: T | null, field: K): T | null {
-  if (!row) return null;
-  const url = row[field];
-  if (typeof url === "string" && !url.startsWith(ASSET_URL_PREFIX)) {
-    return { ...row, [field]: null };
-  }
-  return row;
-}
-
 /**
  * 从持久层同步一次工作副本。每个入口都先调它。
  *
@@ -157,26 +153,19 @@ async function syncTelemetryState() {
     telemetryState.activeModules = new Set();
     return;
   }
-  /**
-   * 丢掉不是当前格式的图片 URL。
-   *
-   * 这些 URL 跟着状态一起持久化，而存图的路由改过前缀 —— 存量的旧 URL 会
-   * 一直指向已经删掉的路由、稳定 404，且只有等设备重新上报同一张图才会
-   * 被覆盖（换歌 / 换应用才会重发）。宁可先不显示，也别挂一张裂图。
-   */
-  telemetryState.desktop = keepFreshAsset(stored.desktop ?? null, "iconUrl");
+  telemetryState.desktop = stored.desktop ?? null;
   telemetryState.desktopIconAssets = new Map(
     (stored.desktopIconAssets ?? [])
       .filter((entry): entry is [string, string] =>
         Array.isArray(entry) &&
         typeof entry[0] === "string" &&
         typeof entry[1] === "string" &&
-        entry[1].startsWith(ASSET_URL_PREFIX),
+        IMAGE_OBJECT_KEY.test(entry[1]),
       )
       .slice(-DESKTOP_ICON_CACHE_LIMIT),
   );
   telemetryState.timezone = stored.timezone ?? null;
-  telemetryState.music = keepFreshAsset(stored.music ?? null, "artworkUrl");
+  telemetryState.music = stored.music ?? null;
   telemetryState.activityReceivedAt = stored.activityReceivedAt ?? 0;
   telemetryState.timezoneReceivedAt = stored.timezoneReceivedAt ?? 0;
   telemetryState.activeModules = new Set(stored.activeModules ?? []);
@@ -197,9 +186,9 @@ function milliseconds(value: unknown, fallback = Date.now()) {
 }
 
 /** Map 的插入顺序顺便充当 LRU；每次命中或更新都把该项移到末尾。 */
-function rememberDesktopIcon(hash: string, url: string) {
+function rememberDesktopIcon(hash: string, objectKey: string) {
   telemetryState.desktopIconAssets.delete(hash);
-  telemetryState.desktopIconAssets.set(hash, url);
+  telemetryState.desktopIconAssets.set(hash, objectKey);
   if (telemetryState.desktopIconAssets.size > DESKTOP_ICON_CACHE_LIMIT) {
     const oldest = telemetryState.desktopIconAssets.keys().next().value;
     if (oldest !== undefined) telemetryState.desktopIconAssets.delete(oldest);
@@ -209,7 +198,7 @@ function rememberDesktopIcon(hash: string, url: string) {
 async function normalizeDesktop(
   value: unknown,
   receivedAt: number,
-): Promise<{ activity: DesktopActivity | null; iconAvailable: boolean }> {
+): Promise<{ activity: StoredDesktopActivity | null; iconAvailable: boolean }> {
   const row = object(value);
   if (!row) return { activity: null, iconAvailable: true };
   const applicationName = text(row.applicationName);
@@ -240,27 +229,29 @@ async function normalizeDesktop(
 
   if (row.iconData != null) throw new Error("desktop.iconData 已停用，请由上报器直传 R2");
 
-  // 上报器一次性编好小图并直传 R2，只把对象键发回来。
-  // URL 由服务端的 R2_PUBLIC_BASE_URL 组出，避免客户端自己伪造任意展示地址。
-  if (iconObjectKey && iconHash && process.env.R2_PUBLIC_BASE_URL) {
+  // 上报器一次性编好小图并直传 R2，只把对象键发回来。对象键落 Redis，URL
+  // 到读取/推送时才按当前部署的 R2_PUBLIC_BASE_URL 组，避免写入方烧死交付域名。
+  if (iconObjectKey && iconHash) {
     if (await hasStoredImage(iconObjectKey)) {
-      rememberDesktopIcon(iconHash, `${ASSET_URL_PREFIX}${iconObjectKey}`);
+      rememberDesktopIcon(iconHash, iconObjectKey);
     } else {
       // 对象不在了（比如桶被清空）：忘掉旧地址，否则下面会拿着它继续发 404
       telemetryState.desktopIconAssets.delete(iconHash);
     }
   }
 
-  const iconUrl = iconHash ? (telemetryState.desktopIconAssets.get(iconHash) ?? null) : null;
-  if (iconHash && iconUrl) rememberDesktopIcon(iconHash, iconUrl);
+  const storedIconObjectKey = iconHash
+    ? (telemetryState.desktopIconAssets.get(iconHash) ?? null)
+    : null;
+  if (iconHash && storedIconObjectKey) rememberDesktopIcon(iconHash, storedIconObjectKey);
   return {
     activity: {
       applicationName,
       bundleIdentifier,
-      iconUrl,
+      iconObjectKey: storedIconObjectKey,
       observedAt: milliseconds(row.observedAt, receivedAt),
     },
-    iconAvailable: iconHash == null || iconUrl != null,
+    iconAvailable: iconHash == null || storedIconObjectKey != null,
   };
 }
 
@@ -655,9 +646,16 @@ async function syncForRead(): Promise<Liveness> {
  * 那会拿写之前的 Redis 把刚更新的工作副本盖回去，而且和还在飞的那次写撞车。
  */
 function desktopPayload(liveness: Liveness): DesktopPayload {
+  const stored = telemetryState.activeModules.has("desktop") ? telemetryState.desktop : null;
+  const desktop: DesktopActivity | null = stored
+    ? (() => {
+        const { iconObjectKey, ...activity } = stored;
+        return { ...activity, iconUrl: iconObjectKey ? publicAssetUrl(iconObjectKey) : null };
+      })()
+    : null;
   return withPresence(
     {
-      desktop: telemetryState.activeModules.has("desktop") ? telemetryState.desktop : null,
+      desktop,
       receivedAt: telemetryState.activityReceivedAt || liveness.lastSeenAt || null,
     },
     liveness,

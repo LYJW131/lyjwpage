@@ -1,19 +1,19 @@
 import {
   clearNowPlaying,
   getCurrentItem,
-  getImageUrls,
+  getImageObjectKeys,
   getNowPlaying,
   getResume,
   resolveNowPlaying,
   setCurrentItem,
-  setImageUrls,
+  setImageObjectKeys,
   setNowPlaying,
   setResume,
   type EmbyNowPlaying,
   type ResolvedNowPlaying,
   type StoredWatchingItem,
 } from "@/lib/emby-store";
-import { ASSET_URL_PREFIX, hasStoredImage, IMAGE_OBJECT_KEY } from "@/lib/r2-assets";
+import { hasStoredImage, IMAGE_OBJECT_KEY, publicAssetUrl } from "@/lib/r2-assets";
 import { number, object, text } from "@/lib/json";
 import {
   fanout,
@@ -59,13 +59,15 @@ export type NowWatchingPayload = {
   current: WatchingItem | null;
 };
 
-/** 把存下来的条目里的图片键换成真地址。键还没对应上图就先空着 */
-function resolve(item: StoredWatchingItem, urls: Record<string, string>): WatchingItem {
+/** 把存下来的条目里的图片键换成当前部署的公开地址。键还没对应上图就先空着 */
+function resolve(item: StoredWatchingItem, objectKeys: Record<string, string>): WatchingItem {
   const { posterKey, backdropKey, ...rest } = item;
+  const posterObjectKey = posterKey ? objectKeys[posterKey] : null;
+  const backdropObjectKey = backdropKey ? objectKeys[backdropKey] : null;
   return {
     ...rest,
-    poster: (posterKey && urls[posterKey]) || null,
-    backdrop: (backdropKey && urls[backdropKey]) || null,
+    poster: posterObjectKey ? publicAssetUrl(posterObjectKey) : null,
+    backdrop: backdropObjectKey ? publicAssetUrl(backdropObjectKey) : null,
   };
 }
 
@@ -75,22 +77,22 @@ function resolve(item: StoredWatchingItem, urls: Record<string, string>): Watchi
  */
 export function watchingPayload(
   items: StoredWatchingItem[],
-  urls: Record<string, string>,
+  objectKeys: Record<string, string>,
   { limit = 8 } = {},
 ): WatchingPayload {
-  return { items: items.slice(0, limit).map((item) => resolve(item, urls)) };
+  return { items: items.slice(0, limit).map((item) => resolve(item, objectKeys)) };
 }
 
 export function nowWatchingPayload(
   live: ResolvedNowPlaying | null,
   current: StoredWatchingItem | null,
-  urls: Record<string, string>,
+  objectKeys: Record<string, string>,
 ): NowWatchingPayload {
   if (!live) return { nowPlaying: null, current: null };
   // 详情比 webhook 晚到一拍很正常（代理下一轮才把这一项推来），对不上就先不给
   return {
     nowPlaying: live,
-    current: current?.id === live.itemId ? resolve(current, urls) : null,
+    current: current?.id === live.itemId ? resolve(current, objectKeys) : null,
   };
 }
 
@@ -99,7 +101,7 @@ export async function getWatching(options: { limit?: number } = {}): Promise<Wat
   // 还没收到过推送。交给 statusRoute 变成降级信封，前端显示提示
   if (!stored) throw new Error("尚未收到 Emby 推送");
 
-  return watchingPayload(stored.items, await getImageUrls(), options);
+  return watchingPayload(stored.items, await getImageObjectKeys(), options);
 }
 
 /** 全靠推送，空闲时零上游请求 —— 没在播就只读一次自家存储 */
@@ -107,7 +109,11 @@ export async function getNowWatching(): Promise<NowWatchingPayload> {
   const live = await getNowPlaying();
   if (!live) return { nowPlaying: null, current: null };
 
-  return nowWatchingPayload(live, (await getCurrentItem())?.item ?? null, await getImageUrls());
+  return nowWatchingPayload(
+    live,
+    (await getCurrentItem())?.item ?? null,
+    await getImageObjectKeys(),
+  );
 }
 
 /* ── 以下是推送代理那一侧的入口 ──────────────────────────────── */
@@ -213,13 +219,13 @@ function normalize(item: ReportItem): StoredWatchingItem {
  * 接收上报器已经写入 R2 的对象键；站点不再接触图片字节。
  *
  * 映射由调用方读好传进来 —— 那条读要和续播列表、播放中那两条一起发车。
- * 返回的 `urls` 是就地改过的同一个对象。
+ * 返回的 `objectKeys` 是就地改过的同一个对象。
  */
 async function storeImages(
   value: unknown,
-  urls: Record<string, string>,
-): Promise<{ urls: Record<string, string>; stored: number }> {
-  if (!Array.isArray(value) || !value.length) return { urls, stored: 0 };
+  objectKeys: Record<string, string>,
+): Promise<{ objectKeys: Record<string, string>; stored: number }> {
+  if (!Array.isArray(value) || !value.length) return { objectKeys, stored: 0 };
 
   let stored = 0;
   for (const entry of value) {
@@ -232,23 +238,22 @@ async function storeImages(
     const objectKey = text(raw.objectKey);
     if (!objectKey || !IMAGE_OBJECT_KEY.test(objectKey)) continue;
     if (!(await hasStoredImage(objectKey))) continue;
-    const url = `${ASSET_URL_PREFIX}${objectKey}`;
     // 重新插入，让它排到末尾：淘汰的总是最久没被推过的那些
-    delete urls[key];
-    urls[key] = url;
+    delete objectKeys[key];
+    objectKeys[key] = objectKey;
     stored += 1;
   }
 
-  if (stored) await setImageUrls(urls);
-  return { urls, stored };
+  if (stored) await setImageObjectKeys(objectKeys);
+  return { objectKeys, stored };
 }
 
 /** 引用了却还没有图的键。回给代理，让它下一次把这些补上 */
-function missingKeys(items: StoredWatchingItem[], urls: Record<string, string>): string[] {
+function missingKeys(items: StoredWatchingItem[], objectKeys: Record<string, string>): string[] {
   const missing = new Set<string>();
   for (const item of items) {
     for (const key of [item.posterKey, item.backdropKey]) {
-      if (key && !urls[key]) missing.add(key);
+      if (key && !objectKeys[key]) missing.add(key);
     }
   }
   return [...missing];
@@ -278,12 +283,12 @@ export async function recordEmbyReport(body: unknown) {
    */
   const resume = object(root.resume);
   const [images, previousResume, storedCurrent] = await Promise.all([
-    getImageUrls(),
+    getImageObjectKeys(),
     getResume(),
     "playing" in root ? getCurrentItem() : null,
   ]);
 
-  const { urls, stored } = await storeImages(root.images, images);
+  const { objectKeys, stored } = await storeImages(root.images, images);
 
   let list: StoredWatchingItem[] | null = null;
   /**
@@ -314,7 +319,7 @@ export async function recordEmbyReport(body: unknown) {
         resolveNowPlaying(played.state),
         // 这次没带详情就用存着的那份；对不上会被 nowWatchingPayload 挡掉
         played.item ?? storedCurrent?.item ?? null,
-        urls,
+        objectKeys,
       ),
     });
     tags.push(NOW_WATCHING_TAG);
@@ -331,7 +336,7 @@ export async function recordEmbyReport(body: unknown) {
   const current = played?.item ?? null;
   const missing = missingKeys(
     [...(referenced ?? []), ...(current ? [current] : [])],
-    urls,
+    objectKeys,
   );
 
   /**
@@ -342,7 +347,7 @@ export async function recordEmbyReport(body: unknown) {
    * 封面）—— 不发的话得等下一轮轮询，而列表的轮询现在是 5 分钟一次。
    */
   if ((resumeChanged || stored > 0) && referenced) {
-    events.push({ type: "watching", payload: watchingPayload(referenced, urls) });
+    events.push({ type: "watching", payload: watchingPayload(referenced, objectKeys) });
     tags.push(WATCHING_TAG);
   }
 
