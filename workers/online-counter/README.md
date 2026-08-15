@@ -21,5 +21,5 @@ pnpm --filter @lyjwpage/online-counter dev
 pnpm --filter @lyjwpage/online-counter typecheck
 
 # 部署至 Cloudflare
-pnpm --filter @lyjwpage/online-counter deploy
+pnpm --filter @lyjwpage/online-counter run deploy
 ```

@@ -31,5 +31,5 @@ curl "https://am-motion-artwork.homepage.lyjw.llc/?url=https%3A%2F%2Fmusic.apple
 pnpm --filter @lyjwpage/am-motion-artwork dev
 
 # 部署上线
-pnpm --filter @lyjwpage/am-motion-artwork deploy
+pnpm --filter @lyjwpage/am-motion-artwork run deploy
 ```
