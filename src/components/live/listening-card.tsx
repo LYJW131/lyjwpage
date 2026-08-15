@@ -118,11 +118,20 @@ function PaletteBar({
   className?: string;
   style?: CSSProperties;
 }) {
-  // 暂停时调用方会把 motion 清掉。上层始终挂着 .rainbow-bar，内联背景一摘，
-  // CSS 那条通用彩虹就会露出来，再花 700ms 淡成灰 —— 看起来像跳成另一种彩条。
-  // 记住上一套颜色，隐去时立刻切 opacity，别让默认彩虹有机会上屏。
-  const lastMotion = useRef<string | undefined>(undefined);
-  if (motionGradient) lastMotion.current = motionGradient;
+  /**
+   * 暂停时调用方会把 motion 清掉。上层始终挂着 .rainbow-bar，内联背景一摘，
+   * CSS 那条通用彩虹就会露出来，再花 700ms 淡成灰 —— 看起来像跳成另一种彩条。
+   *
+   * callback ref 在 commit 阶段才写 DOM：有新颜色就替换，motion 清空时什么都
+   * 不做，让节点保留上一套背景并同时把 opacity 切到 0。这样行为和原来一致，
+   * 又不会在并发渲染期间读写 ref。
+   */
+  const rememberMotionGradient = useCallback(
+    (node: HTMLDivElement | null) => {
+      if (node && motionGradient) node.style.backgroundImage = motionGradient;
+    },
+    [motionGradient],
+  );
 
   return (
     <div className={cn("relative", className)} style={style} aria-hidden>
@@ -133,11 +142,11 @@ function PaletteBar({
       {/* rainbow-bar 不能跟着 opacity 一起切：CSS 动画从元素命中规则那刻起算，
           等淡入时才加就等于让上层的 drift 从头跑，和底层错开相位。 */}
       <div
+        ref={rememberMotionGradient}
         className={cn(
           "rainbow-bar absolute inset-0 transition-opacity ease-out",
           motionGradient ? "opacity-100 duration-700" : "opacity-0 duration-0",
         )}
-        style={{ backgroundImage: motionGradient ?? lastMotion.current }}
       />
     </div>
   );
