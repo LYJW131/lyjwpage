@@ -75,41 +75,49 @@ export function HeaderDesktop({
       displayedDesktop?.bundleIdentifier === incomingBundleIdentifier &&
       displayedDesktop?.applicationName === incomingApplicationName;
 
-    if (incomingOverride) {
+    const nextDesktop: DesktopActivity = {
+      applicationName: incomingApplicationName,
+      bundleIdentifier: incomingBundleIdentifier,
+      iconUrl: incomingIconUrl ?? "",
+      observedAt: incomingObservedAt,
+    };
+
+    // 自带覆盖图标或暂时没图时无需预加载，但也不能在 effect 本体同步 setState。
+    // 排进微任务既让名称在本帧交接，又给 cleanup 留出取消陈旧更新的机会。
+    if (incomingOverride || !incomingIconUrl) {
       if (sameApplication) return;
-      setDisplayedDesktop({
-        applicationName: incomingOverride.displayName,
-        bundleIdentifier: incomingBundleIdentifier,
-        iconUrl: incomingIconUrl ?? "",
-        observedAt: incomingObservedAt,
+      let cancelled = false;
+      queueMicrotask(() => {
+        if (!cancelled) setDisplayedDesktop(nextDesktop);
       });
-      return;
+      return () => {
+        cancelled = true;
+      };
     }
 
-    if (!incomingIconUrl) return;
     if (sameApplication && displayedDesktop?.iconUrl === incomingIconUrl) return;
 
     let cancelled = false;
     const preload = new window.Image();
     preload.decoding = "async";
-    const nextDesktop: DesktopActivity = {
-      applicationName: incomingApplicationName,
-      bundleIdentifier: incomingBundleIdentifier,
-      iconUrl: incomingIconUrl,
-      observedAt: incomingObservedAt,
-    };
 
     const commit = () => {
-      if (!cancelled && preload.naturalWidth > 0) setDisplayedDesktop(nextDesktop);
+      if (!cancelled) setDisplayedDesktop(nextDesktop);
     };
 
     preload.onload = commit;
+    preload.onerror = commit;
     preload.src = incomingIconUrl;
-    if (preload.complete && preload.naturalWidth > 0) commit();
+    if (preload.complete) commit();
+    // 缓存未命中时别把整行名字卡住等图；300ms 够内存缓存的图落地，
+    // 剩下的交给 <Image> 自己加载。
+    const timeout = window.setTimeout(commit, 300);
 
     return () => {
       cancelled = true;
       preload.onload = null;
+      preload.onerror = null;
+      window.clearTimeout(timeout);
     };
   }, [
     displayedDesktop?.applicationName,
@@ -123,7 +131,7 @@ export function HeaderDesktop({
     offline,
   ]);
 
-  // 首屏直接用服务端 fallback；之后仍等新图标预加载好再交接，避免切换时闪空。
+  // 首屏直接用服务端 fallback；之后名字立刻换，图标最多等 300ms 预加载。
   const desktop = displayedDesktop ?? (offline ? null : incomingDesktop);
   const activeOverride = findDesktopOverride(desktop?.bundleIdentifier);
   const locked = desktop?.bundleIdentifier === LOCK_SCREEN_BUNDLE_ID;

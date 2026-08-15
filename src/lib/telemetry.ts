@@ -20,7 +20,7 @@ import {
   playableHomePod,
   type StoredHomePod,
 } from "@/lib/homepod-store";
-import { hasStoredImage, IMAGE_OBJECT_KEY, publicAssetUrl } from "@/lib/r2-assets";
+import { IMAGE_OBJECT_KEY, publicAssetUrl } from "@/lib/r2-assets";
 import { number, object, text } from "@/lib/json";
 import {
   CHARGER_TAG,
@@ -254,13 +254,12 @@ async function normalizeDesktop(
 
   // 上报器一次性编好小图并直传 R2，只把对象键发回来。对象键落 Redis，URL
   // 到读取/推送时才按当前部署的 R2_PUBLIC_BASE_URL 组，避免写入方烧死交付域名。
+  //
+  // 站点不在名称上报的热路径里 HEAD：上报器在后台 resolver 里先查后写，
+  // 并按五分钟窗口复验，桶被清空时由它原地补回同一个内容地址。这里信任它
+  // 已确认的对象键，避免图片存储的一次慢响应拖住整次前台切换。
   if (iconObjectKey && iconHash) {
-    if (await hasStoredImage(iconObjectKey)) {
-      rememberDesktopIcon(iconHash, iconObjectKey);
-    } else {
-      // 对象不在了（比如桶被清空）：忘掉旧地址，否则下面会拿着它继续发 404
-      telemetryState.desktopIconAssets.delete(iconHash);
-    }
+    rememberDesktopIcon(iconHash, iconObjectKey);
   }
 
   const storedIconObjectKey = iconHash
@@ -527,16 +526,15 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
     if ("desktop" in modules) {
       const normalized = await normalizeDesktop(modules.desktop, receivedAt);
       desktopIconAvailable = normalized.iconAvailable;
-      // 图标引用失效时先让采集端补传，避免向浏览器发布一个短暂的无图中间状态。
-      if (desktopIconAvailable) {
-        telemetryState.desktop = normalized.activity;
-        telemetryState.activityReceivedAt = receivedAt;
-        patch.desktop = normalized.activity;
-        patch.desktopIconAssets = [...telemetryState.desktopIconAssets];
-        accepted += 1;
-        events.push({ type: "desktop", payload: desktopPayload(liveness) });
-        tags.push(DESKTOP_TAG);
-      }
+      // 名字立刻推。图标没就位也推 —— 卡着不发的话页头会停在上一个应用，
+      // 比短暂的占位符更糟。desktopIconAvailable 仍然回给上报器，让它补图。
+      telemetryState.desktop = normalized.activity;
+      telemetryState.activityReceivedAt = receivedAt;
+      patch.desktop = normalized.activity;
+      patch.desktopIconAssets = [...telemetryState.desktopIconAssets];
+      accepted += 1;
+      events.push({ type: "desktop", payload: desktopPayload(liveness) });
+      tags.push(DESKTOP_TAG);
     }
 
     if ("timezone" in modules) {
