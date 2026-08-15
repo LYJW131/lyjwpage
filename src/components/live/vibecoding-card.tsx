@@ -744,8 +744,13 @@ function QuotaProviders({ providers }: { providers: VibeCodingQuotaProvider[] })
   const sortedProviders = [...providers].sort(
     (left, right) => (right.usedPercent ?? -1) - (left.usedPercent ?? -1),
   );
+  /*
+   * 竖向不留内边距：每行自己的 py-3 就是间距。容器再加一层的话，首尾到边框是
+   * 16+12，行与行之间只有 12 —— 上边框和行间那几条分隔线是同一种线，眼睛会拿
+   * 它们互相比，差出来的那截看着就是没对齐。
+   */
   return (
-    <div className="border-t border-line px-4 py-4 md:px-5">
+    <div className="border-t border-line px-4 md:px-5">
       <div className="grid divide-y divide-line">
         {sortedProviders.map((provider) => {
           const usedPercent = provider.usedPercent;
