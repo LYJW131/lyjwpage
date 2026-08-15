@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 
+import { workerUrl } from "@/lib/worker-url";
+
 export type MotionArtworkResult = {
   hasMotion: boolean;
   videoUrl: string | null;
@@ -10,15 +12,16 @@ const motionCache = new Map<string, MotionArtworkResult>();
 const pendingRequests = new Map<string, Promise<MotionArtworkResult | null>>();
 
 /**
- * 动态封面解析服务的地址，部署在 `workers/am-motion-artwork`。
+ * 动态封面解析服务（workers/am-motion-artwork）的地址。解析在根路径上。
  *
- * 必须写成完整的 `process.env.XXX` 字面量：浏览器那侧没有 process，这一处是
- * 构建时按文本替换掉的，解构或动态取键都替换不到。
+ * 和另外两个 Worker 一样只配源，拼接规则见 lib/worker-url。必须写成完整的
+ * `process.env.XXX` 字面量：浏览器那侧没有 process，这一处是构建时按文本
+ * 替换掉的，解构或动态取键都替换不到。
  *
  * 没配就整体停用 —— 动态封面本来就是锦上添花，静态封面照常显示，不留写死的
- * 兜底地址（那等于把作者自己那台的地址塞进每一份部署）。
+ * 兜底地址（那等于把某一份部署的地址塞进所有部署）。
  */
-const MOTION_ENDPOINT = process.env.NEXT_PUBLIC_MOTION_ARTWORK_URL;
+const MOTION_ENDPOINT = workerUrl(process.env.NEXT_PUBLIC_MOTION_ARTWORK_URL, "/");
 
 /**
  * 校验是否为合法的 Apple Music 资源地址（专辑 / 歌单 / 歌曲），过滤搜索页与空链接。
