@@ -1,6 +1,5 @@
 import AntigravityColor from "@lobehub/icons/es/Antigravity/components/Color";
 import AntigravityText from "@lobehub/icons/es/Antigravity/components/Text";
-import ClaudeCodeColor from "@lobehub/icons/es/ClaudeCode/components/Color";
 import ClaudeCodeText from "@lobehub/icons/es/ClaudeCode/components/Text";
 import CodexColor from "@lobehub/icons/es/Codex/components/Color";
 import CodexText from "@lobehub/icons/es/Codex/components/Text";
@@ -8,6 +7,8 @@ import CursorIcon from "@lobehub/icons/es/Cursor/components/Mono";
 import CursorText from "@lobehub/icons/es/Cursor/components/Text";
 import { EyeOff } from "lucide-react";
 import type { ReactNode } from "react";
+
+import { ClaudeCodeMascot } from "@/components/live/claude-code-mascot";
 
 export const HIDDEN_DESKTOP_BUNDLE_ID =
   "com.liangyangjunwei.MacTelemetryHub.hidden";
@@ -93,7 +94,7 @@ export const DESKTOP_APP_OVERRIDES: readonly DesktopAppOverride[] = [
       );
     },
     renderIcon: ({ size = 24, className }) => (
-      <ClaudeCodeColor size={size} className={className} />
+      <ClaudeCodeMascot size={size} className={className} />
     ),
     renderText: ({ size = 20, className }) => (
       <ClaudeCodeText size={size} className={className} />
