@@ -37,7 +37,7 @@ import {
   type PendingEvent,
 } from "@/lib/live-events";
 import { pickNowListening, type NowListeningCandidate, type NowListeningSnapshot } from "@/lib/now-listening";
-import { mirrorKey } from "@/lib/redis";
+import { overlayHashKey } from "@/lib/redis";
 import {
   nextLiveness,
   readLiveness,
@@ -97,7 +97,7 @@ telemetryState.desktopIconAssets ??= new Map();
  * 从前写的是临时文件（$TMPDIR/lyjwpage-telemetry-v2/activity.json），全站只有
  * 这一处这么干 —— 于是清空 Redis 对它毫无作用，连重启 dev server 都清不掉，
  * 排查冷启动时会以为清干净了其实没有。现在和别的 store 一样落 Redis，
- * 「Redis 为主、进程内存为辅」的规则见 lib/redis 的 mirrorKey。
+ * 正在播等模块按字段 HSET，心跳不会把整包盖回去。规则见 lib/redis 的 overlayHashKey。
  *
  * 存活不在这份里：它自己占一个 key，见 lib/reporter-liveness。从前它搭这趟车
  * 持久化，于是同一件事有两个写入点，还得靠 restoreLiveness 把进程内存灌回去。
@@ -114,31 +114,54 @@ type PersistedTelemetry = {
   activeModules: string[];
 };
 
-const mirror = mirrorKey<PersistedTelemetry>(
+const mirror = overlayHashKey<PersistedTelemetry>(
+  ["telemetry", "fields"],
   ["telemetry", "state"],
   // 「有多新」看最后一次收到上报的时刻：每次心跳都会推进它
   (state) => state.telemetryReceivedAt,
 );
 
-async function persistTelemetryState(receivedAt: number) {
-  await mirror.put({
-    desktop: telemetryState.desktop,
-    desktopIconAssets: [...telemetryState.desktopIconAssets],
-    timezone: telemetryState.timezone,
-    music: telemetryState.music,
-    activityReceivedAt: telemetryState.activityReceivedAt,
-    timezoneReceivedAt: telemetryState.timezoneReceivedAt,
+type TelemetryPatch = {
+  desktop?: StoredDesktopActivity | null;
+  desktopIconAssets?: [string, string][];
+  timezone?: TimezoneActivity | null;
+  music?: LocalNowPlaying | null;
+};
+
+async function persistTelemetryState(
+  receivedAt: number,
+  patch: TelemetryPatch,
+  activeModules: string[],
+) {
+  const incoming: PersistedTelemetry = {
+    desktop: "desktop" in patch ? (patch.desktop ?? null) : telemetryState.desktop,
+    desktopIconAssets:
+      patch.desktopIconAssets ?? [...telemetryState.desktopIconAssets],
+    timezone: "timezone" in patch ? (patch.timezone ?? null) : telemetryState.timezone,
+    music: "music" in patch ? (patch.music ?? null) : telemetryState.music,
+    activityReceivedAt:
+      "desktop" in patch || "music" in patch
+        ? receivedAt
+        : telemetryState.activityReceivedAt,
+    timezoneReceivedAt: "timezone" in patch ? receivedAt : telemetryState.timezoneReceivedAt,
     telemetryReceivedAt: receivedAt,
-    activeModules: [...telemetryState.activeModules],
-  });
+    activeModules,
+  };
+
+  const fields: (keyof PersistedTelemetry & string)[] = ["telemetryReceivedAt", "activeModules"];
+  if ("desktop" in patch) fields.push("desktop", "desktopIconAssets", "activityReceivedAt");
+  if ("timezone" in patch) fields.push("timezone", "timezoneReceivedAt");
+  if ("music" in patch) fields.push("music", "activityReceivedAt");
+
+  await mirror.merge(incoming, fields);
 }
 
 /**
  * 从持久层同步一次工作副本。每个入口都先调它。
  *
  * 不是「只在启动时 hydrate 一次」—— 那正是这轮要消灭的东西：读一次就再也不问，
- * 等于让进程内存变成第二份真相，清空 Redis 也翻不动它。mirrorKey 自己会处理
- * 「Redis 不可达就用内存副本」，所以每次问的代价只是一次 GET。
+ * 等于让进程内存变成第二份真相，清空 Redis 也翻不动它。overlayHashKey 自己会处理
+ * 「Redis 不可达就用内存副本」，所以每次问的代价只是一次 pipeline。
  */
 async function syncTelemetryState() {
   const stored = await mirror.get();
@@ -390,6 +413,7 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
 
   let accepted = 0;
   let desktopIconAvailable: boolean | undefined;
+  const patch: TelemetryPatch = {};
 
   /**
    * 存活第一个发车，而且排在模块处理**外面**。
@@ -507,6 +531,8 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
       if (desktopIconAvailable) {
         telemetryState.desktop = normalized.activity;
         telemetryState.activityReceivedAt = receivedAt;
+        patch.desktop = normalized.activity;
+        patch.desktopIconAssets = [...telemetryState.desktopIconAssets];
         accepted += 1;
         events.push({ type: "desktop", payload: desktopPayload(liveness) });
         tags.push(DESKTOP_TAG);
@@ -516,6 +542,7 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
     if ("timezone" in modules) {
       telemetryState.timezone = normalizeTimezone(modules.timezone, receivedAt);
       telemetryState.timezoneReceivedAt = receivedAt;
+      patch.timezone = telemetryState.timezone;
       // 没有对应的推送事件（时区一年变两次，不值得为它开一路广播），
       // 但首屏那份缓存得知道自己过期了 —— 失效是白给的，广播才是按人头付钱的
       tags.push(TIMEZONE_TAG);
@@ -523,15 +550,22 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
     }
 
     if ("appleMusic" in modules) {
-      telemetryState.music = await normalizeMusic(modules.appleMusic, receivedAt);
+      const music = await normalizeMusic(modules.appleMusic, receivedAt);
+      telemetryState.music = music;
       telemetryState.activityReceivedAt = receivedAt;
+      patch.music = music;
       accepted += 1;
       /**
        * 这一份还要现算：曲目链接和封面要查一次 Apple 目录。整个交给 fanout 和
        * 写库并行 —— 慢的是那次目录查询，等它的同时写库正好也在跑。
        * HomePod 那份快照上面已经发车了（另一个 key，这次上报没碰它）。
        */
-      events.push(listeningEvent(liveness, homePod ?? getHomePodSnapshot()));
+      events.push(
+        listeningEvent(liveness, homePod ?? getHomePodSnapshot(), {
+          music,
+          receivedAt,
+        }),
+      );
       urgentTags.push(NOW_LISTENING_TAG);
     }
 
@@ -598,8 +632,9 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
     }
 
     // 整封都收下了才落状态。中途抛出去时这份不写 —— 从前也是这样，
-    // persistTelemetryState 就排在所有模块之后。存活不同，见上面
-    writes.push(persistTelemetryState(receivedAt));
+    // persistTelemetryState 就排在所有模块之后。存活不同，见上面。
+    // 只 HSET 这封碰过的字段：心跳和换歌并发时，整包 SET 会把 Redis 里的新歌盖回上一首。
+    writes.push(persistTelemetryState(receivedAt, patch, nextActiveModules));
   } finally {
     /**
      * 只在模块真的来了才推。
@@ -703,20 +738,22 @@ async function decorateCandidate(
  * pickNowListening 里现算。
  */
 /** 工作副本 + 一份 HomePod 快照 → 两个查好链接的候选。谁都不再回 Redis 取 */
-async function snapshotFrom(homePodStored: StoredHomePod | null): Promise<NowListeningSnapshot> {
+async function snapshotFrom(
+  homePodStored: StoredHomePod | null,
+  mac: { music: LocalNowPlaying | null; receivedAt: number } = {
+    music: telemetryState.music,
+    receivedAt: telemetryState.activityReceivedAt,
+  },
+): Promise<NowListeningSnapshot> {
   const musicEnabled = telemetryState.activeModules.has("appleMusic");
-  const [mac, homePod] = await Promise.all([
-    musicEnabled
-      ? decorateCandidate(telemetryState.music, telemetryState.activityReceivedAt)
-      : null,
-    homePodStored
-      ? decorateCandidate(homePodStored.music, homePodStored.receivedAt)
-      : null,
+  const [macCandidate, homePod] = await Promise.all([
+    musicEnabled ? decorateCandidate(mac.music, mac.receivedAt) : null,
+    homePodStored ? decorateCandidate(homePodStored.music, homePodStored.receivedAt) : null,
   ]);
   return {
-    mac,
+    mac: macCandidate,
     homePod,
-    macReceivedAt: telemetryState.activityReceivedAt,
+    macReceivedAt: mac.receivedAt,
   };
 }
 
@@ -765,10 +802,11 @@ export async function publishPresence() {
 async function listeningEvent(
   liveness: Liveness,
   homePod: Promise<StoredHomePod | null>,
+  mac?: { music: LocalNowPlaying | null; receivedAt: number },
 ): Promise<LiveEvent> {
   return {
     type: "listening-now",
-    payload: pickNowListening(await snapshotFrom(await homePod), liveness),
+    payload: pickNowListening(await snapshotFrom(await homePod, mac), liveness),
   };
 }
 
