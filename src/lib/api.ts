@@ -59,9 +59,9 @@ function statusJson<T>(envelope: StatusResponse<T>): NextResponse<StatusResponse
 }
 
 /**
- * 活路径：每次进函数。目前没有路由走整段现算；listening/now 的候选走
- * `'use cache'`，来源选择和 expiresInMs 在缓存外现算。connection() 现算的
- * 写法还留着，以免以后又有不能冻的整段取数。
+ * 活路径：每次进函数。listening/now 的候选也现读 Redis（Mac / HomePod 分打
+ * 两个源站，`'use cache'` 的 tag 过不了海）。来源选择和 expiresInMs 在 overlay
+ * 里现算。connection() 现算的写法还留着，以免以后又有不能冻的整段取数。
  *
  * cacheComponents 下没有 force-dynamic 可写了，「每次请求都得跑一遍」只能由
  * connection() 明说。少了它 Next 会试着在构建期把这些 GET 预渲染成静态响应，
@@ -77,9 +77,9 @@ export async function statusRoute<T>(
 }
 
 /**
- * 快照走 `'use cache'`（见 lib/status-cache），函数仍然每次进 —— connection()
- * 防止构建期把 GET 烤死。overlay 在缓存外跑，给存活这种心跳更新、不能冻进
- * 快照的字段现盖一层。
+ * 多数快照走 `'use cache'`（见 lib/status-cache）；listening/now 例外，load
+ * 自己现读 Redis。函数仍然每次进 —— connection() 防止构建期把 GET 烤死。
+ * overlay 在缓存外跑，给存活这种心跳更新、不能冻进快照的字段现盖一层。
  */
 export async function statusCachedRoute<T>(
   load: () => Promise<StatusResponse<T>>,

@@ -23,9 +23,10 @@ import { getVibeCodingSnapshot } from "@/lib/vibecoding";
 
 /**
  * 首屏那八份数据的缓存层。状态路由（时区除外，它只给首屏）除 listening/now
- * 的现选 overlay 外也读这里。
+ * 外也读这里。listening/now 的候选每次直读 Redis：上报分打 Vercel / EdgeOne，
+ * tag 过不了海；来源选择和 expiresInMs 仍在路由 overlay 里现算。
  *
- * listening/now 的两个候选进缓存；来源选择和 expiresInMs 在路由里现算。
+ * 首屏 hero 仍走下面的 cachedNowListening，换歌时 expireStatus 会通知对端刷 tag。
  * Mac 存活（lastSeenAt / declaredOffline）以及充电头的 pushedAt 也在路由里
  * 现盖一层，因为心跳不触发 tag 失效。时区不看存活，只在 timezone 模块上报时失效。
  *
@@ -131,7 +132,7 @@ export async function cachedListening() {
   return statusEnvelope(getRecentlyPlayed);
 }
 
-/** 状态端点用的两个候选。和首屏那份同 tag，换歌时一起失效。 */
+/** 首屏用的两个候选。`/api/status/listening/now` 不走这里，见该路由的注释。 */
 export async function cachedNowListeningSnapshot() {
   "use cache";
   cacheLife(STATUS_LIFE);

@@ -273,7 +273,12 @@ function hashFieldValues<T extends object>(
  * 心跳会把 Redis 里刚写进去的正在播盖回上一首 —— 推送用的是内存，刷新 /now
  * 读的是 Redis，于是页面先翻到新歌、一刷新又回去。
  *
- * 旧的整包 JSON（`blobParts`）只读不写，用来补齐还没按字段落过的模块。
+ * 整包 JSON（`blobParts`）在每次字段写入后按合并结果再 SET 一份：国内
+ * EdgeOne 和 Vercel 共用 Redis，但上报只打其中一个源站。还在 GET 旧钥匙的
+ * 实例、以及 hash 里还没出现过的模块，都靠这份补齐。并发安全仍在 hash 上。
+ *
+ * 读不用 MULTI：上报在另一个源站，这边只读；部分 Redis 代理对事务不友好，
+ * 整段失败会退回空的进程内存，看起来像「读到上一首」。
  */
 export function overlayHashKey<T extends object>(
   hashParts: string[],
@@ -296,7 +301,7 @@ export function overlayHashKey<T extends object>(
     async merge(incoming: T, fields: readonly (keyof T & string)[]): Promise<void> {
       state.persisted = await tellRedis(async (redis) => {
         const rows = await redis
-          .multi()
+          .pipeline()
           .hset(hashK, hashFieldValues(incoming, fields))
           .hgetall(hashK)
           .get(blobK)
@@ -307,17 +312,19 @@ export function overlayHashKey<T extends object>(
         if (!hashRow || !blobRow) throw new Error("telemetry hash merge incomplete");
         if (hashRow[0]) throw hashRow[0];
         if (blobRow[0]) throw blobRow[0];
-        state.memory = overlayHashBlob<T>(
+        const merged = overlayHashBlob<T>(
           hashRow[1] as Record<string, string>,
           blobRow[1] as string | null,
         );
+        state.memory = merged;
+        if (merged) await redis.set(blobK, JSON.stringify(merged));
       });
       if (!state.persisted) state.memory = patchHash(state.memory, incoming, fields);
     },
 
     async get(): Promise<T | null> {
       const answered = await askRedis(async (redis) => {
-        const rows = await redis.multi().hgetall(hashK).get(blobK).exec();
+        const rows = await redis.pipeline().hgetall(hashK).get(blobK).exec();
         if (!rows) return { hash: {} as Record<string, string>, blob: null as string | null };
         const hashRow = rows[0];
         const blobRow = rows[1];

@@ -781,8 +781,8 @@ export async function publishPresence() {
   await publish({ type: "presence", payload: null });
   // 浏览器那侧收到 presence 后重取的是 PRESENCE_PATHS 那三份（desktop /
   // listening-now / charger）。时区不看存活，上下线不用刷它的首屏缓存。
-  expireStatus(DESKTOP_TAG);
-  expireStatusImmediately(NOW_LISTENING_TAG, CHARGER_TAG);
+  await expireStatus(DESKTOP_TAG);
+  await expireStatusImmediately(NOW_LISTENING_TAG, CHARGER_TAG);
 }
 
 /**
