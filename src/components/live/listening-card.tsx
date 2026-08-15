@@ -99,7 +99,7 @@ function paletteGradient(palette: string[]): string | undefined {
  *
  * 动态封面的取色比静态封面晚到几百毫秒，而 `background-image` 不参与过渡 ——
  * 直接换那一下颜色是「啪」地跳过去的。所以底层始终画静态封面那套
- * （没有调色板就退回兜底纯色），动态那套取到了再淡进来，时长和封面的淡入对齐。
+ * （没有调色板就退回绿色或暂停时的灰色），动态那套取到了再淡进来。
  *
  * 上层从一开始就挂着、只是 opacity 0：两层的 rainbow-drift 得同时起步才同相。
  * 等要用时才挂载的话新层动画从头跑，和底层错开，交叉淡入的中途会看出两道颜色
@@ -516,7 +516,7 @@ type Hero = {
   link: string | null;
   label: string;
   playing: boolean;
-  /** 封面取色，只有历史条目那一支用得上 */
+  /** 封面取色。实时曲目没有自己的，能对上最近播放里同一张就借用。 */
   palette: string[];
   /** 整张专辑 / 歌单的总时长。实时那一支不用（它显示的是曲目进度） */
   durationMs: number | null;
@@ -604,7 +604,8 @@ export function ListeningCard({
         link: live?.link ?? null,
         label: localTrack!.state === "playing" ? "播放中" : "已暂停",
         playing: localTrack!.state === "playing",
-        palette: [],
+        palette:
+          data?.items.find((item) => item.id === live?.id)?.palette ?? [],
         durationMs: null,
         track: localTrack,
       }
