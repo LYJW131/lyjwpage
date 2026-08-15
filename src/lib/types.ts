@@ -228,7 +228,6 @@ export type ChargerPayload = ChargerStatus & {
 } & ReporterPresence;
 
 export type VibeCodingAgentId = "claude" | "codex";
-export type VibeCodingQuotaProviderId = "cursor" | "opencodego" | "antigravity";
 
 export type VibeCodingDay = {
   /** CodexBar 按本机时区生成的 YYYY-MM-DD */
@@ -302,10 +301,23 @@ export type VibeCodingAgent = {
   last30DaysTokens: number;
 };
 
-/** 只展示总限额的附加 CodexBar provider，不携带 Token、费用或模型明细。 */
+/**
+ * 只展示总限额的附加 CodexBar provider，不携带 Token、费用或模型明细。
+ *
+ * 名单在上报器那边，站点这边没有：它配了几个就显示几个。名字和图标也跟着数据
+ * 一起来 —— 从前站点自己存一份 id→展示名的映射，加一个 provider 要两边一起改，
+ * 而站点漏改的表现是「上报器在传、页面上没有」，不报错也看不出来。
+ */
 export type VibeCodingQuotaProvider = {
-  id: VibeCodingQuotaProviderId;
+  /** CodexBar 的 provider 名，如 "opencodego"；站点只拿它当 React key */
+  id: string;
+  /** 上报器给的展示名，如 "OpenCode Go" */
   label: string;
+  /**
+   * 品牌图标的键，如 "opencode"。和 id 不是一回事：id 是 CLI 里那个 provider 的
+   * 名字，这个是牌子。站点认不出来的键退回首字母，不是整行不渲染。
+   */
+  icon: string;
   /** 0–100；本轮和历史都没有成功值时为 null。 */
   usedPercent: number | null;
   limitsError: string | null;

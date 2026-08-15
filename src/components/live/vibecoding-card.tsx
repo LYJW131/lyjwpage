@@ -121,20 +121,40 @@ function OpenCodeProviderMark({ className }: { className?: string }) {
   );
 }
 
+/**
+ * 附加 provider 的品牌图标，按上报器给的 `icon` 键取 —— 不是按 `id`：
+ * CodexBar 那个 provider 叫 `opencodego`，牌子叫 OpenCode。
+ *
+ * 认不出来的键退回首字母。上报器新配一个 provider 时页面上立刻就该有一行，
+ * 图标是后补的事，不该因为少一个矢量就让那行的限额也跟着看不见。
+ */
 function QuotaProviderMark({
-  providerId,
+  icon,
+  label,
   className,
 }: {
-  providerId: VibeCodingQuotaProvider["id"];
+  icon: VibeCodingQuotaProvider["icon"];
+  label: string;
   className?: string;
 }) {
-  switch (providerId) {
+  switch (icon) {
     case "cursor":
       return <CursorProviderMark className={className} />;
-    case "opencodego":
+    case "opencode":
       return <OpenCodeProviderMark className={className} />;
     case "antigravity":
       return <AntigravityColor size={20} className={className} />;
+    default:
+      return (
+        <span
+          className={cn(
+            "flex items-center justify-center text-xs font-medium text-muted-foreground",
+            className,
+          )}
+        >
+          {label.slice(0, 1).toUpperCase()}
+        </span>
+      );
   }
 }
 
@@ -738,7 +758,11 @@ function QuotaProviders({ providers }: { providers: VibeCodingQuotaProvider[] })
             >
               <div className="flex min-w-0 items-center gap-2">
                 <span className="flex size-5 shrink-0 items-center justify-center" aria-hidden>
-                  <QuotaProviderMark providerId={provider.id} className="size-5" />
+                  <QuotaProviderMark
+                    icon={provider.icon}
+                    label={provider.label}
+                    className="size-5"
+                  />
                 </span>
                 <span className="truncate text-sm font-medium">{provider.label}</span>
               </div>
