@@ -52,7 +52,7 @@ pnpm --filter @lyjwpage/live-push dev
 pnpm --filter @lyjwpage/live-push typecheck
 
 # 部署至 Cloudflare
-pnpm --filter @lyjwpage/live-push deploy
+pnpm --filter @lyjwpage/live-push run deploy
 ```
 
 ## 休眠
