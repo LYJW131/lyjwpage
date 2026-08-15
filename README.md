@@ -30,6 +30,26 @@ pnpm dev
 
 开发服务器固定使用 `http://localhost:3211`，避开已占用的 3210。
 
+## 部署在哪
+
+同一个仓库三份部署，共用同一个 Redis：
+
+| 域名 | 平台 | 环境 | 说明 |
+| --- | --- | --- | --- |
+| `lyjw.me` | Vercel | 生产 | 主站 |
+| `lyjw131.com` | EdgeOne | 生产 | 国内 CDN |
+| `dev.lyjw.me` | Vercel | 预览 | 跟 `dev` 分支，开着 Vercel Authentication |
+
+分不清哪个是哪个时看响应头：Vercel 是 `server: Vercel`，EdgeOne 是 `Server: edgeone-pages`。
+
+两份生产各有一套自己的 Next 缓存，`revalidateTag` 只打得到本进程 —— 共用 Redis 也
+刷不到对面。所以两边靠 `STATUS_CACHE_PEERS` 互相通知失效，各自填对面那个源，
+不在代码里写死谁通知谁（见 `lib/live-events.ts`）。
+
+实时推送、在线人数、动态封面各是一个独立的 Cloudflare Worker（都在 `workers/` 下），
+三份部署共用同一组 Worker。**Worker 的地址一律走环境变量**，源码里不写死 ——
+否则任何人 clone 这个仓库跑起来都会去打这边的 Worker。
+
 ## 状态是怎么接的
 
 所有凭据只存在于服务端，浏览器只看得到 `/api/status/*` 返回的规范化数据。这些路由共用 `src/lib/api.ts` 的信封：上游挂掉时返回 `{ ok: false, error }` 而不是 5xx，让某一路数据源离线不至于把整页 SWR 打成错误态。

@@ -9,7 +9,16 @@ export type MotionArtworkResult = {
 const motionCache = new Map<string, MotionArtworkResult>();
 const pendingRequests = new Map<string, Promise<MotionArtworkResult | null>>();
 
-const MOTION_ENDPOINT = "https://am-motion-artwork.homepage.lyjw.llc/";
+/**
+ * 动态封面解析服务的地址，部署在 `workers/am-motion-artwork`。
+ *
+ * 必须写成完整的 `process.env.XXX` 字面量：浏览器那侧没有 process，这一处是
+ * 构建时按文本替换掉的，解构或动态取键都替换不到。
+ *
+ * 没配就整体停用 —— 动态封面本来就是锦上添花，静态封面照常显示，不留写死的
+ * 兜底地址（那等于把作者自己那台的地址塞进每一份部署）。
+ */
+const MOTION_ENDPOINT = process.env.NEXT_PUBLIC_MOTION_ARTWORK_URL;
 
 /**
  * 校验是否为合法的 Apple Music 资源地址（专辑 / 歌单 / 歌曲），过滤搜索页与空链接。
@@ -25,6 +34,7 @@ function isValidAppleMusicUrl(url: string | null | undefined): url is string {
 export async function fetchMotionArtwork(
   url: string,
 ): Promise<MotionArtworkResult | null> {
+  if (!MOTION_ENDPOINT) return null;
   if (!isValidAppleMusicUrl(url)) return null;
 
   if (motionCache.has(url)) {
