@@ -54,8 +54,8 @@ const MUSIC_REFRESH_MS = 60_000;
  * 这件事 CSS 自己就能算，不需要 JS 去量。
  */
 const VISIBLE_ROWS = 4;
-/** 单行的最小高度：36px 封面 + 上下留白，比这个再矮就挤了 */
-const MIN_ROW_HEIGHT_PX = 48;
+/** 单行的最小高度：44px 封面 + 上下留白，比这个再矮就挤了 */
+const MIN_ROW_HEIGHT_PX = 56;
 
 /**
  * 专辑 / 歌单总时长。超过一小时给 h:mm:ss，否则 m:ss。
@@ -118,6 +118,12 @@ function PaletteBar({
   className?: string;
   style?: CSSProperties;
 }) {
+  // 暂停时调用方会把 motion 清掉。上层始终挂着 .rainbow-bar，内联背景一摘，
+  // CSS 那条通用彩虹就会露出来，再花 700ms 淡成灰 —— 看起来像跳成另一种彩条。
+  // 记住上一套颜色，隐去时立刻切 opacity，别让默认彩虹有机会上屏。
+  const lastMotion = useRef<string | undefined>(undefined);
+  if (motionGradient) lastMotion.current = motionGradient;
+
   return (
     <div className={cn("relative", className)} style={style} aria-hidden>
       <div
@@ -128,10 +134,10 @@ function PaletteBar({
           等淡入时才加就等于让上层的 drift 从头跑，和底层错开相位。 */}
       <div
         className={cn(
-          "rainbow-bar absolute inset-0 transition-opacity duration-700 ease-out",
-          motionGradient ? "opacity-100" : "opacity-0",
+          "rainbow-bar absolute inset-0 transition-opacity ease-out",
+          motionGradient ? "opacity-100 duration-700" : "opacity-0 duration-0",
         )}
-        style={{ backgroundImage: motionGradient }}
+        style={{ backgroundImage: motionGradient ?? lastMotion.current }}
       />
     </div>
   );
@@ -331,13 +337,13 @@ function HeroProgress({
 function TrackRow({ track }: { track: ListeningItem }) {
   const content = (
     <>
-      <div className="relative size-9 shrink-0 overflow-hidden rounded-sm border border-line bg-muted">
+      <div className="relative size-11 shrink-0 overflow-hidden rounded-sm border border-line bg-muted">
         {track.artwork && (
           <Image
-            src={appleArtwork(track.artwork, 36 * ARTWORK_SCALE)!}
+            src={appleArtwork(track.artwork, 44 * ARTWORK_SCALE)!}
             alt=""
             fill
-            sizes="36px"
+            sizes="44px"
             className="object-cover"
             unoptimized={!needsOptimizing(track.artwork)}
           />
@@ -386,7 +392,7 @@ function dedupeListeningItems(items: ListeningItem[], currentId: string | null) 
 function SkeletonRow() {
   return (
     <div className="flex h-full items-center gap-2.5 px-2">
-      <div className="size-9 shrink-0 animate-pulse rounded-sm bg-muted" />
+      <div className="size-11 shrink-0 animate-pulse rounded-sm bg-muted" />
       <div className="min-w-0 flex-1 space-y-1.5">
         <div className="h-3 w-2/5 animate-pulse rounded bg-muted" />
         <div className="h-2.5 w-1/4 animate-pulse rounded bg-muted" />
