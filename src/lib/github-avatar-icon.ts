@@ -50,3 +50,10 @@ export async function githubAvatarPng(px: number): Promise<Uint8Array> {
     return new Uint8Array(fallback);
   }
 }
+
+/** DOM 的 BodyInit 不认 `Uint8Array<ArrayBufferLike>`，拷成独立 ArrayBuffer 再交给 Response。 */
+export function pngResponse(png: Uint8Array, contentType: string): Response {
+  const body = new ArrayBuffer(png.byteLength);
+  new Uint8Array(body).set(png);
+  return new Response(body, { headers: { "Content-Type": contentType } });
+}
