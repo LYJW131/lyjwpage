@@ -4,12 +4,21 @@ import { useEffect } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import type { ScopedMutator } from "swr";
 
+import { workerUrl } from "@/lib/worker-url";
+
 export const ONLINE_COUNT_KEY = "worker:online-count";
 export const ONLINE_CONNECTED_KEY = "worker:online-connected";
 
+/** 浏览器连的端点。那个 Worker 还开着 /count，但站点只用长连接这条 */
+const WS_PATH = "/ws";
+
+/**
+ * 只配 Worker 的源，路径在这儿拼 —— 和 live-push、动态封面那两个变量一个形状，
+ * 规则见 lib/worker-url。必须写成完整的 `process.env.XXX` 字面量，浏览器那侧
+ * 是构建时按文本替换的。
+ */
 function getOnlineWsUrl(): string | null {
-  const url = process.env.NEXT_PUBLIC_ONLINE_WS_URL?.trim();
-  return url || null;
+  return workerUrl(process.env.NEXT_PUBLIC_ONLINE_COUNTER_URL, WS_PATH, { websocket: true });
 }
 
 let socket: WebSocket | null = null;

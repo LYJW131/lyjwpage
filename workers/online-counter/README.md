@@ -5,7 +5,9 @@
 ## 部署与域名
 
 1. 复制 `wrangler.toml.example` 为 `wrangler.toml`，按需配置你的自定义域名路由。
-2. 部署成功后，将生成的 WebSocket 端点地址（如 `wss://online.example.com/ws`）填入站点的 `NEXT_PUBLIC_ONLINE_WS_URL` 环境变量。
+2. 部署成功后，把 Worker 的**源**（如 `https://online.example.com`）填入站点的
+   `NEXT_PUBLIC_ONLINE_COUNTER_URL`。路径由站点自己拼 —— 浏览器连 `/ws`，
+   `/count` 留给调试。三个 Worker 的地址变量都是这个形状。
 
 ## 环境变量
 
