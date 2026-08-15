@@ -9,17 +9,11 @@ import type {
   VibeCodingPayload,
   VibeCodingPlan,
   VibeCodingQuotaProvider,
-  VibeCodingQuotaProviderId,
   VibeCodingSessionsPayload,
   VibeCodingTotals,
 } from "@/lib/types";
 
 const AGENTS: VibeCodingAgentId[] = ["claude", "codex"];
-const QUOTA_PROVIDERS: Array<{ id: VibeCodingQuotaProviderId; label: string }> = [
-  { id: "cursor", label: "Cursor" },
-  { id: "opencodego", label: "OpenCode Go" },
-  { id: "antigravity", label: "Antigravity" },
-];
 
 type RawAgentDay = {
   agent?: unknown;
@@ -86,11 +80,8 @@ type StoredLimits = {
     limits: VibeCodingLimit[];
     limitsError: string | null;
   }>;
-  quotaProviders: Array<{
-    id: VibeCodingQuotaProviderId;
-    usedPercent: number | null;
-    limitsError: string | null;
-  }>;
+  /** 上报器配了几个就是几个；名字和图标也是它给的，站点这边没有名单 */
+  quotaProviders: VibeCodingQuotaProvider[];
 };
 
 /** `ccusage session` 出的此刻状态。 */
@@ -207,6 +198,9 @@ function normalizeUsage(input: unknown): StoredUsage | null {
  * 这份**不**要求两个 agent 齐全：一边取到、一边没取到是常态，缺的那边按
  * 「没配」渲染。整条命令全挂时上报器仍会发一份只有 limitsError 的载荷 ——
  * 空 limits 加上错误原因才是「配了但取不到」。
+ *
+ * 附加 provider 同理，而且连名单都不校验：上报器发几个就收几个，名字和图标
+ * 一并收下。这边只逐行做类型收敛 —— 三样缺一的行落到页面上是一条没主的进度条。
  */
 function normalizeLimitsReport(input: unknown): StoredLimits | null {
   const root = object(input);
@@ -222,18 +216,26 @@ function normalizeLimitsReport(input: unknown): StoredLimits | null {
         limitsError: text(row.limitsError),
       }];
     }),
-    quotaProviders: QUOTA_PROVIDERS.flatMap(({ id }): StoredLimits["quotaProviders"] => {
-      const row = rowById(root.quotaProviders, id);
-      if (!row) return [];
-      return [{
-        id,
-        // 夹到 0–100：进度条宽度直接用它
-        usedPercent: typeof row.usedPercent === "number" && Number.isFinite(row.usedPercent)
-          ? Math.min(100, Math.max(0, row.usedPercent))
-          : null,
-        limitsError: text(row.limitsError),
-      }];
-    }),
+    quotaProviders: (Array.isArray(root.quotaProviders) ? root.quotaProviders : []).flatMap(
+      (value): VibeCodingQuotaProvider[] => {
+        const row = object(value);
+        if (!row) return [];
+        const id = text(row.id);
+        const label = text(row.label);
+        const icon = text(row.icon);
+        if (!id || !label || !icon) return [];
+        return [{
+          id,
+          label,
+          icon,
+          // 夹到 0–100：进度条宽度直接用它
+          usedPercent: typeof row.usedPercent === "number" && Number.isFinite(row.usedPercent)
+            ? Math.min(100, Math.max(0, row.usedPercent))
+            : null,
+          limitsError: text(row.limitsError),
+        }];
+      },
+    ),
   };
 }
 
@@ -416,10 +418,12 @@ export async function getVibeCodingSnapshot(): Promise<VibeCodingPayload> {
     };
   });
 
-  const quotaProviders: VibeCodingQuotaProvider[] = QUOTA_PROVIDERS.flatMap(({ id, label }) => {
-    const row = limitsState?.payload.quotaProviders.find((provider) => provider.id === id);
-    return row ? [{ id, label, usedPercent: row.usedPercent, limitsError: row.limitsError }] : [];
-  });
+  // Redis 里可能还躺着上一版形状的行 —— 站点先上线、Mac app 还没重启的那几个钟头。
+  // 缺名字或图标的直接丢掉：渲染出一条没主的进度条比少一行难看得多，
+  // 而下一次限额推送就把它们补回来了。
+  const quotaProviders: VibeCodingQuotaProvider[] = (
+    limitsState?.payload.quotaProviders ?? []
+  ).filter((provider) => provider.label && provider.icon);
 
   return withPresence(
     {
