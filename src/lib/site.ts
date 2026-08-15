@@ -16,7 +16,7 @@ export const site = {
   repo: "https://github.com/LYJW131/lyjwpage",
   githubLogin: "LYJW131",
   github: "https://github.com/LYJW131",
-  /** 走 next/image 优化器回源，和自建歌单封面同一条路 */
+  /** 走 next/image 优化器回源，和自建歌单封面同一条路。页签图标在构建期另拉一份，见 icon.tsx */
   githubAvatar: "https://avatars.githubusercontent.com/LYJW131?s=192",
   email: "admin@lyjw.me",
 
