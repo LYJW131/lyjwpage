@@ -1,6 +1,8 @@
 "use client";
 
-import { Anthropic, Antigravity, OpenAI } from "@lobehub/icons";
+import AnthropicIcon from "@lobehub/icons/es/Anthropic/components/Mono";
+import AntigravityColor from "@lobehub/icons/es/Antigravity/components/Color";
+import OpenAIIcon from "@lobehub/icons/es/OpenAI/components/Mono";
 import NumberFlow, { NumberFlowGroup } from "@number-flow/react";
 import { useEffect, useState } from "react";
 
@@ -132,15 +134,15 @@ function QuotaProviderMark({
     case "opencodego":
       return <OpenCodeProviderMark className={className} />;
     case "antigravity":
-      return <Antigravity.Color size={20} className={className} />;
+      return <AntigravityColor size={20} className={className} />;
   }
 }
 
 function ModelProviderIcon({ model }: { model: string }) {
   const mark = model.toLowerCase().startsWith("claude")
-    ? <Anthropic size={16} />
+    ? <AnthropicIcon size={16} />
     : /^(gpt|codex|chatgpt|o\d)/i.test(model)
-      ? <OpenAI size={16} />
+      ? <OpenAIIcon size={16} />
       : null;
   if (!mark) return null;
   return (

@@ -1,4 +1,4 @@
-import { ClaudeCode } from "@lobehub/icons";
+import ClaudeCodeColor from "@lobehub/icons/es/ClaudeCode/components/Color";
 
 import { cn } from "@/lib/utils";
 
@@ -31,7 +31,7 @@ export function ClaudeSpinner({
           <path fill="currentColor" d={CLAUDE_BLOOM_MARK} />
         </svg>
       ) : (
-        <ClaudeCode.Color size={16} />
+        <ClaudeCodeColor size={16} />
       )}
     </span>
   );

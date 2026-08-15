@@ -1,9 +1,11 @@
-import {
-  Antigravity,
-  ClaudeCode,
-  Codex,
-  Cursor,
-} from "@lobehub/icons";
+import AntigravityColor from "@lobehub/icons/es/Antigravity/components/Color";
+import AntigravityText from "@lobehub/icons/es/Antigravity/components/Text";
+import ClaudeCodeColor from "@lobehub/icons/es/ClaudeCode/components/Color";
+import ClaudeCodeText from "@lobehub/icons/es/ClaudeCode/components/Text";
+import CodexColor from "@lobehub/icons/es/Codex/components/Color";
+import CodexText from "@lobehub/icons/es/Codex/components/Text";
+import CursorIcon from "@lobehub/icons/es/Cursor/components/Mono";
+import CursorText from "@lobehub/icons/es/Cursor/components/Text";
 import type { ReactNode } from "react";
 
 export interface DesktopAppOverride {
@@ -29,10 +31,10 @@ export const DESKTOP_APP_OVERRIDES: readonly DesktopAppOverride[] = [
     displayName: "Google Antigravity",
     match: (id) => id.toLowerCase().includes("antigravity"),
     renderIcon: ({ size = 24, className }) => (
-      <Antigravity.Color size={size} className={className} />
+      <AntigravityColor size={size} className={className} />
     ),
     renderText: ({ size = 20, className }) => (
-      <Antigravity.Text size={size} className={className} />
+      <AntigravityText size={size} className={className} />
     ),
   },
   {
@@ -41,10 +43,10 @@ export const DESKTOP_APP_OVERRIDES: readonly DesktopAppOverride[] = [
     match: (id) =>
       id === "com.openai.codex" || id.toLowerCase().includes("openai.codex"),
     renderIcon: ({ size = 24, className }) => (
-      <Codex.Color size={size} className={className} />
+      <CodexColor size={size} className={className} />
     ),
     renderText: ({ size = 20, className }) => (
-      <Codex.Text size={size} className={className} />
+      <CodexText size={size} className={className} />
     ),
   },
   {
@@ -59,10 +61,10 @@ export const DESKTOP_APP_OVERRIDES: readonly DesktopAppOverride[] = [
       );
     },
     renderIcon: ({ size = 24, className }) => (
-      <Cursor size={size} className={className} />
+      <CursorIcon size={size} className={className} />
     ),
     renderText: ({ size = 20, className }) => (
-      <Cursor.Text size={size} className={className} />
+      <CursorText size={size} className={className} />
     ),
   },
   {
@@ -79,10 +81,10 @@ export const DESKTOP_APP_OVERRIDES: readonly DesktopAppOverride[] = [
       );
     },
     renderIcon: ({ size = 24, className }) => (
-      <ClaudeCode.Color size={size} className={className} />
+      <ClaudeCodeColor size={size} className={className} />
     ),
     renderText: ({ size = 20, className }) => (
-      <ClaudeCode.Text size={size} className={className} />
+      <ClaudeCodeText size={size} className={className} />
     ),
   },
 ];
