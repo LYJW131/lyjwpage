@@ -3,8 +3,11 @@
 Cloudflare Worker 代理服务：用于解析 Apple Music 专辑与单曲的 1:1 正方形动态封面（`motionDetailSquare`）视频及背景主题色调板。
 
 ## 部署信息
-- **自定义域名**：`https://am-motion-artwork.homepage.lyjw.llc`
-- **默认域名**：`https://am-motion-artwork.2927761562.workers.dev`
+- **自定义域名**：在 `wrangler.toml` 的 `routes` 里配（`wrangler.toml.example` 有样例）
+- **默认域名**：`workers_dev = true` 时 Cloudflare 会给一个 `<名字>.<账号>.workers.dev`
+
+部署完把地址填进站点的 `NEXT_PUBLIC_MOTION_ARTWORK_URL`。不填则动态封面整体停用，
+静态封面照常显示。
 
 ## 接口说明
 - **请求方式**：`GET`
@@ -13,7 +16,7 @@ Cloudflare Worker 代理服务：用于解析 Apple Music 专辑与单曲的 1:1
 
 ### 请求示例
 ```bash
-curl "https://am-motion-artwork.homepage.lyjw.llc/?url=https%3A%2F%2Fmusic.apple.com%2Fus%2Falbum%2Fpositions%2F1538081237"
+curl "https://am-motion-artwork.example.com/?url=https%3A%2F%2Fmusic.apple.com%2Fus%2Falbum%2Fpositions%2F1538081237"
 ```
 
 ### 返回格式
