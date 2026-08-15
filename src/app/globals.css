@@ -569,7 +569,8 @@ button.paper-card {
   height: auto;
 }
 
-.github-chart svg rect[data-score="0"] {
+/* 同色格子合并成一条 path，选择器不能再挂在 rect 上（见 lib/github-chart-compact） */
+.github-chart svg [data-score="0"] {
   fill: var(--muted) !important;
 }
 
