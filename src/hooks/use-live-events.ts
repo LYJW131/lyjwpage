@@ -3,7 +3,8 @@
 // 只要类型，实现在 open 里动态 import —— import type 编译后整条擦掉，不进 bundle
 import type Pusher from "pusher-js";
 import { useEffect } from "react";
-import useSWR, { useSWRConfig } from "swr";
+import { useSWRConfig } from "swr";
+
 import type { ScopedMutator } from "swr";
 
 import { mergeChargerHistory } from "@/lib/charger-history";
@@ -331,18 +332,5 @@ export function useLiveEvents() {
   }, [mutate]);
 }
 
-/**
- * 此刻有多少人开着这个页面，以及那条连接此刻通不通。
- *
- * 人数数的是**订阅数**：一个标签页一条连接算一个，同一个人开两个标签页算两个。
- * 页面上有几张卡不影响 —— 整页共用一条连接（见上面 open 的注释）。
- * 连上之前、以及没配实时服务时 count 是 undefined。
- *
- * 两个键都不传 fetcher：它们没有端点可回源，只有推送会写。
- */
-export function useOnlineCount(): { count: number | undefined; connected: boolean } {
-  useLiveEvents();
-  const { data: count } = useSWR<number>(ONLINE_KEY, null);
-  const { data: connected } = useSWR<boolean>(CONNECTION_KEY, null);
-  return { count, connected: connected ?? false };
-}
+export { useOnlineCount } from "./use-online-count";
+

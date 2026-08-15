@@ -5,13 +5,13 @@ import { CircleQuestionMark } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { StatusDot } from "@/components/ui/status-dot";
-import { useOnlineCount } from "@/hooks/use-live-events";
+import { useOnlineCount } from "@/hooks/use-online-count";
 
 /**
  * 页脚右侧的「此刻在线」。
  *
- * 数字由已有的那条实时连接推来（见 hooks/use-live-events 的 useOnlineCount），
- * 没有新端点、也没有新连接。
+ * 连接 Cloudflare Workers 的 Durable Objects 实例，
+ * 实时同步在线人数。
  */
 export function OnlineCount() {
   const { count, connected } = useOnlineCount();
@@ -85,7 +85,7 @@ function SourceHint({ connected }: { connected: boolean }) {
         <span className="absolute bottom-full left-1/2 z-50 mb-2 w-64 -translate-x-1/2 rounded-lg border border-line bg-surface p-3">
           <span className="label-mono block text-foreground">数据来源</span>
           <span className="mt-2 block text-xs normal-case leading-relaxed text-muted-foreground">
-            复用实时推送的 Pusher 长连接：订阅 <code>live</code> 频道，按标签页计数。
+            连接 Cloudflare Workers 的 Durable Objects 实例，按前台活跃 WebSocket 连接实时计数。
           </span>
           <span className="mt-3 flex items-center justify-between border-t border-line pt-2.5">
             <span className="label-mono text-muted-foreground">WebSocket</span>
