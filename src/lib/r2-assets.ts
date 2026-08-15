@@ -1,13 +1,20 @@
 import { HeadObjectCommand, S3Client } from "@aws-sdk/client-s3";
 
-function trimSlash(url: string) {
-  return url.replace(/\/+$/, "");
-}
+import { assetUrl } from "@/lib/asset-url";
 
-/** 浏览器直接访问 R2；站点只保存对象键并组装公开 URL。 */
-export const ASSET_URL_PREFIX = `${trimSlash(
-  process.env.R2_PUBLIC_BASE_URL ?? "https://r2-not-configured.invalid",
-)}/`;
+export { IMAGE_OBJECT_KEY } from "@/lib/asset-url";
+
+/**
+ * 当前部署用来公开读取图片的地址。
+ *
+ * 名字沿用 R2_PUBLIC_BASE_URL，但它只描述交付层：Vercel 可以填 R2 自定义域，
+ * EdgeOne 可以填以 R2 为源站的 COS CDN。Redis 只存 objectKey，所以同一份状态
+ * 会在读取时按各自部署的变量拼出不同域名。
+ */
+export function publicAssetUrl(objectKey: string): string | null {
+  const base = process.env.R2_PUBLIC_BASE_URL;
+  return base ? assetUrl(base, objectKey) : null;
+}
 
 let client: S3Client | null = null;
 let warned = false;
@@ -17,7 +24,7 @@ function getR2(): { s3: S3Client; bucket: string } | null {
   const bucket = process.env.R2_BUCKET;
   const accessKeyId = process.env.R2_ACCESS_KEY_ID;
   const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
-  if (!endpoint || !bucket || !accessKeyId || !secretAccessKey || !process.env.R2_PUBLIC_BASE_URL) {
+  if (!endpoint || !bucket || !accessKeyId || !secretAccessKey) {
     if (!warned) {
       warned = true;
       console.error("[r2] 环境变量不全，图片对象校验已停用");
@@ -41,8 +48,6 @@ function getR2(): { s3: S3Client; bucket: string } | null {
  *
  * 单独导出而不是各处抄一遍字面量：两个 ingest 各校验一次，抄第二遍就迟早分家。
  */
-export const IMAGE_OBJECT_KEY = /^[a-f0-9]{64}\.(?:png|webp)$/;
-
 /**
  * 确认过存在的对象键，带过期。
  *

@@ -175,7 +175,7 @@ export async function getCurrentItem() {
 }
 
 /**
- * 图片键 → 本站资产地址。
+ * 图片键 → R2 对象键。
  *
  * 键由代理按 Emby 的 ImageTag 拼出来，图换了键就换，所以映射只增不改。
  * 有上限是因为它只是「代理不必重复上传」的备忘：条目掉出去了，代理下一次
@@ -183,18 +183,18 @@ export async function getCurrentItem() {
  */
 const IMAGE_LIMIT = 96;
 
-const imagesMirror = mirrorKey<{ urls: Record<string, string>; at: number }>(
+const imagesMirror = mirrorKey<{ objectKeys: Record<string, string>; at: number }>(
   ["emby", "images"],
   (state) => state.at,
   { ttlMs: LIBRARY_TTL_MS },
 );
 
-export async function getImageUrls(): Promise<Record<string, string>> {
-  return (await imagesMirror.get())?.urls ?? {};
+export async function getImageObjectKeys(): Promise<Record<string, string>> {
+  return (await imagesMirror.get())?.objectKeys ?? {};
 }
 
-export async function setImageUrls(urls: Record<string, string>) {
+export async function setImageObjectKeys(objectKeys: Record<string, string>) {
   // 对象的键保持插入顺序，超了就从最早的开始丢
-  const entries = Object.entries(urls).slice(-IMAGE_LIMIT);
-  await imagesMirror.put({ urls: Object.fromEntries(entries), at: Date.now() });
+  const entries = Object.entries(objectKeys).slice(-IMAGE_LIMIT);
+  await imagesMirror.put({ objectKeys: Object.fromEntries(entries), at: Date.now() });
 }
