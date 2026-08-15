@@ -1,0 +1,11 @@
+name = "am-motion-artwork"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+workers_dev = true
+
+# routes = [
+#   { pattern = "your-custom-domain.example.com", custom_domain = true }
+# ]
+
+[observability]
+enabled = true

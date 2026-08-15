@@ -1,6 +1,7 @@
 # 站点是根包；reporters/ 下是各自独立跑在别处的推送代理，不进站点的构建
 packages:
   - reporters/*
+  - workers/*
 
 ignoredBuiltDependencies:
   - sharp
