@@ -22,12 +22,12 @@ import { getDesktopPayload, getNowListeningSnapshot, getTimezonePayload } from "
 import { getVibeCodingSnapshot } from "@/lib/vibecoding";
 
 /**
- * 首屏那八份数据的缓存层。状态路由（时区除外，它只给首屏）除 listening/now
- * 外也读这里。listening/now 的候选每次直读 Redis，理由（以及它已经不成立了这件事）
- * 见那条路由；来源选择和 expiresInMs 仍在路由 overlay 里现算。
+ * 首屏那八份数据的缓存层。八条状态路由（时区除外，它只给首屏）也都读这里。
+ * listening/now 读的是下面那份 snapshot，来源选择和 expiresInMs 在它的 overlay
+ * 里现算 —— 那条曾经因为「tag 过不了海」整个绕开缓存，见该路由的注释。
  *
- * 首屏 hero 仍走下面的 cachedNowListening。tag 只失效本部署那一套 —— 上报会被原样
- * 转给对端，对端自己跑一遍同一个 handler、自己走到 expireStatus，见 lib/ingest-relay。
+ * tag 只失效本部署那一套 —— 上报会被原样转给对端，对端自己跑一遍同一个 handler、
+ * 自己走到 expireStatus，见 lib/ingest-relay。
  * Mac 存活（lastSeenAt / declaredOffline）以及充电头的 pushedAt 也在路由里
  * 现盖一层，因为心跳不触发 tag 失效。时区不看存活，只在 timezone 模块上报时失效。
  *
@@ -133,7 +133,7 @@ export async function cachedListening() {
   return statusEnvelope(getRecentlyPlayed);
 }
 
-/** 首屏用的两个候选。`/api/status/listening/now` 不走这里，见该路由的注释。 */
+/** 两个候选。首屏和 `/api/status/listening/now` 共用这一份，各自现选 Hero。 */
 export async function cachedNowListeningSnapshot() {
   "use cache";
   cacheLife(STATUS_LIFE);
