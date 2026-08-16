@@ -73,7 +73,7 @@ export type ReporterPresence = {
   lastSeenAt: number;
   /** 上报器亲口声明的离线，只在优雅离开（退出 / 睡眠）时为真 */
   declaredOffline: boolean;
-  /** 超过这么久没心跳就算掉线。源站按 HEARTBEAT_WINDOW_MS 现算，默认 90 秒。 */
+  /** 超过这么久没心跳就算掉线。源站按 HEARTBEAT_WINDOW_MS 现算，默认 5 分钟。 */
   heartbeatWindowMs: number;
 };
 
