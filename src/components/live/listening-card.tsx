@@ -665,7 +665,7 @@ export function ListeningCard({
     <Card
       label="Recently Played"
       action="Apple Music"
-      className={cn("h-full min-h-[374px]", className)}
+      className={cn("h-full min-h-93.5", className)}
     >
       <div className="flex min-h-0 flex-1 flex-col px-4 pb-4 pt-3">
         {/* 最近的一项放大展示。整块都是链接 —— 点封面也能跳转。
