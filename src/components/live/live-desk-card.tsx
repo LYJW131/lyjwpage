@@ -54,12 +54,18 @@ export function HeaderDesktop({
   const [displayedDesktop, setDisplayedDesktop] = useState<DesktopActivity | null>(null);
   const reduced = useReducedMotion();
 
-  const reporterStale = useReporterStale(data);
-  // 当标签页从后台唤醒时，SWR 会立即触发回源校验（isValidating）。
-  // 在回源未完成前，若非 Mac 明确上报离线（declaredOffline），不根据休眠期间老化的客户端时间戳误判离线。
-  const offline = Boolean(
-    error || data?.declaredOffline || (reporterStale && !isValidating),
-  );
+  const { atSource, byClock } = useReporterStale(data);
+  /**
+   * 当标签页从后台唤醒时，SWR 会立即触发回源校验（isValidating）。在回源未完成前，
+   * 不根据休眠期间老化的客户端时间戳（byClock）误判离线 —— 那段时间轮询是停的
+   * （usePageActive），lastSeenAt 老化只说明没人去问，不说明 Mac 掉了。
+   *
+   * `atSource` 不受这条守卫限制，它不是本地钟算出来的：源站给这份数据时就已经
+   * 判过一次。首屏尤其只能靠它 —— 那一帧 byClock 恒为 false，从前于是照着
+   * Mac 掉线前最后那个前台应用画（睡下去的话就是「已锁屏」），要等挂载**并且**
+   * 回源完成才翻成「已离线」，两级延迟叠在一起。
+   */
+  const offline = Boolean(error || atSource || (byClock && !isValidating));
   const incomingDesktop = data?.desktop ?? null;
   const incomingBundleIdentifier = incomingDesktop?.bundleIdentifier ?? null;
   const incomingOverride = findDesktopOverride(incomingBundleIdentifier);

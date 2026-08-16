@@ -64,7 +64,7 @@ export type NowPlayingGuess = {
 };
 
 /**
- * Mac 上报器的存活。源站盖章，stale 由浏览器用 Date.now() 现算。
+ * Mac 上报器的存活。源站盖章，之后由浏览器用 Date.now() 接着算。
  *
  * lastSeenAt 是 ingest 收到时的源站钟，不是设备 observedAt。
  * 心跳窗口跟 payload 走，别在浏览器再读一份常量 —— 和充电头的 staleAfterMs 一样。
@@ -75,6 +75,24 @@ export type ReporterPresence = {
   declaredOffline: boolean;
   /** 超过这么久没心跳就算掉线。源站按 HEARTBEAT_WINDOW_MS 现算，默认 5 分钟。 */
   heartbeatWindowMs: number;
+  /**
+   * 源站在取数出口按自己的钟算的那一次「这会儿离线没有」。
+   *
+   * 为的是首帧 —— 那一帧浏览器还没有钟（useMountedAt 为 0，见该 hook 的注释），
+   * 拿 lastSeenAt 什么也判不出来，于是离线的 Mac 在首屏必然被画成在线，要等
+   * 挂载后才翻。它是一个数据字段，服务端预渲染和 hydrate 那一遍读到的是同一个
+   * 值，不像钟读数那样会造成水合不一致。
+   *
+   * 和充电头 withChargerFreshness 把 connected 打成 false 是同一套口径：过期是
+   * 时间函数，在取数出口现盖（首页填缓存、API overlay），卡片直接用。
+   *
+   * 新鲜度因此以取数出口那一刻为准：API 每次现算；首屏那份跟着页面缓存冻住
+   * （revalidate 1 分钟、expire 1 小时，见 lib/status-cache）。心跳不触发 tag
+   * 失效，所以冻住的那份两个方向都可能差一会儿 —— Mac 悄悄死掉、或者悄悄回来，
+   * 都要等下一次重算才反映进首屏。挂载后浏览器自己的钟接着算，加上那一次回源，
+   * 差的那点会被纠正回来。
+   */
+  offlineAtSource: boolean;
 };
 
 export type ListeningPayload = {

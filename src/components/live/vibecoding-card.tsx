@@ -851,9 +851,9 @@ export function VibeCodingCard({
    * 两个 hook 都要无条件调用，别写成 `useReporterStale(...) || useStale(...)` ——
    * `||` 会短路掉后一个。
    */
-  const reporterStale = useReporterStale(data);
+  const { offline: reporterOffline } = useReporterStale(data);
   const collectorStale = useStale(data?.pushedAt, VIBECODING_STALE_MS);
-  const activityUnknown = reporterStale || collectorStale;
+  const activityUnknown = reporterOffline || collectorStale;
 
   return (
     <Card
