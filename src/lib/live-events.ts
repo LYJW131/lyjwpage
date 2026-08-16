@@ -1,4 +1,5 @@
 import { revalidateTag } from "next/cache";
+import { after } from "next/server";
 
 import type { NowWatchingPayload, WatchingPayload } from "@/lib/emby";
 import { livePublishUrl } from "@/lib/live-socket";
@@ -192,6 +193,33 @@ export async function publish(event: LiveEvent): Promise<void> {
 }
 
 /**
+ * 把一段活挪到响应之后。
+ *
+ * 上报器要的是「收下了」这三个字，不是「全都落地了」—— 那也正是 202 的意思。
+ * 但**裸 fire-and-forget 在 serverless 上不是「不管结果」，是「根本没执行」**：
+ * 响应一返回实例就可能被冻住，没跑完的写和推送直接被掐，一行日志都留不下。
+ *
+ * `after()` 是这两者之间的那一档：响应先发出去，实例保持活着把它做完（Vercel 上
+ * 落到 Fluid 的 waitUntil）。所以这不是一笔省钱的改动 —— waitUntil 期间实例照样
+ * 计费，换的是上报器那侧不再为落库、推送、跨海转发的耗时买单。
+ *
+ * Redis 连接不用特意保着：租约要 scope 和在飞的命令**都**归零才断开
+ * （见 lib/connection-leases 的 closeIfIdle），响应返回时命令还在飞，连接就还在。
+ *
+ * 平台没有 waitUntil、或者压根不在请求作用域里时，`after()` 会**同步抛**。那就
+ * 退回原来的行为、在响应里等完 —— 所以调用方仍然要 await 这个返回值。慢，但比
+ * 静默丢掉强：丢掉的表现是那份数据一直缺着，要很久才会有人发现。
+ */
+export function afterResponse(work: () => Promise<void>): Promise<void> {
+  try {
+    after(work);
+    return Promise.resolve();
+  } catch {
+    return work();
+  }
+}
+
+/**
  * 一份还要现算的推送。算它可能要读另一个 store、查一次 Apple 目录，
  * 那些和写库互不相干，所以整个交给 fanout 去和写库并行。
  */
@@ -226,31 +254,41 @@ export type Fanout = {
  *    一起缓存起来 —— 比不失效还糟。不带数据、只让浏览器重取的事件（presence）
  *    同理，它触发的也是一次回源。
  *
- * 「同时」不是 fire-and-forget：一律 await 到底再返回，理由见 publish。
+ * **整块都在响应之后跑**（见 afterResponse）。上报器等的只是本地把这份报文算完，
+ * 落库、推送、失效都不在它的等待里 —— 但规则 2 的顺序在这块**内部**仍然成立，
+ * 别因为「都不等了」就把失效也一起甩出去和写并行。
  */
-export async function fanout({
+export function fanout({
   writes = [],
   events = [],
   tags = [],
   urgentTags = [],
 }: Fanout): Promise<void> {
-  try {
-    await Promise.all([
-      ...writes,
-      ...events.map(async (pending) => {
-        try {
-          const event = await pending;
-          if (event) await publish(event);
-        } catch (error) {
-          // 拼不出推送的那份不该把一次成功的上报变成 400 —— 数据照样落库了，
-          // 页面靠轮询也能翻过来。和 publish 自己吞错误是同一个理由。
-          console.error("[live]", error instanceof Error ? error.message : String(error));
-        }
-      }),
-    ]);
-  } finally {
-    // 写抛出来了也照样失效：已经落库的那几份不该继续被旧缓存遮着
-    if (tags.length) expireStatus(...tags);
-    if (urgentTags.length) expireStatusImmediately(...urgentTags);
-  }
+  return afterResponse(async () => {
+    try {
+      await Promise.all([
+        ...writes,
+        ...events.map(async (pending) => {
+          try {
+            const event = await pending;
+            if (event) await publish(event);
+          } catch (error) {
+            // 拼不出推送的那份不该把一次成功的上报变成 400 —— 数据照样落库了，
+            // 页面靠轮询也能翻过来。和 publish 自己吞错误是同一个理由。
+            console.error("[live]", error instanceof Error ? error.message : String(error));
+          }
+        }),
+      ]);
+    } catch (error) {
+      /**
+       * 从前这里靠 `finally` 往下走、错误交给调用方的 await 抛给 400。现在响应
+       * 早发出去了，没人接得住 —— 不吞掉就是一个 unhandled rejection。
+       */
+      console.error("[ingest] 落库", error instanceof Error ? error.message : String(error));
+    } finally {
+      // 写抛出来了也照样失效：已经落库的那几份不该继续被旧缓存遮着
+      if (tags.length) expireStatus(...tags);
+      if (urgentTags.length) expireStatusImmediately(...urgentTags);
+    }
+  });
 }

@@ -818,21 +818,14 @@ export async function homePodListeningEvent(stored: StoredHomePod): Promise<Live
 }
 
 /**
- * 把对端的回执并进本地这份。
+ * `desktopIconAvailable` 回的是**本部署**查到的结果，不再并对端那份。
  *
- * 只有 `desktopIconAvailable` 要并：它问的是「你那边有没有这个图标哈希对应的
- * 对象键」，而两份部署各查各的 Redis，答案可能不一样。上报器只跟一个源站说话，
- * 收到 true 就把这个哈希当成已经传到位、不再理会它 —— 所以只要有一份说没有，
- * 回给它的就必须是 false，否则那个图标在对端永远缺一块。R2 是共享的内容寻址桶，
- * 补传一次只是一次 HEAD 加一次写，宁可多传。
+ * 从前并：它问的是「你那边有没有这个图标哈希对应的对象键」，两份部署各查各的
+ * Redis，答案可能不一样，只要有一份说没有就回 false 让上报器补传。代价是每一条
+ * 上报都要等一次跨海往返，而两边的答案只在**转发丢了**的时候才会不一样 ——
+ * 正常情况下对端算的是同一封信封，必然一致。转发现在不等了（见 lib/api 的
+ * ingestRoute），这份并也就无从谈起。
  *
- * `accepted` 不用并：两边跑的是同一封信封，收下的模块数必然一样。
+ * 所以偏差改由上报器自己收敛：MacTelemetryHub 的后台 resolver 本来就先查后写、
+ * 按五分钟窗口复验，桶被清空时它自己会原地补回同一个内容地址。
  */
-export function mergeTelemetryReceipt<T extends { desktopIconAvailable?: boolean }>(
-  local: T,
-  peers: readonly unknown[],
-): T {
-  if (local.desktopIconAvailable !== true) return local;
-  const missing = peers.some((peer) => object(peer)?.desktopIconAvailable === false);
-  return missing ? { ...local, desktopIconAvailable: false } : local;
-}

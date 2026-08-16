@@ -88,21 +88,24 @@ export function peerOrigins(
 }
 
 /**
- * 转发到各对端，收集它们的回执。
+ * 转发到各对端。**不收回执** —— 整个调用都在响应之后跑，没人还等得到它。
  *
- * 回执要收是因为有些字段是**各部署各算的**：Emby 的 missingImages、Mac 的
- * desktopIconAvailable 都在问「你那边有没有这份图」，两边的 Redis 不是同一个，
- * 答案就可能不一样。上报器只跟一个源站说话，所以这些答案得在这里并起来再回给它，
- * 见各 handler 旁边的 merge*。
+ * 从前是收的：Emby 的 missingImages、Mac 的 desktopIconAvailable 都在问「你那边
+ * 有没有这份图」，两边的 Redis 各存各的映射，答案可能不一样，于是并起来再回给
+ * 上报器。代价是每一条上报都押在一次跨海往返上，为的是修一个**只有转发丢了才会
+ * 出现**的偏差 —— 正常情况下对端算的就是同一份字节，答案必然一样。
+ *
+ * 现在那个偏差不修了：转发丢了的话对端缺的是这次上报的全部内容（不止图），回执
+ * 本来也只补得回图这一项。见 lib/live-events 的 afterResponse。
  *
  * 任何一个对端出问题都只记一行，不往上抛：那次上报在本地已经落库了，为对端的故障
  * 回一个 4xx 只会让上报器把同一份数据重发一遍、在本地又写一次。代价是对端会漏掉
  * 这一次变化 —— 列表类的上报器每 10 分钟兜底整推一次，能自己追上；Mac 那几份要等
  * 下一次内容变化。和推送一样是尽力而为。
  */
-export async function relayIngest(request: Request, body: string): Promise<unknown[]> {
+export async function relayIngest(request: Request, body: string): Promise<void> {
   // 对端转来的那份不再往下传，见文件头的单跳
-  if (request.headers.get(RELAY_HEADER) != null) return [];
+  if (request.headers.get(RELAY_HEADER) != null) return;
 
   /**
    * 这个函数**不能抛**：调用点在成功和失败两条路上都要 await 它，抛出来的话
@@ -110,7 +113,7 @@ export async function relayIngest(request: Request, body: string): Promise<unkno
    * 所以自己的地址解析不出来也只是不转发。
    */
   const url = parsed(request.url);
-  if (!url) return [];
+  if (!url) return;
 
   /**
    * `VERCEL_PROJECT_PRODUCTION_URL` 在 Preview 上指的是生产域 —— 于是 Preview
@@ -122,7 +125,7 @@ export async function relayIngest(request: Request, body: string): Promise<unkno
     process.env.VERCEL_URL,
     url.host,
   ]);
-  if (!peers.length) return [];
+  if (!peers.length) return;
 
   const { pathname, search } = url;
   const secret = process.env.TELEMETRY_INGEST_SECRET;
@@ -133,7 +136,7 @@ export async function relayIngest(request: Request, body: string): Promise<unkno
   // 没配密钥时也照样转发：对端要是配了，它会回 401，那一行日志正是要看到的
   if (secret) headers.authorization = `Bearer ${secret}`;
 
-  const receipts = await Promise.all(
+  await Promise.all(
     peers.map(async (origin) => {
       try {
         /**
@@ -147,21 +150,18 @@ export async function relayIngest(request: Request, body: string): Promise<unkno
           signal: AbortSignal.timeout(RELAY_TIMEOUT_MS),
         });
         /**
-         * 只按形状读，不做校验：`ok !== true` 对任何 JSON 值都成立（字符串、
-         * 数组、null 上取 `.ok` 都是 undefined），下面 merge* 那侧也照样把回执
-         * 当外部数据重新收敛一遍。代理那侧解析同一个信封时也是这么写的，
-         * 见 reporters/emby-reporter/src/site.ts。
+         * 响应只用来判断成没成功。仍然把信封读出来，是为了日志里那句原因 ——
+         * 只按形状读、不做校验：`ok !== true` 对任何 JSON 值都成立（字符串、
+         * 数组、null 上取 `.ok` 都是 undefined）。
          */
         const envelope = (await response.json().catch(() => null)) as
-          | { ok?: boolean; error?: string; data?: unknown }
+          | { ok?: boolean; error?: string }
           | null;
         if (!response.ok || envelope?.ok !== true) {
           // 带上对端给的原因：401 是密钥没对齐、400 是报文本身的问题，光看状态码要猜
           const reason = typeof envelope?.error === "string" ? `：${envelope.error}` : "";
           console.error("[relay]", origin, pathname, response.status, reason);
-          return null;
         }
-        return envelope.data;
       } catch (error) {
         console.error(
           "[relay]",
@@ -169,10 +169,7 @@ export async function relayIngest(request: Request, body: string): Promise<unkno
           pathname,
           error instanceof Error ? error.message : String(error),
         );
-        return null;
       }
     }),
   );
-
-  return receipts.filter((receipt) => receipt != null);
 }

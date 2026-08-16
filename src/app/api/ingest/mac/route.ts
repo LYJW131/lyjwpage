@@ -1,5 +1,5 @@
 import { ingestRoute } from "@/lib/api";
-import { mergeTelemetryReceipt, recordTelemetryEnvelope } from "@/lib/telemetry";
+import { recordTelemetryEnvelope } from "@/lib/telemetry";
 
 /**
  * Mac 上报器的唯一入口：数据、心跳、优雅下线都是同一个 v4 信封。
@@ -13,5 +13,5 @@ import { mergeTelemetryReceipt, recordTelemetryEnvelope } from "@/lib/telemetry"
  * 崩溃、断网、强制关机只能靠站点这边「多久没收到」的超时兜底。
  */
 export async function POST(request: Request) {
-  return ingestRoute(request, recordTelemetryEnvelope, mergeTelemetryReceipt);
+  return ingestRoute(request, recordTelemetryEnvelope);
 }
