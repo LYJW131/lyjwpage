@@ -54,7 +54,10 @@ pnpm dev
               └─转发─▶ Vercel ──▶ 自己的 Redis / 自己的 Worker / 自己的 tag
 ```
 
-两边各自填对面那个源（`INGEST_PEERS`），不在代码里写死谁转给谁。转发出去的请求带
+两边各自填对面那个源（`INGEST_PEERS`），不在代码里写死谁转给谁。这一份数据到齐了，
+**缓存却各刷各的**：`revalidateTag` 只失效本实例那份 `'use cache'`，Vercel 另接了一套
+共享存储所以在那边是全局的，EdgeOne 那份因此填 `STATUS_CACHE=false`，让八条状态端点
+直读 Redis —— 见下面「状态是怎么接的」。转发出去的请求带
 `x-ingest-relay`，对端见到它就不再往下传 —— 两边互填对方，再传一次就成环了；三份
 以上各自填齐其余几份，一跳照样到齐。实现在 `lib/ingest-relay.ts`，挂在
 `lib/api.ts` 的 `ingestRoute` 上，所以新加一个 `/api/ingest/*` 自动就带传播。
@@ -86,7 +89,7 @@ pnpm dev
 
 所有凭据只存在于服务端，浏览器只看得到 `/api/status/*` 返回的规范化数据。这些路由共用 `src/lib/api.ts` 的信封：上游挂掉时返回 `{ ok: false, error }` 而不是 5xx，让某一路数据源离线不至于把整页 SWR 打成错误态。
 
-八条状态 GET 的快照走 Next `'use cache'`（`lib/status-cache`），上报按 tag 失效，轮询命中时不再每次打 Redis。CDN 故意 `Cache-Control: no-store`：最终响应里有存活、`?since=` 切片、`expiresInMs` 这类现算字段，不能冻在边缘。函数每次进；心跳那种不触发 tag 的戳记在 overlay 里现读一把小 key。充电头和 vibe coding 的游标也是缓存命中后在内存里切全量，不按 `since` 分键。
+八条状态 GET 的快照走 Next `'use cache'`（`lib/status-cache`），上报按 tag 失效，轮询命中时不再每次打 Redis——**除非那份部署把 `STATUS_CACHE` 填成 `false`，那时八条一律直读 Redis**。这个开关是给 EdgeOne 那份准备的：`revalidateTag` 只失效**本实例**那份缓存（Next 默认是每个进程各自的内存 LRU，Vercel 另接了一套共享存储所以在那边看起来是全局的），而 EdgeOne 跑的是原样的 Next（腾讯云 SCF，多实例），上报进来了 GET 也不翻新，只能等 60 秒兜底——实测落后 12~45 秒。国内那份的 Redis 就在同一朵云上，多打几次不心疼。开关只管状态端点，首屏那份得冻着才能预渲染，所以关掉之后第一帧仍可能旧到一分钟，挂载后 SWR 一拉就是最新的；要连首屏一起对齐，得给两份部署各配一个共享的 `cacheHandlers`。CDN 故意 `Cache-Control: no-store`：最终响应里有存活、`?since=` 切片、`expiresInMs` 这类现算字段，不能冻在边缘。函数每次进；心跳那种不触发 tag 的戳记在 overlay 里现读一把小 key。充电头和 vibe coding 的游标也是缓存命中后在内存里切全量，不按 `since` 分键。
 
 Redis TCP 连接按请求作用域租用：同一 Node 实例里的并发请求共用一条，最后一个请求和命令结束后主动断开。不能让 ioredis 永久单例留在 serverless 实例里——实例暂停时普通 idle timer 不会跑，旧部署和 Preview 会各留一条空闲连接。Preview 必须不配 Redis 或使用独立 `REDIS_URL`；`REDIS_PREFIX` 只隔离键，不隔离连接额度。
 
@@ -145,7 +148,7 @@ Authorization: Bearer <TELEMETRY_INGEST_SECRET>
 
 Emby 对拖动进度条不发任何通知，那部分只能查会话。查的人是代理不是站点：它在播时每 2 秒问一次 `/Sessions`，但只在位置偏离站点的推算值超过 1.5 秒时才推 —— 站点算得准的时候推它等于白花一次函数调用。
 
-状态存在 Redis（`lib/emby-store.ts` 的 mirrorKey，Redis 为主、进程内存为辅），站点不再向 Emby 拉任何东西。读路径上 `/api/status/watching` 和 `/api/status/watching/now` 走 `'use cache'`，和别的状态接口同一套。前端契约没变，两条仍是分开的：前者跟着 60 秒的推送走，后者跟着播放事件走，合在一起的话慢的那半只能跟着快的那半一起被重取。
+状态存在 Redis（`lib/emby-store.ts` 的 mirrorKey，Redis 为主、进程内存为辅），站点不再向 Emby 拉任何东西。读路径上 `/api/status/watching` 和 `/api/status/watching/now` 跟着 `STATUS_CACHE` 走，和别的状态接口同一套。前端契约没变，两条仍是分开的：前者跟着 60 秒的推送走，后者跟着播放事件走，合在一起的话慢的那半只能跟着快的那半一起被重取。
 
 剧集自身的 `Primary` 图是剧照而不是海报，所以竖版海报优先取所属剧的 `SeriesPrimaryImageTag`。这个选择在代理那侧做 —— 字节是它下载的，挑哪张的逻辑跟着走才不会分家。
 
@@ -256,8 +259,8 @@ Authorization: Bearer <TELEMETRY_INGEST_SECRET>
 
 接收端复用统一遥测密钥，状态写入 Redis（未配置时退回进程内存）。`/api/status/listening/now`
 按「MacBook 在播 → MacBook 暂停未满 10 秒 → HomePod 在播 → HomePod 暂停未满 10 秒」
-选来源。两个候选冻在源站数据缓存里，选择和 `expiresInMs` 每次请求现算，所以暂停
-宽限期到点再问能换到下一首，而不用等 Redis。事件带有进度观测时间，前端据此自己
+选来源。两个候选跟着 `STATUS_CACHE` 冻或不冻，选择和 `expiresInMs` 每次请求现算，
+所以暂停宽限期到点再问能换到下一首，而不用等 Redis。事件带有进度观测时间，前端据此自己
 推算进度。
 
 这个宽限期是全站唯一一条「不靠新上报、光靠时间流逝就会改变结果」的规则，而那个

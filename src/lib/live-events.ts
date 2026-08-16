@@ -111,10 +111,17 @@ export const NOW_WATCHING_TAG = "watching-now";
  * 还能顶多久」。给 max 拿到的是 stale-while-revalidate：请求立刻拿到旧的那份、
  * 新的在后台重建，上报这条路径上一个字节都不用等。
  *
- * **只刷本部署。** `revalidateTag` 打不到另一份部署的 `'use cache'`，从前这里
- * 会顺带 POST 一趟对端的 /api/ingest/revalidate 把 tag 名单传过去。现在整条上报
- * 都会被转给对端（lib/ingest-relay），它自己跑一遍同一个 handler、自己走到这里，
- * 失效是那次处理的自然结果，不再需要单独传播一份缓存状态。
+ * **只刷本实例。** 不配 `cacheHandlers` 时 `'use cache'` 存在每个进程各自的内存
+ * LRU 里，失效事件不跨实例（内置文档 how-revalidation-works）。Vercel 另外接了一套
+ * 共享的缓存和 tag 存储，所以在那边看起来是全局的；EdgeOne 跑的是原样的 Next
+ * （腾讯云 SCF，多实例），收到上报的那个实例只失效自己那份，别的实例要等 cacheLife
+ * 的 60 秒兜底 —— 那份部署因此把 STATUS_CACHE 关掉，八条状态端点直读 Redis，
+ * 见 lib/api。首屏仍然靠这里失效，要让它也名副其实，得给两份部署各配一个共享的
+ * cacheHandlers（各用各的 Redis 存 tag 时间戳）。
+ *
+ * 跨部署那半是另一件事，已经解决了：整条上报会被转给对端（lib/ingest-relay），
+ * 它自己跑一遍同一个 handler、自己走到这里，失效是那次处理的自然结果，不再需要
+ * 单独传播一份缓存状态（从前是 POST 一趟对端的 /api/ingest/revalidate）。
  */
 export function expireStatus(...tags: string[]): void {
   for (const tag of tags) revalidateTag(tag, "max");
@@ -126,6 +133,8 @@ export function expireStatus(...tags: string[]): void {
  * 充电卡是否存在会改变首屏两列布局，实时播放则直接决定 LCP hero；这两份不能
  * 像普通文字数据一样先给下一位访客旧值再后台重建。上报来自 Route Handler，
  * 按 Next 16 的约定用 `{ expire: 0 }`；下一次页面请求只为指定 tag 阻塞重算。
+ *
+ * 「下一次一定拿到新的」和上面一样只在本实例成立。
  */
 export function expireStatusImmediately(...tags: string[]): void {
   for (const tag of tags) revalidateTag(tag, { expire: 0 });

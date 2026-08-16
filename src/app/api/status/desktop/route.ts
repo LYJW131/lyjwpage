@@ -1,9 +1,9 @@
-import { statusCachedRoute } from "@/lib/api";
+import { statusRoute } from "@/lib/api";
 import { readLiveness, withPresence } from "@/lib/reporter-liveness";
-import { cachedDesktop } from "@/lib/status-cache";
+import { desktopStatus } from "@/lib/status-cache";
 
 export function GET() {
-  return statusCachedRoute(cachedDesktop, async (data) =>
+  return statusRoute(desktopStatus, async (data) =>
     withPresence(data, await readLiveness()),
   );
 }
