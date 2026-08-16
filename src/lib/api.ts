@@ -3,6 +3,7 @@ import { timingSafeEqual } from "node:crypto";
 import { connection, NextResponse } from "next/server";
 
 import { relayIngest } from "@/lib/ingest-relay";
+import { afterResponse } from "@/lib/live-events";
 import { withRedisScope } from "@/lib/redis";
 import type { IngestFailure, IngestResponse, StatusResponse } from "@/lib/types";
 
@@ -154,16 +155,17 @@ export function ingestFailed(message: string, status: number): NextResponse<Inge
  * 收进来是为了第三步：**转发不能靠每条路由自己记得做**，漏一条就是那份数据在
  * 对端永远缺席，而且要等很久才会被发现。现在加一个上报入口就自动带上传播。
  *
- * 成功一律 202：数据已收下，但后续的扇出（实时推送、缓存失效）是异步的，
- * 200 会给人「全部生效」的错觉。handler 里抛出来的按 400 处理 —— 到这一步
- * 还失败的都是 payload 本身的问题，上报器重发同一份也不会变好。
+ * 成功一律 202：数据已收下，但后续的扇出（落库、实时推送、缓存失效、转给对端）
+ * 全在响应之后跑，200 会给人「全部生效」的错觉。handler 里抛出来的按 400 处理 ——
+ * 到这一步还失败的都是 payload 本身的问题，上报器重发同一份也不会变好。
  *
- * `merge` 只有回执里带「各部署各算」的字段时才要传，见 lib/ingest-relay。
+ * **上报器等的只是「这份报文能不能收」**：校验和现算的那几把本地 Redis 读。落库、
+ * 推送、跨海转发一律不在它的等待里，见 lib/live-events 的 afterResponse。所以写
+ * 失败不再变成 400 了 —— 那时响应早发出去了，它只会进日志。
  */
 export async function ingestRoute<T>(
   request: Request,
   handler: (body: unknown) => Promise<T>,
-  merge?: (local: T, peers: readonly unknown[]) => T,
 ): Promise<NextResponse<IngestResponse<T>>> {
   if (!telemetryAuthorized(request)) return ingestFailed("未授权", 401);
 
@@ -175,31 +177,28 @@ export async function ingestRoute<T>(
   }
 
   /**
-   * 转发先发车，和本地这次落库并行。
+   * 转发挪到响应之后，和本地这次落库一样。
    *
-   * 对端跑的是同一个 handler、写的是另一个 Redis，两边互不相干，串起来的话上报器
-   * 要等的就是「本地一整趟 + 跨海一整趟」。和写库、推送同时发车是同一个道理，
-   * 见 lib/live-events 的 fanout。
+   * 这是整条路径上唯一一次**跨海**往返（上限 5 秒），而上报器的 postTimeout 只有
+   * 10 秒、超时还要退避 —— 押在响应路径上的话，对端慢一次上报就被吊住一次。
+   *
+   * 仍然 await 这个返回值：`after()` 在 Vercel 上立刻 resolve，没有 waitUntil 的
+   * 平台上才会在这里真等完。没有 waitUntil 时它和 handler 也还是并行的 ——
+   * 先发车、后面才 await。
    */
-  const relay = relayIngest(request, raw);
+  const relayed = afterResponse(() => relayIngest(request, raw));
 
   return withRedisScope(async () => {
     try {
-      const local = await handler(parseBody(raw));
-      const peers = await relay;
-      return NextResponse.json(
-        { ok: true as const, data: merge ? merge(local, peers) : local },
-        { status: 202 },
-      );
+      const data = await handler(parseBody(raw));
+      await relayed;
+      return NextResponse.json({ ok: true as const, data }, { status: 202 });
     } catch (error) {
       const message = reason(error);
       console.error("[ingest]", message);
-      /**
-       * 报文写坏了对端也会照样拒绝，但仍然要等它落地再返回：serverless 上响应
-       * 一发出实例就可能被冻住，没等完的转发会变成「偶尔没传过去」。
-       * relayIngest 自己吞掉全部错误，这里不会二次抛出。
-       */
-      await relay;
+      // 报文写坏了对端也会照样拒绝，但仍然要把它送到 —— relayIngest 自己吞掉
+      // 全部错误，这里不会二次抛出
+      await relayed;
       return ingestFailed(message, 400);
     }
   });

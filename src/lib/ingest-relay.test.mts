@@ -97,7 +97,7 @@ test("转发是原样重发：同一条路径、同一段字节，外加转发�
   process.env.TELEMETRY_INGEST_SECRET = "s3cret";
   const sent = stub(t, () => accepted({ accepted: 1 }));
 
-  const receipts = await relayIngest(incoming(), '{"version":4}');
+  assert.equal(await relayIngest(incoming(), '{"version":4}'), undefined);
 
   assert.equal(sent.length, 1);
   assert.equal(sent[0]!.url, "https://peer.example.com/api/ingest/mac");
@@ -106,27 +106,24 @@ test("转发是原样重发：同一条路径、同一段字节，外加转发�
   const headers = sent[0]!.init.headers as Record<string, string>;
   assert.equal(headers["x-ingest-relay"], "1");
   assert.equal(headers.authorization, "Bearer s3cret");
-  // 回执要收：missingImages 那类字段是各部署各算的，调用点要拿去并
-  assert.deepEqual(receipts, [{ accepted: 1 }]);
 });
 
 test("对端转来的那份不再往下传 —— 两边互填对方，再传一次就成环", async (t) => {
   process.env.INGEST_PEERS = "https://peer.example.com";
   const sent = stub(t, () => accepted({}));
 
-  const receipts = await relayIngest(incoming({ "x-ingest-relay": "1" }), "{}");
+  await relayIngest(incoming({ "x-ingest-relay": "1" }), "{}");
 
   assert.deepEqual(sent, []);
-  assert.deepEqual(receipts, []);
 });
 
 test("没配对端就一次都不发，本地 dev 因此不会去敲线上", async (t) => {
   const sent = stub(t, () => accepted({}));
-  assert.deepEqual(await relayIngest(incoming(), "{}"), []);
+  await relayIngest(incoming(), "{}");
   assert.deepEqual(sent, []);
 });
 
-test("对端拒了 / 连不上只是没有回执，不往上抛 —— 本地这次已经落库了", async (t) => {
+test("一个对端连不上不连累另一个，也不往上抛 —— 本地这次已经落库了", async (t) => {
   process.env.INGEST_PEERS = "https://down.example.com, https://up.example.com";
   const sent = stub(t, (url) =>
     url.startsWith("https://down")
@@ -134,15 +131,15 @@ test("对端拒了 / 连不上只是没有回执，不往上抛 —— 本地这
       : accepted({ missingImages: ["a"] }),
   );
 
-  // 一个对端出问题不该连累另一个，也不该把这次上报打成 4xx
-  assert.deepEqual(await relayIngest(incoming(), "{}"), [{ missingImages: ["a"] }]);
+  await assert.doesNotReject(() => relayIngest(incoming(), "{}"));
   assert.equal(sent.length, 2);
 });
 
-test("对端回了 4xx 或者根本不是信封，那份回执丢掉不当成成功", async (t) => {
+test("对端回了 4xx 或者根本不是信封也不抛，只进日志", async (t) => {
   process.env.INGEST_PEERS = "https://peer.example.com";
-  stub(t, () =>
+  const sent = stub(t, () =>
     Promise.resolve(new Response("<html>502</html>", { status: 502 })),
   );
-  assert.deepEqual(await relayIngest(incoming(), "{}"), []);
+  await assert.doesNotReject(() => relayIngest(incoming(), "{}"));
+  assert.equal(sent.length, 1);
 });

@@ -358,32 +358,18 @@ export async function recordEmbyReport(body: unknown) {
 }
 
 /**
- * 把对端的回执并进本地这份。
+ * `missingImages` 回的是**本部署**引用了却没有的键，不再并对端那份。
  *
- * 只有 missingImages 要并，而且必须取**并集**：两份部署各有各的 Redis，「引用了
- * 但没有」是各算各的 —— 本地补齐了、对端还缺的那些，只出现在对端那份回执里。
- * 代理只跟一个源站说话，漏掉一个键，那张海报就在对端一直裂着，而且代理再也不会
- * 重传它（它把没被抱怨的键当成已经收下了，见 reporters/emby-reporter 的 deliver）。
- * R2 是共享的内容寻址桶，多传一次只是一次 HEAD 加一次写。
+ * 从前取并集：两份部署各有各的 `imageKey → objectKey` 映射，「引用了但没有」是
+ * 各算各的。代价是每一条上报都要等一次跨海往返，而两边只在**转发丢了**的时候才
+ * 会不一样 —— 正常情况下对端算的是同一份请求体，答案必然一致。转发现在不等了
+ * （见 lib/api 的 ingestRoute），这份并也就无从谈起。
  *
- * 另外两个字段不用并：`items` 和 `playing` 是「这次上报带了什么」，
- * 两边收的是同一份请求体。
+ * 放弃的是「转发丢了之后把对端那张裂图修回来」：代理把没被抱怨的键当成已经收下
+ * （见 reporters/emby-reporter 的 deliver），所以没人提就不会重传。注意 COS 回源
+ * 救不了这一种 —— 回源救的是「有 URL 但桶里没字节」，而对端缺的是映射本身，
+ * 它根本拼不出 URL。但转发丢了的话对端缺的是那次上报的全部内容，不止图。
  */
-export function mergeEmbyReceipt<T extends { missingImages: string[] }>(
-  local: T,
-  peers: readonly unknown[],
-): T {
-  if (!peers.length) return local;
-  const missing = new Set(local.missingImages);
-  for (const peer of peers) {
-    const keys = object(peer)?.missingImages;
-    if (!Array.isArray(keys)) continue;
-    for (const key of keys) if (typeof key === "string") missing.add(key);
-  }
-  return missing.size === local.missingImages.length
-    ? local
-    : { ...local, missingImages: [...missing] };
-}
 
 /** 收下一次播放状态：先算，写留给 commit。`state` 为 null 表示没有会话在播了 */
 function preparePlaying(value: unknown): {
