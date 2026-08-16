@@ -75,12 +75,19 @@ export function offlineByLiveness(liveness: Liveness) {
   return !liveness.lastSeenAt || Date.now() - liveness.lastSeenAt > heartbeatWindowMs();
 }
 
-/** 把源站刚读到的存活盖进快照。stale 仍然不在这里算。 */
+/**
+ * 把源站刚读到的存活盖进快照。
+ *
+ * 除了三个原始字段，还盖一次源站此刻的结论（offlineAtSource）—— 首帧浏览器
+ * 没有钟，判不出来，理由见 ReporterPresence 的注释。因为是「现在几点」的函数，
+ * 只能盖在取数出口（首页填缓存、API overlay），不能写进 Redis 里那份快照。
+ */
 export function withPresence<T extends object>(data: T, live: Liveness): T & ReporterPresence {
   return {
     ...data,
     lastSeenAt: live.lastSeenAt,
     declaredOffline: live.declaredOffline,
     heartbeatWindowMs: heartbeatWindowMs(),
+    offlineAtSource: offlineByLiveness(live),
   };
 }

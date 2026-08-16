@@ -34,11 +34,25 @@ export function useStale(
   return stale;
 }
 
-/** Mac 上报器那一层：窗口跟 payload 里的 heartbeatWindowMs，或亲口离线。 */
+/**
+ * Mac 上报器那一层：窗口跟 payload 里的 heartbeatWindowMs，或亲口离线。
+ *
+ * 两个判据分开给出来，因为它们能用的时机不一样：
+ *
+ * - `atSource` 是源站在取数出口算好的（见 ReporterPresence 的 offlineAtSource），
+ *   是**首帧唯一能用的那个** —— 那一帧 useMountedAt 还是 0，byClock 恒为 false。
+ *   它也不会随本地钟老化，所以标签页睡了两小时醒来时它仍然作数。
+ * - `byClock` 是浏览器拿自己的钟现算的，管的是「拿到这份之后又过了多久」。
+ *
+ * 日常用 `offline`（两者取或）就行；只有需要区别对待「本地钟老化」的地方
+ * （见 live-desk-card 的回源守卫）才拆开用。
+ */
 export function useReporterStale(presence: ReporterPresence | undefined) {
-  return useStale(
+  const byClock = useStale(
     presence?.lastSeenAt,
     presence?.heartbeatWindowMs ?? HEARTBEAT_WINDOW_MS,
     Boolean(presence?.declaredOffline),
   );
+  const atSource = Boolean(presence?.offlineAtSource);
+  return { offline: atSource || byClock, atSource, byClock };
 }
