@@ -136,7 +136,7 @@ function Tile({
           <span className="absolute right-2 top-2 flex items-center gap-1.5 border border-line bg-background/85 px-2 py-1 backdrop-blur-sm">
             <StatusDot tone={paused ? "idle" : "live"} />
             <span className="label-mono text-foreground">
-              {paused ? "已暂停" : "播放中"}
+              {paused ? "播放暂停" : "正在播放"}
             </span>
           </span>
         )}
