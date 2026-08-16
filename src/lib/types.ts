@@ -282,7 +282,13 @@ export type VibeCodingAgent = {
   currentModel: string | null;
   /** ccusage 最近一次 session 活动；不含 session ID 或项目路径。 */
   lastActivityAt: string | null;
-  /** 上报器按最近五分钟是否有 session 活动计算。 */
+  /**
+   * 上报器按最近五分钟是否有 session 活动计算。
+   *
+   * 是个电平，不是会自己过期的时间戳 —— 采集侧一停就冻在最后一次推送的值上，
+   * 站点这边没有任何东西会去翻它。所以展示前必须和「这句话现在还算不算数」
+   * 取与，见 vibecoding-card 的 activityUnknown。
+   */
   active: boolean;
   /** 整份历史里 token 占比最大的模型。 */
   topModel: string | null;

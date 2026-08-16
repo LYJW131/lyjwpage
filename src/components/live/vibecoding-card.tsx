@@ -12,7 +12,9 @@ import { Sparkline } from "@/components/live/sparkline";
 import { Card } from "@/components/ui/card";
 import { useLiveEvents } from "@/hooks/use-live-events";
 import { useMountedAt } from "@/hooks/use-mounted-at";
+import { useReporterStale, useStale } from "@/hooks/use-stale";
 import { incrementalFetcher, useStatus } from "@/hooks/use-status";
+import { VIBECODING_STALE_MS } from "@/lib/freshness";
 import { VIBECODING_PATH } from "@/lib/paths";
 import {
   activityCursor,
@@ -597,7 +599,14 @@ function LimitMeter({ limit }: { limit: VibeCodingLimit }) {
   );
 }
 
-function AgentPanel({ agent }: { agent: VibeCodingAgent }) {
+function AgentPanel({
+  agent,
+  /** 采集侧的话还算不算数，见 VibeCodingCard 里的 activityUnknown */
+  activityUnknown,
+}: {
+  agent: VibeCodingAgent;
+  activityUnknown: boolean;
+}) {
   const samples = agent.activity.map((sample) => ({
     t: sample.t,
     w: sample.tokens,
@@ -612,7 +621,12 @@ function AgentPanel({ agent }: { agent: VibeCodingAgent }) {
   const cacheHitRate = promptTokens
     ? (agent.today.cacheReadTokens / promptTokens) * 100
     : 0;
-  const active = agent.active;
+  /**
+   * `agent.active` 是推来的电平，不是会自己过期的时间戳：采集侧一停就冻在最后
+   * 一次推送的值上。所以点灯前要和「这句话现在还算不算数」取与 —— 否则 Mac 睡
+   * 着时那盏灯会一直亮，直到它醒来才灭。
+   */
+  const active = agent.active && !activityUnknown;
   // 正在使用时显示 ccusage 最近 session 的模型；闲置时仍显示 CodexBar 的历史主力。
   const displayModel =
     (active ? agent.currentModel : agent.topModel ?? agent.currentModel) ?? "暂无模型";
@@ -810,13 +824,36 @@ export function VibeCodingCard({
   className?: string;
 }) {
   // 会话状态（正在用 / 换模型）走推送；token 用量仍靠轮询。
-  // 这张卡不当实时源：不点灯、不因 Mac 掉线变灰，用量是累计事实。
+  // 这张卡整体不当实时源：不因 Mac 掉线变灰 —— 用量、限额、曲线都是累计事实，
+  // 采集停了它们只是不再增长，不会变得不可信。
   useLiveEvents();
   const { data } = useStatus<VibeCodingPayload>(VIBECODING_PATH, REFRESH_MS, {
     fallback,
     fetcher: fetchVibeCoding,
     seedFallback: seedVibeCodingActivity,
   });
+
+  /**
+   * 例外只有一处：两个 agent 的活动灯。整张卡就这一处说的是「此刻」，
+   * 而它偏偏是全卡最不该冻住的东西 —— 剩下的冻住只是停在昨天，它冻住是在说谎。
+   *
+   * 两个判据取或，规矩见 lib/reporter-liveness 的模块注释：
+   *
+   * - **Mac 不在线**：整条上报链路断了，最后那个 active 再没人来改。
+   * - **CodexBar 自己卡住**：Mac 在线，但用量十几分钟没推新的（健康时 10 分钟
+   *   必发一次），说明采集侧不转了 —— 会话那份也就跟着不可信。`pushedAt` 盯的
+   *   正是用量那份，见 VibeCodingPayload。
+   *
+   * 不学 live-desk-card 那样拿 `isValidating` 挡一手：那边挡的是「回源没完成时
+   * 别把整块内容判没」，而这里判错的方向是安全的 —— 多说一句「没在用」只是少
+   * 报，下一轮就纠正回来；反过来在 Mac 睡着时还点着灯是实打实的错。
+   *
+   * 两个 hook 都要无条件调用，别写成 `useReporterStale(...) || useStale(...)` ——
+   * `||` 会短路掉后一个。
+   */
+  const reporterStale = useReporterStale(data);
+  const collectorStale = useStale(data?.pushedAt, VIBECODING_STALE_MS);
+  const activityUnknown = reporterStale || collectorStale;
 
   return (
     <Card
@@ -830,7 +867,11 @@ export function VibeCodingCard({
           <TotalUsage totals={data.totals} topModels={data.topModels} />
           <div className="grid grid-cols-1 divide-y divide-line md:grid-cols-2 md:divide-x md:divide-y-0">
             {data.agents.map((agent) => (
-              <AgentPanel key={agent.id} agent={agent} />
+              <AgentPanel
+                key={agent.id}
+                agent={agent}
+                activityUnknown={activityUnknown}
+              />
             ))}
           </div>
           <QuotaProviders providers={data.quotaProviders} />
