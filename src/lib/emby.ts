@@ -357,6 +357,34 @@ export async function recordEmbyReport(body: unknown) {
   return { items: list?.length ?? null, playing: played?.outcome ?? null, images: stored, missingImages: missing };
 }
 
+/**
+ * 把对端的回执并进本地这份。
+ *
+ * 只有 missingImages 要并，而且必须取**并集**：两份部署各有各的 Redis，「引用了
+ * 但没有」是各算各的 —— 本地补齐了、对端还缺的那些，只出现在对端那份回执里。
+ * 代理只跟一个源站说话，漏掉一个键，那张海报就在对端一直裂着，而且代理再也不会
+ * 重传它（它把没被抱怨的键当成已经收下了，见 reporters/emby-reporter 的 deliver）。
+ * R2 是共享的内容寻址桶，多传一次只是一次 HEAD 加一次写。
+ *
+ * 另外两个字段不用并：`items` 和 `playing` 是「这次上报带了什么」，
+ * 两边收的是同一份请求体。
+ */
+export function mergeEmbyReceipt<T extends { missingImages: string[] }>(
+  local: T,
+  peers: readonly unknown[],
+): T {
+  if (!peers.length) return local;
+  const missing = new Set(local.missingImages);
+  for (const peer of peers) {
+    const keys = object(peer)?.missingImages;
+    if (!Array.isArray(keys)) continue;
+    for (const key of keys) if (typeof key === "string") missing.add(key);
+  }
+  return missing.size === local.missingImages.length
+    ? local
+    : { ...local, missingImages: [...missing] };
+}
+
 /** 收下一次播放状态：先算，写留给 commit。`state` 为 null 表示没有会话在播了 */
 function preparePlaying(value: unknown): {
   outcome: "updated" | "cleared";

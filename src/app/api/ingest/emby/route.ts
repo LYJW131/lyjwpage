@@ -1,6 +1,5 @@
-import { ingestFailed, ingestRoute, jsonBody } from "@/lib/api";
-import { recordEmbyReport } from "@/lib/emby";
-import { telemetryAuthorized } from "@/lib/telemetry";
+import { ingestRoute } from "@/lib/api";
+import { mergeEmbyReceipt, recordEmbyReport } from "@/lib/emby";
 
 /**
  * Emby 相关的全部数据都从这一个门进来，推送方是 NAS 上的代理
@@ -12,9 +11,9 @@ import { telemetryAuthorized } from "@/lib/telemetry";
  * 先发给同机的代理，由它带上密钥转发，站点这边只剩一种鉴权方式。
  *
  * 一次上报可以只带其中一部分，见 lib/emby.ts 的 recordEmbyReport。
- * 响应里的 missingImages 是「引用了但本站没有的图片键」，代理据此补传。
+ * 响应里的 missingImages 是「引用了但本站没有的图片键」，代理据此补传；
+ * 各部署各有各的 Redis，所以那份名单要并上对端的，见 mergeEmbyReceipt。
  */
 export async function POST(request: Request) {
-  if (!telemetryAuthorized(request)) return ingestFailed("未授权", 401);
-  return ingestRoute(async () => recordEmbyReport(await jsonBody(request)));
+  return ingestRoute(request, recordEmbyReport, mergeEmbyReceipt);
 }

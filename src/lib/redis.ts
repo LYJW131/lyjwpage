@@ -273,11 +273,11 @@ function hashFieldValues<T extends object>(
  * 心跳会把 Redis 里刚写进去的正在播盖回上一首 —— 推送用的是内存，刷新 /now
  * 读的是 Redis，于是页面先翻到新歌、一刷新又回去。
  *
- * 整包 JSON（`blobParts`）在每次字段写入后按合并结果再 SET 一份：国内
- * EdgeOne 和 Vercel 共用 Redis，但上报只打其中一个源站。还在 GET 旧钥匙的
- * 实例、以及 hash 里还没出现过的模块，都靠这份补齐。并发安全仍在 hash 上。
+ * 整包 JSON（`blobParts`）在每次字段写入后按合并结果再 SET 一份：同一份部署有
+ * 好几个函数实例，还在 GET 旧钥匙的那些、以及 hash 里还没出现过的模块，都靠这份
+ * 补齐。并发安全仍在 hash 上。
  *
- * 读不用 MULTI：上报在另一个源站，这边只读；部分 Redis 代理对事务不友好，
+ * 读不用 MULTI：读的实例多半不是刚写过的那个；部分 Redis 代理对事务不友好，
  * 整段失败会退回空的进程内存，看起来像「读到上一首」。
  */
 export function overlayHashKey<T extends object>(

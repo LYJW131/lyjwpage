@@ -32,7 +32,7 @@ pnpm dev
 
 ## 部署在哪
 
-同一个仓库三份部署，共用同一个 Redis：
+同一个仓库三份部署，各有各的 Redis：
 
 | 域名 | 平台 | 环境 | 说明 |
 | --- | --- | --- | --- |
@@ -42,13 +42,45 @@ pnpm dev
 
 分不清哪个是哪个时看响应头：Vercel 是 `server: Vercel`，EdgeOne 是 `Server: edgeone-pages`。
 
-两份生产各有一套自己的 Next 缓存，`revalidateTag` 只打得到本进程 —— 共用 Redis 也
-刷不到对面。所以两边靠 `STATUS_CACHE_PEERS` 互相通知失效，各自填对面那个源，
-不在代码里写死谁通知谁（见 `lib/live-events.ts`）。
+### 两份生产之间靠传播上报对齐
 
-实时推送、在线人数、动态封面各是一个独立的 Cloudflare Worker（都在 `workers/` 下），
-三份部署共用同一组 Worker。**Worker 的地址一律走环境变量**，源码里不写死 ——
-否则任何人 clone 这个仓库跑起来都会去打这边的 Worker。
+上报器只跟其中一个源站说话，而两份生产各有各的 Redis、各有各的 live-push Worker、
+各有各的 Next 缓存。所以**收到上报的那份除了自己落库，还会把同一个请求原样转给
+对面**：对面进的是同一条路由、同一个 handler，于是它写自己的 Redis、推自己的 Worker、
+刷自己的 tag —— 三件事都在它自己那边发生，没有谁远程指挥谁。
+
+```text
+上报器 ──▶ EdgeOne ──▶ 自己的 Redis / 自己的 Worker / 自己的 tag
+              └─转发─▶ Vercel ──▶ 自己的 Redis / 自己的 Worker / 自己的 tag
+```
+
+两边各自填对面那个源（`INGEST_PEERS`），不在代码里写死谁转给谁。转发出去的请求带
+`x-ingest-relay`，对端见到它就不再往下传 —— 两边互填对方，再传一次就成环了；三份
+以上各自填齐其余几份，一跳照样到齐。实现在 `lib/ingest-relay.ts`，挂在
+`lib/api.ts` 的 `ingestRoute` 上，所以新加一个 `/api/ingest/*` 自动就带传播。
+
+从前传播的是「缓存失效」这一件事：一个 `/api/ingest/revalidate` 端点，收到上报的那份
+把 tag 名单发给对面（`revalidateTag` 只打得到本进程）。那条路只管缓存，数据本身仍然
+靠两边共用一个 Redis 才对得上 —— 于是国内那份的每一次读写都要跨一次海，而缓存还要
+单独再传播一遍。改成传播上报之后，缓存失效变成对端处理这次上报的自然结果，那个端点
+和它那套 tag 名单校验就一起删掉了。
+
+代价说清楚：转发是尽力而为，对端挂了只记一行日志，不把这次上报打成 4xx（数据在本地
+已经落库了，回 4xx 只会让上报器把同一份再写一遍）。所以对端会漏掉那一次变化 ——
+两张列表的上报器每 10 分钟兜底整推一次，能自己追上；Mac 那几份要等下一次内容变化。
+另外两边的 `receivedAt` 是各自收到的时刻，差几百毫秒，充电头曲线的采样点因此不完全
+对齐，那是各存各的历史，不影响读数。
+
+还有一类字段是**各部署各算**的，回执要并起来再回给上报器：Emby 的 `missingImages`
+和 Mac 的 `desktopIconAvailable` 问的都是「你那边有没有这份图」，两边的 Redis 不是同一个，
+答案可能不一样。上报器只跟一个源站说话，只要有一份说没有就得让它补传，否则那张图在
+对端永远缺着（见 `mergeEmbyReceipt` / `mergeTelemetryReceipt`）。
+
+实时推送、在线人数、动态封面各是一个独立的 Cloudflare Worker（都在 `workers/` 下）。
+**live-push 一份生产一个** —— 上报传到对端之后对端也要推一次，两边填同一个 Worker
+的话每个浏览器会收到两份一样的事件；在线人数和动态封面没有写入方，仍然共用一组。
+**Worker 的地址一律走环境变量**，源码里不写死 —— 否则任何人 clone 这个仓库跑起来
+都会去打这边的 Worker。
 
 ## 状态是怎么接的
 
@@ -58,7 +90,7 @@ pnpm dev
 
 Redis TCP 连接按请求作用域租用：同一 Node 实例里的并发请求共用一条，最后一个请求和命令结束后主动断开。不能让 ioredis 永久单例留在 serverless 实例里——实例暂停时普通 idle timer 不会跑，旧部署和 Preview 会各留一条空闲连接。Preview 必须不配 Redis 或使用独立 `REDIS_URL`；`REDIS_PREFIX` 只隔离键，不隔离连接额度。
 
-各路数据全是**推进来**的，本站不主动轮询任何上游。推送入口共用 `/api/ingest/*` 和同一个 `TELEMETRY_INGEST_SECRET`，状态落在 `lib/redis.ts` 的 mirrorKey 里（Redis 为主、进程内存为辅，没配 `REDIS_URL` 也能跑）。四个上报侧：Mac Telemetry Hub、Home Assistant（HomePod）、Emby 推送代理、Apple Music 上报器。
+各路数据全是**推进来**的，本站不主动轮询任何上游。推送入口共用 `/api/ingest/*` 和同一个 `TELEMETRY_INGEST_SECRET`，状态落在 `lib/redis.ts` 的 mirrorKey 里（Redis 为主、进程内存为辅，没配 `REDIS_URL` 也能跑）。四个上报侧：Mac Telemetry Hub、Home Assistant（HomePod）、Emby 推送代理、Apple Music 上报器。上报器只跟一个源站说话，收到的那份会把请求原样转给对端部署，见[上面那节](#两份生产之间靠传播上报对齐)。
 
 站点仍会出网的只剩一处：给此刻在播的曲子查一个可跳转的地址，走 `src/lib/cache.ts`（带 TTL、in-flight 去重和 5 秒负缓存）。**核心原则：前端轮询多快，回源频率都不变**，由各自的 TTL 决定。值存 Redis（进程重启和多实例共享）；in-flight 去重始终在进程内，它挡的是同一进程的并发穿透，Redis 代劳不了。
 
@@ -119,7 +151,7 @@ Emby 对拖动进度条不发任何通知，那部分只能查会话。查的人
 
 #### 图片
 
-海报由 Emby 上报器一次压成 WebP，以 `<sha256>.webp` 直传 R2；站点只接收对象键，响应时再用当前部署的 `R2_PUBLIC_BASE_URL` 拼公开地址。所以上报写进同一份 Redis 后，Vercel 可以直连 R2，EdgeOne 可以改走以 R2 为源站的 COS CDN。上报器传之前先 HEAD 问一次桶里有没有，所以桶被清空、换机器、重启都能自己发现要补传，不必等站点回执。地址即内容指纹，所以对象带 `max-age=31536000, immutable`，浏览器直连交付域取图，站点没有图片读写或转码路径。
+海报由 Emby 上报器一次压成 WebP，以 `<sha256>.webp` 直传 R2；站点只接收对象键，响应时再用当前部署的 `R2_PUBLIC_BASE_URL` 拼公开地址。所以同一次上报传播到两份部署之后，Vercel 可以直连 R2，EdgeOne 可以改走以 R2 为源站的 COS CDN。上报器传之前先 HEAD 问一次桶里有没有，所以桶被清空、换机器、重启都能自己发现要补传，不必等站点回执。地址即内容指纹，所以对象带 `max-age=31536000, immutable`，浏览器直连交付域取图，站点没有图片读写或转码路径。
 
 - **条目里存的是「图片键」而不是地址**（`imageKey`，由代理按 `itemId:kind:tag:height` 拼，图换了 ImageTag 键就换），读取时才换成地址。图片和列表是分两次推来的：列表先到、图片可能还在路上，或者 Redis 被清空后只需补图。晚到的那批图能把已经存着的列表一起点亮，不用整份重推。
 - **响应里回 `missingImages`**：站点引用了却没有的键。代理据此补传，Redis 清空、容器换机器之后不需要人工干预。
