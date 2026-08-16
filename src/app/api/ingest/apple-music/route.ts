@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server";
 
-import { ingestFailed, ingestRoute, jsonBody } from "@/lib/api";
+import { ingestFailed, ingestRoute, telemetryAuthorized } from "@/lib/api";
 import { readAppleMusicCredentials } from "@/lib/apple-music-credentials";
 import { prepareRecentlyPlayedReport } from "@/lib/apple-music-store";
 import { fanout, LISTENING_TAG } from "@/lib/live-events";
 import { withRedisScope } from "@/lib/redis";
-import { telemetryAuthorized } from "@/lib/telemetry";
 
 /**
  * 「最近在听」的上报入口，推送方是 reporters/apple-music-reporter。
@@ -21,11 +20,8 @@ import { telemetryAuthorized } from "@/lib/telemetry";
  * 拿到密钥就能取走 token。四个上报侧本来就共用它，轮换时一起换。
  */
 export async function POST(request: Request) {
-  if (!telemetryAuthorized(request)) return ingestFailed("未授权", 401);
-  return ingestRoute(async () => {
-    const { items, changed, listening, commit } = await prepareRecentlyPlayedReport(
-      await jsonBody(request),
-    );
+  return ingestRoute(request, async (body) => {
+    const { items, changed, listening, commit } = await prepareRecentlyPlayedReport(body);
     /**
      * 带整份数据推。省掉每个在线访客各一次回源 —— 发失效通知的话，成本是按
      * 人头乘的，而这份整份才 4.4 KB。理由详见 lib/live-events 的事件定义。

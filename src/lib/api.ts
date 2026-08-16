@@ -1,5 +1,8 @@
+import { timingSafeEqual } from "node:crypto";
+
 import { connection, NextResponse } from "next/server";
 
+import { relayIngest } from "@/lib/ingest-relay";
 import { withRedisScope } from "@/lib/redis";
 import type { IngestFailure, IngestResponse, StatusResponse } from "@/lib/types";
 
@@ -59,9 +62,9 @@ function statusJson<T>(envelope: StatusResponse<T>): NextResponse<StatusResponse
 }
 
 /**
- * 活路径：每次进函数。listening/now 的候选也现读 Redis（Mac / HomePod 分打
- * 两个源站，`'use cache'` 的 tag 过不了海）。来源选择和 expiresInMs 在 overlay
- * 里现算。connection() 现算的写法还留着，以免以后又有不能冻的整段取数。
+ * 活路径：每次进函数。listening/now 的候选也现读 Redis（起因和它已经不成立了
+ * 这件事见那条路由）。来源选择和 expiresInMs 在 overlay 里现算。connection()
+ * 现算的写法还留着，以免以后又有不能冻的整段取数。
  *
  * cacheComponents 下没有 force-dynamic 可写了，「每次请求都得跑一遍」只能由
  * connection() 明说。少了它 Next 会试着在构建期把这些 GET 预渲染成静态响应，
@@ -101,14 +104,33 @@ export async function statusCachedRoute<T, U>(
 }
 
 /**
- * 读请求体。
+ * 所有 /api/ingest/* 共用的鉴权；未配置密钥时保留本地开发的零配置体验。
+ *
+ * 摆在这个文件里，是因为它和下面的 ingestRoute 是同一件事的两半：一个门要先验
+ * 身份再收数据。从前它在 lib/telemetry 里，于是 ingestRoute 想把鉴权收进去就得
+ * 把整张遥测依赖图拖进每一条状态路由。
+ */
+export function telemetryAuthorized(request: Request) {
+  const expected = process.env.TELEMETRY_INGEST_SECRET;
+  if (!expected) return true;
+  const actual = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
+  const expectedBytes = Buffer.from(expected);
+  const actualBytes = Buffer.from(actual);
+  return (
+    expectedBytes.length === actualBytes.length &&
+    timingSafeEqual(expectedBytes, actualBytes)
+  );
+}
+
+/**
+ * 解析请求体。
  *
  * 解析失败统一抛这一句 —— 不然漏出去的是 V8 那句英文 parser 报错，四个端点
  * 各抛各的，上报器那边看到的错误文案还不一样。
  */
-export async function jsonBody(request: Request): Promise<unknown> {
+function parseBody(raw: string): unknown {
   try {
-    return await request.json();
+    return JSON.parse(raw) as unknown;
   } catch {
     throw new Error("请求体不是合法 JSON");
   }
@@ -127,21 +149,58 @@ export function ingestFailed(message: string, status: number): NextResponse<Inge
 }
 
 /**
- * 把一次上报的落库过程包成统一响应。
+ * 一条上报入口的全部公共部分：鉴权、读请求体、转给对端、统一响应。
+ *
+ * 四个入口从前各写各的前两步（`telemetryAuthorized` 一行、`jsonBody` 一行），
+ * 收进来是为了第三步：**转发不能靠每条路由自己记得做**，漏一条就是那份数据在
+ * 对端永远缺席，而且要等很久才会被发现。现在加一个上报入口就自动带上传播。
  *
  * 成功一律 202：数据已收下，但后续的扇出（实时推送、缓存失效）是异步的，
  * 200 会给人「全部生效」的错觉。handler 里抛出来的按 400 处理 —— 到这一步
  * 还失败的都是 payload 本身的问题，上报器重发同一份也不会变好。
+ *
+ * `merge` 只有回执里带「各部署各算」的字段时才要传，见 lib/ingest-relay。
  */
 export async function ingestRoute<T>(
-  handler: () => Promise<T>,
+  request: Request,
+  handler: (body: unknown) => Promise<T>,
+  merge?: (local: T, peers: readonly unknown[]) => T,
 ): Promise<NextResponse<IngestResponse<T>>> {
+  if (!telemetryAuthorized(request)) return ingestFailed("未授权", 401);
+
+  let raw: string;
+  try {
+    raw = await request.text();
+  } catch (error) {
+    return ingestFailed(reason(error), 400);
+  }
+
+  /**
+   * 转发先发车，和本地这次落库并行。
+   *
+   * 对端跑的是同一个 handler、写的是另一个 Redis，两边互不相干，串起来的话上报器
+   * 要等的就是「本地一整趟 + 跨海一整趟」。和写库、推送同时发车是同一个道理，
+   * 见 lib/live-events 的 fanout。
+   */
+  const relay = relayIngest(request, raw);
+
   return withRedisScope(async () => {
     try {
-      return NextResponse.json({ ok: true as const, data: await handler() }, { status: 202 });
+      const local = await handler(parseBody(raw));
+      const peers = await relay;
+      return NextResponse.json(
+        { ok: true as const, data: merge ? merge(local, peers) : local },
+        { status: 202 },
+      );
     } catch (error) {
       const message = reason(error);
       console.error("[ingest]", message);
+      /**
+       * 报文写坏了对端也会照样拒绝，但仍然要等它落地再返回：serverless 上响应
+       * 一发出实例就可能被冻住，没等完的转发会变成「偶尔没传过去」。
+       * relayIngest 自己吞掉全部错误，这里不会二次抛出。
+       */
+      await relay;
       return ingestFailed(message, 400);
     }
   });

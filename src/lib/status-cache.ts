@@ -23,10 +23,11 @@ import { getVibeCodingSnapshot } from "@/lib/vibecoding";
 
 /**
  * 首屏那八份数据的缓存层。状态路由（时区除外，它只给首屏）除 listening/now
- * 外也读这里。listening/now 的候选每次直读 Redis：上报分打 Vercel / EdgeOne，
- * tag 过不了海；来源选择和 expiresInMs 仍在路由 overlay 里现算。
+ * 外也读这里。listening/now 的候选每次直读 Redis，理由（以及它已经不成立了这件事）
+ * 见那条路由；来源选择和 expiresInMs 仍在路由 overlay 里现算。
  *
- * 首屏 hero 仍走下面的 cachedNowListening，换歌时 expireStatus 会通知对端刷 tag。
+ * 首屏 hero 仍走下面的 cachedNowListening。tag 只失效本部署那一套 —— 上报会被原样
+ * 转给对端，对端自己跑一遍同一个 handler、自己走到 expireStatus，见 lib/ingest-relay。
  * Mac 存活（lastSeenAt / declaredOffline）以及充电头的 pushedAt 也在路由里
  * 现盖一层，因为心跳不触发 tag 失效。时区不看存活，只在 timezone 模块上报时失效。
  *

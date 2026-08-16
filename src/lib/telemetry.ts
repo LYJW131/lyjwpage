@@ -1,5 +1,3 @@
-import { timingSafeEqual } from "node:crypto";
-
 import {
   chargerPushPayload,
   normalizeChargingDevice,
@@ -779,8 +777,8 @@ export async function publishPresence() {
   await publish({ type: "presence", payload: null });
   // 浏览器那侧收到 presence 后重取的是 PRESENCE_PATHS 那三份（desktop /
   // listening-now / charger）。时区不看存活，上下线不用刷它的首屏缓存。
-  await expireStatus(DESKTOP_TAG);
-  await expireStatusImmediately(NOW_LISTENING_TAG, CHARGER_TAG);
+  expireStatus(DESKTOP_TAG);
+  expireStatusImmediately(NOW_LISTENING_TAG, CHARGER_TAG);
 }
 
 /**
@@ -819,15 +817,22 @@ export async function homePodListeningEvent(stored: StoredHomePod): Promise<Live
   return listeningEvent(liveness, Promise.resolve(playableHomePod(stored)));
 }
 
-/** 唯一遥测入口的鉴权；未配置密钥时保留本地开发的零配置体验。 */
-export function telemetryAuthorized(request: Request) {
-  const expected = process.env.TELEMETRY_INGEST_SECRET;
-  if (!expected) return true;
-  const actual = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
-  const expectedBytes = Buffer.from(expected);
-  const actualBytes = Buffer.from(actual);
-  return (
-    expectedBytes.length === actualBytes.length &&
-    timingSafeEqual(expectedBytes, actualBytes)
-  );
+/**
+ * 把对端的回执并进本地这份。
+ *
+ * 只有 `desktopIconAvailable` 要并：它问的是「你那边有没有这个图标哈希对应的
+ * 对象键」，而两份部署各查各的 Redis，答案可能不一样。上报器只跟一个源站说话，
+ * 收到 true 就把这个哈希当成已经传到位、不再理会它 —— 所以只要有一份说没有，
+ * 回给它的就必须是 false，否则那个图标在对端永远缺一块。R2 是共享的内容寻址桶，
+ * 补传一次只是一次 HEAD 加一次写，宁可多传。
+ *
+ * `accepted` 不用并：两边跑的是同一封信封，收下的模块数必然一样。
+ */
+export function mergeTelemetryReceipt<T extends { desktopIconAvailable?: boolean }>(
+  local: T,
+  peers: readonly unknown[],
+): T {
+  if (local.desktopIconAvailable !== true) return local;
+  const missing = peers.some((peer) => object(peer)?.desktopIconAvailable === false);
+  return missing ? { ...local, desktopIconAvailable: false } : local;
 }
