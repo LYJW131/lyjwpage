@@ -601,8 +601,8 @@ export function ListeningCard({
    *
    * 但如果排在最前的就是实时源刚才在放的那张，就不信这个推断 —— 我们比它知道得
    * 多：设备亲口说了暂停/停止，而推断只会按「这个容器什么时候排到第一」加曲目
-   * 总时长去算，于是刚按下暂停、宽限期一过，卡片反而从「已暂停」翻成绿色的
-   * 「播放中」。等别的条目顶上来，这层压制自然就解除了。
+   * 总时长去算，于是刚按下暂停、宽限期一过，卡片反而从「播放暂停」翻成绿色的
+   * 「正在播放」。等别的条目顶上来，这层压制自然就解除了。
    */
   const backFromLive = lastLiveId != null && lastLiveId === latest?.id;
   const playing =
@@ -617,7 +617,12 @@ export function ListeningCard({
         subtitle: localTrack!.artist ?? "",
         // 设备给不出可分享的地址，服务端拿曲名 + 艺人去目录里解析出来的
         link: live?.link ?? null,
-        label: localTrack!.state === "playing" ? "播放中" : "已暂停",
+        label:
+          localTrack!.state === "playing"
+            ? localTrack!.repeatOne
+              ? "单曲循环"
+              : "正在播放"
+            : "播放暂停",
         playing: localTrack!.state === "playing",
         palette:
           data?.items.find((item) => item.id === live?.id)?.palette ?? [],
@@ -631,7 +636,7 @@ export function ListeningCard({
           title: latest.title,
           subtitle: latest.artist,
           link: latest.link,
-          label: playing ? "播放中" : "最近听过",
+          label: playing ? "正在播放" : "最近听过",
           playing,
           palette: latest.palette,
           durationMs: latest.durationMs,
