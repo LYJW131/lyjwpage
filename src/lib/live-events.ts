@@ -1,4 +1,5 @@
 import { revalidateTag } from "next/cache";
+import { after } from "next/server";
 
 import type { NowWatchingPayload, WatchingPayload } from "@/lib/emby";
 import { livePublishUrl } from "@/lib/live-socket";
@@ -202,18 +203,45 @@ async function notifyCachePeers(tags: readonly string[], immediate: boolean): Pr
 }
 
 /**
+ * 把通知对端挪到响应之后。
+ *
+ * 这一次是**跨海**的 fetch（超时 2.5 秒），而上报器的 postTimeout 只有 10 秒、
+ * 超时还要退避。放在响应路径上，等于让每一条带 tag 的上报都押在对端源站的
+ * 往返上 —— 对端慢一次，上报就被吊住一次。
+ *
+ * 但也不能改成 fire-and-forget：serverless 上响应一返回实例就冻住，没等完的
+ * 工作随时被掐，表现是「国内那份偶尔没刷」。`after()` 正是这两者之间的那一档 ——
+ * Vercel 上它落到 Fluid 的 waitUntil：响应先发出去，实例保持活着把它做完。
+ *
+ * 所以这不是一笔省钱的改动（waitUntil 期间实例照样计费），换的是上报器那侧
+ * 不再为对端的延迟买单。
+ *
+ * 平台没有 waitUntil、或者压根不在请求作用域里时，`after()` 会**同步抛**；
+ * 那就退回原来的行为在响应里等完。慢，但比静默丢掉强 —— 丢掉的表现是对面那份
+ * 一直顶着旧缓存，要很久才会有人发现。
+ */
+function afterResponse(work: () => Promise<void>): Promise<void> {
+  try {
+    after(work);
+    return Promise.resolve();
+  } catch {
+    return work();
+  }
+}
+
+/**
  * 让首屏缓存里的这几份过期，下一个请求重算。
  *
  * cacheComponents 下 revalidateTag 的第二个参数是必填的 —— 它是「失效之后旧的
  * 还能顶多久」。给 max 拿到的是 stale-while-revalidate：请求立刻拿到旧的那份、
  * 新的在后台重建，上报这条路径上一个字节都不用等。
  *
- * 对端也要等到：serverless 上响应一返回实例就冻住，fire-and-forget 会变成
- * 「国内那份偶尔没刷」。对端挂了只记一行，不把这次上报打成 400。
+ * 本进程的 tag 仍然在响应里刷完 —— 那是纯本地调用，不花往返；只有通知对端
+ * 那一次跨海 fetch 挪到响应之后，见 afterResponse。
  */
 export async function expireStatus(...tags: string[]): Promise<void> {
   expireStatusLocally(tags, false);
-  await notifyCachePeers(tags, false);
+  await afterResponse(() => notifyCachePeers(tags, false));
 }
 
 /**
@@ -222,10 +250,13 @@ export async function expireStatus(...tags: string[]): Promise<void> {
  * 充电卡是否存在会改变首屏两列布局，实时播放则直接决定 LCP hero；这两份不能
  * 像普通文字数据一样先给下一位访客旧值再后台重建。上报来自 Route Handler，
  * 按 Next 16 的约定用 `{ expire: 0 }`；下一次页面请求只为指定 tag 阻塞重算。
+ *
+ * 「立即」说的是本进程这一侧的失效强度，不是通知对端的时机 —— 对端那一条同样
+ * 走 afterResponse，它带的 immediate 只是转告对面该用哪种强度。
  */
 export async function expireStatusImmediately(...tags: string[]): Promise<void> {
   expireStatusLocally(tags, true);
-  await notifyCachePeers(tags, true);
+  await afterResponse(() => notifyCachePeers(tags, true));
 }
 
 type PushTarget = { url: string; secret: string };
