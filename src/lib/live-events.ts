@@ -103,104 +103,6 @@ export const NOW_LISTENING_TAG = "listening-now";
 export const WATCHING_TAG = "watching";
 export const NOW_WATCHING_TAG = "watching-now";
 
-export const STATUS_TAGS = [
-  DESKTOP_TAG,
-  TIMEZONE_TAG,
-  CHARGER_TAG,
-  POWERBANK_TAG,
-  VIBECODING_TAG,
-  LISTENING_TAG,
-  NOW_LISTENING_TAG,
-  WATCHING_TAG,
-  NOW_WATCHING_TAG,
-] as const;
-
-export type StatusTag = (typeof STATUS_TAGS)[number];
-
-const STATUS_TAG_SET = new Set<string>(STATUS_TAGS);
-
-export function isStatusTag(value: string): value is StatusTag {
-  return STATUS_TAG_SET.has(value);
-}
-
-/**
- * 对端源站。`revalidateTag` 只打本部署的 `'use cache'`，Vercel 和 EdgeOne
- * 各有一份，共用 Redis 也刷不到对面。
- *
- * 只认 `STATUS_CACHE_PEERS`（逗号分隔，空字符串关掉）：**每一份部署在自己的
- * 环境变量里填对面那份的源**，不在代码里写死谁通知谁。地址属于部署环境，
- * 写进源码只会和现实脱节 —— 从前这里举过两个具体域名，还正好举反了。
- * 没配就不通知，本地 dev 也因此不会去敲线上。
- */
-function cachePeers(): string[] {
-  const raw = process.env.STATUS_CACHE_PEERS;
-  if (!raw) return [];
-  return raw.split(",").map((origin) => origin.trim()).filter(Boolean);
-}
-
-function thisOriginHost(): string | null {
-  const raw = process.env.VERCEL_PROJECT_PRODUCTION_URL ?? process.env.VERCEL_URL;
-  if (!raw) return null;
-  try {
-    return new URL(raw.includes("://") ? raw : `https://${raw}`).host;
-  } catch {
-    return null;
-  }
-}
-
-function peerOrigin(raw: string): string | null {
-  try {
-    const url = new URL(raw);
-    if (url.protocol !== "https:" && url.protocol !== "http:") return null;
-    const self = thisOriginHost();
-    if (self && url.host === self) return null;
-    return url.origin;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * 只刷本进程的 tag。对端入口必须走这一条，不能再调 expireStatus，否则两站互打。
- */
-export function expireStatusLocally(tags: readonly string[], immediate = false): void {
-  for (const tag of tags) {
-    if (immediate) revalidateTag(tag, { expire: 0 });
-    else revalidateTag(tag, "max");
-  }
-}
-
-async function notifyCachePeers(tags: readonly string[], immediate: boolean): Promise<void> {
-  const secret = process.env.TELEMETRY_INGEST_SECRET;
-  const peers = cachePeers().map(peerOrigin).filter((origin): origin is string => origin != null);
-  if (!secret || !peers.length || !tags.length) return;
-
-  await Promise.all(
-    peers.map(async (origin) => {
-      try {
-        const response = await fetch(`${origin}/api/ingest/revalidate`, {
-          method: "POST",
-          headers: {
-            authorization: `Bearer ${secret}`,
-            "content-type": "application/json",
-          },
-          body: JSON.stringify({ tags, immediate }),
-          signal: AbortSignal.timeout(2_500),
-        });
-        if (!response.ok) {
-          console.error("[live] peer revalidate", origin, response.status);
-        }
-      } catch (error) {
-        console.error(
-          "[live] peer revalidate",
-          origin,
-          error instanceof Error ? error.message : String(error),
-        );
-      }
-    }),
-  );
-}
-
 /**
  * 让首屏缓存里的这几份过期，下一个请求重算。
  *
@@ -208,12 +110,13 @@ async function notifyCachePeers(tags: readonly string[], immediate: boolean): Pr
  * 还能顶多久」。给 max 拿到的是 stale-while-revalidate：请求立刻拿到旧的那份、
  * 新的在后台重建，上报这条路径上一个字节都不用等。
  *
- * 对端也要等到：serverless 上响应一返回实例就冻住，fire-and-forget 会变成
- * 「国内那份偶尔没刷」。对端挂了只记一行，不把这次上报打成 400。
+ * **只刷本部署。** `revalidateTag` 打不到另一份部署的 `'use cache'`，从前这里
+ * 会顺带 POST 一趟对端的 /api/ingest/revalidate 把 tag 名单传过去。现在整条上报
+ * 都会被转给对端（lib/ingest-relay），它自己跑一遍同一个 handler、自己走到这里，
+ * 失效是那次处理的自然结果，不再需要单独传播一份缓存状态。
  */
-export async function expireStatus(...tags: string[]): Promise<void> {
-  expireStatusLocally(tags, false);
-  await notifyCachePeers(tags, false);
+export function expireStatus(...tags: string[]): void {
+  for (const tag of tags) revalidateTag(tag, "max");
 }
 
 /**
@@ -223,9 +126,8 @@ export async function expireStatus(...tags: string[]): Promise<void> {
  * 像普通文字数据一样先给下一位访客旧值再后台重建。上报来自 Route Handler，
  * 按 Next 16 的约定用 `{ expire: 0 }`；下一次页面请求只为指定 tag 阻塞重算。
  */
-export async function expireStatusImmediately(...tags: string[]): Promise<void> {
-  expireStatusLocally(tags, true);
-  await notifyCachePeers(tags, true);
+export function expireStatusImmediately(...tags: string[]): void {
+  for (const tag of tags) revalidateTag(tag, { expire: 0 });
 }
 
 type PushTarget = { url: string; secret: string };
@@ -348,7 +250,7 @@ export async function fanout({
     ]);
   } finally {
     // 写抛出来了也照样失效：已经落库的那几份不该继续被旧缓存遮着
-    if (tags.length) await expireStatus(...tags);
-    if (urgentTags.length) await expireStatusImmediately(...urgentTags);
+    if (tags.length) expireStatus(...tags);
+    if (urgentTags.length) expireStatusImmediately(...urgentTags);
   }
 }

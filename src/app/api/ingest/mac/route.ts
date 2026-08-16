@@ -1,5 +1,5 @@
-import { ingestFailed, ingestRoute, jsonBody } from "@/lib/api";
-import { recordTelemetryEnvelope, telemetryAuthorized } from "@/lib/telemetry";
+import { ingestRoute } from "@/lib/api";
+import { mergeTelemetryReceipt, recordTelemetryEnvelope } from "@/lib/telemetry";
 
 /**
  * Mac 上报器的唯一入口：数据、心跳、优雅下线都是同一个 v4 信封。
@@ -13,6 +13,5 @@ import { recordTelemetryEnvelope, telemetryAuthorized } from "@/lib/telemetry";
  * 崩溃、断网、强制关机只能靠站点这边「多久没收到」的超时兜底。
  */
 export async function POST(request: Request) {
-  if (!telemetryAuthorized(request)) return ingestFailed("未授权", 401);
-  return ingestRoute(async () => recordTelemetryEnvelope(await jsonBody(request)));
+  return ingestRoute(request, recordTelemetryEnvelope, mergeTelemetryReceipt);
 }
