@@ -2,7 +2,7 @@ import { cacheLife, cacheTag } from "next/cache";
 
 import { getChargerSnapshot, withChargerFreshness } from "@/lib/anker";
 import { getPowerBankSnapshot, withPowerBankFreshness } from "@/lib/powerbank";
-import { statusEnvelope } from "@/lib/api";
+import { statusEnvelope, statusSource } from "@/lib/api";
 import { getRecentlyPlayed } from "@/lib/apple-music-store";
 import { getNowWatching, getWatching } from "@/lib/emby";
 import {
@@ -22,11 +22,12 @@ import { getDesktopPayload, getNowListeningSnapshot, getTimezonePayload } from "
 import { getVibeCodingSnapshot } from "@/lib/vibecoding";
 
 /**
- * 首屏那八份数据的缓存层。八条状态路由（时区除外，它只给首屏）也都读这里。
- * listening/now 读的是下面那份 snapshot，来源选择和 expiresInMs 在它的 overlay
- * 里现算 —— 那条曾经因为「tag 过不了海」整个绕开缓存，见该路由的注释。
+ * 首屏那八份数据的缓存层。八条状态路由（时区除外，它只给首屏）也读这里 ——
+ * 但只在 STATUS_CACHE 没被关掉时读：关掉的部署上端点走文件末尾那几对里的 `live`
+ * 那半，每次直读 Redis，见 lib/api 的 STATUS_CACHE。首屏不受那个开关管。
  *
- * tag 只失效本部署那一套 —— 上报会被原样转给对端，对端自己跑一遍同一个 handler、
+ * tag 只失效本实例那一套（Vercel 之外没有共享的 tag 存储，见 lib/live-events 的
+ * expireStatus）—— 上报会被原样转给对端，对端自己跑一遍同一个 handler、
  * 自己走到 expireStatus，见 lib/ingest-relay。
  * Mac 存活（lastSeenAt / declaredOffline）以及充电头的 pushedAt 也在路由里
  * 现盖一层，因为心跳不触发 tag 失效。时区不看存活，只在 timezone 模块上报时失效。
@@ -170,3 +171,25 @@ export async function cachedNowWatching() {
 }
 
 export { cachedGithubChart } from "@/lib/github-chart";
+
+/**
+ * 八条状态端点各自的两种取法，见 lib/api 的 `StatusSource`：冻起来那份走上面的
+ * `'use cache'`，直读那份走同一个 loader，由 STATUS_CACHE 选。
+ *
+ * 配对摆在这里而不是各条路由里：这个文件本来就同时拿着 tag 和 loader，而路由那边
+ * 每加一处「哪份缓存对应哪个 loader」的知识，就多一处能对不上的地方。
+ *
+ * 充电头和充电宝给端点的是**完整快照**，首屏那两份（cachedCharger /
+ * cachedPowerBank）裁过历史窗口，两者不是同一份。
+ */
+export const desktopStatus = statusSource(cachedDesktop, getDesktopPayload);
+export const chargerStatus = statusSource(cachedChargerSnapshot, getChargerSnapshot);
+export const powerBankStatus = statusSource(cachedPowerBankSnapshot, getPowerBankSnapshot);
+export const vibeCodingStatus = statusSource(cachedVibeCoding, getVibeCodingSnapshot);
+export const listeningStatus = statusSource(cachedListening, getRecentlyPlayed);
+export const nowListeningStatus = statusSource(
+  cachedNowListeningSnapshot,
+  getNowListeningSnapshot,
+);
+export const watchingStatus = statusSource(cachedWatching, getWatching);
+export const nowWatchingStatus = statusSource(cachedNowWatching, getNowWatching);

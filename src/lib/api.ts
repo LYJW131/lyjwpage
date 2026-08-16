@@ -63,35 +63,57 @@ function statusJson<T>(envelope: StatusResponse<T>): NextResponse<StatusResponse
 }
 
 /**
- * 活路径：每次进函数，整段取数都不冻。八条状态 GET 现在都走下面那条带缓存的，
- * 这个写法留着，以免以后又有不能冻的整段取数。
+ * 状态端点用不用 `'use cache'`，按部署填，默认用。
  *
- * cacheComponents 下没有 force-dynamic 可写了，「每次请求都得跑一遍」只能由
- * connection() 明说。少了它 Next 会试着在构建期把这些 GET 预渲染成静态响应，
- * 而下面 statusEnvelope 的 try/catch 会把预渲染的中断信号一并吞掉（内置文档
- * 专门警告过这一点），构建期那份 ok:false 就被烤进静态响应，客户端从此永远
- * 轮询到同一个错误。
+ * 填 `false` 的那份上，八条状态 GET 每次直读 Redis，缓存那层整个不进。给国内那份
+ * 准备的：`revalidateTag` 只失效**本实例**那份缓存（Next 默认是每个进程各自的内存
+ * LRU，Vercel 另接了一套共享存储，所以在那边看起来是全局的），EdgeOne 跑的是原样的
+ * Next（腾讯云 SCF，多实例），于是收到上报的实例失效了自己那份，服务 GET 的实例
+ * 不知情，只能等 cacheLife 的 60 秒兜底 —— 2026-08-16 两边并排量过，EdgeOne 落后
+ * 12~45 秒。而那份部署的 Redis 就在同一朵云上，多打几次不心疼。
+ *
+ * **只管状态端点。** 首屏那份得冻着才能预渲染（见 next.config.ts 和
+ * lib/status-cache），所以关掉之后第一帧仍可能旧到一分钟，挂载后 SWR 打这些端点
+ * 就是最新的。要连首屏一起对齐，得给两份部署各配一个共享的 cacheHandlers，
+ * 见 lib/live-events 的 expireStatus。
  */
-export async function statusRoute<T>(
-  loader: () => Promise<T>,
-): Promise<NextResponse<StatusResponse<T>>> {
-  await connection();
-  return statusJson(await statusEnvelope(loader));
+const STATUS_CACHE = process.env.STATUS_CACHE !== "false";
+
+/**
+ * 一份状态数据的两种取法。
+ *
+ * 两条路必须是同一份数据的两种视图 —— 开关一翻，端点发出去的形状不能跟着变，
+ * 否则同一张卡在两份部署上会走不同分支。配对写在 lib/status-cache 里，那边本来
+ * 就同时拿着 tag 和 loader。
+ */
+export type StatusSource<T> = {
+  /** 冻起来的那份，首屏也读它 */
+  cached: () => Promise<StatusResponse<T>>;
+  /** 关掉缓存时直读 */
+  live: () => Promise<T>;
+};
+
+/** 配一对。走这个壳子而不是写对象字面量，是为了让两半的数据类型对不上时当场报错 */
+export function statusSource<T>(
+  cached: () => Promise<StatusResponse<T>>,
+  live: () => Promise<T>,
+): StatusSource<T> {
+  return { cached, live };
 }
 
 /**
- * 八份快照都走 `'use cache'`（见 lib/status-cache）。函数仍然每次进 ——
- * connection() 防止构建期把 GET 烤死。overlay 在缓存外跑，给存活这种心跳更新、
- * 以及跟着墙上的钟走的判定（暂停宽限、HomePod 静默）现盖一层。
+ * 一条状态 GET 的响应。
+ *
+ * cacheComponents 下没有 force-dynamic 可写了，「每次请求都得跑一遍」只能由
+ * connection() 明说。少了它 Next 会试着在构建期把这些 GET 预渲染成静态响应，
+ * 而 statusEnvelope 的 try/catch 会把预渲染的中断信号一并吞掉（内置文档专门警告
+ * 过这一点），构建期那份 ok:false 就被烤进静态响应，客户端从此永远轮询到同一个
+ * 错误。
+ *
+ * overlay 在取数之外跑：给存活这种心跳更新、以及跟着墙上的钟走的判定（暂停宽限、
+ * HomePod 静默）现盖一层。取数降级了就把降级信封原样发出去，不盖。
  */
-export async function statusCachedRoute<T>(
-  load: () => Promise<StatusResponse<T>>,
-): Promise<NextResponse<StatusResponse<T>>>;
-export async function statusCachedRoute<T, U>(
-  load: () => Promise<StatusResponse<T>>,
-  overlay: (data: T) => Promise<U> | U,
-): Promise<NextResponse<StatusResponse<U>>>;
-export async function statusCachedRoute<T, U>(
+async function statusResponse<T, U>(
   load: () => Promise<StatusResponse<T>>,
   overlay?: (data: T) => Promise<U> | U,
 ): Promise<NextResponse<StatusResponse<T | U>>> {
@@ -101,6 +123,27 @@ export async function statusCachedRoute<T, U>(
     if (!envelope.ok || !overlay) return statusJson(envelope);
     return statusJson({ ok: true, data: await overlay(envelope.data) });
   });
+}
+
+/**
+ * 八条状态 GET 都走这里。取哪一路由 STATUS_CACHE 决定，路由本身不知道自己冻没冻 ——
+ * 知道了就等于每条路由各写一遍开关，漏一条就是那条端点在国内那份上一直冻着。
+ */
+export function statusRoute<T>(
+  source: StatusSource<T>,
+): Promise<NextResponse<StatusResponse<T>>>;
+export function statusRoute<T, U>(
+  source: StatusSource<T>,
+  overlay: (data: T) => Promise<U> | U,
+): Promise<NextResponse<StatusResponse<U>>>;
+export function statusRoute<T, U>(
+  source: StatusSource<T>,
+  overlay?: (data: T) => Promise<U> | U,
+): Promise<NextResponse<StatusResponse<T | U>>> {
+  return statusResponse(
+    STATUS_CACHE ? source.cached : () => statusEnvelope(source.live),
+    overlay,
+  );
 }
 
 /**
