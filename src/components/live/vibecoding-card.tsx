@@ -2,6 +2,7 @@
 
 import AnthropicIcon from "@lobehub/icons/es/Anthropic/components/Mono";
 import AntigravityColor from "@lobehub/icons/es/Antigravity/components/Color";
+import GrokIcon from "@lobehub/icons/es/Grok/components/Mono";
 import OpenAIIcon from "@lobehub/icons/es/OpenAI/components/Mono";
 import NumberFlow, { NumberFlowGroup } from "@number-flow/react";
 import { useEffect, useState } from "react";
@@ -146,6 +147,9 @@ function QuotaProviderMark({
       return <OpenCodeProviderMark className={className} />;
     case "antigravity":
       return <AntigravityColor size={20} className={className} />;
+    // 这个牌子只有黑白两色，Mono 就是它的本来面目，不是退而求其次
+    case "grok":
+      return <GrokIcon size={20} className={className} />;
     default:
       return (
         <span
