@@ -1,5 +1,5 @@
 import { getStored, lastPushReceivedAt } from "@/lib/charger-store";
-import { CHARGER_STALE_MS } from "@/lib/freshness";
+import { CHARGER_STALE_MS, heartbeatWindowMs } from "@/lib/freshness";
 import {
   offlineByLiveness,
   readLiveness,
@@ -122,10 +122,22 @@ export function normalizeChargingDevice(raw: RawChargingDevice): ChargerStatus {
   } satisfies ChargerStatus;
 }
 
-/** 默认 90 秒；上报间隔配得更长时按 3 倍加长，不能短于默认。 */
+/**
+ * 默认 90 秒；上报间隔配得更长时按 3 倍加长，不能短于默认。
+ *
+ * **也不能短于心跳窗口。** 续 `pushedAt` 的不只是充电头快照 —— 任何一封把
+ * charger 列进 activeModules 的信封都会续（纯心跳走 charger-store 的
+ * prepareHeartbeat）。所以「多久没续上」的下限不是充电头的上报间隔，而是心跳
+ * 间隔：安静时段没有新读数可发，唯一在续它的就是那条空心跳。
+ *
+ * 心跳从 30 秒放宽到 90 秒之前这一条不成立也无所谓 —— 30 秒续一次、窗口 90 秒，
+ * `pushedAt` 这个判据在 Mac 活着时永远踩不到。放宽之后两者一样长，心跳但凡晚
+ * 一点点就越界，卡片会在安静时段闪回「充电器未连接」。上报器整个死掉那种情况
+ * 本来就由上面的 offlineByLiveness 管，不靠这一条。
+ */
 export function chargerStaleAfterMs() {
   const interval = Number(process.env.CHARGER_PUSH_INTERVAL_MS) || 30_000;
-  return Math.max(CHARGER_STALE_MS, interval * 3);
+  return Math.max(CHARGER_STALE_MS, interval * 3, heartbeatWindowMs());
 }
 
 /**

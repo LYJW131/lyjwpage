@@ -6,14 +6,25 @@
  */
 
 /**
- * 上报器每 30 秒心跳一次。窗口默认三倍间隔：漏一条或 ingest 冷启动慢一点
+ * 上报器每 90 秒心跳一次。窗口默认三倍多一点：漏一条或 ingest 冷启动慢一点
  * 都不该翻掉线，连续三次没到才算崩溃 / 断网。优雅离开走 declaredOffline，
  * 不等这个窗口。
  *
- * 服务端可用 HEARTBEAT_WINDOW_MS 改；浏览器用 payload 里盖上的那份，
- * 和充电头的 staleAfterMs 同一套。
+ * 从 30 秒 / 90 秒放宽到 90 秒 / 300 秒。纯心跳是 /api/ingest/mac 的主要流量
+ * —— 实测 12 小时 1.9K 次调用里约三分之二是它，而它是全站函数用量最大的一条
+ * 路径。这段间隔唯一换掉的是「崩溃 / 断网 / 强制关机」的判定延迟：关盖、睡眠、
+ * 退出都走 declaredOffline，仍然是收到那一条就瞬时翻转，日常体验不变。
+ *
+ * ⚠️ 顺序不能反：**窗口先放宽，上报器再降频**。反过来做的话，中间那段时间
+ * 上报器 90 秒才来一条、而站点还按 90 秒判，每一轮都踩在窗口边上，全站会
+ * 断续显示离线。上报器那侧的间隔在 MacTelemetryHub 的 ServiceController
+ * 主循环里（心跳补发的那个下限），两边都改完才算改完。
+ *
+ * 服务端可用 HEARTBEAT_WINDOW_MS 改 —— 注意生产环境里这个变量是显式配着的，
+ * 改这里的默认值不会自动生效，Vercel 和 EdgeOne 两边都要跟着改。
+ * 浏览器用 payload 里盖上的那份，和充电头的 staleAfterMs 同一套。
  */
-export const HEARTBEAT_WINDOW_MS = 90_000;
+export const HEARTBEAT_WINDOW_MS = 300_000;
 
 export function heartbeatWindowMs() {
   const configured = Number(process.env.HEARTBEAT_WINDOW_MS);
