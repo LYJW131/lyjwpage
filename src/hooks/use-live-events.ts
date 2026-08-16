@@ -131,10 +131,17 @@ const FORWARDS: ReadonlyArray<{
  * 和 NAS 上的推送代理，和 Mac 上报器无关，Mac 睡了不影响你在 Emby 上看什么，
  * 跟着重取纯属白跑一趟。
  *
- * vibe coding 也不在：token 用量是累计的历史事实，Mac 掉线它不会变得不可信，
- * 只是不再增长，没有理由跟着变灰。
+ * vibe coding 在列，但不是为了整张卡：用量、限额、曲线都是累计的历史事实，
+ * Mac 掉线它们不会变得不可信，只是不再增长。要的只是那两盏活动灯 —— 全卡唯一
+ * 一处说「此刻」的东西，靠 declaredOffline 才能在优雅离开时立刻灭。
+ * 崩溃 / 断网那条不指望这里：浏览器拿 lastSeenAt 现算，到点自己翻。
  */
-const PRESENCE_PATHS = [DESKTOP_PATH, NOW_LISTENING_PATH, CHARGER_PATH];
+const PRESENCE_PATHS = [
+  DESKTOP_PATH,
+  NOW_LISTENING_PATH,
+  CHARGER_PATH,
+  VIBECODING_PATH,
+];
 
 /**
  * 不带数据的事件 → 收到后要重取哪几个键。
