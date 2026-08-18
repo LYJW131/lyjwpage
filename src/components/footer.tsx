@@ -1,3 +1,4 @@
+import { ChangelogLink, ChangelogPanel } from "@/components/changelog";
 import { OnlineCount } from "@/components/live/online-count";
 import { buildTime, commit } from "@/lib/build-info";
 import { cn } from "@/lib/utils";
@@ -10,7 +11,8 @@ import { cn } from "@/lib/utils";
  * `<a href="...">` 那种写法填不进去。
  *
  * 服务端组件 —— 构建信息和附加行在这里就是字面量，不用进客户端产物。
- * 只有在线人数那一小块是客户端的。
+ * 客户端的只有在线人数和更新日志那两小块；后者要的构建戳也从这里当 props 递
+ * 进去，好让 lib/build-info（连同它那个 Intl 格式化器）留在服务端。
  *
  * `process.env.X` 必须写成完整字面量，解构或动态取键都替换不到。
  */
@@ -20,6 +22,8 @@ const EXTRA_HREF = process.env.FOOTER_EXTRA_HREF?.trim() ?? "";
 export function Footer() {
   return (
     <footer className="mx-auto mb-6 w-[calc(100%-2rem)] max-w-5xl">
+      {/* 有没看过的更新时，横线上方多出一条窄条；面板本身也挂在它里面 */}
+      <ChangelogPanel build={{ commit: commit?.short ?? null, buildTime }} />
       {/*
         间隔点用相邻兄弟的伪元素画，不写成一个个 <span>：构建信息取不到时对应
         元素整个不渲染，相邻关系会自动重排，不用把「前面还有没有东西」一路传下去。
@@ -43,6 +47,8 @@ export function Footer() {
           </a>
         )}
         {buildTime && <span>构建于 {buildTime}</span>}
+
+        <ChangelogLink />
 
         <OnlineCount />
       </div>
