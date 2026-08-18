@@ -46,6 +46,13 @@ export type ListeningItem = {
    * 要翻页），十项全算就是十次上游请求，而页面只在 hero 上显示这一个数。
    */
   durationMs: number | null;
+  /**
+   * 这项正被当成「正在听」——来自观测最近播放列表的推断，不是设备实况。
+   *
+   * 只有 `nowPlaying` 指向的那一项为 true。Apple 没有可查的当前播放接口，
+   * 这是上报器看着列表第一项什么时候换上来、再对照容器总时长推的。
+   */
+  inferred: boolean;
 };
 
 /**

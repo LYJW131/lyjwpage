@@ -17,8 +17,26 @@ import type { ListeningItem, ListeningPayload, NowPlayingGuess } from "@/lib/typ
  * Redis 为主、进程内存为辅，规则见 lib/redis 的 mirrorKey。
  */
 
-/** 存的是内容本身；新鲜度看 pushedAt，由浏览器现算 */
-type StoredListening = Omit<ListeningPayload, "pushedAt">;
+/**
+ * 存的是内容本身；新鲜度看 pushedAt，由浏览器现算。
+ * inferred 不落库：它是 nowPlaying 对上哪一项的派生字段，读取时现盖。
+ */
+type StoredItem = Omit<ListeningItem, "inferred">;
+type StoredListening = {
+  items: StoredItem[];
+  nowPlaying: NowPlayingGuess | null;
+};
+
+function withInferred(payload: StoredListening): Pick<ListeningPayload, "items" | "nowPlaying"> {
+  const itemId = payload.nowPlaying?.itemId;
+  return {
+    nowPlaying: payload.nowPlaying,
+    items: payload.items.map((item) => ({
+      ...item,
+      inferred: itemId != null && item.id === itemId,
+    })),
+  };
+}
 
 const mirror = mirrorKey<{ payload: StoredListening; pushedAt: number }>(
   ["apple-music", "recent"],
@@ -35,7 +53,7 @@ function sameContent(a: StoredListening, b: StoredListening) {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
-function reportItem(value: unknown): ListeningItem | null {
+function reportItem(value: unknown): StoredItem | null {
   const row = object(value);
   if (!row) return null;
   const id = text(row.id);
@@ -93,7 +111,7 @@ export async function prepareRecentlyPlayedReport(
   const payload: StoredListening = {
     items: root.items
       .map(reportItem)
-      .filter((item): item is ListeningItem => item != null),
+      .filter((item): item is StoredItem => item != null),
     // 缺席、null、算不出来都是「此刻没在听」，不区分
     nowPlaying: reportNowPlaying(root.nowPlaying),
   };
@@ -104,7 +122,7 @@ export async function prepareRecentlyPlayedReport(
   return {
     items: payload.items.length,
     changed,
-    listening: { ...payload, pushedAt },
+    listening: { ...withInferred(payload), pushedAt },
     commit: () => mirror.put({ payload, pushedAt }),
   };
 }
@@ -124,5 +142,5 @@ export async function getRecentlyPlayed(): Promise<ListeningPayload> {
         : "读不到「最近在听」—— Redis 连不上，数据本身可能还在",
     );
   }
-  return { ...state.payload, pushedAt: state.pushedAt };
+  return { ...withInferred(state.payload), pushedAt: state.pushedAt };
 }
