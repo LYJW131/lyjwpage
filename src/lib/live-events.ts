@@ -115,7 +115,7 @@ export const NOW_WATCHING_TAG = "watching-now";
  * LRU 里，失效事件不跨实例（内置文档 how-revalidation-works）。Vercel 另外接了一套
  * 共享的缓存和 tag 存储，所以在那边看起来是全局的；EdgeOne 跑的是原样的 Next
  * （腾讯云 SCF，多实例），收到上报的那个实例只失效自己那份，别的实例要等 cacheLife
- * 的 60 秒兜底 —— 那份部署因此把 STATUS_CACHE 关掉，八条状态端点直读 Redis，
+ * 的 10 分钟兜底 —— 那份部署因此把 STATUS_CACHE 关掉，八条状态端点直读 Redis，
  * 见 lib/api。首屏仍然靠这里失效，要让它也名副其实，得给两份部署各配一个共享的
  * cacheHandlers（各用各的 Redis 存 tag 时间戳）。
  *

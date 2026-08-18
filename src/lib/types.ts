@@ -94,7 +94,7 @@ export type ReporterPresence = {
    * 时间函数，在取数出口现盖（首页填缓存、API overlay），卡片直接用。
    *
    * 新鲜度因此以取数出口那一刻为准：API 每次现算；首屏那份跟着页面缓存冻住
-   * （revalidate 1 分钟、expire 1 小时，见 lib/status-cache）。心跳不触发 tag
+   * （revalidate 10 分钟、expire 2 小时，见 lib/status-cache）。心跳不触发 tag
    * 失效，所以冻住的那份两个方向都可能差一会儿 —— Mac 悄悄死掉、或者悄悄回来，
    * 都要等下一次重算才反映进首屏。挂载后浏览器自己的钟接着算，加上那一次回源，
    * 差的那点会被纠正回来。

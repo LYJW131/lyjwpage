@@ -69,11 +69,12 @@ function statusJson<T>(envelope: StatusResponse<T>): NextResponse<StatusResponse
  * 准备的：`revalidateTag` 只失效**本实例**那份缓存（Next 默认是每个进程各自的内存
  * LRU，Vercel 另接了一套共享存储，所以在那边看起来是全局的），EdgeOne 跑的是原样的
  * Next（腾讯云 SCF，多实例），于是收到上报的实例失效了自己那份，服务 GET 的实例
- * 不知情，只能等 cacheLife 的 60 秒兜底 —— 2026-08-16 两边并排量过，EdgeOne 落后
- * 12~45 秒。而那份部署的 Redis 就在同一朵云上，多打几次不心疼。
+ * 不知情，只能等 cacheLife 的 10 分钟兜底 —— 2026-08-16 两边并排量过（当时
+ * revalidate 还是 60 秒），EdgeOne 落后 12~45 秒。而那份部署的 Redis 就在同一朵
+ * 云上，多打几次不心疼。
  *
  * **只管状态端点。** 首屏那份得冻着才能预渲染（见 next.config.ts 和
- * lib/status-cache），所以关掉之后第一帧仍可能旧到一分钟，挂载后 SWR 打这些端点
+ * lib/status-cache），所以关掉之后第一帧仍可能旧到 10 分钟，挂载后 SWR 打这些端点
  * 就是最新的。要连首屏一起对齐，得给两份部署各配一个共享的 cacheHandlers，
  * 见 lib/live-events 的 expireStatus。
  */

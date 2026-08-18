@@ -79,7 +79,7 @@ pnpm dev
 答案可能不一样。上报器只跟一个源站说话，只要有一份说没有就得让它补传，否则那张图在
 对端永远缺着（见 `mergeEmbyReceipt` / `mergeTelemetryReceipt`）。
 
-实时推送、在线人数、动态封面各是一个独立的 Cloudflare Worker（都在 `workers/` 下）。
+实时推送、在线人数、动态封面、首屏预热各是一个独立的 Cloudflare Worker（都在 `workers/` 下）。
 **live-push 一份生产一个** —— 上报传到对端之后对端也要推一次，两边填同一个 Worker
 的话每个浏览器会收到两份一样的事件；在线人数和动态封面没有写入方，仍然共用一组。
 **Worker 的地址一律走环境变量**，源码里不写死 —— 否则任何人 clone 这个仓库跑起来
@@ -89,7 +89,7 @@ pnpm dev
 
 所有凭据只存在于服务端，浏览器只看得到 `/api/status/*` 返回的规范化数据。这些路由共用 `src/lib/api.ts` 的信封：上游挂掉时返回 `{ ok: false, error }` 而不是 5xx，让某一路数据源离线不至于把整页 SWR 打成错误态。
 
-八条状态 GET 的快照走 Next `'use cache'`（`lib/status-cache`），上报按 tag 失效，轮询命中时不再每次打 Redis——**除非那份部署把 `STATUS_CACHE` 填成 `false`，那时八条一律直读 Redis**。这个开关是给 EdgeOne 那份准备的：`revalidateTag` 只失效**本实例**那份缓存（Next 默认是每个进程各自的内存 LRU，Vercel 另接了一套共享存储所以在那边看起来是全局的），而 EdgeOne 跑的是原样的 Next（腾讯云 SCF，多实例），上报进来了 GET 也不翻新，只能等 60 秒兜底——实测落后 12~45 秒。国内那份的 Redis 就在同一朵云上，多打几次不心疼。开关只管状态端点，首屏那份得冻着才能预渲染，所以关掉之后第一帧仍可能旧到一分钟，挂载后 SWR 一拉就是最新的；要连首屏一起对齐，得给两份部署各配一个共享的 `cacheHandlers`。CDN 故意 `Cache-Control: no-store`：最终响应里有存活、`?since=` 切片、`expiresInMs` 这类现算字段，不能冻在边缘。函数每次进；心跳那种不触发 tag 的戳记在 overlay 里现读一把小 key。充电头和 vibe coding 的游标也是缓存命中后在内存里切全量，不按 `since` 分键。
+八条状态 GET 的快照走 Next `'use cache'`（`lib/status-cache`），上报按 tag 失效，轮询命中时不再每次打 Redis——**除非那份部署把 `STATUS_CACHE` 填成 `false`，那时八条一律直读 Redis**。这个开关是给 EdgeOne 那份准备的：`revalidateTag` 只失效**本实例**那份缓存（Next 默认是每个进程各自的内存 LRU，Vercel 另接了一套共享存储所以在那边看起来是全局的），而 EdgeOne 跑的是原样的 Next（腾讯云 SCF，多实例），上报进来了 GET 也不翻新，只能等 10 分钟兜底——2026-08-16 两边并排量过（当时 revalidate 还是 60 秒），落后 12~45 秒。国内那份的 Redis 就在同一朵云上，多打几次不心疼。开关只管状态端点，首屏那份得冻着才能预渲染，所以关掉之后第一帧仍可能旧到 10 分钟，挂载后 SWR 一拉就是最新的；要连首屏一起对齐，得给两份部署各配一个共享的 `cacheHandlers`。CDN 故意 `Cache-Control: no-store`：最终响应里有存活、`?since=` 切片、`expiresInMs` 这类现算字段，不能冻在边缘。函数每次进；心跳那种不触发 tag 的戳记在 overlay 里现读一把小 key。充电头和 vibe coding 的游标也是缓存命中后在内存里切全量，不按 `since` 分键。
 
 Redis TCP 连接按请求作用域租用：同一 Node 实例里的并发请求共用一条，最后一个请求和命令结束后主动断开。不能让 ioredis 永久单例留在 serverless 实例里——实例暂停时普通 idle timer 不会跑，旧部署和 Preview 会各留一条空闲连接。Preview 必须不配 Redis 或使用独立 `REDIS_URL`；`REDIS_PREFIX` 只隔离键，不隔离连接额度。
 
