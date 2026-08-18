@@ -28,8 +28,19 @@ export type ListeningReport = {
   nowPlaying: { itemId: string; startedAt: number; durationMs: number } | null;
 };
 
+type SiteEnvelope<T> = { ok?: boolean; error?: string; data?: T };
+
 function authHeaders(): Record<string, string> {
   return config.site.secret ? { Authorization: `Bearer ${config.site.secret}` } : {};
+}
+
+async function readEnvelope<T>(response: Response): Promise<T | undefined> {
+  const body = (await response.json().catch(() => null)) as SiteEnvelope<T> | null;
+  if (!response.ok || body?.ok !== true) {
+    // 把站点给的原因带出来：401 是密钥不对，503 是 Mac 那边还没授权，差得远
+    throw new Error(`站点返回 ${response.status}${body?.error ? `：${body.error}` : ""}`);
+  }
+  return body.data;
 }
 
 /**
@@ -44,16 +55,8 @@ export async function fetchCredentials(): Promise<Credentials> {
     signal: AbortSignal.timeout(config.requestTimeoutMs),
   });
 
-  const body = (await response.json().catch(() => null)) as
-    | { ok?: boolean; error?: string; data?: Partial<Credentials> }
-    | null;
-
-  if (!response.ok || body?.ok !== true) {
-    // 把站点给的原因带出来：401 是密钥不对，503 是 Mac 那边还没授权，差得远
-    throw new Error(`站点返回 ${response.status}${body?.error ? `：${body.error}` : ""}`);
-  }
-
-  const { developerToken, musicUserToken, expiresAt } = body.data ?? {};
+  const data = await readEnvelope<Partial<Credentials>>(response);
+  const { developerToken, musicUserToken, expiresAt } = data ?? {};
   if (!developerToken || !musicUserToken || !expiresAt) {
     throw new Error("站点给的凭据不全");
   }
@@ -68,13 +71,6 @@ export async function push(payload: ListeningReport): Promise<{ items: number; c
     signal: AbortSignal.timeout(config.pushTimeoutMs),
   });
 
-  const body = (await response.json().catch(() => null)) as
-    | { ok?: boolean; error?: string; data?: { items?: number; changed?: boolean } }
-    | null;
-
-  if (!response.ok || body?.ok !== true) {
-    throw new Error(`站点返回 ${response.status}${body?.error ? `：${body.error}` : ""}`);
-  }
-
-  return { items: body.data?.items ?? 0, changed: body.data?.changed === true };
+  const data = await readEnvelope<{ items?: number; changed?: boolean }>(response);
+  return { items: data?.items ?? 0, changed: data?.changed === true };
 }

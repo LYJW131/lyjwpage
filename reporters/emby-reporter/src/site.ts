@@ -31,27 +31,31 @@ type PushResult = {
   missingImages: string[];
 };
 
-export async function push(payload: PushPayload): Promise<PushResult> {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (config.site.secret) headers.Authorization = `Bearer ${config.site.secret}`;
+type SiteEnvelope<T> = { ok?: boolean; error?: string; data?: T };
 
-  const response = await fetch(config.site.ingestUrl, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(payload),
-    signal: AbortSignal.timeout(config.pushTimeoutMs),
-  });
+function authHeaders(): Record<string, string> {
+  return config.site.secret ? { Authorization: `Bearer ${config.site.secret}` } : {};
+}
 
-  const body = (await response.json().catch(() => null)) as
-    | { ok?: boolean; error?: string; data?: { missingImages?: unknown } }
-    | null;
-
+async function readEnvelope<T>(response: Response): Promise<T | undefined> {
+  const body = (await response.json().catch(() => null)) as SiteEnvelope<T> | null;
   if (!response.ok || body?.ok !== true) {
     // 把站点给的原因带出来：401/400 是配置问题，光看状态码要猜半天
     throw new Error(`站点返回 ${response.status}${body?.error ? `：${body.error}` : ""}`);
   }
+  return body.data;
+}
 
-  const missing = body.data?.missingImages;
+export async function push(payload: PushPayload): Promise<PushResult> {
+  const response = await fetch(config.site.ingestUrl, {
+    method: "POST",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(config.pushTimeoutMs),
+  });
+
+  const data = await readEnvelope<{ missingImages?: unknown }>(response);
+  const missing = data?.missingImages;
   return {
     missingImages: Array.isArray(missing)
       ? missing.filter((key): key is string => typeof key === "string")

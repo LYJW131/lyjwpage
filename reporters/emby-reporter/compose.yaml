@@ -1,8 +1,8 @@
-# NAS 上的部署单元。把这个目录整个拷到 NAS，旁边放一份 .env（含密钥，别进仓库），
+# 部署单元。把这个目录整个拷到 NAS，旁边放一份 .env（含密钥，别进仓库），
 # 然后 `docker compose up -d --build`。完整步骤见 README。
 #
-# 自成一个 compose project（项目名取自目录名），不要并进 NAS 上别的
-# compose 文件 —— 同一个 project 里 `up` 会顺带重建兄弟容器。
+# 自成一个 compose project（项目名取自目录名），不要并进别的 compose 文件 ——
+# 同一个 project 里 `up` 会顺带重建兄弟容器。
 
 services:
   emby-reporter:
@@ -20,12 +20,25 @@ services:
       EMBY_API_KEY: ${EMBY_API_KEY}
       EMBY_USER_ID: ${EMBY_USER_ID}
       SITE_URL: ${SITE_URL}
+      SITE_INGEST_URL: ${SITE_INGEST_URL:-}
       # 站点没配同名变量时可以空着，那时它不校验
       TELEMETRY_INGEST_SECRET: ${TELEMETRY_INGEST_SECRET:-}
       R2_ENDPOINT: ${R2_ENDPOINT}
       R2_BUCKET: ${R2_BUCKET}
       R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID}
       R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY}
+      WEBHOOK_PORT: ${WEBHOOK_PORT:-}
+      RESUME_INTERVAL_MS: ${RESUME_INTERVAL_MS:-}
+      RESUME_LIMIT: ${RESUME_LIMIT:-}
+      SESSION_ACTIVE_INTERVAL_MS: ${SESSION_ACTIVE_INTERVAL_MS:-}
+      SESSION_IDLE_INTERVAL_MS: ${SESSION_IDLE_INTERVAL_MS:-}
+      WAKE_WINDOW_MS: ${WAKE_WINDOW_MS:-}
+      SEEK_TOLERANCE_MS: ${SEEK_TOLERANCE_MS:-}
+      REANCHOR_MS: ${REANCHOR_MS:-}
+      FULL_PUSH_INTERVAL_MS: ${FULL_PUSH_INTERVAL_MS:-}
+      IMAGES_PER_PUSH: ${IMAGES_PER_PUSH:-}
+      REQUEST_TIMEOUT_MS: ${REQUEST_TIMEOUT_MS:-}
+      PUSH_TIMEOUT_MS: ${PUSH_TIMEOUT_MS:-}
     logging:
       driver: json-file
       options:

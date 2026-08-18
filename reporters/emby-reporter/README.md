@@ -37,7 +37,7 @@ webhook 各版本的字段位置本来就不一致，用它带的值等于把版
 | `EMBY_URL` | ✅ | 内网地址，如 `http://emby.local:8096` |
 | `EMBY_API_KEY` | ✅ | Emby 后台「高级 → API 密钥」 |
 | `EMBY_USER_ID` | ✅ | 要跟的那个用户；别人在看什么不会被推出去 |
-| `SITE_URL` | ✅ | 站点地址，如 `https://lyjw131.com`。端点路径由代理自己拼 |
+| `SITE_URL` | ✅ | 站点地址，如 `https://lyjw131.com`。端点路径由上报器自己拼 |
 | `SITE_INGEST_URL` | | 直接给完整端点，给了就不用 `SITE_URL` |
 | `TELEMETRY_INGEST_SECRET` | ✅ | 和站点同名变量对上，作 Bearer 鉴权。站点没配时才可留空 |
 | `R2_ENDPOINT` | ✅ | R2 S3 API 地址，如 `https://<account>.r2.cloudflarestorage.com` |
@@ -54,6 +54,9 @@ webhook 各版本的字段位置本来就不一致，用它带的值等于把版
 | `REANCHOR_MS` | | 默认 `30000`，没拖动也隔这么久重新落一次锚 |
 | `FULL_PUSH_INTERVAL_MS` | | 默认 `600000`，没变化也兜底整推的间隔 |
 | `IMAGES_PER_PUSH` | | 默认 `4`，一次推送最多捎几张图 |
+| `REQUEST_TIMEOUT_MS` | | 默认 `10000`，问 Emby 和传 R2 用 |
+| `PUSH_TIMEOUT_MS` | | 默认 `30000`，带图的推送会大很多 |
+| `WEBHOOK_HOST_PORT` | | 默认 `8787`，映射到容器内的 `WEBHOOK_PORT` |
 
 ## 在 NAS 上跑
 
@@ -113,7 +116,7 @@ http://reporter.local:8788/webhook
   下一轮就把最新的位置补上；停止事件转发失败时，站点那份状态自己会推算到片尾作废。
 - 代理重启后第一轮查到没人在播，会明确给站点清一次 —— 我们手上是空的，
   而站点那份还留着重启前的「正在播放」，没人更正的话它会一直挂着。
-- 同一个环节连续报错只在第一次和恢复时各写一句日志，中间按 1、10、100 次退避着报，
+- 同一个环节连续报错只在第一次和恢复时各写一句日志，中间每满 10 次再报一次，
   免得 `docker logs` 被同一条「连接被拒绝」刷满。
 - 站点的响应里带 `missingImages`（它引用了却没有的图片键）。Redis 被清空、
   容器换了机器之后，代理据此把图补传回去，不需要人工干预。

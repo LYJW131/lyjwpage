@@ -1,5 +1,5 @@
 /**
- * 全部配置走环境变量 —— 这东西是要塞进 NAS 上一个 docker run 里跑的，
+ * 全部配置走环境变量 —— 这东西是要塞进一个 docker run 里跑的，
  * 配置文件还得挂卷，不如直接给变量。
  */
 
@@ -29,7 +29,9 @@ export const config = {
   },
 
   site: {
-    /** 直接给完整端点也行，省得为了改路径去动代码 */
+    /**
+     * 直接给完整端点也行，省得为了改路径去动代码。
+     */
     ingestUrl:
       process.env.SITE_INGEST_URL?.trim() ||
       `${trimSlash(required("SITE_URL"))}/api/ingest/emby`,
@@ -81,8 +83,9 @@ export const config = {
   /**
    * 即使什么都没变，也隔一阵整份重推一次。
    *
-   * 站点那边的状态是有 TTL 的、Redis 也可能被清空。只靠「有变化才推」的话，
-   * 一段时间没看片就会空在那儿等一个永远不来的变化。
+   * 站点那边的状态存在 Redis 里，可能被清空、也可能因为部署换了库。只靠
+   * 「有变化才推」的话，一段时间没看片就会空在那儿等一个永远不来的变化。
+   * 站点收到后会自己比对内容，没变就不会往浏览器推，所以这条不会变成定时广播。
    */
   fullPushIntervalMs: ms("FULL_PUSH_INTERVAL_MS", 10 * 60_000),
 
