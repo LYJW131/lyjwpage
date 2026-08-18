@@ -1,6 +1,7 @@
 "use client";
 
 import NumberFlow, { NumberFlowGroup } from "@number-flow/react";
+import { Sparkle } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import Image from "next/image";
 import {
@@ -540,6 +541,11 @@ type Hero = {
    * 有值就说明能拿到播放进度，副标题行会换成带进度条的版本。
    */
   track: LocalNowPlaying | null;
+  /**
+   * 「正在播放」来自观测最近播放列表的推断，不是 Mac / HomePod 实况。
+   * 和 track 互斥：有实况就用设备标签，推断才打 inferred。
+   */
+  inferred: boolean;
 };
 
 export function ListeningCard({
@@ -628,6 +634,7 @@ export function ListeningCard({
           data?.items.find((item) => item.id === live?.id)?.palette ?? [],
         durationMs: null,
         track: localTrack,
+        inferred: false,
       }
     : latest
       ? {
@@ -641,6 +648,7 @@ export function ListeningCard({
           palette: latest.palette,
           durationMs: latest.durationMs,
           track: null,
+          inferred: playing,
         }
       : null;
 
@@ -752,6 +760,16 @@ export function ListeningCard({
                           <span className="truncate">
                             {hero.track.source === "homepod" ? "HomePod mini" : "MacBook Pro"}
                           </span>
+                        </span>
+                      )}
+                      {/* 没有实况、只靠最近播放列表推出来的「正在播放」。 */}
+                      {hero.inferred && (
+                        <span
+                          className="ml-0.5 inline-flex shrink-0 items-center gap-1 rounded-sm border border-line px-1.5 py-px text-[10px] leading-4 text-muted-foreground"
+                          title="由 Apple Music 最近播放列表推断，不是设备实况"
+                        >
+                          <Sparkle className="size-3 shrink-0" aria-hidden />
+                          <span className="truncate">inferred</span>
                         </span>
                       )}
                     </div>
