@@ -701,7 +701,7 @@ export async function getTimezonePayload(): Promise<TimezonePayload> {
   await syncTelemetryState();
   return {
     timezone: telemetryState.activeModules.has("timezone") ? telemetryState.timezone : null,
-    // 走 cachedTimezone 的 use cache，冻的是填充时刻，最多旧一分钟。
+    // 走 cachedTimezone 的 use cache，冻的是填充时刻，最多旧 10 分钟。
     snapshotAt: Date.now(),
   };
 }

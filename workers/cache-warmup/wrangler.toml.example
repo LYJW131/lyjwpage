@@ -1,0 +1,19 @@
+name = "cache-warmup"
+main = "src/index.ts"
+compatibility_date = "2026-08-18"
+workers_dev = true
+
+# routes = [
+#   { pattern = "cache-warmup.homepage.example.com", custom_domain = true }
+# ]
+
+[triggers]
+# 比首屏 expire（2 小时）短一截，漏一次还有余量。
+crons = ["0 * * * *"]
+
+[vars]
+# 逗号分隔的源。只打每个源的 `/`，预览站不要写进来。
+WARMUP_ORIGINS = "https://example.com,https://example.net"
+
+[observability]
+enabled = true
