@@ -1,8 +1,10 @@
 import { ArrowUpRight, Mail } from "lucide-react";
 import Image from "next/image";
 
+import { GithubChart } from "@/components/github-chart";
 import { Card } from "@/components/ui/card";
 import { site } from "@/lib/site";
+import type { GithubChartPayload, StatusResponse } from "@/lib/types";
 
 const CONTACTS = [
   {
@@ -29,7 +31,11 @@ function GitHubIcon({ className }: { className?: string }) {
   );
 }
 
-export function ContactCard({ chartSvg }: { chartSvg?: string | null }) {
+export function ContactCard({
+  chartFallback,
+}: {
+  chartFallback: StatusResponse<GithubChartPayload>;
+}) {
   return (
     <Card id="contact" className="h-full">
       <div className="flex h-full flex-col justify-between gap-4 p-4 lg:p-5">
@@ -80,13 +86,7 @@ export function ContactCard({ chartSvg }: { chartSvg?: string | null }) {
           </div>
         </div>
 
-        {/* 底部 GitHub 提交热力图 */}
-        {chartSvg ? (
-          <div
-            className="github-chart w-full"
-            dangerouslySetInnerHTML={{ __html: chartSvg }}
-          />
-        ) : null}
+        <GithubChart fallback={chartFallback} />
       </div>
     </Card>
   );

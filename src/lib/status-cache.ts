@@ -5,6 +5,7 @@ import { getPowerBankSnapshot, withPowerBankFreshness } from "@/lib/powerbank";
 import { statusEnvelope, statusSource } from "@/lib/api";
 import { getRecentlyPlayed } from "@/lib/apple-music-store";
 import { getNowWatching, getWatching } from "@/lib/emby";
+import { getGithubChart } from "@/lib/github-chart";
 import {
   CHARGER_TAG,
   POWERBANK_TAG,
@@ -173,7 +174,11 @@ export async function cachedNowWatching() {
   return statusEnvelope(getNowWatching);
 }
 
-export { cachedGithubChart } from "@/lib/github-chart";
+export async function cachedGithubChart() {
+  "use cache";
+  cacheLife(STATUS_LIFE);
+  return statusEnvelope(getGithubChart);
+}
 
 /**
  * 八条状态端点各自的两种取法，见 lib/api 的 `StatusSource`：冻起来那份走上面的
@@ -196,3 +201,4 @@ export const nowListeningStatus = statusSource(
 );
 export const watchingStatus = statusSource(cachedWatching, getWatching);
 export const nowWatchingStatus = statusSource(cachedNowWatching, getNowWatching);
+export const githubChartStatus = statusSource(cachedGithubChart, getGithubChart);

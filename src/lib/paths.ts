@@ -26,3 +26,6 @@ export const LISTENING_PATH = "/api/status/listening";
 export const NOW_LISTENING_PATH = "/api/status/listening/now";
 export const WATCHING_PATH = "/api/status/watching";
 export const NOW_WATCHING_PATH = "/api/status/watching/now";
+
+/** 贡献热力图。没有推送，浏览器按长间隔自己来问 */
+export const GITHUB_CHART_PATH = "/api/status/github-chart";
