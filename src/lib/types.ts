@@ -410,6 +410,19 @@ export type VibeCodingPayload = {
   pushedAt: number;
 } & ReporterPresence;
 
+/** 贡献热力图的一天。label 跟资料页 hover 同一句 */
+export type GithubChartDay = {
+  date: string;
+  weekday: number;
+  count: number;
+  score: 0 | 1 | 2 | 3 | 4;
+  label: string;
+};
+
+export type GithubChartPayload = {
+  weeks: GithubChartDay[][];
+};
+
 /**
  * 所有 /api/status/* 的统一信封。
  *

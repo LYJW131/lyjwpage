@@ -1,36 +1,117 @@
-import { cacheLife } from "next/cache";
-
-import { compactGithubChartSvg, withViewBox } from "@/lib/github-chart-compact";
+import { formatContributionLabel, groupWeeks } from "@/lib/github-chart-compact";
 import { site } from "@/lib/site";
+import type { GithubChartDay, GithubChartPayload } from "@/lib/types";
 
-const GITHUB_CHART_URL = `https://ghchart.rshah.org/2563eb/${site.githubLogin}`;
+const GITHUB_GRAPHQL = "https://api.github.com/graphql";
 
-/**
- * 获取 GitHub 提交记录热力图 SVG。
- * 纯服务端请求，通过 'use cache' 缓存在服务端，构建 / 预渲染时直接烧进 HTML，
- * 浏览器端零网络请求、不启动任何客户端轮询。
- *
- * 烧进 HTML 就意味着 RSC 会连着 flight payload 一起算两遍，所以拿到手先压一道
- * （见 github-chart-compact）：54 KB 的 371 个 rect 变成 7 KB 的 5 条 path。
- */
-export async function getGithubChartSvg(): Promise<string | null> {
-  try {
-    const res = await fetch(GITHUB_CHART_URL, {
-      signal: AbortSignal.timeout(5_000),
-    });
-    if (!res.ok) return null;
-    const raw = await res.text();
-    if (!raw.includes("<svg")) return null;
-
-    return compactGithubChartSvg(raw) ?? withViewBox(raw);
-  } catch (error) {
-    console.error("[github-chart]", error instanceof Error ? error.message : String(error));
-    return null;
+const CALENDAR_QUERY = `query ($login: String!) {
+  user(login: $login) {
+    contributionsCollection {
+      contributionCalendar {
+        weeks {
+          contributionDays {
+            date
+            weekday
+            contributionCount
+            contributionLevel
+          }
+        }
+      }
+    }
   }
+}`;
+
+const LEVEL_SCORE = {
+  NONE: 0,
+  FIRST_QUARTILE: 1,
+  SECOND_QUARTILE: 2,
+  THIRD_QUARTILE: 3,
+  FOURTH_QUARTILE: 4,
+} as const;
+
+type ContributionLevel = keyof typeof LEVEL_SCORE;
+
+type CalendarPayload = {
+  data?: {
+    user?: {
+      contributionsCollection?: {
+        contributionCalendar?: {
+          weeks?: Array<{
+            contributionDays?: Array<{
+              date?: string;
+              weekday?: number;
+              contributionCount?: number;
+              contributionLevel?: string;
+            }>;
+          }>;
+        };
+      };
+    };
+  };
+  errors?: Array<{ message?: string }>;
+};
+
+function scoreOf(level: string | undefined): GithubChartDay["score"] | null {
+  if (!level || !(level in LEVEL_SCORE)) return null;
+  return LEVEL_SCORE[level as ContributionLevel];
 }
 
-export async function cachedGithubChart(): Promise<string | null> {
-  "use cache";
-  cacheLife("hours");
-  return getGithubChartSvg();
+function mapDays(payload: CalendarPayload): GithubChartDay[] | null {
+  const weeks = payload.data?.user?.contributionsCollection?.contributionCalendar?.weeks;
+  if (!weeks?.length) return null;
+
+  const days: GithubChartDay[] = [];
+  for (const week of weeks) {
+    for (const day of week.contributionDays ?? []) {
+      if (!day.date || typeof day.weekday !== "number") return null;
+      const score = scoreOf(day.contributionLevel);
+      if (score == null) return null;
+      const count = Number(day.contributionCount) || 0;
+      days.push({
+        date: day.date,
+        weekday: day.weekday,
+        count,
+        score,
+        label: formatContributionLabel(day.date, count),
+      });
+    }
+  }
+  return days.length ? days : null;
+}
+
+/**
+ * 用 GraphQL 拉过去一年的贡献日历。
+ *
+ * token 见 GITHUB_TOKEN。Fine-grained 个人令牌看不见组织仓，classic 才能和
+ * 资料页对上。没配则返回空周，联系卡片不画这栏；GitHub 挂了要抛出去，
+ * 交给 statusEnvelope 变成 ok:false，轮询那轮才不会把上一张好图盖掉。
+ */
+export async function getGithubChart(): Promise<GithubChartPayload> {
+  const token = process.env.GITHUB_TOKEN?.trim();
+  if (!token) return { weeks: [] };
+
+  const response = await fetch(GITHUB_GRAPHQL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      "User-Agent": "lyjwpage",
+    },
+    body: JSON.stringify({
+      query: CALENDAR_QUERY,
+      variables: { login: site.githubLogin },
+    }),
+    signal: AbortSignal.timeout(8_000),
+  });
+
+  const body = (await response.json().catch(() => null)) as CalendarPayload | null;
+  if (!response.ok || !body || body.errors?.length) {
+    const reason = body?.errors?.map((error) => error.message).filter(Boolean).join("; ");
+    throw new Error(`GitHub GraphQL ${response.status}${reason ? `：${reason}` : ""}`);
+  }
+
+  const days = mapDays(body);
+  if (!days) throw new Error("GitHub 贡献日历是空的");
+  return { weeks: groupWeeks(days) };
 }

@@ -1,67 +1,70 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { compactGithubChartSvg, withViewBox } from "./github-chart-compact.ts";
+import {
+  chartSize,
+  formatContributionLabel,
+  groupWeeks,
+  monthLabels,
+  scorePaths,
+  weekdayOf,
+} from "./github-chart-compact.ts";
 
-/** ghchart 真实输出的形状，缩到四个格子加两个标签。 */
-const DAY_LABEL_STYLE =
-  "fill:#767676;text-anchor:start;font-family:-apple-system, 'Segoe UI';white-space:nowrap;font-size:9px;";
-const RAW = [
-  '<?xml version="1.0" standalone="no"?>',
-  '<svg version="1.1" xmlns="http://www.w3.org/2000/svg" width="663" height="104">',
-  '<rect style="fill:#72b0ff;shape-rendering:crispedges;" data-score="1" data-date="2025-08-10" x="27" y="20" width="10" height="10"/>',
-  '<rect style="fill:#EEEEEE;shape-rendering:crispedges;" data-score="0" data-date="2025-08-17" x="39" y="20" width="10" height="10"/>',
-  '<rect style="fill:#EEEEEE;shape-rendering:crispedges;" data-score="0" data-date="2025-08-24" x="51" y="20" width="10" height="10"/>',
-  '<rect style="fill:#2563eb;shape-rendering:crispedges;" data-score="3" data-date="2025-08-31" x="63" y="20" width="10" height="10"/>',
-  `<text style="${DAY_LABEL_STYLE}display:none;" x="0" y="28">Sun</text>`,
-  `<text style="${DAY_LABEL_STYLE}" x="0" y="40">Mon</text>`,
-  "</svg>",
-].join("");
-
-test("同色格子合并成一条 path，档位留给 CSS 上色", () => {
-  const svg = compactGithubChartSvg(RAW);
-  assert.ok(svg);
-  assert.equal(svg.match(/<path/g)?.length, 3);
-  assert.equal(svg.match(/<rect/g), null);
-  // 两个空格子并进同一条，各画一段子路径
-  const empty = /<path data-score="0" fill="#EEEEEE" d="([^"]+)"\/>/.exec(svg);
-  assert.ok(empty);
-  assert.equal(empty[1], "M39 20h10v10h-10zM51 20h10v10h-10z");
-  // 空格子那条要被 globals.css 的 [data-score="0"] 选中，深色模式才不会是死白
-  assert.match(svg, /data-score="0"/);
+test("按周日把天收成周", () => {
+  const weeks = groupWeeks([
+    { date: "2025-08-24", weekday: 0, count: 1, score: 1, label: "" },
+    { date: "2025-08-17", weekday: 0, count: 0, score: 0, label: "" },
+    { date: "2025-08-18", weekday: 1, count: 64, score: 3, label: "" },
+  ]);
+  assert.equal(weeks.length, 2);
+  assert.equal(weeks[0]?.map((day) => day.date).join(","), "2025-08-17,2025-08-18");
+  assert.equal(weeks[1]?.[0]?.date, "2025-08-24");
 });
 
-test("标签只留 CSS 盖不掉的字号与隐藏状态", () => {
-  const svg = compactGithubChartSvg(RAW);
-  assert.ok(svg);
-  assert.match(svg, /<text x="0" y="28" font-size="9px" display="none">Sun<\/text>/);
-  assert.match(svg, /<text x="0" y="40" font-size="9px">Mon<\/text>/);
-  // fill / font-family 在 globals.css 里是 !important，内联写了也是死的
-  assert.equal(svg.includes("font-family"), false);
-  assert.equal(svg.includes("#767676"), false);
+test("月份标在该月第一个周日那列", () => {
+  const weeks = [
+    [{ date: "2025-08-17", weekday: 0, count: 0, score: 0 as const, label: "" }],
+    [{ date: "2025-08-24", weekday: 0, count: 0, score: 0 as const, label: "" }],
+    [{ date: "2025-08-31", weekday: 0, count: 0, score: 0 as const, label: "" }],
+    [{ date: "2025-09-07", weekday: 0, count: 0, score: 0 as const, label: "" }],
+  ];
+  const labels = monthLabels(weeks);
+  assert.deepEqual(
+    labels.map((label) => `${label.text}@${label.x}`),
+    ["Aug@27", "Sep@63"],
+  );
 });
 
-test("补 viewBox 而不是给 height 写 auto", () => {
-  const svg = compactGithubChartSvg(RAW);
-  assert.ok(svg);
-  assert.match(svg, /viewBox="0 0 663 104"/);
-  // SVG 的 height 属性只收长度值，写 auto 浏览器会在控制台报错
-  assert.equal(/\bheight="auto"/.test(svg), false);
-  assert.equal(/<svg[^>]*\b(width|height)=/.test(svg), false);
+test("53 周画布对上从前的 663×104", () => {
+  assert.deepEqual(chartSize(53), { width: 663, height: 104 });
 });
 
-test("压完明显更小", () => {
-  const svg = compactGithubChartSvg(RAW);
-  assert.ok(svg);
-  assert.ok(svg.length < RAW.length / 2, `${svg.length} vs ${RAW.length}`);
+test("weekday 按 UTC 日历算，周日是 0", () => {
+  assert.equal(weekdayOf("2025-08-17"), 0);
+  assert.equal(weekdayOf("2026-08-18"), 2);
 });
 
-test("认不出的形状退回原样，只补 viewBox", () => {
-  assert.equal(compactGithubChartSvg("<svg><g/></svg>"), null);
-  assert.equal(compactGithubChartSvg('<svg width="663" height="104"></svg>'), null);
+test("同色格子合成一条 path，空格并进同一段 d", () => {
+  const weeks = [
+    [{ date: "2025-08-10", weekday: 0, count: 1, score: 1 as const, label: "" }],
+    [{ date: "2025-08-17", weekday: 0, count: 0, score: 0 as const, label: "" }],
+    [{ date: "2025-08-24", weekday: 0, count: 0, score: 0 as const, label: "" }],
+    [{ date: "2025-08-31", weekday: 0, count: 64, score: 3 as const, label: "" }],
+  ];
+  const paths = scorePaths(weeks);
+  assert.equal(paths.length, 3);
+  assert.deepEqual(
+    paths.map((path) => path.score),
+    [0, 1, 3],
+  );
+  const empty = paths.find((path) => path.score === 0);
+  assert.equal(empty?.fill, "#EEEEEE");
+  assert.equal(empty?.d, "M39 20h10v10h-10zM51 20h10v10h-10z");
+});
 
-  const raw = '<svg version="1.1" width="663" height="104"><g/></svg>';
-  assert.equal(withViewBox(raw), '<svg version="1.1" viewBox="0 0 663 104"><g/></svg>');
-  const already = '<svg viewBox="0 0 1 1"/>';
-  assert.equal(withViewBox(already), already);
+test("hover 文案和资料页同一句", () => {
+  assert.equal(formatContributionLabel("2025-08-17", 0), "No contributions on August 17th.");
+  assert.equal(formatContributionLabel("2025-08-18", 1), "1 contribution on August 18th.");
+  assert.equal(formatContributionLabel("2026-08-08", 64), "64 contributions on August 8th.");
+  assert.equal(formatContributionLabel("2026-08-11", 107), "107 contributions on August 11th.");
 });
