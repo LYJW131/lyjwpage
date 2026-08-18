@@ -45,6 +45,7 @@ async function currentCredentials(force = false): Promise<Credentials> {
     const fresh = await fetchCredentials();
     const changed = fresh.developerToken !== credentials?.developerToken;
     credentials = fresh;
+    recovered("credentials");
     if (changed) {
       info(`取到凭据，标称 ${new Date(fresh.expiresAt * 1000).toISOString()} 到期`);
     }
@@ -112,8 +113,7 @@ async function inferNowPlaying(
 let pushedContent = "";
 let pushedAt = 0;
 
-async function tick() {
-  const credentials = await currentCredentials();
+async function assemble(credentials: Credentials): Promise<ListeningReport> {
   const resources = await fetchRecent(credentials);
   const now = Date.now();
 
@@ -133,17 +133,46 @@ async function tick() {
     }
   }
 
-  const report: ListeningReport = { items, nowPlaying };
+  return { items, nowPlaying };
+}
+
+async function tick() {
+  let credentials: Credentials;
+  try {
+    credentials = await currentCredentials();
+  } catch (error) {
+    failure("credentials", error);
+    return;
+  }
+
+  let report: ListeningReport;
+  try {
+    report = await assemble(credentials);
+    recovered("apple-recent");
+  } catch (error) {
+    failure("apple-recent", error);
+    // 凭据被上游拒了：下一轮开始前先换一份，别拿着同一份死磕整个间隔
+    if (error instanceof CredentialsRejected) {
+      await currentCredentials(true).catch((reason) => failure("credentials", reason));
+    }
+    return;
+  }
+
   const content = JSON.stringify(report);
-  const due = now - pushedAt >= config.fullPushIntervalMs;
+  const due = Date.now() - pushedAt >= config.fullPushIntervalMs;
   // 没变也没到兜底时刻就不打扰站点 —— 那边是按调用计费的函数
   if (content === pushedContent && !due) return;
 
-  const result = await push(report);
-  pushedContent = content;
-  pushedAt = Date.now();
-  if (result.changed) {
-    info(`推送 ${result.items} 项${nowPlaying ? "，此刻在听" : ""}`);
+  try {
+    const result = await push(report);
+    pushedContent = content;
+    pushedAt = Date.now();
+    recovered("push");
+    if (result.changed) {
+      info(`推送 ${result.items} 项${report.nowPlaying ? "，此刻在听" : ""}`);
+    }
+  } catch (error) {
+    failure("push", error);
   }
 }
 
@@ -151,17 +180,14 @@ async function loop() {
   for (;;) {
     try {
       await tick();
-      recovered("tick");
     } catch (error) {
       failure("tick", error);
-      // 凭据被上游拒了：下一轮开始前先换一份，别拿着同一份死磕整个间隔
-      if (error instanceof CredentialsRejected) {
-        await currentCredentials(true).catch((reason) => failure("credentials", reason));
-      }
     }
     await sleep(config.recentIntervalMs);
   }
 }
+
+process.on("unhandledRejection", (error) => failure("unhandled", error));
 
 for (const signal of ["SIGTERM", "SIGINT"] as const) {
   process.on(signal, () => {
@@ -170,6 +196,10 @@ for (const signal of ["SIGTERM", "SIGINT"] as const) {
   });
 }
 
-info(`apple-music-reporter 启动：${config.site.ingestUrl}，每 ${config.recentIntervalMs / 1000} 秒一轮`);
-if (!config.site.secret) info("没配 TELEMETRY_INGEST_SECRET —— 只有站点也没配时才可以这样");
+info(
+  `apple-music-reporter 启动：api.music.apple.com → ${config.site.ingestUrl}，每 ${config.recentIntervalMs / 1000} 秒一轮`,
+);
+if (!config.site.secret) {
+  info("没配 TELEMETRY_INGEST_SECRET —— 只有站点也没配时才可以这样");
+}
 void loop();

@@ -291,7 +291,7 @@ function scheduleImageFlush() {
 function main() {
   info(`emby-reporter 启动：${config.emby.url} → ${config.site.ingestUrl}`);
   if (!config.site.secret) {
-    info("警告：未配置 TELEMETRY_INGEST_SECRET，推送将不带鉴权头");
+    info("没配 TELEMETRY_INGEST_SECRET —— 只有站点也没配时才可以这样");
   }
 
   const kickResume = loop(
@@ -333,12 +333,12 @@ function main() {
 // 一次失败不该带走整个进程：NAS 上重启它的只有 docker 的重启策略，
 // 而 Emby 或站点抖一下本来就该等下一轮
 process.on("unhandledRejection", (error) => failure("unhandled", error));
-process.on("SIGTERM", () => process.exit(0));
-process.on("SIGINT", () => process.exit(0));
 
-try {
-  main();
-} catch (error) {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exit(1);
+for (const signal of ["SIGTERM", "SIGINT"] as const) {
+  process.on(signal, () => {
+    info(`收到 ${signal}，退出`);
+    process.exit(0);
+  });
 }
+
+main();

@@ -14,10 +14,14 @@ services:
     restart: unless-stopped
     environment:
       SITE_URL: ${SITE_URL}
+      SITE_INGEST_URL: ${SITE_INGEST_URL:-}
       # 站点没配同名变量时可以空着，那时它既不校验上报也不校验取凭据
       TELEMETRY_INGEST_SECRET: ${TELEMETRY_INGEST_SECRET:-}
+      APPLE_MUSIC_STOREFRONT: ${APPLE_MUSIC_STOREFRONT:-}
       RECENT_INTERVAL_MS: ${RECENT_INTERVAL_MS:-}
       FULL_PUSH_INTERVAL_MS: ${FULL_PUSH_INTERVAL_MS:-}
+      REQUEST_TIMEOUT_MS: ${REQUEST_TIMEOUT_MS:-}
+      PUSH_TIMEOUT_MS: ${PUSH_TIMEOUT_MS:-}
     logging:
       driver: json-file
       options:

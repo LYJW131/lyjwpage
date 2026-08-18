@@ -1,4 +1,5 @@
-# 只有 TypeScript 一个开发依赖，运行时零依赖，所以编译和运行分两段就够了
+# 编译和运行分两段：build 阶段出 dist，运行阶段只带生产依赖。
+# 这一份运行时只有 sharp，prune 之后把生产 node_modules 拷进第二段。
 FROM node:22-alpine AS build
 WORKDIR /app
 COPY package.json tsconfig.json ./

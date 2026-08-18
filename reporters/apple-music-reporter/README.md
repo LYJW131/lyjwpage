@@ -46,9 +46,9 @@ Apple 没有服务端可查的「当前播放」接口，也不返回播放时�
 
 | 变量 | 必填 | 说明 |
 | --- | --- | --- |
-| `SITE_URL` | ✅ | 站点地址，如 `https://lyjw131.com`。端点路径由它自己拼 |
+| `SITE_URL` | ✅ | 站点地址，如 `https://lyjw131.com`。端点路径由上报器自己拼 |
 | `SITE_INGEST_URL` | | 直接给完整端点，给了就不用 `SITE_URL` |
-| `TELEMETRY_INGEST_SECRET` | ✅ | 和站点同名变量对上。站点没配时才可留空 |
+| `TELEMETRY_INGEST_SECRET` | ✅ | 和站点同名变量对上，作 Bearer 鉴权。站点没配时才可留空 |
 | `APPLE_MUSIC_STOREFRONT` | | 目录查询地区，默认 `cn` |
 | `RECENT_INTERVAL_MS` | | 默认 `60000`。这也是「换歌时刻」的观测精度 |
 | `FULL_PUSH_INTERVAL_MS` | | 默认 `600000`，没变化也兜底整推的间隔 |
@@ -82,7 +82,22 @@ ssh nas-host 'cat > /srv/lyjwpage/apple-music-reporter/.env && chmod 600 /srv/ly
 ssh nas-host '/usr/local/bin/docker compose -f /srv/lyjwpage/apple-music-reporter/compose.yaml up -d --build'
 ```
 
-（`docker` 不在群晖的非交互 PATH 里，得写绝对路径。）
+（`docker` 不在群晖的非交互 PATH 里，得写绝对路径。`-f` 指到哪个文件，compose 就拿
+那个目录当项目目录 —— `.env` 和项目名都从那儿取，不会和 NAS 上别的 compose 项目串。）
+
+`SITE_URL` 指到站点跑的那台机器。站点在 MacBook 上时填它的局域网地址
+`http://site.local:3211`。
+
+不进容器直接跑也行（Node ≥ 20），在仓库根目录：
+`pnpm --filter @lyjwpage/apple-music-reporter build && node reporters/apple-music-reporter/dist/index.js`。
+
+## 容错
+
+- Apple 或站点连不上都只是这一轮作废，进程不退；下一轮照常重试。
+- 凭据被上游拒了会立刻去站点换一份，不等下一轮。
+- 换新失败但旧的还没过期时继续用旧的：站点重部署那几十秒不该把上报也停掉。
+- 同一个环节连续报错只在第一次和恢复时各写一句日志，中间每满 10 次再报一次，
+  免得 `docker logs` 被同一条「连接被拒绝」刷满。
 
 ## 已知的不精确之处
 
