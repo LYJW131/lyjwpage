@@ -232,6 +232,8 @@ function normalizeLimitsReport(input: unknown): StoredLimits | null {
           usedPercent: typeof row.usedPercent === "number" && Number.isFinite(row.usedPercent)
             ? Math.min(100, Math.max(0, row.usedPercent))
             : null,
+          plan: normalizePlan(row.plan),
+          resetsAt: positiveOrNull(row.resetsAt),
           limitsError: text(row.limitsError),
         }];
       },

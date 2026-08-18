@@ -351,6 +351,15 @@ export type VibeCodingQuotaProvider = {
   icon: string;
   /** 0–100；本轮和历史都没有成功值时为 null。 */
   usedPercent: number | null;
+  /**
+   * 和 agent.plan 同形同单位。取不到套餐时为 null，那一格不渲染。
+   */
+  plan: VibeCodingPlan | null;
+  /**
+   * 总限额窗口的重置时刻，Unix 秒。和 `limits[].resetsAt` 同单位。
+   * 上游没给就是 null。
+   */
+  resetsAt: number | null;
   limitsError: string | null;
 };
 

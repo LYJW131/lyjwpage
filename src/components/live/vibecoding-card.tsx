@@ -497,6 +497,46 @@ function nextTickDelay(remain: number) {
   return remain % 60_000 || 60_000;
 }
 
+/**
+ * 附加 provider 的重置文案。
+ *
+ * Claude / Codex 的窗口写着 Weekly，报「Resets Mon 11:00 AM」不会误会是哪一周。
+ * 这里没有窗口名：Cursor 可能是月、Antigravity 是周、Grok 只给一个时刻，
+ * 再用星期几就会歧义，一律说还剩几天 / 几小时。
+ */
+type QuotaResetDisplay =
+  | { kind: "relative"; hours: number; minutes: number }
+  | { kind: "days"; days: number; hours: number };
+
+function formatQuotaReset(
+  resetsAt: number | null,
+  referenceTime: number,
+): QuotaResetDisplay | null {
+  if (resetsAt == null) return null;
+  const remain = resetsAt * 1000 - referenceTime;
+  if (remain <= 0) return null;
+  if (remain >= 86_400_000) {
+    return {
+      kind: "days",
+      days: Math.floor(remain / 86_400_000),
+      hours: Math.floor((remain % 86_400_000) / 3_600_000),
+    };
+  }
+  const totalMinutes = Math.floor(remain / 60_000);
+  return {
+    kind: "relative",
+    hours: Math.floor(totalMinutes / 60),
+    minutes: totalMinutes % 60,
+  };
+}
+
+/** 超过一天时按小时刷新，一天以内按分钟。 */
+function nextQuotaTickDelay(remain: number) {
+  if (remain > 86_400_000) return remain % 3_600_000 || 3_600_000;
+  if (remain <= 60_000) return Math.max(0, remain);
+  return remain % 60_000 || 60_000;
+}
+
 function LimitMeter({ limit }: { limit: VibeCodingLimit }) {
   /**
    * 自己盯着重置时刻，不跟面板其它部分共用快照时间。
@@ -757,6 +797,133 @@ function AgentPanel({
   );
 }
 
+function QuotaProviderRow({ provider }: { provider: VibeCodingQuotaProvider }) {
+  const mountedAt = useMountedAt();
+  const [ticked, setTicked] = useState(0);
+  const now = ticked || mountedAt;
+  useEffect(() => {
+    if (!now || provider.resetsAt == null) return;
+    const target = provider.resetsAt * 1000;
+    if (now >= target) return;
+    const timer = window.setTimeout(
+      () => setTicked(Date.now()),
+      nextQuotaTickDelay(target - Date.now()) + 500,
+    );
+    return () => window.clearTimeout(timer);
+  }, [provider.resetsAt, now]);
+
+  const expired = provider.resetsAt != null && provider.resetsAt * 1000 <= now;
+  const usedPercent =
+    provider.usedPercent == null ? null : expired ? 0 : provider.usedPercent;
+  const color = usedPercent == null ? undefined : limitColor(usedPercent);
+  const reset = now ? formatQuotaReset(provider.resetsAt, now) : null;
+
+  return (
+    <div className="min-w-0 py-3" title={provider.limitsError ?? undefined}>
+      <div className="flex flex-col gap-1 md:h-5 md:flex-row md:items-center md:justify-between md:gap-2">
+        <div className="flex h-5 min-w-0 items-center gap-2">
+          <span className="flex size-5 shrink-0 items-center justify-center" aria-hidden>
+            <QuotaProviderMark
+              icon={provider.icon}
+              label={provider.label}
+              className="size-5"
+            />
+          </span>
+          <span className="truncate text-sm font-medium">{provider.label}</span>
+        </div>
+        <span className="flex h-5 min-w-0 items-baseline text-xs text-muted-foreground md:shrink-0">
+          {provider.plan && (
+            <span className="truncate" title={`套餐 ${provider.plan.tier}`}>
+              {provider.plan.label}
+            </span>
+          )}
+          {provider.plan && reset && (
+            <span aria-hidden className="mx-1.5">
+              /
+            </span>
+          )}
+          {reset?.kind === "days" && (
+            <NumberFlowGroup>
+              <span className="tabular-nums">
+                Resets in{" "}
+                <NumberFlow
+                  value={reset.days}
+                  locales="en-US"
+                  format={{ minimumIntegerDigits: 2 }}
+                />{" "}
+                {reset.days === 1 ? "day" : "days"}
+                {reset.hours > 0 && (
+                  <>
+                    {" "}
+                    <NumberFlow
+                      value={reset.hours}
+                      locales="en-US"
+                      format={{ minimumIntegerDigits: 2 }}
+                    />{" "}
+                    hr
+                  </>
+                )}
+              </span>
+            </NumberFlowGroup>
+          )}
+          {reset?.kind === "relative" && (
+            <NumberFlowGroup>
+              <span className="tabular-nums">
+                Resets in{" "}
+                {reset.hours > 0 && (
+                  <>
+                    <NumberFlow
+                      value={reset.hours}
+                      locales="en-US"
+                      format={{ minimumIntegerDigits: 2 }}
+                    />{" "}
+                    hr{" "}
+                  </>
+                )}
+                {(reset.minutes > 0 || reset.hours === 0) && (
+                  <>
+                    <NumberFlow
+                      value={reset.minutes}
+                      locales="en-US"
+                      format={{ minimumIntegerDigits: 2 }}
+                    />{" "}
+                    min
+                  </>
+                )}
+              </span>
+            </NumberFlowGroup>
+          )}
+        </span>
+      </div>
+      <div className="mt-1.5 flex items-center gap-3">
+        <div className="h-1.5 min-w-8 flex-1 overflow-hidden bg-muted">
+          {usedPercent != null && (
+            <div
+              className="h-full transition-[width] duration-700"
+              style={{ width: `${usedPercent}%`, backgroundColor: color }}
+            />
+          )}
+        </div>
+        {usedPercent == null ? (
+          <span
+            className="label-mono shrink-0 text-muted-foreground"
+            title="Unavailable"
+          >
+            —
+          </span>
+        ) : (
+          <span
+            className="shrink-0 font-mono text-xs tabular-nums"
+            style={{ color }}
+          >
+            <NumberFlow value={Math.round(usedPercent)} locales="en-US" />%
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function QuotaProviders({ providers }: { providers: VibeCodingQuotaProvider[] }) {
   if (providers.length === 0) return null;
   const sortedProviders = [...providers].sort(
@@ -770,51 +937,9 @@ function QuotaProviders({ providers }: { providers: VibeCodingQuotaProvider[] })
   return (
     <div className="border-t border-line px-4 md:px-5">
       <div className="grid divide-y divide-line">
-        {sortedProviders.map((provider) => {
-          const usedPercent = provider.usedPercent;
-          const color = usedPercent == null ? undefined : limitColor(usedPercent);
-          return (
-            <div
-              key={provider.id}
-              className="grid min-w-0 grid-cols-[minmax(0,9rem)_minmax(2rem,1fr)_4ch] items-center gap-3 py-3"
-              title={provider.limitsError ?? undefined}
-            >
-              <div className="flex min-w-0 items-center gap-2">
-                <span className="flex size-5 shrink-0 items-center justify-center" aria-hidden>
-                  <QuotaProviderMark
-                    icon={provider.icon}
-                    label={provider.label}
-                    className="size-5"
-                  />
-                </span>
-                <span className="truncate text-sm font-medium">{provider.label}</span>
-              </div>
-              <div className="h-1.5 min-w-8 flex-1 overflow-hidden bg-muted">
-                {usedPercent != null && (
-                  <div
-                    className="h-full transition-[width] duration-700"
-                    style={{ width: `${usedPercent}%`, backgroundColor: color }}
-                  />
-                )}
-              </div>
-              {usedPercent == null ? (
-                <span
-                  className="label-mono text-right text-muted-foreground"
-                  title="Unavailable"
-                >
-                  —
-                </span>
-              ) : (
-                <span
-                  className="text-right font-mono text-xs tabular-nums"
-                  style={{ color }}
-                >
-                  <NumberFlow value={Math.round(usedPercent)} locales="en-US" />%
-                </span>
-              )}
-            </div>
-          );
-        })}
+        {sortedProviders.map((provider) => (
+          <QuotaProviderRow key={provider.id} provider={provider} />
+        ))}
       </div>
     </div>
   );
