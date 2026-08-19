@@ -142,7 +142,14 @@ export function LiveMediaPair({
           )}
           aria-hidden={!isVisible}
         >
-          <div className="charger-collapse min-h-0 overflow-hidden md:h-full md:overflow-visible">
+          <div
+            className={cn(
+              "charger-collapse min-h-0 md:h-full md:overflow-visible",
+              // 展开时不能 hidden：3px 的 paper-card 硬阴影在右下，会被裁掉。
+              // 单列收起仍要 hidden，否则 0fr 轨道夹不住内容。
+              isVisible ? "overflow-visible" : "overflow-hidden",
+            )}
+          >
             {/*
               两台都在动时上下平分这一格，各自切到精炼形态。整格高度不变 ——
               旁边那张最近播放是 inset-block:0 贴着这一行的，这里一涨它就得重排。
@@ -157,7 +164,9 @@ export function LiveMediaPair({
                 animate={{ height: heightFor("charger"), opacity: showing("charger") ? 1 : 0 }}
                 transition={reduced ? { duration: 0 } : CHARGER_TRANSITION}
                 className={cn(
-                  "min-h-0 overflow-hidden",
+                  // 高度插值时内容裁切交给 Card 自己的 overflow-hidden + h-full。
+                  // 这里再 hidden 会把 paper-card 那 3px 硬阴影裁掉。
+                  "min-h-0",
                   !showing("charger") && "pointer-events-none",
                 )}
                 aria-hidden={!showing("charger")}
@@ -179,7 +188,7 @@ export function LiveMediaPair({
                 }}
                 transition={reduced ? { duration: 0 } : CHARGER_TRANSITION}
                 className={cn(
-                  "min-h-0 overflow-hidden",
+                  "min-h-0",
                   !showing("powerBank") && "pointer-events-none",
                 )}
                 aria-hidden={!showing("powerBank")}
