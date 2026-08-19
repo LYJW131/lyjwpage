@@ -8,7 +8,7 @@ import type { ScopedMutator } from "swr";
 import { mergeChargerHistory } from "@/lib/charger-history";
 import { assetUrl, objectKeyFromAssetUrl } from "@/lib/asset-url";
 import type { NowWatchingPayload, WatchingPayload } from "@/lib/emby";
-import { applyVibeCodingSessions } from "@/lib/vibecoding-activity";
+import { applyVibeCodingNow } from "@/lib/vibecoding-activity";
 import type { LiveEvent } from "@/lib/live-events";
 import { rememberPushed } from "@/lib/live-freshness";
 import { liveSocketUrl } from "@/lib/live-socket";
@@ -26,7 +26,7 @@ import type {
   ChargerPayload,
   DesktopPayload,
   StatusResponse,
-  VibeCodingSessionsPayload,
+  VibeCodingNowPayload,
   WatchingItem,
 } from "@/lib/types";
 
@@ -114,12 +114,12 @@ const FORWARDS: ReadonlyArray<{
    */
   { event: "powerbank", path: POWERBANK_PATH },
   /**
-   * 只带会话四个字段。并进手上已有的整份；还没有整份就丢掉，等轮询。
+   * 只带「此刻」那三个字段。并进手上已有的整份；还没有整份就丢掉，等轮询。
    */
   {
-    event: "vibecoding",
+    event: "vibecoding-now",
     path: VIBECODING_PATH,
-    merge: (data) => applyVibeCodingSessions(data as VibeCodingSessionsPayload),
+    merge: (data) => applyVibeCodingNow(data as VibeCodingNowPayload),
   },
 ];
 

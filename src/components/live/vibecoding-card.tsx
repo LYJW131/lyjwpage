@@ -671,7 +671,7 @@ function AgentPanel({
    * 着时那盏灯会一直亮，直到它醒来才灭。
    */
   const active = agent.active && !activityUnknown;
-  // 正在使用时显示 ccusage 最近 session 的模型；闲置时仍显示 CodexBar 的历史主力。
+  // 正在使用时显示会话扫描给的「此刻在用哪个」；闲置时仍显示用量那份的历史主力。
   const displayModel =
     (active ? agent.currentModel : agent.topModel ?? agent.currentModel) ?? "暂无模型";
   const limits = orderedLimits(agent);
@@ -950,9 +950,9 @@ export function VibeCodingCard({
    * 两个判据取或，规矩见 lib/reporter-liveness 的模块注释：
    *
    * - **Mac 不在线**：整条上报链路断了，最后那个 active 再没人来改。
-   * - **CodexBar 自己卡住**：Mac 在线，但用量十几分钟没推新的（健康时 10 分钟
-   *   必发一次），说明采集侧不转了 —— 会话那份也就跟着不可信。`pushedAt` 盯的
-   *   正是用量那份，见 VibeCodingPayload。
+   * - **采集侧自己卡住**：Mac 在线，但用量那份十几分钟没推新的（健康时每个
+   *   采集间隔必发一次），说明采集侧不转了 —— 此刻那份也就跟着不可信。
+   *   `pushedAt` 盯的正是用量那份，见 VibeCodingPayload。
    *
    * 不学 live-desk-card 那样拿 `isValidating` 挡一手：那边挡的是「回源没完成时
    * 别把整块内容判没」，而这里判错的方向是安全的 —— 多说一句「没在用」只是少

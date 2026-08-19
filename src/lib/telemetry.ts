@@ -51,11 +51,7 @@ import type {
   TimezoneActivity,
   TimezonePayload,
 } from "@/lib/types";
-import {
-  prepareVibeCodingLimits,
-  prepareVibeCodingSessions,
-  prepareVibeCodingUsage,
-} from "@/lib/vibecoding";
+import { prepareVibeCodingNow, prepareVibeCodingUsage } from "@/lib/vibecoding";
 
 /** 与采集端一致；缓存的是很短的内容对象键，64 项也足够覆盖日常应用。 */
 const DESKTOP_ICON_CACHE_LIMIT = 64;
@@ -597,15 +593,13 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
     }
 
     /**
-     * Vibe coding 三个模块各收各的。
+     * Vibe coding 两个模块各收各的，按「多久变一次」分：
+     * `vibeCodingUsage` 是十几分钟一份的累计量，`vibeCodingNow` 是 60 秒一轮的
+     * 此刻状态，只有后者值得推给浏览器。理由见 lib/vibecoding 的模块注释。
      *
-     * 从前只有一个 `vibeCoding`，用量扫描把限额和会话状态一起烤了进去 —— 那个
-     * 十几秒的扫描一失败，刚取到的限额也跟着发不出来。三条独立的分支之后，
-     * 「只更新限额」是能表达的一件事。
-     *
-     * 三份最终拼成同一张首屏卡片，所以任意一份进来都让同一个缓存 tag 失效。
-     * 重复失效是幂等的。「某一份校验失败」不再需要靠逐份落库来兜：prepare* 的校验
-     * 全排在写之前，一份写坏时前面几份根本还没发车。
+     * 两份拼成同一张首屏卡片，所以哪一份进来都让同一个缓存 tag 失效，
+     * 重复失效是幂等的。「某一份校验失败」不需要靠逐份落库来兜：prepare* 的校验
+     * 全排在写之前，一份写坏时另一份根本还没发车。
      */
     if ("vibeCodingUsage" in modules) {
       writes.push(prepareVibeCodingUsage(modules.vibeCodingUsage, receivedAt).commit());
@@ -613,16 +607,10 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
       accepted += 1;
     }
 
-    if ("vibeCodingLimits" in modules) {
-      writes.push(prepareVibeCodingLimits(modules.vibeCodingLimits, receivedAt).commit());
-      tags.push(VIBECODING_TAG);
-      accepted += 1;
-    }
-
-    if ("vibeCodingSessions" in modules) {
-      const { sessions, commit } = prepareVibeCodingSessions(modules.vibeCodingSessions, receivedAt);
+    if ("vibeCodingNow" in modules) {
+      const { now, commit } = prepareVibeCodingNow(modules.vibeCodingNow, receivedAt);
       writes.push(commit());
-      events.push({ type: "vibecoding", payload: sessions });
+      events.push({ type: "vibecoding-now", payload: now });
       tags.push(VIBECODING_TAG);
       accepted += 1;
     }

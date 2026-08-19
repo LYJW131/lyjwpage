@@ -305,7 +305,7 @@ export type VibeCodingAgent = {
   models: string[];
   /** 最近一个有用量日里的主力模型。 */
   currentModel: string | null;
-  /** ccusage 最近一次 session 活动；不含 session ID 或项目路径。 */
+  /** 最近一次 session 活动；不含 session ID 或项目路径。 */
   lastActivityAt: string | null;
   /**
    * 上报器按最近五分钟是否有 session 活动计算。
@@ -317,7 +317,7 @@ export type VibeCodingAgent = {
   active: boolean;
   /** 整份历史里 token 占比最大的模型。 */
   topModel: string | null;
-  /** 最近 60 天，一天一个 token 聚合点。 */
+  /** 最近 30 天，一天一个 token 聚合点。 */
   activity: Array<{ t: number; tokens: number }>;
   today: VibeCodingDay;
   /** 旧版 Mac app 不会上报，取不到套餐时也是 null —— 不渲染，不占位 */
@@ -378,17 +378,19 @@ export type VibeCodingTotals = {
 };
 
 /**
- * 会话扫描推给浏览器的那一小份。只有这四个会在 60 秒那轮变，
- * 用量曲线和限额不在这里。
+ * `vibeCodingNow` 推给浏览器的那一小份：此刻在不在用、用的是哪个模型。
+ *
+ * 整张卡只有这三个字段说的是「此刻」，也只有它们值得走 60 秒那一轮。别往
+ * 这里加累计量 —— 累计的东西一律归 `vibeCodingUsage`，那是十几分钟才动一次
+ * 的事，混进来等于拿推送当轮询用。会话总数就是这么挪走的。
  */
-export type VibeCodingSessionsPayload = {
+export type VibeCodingNowPayload = {
   agents: Array<{
     id: VibeCodingAgentId;
     currentModel: string | null;
     lastActivityAt: string | null;
     active: boolean;
   }>;
-  sessionCount: number;
 };
 
 export type VibeCodingPayload = {
