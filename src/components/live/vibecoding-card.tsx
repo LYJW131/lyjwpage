@@ -846,21 +846,12 @@ function QuotaProviderRow({ provider }: { provider: VibeCodingQuotaProvider }) {
             <NumberFlowGroup>
               <span className="tabular-nums">
                 Resets in{" "}
-                <NumberFlow
-                  value={reset.days}
-                  locales="en-US"
-                  format={{ minimumIntegerDigits: 2 }}
-                />{" "}
+                <NumberFlow value={reset.days} locales="en-US" />{" "}
                 {reset.days === 1 ? "day" : "days"}
                 {reset.hours > 0 && (
                   <>
                     {" "}
-                    <NumberFlow
-                      value={reset.hours}
-                      locales="en-US"
-                      format={{ minimumIntegerDigits: 2 }}
-                    />{" "}
-                    hr
+                    <NumberFlow value={reset.hours} locales="en-US" /> hr
                   </>
                 )}
               </span>
@@ -872,22 +863,12 @@ function QuotaProviderRow({ provider }: { provider: VibeCodingQuotaProvider }) {
                 Resets in{" "}
                 {reset.hours > 0 && (
                   <>
-                    <NumberFlow
-                      value={reset.hours}
-                      locales="en-US"
-                      format={{ minimumIntegerDigits: 2 }}
-                    />{" "}
-                    hr{" "}
+                    <NumberFlow value={reset.hours} locales="en-US" /> hr{" "}
                   </>
                 )}
                 {(reset.minutes > 0 || reset.hours === 0) && (
                   <>
-                    <NumberFlow
-                      value={reset.minutes}
-                      locales="en-US"
-                      format={{ minimumIntegerDigits: 2 }}
-                    />{" "}
-                    min
+                    <NumberFlow value={reset.minutes} locales="en-US" /> min
                   </>
                 )}
               </span>
