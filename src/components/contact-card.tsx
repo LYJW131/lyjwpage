@@ -6,23 +6,6 @@ import { Card } from "@/components/ui/card";
 import { site } from "@/lib/site";
 import type { GithubChartPayload, StatusResponse } from "@/lib/types";
 
-const CONTACTS = [
-  {
-    label: "Email",
-    value: site.email,
-    href: `mailto:${site.email}`,
-    icon: Mail,
-    external: false,
-  },
-  {
-    label: "GitHub",
-    value: site.githubLogin,
-    href: site.github,
-    icon: GitHubIcon,
-    external: true,
-  },
-] as const;
-
 function GitHubIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
