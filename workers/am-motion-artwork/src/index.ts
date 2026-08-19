@@ -19,7 +19,7 @@ const USER_AGENT =
 
 const STOREFRONT_REGEX = /^[a-z]{2}$/;
 
-export default {
+const worker = {
   async fetch(
     request: Request,
     _env: Record<string, unknown>,
@@ -118,6 +118,8 @@ export default {
     }
   },
 };
+
+export default worker;
 
 function parseAppleMusicUrl(rawUrl: string): AppleMusicParsed | null {
   try {
