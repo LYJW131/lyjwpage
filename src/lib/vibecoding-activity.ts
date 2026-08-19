@@ -1,5 +1,5 @@
 import { VIBECODING_ACTIVITY_LIMIT } from "@/lib/limits";
-import type { VibeCodingAgent, VibeCodingPayload, VibeCodingSessionsPayload } from "@/lib/types";
+import type { VibeCodingAgent, VibeCodingNowPayload, VibeCodingPayload } from "@/lib/types";
 
 /**
  * vibe coding 活动曲线的客户端累加器。
@@ -11,7 +11,7 @@ import type { VibeCodingAgent, VibeCodingPayload, VibeCodingSessionsPayload } fr
  *
  * 整个页面只有一张 vibe coding 卡，单例不会串。
  *
- * `latest` 是为会话推送留的：那条只带四个字段，得并进手上已有的整份。
+ * `latest` 是为「此刻」那条推送留的：它只带三个字段，得并进手上已有的整份。
  */
 
 const activity = new Map<string, VibeCodingAgent["activity"]>();
@@ -71,27 +71,26 @@ export function mergeVibeCodingActivity(payload: VibeCodingPayload): VibeCodingP
 }
 
 /**
- * 把会话补丁盖进手上的整份。还没有整份（首屏没种上）就返回 null，
+ * 把「此刻」那份补丁盖进手上的整份。还没有整份（首屏没种上）就返回 null，
  * 调用方别把空卡片写进 SWR。
+ *
+ * 只碰三个字段。会话总数不在这条里 —— 它是累计量，跟着十几分钟一份的用量走。
  */
-export function applyVibeCodingSessions(
-  patch: VibeCodingSessionsPayload,
-): VibeCodingPayload | null {
+export function applyVibeCodingNow(patch: VibeCodingNowPayload): VibeCodingPayload | null {
   if (!latest) return null;
   const byId = new Map(patch.agents.map((row) => [row.id, row]));
   latest = {
     ...latest,
     agents: latest.agents.map((agent) => {
-      const session = byId.get(agent.id);
-      if (!session) return agent;
+      const live = byId.get(agent.id);
+      if (!live) return agent;
       return {
         ...agent,
-        currentModel: session.currentModel ?? agent.currentModel,
-        lastActivityAt: session.lastActivityAt,
-        active: session.active,
+        currentModel: live.currentModel ?? agent.currentModel,
+        lastActivityAt: live.lastActivityAt,
+        active: live.active,
       };
     }),
-    totals: { ...latest.totals, sessionCount: patch.sessionCount },
   };
   return latest;
 }

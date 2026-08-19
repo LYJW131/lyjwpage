@@ -6,10 +6,10 @@ import type {
   VibeCodingAgentId,
   VibeCodingDay,
   VibeCodingLimit,
+  VibeCodingNowPayload,
   VibeCodingPayload,
   VibeCodingPlan,
   VibeCodingQuotaProvider,
-  VibeCodingSessionsPayload,
   VibeCodingTotals,
 } from "@/lib/types";
 
@@ -30,14 +30,18 @@ type RawAgentDay = {
 };
 
 /**
- * 三个采集器三份存储，一份一个 key。
+ * 两个模块两份存储，按**多久变一次**分。
  *
- * 从前是一份：CodexBar 那个十几秒的用量扫描顺手把限额和会话状态烤进自己的载荷
- * 里，站点这边也就只有一个写入点。代价是三件事被绑成一件 —— 扫描失败时刚取到的
- * 限额连收都收不到，而「只更新限额」在协议上根本无法表达（校验是全有或全无的）。
+ * - `now`：此刻在不在用、用的是哪个模型。60 秒一轮，变了就推给浏览器。
+ * - `usage`：token、费用、曲线、套餐、限额、会话总数 —— 全是累计事实，
+ *   十几分钟才动一次，只失效首屏缓存，不推送。
  *
- * 现在各写各的，读的时候按 agent id 并回一份 VibeCodingPayload。读侧契约没变：
- * 一张卡、一个端点、一个形状。
+ * 从前是三份：用量、限额、会话状态各一个模块。那条分界线是按「哪条命令产出的」
+ * 划的 —— 当年限额和用量来自 CodexBar 的两条命令，其中那条十几秒的扫描一失败，
+ * 同一轮刚取到的限额也跟着发不出去，拆开才有意义。如今三份都来自 TokenTracker
+ * 同一个本地服务、跟着同两个间隔转，采集失败也是一起失败，那道线就只剩历史了。
+ *
+ * 留下的这一道是真实存在的：一份是「此刻」，一份是「至今累计」。
  *
  * Redis 为主、进程内存为辅，规则见 lib/redis 的 mirrorKey。
  */
@@ -45,54 +49,45 @@ const usageMirror = mirrorKey<{ payload: StoredUsage; pushedAt: number }>(
   ["vibecoding", "usage"],
   (state) => state.pushedAt,
 );
-const limitsMirror = mirrorKey<{ payload: StoredLimits; pushedAt: number }>(
-  ["vibecoding", "limits"],
-  (state) => state.pushedAt,
-);
-const sessionsMirror = mirrorKey<{ payload: StoredSessions; pushedAt: number }>(
-  ["vibecoding", "sessions"],
+const nowMirror = mirrorKey<{ payload: StoredNow; pushedAt: number }>(
+  ["vibecoding", "now"],
   (state) => state.pushedAt,
 );
 
-/** `codexbar cost` 出的本地用量。展示名不存 —— 读的时候由这边给。 */
+/** 长间隔那份：一次采集里所有的累计量。展示名不存 —— 读的时候由这边给。 */
 type StoredUsage = {
   agents: Array<{
     id: VibeCodingAgentId;
     models: string[];
-    /** 最近一个有用量日里的主力模型，是 sessions 那份取不到时的退路 */
+    /** 最近一个有用量日里的主力模型，是 now 那份取不到时的退路 */
     currentModel: string | null;
     topModel: string | null;
     activity: Array<{ t: number; tokens: number }>;
     today: VibeCodingDay;
     last30DaysTokens: number;
+    /**
+     * 限额那半是这一轮才并进来的，老行里没有 —— 站点先上线、Mac app 还没重启
+     * 的那几个钟头。读的时候各自兜个底，下一次上报就补齐了。同理 quotaProviders
+     * 和 totals.sessionCount。
+     */
+    plan?: VibeCodingPlan | null;
+    limits?: VibeCodingLimit[];
+    limitsError?: string | null;
   }>;
-  /** sessionCount 来自 ccusage，不在这份里 */
-  totals: Omit<VibeCodingTotals, "sessionCount">;
+  totals: Omit<VibeCodingTotals, "sessionCount"> & { sessionCount?: number };
   topModels: Array<{ model: string; tokens: number }>;
+  quotaProviders?: VibeCodingQuotaProvider[];
   collectedAt: string;
 };
 
-/** `codexbar usage` 出的套餐与限额窗口。 */
-type StoredLimits = {
-  agents: Array<{
-    id: VibeCodingAgentId;
-    plan: VibeCodingPlan | null;
-    limits: VibeCodingLimit[];
-    limitsError: string | null;
-  }>;
-  /** 上报器配了几个就是几个；名字和图标也是它给的，站点这边没有名单 */
-  quotaProviders: VibeCodingQuotaProvider[];
-};
-
-/** `ccusage session` 出的此刻状态。 */
-type StoredSessions = {
+/** 短间隔那份：此刻的状态，没有任何累计量。 */
+type StoredNow = {
   agents: Array<{
     id: VibeCodingAgentId;
     currentModel: string | null;
     lastActivityAt: string | null;
     active: boolean;
   }>;
-  sessionCount: number;
 };
 
 function finite(value: unknown) {
@@ -131,10 +126,15 @@ function text(value: unknown): string | null {
 }
 
 /**
- * `vibeCodingUsage`：Mac Telemetry Hub 备好的、可直接展示的用量摘要。
+ * `vibeCodingUsage`：Mac Telemetry Hub 备好的、可直接展示的累计量。
  *
- * 这份的校验仍是全有或全无 —— 曲线和总量是一体的，缺一个 agent 或者桶数对不上
- * 就拼不出完整的一张图。限额和会话状态各有各的宽松校验，不受这道门闩牵连。
+ * **主干是全有或全无的**：曲线和总量是一体的，缺一个 agent 或者桶数对不上就拼
+ * 不出完整的一张图，整份不收。限额那半在同一份里，但校验是宽松的 —— 一边取到、
+ * 一边没取到是常态，缺的那边按「没配」渲染；整条限额都挂了时上报器仍会带上只有
+ * limitsError 的行，空 limits 加上错误原因才是「配了但取不到」。
+ *
+ * 附加 provider 连名单都不校验：上报器发几个就收几个，名字和图标一并收下。
+ * 这边只逐行做类型收敛 —— 三样缺一的行落到页面上是一条没主的进度条。
  */
 function normalizeUsage(input: unknown): StoredUsage | null {
   const root = object(input);
@@ -156,6 +156,9 @@ function normalizeUsage(input: unknown): StoredUsage | null {
         ? normalizePreparedDay(text(today.date) ?? localDate(), today as RawAgentDay)
         : emptyDay(localDate()),
       last30DaysTokens: finite(row.last30DaysTokens),
+      plan: normalizePlan(row.plan),
+      limits: normalizeLimits(row.limits),
+      limitsError: text(row.limitsError),
     }];
   });
   if (
@@ -177,6 +180,9 @@ function normalizeUsage(input: unknown): StoredUsage | null {
       totalTokens: finite(rawTotals.totalTokens),
       apiEquivalentCostUSD: finite(rawTotals.apiEquivalentCostUSD),
       activeDays: finite(rawTotals.activeDays),
+      // 会话总数由 60 秒那轮扫出来，搭这份的车发过来 —— 它是「一共开过多少次」，
+      // 累计量归累计量那份，不该混进说「此刻」的 now 里
+      sessionCount: finite(rawTotals.sessionCount),
     },
     topModels: Array.isArray(root.topModels)
       ? root.topModels.flatMap((value) => {
@@ -185,37 +191,6 @@ function normalizeUsage(input: unknown): StoredUsage | null {
           return model ? [{ model, tokens: finite(row?.tokens) }] : [];
         }).slice(0, 3)
       : [],
-    collectedAt:
-      typeof root.collectedAt === "string" && Number.isFinite(Date.parse(root.collectedAt))
-        ? root.collectedAt
-        : new Date().toISOString(),
-  };
-}
-
-/**
- * `vibeCodingLimits`：套餐、限额窗口，以及只占一行总额度的附加 provider。
- *
- * 这份**不**要求两个 agent 齐全：一边取到、一边没取到是常态，缺的那边按
- * 「没配」渲染。整条命令全挂时上报器仍会发一份只有 limitsError 的载荷 ——
- * 空 limits 加上错误原因才是「配了但取不到」。
- *
- * 附加 provider 同理，而且连名单都不校验：上报器发几个就收几个，名字和图标
- * 一并收下。这边只逐行做类型收敛 —— 三样缺一的行落到页面上是一条没主的进度条。
- */
-function normalizeLimitsReport(input: unknown): StoredLimits | null {
-  const root = object(input);
-  if (!root || !Array.isArray(root.agents)) return null;
-  return {
-    agents: AGENTS.flatMap((id): StoredLimits["agents"] => {
-      const row = rowById(root.agents, id);
-      if (!row) return [];
-      return [{
-        id,
-        plan: normalizePlan(row.plan),
-        limits: normalizeLimits(row.limits),
-        limitsError: text(row.limitsError),
-      }];
-    }),
     quotaProviders: (Array.isArray(root.quotaProviders) ? root.quotaProviders : []).flatMap(
       (value): VibeCodingQuotaProvider[] => {
         const row = object(value);
@@ -238,15 +213,19 @@ function normalizeLimitsReport(input: unknown): StoredLimits | null {
         }];
       },
     ),
+    collectedAt:
+      typeof root.collectedAt === "string" && Number.isFinite(Date.parse(root.collectedAt))
+        ? root.collectedAt
+        : new Date().toISOString(),
   };
 }
 
-/** `vibeCodingSessions`：此刻在用哪个模型、活没活着、历史会话总数。 */
-function normalizeSessions(input: unknown): StoredSessions | null {
+/** `vibeCodingNow`：此刻在用哪个模型、活没活着。 */
+function normalizeNow(input: unknown): StoredNow | null {
   const root = object(input);
   if (!root || !Array.isArray(root.agents)) return null;
   return {
-    agents: AGENTS.flatMap((id): StoredSessions["agents"] => {
+    agents: AGENTS.flatMap((id): StoredNow["agents"] => {
       const row = rowById(root.agents, id);
       if (!row) return [];
       return [{
@@ -259,7 +238,6 @@ function normalizeSessions(input: unknown): StoredSessions | null {
         active: row.active === true,
       }];
     }),
-    sessionCount: finite(root.sessionCount),
   };
 }
 
@@ -339,11 +317,11 @@ function positiveOrNull(value: unknown) {
 }
 
 /**
- * 三个模块一律「先校验，后落库」，写留给 commit。
+ * 两个模块一律「先校验，后落库」，写留给 commit。
  *
  * 校验是同步的，所以整条信封的校验全部排在任何一次写之前 —— 后面一份写坏时，
- * 前面几份根本还没落库，不会留下半截状态（从前是逐份 await 落库、逐份失效缓存
- * 来补这个洞的）。而且写不再挡着推送，见 lib/live-events 的 fanout。
+ * 前面那份根本还没落库，不会留下半截状态。而且写不再挡着推送，见 lib/live-events
+ * 的 fanout。
  */
 export function prepareVibeCodingUsage(report: unknown, receivedAt = Date.now()) {
   const payload = normalizeUsage(report);
@@ -351,22 +329,13 @@ export function prepareVibeCodingUsage(report: unknown, receivedAt = Date.now())
   return { commit: () => usageMirror.put({ payload, pushedAt: receivedAt }) };
 }
 
-export function prepareVibeCodingLimits(report: unknown, receivedAt = Date.now()) {
-  const payload = normalizeLimitsReport(report);
-  if (!payload) throw new Error("vibeCodingLimits 必须带 agents 数组");
-  return { commit: () => limitsMirror.put({ payload, pushedAt: receivedAt }) };
-}
-
-export function prepareVibeCodingSessions(report: unknown, receivedAt = Date.now()) {
-  const payload = normalizeSessions(report);
-  if (!payload) throw new Error("vibeCodingSessions 必须带 agents 数组");
+export function prepareVibeCodingNow(report: unknown, receivedAt = Date.now()) {
+  const payload = normalizeNow(report);
+  if (!payload) throw new Error("vibeCodingNow 必须带 agents 数组");
   return {
-    /** 推给浏览器的会话补丁。用量还没到过也推 —— 它不依赖那份 */
-    sessions: {
-      agents: payload.agents,
-      sessionCount: payload.sessionCount,
-    } satisfies VibeCodingSessionsPayload,
-    commit: () => sessionsMirror.put({ payload, pushedAt: receivedAt }),
+    /** 推给浏览器的此刻补丁。用量还没到过也推 —— 它不依赖那份 */
+    now: { agents: payload.agents } satisfies VibeCodingNowPayload,
+    commit: () => nowMirror.put({ payload, pushedAt: receivedAt }),
   };
 }
 
@@ -379,52 +348,47 @@ export function prepareVibeCodingSessions(report: unknown, receivedAt = Date.now
  * 新鲜度只盖 pushedAt / lastSeenAt / declaredOffline，stale 由浏览器现算。
  */
 export async function getVibeCodingSnapshot(): Promise<VibeCodingPayload> {
-  const [usageState, limitsState, sessionsState, liveness] = await Promise.all([
+  const [usageState, nowState, liveness] = await Promise.all([
     usageMirror.get(),
-    limitsMirror.get(),
-    sessionsMirror.get(),
+    nowMirror.get(),
     readLiveness(),
   ]);
-  // 用量是主干：曲线、总量、模型排行都在它那份里，缺了就没有卡片可言。
-  // 限额和会话状态缺了只是少两块，各自降级，不连累整张卡。
-  if (!usageState) throw new Error("尚未收到 Mac Telemetry Hub 的 CodexBar 推送");
+  // 用量是主干：曲线、总量、限额、模型排行都在它那份里，缺了就没有卡片可言。
+  // 此刻那份缺了只是两盏灯不亮，整张卡照旧。
+  if (!usageState) throw new Error("尚未收到 Mac Telemetry Hub 的 vibe coding 用量推送");
 
-  const limitsById = new Map(
-    (limitsState?.payload.agents ?? []).map((agent) => [agent.id, agent]),
-  );
-  const sessionsById = new Map(
-    (sessionsState?.payload.agents ?? []).map((agent) => [agent.id, agent]),
+  const nowById = new Map(
+    (nowState?.payload.agents ?? []).map((agent) => [agent.id, agent]),
   );
 
   const agents: VibeCodingAgent[] = usageState.payload.agents.map((agent) => {
-    const limits = limitsById.get(agent.id);
-    const session = sessionsById.get(agent.id);
+    const live = nowById.get(agent.id);
     return {
       id: agent.id,
       label: agent.id === "claude" ? "Claude Code" : "Codex",
       models: agent.models,
-      // ccusage 说的是「此刻在用哪个」，取不到才退回用量那份的「最近一个有用量日
+      // now 说的是「此刻在用哪个」，取不到才退回用量那份的「最近一个有用量日
       // 的主力模型」。两个模块各送各的，优先级在这里定，采集端互不知情。
-      currentModel: session?.currentModel ?? agent.currentModel,
-      lastActivityAt: session?.lastActivityAt ?? null,
-      active: session?.active ?? false,
+      currentModel: live?.currentModel ?? agent.currentModel,
+      lastActivityAt: live?.lastActivityAt ?? null,
+      active: live?.active ?? false,
       topModel: agent.topModel,
       activity: agent.activity,
       today: agent.today,
-      plan: limits?.plan ?? null,
-      // 没收到限额推送时是空数组加 null：页面据此当成「没配」，整块不渲染。
+      plan: agent.plan ?? null,
+      // 没收到限额时是空数组加 null：页面据此当成「没配」，整块不渲染。
       // 「配了但取不到」由上报器送来的 limitsError 表达。
-      limits: limits?.limits ?? [],
-      limitsError: limits?.limitsError ?? null,
+      limits: agent.limits ?? [],
+      limitsError: agent.limitsError ?? null,
       last30DaysTokens: agent.last30DaysTokens,
     };
   });
 
   // Redis 里可能还躺着上一版形状的行 —— 站点先上线、Mac app 还没重启的那几个钟头。
   // 缺名字或图标的直接丢掉：渲染出一条没主的进度条比少一行难看得多，
-  // 而下一次限额推送就把它们补回来了。
+  // 而下一次上报就把它们补回来了。
   const quotaProviders: VibeCodingQuotaProvider[] = (
-    limitsState?.payload.quotaProviders ?? []
+    usageState.payload.quotaProviders ?? []
   ).filter((provider) => provider.label && provider.icon);
 
   return withPresence(
@@ -433,7 +397,7 @@ export async function getVibeCodingSnapshot(): Promise<VibeCodingPayload> {
       quotaProviders,
       totals: {
         ...usageState.payload.totals,
-        sessionCount: sessionsState?.payload.sessionCount ?? 0,
+        sessionCount: usageState.payload.totals.sessionCount ?? 0,
       },
       topModels: usageState.payload.topModels,
       collectedAt: usageState.payload.collectedAt,
