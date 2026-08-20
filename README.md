@@ -207,16 +207,19 @@ MusicKit 签出来的 developer token 实测寿命 **30 天**，上报器从它�
 ### Vibe Coding — TokenTracker
 
 Mac Telemetry Hub 从本机 TokenTracker 的面板接口取三份数据：按天的 token 与费用
-（按来源拆分，拼出「每天 × 每个 agent」）、Claude Code / Codex 的套餐与限额（同一次
-请求里还带回 Cursor、Grok、Antigravity 的总限额用量）、以及最近的会话活动，最后一份
-只用来判断“正在使用”。网站只接受上报器生成的展示摘要，不在服务端跑采集。
+（按来源拆分，拼出「每天 × 每个 agent」）、各来源的套餐与限额窗口、以及最近的会话
+活动，最后一份只用来判断“正在使用”。五个来源（Claude Code、Codex、Cursor、Grok、
+Antigravity）走**同一套 agent 形状**上报：token、今日用量、套餐、限额窗口、展示名
+和图标都在行内。网站只接受上报器生成的展示摘要，不在服务端跑采集，按需取用 ——
+Claude / Codex 画全量面板，其余只取总限额那一行。不要再拆 `quotaProviders`。
 
 上报按**多久变一次**分成两个模块，不按数据来自哪个接口分：
 
 | 模块 | 间隔 | 内容 | 站点怎么处理 |
 | --- | --- | --- | --- |
 | `vibeCodingNow` | 60 秒 | 此刻在不在用、用的是哪个模型、最近一次活动时刻 | 变了就推给浏览器（`vibecoding-now` 事件） |
-| `vibeCodingUsage` | 10 分钟 | token、费用、30 日曲线、套餐、限额、附加 provider、会话总数 | 只失效首屏缓存，卡片靠轮询取 |
+| `vibeCodingUsage` | 10 分钟 | 每个 agent 的 token、费用、今日用量、套餐、限额窗口、会话总数 | 只失效首屏缓存，卡片靠轮询取 |
+| `vibeCodingYear` | 1 小时 | 过去 53 周的日合计 token，一次只带 13 周 | 拼成热力图；`/api/status/vibecoding/year?from=` 同样按块取，首屏只带最近一块 |
 
 从前是三个模块、三个采集器（用量 / 限额 / 会话状态各一份），那条线是按「哪条命令
 产出的」划的：当年限额和用量分别来自 CodexBar 的两条命令，其中一条要跑十几秒，它一
@@ -228,15 +231,15 @@ Mac Telemetry Hub 从本机 TokenTracker 的面板接口取三份数据：按天
 限额是按 id 贴在 `agents` 上的，站点那边没有主干就没有 agents 可贴。
 
 卡片顶部汇总全量 token、API 等值费用和活跃天数，并按 input、output、cache read、
-cache write、reasoning 展示占比；下方展示每个 provider 的今日 token、30 日累计、
-缓存命中率、历史主力模型、套餐和上游实际返回的限额。Cursor、Grok 和
-Antigravity 只显示一条总限额进度，不显示 Token、费用和模型明细。最近活动时刻由
-会话摘要提供，用于真实的“正在使用”状态；Codex 没有 5 小时桶时，页面按产品档位
-显示 `Unlimited`。
+cache write、reasoning 展示占比；下方展示 Claude Code 和 Codex 的今日 token、
+缓存命中率、历史主力模型、套餐和上游实际返回的限额。卡片底部是过去 53 周的日合计
+热力图，几何和 GitHub 贡献图同一套。Cursor、Grok 和
+Antigravity 同一份数据里也有 token 明细，首页只取用量最高的那一扇限额窗口画一条
+进度。最近活动时刻由会话摘要提供，用于真实的“正在使用”状态；Codex 没有 5 小时桶
+时，页面按产品档位显示 `Unlimited`。
 
-趋势图是最近 30 天的日级聚合。费用是公开 API 价格的等值估算，只表示这些
-token 如果走 API 的价格，不是 Claude/Codex 订阅账单。上报摘要不含提示词、回复、
-session ID、项目名或文件路径。
+费用是公开 API 价格的等值估算，只表示这些 token 如果走 API 的价格，不是
+Claude/Codex 订阅账单。上报摘要不含提示词、回复、session ID、项目名或文件路径。
 
 ### 本机实时活动 — Mac Telemetry Hub
 
@@ -248,7 +251,7 @@ session ID、项目名或文件路径。
 POST /api/ingest/mac
 ```
 
-请求采用唯一的 `version: 4` envelope，顶层带 `heartbeatAt`、`presence`（`online` / `offline`）和 `activeModules`；模块名固定为 `chargingDevices`、`desktop`、`appleMusic`、`appleMusicCredentials`、`timezone`、`vibeCodingUsage` 和 `vibeCodingNow`，`modules` 只携带发生变化的模块。`activeModules` 是**开关**清单（vibe coding 只有一个开关，写作 `vibeCoding`），和模块名不是一套东西。前台应用图标始终带 SHA-256，二进制只在该哈希尚未被服务端保存时上传。
+请求采用唯一的 `version: 4` envelope，顶层带 `heartbeatAt`、`presence`（`online` / `offline`）和 `activeModules`；模块名固定为 `chargingDevices`、`desktop`、`appleMusic`、`appleMusicCredentials`、`timezone`、`vibeCodingUsage`、`vibeCodingNow` 和 `vibeCodingYear`，`modules` 只携带发生变化的模块。`activeModules` 是**开关**清单（vibe coding 只有一个开关，写作 `vibeCoding`），和模块名不是一套东西。前台应用图标始终带 SHA-256，二进制只在该哈希尚未被服务端保存时上传。
 
 五个模块的指纹一个都没变时，发的是**空 `modules` 的信封**，也就是一次纯心跳：只刷新存活，不动任何模块的时间戳。心跳无变化时每 ≥30 秒一条，有数据要发时不补——那个包本身就证明上报器活着。这个间隔正在往 90 秒放宽（纯心跳是 `/api/ingest/mac` 的主要流量）：**站点这侧先把存活窗口放宽到 5 分钟，上报器再降频**，顺序反了会有一段时间全站断续显示离线。
 

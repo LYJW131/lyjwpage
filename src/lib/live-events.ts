@@ -101,6 +101,8 @@ export const TIMEZONE_TAG = "timezone";
 export const CHARGER_TAG = "charger";
 export const POWERBANK_TAG = "powerbank";
 export const VIBECODING_TAG = "vibecoding";
+/** 年度热力图单独一份缓存：日格子和用量明细不是同一节奏。 */
+export const VIBECODING_YEAR_TAG = "vibecoding-year";
 export const LISTENING_TAG = "listening";
 export const NOW_LISTENING_TAG = "listening-now";
 export const WATCHING_TAG = "watching";

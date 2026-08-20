@@ -12,14 +12,15 @@ import {
 import { GITHUB_CHART_PATH } from "@/lib/paths";
 import type { GithubChartPayload, StatusResponse } from "@/lib/types";
 
-/** 和续播列表同一档：内容不会按秒变质，十分钟来问一次就够 */
-const REFRESH_MS = 10 * 60_000;
+/** 贡献日历按天变。长间隔兜底就够，别跟状态卡抢请求。 */
+const REFRESH_MS = 6 * 60 * 60_000;
 
 export function GithubChart({ fallback }: { fallback: StatusResponse<GithubChartPayload> }) {
   const { data } = useStatus<GithubChartPayload>(GITHUB_CHART_PATH, REFRESH_MS, {
     fallback,
-    // 日历不会自己过期，首屏那份就能先画；十分钟后的轮询再追上新提交
+    // 首屏已经烧进去。进页时的 focus 也会触发回源，两边都关，只留上面的长轮询。
     revalidateOnMount: false,
+    revalidateOnFocus: false,
   });
   /**
    * 留住上一份画得出来的日历，轮询在飞的时候别让图表闪空。
