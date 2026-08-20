@@ -15,12 +15,14 @@ import {
   NOW_WATCHING_TAG,
   TIMEZONE_TAG,
   VIBECODING_TAG,
+  VIBECODING_YEAR_TAG,
   WATCHING_TAG,
 } from "@/lib/live-events";
 import { pickNowListening } from "@/lib/now-listening";
 import { readLiveness } from "@/lib/reporter-liveness";
 import { getDesktopPayload, getNowListeningSnapshot, getTimezonePayload } from "@/lib/telemetry";
 import { getVibeCodingSnapshot } from "@/lib/vibecoding";
+import { getVibeCodingYearChunk } from "@/lib/vibecoding-year-store";
 
 /**
  * 首屏那八份数据的缓存层。八条状态路由（时区除外，它只给首屏）也读这里 ——
@@ -124,12 +126,19 @@ export async function cachedPowerBankSnapshot() {
   return statusEnvelope(getPowerBankSnapshot);
 }
 
-/** 同上，活动曲线也发全量 */
 export async function cachedVibeCoding() {
   "use cache";
   cacheLife(STATUS_LIFE);
   cacheTag(VIBECODING_TAG);
   return statusEnvelope(getVibeCodingSnapshot);
+}
+
+/** `from` 进缓存键：每一块各冻一份，失效靠同一个 tag。缺省是最近一块。 */
+export async function cachedVibeCodingYear(from?: string) {
+  "use cache";
+  cacheLife(STATUS_LIFE);
+  cacheTag(VIBECODING_YEAR_TAG);
+  return statusEnvelope(() => getVibeCodingYearChunk(from));
 }
 
 export async function cachedListening() {
@@ -194,6 +203,7 @@ export const desktopStatus = statusSource(cachedDesktop, getDesktopPayload);
 export const chargerStatus = statusSource(cachedChargerSnapshot, getChargerSnapshot);
 export const powerBankStatus = statusSource(cachedPowerBankSnapshot, getPowerBankSnapshot);
 export const vibeCodingStatus = statusSource(cachedVibeCoding, getVibeCodingSnapshot);
+export const vibeCodingYearStatus = statusSource(cachedVibeCodingYear, getVibeCodingYearChunk);
 export const listeningStatus = statusSource(cachedListening, getRecentlyPlayed);
 export const nowListeningStatus = statusSource(
   cachedNowListeningSnapshot,

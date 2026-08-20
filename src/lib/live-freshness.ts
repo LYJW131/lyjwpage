@@ -32,9 +32,9 @@ import type {
  *
  * 只登记有单调时刻的那几个键，别的不管：
  *
- * - **充电头和 vibe coding 不进这张表**：它们的曲线在客户端增量累加
- *   （lib/charger-history、lib/vibecoding-activity），整份替换会把累加器和缓存
- *   拆散。充电宝没有这个问题 —— 它不存历史，推来的就是整份，直接替换。
+ * - **充电头不进这张表**：功率曲线在客户端增量累加（lib/charger-history），
+ *   整份替换会把累加器和缓存拆散。充电宝没有这个问题 —— 它不存历史，推来的
+ *   就是整份，直接替换。
  * - **listening/now 也不进**：它的 receivedAt 是「胜出的那个来源」的时刻，
  *   Mac 停了换成 HomePod 时会正当地变小，拿它当代号会把新数据挡在外面。
  *   那条走的又是 expireStatusImmediately，没有上面第 1 条的宽限期问题。

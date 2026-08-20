@@ -9,36 +9,51 @@ import { useEffect, useState } from "react";
 
 import { ClaudeSpinner } from "@/components/live/claude-spinner";
 import { CodexActivityIndicator } from "@/components/live/codex-activity-indicator";
-import { Sparkline } from "@/components/live/sparkline";
+import { VibeYearChart } from "@/components/live/vibe-year-chart";
 import { Card } from "@/components/ui/card";
 import { useLiveEvents } from "@/hooks/use-live-events";
 import { useMountedAt } from "@/hooks/use-mounted-at";
 import { useReporterStale, useStale } from "@/hooks/use-stale";
-import { incrementalFetcher, useStatus } from "@/hooks/use-status";
+import { useStatus } from "@/hooks/use-status";
 import { VIBECODING_STALE_MS } from "@/lib/freshness";
 import { VIBECODING_PATH } from "@/lib/paths";
-import {
-  activityCursor,
-  mergeVibeCodingActivity,
-  seedVibeCodingActivity,
-} from "@/lib/vibecoding-activity";
+import { fetchVibeCoding, seedVibeCoding } from "@/lib/vibecoding-activity";
 import type {
   StatusResponse,
   VibeCodingAgent,
   VibeCodingLimit,
   VibeCodingPayload,
-  VibeCodingQuotaProvider,
   VibeCodingTotals,
+  VibeCodingYearPayload,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-const REFRESH_MS = 2 * 60_000;
+/**
+ * 信封里五个来源同一形状。首页只给这两个全量面板：限额结构、活动灯
+ * 都是为它们写的。其余同一份数据，只取总限额那一行。
+ */
+const FEATURED_AGENT_IDS = ["claude", "codex"] as const;
 
-/** 活动曲线增量拉取，和充电头共用同一个壳子。累加器在 lib/vibecoding-activity */
-const fetchVibeCoding = incrementalFetcher<VibeCodingPayload>(
-  activityCursor,
-  mergeVibeCodingActivity,
-);
+function featuredAgents(agents: VibeCodingAgent[]) {
+  const byId = new Map(agents.map((agent) => [agent.id, agent]));
+  return FEATURED_AGENT_IDS.flatMap((id) => {
+    const agent = byId.get(id);
+    return agent ? [agent] : [];
+  });
+}
+
+function compactAgents(agents: VibeCodingAgent[]) {
+  const featured = new Set<string>(FEATURED_AGENT_IDS);
+  return agents.filter((agent) => !featured.has(agent.id));
+}
+
+/** 一行限额条要展示的那一扇窗口：几条里取用量最高的，并列时留先出现的。 */
+function busiestLimit(limits: VibeCodingLimit[]) {
+  if (limits.length === 0) return null;
+  return limits.reduce((best, row) => (row.usedPercent > best.usedPercent ? row : best));
+}
+
+const REFRESH_MS = 2 * 60_000;
 
 /**
  * 分档阈值。条和数字共用同一组，别在两处各写一遍 —— 分开写迟早改漏一个，
@@ -136,7 +151,7 @@ function QuotaProviderMark({
   label,
   className,
 }: {
-  icon: VibeCodingQuotaProvider["icon"];
+  icon: string;
   label: string;
   className?: string;
 }) {
@@ -720,11 +735,6 @@ function AgentPanel({
   agent: VibeCodingAgent;
   activityUnknown: boolean;
 }) {
-  const samples = agent.activity.map((sample) => ({
-    t: sample.t,
-    w: sample.tokens,
-  }));
-  const max = Math.max(...samples.map((sample) => sample.w), 1) * 1.12;
   const promptTokens =
     agent.today.inputTokens +
     agent.today.cacheCreationTokens +
@@ -845,74 +855,54 @@ function AgentPanel({
           )}
         </div>
       )}
-
-      <div className="mt-5 flex items-baseline justify-between gap-4">
-        <div className="label-mono text-muted-foreground">30D Total</div>
-        <div className="flex items-baseline gap-2">
-          <span className="label-mono text-muted-foreground">Tokens</span>
-          <span className="font-mono text-sm">
-            <NumberFlow
-              value={agent.last30DaysTokens}
-              locales="en-US"
-              format={{ notation: "compact", maximumFractionDigits: 1 }}
-            />
-          </span>
-        </div>
-      </div>
-      <div className="mt-2 h-16">
-        <Sparkline
-          samples={samples}
-          max={max}
-          windowMs={null}
-          variant="trend"
-          className="h-full w-full"
-        />
-      </div>
     </div>
   );
 }
 
-function QuotaProviderRow({ provider }: { provider: VibeCodingQuotaProvider }) {
+function QuotaProviderRow({ agent }: { agent: VibeCodingAgent }) {
+  const limit = busiestLimit(agent.limits);
+  const usedPercentValue = limit?.usedPercent ?? null;
+  const resetsAt = limit?.resetsAt ?? null;
   const mountedAt = useMountedAt();
   const [ticked, setTicked] = useState(0);
   const now = ticked || mountedAt;
   useEffect(() => {
-    if (!now || provider.resetsAt == null) return;
-    const target = provider.resetsAt * 1000;
+    if (!now || resetsAt == null) return;
+    const target = resetsAt * 1000;
     if (now >= target) return;
     const timer = window.setTimeout(
       () => setTicked(Date.now()),
       nextQuotaTickDelay(target - Date.now()) + 500,
     );
     return () => window.clearTimeout(timer);
-  }, [provider.resetsAt, now]);
+  }, [resetsAt, now]);
 
-  const expired = provider.resetsAt != null && provider.resetsAt * 1000 <= now;
+  const expired = resetsAt != null && resetsAt * 1000 <= now;
   const usedPercent =
-    provider.usedPercent == null ? null : expired ? 0 : provider.usedPercent;
+    usedPercentValue == null ? null : expired ? 0 : usedPercentValue;
   const color = usedPercent == null ? undefined : limitColor(usedPercent);
-  const reset = now ? formatQuotaReset(provider.resetsAt, now) : null;
+  const reset = now ? formatQuotaReset(resetsAt, now) : null;
 
   return (
-    <div className="min-w-0 py-3" title={provider.limitsError ?? undefined}>
+    <div className="min-w-0 py-3" title={agent.limitsError ?? undefined}>
       <div className="flex flex-col gap-1 md:h-5 md:flex-row md:items-center md:justify-between md:gap-2">
         <div className="flex h-5 min-w-0 items-center gap-2">
           <span className="flex size-5 shrink-0 items-center justify-center" aria-hidden>
             <QuotaProviderMark
-              icon={provider.icon}
-              label={provider.label}
+              icon={agent.icon}
+              label={agent.label}
               className="size-5"
             />
           </span>
-          <span className="truncate text-sm font-medium">{provider.label}</span>
+          <span className="truncate text-sm font-medium">{agent.label}</span>
         </div>
         <span className="flex h-5 min-w-0 items-baseline text-xs text-muted-foreground md:shrink-0">
-          {provider.plan && (
-            <span className="truncate" title={`套餐 ${provider.plan.tier}`}>
-              {provider.plan.label}
+          {agent.plan && (
+            <span className="truncate" title={`套餐 ${agent.plan.tier}`}>
+              {agent.plan.label}
             </span>
           )}
-          {provider.plan && reset && (
+          {agent.plan && reset && (
             <span aria-hidden className="mx-1.5">
               /
             </span>
@@ -980,11 +970,13 @@ function QuotaProviderRow({ provider }: { provider: VibeCodingQuotaProvider }) {
   );
 }
 
-function QuotaProviders({ providers }: { providers: VibeCodingQuotaProvider[] }) {
-  if (providers.length === 0) return null;
-  const sortedProviders = [...providers].sort(
-    (left, right) => (right.usedPercent ?? -1) - (left.usedPercent ?? -1),
-  );
+function QuotaProviders({ agents }: { agents: VibeCodingAgent[] }) {
+  if (agents.length === 0) return null;
+  const sortedProviders = [...agents].sort((left, right) => {
+    const leftUsed = busiestLimit(left.limits)?.usedPercent ?? -1;
+    const rightUsed = busiestLimit(right.limits)?.usedPercent ?? -1;
+    return rightUsed - leftUsed;
+  });
   /*
    * 竖向不留内边距：每行自己的 py-3 就是间距。容器再加一层的话，首尾到边框是
    * 16+12，行与行之间只有 12 —— 上边框和行间那几条分隔线是同一种线，眼睛会拿
@@ -993,8 +985,8 @@ function QuotaProviders({ providers }: { providers: VibeCodingQuotaProvider[] })
   return (
     <div className="border-t border-line px-4 md:px-5">
       <div className="grid divide-y divide-line">
-        {sortedProviders.map((provider) => (
-          <QuotaProviderRow key={provider.id} provider={provider} />
+        {sortedProviders.map((agent) => (
+          <QuotaProviderRow key={agent.id} agent={agent} />
         ))}
       </div>
     </div>
@@ -1003,9 +995,11 @@ function QuotaProviders({ providers }: { providers: VibeCodingQuotaProvider[] })
 
 export function VibeCodingCard({
   fallback,
+  yearFallback,
   className,
 }: {
   fallback: StatusResponse<VibeCodingPayload>;
+  yearFallback: StatusResponse<VibeCodingYearPayload>;
   className?: string;
 }) {
   // 会话状态（正在用 / 换模型）走推送；token 用量仍靠轮询。
@@ -1015,7 +1009,7 @@ export function VibeCodingCard({
   const { data } = useStatus<VibeCodingPayload>(VIBECODING_PATH, REFRESH_MS, {
     fallback,
     fetcher: fetchVibeCoding,
-    seedFallback: seedVibeCodingActivity,
+    seedFallback: seedVibeCoding,
   });
 
   /**
@@ -1051,7 +1045,7 @@ export function VibeCodingCard({
         <>
           <TotalUsage totals={data.totals} topModels={data.topModels} />
           <div className="grid grid-cols-1 divide-y divide-line md:grid-cols-2 md:divide-x md:divide-y-0">
-            {data.agents.map((agent) => (
+            {featuredAgents(data.agents).map((agent) => (
               <AgentPanel
                 key={agent.id}
                 agent={agent}
@@ -1059,7 +1053,7 @@ export function VibeCodingCard({
               />
             ))}
           </div>
-          <QuotaProviders providers={data.quotaProviders} />
+          <QuotaProviders agents={compactAgents(data.agents)} />
         </>
       ) : (
         <>
@@ -1082,12 +1076,12 @@ export function VibeCodingCard({
                 <div className="mt-6 h-12 w-36 rounded bg-muted" />
                 {/* 限额条：占位只放一条 —— 条数由上游决定，多占的话数据回来会塌一截 */}
                 <div className="mt-6 h-1.5 bg-muted" />
-                <div className="mt-6 h-16 rounded bg-muted" />
               </div>
             ))}
           </div>
         </>
       )}
+      <VibeYearChart fallback={yearFallback} />
     </Card>
   );
 }

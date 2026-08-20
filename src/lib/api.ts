@@ -24,6 +24,13 @@ export function sinceParam(request: Request): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+/** 年度热力图的块起点。缺省或不是 YYYY-MM-DD 都按「最近一块」处理。 */
+export function fromParam(request: Request): string | undefined {
+  const raw = new URL(request.url).searchParams.get("from");
+  if (raw == null || !/^\d{4}-\d{2}-\d{2}$/.test(raw)) return undefined;
+  return raw;
+}
+
 /**
  * 把一个取数函数包成统一的 status 信封。
  * 上游挂了不往上抛 —— 前端拿到 ok:false 后渲染降级态即可，

@@ -13,6 +13,8 @@ export const DESKTOP_PATH = "/api/status/desktop";
 export const CHARGER_PATH = "/api/status/charger";
 export const POWERBANK_PATH = "/api/status/powerbank";
 export const VIBECODING_PATH = "/api/status/vibecoding";
+/** 年度 token 热力图。按 `?from=` 一块一块取，没有推送。 */
+export const VIBECODING_YEAR_PATH = "/api/status/vibecoding/year";
 
 /**
  * 「此刻」和「列表」分开：前者跟着播放事件走、快，后者节奏慢得多

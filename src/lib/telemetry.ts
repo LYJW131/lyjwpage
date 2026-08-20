@@ -31,6 +31,7 @@ import {
   publish,
   TIMEZONE_TAG,
   VIBECODING_TAG,
+  VIBECODING_YEAR_TAG,
   type LiveEvent,
   type PendingEvent,
 } from "@/lib/live-events";
@@ -52,6 +53,7 @@ import type {
   TimezonePayload,
 } from "@/lib/types";
 import { prepareVibeCodingNow, prepareVibeCodingUsage } from "@/lib/vibecoding";
+import { prepareVibeCodingYear } from "@/lib/vibecoding-year-store";
 
 /** 与采集端一致；缓存的是很短的内容对象键，64 项也足够覆盖日常应用。 */
 const DESKTOP_ICON_CACHE_LIMIT = 64;
@@ -612,6 +614,16 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
       writes.push(commit());
       events.push({ type: "vibecoding-now", payload: now });
       tags.push(VIBECODING_TAG);
+      accepted += 1;
+    }
+
+    /**
+     * 年度热力图单独一块。不推送 —— 格子按天变，浏览器长间隔来问就够。
+     * 一块 13 周，站点按 origin 拼；浏览器同样按块取，别整年塞进一次响应。
+     */
+    if ("vibeCodingYear" in modules) {
+      writes.push(prepareVibeCodingYear(modules.vibeCodingYear, receivedAt).commit());
+      tags.push(VIBECODING_YEAR_TAG);
       accepted += 1;
     }
 

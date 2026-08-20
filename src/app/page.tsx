@@ -16,14 +16,15 @@ import {
   cachedNowWatching,
   cachedTimezone,
   cachedVibeCoding,
+  cachedVibeCodingYear,
   cachedWatching,
 } from "@/lib/status-cache";
 
 export default async function Home() {
   /**
    * 服务端并行读首屏数据。状态卡片使用 fallbackData；时区没有
-   * status 轮询端点，在服务端预渲染时直接烧进静态 HTML。热力图首屏也烧进去，
-   * 挂载后按长间隔打 /api/status/github-chart。
+   * status 轮询端点，在服务端预渲染时直接烧进静态 HTML。热力图也烧进去，
+   * 客户端不在进页时回源，只按很长的间隔打 /api/status/github-chart。
    *
    * 每份都是缓存过的（见 lib/status-cache）：整页因此能预渲染成静态壳，
    * 上报进来时按 tag 失效，Redis 从「每访客读一轮」变成「每次上报后读一轮」。
@@ -37,6 +38,7 @@ export default async function Home() {
     nowListening,
     timezone,
     vibeCoding,
+    vibeCodingYear,
     watching,
     nowWatching,
     githubChart,
@@ -48,6 +50,7 @@ export default async function Home() {
     cachedNowListening(),
     cachedTimezone(),
     cachedVibeCoding(),
+    cachedVibeCodingYear(),
     cachedWatching(),
     cachedNowWatching(),
     cachedGithubChart(),
@@ -69,7 +72,7 @@ export default async function Home() {
                 listeningFallback={listening}
                 nowListeningFallback={nowListening}
               />
-              <VibeCodingCard fallback={vibeCoding} />
+              <VibeCodingCard fallback={vibeCoding} yearFallback={vibeCodingYear} />
             </div>
 
             <div id="watching" className="mt-6 scroll-mt-28 border-t border-line pt-5">

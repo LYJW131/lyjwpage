@@ -252,17 +252,22 @@ export type ChargerPayload = ChargerStatus & {
   staleAfterMs: number;
 } & ReporterPresence;
 
-export type VibeCodingAgentId = "claude" | "codex";
+/**
+ * TokenTracker 的来源键，如 "claude" / "codex" / "cursor"。
+ *
+ * 信封不写死名单：上报器发几个 agent 就收几个，站点按 id 决定展示形态。
+ */
+export type VibeCodingAgentId = string;
 
 export type VibeCodingDay = {
-  /** CodexBar 按本机时区生成的 YYYY-MM-DD */
+  /** 按本机时区生成的 YYYY-MM-DD */
   date: string;
   inputTokens: number;
   outputTokens: number;
   cacheReadTokens: number;
   cacheCreationTokens: number;
   totalTokens: number;
-  /** CodexBar 按公开 API 价格估算，不是订阅账单 */
+  /** 按公开 API 价格估算，不是订阅账单 */
   apiEquivalentCostUSD: number;
 };
 
@@ -287,7 +292,7 @@ export type VibeCodingLimit = {
   /** 子额度桶名如 "GPT-5.3-Codex-Spark"；主额度桶没有名字，为 null */
   label: string | null;
   /**
-   * 粗分组，如 "session" / "weekly"。CodexBar 没给时为 null；展示层不得
+   * 粗分组，如 "session" / "weekly"。上游没给时为 null；展示层不得
    * 由分组反推窗口时长。
    */
   group: string | null;
@@ -301,7 +306,16 @@ export type VibeCodingLimit = {
 
 export type VibeCodingAgent = {
   id: VibeCodingAgentId;
+  /** 上报器给的展示名，如 "Claude Code" / "Cursor" */
   label: string;
+  /**
+   * 品牌图标键，如 "cursor" / "grok"。和 id 不是一回事：id 是 TokenTracker
+   * 的来源名，这个是牌子。站点认不出来的键退回首字母，不是整行不渲染。
+   *
+   * 全量面板不用它（Claude / Codex 各有自己的活动灯），只给按需取用的
+   * 那几行限额条当标记。
+   */
+  icon: string;
   models: string[];
   /** 最近一个有用量日里的主力模型。 */
   currentModel: string | null;
@@ -317,8 +331,6 @@ export type VibeCodingAgent = {
   active: boolean;
   /** 整份历史里 token 占比最大的模型。 */
   topModel: string | null;
-  /** 最近 30 天，一天一个 token 聚合点。 */
-  activity: Array<{ t: number; tokens: number }>;
   today: VibeCodingDay;
   /** 旧版 Mac app 不会上报，取不到套餐时也是 null —— 不渲染，不占位 */
   plan: VibeCodingPlan | null;
@@ -328,38 +340,6 @@ export type VibeCodingAgent = {
    * 限额取失败的原因。空 limits 有两种含义 —— 这个 agent 没配（该整块不渲染），
    * 或者配了但取不到（该渲染并说明取不到）。靠它区分，null 表示前者。
    */
-  limitsError: string | null;
-  last30DaysTokens: number;
-};
-
-/**
- * 只展示总限额的附加 CodexBar provider，不携带 Token、费用或模型明细。
- *
- * 名单在上报器那边，站点这边没有：它配了几个就显示几个。名字和图标也跟着数据
- * 一起来 —— 从前站点自己存一份 id→展示名的映射，加一个 provider 要两边一起改，
- * 而站点漏改的表现是「上报器在传、页面上没有」，不报错也看不出来。
- */
-export type VibeCodingQuotaProvider = {
-  /** CodexBar 的 provider 名，如 "opencodego"；站点只拿它当 React key */
-  id: string;
-  /** 上报器给的展示名，如 "OpenCode Go" */
-  label: string;
-  /**
-   * 品牌图标的键，如 "opencode"。和 id 不是一回事：id 是 CLI 里那个 provider 的
-   * 名字，这个是牌子。站点认不出来的键退回首字母，不是整行不渲染。
-   */
-  icon: string;
-  /** 0–100；本轮和历史都没有成功值时为 null。 */
-  usedPercent: number | null;
-  /**
-   * 和 agent.plan 同形同单位。取不到套餐时为 null，那一格不渲染。
-   */
-  plan: VibeCodingPlan | null;
-  /**
-   * 总限额窗口的重置时刻，Unix 秒。和 `limits[].resetsAt` 同单位。
-   * 上游没给就是 null。
-   */
-  resetsAt: number | null;
   limitsError: string | null;
 };
 
@@ -373,7 +353,7 @@ export type VibeCodingTotals = {
   totalTokens: number;
   apiEquivalentCostUSD: number;
   activeDays: number;
-  /** Claude Code 与 Codex 的历史 session 数合计；不包含 session ID。 */
+  /** 所有来源的历史 session 数合计；不包含 session ID。 */
   sessionCount: number;
 };
 
@@ -394,23 +374,38 @@ export type VibeCodingNowPayload = {
 };
 
 export type VibeCodingPayload = {
+  /**
+   * 同一形状的来源列表。上报器发几个就有几个；首页按 id 取用：
+   * `claude` / `codex` 画全量面板，其余只取限额那一行。
+   */
   agents: VibeCodingAgent[];
-  quotaProviders: VibeCodingQuotaProvider[];
   totals: VibeCodingTotals;
-  /** Claude Code 与 Codex 合并后的历史累计 token 前三名。 */
+  /** 所有来源合并后的历史累计 token 前三名。 */
   topModels: Array<{ model: string; tokens: number }>;
-  /** CodexBar 扫描完成的时间，而不是浏览器取接口的时间。 */
+  /** TokenTracker 扫描完成的时间，而不是浏览器取接口的时间。 */
   collectedAt: string;
   source: "local" | "push";
-  /**
-   * 各 agent 的 activity 里只有 `?since=` 起的桶，要并回客户端已有序列。
-   * 边界那个桶会重复出现并带上新值 —— 当天那个还在累加，是可变的。
-   * false 表示完整快照，直接替换。
-   */
-  activityPartial: boolean;
   /** 源站收到用量那份的时刻。限额和会话没变就不发，新鲜度只看这份。 */
   pushedAt: number;
 } & ReporterPresence;
+
+/**
+ * 年度 token 热力图的一块。
+ *
+ * 53 周从周日切起，上报器一次只给 13 周。`days[i]` 是 `from` 起第 i 天的合计
+ * token。站点按 origin 拼成一条日历；浏览器同样按块来取，首屏只带最近一块。
+ */
+export type VibeCodingYearChunk = {
+  /** 53 周窗口的第一个周日，YYYY-MM-DD */
+  origin: string;
+  /** 这一块的第一个周日 */
+  from: string;
+  days: number[];
+};
+
+export type VibeCodingYearPayload = VibeCodingYearChunk & {
+  pushedAt: number;
+};
 
 /** 贡献热力图的一天。label 跟资料页 hover 同一句 */
 export type GithubChartDay = {
@@ -431,7 +426,7 @@ export type GithubChartPayload = {
  * 刻意不带时间戳。从前每个响应都盖一个 fetchedAt，结果是**任何两次响应在字节
  * 层面都不同** —— 而 SWR 靠深比较决定要不要更新缓存，于是数据一个字节没变，
  * 每轮轮询也会让所有卡片重渲染一遍（充电头那条 400 点曲线、最近在听那个带布局
- * 动画的列表、vibe coding 那几条 sparkline，全都白跑）。
+ * 动画的列表，全都白跑）。
  *
  * 而且全站没有任何组件读它。真要知道服务端什么时候算的，看响应头 X-Fetched-At。
  */
