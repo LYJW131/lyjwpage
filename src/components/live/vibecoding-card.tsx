@@ -430,16 +430,85 @@ function orderedLimits(agent: VibeCodingAgent) {
   });
 }
 
+type LimitRow =
+  | { kind: "limit"; key: string; rank: number; limit: VibeCodingLimit }
+  | { kind: "placeholder"; key: string; rank: number; title: string };
+
+/**
+ * Claude 的接口会偶尔只少一档：数组本身仍然有效，因此不能只靠 limitsError 判断。
+ * 页面认得的三个语义槽位各自补缺，额外出现的新窗口仍照单渲染。
+ *
+ * Fable 是账号相关的专项额度，只有历史模型或当前窗口证明这个账号用过 Fable 时
+ * 才保留它的位置；否则会把真正没有这一档的账号误画成采集失败。
+ */
+function limitRows(agent: VibeCodingAgent): LimitRow[] {
+  const limits = orderedLimits(agent);
+  const rows: LimitRow[] = limits.map((limit) => ({
+    kind: "limit",
+    key: limit.key,
+    rank: limitRank(agent, limit),
+    limit,
+  }));
+  if (agent.id !== "claude" || (limits.length === 0 && !agent.limitsError)) return rows;
+
+  if (!limits.some(isSessionWindow)) {
+    rows.push({
+      kind: "placeholder",
+      key: "placeholder:claude-session",
+      rank: 0,
+      title: "5-hour limit",
+    });
+  }
+  if (!limits.some((limit) => limit.key === "weekly_all")) {
+    rows.push({
+      kind: "placeholder",
+      key: "placeholder:claude-weekly-all",
+      rank: 1,
+      title: "Weekly · all models",
+    });
+  }
+
+  const expectsFable =
+    limits.some((limit) => isNamedLimit(limit, "fable")) ||
+    agent.models.some((model) => model.toLowerCase().includes("fable"));
+  if (expectsFable && !limits.some((limit) => isNamedLimit(limit, "fable"))) {
+    rows.push({
+      kind: "placeholder",
+      key: "placeholder:claude-weekly-fable",
+      rank: 2,
+      title: "Weekly · Fable only",
+    });
+  }
+
+  return rows.sort((left, right) => left.rank - right.rank || left.key.localeCompare(right.key));
+}
+
 /**
  * 窗口名：有时长就按时长说，没有才退回分组。两者不会同时缺，
  * 但真缺了也得渲染这一条 —— 用量数字本身仍然有意义。
  */
+function labelIncludesWindow(label: string, minutes: number | null) {
+  if (minutes == null || minutes <= 0) return false;
+  const normalized = label.toLowerCase();
+  if (minutes === 10080 && /\bweekly\b/.test(normalized)) return true;
+  if (minutes % 1440 === 0 && minutes > 1440) {
+    return new RegExp(`\\b${minutes / 1440}[\\s-]*days?\\b`).test(normalized);
+  }
+  if (minutes % 60 === 0) {
+    return new RegExp(`\\b${minutes / 60}[\\s-]*(?:h|hours?)\\b`).test(normalized);
+  }
+  return new RegExp(`\\b${minutes}[\\s-]*(?:m|minutes?)\\b`).test(normalized);
+}
+
 function formatLimitTitle(limit: VibeCodingLimit) {
   const window =
     formatWindow(limit.windowMinutes) ??
     (limit.group ? (LIMIT_GROUP_NAMES[limit.group] ?? limit.group) : null);
-  // label 非 null 就是子额度桶，附在窗口名后面把它和主额度区分开
-  const suffix = limit.label ?? LIMIT_KEY_SUFFIXES[limit.key];
+  const label = limit.label?.trim() || null;
+  // Codex Spark 5h / Codex Spark Weekly 这类 label 已经把窗口写全了，统一只显示窗口名。
+  if (window && label && labelIncludesWindow(label, limit.windowMinutes)) return window;
+  // 只写桶名的 label（如 Fable only）仍附在窗口名后面，把它和主额度区分开。
+  const suffix = label ?? LIMIT_KEY_SUFFIXES[limit.key];
   const parts = [window, suffix].filter(Boolean);
   return parts.length > 0 ? parts.join(" · ") : limit.key;
 }
@@ -643,6 +712,18 @@ function LimitMeter({ limit }: { limit: VibeCodingLimit }) {
   );
 }
 
+function LimitPlaceholder({ title, error }: { title: string; error: string | null }) {
+  return (
+    <div title={error ?? `${title} unavailable`}>
+      <div className="flex h-5 items-center justify-between gap-2 text-muted-foreground">
+        <span className="truncate text-xs">{title}</span>
+        <span className="shrink-0 text-xs">Unavailable</span>
+      </div>
+      <div className="mt-1.5 h-1.5 bg-muted" />
+    </div>
+  );
+}
+
 function AgentPanel({
   agent,
   /** 采集侧的话还算不算数，见 VibeCodingCard 里的 activityUnknown */
@@ -674,7 +755,8 @@ function AgentPanel({
   // 正在使用时显示会话扫描给的「此刻在用哪个」；闲置时仍显示用量那份的历史主力。
   const displayModel =
     (active ? agent.currentModel : agent.topModel ?? agent.currentModel) ?? "暂无模型";
-  const limits = orderedLimits(agent);
+  const rows = limitRows(agent);
+  const hasLimits = rows.length > 0;
   return (
     <div className="flex min-w-0 flex-col px-4 py-4 md:px-5">
       <div className="flex items-center justify-between gap-3">
@@ -724,17 +806,18 @@ function AgentPanel({
       </div>
 
       {/*
-        限额：条数和窗口组合都由上游决定，取不到就整块不渲染，不留占位。
+        限额：未知的新窗口照单渲染；Claude 已知的语义槽位取不到时保留占位，
+        避免其中一行偶发消失。未配置仍是空数组加 null error，整块不渲染。
         套餐等级跟着这一行走，但它不依赖限额 —— usage 接口挂了套餐照样读得到，
         所以整块的渲染条件是「两者有其一」，分隔点只在两者都在时才出现。
       */}
-      {(agent.plan || agent.limits.length > 0) && (
+      {(agent.plan || hasLimits) && (
         <div className="mt-5 grid gap-3 border-t border-line pt-4">
           <div className="label-mono text-muted-foreground">
-            {agent.limits.length > 0 && "Limits"}
+            {hasLimits && "Limits"}
             {agent.plan && (
               <span title={`套餐 ${agent.plan.tier}`}>
-                {agent.limits.length > 0 && (
+                {hasLimits && (
                   <span aria-hidden className="mx-1.5">
                     ·
                   </span>
@@ -744,8 +827,8 @@ function AgentPanel({
             )}
           </div>
           {agent.id === "codex" &&
-            agent.limits.length > 0 &&
-            !limits.some(isSessionWindow) && (
+            hasLimits &&
+            !agent.limits.some(isSessionWindow) && (
               <div>
                 <div className="flex h-5 items-center justify-between gap-2">
                   <span className="truncate text-xs">5-hour limit</span>
@@ -765,9 +848,13 @@ function AgentPanel({
                 />
               </div>
             )}
-          {limits.map((limit) => (
-            <LimitMeter key={limit.key} limit={limit} />
-          ))}
+          {rows.map((row) =>
+            row.kind === "limit" ? (
+              <LimitMeter key={row.key} limit={row.limit} />
+            ) : (
+              <LimitPlaceholder key={row.key} title={row.title} error={agent.limitsError} />
+            ),
+          )}
         </div>
       )}
 
