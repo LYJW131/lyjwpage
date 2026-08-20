@@ -417,13 +417,15 @@ function isSparkWindow(limit: VibeCodingLimit) {
 
 function limitRank(agent: VibeCodingAgent, limit: VibeCodingLimit) {
   if (isSessionWindow(limit)) return 0;
-  if (agent.id === "claude" && isNamedLimit(limit, "fable")) return 2;
   if (agent.id === "codex" && isSparkWindow(limit)) return 2;
   return 1;
 }
 
 function orderedLimits(agent: VibeCodingAgent) {
-  const limits = [...agent.limits];
+  // Fable 专项额度仍保留在载荷里，只是不在首页展示。
+  const limits = agent.limits.filter(
+    (limit) => agent.id !== "claude" || !isNamedLimit(limit, "fable"),
+  );
   return limits.sort((left, right) => {
     const rank = limitRank(agent, left) - limitRank(agent, right);
     return rank || left.key.localeCompare(right.key);
@@ -436,10 +438,8 @@ type LimitRow =
 
 /**
  * Claude 的接口会偶尔只少一档：数组本身仍然有效，因此不能只靠 limitsError 判断。
- * 页面认得的三个语义槽位各自补缺，额外出现的新窗口仍照单渲染。
- *
- * Fable 是账号相关的专项额度，只有历史模型或当前窗口证明这个账号用过 Fable 时
- * 才保留它的位置；否则会把真正没有这一档的账号误画成采集失败。
+ * 页面认得的 5 小时和总周额度两个语义槽位各自补缺；Fable 不展示，其余新窗口
+ * 仍照单渲染。
  */
 function limitRows(agent: VibeCodingAgent): LimitRow[] {
   const limits = orderedLimits(agent);
@@ -465,18 +465,6 @@ function limitRows(agent: VibeCodingAgent): LimitRow[] {
       key: "placeholder:claude-weekly-all",
       rank: 1,
       title: "Weekly · all models",
-    });
-  }
-
-  const expectsFable =
-    limits.some((limit) => isNamedLimit(limit, "fable")) ||
-    agent.models.some((model) => model.toLowerCase().includes("fable"));
-  if (expectsFable && !limits.some((limit) => isNamedLimit(limit, "fable"))) {
-    rows.push({
-      kind: "placeholder",
-      key: "placeholder:claude-weekly-fable",
-      rank: 2,
-      title: "Weekly · Fable only",
     });
   }
 
@@ -507,7 +495,7 @@ function formatLimitTitle(limit: VibeCodingLimit) {
   const label = limit.label?.trim() || null;
   // Codex Spark 5h / Codex Spark Weekly 这类 label 已经把窗口写全了，统一只显示窗口名。
   if (window && label && labelIncludesWindow(label, limit.windowMinutes)) return window;
-  // 只写桶名的 label（如 Fable only）仍附在窗口名后面，把它和主额度区分开。
+  // 只写桶名的 label 仍附在窗口名后面，把它和主额度区分开。
   const suffix = label ?? LIMIT_KEY_SUFFIXES[limit.key];
   const parts = [window, suffix].filter(Boolean);
   return parts.length > 0 ? parts.join(" · ") : limit.key;
