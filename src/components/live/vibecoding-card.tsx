@@ -643,6 +643,74 @@ function LimitMeter({ limit }: { limit: VibeCodingLimit }) {
   );
 }
 
+/**
+ * 5 小时档缺位时补哪一种，不缺就是 null。
+ *
+ * 两种缺法不是一回事：Codex 那边是窗口本身没了（OpenAI 撤掉了），Claude 那边这一档
+ * 本该在，缺了只说明这一轮没取到。所以不能共用一句文案。
+ */
+function syntheticSessionState(
+  agent: VibeCodingAgent,
+  limits: VibeCodingLimit[],
+): "unlimited" | "unknown" | null {
+  if (limits.some(isSessionWindow)) return null;
+  // 一条限额都没取到时不替 Codex 说「无限」—— 那时候连它还有没有这个窗口都不知道
+  if (agent.id === "codex") return agent.limits.length > 0 ? "unlimited" : null;
+  // limitsError 非空就是「配了但取不到」，和「没配」一样是空 limits，但该占位
+  if (agent.limits.length > 0 || agent.limitsError) return "unknown";
+  return null;
+}
+
+/**
+ * 顶在 5 小时档位置上的合成行。
+ *
+ * 缺这一行，两侧面板的进度条整列就会错位，而且一片空白里看不出是「这一档不存在」
+ * 还是「这一档没取到」。骨架和 LimitMeter 严格一致（h-5 + mt-1.5 h-1.5），
+ * 两边的条才对得齐。
+ *
+ * - `unlimited`：条画满，说 Unlimited。
+ * - `unknown`：空槽配破折号，不写 0% —— 归零的条会被读成「一点没用」，那是句假话。
+ *   取不到的原因（如果上游给了）挂在 title 上，跟附加 provider 那行的处理一致。
+ */
+function SyntheticLimitMeter({
+  state,
+  title,
+}: {
+  state: "unlimited" | "unknown";
+  title?: string;
+}) {
+  const unlimited = state === "unlimited";
+  return (
+    <div title={title}>
+      <div className="flex h-5 items-center justify-between gap-2">
+        <span className="truncate text-xs">5-hour limit</span>
+        <span className="flex shrink-0 items-baseline gap-2">
+          <span className="text-xs text-muted-foreground">
+            {unlimited ? "Unlimited" : "Unavailable"}
+          </span>
+          <span
+            className={cn(
+              "font-mono text-xs tabular-nums",
+              !unlimited && "text-muted-foreground",
+            )}
+            style={unlimited ? { color: LIMIT_UNLIMITED_COLOR } : undefined}
+          >
+            {unlimited ? (
+              <span className="inline-block origin-right scale-[1.6]">∞</span>
+            ) : (
+              "—"
+            )}
+          </span>
+        </span>
+      </div>
+      <div
+        className={cn("mt-1.5 h-1.5", !unlimited && "bg-muted")}
+        style={unlimited ? { backgroundColor: LIMIT_UNLIMITED_COLOR } : undefined}
+      />
+    </div>
+  );
+}
+
 function AgentPanel({
   agent,
   /** 采集侧的话还算不算数，见 VibeCodingCard 里的 activityUnknown */
@@ -675,6 +743,9 @@ function AgentPanel({
   const displayModel =
     (active ? agent.currentModel : agent.topModel ?? agent.currentModel) ?? "暂无模型";
   const limits = orderedLimits(agent);
+  const syntheticSession = syntheticSessionState(agent, limits);
+  // 合成行也是限额，有它就该有 Limits 这个标题
+  const hasLimitRows = agent.limits.length > 0 || syntheticSession != null;
   return (
     <div className="flex min-w-0 flex-col px-4 py-4 md:px-5">
       <div className="flex items-center justify-between gap-3">
@@ -724,17 +795,19 @@ function AgentPanel({
       </div>
 
       {/*
-        限额：条数和窗口组合都由上游决定，取不到就整块不渲染，不留占位。
+        限额：条数和窗口组合都由上游决定，一条都取不到、也没说取不到（就是没配）
+        才整块不渲染。5 小时档是例外，缺位时补一行占着（见 syntheticSessionState）——
+        不然那一行时有时无，一整列条会跟着上下跳。
         套餐等级跟着这一行走，但它不依赖限额 —— usage 接口挂了套餐照样读得到，
         所以整块的渲染条件是「两者有其一」，分隔点只在两者都在时才出现。
       */}
-      {(agent.plan || agent.limits.length > 0) && (
+      {(agent.plan || hasLimitRows) && (
         <div className="mt-5 grid gap-3 border-t border-line pt-4">
           <div className="label-mono text-muted-foreground">
-            {agent.limits.length > 0 && "Limits"}
+            {hasLimitRows && "Limits"}
             {agent.plan && (
               <span title={`套餐 ${agent.plan.tier}`}>
-                {agent.limits.length > 0 && (
+                {hasLimitRows && (
                   <span aria-hidden className="mx-1.5">
                     ·
                   </span>
@@ -743,28 +816,13 @@ function AgentPanel({
               </span>
             )}
           </div>
-          {agent.id === "codex" &&
-            agent.limits.length > 0 &&
-            !limits.some(isSessionWindow) && (
-              <div>
-                <div className="flex h-5 items-center justify-between gap-2">
-                  <span className="truncate text-xs">5-hour limit</span>
-                  <span className="flex shrink-0 items-baseline gap-2">
-                    <span className="text-xs text-muted-foreground">Unlimited</span>
-                    <span
-                      className="font-mono text-xs tabular-nums"
-                      style={{ color: LIMIT_UNLIMITED_COLOR }}
-                    >
-                      <span className="inline-block origin-right scale-[1.6]">∞</span>
-                    </span>
-                  </span>
-                </div>
-                <div
-                  className="mt-1.5 h-1.5"
-                  style={{ backgroundColor: LIMIT_UNLIMITED_COLOR }}
-                />
-              </div>
-            )}
+          {/* 合成行永远排在最前：真的 5 小时档（limitRank 0）也在那个位置 */}
+          {syntheticSession && (
+            <SyntheticLimitMeter
+              state={syntheticSession}
+              title={agent.limitsError ?? undefined}
+            />
+          )}
           {limits.map((limit) => (
             <LimitMeter key={limit.key} limit={limit} />
           ))}
