@@ -1,4 +1,10 @@
 import { readAppleMusicCredentials } from "@/lib/apple-music-credentials";
+import {
+  catalogSearchTerms,
+  normalizeForMatch,
+  pickCatalogHit,
+  type CatalogSong,
+} from "@/lib/apple-music-lookup";
 import { cached } from "@/lib/cache";
 
 /**
@@ -78,21 +84,6 @@ const TRACK_LINK_TTL_MS = 7 * 24 * 60 * 60 * 1000;
  */
 const SEARCH_LIMIT = 25;
 
-type CatalogSong = {
-  id?: string;
-  relationships?: {
-    /** 搜索歌曲时 Apple 直接返回其所属专辑的资源 ID。 */
-    albums?: { data?: Array<{ id?: string }> };
-  };
-  attributes?: {
-    name?: string;
-    artistName?: string;
-    albumName?: string;
-    url?: string;
-    artwork?: { url?: string };
-  };
-};
-
 /**
  * 一次目录查询同时解出链接和封面。
  *
@@ -114,30 +105,11 @@ export type TrackLookup = {
   songId: string | null;
 };
 
-/** 归一化后再比：大小写、空格、常见标点、全角半角差异都不该影响判定 */
-function normalizeForMatch(value: string | null | undefined) {
-  return (value ?? "")
-    .toLowerCase()
-    .normalize("NFKC")
-    .replace(/[\s　]/g, "")
-    .replace(/[-–—_.,'"‘’“”!?()（）\[\]・:：]/g, "");
-}
-
 /**
  * 把「播放中」的曲目解析成一个可跳转的 Apple Music 地址。
  *
- * 搜出来**必须按「曲名 + 艺人 + 专辑」三者校验**，少一个都不够：
- *
- * - 只看排序不行：即使限定了 types=songs，相关度最高的也可能不是同名曲。
- *   实测搜「Moonshot / Hoshimachi Suisei」，排第一的是同一歌手的另一首
- *   《Suisei (Nor ver.)》—— 艺人名和歌名撞了。
- * - 只看曲名 + 艺人也不行：同一首歌常同时收录在单曲、EP 和精选里。实测
- *   《ミッドナイト・リフレクション / NOMELON NOLEMON》在「- Single」「HALO - EP」
- *   「EYE」三张专辑下各有一条，链接完全不同。
- *
- * 所以缓存键也必须带上专辑名，否则同名不同专辑会互相命中对方的缓存。
- *
  * 都对不上就退回搜索页：宁可给一个粗一点但正确的落点，也不给一个错的直链。
+ * 缓存键带专辑名，否则同名不同专辑会互相命中对方的缓存。
  */
 export async function resolveTrackLookup(track: {
   title: string | null;
@@ -146,8 +118,9 @@ export async function resolveTrackLookup(track: {
 }): Promise<TrackLookup> {
   if (!track.title) return { link: "", artwork: null, id: null, songId: null };
 
-  const searchTerm = [track.title, track.artist].filter(Boolean).join(" ");
-  const searchUrl = `https://music.apple.com/search?term=${encodeURIComponent(searchTerm)}`;
+  const terms = catalogSearchTerms(track.title, track.artist, track.album);
+  // 目录全没对上时的搜索页：已经失败了，链出去的词不再带艺人
+  const searchUrl = `https://music.apple.com/search?term=${encodeURIComponent(terms.at(-1) ?? track.title)}`;
 
   // 专辑名必须进 key：同名同艺人但不同专辑是完全不同的链接
   /**
@@ -157,69 +130,33 @@ export async function resolveTrackLookup(track: {
    * 换的话旧条目会被当成新格式读：字符串上取 `.link` 拿到的是
    * `String.prototype.link` 那个上古方法，它是真值，于是链接字段被塞进一个函数，
    * JSON 序列化时又被悄悄丢掉 —— 表现是链接和封面同时消失，很难往缓存上想。
-   * 以后再改这个值的形状，记得一起改版本号。
+   * 以后再改这个值的形状，记得一起改版本号。搜索策略变了也要改：旧键里缓存的
+   * 「搜过了但没匹配上」会把新策略挡在门外整整一周。
    */
   const cacheKey =
-    "apple-music:track-lookup:v7:" +
+    "apple-music:track-lookup:v8:" +
     [track.title, track.artist, track.album].map(normalizeForMatch).join(":");
 
   try {
     const exact = await cached<TrackLookup>(cacheKey, TRACK_LINK_TTL_MS, async () => {
       const credentials = await resolveCredentials();
       const storefront = (process.env.APPLE_MUSIC_STOREFRONT?.trim() || "cn").toLowerCase();
-      // 带上专辑名能提高排序质量，但判定仍然只看曲名和艺人
-      const term = [track.title, track.artist, track.album].filter(Boolean).join(" ");
-      const url =
-        `https://api.music.apple.com/v1/catalog/${storefront}/search` +
-        `?term=${encodeURIComponent(term)}&types=songs&limit=${SEARCH_LIMIT}&relate=albums`;
-      const json = await appleFetchRaw<{
-        results?: { songs?: { data?: CatalogSong[] } };
-      }>(url, credentials);
+      let hit: CatalogSong | undefined;
 
-      const wantedTitle = normalizeForMatch(track.title);
-      const wantedArtist = normalizeForMatch(track.artist);
-      const wantedAlbum = normalizeForMatch(track.album);
-
-      const titleMatches = (json.results?.songs?.data ?? []).filter(
-        (song) => normalizeForMatch(song.attributes?.name) === wantedTitle,
-      );
-      const byArtist = titleMatches.filter((song) => {
-        if (!wantedArtist) return true;
-        const found = normalizeForMatch(song.attributes?.artistName);
-        // 「艺人 A feat. B」这类两边互为子串，双向包含都算对得上
-        return found.includes(wantedArtist) || wantedArtist.includes(found);
-      });
-
-      /**
-       * 艺人名对不上时退回「曲名 + 专辑」。
-       *
-       * 目录里的艺人名和设备报的常常不是一种写法：实测 Music.app 报
-       * 「宇多田ヒカル」，目录里写的是「Utada」，两边毫无字面交集，25 个候选
-       * 全被筛掉 —— 而正确的那条就在里面。日文艺人尤其常见。
-       *
-       * 少了艺人这层身份，专辑那层就得卡严：只认完全相等，不再退化到包含判断，
-       * 也不接受「只有一个候选就认」。宁可退回搜索页，也不给一个错的直链。
-       */
-      const artistMatched = byArtist.length > 0;
-      const candidates = artistMatched ? byArtist : titleMatches;
-
-      const hit = wantedAlbum
-        ? // 先要精确的。设备报的专辑名通常和目录一致（实测 Music.app 给的就是
-          // 「HALO - EP」这种完整形式），退化到包含判断只是为了容忍上游把
-          // 「- Single」这类后缀截掉的情况
-          candidates.find(
-            (song) => normalizeForMatch(song.attributes?.albumName) === wantedAlbum,
-          ) ??
-          (artistMatched
-            ? candidates.find((song) => {
-                const found = normalizeForMatch(song.attributes?.albumName);
-                return found.includes(wantedAlbum) || wantedAlbum.includes(found);
-              })
-            : undefined)
-        : // 没有专辑名就没法消歧：只有候选唯一、且艺人也对得上时才敢认
-          artistMatched && candidates.length === 1
-          ? candidates[0]
-          : undefined;
+      for (const term of terms) {
+        const url =
+          `https://api.music.apple.com/v1/catalog/${storefront}/search` +
+          `?term=${encodeURIComponent(term)}&types=songs&limit=${SEARCH_LIMIT}&relate=albums`;
+        const json = await appleFetchRaw<{
+          results?: { songs?: { data?: CatalogSong[] } };
+        }>(url, credentials);
+        hit = pickCatalogHit(json.results?.songs?.data ?? [], {
+          title: track.title!,
+          artist: track.artist,
+          album: track.album,
+        });
+        if (hit) break;
+      }
 
       let albumId = hit?.relationships?.albums?.data?.[0]?.id ?? null;
       if (hit?.id && !albumId) {
