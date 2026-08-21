@@ -192,7 +192,9 @@ MusicKit 签出来的 developer token 实测寿命 **30 天**，上报器从它�
 
 **我的凭据碰不到这条路径。** 上面那份 Mac 推来的 token 带着 `Music-User-Token`，拿到就能读我的收听记录，所以它锁在 `TELEMETRY_INGEST_SECRET` 后面、只发给上报器。跟听要的是另一种东西：一份发给**任意访客**的 developer token，访客拿它去换自己的用户令牌。两者敏感度差一个量级，不共用一条路径，也不共用一把锁。
 
-**签发放在 [workers/musickit-token](workers/musickit-token)。** 私钥不进站点的运行时 —— 站点部署在 Vercel，函数实例、构建日志、预览环境都能碰到那份环境变量；那个 Worker 只做一件事、只有一个出口、只吐一份短时效令牌（默认 1 小时）。`.p8` 走 `wrangler secret`，Team ID 和 Key ID 不是秘密，放 `[vars]`。
+**签发放在 [workers/musickit-token](workers/musickit-token)。** 私钥不进站点的运行时 —— 站点部署在 Vercel，函数实例、构建日志、预览环境都能碰到那份环境变量；那个 Worker 只做一件事、只有一个出口、只吐一份有期限的令牌（默认 7 天，`TOKEN_TTL_SECONDS` 可改）。`.p8` 走 `wrangler secret`，Team ID 和 Key ID 不是秘密，放 `[vars]`。
+
+**续期看半衰期**：过了「签发 → 到期」的中点就换一份新的，Worker 的缓存和站点的内存副本用的是同一条规则（两边都叫 `pastHalfLife`），所以响应里 `issuedAt` 和 `expiresAt` 一起给 —— 只给到期时刻的话，站点只能拿「我什么时候收到的」当起点，而收到的可能已经是 Worker 缓存着的、用掉一半的那份。取相对中点而不是写死提前量，和 Mac 上报器续自己那份 developer token 是同一个理由：写死的那个在两个方向上都可能错。
 
 **域名限制是一份名单、两道闸**，都由 Worker 的 `ALLOWED_ORIGINS` 配：
 
@@ -212,7 +214,7 @@ MusicKit 签出来的 developer token 实测寿命 **30 天**，上报器从它�
 两条明摆着的取舍：
 
 - **换个国家可能就没这首。** `songId` 按站点的 `APPLE_MUSIC_STOREFRONT` 解出来，各地授权范围不一样，访客那边查无此曲时按钮翻成「重试」并说明原因，不静悄悄地什么都不放。
-- **令牌 1 小时到期。** 短是故意的：它发给任何一个打开页面的人，域名限制之外就只剩有效期这一道闸。页面开着超过一小时又重新开始跟听时会自动换一份新的，但**跟听中途跨过到期时刻，那一次播放会断**。要拉长就改 Worker 的 `TOKEN_TTL_SECONDS`。
+- **令牌 7 天到期。** 不取 Apple 允许的半年上限：它发给任何一个打开页面的人，域名限制之外就只剩有效期这一道闸。过了半衰期（3.5 天）再开始跟听会自动换一份新的，所以正常用不会碰到边界；但**同一个页面挂着不动、跟听中途跨过到期时刻，那一次播放会断** —— 已经配好的 MusicKit 实例不会中途换令牌。
 
 不配 `NEXT_PUBLIC_MUSICKIT_TOKEN_URL` 则整个功能停用，右上角照旧显示「Apple Music」，卡片其余部分不受影响。
 
