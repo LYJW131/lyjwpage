@@ -134,7 +134,7 @@ export async function resolveTrackLookup(track: {
    * 「搜过了但没匹配上」会把新策略挡在门外整整一周。
    */
   const cacheKey =
-    "apple-music:track-lookup:v8:" +
+    "apple-music:track-lookup:v9:" +
     [track.title, track.artist, track.album].map(normalizeForMatch).join(":");
 
   try {

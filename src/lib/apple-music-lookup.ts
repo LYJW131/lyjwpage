@@ -28,6 +28,21 @@ export function normalizeForMatch(value: string | null | undefined) {
     .replace(/[-–—_.,'"‘’“”!?()（）\[\]・:：]/g, "");
 }
 
+function artistNameMatches(found: string | null | undefined, wanted: string) {
+  if (!wanted) return true;
+  const have = normalizeForMatch(found);
+  // 「艺人 A feat. B」这类两边互为子串，双向包含都算对得上
+  return have.includes(wanted) || wanted.includes(have);
+}
+
+/** 专辑形态：设备写 "Tower of Flower - Single"，目录写 "花の塔 - Single"，字面不等但都是单曲 */
+function albumRole(name: string | null | undefined): "single" | "ep" | null {
+  const n = normalizeForMatch(name);
+  if (n.endsWith("single")) return "single";
+  if (n.endsWith("ep")) return "ep";
+  return null;
+}
+
 /**
  * 目录搜索词，按从带到不带艺人排。
  *
@@ -77,6 +92,10 @@ export function catalogSearchTerms(
  * 写法：实测 Music.app 报「宇多田ヒカル」，目录里写的是「Utada」，两边毫无
  * 字面交集。少了艺人这层身份，专辑那层就卡严：只认完全相等，不再退化到包含
  * 判断，也不接受「只有一个候选就认」。
+ *
+ * 曲名也可能对不上：中国区目录给「花の塔」，Music.app 英文界面报
+ * 「Tower of Flower」。搜索其实已经把歌找来了，字面不等。这时若艺人对得上，
+ * 靠专辑形态消歧（两边都是 - Single / - EP，且结果里只有一张这种）。
  */
 export function pickCatalogHit(
   songs: CatalogSong[],
@@ -89,31 +108,53 @@ export function pickCatalogHit(
   const titleMatches = songs.filter(
     (song) => normalizeForMatch(song.attributes?.name) === wantedTitle,
   );
-  const byArtist = titleMatches.filter((song) => {
-    if (!wantedArtist) return true;
-    const found = normalizeForMatch(song.attributes?.artistName);
-    // 「艺人 A feat. B」这类两边互为子串，双向包含都算对得上
-    return found.includes(wantedArtist) || wantedArtist.includes(found);
-  });
+  const titledByArtist = titleMatches.filter((song) =>
+    artistNameMatches(song.attributes?.artistName, wantedArtist),
+  );
 
-  const artistMatched = byArtist.length > 0;
-  const candidates = artistMatched ? byArtist : titleMatches;
+  const hit = pickAlbum(
+    titledByArtist.length > 0 ? titledByArtist : titleMatches,
+    wantedAlbum,
+    titledByArtist.length > 0,
+  );
+  if (hit) return hit;
+
+  // 曲名对上的是别人的翻唱（Tower of Flower / Fried Rice），正主在目录里
+  // 是另一个名字（花の塔）。艺人对得上再按专辑形态认一次。
+  if (!wantedArtist) return undefined;
+  const artistMatches = songs.filter((song) =>
+    artistNameMatches(song.attributes?.artistName, wantedArtist),
+  );
+  return pickAlbum(artistMatches, wantedAlbum, true);
+}
+
+function pickAlbum(
+  candidates: CatalogSong[],
+  wantedAlbum: string,
+  artistMatched: boolean,
+): CatalogSong | undefined {
+  if (candidates.length === 0) return undefined;
 
   if (wantedAlbum) {
     // 先要精确的。设备报的专辑名通常和目录一致（实测 Music.app 给的就是
     // 「HALO - EP」这种完整形式），退化到包含判断只是为了容忍上游把
     // 「- Single」这类后缀截掉的情况 —— 而且只在艺人也对得上时才肯退化
-    return (
-      candidates.find(
-        (song) => normalizeForMatch(song.attributes?.albumName) === wantedAlbum,
-      ) ??
-      (artistMatched
-        ? candidates.find((song) => {
-            const found = normalizeForMatch(song.attributes?.albumName);
-            return found.includes(wantedAlbum) || wantedAlbum.includes(found);
-          })
-        : undefined)
+    const exact = candidates.find(
+      (song) => normalizeForMatch(song.attributes?.albumName) === wantedAlbum,
     );
+    if (exact) return exact;
+    if (!artistMatched) return undefined;
+    const contained = candidates.find((song) => {
+      const found = normalizeForMatch(song.attributes?.albumName);
+      return found.includes(wantedAlbum) || wantedAlbum.includes(found);
+    });
+    if (contained) return contained;
+    const role = albumRole(wantedAlbum);
+    if (!role) return undefined;
+    const sameRole = candidates.filter(
+      (song) => albumRole(song.attributes?.albumName) === role,
+    );
+    return sameRole.length === 1 ? sameRole[0] : undefined;
   }
 
   // 没有专辑名就没法消歧：只有候选唯一、且艺人也对得上时才敢认
