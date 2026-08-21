@@ -1,13 +1,13 @@
 # @lyjwpage/musickit-token
 
-用 Apple 的 `.p8` 私钥现签**短时效** MusicKit developer token 的 Cloudflare Worker。
+用 Apple 的 `.p8` 私钥现签 MusicKit developer token 的 Cloudflare Worker。
 站点的「一起听」要它：访客用自己的 Apple Music 订阅授权之前，先得有一份 developer
 token 才能把 MusicKit JS 配起来。
 
 ## 为什么单独开一个 Worker
 
 私钥不进站点的运行时。站点部署在 Vercel，函数实例、构建日志、预览环境都能碰到那份
-环境变量；而这里只做一件事、只有一个出口、只吐一个有效期一小时的令牌。
+环境变量；而这里只做一件事、只有一个出口、只吐一个有期限的令牌（默认 7 天）。
 
 也不能把令牌交给「最近在听」那条 `/api/ingest/apple-music` 的 GET —— 那条给的是
 Mac 上报器现签的、带 music user token 的那份**私人凭据**，拿到就能读我的收听记录，
@@ -31,7 +31,7 @@ Apple 不解析通配符，所以 `https://*.vercel.app` 这类只参与第一�
 
 ```json
 { "alg": "ES256", "kid": "FGHIJ67890" }
-{ "iss": "ABCDE12345", "iat": 1755734400, "exp": 1755738000,
+{ "iss": "ABCDE12345", "iat": 1755734400, "exp": 1756339200,
   "origin": ["https://lyjw.me", "https://lyjwpage-abc123.vercel.app"] }
 ```
 
@@ -67,7 +67,7 @@ wrangler secret put APPLE_MUSIC_PRIVATE_KEY < AuthKey_FGHIJ67890.p8
 
 - **请求方式**：`GET /token`
 - **入参**：无。域名限制看 `Origin` 头
-- **缓存**：同一份 origin 声明的令牌在 isolate 里复用，剩不到 5 分钟才重签。
+- **缓存**：同一份 origin 声明的令牌在 isolate 里复用，**过了半衰期**才重签。
   响应一律 `Cache-Control: no-store`
 
 ### 请求示例
@@ -81,11 +81,21 @@ curl -H "Origin: https://lyjw.me" "https://musickit.example.com/token"
 ```json
 {
   "token": "eyJhbGciOiJFUzI1NiIsImtpZCI6...",
-  "expiresAt": 1755738000
+  "issuedAt": 1755734400,
+  "expiresAt": 1756339200
 }
 ```
 
-`expiresAt` 是 Unix **秒**（和 JWT 的 `exp` 同一个值，前端据此提前续）。
+两个时刻都是 Unix **秒**，和 JWT 的 `iat` / `exp` 一一对应。
+
+**两个都给，是因为续期看的是半衰期**：过了「签发 → 到期」的中点就换一份新的。
+只给到期时刻的话，站点那侧只能拿「我什么时候收到的」当起点，而收到的可能已经是
+这里缓存着的、用掉一半的那份。
+
+取相对中点而不是写死提前量：改了 `TOKEN_TTL_SECONDS` 不用跟着调第二个数，而写死
+的那个在两个方向上都可能错 —— 对七天的令牌，提前五分钟等于几乎不续；对一小时的
+令牌，提前一天等于每次都续。站点那侧和 Mac 上报器续自己那份 developer token 用的
+都是这条规则。
 
 出错时是 `{ "error": "没有配置 APPLE_MUSIC_TEAM_ID" }` 加对应状态码：
 403 来源不对、404 路径不对、405 方法不对、500 配置错或私钥坏。

@@ -141,24 +141,40 @@ function loadMusicKitScript(): Promise<MusicKitGlobal> {
 
 export type DeveloperToken = {
   token: string;
-  /** Unix **秒**，和 JWT 的 exp 同一个值 */
+  /** 签发时刻，Unix **秒**，和 JWT 的 iat 同一个值 */
+  issuedAt: number;
+  /** 到期时刻，Unix **秒**，和 JWT 的 exp 同一个值 */
   expiresAt: number;
 };
 
 /**
- * 令牌在内存里留一份，快到期了再去要。
+ * 过了「签发时刻 → 到期时刻」的中点就该换一份新的。
+ *
+ * 和 Worker 那侧逐字同一条规则（workers/musickit-token/src/index.ts 里也叫
+ * pastHalfLife），改一处记得对齐。用 issuedAt 而不是「我什么时候收到的」当起点：
+ * Worker 自己也缓存，拿到手的可能已经是一份用掉一半的令牌。
+ */
+function pastHalfLife(token: DeveloperToken, now: number): boolean {
+  return now >= token.issuedAt + (token.expiresAt - token.issuedAt) / 2;
+}
+
+/** 令牌上的两个时刻都是 Unix 秒，比之前先换算过来 */
+function nowSeconds(): number {
+  return Math.floor(Date.now() / 1000);
+}
+
+/**
+ * 令牌在内存里留一份，过了半衰期再去要。
  *
  * Worker 那侧也缓存，但那是**每个 isolate** 各存各的；这里省的是每次开始跟听都
- * 打一次网络。提前 5 分钟换新和 Worker 的续签阈值对齐，免得刚拿到就过期。
+ * 打一次网络。
  */
 let cachedToken: DeveloperToken | null = null;
-const RENEW_BEFORE_SECONDS = 5 * 60;
 
 export async function fetchDeveloperToken(): Promise<DeveloperToken> {
   if (!MUSICKIT_TOKEN_ENDPOINT) throw new Error("没有配置 MusicKit 令牌签发地址");
 
-  const now = Math.floor(Date.now() / 1000);
-  if (cachedToken && cachedToken.expiresAt - now > RENEW_BEFORE_SECONDS) return cachedToken;
+  if (cachedToken && !pastHalfLife(cachedToken, nowSeconds())) return cachedToken;
 
   const response = await fetch(MUSICKIT_TOKEN_ENDPOINT, { cache: "no-store" });
   if (!response.ok) {
@@ -175,6 +191,10 @@ export async function fetchDeveloperToken(): Promise<DeveloperToken> {
 
   const token = (await response.json()) as DeveloperToken;
   if (!token.token) throw new Error("令牌签发服务没有返回令牌");
+  // 两个时刻缺一个就算不出半衰期，那样这份会被当成永远新鲜或永远过期
+  if (!Number.isFinite(token.issuedAt) || !Number.isFinite(token.expiresAt)) {
+    throw new Error("令牌签发服务没有给出签发 / 到期时刻");
+  }
   cachedToken = token;
   return token;
 }
@@ -188,6 +208,20 @@ export async function fetchDeveloperToken(): Promise<DeveloperToken> {
 let instancePromise: Promise<MusicKitInstance> | null = null;
 
 export function getMusicKit(): Promise<MusicKitInstance> {
+  /*
+   * 手上那份过了半衰期就重新配一遍。
+   *
+   * 光在 fetchDeveloperToken 里判是不够的：实例配好之后这个 Promise 一直留着，
+   * 那个函数再也不会被调到，于是页面开着不动时令牌永远不换 —— 一直开到过期，
+   * 跟听就断在那里。清掉重来会走一遍 fetchDeveloperToken，它自己会看出手上那份
+   * 该换了。
+   *
+   * 只有 start() 会调到这里，那时一定没在放（在放的话按钮是「跟听中」，点了走的
+   * 是 stop），所以重配不会打断谁。
+   */
+  if (instancePromise && cachedToken && pastHalfLife(cachedToken, nowSeconds())) {
+    instancePromise = null;
+  }
   if (instancePromise) return instancePromise;
 
   instancePromise = (async () => {

@@ -15,17 +15,14 @@ const TOKEN_PATH = "/token";
 const LOCAL_ORIGIN_RE = /^https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/;
 
 /**
- * 一小时。用户说的「短时效」落在这里。
+ * 七天。
  *
  * Apple 允许最长半年，但这个令牌是发给任何一个打开页面的访客的 —— 它一旦被复制
- * 走，域名限制之外就只剩有效期这一道闸。一小时足够听完一整场，过期时页面重新来
- * 要一份即可（前端在 useMusicKit 里按 expiresAt 提前续）。
+ * 走，域名限制之外就只剩有效期这一道闸，所以不取上限。
  */
-const DEFAULT_TTL_SECONDS = 60 * 60;
+const DEFAULT_TTL_SECONDS = 7 * 24 * 60 * 60;
 /** Apple 的硬上限：15777000 秒 ≈ 半年。签超了对方直接拒 */
 const MAX_TTL_SECONDS = 15777000;
-/** 剩这么多就不再复用缓存里那份，重新签一份 */
-const RENEW_BEFORE_SECONDS = 5 * 60;
 
 /*
  * 下面四个来源匹配函数和 online-counter / live-push 那两个 worker 逐字一样
@@ -194,13 +191,31 @@ function resolveTtlSeconds(env: Env): number {
   return Math.min(Math.floor(raw), MAX_TTL_SECONDS);
 }
 
-type CachedToken = { token: string; expiresAt: number };
+type CachedToken = { token: string; issuedAt: number; expiresAt: number };
+
+/**
+ * 过了「签发时刻 → 到期时刻」的中点就该换一份新的。
+ *
+ * 取相对中点而不是写死提前量：改了 TOKEN_TTL_SECONDS 不用跟着调第二个数，
+ * 而写死的那个在两个方向上都可能错 —— 对七天的令牌，提前五分钟等于几乎不续；
+ * 对一小时的令牌，提前一天等于每次都续。
+ *
+ * 站点那侧判是不是该重新要一份用的是同一条规则（见 src/lib/musickit.ts 的
+ * pastHalfLife），Mac 上报器续它自己那份 developer token 也是。改一处记得对齐。
+ */
+function pastHalfLife(token: CachedToken, now: number): boolean {
+  return now >= token.issuedAt + (token.expiresAt - token.issuedAt) / 2;
+}
 
 /**
  * 按 origin 声明分开缓存。
  *
  * 声明不同的令牌不能互相顶替 —— 预览域名各签各的。键就用那串声明本身，省掉再
  * 造一个 ID。签名本身不贵，这里省的是每个请求都做一次 ECDSA 的那点延迟。
+ *
+ * 键里不带有效期：决定令牌内容的另外几样（TTL、Team ID、Key ID、私钥）都是部署
+ * 期固定的，改了就是一次重新部署、isolate 连同这张表一起换掉。只有 `wrangler
+ * dev` 热更 vars 时旧值会多活一会儿，不影响线上。
  */
 const tokenCache = new Map<string, CachedToken>();
 /**
@@ -220,7 +235,7 @@ async function issueToken(request: Request, env: Env): Promise<CachedToken> {
   const now = Math.floor(Date.now() / 1000);
 
   const cached = tokenCache.get(cacheKey);
-  if (cached && cached.expiresAt - now > RENEW_BEFORE_SECONDS) return cached;
+  if (cached && !pastHalfLife(cached, now)) return cached;
 
   const expiresAt = now + resolveTtlSeconds(env);
   const header = { alg: "ES256", kid: keyId };
@@ -245,7 +260,7 @@ async function issueToken(request: Request, env: Env): Promise<CachedToken> {
    * 混了 Apple 会以「签名不对」拒掉，而错误信息里看不出是编码问题。
    */
   const token = `${signingInput}.${base64UrlEncode(new Uint8Array(signature))}`;
-  const issued = { token, expiresAt };
+  const issued = { token, issuedAt: now, expiresAt };
   if (tokenCache.size >= TOKEN_CACHE_LIMIT) {
     const oldest = tokenCache.keys().next().value;
     if (oldest !== undefined) tokenCache.delete(oldest);
@@ -274,8 +289,10 @@ const worker = {
     }
 
     try {
-      const { token, expiresAt } = await issueToken(request, env);
-      return jsonResponse({ token, expiresAt }, { headers: cors });
+      const { token, issuedAt, expiresAt } = await issueToken(request, env);
+      // 两个时刻都给出去，站点那侧才算得出半衰期 —— 只给到期时刻的话，它只能拿
+      // 「我什么时候收到的」当起点，而收到的可能已经是一份用掉一半的缓存
+      return jsonResponse({ token, issuedAt, expiresAt }, { headers: cors });
     } catch (error) {
       /*
        * 配置错和私钥坏在这里都表现为签不出来，而且只有部署的人能修，所以原文往外

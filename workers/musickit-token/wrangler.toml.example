@@ -16,8 +16,9 @@ workers_dev = true
 # 通配项只参与第一道：Apple 不解析通配符，签进声明的是这次请求那个具体来源。
 ALLOWED_ORIGINS = "https://example.com,https://*.vercel.app"
 
-# 令牌有效期（秒）。不填按 1 小时，Apple 允许的上限是 15777000（约半年）。
-# TOKEN_TTL_SECONDS = "3600"
+# 令牌有效期（秒）。不填按 7 天，Apple 允许的上限是 15777000（约半年）。
+# 续期不看这个数：过了「签发 → 到期」的中点就换一份新的，改这里不用调别处。
+# TOKEN_TTL_SECONDS = "604800"
 
 # Team ID 和 Key ID 不是秘密，放这里就行；私钥走 secret，见 README。
 APPLE_MUSIC_TEAM_ID = "ABCDE12345"
