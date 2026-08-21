@@ -65,6 +65,16 @@ test("先切到下一首再等主人锚点：超前记成负滞后，不当成�
   assert.equal(isHostSeek(9_000, 2_000 - 9_000, 2_000, 5_000), false);
 });
 
+test("单曲循环绕回开头：按环上距离算，不当成拖进度", () => {
+  // 230s 的歌，本地在 228s，主人的钟绕回 2s：环上只差 4s
+  assert.equal(isHostSeek(228_000, 0, 2_000, 5_000, 230_000), false);
+  assert.equal(needsResync(228_000, 2_000, 5_000, 230_000), false);
+  // 不循环时同样的数就是拖回开头
+  assert.equal(isHostSeek(228_000, 0, 2_000, 5_000), true);
+  // 环上也差得远：那是真拖了
+  assert.equal(isHostSeek(228_000, 0, 100_000, 5_000, 230_000), true);
+});
+
 test("正常下一首锚点在开头，不对齐", () => {
   assert.equal(shouldSeekAfterTrackChange(0, 5_000), false);
   assert.equal(shouldSeekAfterTrackChange(1_200, 5_000), false);

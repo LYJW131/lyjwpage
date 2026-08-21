@@ -69,6 +69,8 @@ const RESYNC_THRESHOLD_MS = 5_000;
 const RESYNC_INTERVAL_MS = 20_000;
 /** 换歌后等真正出声。超时就不再干等，后面的 seek 接着兜 */
 const READY_TIMEOUT_MS = 25_000;
+/** 单曲循环 ended 后先让 MusicKit 自己重启这么久，它没动再手动从头放 */
+const REPEAT_RESTART_GRACE_MS = 1_200;
 /**
  * 预切点：主人这首还剩这么多毫秒时切到下一首去加载。切早了结尾丢得多，
  * 切晚了下一首出声晚 —— 取结尾只牺牲三秒，出声比他的 0 晚一两秒来换。
@@ -196,8 +198,6 @@ export type ListenAlong = {
   audible: boolean;
   start: () => void;
   stop: () => void;
-  /** 打开面板时探一下本地有没有留下授权，不开始播放 */
-  probe: () => void;
   logout: () => void;
 };
 
@@ -539,7 +539,9 @@ export function useListenAlong(source: {
             return;
           }
           lagMs.current = 0;
-        } else if (!isHostSeek(local, lagMs.current, host, RESYNC_THRESHOLD_MS)) {
+        } else if (
+          !isHostSeek(local, lagMs.current, host, RESYNC_THRESHOLD_MS, repeatOne ? durationMs : 0)
+        ) {
           if (cancelled) return;
           if (music.playbackState !== PLAYBACK_STATE.playing) {
             await runExclusive(() => playSafe(music));
@@ -553,7 +555,13 @@ export function useListenAlong(source: {
           const nowLocal = localPositionMs(music);
           if (
             !songChanged &&
-            !isHostSeek(nowLocal, lagMs.current, nowHost, RESYNC_THRESHOLD_MS)
+            !isHostSeek(
+              nowLocal,
+              lagMs.current,
+              nowHost,
+              RESYNC_THRESHOLD_MS,
+              repeatOne ? durationMs : 0,
+            )
           ) {
             return;
           }
@@ -591,7 +599,9 @@ export function useListenAlong(source: {
         Date.now(),
       );
       const target = followTargetMs(host, lagMs.current);
-      if (needsResync(localPositionMs(music), target, RESYNC_THRESHOLD_MS)) {
+      if (
+        needsResync(localPositionMs(music), target, RESYNC_THRESHOLD_MS, repeatOne ? durationMs : 0)
+      ) {
         void runExclusive(async () => {
           if (readySongId.current !== songId) return;
           await mkSafe(() => music.seekToTime(target / 1000));
@@ -768,6 +778,13 @@ export function useListenAlong(source: {
       void runExclusive(async () => {
         if (music.playbackState !== PLAYBACK_STATE.ended) return;
         if (repeatOneRef.current) {
+          /*
+           * repeatMode=one 时 MusicKit 自己会从头再放。抢在它前面 seek/play
+           * 是叠操作，iOS 上会弹「The operation was aborted.」。先让一让，
+           * 它真没接手再兜底。
+           */
+          await new Promise((resolve) => window.setTimeout(resolve, REPEAT_RESTART_GRACE_MS));
+          if (music.playbackState !== PLAYBACK_STATE.ended) return;
           await mkSafe(() => music.seekToTime(0));
           await playSafe(music);
           return;
@@ -799,19 +816,16 @@ export function useListenAlong(source: {
     };
   }, [music]);
 
-  const probe = useCallback(() => {
-    void (async () => {
-      try {
-        const instance = await getMusicKit();
-        setAuthorized(instance.isAuthorized);
-      } catch {
-        // 只是探授权，失败不打扰；点登录时 start 会再报
-      }
-    })();
-  }, []);
-
   const logout = useCallback(() => {
     stop();
+    /*
+     * 没点过 Sign in 就还没加载 MusicKit。这时候 Sign out 只是占位，
+     * 别为了它把几百 KB 的播放器拉进来。
+     */
+    if (!authorized) {
+      setError(null);
+      return;
+    }
     void (async () => {
       try {
         const instance = await getMusicKit();
@@ -823,7 +837,7 @@ export function useListenAlong(source: {
         setStatus("error");
       }
     })();
-  }, [stop]);
+  }, [authorized, stop]);
 
   return {
     status,
@@ -833,7 +847,6 @@ export function useListenAlong(source: {
     audible,
     start,
     stop,
-    probe,
     logout,
   };
 }

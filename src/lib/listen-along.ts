@@ -53,8 +53,26 @@ export function followTargetMs(hostMs: number, lagMs: number): number {
   return Math.max(0, hostMs - lagMs);
 }
 
-export function needsResync(localMs: number, targetMs: number, thresholdMs: number): boolean {
-  return Math.abs(localMs - targetMs) > thresholdMs;
+/**
+ * 环上的距离：单曲循环里结尾和开头只差一拍。
+ *
+ * 主人的钟按模运算绕回 0 时，本地可能还停在结尾附近 —— 直线距离是一整首，
+ * 环上距离才是真实偏差。按直线算会触发一次没必要的 seek，还正好撞上
+ * MusicKit 自己的循环重启，叠出 AbortError 弹窗。总长未知退回直线。
+ */
+export function loopDistanceMs(aMs: number, bMs: number, loopDurationMs: number): number {
+  const straight = Math.abs(aMs - bMs);
+  if (loopDurationMs <= 0) return straight;
+  return Math.min(straight, Math.abs(loopDurationMs - straight));
+}
+
+export function needsResync(
+  localMs: number,
+  targetMs: number,
+  thresholdMs: number,
+  loopDurationMs = 0,
+): boolean {
+  return loopDistanceMs(localMs, targetMs, loopDurationMs) > thresholdMs;
 }
 
 /**
@@ -76,9 +94,16 @@ export function shouldSeekAfterTrackChange(
  *
  * 跟听位置加上认下的滞后，应该贴着主人。对不上就是他seek了，该跟过去并
  * 清掉滞后；对得上就是续播，保持原滞后，不要一恢复播放就把开头再跳掉一次。
+ * 单曲循环时传 loopDurationMs，绕回开头不算拖进度。
  */
-export function isHostSeek(localMs: number, lagMs: number, hostMs: number, thresholdMs: number): boolean {
-  return Math.abs(localMs + lagMs - hostMs) > thresholdMs;
+export function isHostSeek(
+  localMs: number,
+  lagMs: number,
+  hostMs: number,
+  thresholdMs: number,
+  loopDurationMs = 0,
+): boolean {
+  return loopDistanceMs(localMs + lagMs, hostMs, loopDurationMs) > thresholdMs;
 }
 
 /**
