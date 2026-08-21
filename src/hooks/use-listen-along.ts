@@ -6,6 +6,7 @@ import {
   followTargetMs,
   isHostSeek,
   needsResync,
+  playbackLagMs,
 } from "@/lib/listen-along";
 import {
   getMusicKit,
@@ -26,13 +27,13 @@ import type { LocalNowPlaying } from "@/lib/types";
  * 它连这条路径都碰不到（见 lib/musickit 开头）。
  *
  * 「跟随」具体指四件事，都由锚点变化驱动：
- *   换歌 → 重排队列并起播，出声后再 seek 到主人此刻；主人暂停 → 跟着暂停；
- *   主人续播 → 对齐再放；主人拖动进度 → 新锚点和本地对不上，就地重新对齐。
+ *   刚点一起听 → 静音加载，出声后 seek 到主人此刻再恢复音量；
+ *   正常下一首（已预排）→ 跳队列从 0 起，不 seek；
+ *   主人暂停 / 续播 / 拖进度 → 跟着停、对齐、跟过去。
  * 另外挂一个慢速巡检，兜住访客这侧缓冲卡顿慢慢攒出来的偏差。
  *
- * MusicKit 不 play 就不会去拉 HLS，干等 loading 永远等不到。所以还是
- * startPlaying，等 playbackState === playing，再 seek 对齐。加载那几秒静音，
- * 避免先听到开头再跳到主人进度。
+ * MusicKit 不 play 就不会去拉 HLS。刚加入必须 play 再 seek；已经在跟的时候
+ * 换到预排的下一首，进度两边都从 0 附近走，再 seek 会把开头切掉。
  *
  * 上报器给了 Playing Next 时，服务端会先搜后面两首的目录 ID。这边 playNext
  * 预排进去，主人换到预排的那首就 changeToMediaAtIndex，不再整队 setQueue。
@@ -164,6 +165,8 @@ export function useListenAlong(source: {
   const queuedSongId = useRef<string | null>(null);
   /** 这首已经加载完并对过进度。加载期间巡检和「同一首」对齐都不得碰它 */
   const readySongId = useRef<string | null>(null);
+  /** 这轮跟听是否已经对过第一次进度。换歌用它区分「刚加入」和「正常下一首」 */
+  const hasFollowed = useRef(false);
   /** 出声时主人已经超前的毫秒数。加载后再对进度，通常是 0 */
   const lagMs = useRef(0);
   const upcomingRef = useRef(upcomingSongIds);
@@ -185,6 +188,7 @@ export function useListenAlong(source: {
   const stop = useCallback(() => {
     queuedSongId.current = null;
     readySongId.current = null;
+    hasFollowed.current = false;
     lagMs.current = 0;
     // 走得到这里就说明配了签发地址（没配的话按钮根本不渲染），不必再判一次
     setStatus("idle");
@@ -240,8 +244,8 @@ export function useListenAlong(source: {
 
         if (readySongId.current === songId) return;
 
-        // 先静音再排队列。MusicKit 要 play 才会拉 HLS，加载和对齐期间不能出声。
-        const previousVolume = mute(music);
+        const joining = !hasFollowed.current;
+        const previousVolume = joining ? mute(music) : music.volume;
         try {
           if (queuedSongId.current !== songId) {
             queuedSongId.current = songId;
@@ -263,27 +267,38 @@ export function useListenAlong(source: {
           if (cancelled || queuedSongId.current !== songId) return;
           await waitUntilPlaying(music, isCancelled);
           if (cancelled || queuedSongId.current !== songId) return;
-          try {
-            await music.seekToTime(hostNow() / 1000);
-          } catch {
-            // seek 失败就停在加载完的位置，总比没声音强
+
+          if (joining) {
+            // 半首歌才点一起听：要对到主人此刻。加载那几秒是静音的。
+            try {
+              await music.seekToTime(hostNow() / 1000);
+            } catch {
+              // seek 失败就停在加载完的位置，总比没声音强
+            }
+            if (cancelled || queuedSongId.current !== songId) return;
+            if (music.playbackState !== PLAYBACK_STATE.playing) await playSafe(music);
+            if (cancelled || queuedSongId.current !== songId) return;
+            await waitUntilPlaying(music, isCancelled);
+            if (cancelled || queuedSongId.current !== songId) return;
+            lagMs.current = 0;
+          } else {
+            // 正常下一首：两边都从开头走，seek 只会把刚出声的开头切掉。
+            // 加载慢了几秒就认成滞后，巡检按这个跟，不要把进度条拖回去。
+            lagMs.current = playbackLagMs(hostNow(), localPositionMs(music));
           }
-          if (cancelled || queuedSongId.current !== songId) return;
-          if (music.playbackState !== PLAYBACK_STATE.playing) await playSafe(music);
-          if (cancelled || queuedSongId.current !== songId) return;
-          await waitUntilPlaying(music, isCancelled);
-          if (cancelled || queuedSongId.current !== songId) return;
+
           readySongId.current = songId;
-          lagMs.current = 0;
-          music.volume = previousVolume;
+          hasFollowed.current = true;
+          if (joining) music.volume = previousVolume;
           void syncUpcomingQueue(music, upcomingRef.current).catch(() => {});
         } finally {
-          if (music.volume === 0) music.volume = previousVolume;
+          if (joining && music.volume === 0) music.volume = previousVolume;
         }
       } catch (caught) {
         if (cancelled) return;
         queuedSongId.current = null;
         readySongId.current = null;
+        hasFollowed.current = false;
         lagMs.current = 0;
         setError(describe(caught));
         setStatus("error");
