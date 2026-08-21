@@ -1,11 +1,17 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
+import {
+  HeatmapTooltip,
+  cellAnchor,
+  hoverCapable,
+  useHeatmapOpen,
+  type CellAnchor,
+} from "@/components/live/heatmap-hover";
 import { useStatus } from "@/hooks/use-status";
 import {
   CELL,
-  FILLS,
   LEFT,
   STEP,
   TOP,
@@ -17,35 +23,34 @@ import {
 import { VIBECODING_YEAR_PATH } from "@/lib/paths";
 import type { GithubChartDay, StatusResponse, VibeCodingYearPayload } from "@/lib/types";
 import {
-  chunkStarts,
+  YEAR_MIX_SHOW,
+  compactTokens,
   expandYearDays,
   formatTokenLabel,
+  indexYearMix,
   tokenScores,
-  YEAR_DAYS,
+  type YearModelShare,
 } from "@/lib/vibecoding-year";
+import { cn } from "@/lib/utils";
 
 /** 格子按天变。长间隔兜底，别跟用量卡抢请求。 */
 const REFRESH_MS = 6 * 60 * 60_000;
 
-function overlay(
-  origin: string,
-  slices: Record<string, VibeCodingYearPayload>,
-): number[] {
-  const days = Array.from({ length: YEAR_DAYS }, () => 0);
-  for (const chunk of Object.values(slices)) {
-    if (chunk.origin !== origin) continue;
-    const offset = Math.round(
-      (Date.parse(`${chunk.from}T00:00:00Z`) - Date.parse(`${origin}T00:00:00Z`)) /
-        86_400_000,
-    );
-    if (!Number.isInteger(offset) || offset < 0) continue;
-    for (let index = 0; index < chunk.days.length; index += 1) {
-      const slot = offset + index;
-      if (slot < days.length) days[slot] = chunk.days[index] ?? 0;
-    }
-  }
-  return days;
-}
+/** 蓝留给 GitHub 贡献图。这边四档绿写在 .vibe-year-chart 的 CSS 变量里。 */
+const FILLS = [
+  "var(--muted)",
+  "var(--year-score-1)",
+  "var(--year-score-2)",
+  "var(--year-score-3)",
+  "var(--year-score-4)",
+] as const;
+
+type HoveredCell = {
+  date: string;
+  tokens: number;
+  models: YearModelShare[];
+  anchor: CellAnchor;
+};
 
 function toWeeks(origin: string, days: number[]): GithubChartDay[][] {
   const scores = tokenScores(days);
@@ -61,78 +66,122 @@ function toWeeks(origin: string, days: number[]): GithubChartDay[][] {
   );
 }
 
+function mixByDate(origin: string, days: number[], models: string[], mix: number[][]) {
+  const byOffset = indexYearMix(models, mix);
+  const byDate = new Map<string, YearModelShare[]>();
+  expandYearDays(origin, days).forEach((day, index) => {
+    const parts = byOffset.get(index);
+    if (parts?.length) byDate.set(day.date, parts);
+  });
+  return byDate;
+}
+
+function sharePercent(tokens: number, total: number) {
+  if (total <= 0 || tokens <= 0) return 0;
+  return Math.min(100, (tokens / total) * 100);
+}
+
+function formatPercent(tokens: number, total: number) {
+  const percent = sharePercent(tokens, total);
+  if (percent > 0 && percent < 1) return "<1%";
+  return `${Math.round(percent)}%`;
+}
+
+function MixBreakdown({
+  tokens,
+  models,
+}: {
+  tokens: number;
+  models: YearModelShare[];
+}) {
+  const rows = models.slice(0, YEAR_MIX_SHOW);
+  if (rows.length === 0) return null;
+  return (
+    <div className="mt-2 min-w-0 border-t border-line pt-1.5">
+      <ul className="grid min-w-0 gap-1.5">
+        {rows.map((row) => (
+          <li key={row.model} className="min-w-0">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="min-w-0 flex-1 truncate font-mono text-[10px]" title={row.model}>
+                {row.model}
+              </span>
+              <span className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground">
+                {compactTokens(row.tokens)}
+              </span>
+            </div>
+            <div className="mt-0.5 flex items-center gap-1.5">
+              <div className="h-1 min-w-0 flex-1 bg-muted">
+                <div
+                  className="h-full bg-live"
+                  style={{ width: `${sharePercent(row.tokens, tokens)}%` }}
+                />
+              </div>
+              <span className="w-7 shrink-0 text-right font-mono text-[10px] tabular-nums text-muted-foreground">
+                {formatPercent(row.tokens, tokens)}
+              </span>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export function VibeYearChart({
   fallback,
+  className,
 }: {
   fallback: StatusResponse<VibeCodingYearPayload>;
+  className?: string;
 }) {
-  const { data: head } = useStatus<VibeCodingYearPayload>(VIBECODING_YEAR_PATH, REFRESH_MS, {
+  const { data } = useStatus<VibeCodingYearPayload>(VIBECODING_YEAR_PATH, REFRESH_MS, {
     fallback,
     revalidateOnMount: false,
     revalidateOnFocus: false,
   });
-  const [slices, setSlices] = useState<Record<string, VibeCodingYearPayload>>(() =>
-    fallback.ok ? { [fallback.data.from]: fallback.data } : {},
-  );
+  const [lastDrawn, setLastDrawn] = useState(fallback.ok ? fallback.data : null);
+  if (data?.days.length && data !== lastDrawn) setLastDrawn(data);
+  const snapshot = data?.days.length ? data : lastDrawn;
+  const { svgRef, shown, hotDate, previewCell, clearPreview, togglePin } =
+    useHeatmapOpen<HoveredCell>();
 
-  useEffect(() => {
-    if (head) {
-      setSlices((current) => ({ ...current, [head.from]: head }));
-    }
-  }, [head]);
-
-  useEffect(() => {
-    if (!head?.origin) return;
-    const missing = chunkStarts(head.origin).filter((from) => from !== head.from);
-    if (missing.length === 0) return;
-    const origin = head.origin;
-    let cancelled = false;
-    void Promise.all(
-      missing.map(async (from) => {
-        const response = await fetch(`${VIBECODING_YEAR_PATH}?from=${from}`, {
-          cache: "no-store",
-        });
-        if (!response.ok) return null;
-        return (await response.json()) as StatusResponse<VibeCodingYearPayload>;
-      }),
-    ).then((envelopes) => {
-      if (cancelled) return;
-      setSlices((current) => {
-        const next = { ...current };
-        for (const envelope of envelopes) {
-          if (envelope?.ok && envelope.data.origin === origin) {
-            next[envelope.data.from] = envelope.data;
-          }
-        }
-        return next;
-      });
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [head?.origin, head?.from, head?.pushedAt]);
-
-  const origin = head?.origin;
   const weeks = useMemo(() => {
-    if (!origin) return null;
-    return toWeeks(origin, overlay(origin, slices));
-  }, [origin, slices]);
+    if (!snapshot) return null;
+    return toWeeks(snapshot.origin, snapshot.days);
+  }, [snapshot]);
+
+  const modelsByDate = useMemo(() => {
+    if (!snapshot) return new Map<string, YearModelShare[]>();
+    return mixByDate(
+      snapshot.origin,
+      snapshot.days,
+      snapshot.models ?? [],
+      snapshot.mix ?? [],
+    );
+  }, [snapshot]);
 
   if (!weeks?.length) return null;
 
   const { width, height } = chartSize(weeks.length);
 
+  const cellOf = (day: GithubChartDay, target: Element): HoveredCell => ({
+    date: day.date,
+    tokens: day.count,
+    models: modelsByDate.get(day.date) ?? [],
+    anchor: cellAnchor(target),
+  });
+
   return (
-    <div className="github-chart border-t border-line px-4 py-4 md:px-5">
-      <div className="mb-3 flex items-baseline justify-between">
-        <div className="label-mono text-muted-foreground">Past year</div>
-        <span className="label-mono text-muted-foreground">Tokens / day</span>
-      </div>
+    <div className={cn("github-chart vibe-year-chart", className)}>
       <svg
+        ref={svgRef}
         xmlns="http://www.w3.org/2000/svg"
         viewBox={`0 0 ${width} ${height}`}
         shapeRendering="geometricPrecision"
         className="block h-auto w-full"
+        onPointerLeave={(event) => {
+          if (event.pointerType === "mouse" && hoverCapable()) clearPreview();
+        }}
       >
         {monthLabels(weeks).map((label) => (
           <text
@@ -165,13 +214,30 @@ export function VibeYearChart({
               width={CELL}
               height={CELL}
               data-score={day.score}
+              data-hot={hotDate === day.date ? "" : undefined}
               fill={FILLS[day.score]}
-            >
-              <title>{day.label}</title>
-            </rect>
+              onPointerEnter={(event) => {
+                if (event.pointerType === "mouse" && hoverCapable()) {
+                  previewCell(cellOf(day, event.currentTarget));
+                }
+              }}
+              onClick={(event) => {
+                togglePin(cellOf(day, event.currentTarget));
+              }}
+            />
           )),
         )}
       </svg>
+      {shown && (
+        <HeatmapTooltip
+          date={shown.date}
+          value={compactTokens(shown.tokens)}
+          unit="Token"
+          anchor={shown.anchor}
+        >
+          <MixBreakdown tokens={shown.tokens} models={shown.models} />
+        </HeatmapTooltip>
+      )}
     </div>
   );
 }

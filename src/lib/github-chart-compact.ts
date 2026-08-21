@@ -168,12 +168,15 @@ function ordinal(day: number): string {
   }
 }
 
-/** 和资料页格子 hover 同一句：`64 contributions on August 8th.` */
-export function formatContributionLabel(date: string, count: number): string {
+export function formatDayHeading(date: string): string {
   const month = Number(date.slice(5, 7));
   const day = Number(date.slice(8, 10));
-  const name = MONTH_NAMES[month - 1];
-  const when = `${name ?? date.slice(5, 7)} ${ordinal(day)}`;
+  return `${MONTH_NAMES[month - 1] ?? date.slice(5, 7)} ${ordinal(day)}`;
+}
+
+/** 和资料页格子 hover 同一句：`64 contributions on August 8th.` */
+export function formatContributionLabel(date: string, count: number): string {
+  const when = formatDayHeading(date);
   if (count <= 0) return `No contributions on ${when}.`;
   if (count === 1) return `1 contribution on ${when}.`;
   return `${count} contributions on ${when}.`;

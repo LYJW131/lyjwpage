@@ -24,7 +24,7 @@ export default async function Home() {
   /**
    * 服务端并行读首屏数据。状态卡片使用 fallbackData；时区没有
    * status 轮询端点，在服务端预渲染时直接烧进静态 HTML。热力图也烧进去，
-   * 客户端不在进页时回源，只按很长的间隔打 /api/status/github-chart。
+   * 客户端不在进页时回源，只按很长的间隔打热力图接口。
    *
    * 每份都是缓存过的（见 lib/status-cache）：整页因此能预渲染成静态壳，
    * 上报进来时按 tag 失效，Redis 从「每访客读一轮」变成「每次上报后读一轮」。
@@ -64,7 +64,7 @@ export default async function Home() {
         <div className="mx-auto my-3.5 w-[calc(100%-2rem)] max-w-5xl sm:my-4">
           <Section id="live" className="p-0 sm:p-0">
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <ContactCard chartFallback={githubChart} />
+              <ContactCard chartFallback={githubChart} yearFallback={vibeCodingYear} />
               <TimezoneCard fallback={timezone} />
               <LiveMediaPair
                 chargerFallback={charger}
@@ -72,7 +72,7 @@ export default async function Home() {
                 listeningFallback={listening}
                 nowListeningFallback={nowListening}
               />
-              <VibeCodingCard fallback={vibeCoding} yearFallback={vibeCodingYear} />
+              <VibeCodingCard fallback={vibeCoding} />
             </div>
 
             <div id="watching" className="mt-6 scroll-mt-28 border-t border-line pt-5">

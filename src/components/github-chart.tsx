@@ -2,18 +2,35 @@
 
 import { useState } from "react";
 
+import {
+  HeatmapTooltip,
+  cellAnchor,
+  hoverCapable,
+  useHeatmapOpen,
+  type CellAnchor,
+} from "@/components/live/heatmap-hover";
 import { useStatus } from "@/hooks/use-status";
 import {
+  CELL,
+  FILLS,
+  LEFT,
+  STEP,
+  TOP,
   chartSize,
   dayLabels,
   monthLabels,
-  scorePaths,
 } from "@/lib/github-chart-compact";
 import { GITHUB_CHART_PATH } from "@/lib/paths";
-import type { GithubChartPayload, StatusResponse } from "@/lib/types";
+import type { GithubChartDay, GithubChartPayload, StatusResponse } from "@/lib/types";
 
 /** 贡献日历按天变。长间隔兜底就够，别跟状态卡抢请求。 */
 const REFRESH_MS = 6 * 60 * 60_000;
+
+type HoveredCell = {
+  date: string;
+  count: number;
+  anchor: CellAnchor;
+};
 
 export function GithubChart({ fallback }: { fallback: StatusResponse<GithubChartPayload> }) {
   const { data } = useStatus<GithubChartPayload>(GITHUB_CHART_PATH, REFRESH_MS, {
@@ -36,18 +53,30 @@ export function GithubChart({ fallback }: { fallback: StatusResponse<GithubChart
   const [lastDrawn, setLastDrawn] = useState(fallback.ok ? fallback.data : null);
   if (data?.weeks.length && data !== lastDrawn) setLastDrawn(data);
   const weeks = data?.weeks ?? lastDrawn?.weeks;
+  const { svgRef, shown, hotDate, previewCell, clearPreview, togglePin } =
+    useHeatmapOpen<HoveredCell>();
 
   if (!weeks?.length) return null;
 
   const { width, height } = chartSize(weeks.length);
 
+  const cellOf = (day: GithubChartDay, target: Element): HoveredCell => ({
+    date: day.date,
+    count: day.count,
+    anchor: cellAnchor(target),
+  });
+
   return (
     <div className="github-chart w-full">
       <svg
+        ref={svgRef}
         xmlns="http://www.w3.org/2000/svg"
         viewBox={`0 0 ${width} ${height}`}
         shapeRendering="geometricPrecision"
         className="block h-auto w-full"
+        onPointerLeave={(event) => {
+          if (event.pointerType === "mouse" && hoverCapable()) clearPreview();
+        }}
       >
         {monthLabels(weeks).map((label) => (
           <text
@@ -71,10 +100,37 @@ export function GithubChart({ fallback }: { fallback: StatusResponse<GithubChart
             {label.text}
           </text>
         ))}
-        {scorePaths(weeks).map((path) => (
-          <path key={path.score} d={path.d} data-score={path.score} fill={path.fill} />
-        ))}
+        {weeks.map((week, weekIndex) =>
+          week.map((day) => (
+            <rect
+              key={day.date}
+              x={LEFT + weekIndex * STEP}
+              y={TOP + day.weekday * STEP}
+              width={CELL}
+              height={CELL}
+              data-score={day.score}
+              data-hot={hotDate === day.date ? "" : undefined}
+              fill={FILLS[day.score]}
+              onPointerEnter={(event) => {
+                if (event.pointerType === "mouse" && hoverCapable()) {
+                  previewCell(cellOf(day, event.currentTarget));
+                }
+              }}
+              onClick={(event) => {
+                togglePin(cellOf(day, event.currentTarget));
+              }}
+            />
+          )),
+        )}
       </svg>
+      {shown && (
+        <HeatmapTooltip
+          date={shown.date}
+          value={String(shown.count)}
+          unit="Commit"
+          anchor={shown.anchor}
+        />
+      )}
     </div>
   );
 }

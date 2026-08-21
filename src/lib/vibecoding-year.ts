@@ -1,49 +1,28 @@
 /**
- * `vibeCodingYear`：过去 53 周的日合计 token。
+ * `vibeCodingYear`：过去 53 周的日合计 token，外加每天前五的模型拆分。
  *
- * 上报器和浏览器都按块走：一块 13 周，days 是从 from 起每天一个整数。
- * 站点只负责按 origin 拼成一条日历，格子上的档位和文案留给浏览器现算。
+ * 整年一次给齐。`days[i]` 是 origin 起第 i 天的合计。档位、文案和 mix 展开
+ * 都在浏览器现算。
  */
 
-import { weekdayOf } from "./github-chart-compact.ts";
+import { formatDayHeading, weekdayOf } from "./github-chart-compact.ts";
 import { number, object, text } from "./json.ts";
-import type { VibeCodingYearChunk } from "./types.ts";
+import type { VibeCodingYearPayload } from "./types.ts";
 
 export const YEAR_WEEKS = 53;
-export const CHUNK_WEEKS = 13;
 export const YEAR_DAYS = YEAR_WEEKS * 7;
-export const CHUNK_DAYS = CHUNK_WEEKS * 7;
+export const YEAR_MIX_TOP = 5;
+/** 格子浮层只画前三，信封仍可带最多五名。 */
+export const YEAR_MIX_SHOW = 3;
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+export type YearModelShare = { model: string; tokens: number };
 
 export function addDays(date: string, days: number): string {
   const value = new Date(`${date}T00:00:00Z`);
   value.setUTCDate(value.getUTCDate() + days);
   return value.toISOString().slice(0, 10);
-}
-
-export function chunkLength(offset: number): number {
-  const remaining = YEAR_DAYS - offset;
-  if (remaining <= 0) return 0;
-  return remaining <= CHUNK_DAYS * 2 ? remaining : CHUNK_DAYS;
-}
-
-export function chunkStarts(origin: string): string[] {
-  const starts: string[] = [];
-  for (let offset = 0; offset < YEAR_DAYS; ) {
-    starts.push(addDays(origin, offset));
-    offset += chunkLength(offset);
-  }
-  return starts;
-}
-
-export function sliceYearDays(days: number[], origin: string, from: string): number[] {
-  const offset = Math.round(
-    (Date.parse(`${from}T00:00:00Z`) - Date.parse(`${origin}T00:00:00Z`)) / 86_400_000,
-  );
-  if (!Number.isInteger(offset) || offset < 0 || offset >= days.length) return [];
-  const length = chunkLength(offset);
-  return days.slice(offset, offset + length);
 }
 
 function dateText(value: unknown): string | null {
@@ -52,26 +31,76 @@ function dateText(value: unknown): string | null {
   return parsed;
 }
 
+function intAtLeast(value: unknown, min: number): number | null {
+  const parsed = number(value);
+  if (parsed == null || parsed < min || !Number.isInteger(parsed)) return null;
+  return parsed;
+}
+
 /**
- * 一块是全有或全无的：origin / from 必须是周日，days 长度对得上从 from
- * 到窗口末的剩余天数（最多 13 周，最后一块可以更长到填满 53 周）。
+ * 模型表 + 稀疏 offset 对。每天最多五名，下标必须能在表里对上，
+ * 拆分合计不能超过那一天的 `days[offset]`。
  */
-export function normalizeVibeCodingYear(input: unknown): VibeCodingYearChunk | null {
+function normalizeMix(
+  modelsValue: unknown,
+  mixValue: unknown,
+  days: number[],
+): { models: string[]; mix: number[][] } | null {
+  if (!Array.isArray(modelsValue) || !Array.isArray(mixValue)) return null;
+
+  const models: string[] = [];
+  const seen = new Set<string>();
+  for (const value of modelsValue) {
+    const name = text(value);
+    if (!name || seen.has(name)) return null;
+    seen.add(name);
+    models.push(name);
+  }
+
+  const mix: number[][] = [];
+  const usedOffsets = new Set<number>();
+  const usedNames = new Set<number>();
+  for (const row of mixValue) {
+    if (!Array.isArray(row) || row.length < 3 || row.length % 2 === 0) return null;
+    if (row.length > 1 + YEAR_MIX_TOP * 2) return null;
+    const offset = intAtLeast(row[0], 0);
+    if (offset == null || offset >= YEAR_DAYS || usedOffsets.has(offset)) return null;
+    const dayTotal = days[offset] ?? 0;
+    if (dayTotal <= 0) return null;
+    usedOffsets.add(offset);
+
+    const encoded = [offset];
+    const usedIdx = new Set<number>();
+    let mixTotal = 0;
+    for (let index = 1; index < row.length; index += 2) {
+      const modelIndex = intAtLeast(row[index], 0);
+      const tokens = intAtLeast(row[index + 1], 1);
+      if (modelIndex == null || tokens == null || modelIndex >= models.length) return null;
+      if (usedIdx.has(modelIndex)) return null;
+      usedIdx.add(modelIndex);
+      usedNames.add(modelIndex);
+      mixTotal += tokens;
+      encoded.push(modelIndex, tokens);
+    }
+    if (mixTotal > dayTotal) return null;
+    mix.push(encoded);
+  }
+
+  if (usedNames.size !== models.length) return null;
+  return { models, mix };
+}
+
+/**
+ * 整份是全有或全无的：origin 必须是周日，days 必须正好 53 周，mix 必须能对上。
+ */
+export function normalizeVibeCodingYear(
+  input: unknown,
+): Omit<VibeCodingYearPayload, "pushedAt"> | null {
   const root = object(input);
   if (!root) return null;
   const origin = dateText(root.origin);
-  const from = dateText(root.from);
-  if (!origin || !from || weekdayOf(origin) !== 0 || weekdayOf(from) !== 0) return null;
-  if (from < origin) return null;
-  const offset = Math.round(
-    (Date.parse(`${from}T00:00:00Z`) - Date.parse(`${origin}T00:00:00Z`)) / 86_400_000,
-  );
-  if (!Number.isInteger(offset) || offset < 0 || offset >= YEAR_DAYS) return null;
-  if (offset % CHUNK_DAYS !== 0) return null;
-  if (!Array.isArray(root.days)) return null;
-
-  const expected = chunkLength(offset);
-  if (expected <= 0 || root.days.length !== expected) return null;
+  if (!origin || weekdayOf(origin) !== 0) return null;
+  if (!Array.isArray(root.days) || root.days.length !== YEAR_DAYS) return null;
 
   const days: number[] = [];
   for (const value of root.days) {
@@ -79,38 +108,43 @@ export function normalizeVibeCodingYear(input: unknown): VibeCodingYearChunk | n
     if (tokens == null || tokens < 0) return null;
     days.push(Math.round(tokens));
   }
-  return { origin, from, days };
+  const mix = normalizeMix(root.models, root.mix, days);
+  if (!mix) return null;
+  return { origin, days, models: mix.models, mix: mix.mix };
 }
 
+export function indexYearMix(
+  models: string[],
+  mix: number[][],
+): Map<number, YearModelShare[]> {
+  const byOffset = new Map<number, YearModelShare[]>();
+  for (const row of mix) {
+    const offset = row[0];
+    if (offset == null) continue;
+    const parts: YearModelShare[] = [];
+    for (let index = 1; index + 1 < row.length; index += 2) {
+      const modelIndex = row[index];
+      const tokens = row[index + 1];
+      const name = modelIndex == null ? undefined : models[modelIndex];
+      if (!name || tokens == null || tokens <= 0) continue;
+      parts.push({ model: name, tokens });
+    }
+    if (parts.length) byOffset.set(offset, parts);
+  }
+  return byOffset;
+}
+
+export function modelsOnDay(
+  payload: { models: string[]; mix: number[][] },
+  offset: number,
+): YearModelShare[] {
+  return indexYearMix(payload.models, payload.mix).get(offset) ?? [];
+}
+
+export { formatDayHeading } from "./github-chart-compact.ts";
+
 export function formatTokenLabel(date: string, tokens: number): string {
-  const month = Number(date.slice(5, 7));
-  const day = Number(date.slice(8, 10));
-  const names = [
-    "January",
-    "February",
-    "March",
-    "April",
-    "May",
-    "June",
-    "July",
-    "August",
-    "September",
-    "October",
-    "November",
-    "December",
-  ];
-  const rem100 = day % 100;
-  const ordinal =
-    rem100 >= 11 && rem100 <= 13
-      ? `${day}th`
-      : day % 10 === 1
-        ? `${day}st`
-        : day % 10 === 2
-          ? `${day}nd`
-          : day % 10 === 3
-            ? `${day}rd`
-            : `${day}th`;
-  const when = `${names[month - 1] ?? date.slice(5, 7)} ${ordinal}`;
+  const when = formatDayHeading(date);
   if (tokens <= 0) return `No tokens on ${when}.`;
   return `${compactTokens(tokens)} tokens on ${when}.`;
 }
@@ -154,4 +188,3 @@ export function expandYearDays(origin: string, days: number[]) {
     return { date, tokens, weekday: weekdayOf(date) };
   });
 }
-

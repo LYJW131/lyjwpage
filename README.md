@@ -190,6 +190,8 @@ MusicKit 签出来的 developer token 实测寿命 **30 天**，上报器从它�
 
 **本站不轮询充电头，只接收统一遥测推送。** Mac Telemetry Hub 从本机 a2687 服务读取 `/status`，把精简后的状态放进 v4 envelope，只 POST 到 `/api/ingest/mac`，并使用 `TELEMETRY_INGEST_SECRET` Bearer 鉴权。旧的 `/api/ingest/charger`、`/api/ingest/telemetry` 和 `/api/ingest/presence` 入口都已经删除，没有兼容路径，也没有本地轮询回退。
 
+在这台 Mac 上打开页面时，卡片会试着连 `http://127.0.0.1:8787/sse/charger` 和 `/sse/powerbank`。连上就改用这条约 1 Hz 的本机推流，不再用远端那份；连不上（别人的浏览器）立刻放弃、不重试，远端照旧。
+
 **总功率历史存在服务端**（`lib/charger-store.ts`，Redis；未配置 Redis 时退回进程内存）。客户端自己累积的话页面一刷新曲线就没了、还要攒很久才有形状。环形缓冲保留 400 点，两点之间至少间隔 `MIN_SAMPLE_GAP_MS`（当前 5 秒），足以覆盖固定 20 分钟图表窗口。
 
 曲线的横坐标**按时间戳映射**而不是按序号等距铺开 —— 漏推一次就会有空档，等距会把那段画得和正常间隔一样宽。
@@ -211,7 +213,7 @@ Mac Telemetry Hub 从本机 TokenTracker 的面板接口取三份数据：按天
 活动，最后一份只用来判断“正在使用”。五个来源（Claude Code、Codex、Cursor、Grok、
 Antigravity）走**同一套 agent 形状**上报：token、今日用量、套餐、限额窗口、展示名
 和图标都在行内。网站只接受上报器生成的展示摘要，不在服务端跑采集，按需取用 ——
-Claude / Codex 画全量面板，其余只取总限额那一行。不要再拆 `quotaProviders`。
+Claude / Grok Build 画全量面板，其余只取总限额那一行。不要再拆 `quotaProviders`。
 
 上报按**多久变一次**分成两个模块，不按数据来自哪个接口分：
 
@@ -219,7 +221,7 @@ Claude / Codex 画全量面板，其余只取总限额那一行。不要再拆 `
 | --- | --- | --- | --- |
 | `vibeCodingNow` | 60 秒 | 此刻在不在用、用的是哪个模型、最近一次活动时刻 | 变了就推给浏览器（`vibecoding-now` 事件） |
 | `vibeCodingUsage` | 10 分钟 | 每个 agent 的 token、费用、今日用量、套餐、限额窗口、会话总数 | 只失效首屏缓存，卡片靠轮询取 |
-| `vibeCodingYear` | 1 小时 | 过去 53 周的日合计 token，一次只带 13 周 | 拼成热力图；`/api/status/vibecoding/year?from=` 同样按块取，首屏只带最近一块 |
+| `vibeCodingYear` | 1 小时（可改） | 过去 53 周的日合计 token，外加每天前五模型的 compact mix | 不推送；`/api/status/vibecoding/year` 回整份，浏览器长间隔来问 |
 
 从前是三个模块、三个采集器（用量 / 限额 / 会话状态各一份），那条线是按「哪条命令
 产出的」划的：当年限额和用量分别来自 CodexBar 的两条命令，其中一条要跑十几秒，它一
@@ -231,12 +233,12 @@ Claude / Codex 画全量面板，其余只取总限额那一行。不要再拆 `
 限额是按 id 贴在 `agents` 上的，站点那边没有主干就没有 agents 可贴。
 
 卡片顶部汇总全量 token、API 等值费用和活跃天数，并按 input、output、cache read、
-cache write、reasoning 展示占比；下方展示 Claude Code 和 Codex 的今日 token、
-缓存命中率、历史主力模型、套餐和上游实际返回的限额。卡片底部是过去 53 周的日合计
-热力图，几何和 GitHub 贡献图同一套。Cursor、Grok 和
-Antigravity 同一份数据里也有 token 明细，首页只取用量最高的那一扇限额窗口画一条
-进度。最近活动时刻由会话摘要提供，用于真实的“正在使用”状态；Codex 没有 5 小时桶
-时，页面按产品档位显示 `Unlimited`。
+cache write、reasoning 展示占比；下方展示 Claude Code 和 Grok Build 的今日 token、
+缓存命中率、历史主力模型、套餐，以及统一的 5-hour limit 和 Weekly 两条。某一槽没有窗口
+就显示 Unlimited。年度 token 热力图和 GitHub 贡献图合在联系卡里，用 Tokens / GitHub
+切换；格子悬停显示当天总量和前五模型。Cursor、Codex 和 Antigravity 同一份数据里也有
+token 明细，首页只取用量最高的那一扇限额窗口画一条进度。最近活动时刻由会话摘要
+提供，用于真实的“正在使用”状态。
 
 费用是公开 API 价格的等值估算，只表示这些 token 如果走 API 的价格，不是
 Claude/Codex 订阅账单。上报摘要不含提示词、回复、session ID、项目名或文件路径。
