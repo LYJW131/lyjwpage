@@ -6,7 +6,6 @@ import {
   followTargetMs,
   isHostSeek,
   needsResync,
-  playbackLagMs,
 } from "@/lib/listen-along";
 import {
   getMusicKit,
@@ -85,10 +84,10 @@ function hasQueuedNext(music: MusicKitInstance): boolean {
 }
 
 async function syncUpcomingQueue(music: MusicKitInstance, ids: string[]) {
-  if (ids.length === 0) return;
-  await music.playNext({ song: ids[0] }, true);
+  if (ids.length === 0 || upcomingAlreadyQueued(music, ids)) return;
+  await mkSafe(() => music.playNext({ song: ids[0] }, true));
   for (const id of ids.slice(1)) {
-    await music.playLater({ song: id });
+    await mkSafe(() => music.playLater({ song: id }));
   }
 }
 
@@ -120,18 +119,32 @@ function isPlayInterrupted(error: unknown) {
   return (
     (error instanceof Error && error.name === "AbortError") ||
     message.includes("interrupted by a new load request") ||
-    message.includes("interrupted by a call to pause")
+    message.includes("interrupted by a call to pause") ||
+    /operation was aborted/i.test(message)
   );
 }
 
-/** play() 还没落地就 seek / 再 play，Chrome 会丢 AbortError，MusicKit 还会弹窗 */
-async function playSafe(music: MusicKitInstance) {
+async function mkSafe(run: () => Promise<unknown>) {
   try {
-    await music.play();
+    await run();
   } catch (error) {
     if (isPlayInterrupted(error)) return;
     throw error;
   }
+}
+
+/** play() 还没落地就 seek / 再 play，Chrome 会丢 AbortError，MusicKit 还会弹窗 */
+async function playSafe(music: MusicKitInstance) {
+  await mkSafe(() => music.play());
+}
+
+function upcomingAlreadyQueued(music: MusicKitInstance, ids: string[]) {
+  if (ids.length === 0) return true;
+  const items = music.queue?.items ?? [];
+  const current = localSongId(music);
+  const at = current ? mediaItemIndex(items, current) : -1;
+  if (at < 0) return false;
+  return ids.every((id, i) => catalogItemId(items[at + 1 + i]?.id) === id);
 }
 
 /** 加载和对齐期间把喇叭关掉。MusicKit 的 volume 是 0–1 */
@@ -187,6 +200,24 @@ export function useListenAlong(source: {
   useEffect(() => {
     upcomingRef.current = upcomingSongIds;
   }, [upcomingSongIds]);
+  const songIdRef = useRef(songId);
+  useEffect(() => {
+    songIdRef.current = songId;
+  }, [songId]);
+
+  /**
+   * MusicKit 的 play / skip / setQueue 不能重叠，否则会 AbortError 弹窗，
+   * 音频再被后面那次 load 拽一截。所有改播放的操作排成一条链。
+   */
+  const opChain = useRef(Promise.resolve());
+  const runExclusive = (fn: () => Promise<void>) => {
+    const next = opChain.current.then(fn, fn);
+    opChain.current = next.then(
+      () => undefined,
+      () => undefined,
+    );
+    return next;
+  };
 
   const state = track?.state ?? "stopped";
   const observedAt = track?.observedAt ?? 0;
@@ -249,20 +280,33 @@ export function useListenAlong(source: {
     if (!music) return;
 
     let cancelled = false;
-    const isCancelled = () => cancelled;
-    void (async () => {
+    void runExclusive(async () => {
+      if (cancelled) return;
       try {
         if (!songId || state !== "playing") {
-          if (music.playbackState === PLAYBACK_STATE.playing) await music.pause();
+          if (music.playbackState === PLAYBACK_STATE.playing) await mkSafe(() => music.pause());
           return;
         }
 
         if (readySongId.current === songId) {
+          if (lastHostSongId.current !== songId) {
+            lagMs.current = hostNow() - localPositionMs(music);
+          }
           lastHostSongId.current = songId;
           return;
         }
 
         const localId = localSongId(music);
+        if (localId === songId) {
+          // 已经在播这首（本首走完自己切过来的）：不要再 skip / play / seek
+          queuedSongId.current = songId;
+          readySongId.current = songId;
+          hasFollowed.current = true;
+          lastHostSongId.current = songId;
+          lagMs.current = hostNow() - localPositionMs(music);
+          return;
+        }
+
         // 本首走完已经切到下一首，主人锚点还停在刚播完的那首：别拖回去。
         if (lastHostSongId.current === songId && localId && localId !== songId) {
           return;
@@ -279,43 +323,47 @@ export function useListenAlong(source: {
             if (preparedAt > 0) {
               try {
                 await music.changeToMediaAtIndex(preparedAt);
-              } catch {
-                await music.setQueue({ song: songId });
+              } catch (error) {
+                if (!isPlayInterrupted(error)) await mkSafe(() => music.setQueue({ song: songId }));
               }
             } else if (preparedAt !== 0) {
-              await music.setQueue({ song: songId });
+              await mkSafe(() => music.setQueue({ song: songId }));
             }
           }
           if (cancelled || queuedSongId.current !== songId) return;
+          if (localSongId(music) === songId && music.playbackState === PLAYBACK_STATE.playing) {
+            readySongId.current = songId;
+            hasFollowed.current = true;
+            lastHostSongId.current = songId;
+            lagMs.current = hostNow() - localPositionMs(music);
+            return;
+          }
           if (music.playbackState !== PLAYBACK_STATE.playing) await playSafe(music);
           if (cancelled || queuedSongId.current !== songId) return;
-          await waitUntilPlaying(music, isCancelled);
+          await waitUntilPlaying(music, () => cancelled);
           if (cancelled || queuedSongId.current !== songId) return;
 
           if (joining) {
-            // 半首歌才点一起听：要对到主人此刻。加载那几秒是静音的。
             try {
-              await music.seekToTime(hostNow() / 1000);
+              await mkSafe(() => music.seekToTime(hostNow() / 1000));
             } catch {
               // seek 失败就停在加载完的位置，总比没声音强
             }
             if (cancelled || queuedSongId.current !== songId) return;
             if (music.playbackState !== PLAYBACK_STATE.playing) await playSafe(music);
             if (cancelled || queuedSongId.current !== songId) return;
-            await waitUntilPlaying(music, isCancelled);
+            await waitUntilPlaying(music, () => cancelled);
             if (cancelled || queuedSongId.current !== songId) return;
             lagMs.current = 0;
           } else {
-            // 正常下一首：两边都从开头走，seek 只会把刚出声的开头切掉。
-            // 加载慢了几秒就认成滞后，巡检按这个跟，不要把进度条拖回去。
-            lagMs.current = playbackLagMs(hostNow(), localPositionMs(music));
+            lagMs.current = hostNow() - localPositionMs(music);
           }
 
           readySongId.current = songId;
           hasFollowed.current = true;
           lastHostSongId.current = songId;
           if (joining) music.volume = previousVolume;
-          void syncUpcomingQueue(music, upcomingRef.current).catch(() => {});
+          await syncUpcomingQueue(music, upcomingRef.current);
         } finally {
           if (joining && music.volume === 0) music.volume = previousVolume;
         }
@@ -329,7 +377,7 @@ export function useListenAlong(source: {
         setError(describe(caught));
         setStatus("error");
       }
-    })();
+    });
 
     return () => {
       cancelled = true;
@@ -346,12 +394,23 @@ export function useListenAlong(source: {
       try {
         const host = hostNow();
         const local = localPositionMs(music);
-        if (isHostSeek(local, lagMs.current, host, RESYNC_THRESHOLD_MS)) {
-          lagMs.current = 0;
-          await music.seekToTime(host / 1000);
+        if (!isHostSeek(local, lagMs.current, host, RESYNC_THRESHOLD_MS)) {
+          if (cancelled) return;
+          if (music.playbackState !== PLAYBACK_STATE.playing) {
+            await runExclusive(() => playSafe(music));
+          }
+          return;
         }
-        if (cancelled) return;
-        if (music.playbackState !== PLAYBACK_STATE.playing) await playSafe(music);
+        await runExclusive(async () => {
+          if (cancelled || readySongId.current !== songId) return;
+          const nowHost = hostNow();
+          const nowLocal = localPositionMs(music);
+          if (!isHostSeek(nowLocal, lagMs.current, nowHost, RESYNC_THRESHOLD_MS)) return;
+          lagMs.current = 0;
+          await mkSafe(() => music.seekToTime(nowHost / 1000));
+          if (cancelled) return;
+          if (music.playbackState !== PLAYBACK_STATE.playing) await playSafe(music);
+        });
       } catch {
         // 巡检会再兜一次
       }
@@ -382,7 +441,10 @@ export function useListenAlong(source: {
       );
       const target = followTargetMs(host, lagMs.current);
       if (needsResync(localPositionMs(music), target, RESYNC_THRESHOLD_MS)) {
-        void music.seekToTime(target / 1000).catch(() => {});
+        void runExclusive(async () => {
+          if (readySongId.current !== songId) return;
+          await mkSafe(() => music.seekToTime(target / 1000));
+        });
       }
     }, RESYNC_INTERVAL_MS);
 
@@ -400,31 +462,32 @@ export function useListenAlong(source: {
     if (!music || !songId || state !== "playing") return;
     if (readySongId.current !== songId) return;
 
-    void syncUpcomingQueue(music, upcomingSongIds).catch(() => {});
+    void runExclusive(async () => {
+      if (readySongId.current !== songId) return;
+      await syncUpcomingQueue(music, upcomingSongIds);
+    }).catch(() => {});
   }, [music, songId, state, upcomingKey, upcomingSongIds]);
 
   /**
    * 本首走完直接切预排的下一首。主人那边还没换也先走，他暂停了再停。
+   * 不在这里 play：skipToNext 自己会起播，再 play 会把进行中的 load 掐掉并弹窗。
    */
   useEffect(() => {
     if (!music) return;
     const onState = () => {
       if (music.playbackState !== PLAYBACK_STATE.ended) return;
-      if (!hasQueuedNext(music)) return;
-      void (async () => {
-        try {
-          await music.skipToNextItem();
-          const next = localSongId(music);
-          if (next) {
-            queuedSongId.current = next;
-            readySongId.current = next;
-            lagMs.current = 0;
-          }
-          if (music.playbackState !== PLAYBACK_STATE.playing) await playSafe(music);
-        } catch {
-          // 没切过去就停在 ended，等主人锚点来了再 setQueue
+      void runExclusive(async () => {
+        if (music.playbackState !== PLAYBACK_STATE.ended) return;
+        if (localSongId(music) === songIdRef.current) return;
+        if (!hasQueuedNext(music)) return;
+        await mkSafe(() => music.skipToNextItem());
+        const next = localSongId(music);
+        if (next) {
+          queuedSongId.current = next;
+          readySongId.current = next;
+          lagMs.current = 0;
         }
-      })();
+      });
     };
     music.addEventListener("playbackStateDidChange", onState);
     return () => music.removeEventListener("playbackStateDidChange", onState);
