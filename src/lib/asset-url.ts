@@ -1,5 +1,5 @@
 /** R2/COS 共用的内容寻址图片对象键。 */
-export const IMAGE_OBJECT_KEY = /^[a-f0-9]{64}\.(?:png|webp)$/;
+export const IMAGE_OBJECT_KEY = /^[a-f0-9]{64}\.(?:png|webp|jpe?g)$/;
 
 function trimSlash(url: string) {
   return url.replace(/\/+$/, "");

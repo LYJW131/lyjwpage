@@ -26,4 +26,9 @@ test("实时事件可以从写入方 URL 取回对象键并换成本地交付域
     `https://cos.example.com/${OBJECT_KEY}`,
   );
   assert.equal(objectKeyFromAssetUrl("https://example.com/not-an-object.jpg"), null);
+  const jpegKey = `${"b".repeat(64)}.jpg`;
+  assert.equal(
+    objectKeyFromAssetUrl(`https://r2.example.com/${jpegKey}`),
+    jpegKey,
+  );
 });

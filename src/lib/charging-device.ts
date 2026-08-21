@@ -5,6 +5,8 @@
  * 公共字段在顶层，设备特有的收在子对象。这里不碰 Redis。
  */
 
+import { IMAGE_OBJECT_KEY } from "./asset-url.ts";
+import { text } from "./json.ts";
 import type { ChargerPort, ChargerStatus, PowerBankPort, PowerBankStatus } from "./types";
 
 const CHARGER_PORTS = ["C1", "C2", "C3"] as const;
@@ -47,6 +49,11 @@ export type RawChargingDevice = {
   } | null;
   temperaturesC?: number[] | null;
   ports?: RawDevicePort[];
+  cover?: {
+    name?: string | null;
+    iconHash?: string | null;
+    iconObjectKey?: string | null;
+  } | null;
 };
 
 export type RawChargingDevices = {
@@ -125,8 +132,33 @@ export function normalizeChargingDevice(raw: RawChargingDevice): ChargerStatus {
       serialNumber: displayText(raw.id),
       firmwareVersion: displayText(raw.firmware),
     },
+    cover: readCover(raw.cover),
     updatedAt: toMillis(raw.updatedAt),
   } satisfies ChargerStatus;
+}
+
+const HASH = /^[a-f0-9]{64}$/;
+
+export function readCover(raw: unknown): ChargerStatus["cover"] {
+  if (raw == null) return null;
+  if (typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error("chargingDevices.cover 必须是对象");
+  }
+  const row = raw as Record<string, unknown>;
+  const name = text(row.name);
+  if (!name) throw new Error("chargingDevices.cover 缺少 name");
+  const iconHash = text(row.iconHash);
+  if (iconHash != null && !HASH.test(iconHash)) {
+    throw new Error("chargingDevices.cover.iconHash 必须是 SHA-256 十六进制字符串");
+  }
+  const iconObjectKey = text(row.iconObjectKey);
+  if (iconObjectKey != null && !IMAGE_OBJECT_KEY.test(iconObjectKey)) {
+    throw new Error("chargingDevices.cover.iconObjectKey 必须是 <sha256>.png / .webp / .jpg");
+  }
+  if (iconObjectKey != null && iconHash == null) {
+    throw new Error("chargingDevices.cover.iconObjectKey 必须和 iconHash 一起上报");
+  }
+  return { name, iconHash, iconObjectKey, iconUrl: null };
 }
 
 export function normalizePowerBank(raw: RawPowerBank): PowerBankStatus {
@@ -162,6 +194,7 @@ export function emptyChargerStatus(connected: boolean): ChargerStatus {
     maxPower: CHARGER_MAX_POWER,
     ports: CHARGER_PORTS.map((id) => normalizeChargerPort(id)),
     device: { serialNumber: null, firmwareVersion: null },
+    cover: null,
     updatedAt: null,
   };
 }
