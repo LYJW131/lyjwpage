@@ -43,12 +43,6 @@ type StoredUsage = ParsedVibeCodingUsage;
 /** 短间隔那份：此刻的状态，没有任何累计量。 */
 type StoredNow = ParsedVibeCodingNow;
 
-function fallbackLabel(id: string) {
-  if (id === "claude") return "Claude Code";
-  if (id === "codex") return "Codex";
-  return id;
-}
-
 /**
  * 两个模块一律「先校验，后落库」，写留给 commit。
  *
@@ -92,34 +86,19 @@ export async function getVibeCodingSnapshot(): Promise<VibeCodingPayload> {
   const agents: VibeCodingAgent[] = usageState.payload.agents.map((agent) => {
     const live = nowById.get(agent.id);
     return {
-      id: agent.id,
-      // Redis 里可能还躺着改契约前那两行，没有 label / icon。读的时候兜个底，
-      // 下一次上报就补齐了。同理 plan / limits。
-      label: agent.label || fallbackLabel(agent.id),
-      icon: agent.icon || agent.id,
-      models: agent.models,
+      ...agent,
       // now 说的是「此刻在用哪个」，取不到才退回用量那份的「最近一个有用量日
       // 的主力模型」。两个模块各送各的，优先级在这里定，采集端互不知情。
       currentModel: live?.currentModel ?? agent.currentModel,
       lastActivityAt: live?.lastActivityAt ?? null,
       active: live?.active ?? false,
-      topModel: agent.topModel,
-      today: agent.today,
-      plan: agent.plan ?? null,
-      // 没收到限额时是空数组加 null：页面据此当成「没配」，整块不渲染。
-      // 「配了但取不到」由上报器送来的 limitsError 表达。
-      limits: agent.limits ?? [],
-      limitsError: agent.limitsError ?? null,
     };
   });
 
   return withPresence(
     {
       agents,
-      totals: {
-        ...usageState.payload.totals,
-        sessionCount: usageState.payload.totals.sessionCount ?? 0,
-      },
+      totals: usageState.payload.totals,
       topModels: usageState.payload.topModels,
       collectedAt: usageState.payload.collectedAt,
       source: "push" as const,

@@ -267,7 +267,7 @@ Claude / Grok Build 画全量面板，其余只取总限额那一行。不要再
 限额是按 id 贴在 `agents` 上的，站点那边没有主干就没有 agents 可贴。
 
 卡片顶部汇总全量 token、API 等值费用和活跃天数，并按 input、output、cache read、
-cache write、reasoning 展示占比；下方展示 Claude Code 和 Grok Build 的今日 token、
+cache write 展示占比（信封里另有 reasoningTokens，尚未上屏）；下方展示 Claude Code 和 Grok Build 的今日 token、
 缓存命中率、历史主力模型、套餐，以及统一的 5-hour limit 和 Weekly 两条。某一槽没有窗口
 就显示 Unlimited。年度 token 热力图和 GitHub 贡献图合在联系卡里，用 Tokens / Commit
 切换；格子悬停显示当天总量和前五模型。Cursor、Codex 和 Antigravity 同一份数据里也有

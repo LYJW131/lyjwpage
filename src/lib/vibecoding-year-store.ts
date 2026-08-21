@@ -1,6 +1,6 @@
 import { mirrorKey } from "@/lib/redis";
 import type { VibeCodingYearPayload } from "@/lib/types";
-import { YEAR_DAYS, normalizeVibeCodingYear } from "@/lib/vibecoding-year";
+import { normalizeVibeCodingYear } from "@/lib/vibecoding-year";
 
 const yearMirror = mirrorKey<VibeCodingYearPayload>(
   ["vibecoding", "year"],
@@ -10,9 +10,6 @@ const yearMirror = mirrorKey<VibeCodingYearPayload>(
 export function prepareVibeCodingYear(report: unknown, receivedAt = Date.now()) {
   const payload = normalizeVibeCodingYear(report);
   if (!payload) throw new Error("vibeCodingYear 必须是从周日切起的 53 周日合计，并带每天前五的模型表");
-  if (payload.days.length !== YEAR_DAYS) {
-    throw new Error("vibeCodingYear.days 必须覆盖整整 53 周");
-  }
   return {
     commit: () => yearMirror.put({ ...payload, pushedAt: receivedAt }),
   };

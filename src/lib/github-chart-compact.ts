@@ -2,9 +2,9 @@
  * 贡献日历的几何。格子 10px、间距 2px、起点 (27, 20)，53 周时画布 663×104，
  * 和从前 ghchart 那份对上，卡片宽度才不用改。
  *
- * 同色格子合成一条 path，SVG 用 geometricPrecision：卡片把 663 宽的
- * viewBox 拉到非整倍数时，格子按比例缩放，而不是各自对齐到像素把 2px
- * 缝挤得忽宽忽窄。放大看本来就一样，差的是正常尺寸下的取整。
+ * SVG 用 geometricPrecision：卡片把 663 宽的 viewBox 拉到非整倍数时，
+ * 格子按比例缩放，而不是各自对齐到像素把 2px 缝挤得忽宽忽窄。
+ * （逐格 hover 之后一天就是一个 <rect>，不再按档位合并 path。）
  *
  * 空格子颜色交给 globals.css 的 `[data-score="0"] { fill: var(--muted) }`。
  */
@@ -123,34 +123,6 @@ export function monthLabels(weeks: GithubChartDay[][]): ChartLabel[] {
 
 export function chartSize(weekCount: number) {
   return { width: LEFT + weekCount * STEP, height: TOP + 7 * STEP };
-}
-
-export type ScorePath = {
-  score: GithubChartDay["score"];
-  fill: string;
-  d: string;
-};
-
-/** 一格画成一段子路径。矩形都是轴对齐的，四条边顺时针走完再闭合。 */
-function toSubPath(x: number, y: number): string {
-  return `M${x} ${y}h${CELL}v${CELL}h-${CELL}z`;
-}
-
-/** 按档位合成最多五条 path，填色和空格主题色都靠 data-score。 */
-export function scorePaths(weeks: GithubChartDay[][]): ScorePath[] {
-  const groups = new Map<GithubChartDay["score"], string[]>();
-  weeks.forEach((week, weekIndex) => {
-    for (const day of week) {
-      const cells = groups.get(day.score) ?? [];
-      cells.push(toSubPath(LEFT + weekIndex * STEP, TOP + day.weekday * STEP));
-      groups.set(day.score, cells);
-    }
-  });
-  return FILLS.flatMap((fill, index) => {
-    const score = index as GithubChartDay["score"];
-    const d = groups.get(score)?.join("");
-    return d ? [{ score, fill, d }] : [];
-  });
 }
 
 function ordinal(day: number): string {

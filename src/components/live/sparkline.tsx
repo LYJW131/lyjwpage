@@ -2,18 +2,16 @@
 
 import { useId, useState } from "react";
 
+import { LIVE_INTERVAL_MS, LIVE_WINDOW_MS } from "@/lib/limits";
 import type { ChargerSample } from "@/lib/types";
 
 /**
- * 手写 SVG 迷你图 —— 为这么小一块引 recharts 不值得。
+ * 手写 SVG 柱状迷你图 —— 为这么小一块引 recharts 不值得。
  *
- * 两种形态，按「这张图要回答什么问题」选：
- *
- * - bars：充电器的瞬时功率。读者关心的是「此刻多少瓦、刚才有没有尖峰」，
- *   一根柱就是一次读数；连成折线等于声称采样之间也有连续取值，把跳变
- *   画成毛刺，看着比实际更抖。
- * - trend：Vibe Coding 的 30 天用量。读者关心的是走向，折线 + 面积能一眼
- *   看出趋势，而 30 根柱子只是 30 个孤立的数。
+ * 画的是充电器的瞬时功率。读者关心的是「此刻多少瓦、刚才有没有尖峰」，
+ * 一根柱就是一次读数；连成折线等于声称采样之间也有连续取值，把跳变
+ * 画成毛刺，看着比实际更抖。（从前还有一个 trend 折线形态给 Vibe Coding
+ * 的 30 日曲线用，年历热力图上线后随调用方一起删了。）
  *
  * 两条坐标轴都刻意做成「不随数据变」：
  *
@@ -41,97 +39,22 @@ const WINDOW_MS = 20 * 60 * 1000;
 const STEP = 40;
 /** 柱子占一个采样间隔的比例，留出的缝隙让相邻柱子分得开 */
 const BAR_FILL = 0.62;
-/** 本机 SSE 约 1 Hz，柱宽按这一格来，空隙留白，不要把间隔拉成宽柱。 */
-const LIVE_INTERVAL_MS = 1_000;
-/** 1 Hz 下 20 分钟窗口里柱子会细成一条线；两分钟约 120 根，和远端那张密度接近。 */
-export const LIVE_WINDOW_MS = 2 * 60 * 1000;
 /** 连续这么多个空槽还没有新读数，就认为是断流而不是「值没变」 */
 const HOLD_SLOTS = 2;
 
-/**
- * 单调三次插值（Fritsch–Carlson），输出三次贝塞尔路径。
- *
- * 不用普通的 Catmull-Rom：它会在急剧起落处冲过头，在数据里根本没有的地方
- * 画出峰谷 —— token 用量不可能为负，冲出去的下摆是彻头彻尾的假信息。
- * 单调插值保证曲线不越过相邻两点的取值范围，只是把折角磨圆。
- */
-function smoothPath(points: readonly (readonly [number, number])[]) {
-  const n = points.length;
-  const move = `M${points[0][0].toFixed(2)},${points[0][1].toFixed(2)}`;
-  if (n === 2) {
-    return `${move} L${points[1][0].toFixed(2)},${points[1][1].toFixed(2)}`;
-  }
-
-  const dx: number[] = [];
-  const slope: number[] = [];
-  for (let i = 0; i < n - 1; i += 1) {
-    const h = points[i + 1][0] - points[i][0];
-    dx.push(h);
-    slope.push(h === 0 ? 0 : (points[i + 1][1] - points[i][1]) / h);
-  }
-
-  // 端点取相邻斜率；内部取平均，但极值点（左右斜率异号）强制置零，
-  // 这样曲线在峰谷处是平的，不会翘出去
-  const m: number[] = new Array(n);
-  m[0] = slope[0];
-  m[n - 1] = slope[n - 2];
-  for (let i = 1; i < n - 1; i += 1) {
-    m[i] = slope[i - 1] * slope[i] <= 0 ? 0 : (slope[i - 1] + slope[i]) / 2;
-  }
-
-  // Fritsch–Carlson 限幅：把切线拉回单调区间内
-  for (let i = 0; i < n - 1; i += 1) {
-    if (slope[i] === 0) {
-      m[i] = 0;
-      m[i + 1] = 0;
-      continue;
-    }
-    const a = m[i] / slope[i];
-    const b = m[i + 1] / slope[i];
-    const magnitude = a * a + b * b;
-    if (magnitude > 9) {
-      const scale = 3 / Math.sqrt(magnitude);
-      m[i] = scale * a * slope[i];
-      m[i + 1] = scale * b * slope[i];
-    }
-  }
-
-  let d = move;
-  for (let i = 0; i < n - 1; i += 1) {
-    const h = dx[i] / 3;
-    const c1x = points[i][0] + h;
-    const c1y = points[i][1] + m[i] * h;
-    const c2x = points[i + 1][0] - h;
-    const c2y = points[i + 1][1] - m[i + 1] * h;
-    d += ` C${c1x.toFixed(2)},${c1y.toFixed(2)} ${c2x.toFixed(2)},${c2y.toFixed(2)} ${points[i + 1][0].toFixed(2)},${points[i + 1][1].toFixed(2)}`;
-  }
-  return d;
-}
-
 export function Sparkline({
   samples,
-  max,
-  windowMs = WINDOW_MS,
-  step = STEP,
-  variant = "bars",
   bucket = true,
   formatValue,
   className,
 }: {
   samples: ChargerSample[];
-  /** 固定纵轴上限；省略时按 step 向上量化。 */
-  max?: number;
-  /** 固定横轴窗口；传 null 时使用全部样本的实际时间跨度。 */
-  windowMs?: number | null;
-  step?: number;
-  /** bars 适合瞬时读数，trend 适合看走向 —— 取舍见文件头 */
-  variant?: "bars" | "trend";
   /**
    * 远端不规则采样才按中位间隔收成槽。本机 SSE 1 Hz，一帧一根柱，
    * 不要再峰值进桶 —— 否则几十个读数挤在最后一格，柱子看起来不跟着跳。
    */
   bucket?: boolean;
-  /** 传了就在 bars 上启用悬停读数；返回要显示的文本 */
+  /** 传了就启用悬停读数；返回要显示的文本 */
   formatValue?: (value: number) => string;
   className?: string;
 }) {
@@ -148,7 +71,7 @@ export function Sparkline({
   // 以最后一个采样点为窗口右边界，而不是 Date.now()：
   // 断流时曲线就停在原地，不会被慢慢推出视野变成一片空白
   const end = samples[samples.length - 1].t;
-  const start = windowMs == null ? samples[0].t : end - windowMs;
+  const start = end - WINDOW_MS;
 
   /**
    * 画的是一段时间窗内的连续信号，所以喂进来的必须是「跨过窗口边界」的样本，
@@ -166,51 +89,6 @@ export function Sparkline({
   const visible = samples.slice(Math.max(0, firstInside - 1));
 
   const span = Math.max(1, end - start);
-
-  if (variant === "trend") {
-    const peak = Math.max(...visible.map((sample) => sample.w));
-    const ceiling =
-      max == null
-        ? Math.max(step, Math.ceil(peak / step) * step)
-        : Math.max(max, 1);
-    const points = visible.map((sample) => {
-      const x = ((sample.t - start) / span) * width;
-      const y = height - (Math.min(Math.max(sample.w, 0), ceiling) / ceiling) * height;
-      return [x, y] as const;
-    });
-    const line = smoothPath(points);
-    // 面积的左右底边要对齐折线的首尾，否则窗口没填满时底部会多出一块
-    const first = points[0][0];
-    const last = points[points.length - 1][0];
-    const area = `${line} L${last.toFixed(2)},${height} L${first.toFixed(2)},${height} Z`;
-
-    return (
-      <svg
-        viewBox={`0 0 ${width} ${height}`}
-        preserveAspectRatio="none"
-        className={className}
-        aria-hidden
-      >
-        <defs>
-          <linearGradient id={`trend-${id}`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="var(--live)" stopOpacity="0.45" />
-            <stop offset="100%" stopColor="var(--live)" stopOpacity="0.02" />
-          </linearGradient>
-        </defs>
-        <path d={area} fill={`url(#trend-${id})`} />
-        <path
-          d={line}
-          fill="none"
-          stroke="var(--live)"
-          strokeWidth="1.5"
-          strokeOpacity="0.75"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          vectorEffect="non-scaling-stroke"
-        />
-      </svg>
-    );
-  }
 
   /**
    * 本机 SSE：一帧一根柱，按采样时刻落点。远端不规则采样才按中位间隔收成槽。
@@ -296,10 +174,7 @@ export function Sparkline({
   }
 
   const peak = Math.max(0, ...bars.map((bar) => bar.value));
-  const ceiling =
-    max == null
-      ? Math.max(step, Math.ceil(peak / step) * step)
-      : Math.max(max, 1);
+  const ceiling = Math.max(STEP, Math.ceil(peak / STEP) * STEP);
 
   const active = hovered != null ? bars[hovered]?.value ?? null : null;
 
