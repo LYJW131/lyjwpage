@@ -1,18 +1,20 @@
 "use client";
 
 import NumberFlow from "@number-flow/react";
-import { useEffect } from "react";
+import { useEffect, useLayoutEffect } from "react";
 
 import { Sparkline } from "@/components/live/sparkline";
 import { Card } from "@/components/ui/card";
 import { StatusDot, type DotTone } from "@/components/ui/status-dot";
 import { useLiveEvents } from "@/hooks/use-live-events";
+import { useLocalCharging } from "@/hooks/use-local-charging";
 import { incrementalFetcher, useStatus } from "@/hooks/use-status";
 import {
   historyCursor,
   mergeChargerHistory,
   seedChargerHistory,
 } from "@/lib/charger-history";
+import { seedLocalChargerHistory } from "@/lib/local-charging";
 import { CHARGER_PATH } from "@/lib/paths";
 import type {
   ChargerPayload,
@@ -72,11 +74,21 @@ export function ChargerCard({
    * 推送的兜底，它自己就是数据来源，断不断连都得按同一个节奏问。
    */
   useLiveEvents();
-  const { data, error, isLoading } = useStatus<ChargerPayload>(CHARGER_PATH, REFRESH_MS, {
-    fallback,
-    fetcher: fetchCharger,
-    seedFallback: seedChargerHistory,
-  });
+  useLayoutEffect(() => {
+    if (fallback.ok) seedLocalChargerHistory(fallback.data);
+  }, [fallback]);
+  const local = useLocalCharging().charger;
+  const { data: remote, error, isLoading } = useStatus<ChargerPayload>(
+    CHARGER_PATH,
+    local ? 0 : REFRESH_MS,
+    {
+      fallback,
+      fetcher: fetchCharger,
+      seedFallback: seedChargerHistory,
+      revalidateOnFocus: !local,
+    },
+  );
+  const data = local ?? remote;
   const history = data?.history ?? [];
 
   const connected = Boolean(data?.connected);
