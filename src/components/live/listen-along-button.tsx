@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useState } from "react";
 import { createPortal } from "react-dom";
-import { CircleStop, Headphones, LoaderCircle, TriangleAlert, X } from "lucide-react";
+import { CircleStop, Headphones, TriangleAlert, X } from "lucide-react";
 
 import type { ListenAlong } from "@/hooks/use-listen-along";
 import { cn } from "@/lib/utils";
@@ -20,9 +20,10 @@ function face(listen: ListenAlong) {
   if (loading) {
     return {
       icon: (
-        <span className="inline-flex size-3 shrink-0 animate-spin [transform-origin:center]">
-          <LoaderCircle className="size-3" aria-hidden />
-        </span>
+        <span
+          className="block size-3 shrink-0 animate-spin rounded-full border-[1.5px] border-current border-r-transparent origin-center transform-border"
+          aria-hidden
+        />
       ),
       text: "Connecting",
       label: "Loading, audio has not started yet",
