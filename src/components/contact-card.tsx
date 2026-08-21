@@ -1,11 +1,16 @@
 "use client";
 
 import Image from "next/image";
-import { useState } from "react";
+import { useSyncExternalStore } from "react";
 
 import { GithubChart } from "@/components/github-chart";
 import { VibeYearChart } from "@/components/live/vibe-year-chart";
 import { Card } from "@/components/ui/card";
+import {
+  readHeatmapMode,
+  subscribeHeatmap,
+  writeHeatmapMode,
+} from "@/lib/heatmap-preference";
 import { site } from "@/lib/site";
 import type {
   GithubChartPayload,
@@ -14,8 +19,6 @@ import type {
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-type HeatmapMode = "coding" | "github";
-
 export function ContactCard({
   chartFallback,
   yearFallback,
@@ -23,7 +26,7 @@ export function ContactCard({
   chartFallback: StatusResponse<GithubChartPayload>;
   yearFallback: StatusResponse<VibeCodingYearPayload>;
 }) {
-  const [mode, setMode] = useState<HeatmapMode>("coding");
+  const mode = useSyncExternalStore(subscribeHeatmap, readHeatmapMode, () => "coding");
 
   return (
     <Card id="contact" className="h-full">
@@ -69,22 +72,29 @@ export function ContactCard({
           >
             <HeatmapTab
               label="Tokens"
+              tab="tokens"
               pressed={mode === "coding"}
-              onClick={() => setMode("coding")}
+              onClick={() => writeHeatmapMode("coding")}
             />
             <HeatmapTab
               label="Commit"
+              tab="commit"
               pressed={mode === "github"}
-              onClick={() => setMode("github")}
+              onClick={() => writeHeatmapMode("github")}
             />
           </div>
         </div>
 
-        {mode === "coding" ? (
+        {/*
+          两张图都进 HTML。进页前 layout 里那段脚本按 localStorage 写
+          html[data-heatmap]，CSS 先藏对的那张，水合再慢也不跳。
+        */}
+        <div className="heatmap-panel w-full" data-heatmap-panel="tokens">
           <VibeYearChart fallback={yearFallback} className="w-full" />
-        ) : (
+        </div>
+        <div className="heatmap-panel w-full" data-heatmap-panel="commit">
           <GithubChart fallback={chartFallback} />
-        )}
+        </div>
       </div>
     </Card>
   );
@@ -92,23 +102,23 @@ export function ContactCard({
 
 function HeatmapTab({
   label,
+  tab,
   pressed,
   onClick,
 }: {
   label: string;
+  tab: "tokens" | "commit";
   pressed: boolean;
   onClick: () => void;
 }) {
   return (
     <button
       type="button"
+      data-heatmap-tab={tab}
       aria-pressed={pressed}
       onClick={onClick}
       className={cn(
-        "label-mono w-full px-2 py-1 text-center",
-        pressed
-          ? "bg-muted text-foreground"
-          : "text-muted-foreground transition-colors hover:text-foreground",
+        "heatmap-tab label-mono w-full px-2 py-1 text-center text-muted-foreground transition-colors hover:text-foreground",
       )}
     >
       {label}
