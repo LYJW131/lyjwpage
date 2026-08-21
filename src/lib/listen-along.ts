@@ -58,6 +58,20 @@ export function needsResync(localMs: number, targetMs: number, thresholdMs: numb
 }
 
 /**
+ * 正常下一首要对齐吗。
+ *
+ * 看锚点上的 positionMs，不看墙上的钟：切歌加载那几秒主人已经往前走了，
+ * 那不是他拖了进度。锚点几乎在 0 就直接切、从开头走；已经播进去超过
+ * 阈值（跳到歌中间、上一首其实没切干净）才 seek。
+ */
+export function shouldSeekAfterTrackChange(
+  anchorPositionMs: number,
+  thresholdMs: number,
+): boolean {
+  return anchorPositionMs > thresholdMs;
+}
+
+/**
  * 主人是不是拖了进度（或换了一个差很远的锚点）。
  *
  * 跟听位置加上认下的滞后，应该贴着主人。对不上就是他seek了，该跟过去并

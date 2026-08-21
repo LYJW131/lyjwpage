@@ -8,6 +8,7 @@ import {
   needsResync,
   playbackLagMs,
   queueStartMs,
+  shouldSeekAfterTrackChange,
 } from "./listen-along.ts";
 
 test("刚开始跟听：从主人此刻起播", () => {
@@ -61,4 +62,14 @@ test("主人拖进度：跟听位置 + 滞后对不上新锚点", () => {
 
 test("先切到下一首再等主人锚点：超前记成负滞后，不当成他拖进度", () => {
   assert.equal(isHostSeek(9_000, 2_000 - 9_000, 2_000, 5_000), false);
+});
+
+test("正常下一首锚点在开头，不对齐", () => {
+  assert.equal(shouldSeekAfterTrackChange(0, 5_000), false);
+  assert.equal(shouldSeekAfterTrackChange(1_200, 5_000), false);
+});
+
+test("换歌时已经在歌中间，对齐", () => {
+  assert.equal(shouldSeekAfterTrackChange(8_000, 5_000), true);
+  assert.equal(shouldSeekAfterTrackChange(90_000, 5_000), true);
 });
