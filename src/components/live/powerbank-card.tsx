@@ -6,6 +6,7 @@ import { useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { StatusDot, type DotTone } from "@/components/ui/status-dot";
 import { useLiveEvents } from "@/hooks/use-live-events";
+import { useLocalCharging } from "@/hooks/use-local-charging";
 import { useStatus } from "@/hooks/use-status";
 import { POWERBANK_PATH } from "@/lib/paths";
 import type {
@@ -85,9 +86,16 @@ export function PowerBankCard({
   compact?: boolean;
 }) {
   useLiveEvents();
-  const { data, error, isLoading } = useStatus<PowerBankPayload>(POWERBANK_PATH, REFRESH_MS, {
-    fallback,
-  });
+  const local = useLocalCharging().powerBank;
+  const { data: remote, error, isLoading } = useStatus<PowerBankPayload>(
+    POWERBANK_PATH,
+    local ? 0 : REFRESH_MS,
+    {
+      fallback,
+      revalidateOnFocus: !local,
+    },
+  );
+  const data = local ?? remote;
 
   const connected = Boolean(data?.connected);
   const battery = data?.battery ?? null;
