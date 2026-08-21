@@ -77,6 +77,13 @@ const REPEAT_RESTART_GRACE_MS = 1_200;
  * 按这首锚点算出的结束时刻解除静音。
  */
 const SWITCH_LEAD_MS = 2_000;
+/**
+ * 歌头歌尾的「停了」先押后这么久再确认。Music.app 两首之间会闪一下 stopped，
+ * 新曲第一拍也可能先报 paused，HomePod 抢答时还会抖 —— 立刻跟停会把刚接上
+ * 的下一首掐了，正是「切歌时反复暂停又播放」的来源。真停会一直停着，押后
+ * 这一拍只让真停晚生效几秒（跟停本来就有 5 秒的对齐容差）。
+ */
+const HOST_STOP_DEBOUNCE_MS = 3_500;
 /** 渐弱起点：预切前先把音量压下去，结尾不硬生生断掉 */
 const SWITCH_FADE_START_MS = 5_000;
 const SWITCH_FADE_STEP_MS = 100;
@@ -261,6 +268,8 @@ export function useListenAlong(source: {
   const holdTimer = useRef<number | null>(null);
   /** 已经按这首结束时刻预切过去的下一首。切歌信号到了只认 id，不要再 play */
   const prearmedSongId = useRef<string | null>(null);
+  /** 押后确认「主人真停了」的一次性定时器。新锚点一来就作废重排 */
+  const pendingHostStop = useRef<number | null>(null);
   const upcomingRef = useRef(upcomingSongIds);
   useEffect(() => {
     upcomingRef.current = upcomingSongIds;
@@ -303,6 +312,19 @@ export function useListenAlong(source: {
   }, [state, observedAt, positionMs, durationMs, repeatOne]);
   const hostNow = () => trackPositionMs(hostRef.current, Date.now());
 
+  /**
+   * 预切静音的统一退路：把音量放回去再清标记。
+   *
+   * 进静音只有预切一处，出静音的口却散在好几条路上（hold 到点、切歌信号、
+   * 停止、卸载、改放别的歌）—— 每条都必须走这里，谁漏了谁就把 MusicKit
+   * 单例永远留在 0：getMusicKit() 复用同一个实例，页面上又没有音量控件。
+   */
+  const releaseHold = (player: MusicKitInstance) => {
+    if (!holdUntilMs.current) return;
+    holdUntilMs.current = 0;
+    player.volume = holdVolume.current;
+  };
+
   const stop = useCallback(() => {
     queuedSongId.current = null;
     readySongId.current = null;
@@ -310,14 +332,8 @@ export function useListenAlong(source: {
     lastHostSongId.current = null;
     alignedSongId.current = null;
     lagMs.current = 0;
-    /*
-     * 预切静音的那 2 秒里点停：先把音量放回去再清标记。getMusicKit() 始终
-     * 复用同一个实例，volume 留在 0 的话下一轮「一起听」整场无声，而页面上
-     * 没有音量控件，只能刷新才能救回来。
-     */
-    if (holdUntilMs.current && musicRef.current) {
-      musicRef.current.volume = holdVolume.current;
-    }
+    // 预切静音的那 2 秒里点停：先放回音量再清标记，见 releaseHold
+    if (musicRef.current) releaseHold(musicRef.current);
     holdUntilMs.current = 0;
     prearmedSongId.current = null;
     if (holdTimer.current != null) {
@@ -381,7 +397,37 @@ export function useListenAlong(source: {
           // 合盖、上报器掉线），那就得跟着停，不然这边一直响而按钮显示 Waiting。
           if (songId && local && local !== songId) return;
           if (holdUntilMs.current > Date.now()) return;
-          if (isPlaybackLive(music)) await mkSafe(() => music.pause());
+          if (!isPlaybackLive(music)) return;
+          /*
+           * 歌中间的暂停是他真按了暂停，立刻跟停。歌头、歌尾和整个没曲子的
+           * 停顿要押后一拍再确认（见 HOST_STOP_DEBOUNCE_MS）—— 切歌边界的
+           * 闪停立刻执行的话，刚接上的下一首会被掐一下再补 play，听感就是
+           * 反复暂停又播放。
+           */
+          const host = hostRef.current;
+          const edgeMs = SWITCH_LEAD_MS + RESYNC_THRESHOLD_MS;
+          const at = hostNow();
+          const midSong =
+            Boolean(songId) &&
+            host.durationMs > 0 &&
+            at > edgeMs &&
+            host.durationMs - at > edgeMs;
+          if (midSong) {
+            await mkSafe(() => music.pause());
+            return;
+          }
+          if (pendingHostStop.current != null) window.clearTimeout(pendingHostStop.current);
+          pendingHostStop.current = window.setTimeout(() => {
+            pendingHostStop.current = null;
+            void runExclusive(async () => {
+              // 到点重验：期间来了新锚点说他在播，或者进了预切静音，都不停
+              if (songIdRef.current && hostRef.current.state === "playing") return;
+              const localNow = localSongId(music);
+              if (songIdRef.current && localNow && localNow !== songIdRef.current) return;
+              if (holdUntilMs.current > Date.now()) return;
+              if (isPlaybackLive(music)) await mkSafe(() => music.pause());
+            });
+          }, HOST_STOP_DEBOUNCE_MS);
           return;
         }
 
@@ -408,10 +454,7 @@ export function useListenAlong(source: {
             return;
           }
           if (adopted && isPlaybackLive(music)) return;
-          if (holdUntilMs.current) {
-            holdUntilMs.current = 0;
-            music.volume = holdVolume.current;
-          }
+          releaseHold(music);
           if (shouldSeekAfterTrackChange(hostRef.current.positionMs, RESYNC_THRESHOLD_MS)) {
             await mkSafe(() => music.seekToTime(hostNow() / 1000));
             lagMs.current = 0;
@@ -452,12 +495,23 @@ export function useListenAlong(source: {
           return;
         }
 
-        // 本首走完已经切到下一首，主人锚点还停在刚播完的那首：别拖回去。
-        // 但他真的拖回这首重听（离结尾还很远）就得回去。单曲循环也除外 ——
-        // 那是这一首再来一遍，接错了要切回去。
+        /*
+         * 本首走完已经切到下一首，主人锚点还停在刚播完的那首：别拖回去。
+         * 不能只认 lastHostSongId —— 轮询 / 聚焦重取可能在切歌推送之后才
+         * 回来，把上一首的旧锚点又送一遍（挡这个的代数守卫见 lib/live-freshness，
+         * 这里是它失手时的最后一道），那时 lastHostSongId 已经翻到新曲。所以
+         * 只要锚点指着队列里我们身后的那首、而且钉在歌尾，就当它是迟到的回声。
+         * 他真的拖回去重听（离结尾还很远）就得回去。单曲循环也除外 ——
+         * 那是这一首再来一遍，接错了要切回去。
+         */
+        const queueItems = music.queue?.items ?? [];
+        const anchorAt = mediaItemIndex(queueItems, songId);
+        const anchorBehindLocal =
+          lastHostSongId.current === songId ||
+          (localId != null && anchorAt >= 0 && mediaItemIndex(queueItems, localId) > anchorAt);
         if (
           !repeatOneRef.current &&
-          lastHostSongId.current === songId &&
+          anchorBehindLocal &&
           localId &&
           localId !== songId &&
           !hostRewoundIntoTrack(
@@ -469,6 +523,11 @@ export function useListenAlong(source: {
           return;
         }
 
+        /*
+         * 预切静音还押着就先放掉（hold 被真停按住过、现在要改放别的歌）。
+         * 不放的话下面记的「原音量」就是 0，新一首会一直哑到底。
+         */
+        releaseHold(music);
         const previousVolume = joining ? mute(music) : music.volume;
         try {
           if (prearmedSongId.current && prearmedSongId.current !== songId) {
@@ -550,6 +609,11 @@ export function useListenAlong(source: {
 
     return () => {
       cancelled = true;
+      // 新锚点到了（多半是下一首的播放信号）：还没执行的「确认真停」作废
+      if (pendingHostStop.current != null) {
+        window.clearTimeout(pendingHostStop.current);
+        pendingHostStop.current = null;
+      }
     };
   }, [music, songId, state]);
 
@@ -579,6 +643,8 @@ export function useListenAlong(source: {
           await runExclusive(async () => {
             if (songIdRef.current !== songId || hostRef.current.state !== "playing") return;
             if (readySongId.current !== parked || localSongId(music) !== parked) return;
+            // 预切静音没解除就被拖回去重听：先放回音量，别把上一首放成哑的
+            releaseHold(music);
             queuedSongId.current = songId;
             readySongId.current = null;
             alignedSongId.current = null;
@@ -790,8 +856,7 @@ export function useListenAlong(source: {
                * 他还停在上一首且暂停 —— 是真暂停，别替他开下一首。
                */
               if (hostRef.current.state !== "playing" && hostSong !== next) return;
-              holdUntilMs.current = 0;
-              player.volume = holdVolume.current;
+              releaseHold(player);
               if (!isPlaybackLive(player)) await playSafe(player);
               setAudible(true);
             });
@@ -906,10 +971,7 @@ export function useListenAlong(source: {
         window.clearTimeout(holdTimer.current);
         holdTimer.current = null;
       }
-      if (holdUntilMs.current) {
-        holdUntilMs.current = 0;
-        music.volume = holdVolume.current;
-      }
+      releaseHold(music);
       void music.stop().catch(() => {});
     };
   }, [music]);
