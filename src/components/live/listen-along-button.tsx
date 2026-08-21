@@ -19,7 +19,11 @@ function face(listen: ListenAlong) {
     listen.status === "starting" || (listen.status === "following" && !listen.audible && !listen.waiting);
   if (loading) {
     return {
-      icon: <LoaderCircle className="size-3 shrink-0 animate-spin" aria-hidden />,
+      icon: (
+        <span className="inline-flex size-3 shrink-0 animate-spin [transform-origin:center]">
+          <LoaderCircle className="size-3" aria-hidden />
+        </span>
+      ),
       text: "Connecting",
       label: "Loading, audio has not started yet",
     };
