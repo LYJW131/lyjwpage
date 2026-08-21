@@ -259,6 +259,7 @@ export function useListenAlong(source: {
          * isAuthorized 直接是 true —— 每次都弹一遍会很烦人。
          */
         if (!instance.isAuthorized) await instance.authorize();
+        if ("autoplayEnabled" in instance) instance.autoplayEnabled = true;
         setAuthorized(instance.isAuthorized);
         setMusic(instance);
         setStatus("following");
@@ -478,7 +479,6 @@ export function useListenAlong(source: {
    */
   useEffect(() => {
     if (!music) return;
-    if ("autoplayEnabled" in music) music.autoplayEnabled = true;
 
     const adopt = () => {
       const local = localSongId(music);
