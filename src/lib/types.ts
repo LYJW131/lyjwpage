@@ -194,6 +194,13 @@ export type NowListeningPayload = {
    */
   songId: string | null;
   /**
+   * 主人队列里当前曲后面那两首的目录 ID，已经在服务端搜过。
+   *
+   * 「一起听」拿它们 playNext，换歌时就能 skipToNext 而不是整队重排。
+   * 搜不到或 HomePod 没有队列时是空数组。
+   */
+  upcomingSongIds: string[];
+  /**
    * 这份选择还能成立多久（毫秒）。null = 不会因为单纯的时间流逝而改变。
    *
    * 只有暂停宽限期会给出非 null 值。客户端据此把下一次取数排在到期那一刻，

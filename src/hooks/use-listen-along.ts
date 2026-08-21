@@ -15,6 +15,7 @@ import {
   PLAYBACK_STATE,
   type MusicKitInstance,
 } from "@/lib/musickit";
+import { mediaItemIndex } from "@/lib/playing-queue";
 import { trackPositionMs } from "@/lib/track-position";
 import type { LocalNowPlaying } from "@/lib/types";
 
@@ -34,6 +35,9 @@ import type { LocalNowPlaying } from "@/lib/types";
  * 换歌时新曲子要缓冲几秒，主人的进度条已经在走。起播点用锚点（几乎是 0），
  * 不要用 trackPositionMs 那种「此刻」—— 那会把缓冲耗时切掉。出声之后把这段
  * 耗时记成滞后，巡检只追额外落后，不会过一会儿再 seek 跳掉中间一截。
+ *
+ * 上报器给了 Playing Next 时，服务端会先搜后面两首的目录 ID。这边 playNext
+ * 预排进去，主人换到预排的那首就 changeToMediaAtIndex，不再整队 setQueue。
  */
 
 export type ListenAlongStatus =
@@ -73,6 +77,14 @@ function localPositionMs(music: MusicKitInstance): number {
  * setQueue 的 Promise 在队列排好时就 resolve，音频往往还在 loading。
  * 没出声就算「跟好听了」会立刻按主人此刻去 seek，正好把刚要播的开头切掉。
  */
+async function syncUpcomingQueue(music: MusicKitInstance, ids: string[]) {
+  if (ids.length === 0) return;
+  await music.playNext({ song: ids[0] }, true);
+  for (const id of ids.slice(1)) {
+    await music.playLater({ song: id });
+  }
+}
+
 function waitUntilPlaying(music: MusicKitInstance, cancelled: () => boolean): Promise<void> {
   if (music.playbackState === PLAYBACK_STATE.playing) return Promise.resolve();
 
@@ -112,8 +124,10 @@ export function useListenAlong(source: {
   track: LocalNowPlaying | null;
   /** 目录里那首曲子的资源 ID。搜不到就是 null，那时没有可播的东西 */
   songId: string | null;
+  /** 当前曲后面两首的目录 ID，已经在服务端搜过 */
+  upcomingSongIds?: string[];
 }): ListenAlong {
-  const { track, songId } = source;
+  const { track, songId, upcomingSongIds = [] } = source;
 
   const [music, setMusic] = useState<MusicKitInstance | null>(null);
   const [status, setStatus] = useState<ListenAlongStatus>(
@@ -135,6 +149,8 @@ export function useListenAlong(source: {
   const lagMs = useRef(0);
   /** 这次 setQueue 定下的起播点。加载中 effect 重跑也还用这个，不能改成主人此刻 */
   const intendedStartMs = useRef(0);
+  const upcomingRef = useRef(upcomingSongIds);
+  upcomingRef.current = upcomingSongIds;
 
   /*
    * 锚点拆成原始值再进依赖列表。
@@ -211,7 +227,7 @@ export function useListenAlong(source: {
             Date.now(),
           );
 
-        // 换歌（或刚点一起听）：重排队列。换歌从锚点起，刚加入才对主人此刻。
+        // 换歌（或刚点一起听）：预排过的走队列跳转，否则整队重排。
         if (queuedSongId.current !== songId) {
           intendedStartMs.current = queueStartMs({
             changingTrack: queuedSongId.current !== null,
@@ -221,11 +237,24 @@ export function useListenAlong(source: {
           queuedSongId.current = songId;
           readySongId.current = null;
           lagMs.current = 0;
-          await music.setQueue({
-            song: songId,
-            startPlaying: true,
-            startTime: intendedStartMs.current / 1000,
-          });
+          const preparedAt = mediaItemIndex(music.queue?.items ?? [], songId);
+          if (preparedAt > 0) {
+            try {
+              await music.changeToMediaAtIndex(preparedAt);
+            } catch {
+              await music.setQueue({
+                song: songId,
+                startPlaying: true,
+                startTime: intendedStartMs.current / 1000,
+              });
+            }
+          } else if (preparedAt !== 0) {
+            await music.setQueue({
+              song: songId,
+              startPlaying: true,
+              startTime: intendedStartMs.current / 1000,
+            });
+          }
         }
 
         if (cancelled) return;
@@ -248,6 +277,7 @@ export function useListenAlong(source: {
             intendedStartMs.current,
             RESYNC_THRESHOLD_MS,
           );
+          void syncUpcomingQueue(music, upcomingRef.current).catch(() => {});
           return;
         }
 
@@ -306,6 +336,35 @@ export function useListenAlong(source: {
 
     return () => window.clearInterval(timer);
   }, [music, songId, state, observedAt, positionMs, durationMs, repeatOne]);
+
+  /**
+   * 当前曲出声之后，把后面两首插进 MusicKit 队列。
+   *
+   * playNext 插在正在放的后面；先 clear 再 playLater，避免上次预排的残留
+   * 和这次的顺序缠在一起。预排不是出声保证，但目录条目和播放地址能提前准备。
+   */
+  const upcomingKey = upcomingSongIds.join(",");
+  useEffect(() => {
+    if (!music || !songId || state !== "playing") return;
+    if (readySongId.current !== songId) return;
+
+    void syncUpcomingQueue(music, upcomingSongIds).catch(() => {});
+  }, [music, songId, state, upcomingKey, upcomingSongIds]);
+
+  /**
+   * 曲目播完先停住。队列里有预排的下一首时，MusicKit 会自己跳，主人还没换
+   * 就会超前。等锚点来了再 changeToMediaAtIndex。
+   */
+  useEffect(() => {
+    if (!music) return;
+    const onState = () => {
+      if (music.playbackState === PLAYBACK_STATE.ended) {
+        void music.pause().catch(() => {});
+      }
+    };
+    music.addEventListener("playbackStateDidChange", onState);
+    return () => music.removeEventListener("playbackStateDidChange", onState);
+  }, [music]);
 
   /**
    * 收尾。点「停止」（music 置 null）和卡片卸载（换页、布局切换）都走这里 ——
