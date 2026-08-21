@@ -15,6 +15,10 @@ import {
   seedChargerHistory,
 } from "@/lib/charger-history";
 import { seedLocalChargerHistory } from "@/lib/local-charging";
+import {
+  CHARGER_MODEL,
+  ankerModelLabel,
+} from "@/lib/charging-device";
 import { CHARGER_PATH } from "@/lib/paths";
 import type {
   ChargerPayload,
@@ -125,9 +129,11 @@ export function ChargerCard({
       tone={dot}
       action={
         data?.device.serialNumber ? (
-          <span title={`固件 ${data.device.firmwareVersion ?? "未知"}`}>Prime 160W</span>
+          <span title={`固件 ${data.device.firmwareVersion ?? "未知"}`}>
+            {ankerModelLabel(data.device.model, CHARGER_MODEL)}
+          </span>
         ) : (
-          "Prime 160W"
+          ankerModelLabel(data?.device.model, CHARGER_MODEL)
         )
       }
       className={cn("h-full", className)}

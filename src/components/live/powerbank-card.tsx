@@ -8,6 +8,10 @@ import { StatusDot, type DotTone } from "@/components/ui/status-dot";
 import { useLiveEvents } from "@/hooks/use-live-events";
 import { useLocalCharging } from "@/hooks/use-local-charging";
 import { useStatus } from "@/hooks/use-status";
+import {
+  POWER_BANK_MODEL,
+  ankerModelLabel,
+} from "@/lib/charging-device";
 import { POWERBANK_PATH } from "@/lib/paths";
 import type {
   PowerBankPayload,
@@ -183,9 +187,11 @@ export function PowerBankCard({
       tone={tone(data)}
       action={
         data?.device.serialNumber ? (
-          <span title={`固件 ${data.device.firmwareVersion ?? "未知"}`}>Prime 20K</span>
+          <span title={`固件 ${data.device.firmwareVersion ?? "未知"}`}>
+            {ankerModelLabel(data.device.model, POWER_BANK_MODEL)}
+          </span>
         ) : (
-          "Prime 20K"
+          ankerModelLabel(data?.device.model, POWER_BANK_MODEL)
         )
       }
       className={cn("h-full", className)}

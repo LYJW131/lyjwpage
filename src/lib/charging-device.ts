@@ -16,6 +16,10 @@ const POWER_BANK_PORTS = ["C1", "C2", "A", "B"] as const;
 export const CHARGER_MAX_POWER = 160;
 /** 充电宝额定总输出，用来算功率条比例 */
 export const POWER_BANK_MAX_OUTPUT = 220;
+/** 充电头型号。上报器丢了 `model` 时顶栏用这个。 */
+export const CHARGER_MODEL = "A2687";
+/** 充电宝型号。上报器丢了 `model` 时顶栏用这个。 */
+export const POWER_BANK_MODEL = "A110G";
 
 type RawDevicePort = {
   name?: string;
@@ -67,6 +71,23 @@ function displayText(value: string | null | undefined): string | null {
   if (value == null) return null;
   const text = String(value).trim();
   return text || null;
+}
+
+function deviceInfo(raw: RawChargingDevice): ChargerStatus["device"] {
+  return {
+    serialNumber: displayText(raw.id),
+    firmwareVersion: displayText(raw.firmware),
+    model: displayText(raw.model),
+  };
+}
+
+/**
+ * 顶栏右侧：牌子 + 型号。上报器给的是 SKU（A2687），没有牌子。
+ * 已经带 Anker 的字符串不再叠一层。
+ */
+export function ankerModelLabel(model: string | null | undefined, fallback: string): string {
+  const sku = displayText(model) ?? fallback;
+  return /^anker\b/i.test(sku) ? sku : `Anker ${sku}`;
 }
 
 /** 上游给的是秒（带小数），转成 JS 毫秒 */
@@ -128,10 +149,7 @@ export function normalizeChargingDevice(raw: RawChargingDevice): ChargerStatus {
     totalPower: Number(raw.totalOutputW) || 0,
     maxPower: CHARGER_MAX_POWER,
     ports: CHARGER_PORTS.map((key) => normalizeChargerPort(key, byName.get(key))),
-    device: {
-      serialNumber: displayText(raw.id),
-      firmwareVersion: displayText(raw.firmware),
-    },
+    device: deviceInfo(raw),
     cover: readCover(raw.cover),
     updatedAt: toMillis(raw.updatedAt),
   } satisfies ChargerStatus;
@@ -179,10 +197,7 @@ export function normalizePowerBank(raw: RawPowerBank): PowerBankStatus {
     outputPower: Number(raw.totalOutputW) || 0,
     temperatures,
     ports: POWER_BANK_PORTS.map((id) => normalizePowerBankPort(id, byName.get(id))),
-    device: {
-      serialNumber: displayText(raw.id),
-      firmwareVersion: displayText(raw.firmware),
-    },
+    device: deviceInfo(raw),
     updatedAt: toMillis(raw.updatedAt),
   } satisfies PowerBankStatus;
 }
@@ -193,7 +208,7 @@ export function emptyChargerStatus(connected: boolean): ChargerStatus {
     totalPower: 0,
     maxPower: CHARGER_MAX_POWER,
     ports: CHARGER_PORTS.map((id) => normalizeChargerPort(id)),
-    device: { serialNumber: null, firmwareVersion: null },
+    device: { serialNumber: null, firmwareVersion: null, model: null },
     cover: null,
     updatedAt: null,
   };
@@ -211,7 +226,7 @@ export function emptyPowerBankStatus(connected: boolean): PowerBankStatus {
     outputPower: 0,
     temperatures: [],
     ports: POWER_BANK_PORTS.map((id) => normalizePowerBankPort(id)),
-    device: { serialNumber: null, firmwareVersion: null },
+    device: { serialNumber: null, firmwareVersion: null, model: null },
     updatedAt: null,
   };
 }
