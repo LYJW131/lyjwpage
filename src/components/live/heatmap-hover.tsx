@@ -34,11 +34,9 @@ const HOVER_DELAY_MS = 120;
 export function useHeatmapOpen<T extends { date: string }>() {
   const svgRef = useRef<SVGSVGElement>(null);
   const delayRef = useRef<number | null>(null);
-  const pinnedRef = useRef<T | null>(null);
   const [hover, setHover] = useState<T | null>(null);
   const [preview, setPreview] = useState<T | null>(null);
   const [pinned, setPinned] = useState<T | null>(null);
-  pinnedRef.current = pinned;
   const shown = pinned ?? preview;
   const hotDate = hover?.date ?? pinned?.date ?? null;
 
@@ -62,7 +60,8 @@ export function useHeatmapOpen<T extends { date: string }>() {
   const previewCell = useCallback(
     (cell: T) => {
       setHover(cell);
-      if (pinnedRef.current) return;
+      // 钉住时描边跟着光标走，但浮层不换格
+      if (pinned) return;
       clearDelay();
       setPreview(null);
       delayRef.current = window.setTimeout(() => {
@@ -70,7 +69,7 @@ export function useHeatmapOpen<T extends { date: string }>() {
         delayRef.current = null;
       }, HOVER_DELAY_MS);
     },
-    [clearDelay],
+    [clearDelay, pinned],
   );
 
   const clearPreview = useCallback(() => {
