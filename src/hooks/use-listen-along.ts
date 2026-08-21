@@ -310,6 +310,14 @@ export function useListenAlong(source: {
     lastHostSongId.current = null;
     alignedSongId.current = null;
     lagMs.current = 0;
+    /*
+     * 预切静音的那 2 秒里点停：先把音量放回去再清标记。getMusicKit() 始终
+     * 复用同一个实例，volume 留在 0 的话下一轮「一起听」整场无声，而页面上
+     * 没有音量控件，只能刷新才能救回来。
+     */
+    if (holdUntilMs.current && musicRef.current) {
+      musicRef.current.volume = holdVolume.current;
+    }
     holdUntilMs.current = 0;
     prearmedSongId.current = null;
     if (holdTimer.current != null) {
@@ -368,8 +376,10 @@ export function useListenAlong(source: {
       try {
         if (!songId || state !== "playing") {
           const local = localSongId(music);
-          // 主人这首停是切歌间隙，我们已经在下一首：别把下一首也停掉
-          if (local && local !== songId) return;
+          // 主人这首停是切歌间隙，我们已经在下一首：别把下一首也停掉。
+          // 只有他手上还有曲子才算间隙 —— songId 为 null 是真停了（停止播放、
+          // 合盖、上报器掉线），那就得跟着停，不然这边一直响而按钮显示 Waiting。
+          if (songId && local && local !== songId) return;
           if (holdUntilMs.current > Date.now()) return;
           if (isPlaybackLive(music)) await mkSafe(() => music.pause());
           return;
@@ -683,8 +693,11 @@ export function useListenAlong(source: {
    *
    * playNext 插在正在放的后面；先 clear 再 playLater，避免上次预排的残留
    * 和这次的顺序缠在一起。预排不是出声保证，但目录条目和播放地址能提前准备。
+   *
+   * 依赖里就要数组本身的引用，别换成 join 出来的 key：readySongId 变就绪
+   * 不触发渲染，快路径认下新曲之后能把这个 effect 重新点着的，只有下一条
+   * 载荷带来的新数组引用 —— 内容没变它也得再跑一次，里面的 ready 检查兜住。
    */
-  const upcomingKey = upcomingSongIds.join(",");
   useEffect(() => {
     if (!music || !songId || state !== "playing") return;
     if (readySongId.current !== songId) return;
@@ -694,7 +707,7 @@ export function useListenAlong(source: {
       if (readySongId.current !== songId) return;
       await syncUpcomingQueue(music, upcomingSongIds);
     }).catch(() => {});
-  }, [music, songId, state, upcomingKey, upcomingSongIds, repeatOne]);
+  }, [music, songId, state, upcomingSongIds, repeatOne]);
 
   /**
    * 预切：剩 5 秒开始把音量线性收到 0，剩 2 秒切到下一首静音加载，停在 0。
@@ -884,6 +897,19 @@ export function useListenAlong(source: {
   useEffect(() => {
     if (!music) return;
     return () => {
+      /*
+       * 卡片直接卸载时 stop() 不会跑：预切的静音和它的定时器都得在这里收掉。
+       * 定时器活过卸载的话，会在 music.stop() 之后再去动共享单例的音量、
+       * 补一次 play；音量不放回去则和 stop() 那边同一个下场 —— 单例哑掉。
+       */
+      if (holdTimer.current != null) {
+        window.clearTimeout(holdTimer.current);
+        holdTimer.current = null;
+      }
+      if (holdUntilMs.current) {
+        holdUntilMs.current = 0;
+        music.volume = holdVolume.current;
+      }
       void music.stop().catch(() => {});
     };
   }, [music]);
