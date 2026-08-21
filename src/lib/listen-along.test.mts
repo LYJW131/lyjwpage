@@ -7,7 +7,6 @@ import {
   hostRewoundIntoTrack,
   isHostSeek,
   needsResync,
-  nextSwitchLeadMs,
   playbackLagMs,
   queueStartMs,
   shouldSeekAfterTrackChange,
@@ -76,17 +75,11 @@ test("换歌时已经在歌中间，对齐", () => {
   assert.equal(shouldSeekAfterTrackChange(90_000, 5_000), true);
 });
 
-test("预切提前量按上次实测加载耗时收敛，夹在上下限之间", () => {
-  assert.equal(nextSwitchLeadMs(4_000, 1_500, 4_000, 12_000), 5_500);
-  assert.equal(nextSwitchLeadMs(500, 1_500, 4_000, 12_000), 4_000);
-  assert.equal(nextSwitchLeadMs(30_000, 1_500, 4_000, 12_000), 12_000);
-});
-
 test("锚点钉在歌尾是切歌残影，拖回歌中间才算重听", () => {
   // 200s 的歌，主人回到 100s：真回去重听，要拉回来
-  assert.equal(hostRewoundIntoTrack(100_000, 200_000, 13_500), true);
+  assert.equal(hostRewoundIntoTrack(100_000, 200_000, 8_000), true);
   // 锚点停在最后 5s：是我们预切后留下的残影，别拉
-  assert.equal(hostRewoundIntoTrack(195_000, 200_000, 13_500), false);
+  assert.equal(hostRewoundIntoTrack(195_000, 200_000, 8_000), false);
   // 总长未知不猜
-  assert.equal(hostRewoundIntoTrack(100_000, 0, 13_500), false);
+  assert.equal(hostRewoundIntoTrack(100_000, 0, 8_000), false);
 });
