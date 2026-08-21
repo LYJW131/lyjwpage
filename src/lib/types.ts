@@ -232,6 +232,8 @@ export type ChargerStatus = {
   device: {
     serialNumber: string | null;
     firmwareVersion: string | null;
+    /** 上报器给的型号，如 "A2687"。顶栏拿它拼 Anker 前缀。 */
+    model: string | null;
   };
   /**
    * 充电头当前封面。上报器把 Anker 源 JPEG 原样直传到 R2 后带 iconObjectKey。
@@ -503,6 +505,8 @@ export type PowerBankStatus = {
   device: {
     serialNumber: string | null;
     firmwareVersion: string | null;
+    /** 上报器给的型号，如 "A110G"。顶栏拿它拼 Anker 前缀。 */
+    model: string | null;
   };
   updatedAt: number | null;
 };
