@@ -8,10 +8,10 @@ import type { ListenAlong } from "@/hooks/use-listen-along";
 import { cn } from "@/lib/utils";
 
 /**
- * 卡片右上角那个「一起听」。
+ * 卡片右上角那个 Listen Along。
  *
- * 点开先出说明：授权自己的订阅、站点不转音频不存凭据，并标明这是测试功能。
- * 真的出声之后按钮才变绿；静音加载时还是「连接中」。
+ * 点开先出说明：授权自己的订阅、站点不转音频不存凭据。标题旁标 beta。
+ * 没点 Sign in 之前不加载 MusicKit，按钮先占位。出声后右上角才变绿。
  */
 
 function face(listen: ListenAlong) {
@@ -20,30 +20,30 @@ function face(listen: ListenAlong) {
   if (loading) {
     return {
       icon: <LoaderCircle className="size-3 shrink-0 animate-spin" aria-hidden />,
-      text: "连接中",
-      label: "正在加载，还没出声",
+      text: "Connecting",
+      label: "Loading, audio has not started yet",
     };
   }
   if (listen.status === "error") {
     return {
       icon: <TriangleAlert className="size-3 shrink-0" aria-hidden />,
-      text: "重试",
-      label: `一起听没能开始：${listen.error ?? "未知错误"}。点击打开说明`,
+      text: "Retry",
+      label: `Listen Along failed: ${listen.error ?? "unknown error"}. Open details`,
     };
   }
   if (listen.status === "following") {
     return {
       icon: <CircleStop className="size-3 shrink-0" aria-hidden />,
-      text: listen.waiting ? "待命中" : "一起听",
+      text: listen.waiting ? "Waiting" : "Listen Along",
       label: listen.waiting
-        ? "已连接，等主人开始播放。点击打开说明"
-        : "正在一起听。点击打开说明",
+        ? "Connected, waiting for playback to start. Open details"
+        : "Listening along. Open details",
     };
   }
   return {
     icon: <Headphones className="size-3 shrink-0" aria-hidden />,
-    text: "一起听",
-    label: "打开一起听说明",
+    text: "Listen Along",
+    label: "Open Listen Along details",
   };
 }
 
@@ -51,24 +51,17 @@ function DialogButton({
   children,
   onClick,
   disabled,
-  tone = "plain",
 }: {
   children: string;
   onClick: () => void;
   disabled?: boolean;
-  tone?: "plain" | "live";
 }) {
   return (
     <button
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className={cn(
-        "label-mono min-w-0 flex-1 border px-3 py-2 transition-colors disabled:cursor-default disabled:opacity-60",
-        tone === "live"
-          ? "border-live/40 text-live hover:bg-surface-hover"
-          : "border-line-strong hover:bg-surface-hover hover:text-foreground",
-      )}
+      className="label-mono min-w-0 flex-1 py-2.5 text-center text-foreground transition-colors hover:bg-surface-hover disabled:cursor-default disabled:opacity-60"
     >
       {children}
     </button>
@@ -84,11 +77,6 @@ function ListenAlongDialog({
 }) {
   const titleId = useId();
   const busy = listen.status === "starting";
-  const { probe } = listen;
-
-  useEffect(() => {
-    probe();
-  }, [probe]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -108,70 +96,71 @@ function ListenAlongDialog({
       <button
         type="button"
         className="absolute inset-0 bg-background/80"
-        aria-label="关闭"
+        aria-label="Close"
         onClick={onClose}
       />
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="paper-card relative w-full max-w-sm rounded-lg border border-line-strong bg-surface"
+        className="relative w-full max-w-sm bg-surface pt-3"
       >
-        <header className="flex items-center justify-between gap-2 border-b border-line bg-muted px-3 py-2">
-          <span id={titleId} className="label-mono text-muted-foreground">
-            一起听
-          </span>
+        <header className="flex items-center justify-between gap-2 px-4">
+          <div className="flex items-center gap-1.5">
+            <span id={titleId} className="label-mono text-muted-foreground">
+              Listen Along
+            </span>
+            <span className="label-mono text-muted-foreground/60">beta</span>
+          </div>
           <button
             type="button"
-            aria-label="关闭"
+            aria-label="Close"
             onClick={onClose}
             className="rounded-sm p-0.5 text-muted-foreground hover:text-foreground"
           >
             <X className="size-3.5" aria-hidden />
           </button>
         </header>
-        <div className="px-4 py-3">
-          <p className="text-sm leading-relaxed text-foreground">
-            请登录有效的 Apple Music 订阅授权。站点不转发音频、储存凭据，仅同步播放曲目和进度。
-          </p>
-          <p className="label-mono mt-2 text-muted-foreground">注意：这是一个测试功能</p>
-          {listen.error ? (
-            <p className="mt-2 text-sm text-muted-foreground">{listen.error}</p>
-          ) : null}
-          <div className="mt-4 flex gap-2">
-            {listen.authorized ? (
-              <>
-                {listen.status === "following" ? (
-                  <DialogButton
-                    disabled={busy}
-                    onClick={() => {
-                      listen.stop();
-                      onClose();
-                    }}
-                  >
-                    停止
-                  </DialogButton>
-                ) : (
-                  <DialogButton tone="live" disabled={busy} onClick={listen.start}>
-                    {busy ? "连接中" : "开始"}
-                  </DialogButton>
-                )}
-                <DialogButton
-                  disabled={busy}
-                  onClick={() => {
-                    listen.logout();
-                    onClose();
-                  }}
-                >
-                  登出
-                </DialogButton>
-              </>
-            ) : (
-              <DialogButton tone="live" disabled={busy} onClick={listen.start}>
-                {busy ? "连接中" : "登录"}
+        <p className="mt-3 px-4 text-sm leading-relaxed text-foreground">
+          请登录有效的 Apple Music 订阅授权。站点不转发音频、储存凭据，仅同步播放曲目和进度。
+        </p>
+        {listen.error ? (
+          <p className="mt-2 px-4 text-sm text-muted-foreground">{listen.error}</p>
+        ) : null}
+        <div className="mt-4 flex border-t border-line">
+          <DialogButton
+            disabled={busy}
+            onClick={() => {
+              if (listen.status === "following") {
+                listen.stop();
+                onClose();
+                return;
+              }
+              listen.start();
+            }}
+          >
+            {busy
+              ? "Connecting"
+              : listen.status === "following"
+                ? "Stop"
+                : listen.authorized
+                  ? "Start"
+                  : "Sign in"}
+          </DialogButton>
+          {listen.authorized ? (
+            <>
+              <div className="w-px self-stretch bg-line" aria-hidden />
+              <DialogButton
+                disabled={busy}
+                onClick={() => {
+                  listen.logout();
+                  onClose();
+                }}
+              >
+                Sign out
               </DialogButton>
-            )}
-          </div>
+            </>
+          ) : null}
         </div>
       </div>
     </div>,
@@ -195,11 +184,8 @@ export function ListenAlongButton({ listen }: { listen: ListenAlong }) {
         title={listen.status === "error" ? (listen.error ?? undefined) : label}
         onClick={() => setOpen(true)}
         className={cn(
-          "label-mono -my-1 flex items-center gap-1.5 rounded-sm border px-1.5 py-1",
-          "transition-colors",
-          live
-            ? "border-live/40 text-live hover:bg-surface-hover"
-            : "border-line text-muted-foreground hover:bg-surface-hover hover:text-foreground",
+          "label-mono flex items-center gap-1.5 transition-colors",
+          live ? "text-live hover:text-live/80" : "hover:text-foreground",
         )}
       >
         {icon}
