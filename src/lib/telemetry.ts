@@ -1,12 +1,14 @@
-import {
-  chargerPushPayload,
-  normalizeChargingDevice,
-  pickCharger,
-  type RawChargingDevices,
-} from "@/lib/anker";
+import { chargerPushPayload } from "@/lib/anker";
 import { prepareHeartbeat, prepareStatus, readChargerState } from "@/lib/charger-store";
+import {
+  normalizeChargingDevice,
+  normalizePowerBank,
+  pickCharger,
+  pickPowerBank,
+  type RawChargingDevices,
+} from "@/lib/charging-device";
 import { askSettlingAt, settlingDecision, writeSettlingAt } from "@/lib/charging-settling";
-import { normalizePowerBank, pickPowerBank, powerBankPushPayload } from "@/lib/powerbank";
+import { powerBankPushPayload } from "@/lib/powerbank";
 import {
   prepareStatus as preparePowerBankStatus,
   readPowerBankState,

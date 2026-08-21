@@ -1,7 +1,7 @@
 "use client";
 
 import NumberFlow from "@number-flow/react";
-import { useEffect, useLayoutEffect } from "react";
+import { useEffect } from "react";
 
 import { Sparkline } from "@/components/live/sparkline";
 import { Card } from "@/components/ui/card";
@@ -14,7 +14,6 @@ import {
   mergeChargerHistory,
   seedChargerHistory,
 } from "@/lib/charger-history";
-import { seedLocalChargerHistory } from "@/lib/local-charging";
 import {
   CHARGER_MODEL,
   ankerModelLabel,
@@ -78,9 +77,6 @@ export function ChargerCard({
    * 推送的兜底，它自己就是数据来源，断不断连都得按同一个节奏问。
    */
   useLiveEvents();
-  useLayoutEffect(() => {
-    if (fallback.ok) seedLocalChargerHistory(fallback.data);
-  }, [fallback]);
   const local = useLocalCharging().charger;
   const { data: remote, error, isLoading } = useStatus<ChargerPayload>(
     CHARGER_PATH,

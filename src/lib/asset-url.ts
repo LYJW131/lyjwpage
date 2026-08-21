@@ -10,6 +10,16 @@ export function assetUrl(base: string, objectKey: string): string {
 }
 
 /**
+ * 本页部署注入的资产交付域（layout 里的 <meta name="asset-base-url">）。
+ * 客户端拿 objectKey 现拼公开地址时都从这里取，别各自去查一遍 DOM。
+ */
+export function pageAssetBase(): string | null {
+  if (typeof document === "undefined") return null;
+  const base = document.querySelector<HTMLMetaElement>("meta[name='asset-base-url']")?.content;
+  return base || null;
+}
+
+/**
  * 实时事件由接收上报的部署发出，里面的 URL 可能使用它自己的交付域。
  * 内容键固定在路径末段，客户端据此换成本页部署注入的公开地址。
  */

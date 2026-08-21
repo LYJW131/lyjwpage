@@ -14,8 +14,6 @@ const POWER_BANK_PORTS = ["C1", "C2", "A", "B"] as const;
 
 /** Anker Prime 充电头额定总功率 */
 export const CHARGER_MAX_POWER = 160;
-/** 充电宝额定总输出，用来算功率条比例 */
-export const POWER_BANK_MAX_OUTPUT = 220;
 /** 充电头型号。上报器丢了 `model` 时顶栏用这个。 */
 export const CHARGER_MODEL = "A2687";
 /** 充电宝型号。上报器丢了 `model` 时顶栏用这个。 */
