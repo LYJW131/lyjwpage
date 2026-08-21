@@ -82,6 +82,29 @@ test("同名曲靠专辑消歧，不取排序第一", () => {
   assert.equal(hit?.id, "halo");
 });
 
+test("英文曲名对不上日文目录名，艺人加单曲形态能认：Tower of Flower vs 花の塔", () => {
+  const hit = pickCatalogHit(
+    [
+      song("花の塔", "Sayuri", "花の塔 - Single", "single"),
+      song("花の塔", "Sayuri", "酸欠少女", "album"),
+      song("Tower of Flower", "Fried Rice", "Anime Grooves, Vol. 2", "cover"),
+    ],
+    { title: "Tower of Flower", artist: "Sayuri", album: "Tower of Flower - Single" },
+  );
+  assert.equal(hit?.id, "single");
+});
+
+test("曲名对不上时，同一艺人两张单曲不猜", () => {
+  const hit = pickCatalogHit(
+    [
+      song("花の塔", "Sayuri", "花の塔 - Single", "hana"),
+      song("平行線", "Sayuri", "平行線 - Single", "heikou"),
+    ],
+    { title: "Tower of Flower", artist: "Sayuri", album: "Tower of Flower - Single" },
+  );
+  assert.equal(hit, undefined);
+});
+
 test("艺人对不上且专辑也对不上，不因为只剩一条就认", () => {
   const hit = pickCatalogHit(
     [song("One Last Kiss", "Utada", "SCIENCE FICTION", "sf")],
