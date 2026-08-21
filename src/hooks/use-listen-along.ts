@@ -158,6 +158,17 @@ async function playSafe(music: MusicKitInstance) {
   await mkSafe(() => music.play());
 }
 
+/** play 已经发出去：在播、在缓冲、在 seek。停住了才要再 play */
+function isPlaybackLive(music: MusicKitInstance) {
+  const s = music.playbackState;
+  return (
+    s === PLAYBACK_STATE.playing ||
+    s === PLAYBACK_STATE.waiting ||
+    s === PLAYBACK_STATE.loading ||
+    s === PLAYBACK_STATE.seeking
+  );
+}
+
 /** 预切要接的下一首：上报的 Playing Next，或队列里当前曲后面那首 */
 function nextPreparedId(music: MusicKitInstance, current: string, upcoming: string[]) {
   if (upcoming[0] && upcoming[0] !== current) return upcoming[0];
@@ -356,28 +367,25 @@ export function useListenAlong(source: {
       if (cancelled) return;
       try {
         if (!songId || state !== "playing") {
-          if (music.playbackState === PLAYBACK_STATE.playing) await mkSafe(() => music.pause());
+          const local = localSongId(music);
+          // 主人这首停是切歌间隙，我们已经在下一首：别把下一首也停掉
+          if (local && local !== songId) return;
+          if (holdUntilMs.current > Date.now()) return;
+          if (isPlaybackLive(music)) await mkSafe(() => music.pause());
           return;
         }
 
         if (readySongId.current === songId) {
-          if (lastHostSongId.current === songId) return;
+          const adopted = lastHostSongId.current === songId;
           lastHostSongId.current = songId;
           alignedSongId.current = songId;
-          // 预切在等这首的结束时刻，切歌信号到了也不出声
+          // 预切还在等这首的结束时刻，先别出声
           if (holdUntilMs.current > Date.now()) return;
-          if (holdUntilMs.current) {
-            holdUntilMs.current = 0;
-            const player = musicRef.current;
-            if (player) player.volume = holdVolume.current;
-          }
           /*
-           * 预切已经按上一首结束时刻 play 过：信号只是认下这首。
-           * 再 play 一次 MusicKit 会从头再来，听感就是切两次。
-           * 锚点已经在歌中间才 seek。微任务里清标记，好让同轮的进度
-           * effect 也能看见，下一拍主人暂停再续播不受影响。
+           * 已经在播就不要再 play —— 再来一次会从头再切。
+           * 还停在 0（hold 没发出去、或切歌间隙把这边停了）必须补一次。
            */
-          if (prearmedSongId.current === songId) {
+          if (prearmedSongId.current === songId && isPlaybackLive(music)) {
             queueMicrotask(() => {
               if (prearmedSongId.current === songId) prearmedSongId.current = null;
             });
@@ -389,14 +397,19 @@ export function useListenAlong(source: {
             }
             return;
           }
+          if (adopted && isPlaybackLive(music)) return;
+          if (holdUntilMs.current) {
+            holdUntilMs.current = 0;
+            music.volume = holdVolume.current;
+          }
           if (shouldSeekAfterTrackChange(hostRef.current.positionMs, RESYNC_THRESHOLD_MS)) {
             await mkSafe(() => music.seekToTime(hostNow() / 1000));
             lagMs.current = 0;
-            if (music.playbackState !== PLAYBACK_STATE.playing) await playSafe(music);
           } else {
             lagMs.current = playbackLagMs(hostNow(), localPositionMs(music));
-            if (music.playbackState !== PLAYBACK_STATE.playing) await playSafe(music);
           }
+          if (!isPlaybackLive(music)) await playSafe(music);
+          setAudible(true);
           return;
         }
 
@@ -424,6 +437,7 @@ export function useListenAlong(source: {
           } else {
             lagMs.current = playbackLagMs(hostNow(), localPositionMs(music));
           }
+          if (!isPlaybackLive(music)) await playSafe(music);
           setAudible(true);
           return;
         }
@@ -580,17 +594,11 @@ export function useListenAlong(source: {
         if (songChanged) {
           alignedSongId.current = songId;
           if (holdUntilMs.current > Date.now()) return;
-          if (holdUntilMs.current) {
-            holdUntilMs.current = 0;
-            const player = musicRef.current;
-            if (player) player.volume = holdVolume.current;
-          }
           if (!shouldSeekAfterTrackChange(positionMs, RESYNC_THRESHOLD_MS)) {
             lagMs.current = playbackLagMs(host, local);
-            // 预切已经出声：切歌锚点不要再 play
-            if (prearmedSongId.current === songId) return;
+            if (prearmedSongId.current === songId && isPlaybackLive(music)) return;
             if (cancelled) return;
-            if (music.playbackState !== PLAYBACK_STATE.playing) {
+            if (!isPlaybackLive(music)) {
               await runExclusive(() => playSafe(music));
             }
             return;
@@ -599,10 +607,9 @@ export function useListenAlong(source: {
         } else if (
           !isHostSeek(local, lagMs.current, host, RESYNC_THRESHOLD_MS, repeatOne ? durationMs : 0)
         ) {
-          // 预切刚出声时 playbackState 往往还不是 playing，这里再 play 会从头再来
-          if (prearmedSongId.current === songId) return;
+          if (prearmedSongId.current === songId && isPlaybackLive(music)) return;
           if (cancelled) return;
-          if (music.playbackState !== PLAYBACK_STATE.playing) {
+          if (!isPlaybackLive(music)) {
             await runExclusive(() => playSafe(music));
           }
           return;
@@ -763,10 +770,16 @@ export function useListenAlong(source: {
             holdTimer.current = null;
             void runExclusive(async () => {
               if (holdUntilMs.current === 0) return;
-              if (hostRef.current.state !== "playing") return;
+              const hostSong = songIdRef.current;
+              const next = prearmedSongId.current;
+              /*
+               * 主人还在播，或已经切到我们预切的那首：到点出声。
+               * 他还停在上一首且暂停 —— 是真暂停，别替他开下一首。
+               */
+              if (hostRef.current.state !== "playing" && hostSong !== next) return;
               holdUntilMs.current = 0;
               player.volume = holdVolume.current;
-              if (player.playbackState !== PLAYBACK_STATE.playing) await playSafe(player);
+              if (!isPlaybackLive(player)) await playSafe(player);
               setAudible(true);
             });
           }, wait);
