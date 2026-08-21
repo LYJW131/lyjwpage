@@ -185,11 +185,14 @@ function QuotaProviderMark({
 }
 
 function ModelProviderIcon({ model }: { model: string }) {
-  const mark = model.toLowerCase().startsWith("claude")
-    ? <AnthropicIcon size={16} />
-    : /^(gpt|codex|chatgpt|o\d)/i.test(model)
-      ? <OpenAIIcon size={16} />
-      : null;
+  const name = model.toLowerCase();
+  const mark = name.startsWith("claude") ? (
+    <AnthropicIcon size={16} />
+  ) : name.startsWith("grok") ? (
+    <GrokIcon size={16} />
+  ) : /^(gpt|codex|chatgpt|o\d)/.test(name) ? (
+    <OpenAIIcon size={16} />
+  ) : null;
   if (!mark) return null;
   return (
     <span className="flex size-6 shrink-0 items-center justify-center text-foreground" aria-hidden>
