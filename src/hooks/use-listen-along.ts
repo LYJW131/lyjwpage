@@ -248,6 +248,8 @@ export function useListenAlong(source: {
   const holdUntilMs = useRef(0);
   const holdVolume = useRef(1);
   const holdTimer = useRef<number | null>(null);
+  /** 已经按这首结束时刻预切过去的下一首。切歌信号到了只认 id，不要再 play */
+  const prearmedSongId = useRef<string | null>(null);
   const upcomingRef = useRef(upcomingSongIds);
   useEffect(() => {
     upcomingRef.current = upcomingSongIds;
@@ -298,6 +300,7 @@ export function useListenAlong(source: {
     alignedSongId.current = null;
     lagMs.current = 0;
     holdUntilMs.current = 0;
+    prearmedSongId.current = null;
     if (holdTimer.current != null) {
       window.clearTimeout(holdTimer.current);
       holdTimer.current = null;
@@ -368,6 +371,24 @@ export function useListenAlong(source: {
             const player = musicRef.current;
             if (player) player.volume = holdVolume.current;
           }
+          /*
+           * 预切已经按上一首结束时刻 play 过：信号只是认下这首。
+           * 再 play 一次 MusicKit 会从头再来，听感就是切两次。
+           * 锚点已经在歌中间才 seek。微任务里清标记，好让同轮的进度
+           * effect 也能看见，下一拍主人暂停再续播不受影响。
+           */
+          if (prearmedSongId.current === songId) {
+            queueMicrotask(() => {
+              if (prearmedSongId.current === songId) prearmedSongId.current = null;
+            });
+            if (shouldSeekAfterTrackChange(hostRef.current.positionMs, RESYNC_THRESHOLD_MS)) {
+              await mkSafe(() => music.seekToTime(hostNow() / 1000));
+              lagMs.current = 0;
+            } else {
+              lagMs.current = playbackLagMs(hostNow(), localPositionMs(music));
+            }
+            return;
+          }
           if (shouldSeekAfterTrackChange(hostRef.current.positionMs, RESYNC_THRESHOLD_MS)) {
             await mkSafe(() => music.seekToTime(hostNow() / 1000));
             lagMs.current = 0;
@@ -426,6 +447,9 @@ export function useListenAlong(source: {
 
         const previousVolume = joining ? mute(music) : music.volume;
         try {
+          if (prearmedSongId.current && prearmedSongId.current !== songId) {
+            prearmedSongId.current = null;
+          }
           if (queuedSongId.current !== songId) {
             queuedSongId.current = songId;
             readySongId.current = null;
@@ -493,6 +517,7 @@ export function useListenAlong(source: {
         lastHostSongId.current = null;
         alignedSongId.current = null;
         lagMs.current = 0;
+        prearmedSongId.current = null;
         setAudible(false);
         setError(describe(caught));
         setStatus("error");
@@ -562,6 +587,8 @@ export function useListenAlong(source: {
           }
           if (!shouldSeekAfterTrackChange(positionMs, RESYNC_THRESHOLD_MS)) {
             lagMs.current = playbackLagMs(host, local);
+            // 预切已经出声：切歌锚点不要再 play
+            if (prearmedSongId.current === songId) return;
             if (cancelled) return;
             if (music.playbackState !== PLAYBACK_STATE.playing) {
               await runExclusive(() => playSafe(music));
@@ -572,6 +599,8 @@ export function useListenAlong(source: {
         } else if (
           !isHostSeek(local, lagMs.current, host, RESYNC_THRESHOLD_MS, repeatOne ? durationMs : 0)
         ) {
+          // 预切刚出声时 playbackState 往往还不是 playing，这里再 play 会从头再来
+          if (prearmedSongId.current === songId) return;
           if (cancelled) return;
           if (music.playbackState !== PLAYBACK_STATE.playing) {
             await runExclusive(() => playSafe(music));
@@ -716,6 +745,7 @@ export function useListenAlong(source: {
         queuedSongId.current = next;
         readySongId.current = next;
         alignedSongId.current = next;
+        prearmedSongId.current = next;
         lagMs.current = 0;
         holdVolume.current = base;
         holdUntilMs.current = endsAt;
@@ -745,6 +775,7 @@ export function useListenAlong(source: {
           queuedSongId.current = null;
           readySongId.current = null;
           alignedSongId.current = null;
+          prearmedSongId.current = null;
           player.volume = base;
           switched = false;
         }
