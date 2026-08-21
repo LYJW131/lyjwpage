@@ -1,0 +1,48 @@
+# Vercel 每次推送都会跑一遍 `next build`，站点能不能构建、类型过不过，那边已经管了。
+# 这里只跑 Vercel 覆盖不到的三件事：
+#   1. eslint —— Next 16 的 build 不再顺带 lint
+#   2. reporters/ 和 workers/ 的类型 —— 它们不进站点构建，跑在 NAS 和 Cloudflare 上
+#   3. src/lib 下的单测
+# 所以这里不跑 `next build`：多花几分钟，换不到新信号。
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+
+permissions:
+  contents: read
+
+# 同一分支连推几次，只留最后一次
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NEXT_TELEMETRY_DISABLED: "1"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # 不写版本：读 package.json 的 packageManager 字段
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v5
+        with:
+          # `pnpm test` 靠 --experimental-strip-types 直接跑 .mts，要 ≥22.6
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm lint
+
+      # 根包的 typecheck 会先 `next typegen`：next-env.d.ts 和 .next/types
+      # 都不进版本库，全新克隆里得先生成出来 tsc 才有得看
+      - run: pnpm -r --include-workspace-root typecheck
+
+      - run: pnpm test
