@@ -134,15 +134,6 @@ export function indexYearMix(
   return byOffset;
 }
 
-export function modelsOnDay(
-  payload: { models: string[]; mix: number[][] },
-  offset: number,
-): YearModelShare[] {
-  return indexYearMix(payload.models, payload.mix).get(offset) ?? [];
-}
-
-export { formatDayHeading } from "./github-chart-compact.ts";
-
 export function formatTokenLabel(date: string, tokens: number): string {
   const when = formatDayHeading(date);
   if (tokens <= 0) return `No tokens on ${when}.`;

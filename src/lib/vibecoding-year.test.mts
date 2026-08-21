@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { formatDayHeading } from "./github-chart-compact.ts";
 import {
   YEAR_DAYS,
   addDays,
   compactTokens,
-  formatDayHeading,
   formatTokenLabel,
-  modelsOnDay,
+  indexYearMix,
   normalizeVibeCodingYear,
   tokenScores,
 } from "./vibecoding-year.ts";
@@ -54,12 +54,13 @@ test("mix 是模型表加稀疏 offset 对，每天最多五名", () => {
     }),
   );
   assert.ok(parsed);
-  assert.deepEqual(modelsOnDay(parsed, 2), [
+  const byOffset = indexYearMix(parsed.models, parsed.mix);
+  assert.deepEqual(byOffset.get(2), [
     { model: "claude-opus-5", tokens: 80 },
     { model: "gpt-5.6-sol", tokens: 20 },
   ]);
-  assert.deepEqual(modelsOnDay(parsed, 3), [{ model: "claude-opus-5", tokens: 50 }]);
-  assert.deepEqual(modelsOnDay(parsed, 0), []);
+  assert.deepEqual(byOffset.get(3), [{ model: "claude-opus-5", tokens: 50 }]);
+  assert.equal(byOffset.get(0), undefined);
 });
 
 test("每天超过五名、offset 越界、拆分超过日合计，整份不收", () => {

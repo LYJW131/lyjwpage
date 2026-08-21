@@ -150,11 +150,25 @@ export function HeatmapTooltip({
       window.innerWidth - width - pad,
     );
     const above = anchor.top - height - gap;
-    const place = above >= pad ? "above" : "below";
+    const place: "above" | "below" = above >= pad ? "above" : "below";
     const top = place === "above" ? above : anchor.top + anchor.height + gap;
     const diamond = Math.min(Math.max(10, center - left), width - 10);
-    setPos({ left, top, diamond, place });
-  }, [anchor.height, anchor.left, anchor.top, anchor.width, children, date, unit, value]);
+    // 位置没动就保住引用，别为一次空跑多渲染一轮
+    setPos((prev) =>
+      prev &&
+      prev.left === left &&
+      prev.top === top &&
+      prev.diamond === diamond &&
+      prev.place === place
+        ? prev
+        : { left, top, diamond, place },
+    );
+    /*
+     * 依赖里不放 children：它每次父渲染都是新对象，放进来等于没有依赖数组。
+     * 内容变化带来的尺寸变化由 date / unit / value 兜住 —— children 是按同一个
+     * date 派生的模型明细，date 不变内容就不变。
+     */
+  }, [anchor.height, anchor.left, anchor.top, anchor.width, date, unit, value]);
 
   return createPortal(
     <div

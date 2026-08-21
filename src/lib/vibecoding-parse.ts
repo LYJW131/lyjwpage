@@ -39,7 +39,7 @@ export type ParsedVibeCodingUsage = {
     limits: VibeCodingLimit[];
     limitsError: string | null;
   }>;
-  totals: Omit<VibeCodingTotals, "sessionCount"> & { sessionCount?: number };
+  totals: VibeCodingTotals;
   topModels: Array<{ model: string; tokens: number }>;
   collectedAt: string;
 };

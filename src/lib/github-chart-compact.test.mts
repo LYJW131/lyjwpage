@@ -6,7 +6,6 @@ import {
   formatContributionLabel,
   groupWeeks,
   monthLabels,
-  scorePaths,
   weekdayOf,
 } from "./github-chart-compact.ts";
 
@@ -42,24 +41,6 @@ test("53 周画布对上从前的 663×104", () => {
 test("weekday 按 UTC 日历算，周日是 0", () => {
   assert.equal(weekdayOf("2025-08-17"), 0);
   assert.equal(weekdayOf("2026-08-18"), 2);
-});
-
-test("同色格子合成一条 path，空格并进同一段 d", () => {
-  const weeks = [
-    [{ date: "2025-08-10", weekday: 0, count: 1, score: 1 as const, label: "" }],
-    [{ date: "2025-08-17", weekday: 0, count: 0, score: 0 as const, label: "" }],
-    [{ date: "2025-08-24", weekday: 0, count: 0, score: 0 as const, label: "" }],
-    [{ date: "2025-08-31", weekday: 0, count: 64, score: 3 as const, label: "" }],
-  ];
-  const paths = scorePaths(weeks);
-  assert.equal(paths.length, 3);
-  assert.deepEqual(
-    paths.map((path) => path.score),
-    [0, 1, 3],
-  );
-  const empty = paths.find((path) => path.score === 0);
-  assert.equal(empty?.fill, "#EEEEEE");
-  assert.equal(empty?.d, "M39 20h10v10h-10zM51 20h10v10h-10z");
 });
 
 test("hover 文案和资料页同一句", () => {

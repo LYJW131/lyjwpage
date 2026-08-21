@@ -2,6 +2,7 @@
 
 import AnthropicIcon from "@lobehub/icons/es/Anthropic/components/Mono";
 import AntigravityColor from "@lobehub/icons/es/Antigravity/components/Color";
+import CursorIcon from "@lobehub/icons/es/Cursor/components/Mono";
 import GrokIcon from "@lobehub/icons/es/Grok/components/Mono";
 import OpenAIIcon from "@lobehub/icons/es/OpenAI/components/Mono";
 import NumberFlow, { NumberFlowGroup } from "@number-flow/react";
@@ -49,10 +50,20 @@ function compactAgents(agents: VibeCodingAgent[]) {
   return agents.filter((agent) => !featured.has(agent.id));
 }
 
-/** 一行限额条要展示的那一扇窗口：几条里取用量最高的，并列时留先出现的。 */
-function busiestLimit(limits: VibeCodingLimit[]) {
-  if (limits.length === 0) return null;
-  return limits.reduce((best, row) => (row.usedPercent > best.usedPercent ? row : best));
+/**
+ * 一行限额条要展示的那一扇窗口：几条里取用量最高的，并列时留先出现的。
+ *
+ * 先剔掉专项窗口 —— Spark / Fable 那类不代表这个 agent 的整体余量，全量
+ * 面板的两个槽也是这么挡的（isExtraWindow），两条渲染路径得给同一个答案。
+ * 已经过点的窗口按 0 参与：刚重置的那扇不该压过另一扇还有 60% 的。
+ * `now` 为 0（还没挂载）时不判过期，挂载后的重渲染会自己纠正。
+ */
+function busiestLimit(limits: VibeCodingLimit[], now: number) {
+  const candidates = limits.filter((limit) => !isExtraWindow(limit));
+  if (candidates.length === 0) return null;
+  const effective = (limit: VibeCodingLimit) =>
+    now && limit.resetsAt != null && limit.resetsAt * 1000 <= now ? 0 : limit.usedPercent;
+  return candidates.reduce((best, row) => (effective(row) > effective(best) ? row : best));
 }
 
 const REFRESH_MS = 2 * 60_000;
@@ -102,53 +113,14 @@ const TOKEN_SEGMENTS = [
   },
 ] as const;
 
-function CursorProviderMark({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 466.73 533.32" className={className} aria-hidden>
-      <path
-        fill="#72716d"
-        d="M233.37,266.66l231.16,133.46c-1.42,2.46-3.48,4.56-6.03,6.03l-216.06,124.74c-5.61,3.24-12.53,3.24-18.14,0L8.24,406.15c-2.55-1.47-4.61-3.57-6.03-6.03l231.16-133.46h0Z"
-      />
-      <path
-        fill="#55544f"
-        d="M233.37,0v266.66L2.21,400.12c-1.42-2.46-2.21-5.3-2.21-8.24v-250.44c0-5.89,3.14-11.32,8.24-14.27L224.29,2.43c2.81-1.62,5.94-2.43,9.07-2.43h.01Z"
-      />
-      <path
-        fill="#43413c"
-        d="M464.52,133.2c-1.42-2.46-3.48-4.56-6.03-6.03L242.43,2.43c-2.8-1.62-5.93-2.43-9.06-2.43v266.66l231.16,133.46c1.42-2.46,2.21-5.3,2.21-8.24v-250.44c0-2.95-.78-5.77-2.21-8.24h-.01Z"
-      />
-      <path
-        fill="#d6d5d2"
-        d="M448.35,142.54c1.31,2.26,1.49,5.16,0,7.74l-209.83,363.42c-1.41,2.46-5.16,1.45-5.16-1.38v-239.48c0-1.91-.51-3.75-1.44-5.36l216.42-124.95h.01Z"
-      />
-      <path
-        fill="#fff"
-        d="M448.35,142.54l-216.42,124.95c-.92-1.6-2.26-2.96-3.92-3.92L20.62,143.83c-2.46-1.41-1.45-5.16,1.38-5.16h419.65c2.98,0,5.4,1.61,6.7,3.87Z"
-      />
-    </svg>
-  );
-}
-
-function OpenCodeProviderMark({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 240 300" fill="none" className={className} aria-hidden>
-      <path d="M180 240H60V120H180V240Z" className="fill-[#CFCECD] dark:fill-[#4B4646]" />
-      <path
-        d="M180 60H60V240H180V60ZM240 300H0V0H240V300Z"
-        className="fill-[#211E1E] dark:fill-[#F1ECEC]"
-      />
-    </svg>
-  );
-}
-
 /**
- * 附加 provider 的品牌图标，按上报器给的 `icon` 键取 —— 不是按 `id`：
- * CodexBar 那个 provider 叫 `opencodego`，牌子叫 OpenCode。
+ * 紧凑行的品牌图标，按上报器给的 `icon` 键取 —— 不是按 `id`：id 是
+ * TokenTracker 的来源名，这个是牌子，两者不一定一致。
  *
- * 认不出来的键退回首字母。上报器新配一个 provider 时页面上立刻就该有一行，
+ * 认不出来的键退回首字母。上报器新配一个来源时页面上立刻就该有一行，
  * 图标是后补的事，不该因为少一个矢量就让那行的限额也跟着看不见。
  */
-function QuotaProviderMark({
+function BrandMark({
   icon,
   label,
   className,
@@ -159,9 +131,7 @@ function QuotaProviderMark({
 }) {
   switch (icon) {
     case "cursor":
-      return <CursorProviderMark className={className} />;
-    case "opencode":
-      return <OpenCodeProviderMark className={className} />;
+      return <CursorIcon size={20} className={className} />;
     case "antigravity":
       return <AntigravityColor size={20} className={className} />;
     // 这个牌子只有黑白两色，Mono 就是它的本来面目，不是退而求其次
@@ -421,17 +391,25 @@ function pickSlotLimit(limits: VibeCodingLimit[], slot: "session" | "weekly") {
 
 type FeaturedLimitRow =
   | { kind: "limit"; key: string; title: string; limit: VibeCodingLimit }
-  | { kind: "unlimited"; key: string; title: string };
+  | { kind: "unlimited"; key: string; title: string }
+  | { kind: "unavailable"; key: string; title: string; reason: string };
 
 /**
- * 全量面板只认两个槽：5-hour limit 和 Weekly。有数据就画那一扇窗口，没有就 Unlimited。
- * Spark / Fable 专项不进这两行。
+ * 全量面板只认两个槽：5-hour limit 和 Weekly。有数据就画那一扇窗口，没有就
+ * Unlimited。Spark / Fable 专项不进这两行。
+ *
+ * 例外是 `limitsError`：契约里空 limits 有两种含义（types.ts），带错误说明的
+ * 那种是「配了但取不到」—— 凭据失效时把缺的槽画成满格绿条 Unlimited 是在
+ * 说反话，这种槽要如实写 Unavailable。
  */
 function featuredLimitRows(agent: VibeCodingAgent): FeaturedLimitRow[] {
   return FEATURED_LIMITS.map(({ slot, title }) => {
     const limit = pickSlotLimit(agent.limits, slot);
-    if (!limit) return { kind: "unlimited" as const, key: slot, title };
-    return { kind: "limit" as const, key: slot, title, limit };
+    if (limit) return { kind: "limit" as const, key: slot, title, limit };
+    if (agent.limitsError != null) {
+      return { kind: "unavailable" as const, key: slot, title, reason: agent.limitsError };
+    }
+    return { kind: "unlimited" as const, key: slot, title };
   });
 }
 
@@ -489,20 +467,20 @@ function nextTickDelay(remain: number) {
 }
 
 /**
- * 附加 provider 的重置文案。
+ * 紧凑行的重置文案。
  *
  * 全量面板的窗口写着 Weekly，报「Resets Mon 11:00 AM」不会误会是哪一周。
- * 这里没有窗口名：Cursor 可能是月、Antigravity 是周、Grok 只给一个时刻，
- * 再用星期几就会歧义，一律说还剩几天 / 几小时。
+ * 这里没有窗口名：Cursor 可能是月、Antigravity 是周，用星期几就会歧义，
+ * 一律说还剩几天 / 几小时。
  */
-type QuotaResetDisplay =
+type CompactResetDisplay =
   | { kind: "relative"; hours: number; minutes: number }
   | { kind: "days"; days: number; hours: number };
 
-function formatQuotaReset(
+function formatCompactReset(
   resetsAt: number | null,
   referenceTime: number,
-): QuotaResetDisplay | null {
+): CompactResetDisplay | null {
   if (resetsAt == null) return null;
   const remain = resetsAt * 1000 - referenceTime;
   if (remain <= 0) return null;
@@ -522,7 +500,7 @@ function formatQuotaReset(
 }
 
 /** 超过一天时按小时刷新，一天以内按分钟。 */
-function nextQuotaTickDelay(remain: number) {
+function nextCompactTickDelay(remain: number) {
   if (remain > 86_400_000) return remain % 3_600_000 || 3_600_000;
   if (remain <= 60_000) return Math.max(0, remain);
   return remain % 60_000 || 60_000;
@@ -653,6 +631,22 @@ function LimitUnlimited({ title }: { title: string }) {
   );
 }
 
+/** 「配了但取不到」的槽。和 Unlimited 分开画：取不到不等于没限制。 */
+function LimitUnavailable({ title, reason }: { title: string; reason: string }) {
+  return (
+    <div title={reason}>
+      <div className="flex h-5 items-center justify-between gap-2">
+        <span className="truncate text-xs">{title}</span>
+        <span className="flex shrink-0 items-baseline gap-2">
+          <span className="text-xs text-muted-foreground">Unavailable</span>
+          <span className="label-mono text-muted-foreground">—</span>
+        </span>
+      </div>
+      <div className="mt-1.5 h-1.5 bg-muted" />
+    </div>
+  );
+}
+
 function FeaturedMark({ id, active }: { id: string; active: boolean }) {
   if (id === "claude") return <ClaudeSpinner active={active} />;
   if (id === "grok") {
@@ -752,6 +746,8 @@ function AgentPanel({
         {rows.map((row) =>
           row.kind === "limit" ? (
             <LimitMeter key={row.key} limit={row.limit} title={row.title} />
+          ) : row.kind === "unavailable" ? (
+            <LimitUnavailable key={row.key} title={row.title} reason={row.reason} />
           ) : (
             <LimitUnlimited key={row.key} title={row.title} />
           ),
@@ -761,20 +757,20 @@ function AgentPanel({
   );
 }
 
-function QuotaProviderRow({ agent }: { agent: VibeCodingAgent }) {
-  const limit = busiestLimit(agent.limits);
-  const usedPercentValue = limit?.usedPercent ?? null;
-  const resetsAt = limit?.resetsAt ?? null;
+function CompactAgentRow({ agent }: { agent: VibeCodingAgent }) {
   const mountedAt = useMountedAt();
   const [ticked, setTicked] = useState(0);
   const now = ticked || mountedAt;
+  const limit = busiestLimit(agent.limits, now);
+  const usedPercentValue = limit?.usedPercent ?? null;
+  const resetsAt = limit?.resetsAt ?? null;
   useEffect(() => {
     if (!now || resetsAt == null) return;
     const target = resetsAt * 1000;
     if (now >= target) return;
     const timer = window.setTimeout(
       () => setTicked(Date.now()),
-      nextQuotaTickDelay(target - Date.now()) + 500,
+      nextCompactTickDelay(target - Date.now()) + 500,
     );
     return () => window.clearTimeout(timer);
   }, [resetsAt, now]);
@@ -783,18 +779,14 @@ function QuotaProviderRow({ agent }: { agent: VibeCodingAgent }) {
   const usedPercent =
     usedPercentValue == null ? null : expired ? 0 : usedPercentValue;
   const color = usedPercent == null ? undefined : limitColor(usedPercent);
-  const reset = now ? formatQuotaReset(resetsAt, now) : null;
+  const reset = now ? formatCompactReset(resetsAt, now) : null;
 
   return (
     <div className="min-w-0 py-3" title={agent.limitsError ?? undefined}>
       <div className="flex flex-col gap-1 md:h-5 md:flex-row md:items-center md:justify-between md:gap-2">
         <div className="flex h-5 min-w-0 items-center gap-2">
           <span className="flex size-5 shrink-0 items-center justify-center" aria-hidden>
-            <QuotaProviderMark
-              icon={agent.icon}
-              label={agent.label}
-              className="size-5"
-            />
+            <BrandMark icon={agent.icon} label={agent.label} className="size-5" />
           </span>
           <span className="truncate text-sm font-medium">{agentDisplayName(agent)}</span>
         </div>
@@ -872,11 +864,12 @@ function QuotaProviderRow({ agent }: { agent: VibeCodingAgent }) {
   );
 }
 
-function QuotaProviders({ agents }: { agents: VibeCodingAgent[] }) {
+function CompactAgents({ agents }: { agents: VibeCodingAgent[] }) {
   if (agents.length === 0) return null;
-  const sortedProviders = [...agents].sort((left, right) => {
-    const leftUsed = busiestLimit(left.limits)?.usedPercent ?? -1;
-    const rightUsed = busiestLimit(right.limits)?.usedPercent ?? -1;
+  // 排序不看过期（now 传 0）：这里只定行序，行内画什么由行自己判
+  const sortedAgents = [...agents].sort((left, right) => {
+    const leftUsed = busiestLimit(left.limits, 0)?.usedPercent ?? -1;
+    const rightUsed = busiestLimit(right.limits, 0)?.usedPercent ?? -1;
     return rightUsed - leftUsed;
   });
   /*
@@ -887,8 +880,8 @@ function QuotaProviders({ agents }: { agents: VibeCodingAgent[] }) {
   return (
     <div className="border-t border-line px-4 md:px-5">
       <div className="grid divide-y divide-line">
-        {sortedProviders.map((agent) => (
-          <QuotaProviderRow key={agent.id} agent={agent} />
+        {sortedAgents.map((agent) => (
+          <CompactAgentRow key={agent.id} agent={agent} />
         ))}
       </div>
     </div>
@@ -953,7 +946,7 @@ export function VibeCodingCard({
               />
             ))}
           </div>
-          <QuotaProviders agents={compactAgents(data.agents)} />
+          <CompactAgents agents={compactAgents(data.agents)} />
         </>
       ) : (
         <>

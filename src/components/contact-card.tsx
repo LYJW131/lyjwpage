@@ -26,7 +26,7 @@ export function ContactCard({
   chartFallback: StatusResponse<GithubChartPayload>;
   yearFallback: StatusResponse<VibeCodingYearPayload>;
 }) {
-  const mode = useSyncExternalStore(subscribeHeatmap, readHeatmapMode, () => "coding");
+  const mode = useSyncExternalStore(subscribeHeatmap, readHeatmapMode, () => "tokens");
 
   return (
     <Card id="contact" className="h-full">
@@ -73,14 +73,14 @@ export function ContactCard({
             <HeatmapTab
               label="Tokens"
               tab="tokens"
-              pressed={mode === "coding"}
-              onClick={() => writeHeatmapMode("coding")}
+              pressed={mode === "tokens"}
+              onClick={() => writeHeatmapMode("tokens")}
             />
             <HeatmapTab
               label="Commit"
               tab="commit"
-              pressed={mode === "github"}
-              onClick={() => writeHeatmapMode("github")}
+              pressed={mode === "commit"}
+              onClick={() => writeHeatmapMode("commit")}
             />
           </div>
         </div>
