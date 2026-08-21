@@ -25,6 +25,9 @@ import type {
   ReporterPresence,
 } from "./types.ts";
 
+/** 本机 SSE 约 1 Hz。20 分钟窗口要 1200 点，不能再用远端 5 秒一格的 400。 */
+const LOCAL_HISTORY_LIMIT = Math.max(CHARGER_HISTORY_LIMIT, 20 * 60);
+
 const LOCAL_ORIGIN = "http://127.0.0.1:8787";
 /** SSE 约 1 Hz。十几秒没帧才算这条流死了，别跟远端 90 秒窗口混。 */
 const LOCAL_STALE_MS = 15_000;
@@ -41,6 +44,8 @@ const listeners = new Set<() => void>();
 
 let chargerHistory: ChargerSample[] = [];
 let chargerHistorySeeded = false;
+/** 第一条 SSE 起只记 1 Hz 活点，丢掉首屏那份远端 30 秒一格的种子。 */
+let liveStream = false;
 let started = false;
 let chargerSource: EventSource | null = null;
 let powerBankSource: EventSource | null = null;
@@ -64,12 +69,7 @@ function parseDevice(value: unknown): RawChargingDevice | null {
 }
 
 function appendChargerSample(power: number, now: number) {
-  const last = chargerHistory[chargerHistory.length - 1];
-  if (last && now - last.t < 400) {
-    chargerHistory[chargerHistory.length - 1] = { t: now, w: power };
-  } else {
-    chargerHistory = [...chargerHistory, { t: now, w: power }].slice(-CHARGER_HISTORY_LIMIT);
-  }
+  chargerHistory = [...chargerHistory, { t: now, w: power }].slice(-LOCAL_HISTORY_LIMIT);
 }
 
 function chargerFromEvent(event: Record<string, unknown>): ChargerPayload {
@@ -78,6 +78,10 @@ function chargerFromEvent(event: Record<string, unknown>): ChargerPayload {
   const device = parseDevice(event.device);
   const status = device ? normalizeChargingDevice(device) : emptyChargerStatus(bleConnected);
   const connected = bleConnected && status.connected;
+  if (!liveStream) {
+    liveStream = true;
+    chargerHistory = [];
+  }
   appendChargerSample(connected ? status.totalPower : 0, now);
   return {
     ...status,
@@ -157,14 +161,15 @@ function stop() {
   chargerSource = null;
   powerBankSource = null;
   started = false;
+  liveStream = false;
   chargerHistory = [];
   chargerHistorySeeded = false;
   emit(EMPTY);
 }
 
 export function seedLocalChargerHistory(payload: { history: ChargerSample[] } | undefined) {
-  if (chargerHistorySeeded || !payload?.history.length) return;
-  chargerHistory = payload.history.slice(-CHARGER_HISTORY_LIMIT);
+  if (liveStream || chargerHistorySeeded || !payload?.history.length) return;
+  chargerHistory = payload.history.slice(-LOCAL_HISTORY_LIMIT);
   chargerHistorySeeded = true;
 }
 

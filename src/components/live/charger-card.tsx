@@ -191,6 +191,7 @@ export function ChargerCard({
             <div className="min-h-0 flex-1">
               <Sparkline
                 samples={history}
+                bucket={!local}
                 formatValue={(watts) => `${watts.toFixed(1)}W`}
                 className="h-full w-full"
               />
