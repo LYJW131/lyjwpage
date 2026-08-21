@@ -1,7 +1,8 @@
-import { DESKTOP_PATH, LISTENING_PATH, POWERBANK_PATH } from "@/lib/paths";
+import { DESKTOP_PATH, LISTENING_PATH, NOW_LISTENING_PATH, POWERBANK_PATH } from "@/lib/paths";
 import type {
   DesktopPayload,
   ListeningPayload,
+  NowListeningPayload,
   PowerBankPayload,
   StatusResponse,
 } from "@/lib/types";
@@ -35,14 +36,19 @@ import type {
  * - **充电头不进这张表**：功率曲线在客户端增量累加（lib/charger-history），
  *   整份替换会把累加器和缓存拆散。充电宝没有这个问题 —— 它不存历史，推来的
  *   就是整份，直接替换。
- * - **listening/now 也不进**：它的 receivedAt 是「胜出的那个来源」的时刻，
- *   Mac 停了换成 HomePod 时会正当地变小，拿它当代号会把新数据挡在外面。
- *   那条走的又是 expireStatusImmediately，没有上面第 1 条的宽限期问题。
+ * - **listening/now 用 receivedAt**：它是 Mac 和 HomePod 两个接收时刻取的
+ *   最大值（见 pickNowListening），谁胜出都不回落，单调。从前这里写它「是
+ *   胜出来源的时刻、换来源会正当地变小」——那是旧语义，早改成双源取大了。
+ *   必须挡：切歌推送落地之后，晚回来的一次轮询 / 聚焦重取会把上一首的旧
+ *   锚点写回缓存，卡片只是闪一下，跟听却会把它当成「切回上一首」执行一整
+ *   套重排加 seek。暂停宽限期到点的重取不受影响：到期只翻结论、不产生新
+ *   上报，代数相等，而相等时以取回来的为准（见 freshest）。
  * - **Emby 两份没有时刻可用**，先不管。
  */
 const STAMPS: Record<string, (data: never) => number | null> = {
   [DESKTOP_PATH]: (data: DesktopPayload) => data.receivedAt,
   [LISTENING_PATH]: (data: ListeningPayload) => data.pushedAt,
+  [NOW_LISTENING_PATH]: (data: NowListeningPayload) => data.receivedAt,
   [POWERBANK_PATH]: (data: PowerBankPayload) => data.pushedAt,
 };
 
