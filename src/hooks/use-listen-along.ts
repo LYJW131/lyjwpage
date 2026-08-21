@@ -150,7 +150,9 @@ export function useListenAlong(source: {
   /** 这次 setQueue 定下的起播点。加载中 effect 重跑也还用这个，不能改成主人此刻 */
   const intendedStartMs = useRef(0);
   const upcomingRef = useRef(upcomingSongIds);
-  upcomingRef.current = upcomingSongIds;
+  useEffect(() => {
+    upcomingRef.current = upcomingSongIds;
+  }, [upcomingSongIds]);
 
   /*
    * 锚点拆成原始值再进依赖列表。
