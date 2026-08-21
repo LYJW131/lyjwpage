@@ -589,7 +589,11 @@ export function ListeningCard({
    * 按钮 —— 那一刻「你也能听」比「这是 Apple Music」更值得占这个位置。
    * 已经开始跟听之后一直留着，否则主人一停，访客就没地方把它关掉了。
    */
-  const listenAlong = useListenAlong({ track: localTrack, songId: live?.songId ?? null });
+  const listenAlong = useListenAlong({
+    track: localTrack,
+    songId: live?.songId ?? null,
+    upcomingSongIds: live?.upcomingSongIds ?? [],
+  });
   const showListenAlong =
     listenAlong.status !== "unavailable" &&
     (Boolean(localTrack && live?.songId) || listenAlong.status !== "idle");

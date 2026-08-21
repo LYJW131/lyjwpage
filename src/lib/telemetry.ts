@@ -36,6 +36,11 @@ import {
   type PendingEvent,
 } from "@/lib/live-events";
 import { pickNowListening, type NowListeningCandidate, type NowListeningSnapshot } from "@/lib/now-listening";
+import {
+  normalizePlayingQueue,
+  upcomingQueueTracks,
+  type PlayingQueueTrack,
+} from "@/lib/playing-queue";
 import { overlayHashKey } from "@/lib/redis";
 import {
   nextLiveness,
@@ -68,6 +73,8 @@ type TelemetryState = {
   desktopIconAssets: Map<string, string>;
   timezone: TimezoneActivity | null;
   music: LocalNowPlaying | null;
+  /** 当前曲后面两首，只用来搜目录 ID，不进浏览器 */
+  upcomingTracks: PlayingQueueTrack[];
   activityReceivedAt: number;
   timezoneReceivedAt: number;
   activeModules: Set<string>;
@@ -81,12 +88,14 @@ const telemetryState = (globalTelemetry.__lyjwTelemetryState ??= {
   desktopIconAssets: new Map(),
   timezone: null,
   music: null,
+  upcomingTracks: [],
   activityReceivedAt: 0,
   timezoneReceivedAt: 0,
   activeModules: new Set<string>(),
 });
 // 开发态热更新可能复用加字段前的 globalThis 对象。
 telemetryState.desktopIconAssets ??= new Map();
+telemetryState.upcomingTracks ??= [];
 /**
  * 遥测状态的持久化。
  *
@@ -103,6 +112,7 @@ type PersistedTelemetry = {
   desktopIconAssets?: [string, string][];
   timezone: TimezoneActivity | null;
   music: LocalNowPlaying | null;
+  upcomingTracks?: PlayingQueueTrack[];
   activityReceivedAt: number;
   timezoneReceivedAt: number;
   /** 只给下面的 stampOf 用：这份快照对应的那条信封是什么时候收到的 */
@@ -122,6 +132,7 @@ type TelemetryPatch = {
   desktopIconAssets?: [string, string][];
   timezone?: TimezoneActivity | null;
   music?: LocalNowPlaying | null;
+  upcomingTracks?: PlayingQueueTrack[];
 };
 
 async function persistTelemetryState(
@@ -135,6 +146,8 @@ async function persistTelemetryState(
       patch.desktopIconAssets ?? [...telemetryState.desktopIconAssets],
     timezone: "timezone" in patch ? (patch.timezone ?? null) : telemetryState.timezone,
     music: "music" in patch ? (patch.music ?? null) : telemetryState.music,
+    upcomingTracks:
+      "upcomingTracks" in patch ? (patch.upcomingTracks ?? []) : telemetryState.upcomingTracks,
     activityReceivedAt:
       "desktop" in patch || "music" in patch
         ? receivedAt
@@ -148,7 +161,7 @@ async function persistTelemetryState(
   if ("desktop" in patch) fields.push("desktop", "desktopIconAssets", "activityReceivedAt");
   else if ("desktopIconAssets" in patch) fields.push("desktopIconAssets");
   if ("timezone" in patch) fields.push("timezone", "timezoneReceivedAt");
-  if ("music" in patch) fields.push("music", "activityReceivedAt");
+  if ("music" in patch) fields.push("music", "upcomingTracks", "activityReceivedAt");
 
   await mirror.merge(incoming, fields);
 }
@@ -168,6 +181,7 @@ async function syncTelemetryState() {
     telemetryState.desktopIconAssets = new Map();
     telemetryState.timezone = null;
     telemetryState.music = null;
+    telemetryState.upcomingTracks = [];
     telemetryState.activityReceivedAt = 0;
     telemetryState.timezoneReceivedAt = 0;
     telemetryState.activeModules = new Set();
@@ -186,6 +200,7 @@ async function syncTelemetryState() {
   );
   telemetryState.timezone = stored.timezone ?? null;
   telemetryState.music = stored.music ?? null;
+  telemetryState.upcomingTracks = stored.upcomingTracks ?? [];
   telemetryState.activityReceivedAt = stored.activityReceivedAt ?? 0;
   telemetryState.timezoneReceivedAt = stored.timezoneReceivedAt ?? 0;
   telemetryState.activeModules = new Set(stored.activeModules ?? []);
@@ -315,6 +330,10 @@ async function normalizeMusic(
     repeatOne: text(row.repeatOne) === "true" || row.repeatOne === true,
     observedAt: milliseconds(row.observedAt, receivedAt),
   };
+}
+
+function upcomingFromMusicRow(row: Record<string, unknown>, title: string | null) {
+  return upcomingQueueTracks(normalizePlayingQueue(row.queue), title);
 }
 
 /**
@@ -562,10 +581,14 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
     }
 
     if ("appleMusic" in modules) {
+      const musicRow = object(modules.appleMusic);
       const music = await normalizeMusic(modules.appleMusic, receivedAt);
+      const upcomingTracks = musicRow ? upcomingFromMusicRow(musicRow, music?.title ?? null) : [];
       telemetryState.music = music;
+      telemetryState.upcomingTracks = upcomingTracks;
       telemetryState.activityReceivedAt = receivedAt;
       patch.music = music;
+      patch.upcomingTracks = upcomingTracks;
       accepted += 1;
       /**
        * 这一份还要现算：曲目链接和封面要查一次 Apple 目录。整个交给 fanout 和
@@ -576,6 +599,7 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
         listeningEvent(liveness, homePod ?? getHomePodSnapshot(), {
           music,
           receivedAt,
+          upcomingTracks,
         }),
       );
       urgentTags.push(NOW_LISTENING_TAG);
@@ -727,9 +751,13 @@ export async function getTimezonePayload(): Promise<TimezonePayload> {
 async function decorateCandidate(
   music: LocalNowPlaying | null,
   receivedAt: number,
+  upcomingTracks: PlayingQueueTrack[] = [],
 ): Promise<NowListeningCandidate | null> {
   if (!music || music.state === "stopped" || !music.title) return null;
-  const lookup = await resolveTrackLookup(music);
+  const [lookup, ...ahead] = await Promise.all([
+    resolveTrackLookup(music),
+    ...upcomingTracks.map((track) => resolveTrackLookup(track)),
+  ]);
   return {
     /**
      * 封面优先用目录查出来的那张。
@@ -743,6 +771,7 @@ async function decorateCandidate(
     id: lookup.id,
     link: lookup.link || null,
     songId: lookup.songId,
+    upcomingSongIds: ahead.flatMap((hit) => (hit.songId ? [hit.songId] : [])),
   };
 }
 
@@ -755,14 +784,21 @@ async function decorateCandidate(
 /** 工作副本 + 一份 HomePod 快照 → 两个查好链接的候选。谁都不再回 Redis 取 */
 async function snapshotFrom(
   homePodStored: StoredHomePod | null,
-  mac: { music: LocalNowPlaying | null; receivedAt: number } = {
+  mac: {
+    music: LocalNowPlaying | null;
+    receivedAt: number;
+    upcomingTracks?: PlayingQueueTrack[];
+  } = {
     music: telemetryState.music,
     receivedAt: telemetryState.activityReceivedAt,
+    upcomingTracks: telemetryState.upcomingTracks,
   },
 ): Promise<NowListeningSnapshot> {
   const musicEnabled = telemetryState.activeModules.has("appleMusic");
   const [macCandidate, homePod] = await Promise.all([
-    musicEnabled ? decorateCandidate(mac.music, mac.receivedAt) : null,
+    musicEnabled
+      ? decorateCandidate(mac.music, mac.receivedAt, mac.upcomingTracks ?? telemetryState.upcomingTracks)
+      : null,
     homePodStored ? decorateCandidate(homePodStored.music, homePodStored.receivedAt) : null,
   ]);
   return {
@@ -817,7 +853,11 @@ export async function publishPresence() {
 async function listeningEvent(
   liveness: Liveness,
   homePod: Promise<StoredHomePod | null>,
-  mac?: { music: LocalNowPlaying | null; receivedAt: number },
+  mac?: {
+    music: LocalNowPlaying | null;
+    receivedAt: number;
+    upcomingTracks?: PlayingQueueTrack[];
+  },
 ): Promise<LiveEvent> {
   return {
     type: "listening-now",

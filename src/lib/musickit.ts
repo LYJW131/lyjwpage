@@ -51,14 +51,22 @@ export type MusicKitInstance = {
   /** 0–1 */
   volume: number;
   nowPlayingItem: { id?: string } | null;
+  queue?: { items?: Array<{ id?: string }> };
+  /** Web 上有就关掉，免得预排的下一首在主人还没换时自己跳 */
+  autoplayEnabled?: boolean;
   authorize(): Promise<string>;
   unauthorize(): Promise<void>;
   setQueue(options: {
     song?: string;
+    songs?: string[];
     startPlaying?: boolean;
     /** 秒 */
     startTime?: number;
   }): Promise<unknown>;
+  playNext(options: { song?: string }, clear?: boolean): Promise<unknown>;
+  playLater(options: { song?: string }): Promise<unknown>;
+  skipToNextItem(): Promise<void>;
+  changeToMediaAtIndex(index: number): Promise<void>;
   play(): Promise<void>;
   pause(): Promise<void>;
   stop(): Promise<void>;
@@ -229,11 +237,13 @@ export function getMusicKit(): Promise<MusicKitInstance> {
       loadMusicKitScript(),
       fetchDeveloperToken(),
     ]);
-    return MusicKit.configure({
+    const instance = await MusicKit.configure({
       developerToken: developer.token,
       // 这两个字段会出现在访客的 Apple ID 授权弹窗里，得是人看得懂的东西
       app: { name: site.name, build: commit?.short ?? "dev" },
     });
+    if ("autoplayEnabled" in instance) instance.autoplayEnabled = false;
+    return instance;
   })().catch((error: unknown) => {
     // 失败不留缓存，否则第一次网络抖动之后按钮就再也点不动了
     instancePromise = null;
