@@ -56,7 +56,7 @@ export type MusicKitInstance = {
   volume: number;
   nowPlayingItem: { id?: string } | null;
   queue?: { items?: Array<{ id?: string }> };
-  /** Web 上有就关掉，免得预排的下一首在主人还没换时自己跳 */
+  /** 关掉自跳，本首结束由跟听自己 skipToNext，避免和这边抢 */
   autoplayEnabled?: boolean;
   authorize(): Promise<string>;
   unauthorize(): Promise<void>;
