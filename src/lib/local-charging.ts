@@ -9,6 +9,7 @@
  * error 且从未 open 时 close，否则控制台会一直刷。
  */
 
+import { assetUrl } from "./asset-url.ts";
 import {
   emptyChargerStatus,
   emptyPowerBankStatus,
@@ -72,12 +73,21 @@ function appendChargerSample(power: number, now: number) {
   chargerHistory = [...chargerHistory, { t: now, w: power }].slice(-LOCAL_HISTORY_LIMIT);
 }
 
+function localCoverIconUrl(objectKey: string | null | undefined): string | null {
+  if (!objectKey || typeof document === "undefined") return null;
+  const base = document.querySelector<HTMLMetaElement>("meta[name='asset-base-url']")?.content;
+  return base ? assetUrl(base, objectKey) : null;
+}
+
 function chargerFromEvent(event: Record<string, unknown>): ChargerPayload {
   const now = Date.now();
   const bleConnected = event.connected === true;
   const device = parseDevice(event.device);
   const status = device ? normalizeChargingDevice(device) : emptyChargerStatus(bleConnected);
   const connected = bleConnected && status.connected;
+  const cover = status.cover
+    ? { ...status.cover, iconUrl: localCoverIconUrl(status.cover.iconObjectKey) }
+    : null;
   if (!liveStream) {
     liveStream = true;
     chargerHistory = [];
@@ -85,6 +95,7 @@ function chargerFromEvent(event: Record<string, unknown>): ChargerPayload {
   appendChargerSample(connected ? status.totalPower : 0, now);
   return {
     ...status,
+    cover,
     connected,
     history: chargerHistory,
     historyPartial: false,

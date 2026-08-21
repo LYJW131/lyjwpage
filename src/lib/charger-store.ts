@@ -197,6 +197,8 @@ function structuralKey(status: ChargerStatus) {
     status.device.serialNumber,
     status.device.firmwareVersion,
     status.ports.map((port) => [port.id, port.active, port.device]),
+    status.cover?.name ?? null,
+    status.cover?.iconHash ?? null,
   ]);
 }
 

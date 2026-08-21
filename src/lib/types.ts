@@ -233,6 +233,16 @@ export type ChargerStatus = {
     serialNumber: string | null;
     firmwareVersion: string | null;
   };
+  /**
+   * 充电头当前封面。上报器把 Anker 源 JPEG 原样直传到 R2 后带 iconObjectKey。
+   * iconUrl 是读取时按当前部署的交付域现拼的，不入库。
+   */
+  cover: {
+    name: string;
+    iconHash: string | null;
+    iconObjectKey: string | null;
+    iconUrl: string | null;
+  } | null;
   /** 遥测采集时刻，毫秒时间戳 */
   updatedAt: number | null;
 };

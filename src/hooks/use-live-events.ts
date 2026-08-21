@@ -58,6 +58,15 @@ function localizeAssets(event: LiveEvent["type"], payload: unknown): unknown {
         }
       : payload;
   }
+  if (event === "charger") {
+    const charger = payload as ChargerPayload;
+    return charger.cover
+      ? {
+          ...charger,
+          cover: { ...charger.cover, iconUrl: localAssetUrl(charger.cover.iconUrl) },
+        }
+      : payload;
+  }
   if (event === "watching") {
     const watching = payload as WatchingPayload;
     return { ...watching, items: watching.items.map(localWatchingItem) };

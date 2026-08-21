@@ -146,6 +146,7 @@ async function persistTelemetryState(
 
   const fields: (keyof PersistedTelemetry & string)[] = ["telemetryReceivedAt", "activeModules"];
   if ("desktop" in patch) fields.push("desktop", "desktopIconAssets", "activityReceivedAt");
+  else if ("desktopIconAssets" in patch) fields.push("desktopIconAssets");
   if ("timezone" in patch) fields.push("timezone", "timezoneReceivedAt");
   if ("music" in patch) fields.push("music", "activityReceivedAt");
 
@@ -408,6 +409,7 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
 
   let accepted = 0;
   let desktopIconAvailable: boolean | undefined;
+  let chargerCoverIconAvailable: boolean | undefined;
   const patch: TelemetryPatch = {};
 
   /**
@@ -451,7 +453,23 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
       // 只开了充电宝模块时列表里就没有充电头。那不是错误，收下心跳即可。
       if (device) {
         if (!device.updatedAt) throw new Error("chargingDevices 里的充电头缺少 updatedAt");
-        const status = normalizeChargingDevice(device);
+        let status = normalizeChargingDevice(device);
+        if (status.cover?.iconHash && status.cover.iconObjectKey) {
+          rememberDesktopIcon(status.cover.iconHash, status.cover.iconObjectKey);
+        }
+        if (status.cover?.iconHash) {
+          const storedKey = telemetryState.desktopIconAssets.get(status.cover.iconHash) ?? null;
+          if (storedKey) rememberDesktopIcon(status.cover.iconHash, storedKey);
+          status = {
+            ...status,
+            cover: { ...status.cover, iconObjectKey: storedKey },
+          };
+        }
+        chargerCoverIconAvailable =
+          status.cover?.iconHash == null || status.cover.iconObjectKey != null;
+        if (status.cover?.iconHash) {
+          patch.desktopIconAssets = [...telemetryState.desktopIconAssets];
+        }
         // 上面早就发车了，这里只是把它接住
         const landing = prepareStatus(status, receivedAt, await (charger ?? readChargerState()));
         writes.push(landing.commit());
@@ -654,7 +672,7 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
    */
   if (presenceFlipped) await publishPresence();
 
-  return { accepted, heartbeat: true, desktopIconAvailable };
+  return { accepted, heartbeat: true, desktopIconAvailable, chargerCoverIconAvailable };
 }
 
 /**
