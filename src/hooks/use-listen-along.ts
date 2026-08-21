@@ -27,15 +27,16 @@ import type { LocalNowPlaying } from "@/lib/types";
  *
  * 「跟随」具体指四件事，都由锚点变化驱动：
  *   刚点一起听 → 静音加载，出声后 seek 到主人此刻再恢复音量；
- *   正常下一首（已预排）→ 本首走完直接切，从 0 起，不 seek；
+ *   正常下一首（已预排）→ 队列自己接着播，从 0 起，不 seek、不把切歌耗时记进滞后；
  *   主人暂停 / 续播 / 拖进度 → 跟着停、对齐、跟过去。
  * 另外挂一个慢速巡检，兜住访客这侧缓冲卡顿慢慢攒出来的偏差。
  *
- * MusicKit 不 play 就不会去拉 HLS。刚加入必须 play 再 seek；已经在跟的时候
- * 换到预排的下一首，进度两边都从 0 附近走，再 seek 会把开头切掉。
+ * MusicKit 不 play 就不会去拉 HLS。刚加入必须 play 再 seek。预排进队列之后
+ * 打开 autoplay，本首结束由播放器切下一首；再 skipToNext 会每切一次多等一轮，
+ * 延迟还会叠进滞后。
  *
  * 上报器给了 Playing Next 时，服务端会先搜后面两首的目录 ID。这边 playNext
- * 预排进去。本首结束就 skipToNext，不等主人锚点；主人暂停才停。
+ * 预排进去。主人暂停才停。
  */
 
 export type ListenAlongStatus =
@@ -290,7 +291,8 @@ export function useListenAlong(source: {
 
         if (readySongId.current === songId) {
           if (lastHostSongId.current !== songId) {
-            lagMs.current = hostNow() - localPositionMs(music);
+            // 自然切歌两边都从 0 走，切歌耗时不记进滞后，否则每首多叠一轮。
+            lagMs.current = 0;
           }
           lastHostSongId.current = songId;
           return;
@@ -298,12 +300,12 @@ export function useListenAlong(source: {
 
         const localId = localSongId(music);
         if (localId === songId) {
-          // 已经在播这首（本首走完自己切过来的）：不要再 skip / play / seek
+          // 已经在播这首（队列自己切过来的）：不要再 skip / play / seek
           queuedSongId.current = songId;
           readySongId.current = songId;
           hasFollowed.current = true;
           lastHostSongId.current = songId;
-          lagMs.current = hostNow() - localPositionMs(music);
+          lagMs.current = 0;
           return;
         }
 
@@ -335,7 +337,7 @@ export function useListenAlong(source: {
             readySongId.current = songId;
             hasFollowed.current = true;
             lastHostSongId.current = songId;
-            lagMs.current = hostNow() - localPositionMs(music);
+            lagMs.current = 0;
             return;
           }
           if (music.playbackState !== PLAYBACK_STATE.playing) await playSafe(music);
@@ -356,7 +358,7 @@ export function useListenAlong(source: {
             if (cancelled || queuedSongId.current !== songId) return;
             lagMs.current = 0;
           } else {
-            lagMs.current = hostNow() - localPositionMs(music);
+            lagMs.current = 0;
           }
 
           readySongId.current = songId;
@@ -469,11 +471,38 @@ export function useListenAlong(source: {
   }, [music, songId, state, upcomingKey, upcomingSongIds]);
 
   /**
-   * 本首走完直接切预排的下一首。主人那边还没换也先走，他暂停了再停。
-   * 不在这里 play：skipToNext 自己会起播，再 play 会把进行中的 load 掐掉并弹窗。
+   * 预排进队列后让播放器自己接着播。nowPlaying 变了就认下新曲，不要 skipToNext
+   * 再 play —— 那是重新 load，每切一首多一轮延迟。
+   *
+   * autoplay 没动、停在 ended 时才 skipToNext 兜底。
    */
   useEffect(() => {
     if (!music) return;
+    if ("autoplayEnabled" in music) music.autoplayEnabled = true;
+
+    const adopt = () => {
+      const local = localSongId(music);
+      if (!local) return;
+      const host = songIdRef.current;
+      if (local === host) {
+        queuedSongId.current = local;
+        readySongId.current = local;
+        lastHostSongId.current = local;
+        lagMs.current = 0;
+        hasFollowed.current = true;
+        return;
+      }
+      const items = music.queue?.items ?? [];
+      const hostAt = host ? mediaItemIndex(items, host) : -1;
+      const localAt = mediaItemIndex(items, local);
+      if (localAt > 0 && (hostAt < 0 || localAt > hostAt)) {
+        queuedSongId.current = local;
+        readySongId.current = local;
+        lagMs.current = 0;
+      }
+    };
+
+    const onItem = () => adopt();
     const onState = () => {
       if (music.playbackState !== PLAYBACK_STATE.ended) return;
       void runExclusive(async () => {
@@ -481,16 +510,15 @@ export function useListenAlong(source: {
         if (localSongId(music) === songIdRef.current) return;
         if (!hasQueuedNext(music)) return;
         await mkSafe(() => music.skipToNextItem());
-        const next = localSongId(music);
-        if (next) {
-          queuedSongId.current = next;
-          readySongId.current = next;
-          lagMs.current = 0;
-        }
+        adopt();
       });
     };
+    music.addEventListener("nowPlayingItemDidChange", onItem);
     music.addEventListener("playbackStateDidChange", onState);
-    return () => music.removeEventListener("playbackStateDidChange", onState);
+    return () => {
+      music.removeEventListener("nowPlayingItemDidChange", onItem);
+      music.removeEventListener("playbackStateDidChange", onState);
+    };
   }, [music]);
 
   /**

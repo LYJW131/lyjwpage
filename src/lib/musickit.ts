@@ -56,7 +56,7 @@ export type MusicKitInstance = {
   volume: number;
   nowPlayingItem: { id?: string } | null;
   queue?: { items?: Array<{ id?: string }> };
-  /** 关掉自跳，本首结束由跟听自己 skipToNext，避免和这边抢 */
+  /** 队列里有下一首时让它自己接着播。关掉的话本首 ended 再 skipToNext，等于每首重新 load */
   autoplayEnabled?: boolean;
   authorize(): Promise<string>;
   unauthorize(): Promise<void>;
@@ -246,7 +246,7 @@ export function getMusicKit(): Promise<MusicKitInstance> {
       // 这两个字段会出现在访客的 Apple ID 授权弹窗里，得是人看得懂的东西
       app: { name: site.name, build: commit?.short ?? "dev" },
     });
-    if ("autoplayEnabled" in instance) instance.autoplayEnabled = false;
+    if ("autoplayEnabled" in instance) instance.autoplayEnabled = true;
     return instance;
   })().catch((error: unknown) => {
     // 失败不留缓存，否则第一次网络抖动之后按钮就再也点不动了
