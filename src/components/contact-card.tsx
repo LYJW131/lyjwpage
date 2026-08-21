@@ -73,7 +73,7 @@ export function ContactCard({
               onClick={() => setMode("coding")}
             />
             <HeatmapTab
-              label="GitHub"
+              label="Commit"
               pressed={mode === "github"}
               onClick={() => setMode("github")}
             />

@@ -211,8 +211,6 @@ export function WatchingRow({
     LIST_REFRESH_MS,
     {
       fallback,
-      // 列表不会随时间自己变质，服务端刚取的那份就是最新的
-      revalidateOnMount: false,
     },
   );
   const { data: live } = useStatus<NowWatchingPayload>(NOW_WATCHING_PATH, NOW_REFRESH_MS, {

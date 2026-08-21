@@ -562,8 +562,6 @@ export function ListeningCard({
 }) {
   const { data, error, isLoading } = useStatus<ListeningPayload>(LISTENING_PATH, REFRESH_MS, {
     fallback,
-    // 列表不会随时间自己变质，服务端刚取的那份就是最新的
-    revalidateOnMount: false,
   });
   useLiveEvents();
   const { data: live } = useStatus<NowListeningPayload>(NOW_LISTENING_PATH, MUSIC_REFRESH_MS, {
