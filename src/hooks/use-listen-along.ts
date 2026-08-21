@@ -3,11 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
-  captureLagMs,
   followTargetMs,
   isHostSeek,
   needsResync,
-  queueStartMs,
 } from "@/lib/listen-along";
 import {
   getMusicKit,
@@ -28,13 +26,13 @@ import type { LocalNowPlaying } from "@/lib/types";
  * 它连这条路径都碰不到（见 lib/musickit 开头）。
  *
  * 「跟随」具体指四件事，都由锚点变化驱动：
- *   换歌 → 重排队列并从锚点起播；主人暂停 → 跟着暂停；主人续播 → 对齐再放；
- *   主人拖动进度 → 新锚点和本地对不上，就地重新对齐。
+ *   换歌 → 重排队列并起播，出声后再 seek 到主人此刻；主人暂停 → 跟着暂停；
+ *   主人续播 → 对齐再放；主人拖动进度 → 新锚点和本地对不上，就地重新对齐。
  * 另外挂一个慢速巡检，兜住访客这侧缓冲卡顿慢慢攒出来的偏差。
  *
- * 换歌时新曲子要缓冲几秒，主人的进度条已经在走。起播点用锚点（几乎是 0），
- * 不要用 trackPositionMs 那种「此刻」—— 那会把缓冲耗时切掉。出声之后把这段
- * 耗时记成滞后，巡检只追额外落后，不会过一会儿再 seek 跳掉中间一截。
+ * MusicKit 不 play 就不会去拉 HLS，干等 loading 永远等不到。所以还是
+ * startPlaying，等 playbackState === playing，再 seek 对齐。加载那几秒静音，
+ * 避免先听到开头再跳到主人进度。
  *
  * 上报器给了 Playing Next 时，服务端会先搜后面两首的目录 ID。这边 playNext
  * 预排进去，主人换到预排的那首就 changeToMediaAtIndex，不再整队 setQueue。
@@ -60,7 +58,7 @@ export type ListenAlongStatus =
 const RESYNC_THRESHOLD_MS = 5_000;
 /** 巡检间隔。锚点变化是主要的同步时机，这个只兜缓冲卡顿攒出来的偏差，给得很松 */
 const RESYNC_INTERVAL_MS = 20_000;
-/** 换歌后等 MusicKit 真正出声。超时就不再干等，后面的 play / 巡检接着兜 */
+/** 换歌后等真正出声。超时就不再干等，后面的 seek 接着兜 */
 const READY_TIMEOUT_MS = 25_000;
 
 function describe(error: unknown): string {
@@ -73,10 +71,6 @@ function localPositionMs(music: MusicKitInstance): number {
   return Number.isFinite(seconds) ? Math.max(0, seconds * 1000) : 0;
 }
 
-/**
- * setQueue 的 Promise 在队列排好时就 resolve，音频往往还在 loading。
- * 没出声就算「跟好听了」会立刻按主人此刻去 seek，正好把刚要播的开头切掉。
- */
 async function syncUpcomingQueue(music: MusicKitInstance, ids: string[]) {
   if (ids.length === 0) return;
   await music.playNext({ song: ids[0] }, true);
@@ -102,11 +96,36 @@ function waitUntilPlaying(music: MusicKitInstance, cancelled: () => boolean): Pr
       if (cancelled() || music.playbackState === PLAYBACK_STATE.playing) finish();
     };
     const timeout = window.setTimeout(finish, READY_TIMEOUT_MS);
-    // 事件偶发漏掉，隔一会儿再看一眼状态
     const poll = window.setInterval(onState, 250);
     music.addEventListener("playbackStateDidChange", onState);
     onState();
   });
+}
+
+function isPlayInterrupted(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    (error instanceof Error && error.name === "AbortError") ||
+    message.includes("interrupted by a new load request") ||
+    message.includes("interrupted by a call to pause")
+  );
+}
+
+/** play() 还没落地就 seek / 再 play，Chrome 会丢 AbortError，MusicKit 还会弹窗 */
+async function playSafe(music: MusicKitInstance) {
+  try {
+    await music.play();
+  } catch (error) {
+    if (isPlayInterrupted(error)) return;
+    throw error;
+  }
+}
+
+/** 加载和对齐期间把喇叭关掉。MusicKit 的 volume 是 0–1 */
+function mute(music: MusicKitInstance) {
+  const previous = Number.isFinite(music.volume) ? music.volume : 1;
+  music.volume = 0;
+  return previous;
 }
 
 export type ListenAlong = {
@@ -143,36 +162,30 @@ export function useListenAlong(source: {
    * 放 ref 不放 state —— 它只在 effect 和事件里读写，进渲染只会多一轮。
    */
   const queuedSongId = useRef<string | null>(null);
-  /** 这首已经真正出声。加载期间巡检和「同一首」对齐都不得碰它 */
+  /** 这首已经加载完并对过进度。加载期间巡检和「同一首」对齐都不得碰它 */
   const readySongId = useRef<string | null>(null);
-  /** 出声时主人已经超前的毫秒数，巡检从目标里扣掉，见 playbackLagMs */
+  /** 出声时主人已经超前的毫秒数。加载后再对进度，通常是 0 */
   const lagMs = useRef(0);
-  /** 这次 setQueue 定下的起播点。加载中 effect 重跑也还用这个，不能改成主人此刻 */
-  const intendedStartMs = useRef(0);
   const upcomingRef = useRef(upcomingSongIds);
   useEffect(() => {
     upcomingRef.current = upcomingSongIds;
   }, [upcomingSongIds]);
 
-  /*
-   * 锚点拆成原始值再进依赖列表。
-   *
-   * 直接依赖 track 那个对象的话，取数每轮返回的新引用都会让对齐白跑一遍 ——
-   * 而「跑一遍」在这里不是空转：它会在 MusicKit 还在 loading 时补一次 play()。
-   * 拆开之后只有真的换了锚点才重跑。默认值取 stopped，「没有曲目」和「停了」
-   * 在下面本来就是同一条分支。
-   */
   const state = track?.state ?? "stopped";
   const observedAt = track?.observedAt ?? 0;
   const positionMs = track?.positionMs ?? 0;
   const durationMs = track?.durationMs ?? 0;
   const repeatOne = track?.repeatOne ?? false;
+  const hostRef = useRef({ state, observedAt, positionMs, durationMs, repeatOne });
+  useEffect(() => {
+    hostRef.current = { state, observedAt, positionMs, durationMs, repeatOne };
+  }, [state, observedAt, positionMs, durationMs, repeatOne]);
+  const hostNow = () => trackPositionMs(hostRef.current, Date.now());
 
   const stop = useCallback(() => {
     queuedSongId.current = null;
     readySongId.current = null;
     lagMs.current = 0;
-    intendedStartMs.current = 0;
     // 走得到这里就说明配了签发地址（没配的话按钮根本不渲染），不必再判一次
     setStatus("idle");
     /*
@@ -209,7 +222,10 @@ export function useListenAlong(source: {
     })();
   }, []);
 
-  /** 跟着锚点走。这是主要的同步时机：换歌、暂停、续播、拖进度都在这里落地 */
+  /**
+   * 换歌 / 起播。进度上报会不停刷新锚点，不能放进这个 effect 的依赖 ——
+   * 否则等出声的那几秒会被反复取消，永远 play 不起来。
+   */
   useEffect(() => {
     if (!music) return;
 
@@ -217,72 +233,76 @@ export function useListenAlong(source: {
     const isCancelled = () => cancelled;
     void (async () => {
       try {
-        // 主人没在放（暂停、停了、或者这首在目录里搜不到）：跟着停下来待命
         if (!songId || state !== "playing") {
           if (music.playbackState === PLAYBACK_STATE.playing) await music.pause();
           return;
         }
 
-        const hostNow = () =>
-          trackPositionMs(
-            { state, observedAt, positionMs, durationMs, repeatOne },
-            Date.now(),
-          );
+        if (readySongId.current === songId) return;
 
-        // 换歌（或刚点一起听）：预排过的走队列跳转，否则整队重排。
-        if (queuedSongId.current !== songId) {
-          intendedStartMs.current = queueStartMs({
-            changingTrack: queuedSongId.current !== null,
-            positionMs,
-            hostPositionMs: hostNow(),
-          });
-          queuedSongId.current = songId;
-          readySongId.current = null;
-          lagMs.current = 0;
-          const preparedAt = mediaItemIndex(music.queue?.items ?? [], songId);
-          if (preparedAt > 0) {
-            try {
-              await music.changeToMediaAtIndex(preparedAt);
-            } catch {
-              await music.setQueue({
-                song: songId,
-                startPlaying: true,
-                startTime: intendedStartMs.current / 1000,
-              });
+        // 先静音再排队列。MusicKit 要 play 才会拉 HLS，加载和对齐期间不能出声。
+        const previousVolume = mute(music);
+        try {
+          if (queuedSongId.current !== songId) {
+            queuedSongId.current = songId;
+            readySongId.current = null;
+            lagMs.current = 0;
+            const preparedAt = mediaItemIndex(music.queue?.items ?? [], songId);
+            if (preparedAt > 0) {
+              try {
+                await music.changeToMediaAtIndex(preparedAt);
+              } catch {
+                await music.setQueue({ song: songId });
+              }
+            } else if (preparedAt !== 0) {
+              await music.setQueue({ song: songId });
             }
-          } else if (preparedAt !== 0) {
-            await music.setQueue({
-              song: songId,
-              startPlaying: true,
-              startTime: intendedStartMs.current / 1000,
-            });
           }
-        }
-
-        if (cancelled) return;
-
-        // 还没出声：接着等。effect 在缓冲中重跑也走这里，不能按主人此刻去 seek
-        if (readySongId.current !== songId) {
+          if (cancelled || queuedSongId.current !== songId) return;
+          if (music.playbackState !== PLAYBACK_STATE.playing) await playSafe(music);
+          if (cancelled || queuedSongId.current !== songId) return;
           await waitUntilPlaying(music, isCancelled);
           if (cancelled || queuedSongId.current !== songId) return;
-          // MusicKit 偶发不理 startTime，起播点和我们要的差太远就再点一次
-          if (needsResync(localPositionMs(music), intendedStartMs.current, RESYNC_THRESHOLD_MS)) {
-            await music.seekToTime(intendedStartMs.current / 1000);
+          try {
+            await music.seekToTime(hostNow() / 1000);
+          } catch {
+            // seek 失败就停在加载完的位置，总比没声音强
           }
           if (cancelled || queuedSongId.current !== songId) return;
-          if (music.playbackState !== PLAYBACK_STATE.playing) await music.play();
+          if (music.playbackState !== PLAYBACK_STATE.playing) await playSafe(music);
+          if (cancelled || queuedSongId.current !== songId) return;
+          await waitUntilPlaying(music, isCancelled);
           if (cancelled || queuedSongId.current !== songId) return;
           readySongId.current = songId;
-          lagMs.current = captureLagMs(
-            hostNow(),
-            localPositionMs(music),
-            intendedStartMs.current,
-            RESYNC_THRESHOLD_MS,
-          );
+          lagMs.current = 0;
+          music.volume = previousVolume;
           void syncUpcomingQueue(music, upcomingRef.current).catch(() => {});
-          return;
+        } finally {
+          if (music.volume === 0) music.volume = previousVolume;
         }
+      } catch (caught) {
+        if (cancelled) return;
+        queuedSongId.current = null;
+        readySongId.current = null;
+        lagMs.current = 0;
+        setError(describe(caught));
+        setStatus("error");
+      }
+    })();
 
+    return () => {
+      cancelled = true;
+    };
+  }, [music, songId, state]);
+
+  /** 已经在跟同一首：主人拖进度才 seek。加载中不管，交给上面那个 effect */
+  useEffect(() => {
+    if (!music || !songId || state !== "playing") return;
+    if (readySongId.current !== songId) return;
+
+    let cancelled = false;
+    void (async () => {
+      try {
         const host = hostNow();
         const local = localPositionMs(music);
         if (isHostSeek(local, lagMs.current, host, RESYNC_THRESHOLD_MS)) {
@@ -290,20 +310,9 @@ export function useListenAlong(source: {
           await music.seekToTime(host / 1000);
         }
         if (cancelled) return;
-        if (music.playbackState !== PLAYBACK_STATE.playing) await music.play();
-      } catch (caught) {
-        if (cancelled) return;
-        /*
-         * 最常见的一种：这首在访客所在区域的目录里没有。songId 是按站点的
-         * storefront 解出来的，各地授权范围不一样，换个国家就可能查无此曲。
-         * 队列标记要清掉，否则主人换回这首时会被当成「已经排好了」而不再重试。
-         */
-        queuedSongId.current = null;
-        readySongId.current = null;
-        lagMs.current = 0;
-        intendedStartMs.current = 0;
-        setError(describe(caught));
-        setStatus("error");
+        if (music.playbackState !== PLAYBACK_STATE.playing) await playSafe(music);
+      } catch {
+        // 巡检会再兜一次
       }
     })();
 

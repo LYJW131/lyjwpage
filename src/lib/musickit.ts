@@ -39,6 +39,8 @@ export const PLAYBACK_STATE = {
   stopped: 4,
   ended: 5,
   seeking: 6,
+  waiting: 8,
+  stalled: 9,
 } as const;
 
 /** 用到的那部分 MusicKit 实例接口。Apple 没发布类型包，按官方文档手写 */
@@ -48,6 +50,8 @@ export type MusicKitInstance = {
   playbackState: number;
   /** 播放进度，**秒**（站点内部一律毫秒，边界在 use-listen-along 里换算） */
   currentPlaybackTime: number;
+  /** 当前曲时长，秒。还没加载完时可能是 0 */
+  currentPlaybackDuration?: number;
   /** 0–1 */
   volume: number;
   nowPlayingItem: { id?: string } | null;
