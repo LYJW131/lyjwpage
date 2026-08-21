@@ -7,21 +7,6 @@
  */
 
 /**
- * 排进队列时该从哪一秒起。
- *
- * 刚点「一起听」要对到主人此刻，否则半首歌才跟上会莫名其妙。
- * 已经在跟、只是换了曲子：用锚点上的 positionMs（换歌那一下几乎是 0），
- * **不要**加上缓冲期间墙上的钟又走掉的那一段。
- */
-export function queueStartMs(input: {
-  changingTrack: boolean;
-  positionMs: number;
-  hostPositionMs: number;
-}): number {
-  return Math.max(0, input.changingTrack ? input.positionMs : input.hostPositionMs);
-}
-
-/**
  * 新曲目真正出声时，主人已经超前了多少。
  *
  * 这段滞后是加载花掉的时间，不是缓冲卡顿。认下来之后巡检只追「又落后了
@@ -30,22 +15,6 @@ export function queueStartMs(input: {
  */
 export function playbackLagMs(hostMs: number, localMs: number): number {
   return Math.max(0, hostMs - localMs);
-}
-
-/**
- * 出声之后认一笔滞后。
- *
- * seek 刚下完时 currentPlaybackTime 可能还是旧值，拿它算会把滞后估飞。
- * 本地进度还没落到起播点附近时，改用我们定下的那个起播点。
- */
-export function captureLagMs(
-  hostMs: number,
-  localMs: number,
-  intendedMs: number,
-  thresholdMs: number,
-): number {
-  const origin = Math.abs(localMs - intendedMs) <= thresholdMs ? localMs : intendedMs;
-  return playbackLagMs(hostMs, origin);
 }
 
 /** 巡检要对齐的位置：主人此刻减去已经认下的加载滞后 */

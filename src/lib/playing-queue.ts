@@ -20,23 +20,20 @@ function number(value: unknown) {
  */
 export const PRELOAD_AHEAD = 2;
 
+/**
+ * 只留目录查询要用的三样。上报器还带 Music.app 的 persistent ID（trackID），
+ * 但它不是目录 songId、换不来播放地址，收下也只是存一个没人读的键。
+ */
 export type PlayingQueueTrack = {
   title: string;
   artist: string | null;
   album: string | null;
-  /** Music.app persistent ID，不是目录 songId。目录 ID 要现搜 */
-  trackId: string | null;
 };
 
 export type PlayingQueue = {
   index: number | null;
   tracks: PlayingQueueTrack[];
 };
-
-function trackIdOf(row: Record<string, unknown>) {
-  // 上报器 Codable 键是 trackID；站点对外一律 trackId
-  return text(row.trackId) ?? text(row.trackID);
-}
 
 export function normalizePlayingQueue(value: unknown): PlayingQueue | null {
   const row = object(value);
@@ -51,7 +48,6 @@ export function normalizePlayingQueue(value: unknown): PlayingQueue | null {
       title,
       artist: track ? text(track.artist) : null,
       album: track ? text(track.album) : null,
-      trackId: track ? trackIdOf(track) : null,
     });
   }
   if (tracks.length === 0) return null;

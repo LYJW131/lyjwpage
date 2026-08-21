@@ -64,8 +64,6 @@ export type MusicKitInstance = {
   playbackState: number;
   /** 播放进度，**秒**（站点内部一律毫秒，边界在 use-listen-along 里换算） */
   currentPlaybackTime: number;
-  /** 当前曲时长，秒。还没加载完时可能是 0 */
-  currentPlaybackDuration?: number;
   /** 0–1 */
   volume: number;
   nowPlayingItem: { id?: string } | null;
@@ -76,13 +74,12 @@ export type MusicKitInstance = {
   repeatMode?: number;
   authorize(): Promise<string>;
   unauthorize(): Promise<void>;
-  setQueue(options: {
-    song?: string;
-    songs?: string[];
-    startPlaying?: boolean;
-    /** 秒 */
-    startTime?: number;
-  }): Promise<unknown>;
+  /*
+   * 只声明用到的形态。文档上还有 songs / startPlaying / startTime 等旋钮 ——
+   * startTime 是被否决的 seek 起播方案（换歌一律从 0 走，见 use-listen-along），
+   * 别把它标回接口上邀请人用回去。
+   */
+  setQueue(options: { song?: string }): Promise<unknown>;
   playNext(options: { song?: string }, clear?: boolean): Promise<unknown>;
   playLater(options: { song?: string }): Promise<unknown>;
   skipToNextItem(): Promise<void>;
@@ -102,7 +99,6 @@ type MusicKitGlobal = {
     /** 授权弹窗和目录返回的语言 */
     storefrontId?: string;
   }): Promise<MusicKitInstance>;
-  getInstance(): MusicKitInstance | undefined;
 };
 
 declare global {
