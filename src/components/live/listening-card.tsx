@@ -18,6 +18,8 @@ import {
 import { Card } from "@/components/ui/card";
 import { HomePodMiniIcon, MacBookProIcon } from "@/components/ui/device-icons";
 import { HeroMotionArtwork } from "@/components/live/hero-motion-artwork";
+import { ListenAlongButton } from "@/components/live/listen-along-button";
+import { useListenAlong } from "@/hooks/use-listen-along";
 import { useLiveEvents } from "@/hooks/use-live-events";
 import { useMotionArtwork } from "@/hooks/use-motion-artwork";
 import { useMountedAt } from "@/hooks/use-mounted-at";
@@ -31,6 +33,7 @@ import {
   STATIC_VARIANTS,
 } from "@/lib/motion";
 import { LISTENING_PATH, NOW_LISTENING_PATH } from "@/lib/paths";
+import { trackPositionMs } from "@/lib/track-position";
 import type {
   ListeningItem,
   ListeningPayload,
@@ -302,17 +305,9 @@ function HeroProgress({
     return () => window.clearInterval(timer);
   }, [playing]);
 
-  // 上报器只在换歌和播放状态变化时推锚点，播放中的进度由前端按 observedAt 推算
-  const drift = playing ? Math.max(0, now - track.observedAt) : 0;
-  const elapsed = track.positionMs + drift;
-  // 单曲循环时上游可能一直不推新锚点（曲目没变、状态没变），进度该绕回开头
-  // 而不是钉在 100%；不循环时超出就 clamp，等下一条锚点纠正
-  const position =
-    track.durationMs > 0
-      ? track.repeatOne
-        ? elapsed % track.durationMs
-        : Math.min(track.durationMs, elapsed)
-      : elapsed;
+  // 推算规则和「一起听」共用一份，见 lib/track-position —— 两边各写一遍的话，
+  // 画在进度条上的和访客耳朵里放的会慢慢错开，还看不出是谁错了
+  const position = trackPositionMs(track, now);
   const percent = track.durationMs ? (position / track.durationMs) * 100 : 0;
   const gradient = palette && palette.length >= 2 ? paletteGradient(palette) : undefined;
 
@@ -587,6 +582,18 @@ export function ListeningCard({
   // （见上面的 nowListeningInterval），所以这里渲染的始终是服务端的结论。
   const localActive = Boolean(localTrack);
 
+  /**
+   * 跟着这首一起听。访客用自己的订阅授权，音频不经过站点，见 use-listen-along。
+   *
+   * 右上角那格平时写着「Apple Music」（说明这张卡的来源），有东西可跟听时换成
+   * 按钮 —— 那一刻「你也能听」比「这是 Apple Music」更值得占这个位置。
+   * 已经开始跟听之后一直留着，否则主人一停，访客就没地方把它关掉了。
+   */
+  const listenAlong = useListenAlong({ track: localTrack, songId: live?.songId ?? null });
+  const showListenAlong =
+    listenAlong.status !== "unavailable" &&
+    (Boolean(localTrack && live?.songId) || listenAlong.status !== "idle");
+
   const [latest, ...tail] = data?.items ?? [];
 
   /**
@@ -670,7 +677,7 @@ export function ListeningCard({
   return (
     <Card
       label="Recently Played"
-      action="Apple Music"
+      action={showListenAlong ? <ListenAlongButton listen={listenAlong} /> : "Apple Music"}
       className={cn("h-full min-h-93.5", className)}
     >
       <div className="flex min-h-0 flex-1 flex-col px-4 pb-4 pt-3">

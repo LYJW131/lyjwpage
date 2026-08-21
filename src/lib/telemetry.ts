@@ -742,6 +742,7 @@ async function decorateCandidate(
     receivedAt,
     id: lookup.id,
     link: lookup.link || null,
+    songId: lookup.songId,
   };
 }
 

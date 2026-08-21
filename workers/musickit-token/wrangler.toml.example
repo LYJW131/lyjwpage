@@ -1,0 +1,27 @@
+name = "musickit-token"
+main = "src/index.ts"
+compatibility_date = "2024-12-30"
+workers_dev = true
+
+# routes = [
+#   { pattern = "musickit.example.com", custom_domain = true }
+# ]
+
+[vars]
+# 逗号分隔。**这份名单同时是两道限制**：一是谁能来要令牌（比 Origin 头），
+# 二是签进 JWT 的 origin 声明 —— 后者由 Apple 校验，令牌被复制到别的站点上
+# 也用不了，是真正兜底的那道。
+#
+# 留空或整段删掉 = 不限制（本地 localhost 始终放行），只在 `wrangler dev` 时这么用。
+# 通配项只参与第一道：Apple 不解析通配符，签进声明的是这次请求那个具体来源。
+ALLOWED_ORIGINS = "https://example.com,https://*.vercel.app"
+
+# 令牌有效期（秒）。不填按 1 小时，Apple 允许的上限是 15777000（约半年）。
+# TOKEN_TTL_SECONDS = "3600"
+
+# Team ID 和 Key ID 不是秘密，放这里就行；私钥走 secret，见 README。
+APPLE_MUSIC_TEAM_ID = "ABCDE12345"
+APPLE_MUSIC_KEY_ID = "FGHIJ67890"
+
+[observability]
+enabled = true

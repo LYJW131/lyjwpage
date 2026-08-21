@@ -105,6 +105,13 @@ export type TrackLookup = {
   artwork: string | null;
   /** 与最近播放资源对应的专辑 ID。 */
   id: string | null;
+  /**
+   * 目录里那首**曲子本身**的 ID，和上面那个专辑 ID 是两个东西。
+   *
+   * 「一起听」拿它点播：MusicKit 要的是 songs 那个类型的资源 ID，喂专辑 ID
+   * 会从第一首开始放。搜索命中的那条本来就带着它，等于白拿。
+   */
+  songId: string | null;
 };
 
 /** 归一化后再比：大小写、空格、常见标点、全角半角差异都不该影响判定 */
@@ -137,7 +144,7 @@ export async function resolveTrackLookup(track: {
   artist: string | null;
   album: string | null;
 }): Promise<TrackLookup> {
-  if (!track.title) return { link: "", artwork: null, id: null };
+  if (!track.title) return { link: "", artwork: null, id: null, songId: null };
 
   const searchTerm = [track.title, track.artist].filter(Boolean).join(" ");
   const searchUrl = `https://music.apple.com/search?term=${encodeURIComponent(searchTerm)}`;
@@ -153,7 +160,7 @@ export async function resolveTrackLookup(track: {
    * 以后再改这个值的形状，记得一起改版本号。
    */
   const cacheKey =
-    "apple-music:track-lookup:v6:" +
+    "apple-music:track-lookup:v7:" +
     [track.title, track.artist, track.album].map(normalizeForMatch).join(":");
 
   try {
@@ -230,11 +237,17 @@ export async function resolveTrackLookup(track: {
         link: hit?.attributes?.url ?? "",
         artwork: hit?.attributes?.artwork?.url ?? null,
         id: albumId,
+        songId: hit?.id ?? null,
       };
     });
-    return { link: exact.link || searchUrl, artwork: exact.artwork, id: exact.id };
+    return {
+      link: exact.link || searchUrl,
+      artwork: exact.artwork,
+      id: exact.id,
+      songId: exact.songId,
+    };
   } catch {
     // 凭据缺失或上游异常都不该让整张卡片失败
-    return { link: searchUrl, artwork: null, id: null };
+    return { link: searchUrl, artwork: null, id: null, songId: null };
   }
 }
