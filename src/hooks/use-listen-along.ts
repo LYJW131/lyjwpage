@@ -4,8 +4,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   followTargetMs,
+  hostRewoundIntoTrack,
   isHostSeek,
   needsResync,
+  nextSwitchLeadMs,
   playbackLagMs,
   shouldSeekAfterTrackChange,
 } from "@/lib/listen-along";
@@ -30,9 +32,10 @@ import type { LocalNowPlaying } from "@/lib/types";
  *
  * 「跟随」具体指四件事，都由锚点变化驱动：
  *   刚点一起听 → 静音加载，出声后 seek 到主人此刻再恢复音量；
- *   正常下一首（已预排）→ 直接切到那首，从 0 起，不 seek；切歌耗时记成这一首
- *   的滞后，避免过一会儿巡检再追上去。锚点已经在歌中间、或播放状态变了、
- *   或同一首进度差过大，才对齐；
+ *   正常下一首（已预排）→ 主人这首快放完时就预切过去静音加载，好了停在 0
+ *   等他的锚点，一到就放 —— 出声贴着他的 0，不 seek。预切没赶上的话直接切，
+ *   加载耗时记成这一首的滞后；锚点已经在歌中间、或播放状态变了、或同一首
+ *   进度差过大，才对齐；
  *   单曲循环 → 不要接下首，这一首从头再来；
  *   主人暂停 / 续播 / 拖进度 → 跟着停、对齐、跟过去。
  * 另外挂一个慢速巡检，兜住访客这侧缓冲卡顿慢慢攒出来的偏差。
@@ -67,6 +70,16 @@ const RESYNC_THRESHOLD_MS = 5_000;
 const RESYNC_INTERVAL_MS = 20_000;
 /** 换歌后等真正出声。超时就不再干等，后面的 seek 接着兜 */
 const READY_TIMEOUT_MS = 25_000;
+/**
+ * 预切提前量的起点和上下限。MusicKit 在 Web 上不预缓冲队列里的条目，每次
+ * 换歌都要再走一轮 FairPlay 授权 + 拉流（实测七八秒），提前这么多切过去把
+ * 加载做掉。之后按每次实测的加载耗时自适应，见 nextSwitchLeadMs。
+ */
+const SWITCH_LEAD_DEFAULT_MS = 8_000;
+const SWITCH_LEAD_MIN_MS = 4_000;
+const SWITCH_LEAD_MAX_MS = 12_000;
+/** 实测耗时上再垫的余量：估长了只是多等一会儿（停在 0 不抢跑），估短了出声才会晚 */
+const SWITCH_LEAD_MARGIN_MS = 1_500;
 
 function describe(error: unknown): string {
   if (error instanceof Error) return error.message;
@@ -145,6 +158,20 @@ async function playSafe(music: MusicKitInstance) {
   await mkSafe(() => music.play());
 }
 
+/** 切到目录里的某一首：已在队列里就按位置切（省一次整队重排），不在才 setQueue */
+async function changeToSong(music: MusicKitInstance, songId: string) {
+  const at = mediaItemIndex(music.queue?.items ?? [], songId);
+  if (at >= 0) {
+    try {
+      await music.changeToMediaAtIndex(at);
+      return;
+    } catch (error) {
+      if (isPlayInterrupted(error)) return;
+    }
+  }
+  await mkSafe(() => music.setQueue({ song: songId }));
+}
+
 function upcomingAlreadyQueued(music: MusicKitInstance, ids: string[]) {
   if (ids.length === 0) return true;
   const items = music.queue?.items ?? [];
@@ -211,6 +238,8 @@ export function useListenAlong(source: {
   const alignedSongId = useRef<string | null>(null);
   /** 出声时主人已经超前的毫秒数。加载后再对进度，通常是 0 */
   const lagMs = useRef(0);
+  /** 预切提前量：上一次实测换歌加载耗时 + 余量，第一次用默认值 */
+  const switchLeadMs = useRef(SWITCH_LEAD_DEFAULT_MS);
   const upcomingRef = useRef(upcomingSongIds);
   useEffect(() => {
     upcomingRef.current = upcomingSongIds;
@@ -325,6 +354,8 @@ export function useListenAlong(source: {
             if (music.playbackState !== PLAYBACK_STATE.playing) await playSafe(music);
           } else {
             lagMs.current = playbackLagMs(hostNow(), localPositionMs(music));
+            // 预切完停在 0 等的就是这一刻：他的锚点到了，直接放
+            if (music.playbackState !== PLAYBACK_STATE.playing) await playSafe(music);
           }
           return;
         }
@@ -358,31 +389,30 @@ export function useListenAlong(source: {
         }
 
         // 本首走完已经切到下一首，主人锚点还停在刚播完的那首：别拖回去。
-        // 单曲循环除外 —— 那是这一首再来一遍，接错了要切回去。
+        // 但他真的拖回这首重听（离结尾还很远）就得回去。单曲循环也除外 ——
+        // 那是这一首再来一遍，接错了要切回去。
         if (
           !repeatOneRef.current &&
           lastHostSongId.current === songId &&
           localId &&
-          localId !== songId
+          localId !== songId &&
+          !hostRewoundIntoTrack(
+            hostNow(),
+            hostRef.current.durationMs,
+            switchLeadMs.current + RESYNC_THRESHOLD_MS,
+          )
         ) {
           return;
         }
 
         const previousVolume = joining ? mute(music) : music.volume;
         try {
+          let loadStartedAt = 0;
           if (queuedSongId.current !== songId) {
             queuedSongId.current = songId;
             readySongId.current = null;
-            const preparedAt = mediaItemIndex(music.queue?.items ?? [], songId);
-            if (preparedAt > 0) {
-              try {
-                await music.changeToMediaAtIndex(preparedAt);
-              } catch (error) {
-                if (!isPlayInterrupted(error)) await mkSafe(() => music.setQueue({ song: songId }));
-              }
-            } else if (preparedAt !== 0) {
-              await mkSafe(() => music.setQueue({ song: songId }));
-            }
+            loadStartedAt = Date.now();
+            await changeToSong(music, songId);
           }
           if (cancelled || queuedSongId.current !== songId) return;
           if (localSongId(music) === songId && music.playbackState === PLAYBACK_STATE.playing) {
@@ -411,6 +441,14 @@ export function useListenAlong(source: {
           if (cancelled || queuedSongId.current !== songId) return;
           await waitUntilPlaying(music, () => cancelled);
           if (cancelled || queuedSongId.current !== songId) return;
+          if (loadStartedAt) {
+            switchLeadMs.current = nextSwitchLeadMs(
+              Date.now() - loadStartedAt,
+              SWITCH_LEAD_MARGIN_MS,
+              SWITCH_LEAD_MIN_MS,
+              SWITCH_LEAD_MAX_MS,
+            );
+          }
 
           if (joining || shouldSeekAfterTrackChange(hostRef.current.positionMs, RESYNC_THRESHOLD_MS)) {
             try {
@@ -460,11 +498,47 @@ export function useListenAlong(source: {
   /** 已经在跟同一首：主人拖进度或进度差过大才 seek。换歌那一下不对齐。 */
   useEffect(() => {
     if (!music || !songId || state !== "playing") return;
-    if (readySongId.current !== songId) return;
 
     let cancelled = false;
     void (async () => {
       try {
+        if (readySongId.current !== songId) {
+          /*
+           * 播放器已经预切 / 自然接到下一首，主人却把这首拖回去重听。换歌
+           * effect 的依赖（songId/state）都没变、不会再跑，只能在这里拉回来。
+           * 不跟 cancelled 联动：同曲的锚点每来一条都会重建这个 effect，
+           * 拉到一半被取消会卡在半路。songIdRef 变了才作废。
+           */
+          const parked = readySongId.current;
+          if (
+            !parked ||
+            parked !== queuedSongId.current ||
+            localSongId(music) !== parked ||
+            !hostRewoundIntoTrack(hostNow(), durationMs, switchLeadMs.current + RESYNC_THRESHOLD_MS)
+          ) {
+            return;
+          }
+          await runExclusive(async () => {
+            if (songIdRef.current !== songId || hostRef.current.state !== "playing") return;
+            if (readySongId.current !== parked || localSongId(music) !== parked) return;
+            queuedSongId.current = songId;
+            readySongId.current = null;
+            alignedSongId.current = null;
+            await changeToSong(music, songId);
+            if (queuedSongId.current !== songId) return;
+            if (music.playbackState !== PLAYBACK_STATE.playing) await playSafe(music);
+            await waitUntilPlaying(music, () => songIdRef.current !== songId);
+            if (queuedSongId.current !== songId || songIdRef.current !== songId) return;
+            await mkSafe(() => music.seekToTime(hostNow() / 1000));
+            if (music.playbackState !== PLAYBACK_STATE.playing) await playSafe(music);
+            lagMs.current = 0;
+            readySongId.current = songId;
+            alignedSongId.current = songId;
+            lastHostSongId.current = songId;
+          });
+          return;
+        }
+
         const songChanged = alignedSongId.current !== songId;
         const host = hostNow();
         const local = localPositionMs(music);
@@ -560,6 +634,76 @@ export function useListenAlong(source: {
       await syncUpcomingQueue(music, upcomingSongIds);
     }).catch(() => {});
   }, [music, songId, state, upcomingKey, upcomingSongIds, repeatOne]);
+
+  /**
+   * 预切：主人这首快放完时，提前切到预排的下一首静音加载，好了停在 0 等他。
+   *
+   * MusicKit 在 Web 上不预缓冲队列条目，等他真换了歌再切，FairPlay 授权加
+   * 拉流要好几秒，出声时他已经唱进去了。提前把这一轮做掉，锚点一到直接
+   * play，出声贴着他的 0。代价是这首的结尾提前几秒被切 —— 一起听里「同时
+   * 出声」比「听完最后几秒」更要紧。提前量按上一次实测加载耗时自适应。
+   *
+   * 提前切错了（他没播完、跳了别的歌）由正常换歌路径兜底重排。
+   */
+  useEffect(() => {
+    if (!music || !songId || state !== "playing" || repeatOne) return;
+    if (durationMs <= 0 || !upcomingKey) return;
+
+    const remaining =
+      durationMs -
+      trackPositionMs({ state, observedAt, positionMs, durationMs, repeatOne }, Date.now());
+
+    const timer = window.setTimeout(
+      () => {
+        if (repeatOneRef.current) return;
+        if (songIdRef.current !== songId || hostRef.current.state !== "playing") return;
+        if (readySongId.current !== songId) return;
+        if (!upcomingRef.current[0] || upcomingRef.current[0] === songId) return;
+
+        /*
+         * 一旦开跑就不跟 effect 的清理联动：加载途中主人的新锚点到了正是
+         * 预期（他切歌了），这时中断只会把加载白做一遍。链上重验代替取消。
+         */
+        void runExclusive(async () => {
+          if (repeatOneRef.current) return;
+          if (songIdRef.current !== songId || hostRef.current.state !== "playing") return;
+          if (readySongId.current !== songId || localSongId(music) !== songId) return;
+          const next = upcomingRef.current[0];
+          if (!next || next === songId) return;
+
+          queuedSongId.current = next;
+          readySongId.current = next;
+          alignedSongId.current = next;
+          lagMs.current = 0;
+          const previousVolume = mute(music);
+          const loadStartedAt = Date.now();
+          try {
+            await changeToSong(music, next);
+            if (music.playbackState !== PLAYBACK_STATE.playing) await playSafe(music);
+            await waitUntilPlaying(music, () => false);
+            switchLeadMs.current = nextSwitchLeadMs(
+              Date.now() - loadStartedAt,
+              SWITCH_LEAD_MARGIN_MS,
+              SWITCH_LEAD_MIN_MS,
+              SWITCH_LEAD_MAX_MS,
+            );
+            await mkSafe(() => music.pause());
+            await mkSafe(() => music.seekToTime(0));
+          } catch {
+            // 预切失败不致命：清掉标记，主人锚点来了走正常换歌
+            queuedSongId.current = null;
+            readySongId.current = null;
+            alignedSongId.current = null;
+          } finally {
+            music.volume = previousVolume;
+          }
+        });
+      },
+      Math.max(0, remaining - switchLeadMs.current),
+    );
+
+    return () => window.clearTimeout(timer);
+  }, [music, songId, state, observedAt, positionMs, durationMs, repeatOne, upcomingKey]);
 
   /**
    * 主人开/关单曲循环时跟着改。走 ref，避免 eslint 把 useState 的 music 当成不可变。

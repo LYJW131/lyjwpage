@@ -80,3 +80,33 @@ export function shouldSeekAfterTrackChange(
 export function isHostSeek(localMs: number, lagMs: number, hostMs: number, thresholdMs: number): boolean {
   return Math.abs(localMs + lagMs - hostMs) > thresholdMs;
 }
+
+/**
+ * 下一次预切的提前量。
+ *
+ * 用上一次实测的换歌加载耗时加一点余量：估短了下一首出声会晚一点；估长了
+ * 只是这首的结尾多切掉一点、预切完停在 0 多等一会儿，不会抢跑。夹上下限，
+ * 别让个别网络抖动把提前量拽飞。
+ */
+export function nextSwitchLeadMs(
+  loadMs: number,
+  marginMs: number,
+  minMs: number,
+  maxMs: number,
+): number {
+  return Math.min(maxMs, Math.max(minMs, loadMs + marginMs));
+}
+
+/**
+ * 主人是不是把这首拖回去重听了。
+ *
+ * 播放器已经挪到下一首、主人锚点还指着这首时有两种可能：锚点钉在歌尾是
+ * 切歌前的残影，不该拉回去；离结尾还很远才是真的回去重听。总长未知不猜。
+ */
+export function hostRewoundIntoTrack(
+  hostMs: number,
+  durationMs: number,
+  tailMs: number,
+): boolean {
+  return durationMs > 0 && durationMs - hostMs > tailMs;
+}
