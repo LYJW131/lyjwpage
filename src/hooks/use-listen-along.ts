@@ -31,10 +31,10 @@ import type { LocalNowPlaying } from "@/lib/types";
  *
  * 「跟随」具体指四件事，都由锚点变化驱动：
  *   刚点一起听 → 静音加载，出声后 seek 到主人此刻再恢复音量；
- *   正常下一首（已预排）→ 结尾渐弱，剩 3 秒预切过去静音加载，好了停在 0
- *   等他的锚点，一到就放，不 seek。预切没赶上的话直接切，加载耗时记成这
- *   一首的滞后；锚点已经在歌中间、或播放状态变了、或同一首进度差过大，
- *   才对齐；
+ *   正常下一首（已预排）→ 结尾渐弱，剩 2 秒预切过去静音加载，好了停在 0。
+ *   出声看这首按锚点算出的结束时刻，不看他切歌的信号。预切没赶上的话
+ *   直接切，加载耗时记成这一首的滞后；锚点已经在歌中间、或播放状态变
+ *   了、或同一首进度差过大，才对齐；
  *   单曲循环 → 不要接下首，这一首从头再来；
  *   主人暂停 / 续播 / 拖进度 → 跟着停、对齐、跟过去。
  * 另外挂一个慢速巡检，兜住访客这侧缓冲卡顿慢慢攒出来的偏差。
@@ -73,9 +73,10 @@ const READY_TIMEOUT_MS = 25_000;
 const REPEAT_RESTART_GRACE_MS = 1_200;
 /**
  * 预切点：主人这首还剩这么多毫秒时切到下一首去加载。切早了结尾丢得多，
- * 切晚了下一首出声晚 —— 取结尾只牺牲三秒，出声比他的 0 晚一两秒来换。
+ * 切晚了下一首出声晚 —— 取结尾只牺牲两秒。出声不再等他的切歌信号，
+ * 按这首锚点算出的结束时刻解除静音。
  */
-const SWITCH_LEAD_MS = 3_000;
+const SWITCH_LEAD_MS = 2_000;
 /** 渐弱起点：预切前先把音量压下去，结尾不硬生生断掉 */
 const SWITCH_FADE_START_MS = 5_000;
 const SWITCH_FADE_STEP_MS = 100;
@@ -235,6 +236,10 @@ export function useListenAlong(source: {
   const alignedSongId = useRef<string | null>(null);
   /** 出声时主人已经超前的毫秒数。加载后再对进度，通常是 0 */
   const lagMs = useRef(0);
+  /** 预切停在 0 之后，到这个墙上时刻才解除静音。0 表示没有在等 */
+  const holdUntilMs = useRef(0);
+  const holdVolume = useRef(1);
+  const holdTimer = useRef<number | null>(null);
   const upcomingRef = useRef(upcomingSongIds);
   useEffect(() => {
     upcomingRef.current = upcomingSongIds;
@@ -284,6 +289,11 @@ export function useListenAlong(source: {
     lastHostSongId.current = null;
     alignedSongId.current = null;
     lagMs.current = 0;
+    holdUntilMs.current = 0;
+    if (holdTimer.current != null) {
+      window.clearTimeout(holdTimer.current);
+      holdTimer.current = null;
+    }
     setAudible(false);
     setStatus("idle");
     /*
@@ -343,13 +353,19 @@ export function useListenAlong(source: {
           if (lastHostSongId.current === songId) return;
           lastHostSongId.current = songId;
           alignedSongId.current = songId;
+          // 预切在等这首的结束时刻，切歌信号到了也不出声
+          if (holdUntilMs.current > Date.now()) return;
+          if (holdUntilMs.current) {
+            holdUntilMs.current = 0;
+            const player = musicRef.current;
+            if (player) player.volume = holdVolume.current;
+          }
           if (shouldSeekAfterTrackChange(hostRef.current.positionMs, RESYNC_THRESHOLD_MS)) {
             await mkSafe(() => music.seekToTime(hostNow() / 1000));
             lagMs.current = 0;
             if (music.playbackState !== PLAYBACK_STATE.playing) await playSafe(music);
           } else {
             lagMs.current = playbackLagMs(hostNow(), localPositionMs(music));
-            // 预切完停在 0 等的就是这一刻：他的锚点到了，直接放
             if (music.playbackState !== PLAYBACK_STATE.playing) await playSafe(music);
           }
           return;
@@ -530,6 +546,12 @@ export function useListenAlong(source: {
 
         if (songChanged) {
           alignedSongId.current = songId;
+          if (holdUntilMs.current > Date.now()) return;
+          if (holdUntilMs.current) {
+            holdUntilMs.current = 0;
+            const player = musicRef.current;
+            if (player) player.volume = holdVolume.current;
+          }
           if (!shouldSeekAfterTrackChange(positionMs, RESYNC_THRESHOLD_MS)) {
             lagMs.current = playbackLagMs(host, local);
             if (cancelled) return;
@@ -631,14 +653,11 @@ export function useListenAlong(source: {
   }, [music, songId, state, upcomingKey, upcomingSongIds, repeatOne]);
 
   /**
-   * 预切：结尾先渐弱，剩 3 秒时切到预排的下一首静音加载，好了停在 0 等他。
+   * 预切：剩 5 秒开始把音量线性收到 0，剩 2 秒切到预排的下一首静音加载，
+   * 好了停在 0。出声看这首按锚点算出的结束时刻，不看他切歌的信号。
    *
-   * MusicKit 在 Web 上不预缓冲队列条目，等他真换了歌再切，FairPlay 授权加
-   * 拉流要好几秒，出声时他已经唱进去七八秒。提前把这一轮做掉大半；渐弱让
-   * 结尾听上去像歌自己收掉的，而不是被掐断。加载要是超过 3 秒（常见），
-   * 出声会比他的 0 晚一点，但比不预切好得多。
-   *
-   * 提前切错了（他没播完、跳了别的歌）由正常换歌路径兜底重排。
+   * 渐弱按主人还剩多久算，不按定时器已经走了多久 —— 锚点晚到也保证剩 2
+   * 秒时喇叭是哑的。加载完不恢复音量；切歌信号到了也不恢复。
    */
   useEffect(() => {
     if (!music || !songId || state !== "playing" || repeatOne) return;
@@ -651,6 +670,7 @@ export function useListenAlong(source: {
     let fade: number | null = null;
     let baseline: number | null = null;
     let switched = false;
+    const fadeSpan = SWITCH_FADE_START_MS - SWITCH_LEAD_MS;
 
     const timer = window.setTimeout(
       () => {
@@ -661,26 +681,21 @@ export function useListenAlong(source: {
 
         baseline = Number.isFinite(music.volume) ? music.volume : 1;
         const base = baseline;
-        // 锚点到得晚时压缩渐弱时长，保证还是在剩 3 秒的点切出去
-        const remainingNow = durationMs - trackPositionMs(hostRef.current, Date.now());
-        const fadeMs = Math.max(
-          300,
-          Math.min(SWITCH_FADE_START_MS - SWITCH_LEAD_MS, remainingNow - SWITCH_LEAD_MS),
-        );
-        const fadeStartedAt = Date.now();
+        const endsAt = Date.now() + Math.max(0, durationMs - trackPositionMs(hostRef.current, Date.now()));
 
         fade = window.setInterval(() => {
-          const t = Math.min(1, (Date.now() - fadeStartedAt) / fadeMs);
-          // 平方曲线：人耳对音量是对数感知，线性降听起来前慢后快
-          music.volume = base * (1 - t) * (1 - t);
-          if (t < 1) return;
+          const left = durationMs - trackPositionMs(hostRef.current, Date.now());
+          const t = Math.min(1, Math.max(0, (SWITCH_FADE_START_MS - left) / fadeSpan));
+          music.volume = base * (1 - t);
+          if (left > SWITCH_LEAD_MS) return;
+          music.volume = 0;
           if (fade != null) window.clearInterval(fade);
           fade = null;
           switched = true;
 
           /*
            * 一旦开切就不跟 effect 的清理联动：加载途中主人的新锚点到了正是
-           * 预期（他切歌了），这时中断只会把加载白做一遍。链上重验代替取消。
+           * 预期，这时中断只会把加载白做一遍。链上重验代替取消。
            */
           void runExclusive(async () => {
             if (
@@ -700,22 +715,34 @@ export function useListenAlong(source: {
             readySongId.current = next;
             alignedSongId.current = next;
             lagMs.current = 0;
+            holdVolume.current = base;
+            holdUntilMs.current = endsAt;
             music.volume = 0;
             try {
               await changeToSong(music, next);
               if (music.playbackState !== PLAYBACK_STATE.playing) await playSafe(music);
               await waitUntilPlaying(music, () => false);
-              // 加载完他还没换歌：停在 0 等锚点；已经换了就不再暂停，直接接着放
-              if (songIdRef.current === songId) {
-                await mkSafe(() => music.pause());
-                await mkSafe(() => music.seekToTime(0));
-              }
+              await mkSafe(() => music.pause());
+              await mkSafe(() => music.seekToTime(0));
+              music.volume = 0;
+              if (holdTimer.current != null) window.clearTimeout(holdTimer.current);
+              const wait = Math.max(0, holdUntilMs.current - Date.now());
+              holdTimer.current = window.setTimeout(() => {
+                holdTimer.current = null;
+                void runExclusive(async () => {
+                  if (holdUntilMs.current === 0) return;
+                  if (hostRef.current.state !== "playing") return;
+                  holdUntilMs.current = 0;
+                  music.volume = holdVolume.current;
+                  if (music.playbackState !== PLAYBACK_STATE.playing) await playSafe(music);
+                  setAudible(true);
+                });
+              }, wait);
             } catch {
-              // 预切失败不致命：清掉标记，主人锚点来了走正常换歌
+              holdUntilMs.current = 0;
               queuedSongId.current = null;
               readySongId.current = null;
               alignedSongId.current = null;
-            } finally {
               music.volume = base;
             }
           });
