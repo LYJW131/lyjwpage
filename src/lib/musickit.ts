@@ -43,6 +43,20 @@ export const PLAYBACK_STATE = {
   stalled: 9,
 } as const;
 
+/** PlayerRepeatMode：none 不循环，one 单曲循环。数值是 Apple 定的 */
+export const REPEAT_MODE = {
+  none: 0,
+  one: 1,
+} as const;
+
+/** 主人单曲循环时这边也循环这一首，并关掉 autoplay，免得接下首 */
+export function applyRepeatMode(music: MusicKitInstance, repeatOne: boolean) {
+  if ("repeatMode" in music) {
+    music.repeatMode = repeatOne ? REPEAT_MODE.one : REPEAT_MODE.none;
+  }
+  if ("autoplayEnabled" in music) music.autoplayEnabled = !repeatOne;
+}
+
 /** 用到的那部分 MusicKit 实例接口。Apple 没发布类型包，按官方文档手写 */
 export type MusicKitInstance = {
   isAuthorized: boolean;
@@ -56,8 +70,10 @@ export type MusicKitInstance = {
   volume: number;
   nowPlayingItem: { id?: string } | null;
   queue?: { items?: Array<{ id?: string }> };
-  /** 队列里有下一首时让它自己接着播。关掉的话本首 ended 再 skipToNext，等于每首重新 load */
+  /** 队列里有下一首时让它自己接着播。单曲循环时要关掉，否则会去接下首 */
   autoplayEnabled?: boolean;
+  /** 见 REPEAT_MODE。单曲循环是 one，跟听平时是 none */
+  repeatMode?: number;
   authorize(): Promise<string>;
   unauthorize(): Promise<void>;
   setQueue(options: {
@@ -246,7 +262,7 @@ export function getMusicKit(): Promise<MusicKitInstance> {
       // 这两个字段会出现在访客的 Apple ID 授权弹窗里，得是人看得懂的东西
       app: { name: site.name, build: commit?.short ?? "dev" },
     });
-    if ("autoplayEnabled" in instance) instance.autoplayEnabled = true;
+    applyRepeatMode(instance, false);
     return instance;
   })().catch((error: unknown) => {
     // 失败不留缓存，否则第一次网络抖动之后按钮就再也点不动了
