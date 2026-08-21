@@ -14,21 +14,21 @@ const QUEUE = {
   index: 1,
   tracks: [
     { title: "A", trackID: "AAAAAAAAAAAAAAAA" },
-    { title: "B", trackId: "BBBBBBBBBBBBBBBB" },
+    { title: "B" },
     { title: "C", trackID: "CCCCCCCCCCCCCCCC" },
     { title: "D", trackID: "DDDDDDDDDDDDDDDD" },
   ],
 };
 
-test("收下上报器的 queue：trackID 收成 trackId", () => {
+test("收下上报器的 queue：只留目录查询用的三样，persistent ID 不收", () => {
   const queue = normalizePlayingQueue(QUEUE);
   assert.deepEqual(queue, {
     index: 1,
     tracks: [
-      { title: "A", artist: null, album: null, trackId: "AAAAAAAAAAAAAAAA" },
-      { title: "B", artist: null, album: null, trackId: "BBBBBBBBBBBBBBBB" },
-      { title: "C", artist: null, album: null, trackId: "CCCCCCCCCCCCCCCC" },
-      { title: "D", artist: null, album: null, trackId: "DDDDDDDDDDDDDDDD" },
+      { title: "A", artist: null, album: null },
+      { title: "B", artist: null, album: null },
+      { title: "C", artist: null, album: null },
+      { title: "D", artist: null, album: null },
     ],
   });
 });

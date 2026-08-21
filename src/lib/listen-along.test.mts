@@ -2,44 +2,17 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  captureLagMs,
   followTargetMs,
   hostRewoundIntoTrack,
   isHostSeek,
   needsResync,
   playbackLagMs,
-  queueStartMs,
   shouldSeekAfterTrackChange,
 } from "./listen-along.ts";
-
-test("刚开始跟听：从主人此刻起播", () => {
-  assert.equal(
-    queueStartMs({ changingTrack: false, positionMs: 0, hostPositionMs: 90_000 }),
-    90_000,
-  );
-});
-
-test("跟听中换歌：从锚点起播，不把缓冲耗时算进去", () => {
-  assert.equal(
-    queueStartMs({ changingTrack: true, positionMs: 0, hostPositionMs: 8_000 }),
-    0,
-  );
-  assert.equal(
-    queueStartMs({ changingTrack: true, positionMs: 1_200, hostPositionMs: 8_000 }),
-    1_200,
-  );
-});
 
 test("加载耗时记成滞后，超前不当成负滞后", () => {
   assert.equal(playbackLagMs(12_000, 4_000), 8_000);
   assert.equal(playbackLagMs(4_000, 12_000), 0);
-});
-
-test("认滞后时，本地进度还没落到起播点就用起播点", () => {
-  // 换歌要从 0 起，seek 刚下完读数还停在 8s
-  assert.equal(captureLagMs(12_000, 8_000, 0, 5_000), 12_000);
-  // 读数已经贴着起播点，用读数
-  assert.equal(captureLagMs(12_000, 500, 0, 5_000), 11_500);
 });
 
 test("巡检目标扣掉已认的滞后，不再把加载耗时 seek 掉", () => {
