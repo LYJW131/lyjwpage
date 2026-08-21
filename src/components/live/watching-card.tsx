@@ -292,12 +292,15 @@ export function WatchingRow({
     <div
       ref={scrollerRef}
       className={cn(
-        "scroll-smooth overflow-x-auto overscroll-x-contain pb-1",
+        // paper-card 硬阴影是 3px 右下。卡片仍按栏宽等分（和上面几张卡右缘
+        // 对齐），滚动盒向右多出 3px 让阴影落在盒内，不要用 padding 把卡片挤窄。
+        "scroll-smooth overflow-x-auto overscroll-x-contain",
+        "-mr-[3px] w-[calc(100%+3px)] pb-[3px]",
         "scrollbar-none [&::-webkit-scrollbar]:hidden",
         reflowing ? "snap-none" : "snap-x snap-mandatory",
       )}
     >
-      <div className="relative flex gap-3">
+      <div className="relative flex w-[calc(100%-3px)] gap-3">
         {/* popLayout 会把离场卡片临时绝对定位；relative 保证它留在滚动轨道内，
             后面的卡片才能一边补位、一边看着它平滑退场。 */}
         <AnimatePresence initial={false} mode="popLayout">
