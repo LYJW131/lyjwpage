@@ -14,7 +14,7 @@ import {
   PLAYBACK_STATE,
   type MusicKitInstance,
 } from "@/lib/musickit";
-import { mediaItemIndex } from "@/lib/playing-queue";
+import { catalogItemId, mediaItemIndex } from "@/lib/playing-queue";
 import { trackPositionMs } from "@/lib/track-position";
 import type { LocalNowPlaying } from "@/lib/types";
 
@@ -28,7 +28,7 @@ import type { LocalNowPlaying } from "@/lib/types";
  *
  * 「跟随」具体指四件事，都由锚点变化驱动：
  *   刚点一起听 → 静音加载，出声后 seek 到主人此刻再恢复音量；
- *   正常下一首（已预排）→ 跳队列从 0 起，不 seek；
+ *   正常下一首（已预排）→ 本首走完直接切，从 0 起，不 seek；
  *   主人暂停 / 续播 / 拖进度 → 跟着停、对齐、跟过去。
  * 另外挂一个慢速巡检，兜住访客这侧缓冲卡顿慢慢攒出来的偏差。
  *
@@ -36,7 +36,7 @@ import type { LocalNowPlaying } from "@/lib/types";
  * 换到预排的下一首，进度两边都从 0 附近走，再 seek 会把开头切掉。
  *
  * 上报器给了 Playing Next 时，服务端会先搜后面两首的目录 ID。这边 playNext
- * 预排进去，主人换到预排的那首就 changeToMediaAtIndex，不再整队 setQueue。
+ * 预排进去。本首结束就 skipToNext，不等主人锚点；主人暂停才停。
  */
 
 export type ListenAlongStatus =
@@ -70,6 +70,18 @@ function describe(error: unknown): string {
 function localPositionMs(music: MusicKitInstance): number {
   const seconds = music.currentPlaybackTime;
   return Number.isFinite(seconds) ? Math.max(0, seconds * 1000) : 0;
+}
+
+function localSongId(music: MusicKitInstance): string | null {
+  return catalogItemId(music.nowPlayingItem?.id);
+}
+
+function hasQueuedNext(music: MusicKitInstance): boolean {
+  const items = music.queue?.items ?? [];
+  const current = localSongId(music);
+  if (!current) return items.length > 1;
+  const at = mediaItemIndex(items, current);
+  return at >= 0 && at < items.length - 1;
 }
 
 async function syncUpcomingQueue(music: MusicKitInstance, ids: string[]) {
@@ -167,6 +179,8 @@ export function useListenAlong(source: {
   const readySongId = useRef<string | null>(null);
   /** 这轮跟听是否已经对过第一次进度。换歌用它区分「刚加入」和「正常下一首」 */
   const hasFollowed = useRef(false);
+  /** 主人锚点上一次对齐到的那首。本首走完先切下一首时，用它避免被拖回刚播完的那首 */
+  const lastHostSongId = useRef<string | null>(null);
   /** 出声时主人已经超前的毫秒数。加载后再对进度，通常是 0 */
   const lagMs = useRef(0);
   const upcomingRef = useRef(upcomingSongIds);
@@ -189,6 +203,7 @@ export function useListenAlong(source: {
     queuedSongId.current = null;
     readySongId.current = null;
     hasFollowed.current = false;
+    lastHostSongId.current = null;
     lagMs.current = 0;
     // 走得到这里就说明配了签发地址（没配的话按钮根本不渲染），不必再判一次
     setStatus("idle");
@@ -242,7 +257,16 @@ export function useListenAlong(source: {
           return;
         }
 
-        if (readySongId.current === songId) return;
+        if (readySongId.current === songId) {
+          lastHostSongId.current = songId;
+          return;
+        }
+
+        const localId = localSongId(music);
+        // 本首走完已经切到下一首，主人锚点还停在刚播完的那首：别拖回去。
+        if (lastHostSongId.current === songId && localId && localId !== songId) {
+          return;
+        }
 
         const joining = !hasFollowed.current;
         const previousVolume = joining ? mute(music) : music.volume;
@@ -289,6 +313,7 @@ export function useListenAlong(source: {
 
           readySongId.current = songId;
           hasFollowed.current = true;
+          lastHostSongId.current = songId;
           if (joining) music.volume = previousVolume;
           void syncUpcomingQueue(music, upcomingRef.current).catch(() => {});
         } finally {
@@ -299,6 +324,7 @@ export function useListenAlong(source: {
         queuedSongId.current = null;
         readySongId.current = null;
         hasFollowed.current = false;
+        lastHostSongId.current = null;
         lagMs.current = 0;
         setError(describe(caught));
         setStatus("error");
@@ -378,15 +404,27 @@ export function useListenAlong(source: {
   }, [music, songId, state, upcomingKey, upcomingSongIds]);
 
   /**
-   * 曲目播完先停住。队列里有预排的下一首时，MusicKit 会自己跳，主人还没换
-   * 就会超前。等锚点来了再 changeToMediaAtIndex。
+   * 本首走完直接切预排的下一首。主人那边还没换也先走，他暂停了再停。
    */
   useEffect(() => {
     if (!music) return;
     const onState = () => {
-      if (music.playbackState === PLAYBACK_STATE.ended) {
-        void music.pause().catch(() => {});
-      }
+      if (music.playbackState !== PLAYBACK_STATE.ended) return;
+      if (!hasQueuedNext(music)) return;
+      void (async () => {
+        try {
+          await music.skipToNextItem();
+          const next = localSongId(music);
+          if (next) {
+            queuedSongId.current = next;
+            readySongId.current = next;
+            lagMs.current = 0;
+          }
+          if (music.playbackState !== PLAYBACK_STATE.playing) await playSafe(music);
+        } catch {
+          // 没切过去就停在 ended，等主人锚点来了再 setQueue
+        }
+      })();
     };
     music.addEventListener("playbackStateDidChange", onState);
     return () => music.removeEventListener("playbackStateDidChange", onState);
