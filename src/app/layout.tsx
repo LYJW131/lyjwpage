@@ -5,6 +5,7 @@ import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 
 import { ThemeProvider } from "@/components/theme-provider";
+import { HEATMAP_STORAGE_KEY } from "@/lib/heatmap-preference";
 import { site } from "@/lib/site";
 
 import "./globals.css";
@@ -55,12 +56,12 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <meta name="asset-base-url" content={assetBaseUrl} />
         <script
           dangerouslySetInnerHTML={{
-            __html: `try{var t=localStorage.getItem("theme")||"system";document.documentElement.dataset.themeChoice=t}catch(e){}`,
+            __html: `try{var t=localStorage.getItem("theme")||"system";document.documentElement.dataset.themeChoice=t;var h=localStorage.getItem(${JSON.stringify(HEATMAP_STORAGE_KEY)});document.documentElement.dataset.heatmap=h==="commit"?"commit":"tokens"}catch(e){}`,
           }}
         />
         <style
           dangerouslySetInnerHTML={{
-            __html: `.theme-toggle-icon{display:none!important}html[data-theme-choice="light"] .theme-toggle-icon-light{display:block!important}html[data-theme-choice="dark"] .theme-toggle-icon-dark{display:block!important}html:not([data-theme-choice]) .theme-toggle-icon-system,html[data-theme-choice="system"] .theme-toggle-icon-system{display:block!important}`,
+            __html: `.theme-toggle-icon{display:none!important}html[data-theme-choice="light"] .theme-toggle-icon-light{display:block!important}html[data-theme-choice="dark"] .theme-toggle-icon-dark{display:block!important}html:not([data-theme-choice]) .theme-toggle-icon-system,html[data-theme-choice="system"] .theme-toggle-icon-system{display:block!important}.heatmap-panel{display:none!important}html:not([data-heatmap]) .heatmap-panel[data-heatmap-panel="tokens"],html[data-heatmap="tokens"] .heatmap-panel[data-heatmap-panel="tokens"],html[data-heatmap="commit"] .heatmap-panel[data-heatmap-panel="commit"]{display:block!important}html:not([data-heatmap]) .heatmap-tab[data-heatmap-tab="tokens"],html[data-heatmap="tokens"] .heatmap-tab[data-heatmap-tab="tokens"],html[data-heatmap="commit"] .heatmap-tab[data-heatmap-tab="commit"]{background-color:var(--muted)!important;color:var(--foreground)!important}`,
           }}
         />
       </head>
