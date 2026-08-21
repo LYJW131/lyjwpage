@@ -8,8 +8,7 @@ import NumberFlow, { NumberFlowGroup } from "@number-flow/react";
 import { useEffect, useState } from "react";
 
 import { ClaudeSpinner } from "@/components/live/claude-spinner";
-import { CodexActivityIndicator } from "@/components/live/codex-activity-indicator";
-import { VibeYearChart } from "@/components/live/vibe-year-chart";
+import { CodexActivityIndicator, CodexMark } from "@/components/live/codex-activity-indicator";
 import { Card } from "@/components/ui/card";
 import { useLiveEvents } from "@/hooks/use-live-events";
 import { useMountedAt } from "@/hooks/use-mounted-at";
@@ -24,7 +23,6 @@ import type {
   VibeCodingLimit,
   VibeCodingPayload,
   VibeCodingTotals,
-  VibeCodingYearPayload,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -32,7 +30,11 @@ import { cn } from "@/lib/utils";
  * 信封里五个来源同一形状。首页只给这两个全量面板：限额结构、活动灯
  * 都是为它们写的。其余同一份数据，只取总限额那一行。
  */
-const FEATURED_AGENT_IDS = ["claude", "codex"] as const;
+const FEATURED_AGENT_IDS = ["claude", "grok"] as const;
+
+function agentDisplayName(agent: VibeCodingAgent) {
+  return agent.id === "grok" ? "Grok Build" : agent.label;
+}
 
 function featuredAgents(agents: VibeCodingAgent[]) {
   const byId = new Map(agents.map((agent) => [agent.id, agent]));
@@ -165,6 +167,9 @@ function QuotaProviderMark({
     // 这个牌子只有黑白两色，Mono 就是它的本来面目，不是退而求其次
     case "grok":
       return <GrokIcon size={20} className={className} />;
+    case "openai":
+    case "codex":
+      return <CodexMark className={className} />;
     default:
       return (
         <span
@@ -367,56 +372,13 @@ function TotalUsage({
   );
 }
 
-/**
- * 窗口时长一律从分钟现算，不预设有哪几档 —— 上游的窗口组合是会变的。
- * 只有整天数才说「天」：1440 分钟按「24-hour」读着更顺，而且它跟 5 小时窗口
- * 是同一类（当日额度），说成「1-day」反而像周额度。
- */
-function formatWindow(minutes: number | null) {
-  if (minutes == null || minutes <= 0) return null;
-  if (minutes === 10080) return "Weekly";
-  if (minutes % 1440 === 0 && minutes > 1440) return `${minutes / 1440}-day limit`;
-  if (minutes % 60 === 0) return `${minutes / 60}-hour limit`;
-  return `${minutes}-minute limit`;
-}
-
-/**
- * 分组的展示名。
- *
- * Claude 的 usage 接口只给分组不给时长，而 Claude Code 自己的 /usage 面板把
- * `session` 这一档就叫「5-hour limit」—— 这里跟它的文案保持一致，方便对照。
- * 注意这只是展示层的说法：载荷里那条的 windowMinutes 仍然是 null，
- * 没有把 5 小时当成数据写回去，官方并没有公开这个时长。
- */
-const LIMIT_GROUP_NAMES: Record<string, string> = {
-  session: "5-hour limit",
-  weekly: "Weekly",
-};
-
-/**
- * 主额度桶的后缀，只认上游自己声明的那一个。
- *
- * 「没有 label 就是所有模型合计」这个归纳是错的 —— 它只在 Claude 那边成立：
- * 那边 weekly_scoped（Fable）是 weekly_all 的子集，所以后者确实是合计。
- * Codex 的 codex 和 codex_bengalfox（Spark）是并列的独立配额，主桶根本不含
- * Spark，写「all models」等于说了个假话。
- *
- * 两边的桶结构不一样，就别指望一条语义规则同时套住。这里只给上游明确叫
- * weekly_all 的那个加后缀，其余原样。
- */
-const LIMIT_KEY_SUFFIXES: Record<string, string> = {
-  weekly_all: "all models",
-};
-
 /** 判定「当日档」的上限。跨过一天的窗口按周额度那类算，不该顶替 5 小时档。 */
 const SESSION_WINDOW_MAX_MINUTES = 1440;
 
-function isSessionWindow(limit: VibeCodingLimit) {
-  return (
-    limit.group === "session" ||
-    (limit.windowMinutes != null && limit.windowMinutes < SESSION_WINDOW_MAX_MINUTES)
-  );
-}
+const FEATURED_LIMITS = [
+  { slot: "session", title: "5-hour limit" },
+  { slot: "weekly", title: "Weekly" },
+] as const;
 
 function isNamedLimit(limit: VibeCodingLimit, name: string) {
   return `${limit.key} ${limit.label ?? ""}`.toLowerCase().includes(name);
@@ -430,90 +392,44 @@ function isSparkWindow(limit: VibeCodingLimit) {
   );
 }
 
-function limitRank(agent: VibeCodingAgent, limit: VibeCodingLimit) {
-  if (isSessionWindow(limit)) return 0;
-  if (agent.id === "codex" && isSparkWindow(limit)) return 2;
-  return 1;
+function isExtraWindow(limit: VibeCodingLimit) {
+  return isSparkWindow(limit) || limit.key.includes("weekly-scoped") || isNamedLimit(limit, "fable");
 }
 
-function orderedLimits(agent: VibeCodingAgent) {
-  // Fable 专项额度仍保留在载荷里，只是不在首页展示。
-  const limits = agent.limits.filter(
-    (limit) => agent.id !== "claude" || !isNamedLimit(limit, "fable"),
-  );
-  return limits.sort((left, right) => {
-    const rank = limitRank(agent, left) - limitRank(agent, right);
-    return rank || left.key.localeCompare(right.key);
+function limitSlot(limit: VibeCodingLimit): "session" | "weekly" | null {
+  if (isExtraWindow(limit)) return null;
+  if (
+    limit.group === "session" ||
+    (limit.windowMinutes != null && limit.windowMinutes < SESSION_WINDOW_MAX_MINUTES)
+  ) {
+    return "session";
+  }
+  return "weekly";
+}
+
+function pickSlotLimit(limits: VibeCodingLimit[], slot: "session" | "weekly") {
+  const matched = limits.filter((limit) => limitSlot(limit) === slot);
+  if (matched.length === 0) return null;
+  if (slot === "weekly") {
+    return matched.find((limit) => limit.key === "weekly_all") ?? matched[0] ?? null;
+  }
+  return matched.find((limit) => limit.key.endsWith(".primary")) ?? matched[0] ?? null;
+}
+
+type FeaturedLimitRow =
+  | { kind: "limit"; key: string; title: string; limit: VibeCodingLimit }
+  | { kind: "unlimited"; key: string; title: string };
+
+/**
+ * 全量面板只认两个槽：5-hour limit 和 Weekly。有数据就画那一扇窗口，没有就 Unlimited。
+ * Spark / Fable 专项不进这两行。
+ */
+function featuredLimitRows(agent: VibeCodingAgent): FeaturedLimitRow[] {
+  return FEATURED_LIMITS.map(({ slot, title }) => {
+    const limit = pickSlotLimit(agent.limits, slot);
+    if (!limit) return { kind: "unlimited" as const, key: slot, title };
+    return { kind: "limit" as const, key: slot, title, limit };
   });
-}
-
-type LimitRow =
-  | { kind: "limit"; key: string; rank: number; limit: VibeCodingLimit }
-  | { kind: "placeholder"; key: string; rank: number; title: string };
-
-/**
- * Claude 的接口会偶尔只少一档：数组本身仍然有效，因此不能只靠 limitsError 判断。
- * 页面认得的 5 小时和总周额度两个语义槽位各自补缺；Fable 不展示，其余新窗口
- * 仍照单渲染。
- */
-function limitRows(agent: VibeCodingAgent): LimitRow[] {
-  const limits = orderedLimits(agent);
-  const rows: LimitRow[] = limits.map((limit) => ({
-    kind: "limit",
-    key: limit.key,
-    rank: limitRank(agent, limit),
-    limit,
-  }));
-  if (agent.id !== "claude" || (limits.length === 0 && !agent.limitsError)) return rows;
-
-  if (!limits.some(isSessionWindow)) {
-    rows.push({
-      kind: "placeholder",
-      key: "placeholder:claude-session",
-      rank: 0,
-      title: "5-hour limit",
-    });
-  }
-  if (!limits.some((limit) => limit.key === "weekly_all")) {
-    rows.push({
-      kind: "placeholder",
-      key: "placeholder:claude-weekly-all",
-      rank: 1,
-      title: "Weekly · all models",
-    });
-  }
-
-  return rows.sort((left, right) => left.rank - right.rank || left.key.localeCompare(right.key));
-}
-
-/**
- * 窗口名：有时长就按时长说，没有才退回分组。两者不会同时缺，
- * 但真缺了也得渲染这一条 —— 用量数字本身仍然有意义。
- */
-function labelIncludesWindow(label: string, minutes: number | null) {
-  if (minutes == null || minutes <= 0) return false;
-  const normalized = label.toLowerCase();
-  if (minutes === 10080 && /\bweekly\b/.test(normalized)) return true;
-  if (minutes % 1440 === 0 && minutes > 1440) {
-    return new RegExp(`\\b${minutes / 1440}[\\s-]*days?\\b`).test(normalized);
-  }
-  if (minutes % 60 === 0) {
-    return new RegExp(`\\b${minutes / 60}[\\s-]*(?:h|hours?)\\b`).test(normalized);
-  }
-  return new RegExp(`\\b${minutes}[\\s-]*(?:m|minutes?)\\b`).test(normalized);
-}
-
-function formatLimitTitle(limit: VibeCodingLimit) {
-  const window =
-    formatWindow(limit.windowMinutes) ??
-    (limit.group ? (LIMIT_GROUP_NAMES[limit.group] ?? limit.group) : null);
-  const label = limit.label?.trim() || null;
-  // Codex Spark 5h / Codex Spark Weekly 这类 label 已经把窗口写全了，统一只显示窗口名。
-  if (window && label && labelIncludesWindow(label, limit.windowMinutes)) return window;
-  // 只写桶名的 label 仍附在窗口名后面，把它和主额度区分开。
-  const suffix = label ?? LIMIT_KEY_SUFFIXES[limit.key];
-  const parts = [window, suffix].filter(Boolean);
-  return parts.length > 0 ? parts.join(" · ") : limit.key;
 }
 
 /**
@@ -572,7 +488,7 @@ function nextTickDelay(remain: number) {
 /**
  * 附加 provider 的重置文案。
  *
- * Claude / Codex 的窗口写着 Weekly，报「Resets Mon 11:00 AM」不会误会是哪一周。
+ * 全量面板的窗口写着 Weekly，报「Resets Mon 11:00 AM」不会误会是哪一周。
  * 这里没有窗口名：Cursor 可能是月、Antigravity 是周、Grok 只给一个时刻，
  * 再用星期几就会歧义，一律说还剩几天 / 几小时。
  */
@@ -609,7 +525,7 @@ function nextQuotaTickDelay(remain: number) {
   return remain % 60_000 || 60_000;
 }
 
-function LimitMeter({ limit }: { limit: VibeCodingLimit }) {
+function LimitMeter({ limit, title }: { limit: VibeCodingLimit; title: string }) {
   /**
    * 自己盯着重置时刻，不跟面板其它部分共用快照时间。
    *
@@ -656,7 +572,6 @@ function LimitMeter({ limit }: { limit: VibeCodingLimit }) {
   const expired = limit.resetsAt != null && limit.resetsAt * 1000 <= now;
   const usedPercent = expired ? 0 : limit.usedPercent;
   const color = limitColor(usedPercent);
-  const title = formatLimitTitle(limit);
   // 基准跟着上面那个 now，条和文案才会在同一刻翻面
   const reset = now ? formatReset(limit.resetsAt, now) : null;
 
@@ -667,7 +582,7 @@ function LimitMeter({ limit }: { limit: VibeCodingLimit }) {
 
         NumberFlow 是个 inline-block 的 web component，会把 text-xs 的行盒从
         16px 撑到 20px。限额窗口有的带重置倒计时、有的没有，因此两侧面板的
-        行高可能不一样，Codex 和 Claude Code 的进度条整列也会跟着错位。
+        行高可能不一样，两侧全量面板的进度条整列也会跟着错位。
 
         改 items-center：几个子元素都是 text-xs，视觉上和原来的 items-baseline
         没有区别，但不再受 NumberFlow 合成基线的影响。
@@ -715,16 +630,37 @@ function LimitMeter({ limit }: { limit: VibeCodingLimit }) {
   );
 }
 
-function LimitPlaceholder({ title, error }: { title: string; error: string | null }) {
+function LimitUnlimited({ title }: { title: string }) {
   return (
-    <div title={error ?? `${title} unavailable`}>
-      <div className="flex h-5 items-center justify-between gap-2 text-muted-foreground">
+    <div>
+      <div className="flex h-5 items-center justify-between gap-2">
         <span className="truncate text-xs">{title}</span>
-        <span className="shrink-0 text-xs">Unavailable</span>
+        <span className="flex shrink-0 items-baseline gap-2">
+          <span className="text-xs text-muted-foreground">Unlimited</span>
+          <span
+            className="font-mono text-xs tabular-nums"
+            style={{ color: LIMIT_UNLIMITED_COLOR }}
+          >
+            <span className="inline-block origin-right scale-[1.6]">∞</span>
+          </span>
+        </span>
       </div>
-      <div className="mt-1.5 h-1.5 bg-muted" />
+      <div className="mt-1.5 h-1.5" style={{ backgroundColor: LIMIT_UNLIMITED_COLOR }} />
     </div>
   );
+}
+
+function FeaturedMark({ id, active }: { id: string; active: boolean }) {
+  if (id === "claude") return <ClaudeSpinner active={active} />;
+  if (id === "grok") {
+    if (active) return <CodexActivityIndicator active />;
+    return (
+      <span className="flex size-5 shrink-0 items-center justify-center" aria-hidden>
+        <GrokIcon size={20} />
+      </span>
+    );
+  }
+  return <CodexActivityIndicator active={active} />;
 }
 
 function AgentPanel({
@@ -753,18 +689,13 @@ function AgentPanel({
   // 正在使用时显示会话扫描给的「此刻在用哪个」；闲置时仍显示用量那份的历史主力。
   const displayModel =
     (active ? agent.currentModel : agent.topModel ?? agent.currentModel) ?? "暂无模型";
-  const rows = limitRows(agent);
-  const hasLimits = rows.length > 0;
+  const rows = featuredLimitRows(agent);
   return (
     <div className="flex min-w-0 flex-col px-4 py-4 md:px-5">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          {agent.id === "claude" ? (
-            <ClaudeSpinner active={active} />
-          ) : (
-            <CodexActivityIndicator active={active} />
-          )}
-          <span className="text-sm font-medium">{agent.label}</span>
+          <FeaturedMark id={agent.id} active={active} />
+          <span className="text-sm font-medium">{agentDisplayName(agent)}</span>
           {active && <span className="label-mono text-live">正在使用</span>}
         </div>
         <span
@@ -803,58 +734,26 @@ function AgentPanel({
         </div>
       </div>
 
-      {/*
-        限额：未知的新窗口照单渲染；Claude 已知的语义槽位取不到时保留占位，
-        避免其中一行偶发消失。未配置仍是空数组加 null error，整块不渲染。
-        套餐等级跟着这一行走，但它不依赖限额 —— usage 接口挂了套餐照样读得到，
-        所以整块的渲染条件是「两者有其一」，分隔点只在两者都在时才出现。
-      */}
-      {(agent.plan || hasLimits) && (
-        <div className="mt-5 grid gap-3 border-t border-line pt-4">
-          <div className="label-mono text-muted-foreground">
-            {hasLimits && "Limits"}
-            {agent.plan && (
-              <span title={`套餐 ${agent.plan.tier}`}>
-                {hasLimits && (
-                  <span aria-hidden className="mx-1.5">
-                    ·
-                  </span>
-                )}
-                <span className="font-sans normal-case">{agent.plan.label}</span>
+      <div className="mt-5 grid gap-3 border-t border-line pt-4">
+        <div className="label-mono text-muted-foreground">
+          Limits
+          {agent.plan && (
+            <span title={`套餐 ${agent.plan.tier}`}>
+              <span aria-hidden className="mx-1.5">
+                ·
               </span>
-            )}
-          </div>
-          {agent.id === "codex" &&
-            hasLimits &&
-            !agent.limits.some(isSessionWindow) && (
-              <div>
-                <div className="flex h-5 items-center justify-between gap-2">
-                  <span className="truncate text-xs">5-hour limit</span>
-                  <span className="flex shrink-0 items-baseline gap-2">
-                    <span className="text-xs text-muted-foreground">Unlimited</span>
-                    <span
-                      className="font-mono text-xs tabular-nums"
-                      style={{ color: LIMIT_UNLIMITED_COLOR }}
-                    >
-                      <span className="inline-block origin-right scale-[1.6]">∞</span>
-                    </span>
-                  </span>
-                </div>
-                <div
-                  className="mt-1.5 h-1.5"
-                  style={{ backgroundColor: LIMIT_UNLIMITED_COLOR }}
-                />
-              </div>
-            )}
-          {rows.map((row) =>
-            row.kind === "limit" ? (
-              <LimitMeter key={row.key} limit={row.limit} />
-            ) : (
-              <LimitPlaceholder key={row.key} title={row.title} error={agent.limitsError} />
-            ),
+              <span className="font-sans normal-case">{agent.plan.label}</span>
+            </span>
           )}
         </div>
-      )}
+        {rows.map((row) =>
+          row.kind === "limit" ? (
+            <LimitMeter key={row.key} limit={row.limit} title={row.title} />
+          ) : (
+            <LimitUnlimited key={row.key} title={row.title} />
+          ),
+        )}
+      </div>
     </div>
   );
 }
@@ -894,7 +793,7 @@ function QuotaProviderRow({ agent }: { agent: VibeCodingAgent }) {
               className="size-5"
             />
           </span>
-          <span className="truncate text-sm font-medium">{agent.label}</span>
+          <span className="truncate text-sm font-medium">{agentDisplayName(agent)}</span>
         </div>
         <span className="flex h-5 min-w-0 items-baseline text-xs text-muted-foreground md:shrink-0">
           {agent.plan && (
@@ -995,11 +894,9 @@ function QuotaProviders({ agents }: { agents: VibeCodingAgent[] }) {
 
 export function VibeCodingCard({
   fallback,
-  yearFallback,
   className,
 }: {
   fallback: StatusResponse<VibeCodingPayload>;
-  yearFallback: StatusResponse<VibeCodingYearPayload>;
   className?: string;
 }) {
   // 会话状态（正在用 / 换模型）走推送；token 用量仍靠轮询。
@@ -1066,7 +963,7 @@ export function VibeCodingCard({
             ))}
           </div>
           <div className="grid min-h-64 grid-cols-1 divide-y divide-line md:grid-cols-2 md:divide-x md:divide-y-0">
-            {["Claude Code", "Codex"].map((label) => (
+            {["Claude Code", "Grok Build"].map((label) => (
               <div key={label} className="animate-pulse px-5 py-4">
                 <div className="flex items-center gap-2">
                   <div className="h-4 w-24 rounded bg-muted" />
@@ -1074,14 +971,14 @@ export function VibeCodingCard({
                   <div className="h-4 w-14 bg-muted" />
                 </div>
                 <div className="mt-6 h-12 w-36 rounded bg-muted" />
-                {/* 限额条：占位只放一条 —— 条数由上游决定，多占的话数据回来会塌一截 */}
+                {/* 两个语义槽位，缺数据时是 Unlimited，条数固定 */}
                 <div className="mt-6 h-1.5 bg-muted" />
+                <div className="mt-3 h-1.5 bg-muted" />
               </div>
             ))}
           </div>
         </>
       )}
-      <VibeYearChart fallback={yearFallback} />
     </Card>
   );
 }

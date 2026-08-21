@@ -312,7 +312,7 @@ export type VibeCodingAgent = {
    * 品牌图标键，如 "cursor" / "grok"。和 id 不是一回事：id 是 TokenTracker
    * 的来源名，这个是牌子。站点认不出来的键退回首字母，不是整行不渲染。
    *
-   * 全量面板不用它（Claude / Codex 各有自己的活动灯），只给按需取用的
+   * 全量面板不用它（Claude / Grok 各有自己的活动灯），只给按需取用的
    * 那几行限额条当标记。
    */
   icon: string;
@@ -376,7 +376,7 @@ export type VibeCodingNowPayload = {
 export type VibeCodingPayload = {
   /**
    * 同一形状的来源列表。上报器发几个就有几个；首页按 id 取用：
-   * `claude` / `codex` 画全量面板，其余只取限额那一行。
+   * `claude` / `grok` 画全量面板，其余只取限额那一行。
    */
   agents: VibeCodingAgent[];
   totals: VibeCodingTotals;
@@ -390,20 +390,22 @@ export type VibeCodingPayload = {
 } & ReporterPresence;
 
 /**
- * 年度 token 热力图的一块。
+ * 过去 53 周的日合计 token。整年一次给齐。
  *
- * 53 周从周日切起，上报器一次只给 13 周。`days[i]` 是 `from` 起第 i 天的合计
- * token。站点按 origin 拼成一条日历；浏览器同样按块来取，首屏只带最近一块。
+ * `days[i]` 是 origin 起第 i 天的合计。档位和文案浏览器现算，不进信封。
+ * `mix` 是每天前五模型的稀疏编码，下标指 `models`。
  */
-export type VibeCodingYearChunk = {
+export type VibeCodingYearPayload = {
   /** 53 周窗口的第一个周日，YYYY-MM-DD */
   origin: string;
-  /** 这一块的第一个周日 */
-  from: string;
   days: number[];
-};
-
-export type VibeCodingYearPayload = VibeCodingYearChunk & {
+  /** 这一年里出现在每日前五里的模型名，mix 里的下标指这里。 */
+  models: string[];
+  /**
+   * 稀疏的每日前五。一行是 `[offset, idx, tokens, idx, tokens, …]`，
+   * offset 是 origin 起第几天，idx 是 models[] 下标。空日子不出现。
+   */
+  mix: number[][];
   pushedAt: number;
 };
 

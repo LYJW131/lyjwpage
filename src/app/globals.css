@@ -573,6 +573,29 @@ button.paper-card {
   fill: var(--muted) !important;
 }
 
+/*
+ * 年度热力图和 GitHub 贡献图共用几何，颜色不能共用：那边已经是蓝。
+ * 四档跟 --live 同一色相，浅底越深越多、深底越亮越多。
+ */
+.vibe-year-chart {
+  --year-score-1: oklch(0.84 0.09 145);
+  --year-score-2: oklch(0.74 0.14 145);
+  --year-score-3: oklch(0.65 0.17 145);
+  --year-score-4: oklch(0.50 0.14 145);
+}
+
+.dark .vibe-year-chart {
+  --year-score-1: oklch(0.38 0.08 148);
+  --year-score-2: oklch(0.50 0.12 148);
+  --year-score-3: oklch(0.64 0.14 148);
+  --year-score-4: oklch(0.76 0.16 148);
+}
+
+.github-chart svg rect[data-hot] {
+  stroke: var(--foreground);
+  stroke-width: 1;
+}
+
 .github-chart svg text {
   fill: var(--muted-foreground) !important;
   font-family: var(--font-mono) !important;

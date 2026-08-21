@@ -4,6 +4,30 @@ import { cn } from "@/lib/utils";
 
 const CODEX_SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
+/** 闲置时用的 Codex 标，深浅两版只差圆角底。 */
+export function CodexMark({ className }: { className?: string }) {
+  return (
+    <>
+      <Image
+        src="/codex-icon-light.svg"
+        width={20}
+        height={20}
+        alt=""
+        unoptimized
+        className={cn("size-5 dark:hidden", className)}
+      />
+      <Image
+        src="/codex-icon-dark.svg"
+        width={20}
+        height={20}
+        alt=""
+        unoptimized
+        className={cn("hidden size-5 dark:block", className)}
+      />
+    </>
+  );
+}
+
 /**
  * Codex CLI 终端标题使用的官方 Braille spinner，每 100ms 切换一帧。
  * 不活跃时退回静态状态点，避免闲置状态仍然看起来像在工作。
@@ -35,29 +59,7 @@ export function CodexActivityIndicator({
           </span>
         ))
       ) : (
-        <>
-          {/*
-            深浅两版只差圆角底的颜色，靠 CSS 换 —— 底色要跟着主题翻，
-            浅色页面上用深色底、深色页面上用白底，图标才始终有对比。
-            两张都是矢量，加起来还不到从前一张位图大。
-          */}
-          <Image
-            src="/codex-icon-light.svg"
-            width={20}
-            height={20}
-            alt=""
-            unoptimized
-            className="size-5 dark:hidden"
-          />
-          <Image
-            src="/codex-icon-dark.svg"
-            width={20}
-            height={20}
-            alt=""
-            unoptimized
-            className="hidden size-5 dark:block"
-          />
-        </>
+        <CodexMark />
       )}
     </span>
   );

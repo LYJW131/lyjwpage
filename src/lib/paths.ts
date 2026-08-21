@@ -13,7 +13,7 @@ export const DESKTOP_PATH = "/api/status/desktop";
 export const CHARGER_PATH = "/api/status/charger";
 export const POWERBANK_PATH = "/api/status/powerbank";
 export const VIBECODING_PATH = "/api/status/vibecoding";
-/** 年度 token 热力图。按 `?from=` 一块一块取，没有推送。 */
+/** 年度 token 热力图。整年一次取，没有推送。 */
 export const VIBECODING_YEAR_PATH = "/api/status/vibecoding/year";
 
 /**

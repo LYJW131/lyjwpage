@@ -1,13 +1,6 @@
-import { fromParam, statusRoute, statusSource } from "@/lib/api";
-import { cachedVibeCodingYear } from "@/lib/status-cache";
-import { getVibeCodingYearChunk } from "@/lib/vibecoding-year-store";
+import { statusRoute } from "@/lib/api";
+import { vibeCodingYearStatus } from "@/lib/status-cache";
 
-export function GET(request: Request) {
-  const from = fromParam(request);
-  return statusRoute(
-    statusSource(
-      () => cachedVibeCodingYear(from),
-      () => getVibeCodingYearChunk(from),
-    ),
-  );
+export function GET() {
+  return statusRoute(vibeCodingYearStatus);
 }

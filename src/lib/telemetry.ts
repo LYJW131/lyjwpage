@@ -619,7 +619,7 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
 
     /**
      * 年度热力图单独一块。不推送 —— 格子按天变，浏览器长间隔来问就够。
-     * 一块 13 周，站点按 origin 拼；浏览器同样按块取，别整年塞进一次响应。
+     * 整年 371 个数一次给齐，外加每天前五的稀疏 mix，比切块少绕路。
      */
     if ("vibeCodingYear" in modules) {
       writes.push(prepareVibeCodingYear(modules.vibeCodingYear, receivedAt).commit());
