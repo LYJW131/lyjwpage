@@ -158,6 +158,14 @@ async function playSafe(music: MusicKitInstance) {
   await mkSafe(() => music.play());
 }
 
+/** 预切要接的下一首：上报的 Playing Next，或队列里当前曲后面那首 */
+function nextPreparedId(music: MusicKitInstance, current: string, upcoming: string[]) {
+  if (upcoming[0] && upcoming[0] !== current) return upcoming[0];
+  const at = mediaItemIndex(music.queue?.items ?? [], current);
+  if (at < 0) return null;
+  return catalogItemId(music.queue?.items?.[at + 1]?.id);
+}
+
 /** 切到目录里的某一首：已在队列里就按位置切（省一次整队重排），不在才 setQueue */
 async function changeToSong(music: MusicKitInstance, songId: string) {
   const at = mediaItemIndex(music.queue?.items ?? [], songId);
@@ -653,111 +661,104 @@ export function useListenAlong(source: {
   }, [music, songId, state, upcomingKey, upcomingSongIds, repeatOne]);
 
   /**
-   * 预切：剩 5 秒开始把音量线性收到 0，剩 2 秒切到预排的下一首静音加载，
-   * 好了停在 0。出声看这首按锚点算出的结束时刻，不看他切歌的信号。
+   * 预切：剩 5 秒开始把音量线性收到 0，剩 2 秒切到下一首静音加载，停在 0。
+   * 出声看这首按锚点算出的结束时刻，不看他切歌的信号。
    *
-   * 渐弱按主人还剩多久算，不按定时器已经走了多久 —— 锚点晚到也保证剩 2
-   * 秒时喇叭是哑的。加载完不恢复音量；切歌信号到了也不恢复。
+   * 进度锚点会不停刷新 observedAt / positionMs，不能放进依赖 —— 一刷新就拆
+   * 定时器，渐弱和预切永远走不到，只能再等切歌信号。剩余时间从 hostRef 读。
    */
   useEffect(() => {
-    if (!music || !songId || state !== "playing" || repeatOne) return;
-    if (durationMs <= 0 || !upcomingKey) return;
+    const player = musicRef.current;
+    if (!player || !songId || state !== "playing" || repeatOne) return;
 
-    const remaining =
-      durationMs -
-      trackPositionMs({ state, observedAt, positionMs, durationMs, repeatOne }, Date.now());
-
-    let fade: number | null = null;
     let baseline: number | null = null;
     let switched = false;
     const fadeSpan = SWITCH_FADE_START_MS - SWITCH_LEAD_MS;
 
-    const timer = window.setTimeout(
-      () => {
-        if (repeatOneRef.current) return;
-        if (songIdRef.current !== songId || hostRef.current.state !== "playing") return;
-        if (readySongId.current !== songId) return;
-        if (!upcomingRef.current[0] || upcomingRef.current[0] === songId) return;
+    const tick = () => {
+      if (switched || repeatOneRef.current) return;
+      if (songIdRef.current !== songId || hostRef.current.state !== "playing") return;
+      if (readySongId.current !== songId) return;
+      const host = hostRef.current;
+      if (host.durationMs <= 0) return;
+      const next = nextPreparedId(player, songId, upcomingRef.current);
+      if (!next) return;
+      const left = host.durationMs - trackPositionMs(host, Date.now());
+      if (left > SWITCH_FADE_START_MS) return;
 
-        baseline = Number.isFinite(music.volume) ? music.volume : 1;
-        const base = baseline;
-        const endsAt = Date.now() + Math.max(0, durationMs - trackPositionMs(hostRef.current, Date.now()));
+      if (baseline == null) {
+        baseline = Number.isFinite(player.volume) ? player.volume : 1;
+      }
+      const t = Math.min(1, Math.max(0, (SWITCH_FADE_START_MS - left) / fadeSpan));
+      player.volume = baseline * (1 - t);
+      if (left > SWITCH_LEAD_MS) return;
 
-        fade = window.setInterval(() => {
-          const left = durationMs - trackPositionMs(hostRef.current, Date.now());
-          const t = Math.min(1, Math.max(0, (SWITCH_FADE_START_MS - left) / fadeSpan));
-          music.volume = base * (1 - t);
-          if (left > SWITCH_LEAD_MS) return;
-          music.volume = 0;
-          if (fade != null) window.clearInterval(fade);
-          fade = null;
-          switched = true;
+      player.volume = 0;
+      switched = true;
+      const endsAt = Date.now() + Math.max(0, left);
+      const base = baseline;
 
-          /*
-           * 一旦开切就不跟 effect 的清理联动：加载途中主人的新锚点到了正是
-           * 预期，这时中断只会把加载白做一遍。链上重验代替取消。
-           */
-          void runExclusive(async () => {
-            if (
-              repeatOneRef.current ||
-              songIdRef.current !== songId ||
-              hostRef.current.state !== "playing" ||
-              readySongId.current !== songId ||
-              localSongId(music) !== songId ||
-              !upcomingRef.current[0] ||
-              upcomingRef.current[0] === songId
-            ) {
-              music.volume = base;
-              return;
-            }
-            const next = upcomingRef.current[0];
-            queuedSongId.current = next;
-            readySongId.current = next;
-            alignedSongId.current = next;
-            lagMs.current = 0;
-            holdVolume.current = base;
-            holdUntilMs.current = endsAt;
-            music.volume = 0;
-            try {
-              await changeToSong(music, next);
-              if (music.playbackState !== PLAYBACK_STATE.playing) await playSafe(music);
-              await waitUntilPlaying(music, () => false);
-              await mkSafe(() => music.pause());
-              await mkSafe(() => music.seekToTime(0));
-              music.volume = 0;
-              if (holdTimer.current != null) window.clearTimeout(holdTimer.current);
-              const wait = Math.max(0, holdUntilMs.current - Date.now());
-              holdTimer.current = window.setTimeout(() => {
-                holdTimer.current = null;
-                void runExclusive(async () => {
-                  if (holdUntilMs.current === 0) return;
-                  if (hostRef.current.state !== "playing") return;
-                  holdUntilMs.current = 0;
-                  music.volume = holdVolume.current;
-                  if (music.playbackState !== PLAYBACK_STATE.playing) await playSafe(music);
-                  setAudible(true);
-                });
-              }, wait);
-            } catch {
+      void runExclusive(async () => {
+        /*
+         * 不验 songIdRef === 旧 id：加载这几秒他的切歌信号可能已经到了，
+         * 那正是我们要抢在前面做完的事，中断只会退回等信号。
+         */
+        if (
+          repeatOneRef.current ||
+          hostRef.current.state !== "playing" ||
+          readySongId.current !== songId ||
+          localSongId(player) !== songId
+        ) {
+          player.volume = base;
+          switched = false;
+          return;
+        }
+        queuedSongId.current = next;
+        readySongId.current = next;
+        alignedSongId.current = next;
+        lagMs.current = 0;
+        holdVolume.current = base;
+        holdUntilMs.current = endsAt;
+        player.volume = 0;
+        try {
+          await changeToSong(player, next);
+          if (player.playbackState !== PLAYBACK_STATE.playing) await playSafe(player);
+          await waitUntilPlaying(player, () => false);
+          await mkSafe(() => player.pause());
+          await mkSafe(() => player.seekToTime(0));
+          player.volume = 0;
+          if (holdTimer.current != null) window.clearTimeout(holdTimer.current);
+          const wait = Math.max(0, holdUntilMs.current - Date.now());
+          holdTimer.current = window.setTimeout(() => {
+            holdTimer.current = null;
+            void runExclusive(async () => {
+              if (holdUntilMs.current === 0) return;
+              if (hostRef.current.state !== "playing") return;
               holdUntilMs.current = 0;
-              queuedSongId.current = null;
-              readySongId.current = null;
-              alignedSongId.current = null;
-              music.volume = base;
-            }
-          });
-        }, SWITCH_FADE_STEP_MS);
-      },
-      Math.max(0, remaining - SWITCH_FADE_START_MS),
-    );
-
-    return () => {
-      window.clearTimeout(timer);
-      if (fade != null) window.clearInterval(fade);
-      // 渐弱到一半被取消（主人拖了进度 / 暂停）：把音量还原，别留个半哑的
-      if (!switched && baseline != null) music.volume = baseline;
+              player.volume = holdVolume.current;
+              if (player.playbackState !== PLAYBACK_STATE.playing) await playSafe(player);
+              setAudible(true);
+            });
+          }, wait);
+        } catch {
+          holdUntilMs.current = 0;
+          queuedSongId.current = null;
+          readySongId.current = null;
+          alignedSongId.current = null;
+          player.volume = base;
+          switched = false;
+        }
+      });
     };
-  }, [music, songId, state, observedAt, positionMs, durationMs, repeatOne, upcomingKey]);
+
+    const interval = window.setInterval(tick, SWITCH_FADE_STEP_MS);
+    tick();
+    return () => {
+      window.clearInterval(interval);
+      // 渐弱到一半被取消（这首结束、暂停）：把音量还原，别留个半哑的
+      if (!switched && baseline != null) player.volume = baseline;
+    };
+  }, [music, songId, state, repeatOne]);
 
   /**
    * 主人开/关单曲循环时跟着改。走 ref，避免 eslint 把 useState 的 music 当成不可变。
