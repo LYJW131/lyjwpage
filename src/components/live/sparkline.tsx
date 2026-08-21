@@ -41,6 +41,10 @@ const WINDOW_MS = 20 * 60 * 1000;
 const STEP = 40;
 /** 柱子占一个采样间隔的比例，留出的缝隙让相邻柱子分得开 */
 const BAR_FILL = 0.62;
+/** 本机 SSE 约 1 Hz，柱宽按这一格来，空隙留白，不要把间隔拉成宽柱。 */
+const LIVE_INTERVAL_MS = 1_000;
+/** 1 Hz 下 20 分钟窗口里柱子会细成一条线；两分钟约 120 根，和远端那张密度接近。 */
+export const LIVE_WINDOW_MS = 2 * 60 * 1000;
 /** 连续这么多个空槽还没有新读数，就认为是断流而不是「值没变」 */
 const HOLD_SLOTS = 2;
 
@@ -110,6 +114,7 @@ export function Sparkline({
   windowMs = WINDOW_MS,
   step = STEP,
   variant = "bars",
+  bucket = true,
   formatValue,
   className,
 }: {
@@ -121,6 +126,11 @@ export function Sparkline({
   step?: number;
   /** bars 适合瞬时读数，trend 适合看走向 —— 取舍见文件头 */
   variant?: "bars" | "trend";
+  /**
+   * 远端不规则采样才按中位间隔收成槽。本机 SSE 1 Hz，一帧一根柱，
+   * 不要再峰值进桶 —— 否则几十个读数挤在最后一格，柱子看起来不跟着跳。
+   */
+  bucket?: boolean;
   /** 传了就在 bars 上启用悬停读数；返回要显示的文本 */
   formatValue?: (value: number) => string;
   className?: string;
@@ -202,63 +212,96 @@ export function Sparkline({
     );
   }
 
-  const gaps = visible
-    .slice(1)
-    .map((sample, index) => sample.t - visible[index].t)
-    .sort((a, b) => a - b);
-  const medianGap = gaps.length ? gaps[Math.floor(gaps.length / 2)] : span;
-
   /**
-   * 把窗口切成等宽时间槽，再一槽一柱。
-   *
-   * 采样是不规则的：实测间隔 5.1~37.2 秒、中位 29.9 秒。一个采样一根柱、
-   * 柱宽取中位间隔的话，密集处会互相压住 —— 最近的一对只差 5.1 秒，按中位数
-   * 画会重叠 83%，看起来就是一片乱。柱状图隐含「等宽的离散区间」，那就真的
-   * 按等宽区间来分，而不是反过来去凑柱宽。
-   *
-   * 槽数由数据自己的节奏决定（跨度 ÷ 中位间隔）：充电器 20 分钟 / 30 秒得到
-   * 约 41 槽；Vibe Coding 30 天 / 1 天正好得到 30 槽 —— 它本来就在规则网格
-   * 上，这样不会被重新聚合而失真。
+   * 本机 SSE：一帧一根柱，按采样时刻落点。远端不规则采样才按中位间隔收成槽。
    */
-  const slotCount = Math.min(72, Math.max(8, Math.round(span / medianGap) + 1));
-  const slotSpan = span / slotCount;
+  const bars: { x: number; width: number; hitX: number; hitW: number; value: number }[] = [];
 
-  const bucketed: (number | null)[] = new Array(slotCount).fill(null);
-  for (const sample of visible) {
-    const index = Math.floor((sample.t - start) / slotSpan);
-    if (index < 0 || index >= slotCount) continue;
-    // 同槽多个读数取峰值：功率图上尖峰比均值更有意义
-    bucketed[index] = Math.max(bucketed[index] ?? 0, sample.w);
-  }
-
-  /**
-   * 空槽沿用上一个读数 —— 功率在下次上报前就是维持不变的，不是零。
-   * 但连续 HOLD_SLOTS 槽都没有新读数就当断流，如实空着，不拿旧值糊过去。
-   */
-  const values: (number | null)[] = [];
-  // 窗口左边界外那个读数是槽 0 的沿用来源
-  let held: number | null = visible[0].t < start ? visible[0].w : null;
-  let idle = 0;
-  for (const slot of bucketed) {
-    if (slot != null) {
-      held = slot;
-      idle = 0;
-    } else {
-      idle += 1;
+  if (!bucket) {
+    /**
+     * 本机 1 Hz：槽数写死，柱宽和间距从头到尾不变。
+     * 按墙钟落点的话，帧间隔一抖柱距就一宽一窄；按序号排，空槽留在左边。
+     */
+    const slotCount = Math.round(LIVE_WINDOW_MS / LIVE_INTERVAL_MS);
+    const live = samples.slice(-slotCount);
+    const slotWidth = width / slotCount;
+    const barWidth = Math.max(0.4, slotWidth * BAR_FILL);
+    const offset = slotCount - live.length;
+    for (let i = 0; i < live.length; i += 1) {
+      const index = offset + i;
+      bars.push({
+        x: index * slotWidth + (slotWidth - barWidth) / 2,
+        width: barWidth,
+        hitX: index * slotWidth,
+        hitW: slotWidth,
+        value: live[i].w,
+      });
     }
-    values.push(slot ?? (held != null && idle <= HOLD_SLOTS ? held : null));
+  } else {
+    const gaps = visible
+      .slice(1)
+      .map((sample, index) => sample.t - visible[index].t)
+      .sort((a, b) => a - b);
+    const medianGap = gaps.length ? gaps[Math.floor(gaps.length / 2)] : span;
+
+    /**
+     * 把窗口切成等宽时间槽，再一槽一柱。
+     *
+     * 采样是不规则的：实测间隔 5.1~37.2 秒、中位 29.9 秒。一个采样一根柱、
+     * 柱宽取中位间隔的话，密集处会互相压住 —— 最近的一对只差 5.1 秒，按中位数
+     * 画会重叠 83%，看起来就是一片乱。柱状图隐含「等宽的离散区间」，那就真的
+     * 按等宽区间来分，而不是反过来去凑柱宽。
+     *
+     * 槽数由数据自己的节奏决定（跨度 ÷ 中位间隔）：充电器 20 分钟 / 30 秒得到
+     * 约 41 槽；Vibe Coding 30 天 / 1 天正好得到 30 槽 —— 它本来就在规则网格
+     * 上，这样不会被重新聚合而失真。
+     */
+    const slotCount = Math.min(72, Math.max(8, Math.round(span / medianGap) + 1));
+    const slotSpan = span / slotCount;
+    const slotWidth = width / slotCount;
+    const barWidth = Math.max(0.4, slotWidth * BAR_FILL);
+
+    const bucketed: (number | null)[] = new Array(slotCount).fill(null);
+    for (const sample of visible) {
+      const index = Math.floor((sample.t - start) / slotSpan);
+      if (index < 0 || index >= slotCount) continue;
+      // 同槽多个读数取峰值：功率图上尖峰比均值更有意义
+      bucketed[index] = Math.max(bucketed[index] ?? 0, sample.w);
+    }
+
+    /**
+     * 空槽沿用上一个读数 —— 功率在下次上报前就是维持不变的，不是零。
+     * 但连续 HOLD_SLOTS 槽都没有新读数就当断流，如实空着，不拿旧值糊过去。
+     */
+    let held: number | null = visible[0].t < start ? visible[0].w : null;
+    let idle = 0;
+    for (let index = 0; index < bucketed.length; index += 1) {
+      const slot = bucketed[index];
+      if (slot != null) {
+        held = slot;
+        idle = 0;
+      } else {
+        idle += 1;
+      }
+      const value = slot ?? (held != null && idle <= HOLD_SLOTS ? held : null);
+      if (value == null) continue;
+      bars.push({
+        x: index * slotWidth + (slotWidth - barWidth) / 2,
+        width: barWidth,
+        hitX: index * slotWidth,
+        hitW: slotWidth,
+        value,
+      });
+    }
   }
 
-  const peak = Math.max(0, ...values.filter((v): v is number => v != null));
+  const peak = Math.max(0, ...bars.map((bar) => bar.value));
   const ceiling =
     max == null
       ? Math.max(step, Math.ceil(peak / step) * step)
       : Math.max(max, 1);
 
-  const slotWidth = width / slotCount;
-  const barWidth = Math.max(0.4, slotWidth * BAR_FILL);
-
-  const active = hovered != null ? values[hovered] : null;
+  const active = hovered != null ? bars[hovered]?.value ?? null : null;
 
   return (
     // 相对定位是给读数气泡用的：viewBox 被 preserveAspectRatio="none" 拉伸，
@@ -279,15 +322,14 @@ export function Sparkline({
             <stop offset="100%" stopColor="var(--live)" stopOpacity="0.35" />
           </linearGradient>
         </defs>
-        {values.map((value, index) => {
-          if (value == null) return null;
-          const y = height - (Math.min(Math.max(value, 0), ceiling) / ceiling) * height;
+        {bars.map((bar, index) => {
+          const y = height - (Math.min(Math.max(bar.value, 0), ceiling) / ceiling) * height;
           return (
             <rect
               key={index}
-              x={(index * slotWidth + (slotWidth - barWidth) / 2).toFixed(2)}
+              x={bar.x.toFixed(2)}
               y={y.toFixed(2)}
-              width={barWidth.toFixed(2)}
+              width={bar.width.toFixed(2)}
               height={(height - y).toFixed(2)}
               fill={`url(#fill-${id})`}
               opacity={hovered != null && hovered !== index ? 0.4 : 1}
@@ -299,15 +341,14 @@ export function Sparkline({
           纵向只从柱顶往下 —— 全高的话，柱子矮时光标飘在上方老远就触发了。
         */}
         {formatValue &&
-          values.map((value, index) => {
-            if (value == null) return null;
-            const y = height - (Math.min(Math.max(value, 0), ceiling) / ceiling) * height;
+          bars.map((bar, index) => {
+            const y = height - (Math.min(Math.max(bar.value, 0), ceiling) / ceiling) * height;
             return (
               <rect
                 key={`hit-${index}`}
-                x={(index * slotWidth).toFixed(2)}
+                x={bar.hitX.toFixed(2)}
                 y={y.toFixed(2)}
-                width={slotWidth.toFixed(2)}
+                width={bar.hitW.toFixed(2)}
                 height={(height - y).toFixed(2)}
                 fill="transparent"
                 onMouseEnter={() => setHovered(index)}
@@ -319,12 +360,12 @@ export function Sparkline({
           })}
       </svg>
 
-      {formatValue && active != null && hovered != null && (
+      {formatValue && active != null && hovered != null && bars[hovered] && (
         <div
           className="pointer-events-none absolute z-10 -mt-1 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-sm border border-line bg-surface px-1.5 py-0.5 label-mono text-foreground"
           style={{
             // 贴那一列的中心；两端夹住，免得气泡被卡片边缘裁掉
-            left: `${Math.min(92, Math.max(8, ((hovered + 0.5) / slotCount) * 100))}%`,
+            left: `${Math.min(92, Math.max(8, ((bars[hovered].hitX + bars[hovered].hitW / 2) / width) * 100))}%`,
             // 贴柱子顶端而不是容器顶端 —— 柱子矮的时候上面空一大片，
             // 气泡飘在那儿看不出跟谁有关系
             top: `${(1 - Math.min(Math.max(active, 0), ceiling) / ceiling) * 100}%`,
