@@ -9,13 +9,6 @@ import {
 } from "@/lib/reporter-liveness";
 import type { ChargerPayload, ChargerStatus } from "@/lib/types";
 
-export {
-  type RawChargingDevice,
-  type RawChargingDevices,
-  normalizeChargingDevice,
-  pickCharger,
-} from "@/lib/charging-device";
-
 /**
  * Anker Prime 160W (A2687) 遥测。
  *

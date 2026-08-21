@@ -18,3 +18,12 @@
  * 改这里要和 sparkline.tsx 的 WINDOW_MS 一起看。
  */
 export const CHARGER_HISTORY_LIMIT = 400;
+
+/**
+ * 本机 SSE 功率曲线：约 1 Hz 一帧、一帧一根柱，窗口两分钟。
+ *
+ * sparkline 按这两个数定槽数和柱宽，local-charging 按同一个商攒缓冲 ——
+ * 攒多了是每帧白复制的死重，攒少了曲线左边空一截，所以必须同源。
+ */
+export const LIVE_INTERVAL_MS = 1_000;
+export const LIVE_WINDOW_MS = 2 * 60 * 1000;

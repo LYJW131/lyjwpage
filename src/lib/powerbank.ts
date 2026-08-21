@@ -7,13 +7,6 @@ import {
 } from "@/lib/reporter-liveness";
 import type { PowerBankPayload, PowerBankStatus } from "@/lib/types";
 
-export {
-  POWER_BANK_MAX_OUTPUT,
-  type RawPowerBank,
-  normalizePowerBank,
-  pickPowerBank,
-} from "@/lib/charging-device";
-
 /**
  * Anker Prime 充电宝（A110G）遥测。
  *

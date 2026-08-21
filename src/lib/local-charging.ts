@@ -6,10 +6,13 @@
  * 连不上（别人的电脑、浏览器拦了混合内容）立刻关掉，不重试，远端照旧。
  *
  * EventSource 默认失败会无限重连 —— 访客机器上没有这个端口，必须在第一次
- * error 且从未 open 时 close，否则控制台会一直刷。
+ * error 且从未 open 时 close，否则控制台会一直刷。出过声的流断掉（上报器
+ * 退出）也一样：靠看门狗关掉并清空本机快照，卡片自动落回远端轮询，而不是
+ * 顶着断流前的最后一帧一直装连着。恢复直连要刷新页面 —— 不自动重连，
+ * 理由同上，本机端口没起来时重连就是刷屏。
  */
 
-import { assetUrl } from "./asset-url.ts";
+import { assetUrl, pageAssetBase } from "./asset-url.ts";
 import {
   emptyChargerStatus,
   emptyPowerBankStatus,
@@ -18,7 +21,7 @@ import {
   type RawChargingDevice,
 } from "./charging-device.ts";
 import { object } from "./json.ts";
-import { CHARGER_HISTORY_LIMIT } from "./limits.ts";
+import { LIVE_INTERVAL_MS, LIVE_WINDOW_MS } from "./limits.ts";
 import type {
   ChargerPayload,
   ChargerSample,
@@ -26,8 +29,8 @@ import type {
   ReporterPresence,
 } from "./types.ts";
 
-/** 本机 SSE 约 1 Hz。20 分钟窗口要 1200 点，不能再用远端 5 秒一格的 400。 */
-const LOCAL_HISTORY_LIMIT = Math.max(CHARGER_HISTORY_LIMIT, 20 * 60);
+/** 只攒 sparkline 会画的那一窗（1 Hz × 2 分钟），多攒的每帧都白复制一遍。 */
+const LOCAL_HISTORY_LIMIT = Math.round(LIVE_WINDOW_MS / LIVE_INTERVAL_MS);
 
 const LOCAL_ORIGIN = "http://127.0.0.1:8787";
 /** SSE 约 1 Hz。十几秒没帧才算这条流死了，别跟远端 90 秒窗口混。 */
@@ -44,12 +47,9 @@ let snapshot: LocalCharging = EMPTY;
 const listeners = new Set<() => void>();
 
 let chargerHistory: ChargerSample[] = [];
-let chargerHistorySeeded = false;
-/** 第一条 SSE 起只记 1 Hz 活点，丢掉首屏那份远端 30 秒一格的种子。 */
-let liveStream = false;
 let started = false;
-let chargerSource: EventSource | null = null;
-let powerBankSource: EventSource | null = null;
+let chargerSource: LocalSource | null = null;
+let powerBankSource: LocalSource | null = null;
 
 function emit(next: LocalCharging) {
   snapshot = next;
@@ -74,8 +74,8 @@ function appendChargerSample(power: number, now: number) {
 }
 
 function localCoverIconUrl(objectKey: string | null | undefined): string | null {
-  if (!objectKey || typeof document === "undefined") return null;
-  const base = document.querySelector<HTMLMetaElement>("meta[name='asset-base-url']")?.content;
+  if (!objectKey) return null;
+  const base = pageAssetBase();
   return base ? assetUrl(base, objectKey) : null;
 }
 
@@ -88,10 +88,6 @@ function chargerFromEvent(event: Record<string, unknown>): ChargerPayload {
   const cover = status.cover
     ? { ...status.cover, iconUrl: localCoverIconUrl(status.cover.iconObjectKey) }
     : null;
-  if (!liveStream) {
-    liveStream = true;
-    chargerHistory = [];
-  }
   appendChargerSample(connected ? status.totalPower : 0, now);
   return {
     ...status,
@@ -119,18 +115,47 @@ function powerBankFromEvent(event: Record<string, unknown>): PowerBankPayload {
   };
 }
 
+type LocalSource = { close: () => void };
+
 function connect(
   path: string,
   onEvent: (event: Record<string, unknown>) => void,
   onClosed: () => void,
-): EventSource {
+): LocalSource {
   const source = new EventSource(`${LOCAL_ORIGIN}${path}`);
   let opened = false;
+  let closed = false;
+  let lastFrameAt = 0;
+  let watchdog: number | null = null;
+
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    if (watchdog != null) window.clearTimeout(watchdog);
+    source.close();
+    onClosed();
+  };
+
+  /**
+   * 断流看门狗。后台标签页的定时器会被推迟，到点先核对真实间隔：
+   * 没超说明只是醒得晚，接着睡剩下的，别把刚恢复的流误杀。
+   */
+  const check = () => {
+    const idleMs = Date.now() - lastFrameAt;
+    if (idleMs < LOCAL_STALE_MS) {
+      watchdog = window.setTimeout(check, LOCAL_STALE_MS - idleMs);
+      return;
+    }
+    close();
+  };
+
   source.onopen = () => {
     opened = true;
   };
   source.onmessage = (message) => {
     opened = true;
+    lastFrameAt = Date.now();
+    if (watchdog == null) watchdog = window.setTimeout(check, LOCAL_STALE_MS);
     try {
       const row = object(JSON.parse(message.data) as unknown);
       if (row) onEvent(row);
@@ -139,12 +164,9 @@ function connect(
     }
   };
   source.onerror = () => {
-    if (!opened) {
-      source.close();
-      onClosed();
-    }
+    if (!opened) close();
   };
-  return source;
+  return { close };
 }
 
 function start() {
@@ -155,6 +177,8 @@ function start() {
     (event) => emit({ ...snapshot, charger: chargerFromEvent(event) }),
     () => {
       chargerSource = null;
+      // 清掉本机那半，charger-card 的 local 变 null，远端轮询自己就复活了
+      if (snapshot.charger) emit({ ...snapshot, charger: null });
     },
   );
   powerBankSource = connect(
@@ -162,6 +186,7 @@ function start() {
     (event) => emit({ ...snapshot, powerBank: powerBankFromEvent(event) }),
     () => {
       powerBankSource = null;
+      if (snapshot.powerBank) emit({ ...snapshot, powerBank: null });
     },
   );
 }
@@ -172,16 +197,8 @@ function stop() {
   chargerSource = null;
   powerBankSource = null;
   started = false;
-  liveStream = false;
   chargerHistory = [];
-  chargerHistorySeeded = false;
   emit(EMPTY);
-}
-
-export function seedLocalChargerHistory(payload: { history: ChargerSample[] } | undefined) {
-  if (liveStream || chargerHistorySeeded || !payload?.history.length) return;
-  chargerHistory = payload.history.slice(-LOCAL_HISTORY_LIMIT);
-  chargerHistorySeeded = true;
 }
 
 export function subscribeLocalCharging(onStoreChange: () => void) {

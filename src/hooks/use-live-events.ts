@@ -6,7 +6,7 @@ import { useSWRConfig } from "swr";
 import type { ScopedMutator } from "swr";
 
 import { mergeChargerHistory } from "@/lib/charger-history";
-import { assetUrl, objectKeyFromAssetUrl } from "@/lib/asset-url";
+import { assetUrl, objectKeyFromAssetUrl, pageAssetBase } from "@/lib/asset-url";
 import type { NowWatchingPayload, WatchingPayload } from "@/lib/emby";
 import { applyVibeCodingNow } from "@/lib/vibecoding-activity";
 import type { LiveEvent } from "@/lib/live-events";
@@ -30,11 +30,9 @@ import type {
   WatchingItem,
 } from "@/lib/types";
 
-const ASSET_BASE_META = "meta[name='asset-base-url']";
-
 function localAssetUrl(url: string | null): string | null {
   if (!url) return null;
-  const base = document.querySelector<HTMLMetaElement>(ASSET_BASE_META)?.content;
+  const base = pageAssetBase();
   const objectKey = objectKeyFromAssetUrl(url);
   return base && objectKey ? assetUrl(base, objectKey) : url;
 }

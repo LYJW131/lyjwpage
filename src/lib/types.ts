@@ -482,7 +482,7 @@ export type IngestResponse<T = null> = { ok: true; data: T } | IngestFailure;
  * `direction`；固件不上报插在上面的设备是什么（充电头会），所以没有 `device`。
  */
 export type PowerBankPort = {
-  /** C1 / C2 / A */
+  /** C1 / C2 / A / B（B 是底座进电口） */
   id: string;
   /** 该口是否有功率在流。空闲口的读数是过期的，一律置 null */
   active: boolean;
