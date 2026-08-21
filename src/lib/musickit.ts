@@ -1,0 +1,210 @@
+import { commit } from "@/lib/build-info";
+import { site } from "@/lib/site";
+import { workerUrl } from "@/lib/worker-url";
+
+/**
+ * MusicKit JS 这一侧的全部脏活：把 Apple 那份脚本弄进页面、拿到 developer
+ * token、配出一个实例。跟随播放的逻辑不在这里，见 hooks/use-listen-along。
+ *
+ * developer token 由 workers/musickit-token 现签，站点自己不碰 .p8 —— 和
+ * lib/apple-music 那条一样，私钥不进站点的运行时。区别是那条走的是 Mac 上报器
+ * 推来的**私人凭据**（带 music user token，能读我的收听记录，锁在
+ * TELEMETRY_INGEST_SECRET 后面），这条是发给**任意访客**的公开令牌，访客拿它去
+ * 换自己那份用户令牌。两者敏感度差一个量级，所以不共用一条路径。
+ */
+
+/**
+ * 签发服务（workers/musickit-token）的地址，令牌在 /token 上。
+ *
+ * 和另外三个 Worker 一样只配源，拼接规则见 lib/worker-url。必须写成完整的
+ * `process.env.XXX` 字面量：浏览器那侧没有 process，这一处是构建时按文本替换掉
+ * 的，解构或动态取键都替换不到。
+ *
+ * 没配就整体停用 —— 「一起听」是附加功能，卡片其余部分照常，不留写死的兜底地址
+ * （那等于把某一份部署的地址塞进所有部署）。
+ */
+export const MUSICKIT_TOKEN_ENDPOINT = workerUrl(
+  process.env.NEXT_PUBLIC_MUSICKIT_TOKEN_URL,
+  "/token",
+);
+
+const MUSICKIT_SRC = "https://js-cdn.music.apple.com/musickit/v3/musickit.js";
+
+/** MusicKit 的播放状态枚举，只列用得上的几个。数值是 Apple 定的，别改 */
+export const PLAYBACK_STATE = {
+  none: 0,
+  loading: 1,
+  playing: 2,
+  paused: 3,
+  stopped: 4,
+  ended: 5,
+  seeking: 6,
+} as const;
+
+/** 用到的那部分 MusicKit 实例接口。Apple 没发布类型包，按官方文档手写 */
+export type MusicKitInstance = {
+  isAuthorized: boolean;
+  /** 见 PLAYBACK_STATE */
+  playbackState: number;
+  /** 播放进度，**秒**（站点内部一律毫秒，边界在 use-listen-along 里换算） */
+  currentPlaybackTime: number;
+  /** 0–1 */
+  volume: number;
+  nowPlayingItem: { id?: string } | null;
+  authorize(): Promise<string>;
+  unauthorize(): Promise<void>;
+  setQueue(options: {
+    song?: string;
+    startPlaying?: boolean;
+    /** 秒 */
+    startTime?: number;
+  }): Promise<unknown>;
+  play(): Promise<void>;
+  pause(): Promise<void>;
+  stop(): Promise<void>;
+  seekToTime(seconds: number): Promise<void>;
+  addEventListener(name: string, handler: (event: unknown) => void): void;
+  removeEventListener(name: string, handler: (event: unknown) => void): void;
+};
+
+type MusicKitGlobal = {
+  configure(config: {
+    developerToken: string;
+    app: { name: string; build: string };
+    /** 授权弹窗和目录返回的语言 */
+    storefrontId?: string;
+  }): Promise<MusicKitInstance>;
+  getInstance(): MusicKitInstance | undefined;
+};
+
+declare global {
+  interface Window {
+    MusicKit?: MusicKitGlobal;
+  }
+}
+
+/**
+ * 脚本只插一次，结果记在模块作用域里。
+ *
+ * 手动插而不用 next/script：它那四种 strategy 说的都是「什么时候自动加载」，
+ * 没有「点了才加载」这一档。而 MusicKit JS 是个几百 KB 的第三方包，绝大多数
+ * 访客根本不会点这个按钮，连 lazyOnload 那种空闲期预载都是白花的流量。
+ *
+ * 存的是 Promise 而不是加载完的标志位：两张卡片（或 React 严格模式下的两次
+ * effect）同时要它时，第二个等的是同一次加载，而不是再插一个 script 标签。
+ * 失败时把它清掉，让下一次点击能重试 —— 网络抖一下不该让按钮永久失效。
+ */
+let scriptPromise: Promise<MusicKitGlobal> | null = null;
+
+function loadMusicKitScript(): Promise<MusicKitGlobal> {
+  if (window.MusicKit) return Promise.resolve(window.MusicKit);
+  if (scriptPromise) return scriptPromise;
+
+  scriptPromise = new Promise<MusicKitGlobal>((resolve, reject) => {
+    /*
+     * 两条路都要接：脚本自己会在挂好 window.MusicKit 之后派发 musickitloaded，
+     * 但如果它在我们挂监听之前就跑完了（缓存命中时真的会），那个事件就错过了。
+     * 所以 onload 里再查一次全局，谁先到算谁。
+     */
+    const settle = () => {
+      if (!window.MusicKit) return false;
+      document.removeEventListener("musickitloaded", onLoaded);
+      resolve(window.MusicKit);
+      return true;
+    };
+    const onLoaded = () => settle();
+    document.addEventListener("musickitloaded", onLoaded);
+
+    const existing = document.querySelector<HTMLScriptElement>(
+      `script[src="${MUSICKIT_SRC}"]`,
+    );
+    const script = existing ?? document.createElement("script");
+    script.addEventListener("load", () => {
+      // 事件可能比 load 晚一点点，没挂上就继续等 musickitloaded
+      settle();
+    });
+    script.addEventListener("error", () => {
+      document.removeEventListener("musickitloaded", onLoaded);
+      scriptPromise = null;
+      reject(new Error("MusicKit 脚本没加载起来"));
+    });
+
+    if (!existing) {
+      script.src = MUSICKIT_SRC;
+      script.async = true;
+      document.head.appendChild(script);
+    }
+  });
+
+  return scriptPromise;
+}
+
+export type DeveloperToken = {
+  token: string;
+  /** Unix **秒**，和 JWT 的 exp 同一个值 */
+  expiresAt: number;
+};
+
+/**
+ * 令牌在内存里留一份，快到期了再去要。
+ *
+ * Worker 那侧也缓存，但那是**每个 isolate** 各存各的；这里省的是每次开始跟听都
+ * 打一次网络。提前 5 分钟换新和 Worker 的续签阈值对齐，免得刚拿到就过期。
+ */
+let cachedToken: DeveloperToken | null = null;
+const RENEW_BEFORE_SECONDS = 5 * 60;
+
+export async function fetchDeveloperToken(): Promise<DeveloperToken> {
+  if (!MUSICKIT_TOKEN_ENDPOINT) throw new Error("没有配置 MusicKit 令牌签发地址");
+
+  const now = Math.floor(Date.now() / 1000);
+  if (cachedToken && cachedToken.expiresAt - now > RENEW_BEFORE_SECONDS) return cachedToken;
+
+  const response = await fetch(MUSICKIT_TOKEN_ENDPOINT, { cache: "no-store" });
+  if (!response.ok) {
+    /*
+     * Worker 的报错原文带出来。403 说的是「这个域名不在名单里」，500 说的是
+     * 「哪个变量没配」—— 两者都只有部署的人能修，吞掉就得去翻 Worker 日志。
+     */
+    const detail = await response
+      .json()
+      .then((body: { error?: string }) => body.error)
+      .catch(() => null);
+    throw new Error(detail || `令牌签发服务返回 ${response.status}`);
+  }
+
+  const token = (await response.json()) as DeveloperToken;
+  if (!token.token) throw new Error("令牌签发服务没有返回令牌");
+  cachedToken = token;
+  return token;
+}
+
+/**
+ * 配好的单例。
+ *
+ * MusicKit 全局只有一个实例，configure 调第二次会顶掉第一次的配置，所以这里也
+ * 用同一个 Promise 兜住并发调用。
+ */
+let instancePromise: Promise<MusicKitInstance> | null = null;
+
+export function getMusicKit(): Promise<MusicKitInstance> {
+  if (instancePromise) return instancePromise;
+
+  instancePromise = (async () => {
+    const [MusicKit, developer] = await Promise.all([
+      loadMusicKitScript(),
+      fetchDeveloperToken(),
+    ]);
+    return MusicKit.configure({
+      developerToken: developer.token,
+      // 这两个字段会出现在访客的 Apple ID 授权弹窗里，得是人看得懂的东西
+      app: { name: site.name, build: commit?.short ?? "dev" },
+    });
+  })().catch((error: unknown) => {
+    // 失败不留缓存，否则第一次网络抖动之后按钮就再也点不动了
+    instancePromise = null;
+    throw error;
+  });
+
+  return instancePromise;
+}
