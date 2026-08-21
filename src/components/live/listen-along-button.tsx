@@ -19,13 +19,8 @@ function face(listen: ListenAlong) {
     listen.status === "starting" || (listen.status === "following" && !listen.audible && !listen.waiting);
   if (loading) {
     return {
-      icon: (
-        <span
-          className="block size-3 shrink-0 animate-spin rounded-full border-[1.5px] border-current border-r-transparent origin-center transform-border"
-          aria-hidden
-        />
-      ),
-      text: "Connecting",
+      icon: <Headphones className="size-3 shrink-0" aria-hidden />,
+      text: "Connecting...",
       label: "Loading, audio has not started yet",
     };
   }
@@ -145,7 +140,7 @@ function ListenAlongDialog({
             }}
           >
             {busy
-              ? "Connecting"
+              ? "Connecting..."
               : listen.status === "following"
                 ? "Stop"
                 : listen.authorized
