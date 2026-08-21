@@ -207,11 +207,15 @@ function upcomingAlreadyQueued(music: MusicKitInstance, ids: string[]) {
   return ids.every((id, i) => catalogItemId(items[at + 1 + i]?.id) === id);
 }
 
-/** 加载和对齐期间把喇叭关掉。MusicKit 的 volume 是 0–1 */
+/**
+ * 加载和对齐期间把喇叭关掉。MusicKit 的 volume 是 0–1。
+ *
+ * 不捕获也不返回「当下音量」：这个页面里除了本 hook 没人动它，真基准恒为 1。
+ * 捕获现值的话，在渐弱 / 静音途中被打断的换歌会把半衰的值当成新基准，
+ * 音量随切歌棘轮式衰减到 0。
+ */
 function mute(music: MusicKitInstance) {
-  const previous = Number.isFinite(music.volume) ? music.volume : 1;
   music.volume = 0;
-  return previous;
 }
 
 export type ListenAlong = {
@@ -264,7 +268,6 @@ export function useListenAlong(source: {
   const lagMs = useRef(0);
   /** 预切停在 0 之后，到这个墙上时刻才解除静音。0 表示没有在等 */
   const holdUntilMs = useRef(0);
-  const holdVolume = useRef(1);
   const holdTimer = useRef<number | null>(null);
   /** 已经按这首结束时刻预切过去的下一首。切歌信号到了只认 id，不要再 play */
   const prearmedSongId = useRef<string | null>(null);
@@ -322,7 +325,7 @@ export function useListenAlong(source: {
   const releaseHold = (player: MusicKitInstance) => {
     if (!holdUntilMs.current) return;
     holdUntilMs.current = 0;
-    player.volume = holdVolume.current;
+    player.volume = 1;
   };
 
   const stop = useCallback(() => {
@@ -477,11 +480,11 @@ export function useListenAlong(source: {
           lastHostSongId.current = songId;
           alignedSongId.current = songId;
           if (joining) {
-            const previousVolume = mute(music);
+            mute(music);
             try {
               await mkSafe(() => music.seekToTime(hostNow() / 1000));
             } finally {
-              music.volume = previousVolume;
+              music.volume = 1;
             }
             lagMs.current = 0;
           } else if (shouldSeekAfterTrackChange(hostRef.current.positionMs, RESYNC_THRESHOLD_MS)) {
@@ -523,12 +526,9 @@ export function useListenAlong(source: {
           return;
         }
 
-        /*
-         * 预切静音还押着就先放掉（hold 被真停按住过、现在要改放别的歌）。
-         * 不放的话下面记的「原音量」就是 0，新一首会一直哑到底。
-         */
+        // 预切静音还押着就先放掉（hold 被真停按住过、现在要改放别的歌）
         releaseHold(music);
-        const previousVolume = joining ? mute(music) : music.volume;
+        if (joining) mute(music);
         try {
           if (prearmedSongId.current && prearmedSongId.current !== songId) {
             prearmedSongId.current = null;
@@ -557,7 +557,7 @@ export function useListenAlong(source: {
             } else {
               lagMs.current = playbackLagMs(hostNow(), localPositionMs(music));
             }
-            if (joining) music.volume = previousVolume;
+            if (joining) music.volume = 1;
             setAudible(true);
             return;
           }
@@ -586,11 +586,12 @@ export function useListenAlong(source: {
           hasFollowed.current = true;
           lastHostSongId.current = songId;
           alignedSongId.current = songId;
-          if (joining) music.volume = previousVolume;
+          if (joining) music.volume = 1;
           setAudible(true);
           if (!repeatOneRef.current) await syncUpcomingQueue(music, upcomingRef.current);
         } finally {
-          if (joining && music.volume === 0) music.volume = previousVolume;
+          // 半路 return / 抛错也不把加入时的静音留在场上
+          if (joining && music.volume === 0) music.volume = 1;
         }
       } catch (caught) {
         if (cancelled) return;
@@ -667,6 +668,18 @@ export function useListenAlong(source: {
         const host = hostNow();
         const local = localPositionMs(music);
 
+        /*
+         * 补 play 的「停住了吗」必须进了排他链再问一遍：在链外看到的是
+         * 排队那一刻的状态，前面的操作（续播、hold 出声）落地之后它已经在
+         * 播了 —— 对在播的曲目再 play 一次，MusicKit 会从头再来，听感就是
+         * progress 跳回开头。
+         */
+        const playIfStalled = () =>
+          runExclusive(async () => {
+            if (readySongId.current !== songId) return;
+            if (!isPlaybackLive(music)) await playSafe(music);
+          });
+
         if (songChanged) {
           alignedSongId.current = songId;
           if (holdUntilMs.current > Date.now()) return;
@@ -674,9 +687,7 @@ export function useListenAlong(source: {
             lagMs.current = playbackLagMs(host, local);
             if (prearmedSongId.current === songId && isPlaybackLive(music)) return;
             if (cancelled) return;
-            if (!isPlaybackLive(music)) {
-              await runExclusive(() => playSafe(music));
-            }
+            if (!isPlaybackLive(music)) await playIfStalled();
             return;
           }
           lagMs.current = 0;
@@ -685,9 +696,7 @@ export function useListenAlong(source: {
         ) {
           if (prearmedSongId.current === songId && isPlaybackLive(music)) return;
           if (cancelled) return;
-          if (!isPlaybackLive(music)) {
-            await runExclusive(() => playSafe(music));
-          }
+          if (!isPlaybackLive(music)) await playIfStalled();
           return;
         }
 
@@ -786,7 +795,14 @@ export function useListenAlong(source: {
     const player = musicRef.current;
     if (!player || !songId || state !== "playing" || repeatOne) return;
 
-    let baseline: number | null = null;
+    /*
+     * 渐弱一律从满音量的曲线算，不捕获「当下音量」当基准。从前是
+     * `baseline = player.volume` —— 但任何一次在渐弱 / 静音途中被打断的
+     * 换歌（预排猜错、主人跳歌、旧锚点回声）都会把衰减到一半的值捕获成
+     * 新基准，几个自然切歌之后音量就棘轮式衰到 0，听感是「暂停了」。
+     * 这个页面里 MusicKit 的音量除了这只 hook 没有别人动，真基准恒为 1。
+     */
+    let faded = false;
     let switched = false;
     const fadeSpan = SWITCH_FADE_START_MS - SWITCH_LEAD_MS;
 
@@ -801,17 +817,14 @@ export function useListenAlong(source: {
       const left = host.durationMs - trackPositionMs(host, Date.now());
       if (left > SWITCH_FADE_START_MS) return;
 
-      if (baseline == null) {
-        baseline = Number.isFinite(player.volume) ? player.volume : 1;
-      }
+      faded = true;
       const t = Math.min(1, Math.max(0, (SWITCH_FADE_START_MS - left) / fadeSpan));
-      player.volume = baseline * (1 - t);
+      player.volume = 1 - t;
       if (left > SWITCH_LEAD_MS) return;
 
       player.volume = 0;
       switched = true;
       const endsAt = Date.now() + Math.max(0, left);
-      const base = baseline;
 
       void runExclusive(async () => {
         /*
@@ -824,7 +837,7 @@ export function useListenAlong(source: {
           readySongId.current !== songId ||
           localSongId(player) !== songId
         ) {
-          player.volume = base;
+          player.volume = 1;
           switched = false;
           return;
         }
@@ -833,7 +846,6 @@ export function useListenAlong(source: {
         alignedSongId.current = next;
         prearmedSongId.current = next;
         lagMs.current = 0;
-        holdVolume.current = base;
         holdUntilMs.current = endsAt;
         player.volume = 0;
         try {
@@ -867,7 +879,7 @@ export function useListenAlong(source: {
           readySongId.current = null;
           alignedSongId.current = null;
           prearmedSongId.current = null;
-          player.volume = base;
+          player.volume = 1;
           switched = false;
         }
       });
@@ -877,8 +889,9 @@ export function useListenAlong(source: {
     tick();
     return () => {
       window.clearInterval(interval);
-      // 渐弱到一半被取消（这首结束、暂停）：把音量还原，别留个半哑的
-      if (!switched && baseline != null) player.volume = baseline;
+      // 渐弱到一半被取消（这首结束、暂停）：把音量还原，别留个半哑的。
+      // 没写过渐弱就别碰 —— 预切静音可能还押着，这时写 1 等于提前出声
+      if (faded && !switched) player.volume = 1;
     };
   }, [music, songId, state, repeatOne]);
 
