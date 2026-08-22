@@ -65,9 +65,6 @@ importers:
       tailwind-merge:
         specifier: ^3.6.0
         version: 3.6.0
-      yaml:
-        specifier: ^2.9.0
-        version: 2.9.0
     devDependencies:
       '@tailwindcss/postcss':
         specifier: ^4
@@ -4665,11 +4662,6 @@ packages:
   yaml@1.10.3:
     resolution: {integrity: sha512-vIYeF1u3CjlhAFekPPAk2h/Kv4T3mAkMox5OymRiJQB0spDP10LHvt+K7G9Ny6NuuMAb25/6n1qyUjAcGNf/AA==}
     engines: {node: '>= 6'}
-
-  yaml@2.9.0:
-    resolution: {integrity: sha512-2AvhNX3mb8zd6Zy7INTtSpl1F15HW6Wnqj0srWlkKLcpYl/gMIMJiyuGq2KeI2YFxUPjdlB+3Lc10seMLtL4cA==}
-    engines: {node: '>= 14.6'}
-    hasBin: true
 
   yocto-queue@0.1.0:
     resolution: {integrity: sha512-rVksvsnNCdJ/ohGc6xgPwyN8eheCxsiLM8mxuE/t/mOVqJewPuO1miLpTHQiRgTKCLexL4MeAFVagts7HmNZ2Q==}
@@ -10168,8 +10160,6 @@ snapshots:
   yallist@3.1.1: {}
 
   yaml@1.10.3: {}
-
-  yaml@2.9.0: {}
 
   yocto-queue@0.1.0: {}
 
