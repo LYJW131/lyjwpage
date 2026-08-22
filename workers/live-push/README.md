@@ -27,7 +27,8 @@
 
 ## 部署与域名
 
-1. 复制 `wrangler.toml.example` 为 `wrangler.toml`，按需配置自定义域名路由。
+1. 域名路由在 `wrangler.toml` 的 `routes` 里配。推 main 时 CI 自动部署
+   （见 .github/workflows/deploy-workers.yml），手动 `wrangler deploy` 也行。
 2. 存进发布密钥：`pnpm --filter @lyjwpage/live-push exec wrangler secret put LIVE_PUSH_SECRET`
 3. 部署后把 Worker 地址（如 `https://live.example.com`）填进站点的
    `NEXT_PUBLIC_LIVE_PUSH_URL`，站点自己拼 `/ws` 和 `/publish`。

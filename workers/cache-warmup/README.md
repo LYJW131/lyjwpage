@@ -22,9 +22,6 @@
 ## 命令
 
 ```bash
-# 复制配置
-cp wrangler.toml.example wrangler.toml
-
 # 本地（cron 用 /__scheduled 触发）
 pnpm --filter @lyjwpage/cache-warmup dev
 

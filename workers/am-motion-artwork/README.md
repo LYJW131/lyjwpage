@@ -3,7 +3,7 @@
 Cloudflare Worker 代理服务：用于解析 Apple Music 专辑与单曲的 1:1 正方形动态封面（`motionDetailSquare`）视频及背景主题色调板。
 
 ## 部署信息
-- **自定义域名**：在 `wrangler.toml` 的 `routes` 里配（`wrangler.toml.example` 有样例）
+- **自定义域名**：在 `wrangler.toml` 的 `routes` 里配
 - **默认域名**：`workers_dev = true` 时 Cloudflare 会给一个 `<名字>.<账号>.workers.dev`
 
 部署完把地址填进站点的 `NEXT_PUBLIC_MOTION_ARTWORK_URL`。不填则动态封面整体停用，
