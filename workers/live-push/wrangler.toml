@@ -3,14 +3,12 @@ main = "src/index.ts"
 compatibility_date = "2025-02-14"
 workers_dev = true
 
-# routes = [
-#   { pattern = "live.example.com", custom_domain = true }
-# ]
+routes = [
+  { pattern = "live.homepage.lyjw.llc", custom_domain = true }
+]
 
 [vars]
-# 逗号分隔。留空则不限来源（本地 localhost 始终放行）。
-# 预览域名每次部署都换，用后缀通配收进来。
-ALLOWED_ORIGINS = "https://example.com,https://*.vercel.app"
+ALLOWED_ORIGINS = "https://lyjw131.com,https://lyjw.me,https://dev.lyjw.me,https://*.vercel.app"
 
 [[durable_objects.bindings]]
 name = "LIVE_PUSH"

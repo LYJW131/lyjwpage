@@ -1,0 +1,71 @@
+# workers/ 下的五个 Cloudflare Worker 不进 Vercel 的构建，从前全靠本机
+# `wrangler deploy`——改了代码忘了部署，线上就一直跑旧的，还要等到坏了才发现。
+# 这里补上 Vercel 那半边：推 main 且某个 worker 目录有改动，就只部署改到的那几个。
+#
+# wrangler.toml 在库里（只有公开配置，秘密走 `wrangler secret`，CI 不碰它们）。
+# 需要两个 repo secret：
+#   CLOUDFLARE_API_TOKEN   Workers Scripts:Edit 权限的 API token
+#   CLOUDFLARE_ACCOUNT_ID  账户 ID（dash.cloudflare.com 右侧栏）
+name: Deploy Workers
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "workers/**"
+      - ".github/workflows/deploy-workers.yml"
+
+permissions:
+  contents: read
+
+# 部署排队跑，不取消在跑的那次 —— 取消掉的部署会留下「不知道上没上去」的状态
+concurrency:
+  group: deploy-workers
+  cancel-in-progress: false
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      workers: ${{ steps.pick.outputs.workers }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # 要和 push 前的基准比对，浅克隆拿不到那个提交
+          fetch-depth: 0
+
+      - id: pick
+        run: |
+          before="${{ github.event.before }}"
+          # 首推 / force-push 拿不到基准，或本 workflow 自身改了：全量部署
+          if [ "$before" = "0000000000000000000000000000000000000000" ] \
+            || ! git cat-file -e "$before" 2>/dev/null \
+            || git diff --name-only "$before" "$GITHUB_SHA" | grep -q "^.github/workflows/deploy-workers.yml"; then
+            names=$(ls workers)
+          else
+            names=$(git diff --name-only "$before" "$GITHUB_SHA" -- workers/ | cut -d/ -f2 | sort -u)
+          fi
+          # awk 'NF' 滤掉空行（grep 在 pipefail 下无匹配会把整步打红）
+          workers=$(printf '%s\n' $names | awk 'NF' | jq -R . | jq -sc .)
+          echo "workers=$workers" >> "$GITHUB_OUTPUT"
+          echo "将部署：$workers"
+
+  deploy:
+    needs: changes
+    if: needs.changes.outputs.workers != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        worker: ${{ fromJson(needs.changes.outputs.workers) }}
+    name: deploy ${{ matrix.worker }}
+    steps:
+      - uses: actions/checkout@v5
+
+      # 这几个 worker 都没有运行时依赖，wrangler 自己打包 TS 入口，
+      # 不用 pnpm install —— action 自带 wrangler
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: workers/${{ matrix.worker }}

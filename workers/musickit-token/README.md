@@ -37,7 +37,7 @@ Apple 不解析通配符，所以 `https://*.vercel.app` 这类只参与第一�
 
 ## 部署信息
 
-- **自定义域名**：在 `wrangler.toml` 的 `routes` 里配（`wrangler.toml.example` 有样例）
+- **自定义域名**：在 `wrangler.toml` 的 `routes` 里配
 - **默认域名**：`workers_dev = true` 时 Cloudflare 会给一个 `<名字>.<账号>.workers.dev`
 
 部署完把地址填进站点的 `NEXT_PUBLIC_MUSICKIT_TOKEN_URL`。不填则「一起听」按钮不出现，

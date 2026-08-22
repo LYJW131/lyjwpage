@@ -80,7 +80,9 @@ pnpm dev
 对端永远缺着（见 `mergeEmbyReceipt` / `mergeTelemetryReceipt`）。
 
 实时推送、在线人数、动态封面、首屏预热、MusicKit 令牌签发各是一个独立的 Cloudflare
-Worker（都在 `workers/` 下）。
+Worker（都在 `workers/` 下）。**推 main 时 CI 只把有改动的那几个自动 `wrangler deploy`**
+（见 `.github/workflows/deploy-workers.yml`；`wrangler.toml` 在库里，秘密走
+`wrangler secret` 不进 CI）。
 **live-push 一份生产一个** —— 上报传到对端之后对端也要推一次，两边填同一个 Worker
 的话每个浏览器会收到两份一样的事件；其余几个没有写入方，仍然共用一组（令牌签发那个
 把三份部署的域名一起写进 `ALLOWED_ORIGINS` 即可，见「跟着一起听」）。

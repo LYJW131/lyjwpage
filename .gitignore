@@ -38,11 +38,9 @@ yarn-error.log*
 !.env.example
 
 # cloudflare wrangler
-wrangler.toml
-wrangler.json
+# wrangler.toml 入库：里面只有公开配置（域名、来源名单、Apple 的 Team/Key ID），
+# 真正的秘密一律走 `wrangler secret`。CI 按它自动部署，见 .github/workflows/deploy-workers.yml
 .dev.vars*
-!.wrangler.toml.example
-!wrangler.toml.example
 
 # vercel
 .vercel
