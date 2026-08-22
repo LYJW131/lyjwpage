@@ -69,3 +69,6 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: workers/${{ matrix.worker }}
+          # 跟 workers/*/package.json devDependencies 里的 wrangler 一个版本；
+          # 不钉的话 action 装它自带的旧版，和本地部署用的不是同一个打包器
+          wranglerVersion: "3.109.2"
