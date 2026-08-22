@@ -136,11 +136,32 @@ function handleVisibilityChange() {
   }
 }
 
+/**
+ * 只挂 pagehide，不挂 beforeunload。
+ *
+ * 两者要做的事一模一样（关连接、把 connected 置 false），而 beforeunload 是
+ * 浏览器判定「本页不进 back/forward cache」的经典触发器 —— Safari / Firefox
+ * 直接排除，Chrome 记一条 blocking reason。整站因此在前进后退时都要重新水合、
+ * 重连两条 WebSocket、重跑所有轮询。
+ */
 function handlePageHide() {
   cleanupSocket();
   if (activeMutate) {
     void activeMutate(ONLINE_CONNECTED_KEY, false, { revalidate: false });
   }
+}
+
+/**
+ * 从 bfcache 回来时重连。
+ *
+ * 进 bfcache 前 handlePageHide 已经把 socket 关了，而恢复时 visibilitychange
+ * 不一定触发（Safari 上只发 pageshow），没有这条路人数会一直停在「已断开」。
+ */
+function handlePageShow(event: PageTransitionEvent) {
+  if (!event.persisted || !activeMutate || refCount <= 0) return;
+  if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+  retryAttempts = 0;
+  connect(activeMutate);
 }
 
 export function subscribeOnlineCount(mutate: ScopedMutator): () => void {
@@ -150,7 +171,7 @@ export function subscribeOnlineCount(mutate: ScopedMutator): () => void {
   if (!isListenersAttached && typeof document !== "undefined" && typeof window !== "undefined") {
     document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("pagehide", handlePageHide);
-    window.addEventListener("beforeunload", handlePageHide);
+    window.addEventListener("pageshow", handlePageShow);
     isListenersAttached = true;
   }
 
@@ -169,7 +190,7 @@ export function subscribeOnlineCount(mutate: ScopedMutator): () => void {
       if (isListenersAttached && typeof document !== "undefined" && typeof window !== "undefined") {
         document.removeEventListener("visibilitychange", handleVisibilityChange);
         window.removeEventListener("pagehide", handlePageHide);
-        window.removeEventListener("beforeunload", handlePageHide);
+        window.removeEventListener("pageshow", handlePageShow);
         isListenersAttached = false;
       }
       activeMutate = null;

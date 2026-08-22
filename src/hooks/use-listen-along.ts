@@ -851,16 +851,33 @@ export function useListenAlong(source: {
         try {
           await changeToSong(player, next);
           if (player.playbackState !== PLAYBACK_STATE.playing) await playSafe(player);
-          await waitUntilPlaying(player, () => false);
+          /*
+           * 这一等最长 READY_TIMEOUT_MS（25 秒），而且是在排他链里等 —— 谓词写死
+           * false 的话，下一首不可播（访客区域没有、目录条目取不到）时，主人的
+           * 换歌 / 暂停 / 拖进度会整整排队 25 秒。用「这轮预切已经作废」当出路：
+           * holdUntilMs 归零的只有 stop() 和卸载清理，单曲循环则是这一首要再来
+           * 一遍、预切本身没意义；正常预切期间 holdUntilMs 恒为 endsAt（上面在
+           * await 之前就写好了），谓词不会误伤。
+           */
+          await waitUntilPlaying(player, () => holdUntilMs.current === 0 || repeatOneRef.current);
           await mkSafe(() => player.pause());
           await mkSafe(() => player.seekToTime(0));
+          // 等的途中被停掉 / 卸载：音量还回去再走，别把共享的 MusicKit 单例留在 0
+          if (holdUntilMs.current === 0) {
+            player.volume = 1;
+            return;
+          }
           player.volume = 0;
           if (holdTimer.current != null) window.clearTimeout(holdTimer.current);
           const wait = Math.max(0, holdUntilMs.current - Date.now());
           holdTimer.current = window.setTimeout(() => {
             holdTimer.current = null;
             void runExclusive(async () => {
-              if (holdUntilMs.current === 0) return;
+              // 预切作废了（停止 / 卸载 / 改放别的歌）：这一支也得把音量还回去
+              if (holdUntilMs.current === 0) {
+                player.volume = 1;
+                return;
+              }
               const hostSong = songIdRef.current;
               const next = prearmedSongId.current;
               /*

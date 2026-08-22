@@ -1,6 +1,7 @@
 "use client";
 
 import NumberFlow, { NumberFlowGroup } from "@number-flow/react";
+import { useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
 import "@clock-ui/react/base.css";
@@ -109,6 +110,13 @@ function AnalogClock({
   const minuteRef = useRef<HTMLDivElement>(null);
   const secondRef = useRef<HTMLDivElement>(null);
   const angles = handAngles(hour, minute, second + (now % 1000) / 1000);
+  /*
+   * 用 useReducedMotion 而不是自己 matchMedia 取一次值：会话中途打开系统的
+   * 「减弱动态效果」也要停掉扫秒。全站其它组件（listening-card、watching-card、
+   * media-pair、live-desk-card）用的都是这个。SSR 下它返回 null，首帧不动针由
+   * live 门控保证，不引入水合差异。
+   */
+  const reduced = useReducedMotion();
 
   useEffect(() => {
     if (!live) return;
@@ -129,7 +137,6 @@ function AnalogClock({
       secondEl.style.setProperty("--angle", String(next.second));
     };
 
-    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (reduced) {
       apply(Date.now(), false);
       const timer = window.setInterval(() => apply(Date.now(), false), 1_000);
@@ -141,7 +148,7 @@ function AnalogClock({
       frame = requestAnimationFrame(tick);
     });
     return () => cancelAnimationFrame(frame);
-  }, [live, timezone]);
+  }, [live, reduced, timezone]);
 
   return (
     <ClockShell live>

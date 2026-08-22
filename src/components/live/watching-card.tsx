@@ -145,8 +145,8 @@ function Tile({
           </span>
         )}
 
-        {/* 进度条压在图片底边，所以颜色不能跟着主题走，也不能用黑白：
-            海报有深有浅，只有绿色在两种底上都读得出来。
+        {/* 进度条压在图片底边，海报有深有浅，黑白都会糊掉：用 --live 这支绿，
+            它两套主题下各有一个值，压在海报上都读得出来。
             播放中时让它呼吸，暂停/没在播的就是静止的一条。 */}
         <div className="absolute inset-x-0 bottom-0 h-1">
           <div
@@ -302,6 +302,11 @@ export function WatchingRow({
     // 触发触控板的「滑动返回上一页」，那下手感是最生硬的。
     <div
       ref={scrollerRef}
+      // 独立滚动区：给它名字和角色，键盘也能直接聚上来用方向键横滚
+      // （Firefox / 部分 Safari 不会让没有 tabindex 的滚动容器获得焦点）
+      tabIndex={0}
+      role="region"
+      aria-label="最近在看"
       className={cn(
         // paper-card 硬阴影是 3px 右下。卡片仍按栏宽等分（和上面几张卡右缘
         // 对齐），滚动盒向右多出 3px 让阴影落在盒内，不要用 padding 把卡片挤窄。

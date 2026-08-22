@@ -1,17 +1,29 @@
 "use client";
 
 import {
+  type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
   type RefObject,
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
 import { createPortal } from "react-dom";
 
-import { formatDayHeading } from "@/lib/github-chart-compact";
+import {
+  CELL,
+  LEFT,
+  STEP,
+  TOP,
+  chartSize,
+  dayLabels,
+  formatDayHeading,
+  monthLabels,
+} from "@/lib/github-chart-compact";
+import type { GithubChartDay } from "@/lib/types";
 
 export type CellAnchor = { left: number; top: number; width: number; height: number };
 
@@ -111,6 +123,159 @@ export function useHoverDismiss(
       document.removeEventListener("pointerdown", onPointerDown);
     };
   }, [active, hide, svgRef]);
+}
+
+/** 方向键在格子间怎么走：一列是连续七天，所以上下 ±1 天、左右 ±7 天（同一星期几） */
+const KEY_STEP: Record<string, number> = {
+  ArrowUp: -1,
+  ArrowDown: 1,
+  ArrowLeft: -7,
+  ArrowRight: 7,
+};
+
+/**
+ * 两张热力图（GitHub 贡献、年度 token）共用的 SVG 骨架。
+ *
+ * 从前这段在两个组件里逐字重复，键盘可达性得改两遍才生效 —— 抽到这里之后
+ * 格子的 role / aria-label / 方向键漫游只有一份实现。
+ *
+ * 焦点用 roving tabindex：整年 365 个格子若各占一个 Tab 站，键盘用户要按
+ * 三百多下才能走出图表。只有「当前格」进 Tab 序列，格子之间用方向键移动
+ * （Home / End 跳到年头年尾），Enter / Space 等价于点一下（钉住浮层）。
+ * 每个格子仍各自带 aria-label，读屏的虚拟光标才能逐格读到数据。
+ */
+export function HeatmapGrid({
+  svgRef,
+  weeks,
+  fills,
+  hotDate,
+  label,
+  onCellPreview,
+  onCellClear,
+  onCellToggle,
+}: {
+  svgRef: RefObject<SVGSVGElement | null>;
+  weeks: GithubChartDay[][];
+  /** 五档填充色。两张图色系不同，几何完全一致 */
+  fills: readonly string[];
+  hotDate: string | null;
+  /** 整张图的可访问名 */
+  label: string;
+  onCellPreview: (day: GithubChartDay, target: Element) => void;
+  onCellClear: () => void;
+  onCellToggle: (day: GithubChartDay, target: Element) => void;
+}) {
+  const cells = useMemo(
+    () => weeks.flatMap((week, weekIndex) => week.map((day) => ({ day, weekIndex }))),
+    [weeks],
+  );
+  const [activeDate, setActiveDate] = useState<string | null>(null);
+  // 数据每 6 小时换一份，记住的那天可能已经滚出窗口 —— 落回最后一天（今天）
+  const marked = activeDate ? cells.findIndex((cell) => cell.day.date === activeDate) : -1;
+  const activeIndex = marked >= 0 ? marked : cells.length - 1;
+  const { width, height } = chartSize(weeks.length);
+
+  const focusAt = (index: number) => {
+    const cell = cells[Math.min(Math.max(index, 0), cells.length - 1)];
+    if (!cell) return;
+    setActiveDate(cell.day.date);
+    svgRef.current
+      ?.querySelector<SVGRectElement>(`[data-date="${cell.day.date}"]`)
+      ?.focus();
+  };
+
+  const onCellKeyDown = (event: ReactKeyboardEvent<SVGRectElement>, index: number) => {
+    const day = cells[index]?.day;
+    if (!day) return;
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      onCellToggle(day, event.currentTarget);
+      return;
+    }
+    const step = KEY_STEP[event.key];
+    let target: number | null = null;
+    if (event.key === "Home") target = 0;
+    else if (event.key === "End") target = cells.length - 1;
+    else if (step !== undefined) target = index + step;
+    // 方向键 / Home / End 默认会滚页面，接手了就别让它再滚一次
+    if (target === null) return;
+    event.preventDefault();
+    focusAt(target);
+  };
+
+  return (
+    <svg
+      ref={svgRef}
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox={`0 0 ${width} ${height}`}
+      shapeRendering="geometricPrecision"
+      className="block h-auto w-full"
+      role="group"
+      aria-label={label}
+      onPointerLeave={(event) => {
+        if (event.pointerType === "mouse" && hoverCapable()) onCellClear();
+      }}
+    >
+      {/* 月份和星期只是给眼睛的刻度，数据本身在每个格子的 aria-label 里 */}
+      {monthLabels(weeks).map((item) => (
+        <text
+          key={`m-${item.text}-${item.x}`}
+          x={item.x}
+          y={item.y}
+          fontSize={item.fontSize}
+          display={item.hidden ? "none" : undefined}
+          aria-hidden
+        >
+          {item.text}
+        </text>
+      ))}
+      {dayLabels().map((item) => (
+        <text
+          key={`d-${item.text}`}
+          x={item.x}
+          y={item.y}
+          fontSize={item.fontSize}
+          display={item.hidden ? "none" : undefined}
+          aria-hidden
+        >
+          {item.text}
+        </text>
+      ))}
+      {cells.map(({ day, weekIndex }, index) => (
+        <rect
+          key={day.date}
+          x={LEFT + weekIndex * STEP}
+          y={TOP + day.weekday * STEP}
+          width={CELL}
+          height={CELL}
+          data-date={day.date}
+          data-score={day.score}
+          data-hot={hotDate === day.date ? "" : undefined}
+          fill={fills[day.score]}
+          role="button"
+          aria-label={day.label}
+          tabIndex={index === activeIndex ? 0 : -1}
+          onFocus={(event) => {
+            onCellPreview(day, event.currentTarget);
+          }}
+          onBlur={() => {
+            onCellClear();
+          }}
+          onKeyDown={(event) => {
+            onCellKeyDown(event, index);
+          }}
+          onPointerEnter={(event) => {
+            if (event.pointerType === "mouse" && hoverCapable()) {
+              onCellPreview(day, event.currentTarget);
+            }
+          }}
+          onClick={(event) => {
+            onCellToggle(day, event.currentTarget);
+          }}
+        />
+      ))}
+    </svg>
+  );
 }
 
 /**

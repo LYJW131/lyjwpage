@@ -3,23 +3,14 @@
 import { useState } from "react";
 
 import {
+  HeatmapGrid,
   HeatmapTooltip,
   cellAnchor,
-  hoverCapable,
   useHeatmapOpen,
   type CellAnchor,
 } from "@/components/live/heatmap-hover";
 import { useStatus } from "@/hooks/use-status";
-import {
-  CELL,
-  FILLS,
-  LEFT,
-  STEP,
-  TOP,
-  chartSize,
-  dayLabels,
-  monthLabels,
-} from "@/lib/github-chart-compact";
+import { FILLS } from "@/lib/github-chart-compact";
 import { GITHUB_CHART_PATH } from "@/lib/paths";
 import type { GithubChartDay, GithubChartPayload, StatusResponse } from "@/lib/types";
 
@@ -58,8 +49,6 @@ export function GithubChart({ fallback }: { fallback: StatusResponse<GithubChart
 
   if (!weeks?.length) return null;
 
-  const { width, height } = chartSize(weeks.length);
-
   const cellOf = (day: GithubChartDay, target: Element): HoveredCell => ({
     date: day.date,
     count: day.count,
@@ -68,61 +57,16 @@ export function GithubChart({ fallback }: { fallback: StatusResponse<GithubChart
 
   return (
     <div className="github-chart w-full">
-      <svg
-        ref={svgRef}
-        xmlns="http://www.w3.org/2000/svg"
-        viewBox={`0 0 ${width} ${height}`}
-        shapeRendering="geometricPrecision"
-        className="block h-auto w-full"
-        onPointerLeave={(event) => {
-          if (event.pointerType === "mouse" && hoverCapable()) clearPreview();
-        }}
-      >
-        {monthLabels(weeks).map((label) => (
-          <text
-            key={`m-${label.text}-${label.x}`}
-            x={label.x}
-            y={label.y}
-            fontSize={label.fontSize}
-            display={label.hidden ? "none" : undefined}
-          >
-            {label.text}
-          </text>
-        ))}
-        {dayLabels().map((label) => (
-          <text
-            key={`d-${label.text}`}
-            x={label.x}
-            y={label.y}
-            fontSize={label.fontSize}
-            display={label.hidden ? "none" : undefined}
-          >
-            {label.text}
-          </text>
-        ))}
-        {weeks.map((week, weekIndex) =>
-          week.map((day) => (
-            <rect
-              key={day.date}
-              x={LEFT + weekIndex * STEP}
-              y={TOP + day.weekday * STEP}
-              width={CELL}
-              height={CELL}
-              data-score={day.score}
-              data-hot={hotDate === day.date ? "" : undefined}
-              fill={FILLS[day.score]}
-              onPointerEnter={(event) => {
-                if (event.pointerType === "mouse" && hoverCapable()) {
-                  previewCell(cellOf(day, event.currentTarget));
-                }
-              }}
-              onClick={(event) => {
-                togglePin(cellOf(day, event.currentTarget));
-              }}
-            />
-          )),
-        )}
-      </svg>
+      <HeatmapGrid
+        svgRef={svgRef}
+        weeks={weeks}
+        fills={FILLS}
+        hotDate={hotDate}
+        label="GitHub contribution heatmap"
+        onCellPreview={(day, target) => previewCell(cellOf(day, target))}
+        onCellClear={clearPreview}
+        onCellToggle={(day, target) => togglePin(cellOf(day, target))}
+      />
       {shown && (
         <HeatmapTooltip
           date={shown.date}
