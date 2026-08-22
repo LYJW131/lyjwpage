@@ -596,6 +596,16 @@ button.paper-card {
   stroke-width: 1;
 }
 
+/*
+ * 键盘走到的格子也要看得见。焦点本身会走 previewCell（于是拿到 data-hot 的
+ * 描边），但 Safari 给 SVG 元素画的默认焦点环不可靠，这里自己补一道。
+ */
+.github-chart svg rect:focus-visible {
+  outline: none;
+  stroke: var(--foreground);
+  stroke-width: 2;
+}
+
 .github-chart svg text {
   fill: var(--muted-foreground) !important;
   font-family: var(--font-mono) !important;

@@ -3,23 +3,14 @@
 import { useMemo, useState } from "react";
 
 import {
+  HeatmapGrid,
   HeatmapTooltip,
   cellAnchor,
-  hoverCapable,
   useHeatmapOpen,
   type CellAnchor,
 } from "@/components/live/heatmap-hover";
 import { useStatus } from "@/hooks/use-status";
-import {
-  CELL,
-  LEFT,
-  STEP,
-  TOP,
-  chartSize,
-  dayLabels,
-  groupWeeks,
-  monthLabels,
-} from "@/lib/github-chart-compact";
+import { groupWeeks } from "@/lib/github-chart-compact";
 import { VIBECODING_YEAR_PATH } from "@/lib/paths";
 import type { GithubChartDay, StatusResponse, VibeCodingYearPayload } from "@/lib/types";
 import {
@@ -162,8 +153,6 @@ export function VibeYearChart({
 
   if (!weeks?.length) return null;
 
-  const { width, height } = chartSize(weeks.length);
-
   const cellOf = (day: GithubChartDay, target: Element): HoveredCell => ({
     date: day.date,
     tokens: day.count,
@@ -173,61 +162,16 @@ export function VibeYearChart({
 
   return (
     <div className={cn("github-chart vibe-year-chart", className)}>
-      <svg
-        ref={svgRef}
-        xmlns="http://www.w3.org/2000/svg"
-        viewBox={`0 0 ${width} ${height}`}
-        shapeRendering="geometricPrecision"
-        className="block h-auto w-full"
-        onPointerLeave={(event) => {
-          if (event.pointerType === "mouse" && hoverCapable()) clearPreview();
-        }}
-      >
-        {monthLabels(weeks).map((label) => (
-          <text
-            key={`m-${label.text}-${label.x}`}
-            x={label.x}
-            y={label.y}
-            fontSize={label.fontSize}
-            display={label.hidden ? "none" : undefined}
-          >
-            {label.text}
-          </text>
-        ))}
-        {dayLabels().map((label) => (
-          <text
-            key={`d-${label.text}`}
-            x={label.x}
-            y={label.y}
-            fontSize={label.fontSize}
-            display={label.hidden ? "none" : undefined}
-          >
-            {label.text}
-          </text>
-        ))}
-        {weeks.map((week, weekIndex) =>
-          week.map((day) => (
-            <rect
-              key={day.date}
-              x={LEFT + weekIndex * STEP}
-              y={TOP + day.weekday * STEP}
-              width={CELL}
-              height={CELL}
-              data-score={day.score}
-              data-hot={hotDate === day.date ? "" : undefined}
-              fill={FILLS[day.score]}
-              onPointerEnter={(event) => {
-                if (event.pointerType === "mouse" && hoverCapable()) {
-                  previewCell(cellOf(day, event.currentTarget));
-                }
-              }}
-              onClick={(event) => {
-                togglePin(cellOf(day, event.currentTarget));
-              }}
-            />
-          )),
-        )}
-      </svg>
+      <HeatmapGrid
+        svgRef={svgRef}
+        weeks={weeks}
+        fills={FILLS}
+        hotDate={hotDate}
+        label="Vibe Coding token heatmap"
+        onCellPreview={(day, target) => previewCell(cellOf(day, target))}
+        onCellClear={clearPreview}
+        onCellToggle={(day, target) => togglePin(cellOf(day, target))}
+      />
       {shown && (
         <HeatmapTooltip
           date={shown.date}

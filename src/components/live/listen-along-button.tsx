@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { CircleStop, Headphones, TriangleAlert, X } from "lucide-react";
 
@@ -77,10 +77,47 @@ function ListenAlongDialog({
 }) {
   const titleId = useId();
   const busy = listen.status === "starting";
+  const panelRef = useRef<HTMLDivElement>(null);
 
+  /**
+   * 打开时把焦点接进来、关掉时还回去，中间 Tab 不许走出对话框。
+   *
+   * `aria-modal="true"` 只管读屏的虚拟光标，键盘的 Tab 照样能落到背后的卡片
+   * 链接上 —— 何况这个对话框是 createPortal 到 body 的，DOM 顺序上就在最后，
+   * 走出去之后再也 Tab 不回来。
+   */
   useEffect(() => {
+    const panel = panelRef.current;
+    // 焦点先给容器而不是第一个按钮：starting 时按钮是 disabled 的，聚不上去
+    const restoreTo = document.activeElement as HTMLElement | null;
+    panel?.focus();
+
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (event.key !== "Tab" || !panel) return;
+      const items = Array.from(
+        panel.querySelectorAll<HTMLElement>("button:not([disabled])"),
+      );
+      const active = document.activeElement;
+      const inside = panel.contains(active);
+      if (items.length === 0) {
+        // 全 disabled（连接中）：把焦点按在容器上，Tab 也别溜出去
+        event.preventDefault();
+        panel.focus();
+        return;
+      }
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (event.shiftKey && (!inside || active === first || active === panel)) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (!inside || active === last)) {
+        event.preventDefault();
+        first.focus();
+      }
     };
     window.addEventListener("keydown", onKey);
     const previous = document.body.style.overflow;
@@ -88,22 +125,23 @@ function ListenAlongDialog({
     return () => {
       window.removeEventListener("keydown", onKey);
       document.body.style.overflow = previous;
+      // 不还回去的话焦点会掉到 <body>，键盘用户要从页首重新 Tab 一遍
+      restoreTo?.focus?.();
     };
   }, [onClose]);
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <button
-        type="button"
-        className="absolute inset-0 bg-background/80"
-        aria-label="Close"
-        onClick={onClose}
-      />
+      {/* 遮罩只是「点外面关掉」的鼠标热区：它不该是第二个叫 Close 的按钮，
+          可访问的关闭入口留给头部那个 X 和 Escape */}
+      <div className="absolute inset-0 bg-background/80" aria-hidden onClick={onClose} />
       <div
+        ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="relative w-full max-w-sm bg-surface pt-3"
+        tabIndex={-1}
+        className="relative w-full max-w-sm bg-surface pt-3 outline-none"
       >
         <header className="flex items-center justify-between gap-2 px-4">
           <div className="flex items-center gap-1.5">
@@ -170,6 +208,8 @@ function ListenAlongDialog({
 
 export function ListenAlongButton({ listen }: { listen: ListenAlong }) {
   const [open, setOpen] = useState(false);
+  // 稳定引用：对话框的 keydown effect 依赖它，内联箭头会让监听每渲染重挂一次
+  const close = useCallback(() => setOpen(false), []);
 
   if (listen.status === "unavailable") return null;
 
@@ -191,7 +231,7 @@ export function ListenAlongButton({ listen }: { listen: ListenAlong }) {
         {icon}
         <span>{text}</span>
       </button>
-      {open ? <ListenAlongDialog listen={listen} onClose={() => setOpen(false)} /> : null}
+      {open ? <ListenAlongDialog listen={listen} onClose={close} /> : null}
     </>
   );
 }

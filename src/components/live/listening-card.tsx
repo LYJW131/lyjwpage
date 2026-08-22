@@ -884,6 +884,11 @@ export function ListeningCard({
           >
             <div
               ref={listRef}
+              // 独立滚动区：给它名字和角色，键盘也能直接聚上来用方向键滚
+              // （Firefox / 部分 Safari 不会让没有 tabindex 的滚动容器获得焦点）
+              tabIndex={0}
+              role="region"
+              aria-label="最近播放"
               className={cn(
                 // 每行高 = 容器的 1/N。容器高度是确定的（absolute inset-0），
                 // 百分比轨道就有得算 —— 于是「整数行」「填满」两件事同时由

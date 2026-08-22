@@ -174,8 +174,16 @@ function ModelProviderIcon({ model }: { model: string }) {
 /**
  * 名次色跟 AIHOT 排行榜一致：无底色圆，只是等宽加粗数字上色。
  * https://aihot.virxact.com/leaderboard
+ *
+ * 和同文件的 TOKEN_SEGMENTS / LIMIT_*_COLOR 一样写 oklch 字面量、不进主题变量：
+ * 这是数据编码色（金银铜对齐排行榜的名次语义），不该被亮暗主题改掉。
+ * 三个值是原来那三支 hex 的等价换算，往返回 sRGB 逐通道一字不差。
  */
-const RANK_MARK_COLOR = ["#d86a52", "#d18a5e", "#d3b26a"] as const;
+const RANK_MARK_COLOR = [
+  "oklch(0.65 0.144 33.6)",
+  "oklch(0.696 0.105 52)",
+  "oklch(0.777 0.099 85.5)",
+] as const;
 
 function RankMark({ rank }: { rank: number }) {
   return (
@@ -192,26 +200,34 @@ function RankMark({ rank }: { rank: number }) {
   );
 }
 
+/**
+ * 首字母大写。空段原样返回 —— `part[0]` 在空串上是 undefined，
+ * 直接 `.toUpperCase()` 会抛 TypeError。
+ */
+function capitalize(part: string) {
+  return part ? `${part[0].toUpperCase()}${part.slice(1)}` : part;
+}
+
+/**
+ * 模型名是上报器那侧的原样字符串，前端没有清洗：一条尾随连字符（`gpt-4-`）、
+ * 连着两个连字符（`gpt-5--pro`）或者空串，都会切出空段来。这是渲染期调用的
+ * 纯函数，抛出去就是整张卡连同「Vibe Coding」区块一起白掉，所以一律走
+ * capitalize，绝不假设段非空。
+ */
 function formatModelName(model: string) {
+  if (!model) return model;
   const claude = /^claude-([a-z]+)-(\d+)(?:-(\d+))?$/i.exec(model);
   if (claude) {
     const [, family, major, minor] = claude;
-    return `Claude ${family[0].toUpperCase()}${family.slice(1)} ${major}${minor ? `.${minor}` : ""}`;
+    return `Claude ${capitalize(family)} ${major}${minor ? `.${minor}` : ""}`;
   }
   const gpt = /^gpt-(\d+(?:\.\d+)?)(?:-(.+))?$/i.exec(model);
   if (gpt) {
     const [, version, variant] = gpt;
-    const suffix = variant
-      ? ` ${variant.split("-").map((part) =>
-          `${part[0].toUpperCase()}${part.slice(1)}`,
-        ).join(" ")}`
-      : "";
+    const suffix = variant ? ` ${variant.split("-").map(capitalize).join(" ")}` : "";
     return `GPT ${version}${suffix}`;
   }
-  return model
-    .split("-")
-    .map((part) => `${part[0].toUpperCase()}${part.slice(1)}`)
-    .join(" ");
+  return model.split("-").map(capitalize).join(" ");
 }
 
 function TotalUsage({
