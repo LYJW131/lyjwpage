@@ -583,6 +583,33 @@ export function ListeningCard({
   const localActive = Boolean(localTrack);
 
   /**
+   * 闩住这首歌的目录解析结果。
+   *
+   * songId 是服务端拿曲名现查目录得来的，而那条链路（凭据、Redis、Apple 上游）
+   * 任何一环抖一下，songId 就会在**歌照播**的情况下丢半分钟 —— 跟听把它当成
+   * 「主人停了」，先暂停、解析恢复再播放，就是切歌边界那种一停一播的来源。
+   * 同一首还在播就沿用上一次解析出的 songId / 预排队列；换歌后新曲还没解析
+   * 出来时不沿用 —— 那是别的歌，宁可等。
+   */
+  const trackKey = localTrack ? `${localTrack.title ?? ""}|${localTrack.artist ?? ""}` : null;
+  const [lookupLatch, setLookupLatch] = useState<{
+    key: string;
+    songId: string;
+    upcomingSongIds: string[];
+  } | null>(null);
+  // 渲染期直接调整，理由同下面的 lastLiveId
+  if (
+    live?.songId &&
+    trackKey &&
+    (lookupLatch?.key !== trackKey || lookupLatch.songId !== live.songId)
+  ) {
+    setLookupLatch({ key: trackKey, songId: live.songId, upcomingSongIds: live.upcomingSongIds });
+  }
+  const latched = trackKey && lookupLatch?.key === trackKey ? lookupLatch : null;
+  const resolvedSongId = live?.songId ?? latched?.songId ?? null;
+  const resolvedUpcoming = live?.songId ? live.upcomingSongIds : latched?.upcomingSongIds ?? [];
+
+  /**
    * 跟着这首一起听。访客用自己的订阅授权，音频不经过站点，见 use-listen-along。
    *
    * 右上角那格平时写着「Apple Music」（说明这张卡的来源），有东西可跟听时换成
@@ -591,12 +618,12 @@ export function ListeningCard({
    */
   const listenAlong = useListenAlong({
     track: localTrack,
-    songId: live?.songId ?? null,
-    upcomingSongIds: live?.upcomingSongIds ?? [],
+    songId: resolvedSongId,
+    upcomingSongIds: resolvedUpcoming,
   });
   const showListenAlong =
     listenAlong.status !== "unavailable" &&
-    (Boolean(localTrack && live?.songId) || listenAlong.status !== "idle");
+    (Boolean(localTrack && resolvedSongId) || listenAlong.status !== "idle");
 
   const [latest, ...tail] = data?.items ?? [];
 
