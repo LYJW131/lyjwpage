@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { connection, NextResponse } from "next/server";
 
 import { ingestFailed, ingestRoute, telemetryAuthorized } from "@/lib/api";
 import { readAppleMusicCredentials } from "@/lib/apple-music-credentials";
@@ -38,8 +38,17 @@ export async function POST(request: Request) {
   });
 }
 
-/** 上报器取凭据。给的是 Mac 上报器现签的那份，站点只是转交，不做任何加工 */
+/**
+ * 上报器取凭据。给的是 Mac 上报器现签的那份，站点只是转交，不做任何加工。
+ *
+ * `connection()` 和状态路由那边同一个理由（见 lib/api 的 statusResponse），
+ * 但这里更要紧：这条路由眼下变成动态的只是**顺带** —— telemetryAuthorized 读了
+ * request.headers。而没配 TELEMETRY_INGEST_SECRET 时那行会被短路掉，于是没有
+ * 任何请求期 API 被碰过，Next 就有理由试着把一份凭据预渲染成静态响应。
+ * `no-store` 同理：别让这份东西有机会被中间层留下。
+ */
 export async function GET(request: Request) {
+  await connection();
   if (!telemetryAuthorized(request)) return ingestFailed("未授权", 401);
 
   return withRedisScope(async () => {
@@ -55,9 +64,12 @@ export async function GET(request: Request) {
     }
 
     const { developerToken, musicUserToken, expiresAt } = result.credentials;
-    return NextResponse.json({
-      ok: true as const,
-      data: { developerToken, musicUserToken, expiresAt },
-    });
+    return NextResponse.json(
+      {
+        ok: true as const,
+        data: { developerToken, musicUserToken, expiresAt },
+      },
+      { headers: { "Cache-Control": "no-store" } },
+    );
   });
 }

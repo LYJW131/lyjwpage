@@ -140,9 +140,21 @@ type ReportItem = {
   backdropKey: string | null;
 };
 
+/**
+ * 三个会撞上 Object.prototype 的名字。
+ *
+ * 映射是个普通对象，`objectKeys["__proto__"] = "…"` 那一下被 setter 吃掉、什么也
+ * 没存（值是字符串，构不成原型污染），但**读**的那一下拿回来的是 Object.prototype
+ * 本身 —— 真值，于是 publicAssetUrl 把它拼成 "[object Object]"，产出一个坏 URL。
+ * 挡在入口最省事：挡住了 posterKey / backdropKey 就永远不会是这三个词，读取侧
+ * 也就不会去查它们。
+ */
+const RESERVED_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+
 function imageKey(value: unknown): string | null {
   const key = text(value);
-  return key && IMAGE_KEY.test(key) ? key : null;
+  if (!key || RESERVED_KEYS.has(key)) return null;
+  return IMAGE_KEY.test(key) ? key : null;
 }
 
 function reportItem(value: unknown): ReportItem | null {
@@ -178,8 +190,11 @@ function normalizeType(type: string | null): WatchingItem["type"] {
 function link(item: ReportItem): string | null {
   const base = (process.env.EMBY_PUBLIC_URL ?? "").replace(/\/+$/, "");
   if (!base || !item.id) return null;
-  const server = item.serverId ? `&serverId=${item.serverId}` : "";
-  return `${base}/web/index.html#!/item?id=${item.id}${server}`;
+  // 两个 id 都是代理原样转来的任意字符串，不编码的话带 # / & / 空格的那些会把
+  // 后面的查询串截断，拼出一个点不开的链接
+  const id = encodeURIComponent(item.id);
+  const server = item.serverId ? `&serverId=${encodeURIComponent(item.serverId)}` : "";
+  return `${base}/web/index.html#!/item?id=${id}${server}`;
 }
 
 function normalize(item: ReportItem): StoredWatchingItem {
@@ -219,7 +234,15 @@ function normalize(item: ReportItem): StoredWatchingItem {
  * 接收上报器已经写入 R2 的对象键；站点不再接触图片字节。
  *
  * 映射由调用方读好传进来 —— 那条读要和续播列表、播放中那两条一起发车。
- * 返回的 `objectKeys` 是就地改过的同一个对象。
+ * 没有新落地的图时返回的就是传进来那个对象；有的话返回的是**落库后的那一份**
+ * （setImageObjectKeys 会按 IMAGE_LIMIT 裁），不是就地改过的那个：超限时被淘汰
+ * 掉的键必须在这次的回执和推送里就体现出来，否则推给浏览器的那份会引用刚被丢掉
+ * 的键，代理也不会从 missingImages 里知道要补，下一轮又变回裂图。
+ *
+ * 确认走并发：`hasStoredImage` 未命中 5 分钟正缓存时要跨网发一次 R2 HEAD，而
+ * recordEmbyReport 整段压在 202 之前。一次补图可以带一整批（IMAGE_LIMIT = 96），
+ * 首次上报或桶被清空后是全量未命中，串着做几十次很容易撞上代理 30 秒的耐心
+ * （见 lib/ingest-relay）。这些 HEAD 之间互不相干。
  */
 async function storeImages(
   value: unknown,
@@ -227,7 +250,7 @@ async function storeImages(
 ): Promise<{ objectKeys: Record<string, string>; stored: number }> {
   if (!Array.isArray(value) || !value.length) return { objectKeys, stored: 0 };
 
-  let stored = 0;
+  const candidates: { key: string; objectKey: string }[] = [];
   for (const entry of value) {
     const raw = object(entry);
     // imageKey 是 Emby 侧的键（itemId:kind:tag:height），objectKey 是 R2 上那份
@@ -237,15 +260,25 @@ async function storeImages(
 
     const objectKey = text(raw.objectKey);
     if (!objectKey || !IMAGE_OBJECT_KEY.test(objectKey)) continue;
-    if (!(await hasStoredImage(objectKey))) continue;
-    // 重新插入，让它排到末尾：淘汰的总是最久没被推过的那些
-    delete objectKeys[key];
-    objectKeys[key] = objectKey;
-    stored += 1;
+    candidates.push({ key, objectKey });
   }
+  if (!candidates.length) return { objectKeys, stored: 0 };
 
-  if (stored) await setImageObjectKeys(objectKeys);
-  return { objectKeys, stored };
+  const confirmed = await Promise.all(
+    candidates.map((candidate) => hasStoredImage(candidate.objectKey)),
+  );
+
+  let stored = 0;
+  candidates.forEach((candidate, index) => {
+    if (!confirmed[index]) return;
+    // 重新插入，让它排到末尾：淘汰的总是最久没被推过的那些
+    delete objectKeys[candidate.key];
+    objectKeys[candidate.key] = candidate.objectKey;
+    stored += 1;
+  });
+
+  if (!stored) return { objectKeys, stored };
+  return { objectKeys: await setImageObjectKeys(objectKeys), stored };
 }
 
 /** 引用了却还没有图的键。回给代理，让它下一次把这些补上 */

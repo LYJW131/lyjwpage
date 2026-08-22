@@ -26,11 +26,8 @@ import {
   CHARGER_TAG,
   DESKTOP_TAG,
   POWERBANK_TAG,
-  expireStatus,
-  expireStatusImmediately,
   fanout,
   NOW_LISTENING_TAG,
-  publish,
   TIMEZONE_TAG,
   VIBECODING_TAG,
   VIBECODING_YEAR_TAG,
@@ -425,6 +422,7 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
    */
   const writes: Promise<unknown>[] = [];
   const events: PendingEvent[] = [];
+  const notify: PendingEvent[] = [];
   const tags: string[] = [];
   const urgentTags: string[] = [];
 
@@ -440,19 +438,36 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
    * 那个 try 里的话，上报器一旦带出个格式错误，每封都 400、每封都不记心跳，
    * 90 秒后整台 Mac 的卡全变灰，而它其实活得好好的、别的模块也还在正常落库。
    * 从前 recordReporterBeat 就排在模块前面，这里保持不变。
-   *
-   * 代价（也是从前就有的）：落在一封失败信封里的在离线翻转会写进去，但
-   * publishPresence 在下面抛出去之前跑不到，浏览器只能等下一轮轮询翻过来。
    */
   writes.push(writeLiveness(liveness));
 
   /**
-   * 模块处理整个包起来，是为了保证「已经发车的写」一定被等到。
+   * 在离线翻转本身就是状态变化，值得推 —— 这正是「关键事件」，不是定时广播。
+   *
+   * 这一条不带数据，浏览器收到后要回源重取三份（PRESENCE_PATHS：desktop /
+   * listening-now / charger），所以它得排在写后面，交给 fanout 的 `notify`。
+   * 时区不看存活，上下线不用刷它的首屏缓存。
+   *
+   * 这几行排在模块处理**外面**，和上面那次心跳同一个理由：翻转是这封信封确实
+   * 带来的变化，哪怕其中一个模块写坏了也已经写进存活里了，浏览器不该只能等下一轮
+   * 轮询才翻过来 —— fanout 的失效和通知都在 `finally` 里，写抛出去也照发。
+   */
+  if (presenceFlipped) {
+    notify.push({ type: "presence", payload: null });
+    tags.push(DESKTOP_TAG);
+    urgentTags.push(NOW_LISTENING_TAG, CHARGER_TAG);
+  }
+
+  /**
+   * 模块处理整个包起来，是为了保证「已经发车的写」一定被交给 fanout。
    *
    * 下面的写是 push 进 writes 就开跑的，而后面的模块还可能校验失败抛出去 ——
-   * 不等的话，响应带着 400 提前返回，serverless 随手就把没等完的那几个写掐了，
-   * 表现是「上报器报了个格式错误，顺带丢了同一封里已经收下的另外几份数据」。
-   * 错误照样往上抛，只是先把该落的落完。
+   * 中途 return 的话，那几个已经发车的写就没人接管了，serverless 上响应一返回
+   * 随手就被掐掉，表现是「上报器报了个格式错误，顺带丢了同一封里已经收下的
+   * 另外几份数据」。错误照样往上抛，只是先把该落的交出去。
+   *
+   * 注意等它们的不再是这一层：fanout 走 after()，写和推送都在响应之后跑
+   * （见 lib/live-events 的 afterResponse），保住它们的是平台的 waitUntil。
    */
   try {
     /**
@@ -687,16 +702,8 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
      * 代价是上报器从离线恢复时，「在线」最迟等下一轮轮询（30 秒）才显示，不再是
      * 收到心跳的那一刻。换来的是推送通道上只跑真正的状态变化。
      */
-    await fanout({ writes, events, tags, urgentTags });
+    await fanout({ writes, events, notify, tags, urgentTags });
   }
-
-  /**
-   * 在离线翻转本身就是状态变化，值得推 —— 这正是「关键事件」，不是定时广播。
-   *
-   * 只有它排在写后面：这一条不带数据，浏览器收到后要回源重取三份，早发的话
-   * 那三次回源读到的还是写之前的 Redis。带数据的那几条没有这个问题。
-   */
-  if (presenceFlipped) await publishPresence();
 
   return { accepted, heartbeat: true, desktopIconAvailable, chargerCoverIconAvailable };
 }
@@ -821,21 +828,6 @@ export async function getNowListening(): Promise<NowListeningPayload> {
     readLiveness(),
   ]);
   return pickNowListening(snapshot, liveness);
-}
-
-/**
- * 上报器上下线。只发信号不带数据，让各卡片自己重取 —— 亲口离线是布尔值，
- * 得把新的 declaredOffline 取回来；逐一算好推出去不如让它们各取各的。
- *
- * vibe coding 那张刻意不订阅：token 用量是累计的历史事实，Mac 掉线它不会变得
- * 不可信，只是不再增长。那张卡的陈旧判定另有自己的口径。
- */
-export async function publishPresence() {
-  await publish({ type: "presence", payload: null });
-  // 浏览器那侧收到 presence 后重取的是 PRESENCE_PATHS 那三份（desktop /
-  // listening-now / charger）。时区不看存活，上下线不用刷它的首屏缓存。
-  expireStatus(DESKTOP_TAG);
-  expireStatusImmediately(NOW_LISTENING_TAG, CHARGER_TAG);
 }
 
 /**

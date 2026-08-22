@@ -193,8 +193,13 @@ export async function getImageObjectKeys(): Promise<Record<string, string>> {
   return (await imagesMirror.get())?.objectKeys ?? {};
 }
 
-export async function setImageObjectKeys(objectKeys: Record<string, string>) {
+/** 返回真正落库的那一份：调用方拿它去拼回执和推送，两边看到的裁剪结果才一致 */
+export async function setImageObjectKeys(
+  objectKeys: Record<string, string>,
+): Promise<Record<string, string>> {
   // 对象的键保持插入顺序，超了就从最早的开始丢
   const entries = Object.entries(objectKeys).slice(-IMAGE_LIMIT);
-  await imagesMirror.put({ objectKeys: Object.fromEntries(entries), at: Date.now() });
+  const trimmed = Object.fromEntries(entries);
+  await imagesMirror.put({ objectKeys: trimmed, at: Date.now() });
+  return trimmed;
 }

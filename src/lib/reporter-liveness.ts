@@ -68,11 +68,18 @@ export function writeLiveness(liveness: Liveness): Promise<void> {
   return mirror.put(liveness);
 }
 
-/** 拿在手上的那份存活算不算离线。取数路径上已经读过就用这个，别再问一次 Redis */
-export function offlineByLiveness(liveness: Liveness) {
+/**
+ * 拿在手上的那份存活算不算离线。取数路径上已经读过就用这个，别再问一次 Redis。
+ *
+ * `now` 收调用方那把钟：同一次判定里往往还有别的按时间算的东西（暂停宽限、
+ * HomePod 静默、充电头断流），它们都拿着同一个 `now`，这里再自己读一次
+ * Date.now() 的话，同一个判定里就有了两把钟 —— 生产上差几微秒无所谓，
+ * 但那些函数的 `now` 形参也就只是半真的，想给它们写单测立刻踩到。
+ */
+export function offlineByLiveness(liveness: Liveness, now = Date.now()) {
   // 亲口说走了就直接算离线，不用等心跳窗口
   if (liveness.declaredOffline) return true;
-  return !liveness.lastSeenAt || Date.now() - liveness.lastSeenAt > heartbeatWindowMs();
+  return !liveness.lastSeenAt || now - liveness.lastSeenAt > heartbeatWindowMs();
 }
 
 /**

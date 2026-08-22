@@ -1,3 +1,4 @@
+import { CHARGER_STALE_MS, heartbeatWindowMs } from "@/lib/freshness";
 import { getStored, lastPushReceivedAt } from "@/lib/powerbank-store";
 import {
   offlineByLiveness,
@@ -15,10 +16,22 @@ import type { PowerBankPayload, PowerBankStatus } from "@/lib/types";
  * `http://127.0.0.1:8787/sse/powerbank`，见 lib/local-charging。
  */
 
-/** 默认 90 秒；上报间隔配得更长时按 3 倍加长，不能短于默认。 */
+/**
+ * 默认 90 秒；上报间隔配得更长时按 3 倍加长，不能短于默认。
+ *
+ * **也不能短于心跳窗口**，和 anker 的 chargerStaleAfterMs 逐字对齐 —— 那边的注释
+ * 记着这个坑：安静时段没有新读数可发，窗口比心跳间隔短的话，心跳但凡晚一点点就
+ * 越界，卡片会闪回「未连接」。心跳窗口默认 300 秒，而这里从前的下限是 90 秒。
+ *
+ * ⚠️ 这一半只是止血。充电宝**没有**和充电头 prepareHeartbeat 对称的续期路径：
+ * `powerbank:lastPush` 只在 chargingDevices 里真带了 `kind:"powerBank"` 那一项时
+ * 才被写（见 lib/powerbank-store 的 prepareStatus），activeModules 里也没有它。
+ * 也就是说 BLE 短暂丢了、只开充电头模块的那些时段，续的人一个都没有。
+ * 补一条充电宝心跳、还是明确决定「就按这个窗口判断断流」，是另一件事。
+ */
 export function powerBankStaleAfterMs() {
   const interval = Number(process.env.CHARGER_PUSH_INTERVAL_MS) || 30_000;
-  return Math.max(90_000, interval * 3);
+  return Math.max(CHARGER_STALE_MS, interval * 3, heartbeatWindowMs());
 }
 
 /**
@@ -30,7 +43,7 @@ export function withPowerBankFreshness(
   now = Date.now(),
 ): PowerBankPayload {
   const stale =
-    offlineByLiveness(payload) || now - payload.pushedAt > payload.staleAfterMs;
+    offlineByLiveness(payload, now) || now - payload.pushedAt > payload.staleAfterMs;
   return { ...payload, connected: stale ? false : payload.connected };
 }
 

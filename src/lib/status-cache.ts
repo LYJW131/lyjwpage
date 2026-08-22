@@ -25,9 +25,9 @@ import { getVibeCodingSnapshot } from "@/lib/vibecoding";
 import { getVibeCodingYear } from "@/lib/vibecoding-year-store";
 
 /**
- * 首屏那八份数据的缓存层。八条状态路由（时区除外，它只给首屏）也读这里 ——
- * 但只在 STATUS_CACHE 没被关掉时读：关掉的部署上端点走文件末尾那几对里的 `live`
- * 那半，每次直读 Redis，见 lib/api 的 STATUS_CACHE。首屏不受那个开关管。
+ * 首屏那几份数据的缓存层。`app/api/status/` 下的状态路由（时区除外，它只给首屏）
+ * 也读这里 —— 但只在 STATUS_CACHE 没被关掉时读：关掉的部署上端点走文件末尾那几对
+ * 里的 `live` 那半，每次直读 Redis，见 lib/api 的 STATUS_CACHE。首屏不受那个开关管。
  *
  * tag 只失效本实例那一套（Vercel 之外没有共享的 tag 存储，见 lib/live-events 的
  * expireStatus）—— 上报会被原样转给对端，对端自己跑一遍同一个 handler、
@@ -189,8 +189,9 @@ export async function cachedGithubChart() {
 }
 
 /**
- * 八条状态端点各自的两种取法，见 lib/api 的 `StatusSource`：冻起来那份走上面的
- * `'use cache'`，直读那份走同一个 loader，由 STATUS_CACHE 选。
+ * `app/api/status/` 下每条端点各自的两种取法，一条一对，见 lib/api 的
+ * `StatusSource`：冻起来那份走上面的 `'use cache'`，直读那份走同一个 loader，
+ * 由 STATUS_CACHE 选。
  *
  * 配对摆在这里而不是各条路由里：这个文件本来就同时拿着 tag 和 loader，而路由那边
  * 每加一处「哪份缓存对应哪个 loader」的知识，就多一处能对不上的地方。

@@ -66,11 +66,6 @@ function completeCredentials(
   };
 }
 
-/** null 有两种含义，调用方分不开也不需要分：都是「现在用不了」。见 readAppleMusicCredentials */
-export async function getAppleMusicCredentials(): Promise<StoredAppleMusicCredentials | null> {
-  return completeCredentials(await mirror.get());
-}
-
 /**
  * 带原因的读取。
  *
