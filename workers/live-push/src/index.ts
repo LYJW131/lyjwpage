@@ -27,10 +27,11 @@ const ROOM_ID = "global";
 const LOCAL_ORIGIN_RE = /^https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/;
 
 /*
- * 下面这四个函数和 online-counter 那个 worker 逐字一样
- * （workers/online-counter/src/index.ts），改一处记得同步另一处。
+ * 下面这四个函数和 online-counter / musickit-token / am-motion-artwork 那三个
+ * worker 逐字一样（workers/online-counter/src/index.ts），改一处记得同步另外三处。
+ * —— am-motion-artwork 那份唯一的差别是引号：那个文件通篇用单引号。
  *
- * 没抽成共享包是故意的：域名名单本来就得在两份 wrangler.toml 里各配一次，
+ * 没抽成共享包是故意的：域名名单本来就得在每份 wrangler.toml 里各配一次，
  * 抽包省不掉那份重复，却要多一个包和一层依赖解析。
  */
 
@@ -120,7 +121,7 @@ function bearerToken(request: Request): string | null {
   const header = request.headers.get("Authorization");
   if (!header) return null;
   const match = header.match(/^Bearer\s+(.+)$/i);
-  return match ? match[1].trim() : null;
+  return match?.[1]?.trim() ?? null;
 }
 
 function getRoom(env: Env): DurableObjectStub<LivePushRoom> {
@@ -142,7 +143,10 @@ export class LivePushRoom extends DurableObject<Env> {
     }
 
     const pair = new WebSocketPair();
-    const [client, server] = Object.values(pair);
+    // 按 0 / 1 取，不绕 Object.values：WebSocketPair 的类型把这两个下标写成了
+    // 具名属性，摊成数组之后 noUncheckedIndexedAccess 会把它们变成可选的
+    const client = pair[0];
+    const server = pair[1];
 
     this.ctx.acceptWebSocket(server);
     /**
@@ -192,9 +196,12 @@ export class LivePushRoom extends DurableObject<Env> {
 const worker = {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+    // 每条返回都带上，不只是成功那条：只有 200 带 CORS 头的话，浏览器侧的调用方
+    // 看到的会是一句 CORS 错误，而不是 401 / 400 这些真正说明问题的状态码
+    const cors = getCorsHeaders(request, env);
 
     if (request.method === "OPTIONS") {
-      return new Response(null, { status: 204, headers: getCorsHeaders(request, env) });
+      return new Response(null, { status: 204, headers: cors });
     }
 
     if (url.pathname === WS_PATH) {
@@ -209,7 +216,7 @@ const worker = {
 
     if (url.pathname === PUBLISH_PATH) {
       if (request.method !== "POST") {
-        return jsonResponse({ ok: false, error: "只接受 POST" }, { status: 405 });
+        return jsonResponse({ ok: false, error: "只接受 POST" }, { status: 405, headers: cors });
       }
 
       /**
@@ -220,18 +227,21 @@ const worker = {
        */
       const expected = env.LIVE_PUSH_SECRET;
       if (!expected) {
-        return jsonResponse({ ok: false, error: "Worker 未配置 LIVE_PUSH_SECRET" }, { status: 503 });
+        return jsonResponse(
+          { ok: false, error: "Worker 未配置 LIVE_PUSH_SECRET" },
+          { status: 503, headers: cors },
+        );
       }
       const provided = bearerToken(request);
       if (!provided || !secretMatches(provided, expected)) {
-        return jsonResponse({ ok: false, error: "未授权" }, { status: 401 });
+        return jsonResponse({ ok: false, error: "未授权" }, { status: 401, headers: cors });
       }
 
       let event: unknown;
       try {
         event = await request.json();
       } catch {
-        return jsonResponse({ ok: false, error: "请求体不是合法 JSON" }, { status: 400 });
+        return jsonResponse({ ok: false, error: "请求体不是合法 JSON" }, { status: 400, headers: cors });
       }
       if (
         typeof event !== "object" ||
@@ -239,7 +249,7 @@ const worker = {
         typeof (event as { type?: unknown }).type !== "string" ||
         !(event as { type: string }).type
       ) {
-        return jsonResponse({ ok: false, error: "事件缺少 type" }, { status: 400 });
+        return jsonResponse({ ok: false, error: "事件缺少 type" }, { status: 400, headers: cors });
       }
 
       /**
@@ -247,7 +257,7 @@ const worker = {
        * 在这里再抄一份就等于同一份契约维护两处，加一种事件得改两个仓库。
        */
       const delivered = await getRoom(env).broadcast(JSON.stringify(event));
-      return jsonResponse({ ok: true, delivered }, { headers: getCorsHeaders(request, env) });
+      return jsonResponse({ ok: true, delivered }, { headers: cors });
     }
 
     if (url.pathname === "/") {

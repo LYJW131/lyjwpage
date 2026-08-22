@@ -11,10 +11,11 @@ const ROOM_ID = "global";
 const LOCAL_ORIGIN_RE = /^https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/;
 
 /*
- * 下面这四个函数和 live-push 那个 worker 逐字一样
- * （workers/live-push/src/index.ts），改一处记得同步另一处。
+ * 下面这四个函数和 live-push / musickit-token / am-motion-artwork 那三个 worker
+ * 逐字一样（workers/live-push/src/index.ts），改一处记得同步另外三处。
+ * —— am-motion-artwork 那份唯一的差别是引号：那个文件通篇用单引号。
  *
- * 没抽成共享包是故意的：域名名单本来就得在两份 wrangler.toml 里各配一次，
+ * 没抽成共享包是故意的：域名名单本来就得在每份 wrangler.toml 里各配一次，
  * 抽包省不掉那份重复，却要多一个包和一层依赖解析。
  */
 
@@ -93,8 +94,8 @@ function jsonResponse(data: unknown, init: ResponseInit = {}): Response {
 }
 
 function getRoom(env: Env): DurableObjectStub<OnlineCounterRoom> {
-  const id = env.ONLINE_COUNTER.idFromName(ROOM_ID);
-  return env.ONLINE_COUNTER.get(id);
+  // getByName 就是 idFromName + get 这两步，和 live-push 那份写法保持一致
+  return env.ONLINE_COUNTER.getByName(ROOM_ID);
 }
 
 export class OnlineCounterRoom extends DurableObject<Env> {
@@ -112,7 +113,10 @@ export class OnlineCounterRoom extends DurableObject<Env> {
     }
 
     const pair = new WebSocketPair();
-    const [client, server] = Object.values(pair);
+    // 按 0 / 1 取，不绕 Object.values：WebSocketPair 的类型把这两个下标写成了
+    // 具名属性，摊成数组之后 noUncheckedIndexedAccess 会把它们变成可选的
+    const client = pair[0];
+    const server = pair[1];
 
     this.handleSession(server);
 
@@ -143,13 +147,21 @@ export class OnlineCounterRoom extends DurableObject<Env> {
   }
 
   private broadcastCount(): void {
-    const message = { online: this.sessions.size };
-    const payload = JSON.stringify(message);
+    const payload = JSON.stringify({ online: this.sessions.size });
     for (const socket of this.sessions) {
       try {
         socket.send(payload);
       } catch {
-        this.closeSession(socket);
+        /*
+         * 已经断了但还没收到 close 的，丢掉这一条即可 —— close / error 事件随后
+         * 会把它从 sessions 里清掉，那时才补一次广播。
+         *
+         * 别在这里调 closeSession：它会广播，而我们还在遍历 sessions 里 ——
+         * 内层遍历把剩下的连接又发一遍，发的还是删除**之前**算出来的人数。
+         * N 个死连接一起被发现时，嵌套深度和重复发送量都是 O(N)，总量 O(N²)，
+         * 客户端会连着收到几条互相矛盾的计数。
+         * 隔壁 live-push 的 broadcast 同一处就是这么写的。
+         */
       }
     }
   }

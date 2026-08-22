@@ -8,7 +8,10 @@
    （见 .github/workflows/deploy-workers.yml），手动 `wrangler deploy` 也行。
 2. 部署成功后，把 Worker 的**源**（如 `https://online.example.com`）填入站点的
    `NEXT_PUBLIC_ONLINE_COUNTER_URL`。路径由站点自己拼 —— 浏览器连 `/ws`，
-   `/count` 留给调试。三个 Worker 的地址变量都是这个形状。
+   `/count` 留给调试。站点侧几个 Worker 的地址变量都是这个形状
+   （`NEXT_PUBLIC_LIVE_PUSH_URL` / `NEXT_PUBLIC_ONLINE_COUNTER_URL` /
+   `NEXT_PUBLIC_MOTION_ARTWORK_URL` / `NEXT_PUBLIC_MUSICKIT_TOKEN_URL`；
+   `cache-warmup` 没有，它是站点的调用方而不是被调方）。
 
 ## 环境变量
 
@@ -25,7 +28,8 @@
   这个头，所以对真实访客零代价，但 `curl` 不带头就绕过白名单这条路被堵上了。
   用 curl 验证时记得自己加 `-H "Origin: https://…"`。
 
-  名单和 `live-push` 那个 worker 是同一份，加域名时两个都要改、都要重新部署。
+  名单和 `live-push` / `musickit-token` / `am-motion-artwork` 那三个 worker 是
+  同一份，加域名时四个都要改、都要重新部署。
 
 ## 命令
 

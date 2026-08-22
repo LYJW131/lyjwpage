@@ -33,9 +33,10 @@ export async function uploadImage(input: Buffer, maxHeight: number): Promise<str
     .resize({ height: maxHeight, withoutEnlargement: true })
     .webp({ quality: 88 })
     .toBuffer();
-  const objectKey = `${sha256(body)}.webp`;
-  const url = objectUrl(objectKey);
+  // 对象键和 SigV4 要的 payload hash 是同一个值，别把整份 WebP 哈希两遍
   const payloadHash = sha256(body);
+  const objectKey = `${payloadHash}.webp`;
+  const url = objectUrl(objectKey);
   const amzDate = timestamp();
   const shortDate = amzDate.slice(0, 8);
   const scope = `${shortDate}/auto/s3/aws4_request`;

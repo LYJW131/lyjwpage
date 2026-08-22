@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import { createServer } from "node:http";
 
 import { config } from "./config.js";
@@ -7,8 +8,12 @@ import { failure, info } from "./log.js";
  * 接 Emby 的播放通知。
  *
  * Emby 后台那个 webhook 配置项加不了自定义请求头，直发站点就只能开一个不鉴权
- * 的入口 —— 站点将来在公网上，这不行。所以让它发到同机的这个端口，由代理带上
- * 密钥转发。局域网内可达即可，别把这个端口映射到公网。
+ * 的入口 —— 站点将来在公网上，这不行。所以让它发到局域网里的这个端口，由代理
+ * 带上密钥转发。别把这个端口映射到公网。
+ *
+ * **局域网内也不是零风险**：不配 WEBHOOK_TOKEN 的话，同网段任意一台机器发一条
+ * 伪造的 playback.stop 就能抹掉站点上「正在观看」的卡片。「加不了自定义请求头」
+ * 只排除了 header，地址里的 query 是能带的，所以密钥走 `?token=`。
  */
 
 export type PlaybackEvent = "start" | "pause" | "resume" | "stop";
@@ -48,6 +53,23 @@ function eventName(body: Record<string, unknown>): string {
   return typeof value === "string" ? value : "";
 }
 
+/**
+ * 配了 WEBHOOK_TOKEN 就要求地址里带 `?token=<值>`，没配则不校验。
+ *
+ * 逐字节等时比较，别让 401 的返回快慢把密钥一位一位漏出去。
+ * 路径仍然不校验（各版本的 Emby 对地址的处理不一样），只看这个 query。
+ */
+function authorized(target: string | undefined): boolean {
+  const expected = config.webhookToken;
+  if (!expected) return true;
+  // Node 给的 request.url 只有路径和 query，拼个占位主机才解析得动
+  const provided = new URL(target ?? "/", "http://localhost").searchParams.get("token");
+  if (provided == null) return false;
+  const a = Buffer.from(provided);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
 async function readBody(
   request: import("node:http").IncomingMessage,
 ): Promise<string> {
@@ -72,6 +94,10 @@ export function startWebhookServer(onEvent: (event: PlaybackEvent) => void) {
       response.writeHead(405).end();
       return;
     }
+    if (!authorized(request.url)) {
+      response.writeHead(401).end();
+      return;
+    }
 
     void readBody(request)
       .then((text) => {
@@ -94,6 +120,9 @@ export function startWebhookServer(onEvent: (event: PlaybackEvent) => void) {
   server.on("error", (error) => failure("webhook", error));
   server.listen(config.webhookPort, () => {
     info(`webhook 监听 :${config.webhookPort}，把 Emby 的通知地址指过来`);
+    if (!config.webhookToken) {
+      info("没配 WEBHOOK_TOKEN —— 局域网里谁都能往这个端口发一条伪造的播放事件");
+    }
   });
   return server;
 }

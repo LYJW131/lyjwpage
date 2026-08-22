@@ -24,21 +24,35 @@ Mac 上报器现签的、带 music user token 的那份**私人凭据**，拿到
    令牌被复制到别的站点上就是废的。真正兜底的是这道。
 
 Apple 不解析通配符，所以 `https://*.vercel.app` 这类只参与第一道；通过之后，签进
-声明的是**这次请求那个具体来源**。预览域名和 localhost 因此都能用，而声明始终是
-一串写死的完整来源。
+声明的是**这次请求那个具体来源**。预览域名和 localhost 因此都能用，而声明里出现的
+始终是写死的完整来源，没有通配符。
 
-签出来的 JWT 长这样：
+**来路不是名单里写死的那几个时（预览域名、localhost），声明里就只有它自己。**
+不这么分的话，第一道那点松就把第二道也带松了：localhost 是无条件放行的，公网上
+任何人带一句 `Origin: http://localhost:3000` 就能要走一份声明含 `lyjw.me` 的令牌，
+在自己的页面上直接可用，有效期七天。
+
+签出来的 JWT 长这样 —— 来路是 `https://lyjw.me`（名单里写死的）时：
 
 ```json
 { "alg": "ES256", "kid": "FGHIJ67890" }
 { "iss": "ABCDE12345", "iat": 1755734400, "exp": 1756339200,
-  "origin": ["https://lyjw.me", "https://lyjwpage-abc123.vercel.app"] }
+  "origin": ["https://lyjw.me", "https://lyjw131.com", "https://dev.lyjw.me"] }
+```
+
+来路是 `https://lyjwpage-abc123.vercel.app`（通配匹配上的）时：
+
+```json
+{ "iss": "ABCDE12345", "iat": 1755734400, "exp": 1756339200,
+  "origin": ["https://lyjwpage-abc123.vercel.app"] }
 ```
 
 ## 部署信息
 
 - **自定义域名**：在 `wrangler.toml` 的 `routes` 里配
 - **默认域名**：`workers_dev = true` 时 Cloudflare 会给一个 `<名字>.<账号>.workers.dev`
+- **推 main 时 CI 自动部署**（见 .github/workflows/deploy-workers.yml），手动
+  `wrangler deploy` 也行
 
 部署完把地址填进站点的 `NEXT_PUBLIC_MUSICKIT_TOKEN_URL`。不填则「一起听」按钮不出现，
 卡片其余部分照常。
@@ -105,6 +119,9 @@ curl -H "Origin: https://lyjw.me" "https://musickit.example.com/token"
 ```bash
 # 本地调试。不配 ALLOWED_ORIGINS 就不限制来源，签出来的令牌也不带 origin 声明
 pnpm --filter @lyjwpage/musickit-token dev
+
+# 类型检查
+pnpm --filter @lyjwpage/musickit-token typecheck
 
 # 部署上线
 pnpm --filter @lyjwpage/musickit-token run deploy

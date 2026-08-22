@@ -25,8 +25,9 @@ const DEFAULT_TTL_SECONDS = 7 * 24 * 60 * 60;
 const MAX_TTL_SECONDS = 15777000;
 
 /*
- * 下面四个来源匹配函数和 online-counter / live-push 那两个 worker 逐字一样
- * （workers/online-counter/src/index.ts），改一处记得同步另外两处。
+ * 下面四个来源匹配函数和 online-counter / live-push / am-motion-artwork 那三个
+ * worker 逐字一样（workers/online-counter/src/index.ts），改一处记得同步另外三处。
+ * —— am-motion-artwork 那份唯一的差别是引号：那个文件通篇用单引号。
  *
  * 没抽成共享包是故意的：域名名单本来就得在每份 wrangler.toml 里各配一次，
  * 抽包省不掉那份重复，却要多一个包和一层依赖解析。
@@ -188,6 +189,16 @@ async function importSigningKey(env: Env): Promise<CryptoKey> {
  * isAllowedOrigin 里比对通过，是一个已经确认合法的具体值。localhost 同理 ——
  * 它始终放行但不会出现在名单里，不补进去的话本地就调不动。
  *
+ * **来路不是名单里写死的那几个时，只签它自己一个，不把生产域名一起捎上。**
+ * 从前是把它*追加*到 literal 名单后面，于是：localhost 无条件放行
+ * （isAllowedOriginValue），公网上任何人带一句 `Origin: http://localhost:3000`
+ * 就能要走一份声明里含 lyjw.me / lyjw131.com 的令牌，在自己的页面上直接可用 ——
+ * 等于把「真正兜底的那道」也一并交了出去。通配匹配到的预览域名同理：
+ * `*.vercel.app` 底下并不都是我们的部署。
+ *
+ * 名单里写死的那几个仍然一起签：它们都是自家域名，共用一份令牌能共用一条
+ * tokenCache 条目，省掉每个域各签一次。
+ *
  * 返回空数组表示「不加这条声明」：一条都没配时（`wrangler dev`）签一个无限制的
  * 令牌，比签一个 origin 为空、Apple 一律拒收的令牌有用。
  */
@@ -197,7 +208,9 @@ function signedOrigins(request: Request, env: Env): string[] {
 
   const literal = allowed.filter((pattern) => !pattern.includes("*"));
   const origin = request.headers.get("Origin");
-  return origin && !literal.includes(origin) ? [...literal, origin] : literal;
+  // 名单非空时 isAllowedOrigin 已经把不带 Origin 的请求拦下了，这条是防御
+  if (!origin) return literal;
+  return literal.includes(origin) ? literal : [origin];
 }
 
 function resolveTtlSeconds(env: Env): number {
