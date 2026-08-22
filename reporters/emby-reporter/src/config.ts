@@ -48,6 +48,15 @@ export const config = {
 
   /** Emby 的播放通知发到这个端口，见 webhook.ts */
   webhookPort: Math.max(1, Number(process.env.WEBHOOK_PORT) || 8787),
+  /**
+   * webhook 的共享密钥，可选。配了就必须在通知地址里带 `?token=<值>`，对不上 401。
+   *
+   * Emby 那个通知配置项加不了自定义请求头，但地址里可以带 query —— 「加不了头」
+   * 只排除了 header 这一种写法。留空则谁都能发：局域网里任意一台机器 POST 一条
+   * 伪造的 playback.stop 就能把站点上「正在观看」的卡片抹掉，伪造 start 则能把
+   * 会话轮询顶到活跃档。NAS 上通常还跑着别的东西，同网段不一定都可信。
+   */
+  webhookToken: process.env.WEBHOOK_TOKEN?.trim() ?? "",
 
   /** 续播列表拉取节奏。它变得慢，60 秒足够，且只在有变化时才真的推 */
   resumeIntervalMs: ms("RESUME_INTERVAL_MS", 60_000),
@@ -99,5 +108,3 @@ export const config = {
   /** 带图的推送会大很多，给宽一点 */
   pushTimeoutMs: ms("PUSH_TIMEOUT_MS", 30_000),
 } as const;
-
-export type Config = typeof config;

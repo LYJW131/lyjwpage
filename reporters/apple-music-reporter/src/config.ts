@@ -61,5 +61,3 @@ export const config = {
   requestTimeoutMs: ms("REQUEST_TIMEOUT_MS", 10_000),
   pushTimeoutMs: ms("PUSH_TIMEOUT_MS", 15_000),
 } as const;
-
-export type Config = typeof config;

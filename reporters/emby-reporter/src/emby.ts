@@ -82,12 +82,17 @@ export type MappedItem = {
   images: ImageRef[];
 };
 
+/**
+ * 密钥走 `X-Emby-Token` 请求头，不挂在 query 上：query 会原样写进 Emby 的
+ * access log，也写进中间任何一层代理的日志。
+ *
+ * 取图那条二进制路径也走这个函数，换头之后两条一起变，验的时候两条都要看一眼。
+ */
 async function embyFetch(path: string, accept: "json" | "binary") {
-  const separator = path.includes("?") ? "&" : "?";
-  const response = await fetch(
-    `${config.emby.url}${path}${separator}api_key=${encodeURIComponent(config.emby.key)}`,
-    { signal: AbortSignal.timeout(config.requestTimeoutMs) },
-  );
+  const response = await fetch(`${config.emby.url}${path}`, {
+    headers: { "X-Emby-Token": config.emby.key },
+    signal: AbortSignal.timeout(config.requestTimeoutMs),
+  });
   if (!response.ok) throw new Error(`Emby 返回 ${response.status}`);
   return accept === "json" ? response.json() : response.arrayBuffer();
 }

@@ -11,10 +11,12 @@ services:
     container_name: emby-reporter
     restart: unless-stopped
     ports:
-      # 只需在局域网里可达，**别映射到公网**：Emby 的 webhook 带不了鉴权，
-      # 这个入口也就没法校验来路。
+      # 只需在局域网里可达，**别映射到公网**。局域网内也不是零门槛之外就没事：
+      # 不配 WEBHOOK_TOKEN 的话，同网段任何一台机器都能发一条伪造的播放事件进来。
       # 宿主端口走变量是因为它可能被占：nas-host 上 8787 归 homepage-reporter，那边填 8788。
-      - "${WEBHOOK_HOST_PORT:-8787}:8787"
+      # 容器侧跟着 WEBHOOK_PORT 走 —— 从前写死 8787，谁在 .env 里改了 WEBHOOK_PORT
+      # 就会变成「容器监听 8788、映射还指着 8787」，webhook 静默失效。
+      - "${WEBHOOK_HOST_PORT:-8787}:${WEBHOOK_PORT:-8787}"
     environment:
       EMBY_URL: ${EMBY_URL}
       EMBY_API_KEY: ${EMBY_API_KEY}
@@ -28,6 +30,8 @@ services:
       R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID}
       R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY}
       WEBHOOK_PORT: ${WEBHOOK_PORT:-}
+      # 配了就要求 Emby 的通知地址带 `?token=<值>`；留空 = 不校验来路
+      WEBHOOK_TOKEN: ${WEBHOOK_TOKEN:-}
       RESUME_INTERVAL_MS: ${RESUME_INTERVAL_MS:-}
       RESUME_LIMIT: ${RESUME_LIMIT:-}
       SESSION_ACTIVE_INTERVAL_MS: ${SESSION_ACTIVE_INTERVAL_MS:-}

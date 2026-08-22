@@ -17,7 +17,9 @@
 | （cron） | — | 每小时整点 UTC。日志一行 JSON：`{ event, results }` |
 | GET | `/` | 立刻跑一轮，方便部署后验。返回 `{ ok, results }` |
 
-自定义域名写在 `wrangler.toml` 的 `routes` 里，和另外几个 Worker 一样挂 `*.homepage.lyjw.llc`。谁 GET 都会触发一轮，两次公开首页，没有密钥。
+自定义域名写在 `wrangler.toml` 的 `routes` 里，和另外几个 Worker 一样挂 `*.homepage.lyjw.llc`。推 main 时 CI 自动部署（见 .github/workflows/deploy-workers.yml），手动 `wrangler deploy` 也行。
+
+谁 GET 都会触发一轮，两次公开首页，没有密钥 —— 打的是自家写死在 `[vars]` 里的域名，不是 SSRF，但它确实是个便宜的放大器。要收的话给 `fetch` 那条加把密钥，或者干脆只留 `scheduled`。
 
 ## 命令
 

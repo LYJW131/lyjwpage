@@ -118,6 +118,8 @@ async function assemble(credentials: Credentials): Promise<ListeningReport> {
   const now = Date.now();
 
   const items: ListeningReport["items"] = [];
+  // RECENT_URL 已经带了 limit=recentLimit，上游不会多给 —— 这次切是防御，
+  // 万一哪天上游不认那个参数了，也不至于把整个资料库 normalize 一遍
   for (const resource of resources.slice(0, config.recentLimit)) {
     items.push(await normalize(resource, credentials));
   }

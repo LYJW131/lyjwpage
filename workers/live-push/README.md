@@ -40,7 +40,8 @@
   （只为 `wrangler dev` 留的，公网那份必须配；localhost 始终放行）。
   配上之后**不带 `Origin` 头的请求一律拒绝** —— 浏览器握手时一定带这个头，
   用 curl 验证时要自己加 `-H "Origin: https://…"`。
-  名单和 `online-counter` 那个 worker 是同一份，加域名时两个都要改、都要重新部署。
+  名单和 `online-counter` / `musickit-token` / `am-motion-artwork` 那三个 worker
+  是同一份，加域名时四个都要改、都要重新部署。
 - `LIVE_PUSH_SECRET`（**必填**，走 `wrangler secret put`）：`/publish` 的密钥。
   **没配的话 `/publish` 一律 503。** 和 `/ws` 的白名单反着来是故意的：那边放开
   顶多是别的站点蹭一份本来就公开的广播，这边放开等于让任何人往所有访客的页面

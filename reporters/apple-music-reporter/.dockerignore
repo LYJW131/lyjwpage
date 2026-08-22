@@ -1,0 +1,11 @@
+# `build: .` 会把整个目录送进构建上下文。Dockerfile 的 COPY 是逐项列举的，
+# 所以 .env 不会进镜像层 —— 但它仍会经 docker daemon 传一遍，而且哪天有人
+# 往 Dockerfile 里加一句 `COPY . .` 就直接泄漏了。
+#
+# 别把 package-lock.json 加进来：Dockerfile 要 COPY 它，`npm ci` 少了它跑不了。
+.env
+.env.*
+node_modules
+dist
+README.md
+compose.yaml
