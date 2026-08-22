@@ -58,8 +58,12 @@ const SIGNED_IMAGE_OPTIMIZATION_ENABLED =
  * 部署平台若不能保持预签名 URL 原样，则由上面的环境变量把这类图也切成直连。
  */
 export function needsOptimizing(url: string | null | undefined): boolean {
-  return (
-    SIGNED_IMAGE_OPTIMIZATION_ENABLED &&
-    Boolean(url?.includes(".blobstore.apple.com/"))
-  );
+  if (!SIGNED_IMAGE_OPTIMIZATION_ENABLED || !url) return false;
+  // 判主机名而不是找子串：子串在路径里也能出现，随便一个
+  // `https://evil.example/x.blobstore.apple.com/` 就能把自己塞进优化管道
+  try {
+    return new URL(url).hostname.endsWith(".blobstore.apple.com");
+  } catch {
+    return false;
+  }
 }
