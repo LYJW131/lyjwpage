@@ -9,6 +9,7 @@ import { useLiveEvents } from "@/hooks/use-live-events";
 import { useStatus } from "@/hooks/use-status";
 import { NOW_WATCHING_PATH, WATCHING_PATH } from "@/lib/paths";
 import { stableKeys } from "@/lib/keys";
+import { isNowWatching, pinNowWatching, watchingIdentity } from "@/lib/watching";
 import {
   LIST_DURATION,
   LIST_TRANSITION,
@@ -97,6 +98,9 @@ function Tile({
   const runStyle =
     live && positionMs != null && durationMs
       ? {
+          // width 是动画没跑起来时的兜底：父级 layout 重排会把 CSS 动画拽回
+          // delay 起点，没有 width 就会闪成 0。有它至少停在这一拍的进度上。
+          width: `${Math.round(progress)}%`,
           animationName: "progress-run",
           animationDuration: `${durationMs}ms`,
           animationTimingFunction: "linear",
@@ -222,19 +226,25 @@ export function WatchingRow({
    *
    * 从前是服务端做的，拆成两个端点之后它做不了了 —— 两边各自刷新，服务端
    * 手上没有另一半。这本来也是展示逻辑，放这里更合适。
+   *
+   * 不能只按 Id：Emby 同一集的 BD / WEB 是两个条目，续播给合并项、正在播放
+   * 给实际文件，Id 对不上就会并排两张一模一样的卡。
    */
+  const liveCurrent = live?.current ?? null;
   const data = (() => {
     if (!list) return undefined;
-    const current = live?.current;
-    const items = current
-      ? [current, ...list.items.filter((item) => item.id !== current.id)]
-      : list.items;
-    return { items, nowPlaying: live?.nowPlaying ?? null };
+    return {
+      items: pinNowWatching(list.items, liveCurrent),
+      nowPlaying: live?.nowPlaying ?? null,
+    };
   })();
   const reduced = useReducedMotion();
   const scrollerRef = useRef<HTMLDivElement>(null);
   const nowPlayingId = data?.nowPlaying?.itemId;
   const firstItemId = data?.items[0]?.id;
+  const firstIsLive = Boolean(
+    data?.items[0] && isNowWatching(data.items[0], nowPlayingId, liveCurrent),
+  );
 
   /**
    * 增删卡片的这一段时间里先把滚动吸附摘掉。
@@ -248,7 +258,7 @@ export function WatchingRow({
    * 代价是这 0.4 秒里手动滑动不吸附 —— 要正好在 Emby 推事件的同一瞬间滑，
    * 撞上了也只是松手时不停在整卡边界，不值得为它再加一层状态。
    */
-  const ids = (data?.items ?? []).map((item) => item.id).join("\n");
+  const ids = (data?.items ?? []).map(watchingIdentity).join("\n");
   const [snappedIds, setSnappedIds] = useState(ids);
   const [reflowing, setReflowing] = useState(false);
   // 在 render 里改状态，这样摘掉吸附和插入卡片是同一次提交 ——
@@ -265,15 +275,16 @@ export function WatchingRow({
   }, [reflowing, ids]);
 
   useEffect(() => {
-    if (!nowPlayingId || firstItemId !== nowPlayingId) return;
+    if (!nowPlayingId || !firstIsLive) return;
     scrollerRef.current?.scrollTo({
       left: 0,
       behavior: reduced ? "auto" : "smooth",
     });
-  }, [firstItemId, nowPlayingId, reduced]);
+  }, [firstIsLive, firstItemId, nowPlayingId, reduced]);
 
-  // 对重排稳定的 key，否则列表顺序一变会被当成整批换新
-  const keys = stableKeys((data?.items ?? []).map((item) => item.id));
+  // 对重排稳定的 key。用「同一部」而不是 Emby Id，不然 BD / WEB 切换会被
+  // 当成一张退场、一张进场。
+  const keys = stableKeys((data?.items ?? []).map(watchingIdentity));
 
   if (isLoading && !data) return <Skeleton />;
 
@@ -305,7 +316,7 @@ export function WatchingRow({
             后面的卡片才能一边补位、一边看着它平滑退场。 */}
         <AnimatePresence initial={false} mode="popLayout">
           {data.items.map((item, index) => {
-            const live = data.nowPlaying?.itemId === item.id;
+            const live = isNowWatching(item, data.nowPlaying?.itemId, liveCurrent);
             return (
               <motion.div
                 key={keys[index]}
