@@ -65,8 +65,9 @@ function statusJson<T>(envelope: StatusResponse<T>): NextResponse<StatusResponse
 /**
  * 状态端点用不用 `'use cache'`，按部署填，默认用。
  *
- * 填 `false` 的那份上，八条状态 GET 每次直读 Redis，缓存那层整个不进。给国内那份
- * 准备的：`revalidateTag` 只失效**本实例**那份缓存（Next 默认是每个进程各自的内存
+ * 填 `false` 的那份上，`app/api/status/` 下的状态 GET 一律每次直读 Redis，缓存那层
+ * 整个不进（没有例外，加新端点时不用另行登记）。给国内那份准备的：
+ * `revalidateTag` 只失效**本实例**那份缓存（Next 默认是每个进程各自的内存
  * LRU，Vercel 另接了一套共享存储，所以在那边看起来是全局的），EdgeOne 跑的是原样的
  * Next（腾讯云 SCF，多实例），于是收到上报的实例失效了自己那份，服务 GET 的实例
  * 不知情，只能等 cacheLife 的 10 分钟兜底 —— 2026-08-16 两边并排量过（当时
@@ -127,8 +128,9 @@ async function statusResponse<T, U>(
 }
 
 /**
- * 八条状态 GET 都走这里。取哪一路由 STATUS_CACHE 决定，路由本身不知道自己冻没冻 ——
- * 知道了就等于每条路由各写一遍开关，漏一条就是那条端点在国内那份上一直冻着。
+ * `app/api/status/` 下每一条状态 GET 都走这里。取哪一路由 STATUS_CACHE 决定，路由
+ * 本身不知道自己冻没冻 —— 知道了就等于每条路由各写一遍开关，漏一条就是那条端点
+ * 在国内那份上一直冻着。
  */
 export function statusRoute<T>(
   source: StatusSource<T>,

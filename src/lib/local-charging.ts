@@ -149,8 +149,17 @@ function connect(
     close();
   };
 
+  /**
+   * 连上就布防，不等第一帧。
+   *
+   * 「连上了但一帧都没发」那条路上，opened 已经是 true，后续的 onerror 就不再
+   * close()，EventSource 按默认行为无限重连 —— 正是文件头注释要防的刷屏。
+   * 看门狗到点会 close()，那条路因此也有了出口。
+   */
   source.onopen = () => {
     opened = true;
+    lastFrameAt = Date.now();
+    if (watchdog == null) watchdog = window.setTimeout(check, LOCAL_STALE_MS);
   };
   source.onmessage = (message) => {
     opened = true;

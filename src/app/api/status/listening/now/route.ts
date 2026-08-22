@@ -4,8 +4,8 @@ import { readLiveness } from "@/lib/reporter-liveness";
 import { nowListeningStatus } from "@/lib/status-cache";
 
 /**
- * 两个候选按 STATUS_CACHE 决定冻不冻，Hero 在 overlay 里现选 —— 和另外七条状态
- * 端点同一套。
+ * 两个候选按 STATUS_CACHE 决定冻不冻，Hero 在 overlay 里现选 —— 和其余状态端点
+ * 同一套。
  *
  * **能冻的前提是所有跟着墙上的钟变的东西都不在快照里**，这一点各处早就对齐了：
  * 暂停宽限、HomePod 的静默/放完判定（homePodVisibleAt）、上报器存活全在

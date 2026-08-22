@@ -74,6 +74,13 @@ export type LiveEvent =
    *
    * 单独成一种事件，而不是借 desktop / listening 推：前端要能分清「上报器
    * 离线了」和「前台应用变了」，而且需要知道离线的不止那两张卡。
+   *
+   * 唯一的发出点是 lib/telemetry 的 recordTelemetryEnvelope（存活只在那里翻转），
+   * 走 fanout 的 `notify` 那半 —— 它不带数据，浏览器收到就回源，所以必须排在写
+   * 后面，理由见下面 fanout 的规则 2。浏览器那侧重取的是 PRESENCE_PATHS 那三份
+   * （desktop / listening-now / charger）：时区不看存活；vibe coding 那张刻意不订阅，
+   * token 用量是累计的历史事实，Mac 掉线它不会变得不可信，只是不再增长，
+   * 那张卡的陈旧判定另有自己的口径。
    */
   | { type: "presence"; payload: null }
   /**
@@ -85,7 +92,8 @@ export type LiveEvent =
   | { type: "watching"; payload: WatchingPayload };
 
 /**
- * 首屏服务端渲染那八份数据的缓存 tag。
+ * 首屏服务端渲染各份数据的缓存 tag，一份一个，配对见 lib/status-cache。
+ * （github-chart 是个例外：它那份没有 tag，只靠 cacheLife 兜底。）
  *
  * 名字和上面的事件名逐字相同，也就和 /api/status/* 的路径同一套：`X` 是列表、
  * `X-now` 是此刻，URL 里的 `/` 在名字里写成 `-`（AGENTS.md 第 2 条，路径常量在
@@ -119,7 +127,7 @@ export const NOW_WATCHING_TAG = "watching-now";
  * LRU 里，失效事件不跨实例（内置文档 how-revalidation-works）。Vercel 另外接了一套
  * 共享的缓存和 tag 存储，所以在那边看起来是全局的；EdgeOne 跑的是原样的 Next
  * （腾讯云 SCF，多实例），收到上报的那个实例只失效自己那份，别的实例要等 cacheLife
- * 的 10 分钟兜底 —— 那份部署因此把 STATUS_CACHE 关掉，八条状态端点直读 Redis，
+ * 的 10 分钟兜底 —— 那份部署因此把 STATUS_CACHE 关掉，状态端点一律直读 Redis，
  * 见 lib/api。首屏仍然靠这里失效，要让它也名副其实，得给两份部署各配一个共享的
  * cacheHandlers（各用各的 Redis 存 tag 时间戳）。
  *
@@ -243,11 +251,35 @@ export type Fanout = {
   writes?: ReadonlyArray<Promise<unknown>>;
   /** 带数据的推送 */
   events?: ReadonlyArray<PendingEvent>;
+  /**
+   * 不带数据、只让浏览器回来重取的推送（presence）。
+   *
+   * 和 `events` 分开是因为它守的是相反的那条规则：浏览器收到它会回源，所以它
+   * 必须排在写**后面**，不能和写并行。放进 `events` 等于把那次回源丢回和写库的
+   * 竞态里。见下面 fanout 的规则 2。
+   */
+  notify?: ReadonlyArray<PendingEvent>;
   /** 首屏缓存失效 */
   tags?: readonly string[];
   /** 同上，但不给旧值宽限期，见 expireStatusImmediately */
   urgentTags?: readonly string[];
 };
+
+/**
+ * 发一条待定的推送，拼不出来或推不出去都只记一行日志。
+ *
+ * 拼不出推送的那份不该把一次成功的上报变成 400 —— 数据照样落库了，页面靠轮询
+ * 也能翻过来。和 publish 自己吞错误是同一个理由。`notify` 那半还多一条：它跑在
+ * `finally` 里，抛出去就是 after() 回调的一个 unhandled rejection。
+ */
+async function publishPending(pending: PendingEvent): Promise<void> {
+  try {
+    const event = await pending;
+    if (event) await publish(event);
+  } catch (error) {
+    console.error("[live]", error instanceof Error ? error.message : String(error));
+  }
+}
 
 /**
  * 一次上报的扇出：落库、推送、失效。
@@ -265,33 +297,24 @@ export type Fanout = {
  * 2. **失效必须等写完。** revalidateTag 会让下一次请求回源重算，早于写库触发
  *    的话，重算读到的是改动之前的 Redis，然后把那个旧值连同一个崭新的有效期
  *    一起缓存起来 —— 比不失效还糟。不带数据、只让浏览器重取的事件（presence）
- *    同理，它触发的也是一次回源。
+ *    同理，它触发的也是一次回源，所以它走 `notify` 那半、和失效一起排在写后面。
  *
  * **整块都在响应之后跑**（见 afterResponse）。上报器等的只是本地把这份报文算完，
  * 落库、推送、失效都不在它的等待里 —— 但规则 2 的顺序在这块**内部**仍然成立，
- * 别因为「都不等了」就把失效也一起甩出去和写并行。
+ * 别因为「都不等了」就把失效也一起甩出去和写并行。从前 presence 那条是在调用方
+ * `await fanout(...)` 之后发的，`after()` 一上来它就成了「响应发完就跑」，反倒
+ * 排在了还在飞的写前面 —— 这正是规则 2 要防的事，所以它只能收进这个 finally。
  */
 export function fanout({
   writes = [],
   events = [],
+  notify = [],
   tags = [],
   urgentTags = [],
 }: Fanout): Promise<void> {
   return afterResponse(async () => {
     try {
-      await Promise.all([
-        ...writes,
-        ...events.map(async (pending) => {
-          try {
-            const event = await pending;
-            if (event) await publish(event);
-          } catch (error) {
-            // 拼不出推送的那份不该把一次成功的上报变成 400 —— 数据照样落库了，
-            // 页面靠轮询也能翻过来。和 publish 自己吞错误是同一个理由。
-            console.error("[live]", error instanceof Error ? error.message : String(error));
-          }
-        }),
-      ]);
+      await Promise.all([...writes, ...events.map(publishPending)]);
     } catch (error) {
       /**
        * 从前这里靠 `finally` 往下走、错误交给调用方的 await 抛给 400。现在响应
@@ -299,9 +322,12 @@ export function fanout({
        */
       console.error("[ingest] 落库", error instanceof Error ? error.message : String(error));
     } finally {
-      // 写抛出来了也照样失效：已经落库的那几份不该继续被旧缓存遮着
+      // 写抛出来了也照样失效、照样通知：已经落库的那几份不该继续被旧缓存遮着，
+      // 存活翻转本身也是这封信封确实带来的变化
       if (tags.length) expireStatus(...tags);
       if (urgentTags.length) expireStatusImmediately(...urgentTags);
+      // 先失效再通知：浏览器收到就回源，那一趟得读到已经失效的缓存
+      if (notify.length) await Promise.all(notify.map(publishPending));
     }
   });
 }

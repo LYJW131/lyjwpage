@@ -3,7 +3,8 @@ import { key, withRedis } from "@/lib/redis";
 /**
  * 通用 TTL 缓存 + in-flight 去重 + 负缓存。
  *
- * 给还需要本站主动去拉的上游用（如今只剩 Apple Music，其余状态源都是推进来的）：
+ * 给还需要本站主动去拉的上游用（Apple Music 目录、GitHub 贡献日历；
+ * 其余状态源都是推进来的）：
  * - 同一个 key 并发进来时只会真正打一次上游，其余人等同一个 Promise
  * - 上游报错时短暂缓存错误，避免上游挂掉后被前端轮询打爆
  *
@@ -16,6 +17,16 @@ type Entry = { value: unknown; expiresAt: number };
 
 const memory = new Map<string, Entry>();
 const inflight = new Map<string, Promise<unknown>>();
+
+/**
+ * 进程内那份副本的条数上限。
+ *
+ * 过期项只在被命中时才顺手删，没有周期清扫 —— 键是「歌名+歌手+专辑」这种一首歌
+ * 一条、TTL 七天的东西，serverless 上有实例寿命兜着，`next start` 那种长驻进程上
+ * 却是只增不减。Map 的插入顺序顺便充当 LRU，和 telemetry 的 rememberDesktopIcon
+ * 同一套写法。它只是 Redis 不可达时的备份，几百条足够。
+ */
+const MEMORY_LIMIT = 500;
 
 /** 上游报错后，多久之内不再重试 */
 const NEGATIVE_TTL_MS = 5_000;
@@ -32,7 +43,14 @@ function memoryGet<T>(k: string): T | undefined {
 }
 
 function memorySet(k: string, value: unknown, ttlMs: number) {
+  // 重新插入，让它排到末尾：淘汰的总是最久没被写过的那条
+  memory.delete(k);
   memory.set(k, { value, expiresAt: Date.now() + Math.max(1_000, ttlMs) });
+  while (memory.size > MEMORY_LIMIT) {
+    const oldest = memory.keys().next().value;
+    if (oldest === undefined) break;
+    memory.delete(oldest);
+  }
 }
 
 export async function get<T>(k: string): Promise<T | undefined> {

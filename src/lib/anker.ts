@@ -47,7 +47,7 @@ export function withChargerFreshness(
   now = Date.now(),
 ): ChargerPayload {
   const stale =
-    offlineByLiveness(payload) || now - payload.pushedAt > payload.staleAfterMs;
+    offlineByLiveness(payload, now) || now - payload.pushedAt > payload.staleAfterMs;
   return {
     ...payload,
     connected: stale ? false : payload.connected,

@@ -41,7 +41,7 @@ export function pickNowListening(
   live: Liveness,
   now = Date.now(),
 ): NowListeningPayload {
-  const mac = offlineByLiveness(live) ? null : snapshot.mac;
+  const mac = offlineByLiveness(live, now) ? null : snapshot.mac;
   const homePod =
     snapshot.homePod && homePodVisibleAt(snapshot.homePod, now) ? snapshot.homePod : null;
 
