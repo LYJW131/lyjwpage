@@ -1,6 +1,6 @@
 # lyjwpage
 
-个人主页。信息展示 + 实时状态：**最近在看**（Emby）、**最近在听**（Apple Music）、**充电头**（Anker Prime 160W）、**Vibe Coding**（Claude Code + Codex）。
+个人主页。信息展示 + 实时状态：**最近在看**（Emby）、**最近在听**（Apple Music）、**充电设备**（Anker Prime 160W 充电头 / A110G 充电宝）、**Vibe Coding**（Claude Code + Codex）。
 
 ## 技术栈
 
@@ -56,8 +56,8 @@ pnpm dev
 
 两边各自填对面那个源（`INGEST_PEERS`），不在代码里写死谁转给谁。这一份数据到齐了，
 **缓存却各刷各的**：`revalidateTag` 只失效本实例那份 `'use cache'`，Vercel 另接了一套
-共享存储所以在那边是全局的，EdgeOne 那份因此填 `STATUS_CACHE=false`，让八条状态端点
-直读 Redis —— 见下面「状态是怎么接的」。转发出去的请求带
+共享存储所以在那边是全局的，EdgeOne 那份因此填 `STATUS_CACHE=false`，让 `src/app/api/status/`
+下的状态端点一律直读 Redis —— 见下面「状态是怎么接的」。转发出去的请求带
 `x-ingest-relay`，对端见到它就不再往下传 —— 两边互填对方，再传一次就成环了；三份
 以上各自填齐其余几份，一跳照样到齐。实现在 `lib/ingest-relay.ts`，挂在
 `lib/api.ts` 的 `ingestRoute` 上，所以新加一个 `/api/ingest/*` 自动就带传播。
@@ -93,13 +93,13 @@ Worker（都在 `workers/` 下）。**推 main 时 CI 只把有改动的那几�
 
 所有凭据只存在于服务端，浏览器只看得到 `/api/status/*` 返回的规范化数据。这些路由共用 `src/lib/api.ts` 的信封：上游挂掉时返回 `{ ok: false, error }` 而不是 5xx，让某一路数据源离线不至于把整页 SWR 打成错误态。
 
-八条状态 GET 的快照走 Next `'use cache'`（`lib/status-cache`），上报按 tag 失效，轮询命中时不再每次打 Redis——**除非那份部署把 `STATUS_CACHE` 填成 `false`，那时八条一律直读 Redis**。这个开关是给 EdgeOne 那份准备的：`revalidateTag` 只失效**本实例**那份缓存（Next 默认是每个进程各自的内存 LRU，Vercel 另接了一套共享存储所以在那边看起来是全局的），而 EdgeOne 跑的是原样的 Next（腾讯云 SCF，多实例），上报进来了 GET 也不翻新，只能等 10 分钟兜底——2026-08-16 两边并排量过（当时 revalidate 还是 60 秒），落后 12~45 秒。国内那份的 Redis 就在同一朵云上，多打几次不心疼。开关只管状态端点，首屏那份得冻着才能预渲染，所以关掉之后第一帧仍可能旧到 10 分钟，挂载后 SWR 一拉就是最新的；要连首屏一起对齐，得给两份部署各配一个共享的 `cacheHandlers`。CDN 故意 `Cache-Control: no-store`：最终响应里有存活、`?since=` 切片、`expiresInMs` 这类现算字段，不能冻在边缘。函数每次进；心跳那种不触发 tag 的戳记在 overlay 里现读一把小 key。充电头和 vibe coding 的游标也是缓存命中后在内存里切全量，不按 `since` 分键。
+`src/app/api/status/` 下每一条状态 GET 的快照都走 Next `'use cache'`（`lib/status-cache`），上报按 tag 失效，轮询命中时不再每次打 Redis——**除非那份部署把 `STATUS_CACHE` 填成 `false`，那时它们一律直读 Redis**（没有例外，加新端点时不用另行登记）。这个开关是给 EdgeOne 那份准备的：`revalidateTag` 只失效**本实例**那份缓存（Next 默认是每个进程各自的内存 LRU，Vercel 另接了一套共享存储所以在那边看起来是全局的），而 EdgeOne 跑的是原样的 Next（腾讯云 SCF，多实例），上报进来了 GET 也不翻新，只能等 10 分钟兜底——2026-08-16 两边并排量过（当时 revalidate 还是 60 秒），落后 12~45 秒。国内那份的 Redis 就在同一朵云上，多打几次不心疼。开关只管状态端点，首屏那份得冻着才能预渲染，所以关掉之后第一帧仍可能旧到 10 分钟，挂载后 SWR 一拉就是最新的；要连首屏一起对齐，得给两份部署各配一个共享的 `cacheHandlers`。CDN 故意 `Cache-Control: no-store`：最终响应里有存活、`?since=` 切片、`expiresInMs` 这类现算字段，不能冻在边缘。函数每次进；心跳那种不触发 tag 的戳记在 overlay 里现读一把小 key。充电头和 vibe coding 的游标也是缓存命中后在内存里切全量，不按 `since` 分键。
 
 Redis TCP 连接按请求作用域租用：同一 Node 实例里的并发请求共用一条，最后一个请求和命令结束后主动断开。不能让 ioredis 永久单例留在 serverless 实例里——实例暂停时普通 idle timer 不会跑，旧部署和 Preview 会各留一条空闲连接。Preview 必须不配 Redis 或使用独立 `REDIS_URL`；`REDIS_PREFIX` 只隔离键，不隔离连接额度。
 
 各路数据全是**推进来**的，本站不主动轮询任何上游。推送入口共用 `/api/ingest/*` 和同一个 `TELEMETRY_INGEST_SECRET`，状态落在 `lib/redis.ts` 的 mirrorKey 里（Redis 为主、进程内存为辅，没配 `REDIS_URL` 也能跑）。四个上报侧：Mac Telemetry Hub、Home Assistant（HomePod）、Emby 推送代理、Apple Music 上报器。上报器只跟一个源站说话，收到的那份会把请求原样转给对端部署，见[上面那节](#两份生产之间靠传播上报对齐)。
 
-站点仍会出网的只剩一处：给此刻在播的曲子查一个可跳转的地址，走 `src/lib/cache.ts`（带 TTL、in-flight 去重和 5 秒负缓存）。**核心原则：前端轮询多快，回源频率都不变**，由各自的 TTL 决定。值存 Redis（进程重启和多实例共享）；in-flight 去重始终在进程内，它挡的是同一进程的并发穿透，Redis 代劳不了。
+站点仍会出网的只剩两处，都走 `src/lib/cache.ts`（带 TTL、in-flight 去重和 5 秒负缓存）：① 给此刻在播的曲子查一个可跳转的地址；② GitHub 贡献热力图（`lib/github-chart`，TTL 10 分钟）去 `api.github.com/graphql` 取日历 —— 它是唯一没有上报方的一路数据，只能自己拉。**核心原则：前端轮询多快，回源频率都不变**，由各自的 TTL 决定。值存 Redis（进程重启和多实例共享）；in-flight 去重始终在进程内，它挡的是同一进程的并发穿透，Redis 代劳不了。
 
 ### 推给浏览器 — 自建 Worker
 
@@ -176,7 +176,7 @@ Apple Music 的封面没有代理，仍走 `mzstatic.com` 直链 —— 那本�
 
 需要 **Developer Token** 和 **Music-User-Token** 两条凭据，**全部由 Mac 上报器推来**：Mac Telemetry Hub 用本机 MusicKit 现签一对，作为 `appleMusicCredentials` 模块随 `/api/ingest/mac` 的信封送上来。`.p8` 私钥留在那台机器的钥匙串里由系统保管，服务器上一份都没有，本站也不含任何 JWT 签名代码。
 
-MusicKit 签出来的 developer token 实测寿命 **30 天**，上报器从它自己的 JWT 解出 `exp`，过了「上报时刻 → 到期时刻」的中点（即 15 天）就重签重发。取相对中点而不是写死提前量，是因为 Apple 没承诺这个寿命，写死在两个方向上都可能错。实践中上报器重启比 15 天频繁得多，所以多数情况是每次启动重传一份新的。
+MusicKit 签出来的 developer token 寿命约一个月（**Apple 没承诺这个数字**，实测值以 `reporters/apple-music-reporter/README.md` 那份为准，别在这里再抄一遍），上报器从它自己的 JWT 解出 `exp`，过了「上报时刻 → 到期时刻」的中点就重签重发。取相对中点而不是写死提前量，正是因为寿命不由 Apple 承诺，写死在两个方向上都可能错。实践中上报器重启比半个寿命周期频繁得多，所以多数情况是每次启动重传一份新的。
 
 凭据存 Redis，和 `telemetryState` 严格分开 —— 后者会经 `/api/status/*` 发到浏览器。那个 ingest 路由也不打印请求体。
 
@@ -220,7 +220,11 @@ MusicKit 签出来的 developer token 实测寿命 **30 天**，上报器从它�
 
 不配 `NEXT_PUBLIC_MUSICKIT_TOKEN_URL` 则整个功能停用，右上角照旧显示「Apple Music」，卡片其余部分不受影响。
 
-### 充电头 — Anker Prime 160W
+### 充电设备 — Anker Prime 160W 充电头 / A110G 充电宝
+
+两台是同一个 `chargingDevices` 模块里的两项，靠 `kind` 区分，各自落库、各自推送；
+只开其中一个模块是正常情况，列表里少一台不影响另一台。下面先说充电头，充电宝那半
+在本节末尾。
 
 数据来自 a2687-telemetry，它通过 BLE 读充电器、以 HTTP 暴露快照。`GET /status` 一次拿到整机功率 + 三个 USB-C 口的电压/电流/功率/协议/线缆/设备识别。
 
@@ -241,6 +245,20 @@ MusicKit 签出来的 developer token 实测寿命 **30 天**，上报器从它�
 - `ports` 的 key 顺序不保证，必须按 key 取
 - 设备名靠 (VID, PID) 查表，表是逐条实机观察积累的。查不到时显示 `Unknown`（口空着才显示 `—`）
 - **没有温度字段，上游也不给历史** —— 曲线是本站自己攒的
+
+**充电宝（A110G）** 走完全相同的来路：同一台 Mac 把 BLE 解出来的读数塞进
+`chargingDevices`，本站按 `kind` 挑出来，落在 `lib/powerbank-store.ts`（Redis 为主、
+进程内存兜底），读取走 `/api/status/powerbank`，卡片是 `components/live/powerbank-card.tsx`，
+本机浏览时同样可以直连 `/sse/powerbank`。收卡口径也和充电头一致：上报器离线、或者超过
+`powerBankStaleAfterMs()` 没收到新推送，就把 `connected` 打成 `false`，浏览器不再自己算
+一遍过期。那个窗口和充电头的 `chargerStaleAfterMs` 逐字对齐：默认 90 秒，但也不能短于
+`CHARGER_PUSH_INTERVAL_MS` 的 3 倍、更不能短于心跳窗口（默认 300 秒）—— 安静时段没有新
+读数可发，窗口比心跳间隔短的话卡片会周期性闪回「未连接」。
+
+两处不一样：① **不存历史**。功率每帧都在跳、形状有信息，所以充电头那条曲线值得攒；
+电量以小时为尺度变化，画出来几乎是条水平线，卡片上也就没画 —— 既然没人消费，采样间隔、
+裁剪、TTL 那一整套就都不该存在。② 即时推送的触发条件是插拔、充放电切换、热控翻转和
+整数电量跳格（外加插拔之后那段收敛窗口）；缓慢滚动的电量和功率仍然等卡片下一次轮询。
 
 ### Vibe Coding — TokenTracker
 
@@ -291,13 +309,13 @@ POST /api/ingest/mac
 
 请求采用唯一的 `version: 4` envelope，顶层带 `heartbeatAt`、`presence`（`online` / `offline`）和 `activeModules`；模块名固定为 `chargingDevices`、`desktop`、`appleMusic`、`appleMusicCredentials`、`timezone`、`vibeCodingUsage`、`vibeCodingNow` 和 `vibeCodingYear`，`modules` 只携带发生变化的模块。`activeModules` 是**开关**清单（vibe coding 只有一个开关，写作 `vibeCoding`），和模块名不是一套东西。前台应用图标始终带 SHA-256，二进制只在该哈希尚未被服务端保存时上传。
 
-五个模块的指纹一个都没变时，发的是**空 `modules` 的信封**，也就是一次纯心跳：只刷新存活，不动任何模块的时间戳。心跳无变化时每 ≥30 秒一条，有数据要发时不补——那个包本身就证明上报器活着。这个间隔正在往 90 秒放宽（纯心跳是 `/api/ingest/mac` 的主要流量）：**站点这侧先把存活窗口放宽到 5 分钟，上报器再降频**，顺序反了会有一段时间全站断续显示离线。
+上面那些模块的指纹一个都没变时，发的是**空 `modules` 的信封**，也就是一次纯心跳：只刷新存活，不动任何模块的时间戳。心跳无变化时每 ≥30 秒一条，有数据要发时不补——那个包本身就证明上报器活着。这个间隔正在往 90 秒放宽（纯心跳是 `/api/ingest/mac` 的主要流量）：**站点这侧先把存活窗口放宽到 5 分钟，上报器再降频**，顺序反了会有一段时间全站断续显示离线。
 
 从前心跳和优雅下线走独立的 `/api/ingest/presence`，于是「上报器还活着」这一件事在服务端有两个写入点。现在只有这一条路：`presence: "offline"` 覆盖退出、睡眠这类优雅离开，崩溃、断网、强制关机时上报器什么都发不出来，那些仍靠「多久没收到」的超时兜底（默认 5 分钟，约三倍心跳，可用 `HEARTBEAT_WINDOW_MS` 改），两者互补。窗口盖在 presence 的 `heartbeatWindowMs` 上，浏览器用这一份。存活本身单独存一个 Redis key（`lib/reporter-liveness`），不再搭遥测状态那份镜像的车——那样多实例部署时，没接过上报的实例手上永远是零，会把卡片全判成离线。
 
-各模块的指纹粒度决定了「无变化」有多容易达成：`charger` 含功率/电压/电流，充电中几乎每轮都变；`desktop` 是应用名 + bundleID + 图标，不切应用就不变；`appleMusic` 的进度**不入签名**，所以播放中也不变，只有 seek 偏离锚点超过容差才算；`timezone` 只有 IANA 标识、当前 UTC 偏移或缩写变化时才重发；两个 vibe coding 模块各看自己那份载荷有没有变，`vibeCodingUsage` 带着采集时刻所以每轮必发，`vibeCodingNow` 在没动过键盘的那些轮次里一动不动。真正的零 telemetry 场景是充电头没接、不切前台应用、音乐不换曲不 seek、时区不变、vibe coding 采集器未刷新——此时只有每 30 秒一条空 `modules` 的心跳。
+各模块的指纹粒度决定了「无变化」有多容易达成：`chargingDevices`（充电头和充电宝在同一个列表里）含功率/电压/电流，充电中几乎每轮都变；`desktop` 是应用名 + bundleID + 图标，不切应用就不变；`appleMusic` 的进度**不入签名**，所以播放中也不变，只有 seek 偏离锚点超过容差才算；`timezone` 只有 IANA 标识、当前 UTC 偏移或缩写变化时才重发；两个 vibe coding 模块各看自己那份载荷有没有变，`vibeCodingUsage` 带着采集时刻所以每轮必发，`vibeCodingNow` 在没动过键盘的那些轮次里一动不动。真正的零 telemetry 场景是充电头和充电宝都没动静（没在充也没在放）、不切前台应用、音乐不换曲不 seek、时区不变、vibe coding 采集器未刷新——此时只有每 30 秒一条空 `modules` 的心跳。
 
-前台应用图标由 Mac 一次缩放成 96px PNG（系统原生编码，不依赖任何外部二进制）并直传 R2，网站只接收对象键 `<sha256>.png`、HEAD 确认后组出公开直链。**没有服务端接收图片二进制的回退**：`iconData` 一旦出现在信封里就直接报错。`iconHash` 标识「哪个应用的图标」（应用有图标就非空，编码或上传失败也照样有），对象键标识「哪份字节」，两者分开才能让站点回执区分「这个应用没图标」和「图标还没准备好」——从前它们是同一个哈希，编码一失败就静默丢图、永不重试。状态里只存公开直链，普通状态心跳不会重复携带图片。时区模块只上传 IANA 标识、当前偏移和缩写，不上传地址。时区只进首屏，没有 status 端点。公开读取按用途拆为七条：`/api/status/desktop`、`/api/status/charger`、`/api/status/listening`、`/api/status/listening/now`、`/api/status/watching`、`/api/status/watching/now`、`/api/status/vibecoding`。
+前台应用图标由 Mac 一次缩放成 96px PNG（系统原生编码，不依赖任何外部二进制）并直传 R2，网站只接收对象键 `<sha256>.png`、HEAD 确认后组出公开直链。**没有服务端接收图片二进制的回退**：`iconData` 一旦出现在信封里就直接报错。`iconHash` 标识「哪个应用的图标」（应用有图标就非空，编码或上传失败也照样有），对象键标识「哪份字节」，两者分开才能让站点回执区分「这个应用没图标」和「图标还没准备好」——从前它们是同一个哈希，编码一失败就静默丢图、永不重试。状态里只存公开直链，普通状态心跳不会重复携带图片。时区模块只上传 IANA 标识、当前偏移和缩写，不上传地址。时区只进首屏，没有 status 端点。公开读取按用途拆开，以 `src/app/api/status/` 下的目录为准：`/api/status/desktop`、`/api/status/charger`、`/api/status/powerbank`、`/api/status/listening`、`/api/status/listening/now`、`/api/status/watching`、`/api/status/watching/now`、`/api/status/vibecoding`、`/api/status/vibecoding/year`、`/api/status/github-chart`。最后那条不由任何上报器喂，是站点自己去 GitHub GraphQL 取的（所以它是唯一不参与 tag 失效的一条），其余都对应上面某个模块。
 
 ### HomePod mini 播放实况
 

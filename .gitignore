@@ -2,6 +2,7 @@
 
 # dependencies
 node_modules/
+.pnpm-store/
 .wrangler/
 dist/
 /.pnp
@@ -44,6 +45,10 @@ yarn-error.log*
 
 # vercel
 .vercel
+
+# claude code
+# launch.json 入库（dev 端口 3211 那份配置），settings.local.json 是每台机器自己的
+/.claude/settings.local.json
 
 # typescript
 *.tsbuildinfo
