@@ -143,6 +143,21 @@ function decodePkcs8(pem: string): ArrayBuffer {
 }
 
 /**
+ * 措辞可控、可以原文回给客户端的配置错误。
+ *
+ * 只有部署的人能修这类问题，所以提示要外带；但外带的文案只从 `hint` 取 ——
+ * 它是我们自己写死的字符串，不是异常对象身上的 message / stack，任意运行时
+ * 异常（importKey 的 DER 解析、平台错误）都不会顺着这条路漏出去。
+ */
+class ConfigError extends Error {
+  readonly hint: string;
+  constructor(hint: string) {
+    super(hint);
+    this.hint = hint;
+  }
+}
+
+/**
  * 导入的私钥留在模块作用域里复用。
  *
  * 同一个 isolate 会连着服务很多请求，而 importKey 每次都要重新解析一遍 DER。
@@ -153,7 +168,7 @@ let signingKey: CryptoKey | null = null;
 async function importSigningKey(env: Env): Promise<CryptoKey> {
   if (signingKey) return signingKey;
   const raw = env.APPLE_MUSIC_PRIVATE_KEY?.trim();
-  if (!raw) throw new Error("没有配置 APPLE_MUSIC_PRIVATE_KEY");
+  if (!raw) throw new ConfigError("没有配置 APPLE_MUSIC_PRIVATE_KEY");
 
   signingKey = await crypto.subtle.importKey(
     "pkcs8",
@@ -227,8 +242,8 @@ const TOKEN_CACHE_LIMIT = 32;
 async function issueToken(request: Request, env: Env): Promise<CachedToken> {
   const teamId = env.APPLE_MUSIC_TEAM_ID?.trim();
   const keyId = env.APPLE_MUSIC_KEY_ID?.trim();
-  if (!teamId) throw new Error("没有配置 APPLE_MUSIC_TEAM_ID");
-  if (!keyId) throw new Error("没有配置 APPLE_MUSIC_KEY_ID");
+  if (!teamId) throw new ConfigError("没有配置 APPLE_MUSIC_TEAM_ID");
+  if (!keyId) throw new ConfigError("没有配置 APPLE_MUSIC_KEY_ID");
 
   const origins = signedOrigins(request, env);
   const cacheKey = origins.join(",");
@@ -295,13 +310,14 @@ const worker = {
       return jsonResponse({ token, issuedAt, expiresAt }, { headers: cors });
     } catch (error) {
       /*
-       * 配置错和私钥坏在这里都表现为签不出来，而且只有部署的人能修，所以原文往外
-       * 带 —— 这几条消息里没有密钥本身，只有「哪个变量没配」。importKey 抛出来的
-       * 那句同理，它说的是 DER 解析失败，不含内容。
+       * 只有自己抛的 ConfigError 原文外带（哪个变量没配，只有部署的人能修）；
+       * 其余异常一律通用文案 —— importKey / 运行时抛出来的 message 内容不由
+       * 我们控制，随手转发等于把内部细节交给任何一个能打到这个端点的人。
+       * 完整原文进 Worker 日志，排障看那边。
        */
-      const message = error instanceof Error ? error.message : String(error);
-      console.error("[musickit-token] 签发失败：", message);
-      return jsonResponse({ error: message }, { status: 500, headers: cors });
+      console.error("[musickit-token] 签发失败：", error);
+      const hint = error instanceof ConfigError ? error.hint : "签发失败，详情见 Worker 日志";
+      return jsonResponse({ error: hint }, { status: 500, headers: cors });
     }
   },
 };

@@ -124,7 +124,10 @@ export default worker;
 function parseAppleMusicUrl(rawUrl: string): AppleMusicParsed | null {
   try {
     const u = new URL(rawUrl);
-    if (!u.hostname.endsWith('music.apple.com')) return null;
+    // 整段匹配主机名：光 endsWith('music.apple.com') 会放过 evilmusic.apple.com
+    if (u.hostname !== 'music.apple.com' && !u.hostname.endsWith('.music.apple.com')) {
+      return null;
+    }
 
     const parts = u.pathname.split('/').filter(Boolean);
     if (parts.length < 2) return null;
