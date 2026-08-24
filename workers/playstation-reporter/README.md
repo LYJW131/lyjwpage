@@ -31,8 +31,13 @@ KV：
 `accessTokenExpiresAt`、`refreshTokenIssuedAt`、`refreshTokenExpiresAt`；四个时间都是
 epoch 毫秒。现有文件可以原样种进 KV。
 
-Worker 的 HTTP `fetch` 只返回健康摘要：上次 tick 时间、成功与否、两路是否变化、是否
-dry-run。它绝不返回 token、presence 或游戏列表。
+Worker 的 HTTP `fetch` 是手动触发入口，和 cache-warmup 同一个模式：`GET /` 把一轮
+tick 完整跑一遍（拉 PSN、比指纹、变了才交付），把这轮的元信息和抓到的 presence、
+played games 一并返回；出错则回 502，带上错误和 KV 里最近一轮的记录。只认根路径 ——
+浏览器顺手要的 `/favicon.ico` 不该多触发一轮 PSN 轮询。
+
+Worker 自己不做鉴权，访问控制交给前面的 Cloudflare Access；token 永远不出现在
+响应里。
 
 ## 鉴权
 
