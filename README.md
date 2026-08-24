@@ -79,8 +79,9 @@ pnpm dev
 答案可能不一样。上报器只跟一个源站说话，只要有一份说没有就得让它补传，否则那张图在
 对端永远缺着（见 `mergeEmbyReceipt` / `mergeTelemetryReceipt`）。
 
-实时推送、在线人数、动态封面、首屏预热、MusicKit 令牌签发各是一个独立的 Cloudflare
-Worker（都在 `workers/` 下）。**推 main 时 CI 只把有改动的那几个自动 `wrangler deploy`**
+实时推送、在线人数、动态封面、首屏预热、MusicKit 令牌签发、PlayStation 状态上报各是
+一个独立的 Cloudflare Worker（六个都在 `workers/` 下）。**推 main 时 CI 只把有改动的
+那几个自动 `wrangler deploy`**
 （见 `.github/workflows/deploy-workers.yml`；`wrangler.toml` 在库里，秘密走
 `wrangler secret` 不进 CI）。
 **live-push 一份生产一个** —— 上报传到对端之后对端也要推一次，两边填同一个 Worker
@@ -97,7 +98,7 @@ Worker（都在 `workers/` 下）。**推 main 时 CI 只把有改动的那几�
 
 Redis TCP 连接按请求作用域租用：同一 Node 实例里的并发请求共用一条，最后一个请求和命令结束后主动断开。不能让 ioredis 永久单例留在 serverless 实例里——实例暂停时普通 idle timer 不会跑，旧部署和 Preview 会各留一条空闲连接。Preview 必须不配 Redis 或使用独立 `REDIS_URL`；`REDIS_PREFIX` 只隔离键，不隔离连接额度。
 
-各路数据全是**推进来**的，本站不主动轮询任何上游。推送入口共用 `/api/ingest/*` 和同一个 `TELEMETRY_INGEST_SECRET`，状态落在 `lib/redis.ts` 的 mirrorKey 里（Redis 为主、进程内存为辅，没配 `REDIS_URL` 也能跑）。五个上报侧：Mac Telemetry Hub、iPhone Telemetry Hub、Home Assistant（HomePod）、Emby 推送代理、Apple Music 上报器。前两个是**设备级的遥测中心**：一台设备一个入口、一个信封、一个 `modules` 字典。上报器只跟一个源站说话，收到的那份会把请求原样转给对端部署，见[上面那节](#两份生产之间靠传播上报对齐)。
+各路数据全是**推进来**的，本站不主动轮询任何上游。推送入口共用 `/api/ingest/*` 和同一个 `TELEMETRY_INGEST_SECRET`，状态落在 `lib/redis.ts` 的 mirrorKey 里（Redis 为主、进程内存为辅，没配 `REDIS_URL` 也能跑）。六个上报侧：Mac Telemetry Hub、iPhone Telemetry Hub、Home Assistant（HomePod）、Emby 推送代理、Apple Music 上报器、PlayStation 上报 Worker。最后一个目前仍是 dry-run，因为站点侧 `/api/ingest/playstation` 尚未实现；它的代码和部署说明在 `workers/playstation-reporter/`。前两个是**设备级的遥测中心**：一台设备一个入口、一个信封、一个 `modules` 字典。上报器只跟一个源站说话，收到的那份会把请求原样转给对端部署，见[上面那节](#两份生产之间靠传播上报对齐)。
 
 站点仍会出网的只剩两处，都走 `src/lib/cache.ts`（带 TTL、in-flight 去重和 5 秒负缓存）：① 给此刻在播的曲子查一个可跳转的地址；② GitHub 贡献热力图（`lib/github-chart`，TTL 10 分钟）去 `api.github.com/graphql` 取日历 —— 它是唯一没有上报方的一路数据，只能自己拉。**核心原则：前端轮询多快，回源频率都不变**，由各自的 TTL 决定。值存 Redis（进程重启和多实例共享）；in-flight 去重始终在进程内，它挡的是同一进程的并发穿透，Redis 代劳不了。
 
