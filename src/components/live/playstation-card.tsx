@@ -133,8 +133,51 @@ function Skeleton() {
   );
 }
 
+/** 两个可缺的数按给定方式合一；缺哪个就用另一个 */
+function fold(
+  a: number | null,
+  b: number | null,
+  by: (x: number, y: number) => number,
+): number | null {
+  if (a == null) return b;
+  if (b == null) return a;
+  return by(a, b);
+}
+
 /**
- * 正在玩的置顶 + 媒体应用过滤，得到最终要渲染的瓷砖序列。
+ * 同名同封面的并成一条。PSN 把同一款游戏的不同 SKU 各记一条 —— 正式版和
+ * 试玩、或者别的区服 —— titleId 不同，名字和封面一模一样，对访客来说就是
+ * 同一款游戏，没必要在行里挨着摆两遍。时长和次数相加，首末次游玩取两头，
+ * 位置留在先出现的那条（上游按最近游玩倒序给，先出现的就是更近的那次）。
+ *
+ * titleIds 全留着：presence 报回来的可能是其中任何一个，得都认得出来。
+ */
+type MergedGame = PlaystationGame & { titleIds: string[] };
+
+function mergeVariants(games: PlaystationGame[]): MergedGame[] {
+  const merged: MergedGame[] = [];
+  const byLook = new Map<string, MergedGame>();
+  for (const game of games) {
+    // 用换行分隔，游戏名里带不出这个字符，拼不出跨字段的假重复
+    const look = `${game.name}\n${game.imageUrl ?? ""}`;
+    const prior = byLook.get(look);
+    if (!prior) {
+      const entry: MergedGame = { ...game, titleIds: [game.titleId] };
+      byLook.set(look, entry);
+      merged.push(entry);
+      continue;
+    }
+    prior.titleIds.push(game.titleId);
+    prior.playCount += game.playCount;
+    prior.playDurationMs = fold(prior.playDurationMs, game.playDurationMs, (x, y) => x + y);
+    prior.firstPlayedAt = fold(prior.firstPlayedAt, game.firstPlayedAt, Math.min);
+    prior.lastPlayedAt = fold(prior.lastPlayedAt, game.lastPlayedAt, Math.max);
+  }
+  return merged;
+}
+
+/**
+ * 正在玩的置顶 + 媒体应用过滤 + 同款合并，得到最终要渲染的瓷砖序列。
  *
  * 和「最近在看」的 pinNowWatching 同一个道理：正在玩的那款不一定在最近
  * 列表里（刚开档的新游戏），不在就用 presence 里带的标题和图标现造一张。
@@ -144,7 +187,7 @@ function buildTiles(
   list: PlaystationPlayingPayload | undefined,
   presence: PlaystationPresencePayload | undefined,
 ): Tile[] {
-  const games = (list?.items ?? []).filter((game) => !mediaApp(game.category));
+  const games = mergeVariants((list?.items ?? []).filter((game) => !mediaApp(game.category)));
 
   const rawPlaying = presence?.playing ?? null;
   const playingCategory = rawPlaying
@@ -152,7 +195,7 @@ function buildTiles(
     : null;
   const playing = rawPlaying && !mediaApp(playingCategory) ? rawPlaying : null;
 
-  const toTile = (game: PlaystationGame, live: boolean): Tile => ({
+  const toTile = (game: MergedGame, live: boolean): Tile => ({
     titleId: game.titleId,
     name: game.name,
     imageUrl: game.imageUrl,
@@ -163,7 +206,8 @@ function buildTiles(
 
   if (!playing) return games.map((game) => toTile(game, false));
 
-  const inList = games.find((game) => game.titleId === playing.titleId);
+  // 开的可能是被并进来的那个 SKU，所以按 titleIds 认，不是只认主条目
+  const inList = games.find((game) => game.titleIds.includes(playing.titleId));
   const first: Tile = inList
     ? toTile(inList, true)
     : {
@@ -175,7 +219,7 @@ function buildTiles(
           playing.launchPlatform ?? playing.format ?? presence?.platform ?? "PlayStation",
         live: true,
       };
-  return [first, ...games.filter((game) => game.titleId !== playing.titleId).map((game) => toTile(game, false))];
+  return [first, ...games.filter((game) => game !== inList).map((game) => toTile(game, false))];
 }
 
 export function PlaystationRow({
