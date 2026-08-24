@@ -1,6 +1,7 @@
 "use client";
 
 import NumberFlow from "@number-flow/react";
+import type { ReactNode } from "react";
 
 import { Card } from "@/components/ui/card";
 import { useStatus } from "@/hooks/use-status";
@@ -316,6 +317,9 @@ function Rings({ rings, className }: { rings: RingValue[]; className?: string })
 }
 
 
+/** 环右边那列附加指标的一项。`value` 为 null = 取不到，画成「—」 */
+type Extra = { label: string; value: ReactNode | null };
+
 export function ActivityCard({
   fallback,
   className,
@@ -355,6 +359,29 @@ export function ActivityCard({
     return null;
   })();
 
+  /**
+   * 右边那列附加指标。三项恒在，行数和左边三行读数对齐。
+   *
+   * **收到了上报、但某项是 null 时按 0 画。** 那是 HealthKit 当天没有样本的表现 ——
+   * 今天没爬过楼，爬楼就是 0。理论上「没给这项授权」也是同一种表现，分不出来，
+   * 但六项权限是装 App 时一起给的，实际不会走到那个分支。
+   *
+   * 一份上报都没收到时（data 为空）仍然写「—」：那时零和别的数字一样都是没有的，
+   * 左边三行读数也是这么处理的。
+   */
+  const extras: Extra[] = !data
+    ? [
+        { label: "步数", value: null },
+        { label: "距离", value: null },
+        { label: "爬楼", value: null },
+      ]
+    : [
+        { label: "步数", value: <NumberFlow value={data.steps ?? 0} /> },
+        { label: "距离", value: `${((data.distanceMeters ?? 0) / 1000).toFixed(2)} km` },
+        // 爬楼不带单位，只有数字 —— 「层」在标题里已经说清楚了
+        { label: "爬楼", value: <NumberFlow value={data.flightsClimbed ?? 0} /> },
+      ];
+
   return (
     /*
       **没有标题栏**，和时间卡一样。不是省事：环的外径要和那张卡上的钟相等（144px），
@@ -367,7 +394,14 @@ export function ActivityCard({
         右边到右沿」相等，而且都只有 padding 那么宽。整组居中也能让两侧相等，但那样
         会在卡片两边各空出一大块（实测 76px），中间反而挤在一起。
       */}
-      <div className="flex h-full min-h-44 items-center justify-between gap-4 p-4 lg:gap-5 lg:p-5">
+      {/*
+        三列：环 + 两列数据。
+
+        环那列走 `auto` 而不是等分的三分之一 —— 它的直径必须和时间卡那个钟相等
+        （md 断点上 144px），而三分之一在那个断点只有 110px，等分会把环挤扁。
+        两列数据各占一半、各自居中，行数也对齐（见下面 extras 的注释）。
+      */}
+      <div className="grid h-full min-h-44 grid-cols-[auto_1fr_1fr] items-center justify-items-center gap-3 p-4 lg:gap-4 lg:p-5">
         {/* 尺寸类和时间卡那个钟逐字相同 —— 换个断点两边一起变，不会只有一边跟着走 */}
         <Rings rings={rings} className="size-32 shrink-0 md:size-36 lg:size-40" />
 
@@ -403,6 +437,17 @@ export function ActivityCard({
           </div>
 
           {note && <p className="label-mono mt-2 truncate text-muted-foreground">{note}</p>}
+        </div>
+
+        <div className="grid min-w-0 gap-1.5">
+          {extras.map((item) => (
+            <div key={item.label} className="min-w-0">
+              <div className="label-mono text-muted-foreground">{item.label}</div>
+              <div className="truncate font-mono text-lg tabular-nums">
+                {item.value ?? <span className="text-muted-foreground">—</span>}
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     </Card>
