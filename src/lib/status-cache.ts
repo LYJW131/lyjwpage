@@ -14,13 +14,16 @@ import {
   DESKTOP_TAG,
   LISTENING_TAG,
   NOW_LISTENING_TAG,
+  NOW_PLAYING_TAG,
   NOW_WATCHING_TAG,
+  PLAYING_TAG,
   TIMEZONE_TAG,
   VIBECODING_TAG,
   VIBECODING_YEAR_TAG,
   WATCHING_TAG,
 } from "@/lib/live-events";
 import { pickNowListening } from "@/lib/now-listening";
+import { getPlaying, getPlayingNow } from "@/lib/playstation";
 import { readLiveness } from "@/lib/reporter-liveness";
 import { getDesktopPayload, getNowListeningSnapshot, getTimezonePayload } from "@/lib/telemetry";
 import { getVibeCodingSnapshot } from "@/lib/vibecoding";
@@ -198,6 +201,20 @@ export async function cachedNowWatching() {
   return statusEnvelope(getNowWatching);
 }
 
+export async function cachedPlaying() {
+  "use cache";
+  cacheLife(STATUS_LIFE);
+  cacheTag(PLAYING_TAG);
+  return statusEnvelope(getPlaying);
+}
+
+export async function cachedPlayingNow() {
+  "use cache";
+  cacheLife(STATUS_LIFE);
+  cacheTag(NOW_PLAYING_TAG);
+  return statusEnvelope(getPlayingNow);
+}
+
 export async function cachedGithubChart() {
   "use cache";
   cacheLife(STATUS_LIFE);
@@ -228,4 +245,6 @@ export const nowListeningStatus = statusSource(
 );
 export const watchingStatus = statusSource(cachedWatching, getWatching);
 export const nowWatchingStatus = statusSource(cachedNowWatching, getNowWatching);
+export const playingStatus = statusSource(cachedPlaying, getPlaying);
+export const playingNowStatus = statusSource(cachedPlayingNow, getPlayingNow);
 export const githubChartStatus = statusSource(cachedGithubChart, getGithubChart);

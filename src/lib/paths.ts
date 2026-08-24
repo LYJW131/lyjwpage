@@ -28,6 +28,8 @@ export const LISTENING_PATH = "/api/status/listening";
 export const NOW_LISTENING_PATH = "/api/status/listening/now";
 export const WATCHING_PATH = "/api/status/watching";
 export const NOW_WATCHING_PATH = "/api/status/watching/now";
+export const PLAYING_PATH = "/api/status/playing";
+export const NOW_PLAYING_PATH = "/api/status/playing/now";
 
 /** 贡献热力图。没有推送；浏览器按长间隔和切回焦点来问，切回带游标。 */
 export const GITHUB_CHART_PATH = "/api/status/github-chart";

@@ -20,6 +20,41 @@ export type WatchingItem = {
   playedAt: string | null;
 };
 
+/** PlayStation 最近游玩列表中的一项；图片仍是 PSN 公共 CDN 的原始地址。 */
+export type PlaystationGame = {
+  titleId: string;
+  name: string;
+  /** PSN 上游枚举；未知或上游缺席时为 null，不在入库层猜测。 */
+  category: string | null;
+  playCount: number;
+  firstPlayedAt: number | null;
+  lastPlayedAt: number | null;
+  playDurationMs: number | null;
+  imageUrl: string | null;
+};
+
+export type PlaystationPlayingPayload = {
+  observedAt: number;
+  items: PlaystationGame[];
+};
+
+export type PlaystationNowPlaying = {
+  titleId: string;
+  title: string;
+  format: string | null;
+  launchPlatform: string | null;
+  iconUrl: string | null;
+};
+
+export type PlaystationPresencePayload = {
+  observedAt: number;
+  online: boolean;
+  availability: string | null;
+  platform: string | null;
+  lastOnlineAt: number | null;
+  playing: PlaystationNowPlaying | null;
+};
+
 /**
  * 最近在听的一项。注意这是「资源」而不是单曲 ——
  * /v1/me/recent/played 返回的是专辑、歌单、电台这类容器。

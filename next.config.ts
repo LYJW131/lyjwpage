@@ -57,6 +57,9 @@ const nextConfig: NextConfig = {
      *
      * GitHub 头像：avatars 给的是整图 JPEG，卡片也是 80px，同样过优化器缩。
      *
+     * PlayStation 游戏封面：PSN 直接给公共 CDN 地址，源图尺寸不固定，列表格交给
+     * 优化器按实际展示尺寸缩放；Redis 仍只存上游 URL，不落 R2。
+     *
      * 其余一律不走：R2 已经是压好的最终尺寸且 immutable，mzstatic 自带尺寸
      * 模板，再转一道是纯浪费。
      *
@@ -72,6 +75,11 @@ const nextConfig: NextConfig = {
       {
         protocol: "https",
         hostname: "avatars.githubusercontent.com",
+        pathname: "/**",
+      },
+      {
+        protocol: "https",
+        hostname: "image.api.playstation.com",
         pathname: "/**",
       },
     ],

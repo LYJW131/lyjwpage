@@ -8,6 +8,8 @@ import type {
   DesktopPayload,
   ListeningPayload,
   NowListeningPayload,
+  PlaystationPlayingPayload,
+  PlaystationPresencePayload,
   VibeCodingNowPayload,
   PowerBankPayload,
 } from "@/lib/types";
@@ -89,7 +91,11 @@ export type LiveEvent =
    */
   | { type: "watching-now"; payload: NowWatchingPayload }
   /** 「最近在看」列表变了。和上面那条 listening 同一个形状、同一个理由。实测 2.8 KB */
-  | { type: "watching"; payload: WatchingPayload };
+  | { type: "watching"; payload: WatchingPayload }
+  /** PlayStation 此刻在线 / 在玩状态。 */
+  | { type: "playing-now"; payload: PlaystationPresencePayload }
+  /** PlayStation 最近游玩列表；整份替换，直接写进浏览器 SWR 缓存。 */
+  | { type: "playing"; payload: PlaystationPlayingPayload };
 
 /**
  * 首屏服务端渲染各份数据的缓存 tag，一份一个，配对见 lib/status-cache。
@@ -120,6 +126,8 @@ export const NOW_LISTENING_TAG = "listening-now";
 export const ACTIVITY_TAG = "activity";
 export const WATCHING_TAG = "watching";
 export const NOW_WATCHING_TAG = "watching-now";
+export const PLAYING_TAG = "playing";
+export const NOW_PLAYING_TAG = "playing-now";
 
 /**
  * 让首屏缓存里的这几份过期，下一个请求重算。

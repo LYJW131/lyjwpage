@@ -18,7 +18,9 @@ import {
   DESKTOP_PATH,
   LISTENING_PATH,
   NOW_LISTENING_PATH,
+  NOW_PLAYING_PATH,
   NOW_WATCHING_PATH,
+  PLAYING_PATH,
   VIBECODING_PATH,
   WATCHING_PATH,
 } from "@/lib/paths";
@@ -105,6 +107,8 @@ const FORWARDS: ReadonlyArray<{
    */
   { event: "listening", path: LISTENING_PATH },
   { event: "watching", path: WATCHING_PATH },
+  { event: "playing-now", path: NOW_PLAYING_PATH },
+  { event: "playing", path: PLAYING_PATH },
   /**
    * 充电头只在插拔、换设备时来事件。曲线的合并走和轮询同一个累加器
    * （lib/charger-history）：推来的那份不带历史点（空增量），所以合并只是把
