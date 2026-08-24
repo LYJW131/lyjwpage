@@ -1,3 +1,4 @@
+import { AwaitingReport } from "@/lib/api";
 import { CHARGER_STALE_MS, heartbeatWindowMs } from "@/lib/freshness";
 import { getStored, lastPushReceivedAt } from "@/lib/powerbank-store";
 import {
@@ -74,7 +75,7 @@ export function powerBankPushPayload({
 export async function getPowerBankSnapshot(): Promise<PowerBankPayload> {
   const stored = await getStored();
   // 还没收到过任何推送。交给 statusRoute 变成降级信封，前端显示提示
-  if (!stored) throw new Error("尚未收到充电宝遥测推送");
+  if (!stored) throw new AwaitingReport("尚未收到充电宝遥测推送");
 
   const [pushedAt, live] = await Promise.all([lastPushReceivedAt(), readLiveness()]);
 

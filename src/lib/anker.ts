@@ -1,3 +1,4 @@
+import { AwaitingReport } from "@/lib/api";
 import { getStored, lastPushReceivedAt } from "@/lib/charger-store";
 import { CHARGER_STALE_MS, heartbeatWindowMs } from "@/lib/freshness";
 import { publicAssetUrl } from "@/lib/r2-assets";
@@ -74,7 +75,7 @@ function withCoverIconUrl<T extends { cover: ChargerStatus["cover"] }>(payload: 
 export async function getChargerSnapshot(): Promise<ChargerPayload> {
   const stored = await getStored();
   // 还没收到过任何推送。交给 statusRoute 变成降级信封，前端显示提示
-  if (!stored) throw new Error("尚未收到充电头遥测推送");
+  if (!stored) throw new AwaitingReport("尚未收到充电头遥测推送");
 
   const [pushedAt, live] = await Promise.all([lastPushReceivedAt(), readLiveness()]);
 

@@ -12,6 +12,24 @@ function reason(error: unknown): string {
 }
 
 /**
+ * 「这一路还没收到过数据」。
+ *
+ * **不是故障**：上报器还没起来、设备还没连上、快照过了 TTL —— 都会落到这里，而站点
+ * 该做的就是发一个降级信封让卡片显示提示。所以它和「取数真的炸了」必须在日志里分开：
+ * 前者一行就够，后者要带栈。
+ *
+ * 从前两者都按 `console.error` 带栈打，于是本机开发时 Next 的浮层被一条「尚未收到充电头
+ * 遥测推送」长期糊着 —— 那条既不是 bug 也无从修，充电头没插而已，但它会把真正的报错
+ * 淹掉，久了就没人看那个浮层了。
+ */
+export class AwaitingReport extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AwaitingReport";
+  }
+}
+
+/**
  * 增量拉取的游标。
  *
  * 缺省、或者带了个解析不出有限数的值，都按「要整份」处理 —— 客户端第一次拉
@@ -50,9 +68,14 @@ export async function statusEnvelope<T>(
       return { ok: true, data: await loader() };
     } catch (error) {
       const message = reason(error);
-      // 带上栈：降级信封只把 message 发给页面，没有栈的话服务端日志里
-      // 一句「Cannot read properties of null」根本定位不到是哪一处
-      console.error("[status]", error instanceof Error ? (error.stack ?? message) : message);
+      if (error instanceof AwaitingReport) {
+        // 还没有数据而已，一行说清楚就行，不占浮层也不带栈
+        console.warn("[status]", message);
+      } else {
+        // 带上栈：降级信封只把 message 发给页面，没有栈的话服务端日志里
+        // 一句「Cannot read properties of null」根本定位不到是哪一处
+        console.error("[status]", error instanceof Error ? (error.stack ?? message) : message);
+      }
       return { ok: false, error: message };
     }
   });

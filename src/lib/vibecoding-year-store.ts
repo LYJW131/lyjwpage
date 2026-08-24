@@ -1,3 +1,4 @@
+import { AwaitingReport } from "@/lib/api";
 import { mirrorKey } from "@/lib/redis";
 import type { VibeCodingYearPayload } from "@/lib/types";
 import { normalizeVibeCodingYear } from "@/lib/vibecoding-year";
@@ -17,6 +18,6 @@ export function prepareVibeCodingYear(report: unknown, receivedAt = Date.now()) 
 
 export async function getVibeCodingYear(): Promise<VibeCodingYearPayload> {
   const stored = await yearMirror.get();
-  if (!stored) throw new Error("尚未收到 Mac Telemetry Hub 的年度用量推送");
+  if (!stored) throw new AwaitingReport("尚未收到 Mac Telemetry Hub 的年度用量推送");
   return stored;
 }
