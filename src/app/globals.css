@@ -637,6 +637,21 @@ button.paper-card {
 }
 
 /*
+ * **鼠标点出来的焦点不画环。**
+ *
+ * Chrome 对带 tabindex 的 SVG 元素在普通 `:focus` 下也会画默认焦点环
+ * （实测 `outline: rgb(153,200,255) auto 5px`）。格子只有 7×7，5px 的环糊上去
+ * 就是一个蓝圆加白圈 —— 点一下格子，页面上就凭空多出个圆点。
+ *
+ * 下面那条 `:focus-visible` 够不着它：鼠标点击**不匹配** focus-visible
+ * （实测 `el.matches(':focus-visible') === false`），那条只在键盘走位时生效。
+ * 格子能拿到焦点是从「365 个格子能用键盘走了」那次开始的，这个环也是那时起有的。
+ */
+.github-chart svg rect:focus {
+  outline: none;
+}
+
+/*
  * 键盘走到的格子也要看得见。焦点本身会走 previewCell（于是拿到 data-hot 的
  * 描边），但 Safari 给 SVG 元素画的默认焦点环不可靠，这里自己补一道。
  */
