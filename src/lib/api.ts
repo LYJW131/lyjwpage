@@ -25,6 +25,16 @@ export function sinceParam(request: Request): number | undefined {
 }
 
 /**
+ * 热力图的游标是 YYYY-MM-DD，充电头的是毫秒时间戳。两种 since 各走各的解析，
+ * 写进对方的端点就当没带，退回整份。
+ */
+export function sinceDateParam(request: Request): string | undefined {
+  const raw = new URL(request.url).searchParams.get("since");
+  if (raw == null || !/^\d{4}-\d{2}-\d{2}$/.test(raw)) return undefined;
+  return raw;
+}
+
+/**
  * 把一个取数函数包成统一的 status 信封。
  * 上游挂了不往上抛 —— 前端拿到 ok:false 后渲染降级态即可，
  * 不让一个离线的充电头把整页 SWR 变成错误状态。

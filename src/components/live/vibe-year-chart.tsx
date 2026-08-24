@@ -9,7 +9,7 @@ import {
   useHeatmapOpen,
   type CellAnchor,
 } from "@/components/live/heatmap-hover";
-import { useStatus } from "@/hooks/use-status";
+import { incrementalFetcher, useStatus } from "@/hooks/use-status";
 import { groupWeeks } from "@/lib/github-chart-compact";
 import { VIBECODING_YEAR_PATH } from "@/lib/paths";
 import type { GithubChartDay, StatusResponse, VibeCodingYearPayload } from "@/lib/types";
@@ -22,10 +22,20 @@ import {
   tokenScores,
   type YearModelShare,
 } from "@/lib/vibecoding-year";
+import {
+  mergeVibeCodingYearHistory,
+  seedVibeCodingYear,
+  vibeCodingYearCursor,
+} from "@/lib/vibecoding-year-history";
 import { cn } from "@/lib/utils";
 
-/** 格子按天变。长间隔兜底，别跟用量卡抢请求。 */
+/** 格子按天变。长间隔兜底，切回焦点带游标只拉窗尾。 */
 const REFRESH_MS = 6 * 60 * 60_000;
+
+const fetchVibeCodingYear = incrementalFetcher<VibeCodingYearPayload>(
+  vibeCodingYearCursor,
+  mergeVibeCodingYearHistory,
+);
 
 /** 蓝留给 GitHub 贡献图。这边四档绿写在 .vibe-year-chart 的 CSS 变量里。 */
 const FILLS = [
@@ -127,8 +137,11 @@ export function VibeYearChart({
 }) {
   const { data } = useStatus<VibeCodingYearPayload>(VIBECODING_YEAR_PATH, REFRESH_MS, {
     fallback,
+    fetcher: fetchVibeCodingYear,
+    seedFallback: seedVibeCodingYear,
+    // 首屏已经烧进去，挂载不再回源。切回标签页时拉一次，长轮询仍作兜底。
     revalidateOnMount: false,
-    revalidateOnFocus: false,
+    revalidateOnFocus: true,
   });
   const [lastDrawn, setLastDrawn] = useState(fallback.ok ? fallback.data : null);
   if (data?.days.length && data !== lastDrawn) setLastDrawn(data);

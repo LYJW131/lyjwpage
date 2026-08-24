@@ -8,7 +8,9 @@ import {
   compactTokens,
   formatTokenLabel,
   indexYearMix,
+  mergeVibeCodingYear,
   normalizeVibeCodingYear,
+  sliceVibeCodingYear,
   tokenScores,
 } from "./vibecoding-year.ts";
 
@@ -121,4 +123,76 @@ test("hover 文案带 compact token", () => {
   assert.equal(formatTokenLabel("2026-08-08", 1200), "1.2k tokens on August 8th.");
   assert.equal(compactTokens(12_400), "12k");
   assert.equal(addDays(ORIGIN, 91), "2025-11-16");
+});
+
+test("切回焦点只带最后一天，mix 跟着切", () => {
+  const counts = days(0);
+  counts[YEAR_DAYS - 1] = 40;
+  counts[YEAR_DAYS - 2] = 10;
+  const payload = {
+    origin: ORIGIN,
+    days: counts,
+    models: ["opus"],
+    mix: [
+      [YEAR_DAYS - 2, 0, 10],
+      [YEAR_DAYS - 1, 0, 40],
+    ],
+    pushedAt: 1,
+  };
+  const last = addDays(ORIGIN, YEAR_DAYS - 1);
+  const sliced = sliceVibeCodingYear(payload, last);
+  assert.equal(sliced.daysPartial, true);
+  assert.equal(sliced.from, last);
+  assert.deepEqual(sliced.days, [40]);
+  assert.deepEqual(sliced.mix, [[YEAR_DAYS - 1, 0, 40]]);
+
+  const merged = mergeVibeCodingYear(payload, sliced);
+  assert.equal(merged.days[YEAR_DAYS - 1], 40);
+  assert.equal(merged.days[YEAR_DAYS - 2], 10);
+  assert.equal(merged.daysPartial, undefined);
+});
+
+test("原点前滚时 mix offset 跟着减，模型表按名字重对", () => {
+  const localDays = days(1);
+  localDays[7] = 50;
+  localDays[YEAR_DAYS - 1] = 9;
+  const local = {
+    origin: ORIGIN,
+    days: localDays,
+    models: ["old", "opus"],
+    mix: [
+      [7, 1, 50],
+      [YEAR_DAYS - 1, 1, 9],
+    ],
+    pushedAt: 1,
+  };
+  const nextOrigin = addDays(ORIGIN, 7);
+  const nextDays = days(2);
+  nextDays[0] = 50;
+  nextDays[YEAR_DAYS - 1] = 11;
+  const next = {
+    origin: nextOrigin,
+    days: nextDays,
+    models: ["opus"],
+    mix: [
+      [0, 0, 50],
+      [YEAR_DAYS - 1, 0, 11],
+    ],
+    pushedAt: 2,
+  };
+  const sliced = sliceVibeCodingYear(next, addDays(ORIGIN, YEAR_DAYS - 1));
+  assert.equal(sliced.from, addDays(nextOrigin, YEAR_DAYS - 1 - 7));
+  assert.equal(sliced.days.length, 8);
+  assert.deepEqual(sliced.models, ["opus"]);
+
+  const merged = mergeVibeCodingYear(local, sliced);
+  assert.equal(merged.origin, nextOrigin);
+  assert.equal(merged.days.length, YEAR_DAYS);
+  assert.equal(merged.days[0], 50);
+  assert.equal(merged.days[YEAR_DAYS - 1], 11);
+  assert.deepEqual(merged.models, ["old", "opus"]);
+  assert.deepEqual(merged.mix, [
+    [0, 1, 50],
+    [YEAR_DAYS - 1, 1, 11],
+  ]);
 });

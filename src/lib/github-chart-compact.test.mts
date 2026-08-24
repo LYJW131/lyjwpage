@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  addDays,
   chartSize,
+  expandGithubDays,
   formatContributionLabel,
   groupWeeks,
   monthLabels,
@@ -48,4 +50,16 @@ test("hover 文案和资料页同一句", () => {
   assert.equal(formatContributionLabel("2025-08-18", 1), "1 contribution on August 18th.");
   assert.equal(formatContributionLabel("2026-08-08", 64), "64 contributions on August 8th.");
   assert.equal(formatContributionLabel("2026-08-11", 107), "107 contributions on August 11th.");
+});
+
+test("紧凑信封展开出 date / weekday / label", () => {
+  const days = expandGithubDays("2025-08-17", [0, 64], [0, 3]);
+  assert.equal(days.length, 2);
+  assert.equal(days[0]?.date, "2025-08-17");
+  assert.equal(days[0]?.weekday, 0);
+  assert.equal(days[0]?.label, "No contributions on August 17th.");
+  assert.equal(days[1]?.date, addDays("2025-08-17", 1));
+  assert.equal(days[1]?.count, 64);
+  assert.equal(days[1]?.score, 3);
+  assert.equal(JSON.stringify({ origin: "2025-08-17", counts: [0, 64], scores: [0, 3] }).includes("contributions on"), false);
 });

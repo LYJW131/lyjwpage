@@ -677,8 +677,8 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
     }
 
     /**
-     * 年度热力图单独一块。不推送 —— 格子按天变，浏览器长间隔来问就够。
-     * 整年 371 个数一次给齐，外加每天前五的稀疏 mix，比切块少绕路。
+     * 年度热力图单独一块。不推送 —— 格子按天变，浏览器长间隔和切回焦点来问。
+     * 上报仍是整年 371 个数一次给齐；GET 按游标只回窗尾。
      */
     if ("vibeCodingYear" in modules) {
       writes.push(prepareVibeCodingYear(modules.vibeCodingYear, receivedAt).commit());

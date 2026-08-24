@@ -29,16 +29,16 @@ async function fetcher<T>(url: string): Promise<StatusResponse<T>> {
 /**
  * 增量拉取的取数壳子。
  *
- * 曲线类的接口（充电头功率）每轮只问服务端要游标之后的新点，本地拼成完整
+ * 充电头功率和两张热力图每轮只问服务端要游标之后的新点，本地拼成完整
  * 序列。关键是 SWR 的缓存键必须保持是 path，不能把 `?since=` 拼进去 —— 那样
  * 每轮都是一个新资源，去重、keepPreviousData、轮询计时器会全部失效。所以变化
  * 的部分藏在这里面，外面看到的始终是同一个键。
  *
- * `cursor` 和 `merge` 都取模块级函数（charger-history），所以这个壳子可以在
- * 模块作用域构造好、天然是稳定引用，调用方不需要 useCallback。
+ * `cursor` 和 `merge` 都取模块级函数，所以这个壳子可以在模块作用域构造好、
+ * 天然是稳定引用，调用方不需要 useCallback。游标是毫秒时间戳或 YYYY-MM-DD。
  */
 export function incrementalFetcher<T>(
-  cursor: () => number | null,
+  cursor: () => string | number | null,
   merge: (data: T) => T,
 ): (path: string) => Promise<StatusResponse<T>> {
   return async (path) => {
@@ -92,7 +92,7 @@ export type StatusOptions<T> = {
    * 窗口重新获得焦点时要不要回源。默认要。
    *
    * 进页时浏览器会响一次 focus / visibility，光关 revalidateOnMount 挡不住
-   * 这一下。几乎不变的数据（贡献日历）两边都得关，只留长间隔轮询。
+   * 这一下。只有确实不想为切回标签付一次请求时才关。
    */
   revalidateOnFocus?: boolean;
 };

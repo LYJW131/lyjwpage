@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import {
   HeatmapGrid,
@@ -9,13 +9,24 @@ import {
   useHeatmapOpen,
   type CellAnchor,
 } from "@/components/live/heatmap-hover";
-import { useStatus } from "@/hooks/use-status";
+import { incrementalFetcher, useStatus } from "@/hooks/use-status";
 import { FILLS } from "@/lib/github-chart-compact";
+import {
+  githubChartCursor,
+  githubChartWeeks,
+  mergeGithubChart,
+  seedGithubChart,
+} from "@/lib/github-chart-history";
 import { GITHUB_CHART_PATH } from "@/lib/paths";
 import type { GithubChartDay, GithubChartPayload, StatusResponse } from "@/lib/types";
 
-/** 贡献日历按天变。长间隔兜底就够，别跟状态卡抢请求。 */
+/** 贡献日历按天变。长间隔兜底，切回焦点带游标只拉窗尾。 */
 const REFRESH_MS = 6 * 60 * 60_000;
+
+const fetchGithubChart = incrementalFetcher<GithubChartPayload>(
+  githubChartCursor,
+  mergeGithubChart,
+);
 
 type HoveredCell = {
   date: string;
@@ -26,9 +37,11 @@ type HoveredCell = {
 export function GithubChart({ fallback }: { fallback: StatusResponse<GithubChartPayload> }) {
   const { data } = useStatus<GithubChartPayload>(GITHUB_CHART_PATH, REFRESH_MS, {
     fallback,
-    // 首屏已经烧进去。进页时的 focus 也会触发回源，两边都关，只留上面的长轮询。
+    fetcher: fetchGithubChart,
+    seedFallback: seedGithubChart,
+    // 首屏已经烧进去，挂载不再回源。切回标签页时拉一次，长轮询仍作兜底。
     revalidateOnMount: false,
-    revalidateOnFocus: false,
+    revalidateOnFocus: true,
   });
   /**
    * 留住上一份画得出来的日历，轮询在飞的时候别让图表闪空。
@@ -42,10 +55,15 @@ export function GithubChart({ fallback }: { fallback: StatusResponse<GithubChart
    * 照样是空的。
    */
   const [lastDrawn, setLastDrawn] = useState(fallback.ok ? fallback.data : null);
-  if (data?.weeks.length && data !== lastDrawn) setLastDrawn(data);
-  const weeks = data?.weeks ?? lastDrawn?.weeks;
+  if (data?.counts.length && data !== lastDrawn) setLastDrawn(data);
+  const snapshot = data?.counts.length ? data : lastDrawn;
   const { svgRef, shown, hotDate, previewCell, clearPreview, togglePin } =
     useHeatmapOpen<HoveredCell>();
+
+  const weeks = useMemo(
+    () => (snapshot?.counts.length ? githubChartWeeks(snapshot) : null),
+    [snapshot],
+  );
 
   if (!weeks?.length) return null;
 
