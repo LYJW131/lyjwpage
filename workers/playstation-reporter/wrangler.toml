@@ -15,8 +15,8 @@ crons = ["*/15 * * * *"]
 PSN_LANGUAGE = "zh-Hans"
 PSN_ACCOUNT_ID = "me"
 PLAYED_GAMES_LIMIT = "20"
-# 站点侧 /api/ingest/playstation 实现后，二选一取消注释。都不配就是 dry-run。
-# SITE_URL = "https://lyjw131.com"
+# Cloudflare 全球网络直连 Vercel 主站，EdgeOne 由站点 ingest 中继同步。
+SITE_URL = "https://lyjw.me"
 # SITE_INGEST_URL = "https://lyjw131.com/api/ingest/playstation"
 
 [[kv_namespaces]]
