@@ -141,7 +141,7 @@ export function withActivityFreshness(
 
 export async function getActivitySnapshot(): Promise<ActivityPayload> {
   const stored = await readActivityState();
-  // 还没收到过任何上报。交给 statusRoute 变成降级信封，卡片显示提示
+  // 还没收到过任何上报。交给 statusRoute 变成降级信封，卡片自己不写提示
   if (!stored) throw new AwaitingReport("尚未收到活动圆环上报");
 
   return withActivityFreshness({

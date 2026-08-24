@@ -327,7 +327,7 @@ export function ActivityCard({
   fallback: StatusResponse<ActivityPayload>;
   className?: string;
 }) {
-  const { data, error, isLoading } = useStatus<ActivityPayload>(ACTIVITY_PATH, REFRESH_MS, {
+  const { data } = useStatus<ActivityPayload>(ACTIVITY_PATH, REFRESH_MS, {
     fallback,
   });
 
@@ -345,19 +345,6 @@ export function ActivityCard({
   const current = Boolean(data?.currentAtSource);
 
   const rings = ringValues(data, current);
-
-  /**
-   * 底下那行字**只在一份都没收到时才出现**。
-   *
-   * 「几分钟前更新」刻意没有：圈以分钟为尺度涨，那行字每分钟都在变，而它说的事
-   * 没人需要盯着。跨天也不再写「昨天的记录」了 —— 那一刻圈本身已经归零，
-   * 没有别的日子的数在屏幕上，也就没什么要交代的。
-   */
-  const note = (() => {
-    if (isLoading && !data) return "读取中";
-    if (error || !data) return "尚未收到活动上报";
-    return null;
-  })();
 
   /**
    * 右边那列附加指标。三项恒在，行数和左边三行读数对齐。
@@ -395,13 +382,14 @@ export function ActivityCard({
         会在卡片两边各空出一大块（实测 76px），中间反而挤在一起。
       */}
       {/*
-        三列：环 + 两列数据。
+        两列数据：三环读数 + 步数/距离/爬楼。手机上后一列不画 —— 窄屏上它会把
+        「活动 123 / 400 千卡」挤到截断，把空间留给三环更值。md 起才恢复三列。
 
         环那列走 `auto` 而不是等分的三分之一 —— 它的直径必须和时间卡那个钟相等
         （md 断点上 144px），而三分之一在那个断点只有 110px，等分会把环挤扁。
         两列数据各占一半、各自居中，行数也对齐（见下面 extras 的注释）。
       */}
-      <div className="grid h-full min-h-44 grid-cols-[auto_1fr_1fr] items-center justify-items-center gap-3 p-4 lg:gap-4 lg:p-5">
+      <div className="grid h-full min-h-44 grid-cols-[auto_1fr] items-center justify-items-center gap-3 p-4 md:grid-cols-[auto_1fr_1fr] lg:gap-4 lg:p-5">
         {/* 尺寸类和时间卡那个钟逐字相同 —— 换个断点两边一起变，不会只有一边跟着走 */}
         <Rings rings={rings} className="size-32 shrink-0 md:size-36 lg:size-40" />
 
@@ -435,11 +423,9 @@ export function ActivityCard({
               </div>
             ))}
           </div>
-
-          {note && <p className="label-mono mt-2 truncate text-muted-foreground">{note}</p>}
         </div>
 
-        <div className="grid min-w-0 gap-1.5">
+        <div className="hidden min-w-0 gap-1.5 md:grid">
           {extras.map((item) => (
             <div key={item.label} className="min-w-0">
               <div className="label-mono text-muted-foreground">{item.label}</div>
