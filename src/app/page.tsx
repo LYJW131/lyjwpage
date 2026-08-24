@@ -3,6 +3,7 @@ import { Header } from "@/components/header";
 import { ContactCard } from "@/components/contact-card";
 import { ActivityCard } from "@/components/live/activity-card";
 import { LiveMediaPair } from "@/components/live/media-pair";
+import { PlaystationCard } from "@/components/live/playstation-card";
 import { TimezoneCard } from "@/components/live/timezone-card";
 import { VibeCodingCard } from "@/components/live/vibecoding-card";
 import { WatchingRow } from "@/components/live/watching-card";
@@ -16,6 +17,8 @@ import {
   cachedListening,
   cachedNowListening,
   cachedNowWatching,
+  cachedPlaying,
+  cachedPlayingNow,
   cachedTimezone,
   cachedVibeCoding,
   cachedVibeCodingYear,
@@ -44,6 +47,8 @@ export default async function Home() {
     vibeCodingYear,
     watching,
     nowWatching,
+    playing,
+    playingNow,
     githubChart,
   ] = await Promise.all([
     cachedDesktop(),
@@ -57,6 +62,8 @@ export default async function Home() {
     cachedVibeCodingYear(),
     cachedWatching(),
     cachedNowWatching(),
+    cachedPlaying(),
+    cachedPlayingNow(),
     cachedGithubChart(),
   ]);
 
@@ -78,6 +85,7 @@ export default async function Home() {
               />
               <ActivityCard fallback={activity} />
               <VibeCodingCard fallback={vibeCoding} />
+              <PlaystationCard fallback={playing} nowFallback={playingNow} />
             </div>
 
             <div id="watching" className="mt-6 scroll-mt-28 border-t border-line pt-5">
