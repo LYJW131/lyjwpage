@@ -1,3 +1,0 @@
-# token 状态文件（PSN_STATE_FILE 的默认位置）。
-# 里面是明文的 access / refresh token，以 0600 写入，绝不入库、也不拷进镜像。
-state/
