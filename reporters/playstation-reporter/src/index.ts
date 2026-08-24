@@ -15,8 +15,8 @@ import { announceTarget, deliver, type PlaystationEnvelope } from "./site.js";
  * 站点将来在 Vercel 上是按调用计费的函数，而 Redis 可能被清空、也可能因为部署
  * 换了库，只靠「有变化才推」会空在那儿等一个永远不来的变化。
  *
- * ⚠️ **从没用真实凭据跑过。** 所有 PSN 请求的行为都是照 psn-api 的源码写的，
- * 不是实测出来的。详见 README 顶部的声明。
+ * ⚠️ **从没用真实凭据跑过。** PSN 请求交给 psn-api，但返回数据和错误路径仍没有
+ * 经过真实账号验证。详见 README 顶部的声明。
  */
 
 const once = process.argv.slice(2).includes("--once");

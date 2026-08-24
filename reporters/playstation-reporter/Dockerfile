@@ -1,6 +1,5 @@
 # 编译和运行分两段：build 阶段出 dist，运行阶段只带生产依赖。
-# 这一份运行时零依赖（连 fetch 都是 Node 自带的），prune 之后 node_modules
-# 几乎是空的，仍拷过去是为了几份上报器共用同一套骨架。
+# PSN 的鉴权和业务请求依赖 psn-api，prune 后把它作为生产依赖拷进运行镜像。
 #
 # 依赖走 `npm ci` + 库里那份 package-lock.json，不是 `npm install --no-package-lock`：
 # 这个容器是「把目录拷到目标机器现场 build」的，不钉版本的话每次 build 拉到的都可能

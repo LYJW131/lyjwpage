@@ -1,3 +1,10 @@
+import {
+  exchangeAccessCodeForAuthTokens,
+  exchangeNpssoForAccessCode,
+  exchangeRefreshTokenForAuthTokens,
+  type AuthTokensResponse,
+} from "psn-api";
+
 import { config } from "./config.js";
 import { info } from "./log.js";
 import { pastHalfLife, readState, writeState, type AuthState } from "./state.js";
@@ -10,37 +17,10 @@ import { pastHalfLife, readState, writeState, type AuthState } from "./state.js"
  *     → access token（约 1 小时）+ refresh token（约 2 个月）
  *     → 之后一直用 refresh 续，过半衰期就换新的
  *
- * 这是一套**非官方**接口：索尼没有公开文档，下面这些常量是 PlayStation 手机端
- * App 用的那一套。所以一个常量都不许凭记忆写 —— 全部原样抄自 MIT 许可的
- * npm 包 psn-api@2.18.1（achievements-app/psn-api），出处逐条标在旁边。
- * 抄常量不抄包：运行时依赖保持为零，只实现我们真正要打的那两个端点。
+ * 这是一套**非官方**接口：索尼没有公开文档，鉴权流程交给 psn-api 维护。
  *
- * ⚠️ 本文件里的任何请求都**没有用真实凭据跑过**（见 README 顶部的声明）。
+ * ⚠️ 这些调用都**没有用真实凭据跑过**（见 README 顶部的声明）。
  */
-
-/* ── 常量：全部抄自 psn-api@2.18.1 ─────────────────────────── */
-
-/** psn-api@2.18.1 src/authenticate/AUTH_BASE_URL.ts */
-const AUTH_BASE_URL = "https://ca.account.sony.com/api/authz/v3/oauth";
-
-/** psn-api@2.18.1 src/authenticate/exchangeNpssoForAccessCode.ts */
-const CLIENT_ID = "09515159-7237-4370-9b40-3806e67c0891";
-const REDIRECT_URI = "com.scee.psxandroid.scecompcall://redirect";
-const SCOPE = "psn:mobile.v2.core psn:clientapp";
-
-/**
- * psn-api@2.18.1 src/authenticate/exchangeAccessCodeForAuthTokens.ts
- * 和 src/authenticate/exchangeRefreshTokenForAuthTokens.ts（两处字面量一致）。
- *
- * 这是手机端 App 的 client id + client secret 做的 Basic —— 是随 App 一起分发的
- * 公开常量，不是任何人的私人凭据，所以可以躺在源码里。真正见不得人的是 NPSSO
- * 和换出来的两个 token，那些走环境变量和 0600 的状态文件。
- */
-const CLIENT_AUTHORIZATION =
-  "Basic MDk1MTUxNTktNzIzNy00MzcwLTliNDAtMzgwNmU2N2MwODkxOnVjUGprYTV0bnRCMktxc1A=";
-
-/** 取 NPSSO 的地方，同一份源码的 JSDoc 里写着 */
-export const NPSSO_URL = "https://ca.account.sony.com/api/v1/ssocookie";
 
 /* ── 错误类型 ──────────────────────────────────────────────── */
 
@@ -53,40 +33,35 @@ export class NpssoRejected extends Error {}
 /** refresh token 被上游拒了。手上有 NPSSO 的话还能整条重来一遍 */
 export class RefreshRejected extends Error {}
 
-/** access token 被业务端点拒了（401），说明该提前续一次 */
-export class AccessTokenRejected extends Error {}
-
 /** NPSSO 失效时该说的两条运维提醒，报错和 README 共用一份文案 */
 export const NPSSO_ADVICE = [
-  `去 ${NPSSO_URL} 取一串 NPSSO（要先在 playstation.com 登录），填进 PSN_NPSSO`,
+  "去 https://ca.account.sony.com/api/v1/ssocookie 取一串 NPSSO（要先在 playstation.com 登录），填进 PSN_NPSSO",
   "别从 PlayStation 网站登出 —— 登出会让已经发出去的 token 在七天内软失效",
   "重新生成 NPSSO 会**立刻**作废上一串，所以别在两处同时用同一个账号换码",
 ].join("\n  · ");
 
-/* ── 三次 HTTP 交换 ────────────────────────────────────────── */
+/* ── psn-api 的鉴权结果 → 状态文件 ─────────────────────────── */
 
-type TokenResponse = {
-  access_token?: string;
-  expires_in?: number;
-  refresh_token?: string;
-  refresh_token_expires_in?: number;
-};
+class IncompleteAuthTokens extends Error {}
 
-/** 上游出错时把正文截一段带出来定位问题。正文里不会有 token —— 有 token 的是 200 那条路 */
-async function briefly(response: Response) {
-  return (await response.text().catch(() => "")).slice(0, 200);
-}
-
-function toState(raw: TokenResponse, issuedAt: number): AuthState {
-  const { access_token, refresh_token, expires_in, refresh_token_expires_in } = raw;
-  if (!access_token || !refresh_token) throw new Error("PSN 没给全 access / refresh token");
+function toState(raw: AuthTokensResponse, issuedAt: number): AuthState {
+  // psn-api 的声明把这些字段都写成必给，但它当前不会先检查 HTTP 状态：
+  // 上游 4xx 的 JSON 也会走到映射逻辑，运行时可能得到一组 undefined，仍要自己验。
+  if (
+    typeof raw.accessToken !== "string" ||
+    !raw.accessToken ||
+    typeof raw.refreshToken !== "string" ||
+    !raw.refreshToken
+  ) {
+    throw new IncompleteAuthTokens("PSN 没给全 access / refresh token");
+  }
   // 上游给的是秒，落库统一成 epoch 毫秒（AGENTS.md 第 4 条）。
   // 两个默认值只是万一上游不给时不至于算出 NaN：1 小时 / 60 天是观测到的量级
-  const accessSeconds = Number(expires_in) || 3600;
-  const refreshSeconds = Number(refresh_token_expires_in) || 60 * 24 * 3600;
+  const accessSeconds = Number(raw.expiresIn) || 3600;
+  const refreshSeconds = Number(raw.refreshTokenExpiresIn) || 60 * 24 * 3600;
   return {
-    accessToken: access_token,
-    refreshToken: refresh_token,
+    accessToken: raw.accessToken,
+    refreshToken: raw.refreshToken,
     accessTokenIssuedAt: issuedAt,
     accessTokenExpiresAt: issuedAt + accessSeconds * 1000,
     refreshTokenIssuedAt: issuedAt,
@@ -94,100 +69,24 @@ function toState(raw: TokenResponse, issuedAt: number): AuthState {
   };
 }
 
-/**
- * NPSSO → access code。
- *
- * 抄自 psn-api@2.18.1 src/authenticate/exchangeNpssoForAccessCode.ts：
- * 这个请求**永远不会返回 200**，正常情况是 302，code 藏在 Location 里，
- * 所以必须 `redirect: "manual"` 自己读头。
- *
- * Location 本身绝对不能进日志 —— 那一串就是 access code。
- */
-async function exchangeNpssoForAccessCode(npsso: string): Promise<string> {
-  const query = new URLSearchParams({
-    access_type: "offline",
-    client_id: CLIENT_ID,
-    redirect_uri: REDIRECT_URI,
-    response_type: "code",
-    scope: SCOPE,
-  });
-
-  const response = await fetch(`${AUTH_BASE_URL}/authorize?${query.toString()}`, {
-    headers: { Cookie: `npsso=${npsso}` },
-    redirect: "manual",
-    signal: AbortSignal.timeout(config.requestTimeoutMs),
-  });
-
-  const location = response.headers.get("location");
-  if (!location?.includes("?code=")) {
-    throw new NpssoRejected(
-      `NPSSO 换不出 access code（HTTP ${response.status}，Location ${location ? "里没有 code" : "缺席"}）。\n  · ${NPSSO_ADVICE}`,
-    );
-  }
-
-  // 上游给的是 com.scee.psxandroid.scecompcall://redirect/?code=v3.XXXX&cid=...，
-  // 不是合法的 http URL，psn-api 是按 "redirect/" 切开再当查询串解析的，照抄
-  const code = new URLSearchParams(location.split("redirect/")[1] ?? "").get("code");
-  if (!code) throw new NpssoRejected(`Location 里解不出 code。\n  · ${NPSSO_ADVICE}`);
-  return code;
-}
-
-/** access code → 两个 token。抄自 psn-api@2.18.1 src/authenticate/exchangeAccessCodeForAuthTokens.ts */
 async function exchangeAccessCodeForTokens(accessCode: string): Promise<AuthState> {
   const issuedAt = Date.now();
-  const response = await fetch(`${AUTH_BASE_URL}/token`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      Authorization: CLIENT_AUTHORIZATION,
-    },
-    body: new URLSearchParams({
-      code: accessCode,
-      redirect_uri: REDIRECT_URI,
-      grant_type: "authorization_code",
-      token_format: "jwt",
-    }).toString(),
-    signal: AbortSignal.timeout(config.requestTimeoutMs),
-  });
-
-  if (!response.ok) {
-    // 换码这一步的 4xx 基本都是 NPSSO 的问题（过期、被新生成的那串顶掉），
-    // 所以直接报成可操作的那一类，别让人对着一个裸状态码猜
-    const detail = `access code 换 token 失败（HTTP ${response.status}）：${await briefly(response)}`;
-    if (response.status === 400 || response.status === 401) {
-      throw new NpssoRejected(`${detail}\n  · ${NPSSO_ADVICE}`);
-    }
-    throw new Error(detail);
+  try {
+    return toState(await exchangeAccessCodeForAuthTokens(accessCode), issuedAt);
+  } catch (error) {
+    if (!(error instanceof IncompleteAuthTokens)) throw error;
+    throw new NpssoRejected(`access code 换 token 失败：${error.message}\n  · ${NPSSO_ADVICE}`);
   }
-
-  return toState((await response.json()) as TokenResponse, issuedAt);
 }
 
-/** refresh token → 新的两个 token。抄自 psn-api@2.18.1 src/authenticate/exchangeRefreshTokenForAuthTokens.ts */
 async function exchangeRefreshTokenForTokens(refreshToken: string): Promise<AuthState> {
   const issuedAt = Date.now();
-  const response = await fetch(`${AUTH_BASE_URL}/token`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      Authorization: CLIENT_AUTHORIZATION,
-    },
-    body: new URLSearchParams({
-      refresh_token: refreshToken,
-      grant_type: "refresh_token",
-      token_format: "jwt",
-      scope: SCOPE,
-    }).toString(),
-    signal: AbortSignal.timeout(config.requestTimeoutMs),
-  });
-
-  if (!response.ok) {
-    throw new RefreshRejected(
-      `refresh token 被拒（HTTP ${response.status}）：${await briefly(response)}`,
-    );
+  try {
+    return toState(await exchangeRefreshTokenForAuthTokens(refreshToken), issuedAt);
+  } catch (error) {
+    if (!(error instanceof IncompleteAuthTokens)) throw error;
+    throw new RefreshRejected(`refresh token 被拒：${error.message}`);
   }
-
-  return toState((await response.json()) as TokenResponse, issuedAt);
 }
 
 /* ── 对外：一把手上的 access token ─────────────────────────── */
@@ -215,9 +114,24 @@ async function fromNpsso(reason: string): Promise<AuthState> {
       `${reason}，而且没有可用的 NPSSO。请设置环境变量 PSN_NPSSO。\n  · ${NPSSO_ADVICE}`,
     );
   }
-  const state = await exchangeAccessCodeForTokens(
-    await exchangeNpssoForAccessCode(config.psn.npsso),
-  );
+  let accessCode: string;
+  try {
+    accessCode = await exchangeNpssoForAccessCode(config.psn.npsso);
+  } catch (error) {
+    // psn-api 对 NPSSO 被拒只抛普通 Error，也不带 HTTP 状态；网络错误同样是普通 Error。
+    // 只把它那条固定的「NPSSO 是否有效」错误归成可操作的凭据问题，断网仍原样上抛。
+    if (
+      !(error instanceof Error) ||
+      !error.message.includes("problem retrieving your PSN access code")
+    ) {
+      throw error;
+    }
+    throw new NpssoRejected(`NPSSO 换不出 access code。\n  · ${NPSSO_ADVICE}`);
+  }
+  if (!accessCode) {
+    throw new NpssoRejected(`NPSSO 换回了空 access code。\n  · ${NPSSO_ADVICE}`);
+  }
+  const state = await exchangeAccessCodeForTokens(accessCode);
   // `current` 必须在这里就落定，别只写文件。漏了这一句的后果不是「下次再读一遍」
   // 那么轻：下一次要 token 时 current 仍是 null，renew() 会从文件里把这份**刚拿到的**
   // refresh token 读出来再换一次 —— 白白多打一次上游，还立刻把它轮换掉了。
