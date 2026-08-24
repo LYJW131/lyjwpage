@@ -13,7 +13,7 @@ export const DESKTOP_PATH = "/api/status/desktop";
 export const CHARGER_PATH = "/api/status/charger";
 export const POWERBANK_PATH = "/api/status/powerbank";
 export const VIBECODING_PATH = "/api/status/vibecoding";
-/** 年度 token 热力图。整年一次取，没有推送。 */
+/** 年度 token 热力图。没有推送；浏览器按长间隔和切回焦点来问，切回带游标。 */
 export const VIBECODING_YEAR_PATH = "/api/status/vibecoding/year";
 
 /**
@@ -29,5 +29,6 @@ export const NOW_LISTENING_PATH = "/api/status/listening/now";
 export const WATCHING_PATH = "/api/status/watching";
 export const NOW_WATCHING_PATH = "/api/status/watching/now";
 
-/** 贡献热力图。没有推送，浏览器按长间隔自己来问 */
+/** 贡献热力图。没有推送；浏览器按长间隔和切回焦点来问，切回带游标。 */
 export const GITHUB_CHART_PATH = "/api/status/github-chart";
+

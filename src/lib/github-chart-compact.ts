@@ -58,6 +58,12 @@ export type ChartLabel = {
   text: string;
 };
 
+export function addDays(date: string, days: number): string {
+  const value = new Date(`${date}T00:00:00Z`);
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
+}
+
 export function sundayOf(date: string): string {
   const day = new Date(`${date}T00:00:00Z`);
   day.setUTCDate(day.getUTCDate() - day.getUTCDay());
@@ -152,4 +158,28 @@ export function formatContributionLabel(date: string, count: number): string {
   if (count <= 0) return `No contributions on ${when}.`;
   if (count === 1) return `1 contribution on ${when}.`;
   return `${count} contributions on ${when}.`;
+}
+
+/**
+ * 把紧凑信封展开成格子要用的逐日对象。date / weekday / label 都是 origin
+ * 和 count 的函数，不进 JSON。
+ */
+export function expandGithubDays(
+  origin: string,
+  counts: readonly number[],
+  scores: readonly number[],
+): GithubChartDay[] {
+  if (!origin || counts.length === 0) return [];
+  return counts.map((count, index) => {
+    const date = addDays(origin, index);
+    const raw = scores[index];
+    const score = raw === 1 || raw === 2 || raw === 3 || raw === 4 ? raw : 0;
+    return {
+      date,
+      weekday: weekdayOf(date),
+      count,
+      score,
+      label: formatContributionLabel(date, count),
+    };
+  });
 }

@@ -417,10 +417,12 @@ export type VibeCodingPayload = {
 } & ReporterPresence;
 
 /**
- * 过去 53 周的日合计 token。整年一次给齐。
+ * 过去 53 周的日合计 token。
  *
  * `days[i]` 是 origin 起第 i 天的合计。档位和文案浏览器现算，不进信封。
  * `mix` 是每天前五模型的稀疏编码，下标指 `models`。
+ *
+ * 增量见 `daysPartial`：切回焦点时只带窗口尾，和充电头 `historyPartial` 同一套。
  */
 export type VibeCodingYearPayload = {
   /** 53 周窗口的第一个周日，YYYY-MM-DD */
@@ -434,9 +436,16 @@ export type VibeCodingYearPayload = {
    */
   mix: number[][];
   pushedAt: number;
+  /**
+   * days / mix 只覆盖 `from` 起的窗尾。缺省或 false 是整份窗口。
+   * 上报落库的那份没有这个字段。
+   */
+  daysPartial?: boolean;
+  /** daysPartial 时这段尾巴的第一天 */
+  from?: string;
 };
 
-/** 贡献热力图的一天。label 跟资料页 hover 同一句 */
+/** 贡献热力图的一天。label 跟资料页 hover 同一句，浏览器现算，不进信封 */
 export type GithubChartDay = {
   date: string;
   weekday: number;
@@ -445,8 +454,20 @@ export type GithubChartDay = {
   label: string;
 };
 
+/**
+ * 过去约 53 周的日贡献。形状对齐年度 token：原点 + 日序列，date / weekday /
+ * label 浏览器现算。`scores` 是 GitHub 自己的四分位，不能在这边重算。
+ */
 export type GithubChartPayload = {
-  weeks: GithubChartDay[][];
+  origin: string;
+  counts: number[];
+  scores: Array<0 | 1 | 2 | 3 | 4>;
+  /**
+   * counts / scores 只覆盖 `from` 起的窗尾。缺省或 false 是整份窗口。
+   */
+  countsPartial?: boolean;
+  /** countsPartial 时这段尾巴的第一天 */
+  from?: string;
 };
 
 /**
