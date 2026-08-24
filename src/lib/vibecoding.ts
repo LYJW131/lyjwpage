@@ -1,3 +1,4 @@
+import { AwaitingReport } from "@/lib/api";
 import { mirrorKey } from "@/lib/redis";
 import { readLiveness, withPresence } from "@/lib/reporter-liveness";
 import type {
@@ -77,7 +78,7 @@ export async function getVibeCodingSnapshot(): Promise<VibeCodingPayload> {
   ]);
   // 用量是主干：总量、限额、模型排行都在它那份里，缺了就没有卡片可言。
   // 此刻那份缺了只是灯不亮，整张卡照旧。
-  if (!usageState) throw new Error("尚未收到 Mac Telemetry Hub 的 vibe coding 用量推送");
+  if (!usageState) throw new AwaitingReport("尚未收到 Mac Telemetry Hub 的 vibe coding 用量推送");
 
   const nowById = new Map(
     (nowState?.payload.agents ?? []).map((agent) => [agent.id, agent]),

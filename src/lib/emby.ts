@@ -1,3 +1,4 @@
+import { AwaitingReport } from "@/lib/api";
 import {
   clearNowPlaying,
   getCurrentItem,
@@ -99,7 +100,7 @@ export function nowWatchingPayload(
 export async function getWatching(options: { limit?: number } = {}): Promise<WatchingPayload> {
   const stored = await getResume();
   // 还没收到过推送。交给 statusRoute 变成降级信封，前端显示提示
-  if (!stored) throw new Error("尚未收到 Emby 推送");
+  if (!stored) throw new AwaitingReport("尚未收到 Emby 推送");
 
   return watchingPayload(stored.items, await getImageObjectKeys(), options);
 }
