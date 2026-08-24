@@ -1,6 +1,7 @@
 name = "playstation-reporter"
 main = "src/index.ts"
-compatibility_date = "2026-08-25"
+# 按 UTC 取，写本地今天（UTC+8 快一天）会被 API 按「未来日期」拒掉
+compatibility_date = "2026-08-24"
 workers_dev = true
 
 routes = [
