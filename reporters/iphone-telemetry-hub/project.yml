@@ -1,0 +1,38 @@
+# XcodeGen 的工程描述。`.xcodeproj` 不入库 —— 它是生成物，几千行 pbxproj 进版本库
+# 只会在每次改文件时制造无意义的冲突。改了源码就跑一次 `xcodegen generate`，
+# 或者直接跑 build-install.sh（它自己会先生成）。
+name: iPhoneTelemetryHub
+options:
+  bundleIdPrefix: com.liangyangjunwei
+  deploymentTarget:
+    iOS: "18.0"
+  createIntermediateGroups: true
+  groupSortPosition: none
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    DEVELOPMENT_TEAM: 2VTXNMR2GL
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    # 显式 Info.plist，和 MacTelemetryHub 一致：各模块的权限说明和 ATS 例外都要手写
+    GENERATE_INFOPLIST_FILE: NO
+
+targets:
+  iPhoneTelemetryHub:
+    type: application
+    platform: iOS
+    sources:
+      - path: App/iPhoneTelemetryHub
+    settings:
+      base:
+        # Debug / Release 共用一个 bundle id：分开的话开发者账号里要注册两个带
+        # HealthKit 能力的 App ID，手机上还会并排装两个一模一样的图标
+        PRODUCT_BUNDLE_IDENTIFIER: com.liangyangjunwei.iPhoneTelemetryHub
+        PRODUCT_NAME: iPhoneTelemetryHub
+        INFOPLIST_FILE: App/iPhoneTelemetryHub/Info.plist
+        CODE_SIGN_ENTITLEMENTS: App/iPhoneTelemetryHub/iPhoneTelemetryHub.entitlements
+        CODE_SIGN_STYLE: Automatic
+        # 只发 iPhone
+        TARGETED_DEVICE_FAMILY: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
