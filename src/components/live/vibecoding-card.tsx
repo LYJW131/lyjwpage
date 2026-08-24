@@ -89,6 +89,15 @@ const LIMIT_ALERT_COLOR = "oklch(0.62 0.21 25)";
 /** 不受限那一档。沿用同文件 Reasoning 那支绿（也是 --live 用的那支），不再多引入一种色相。 */
 const LIMIT_UNLIMITED_COLOR = "oklch(0.65 0.17 145)";
 
+/**
+ * 配速指示器那根竖线的两支颜色：用得比时钟快是红，没快是绿。
+ *
+ * 都是这张卡上已经有的颜色（告警那支红、不受限那支绿），不为这件事再引入新色相。
+ * 条本身不受影响，仍按用量分档 —— 见 LimitMeter 里的 overPace。
+ */
+const LIMIT_OVER_PACE_COLOR = LIMIT_ALERT_COLOR;
+const LIMIT_ON_PACE_COLOR = LIMIT_UNLIMITED_COLOR;
+
 /** 蓝 → 琥珀 → 红，只有三档没有渐变：中间色会让人去猜具体数，而数就写在旁边 */
 function limitColor(usedPercent: number) {
   if (usedPercent >= LIMIT_ALERT_PERCENT) return LIMIT_ALERT_COLOR;
@@ -515,6 +524,59 @@ function formatCompactReset(
   };
 }
 
+/**
+ * 配速指示器自己的刷新节奏：让它每次大约挪动 0.2% 的宽度。
+ *
+ * 不能搭 nextTickDelay 的车 —— 那个是给重置倒计时排的，剩余超过一天时它一觉睡到
+ * 「还剩 24 小时」，7 天那条窗口的指示器会几天不动。上下限是防两头：5 小时窗口
+ * 按 0.2% 算是 36 秒，太密；7 天窗口是 20 分钟，太疏。
+ */
+function paceTickInterval(windowMs: number) {
+  return Math.min(Math.max(windowMs / 500, 60_000), 10 * 60_000);
+}
+
+/**
+ * 这个限额窗口走到哪儿了（0~1），指示器就钉在这个位置。
+ *
+ * 窗口起点由 `resetsAt - windowMinutes` 反推 —— 两个字段缺一就返回 null，那时不画
+ * 指示器。**不能拿 `group` 里那个 "weekly" 当七天用**，契约里明写着展示层不得由分组
+ * 反推窗口时长（见 types 的 VibeCodingLimit）。眼下 Grok 和 Antigravity 就是只给了
+ * resetsAt 没给窗口时长，知道什么时候结束推不出什么时候开始。
+ *
+ * `now` 为 0（首帧还没有访客钟）时也返回 null：这是拿当下时刻算的东西，服务端那一遍
+ * 算不得数，画了必然水合不一致。
+ */
+function limitPace(limit: VibeCodingLimit, now: number): number | null {
+  if (!now || limit.windowMinutes == null || limit.resetsAt == null) return null;
+  const windowMs = limit.windowMinutes * 60_000;
+  if (windowMs <= 0) return null;
+  const remain = limit.resetsAt * 1000 - now;
+  // 已经过点了：新周期刚从头开始
+  if (remain <= 0) return 0;
+  return Math.min(1, Math.max(0, 1 - remain / windowMs));
+}
+
+/**
+ * 配速指示器：这个周期走到哪儿了。用量条超过它说明用得比时钟快，标记变红；没超是绿。
+ *
+ * 两侧各切开一小段底色，标记才不会和「已用」那段糊成一片。整块 6px 宽，居中 2px 是
+ * 标记本身；往左挪半个身位，让它正落在刻度上而不是刻度右边。
+ */
+function PaceMarker({ pace, overPace }: { pace: number; overPace: boolean }) {
+  return (
+    <span
+      aria-hidden
+      className="absolute inset-y-0 flex w-1.5 justify-center bg-surface"
+      style={{ left: `calc(${pace * 100}% - 3px)` }}
+    >
+      <span
+        className="w-0.5"
+        style={{ backgroundColor: overPace ? LIMIT_OVER_PACE_COLOR : LIMIT_ON_PACE_COLOR }}
+      />
+    </span>
+  );
+}
+
 /** 超过一天时按小时刷新，一天以内按分钟。 */
 function nextCompactTickDelay(remain: number) {
   if (remain > 86_400_000) return remain % 3_600_000 || 3_600_000;
@@ -568,6 +630,23 @@ function LimitMeter({ limit, title }: { limit: VibeCodingLimit; title: string })
 
   const expired = limit.resetsAt != null && limit.resetsAt * 1000 <= now;
   const usedPercent = expired ? 0 : limit.usedPercent;
+
+  /**
+   * 指示器要自己往前走。
+   *
+   * 上面那个定时器是给重置倒计时排的，剩余超过一天时它一觉睡到「还剩 24 小时」——
+   * 7 天那条窗口的指示器会几天钉在挂载时的位置上。数据每轮轮询都在刷新，但 `now`
+   * 只有定时器醒来才动，光靠新数据到达它不会挪。
+   */
+  const windowMs = limit.windowMinutes != null ? limit.windowMinutes * 60_000 : null;
+  useEffect(() => {
+    if (!now || windowMs == null || windowMs <= 0) return;
+    const timer = window.setInterval(() => setTicked(Date.now()), paceTickInterval(windowMs));
+    return () => window.clearInterval(timer);
+  }, [now, windowMs]);
+
+  const pace = limitPace(limit, now);
+  const overPace = pace != null && usedPercent / 100 > pace;
   const color = limitColor(usedPercent);
   // 基准跟着上面那个 now，条和文案才会在同一刻翻面
   const reset = now ? formatReset(limit.resetsAt, now) : null;
@@ -617,11 +696,12 @@ function LimitMeter({ limit, title }: { limit: VibeCodingLimit; title: string })
           </span>
         </span>
       </div>
-      <div className="mt-1.5 h-1.5 overflow-hidden bg-muted">
+      <div className="relative mt-1.5 h-1.5 overflow-hidden bg-muted">
         <div
           className="h-full transition-[width] duration-700"
           style={{ width: `${usedPercent}%`, backgroundColor: color }}
         />
+        {pace != null && <PaceMarker pace={pace} overPace={overPace} />}
       </div>
     </div>
   );
@@ -797,6 +877,23 @@ function CompactAgentRow({ agent }: { agent: VibeCodingAgent }) {
   const color = usedPercent == null ? undefined : limitColor(usedPercent);
   const reset = now ? formatCompactReset(resetsAt, now) : null;
 
+  /**
+   * 配速指示器，和上面全量面板那两条同一套。
+   *
+   * 这一行画的是「最紧的那条限额」（busiestLimit），所以指示器跟着的也是它。
+   * 上面那个定时器最疏是按小时醒，31 天的窗口一小时才挪 0.13% —— 够用，但仍然
+   * 单排一个：那个定时器的节奏是给重置倒计时定的，不该让指示器跟着它的取舍走。
+   */
+  const windowMs = limit?.windowMinutes != null ? limit.windowMinutes * 60_000 : null;
+  useEffect(() => {
+    if (!now || windowMs == null || windowMs <= 0) return;
+    const timer = window.setInterval(() => setTicked(Date.now()), paceTickInterval(windowMs));
+    return () => window.clearInterval(timer);
+  }, [now, windowMs]);
+
+  const pace = limit ? limitPace(limit, now) : null;
+  const overPace = pace != null && usedPercent != null && usedPercent / 100 > pace;
+
   return (
     <div className="min-w-0 py-3" title={agent.limitsError ?? undefined}>
       <div className="flex flex-col gap-1 md:h-5 md:flex-row md:items-center md:justify-between md:gap-2">
@@ -852,13 +949,14 @@ function CompactAgentRow({ agent }: { agent: VibeCodingAgent }) {
         </span>
       </div>
       <div className="mt-1.5 flex items-center gap-3">
-        <div className="h-1.5 min-w-8 flex-1 overflow-hidden bg-muted">
+        <div className="relative h-1.5 min-w-8 flex-1 overflow-hidden bg-muted">
           {usedPercent != null && (
             <div
               className="h-full transition-[width] duration-700"
               style={{ width: `${usedPercent}%`, backgroundColor: color }}
             />
           )}
+          {pace != null && <PaceMarker pace={pace} overPace={overPace} />}
         </div>
         {usedPercent == null ? (
           <span
