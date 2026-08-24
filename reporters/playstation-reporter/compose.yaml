@@ -30,7 +30,6 @@ services:
       FULL_PUSH_INTERVAL_MS: ${FULL_PUSH_INTERVAL_MS:-}
       RETRY_MS: ${RETRY_MS:-}
       MAX_RETRY_MS: ${MAX_RETRY_MS:-}
-      REQUEST_TIMEOUT_MS: ${REQUEST_TIMEOUT_MS:-}
       PUSH_TIMEOUT_MS: ${PUSH_TIMEOUT_MS:-}
     volumes:
       # refresh token 活约两个月，得跨重启留着 —— 丢了就要人再去浏览器抠一次 NPSSO。

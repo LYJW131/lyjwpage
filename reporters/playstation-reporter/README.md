@@ -6,9 +6,9 @@
 >
 > 写这份东西时手上没有、也不需要任何 PSN 账号。所以：
 >
-> - **所有对索尼端点的调用都未经验证。** 端点地址、OAuth 常量、GraphQL 之外那两个
->   REST 端点的响应字段，全部原样抄自 [`psn-api@2.18.1`](https://github.com/achievements-app/psn-api)（MIT）
->   的源码和类型声明，逐条标了出处；抄得对不对、索尼今天是不是还这么答，没人试过。
+> - **所有对索尼端点的调用都未经验证。** 鉴权和两个业务请求直接调用
+>   [`psn-api`](https://github.com/achievements-app/psn-api)（MIT）；响应规范化和错误处理
+>   仍只按它的类型与实现写成，没有用真实账号确认过索尼今天会怎么答。
 > - **站点侧的 `/api/ingest/playstation` 还不存在。** 下面那份信封是给它写的**契约草案**，
 >   不是已经实现的接口。所以这份上报器的主形态是 **dry-run**：不配站点地址就把本该
 >   POST 的信封打到 stdout。
@@ -69,8 +69,8 @@ PSN 没有给第三方的正经授权流程，只能借浏览器里那个 cookie
 2. **同一个浏览器**里访问 <https://ca.account.sony.com/api/v1/ssocookie>；
 3. 页面会回一小段 JSON：`{"npsso":"<64 位左右的一串>"}`，把 `npsso` 的值填进 `PSN_NPSSO`。
 
-（这个地址和这条路径出自 `psn-api@2.18.1 src/authenticate/exchangeNpssoForAccessCode.ts`
-的 JSDoc。上报器**不**替你去开浏览器，那串得手工取。）
+（这个地址也是 psn-api 文档给出的取值入口。上报器**不**替你去开浏览器，
+那串得手工取。）
 
 ### 两条运维警告
 
@@ -100,7 +100,6 @@ PSN 没有给第三方的正经授权流程，只能借浏览器里那个 cookie
 | `FULL_PUSH_INTERVAL_MS` | | 默认 `600000`，没变化也兜底整推的间隔 |
 | `RETRY_MS` | | 默认 `15000`，出错后第一次重试的间隔，之后每连错一次翻倍 |
 | `MAX_RETRY_MS` | | 默认 `600000`，退避封顶 |
-| `REQUEST_TIMEOUT_MS` | | 默认 `10000`，问 PSN 用 |
 | `PUSH_TIMEOUT_MS` | | 默认 `15000`，推站点用 |
 
 变量名跟两个邻居走（`SITE_URL` / `SITE_INGEST_URL` / `TELEMETRY_INGEST_SECRET`），
@@ -113,8 +112,8 @@ PSN 没有给第三方的正经授权流程，只能借浏览器里那个 cookie
 - 以 **0600** 写入，所在目录 0700；写法是「先写 `.tmp` 再 `rename`」，rename 是原子的，
   进程写到一半被 docker 干掉不会留下半份 JSON 把下次启动坑死；
 - `state/` 进同目录的 `.gitignore` 和 `.dockerignore`；
-- **任何日志都不打印 token 内容**，拿到新 token 时只说到期时刻；上游报错时只带状态码
-  和截断到 200 字的正文。换码那一步的 `Location` 头也不进日志 —— 那一串就是 access code。
+- **任何日志都不打印 token 内容**，拿到新 token 时只说到期时刻；上游报错时只带
+  普通错误文案。换码那一步的 access code 也不进日志。
 
 重启后先试状态文件里的 refresh token，被上游拒了才退回 NPSSO 重来一遍。
 **续期看半衰期**：过了「签发 → 到期」的中点就换新的，和 `workers/musickit-token`
@@ -174,7 +173,7 @@ emby 那份的 `resume` / `playing` / `images` 是同一个模式：缺席表示
 ```
 
 （这份样例是**模拟上游响应**跑出来的 dry-run 输出：把 `fetch` 换成返回索尼形状假数据的
-函数，假数据的字段和示例值取自 `psn-api@2.18.1` 的 `dist/index.d.ts` 里那些 `@example`
+函数，假数据的字段和示例值取自 `psn-api` 的 `dist/index.d.ts` 里那些 `@example`
 注释。它验证的是我们这侧的规范化，不是索尼真会这么答。）
 
 站点将来实现它时，几件已经定下来的事：
@@ -226,35 +225,17 @@ refresh token 存在名为 `playstation-state` 的卷里，挂在容器的 `/app
 
 **Docker 构建没验过**（写这份东西的机器上 docker daemon 没在跑）。
 
-## 常量都是从哪儿抄的
+## 为什么直接依赖 psn-api
 
-一个都不是凭记忆写的。`psn-api@2.18.1`（MIT，achievements-app/psn-api）的源码，
-逐条对应：
+索尼没有公开这些接口，OAuth 常量、端点和响应细节都来自逆向工程。上报器不再把它们
+复制进自己的源码，而是把鉴权交给 `exchangeNpssoForAccessCode`、
+`exchangeAccessCodeForAuthTokens`、`exchangeRefreshTokenForAuthTokens`，业务请求交给
+`getBasicPresence` 和 `getUserPlayedGames`。上游变化时可以直接跟进 psn-api 的维护版本，
+避免这里的一份副本无声失效。
 
-| 常量 / 端点 | 出处 |
-| --- | --- |
-| `https://ca.account.sony.com/api/authz/v3/oauth` | `src/authenticate/AUTH_BASE_URL.ts` |
-| client id `09515159-…`、`redirect_uri`、`scope`、`redirect: "manual"` 那套 | `src/authenticate/exchangeNpssoForAccessCode.ts` |
-| `Basic MDk1MTUx…`（手机端 App 的公开 client 凭据）、`token_format: "jwt"` | `src/authenticate/exchangeAccessCodeForAuthTokens.ts`、`src/authenticate/exchangeRefreshTokenForAuthTokens.ts` |
-| `https://m.np.playstation.com/api/userProfile/v1/internal/users` | `src/user/USER_BASE_URL.ts` 的 `USER_BASE_URL` |
-| `/:accountId/basicPresences?type=primary` | `src/user/getBasicPresence.ts` |
-| `https://m.np.playstation.com/api/gamelist/v2/users` | `src/user/USER_BASE_URL.ts` 的 `USER_GAMES_BASE_URL` |
-| `/:accountId/titles` + `limit` / `offset` / `categories` | `src/user/getUserPlayedGames.ts`、`src/utils/buildRequestUrl.ts` |
-| `Authorization: Bearer …` 的打法 | `src/utils/call.ts` |
-| 两个响应的字段名和示例值 | 随包发布的 `dist/index.d.ts`（`BasicPresenceResponse` / `UserPlayedGamesResponse`） |
-
-那个包不进依赖：**运行时零依赖**，fetch 用 Node 20 自带的，只实现上面这两个调用。
-包本身还有一路 GraphQL 的 `getRecentlyPlayedGames`（`web.np.playstation.com/api/graphql/v1/op`
-加一个 persisted query 的 `sha256Hash`），这份上报器**没有用** —— `…/titles` 已经
-给全了要的字段，多带一个反向工程出来的哈希只是多一处会哑掉的地方。
-
-源码是这么取的（`npm view psn-api version` 确认版本，包里只发 `dist`，原始 TS 在
-sourcemap 的 `sourcesContent` 里）：
-
-```bash
-curl -sL "$(npm view psn-api dist.tarball)" | tar xzf - -C /tmp
-node -e 'const m=require("/tmp/package/dist/index.mjs.map");m.sources.forEach((s,i)=>console.log(s))'
-```
+状态文件、过半衰期续期、single-flight、业务请求 401 后强制续一次、信封规范化和推送
+节奏仍由本上报器负责。psn-api 目前不会保留业务响应的 HTTP 状态码，401 会成为只带
+上游 `error.message` 的普通 `Error`，所以这里按未授权文案判别后重试一次。
 
 ## 不进容器直接跑
 

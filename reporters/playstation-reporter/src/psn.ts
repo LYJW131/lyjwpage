@@ -1,69 +1,31 @@
-import { AccessTokenRejected, accessToken } from "./auth.js";
+import {
+  getBasicPresence,
+  getUserPlayedGames,
+  type BasicPresenceResponse,
+  type UserPlayedGamesResponse,
+} from "psn-api";
+
+import { accessToken } from "./auth.js";
 import { config } from "./config.js";
 
 /**
- * 我们真正要打的两个 PSN 端点，以及把它们的回答规范化成信封里的形状。
- *
- * 端点和参数原样抄自 psn-api@2.18.1（MIT，achievements-app/psn-api），出处标在
- * 各自旁边；只抄这两个，不抄整个包 —— 运行时依赖保持为零，fetch 用 Node 20 自带的。
+ * 通过 psn-api 读取两份 PSN 数据，再把回答规范化成信封里的形状。
  *
  * **规范化全在这一侧做完**（AGENTS.md 第 4 条）：ISO 时间戳换成 epoch 毫秒、
  * ISO-8601 时长换成毫秒、大小写不一的平台名统一。站点收到的应该是一份可以直接
  * 落库的东西，而不是又一种要它去猜的方言。
  *
- * ⚠️ 这两个请求都**没有用真实凭据跑过**，下面的字段名来自 psn-api 的类型声明
- * （src/models/*.model.ts，随包发布的 dist/index.d.ts 里有完整注释和示例值），
- * 不是实测。所以读取一律走可选链 + 兜底，别指望上游一定给。
+ * ⚠️ 这两个请求都**没有用真实凭据跑过**。字段以 psn-api 的返回类型为准，但不是
+ * 实测，所以读取一律走可选链 + 兜底，别指望上游一定给。
  */
 
-/* ── 常量：全部抄自 psn-api@2.18.1 ─────────────────────────── */
-
-/** psn-api@2.18.1 src/user/USER_BASE_URL.ts 的 USER_BASE_URL */
-const USER_BASE_URL = "https://m.np.playstation.com/api/userProfile/v1/internal/users";
-
-/** psn-api@2.18.1 src/user/USER_BASE_URL.ts 的 USER_GAMES_BASE_URL */
-const USER_GAMES_BASE_URL = "https://m.np.playstation.com/api/gamelist/v2/users";
-
-/* ── 上游响应的形状（照 psn-api 的类型声明写，全部可选） ───── */
-
-type BasicPresenceResponse = {
-  basicPresence?: {
-    availability?: string;
-    lastAvailableDate?: string;
-    primaryPlatformInfo?: {
-      onlineStatus?: string;
-      platform?: string;
-      lastOnlineDate?: string;
-    };
-    gameTitleInfoList?: Array<{
-      npTitleId?: string;
-      titleName?: string;
-      /** 上游这里大小写是混的：`"ps4" | "PS5"`，见 dist/index.d.ts */
-      format?: string;
-      launchPlatform?: string;
-      npTitleIconUrl?: string;
-      conceptIconUrl?: string;
-    }>;
-  };
-};
-
-type UserPlayedGamesResponse = {
-  titles?: Array<{
-    titleId?: string;
-    name?: string;
-    localizedName?: string;
-    imageUrl?: string;
-    localizedImageUrl?: string;
-    category?: string;
-    playCount?: number;
-    firstPlayedDateTime?: string;
-    lastPlayedDateTime?: string;
-    /** ISO-8601 时长，例如 "PT228H56M33S" */
-    playDuration?: string;
-  }>;
-  totalItemCount?: number;
-  nextOffset?: number;
-};
+/** 类型声明是理想响应；运行时仍把每层都当作可能缺席，保留原型阶段的防御性读取。 */
+type Loose<T> =
+  T extends Array<infer Item>
+    ? Array<Loose<Item>>
+    : T extends object
+      ? { [Key in keyof T]?: Loose<T[Key]> }
+      : T;
 
 /* ── 规范化之后的形状（就是信封里的那份） ─────────────────── */
 
@@ -159,29 +121,15 @@ export function durationMs(raw: string | undefined): number | null {
 /* ── 请求 ──────────────────────────────────────────────────── */
 
 /**
- * 带 Bearer 打一个 PSN 端点。
- *
- * 401 单独成一类：那是这把 access token 不作数了（上游提前作废、或者我们算错了
- * 半衰期），调用方据此强制续一次再来，而不是干等下一轮。
+ * psn-api 的 call() 不检查 Response.status；业务函数发现响应里有 error 后，只把
+ * error.message 装进普通 Error，状态码和响应对象都不会保留。因此 401 只能按上游
+ * 的错误文案识别，不能再用 instanceof 或 status 判别。
  */
-async function psnFetch<T>(url: string, token: string): Promise<T> {
-  const response = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: "application/json",
-    },
-    signal: AbortSignal.timeout(config.requestTimeoutMs),
-  });
-
-  if (!response.ok) {
-    const body = (await response.text().catch(() => "")).slice(0, 200);
-    if (response.status === 401) {
-      throw new AccessTokenRejected(`access token 被拒（401）：${body}`);
-    }
-    throw new Error(`PSN 返回 ${response.status}：${body}`);
-  }
-
-  return (await response.json()) as T;
+function isAccessTokenRejected(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  return /(?:\b401\b|\bunauthori[sz]ed\b|access token.+(?:expired|invalid)|(?:expired|invalid).+access token)/i.test(
+    error.message,
+  );
 }
 
 /** 401 就强制续一把再打一次，只重来这一次 —— 再不行就是别的问题了 */
@@ -189,26 +137,16 @@ async function withToken<T>(load: (token: string) => Promise<T>): Promise<T> {
   try {
     return await load(await accessToken());
   } catch (error) {
-    if (!(error instanceof AccessTokenRejected)) throw error;
+    if (!isAccessTokenRejected(error)) throw error;
     return load(await accessToken(true));
   }
 }
 
-/**
- * 此刻在线 / 在玩什么。
- *
- * 端点抄自 psn-api@2.18.1 src/user/getBasicPresence.ts：
- * `USER_BASE_URL + "/:accountId/basicPresences?type=primary"`，
- * `:accountId` 由 src/utils/buildRequestUrl.ts 就地替换。
- */
+/** 此刻在线 / 在玩什么。 */
 export async function fetchPresence(): Promise<PresenceReport> {
-  const accountId = encodeURIComponent(config.psn.accountId);
-  const raw = await withToken((token) =>
-    psnFetch<BasicPresenceResponse>(
-      `${USER_BASE_URL}/${accountId}/basicPresences?type=primary`,
-      token,
-    ),
-  );
+  const raw = (await withToken((token) =>
+    getBasicPresence({ accessToken: token }, config.psn.accountId),
+  )) as Loose<BasicPresenceResponse>;
 
   const presence = raw.basicPresence;
   const primary = presence?.primaryPlatformInfo;
@@ -235,22 +173,16 @@ export async function fetchPresence(): Promise<PresenceReport> {
   };
 }
 
-/**
- * 玩过的游戏，上游按最近游玩倒序给。
- *
- * 端点抄自 psn-api@2.18.1 src/user/getUserPlayedGames.ts：
- * `USER_GAMES_BASE_URL + "/:accountId/titles"`，limit / offset / categories
- * 作查询参数（同样由 buildRequestUrl 拼）。这里只用 limit：要的是「最近在玩」，
- * 翻页把整个游戏库拉回来没有意义。
- */
+/** 玩过的游戏，上游按最近游玩倒序给。这里只取 limit，不翻整个游戏库。 */
 export async function fetchPlayedGames(): Promise<PlayedGamesReport> {
-  const accountId = encodeURIComponent(config.psn.accountId);
-  const raw = await withToken((token) =>
-    psnFetch<UserPlayedGamesResponse>(
-      `${USER_GAMES_BASE_URL}/${accountId}/titles?limit=${config.psn.playedGamesLimit}`,
-      token,
-    ),
-  );
+  // 2.18.1 的声明把 options 里的 offset 误写成必填，但实现会忽略缺席项；
+  // 这里只传 { limit }，和该函数的运行时约定及我们「不翻页」的意图一致。
+  const options = {
+    limit: config.psn.playedGamesLimit,
+  } as NonNullable<Parameters<typeof getUserPlayedGames>[2]>;
+  const raw = (await withToken((token) =>
+    getUserPlayedGames({ accessToken: token }, config.psn.accountId, options),
+  )) as Loose<UserPlayedGamesResponse>;
 
   const items: PlayedGame[] = [];
   for (const title of raw.titles ?? []) {

@@ -59,8 +59,8 @@ export const config = {
 
     /**
      * 要跟的账号。`"me"` 是 PSN 给「本次鉴权的那个账号」留的字面量
-     * （见 psn-api@2.18.1 src/user/getUserPlayedGames.ts 的 accountId 注释），
-     * 默认就用它，免得还要先去查自己的 accountId。
+     * （psn-api 的 getUserPlayedGames 类型注释也明确支持），默认就用它，
+     * 免得还要先去查自己的 accountId。
      */
     accountId: process.env.PSN_ACCOUNT_ID?.trim() || "me",
 
@@ -96,7 +96,6 @@ export const config = {
   retryMs: ms("RETRY_MS", 15_000),
   maxRetryMs: ms("MAX_RETRY_MS", 10 * 60_000),
 
-  requestTimeoutMs: ms("REQUEST_TIMEOUT_MS", 10_000),
   pushTimeoutMs: ms("PUSH_TIMEOUT_MS", 15_000),
 } as const;
 
