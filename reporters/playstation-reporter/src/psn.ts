@@ -1,6 +1,5 @@
 import {
   getBasicPresence,
-  getUserPlayedGames,
   type BasicPresenceResponse,
   type UserPlayedGamesResponse,
 } from "psn-api";
@@ -142,10 +141,20 @@ async function withToken<T>(load: (token: string) => Promise<T>): Promise<T> {
   }
 }
 
+/** PSN_LANGUAGE 非空时要带上的语言头。游戏名跟着它换官方译名 */
+function languageHeader(): { "Accept-Language": string } | undefined {
+  return config.psn.language ? { "Accept-Language": config.psn.language } : undefined;
+}
+
 /** 此刻在线 / 在玩什么。 */
 export async function fetchPresence(): Promise<PresenceReport> {
+  const language = languageHeader();
   const raw = (await withToken((token) =>
-    getBasicPresence({ accessToken: token }, config.psn.accountId),
+    getBasicPresence(
+      { accessToken: token },
+      config.psn.accountId,
+      language ? { headerOverrides: language } : undefined,
+    ),
   )) as Loose<BasicPresenceResponse>;
 
   const presence = raw.basicPresence;
@@ -173,16 +182,37 @@ export async function fetchPresence(): Promise<PresenceReport> {
   };
 }
 
+/**
+ * 「玩过的游戏」这一个请求不走 psn-api：它的 getUserPlayedGames 既不收
+ * headerOverrides（其余函数都收，明显是漏了），2.18.1 的实现也不给请求带任何头，
+ * `Accept-Language` 送不出去，游戏名就只剩英文。所以这里自己打同一个端点
+ * （URL 与 psn-api src/user/getUserPlayedGames.ts 一致），上游把口子补上就切回去。
+ */
+const USER_GAMES_BASE_URL = "https://m.np.playstation.com/api/gamelist/v2/users";
+
+async function requestPlayedGames(token: string): Promise<Loose<UserPlayedGamesResponse>> {
+  const accountId = encodeURIComponent(config.psn.accountId);
+  const response = await fetch(
+    `${USER_GAMES_BASE_URL}/${accountId}/titles?limit=${config.psn.playedGamesLimit}`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/json",
+        ...languageHeader(),
+      },
+    },
+  );
+  if (!response.ok) {
+    const body = (await response.text().catch(() => "")).slice(0, 200);
+    // 状态码放进文案：401 时 isAccessTokenRejected 按 \b401\b 认出来，强制续期重试一次
+    throw new Error(`PSN 返回 ${response.status}：${body}`);
+  }
+  return (await response.json()) as Loose<UserPlayedGamesResponse>;
+}
+
 /** 玩过的游戏，上游按最近游玩倒序给。这里只取 limit，不翻整个游戏库。 */
 export async function fetchPlayedGames(): Promise<PlayedGamesReport> {
-  // 2.18.1 的声明把 options 里的 offset 误写成必填，但实现会忽略缺席项；
-  // 这里只传 { limit }，和该函数的运行时约定及我们「不翻页」的意图一致。
-  const options = {
-    limit: config.psn.playedGamesLimit,
-  } as NonNullable<Parameters<typeof getUserPlayedGames>[2]>;
-  const raw = (await withToken((token) =>
-    getUserPlayedGames({ accessToken: token }, config.psn.accountId, options),
-  )) as Loose<UserPlayedGamesResponse>;
+  const raw = await withToken(requestPlayedGames);
 
   const items: PlayedGame[] = [];
   for (const title of raw.titles ?? []) {

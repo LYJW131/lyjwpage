@@ -92,6 +92,7 @@ PSN 没有给第三方的正经授权流程，只能借浏览器里那个 cookie
 | `PSN_ACCOUNT_ID` | | 默认 `me`，PSN 给「本次鉴权的那个账号」留的字面量，不用先去查自己的 accountId |
 | `PSN_STATE_FILE` | | 默认 `./state/auth.json`。token 状态文件，**0600**，进 `.gitignore` |
 | `PLAYED_GAMES_LIMIT` | | 默认 `20`，一次拉多少条已玩记录 |
+| `PSN_LANGUAGE` | | 默认 `zh-Hans`。请求 PSN 时的 `Accept-Language`，游戏名跟着它换官方译名（`zh-Hans` 下 Split Fiction 叫「双影奇境」，实测确认）。设成空串则不带这个头，上游默认给英文 |
 | `SITE_URL` | | 站点地址，如 `https://lyjw131.com`。端点路径由上报器自己拼成 `/api/ingest/playstation` |
 | `SITE_INGEST_URL` | | 直接给完整端点，给了就不用 `SITE_URL` |
 | `TELEMETRY_INGEST_SECRET` | | 和站点同名变量对上，作 Bearer 鉴权。站点没配时才可留空 |
@@ -229,9 +230,14 @@ refresh token 存在名为 `playstation-state` 的卷里，挂在容器的 `/app
 
 索尼没有公开这些接口，OAuth 常量、端点和响应细节都来自逆向工程。上报器不再把它们
 复制进自己的源码，而是把鉴权交给 `exchangeNpssoForAccessCode`、
-`exchangeAccessCodeForAuthTokens`、`exchangeRefreshTokenForAuthTokens`，业务请求交给
-`getBasicPresence` 和 `getUserPlayedGames`。上游变化时可以直接跟进 psn-api 的维护版本，
-避免这里的一份副本无声失效。
+`exchangeAccessCodeForAuthTokens`、`exchangeRefreshTokenForAuthTokens`，此刻在玩交给
+`getBasicPresence`。上游变化时可以直接跟进 psn-api 的维护版本，避免这里的一份副本
+无声失效。
+
+**唯一的例外是「玩过的游戏」那个请求**：psn-api 2.18.1 的 `getUserPlayedGames`
+不收 `headerOverrides`（其余函数都收，明显是漏了），实现里也不给请求带任何头，
+`Accept-Language` 送不出去，游戏名就只剩英文。所以 `src/psn.ts` 里对这一个端点
+自己发请求（URL 与 psn-api 一致），上游把口子补上就切回去。
 
 状态文件、过半衰期续期、single-flight、业务请求 401 后强制续一次、信封规范化和推送
 节奏仍由本上报器负责。psn-api 目前不会保留业务响应的 HTTP 状态码，401 会成为只带
