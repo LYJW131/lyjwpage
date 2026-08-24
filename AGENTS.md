@@ -11,11 +11,16 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 # API 命名
 
 加端点、加字段之前先对一遍这四条。这些是站点、`reporters/emby-reporter`、
-MacTelemetryHub、Home Assistant 四方共用的约定，改一处就得四处对齐。
+`reporters/iphone-telemetry-hub`、MacTelemetryHub、Home Assistant 五方共用的约定，
+改一处就得五处对齐。
 
 1. **`/api/ingest/<来源>`** —— 按**数据是谁产生的**命名，不是按上报程序命名。
-   现有的四个是 `mac`、`homepod`、`emby`、`apple-music`。Emby 那个曾经叫
+   现有的五个是 `mac`、`iphone`、`homepod`、`emby`、`apple-music`。Emby 那个曾经叫
    `emby-reporter`，泄漏了实现细节：换个代理程序名字就得跟着改。
+   `mac` 和 `iphone` 是**设备级**的两个遥测中心：一台设备一个入口、一个信封、
+   一个 `modules` 字典。所以充电头数据走 `mac`（观测它的是那台 Mac），活动圆环
+   走 `iphone`（采集它的是手表，但搬运和观测它的是那台手机）—— 别按数据里那个
+   牌子另开一个 URL 家族，`apple-health` 就是这么错过一次的。
    `apple-music` 那条两个方向都走：POST 交数据，GET 取上报器干活要用的凭据，
    同一把锁。上报器要从站点拿东西时优先这么办，别为它另开一个 URL 家族。
 2. **`/api/status/<主题>`** —— `X` 是列表 / 历史，`X/now` 是此刻。

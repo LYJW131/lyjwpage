@@ -559,3 +559,73 @@ export type PowerBankPayload = PowerBankStatus & {
   /** 这份数据自己的过期窗口；默认 90 秒，服务端可按上报间隔加长 */
   staleAfterMs: number;
 } & ReporterPresence;
+
+/**
+ * Apple Watch 的活动圆环：活动 / 锻炼 / 站立，一环两个数 —— 已完成和目标。
+ *
+ * **目标值跟着上报走，不在站点这侧写死。** 它只有原生 App 读得到
+ * （`HKActivitySummary`），而且是人随时会调的；写死在站点里的话，改一次目标
+ * 就要发一次版，还得两份部署一起改。
+ *
+ * 单位进字段名（AGENTS.md 第 4 条）：三环在 Apple 那边分别按千卡、分钟、小时
+ * 计，三种单位摆在一起时，光看 `move` / `moveGoal` 认不出该配哪个。
+ */
+export type ActivityRings = {
+  /** 活动：当天已消耗的活动能量，千卡 */
+  moveKcal: number;
+  moveGoalKcal: number;
+  /** 锻炼：当天累计的锻炼分钟数 */
+  exerciseMinutes: number;
+  exerciseGoalMinutes: number;
+  /** 站立：当天有站起来动过的小时数 */
+  standHours: number;
+  standGoalHours: number;
+};
+
+/**
+ * 一天的健身记录。和 `DesktopActivity` 没有关系 —— 那个是 Mac 的前台应用，
+ * 这里的「活动」是 Apple 的健身记录（Activity / 活动圆环）。
+ *
+ * `date` 是**手表本地的那一天**，站点绝不自己算：圆环在手表所在时区的午夜归零，
+ * 而源站的钟在美国、访客的钟在任何地方，两边都答不出「手表那边今天是几号」。
+ * `secondsFromGMT` 和 Mac 时区模块同名同单位（AGENTS.md 第 4 条），卡片拿它现算
+ * 「手表那边现在是不是还是这一天」—— 跨过午夜之后，这份满环说的就是昨天了。
+ */
+export type ActivityStatus = ActivityRings & {
+  /** 手表本地日，YYYY-MM-DD */
+  date: string;
+  /** 观测时手表所在时区的 UTC 偏移，秒 */
+  secondsFromGMT: number;
+  /** 当天步数。上报器没开这项权限时为 null，卡片整格不渲染 */
+  steps: number | null;
+  /** 当天步行 + 跑步距离，米 */
+  distanceMeters: number | null;
+  /** 当天爬楼层数 */
+  flightsClimbed: number | null;
+};
+
+/**
+ * 活动圆环对外那一份。
+ *
+ * **没有 `ReporterPresence`。** 这不是 Mac 上报器那种「一直在线才算数」的数据源：
+ * 手机整夜不动就没有新样本可推，那时圆环冻在最后一次推送上是正确的，不是掉线。
+ * 真正会让这份数据变错的只有一件事 —— 手表那边跨过了午夜，圆环已经归零而站点
+ * 还举着昨天那份，所以只盖 `currentAtSource` 这一个判定。
+ */
+export type ActivityPayload = ActivityStatus & {
+  /** 源站收到这份的时刻。卡片拿它写「几分钟前」，不用来判过期 */
+  pushedAt: number;
+  /**
+   * 源站在取数出口按自己的钟算的那一次「手表那边现在还是不是 `date` 这一天」。
+   *
+   * **这件事整个由源站算，浏览器不自己算一遍。** 和 `offlineAtSource` 那种
+   * 「首帧用它、之后浏览器接着算」的字段不一样：浏览器手上没有一个会走的钟
+   * （`useMountedAt` 是挂载那一刻的定格），拿它比日期的话，开着不动的标签页永远
+   * 停在挂载那一天，跨夜之后新到的**今天**那份反而会被判成「昨天的记录」。
+   *
+   * 它是数据字段，服务端预渲染和 hydrate 读到的是同一个值，不会水合不一致。
+   * 端点每次请求现算，所以卡片那 5 分钟一轮的轮询就是它的刷新节奏；冻住的首屏
+   * 那份最多旧 10 分钟（见 lib/status-cache），挂载时的那次回源会纠正它。
+   */
+  currentAtSource: boolean;
+};

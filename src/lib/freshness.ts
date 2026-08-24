@@ -46,6 +46,19 @@ export const LISTENING_STALE_MS = 30 * 60_000;
  */
 export const VIBECODING_STALE_MS = 15 * 60_000;
 
+/**
+ * `at` 这一刻，UTC 偏移为 `secondsFromGMT` 的地方是哪一天（YYYY-MM-DD）。
+ *
+ * 摆在这个文件里是因为它前后端各算一遍：服务端在取数出口盖 `currentAtSource`
+ * 供首帧用，浏览器挂载后拿自己的钟再算一次。两处必须是同一段代码 —— 各写一遍
+ * 的话，跨夜那一下两边会各给各的答案。
+ *
+ * 也放在这里而不是 lib/activity：那个文件连着 Redis，客户端组件 import 不得。
+ */
+export function localDate(at: number, secondsFromGMT: number): string {
+  return new Date(at + secondsFromGMT * 1000).toISOString().slice(0, 10);
+}
+
 /** 充电头默认上报 30 秒，3 倍没消息就算这份数据断了。服务端可用环境变量加长。 */
 export const CHARGER_STALE_MS = 90_000;
 
