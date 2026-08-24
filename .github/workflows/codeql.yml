@@ -7,8 +7,9 @@
 # generate 再对着模拟器编（不签名 —— CI 没有设备，也申请不了带
 # HealthKit 的描述文件）。
 #
-# 合进默认分支之后，把仓库 Settings → Code security 里 CodeQL 的
-# default setup 关掉，否则 JS/TS 会扫两遍。
+# 这个文件和 GitHub 的 CodeQL default setup 不能同时开：advanced
+# 交上去的 SARIF 会被拒（"cannot be processed when the default setup
+# is enabled"）。仓库里 default setup 已经关掉。
 name: CodeQL
 
 on:
@@ -46,6 +47,16 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # brew 必须在 CodeQL init 之前。init 会注入 DYLD_INSERT_LIBRARIES
+      # 做编译 tracing，brew 会以为自己跑在 Rosetta 下，拒绝往
+      # /opt/homebrew 装东西。
+      - name: Install XcodeGen
+        if: matrix.language == 'swift'
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: "1"
+        run: brew install xcodegen
+
       - uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
@@ -57,12 +68,7 @@ jobs:
       - name: Build iPhone Telemetry Hub
         if: matrix.build-mode == 'manual'
         working-directory: reporters/iphone-telemetry-hub
-        env:
-          # Homebrew 在非交互 CI 里会抱怨最新 Xcode，关掉以免把日志打满
-          HOMEBREW_NO_AUTO_UPDATE: "1"
-          HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: "1"
         run: |
-          brew install xcodegen
           xcodegen generate
           xcodebuild \
             -project iPhoneTelemetryHub.xcodeproj \
