@@ -1,0 +1,6 @@
+# token 状态文件绝不进镜像 —— 镜像会被推来推去，那里面是明文 token
+state/
+node_modules/
+dist/
+.env
+.env.*
