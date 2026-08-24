@@ -1,0 +1,80 @@
+# GitHub 默认 CodeQL 会扫到 reporters/iphone-telemetry-hub 里的 Swift，
+# 但 autobuild 只在仓库根目录找 .xcodeproj / Package.swift。这个工程的
+# .xcodeproj 是 xcodegen 从 project.yml 生成的，故意不入库，所以默认
+# 配置一扫 Swift 就失败（autobuild: no-project-found）。
+#
+# 这里改成 advanced setup：JS/TS 和 Actions 还是 none，Swift 自己
+# generate 再对着模拟器编（不签名 —— CI 没有设备，也申请不了带
+# HealthKit 的描述文件）。
+#
+# 合进默认分支之后，把仓库 Settings → Code security 里 CodeQL 的
+# default setup 关掉，否则 JS/TS 会扫两遍。
+name: CodeQL
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+  schedule:
+    # 跟默认配置一样每周跑一次，免得某次推送没扫到
+    - cron: "27 4 * * 1"
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+  packages: read
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: javascript-typescript
+            build-mode: none
+            os: ubuntu-latest
+          - language: actions
+            build-mode: none
+            os: ubuntu-latest
+          - language: swift
+            build-mode: manual
+            os: macos-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+
+      # 必须发生在 init 之后：CodeQL 靠 tracing 编译器调用才能抽 Swift。
+      # 装到真机那套（对着具体设备、自动签名、HealthKit 描述文件）在
+      # GitHub-hosted runner 上跑不了，见 build-install.sh 里那段注释。
+      - name: Build iPhone Telemetry Hub
+        if: matrix.build-mode == 'manual'
+        working-directory: reporters/iphone-telemetry-hub
+        env:
+          # Homebrew 在非交互 CI 里会抱怨最新 Xcode，关掉以免把日志打满
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: "1"
+        run: |
+          brew install xcodegen
+          xcodegen generate
+          xcodebuild \
+            -project iPhoneTelemetryHub.xcodeproj \
+            -scheme iPhoneTelemetryHub \
+            -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/iphone-telemetry-hub-codeql" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY= \
+            build
+
+      - uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:${{ matrix.language }}"
