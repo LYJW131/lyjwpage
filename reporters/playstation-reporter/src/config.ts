@@ -66,6 +66,13 @@ export const config = {
 
     /** 「最近在玩」一次要多少条。站点将来大概也只展示十来条 */
     playedGamesLimit: count("PLAYED_GAMES_LIMIT", 20),
+
+    /**
+     * 请求 PSN 时带的 Accept-Language，决定游戏名给哪种语言的官方译名
+     * （zh-Hans 下《Split Fiction》叫「双影奇境」，实测确认）。站点是中文的，
+     * 默认就要中文名；设成空串则不带这个头，上游默认给英文。
+     */
+    language: (process.env.PSN_LANGUAGE ?? "zh-Hans").trim(),
   },
 
   /**
