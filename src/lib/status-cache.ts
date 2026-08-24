@@ -1,5 +1,6 @@
 import { cacheLife, cacheTag } from "next/cache";
 
+import { getActivitySnapshot } from "@/lib/activity";
 import { getChargerSnapshot, withChargerFreshness } from "@/lib/anker";
 import { getPowerBankSnapshot, withPowerBankFreshness } from "@/lib/powerbank";
 import { statusEnvelope, statusSource } from "@/lib/api";
@@ -7,6 +8,7 @@ import { getRecentlyPlayed } from "@/lib/apple-music-store";
 import { getNowWatching, getWatching } from "@/lib/emby";
 import { getGithubChart } from "@/lib/github-chart";
 import {
+  ACTIVITY_TAG,
   CHARGER_TAG,
   POWERBANK_TAG,
   DESKTOP_TAG,
@@ -126,6 +128,20 @@ export async function cachedPowerBankSnapshot() {
   return statusEnvelope(getPowerBankSnapshot);
 }
 
+/**
+ * 活动圆环。一份缓存同时喂首屏和状态端点 —— 这份没有充电头那种「首屏裁一段、
+ * 端点给全量」的分歧，圈就那六个数。
+ *
+ * 「跨没跨过午夜」在这里会被冻住（最长 10 分钟），端点那侧每次请求重新盖一遍，
+ * 见 app/api/status/activity 和 lib/activity 的 withActivityFreshness。
+ */
+export async function cachedActivity() {
+  "use cache";
+  cacheLife(STATUS_LIFE);
+  cacheTag(ACTIVITY_TAG);
+  return statusEnvelope(getActivitySnapshot);
+}
+
 export async function cachedVibeCoding() {
   "use cache";
   cacheLife(STATUS_LIFE);
@@ -202,6 +218,7 @@ export async function cachedGithubChart() {
 export const desktopStatus = statusSource(cachedDesktop, getDesktopPayload);
 export const chargerStatus = statusSource(cachedChargerSnapshot, getChargerSnapshot);
 export const powerBankStatus = statusSource(cachedPowerBankSnapshot, getPowerBankSnapshot);
+export const activityStatus = statusSource(cachedActivity, getActivitySnapshot);
 export const vibeCodingStatus = statusSource(cachedVibeCoding, getVibeCodingSnapshot);
 export const vibeCodingYearStatus = statusSource(cachedVibeCodingYear, getVibeCodingYear);
 export const listeningStatus = statusSource(cachedListening, getRecentlyPlayed);

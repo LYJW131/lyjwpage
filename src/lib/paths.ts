@@ -32,3 +32,8 @@ export const NOW_WATCHING_PATH = "/api/status/watching/now";
 /** 贡献热力图。没有推送；浏览器按长间隔和切回焦点来问，切回带游标。 */
 export const GITHUB_CHART_PATH = "/api/status/github-chart";
 
+/**
+ * 活动圆环。没有推送 —— 圈以分钟为尺度涨，广播它就是拿推送当轮询用，
+ * 所以这个键只会被轮询和首屏填。
+ */
+export const ACTIVITY_PATH = "/api/status/activity";

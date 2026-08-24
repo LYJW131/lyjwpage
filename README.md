@@ -1,6 +1,6 @@
 # lyjwpage
 
-个人主页。信息展示 + 实时状态：**最近在看**（Emby）、**最近在听**（Apple Music）、**充电设备**（Anker Prime 160W 充电头 / A110G 充电宝）、**Vibe Coding**（Claude Code + Codex）。
+个人主页。信息展示 + 实时状态：**最近在看**（Emby）、**最近在听**（Apple Music）、**充电设备**（Anker Prime 160W 充电头 / A110G 充电宝）、**Vibe Coding**（Claude Code + Codex）、**活动圆环**（Apple Watch）。
 
 ## 技术栈
 
@@ -97,7 +97,7 @@ Worker（都在 `workers/` 下）。**推 main 时 CI 只把有改动的那几�
 
 Redis TCP 连接按请求作用域租用：同一 Node 实例里的并发请求共用一条，最后一个请求和命令结束后主动断开。不能让 ioredis 永久单例留在 serverless 实例里——实例暂停时普通 idle timer 不会跑，旧部署和 Preview 会各留一条空闲连接。Preview 必须不配 Redis 或使用独立 `REDIS_URL`；`REDIS_PREFIX` 只隔离键，不隔离连接额度。
 
-各路数据全是**推进来**的，本站不主动轮询任何上游。推送入口共用 `/api/ingest/*` 和同一个 `TELEMETRY_INGEST_SECRET`，状态落在 `lib/redis.ts` 的 mirrorKey 里（Redis 为主、进程内存为辅，没配 `REDIS_URL` 也能跑）。四个上报侧：Mac Telemetry Hub、Home Assistant（HomePod）、Emby 推送代理、Apple Music 上报器。上报器只跟一个源站说话，收到的那份会把请求原样转给对端部署，见[上面那节](#两份生产之间靠传播上报对齐)。
+各路数据全是**推进来**的，本站不主动轮询任何上游。推送入口共用 `/api/ingest/*` 和同一个 `TELEMETRY_INGEST_SECRET`，状态落在 `lib/redis.ts` 的 mirrorKey 里（Redis 为主、进程内存为辅，没配 `REDIS_URL` 也能跑）。五个上报侧：Mac Telemetry Hub、iPhone Telemetry Hub、Home Assistant（HomePod）、Emby 推送代理、Apple Music 上报器。前两个是**设备级的遥测中心**：一台设备一个入口、一个信封、一个 `modules` 字典。上报器只跟一个源站说话，收到的那份会把请求原样转给对端部署，见[上面那节](#两份生产之间靠传播上报对齐)。
 
 站点仍会出网的只剩两处，都走 `src/lib/cache.ts`（带 TTL、in-flight 去重和 5 秒负缓存）：① 给此刻在播的曲子查一个可跳转的地址；② GitHub 贡献热力图（`lib/github-chart`，TTL 10 分钟）去 `api.github.com/graphql` 取日历 —— 它是唯一没有上报方的一路数据，只能自己拉。**核心原则：前端轮询多快，回源频率都不变**，由各自的 TTL 决定。值存 Redis（进程重启和多实例共享）；in-flight 去重始终在进程内，它挡的是同一进程的并发穿透，Redis 代劳不了。
 
@@ -307,7 +307,7 @@ Claude/Codex 订阅账单。上报摘要不含提示词、回复、session ID、
 POST /api/ingest/mac
 ```
 
-请求采用唯一的 `version: 4` envelope，顶层带 `heartbeatAt`、`presence`（`online` / `offline`）和 `activeModules`；模块名固定为 `chargingDevices`、`desktop`、`appleMusic`、`appleMusicCredentials`、`timezone`、`vibeCodingUsage`、`vibeCodingNow` 和 `vibeCodingYear`，`modules` 只携带发生变化的模块。`activeModules` 是**开关**清单（vibe coding 只有一个开关，写作 `vibeCoding`），和模块名不是一套东西。前台应用图标始终带 SHA-256，二进制只在该哈希尚未被服务端保存时上传。
+请求采用唯一的 `version: 4` envelope，顶层带 `heartbeatAt`、`presence`（`online` / `offline`）和 `activeModules`；模块名固定为 `chargingDevices`、`desktop`、`appleMusic`、`appleMusicCredentials`、`timezone`、`vibeCodingUsage`、`vibeCodingNow` 和 `vibeCodingYear`，`modules` 只携带发生变化的模块。`activeModules` 是**开关**清单（vibe coding 只有一个开关，写作 `vibeCoding`），和模块名不是一套东西。充电头和充电宝多一条：开关开着**还要那条 BLE 真连着**才会列出来 —— 别的模块的数据源和上报器在同一个进程里，信封发得出去就证明源还在；这两个的读数来自蓝牙那头，链路断了 App 照样发心跳。站点拿这份清单给充电头续期（`prepareHeartbeat`），所以清单不诚实的后果是：充电头断了好几天，`charger:lastPush` 还在被每轮刷新，`withChargerFreshness` 那条「多久没推就算断流」永远判不出来。**「连着但安静」仍然算 active** —— 那正是续期存在的理由，只有「没连上」才消失。前台应用图标始终带 SHA-256，二进制只在该哈希尚未被服务端保存时上传。
 
 上面那些模块的指纹一个都没变时，发的是**空 `modules` 的信封**，也就是一次纯心跳：只刷新存活，不动任何模块的时间戳。心跳无变化时每 ≥30 秒一条，有数据要发时不补——那个包本身就证明上报器活着。这个间隔正在往 90 秒放宽（纯心跳是 `/api/ingest/mac` 的主要流量）：**站点这侧先把存活窗口放宽到 5 分钟，上报器再降频**，顺序反了会有一段时间全站断续显示离线。
 
@@ -315,7 +315,7 @@ POST /api/ingest/mac
 
 各模块的指纹粒度决定了「无变化」有多容易达成：`chargingDevices`（充电头和充电宝在同一个列表里）含功率/电压/电流，充电中几乎每轮都变；`desktop` 是应用名 + bundleID + 图标，不切应用就不变；`appleMusic` 的进度**不入签名**，所以播放中也不变，只有 seek 偏离锚点超过容差才算；`timezone` 只有 IANA 标识、当前 UTC 偏移或缩写变化时才重发；两个 vibe coding 模块各看自己那份载荷有没有变，`vibeCodingUsage` 带着采集时刻所以每轮必发，`vibeCodingNow` 在没动过键盘的那些轮次里一动不动。真正的零 telemetry 场景是充电头和充电宝都没动静（没在充也没在放）、不切前台应用、音乐不换曲不 seek、时区不变、vibe coding 采集器未刷新——此时只有每 30 秒一条空 `modules` 的心跳。
 
-前台应用图标由 Mac 一次缩放成 96px PNG（系统原生编码，不依赖任何外部二进制）并直传 R2，网站只接收对象键 `<sha256>.png`、HEAD 确认后组出公开直链。**没有服务端接收图片二进制的回退**：`iconData` 一旦出现在信封里就直接报错。`iconHash` 标识「哪个应用的图标」（应用有图标就非空，编码或上传失败也照样有），对象键标识「哪份字节」，两者分开才能让站点回执区分「这个应用没图标」和「图标还没准备好」——从前它们是同一个哈希，编码一失败就静默丢图、永不重试。状态里只存公开直链，普通状态心跳不会重复携带图片。时区模块只上传 IANA 标识、当前偏移和缩写，不上传地址。时区只进首屏，没有 status 端点。公开读取按用途拆开，以 `src/app/api/status/` 下的目录为准：`/api/status/desktop`、`/api/status/charger`、`/api/status/powerbank`、`/api/status/listening`、`/api/status/listening/now`、`/api/status/watching`、`/api/status/watching/now`、`/api/status/vibecoding`、`/api/status/vibecoding/year`、`/api/status/github-chart`。最后那条不由任何上报器喂，是站点自己去 GitHub GraphQL 取的（所以它是唯一不参与 tag 失效的一条），其余都对应上面某个模块。
+前台应用图标由 Mac 一次缩放成 96px PNG（系统原生编码，不依赖任何外部二进制）并直传 R2，网站只接收对象键 `<sha256>.png`、HEAD 确认后组出公开直链。**没有服务端接收图片二进制的回退**：`iconData` 一旦出现在信封里就直接报错。`iconHash` 标识「哪个应用的图标」（应用有图标就非空，编码或上传失败也照样有），对象键标识「哪份字节」，两者分开才能让站点回执区分「这个应用没图标」和「图标还没准备好」——从前它们是同一个哈希，编码一失败就静默丢图、永不重试。状态里只存公开直链，普通状态心跳不会重复携带图片。时区模块只上传 IANA 标识、当前偏移和缩写，不上传地址。时区只进首屏，没有 status 端点。公开读取按用途拆开，以 `src/app/api/status/` 下的目录为准：`/api/status/desktop`、`/api/status/charger`、`/api/status/powerbank`、`/api/status/listening`、`/api/status/listening/now`、`/api/status/watching`、`/api/status/watching/now`、`/api/status/vibecoding`、`/api/status/vibecoding/year`、`/api/status/activity`、`/api/status/github-chart`。倒数第二条来自 iPhone Telemetry Hub（见下面那节），最后那条不由任何上报器喂，是站点自己去 GitHub GraphQL 取的（所以它是唯一不参与 tag 失效的一条），其余都对应上面某个模块。
 
 ### HomePod mini 播放实况
 
@@ -408,6 +408,88 @@ telemetry_ingest_authorization: "Bearer <TELEMETRY_INGEST_SECRET>"
 `artworkUrl` 收的是 Home Assistant 的 `entity_picture`，那是一个带 `cache` 参数的代理地址。
 接收端只提取其中公开的 Apple CDN URL，并把 `{w}`、`{h}`、`{f}` 占位符替换成
 `600`、`600`、`jpg` 后交给前端；Home Assistant 的局域网地址和代理 token 不会公开。
+
+### iPhone Telemetry Hub — 活动圆环
+
+手机上的遥测中心，和 Mac 那个是同一个骨架：一个入口、一个信封、只带这次变了的模块。
+源码在 `reporters/iphone-telemetry-hub`（SwiftUI，怎么装见那边的 README）。
+眼下只有一个模块 —— 手表全天戴着，三环（活动 / 锻炼 / 站立）和当天步数：
+
+```text
+POST /api/ingest/iphone
+Authorization: Bearer <TELEMETRY_INGEST_SECRET>
+```
+
+```json
+{
+  "version": 1,
+  "modules": {
+    "activity": {
+      "date": "2026-08-24",
+      "secondsFromGMT": 28800,
+      "moveKcal": 69,
+      "moveGoalKcal": 270,
+      "exerciseMinutes": 1,
+      "exerciseGoalMinutes": 30,
+      "standHours": 2,
+      "standGoalHours": 10,
+      "steps": 719,
+      "distanceMeters": 527,
+      "flightsClimbed": 12
+    }
+  }
+}
+```
+
+**端点按观测数据的那台设备命名**（AGENTS.md 第 1 条）。圆环其实是手表采的、Apple 健康
+汇总的，但搬运和观测它的是这台 iPhone —— 和 `/api/ingest/mac` 一个道理：那边的充电头
+数据出自 Anker 的充电器，照样走 `mac`。这条路一开始叫 `/api/ingest/apple-health`，
+那时它是个只报健康的单一用途 App；改成遥测中心之后旧路由直接删了，不留兼容路径。
+
+**骨架照抄 Mac，字段不照抄。** 那份信封还带 `heartbeatAt` / `presence` /
+`activeModules`，这里一个都没有：它们在那边成立是因为 Mac 上跑的是常驻进程 ——
+心跳能证明它还活着，`activeModules` 能让充电头在没有新读数时继续续命。iPhone 上这个
+App 平时**根本不在运行**，是 HealthKit 有新数据时才把它拉起来。照搬那三个字段只会让
+站点以为自己能判断手机在不在线，而它判不了。版本号也从 1 起，不接着 Mac 的 4：
+两套协议各活各的，共用一个号只会让人以为改一边要跟着改另一边。
+
+回执是 `{accepted, ignored}`。`ignored` 是收到了但站点不认识的模块名 —— 手机上装了
+带新模块的版本、而站点还没部署时，唯一看得见这件事的地方就是它，否则表现是「那份数据
+一直没出现」而两边都不报错。
+
+| 字段 | 说明 |
+| --- | --- |
+| `date` | **手表本地**的那一天，YYYY-MM-DD。从 summary 自己的 `dateComponents` 推，不是另拿 `Date()` 算的 —— 午夜前后两者会差一天 |
+| `secondsFromGMT` | 当前时区的 UTC 偏移，秒。和 Mac 时区模块同名同单位（AGENTS.md 第 4 条） |
+| 三环六个数 | 已完成 + 目标。**目标是从 `HKActivitySummary` 读的真目标**，不是站点配的常量；必须为正，手表当天还没有 summary 时上报器整封不发 |
+| `steps` / `distanceMeters` / `flightsClimbed` | 选填。取不到时整个字段不出现（站点存 `null`，卡片整格不渲染），和「今天是 0」分得开 |
+
+一开始接的是 [Health Auto Export](https://apps.apple.com/app/id1115567069) 那个成熟的
+第三方 App，换成自己写的只为一条：**它导不出三环的目标值**。它导的是 HealthKit 的样本，
+而目标在 `HKActivitySummary` 里，只有原生 App 读得到 —— 于是目标只能配成站点这侧的环境
+变量，手表上调一次就要改两份生产的配置，同一个数从此有两个来源。实测那三个目标是
+270 / 30 / 10，和写死的缺省值 500 / 30 / 12 差得很远。
+
+**每封都是当天的全量绝对值**，站点整份替换、后到的就是对的，没有「旧的不许盖新的」那道闸。
+它和上报器那侧「失败了不补发」是一对：哪天给上报器加了后台重试队列，这里就得把顺序闸
+一起加回来。按日期挡也不行 —— 往西飞过日界线时本地日会往回走一天，而手表上的圈确实跟着回去了。
+
+**日期是手表本地的那一天，站点绝不自己算。** 圆环在手表所在时区的午夜归零，而源站的钟
+在美国、访客的钟在任何地方。跨过午夜之后卡片把圈画淡、写明「X 月 X 日的记录」，而不是举着
+昨天那份满环装作是今天的。这个判定**整个由源站在取数出口现算**（`currentAtSource`），
+浏览器不自己算一遍：它手上没有一个会走的钟（`useMountedAt` 是挂载那一刻的定格），
+拿它比日期的话，开着不动的标签页永远停在挂载那一天，跨夜之后新到的**今天**那份反而
+会被判成「昨天的记录」—— 正好把这个判定用反。代价是跨过午夜后最多晚一轮轮询（5 分钟）
+才翻，端点每次请求现算，所以轮询就是它的刷新节奏。
+
+**这条链路上没有实时推送，卡片 5 分钟轮询一次。** 圈以分钟为尺度涨，为它开一路广播就是
+拿推送当轮询用（和时区模块同一个判断：失效是白给的，广播才是按人头付钱的）。而且上报侧
+的天花板在 HealthKit —— **后台投递按小时节流**（`HKObserverQuery` 传 `.immediate` 也会被钳到
+`.hourly`），App 不在前台时最快也就一小时一份。5 分钟轮询已经是十几倍的过采样。
+
+同样因为这个节流，这张卡**不跟任何「上报器在不在线」挂钩**：手机整夜不动就是没有新样本
+可推，那时圈冻在最后一次推送上是正确的，不是掉线。状态灯只表达「最近 90 分钟有没有更新过」
+—— 这个窗口是按上报侧那个小时级节流定的，留了半小时余量。
 
 ## 改内容
 

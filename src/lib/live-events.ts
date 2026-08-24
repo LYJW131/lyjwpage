@@ -113,6 +113,11 @@ export const VIBECODING_TAG = "vibecoding";
 export const VIBECODING_YEAR_TAG = "vibecoding-year";
 export const LISTENING_TAG = "listening";
 export const NOW_LISTENING_TAG = "listening-now";
+/**
+ * 活动圆环。和时区一样只有失效、没有推送事件 —— 圈以分钟为尺度涨，为它开一路
+ * 广播就是拿推送当轮询用。卡片按长间隔轮询，命中的是这份被上报刷新过的缓存。
+ */
+export const ACTIVITY_TAG = "activity";
 export const WATCHING_TAG = "watching";
 export const NOW_WATCHING_TAG = "watching-now";
 
