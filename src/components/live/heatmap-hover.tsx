@@ -48,8 +48,13 @@ export function useHeatmapOpen<T extends { date: string }>() {
   const delayRef = useRef<number | null>(null);
   const [hover, setHover] = useState<T | null>(null);
   const [preview, setPreview] = useState<T | null>(null);
+  /** 当前展开的是哪一格。previewCell 要在事件处理里读它，读 state 会慢一拍 */
+  const previewRef = useRef<T | null>(null);
   const [pinned, setPinned] = useState<T | null>(null);
   const shown = pinned ?? preview;
+  useEffect(() => {
+    previewRef.current = preview;
+  }, [preview]);
   const hotDate = hover?.date ?? pinned?.date ?? null;
 
   const clearDelay = useCallback(() => {
@@ -74,6 +79,16 @@ export function useHeatmapOpen<T extends { date: string }>() {
       setHover(cell);
       // 钉住时描边跟着光标走，但浮层不换格
       if (pinned) return;
+      /**
+       * **已经展开在这一格上就什么都不做。**
+       *
+       * 格子上同时挂着 onFocus 和 onClick，而点击时浏览器**先给焦点、后发 click**。
+       * 少了这道闸，点下去的顺序是：onFocus → 收起浮层 + 排 120ms → onClick → 重新展开，
+       * 中间那一段就是肉眼可见的「先隐藏又显示」。指针在格子上停稳过的话必然踩中。
+       *
+       * 顺带也挡住了同一格里的鼠标移动反复重排定时器 —— 那会让浮层迟迟不出现。
+       */
+      if (previewRef.current?.date === cell.date) return;
       clearDelay();
       setPreview(null);
       delayRef.current = window.setTimeout(() => {
