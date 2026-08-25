@@ -1,5 +1,4 @@
 import Image from "next/image";
-import Link from "next/link";
 
 import { PsPlusBadge } from "@/components/trophies/ps-plus";
 import { TrophyMetal, trophyTypeLabel } from "@/components/trophies/trophy-metal";
@@ -32,7 +31,8 @@ function Count({ type, value }: { type: TrophyType; value: number }) {
 
 /**
  * 首屏提要。只吃服务端裁过的摘要，不订阅 /api/status/trophies ——
- * 那个端点是整份目录，和这里的形状不是一份，塞进同一个 SWR 键会互相冲掉。
+ * 那个端点是整份目录，点瓷砖展开才去拉；和这里的形状不是一份，
+ * 塞进同一个 SWR 键会互相冲掉。
  */
 export function TrophyTeaser({
   fallback,
@@ -48,11 +48,9 @@ export function TrophyTeaser({
   const recent = data.recent[0];
 
   return (
-    <Link
-      href="/trophies"
+    <div
       className={cn(
         "flex flex-col gap-3 px-3 py-3 sm:flex-row sm:items-center sm:gap-5",
-        "transition-colors hover:bg-surface-hover",
         embedded
           ? "border-b border-line"
           : "paper-card mb-3 border border-line-strong bg-surface",
@@ -119,7 +117,7 @@ export function TrophyTeaser({
                   alt=""
                   width={20}
                   height={20}
-                  unoptimized
+                  sizes="20px"
                   className="h-5 w-5 shrink-0 object-cover"
                 />
               ) : null}
@@ -131,10 +129,7 @@ export function TrophyTeaser({
             <div className="mt-0.5 text-xs text-muted-foreground">{data.titleCount} 款游戏</div>
           )}
         </div>
-        {embedded ? null : (
-          <span className="label-mono shrink-0 text-foreground">陈列室 →</span>
-        )}
       </div>
-    </Link>
+    </div>
   );
 }

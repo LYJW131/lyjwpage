@@ -14,7 +14,9 @@ crons = ["*/15 * * * *"]
 [vars]
 PSN_LANGUAGE = "zh-Hans"
 PSN_ACCOUNT_ID = "me"
-PLAYED_GAMES_LIMIT = "20"
+PLAYED_GAMES_LIMIT = "100"
+# 三角洲行动、明日方舟：终末地
+PLAYSTATION_HIDDEN_TITLE_IDS = "PPSA28884_00,PPSA18538_00"
 # Cloudflare 全球网络直连 Vercel 主站，EdgeOne 由站点 ingest 中继同步。
 SITE_URL = "https://lyjw.me"
 # SITE_INGEST_URL = "https://lyjw131.com/api/ingest/playstation"

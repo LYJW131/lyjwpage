@@ -9,16 +9,18 @@ Cloudflare Worker 上的 PSN 上报器：每 15 分钟顺序读取一次「此�
 
 ## 调度与状态
 
-只有一个 Cron Trigger：`*/15 * * * *`。每轮顺序执行：
+只有一个 Cron Trigger：`*/15 * * * *`。`wrangler dev` 不会自己响这根 cron，
+本地要刷新就 `GET /tick`。每轮顺序执行：
 
 1. 读取 presence；
 2. 复用同一轮拿到的 token，分页拉全份 played games（带 `Accept-Language`）；
 3. 分页拉购买库（PS4 / PS5），把 `service` / 预购接到游玩列表；没开过档的预购
-   追加在最近窗口之后，不混进「最近 20」；
+   追加在最近窗口之后，不混进 `PLAYED_GAMES_LIMIT`；
 4. 比对奖杯总览指纹；变了才拉明细，并用官方
    `getUserTrophiesForSpecificTitle` 把 `titleId`（PPSA…）接到
    `npCommunicationId`（NPWR…），同一奖杯组的多个 SKU 时长相加，中文名取自游玩列表；
-5. 推给站点的最近游玩仍按 `PLAYED_GAMES_LIMIT` 切开，再接上未开档预购；
+5. 按 `PLAYSTATION_HIDDEN_TITLE_IDS` 去掉屏蔽的 titleId（不上报），再按
+   `PLAYED_GAMES_LIMIT`（默认 100）切开，接上未开档预购；
 6. 只把发生变化的部分装进同一个 v1 信封；都没变就不推。
 
 没有 30 秒 / 5 分钟双节奏，也没有定时兜底整推。状态全部放在绑定 `STATE` 的 Workers
@@ -64,7 +66,9 @@ NPSSO 是 Worker secret `PSN_NPSSO`，可以缺席：KV 的 `auth` 里还有有�
 
 ## 语言与规范化
 
-`PSN_LANGUAGE` 在 `wrangler.toml` 的 `[vars]` 中默认是 `zh-Hans`。presence 和
+`PSN_LANGUAGE` 在 `wrangler.toml` 的 `[vars]` 中默认是 `zh-Hans`。
+`PLAYED_GAMES_LIMIT` 默认 100。`PLAYSTATION_HIDDEN_TITLE_IDS` 是逗号分隔的
+titleId，屏蔽的游戏不上报、不占窗口；改这份名单会重推奖杯目录。presence 和
 奖杯接口通过 psn-api 的 `headerOverrides` 发送 `Accept-Language`。
 
 「玩过的游戏」仍是唯一例外：psn-api 2.18.1 的 `getUserPlayedGames` 不接

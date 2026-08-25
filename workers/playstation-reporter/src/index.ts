@@ -1,5 +1,12 @@
 import { AuthSession } from "./auth";
-import { isDryRun, playedGamesLimit, type Env } from "./env";
+import {
+  hiddenTitleIds,
+  isDryRun,
+  playedGamesLimit,
+  titleIdsHidden,
+  withoutHiddenTitleIds,
+  type Env,
+} from "./env";
 import {
   fetchPlayedGames,
   fetchPresence,
@@ -71,8 +78,13 @@ async function tick(env: Env): Promise<TickResult> {
         env.STATE.get(TROPHIES_FINGERPRINT_KEY),
       ]);
 
+    const hidden = hiddenTitleIds(env);
     const auth = new AuthSession(env);
-    const presence = await fetchPresence(env, auth);
+    const rawPresence = await fetchPresence(env, auth);
+    const presence =
+      rawPresence.playing && hidden.has(rawPresence.playing.titleId)
+        ? { ...rawPresence, playing: null }
+        : rawPresence;
     const playedGames = await fetchPlayedGames(env, auth);
     let library: LibraryTitle[] = [];
     try {
@@ -90,11 +102,15 @@ async function tick(env: Env): Promise<TickResult> {
         JSON.stringify({ event: "playstation-library", error: explain(error) }),
       );
     }
-    const entitledPlayed = overlayLibrary(playedGames, library);
+    const overlaid = overlayLibrary(playedGames, library);
+    const entitledPlayed = {
+      ...overlaid,
+      items: withoutHiddenTitleIds(overlaid.items, hidden),
+    };
     const recentPlayedGames = withUnplayedPreorders(
       recentPlayed(entitledPlayed, env),
       entitledPlayed,
-      library,
+      withoutHiddenTitleIds(library, hidden),
     );
     const nextPresenceFingerprint = presenceFingerprint(presence);
     const nextPlayedGamesFingerprint = playedGamesFingerprint(recentPlayedGames);
@@ -104,9 +120,21 @@ async function tick(env: Env): Promise<TickResult> {
     let nextTrophiesFingerprint = oldTrophiesFingerprint;
     try {
       const index = await fetchTrophyIndex(env, auth);
-      nextTrophiesFingerprint = index.fingerprint;
-      if (index.fingerprint !== oldTrophiesFingerprint) {
-        trophies = await fetchTrophies(env, auth, entitledPlayed, index);
+      // 屏蔽名单也进指纹：改 ID 才会重推目录，把旧 Redis 里的那几款换掉。
+      nextTrophiesFingerprint = JSON.stringify({
+        hidden: [...hidden].sort(),
+        drop: "after-link",
+        body: index.fingerprint,
+      });
+      if (nextTrophiesFingerprint !== oldTrophiesFingerprint) {
+        // 对齐必须看见完整游玩列表，否则屏蔽的 titleId 对不上、空 titleIds 会漏出去。
+        const fetched = await fetchTrophies(env, auth, overlaid, index);
+        trophies = hidden.size
+          ? {
+              ...fetched,
+              titles: fetched.titles.filter((title) => !titleIdsHidden(title.titleIds, hidden)),
+            }
+          : fetched;
         trophiesChanged = true;
       }
     } catch (error) {

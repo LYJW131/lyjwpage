@@ -32,8 +32,9 @@ export const PLAYING_PATH = "/api/status/playing";
 export const NOW_PLAYING_PATH = "/api/status/playing/now";
 
 /**
- * 奖杯陈列室。没有「此刻」—— 解锁不是按秒翻面的事，不配 /now，
+ * 奖杯目录。没有「此刻」—— 解锁不是按秒翻面的事，不配 /now，
  * 也不走推送（整份目录几百 KB，广播它就是把推送当轮询用）。
+ * 首页点瓷砖才拉这一份。
  */
 export const TROPHIES_PATH = "/api/status/trophies";
 

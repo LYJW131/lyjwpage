@@ -3,6 +3,8 @@ export interface Env {
   PSN_LANGUAGE?: string;
   PSN_ACCOUNT_ID?: string;
   PLAYED_GAMES_LIMIT?: string;
+  /** 逗号或空白分隔的 titleId（PPSA… / CUSA…），不上报、不占最近窗口。 */
+  PLAYSTATION_HIDDEN_TITLE_IDS?: string;
   SITE_URL?: string;
   SITE_INGEST_URL?: string;
   PSN_NPSSO?: string;
@@ -24,7 +26,25 @@ export function accountId(env: Env): string {
 }
 
 export function playedGamesLimit(env: Env): number {
-  return positiveInteger(env.PLAYED_GAMES_LIMIT, 20);
+  return positiveInteger(env.PLAYED_GAMES_LIMIT, 100);
+}
+
+export function hiddenTitleIds(env: Env): Set<string> {
+  const raw = env.PLAYSTATION_HIDDEN_TITLE_IDS?.trim() ?? "";
+  if (!raw) return new Set();
+  return new Set(raw.split(/[,\s]+/).map((id) => id.trim()).filter(Boolean));
+}
+
+export function withoutHiddenTitleIds<T extends { titleId: string }>(
+  items: T[],
+  hidden: Set<string>,
+): T[] {
+  if (!hidden.size) return items;
+  return items.filter((item) => !hidden.has(item.titleId));
+}
+
+export function titleIdsHidden(titleIds: readonly string[], hidden: Set<string>): boolean {
+  return hidden.size > 0 && titleIds.some((id) => hidden.has(id));
 }
 
 export function language(env: Env): string {
