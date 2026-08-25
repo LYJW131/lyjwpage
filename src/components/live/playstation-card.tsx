@@ -5,7 +5,7 @@ import Image from "next/image";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { GameFlags, PlatformMarks } from "@/components/trophies/game-flags";
-import { TrophyExpand, titlesForTile, useTrophyCatalog } from "@/components/trophies/trophy-details";
+import { TrophyExpand, useTrophyCatalog } from "@/components/trophies/trophy-details";
 import { TrophyMetal } from "@/components/trophies/trophy-metal";
 import { StatusDot } from "@/components/ui/status-dot";
 import { useLiveEvents } from "@/hooks/use-live-events";
@@ -24,7 +24,7 @@ import {
   STATIC_TRANSITION,
   STATIC_VARIANTS,
 } from "@/lib/motion";
-import { NOW_PLAYING_PATH, PLAYING_PATH } from "@/lib/paths";
+import { NOW_PLAYING_PATH, PLAYING_FIRST_PATH, PLAYING_PATH } from "@/lib/paths";
 import type {
   PlaystationGame,
   PlaystationPlayingPayload,
@@ -432,7 +432,20 @@ export function PlaystationRow({
   titles?: TrophyTitleDigest[] | null;
 }) {
   useLiveEvents();
-  const list = useStatus<PlaystationPlayingPayload>(PLAYING_PATH, LIST_REFRESH_MS, { fallback });
+  /**
+   * 轨道一被滑动就永久换成全量那个键（渐进补齐，见 lib/paths 的两个 playing 键）。
+   * 首屏只烧前 N 条，而剩下的那些要看见就得先滑 —— 滑这一下就是「我要往后看」。
+   *
+   * 换键不闪：前 N 条是全量的前缀，useStatus 里的 keepPreviousData 会把手上这份
+   * 顶到全量回来为止，瓷砖只是从后面接上，前面那些一个都不动。
+   * 不进 localStorage：下次进页仍该先付首屏那份，滑不滑是那一次的事。
+   */
+  const [wantsFull, setWantsFull] = useState(false);
+  const list = useStatus<PlaystationPlayingPayload>(
+    wantsFull ? PLAYING_PATH : PLAYING_FIRST_PATH,
+    LIST_REFRESH_MS,
+    { fallback },
+  );
   const presence = useStatus<PlaystationPresencePayload>(NOW_PLAYING_PATH, NOW_REFRESH_MS, {
     fallback: nowFallback,
   });
@@ -442,8 +455,9 @@ export function PlaystationRow({
   const scrollerRef = useRef<HTMLDivElement>(null);
   const liveTitleId = tiles[0]?.live ? tiles[0].titleId : null;
   const [openId, setOpenId] = useState<string | null>(null);
-  const catalog = useTrophyCatalog(openId != null);
   const openTile = tiles.find((tile) => tile.titleId === openId) ?? null;
+  // 展开哪块瓷砖就只问那块的奖杯：它的 titleIds 直接是端点的切片参数
+  const catalog = useTrophyCatalog(openTile?.titleIds ?? null);
   const [openBodyRef, openHeight] = useOpenHeight(
     openId,
     catalog.isLoading || catalog.titles || catalog.error,
@@ -504,6 +518,9 @@ export function PlaystationRow({
         tabIndex={0}
         role="region"
         aria-label="最近在玩"
+        // 一次就够，之后这个键不再变。上面那次 scrollTo(0) 不会误触发：已经在 0 上
+        // 的滚动不产生事件，不在 0 上说明用户本来就滑过了
+        onScroll={wantsFull ? undefined : () => setWantsFull(true)}
         className={cn(
           "scroll-smooth overflow-x-auto overscroll-x-contain",
           "scrollbar-none [&::-webkit-scrollbar]:hidden",
@@ -551,9 +568,7 @@ export function PlaystationRow({
               <div className="mt-3 border-t border-line pt-3">
                 <TrophyExpand
                   name={openTile.name}
-                  titles={
-                    catalog.titles ? titlesForTile(openTile.titleIds, catalog.titles) : undefined
-                  }
+                  titles={catalog.titles}
                   loading={catalog.isLoading}
                   error={catalog.error}
                   // 摘要来了、里面没这款，才算「没有奖杯」；摘要没来只是不知道

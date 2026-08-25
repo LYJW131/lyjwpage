@@ -20,13 +20,16 @@ import {
   NOW_LISTENING_PATH,
   NOW_PLAYING_PATH,
   NOW_WATCHING_PATH,
+  PLAYING_FIRST_PATH,
   PLAYING_PATH,
+  PLAYING_TILE_LIMIT,
   VIBECODING_PATH,
   WATCHING_PATH,
 } from "@/lib/paths";
 import type {
   ChargerPayload,
   DesktopPayload,
+  PlaystationPlayingPayload,
   StatusResponse,
   VibeCodingNowPayload,
   WatchingItem,
@@ -93,6 +96,8 @@ const FORWARDS: ReadonlyArray<{
   event: LiveEvent["type"];
   path: string;
   merge?: (data: unknown) => unknown | null;
+  /** 同一份数据还要按另一种形状写进第二个键，见 playing 那行 */
+  also?: { path: string; shape: (data: unknown) => unknown };
 }> = [
   { event: "desktop", path: DESKTOP_PATH },
   { event: "listening-now", path: NOW_LISTENING_PATH },
@@ -108,7 +113,25 @@ const FORWARDS: ReadonlyArray<{
   { event: "listening", path: LISTENING_PATH },
   { event: "watching", path: WATCHING_PATH },
   { event: "playing-now", path: NOW_PLAYING_PATH },
-  { event: "playing", path: PLAYING_PATH },
+  /**
+   * 最近游玩有两个键：滑过轨道的那些标签页读全量，没滑过的读首屏那份前 N 条
+   * （见 lib/paths）。两个都写，谁在看哪一个都跟着推送翻。
+   *
+   * 切片在浏览器这侧做，服务端推的仍是全量：一条广播发给所有在线的标签页，
+   * 而每个标签页此刻读的是哪个键只有它自己知道 —— 服务端按其中一种切了发，
+   * 另一种就再也收不到推送。
+   */
+  {
+    event: "playing",
+    path: PLAYING_PATH,
+    also: {
+      path: PLAYING_FIRST_PATH,
+      shape: (data) => {
+        const payload = data as PlaystationPlayingPayload;
+        return { ...payload, items: payload.items.slice(0, PLAYING_TILE_LIMIT) };
+      },
+    },
+  },
   /**
    * 充电头只在插拔、换设备时来事件。曲线的合并走和轮询同一个累加器
    * （lib/charger-history）：推来的那份不带历史点（空增量），所以合并只是把
@@ -174,17 +197,23 @@ const INVALIDATION_BY_EVENT = new Map(INVALIDATIONS.map((entry) => [entry.event,
 /** live-push Worker 广播过来的信封，形状就是服务端那份 LiveEvent */
 type Incoming = { type: LiveEvent["type"]; payload: unknown };
 
+/** 一个键写一份。代数按键各记各的 —— 同一份数据写进两个键也是两条独立的时间线 */
+function writePushed(mutate: ScopedMutator, path: string, data: unknown): void {
+  const envelope: StatusResponse<unknown> = { ok: true, data };
+  // 登记这一代，好让之后回来的旧轮询结果被挡掉（lib/live-freshness）。
+  // 顺手也挡住乱序到达的推送本身
+  if (!rememberPushed(path, envelope)) return;
+  void mutate(path, envelope, { revalidate: false });
+}
+
 function dispatch(mutate: ScopedMutator, message: Incoming): void {
   const forward = FORWARD_BY_EVENT.get(message.type);
   if (forward) {
     const localized = localizeAssets(message.type, message.payload);
     const data = forward.merge ? forward.merge(localized) : localized;
     if (data == null) return;
-    const envelope: StatusResponse<unknown> = { ok: true, data };
-    // 登记这一代，好让之后回来的旧轮询结果被挡掉（lib/live-freshness）。
-    // 顺手也挡住乱序到达的推送本身
-    if (!rememberPushed(forward.path, envelope)) return;
-    void mutate(forward.path, envelope, { revalidate: false });
+    writePushed(mutate, forward.path, data);
+    if (forward.also) writePushed(mutate, forward.also.path, forward.also.shape(data));
     return;
   }
 

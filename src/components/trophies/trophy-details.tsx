@@ -8,7 +8,7 @@ import useSWR from "swr";
 
 import { TrophyMetal } from "@/components/trophies/trophy-metal";
 import { LIST_TRANSITION, STATIC_TRANSITION } from "@/lib/motion";
-import { TROPHIES_PATH } from "@/lib/paths";
+import { trophiesTilePath } from "@/lib/paths";
 import { site } from "@/lib/site";
 import type { StatusResponse, TrophiesPayload, Trophy, TrophyTitle } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -73,14 +73,23 @@ async function fetchCatalog(path: string): Promise<StatusResponse<TrophiesPayloa
   return response.json();
 }
 
-/** 点开瓷砖才拉整份目录，不进首屏 HTML。关掉面板 SWR 仍留着缓存。 */
-export function useTrophyCatalog(enabled: boolean) {
+/**
+ * 点开瓷砖才拉奖杯明细，不进首屏 HTML；拉的也只是这块瓷砖对上的那 1–2 款
+ * （服务端按 titleIds 切，键就是切片本身，见 lib/paths 的 trophiesTilePath）。
+ * 每块打开过的瓷砖各占一个键，关掉面板 SWR 仍留着那份缓存。
+ *
+ * `null` 表示当前没有展开的瓷砖，不取数。
+ *
+ * 从前整份目录只有一个键，可以开 keepPreviousData；现在键跟着展开的瓷砖走，
+ * 开着就是在 B 的面板里摆着 A 的奖杯，直到 B 那次请求回来 —— 宁可显示加载态。
+ */
+export function useTrophyCatalog(titleIds: string[] | null) {
+  const key = titleIds ? trophiesTilePath(titleIds) : null;
   const { data, error, isLoading } = useSWR<StatusResponse<TrophiesPayload>>(
-    enabled ? TROPHIES_PATH : null,
+    key,
     fetchCatalog,
     {
-      refreshInterval: enabled ? CATALOG_REFRESH_MS : 0,
-      keepPreviousData: true,
+      refreshInterval: key ? CATALOG_REFRESH_MS : 0,
       shouldRetryOnError: false,
     },
   );
@@ -89,10 +98,6 @@ export function useTrophyCatalog(enabled: boolean) {
     error: data && !data.ok ? data.error : error ? String(error.message ?? error) : undefined,
     isLoading,
   };
-}
-
-export function titlesForTile(titleIds: string[], catalog: TrophyTitle[]): TrophyTitle[] {
-  return catalog.filter((title) => title.titleIds.some((id) => titleIds.includes(id)));
 }
 
 /**
