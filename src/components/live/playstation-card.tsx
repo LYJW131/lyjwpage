@@ -70,11 +70,22 @@ function useOpenHeight(openId: string | null, contentToken: unknown) {
     }
     const el = ref.current;
     if (!el) return;
-    const sync = () => setHeight(expandTargetHeight(el));
+    const sync = () => {
+      const next = expandTargetHeight(el);
+      if (next > 0) setHeight(next);
+    };
     sync();
+    const raf = requestAnimationFrame(sync);
     const observer = new ResizeObserver(sync);
     observer.observe(el);
-    return () => observer.disconnect();
+    const wrap = el.querySelector("[data-trophy-groups-wrap]");
+    const inner = el.querySelector("[data-trophy-groups]");
+    if (wrap) observer.observe(wrap);
+    if (inner) observer.observe(inner);
+    return () => {
+      cancelAnimationFrame(raf);
+      observer.disconnect();
+    };
   }, [openId, contentToken]);
 
   return [ref, height] as const;
@@ -531,7 +542,7 @@ export function PlaystationRow({
             transition={reduced ? STATIC_TRANSITION : LIST_TRANSITION}
             className="overflow-hidden"
           >
-            <div ref={openBodyRef} className="overflow-hidden">
+            <div ref={openBodyRef} className="min-h-max overflow-hidden">
               <div className="mt-3 border-t border-line pt-3">
                 <TrophyExpand
                   name={openTile.name}
