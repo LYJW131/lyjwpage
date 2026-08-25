@@ -218,7 +218,7 @@ function GroupSlot({
       className="overflow-hidden"
     >
       {cached.current.length ? (
-        <div data-trophy-groups="" aria-hidden={!open}>
+        <div data-trophy-groups="" className="pb-2" aria-hidden={!open}>
           <GroupStrip groups={cached.current} resetKey={resetKey} />
         </div>
       ) : null}
@@ -254,7 +254,7 @@ function GroupStrip({
       role="region"
       aria-label="奖杯组"
       className={cn(
-        "mb-2 scroll-smooth overflow-x-auto overscroll-x-contain",
+        "scroll-smooth overflow-x-auto overscroll-x-contain",
         "snap-x snap-mandatory",
         "scrollbar-none [&::-webkit-scrollbar]:hidden",
       )}
