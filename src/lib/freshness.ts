@@ -47,6 +47,29 @@ export const LISTENING_STALE_MS = 30 * 60_000;
 export const VIBECODING_STALE_MS = 15 * 60_000;
 
 /**
+ * PlayStation 上报 Worker 每 15 分钟一轮 cron，**每轮都发 presence**（内容没变
+ * 也发，那一封就是心跳）。所以「多久没刷新」等价于「Worker 还活着没有」。
+ * 窗口取三轮多一点：漏一两轮不该让卡片翻脸，连着三轮没到才算 Worker 死了、
+ * 或者 PSN 把它的令牌拒了。
+ *
+ * 45 分钟之外还要再宽一截给缓存：端点读的是 'use cache' 那份快照，心跳只推
+ * 普通 tag（stale-while-revalidate），拿到手的 observedAt 可能比 Redis 里那份
+ * 旧一个刷新周期。3 × 15 = 45，留到 50。上报器那侧改 cron 间隔时这里要跟着改。
+ *
+ * 服务端可用 PLAYSTATION_STALE_MS 改。这一路没有 declaredOffline 可用 ——
+ * Worker 悄悄死掉和主机关机长得一模一样，只能靠这个窗口分开，而分不开的那半
+ * （到底在不在玩）就该老实说不知道，不是说不在线。
+ */
+export const PLAYSTATION_STALE_MS = 50 * 60_000;
+
+export function playstationStaleMs() {
+  const configured = Number(process.env.PLAYSTATION_STALE_MS);
+  return Number.isFinite(configured) && configured > 0
+    ? configured
+    : PLAYSTATION_STALE_MS;
+}
+
+/**
  * `at` 这一刻，UTC 偏移为 `secondsFromGMT` 的地方是哪一天（YYYY-MM-DD）。
  *
  * 摆在这个文件里是因为它前后端各算一遍：服务端在取数出口盖 `currentAtSource`

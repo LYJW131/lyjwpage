@@ -79,7 +79,6 @@ export function TrophyTeaser({
               alt={data.profile.onlineId}
               width={40}
               height={40}
-              sizes="40px"
               className="h-10 w-10 rounded-full object-cover"
             />
           ) : (
@@ -99,7 +98,7 @@ export function TrophyTeaser({
 
       <div className="grid flex-1 grid-cols-4 gap-2 sm:gap-4">
         {TYPES.map((type) => (
-          <Count key={type} type={type} value={data.profile.earned[type]} />
+          <Count key={type} type={type} value={data.earned[type]} />
         ))}
       </div>
 
@@ -117,7 +116,6 @@ export function TrophyTeaser({
                   alt=""
                   width={20}
                   height={20}
-                  sizes="20px"
                   className="h-5 w-5 shrink-0 object-cover"
                 />
               ) : null}

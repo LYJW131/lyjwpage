@@ -146,7 +146,12 @@ export function statusSource<T>(
  * 错误。
  *
  * overlay 在取数之外跑：给存活这种心跳更新、以及跟着墙上的钟走的判定（暂停宽限、
- * HomePod 静默）现盖一层。取数降级了就把降级信封原样发出去，不盖。
+ * HomePod 静默、PlayStation presence 断流）现盖一层。取数降级了就把降级信封原样
+ * 发出去，不盖。
+ *
+ * overlay 自己抛出来的也走同一个信封，不往上抛：现算这一层同样可能得出「这份
+ * 现在不作数」的结论（断流就是），而那和上游挂了是同一类事，不该变成 500 把
+ * 整页 SWR 打成错误态。抛 AwaitingReport 就只记一行，理由见那个类。
  */
 async function statusResponse<T, U>(
   load: () => Promise<StatusResponse<T>>,
@@ -156,7 +161,7 @@ async function statusResponse<T, U>(
   return withRedisScope(async () => {
     const envelope = await load();
     if (!envelope.ok || !overlay) return statusJson(envelope);
-    return statusJson({ ok: true, data: await overlay(envelope.data) });
+    return statusJson(await statusEnvelope(async () => overlay(envelope.data)));
   });
 }
 

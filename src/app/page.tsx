@@ -25,6 +25,7 @@ import {
   cachedVibeCodingYear,
   cachedWatching,
 } from "@/lib/status-cache";
+import { withPresenceFreshness } from "@/lib/playstation";
 
 export default async function Home() {
   /**
@@ -65,7 +66,7 @@ export default async function Home() {
     cachedWatching(),
     cachedNowWatching(),
     cachedPlaying(),
-    cachedPlayingNow(),
+    cachedPlayingNow().then(withPresenceFreshness),
     cachedTrophiesSummary(),
     cachedGithubChart(),
   ]);

@@ -127,6 +127,12 @@ export const ACTIVITY_TAG = "activity";
 export const WATCHING_TAG = "watching";
 export const NOW_WATCHING_TAG = "watching-now";
 export const PLAYING_TAG = "playing";
+/**
+ * PlayStation presence。唯一一个**心跳也会失效**的 tag：Worker 每轮 cron 都发一封
+ * presence，内容没变那封只刷 observedAt —— 不推这个 tag 的话快照里的时刻跟着冻住，
+ * 端点判不出断流（见 lib/playstation 的 assertPresenceFresh）。没变时走普通那半，
+ * 只有内容真变了才 urgent。
+ */
 export const NOW_PLAYING_TAG = "playing-now";
 /** 奖杯目录。只有失效，没有推送事件，理由见 paths 的 TROPHIES_PATH。 */
 export const TROPHIES_TAG = "trophies";
@@ -327,6 +333,16 @@ export function fanout({
   tags = [],
   urgentTags = [],
 }: Fanout): Promise<void> {
+  /**
+   * 同一个 tag 两边都进时，urgent 赢。
+   *
+   * 一封信封里两份数据都变、而它们共用一个 tag 时会撞上（PlayStation 的
+   * playedGames 和 trophies 就是），从前正确性靠下面两行 revalidateTag 的先后
+   * 顺序 —— 而「后调用的那次说了算」是 Next 的实现细节，不是它承诺的事。
+   * 普通那半只是给旧值一个宽限期，urgent 说的是「下一次必须是新的」，
+   * 弱的那条不能把强的盖回去。
+   */
+  const staleTags = tags.filter((tag) => !urgentTags.includes(tag));
   return afterResponse(async () => {
     try {
       await Promise.all([...writes, ...events.map(publishPending)]);
@@ -339,7 +355,7 @@ export function fanout({
     } finally {
       // 写抛出来了也照样失效、照样通知：已经落库的那几份不该继续被旧缓存遮着，
       // 存活翻转本身也是这封信封确实带来的变化
-      if (tags.length) expireStatus(...tags);
+      if (staleTags.length) expireStatus(...staleTags);
       if (urgentTags.length) expireStatusImmediately(...urgentTags);
       // 先失效再通知：浏览器收到就回源，那一趟得读到已经失效的缓存
       if (notify.length) await Promise.all(notify.map(publishPending));

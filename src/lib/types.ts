@@ -178,7 +178,15 @@ export type TrophiesSummaryPayload = {
   observedAt: number;
   profile: TrophyProfile;
   defined: TrophyCounts;
+  /**
+   * 已解锁的四色合计，从 `titles` 逐金属加总 —— **别读 `profile.earned`**。
+   * 那个是账号级的数，而 titles 被上报 Worker 的屏蔽名单滤过：两边不同源，
+   * 屏蔽名单一非空 earned/defined 就偏高，屏蔽掉的是已通关的游戏时还能越过 100%。
+   * profile 里的等级、点数照旧读 profile，那些本来就是账号级的事实。
+   */
+  earned: TrophyCounts;
   titleCount: number;
+  /** `countTrophies(earned)`。和 `defined` 同源，可以直接相除。 */
   earnedCount: number;
   recent: TrophyUnlock[];
   titles: TrophyTitleDigest[];
