@@ -415,8 +415,10 @@ function pickSlotLimit(limits: VibeCodingLimit[], slot: "session" | "weekly") {
 }
 
 /**
- * 紧凑行那一条限额。Codex 固定看 7 天窗；其余仍取最紧的那条。
- * 周窗缺席时退回 busiestLimit，别让这一行整条空白。
+ * 紧凑行那一条限额。Codex 看周档：优先 `weekly_all`，它缺席就退到 limits 里
+ * 第一条周档（专项窗不算，limitSlot 已经把它们判成 null）—— 所以这一档跟着
+ * 上游给的排列走，并不钉死在 7 天窗上。其余的仍取最紧的那条。
+ * 周档整个缺席时退回 busiestLimit，别让这一行整条空白。
  */
 function compactLimit(agent: VibeCodingAgent, now: number) {
   if (agent.id === "codex") {

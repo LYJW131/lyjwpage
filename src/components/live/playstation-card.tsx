@@ -206,7 +206,8 @@ function GameTile({
     <button
       type="button"
       aria-expanded={selected}
-      aria-controls="playstation-trophies"
+      // 面板只有一个、还只在展开时挂上：没开就别指、也别让别的瓷砖指着它
+      aria-controls={selected ? "playstation-trophies" : undefined}
       onClick={onSelect}
       className={cn(
         "flex h-full w-full cursor-pointer items-center overflow-hidden rounded-md text-left",
@@ -221,7 +222,6 @@ function GameTile({
             alt={tile.name}
             width={112}
             height={112}
-            sizes="112px"
             loading={eager ? "eager" : "lazy"}
             className="h-28 w-28 object-cover"
           />
@@ -246,7 +246,8 @@ function GameTile({
               {tile.subtitle || "—"}
             </span>
           )}
-          <GameFlags preOrder={tile.preOrder} plain className="shrink-0" />
+          {/* 这行只标预购，Plus 交给下面的平台标，同一张瓷砖不打两遍 */}
+          <GameFlags service={null} preOrder={tile.preOrder} plain className="shrink-0" />
         </div>
         <PlatformMarks platforms={tile.platforms} service={tile.service} className="mt-1" />
         {trophies && metals.length ? (
@@ -419,12 +420,16 @@ function buildTiles(
 export function PlaystationRow({
   fallback,
   nowFallback,
-  titles = [],
+  titles = null,
 }: {
   fallback: StatusResponse<PlaystationPlayingPayload>;
   nowFallback: StatusResponse<PlaystationPresencePayload>;
-  /** 首页摘要里的各标题进度；不含逐个奖杯。 */
-  titles?: TrophyTitleDigest[];
+  /**
+   * 首页摘要里的各标题进度；不含逐个奖杯。
+   * `null` 是「摘要本身没来」，空数组是「摘要来了、一款都没有」——
+   * 后者才允许断言某张瓷砖没有奖杯，所以默认给 null，别让漏传的调用者撞上前者。
+   */
+  titles?: TrophyTitleDigest[] | null;
 }) {
   useLiveEvents();
   const list = useStatus<PlaystationPlayingPayload>(PLAYING_PATH, LIST_REFRESH_MS, { fallback });
@@ -432,7 +437,7 @@ export function PlaystationRow({
     fallback: nowFallback,
   });
 
-  const tiles = buildTiles(list.data, presence.data, titles);
+  const tiles = buildTiles(list.data, presence.data, titles ?? []);
   const reduced = useReducedMotion();
   const scrollerRef = useRef<HTMLDivElement>(null);
   const liveTitleId = tiles[0]?.live ? tiles[0].titleId : null;
@@ -551,7 +556,8 @@ export function PlaystationRow({
                   }
                   loading={catalog.isLoading}
                   error={catalog.error}
-                  knownEmpty={openTile.trophies == null}
+                  // 摘要来了、里面没这款，才算「没有奖杯」；摘要没来只是不知道
+                  knownEmpty={titles != null && openTile.trophies == null}
                 />
               </div>
             </div>

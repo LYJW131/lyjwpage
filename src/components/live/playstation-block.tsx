@@ -33,7 +33,8 @@ export function PlaystationBlock({
         <PlaystationRow
           fallback={playing}
           nowFallback={playingNow}
-          titles={trophies.ok ? (trophies.data.titles ?? []) : []}
+          // 摘要取不到就传 null：那是「不知道」，传空数组会被读成「每款都没奖杯」
+          titles={trophies.ok ? (trophies.data.titles ?? []) : null}
         />
       </div>
     </Card>

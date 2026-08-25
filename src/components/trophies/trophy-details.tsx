@@ -150,12 +150,7 @@ function TrophyRow({ trophy }: { trophy: Trophy }) {
     (trophy.earned && trophy.earnedAt ? formatStamp(trophy.earnedAt) : "未解锁");
   const rarity = trophy.earnedRate != null ? rarityLabel(trophy.earnedRate) : null;
   return (
-    <div
-      className="flex h-full items-center gap-2.5 rounded-md px-2 transition-colors hover:bg-surface-hover"
-      aria-label={
-        hidden ? "隐藏奖杯，未解锁" : locked ? `${trophy.name}，未解锁` : trophy.name
-      }
-    >
+    <div className="flex h-full items-center gap-2.5 rounded-md px-2 transition-colors hover:bg-surface-hover">
       <div
         className={cn(
           "relative size-11 shrink-0 overflow-hidden rounded-sm border border-line bg-muted",
@@ -194,6 +189,8 @@ function TrophyRow({ trophy }: { trophy: Trophy }) {
           >
             {hidden ? "隐藏奖杯" : trophy.name}
           </span>
+          {/* 未解锁只靠灰阶和半透明表达，读屏取不到，补一句文本 */}
+          {locked ? <span className="sr-only">未解锁</span> : null}
         </div>
         <div
           className="truncate text-xs text-muted-foreground"
@@ -228,7 +225,9 @@ function GroupSlot({
       className="overflow-hidden"
     >
       {cached.current.length ? (
-        <div data-trophy-groups="" className="pb-2" aria-hidden={!open}>
+        // 收起时高度是 0 但节点还在：光 aria-hidden 挡不住 tab 键，焦点还是能
+        // 落进这条看不见的横滚区。inert 一次把 tab 序和读屏都摘掉。
+        <div data-trophy-groups="" className="pb-2" inert={!open}>
           <GroupStrip groups={cached.current} resetKey={resetKey} />
         </div>
       ) : null}
@@ -334,7 +333,10 @@ export function TrophyExpand({
   titles: TrophyTitle[] | undefined;
   loading: boolean;
   error?: string;
-  /** 首页摘要里这张卡就没有奖杯组，不必先铺 5 行再收。 */
+  /**
+   * 摘要**收到了**、里面这张卡就没有奖杯组，于是不必先铺 5 行再收。
+   * 摘要本身没来（信封 !ok）时必须是 false —— 那是「不知道」，不是「没有」。
+   */
   knownEmpty?: boolean;
 }) {
   const trophies = titles?.flatMap((title) =>
@@ -353,36 +355,33 @@ export function TrophyExpand({
         : [],
     ) ?? [];
   const listRef = useRowSnap(trophies?.[0]?.key);
+  const empty = (
+    <div className="text-sm leading-snug text-muted-foreground">
+      {name} 还没有奖杯记录
+    </div>
+  );
 
-  if (knownEmpty || (!trophies?.length && titles)) {
-    return (
-      <div className="text-sm leading-snug text-muted-foreground">
-        {name} 还没有奖杯记录
-      </div>
-    );
+  // 目录还没到，才轮到摘要和加载态说话
+  if (!titles) {
+    // 只有摘要确实说过「这张卡没有奖杯组」时，才敢不等目录就下结论
+    if (knownEmpty) return empty;
+    if (loading) {
+      return (
+        <div
+          className="flex items-center text-sm text-muted-foreground"
+          style={{ height: MIN_ROW_HEIGHT_PX * VISIBLE_ROWS }}
+        >
+          正在读取奖杯
+        </div>
+      );
+    }
+    if (error) {
+      return <div className="text-sm leading-snug text-muted-foreground">{error}</div>;
+    }
+    return empty;
   }
-  if (loading && !titles) {
-    return (
-      <div
-        className="flex items-center text-sm text-muted-foreground"
-        style={{ height: MIN_ROW_HEIGHT_PX * VISIBLE_ROWS }}
-      >
-        正在读取奖杯
-      </div>
-    );
-  }
-  if (error && !titles) {
-    return (
-      <div className="text-sm leading-snug text-muted-foreground">{error}</div>
-    );
-  }
-  if (!trophies?.length) {
-    return (
-      <div className="text-sm leading-snug text-muted-foreground">
-        {name} 还没有奖杯记录
-      </div>
-    );
-  }
+  // 目录到了就以目录为准：摘要那份 digest 漏了这款也不算数
+  if (!trophies?.length) return empty;
 
   return (
     <div {...(groups.length ? { "data-trophy-groups-wanted": "" } : {})}>
