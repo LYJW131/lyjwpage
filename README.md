@@ -94,7 +94,7 @@ pnpm dev
 
 所有凭据只存在于服务端，浏览器只看得到 `/api/status/*` 返回的规范化数据。这些路由共用 `src/lib/api.ts` 的信封：上游挂掉时返回 `{ ok: false, error }` 而不是 5xx，让某一路数据源离线不至于把整页 SWR 打成错误态。
 
-`src/app/api/status/` 下每一条状态 GET 的快照都走 Next `'use cache'`（`lib/status-cache`），上报按 tag 失效，轮询命中时不再每次打 Redis——**除非那份部署把 `STATUS_CACHE` 填成 `false`，那时它们一律直读 Redis**（没有例外，加新端点时不用另行登记）。这个开关是给 EdgeOne 那份准备的：`revalidateTag` 只失效**本实例**那份缓存（Next 默认是每个进程各自的内存 LRU，Vercel 另接了一套共享存储所以在那边看起来是全局的），而 EdgeOne 跑的是原样的 Next（腾讯云 SCF，多实例），上报进来了 GET 也不翻新，只能等 10 分钟兜底——2026-08-16 两边并排量过（当时 revalidate 还是 60 秒），落后 12~45 秒。国内那份的 Redis 就在同一朵云上，多打几次不心疼。开关只管状态端点，首屏那份得冻着才能预渲染，所以关掉之后第一帧仍可能旧到 10 分钟，挂载后 SWR 一拉就是最新的；要连首屏一起对齐，得给两份部署各配一个共享的 `cacheHandlers`。CDN 故意 `Cache-Control: no-store`：最终响应里有存活、`?since=` 切片、`expiresInMs` 这类现算字段，不能冻在边缘。函数每次进；心跳那种不触发 tag 的戳记在 overlay 里现读一把小 key。充电头和 vibe coding 的游标也是缓存命中后在内存里切全量，不按 `since` 分键。
+`src/app/api/status/` 下每一条状态 GET 的快照都走 Next `'use cache'`（`lib/status-cache`），上报按 tag 失效，轮询命中时不再每次打 Redis——**除非那份部署把 `STATUS_CACHE` 填成 `false`，那时它们一律直读 Redis**（没有例外，加新端点时不用另行登记）。这个开关是给 EdgeOne 那份准备的：`revalidateTag` 只失效**本实例**那份缓存（Next 默认是每个进程各自的内存 LRU，Vercel 另接了一套共享存储所以在那边看起来是全局的），而 EdgeOne 跑的是原样的 Next（腾讯云 SCF，多实例），上报进来了 GET 也不翻新，只能等 10 分钟兜底——2026-08-16 两边并排量过（当时 revalidate 还是 60 秒），落后 12~45 秒。国内那份的 Redis 就在同一朵云上，多打几次不心疼。开关只管状态端点，首屏那份得冻着才能预渲染，所以关掉之后第一帧仍可能旧到 10 分钟，挂载后 SWR 一拉就是最新的；要连首屏一起对齐，得给两份部署各配一个共享的 `cacheHandlers`。CDN 故意 `Cache-Control: no-store`：最终响应里有存活、`?since=` 切片、`expiresInMs` 这类现算字段，不能冻在边缘。函数每次进；心跳那种不触发 tag 的戳记在 overlay 里现读一把小 key。充电头和 vibe coding 的游标、奖杯目录的 `?titleids=`（展开哪块瓷砖就只发那 1–2 款，整份目录未来是几百 KB）、最近在玩的 `?limit=`（**渐进**：首屏只烧前 12 块瓷砖，用户一滑轨道就换成全量那个键——「上报多少给多少」不变，全量始终够得着，只是不在首屏付清）也都是缓存命中后在内存里切全量，不按参数分键——分了就是每个游标、每块瓷砖、每种条数各占一份完整快照。
 
 Redis TCP 连接按请求作用域租用：同一 Node 实例里的并发请求共用一条，最后一个请求和命令结束后主动断开。不能让 ioredis 永久单例留在 serverless 实例里——实例暂停时普通 idle timer 不会跑，旧部署和 Preview 会各留一条空闲连接。Preview 必须不配 Redis 或使用独立 `REDIS_URL`；`REDIS_PREFIX` 只隔离键，不隔离连接额度。
 
@@ -129,6 +129,8 @@ Redis TCP 连接按请求作用域租用：同一 Node 实例里的并发请求�
 | `presence` | 只发失效通知（payload 为 `null`），浏览器自己回来取 |
 
 **一律带数据。** 两张列表曾经只发失效通知，理由是「整份太大」——实测 4.4 KB 和 2.8 KB，而发通知之后浏览器照样把整份取回来，字节一点没省，反倒多出一次请求头、一次往返、一个函数调用和一次 Redis 读，**而且是按在线人头乘的**。（那时的天花板是 Pusher 单条 10 KB，只有两倍余量；现在是 Cloudflare 单条 WebSocket 消息 1 MiB。）
+
+`playing` 那条推的也是全量（线上 42 条 12.7 KB），但浏览器收到后往**两个** SWR 键各写一份：全量那个，和首屏那份前 12 条（`PLAYING_FIRST_PATH`）。切片放在浏览器侧，是因为一条广播要发给所有在线标签页，而每个标签页此刻读的是哪个键只有它自己知道——服务端按其中一种切了发，另一种就再也收不到推送。
 
 只有 `presence` 仍是失效通知：它翻的是「上报器还在不在」。亲口离线是布尔值，浏览器要重取 `declaredOffline`；超时那条拿 payload 里的 `lastSeenAt` 和 `heartbeatWindowMs` 自己就能翻，源站不再算 `stale`。窗口默认 5 分钟（约三倍心跳），可用 `HEARTBEAT_WINDOW_MS` 改。
 

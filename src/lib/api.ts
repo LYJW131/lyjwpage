@@ -53,6 +53,36 @@ export function sinceDateParam(request: Request): string | undefined {
 }
 
 /**
+ * 只要最近这么多条。
+ *
+ * 正整数之外（缺席、零、负数、写坏了）一律按「要全量」处理，理由同 sinceParam：
+ * 不带参数本来就是合法的一种问法，而全量是这条端点的基础语义 —— 前 N 条只是
+ * 首屏那次省下的钱，不是上限（见 lib/paths 的两个 playing 键）。
+ */
+export function limitParam(request: Request): number | undefined {
+  const raw = new URL(request.url).searchParams.get("limit");
+  if (raw == null) return undefined;
+  const parsed = Number(raw);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+/**
+ * 只要这几个 titleId 对得上的条目，逗号分隔。
+ *
+ * 和上面几个游标不同，这条要分清**缺席**和**空**：缺席是「要整份」，空是「一款
+ * 都不要」。客户端的键是按打开的那块瓷砖拼出来的，拼出空集时它要的就是空 ——
+ * 那时退回整份等于把几百 KB 发给一个什么都不显示的面板。
+ */
+export function titleIdsParam(request: Request): string[] | undefined {
+  const raw = new URL(request.url).searchParams.get("titleids");
+  if (raw == null) return undefined;
+  return raw
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
+}
+
+/**
  * 把一个取数函数包成统一的 status 信封。
  * 上游挂了不往上抛 —— 前端拿到 ok:false 后渲染降级态即可，
  * 不让一个离线的充电头把整页 SWR 变成错误状态。

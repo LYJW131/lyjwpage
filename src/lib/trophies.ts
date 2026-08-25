@@ -347,6 +347,28 @@ export async function getTrophies(): Promise<TrophiesPayload> {
 }
 
 /**
+ * 只留这几个 titleId 对得上的标题。
+ *
+ * 展开的那块瓷砖只用得上 1–2 款，而整份目录里每个奖杯都带说明文本和图标地址，
+ * 未来是几百 KB 级的。所以过滤在读的出口做（路由 overlay），`'use cache'` 里冻
+ * 的仍是整份、不按 titleIds 分缓存键 —— 分了就是每块瓷砖各占一份完整目录。
+ *
+ * 求交集不是相等：一款游戏可能有多个 SKU（PS4 / PS5、试玩），瓷砖是按同名同封面
+ * 并过的，一块瓷砖手上就有好几个 titleId。
+ */
+export function sliceTrophies(
+  payload: TrophiesPayload,
+  titleIds: string[],
+): TrophiesPayload {
+  return {
+    ...payload,
+    titles: payload.titles.filter((title) =>
+      title.titleIds.some((id) => titleIds.includes(id)),
+    ),
+  };
+}
+
+/**
  * 分子分母同源：两边都从 `titles` 逐金属加总。
  *
  * `profile.earned` 是**账号级**的合计，而 titles 被 Worker 的屏蔽名单
