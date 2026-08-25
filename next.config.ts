@@ -47,7 +47,7 @@ const nextConfig: NextConfig = {
    * 见 lib/api。首屏那份不受那个开关管 —— 冻着才有这里说的预渲染。
    */
   cacheComponents: true,
-  allowedDevOrigins: ["test.lyjw.dev"],
+  allowedDevOrigins: ["test.lyjw.dev", "127.0.0.1"],
   images: {
     /**
      * 只有「源图比展示格大、源站又缩不了」才放行优化器。
@@ -80,6 +80,16 @@ const nextConfig: NextConfig = {
       {
         protocol: "https",
         hostname: "image.api.playstation.com",
+        pathname: "/**",
+      },
+      {
+        protocol: "https",
+        hostname: "psnobj.prod.dl.playstation.net",
+        pathname: "/**",
+      },
+      {
+        protocol: "https",
+        hostname: "psn-rsc.prod.dl.playstation.net",
         pathname: "/**",
       },
     ],

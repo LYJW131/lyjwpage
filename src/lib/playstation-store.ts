@@ -2,6 +2,7 @@ import { mirrorKey } from "@/lib/redis";
 import type {
   PlaystationPlayingPayload,
   PlaystationPresencePayload,
+  TrophiesPayload,
 } from "@/lib/types";
 
 /**
@@ -36,4 +37,21 @@ export function getPlaystationPlayedGames() {
 
 export function setPlaystationPlayedGames(payload: PlaystationPlayingPayload) {
   return playedGamesMirror.put(payload);
+}
+
+/**
+ * 奖杯目录可能几周才变一次。presence / playedGames 那 30 天 TTL 在这里会
+ * 把整页陈列室弄丢，所以这份不设过期，只等下一封上报覆盖。
+ */
+const trophiesMirror = mirrorKey<TrophiesPayload>(
+  ["playstation", "trophies"],
+  (state) => state.observedAt,
+);
+
+export function getPlaystationTrophies() {
+  return trophiesMirror.get();
+}
+
+export function setPlaystationTrophies(payload: TrophiesPayload) {
+  return trophiesMirror.put(payload);
 }

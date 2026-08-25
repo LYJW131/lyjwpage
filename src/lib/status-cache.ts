@@ -18,12 +18,14 @@ import {
   NOW_WATCHING_TAG,
   PLAYING_TAG,
   TIMEZONE_TAG,
+  TROPHIES_TAG,
   VIBECODING_TAG,
   VIBECODING_YEAR_TAG,
   WATCHING_TAG,
 } from "@/lib/live-events";
 import { pickNowListening } from "@/lib/now-listening";
 import { getPlaying, getPlayingNow } from "@/lib/playstation";
+import { getTrophies, getTrophiesSummary } from "@/lib/trophies";
 import { readLiveness } from "@/lib/reporter-liveness";
 import { getDesktopPayload, getNowListeningSnapshot, getTimezonePayload } from "@/lib/telemetry";
 import { getVibeCodingSnapshot } from "@/lib/vibecoding";
@@ -215,6 +217,21 @@ export async function cachedPlayingNow() {
   return statusEnvelope(getPlayingNow);
 }
 
+export async function cachedTrophies() {
+  "use cache";
+  cacheLife(STATUS_LIFE);
+  cacheTag(TROPHIES_TAG);
+  return statusEnvelope(getTrophies);
+}
+
+/** 首屏要等级、合计和各标题进度，整份奖杯明细留给 /trophies。 */
+export async function cachedTrophiesSummary() {
+  "use cache";
+  cacheLife(STATUS_LIFE);
+  cacheTag(TROPHIES_TAG);
+  return statusEnvelope(getTrophiesSummary);
+}
+
 export async function cachedGithubChart() {
   "use cache";
   cacheLife(STATUS_LIFE);
@@ -247,4 +264,5 @@ export const watchingStatus = statusSource(cachedWatching, getWatching);
 export const nowWatchingStatus = statusSource(cachedNowWatching, getNowWatching);
 export const playingStatus = statusSource(cachedPlaying, getPlaying);
 export const playingNowStatus = statusSource(cachedPlayingNow, getPlayingNow);
+export const trophiesStatus = statusSource(cachedTrophies, getTrophies);
 export const githubChartStatus = statusSource(cachedGithubChart, getGithubChart);

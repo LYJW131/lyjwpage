@@ -128,6 +128,8 @@ export const WATCHING_TAG = "watching";
 export const NOW_WATCHING_TAG = "watching-now";
 export const PLAYING_TAG = "playing";
 export const NOW_PLAYING_TAG = "playing-now";
+/** 奖杯目录。只有失效，没有推送事件，理由见 paths 的 TROPHIES_PATH。 */
+export const TROPHIES_TAG = "trophies";
 
 /**
  * 让首屏缓存里的这几份过期，下一个请求重算。

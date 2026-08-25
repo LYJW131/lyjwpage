@@ -4,10 +4,18 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 
+import { GameFlags } from "@/components/trophies/game-flags";
+import { TrophyMetal } from "@/components/trophies/trophy-metal";
 import { StatusDot } from "@/components/ui/status-dot";
 import { useLiveEvents } from "@/hooks/use-live-events";
 import { useStatus } from "@/hooks/use-status";
 import { stableKeys } from "@/lib/keys";
+import { foldService } from "@/lib/playstation-entitlements";
+import {
+  addTrophyCounts,
+  countTrophies,
+  emptyTrophyCounts,
+} from "@/lib/trophy-counts";
 import {
   LIST_DURATION,
   LIST_TRANSITION,
@@ -21,7 +29,9 @@ import type {
   PlaystationPlayingPayload,
   PlaystationPresencePayload,
   StatusResponse,
+  TrophyTitleDigest,
 } from "@/lib/types";
+import { TROPHY_TYPES } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /** 实时性由 playing / playing-now 推送负责；轮询只兜推送整体停用。 */
@@ -31,14 +41,14 @@ const REFRESH_MS = 10 * 60_000;
 const UNSNAP_MS = LIST_DURATION * 1000 + 80;
 
 /**
- * 卡片宽度按容器等分，规则同「最近在看」；但游戏封面是 1:1 的商店图标，
- * 比 16:9 的剧照高出一截，列数各档多两列，行高才和在看那行相近。
+ * 两行、按列往右排。列宽按容器等分，视口里仍是整数列。
  * 减掉的是列间 gap-3（0.75rem）总宽：(列数 - 1) × 0.75rem。
  */
-const TILE_WIDTH = cn(
-  "basis-[calc((100%-1.5rem)/3)]",
-  "md:basis-[calc((100%-3rem)/5)]",
-  "lg:basis-[calc((100%-3.75rem)/6)]",
+const TILE_TRACK = cn(
+  "grid grid-flow-col grid-rows-2 gap-3",
+  "auto-cols-[calc(100%-2.5rem)]",
+  "md:auto-cols-[calc((100%-0.75rem)/2)]",
+  "lg:auto-cols-[calc((100%-1.5rem)/3)]",
 );
 
 function mediaApp(category: string | null | undefined): boolean {
@@ -60,52 +70,103 @@ type Tile = {
   imageUrl: string | null;
   subtitle: string;
   live: boolean;
+  service: string | null;
+  preOrder: boolean;
+  trophies: TrophyTitleDigest | null;
 };
 
+/**
+ * 游玩列表按 titleId 对齐奖杯组。同款多 SKU 并成一条时，可能对上多份
+ * 奖杯目录（例如 PS4 / PS5），杯子和进度加总，不各摆一遍。
+ */
+function digestFor(
+  titleIds: string[],
+  titles: TrophyTitleDigest[],
+): TrophyTitleDigest | null {
+  const matches = titles.filter((title) =>
+    title.titleIds.some((id) => titleIds.includes(id)),
+  );
+  if (matches.length === 0) return null;
+  if (matches.length === 1) return matches[0];
+  const earned = matches.reduce(
+    (sum, title) => addTrophyCounts(sum, title.earned),
+    emptyTrophyCounts(),
+  );
+  const defined = matches.reduce(
+    (sum, title) => addTrophyCounts(sum, title.defined),
+    emptyTrophyCounts(),
+  );
+  const total = countTrophies(defined);
+  return {
+    npCommunicationId: matches[0].npCommunicationId,
+    name: matches[0].name,
+    localizedName: matches[0].localizedName,
+    titleIds: matches.flatMap((title) => title.titleIds),
+    progress: total > 0 ? Math.round((countTrophies(earned) / total) * 100) : 0,
+    defined,
+    earned,
+  };
+}
+
 function GameTile({ tile, eager }: { tile: Tile; eager?: boolean }) {
+  const trophies = tile.trophies;
+  const metals = trophies
+    ? TROPHY_TYPES.filter((type) => trophies.earned[type] > 0)
+    : [];
   return (
     <div
       className={cn(
-        // 不是链接：titleId 拼不出商店页（要另查 Content ID），点了没处去，
-        // 所以也没有「最近在看」那套 hover 放大 —— 放大是可点的暗示
-        "paper-card relative flex h-full w-full flex-col overflow-hidden rounded-md",
-        "border border-line-strong bg-surface",
-        tile.live && "border-live/40",
+        // 不是链接：titleId 拼不出商店页（要另查 Content ID），点了没处去。
+        // 嵌在外层纸卡片里，不再套阴影，正在玩也不改边框色。
+        "flex h-full w-full items-center overflow-hidden rounded-md",
+        "border border-line bg-surface",
       )}
     >
-      <div className="relative aspect-square overflow-hidden bg-muted">
+      <div className="relative h-28 w-28 shrink-0 overflow-hidden border-r border-line bg-muted">
         {tile.imageUrl ? (
           <Image
             src={tile.imageUrl}
             alt={tile.name}
-            fill
-            sizes="176px"
+            width={112}
+            height={112}
+            sizes="112px"
             loading={eager ? "eager" : "lazy"}
-            className="object-cover"
+            className="h-28 w-28 object-cover"
             unoptimized
           />
         ) : (
-          <div className="label-mono flex h-full items-center justify-center text-muted-foreground">
+          <div className="label-mono grid h-full place-items-center text-muted-foreground">
             PS
           </div>
         )}
-
-        {/* 压在封面右上角。封面底色不可控，垫一层模糊底片保证读得出来 */}
-        {tile.live && (
-          <span className="absolute right-2 top-2 flex items-center gap-1.5 border border-line bg-background/85 px-2 py-1 backdrop-blur-sm">
-            <StatusDot tone="live" />
-            <span className="label-mono text-foreground">正在游玩</span>
-          </span>
-        )}
       </div>
-
-      <div className="flex flex-col gap-0.5 px-3 py-2.5">
+      <div className="min-w-0 flex-1 px-3 py-2">
         <div className="truncate text-sm font-medium" title={tile.name}>
           {tile.name}
         </div>
-        <div className="truncate text-xs text-muted-foreground" title={tile.subtitle}>
-          {tile.subtitle || "—"}
+        <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted-foreground">
+          {tile.live ? (
+            <span className="inline-flex items-center gap-1">
+              <StatusDot tone="live" />
+              <span>正在游玩</span>
+            </span>
+          ) : (
+            <span className="min-w-0 truncate" title={tile.subtitle}>
+              {tile.subtitle || "—"}
+            </span>
+          )}
+          <GameFlags service={tile.service} preOrder={tile.preOrder} plain className="shrink-0" />
         </div>
+        {trophies && metals.length ? (
+          <div className="mt-1 flex min-w-0 items-center gap-1.5 overflow-hidden text-xs tabular-nums text-muted-foreground">
+            {metals.map((type) => (
+              <span key={type} className="inline-flex items-center gap-0.5">
+                <TrophyMetal kind={type} size="sm" />
+                {trophies.earned[type]}
+              </span>
+            ))}
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -113,17 +174,14 @@ function GameTile({ tile, eager }: { tile: Tile; eager?: boolean }) {
 
 function Skeleton() {
   return (
-    <div className="flex gap-3 overflow-hidden">
+    <div className={cn("overflow-hidden", TILE_TRACK)}>
       {[0, 1, 2, 3, 4, 5].map((i) => (
         <div
           key={i}
-          className={cn(
-            "shrink-0 overflow-hidden rounded-md border border-line bg-surface",
-            TILE_WIDTH,
-          )}
+          className="flex items-center overflow-hidden rounded-md border border-line bg-surface"
         >
-          <div className="aspect-square animate-pulse bg-muted" />
-          <div className="space-y-2 px-3 py-3">
+          <div className="h-28 w-28 shrink-0 animate-pulse bg-muted" />
+          <div className="min-w-0 flex-1 space-y-2 px-3 py-2">
             <div className="h-3 w-3/4 animate-pulse rounded bg-muted" />
             <div className="h-2.5 w-1/2 animate-pulse rounded bg-muted" />
           </div>
@@ -162,7 +220,12 @@ function mergeVariants(games: PlaystationGame[]): MergedGame[] {
     const look = `${game.name}\n${game.imageUrl ?? ""}`;
     const prior = byLook.get(look);
     if (!prior) {
-      const entry: MergedGame = { ...game, titleIds: [game.titleId] };
+      const entry: MergedGame = {
+        ...game,
+        titleIds: [game.titleId],
+        service: game.service ?? null,
+        preOrder: game.preOrder === true,
+      };
       byLook.set(look, entry);
       merged.push(entry);
       continue;
@@ -172,6 +235,8 @@ function mergeVariants(games: PlaystationGame[]): MergedGame[] {
     prior.playDurationMs = fold(prior.playDurationMs, game.playDurationMs, (x, y) => x + y);
     prior.firstPlayedAt = fold(prior.firstPlayedAt, game.firstPlayedAt, Math.min);
     prior.lastPlayedAt = fold(prior.lastPlayedAt, game.lastPlayedAt, Math.max);
+    prior.service = foldService(prior.service, game.service);
+    prior.preOrder = prior.preOrder === true || game.preOrder === true;
   }
   return merged;
 }
@@ -186,6 +251,7 @@ function mergeVariants(games: PlaystationGame[]): MergedGame[] {
 function buildTiles(
   list: PlaystationPlayingPayload | undefined,
   presence: PlaystationPresencePayload | undefined,
+  titles: TrophyTitleDigest[],
 ): Tile[] {
   const games = mergeVariants((list?.items ?? []).filter((game) => !mediaApp(game.category)));
 
@@ -199,9 +265,14 @@ function buildTiles(
     titleId: game.titleId,
     name: game.name,
     imageUrl: game.imageUrl,
-    // 正在玩也照常给累计时长 ——「正在玩」这件事角标已经说了，副标题不用重复
-    subtitle: playTime(game.playDurationMs, game.playCount),
+    subtitle:
+      game.preOrder && game.playCount === 0 && game.playDurationMs == null
+        ? "尚未开档"
+        : playTime(game.playDurationMs, game.playCount),
     live,
+    service: game.service,
+    preOrder: game.preOrder,
+    trophies: digestFor(game.titleIds, titles),
   });
 
   if (!playing) return games.map((game) => toTile(game, false));
@@ -218,6 +289,9 @@ function buildTiles(
         subtitle:
           playing.launchPlatform ?? playing.format ?? presence?.platform ?? "PlayStation",
         live: true,
+        service: null,
+        preOrder: false,
+        trophies: digestFor([playing.titleId], titles),
       };
   return [first, ...games.filter((game) => game !== inList).map((game) => toTile(game, false))];
 }
@@ -225,9 +299,15 @@ function buildTiles(
 export function PlaystationRow({
   fallback,
   nowFallback,
+  titles = [],
+  inset = false,
 }: {
   fallback: StatusResponse<PlaystationPlayingPayload>;
   nowFallback: StatusResponse<PlaystationPresencePayload>;
+  /** 首页摘要里的各标题进度；不含逐个奖杯。 */
+  titles?: TrophyTitleDigest[];
+  /** 收在整块卡片里时不再为纸阴影往外探 3px。 */
+  inset?: boolean;
 }) {
   useLiveEvents();
   const list = useStatus<PlaystationPlayingPayload>(PLAYING_PATH, REFRESH_MS, { fallback });
@@ -235,7 +315,7 @@ export function PlaystationRow({
     fallback: nowFallback,
   });
 
-  const tiles = buildTiles(list.data, presence.data);
+  const tiles = buildTiles(list.data, presence.data, titles);
   const reduced = useReducedMotion();
   const scrollerRef = useRef<HTMLDivElement>(null);
   const liveTitleId = tiles[0]?.live ? tiles[0].titleId : null;
@@ -273,7 +353,7 @@ export function PlaystationRow({
 
   if ((list.error && !list.data) || !tiles.length) {
     return (
-      <div className="flex h-32 items-center justify-center rounded-md border border-dashed border-line text-sm text-muted-foreground">
+      <div className="flex h-16 items-center justify-center rounded-md border border-dashed border-line text-sm text-muted-foreground">
         {list.error && !list.data ? "还没收到 PlayStation 遥测" : "最近没有游戏记录"}
       </div>
     );
@@ -289,12 +369,12 @@ export function PlaystationRow({
       aria-label="最近在玩"
       className={cn(
         "scroll-smooth overflow-x-auto overscroll-x-contain",
-        "-mr-0.75 w-[calc(100%+3px)] pb-0.75",
         "scrollbar-none [&::-webkit-scrollbar]:hidden",
+        !inset && "-mr-0.75 w-[calc(100%+3px)] pb-0.75",
         reflowing ? "snap-none" : "snap-x snap-mandatory",
       )}
     >
-      <div className="relative flex w-[calc(100%-3px)] gap-3">
+      <div className={cn("relative", TILE_TRACK, inset ? "w-full" : "w-[calc(100%-3px)]")}>
         <AnimatePresence initial={false} mode="popLayout">
           {tiles.map((tile, index) => (
             <motion.div
@@ -305,7 +385,7 @@ export function PlaystationRow({
               animate="animate"
               exit="exit"
               transition={reduced ? STATIC_TRANSITION : LIST_TRANSITION}
-              className={cn("min-w-0 shrink-0 snap-start", TILE_WIDTH)}
+              className="min-w-0 odd:snap-start"
             >
               <GameTile tile={tile} eager={index < 6} />
             </motion.div>

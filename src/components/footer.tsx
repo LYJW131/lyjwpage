@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { OnlineCount } from "@/components/live/online-count";
 import { buildTime, commit } from "@/lib/build-info";
 import { cn } from "@/lib/utils";
@@ -44,6 +46,9 @@ export function Footer() {
         )}
         {buildTime && <span>构建于 {buildTime}</span>}
 
+        <Link href="/trophies" className="transition-colors hover:text-foreground">
+          奖杯
+        </Link>
         <OnlineCount />
       </div>
       {EXTRA_TEXT ? (

@@ -1,9 +1,8 @@
 # playstation-reporter
 
 Cloudflare Worker 上的 PSN 上报器：每 15 分钟顺序读取一次「此刻在玩」和「最近在玩」，
-规范化后按内容指纹判断，只有变化的部分才推给 lyjwpage。站点侧
-`/api/ingest/playstation` 尚未实现，因此默认是 dry-run，把本该 POST 的信封写进
-Workers Logs。
+并比对奖杯总览指纹；只有变化的部分才推给 lyjwpage。奖杯明细只在等级 / 完成度
+变化时才整份拉一遍。
 
 鉴权链和两个读取端点已经用真实凭据跑通，也确认 `Accept-Language: zh-Hans` 会返回
 官方中文名。唯一还没实测的是向站点真正 POST：目标端点目前不存在。
@@ -13,9 +12,14 @@ Workers Logs。
 只有一个 Cron Trigger：`*/15 * * * *`。每轮顺序执行：
 
 1. 读取 presence；
-2. 复用同一轮拿到的 token，读取 played games；
-3. 分别计算不含 `observedAt` 的指纹；
-4. 只把发生变化的部分装进同一个 v1 信封；两边都没变就不推。
+2. 复用同一轮拿到的 token，分页拉全份 played games（带 `Accept-Language`）；
+3. 分页拉购买库（PS4 / PS5），把 `service` / 预购接到游玩列表；没开过档的预购
+   追加在最近窗口之后，不混进「最近 20」；
+4. 比对奖杯总览指纹；变了才拉明细，并用官方
+   `getUserTrophiesForSpecificTitle` 把 `titleId`（PPSA…）接到
+   `npCommunicationId`（NPWR…），同一奖杯组的多个 SKU 时长相加，中文名取自游玩列表；
+5. 推给站点的最近游玩仍按 `PLAYED_GAMES_LIMIT` 切开，再接上未开档预购；
+6. 只把发生变化的部分装进同一个 v1 信封；都没变就不推。
 
 没有 30 秒 / 5 分钟双节奏，也没有定时兜底整推。状态全部放在绑定 `STATE` 的 Workers
 KV：
@@ -25,16 +29,18 @@ KV：
 | `auth` | token 状态 JSON，形状与旧 `state/auth.json` 完全相同 |
 | `fp:presence` | presence 内容指纹 |
 | `fp:playedGames` | played games 内容指纹 |
+| `fp:trophies` | 奖杯总览指纹（等级 + 各标题完成度） |
 | `meta:lastTick` | 最近一轮时间、成功与否、变化情况和 dry-run 状态 |
 
 `auth` 的字段固定为 `accessToken`、`refreshToken`、`accessTokenIssuedAt`、
 `accessTokenExpiresAt`、`refreshTokenIssuedAt`、`refreshTokenExpiresAt`；四个时间都是
 epoch 毫秒。现有文件可以原样种进 KV。
 
-Worker 的 HTTP `fetch` 是手动触发入口，和 cache-warmup 同一个模式：`GET /` 把一轮
-tick 完整跑一遍（拉 PSN、比指纹、变了才交付），把这轮的元信息和抓到的 presence、
-played games 一并返回；出错则回 502，带上错误和 KV 里最近一轮的记录。只认根路径 ——
-浏览器顺手要的 `/favicon.ico` 不该多触发一轮 PSN 轮询。
+Worker 的 HTTP `fetch` 是手动触发入口：`GET /tick` 把一轮 tick 完整跑一遍（拉
+PSN、比指纹、变了才交付），把这轮的元信息和抓到的 presence、played games 一并
+返回；出错则回 502，带上错误和 KV 里最近一轮的记录。`GET /` 只回最近一轮的
+meta，不碰 PSN —— Chrome / Cursor 探调试口会打 `/json/version` 再打根路径，
+根路径上跑 tick 会把 PSN 打爆。`/favicon.ico` 同样 404。
 
 Worker 自己不做鉴权，访问控制交给前面的 Cloudflare Access；token 永远不出现在
 响应里。
@@ -58,17 +64,23 @@ NPSSO 是 Worker secret `PSN_NPSSO`，可以缺席：KV 的 `auth` 里还有有�
 
 ## 语言与规范化
 
-`PSN_LANGUAGE` 在 `wrangler.toml` 的 `[vars]` 中默认是 `zh-Hans`。presence 通过
-psn-api 的 `headerOverrides` 发送 `Accept-Language`。
+`PSN_LANGUAGE` 在 `wrangler.toml` 的 `[vars]` 中默认是 `zh-Hans`。presence 和
+奖杯接口通过 psn-api 的 `headerOverrides` 发送 `Accept-Language`。
 
 「玩过的游戏」仍是唯一例外：psn-api 2.18.1 的 `getUserPlayedGames` 不接
 `headerOverrides`，实现也不发语言头，所以 `src/psn.ts` 继续直接请求与它相同的
 `…/users/:accountId/titles` 端点。上游补上这个入口后才能切回库函数。
+游玩列表已经是中文元数据；奖杯标题对不上时用这份名字做 `localizedName`，
+不手写中英对照。
 
 规范化在 Worker 内做完：ISO 时间戳转 epoch 毫秒，ISO-8601 时长转毫秒，平台名统一
 大写；对上游响应保留可选链与兜底。`category` 是上游枚举，已实测还会出现
 `ps5_native_media_app`（YouTube / Netflix），其余常见值包括 `ps4_game`、
 `ps5_native_game`、`pspc_game` 和 `unknown`。
+`service` 同样是上游枚举，已实测 `ps_plus` / `none(purchased)` / `other`；
+`ps_plus` 表示当前这份 entitlement 来自 Plus 会员库。预购来自购买库的
+`isPreOrder`，没对上就是 `false`。买断后 `service` 可能变成 `none(purchased)`，
+即使这款曾经在 Plus 目录里。
 
 ## 信封
 
@@ -102,7 +114,9 @@ psn-api 的 `headerOverrides` 发送 `Accept-Language`。
         "firstPlayedAt": 1436557219000,
         "lastPlayedAt": 1722713307120,
         "playDurationMs": 824193000,
-        "imageUrl": "https://image.api.playstation.com/…"
+        "imageUrl": "https://image.api.playstation.com/…",
+        "service": "none(purchased)",
+        "preOrder": false
       }
     ]
   }

@@ -31,6 +31,14 @@ export type PlaystationGame = {
   lastPlayedAt: number | null;
   playDurationMs: number | null;
   imageUrl: string | null;
+  /**
+   * 这份 entitlement 怎么来的。上游原样保留，已见 `ps_plus` /
+   * `none(purchased)` / `other`。缺席为 null，不在入库层猜测。
+   * `ps_plus` 表示当前这份是 Plus 会员库权益，不是「这款曾经上过 Plus 目录」。
+   */
+  service: string | null;
+  /** 购买库标成预购。没对上购买库就是 false。 */
+  preOrder: boolean;
 };
 
 export type PlaystationPlayingPayload = {
@@ -53,6 +61,127 @@ export type PlaystationPresencePayload = {
   platform: string | null;
   lastOnlineAt: number | null;
   playing: PlaystationNowPlaying | null;
+};
+
+export const TROPHY_TYPES = ["platinum", "gold", "silver", "bronze"] as const;
+export type TrophyType = (typeof TROPHY_TYPES)[number];
+
+export type TrophyCounts = {
+  platinum: number;
+  gold: number;
+  silver: number;
+  bronze: number;
+};
+
+export type TrophyProfile = {
+  onlineId: string;
+  /** PSN 资料头像。不用 personalDetail 里的实名照片。 */
+  avatarUrl: string | null;
+  plus: boolean;
+  level: number;
+  tier: number;
+  trophyPoint: number;
+  levelBasePoint: number;
+  levelNextPoint: number;
+  /** 当前等级内进度，0–100 */
+  levelProgress: number;
+  earned: TrophyCounts;
+};
+
+export type TrophyGroup = {
+  id: string;
+  name: string;
+  iconUrl: string | null;
+  progress: number;
+  defined: TrophyCounts;
+  earned: TrophyCounts;
+};
+
+export type Trophy = {
+  id: number;
+  type: TrophyType;
+  name: string;
+  detail: string | null;
+  iconUrl: string | null;
+  hidden: boolean;
+  groupId: string;
+  earned: boolean;
+  /** 解锁时刻，epoch 毫秒；未解锁为 null */
+  earnedAt: number | null;
+  /** 全球持有率，0–100 */
+  earnedRate: number | null;
+};
+
+/**
+ * 一个奖杯标题（一款游戏或一个奖杯组）。
+ *
+ * `npCommunicationId` 是奖杯 API 的键，和游玩列表里的 `titleId`（PPSA…）
+ * 不是同一个东西，所以不叫 titleId。两边靠 Worker 走官方
+ * `getUserTrophiesForSpecificTitle` 对齐；同一奖杯组可能对应多个 SKU。
+ */
+export type TrophyTitle = {
+  npCommunicationId: string;
+  name: string;
+  localizedName: string | null;
+  titleIds: string[];
+  /** 方形奖杯组图标，和 PS App 奖杯列表同一张 */
+  iconUrl: string | null;
+  platform: string;
+  progress: number;
+  defined: TrophyCounts;
+  earned: TrophyCounts;
+  lastUpdatedAt: number | null;
+  playDurationMs: number | null;
+  playCount: number;
+  firstPlayedAt: number | null;
+  lastPlayedAt: number | null;
+  /** 对齐后的 entitlement；任一 SKU 来自 Plus 库则为 `ps_plus`。 */
+  service: string | null;
+  preOrder: boolean;
+  groups: TrophyGroup[];
+  trophies: Trophy[];
+};
+
+export type TrophiesPayload = {
+  observedAt: number;
+  profile: TrophyProfile;
+  titles: TrophyTitle[];
+};
+
+export type TrophyUnlock = {
+  npCommunicationId: string;
+  titleName: string;
+  trophyName: string;
+  type: TrophyType;
+  iconUrl: string | null;
+  earnedAt: number;
+};
+
+/**
+ * 首页提要用的一款游戏：进度和四色杯子，不含逐个奖杯。
+ */
+export type TrophyTitleDigest = {
+  npCommunicationId: string;
+  name: string;
+  localizedName: string | null;
+  titleIds: string[];
+  progress: number;
+  defined: TrophyCounts;
+  earned: TrophyCounts;
+};
+
+/**
+ * 首页提要：等级、合计、最近解锁、各标题进度。不含逐个奖杯，
+ * 避免把整份目录塞进首屏 HTML。
+ */
+export type TrophiesSummaryPayload = {
+  observedAt: number;
+  profile: TrophyProfile;
+  defined: TrophyCounts;
+  titleCount: number;
+  earnedCount: number;
+  recent: TrophyUnlock[];
+  titles: TrophyTitleDigest[];
 };
 
 /**
