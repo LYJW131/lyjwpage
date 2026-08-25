@@ -47,9 +47,6 @@ const nextConfig: NextConfig = {
    * 见 lib/api。首屏那份不受那个开关管 —— 冻着才有这里说的预渲染。
    */
   cacheComponents: true,
-  async redirects() {
-    return [{ source: "/trophies", destination: "/", permanent: true }];
-  },
   allowedDevOrigins: ["test.lyjw.dev", "127.0.0.1"],
   images: {
     /**

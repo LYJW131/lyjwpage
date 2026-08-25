@@ -56,5 +56,6 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
    `currentColor` 取不到页面的文字色，会渲染成黑的。要么挑 `-color` 那版（颜色写死在文件里），
    要么把 SVG 内联成组件——`vibecoding-card.tsx` 里的 Anthropic / OpenAI 标记就是内联的写法。
 2. **静态图标一律标 `unoptimized`。** 它们已经是最终形态，过一遍图片管道只是多一次转换、多一份
-   Vercel 配额，还把本可以直连 CDN 的请求绕回自己的函数。图片管道只留给「请求时才知道该多大」
-   的图（当前全站只有自建歌单封面这一处）。
+   Vercel 配额，还把本可以直连 CDN 的请求绕回自己的函数。图片管道只留给**远端源图比展示格大、
+   源站又缩不了**的那几路（当前是自建歌单封面、GitHub 头像、PSN 封面与奖杯图，名单见
+   `next.config.ts` 的 `remotePatterns`），本地静态图标一路都不进。
