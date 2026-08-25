@@ -47,6 +47,9 @@ const nextConfig: NextConfig = {
    * 见 lib/api。首屏那份不受那个开关管 —— 冻着才有这里说的预渲染。
    */
   cacheComponents: true,
+  async redirects() {
+    return [{ source: "/trophies", destination: "/", permanent: true }];
+  },
   allowedDevOrigins: ["test.lyjw.dev", "127.0.0.1"],
   images: {
     /**
@@ -57,8 +60,8 @@ const nextConfig: NextConfig = {
      *
      * GitHub 头像：avatars 给的是整图 JPEG，卡片也是 80px，同样过优化器缩。
      *
-     * PlayStation 游戏封面：PSN 直接给公共 CDN 地址，源图尺寸不固定，列表格交给
-     * 优化器按实际展示尺寸缩放；Redis 仍只存上游 URL，不落 R2。
+     * PlayStation 封面和奖杯图：PSN 直接给公共 CDN 地址，源图动辄 512² / 1024²，
+     * 列表格只有几十到一百像素，交给优化器按展示尺寸缩；Redis 仍只存上游 URL，不落 R2。
      *
      * 其余一律不走：R2 已经是压好的最终尺寸且 immutable，mzstatic 自带尺寸
      * 模板，再转一道是纯浪费。

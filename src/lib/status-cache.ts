@@ -224,7 +224,7 @@ export async function cachedTrophies() {
   return statusEnvelope(getTrophies);
 }
 
-/** 首屏要等级、合计和各标题进度，整份奖杯明细留给 /trophies。 */
+/** 首屏要等级、合计和各标题进度，整份奖杯明细点瓷砖再拉。 */
 export async function cachedTrophiesSummary() {
   "use cache";
   cacheLife(STATUS_LIFE);

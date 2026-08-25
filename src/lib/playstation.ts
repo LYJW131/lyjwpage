@@ -207,23 +207,26 @@ export async function recordPlaystationReport(input: unknown) {
   const events: PendingEvent[] = [];
   const tags: string[] = [];
 
+  const urgentTags: string[] = [];
   if (incomingPresence && (presenceChanged || !previousPresence)) {
     writes.push(setPlaystationPresence(incomingPresence));
     events.push({ type: "playing-now", payload: incomingPresence });
-    tags.push(NOW_PLAYING_TAG);
+    // 「正在游玩」和听歌 now 一样：不能先把旧值再顶几分钟。
+    urgentTags.push(NOW_PLAYING_TAG);
   }
   if (incomingPlayedGames && (playedGamesChanged || !previousPlayedGames)) {
     writes.push(setPlaystationPlayedGames(incomingPlayedGames));
     events.push({ type: "playing", payload: incomingPlayedGames });
-    tags.push(PLAYING_TAG);
-    // 陈列室的时长和 Plus / 预购是读时按 titleIds 盖上去的，游玩一变就得重算。
+    urgentTags.push(PLAYING_TAG);
+    // 奖杯目录的时长和 Plus / 预购是读时按 titleIds 盖上去的，游玩一变就得重算。
     tags.push(TROPHIES_TAG);
   }
   if (incomingTrophies && (trophiesChanged || !previousTrophies)) {
     writes.push(setPlaystationTrophies(incomingTrophies));
-    tags.push(TROPHIES_TAG);
+    // 目录是整份替换：旧标题必须立刻从 status 里消失，不能再 SWR 几分钟。
+    urgentTags.push(TROPHIES_TAG);
   }
 
-  await fanout({ writes, events, tags });
+  await fanout({ writes, events, tags, urgentTags });
   return { changed: presenceChanged || playedGamesChanged || trophiesChanged };
 }

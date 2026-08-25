@@ -1,0 +1,388 @@
+"use client";
+
+import { EyeOff } from "lucide-react";
+import { motion, useReducedMotion } from "motion/react";
+import Image from "next/image";
+import { useCallback, useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
+import useSWR from "swr";
+
+import { TrophyMetal } from "@/components/trophies/trophy-metal";
+import { LIST_TRANSITION, STATIC_TRANSITION } from "@/lib/motion";
+import { TROPHIES_PATH } from "@/lib/paths";
+import { site } from "@/lib/site";
+import type { StatusResponse, TrophiesPayload, Trophy, TrophyTitle } from "@/lib/types";
+import { cn } from "@/lib/utils";
+
+const CATALOG_REFRESH_MS = 10 * 60_000;
+
+/** 和 Recently Played 那列同一套：五行填满、停滚后吸到整行。 */
+const VISIBLE_ROWS = 5;
+const MIN_ROW_HEIGHT_PX = 56;
+const SETTLE_DELAY_MS = 110;
+const SUSPEND_AFTER_CHANGE_MS = 500;
+
+/**
+ * 奖杯组始终一行、视口里两块。减掉的是列间 gap-2（0.5rem）。
+ */
+const GROUP_TRACK = cn(
+  "grid grid-flow-col grid-rows-1 gap-2",
+  "auto-cols-[calc((100%-0.5rem)/2)]",
+);
+
+const useIsomorphicLayoutEffect =
+  typeof window !== "undefined" ? useLayoutEffect : useEffect;
+
+function formatStamp(ms: number): string {
+  return new Date(ms).toLocaleString("zh-CN", {
+    timeZone: site.timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
+function trophyDetail(trophy: Trophy): string | null {
+  if (trophy.hidden && !trophy.earned) return "解锁后显示";
+  return trophy.detail;
+}
+
+function rarityLabel(rate: number | null): string {
+  if (rate == null) return "—";
+  if (rate < 5) return "极稀有";
+  if (rate < 15) return "非常稀有";
+  if (rate < 50) return "稀有";
+  return "常见";
+}
+
+async function fetchCatalog(path: string): Promise<StatusResponse<TrophiesPayload>> {
+  const response = await fetch(path, { cache: "no-store" });
+  if (!response.ok) throw new Error(`请求 ${path} 失败：${response.status}`);
+  return response.json();
+}
+
+/** 点开瓷砖才拉整份目录，不进首屏 HTML。关掉面板 SWR 仍留着缓存。 */
+export function useTrophyCatalog(enabled: boolean) {
+  const { data, error, isLoading } = useSWR<StatusResponse<TrophiesPayload>>(
+    enabled ? TROPHIES_PATH : null,
+    fetchCatalog,
+    {
+      refreshInterval: enabled ? CATALOG_REFRESH_MS : 0,
+      keepPreviousData: true,
+      shouldRetryOnError: false,
+    },
+  );
+  return {
+    titles: data?.ok ? data.data.titles : undefined,
+    error: data && !data.ok ? data.error : error ? String(error.message ?? error) : undefined,
+    isLoading,
+  };
+}
+
+export function titlesForTile(titleIds: string[], catalog: TrophyTitle[]): TrophyTitle[] {
+  return catalog.filter((title) => title.titleIds.some((id) => titleIds.includes(id)));
+}
+
+/**
+ * 保证列表永远停在整行上。理由和实现照搬 Recently Played：不用 CSS
+ * scroll-snap，只在用户停滚之后对齐到最近的整行。
+ */
+function useRowSnap(topKey: string | undefined) {
+  const node = useRef<HTMLDivElement | null>(null);
+  const previous = useRef(topKey);
+  const suspendUntil = useRef(0);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useIsomorphicLayoutEffect(() => {
+    if (previous.current === topKey) return;
+    previous.current = topKey;
+    suspendUntil.current = Date.now() + SUSPEND_AFTER_CHANGE_MS;
+
+    const el = node.current;
+    if (!el || el.scrollTop === 0) return;
+    const saved = el.style.scrollBehavior;
+    el.style.scrollBehavior = "auto";
+    el.scrollTop = 0;
+    el.style.scrollBehavior = saved;
+  }, [topKey]);
+
+  return useCallback((el: HTMLDivElement | null) => {
+    node.current = el;
+    if (!el) return;
+
+    const onScroll = () => {
+      if (timer.current) clearTimeout(timer.current);
+      timer.current = setTimeout(() => {
+        if (Date.now() < suspendUntil.current) return;
+        const rowHeight = el.clientHeight / VISIBLE_ROWS;
+        const target = Math.round(el.scrollTop / rowHeight) * rowHeight;
+        if (Math.abs(target - el.scrollTop) < 0.5) return;
+        el.scrollTo({ top: target, behavior: "smooth" });
+      }, SETTLE_DELAY_MS);
+    };
+
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      if (timer.current) clearTimeout(timer.current);
+      node.current = null;
+    };
+  }, []);
+}
+
+function TrophyRow({ trophy }: { trophy: Trophy }) {
+  const hidden = trophy.hidden && !trophy.earned;
+  const locked = !trophy.earned;
+  const subtitle =
+    trophyDetail(trophy) ??
+    (trophy.earned && trophy.earnedAt ? formatStamp(trophy.earnedAt) : "未解锁");
+  const rarity = trophy.earnedRate != null ? rarityLabel(trophy.earnedRate) : null;
+  return (
+    <div
+      className="flex h-full items-center gap-2.5 rounded-md px-2 transition-colors hover:bg-surface-hover"
+      aria-label={
+        hidden ? "隐藏奖杯，未解锁" : locked ? `${trophy.name}，未解锁` : trophy.name
+      }
+    >
+      <div
+        className={cn(
+          "relative size-11 shrink-0 overflow-hidden rounded-sm bg-muted",
+          locked && !hidden && "grayscale",
+          hidden && "border border-dashed border-line",
+        )}
+      >
+        {trophy.iconUrl && !hidden ? (
+          <Image
+            src={trophy.iconUrl}
+            alt=""
+            fill
+            sizes="44px"
+            className={cn("object-cover", locked && "opacity-55")}
+          />
+        ) : (
+          <div className="grid h-full place-items-center text-muted-foreground">
+            {hidden ? (
+              <EyeOff className="size-4" strokeWidth={1.75} />
+            ) : (
+              <TrophyMetal kind={trophy.type} size="sm" />
+            )}
+          </div>
+        )}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <TrophyMetal
+            kind={trophy.type}
+            size="sm"
+            className={cn(locked && "grayscale opacity-55")}
+          />
+          <span
+            className={cn("min-w-0 truncate text-sm", locked && "text-muted-foreground")}
+            title={hidden ? "隐藏奖杯" : trophy.name}
+          >
+            {hidden ? "隐藏奖杯" : trophy.name}
+          </span>
+        </div>
+        <div
+          className="truncate text-xs text-muted-foreground"
+          title={rarity ? `${rarity} · ${subtitle}` : subtitle}
+        >
+          {rarity ? `${rarity} · ` : ""}
+          {subtitle}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function GroupSlot({
+  groups,
+  resetKey,
+}: {
+  groups: { key: string; group: TrophyTitle["groups"][number] }[];
+  resetKey: string | undefined;
+}) {
+  const reduced = useReducedMotion();
+  const cached = useRef(groups);
+  if (groups.length) cached.current = groups;
+  const open = groups.length > 0;
+
+  return (
+    <motion.div
+      data-trophy-groups-wrap=""
+      initial={false}
+      animate={{ height: open ? "auto" : 0, opacity: open ? 1 : 0 }}
+      transition={reduced ? STATIC_TRANSITION : LIST_TRANSITION}
+      className="overflow-hidden"
+    >
+      {cached.current.length ? (
+        <div data-trophy-groups="" aria-hidden={!open}>
+          <GroupStrip groups={cached.current} resetKey={resetKey} />
+        </div>
+      ) : null}
+    </motion.div>
+  );
+}
+
+function GroupStrip({
+  groups,
+  resetKey,
+}: {
+  groups: { key: string; group: TrophyTitle["groups"][number] }[];
+  resetKey: string | undefined;
+}) {
+  const node = useRef<HTMLDivElement | null>(null);
+  const previous = useRef(resetKey);
+
+  useIsomorphicLayoutEffect(() => {
+    if (previous.current === resetKey) return;
+    previous.current = resetKey;
+    const el = node.current;
+    if (!el || el.scrollLeft === 0) return;
+    const saved = el.style.scrollBehavior;
+    el.style.scrollBehavior = "auto";
+    el.scrollLeft = 0;
+    el.style.scrollBehavior = saved;
+  }, [resetKey]);
+
+  return (
+    <div
+      ref={node}
+      tabIndex={0}
+      role="region"
+      aria-label="奖杯组"
+      className={cn(
+        "mb-2 scroll-smooth overflow-x-auto overscroll-x-contain",
+        "snap-x snap-mandatory",
+        "scrollbar-none [&::-webkit-scrollbar]:hidden",
+      )}
+    >
+      <div className={GROUP_TRACK}>
+        {groups.map(({ key, group }) => (
+          <div key={key} className="min-w-0 snap-start">
+            <div className="flex items-center gap-2 border border-line bg-surface px-2 py-1.5">
+              {group.iconUrl ? (
+                <Image
+                  src={group.iconUrl}
+                  alt=""
+                  width={28}
+                  height={28}
+                  sizes="28px"
+                  className="h-7 w-7 object-cover"
+                />
+              ) : null}
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-xs font-medium">{group.name}</div>
+                <div className="label-mono text-muted-foreground">{group.progress}%</div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TrophyViewport({
+  listRef,
+  children,
+}: {
+  listRef?: (el: HTMLDivElement | null) => void;
+  children: ReactNode;
+}) {
+  return (
+    <div className="relative" style={{ height: MIN_ROW_HEIGHT_PX * VISIBLE_ROWS }}>
+      <div
+        ref={listRef}
+        tabIndex={0}
+        role="region"
+        aria-label="奖杯"
+        className={cn(
+          "absolute inset-0 grid overflow-y-auto",
+          "scroll-smooth overscroll-y-contain [overflow-anchor:none]",
+          "scrollbar-none [&::-webkit-scrollbar]:hidden",
+        )}
+        style={{ gridAutoRows: `calc(100% / ${VISIBLE_ROWS})` }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+export function TrophyExpand({
+  name,
+  titles,
+  loading,
+  error,
+  knownEmpty = false,
+}: {
+  name: string;
+  titles: TrophyTitle[] | undefined;
+  loading: boolean;
+  error?: string;
+  /** 首页摘要里这张卡就没有奖杯组，不必先铺 5 行再收。 */
+  knownEmpty?: boolean;
+}) {
+  const trophies = titles?.flatMap((title) =>
+    title.trophies.map((trophy) => ({
+      key: `${title.npCommunicationId}-${trophy.groupId}-${trophy.id}`,
+      trophy,
+    })),
+  );
+  const groups =
+    titles?.flatMap((title) =>
+      title.groups.length > 1
+        ? title.groups.map((group) => ({
+            key: `${title.npCommunicationId}-${group.id}`,
+            group,
+          }))
+        : [],
+    ) ?? [];
+  const listRef = useRowSnap(trophies?.[0]?.key);
+
+  if (knownEmpty || (!trophies?.length && titles)) {
+    return (
+      <div className="text-sm leading-snug text-muted-foreground">
+        {name} 还没有奖杯记录
+      </div>
+    );
+  }
+  if (loading && !titles) {
+    return (
+      <div
+        className="flex items-center text-sm text-muted-foreground"
+        style={{ height: MIN_ROW_HEIGHT_PX * VISIBLE_ROWS }}
+      >
+        正在读取奖杯
+      </div>
+    );
+  }
+  if (error && !titles) {
+    return (
+      <div className="text-sm leading-snug text-muted-foreground">{error}</div>
+    );
+  }
+  if (!trophies?.length) {
+    return (
+      <div className="text-sm leading-snug text-muted-foreground">
+        {name} 还没有奖杯记录
+      </div>
+    );
+  }
+
+  return (
+    <div {...(groups.length ? { "data-trophy-groups-wanted": "" } : {})}>
+      <GroupSlot groups={groups} resetKey={trophies[0]?.key} />
+      <TrophyViewport listRef={listRef}>
+        {trophies.map((row) => (
+          <div key={row.key} className="min-w-0">
+            <TrophyRow trophy={row.trophy} />
+          </div>
+        ))}
+      </TrophyViewport>
+    </div>
+  );
+}
