@@ -22,12 +22,22 @@ const SETTLE_DELAY_MS = 110;
 const SUSPEND_AFTER_CHANGE_MS = 500;
 
 /**
- * 奖杯组始终一行、视口里两块。减掉的是列间 gap-2（0.5rem）。
+ * 列宽跟游戏瓷砖同一套公式（见 playstation-card TILE_TRACK）：
+ * 默认 1 列、md 2、lg 3；减掉的是 gap-3。
+ * 只有两组时始终并排，不被 1 列挤成一张、也不在 lg 上空出第三列。
  */
-const GROUP_TRACK = cn(
-  "grid grid-flow-col grid-rows-1 gap-2",
-  "auto-cols-[calc((100%-0.5rem)/2)]",
-);
+function groupTrack(count: number) {
+  return cn(
+    "grid grid-flow-col grid-rows-1 gap-3",
+    count <= 2
+      ? "auto-cols-[calc((100%-0.75rem)/2)]"
+      : [
+          "auto-cols-[100%]",
+          "md:auto-cols-[calc((100%-0.75rem)/2)]",
+          "lg:auto-cols-[calc((100%-1.5rem)/3)]",
+        ],
+  );
+}
 
 const useIsomorphicLayoutEffect =
   typeof window !== "undefined" ? useLayoutEffect : useEffect;
@@ -148,9 +158,9 @@ function TrophyRow({ trophy }: { trophy: Trophy }) {
     >
       <div
         className={cn(
-          "relative size-11 shrink-0 overflow-hidden rounded-sm bg-muted",
+          "relative size-11 shrink-0 overflow-hidden rounded-sm border border-line bg-muted",
           locked && !hidden && "grayscale",
-          hidden && "border border-dashed border-line",
+          hidden && "border-dashed",
         )}
       >
         {trophy.iconUrl && !hidden ? (
@@ -259,21 +269,22 @@ function GroupStrip({
         "scrollbar-none [&::-webkit-scrollbar]:hidden",
       )}
     >
-      <div className={GROUP_TRACK}>
+      <div className={groupTrack(groups.length)}>
         {groups.map(({ key, group }) => (
           <div key={key} className="min-w-0 snap-start">
-            <div className="flex items-center gap-2 border border-line bg-surface px-2 py-1.5">
+            <div className="flex items-stretch overflow-hidden border border-line bg-surface">
               {group.iconUrl ? (
-                <Image
-                  src={group.iconUrl}
-                  alt=""
-                  width={28}
-                  height={28}
-                  sizes="28px"
-                  className="h-7 w-7 object-cover"
-                />
+                <div className="relative w-10 shrink-0 self-stretch overflow-hidden border-r border-line bg-muted">
+                  <Image
+                    src={group.iconUrl}
+                    alt=""
+                    fill
+                    sizes="40px"
+                    className="object-cover"
+                  />
+                </div>
               ) : null}
-              <div className="min-w-0 flex-1">
+              <div className="min-w-0 flex-1 px-2 py-1.5">
                 <div className="truncate text-xs font-medium">{group.name}</div>
                 <div className="label-mono text-muted-foreground">{group.progress}%</div>
               </div>
