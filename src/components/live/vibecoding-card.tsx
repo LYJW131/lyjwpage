@@ -51,7 +51,7 @@ function compactAgents(agents: VibeCodingAgent[]) {
 }
 
 /**
- * 一行限额条要展示的那一扇窗口：几条里取用量最高的，并列时留先出现的。
+ * 默认那一扇窗口：几条里取用量最高的，并列时留先出现的。
  *
  * 先剔掉专项窗口 —— Spark / Fable 那类不代表这个 agent 的整体余量，全量
  * 面板的两个槽也是这么挡的（isExtraWindow），两条渲染路径得给同一个答案。
@@ -412,6 +412,17 @@ function pickSlotLimit(limits: VibeCodingLimit[], slot: "session" | "weekly") {
     return matched.find((limit) => limit.key === "weekly_all") ?? matched[0] ?? null;
   }
   return matched.find((limit) => limit.key.endsWith(".primary")) ?? matched[0] ?? null;
+}
+
+/**
+ * 紧凑行那一条限额。Codex 固定看 7 天窗；其余仍取最紧的那条。
+ * 周窗缺席时退回 busiestLimit，别让这一行整条空白。
+ */
+function compactLimit(agent: VibeCodingAgent, now: number) {
+  if (agent.id === "codex") {
+    return pickSlotLimit(agent.limits, "weekly") ?? busiestLimit(agent.limits, now);
+  }
+  return busiestLimit(agent.limits, now);
 }
 
 type FeaturedLimitRow =
@@ -857,7 +868,7 @@ function CompactAgentRow({ agent }: { agent: VibeCodingAgent }) {
   const mountedAt = useMountedAt();
   const [ticked, setTicked] = useState(0);
   const now = ticked || mountedAt;
-  const limit = busiestLimit(agent.limits, now);
+  const limit = compactLimit(agent, now);
   const usedPercentValue = limit?.usedPercent ?? null;
   const resetsAt = limit?.resetsAt ?? null;
   useEffect(() => {
@@ -880,7 +891,7 @@ function CompactAgentRow({ agent }: { agent: VibeCodingAgent }) {
   /**
    * 配速指示器，和上面全量面板那两条同一套。
    *
-   * 这一行画的是「最紧的那条限额」（busiestLimit），所以指示器跟着的也是它。
+   * 这一行画的是 compactLimit 挑出的那条，所以指示器跟着的也是它。
    * 上面那个定时器最疏是按小时醒，31 天的窗口一小时才挪 0.13% —— 够用，但仍然
    * 单排一个：那个定时器的节奏是给重置倒计时定的，不该让指示器跟着它的取舍走。
    */
@@ -982,8 +993,8 @@ function CompactAgents({ agents }: { agents: VibeCodingAgent[] }) {
   if (agents.length === 0) return null;
   // 排序不看过期（now 传 0）：这里只定行序，行内画什么由行自己判
   const sortedAgents = [...agents].sort((left, right) => {
-    const leftUsed = busiestLimit(left.limits, 0)?.usedPercent ?? -1;
-    const rightUsed = busiestLimit(right.limits, 0)?.usedPercent ?? -1;
+    const leftUsed = compactLimit(left, 0)?.usedPercent ?? -1;
+    const rightUsed = compactLimit(right, 0)?.usedPercent ?? -1;
     return rightUsed - leftUsed;
   });
   /*
