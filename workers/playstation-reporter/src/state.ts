@@ -1,6 +1,7 @@
 export const AUTH_KEY = "auth";
 export const PRESENCE_FINGERPRINT_KEY = "fp:presence";
 export const PLAYED_GAMES_FINGERPRINT_KEY = "fp:playedGames";
+export const TROPHIES_FINGERPRINT_KEY = "fp:trophies";
 export const TICK_META_KEY = "meta:lastTick";
 
 /** KV `auth` 的形状与原 `state/auth.json` 完全一致，便于直接迁移现有状态。 */
@@ -19,6 +20,7 @@ export type TickMeta = {
   ok: boolean;
   presenceChanged: boolean;
   playedGamesChanged: boolean;
+  trophiesChanged: boolean;
   dryRun: boolean;
   error?: string;
 };

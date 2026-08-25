@@ -1,10 +1,12 @@
 import { ingestUrl, isDryRun, type Env } from "./env";
 import type { PlayedGamesReport, PresenceReport } from "./psn";
+import type { TrophiesReport } from "./trophies";
 
 export type PlaystationEnvelope = {
   version: 1;
   presence?: PresenceReport;
   playedGames?: PlayedGamesReport;
+  trophies?: TrophiesReport;
 };
 
 type SiteEnvelope<T> = { ok?: boolean; error?: string; data?: T };
@@ -32,7 +34,7 @@ export async function deliver(env: Env, envelope: PlaystationEnvelope): Promise<
       "Content-Type": "application/json",
     },
     body: JSON.stringify(envelope),
-    signal: AbortSignal.timeout(15_000),
+    signal: AbortSignal.timeout(envelope.trophies ? 30_000 : 15_000),
   });
   const data = await readEnvelope<{ changed?: boolean }>(response);
   return { changed: data?.changed === true };

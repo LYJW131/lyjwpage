@@ -3,7 +3,7 @@ import { Header } from "@/components/header";
 import { ContactCard } from "@/components/contact-card";
 import { ActivityCard } from "@/components/live/activity-card";
 import { LiveMediaPair } from "@/components/live/media-pair";
-import { PlaystationRow } from "@/components/live/playstation-card";
+import { PlaystationBlock } from "@/components/live/playstation-block";
 import { TimezoneCard } from "@/components/live/timezone-card";
 import { VibeCodingCard } from "@/components/live/vibecoding-card";
 import { WatchingRow } from "@/components/live/watching-card";
@@ -19,6 +19,7 @@ import {
   cachedNowWatching,
   cachedPlaying,
   cachedPlayingNow,
+  cachedTrophiesSummary,
   cachedTimezone,
   cachedVibeCoding,
   cachedVibeCodingYear,
@@ -49,6 +50,7 @@ export default async function Home() {
     nowWatching,
     playing,
     playingNow,
+    trophies,
     githubChart,
   ] = await Promise.all([
     cachedDesktop(),
@@ -64,6 +66,7 @@ export default async function Home() {
     cachedNowWatching(),
     cachedPlaying(),
     cachedPlayingNow(),
+    cachedTrophiesSummary(),
     cachedGithubChart(),
   ]);
 
@@ -87,13 +90,11 @@ export default async function Home() {
               <VibeCodingCard fallback={vibeCoding} />
             </div>
 
-            <div id="playing" className="mt-6 scroll-mt-28 border-t border-line pt-5">
-              <div className="mb-3 flex items-baseline justify-between">
-                <h3 className="text-sm font-medium">最近在玩</h3>
-                <span className="label-mono text-muted-foreground">PlayStation</span>
-              </div>
-              <PlaystationRow fallback={playing} nowFallback={playingNow} />
-            </div>
+            <PlaystationBlock
+              trophies={trophies}
+              playing={playing}
+              playingNow={playingNow}
+            />
 
             <div id="watching" className="mt-6 scroll-mt-28 border-t border-line pt-5">
               <div className="mb-3 flex items-baseline justify-between">

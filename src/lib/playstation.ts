@@ -4,14 +4,18 @@ import {
   fanout,
   NOW_PLAYING_TAG,
   PLAYING_TAG,
+  TROPHIES_TAG,
   type PendingEvent,
 } from "@/lib/live-events";
 import {
   getPlaystationPlayedGames,
   getPlaystationPresence,
+  getPlaystationTrophies,
   setPlaystationPlayedGames,
   setPlaystationPresence,
+  setPlaystationTrophies,
 } from "@/lib/playstation-store";
+import { normalizeTrophies, trophiesContent } from "@/lib/trophies";
 import type {
   PlaystationGame,
   PlaystationNowPlaying,
@@ -61,6 +65,18 @@ function nullableText(
   return requiredText(row, field, context);
 }
 
+function requiredBoolean(
+  row: Record<string, unknown>,
+  field: string,
+  context: string,
+): boolean {
+  const value = row[field];
+  if (typeof value !== "boolean") {
+    throw new Error(`${context} 的 ${field} 必须是布尔值`);
+  }
+  return value;
+}
+
 function normalizeNowPlaying(value: unknown): PlaystationNowPlaying | null {
   if (value == null) return null;
   const row = object(value);
@@ -106,6 +122,8 @@ function normalizeGame(value: unknown, index: number): PlaystationGame {
     lastPlayedAt: nullableNumber(row, "lastPlayedAt", context),
     playDurationMs: nullableNumber(row, "playDurationMs", context),
     imageUrl: nullableText(row, "imageUrl", context),
+    service: nullableText(row, "service", context),
+    preOrder: requiredBoolean(row, "preOrder", context),
   };
 }
 
@@ -145,8 +163,10 @@ export async function getPlayingNow(): Promise<PlaystationPresencePayload> {
 }
 
 /**
- * 两部分各自可省；缺席表示这次不谈这一项。站点再比一次内容，避免重试或手工
+ * 三部分各自可省；缺席表示这次不谈这一项。站点再比一次内容，避免重试或手工
  * 兜底上报退化成广播。写、带数据推送与 tag 失效统一交给 fanout 排序。
+ *
+ * 奖杯目录只失效、不推：整份几百 KB，解锁又不是按秒翻的事。
  */
 export async function recordPlaystationReport(input: unknown) {
   const envelope = object(input);
@@ -160,10 +180,13 @@ export async function recordPlaystationReport(input: unknown) {
     "playedGames" in envelope
       ? normalizePlaystationPlayedGames(envelope.playedGames)
       : null;
+  const incomingTrophies =
+    "trophies" in envelope ? normalizeTrophies(envelope.trophies) : null;
 
-  const [previousPresence, previousPlayedGames] = await Promise.all([
+  const [previousPresence, previousPlayedGames, previousTrophies] = await Promise.all([
     incomingPresence ? getPlaystationPresence() : null,
     incomingPlayedGames ? getPlaystationPlayedGames() : null,
+    incomingTrophies ? getPlaystationTrophies() : null,
   ]);
 
   const presenceChanged =
@@ -175,6 +198,10 @@ export async function recordPlaystationReport(input: unknown) {
     incomingPlayedGames != null &&
     JSON.stringify(previousPlayedGames?.items ?? null) !==
       JSON.stringify(incomingPlayedGames.items);
+  const trophiesChanged =
+    incomingTrophies != null &&
+    JSON.stringify(previousTrophies ? trophiesContent(previousTrophies) : null) !==
+      JSON.stringify(trophiesContent(incomingTrophies));
 
   const writes: Promise<unknown>[] = [];
   const events: PendingEvent[] = [];
@@ -189,8 +216,14 @@ export async function recordPlaystationReport(input: unknown) {
     writes.push(setPlaystationPlayedGames(incomingPlayedGames));
     events.push({ type: "playing", payload: incomingPlayedGames });
     tags.push(PLAYING_TAG);
+    // 陈列室的时长和 Plus / 预购是读时按 titleIds 盖上去的，游玩一变就得重算。
+    tags.push(TROPHIES_TAG);
+  }
+  if (incomingTrophies && (trophiesChanged || !previousTrophies)) {
+    writes.push(setPlaystationTrophies(incomingTrophies));
+    tags.push(TROPHIES_TAG);
   }
 
   await fanout({ writes, events, tags });
-  return { changed: presenceChanged || playedGamesChanged };
+  return { changed: presenceChanged || playedGamesChanged || trophiesChanged };
 }

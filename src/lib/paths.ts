@@ -31,6 +31,12 @@ export const NOW_WATCHING_PATH = "/api/status/watching/now";
 export const PLAYING_PATH = "/api/status/playing";
 export const NOW_PLAYING_PATH = "/api/status/playing/now";
 
+/**
+ * 奖杯陈列室。没有「此刻」—— 解锁不是按秒翻面的事，不配 /now，
+ * 也不走推送（整份目录几百 KB，广播它就是把推送当轮询用）。
+ */
+export const TROPHIES_PATH = "/api/status/trophies";
+
 /** 贡献热力图。没有推送；浏览器按长间隔和切回焦点来问，切回带游标。 */
 export const GITHUB_CHART_PATH = "/api/status/github-chart";
 
