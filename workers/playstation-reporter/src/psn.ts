@@ -7,14 +7,16 @@ import {
 } from "psn-api";
 
 import { AuthSession } from "./auth";
-import { accountId, language, type Env } from "./env";
-
-type Loose<T> =
-  T extends Array<infer Item>
-    ? Array<Loose<Item>>
-    : T extends object
-      ? { [Key in keyof T]?: Loose<T[Key]> }
-      : T;
+import { accountId, type Env } from "./env";
+import {
+  epochMs,
+  languageHeader,
+  nonNegative,
+  sleep,
+  trimmed,
+  withToken,
+  type Loose,
+} from "./util";
 
 export type NowPlaying = {
   titleId: string;
@@ -61,15 +63,8 @@ export type PlayedGamesReport = {
   items: PlayedGame[];
 };
 
-function epochMs(iso: string | undefined): number | null {
-  if (!iso) return null;
-  const value = Date.parse(iso);
-  return Number.isFinite(value) ? value : null;
-}
-
 function platformName(raw: string | undefined): string | null {
-  const value = raw?.trim();
-  return value ? value.toUpperCase() : null;
+  return trimmed(raw)?.toUpperCase() ?? null;
 }
 
 /** ISO-8601 时长换成毫秒；累计小时可以超过 24，另兼容规范里的天和周。 */
@@ -92,58 +87,36 @@ export function durationMs(raw: string | undefined): number | null {
   return Number.isFinite(total) ? Math.round(total * 1000) : null;
 }
 
-function isAccessTokenRejected(error: unknown): boolean {
-  if (!(error instanceof Error)) return false;
-  return /(?:\b401\b|\bunauthori[sz]ed\b|access token.+(?:expired|invalid)|(?:expired|invalid).+access token)/i.test(
-    error.message,
-  );
-}
-
-/** 业务请求遇到 401 时强制续期一次，并且只重试一次。 */
-async function withToken<T>(
-  auth: AuthSession,
-  load: (token: string) => Promise<T>,
-): Promise<T> {
-  try {
-    return await load(await auth.accessToken());
-  } catch (error) {
-    if (!isAccessTokenRejected(error)) throw error;
-    return load(await auth.accessToken(true));
-  }
-}
-
-function languageHeader(env: Env): { "Accept-Language": string } | undefined {
-  const value = language(env);
-  return value ? { "Accept-Language": value } : undefined;
-}
-
 export async function fetchPresence(env: Env, auth: AuthSession): Promise<PresenceReport> {
   const localized = languageHeader(env);
-  const raw = (await withToken(auth, (token) =>
+  // 这个入口自己检查 {error}，不用再断言一次。
+  const raw: Loose<BasicPresenceResponse> = await withToken(auth, (token) =>
     getBasicPresence(
       { accessToken: token },
       accountId(env),
       localized ? { headerOverrides: localized } : undefined,
     ),
-  )) as Loose<BasicPresenceResponse>;
+  );
 
   const presence = raw.basicPresence;
   const primary = presence?.primaryPlatformInfo;
   const title = presence?.gameTitleInfoList?.[0];
+  const titleId = trimmed(title?.npTitleId);
+  const titleName = trimmed(title?.titleName);
   return {
     observedAt: Date.now(),
     online: primary?.onlineStatus === "online",
-    availability: presence?.availability?.trim() || null,
+    availability: trimmed(presence?.availability),
     platform: platformName(primary?.platform),
     lastOnlineAt: epochMs(primary?.lastOnlineDate),
     playing:
-      title?.npTitleId && title.titleName
+      titleId && titleName
         ? {
-            titleId: title.npTitleId,
-            title: title.titleName,
-            format: platformName(title.format),
-            launchPlatform: platformName(title.launchPlatform),
-            iconUrl: title.npTitleIconUrl?.trim() || title.conceptIconUrl?.trim() || null,
+            titleId,
+            title: titleName,
+            format: platformName(title?.format),
+            launchPlatform: platformName(title?.launchPlatform),
+            iconUrl: trimmed(title?.npTitleIconUrl) ?? trimmed(title?.conceptIconUrl),
           }
         : null,
   };
@@ -158,10 +131,6 @@ export async function fetchPresence(env: Env, auth: AuthSession): Promise<Presen
  */
 const USER_GAMES_BASE_URL = "https://m.np.playstation.com/api/gamelist/v2/users";
 const PLAYED_GAMES_PAGE = 100;
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 async function requestPlayedGames(
   env: Env,
@@ -185,18 +154,20 @@ async function requestPlayedGames(
   return (await response.json()) as Loose<UserPlayedGamesResponse>;
 }
 
+/** 站点按非空 / 非负硬校验，一条越界就退整封信；名字缺席回落 titleId，别发空串。 */
 function readPlayedGame(title: Loose<UserPlayedGamesResponse["titles"][number]>): PlayedGame | null {
-  if (!title?.titleId) return null;
+  const titleId = trimmed(title?.titleId);
+  if (!titleId) return null;
   return {
-    titleId: title.titleId,
-    name: title.name?.trim() || title.localizedName?.trim() || "",
-    category: title.category?.trim() || null,
-    playCount: Number(title.playCount) || 0,
+    titleId,
+    name: trimmed(title.name) ?? trimmed(title.localizedName) ?? titleId,
+    category: trimmed(title.category),
+    playCount: nonNegative(title.playCount),
     firstPlayedAt: epochMs(title.firstPlayedDateTime),
     lastPlayedAt: epochMs(title.lastPlayedDateTime),
     playDurationMs: durationMs(title.playDuration),
-    imageUrl: title.imageUrl?.trim() || title.localizedImageUrl?.trim() || null,
-    service: title.service?.trim() || null,
+    imageUrl: trimmed(title.imageUrl) ?? trimmed(title.localizedImageUrl),
+    service: trimmed(title.service),
     preOrder: false,
   };
 }
@@ -205,7 +176,7 @@ const PURCHASED_PAGE = 50;
 const PURCHASED_CAP = 400;
 
 function httpsUrl(value: string | null | undefined): string | null {
-  const url = value?.trim();
+  const url = trimmed(value);
   return url ? url.replace(/^http:\/\//i, "https://") : null;
 }
 

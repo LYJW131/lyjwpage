@@ -1,4 +1,5 @@
 import { AwaitingReport } from "@/lib/api";
+import { isStale, playstationStaleMs } from "@/lib/freshness";
 import { number, object, text } from "@/lib/json";
 import {
   fanout,
@@ -21,6 +22,7 @@ import type {
   PlaystationNowPlaying,
   PlaystationPlayingPayload,
   PlaystationPresencePayload,
+  StatusResponse,
 } from "@/lib/types";
 
 function requiredNumber(
@@ -163,6 +165,43 @@ export async function getPlayingNow(): Promise<PlaystationPresencePayload> {
 }
 
 /**
+ * presence 是心跳：Worker 每轮 cron 都发一封，内容没变也发。于是「observedAt
+ * 多久没动」就是「Worker 还活着没有」，而这个判定光靠时间流逝就会翻面 ——
+ * 所以它在**读的出口每次请求现算**，不进 'use cache'。冻进快照的话 Worker
+ * 死掉之后页面会一直举着「正在游玩」，快照 TTL 还有 30 天。
+ *
+ * 断流不等于离线：Worker 死了我们只是**不知道**他在不在玩。所以退成
+ * AwaitingReport 交给 statusRoute 发降级信封，卡片照旧摆最近在玩的瓷砖、
+ * 只是不再有「正在游玩」那一行 —— 而不是伪造一个 online:false 说他下线了。
+ */
+export function assertPresenceFresh(
+  payload: PlaystationPresencePayload,
+  now = Date.now(),
+): PlaystationPresencePayload {
+  if (!isStale({ now, at: payload.observedAt, windowMs: playstationStaleMs() })) {
+    return payload;
+  }
+  const minutes = Math.round(Math.max(0, now - payload.observedAt) / 60_000);
+  throw new AwaitingReport(`PlayStation 在线状态遥测断流：最后一次采集在 ${minutes} 分钟前`);
+}
+
+/**
+ * 首屏那份的同一道判定。页面直接调 `cachedPlayingNow()` 拿信封，不经过路由那层
+ * overlay，不过一遍的话第一帧仍会举着一个断了流的「正在游玩」，要等挂载后那次
+ * SWR 才纠正。
+ */
+export function withPresenceFreshness(
+  envelope: StatusResponse<PlaystationPresencePayload>,
+): StatusResponse<PlaystationPresencePayload> {
+  if (!envelope.ok) return envelope;
+  try {
+    return { ok: true, data: assertPresenceFresh(envelope.data) };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+/**
  * 三部分各自可省；缺席表示这次不谈这一项。站点再比一次内容，避免重试或手工
  * 兜底上报退化成广播。写、带数据推送与 tag 失效统一交给 fanout 排序。
  *
@@ -208,11 +247,25 @@ export async function recordPlaystationReport(input: unknown) {
   const tags: string[] = [];
 
   const urgentTags: string[] = [];
-  if (incomingPresence && (presenceChanged || !previousPresence)) {
+  if (incomingPresence) {
+    /**
+     * 内容没变也要落库：presence 是心跳（Worker 每轮 cron 都发一封），
+     * observedAt 就是心跳本身，不刷新它的话读那侧永远判不出 Worker 是什么时候
+     * 死的，断流判定（assertPresenceFresh）等于白写。
+     *
+     * 但没变就不广播 —— 推一条一模一样的事件是拿推送当轮询用。tag 仍然要推，
+     * 走普通那半：不推的话 'use cache' 里那份快照的 observedAt 跟着冻住，心跳
+     * 刷新的只有 Redis，端点读到的还是老时刻。普通 tag 给的是
+     * stale-while-revalidate，落后一个刷新周期，窗口已经把这一截算进去了。
+     */
     writes.push(setPlaystationPresence(incomingPresence));
-    events.push({ type: "playing-now", payload: incomingPresence });
-    // 「正在游玩」和听歌 now 一样：不能先把旧值再顶几分钟。
-    urgentTags.push(NOW_PLAYING_TAG);
+    if (presenceChanged || !previousPresence) {
+      events.push({ type: "playing-now", payload: incomingPresence });
+      // 「正在游玩」和听歌 now 一样：不能先把旧值再顶几分钟。
+      urgentTags.push(NOW_PLAYING_TAG);
+    } else {
+      tags.push(NOW_PLAYING_TAG);
+    }
   }
   if (incomingPlayedGames && (playedGamesChanged || !previousPlayedGames)) {
     writes.push(setPlaystationPlayedGames(incomingPlayedGames));

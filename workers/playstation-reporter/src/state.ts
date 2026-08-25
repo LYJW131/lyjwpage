@@ -1,5 +1,4 @@
 export const AUTH_KEY = "auth";
-export const PRESENCE_FINGERPRINT_KEY = "fp:presence";
 export const PLAYED_GAMES_FINGERPRINT_KEY = "fp:playedGames";
 export const TROPHIES_FINGERPRINT_KEY = "fp:trophies";
 export const TICK_META_KEY = "meta:lastTick";
@@ -14,11 +13,11 @@ export type AuthState = {
   refreshTokenExpiresAt: number;
 };
 
+/** presence 每轮必发，没有「变没变」可言，所以只记另外两部分。 */
 export type TickMeta = {
   startedAt: number;
   completedAt: number;
   ok: boolean;
-  presenceChanged: boolean;
   playedGamesChanged: boolean;
   trophiesChanged: boolean;
   dryRun: boolean;

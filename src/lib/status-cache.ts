@@ -40,7 +40,10 @@ import { getVibeCodingYear } from "@/lib/vibecoding-year-store";
  * expireStatus）—— 上报会被原样转给对端，对端自己跑一遍同一个 handler、
  * 自己走到 expireStatus，见 lib/ingest-relay。
  * Mac 存活（lastSeenAt / declaredOffline）以及充电头的 pushedAt 也在路由里
- * 现盖一层，因为心跳不触发 tag 失效。时区不看存活，只在 timezone 模块上报时失效。
+ * 现盖一层，因为心跳不触发 tag 失效。PlayStation presence 的断流判定同理在路由
+ * 出口现算（见 app/api/status/playing/now）—— 它的心跳**会**推普通 tag，但
+ * 「多久没刷新」这个结论光靠时间流逝就会翻面，冻进来的那份永远翻不过来。
+ * 时区不看存活，只在 timezone 模块上报时失效。
  *
  * 一个主题一个缓存条目、一个 tag：充电头插拔只让充电头那份重算，不牵连另外七份。
  *

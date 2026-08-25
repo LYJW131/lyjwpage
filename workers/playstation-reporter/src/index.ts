@@ -17,20 +17,14 @@ import {
   type PlayedGamesReport,
   type PresenceReport,
 } from "./psn";
-import { deliver, type PlaystationEnvelope } from "./site";
+import { deliver } from "./site";
 import {
   PLAYED_GAMES_FINGERPRINT_KEY,
-  PRESENCE_FINGERPRINT_KEY,
   TICK_META_KEY,
   TROPHIES_FINGERPRINT_KEY,
   type TickMeta,
 } from "./state";
 import { fetchTrophies, fetchTrophyIndex, type TrophiesReport } from "./trophies";
-
-function presenceFingerprint(report: PresenceReport): string {
-  const { observedAt: _observedAt, ...content } = report;
-  return JSON.stringify(content);
-}
 
 function playedGamesFingerprint(report: PlayedGamesReport): string {
   return JSON.stringify(report.items);
@@ -65,18 +59,15 @@ function tickOnce(env: Env): Promise<TickResult> {
 
 async function tick(env: Env): Promise<TickResult> {
   const startedAt = Date.now();
-  let presenceChanged = false;
   let playedGamesChanged = false;
   let trophiesChanged = false;
   let trophies: TrophiesReport | null = null;
 
   try {
-    const [oldPresenceFingerprint, oldPlayedGamesFingerprint, oldTrophiesFingerprint] =
-      await Promise.all([
-        env.STATE.get(PRESENCE_FINGERPRINT_KEY),
-        env.STATE.get(PLAYED_GAMES_FINGERPRINT_KEY),
-        env.STATE.get(TROPHIES_FINGERPRINT_KEY),
-      ]);
+    const [oldPlayedGamesFingerprint, oldTrophiesFingerprint] = await Promise.all([
+      env.STATE.get(PLAYED_GAMES_FINGERPRINT_KEY),
+      env.STATE.get(TROPHIES_FINGERPRINT_KEY),
+    ]);
 
     const hidden = hiddenTitleIds(env);
     const auth = new AuthSession(env);
@@ -112,9 +103,7 @@ async function tick(env: Env): Promise<TickResult> {
       entitledPlayed,
       withoutHiddenTitleIds(library, hidden),
     );
-    const nextPresenceFingerprint = presenceFingerprint(presence);
     const nextPlayedGamesFingerprint = playedGamesFingerprint(recentPlayedGames);
-    presenceChanged = nextPresenceFingerprint !== oldPresenceFingerprint;
     playedGamesChanged = nextPlayedGamesFingerprint !== oldPlayedGamesFingerprint;
 
     let nextTrophiesFingerprint = oldTrophiesFingerprint;
@@ -143,33 +132,44 @@ async function tick(env: Env): Promise<TickResult> {
       );
     }
 
-    if (presenceChanged || playedGamesChanged || trophiesChanged) {
-      const envelope: PlaystationEnvelope = {
-        version: 1,
-        ...(presenceChanged ? { presence } : {}),
-        ...(playedGamesChanged ? { playedGames: recentPlayedGames } : {}),
-        ...(trophiesChanged && trophies ? { trophies } : {}),
-      };
-      await deliver(env, envelope);
+    // 两封信各交各的：一封被站点 400，不该把另一封的指纹也扣住不写。
+    const failures: string[] = [];
 
-      const writes: Promise<void>[] = [];
-      if (presenceChanged) {
-        writes.push(env.STATE.put(PRESENCE_FINGERPRINT_KEY, nextPresenceFingerprint));
-      }
+    // presence 每轮必发：站点靠这枚 observedAt 判 worker 死活，内容没变它自己压掉广播。
+    try {
+      await deliver(env, {
+        version: 1,
+        presence,
+        ...(playedGamesChanged ? { playedGames: recentPlayedGames } : {}),
+      });
       if (playedGamesChanged) {
-        writes.push(env.STATE.put(PLAYED_GAMES_FINGERPRINT_KEY, nextPlayedGamesFingerprint));
+        await env.STATE.put(PLAYED_GAMES_FINGERPRINT_KEY, nextPlayedGamesFingerprint);
       }
-      if (trophiesChanged && nextTrophiesFingerprint) {
-        writes.push(env.STATE.put(TROPHIES_FINGERPRINT_KEY, nextTrophiesFingerprint));
-      }
-      await Promise.all(writes);
+    } catch (error) {
+      failures.push(`presence 交付失败：${explain(error)}`);
+      console.error(
+        JSON.stringify({ event: "playstation-deliver", part: "presence", error: explain(error) }),
+      );
     }
+
+    if (trophiesChanged && trophies && nextTrophiesFingerprint) {
+      try {
+        await deliver(env, { version: 1, trophies });
+        await env.STATE.put(TROPHIES_FINGERPRINT_KEY, nextTrophiesFingerprint);
+      } catch (error) {
+        failures.push(`trophies 交付失败：${explain(error)}`);
+        console.error(
+          JSON.stringify({ event: "playstation-deliver", part: "trophies", error: explain(error) }),
+        );
+      }
+    }
+
+    if (failures.length) throw new Error(failures.join("；"));
 
     const meta: TickMeta = {
       startedAt,
       completedAt: Date.now(),
       ok: true,
-      presenceChanged,
       playedGamesChanged,
       trophiesChanged,
       dryRun: isDryRun(env),
@@ -182,7 +182,6 @@ async function tick(env: Env): Promise<TickResult> {
       startedAt,
       completedAt: Date.now(),
       ok: false,
-      presenceChanged,
       playedGamesChanged,
       trophiesChanged,
       dryRun: isDryRun(env),

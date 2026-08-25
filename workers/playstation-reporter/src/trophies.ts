@@ -7,18 +7,35 @@ import {
   getUserTrophiesForSpecificTitle,
   getUserTrophyGroupEarningsForTitle,
   getUserTrophyProfileSummary,
+  type ProfileFromAccountIdResponse,
+  type TitleThinTrophy,
+  type TitleTrophiesResponse,
+  type TitleTrophyGroupsResponse,
+  type Trophy as PsnTrophy,
+  type TrophyTitle,
+  type UserThinTrophy,
+  type UserTitlesResponse,
+  type UserTrophiesBySpecificTitleResponse,
+  type UserTrophiesEarnedForTitleResponse,
+  type UserTrophyGroupEarningsForTitleResponse,
+  type UserTrophyProfileSummaryResponse,
 } from "psn-api";
 
 import { AuthSession } from "./auth";
-import { language, type Env } from "./env";
+import { type Env } from "./env";
 import { type PlayedGame, type PlayedGamesReport } from "./psn";
-
-type Loose<T> =
-  T extends Array<infer Item>
-    ? Array<Loose<Item>>
-    : T extends object
-      ? { [Key in keyof T]?: Loose<T[Key]> }
-      : T;
+import {
+  assertNoPsnError,
+  epochMs,
+  languageHeader,
+  nonNegative,
+  nonNegativeInt,
+  percent,
+  sleep,
+  trimmed,
+  withToken,
+  type Loose,
+} from "./util";
 
 export type TrophyType = "platinum" | "gold" | "silver" | "bronze";
 
@@ -83,60 +100,52 @@ export type TrophiesReport = {
   }>;
 };
 
-type TitleIndex = {
-  npCommunicationId: string;
-  trophyTitleName?: string;
-  trophyTitleIconUrl?: string;
-  trophyTitlePlatform?: string;
-  progress?: number;
-  definedTrophies?: Loose<TrophyCounts>;
-  earnedTrophies?: Loose<TrophyCounts>;
-  lastUpdatedDateTime?: string;
-};
+/** 目录里没有 npCommunicationId 的行取不了明细，进不了这个类型。 */
+type TitleIndex = Loose<TrophyTitle> & { npCommunicationId: string };
+
+/** 上游还给三个点数字段，psn-api 2.18.1 的响应类型里没有；缺席就当 0。 */
+type TrophySummary = Loose<
+  UserTrophyProfileSummaryResponse & {
+    trophyPoint: number;
+    trophyLevelBasePoint: number;
+    trophyLevelNextPoint: number;
+  }
+>;
+
+/** 稀有度只在「已获得」那份里，psn-api 的定义类型没带；两份都读，谁有算谁。 */
+type DefinedTrophy = Loose<TitleThinTrophy & Pick<PsnTrophy, "trophyEarnedRate">>;
+
+/** 反过来，名字 / 说明 / 图标按类型只在定义那份里；上游偶尔多给，给了就当补充。 */
+type EarnedTrophy = Loose<
+  UserThinTrophy & Pick<TitleThinTrophy, "trophyName" | "trophyDetail" | "trophyIconUrl">
+>;
+
+type TrophyGroupDefinition = NonNullable<Loose<TitleTrophyGroupsResponse>["trophyGroups"]>[number];
+type TrophyGroupEarnings = NonNullable<
+  Loose<UserTrophyGroupEarningsForTitleResponse>["trophyGroups"]
+>[number];
 
 const TROPHY_TYPES = new Set<string>(["platinum", "gold", "silver", "bronze"]);
 
-function languageHeader(env: Env): { "Accept-Language": string } | undefined {
-  const value = language(env);
-  return value ? { "Accept-Language": value } : undefined;
-}
-
-function isAccessTokenRejected(error: unknown): boolean {
-  if (!(error instanceof Error)) return false;
-  return /(?:\b401\b|\bunauthori[sz]ed\b|access token.+(?:expired|invalid)|(?:expired|invalid).+access token)/i.test(
-    error.message,
-  );
-}
-
-async function withToken<T>(auth: AuthSession, load: (token: string) => Promise<T>): Promise<T> {
-  try {
-    return await load(await auth.accessToken());
-  } catch (error) {
-    if (!isAccessTokenRejected(error)) throw error;
-    return load(await auth.accessToken(true));
-  }
-}
-
-function epochMs(iso: string | undefined): number | null {
-  if (!iso) return null;
-  const value = Date.parse(iso);
-  return Number.isFinite(value) ? value : null;
+function isTrophyType(value: string): value is TrophyType {
+  return TROPHY_TYPES.has(value);
 }
 
 function counts(raw: Loose<TrophyCounts> | undefined): TrophyCounts {
   return {
-    platinum: Number(raw?.platinum) || 0,
-    gold: Number(raw?.gold) || 0,
-    silver: Number(raw?.silver) || 0,
-    bronze: Number(raw?.bronze) || 0,
+    platinum: nonNegative(raw?.platinum),
+    gold: nonNegative(raw?.gold),
+    silver: nonNegative(raw?.silver),
+    bronze: nonNegative(raw?.bronze),
   };
 }
 
+/** 上游给的是字符串百分比；站点按 0–100 硬校验，越界钳回。 */
 function rate(raw: string | number | undefined): number | null {
-  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
-  if (typeof raw !== "string" || !raw.trim()) return null;
+  if (raw == null) return null;
+  if (typeof raw === "string" && !raw.trim()) return null;
   const parsed = Number(raw);
-  return Number.isFinite(parsed) ? parsed : null;
+  return Number.isFinite(parsed) ? percent(parsed) : null;
 }
 
 function titleOptions(env: Env, platform: string | undefined) {
@@ -147,11 +156,47 @@ function titleOptions(env: Env, platform: string | undefined) {
   };
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+type TitleOptions = ReturnType<typeof titleOptions>;
 
 const TITLE_ID_BATCH = 5;
+const PAGE_LIMIT = 100;
+/** 兜底：nextOffset 一直不为空也不能无限打上游。100 页 × 100 条远超单个奖杯组。 */
+const MAX_PAGES = 100;
+
+type PsnPage<Row> = {
+  rows: Row[] | undefined;
+  nextOffset: number | undefined;
+  totalItemCount: number | undefined;
+};
+
+/**
+ * 分页端点统一走这里：取到 nextOffset 消失为止，收尾拿 totalItemCount 对一遍条数。
+ * 少一行就抛 —— 被截断的目录和真的变短的目录在指纹上一模一样，一旦写进指纹，
+ * 就要等下一次真变化才会自愈。
+ */
+async function collectPages<Row>(
+  what: string,
+  load: (offset: number) => Promise<PsnPage<Row>>,
+): Promise<Row[]> {
+  const rows: Row[] = [];
+  let offset = 0;
+  let total: number | null = null;
+  for (let page = 0; page < MAX_PAGES; page += 1) {
+    const body = await load(offset);
+    rows.push(...(body.rows ?? []));
+    if (typeof body.totalItemCount === "number") total = body.totalItemCount;
+    const next = body.nextOffset;
+    // nextOffset 不前进就是上游在原地打转，停下来交给下面的条数断言。
+    if (next == null || next <= offset) break;
+    if (total != null && rows.length >= total) break;
+    offset = next;
+    await sleep(120);
+  }
+  if (total != null && rows.length !== total) {
+    throw new Error(`PSN ${what} 只取到 ${rows.length} / ${total} 条`);
+  }
+  return rows;
+}
 
 function fold(
   a: number | null,
@@ -177,7 +222,7 @@ function profileAvatarUrl(
       break;
     }
   }
-  raw ??= withUrl[withUrl.length - 1].url?.trim() || null;
+  raw ??= trimmed(withUrl[withUrl.length - 1]?.url);
   return raw ? raw.replace(/^http:\/\//i, "https://") : null;
 }
 
@@ -214,17 +259,15 @@ async function requestTitleLinks(
   npTitleIds: string[],
 ): Promise<Array<{ npTitleId: string; npCommunicationIds: string[] }>> {
   const localized = languageHeader(env);
-  const raw = (await withToken(auth, (token) =>
-    getUserTrophiesForSpecificTitle({ accessToken: token }, "me", {
-      npTitleIds: npTitleIds.join(","),
-      ...(localized ? { headerOverrides: localized } : {}),
-    }),
-  )) as Loose<{
-    titles?: Array<{
-      npTitleId?: string;
-      trophyTitles?: Array<{ npCommunicationId?: string }>;
-    }>;
-  }>;
+  const raw: Loose<UserTrophiesBySpecificTitleResponse> = assertNoPsnError(
+    await withToken(auth, (token) =>
+      getUserTrophiesForSpecificTitle({ accessToken: token }, "me", {
+        npTitleIds: npTitleIds.join(","),
+        ...(localized ? { headerOverrides: localized } : {}),
+      }),
+    ),
+    "titleId 对齐",
+  );
   return (raw.titles ?? []).map((row) => ({
     npTitleId: row.npTitleId ?? "",
     npCommunicationIds: (row.trophyTitles ?? [])
@@ -304,53 +347,97 @@ export function trophiesFingerprint(titles: TitleIndex[], earned: TrophyCounts, 
 export async function fetchTrophyIndex(
   env: Env,
   auth: AuthSession,
-): Promise<{ fingerprint: string; titles: TitleIndex[]; accountId: string; summary: Loose<{
-  trophyLevel?: number;
-  trophyPoint?: number;
-  trophyLevelBasePoint?: number;
-  trophyLevelNextPoint?: number;
-  progress?: number;
-  tier?: number;
-  earnedTrophies?: Loose<TrophyCounts>;
-}> }> {
+): Promise<{
+  fingerprint: string;
+  titles: TitleIndex[];
+  accountId: string;
+  summary: TrophySummary;
+}> {
   const localized = languageHeader(env);
   const headers = localized ? { headerOverrides: localized } : undefined;
-  const summary = (await withToken(auth, (token) =>
-    getUserTrophyProfileSummary({ accessToken: token }, "me", headers),
-  )) as Loose<{
-    accountId?: string;
-    trophyLevel?: number;
-    trophyPoint?: number;
-    trophyLevelBasePoint?: number;
-    trophyLevelNextPoint?: number;
-    progress?: number;
-    tier?: number;
-    earnedTrophies?: Loose<TrophyCounts>;
-  }>;
+  const summary: TrophySummary = assertNoPsnError(
+    await withToken(auth, (token) =>
+      getUserTrophyProfileSummary({ accessToken: token }, "me", headers),
+    ),
+    "奖杯总览",
+  );
 
-  const titles: TitleIndex[] = [];
-  let offset = 0;
-  for (;;) {
-    const page = (await withToken(auth, (token) =>
-      getUserTitles({ accessToken: token }, "me", {
-        limit: 100,
-        offset,
-        ...headers,
+  const rows = await collectPages<Loose<TrophyTitle>>("奖杯目录", async (offset) => {
+    const page: Loose<UserTitlesResponse> = assertNoPsnError(
+      await withToken(auth, (token) =>
+        getUserTitles({ accessToken: token }, "me", { limit: PAGE_LIMIT, offset, ...headers }),
+      ),
+      "奖杯目录",
+    );
+    return {
+      rows: page.trophyTitles,
+      nextOffset: page.nextOffset,
+      totalItemCount: page.totalItemCount,
+    };
+  });
+  // 条数断言在过滤之前做完：没有 npCommunicationId 的行是合法的少数派，不该算截断。
+  const titles = rows.filter((row): row is TitleIndex => Boolean(row.npCommunicationId));
+  if (titles.length !== rows.length) {
+    console.log(
+      JSON.stringify({
+        event: "playstation-trophy-index",
+        titles: titles.length,
+        dropped: rows.length - titles.length,
       }),
-    )) as Loose<{ trophyTitles?: TitleIndex[]; nextOffset?: number; totalItemCount?: number }>;
-    titles.push(...(page.trophyTitles ?? []).filter((title) => title.npCommunicationId));
-    if (page.nextOffset == null) break;
-    offset = page.nextOffset;
-    if (titles.length >= (page.totalItemCount ?? titles.length)) break;
-    await sleep(120);
+    );
   }
 
   return {
-    fingerprint: trophiesFingerprint(titles, counts(summary.earnedTrophies), Number(summary.trophyLevel) || 0),
+    fingerprint: trophiesFingerprint(titles, counts(summary.earnedTrophies), nonNegativeInt(summary.trophyLevel)),
     titles,
     accountId: String(summary.accountId ?? ""),
     summary,
   };
+}
+
+async function fetchTrophyDefinitions(
+  auth: AuthSession,
+  id: string,
+  opts: TitleOptions,
+): Promise<DefinedTrophy[]> {
+  return collectPages<DefinedTrophy>(`${id} 的奖杯定义`, async (offset) => {
+    const page: Loose<TitleTrophiesResponse> = assertNoPsnError(
+      await withToken(auth, (token) =>
+        getTitleTrophies({ accessToken: token }, id, "all", { ...opts, limit: PAGE_LIMIT, offset }),
+      ),
+      `${id} 的奖杯定义`,
+    );
+    return {
+      rows: page.trophies,
+      nextOffset: page.nextOffset,
+      totalItemCount: page.totalItemCount,
+    };
+  });
+}
+
+async function fetchTrophiesEarned(
+  auth: AuthSession,
+  id: string,
+  opts: TitleOptions,
+): Promise<{ trophies: EarnedTrophy[]; lastUpdatedDateTime: string | undefined }> {
+  let lastUpdatedDateTime: string | undefined;
+  const trophies = await collectPages<EarnedTrophy>(`${id} 的已获得奖杯`, async (offset) => {
+    // 这个入口自己检查 {error}，不用再断言一次。
+    const page: Loose<UserTrophiesEarnedForTitleResponse> = await withToken(auth, (token) =>
+      getUserTrophiesEarnedForTitle({ accessToken: token }, "me", id, "all", {
+        ...opts,
+        limit: PAGE_LIMIT,
+        offset,
+      }),
+    );
+    lastUpdatedDateTime ??= page.lastUpdatedDateTime;
+    return {
+      rows: page.trophies,
+      nextOffset: page.nextOffset,
+      totalItemCount: page.totalItemCount,
+    };
+  });
+  return { trophies, lastUpdatedDateTime };
 }
 
 export async function fetchTrophies(
@@ -363,15 +450,12 @@ export async function fetchTrophies(
   const headers = localized ? { headerOverrides: localized } : undefined;
   if (!index.accountId) throw new Error("奖杯总览没有 accountId");
 
-  const profile = (await withToken(auth, (token) =>
+  // 这个入口自己检查 {error}，不用再断言一次。
+  const profile: Loose<ProfileFromAccountIdResponse> = await withToken(auth, (token) =>
     getProfileFromAccountId({ accessToken: token }, index.accountId, headers),
-  )) as Loose<{
-    onlineId?: string;
-    isPlus?: boolean;
-    avatars?: Array<{ size?: string; url?: string }>;
-  }>;
+  );
 
-  const onlineId = profile.onlineId?.trim();
+  const onlineId = trimmed(profile.onlineId);
   if (!onlineId) throw new Error("PSN 资料没有 onlineId");
 
   const playByTrophy = await mapPlayByTrophyId(env, auth, played);
@@ -380,94 +464,81 @@ export async function fetchTrophies(
     const id = title.npCommunicationId;
     const opts = titleOptions(env, title.trophyTitlePlatform);
     const [defs, earned, groupDefs, groupEarned] = await Promise.all([
-      withToken(auth, (token) => getTitleTrophies({ accessToken: token }, id, "all", opts)),
-      withToken(auth, (token) =>
-        getUserTrophiesEarnedForTitle({ accessToken: token }, "me", id, "all", opts),
+      fetchTrophyDefinitions(auth, id, opts),
+      fetchTrophiesEarned(auth, id, opts),
+      withToken(auth, (token) => getTitleTrophyGroups({ accessToken: token }, id, opts)).then(
+        (raw): Loose<TitleTrophyGroupsResponse> => assertNoPsnError(raw, `${id} 的奖杯组`),
       ),
-      withToken(auth, (token) => getTitleTrophyGroups({ accessToken: token }, id, opts)),
-      withToken(auth, (token) =>
-        getUserTrophyGroupEarningsForTitle({ accessToken: token }, "me", id, opts),
+      // 这个入口自己检查 {error}，不用再断言一次。
+      withToken(
+        auth,
+        (token): Promise<Loose<UserTrophyGroupEarningsForTitleResponse>> =>
+          getUserTrophyGroupEarningsForTitle({ accessToken: token }, "me", id, opts),
       ),
     ]);
 
+    // 没有 trophyId 的行进不了 map：否则两条都以 undefined 为键，会把获得情况接错人。
     const earnedMap = new Map(
-      ((earned as Loose<{ trophies?: Array<{ trophyId?: number }> }>).trophies ?? []).map((row) => [
-        row.trophyId,
-        row,
-      ]),
+      earned.trophies.filter((row) => row.trophyId != null).map((row) => [row.trophyId, row]),
     );
-    const play = playStats(playByTrophy.get(id), title.trophyTitleName?.trim() || id);
-    const lastUpdatedAt =
-      epochMs(
-        (groupEarned as Loose<{ lastUpdatedDateTime?: string }>).lastUpdatedDateTime ??
-          (earned as Loose<{ lastUpdatedDateTime?: string }>).lastUpdatedDateTime ??
-          title.lastUpdatedDateTime,
-      );
+    const play = playStats(playByTrophy.get(id), trimmed(title.trophyTitleName) ?? id);
+    const lastUpdatedAt = epochMs(
+      groupEarned.lastUpdatedDateTime ?? earned.lastUpdatedDateTime ?? title.lastUpdatedDateTime,
+    );
 
     titles.push({
       npCommunicationId: id,
-      name: title.trophyTitleName?.trim() || id,
+      name: trimmed(title.trophyTitleName) ?? id,
       localizedName: play.localizedName,
       titleIds: play.titleIds,
-      iconUrl: title.trophyTitleIconUrl?.trim() || null,
-      platform: title.trophyTitlePlatform?.trim() || "PS",
-      progress: Number(title.progress) || 0,
+      iconUrl: trimmed(title.trophyTitleIconUrl),
+      platform: trimmed(title.trophyTitlePlatform) ?? "PS",
+      progress: percent(title.progress),
       defined: counts(title.definedTrophies),
       earned: counts(title.earnedTrophies),
       lastUpdatedAt,
       playDurationMs: play.playDurationMs,
-      playCount: play.playCount,
+      playCount: nonNegative(play.playCount),
       firstPlayedAt: play.firstPlayedAt,
       lastPlayedAt: play.lastPlayedAt,
       service: play.service,
       preOrder: play.preOrder,
-      groups: ((groupDefs as Loose<{ trophyGroups?: Array<Record<string, unknown>> }>).trophyGroups ?? []).map(
-        (group) => {
-          const earnedGroup = (
-            (groupEarned as Loose<{ trophyGroups?: Array<Record<string, unknown>> }>).trophyGroups ?? []
-          ).find((row) => row.trophyGroupId === group.trophyGroupId);
-          return {
-            id: String(group.trophyGroupId ?? "default"),
-            name: String(group.trophyGroupName ?? "本体"),
-            iconUrl: typeof group.trophyGroupIconUrl === "string" ? group.trophyGroupIconUrl : null,
-            progress: Number(earnedGroup?.progress) || 0,
-            defined: counts(group.definedTrophies as Loose<TrophyCounts> | undefined),
-            earned: counts(earnedGroup?.earnedTrophies as Loose<TrophyCounts> | undefined),
-          };
-        },
-      ),
-      trophies: ((defs as Loose<{ trophies?: Array<Record<string, unknown>> }>).trophies ?? []).flatMap(
-        (definition) => {
-          const got = earnedMap.get(definition.trophyId as number) as Loose<Record<string, unknown>> | undefined;
-          const type = String(definition.trophyType ?? "");
-          if (!TROPHY_TYPES.has(type)) return [];
-          const hidden = Boolean(definition.trophyHidden);
-          const name =
-            String(definition.trophyName ?? got?.trophyName ?? "").trim() ||
-            (hidden ? "隐藏奖杯" : "未命名奖杯");
-          const detail = String(definition.trophyDetail ?? got?.trophyDetail ?? "").trim();
-          return [
-            {
-              id: Number(definition.trophyId) || 0,
-              type: type as TrophyType,
-              name,
-              detail: detail || null,
-              iconUrl:
-                (typeof definition.trophyIconUrl === "string" && definition.trophyIconUrl) ||
-                (typeof got?.trophyIconUrl === "string" && got.trophyIconUrl) ||
-                null,
-              hidden,
-              groupId: String(definition.trophyGroupId ?? "default"),
-              earned: Boolean(got?.earned),
-              earnedAt: epochMs(typeof got?.earnedDateTime === "string" ? got.earnedDateTime : undefined),
-              earnedRate: rate(
-                (got?.trophyEarnedRate as string | number | undefined) ??
-                  (definition.trophyEarnedRate as string | number | undefined),
-              ),
-            },
-          ];
-        },
-      ),
+      groups: (groupDefs.trophyGroups ?? []).map((group: TrophyGroupDefinition) => {
+        const earnedGroup: TrophyGroupEarnings | undefined = (groupEarned.trophyGroups ?? []).find(
+          (row) => row.trophyGroupId === group.trophyGroupId,
+        );
+        return {
+          id: trimmed(group.trophyGroupId) ?? "default",
+          name: trimmed(group.trophyGroupName) ?? "本体",
+          iconUrl: trimmed(group.trophyGroupIconUrl),
+          progress: percent(earnedGroup?.progress),
+          defined: counts(group.definedTrophies),
+          earned: counts(earnedGroup?.earnedTrophies),
+        };
+      }),
+      trophies: defs.flatMap((definition) => {
+        const type = definition.trophyType ?? "";
+        if (!isTrophyType(type)) return [];
+        const got = definition.trophyId == null ? undefined : earnedMap.get(definition.trophyId);
+        const hidden = Boolean(definition.trophyHidden);
+        return [
+          {
+            id: nonNegativeInt(definition.trophyId),
+            type,
+            name:
+              trimmed(definition.trophyName) ??
+              trimmed(got?.trophyName) ??
+              (hidden ? "隐藏奖杯" : "未命名奖杯"),
+            detail: trimmed(definition.trophyDetail) ?? trimmed(got?.trophyDetail),
+            iconUrl: trimmed(definition.trophyIconUrl) ?? trimmed(got?.trophyIconUrl),
+            hidden,
+            groupId: trimmed(definition.trophyGroupId) ?? "default",
+            earned: Boolean(got?.earned),
+            earnedAt: epochMs(got?.earnedDateTime),
+            earnedRate: rate(got?.trophyEarnedRate ?? definition.trophyEarnedRate),
+          },
+        ];
+      }),
     });
 
     if (i < index.titles.length - 1) await sleep(150);
@@ -479,12 +550,12 @@ export async function fetchTrophies(
       onlineId,
       avatarUrl: profileAvatarUrl(profile.avatars),
       plus: profile.isPlus === true,
-      level: Number(index.summary.trophyLevel) || 0,
-      tier: Number(index.summary.tier) || 0,
-      trophyPoint: Number(index.summary.trophyPoint) || 0,
-      levelBasePoint: Number(index.summary.trophyLevelBasePoint) || 0,
-      levelNextPoint: Number(index.summary.trophyLevelNextPoint) || 0,
-      levelProgress: Number(index.summary.progress) || 0,
+      level: nonNegativeInt(index.summary.trophyLevel),
+      tier: nonNegativeInt(index.summary.tier),
+      trophyPoint: nonNegative(index.summary.trophyPoint),
+      levelBasePoint: nonNegative(index.summary.trophyLevelBasePoint),
+      levelNextPoint: nonNegative(index.summary.trophyLevelNextPoint),
+      levelProgress: percent(index.summary.progress),
       earned: counts(index.summary.earnedTrophies),
     },
     titles,

@@ -65,6 +65,11 @@ function nullableText(
   return requiredText(row, field, context);
 }
 
+/**
+ * PSN 有几路图还在发 http:// 的地址。页面是 https，混合内容会被浏览器直接拦掉，
+ * 而 next/image 的 remotePatterns 也只放行了 https 那一份 —— 所以入库前统一升级。
+ * 头像、奖杯组图标、奖杯图标都要过一遍，漏一处就是那一路图全空。
+ */
 function httpsUrl(value: string | null): string | null {
   return value ? value.replace(/^http:\/\//i, "https://") : null;
 }
@@ -122,7 +127,7 @@ function normalizeGroup(value: unknown, index: number, titleId: string): TrophyG
   return {
     id: requiredText(row, "id", context),
     name: requiredText(row, "name", context),
-    iconUrl: nullableText(row, "iconUrl", context),
+    iconUrl: httpsUrl(nullableText(row, "iconUrl", context)),
     progress,
     defined: normalizeCounts(row.defined, `${context}.defined`),
     earned: normalizeCounts(row.earned, `${context}.earned`),
@@ -153,7 +158,7 @@ function normalizeTrophy(value: unknown, index: number, titleId: string): Trophy
     type: normalizeTrophyType(row.type, context),
     name: requiredText(row, "name", context),
     detail: nullableText(row, "detail", context),
-    iconUrl: nullableText(row, "iconUrl", context),
+    iconUrl: httpsUrl(nullableText(row, "iconUrl", context)),
     hidden: requiredBoolean(row, "hidden", context),
     groupId: requiredText(row, "groupId", context),
     earned: requiredBoolean(row, "earned", context),
@@ -185,7 +190,7 @@ function normalizeTitle(value: unknown, index: number): TrophyTitle {
     name: requiredText(row, "name", context),
     localizedName: nullableText(row, "localizedName", context),
     titleIds: normalizeTitleIds(row.titleIds, context),
-    iconUrl: nullableText(row, "iconUrl", context),
+    iconUrl: httpsUrl(nullableText(row, "iconUrl", context)),
     platform: requiredText(row, "platform", context),
     progress,
     defined: normalizeCounts(row.defined, `${context}.defined`),
@@ -258,10 +263,22 @@ function playName(games: PlaystationGame[], trophyName: string): string | null {
   return null;
 }
 
-function entitlementsFrom(games: PlaystationGame[]): Pick<TrophyTitle, "service" | "preOrder"> {
+/**
+ * entitlement 也得和库里那份折一次，理由和时长那几项一样：最近列表只覆盖窗口
+ * 里的 SKU。`service: null` 是「上游没说」不是「不是 Plus」（见 PlaystationGame
+ * 的注释），无条件盖过去会把已知的权益抹掉 —— 缺 SKU 的那一档抹得最狠，整池
+ * 都对不上时连一条真话都没有。
+ *
+ * 池子排在前面：foldService 是 Plus 优先、其余取第一条非空，所以 `ps_plus` 谁
+ * 前谁后都一样，剩下的让更新的那份说话，库里那份只填空。
+ */
+function entitlementsFrom(
+  title: TrophyTitle,
+  games: PlaystationGame[],
+): Pick<TrophyTitle, "service" | "preOrder"> {
   return {
-    service: foldService(...games.map((game) => game.service)),
-    preOrder: games.some((game) => game.preOrder),
+    service: foldService(...games.map((game) => game.service), title.service),
+    preOrder: title.preOrder === true || games.some((game) => game.preOrder),
   };
 }
 
@@ -287,7 +304,7 @@ function overlayPlayStats(
       return { ...title, service: title.service ?? null, preOrder: title.preOrder === true };
     }
     const localizedName = playName(pool, title.name) ?? title.localizedName;
-    const entitlements = entitlementsFrom(pool);
+    const entitlements = entitlementsFrom(title, pool);
     if (pool.length < ids.length) {
       return { ...title, localizedName, ...entitlements };
     }
@@ -329,9 +346,21 @@ export async function getTrophies(): Promise<TrophiesPayload> {
   return { ...payload, titles: overlayPlayStats(payload.titles, played.items) };
 }
 
+/**
+ * 分子分母同源：两边都从 `titles` 逐金属加总。
+ *
+ * `profile.earned` 是**账号级**的合计，而 titles 被 Worker 的屏蔽名单
+ * （PLAYSTATION_HIDDEN_TITLE_IDS）滤过 —— 拿账号级的分子配滤过的分母，屏蔽名单
+ * 一非空百分比就偏高，屏蔽掉的是已通关的游戏时还能越过 100%。等级、点数那些
+ * 仍然照旧读 profile：那是账号级的事实，本来就不该跟着屏蔽名单变。
+ */
 export function summarizeTrophies(payload: TrophiesPayload): TrophiesSummaryPayload {
   const defined = payload.titles.reduce(
     (sum, title) => addTrophyCounts(sum, title.defined),
+    emptyTrophyCounts(),
+  );
+  const earned = payload.titles.reduce(
+    (sum, title) => addTrophyCounts(sum, title.earned),
     emptyTrophyCounts(),
   );
   const recent: TrophyUnlock[] = [];
@@ -363,8 +392,9 @@ export function summarizeTrophies(payload: TrophiesPayload): TrophiesSummaryPayl
     observedAt: payload.observedAt,
     profile: payload.profile,
     defined,
+    earned,
     titleCount: payload.titles.length,
-    earnedCount: countTrophies(payload.profile.earned),
+    earnedCount: countTrophies(earned),
     recent: recent.slice(0, 3),
     titles,
   };
