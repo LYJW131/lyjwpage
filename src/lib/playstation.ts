@@ -8,7 +8,6 @@ import {
   TROPHIES_TAG,
   type PendingEvent,
 } from "@/lib/live-events";
-import { PLAYING_TILE_LIMIT } from "@/lib/paths";
 import {
   getPlaystationPlayedGames,
   getPlaystationPresence,
@@ -23,7 +22,6 @@ import type {
   PlaystationNowPlaying,
   PlaystationPlayingPayload,
   PlaystationPresencePayload,
-  StatusResponse,
 } from "@/lib/types";
 
 function requiredNumber(
@@ -163,37 +161,6 @@ export async function getPlayingNow(): Promise<PlaystationPresencePayload> {
   const payload = await getPlaystationPresence();
   if (!payload) throw new AwaitingReport("尚未收到 PlayStation 在线状态遥测");
   return payload;
-}
-
-/**
- * 只留最近 N 条。
- *
- * 首屏、以及还没滑过轨道的浏览器读的是这一份，滑一下就换成全量那个键
- * （lib/paths 的两个 playing 键）。切在读的出口：`'use cache'` 里冻的仍是全量、
- * 不按 limit 分缓存键，Redis 里落的也一直是 Worker 给的整份。
- *
- * 不用为「正在玩的那款」在这 N 条里留位置：它不在的时候卡片会拿 presence 自己
- * 造一张瓷砖钉到最前（见 playstation-card 的 buildTiles），滑到全量之后再合回
- * 列表里那条。
- */
-export function slicePlaying(
-  payload: PlaystationPlayingPayload,
-  limit: number,
-): PlaystationPlayingPayload {
-  if (payload.items.length <= limit) return payload;
-  return { ...payload, items: payload.items.slice(0, limit) };
-}
-
-/**
- * 首屏那份的同一道切片。页面直接调 `cachedPlaying()` 拿信封、不经过路由那层
- * overlay，不切的话首屏 HTML 里烧的是全量，而挂载后 SWR 在同一个键
- * （PLAYING_FIRST_PATH）上取回来的却是前 N 条 —— 白付一次全量的字节。
- */
-export function withPlayingTiles(
-  envelope: StatusResponse<PlaystationPlayingPayload>,
-): StatusResponse<PlaystationPlayingPayload> {
-  if (!envelope.ok) return envelope;
-  return { ok: true, data: slicePlaying(envelope.data, PLAYING_TILE_LIMIT) };
 }
 
 /**

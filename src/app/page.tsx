@@ -25,7 +25,6 @@ import {
   cachedVibeCodingYear,
   cachedWatching,
 } from "@/lib/status-cache";
-import { withPlayingTiles } from "@/lib/playstation";
 
 export default async function Home() {
   /**
@@ -65,8 +64,7 @@ export default async function Home() {
     cachedVibeCodingYear(),
     cachedWatching(),
     cachedNowWatching(),
-    // 首屏只烧前 N 块瓷砖，对应卡片挂载后读的那个键；滑动轨道才补全量
-    cachedPlaying().then(withPlayingTiles),
+    cachedPlaying(),
     cachedPlayingNow(),
     cachedTrophiesSummary(),
     cachedGithubChart(),

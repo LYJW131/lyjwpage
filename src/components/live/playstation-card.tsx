@@ -24,7 +24,7 @@ import {
   STATIC_TRANSITION,
   STATIC_VARIANTS,
 } from "@/lib/motion";
-import { NOW_PLAYING_PATH, PLAYING_FIRST_PATH, PLAYING_PATH } from "@/lib/paths";
+import { NOW_PLAYING_PATH, PLAYING_PATH } from "@/lib/paths";
 import type {
   PlaystationGame,
   PlaystationPlayingPayload,
@@ -448,20 +448,9 @@ export function PlaystationRow({
   onJumpDone: () => void;
 }) {
   useLiveEvents();
-  /**
-   * 轨道一被滑动就永久换成全量那个键（渐进补齐，见 lib/paths 的两个 playing 键）。
-   * 首屏只烧前 N 条，而剩下的那些要看见就得先滑 —— 滑这一下就是「我要往后看」。
-   *
-   * 换键不闪：前 N 条是全量的前缀，useStatus 里的 keepPreviousData 会把手上这份
-   * 顶到全量回来为止，瓷砖只是从后面接上，前面那些一个都不动。
-   * 不进 localStorage：下次进页仍该先付首屏那份，滑不滑是那一次的事。
-   */
-  const [wantsFull, setWantsFull] = useState(false);
-  const list = useStatus<PlaystationPlayingPayload>(
-    wantsFull ? PLAYING_PATH : PLAYING_FIRST_PATH,
-    LIST_REFRESH_MS,
-    { fallback },
-  );
+  const list = useStatus<PlaystationPlayingPayload>(PLAYING_PATH, LIST_REFRESH_MS, {
+    fallback,
+  });
   const presence = useStatus<PlaystationPresencePayload>(NOW_PLAYING_PATH, NOW_REFRESH_MS, {
     fallback: nowFallback,
   });
@@ -469,8 +458,6 @@ export function PlaystationRow({
   const tiles = buildTiles(list.data, presence.data, titles ?? []);
   const reduced = useReducedMotion();
   const scrollerRef = useRef<HTMLDivElement>(null);
-  // 跳转的程序滚动进行中：轨道 onScroll 见它就不触发换全量键
-  const jumpScrolling = useRef(false);
   const liveTitleId = tiles[0]?.live ? tiles[0].titleId : null;
   const [openId, setOpenId] = useState<string | null>(null);
   const [focusKey, setFocusKey] = useState<string | null>(null);
@@ -492,17 +479,6 @@ export function PlaystationRow({
     ? (tiles.find((tile) => tile.titleIds.some((id) => jumpDigest.titleIds.includes(id)))
         ?.titleId ?? null)
     : null;
-  /**
-   * 挂起中的那次跳转，连同换全量键那一刻的列表快照 —— 用来认全量到底落地没有。
-   *
-   * 是 state 不是 ref：认没认出目标要在渲染期算（下面那段），而 ref 在渲染期
-   * 读不得。这份只喂给那段判断，不参与渲染出来的任何一个节点。
-   */
-  const [pending, setPending] = useState<{
-    jump: TrophyJump;
-    ids: string;
-    data: PlaystationPlayingPayload | undefined;
-  } | null>(null);
   // 展开哪块瓷砖就只问那块的奖杯：它的 titleIds 直接是端点的切片参数
   const catalog = useTrophyCatalog(openTile?.titleIds ?? null);
   const [openBodyRef, openHeight] = useOpenHeight(
@@ -551,11 +527,9 @@ export function PlaystationRow({
    * 也跟着排在它后面：同一次提交里两条都要跑时（正在玩的那款恰好也换了）
    * 以这条为准，用户刚点的东西优先。
    *
-   * 认不到目标瓷砖有两种情形。一种是首屏只烧了前 12 块、它排在后面：换成全量键
-   * 挂起，全量到了 tiles 一变这段自己会再算一次。另一种是全量里真的没有
-   * （上报屏蔽名单滤掉了，或压根不在最近游玩列表里），那就放弃，也不提示 ——
-   * 点的是「这杯在哪」，没有就是没有。判死的条件是「全量确实到手了还是没有」：
-   * 要么 isValidating 已经落下来，要么手上这份列表跟换键那一刻不是同一份了。
+   * 认不到目标瓷砖就当场放弃，不挂起也不重试：tiles 是照着全量列表铺的，手上
+   * 这份就是完整清单，这一趟找不到下一趟也不会多出来。放弃也不提示 —— 点的是
+   * 「这杯在哪」，没有就是没有（上报屏蔽名单滤掉了，或压根不在最近游玩列表里）。
    *
    * 状态在渲染期改，滚轨道和销账留给下面那个 effect。每一处 setState 都带着
    * 「重算一遍就不成立」的条件：React 会当场把这次渲染重来一遍，第二趟只是原样
@@ -566,26 +540,14 @@ export function PlaystationRow({
   /** 这一趟判死了：直接销账 */
   let jumpGaveUp = false;
 
-  if (!jumpRequest) {
-    if (pending) setPending(null);
-  } else if (jumpTargetId) {
-    if (pending) setPending(null);
-    if (openId !== jumpTargetId) setOpenId(jumpTargetId);
-    if (focusKey !== jumpRequest.trophyKey) setFocusKey(jumpRequest.trophyKey);
-    jumpLandedId = jumpTargetId;
-  } else if (!pending || pending.jump !== jumpRequest) {
-    // 全量早就在手上、也没有请求在路上：这一份里没有就是真没有
-    if (wantsFull && !list.isValidating) {
-      jumpGaveUp = true;
+  if (jumpRequest) {
+    if (jumpTargetId) {
+      if (openId !== jumpTargetId) setOpenId(jumpTargetId);
+      if (focusKey !== jumpRequest.trophyKey) setFocusKey(jumpRequest.trophyKey);
+      jumpLandedId = jumpTargetId;
     } else {
-      setPending({ jump: jumpRequest, ids, data: list.data });
-      if (!wantsFull) setWantsFull(true);
+      jumpGaveUp = true;
     }
-  } else if (
-    !list.isValidating &&
-    (pending.ids !== ids || pending.data !== list.data)
-  ) {
-    jumpGaveUp = true;
   }
 
   useEffect(() => {
@@ -596,20 +558,10 @@ export function PlaystationRow({
       );
       // offsetLeft 相对轨道里那层 relative 的格子，那层的原点就是滚动内容的原点
       if (track && tile) {
-        /*
-         * 程序滚动别去触发「用户滑了 → 换全量键」：换键重拉列表、瓷砖重排，
-         * 布局一动就把这次还在半路的平滑滚动打断 —— 表现是点一次跳不到位、
-         * 还看着卡片洗一遍牌，要点第二次才对。旗子定时落下而不是跟着 effect
-         * 清理走：落地销账会让本 effect 立刻重跑，跟着清旗就等于没挂。
-         */
-        jumpScrolling.current = true;
-        window.setTimeout(() => {
-          jumpScrolling.current = false;
-        }, 1000);
         track.scrollTo({ left: tile.offsetLeft, behavior: reduced ? "auto" : "smooth" });
       }
     }
-    // 落地和判死都要销账。销完 jumpRequest 归 null，上面第一支顺手把快照清掉
+    // 落地和判死都要销账，销完 jumpRequest 归 null
     if (jumpLandedId || jumpGaveUp) onJumpDone();
   }, [jumpLandedId, jumpGaveUp, onJumpDone, reduced]);
 
@@ -639,16 +591,6 @@ export function PlaystationRow({
         tabIndex={0}
         role="region"
         aria-label="最近在玩"
-        // 一次就够，之后这个键不再变。上面那次 scrollTo(0) 不会误触发：已经在 0 上
-        // 的滚动不产生事件，不在 0 上说明用户本来就滑过了。跳转那次的程序滚动
-        // 要挡掉（见落地 effect 里的旗子）：它引发的换键重排会把滚动本身打断
-        onScroll={
-          wantsFull
-            ? undefined
-            : () => {
-                if (!jumpScrolling.current) setWantsFull(true);
-              }
-        }
         className={cn(
           "scroll-smooth overflow-x-auto overscroll-x-contain",
           "scrollbar-none [&::-webkit-scrollbar]:hidden",
@@ -677,7 +619,6 @@ export function PlaystationRow({
                   selected={tile.titleId === openId}
                   onSelect={() => {
                     // 手切瓷砖就把还挂着的跳转作废：它稍后落地会把用户拽回去
-                    setPending(null);
                     onJumpDone();
                     setFocusKey(null);
                     setOpenId((current) => (current === tile.titleId ? null : tile.titleId));

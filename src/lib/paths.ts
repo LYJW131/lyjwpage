@@ -32,28 +32,6 @@ export const PLAYING_PATH = "/api/status/playing";
 export const NOW_PLAYING_PATH = "/api/status/playing/now";
 
 /**
- * 首屏烧进 HTML 的瓷砖条数。
- *
- * 「上报多少给多少」没有变 —— 全量一直在 PLAYING_PATH 那个键上够得着，只是不
- * 在首屏付清：轨道两行、一屏最多看得见六块，剩下的等用户真的滑起来再补。
- * 这个数写在这里而不是 lib/limits，是因为它已经被烤进下面那个键的字符串里，
- * 分开放就是把键和它的参数拆成两处。
- */
-export const PLAYING_TILE_LIMIT = 12;
-
-/**
- * 最近游玩列表的两个键：这个是首屏那份前 N 条，PLAYING_PATH 是全量。
- * 卡片一开始读这个，轨道第一次被滑动之后永久换成全量那个（渐进补齐，见
- * playstation-card）。
- *
- * **两个键都得跟着推送翻**，所以 `playing` 事件到达时 use-live-events 往两个键
- * 各写一份。切成前 N 条是浏览器自己做的，服务端推的仍是全量：一条广播发给所有
- * 在线的标签页，而每个标签页此刻读的是哪个键只有它自己知道，服务端按其中一种
- * 切了发，另一种就再也收不到推送。
- */
-export const PLAYING_FIRST_PATH = `${PLAYING_PATH}?limit=${PLAYING_TILE_LIMIT}`;
-
-/**
  * 奖杯目录。没有「此刻」—— 解锁不是按秒翻面的事，不配 /now，
  * 也不走推送（整份目录几百 KB，广播它就是把推送当轮询用）。
  * 首页点瓷砖才拉，而且只拉那块瓷砖对上的 1–2 款，见下面的 trophiesTilePath。
