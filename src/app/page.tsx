@@ -3,6 +3,7 @@ import { Header } from "@/components/header";
 import { ContactCard } from "@/components/contact-card";
 import { ActivityCard } from "@/components/live/activity-card";
 import { LiveMediaPair } from "@/components/live/media-pair";
+import { ServerCard } from "@/components/live/server-card";
 import { PlaystationBlock } from "@/components/live/playstation-block";
 import { TimezoneCard } from "@/components/live/timezone-card";
 import { VibeCodingCard } from "@/components/live/vibecoding-card";
@@ -10,6 +11,7 @@ import { WatchingRow } from "@/components/live/watching-card";
 import { Section } from "@/components/ui/section";
 import {
   cachedActivity,
+  cachedServer,
   cachedCharger,
   cachedPowerBank,
   cachedDesktop,
@@ -39,6 +41,7 @@ export default async function Home() {
   const [
     desktop,
     activity,
+    server,
     charger,
     powerBank,
     listening,
@@ -55,6 +58,7 @@ export default async function Home() {
   ] = await Promise.all([
     cachedDesktop(),
     cachedActivity(),
+    cachedServer(),
     cachedCharger(),
     cachedPowerBank(),
     cachedListening(),
@@ -87,6 +91,7 @@ export default async function Home() {
                 nowListeningFallback={nowListening}
               />
               <ActivityCard fallback={activity} />
+              <ServerCard fallback={server} />
               <VibeCodingCard fallback={vibeCoding} />
             </div>
 

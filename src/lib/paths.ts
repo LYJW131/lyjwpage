@@ -61,3 +61,9 @@ export const GITHUB_CHART_PATH = "/api/status/github-chart";
  * 所以这个键只会被轮询和首屏填。
  */
 export const ACTIVITY_PATH = "/api/status/activity";
+
+/**
+ * 落地节点的此刻。没有「列表」—— 一台机器一份快照，不配 /now，
+ * 也不走推送（CPU 和网速每个间隔都在变，广播就是拿推送当轮询用）。
+ */
+export const SERVER_PATH = "/api/status/server";
