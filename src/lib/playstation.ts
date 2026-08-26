@@ -217,21 +217,11 @@ export function assertPresenceFresh(
   throw new AwaitingReport(`PlayStation 在线状态遥测断流：最后一次采集在 ${minutes} 分钟前`);
 }
 
-/**
- * 首屏那份的同一道判定。页面直接调 `cachedPlayingNow()` 拿信封，不经过路由那层
- * overlay，不过一遍的话第一帧仍会举着一个断了流的「正在游玩」，要等挂载后那次
- * SWR 才纠正。
+/*
+ * 首屏那份**不**过这道判定：它在预渲染里跑，而 Date.now() 进预渲染就是
+ * E1432（首屏必须冻得住）。和充电头、活动圆环同一个取舍 —— 第一帧可能举着
+ * 断流前的旧状态，挂载后第一次回源走上面的路由 overlay 就纠正了。
  */
-export function withPresenceFreshness(
-  envelope: StatusResponse<PlaystationPresencePayload>,
-): StatusResponse<PlaystationPresencePayload> {
-  if (!envelope.ok) return envelope;
-  try {
-    return { ok: true, data: assertPresenceFresh(envelope.data) };
-  } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : String(error) };
-  }
-}
 
 /**
  * 三部分各自可省；缺席表示这次不谈这一项。站点再比一次内容，避免重试或手工
