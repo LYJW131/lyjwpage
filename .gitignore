@@ -49,6 +49,8 @@ yarn-error.log*
 # claude code
 # launch.json 入库（dev 端口 3211 那份配置），settings.local.json 是每台机器自己的
 /.claude/settings.local.json
+# 子代理的临时工作树，git add -A 会把它当嵌套仓库带进提交
+/.claude/worktrees/
 
 # typescript
 *.tsbuildinfo

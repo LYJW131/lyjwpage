@@ -423,9 +423,38 @@ export function TrophyExpand({
     const rowHeight = el.clientHeight / VISIBLE_ROWS;
     const centered = focusIndex * rowHeight - (el.clientHeight - rowHeight) / 2;
     const top = Math.min(Math.max(centered, 0), el.scrollHeight - el.clientHeight);
+    const key = focusKey ?? null;
+    /*
+     * 快到了就闪：一起手就闪的话，行还在半路、滑到中间时动画早放完了；
+     * 可等完全停稳又迟钝 —— smooth 的尾段 ease-out 最后几十像素拖得最久。
+     * 所以差不到一行就算到，闪起来的同时让它滑完最后那一点。
+     * 停滚 110ms 的落定口径留作兜底（clamp 顶到两端、或已在目标位时
+     * smooth 一个事件都不发，起手那个定时器就是这种情况的到达信号）。
+     * onFocused 也等到这一刻：提前调它会让父层清掉 focusKey、效果重跑，
+     * 把还在等待的监听拆掉。
+     */
+    let settle: ReturnType<typeof setTimeout>;
+    let done = false;
+    const onScroll = () => {
+      if (Math.abs(el.scrollTop - top) < rowHeight) return arrived();
+      clearTimeout(settle);
+      settle = setTimeout(arrived, SETTLE_DELAY_MS);
+    };
+    const arrived = () => {
+      if (done) return;
+      done = true;
+      clearTimeout(settle);
+      el.removeEventListener("scroll", onScroll);
+      setFlashKey(key);
+      onFocused?.();
+    };
+    if (!reduced) el.addEventListener("scroll", onScroll, { passive: true });
     el.scrollTo({ top, behavior: reduced ? "auto" : "smooth" });
-    setFlashKey(focusKey ?? null);
-    onFocused?.();
+    settle = setTimeout(arrived, reduced ? 0 : SETTLE_DELAY_MS);
+    return () => {
+      clearTimeout(settle);
+      el.removeEventListener("scroll", onScroll);
+    };
   }, [focusIndex, focusKey, onFocused, reduced]);
 
   useEffect(() => {
@@ -472,7 +501,7 @@ export function TrophyExpand({
             className={cn(
               "min-w-0 rounded-md",
               // 减少动态效果时全站的动画都被压成 0.01ms，闪不出来 —— 退成一记静态底色
-              row.key === flashKey && (reduced ? "bg-muted" : "animate-trophy-focus"),
+              row.key === flashKey && (reduced ? "bg-surface-hover" : "animate-trophy-focus"),
             )}
           >
             <TrophyRow trophy={row.trophy} />
