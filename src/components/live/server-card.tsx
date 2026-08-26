@@ -11,10 +11,15 @@ import type { ServerPayload, StatusResponse } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /**
- * 上报器 15 秒一轮。卡片跟这个节奏走：推送这条路上没有，问得比上报还勤
+ * 上报器 30 秒一轮。卡片跟这个节奏走：推送这条路上没有，问得比上报还勤
  * 只是把请求翻倍换同一份数据。
+ *
+ * 从 15 秒放宽到 30 秒 —— 那是全站最快的一路（第二快的充电头 / 充电宝 30 秒，
+ * 其余 60 秒起），而状态端点是 no-store、每次都进函数，一个开着的标签页就是
+ * 4 次/分钟。三处一起改：这里、freshness 的 SERVER_STALE_MS、上报器的
+ * INTERVAL_MS，顺序见 freshness 里心跳窗口那段（先放宽窗口，再给上报器降频）。
  */
-const REFRESH_MS = 15_000;
+const REFRESH_MS = 30_000;
 
 const RATE_FORMAT_BYTES = { maximumFractionDigits: 0 } as const;
 const RATE_FORMAT_SCALED = { minimumFractionDigits: 1, maximumFractionDigits: 1 } as const;
@@ -141,9 +146,11 @@ export function ServerCard({
     >
       {/*
         三层：落地身份（小）→ 上下行（主数字）→ CPU / 内存（底栏）。
-        内容区 min-h-44，卡头不算。
+        内容区 min-h-44，卡头不算。同排的活动卡更高，这张会被拉长：多出来的高度
+        用 justify-between 摊进三层之间，别用 justify-center 摊到上下边 —— 那样
+        边距会比左右的 p-5 大出一截，四边看着就不是一个数。
       */}
-      <div className="flex h-full min-h-44 flex-col justify-center gap-3 p-4 lg:p-5">
+      <div className="flex h-full min-h-44 flex-col justify-between gap-3 p-4 lg:p-5">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="truncate font-medium" title={location ?? undefined}>

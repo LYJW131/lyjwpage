@@ -20,7 +20,7 @@ import urllib.error
 import urllib.request
 from typing import Any
 
-INTERVAL_MS = 15_000
+INTERVAL_MS = 30_000
 PUSH_TIMEOUT_S = 10.0
 GEO_TTL_S = 6 * 3600
 GEO_TIMEOUT_S = 5.0

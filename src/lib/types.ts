@@ -859,7 +859,7 @@ export type ServerStatus = {
 export type ServerPayload = ServerStatus & {
   /** 源站收到这份的时刻 */
   pushedAt: number;
-  /** 这份数据自己的过期窗口；默认 45 秒，服务端可按上报间隔加长 */
+  /** 这份数据自己的过期窗口；默认 90 秒，服务端可按上报间隔加长 */
   staleAfterMs: number;
   /**
    * 源站在取数出口按自己的钟算的那一次「这会儿算不算断流」。
