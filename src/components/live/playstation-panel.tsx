@@ -4,6 +4,7 @@ import { useReducedMotion } from "motion/react";
 import { useCallback, useState } from "react";
 
 import { PlaystationRow, type TrophyJump } from "@/components/live/playstation-card";
+import { LIST_DURATION } from "@/lib/motion";
 import { TrophyTeaser } from "@/components/live/trophy-teaser";
 import { trophyRowKey } from "@/components/trophies/trophy-details";
 import type {
@@ -55,6 +56,21 @@ export function PlaystationPanel({
             behavior: reduced ? "auto" : "smooth",
             block: "start",
           });
+          /*
+           * 起步时面板还在长高、文档高度一直在变，这次平滑滚动会停短几像素
+           * （实测差 4px，视口不同会更多）—— 不补的话残差留给下一次点击，看着
+           * 就是「再点一下又挪一小段」。展开动画结束后校一次：只补「停短了」
+           * 方向的一小段（4–240px 带内），用户要是已经自己滚去别处就不打扰。
+           */
+          window.setTimeout(() => {
+            const el = document.getElementById(anchorId);
+            if (!el) return;
+            const margin = parseFloat(getComputedStyle(el).scrollMarginTop) || 0;
+            const off = el.getBoundingClientRect().top - margin;
+            if (off > 4 && off <= 240) {
+              el.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" });
+            }
+          }, LIST_DURATION * 1000 + 300);
         }}
       />
       <div className="px-3 pb-3 pt-3">
