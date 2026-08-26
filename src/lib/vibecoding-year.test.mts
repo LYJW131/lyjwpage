@@ -2,10 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { formatDayHeading } from "./github-chart-compact.ts";
+import { isHeatmapFuture } from "./heatmap-window.ts";
 import {
   YEAR_DAYS,
   addDays,
   compactTokens,
+  expandYearDays,
   formatTokenLabel,
   indexYearMix,
   mergeVibeCodingYear,
@@ -23,6 +25,14 @@ function days(fill = 1) {
 function year(extra: Record<string, unknown> = {}) {
   return { origin: ORIGIN, days: days(3), models: [], mix: [], ...extra };
 }
+
+test("画格子只到 through，不含窗尾未来空格", () => {
+  const expanded = expandYearDays(ORIGIN, days(0));
+  const through = addDays(ORIGIN, 365);
+  const drawn = expanded.filter((day) => !isHeatmapFuture(day.date, through));
+  assert.equal(drawn.at(-1)?.date, through);
+  assert.ok(expanded.length > drawn.length);
+});
 
 test("53 周日合计才能收，少一天整份不收", () => {
   const parsed = normalizeVibeCodingYear(year());
