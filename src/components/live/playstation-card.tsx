@@ -13,6 +13,10 @@ import { useStatus } from "@/hooks/use-status";
 import { stableKeys } from "@/lib/keys";
 import { foldService } from "@/lib/playstation-entitlements";
 import {
+  PLAYSTATION_IMAGE_SCALE,
+  playstationImage,
+} from "@/lib/playstation-image";
+import {
   addTrophyCounts,
   countTrophies,
   emptyTrophyCounts,
@@ -104,6 +108,9 @@ const TILE_TRACK = cn(
   "md:auto-cols-[calc((100%-0.75rem)/2)]",
   "lg:auto-cols-[calc((100%-1.5rem)/3)]",
 );
+
+/** 瓷砖左边那格封面的边长，和它 className 上的 h-28 w-28 是同一个数。 */
+const COVER_PX = 112;
 
 function mediaApp(category: string | null | undefined): boolean {
   return category?.endsWith("_media_app") === true;
@@ -218,11 +225,13 @@ function GameTile({
       <div className="relative h-28 w-28 shrink-0 overflow-hidden border-r border-line bg-muted">
         {tile.imageUrl ? (
           <Image
-            src={tile.imageUrl}
+            // 尺寸在 PSN 那边就选好，不进图片管道；理由见 playstation-image
+            src={playstationImage(tile.imageUrl, COVER_PX * PLAYSTATION_IMAGE_SCALE)!}
             alt={tile.name}
-            width={112}
-            height={112}
+            width={COVER_PX}
+            height={COVER_PX}
             loading={eager ? "eager" : "lazy"}
+            unoptimized
             className="h-28 w-28 object-cover"
           />
         ) : (

@@ -1,0 +1,50 @@
+/**
+ * PSN 图床的现缩参数。
+ *
+ * 两个图床都认 `?w=&h=`：1024² 的封面要 336² 只回 25KB（浏览器带
+ * `Accept: image/avif` 时它自己就编码成 AVIF），不带参数回的是 240KB 的原图。
+ * 既然源站缩得动，按 AGENTS.md 那条规矩这一路就不进站点的图片管道 —— 绕回
+ * `/_next/image` 只是多一次转码、多一份配额，还把本可以直连 CDN 的请求拽回
+ * 自己的函数。EdgeOne 上更是白搭：它注入的 loader 追加的是 `imageMogr2`
+ * 参数，PSN 不认，整张 1024² 原图照样落到浏览器里。
+ *
+ * 头像那个 psn-rsc 不认这两个参数（原样回 440² PNG），所以按主机名放行，
+ * 认不出的原样返回。
+ *
+ * 只收一个正方边长：游玩列表和 presence 给的都是方形图标（实测 1024² / 512²），
+ * 卡片上那一格也是方的。w 和 h 必须一起给 —— 只给 w 的话 CDN 会往上取到它
+ * 自己那档预设尺寸（要 336 回 370），不是要的那个数。
+ */
+const SIZED_HOSTS = new Set([
+  "image.api.playstation.com",
+  "psnobj.prod.dl.playstation.net",
+]);
+
+export function playstationImage(
+  url: string | null | undefined,
+  size: number,
+): string | null {
+  if (!url) return null;
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return url;
+  }
+  // 判主机名而不是找子串，理由同 apple-artwork 的 needsOptimizing
+  if (!SIZED_HOSTS.has(parsed.hostname)) return url;
+  const dimension = String(Math.max(1, Math.round(size)));
+  parsed.searchParams.set("w", dimension);
+  parsed.searchParams.set("h", dimension);
+  return parsed.toString();
+}
+
+/**
+ * 直链按 3 倍取，理由和 apple-artwork 的 ARTWORK_SCALE 一样：手机常见 3× DPR，
+ * 2 倍图会被浏览器再放大一截而发虚。
+ *
+ * 另一半理由是「差一点」比「差很多」还糊：从前那张交给优化器的 256px 图，
+ * 落到 2× 屏上那格 224 个设备像素，浏览器还要再重采样一道 256 → 224，
+ * 细节就是在这一步被抹掉的。现在按设备像素整数倍取，缩放只发生一次。
+ */
+export const PLAYSTATION_IMAGE_SCALE = 3;
