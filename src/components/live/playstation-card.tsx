@@ -469,6 +469,8 @@ export function PlaystationRow({
   const tiles = buildTiles(list.data, presence.data, titles ?? []);
   const reduced = useReducedMotion();
   const scrollerRef = useRef<HTMLDivElement>(null);
+  // 跳转的程序滚动进行中：轨道 onScroll 见它就不触发换全量键
+  const jumpScrolling = useRef(false);
   const liveTitleId = tiles[0]?.live ? tiles[0].titleId : null;
   const [openId, setOpenId] = useState<string | null>(null);
   const [focusKey, setFocusKey] = useState<string | null>(null);
@@ -594,6 +596,16 @@ export function PlaystationRow({
       );
       // offsetLeft 相对轨道里那层 relative 的格子，那层的原点就是滚动内容的原点
       if (track && tile) {
+        /*
+         * 程序滚动别去触发「用户滑了 → 换全量键」：换键重拉列表、瓷砖重排，
+         * 布局一动就把这次还在半路的平滑滚动打断 —— 表现是点一次跳不到位、
+         * 还看着卡片洗一遍牌，要点第二次才对。旗子定时落下而不是跟着 effect
+         * 清理走：落地销账会让本 effect 立刻重跑，跟着清旗就等于没挂。
+         */
+        jumpScrolling.current = true;
+        window.setTimeout(() => {
+          jumpScrolling.current = false;
+        }, 1000);
         track.scrollTo({ left: tile.offsetLeft, behavior: reduced ? "auto" : "smooth" });
       }
     }
@@ -628,9 +640,15 @@ export function PlaystationRow({
         role="region"
         aria-label="最近在玩"
         // 一次就够，之后这个键不再变。上面那次 scrollTo(0) 不会误触发：已经在 0 上
-        // 的滚动不产生事件，不在 0 上说明用户本来就滑过了。跳转那次对轨道的滚动
-        // 会触发，但那本来就是「要看后面那块」，换全量键正合适
-        onScroll={wantsFull ? undefined : () => setWantsFull(true)}
+        // 的滚动不产生事件，不在 0 上说明用户本来就滑过了。跳转那次的程序滚动
+        // 要挡掉（见落地 effect 里的旗子）：它引发的换键重排会把滚动本身打断
+        onScroll={
+          wantsFull
+            ? undefined
+            : () => {
+                if (!jumpScrolling.current) setWantsFull(true);
+              }
+        }
         className={cn(
           "scroll-smooth overflow-x-auto overscroll-x-contain",
           "scrollbar-none [&::-webkit-scrollbar]:hidden",
