@@ -15,6 +15,10 @@ import useSWR from "swr";
 
 import { TrophyMetal } from "@/components/trophies/trophy-metal";
 import { LIST_TRANSITION, STATIC_TRANSITION } from "@/lib/motion";
+import {
+  PLAYSTATION_IMAGE_SCALE,
+  playstationImage,
+} from "@/lib/playstation-image";
 import { trophiesTilePath } from "@/lib/paths";
 import { site } from "@/lib/site";
 import type { StatusResponse, TrophiesPayload, Trophy, TrophyTitle } from "@/lib/types";
@@ -170,6 +174,12 @@ function useRowSnap(topKey: string | undefined) {
   }, []);
 }
 
+/**
+ * 奖杯图那两格的边长：明细里是 size-11（44px），组条那格宽 w-10 但高度跟着
+ * 行走、也在 44 上下。两处同一个数，取图时按它乘 3 倍。
+ */
+const ICON_PX = 44;
+
 function TrophyRow({ trophy }: { trophy: Trophy }) {
   const hidden = trophy.hidden && !trophy.earned;
   const locked = !trophy.earned;
@@ -188,10 +198,11 @@ function TrophyRow({ trophy }: { trophy: Trophy }) {
       >
         {trophy.iconUrl && !hidden ? (
           <Image
-            src={trophy.iconUrl}
+            // 尺寸在 PSN 那边就选好，不进图片管道；理由见 playstation-image
+            src={playstationImage(trophy.iconUrl, ICON_PX * PLAYSTATION_IMAGE_SCALE)!}
             alt=""
             fill
-            sizes="44px"
+            unoptimized
             className={cn("object-cover", locked && "opacity-55")}
           />
         ) : (
@@ -311,10 +322,12 @@ function GroupStrip({
               {group.iconUrl ? (
                 <div className="relative w-10 shrink-0 self-stretch overflow-hidden border-r border-line bg-muted">
                   <Image
-                    src={group.iconUrl}
+                    // 组条那格 w-10 但高度跟着行走（约 44px），object-cover
+                    // 以高的那边为准，所以按 ICON_PX 取，不按 40 取
+                    src={playstationImage(group.iconUrl, ICON_PX * PLAYSTATION_IMAGE_SCALE)!}
                     alt=""
                     fill
-                    sizes="40px"
+                    unoptimized
                     className="object-cover"
                   />
                 </div>
