@@ -106,6 +106,29 @@ async function tick(env: Env): Promise<TickResult> {
     const nextPlayedGamesFingerprint = playedGamesFingerprint(recentPlayedGames);
     playedGamesChanged = nextPlayedGamesFingerprint !== oldPlayedGamesFingerprint;
 
+    // 两封信各交各的：一封被站点 400，不该把另一封的指纹也扣住不写。
+    const failures: string[] = [];
+
+    // presence 每轮必发：站点靠这枚 observedAt 判 worker 死活，内容没变它自己压掉广播。
+    // 必须排在奖杯爬取**之前**：那边是每款游戏好几次 PSN 调用，免费版一次调用
+    // 只有 50 个子请求，先爬再发的话预算烧穿，连这一枚 fetch 都发不出去 ——
+    // 便宜且关键的先走，贵的那半自己兜自己的错。
+    try {
+      await deliver(env, {
+        version: 1,
+        presence,
+        ...(playedGamesChanged ? { playedGames: recentPlayedGames } : {}),
+      });
+      if (playedGamesChanged) {
+        await env.STATE.put(PLAYED_GAMES_FINGERPRINT_KEY, nextPlayedGamesFingerprint);
+      }
+    } catch (error) {
+      failures.push(`presence 交付失败：${explain(error)}`);
+      console.error(
+        JSON.stringify({ event: "playstation-deliver", part: "presence", error: explain(error) }),
+      );
+    }
+
     let nextTrophiesFingerprint = oldTrophiesFingerprint;
     try {
       const index = await fetchTrophyIndex(env, auth);
@@ -129,26 +152,6 @@ async function tick(env: Env): Promise<TickResult> {
     } catch (error) {
       console.error(
         JSON.stringify({ event: "playstation-trophies", error: explain(error) }),
-      );
-    }
-
-    // 两封信各交各的：一封被站点 400，不该把另一封的指纹也扣住不写。
-    const failures: string[] = [];
-
-    // presence 每轮必发：站点靠这枚 observedAt 判 worker 死活，内容没变它自己压掉广播。
-    try {
-      await deliver(env, {
-        version: 1,
-        presence,
-        ...(playedGamesChanged ? { playedGames: recentPlayedGames } : {}),
-      });
-      if (playedGamesChanged) {
-        await env.STATE.put(PLAYED_GAMES_FINGERPRINT_KEY, nextPlayedGamesFingerprint);
-      }
-    } catch (error) {
-      failures.push(`presence 交付失败：${explain(error)}`);
-      console.error(
-        JSON.stringify({ event: "playstation-deliver", part: "presence", error: explain(error) }),
       );
     }
 
