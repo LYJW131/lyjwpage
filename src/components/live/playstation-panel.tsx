@@ -4,9 +4,14 @@ import { useReducedMotion } from "motion/react";
 import { useCallback, useState } from "react";
 
 import { PlaystationRow, type TrophyJump } from "@/components/live/playstation-card";
-import { LIST_DURATION } from "@/lib/motion";
 import { TrophyTeaser } from "@/components/live/trophy-teaser";
 import { trophyRowKey } from "@/components/trophies/trophy-details";
+import { useMountedAt } from "@/hooks/use-mounted-at";
+import { useStale } from "@/hooks/use-stale";
+import { useStatus } from "@/hooks/use-status";
+import { playstationStaleMs } from "@/lib/freshness";
+import { LIST_DURATION } from "@/lib/motion";
+import { NOW_PLAYING_PATH } from "@/lib/paths";
 import type {
   PlaystationPlayingPayload,
   PlaystationPresencePayload,
@@ -14,12 +19,16 @@ import type {
   TrophiesSummaryPayload,
 } from "@/lib/types";
 
+/** 和瓷砖行问 playing/now 同一个间隔，SWR 会去重。 */
+const NOW_REFRESH_MS = 60_000;
+
 /**
  * 提要和瓷砖行之间那点联动状态就住在这里。
  *
  * 只为一件事存在：点提要里的「最近解锁」要展开下面对应的那块瓷砖，而函数 prop
  * 过不了服务端边界 —— 递 onRecentClick 的那一层必须是客户端组件。数据仍旧由外面
- * 的服务端组件取好往下传，这里一份都不取。
+ * 的服务端组件取好往下传；这里只跟 playing/now 再订一次，把头像那颗在线绿点
+ * 接上同一份 SWR 缓存（和下面瓷砖行去重）。
  */
 export function PlaystationPanel({
   anchorId,
@@ -36,12 +45,25 @@ export function PlaystationPanel({
   const reduced = useReducedMotion();
   const [jump, setJump] = useState<TrophyJump | null>(null);
   const clearJump = useCallback(() => setJump(null), []);
+  const presence = useStatus<PlaystationPresencePayload>(NOW_PLAYING_PATH, NOW_REFRESH_MS, {
+    fallback: playingNow,
+  });
+  const mountedAt = useMountedAt();
+  const presenceStale = useStale(presence.data?.observedAt, playstationStaleMs());
+  /**
+   * 首帧没有访客钟，不能拿服务端冻着的 online 当真 —— 那份没过断流判定，
+   * 刷新时会先绿一下再被 /playing/now 清掉。挂载之后用自己的钟判 observedAt，
+   * 和端点同一扇窗口；窗口到点 useStale 会自己翻。
+   */
+  const online =
+    Boolean(mountedAt) && presence.data?.online === true && !presenceStale;
 
   return (
     <>
       <TrophyTeaser
         fallback={trophies}
         embedded
+        online={online}
         onRecentClick={(unlock) => {
           setJump({
             npCommunicationId: unlock.npCommunicationId,
