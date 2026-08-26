@@ -140,7 +140,10 @@ export function ServerCard({
 
   return (
     <Card
-      label="Proxy"
+      // 「落地节点」按通行说法叫 exit node（Tailscale / Tor 都是这个词），
+      // 不叫 proxy —— 那个词只说了「有个中转」，说不出这是一台在东京的机器，
+      // 而这张卡整屏讲的就是那台机器本身：它在哪、归谁、还活着没有。
+      label="Exit Node"
       action={<span title={data ? `${data.id} · ${data.hostname}` : undefined}>{action}</span>}
       className={cn("h-full", className)}
     >
