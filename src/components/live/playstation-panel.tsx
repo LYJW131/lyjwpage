@@ -49,28 +49,44 @@ export function PlaystationPanel({
           });
           /*
            * 页面这一下点了就滚，不等瓷砖认出来：要看的东西本来就是这张卡。
-           * 等展开面板量完高度再滚更晚，还得跟高度动画抢，不如让面板在已经
-           * 对好的视口里长出来。
+           * 但面板的高度是分几段长的 —— 展开动画一段、奖杯目录从网络回来再一段。
+           * 文档每长一次，先前那次滚动就可能又差一截；视口高的机器上更会被
+           * 「文档还不够长」直接钳住，残差留给下一次点击就是「再点又挪一小段」。
+           *
+           * 所以不做一次性校正，而是在一个短窗口里盯着对齐：页面没在动而锚点
+           * 还停在目标下方，就再滚一次；对齐够久或超时就收手。用户一有自己的
+           * 滚动输入（滚轮 / 触摸 / 键盘）立刻整个放弃 —— 方向盘永远是他的。
            */
-          document.getElementById(anchorId)?.scrollIntoView({
-            behavior: reduced ? "auto" : "smooth",
-            block: "start",
-          });
-          /*
-           * 起步时面板还在长高、文档高度一直在变，这次平滑滚动会停短几像素
-           * （实测差 4px，视口不同会更多）—— 不补的话残差留给下一次点击，看着
-           * 就是「再点一下又挪一小段」。展开动画结束后校一次：只补「停短了」
-           * 方向的一小段（4–240px 带内），用户要是已经自己滚去别处就不打扰。
-           */
-          window.setTimeout(() => {
-            const el = document.getElementById(anchorId);
-            if (!el) return;
-            const margin = parseFloat(getComputedStyle(el).scrollMarginTop) || 0;
-            const off = el.getBoundingClientRect().top - margin;
-            if (off > 4 && off <= 240) {
-              el.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" });
-            }
-          }, LIST_DURATION * 1000 + 300);
+          const anchor = document.getElementById(anchorId);
+          if (!anchor) return;
+          const behavior = reduced ? ("auto" as const) : ("smooth" as const);
+          const offset = () =>
+            anchor.getBoundingClientRect().top -
+            (parseFloat(getComputedStyle(anchor).scrollMarginTop) || 0);
+          // 已经对齐就一帧都别滚：smooth 差 1px 也会动画几帧，重复点击时
+          // 滚动条肉眼可见地抖一下
+          if (Math.abs(offset()) > 4) anchor.scrollIntoView({ behavior, block: "start" });
+          const startedAt = Date.now();
+          let lastY = -1;
+          const stop = () => {
+            clearInterval(watch);
+            removeEventListener("wheel", stop);
+            removeEventListener("touchstart", stop);
+            removeEventListener("keydown", stop);
+          };
+          const watch = setInterval(() => {
+            const y = Math.round(scrollY);
+            const moving = y !== lastY;
+            lastY = y;
+            const off = offset();
+            const overdue = Date.now() - startedAt > 3000;
+            const settled = Date.now() - startedAt > LIST_DURATION * 1000 + 300;
+            if (overdue || (settled && off <= 4)) return stop();
+            if (!moving && off > 4) anchor.scrollIntoView({ behavior, block: "start" });
+          }, 250);
+          addEventListener("wheel", stop, { passive: true });
+          addEventListener("touchstart", stop, { passive: true });
+          addEventListener("keydown", stop);
         }}
       />
       <div className="px-3 pb-3 pt-3">
