@@ -11,6 +11,7 @@ import {
 } from "@/components/live/heatmap-hover";
 import { incrementalFetcher, useStatus } from "@/hooks/use-status";
 import { groupWeeks } from "@/lib/github-chart-compact";
+import { isHeatmapFuture, utcToday } from "@/lib/heatmap-window";
 import { VIBECODING_YEAR_PATH } from "@/lib/paths";
 import type { GithubChartDay, StatusResponse, VibeCodingYearPayload } from "@/lib/types";
 import {
@@ -53,17 +54,23 @@ type HoveredCell = {
   anchor: CellAnchor;
 };
 
-function toWeeks(origin: string, days: number[]): GithubChartDay[][] {
+function toWeeks(origin: string, days: number[], through: string): GithubChartDay[][] {
   const scores = tokenScores(days);
   const expanded = expandYearDays(origin, days);
   return groupWeeks(
-    expanded.map((day, index) => ({
-      date: day.date,
-      weekday: day.weekday,
-      count: day.tokens,
-      score: scores[index] ?? 0,
-      label: formatTokenLabel(day.date, day.tokens),
-    })),
+    expanded.flatMap((day, index) => {
+      // 信封固定 53 周填到本周六；GitHub 图只画到今天，这边对齐，不给未来留空格。
+      if (isHeatmapFuture(day.date, through)) return [];
+      return [
+        {
+          date: day.date,
+          weekday: day.weekday,
+          count: day.tokens,
+          score: scores[index] ?? 0,
+          label: formatTokenLabel(day.date, day.tokens),
+        },
+      ];
+    }),
   );
 }
 
@@ -151,7 +158,7 @@ export function VibeYearChart({
 
   const weeks = useMemo(() => {
     if (!snapshot) return null;
-    return toWeeks(snapshot.origin, snapshot.days);
+    return toWeeks(snapshot.origin, snapshot.days, utcToday(snapshot.pushedAt));
   }, [snapshot]);
 
   const modelsByDate = useMemo(() => {
