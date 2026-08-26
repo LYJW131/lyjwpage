@@ -13,7 +13,7 @@ import type { PowerBankPayload, PowerBankStatus } from "@/lib/types";
  * Anker Prime 充电宝（A110G）遥测。
  *
  * 和充电头同一条来路：Mac 上报器把 BLE 解出来的数据放进 `chargingDevices`
- * 列表，本站按 `kind` 挑。本机浏览时还可以直连
+ * 列表，本站按 `kind` 挑。本机浏览时打开 `/local/charging` 才会直连
  * `http://127.0.0.1:8787/sse/powerbank`，见 lib/local-charging。
  */
 

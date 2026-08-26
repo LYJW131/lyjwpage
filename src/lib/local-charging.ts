@@ -1,18 +1,24 @@
 /**
  * 本机 Mac Telemetry Hub 的充电设备 SSE。
  *
- * 页面挂载时试着连 `http://127.0.0.1:8787/sse/{charger,powerbank}`。
- * 连上说明浏览的就是这台 Mac，卡片改用这条 1 Hz 推流，不再用远端那份。
- * 连不上（别人的电脑、浏览器拦了混合内容）立刻关掉，不重试，远端照旧。
+ * **不主动连。** 打开 `/local/charging` 才往 localStorage 写一条记录，卡片
+ * 看到这条记录才去挂 `http://127.0.0.1:8787/sse/{charger,powerbank}`。连上
+ * 说明浏览的就是这台 Mac，卡片改用这条 1 Hz 推流，不再用远端那份。连不上
+ * （别人的电脑、浏览器拦了混合内容）立刻关掉，不重试，远端照旧。
  *
  * EventSource 默认失败会无限重连 —— 访客机器上没有这个端口，必须在第一次
  * error 且从未 open 时 close，否则控制台会一直刷。出过声的流断掉（上报器
  * 退出）也一样：靠看门狗关掉并清空本机快照，卡片自动落回远端轮询，而不是
- * 顶着断流前的最后一帧一直装连着。恢复直连要刷新页面 —— 不自动重连，
- * 理由同上，本机端口没起来时重连就是刷屏。
+ * 顶着断流前的最后一帧一直装连着。恢复直连刷新即可（localStorage 还在）；
+ * 从没开过就要再打开一次 `/local/charging`。不自动重连，理由同上，本机
+ * 端口没起来时重连就是刷屏。
  */
 
 import { assetUrl, pageAssetBase } from "./asset-url.ts";
+import {
+  LOCAL_CHARGING_STORAGE_KEY,
+  readLocalChargingArmed,
+} from "./local-charging-arm.ts";
 import {
   emptyChargerStatus,
   emptyPowerBankStatus,
@@ -178,8 +184,17 @@ function connect(
   return { close };
 }
 
+function armed(): boolean {
+  if (typeof window === "undefined") return false;
+  return readLocalChargingArmed();
+}
+
+function onStorage(event: StorageEvent) {
+  if (event.key === LOCAL_CHARGING_STORAGE_KEY && event.newValue === "1") start();
+}
+
 function start() {
-  if (started || typeof EventSource === "undefined") return;
+  if (started || typeof EventSource === "undefined" || !armed()) return;
   started = true;
   chargerSource = connect(
     "/sse/charger",
@@ -213,9 +228,20 @@ function stop() {
 export function subscribeLocalCharging(onStoreChange: () => void) {
   listeners.add(onStoreChange);
   start();
+  if (listeners.size === 1) {
+    // 别的标签页打开过 `/local/charging`：storage 事件会到；同标签回来再靠 focus
+    window.addEventListener("storage", onStorage);
+    window.addEventListener("focus", start);
+    document.addEventListener("visibilitychange", start);
+  }
   return () => {
     listeners.delete(onStoreChange);
-    if (listeners.size === 0) stop();
+    if (listeners.size === 0) {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("focus", start);
+      document.removeEventListener("visibilitychange", start);
+      stop();
+    }
   };
 }
 
