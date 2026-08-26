@@ -2,7 +2,7 @@
 
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import Image from "next/image";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { GameFlags, PlatformMarks } from "@/components/trophies/game-flags";
 import { TrophyExpand, useTrophyCatalog } from "@/components/trophies/trophy-details";
@@ -417,10 +417,19 @@ function buildTiles(
   ]);
 }
 
+/** 首页提要点「最近解锁」时要跳到的那一杯。 */
+export type TrophyJump = {
+  npCommunicationId: string;
+  /** 明细里那一行的 key，拼法见 trophyRowKey */
+  trophyKey: string;
+};
+
 export function PlaystationRow({
   fallback,
   nowFallback,
   titles = null,
+  jumpRequest,
+  onJumpDone,
 }: {
   fallback: StatusResponse<PlaystationPlayingPayload>;
   nowFallback: StatusResponse<PlaystationPresencePayload>;
@@ -430,6 +439,13 @@ export function PlaystationRow({
    * 后者才允许断言某张瓷砖没有奖杯，所以默认给 null，别让漏传的调用者撞上前者。
    */
   titles?: TrophyTitleDigest[] | null;
+  /**
+   * 待落地的跳转：这里负责把它认到某块瓷砖上 —— 展开、把轨道对过去，
+   * 再把那一行的 key 交给明细去定位。
+   */
+  jumpRequest: TrophyJump | null;
+  /** 落地或放弃都喊一声。一次性语义靠这个：同一条再点一次才还能再跳。 */
+  onJumpDone: () => void;
 }) {
   useLiveEvents();
   /**
@@ -455,7 +471,31 @@ export function PlaystationRow({
   const scrollerRef = useRef<HTMLDivElement>(null);
   const liveTitleId = tiles[0]?.live ? tiles[0].titleId : null;
   const [openId, setOpenId] = useState<string | null>(null);
+  const [focusKey, setFocusKey] = useState<string | null>(null);
+  const clearFocus = useCallback(() => setFocusKey(null), []);
   const openTile = tiles.find((tile) => tile.titleId === openId) ?? null;
+
+  /*
+   * 跳转目标在渲染期就算好：摘要里按 npCommunicationId 换到 titleIds，再拿去和
+   * 瓷砖的 titleIds 求交集。不认瓷砖上那份 digest —— 同款多 SKU 合并时它只留了
+   * 第一份的 npCommunicationId，另一半游戏的解锁就永远对不上。
+   * 结果是个字符串，effect 拿它当依赖，瓷砖补齐了才会重跑。
+   */
+  const jumpDigest = jumpRequest
+    ? (titles ?? []).find(
+        (title) => title.npCommunicationId === jumpRequest.npCommunicationId,
+      )
+    : undefined;
+  const jumpTargetId = jumpDigest
+    ? (tiles.find((tile) => tile.titleIds.some((id) => jumpDigest.titleIds.includes(id)))
+        ?.titleId ?? null)
+    : null;
+  /** 挂起中的那次跳转，连同换全量键那一刻的列表快照 —— 用来认全量到底落地没有 */
+  const pending = useRef<{
+    jump: TrophyJump;
+    ids: string;
+    data: PlaystationPlayingPayload | undefined;
+  } | null>(null);
   // 展开哪块瓷砖就只问那块的奖杯：它的 titleIds 直接是端点的切片参数
   const catalog = useTrophyCatalog(openTile?.titleIds ?? null);
   const [openBodyRef, openHeight] = useOpenHeight(
@@ -489,8 +529,65 @@ export function PlaystationRow({
   }, [liveTitleId, reduced]);
 
   useEffect(() => {
-    if (openId && !ids.split("\n").includes(openId)) setOpenId(null);
+    if (!openId || ids.split("\n").includes(openId)) return;
+    setOpenId(null);
+    setFocusKey(null);
   }, [openId, ids]);
+
+  /*
+   * 跳转落地。声明排在上面那条 scrollTo(0) 之后：同一次提交里两条都要跑时
+   * （正在玩的那款恰好也换了）以这条为准，用户刚点的东西优先。
+   *
+   * 认不到目标瓷砖有两种情形。一种是首屏只烧了前 12 块、它排在后面：换成全量键
+   * 挂起，全量到了 tiles 一变这个 effect 自己会再跑一次。另一种是全量里真的没有
+   * （上报屏蔽名单滤掉了，或压根不在最近游玩列表里），那就放弃，也不提示 ——
+   * 点的是「这杯在哪」，没有就是没有。判死的条件是「全量确实到手了还是没有」：
+   * 要么 isValidating 已经落下来，要么手上这份列表跟换键那一刻不是同一份了。
+   */
+  useEffect(() => {
+    if (!jumpRequest) {
+      pending.current = null;
+      return;
+    }
+    if (jumpTargetId) {
+      pending.current = null;
+      setOpenId(jumpTargetId);
+      setFocusKey(jumpRequest.trophyKey);
+      const track = scrollerRef.current;
+      const tile = track?.querySelector<HTMLElement>(
+        `[data-tile="${CSS.escape(jumpTargetId)}"]`,
+      );
+      // offsetLeft 相对轨道里那层 relative 的格子，那层的原点就是滚动内容的原点
+      if (track && tile) {
+        track.scrollTo({ left: tile.offsetLeft, behavior: reduced ? "auto" : "smooth" });
+      }
+      onJumpDone();
+      return;
+    }
+    if (pending.current?.jump !== jumpRequest) {
+      // 全量早就在手上、也没有请求在路上：这一份里没有就是真没有
+      if (wantsFull && !list.isValidating) {
+        onJumpDone();
+        return;
+      }
+      pending.current = { jump: jumpRequest, ids, data: list.data };
+      setWantsFull(true);
+      return;
+    }
+    if (list.isValidating) return;
+    if (pending.current.ids === ids && pending.current.data === list.data) return;
+    pending.current = null;
+    onJumpDone();
+  }, [
+    jumpRequest,
+    jumpTargetId,
+    ids,
+    wantsFull,
+    list.data,
+    list.isValidating,
+    onJumpDone,
+    reduced,
+  ]);
 
   const keys = stableKeys(tiles.map((tile) => tile.titleId));
 
@@ -519,7 +616,8 @@ export function PlaystationRow({
         role="region"
         aria-label="最近在玩"
         // 一次就够，之后这个键不再变。上面那次 scrollTo(0) 不会误触发：已经在 0 上
-        // 的滚动不产生事件，不在 0 上说明用户本来就滑过了
+        // 的滚动不产生事件，不在 0 上说明用户本来就滑过了。跳转那次对轨道的滚动
+        // 会触发，但那本来就是「要看后面那块」，换全量键正合适
         onScroll={wantsFull ? undefined : () => setWantsFull(true)}
         className={cn(
           "scroll-smooth overflow-x-auto overscroll-x-contain",
@@ -532,6 +630,9 @@ export function PlaystationRow({
             {tiles.map((tile, index) => (
               <motion.div
                 key={keys[index]}
+                // 跳转要按 titleId 找到这块瓷砖量它的 offsetLeft；上面那个 key 是
+                // 进离场用的稳定键，不一定等于 titleId
+                data-tile={tile.titleId}
                 layout={!reduced}
                 variants={reduced ? STATIC_VARIANTS : ROW_ITEM_VARIANTS}
                 initial="initial"
@@ -544,9 +645,13 @@ export function PlaystationRow({
                   tile={tile}
                   eager={index < 6}
                   selected={tile.titleId === openId}
-                  onSelect={() =>
-                    setOpenId((current) => (current === tile.titleId ? null : tile.titleId))
-                  }
+                  onSelect={() => {
+                    // 手切瓷砖就把还挂着的跳转作废：它稍后落地会把用户拽回去
+                    pending.current = null;
+                    onJumpDone();
+                    setFocusKey(null);
+                    setOpenId((current) => (current === tile.titleId ? null : tile.titleId));
+                  }}
                 />
               </motion.div>
             ))}
@@ -573,6 +678,8 @@ export function PlaystationRow({
                   error={catalog.error}
                   // 摘要来了、里面没这款，才算「没有奖杯」；摘要没来只是不知道
                   knownEmpty={titles != null && openTile.trophies == null}
+                  focusKey={focusKey ?? undefined}
+                  onFocused={clearFocus}
                 />
               </div>
             </div>

@@ -129,6 +129,7 @@
     var(--font-geist-mono), ui-monospace, "SFMono-Regular", monospace;
 
   --animate-pulse-ring: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  --animate-trophy-focus: trophy-focus 1s ease-in-out 1;
 }
 
 @layer base {
@@ -453,6 +454,26 @@ button.paper-card {
   100% {
     opacity: 0;
     transform: scale(2.6);
+  }
+}
+
+/*
+ * 从首页提要跳过来的那一行：脉冲两下就没。
+ *
+ * 全站层次不靠阴影，这里是例外 —— 它不表达层次，只是一次「在这儿」的瞬态提示，
+ * 一秒后不留痕迹。颜色守灰阶，用带透明度的前景色而不是黑：深色主题里
+ * 纯黑阴影落在深底上是隐形的，跟着前景色走两个主题都看得见。
+ * 两端那一帧写成 0% 透明度的同色而不是 transparent，插值不会掠过灰。
+ */
+@keyframes trophy-focus {
+  0%,
+  50%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--foreground) 0%, transparent);
+  }
+  25%,
+  75% {
+    box-shadow: 0 1px 10px 2px color-mix(in oklab, var(--foreground) 30%, transparent);
   }
 }
 

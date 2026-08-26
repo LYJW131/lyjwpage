@@ -1,5 +1,4 @@
-import { PlaystationRow } from "@/components/live/playstation-card";
-import { TrophyTeaser } from "@/components/live/trophy-teaser";
+import { PlaystationPanel } from "@/components/live/playstation-panel";
 import { Card } from "@/components/ui/card";
 import type {
   PlaystationPlayingPayload,
@@ -8,9 +7,14 @@ import type {
   TrophiesSummaryPayload,
 } from "@/lib/types";
 
+/** 卡片锚点。跳转要滚到的也是它，所以这个 id 只写一处。 */
+const ANCHOR = "playing";
+
 /**
  * PlayStation 整块：奖杯提要和最近在玩收在同一张卡里。
  * 点瓷砖展开该款奖杯。不跟 Emby「最近在看」那样先拉一条分区标题再铺一行瓷砖。
+ *
+ * 这一层留在服务端：只把服务端取好的三份信封交给里面那层客户端壳子。
  */
 export function PlaystationBlock({
   trophies,
@@ -23,20 +27,18 @@ export function PlaystationBlock({
 }) {
   return (
     <Card
-      id="playing"
+      id={ANCHOR}
       label="PlayStation"
       action="PS5 Pro"
-      className="mt-6 scroll-mt-28"
+      // 卡片网格是 gap-3，这块在网格外，间隔也得是同一个 12px
+      className="mt-3 scroll-mt-28"
     >
-      <TrophyTeaser fallback={trophies} embedded />
-      <div className="px-3 pb-3 pt-3">
-        <PlaystationRow
-          fallback={playing}
-          nowFallback={playingNow}
-          // 摘要取不到就传 null：那是「不知道」，传空数组会被读成「每款都没奖杯」
-          titles={trophies.ok ? (trophies.data.titles ?? []) : null}
-        />
-      </div>
+      <PlaystationPanel
+        anchorId={ANCHOR}
+        trophies={trophies}
+        playing={playing}
+        playingNow={playingNow}
+      />
     </Card>
   );
 }

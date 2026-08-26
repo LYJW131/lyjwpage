@@ -6,7 +6,7 @@ import {
 } from "@/lib/playstation-store";
 import { foldService } from "@/lib/playstation-entitlements";
 import type { PlaystationGame } from "@/lib/types";
-import { addTrophyCounts, countTrophies, emptyTrophyCounts } from "@/lib/trophy-counts";
+import { addTrophyCounts, emptyTrophyCounts } from "@/lib/trophy-counts";
 import {
   TROPHY_TYPES,
   type TrophiesPayload,
@@ -377,10 +377,6 @@ export function sliceTrophies(
  * 仍然照旧读 profile：那是账号级的事实，本来就不该跟着屏蔽名单变。
  */
 export function summarizeTrophies(payload: TrophiesPayload): TrophiesSummaryPayload {
-  const defined = payload.titles.reduce(
-    (sum, title) => addTrophyCounts(sum, title.defined),
-    emptyTrophyCounts(),
-  );
   const earned = payload.titles.reduce(
     (sum, title) => addTrophyCounts(sum, title.earned),
     emptyTrophyCounts(),
@@ -392,6 +388,8 @@ export function summarizeTrophies(payload: TrophiesPayload): TrophiesSummaryPayl
       if (!trophy.earned || trophy.earnedAt == null) continue;
       recent.push({
         npCommunicationId: title.npCommunicationId,
+        id: trophy.id,
+        groupId: trophy.groupId,
         titleName,
         trophyName: trophy.name,
         type: trophy.type,
@@ -413,10 +411,7 @@ export function summarizeTrophies(payload: TrophiesPayload): TrophiesSummaryPayl
   return {
     observedAt: payload.observedAt,
     profile: payload.profile,
-    defined,
     earned,
-    titleCount: payload.titles.length,
-    earnedCount: countTrophies(earned),
     recent: recent.slice(0, 3),
     titles,
   };

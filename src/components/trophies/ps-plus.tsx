@@ -53,18 +53,3 @@ export function PsPlusMark({
     </svg>
   );
 }
-
-export function PsPlusBadge({
-  className,
-  markClassName,
-}: {
-  className?: string;
-  markClassName?: string;
-}) {
-  return (
-    <span className={cn("inline-flex items-center gap-1", className)}>
-      <PsPlusMark decorative className={markClassName} />
-      <span>PS Plus</span>
-    </span>
-  );
-}
