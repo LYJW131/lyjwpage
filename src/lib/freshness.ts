@@ -70,6 +70,19 @@ export function playstationStaleMs() {
 }
 
 /**
+ * 服务器上报器默认 15 秒一轮，三倍没消息就算这份断了。
+ *
+ * 和充电头同一套：漏一条不该翻脸，连着三条没到才算上报器出事。服务端可用
+ * `SERVER_STALE_MS` 改 —— 上报器那侧改 `INTERVAL_MS` 时这里要跟着放宽。
+ */
+export const SERVER_STALE_MS = 45_000;
+
+export function serverStaleMs() {
+  const configured = Number(process.env.SERVER_STALE_MS);
+  return Number.isFinite(configured) && configured > 0 ? configured : SERVER_STALE_MS;
+}
+
+/**
  * `at` 这一刻，UTC 偏移为 `secondsFromGMT` 的地方是哪一天（YYYY-MM-DD）。
  *
  * 摆在这个文件里是因为它前后端各算一遍：服务端在取数出口盖 `currentAtSource`

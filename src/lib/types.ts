@@ -804,3 +804,68 @@ export type ActivityPayload = ActivityStatus & {
    */
   currentAtSource: boolean;
 };
+
+/**
+ * 落地节点此刻的读数。单位进字段名（AGENTS.md 第 4 条）：字节、秒、百分比
+ * 三种摆在一起，光看 `memory` / `uptime` 认不出该配哪个。
+ *
+ * `id` 是 SSH 配置里的那一个（`misaka-jp`），`hostname` 是机器自己报的
+ * `uname`。两份都留：卡片上认的是人起的名字，出了问题对照机器要用另一份。
+ */
+export type ServerStatus = {
+  id: string;
+  hostname: string;
+  /** 默认路由网卡上的公网地址。卡片上的那串 IP */
+  publicIp: string;
+  /** 查 IP 得到的国家，如「日本」。查不到为 null */
+  country: string | null;
+  /** 查 IP 得到的城市，如 Tokyo */
+  city: string | null;
+  isp: string | null;
+  /** 自治系统号，没有 AS 前缀。查不到为 null */
+  asn: number | null;
+  asnOrg: string | null;
+  os: string;
+  kernel: string;
+  cpuCores: number;
+  /** 0–100，这一段采样窗口内的平均占用 */
+  cpuUsagePercent: number;
+  load1: number;
+  load5: number;
+  load15: number;
+  memoryTotalBytes: number;
+  memoryUsedBytes: number;
+  memoryAvailableBytes: number;
+  diskTotalBytes: number;
+  diskUsedBytes: number;
+  /** 默认路由那块网卡。和累计字节挨着，免得多网卡时分不清这份是谁的 */
+  networkInterface: string;
+  networkRxBytes: number;
+  networkTxBytes: number;
+  networkRxBytesPerSec: number;
+  networkTxBytesPerSec: number;
+  uptimeSeconds: number;
+  /** 采集时刻，epoch 毫秒 */
+  observedAt: number;
+};
+
+/**
+ * 落地节点对外那一份。
+ *
+ * **没有 `ReporterPresence`。** 那套是 Mac 上报器的存活：亲口离线、心跳窗口、
+ * 全站四张卡共用一个答案。这台节点的上报器挂了只影响这一张卡，用自己的
+ * `staleAfterMs` 判定就够了，不该绑到 Mac 那份存活上。
+ */
+export type ServerPayload = ServerStatus & {
+  /** 源站收到这份的时刻 */
+  pushedAt: number;
+  /** 这份数据自己的过期窗口；默认 45 秒，服务端可按上报间隔加长 */
+  staleAfterMs: number;
+  /**
+   * 源站在取数出口按自己的钟算的那一次「这会儿算不算断流」。
+   *
+   * 为首帧准备 —— 那一帧浏览器还没有钟（useMountedAt 为 0），拿 pushedAt
+   * 什么也判不出来。它是数据字段，服务端预渲染和 hydrate 读到的是同一个值。
+   */
+  staleAtSource: boolean;
+};

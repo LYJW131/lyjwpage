@@ -1,0 +1,20 @@
+[Unit]
+Description=lyjwpage server reporter
+Documentation=file:///opt/lyjwpage/server-reporter/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/lyjwpage/server-reporter
+EnvironmentFile=/opt/lyjwpage/server-reporter/.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 -u /opt/lyjwpage/server-reporter/reporter.py
+Restart=always
+RestartSec=5
+# /proc 谁都能读，不必 root。DynamicUser 给一个一次性的无特权用户，
+# 比复用 nobody 安全（systemd 会把 User=nobody 标成 unsafe）。
+DynamicUser=yes
+
+[Install]
+WantedBy=multi-user.target

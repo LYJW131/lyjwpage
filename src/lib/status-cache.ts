@@ -1,6 +1,7 @@
 import { cacheLife, cacheTag } from "next/cache";
 
 import { getActivitySnapshot } from "@/lib/activity";
+import { getServerSnapshot } from "@/lib/server";
 import { getChargerSnapshot, withChargerFreshness } from "@/lib/anker";
 import { getPowerBankSnapshot, withPowerBankFreshness } from "@/lib/powerbank";
 import { statusEnvelope, statusSource } from "@/lib/api";
@@ -9,6 +10,7 @@ import { getNowWatching, getWatching } from "@/lib/emby";
 import { getGithubChart } from "@/lib/github-chart";
 import {
   ACTIVITY_TAG,
+  SERVER_TAG,
   CHARGER_TAG,
   POWERBANK_TAG,
   DESKTOP_TAG,
@@ -150,6 +152,19 @@ export async function cachedActivity() {
   return statusEnvelope(getActivitySnapshot);
 }
 
+/**
+ * 服务器快照。一份缓存同时喂首屏和状态端点。
+ *
+ * 「上报器还活着没有」在这里会被冻住（最长 10 分钟），端点那侧每次请求重新
+ * 盖一遍，见 app/api/status/server 和 lib/server 的 withServerFreshness。
+ */
+export async function cachedServer() {
+  "use cache";
+  cacheLife(STATUS_LIFE);
+  cacheTag(SERVER_TAG);
+  return statusEnvelope(getServerSnapshot);
+}
+
 export async function cachedVibeCoding() {
   "use cache";
   cacheLife(STATUS_LIFE);
@@ -256,6 +271,7 @@ export const desktopStatus = statusSource(cachedDesktop, getDesktopPayload);
 export const chargerStatus = statusSource(cachedChargerSnapshot, getChargerSnapshot);
 export const powerBankStatus = statusSource(cachedPowerBankSnapshot, getPowerBankSnapshot);
 export const activityStatus = statusSource(cachedActivity, getActivitySnapshot);
+export const serverStatus = statusSource(cachedServer, getServerSnapshot);
 export const vibeCodingStatus = statusSource(cachedVibeCoding, getVibeCodingSnapshot);
 export const vibeCodingYearStatus = statusSource(cachedVibeCodingYear, getVibeCodingYear);
 export const listeningStatus = statusSource(cachedListening, getRecentlyPlayed);

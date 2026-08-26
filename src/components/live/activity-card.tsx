@@ -371,11 +371,11 @@ export function ActivityCard({
 
   return (
     /*
-      **没有标题栏**，和时间卡一样。不是省事：环的外径要和那张卡上的钟相等（144px），
-      整张卡又要和它一样高（min-h-44 = 176px），36px 的标题栏塞不进去 —— 几何把这件事
-      定死了。这两张也因此成了一对同规格的仪表卡。
+      卡头是后加的，内容和时间卡那套几何仍然对齐：环的外径和时间卡那个钟相等
+      （144px），内容区 min-h-44 = 176px。卡头 36px 算在这张卡自己和右边服务器
+      卡上，不挤进内容区 —— 两张并排时卡头对卡头、内容对内容。
     */
-    <Card className={cn("h-full", className)}>
+    <Card label="Activity" action="Apple Watch" className={cn("h-full", className)}>
       {/*
         环靠左、读数靠右，两边各留一个 padding —— 所以「环的左边到左沿」和「读数的
         右边到右沿」相等，而且都只有 padding 那么宽。整组居中也能让两侧相等，但那样

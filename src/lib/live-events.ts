@@ -124,6 +124,15 @@ export const NOW_LISTENING_TAG = "listening-now";
  * 广播就是拿推送当轮询用。卡片按长间隔轮询，命中的是这份被上报刷新过的缓存。
  */
 export const ACTIVITY_TAG = "activity";
+/**
+ * 落地节点快照。和活动圆环一样只有失效、没有推送事件 —— CPU 和网速每个间隔
+ * 都在变，为它开一路广播就是拿推送当轮询用。
+ *
+ * **每次上报都失效**，包括数字几乎没动的那几封：这份快照本身就是心跳，不刷
+ * 的话 `'use cache'` 里的 pushedAt 跟着冻住，卡片会把还活着的上报器判成断流。
+ * 没变时走普通那半，第一封（空变成有）才 urgent。
+ */
+export const SERVER_TAG = "server";
 export const WATCHING_TAG = "watching";
 export const NOW_WATCHING_TAG = "watching-now";
 export const PLAYING_TAG = "playing";
