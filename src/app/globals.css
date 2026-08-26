@@ -458,22 +458,22 @@ button.paper-card {
 }
 
 /*
- * 从首页提要跳过来的那一行：脉冲两下就没。
+ * 从首页提要跳过来的那一行：hover 那层底色亮起又退下，两下就没。
  *
- * 全站层次不靠阴影，这里是例外 —— 它不表达层次，只是一次「在这儿」的瞬态提示，
- * 一秒后不留痕迹。颜色守灰阶，用带透明度的前景色而不是黑：深色主题里
- * 纯黑阴影落在深底上是隐形的，跟着前景色走两个主题都看得见。
+ * 用的就是行自己 hover 的 --surface-hover（随主题走）—— 视觉语言和
+ * 「鼠标放上去」完全同一种，只是替用户亮了两下。不是层次，是一次
+ * 「在这儿」的瞬态提示，一秒后不留痕迹。
  * 两端那一帧写成 0% 透明度的同色而不是 transparent，插值不会掠过灰。
  */
 @keyframes trophy-focus {
   0%,
   50%,
   100% {
-    box-shadow: 0 0 0 0 color-mix(in oklab, var(--foreground) 0%, transparent);
+    background-color: color-mix(in oklab, var(--surface-hover) 0%, transparent);
   }
   25%,
   75% {
-    box-shadow: 0 1px 10px 2px color-mix(in oklab, var(--foreground) 30%, transparent);
+    background-color: var(--surface-hover);
   }
 }
 
