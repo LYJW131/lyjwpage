@@ -2,6 +2,10 @@ import Image from "next/image";
 
 import { PsPlusMark } from "@/components/trophies/ps-plus";
 import { TrophyMetal, trophyTypeLabel } from "@/components/trophies/trophy-metal";
+import {
+  PLAYSTATION_IMAGE_SCALE,
+  playstationImage,
+} from "@/lib/playstation-image";
 import { site } from "@/lib/site";
 import type {
   StatusResponse,
@@ -12,6 +16,9 @@ import type {
 import { cn } from "@/lib/utils";
 
 const TYPES: TrophyType[] = ["platinum", "gold", "silver", "bronze"];
+
+/** 「最近解锁」那格奖杯图的边长，和它 className 上的 h-7 w-7 是同一个数。 */
+const RECENT_PX = 28;
 
 function formatUnlock(ms: number): string {
   // 「6月22日」而不是「6/22」—— 斜杠版和旁边的 442 / 1466 长得太像分数
@@ -96,6 +103,14 @@ export function TrophyTeaser({
               alt={data.profile.onlineId}
               width={40}
               height={40}
+              /*
+               * 头像那个 psn-rsc 不认 `?w=&h=`，只有 _s(50) / _m(160) / _l(240) /
+               * _xl(440) 这一档路径后缀，够 3× 用的最小一档是 160px 的 PNG（52KB），
+               * 直连比过优化器（约 4KB）贵十倍 —— 所以这一路仍旧走图片管道。
+               * 但 width/height 只出 1x/2x 两档、到 96 就封顶，3× 屏那 120 个设备
+               * 像素还得往上拉一截；给上 sizes 让它按真实宽度挑，3× 拿到 128。
+               */
+              sizes="40px"
               className="h-10 w-10 rounded-full object-cover"
             />
           ) : (
@@ -149,10 +164,12 @@ export function TrophyTeaser({
             <div className="mt-1.5 flex items-center gap-2 sm:justify-end">
               {recent.iconUrl ? (
                 <Image
-                  src={recent.iconUrl}
+                  // 尺寸在 PSN 那边就选好，不进图片管道；理由见 playstation-image
+                  src={playstationImage(recent.iconUrl, RECENT_PX * PLAYSTATION_IMAGE_SCALE)!}
                   alt=""
-                  width={28}
-                  height={28}
+                  width={RECENT_PX}
+                  height={RECENT_PX}
+                  unoptimized
                   className="h-7 w-7 shrink-0 object-cover"
                 />
               ) : null}

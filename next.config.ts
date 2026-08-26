@@ -57,12 +57,13 @@ const nextConfig: NextConfig = {
      *
      * GitHub 头像：avatars 给的是整图 JPEG，卡片也是 80px，同样过优化器缩。
      *
-     * PlayStation 奖杯图：PSN 直接给公共 CDN 地址，源图 512²，明细里那格只有
-     * 40–44px，交给优化器按展示尺寸缩；Redis 仍只存上游 URL，不落 R2。
+     * PlayStation 头像：psn-rsc 只有 _s(50) / _m(160) / _l(240) / _xl(440) 这一档
+     * 路径后缀，提要里那格 40px、3× 要 120，够得着的最小一档是 160px 的 PNG（52KB），
+     * 直连比过优化器（约 4KB）贵十倍 —— 它是 PSN 三个主机里唯一缩不到位的，所以
+     * 只剩它还在这张名单上。Redis 仍只存上游 URL，不落 R2。
      *
-     * 游戏封面不在此列：PSN 的图床自己认 `?w=&h=`，那一路改走源站现缩 + 直连，
-     * 见 lib/playstation-image。（奖杯图那两个主机其实也认，同样搬得动，只是
-     * 一次改一样。）
+     * 封面和奖杯图都不在此列：那两个主机自己认 `?w=&h=`（还会把热起来的尺寸
+     * 转成 AVIF），改走源站现缩 + 直连，见 lib/playstation-image。
      *
      * 其余一律不走：R2 已经是压好的最终尺寸且 immutable，mzstatic 自带尺寸
      * 模板，再转一道是纯浪费。
@@ -79,16 +80,6 @@ const nextConfig: NextConfig = {
       {
         protocol: "https",
         hostname: "avatars.githubusercontent.com",
-        pathname: "/**",
-      },
-      {
-        protocol: "https",
-        hostname: "image.api.playstation.com",
-        pathname: "/**",
-      },
-      {
-        protocol: "https",
-        hostname: "psnobj.prod.dl.playstation.net",
         pathname: "/**",
       },
       {
