@@ -240,9 +240,17 @@ function GroupSlot({
   resetKey: string | undefined;
 }) {
   const reduced = useReducedMotion();
-  const cached = useRef(groups);
-  if (groups.length) cached.current = groups;
   const open = groups.length > 0;
+  /*
+   * 收起时 groups 已经空了，可退场动画还要跑一段 —— 留住最后一份非空的，
+   * 组条才不会在收起过程中先闪成空白。
+   *
+   * 渲染期比较、渲染期更新（React 认可的 previous-value 写法）：条件为真时
+   * setState 让这次渲染当场重来一遍，产出的还是同一棵树，提交出去的和从前
+   * 用 ref 记那版逐字一致。
+   */
+  const [shown, setShown] = useState(groups);
+  if (open && shown !== groups) setShown(groups);
 
   return (
     <motion.div
@@ -252,11 +260,11 @@ function GroupSlot({
       transition={reduced ? STATIC_TRANSITION : LIST_TRANSITION}
       className="overflow-hidden"
     >
-      {cached.current.length ? (
+      {shown.length ? (
         // 收起时高度是 0 但节点还在：光 aria-hidden 挡不住 tab 键，焦点还是能
         // 落进这条看不见的横滚区。inert 一次把 tab 序和读屏都摘掉。
         <div data-trophy-groups="" className="pb-2" inert={!open}>
-          <GroupStrip groups={cached.current} resetKey={resetKey} />
+          <GroupStrip groups={shown} resetKey={resetKey} />
         </div>
       ) : null}
     </motion.div>

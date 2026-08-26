@@ -479,7 +479,7 @@ export function PlaystationRow({
    * 跳转目标在渲染期就算好：摘要里按 npCommunicationId 换到 titleIds，再拿去和
    * 瓷砖的 titleIds 求交集。不认瓷砖上那份 digest —— 同款多 SKU 合并时它只留了
    * 第一份的 npCommunicationId，另一半游戏的解锁就永远对不上。
-   * 结果是个字符串，effect 拿它当依赖，瓷砖补齐了才会重跑。
+   * 结果是个字符串，下面那段落地判断直接读它：瓷砖补齐了才会认出目标。
    */
   const jumpDigest = jumpRequest
     ? (titles ?? []).find(
@@ -490,8 +490,13 @@ export function PlaystationRow({
     ? (tiles.find((tile) => tile.titleIds.some((id) => jumpDigest.titleIds.includes(id)))
         ?.titleId ?? null)
     : null;
-  /** 挂起中的那次跳转，连同换全量键那一刻的列表快照 —— 用来认全量到底落地没有 */
-  const pending = useRef<{
+  /**
+   * 挂起中的那次跳转，连同换全量键那一刻的列表快照 —— 用来认全量到底落地没有。
+   *
+   * 是 state 不是 ref：认没认出目标要在渲染期算（下面那段），而 ref 在渲染期
+   * 读不得。这份只喂给那段判断，不参与渲染出来的任何一个节点。
+   */
+  const [pending, setPending] = useState<{
     jump: TrophyJump;
     ids: string;
     data: PlaystationPlayingPayload | undefined;
@@ -528,66 +533,73 @@ export function PlaystationRow({
     scrollerRef.current?.scrollTo({ left: 0, behavior: reduced ? "auto" : "smooth" });
   }, [liveTitleId, reduced]);
 
-  useEffect(() => {
-    if (!openId || ids.split("\n").includes(openId)) return;
+  /*
+   * 展开着的那块瓷砖从列表里没了（并成一条、被过滤掉、或者整批换掉）就收面板。
+   * openTile 本来就是按 openId 现找的，找不到那一刻面板已经在退场了，这里只是
+   * 把 state 跟上 —— 所以放在 render 里判，和上面摘吸附那处同一套，不必为它
+   * 多攒一次提交。
+   */
+  if (openId && !openTile) {
     setOpenId(null);
     setFocusKey(null);
-  }, [openId, ids]);
+  }
 
   /*
-   * 跳转落地。声明排在上面那条 scrollTo(0) 之后：同一次提交里两条都要跑时
-   * （正在玩的那款恰好也换了）以这条为准，用户刚点的东西优先。
+   * 跳转落地。这段排在上面那条 scrollTo(0) 之后，下面那个只管副作用的 effect
+   * 也跟着排在它后面：同一次提交里两条都要跑时（正在玩的那款恰好也换了）
+   * 以这条为准，用户刚点的东西优先。
    *
    * 认不到目标瓷砖有两种情形。一种是首屏只烧了前 12 块、它排在后面：换成全量键
-   * 挂起，全量到了 tiles 一变这个 effect 自己会再跑一次。另一种是全量里真的没有
+   * 挂起，全量到了 tiles 一变这段自己会再算一次。另一种是全量里真的没有
    * （上报屏蔽名单滤掉了，或压根不在最近游玩列表里），那就放弃，也不提示 ——
    * 点的是「这杯在哪」，没有就是没有。判死的条件是「全量确实到手了还是没有」：
    * 要么 isValidating 已经落下来，要么手上这份列表跟换键那一刻不是同一份了。
+   *
+   * 状态在渲染期改，滚轨道和销账留给下面那个 effect。每一处 setState 都带着
+   * 「重算一遍就不成立」的条件：React 会当场把这次渲染重来一遍，第二趟只是原样
+   * 再产出一次，不会自己咬自己。
    */
-  useEffect(() => {
-    if (!jumpRequest) {
-      pending.current = null;
-      return;
+  /** 这一趟认到了瓷砖：要把轨道对过去 */
+  let jumpLandedId: string | null = null;
+  /** 这一趟判死了：直接销账 */
+  let jumpGaveUp = false;
+
+  if (!jumpRequest) {
+    if (pending) setPending(null);
+  } else if (jumpTargetId) {
+    if (pending) setPending(null);
+    if (openId !== jumpTargetId) setOpenId(jumpTargetId);
+    if (focusKey !== jumpRequest.trophyKey) setFocusKey(jumpRequest.trophyKey);
+    jumpLandedId = jumpTargetId;
+  } else if (!pending || pending.jump !== jumpRequest) {
+    // 全量早就在手上、也没有请求在路上：这一份里没有就是真没有
+    if (wantsFull && !list.isValidating) {
+      jumpGaveUp = true;
+    } else {
+      setPending({ jump: jumpRequest, ids, data: list.data });
+      if (!wantsFull) setWantsFull(true);
     }
-    if (jumpTargetId) {
-      pending.current = null;
-      setOpenId(jumpTargetId);
-      setFocusKey(jumpRequest.trophyKey);
+  } else if (
+    !list.isValidating &&
+    (pending.ids !== ids || pending.data !== list.data)
+  ) {
+    jumpGaveUp = true;
+  }
+
+  useEffect(() => {
+    if (jumpLandedId) {
       const track = scrollerRef.current;
       const tile = track?.querySelector<HTMLElement>(
-        `[data-tile="${CSS.escape(jumpTargetId)}"]`,
+        `[data-tile="${CSS.escape(jumpLandedId)}"]`,
       );
       // offsetLeft 相对轨道里那层 relative 的格子，那层的原点就是滚动内容的原点
       if (track && tile) {
         track.scrollTo({ left: tile.offsetLeft, behavior: reduced ? "auto" : "smooth" });
       }
-      onJumpDone();
-      return;
     }
-    if (pending.current?.jump !== jumpRequest) {
-      // 全量早就在手上、也没有请求在路上：这一份里没有就是真没有
-      if (wantsFull && !list.isValidating) {
-        onJumpDone();
-        return;
-      }
-      pending.current = { jump: jumpRequest, ids, data: list.data };
-      setWantsFull(true);
-      return;
-    }
-    if (list.isValidating) return;
-    if (pending.current.ids === ids && pending.current.data === list.data) return;
-    pending.current = null;
-    onJumpDone();
-  }, [
-    jumpRequest,
-    jumpTargetId,
-    ids,
-    wantsFull,
-    list.data,
-    list.isValidating,
-    onJumpDone,
-    reduced,
-  ]);
+    // 落地和判死都要销账。销完 jumpRequest 归 null，上面第一支顺手把快照清掉
+    if (jumpLandedId || jumpGaveUp) onJumpDone();
+  }, [jumpLandedId, jumpGaveUp, onJumpDone, reduced]);
 
   const keys = stableKeys(tiles.map((tile) => tile.titleId));
 
@@ -647,7 +659,7 @@ export function PlaystationRow({
                   selected={tile.titleId === openId}
                   onSelect={() => {
                     // 手切瓷砖就把还挂着的跳转作废：它稍后落地会把用户拽回去
-                    pending.current = null;
+                    setPending(null);
                     onJumpDone();
                     setFocusKey(null);
                     setOpenId((current) => (current === tile.titleId ? null : tile.titleId));
