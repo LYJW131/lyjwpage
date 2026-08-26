@@ -5,7 +5,11 @@ import Image from "next/image";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { GameFlags, PlatformMarks } from "@/components/trophies/game-flags";
-import { TrophyExpand, useTrophyCatalog } from "@/components/trophies/trophy-details";
+import {
+  TrophyExpand,
+  useTrophyCatalog,
+  useTrophyPrefetch,
+} from "@/components/trophies/trophy-details";
 import { TrophyMetal } from "@/components/trophies/trophy-metal";
 import { StatusDot } from "@/components/ui/status-dot";
 import { useLiveEvents } from "@/hooks/use-live-events";
@@ -199,11 +203,14 @@ function GameTile({
   eager,
   selected,
   onSelect,
+  onPrefetch,
 }: {
   tile: Tile;
   eager?: boolean;
   selected: boolean;
   onSelect: () => void;
+  /** 鼠标扫到 / 键盘走到就先取这块瓷砖的奖杯，别等点下去才开始等网络 */
+  onPrefetch: () => void;
 }) {
   const trophies = tile.trophies;
   const metals = trophies
@@ -216,6 +223,9 @@ function GameTile({
       // 面板只有一个、还只在展开时挂上：没开就别指、也别让别的瓷砖指着它
       aria-controls={selected ? "playstation-trophies" : undefined}
       onClick={onSelect}
+      // pointerenter 在触屏上也会在 pointerdown 前发一次，所以触控同样能抢跑一点
+      onPointerEnter={onPrefetch}
+      onFocus={onPrefetch}
       className={cn(
         "flex h-full w-full cursor-pointer items-center overflow-hidden rounded-md text-left",
         "border bg-surface transition-colors hover:bg-surface-hover",
@@ -490,6 +500,7 @@ export function PlaystationRow({
     : null;
   // 展开哪块瓷砖就只问那块的奖杯：它的 titleIds 直接是端点的切片参数
   const catalog = useTrophyCatalog(openTile?.titleIds ?? null);
+  const prefetch = useTrophyPrefetch();
   const [openBodyRef, openHeight] = useOpenHeight(
     openId,
     catalog.isLoading || catalog.titles || catalog.error,
@@ -626,6 +637,7 @@ export function PlaystationRow({
                   tile={tile}
                   eager={index < 9}
                   selected={tile.titleId === openId}
+                  onPrefetch={() => prefetch(tile.titleIds)}
                   onSelect={() => {
                     // 手切瓷砖就把还挂着的跳转作废：它稍后落地会把用户拽回去
                     onJumpDone();
@@ -658,6 +670,12 @@ export function PlaystationRow({
                   error={catalog.error}
                   // 摘要来了、里面没这款，才算「没有奖杯」；摘要没来只是不知道
                   knownEmpty={titles != null && openTile.trophies == null}
+                  // 摘要里那份杯数，加载态照它铺行；没有就让它按满屏铺
+                  rows={
+                    openTile.trophies
+                      ? countTrophies(openTile.trophies.defined)
+                      : undefined
+                  }
                   focusKey={focusKey ?? undefined}
                   onFocused={clearFocus}
                 />
