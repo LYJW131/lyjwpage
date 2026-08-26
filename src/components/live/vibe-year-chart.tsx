@@ -11,8 +11,9 @@ import {
 } from "@/components/live/heatmap-hover";
 import { incrementalFetcher, useStatus } from "@/hooks/use-status";
 import { groupWeeks } from "@/lib/github-chart-compact";
-import { isHeatmapFuture, utcToday } from "@/lib/heatmap-window";
+import { isHeatmapFuture, zonedDay } from "@/lib/heatmap-window";
 import { VIBECODING_YEAR_PATH } from "@/lib/paths";
+import { site } from "@/lib/site";
 import type { GithubChartDay, StatusResponse, VibeCodingYearPayload } from "@/lib/types";
 import {
   YEAR_MIX_SHOW,
@@ -158,7 +159,7 @@ export function VibeYearChart({
 
   const weeks = useMemo(() => {
     if (!snapshot) return null;
-    return toWeeks(snapshot.origin, snapshot.days, utcToday(snapshot.pushedAt));
+    return toWeeks(snapshot.origin, snapshot.days, zonedDay(snapshot.pushedAt, site.timezone));
   }, [snapshot]);
 
   const modelsByDate = useMemo(() => {

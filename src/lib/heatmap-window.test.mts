@@ -9,6 +9,8 @@ import {
   lastHeatmapDate,
   mergeHeatmapSeries,
   sliceHeatmapWindow,
+  utcToday,
+  zonedDay,
 } from "./heatmap-window.ts";
 
 const ORIGIN = "2025-08-17";
@@ -80,4 +82,13 @@ test("游标从今天切到窗尾，不锁在未来的空格上", () => {
   assert.equal(slice.fromIndex, 365);
   assert.equal(371 - slice.fromIndex, 6);
   assert.equal(heatmapRefreshFrom(origin, 371, "2026-08-29"), "2026-08-29");
+});
+
+test("切窗按采集侧时区的日历，不按 UTC", () => {
+  // 东八区 08-27 03:17，UTC 还是 08-26：拿 UTC 切会把今天那格连数字一起切掉
+  const pushedAt = Date.parse("2026-08-26T19:17:30Z");
+  assert.equal(utcToday(pushedAt), "2026-08-26");
+  assert.equal(zonedDay(pushedAt, "Asia/Shanghai"), "2026-08-27");
+  assert.equal(isHeatmapFuture("2026-08-27", zonedDay(pushedAt, "Asia/Shanghai")), false);
+  assert.equal(isHeatmapFuture("2026-08-28", zonedDay(pushedAt, "Asia/Shanghai")), true);
 });
