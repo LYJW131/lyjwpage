@@ -11,7 +11,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import useSWR from "swr";
+import useSWR, { preload, useSWRConfig } from "swr";
 
 import { TrophyMetal } from "@/components/trophies/trophy-metal";
 import { LIST_TRANSITION, STATIC_TRANSITION } from "@/lib/motion";
@@ -101,6 +101,28 @@ async function fetchCatalog(path: string): Promise<StatusResponse<TrophiesPayloa
 }
 
 /**
+ * 悬停 / 聚焦就先把这块瓷砖的目录取回来，别等点击。
+ *
+ * 面板展开动画本身就有 LIST_DURATION（320ms），而这一份切片一般几百毫秒内
+ * 就回来了 —— 提前这一步，展开时数据多半已经在缓存里，面板一开就是奖杯，
+ * 连骨架都不必露面。缓存命中过的瓷砖不重复取：`preload`
+ * 的那份预取记录会在 `useSWR` 消费掉之后清空，不拦一下的话，鼠标扫过一排
+ * 打开过的瓷砖就是一排重复请求。
+ */
+export function useTrophyPrefetch() {
+  const { cache } = useSWRConfig();
+  return useCallback(
+    (titleIds: string[]) => {
+      const key = trophiesTilePath(titleIds);
+      if (cache.get(key)?.data) return;
+      // 预取失败不声张：点开时 useSWR 会自己再问一次，那次才有加载态和报错
+      preload(key, fetchCatalog).catch(() => {});
+    },
+    [cache],
+  );
+}
+
+/**
  * 点开瓷砖才拉奖杯明细，不进首屏 HTML；拉的也只是这块瓷砖对上的那 1–2 款
  * （服务端按 titleIds 切，键就是切片本身，见 lib/paths 的 trophiesTilePath）。
  * 每块打开过的瓷砖各占一个键，关掉面板 SWR 仍留着那份缓存。
@@ -118,6 +140,13 @@ export function useTrophyCatalog(titleIds: string[] | null) {
     {
       refreshInterval: key ? CATALOG_REFRESH_MS : 0,
       shouldRetryOnError: false,
+      /*
+       * 开合一次就重问一遍太吵：目录只在解锁新杯子时才变，而面板开着的时候
+       * 上面那条 10 分钟轮询已经在盯了。一分钟内的反复开合去重掉，比这更久
+       * 的再问一次 —— 关着的时候没有轮询，那段时间的解锁得靠这一次带回来。
+       * 留在轮询间隔之内，两者不会互相吃掉。
+       */
+      dedupingInterval: 60_000,
     },
   );
   return {
@@ -371,11 +400,36 @@ function TrophyViewport({
   );
 }
 
+/**
+ * 加载态。铺的是和真行同一套几何：同一个 TrophyViewport、同样的行高网格、
+ * 图标那格也是 size-11 —— 目录回来时只是灰块换成内容，面板不跳、也不闪。
+ *
+ * 行数按摘要里那份杯数来（`rows`）：摘要没来就按满屏五行铺，宁可多铺也别
+ * 少铺 —— 视口高度本来就是固定五行，少铺只会露出一截空白。
+ */
+function TrophySkeleton({ rows }: { rows: number }) {
+  const count = Math.max(1, Math.min(rows, VISIBLE_ROWS));
+  return (
+    <TrophyViewport>
+      {Array.from({ length: count }, (_, i) => (
+        <div key={i} className="flex h-full items-center gap-2.5 rounded-md px-2">
+          <div className="size-11 shrink-0 animate-pulse rounded-sm bg-muted" />
+          <div className="min-w-0 flex-1 space-y-2">
+            <div className="h-3 w-2/5 animate-pulse rounded bg-muted" />
+            <div className="h-2.5 w-3/5 animate-pulse rounded bg-muted" />
+          </div>
+        </div>
+      ))}
+    </TrophyViewport>
+  );
+}
+
 export function TrophyExpand({
   name,
   titles,
   loading,
   error,
+  rows = VISIBLE_ROWS,
   knownEmpty = false,
   focusKey,
   onFocused,
@@ -384,6 +438,8 @@ export function TrophyExpand({
   titles: TrophyTitle[] | undefined;
   loading: boolean;
   error?: string;
+  /** 摘要里那款的杯数，只用来决定加载态铺几行；不知道就按满屏铺 */
+  rows?: number;
   /**
    * 摘要**收到了**、里面这张卡就没有奖杯组，于是不必先铺 5 行再收。
    * 摘要本身没来（信封 !ok）时必须是 false —— 那是「不知道」，不是「没有」。
@@ -495,12 +551,10 @@ export function TrophyExpand({
     // 只有摘要确实说过「这张卡没有奖杯组」时，才敢不等目录就下结论
     if (knownEmpty) return empty;
     if (loading) {
+      // 读屏拿不到灰块的意思，状态仍旧要说出口
       return (
-        <div
-          className="flex items-center text-sm text-muted-foreground"
-          style={{ height: MIN_ROW_HEIGHT_PX * VISIBLE_ROWS }}
-        >
-          正在读取奖杯
+        <div role="status" aria-label="正在读取奖杯">
+          <TrophySkeleton rows={rows} />
         </div>
       );
     }
