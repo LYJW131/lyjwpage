@@ -1,10 +1,10 @@
 # playstation-reporter
 
-Cloudflare Worker 上的 PSN 上报器：每 15 分钟顺序读取一次「此刻在玩」和「最近在玩」，
-并比对奖杯总览指纹。presence 每轮都推（站点靠它的 `observedAt` 判上报器死活），
-playedGames 和奖杯只在内容变化时才带上。奖杯明细在等级 / 完成度变化时分多轮 cron
-爬完，齐了才整份交付 —— 免费版一次调用只有 50 个子请求，一口气爬完全部标题会在
-半道爆掉，目录永远交不出去。
+Cloudflare Worker 上的 PSN 上报器：每 15 分钟一轮 cron。presence 每轮都推（站点靠它的
+`observedAt` 判上报器死活）；playedGames 和奖杯只在内容变化时才带上。闲着不玩的时候
+游玩列表和购买库走 KV 缓存，奖杯只打总览那一下 —— 等级和杯数没变就不再翻目录、
+不重爬明细。真有解锁时只重拉 `lastUpdated` 变了的那几款，定义（名字 / 分组）还能
+复用上次的，每款 4 次出网变成 2 次。变了的款当轮爬完、对齐、整份交付。
 
 鉴权链和两个读取端点已经用真实凭据跑通，也确认 `Accept-Language: zh-Hans` 会返回
 官方中文名。站点侧的 `/api/ingest/playstation` 已经存在，`wrangler.toml` 里也配了
@@ -15,22 +15,26 @@ playedGames 和奖杯只在内容变化时才带上。奖杯明细在等级 / �
 只有一个 Cron Trigger：`*/15 * * * *`。`wrangler dev` 不会自己响这根 cron，
 本地要刷新就 `GET /tick`。每轮顺序执行：
 
-1. 读取 presence；
-2. 复用同一轮拿到的 token，分页拉全份 played games（带 `Accept-Language`）；
-3. 分页拉购买库（PS4 / PS5），把 `service` / 预购接到游玩列表；没开过档的预购
-   追加在最近窗口之后，不混进 `PLAYED_GAMES_LIMIT`；
-4. 比对奖杯总览指纹。没变就收工（顺手清掉残留游标）。变了则写入 / 续跑
-   `trophySync` 游标：每轮最多爬 6 款（每款 4 次 PSN），一片失败游标不动、下轮重试
-   同一片。爬到一半指纹又变了（又解锁了新奖杯）就丢掉游标重来 —— 半份目录混两个
-   时点，交出去是假目录。全部标题齐了之后才做 `titleId` 对齐
-   （`getUserTrophiesForSpecificTitle`，PPSA… → NPWR…，同样按预算切开）和资料头，
-   再按 `PLAYSTATION_HIDDEN_TITLE_IDS` 过滤。对齐必须看见完整游玩列表，否则屏蔽的
-   titleId 对不上、空 titleIds 会漏出去；
+1. presence 和奖杯总览并行；
+2. 游玩列表：正在玩，或 KV 里那份超过 1 小时，才去拉；否则用缓存。奖杯没变时只翻
+   最近窗口（`PLAYED_GAMES_LIMIT`）盖进缓存，不必为时长把整库翻完。带
+   `Accept-Language`；
+3. 购买库（PS4 / PS5）同样走缓存，6 小时才翻一遍，和游玩列表并行。把 `service` /
+   预购接到游玩列表；没开过档的预购追加在最近窗口之后，不混进
+   `PLAYED_GAMES_LIMIT`；
+4. 奖杯总览的等级 / 总杯数 / 屏蔽名单都没变就收工。变了才翻目录，跟 KV 里上次交付
+   的快照比：只重爬进度、`lastUpdated`、定义/获得杯数对不上的款，两款并行。定义杯数
+   没变就只打「获得情况」两个接口，变了（新 DLC）才四个都打。没变的款从
+   `trophies:last` 合并进来。然后做 `titleId` 对齐（`getUserTrophiesForSpecificTitle`，
+   PPSA… → NPWR…）：已经对着的 SKU 不再打，只补还没映射的；万一新 NPWR 挂在旧
+   SKU 上才整表再对一次。对齐必须看见完整游玩列表，否则屏蔽的 titleId 对不上。
+   这一轮失败不写指纹，15 分钟后相对上次成功交付重算 dirty 再来 —— 不拿两个时点的
+   半份明细拼假目录。分页之间不再固定 sleep，上游 429 才退避重试；
 5. 按 `PLAYSTATION_HIDDEN_TITLE_IDS` 去掉屏蔽的 titleId（不上报），再按
    `PLAYED_GAMES_LIMIT`（默认 100）切开，接上未开档预购；
 6. 交付两封 v1 信封：第一封必带 presence，playedGames 变了才一起带；奖杯只在整份
    目录拼齐后另发一封，绝不交付部分目录。两封各自 try/catch，各自成功才写各自的
-   指纹 —— 一封被站点 400 不会连累另一封。交付成功后才删游标。
+   指纹 —— 一封被站点 400 不会连累另一封。交付成功后写下 `trophies:last`。
 
 拆成两封是因为站点的校验是信封级的全有全无：几百 KB 的奖杯目录里一个字段越界就退整封，
 心跳不该跟着一起丢。同理，会越界的值在 Worker 里就钳好（百分比 0–100、id 非负整数、
@@ -48,9 +52,11 @@ KV：
 | --- | --- |
 | `auth` | token 状态 JSON，形状与旧 `state/auth.json` 完全相同 |
 | `fp:playedGames` | played games 内容指纹 |
-| `fp:trophies` | 奖杯总览指纹（等级 + 各标题完成度），并入屏蔽名单和两枚口径哨兵：口径一改指纹就变，整份目录重推一次 |
-| `trophySync` | 进行中的奖杯分片：目标指纹、`npCommunicationId` 清单、已爬进度、已积累的部分目录，以及组装阶段的 titleId 对齐进度 |
-| `meta:lastTick` | 最近一轮时间、成功与否、playedGames / 奖杯有没有变、dry-run 状态；同步中带 `trophySync: {done, total}` |
+| `fp:trophies` | 奖杯总览指纹（等级 + 各标题完成度 / 定义杯数 / lastUpdated），并入屏蔽名单和两枚口径哨兵：口径一改指纹就变 |
+| `trophies:last` | 上次成功交付的整份目录 + 索引快照，增量重爬的对照面；站点仍然整份替换 |
+| `cache:playedGames` | 全份游玩列表，闲置时 1 小时内不重拉 |
+| `cache:library` | 购买库，6 小时内不重拉 |
+| `meta:lastTick` | 最近一轮时间、成功与否、playedGames / 奖杯有没有变、dry-run 状态 |
 
 presence 没有指纹：每轮必发，无所谓变没变。
 
@@ -58,11 +64,10 @@ presence 没有指纹：每轮必发，无所谓变没变。
 `accessTokenExpiresAt`、`refreshTokenIssuedAt`、`refreshTokenExpiresAt`；四个时间都是
 epoch 毫秒。现有文件可以原样种进 KV。
 
-Worker 的 HTTP `fetch` 是手动触发入口：`GET /tick` 把一轮 tick 完整跑一遍（拉
-PSN、比指纹、爬一片奖杯或组装交付），把这轮的元信息和抓到的 presence、played
-games 一并返回；奖杯还在分片中时 `trophies` 为 null，进度看 meta 里的
-`trophySync`。出错则回 502，带上错误和 KV 里最近一轮的记录 —— 任何一封信没交付
-成功，这一轮都算失败。`GET /` 只回最近一轮的
+Worker 的 HTTP `fetch` 是手动触发入口：`GET /tick` 把一轮 tick 完整跑一遍（该拉
+的拉、该跳过的跳过、比指纹、必要时爬奖杯并交付），把这轮的元信息和 presence、
+played games 一并返回；奖杯没变时 `trophies` 为 null。出错则回 502，带上错误和
+KV 里最近一轮的记录 —— 任何一封信没交付成功，这一轮都算失败。`GET /` 只回最近一轮的
 meta，不碰 PSN —— Chrome / Cursor 探调试口会打 `/json/version` 再打根路径，
 根路径上跑 tick 会把 PSN 打爆。`/favicon.ico` 同样 404。
 

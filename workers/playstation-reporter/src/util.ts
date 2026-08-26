@@ -13,6 +13,28 @@ export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+export function isRateLimited(error: unknown): boolean {
+  const text = error instanceof Error ? error.message : String(error);
+  return /\b429\b|too many requests|rate.?limit/i.test(text);
+}
+
+/** 429 退避重试。礼让性 sleep 拿掉之后，上游限流靠这里接住。 */
+export async function retryRateLimit<T>(load: () => Promise<T>): Promise<T> {
+  let last: unknown;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    try {
+      return await load();
+    } catch (error) {
+      last = error;
+      if (!isRateLimited(error) || attempt === 3) throw error;
+      const waitMs = 500 * 2 ** attempt;
+      console.log(JSON.stringify({ event: "psn-rate-limit", attempt: attempt + 1, waitMs }));
+      await sleep(waitMs);
+    }
+  }
+  throw last instanceof Error ? last : new Error(String(last));
+}
+
 /** 负数一律当没有：站点把所有时间字段按非负数硬校验，一条越界就退整封信。 */
 export function epochMs(iso: string | undefined): number | null {
   if (!iso) return null;

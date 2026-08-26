@@ -31,7 +31,7 @@ import {
   nonNegative,
   nonNegativeInt,
   percent,
-  sleep,
+  retryRateLimit,
   trimmed,
   withToken,
   type Loose,
@@ -103,8 +103,18 @@ export type TrophiesReport = {
 /** 目录里没有 npCommunicationId 的行取不了明细，进不了这个类型。 */
 export type TitleIndex = Loose<TrophyTitle> & { npCommunicationId: string };
 
+export type TrophyIndexSnapshot = {
+  npCommunicationId: string;
+  progress: number;
+  lastUpdatedDateTime: string;
+  earned: TrophyCounts;
+  defined: TrophyCounts;
+};
+
+export type TrophyTitleReport = TrophiesReport["titles"][number];
+
 /** 上游还给三个点数字段，psn-api 2.18.1 的响应类型里没有；缺席就当 0。 */
-type TrophySummary = Loose<
+export type TrophySummary = Loose<
   UserTrophyProfileSummaryResponse & {
     trophyPoint: number;
     trophyLevelBasePoint: number;
@@ -159,24 +169,11 @@ function titleOptions(env: Env, platform: string | undefined) {
 type TitleOptions = ReturnType<typeof titleOptions>;
 
 const TITLE_ID_BATCH = 5;
+/** 每款 2–4 路并行，Worker 同时出站上限 6，两款一起跑。 */
+const TITLE_CRAWL_CONCURRENCY = 2;
 const PAGE_LIMIT = 100;
 /** 兜底：nextOffset 一直不为空也不能无限打上游。100 页 × 100 条远超单个奖杯组。 */
 const MAX_PAGES = 100;
-
-/**
- * 免费版一次调用 50 个子请求。presence 半边约 10–15（含 token 刷新、
- * 游玩/购买库、交付、指纹 KV）；本轮多读一次 trophySync。
- * 奖杯总览 2–3；6 款 × 4 = 24；游标写入 1；meta 1。
- * 最坏 15+1+3+24+1+1 = 45。
- */
-export const TROPHY_TITLES_PER_TICK = 6;
-
-/**
- * 组装轮不再爬明细。对齐一次 5 个 titleId；12 批 = 60 个，
- * 叠上 presence + index + 资料 + 交付 / 指纹 / 删游标，仍低于 50。
- * 游玩列表更长就再占一轮，不跟 6 款明细抢预算。
- */
-export const PLAY_LINK_BATCHES_PER_TICK = 12;
 
 type PsnPage<Row> = {
   rows: Row[] | undefined;
@@ -197,7 +194,7 @@ async function collectPages<Row>(
   let offset = 0;
   let total: number | null = null;
   for (let page = 0; page < MAX_PAGES; page += 1) {
-    const body = await load(offset);
+    const body = await retryRateLimit(() => load(offset));
     rows.push(...(body.rows ?? []));
     if (typeof body.totalItemCount === "number") total = body.totalItemCount;
     const next = body.nextOffset;
@@ -205,7 +202,6 @@ async function collectPages<Row>(
     if (next == null || next <= offset) break;
     if (total != null && rows.length >= total) break;
     offset = next;
-    await sleep(120);
   }
   if (total != null && rows.length !== total) {
     throw new Error(`PSN ${what} 只取到 ${rows.length} / ${total} 条`);
@@ -300,19 +296,16 @@ export function playLinkGames(played: PlayedGamesReport): PlayedGame[] {
 }
 
 /**
- * 官方把奖杯组 NPWR… 接到游玩列表的 PPSA… / CUSA…。一次最多 5 个 titleId；
- * 没同步过奖杯或媒体应用会整批失败，再拆成单条重试。
+ * 官方把奖杯组 NPWR… 接到游玩列表的 PPSA… / CUSA…。一次最多 5 个 titleId
+ * （上游限制，不是 Worker 预算）；没同步过奖杯或媒体应用会整批失败，再拆成单条重试。
  */
-export async function mapPlayByTrophySlice(
+export async function mapPlayByTrophy(
   env: Env,
   auth: AuthSession,
   games: PlayedGame[],
-  offset: number,
-  maxBatches: number,
-): Promise<{ nextOffset: number; byTrophy: Record<string, PlayedGame[]> }> {
+): Promise<Record<string, PlayedGame[]>> {
   const byTitleId = new Map(games.map((game) => [game.titleId, game]));
   const ids = games.map((game) => game.titleId);
-  const end = Math.min(ids.length, Math.max(offset, 0) + maxBatches * TITLE_ID_BATCH);
   const byTrophy: Record<string, PlayedGame[]> = {};
 
   const apply = (npTitleId: string, npCommunicationIds: string[]) => {
@@ -327,23 +320,19 @@ export async function mapPlayByTrophySlice(
 
   async function mapChunk(chunk: string[]) {
     try {
-      const rows = await requestTitleLinks(env, auth, chunk);
+      const rows = await retryRateLimit(() => requestTitleLinks(env, auth, chunk));
       for (const row of rows) apply(row.npTitleId, row.npCommunicationIds);
     } catch {
       if (chunk.length === 1) return;
-      for (const id of chunk) {
-        await mapChunk([id]);
-        await sleep(80);
-      }
+      for (const id of chunk) await mapChunk([id]);
     }
   }
 
-  for (let i = offset; i < end; i += TITLE_ID_BATCH) {
-    await mapChunk(ids.slice(i, Math.min(i + TITLE_ID_BATCH, end)));
-    if (i + TITLE_ID_BATCH < end) await sleep(150);
+  for (let i = 0; i < ids.length; i += TITLE_ID_BATCH) {
+    await mapChunk(ids.slice(i, i + TITLE_ID_BATCH));
   }
 
-  return { nextOffset: end, byTrophy };
+  return byTrophy;
 }
 
 export function mergePlayByTrophy(
@@ -362,6 +351,91 @@ export function mergePlayByTrophy(
   return out;
 }
 
+export function countsEqual(a: TrophyCounts, b: TrophyCounts): boolean {
+  return (
+    a.platinum === b.platinum && a.gold === b.gold && a.silver === b.silver && a.bronze === b.bronze
+  );
+}
+
+export function trophySummarySignature(
+  hidden: Set<string>,
+  summary: TrophySummary,
+): string {
+  return JSON.stringify({
+    hidden: [...hidden].sort(),
+    drop: "after-link",
+    link: "titleId+avatar",
+    level: nonNegativeInt(summary.trophyLevel),
+    earned: counts(summary.earnedTrophies),
+  });
+}
+
+export function snapshotIndex(titles: TitleIndex[]): TrophyIndexSnapshot[] {
+  return titles.map((title) => ({
+    npCommunicationId: title.npCommunicationId,
+    progress: percent(title.progress),
+    lastUpdatedDateTime: title.lastUpdatedDateTime ?? "",
+    earned: counts(title.earnedTrophies),
+    defined: counts(title.definedTrophies),
+  }));
+}
+
+/** 相对上次交付的目录，哪些标题的进度 / 时间戳 / 杯数变了（含新出现的）。 */
+export function dirtyIndexRows(prev: TrophyIndexSnapshot[], next: TitleIndex[]): TitleIndex[] {
+  const prevById = new Map(prev.map((row) => [row.npCommunicationId, row]));
+  return next.filter((row) => {
+    const old = prevById.get(row.npCommunicationId);
+    if (!old) return true;
+    return (
+      old.progress !== percent(row.progress) ||
+      old.lastUpdatedDateTime !== (row.lastUpdatedDateTime ?? "") ||
+      !countsEqual(old.earned, counts(row.earnedTrophies)) ||
+      !countsEqual(old.defined, counts(row.definedTrophies))
+    );
+  });
+}
+
+export function mergeTrophyTitles(
+  base: TrophyTitleReport[],
+  fresh: TrophyTitleReport[],
+  currentIds: string[],
+): TrophyTitleReport[] {
+  const byId = new Map(base.map((title) => [title.npCommunicationId, title]));
+  for (const title of fresh) byId.set(title.npCommunicationId, title);
+  const merged: TrophyTitleReport[] = [];
+  for (const id of currentIds) {
+    const title = byId.get(id);
+    if (title) merged.push(title);
+  }
+  return merged;
+}
+
+export function canReuseDefinitions(
+  previous: TrophyTitleReport | undefined,
+  row: TitleIndex,
+): boolean {
+  if (!previous?.trophies.length || !previous.groups.length) return false;
+  return countsEqual(previous.defined, counts(row.definedTrophies));
+}
+
+/** 用已有 titleIds 反查游玩列表，刷新时长 / Plus，不必再打对齐接口。 */
+export function playByTrophyFromTitles(
+  titles: TrophyTitleReport[],
+  games: PlayedGame[],
+): Record<string, PlayedGame[]> {
+  const byTitleId = new Map(games.map((game) => [game.titleId, game]));
+  const out: Record<string, PlayedGame[]> = {};
+  for (const title of titles) {
+    const list: PlayedGame[] = [];
+    for (const id of title.titleIds) {
+      const game = byTitleId.get(id);
+      if (game && !list.some((item) => item.titleId === game.titleId)) list.push(game);
+    }
+    if (list.length) out[title.npCommunicationId] = list;
+  }
+  return out;
+}
+
 export function trophiesFingerprint(titles: TitleIndex[], earned: TrophyCounts, level: number): string {
   return JSON.stringify({
     link: "titleId+avatar",
@@ -369,31 +443,30 @@ export function trophiesFingerprint(titles: TitleIndex[], earned: TrophyCounts, 
     earned,
     titles: titles.map((title) => [
       title.npCommunicationId,
-      title.progress ?? 0,
+      percent(title.progress),
       title.lastUpdatedDateTime ?? "",
       counts(title.earnedTrophies),
+      counts(title.definedTrophies),
     ]),
   });
 }
 
-export async function fetchTrophyIndex(
-  env: Env,
-  auth: AuthSession,
-): Promise<{
-  fingerprint: string;
-  titles: TitleIndex[];
-  accountId: string;
-  summary: TrophySummary;
-}> {
+export async function fetchTrophySummary(env: Env, auth: AuthSession): Promise<TrophySummary> {
   const localized = languageHeader(env);
   const headers = localized ? { headerOverrides: localized } : undefined;
-  const summary: TrophySummary = assertNoPsnError(
-    await withToken(auth, (token) =>
-      getUserTrophyProfileSummary({ accessToken: token }, "me", headers),
+  return retryRateLimit(async () =>
+    assertNoPsnError(
+      await withToken(auth, (token) =>
+        getUserTrophyProfileSummary({ accessToken: token }, "me", headers),
+      ),
+      "奖杯总览",
     ),
-    "奖杯总览",
   );
+}
 
+export async function fetchTrophyTitles(env: Env, auth: AuthSession): Promise<TitleIndex[]> {
+  const localized = languageHeader(env);
+  const headers = localized ? { headerOverrides: localized } : undefined;
   const rows = await collectPages<Loose<TrophyTitle>>("奖杯目录", async (offset) => {
     const page: Loose<UserTitlesResponse> = assertNoPsnError(
       await withToken(auth, (token) =>
@@ -418,13 +491,15 @@ export async function fetchTrophyIndex(
       }),
     );
   }
+  return titles;
+}
 
-  return {
-    fingerprint: trophiesFingerprint(titles, counts(summary.earnedTrophies), nonNegativeInt(summary.trophyLevel)),
+export function indexFingerprint(titles: TitleIndex[], summary: TrophySummary): string {
+  return trophiesFingerprint(
     titles,
-    accountId: String(summary.accountId ?? ""),
-    summary,
-  };
+    counts(summary.earnedTrophies),
+    nonNegativeInt(summary.trophyLevel),
+  );
 }
 
 async function fetchTrophyDefinitions(
@@ -472,53 +547,99 @@ async function fetchTrophiesEarned(
   return { trophies, lastUpdatedDateTime };
 }
 
-async function fetchTrophyTitle(
-  env: Env,
-  auth: AuthSession,
-  title: TitleIndex,
-): Promise<TrophiesReport["titles"][number]> {
-  const id = title.npCommunicationId;
-  const opts = titleOptions(env, title.trophyTitlePlatform);
-  const [defs, earned, groupDefs, groupEarned] = await Promise.all([
-    fetchTrophyDefinitions(auth, id, opts),
-    fetchTrophiesEarned(auth, id, opts),
-    withToken(auth, (token) => getTitleTrophyGroups({ accessToken: token }, id, opts)).then(
-      (raw): Loose<TitleTrophyGroupsResponse> => assertNoPsnError(raw, `${id} 的奖杯组`),
-    ),
-    // 这个入口自己检查 {error}，不用再断言一次。
-    withToken(
-      auth,
-      (token): Promise<Loose<UserTrophyGroupEarningsForTitleResponse>> =>
-        getUserTrophyGroupEarningsForTitle({ accessToken: token }, "me", id, opts),
-    ),
-  ]);
+function earnedFitsPrevious(
+  previous: TrophyTitleReport,
+  earned: EarnedTrophy[],
+  groupEarned: Loose<UserTrophyGroupEarningsForTitleResponse>,
+): boolean {
+  const prevTrophyIds = new Set(previous.trophies.map((row) => row.id));
+  if (
+    earned.some(
+      (row) => row.trophyId != null && !prevTrophyIds.has(nonNegativeInt(row.trophyId)),
+    )
+  ) {
+    return false;
+  }
+  const prevGroupIds = new Set(previous.groups.map((group) => group.id));
+  return (groupEarned.trophyGroups ?? []).every((group) =>
+    prevGroupIds.has(trimmed(group.trophyGroupId) ?? "default"),
+  );
+}
 
-  // 没有 trophyId 的行进不了 map：否则两条都以 undefined 为键，会把获得情况接错人。
+function stitchEarned(
+  previous: TrophyTitleReport,
+  title: TitleIndex,
+  earned: Awaited<ReturnType<typeof fetchTrophiesEarned>>,
+  groupEarned: Loose<UserTrophyGroupEarningsForTitleResponse>,
+): TrophyTitleReport {
   const earnedMap = new Map(
     earned.trophies.filter((row) => row.trophyId != null).map((row) => [row.trophyId, row]),
   );
-  const lastUpdatedAt = epochMs(
-    groupEarned.lastUpdatedDateTime ?? earned.lastUpdatedDateTime ?? title.lastUpdatedDateTime,
-  );
+  return {
+    ...previous,
+    name: trimmed(title.trophyTitleName) ?? previous.name,
+    iconUrl: trimmed(title.trophyTitleIconUrl) ?? previous.iconUrl,
+    platform: trimmed(title.trophyTitlePlatform) ?? previous.platform,
+    progress: percent(title.progress),
+    defined: counts(title.definedTrophies),
+    earned: counts(title.earnedTrophies),
+    lastUpdatedAt: epochMs(
+      groupEarned.lastUpdatedDateTime ?? earned.lastUpdatedDateTime ?? title.lastUpdatedDateTime,
+    ),
+    groups: previous.groups.map((group) => {
+      const earnedGroup: TrophyGroupEarnings | undefined = (groupEarned.trophyGroups ?? []).find(
+        (row) => (trimmed(row.trophyGroupId) ?? "default") === group.id,
+      );
+      return {
+        ...group,
+        progress: percent(earnedGroup?.progress ?? group.progress),
+        earned: earnedGroup ? counts(earnedGroup.earnedTrophies) : group.earned,
+      };
+    }),
+    trophies: previous.trophies.map((row) => {
+      const got = earnedMap.get(row.id);
+      if (!got) return row;
+      return {
+        ...row,
+        earned: Boolean(got.earned),
+        earnedAt: epochMs(got.earnedDateTime),
+        earnedRate: rate(got.trophyEarnedRate) ?? row.earnedRate,
+      };
+    }),
+  };
+}
 
-  // titleIds 对齐在全部爬完之后做：分片里先占位，避免半份目录带着过期映射被交出去。
+function assembleTitle(
+  title: TitleIndex,
+  defs: DefinedTrophy[],
+  earned: Awaited<ReturnType<typeof fetchTrophiesEarned>>,
+  groupDefs: Loose<TitleTrophyGroupsResponse>,
+  groupEarned: Loose<UserTrophyGroupEarningsForTitleResponse>,
+  previous?: TrophyTitleReport,
+): TrophyTitleReport {
+  const id = title.npCommunicationId;
+  const earnedMap = new Map(
+    earned.trophies.filter((row) => row.trophyId != null).map((row) => [row.trophyId, row]),
+  );
   return {
     npCommunicationId: id,
     name: trimmed(title.trophyTitleName) ?? id,
-    localizedName: null,
-    titleIds: [],
+    localizedName: previous?.localizedName ?? null,
+    titleIds: previous?.titleIds ?? [],
     iconUrl: trimmed(title.trophyTitleIconUrl),
     platform: trimmed(title.trophyTitlePlatform) ?? "PS",
     progress: percent(title.progress),
     defined: counts(title.definedTrophies),
     earned: counts(title.earnedTrophies),
-    lastUpdatedAt,
-    playDurationMs: null,
-    playCount: 0,
-    firstPlayedAt: null,
-    lastPlayedAt: null,
-    service: null,
-    preOrder: false,
+    lastUpdatedAt: epochMs(
+      groupEarned.lastUpdatedDateTime ?? earned.lastUpdatedDateTime ?? title.lastUpdatedDateTime,
+    ),
+    playDurationMs: previous?.playDurationMs ?? null,
+    playCount: previous?.playCount ?? 0,
+    firstPlayedAt: previous?.firstPlayedAt ?? null,
+    lastPlayedAt: previous?.lastPlayedAt ?? null,
+    service: previous?.service ?? null,
+    preOrder: previous?.preOrder ?? false,
     groups: (groupDefs.trophyGroups ?? []).map((group: TrophyGroupDefinition) => {
       const earnedGroup: TrophyGroupEarnings | undefined = (groupEarned.trophyGroups ?? []).find(
         (row) => row.trophyGroupId === group.trophyGroupId,
@@ -558,17 +679,91 @@ async function fetchTrophyTitle(
   };
 }
 
+async function fetchTrophyTitle(
+  env: Env,
+  auth: AuthSession,
+  title: TitleIndex,
+  previous?: TrophyTitleReport,
+): Promise<TrophyTitleReport> {
+  const id = title.npCommunicationId;
+  const opts = titleOptions(env, title.trophyTitlePlatform);
+  const reuse = canReuseDefinitions(previous, title);
+
+  const earnedPromise = fetchTrophiesEarned(auth, id, opts);
+  const groupEarnedPromise: Promise<Loose<UserTrophyGroupEarningsForTitleResponse>> = retryRateLimit(
+    () =>
+      withToken(auth, (token) =>
+        getUserTrophyGroupEarningsForTitle({ accessToken: token }, "me", id, opts),
+      ),
+  );
+
+  if (reuse && previous) {
+    const [earned, groupEarnedRaw] = await Promise.all([earnedPromise, groupEarnedPromise]);
+    const groupEarned = assertNoPsnError(groupEarnedRaw, `${id} 的奖杯组进度`);
+    if (earnedFitsPrevious(previous, earned.trophies, groupEarned)) {
+      console.log(JSON.stringify({ event: "playstation-trophy-title", id, reuse: "earned" }));
+      return stitchEarned(previous, title, earned, groupEarned);
+    }
+    const [defs, groupDefs] = await Promise.all([
+      fetchTrophyDefinitions(auth, id, opts),
+      retryRateLimit(async () =>
+        assertNoPsnError(
+          await withToken(auth, (token) => getTitleTrophyGroups({ accessToken: token }, id, opts)),
+          `${id} 的奖杯组`,
+        ),
+      ),
+    ]);
+    console.log(JSON.stringify({ event: "playstation-trophy-title", id, reuse: "fallback" }));
+    return assembleTitle(title, defs, earned, groupDefs, groupEarned, previous);
+  }
+
+  const [defs, earned, groupDefs, groupEarned] = await Promise.all([
+    fetchTrophyDefinitions(auth, id, opts),
+    earnedPromise,
+    retryRateLimit(async () =>
+      assertNoPsnError(
+        await withToken(auth, (token) => getTitleTrophyGroups({ accessToken: token }, id, opts)),
+        `${id} 的奖杯组`,
+      ),
+    ),
+    groupEarnedPromise,
+  ]);
+  console.log(JSON.stringify({ event: "playstation-trophy-title", id, reuse: "full" }));
+  return assembleTitle(title, defs, earned, groupDefs, groupEarned, previous);
+}
+
+async function mapPool<Item, Result>(
+  items: Item[],
+  concurrency: number,
+  fn: (item: Item) => Promise<Result>,
+): Promise<Result[]> {
+  const out: Result[] = new Array(items.length);
+  let next = 0;
+  async function worker() {
+    for (;;) {
+      const index = next;
+      next += 1;
+      if (index >= items.length) return;
+      const item = items[index];
+      if (item === undefined) return;
+      out[index] = await fn(item);
+    }
+  }
+  const workers = Math.min(Math.max(concurrency, 1), items.length);
+  await Promise.all(Array.from({ length: workers }, () => worker()));
+  return out;
+}
+
 export async function fetchTrophyTitleSlice(
   env: Env,
   auth: AuthSession,
   titles: TitleIndex[],
-): Promise<TrophiesReport["titles"]> {
-  const out: TrophiesReport["titles"] = [];
-  for (const [i, title] of titles.entries()) {
-    out.push(await fetchTrophyTitle(env, auth, title));
-    if (i < titles.length - 1) await sleep(150);
-  }
-  return out;
+  previousById: Map<string, TrophyTitleReport>,
+): Promise<TrophyTitleReport[]> {
+  if (!titles.length) return [];
+  return mapPool(titles, TITLE_CRAWL_CONCURRENCY, (title) =>
+    fetchTrophyTitle(env, auth, title, previousById.get(title.npCommunicationId)),
+  );
 }
 
 export function applyPlayStats(
@@ -576,7 +771,9 @@ export function applyPlayStats(
   byTrophy: Record<string, PlayedGame[]>,
 ): TrophiesReport["titles"] {
   return titles.map((title) => {
-    const play = playStats(byTrophy[title.npCommunicationId], title.name);
+    const games = byTrophy[title.npCommunicationId];
+    if (!games?.length) return title;
+    const play = playStats(games, title.name);
     return {
       ...title,
       localizedName: play.localizedName,
@@ -591,24 +788,34 @@ export function applyPlayStats(
   });
 }
 
+function profileFromSummary(
+  identity: Pick<TrophiesReport["profile"], "onlineId" | "avatarUrl" | "plus">,
+  summary: TrophySummary,
+): TrophiesReport["profile"] {
+  return {
+    onlineId: identity.onlineId,
+    avatarUrl: identity.avatarUrl,
+    plus: identity.plus,
+    level: nonNegativeInt(summary.trophyLevel),
+    tier: nonNegativeInt(summary.tier),
+    trophyPoint: nonNegative(summary.trophyPoint),
+    levelBasePoint: nonNegative(summary.trophyLevelBasePoint),
+    levelNextPoint: nonNegative(summary.trophyLevelNextPoint),
+    levelProgress: percent(summary.progress),
+    earned: counts(summary.earnedTrophies),
+  };
+}
+
 export async function buildTrophiesReport(
   env: Env,
   auth: AuthSession,
-  index: Awaited<ReturnType<typeof fetchTrophyIndex>>,
-  titles: TrophiesReport["titles"],
+  summary: TrophySummary,
+  titles: TrophyTitleReport[],
   byTrophy: Record<string, PlayedGame[]>,
+  existingProfile?: TrophiesReport["profile"] | null,
 ): Promise<TrophiesReport> {
-  const localized = languageHeader(env);
-  const headers = localized ? { headerOverrides: localized } : undefined;
-  if (!index.accountId) throw new Error("奖杯总览没有 accountId");
-
-  // 这个入口自己检查 {error}，不用再断言一次。
-  const profile: Loose<ProfileFromAccountIdResponse> = await withToken(auth, (token) =>
-    getProfileFromAccountId({ accessToken: token }, index.accountId, headers),
-  );
-
-  const onlineId = trimmed(profile.onlineId);
-  if (!onlineId) throw new Error("PSN 资料没有 onlineId");
+  const account = String(summary.accountId ?? "");
+  if (!account) throw new Error("奖杯总览没有 accountId");
 
   const linked = applyPlayStats(titles, byTrophy);
   console.log(
@@ -619,20 +826,34 @@ export async function buildTrophiesReport(
     }),
   );
 
+  if (existingProfile) {
+    return {
+      observedAt: Date.now(),
+      profile: profileFromSummary(existingProfile, summary),
+      titles: linked,
+    };
+  }
+
+  const localized = languageHeader(env);
+  const headers = localized ? { headerOverrides: localized } : undefined;
+  const profile: Loose<ProfileFromAccountIdResponse> = await retryRateLimit(() =>
+    withToken(auth, (token) =>
+      getProfileFromAccountId({ accessToken: token }, account, headers),
+    ),
+  );
+  const onlineId = trimmed(profile.onlineId);
+  if (!onlineId) throw new Error("PSN 资料没有 onlineId");
+
   return {
     observedAt: Date.now(),
-    profile: {
-      onlineId,
-      avatarUrl: profileAvatarUrl(profile.avatars),
-      plus: profile.isPlus === true,
-      level: nonNegativeInt(index.summary.trophyLevel),
-      tier: nonNegativeInt(index.summary.tier),
-      trophyPoint: nonNegative(index.summary.trophyPoint),
-      levelBasePoint: nonNegative(index.summary.trophyLevelBasePoint),
-      levelNextPoint: nonNegative(index.summary.trophyLevelNextPoint),
-      levelProgress: percent(index.summary.progress),
-      earned: counts(index.summary.earnedTrophies),
-    },
+    profile: profileFromSummary(
+      {
+        onlineId,
+        avatarUrl: profileAvatarUrl(profile.avatars),
+        plus: profile.isPlus === true,
+      },
+      summary,
+    ),
     titles: linked,
   };
 }

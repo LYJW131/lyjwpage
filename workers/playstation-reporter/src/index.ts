@@ -11,6 +11,7 @@ import {
   fetchPlayedGames,
   fetchPresence,
   fetchPurchasedLibrary,
+  mergePlayedGames,
   overlayLibrary,
   withUnplayedPreorders,
   type LibraryTitle,
@@ -19,27 +20,40 @@ import {
 } from "./psn";
 import { deliver } from "./site";
 import {
+  LIBRARY_CACHE_KEY,
+  LIBRARY_TTL_MS,
+  PLAYED_GAMES_CACHE_KEY,
   PLAYED_GAMES_FINGERPRINT_KEY,
+  PLAYED_GAMES_TTL_MS,
   TICK_META_KEY,
   TROPHIES_FINGERPRINT_KEY,
+  TROPHY_CATALOG_KEY,
   TROPHY_SYNC_KEY,
-  asTrophySync,
-  clearTrophySync,
-  writeTrophySync,
+  asLibraryCache,
+  asPlayedGamesCache,
+  asTrophyCatalog,
+  writeLibraryCache,
+  writePlayedGamesCache,
+  writeTrophyCatalog,
   type TickMeta,
-  type TrophySyncProgress,
-  type TrophySyncState,
+  type TrophyCatalog,
 } from "./state";
 import {
-  PLAY_LINK_BATCHES_PER_TICK,
-  TROPHY_TITLES_PER_TICK,
   buildTrophiesReport,
-  fetchTrophyIndex,
+  dirtyIndexRows,
+  fetchTrophySummary,
   fetchTrophyTitleSlice,
-  mapPlayByTrophySlice,
+  fetchTrophyTitles,
+  indexFingerprint,
+  mapPlayByTrophy,
   mergePlayByTrophy,
+  mergeTrophyTitles,
+  playByTrophyFromTitles,
   playLinkGames,
+  snapshotIndex,
+  trophySummarySignature,
   type TrophiesReport,
+  type TrophySummary,
 } from "./trophies";
 
 function playedGamesFingerprint(report: PlayedGamesReport): string {
@@ -64,16 +78,16 @@ function trophiesFingerprintOf(hidden: Set<string>, body: string): string {
   });
 }
 
-function syncProgress(sync: TrophySyncState): TrophySyncProgress {
-  return { done: sync.nextIndex, total: sync.titleIds.length };
-}
-
-function newTrophySync(targetFingerprint: string, titleIds: string[]): TrophySyncState {
-  return { targetFingerprint, titleIds, nextIndex: 0, titles: [] };
+function filterHidden(report: TrophiesReport, hidden: Set<string>): TrophiesReport {
+  if (!hidden.size) return report;
+  return {
+    ...report,
+    titles: report.titles.filter((title) => !titleIdsHidden(title.titleIds, hidden)),
+  };
 }
 
 /**
- * 奖杯只在整份齐了才交给 deliver。分片结果进 KV 游标，不进站点。
+ * 奖杯只在整份齐了才交给 deliver。没变的标题从上次交付的目录合并，不重打 PSN。
  */
 async function syncTrophies(
   env: Env,
@@ -81,116 +95,85 @@ async function syncTrophies(
   hidden: Set<string>,
   overlaid: PlayedGamesReport,
   oldTrophiesFingerprint: string | null,
-  stored: unknown,
+  last: TrophyCatalog | null,
+  summary: TrophySummary,
 ): Promise<{
   trophies: TrophiesReport | null;
   trophiesChanged: boolean;
   nextFingerprint: string;
-  trophySync?: TrophySyncProgress;
+  catalog?: TrophyCatalog;
 }> {
-  const index = await fetchTrophyIndex(env, auth);
-  const nextFingerprint = trophiesFingerprintOf(hidden, index.fingerprint);
+  const summarySignature = trophySummarySignature(hidden, summary);
 
-  if (nextFingerprint === oldTrophiesFingerprint) {
-    if (asTrophySync(stored)) await clearTrophySync(env.STATE);
+  if (last && last.summarySignature === summarySignature && last.fingerprint === oldTrophiesFingerprint) {
+    console.log(JSON.stringify({ event: "playstation-trophy-sync", action: "skip" }));
+    return { trophies: null, trophiesChanged: false, nextFingerprint: last.fingerprint };
+  }
+
+  const titles = await fetchTrophyTitles(env, auth);
+  const nextFingerprint = trophiesFingerprintOf(hidden, indexFingerprint(titles, summary));
+  if (nextFingerprint === oldTrophiesFingerprint && last) {
     return { trophies: null, trophiesChanged: false, nextFingerprint };
   }
 
-  let sync = asTrophySync(stored);
-  if (!sync || sync.targetFingerprint !== nextFingerprint) {
-    // 目标指纹对不上就整份丢掉重来：半份目录混了两个时点，交出去是假目录。
-    if (sync) {
+  const titleIds = titles.map((title) => title.npCommunicationId);
+  const dirty = last ? dirtyIndexRows(last.index, titles) : titles;
+  console.log(
+    JSON.stringify({
+      event: "playstation-trophy-sync",
+      action: "plan",
+      dirty: dirty.length,
+      total: titleIds.length,
+      reused: titleIds.length - dirty.length,
+    }),
+  );
+
+  const previousById = new Map((last?.titles ?? []).map((title) => [title.npCommunicationId, title]));
+  const crawled = dirty.length ? await fetchTrophyTitleSlice(env, auth, dirty, previousById) : [];
+  const merged = mergeTrophyTitles(last?.titles ?? [], crawled, titleIds);
+  if (merged.length !== titleIds.length) {
+    const missing = titleIds.filter((id) => !merged.some((title) => title.npCommunicationId === id));
+    throw new Error(`奖杯目录缺 ${missing[0] ?? "未知标题"}`);
+  }
+
+  let byTrophy = playByTrophyFromTitles(merged, overlaid.items);
+  if (merged.some((title) => title.titleIds.length === 0)) {
+    const games = playLinkGames(overlaid);
+    const mappedIds = new Set(merged.flatMap((title) => title.titleIds));
+    const unmapped = games.filter((game) => !mappedIds.has(game.titleId));
+    const toLink = unmapped.length ? unmapped : games;
+    if (toLink.length) {
+      byTrophy = mergePlayByTrophy(await mapPlayByTrophy(env, auth, toLink), byTrophy);
       console.log(
         JSON.stringify({
           event: "playstation-trophy-sync",
-          action: "rebuild",
-          previous: sync.targetFingerprint,
+          action: "link",
+          games: toLink.length,
+          of: games.length,
         }),
       );
     }
-    sync = newTrophySync(
-      nextFingerprint,
-      index.titles.map((title) => title.npCommunicationId),
-    );
   }
 
-  if (sync.nextIndex < sync.titleIds.length) {
-    const byId = new Map(index.titles.map((title) => [title.npCommunicationId, title]));
-    const sliceIds = sync.titleIds.slice(sync.nextIndex, sync.nextIndex + TROPHY_TITLES_PER_TICK);
-    const slice = [];
-    for (const id of sliceIds) {
-      const title = byId.get(id);
-      if (!title) throw new Error(`奖杯目录少了 ${id}`);
-      slice.push(title);
-    }
-    const crawled = await fetchTrophyTitleSlice(env, auth, slice);
-    sync = {
-      ...sync,
-      nextIndex: sync.nextIndex + crawled.length,
-      titles: [...sync.titles, ...crawled],
-    };
-    await writeTrophySync(env.STATE, sync);
-    console.log(
-      JSON.stringify({ event: "playstation-trophy-sync", action: "crawl", ...syncProgress(sync) }),
-    );
-    // 这一片刚写完就停：组装还要打资料和对齐，跟 6 款明细叠一轮会顶满 50。
-    return {
-      trophies: null,
-      trophiesChanged: false,
-      nextFingerprint,
-      trophySync: syncProgress(sync),
-    };
-  }
-
-  let playLink = sync.playLink;
-  if (!playLink) playLink = { games: playLinkGames(overlaid), offset: 0, byTrophy: {} };
-
-  if (playLink.offset < playLink.games.length) {
-    const mapped = await mapPlayByTrophySlice(
-      env,
-      auth,
-      playLink.games,
-      playLink.offset,
-      PLAY_LINK_BATCHES_PER_TICK,
-    );
-    playLink = {
-      ...playLink,
-      offset: mapped.nextOffset,
-      byTrophy: mergePlayByTrophy(playLink.byTrophy, mapped.byTrophy),
-    };
-    sync = { ...sync, playLink };
-    await writeTrophySync(env.STATE, sync);
-    console.log(
-      JSON.stringify({
-        event: "playstation-trophy-sync",
-        action: "link",
-        ...syncProgress(sync),
-        playLinked: playLink.offset,
-        playTotal: playLink.games.length,
-      }),
-    );
-    if (playLink.offset < playLink.games.length) {
-      return {
-        trophies: null,
-        trophiesChanged: false,
-        nextFingerprint,
-        trophySync: syncProgress(sync),
-      };
-    }
-  }
-
-  const fetched = await buildTrophiesReport(env, auth, index, sync.titles, playLink.byTrophy);
-  const trophies = hidden.size
-    ? {
-        ...fetched,
-        titles: fetched.titles.filter((title) => !titleIdsHidden(title.titleIds, hidden)),
-      }
-    : fetched;
+  const fetched = await buildTrophiesReport(
+    env,
+    auth,
+    summary,
+    merged,
+    byTrophy,
+    crawled.length === 0 ? last?.profile : null,
+  );
   return {
-    trophies,
+    trophies: filterHidden(fetched, hidden),
     trophiesChanged: true,
     nextFingerprint,
-    trophySync: syncProgress(sync),
+    catalog: {
+      fingerprint: nextFingerprint,
+      summarySignature,
+      index: snapshotIndex(titles),
+      titles: fetched.titles,
+      profile: fetched.profile,
+    },
   };
 }
 
@@ -216,41 +199,117 @@ async function tick(env: Env): Promise<TickResult> {
   let playedGamesChanged = false;
   let trophiesChanged = false;
   let trophies: TrophiesReport | null = null;
-  let trophySync: TickMeta["trophySync"];
 
   try {
-    const [oldPlayedGamesFingerprint, oldTrophiesFingerprint, storedTrophySync] = await Promise.all([
+    const [
+      oldPlayedGamesFingerprint,
+      oldTrophiesFingerprint,
+      storedCatalog,
+      storedPlayedGames,
+      storedLibrary,
+    ] = await Promise.all([
       env.STATE.get(PLAYED_GAMES_FINGERPRINT_KEY),
       env.STATE.get(TROPHIES_FINGERPRINT_KEY),
-      env.STATE.get(TROPHY_SYNC_KEY, "json"),
+      env.STATE.get(TROPHY_CATALOG_KEY, "json"),
+      env.STATE.get(PLAYED_GAMES_CACHE_KEY, "json"),
+      env.STATE.get(LIBRARY_CACHE_KEY, "json"),
+      env.STATE.delete(TROPHY_SYNC_KEY),
     ]);
-    const existingSync = asTrophySync(storedTrophySync);
-    if (existingSync) trophySync = syncProgress(existingSync);
+    const lastCatalog = asTrophyCatalog(storedCatalog);
+    const playedCache = asPlayedGamesCache(storedPlayedGames);
+    const libraryCache = asLibraryCache(storedLibrary);
 
     const hidden = hiddenTitleIds(env);
     const auth = new AuthSession(env);
-    const rawPresence = await fetchPresence(env, auth);
+    const [rawPresence, summary] = await Promise.all([
+      fetchPresence(env, auth),
+      fetchTrophySummary(env, auth),
+    ]);
     const presence =
       rawPresence.playing && hidden.has(rawPresence.playing.titleId)
         ? { ...rawPresence, playing: null }
         : rawPresence;
-    const playedGames = await fetchPlayedGames(env, auth);
-    let library: LibraryTitle[] = [];
-    try {
-      library = await fetchPurchasedLibrary(env, auth);
+
+    const playing = presence.playing != null;
+    const playedFresh =
+      playedCache != null && Date.now() - playedCache.fetchedAt < PLAYED_GAMES_TTL_MS;
+    const libraryFresh =
+      libraryCache != null && Date.now() - libraryCache.fetchedAt < LIBRARY_TTL_MS;
+    const trophiesQuiet =
+      lastCatalog != null &&
+      lastCatalog.summarySignature === trophySummarySignature(hidden, summary) &&
+      lastCatalog.fingerprint === oldTrophiesFingerprint;
+
+    const refreshPlayed = playing || !playedFresh;
+    const refreshLibrary = !libraryFresh;
+    const playedCap = trophiesQuiet ? playedGamesLimit(env) : Number.POSITIVE_INFINITY;
+
+    let playedGames: PlayedGamesReport = playedCache?.report ?? { observedAt: Date.now(), items: [] };
+    let library: LibraryTitle[] = libraryCache?.items ?? [];
+
+    const extras: Promise<void>[] = [];
+    if (refreshPlayed) {
+      extras.push(
+        (async () => {
+          const fetched = await fetchPlayedGames(env, auth, playedCap);
+          playedGames =
+            Number.isFinite(playedCap) && playedCache
+              ? mergePlayedGames(playedCache.report, fetched)
+              : fetched;
+          await writePlayedGamesCache(env.STATE, { fetchedAt: Date.now(), report: playedGames });
+          console.log(
+            JSON.stringify({
+              event: "playstation-played-games",
+              cached: false,
+              capped: Number.isFinite(playedCap),
+              titles: playedGames.items.length,
+            }),
+          );
+        })(),
+      );
+    } else {
+      console.log(
+        JSON.stringify({
+          event: "playstation-played-games",
+          cached: true,
+          ageMs: playedCache ? Date.now() - playedCache.fetchedAt : 0,
+          titles: playedGames.items.length,
+        }),
+      );
+    }
+    if (refreshLibrary) {
+      extras.push(
+        (async () => {
+          try {
+            library = await fetchPurchasedLibrary(env, auth);
+            await writeLibraryCache(env.STATE, { fetchedAt: Date.now(), items: library });
+            console.log(
+              JSON.stringify({
+                event: "playstation-library",
+                titles: library.length,
+                preorders: library.filter((item) => item.preOrder).length,
+                plus: library.filter((item) => item.membership === "PS_PLUS").length,
+              }),
+            );
+          } catch (error) {
+            console.error(
+              JSON.stringify({ event: "playstation-library", error: explain(error) }),
+            );
+            if (!libraryCache) library = [];
+          }
+        })(),
+      );
+    } else {
       console.log(
         JSON.stringify({
           event: "playstation-library",
+          cached: true,
+          ageMs: libraryCache ? Date.now() - libraryCache.fetchedAt : 0,
           titles: library.length,
-          preorders: library.filter((item) => item.preOrder).length,
-          plus: library.filter((item) => item.membership === "PS_PLUS").length,
         }),
       );
-    } catch (error) {
-      console.error(
-        JSON.stringify({ event: "playstation-library", error: explain(error) }),
-      );
     }
+    if (extras.length) await Promise.all(extras);
     const overlaid = overlayLibrary(playedGames, library);
     const entitledPlayed = {
       ...overlaid,
@@ -268,9 +327,7 @@ async function tick(env: Env): Promise<TickResult> {
     const failures: string[] = [];
 
     // presence 每轮必发：站点靠这枚 observedAt 判 worker 死活，内容没变它自己压掉广播。
-    // 必须排在奖杯爬取**之前**：那边是每款游戏好几次 PSN 调用，免费版一次调用
-    // 只有 50 个子请求，先爬再发的话预算烧穿，连这一枚 fetch 都发不出去 ——
-    // 便宜且关键的先走，贵的那半自己兜自己的错。
+    // 排在奖杯前面：心跳便宜且关键，奖杯那半失败不该挡住这一封。
     try {
       await deliver(env, {
         version: 1,
@@ -294,17 +351,16 @@ async function tick(env: Env): Promise<TickResult> {
         hidden,
         overlaid,
         oldTrophiesFingerprint,
-        storedTrophySync,
+        lastCatalog,
+        summary,
       );
       trophies = synced.trophies;
       trophiesChanged = synced.trophiesChanged;
-      trophySync = synced.trophySync;
       if (trophiesChanged && trophies) {
         try {
           await deliver(env, { version: 1, trophies });
           await env.STATE.put(TROPHIES_FINGERPRINT_KEY, synced.nextFingerprint);
-          await clearTrophySync(env.STATE);
-          trophySync = undefined;
+          if (synced.catalog) await writeTrophyCatalog(env.STATE, synced.catalog);
         } catch (error) {
           failures.push(`trophies 交付失败：${explain(error)}`);
           console.error(
@@ -331,7 +387,6 @@ async function tick(env: Env): Promise<TickResult> {
       playedGamesChanged,
       trophiesChanged,
       dryRun: isDryRun(env),
-      ...(trophySync ? { trophySync } : {}),
     };
     await env.STATE.put(TICK_META_KEY, JSON.stringify(meta));
     console.log(JSON.stringify({ event: "playstation-tick", ...meta }));
@@ -344,7 +399,6 @@ async function tick(env: Env): Promise<TickResult> {
       playedGamesChanged,
       trophiesChanged,
       dryRun: isDryRun(env),
-      ...(trophySync ? { trophySync } : {}),
       error: explain(error),
     };
     await env.STATE.put(TICK_META_KEY, JSON.stringify(meta));
