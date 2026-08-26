@@ -12,7 +12,7 @@ import {
   epochMs,
   languageHeader,
   nonNegative,
-  sleep,
+  retryRateLimit,
   trimmed,
   withToken,
   type Loose,
@@ -90,11 +90,13 @@ export function durationMs(raw: string | undefined): number | null {
 export async function fetchPresence(env: Env, auth: AuthSession): Promise<PresenceReport> {
   const localized = languageHeader(env);
   // 这个入口自己检查 {error}，不用再断言一次。
-  const raw: Loose<BasicPresenceResponse> = await withToken(auth, (token) =>
-    getBasicPresence(
-      { accessToken: token },
-      accountId(env),
-      localized ? { headerOverrides: localized } : undefined,
+  const raw: Loose<BasicPresenceResponse> = await retryRateLimit(() =>
+    withToken(auth, (token) =>
+      getBasicPresence(
+        { accessToken: token },
+        accountId(env),
+        localized ? { headerOverrides: localized } : undefined,
+      ),
     ),
   );
 
@@ -126,8 +128,8 @@ export async function fetchPresence(env: Env, auth: AuthSession): Promise<Presen
  * psn-api 2.18.1 的 getUserPlayedGames 不接 headerOverrides，实现也不发语言头，
  * 因而这一个请求继续直打与它相同的端点，保住官方中文游戏名。
  *
- * 分页拉全份，给奖杯侧用官方 titleId 对齐时长；推给站点的条数由
- * `playedGamesLimit` 在 tick 里再切。
+ * 默认证件拉全份，给奖杯 titleId 对齐用；只刷新瓷砖时可以 `cap` 在最近窗口。
+ * 推给站点的条数由 `playedGamesLimit` 在 tick 里再切。
  */
 const USER_GAMES_BASE_URL = "https://m.np.playstation.com/api/gamelist/v2/users";
 const PLAYED_GAMES_PAGE = 100;
@@ -211,17 +213,19 @@ export async function fetchPurchasedLibrary(
   const byId = new Map<string, LibraryTitle>();
   let start = 0;
   for (;;) {
-    const raw = await withToken(auth, (token) =>
-      getPurchasedGames(
-        { accessToken: token },
-        {
-          isActive: true,
-          platform: ["ps4", "ps5"],
-          size: PURCHASED_PAGE,
-          start,
-          sortBy: "ACTIVE_DATE",
-          sortDirection: "desc",
-        },
+    const raw = await retryRateLimit(() =>
+      withToken(auth, (token) =>
+        getPurchasedGames(
+          { accessToken: token },
+          {
+            isActive: true,
+            platform: ["ps4", "ps5"],
+            size: PURCHASED_PAGE,
+            start,
+            sortBy: "ACTIVE_DATE",
+            sortDirection: "desc",
+          },
+        ),
       ),
     );
     const games = raw.data?.purchasedTitlesRetrieve?.games ?? [];
@@ -232,7 +236,6 @@ export async function fetchPurchasedLibrary(
     if (games.length < PURCHASED_PAGE) break;
     start += games.length;
     if (byId.size >= PURCHASED_CAP) break;
-    await sleep(120);
   }
   return [...byId.values()];
 }
@@ -287,19 +290,40 @@ export function withUnplayedPreorders(
 export async function fetchPlayedGames(
   env: Env,
   auth: AuthSession,
+  cap = Number.POSITIVE_INFINITY,
 ): Promise<PlayedGamesReport> {
   const items: PlayedGame[] = [];
   let offset = 0;
   for (;;) {
-    const raw = await withToken(auth, (token) => requestPlayedGames(env, token, offset));
+    const raw = await retryRateLimit(() =>
+      withToken(auth, (token) => requestPlayedGames(env, token, offset)),
+    );
     for (const title of raw.titles ?? []) {
       const game = readPlayedGame(title);
       if (game) items.push(game);
     }
     if (raw.nextOffset == null) break;
     offset = raw.nextOffset;
+    if (items.length >= cap) break;
     if (items.length >= (raw.totalItemCount ?? items.length)) break;
-    await sleep(120);
   }
   return { observedAt: Date.now(), items };
+}
+
+/** 最近窗口的一页盖进全份缓存：正在玩时不必为了时长把三百款都翻一遍。 */
+export function mergePlayedGames(
+  prior: PlayedGamesReport | null,
+  next: PlayedGamesReport,
+): PlayedGamesReport {
+  if (!prior?.items.length) return next;
+  const seen = new Set<string>();
+  const items: PlayedGame[] = [];
+  for (const game of next.items) {
+    seen.add(game.titleId);
+    items.push(game);
+  }
+  for (const game of prior.items) {
+    if (!seen.has(game.titleId)) items.push(game);
+  }
+  return { observedAt: next.observedAt, items };
 }

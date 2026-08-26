@@ -1,11 +1,20 @@
-import type { PlayedGame } from "./psn";
-import type { TrophiesReport } from "./trophies";
+import type { LibraryTitle, PlayedGame, PlayedGamesReport } from "./psn";
+import type { TrophiesReport, TrophyIndexSnapshot } from "./trophies";
 
 export const AUTH_KEY = "auth";
 export const PLAYED_GAMES_FINGERPRINT_KEY = "fp:playedGames";
 export const TROPHIES_FINGERPRINT_KEY = "fp:trophies";
+/** 免费版分片游标的残留键。付费后一轮爬完，tick 开头删掉。 */
 export const TROPHY_SYNC_KEY = "trophySync";
+export const TROPHY_CATALOG_KEY = "trophies:last";
+export const PLAYED_GAMES_CACHE_KEY = "cache:playedGames";
+export const LIBRARY_CACHE_KEY = "cache:library";
 export const TICK_META_KEY = "meta:lastTick";
+
+/** 没在玩时游玩列表最多这么旧才去翻；正在玩的每轮都刷新。 */
+export const PLAYED_GAMES_TTL_MS = 60 * 60_000;
+/** 购买库几乎不动，六小时够标一次预购 / Plus。 */
+export const LIBRARY_TTL_MS = 6 * 60 * 60_000;
 
 /** KV `auth` 的形状与原 `state/auth.json` 完全一致，便于直接迁移现有状态。 */
 export type AuthState = {
@@ -17,23 +26,23 @@ export type AuthState = {
   refreshTokenExpiresAt: number;
 };
 
-export type TrophySyncProgress = {
-  done: number;
-  total: number;
+/** 上次成功交付的整份目录。增量重爬的对照面，站点收的仍是整份替换。 */
+export type TrophyCatalog = {
+  fingerprint: string;
+  summarySignature: string;
+  index: TrophyIndexSnapshot[];
+  titles: TrophiesReport["titles"];
+  profile: TrophiesReport["profile"];
 };
 
-/** 分片爬取的游标。站点只收整份目录，这里只存还没交付的半成品。 */
-export type TrophySyncState = {
-  targetFingerprint: string;
-  titleIds: string[];
-  nextIndex: number;
-  titles: TrophiesReport["titles"];
-  /** 标题爬完之后才有：titleId 对齐也按预算切开，避免组装轮顶满 50。 */
-  playLink?: {
-    games: PlayedGame[];
-    offset: number;
-    byTrophy: Record<string, PlayedGame[]>;
-  };
+export type PlayedGamesCache = {
+  fetchedAt: number;
+  report: PlayedGamesReport;
+};
+
+export type LibraryCache = {
+  fetchedAt: number;
+  items: LibraryTitle[];
 };
 
 /** presence 每轮必发，没有「变没变」可言，所以只记另外两部分。 */
@@ -44,7 +53,6 @@ export type TickMeta = {
   playedGamesChanged: boolean;
   trophiesChanged: boolean;
   dryRun: boolean;
-  trophySync?: TrophySyncProgress;
   error?: string;
 };
 
@@ -64,40 +72,76 @@ function isAuthState(value: unknown): value is AuthState {
   );
 }
 
-function isPlayLink(value: unknown): value is NonNullable<TrophySyncState["playLink"]> {
+function isIndexSnapshot(value: unknown): value is TrophyIndexSnapshot {
   if (typeof value !== "object" || value === null) return false;
   const row = value as Record<string, unknown>;
   return (
-    Array.isArray(row.games) &&
-    typeof row.offset === "number" &&
-    Number.isInteger(row.offset) &&
-    row.offset >= 0 &&
-    typeof row.byTrophy === "object" &&
-    row.byTrophy !== null &&
-    row.offset <= row.games.length
+    typeof row.npCommunicationId === "string" &&
+    row.npCommunicationId.length > 0 &&
+    typeof row.progress === "number" &&
+    typeof row.lastUpdatedDateTime === "string" &&
+    typeof row.earned === "object" &&
+    row.earned !== null &&
+    typeof row.defined === "object" &&
+    row.defined !== null
   );
 }
 
-export function asTrophySync(value: unknown): TrophySyncState | null {
+function isTrophyProfile(value: unknown): value is TrophiesReport["profile"] {
+  if (typeof value !== "object" || value === null) return false;
+  const row = value as Record<string, unknown>;
+  return typeof row.onlineId === "string" && row.onlineId.length > 0 && typeof row.plus === "boolean";
+}
+
+export function asTrophyCatalog(value: unknown): TrophyCatalog | null {
   if (typeof value !== "object" || value === null) return null;
   const row = value as Record<string, unknown>;
-  if (typeof row.targetFingerprint !== "string" || !row.targetFingerprint) return null;
-  if (!Array.isArray(row.titleIds) || !row.titleIds.every((id) => typeof id === "string" && id)) {
-    return null;
-  }
-  if (typeof row.nextIndex !== "number" || !Number.isInteger(row.nextIndex) || row.nextIndex < 0) {
-    return null;
-  }
-  if (!Array.isArray(row.titles) || row.titles.length !== row.nextIndex) return null;
-  if (row.nextIndex > row.titleIds.length) return null;
-  if (row.playLink !== undefined && !isPlayLink(row.playLink)) return null;
+  if (typeof row.fingerprint !== "string" || !row.fingerprint) return null;
+  if (typeof row.summarySignature !== "string" || !row.summarySignature) return null;
+  if (!Array.isArray(row.index) || !row.index.every(isIndexSnapshot)) return null;
+  if (!Array.isArray(row.titles)) return null;
+  if (!isTrophyProfile(row.profile)) return null;
   return {
-    targetFingerprint: row.targetFingerprint,
-    titleIds: row.titleIds,
-    nextIndex: row.nextIndex,
+    fingerprint: row.fingerprint,
+    summarySignature: row.summarySignature,
+    index: row.index,
     titles: row.titles as TrophiesReport["titles"],
-    ...(row.playLink ? { playLink: row.playLink } : {}),
+    profile: row.profile,
   };
+}
+
+function isPlayedGame(value: unknown): value is PlayedGame {
+  if (typeof value !== "object" || value === null) return false;
+  const row = value as Record<string, unknown>;
+  return typeof row.titleId === "string" && row.titleId.length > 0 && typeof row.name === "string";
+}
+
+export function asPlayedGamesCache(value: unknown): PlayedGamesCache | null {
+  if (typeof value !== "object" || value === null) return null;
+  const row = value as Record<string, unknown>;
+  if (typeof row.fetchedAt !== "number" || !Number.isFinite(row.fetchedAt)) return null;
+  if (typeof row.report !== "object" || row.report === null) return null;
+  const report = row.report as Record<string, unknown>;
+  if (typeof report.observedAt !== "number" || !Array.isArray(report.items)) return null;
+  if (!report.items.every(isPlayedGame)) return null;
+  return {
+    fetchedAt: row.fetchedAt,
+    report: { observedAt: report.observedAt, items: report.items },
+  };
+}
+
+function isLibraryTitle(value: unknown): value is LibraryTitle {
+  if (typeof value !== "object" || value === null) return false;
+  const row = value as Record<string, unknown>;
+  return typeof row.titleId === "string" && row.titleId.length > 0;
+}
+
+export function asLibraryCache(value: unknown): LibraryCache | null {
+  if (typeof value !== "object" || value === null) return null;
+  const row = value as Record<string, unknown>;
+  if (typeof row.fetchedAt !== "number" || !Number.isFinite(row.fetchedAt)) return null;
+  if (!Array.isArray(row.items) || !row.items.every(isLibraryTitle)) return null;
+  return { fetchedAt: row.fetchedAt, items: row.items };
 }
 
 export async function readAuth(state: KVNamespace): Promise<AuthState | null> {
@@ -109,12 +153,16 @@ export async function writeAuth(state: KVNamespace, auth: AuthState): Promise<vo
   await state.put(AUTH_KEY, JSON.stringify(auth));
 }
 
-export async function writeTrophySync(state: KVNamespace, sync: TrophySyncState): Promise<void> {
-  await state.put(TROPHY_SYNC_KEY, JSON.stringify(sync));
+export async function writeTrophyCatalog(state: KVNamespace, catalog: TrophyCatalog): Promise<void> {
+  await state.put(TROPHY_CATALOG_KEY, JSON.stringify(catalog));
 }
 
-export async function clearTrophySync(state: KVNamespace): Promise<void> {
-  await state.delete(TROPHY_SYNC_KEY);
+export async function writePlayedGamesCache(state: KVNamespace, cache: PlayedGamesCache): Promise<void> {
+  await state.put(PLAYED_GAMES_CACHE_KEY, JSON.stringify(cache));
+}
+
+export async function writeLibraryCache(state: KVNamespace, cache: LibraryCache): Promise<void> {
+  await state.put(LIBRARY_CACHE_KEY, JSON.stringify(cache));
 }
 
 export function pastHalfLife(issuedAt: number, expiresAt: number, now = Date.now()): boolean {
