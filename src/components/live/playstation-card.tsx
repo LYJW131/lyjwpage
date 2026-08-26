@@ -95,11 +95,11 @@ function useOpenHeight(openId: string | null, contentToken: unknown) {
 const UNSNAP_MS = LIST_DURATION * 1000 + 80;
 
 /**
- * 两行、按列往右排。列宽按容器等分，视口里仍是整数列，不露下一列一条缝。
+ * 三行、按列往右排。列宽按容器等分，视口里仍是整数列，不露下一列一条缝。
  * 减掉的是列间 gap-3（0.75rem）总宽：(列数 - 1) × 0.75rem。
  */
 const TILE_TRACK = cn(
-  "grid grid-flow-col grid-rows-2 gap-3",
+  "grid grid-flow-col grid-rows-3 gap-3",
   "auto-cols-[100%]",
   "md:auto-cols-[calc((100%-0.75rem)/2)]",
   "lg:auto-cols-[calc((100%-1.5rem)/3)]",
@@ -268,7 +268,7 @@ function GameTile({
 function Skeleton() {
   return (
     <div className={cn("overflow-hidden", TILE_TRACK)}>
-      {[0, 1, 2, 3, 4, 5].map((i) => (
+      {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
         <div
           key={i}
           className="flex items-center overflow-hidden rounded-md border border-line bg-surface"
@@ -611,11 +611,11 @@ export function PlaystationRow({
                 animate="animate"
                 exit="exit"
                 transition={reduced ? STATIC_TRANSITION : LIST_TRANSITION}
-                className="min-w-0 odd:snap-start"
+                className="min-w-0 [&:nth-child(3n+1)]:snap-start"
               >
                 <GameTile
                   tile={tile}
-                  eager={index < 6}
+                  eager={index < 9}
                   selected={tile.titleId === openId}
                   onSelect={() => {
                     // 手切瓷砖就把还挂着的跳转作废：它稍后落地会把用户拽回去
