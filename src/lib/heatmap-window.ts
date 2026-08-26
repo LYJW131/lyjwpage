@@ -32,6 +32,11 @@ export function utcToday(now = Date.now()): string {
   return new Date(now).toISOString().slice(0, 10);
 }
 
+/** 53 周窗会填到本周六；今天之后的空格不能点、不能走键盘。 */
+export function isHeatmapFuture(date: string, today = utcToday()): boolean {
+  return date > today;
+}
+
 /**
  * 下一次增量从哪天问起。53 周窗口常常填到本周六，最后一格还在未来、
  * 数字是 0；今天的格子仍会涨，所以游标取「今天和窗尾较早的那个」。

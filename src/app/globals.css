@@ -634,6 +634,11 @@ button.paper-card {
   fill: var(--muted) !important;
 }
 
+/* 窗尾填到本周六的空格：画出来对齐列高，但不能点、不能悬浮 */
+.github-chart svg [data-future] {
+  pointer-events: none;
+}
+
 /*
  * 年度热力图和 GitHub 贡献图共用几何，颜色不能共用：那边已经是蓝。
  * 四档跟 --live 同一色相，浅底越深越多、深底越亮越多。

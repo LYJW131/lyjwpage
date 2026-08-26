@@ -23,6 +23,8 @@ import {
   formatDayHeading,
   monthLabels,
 } from "@/lib/github-chart-compact";
+import { useMountedAt } from "@/hooks/use-mounted-at";
+import { isHeatmapFuture, utcToday } from "@/lib/heatmap-window";
 import type { GithubChartDay } from "@/lib/types";
 
 export type CellAnchor = { left: number; top: number; width: number; height: number };
@@ -184,24 +186,46 @@ export function HeatmapGrid({
     () => weeks.flatMap((week, weekIndex) => week.map((day) => ({ day, weekIndex }))),
     [weeks],
   );
+  /**
+   * 今天的日历日不能在渲染期现算：Date.now() 进预渲染是 E1432。
+   * 首帧（服务端 + hydrate）先当没有「现在」，格子全可点；挂载后再锁住未来格。
+   */
+  const mountedAt = useMountedAt();
+  const today = mountedAt ? utcToday(mountedAt) : null;
   const [activeDate, setActiveDate] = useState<string | null>(null);
-  // 数据每 6 小时换一份，记住的那天可能已经滚出窗口 —— 落回最后一天（今天）
+  const lastOpen = cells.findLastIndex(
+    (cell) => today == null || !isHeatmapFuture(cell.day.date, today),
+  );
+  // 数据每 6 小时换一份，记住的那天可能已经滚出窗口 —— 落回今天，别落到窗尾的未来格
   const marked = activeDate ? cells.findIndex((cell) => cell.day.date === activeDate) : -1;
-  const activeIndex = marked >= 0 ? marked : cells.length - 1;
+  const markedOpen =
+    marked >= 0 &&
+    (today == null || !isHeatmapFuture(cells[marked]?.day.date ?? "", today));
+  const activeIndex = markedOpen ? marked : lastOpen;
   const { width, height } = chartSize(weeks.length);
 
   const focusAt = (index: number) => {
-    const cell = cells[Math.min(Math.max(index, 0), cells.length - 1)];
-    if (!cell) return;
+    const cell = cells[index];
+    if (!cell || (today != null && isHeatmapFuture(cell.day.date, today))) return;
     setActiveDate(cell.day.date);
     svgRef.current
       ?.querySelector<SVGRectElement>(`[data-date="${cell.day.date}"]`)
       ?.focus();
   };
 
+  const nextOpen = (from: number, step: number): number | null => {
+    let index = from;
+    while (true) {
+      index += step;
+      const cell = cells[index];
+      if (!cell) return null;
+      if (today == null || !isHeatmapFuture(cell.day.date, today)) return index;
+    }
+  };
+
   const onCellKeyDown = (event: ReactKeyboardEvent<SVGRectElement>, index: number) => {
     const day = cells[index]?.day;
-    if (!day) return;
+    if (!day || (today != null && isHeatmapFuture(day.date, today))) return;
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
       onCellToggle(day, event.currentTarget);
@@ -209,9 +233,9 @@ export function HeatmapGrid({
     }
     const step = KEY_STEP[event.key];
     let target: number | null = null;
-    if (event.key === "Home") target = 0;
-    else if (event.key === "End") target = cells.length - 1;
-    else if (step !== undefined) target = index + step;
+    if (event.key === "Home") target = nextOpen(-1, 1);
+    else if (event.key === "End") target = lastOpen >= 0 ? lastOpen : null;
+    else if (step !== undefined) target = nextOpen(index, step);
     // 方向键 / Home / End 默认会滚页面，接手了就别让它再滚一次
     if (target === null) return;
     event.preventDefault();
@@ -256,39 +280,58 @@ export function HeatmapGrid({
           {item.text}
         </text>
       ))}
-      {cells.map(({ day, weekIndex }, index) => (
-        <rect
-          key={day.date}
-          x={LEFT + weekIndex * STEP}
-          y={TOP + day.weekday * STEP}
-          width={CELL}
-          height={CELL}
-          data-date={day.date}
-          data-score={day.score}
-          data-hot={hotDate === day.date ? "" : undefined}
-          fill={fills[day.score]}
-          role="button"
-          aria-label={day.label}
-          tabIndex={index === activeIndex ? 0 : -1}
-          onFocus={(event) => {
-            onCellPreview(day, event.currentTarget);
-          }}
-          onBlur={() => {
-            onCellClear();
-          }}
-          onKeyDown={(event) => {
-            onCellKeyDown(event, index);
-          }}
-          onPointerEnter={(event) => {
-            if (event.pointerType === "mouse" && hoverCapable()) {
-              onCellPreview(day, event.currentTarget);
+      {cells.map(({ day, weekIndex }, index) => {
+        const future = today != null && isHeatmapFuture(day.date, today);
+        return (
+          <rect
+            key={day.date}
+            x={LEFT + weekIndex * STEP}
+            y={TOP + day.weekday * STEP}
+            width={CELL}
+            height={CELL}
+            data-date={day.date}
+            data-score={day.score}
+            data-future={future ? "" : undefined}
+            data-hot={!future && hotDate === day.date ? "" : undefined}
+            fill={fills[day.score]}
+            role={future ? undefined : "button"}
+            aria-hidden={future ? true : undefined}
+            aria-label={future ? undefined : day.label}
+            tabIndex={future ? undefined : index === activeIndex ? 0 : -1}
+            onFocus={
+              future
+                ? undefined
+                : (event) => {
+                    onCellPreview(day, event.currentTarget);
+                  }
             }
-          }}
-          onClick={(event) => {
-            onCellToggle(day, event.currentTarget);
-          }}
-        />
-      ))}
+            onBlur={future ? undefined : onCellClear}
+            onKeyDown={
+              future
+                ? undefined
+                : (event) => {
+                    onCellKeyDown(event, index);
+                  }
+            }
+            onPointerEnter={
+              future
+                ? undefined
+                : (event) => {
+                    if (event.pointerType === "mouse" && hoverCapable()) {
+                      onCellPreview(day, event.currentTarget);
+                    }
+                  }
+            }
+            onClick={
+              future
+                ? undefined
+                : (event) => {
+                    onCellToggle(day, event.currentTarget);
+                  }
+            }
+          />
+        );
+      })}
     </svg>
   );
 }
