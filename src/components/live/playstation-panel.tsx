@@ -47,9 +47,9 @@ export function PlaystationPanel({
             trophyKey: trophyRowKey(unlock.npCommunicationId, unlock.groupId, unlock.id),
           });
           /*
-           * 页面这一下点了就滚，不等瓷砖认出来：要看的东西本来就是这张卡，
-           * 而认瓷砖可能要先换全量键、等一次请求。等展开面板量完高度再滚更晚，
-           * 还得跟高度动画抢，不如让面板在已经对好的视口里长出来。
+           * 页面这一下点了就滚，不等瓷砖认出来：要看的东西本来就是这张卡。
+           * 等展开面板量完高度再滚更晚，还得跟高度动画抢，不如让面板在已经
+           * 对好的视口里长出来。
            */
           document.getElementById(anchorId)?.scrollIntoView({
             behavior: reduced ? "auto" : "smooth",

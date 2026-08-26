@@ -53,20 +53,6 @@ export function sinceDateParam(request: Request): string | undefined {
 }
 
 /**
- * 只要最近这么多条。
- *
- * 正整数之外（缺席、零、负数、写坏了）一律按「要全量」处理，理由同 sinceParam：
- * 不带参数本来就是合法的一种问法，而全量是这条端点的基础语义 —— 前 N 条只是
- * 首屏那次省下的钱，不是上限（见 lib/paths 的两个 playing 键）。
- */
-export function limitParam(request: Request): number | undefined {
-  const raw = new URL(request.url).searchParams.get("limit");
-  if (raw == null) return undefined;
-  const parsed = Number(raw);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
-}
-
-/**
  * 只要这几个 titleId 对得上的条目，逗号分隔。
  *
  * 和上面几个游标不同，这条要分清**缺席**和**空**：缺席是「要整份」，空是「一款
