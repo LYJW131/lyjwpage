@@ -149,6 +149,18 @@ export function HeaderDesktop({
     : locked
       ? "已锁屏"
       : activeOverride?.displayName ?? desktop?.applicationName ?? (isLoading ? "读取中…" : "暂无活动");
+  /**
+   * 离线 / 锁屏 > 应用替换 > 源图标，图标和文字必须是同一个优先级。
+   *
+   * 从前只有图标这么排，文字那边只看有没有 renderText —— 于是 Mac 掉线时图标
+   * 翻成了笔记本、文字还挂着上一个应用的矢量字标（`applicationName` 早就算好
+   * 是「已离线」了，只是根本没轮到它）。只有 Claude Code / Cursor 这类替换过
+   * 文案的应用看得出来：其余应用走的就是 applicationName 那条路。
+   *
+   * 锁屏当下侥幸没出错 —— `com.apple.loginwindow` 谁都匹配不上，override 为空。
+   * 但那是巧合不是设计：哪天有个应用的 match 宽到把它兜进去就一起坏。
+   */
+  const overrideText = offline || locked ? undefined : activeOverride?.renderText;
 
   return (
     <div
@@ -164,10 +176,8 @@ export function HeaderDesktop({
       {/* 内容绝对定位做切换动画，宽度得另开一行量，否则中间栏只剩 1/3 就开始省略。 */}
       <div className="pointer-events-none invisible flex items-center gap-2" aria-hidden>
         <span className="size-7 shrink-0" />
-        {activeOverride?.renderText ? (
-          <span className="flex shrink-0 items-center">
-            {activeOverride.renderText({ size: 20 })}
-          </span>
+        {overrideText ? (
+          <span className="flex shrink-0 items-center">{overrideText({ size: 20 })}</span>
         ) : (
           <span className="min-w-0 truncate text-sm font-medium">{applicationName}</span>
         )}
@@ -193,19 +203,9 @@ export function HeaderDesktop({
             className="absolute inset-0 flex min-w-0 items-center justify-center gap-2"
           >
             <span className="flex size-7 shrink-0 items-center justify-center">
+              {/* 和 overrideText 同一个优先级：离线 / 锁屏 > 应用替换 > 源图标 */}
               {offline ? (
                 <MacBookProIcon className="size-5 text-muted-foreground" aria-hidden />
-              ) : activeOverride ? (
-                activeOverride.renderIcon({ size: 24 })
-              ) : desktop?.iconUrl && !locked ? (
-                <Image
-                  src={desktop.iconUrl}
-                  alt=""
-                  width={28}
-                  height={28}
-                  className="size-7 object-contain"
-                  unoptimized
-                />
               ) : locked ? (
                 <svg
                   viewBox="0 0 24 24"
@@ -220,13 +220,24 @@ export function HeaderDesktop({
                   <rect x="4.5" y="10.5" width="15" height="10" rx="2.5" />
                   <path d="M8 10.5V7.5a4 4 0 0 1 8 0v3" />
                 </svg>
+              ) : activeOverride ? (
+                activeOverride.renderIcon({ size: 24 })
+              ) : desktop?.iconUrl ? (
+                <Image
+                  src={desktop.iconUrl}
+                  alt=""
+                  width={28}
+                  height={28}
+                  className="size-7 object-contain"
+                  unoptimized
+                />
               ) : (
                 <span className="text-xs text-muted-foreground">⌘</span>
               )}
             </span>
-            {activeOverride?.renderText ? (
+            {overrideText ? (
               <span className="flex shrink-0 items-center text-foreground">
-                {activeOverride.renderText({ size: 20 })}
+                {overrideText({ size: 20 })}
               </span>
             ) : (
               <span
