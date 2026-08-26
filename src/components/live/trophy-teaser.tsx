@@ -49,11 +49,17 @@ function Count({ type, value }: { type: TrophyType; value: number }) {
 export function TrophyTeaser({
   fallback,
   embedded = false,
+  online = false,
   onRecentClick,
 }: {
   fallback: StatusResponse<TrophiesSummaryPayload>;
   /** 嵌在 PlayStation 整块里：不再自己套一张纸卡片，也不重复「陈列室」。 */
   embedded?: boolean;
+  /**
+   * PlayStation 此刻在线。只在确认在线时画头像右下那颗绿点；
+   * 离线和遥测断流都不画 —— 断流是不知道，不是下线。
+   */
+  online?: boolean;
   /**
    * 点「最近解锁」。函数 prop 过不了服务端边界，所以给它的那层必须是
    * 客户端组件（playstation-panel）。
@@ -97,25 +103,35 @@ export function TrophyTeaser({
               strokeLinecap="butt"
             />
           </svg>
-          {data.profile.avatarUrl ? (
-            <Image
-              src={data.profile.avatarUrl}
-              alt={data.profile.onlineId}
-              width={40}
-              height={40}
-              /*
-               * 头像那个 psn-rsc 不认 `?w=&h=`，只有 _s(50) / _m(160) / _l(240) /
-               * _xl(440) 这一档路径后缀，够 3× 用的最小一档是 160px 的 PNG（52KB），
-               * 直连比过优化器（约 4KB）贵十倍 —— 所以这一路仍旧走图片管道。
-               * 但 width/height 只出 1x/2x 两档、到 96 就封顶，3× 屏那 120 个设备
-               * 像素还得往上拉一截；给上 sizes 让它按真实宽度挑，3× 拿到 128。
-               */
-              sizes="40px"
-              className="h-10 w-10 rounded-full object-cover"
-            />
-          ) : (
-            <TrophyMetal kind="level" size="md" className="h-8 w-8" />
-          )}
+          <div className="relative grid h-10 w-10 place-items-center">
+            {data.profile.avatarUrl ? (
+              <Image
+                src={data.profile.avatarUrl}
+                alt={data.profile.onlineId}
+                width={40}
+                height={40}
+                /*
+                 * 头像那个 psn-rsc 不认 `?w=&h=`，只有 _s(50) / _m(160) / _l(240) /
+                 * _xl(440) 这一档路径后缀，够 3× 用的最小一档是 160px 的 PNG（52KB），
+                 * 直连比过优化器（约 4KB）贵十倍 —— 所以这一路仍旧走图片管道。
+                 * 但 width/height 只出 1x/2x 两档、到 96 就封顶，3× 屏那 120 个设备
+                 * 像素还得往上拉一截；给上 sizes 让它按真实宽度挑，3× 拿到 128。
+                 */
+                sizes="40px"
+                className="h-10 w-10 rounded-full object-cover"
+              />
+            ) : (
+              <TrophyMetal kind="level" size="md" className="h-8 w-8" />
+            )}
+            {online ? (
+              <span
+                className="absolute right-0 bottom-0 z-10 size-2.5 rounded-full bg-live ring-2 ring-surface"
+                title="在线"
+                role="status"
+                aria-label="在线"
+              />
+            ) : null}
+          </div>
         </div>
         <div className="min-w-0 leading-tight">
           <div className="flex items-center gap-1.5">
