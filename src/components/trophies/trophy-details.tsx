@@ -3,7 +3,14 @@
 import { EyeOff } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
 import Image from "next/image";
-import { useCallback, useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import useSWR from "swr";
 
 import { TrophyMetal } from "@/components/trophies/trophy-metal";
@@ -21,16 +28,32 @@ const MIN_ROW_HEIGHT_PX = 56;
 const SETTLE_DELAY_MS = 110;
 const SUSPEND_AFTER_CHANGE_MS = 500;
 
+/** 跳过来的那一行闪一下的时长，和 animate-trophy-focus 那条动画一样长。 */
+const FLASH_MS = 1000;
+
+/**
+ * 一行奖杯的身份。首页提要里的「最近解锁」也拿它拼跳转目标，所以拼法
+ * 只能有一处 —— 两边各拼一遍，哪天多带一段就会静默地对不上。
+ */
+export function trophyRowKey(
+  npCommunicationId: string,
+  groupId: string,
+  id: number,
+): string {
+  return `${npCommunicationId}-${groupId}-${id}`;
+}
+
 /**
  * 列宽跟游戏瓷砖同一套公式（见 playstation-card TILE_TRACK）：
  * 默认 1 列、md 2、lg 3；减掉的是 gap-3。
- * 只有两组时始终并排，不被 1 列挤成一张、也不在 lg 上空出第三列。
+ * 只有两组时到 md 就并排、不在 lg 上空出第三列；窄屏仍旧跟着一列走，
+ * 不把两张卡挤成半宽。
  */
 function groupTrack(count: number) {
   return cn(
     "grid grid-flow-col grid-rows-1 gap-3",
     count <= 2
-      ? "auto-cols-[calc((100%-0.75rem)/2)]"
+      ? ["auto-cols-[100%]", "md:auto-cols-[calc((100%-0.75rem)/2)]"]
       : [
           "auto-cols-[100%]",
           "md:auto-cols-[calc((100%-0.75rem)/2)]",
@@ -333,6 +356,8 @@ export function TrophyExpand({
   loading,
   error,
   knownEmpty = false,
+  focusKey,
+  onFocused,
 }: {
   name: string;
   titles: TrophyTitle[] | undefined;
@@ -343,10 +368,15 @@ export function TrophyExpand({
    * 摘要本身没来（信封 !ok）时必须是 false —— 那是「不知道」，不是「没有」。
    */
   knownEmpty?: boolean;
+  /** 要定位的那一行（trophyRowKey）。目录是异步拉的，所以等行真的在了才滚。 */
+  focusKey?: string;
+  /** 滚到了就喊一声：一次性语义由上面那层负责，这里不留着这个 key。 */
+  onFocused?: () => void;
 }) {
+  const reduced = useReducedMotion();
   const trophies = titles?.flatMap((title) =>
     title.trophies.map((trophy) => ({
-      key: `${title.npCommunicationId}-${trophy.groupId}-${trophy.id}`,
+      key: trophyRowKey(title.npCommunicationId, trophy.groupId, trophy.id),
       trophy,
     })),
   );
@@ -359,7 +389,51 @@ export function TrophyExpand({
           }))
         : [],
     ) ?? [];
-  const listRef = useRowSnap(trophies?.[0]?.key);
+  const snapRef = useRowSnap(trophies?.[0]?.key);
+  const viewport = useRef<HTMLDivElement | null>(null);
+  // 吸附那个回调 ref 只认元素不外传，定位要用同一个元素，所以并成一个
+  const listRef = useCallback(
+    (el: HTMLDivElement | null) => {
+      viewport.current = el;
+      const detach = snapRef(el);
+      return () => {
+        viewport.current = null;
+        detach?.();
+      };
+    },
+    [snapRef],
+  );
+
+  const [flashKey, setFlashKey] = useState<string | null>(null);
+  // 下标是个数，行数组每次渲染都是新的 —— 用它当依赖，effect 才只在目录到位时跑
+  const focusIndex = focusKey ? (trophies?.findIndex((row) => row.key === focusKey) ?? -1) : -1;
+
+  useEffect(() => {
+    const el = viewport.current;
+    if (focusIndex < 0 || !el) return;
+    /*
+     * 只滚这个容器自己。对行 scrollIntoView 会把所有能滚的祖先一起带走，
+     * 整页的落点是外面那层定的，这里再滚一次就打架了。
+     *
+     * 落点是可视区正中那一行（五行里的第三行）：行心对容器心，也就是往上让出
+     * 两行。前两行和后两行会被 clamp 顶到两端，那种情况不强求居中。
+     * 减出来的仍是行高的整数倍，和 useRowSnap 的吸附网格天然对齐 ——
+     * 停滚后那一下是空操作，不会把落点再拽走。
+     */
+    const rowHeight = el.clientHeight / VISIBLE_ROWS;
+    const centered = focusIndex * rowHeight - (el.clientHeight - rowHeight) / 2;
+    const top = Math.min(Math.max(centered, 0), el.scrollHeight - el.clientHeight);
+    el.scrollTo({ top, behavior: reduced ? "auto" : "smooth" });
+    setFlashKey(focusKey ?? null);
+    onFocused?.();
+  }, [focusIndex, focusKey, onFocused, reduced]);
+
+  useEffect(() => {
+    if (!flashKey) return;
+    const timer = setTimeout(() => setFlashKey(null), FLASH_MS);
+    return () => clearTimeout(timer);
+  }, [flashKey]);
+
   const empty = (
     <div className="text-sm leading-snug text-muted-foreground">
       {name} 还没有奖杯记录
@@ -393,7 +467,14 @@ export function TrophyExpand({
       <GroupSlot groups={groups} resetKey={trophies[0]?.key} />
       <TrophyViewport listRef={listRef}>
         {trophies.map((row) => (
-          <div key={row.key} className="min-w-0">
+          <div
+            key={row.key}
+            className={cn(
+              "min-w-0 rounded-md",
+              // 减少动态效果时全站的动画都被压成 0.01ms，闪不出来 —— 退成一记静态底色
+              row.key === flashKey && (reduced ? "bg-muted" : "animate-trophy-focus"),
+            )}
+          >
             <TrophyRow trophy={row.trophy} />
           </div>
         ))}
