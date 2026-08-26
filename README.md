@@ -231,7 +231,7 @@ MusicKit 签出来的 developer token 寿命约一个月（**Apple 没承诺这�
 
 **本站不轮询充电头，只接收统一遥测推送。** Mac Telemetry Hub 从本机 a2687 服务读取 `/status`，把精简后的状态放进 v4 envelope，只 POST 到 `/api/ingest/mac`，并使用 `TELEMETRY_INGEST_SECRET` Bearer 鉴权。旧的 `/api/ingest/charger`、`/api/ingest/telemetry` 和 `/api/ingest/presence` 入口都已经删除，没有兼容路径，也没有本地轮询回退。
 
-在这台 Mac 上打开页面时，卡片会试着连 `http://127.0.0.1:8787/sse/charger` 和 `/sse/powerbank`。连上就改用这条约 1 Hz 的本机推流，不再用远端那份；连不上（别人的浏览器）立刻放弃、不重试，远端照旧。
+卡片**不主动**连本机端口。在这台 Mac 上打开 `/local/charging` 才会去连 `http://127.0.0.1:8787/sse/charger` 和 `/sse/powerbank`：端点往 localStorage 写一条记录再跳回首页，这台浏览器以后进站都会连。连上就改用这条约 1 Hz 的本机推流，不再用远端那份；连不上立刻放弃、不重试，远端照旧。
 
 **总功率历史存在服务端**（`lib/charger-store.ts`，Redis；未配置 Redis 时退回进程内存）。客户端自己累积的话页面一刷新曲线就没了、还要攒很久才有形状。环形缓冲保留 400 点，两点之间至少间隔 `MIN_SAMPLE_GAP_MS`（当前 5 秒），足以覆盖固定 20 分钟图表窗口。
 
@@ -250,7 +250,7 @@ MusicKit 签出来的 developer token 寿命约一个月（**Apple 没承诺这�
 **充电宝（A110G）** 走完全相同的来路：同一台 Mac 把 BLE 解出来的读数塞进
 `chargingDevices`，本站按 `kind` 挑出来，落在 `lib/powerbank-store.ts`（Redis 为主、
 进程内存兜底），读取走 `/api/status/powerbank`，卡片是 `components/live/powerbank-card.tsx`，
-本机浏览时同样可以直连 `/sse/powerbank`。收卡口径也和充电头一致：上报器离线、或者超过
+本机浏览时同样是打开 `/local/charging` 才直连 `/sse/powerbank`。收卡口径也和充电头一致：上报器离线、或者超过
 `powerBankStaleAfterMs()` 没收到新推送，就把 `connected` 打成 `false`，浏览器不再自己算
 一遍过期。那个窗口和充电头的 `chargerStaleAfterMs` 逐字对齐：默认 90 秒，但也不能短于
 `CHARGER_PUSH_INTERVAL_MS` 的 3 倍、更不能短于心跳窗口（默认 300 秒）—— 安静时段没有新

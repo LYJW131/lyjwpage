@@ -14,8 +14,8 @@ import type { ChargerPayload, ChargerStatus } from "@/lib/types";
  * Anker Prime 160W (A2687) 遥测。
  *
  * 远端数据只有一条来路：Mac 上报器把 BLE 解出来的充电头放进
- * `chargingDevices` 列表，本站按 `kind` 挑。本机浏览时还可以直连
- * `http://127.0.0.1:8787/sse/charger`，见 lib/local-charging。
+ * `chargingDevices` 列表，本站按 `kind` 挑。本机浏览时打开 `/local/charging`
+ * 才会直连 `http://127.0.0.1:8787/sse/charger`，见 lib/local-charging。
  */
 
 /**
