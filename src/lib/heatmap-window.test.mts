@@ -5,6 +5,7 @@ import { addDays } from "./github-chart-compact.ts";
 import {
   diffDays,
   heatmapRefreshFrom,
+  isHeatmapFuture,
   lastHeatmapDate,
   mergeHeatmapSeries,
   sliceHeatmapWindow,
@@ -63,6 +64,12 @@ test("lastHeatmapDate 是 origin 起最后一天", () => {
   assert.equal(lastHeatmapDate(ORIGIN, 371), addDays(ORIGIN, 370));
   assert.equal(lastHeatmapDate("", 10), null);
   assert.equal(diffDays(ORIGIN, addDays(ORIGIN, 7)), 7);
+});
+
+test("今天之后的格子算未来", () => {
+  assert.equal(isHeatmapFuture("2026-08-26", "2026-08-26"), false);
+  assert.equal(isHeatmapFuture("2026-08-25", "2026-08-26"), false);
+  assert.equal(isHeatmapFuture("2026-08-27", "2026-08-26"), true);
 });
 
 test("游标从今天切到窗尾，不锁在未来的空格上", () => {
