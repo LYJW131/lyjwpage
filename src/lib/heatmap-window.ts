@@ -32,6 +32,17 @@ export function utcToday(now = Date.now()): string {
   return new Date(now).toISOString().slice(0, 10);
 }
 
+/**
+ * 某个时刻落在某个时区的哪一天。
+ *
+ * 日合计是采集侧按它自己的日历分的桶，切窗必须用同一份日历 —— 拿 UTC 切，
+ * 东八区 00:00 到 08:00 之间「今天」会被算成昨天，当天那格连着已经收到的
+ * 数字一起被切掉，而 GitHub 那张图照常画到今天，两张图就错开一列。
+ */
+export function zonedDay(now: number, timezone: string): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: timezone }).format(now);
+}
+
 /** 53 周窗会填到本周六；今天之后的空格不能点、不能走键盘。 */
 export function isHeatmapFuture(date: string, today = utcToday()): boolean {
   return date > today;
