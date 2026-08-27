@@ -86,12 +86,19 @@ function trophyDetail(trophy: Trophy): string | null {
   return trophy.detail;
 }
 
-function rarityLabel(rate: number | null): string {
-  if (rate == null) return "—";
+function rarityLabel(rate: number): string {
   if (rate < 5) return "极稀有";
   if (rate < 15) return "非常稀有";
   if (rate < 50) return "稀有";
   return "常见";
+}
+
+/** 全球持有率。不到 0.1% 的不能收成 0%，极稀有和「没人拿」不是一回事。 */
+function formatEarnedRate(rate: number): string {
+  const clamped = Math.min(100, Math.max(0, rate));
+  const tenths = Math.round(clamped * 10) / 10;
+  if (clamped > 0 && tenths === 0) return "<0.1%";
+  return `${Number.isInteger(tenths) ? String(tenths) : tenths.toFixed(1)}%`;
 }
 
 async function fetchCatalog(path: string): Promise<StatusResponse<TrophiesPayload>> {
@@ -215,58 +222,78 @@ function TrophyRow({ trophy }: { trophy: Trophy }) {
   const subtitle =
     trophyDetail(trophy) ??
     (trophy.earned && trophy.earnedAt ? formatStamp(trophy.earnedAt) : "未解锁");
-  const rarity = trophy.earnedRate != null ? rarityLabel(trophy.earnedRate) : null;
+  const rate = trophy.earnedRate;
+  const fill = rate == null ? null : Math.min(100, Math.max(0, rate));
   return (
-    <div className="flex h-full items-center gap-2.5 rounded-md px-2 transition-colors hover:bg-surface-hover">
-      <div
-        className={cn(
-          "relative size-11 shrink-0 overflow-hidden rounded-sm border border-line bg-muted",
-          locked && !hidden && "grayscale",
-          hidden && "border-dashed",
-        )}
-      >
-        {trophy.iconUrl && !hidden ? (
-          <Image
-            // 尺寸在 PSN 那边就选好，不进图片管道；理由见 playstation-image
-            src={playstationImage(trophy.iconUrl, ICON_PX * PLAYSTATION_IMAGE_SCALE)!}
-            alt=""
-            fill
-            unoptimized
-            className={cn("object-cover", locked && "opacity-55")}
-          />
-        ) : (
-          <div className="grid h-full place-items-center text-muted-foreground">
-            {hidden ? (
-              <EyeOff className="size-4" strokeWidth={1.75} />
-            ) : (
-              <TrophyMetal kind={trophy.type} size="sm" />
-            )}
-          </div>
-        )}
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 items-center gap-1.5">
-          <TrophyMetal
-            kind={trophy.type}
-            size="sm"
-            className={cn(locked && "grayscale opacity-55")}
-          />
-          <span
-            className={cn("min-w-0 truncate text-sm", locked && "text-muted-foreground")}
-            title={hidden ? "隐藏奖杯" : trophy.name}
-          >
-            {hidden ? "隐藏奖杯" : trophy.name}
-          </span>
-          {/* 未解锁只靠灰阶和半透明表达，读屏取不到，补一句文本 */}
-          {locked ? <span className="sr-only">未解锁</span> : null}
-        </div>
+    <div className="relative flex h-full items-center overflow-hidden rounded-md transition-colors hover:bg-surface-hover">
+      {/*
+       * 全球持有率的条就是行底那道半透明阴影，宽 = 百分比。
+       * 不用 --live：那是实时数据的颜色。半透明才能让 hover 底色透出来。
+       */}
+      {fill != null ? (
         <div
-          className="truncate text-xs text-muted-foreground"
-          title={rarity ? `${rarity} · ${subtitle}` : subtitle}
+          aria-hidden
+          className="pointer-events-none absolute inset-y-0 left-0 bg-foreground/8"
+          style={{ width: `${fill}%` }}
+        />
+      ) : null}
+      <div className="relative flex h-full min-w-0 flex-1 items-center gap-2.5 px-2">
+        <div
+          className={cn(
+            "relative size-11 shrink-0 overflow-hidden rounded-sm border border-line bg-muted",
+            locked && !hidden && "grayscale",
+            hidden && "border-dashed",
+          )}
         >
-          {rarity ? `${rarity} · ` : ""}
-          {subtitle}
+          {trophy.iconUrl && !hidden ? (
+            <Image
+              // 尺寸在 PSN 那边就选好，不进图片管道；理由见 playstation-image
+              src={playstationImage(trophy.iconUrl, ICON_PX * PLAYSTATION_IMAGE_SCALE)!}
+              alt=""
+              fill
+              unoptimized
+              className={cn("object-cover", locked && "opacity-55")}
+            />
+          ) : (
+            <div className="grid h-full place-items-center text-muted-foreground">
+              {hidden ? (
+                <EyeOff className="size-4" strokeWidth={1.75} />
+              ) : (
+                <TrophyMetal kind={trophy.type} size="sm" />
+              )}
+            </div>
+          )}
         </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-center gap-1.5">
+            <TrophyMetal
+              kind={trophy.type}
+              size="sm"
+              className={cn(locked && "grayscale opacity-55")}
+            />
+            <span
+              className={cn("min-w-0 truncate text-sm", locked && "text-muted-foreground")}
+              title={hidden ? "隐藏奖杯" : trophy.name}
+            >
+              {hidden ? "隐藏奖杯" : trophy.name}
+            </span>
+            {/* 未解锁只靠灰阶和半透明表达，读屏取不到，补一句文本 */}
+            {locked ? <span className="sr-only">未解锁</span> : null}
+          </div>
+          <div className="truncate text-xs text-muted-foreground" title={subtitle}>
+            {subtitle}
+          </div>
+        </div>
+        {rate != null ? (
+          <span className="shrink-0 text-muted-foreground">
+            <span className="text-xs">{rarityLabel(rate)}</span>
+            <span className="text-xs"> · </span>
+            <span className="label-mono">
+              <span className="sr-only">全球玩家完成率 </span>
+              {formatEarnedRate(rate)}
+            </span>
+          </span>
+        ) : null}
       </div>
     </div>
   );
