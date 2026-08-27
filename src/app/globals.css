@@ -342,6 +342,17 @@ button.paper-card {
   touch-action: pan-y;
 }
 
+/*
+ * 列表网格。行高 = 视口的 1/N，N 是 --recent-track-rows（和 JS 的 VISIBLE_ROWS
+ * 同一份）。滚动盒是外层，这一层只负责排。
+ */
+.recent-tracks-track {
+  position: relative;
+  display: grid;
+  height: 100%;
+  grid-auto-rows: calc(100% / var(--recent-track-rows));
+}
+
 /* 双列下保留充电卡的轨道撑住原高；最近播放始终贴着右边，直接插值 left。
    这样每一帧都是真实宽度，不会用 scaleX 压缩整张卡，文字也就不会在结尾跳动。 */
 @media (min-width: 48rem) {
@@ -371,18 +382,48 @@ button.paper-card {
     left: 0;
   }
 
-  /* 横跨整行后正好容纳 4 × 2：按列排布（左列 1-4，右列 5-8）；DOM 仍保留第九项供窄态滚动，但宽态不展示它。 */
-  .recent-tracks.is-wide {
+  /*
+   * 半宽：四行一页、横滑两页。上游最多 10 条，hero 还可能并掉一条，
+   * 8 条刚好两页。第九项起不展示（DOM 仍留给窄屏竖滑）。
+   *
+   * 列宽 100% 相对轨道，轨道 w-full 相对滚动盒 —— 视口里永远是完整一页，
+   * 不露下一页一条缝。overscroll-x-contain 挡住触控板滑到头触发「返回上一页」。
+   */
+  .recent-tracks:not(.is-wide) {
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    overscroll-behavior-y: auto;
+    scroll-snap-type: x mandatory;
+  }
+
+  .recent-tracks:not(.is-wide).is-reflowing {
+    scroll-snap-type: none;
+  }
+
+  .recent-tracks:not(.is-wide) .recent-tracks-track {
+    width: 100%;
     grid-auto-flow: column;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    grid-template-rows: repeat(4, minmax(0, 1fr));
-    grid-auto-rows: auto !important;
+    grid-template-rows: repeat(var(--recent-track-rows), minmax(0, 1fr));
+    grid-auto-columns: 100%;
+    grid-auto-rows: auto;
+  }
+
+  /* 横跨整行后正好容纳 4 × 2：按列排布（左列 1-4，右列 5-8） */
+  .recent-tracks.is-wide {
     overflow: hidden;
     /* 盖过单列的 overscroll-contain，不然 4×2 仍是滚动盒，整页滑不动。 */
     overscroll-behavior: auto;
   }
 
-  .recent-tracks.is-wide > :nth-child(n + 9) {
+  .recent-tracks.is-wide .recent-tracks-track {
+    grid-auto-flow: column;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: repeat(var(--recent-track-rows), minmax(0, 1fr));
+    grid-auto-rows: auto;
+  }
+
+  .recent-tracks .recent-tracks-track > :nth-child(n + 9) {
     display: none;
   }
 

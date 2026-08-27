@@ -27,6 +27,7 @@ import { useExpiryRefetch, useStatus } from "@/hooks/use-status";
 import { stableKeys } from "@/lib/keys";
 import {
   HERO_VARIANTS,
+  LIST_DURATION,
   LIST_ITEM_VARIANTS,
   LIST_TRANSITION,
   STATIC_TRANSITION,
@@ -56,6 +57,9 @@ const MUSIC_REFRESH_MS = 60_000;
  * 视口里显示几行。行高不写死：列表填满卡片剩下的空间，每行取容器的 1/N
  * （grid-auto-rows: calc(100% / N)），所以永远是整数行、底部也不会留空。
  * 这件事 CSS 自己就能算，不需要 JS 去量。
+ *
+ * 半宽时横滑两页，每页就是这么多行，一共 8 条。上游最多 10 条，hero 还可能
+ * 并掉一条，8 刚好两页。第九条起桌面端不展示，窄屏竖滑仍能滚到。
  */
 const VISIBLE_ROWS = 4;
 /** 单行的最小高度：44px 封面 + 上下留白，比这个再矮就挤了 */
@@ -414,6 +418,16 @@ const useIsomorphicLayoutEffect =
 const SETTLE_DELAY_MS = 110;
 /** 数据变化后这段时间内不做对齐，等重排动画落定 */
 const SUSPEND_AFTER_CHANGE_MS = 500;
+/** 半宽横滑摘掉 CSS 吸附的窗口。比动画本身多留一点，计时是动画开跑之后才起的。 */
+const UNSNAP_MS = LIST_DURATION * 1000 + 80;
+
+function resetScroller(el: HTMLElement) {
+  const saved = el.style.scrollBehavior;
+  el.style.scrollBehavior = "auto";
+  el.scrollTop = 0;
+  el.scrollLeft = 0;
+  el.style.scrollBehavior = saved;
+}
 
 /**
  * 保证列表永远停在整行上，同时不和重排动画打架。
@@ -432,26 +446,23 @@ function useRowSnap(topKey: string | undefined, wide: boolean) {
   const suspendUntil = useRef(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // 顶部换人：拉回顶端，并在动画期间挂起对齐
+  // 顶部换人：拉回第一页 / 第一行，并在动画期间挂起对齐
   useIsomorphicLayoutEffect(() => {
     if (previous.current === topKey) return;
     previous.current = topKey;
     suspendUntil.current = Date.now() + SUSPEND_AFTER_CHANGE_MS;
 
     const el = node.current;
-    if (!el || el.scrollTop === 0) return;
+    if (!el || (el.scrollTop === 0 && el.scrollLeft === 0)) return;
     // 临时关掉 scroll-smooth，否则会看到「先跳一下再滑回来」
-    const saved = el.style.scrollBehavior;
-    el.style.scrollBehavior = "auto";
-    el.scrollTop = 0;
-    el.style.scrollBehavior = saved;
+    resetScroller(el);
   }, [topKey]);
 
-  // 展开为两列时只展示最前面的八项，必须先回到 scrollTop 0；否则用户之前
-  // 在单列里滚过以后，overflow:hidden 会把列表定格在中间一段。
+  // 半宽横滑两页、宽态 4×2 都不展示第九项起。切形态时先回到原点：
+  // 竖滑可能停在中间一行，横滑可能停在第二页，overflow:hidden 会把视口钉在那儿。
   useIsomorphicLayoutEffect(() => {
-    if (!wide || !node.current) return;
-    node.current.scrollTop = 0;
+    if (!node.current) return;
+    resetScroller(node.current);
   }, [wide]);
 
   /**
@@ -466,6 +477,8 @@ function useRowSnap(topKey: string | undefined, wide: boolean) {
       if (timer.current) clearTimeout(timer.current);
       timer.current = setTimeout(() => {
         if (Date.now() < suspendUntil.current) return;
+        // 半宽横滑 / 宽态 4×2 没有竖向溢出，这条是给窄屏竖滑用的
+        if (el.scrollHeight <= el.clientHeight + 1) return;
         // 行高就是容器的 1/N，跟着容器走，不用另外记
         const rowHeight = el.clientHeight / VISIBLE_ROWS;
         const target = Math.round(el.scrollTop / rowHeight) * rowHeight;
@@ -698,6 +711,23 @@ export function ListeningCard({
   const restKeys = stableKeys(rest.map((item) => item.id));
   const listRef = useRowSnap(restKeys[0], wide);
 
+  /**
+   * 半宽横滑是 CSS scroll-snap。增删条目时 popLayout 会把离场行改成绝对定位，
+   * 吸附目标跟着飞 —— 和「最近在看 / 最近在玩」同一套：动画窗口里先摘掉吸附。
+   */
+  const ids = restKeys.join("\n");
+  const [snappedIds, setSnappedIds] = useState(ids);
+  const [reflowing, setReflowing] = useState(false);
+  if (snappedIds !== ids) {
+    setSnappedIds(ids);
+    setReflowing(true);
+  }
+  useEffect(() => {
+    if (!reflowing) return;
+    const timer = setTimeout(() => setReflowing(false), UNSNAP_MS);
+    return () => clearTimeout(timer);
+  }, [reflowing, ids]);
+
   const { data: motionData } = useMotionArtwork(hero?.link);
   // 动态封面自带一套取色，比静态封面那套晚到；交给 PaletteBar 淡进来，别直接顶掉
   const motionGradient =
@@ -859,7 +889,8 @@ export function ListeningCard({
         </div>
 
         {/*
-          再往前的几项。上游最多给 10 条，全部列出，放不下就滚动。
+          再往前的几项。上游最多给 10 条。窄屏竖滑全部列出；桌面半宽横滑两页、
+          宽态 4×2，都只展示 8 条。
 
           视口必须始终挂着：列表为空时 isLoading 也是 false、rest 也是空的 ——
           以前用 (isLoading || rest.length) 包一层，那种情况下首屏 HTML 就把
@@ -880,7 +911,12 @@ export function ListeningCard({
           */}
           <div
             className="relative min-h-0 flex-1"
-            style={{ minHeight: `${MIN_ROW_HEIGHT_PX * VISIBLE_ROWS}px` }}
+            style={
+              {
+                minHeight: `${MIN_ROW_HEIGHT_PX * VISIBLE_ROWS}px`,
+                "--recent-track-rows": VISIBLE_ROWS,
+              } as CSSProperties
+            }
           >
             <div
               ref={listRef}
@@ -890,50 +926,49 @@ export function ListeningCard({
               role="region"
               aria-label="最近播放"
               className={cn(
-                // 每行高 = 容器的 1/N。容器高度是确定的（absolute inset-0），
-                // 百分比轨道就有得算 —— 于是「整数行」「填满」两件事同时由
-                // CSS 保证，不需要 ResizeObserver 去量、也没有写死的行高。
-                "absolute inset-0 grid overflow-y-auto",
+                "absolute inset-0 overflow-y-auto",
                 "recent-tracks",
                 wide && "is-wide",
-                // 这里刻意不做 scroll-snap。它会和 framer 的 layout 动画打架：
-                // popLayout 把离场元素改成绝对定位，容器高度剧变，吸附目标算飞，
-                // 实测新条目进来时 scrollTop 会被弹到 48 甚至 192 再慢慢滑回。
-                // 整数行是靠「容器高度正好等于行高整数倍」保证的，不需要吸附。
+                reflowing && "is-reflowing",
                 "scroll-smooth overscroll-y-contain",
                 // 关掉滚动锚定：新条目插到顶部时，浏览器会为了「保持视觉位置不动」
                 // 自动把 scrollTop 加一行，结果第一行被顶出可视区，得手动滑回去
                 "[overflow-anchor:none]",
                 "scrollbar-none [&::-webkit-scrollbar]:hidden",
               )}
-              // 写成内联而不是 Tailwind 的 arbitrary value：后者必须是字面量，
-              // 行数就会在两处各写一遍
-              style={{ gridAutoRows: `calc(100% / ${VISIBLE_ROWS})` }}
             >
-              {rest.length > 0 ? (
-                // popLayout 让离场的行脱离布局流，剩下的能同时补位而不是等它消失
-                <AnimatePresence initial={false} mode="popLayout">
-                  {rest.map((item, index) => (
-                    <motion.div
-                      key={restKeys[index]}
-                      layout={!reduced}
-                      variants={reduced ? STATIC_VARIANTS : LIST_ITEM_VARIANTS}
-                      initial="initial"
-                      animate="animate"
-                      exit="exit"
-                      transition={reduced ? STATIC_TRANSITION : LIST_TRANSITION}
-                      // 高度由 grid 轨道给；min-w-0 保住行内的 truncate
-                      className="min-w-0"
-                    >
-                      <TrackRow track={item} />
-                    </motion.div>
-                  ))}
-                </AnimatePresence>
-              ) : isLoading ? (
-                Array.from({ length: VISIBLE_ROWS }, (_, i) => (
-                  <SkeletonRow key={i} />
-                ))
-              ) : null}
+              {/*
+                网格在这一层、不在滚动盒上：半宽要按列往右排成两页，滚动盒
+                自己当网格的话多出来的列没有独立的含块，scrollWidth 对不齐。
+                relative 留给 popLayout 的离场行，让它们留在轨道里而不是钉在视口上。
+              */}
+              <div className="recent-tracks-track">
+                {rest.length > 0 ? (
+                  // popLayout 让离场的行脱离布局流，剩下的能同时补位而不是等它消失
+                  <AnimatePresence initial={false} mode="popLayout">
+                    {rest.map((item, index) => (
+                      <motion.div
+                        key={restKeys[index]}
+                        layout={!reduced}
+                        variants={reduced ? STATIC_VARIANTS : LIST_ITEM_VARIANTS}
+                        initial="initial"
+                        animate="animate"
+                        exit="exit"
+                        transition={reduced ? STATIC_TRANSITION : LIST_TRANSITION}
+                        // 高度由 grid 轨道给；min-w-0 保住行内的 truncate
+                        // 每页第一行吸附：半宽才开 snap-x，窄屏 / 宽态这条不会生效
+                        className={cn("min-w-0", index % VISIBLE_ROWS === 0 && "snap-start")}
+                      >
+                        <TrackRow track={item} />
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
+                ) : isLoading ? (
+                  Array.from({ length: VISIBLE_ROWS }, (_, i) => (
+                    <SkeletonRow key={i} />
+                  ))
+                ) : null}
+              </div>
             </div>
             {/*
               歌名那一侧盖一层，把滑动交给页面。Safari 上 overflow 容器一旦
