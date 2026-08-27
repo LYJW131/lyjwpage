@@ -152,6 +152,7 @@ type Tile = {
   /** 这张卡对上的主机，跨世代会同时有 PS4 和 PS5。 */
   platforms: string[];
   trophies: TrophyTitleDigest | null;
+  playDurationMs: number | null;
 };
 
 function consolesFromCategory(category: string | null | undefined): string[] {
@@ -366,7 +367,7 @@ function mergeVariants(games: PlaystationGame[]): MergedGame[] {
   return merged;
 }
 
-/** 正在玩 → 白金 → 预购 → 最近列表原序。同档用传入时的下标，不重排。 */
+/** 正在玩 → 白金 → 预购 → 最近列表原序。白金档按时长从长到短，其余同档用传入时的下标。 */
 function tilePriority(tile: Tile): number {
   if (tile.live) return 0;
   if ((tile.trophies?.earned.platinum ?? 0) > 0) return 1;
@@ -377,7 +378,16 @@ function tilePriority(tile: Tile): number {
 function prioritizeTiles(tiles: Tile[]): Tile[] {
   return tiles
     .map((tile, index) => ({ tile, index }))
-    .sort((a, b) => tilePriority(a.tile) - tilePriority(b.tile) || a.index - b.index)
+    .sort((a, b) => {
+      const aRank = tilePriority(a.tile);
+      const bRank = tilePriority(b.tile);
+      if (aRank !== bRank) return aRank - bRank;
+      if (aRank === 1) {
+        const duration = (b.tile.playDurationMs ?? 0) - (a.tile.playDurationMs ?? 0);
+        if (duration !== 0) return duration;
+      }
+      return a.index - b.index;
+    })
     .map(({ tile }) => tile);
 }
 
@@ -415,6 +425,7 @@ function buildTiles(
     preOrder: game.preOrder,
     platforms: game.platforms,
     trophies: digestFor(game.titleIds, titles),
+    playDurationMs: game.playDurationMs,
   });
 
   if (!playing) return prioritizeTiles(games.map((game) => toTile(game, false)));
@@ -440,6 +451,7 @@ function buildTiles(
           presence?.platform,
         ),
         trophies: digestFor([playing.titleId], titles),
+        playDurationMs: null,
       };
   return prioritizeTiles([
     first,
