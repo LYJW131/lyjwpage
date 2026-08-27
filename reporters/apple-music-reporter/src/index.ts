@@ -178,6 +178,31 @@ async function tick() {
   }
 }
 
+/**
+ * 站点此刻的在线人数。超时、非 200、形状不对，一律当 0。
+ *
+ * 兜底方向是单向的：读不到只会让节奏退回基线，永远不会因为故障变快 —— 认错这个
+ * 方向的代价是没人看的时候仍按快档一直打 Apple。
+ */
+async function onlineCount(): Promise<number> {
+  // 没配这个变量不是故障，别让它进 failure 的连击计数
+  if (!config.onlineCountUrl) return 0;
+
+  try {
+    const response = await fetch(config.onlineCountUrl, {
+      signal: AbortSignal.timeout(config.onlineCountTimeoutMs),
+    });
+    if (!response.ok) throw new Error(`返回 ${response.status}`);
+    const body = (await response.json()) as { online?: unknown } | null;
+    const value = Number(body?.online);
+    recovered("online-count");
+    return Number.isFinite(value) && value > 0 ? Math.trunc(value) : 0;
+  } catch (error) {
+    failure("online-count", error);
+    return 0;
+  }
+}
+
 async function loop() {
   for (;;) {
     try {
@@ -185,7 +210,9 @@ async function loop() {
     } catch (error) {
       failure("tick", error);
     }
-    await sleep(config.recentIntervalMs);
+    // 有人正看着才提频。门排在 sleep 前，这一轮该多久由刚问到的人数决定
+    const online = await onlineCount();
+    await sleep(online > 0 ? config.liveIntervalMs : config.recentIntervalMs);
   }
 }
 
@@ -199,7 +226,9 @@ for (const signal of ["SIGTERM", "SIGINT"] as const) {
 }
 
 info(
-  `apple-music-reporter 启动：api.music.apple.com → ${config.site.ingestUrl}，每 ${config.recentIntervalMs / 1000} 秒一轮`,
+  `apple-music-reporter 启动：api.music.apple.com → ${config.site.ingestUrl}，每 ${config.recentIntervalMs / 1000} 秒一轮${
+    config.onlineCountUrl ? `（有观众时 ${config.liveIntervalMs / 1000} 秒）` : ""
+  }`,
 );
 if (!config.site.secret) {
   info("没配 TELEMETRY_INGEST_SECRET —— 只有站点也没配时才可以这样");

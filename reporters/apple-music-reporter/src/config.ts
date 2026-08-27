@@ -21,6 +21,12 @@ function trimSlash(url: string) {
   return url.replace(/\/+$/, "");
 }
 
+/** 从只填了**源**的那类变量拼出完整端点。没配返回空串，含义由用它的地方定 */
+function endpoint(name: string, path: string): string {
+  const origin = process.env[name]?.trim();
+  return origin ? `${trimSlash(origin)}${path}` : "";
+}
+
 export const config = {
   site: {
     /**
@@ -45,6 +51,30 @@ export const config = {
    * 多少准头（专辑动辄几十分钟），却是实打实按天累计的上游请求。
    */
   recentIntervalMs: ms("RECENT_INTERVAL_MS", 60_000),
+
+  /**
+   * 有观众时的轮询节奏。
+   *
+   * 上面那个折中只在**没人看**的时候才需要成立 —— 那时快一点也没人受益。有人正看
+   * 着站点的这几分钟里多打几次 Apple，换来的是换歌延迟从最坏 60 秒降到 20 秒，
+   * 这是唯一有人能看见的那段时间。
+   *
+   * 闲时那一档一字不动，所以站点的 `LISTENING_STALE_MS` 不用跟着改：它锚的是按
+   * 墙钟判定的 fullPushIntervalMs，和轮询间隔无关。
+   */
+  liveIntervalMs: ms("LIVE_INTERVAL_MS", 20_000),
+
+  /**
+   * 在线人数读取地址。填**源**，`/count` 这边拼 —— 和站点侧的
+   * NEXT_PUBLIC_ONLINE_COUNTER_URL、playstation-reporter 的同名变量一个形状。
+   *
+   * 不配就是空串，门一路按「没人在线」走，节奏恒等于今天的 recentIntervalMs：
+   * 少配一个变量不该让它变快，也不该让它变慢。
+   */
+  onlineCountUrl: endpoint("ONLINE_COUNTER_URL", "/count"),
+
+  /** 人数读不回来不该拖着这一轮等，超时就当没人在线 */
+  onlineCountTimeoutMs: ms("ONLINE_COUNT_TIMEOUT_MS", 2_500),
 
   /**
    * 即使什么都没变，也隔一阵整份重推一次。
