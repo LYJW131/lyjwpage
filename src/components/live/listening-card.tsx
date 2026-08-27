@@ -11,7 +11,6 @@ import {
   useRef,
   useState,
   type CSSProperties,
-  type MouseEvent,
   type ReactNode,
 } from "react";
 
@@ -58,8 +57,8 @@ const MUSIC_REFRESH_MS = 60_000;
  * （grid-auto-rows: calc(100% / N)），所以永远是整数行、底部也不会留空。
  * 这件事 CSS 自己就能算，不需要 JS 去量。
  *
- * 半宽时横滑两页，每页就是这么多行，一共 8 条。上游最多 10 条，hero 还可能
- * 并掉一条，8 刚好两页。第九条起桌面端不展示，窄屏竖滑仍能滚到。
+ * 窄屏和桌面半宽都横滑两页，每页就是这么多行，一共 8 条。上游最多 10 条，
+ * hero 还可能并掉一条，8 刚好两页。第九条起不展示。
  */
 const VISIBLE_ROWS = 4;
 /** 单行的最小高度：44px 封面 + 上下留白，比这个再矮就挤了 */
@@ -414,11 +413,7 @@ function SkeletonRow() {
 const useIsomorphicLayoutEffect =
   typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
-/** 用户停止滚动后多久开始对齐 */
-const SETTLE_DELAY_MS = 110;
-/** 数据变化后这段时间内不做对齐，等重排动画落定 */
-const SUSPEND_AFTER_CHANGE_MS = 500;
-/** 半宽横滑摘掉 CSS 吸附的窗口。比动画本身多留一点，计时是动画开跑之后才起的。 */
+/** 横滑摘掉 CSS 吸附的窗口。比动画本身多留一点，计时是动画开跑之后才起的。 */
 const UNSNAP_MS = LIST_DURATION * 1000 + 80;
 
 function resetScroller(el: HTMLElement) {
@@ -430,81 +425,29 @@ function resetScroller(el: HTMLElement) {
 }
 
 /**
- * 保证列表永远停在整行上，同时不和重排动画打架。
- *
- * 没有用 CSS 的 scroll-snap：它会在数据变化时重新计算吸附目标，而 popLayout
- * 会把离场元素改成绝对定位、容器高度剧变，导致吸附算飞 —— 实测 scrollTop
- * 会被弹到 48 甚至 192。「动画期间临时关掉吸附」也不行，装回去的那一刻
- * 动画还没落定，照样被吸走。
- *
- * 所以自己做：只在「用户滚动停下来之后」对齐到最近的整行，
- * 并且在数据变化后的动画窗口内跳过。浏览器不再有插手的机会。
+ * 顶部换人或切宽窄时拉回第一页。横滑吸附交给 CSS scroll-snap，
+ * 增删时的冲突由外面那层 is-reflowing 在动画窗口里摘掉吸附来躲。
  */
 function useRowSnap(topKey: string | undefined, wide: boolean) {
   const node = useRef<HTMLDivElement | null>(null);
   const previous = useRef(topKey);
-  const suspendUntil = useRef(0);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // 顶部换人：拉回第一页 / 第一行，并在动画期间挂起对齐
   useIsomorphicLayoutEffect(() => {
     if (previous.current === topKey) return;
     previous.current = topKey;
-    suspendUntil.current = Date.now() + SUSPEND_AFTER_CHANGE_MS;
-
     const el = node.current;
     if (!el || (el.scrollTop === 0 && el.scrollLeft === 0)) return;
-    // 临时关掉 scroll-smooth，否则会看到「先跳一下再滑回来」
     resetScroller(el);
   }, [topKey]);
 
-  // 半宽横滑两页、宽态 4×2 都不展示第九项起。切形态时先回到原点：
-  // 竖滑可能停在中间一行，横滑可能停在第二页，overflow:hidden 会把视口钉在那儿。
   useIsomorphicLayoutEffect(() => {
     if (!node.current) return;
     resetScroller(node.current);
   }, [wide]);
 
-  /**
-   * 用 ref 回调挂监听：节点一出现就绑，卸载时清掉。
-   * （列表视口现在始终挂着，不过 ref 回调对条件渲染同样稳妥。）
-   */
   return useCallback((el: HTMLDivElement | null) => {
     node.current = el;
-    if (!el) return;
-
-    const onScroll = () => {
-      if (timer.current) clearTimeout(timer.current);
-      timer.current = setTimeout(() => {
-        if (Date.now() < suspendUntil.current) return;
-        // 半宽横滑 / 宽态 4×2 没有竖向溢出，这条是给窄屏竖滑用的
-        if (el.scrollHeight <= el.clientHeight + 1) return;
-        // 行高就是容器的 1/N，跟着容器走，不用另外记
-        const rowHeight = el.clientHeight / VISIBLE_ROWS;
-        const target = Math.round(el.scrollTop / rowHeight) * rowHeight;
-        // 已经对齐就别再滚，否则自己触发的 scroll 会来回抖
-        if (Math.abs(target - el.scrollTop) < 0.5) return;
-        el.scrollTo({ top: target, behavior: "smooth" });
-      }, SETTLE_DELAY_MS);
-    };
-
-    el.addEventListener("scroll", onScroll, { passive: true });
-    return () => {
-      el.removeEventListener("scroll", onScroll);
-      if (timer.current) clearTimeout(timer.current);
-      node.current = null;
-    };
   }, []);
-}
-
-/** 移动端遮罩挡住封面以右，点击仍要落到下面的链接上。 */
-function passClickThrough(event: MouseEvent<HTMLDivElement>) {
-  const overlay = event.currentTarget;
-  overlay.style.pointerEvents = "none";
-  const under = document.elementFromPoint(event.clientX, event.clientY);
-  overlay.style.pointerEvents = "";
-  const link = under?.closest("a");
-  if (link instanceof HTMLAnchorElement) link.click();
 }
 
 /** 有链接就整块可点，没有就退化成普通容器 */
@@ -889,8 +832,8 @@ export function ListeningCard({
         </div>
 
         {/*
-          再往前的几项。上游最多给 10 条。窄屏竖滑全部列出；桌面半宽横滑两页、
-          宽态 4×2，都只展示 8 条。
+          再往前的几项。上游最多给 10 条。窄屏和桌面半宽横滑两页、宽态 4×2，
+          都只展示 8 条。
 
           视口必须始终挂着：列表为空时 isLoading 也是 false、rest 也是空的 ——
           以前用 (isLoading || rest.length) 包一层，那种情况下首屏 HTML 就把
@@ -926,11 +869,11 @@ export function ListeningCard({
               role="region"
               aria-label="最近播放"
               className={cn(
-                "absolute inset-0 overflow-y-auto",
+                "absolute inset-0",
                 "recent-tracks",
                 wide && "is-wide",
                 reflowing && "is-reflowing",
-                "scroll-smooth overscroll-y-contain",
+                "scroll-smooth",
                 // 关掉滚动锚定：新条目插到顶部时，浏览器会为了「保持视觉位置不动」
                 // 自动把 scrollTop 加一行，结果第一行被顶出可视区，得手动滑回去
                 "[overflow-anchor:none]",
@@ -956,7 +899,7 @@ export function ListeningCard({
                         exit="exit"
                         transition={reduced ? STATIC_TRANSITION : LIST_TRANSITION}
                         // 高度由 grid 轨道给；min-w-0 保住行内的 truncate
-                        // 每页第一行吸附：半宽才开 snap-x，窄屏 / 宽态这条不会生效
+                        // 每页第一行吸附：宽态桌面 overflow:hidden，这条不会生效
                         className={cn("min-w-0", index % VISIBLE_ROWS === 0 && "snap-start")}
                       >
                         <TrackRow track={item} />
@@ -970,16 +913,6 @@ export function ListeningCard({
                 ) : null}
               </div>
             </div>
-            {/*
-              歌名那一侧盖一层，把滑动交给页面。Safari 上 overflow 容器一旦
-              pointer-events:none，连点到 pointer-events:auto 的子项也划不动，
-              所以滚动容器本身必须能接收触摸，改用遮罩挡住封面以右。
-            */}
-            <div
-              className="recent-tracks-page-pan"
-              aria-hidden
-              onClick={passClickThrough}
-            />
           </div>
         </div>
       </div>
