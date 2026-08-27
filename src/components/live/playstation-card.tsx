@@ -105,13 +105,24 @@ const UNSNAP_MS = LIST_DURATION * 1000 + 80;
 /**
  * 三行、按列往右排。列宽按容器等分，视口里仍是整数列，不露下一列一条缝。
  * 减掉的是列间 gap-3（0.75rem）总宽：(列数 - 1) × 0.75rem。
+ *
+ * 行数、吸附 `3n+1`、裁尾巴必须是同一个数，改一处漏一处最后一列就会缺格。
  */
+const TILE_ROWS = 3;
+
 const TILE_TRACK = cn(
   "grid grid-flow-col grid-rows-3 gap-3",
   "auto-cols-[100%]",
   "md:auto-cols-[calc((100%-0.75rem)/2)]",
   "lg:auto-cols-[calc((100%-1.5rem)/3)]",
 );
+
+/** 不够一整列的尾巴藏掉，最后一列也是满的三格。不到三款就原样摆。 */
+function fillLastColumn<T>(tiles: T[]): T[] {
+  if (tiles.length < TILE_ROWS) return tiles;
+  const leftover = tiles.length % TILE_ROWS;
+  return leftover === 0 ? tiles : tiles.slice(0, -leftover);
+}
 
 /** 瓷砖左边那格封面的边长，和它 className 上的 h-28 w-28 是同一个数。 */
 const COVER_PX = 112;
@@ -474,7 +485,7 @@ export function PlaystationRow({
     fallback: nowFallback,
   });
 
-  const tiles = buildTiles(list.data, presence.data, titles ?? []);
+  const tiles = fillLastColumn(buildTiles(list.data, presence.data, titles ?? []));
   const reduced = useReducedMotion();
   const scrollerRef = useRef<HTMLDivElement>(null);
   const liveTitleId = tiles[0]?.live ? tiles[0].titleId : null;
@@ -547,9 +558,10 @@ export function PlaystationRow({
    * 也跟着排在它后面：同一次提交里两条都要跑时（正在玩的那款恰好也换了）
    * 以这条为准，用户刚点的东西优先。
    *
-   * 认不到目标瓷砖就当场放弃，不挂起也不重试：tiles 是照着全量列表铺的，手上
-   * 这份就是完整清单，这一趟找不到下一趟也不会多出来。放弃也不提示 —— 点的是
-   * 「这杯在哪」，没有就是没有（上报屏蔽名单滤掉了，或压根不在最近游玩列表里）。
+   * 认不到目标瓷砖就当场放弃，不挂起也不重试：手上这份就是要展示的清单
+   * （不够一列的尾巴已经裁掉），这一趟找不到下一趟也不会多出来。放弃也不提示
+   * —— 点的是「这杯在哪」，没有就是没有（上报屏蔽名单滤掉了，落在被裁的尾巴
+   * 上，或压根不在最近游玩列表里）。
    *
    * 状态在渲染期改，滚轨道和销账留给下面那个 effect。每一处 setState 都带着
    * 「重算一遍就不成立」的条件：React 会当场把这次渲染重来一遍，第二趟只是原样
