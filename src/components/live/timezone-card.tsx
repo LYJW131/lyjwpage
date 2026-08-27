@@ -46,7 +46,7 @@ function formattersFor(timezone: string): ClockFormatters {
       month: "2-digit",
       day: "2-digit",
     }),
-    weekday: new Intl.DateTimeFormat("zh-CN", {
+    weekday: new Intl.DateTimeFormat("en-US", {
       timeZone: timezone,
       weekday: "short",
     }),
@@ -264,7 +264,7 @@ export function TimezoneCard({
       <div className="flex h-full min-h-44 items-center justify-between gap-3 p-4 pl-4.5 lg:p-5 lg:gap-4">
         <div className="relative z-10 flex min-w-0 flex-col justify-center gap-1.5 sm:gap-2">
           <div className="text-xs text-muted-foreground">
-            {usingMac ? "Mac 时间" : "服务器时间"}
+            {usingMac ? "Mac Time" : "Server Time"}
           </div>
 
           {/* 大时钟数字 */}
@@ -274,7 +274,7 @@ export function TimezoneCard({
                 <time
                   className="flex items-baseline whitespace-nowrap text-3xl font-semibold leading-none tracking-[-0.03em] sm:text-4xl lg:text-5xl"
                   dateTime={new Date(now).toISOString()}
-                  aria-label={`${clock.hour} 时 ${clock.minute} 分 ${clock.second} 秒`}
+                  aria-label={`${String(clock.hour).padStart(2, "0")}:${String(clock.minute).padStart(2, "0")}:${String(clock.second).padStart(2, "0")}`}
                 >
                   <NumberFlow value={clock.hour} locales="en-US" format={TWO_DIGITS} />
                   <span className="mx-0.5 text-muted-foreground">:</span>
