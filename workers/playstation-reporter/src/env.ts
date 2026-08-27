@@ -54,7 +54,9 @@ export function language(env: Env): string {
 }
 
 function trimSlash(url: string): string {
-  return url.replace(/\/+$/, "");
+  let end = url.length;
+  while (end > 0 && url[end - 1] === "/") end -= 1;
+  return url.slice(0, end);
 }
 
 export function ingestUrl(env: Env): string {
