@@ -16,7 +16,11 @@ export const site = {
   repo: "https://github.com/LYJW131/lyjwpage",
   githubLogin: "LYJW131",
   github: "https://github.com/LYJW131",
-  /** 走 next/image 优化器回源，和自建歌单封面同一条路。页签图标在构建期另拉一份，见 icon.tsx */
+  /**
+   * 只剩回退用途：卡片上那张头像正常走构建期内联的 data URI（见
+   * lib/github-avatar-icon 的 githubAvatarDataUri），拉不到才用这个 URL
+   * 过 next/image 优化器回源。页签图标又是另一份，见 icon.tsx。
+   */
   githubAvatar: "https://avatars.githubusercontent.com/LYJW131?s=192",
   email: "admin@lyjw.me",
 

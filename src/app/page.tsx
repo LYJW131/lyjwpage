@@ -9,6 +9,7 @@ import { TimezoneCard } from "@/components/live/timezone-card";
 import { VibeCodingCard } from "@/components/live/vibecoding-card";
 import { WatchingRow } from "@/components/live/watching-card";
 import { Section } from "@/components/ui/section";
+import { githubAvatarDataUri } from "@/lib/github-avatar-icon";
 import {
   cachedActivity,
   cachedServer,
@@ -55,6 +56,7 @@ export default async function Home() {
     playingNow,
     trophies,
     githubChart,
+    avatarDataUri,
   ] = await Promise.all([
     cachedDesktop(),
     cachedActivity(),
@@ -72,6 +74,8 @@ export default async function Home() {
     cachedPlayingNow(),
     cachedTrophiesSummary(),
     cachedGithubChart(),
+    // 不是状态数据，是构建期就定死的那张头像 —— 一起 await 免得多排一轮
+    githubAvatarDataUri(),
   ]);
 
   return (
@@ -82,7 +86,11 @@ export default async function Home() {
         <div className="mx-auto my-3.5 w-[calc(100%-2rem)] max-w-5xl sm:my-4">
           <Section id="live" className="p-0 sm:p-0">
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <ContactCard chartFallback={githubChart} yearFallback={vibeCodingYear} />
+              <ContactCard
+                avatarDataUri={avatarDataUri}
+                chartFallback={githubChart}
+                yearFallback={vibeCodingYear}
+              />
               <TimezoneCard fallback={timezone} />
               <LiveMediaPair
                 chargerFallback={charger}

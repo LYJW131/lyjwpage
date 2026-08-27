@@ -55,7 +55,9 @@ const nextConfig: NextConfig = {
      * 自建歌单封面：Apple blobstore 上的原图（实测 274KB PNG，没有 {w}x{h}），
      * 页面上那格只有 80px。host 用通配是因为散在 store-030 ~ store-037。
      *
-     * GitHub 头像：avatars 给的是整图 JPEG，卡片也是 80px，同样过优化器缩。
+     * GitHub 头像：**只作回退**。主路径是构建期把它缩到 128px webp、内联成
+     * data URI 焊进首屏 HTML（见 lib/github-avatar-icon），页面顶部那张脸不该
+     * 等第二趟网络请求。构建时拉不到源图才落到这条上，过优化器缩整图 JPEG。
      *
      * PlayStation 头像：psn-rsc 只有 _s(50) / _m(160) / _l(240) / _xl(440) 这一档
      * 路径后缀，提要里那格 40px、3× 要 120，够得着的最小一档是 160px 的 PNG（52KB），

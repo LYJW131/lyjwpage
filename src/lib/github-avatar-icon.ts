@@ -31,6 +31,51 @@ async function githubAvatarSource(buildId: string): Promise<Uint8Array> {
   return new Uint8Array(await res.arrayBuffer());
 }
 
+/**
+ * 卡片上那张头像的展示尺寸 ×2。
+ *
+ * contact-card 的容器是 `size-14` / `lg:size-16`，`sizes` 也只声明到 64px，
+ * 2× 就是 128 —— 比源图的 256 小，缩得动。改组件尺寸时这个数要跟着改。
+ */
+const CARD_PX = 128;
+
+/**
+ * 首屏那张头像，内联成 data URI 焊进 HTML。
+ *
+ * 图标那两路是外部请求，晚一点到没人看得见；卡片上这张在页面顶部，走
+ * `/_next/image` 意味着「HTML 先到、头像后到」，顶部空一格。内联掉这一跳。
+ *
+ * 自己也带 `use cache`：首页是预渲染的静态壳，但每次上报按 tag 失效后会在
+ * 服务端重新生成一遍，不缓存的话每轮都要重跑一次 sharp。
+ *
+ * 选 webp 不选 png：base64 会把体积再放大三分之一，这份要进每一份 HTML。
+ *
+ * 拉不到就返回 null，**不能**学 `githubAvatarPng` 回退成深色方块 —— 那是页面
+ * 顶部可见的一张脸，糊成色块比慢一点糟得多。调用方拿到 null 回退到远端 URL，
+ * 最坏情况等于内联之前的行为。null 会跟着 `cacheLife("max")` 一起冻到下次部署：
+ * 这是有意的，改成抛出去、在缓存外面接，等于每轮重新生成都再赌一次 8 秒超时。
+ */
+export async function githubAvatarDataUri(): Promise<string | null> {
+  "use cache";
+  cacheLife("max");
+
+  const buildId = process.env.BUILD_TIME ?? process.env.COMMIT_SHA ?? "";
+  try {
+    const source = await githubAvatarSource(buildId);
+    const webp = await sharp(source)
+      .resize(CARD_PX, CARD_PX, { fit: "cover" })
+      .webp()
+      .toBuffer();
+    return `data:image/webp;base64,${webp.toString("base64")}`;
+  } catch (error) {
+    console.error(
+      "[github-avatar] 内联失败，回退远端",
+      error instanceof Error ? error.message : String(error),
+    );
+    return null;
+  }
+}
+
 export async function githubAvatarPng(px: number): Promise<Uint8Array> {
   const buildId = process.env.BUILD_TIME ?? process.env.COMMIT_SHA ?? "";
   try {
