@@ -251,6 +251,11 @@ export function HeaderDesktop({
                   height={28}
                   className="size-7 object-contain"
                   unoptimized
+                  // 内联那帧同步解码，别让 async 的调度把它滑过首帧空一下；
+                  // 理由同 contact-card 的头像，远端分支维持 async
+                  decoding={
+                    iconDataUri && desktop.iconUrl === ssrIconUrl ? "sync" : "async"
+                  }
                 />
               ) : (
                 <span className="text-xs text-muted-foreground">⌘</span>

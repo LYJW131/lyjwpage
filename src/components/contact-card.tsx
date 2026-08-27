@@ -57,6 +57,14 @@ export function ContactCard({
                 fill
                 sizes="(min-width: 1024px) 64px, 56px"
                 className="object-cover transition-transform duration-500 group-hover:scale-[1.04]"
+                /*
+                 * 内联那份必须同步解码：默认的 decoding="async" 允许浏览器先出
+                 * 这一帧、解码完再补画，几 KB 的 data URI 也会因此晚一两帧 ——
+                 * 肉眼就是头像格闪一下灰底。字节都在 HTML 里了，解码是微秒级，
+                 * sync 让它和首帧一起画。回退的远端那条维持 async，网络图没有
+                 * 「和首帧一起画」可言，同步解码只会白阻塞渲染。
+                 */
+                decoding={avatarDataUri ? "sync" : "async"}
               />
             </a>
             <div className="min-w-0">
