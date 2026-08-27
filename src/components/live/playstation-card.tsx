@@ -383,8 +383,12 @@ function prioritizeTiles(tiles: Tile[]): Tile[] {
       const bRank = tilePriority(b.tile);
       if (aRank !== bRank) return aRank - bRank;
       if (aRank === 1) {
-        const duration = (b.tile.playDurationMs ?? 0) - (a.tile.playDurationMs ?? 0);
-        if (duration !== 0) return duration;
+        const aMs = a.tile.playDurationMs;
+        const bMs = b.tile.playDurationMs;
+        // 缺时长 ≠ 测得 0（PT0S）。没有时长的垫后。
+        if (aMs == null && bMs != null) return 1;
+        if (bMs == null && aMs != null) return -1;
+        if (aMs != null && bMs != null && aMs !== bMs) return bMs - aMs;
       }
       return a.index - b.index;
     })
