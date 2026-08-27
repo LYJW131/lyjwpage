@@ -6,6 +6,7 @@ import {
   PLAYSTATION_IMAGE_SCALE,
   playstationImage,
 } from "@/lib/playstation-image";
+import type { PlaystationPresenceKind } from "@/lib/playstation-presence";
 import { site } from "@/lib/site";
 import type {
   StatusResponse,
@@ -14,6 +15,12 @@ import type {
   TrophyUnlock,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
+
+const PRESENCE_DOT: Record<PlaystationPresenceKind, { className: string; label: string }> = {
+  online: { className: "bg-live", label: "在线" },
+  busy: { className: "bg-live-idle", label: "忙碌" },
+  offline: { className: "bg-live-off", label: "离线" },
+};
 
 const TYPES: TrophyType[] = ["platinum", "gold", "silver", "bronze"];
 
@@ -49,17 +56,17 @@ function Count({ type, value }: { type: TrophyType; value: number }) {
 export function TrophyTeaser({
   fallback,
   embedded = false,
-  online = false,
+  presence = null,
   onRecentClick,
 }: {
   fallback: StatusResponse<TrophiesSummaryPayload>;
   /** 嵌在 PlayStation 整块里：不再自己套一张纸卡片，也不重复「陈列室」。 */
   embedded?: boolean;
   /**
-   * PlayStation 此刻在线。只在确认在线时画头像右下那颗绿点；
-   * 离线和遥测断流都不画 —— 断流是不知道，不是下线。
+   * PlayStation 此刻：在线绿、忙碌黄、离线灰。
+   * `null` 是遥测断流 —— 不知道，不是离线，所以不画。
    */
-  online?: boolean;
+  presence?: PlaystationPresenceKind | null;
   /**
    * 点「最近解锁」。函数 prop 过不了服务端边界，所以给它的那层必须是
    * 客户端组件（playstation-panel）。
@@ -123,12 +130,15 @@ export function TrophyTeaser({
             ) : (
               <TrophyMetal kind="level" size="md" className="h-8 w-8" />
             )}
-            {online ? (
+            {presence ? (
               <span
-                className="absolute right-0 bottom-0 z-10 size-2.5 rounded-full bg-live ring-2 ring-surface"
-                title="在线"
+                className={cn(
+                  "absolute right-0 bottom-0 z-10 size-2.5 rounded-full ring-2 ring-surface",
+                  PRESENCE_DOT[presence].className,
+                )}
+                title={PRESENCE_DOT[presence].label}
                 role="status"
-                aria-label="在线"
+                aria-label={PRESENCE_DOT[presence].label}
               />
             ) : null}
           </div>

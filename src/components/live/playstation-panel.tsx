@@ -12,6 +12,7 @@ import { useStatus } from "@/hooks/use-status";
 import { playstationStaleMs } from "@/lib/freshness";
 import { LIST_DURATION } from "@/lib/motion";
 import { NOW_PLAYING_PATH } from "@/lib/paths";
+import { playstationPresenceKind } from "@/lib/playstation-presence";
 import type {
   PlaystationPlayingPayload,
   PlaystationPresencePayload,
@@ -27,7 +28,7 @@ const NOW_REFRESH_MS = 60_000;
  *
  * 只为一件事存在：点提要里的「最近解锁」要展开下面对应的那块瓷砖，而函数 prop
  * 过不了服务端边界 —— 递 onRecentClick 的那一层必须是客户端组件。数据仍旧由外面
- * 的服务端组件取好往下传；这里只跟 playing/now 再订一次，把头像那颗在线绿点
+ * 的服务端组件取好往下传；这里只跟 playing/now 再订一次，把头像那颗状态点
  * 接上同一份 SWR 缓存（和下面瓷砖行去重）。
  */
 export function PlaystationPanel({
@@ -51,19 +52,19 @@ export function PlaystationPanel({
   const mountedAt = useMountedAt();
   const presenceStale = useStale(presence.data?.observedAt, playstationStaleMs());
   /**
-   * 首帧没有访客钟，不能拿服务端冻着的 online 当真 —— 那份没过断流判定，
-   * 刷新时会先绿一下再被 /playing/now 清掉。挂载之后用自己的钟判 observedAt，
-   * 和端点同一扇窗口；窗口到点 useStale 会自己翻。
+   * 首帧没有访客钟，不能拿服务端冻着的 presence 当真 —— 那份没过断流判定。
+   * 挂载之后用自己的钟判 observedAt，和端点同一扇窗口；窗口到点 useStale 会自己翻。
+   * 断流是不知道，不画点；离线是 availability: unavailable，画灰点。
    */
-  const online =
-    Boolean(mountedAt) && presence.data?.online === true && !presenceStale;
+  const presenceKind =
+    Boolean(mountedAt) && !presenceStale ? playstationPresenceKind(presence.data) : null;
 
   return (
     <>
       <TrophyTeaser
         fallback={trophies}
         embedded
-        online={online}
+        presence={presenceKind}
         onRecentClick={(unlock) => {
           setJump({
             npCommunicationId: unlock.npCommunicationId,
