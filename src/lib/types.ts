@@ -57,6 +57,10 @@ export type PlaystationNowPlaying = {
 export type PlaystationPresencePayload = {
   observedAt: number;
   online: boolean;
+  /**
+   * PSN 上游枚举。已见 `availableToPlay` / `doNotDisturb` / `unavailable`，
+   * 头像那颗点按这三档画绿 / 黄 / 灰。缺席不在入库层猜。
+   */
   availability: string | null;
   platform: string | null;
   lastOnlineAt: number | null;

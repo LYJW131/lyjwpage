@@ -29,6 +29,7 @@ export type NowPlaying = {
 export type PresenceReport = {
   observedAt: number;
   online: boolean;
+  /** 上游枚举。已见 availableToPlay / doNotDisturb / unavailable。 */
   availability: string | null;
   platform: string | null;
   lastOnlineAt: number | null;
