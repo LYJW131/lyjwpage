@@ -9,7 +9,10 @@ import { workerUrl } from "@/lib/worker-url";
 export const ONLINE_COUNT_KEY = "worker:online-count";
 export const ONLINE_CONNECTED_KEY = "worker:online-connected";
 
-/** 浏览器连的端点。那个 Worker 还开着 /count，但站点只用长连接这条 */
+/**
+ * 浏览器连的端点。那个 Worker 的 /count 站点不用（只走长连接这条），但它不是
+ * 闲置口 —— playstation-reporter 每分钟读它定上报节奏，见那边的 README。
+ */
 const WS_PATH = "/ws";
 
 /**
