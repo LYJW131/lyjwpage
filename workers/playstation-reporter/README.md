@@ -1,6 +1,7 @@
 # playstation-reporter
 
-Cloudflare Worker 上的 PSN 上报器：每 15 分钟一轮 cron。presence 每轮都推（站点靠它的
+Cloudflare Worker 上的 PSN 上报器：cron 每分钟响一次，前面挡一道门 —— 站点有人在看
+就 60 秒一轮完整 tick，没人看就 15 分钟一轮。presence 每轮都推（站点靠它的
 `observedAt` 判上报器死活）；playedGames 和奖杯只在内容变化时才带上。闲着不玩的时候
 游玩列表和购买库走 KV 缓存，奖杯只打总览那一下 —— 等级和杯数没变就不再翻目录、
 不重爬明细。真有解锁时只重拉 `lastUpdated` 变了的那几款，定义（名字 / 分组）还能
@@ -12,11 +13,41 @@ Cloudflare Worker 上的 PSN 上报器：每 15 分钟一轮 cron。presence 每
 
 ## 调度与状态
 
-只有一个 Cron Trigger：`*/15 * * * *`。`wrangler dev` 不会自己响这根 cron，
-本地要刷新就 `GET /tick`。每轮顺序执行：
+只有一个 Cron Trigger：`* * * * *`。**每分钟响一次不等于每分钟跑一轮** —— 每一响
+先过一道门，门开了才是一轮完整 tick：
+
+- 读 KV 里 `meta:lastFullTick`（上一轮完整 tick 的**开始**时刻）；
+- 攒够 14.5 分钟就直接放行，连人数都不问 —— 闲时节奏不该依赖另一个 worker 可不可达；
+- 不到 55 秒直接挡回去；
+- 中间那段才去问 `online-counter` 的 `GET /count`（超时 2.5 秒）：有人在线就放行。
+
+于是有人看站点时是 60 秒一轮，presence 有分钟级新鲜度；没人看时每分钟的 cron 把
+14.5 分钟这个阈值取整成 15 分钟一轮，**和从前那根十五分钟的 cron 逐轮对齐，闲时
+对 PSN 的流量一模一样**。动机就是这个：presence 的新鲜度跟着有没有观众走，没人看的
+时候一分钱不多花。
+
+门里只有那两个读操作，并且排在任何贵操作之前 —— 被挡下的那一响完全不碰 PSN、
+不碰站点。人数接口超时、非 200、返回形状不对，一律**当 0 处理**：兜底方向是单向的，
+读不到只会退回 15 分钟的基线，永远不会因为故障变快。
+
+KV 的读带最长 60 秒的边缘缓存，正好压在 55 秒这个阈值上，所以门还看一眼 isolate
+本地那份开始时刻，和 KV 那份取较晚的一枚 —— 否则相邻两响里后一响可能还读着旧值，
+把同一轮放行两次。冷起时本地那份是 0，退回纯 KV 判断。
+
+间隔算的是上一轮**开始**的时刻，不是成功的时刻。这枚时间戳在打 PSN 之前就写下，
+所以 PSN 持续故障时重试仍是十五分钟一次，不会恶化成每分钟一次；tick 被硬杀掉
+（比如 CPU 超时）也不会让门以为「上一轮还没开始过」。也正因如此它和收尾才写的
+`meta:lastTick` 是两枚，不能合并。
+
+站点侧的断流窗口（`src/lib/freshness.ts` 的 `PLAYSTATION_STALE_MS`，50 分钟）锚的是
+**闲时**那一档：三轮 15 分钟加缓存余量。改闲时间隔要同步改那边，改 cron 本身不用。
+
+`wrangler dev` 不会自己响这根 cron，本地要刷新就 `GET /tick`（不走门）。每轮顺序执行：
 
 1. presence 和奖杯总览并行；
-2. 游玩列表：正在玩，或 KV 里那份超过 1 小时，才去拉；否则用缓存。奖杯没变时只翻
+2. 游玩列表走 TTL：在玩 15 分钟、闲着 1 小时，过期才去拉，否则用缓存。在玩那档
+   刻意等于闲时的完整 tick 节奏 —— 时长和游玩次数没有分钟级精度可言，快节奏下
+   不该每分钟翻一遍分页列表。奖杯没变时只翻
    最近窗口（`PLAYED_GAMES_LIMIT`）盖进缓存，不必为时长把整库翻完。带
    `Accept-Language`；
 3. 购买库（PS4 / PS5）同样走缓存，6 小时才翻一遍，和游玩列表并行。把 `service` /
@@ -28,7 +59,7 @@ Cloudflare Worker 上的 PSN 上报器：每 15 分钟一轮 cron。presence 每
    `trophies:last` 合并进来。然后做 `titleId` 对齐（`getUserTrophiesForSpecificTitle`，
    PPSA… → NPWR…）：已经对着的 SKU 不再打，只补还没映射的；万一新 NPWR 挂在旧
    SKU 上才整表再对一次。对齐必须看见完整游玩列表，否则屏蔽的 titleId 对不上。
-   这一轮失败不写指纹，15 分钟后相对上次成功交付重算 dirty 再来 —— 不拿两个时点的
+   这一轮失败不写指纹，下一轮相对上次成功交付重算 dirty 再来 —— 不拿两个时点的
    半份明细拼假目录。分页之间不再固定 sleep，上游 429 才退避重试；
 5. 按 `PLAYSTATION_HIDDEN_TITLE_IDS` 去掉屏蔽的 titleId（不上报），再按
    `PLAYED_GAMES_LIMIT`（默认 100）切开，接上未开档预购；
@@ -42,11 +73,11 @@ Cloudflare Worker 上的 PSN 上报器：每 15 分钟一轮 cron。presence 每
 
 上游报错也不当数据用：psn-api 2.18.1 有一半取数函数遇 429 / 401 既不抛也不看 HTTP
 状态码，原样把 `{error:{…}}` 交回来，所以 Worker 对这些调用自己断言一遍；分页端点
-另外拿 `totalItemCount` 对一遍条数。被限流的那一轮就干净地失败：指纹不写，15 分钟后
-重试，而不是把空目录当权威数据交上去。
+另外拿 `totalItemCount` 对一遍条数。被限流的那一轮就干净地失败：指纹不写，下一轮
+重试，而不是把空目录当权威数据交上去。门那枚时间戳在开跑前就写，不管这一轮成不成，
+所以持续失败时的重试节奏和平时的节奏是同一个，不会因为失败而变密。
 
-没有 30 秒 / 5 分钟双节奏，也没有定时兜底整推。状态全部放在绑定 `STATE` 的 Workers
-KV：
+没有定时兜底整推。状态全部放在绑定 `STATE` 的 Workers KV：
 
 | KV key | 内容 |
 | --- | --- |
@@ -54,9 +85,10 @@ KV：
 | `fp:playedGames` | played games 内容指纹 |
 | `fp:trophies` | 奖杯总览指纹（等级 + 各标题完成度 / 定义杯数 / lastUpdated），并入屏蔽名单和两枚口径哨兵：口径一改指纹就变 |
 | `trophies:last` | 上次成功交付的整份目录 + 索引快照，增量重爬的对照面；站点仍然整份替换 |
-| `cache:playedGames` | 全份游玩列表，闲置时 1 小时内不重拉 |
+| `cache:playedGames` | 全份游玩列表，在玩时 15 分钟、闲置时 1 小时内不重拉 |
 | `cache:library` | 购买库，6 小时内不重拉 |
-| `meta:lastTick` | 最近一轮时间、成功与否、playedGames / 奖杯有没有变、dry-run 状态 |
+| `meta:lastTick` | 最近一轮时间、成功与否、playedGames / 奖杯有没有变、dry-run 状态。收尾时写 |
+| `meta:lastFullTick` | 上一轮完整 tick 的开始时刻（纯数字），门算间隔用。开跑前写 |
 
 presence 没有指纹：每轮必发，无所谓变没变。
 
@@ -64,9 +96,10 @@ presence 没有指纹：每轮必发，无所谓变没变。
 `accessTokenExpiresAt`、`refreshTokenIssuedAt`、`refreshTokenExpiresAt`；四个时间都是
 epoch 毫秒。现有文件可以原样种进 KV。
 
-Worker 的 HTTP `fetch` 是手动触发入口：`GET /tick` 把一轮 tick 完整跑一遍（该拉
-的拉、该跳过的跳过、比指纹、必要时爬奖杯并交付），把这轮的元信息和 presence、
-played games 一并返回；奖杯没变时 `trophies` 为 null。出错则回 502，带上错误和
+Worker 的 HTTP `fetch` 是手动触发入口：`GET /tick` **不走门**，把一轮 tick 完整跑一遍
+（该拉的拉、该跳过的跳过、比指纹、必要时爬奖杯并交付），把这轮的元信息和 presence、
+played games 一并返回；奖杯没变时 `trophies` 为 null。它照样刷新 `meta:lastFullTick`，
+所以手动跑完之后下一轮定时的跟着往后顺延。出错则回 502，带上错误和
 KV 里最近一轮的记录 —— 任何一封信没交付成功，这一轮都算失败。`GET /` 只回最近一轮的
 meta，不碰 PSN —— Chrome / Cursor 探调试口会打 `/json/version` 再打根路径，
 根路径上跑 tick 会把 PSN 打爆。`/favicon.ico` 同样 404。
@@ -237,6 +270,10 @@ titleId，屏蔽的游戏不上报、不占窗口；改这份名单会重推奖�
    `TELEMETRY_INGEST_SECRET`。
 
 `SITE_URL` 已经在 `wrangler.toml` 里配好，不必再动。要临时回到 dry-run 就把它注释掉。
+
+`ONLINE_COUNTER_URL` 同样配好了，填的是 online-counter worker 的**源**（路径由这边拼
+`/count`，和站点侧 `NEXT_PUBLIC_ONLINE_COUNTER_URL` 同一个形状）。注释掉它不会让上报
+停摆，只是门永远按「没人在线」走，退回 15 分钟一轮的基线节奏。
 
 本目录是独立 npm 部署单元，保留自己的 `package-lock.json`。重生成时必须在没有
 `node_modules` 的干净状态运行 `npm install --package-lock-only`，否则根工作区的 pnpm
