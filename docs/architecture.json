@@ -1,0 +1,636 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "lyjwpage 运行时架构",
+    "locale": "zh-CN",
+    "output": "docs/architecture.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/LYJW131/lyjwpage",
+      "revision": "f6109aaad66a6ece2785381e27dabcb9cdf08bce"
+    },
+    "views": [
+      {
+        "id": "ingest",
+        "label": "上报入库",
+        "focus": [
+          "vps",
+          "psn_reporter",
+          "device_hubs",
+          "lan_reporters",
+          "vercel",
+          "edgeone"
+        ],
+        "note": "各上报侧只跟一个源站说话，POST 到 /api/ingest/<来源>，站点不主动轮询上游。"
+      },
+      {
+        "id": "relay",
+        "label": "两份生产互转",
+        "focus": [
+          "vercel",
+          "edgeone",
+          "redis_vercel",
+          "redis_edgeone"
+        ],
+        "note": "收到上报的那份原样转给对端，对端写自己的 Redis、刷自己的 tag。"
+      },
+      {
+        "id": "push",
+        "label": "浏览器三条腿",
+        "focus": [
+          "vercel",
+          "edgeone",
+          "live_push",
+          "browser"
+        ],
+        "note": "SSR 首屏、SWR 轮询 /api/status/*、live-push 的 WebSocket 推送。"
+      },
+      {
+        "id": "counter",
+        "label": "在线人数反馈环",
+        "focus": [
+          "browser",
+          "online_counter",
+          "psn_reporter",
+          "lan_reporters"
+        ],
+        "note": "浏览器连上就是一个人头，上报器读 /count 在快慢两档之间切换。"
+      },
+      {
+        "id": "assets",
+        "label": "图片直传 R2",
+        "focus": [
+          "device_hubs",
+          "lan_reporters",
+          "r2"
+        ],
+        "note": "上报侧把图片字节直传 R2，站点只收 objectKey，从不经手图片本身。"
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "vps",
+      "type": "external",
+      "label": "server-reporter",
+      "sublabel": "东京落地节点 · systemd",
+      "tag": "每 30 秒",
+      "pos": [
+        130,
+        60
+      ],
+      "size": [
+        175,
+        78
+      ],
+      "sources": [
+        {
+          "path": "reporters/server-reporter/reporter.py"
+        },
+        {
+          "path": "reporters/server-reporter/server-reporter.service"
+        }
+      ]
+    },
+    {
+      "id": "psn_reporter",
+      "type": "cloud",
+      "label": "playstation-reporter",
+      "sublabel": "Worker · cron 闸门",
+      "tag": "自适应",
+      "pos": [
+        130,
+        178
+      ],
+      "size": [
+        175,
+        86
+      ],
+      "sources": [
+        {
+          "path": "workers/playstation-reporter/src/index.ts",
+          "label": "shouldTick"
+        },
+        {
+          "path": "workers/playstation-reporter/wrangler.toml"
+        }
+      ]
+    },
+    {
+      "id": "cache_warmup",
+      "type": "cloud",
+      "label": "cache-warmup",
+      "sublabel": "整点 cron · 预热首屏",
+      "pos": [
+        130,
+        304
+      ],
+      "size": [
+        175,
+        82
+      ],
+      "sources": [
+        {
+          "path": "workers/cache-warmup/src/index.ts"
+        }
+      ]
+    },
+    {
+      "id": "device_hubs",
+      "type": "external",
+      "label": "设备遥测中心",
+      "sublabel": "Mac / iPhone Telemetry Hub",
+      "tag": "事件驱动",
+      "pos": [
+        130,
+        426
+      ],
+      "size": [
+        175,
+        78
+      ],
+      "sources": [
+        {
+          "path": "src/app/api/ingest/mac/route.ts"
+        },
+        {
+          "path": "reporters/iphone-telemetry-hub/README.md"
+        }
+      ]
+    },
+    {
+      "id": "r2",
+      "type": "cloud",
+      "label": "Cloudflare R2",
+      "sublabel": "海报 / 图标 · objectKey",
+      "pos": [
+        130,
+        584
+      ],
+      "size": [
+        175,
+        78
+      ],
+      "sources": [
+        {
+          "path": "src/lib/r2-assets.ts"
+        }
+      ]
+    },
+    {
+      "id": "lan_reporters",
+      "type": "external",
+      "label": "内网上报侧",
+      "sublabel": "Emby · Apple Music · HA",
+      "tag": "NAS / HA",
+      "pos": [
+        130,
+        707
+      ],
+      "size": [
+        175,
+        86
+      ],
+      "sources": [
+        {
+          "path": "reporters/emby-reporter/README.md"
+        },
+        {
+          "path": "reporters/apple-music-reporter/src/config.ts"
+        }
+      ]
+    },
+    {
+      "id": "vercel",
+      "type": "backend",
+      "label": "lyjw.me",
+      "sublabel": "Next.js 16 · Vercel 生产",
+      "tag": "主站",
+      "pos": [
+        490,
+        265
+      ],
+      "size": [
+        215,
+        86
+      ],
+      "sources": [
+        {
+          "path": "src/lib/api.ts",
+          "label": "ingestRoute / statusRoute"
+        },
+        {
+          "path": "src/app/page.tsx",
+          "label": "首屏 SSR"
+        }
+      ]
+    },
+    {
+      "id": "edgeone",
+      "type": "backend",
+      "label": "lyjw131.com",
+      "sublabel": "Next.js 16 · EdgeOne 生产",
+      "tag": "STATUS_CACHE=false",
+      "pos": [
+        490,
+        501
+      ],
+      "size": [
+        215,
+        86
+      ],
+      "sources": [
+        {
+          "path": "src/lib/ingest-relay.ts",
+          "label": "INGEST_PEERS 转发"
+        },
+        {
+          "path": "src/lib/status-cache.ts"
+        }
+      ]
+    },
+    {
+      "id": "redis_vercel",
+      "type": "database",
+      "label": "Redis · Vercel 侧",
+      "sublabel": "ioredis · 按请求租用",
+      "pos": [
+        490,
+        60
+      ],
+      "size": [
+        215,
+        74
+      ],
+      "sources": [
+        {
+          "path": "src/lib/redis.ts"
+        }
+      ]
+    },
+    {
+      "id": "redis_edgeone",
+      "type": "database",
+      "label": "Redis · EdgeOne 侧",
+      "sublabel": "状态端点一律直读",
+      "pos": [
+        490,
+        697
+      ],
+      "size": [
+        215,
+        74
+      ],
+      "sources": [
+        {
+          "path": "src/lib/status-cache.ts",
+          "label": "STATUS_CACHE 开关"
+        }
+      ]
+    },
+    {
+      "id": "live_push",
+      "type": "messagebus",
+      "label": "live-push",
+      "sublabel": "Durable Object",
+      "pos": [
+        820,
+        405
+      ],
+      "size": [
+        170,
+        86
+      ],
+      "sources": [
+        {
+          "path": "workers/live-push/src/index.ts"
+        },
+        {
+          "path": "src/lib/live-events.ts",
+          "label": "publish()"
+        }
+      ],
+      "tag": "一份生产一个"
+    },
+    {
+      "id": "browser",
+      "type": "frontend",
+      "label": "浏览器",
+      "sublabel": "SSR · SWR · WebSocket",
+      "pos": [
+        1095,
+        350
+      ],
+      "size": [
+        175,
+        92
+      ],
+      "sources": [
+        {
+          "path": "src/hooks/use-status.ts",
+          "label": "SWR 轮询"
+        },
+        {
+          "path": "src/hooks/use-live-events.ts",
+          "label": "推送写进 SWR 缓存"
+        }
+      ]
+    },
+    {
+      "id": "edge_helpers",
+      "type": "cloud",
+      "label": "musickit-token",
+      "sublabel": "am-motion-artwork",
+      "pos": [
+        1095,
+        170
+      ],
+      "size": [
+        175,
+        88
+      ],
+      "sources": [
+        {
+          "path": "workers/musickit-token/src/index.ts"
+        },
+        {
+          "path": "workers/am-motion-artwork/src/index.ts"
+        }
+      ],
+      "tag": "浏览器直连"
+    },
+    {
+      "id": "online_counter",
+      "type": "cloud",
+      "label": "online-counter",
+      "sublabel": "Durable Object",
+      "pos": [
+        490,
+        830
+      ],
+      "size": [
+        190,
+        82
+      ],
+      "sources": [
+        {
+          "path": "workers/online-counter/src/index.ts"
+        },
+        {
+          "path": "src/hooks/use-online-count.ts"
+        }
+      ],
+      "tag": "清扫死连接"
+    }
+  ],
+  "connections": [
+    {
+      "id": "vps_in",
+      "from": "vps",
+      "to": "vercel",
+      "label": "/api/ingest/server",
+      "variant": "emphasis"
+    },
+    {
+      "id": "psn_in",
+      "from": "psn_reporter",
+      "to": "vercel",
+      "label": "/api/ingest/playstation",
+      "variant": "emphasis",
+      "labelAt": [
+        465,
+        250
+      ]
+    },
+    {
+      "id": "warm_v",
+      "from": "cache_warmup",
+      "to": "vercel",
+      "label": "整点 GET /",
+      "variant": "dashed",
+      "labelAt": [
+        350,
+        320
+      ]
+    },
+    {
+      "id": "warm_e",
+      "from": "cache_warmup",
+      "to": "edgeone",
+      "variant": "dashed"
+    },
+    {
+      "id": "dev_in",
+      "from": "device_hubs",
+      "to": "edgeone",
+      "label": "/api/ingest/mac · /iphone",
+      "variant": "emphasis",
+      "labelDx": 85,
+      "labelDy": -25
+    },
+    {
+      "id": "lan_in",
+      "from": "lan_reporters",
+      "to": "edgeone",
+      "label": "/api/ingest/emby 等三路",
+      "variant": "emphasis"
+    },
+    {
+      "id": "dev_r2",
+      "from": "device_hubs",
+      "to": "r2",
+      "label": "字节直传",
+      "variant": "dashed",
+      "labelAt": [
+        218,
+        544
+      ]
+    },
+    {
+      "id": "lan_r2",
+      "from": "lan_reporters",
+      "to": "r2",
+      "variant": "dashed"
+    },
+    {
+      "id": "relay_down",
+      "from": "vercel",
+      "to": "edgeone",
+      "label": "原样转发",
+      "variant": "security",
+      "labelAt": [
+        530,
+        400
+      ]
+    },
+    {
+      "id": "relay_up",
+      "from": "edgeone",
+      "to": "vercel",
+      "label": "单跳防环",
+      "variant": "security",
+      "labelAt": [
+        655,
+        460
+      ]
+    },
+    {
+      "id": "v_redis",
+      "from": "vercel",
+      "to": "redis_vercel",
+      "label": "落库 · 刷 tag"
+    },
+    {
+      "id": "e_redis",
+      "from": "edgeone",
+      "to": "redis_edgeone",
+      "label": "落库 · 直读",
+      "labelAt": [
+        535,
+        640
+      ]
+    },
+    {
+      "id": "v_push",
+      "from": "vercel",
+      "to": "live_push",
+      "label": "POST /publish",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "v_browser",
+      "from": "vercel",
+      "to": "browser",
+      "label": "SSR 首屏 + SWR 轮询",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "e_push",
+      "from": "edgeone",
+      "to": "live_push",
+      "label": "各推各的",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "e_browser",
+      "from": "edgeone",
+      "to": "browser",
+      "label": "同一套 /api/status/*",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "left"
+    },
+    {
+      "id": "push_browser",
+      "from": "live_push",
+      "to": "browser",
+      "label": "wss 推事件",
+      "variant": "emphasis",
+      "labelAt": [
+        1030,
+        448
+      ]
+    },
+    {
+      "id": "helpers_browser",
+      "from": "edge_helpers",
+      "to": "browser",
+      "label": "令牌 / 封面",
+      "variant": "dashed",
+      "labelAt": [
+        1183,
+        304
+      ]
+    },
+    {
+      "id": "browser_count",
+      "from": "browser",
+      "to": "online_counter",
+      "label": "wss /ws 计人头",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "right",
+      "via": [
+        [
+          1182.5,
+          871
+        ]
+      ]
+    },
+    {
+      "id": "count_psn",
+      "from": "online_counter",
+      "to": "psn_reporter",
+      "label": "GET /count 调频",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "left",
+      "via": [
+        [
+          585,
+          957
+        ],
+        [
+          50,
+          957
+        ],
+        [
+          50,
+          221
+        ]
+      ]
+    },
+    {
+      "id": "count_lan",
+      "from": "online_counter",
+      "to": "lan_reporters",
+      "variant": "dashed",
+      "fromSide": "left",
+      "toSide": "left",
+      "via": [
+        [
+          85,
+          871
+        ],
+        [
+          85,
+          750
+        ]
+      ]
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "两份生产",
+      "items": [
+        "lyjw.me（Vercel）和 lyjw131.com（EdgeOne）各有各的 Redis 和 live-push Worker",
+        "收到上报的那份把原始请求转给对端，x-ingest-relay 保证只转一跳；另有 dev.lyjw.me 预览部署未画",
+        "EdgeOne 那份填 STATUS_CACHE=false，状态端点一律直读 Redis"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "上报侧的节奏",
+      "items": [
+        "图上的源站归属取自各上报器文档里的默认 SITE_URL，MacTelemetryHub 不在本仓库内",
+        "server-reporter 每 30 秒必发一次，那份快照本身就是心跳",
+        "playstation-reporter 每分钟 cron 只是闸门，没人在线时退回约 15 分钟一轮"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "图上没画的几条",
+      "items": [
+        "浏览器按各自部署的 R2_PUBLIC_BASE_URL 直接取图，站点只做 HeadObject 存在性检查",
+        "站点唯一主动出网的一路是 GitHub 贡献热力图，走 api.github.com/graphql",
+        "musickit-token 签的是每位访客的公开令牌，和 /api/ingest/apple-music 的 GET 凭据不共用一条路径"
+      ]
+    }
+  ]
+}
