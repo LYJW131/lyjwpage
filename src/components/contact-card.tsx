@@ -20,9 +20,12 @@ import type {
 import { cn } from "@/lib/utils";
 
 export function ContactCard({
+  avatarDataUri,
   chartFallback,
   yearFallback,
 }: {
+  /** 构建期内联好的头像，见 lib/github-avatar-icon；拉不到是 null，回退远端 URL */
+  avatarDataUri: string | null;
   chartFallback: StatusResponse<GithubChartPayload>;
   yearFallback: StatusResponse<VibeCodingYearPayload>;
 }) {
@@ -39,8 +42,17 @@ export function ContactCard({
               rel="noreferrer noopener"
               className="group relative size-14 shrink-0 overflow-hidden rounded-lg border border-line bg-muted lg:size-16"
             >
+              {/*
+                内联和回退共用一个 <Image>，呈现逐像素一致。
+                next/image 看到 `data:` 开头的 src 会自动按 unoptimized 处理、
+                并且不挂 lazy（见 shared/lib/get-img-props），AGENTS.md 要的
+                「静态图标不进管道」由此满足。
+                别再补一个写死的 `unoptimized`：那个 prop 管的是整个 <Image>，
+                会把回退那条远端 URL 也踢出管道，变成直接吐 192px 整图 JPEG。
+                回退要过管道，所以 next.config 的 avatars 那条不能删。
+              */}
               <Image
-                src={site.githubAvatar}
+                src={avatarDataUri ?? site.githubAvatar}
                 alt={`${site.githubLogin} 的 GitHub 头像`}
                 fill
                 sizes="(min-width: 1024px) 64px, 56px"
