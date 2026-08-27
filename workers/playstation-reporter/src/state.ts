@@ -10,9 +10,32 @@ export const TROPHY_CATALOG_KEY = "trophies:last";
 export const PLAYED_GAMES_CACHE_KEY = "cache:playedGames";
 export const LIBRARY_CACHE_KEY = "cache:library";
 export const TICK_META_KEY = "meta:lastTick";
+/**
+ * 上一轮完整 tick 的**开始**时刻，门用它算间隔。
+ *
+ * 和 `meta:lastTick` 分开是因为那份只在 tick 收尾时写：tick 被 CPU 超时之类
+ * 硬杀掉就永远不会落地，门读到的还是上上轮，于是每分钟重试一次。这个键在跑
+ * PSN 之前就写，所以记的是「尝试过」而不是「成功过」—— 上游持续故障时的重试
+ * 节奏跟着基线走，和从前的 15 分钟一轮一样。
+ */
+export const FULL_TICK_KEY = "meta:lastFullTick";
 
-/** 没在玩时游玩列表最多这么旧才去翻；正在玩的每轮都刷新。 */
-export const PLAYED_GAMES_TTL_MS = 60 * 60_000;
+/** 没在玩时游玩列表最多这么旧才去翻。 */
+export const PLAYED_GAMES_IDLE_TTL_MS = 60 * 60_000;
+/**
+ * 在玩时的游玩列表 TTL，对应闲时那档 15 分钟的完整 tick 节奏。
+ *
+ * 从前是「在玩就每轮刷」，那时一轮就是 15 分钟，两者等价。cron 提到每分钟、
+ * 有人看站点时 60 秒一轮之后，「每轮刷」会变成每分钟翻一遍分页列表 ——
+ * 时长和游玩次数没有分钟级精度可言。
+ *
+ * 写 14.5 而不是 15，和门的阈值是同一个取整余量，但成因不同：`fetchedAt` 盖的是
+ * 列表**拉完**的时刻，门锚的却是 tick **开始**的时刻，所以下一轮查新鲜度时算出来的
+ * 年龄是「15 分钟 − 上一轮翻列表花的时间」，卡 15 整会稳定地差一点点、把刷新推到
+ * 再下一轮去（在玩且没人看时就成了 30 分钟一刷）。让一档 30 秒的余量把它兜住：
+ * 快慢两种节奏下第一个够格的都正好是第 15 分钟那一轮。
+ */
+export const PLAYED_GAMES_PLAYING_TTL_MS = 14.5 * 60_000;
 /** 购买库几乎不动，六小时够标一次预购 / Plus。 */
 export const LIBRARY_TTL_MS = 6 * 60 * 60_000;
 
@@ -163,6 +186,17 @@ export async function writePlayedGamesCache(state: KVNamespace, cache: PlayedGam
 
 export async function writeLibraryCache(state: KVNamespace, cache: LibraryCache): Promise<void> {
   await state.put(LIBRARY_CACHE_KEY, JSON.stringify(cache));
+}
+
+/** 读不到、读到脏值都当 0：门会认为「从没跑过」，于是立刻放行一轮完整 tick。 */
+export async function readFullTickStartedAt(state: KVNamespace): Promise<number> {
+  const raw = await state.get(FULL_TICK_KEY);
+  const value = Number(raw);
+  return Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+export async function writeFullTickStartedAt(state: KVNamespace, startedAt: number): Promise<void> {
+  await state.put(FULL_TICK_KEY, String(startedAt));
 }
 
 export function pastHalfLife(issuedAt: number, expiresAt: number, now = Date.now()): boolean {

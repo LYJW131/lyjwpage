@@ -2,6 +2,7 @@ import { AuthSession } from "./auth";
 import {
   hiddenTitleIds,
   isDryRun,
+  onlineCountUrl,
   playedGamesLimit,
   titleIdsHidden,
   withoutHiddenTitleIds,
@@ -24,7 +25,8 @@ import {
   LIBRARY_TTL_MS,
   PLAYED_GAMES_CACHE_KEY,
   PLAYED_GAMES_FINGERPRINT_KEY,
-  PLAYED_GAMES_TTL_MS,
+  PLAYED_GAMES_IDLE_TTL_MS,
+  PLAYED_GAMES_PLAYING_TTL_MS,
   TICK_META_KEY,
   TROPHIES_FINGERPRINT_KEY,
   TROPHY_CATALOG_KEY,
@@ -32,6 +34,8 @@ import {
   asLibraryCache,
   asPlayedGamesCache,
   asTrophyCatalog,
+  readFullTickStartedAt,
+  writeFullTickStartedAt,
   writeLibraryCache,
   writePlayedGamesCache,
   writeTrophyCatalog,
@@ -184,6 +188,70 @@ type TickResult = {
   trophies: TrophiesReport | null;
 };
 
+/**
+ * 有人看站点时的完整 tick 间隔。cron 每分钟一响，卡 60 秒整的话早响半秒的那一轮
+ * 会被门挡掉、实际退化成两分钟一轮，所以留 5 秒余量。
+ */
+const LIVE_TICK_INTERVAL_MS = 55_000;
+/**
+ * 没人看时的完整 tick 间隔。同样留取整余量：每分钟的 cron 把它凑成 15 分钟整
+ * 一轮，和从前那根十五分钟的 cron 一模一样，闲时对 PSN 的流量不变。
+ *
+ * 站点 `src/lib/freshness.ts` 的 `PLAYSTATION_STALE_MS`（50 分钟 = 三轮 + 余量）
+ * 锚的就是这个数。要动它，先去改那边。
+ */
+const IDLE_TICK_INTERVAL_MS = 14.5 * 60_000;
+/** 人数读不回来不该拖着 tick 等，超时就当没人在线。 */
+const ONLINE_COUNT_TIMEOUT_MS = 2_500;
+
+/**
+ * 站点此刻的在线人数。超时、非 200、形状不对，一律当 0。
+ *
+ * 这个兜底方向是单向的：读不到只会让节奏退回基线，永远不会因为故障变快 ——
+ * 认错方向的代价是每分钟撞一次 PSN。
+ */
+async function onlineCount(env: Env): Promise<number> {
+  const url = onlineCountUrl(env);
+  if (!url) return 0;
+  try {
+    const response = await fetch(url, { signal: AbortSignal.timeout(ONLINE_COUNT_TIMEOUT_MS) });
+    if (!response.ok) throw new Error(`返回 ${response.status}`);
+    const body = (await response.json()) as { online?: unknown } | null;
+    const value = Number(body?.online);
+    return Number.isFinite(value) && value > 0 ? Math.trunc(value) : 0;
+  } catch (error) {
+    console.warn(JSON.stringify({ event: "playstation-online-count", error: explain(error) }));
+    return 0;
+  }
+}
+
+/**
+ * 上一轮完整 tick 的开始时刻，isolate 本地这一份。
+ *
+ * KV 的读有最长 60 秒的边缘缓存，而门的阈值正好在这个量级上：相邻两响里后一响
+ * 可能还拿着写入之前的旧值，把同一轮放行两次。cron 每分钟一响，相邻两响多半落在
+ * 同一个 isolate 上，所以和 KV 那份取较晚的一枚就能挡掉这种重复。两份记的都是
+ * 真实发生过的开始时刻，取晚的不会误挡；isolate 冷起时它是 0，退回纯 KV 判断。
+ */
+let lastFullTickAt = 0;
+
+/**
+ * cron 每分钟一响，这道门决定这一响要不要真跑一轮。
+ *
+ * 门里只有两个读操作（KV 一枚时间戳 + 在线人数），都排在任何贵操作之前：被挡下
+ * 的那一轮完全不碰 PSN、不碰站点。间隔算的是**上一轮开始**的时刻而不是成功的
+ * 时刻 —— 否则 PSN 持续故障时，重试会从十五分钟一次恶化成每分钟一次。
+ */
+async function shouldTick(env: Env): Promise<{ run: boolean; sinceMs: number; online: number | null }> {
+  const lastAt = Math.max(await readFullTickStartedAt(env.STATE), lastFullTickAt);
+  const sinceMs = lastAt > 0 ? Date.now() - lastAt : Number.POSITIVE_INFINITY;
+  // 攒够基线间隔就必跑，不必再问人数：闲时节奏不该依赖另一个 worker 可不可达
+  if (sinceMs >= IDLE_TICK_INTERVAL_MS) return { run: true, sinceMs, online: null };
+  if (sinceMs < LIVE_TICK_INTERVAL_MS) return { run: false, sinceMs, online: null };
+  const online = await onlineCount(env);
+  return { run: online > 0, sinceMs, online };
+}
+
 let inflight: Promise<TickResult> | null = null;
 
 /** 同一 isolate 里只跑一轮。本地 8788 会被 Chrome 探 /json/version 再连打 GET /。 */
@@ -196,6 +264,8 @@ function tickOnce(env: Env): Promise<TickResult> {
 
 async function tick(env: Env): Promise<TickResult> {
   const startedAt = Date.now();
+  // 同步落一份给门，别等下面那个 await —— 它要挡的就是「KV 还没读到新值」那一响
+  lastFullTickAt = startedAt;
   let playedGamesChanged = false;
   let trophiesChanged = false;
   let trophies: TrophiesReport | null = null;
@@ -214,6 +284,9 @@ async function tick(env: Env): Promise<TickResult> {
       env.STATE.get(PLAYED_GAMES_CACHE_KEY, "json"),
       env.STATE.get(LIBRARY_CACHE_KEY, "json"),
       env.STATE.delete(TROPHY_SYNC_KEY),
+      // 门读的就是这一枚。写在打 PSN 之前，所以它记的是「这轮开始过」而不是
+      // 「这轮成功过」—— 上游持续故障时的重试节奏才跟基线一致。
+      writeFullTickStartedAt(env.STATE, startedAt),
     ]);
     const lastCatalog = asTrophyCatalog(storedCatalog);
     const playedCache = asPlayedGamesCache(storedPlayedGames);
@@ -231,8 +304,11 @@ async function tick(env: Env): Promise<TickResult> {
         : rawPresence;
 
     const playing = presence.playing != null;
+    // 在玩时的 TTL 对着闲时那档完整 tick 节奏：从前「在玩每轮刷」那会儿一轮正好
+    // 15 分钟，这里维持同一个节奏，快节奏下也不会每分钟去翻一遍分页列表。
+    const playedTtlMs = playing ? PLAYED_GAMES_PLAYING_TTL_MS : PLAYED_GAMES_IDLE_TTL_MS;
     const playedFresh =
-      playedCache != null && Date.now() - playedCache.fetchedAt < PLAYED_GAMES_TTL_MS;
+      playedCache != null && Date.now() - playedCache.fetchedAt < playedTtlMs;
     const libraryFresh =
       libraryCache != null && Date.now() - libraryCache.fetchedAt < LIBRARY_TTL_MS;
     const trophiesQuiet =
@@ -240,7 +316,7 @@ async function tick(env: Env): Promise<TickResult> {
       lastCatalog.summarySignature === trophySummarySignature(hidden, summary) &&
       lastCatalog.fingerprint === oldTrophiesFingerprint;
 
-    const refreshPlayed = playing || !playedFresh;
+    const refreshPlayed = !playedFresh;
     const refreshLibrary = !libraryFresh;
     const playedCap = trophiesQuiet ? playedGamesLimit(env) : Number.POSITIVE_INFINITY;
 
@@ -408,7 +484,21 @@ async function tick(env: Env): Promise<TickResult> {
 }
 
 export default {
+  /**
+   * cron 每分钟一响，真跑哪一响由 `shouldTick` 定：有人看站点 60 秒一轮，
+   * 没人看 15 分钟一轮。被挡下的那一响什么都不做。
+   */
   async scheduled(_controller, env) {
+    const { run, sinceMs, online } = await shouldTick(env);
+    console.log(
+      JSON.stringify({
+        event: "playstation-tick-gate",
+        run,
+        online,
+        sinceMs: Number.isFinite(sinceMs) ? sinceMs : null,
+      }),
+    );
+    if (!run) return;
     await tickOnce(env);
   },
 
@@ -416,6 +506,9 @@ export default {
    * 手动触发走 GET /tick，不挂在 GET / 上。Chrome / Cursor 会拿调试口探
    * `/json/version` 再打 GET /，根路径一跑 tick 就会连着撞 PSN。
    * 访问控制仍由前面的 Cloudflare Access 负责。token 永远不出现在响应里。
+   *
+   * `/tick` 不走门：它是调试工具，要的就是「现在立刻跑一轮」。它照样会刷新
+   * 那枚开始时刻，所以手动跑完一轮之后，下一轮定时的也跟着往后顺延。
    */
   async fetch(request, env) {
     if (request.method !== "GET") {
