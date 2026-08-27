@@ -9,6 +9,7 @@ import { TimezoneCard } from "@/components/live/timezone-card";
 import { VibeCodingCard } from "@/components/live/vibecoding-card";
 import { WatchingRow } from "@/components/live/watching-card";
 import { Section } from "@/components/ui/section";
+import { desktopIconDataUri } from "@/lib/desktop-icon-inline";
 import { githubAvatarDataUri } from "@/lib/github-avatar-icon";
 import {
   cachedActivity,
@@ -78,9 +79,18 @@ export default async function Home() {
     githubAvatarDataUri(),
   ]);
 
+  /**
+   * 桌面图标只能排在后面：要内联哪一枚得先看信封里的 iconUrl，进不了上面那批
+   * 并行。它自己按 objectKey 缓存（见 lib/desktop-icon-inline），除了某个应用
+   * 第一次露面那回，这里不产生额外往返。
+   */
+  const desktopIcon = await desktopIconDataUri(
+    desktop.ok ? (desktop.data.desktop?.iconUrl ?? null) : null,
+  );
+
   return (
     <>
-      <Header desktop={desktop} />
+      <Header desktop={desktop} desktopIconDataUri={desktopIcon} />
 
       <main className="flex-1">
         <div className="mx-auto my-3.5 w-[calc(100%-2rem)] max-w-5xl sm:my-4">

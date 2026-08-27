@@ -60,7 +60,13 @@ function getR2(): { s3: S3Client; bucket: string } | null {
 const CONFIRMED_TTL_MS = 5 * 60_000;
 const confirmed = new Map<string, number>();
 
-/** 上报器直传完成后，只确认对象存在；站点不读取、不压缩也不写图片字节。 */
+/**
+ * 上报器直传完成后，只确认对象存在：**这条路**不读取、不压缩也不写图片字节。
+ *
+ * 站点唯一读字节的地方是首屏内联（见 lib/desktop-icon-inline）：按 objectKey
+ * 取一次、压一次、缓存永续，压出来的副本只进 HTML。运行时浏览器仍直连 R2 原件，
+ * 站点不代理图片流量，R2 上那份原件也一个字节没动。
+ */
 export async function hasStoredImage(objectKey: string): Promise<boolean> {
   const seenAt = confirmed.get(objectKey);
   if (seenAt != null && seenAt > Date.now()) return true;

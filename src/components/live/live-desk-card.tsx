@@ -42,9 +42,15 @@ const APP_SWITCH_TRANSITION = {
 /** 页头里的前台应用：只显示图标与名称，不带卡片、标题栏或状态边框。 */
 export function HeaderDesktop({
   fallback,
+  iconDataUri,
   className,
 }: {
   fallback: StatusResponse<DesktopPayload>;
+  /**
+   * SSR 信封里那枚图标压好的内联副本（见 lib/desktop-icon-inline），
+   * 只用于首屏那一帧；压不出来是 null，照旧走远端。
+   */
+  iconDataUri: string | null;
   className?: string;
 }) {
   useLiveEvents();
@@ -161,6 +167,17 @@ export function HeaderDesktop({
    * 但那是巧合不是设计：哪天有个应用的 match 宽到把它兜进去就一起坏。
    */
   const overrideText = offline || locked ? undefined : activeOverride?.renderText;
+  /**
+   * 内联副本只认 SSR 信封里那一枚图标，别的一律走远端。
+   *
+   * 这里刻意只比 URL、不碰上面那套 sameApplication / 预加载：内联是「首屏这一帧
+   * 少一次往返」，不是新的一条数据通路。挂载后切了应用，iconUrl 就对不上，
+   * 自然落回 `<Image>` 的远端路径，过渡逻辑一个字节都没被动过。
+   *
+   * 换回同一个应用时又会对上、又用内联那份，这是白赚的：内容寻址，同一个
+   * objectKey 就是同一张图。
+   */
+  const ssrIconUrl = fallback.ok ? (fallback.data.desktop?.iconUrl ?? null) : null;
 
   return (
     <div
@@ -224,7 +241,11 @@ export function HeaderDesktop({
                 activeOverride.renderIcon({ size: 24 })
               ) : desktop?.iconUrl ? (
                 <Image
-                  src={desktop.iconUrl}
+                  src={
+                    iconDataUri && desktop.iconUrl === ssrIconUrl
+                      ? iconDataUri
+                      : desktop.iconUrl
+                  }
                   alt=""
                   width={28}
                   height={28}
