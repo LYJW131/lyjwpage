@@ -16,8 +16,6 @@ import useSWR, { preload, useSWRConfig } from "swr";
 import { TrophyMetal } from "@/components/trophies/trophy-metal";
 import { LIST_TRANSITION, STATIC_TRANSITION } from "@/lib/motion";
 import {
-  TROPHY_ICON_SCALE,
-  playstationImage,
 } from "@/lib/playstation-image";
 import { trophiesTilePath } from "@/lib/paths";
 import { site } from "@/lib/site";
@@ -248,7 +246,7 @@ function TrophyRow({ trophy }: { trophy: Trophy }) {
           {trophy.iconUrl && !hidden ? (
             <Image
               // 尺寸在 PSN 那边就选好，不进图片管道；理由见 playstation-image
-              src={playstationImage(trophy.iconUrl, ICON_PX * TROPHY_ICON_SCALE)!}
+              src={trophy.iconUrl}
               alt=""
               fill
               unoptimized
@@ -380,7 +378,7 @@ function GroupStrip({
                   <Image
                     // 组条那格 w-10 但高度跟着行走（约 44px），object-cover
                     // 以高的那边为准，所以按 ICON_PX 取，不按 40 取
-                    src={playstationImage(group.iconUrl, ICON_PX * TROPHY_ICON_SCALE)!}
+                    src={group.iconUrl}
                     alt=""
                     fill
                     unoptimized

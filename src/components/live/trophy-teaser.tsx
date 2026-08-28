@@ -4,8 +4,6 @@ import { PsPlusMark } from "@/components/trophies/ps-plus";
 import { TrophyMetal, trophyTypeLabel } from "@/components/trophies/trophy-metal";
 import {
   PLAYSTATION_IMAGE_SCALE,
-  TROPHY_ICON_SCALE,
-  playstationImage,
 } from "@/lib/playstation-image";
 import type { PlaystationPresenceKind } from "@/lib/playstation-presence";
 import { site } from "@/lib/site";
@@ -201,7 +199,7 @@ export function TrophyTeaser({
               {recent.iconUrl ? (
                 <Image
                   // 尺寸在 PSN 那边就选好，不进图片管道；理由见 playstation-image
-                  src={playstationImage(recent.iconUrl, RECENT_PX * TROPHY_ICON_SCALE)!}
+                  src={recent.iconUrl}
                   alt=""
                   width={RECENT_PX}
                   height={RECENT_PX}
