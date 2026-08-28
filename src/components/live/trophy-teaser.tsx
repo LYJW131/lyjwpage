@@ -27,6 +27,9 @@ const TYPES: TrophyType[] = ["platinum", "gold", "silver", "bronze"];
 /** 「最近解锁」那格奖杯图的边长，和它 className 上的 h-7 w-7 是同一个数。 */
 const RECENT_PX = 28;
 
+/** 头像那格的边长，和它 className 上的 h-10 w-10 是同一个数。 */
+const AVATAR_PX = 40;
+
 function formatUnlock(ms: number): string {
   // 「6月22日」而不是「6/22」—— 斜杠版和旁边的 442 / 1466 长得太像分数
   return new Date(ms).toLocaleString("zh-CN", {
@@ -115,16 +118,22 @@ export function TrophyTeaser({
               <Image
                 src={data.profile.avatarUrl}
                 alt={data.profile.onlineId}
-                width={40}
-                height={40}
                 /*
                  * 头像那个 psn-rsc 不认 `?w=&h=`，只有 _s(50) / _m(160) / _l(240) /
                  * _xl(440) 这一档路径后缀，够 3× 用的最小一档是 160px 的 PNG（52KB），
                  * 直连比过优化器（约 4KB）贵十倍 —— 所以这一路仍旧走图片管道。
-                 * 但 width/height 只出 1x/2x 两档、到 96 就封顶，3× 屏那 120 个设备
-                 * 像素还得往上拉一截；给上 sizes 让它按真实宽度挑，3× 拿到 128。
+                 *
+                 * width 报的是 3 倍目标的一半，展示尺寸交给 className：next/image
+                 * 的候选表只出 1x / 2x 两档（它有意不出 3x），报一半，2x 那档才正好
+                 * 落在 40×3 = 120 要够的那一格上 —— 候选表是 w=64（1x）/ w=128（2x），
+                 * 视网膜屏一律拿 128。
+                 *
+                 * 别改回 `sizes="40px"`：按 DPR 选是选对了，可候选表会摊成 deviceSizes
+                 * 全家桶，而 src 兜底取的是最大那档 —— HTML 里就坐着一条 w=3840，
+                 * 谁不认 srcset 谁就去拉那张。
                  */
-                sizes="40px"
+                width={(AVATAR_PX * PLAYSTATION_IMAGE_SCALE) / 2}
+                height={(AVATAR_PX * PLAYSTATION_IMAGE_SCALE) / 2}
                 className="h-10 w-10 rounded-full object-cover"
               />
             ) : (
