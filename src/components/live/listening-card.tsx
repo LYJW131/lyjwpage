@@ -42,6 +42,7 @@ import type {
   StatusResponse,
 } from "@/lib/types";
 import { appleArtwork, ARTWORK_SCALE, needsOptimizing } from "@/lib/apple-artwork";
+import type { ArtworkDataUri, ArtworkPlaceholders } from "@/lib/artwork-placeholder";
 import { cn } from "@/lib/utils";
 
 /**
@@ -342,10 +343,35 @@ function HeroProgress({
   );
 }
 
-function TrackRow({ track }: { track: ListeningItem }) {
+function TrackRow({
+  track,
+  placeholder,
+}: {
+  track: ListeningItem;
+  placeholder: ArtworkDataUri | undefined;
+}) {
   const content = (
     <>
       <div className="relative size-11 shrink-0 overflow-hidden rounded-sm border border-line bg-muted">
+        {/*
+         * 低清占位垫在真图下层，和 hero 同一套（见 hero-motion-artwork）：
+         * 走 `placeholder` 属性的话它是 CSS 背景图、没有 decoding 可控，移动端
+         * 水合期背景解码会滑过首帧一两拍，露出底下的 bg-muted 灰闪一下 ——
+         * 行的真图是 lazy，到得比 hero 更晚，那一下更藏不住。data URI + sync
+         * 解码由浏览器保证与首帧原子绘制，真图排在它后面，加载完自然盖住。
+         * 九张小图同步解码合计约 1~2ms，换掉首帧那一闪值得。
+         */}
+        {placeholder && (
+          <Image
+            src={placeholder}
+            alt=""
+            aria-hidden
+            fill
+            sizes="44px"
+            className="object-cover"
+            decoding="sync"
+          />
+        )}
         {track.artwork && (
           <Image
             src={appleArtwork(track.artwork, 44 * ARTWORK_SCALE)!}
@@ -502,11 +528,18 @@ type Hero = {
 export function ListeningCard({
   fallback,
   nowFallback,
+  artworkPlaceholders,
   className,
   wide = false,
 }: {
   fallback: StatusResponse<ListeningPayload>;
   nowFallback: StatusResponse<NowListeningPayload>;
+  /**
+   * 首屏那批封面的低清占位（模板 URL → data URI），见 lib/artwork-placeholder。
+   * 只喂给 `next/image` 的 `placeholder`，`src` 仍是 Apple CDN 直连；挂载后
+   * 换进来的新歌不在表里，那一格就没有占位 —— 和内联之前一样，属预期。
+   */
+  artworkPlaceholders: ArtworkPlaceholders;
   className?: string;
   /** 充电卡隐藏、桌面端横跨两列时，列表切成 4 × 2 的无滚动布局。 */
   wide?: boolean;
@@ -724,6 +757,9 @@ export function ListeningCard({
                 <HeroWrapper link={hero.link}>
                   <HeroMotionArtwork
                     artwork={hero.artwork}
+                    placeholder={
+                      hero.artwork ? artworkPlaceholders.hero[hero.artwork] : undefined
+                    }
                     title={hero.title}
                     videoUrl={motionData?.hasMotion ? motionData.videoUrl : null}
                     reduced={Boolean(reduced)}
@@ -902,7 +938,14 @@ export function ListeningCard({
                         // 每页第一行吸附：宽态桌面 overflow:hidden，这条不会生效
                         className={cn("min-w-0", index % VISIBLE_ROWS === 0 && "snap-start")}
                       >
-                        <TrackRow track={item} />
+                        <TrackRow
+                          track={item}
+                          placeholder={
+                            item.artwork
+                              ? artworkPlaceholders.rows[item.artwork]
+                              : undefined
+                          }
+                        />
                       </motion.div>
                     ))}
                   </AnimatePresence>

@@ -7,6 +7,7 @@ import { ChargerCard } from "@/components/live/charger-card";
 import { ListeningCard } from "@/components/live/listening-card";
 import { PowerBankCard } from "@/components/live/powerbank-card";
 import { StatusDot } from "@/components/ui/status-dot";
+import type { ArtworkPlaceholders } from "@/lib/artwork-placeholder";
 import type {
   ChargerPayload,
   ListeningPayload,
@@ -63,11 +64,14 @@ export function LiveMediaPair({
   powerBankFallback,
   listeningFallback,
   nowListeningFallback,
+  artworkPlaceholders,
 }: {
   chargerFallback: StatusResponse<ChargerPayload>;
   powerBankFallback: StatusResponse<PowerBankPayload>;
   listeningFallback: StatusResponse<ListeningPayload>;
   nowListeningFallback: StatusResponse<NowListeningPayload>;
+  /** 首屏封面的低清占位表，见 lib/artwork-placeholder；只透传给 ListeningCard */
+  artworkPlaceholders: ArtworkPlaceholders;
 }) {
   const [chargerActive, setChargerActive] = useState(
     chargerFallback.ok &&
@@ -208,6 +212,7 @@ export function LiveMediaPair({
           <ListeningCard
             fallback={listeningFallback}
             nowFallback={nowListeningFallback}
+            artworkPlaceholders={artworkPlaceholders}
             className="h-full"
             wide={!isVisible}
           />
