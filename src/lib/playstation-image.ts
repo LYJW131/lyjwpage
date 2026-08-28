@@ -40,8 +40,11 @@ export function playstationImage(
 }
 
 /**
- * 直链按 3 倍取，理由和 apple-artwork 的 ARTWORK_SCALE 一样：手机常见 3× DPR，
- * 2 倍图会被浏览器再放大一截而发虚。
+ * PSN 那几路图一律按 3 倍取，理由和 apple-artwork 的 ARTWORK_SCALE 一样：
+ * 手机常见 3× DPR，2 倍图会被浏览器再放大一截而发虚。
+ *
+ * 直连那几路是拿它拼 `?w=&h=`；头像那路虽然走图片管道，取图目标也按它定
+ *（报给 next/image 的是一半，好让 2x 那档正好落在 3 倍上，见 trophy-teaser）。
  *
  * 另一半理由是「差一点」比「差很多」还糊：从前那张交给优化器的 256px 图，
  * 落到 2× 屏上那格 224 个设备像素，浏览器还要再重采样一道 256 → 224，
