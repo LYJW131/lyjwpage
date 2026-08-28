@@ -51,3 +51,14 @@ export function playstationImage(
  * 细节就是在这一步被抹掉的。现在按设备像素整数倍取，缩放只发生一次。
  */
 export const PLAYSTATION_IMAGE_SCALE = 3;
+
+/**
+ * 奖杯图标（psnobj 那路）在 3 倍之上再多要一倍。
+ *
+ * 3 倍的像素数本身是够的（28 CSS × 3 = 84，服务端也真给 84），糊在**质量档**：
+ * psnobj 对小尺寸吐的是压得很狠的 JPEG（84² 只有 ~4.5KB，而源图是 512² / 57KB），
+ * 奖杯图案又是细节密的游戏原画，压缩痕迹在 3 倍屏上肉眼可见。要 6 倍（168²，
+ * ~9KB）拿到的质量档高一截，浏览器降采样一道反而把细节收锐。只用于奖杯图标：
+ * 游戏瓷砖那路 336² 的 AVIF 质量够、体积又大得多，不跟着加码。
+ */
+export const TROPHY_ICON_SCALE = PLAYSTATION_IMAGE_SCALE * 2;
