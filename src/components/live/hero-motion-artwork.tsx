@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 
 import { appleArtwork, ARTWORK_SCALE, needsOptimizing } from "@/lib/apple-artwork";
+import type { ArtworkDataUri } from "@/lib/artwork-placeholder";
 import { cn } from "@/lib/utils";
 
 /**
@@ -38,11 +39,14 @@ export function HeroMotionArtwork({
   artwork,
   title,
   videoUrl,
+  placeholder,
   reduced = false,
 }: {
   artwork: string | null;
   title: string;
   videoUrl: string | null | undefined;
+  /** 首屏低清占位，见 lib/artwork-placeholder；没有就传 undefined，退回 empty */
+  placeholder?: ArtworkDataUri;
   reduced?: boolean;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -186,6 +190,12 @@ export function HeroMotionArtwork({
   return (
     <div
       className="relative aspect-square w-20 shrink-0 overflow-hidden rounded-md border border-line bg-muted"
+      /*
+       * 不垫主色纯色块 —— 上过一次线又撤下来的教训：占位解码滑档那一两帧会
+       * 闪出一整块显眼色块，比 bg-muted 的灰底更扎眼，等于把加载过程演出来。
+       * 现在两处（这里和 listening-card 的行）都改成同步解码的垫底图，占位
+       * 和首帧原子地一起画，压根没有「滑档露底」这一帧，主色层因此退役。
+       */
       onMouseEnter={() => {
         // 自动播放被拒（比如 Safari 低电量模式）不会报 error，留个手动入口
         if (videoRef.current && videoUrl && !reduced) {
@@ -196,6 +206,25 @@ export function HeroMotionArtwork({
       {/* hover 缩放放在普通 div 上：<video> 的 transition-opacity 管不了 scale，
           而且有的浏览器对 video 自身的 transform 插值不稳定。 */}
       <div className="absolute inset-0 transition-transform duration-500 group-hover:scale-[1.04]">
+        {/*
+         * 低清占位铺成真正的 <Image> 垫在真图下面，而不是走 placeholder 属性：
+         * placeholder 是 CSS 背景图，没有 decoding 可控，移动端首帧前后主线程
+         * 忙着水合时，背景解码会滑过首帧一两拍，露出底下的 bg-muted ——
+         * hero 这个尺寸上就是一块肉眼可见的「空白一闪」。data URI + sync
+         * 解码是浏览器保证与首帧原子绘制的（头像那块用的同一机制），真图
+         * 在 DOM 里排它后面，加载完自然盖住它。
+         */}
+        {placeholder && (
+          <Image
+            src={placeholder}
+            alt=""
+            aria-hidden
+            fill
+            sizes="80px"
+            className="object-cover"
+            decoding="sync"
+          />
+        )}
         {artwork && (
           <Image
             src={appleArtwork(artwork, 80 * ARTWORK_SCALE)!}

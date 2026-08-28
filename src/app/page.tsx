@@ -9,6 +9,7 @@ import { TimezoneCard } from "@/components/live/timezone-card";
 import { VibeCodingCard } from "@/components/live/vibecoding-card";
 import { WatchingRow } from "@/components/live/watching-card";
 import { Section } from "@/components/ui/section";
+import { artworkPlaceholders } from "@/lib/artwork-placeholder";
 import { desktopIconDataUri } from "@/lib/desktop-icon-inline";
 import { githubAvatarDataUri } from "@/lib/github-avatar-icon";
 import {
@@ -80,13 +81,18 @@ export default async function Home() {
   ]);
 
   /**
-   * 桌面图标只能排在后面：要内联哪一枚得先看信封里的 iconUrl，进不了上面那批
-   * 并行。它自己按 objectKey 缓存（见 lib/desktop-icon-inline），除了某个应用
-   * 第一次露面那回，这里不产生额外往返。
+   * 内联素材只能排在第二轮：要压哪几张写在信封里，进不了上面那批并行。
+   * 桌面图标按 objectKey 缓存（lib/desktop-icon-inline）、封面占位按 Apple
+   * 模板 URL 缓存（lib/artwork-placeholder），命中后这里都不产生额外往返；
+   * 两者彼此无关，未命中时并行把最坏等待压到单边的超时。
    */
-  const desktopIcon = await desktopIconDataUri(
-    desktop.ok ? (desktop.data.desktop?.iconUrl ?? null) : null,
-  );
+  const [desktopIcon, artwork] = await Promise.all([
+    desktopIconDataUri(desktop.ok ? (desktop.data.desktop?.iconUrl ?? null) : null),
+    artworkPlaceholders(
+      listening.ok ? listening.data.items.map((item) => item.artwork) : [],
+      nowListening.ok ? (nowListening.data.music?.artworkUrl ?? null) : null,
+    ),
+  ]);
 
   return (
     <>
@@ -107,6 +113,7 @@ export default async function Home() {
                 powerBankFallback={powerBank}
                 listeningFallback={listening}
                 nowListeningFallback={nowListening}
+                artworkPlaceholders={artwork}
               />
               <ActivityCard fallback={activity} />
               <ServerCard fallback={server} />
