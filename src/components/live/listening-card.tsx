@@ -1,7 +1,6 @@
 "use client";
 
 import NumberFlow, { NumberFlowGroup } from "@number-flow/react";
-import { Sparkle } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import Image from "next/image";
 import {
@@ -165,7 +164,7 @@ function PaletteBar({
 }
 
 /**
- * 三根竖条。推断为正在播时跳动，否则静止成一个普通的音乐小图标。
+ * 三根竖条。设备说在播时跳动，否则静止成一个普通的音乐小图标。
  *
  * 动画相位挂在墙上时钟，不挂在挂载时刻。换歌时整个 hero 会重新挂载，CSS 动画
  * 默认从头开始，三根条齐刷刷跳回起点 —— 从前 mode="wait" 中间空一拍把这一下
@@ -869,13 +868,11 @@ type Hero = {
   /**
    * 本机 Music.app 正在放的那首（而不是 Apple Music 的历史记录）。
    * 有值就说明能拿到播放进度，副标题行会换成带进度条的版本。
+   *
+   * 没有它就是历史那一版：`playing` 恒为假 —— 「在不在播」只认设备实况，
+   * 最近播放列表说明不了这件事。
    */
   track: LocalNowPlaying | null;
-  /**
-   * 「正在播放」来自观测最近播放列表的推断，不是 Mac / HomePod 实况。
-   * 和 track 互斥：有实况就用设备标签，推断才打 inferred。
-   */
-  inferred: boolean;
 };
 
 export function ListeningCard({
@@ -949,7 +946,8 @@ export function ListeningCard({
     upcomingSongIds: string[];
     hasLyrics: boolean;
   } | null>(null);
-  // 渲染期直接调整，理由同下面的 lastLiveId
+  // 渲染期直接调整，不放 useEffect —— 那样要多渲染一轮，而且 set-state-in-effect
+  // 本来就是反模式。React 对「props 变了顺手修 state」推荐的就是这个写法。
   if (
     live?.songId &&
     trackKey &&
@@ -1015,29 +1013,6 @@ export function ListeningCard({
 
   const [latest, ...tail] = data?.items ?? [];
 
-  /**
-   * 记住实时源刚才解析到的那张专辑 ID。
-   *
-   * 宽限期一过，服务端会把 music 和 id 一并清空，客户端从此分不清「Mac 刚暂停」
-   * 和「Mac 根本没开过」—— 而这两种情况下该不该信推断，答案正好相反。
-   */
-  // 渲染期直接调整，不放 useEffect —— 那样要多渲染一轮，而且 set-state-in-effect
-  // 本来就是反模式。React 对「props 变了顺手修 state」推荐的就是这个写法。
-  const [lastLiveId, setLastLiveId] = useState<string | null>(null);
-  if (live?.id && live.id !== lastLiveId) setLastLiveId(live.id);
-
-  /**
-   * 推断出来的「正在听」，且确实指向排在最前的这一项。
-   *
-   * 但如果排在最前的就是实时源刚才在放的那张，就不信这个推断 —— 我们比它知道得
-   * 多：设备亲口说了暂停/停止，而推断只会按「这个容器什么时候排到第一」加曲目
-   * 总时长去算，于是刚按下暂停、宽限期一过，卡片反而从「播放暂停」翻成绿色的
-   * 「正在播放」。等别的条目顶上来，这层压制自然就解除了。
-   */
-  const backFromLive = lastLiveId != null && lastLiveId === latest?.id;
-  const playing =
-    !backFromLive && Boolean(data?.nowPlaying && data.nowPlaying.itemId === latest?.id);
-
   const hero: Hero | null = localActive
     ? {
         key: `${localTrack!.source}:${localTrack!.trackId ?? localTrack!.title}`,
@@ -1058,7 +1033,6 @@ export function ListeningCard({
           data?.items.find((item) => item.id === live?.id)?.palette ?? [],
         durationMs: null,
         track: localTrack,
-        inferred: false,
       }
     : latest
       ? {
@@ -1067,12 +1041,13 @@ export function ListeningCard({
           title: latest.title,
           subtitle: latest.artist,
           link: latest.link,
-          label: playing ? "正在播放" : "最近听过",
-          playing,
+          // 没有实况就只说「听过」。Apple 不给可查的当前播放，站点也不再拿列表
+          // 的变化去猜它，理由见 lib/apple-music-recent
+          label: "最近听过",
+          playing: false,
           palette: latest.palette,
           durationMs: latest.durationMs,
           track: null,
-          inferred: playing,
         }
       : null;
 
@@ -1205,16 +1180,6 @@ export function ListeningCard({
                             <span className="truncate">
                               {hero.track.source === "homepod" ? "HomePod mini" : "MacBook Pro"}
                             </span>
-                          </span>
-                        )}
-                        {/* 没有实况、只靠最近播放列表推出来的「正在播放」。 */}
-                        {hero.inferred && (
-                          <span
-                            className="ml-0.5 inline-flex shrink-0 items-center gap-1 rounded-sm border border-line px-1.5 py-px text-[10px] leading-4 text-muted-foreground"
-                            title="由 Apple Music 最近播放列表推断，不是设备实况"
-                          >
-                            <Sparkle className="size-3 shrink-0" aria-hidden />
-                            <span className="truncate">inferred</span>
                           </span>
                         )}
                       </div>
