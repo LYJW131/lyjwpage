@@ -6,8 +6,7 @@ import { workerUrl } from "./worker-url.ts";
 test("三个 Worker 变量只填源，路径由调用点拼上去", () => {
   assert.equal(workerUrl("https://live.example.com", "/publish"), "https://live.example.com/publish");
   assert.equal(workerUrl("https://online.example.com", "/count"), "https://online.example.com/count");
-  // 动态封面解析在根路径上
-  assert.equal(workerUrl("https://am.example.com", "/"), "https://am.example.com/");
+  assert.equal(workerUrl("https://token.example.com", "/token"), "https://token.example.com/token");
 });
 
 test("浏览器要连的 wss 从 https 推出来，端口跟着源走", () => {

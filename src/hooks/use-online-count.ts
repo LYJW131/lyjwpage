@@ -16,7 +16,7 @@ export const ONLINE_CONNECTED_KEY = "worker:online-connected";
 const WS_PATH = "/ws";
 
 /**
- * 只配 Worker 的源，路径在这儿拼 —— 和 live-push、动态封面那两个变量一个形状，
+ * 只配 Worker 的源，路径在这儿拼 —— 和 live-push、musickit-token 那两个变量一个形状，
  * 规则见 lib/worker-url。必须写成完整的 `process.env.XXX` 字面量，浏览器那侧
  * 是构建时按文本替换的。
  */

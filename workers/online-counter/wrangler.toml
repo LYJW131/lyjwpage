@@ -9,8 +9,8 @@ routes = [
 
 [vars]
 # lyjw.me = Vercel 生产，lyjw131.com = EdgeOne 生产，dev.lyjw.me = 预览。
-# 和 live-push / musickit-token / am-motion-artwork 那三份是同一个名单，
-# 加域名时四个 worker 都要改、都要重新部署。
+# 和 live-push / musickit-token 那两份是同一个名单，
+# 加域名时三个 worker 都要改、都要重新部署。
 ALLOWED_ORIGINS = "https://lyjw.me,https://lyjw131.com,https://dev.lyjw.me,https://*.vercel.app"
 
 [[durable_objects.bindings]]

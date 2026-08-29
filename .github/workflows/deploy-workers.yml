@@ -1,4 +1,4 @@
-# workers/ 下的六个 Cloudflare Worker 不进 Vercel 的构建，从前全靠本机
+# workers/ 下的五个 Cloudflare Worker 不进 Vercel 的构建，从前全靠本机
 # `wrangler deploy`——改了代码忘了部署，线上就一直跑旧的，还要等到坏了才发现。
 # 这里补上 Vercel 那半边：推 main 且某个 worker 目录有改动，就只部署改到的那几个。
 #
@@ -45,6 +45,9 @@ jobs:
           else
             names=$(git diff --name-only "$before" "$GITHUB_SHA" -- workers/ | cut -d/ -f2 | sort -u)
           fi
+          # 被整个删掉的 worker 也会出现在 diff 里，目录已不存在就不进矩阵——
+          # 不滤的话 wrangler-action 会拿一个不存在的 workingDirectory 打红整步
+          names=$(printf '%s\n' $names | while read -r n; do [ -d "workers/$n" ] && echo "$n"; done || true)
           # awk 'NF' 滤掉空行（grep 在 pipefail 下无匹配会把整步打红）
           workers=$(printf '%s\n' $names | awk 'NF' | jq -R . | jq -sc .)
           echo "workers=$workers" >> "$GITHUB_OUTPUT"
