@@ -53,6 +53,21 @@ import { cn } from "@/lib/utils";
  * 从前是 30 秒，那时列表要靠轮询才会翻 —— 服务端还得现打 Apple 的目录接口。
  */
 const REFRESH_MS = 10 * 60_000;
+/**
+ * 手上一份都没有时的那一档。
+ *
+ * 空着的时候松不得。这份列表现在由**访客自己的请求**触发去拉（见
+ * lib/apple-music-recent），所以冷启动那一下 —— 新部署、Redis 被清空 —— 第一个
+ * 访客的首屏必然是空的，数据要等他这次请求在响应之后刷完才落库，落完靠推送送达。
+ * 而推送没配（`NEXT_PUBLIC_LIVE_PUSH_URL` 是可以不填的，那时「页面只靠轮询更新」）
+ * 或 WebSocket 恰好还没连上时，就只剩轮询这一条路 —— 上面那档意味着卡片顶着一句
+ * 「Apple Music 未连接」站十分钟，而实际上数据一秒后就在库里了。
+ *
+ * 代价说清楚：凭据压根没配的部署上这一档会一直开着，每个标签页每小时多打几十次
+ * 状态端点（读的是缓存快照，不会传导到 Apple —— 回源频率由那边的 TTL 管）。
+ * 那是「没配好」这件事本身的动静，不该由把它藏起来的方式解决。
+ */
+const EMPTY_REFRESH_MS = 60_000;
 /** 实时播放由推送送来，轮询只是兜底 */
 const MUSIC_REFRESH_MS = 60_000;
 
@@ -899,9 +914,12 @@ export function ListeningCard({
   /** 充电卡隐藏、桌面端横跨两列时，列表切成 4 × 2 的无滚动布局。 */
   wide?: boolean;
 }) {
-  const { data, error, isLoading } = useStatus<ListeningPayload>(LISTENING_PATH, REFRESH_MS, {
-    fallback,
-  });
+  // 有东西可显示就走松的那档，空着就快一点，见上面两个常量
+  const { data, error, isLoading } = useStatus<ListeningPayload>(
+    LISTENING_PATH,
+    (current) => (current ? REFRESH_MS : EMPTY_REFRESH_MS),
+    { fallback },
+  );
   useLiveEvents();
   const { data: live } = useStatus<NowListeningPayload>(NOW_LISTENING_PATH, MUSIC_REFRESH_MS, {
     fallback: nowFallback,

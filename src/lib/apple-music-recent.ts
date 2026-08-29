@@ -38,6 +38,11 @@ const RECENT_LIMIT = 10;
  *
  * 前端轮询再快也不会等比传导到 Apple —— 快的那部分被这道 TTL 挡在门外，
  * 和 github-chart、motion-artwork 同一套。
+ *
+ * 它同时是闸门的租期，所以**一轮刷新必须能在这段时间里做完**，否则另一个实例会
+ * 在前一个还没写完时抢到闸门。最坏情况：一次拉列表 + 十项封面（并发，见
+ * assemble）+ 时长分页最多五次，每次超时 10 秒，合计仍在两分钟以内。往这里改小
+ * 之前先算一遍那个和。
  */
 const RECENT_REFRESH_MS = 2 * 60_000;
 
@@ -238,12 +243,20 @@ async function assemble(): Promise<ListeningItem[]> {
     credentials,
   );
 
-  const items: ListeningItem[] = [];
-  // URL 已经带了 limit=RECENT_LIMIT，上游不会多给 —— 这次切是防御，万一哪天
-  // 上游不认那个参数了，也不至于把整个资料库 normalize 一遍
-  for (const resource of resources.slice(0, RECENT_LIMIT)) {
-    items.push(await normalize(resource, credentials));
-  }
+  /**
+   * 十项一起做，不要串着做。
+   *
+   * 每一项都**可能**再去查一次自建歌单封面（缓存没命中时），串着做的话最坏是
+   * 十次往返首尾相接，每次超时 10 秒 —— 一轮刷新就可能比闸门那 2 分钟的租期还
+   * 长，另一个实例会在它还没写完时抢到闸门，两份快照先后不定地落库。并发发出去
+   * 之后整批的墙钟压回一次往返的量级，最坏情况稳稳待在租期以内。
+   *
+   * 切片是防御：URL 已经带了 limit=RECENT_LIMIT，上游不会多给，但万一哪天它不认
+   * 那个参数了，也不至于把整个资料库 normalize 一遍。
+   */
+  const items = await Promise.all(
+    resources.slice(0, RECENT_LIMIT).map((resource) => normalize(resource, credentials)),
+  );
 
   const top = resources[0];
   if (top && items[0]) {
