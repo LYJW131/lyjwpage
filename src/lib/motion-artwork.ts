@@ -195,7 +195,8 @@ async function scrapeWebToken(): Promise<string> {
  */
 function tokenRefreshAt(expMs: number): number {
   const now = Date.now();
-  return now + Math.max((expMs - now) / 2, 60 * 60 * 1000);
+  // 取整：/2 有一半概率除出 x.5，而这个值既存进 Redis 也当 TTL 用
+  return now + Math.max(Math.ceil((expMs - now) / 2), 60 * 60 * 1000);
 }
 
 function parseJwtExp(jwt: string): number {
