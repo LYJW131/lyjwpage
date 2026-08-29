@@ -15,15 +15,16 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 Home Assistant 共用的约定，改一处就得各处对齐。
 
 1. **`/api/ingest/<来源>`** —— 按**数据是谁产生的**命名，不是按上报程序命名。
-   现有的是 `mac`、`iphone`、`homepod`、`emby`、`apple-music`、`playstation`、
-   `server`。Emby 那个曾经叫
-   `emby-reporter`，泄漏了实现细节：换个代理程序名字就得跟着改。
+   现有的是 `mac`、`iphone`、`homepod`、`emby`、`playstation`、`server`。Emby
+   那个曾经叫 `emby-reporter`，泄漏了实现细节：换个代理程序名字就得跟着改。
    `mac` 和 `iphone` 是**设备级**的两个遥测中心：一台设备一个入口、一个信封、
    一个 `modules` 字典。所以充电头数据走 `mac`（观测它的是那台 Mac），活动圆环
    走 `iphone`（采集它的是手表，但搬运和观测它的是那台手机）—— 别按数据里那个
    牌子另开一个 URL 家族，`apple-health` 就是这么错过一次的。
-   `apple-music` 那条两个方向都走：POST 交数据，GET 取上报器干活要用的凭据，
-   同一把锁。上报器要从站点拿东西时优先这么办，别为它另开一个 URL 家族。
+   上报器要**从站点拿东西**时走它自己那条 ingest 路径的 GET，同一个地址、同一把
+   锁，别另开一个 URL 家族。曾经的 `apple-music` 就是这么办的（POST 交列表、GET
+   取凭据），那条路随着拉列表收回站点一起退役了 —— 顺带记着它的代价：把凭据发出
+   去意味着 `TELEMETRY_INGEST_SECRET` 和那份凭据同等敏感。
 2. **`/api/status/<主题>`** —— `X` 是列表 / 历史，`X/now` 是此刻。
    听歌是 `listening` + `listening/now`，看片是 `watching` + `watching/now`。
    一对一对地加，别给「此刻」另起一个词（从前 `listening` 的搭档叫 `music`）。

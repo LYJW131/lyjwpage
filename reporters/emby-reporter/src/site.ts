@@ -38,13 +38,13 @@ function authHeaders(): Record<string, string> {
 }
 
 /**
- * 和另一份上报器的同名函数是同一段代码（只有下面那行注释不同，
- * 见 reporters/apple-music-reporter/src/site.ts），改一处记得同步另一处。
+ * 「站点回了 `ok !== true` 就算失败」这条约定是**协议**的一部分，不是这个函数的
+ * 内部实现 —— 站点的 ingestRoute 会用 200 之外的状态码和一个 `ok: false` 的信封
+ * 表示软失败，认错了就会把它当成上报成功，而没有任何测试或类型会拦住。
  *
- * 这不是随手的复制粘贴：它规定了「站点回了 `ok !== true` 就算失败」这条约定，
- * 是**协议**的一部分。两份哪天分了岔，症状会是其中一个上报器把站点的软失败当成
- * 了成功 —— 而没有任何测试或类型会拦住。两个上报器各自是独立的部署单元、
- * 各自 `docker compose up --build`，所以不抽成共享包（理由见 log.ts）。
+ * 这段代码从前和 Apple Music 上报器里的同名函数逐字相同，那边收编进站点之后只剩
+ * 这一份了。将来再添上报器仍然是各自抄一份、各自是独立部署单元（理由见 log.ts），
+ * 抄的时候连这条约定一起抄走。
  */
 async function readEnvelope<T>(response: Response): Promise<T | undefined> {
   const body = (await response.json().catch(() => null)) as SiteEnvelope<T> | null;
