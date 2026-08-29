@@ -52,10 +52,9 @@
         "focus": [
           "browser",
           "online_counter",
-          "psn_reporter",
-          "lan_reporters"
+          "psn_reporter"
         ],
-        "note": "浏览器连上就是一个人头，上报器读 /count 在快慢两档之间切换。"
+        "note": "浏览器连上就是一个人头，PlayStation 上报 Worker 读 /count 在快慢两档之间切换。"
       },
       {
         "id": "assets",
@@ -163,7 +162,7 @@
       "id": "lan_reporters",
       "type": "external",
       "label": "内网上报侧",
-      "sublabel": "Emby · Apple Music · HA",
+      "sublabel": "Emby · HA",
       "tag": "NAS / HA",
       "pos": [
         130,
@@ -176,9 +175,6 @@
       "sources": [
         {
           "path": "reporters/emby-reporter/README.md"
-        },
-        {
-          "path": "reporters/apple-music-reporter/src/config.ts"
         }
       ]
     },
@@ -422,7 +418,7 @@
       "id": "lan_in",
       "from": "lan_reporters",
       "to": "edgeone",
-      "label": "/api/ingest/emby 等三路",
+      "label": "/api/ingest/emby、/homepod",
       "variant": "emphasis"
     },
     {
@@ -562,7 +558,7 @@
       "id": "count_psn",
       "from": "online_counter",
       "to": "psn_reporter",
-      "label": "GET /count 调频（可见）· 三家都读",
+      "label": "GET /count 调频（可见）· 两家都读",
       "variant": "dashed",
       "fromSide": "bottom",
       "toSide": "left",
@@ -578,24 +574,6 @@
         [
           50,
           221
-        ]
-      ]
-    },
-    {
-      "id": "count_lan",
-      "from": "online_counter",
-      "to": "lan_reporters",
-      "variant": "dashed",
-      "fromSide": "left",
-      "toSide": "left",
-      "via": [
-        [
-          85,
-          871
-        ],
-        [
-          85,
-          750
         ]
       ]
     }
@@ -615,7 +593,7 @@
       "title": "上报侧的节奏",
       "items": [
         "图上的源站归属取自各上报器文档里的默认 SITE_URL，MacTelemetryHub 不在本仓库内",
-        "三家上报器逐档同数：有页面可见 60 秒、只是开着 2 分钟、都没有 15 分钟；server-reporter 每轮必发，那份快照本身就是心跳",
+        "两家上报器逐档同数：有页面可见 60 秒、只是开着 2 分钟、都没有 15 分钟；server-reporter 每轮必发，那份快照本身就是心跳",
         "playstation-reporter 每分钟 cron 只是闸门，按同一套三档决定这一分钟要不要真的去问 PSN"
       ]
     },
@@ -624,10 +602,10 @@
       "title": "图上没画的几条",
       "items": [
         "浏览器按各自部署的 R2_PUBLIC_BASE_URL 直接取图，站点只做 HeadObject 存在性检查",
-        "三个上报器每轮读两个人头数定档：online-counter 的 /count（可见）画了到 PlayStation、内网那两条，server-reporter 那条和 live-push 的（页面开着）三条都没画",
-        "站点主动出网只有两路：GitHub 贡献热力图（api.github.com/graphql，没画）和 Apple Music；后者两份生产都打，图上只画了主站那条",
+        "两个上报器每轮读两个人头数定档：online-counter 的 /count（可见）画了到 PlayStation、内网那两条，server-reporter 那条和 live-push 的（页面开着）两条都没画",
+        "站点主动出网的三路都由访客请求驱动、各自带 TTL：GitHub 贡献热力图（api.github.com/graphql，没画）、Apple Music 最近在听、此刻在播那首的链接解析；Apple Music 那路两份生产都打，图上只画了主站那条",
         "歌词和动态封面浏览器不传参，站点按此刻在播那首自决，响应带 songId / link 供浏览器对号",
-        "musickit-token 签的是每位访客的公开令牌，和 /api/ingest/apple-music 的 GET 凭据不共用一条路径"
+        "musickit-token 签的是每位访客的公开令牌；Mac 推来的那对私人凭据只在服务端用，不经任何端点出去"
       ]
     }
   ]

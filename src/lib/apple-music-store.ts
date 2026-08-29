@@ -1,28 +1,32 @@
-import { number, object, text } from "@/lib/json";
+import { AwaitingReport } from "@/lib/api";
+import { nextObservation, type Observation } from "@/lib/apple-music-observation";
 import { mirrorKey } from "@/lib/redis";
 import type { ListeningItem, ListeningPayload, NowPlayingGuess } from "@/lib/types";
 
 /**
- * 「最近在听」的落库。
+ * 「最近在听」的落库，以及那份推断所依赖的观测状态。
  *
- * 这份列表从前是站点自己去 api.music.apple.com 拉的 —— 全站唯一一路主动回源。
- * 现在由 reporters/apple-music-reporter 推来，站点这侧命中数据缓存就不打 Redis，
- * 也不再打 Apple。
+ * 两个键，都在这里：
  *
- * 换掉的理由不只是省调用：判断「此刻在不在听」要靠观测最近播放列表里排第一的
- * 那项**什么时候变成第一的**，而那个观测状态从前存在进程内存里 —— serverless
- * 上每个实例各有一份、活不到下一次切换，等于永远推断不出来。观测这件事需要一个
- * 常驻进程按固定节奏做，那就是上报器。
+ * 1. `apple-music:recent` —— 拉回来的整份列表。**一个键装整份**，所以访客读它
+ *    只有一次 Redis（命中 `'use cache'` 时连这一次都没有）。曾经每个 item 各走
+ *    一次缓存，十项就是十个来回，那是把这件事搬出站点的理由之一；形状换成这样
+ *    之后那笔开销就不在了。
+ * 2. `apple-music:observed` —— 上一次看见排在最前的是谁、它是什么时候换上来的。
+ *    这一份从前存在进程内存里，serverless 上每个实例各有一份、活不到下一次切换，
+ *    于是「此刻在不在听」永远推断不出来 —— 挪进 Redis 才是把拉取收回站点的前提，
+ *    见 lib/apple-music-recent。
  *
  * Redis 为主、进程内存为辅，规则见 lib/redis 的 mirrorKey。
  */
 
 /**
- * 存的是内容本身；新鲜度看 pushedAt，由浏览器现算。
+ * 存的是内容本身。`fetchedAt` 单独放在外面，它是代数不是新鲜度 —— 这张卡没有
+ * 陈旧判定（一份冻住的「最近在听」本身没有错），用处见 ListeningPayload。
  * inferred 不落库：它是 nowPlaying 对上哪一项的派生字段，读取时现盖。
  */
 type StoredItem = Omit<ListeningItem, "inferred">;
-type StoredListening = {
+export type StoredListening = {
   items: StoredItem[];
   nowPlaying: NowPlayingGuess | null;
 };
@@ -38,109 +42,80 @@ function withInferred(payload: StoredListening): Pick<ListeningPayload, "items" 
   };
 }
 
-const mirror = mirrorKey<{ payload: StoredListening; pushedAt: number }>(
+const mirror = mirrorKey<{ payload: StoredListening; fetchedAt: number }>(
   ["apple-music", "recent"],
-  (state) => state.pushedAt,
+  (state) => state.fetchedAt,
 );
 
-/**
- * 上报器没推的时间超过 LISTENING_STALE_MS（lib/freshness）就算陈旧。
- * 浏览器拿 pushedAt 现算，这里不再产出布尔值。
- */
-
-/** 只比内容，不比推送时刻 —— 上报器每 10 分钟会整份重推一次，那次不该算变化 */
+/** 只比内容，不比拉取时刻 —— 每轮刷新都会重写 fetchedAt，那不该算变化 */
 function sameContent(a: StoredListening, b: StoredListening) {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
-function reportItem(value: unknown): StoredItem | null {
-  const row = object(value);
-  if (!row) return null;
-  const id = text(row.id);
-  if (!id) return null;
-
-  const palette = Array.isArray(row.palette)
-    ? row.palette.filter((entry): entry is string => typeof entry === "string")
-    : [];
-
-  return {
-    id,
-    title: text(row.title) ?? "",
-    artist: text(row.artist) ?? "",
-    artwork: text(row.artwork),
-    link: text(row.link),
-    palette,
-    durationMs: number(row.durationMs),
-  };
-}
-
-function reportNowPlaying(value: unknown): NowPlayingGuess | null {
-  const row = object(value);
-  if (!row) return null;
-  const itemId = text(row.itemId);
-  const startedAt = number(row.startedAt);
-  const durationMs = number(row.durationMs);
-  // 三者缺一就整个作废：少了任何一个都算不出进度，留半份只会在前端炸开
-  if (!itemId || !startedAt || !durationMs) return null;
-  return { itemId, startedAt, durationMs };
-}
-
 /**
- * 收下上报器的一次推送：先校验、先比，写留给 commit。
+ * 收下刚拉回来的一份：先比，写留给 commit。
  *
- * `changed` 是内容变没变，调用方据此决定要不要推给浏览器 —— 兜底整推每 10 分钟
- * 就来一次，收到就推的话推送会退化成定时广播。
+ * `changed` 是内容变没变，调用方据此决定要不要推给浏览器和失效缓存 —— 大多数轮次
+ * 什么都没变，跟着推就成了定时广播。
  *
- * `listening` 就是要推的那整份，和落库那份同源。从前推送这一步是
- * `await getRecentlyPlayed()`，把刚写进去的东西再读回来 —— 白等一个来回，
- * 而且因为是「读刚写的」，推送只能排在写后面。
+ * `listening` 就是要推的那整份，和落库那份同源，所以写和推能同时发车（见 fanout
+ * 的规则 1）。从前这一步是把刚写进去的东西再读回来，白等一个来回。
  */
-export async function prepareRecentlyPlayedReport(
-  body: unknown,
-  pushedAt = Date.now(),
+export async function prepareRecentlyPlayed(
+  payload: StoredListening,
+  fetchedAt = Date.now(),
 ): Promise<{
-  items: number;
   changed: boolean;
   listening: ListeningPayload;
   commit: () => Promise<void>;
 }> {
-  const root = object(body);
-  if (!root) throw new Error("请求体不是对象");
-  if (!Array.isArray(root.items)) throw new Error("items 必须是数组");
-
-  const payload: StoredListening = {
-    items: root.items
-      .map(reportItem)
-      .filter((item): item is StoredItem => item != null),
-    // 缺席、null、算不出来都是「此刻没在听」，不区分
-    nowPlaying: reportNowPlaying(root.nowPlaying),
-  };
-
   const previous = await mirror.get();
   const changed = !previous || !sameContent(previous.payload, payload);
 
   return {
-    items: payload.items.length,
     changed,
-    listening: { ...withInferred(payload), pushedAt },
-    commit: () => mirror.put({ payload, pushedAt }),
+    listening: { ...withInferred(payload), fetchedAt },
+    commit: () => mirror.put({ payload, fetchedAt }),
   };
 }
 
 /**
  * 取「最近在听」。
  *
- * 从没收到过推送时明确报错，不返回空列表 —— 空列表的意思是「你最近什么都没听」，
- * 而这里的实情是「上报器没在跑」，两件事的修法完全不同。
+ * 一次都还没拉到过时明确报错，不返回空列表 —— 空列表的意思是「你最近什么都没听」，
+ * 而这里的实情是「站点手上还没有这份数据」，两件事的修法完全不同。这个状态是
+ * 正常的、短暂的：Redis 空着的第一个访客会看到它，他自己那次
+ * `/api/status/listening/now` 轮询就会把列表拉回来，推送随即把卡片点亮。
  */
 export async function getRecentlyPlayed(): Promise<ListeningPayload> {
   const state = await mirror.get();
   if (!state) {
-    throw new Error(
-      (await mirror.reachable())
-        ? "尚未收到 Apple Music 上报器的推送"
-        : "读不到「最近在听」—— Redis 连不上，数据本身可能还在",
-    );
+    if (await mirror.reachable()) {
+      throw new AwaitingReport("还没有拉到过 Apple Music 最近播放");
+    }
+    throw new Error("读不到「最近在听」—— Redis 连不上，数据本身可能还在");
   }
-  return { ...withInferred(state.payload), pushedAt: state.pushedAt };
+  return { ...withInferred(state.payload), fetchedAt: state.fetchedAt };
+}
+
+/**
+ * 看一眼排在最前的那一项，返回它是什么时候换上来的（不知道就是 null）。
+ *
+ * 判断本身是纯函数，连同它的理由一起在 lib/apple-music-observation；这里只负责
+ * 把上一次的状态取出来、把新的写回去。
+ */
+const observation = mirrorKey<Observation>(
+  ["apple-music", "observed"],
+  (value) => value.observedAt,
+);
+
+export async function observeTopItem(
+  id: string,
+  now: number,
+  /** 两次观测隔多久就当断了。由调用方按自己的刷新节奏定，见 lib/apple-music-recent */
+  gapMs: number,
+): Promise<number | null> {
+  const seen = nextObservation(await observation.get(), id, now, gapMs);
+  await observation.put(seen);
+  return seen.switchedAt;
 }

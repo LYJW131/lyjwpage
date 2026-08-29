@@ -8,33 +8,45 @@ import {
 import { cached } from "@/lib/cache";
 
 /**
- * Apple Music 目录查询 —— 站点这侧只剩这一件事。
+ * 站点和 Apple Music 之间的往来：凭据、请求外壳，以及目录查询。
  *
- * 「最近在听」那份列表已经改由 reporters/apple-music-reporter 推来，见
- * lib/apple-music-store。留在这里的是**给此刻在播的那首曲子找一个可跳转的地址**：
- * 本机 Music.app 和 HomePod 都给不出可分享的链接，只能拿曲名 + 艺人去目录里搜，
- * 而这件事是读取时按当前播放的曲子现查的，没法交给按固定节奏轮询的上报器。
+ * 两个调用方，共用下面这把凭据和 `appleFetchRaw`：
  *
- * 也就是说这是全站三条会打 Apple 的路径之一（另外两条是动态封面和歌词，见
- * lib/motion-artwork 和 lib/lyrics —— 那两条打的是 amp-api、用的是扒来的
- * web token，歌词再多带一个这里同一份凭据里的 music user token）。
- * 命中长期缓存，绝大多数请求不会真的出网。真要把它也搬走，该搬去 Mac 上报器 —— 它有 MusicKit，换歌的那一刻就能
- * 把链接一起算好塞进信封，这里连缓存都不用留。
+ * 1. **给此刻在播的那首曲子找一个可跳转的地址**（就在这个文件里）。本机
+ *    Music.app 和 HomePod 都给不出可分享的链接，只能拿曲名 + 艺人去目录里搜，
+ *    而这件事跟着当前播放的曲子走，读取时才知道要搜什么。真要把它搬走，该搬去
+ *    Mac 上报器 —— 它有 MusicKit，换歌的那一刻就能把链接一起算好塞进信封，
+ *    这里连缓存都不用留。
+ * 2. **「最近在听」那份列表**（见 lib/apple-music-recent）。它从前由 NAS 上一个
+ *    常驻的上报器拉好推来，现在收编进站点：访客的轮询驱动刷新，闲时不出网。
+ *
+ * 加上动态封面和歌词（lib/motion-artwork 和 lib/lyrics —— 那两条打的是 amp-api、
+ * 用的是扒来的 web token，歌词再多带一个这里同一份凭据里的 music user token），
+ * 站点会打 Apple 的就这四处。四处都命中缓存，前端轮询多快，回源频率都不变。
  *
  * 凭据只有一个来源：Mac 上报器推来的那份。服务器上不放 .p8 —— 签名密钥留在那台
  * 机器的钥匙串里由系统保管，这边拿到的是 MusicKit 现签的 developer token 和
  * 同一次授权产出的 music user token。没有本地签名的回落：有回落就意味着私钥
  * 仍然得躺在服务器上，那这套东西就白做了。
+ *
+ * 这份凭据也不再从任何 HTTP 端点发出去。从前 `/api/ingest/apple-music` 的 GET
+ * 把它转交给上报器，代价是 `TELEMETRY_INGEST_SECRET` 从此和收听记录同等敏感；
+ * 拉列表的活收回站点之后，那条路连同那个代价一起没了。
  */
 
-type Credentials = {
+export type Credentials = {
   developerToken: string;
   userToken: string;
   /** developer token 的到期时刻，Unix 秒。只用来在报错里说清楚，不做提前判断 */
   expiresAt: number;
 };
 
-async function resolveCredentials(): Promise<Credentials> {
+/** 目录查询地区。两个调用方读的是同一个变量，别各写各的默认值 */
+export function appleStorefront(): string {
+  return (process.env.APPLE_MUSIC_STOREFRONT?.trim() || "cn").toLowerCase();
+}
+
+export async function resolveCredentials(): Promise<Credentials> {
   const result = await readAppleMusicCredentials();
   if (!result.ok) {
     // 两种没有，修法相反：一个去看 Redis，一个去点授权按钮
@@ -52,7 +64,15 @@ async function resolveCredentials(): Promise<Credentials> {
   };
 }
 
-async function appleFetchRaw<T>(url: string, credentials: Credentials): Promise<T> {
+/**
+ * 上游卡住时别把这次请求一起拖死。
+ *
+ * 两条调用路径都需要它：查链接压在「此刻在听」的推送链路上，拉列表压在一次
+ * 状态轮询的响应之后 —— 两处都不该为一个不回话的上游一直挂着。
+ */
+const UPSTREAM_TIMEOUT_MS = 10_000;
+
+export async function appleFetchRaw<T>(url: string, credentials: Credentials): Promise<T> {
   const response = await fetch(url, {
     headers: {
       Authorization: `Bearer ${credentials.developerToken}`,
@@ -60,6 +80,7 @@ async function appleFetchRaw<T>(url: string, credentials: Credentials): Promise<
       Accept: "application/json",
     },
     cache: "no-store",
+    signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
   });
 
   if (!response.ok) {
@@ -149,7 +170,7 @@ export async function resolveTrackLookup(track: {
   try {
     const exact = await cached<TrackLookup>(cacheKey, TRACK_LINK_TTL_MS, async () => {
       const credentials = await resolveCredentials();
-      const storefront = (process.env.APPLE_MUSIC_STOREFRONT?.trim() || "cn").toLowerCase();
+      const storefront = appleStorefront();
       let hit: CatalogSong | undefined;
 
       for (const term of terms) {

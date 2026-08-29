@@ -47,7 +47,7 @@ import type {
  */
 const STAMPS: Record<string, (data: never) => number | null> = {
   [DESKTOP_PATH]: (data: DesktopPayload) => data.receivedAt,
-  [LISTENING_PATH]: (data: ListeningPayload) => data.pushedAt,
+  [LISTENING_PATH]: (data: ListeningPayload) => data.fetchedAt,
   [NOW_LISTENING_PATH]: (data: NowListeningPayload) => data.receivedAt,
   [POWERBANK_PATH]: (data: PowerBankPayload) => data.pushedAt,
 };
