@@ -135,3 +135,8 @@ pnpm --filter @lyjwpage/live-push run deploy
 
 代价是**不能把连接存在实例字段里** —— 休眠会清掉内存，醒来时构造函数重跑，
 那个 Set 就空了。连接列表一律现问 `ctx.getWebSockets()`。
+
+同一个道理，`setWebSocketAutoResponse` 登记在**构造函数**里，不在 accept 那条路上：
+醒来会重新 new 一遍实例，只在 accept 时登记的话这次就没了，后面的 ping 落到空的
+`webSocketMessage`，自动回复时间戳不再走动 —— 上面那套清扫拿它当 last-seen，会把
+还活着的连接判成静默。别把它挪回 `fetch()`。
