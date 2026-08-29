@@ -48,14 +48,15 @@
       },
       {
         "id": "counter",
-        "label": "在线人数反馈环",
+        "label": "连接数反馈环",
         "focus": [
           "browser",
-          "online_counter",
+          "live_push",
           "psn_reporter",
-          "lan_reporters"
+          "lan_reporters",
+          "online_counter"
         ],
-        "note": "浏览器连上就是一个人头，上报器读 /count 在快慢两档之间切换。"
+        "note": "页面开着就是一条 live-push 连接，上报器读它的 /count 在快慢两档之间切换。online-counter 数的是另一回事：只算此刻可见的页面，那个数印在页面上给人看。"
       },
       {
         "id": "assets",
@@ -560,7 +561,7 @@
     },
     {
       "id": "count_psn",
-      "from": "online_counter",
+      "from": "live_push",
       "to": "psn_reporter",
       "label": "GET /count 调频",
       "variant": "dashed",
@@ -568,7 +569,7 @@
       "toSide": "left",
       "via": [
         [
-          585,
+          898,
           957
         ],
         [
@@ -583,15 +584,19 @@
     },
     {
       "id": "count_lan",
-      "from": "online_counter",
+      "from": "live_push",
       "to": "lan_reporters",
       "variant": "dashed",
-      "fromSide": "left",
+      "fromSide": "bottom",
       "toSide": "left",
       "via": [
         [
+          912,
+          935
+        ],
+        [
           85,
-          871
+          935
         ],
         [
           85,
@@ -616,7 +621,7 @@
       "items": [
         "图上的源站归属取自各上报器文档里的默认 SITE_URL，MacTelemetryHub 不在本仓库内",
         "server-reporter 每 30 秒必发一次，那份快照本身就是心跳",
-        "playstation-reporter 每分钟 cron 只是闸门，没人在线时退回约 15 分钟一轮"
+        "playstation-reporter 每分钟 cron 只是闸门，没有页面开着时退回约 15 分钟一轮"
       ]
     },
     {

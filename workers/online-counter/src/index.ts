@@ -130,8 +130,8 @@ export class OnlineCounterRoom extends DurableObject<Env> {
     const url = new URL(request.url);
 
     if (url.pathname === COUNT_PATH) {
-      // 读之前先清一次：闹钟最慢要等一个 SWEEP_INTERVAL_MS，而 playstation-reporter
-      // 每分钟读这里定上报节奏，虚高一个人就把它钉在快节奏上
+      // 读之前先清一次：闹钟最慢要等一个 SWEEP_INTERVAL_MS，这个口子读到的应该是
+      // 读的那一刻的准数
       this.sweepIdleSessions();
       return jsonResponse({ online: this.sessions.size });
     }
@@ -158,8 +158,8 @@ export class OnlineCounterRoom extends DurableObject<Env> {
   /**
    * 定期清扫。
    *
-   * 用闹钟而不是只在 /count 被读时惰性清：那个入口的调用方是外部的
-   * playstation-reporter，靠它才能把自家计数收敛，等于把正确性押在别人的 cron 上。
+   * 用闹钟而不是只在 /count 被读时惰性清：页面上那个数走的是广播、不经过 /count，
+   * 而 /count 可能整天没人读，靠它收敛等于把正确性押在有没有人来调试上。
    * 闹钟自带续订，房间里还有人就一直转，人走光了下一次醒来不再续订、链条自己
    * 结束 —— 所以不必在每次断开时 deleteAlarm（那是每断一条就多一次写）。
    */

@@ -10,8 +10,11 @@ export const ONLINE_COUNT_KEY = "worker:online-count";
 export const ONLINE_CONNECTED_KEY = "worker:online-connected";
 
 /**
- * 浏览器连的端点。那个 Worker 的 /count 站点不用（只走长连接这条），但它不是
- * 闲置口 —— playstation-reporter 每分钟读它定上报节奏，见那边的 README。
+ * 浏览器连的端点。那个 Worker 还开着 /count，但站点只用长连接这条。
+ *
+ * 两个上报器的调频门读的**不是**它，是 live-push 的 /count：这条连接在页面进
+ * 后台时是整条关掉的（见下面的 handleVisibilityChange），数出来的是「此刻可见」，
+ * 而调频要问的是「有人可能切回来看」。
  */
 const WS_PATH = "/ws";
 

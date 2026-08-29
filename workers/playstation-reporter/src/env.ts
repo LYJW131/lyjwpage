@@ -7,8 +7,8 @@ export interface Env {
   PLAYSTATION_HIDDEN_TITLE_IDS?: string;
   SITE_URL?: string;
   SITE_INGEST_URL?: string;
-  /** online-counter worker 的**源**，路径由这边拼，和站点侧那个变量同一个形状。 */
-  ONLINE_COUNTER_URL?: string;
+  /** live-push worker 的**源**，路径由这边拼，和站点侧那个变量同一个形状。 */
+  LIVE_PUSH_URL?: string;
   PSN_NPSSO?: string;
   TELEMETRY_INGEST_SECRET?: string;
 }
@@ -71,10 +71,12 @@ export function isDryRun(env: Env): boolean {
 }
 
 /**
- * 在线人数读取地址。没配就返回空串 —— 门会一路按「没人在线」走基线节奏，
- * 也就是今天的每 15 分钟一轮，不会因为少配一个变量而变快或变慢。
+ * 连接数读取地址（live-push 的 `/count`，数的是**开着**本站的页面，含后台）。
+ *
+ * 没配就返回空串 —— 门会一路按「一个页面都没开」走基线节奏，也就是每 15 分钟
+ * 一轮，不会因为少配一个变量而变快或变慢。
  */
-export function onlineCountUrl(env: Env): string {
-  const origin = env.ONLINE_COUNTER_URL?.trim();
+export function liveCountUrl(env: Env): string {
+  const origin = env.LIVE_PUSH_URL?.trim();
   return origin ? `${trimSlash(origin)}/count` : "";
 }
