@@ -22,6 +22,8 @@ export const metadata: Metadata = {
     description: site.description,
     url: site.url,
     siteName: site.name,
+    // 页面是中文的，OG 不跟着 <html lang> 走，得自己报一次
+    locale: "zh_CN",
     type: "website",
   },
   robots: { index: true, follow: true },
