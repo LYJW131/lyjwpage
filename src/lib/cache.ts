@@ -74,6 +74,18 @@ export async function put<T>(k: string, value: T, ttlMs: number) {
   );
 }
 
+/**
+ * 主动作废一条：内存和 Redis 两层一起删。
+ *
+ * 给「缓存的值被上游判了死刑」的场景用 —— TTL 还没到、但值已经确认失效
+ * （比如动态封面那份扒来的 web token 吃了 401），等它自然过期只会让失效
+ * 期间的请求全部陪葬。
+ */
+export async function remove(k: string) {
+  memory.delete(k);
+  await withRedis(async (redis) => redis.del(key("cache", k)), null);
+}
+
 export async function cached<T>(
   k: string,
   ttlMs: number,

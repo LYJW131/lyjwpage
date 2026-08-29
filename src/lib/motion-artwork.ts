@@ -1,4 +1,4 @@
-import { get, put } from "@/lib/cache";
+import { get, put, remove } from "@/lib/cache";
 import type { AppleMusicParsed } from "@/lib/motion-artwork-url";
 
 /**
@@ -35,13 +35,16 @@ class UpstreamError extends Error {}
 let cachedToken: string | null = null;
 let tokenExpiresAt = 0;
 /**
- * 正在扒 token 的那一次。
+ * 正在取 token 的那一次。
  *
- * cachedToken 是模块全局的（serverless 上即每实例一份，和 Worker 时代的
- * per-isolate 一个粒度），但没有 in-flight 去重的话，冷启动后的一批并发请求
- * 会各自把整个 JS bundle（几百 KB）扒一遍。
+ * cachedToken 是模块全局的（serverless 上即每实例一份），Redis 里另有一份
+ * 全站共享的（见 loadWebToken）。in-flight 去重仍是进程内的：它挡的是
+ * 冷启动后的一批并发请求各自把整个 JS bundle（几百 KB）扒一遍。
  */
 let tokenInflight: Promise<string> | null = null;
+
+/** Redis 里那份共享 web token 的键。两份生产各自的 Redis 各存一份 */
+const TOKEN_CACHE_KEY = "motion-artwork:web-token";
 
 const USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
@@ -118,15 +121,37 @@ async function loadMotionArtwork(parsed: AppleMusicParsed): Promise<MotionResult
 }
 
 async function getWebToken(): Promise<string> {
-  const now = Date.now();
-  if (cachedToken && now < tokenExpiresAt - 5 * 60 * 1000) {
+  // 刷新时刻已经定在半衰期（见 tokenRefreshAt），不再需要「提前 5 分钟」的边距
+  if (cachedToken && Date.now() < tokenExpiresAt) {
     return cachedToken;
   }
 
-  tokenInflight ??= scrapeWebToken().finally(() => {
+  tokenInflight ??= loadWebToken().finally(() => {
     tokenInflight = null;
   });
   return tokenInflight;
+}
+
+/**
+ * 先问 Redis，没有才真扒。
+ *
+ * token 有效期约半年，而扒取是这条链路最脆的一环 —— 从数据中心 IP 反复抓
+ * music.apple.com 的页面和 JS bundle，Apple 哪天上验证页或改打包产物路径
+ * 就断。共享进 Redis 后，全站扒取频率从「每个冷实例一次」降到「每个半衰期
+ * 一次」。Redis 不可达时 get 返回 undefined，静默落回本实例自己扒 ——
+ * token 读取失败不能把整个解析拖死，代价只是回到从前的每实例一扒。
+ */
+async function loadWebToken(): Promise<string> {
+  const stored = await get<{ token: string; expiresAt: number }>(TOKEN_CACHE_KEY);
+  if (stored?.token && Date.now() < stored.expiresAt) {
+    cachedToken = stored.token;
+    tokenExpiresAt = stored.expiresAt;
+    return stored.token;
+  }
+
+  const token = await scrapeWebToken();
+  await put(TOKEN_CACHE_KEY, { token, expiresAt: tokenExpiresAt }, tokenExpiresAt - Date.now());
+  return token;
 }
 
 /**
@@ -156,8 +181,19 @@ async function scrapeWebToken(): Promise<string> {
   if (!jwtMatch) throw new UpstreamError("No JWT");
 
   cachedToken = jwtMatch[0];
-  tokenExpiresAt = parseJwtExp(cachedToken);
+  tokenExpiresAt = tokenRefreshAt(parseJwtExp(cachedToken));
   return cachedToken;
+}
+
+/**
+ * 刷新时刻定在 JWT 的半衰期：寿命过半就换新，永远不贴着过期线跑。
+ * 解不出 exp 时 parseJwtExp 兜底 +24h，半衰期即 +12h。下限一小时 ——
+ * 万一扒来的 token 的 exp 已在过去，别让它当场失效，否则每个请求都会
+ * 重扒一遍同样的坏 token。
+ */
+function tokenRefreshAt(expMs: number): number {
+  const now = Date.now();
+  return now + Math.max((expMs - now) / 2, 60 * 60 * 1000);
 }
 
 function parseJwtExp(jwt: string): number {
@@ -194,7 +230,12 @@ async function ampFetch<T>(endpoint: string, token: string): Promise<T> {
   });
 
   if (!resp.ok) {
-    if (resp.status === 401) cachedToken = null;
+    if (resp.status === 401) {
+      // 本实例的全局和 Redis 那份一起清：只清全局的话，本实例重扒了，
+      // 其它实例（连同本实例的下一次 loadWebToken）还会从 Redis 把坏的读回去
+      cachedToken = null;
+      await remove(TOKEN_CACHE_KEY);
+    }
     throw new UpstreamError(`amp-api ${resp.status}`);
   }
 
