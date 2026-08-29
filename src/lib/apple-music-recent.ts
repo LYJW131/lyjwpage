@@ -260,7 +260,15 @@ async function assemble(): Promise<ListeningItem[]> {
 
   const top = resources[0];
   if (top && items[0]) {
-    const durationMs = await containerDuration(top, credentials);
+    /**
+     * 时长查失败不连累整份列表 —— 和封面那条同一个口径。
+     *
+     * 列表这时已经拿回来了，而时长只是 hero 上的一个数。让它把整轮刷新拒掉的话，
+     * 手上这份好好的列表会被丢掉，闸门还占着，下一次真拉要等满一个租期；冷启动
+     * 那一下更难看：卡片顶着「Apple Music 未连接」，而 Apple 其实早就把列表给
+     * 我们了。
+     */
+    const durationMs = await containerDuration(top, credentials).catch(() => 0);
     if (durationMs > 0) items[0] = { ...items[0], durationMs };
   }
 
@@ -304,11 +312,19 @@ export function refreshRecentlyPlayed(): Promise<void> {
          * 进去时 afterResponse 会退回就地跑完，反正这一整块本来就在响应之后。
          *
          * 只在内容真的变了时推：列表没动的那几轮跟着发就成了定时广播。
+         *
+         * 失效走 urgent（`{ expire: 0 }`）而不是留宽限期，因为**这一路的刷新就
+         * 发生在读的那次请求里**：手上一份都没有时，那次请求会先把一个降级信封
+         * （`ok: false`）冻进 `'use cache'`，紧接着才把数据落库。留宽限期的话，
+         * 随后的轮询拿到的仍是那份冻住的降级信封 —— 而 `freshest` 见了 `ok: false`
+         * 会**主动删掉**记着的那份好数据（那是有意的：上游真挂了就该让页面看见），
+         * 于是刚被推送点亮的卡片会翻回「Apple Music 未连接」。urgent 让下一次请求
+         * 必须重算，那份冻住的降级信封就没机会被端出去。
          */
         await fanout({
           writes: [commit()],
           events: changed ? [{ type: "listening", payload: listening }] : [],
-          tags: changed ? [LISTENING_TAG] : [],
+          urgentTags: changed ? [LISTENING_TAG] : [],
         });
       } catch (error) {
         console.error("[apple-music]", error instanceof Error ? error.message : String(error));
