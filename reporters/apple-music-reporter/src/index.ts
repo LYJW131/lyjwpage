@@ -211,9 +211,38 @@ async function loop() {
     } catch (error) {
       failure("tick", error);
     }
-    // 有页面开着才提频。门排在 sleep 前，这一轮该多久由刚问到的连接数决定
-    const connections = await liveConnections();
-    await sleep(connections > 0 ? config.liveIntervalMs : config.recentIntervalMs);
+    await waitForNextTick();
+  }
+}
+
+/**
+ * 睡到下一轮。有页面开着就是快档一觉睡到底；一个都没开的时候**不能**一睡 15 分钟
+ * 不回头 —— 那样的话访客打开页面之后最坏要等一刻钟才见到新数据，而缩短这段等待
+ * 正是快档存在的理由。所以闲档拆成一个个快档长度的小觉，每觉醒来问一次，问到人
+ * 就立刻开跑：从一个页面都没有到第一份新数据，最坏一个快档。
+ *
+ * 手机锁屏、移动端后台标签页会被浏览器整个冻结，那条 live-push 连接过一阵就不再
+ * 计数（见 workers/live-push 的 IDLE_COUNT_MS），于是这边退回闲档 —— 冻着的页面
+ * 反正画不出东西，退回去是对的，要紧的是解冻之后多久能回到快档，那由这里的粒度定。
+ *
+ * 多打的这些请求打的是自己的 worker（不是 Apple），而 playstation-reporter 的 cron
+ * 闲时本来就差不多每分钟问它一次，live-push 那个 DO 的唤醒节奏不会因此变密。
+ */
+async function waitForNextTick(): Promise<void> {
+  // 门排在 sleep 前，这一觉该睡多久由刚问到的连接数决定
+  if ((await liveConnections()) > 0) {
+    await sleep(config.liveIntervalMs);
+    return;
+  }
+
+  const deadline = Date.now() + config.recentIntervalMs;
+  for (;;) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) return;
+    await sleep(Math.min(config.liveIntervalMs, remaining));
+    if (Date.now() >= deadline) return;
+    // 有人来了就别再睡完剩下的，直接开跑
+    if ((await liveConnections()) > 0) return;
   }
 }
 

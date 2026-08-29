@@ -33,7 +33,7 @@ const ROOM_ID = "global";
 const LOCAL_ORIGIN_RE = /^https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/;
 
 /**
- * 静默这么久就当对端已经没了。
+ * 静默这么久就不再计进 `/count`。
  *
  * **不能照抄 online-counter 的三个心跳周期（90 秒）。** 那边挂着的只可能是前台
  * 可见的页面 —— 它在 visibilitychange 时整条连接关掉；这边故意相反，后台标签页的
@@ -44,7 +44,25 @@ const LOCAL_ORIGIN_RE = /^https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?
  * 浏览器那侧的心跳间隔是 30 秒（src/hooks/use-live-events.ts 的 HEARTBEAT_MS），
  * 改那个数就回来重算这一条。
  */
-const IDLE_TIMEOUT_MS = 5 * 60_000;
+const IDLE_COUNT_MS = 5 * 60_000;
+
+/**
+ * 静默这么久才真的关掉连接。和上面那条**分开**。
+ *
+ * 服务端分不出「页面被整个冻住」和「对端已经没了」—— 两者都是不再发 ping，长得
+ * 一模一样。手机锁屏、移动端的后台标签页会被浏览器整个冻结（定时器完全停掉，不是
+ * 节流成每分钟一次），所以撞上上面那条线的里头一定混着还活着的页面。
+ *
+ * 但**算不算数**和**关不关**要的不是同一个判断：算不算数看的是「此刻这一份能不能
+ * 收到并画出来」，冻住的那份两样都做不到，不计进去是对的（上报因此退回慢档，而它
+ * 本来也没人在看）。关不关才需要小心 —— 关掉只会逼它解冻后重连一次，而不关的话
+ * 解冻后照旧用原来那条连接，下一次 ping 一到就重新计数。所以这条线画得远得多，
+ * 只用来收掉真正回不来的那些。
+ *
+ * 这样一来虚高也不会发生：一条僵尸在 5 分钟后就已经不计数了，它多留着的这段时间
+ * 顶多占个位置，钉不住上报器的档位。
+ */
+const IDLE_CLOSE_MS = 30 * 60_000;
 
 /*
  * 下面这四个函数和 online-counter / musickit-token 那两个 worker 逐字一样
@@ -199,7 +217,7 @@ export class LivePushRoom extends DurableObject<Env> {
   }
 
   /**
-   * 此刻真正挂着的连接数，回答前先清一次死连接。
+   * 此刻真正在数的连接数，回答前先扫一遍。
    *
    * 这个数唯一的消费方是两个上报器的调频门（playstation-reporter 和
    * apple-music-reporter），虚高一条就把它们永久钉在快档上 —— online-counter
@@ -214,39 +232,54 @@ export class LivePushRoom extends DurableObject<Env> {
   }
 
   /**
-   * 清掉对端已经消失、却没发过 close 帧的连接，返回还活着的条数。
+   * 数出还在数的连接，顺手收掉真正回不来的那些。
    *
-   * 不能照抄 online-counter 那份 `Map<WebSocket, number>`：休眠会把实例内存清掉，
-   * 醒来时构造函数重跑一遍，那个 Map 就空了。改读运行时替我们记的那一枚 ——
-   * `setWebSocketAutoResponse` 每回一次 "pong" 就更新它，读它不用把实例叫醒。
+   * 三档：静默没过 `IDLE_COUNT_MS` 的照常算数；过了就不算数、但留着，等它自己
+   * 解冻回来（见那两个常量的注释）；一直静默到 `IDLE_CLOSE_MS` 才真的关掉。
    *
-   * 只做减法，拿不准就留着：两枚时刻都取不到、或者时钟往回跳算出负数，一律不动。
+   * 只做减法，拿不准就留着并且算数：两枚时刻都取不到、或者时钟往回跳算出负数，
+   * 一律不动 —— 认错这个方向只会让上报器多跑几轮快档。
    */
   private sweepDeadSockets(): number {
     const now = Date.now();
     let live = 0;
 
     for (const socket of this.ctx.getWebSockets()) {
-      const lastPingAt = this.ctx.getWebSocketAutoResponseTimestamp(socket)?.getTime();
-      const attachment = socket.deserializeAttachment() as { connectedAt?: unknown } | null;
-      const connectedAt = Number(attachment?.connectedAt);
-      const lastSeenAt = lastPingAt ?? (Number.isFinite(connectedAt) ? connectedAt : Number.NaN);
-      const idleMs = now - lastSeenAt;
+      const idleMs = now - this.lastSeenAt(socket);
 
-      if (Number.isFinite(idleMs) && idleMs > IDLE_TIMEOUT_MS) {
+      if (!Number.isFinite(idleMs) || idleMs <= IDLE_COUNT_MS) {
+        live += 1;
+        continue;
+      }
+
+      if (idleMs > IDLE_CLOSE_MS) {
         try {
           // 1001 = going away。1005 / 1006 是保留码，自己发会抛，见 webSocketClose
           socket.close(1001, "idle timeout");
         } catch {
           // 已经烂掉的连接连 close 都可能抛，不计进 live 就够了
         }
-        continue;
       }
-
-      live += 1;
     }
 
     return live;
+  }
+
+  /**
+   * 这条连接最近一次让我们看见它是什么时候。取不到返回 NaN。
+   *
+   * 不能照抄 online-counter 那份 `Map<WebSocket, number>`：休眠会把实例内存清掉，
+   * 醒来时构造函数重跑一遍，那个 Map 就空了。改读运行时替我们记的那一枚 ——
+   * `setWebSocketAutoResponse` 每回一次 "pong" 就更新它，读它不用把实例叫醒。
+   * 刚接上、还没发出第一次 ping 的连接没有那枚时间戳，用 attachment 里的接入
+   * 时刻兜底，它同样活得过休眠。
+   */
+  private lastSeenAt(socket: WebSocket): number {
+    const lastPingAt = this.ctx.getWebSocketAutoResponseTimestamp(socket)?.getTime();
+    if (lastPingAt != null) return lastPingAt;
+    const attachment = socket.deserializeAttachment() as { connectedAt?: unknown } | null;
+    const connectedAt = Number(attachment?.connectedAt);
+    return Number.isFinite(connectedAt) ? connectedAt : Number.NaN;
   }
 
   /**
