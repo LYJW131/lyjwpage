@@ -5,7 +5,7 @@ import {
   type Credentials,
 } from "@/lib/apple-music";
 import { prepareRecentlyPlayed } from "@/lib/apple-music-store";
-import { cached } from "@/lib/cache";
+import { cached, claim } from "@/lib/cache";
 import { afterResponse, fanout, LISTENING_TAG } from "@/lib/live-events";
 import { withRedisScope } from "@/lib/redis";
 import type { ListeningItem } from "@/lib/types";
@@ -41,7 +41,7 @@ const RECENT_LIMIT = 10;
  */
 const RECENT_REFRESH_MS = 2 * 60_000;
 
-/** 刷新的节流闸。值本身没人读，要的是 lib/cache 的 TTL 和 in-flight 去重 */
+/** 刷新的节流闸。抢到它才去拉，见下面 refreshRecentlyPlayed */
 const REFRESH_KEY = "apple-music:recent:refresh:v1";
 
 /**
@@ -262,8 +262,16 @@ async function assemble(): Promise<ListeningItem[]> {
  * 那儿真等完（那时它和取数是并行的，不会串成两段）。访客的这次响应里给的仍是
  * 手上那份，刷出来的新列表由推送和缓存失效带给下一眼。
  *
- * 两道闸：进程内那个时刻先挡掉重复的提问（见 attemptedAt），说了算的是 lib/cache
- * 的 `cached` —— TTL 全站共享一份（Redis），in-flight 去重挡同一实例的并发穿透。
+ * 两道闸，一道挡问、一道挡拉：
+ *
+ * 1. 进程内那个时刻（见 attemptedAt）挡掉重复的提问，省下的是 Redis 往返；
+ * 2. `claim()` 才是说了算的那道 —— `SET NX PX`，**先抢再拉**。这里不能用
+ *    `cached()` 当闸门：它的值要等 loader 回来才写，取数那一两秒里闸门还是空的，
+ *    别的实例照样穿过去（它的 in-flight 去重只在进程内）。TTL 边界上几个实例同时
+ *    醒来时，那就是几次并发的上游调用，外加几次先后不定的落库。
+ *
+ * 抢到之后拉失败就空过这一段，不立刻重试：上游正病着的时候不该由下一个请求接着
+ * 敲它。日志也因此是一次真尝试一行，不是一次请求一行。
  */
 export function refreshRecentlyPlayed(): Promise<void> {
   const now = Date.now();
@@ -271,36 +279,27 @@ export function refreshRecentlyPlayed(): Promise<void> {
   attemptedAt = now;
 
   return afterResponse(async () => {
-    await withRedisScope(() =>
-      cached(REFRESH_KEY, RECENT_REFRESH_MS, async () => {
+    await withRedisScope(async () => {
+      if (!(await claim(REFRESH_KEY, RECENT_REFRESH_MS))) return;
+
+      try {
+        const { changed, listening, commit } = await prepareRecentlyPlayed(await assemble());
         /**
-         * 错误在闸门**里面**吞掉，成不成都盖同一个戳。
+         * 落库、推送、失效三件事的先后规则在 fanout 里，这边不重写一遍。
          *
-         * 不这么写的话失败会穿过去：`cached` 那 5 秒负缓存一过，值那半仍然是空的，
-         * 于是下一次请求又是一次真的上游调用 —— 上游正病着的时候反而比正常快出
-         * 一个数量级。拉不到只是这一轮作废，手上那份照常供着，下一轮按同一道 TTL
-         * 再来。日志也因此是一次真尝试一行，不是一次请求一行。
+         * 它自己也会往 `after()` 里塞 —— 而我们已经在一个 after 回调里了。嵌不
+         * 进去时 afterResponse 会退回就地跑完，反正这一整块本来就在响应之后。
+         *
+         * 只在内容真的变了时推：列表没动的那几轮跟着发就成了定时广播。
          */
-        try {
-          const { changed, listening, commit } = await prepareRecentlyPlayed(await assemble());
-          /**
-           * 落库、推送、失效三件事的先后规则在 fanout 里，这边不重写一遍。
-           *
-           * 它自己也会往 `after()` 里塞 —— 而我们已经在一个 after 回调里了。嵌不
-           * 进去时 afterResponse 会退回就地跑完，反正这一整块本来就在响应之后。
-           *
-           * 只在内容真的变了时推：列表没动的那几轮跟着发就成了定时广播。
-           */
-          await fanout({
-            writes: [commit()],
-            events: changed ? [{ type: "listening", payload: listening }] : [],
-            tags: changed ? [LISTENING_TAG] : [],
-          });
-        } catch (error) {
-          console.error("[apple-music]", error instanceof Error ? error.message : String(error));
-        }
-        return Date.now();
-      }),
-    );
+        await fanout({
+          writes: [commit()],
+          events: changed ? [{ type: "listening", payload: listening }] : [],
+          tags: changed ? [LISTENING_TAG] : [],
+        });
+      } catch (error) {
+        console.error("[apple-music]", error instanceof Error ? error.message : String(error));
+      }
+    });
   });
 }
