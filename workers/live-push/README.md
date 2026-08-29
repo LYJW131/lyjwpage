@@ -37,8 +37,12 @@
 ## 谁在读 /count
 
 `playstation-reporter` 和 `apple-music-reporter` 靠它定上报节奏：这个数大于 0 就走
-快档（两边都是 2 分钟一轮），否则退回各自的 15 分钟基线。改这条路径或返回形状要同步
+快档（两边都是 60 秒一轮），否则退回各自的 15 分钟基线。改这条路径或返回形状要同步
 改那两边；它们读不到时一律当 0，所以这个 worker 挂掉不会连累上报，只是不再加速。
+
+**live-push 一份生产一个**，而两个上报器的 `LIVE_PUSH_URL` 目前只填 Vercel 那一份。
+所以 EdgeOne 那份生产上的访客暂时不进调频口径 —— 少数了只会让它们退回慢档，方向
+和上面那条兜底一致。
 
 **为什么不读 online-counter 的 `/count`。** 那条连接在页面进后台时是整条关掉的
 （`src/hooks/use-online-count.ts` 的 `handleVisibilityChange`），所以它数的是「此刻

@@ -7,7 +7,13 @@ export interface Env {
   PLAYSTATION_HIDDEN_TITLE_IDS?: string;
   SITE_URL?: string;
   SITE_INGEST_URL?: string;
-  /** live-push worker 的**源**，路径由这边拼，和站点侧那个变量同一个形状。 */
+  /**
+   * live-push worker 的**源**，路径由这边拼，和站点侧那个变量同一个形状。
+   *
+   * live-push 一份生产一个（根 README「两份生产之间靠传播上报对齐」），这里只填
+   * Vercel 那一份 —— EdgeOne 那份生产上的访客暂时数不进来。偏差方向是安全的：
+   * 少数了只会让门退回慢档，不会误提速。
+   */
   LIVE_PUSH_URL?: string;
   PSN_NPSSO?: string;
   TELEMETRY_INGEST_SECRET?: string;

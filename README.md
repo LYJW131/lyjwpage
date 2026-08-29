@@ -111,7 +111,7 @@ pnpm dev
 
 Redis TCP 连接按请求作用域租用：同一 Node 实例里的并发请求共用一条，最后一个请求和命令结束后主动断开。不能让 ioredis 永久单例留在 serverless 实例里——实例暂停时普通 idle timer 不会跑，旧部署和 Preview 会各留一条空闲连接。Preview 必须不配 Redis 或使用独立 `REDIS_URL`；`REDIS_PREFIX` 只隔离键，不隔离连接额度。
 
-各路数据全是**推进来**的，本站不主动轮询任何上游。推送入口共用 `/api/ingest/*` 和同一个 `TELEMETRY_INGEST_SECRET`，状态落在 `lib/redis.ts` 的 mirrorKey 里（Redis 为主、进程内存为辅，没配 `REDIS_URL` 也能跑）。七个上报侧：Mac Telemetry Hub、iPhone Telemetry Hub、Home Assistant（HomePod）、Emby 推送代理、Apple Music 上报器、PlayStation 上报 Worker、VPS 上的 server-reporter。最后一个的 `wrangler.toml` 里 `SITE_URL` 已经填成主站，合并到 main 部署之后即开始真实上报；站点侧已经接好 `/api/ingest/playstation`、`/api/status/playing`、`/api/status/playing/now` 和 `/api/status/trophies`，Worker 的代码和部署说明在 `workers/playstation-reporter/`。它的 cron 每分钟看一眼 live-push 上的连接数（也就是**开着**本站的页面数，含后台标签页）：大于 0 就 2 分钟一轮完整 tick，一个都没有压回 15 分钟一轮，**每轮都发 presence** —— 内容没变也发，那一封就是心跳：站点照样落库刷新 `observedAt`，但不广播、也不急失效，只推一次普通 tag 让快照跟着走。断流判定因此在 `/api/status/playing/now` 出口每次请求现算（`PLAYSTATION_STALE_MS`，默认 50 分钟 = 闲时三轮加余量），超窗发降级信封：**Worker 死了是「不知道他在不在玩」，不是「他离线了」**，所以宁可让卡片收起「正在游玩」那一行，也不伪造一个 `online: false`。奖杯目录只在解锁指纹变化时才推，没有 `/now`，也不走实时推送。前两个是**设备级的遥测中心**：一台设备一个入口、一个信封、一个 `modules` 字典。上报器只跟一个源站说话，收到的那份会把请求原样转给对端部署，见[上面那节](#两份生产之间靠传播上报对齐)。
+各路数据全是**推进来**的，本站不主动轮询任何上游。推送入口共用 `/api/ingest/*` 和同一个 `TELEMETRY_INGEST_SECRET`，状态落在 `lib/redis.ts` 的 mirrorKey 里（Redis 为主、进程内存为辅，没配 `REDIS_URL` 也能跑）。七个上报侧：Mac Telemetry Hub、iPhone Telemetry Hub、Home Assistant（HomePod）、Emby 推送代理、Apple Music 上报器、PlayStation 上报 Worker、VPS 上的 server-reporter。最后一个的 `wrangler.toml` 里 `SITE_URL` 已经填成主站，合并到 main 部署之后即开始真实上报；站点侧已经接好 `/api/ingest/playstation`、`/api/status/playing`、`/api/status/playing/now` 和 `/api/status/trophies`，Worker 的代码和部署说明在 `workers/playstation-reporter/`。它的 cron 每分钟看一眼 live-push 上的连接数（也就是**开着**本站的页面数，含后台标签页）：大于 0 就 60 秒一轮完整 tick，一个都没有压回 15 分钟一轮，**每轮都发 presence** —— 内容没变也发，那一封就是心跳：站点照样落库刷新 `observedAt`，但不广播、也不急失效，只推一次普通 tag 让快照跟着走。断流判定因此在 `/api/status/playing/now` 出口每次请求现算（`PLAYSTATION_STALE_MS`，默认 50 分钟 = 闲时三轮加余量），超窗发降级信封：**Worker 死了是「不知道他在不在玩」，不是「他离线了」**，所以宁可让卡片收起「正在游玩」那一行，也不伪造一个 `online: false`。奖杯目录只在解锁指纹变化时才推，没有 `/now`，也不走实时推送。前两个是**设备级的遥测中心**：一台设备一个入口、一个信封、一个 `modules` 字典。上报器只跟一个源站说话，收到的那份会把请求原样转给对端部署，见[上面那节](#两份生产之间靠传播上报对齐)。
 
 站点仍会出网的只剩两处，都走 `src/lib/cache.ts`（带 TTL、in-flight 去重和 5 秒负缓存）：① 给此刻在播的曲子查一个可跳转的地址；② GitHub 贡献热力图（`lib/github-chart`，TTL 10 分钟）去 `api.github.com/graphql` 取日历 —— 它是唯一没有上报方的一路数据，只能自己拉。**核心原则：前端轮询多快，回源频率都不变**，由各自的 TTL 决定。值存 Redis（进程重启和多实例共享）；in-flight 去重始终在进程内，它挡的是同一进程的并发穿透，Redis 代劳不了。
 
@@ -196,7 +196,7 @@ MusicKit 签出来的 developer token 寿命约一个月（**Apple 没承诺这�
 
 **没有服务端自签的回落。** 有回落就意味着私钥仍得躺在服务器上，这套东西就白做了。代价是上报器长期离线且 Redis 也丢了凭据时「最近在听」直接失败，这是明摆着的取舍。
 
-上报器拉 `/v1/me/recent/played?limit=10`，站点有页面开着时 2 分钟一轮、一个都没开时 15 分钟一轮。注意这个端点返回的是**专辑、歌单、电台这类容器**，不是单曲：专辑给 `artistName`、歌单给 `curatorName`，没有 `durationInMillis`，`limit` 上限是 10。时长要顺着容器的 `href` 再查一次曲目加起来，封面对自建歌单还要去资料库副本取——这些查询的缓存全在上报器进程里，站点的 Redis 不再存它们。
+上报器拉 `/v1/me/recent/played?limit=10`，站点有页面开着时 60 秒一轮、一个都没开时 15 分钟一轮。注意这个端点返回的是**专辑、歌单、电台这类容器**，不是单曲：专辑给 `artistName`、歌单给 `curatorName`，没有 `durationInMillis`，`limit` 上限是 10。时长要顺着容器的 `href` 再查一次曲目加起来，封面对自建歌单还要去资料库副本取——这些查询的缓存全在上报器进程里，站点的 Redis 不再存它们。
 
 只在内容真的变了时才推给站点，另外每 10 分钟兜底整推一次（防 Redis 被清空）。站点收到后也自己比对一遍，变了才往浏览器发失效通知——所以兜底那次不会变成定时广播。
 
