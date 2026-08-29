@@ -1,7 +1,7 @@
 /**
  * 把某个自建 Worker 的**源**和一条路径拼成最终地址。
  *
- * 三个 Worker（live-push、online-counter、am-motion-artwork）的地址一律只配源，
+ * 三个 Worker（live-push、online-counter、musickit-token）的地址一律只配源，
  * 路径写在代码里 —— 它们和事件名一样，是站点和自己那几个 Worker 之间的约定，
  * 拆成一堆变量只会多出几处能对不上的地方。而且这几个 Worker 都不止一个路径
  * （`/ws` 之外还有 `/publish`、`/count`），配成「带路径的完整地址」的话，

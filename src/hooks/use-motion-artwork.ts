@@ -1,7 +1,5 @@
 import { useEffect, useState } from "react";
 
-import { workerUrl } from "@/lib/worker-url";
-
 export type MotionArtworkResult = {
   hasMotion: boolean;
   videoUrl: string | null;
@@ -12,16 +10,11 @@ const motionCache = new Map<string, MotionArtworkResult>();
 const pendingRequests = new Map<string, Promise<MotionArtworkResult | null>>();
 
 /**
- * 动态封面解析服务（workers/am-motion-artwork）的地址。解析在根路径上。
- *
- * 和另外两个 Worker 一样只配源，拼接规则见 lib/worker-url。必须写成完整的
- * `process.env.XXX` 字面量：浏览器那侧没有 process，这一处是构建时按文本
- * 替换掉的，解构或动态取键都替换不到。
- *
- * 没配就整体停用 —— 动态封面本来就是锦上添花，静态封面照常显示，不留写死的
- * 兜底地址（那等于把某一份部署的地址塞进所有部署）。
+ * 动态封面解析在站点自己身上（app/api/motion-artwork），同源相对路径，
+ * 不用配地址也没有停用开关 —— 从前这是个独立 Worker，要靠
+ * NEXT_PUBLIC_MOTION_ARTWORK_URL 指过去，没配就整体不发请求。
  */
-const MOTION_ENDPOINT = workerUrl(process.env.NEXT_PUBLIC_MOTION_ARTWORK_URL, "/");
+const MOTION_ENDPOINT = "/api/motion-artwork";
 
 /**
  * 校验是否为合法的 Apple Music 资源地址（专辑 / 歌单 / 歌曲），过滤搜索页与空链接。
@@ -37,7 +30,6 @@ function isValidAppleMusicUrl(url: string | null | undefined): url is string {
 export async function fetchMotionArtwork(
   url: string,
 ): Promise<MotionArtworkResult | null> {
-  if (!MOTION_ENDPOINT) return null;
   if (!isValidAppleMusicUrl(url)) return null;
 
   if (motionCache.has(url)) {
@@ -50,10 +42,7 @@ export async function fetchMotionArtwork(
 
   const promise = (async () => {
     try {
-      const targetUrl = new URL(MOTION_ENDPOINT);
-      targetUrl.searchParams.set("url", url);
-
-      const response = await fetch(targetUrl.toString());
+      const response = await fetch(`${MOTION_ENDPOINT}?url=${encodeURIComponent(url)}`);
 
       if (!response.ok) {
         return null;

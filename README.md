@@ -79,8 +79,8 @@ pnpm dev
 答案可能不一样。上报器只跟一个源站说话，只要有一份说没有就得让它补传，否则那张图在
 对端永远缺着（见 `mergeEmbyReceipt` / `mergeTelemetryReceipt`）。
 
-实时推送、在线人数、动态封面、首屏预热、MusicKit 令牌签发、PlayStation 状态上报各是
-一个独立的 Cloudflare Worker（六个都在 `workers/` 下）。**推 main 时 CI 只把有改动的
+实时推送、在线人数、首屏预热、MusicKit 令牌签发、PlayStation 状态上报各是
+一个独立的 Cloudflare Worker（五个都在 `workers/` 下）。**推 main 时 CI 只把有改动的
 那几个自动 `wrangler deploy`**
 （见 `.github/workflows/deploy-workers.yml`；`wrangler.toml` 在库里，秘密走
 `wrangler secret` 不进 CI）。
@@ -94,11 +94,11 @@ pnpm dev
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/architecture-dark.png">
-  <img alt="lyjwpage 运行时架构：上报侧、两份生产、六个 Worker 和浏览器之间的数据流" src="docs/architecture-light.png">
+  <img alt="lyjwpage 运行时架构：上报侧、两份生产、五个 Worker 和浏览器之间的数据流" src="docs/architecture-light.png">
 </picture>
 
 实线是 `/api/*` 上的数据主干，虚线是不走这条主干的几路 —— 整点预热打的是 `/`，图片字节由上报侧
-直传 R2，在线人数和令牌 / 封面则是浏览器、上报器直连 Worker。交互版是自包含的一页
+直传 R2，在线人数和令牌则是浏览器、上报器直连 Worker。交互版是自包含的一页
 [`docs/architecture.html`](docs/architecture.html)（GitHub 不渲染 HTML，克隆下来用浏览器打开），
 节点上标着对应的源码位置，还能按上报入库 / 两份生产互转 / 浏览器三条腿 / 在线人数反馈环 /
 图片直传 R2 五条线索分别看；图由 `docs/architecture.json` 生成，改了拓扑两边一起改。

@@ -341,7 +341,6 @@
       "id": "edge_helpers",
       "type": "cloud",
       "label": "musickit-token",
-      "sublabel": "am-motion-artwork",
       "pos": [
         1095,
         170
@@ -353,9 +352,6 @@
       "sources": [
         {
           "path": "workers/musickit-token/src/index.ts"
-        },
-        {
-          "path": "workers/am-motion-artwork/src/index.ts"
         }
       ],
       "tag": "浏览器直连"
@@ -540,7 +536,7 @@
       "id": "helpers_browser",
       "from": "edge_helpers",
       "to": "browser",
-      "label": "令牌 / 封面",
+      "label": "令牌",
       "variant": "dashed",
       "labelAt": [
         1183,

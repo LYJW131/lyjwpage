@@ -27,9 +27,8 @@ const ROOM_ID = "global";
 const LOCAL_ORIGIN_RE = /^https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/;
 
 /*
- * 下面这四个函数和 online-counter / musickit-token / am-motion-artwork 那三个
- * worker 逐字一样（workers/online-counter/src/index.ts），改一处记得同步另外三处。
- * —— am-motion-artwork 那份唯一的差别是引号：那个文件通篇用单引号。
+ * 下面这四个函数和 online-counter / musickit-token 那两个 worker 逐字一样
+ * （workers/online-counter/src/index.ts），改一处记得同步另外两处。
  *
  * 没抽成共享包是故意的：域名名单本来就得在每份 wrangler.toml 里各配一次，
  * 抽包省不掉那份重复，却要多一个包和一层依赖解析。
