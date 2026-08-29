@@ -34,6 +34,7 @@ import {
   asLibraryCache,
   asPlayedGamesCache,
   asTrophyCatalog,
+  profileIdentityFresh,
   readFullTickStartedAt,
   writeFullTickStartedAt,
   writeLibraryCache,
@@ -45,6 +46,7 @@ import {
 import {
   buildTrophiesReport,
   dirtyIndexRows,
+  fetchProfileIdentity,
   fetchTrophySummary,
   fetchTrophyTitleSlice,
   fetchTrophyTitles,
@@ -54,6 +56,7 @@ import {
   mergeTrophyTitles,
   playByTrophyFromTitles,
   playLinkGames,
+  profileFromSummary,
   snapshotIndex,
   trophySummarySignature,
   type TrophiesReport,
@@ -90,8 +93,54 @@ function filterHidden(report: TrophiesReport, hidden: Set<string>): TrophiesRepo
   };
 }
 
+function catalogProfile(
+  profile: TrophiesReport["profile"],
+  fetchedAt: number,
+): TrophyCatalog["profile"] {
+  return { ...profile, fetchedAt };
+}
+
+/**
+ * 奖杯目录没变，但资料 TTL 过了：不翻目录、不爬明细，只重拉
+ * onlineId / 头像 / Plus，整份交上去，好让站点上的头像真的会每天刷新。
+ */
+async function refreshStoredProfile(
+  env: Env,
+  auth: AuthSession,
+  hidden: Set<string>,
+  last: TrophyCatalog,
+  summary: TrophySummary,
+  nextFingerprint: string,
+  summarySignature: string,
+): Promise<{
+  trophies: TrophiesReport;
+  trophiesChanged: boolean;
+  nextFingerprint: string;
+  catalog: TrophyCatalog;
+}> {
+  const now = Date.now();
+  const fetched: TrophiesReport = {
+    observedAt: now,
+    profile: profileFromSummary(await fetchProfileIdentity(env, auth, summary), summary),
+    titles: last.titles,
+  };
+  console.log(JSON.stringify({ event: "playstation-trophy-sync", action: "profile" }));
+  return {
+    trophies: filterHidden(fetched, hidden),
+    trophiesChanged: true,
+    nextFingerprint,
+    catalog: {
+      ...last,
+      fingerprint: nextFingerprint,
+      summarySignature,
+      profile: catalogProfile(fetched.profile, now),
+    },
+  };
+}
+
 /**
  * 奖杯只在整份齐了才交给 deliver。没变的标题从上次交付的目录合并，不重打 PSN。
+ * 个人资料（onlineId / 头像 / Plus）按 PROFILE_TTL_MS 单独判断，不跟目录绑死。
  */
 async function syncTrophies(
   env: Env,
@@ -108,16 +157,24 @@ async function syncTrophies(
   catalog?: TrophyCatalog;
 }> {
   const summarySignature = trophySummarySignature(hidden, summary);
+  const profileFresh = profileIdentityFresh(last?.profile);
 
   if (last && last.summarySignature === summarySignature && last.fingerprint === oldTrophiesFingerprint) {
-    console.log(JSON.stringify({ event: "playstation-trophy-sync", action: "skip" }));
-    return { trophies: null, trophiesChanged: false, nextFingerprint: last.fingerprint };
+    if (profileFresh) {
+      console.log(JSON.stringify({ event: "playstation-trophy-sync", action: "skip" }));
+      return { trophies: null, trophiesChanged: false, nextFingerprint: last.fingerprint };
+    }
+    // quiet 也要过期重拉：头像 / Plus 不进奖杯指纹，不重拉就永远停在旧的。
+    return refreshStoredProfile(env, auth, hidden, last, summary, last.fingerprint, summarySignature);
   }
 
   const titles = await fetchTrophyTitles(env, auth);
   const nextFingerprint = trophiesFingerprintOf(hidden, indexFingerprint(titles, summary));
   if (nextFingerprint === oldTrophiesFingerprint && last) {
-    return { trophies: null, trophiesChanged: false, nextFingerprint };
+    if (profileFresh) {
+      return { trophies: null, trophiesChanged: false, nextFingerprint };
+    }
+    return refreshStoredProfile(env, auth, hidden, last, summary, nextFingerprint, summarySignature);
   }
 
   const titleIds = titles.map((title) => title.npCommunicationId);
@@ -159,13 +216,14 @@ async function syncTrophies(
     }
   }
 
+  // 资料还新鲜就别在 dirty 重爬时再打一遍；等级 / 总杯数走下面 summary 覆盖。
   const fetched = await buildTrophiesReport(
     env,
     auth,
     summary,
     merged,
     byTrophy,
-    crawled.length === 0 ? last?.profile : null,
+    profileFresh ? last?.profile : null,
   );
   return {
     trophies: filterHidden(fetched, hidden),
@@ -176,7 +234,10 @@ async function syncTrophies(
       summarySignature,
       index: snapshotIndex(titles),
       titles: fetched.titles,
-      profile: fetched.profile,
+      profile: catalogProfile(
+        fetched.profile,
+        profileFresh && last?.profile.fetchedAt != null ? last.profile.fetchedAt : Date.now(),
+      ),
     },
   };
 }

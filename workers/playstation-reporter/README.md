@@ -4,8 +4,10 @@ Cloudflare Worker 上的 PSN 上报器：cron 每分钟响一次，前面挡一�
 就 60 秒一轮完整 tick，没人看就 15 分钟一轮。presence 每轮都推（站点靠它的
 `observedAt` 判上报器死活）；playedGames 和奖杯只在内容变化时才带上。闲着不玩的时候
 游玩列表和购买库走 KV 缓存，奖杯只打总览那一下 —— 等级和杯数没变就不再翻目录、
-不重爬明细。真有解锁时只重拉 `lastUpdated` 变了的那几款，定义（名字 / 分组）还能
-复用上次的，每款 4 次出网变成 2 次。变了的款当轮爬完、对齐、整份交付。
+不重爬明细。个人资料（onlineId / 头像 / Plus）另走 1 天 TTL：过期了 quiet 也要
+重拉，还新鲜时 dirty 重爬也不再打资料接口。真有解锁时只重拉 `lastUpdated` 变了
+的那几款，定义（名字 / 分组）还能复用上次的，每款 4 次出网变成 2 次。变了的款
+当轮爬完、对齐、整份交付。
 
 鉴权链和两个读取端点已经用真实凭据跑通，也确认 `Accept-Language: zh-Hans` 会返回
 官方中文名。站点侧的 `/api/ingest/playstation` 已经存在，`wrangler.toml` 里也配了
@@ -53,14 +55,18 @@ KV 的读带最长 60 秒的边缘缓存，正好压在 55 秒这个阈值上，
 3. 购买库（PS4 / PS5）同样走缓存，6 小时才翻一遍，和游玩列表并行。把 `service` /
    预购接到游玩列表；没开过档的预购追加在最近窗口之后，不混进
    `PLAYED_GAMES_LIMIT`；
-4. 奖杯总览的等级 / 总杯数 / 屏蔽名单都没变就收工。变了才翻目录，跟 KV 里上次交付
-   的快照比：只重爬进度、`lastUpdated`、定义/获得杯数对不上的款，两款并行。定义杯数
-   没变就只打「获得情况」两个接口，变了（新 DLC）才四个都打。没变的款从
-   `trophies:last` 合并进来。然后做 `titleId` 对齐（`getUserTrophiesForSpecificTitle`，
-   PPSA… → NPWR…）：已经对着的 SKU 不再打，只补还没映射的；万一新 NPWR 挂在旧
-   SKU 上才整表再对一次。对齐必须看见完整游玩列表，否则屏蔽的 titleId 对不上。
-   这一轮失败不写指纹，下一轮相对上次成功交付重算 dirty 再来 —— 不拿两个时点的
-   半份明细拼假目录。分页之间不再固定 sleep，上游 429 才退避重试；
+4. 奖杯总览的等级 / 总杯数 / 屏蔽名单都没变就收工。个人资料（onlineId /
+   avatarUrl / plus）按 1 天 TTL 单独判断：过期了 quiet 也打一次
+   `getProfileFromAccountId` 并整份交付，否则头像 / Plus 不会自己刷新；还新鲜时
+   即使 dirty 重爬也沿用，等级 / 总杯数仍用本轮 summary 覆盖。变了才翻目录，跟
+   KV 里上次交付的快照比：只重爬进度、`lastUpdated`、定义/获得杯数对不上的款，
+   两款并行。定义杯数没变就只打「获得情况」两个接口，变了（新 DLC）才四个都打。
+   没变的款从 `trophies:last` 合并进来。然后做 `titleId` 对齐
+   （`getUserTrophiesForSpecificTitle`，PPSA… → NPWR…）：已经对着的 SKU 不再打，
+   只补还没映射的；万一新 NPWR 挂在旧 SKU 上才整表再对一次。对齐必须看见完整
+   游玩列表，否则屏蔽的 titleId 对不上。这一轮失败不写指纹，下一轮相对上次成功
+   交付重算 dirty 再来 —— 不拿两个时点的半份明细拼假目录。分页之间不再固定
+   sleep，上游 429 才退避重试；
 5. 按 `PLAYSTATION_HIDDEN_TITLE_IDS` 去掉屏蔽的 titleId（不上报），再按
    `PLAYED_GAMES_LIMIT`（默认 100）切开，接上未开档预购；
 6. 交付两封 v1 信封：第一封必带 presence，playedGames 变了才一起带；奖杯只在整份
@@ -84,7 +90,7 @@ KV 的读带最长 60 秒的边缘缓存，正好压在 55 秒这个阈值上，
 | `auth` | token 状态 JSON，形状与旧 `state/auth.json` 完全相同 |
 | `fp:playedGames` | played games 内容指纹 |
 | `fp:trophies` | 奖杯总览指纹（等级 + 各标题完成度 / 定义杯数 / lastUpdated），并入屏蔽名单和两枚口径哨兵：口径一改指纹就变 |
-| `trophies:last` | 上次成功交付的整份目录 + 索引快照，增量重爬的对照面；站点仍然整份替换 |
+| `trophies:last` | 上次成功交付的整份目录 + 索引快照，增量重爬的对照面；站点仍然整份替换。`profile.fetchedAt` 是上次拉 onlineId / 头像 / Plus 的时刻，1 天内复用；缺席当过期 |
 | `cache:playedGames` | 全份游玩列表，在玩时 15 分钟、闲置时 1 小时内不重拉 |
 | `cache:library` | 购买库，6 小时内不重拉 |
 | `meta:lastTick` | 最近一轮时间、成功与否、playedGames / 奖杯有没有变、dry-run 状态。收尾时写 |

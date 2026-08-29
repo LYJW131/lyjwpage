@@ -788,8 +788,10 @@ export function applyPlayStats(
   });
 }
 
-function profileFromSummary(
-  identity: Pick<TrophiesReport["profile"], "onlineId" | "avatarUrl" | "plus">,
+export type ProfileIdentity = Pick<TrophiesReport["profile"], "onlineId" | "avatarUrl" | "plus">;
+
+export function profileFromSummary(
+  identity: ProfileIdentity,
   summary: TrophySummary,
 ): TrophiesReport["profile"] {
   return {
@@ -806,33 +808,14 @@ function profileFromSummary(
   };
 }
 
-export async function buildTrophiesReport(
+/** 打 getProfileFromAccountId。要不要打由调用方按 PROFILE_TTL_MS 决定。 */
+export async function fetchProfileIdentity(
   env: Env,
   auth: AuthSession,
   summary: TrophySummary,
-  titles: TrophyTitleReport[],
-  byTrophy: Record<string, PlayedGame[]>,
-  existingProfile?: TrophiesReport["profile"] | null,
-): Promise<TrophiesReport> {
+): Promise<ProfileIdentity> {
   const account = String(summary.accountId ?? "");
   if (!account) throw new Error("奖杯总览没有 accountId");
-
-  const linked = applyPlayStats(titles, byTrophy);
-  console.log(
-    JSON.stringify({
-      event: "playstation-trophy-link",
-      games: Object.values(byTrophy).reduce((sum, games) => sum + games.length, 0),
-      titles: Object.keys(byTrophy).length,
-    }),
-  );
-
-  if (existingProfile) {
-    return {
-      observedAt: Date.now(),
-      profile: profileFromSummary(existingProfile, summary),
-      titles: linked,
-    };
-  }
 
   const localized = languageHeader(env);
   const headers = localized ? { headerOverrides: localized } : undefined;
@@ -843,17 +826,39 @@ export async function buildTrophiesReport(
   );
   const onlineId = trimmed(profile.onlineId);
   if (!onlineId) throw new Error("PSN 资料没有 onlineId");
+  return {
+    onlineId,
+    avatarUrl: profileAvatarUrl(profile.avatars),
+    plus: profile.isPlus === true,
+  };
+}
 
+/**
+ * existingProfile 由调用方按 PROFILE_TTL_MS 决定：还新鲜就把
+ * onlineId / avatarUrl / plus 传进来，不再打 getProfileFromAccountId；
+ * 等级 / 总杯数仍用本轮 summary 覆盖。
+ */
+export async function buildTrophiesReport(
+  env: Env,
+  auth: AuthSession,
+  summary: TrophySummary,
+  titles: TrophyTitleReport[],
+  byTrophy: Record<string, PlayedGame[]>,
+  existingProfile?: ProfileIdentity | null,
+): Promise<TrophiesReport> {
+  const linked = applyPlayStats(titles, byTrophy);
+  console.log(
+    JSON.stringify({
+      event: "playstation-trophy-link",
+      games: Object.values(byTrophy).reduce((sum, games) => sum + games.length, 0),
+      titles: Object.keys(byTrophy).length,
+    }),
+  );
+
+  const identity = existingProfile ?? (await fetchProfileIdentity(env, auth, summary));
   return {
     observedAt: Date.now(),
-    profile: profileFromSummary(
-      {
-        onlineId,
-        avatarUrl: profileAvatarUrl(profile.avatars),
-        plus: profile.isPlus === true,
-      },
-      summary,
-    ),
+    profile: profileFromSummary(identity, summary),
     titles: linked,
   };
 }
