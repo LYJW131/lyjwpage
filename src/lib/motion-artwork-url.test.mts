@@ -41,6 +41,13 @@ test("主机名整段匹配：子域放行，蹭后缀的假域名不放", () =>
   assert.equal(parseAppleMusicUrl("https://example.com/us/album/x/1"), null);
 });
 
+test("资源 ID 只认纯数字 —— 解析出的值要拼进 amp-api 的 URL，别让它带路径手术", () => {
+  assert.equal(parseAppleMusicUrl("https://music.apple.com/us/album/x/..%2F..%2Fevil"), null);
+  assert.equal(parseAppleMusicUrl("https://music.apple.com/us/album/positions/.."), null);
+  // 资料库 ID（i.xxx）不是目录 ID，本来就解不出动态封面
+  assert.equal(parseAppleMusicUrl("https://music.apple.com/us/song/x/i.abc123"), null);
+});
+
 test("解析不出 URL 的输入返回 null，不抛", () => {
   assert.equal(parseAppleMusicUrl("不是地址"), null);
   assert.equal(parseAppleMusicUrl(""), null);
