@@ -170,7 +170,13 @@ async function syncTrophies(
 
   const titles = await fetchTrophyTitles(env, auth);
   const nextFingerprint = trophiesFingerprintOf(hidden, indexFingerprint(titles, summary));
-  if (nextFingerprint === oldTrophiesFingerprint && last) {
+  // 目录必须和指纹同一代：KV 先写 fp:trophies 再写 trophies:last，错代时
+  // last.titles 是旧的，交上去会把站点刚收下的解锁整份盖掉。
+  if (
+    nextFingerprint === oldTrophiesFingerprint &&
+    last &&
+    last.fingerprint === oldTrophiesFingerprint
+  ) {
     if (profileFresh) {
       return { trophies: null, trophiesChanged: false, nextFingerprint };
     }
