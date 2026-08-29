@@ -166,6 +166,21 @@ function getRoom(env: Env): DurableObjectStub<LivePushRoom> {
 }
 
 export class LivePushRoom extends DurableObject<Env> {
+  constructor(ctx: DurableObjectState, env: Env) {
+    super(ctx, env);
+    /**
+     * 心跳由运行时直接回，不唤醒实例。
+     *
+     * 必须挂在构造函数里：休眠醒来会重新 new 一遍，只在 accept 时登记的话
+     * 这次就没了。后面的 ping 落到空的 webSocketMessage，自动回复时间戳
+     * 不再走动，清扫会把还活着的连接当死连接关掉。
+     *
+     * 浏览器那侧要定时发点东西，否则中间的代理会把这条空转的连接掐掉；
+     * 但要是每次心跳都把休眠的实例叫醒，休眠就白做了。
+     */
+    this.ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
+  }
+
   /**
    * 用休眠版的 acceptWebSocket，不是 accept() + 自己攒一个 Set。
    *
@@ -191,13 +206,6 @@ export class LivePushRoom extends DurableObject<Env> {
      * 清扫拿它兜底：刚接上、还没发出第一次 ping 的连接没有自动回复时间戳。
      */
     server.serializeAttachment({ connectedAt: Date.now() });
-    /**
-     * 心跳由运行时直接回，不唤醒实例。
-     *
-     * 浏览器那侧要定时发点东西，否则中间的代理会把这条空转的连接掐掉；
-     * 但要是每次心跳都把休眠的实例叫醒，休眠就白做了。
-     */
-    this.ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
 
     return new Response(null, { status: 101, webSocket: client });
   }
