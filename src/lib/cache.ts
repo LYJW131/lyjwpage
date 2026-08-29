@@ -66,12 +66,27 @@ export async function get<T>(k: string): Promise<T | undefined> {
 }
 
 export async function put<T>(k: string, value: T, ttlMs: number) {
-  const ttl = Math.max(1_000, ttlMs);
+  // PX 只吃整数：带小数的 TTL（比如按半衰期除出来的 x.5 毫秒）会让 Redis 拒掉
+  // 整条 SET，错误再被 withRedis 静默吞掉 —— 值就只活在本进程内存里，
+  // 表现成「共享缓存时灵时不灵」。约束在这层收口，不指望每个调用方自己取整。
+  const ttl = Math.max(1_000, Math.ceil(ttlMs));
   memorySet(k, value, ttl);
   await withRedis(
     async (redis) => redis.set(key("cache", k), JSON.stringify(value), "PX", ttl),
     null,
   );
+}
+
+/**
+ * 主动作废一条：内存和 Redis 两层一起删。
+ *
+ * 给「缓存的值被上游判了死刑」的场景用 —— TTL 还没到、但值已经确认失效
+ * （比如动态封面那份扒来的 web token 吃了 401），等它自然过期只会让失效
+ * 期间的请求全部陪葬。
+ */
+export async function remove(k: string) {
+  memory.delete(k);
+  await withRedis(async (redis) => redis.del(key("cache", k)), null);
 }
 
 export async function cached<T>(
