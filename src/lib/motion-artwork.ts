@@ -236,9 +236,15 @@ async function ampFetch<T>(endpoint: string, token: string): Promise<T> {
 
   if (!resp.ok) {
     if (resp.status === 401) {
-      if (cachedToken === token) cachedToken = null;
+      /*
+       * 全局那份放到最后清。反过来（先清全局再 await Redis）的话，等待的
+       * 那个来回里，同实例的并发请求会从还没删掉的 Redis 把这个已判死的
+       * token 重新装回全局 —— 随后 Redis 被删空、快路径却一直用死 token。
+       * 挪到 await 之后重读现值，复活了也当场抓回来。
+       */
       const stored = await get<StoredToken>(TOKEN_CACHE_KEY);
       if (stored?.token === token) await remove(TOKEN_CACHE_KEY);
+      if (cachedToken === token) cachedToken = null;
     }
     throw new UpstreamError(`amp-api ${resp.status}`);
   }
