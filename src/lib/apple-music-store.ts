@@ -15,9 +15,19 @@ import type { ListeningItem, ListeningPayload } from "@/lib/types";
 /**
  * `fetchedAt` 单独放在外面，它是代数不是新鲜度 —— 这张卡没有陈旧判定
  * （一份冻住的「最近在听」本身没有错），用处见 ListeningPayload。
+ *
+ * **键里带格式版本。** 这个值的形状变过一次（上报器时代是
+ * `{ payload: { items, nowPlaying }, pushedAt }`），而 mirrorKey 只 JSON.parse、
+ * 不校验形状 —— 键不跟着换的话旧条目会被当成新格式读，`items` 就是 undefined，
+ * 而首屏那句 `listening.data.items.map` 会把**整页预渲染**打挂（信封仍是
+ * `ok: true`，所以没有任何一层会兜住它）。2026-08-29 在 Vercel 上就是这么挂的：
+ * 本地 build 全绿，因为本地那个 Redis 里根本没有旧值。
+ *
+ * 以后再改这个值的形状，记得一起改版本号 —— 和 lib/apple-music 里那条
+ * track-lookup 缓存键同一条规矩，那次的症状是链接和封面一起消失，这次是整页。
  */
 const mirror = mirrorKey<{ items: ListeningItem[]; fetchedAt: number }>(
-  ["apple-music", "recent"],
+  ["apple-music", "recent", "v2"],
   (state) => state.fetchedAt,
 );
 
