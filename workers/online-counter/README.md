@@ -10,7 +10,7 @@
    `NEXT_PUBLIC_ONLINE_COUNTER_URL`。路径由站点自己拼 —— 浏览器连 `/ws`。
    站点侧几个 Worker 的地址变量都是这个形状
    （`NEXT_PUBLIC_LIVE_PUSH_URL` / `NEXT_PUBLIC_ONLINE_COUNTER_URL` /
-   `NEXT_PUBLIC_MOTION_ARTWORK_URL` / `NEXT_PUBLIC_MUSICKIT_TOKEN_URL`；
+   `NEXT_PUBLIC_MUSICKIT_TOKEN_URL`；
    `cache-warmup` 没有，它是站点的调用方而不是被调方）。
 
 ## 路由
@@ -71,8 +71,8 @@
   这个头，所以对真实访客零代价，但 `curl` 不带头就绕过白名单这条路被堵上了。
   用 curl 验证时记得自己加 `-H "Origin: https://…"`。
 
-  名单和 `live-push` / `musickit-token` / `am-motion-artwork` 那三个 worker 是
-  同一份，加域名时四个都要改、都要重新部署。
+  名单和 `live-push` / `musickit-token` 那两个 worker 是同一份，
+  加域名时三个都要改、都要重新部署。
 
 ## 命令
 

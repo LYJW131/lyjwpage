@@ -16,7 +16,7 @@ import { workerUrl } from "@/lib/worker-url";
 /**
  * 签发服务（workers/musickit-token）的地址，令牌在 /token 上。
  *
- * 和另外三个 Worker 一样只配源，拼接规则见 lib/worker-url。必须写成完整的
+ * 和另外两个 Worker 一样只配源，拼接规则见 lib/worker-url。必须写成完整的
  * `process.env.XXX` 字面量：浏览器那侧没有 process，这一处是构建时按文本替换掉
  * 的，解构或动态取键都替换不到。
  *
