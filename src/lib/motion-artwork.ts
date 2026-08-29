@@ -46,6 +46,8 @@ let tokenInflight: Promise<string> | null = null;
 /** Redis 里那份共享 web token 的键。两份生产各自的 Redis 各存一份 */
 const TOKEN_CACHE_KEY = "motion-artwork:web-token";
 
+type StoredToken = { token: string; expiresAt: number };
+
 const USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
@@ -142,7 +144,7 @@ async function getWebToken(): Promise<string> {
  * token 读取失败不能把整个解析拖死，代价只是回到从前的每实例一扒。
  */
 async function loadWebToken(): Promise<string> {
-  const stored = await get<{ token: string; expiresAt: number }>(TOKEN_CACHE_KEY);
+  const stored = await get<StoredToken>(TOKEN_CACHE_KEY);
   if (stored?.token && Date.now() < stored.expiresAt) {
     cachedToken = stored.token;
     tokenExpiresAt = stored.expiresAt;
@@ -213,10 +215,12 @@ function parseJwtExp(jwt: string): number {
 /**
  * 打一次 amp-api。上游没给出正常回答就抛，别把它和「上游说没有」混成同一个 null。
  *
- * **401 一律清掉扒来的 token。** 从前只有 `/album/` 那条路清，`/song/` 那条
- * 静默返回 null，于是 token 一失效，该实例上所有 `/song/` 请求都会一直失败
- * 到 tokenExpiresAt 自然到期（解不出 `exp` 时兜底 +24 小时），或者恰好来一个
- * `/album/` 请求替它清掉为止。
+ * **401 清 token，但只清「挨了这记 401 的那份」。** 清本身是老教训：从前只有
+ * `/album/` 那条路清，`/song/` 那条静默返回 null，token 一失效那条路会一直
+ * 失败到 tokenExpiresAt 自然到期。带条件比对是 Redis 共享后补的：翻新窗口里
+ * 拿旧 token 的请求还在天上飞，它们的迟到 401 若无条件清，会把别的实例刚扒好
+ * 写进 Redis 的新 token（或本实例已翻新的全局）一并作废，害下一个冷实例白扒
+ * 一遍。GET 和 DEL 之间残留毫秒级窗口，撞上的代价也只是多扒一次，不上锁。
  */
 async function ampFetch<T>(endpoint: string, token: string): Promise<T> {
   const resp = await fetch(endpoint, {
@@ -231,10 +235,9 @@ async function ampFetch<T>(endpoint: string, token: string): Promise<T> {
 
   if (!resp.ok) {
     if (resp.status === 401) {
-      // 本实例的全局和 Redis 那份一起清：只清全局的话，本实例重扒了，
-      // 其它实例（连同本实例的下一次 loadWebToken）还会从 Redis 把坏的读回去
-      cachedToken = null;
-      await remove(TOKEN_CACHE_KEY);
+      if (cachedToken === token) cachedToken = null;
+      const stored = await get<StoredToken>(TOKEN_CACHE_KEY);
+      if (stored?.token === token) await remove(TOKEN_CACHE_KEY);
     }
     throw new UpstreamError(`amp-api ${resp.status}`);
   }
