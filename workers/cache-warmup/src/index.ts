@@ -81,6 +81,32 @@ function authHeaders(secret: string | undefined): HeadersInit {
   };
 }
 
+/** 逐字节等时比较，别让 401 的返回快慢把密钥一位一位漏出去 */
+function secretMatches(provided: string, expected: string): boolean {
+  const a = new TextEncoder().encode(provided);
+  const b = new TextEncoder().encode(expected);
+  if (a.byteLength !== b.byteLength) return false;
+  return crypto.subtle.timingSafeEqual(a, b);
+}
+
+function bearerToken(request: Request): string | null {
+  const header = request.headers.get("Authorization");
+  if (!header) return null;
+  const match = header.match(/^Bearer\s+(.+)$/i);
+  return match?.[1]?.trim() ?? null;
+}
+
+/**
+ * 配了密钥就必须对上。没配才放行，和站点 ingest 同一口径。
+ * 从前 GET `/` 只是暖首页；现在它会带着这把密钥去 expire 首屏 tag，
+ * 匿名打一下等于两边生产一起强制重建。
+ */
+function warmupAuthorized(request: Request, secret: string | undefined): boolean {
+  if (!secret) return true;
+  const provided = bearerToken(request);
+  return Boolean(provided && secretMatches(provided, secret));
+}
+
 /**
  * GET `/` 打不掉 Vercel 上已经 prerender 好的 STALE 壳。先立刻 expire
  * 首屏 tag，再 GET 回填。POST 挂了（401/404/5xx）仍打 GET，两边都写进结果。
@@ -124,6 +150,10 @@ export default {
   async fetch(request, env) {
     if (request.method !== "GET") {
       return new Response("Method Not Allowed", { status: 405 });
+    }
+    const secret = env.TELEMETRY_INGEST_SECRET?.trim() || undefined;
+    if (!warmupAuthorized(request, secret)) {
+      return Response.json({ ok: false, error: "未授权" }, { status: 401 });
     }
     const results = await warmup(env);
     const ok = results.length > 0 && results.every((hit) => hit.ok);
