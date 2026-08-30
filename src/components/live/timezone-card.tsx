@@ -88,7 +88,7 @@ function handAngles(hour: number, minute: number, second: number) {
 }
 
 /**
- * 首帧角度写在渲染里，和 RSC 快照同一时刻，针一开始就在。
+ * 首帧角度写在渲染里，针一开始就在对的位置（这张钟只在挂载后的真时刻才出场）。
  * 挂载后再 rAF 改 --angle，不要卸掉重挂（LiveClock 第一帧是 0°）。
  */
 function AnalogClock({
@@ -219,14 +219,14 @@ export function TimezoneCard({
   className?: string;
 }) {
   /**
-   * 首帧用缓存里的 snapshotAt，不能在页面里 Date.now()（挡预渲染），
-   * 也不能用 0（1970）。服务端和 hydrate 同一份数，针和数字一开始就在。
-   * 挂载后再用 useMountedAt / 计时器接到真钟。
+   * 首帧不能 Date.now()（挡预渲染 / 水合）。把缓存里的 snapshotAt 当成
+   * 「现在」画钟，HTML 冻几小时针就停几小时。`--:--` 才是对的第一帧；
+   * 真钟等 useMountedAt / 计时器。
    */
   const mountedAt = useMountedAt();
   const [ticked, setTicked] = useState(0);
   const snapshotAt = fallback.ok ? fallback.data.snapshotAt : 0;
-  const now = ticked || mountedAt || snapshotAt;
+  const now = ticked || mountedAt;
 
   useEffect(() => {
     // 对齐整秒再开始跑，避免从挂载时刻起每次都在半秒处翻数字。
@@ -243,13 +243,15 @@ export function TimezoneCard({
   }, []);
 
   // 有合法 Mac IANA 就用，没有才回退 site.timezone。不看上报器在不在线。
+  // 区名/偏移首帧仍要可预渲染：钟面 now 是 0，把 snapshotAt（或 observedAt /
+  // BUILD_AT）只交给这一层，不拿去画 HH:MM:SS。
   const {
     identifier: timezone,
     offsetSeconds,
     usingMac,
   } = resolveTimezoneDisplay(
     fallback.ok ? fallback.data.timezone : null,
-    now,
+    now || snapshotAt,
   );
   const clock = now ? clockParts(now, timezone) : null;
   const zoneLabel = [

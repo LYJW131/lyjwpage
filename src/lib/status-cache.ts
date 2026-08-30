@@ -56,9 +56,14 @@ import { getVibeCodingYear } from "@/lib/vibecoding-year-store";
 /**
  * stale 5 分钟 / revalidate 10 分钟 / expire 2 小时。
  *
- * 主力失效手段是 tag。10 分钟兜底留给首屏 HTML：上报器悄无声息死掉不会触发
- * tag，存活窗口默认 5 分钟（HEARTBEAT_WINDOW_MS），首屏那份 lastSeenAt 最多冻
- * 这 10 分钟。API 路径会现读存活。
+ * 主力失效手段是 tag：上报器开口时 ingest 会刷。cacheLife 本身不会重建
+ * Vercel 上已经 prerender 好的 `/` HTML——`revalidateTag(tag, "max")` 是 SWR，
+ * 下一个 GET `/` 仍可能吐旧壳；嵌套条目的 stale/revalidate 也推不动那份组合页。
+ * 上报器沉默时，拖底是 warmup：立刻 expire 首屏 tag，再 GET `/` 回填
+ * （cron 按这里的 revalidate 10 分钟走）。
+ *
+ * 存活窗口默认 5 分钟（HEARTBEAT_WINDOW_MS）。API 路径会现读存活；首屏那份
+ * lastSeenAt 跟 HTML 一起冻，要等这次失效+回填才翻。
  *
  * 不能再短：revalidate 为 0 或 expire 短于 5 分钟的缓存会被排除在预渲染之外、
  * 退化成请求时的动态洞，那就等于没缓存。

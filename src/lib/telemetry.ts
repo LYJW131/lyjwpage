@@ -752,7 +752,8 @@ export async function getTimezonePayload(): Promise<TimezonePayload> {
   await syncTelemetryState();
   return {
     timezone: telemetryState.activeModules.has("timezone") ? telemetryState.timezone : null,
-    // 走 cachedTimezone 的 use cache，冻的是填充时刻，最多旧 10 分钟。
+    // 走 cachedTimezone 的 use cache，冻的是填充时刻。钟面不再拿它当「现在」；
+    // 首帧只拿它算区名/偏移。新鲜度靠 tag（Mac 报时区）和 warmup 的立刻 expire。
     snapshotAt: Date.now(),
   };
 }

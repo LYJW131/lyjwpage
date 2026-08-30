@@ -347,7 +347,7 @@ export type TimezoneActivity = {
 
 export type TimezonePayload = {
   timezone: TimezoneActivity | null;
-  /** 缓存填充时刻。时间卡首帧用它画钟，页面里不能 Date.now()。 */
+  /** 缓存填充时刻。钟面不拿它当「现在」；首帧只拿它（或 observedAt / BUILD_AT）算区名和偏移。 */
   snapshotAt: number;
 };
 

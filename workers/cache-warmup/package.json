@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Hourly GET of production homepages so Next 'use cache' does not expire cold",
+  "description": "Invalidate then GET production homepages so prerendered / HTML is refilled",
   "main": "src/index.ts",
   "scripts": {
     "dev": "wrangler dev --test-scheduled",

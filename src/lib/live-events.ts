@@ -99,7 +99,8 @@ export type LiveEvent =
 
 /**
  * 首屏服务端渲染各份数据的缓存 tag，一份一个，配对见 lib/status-cache。
- * （github-chart 是个例外：它那份没有 tag，只靠 cacheLife 兜底。）
+ * （github-chart 是个例外：它那份没有 tag，靠 cacheLife；warmup 的
+ *  `revalidatePath('/')` + GET `/` 会把它一并回填。）
  *
  * 名字和上面的事件名逐字相同，也就和 /api/status/* 的路径同一套：`X` 是列表、
  * `X-now` 是此刻，URL 里的 `/` 在名字里写成 `-`（AGENTS.md 第 2 条，路径常量在
@@ -145,6 +146,29 @@ export const PLAYING_TAG = "playing";
 export const NOW_PLAYING_TAG = "playing-now";
 /** 奖杯目录。只有失效，没有推送事件，理由见 paths 的 TROPHIES_PATH。 */
 export const TROPHIES_TAG = "trophies";
+
+/**
+ * `page.tsx` 首屏每一份 `'use cache'` 的 tag。warmup 立刻 expire 这一整组，
+ * 再 GET `/` 回填。加卡就加进来。github-chart 没有 tag，靠那次
+ * `revalidatePath('/')` + GET `/` 一并重算。
+ */
+export const FIRST_SCREEN_TAGS = [
+  DESKTOP_TAG,
+  TIMEZONE_TAG,
+  CHARGER_TAG,
+  POWERBANK_TAG,
+  VIBECODING_TAG,
+  VIBECODING_YEAR_TAG,
+  LISTENING_TAG,
+  NOW_LISTENING_TAG,
+  ACTIVITY_TAG,
+  SERVER_TAG,
+  WATCHING_TAG,
+  NOW_WATCHING_TAG,
+  PLAYING_TAG,
+  NOW_PLAYING_TAG,
+  TROPHIES_TAG,
+] as const;
 
 /**
  * 让首屏缓存里的这几份过期，下一个请求重算。

@@ -8,12 +8,15 @@ routes = [
 ]
 
 [triggers]
-# 比首屏 expire（2 小时）短一截，漏一次还有余量。
-crons = ["0 * * * *"]
+# GET `/` 打不掉 Vercel 上已经 prerender 好的 STALE 壳（cacheLife 也不是定时器）。
+# 先 POST /api/cron/revalidate-home 立刻 expire 首屏 tag，再 GET `/` 回填。
+# 10 分钟对齐 STATUS_LIFE.revalidate，不是 1 小时。
+crons = ["*/10 * * * *"]
 
 [vars]
-# 逗号分隔的源。只打每个源的 `/`，预览站不要写进来。
+# 逗号分隔的源。只打每个源的失效口和 `/`，预览站不要写进来。
 WARMUP_ORIGINS = "https://lyjw.me,https://lyjw131.com"
+# TELEMETRY_INGEST_SECRET 是 wrangler secret，禁止写进 [vars]。
 
 [observability]
 enabled = true
