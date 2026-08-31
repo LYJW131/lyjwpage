@@ -84,12 +84,26 @@ export function playstationStaleMs() {
 }
 
 /**
- * 服务器上报器默认 30 秒一轮，三倍没消息就算这份断了。
+ * 服务器上报器分两档：有人看站点 30 秒一轮，没人看 10 分钟一轮
+ * （`reporters/server-reporter` 的 `LIVE_INTERVAL_MS` / `IDLE_INTERVAL_MS`，
+ * 每轮收尾问一次 online-counter 的人数）。这份快照本身就是心跳，每轮必发，
+ * 所以「多久没刷新」等价于「上报器还活着没有」。
  *
- * 和充电头同一套：漏一条不该翻脸，连着三条没到才算上报器出事。服务端可用
- * `SERVER_STALE_MS` 改 —— 上报器那侧改 `INTERVAL_MS` 时这里要跟着放宽。
+ * 这个窗口锚的是**慢档**：有人看时只会更快，判活的下限始终由 10 分钟那档定。
+ * 三轮多一点不该翻脸 —— 3 × 10 = 30 分钟，再给缓存留一个刷新周期（首屏那份
+ * 快照最长冻 10 分钟，见 lib/status-cache），到 40 分钟。
+ *
+ * 从 30 秒一轮 / 90 秒窗口改成两档，是因为 `/api/ingest/server` 每轮必发、
+ * 30 秒一轮时是全站函数调用量最大的一条路径（实测 12 小时 1.5K 次），而没人
+ * 看的时候那些数字只是记给没人看的卡片。和 apple-music / playstation 两个
+ * 上报器同一套判断。
+ *
+ * ⚠️ 顺序不能反：**窗口先放宽、部署完，上报器再降频**。反过来做的话中间那段
+ * 时间里上报器 10 分钟才来一条、站点还按 90 秒判，卡片会一直显示离线。
+ * 改**慢档**要跟着改这里；改快档不用，但快档要和卡片的 REFRESH_MS 对齐。
+ * 服务端可用 `SERVER_STALE_MS` 改。
  */
-export const SERVER_STALE_MS = 90_000;
+export const SERVER_STALE_MS = 40 * 60_000;
 
 export function serverStaleMs() {
   const configured = Number(process.env.SERVER_STALE_MS);

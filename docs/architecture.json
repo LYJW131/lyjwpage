@@ -562,6 +562,12 @@
           750
         ]
       ]
+    },
+    {
+      "id": "count_vps",
+      "from": "online_counter",
+      "to": "vps",
+      "variant": "dashed"
     }
   ],
   "cards": [
