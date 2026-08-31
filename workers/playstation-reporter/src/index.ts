@@ -3,6 +3,7 @@ import {
   hiddenTitleIds,
   isDryRun,
   onlineCountUrl,
+  openCountUrl,
   playedGamesLimit,
   titleIdsHidden,
   withoutHiddenTitleIds,
@@ -189,38 +190,47 @@ type TickResult = {
 };
 
 /**
- * 有人看站点时的完整 tick 间隔。cron 每分钟一响，卡 60 秒整的话早响半秒的那一轮
- * 会被门挡掉、实际退化成两分钟一轮，所以留 5 秒余量。
+ * 有人**正看着**站点时的完整 tick 间隔。cron 每分钟一响，卡 60 秒整的话早响半秒
+ * 的那一轮会被门挡掉、实际退化成两分钟一轮，所以留 5 秒余量。
  */
 const LIVE_TICK_INTERVAL_MS = 55_000;
 /**
- * 没人看时的完整 tick 间隔。同样留取整余量：每分钟的 cron 把它凑成 15 分钟整
- * 一轮，和从前那根十五分钟的 cron 一模一样，闲时对 PSN 的流量不变。
+ * 页面**开着但都在后台**时的 tick 间隔（切走的标签页、锁了屏的手机）。同样留
+ * 5 秒取整余量：2 分钟一轮。
+ *
+ * 这一档是为「切走了但还会切回来」留的 —— 那些页面在 online-counter 那侧算 0
+ * （站点侧 use-online-count 在不可见时把连接整条关掉），但 live-push 那条不关。
+ */
+const OPEN_TICK_INTERVAL_MS = 115_000;
+/**
+ * 一个页面都没开时的完整 tick 间隔。同样留取整余量：每分钟的 cron 把它凑成
+ * 15 分钟整一轮，和从前那根十五分钟的 cron 一模一样，闲时对 PSN 的流量不变。
  *
  * 站点 `src/lib/freshness.ts` 的 `PLAYSTATION_STALE_MS`（50 分钟 = 三轮 + 余量）
  * 锚的就是这个数。要动它，先去改那边。
  */
 const IDLE_TICK_INTERVAL_MS = 14.5 * 60_000;
-/** 人数读不回来不该拖着 tick 等，超时就当没人在线。 */
-const ONLINE_COUNT_TIMEOUT_MS = 2_500;
+/** 人头数读不回来不该拖着 tick 等，超时就当没人。 */
+const COUNT_TIMEOUT_MS = 2_500;
 
 /**
- * 站点此刻的在线人数。超时、非 200、形状不对，一律当 0。
+ * 问一个 worker 要人头数。超时、非 200、形状不对，一律当 0。
  *
- * 这个兜底方向是单向的：读不到只会让节奏退回基线，永远不会因为故障变快 ——
+ * 这个兜底方向是单向的：读不到只会让节奏往慢里退，永远不会因为故障变快 ——
  * 认错方向的代价是每分钟撞一次 PSN。
  */
-async function onlineCount(env: Env): Promise<number> {
-  const url = onlineCountUrl(env);
+async function headCount(url: string, field: "online" | "connections"): Promise<number> {
   if (!url) return 0;
   try {
-    const response = await fetch(url, { signal: AbortSignal.timeout(ONLINE_COUNT_TIMEOUT_MS) });
+    const response = await fetch(url, { signal: AbortSignal.timeout(COUNT_TIMEOUT_MS) });
     if (!response.ok) throw new Error(`返回 ${response.status}`);
-    const body = (await response.json()) as { online?: unknown } | null;
-    const value = Number(body?.online);
+    const body = (await response.json()) as Record<string, unknown> | null;
+    const value = Number(body?.[field]);
     return Number.isFinite(value) && value > 0 ? Math.trunc(value) : 0;
   } catch (error) {
-    console.warn(JSON.stringify({ event: "playstation-online-count", error: explain(error) }));
+    console.warn(
+      JSON.stringify({ event: "playstation-head-count", field, error: explain(error) }),
+    );
     return 0;
   }
 }
@@ -235,21 +245,39 @@ async function onlineCount(env: Env): Promise<number> {
  */
 let lastFullTickAt = 0;
 
+type Gate = {
+  run: boolean;
+  sinceMs: number;
+  /** 这一响真去问了的那些数；没问到那一步的留 null */
+  online: number | null;
+  open: number | null;
+};
+
 /**
  * cron 每分钟一响，这道门决定这一响要不要真跑一轮。
  *
- * 门里只有两个读操作（KV 一枚时间戳 + 在线人数），都排在任何贵操作之前：被挡下
- * 的那一轮完全不碰 PSN、不碰站点。间隔算的是**上一轮开始**的时刻而不是成功的
- * 时刻 —— 否则 PSN 持续故障时，重试会从十五分钟一次恶化成每分钟一次。
+ * 三档，由两个人头数分出来：有页面**可见**就 55 秒一轮，只是**开着**（后台标签
+ * 页、锁了屏的手机）就 115 秒，一个都没有就 15 分钟。
+ *
+ * 门里只有三个读操作（KV 一枚时间戳 + 两个人头数），都排在任何贵操作之前：被挡
+ * 下的那一轮完全不碰 PSN、不碰站点。而且是层层短路的 —— 攒够闲档就不问人数，
+ * 没攒够快档阈值就一个都不问，可见问到了就不问第二个。间隔算的是**上一轮开始**
+ * 的时刻而不是成功的时刻 —— 否则 PSN 持续故障时，重试会从十五分钟一次恶化成每
+ * 分钟一次。
  */
-async function shouldTick(env: Env): Promise<{ run: boolean; sinceMs: number; online: number | null }> {
+async function shouldTick(env: Env): Promise<Gate> {
   const lastAt = Math.max(await readFullTickStartedAt(env.STATE), lastFullTickAt);
   const sinceMs = lastAt > 0 ? Date.now() - lastAt : Number.POSITIVE_INFINITY;
-  // 攒够基线间隔就必跑，不必再问人数：闲时节奏不该依赖另一个 worker 可不可达
-  if (sinceMs >= IDLE_TICK_INTERVAL_MS) return { run: true, sinceMs, online: null };
-  if (sinceMs < LIVE_TICK_INTERVAL_MS) return { run: false, sinceMs, online: null };
-  const online = await onlineCount(env);
-  return { run: online > 0, sinceMs, online };
+  // 攒够闲档就必跑，不必再问人数：闲时节奏不该依赖另外两个 worker 可不可达
+  if (sinceMs >= IDLE_TICK_INTERVAL_MS) return { run: true, sinceMs, online: null, open: null };
+  if (sinceMs < LIVE_TICK_INTERVAL_MS) return { run: false, sinceMs, online: null, open: null };
+
+  const online = await headCount(onlineCountUrl(env), "online");
+  if (online > 0) return { run: true, sinceMs, online, open: null };
+  if (sinceMs < OPEN_TICK_INTERVAL_MS) return { run: false, sinceMs, online, open: null };
+
+  const open = await headCount(openCountUrl(env), "connections");
+  return { run: open > 0, sinceMs, online, open };
 }
 
 let inflight: Promise<TickResult> | null = null;
@@ -485,16 +513,17 @@ async function tick(env: Env): Promise<TickResult> {
 
 export default {
   /**
-   * cron 每分钟一响，真跑哪一响由 `shouldTick` 定：有人看站点 60 秒一轮，
-   * 没人看 15 分钟一轮。被挡下的那一响什么都不做。
+   * cron 每分钟一响，真跑哪一响由 `shouldTick` 定：有人正看着 60 秒一轮，页面
+   * 只是开着 2 分钟一轮，一个页面都没开 15 分钟一轮。被挡下的那一响什么都不做。
    */
   async scheduled(_controller, env) {
-    const { run, sinceMs, online } = await shouldTick(env);
+    const { run, sinceMs, online, open } = await shouldTick(env);
     console.log(
       JSON.stringify({
         event: "playstation-tick-gate",
         run,
         online,
+        open,
         sinceMs: Number.isFinite(sinceMs) ? sinceMs : null,
       }),
     );

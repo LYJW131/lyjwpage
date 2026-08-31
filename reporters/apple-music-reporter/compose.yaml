@@ -18,11 +18,15 @@ services:
       # 站点没配同名变量时可以空着，那时它既不校验上报也不校验取凭据
       TELEMETRY_INGEST_SECRET: ${TELEMETRY_INGEST_SECRET:-}
       APPLE_MUSIC_STOREFRONT: ${APPLE_MUSIC_STOREFRONT:-}
-      RECENT_INTERVAL_MS: ${RECENT_INTERVAL_MS:-}
       LIVE_INTERVAL_MS: ${LIVE_INTERVAL_MS:-}
-      # online-counter worker 的源，路径由上报器拼。不配就恒走 RECENT_INTERVAL_MS 那档
+      OPEN_INTERVAL_MS: ${OPEN_INTERVAL_MS:-}
+      IDLE_INTERVAL_MS: ${IDLE_INTERVAL_MS:-}
+      # 两个数人头的 worker 的源，路径由上报器拼 /count。
+      # online-counter 数「此刻可见」，live-push 数「开着」（含后台标签页）。
+      # 哪个不配，对应那一档就用不上
       ONLINE_COUNTER_URL: ${ONLINE_COUNTER_URL:-}
-      ONLINE_COUNT_TIMEOUT_MS: ${ONLINE_COUNT_TIMEOUT_MS:-}
+      LIVE_PUSH_URL: ${LIVE_PUSH_URL:-}
+      COUNT_TIMEOUT_MS: ${COUNT_TIMEOUT_MS:-}
       FULL_PUSH_INTERVAL_MS: ${FULL_PUSH_INTERVAL_MS:-}
       REQUEST_TIMEOUT_MS: ${REQUEST_TIMEOUT_MS:-}
       PUSH_TIMEOUT_MS: ${PUSH_TIMEOUT_MS:-}

@@ -131,6 +131,18 @@ function getRoom(env: Env): DurableObjectStub<LivePushRoom> {
  * 静默多久之后不再把一条连接算进人头。理由见 connectionCount。
  */
 const CONNECTION_STALE_MS = 5 * 60_000;
+/**
+ * 静默多久之后把连接关掉。
+ *
+ * 和上面那条是两个判断，不能合成一个：不计数问的是「此刻这一份能不能收到并画
+ * 出来」——冻住的页面（手机锁屏、移动端后台标签页会被浏览器整个冻结，定时器完全
+ * 停掉）两样都做不到，5 分钟就不算数是对的；关不关问的是「这条还有没有主」，
+ * 关错的代价是逼一个还活着的页面重连，所以线推到 30 分钟，只收真正回不来的。
+ *
+ * 不关也不是没有代价：连接一直挂着占着实例的连接表，而运行时对休眠实例的连接数
+ * 有上限。计数那条线已经挡住了「僵尸把上报器钉在快档」这个真问题，这条只是打扫。
+ */
+const CONNECTION_CLOSE_MS = 30 * 60_000;
 
 export class LivePushRoom extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
@@ -206,7 +218,9 @@ export class LivePushRoom extends DurableObject<Env> {
    * 分钟一响，贴着心跳间隔画线会成片误杀真实的后台连接 —— 而后台标签页恰恰是这
    * 个数存在的理由（可见的那些由 online-counter 数）。
    *
-   * 只是不计数，不关连接：关掉只会逼它重连一次，而判断本身可能是错的。
+   * 静默 5 分钟只是不计数，不关：关错的代价是逼一个还活着的页面重连。真正回不来
+   * 的那些由 CONNECTION_CLOSE_MS 那条线收走，顺路做，不额外挂闹钟 —— 定时唤醒
+   * 实例会把休眠省下的东西抵消掉。
    */
   connectionCount(now = Date.now()): number {
     let alive = 0;
@@ -214,9 +228,17 @@ export class LivePushRoom extends DurableObject<Env> {
       const pinged = this.ctx.getWebSocketAutoResponseTimestamp(socket);
       const attachment = socket.deserializeAttachment() as { at?: unknown } | null;
       const acceptedAt = typeof attachment?.at === "number" ? attachment.at : null;
-      const lastSeen = pinged?.getTime() ?? acceptedAt;
       // 两样都没有：这次部署之前接进来的旧连接，且此后一个 ping 都没发过
-      if (lastSeen !== null && now - lastSeen <= CONNECTION_STALE_MS) alive += 1;
+      const lastSeen = pinged?.getTime() ?? acceptedAt;
+      const silentMs = lastSeen === null ? Number.POSITIVE_INFINITY : now - lastSeen;
+      if (silentMs <= CONNECTION_STALE_MS) {
+        alive += 1;
+      } else if (silentMs > CONNECTION_CLOSE_MS) {
+        // 1001 = going away。关不掉（已经断了）就算了，运行时随后会清理
+        try {
+          socket.close(1001, "静默过久");
+        } catch {}
+      }
     }
     return alive;
   }

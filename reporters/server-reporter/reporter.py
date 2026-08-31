@@ -18,28 +18,32 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from collections.abc import Callable
 from typing import Any
 
 # 三档节奏。这份快照每轮必发（它本身就是心跳），30 秒一轮时它是站点函数调用量
 # 最大的一条路径 —— 实测 12 小时 1.5K 次。而这些数字只在有人看的时候才有人看，
 # 所以每轮收尾问两个数，据此决定下一轮多久：
 #
-#   有人正看着（online-counter 的 /count，只数**可见**的页面）      → 30 秒
+#   有人正看着（online-counter 的 /count，只数**可见**的页面）      → 60 秒
 #   页面开着但都在后台（live-push 的 /count，数**开着**的连接）     → 2 分钟
-#   一个页面都没开                                                  → 10 分钟
+#   一个页面都没开                                                  → 15 分钟
 #
 # 中间那档是为「切走了但还会切回来」留的：手机锁屏、后台标签页在 online-counter
 # 那侧算 0（站点侧 use-online-count 在 visibilitychange 时整条关掉），但它随时会
 # 被切回来，那一下不该看见十分钟前的 CPU。而 live-push 那条连接不管可不可见都挂
 # 着，正好是「开着本站」的口径。
 #
-# 快档必须跟卡片的 REFRESH_MS（server-card.tsx，30 秒，和充电头一档）对齐 ——
-# 有人看时那边多久问一次，这边就得多久推一次。慢档则锚着站点的 SERVER_STALE_MS
-# （lib/freshness，40 分钟 = 三轮 + 一个刷新周期的余量）：改慢档必须同步改那边，
-# 改另外两档不用，判活的下限始终由慢档定。
-LIVE_INTERVAL_MS = 30_000
+# 三档和另外两个上报器逐档对齐（apple-music-reporter、playstation-reporter），
+# 同一个概念同一个数，别在三处各调各的。
+#
+# 慢档锚着站点的 SERVER_STALE_MS（lib/freshness，50 分钟 = 三轮 + 一个刷新周期的
+# 余量）：改慢档必须同步改那边，改另外两档不用，判活的下限始终由慢档定。
+# 卡片那侧仍是 30 秒一问（和充电头一档），比快档还勤 —— 多出来那一趟拿到的是同
+# 一份数字，是有意留的：那是浏览器自己的节奏，不该由上报器的档位决定。
+LIVE_INTERVAL_MS = 60_000
 OPEN_INTERVAL_MS = 120_000
-IDLE_INTERVAL_MS = 600_000
+IDLE_INTERVAL_MS = 900_000
 # 两个数都读不回来不该拖着上报等。超时、非 200、形状不对，一律当 0 —— 兜底方向
 # 是单向的：读不到只会往慢里退，永远不会因为故障变快。
 COUNT_TIMEOUT_S = 2.5
@@ -466,6 +470,30 @@ def next_delay() -> float:
     return CONFIG["idle_interval_s"]
 
 
+def wait_for_next_round(stopping: "Callable[[], bool]") -> None:
+    """等到下一轮。
+
+    长档不是一觉睡满：拆成一个个快档长度的小觉，每觉醒来重新问一次人头数，
+    该走更快那档了就立刻回去开跑。否则「从没人到有人正看着」最坏要等满一个慢档
+    （15 分钟），而那正是有人盯着屏幕等的那一刻。多打的那几次是自家的两个
+    worker，不是这台机器的 /proc。
+    """
+    delay = next_delay()
+    deadline = time.time() + delay
+    while not stopping():
+        left = deadline - time.time()
+        if left <= 0:
+            return
+        nap = min(CONFIG["live_interval_s"], left)
+        napped_until = time.time() + nap
+        while not stopping() and time.time() < napped_until:
+            time.sleep(min(0.5, napped_until - time.time()))
+        if stopping() or time.time() >= deadline:
+            return
+        if next_delay() < delay:
+            return
+
+
 def main() -> None:
     info(
         f"server-reporter 启动：{CONFIG['host_id']} ({CONFIG['location']}) → {CONFIG['ingest_url']}"
@@ -515,16 +543,21 @@ def main() -> None:
             prev_net = cursor["net"]
             prev_at = cursor["at"]
             backoff = CONFIG["live_interval_s"]
-            # 问人数排在推送之后：站点先拿到这一轮的数，再决定下一轮多久
-            delay = next_delay()
+            # 问人数排在推送之后：站点先拿到这一轮的数，再决定下一轮多久。
+            # None = 走正常那条等待（会在等待中途重新问），不是退避
+            delay = None
         except Exception as error:  # noqa: BLE001 — 这一轮作废，进程不退
             failure("push", error)
             delay = backoff
             backoff = min(backoff * 2, 5 * 60)
 
-        deadline = time.time() + delay
-        while not stopping and time.time() < deadline:
-            time.sleep(min(0.5, deadline - time.time()))
+        if delay is None:
+            wait_for_next_round(lambda: stopping)
+        else:
+            # 上一轮出错：按退避表等，这段时间不问人头数（问了也改变不了退避）
+            deadline = time.time() + delay
+            while not stopping and time.time() < deadline:
+                time.sleep(min(0.5, deadline - time.time()))
 
 
 if __name__ == "__main__":
