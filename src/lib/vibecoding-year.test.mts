@@ -14,9 +14,12 @@ import {
   normalizeVibeCodingYear,
   sliceVibeCodingYear,
   tokenScores,
+  withYearFreshness,
 } from "./vibecoding-year.ts";
 
 const ORIGIN = "2025-08-17";
+const TODAY = addDays(ORIGIN, 300);
+const LATER = addDays(ORIGIN, 301);
 
 function days(fill = 1) {
   return Array.from({ length: YEAR_DAYS }, () => fill);
@@ -148,15 +151,18 @@ test("切回焦点只带最后一天，mix 跟着切", () => {
       [YEAR_DAYS - 1, 0, 40],
     ],
     pushedAt: 1,
+    todayAtSource: TODAY,
   };
   const last = addDays(ORIGIN, YEAR_DAYS - 1);
   const sliced = sliceVibeCodingYear(payload, last);
   assert.equal(sliced.daysPartial, true);
+  assert.equal(sliced.todayAtSource, TODAY);
   assert.equal(sliced.from, last);
   assert.deepEqual(sliced.days, [40]);
   assert.deepEqual(sliced.mix, [[YEAR_DAYS - 1, 0, 40]]);
 
   const merged = mergeVibeCodingYear(payload, sliced);
+  assert.equal(merged.todayAtSource, TODAY);
   assert.equal(merged.days[YEAR_DAYS - 1], 40);
   assert.equal(merged.days[YEAR_DAYS - 2], 10);
   assert.equal(merged.daysPartial, undefined);
@@ -175,6 +181,7 @@ test("原点前滚时 mix offset 跟着减，模型表按名字重对", () => {
       [YEAR_DAYS - 1, 1, 9],
     ],
     pushedAt: 1,
+    todayAtSource: TODAY,
   };
   const nextOrigin = addDays(ORIGIN, 7);
   const nextDays = days(2);
@@ -189,6 +196,7 @@ test("原点前滚时 mix offset 跟着减，模型表按名字重对", () => {
       [YEAR_DAYS - 1, 0, 11],
     ],
     pushedAt: 2,
+    todayAtSource: LATER,
   };
   const sliced = sliceVibeCodingYear(next, addDays(ORIGIN, YEAR_DAYS - 1));
   assert.equal(sliced.from, addDays(nextOrigin, YEAR_DAYS - 1 - 7));
@@ -196,6 +204,8 @@ test("原点前滚时 mix offset 跟着减，模型表按名字重对", () => {
   assert.deepEqual(sliced.models, ["opus"]);
 
   const merged = mergeVibeCodingYear(local, sliced);
+  // 今天跟着新到的那份走，不是本地那份
+  assert.equal(merged.todayAtSource, LATER);
   assert.equal(merged.origin, nextOrigin);
   assert.equal(merged.days.length, YEAR_DAYS);
   assert.equal(merged.days[0], 50);
@@ -205,4 +215,20 @@ test("原点前滚时 mix offset 跟着减，模型表按名字重对", () => {
     [0, 1, 50],
     [YEAR_DAYS - 1, 1, 11],
   ]);
+});
+
+test("今天由源站现盖，上报器停了也不跟着少一格", () => {
+  const stopped = Date.parse("2026-08-30T04:15:00+08:00");
+  const stored = { origin: ORIGIN, days: days(0), models: [], mix: [], pushedAt: stopped };
+
+  // 上报器停在昨天凌晨，今天仍是今天 —— 切窗要是拿 pushedAt 当钟，今天那格会被切掉
+  assert.equal(
+    withYearFreshness(stored, Date.parse("2026-08-31T09:00:00+08:00")).todayAtSource,
+    "2026-08-31",
+  );
+  // 站点时区而不是 UTC：东八区 00:30 拿 UTC 切会退回昨天，和 GitHub 那张图错开一列
+  assert.equal(
+    withYearFreshness(stored, Date.parse("2026-08-31T00:30:00+08:00")).todayAtSource,
+    "2026-08-31",
+  );
 });
