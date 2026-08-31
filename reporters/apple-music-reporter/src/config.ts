@@ -54,32 +54,47 @@ export const config = {
    *
    * 站点的 `LISTENING_STALE_MS`（50 分钟）锚的就是这一档：闲时的兜底整推搭在
    * tick 上，实际心跳节奏等于这个间隔。改这里要同步 `src/lib/freshness.ts`。
+   *
+   * 睡的时候不是一觉睡满：闲档拆成一个个快档长度的小觉，每觉醒来问一次人数，
+   * 问到人立刻开跑（见 index.ts 的 waitForNextTick）。否则「从没人到有人」最坏
+   * 要等满这一档 —— 而那正是有人在看着屏幕等的那一刻。
    */
-  recentIntervalMs: ms("RECENT_INTERVAL_MS", 15 * 60_000),
+  idleIntervalMs: ms("IDLE_INTERVAL_MS", 15 * 60_000),
 
   /**
-   * 有观众时的轮询节奏。
+   * 有人**正看着**时的轮询节奏。
    *
-   * 上面那个取舍只在**没人看**的时候才划算 —— 那时快一点也没人受益。有人正看着
-   * 站点的这几分钟里多打几次 Apple，换来的是换歌延迟从最坏 15 分钟降到 30 秒，
+   * 上面那个取舍只在没人看的时候才划算 —— 那时快一点也没人受益。有人正看着
+   * 站点的这几分钟里多打几次 Apple，换来的是换歌延迟从最坏 15 分钟降到 1 分钟，
    * 这是唯一有人能看见的那段时间。
    *
-   * 改这一档不用动站点的 `LISTENING_STALE_MS`：那个窗口锚的是闲时那档 —— 有人
-   * 看时只会更快，判活的下限始终由慢的那档定。
+   * 改这一档不用动站点的 `LISTENING_STALE_MS`：那个窗口锚的是闲档 —— 有人看时
+   * 只会更快，判活的下限始终由最慢那档定。
    */
-  liveIntervalMs: ms("LIVE_INTERVAL_MS", 30_000),
+  liveIntervalMs: ms("LIVE_INTERVAL_MS", 60_000),
 
   /**
-   * 在线人数读取地址。填**源**，`/count` 这边拼 —— 和站点侧的
-   * NEXT_PUBLIC_ONLINE_COUNTER_URL、playstation-reporter 的同名变量一个形状。
+   * 页面**开着但都在后台**时的节奏（切走的标签页、锁了屏的手机）。
    *
-   * 不配就是空串，门一路按「没人在线」走，节奏恒等于今天的 recentIntervalMs：
-   * 少配一个变量不该让它变快，也不该让它变慢。
+   * 它们在 online-counter 那侧算 0 —— 站点侧 use-online-count 在页面不可见时把
+   * 连接整条关掉；但 live-push 那条不关，所以「开着」由它数。切回来那一下不该
+   * 看见一刻钟前的曲目，又不值得按可见那档一直打 Apple，居中。
+   */
+  openIntervalMs: ms("OPEN_INTERVAL_MS", 120_000),
+
+  /**
+   * 两个人头数的读取地址。都填**源**，`/count` 这边拼 —— 和站点侧那几个
+   * NEXT_PUBLIC_*_URL、另外两个上报器的同名变量一个形状。
+   *
+   * 哪个不配就是空串，那一档用不上（当它恒为 0）：少配一个变量不该让它变快。
+   * live-push 是一份生产一个，填的是 Vercel 那一份，国内那份生产上开着的页面
+   * 不进这个判断 —— 少数了只会更慢，和读不到时同一个方向。
    */
   onlineCountUrl: endpoint("ONLINE_COUNTER_URL", "/count"),
+  openCountUrl: endpoint("LIVE_PUSH_URL", "/count"),
 
-  /** 人数读不回来不该拖着这一轮等，超时就当没人在线 */
-  onlineCountTimeoutMs: ms("ONLINE_COUNT_TIMEOUT_MS", 2_500),
+  /** 人头数读不回来不该拖着这一轮等，超时就当没人 */
+  countTimeoutMs: ms("COUNT_TIMEOUT_MS", 2_500),
 
   /**
    * 即使什么都没变，也隔一阵整份重推一次。

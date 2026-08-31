@@ -9,8 +9,9 @@ routes = [
 ]
 
 [triggers]
-# 每分钟只是「看一眼门」，不等于每分钟跑一轮：站点有人在线才 60 秒一轮完整
-# tick，没人时门把节奏压回 15 分钟，对 PSN 的闲时流量和从前一样。
+# 每分钟只是「看一眼门」，不等于每分钟跑一轮：有人正看着才 60 秒一轮完整 tick，
+# 页面只是开着（后台标签页）2 分钟一轮，一个页面都没开时门把节奏压回 15 分钟，
+# 对 PSN 的闲时流量和从前一样。
 crons = ["* * * * *"]
 
 [vars]
@@ -22,9 +23,13 @@ PLAYSTATION_HIDDEN_TITLE_IDS = "PPSA28884_00,PPSA18538_00"
 # Cloudflare 全球网络直连 Vercel 主站，EdgeOne 由站点 ingest 中继同步。
 SITE_URL = "https://lyjw.me"
 # SITE_INGEST_URL = "https://lyjw131.com/api/ingest/playstation"
-# online-counter worker 的源，门读它的 /count 定节奏。填源不填路径，和站点侧的
-# NEXT_PUBLIC_ONLINE_COUNTER_URL 同一个形状。不配就一路走 15 分钟的基线节奏。
+# 门读这两个 worker 的 /count 定节奏。填源不填路径，和站点侧的
+# NEXT_PUBLIC_ONLINE_COUNTER_URL / NEXT_PUBLIC_LIVE_PUSH_URL 同一个形状。
+# online-counter 数「此刻可见」的页面，live-push 数「开着」的（含后台标签页）。
+# 哪个不配，对应那一档就用不上，一路退到 15 分钟的基线节奏。
+# live-push 一份生产一个，这里填的是 Vercel 那一份。
 ONLINE_COUNTER_URL = "https://online.homepage.lyjw.llc"
+LIVE_PUSH_URL = "https://live.homepage.lyjw.llc"
 
 [[kv_namespaces]]
 binding = "STATE"

@@ -179,27 +179,66 @@ async function tick() {
 }
 
 /**
- * 站点此刻的在线人数。超时、非 200、形状不对，一律当 0。
+ * 问一个 worker 要人头数。超时、非 200、形状不对，一律当 0。
  *
- * 兜底方向是单向的：读不到只会让节奏退回基线，永远不会因为故障变快 —— 认错这个
+ * 兜底方向是单向的：读不到只会让节奏往慢里退，永远不会因为故障变快 —— 认错这个
  * 方向的代价是没人看的时候仍按快档一直打 Apple。
  */
-async function onlineCount(): Promise<number> {
-  // 没配这个变量不是故障，别让它进 failure 的连击计数
-  if (!config.onlineCountUrl) return 0;
+async function headCount(url: string, field: "online" | "connections", scope: string) {
+  // 没配那个变量不是故障，别让它进 failure 的连击计数
+  if (!url) return 0;
 
   try {
-    const response = await fetch(config.onlineCountUrl, {
-      signal: AbortSignal.timeout(config.onlineCountTimeoutMs),
-    });
+    const response = await fetch(url, { signal: AbortSignal.timeout(config.countTimeoutMs) });
     if (!response.ok) throw new Error(`返回 ${response.status}`);
-    const body = (await response.json()) as { online?: unknown } | null;
-    const value = Number(body?.online);
-    recovered("online-count");
+    const body = (await response.json()) as Record<string, unknown> | null;
+    const value = Number(body?.[field]);
+    recovered(scope);
     return Number.isFinite(value) && value > 0 ? Math.trunc(value) : 0;
   } catch (error) {
-    failure("online-count", error);
+    failure(scope, error);
     return 0;
+  }
+}
+
+/**
+ * 下一轮多久之后。可见 → 快档，只是开着 → 中档，都没有 → 闲档。
+ *
+ * 可见的那个数问到了就不问第二个：可见必然也开着。
+ */
+async function nextDelay(): Promise<number> {
+  if ((await headCount(config.onlineCountUrl, "online", "online-count")) > 0) {
+    return config.liveIntervalMs;
+  }
+  if ((await headCount(config.openCountUrl, "connections", "open-count")) > 0) {
+    return config.openIntervalMs;
+  }
+  return config.idleIntervalMs;
+}
+
+/**
+ * 等到下一轮。长档拆成一个个快档长度的小觉，每觉醒来重新问一次人头数，问到人
+ * 就立刻回去开跑。
+ *
+ * 不这么做的话，「从一个页面都没有到有人正看着」最坏要等满一个闲档（15 分钟）
+ * —— 而那正是有人盯着屏幕等的那一刻。多打的那几次是自家的两个 worker，不是
+ * Apple。
+ */
+async function waitForNextTick(): Promise<void> {
+  const delay = await nextDelay();
+  if (delay <= config.liveIntervalMs) {
+    await sleep(delay);
+    return;
+  }
+
+  const until = Date.now() + delay;
+  for (;;) {
+    const left = until - Date.now();
+    if (left <= 0) return;
+    await sleep(Math.min(config.liveIntervalMs, left));
+    if (Date.now() >= until) return;
+    // 醒来发现该走更快那档了：这一觉不睡完，立刻开跑
+    if ((await nextDelay()) < delay) return;
   }
 }
 
@@ -210,9 +249,8 @@ async function loop() {
     } catch (error) {
       failure("tick", error);
     }
-    // 有人正看着才提频。门排在 sleep 前，这一轮该多久由刚问到的人数决定
-    const online = await onlineCount();
-    await sleep(online > 0 ? config.liveIntervalMs : config.recentIntervalMs);
+    // 门排在等待之前：这一轮该多久，由刚问到的人头数决定
+    await waitForNextTick();
   }
 }
 
@@ -226,9 +264,11 @@ for (const signal of ["SIGTERM", "SIGINT"] as const) {
 }
 
 info(
-  `apple-music-reporter 启动：api.music.apple.com → ${config.site.ingestUrl}，每 ${config.recentIntervalMs / 1000} 秒一轮${
-    config.onlineCountUrl ? `（有观众时 ${config.liveIntervalMs / 1000} 秒）` : ""
-  }`,
+  `apple-music-reporter 启动：api.music.apple.com → ${config.site.ingestUrl}，间隔 ${
+    config.liveIntervalMs / 1000
+  }s / ${config.openIntervalMs / 1000}s / ${
+    config.idleIntervalMs / 1000
+  }s（有人看 / 开着 / 都没有）`,
 );
 if (!config.site.secret) {
   info("没配 TELEMETRY_INGEST_SECRET —— 只有站点也没配时才可以这样");
