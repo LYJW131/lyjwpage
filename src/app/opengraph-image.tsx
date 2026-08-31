@@ -28,12 +28,23 @@ export const contentType = "image/png";
  * 图里的 `[project]/...` 虚拟地址，拿去 readFile 读不出文件。
  *
  * 两条路径各写全，不抽一个目录常量出来：产物追踪只认字面量，写成 `join(dir, 名字)`
- * 它就分不清要哪几个，把整个目录二十份字重（近 3MB）全打进函数。
+ * 它就分不清要哪几个，把整个目录二十份字重（近 3MB）全打进函数。追踪确实认得这
+ * 两个字面量，但记下来的是 pnpm 仓库里的**真身**（`node_modules/.pnpm/geist@…`）——
+ * `node_modules/geist` 那条软链不会在函数里被重建，所以还要在 next.config 的
+ * `outputFileTracingIncludes` 里按这里读的路径再要一次，否则线上必然 ENOENT。
+ *
+ * 读只能发生在函数里，**不能提到模块作用域**：渲染 `/` 时 Next 会 import 这个
+ * 模块拿 alt / size / contentType 三个导出去拼 `<meta>`，模块作用域的 await 会
+ * 跟着跑一遍，读不到字体就是整个首页渲染失败。2026-08-29 那次就是这么冻住的：
+ * ISR 每次重新生成都抛 ENOENT，CDN 只能一直发最后那份成功的 HTML，首屏停在 30
+ * 小时前的状态，而所有状态端点都是新的。
  */
-const [monoRegular, monoBold] = await Promise.all([
-  readFile(join(process.cwd(), "node_modules/geist/dist/fonts/geist-mono/GeistMono-Regular.ttf")),
-  readFile(join(process.cwd(), "node_modules/geist/dist/fonts/geist-mono/GeistMono-Bold.ttf")),
-]);
+function monoFonts() {
+  return Promise.all([
+    readFile(join(process.cwd(), "node_modules/geist/dist/fonts/geist-mono/GeistMono-Regular.ttf")),
+    readFile(join(process.cwd(), "node_modules/geist/dist/fonts/geist-mono/GeistMono-Bold.ttf")),
+  ]);
+}
 
 /**
  * 卡片上一律 Latin 字形：satori 只认这里交给它的字体，而这份包里没有中文。
@@ -63,7 +74,10 @@ async function ogPng(): Promise<Uint8Array> {
   "use cache";
   cacheLife("max");
 
-  const avatar = await githubAvatarPng(AVATAR_PX);
+  const [avatar, [monoRegular, monoBold]] = await Promise.all([
+    githubAvatarPng(AVATAR_PX),
+    monoFonts(),
+  ]);
 
   const image = new ImageResponse(
     (
