@@ -526,7 +526,7 @@
       "id": "count_psn",
       "from": "online_counter",
       "to": "psn_reporter",
-      "label": "GET /count 调频",
+      "label": "GET /count 调频（可见）",
       "variant": "dashed",
       "fromSide": "bottom",
       "toSide": "left",
@@ -573,6 +573,18 @@
       "id": "push_count_vps",
       "from": "live_push",
       "to": "vps",
+      "variant": "dashed"
+    },
+    {
+      "id": "push_count_psn",
+      "from": "live_push",
+      "to": "psn_reporter",
+      "variant": "dashed"
+    },
+    {
+      "id": "push_count_lan",
+      "from": "live_push",
+      "to": "lan_reporters",
       "variant": "dashed"
     }
   ],
