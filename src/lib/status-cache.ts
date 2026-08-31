@@ -54,11 +54,17 @@ import { getVibeCodingYear } from "@/lib/vibecoding-year-store";
  */
 
 /**
- * stale 5 分钟 / revalidate 10 分钟 / expire 2 小时。
+ * stale 5 分钟 / revalidate 10 分钟 / expire 7 天。
  *
  * 主力失效手段是 tag。10 分钟兜底留给首屏 HTML：上报器悄无声息死掉不会触发
  * tag，存活窗口默认 5 分钟（HEARTBEAT_WINDOW_MS），首屏那份 lastSeenAt 最多冻
  * 这 10 分钟。API 路径会现读存活。
+ *
+ * revalidate 和 expire 是两种「过期」，代价差一个数量级：过了 revalidate 的
+ * 请求**立刻拿到旧的那份**、新的在后台重建；过了 expire 就没有旧的可给了，
+ * 那一位访客得站着等整页重算完。所以 expire 从 2 小时放到 7 天 —— 宁愿夜里
+ * 头一位访客看到的是几小时前的数字（挂载后 SWR 立刻纠正），也不要让他等。
+ * 兜底新鲜度由 revalidate 那 10 分钟负责，不受这里影响。
  *
  * 不能再短：revalidate 为 0 或 expire 短于 5 分钟的缓存会被排除在预渲染之外、
  * 退化成请求时的动态洞，那就等于没缓存。
@@ -66,7 +72,7 @@ import { getVibeCodingYear } from "@/lib/vibecoding-year-store";
 const STATUS_LIFE = {
   stale: 5 * 60,
   revalidate: 10 * 60,
-  expire: 2 * 60 * 60,
+  expire: 7 * 24 * 60 * 60,
 };
 const CHARGER_FALLBACK_WINDOW_MS = 20 * 60_000;
 
