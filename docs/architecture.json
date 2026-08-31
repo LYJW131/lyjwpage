@@ -118,25 +118,6 @@
       ]
     },
     {
-      "id": "cache_warmup",
-      "type": "cloud",
-      "label": "cache-warmup",
-      "sublabel": "整点 cron · 预热首屏",
-      "pos": [
-        130,
-        304
-      ],
-      "size": [
-        175,
-        82
-      ],
-      "sources": [
-        {
-          "path": "workers/cache-warmup/src/index.ts"
-        }
-      ]
-    },
-    {
       "id": "device_hubs",
       "type": "external",
       "label": "设备遥测中心",
@@ -398,23 +379,6 @@
         465,
         250
       ]
-    },
-    {
-      "id": "warm_v",
-      "from": "cache_warmup",
-      "to": "vercel",
-      "label": "整点 GET /",
-      "variant": "dashed",
-      "labelAt": [
-        350,
-        320
-      ]
-    },
-    {
-      "id": "warm_e",
-      "from": "cache_warmup",
-      "to": "edgeone",
-      "variant": "dashed"
     },
     {
       "id": "dev_in",
