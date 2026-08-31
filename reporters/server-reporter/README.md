@@ -9,14 +9,26 @@
 
 | 内容 | 节奏 | 什么时候真的推 |
 | --- | --- | --- |
-| CPU / 负载 / 内存 / 磁盘 / 网速 / 运行时间 | 有人看站点 30 秒一轮，没人看 10 分钟一轮 | **每轮都推**。这份快照本身就是心跳，站点拿 `pushedAt` 判断上报器还活着没有 |
+| CPU / 负载 / 内存 / 磁盘 / 网速 / 运行时间 | 三档：有人正看着 30 秒，页面开着但在后台 2 分钟，一个页面都没开 10 分钟 | **每轮都推**。这份快照本身就是心跳，站点拿 `pushedAt` 判断上报器还活着没有 |
 | 公网 IP 的 Location / ISP / ASN | 地址变了才查，否则缓存 6 小时 | 跟着上面那份一起推。查的是网卡上的地址，不是「我访问某个 what-is-my-ip 看到的出口」 |
 
 CPU 占用和网卡速率都是这一段间隔的平均，不是「这一瞬间的尖峰」：上一轮 `/proc` 的读数留着，这一轮做差。第一封在启动后约 1 秒就发出去，卡片不必干等一个完整间隔。
 
 站点那侧**没有实时推送**。这些数字每个间隔都在变，广播就是拿推送当轮询用；有人看的时候卡片 30 秒自己来问。
 
-每轮收尾问一次 online-counter 的 `GET /count`（超时 2.5 秒），据此选下一轮的档：有人看走 `LIVE_INTERVAL_MS`（30 秒，和卡片的 `REFRESH_MS` 对齐），没人看走 `IDLE_INTERVAL_MS`（10 分钟）。和 apple-music-reporter / playstation-reporter 同一套判断 —— 这份快照每轮必发，30 秒一轮时 `/api/ingest/server` 是站点函数调用量最大的一条路径（实测 12 小时 1.5K 次），而没人看的时候那些数字只是记给没人看的卡片。人数读不回来一律当 0，只会退回慢档，永远不会因为故障变快；不配 `ONLINE_COUNTER_URL` 就恒走慢档。
+每轮收尾问两个 `GET /count`（各超时 2.5 秒），据此选下一轮的档：
+
+| 问到什么 | 下一轮 | 变量 |
+| --- | --- | --- |
+| online-counter 的 `online > 0` —— 有页面**可见** | 30 秒 | `LIVE_INTERVAL_MS`，和卡片的 `REFRESH_MS` 对齐 |
+| live-push 的 `connections > 0` —— 有页面**开着** | 2 分钟 | `OPEN_INTERVAL_MS` |
+| 两个都是 0 | 10 分钟 | `IDLE_INTERVAL_MS` |
+
+两个数是两个口径，这也正是要两个的原因：站点侧 `use-online-count` 在页面不可见时把连接整条关掉，所以锁屏、切走的标签页在 online-counter 那侧算 0；而 `use-live-events` 那条连接不管可不可见都挂着。中间那档就是为「切走了但还会切回来」留的 —— 切回来那一下不该看见十分钟前的 CPU。可见的那个数问到了就不再问第二个（可见必然也开着）。
+
+这份快照每轮必发（它本身就是心跳），30 秒一轮时 `/api/ingest/server` 是站点函数调用量最大的一条路径，实测 12 小时 1.5K 次。人头数读不回来一律当 0，只会往慢里退，永远不会因为故障变快；哪个变量不配，对应那一档就用不上。
+
+live-push 是**一份生产一个**，`LIVE_PUSH_URL` 填的是 Vercel 那一份，所以国内那份生产上开着的后台页面不进这个判断 —— 少数了只会更慢，和读不到时同一个方向。
 
 断流窗口锚的是**慢档**：站点 `lib/freshness` 的 `SERVER_STALE_MS` 默认 40 分钟 = 三轮 + 一个缓存刷新周期。改慢档必须同步改那边，改快档不用（但要和卡片的 `REFRESH_MS` 一起改）。顺序是**站点那侧先放宽窗口并部署，这边再降频**，反过来做中间那段时间卡片会一直显示离线。
 
@@ -31,10 +43,12 @@ CPU 占用和网卡速率都是这一段间隔的平均，不是「这一瞬间�
 | `TELEMETRY_INGEST_SECRET` | ✅ | 和站点同名变量对上，作 Bearer 鉴权。站点没配时才可留空 |
 | `HOST_ID` | | 默认 `misaka-jp`，卡片上认的名字 |
 | `HOST_LOCATION` | | 默认 `Tokyo`，机房所在城市。站点不从 IP 猜 |
-| `LIVE_INTERVAL_MS` | | 默认 `30000`，有观众时那一档。和卡片的 `REFRESH_MS` 对齐 |
-| `IDLE_INTERVAL_MS` | | 默认 `600000`，没人看时那一档。站点的 `SERVER_STALE_MS` 锚着它 |
-| `ONLINE_COUNTER_URL` | | online-counter worker 的**源**，路径由这边拼 `/count`，和站点侧 `NEXT_PUBLIC_ONLINE_COUNTER_URL` 同一个形状。不配就恒走慢档 |
-| `ONLINE_COUNT_TIMEOUT_MS` | | 默认 `2500` |
+| `LIVE_INTERVAL_MS` | | 默认 `30000`，有人正看着那一档。和卡片的 `REFRESH_MS` 对齐 |
+| `OPEN_INTERVAL_MS` | | 默认 `120000`，页面开着但都在后台那一档 |
+| `IDLE_INTERVAL_MS` | | 默认 `600000`，一个页面都没开那一档。站点的 `SERVER_STALE_MS` 锚着它 |
+| `ONLINE_COUNTER_URL` | | online-counter worker 的**源**，路径由这边拼 `/count`，和站点侧 `NEXT_PUBLIC_ONLINE_COUNTER_URL` 同一个形状。不配就永远进不了快档 |
+| `LIVE_PUSH_URL` | | live-push worker 的**源**，同样拼 `/count`。不配就永远进不了中档 |
+| `COUNT_TIMEOUT_MS` | | 默认 `2500`，问这两个数各自的超时 |
 | `PUSH_TIMEOUT_MS` | | 默认 `10000` |
 
 ## 在 VPS 上跑
