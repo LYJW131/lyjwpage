@@ -133,6 +133,22 @@ function getRoom(env: Env): DurableObjectStub<LivePushRoom> {
 const CONNECTION_STALE_MS = 5 * 60_000;
 
 export class LivePushRoom extends DurableObject<Env> {
+  constructor(ctx: DurableObjectState, env: Env) {
+    super(ctx, env);
+    /**
+     * 心跳由运行时直接回，不唤醒实例。
+     *
+     * **必须挂在构造函数里**：休眠醒来会重新 new 一遍实例，只在 accept 那条路上
+     * 登记的话，这一次就没人登记了 —— 后面的 ping 落到空的 webSocketMessage，
+     * 自动回复时间戳不再走动，而 connectionCount 正是拿那个时刻判活的，还开着的
+     * 后台页面会被一条条算成死连接，中间那档就再也进不去了。
+     *
+     * 浏览器那侧要定时发点东西，否则中间的代理会把这条空转的连接掐掉；
+     * 但要是每次心跳都把休眠的实例叫醒，休眠就白做了。
+     */
+    this.ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
+  }
+
   /**
    * 用休眠版的 acceptWebSocket，不是 accept() + 自己攒一个 Set。
    *
@@ -153,13 +169,6 @@ export class LivePushRoom extends DurableObject<Env> {
     const server = pair[1];
 
     this.ctx.acceptWebSocket(server);
-    /**
-     * 心跳由运行时直接回，不唤醒实例。
-     *
-     * 浏览器那侧要定时发点东西，否则中间的代理会把这条空转的连接掐掉；
-     * 但要是每次心跳都把休眠的实例叫醒，休眠就白做了。
-     */
-    this.ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
     /**
      * 接入时刻。数人头时要用它兜底：刚连上还没发过第一个 ping 的那 30 秒里，
      * 自动回复的时间戳还是 null，只看那个会把新连接算成死的。

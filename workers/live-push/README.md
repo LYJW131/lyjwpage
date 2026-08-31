@@ -85,3 +85,9 @@ pnpm --filter @lyjwpage/live-push run deploy
 
 代价是**不能把连接存在实例字段里** —— 休眠会清掉内存，醒来时构造函数重跑，
 那个 Set 就空了。连接列表一律现问 `ctx.getWebSockets()`。
+
+同一条理由的反面：`setWebSocketAutoResponse` **必须登记在构造函数里**，不能挪回
+`/ws` 那条接入路径上。醒来那一次没有人走接入路径，登记就丢了；此后的 ping 落到
+空的 `webSocketMessage`，自动回复时间戳不再走动 —— 而 `connectionCount` 正是拿
+那个时刻判活的，还开着的后台页面会被一条条算成死连接，`server-reporter` 的中间
+那档就再也进不去了。
