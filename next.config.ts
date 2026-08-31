@@ -47,6 +47,23 @@ const nextConfig: NextConfig = {
    * 见 lib/api。首屏那份不受那个开关管 —— 冻着才有这里说的预渲染。
    */
   cacheComponents: true,
+  /**
+   * 分享卡片那张图要的两份 ttf（见 app/opengraph-image）。
+   *
+   * 追踪本来就认得那两个字面量路径，但它记的是 pnpm 仓库里的真身
+   * （`node_modules/.pnpm/geist@…/node_modules/geist/…`）—— 函数里没有
+   * `node_modules/geist` 那条软链，代码按 `process.cwd()` 拼出来的路径就是
+   * ENOENT。这里按**代码实际读的那个路径**再要一次，让字节以真文件落在那儿。
+   *
+   * 只挂 `/opengraph-image` 一条：那张图 `cacheLife("max")`，30 天后仍会在运行时
+   * 重画一次，字体必须在函数里；首屏不读字体，别让它多背 300KB。
+   */
+  outputFileTracingIncludes: {
+    "/opengraph-image": [
+      "node_modules/geist/dist/fonts/geist-mono/GeistMono-Regular.ttf",
+      "node_modules/geist/dist/fonts/geist-mono/GeistMono-Bold.ttf",
+    ],
+  },
   allowedDevOrigins: ["test.lyjw.dev", "127.0.0.1"],
   images: {
     /**
