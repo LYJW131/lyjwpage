@@ -20,7 +20,21 @@ import urllib.error
 import urllib.request
 from typing import Any
 
-INTERVAL_MS = 30_000
+# 两档节奏，和 apple-music-reporter / playstation-reporter 同一套判断：这份快照
+# 每轮必发（它本身就是心跳），30 秒一轮时它是站点函数调用量最大的一条路径 ——
+# 实测 12 小时 1.5K 次。而没人看站点的时候，这些数字只是记录给没人看的卡片，
+# 快档白烧的是站点的函数配额。所以每轮收尾问一次在线人数：有人看 30 秒一轮，
+# 没人看 10 分钟一轮。
+#
+# 快档必须跟卡片的 REFRESH_MS（server-card.tsx，30 秒，和充电头一档）对齐 ——
+# 有人看时那边多久问一次，这边就得多久推一次。慢档则锚着站点的 SERVER_STALE_MS
+# （lib/freshness，40 分钟 = 三轮 + 一个刷新周期的余量）：改慢档必须同步改那边，
+# 改快档不用，判活的下限始终由慢档定。
+LIVE_INTERVAL_MS = 30_000
+IDLE_INTERVAL_MS = 600_000
+# 人数读不回来不该拖着上报等。超时、非 200、形状不对，一律当没人在线 ——
+# 兜底方向是单向的：读不到只会退回慢档，永远不会因为故障变快。
+ONLINE_COUNT_TIMEOUT_S = 2.5
 PUSH_TIMEOUT_S = 10.0
 GEO_TTL_S = 6 * 3600
 GEO_TIMEOUT_S = 5.0
@@ -62,12 +76,25 @@ def ingest_url() -> str:
     return f"{trim_slash(required('SITE_URL'))}/api/ingest/server"
 
 
+def online_count_url() -> str:
+    """online-counter worker 的**源**，路径这边拼 —— 和站点侧的
+    NEXT_PUBLIC_ONLINE_COUNTER_URL、另外两个上报器同一个形状。不配就恒走慢档。"""
+    origin = os.environ.get("ONLINE_COUNTER_URL", "").strip()
+    return f"{trim_slash(origin)}/count" if origin else ""
+
+
 CONFIG = {
     "ingest_url": ingest_url(),
     "secret": os.environ.get("TELEMETRY_INGEST_SECRET", "").strip(),
     "host_id": os.environ.get("HOST_ID", "").strip() or "misaka-jp",
     "location": os.environ.get("HOST_LOCATION", "").strip() or "Tokyo",
-    "interval_s": ms("INTERVAL_MS", INTERVAL_MS) / 1000,
+    "live_interval_s": ms("LIVE_INTERVAL_MS", LIVE_INTERVAL_MS) / 1000,
+    "idle_interval_s": ms("IDLE_INTERVAL_MS", IDLE_INTERVAL_MS) / 1000,
+    "online_count_url": online_count_url(),
+    "online_count_timeout_s": ms(
+        "ONLINE_COUNT_TIMEOUT_MS", int(ONLINE_COUNT_TIMEOUT_S * 1000)
+    )
+    / 1000,
     "push_timeout_s": ms("PUSH_TIMEOUT_MS", int(PUSH_TIMEOUT_S * 1000)) / 1000,
 }
 
@@ -400,6 +427,31 @@ def push(payload: dict[str, Any]) -> None:
 # ── 主循环 ────────────────────────────────────────────────
 
 
+def online_count() -> int:
+    """站点此刻的在线人数。读不到一律当 0，节奏只会因此退回慢档。"""
+    url = CONFIG["online_count_url"]
+    # 没配这个变量不是故障，别让它进 failure 的连击计数
+    if not url:
+        return 0
+    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    try:
+        with urllib.request.urlopen(
+            request, timeout=CONFIG["online_count_timeout_s"]
+        ) as response:
+            body = json.loads(response.read().decode("utf-8", errors="replace"))
+        value = int(body["online"])
+        recovered("online-count")
+        return value if value > 0 else 0
+    except Exception as error:  # noqa: BLE001 — 读不到就是没人看，不影响上报
+        failure("online-count", error)
+        return 0
+
+
+def next_delay() -> float:
+    """下一轮多久之后。有人看走快档，没人看走慢档。"""
+    return CONFIG["live_interval_s"] if online_count() > 0 else CONFIG["idle_interval_s"]
+
+
 def main() -> None:
     info(
         f"server-reporter 启动：{CONFIG['host_id']} ({CONFIG['location']}) → {CONFIG['ingest_url']}"
@@ -408,7 +460,11 @@ def main() -> None:
         info("没配 TELEMETRY_INGEST_SECRET —— 只有站点也没配时才可以这样")
 
     iface = default_iface()
-    info(f"网卡 {iface}，间隔 {CONFIG['interval_s']:.0f}s")
+    gears = f"{CONFIG['live_interval_s']:.0f}s / {CONFIG['idle_interval_s']:.0f}s"
+    info(
+        f"网卡 {iface}，间隔 {gears}"
+        + ("（有观众 / 没人看）" if CONFIG["online_count_url"] else "，没配在线人数，恒走慢档")
+    )
 
     prev_cpu = cpu_times()
     prev_net = net_bytes(iface)
@@ -426,7 +482,7 @@ def main() -> None:
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
 
-    backoff = CONFIG["interval_s"]
+    backoff = CONFIG["live_interval_s"]
     while not stopping:
         try:
             payload = snapshot(iface, prev_cpu, prev_net, prev_at)
@@ -436,8 +492,9 @@ def main() -> None:
             prev_cpu = cursor["cpu"]
             prev_net = cursor["net"]
             prev_at = cursor["at"]
-            backoff = CONFIG["interval_s"]
-            delay = CONFIG["interval_s"]
+            backoff = CONFIG["live_interval_s"]
+            # 问人数排在推送之后：站点先拿到这一轮的数，再决定下一轮多久
+            delay = next_delay()
         except Exception as error:  # noqa: BLE001 — 这一轮作废，进程不退
             failure("push", error)
             delay = backoff
