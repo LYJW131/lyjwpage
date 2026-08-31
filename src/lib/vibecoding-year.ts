@@ -11,9 +11,11 @@ import {
   heatmapSliceFrom,
   mergeHeatmapSeries,
   sliceHeatmapWindow,
+  zonedDay,
 } from "./heatmap-window.ts";
 import { number, object, text } from "./json.ts";
-import type { VibeCodingYearPayload } from "./types.ts";
+import { site } from "./site.ts";
+import type { StoredVibeCodingYear, VibeCodingYearPayload } from "./types.ts";
 
 export const YEAR_WEEKS = 53;
 export const YEAR_DAYS = YEAR_WEEKS * 7;
@@ -97,7 +99,7 @@ function normalizeMix(
  */
 export function normalizeVibeCodingYear(
   input: unknown,
-): Omit<VibeCodingYearPayload, "pushedAt"> | null {
+): Omit<StoredVibeCodingYear, "pushedAt"> | null {
   const root = object(input);
   if (!root) return null;
   const origin = dateText(root.origin);
@@ -113,6 +115,22 @@ export function normalizeVibeCodingYear(
   const mix = normalizeMix(root.models, root.mix, days);
   if (!mix) return null;
   return { origin, days, models: mix.models, mix: mix.mix };
+}
+
+/**
+ * 在取数出口盖一次「源站此刻是哪一天」。
+ *
+ * 和 withActivityFreshness 同一套口径：这是唯一一个光靠时间流逝就会翻面的结论，
+ * 冻在缓存里那份最多旧 10 分钟（见 lib/status-cache），端点每次请求现算。
+ *
+ * 用站点时区而不是 UTC：日合计是采集侧按自己的日历分的桶，切窗必须用同一份日历，
+ * 理由见 heatmap-window 的 zonedDay。
+ */
+export function withYearFreshness(
+  payload: StoredVibeCodingYear,
+  now = Date.now(),
+): VibeCodingYearPayload {
+  return { ...payload, todayAtSource: zonedDay(now, site.timezone) };
 }
 
 export function indexYearMix(
@@ -199,6 +217,7 @@ export function sliceVibeCodingYear(
       models: payload.models,
       mix: payload.mix,
       pushedAt: payload.pushedAt,
+      todayAtSource: payload.todayAtSource,
     };
   }
   const mix = compactMix(
@@ -211,6 +230,7 @@ export function sliceVibeCodingYear(
     models: mix.models,
     mix: mix.mix,
     pushedAt: payload.pushedAt,
+    todayAtSource: payload.todayAtSource,
     daysPartial: true,
     from: heatmapSliceFrom(payload.origin, fromIndex),
   };
@@ -252,6 +272,7 @@ export function mergeVibeCodingYear(
     models,
     mix: [...kept, ...incomingMix],
     pushedAt: incoming.pushedAt,
+    todayAtSource: incoming.todayAtSource,
   };
 }
 
@@ -262,6 +283,7 @@ function stripYearPartial(payload: VibeCodingYearPayload): VibeCodingYearPayload
     models: payload.models.slice(),
     mix: payload.mix.map((row) => row.slice()),
     pushedAt: payload.pushedAt,
+    todayAtSource: payload.todayAtSource,
   };
 }
 

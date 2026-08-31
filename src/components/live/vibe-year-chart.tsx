@@ -11,9 +11,8 @@ import {
 } from "@/components/live/heatmap-hover";
 import { incrementalFetcher, useStatus } from "@/hooks/use-status";
 import { groupWeeks } from "@/lib/github-chart-compact";
-import { isHeatmapFuture, zonedDay } from "@/lib/heatmap-window";
+import { isHeatmapFuture } from "@/lib/heatmap-window";
 import { VIBECODING_YEAR_PATH } from "@/lib/paths";
-import { site } from "@/lib/site";
 import type { GithubChartDay, StatusResponse, VibeCodingYearPayload } from "@/lib/types";
 import {
   YEAR_MIX_SHOW,
@@ -159,7 +158,12 @@ export function VibeYearChart({
 
   const weeks = useMemo(() => {
     if (!snapshot) return null;
-    return toWeeks(snapshot.origin, snapshot.days, zonedDay(snapshot.pushedAt, site.timezone));
+    /**
+     * 窗尾切到源站的今天，**不是切到 `pushedAt`**：那是上报器最后一次推送，
+     * Mac 停一天，今天那格就跟着少一格，隔壁 GitHub 那张图却照常画到今天，
+     * 两张图当场错开一列。见 VibeCodingYearPayload.todayAtSource。
+     */
+    return toWeeks(snapshot.origin, snapshot.days, snapshot.todayAtSource);
   }, [snapshot]);
 
   const modelsByDate = useMemo(() => {

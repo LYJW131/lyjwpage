@@ -616,6 +616,19 @@ export type VibeCodingYearPayload = {
   mix: number[][];
   pushedAt: number;
   /**
+   * 源站在取数出口按自己的钟算的「今天是哪一天」（站点时区，YYYY-MM-DD）。
+   * 热力图拿它切掉窗尾那截未来格子。
+   *
+   * **这件事整个由源站算**，理由同 `ActivityPayload.currentAtSource`：浏览器
+   * 手上没有一个会走的钟。也不能用窗口自己的 `pushedAt` 顶替 —— 那是「上报器最后
+   * 一次推送」，Mac 停一天，今天那格就跟着少一格，而隔壁 GitHub 那张图照常画到
+   * 今天，两张图当场错开一列。
+   *
+   * 落进 Redis 的那份没有它（`StoredVibeCodingYear`）：它是「现在几点」的函数，
+   * 只能在取数出口现盖，见 lib/vibecoding-year 的 withYearFreshness。
+   */
+  todayAtSource: string;
+  /**
    * days / mix 只覆盖 `from` 起的窗尾。缺省或 false 是整份窗口。
    * 上报落库的那份没有这个字段。
    */
@@ -623,6 +636,9 @@ export type VibeCodingYearPayload = {
   /** daysPartial 时这段尾巴的第一天 */
   from?: string;
 };
+
+/** 落库的那份：上报器给的窗口 + 源站盖的到达时刻，不含取数出口现算的那个今天。 */
+export type StoredVibeCodingYear = Omit<VibeCodingYearPayload, "todayAtSource">;
 
 /** 贡献热力图的一天。label 跟资料页 hover 同一句，浏览器现算，不进信封 */
 export type GithubChartDay = {
