@@ -568,6 +568,12 @@
       "from": "online_counter",
       "to": "vps",
       "variant": "dashed"
+    },
+    {
+      "id": "push_count_vps",
+      "from": "live_push",
+      "to": "vps",
+      "variant": "dashed"
     }
   ],
   "cards": [

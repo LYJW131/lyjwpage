@@ -20,21 +20,29 @@ import urllib.error
 import urllib.request
 from typing import Any
 
-# 两档节奏，和 apple-music-reporter / playstation-reporter 同一套判断：这份快照
-# 每轮必发（它本身就是心跳），30 秒一轮时它是站点函数调用量最大的一条路径 ——
-# 实测 12 小时 1.5K 次。而没人看站点的时候，这些数字只是记录给没人看的卡片，
-# 快档白烧的是站点的函数配额。所以每轮收尾问一次在线人数：有人看 30 秒一轮，
-# 没人看 10 分钟一轮。
+# 三档节奏。这份快照每轮必发（它本身就是心跳），30 秒一轮时它是站点函数调用量
+# 最大的一条路径 —— 实测 12 小时 1.5K 次。而这些数字只在有人看的时候才有人看，
+# 所以每轮收尾问两个数，据此决定下一轮多久：
+#
+#   有人正看着（online-counter 的 /count，只数**可见**的页面）      → 30 秒
+#   页面开着但都在后台（live-push 的 /count，数**开着**的连接）     → 2 分钟
+#   一个页面都没开                                                  → 10 分钟
+#
+# 中间那档是为「切走了但还会切回来」留的：手机锁屏、后台标签页在 online-counter
+# 那侧算 0（站点侧 use-online-count 在 visibilitychange 时整条关掉），但它随时会
+# 被切回来，那一下不该看见十分钟前的 CPU。而 live-push 那条连接不管可不可见都挂
+# 着，正好是「开着本站」的口径。
 #
 # 快档必须跟卡片的 REFRESH_MS（server-card.tsx，30 秒，和充电头一档）对齐 ——
 # 有人看时那边多久问一次，这边就得多久推一次。慢档则锚着站点的 SERVER_STALE_MS
 # （lib/freshness，40 分钟 = 三轮 + 一个刷新周期的余量）：改慢档必须同步改那边，
-# 改快档不用，判活的下限始终由慢档定。
+# 改另外两档不用，判活的下限始终由慢档定。
 LIVE_INTERVAL_MS = 30_000
+OPEN_INTERVAL_MS = 120_000
 IDLE_INTERVAL_MS = 600_000
-# 人数读不回来不该拖着上报等。超时、非 200、形状不对，一律当没人在线 ——
-# 兜底方向是单向的：读不到只会退回慢档，永远不会因为故障变快。
-ONLINE_COUNT_TIMEOUT_S = 2.5
+# 两个数都读不回来不该拖着上报等。超时、非 200、形状不对，一律当 0 —— 兜底方向
+# 是单向的：读不到只会往慢里退，永远不会因为故障变快。
+COUNT_TIMEOUT_S = 2.5
 PUSH_TIMEOUT_S = 10.0
 GEO_TTL_S = 6 * 3600
 GEO_TIMEOUT_S = 5.0
@@ -76,10 +84,15 @@ def ingest_url() -> str:
     return f"{trim_slash(required('SITE_URL'))}/api/ingest/server"
 
 
-def online_count_url() -> str:
-    """online-counter worker 的**源**，路径这边拼 —— 和站点侧的
-    NEXT_PUBLIC_ONLINE_COUNTER_URL、另外两个上报器同一个形状。不配就恒走慢档。"""
-    origin = os.environ.get("ONLINE_COUNTER_URL", "").strip()
+def count_url(name: str) -> str:
+    """两个 worker 的 /count。配的是**源**，路径这边拼 —— 和站点侧那几个
+    NEXT_PUBLIC_*_URL、另外两个上报器同一个形状。哪个不配就当它恒为 0。
+
+    live-push 是**一份生产一个**，这里填的是 Vercel 那一份，所以国内那份生产上
+    开着的后台页面数不进这个判断。少数了只会让节奏往慢里退，和读不到时同一个
+    方向，不会误提速。
+    """
+    origin = os.environ.get(name, "").strip()
     return f"{trim_slash(origin)}/count" if origin else ""
 
 
@@ -89,12 +102,11 @@ CONFIG = {
     "host_id": os.environ.get("HOST_ID", "").strip() or "misaka-jp",
     "location": os.environ.get("HOST_LOCATION", "").strip() or "Tokyo",
     "live_interval_s": ms("LIVE_INTERVAL_MS", LIVE_INTERVAL_MS) / 1000,
+    "open_interval_s": ms("OPEN_INTERVAL_MS", OPEN_INTERVAL_MS) / 1000,
     "idle_interval_s": ms("IDLE_INTERVAL_MS", IDLE_INTERVAL_MS) / 1000,
-    "online_count_url": online_count_url(),
-    "online_count_timeout_s": ms(
-        "ONLINE_COUNT_TIMEOUT_MS", int(ONLINE_COUNT_TIMEOUT_S * 1000)
-    )
-    / 1000,
+    "online_count_url": count_url("ONLINE_COUNTER_URL"),
+    "open_count_url": count_url("LIVE_PUSH_URL"),
+    "count_timeout_s": ms("COUNT_TIMEOUT_MS", int(COUNT_TIMEOUT_S * 1000)) / 1000,
     "push_timeout_s": ms("PUSH_TIMEOUT_MS", int(PUSH_TIMEOUT_S * 1000)) / 1000,
 }
 
@@ -427,29 +439,31 @@ def push(payload: dict[str, Any]) -> None:
 # ── 主循环 ────────────────────────────────────────────────
 
 
-def online_count() -> int:
-    """站点此刻的在线人数。读不到一律当 0，节奏只会因此退回慢档。"""
-    url = CONFIG["online_count_url"]
-    # 没配这个变量不是故障，别让它进 failure 的连击计数
+def head_count(url: str, field: str, scope: str) -> int:
+    """问一个 worker 要人头数。读不到一律当 0，节奏只会因此往慢里退。"""
+    # 没配那个变量不是故障，别让它进 failure 的连击计数
     if not url:
         return 0
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     try:
-        with urllib.request.urlopen(
-            request, timeout=CONFIG["online_count_timeout_s"]
-        ) as response:
+        with urllib.request.urlopen(request, timeout=CONFIG["count_timeout_s"]) as response:
             body = json.loads(response.read().decode("utf-8", errors="replace"))
-        value = int(body["online"])
-        recovered("online-count")
+        value = int(body[field])
+        recovered(scope)
         return value if value > 0 else 0
     except Exception as error:  # noqa: BLE001 — 读不到就是没人看，不影响上报
-        failure("online-count", error)
+        failure(scope, error)
         return 0
 
 
 def next_delay() -> float:
-    """下一轮多久之后。有人看走快档，没人看走慢档。"""
-    return CONFIG["live_interval_s"] if online_count() > 0 else CONFIG["idle_interval_s"]
+    """下一轮多久之后。可见 → 快档，只是开着 → 中档，都没有 → 慢档。"""
+    # 可见的那个数问到了就不用再问第二个：可见必然也开着
+    if head_count(CONFIG["online_count_url"], "online", "online-count") > 0:
+        return CONFIG["live_interval_s"]
+    if head_count(CONFIG["open_count_url"], "connections", "open-count") > 0:
+        return CONFIG["open_interval_s"]
+    return CONFIG["idle_interval_s"]
 
 
 def main() -> None:
@@ -460,10 +474,18 @@ def main() -> None:
         info("没配 TELEMETRY_INGEST_SECRET —— 只有站点也没配时才可以这样")
 
     iface = default_iface()
-    gears = f"{CONFIG['live_interval_s']:.0f}s / {CONFIG['idle_interval_s']:.0f}s"
+    gears = (
+        f"{CONFIG['live_interval_s']:.0f}s / {CONFIG['open_interval_s']:.0f}s"
+        f" / {CONFIG['idle_interval_s']:.0f}s"
+    )
+    missing = [
+        name
+        for name, url in (("可见", CONFIG["online_count_url"]), ("开着", CONFIG["open_count_url"]))
+        if not url
+    ]
     info(
-        f"网卡 {iface}，间隔 {gears}"
-        + ("（有观众 / 没人看）" if CONFIG["online_count_url"] else "，没配在线人数，恒走慢档")
+        f"网卡 {iface}，间隔 {gears}（有人看 / 开着 / 都没有）"
+        + (f"，没配「{'」「'.join(missing)}」那个数，那一档用不上" if missing else "")
     )
 
     prev_cpu = cpu_times()

@@ -12,7 +12,22 @@
 | ------ | ---------- | ---------------------------------------------------------------- |
 | GET    | `/ws`      | 浏览器的 WebSocket 端点。按 `ALLOWED_ORIGINS` 校验来源           |
 | POST   | `/publish` | 站点发布一条事件。`Authorization: Bearer <LIVE_PUSH_SECRET>`     |
+| GET    | `/count`   | `{"connections": n}`，此刻**开着**本站的页面数。上报器调频用，不鉴权 |
 | GET    | `/`        | 健康检查，返回当前连接数                                         |
+
+`/count` 不只是调试口，**`server-reporter` 靠它定中间那一档**：那个上报器每轮
+收尾先问 online-counter 有没有**可见**的页面（有就 30 秒一轮），没有就问这里还
+有没有**开着**的页面（有就 2 分钟一轮，没有才睡 10 分钟）。两个数是两个口径 ——
+站点侧 `use-online-count` 在页面不可见时把连接整条关掉，`use-live-events` 不关，
+所以后台标签页和锁了屏的手机只在这个数里。字段因此叫 `connections` 不叫 `online`。
+改路径或返回形状要同步改 `reporters/server-reporter`；它读不到时会退回慢档，
+所以这里挂掉不会连累上报，只是不再有中间那档。
+
+数人头时会跳过静默超过 5 分钟的连接：对端消失却没发过 close 帧的连接会一直挂在
+列表里，一条这样的僵尸就足以把上报器永远钉在中档。判据是运行时替我们记的
+ping 自动回复时刻（浏览器每 30 秒发一个），阈值取 5 分钟而不是贴着心跳画线 ——
+后台标签页的定时器会被浏览器节流到最多每分钟一响，而后台标签页恰恰是这个数
+存在的理由。只是不计数，不关连接。
 
 `/publish` 的请求体就是站点那份 `LiveEvent`：
 
@@ -31,7 +46,9 @@
    （见 .github/workflows/deploy-workers.yml），手动 `wrangler deploy` 也行。
 2. 存进发布密钥：`pnpm --filter @lyjwpage/live-push exec wrangler secret put LIVE_PUSH_SECRET`
 3. 部署后把 Worker 地址（如 `https://live.example.com`）填进站点的
-   `NEXT_PUBLIC_LIVE_PUSH_URL`，站点自己拼 `/ws` 和 `/publish`。
+   `NEXT_PUBLIC_LIVE_PUSH_URL`，站点自己拼 `/ws` 和 `/publish`；misaka-jp 上
+   `server-reporter` 的 `LIVE_PUSH_URL` 填同一个源，它自己拼 `/count`。
+   live-push 一份生产一个，上报器读的是 Vercel 那一份。
 
 ## 环境变量
 

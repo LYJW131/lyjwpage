@@ -84,16 +84,17 @@ export function playstationStaleMs() {
 }
 
 /**
- * 服务器上报器分两档：有人看站点 30 秒一轮，没人看 10 分钟一轮
- * （`reporters/server-reporter` 的 `LIVE_INTERVAL_MS` / `IDLE_INTERVAL_MS`，
- * 每轮收尾问一次 online-counter 的人数）。这份快照本身就是心跳，每轮必发，
+ * 服务器上报器分三档：有页面可见 30 秒一轮，只是开着（后台标签页、锁了屏）
+ * 2 分钟一轮，一个页面都没开 10 分钟一轮（`reporters/server-reporter` 的
+ * `LIVE_INTERVAL_MS` / `OPEN_INTERVAL_MS` / `IDLE_INTERVAL_MS`，每轮收尾问一次
+ * online-counter 和 live-push 的人头数）。这份快照本身就是心跳，每轮必发，
  * 所以「多久没刷新」等价于「上报器还活着没有」。
  *
  * 这个窗口锚的是**慢档**：有人看时只会更快，判活的下限始终由 10 分钟那档定。
  * 三轮多一点不该翻脸 —— 3 × 10 = 30 分钟，再给缓存留一个刷新周期（首屏那份
  * 快照最长冻 10 分钟，见 lib/status-cache），到 40 分钟。
  *
- * 从 30 秒一轮 / 90 秒窗口改成两档，是因为 `/api/ingest/server` 每轮必发、
+ * 从 30 秒一轮 / 90 秒窗口改成分档，是因为 `/api/ingest/server` 每轮必发、
  * 30 秒一轮时是全站函数调用量最大的一条路径（实测 12 小时 1.5K 次），而没人
  * 看的时候那些数字只是记给没人看的卡片。和 apple-music / playstation 两个
  * 上报器同一套判断。

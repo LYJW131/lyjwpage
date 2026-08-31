@@ -127,6 +127,11 @@ function getRoom(env: Env): DurableObjectStub<LivePushRoom> {
   return env.LIVE_PUSH.getByName(ROOM_ID);
 }
 
+/**
+ * 静默多久之后不再把一条连接算进人头。理由见 connectionCount。
+ */
+const CONNECTION_STALE_MS = 5 * 60_000;
+
 export class LivePushRoom extends DurableObject<Env> {
   /**
    * 用休眠版的 acceptWebSocket，不是 accept() + 自己攒一个 Set。
@@ -155,6 +160,12 @@ export class LivePushRoom extends DurableObject<Env> {
      * 但要是每次心跳都把休眠的实例叫醒，休眠就白做了。
      */
     this.ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
+    /**
+     * 接入时刻。数人头时要用它兜底：刚连上还没发过第一个 ping 的那 30 秒里，
+     * 自动回复的时间戳还是 null，只看那个会把新连接算成死的。
+     * 附件跟着连接走，休眠醒来还在（实例字段不行，见上面那段）。
+     */
+    server.serializeAttachment({ at: Date.now() });
 
     return new Response(null, { status: 101, webSocket: client });
   }
@@ -173,8 +184,32 @@ export class LivePushRoom extends DurableObject<Env> {
     return delivered;
   }
 
-  connectionCount(): number {
-    return this.ctx.getWebSockets().length;
+  /**
+   * 此刻**开着**本站的页面数。上报器拿它调频，所以宁可少数不可多数。
+   *
+   * 不能直接数 `getWebSockets().length`：对端消失却没发过 close 帧的连接会一直
+   * 挂在列表里（手机进电梯、进程被杀），而一条这样的僵尸就足以把上报器永远钉在
+   * 快档上 —— online-counter 当初栽的就是这一下。改看运行时替我们记的自动回复
+   * 时刻：浏览器每 30 秒发一个 ping（use-live-events 的 HEARTBEAT_MS），静默超过
+   * 阈值的就不算数。
+   *
+   * 阈值取 5 分钟而不是 90 秒：后台标签页的 setInterval 会被浏览器节流到最多每
+   * 分钟一响，贴着心跳间隔画线会成片误杀真实的后台连接 —— 而后台标签页恰恰是这
+   * 个数存在的理由（可见的那些由 online-counter 数）。
+   *
+   * 只是不计数，不关连接：关掉只会逼它重连一次，而判断本身可能是错的。
+   */
+  connectionCount(now = Date.now()): number {
+    let alive = 0;
+    for (const socket of this.ctx.getWebSockets()) {
+      const pinged = this.ctx.getWebSocketAutoResponseTimestamp(socket);
+      const attachment = socket.deserializeAttachment() as { at?: unknown } | null;
+      const acceptedAt = typeof attachment?.at === "number" ? attachment.at : null;
+      const lastSeen = pinged?.getTime() ?? acceptedAt;
+      // 两样都没有：这次部署之前接进来的旧连接，且此后一个 ping 都没发过
+      if (lastSeen !== null && now - lastSeen <= CONNECTION_STALE_MS) alive += 1;
+    }
+    return alive;
   }
 
   /**
@@ -257,6 +292,19 @@ const worker = {
        */
       const delivered = await getRoom(env).broadcast(JSON.stringify(event));
       return jsonResponse({ ok: true, delivered }, { headers: cors });
+    }
+
+    /**
+     * 调频口。上报器（server-reporter）每轮读一次，据此决定下一轮多久：
+     * 有页面开着就别睡太死。不鉴权 —— 调用方是服务端进程，不带 Origin 头，
+     * 而这个数本来就等价于站点页脚那个公开的人头数。
+     *
+     * 字段叫 connections 不叫 online：它和 online-counter 的 `online` 是两个
+     * 概念 —— 这个数的是**开着**（含后台标签页、锁了屏的手机），那个数的是
+     * **此刻可见**。
+     */
+    if (url.pathname === "/count") {
+      return jsonResponse({ ok: true, connections: await getRoom(env).connectionCount() });
     }
 
     if (url.pathname === "/") {
