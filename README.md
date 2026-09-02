@@ -209,7 +209,7 @@ hero 上此刻在播的那首，副标题那一行会跟着进度条换成正在
 
 **歌词只在 amp-api 上有，而且要两把钥匙一起。** 公开目录 API（`api.music.apple.com`）不给歌词；`amp-api.music.apple.com/v1/catalog/{sf}/songs/{id}/lyrics` 是网页播放器自己用的内部端点，`Authorization` 要的是从 `music.apple.com` 的 JS bundle 里扒出来的 web token（和动态封面同一份，扒取、Redis 共享、401 作废都在 `lib/apple-web-token`），订阅身份走 `Media-User-Token` —— 就是上面 Mac 上报器推来的那份凭据里的 music user token。缺后者时 amp-api 回的不是 401，而是和「这首歌没有歌词」**一模一样**的 404，所以「没有」只缓存一小时，有词的缓存 7 天；目录查询那一步顺手带回 `hasLyrics`，目录说没有的浏览器根本不问。
 
-只取行级（`/lyrics`，`itunes:timing="Line"`），不取字级（`/syllable-lyrics`，体积三四倍）：一行的位置画不了逐字高亮。TTML 解析在 `lib/lyrics-ttml`（`<head>` 里的翻译不当成行，`x-bg` 和声整层丢掉），哪句该亮在 `lib/lyrics-cue`，两个都是纯函数、都有测试。换句那一刻由一个定在边界上的闹钟驱动，不靠进度条那个整秒计时器；position 和进度条、「一起听」读的是 `lib/track-position` 同一份算法。
+先要字级（`/syllable-lyrics`，`itunes:timing="Word"`，每个字一个带 begin/end 的 `<span>`），404 再退回行级（`/lyrics`）。字级那份的每句多一个 `words`，hero 上那一句按字从左到右点亮：每个字一个 span，`--sung` 是唱到了几成，CSS 把「已唱 / 未唱」两色渐变裁进文字（`.lyric-word`），播放中 rAF 每帧直接写 DOM，不走 React 重渲染。只有行级的歌整句一起亮。TTML 解析在 `lib/lyrics-ttml`（`<head>` 里的翻译不当成行，`x-bg` 和声整层丢掉，字间空格挂到前一个字后面所以 words 拼起来就是整句），哪句该亮在 `lib/lyrics-cue`，两个都是纯函数、都有测试。换句那一刻由一个定在边界上的闹钟驱动，不靠进度条那个整秒计时器；position 和进度条、字的点亮、「一起听」读的是 `lib/track-position` 同一份算法。响应形状变了要把 `hooks/use-lyrics` 里的 `LYRICS_FORMAT` 加一：浏览器允许留 7 天，URL 不变就一周拿旧形状。
 
 **`GET /api/lyrics?song=<id>` 只答此刻在播和排在后面那几首。** 动态封面吐的只是一个视频地址，这里吐的是整首歌的歌词正文、还是拿我的订阅身份换来的，不设门就是一个「任意 ID 换歌词」的公开代理。名单来自 `/api/status/listening/now` 那份快照（当前曲 + `upcomingSongIds`），不在名单里一律 404，不和「没有歌词」区分。响应只许浏览器私有缓存（`Cache-Control: private`），不进 CDN —— 白名单是每次请求现查的，共享缓存会把一次放行的响应发给之后任何人。浏览器那侧「没有」也只记一小时，和服务端同一个尺度。
 

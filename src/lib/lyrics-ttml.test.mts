@@ -50,7 +50,37 @@ test("字级：逐字 span 拼回一行，span 之间的空白保留、折叠", 
     ),
   );
   assert.equal(parsed.timing, "word");
-  assert.deepEqual(parsed.lines, [{ startMs: 1_000, endMs: 3_000, text: "aa bbcc" }]);
+  assert.deepEqual(parsed.lines, [
+    {
+      startMs: 1_000,
+      endMs: 3_000,
+      text: "aa bbcc",
+      // 字间的空格挂到前一个字后面，拼起来就是整句
+      words: [
+        { startMs: 1_000, endMs: 1_500, text: "aa " },
+        { startMs: 1_500, endMs: 2_000, text: "bb" },
+        { startMs: 2_000, endMs: 3_000, text: "cc" },
+      ],
+    },
+  ]);
+  assert.equal(parsed.lines[0].words!.map((w) => w.text).join(""), parsed.lines[0].text);
+});
+
+test("行级那份不带 words；套着更细 span 的外层不算字", () => {
+  const line = parseLyricsTtml(ttml("Line", `<p begin="1.000" end="2.000">plain</p>`));
+  assert.equal(line.lines[0].words, undefined);
+
+  const nested = parseLyricsTtml(
+    ttml(
+      "Word",
+      `<p begin="1.000" end="3.000"><span begin="1.000" end="3.000">` +
+        `<span begin="1.000" end="2.000">x</span><span begin="2.000" end="3.000">y</span></span></p>`,
+    ),
+  );
+  assert.deepEqual(nested.lines[0].words, [
+    { startMs: 1_000, endMs: 2_000, text: "x" },
+    { startMs: 2_000, endMs: 3_000, text: "y" },
+  ]);
 });
 
 test("和声（x-bg）整层丢掉，包括它里面套着的逐字 span", () => {
@@ -63,7 +93,17 @@ test("和声（x-bg）整层丢掉，包括它里面套着的逐字 span", () =>
         ` <span begin="3.500" end="4.000">tail</span></p>`,
     ),
   );
-  assert.deepEqual(parsed.lines, [{ startMs: 1_000, endMs: 4_000, text: "lead tail" }]);
+  assert.deepEqual(parsed.lines, [
+    {
+      startMs: 1_000,
+      endMs: 4_000,
+      text: "lead tail",
+      words: [
+        { startMs: 1_000, endMs: 2_000, text: "lead " },
+        { startMs: 3_500, endMs: 4_000, text: "tail" },
+      ],
+    },
+  ]);
 });
 
 test("head 里的翻译不当成行；timing=None 没有时间轴", () => {
