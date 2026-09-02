@@ -315,7 +315,21 @@ function LyricWords({ words, track }: { words: LyricWord[]; track: LocalNowPlayi
               ? 1
               : 0
             : Math.max(0, Math.min(1, (at - word.startMs) / lengthMs));
-        span.style.setProperty("--sung", `${(ratio * 100).toFixed(1)}%`);
+
+        if (ratio <= 0) {
+          if (span.dataset.sung !== "pending") {
+            span.dataset.sung = "pending";
+            span.style.removeProperty("--sung");
+          }
+        } else if (ratio >= 1) {
+          if (span.dataset.sung !== "done") {
+            span.dataset.sung = "done";
+            span.style.removeProperty("--sung");
+          }
+        } else {
+          span.dataset.sung = "active";
+          span.style.setProperty("--sung", `${(ratio * 100).toFixed(1)}%`);
+        }
       });
     };
 
@@ -331,8 +345,8 @@ function LyricWords({ words, track }: { words: LyricWord[]; track: LocalNowPlayi
   return (
     <span ref={ref}>
       {words.map((word, i) => (
-        // 首帧全部未唱（--sung 0%），挂载后 paint 立刻改成当下的值
-        <span key={i} className="lyric-word" style={{ "--sung": "0%" } as CSSProperties}>
+        // 首帧全部未唱，挂载后 paint 立刻改成当下的值
+        <span key={i} className="lyric-word" data-sung="pending">
           {word.text}
         </span>
       ))}

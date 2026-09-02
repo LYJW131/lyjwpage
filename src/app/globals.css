@@ -14,6 +14,8 @@
   --foreground: oklch(0.19 0.006 80);
   --muted: oklch(0.965 0.008 92);
   --muted-foreground: oklch(0.48 0.008 80);
+  /* 歌词未唱文字色：低透明度半透态（28%），保证浅色墨黑 / 深色亮白逐字填充时具备高对比度 */
+  --lyric-unsung: oklch(0.19 0.006 80 / 28%);
 
   --surface: oklch(0.995 0.006 92);
   --surface-hover: oklch(0.945 0.012 90);
@@ -79,6 +81,7 @@
   --foreground: oklch(0.93 0.012 90);
   --muted: oklch(0.205 0.008 85);
   --muted-foreground: oklch(0.66 0.012 90);
+  --lyric-unsung: oklch(0.93 0.012 90 / 28%);
 
   --surface: oklch(0.185 0.008 85);
   --surface-hover: oklch(0.235 0.01 85);
@@ -103,6 +106,7 @@
   --color-foreground: var(--foreground);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
+  --color-lyric-unsung: var(--lyric-unsung);
   --color-surface: var(--surface);
   --color-surface-hover: var(--surface-hover);
   --color-line: var(--line);
@@ -563,19 +567,33 @@ button.paper-card {
  *
  * 不做 transition：分界线每帧都在动，过渡只会让它滞后。
  */
+/**
+ * 逐字歌词的一个字：
+ * - 未唱（pending）：纯色未唱态，绝不提前漏色
+ * - 已唱（done）：纯色已唱态，100% 墨黑/亮白
+ * - 正在唱（active）：分界线带柔和羽化渐变（0.5em），消除生硬切割感
+ */
 .lyric-word {
+  white-space: pre;
+  color: var(--color-lyric-unsung);
+}
+
+.lyric-word[data-sung="done"] {
+  color: var(--color-foreground);
+}
+
+.lyric-word[data-sung="active"] {
   --sung: 0%;
   background-image: linear-gradient(
     90deg,
     var(--color-foreground) 0%,
-    var(--color-foreground) calc(var(--sung) - 0.25em),
-    var(--color-muted-foreground) calc(var(--sung) + 0.25em),
-    var(--color-muted-foreground) 100%
+    var(--color-foreground) max(0%, calc(var(--sung) - 0.25em)),
+    var(--color-lyric-unsung) min(100%, calc(var(--sung) + 0.25em)),
+    var(--color-lyric-unsung) 100%
   );
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  white-space: pre;
 }
 
 /**
