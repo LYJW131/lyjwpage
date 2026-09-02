@@ -14,8 +14,8 @@ import { parseLyricsTtml, type LyricLine } from "@/lib/lyrics-ttml";
  * 而是和「这首歌没有歌词」**一模一样**的 404 `No related resources`，所以这条
  * 路上的 404 不能直接当成「没有」长期缓存，见下面 NO_LYRICS_TTL_MS。
  *
- * 只取行级（`/lyrics`），不取字级（`/syllable-lyrics`）：卡片上只有一行的位置，
- * 逐字高亮没地方画，而字级那份体积是行级的三四倍。解析在 lib/lyrics-ttml。
+ * 先要字级（`/syllable-lyrics`），没有再退回行级（`/lyrics`）：字级那份每句带
+ * 逐字计时，hero 上那一句按字点亮；不是每首都有，404 就退。解析在 lib/lyrics-ttml。
  */
 
 export type LyricsResult = {
@@ -61,7 +61,8 @@ export async function resolveLyrics(songId: string): Promise<LyricsResult> {
   // 穿过数值转换 —— 否则它会把这条路一直标成 SSRF
   if (!/^\d{1,20}$/.test(songId)) throw new AppleUpstreamError("songId 不是目录 ID");
   const id = BigInt(songId).toString();
-  const cacheKey = `lyrics:v1:${storefront()}:${id}`;
+  // v2：多了 words。旧条目里没有这个字段，键不换的话有逐字版本的歌会被行级那份挡一星期
+  const cacheKey = `lyrics:v2:${storefront()}:${id}`;
 
   const [hit, failure] = await Promise.all([
     get<LyricsResult>(cacheKey),
@@ -102,21 +103,26 @@ async function loadLyrics(songId: string): Promise<LyricsResult> {
     );
   }
   const token = await getWebToken();
+  const headers = { "Media-User-Token": credentials.credentials.musicUserToken };
 
-  let json: { data?: Array<{ attributes?: { ttml?: string } }> };
-  try {
-    json = await ampFetch(
-      `https://amp-api.music.apple.com/v1/catalog/${storefront()}/songs/${songId}/lyrics`,
-      token,
-      { "Media-User-Token": credentials.credentials.musicUserToken },
-    );
-  } catch (error) {
-    // 404 是 amp-api 说「没有」的方式（或者订阅身份没被认，见文件头）
-    if (error instanceof AppleUpstreamError && error.status === 404) return NO_LYRICS;
-    throw error;
+  // 先字级再行级：一首歌两种都有时字级那份带逐字计时；只有行级的歌字级那条 404
+  for (const kind of ["syllable-lyrics", "lyrics"] as const) {
+    let json: { data?: Array<{ attributes?: { ttml?: string } }> };
+    try {
+      json = await ampFetch(
+        `https://amp-api.music.apple.com/v1/catalog/${storefront()}/songs/${songId}/${kind}`,
+        token,
+        headers,
+      );
+    } catch (error) {
+      // 404 是 amp-api 说「没有」的方式（或者订阅身份没被认，见文件头）
+      if (error instanceof AppleUpstreamError && error.status === 404) continue;
+      throw error;
+    }
+    const ttml = json?.data?.[0]?.attributes?.ttml;
+    if (!ttml) continue;
+    const { lines } = parseLyricsTtml(ttml);
+    if (lines.length) return { lines };
   }
-
-  const ttml = json?.data?.[0]?.attributes?.ttml;
-  if (!ttml) return NO_LYRICS;
-  return { lines: parseLyricsTtml(ttml).lines };
+  return NO_LYRICS;
 }

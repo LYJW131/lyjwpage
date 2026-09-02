@@ -557,6 +557,26 @@ button.paper-card {
 }
 
 /**
+ * 逐字歌词的一个字：`--sung` 是唱到了几成，由 listening-card 的 LyricWords 每帧
+ * 写进来。两色渐变裁进文字，左边是已唱（正文色），右边是未唱（次要色），分界线
+ * 就是 --sung。字之间的空格随字走，所以整句的颜色是连着推过去的，不是一格一格跳。
+ *
+ * 不做 transition：分界线每帧都在动，过渡只会让它滞后。
+ */
+.lyric-word {
+  --sung: 0%;
+  background-image: linear-gradient(
+    90deg,
+    var(--color-foreground) var(--sung),
+    var(--color-muted-foreground) var(--sung)
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  white-space: pre;
+}
+
+/**
  * Claude Code 终端里那朵菊花：spinner 在 · ✢ ✳ ∗ ✻ ✽ 之间逐帧跳，
  * 星芒从一个点绽开、再收回去，来回循环。所以这里是「逐帧缩放」——
  * 官方 spinner 不旋转，转起来就不是它了。

@@ -13,6 +13,13 @@ import type { LyricLine } from "@/lib/lyrics-ttml";
  */
 
 const LYRICS_ENDPOINT = "/api/lyrics";
+/**
+ * 响应形状的版本，拼进查询串。路由不看它，它只是浏览器缓存的键的一部分：
+ * 这条响应允许浏览器留 7 天（`Cache-Control: private`），形状变了（v2 多了
+ * words）而 URL 不变的话，之前来过的访客整整一周拿到的都是旧形状。改了
+ * LyricsResult 的形状就把这个数加一。
+ */
+const LYRICS_FORMAT = 2;
 
 /**
  * 「没有」只记一小时，和服务端那条负缓存同一个尺度（lib/lyrics 的
@@ -50,7 +57,9 @@ async function fetchLyrics(songId: string): Promise<LyricLine[] | null> {
 
   const promise = (async () => {
     try {
-      const response = await fetch(`${LYRICS_ENDPOINT}?song=${encodeURIComponent(songId)}`);
+      const response = await fetch(
+        `${LYRICS_ENDPOINT}?song=${encodeURIComponent(songId)}&format=${LYRICS_FORMAT}`,
+      );
       if (!response.ok) {
         emptyUntil.set(songId, Date.now() + FAILURE_TTL_MS);
         return null;

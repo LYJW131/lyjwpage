@@ -26,7 +26,7 @@ import { useMountedAt } from "@/hooks/use-mounted-at";
 import { useExpiryRefetch, useStatus } from "@/hooks/use-status";
 import { stableKeys } from "@/lib/keys";
 import { cueAt, NO_CUE } from "@/lib/lyrics-cue";
-import type { LyricLine } from "@/lib/lyrics-ttml";
+import type { LyricLine, LyricWord } from "@/lib/lyrics-ttml";
 import {
   HERO_VARIANTS,
   LIST_DURATION,
@@ -284,6 +284,63 @@ const LYRIC_LINE_VARIANTS = {
 };
 
 /**
+ * 逐字点亮的一句。
+ *
+ * 每个字一个 span，`--sung` 是这个字唱到了几成，CSS 拿它画一条「已唱 / 未唱」两色
+ * 的渐变裁进文字里（见 globals.css 的 .lyric-word）。播放中用 rAF 每帧算一遍：
+ * 几十个字各算一个百分比，比让 React 每帧重渲染便宜得多，所以直接写 DOM，不进
+ * state。暂停时算一次就停，字停在唱到的那一格。
+ *
+ * position 和进度条、换句的闹钟是同一份算法（lib/track-position），字亮到哪儿
+ * 和进度条走到哪儿永远对得上。
+ */
+function LyricWords({ words, track }: { words: LyricWord[]; track: LocalNowPlaying }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const { state, observedAt, positionMs, durationMs, repeatOne } = track;
+
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    const anchor = { state, observedAt, positionMs, durationMs, repeatOne };
+
+    const paint = () => {
+      const at = trackPositionMs(anchor, Date.now());
+      words.forEach((word, i) => {
+        const span = node.children[i] as HTMLElement | undefined;
+        if (!span) return;
+        const lengthMs = word.endMs - word.startMs;
+        const ratio =
+          lengthMs <= 0
+            ? at >= word.startMs
+              ? 1
+              : 0
+            : Math.max(0, Math.min(1, (at - word.startMs) / lengthMs));
+        span.style.setProperty("--sung", `${(ratio * 100).toFixed(1)}%`);
+      });
+    };
+
+    paint();
+    if (state !== "playing") return;
+    let frame = requestAnimationFrame(function loop() {
+      paint();
+      frame = requestAnimationFrame(loop);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [words, state, observedAt, positionMs, durationMs, repeatOne]);
+
+  return (
+    <span ref={ref}>
+      {words.map((word, i) => (
+        // 首帧全部未唱（--sung 0%），挂载后 paint 立刻改成当下的值
+        <span key={i} className="lyric-word" style={{ "--sung": "0%" } as CSSProperties}>
+          {word.text}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/**
  * 本机曲目的副标题行 + 进度条。
  *
  * 挤进 hero 而不撑高它：hero 的高度由 80px 封面定死，文字列实测只用掉 67px，
@@ -363,7 +420,8 @@ function HeroProgress({
   }, [playing, lyrics, now, observedAt, positionMs, durationMs, repeatOne]);
 
   const cue = lyrics ? cueAt(lyrics, position) : NO_CUE;
-  const line = cue.index >= 0 ? lyrics![cue.index].text : null;
+  const current = cue.index >= 0 ? lyrics![cue.index] : null;
+  const line = current?.text ?? null;
 
   return (
     <>
@@ -384,7 +442,11 @@ function HeroProgress({
               animate="animate"
               exit="exit"
             >
-              {line ?? subtitle}
+              {current?.words ? (
+                <LyricWords words={current.words} track={track} />
+              ) : (
+                (line ?? subtitle)
+              )}
             </motion.span>
           </AnimatePresence>
         </span>
