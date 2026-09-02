@@ -20,10 +20,13 @@ import { HeroMotionArtwork } from "@/components/live/hero-motion-artwork";
 import { ListenAlongButton } from "@/components/live/listen-along-button";
 import { useListenAlong } from "@/hooks/use-listen-along";
 import { useLiveEvents } from "@/hooks/use-live-events";
+import { useLyrics } from "@/hooks/use-lyrics";
 import { useMotionArtwork } from "@/hooks/use-motion-artwork";
 import { useMountedAt } from "@/hooks/use-mounted-at";
 import { useExpiryRefetch, useStatus } from "@/hooks/use-status";
 import { stableKeys } from "@/lib/keys";
+import { cueAt, NO_CUE } from "@/lib/lyrics-cue";
+import type { LyricLine } from "@/lib/lyrics-ttml";
 import {
   HERO_VARIANTS,
   LIST_DURATION,
@@ -270,6 +273,17 @@ function Clock({ milliseconds }: { milliseconds: number }) {
 }
 
 /**
+ * 歌词换句的过渡：新句从下方一小步淡入，旧句向上淡出，像歌词滚了一格。
+ * 位移压得很小（4px）：这一行是在 hero 里跟着节拍换的，动大了就成了干扰。
+ * 出场比入场快，理由同 HERO_VARIANTS —— 两句半透明地叠着会糊成重影。
+ */
+const LYRIC_LINE_VARIANTS = {
+  initial: { opacity: 0, y: 4 },
+  animate: { opacity: 1, y: 0, transition: { duration: 0.26, ease: [0.22, 1, 0.36, 1] } },
+  exit: { opacity: 0, y: -4, transition: { duration: 0.14, ease: "easeIn" } },
+};
+
+/**
  * 本机曲目的副标题行 + 进度条。
  *
  * 挤进 hero 而不撑高它：hero 的高度由 80px 封面定死，文字列实测只用掉 67px，
@@ -279,19 +293,28 @@ function Clock({ milliseconds }: { milliseconds: number }) {
  *
  * 秒级计时器留在这个组件里，不放到 ListeningCard —— 否则下面那个带布局动画的
  * 列表会跟着每秒重渲染一次。
+ *
+ * 有同步歌词时副标题那一行跟着进度走：唱到哪句就换成哪句，前奏、间奏和没有
+ * 歌词时是艺人名。位置不另起一行 —— hero 的 80px 已经用掉 76px，多一行就得撑高，
+ * 而两版 hero 的高度必须一致（见下面渲染处的注释）。哪句该亮由 lib/lyrics-cue
+ * 按同一个 position 算，所以它和进度条、和「一起听」读的是同一个时刻。
  */
 function HeroProgress({
   track,
   subtitle,
   palette,
   motionGradient,
+  lyrics,
 }: {
   track: LocalNowPlaying;
   subtitle: string;
   palette?: string[];
   motionGradient?: string;
+  /** 按 startMs 升序的同步歌词；没有就是 null，副标题行只显示艺人名 */
+  lyrics: LyricLine[] | null;
 }) {
   const playing = track.state === "playing";
+  const reduced = useReducedMotion();
   /**
    * 首帧 now 是 0（见 useMountedAt），服务端只画锚点、进度不往前推 —— 服务端算
    * 的偏移和 hydrate 那一刻算的必然差着毫秒，时间文本和进度条宽度都会对不上。
@@ -315,11 +338,55 @@ function HeroProgress({
   const percent = track.durationMs ? (position / track.durationMs) * 100 : 0;
   const gradient = palette && palette.length >= 2 ? paletteGradient(palette) : undefined;
 
+  /**
+   * 换句的那一刻单独定一个闹钟，不靠上面那个秒级计时器。
+   *
+   * 一句歌词两三秒，按整秒对齐最坏晚一秒才换，唱到下一句了字还是上一句的。
+   * 闹钟定在下一次结论会变的位置（下一句开口、这句唱完、或单曲循环绕回开头），
+   * 响了就把 now 拨到当下，渲染那边按同一份 position 算出的自然就是新的那句。
+   * 暂停时不定：position 不走，结论也不会变。
+   *
+   * `now` 进依赖是有意的：每次拨钟（整秒或闹钟）都重新按当下的 position 定下一个，
+   * 手上的锚点变了（换歌、拖进度）也一样。
+   */
+  const { observedAt, positionMs, durationMs, repeatOne } = track;
+  useEffect(() => {
+    if (!playing || !lyrics) return;
+    const anchor = { state: "playing" as const, observedAt, positionMs, durationMs, repeatOne };
+    const at = trackPositionMs(anchor, Math.max(now, Date.now()));
+    const { until } = cueAt(lyrics, at);
+    const target = until ?? (repeatOne && durationMs > 0 ? durationMs : null);
+    if (target == null) return;
+    // 多留几毫秒：闹钟绝不会早响，但要保证响的时候 position 已经过了边界
+    const timer = window.setTimeout(() => setTicked(Date.now()), Math.max(16, target - at + 8));
+    return () => window.clearTimeout(timer);
+  }, [playing, lyrics, now, observedAt, positionMs, durationMs, repeatOne]);
+
+  const cue = lyrics ? cueAt(lyrics, position) : NO_CUE;
+  const line = cue.index >= 0 ? lyrics![cue.index].text : null;
+
   return (
     <>
       <div className="mt-px flex items-baseline gap-2 text-sm text-muted-foreground">
-        <span className="min-w-0 flex-1 truncate" title={subtitle}>
-          {subtitle}
+        {/*
+          艺人名和歌词句交叉淡入：popLayout 把离场的那句摘出文档流叠在原位，
+          新句直接顶上，行高不变。外层 relative + overflow-hidden 给离场那句一个
+          可以绝对定位、又不会露出去的框。key 用句子的下标：同一句词在一首歌里
+          可能重复出现，按文字当 key 的话副歌第二遍不会触发换句。
+        */}
+        <span className="relative min-w-0 flex-1 overflow-hidden" title={line ?? subtitle}>
+          <AnimatePresence initial={false} mode="popLayout">
+            <motion.span
+              key={cue.index}
+              className={cn("block truncate", line != null && "text-foreground")}
+              variants={reduced ? STATIC_VARIANTS : LYRIC_LINE_VARIANTS}
+              initial="initial"
+              animate="animate"
+              exit="exit"
+            >
+              {line ?? subtitle}
+            </motion.span>
+          </AnimatePresence>
         </span>
         <NumberFlowGroup>
           <span className="label-mono shrink-0 tabular-nums">
@@ -585,6 +652,7 @@ export function ListeningCard({
     key: string;
     songId: string;
     upcomingSongIds: string[];
+    hasLyrics: boolean;
   } | null>(null);
   // 渲染期直接调整，理由同下面的 lastLiveId
   if (
@@ -592,11 +660,20 @@ export function ListeningCard({
     trackKey &&
     (lookupLatch?.key !== trackKey || lookupLatch.songId !== live.songId)
   ) {
-    setLookupLatch({ key: trackKey, songId: live.songId, upcomingSongIds: live.upcomingSongIds });
+    setLookupLatch({
+      key: trackKey,
+      songId: live.songId,
+      upcomingSongIds: live.upcomingSongIds,
+      hasLyrics: live.hasLyrics,
+    });
   }
   const latched = trackKey && lookupLatch?.key === trackKey ? lookupLatch : null;
   const resolvedSongId = live?.songId ?? latched?.songId ?? null;
   const resolvedUpcoming = live?.songId ? live.upcomingSongIds : latched?.upcomingSongIds ?? [];
+  const resolvedHasLyrics = live?.songId ? live.hasLyrics : latched?.hasLyrics ?? false;
+
+  // 同步歌词跟着闩住的那个 songId 走，和跟听同一份；目录说没有就不发请求
+  const lyrics = useLyrics(resolvedSongId, resolvedHasLyrics);
 
   /**
    * 跟着这首一起听。访客用自己的订阅授权，音频不经过站点，见 use-listen-along。
@@ -833,6 +910,7 @@ export function ListeningCard({
                         subtitle={hero.subtitle}
                         palette={hero.palette}
                         motionGradient={motionGradient}
+                        lyrics={lyrics}
                       />
                     ) : (
                       <>

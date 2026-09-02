@@ -15,8 +15,9 @@ import { cached } from "@/lib/cache";
  * 本机 Music.app 和 HomePod 都给不出可分享的链接，只能拿曲名 + 艺人去目录里搜，
  * 而这件事是读取时按当前播放的曲子现查的，没法交给按固定节奏轮询的上报器。
  *
- * 也就是说这是全站两条会打 Apple 的路径之一（另一条是动态封面解析，见
- * lib/motion-artwork —— 那条用的是扒来的 web token，和这里的凭据互不相干）。
+ * 也就是说这是全站三条会打 Apple 的路径之一（另外两条是动态封面和歌词，见
+ * lib/motion-artwork 和 lib/lyrics —— 那两条打的是 amp-api、用的是扒来的
+ * web token，歌词再多带一个这里同一份凭据里的 music user token）。
  * 命中长期缓存，绝大多数请求不会真的出网。真要把它也搬走，该搬去 Mac 上报器 —— 它有 MusicKit，换歌的那一刻就能
  * 把链接一起算好塞进信封，这里连缓存都不用留。
  *
@@ -104,6 +105,13 @@ export type TrackLookup = {
    * 会从第一首开始放。搜索命中的那条本来就带着它，等于白拿。
    */
   songId: string | null;
+  /**
+   * 目录说这首有没有歌词。搜不到时是 false —— 没有可查的东西。
+   *
+   * 歌词端点拿它当门：目录说没有就不去问 amp-api。那边的 404 分不清「没有」和
+   * 「订阅身份没被认」，先把确实没有的挡在门外，剩下的 404 才好按短缓存处理。
+   */
+  hasLyrics: boolean;
 };
 
 /**
@@ -117,7 +125,7 @@ export async function resolveTrackLookup(track: {
   artist: string | null;
   album: string | null;
 }): Promise<TrackLookup> {
-  if (!track.title) return { link: "", artwork: null, id: null, songId: null };
+  if (!track.title) return { link: "", artwork: null, id: null, songId: null, hasLyrics: false };
 
   const terms = catalogSearchTerms(track.title, track.artist, track.album);
   // 目录全没对上时的搜索页：已经失败了，链出去的词不再带艺人
@@ -135,7 +143,7 @@ export async function resolveTrackLookup(track: {
    * 「搜过了但没匹配上」会把新策略挡在门外整整一周。
    */
   const cacheKey =
-    "apple-music:track-lookup:v9:" +
+    "apple-music:track-lookup:v10:" +
     [track.title, track.artist, track.album].map(normalizeForMatch).join(":");
 
   try {
@@ -176,6 +184,7 @@ export async function resolveTrackLookup(track: {
         artwork: hit?.attributes?.artwork?.url ?? null,
         id: albumId,
         songId: hit?.id ?? null,
+        hasLyrics: hit?.attributes?.hasLyrics === true,
       };
     });
     return {
@@ -183,9 +192,10 @@ export async function resolveTrackLookup(track: {
       artwork: exact.artwork,
       id: exact.id,
       songId: exact.songId,
+      hasLyrics: exact.hasLyrics,
     };
   } catch {
     // 凭据缺失或上游异常都不该让整张卡片失败
-    return { link: searchUrl, artwork: null, id: null, songId: null };
+    return { link: searchUrl, artwork: null, id: null, songId: null, hasLyrics: false };
   }
 }

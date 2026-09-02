@@ -201,7 +201,17 @@ MusicKit 签出来的 developer token 寿命约一个月（**Apple 没承诺这�
 
 只在内容真的变了时才推给站点，另外每 10 分钟兜底整推一次（防 Redis 被清空）。站点收到后也自己比对一遍，变了才往浏览器发失效通知——所以兜底那次不会变成定时广播。
 
-**站点这侧唯一还会打 Apple 的地方**是「此刻在播的那首曲子」的跳转链接：Music.app 和 HomePod 都给不出可分享的链接，只能拿曲名 + 艺人现查目录，而这件事跟着当前播放走，交不给按固定节奏轮询的上报器。命中缓存 7 天，绝大多数请求不会真的出网。要连它也搬走，该搬去 Mac 上报器——那边有 MusicKit，换歌那一刻就能把链接一起算好。
+**站点这侧还会打 Apple 的地方**（除了下面两节的动态封面和歌词，那两条走的是 amp-api）是「此刻在播的那首曲子」的跳转链接：Music.app 和 HomePod 都给不出可分享的链接，只能拿曲名 + 艺人现查目录，而这件事跟着当前播放走，交不给按固定节奏轮询的上报器。命中缓存 7 天，绝大多数请求不会真的出网。要连它也搬走，该搬去 Mac 上报器——那边有 MusicKit，换歌那一刻就能把链接一起算好。
+
+### 跟着进度走的歌词 — amp-api
+
+hero 上此刻在播的那首，副标题那一行会跟着进度条换成正在唱的那句；前奏、间奏、没有歌词的曲子和历史条目仍是艺人名。不另起一行：hero 的 80px 已经用掉 76px，两版 hero 的高度又必须一致。
+
+**歌词只在 amp-api 上有，而且要两把钥匙一起。** 公开目录 API（`api.music.apple.com`）不给歌词；`amp-api.music.apple.com/v1/catalog/{sf}/songs/{id}/lyrics` 是网页播放器自己用的内部端点，`Authorization` 要的是从 `music.apple.com` 的 JS bundle 里扒出来的 web token（和动态封面同一份，扒取、Redis 共享、401 作废都在 `lib/apple-web-token`），订阅身份走 `Media-User-Token` —— 就是上面 Mac 上报器推来的那份凭据里的 music user token。缺后者时 amp-api 回的不是 401，而是和「这首歌没有歌词」**一模一样**的 404，所以「没有」只缓存一小时，有词的缓存 7 天；目录查询那一步顺手带回 `hasLyrics`，目录说没有的浏览器根本不问。
+
+只取行级（`/lyrics`，`itunes:timing="Line"`），不取字级（`/syllable-lyrics`，体积三四倍）：一行的位置画不了逐字高亮。TTML 解析在 `lib/lyrics-ttml`（`<head>` 里的翻译不当成行，`x-bg` 和声整层丢掉），哪句该亮在 `lib/lyrics-cue`，两个都是纯函数、都有测试。换句那一刻由一个定在边界上的闹钟驱动，不靠进度条那个整秒计时器；position 和进度条、「一起听」读的是 `lib/track-position` 同一份算法。
+
+**`GET /api/lyrics?song=<id>` 只答此刻在播和排在后面那几首。** 动态封面吐的只是一个视频地址，这里吐的是整首歌的歌词正文、还是拿我的订阅身份换来的，不设门就是一个「任意 ID 换歌词」的公开代理。名单来自 `/api/status/listening/now` 那份快照（当前曲 + `upcomingSongIds`），不在名单里一律 404，不和「没有歌词」区分。
 
 ### 跟着一起听 — MusicKit
 
