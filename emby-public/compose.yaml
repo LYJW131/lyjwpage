@@ -1,0 +1,50 @@
+# Emby 只读展示站：emby.homepage.lyjw.llc
+#
+# 访客打开即以 guest 身份浏览元数据，不能播放、不能下载、不能改任何状态。
+# 出口走 Cloudflare Tunnel，不经 Traefik / frp，TLS 在 Cloudflare 边缘终结。
+#
+# 安全模型（改之前先读一遍）：
+#   Emby 的 access token 不分域名，而且 EnableMediaPlayback=false 拦不住
+#   /Videos/{id}/stream、/Items/{id}/File 这类直出字节的接口 —— 实测过。
+#   所以访客浏览器里**永远没有真 token**：它存的是假的 "public"，nginx 对每个
+#   转发到 Emby 的请求覆盖 X-Emby-Authorization / api_key 换成 .env 里那个
+#   guest token。真 token 只在这台 NAS 上，拿去 emby.lyjw131.com 也用不上。
+#   nginx 再把播放 / 下载路径和所有非 GET 请求 403 掉，那是第二道。
+#
+# 独立 compose 项目，不并进 emby-proxy —— 同一个 project 里 `up` 会顺带重建兄弟容器。
+services:
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: emby-public-nginx
+    restart: unless-stopped
+    environment:
+      EMBY_SERVER: ${EMBY_SERVER}
+      EMBY_GUEST_TOKEN: ${EMBY_GUEST_TOKEN}
+      EMBY_GUEST_USER_ID: ${EMBY_GUEST_USER_ID}
+      # 官方镜像启动时用 envsubst 渲染 /etc/nginx/templates/*.template；
+      # 不加这个过滤它会把 $host $uri 这些 nginx 变量也替换成空串
+      NGINX_ENVSUBST_FILTER: ^EMBY_
+    volumes:
+      - ./nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
+      # 渲染成 conf.d/emby-proxy-headers.inc：不带 .conf 后缀，nginx 不会自动 include，
+      # 只由 default.conf 里各个 location 显式 include
+      - ./emby-proxy-headers.inc.template:/etc/nginx/templates/emby-proxy-headers.inc.template:ro
+      - ./js:/usr/share/nginx/js:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: emby-public-cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - nginx
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

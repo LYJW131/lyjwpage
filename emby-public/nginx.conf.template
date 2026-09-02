@@ -1,0 +1,151 @@
+# 由官方镜像的 envsubst 渲染成 /etc/nginx/conf.d/default.conf。
+# 只有 ${EMBY_...} 会被替换（compose 里 NGINX_ENVSUBST_FILTER=^EMBY_），
+# $host $uri 这些是 nginx 变量，保持原样。
+
+# 只有 cloudflared 能打到这个容器（没有映射端口），所以信任所有来源的 CF-Connecting-IP
+set_real_ip_from 0.0.0.0/0;
+real_ip_header CF-Connecting-IP;
+
+# 去掉查询串里客户端自带的 token（假的 "public"），真 token 由下面统一追加。
+# 两个 map 串起来是因为一次只能摘一个参数：api_key 和 X-Emby-Token 可能同时在。
+map $args $args_step1 {
+    default $args;
+    "~^(?<pre>.*?)(?:^|&)(?:api_key|X-Emby-Token)=[^&]*(?<post>.*)$" "$pre$post";
+}
+map $args_step1 $args_clean {
+    default $args_step1;
+    "~^(?<pre>.*?)(?:^|&)(?:api_key|X-Emby-Token)=[^&]*(?<post>.*)$" "$pre$post";
+}
+# $request_uri 里的路径部分：带原始编码，比 $uri 稳
+map $request_uri $path_only {
+    default $request_uri;
+    "~^(?<p>[^?]*)" $p;
+}
+
+# PlaybackInfo 只放「查媒体信息」那种调用（见下面那个 location）
+map $args $is_metadata_playbackinfo {
+    default 0;
+    "~*(^|&)IsPlayback=false(&|$)" 1;
+}
+
+# 网页端启动时要 POST 的两条。其余非 GET 一律 403（下面 location / 里判）
+map $request_method $is_read {
+    default 0;
+    GET     1;
+    HEAD    1;
+    OPTIONS 1;
+}
+
+server {
+    listen 80;
+    server_name _;
+
+    add_header Referrer-Policy "same-origin" always;
+    # 别让搜索引擎收录整个媒体库
+    add_header X-Robots-Tag "noindex, nofollow" always;
+
+    # ── 出口过滤：真 token 不许出现在任何响应体里 ───────────────────────
+    # Emby 会把 api_key 拼进 PlaybackInfo 的 DirectStreamUrl / TranscodingUrl 之类
+    # 的字段（实测），不抹掉等于把真 token 递给访客。这里对所有文本类响应做整体替换。
+    # 注意 sub_filter 在 location 里一旦另写就整组覆盖，下面带 sub_filter 的 location
+    # 都要把这一条重复一遍。
+    sub_filter '${EMBY_GUEST_TOKEN}' 'public';
+    sub_filter_once off;
+    sub_filter_types application/json text/plain application/javascript text/xml application/xml;
+
+    # 上游被要求回明文（见 emby-proxy-headers.inc），对浏览器的压缩在这儿补
+    gzip on;
+    gzip_types application/json text/plain application/javascript text/css application/xml text/xml image/svg+xml;
+    gzip_min_length 1024;
+
+    # ── 播放 / 下载：任何形式都不放行 ─────────────────────────────────
+    # 这些是 Emby 直出字节的接口。用户策略拦不住它们（实测），只能在这儿拦。
+    location ~* ^(/emby)?/(videos|audio)/ { return 403; }
+    location ~* ^(/emby)?/items/[^/]+/(download|file)$ { return 403; }
+    # PlaybackInfo 有两种用法：网页端进条目页时带 IsPlayback=false 查一次，只为显示
+    # 分辨率 / 编码那一栏，不查页面会渲染成错误；真要播放时是 IsPlayback=true。
+    # 只放前者。就算有人手工带 false 拿到了 MediaSources，流地址走 /videos 一样 403。
+    location ~* ^(/emby)?/items/[^/]+/playbackinfo$ {
+        if ($is_metadata_playbackinfo = 0) { return 403; }
+        proxy_pass ${EMBY_SERVER}$path_only?$args_clean&api_key=${EMBY_GUEST_TOKEN};
+        include /etc/nginx/conf.d/emby-proxy-headers.inc;
+    }
+    location ~* ^(/emby)?/(sync|playback/bitratetest|videos/activeencodings) { return 403; }
+    # 登出会吊销共享的 guest token，访客点了整站就挂
+    location ~* ^(/emby)?/sessions/logout$ { return 403; }
+    # 会话列表：所有访客共用 guest，这一条会把别的访客的 IP 和设备名互相亮出来。
+    # 网页端只拿它画「投到其他设备」那个按钮，没有就没有
+    location ~* ^(/emby)?/sessions$ { return 403; }
+    # /Users/{id}[/...] 只认 guest 自己的 id。Emby 对别人的 id 返回的库范围仍按 token 算
+    # （实测），但 /Users/{id} 本身会吐那个用户的资料，没必要让访客枚举
+    location ~* ^(/emby)?/users/(?!${EMBY_GUEST_USER_ID}(/|$))[^/]+ { return 403; }
+
+    # ── 网页端本身 ────────────────────────────────────────────────────
+    location = /web/index.html {
+        proxy_pass ${EMBY_SERVER}/web/index.html;
+        include /etc/nginx/conf.d/emby-proxy-headers.inc;
+        proxy_set_header Accept-Encoding "";
+        # ?v= 是给 Cloudflare 的：.js / .css 按扩展名进边缘缓存约 4 小时，改了文件把版本号 +1
+        sub_filter '</head>' '<link rel="stylesheet" href="/custom/guest.css?v=5"><script src="/custom/guest.js?v=5"></script></head>';
+        sub_filter '${EMBY_GUEST_TOKEN}' 'public';
+        sub_filter_once off;
+    }
+
+    # 只读样式：藏掉所有操作按钮（播放 / 已看 / 收藏 / 更多 / 投屏 / 用户 / 设置…）
+    location = /custom/guest.css {
+        alias /usr/share/nginx/js/custom/guest.css;
+        default_type text/css;
+        add_header Cache-Control "no-cache";
+    }
+
+    # 登录页换成占位：访客永远不会真的登录，看到登录表单只会困惑
+    location = /web/startup/manuallogin.js {
+        alias /usr/share/nginx/js/faker/manuallogin.js;
+    }
+    # 用户菜单换成精简版（去掉切换用户等对访客没意义的项）
+    location = /web/modules/backmenu/backmenu.js {
+        alias /usr/share/nginx/js/faker/backmenu.js;
+    }
+
+    location = /custom/guest.js {
+        alias /usr/share/nginx/js/custom/guest.js;
+        sub_filter_types application/javascript;
+        sub_filter '__GUEST_USER_ID__' '${EMBY_GUEST_USER_ID}';
+        sub_filter '${EMBY_GUEST_TOKEN}' 'public';
+        sub_filter_once off;
+        add_header Cache-Control "no-cache";
+    }
+
+    # 投屏 / 远程控制 / 屏保 / 杂项播放器插件：回空壳，别拉它们和它们的依赖。
+    # htmlvideoplayer / htmlaudioplayer **不能**换：条目页显示媒体信息时会调它们的
+    # getDeviceProfile，换了整页报错（踩过）。
+    # 名单对的是 app.js 里的插件列表（Emby Web 4.9.5），升级后重新对。
+    # 这些 URL 带 ?v=<版本>，Cloudflare 边缘可能还缓存着真文件：换名单或升级后要清一次缓存。
+    location ~* ^/web/modules/(ebookplayer|photoplayer|pdfplayer|youtubeplayer|externalplayer|logoscreensaver|backdropscreensaver|photoscreensaver|confirmstillplaying)/plugin\.js$ {
+        alias /usr/share/nginx/js/custom/plugin-stub.js;
+        default_type application/javascript;
+    }
+    location ~* ^/web/modules/(chromecast/chromecastplayer|sessionplayer)\.js$ {
+        alias /usr/share/nginx/js/custom/plugin-stub.js;
+        default_type application/javascript;
+    }
+
+    # 不能写 ^~：那会让上面的空壳正则不再参与匹配
+    location /web/ {
+        proxy_pass ${EMBY_SERVER}/web/;
+        include /etc/nginx/conf.d/emby-proxy-headers.inc;
+    }
+
+    # 启动必需的 POST：上报客户端能力。放行任何方法
+    location ~* ^(/emby)?/sessions/capabilities {
+        proxy_pass ${EMBY_SERVER}$path_only?$args_clean&api_key=${EMBY_GUEST_TOKEN};
+        include /etc/nginx/conf.d/emby-proxy-headers.inc;
+    }
+
+    # ── 其余 API：只读 ────────────────────────────────────────────────
+    location / {
+        if ($is_read = 0) { return 403; }
+        proxy_pass ${EMBY_SERVER}$path_only?$args_clean&api_key=${EMBY_GUEST_TOKEN};
+        include /etc/nginx/conf.d/emby-proxy-headers.inc;
+    }
+}

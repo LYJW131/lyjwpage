@@ -1,0 +1,62 @@
+/*
+ * 只读展示站：把所有「操作」控件藏掉，只留浏览和导航。
+ * 这些按钮点了本来也会被 nginx 403，藏掉是为了页面别长着一副能操作的样子。
+ * class 名来自 Emby Web 4.9.5，升级后请重新对一遍（部署单元 README 里有摸 class 的方法）。
+ */
+
+/* 头部：投屏、用户菜单、管理服务器 */
+.headerCastButton,
+.headerUserButton,
+.headerSettingsButton,
+.headerSyncButton {
+    display: none !important;
+}
+
+/* 条目页那一排：播放 / 恢复 / 随机 / 预告片 / 下载 / 已看 / 收藏 / 更多 / 删除 / 录制…
+   整个 detailButton 一族没有一个是只读的 */
+.detailButton,
+.btnSplitVersions,
+.btnMoreCommands,
+.btnPlaystate,
+.btnUserRating {
+    display: none !important;
+}
+
+/* 卡片悬浮层：播放 / 继续 / 更多 / 多选。
+   注意别按 [data-action="play"|"resume"] 一刀切：剧季页里每集的缩略图容器本身就带
+   data-action="resume"，那一刀会把缩略图切掉（踩过）。这两个动作由 guest.js 改写成 link */
+.cardOverlayFab-primary,
+.cardOverlayButton,
+.chkItemSelectContainer,
+.buttonItems-item,
+[data-action="menu"],
+[data-action="multiselect"],
+[data-action="instantmix"],
+[data-action="queue"],
+[data-action="playtrailer"],
+[data-action="record"],
+[data-action="togglefavorite"],
+[data-action="toggleplayed"] {
+    display: none !important;
+}
+
+/* 库列表页顶栏：播放全部 / 随机 / 视图设置（视图设置要写 DisplayPreferences，会 403）。
+   排序和过滤留着 */
+.itemsViewSettingsContainer-button.btnPlay,
+.itemsViewSettingsContainer-button.btnShuffle,
+.itemsViewSettingsContainer-button.btnViewSettings {
+    display: none !important;
+}
+
+/* 列表行（剧集列表、音乐曲目）右侧的按钮：播放 / 更多 / 已看 / 收藏 */
+.listItemButton,
+.listItem-morebutton,
+.listItemPlayButton,
+.listViewUserDataButtons {
+    display: none !important;
+}
+
+/* 多选模式的顶栏，理论上进不去，兜底 */
+.selectionCommandsPanel {
+    display: none !important;
+}

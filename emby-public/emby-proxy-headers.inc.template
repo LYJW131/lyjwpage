@@ -1,0 +1,19 @@
+# 每个转发到 Emby 的 location 都 include 这份。
+# proxy_set_header 是整组继承的：location 里只要写了一条，上层的全部失效，
+# 所以别把这些放到 server 级再指望局部补一条 —— 一律 include。
+proxy_http_version 1.1;
+# 让 Emby 回明文：出口那条 sub_filter 要在响应体里把真 token 抹掉，压缩过的它看不见。
+# 对浏览器的压缩由 nginx 自己的 gzip 补上（见 server 块）
+proxy_set_header Accept-Encoding "";
+proxy_set_header Host $host;
+proxy_set_header X-Real-IP $remote_addr;
+proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+proxy_set_header X-Forwarded-Proto https;
+proxy_set_header Upgrade $http_upgrade;
+proxy_set_header Connection $http_connection;
+
+# 身份整体覆盖：浏览器带来的 Token="public" 和它自报的 DeviceId 全部丢掉，
+# 换成 NAS 上这一份。DeviceId 固定，所有访客在 Emby 里是同一台「Public Guest」设备。
+proxy_set_header X-Emby-Authorization 'MediaBrowser Client="Emby Web", Device="Public Guest", DeviceId="emby-public-guest", Version="4.9.5.0", Token="${EMBY_GUEST_TOKEN}"';
+proxy_set_header X-Emby-Token "${EMBY_GUEST_TOKEN}";
+proxy_set_header Authorization "";
