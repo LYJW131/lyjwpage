@@ -86,8 +86,24 @@ export function useLyrics(songId: string | null, hasLyrics: boolean): LyricLine[
     null,
   );
 
+  /**
+   * 负缓存到期要能自己再问一次。
+   *
+   * 同一首一直放着时 `key` 不变，effect 不会重跑，emptyUntil 过了期也没人发现 ——
+   * 5 秒那档就白设了：开头一次网络抖动，整首歌都不会再问。到期那一刻拨一下
+   * `attempt`，effect 重跑，cachedLyrics 已经不认那条过期的负缓存，于是重新去问。
+   */
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
-    if (!key || cachedLyrics(key) !== undefined) return;
+    if (!key) return;
+    const known = cachedLyrics(key);
+    if (known !== undefined) {
+      if (known !== null) return;
+      const until = emptyUntil.get(key);
+      if (until == null) return;
+      const timer = window.setTimeout(() => setAttempt((n) => n + 1), Math.max(0, until - Date.now()));
+      return () => window.clearTimeout(timer);
+    }
 
     let active = true;
     fetchLyrics(key).then((lines) => {
@@ -97,7 +113,8 @@ export function useLyrics(songId: string | null, hasLyrics: boolean): LyricLine[
     return () => {
       active = false;
     };
-  }, [key]);
+    // attempt 只为在负缓存到期那一刻重跑一遍，effect 本身不读它
+  }, [key, attempt]);
 
   if (!key) return null;
 

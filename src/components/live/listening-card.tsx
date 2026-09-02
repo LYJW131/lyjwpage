@@ -647,7 +647,11 @@ export function ListeningCard({
    * 同一首还在播就沿用上一次解析出的 songId / 预排队列；换歌后新曲还没解析
    * 出来时不沿用 —— 那是别的歌，宁可等。
    */
-  const trackKey = localTrack ? `${localTrack.title ?? ""}|${localTrack.artist ?? ""}` : null;
+  // 专辑也进键：录音室版和现场版同名同艺人，闩住上一首的 songId 会让跟听和歌词
+  // 在新曲解析出来之前先按旧录音走一截
+  const trackKey = localTrack
+    ? `${localTrack.title ?? ""}|${localTrack.artist ?? ""}|${localTrack.album ?? ""}`
+    : null;
   const [lookupLatch, setLookupLatch] = useState<{
     key: string;
     songId: string;

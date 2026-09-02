@@ -2,7 +2,9 @@ import { connection } from "next/server";
 
 import { readStatus } from "@/lib/api";
 import { NO_LYRICS, resolveLyrics, type LyricsResult } from "@/lib/lyrics";
+import { pickNowListening } from "@/lib/now-listening";
 import { withRedisScope } from "@/lib/redis";
+import { readLiveness } from "@/lib/reporter-liveness";
 import { nowListeningStatus } from "@/lib/status-cache";
 
 /**
@@ -62,15 +64,19 @@ export async function GET(request: Request) {
  * STATUS_CACHE 选冻的还是直读）：浏览器是从那条端点拿到 songId 再来问的，这边
  * 要是走另一路，国内那份部署上就会出现「那边已经是新歌、这边名单还是 10 分钟前
  * 的」—— 404 一次，浏览器那侧就把这首记成没有歌词，整首都不会再问。
+ *
+ * 选 hero 也和那条端点同一套（pickNowListening：存活、暂停宽限、HomePod 静默都
+ * 在这一步现算）：快照里两个候选都还在，但上报器掉线、暂停超过宽限的那个已经
+ * 不是「此刻在播」，它的歌不该再放行。
  */
 async function allowed(songId: string): Promise<boolean> {
-  const envelope = await readStatus(nowListeningStatus);
+  const [envelope, liveness] = await Promise.all([
+    readStatus(nowListeningStatus),
+    readLiveness(),
+  ]);
   if (!envelope.ok) return false;
-  for (const candidate of [envelope.data.mac, envelope.data.homePod]) {
-    if (!candidate) continue;
-    if (candidate.songId === songId || candidate.upcomingSongIds.includes(songId)) return true;
-  }
-  return false;
+  const now = pickNowListening(envelope.data, liveness);
+  return now.songId === songId || now.upcomingSongIds.includes(songId);
 }
 
 function jsonResponse(data: LyricsResult, status = 200, cacheTtl = 0): Response {
