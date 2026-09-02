@@ -50,7 +50,8 @@ KV 的读带最长 60 秒的边缘缓存，正好压在 55 秒这个阈值上，
 站点侧的断流窗口（`src/lib/freshness.ts` 的 `PLAYSTATION_STALE_MS`，50 分钟）锚的是
 **闲时**那一档：三轮 15 分钟加缓存余量。改闲时间隔要同步改那边，改 cron 本身不用。
 
-`wrangler dev` 不会自己响这根 cron，本地要刷新就 `GET /tick`（不走门）。每轮顺序执行：
+`wrangler dev` 不会自己响这根 cron，本地要跑一轮就 `GET /tick`（不走门，走缓存）；
+`GET /` 是忽略所有缓存的全量刷新，见下面「手动触发」。每轮顺序执行：
 
 1. presence 和奖杯总览并行；
 2. 游玩列表走 TTL：在玩 15 分钟、闲着 1 小时，过期才去拉，否则用缓存。在玩那档
@@ -108,13 +109,22 @@ presence 没有指纹：每轮必发，无所谓变没变。
 `accessTokenExpiresAt`、`refreshTokenIssuedAt`、`refreshTokenExpiresAt`；四个时间都是
 epoch 毫秒。现有文件可以原样种进 KV。
 
-Worker 的 HTTP `fetch` 是手动触发入口：`GET /tick` **不走门**，把一轮 tick 完整跑一遍
-（该拉的拉、该跳过的跳过、比指纹、必要时爬奖杯并交付），把这轮的元信息和 presence、
-played games 一并返回；奖杯没变时 `trophies` 为 null。它照样刷新 `meta:lastFullTick`，
-所以手动跑完之后下一轮定时的跟着往后顺延。出错则回 502，带上错误和
-KV 里最近一轮的记录 —— 任何一封信没交付成功，这一轮都算失败。`GET /` 只回最近一轮的
-meta，不碰 PSN —— Chrome / Cursor 探调试口会打 `/json/version` 再打根路径，
-根路径上跑 tick 会把 PSN 打爆。`/favicon.ico` 同样 404。
+Worker 的 HTTP `fetch` 是手动触发入口，两条都**不走门**，都刷新 `meta:lastFullTick`
+（手动跑完之后下一轮定时的跟着往后顺延），都把这轮的元信息和 presence、played games
+一并返回，出错回 502 并带上错误和 KV 里最近一轮的记录 —— 任何一封信没交付成功，
+这一轮都算失败：
+
+- `GET /` —— **全量刷新，忽略所有缓存**。把这一轮当成 KV 空着跑：游玩列表整份翻
+  （不按 `PLAYED_GAMES_LIMIT` 截）、购买库重拉、奖杯目录每款重爬（不复用定义）、
+  资料重问，两封信不比指纹都交付，`meta:lastTick` 上记 `forced: true`。购买库拉不到
+  就整轮失败，不会交一份没有预购的列表上去。贵：每款奖杯 4 次出网、每款游戏一次
+  对齐，和第一次冷启动那轮同量，别接进监控或定时器。本地 `wrangler dev` 时
+  Chrome / Cursor 探调试口会打 `/json/version` 再连打根路径，同一 isolate 里会被压成
+  一轮，但那一轮仍是全量的 —— 本地别拿浏览器开根路径。
+- `GET /tick` —— 普通一轮：该走缓存走缓存、比指纹、变了才交付，奖杯没变时
+  `trophies` 为 null。想看某样东西「按正常节奏会不会刷」就打这条。
+
+`/favicon.ico` 和其余路径 404。
 
 Worker 自己不做鉴权，访问控制交给前面的 Cloudflare Access；token 永远不出现在
 响应里。

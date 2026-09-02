@@ -99,6 +99,8 @@ export type TickMeta = {
   playedGamesChanged: boolean;
   trophiesChanged: boolean;
   dryRun: boolean;
+  /** 这一轮是不是 GET / 触发的全量刷新（忽略所有缓存）。旧记录没有这个字段 */
+  forced?: boolean;
   error?: string;
 };
 
