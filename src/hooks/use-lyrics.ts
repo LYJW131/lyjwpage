@@ -85,11 +85,17 @@ async function fetchLyrics(songId: string): Promise<LyricLine[] | null> {
   return promise;
 }
 
+export type UseLyricsResult = {
+  lyrics: LyricLine[] | null;
+  isLoading: boolean;
+};
+
 /**
  * 有同步歌词就是非空数组；没有（目录说没有、接口失败、还没回来）一律 null，
- * 调用方退回艺人名那一行。
+ * 调用方退回艺人名那一行。同时返回 isLoading，便于宽屏模式在数据加载期间
+ * 提前规划双列占位，避免歌词到位后布局跳动。
  */
-export function useLyrics(songId: string | null, hasLyrics: boolean): LyricLine[] | null {
+export function useLyrics(songId: string | null, hasLyrics: boolean): UseLyricsResult {
   const key = songId && hasLyrics ? songId : null;
   const [resolved, setResolved] = useState<{ songId: string; lines: LyricLine[] | null } | null>(
     null,
@@ -128,9 +134,14 @@ export function useLyrics(songId: string | null, hasLyrics: boolean): LyricLine[
     // attempt 只为在负缓存到期那一刻重跑一遍，effect 本身不读它
   }, [key, attempt]);
 
-  if (!key) return null;
+  if (!key) return { lyrics: null, isLoading: false };
 
   const known = cachedLyrics(key);
   const lines = known !== undefined ? known : resolved?.songId === key ? resolved.lines : null;
-  return lines && lines.length ? lines : null;
+  const isLoading = known === undefined && resolved?.songId !== key;
+
+  return {
+    lyrics: lines && lines.length ? lines : null,
+    isLoading,
+  };
 }

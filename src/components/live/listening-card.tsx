@@ -362,6 +362,7 @@ function HeroProgress({
   palette,
   motionGradient,
   lyrics,
+  sideLyrics = false,
 }: {
   track: LocalNowPlaying;
   subtitle: string;
@@ -369,6 +370,8 @@ function HeroProgress({
   motionGradient?: string;
   /** 按 startMs 升序的同步歌词；没有就是 null，副标题行只显示艺人名 */
   lyrics: LyricLine[] | null;
+  /** 宽屏且右侧有独立歌词栏时为 true，副标题行在桌面端恢复显示艺人名 */
+  sideLyrics?: boolean;
 }) {
   const playing = track.state === "playing";
   const reduced = useReducedMotion();
@@ -432,23 +435,52 @@ function HeroProgress({
           可以绝对定位、又不会露出去的框。key 用句子的下标：同一句词在一首歌里
           可能重复出现，按文字当 key 的话副歌第二遍不会触发换句。
         */}
-        <span className="relative min-w-0 flex-1 overflow-hidden" title={line ?? subtitle}>
-          <AnimatePresence initial={false} mode="popLayout">
-            <motion.span
-              key={cue.index}
-              className={cn("block truncate", line != null && "text-foreground")}
-              variants={reduced ? STATIC_VARIANTS : LYRIC_LINE_VARIANTS}
-              initial="initial"
-              animate="animate"
-              exit="exit"
-            >
-              {current?.words ? (
-                <LyricWords words={current.words} track={track} />
-              ) : (
-                (line ?? subtitle)
-              )}
-            </motion.span>
-          </AnimatePresence>
+        <span
+          className="relative min-w-0 flex-1 overflow-hidden"
+          title={sideLyrics ? subtitle : (line ?? subtitle)}
+        >
+          {sideLyrics ? (
+            <>
+              {/* 宽屏桌面端在右侧独立显示歌词，左侧副标题行恢复展示艺人名 */}
+              <span className="hidden truncate md:block">{subtitle}</span>
+              {/* 移动端右侧收起，副标题行依然跟唱当前歌词 */}
+              <span className="block truncate md:hidden">
+                <AnimatePresence initial={false} mode="popLayout">
+                  <motion.span
+                    key={cue.index}
+                    className={cn("block truncate", line != null && "text-foreground")}
+                    variants={reduced ? STATIC_VARIANTS : LYRIC_LINE_VARIANTS}
+                    initial="initial"
+                    animate="animate"
+                    exit="exit"
+                  >
+                    {current?.words ? (
+                      <LyricWords words={current.words} track={track} />
+                    ) : (
+                      (line ?? subtitle)
+                    )}
+                  </motion.span>
+                </AnimatePresence>
+              </span>
+            </>
+          ) : (
+            <AnimatePresence initial={false} mode="popLayout">
+              <motion.span
+                key={cue.index}
+                className={cn("block truncate", line != null && "text-foreground")}
+                variants={reduced ? STATIC_VARIANTS : LYRIC_LINE_VARIANTS}
+                initial="initial"
+                animate="animate"
+                exit="exit"
+              >
+                {current?.words ? (
+                  <LyricWords words={current.words} track={track} />
+                ) : (
+                  (line ?? subtitle)
+                )}
+              </motion.span>
+            </AnimatePresence>
+          )}
         </span>
         <NumberFlowGroup>
           <span className="label-mono shrink-0 tabular-nums">
@@ -469,6 +501,132 @@ function HeroProgress({
         />
       </div>
     </>
+  );
+}
+
+/**
+ * 宽屏状态下右侧的纵向滚动同步歌词。
+ *
+ * 钉在 h-20（80px）高度内，每行高度 26px。
+ * 当前唱到的那句始终在中心（y=27px），前一句在上方，后一句在下方。
+ * 上下边缘施加渐变遮罩，使歌词平滑淡入和淡出。
+ * 有逐字时间轴时，当前那句按字从左到右点亮（LyricWords）。
+ */
+function HeroLyrics({
+  lyrics,
+  track,
+  reduced = false,
+}: {
+  lyrics: LyricLine[];
+  track: LocalNowPlaying;
+  reduced?: boolean;
+}) {
+  const playing = track.state === "playing";
+  const mountedAt = useMountedAt();
+  const [ticked, setTicked] = useState(0);
+  const now = ticked || mountedAt;
+
+  useEffect(() => {
+    if (!playing) return;
+    const timer = window.setInterval(() => setTicked(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, [playing]);
+
+  const { observedAt, positionMs, durationMs, repeatOne } = track;
+  useEffect(() => {
+    if (!playing || !lyrics.length) return;
+    const anchor = { state: "playing" as const, observedAt, positionMs, durationMs, repeatOne };
+    const at = trackPositionMs(anchor, Math.max(now, Date.now()));
+    const { until } = cueAt(lyrics, at);
+    const target = until ?? (repeatOne && durationMs > 0 ? durationMs : null);
+    if (target == null) return;
+    const timer = window.setTimeout(() => setTicked(Date.now()), Math.max(16, target - at + 8));
+    return () => window.clearTimeout(timer);
+  }, [playing, lyrics, now, observedAt, positionMs, durationMs, repeatOne]);
+
+  const position = trackPositionMs(track, now);
+  const cue = cueAt(lyrics, position);
+
+  let activeIdx = 0;
+  let isSinging = false;
+
+  if (cue.index >= 0) {
+    activeIdx = cue.index;
+    isSinging = true;
+  } else {
+    // 间奏、前奏或尾声：寻找最近的一行保持视野连续
+    let index = -1;
+    for (let i = 0; i < lyrics.length && lyrics[i].startMs <= position; i += 1) {
+      index = i;
+    }
+    activeIdx = index >= 0 ? index : 0;
+    isSinging = false;
+  }
+
+  const LINE_HEIGHT = 26;
+  const targetY = 27 - activeIdx * LINE_HEIGHT;
+
+  return (
+    <div className="relative h-20 overflow-hidden [mask-image:linear-gradient(to_bottom,transparent_0%,black_22%,black_78%,transparent_100%)] [-webkit-mask-image:linear-gradient(to_bottom,transparent_0%,black_22%,black_78%,transparent_100%)]">
+      <motion.div
+        className="flex flex-col"
+        animate={{ y: targetY }}
+        transition={
+          reduced
+            ? { duration: 0 }
+            : { duration: 0.36, ease: [0.22, 1, 0.36, 1] }
+        }
+      >
+        {lyrics.map((line, i) => {
+          const isCurrent = i === activeIdx;
+
+          return (
+            <div
+              key={i}
+              className="flex h-[26px] items-center"
+              style={{ height: `${LINE_HEIGHT}px` }}
+            >
+              <motion.span
+                className={cn(
+                  "block truncate text-sm font-medium origin-left transition-colors duration-500 ease-out",
+                  isCurrent
+                    ? isSinging
+                      ? "text-foreground"
+                      : "text-foreground/80"
+                    : "text-muted-foreground",
+                )}
+                animate={{
+                  scale: isCurrent ? 1 : 0.88,
+                  opacity: isCurrent ? 1 : 0.4,
+                }}
+                transition={
+                  reduced
+                    ? { duration: 0 }
+                    : { duration: 0.36, ease: [0.22, 1, 0.36, 1] }
+                }
+                title={line.text}
+              >
+                {isCurrent && isSinging && line.words ? (
+                  <LyricWords words={line.words} track={track} />
+                ) : (
+                  line.text
+                )}
+              </motion.span>
+            </div>
+          );
+        })}
+      </motion.div>
+    </div>
+  );
+}
+
+function HeroLyricsSkeleton() {
+  return (
+    <div className="flex h-20 flex-col justify-center gap-2 py-2" aria-hidden>
+      <div className="h-3 w-2/5 animate-pulse rounded bg-muted/50" />
+      <div className="h-4 w-3/4 animate-pulse rounded bg-muted" />
+      <div className="h-3 w-1/2 animate-pulse rounded bg-muted/50" />
+    </div>
   );
 }
 
@@ -608,13 +766,18 @@ function useRowSnap(topKey: string | undefined, wide: boolean) {
 /** 有链接就整块可点，没有就退化成普通容器 */
 function HeroWrapper({
   link,
+  wideLyrics = false,
   children,
 }: {
   link: string | null;
+  wideLyrics?: boolean;
   children: ReactNode;
 }) {
   // h-full：外层把 hero 钉在 h-20，这里填满；高度锁定靠绝对定位叠层，不靠 overflow
-  const className = "group flex h-full gap-3 rounded-md";
+  const className = cn(
+    "group h-full rounded-md",
+    wideLyrics ? "grid grid-cols-1 md:grid-cols-2" : "flex gap-3",
+  );
   return link ? (
     <a
       href={link}
@@ -739,7 +902,17 @@ export function ListeningCard({
   const resolvedHasLyrics = live?.songId ? live.hasLyrics : latched?.hasLyrics ?? false;
 
   // 同步歌词跟着闩住的那个 songId 走，和跟听同一份；目录说没有就不发请求
-  const lyrics = useLyrics(resolvedSongId, resolvedHasLyrics);
+  const { lyrics, isLoading: lyricsLoading } = useLyrics(resolvedSongId, resolvedHasLyrics);
+
+  /**
+   * 宽屏且处于实时播放中时，若曲目包含歌词（已载入或正在载入），在右半侧开辟独立
+   * 歌词区域；窄屏或没有歌词时维持单列排布。
+   */
+  const showSideLyrics = Boolean(
+    wide &&
+      localActive &&
+      (Boolean(lyrics && lyrics.length > 0) || (lyricsLoading && resolvedHasLyrics)),
+  );
 
   /**
    * 跟着这首一起听。访客用自己的订阅授权，音频不经过站点，见 use-listen-along。
@@ -897,114 +1070,131 @@ export function ListeningCard({
                 // 非对称时长写在 variant 里，这里传统一的 transition 会把它抹平
                 transition={reduced ? STATIC_TRANSITION : undefined}
               >
-                <HeroWrapper link={hero.link}>
-                  <HeroMotionArtwork
-                    artwork={hero.artwork}
-                    placeholder={
-                      hero.artwork ? artworkPlaceholders.hero[hero.artwork] : undefined
-                    }
-                    title={hero.title}
-                    videoUrl={motionData?.hasMotion ? motionData.videoUrl : null}
-                    reduced={Boolean(reduced)}
-                  />
-
-                  {/*
-                不用统一的 gap：三行的行内 leading 不一样（标签行盒高贴合文字，
-                标题和副标题各自还有 3px 内部余白），统一 gap 会让视觉间隙一宽一窄。
-                这里按实测的 leading 差额补偿，让两处视觉间隙都落在 8px 左右。
-              */}
-                  <div className="flex min-w-0 flex-1 flex-col justify-center overflow-hidden">
-                    {/* 图标在左、文字在右，和 CHARGER / C1 那些标签行一致：
-                        对齐的是图标的左边界，标签文字本身缩进。
-
-                        min-h-5 锁死行高：设备标签只在实时曲目那一版出现，它自带
-                        边框和内距（20px），比光秃秃的 label-mono（约 12px）高一截。
-                        不锁的话两版 hero 高度不同，外层 justify-center 会重新居中，
-                        切换时整列上下挪一下 —— 交叉淡入让新旧同时可见，那一挪就成了
-                        肉眼可见的滑动。 */}
-                    <div className="flex min-h-5 min-w-0 items-center gap-1.5">
-                      {/* 有 track 就是实时源：没在放就是暂停，冻住而不是弹回固定形状 */}
-                      <Bars
-                        state={
-                          hero.playing ? "playing" : hero.track ? "paused" : "idle"
-                        }
-                      />
-                      <span
-                        className={cn(
-                          "label-mono shrink-0",
-                          hero.playing ? "text-live" : "text-muted-foreground",
-                        )}
-                      >
-                        {hero.label}
-                      </span>
-                      {/* 实时曲目来自 MacBook Music.app 或 HomePod，不是历史记录。 */}
-                      {hero.track && (
-                        <span className="ml-0.5 inline-flex min-w-0 items-center gap-1 rounded-sm border border-line px-1.5 py-px text-[10px] leading-4 text-muted-foreground">
-                          {hero.track.source === "homepod" ? (
-                            <HomePodMiniIcon className="size-3 shrink-0" aria-hidden />
-                          ) : (
-                            <MacBookProIcon className="size-3 shrink-0" aria-hidden />
-                          )}
-                          <span className="truncate">
-                            {hero.track.source === "homepod" ? "HomePod mini" : "MacBook Pro"}
-                          </span>
-                        </span>
-                      )}
-                      {/* 没有实况、只靠最近播放列表推出来的「正在播放」。 */}
-                      {hero.inferred && (
-                        <span
-                          className="ml-0.5 inline-flex shrink-0 items-center gap-1 rounded-sm border border-line px-1.5 py-px text-[10px] leading-4 text-muted-foreground"
-                          title="由 Apple Music 最近播放列表推断，不是设备实况"
-                        >
-                          <Sparkle className="size-3 shrink-0" aria-hidden />
-                          <span className="truncate">inferred</span>
-                        </span>
-                      )}
-                    </div>
-                    <div
-                      className={cn(
-                        "mt-1 truncate font-medium leading-snug",
-                        hero.link && "group-hover:underline",
-                      )}
+                <HeroWrapper link={hero.link} wideLyrics={showSideLyrics}>
+                  <div className={cn("flex min-w-0 flex-1 gap-3", showSideLyrics && "md:pr-5")}>
+                    <HeroMotionArtwork
+                      artwork={hero.artwork}
+                      placeholder={
+                        hero.artwork ? artworkPlaceholders.hero[hero.artwork] : undefined
+                      }
                       title={hero.title}
-                    >
-                      {hero.title}
-                    </div>
-                    {hero.track ? (
-                      <HeroProgress
-                        track={hero.track}
-                        subtitle={hero.subtitle}
-                        palette={hero.palette}
-                        motionGradient={motionGradient}
-                        lyrics={lyrics}
-                      />
-                    ) : (
-                      <>
-                        {/* 和实时那版的副标题行同构：左边艺人，右边时间。那边是
-                            「已播 / 总长」，这边没有进度，只放总长。 */}
-                        <div className="mt-px flex items-baseline gap-2 text-sm text-muted-foreground">
-                          <span className="min-w-0 flex-1 truncate" title={hero.subtitle}>
-                            {hero.subtitle}
-                          </span>
-                          {hero.durationMs != null && (
-                            <span className="label-mono shrink-0 tabular-nums">
-                              {formatDuration(hero.durationMs)}
-                            </span>
-                          )}
-                        </div>
-                        {/* 尺寸和 HeroProgress 那根进度条一模一样。历史条目没有进度可
-                            显示，但两版 hero 的高度必须一致，理由同上面那段 —— 与其留
-                            一道不可见的空档，不如填满，见 globals.css 的 .rainbow-bar。 */}
-                        <PaletteBar
-                          className="mt-1.5 h-0.75"
-                          base={paletteGradient(hero.palette)}
-                          motion={motionGradient}
-                          // 取不到调色板时露出 .rainbow-bar 自带的那条通用彩虹
-                          idleClassName="rainbow-bar"
+                      videoUrl={motionData?.hasMotion ? motionData.videoUrl : null}
+                      reduced={Boolean(reduced)}
+                    />
+
+                    {/*
+                  不用统一的 gap：三行的行内 leading 不一样（标签行盒高贴合文字，
+                  标题和副标题各自还有 3px 内部余白），统一 gap 会让视觉间隙一宽一窄。
+                  这里按实测的 leading 差额补偿，让两处视觉间隙都落在 8px 左右。
+                */}
+                    <div className="flex min-w-0 flex-1 flex-col justify-center overflow-hidden">
+                      {/* 图标在左、文字在右，和 CHARGER / C1 那些标签行一致：
+                          对齐的是图标的左边界，标签文字本身缩进。
+
+                          min-h-5 锁死行高：设备标签只在实时曲目那一版出现，它自带
+                          边框和内距（20px），比光秃秃的 label-mono（约 12px）高一截。
+                          不锁的话两版 hero 高度不同，外层 justify-center 会重新居中，
+                          切换时整列上下挪一下 —— 交叉淡入让新旧同时可见，那一挪就成了
+                          肉眼可见的滑动。 */}
+                      <div className="flex min-h-5 min-w-0 items-center gap-1.5">
+                        {/* 有 track 就是实时源：没在放就是暂停，冻住而不是弹回固定形状 */}
+                        <Bars
+                          state={
+                            hero.playing ? "playing" : hero.track ? "paused" : "idle"
+                          }
                         />
-                      </>
-                    )}
+                        <span
+                          className={cn(
+                            "label-mono shrink-0",
+                            hero.playing ? "text-live" : "text-muted-foreground",
+                          )}
+                        >
+                          {hero.label}
+                        </span>
+                        {/* 实时曲目来自 MacBook Music.app 或 HomePod，不是历史记录。 */}
+                        {hero.track && (
+                          <span className="ml-0.5 inline-flex min-w-0 items-center gap-1 rounded-sm border border-line px-1.5 py-px text-[10px] leading-4 text-muted-foreground">
+                            {hero.track.source === "homepod" ? (
+                              <HomePodMiniIcon className="size-3 shrink-0" aria-hidden />
+                            ) : (
+                              <MacBookProIcon className="size-3 shrink-0" aria-hidden />
+                            )}
+                            <span className="truncate">
+                              {hero.track.source === "homepod" ? "HomePod mini" : "MacBook Pro"}
+                            </span>
+                          </span>
+                        )}
+                        {/* 没有实况、只靠最近播放列表推出来的「正在播放」。 */}
+                        {hero.inferred && (
+                          <span
+                            className="ml-0.5 inline-flex shrink-0 items-center gap-1 rounded-sm border border-line px-1.5 py-px text-[10px] leading-4 text-muted-foreground"
+                            title="由 Apple Music 最近播放列表推断，不是设备实况"
+                          >
+                            <Sparkle className="size-3 shrink-0" aria-hidden />
+                            <span className="truncate">inferred</span>
+                          </span>
+                        )}
+                      </div>
+                      <div
+                        className={cn(
+                          "mt-1 truncate font-medium leading-snug",
+                          hero.link && "group-hover:underline",
+                        )}
+                        title={hero.title}
+                      >
+                        {hero.title}
+                      </div>
+                      {hero.track ? (
+                        <HeroProgress
+                          track={hero.track}
+                          subtitle={hero.subtitle}
+                          palette={hero.palette}
+                          motionGradient={motionGradient}
+                          lyrics={lyrics}
+                          sideLyrics={showSideLyrics}
+                        />
+                      ) : (
+                        <>
+                          {/* 和实时那版的副标题行同构：左边艺人，右边时间。那边是
+                              「已播 / 总长」，这边没有进度，只放总长。 */}
+                          <div className="mt-px flex items-baseline gap-2 text-sm text-muted-foreground">
+                            <span className="min-w-0 flex-1 truncate" title={hero.subtitle}>
+                              {hero.subtitle}
+                            </span>
+                            {hero.durationMs != null && (
+                              <span className="label-mono shrink-0 tabular-nums">
+                                {formatDuration(hero.durationMs)}
+                              </span>
+                            )}
+                          </div>
+                          {/* 尺寸和 HeroProgress 那根进度条一模一样。历史条目没有进度可
+                              显示，但两版 hero 的高度必须一致，理由同上面那段 —— 与其留
+                              一道不可见的空档，不如填满，见 globals.css 的 .rainbow-bar。 */}
+                          <PaletteBar
+                            className="mt-1.5 h-0.75"
+                            base={paletteGradient(hero.palette)}
+                            motion={motionGradient}
+                            // 取不到调色板时露出 .rainbow-bar 自带的那条通用彩虹
+                            idleClassName="rainbow-bar"
+                          />
+                        </>
+                      )}
+                    </div>
                   </div>
+
+                  {showSideLyrics && (
+                    <div className="hidden min-w-0 border-l border-line pl-5 md:flex md:flex-col md:justify-center overflow-hidden">
+                      {lyrics ? (
+                        <HeroLyrics
+                          lyrics={lyrics}
+                          track={hero.track!}
+                          reduced={Boolean(reduced)}
+                        />
+                      ) : (
+                        <HeroLyricsSkeleton />
+                      )}
+                    </div>
+                  )}
                 </HeroWrapper>
               </motion.div>
             </AnimatePresence>

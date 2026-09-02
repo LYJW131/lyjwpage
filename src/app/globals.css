@@ -567,8 +567,10 @@ button.paper-card {
   --sung: 0%;
   background-image: linear-gradient(
     90deg,
-    var(--color-foreground) var(--sung),
-    var(--color-muted-foreground) var(--sung)
+    var(--color-foreground) 0%,
+    var(--color-foreground) calc(var(--sung) - 0.25em),
+    var(--color-muted-foreground) calc(var(--sung) + 0.25em),
+    var(--color-muted-foreground) 100%
   );
   -webkit-background-clip: text;
   background-clip: text;
