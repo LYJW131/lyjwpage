@@ -38,6 +38,26 @@ export const PLAYED_GAMES_IDLE_TTL_MS = 60 * 60_000;
 export const PLAYED_GAMES_PLAYING_TTL_MS = 14.5 * 60_000;
 /** 购买库几乎不动，六小时够标一次预购 / Plus。 */
 export const LIBRARY_TTL_MS = 6 * 60 * 60_000;
+/**
+ * 头像 / 网名 / Plus 几乎不怎么变，一天拉一次够了。
+ *
+ * 奖杯 quiet 时原先完全不打资料接口，头像换了要等下一次 dirty 才看得到；
+ * dirty 重爬又反过来每轮都打。资料和奖杯目录解耦：还新鲜就沿用
+ * onlineId / avatarUrl / plus（等级 / 总杯数仍用本轮 summary 盖），过期了
+ * quiet 也要重拉，否则站点上的头像会一直停在第一次 dirty 时那张。
+ *
+ * 旧 KV 没有 fetchedAt，当过期，下一轮重拉。
+ */
+export const PROFILE_TTL_MS = 24 * 60 * 60_000;
+
+/** 缺席、非数字、过期，都要重拉资料。 */
+export function profileIdentityFresh(
+  profile: { fetchedAt?: number } | null | undefined,
+  now = Date.now(),
+): boolean {
+  const fetchedAt = profile?.fetchedAt;
+  return typeof fetchedAt === "number" && Number.isFinite(fetchedAt) && now - fetchedAt < PROFILE_TTL_MS;
+}
 
 /** KV `auth` 的形状与原 `state/auth.json` 完全一致，便于直接迁移现有状态。 */
 export type AuthState = {
@@ -55,7 +75,10 @@ export type TrophyCatalog = {
   summarySignature: string;
   index: TrophyIndexSnapshot[];
   titles: TrophiesReport["titles"];
-  profile: TrophiesReport["profile"];
+  profile: TrophiesReport["profile"] & {
+    /** 上次打 getProfileFromAccountId 的时刻。缺席当过期。 */
+    fetchedAt?: number;
+  };
 };
 
 export type PlayedGamesCache = {
@@ -110,7 +133,7 @@ function isIndexSnapshot(value: unknown): value is TrophyIndexSnapshot {
   );
 }
 
-function isTrophyProfile(value: unknown): value is TrophiesReport["profile"] {
+function isTrophyProfile(value: unknown): value is TrophyCatalog["profile"] {
   if (typeof value !== "object" || value === null) return false;
   const row = value as Record<string, unknown>;
   return typeof row.onlineId === "string" && row.onlineId.length > 0 && typeof row.plus === "boolean";
