@@ -25,6 +25,7 @@ export type NowListeningCandidate = {
   link: string | null;
   songId: string | null;
   upcomingSongIds: string[];
+  hasLyrics: boolean;
 };
 
 function isPausedFresh(music: LocalNowPlaying, now: number) {
@@ -63,6 +64,7 @@ export function pickNowListening(
     link: chosen?.link ?? null,
     songId: chosen?.songId ?? null,
     upcomingSongIds: chosen?.upcomingSongIds ?? [],
+    hasLyrics: chosen?.hasLyrics ?? false,
     expiresInMs:
       chosen?.music.state === "paused"
         ? Math.max(0, MUSIC_PAUSE_GRACE_MS - (now - chosen.music.observedAt))

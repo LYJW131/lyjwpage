@@ -781,6 +781,7 @@ async function decorateCandidate(
     link: lookup.link || null,
     songId: lookup.songId,
     upcomingSongIds: ahead.flatMap((hit) => (hit.songId ? [hit.songId] : [])),
+    hasLyrics: lookup.hasLyrics,
   };
 }
 
