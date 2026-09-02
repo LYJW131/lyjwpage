@@ -347,32 +347,33 @@ async function shouldTick(env: Env): Promise<Gate> {
   return { run: open > 0, sinceMs, online, open };
 }
 
-let inflight: Promise<TickResult> | null = null;
-let inflightForced = false;
+type Inflight = { promise: Promise<TickResult>; forced: boolean };
+let inflight: Inflight | null = null;
 
 /**
  * 同一 isolate 里只跑一轮。本地 8788 会被 Chrome 探 /json/version 再连打 GET /，
  * 这道去重就是把那一串探测压成一轮的东西。
  *
  * 强制那一轮不能拿正在跑的普通轮次充数 —— 那轮走的是缓存，正是它要绕开的。
- * 撞上了就排在后面：等普通那轮结束（成败都行），再整份跑一遍。
+ * 撞上了就排在后面：等普通那轮结束（成败都行），再整份跑一遍。排队的那轮从
+ * 此就是锁的持有者：每轮记一个条目，收尾时**只有条目还是自己**才把锁放掉，
+ * 前一轮的收尾不会把后一轮的锁顺手清了。
  */
 function tickOnce(env: Env, force = false): Promise<TickResult> {
-  if (inflight && force && !inflightForced) {
-    const queued = inflight.catch(() => undefined).then(() => tick(env, true));
-    inflight = queued.finally(() => {
-      if (inflight === queued) inflight = null;
-    });
-    inflightForced = true;
-    return inflight;
-  }
-  if (!inflight) {
-    inflightForced = force;
-    inflight = tick(env, force).finally(() => {
-      inflight = null;
-    });
-  }
-  return inflight;
+  const current = inflight;
+  if (current && (!force || current.forced)) return current.promise;
+
+  const promise = current
+    ? current.promise.catch(() => undefined).then(() => tick(env, true))
+    : tick(env, force);
+  const entry: Inflight = { promise, forced: force };
+  inflight = entry;
+  const release = () => {
+    if (inflight === entry) inflight = null;
+  };
+  // 两个分支都接上，别让 finally 派生出一条没人接的拒绝
+  promise.then(release, release);
+  return promise;
 }
 
 /**
