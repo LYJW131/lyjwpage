@@ -380,6 +380,11 @@ export type NowListeningPayload = {
    */
   upcomingSongIds: string[];
   /**
+   * 目录说这首有没有歌词。true 时浏览器才去 `/api/lyrics` 取同步歌词跟着
+   * 进度条走；false 一律不发请求。搜不到曲子（songId 为 null）时是 false。
+   */
+  hasLyrics: boolean;
+  /**
    * 这份选择还能成立多久（毫秒）。null = 不会因为单纯的时间流逝而改变。
    *
    * 只有暂停宽限期会给出非 null 值。客户端据此把下一次取数排在到期那一刻，

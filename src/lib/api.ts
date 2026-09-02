@@ -182,6 +182,17 @@ async function statusResponse<T, U>(
 }
 
 /**
+ * 按 STATUS_CACHE 取一份状态：开着读冻起来的那份，关着直读。
+ *
+ * 状态 GET 之外要读同一份数据的地方也走这里（歌词端点拿它做白名单），别直接
+ * 调 `source.cached` —— 那等于在国内那份部署上绕过开关，读到的是最多旧 10 分钟
+ * 的快照，而它旁边的 `/api/status/listening/now` 已经在直读 Redis 了。
+ */
+export function readStatus<T>(source: StatusSource<T>): Promise<StatusResponse<T>> {
+  return STATUS_CACHE ? source.cached() : statusEnvelope(source.live);
+}
+
+/**
  * `app/api/status/` 下每一条状态 GET 都走这里。取哪一路由 STATUS_CACHE 决定，路由
  * 本身不知道自己冻没冻 —— 知道了就等于每条路由各写一遍开关，漏一条就是那条端点
  * 在国内那份上一直冻着。
@@ -197,10 +208,7 @@ export function statusRoute<T, U>(
   source: StatusSource<T>,
   overlay?: (data: T) => Promise<U> | U,
 ): Promise<NextResponse<StatusResponse<T | U>>> {
-  return statusResponse(
-    STATUS_CACHE ? source.cached : () => statusEnvelope(source.live),
-    overlay,
-  );
+  return statusResponse(() => readStatus(source), overlay);
 }
 
 /**

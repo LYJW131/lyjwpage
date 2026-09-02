@@ -16,6 +16,8 @@ export type CatalogSong = {
     albumName?: string;
     url?: string;
     artwork?: { url?: string };
+    /** 目录说这首有没有歌词。歌词那条路拿它决定要不要去问 amp-api */
+    hasLyrics?: boolean;
   };
 };
 
