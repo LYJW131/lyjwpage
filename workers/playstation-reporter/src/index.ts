@@ -348,16 +348,39 @@ async function shouldTick(env: Env): Promise<Gate> {
 }
 
 let inflight: Promise<TickResult> | null = null;
+let inflightForced = false;
 
-/** 同一 isolate 里只跑一轮。本地 8788 会被 Chrome 探 /json/version 再连打 GET /。 */
-function tickOnce(env: Env): Promise<TickResult> {
-  inflight ??= tick(env).finally(() => {
-    inflight = null;
-  });
+/**
+ * 同一 isolate 里只跑一轮。本地 8788 会被 Chrome 探 /json/version 再连打 GET /，
+ * 这道去重就是把那一串探测压成一轮的东西。
+ *
+ * 强制那一轮不能拿正在跑的普通轮次充数 —— 那轮走的是缓存，正是它要绕开的。
+ * 撞上了就排在后面：等普通那轮结束（成败都行），再整份跑一遍。
+ */
+function tickOnce(env: Env, force = false): Promise<TickResult> {
+  if (inflight && force && !inflightForced) {
+    const queued = inflight.catch(() => undefined).then(() => tick(env, true));
+    inflight = queued.finally(() => {
+      if (inflight === queued) inflight = null;
+    });
+    inflightForced = true;
+    return inflight;
+  }
+  if (!inflight) {
+    inflightForced = force;
+    inflight = tick(env, force).finally(() => {
+      inflight = null;
+    });
+  }
   return inflight;
 }
 
-async function tick(env: Env): Promise<TickResult> {
+/**
+ * `force` 是「把这一轮当成 KV 空着跑」：缓存、指纹、目录一律当没有，于是下面每条
+ * 分支都走冷启动那一侧 —— 游玩列表整份翻、购买库重拉、奖杯目录每款都爬、资料
+ * 重问、两封信不比指纹都交付。不另开一套分支，冷启动路径本来就是全量路径。
+ */
+async function tick(env: Env, force = false): Promise<TickResult> {
   const startedAt = Date.now();
   // 同步落一份给门，别等下面那个 await —— 它要挡的就是「KV 还没读到新值」那一响
   lastFullTickAt = startedAt;
@@ -367,8 +390,8 @@ async function tick(env: Env): Promise<TickResult> {
 
   try {
     const [
-      oldPlayedGamesFingerprint,
-      oldTrophiesFingerprint,
+      storedPlayedGamesFingerprint,
+      storedTrophiesFingerprint,
       storedCatalog,
       storedPlayedGames,
       storedLibrary,
@@ -383,9 +406,11 @@ async function tick(env: Env): Promise<TickResult> {
       // 「这轮成功过」—— 上游持续故障时的重试节奏才跟基线一致。
       writeFullTickStartedAt(env.STATE, startedAt),
     ]);
-    const lastCatalog = asTrophyCatalog(storedCatalog);
-    const playedCache = asPlayedGamesCache(storedPlayedGames);
-    const libraryCache = asLibraryCache(storedLibrary);
+    const oldPlayedGamesFingerprint = force ? null : storedPlayedGamesFingerprint;
+    const oldTrophiesFingerprint = force ? null : storedTrophiesFingerprint;
+    const lastCatalog = force ? null : asTrophyCatalog(storedCatalog);
+    const playedCache = force ? null : asPlayedGamesCache(storedPlayedGames);
+    const libraryCache = force ? null : asLibraryCache(storedLibrary);
 
     const hidden = hiddenTitleIds(env);
     const auth = new AuthSession(env);
@@ -466,6 +491,9 @@ async function tick(env: Env): Promise<TickResult> {
             console.error(
               JSON.stringify({ event: "playstation-library", error: explain(error) }),
             );
+            // 强制那一轮要的就是这份库：拿不到就整轮失败，别交一份没有预购的
+            // 列表上去、再把指纹盖上 —— 那等于把预购从站点上抹掉。
+            if (force) throw new Error(`购买库拉取失败：${explain(error)}`);
             if (!libraryCache) library = [];
           }
         })(),
@@ -558,6 +586,7 @@ async function tick(env: Env): Promise<TickResult> {
       playedGamesChanged,
       trophiesChanged,
       dryRun: isDryRun(env),
+      forced: force,
     };
     await env.STATE.put(TICK_META_KEY, JSON.stringify(meta));
     console.log(JSON.stringify({ event: "playstation-tick", ...meta }));
@@ -570,6 +599,7 @@ async function tick(env: Env): Promise<TickResult> {
       playedGamesChanged,
       trophiesChanged,
       dryRun: isDryRun(env),
+      forced: force,
       error: explain(error),
     };
     await env.STATE.put(TICK_META_KEY, JSON.stringify(meta));
@@ -599,27 +629,29 @@ export default {
   },
 
   /**
-   * 手动触发走 GET /tick，不挂在 GET / 上。Chrome / Cursor 会拿调试口探
-   * `/json/version` 再打 GET /，根路径一跑 tick 就会连着撞 PSN。
-   * 访问控制仍由前面的 Cloudflare Access 负责。token 永远不出现在响应里。
+   * 两个手动入口，都不走门，都会刷新那枚开始时刻（手动跑完之后下一轮定时的
+   * 跟着往后顺延）。访问控制由前面的 Cloudflare Access 负责，token 永远不出现在
+   * 响应里。
    *
-   * `/tick` 不走门：它是调试工具，要的就是「现在立刻跑一轮」。它照样会刷新
-   * 那枚开始时刻，所以手动跑完一轮之后，下一轮定时的也跟着往后顺延。
+   * - `GET /`：**全量刷新，忽略所有缓存**。游玩列表整份翻、购买库重拉、奖杯目录
+   *   每款重爬、资料重问，两封信不比指纹都交付。贵：每款奖杯 4 次出网、每款游戏
+   *   一次对齐，别把它接进任何监控或定时器。
+   * - `GET /tick`：普通一轮，该走缓存走缓存、比指纹、变了才交付。
+   *
+   * 根路径跑全量有个已知的坑：本地 `wrangler dev` 时 Chrome / Cursor 会拿调试口探
+   * `/json/version` 再连打 GET /。tickOnce 的去重把一串探测压成一轮，但那一轮仍是
+   * 全量的 —— 本地别拿浏览器开根路径。
    */
   async fetch(request, env) {
     if (request.method !== "GET") {
       return Response.json({ ok: false, error: "Method Not Allowed" }, { status: 405 });
     }
     const path = new URL(request.url).pathname;
-    if (path === "/") {
-      const meta = await env.STATE.get<TickMeta>(TICK_META_KEY, "json");
-      return Response.json(meta ?? { ok: false, error: "还没跑过一轮" });
-    }
-    if (path !== "/tick") {
+    if (path !== "/" && path !== "/tick") {
       return Response.json({ ok: false, error: "Not Found" }, { status: 404 });
     }
     try {
-      const { meta, presence, playedGames, trophies } = await tickOnce(env);
+      const { meta, presence, playedGames, trophies } = await tickOnce(env, path === "/");
       return Response.json({
         ...meta,
         presence,
