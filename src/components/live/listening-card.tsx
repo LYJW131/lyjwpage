@@ -454,11 +454,12 @@ function HeroProgress({
           title={sideLyrics ? subtitle : (line ?? subtitle)}
         >
           {sideLyrics ? (
+            /* 宽屏桌面端在右侧独立显示歌词，副标题行恢复展示艺人名 */
+            <span className="block truncate">{subtitle}</span>
+          ) : (
             <>
-              {/* 宽屏桌面端在右侧独立显示歌词，左侧副标题行恢复展示艺人名 */}
-              <span className="hidden truncate md:block">{subtitle}</span>
-              {/* 移动端右侧收起，副标题行依然跟唱当前歌词 */}
-              <span className="block truncate md:hidden">
+              {/* 桌面半宽状态下空间受限，副标题行跟唱歌词 */}
+              <span className="hidden md:block">
                 <AnimatePresence initial={false} mode="popLayout">
                   <motion.span
                     key={cue.index}
@@ -476,24 +477,9 @@ function HeroProgress({
                   </motion.span>
                 </AnimatePresence>
               </span>
+              {/* 移动端另起独立歌词区域，副标题行始终展示艺人名 */}
+              <span className="block truncate md:hidden">{subtitle}</span>
             </>
-          ) : (
-            <AnimatePresence initial={false} mode="popLayout">
-              <motion.span
-                key={cue.index}
-                className={cn("block truncate", line != null && "text-foreground")}
-                variants={reduced ? STATIC_VARIANTS : LYRIC_LINE_VARIANTS}
-                initial="initial"
-                animate="animate"
-                exit="exit"
-              >
-                {current?.words ? (
-                  <LyricWords words={current.words} track={track} />
-                ) : (
-                  (line ?? subtitle)
-                )}
-              </motion.span>
-            </AnimatePresence>
           )}
         </span>
         <NumberFlowGroup>
@@ -790,7 +776,9 @@ function HeroWrapper({
   // h-full：外层把 hero 钉在 h-20，这里填满；高度锁定靠绝对定位叠层，不靠 overflow
   const className = cn(
     "group h-full rounded-md",
-    wideLyrics ? "grid grid-cols-1 md:grid-cols-2" : "flex gap-3",
+    wideLyrics
+      ? "grid grid-cols-1 md:grid-cols-2"
+      : "grid grid-cols-1 md:flex md:gap-3",
   );
   return link ? (
     <a
@@ -929,6 +917,14 @@ export function ListeningCard({
   );
 
   /**
+   * 移动端独立歌词区域：在移动端曲目有歌词时（不受宽屏属性限制），另起独立一行展示
+   */
+  const showMobileLyrics = Boolean(
+    localActive &&
+      (Boolean(lyrics && lyrics.length > 0) || (lyricsLoading && resolvedHasLyrics)),
+  );
+
+  /**
    * 跟着这首一起听。访客用自己的订阅授权，音频不经过站点，见 use-listen-along。
    *
    * 右上角那格平时写着「Apple Music」（说明这张卡的来源），有东西可跟听时换成
@@ -1058,7 +1054,7 @@ export function ListeningCard({
             首屏「读取中」不进 AnimatePresence：占位态和 hero 根本不是同一个东西，
             让它们互相淡入淡出没有意义，只会在数据到达时糊一下。等有数据再挂载，
             initial={false} 就会直接跳过入场动画，首屏不播这一下。 */}
-        <div className="relative h-20 shrink-0">
+        <div className={cn("relative shrink-0", showMobileLyrics ? "h-auto min-h-20 md:h-20" : "h-20")}>
           {!hero ? (
             <HeroWrapper link={null}>
               <div className="relative aspect-square w-20 shrink-0 overflow-hidden rounded-md border border-line bg-muted" />
@@ -1076,7 +1072,7 @@ export function ListeningCard({
             <AnimatePresence initial={false}>
               <motion.div
                 key={hero.key}
-                className="absolute inset-0"
+                className={cn(showMobileLyrics ? "relative md:absolute md:inset-0" : "absolute inset-0")}
                 variants={reduced ? STATIC_VARIANTS : HERO_VARIANTS}
                 initial="initial"
                 animate="animate"
@@ -1198,6 +1194,20 @@ export function ListeningCard({
 
                   {showSideLyrics && (
                     <div className="hidden min-w-0 border-l border-line pl-5 md:flex md:flex-col md:justify-center overflow-hidden">
+                      {lyrics ? (
+                        <HeroLyrics
+                          lyrics={lyrics}
+                          track={hero.track!}
+                          reduced={Boolean(reduced)}
+                        />
+                      ) : (
+                        <HeroLyricsSkeleton />
+                      )}
+                    </div>
+                  )}
+
+                  {showMobileLyrics && (
+                    <div className="mt-3 min-w-0 border-t border-line/60 pt-2.5 md:hidden">
                       {lyrics ? (
                         <HeroLyrics
                           lyrics={lyrics}
