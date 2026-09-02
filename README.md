@@ -211,7 +211,7 @@ hero 上此刻在播的那首，副标题那一行会跟着进度条换成正在
 
 只取行级（`/lyrics`，`itunes:timing="Line"`），不取字级（`/syllable-lyrics`，体积三四倍）：一行的位置画不了逐字高亮。TTML 解析在 `lib/lyrics-ttml`（`<head>` 里的翻译不当成行，`x-bg` 和声整层丢掉），哪句该亮在 `lib/lyrics-cue`，两个都是纯函数、都有测试。换句那一刻由一个定在边界上的闹钟驱动，不靠进度条那个整秒计时器；position 和进度条、「一起听」读的是 `lib/track-position` 同一份算法。
 
-**`GET /api/lyrics?song=<id>` 只答此刻在播和排在后面那几首。** 动态封面吐的只是一个视频地址，这里吐的是整首歌的歌词正文、还是拿我的订阅身份换来的，不设门就是一个「任意 ID 换歌词」的公开代理。名单来自 `/api/status/listening/now` 那份快照（当前曲 + `upcomingSongIds`），不在名单里一律 404，不和「没有歌词」区分。
+**`GET /api/lyrics?song=<id>` 只答此刻在播和排在后面那几首。** 动态封面吐的只是一个视频地址，这里吐的是整首歌的歌词正文、还是拿我的订阅身份换来的，不设门就是一个「任意 ID 换歌词」的公开代理。名单来自 `/api/status/listening/now` 那份快照（当前曲 + `upcomingSongIds`），不在名单里一律 404，不和「没有歌词」区分。响应只许浏览器私有缓存（`Cache-Control: private`），不进 CDN —— 白名单是每次请求现查的，共享缓存会把一次放行的响应发给之后任何人。浏览器那侧「没有」也只记一小时，和服务端同一个尺度。
 
 ### 跟着一起听 — MusicKit
 

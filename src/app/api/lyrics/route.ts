@@ -9,8 +9,13 @@ import { nowListeningStatus } from "@/lib/status-cache";
  * 同步歌词端点：`GET /api/lyrics?song=<目录曲目 ID>`。
  *
  * 和动态封面（app/api/motion-artwork）是同一种东西：浏览器按 hero 上此刻那首
- * 的 `songId` 来问，站点拿扒来的 web token 去 amp-api 取，结论进 lib/cache，
- * `Cache-Control` 再让 CDN 把同一首的重复请求挡在函数外。
+ * 的 `songId` 来问，站点拿扒来的 web token 去 amp-api 取，结论进 lib/cache。
+ *
+ * 但 `Cache-Control` 和那边不同：**只允许浏览器私有缓存，不进 CDN。** 下面那道
+ * 白名单是每次请求现查的，`public` + `s-maxage` 会让 CDN 把一次放行的响应原样
+ * 发给之后任何人 —— 那首歌早不在名单里了，歌词照样能拿到七天，门等于没设。
+ * 重复请求本来就少（同一页里 hooks/use-lyrics 按 songId 只问一次），CDN 那层
+ * 省下的不值这个洞。
  *
  * **比动态封面多一道门：只答此刻在播和排在后面那几首。** 动态封面拿到的只是
  * 一个视频地址，这里吐的是整首歌的歌词正文，而且是拿我的订阅身份换来的 ——
@@ -72,10 +77,9 @@ function jsonResponse(data: LyricsResult, status = 200, cacheTtl = 0): Response 
   return Response.json(data, {
     status,
     headers: {
+      // private：只许这一个浏览器留，共享缓存（CDN、代理）一律不存，理由见文件头
       "Cache-Control":
-        cacheTtl > 0
-          ? `public, max-age=${cacheTtl}, s-maxage=${cacheTtl}`
-          : "no-store, no-cache, must-revalidate",
+        cacheTtl > 0 ? `private, max-age=${cacheTtl}` : "no-store, no-cache, must-revalidate",
     },
   });
 }

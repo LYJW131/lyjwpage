@@ -55,6 +55,9 @@ function storefront(): string {
  * 而它一个键只吃一个 TTL。in-flight 去重和 5 秒负缓存照动态封面那套。
  */
 export async function resolveLyrics(songId: string): Promise<LyricsResult> {
+  // 目录 ID 只会是一串数字。路由那边已经查过，这里再收一道：拼进 URL 的东西
+  // 不该指望调用方守规矩（CodeQL 也盯着这一段）
+  if (!/^\d{1,20}$/.test(songId)) throw new AppleUpstreamError("songId 不是目录 ID");
   const cacheKey = `lyrics:v1:${storefront()}:${songId}`;
 
   const [hit, failure] = await Promise.all([
