@@ -107,7 +107,10 @@ export function useLyrics(songId: string | null, hasLyrics: boolean): LyricLine[
 
     let active = true;
     fetchLyrics(key).then((lines) => {
-      if (active) setResolved({ songId: key, lines });
+      if (!active) return;
+      setResolved({ songId: key, lines });
+      // 没取到：负缓存刚写下，让 effect 再跑一遍，走上面那个分支把到期的闹钟上好
+      if (lines === null) setAttempt((n) => n + 1);
     });
 
     return () => {
