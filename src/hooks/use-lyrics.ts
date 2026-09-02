@@ -21,6 +21,12 @@ const LYRICS_ENDPOINT = "/api/lyrics";
  * 页面就会在凭据恢复之后仍旧对这首歌只显示艺人名，直到整页刷新。
  */
 const EMPTY_TTL_MS = 60 * 60 * 1000;
+/**
+ * 接口没答上来（非 2xx、网络断）只挡几秒，和服务端那条 5 秒负缓存一个尺度。
+ * 这不是「没有歌词」，是「这会儿问不到」，记一小时等于把上游抖一下放大成整首歌
+ * 都没词。
+ */
+const FAILURE_TTL_MS = 5_000;
 
 /** 有词的一首歌不会变，整个页面生命周期内只问一次 */
 const lyricsCache = new Map<string, LyricLine[]>();
@@ -45,16 +51,21 @@ async function fetchLyrics(songId: string): Promise<LyricLine[] | null> {
   const promise = (async () => {
     try {
       const response = await fetch(`${LYRICS_ENDPOINT}?song=${encodeURIComponent(songId)}`);
-      const data = response.ok ? ((await response.json()) as { lines?: LyricLine[] }) : null;
-      const lines = Array.isArray(data?.lines) ? data.lines : [];
+      if (!response.ok) {
+        emptyUntil.set(songId, Date.now() + FAILURE_TTL_MS);
+        return null;
+      }
+      const data = (await response.json()) as { lines?: LyricLine[] };
+      const lines = Array.isArray(data.lines) ? data.lines : [];
       if (lines.length) {
         lyricsCache.set(songId, lines);
         return lines;
       }
+      // 服务端明确说了「没有」（可能是没词，也可能是订阅身份那一刻没被认）
       emptyUntil.set(songId, Date.now() + EMPTY_TTL_MS);
       return null;
     } catch {
-      emptyUntil.set(songId, Date.now() + EMPTY_TTL_MS);
+      emptyUntil.set(songId, Date.now() + FAILURE_TTL_MS);
       return null;
     } finally {
       pending.delete(songId);
