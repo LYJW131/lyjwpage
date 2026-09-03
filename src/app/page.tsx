@@ -12,7 +12,6 @@ import { Section } from "@/components/ui/section";
 import { artworkPlaceholders } from "@/lib/artwork-placeholder";
 import { desktopIconDataUri } from "@/lib/desktop-icon-inline";
 import { githubAvatarDataUri } from "@/lib/github-avatar-icon";
-import { resolveLyrics } from "@/lib/lyrics";
 import {
   cachedActivity,
   cachedServer,
@@ -21,6 +20,7 @@ import {
   cachedDesktop,
   cachedGithubChart,
   cachedListening,
+  cachedLyrics,
   cachedNowListening,
   cachedNowWatching,
   cachedPlaying,
@@ -89,7 +89,7 @@ export default async function Home() {
   /**
    * 内联素材与首屏歌词只能排在第二轮：要压哪几张、取哪首词写在信封里，进不了上面那批并行。
    * 桌面图标按 objectKey 缓存（lib/desktop-icon-inline）、封面占位按 Apple
-   * 模板 URL 缓存（lib/artwork-placeholder）、歌词按 songId 缓存（lib/lyrics），
+   * 模板 URL 缓存（lib/artwork-placeholder）、歌词按 songId 缓存（lib/status-cache 的 cachedLyrics），
    * 命中后这里都不产生额外往返；三者彼此无关，未命中时并行把最坏等待压到单边的超时。
    */
   const [desktopIcon, artwork, lyrics] = await Promise.all([
@@ -98,7 +98,7 @@ export default async function Home() {
       listening.ok ? listening.data.items.map((item) => item.artwork) : [],
       nowListening.ok ? (nowListening.data.music?.artworkUrl ?? null) : null,
     ),
-    nowSongId ? resolveLyrics(nowSongId).catch(() => null) : null,
+    nowSongId ? cachedLyrics(nowSongId) : null,
   ]);
 
   return (

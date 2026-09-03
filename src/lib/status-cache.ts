@@ -26,6 +26,7 @@ import {
   WATCHING_TAG,
 } from "@/lib/live-events";
 import { pickNowListening } from "@/lib/now-listening";
+import { resolveLyrics, type LyricsResult } from "@/lib/lyrics";
 import { getPlaying, getPlayingNow } from "@/lib/playstation";
 import { getTrophies, getTrophiesSummary } from "@/lib/trophies";
 import { readLiveness } from "@/lib/reporter-liveness";
@@ -260,6 +261,21 @@ export async function cachedGithubChart() {
   "use cache";
   cacheLife(STATUS_LIFE);
   return statusEnvelope(getGithubChart);
+}
+
+/**
+ * 首屏同步歌词：按曲目 ID 缓存解析后的歌词。
+ * 一首歌的歌词不会变，所以 cacheLife("max")，首屏预渲染白拿。
+ */
+export async function cachedLyrics(songId: string): Promise<LyricsResult | null> {
+  "use cache";
+  cacheLife("max");
+  try {
+    return await resolveLyrics(songId);
+  } catch (error) {
+    console.error("[cachedLyrics]", error);
+    return null;
+  }
 }
 
 /**
