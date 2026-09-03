@@ -7,23 +7,14 @@ import type { LyricLine } from "@/lib/lyrics-ttml";
  * 换歌时不用先清状态 —— 结果连着它属于哪首一起存，渲染时比一下键就知道旧的
  * 不作数。
  *
- * 键是目录曲目 ID（`NowListeningPayload.songId`，调用方传的是闩住的那份，见
- * listening-card 的 lookupLatch）。只在目录说 `hasLyrics` 时才问：目录说没有的
- * 那首，问了也是 404，还会占一条「没有」的缓存。
+ * 端点不再传参，由服务端按此刻在播自决。响应里带 `songId` 用来对号；不对号只挡
+ * 5 秒（短暂不一致），并把返回的结果按响应的 songId 存进缓存备用。
+ *
+ * 键仍是目录曲目 ID（`NowListeningPayload.songId`，调用方传的是闩住的那份，见
+ * listening-card 的 lookupLatch）。只在目录说 `hasLyrics` 时才问。
  */
 
 const LYRICS_ENDPOINT = "/api/lyrics";
-/**
- * 响应形状的版本，拼进查询串。路由不看它，它只是浏览器缓存的键的一部分：
- * 这条响应允许浏览器留 7 天（`Cache-Control: private`），形状变了（v2 多了
- * words）而 URL 不变的话，之前来过的访客整整一周拿到的都是旧形状。改了
-/**
- * 响应形状的版本，拼进查询串。路由不看它，它只是浏览器缓存的键的一部分：
- * 这条响应允许浏览器留 7 天（`Cache-Control: private`），形状变了（v2 多了
- * words，v3 多了 songwriters）而 URL 不变的话，之前来过的访客整整一周拿到的都是旧形状。改了
- * LyricsResult 的形状就把这个数加一。
- */
-const LYRICS_FORMAT = 3;
 
 /**
  * 「没有」只记一小时，和服务端那条负缓存同一个尺度（lib/lyrics 的
@@ -66,23 +57,36 @@ async function fetchLyrics(songId: string): Promise<CachedLyricsData | null> {
 
   const promise = (async () => {
     try {
-      const response = await fetch(
-        `${LYRICS_ENDPOINT}?song=${encodeURIComponent(songId)}&format=${LYRICS_FORMAT}`,
-      );
+      // 不再传参，服务端按此刻在播自决；响应里带 songId 用来对号
+      const response = await fetch(LYRICS_ENDPOINT);
       if (!response.ok) {
         emptyUntil.set(songId, Date.now() + FAILURE_TTL_MS);
         return null;
       }
-      const data = (await response.json()) as { lines?: LyricLine[]; songwriters?: string[] };
+      const data = (await response.json()) as {
+        songId?: string | null;
+        lines?: LyricLine[];
+        songwriters?: string[];
+      };
       const lines = Array.isArray(data.lines) ? data.lines : [];
+      const payload: CachedLyricsData = {
+        lines,
+        songwriters:
+          Array.isArray(data.songwriters) && data.songwriters.length
+            ? data.songwriters
+            : undefined,
+      };
+
+      // 服务端快照和浏览器短暂不一致：不对号只挡 5 秒，把返回结果按 data.songId 预热进缓存
+      if (data.songId !== songId) {
+        emptyUntil.set(songId, Date.now() + FAILURE_TTL_MS);
+        if (data.songId && lines.length) {
+          lyricsCache.set(data.songId, payload);
+        }
+        return null;
+      }
+
       if (lines.length) {
-        const payload: CachedLyricsData = {
-          lines,
-          songwriters:
-            Array.isArray(data.songwriters) && data.songwriters.length
-              ? data.songwriters
-              : undefined,
-        };
         lyricsCache.set(songId, payload);
         return payload;
       }
