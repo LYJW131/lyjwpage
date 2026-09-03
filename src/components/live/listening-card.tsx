@@ -8,6 +8,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -515,10 +516,12 @@ function HeroProgress({
 function HeroLyrics({
   lyrics,
   track,
+  songwriters,
   reduced = false,
 }: {
   lyrics: LyricLine[];
   track: LocalNowPlaying;
+  songwriters?: string[];
   reduced?: boolean;
 }) {
   const playing = track.state === "playing";
@@ -532,42 +535,91 @@ function HeroLyrics({
     return () => window.clearInterval(timer);
   }, [playing]);
 
+  const displayLyrics = useMemo(() => {
+    if (!lyrics.length) return lyrics;
+    const first = lyrics[0];
+    const last = lyrics[lyrics.length - 1];
+    const creator = (
+      songwriters && songwriters.length > 0 ? songwriters.join("、") : track.artist
+    )?.trim();
+
+    // 1. 开头：类似 Apple Music 的 3 个 · 作为启动信号
+    // 若首句有前奏，在开口前最多 2.4 秒内通过逐字计时依次点亮 3 个圆点
+    const introLead = Math.min(Math.max(first.startMs, 0), 2_400);
+    const introStart = Math.max(0, first.startMs - introLead);
+    const dotDuration = introLead > 0 ? introLead / 3 : 0;
+
+    const introLine: LyricLine = {
+      startMs: 0,
+      endMs: first.startMs,
+      text: "···",
+      words:
+        dotDuration > 0
+          ? [
+              { startMs: introStart, endMs: introStart + dotDuration, text: "·" },
+              { startMs: introStart + dotDuration, endMs: introStart + dotDuration * 2, text: "·" },
+              { startMs: introStart + dotDuration * 2, endMs: first.startMs, text: "·" },
+            ]
+          : undefined,
+    };
+
+    // 2. 结尾：创作者:「真实词曲创作者 / 歌手」
+    const outroStart = last.endMs;
+    const outroEnd = Math.max(track.durationMs || 0, outroStart + 300_000);
+    const outroLine: LyricLine = {
+      startMs: outroStart,
+      endMs: outroEnd,
+      text: creator ? `创作者:「${creator}」` : "创作者",
+    };
+
+    return [introLine, ...lyrics, outroLine];
+  }, [lyrics, songwriters, track.artist, track.durationMs]);
+
   const { observedAt, positionMs, durationMs, repeatOne } = track;
   useEffect(() => {
-    if (!playing || !lyrics.length) return;
+    if (!playing || !displayLyrics.length) return;
     const anchor = { state: "playing" as const, observedAt, positionMs, durationMs, repeatOne };
     const at = trackPositionMs(anchor, Math.max(now, Date.now()));
-    const { until } = cueAt(lyrics, at);
+    const { until } = cueAt(displayLyrics, at);
     const target = until ?? (repeatOne && durationMs > 0 ? durationMs : null);
     if (target == null) return;
     const timer = window.setTimeout(() => setTicked(Date.now()), Math.max(16, target - at + 8));
     return () => window.clearTimeout(timer);
-  }, [playing, lyrics, now, observedAt, positionMs, durationMs, repeatOne]);
+  }, [playing, displayLyrics, now, observedAt, positionMs, durationMs, repeatOne]);
 
   const position = trackPositionMs(track, now);
-  const cue = cueAt(lyrics, position);
+  const cue = cueAt(displayLyrics, position);
 
   let activeIdx = 0;
   let isSinging = false;
+  // 歌词本体末句下标（不含结尾创作者行）
+  const lastLyricIdx = Math.max(1, displayLyrics.length - 2);
 
   if (cue.index >= 0) {
-    activeIdx = cue.index;
-    isSinging = true;
+    // 不跳到最后创作者行：焦点最大停在真实歌词末句
+    activeIdx = Math.min(cue.index, lastLyricIdx);
+    isSinging = cue.index <= lastLyricIdx;
   } else {
     // 间奏、前奏或尾声：寻找最近的一行保持视野连续
     let index = -1;
-    for (let i = 0; i < lyrics.length && lyrics[i].startMs <= position; i += 1) {
+    for (let i = 0; i < displayLyrics.length && displayLyrics[i].startMs <= position; i += 1) {
       index = i;
     }
-    activeIdx = index >= 0 ? index : 0;
+    activeIdx = Math.max(0, Math.min(index, lastLyricIdx));
     isSinging = false;
   }
 
   const LINE_HEIGHT = 26;
-  const targetY = 27 - activeIdx * LINE_HEIGHT;
+  // 视口滚动目标锁定在 [1, displayLyrics.length - 2]：
+  // 开头 · · · 停在顶部行（Row 0），第一句歌词直接置于中间行；
+  // 结尾「创作者」停在底部行（Row 2），最后一句歌词保持在中间行。
+  // 头尾两端始终呈现完整三行内容，永不出现空白空行。
+  const maxIdx = lastLyricIdx;
+  const scrollIdx = Math.max(1, Math.min(activeIdx, maxIdx));
+  const targetY = 27 - scrollIdx * LINE_HEIGHT;
 
   return (
-    <div className="relative h-20 overflow-hidden [mask-image:linear-gradient(to_bottom,transparent_0%,black_22%,black_78%,transparent_100%)] [-webkit-mask-image:linear-gradient(to_bottom,transparent_0%,black_22%,black_78%,transparent_100%)]">
+    <div className="relative h-20 overflow-hidden [mask-image:linear-gradient(to_bottom,transparent_0%,black_16%,black_84%,transparent_100%)] [-webkit-mask-image:linear-gradient(to_bottom,transparent_0%,black_16%,black_84%,transparent_100%)]">
       <motion.div
         className="flex flex-col"
         animate={{ y: targetY }}
@@ -577,8 +629,10 @@ function HeroLyrics({
             : { duration: 0.36, ease: [0.22, 1, 0.36, 1] }
         }
       >
-        {lyrics.map((line, i) => {
+        {displayLyrics.map((line, i) => {
           const isCurrent = i === activeIdx;
+          const isIntro = i === 0;
+          const isOutro = i === displayLyrics.length - 1;
 
           return (
             <div
@@ -587,17 +641,24 @@ function HeroLyrics({
               style={{ height: `${LINE_HEIGHT}px` }}
             >
               <motion.span
-                className={cn(
-                  "block truncate text-sm font-medium origin-left transition-colors duration-500 ease-out",
-                  isCurrent
-                    ? isSinging
-                      ? "text-foreground"
-                      : "text-foreground/80"
-                    : "text-muted-foreground",
-                )}
+                className={
+                  isOutro
+                    ? "block truncate text-xs text-muted-foreground/60 origin-left"
+                    : cn(
+                        "block truncate text-sm font-medium origin-left transition-colors duration-500 ease-out",
+                        isIntro && "tracking-[0.08em] font-bold",
+                        isCurrent
+                          ? isSinging
+                            ? "text-foreground"
+                            : "text-foreground/80"
+                          : isIntro
+                            ? "text-muted-foreground/60"
+                            : "text-muted-foreground",
+                      )
+                }
                 animate={{
-                  scale: isCurrent ? 1 : 0.88,
-                  opacity: isCurrent ? 1 : 0.4,
+                  scale: isOutro ? 1 : isCurrent ? 1 : 0.88,
+                  opacity: isOutro ? 0.6 : isCurrent ? 1 : 0.4,
                 }}
                 transition={
                   reduced
@@ -904,7 +965,10 @@ export function ListeningCard({
   const resolvedHasLyrics = live?.songId ? live.hasLyrics : latched?.hasLyrics ?? false;
 
   // 同步歌词跟着闩住的那个 songId 走，和跟听同一份；目录说没有就不发请求
-  const { lyrics, isLoading: lyricsLoading } = useLyrics(resolvedSongId, resolvedHasLyrics);
+  const { lyrics, songwriters, isLoading: lyricsLoading } = useLyrics(
+    resolvedSongId,
+    resolvedHasLyrics,
+  );
 
   /**
    * 宽屏且处于实时播放中时，若曲目包含歌词（已载入或正在载入），在右半侧开辟独立
@@ -1198,6 +1262,7 @@ export function ListeningCard({
                         <HeroLyrics
                           lyrics={lyrics}
                           track={hero.track!}
+                          songwriters={songwriters}
                           reduced={Boolean(reduced)}
                         />
                       ) : (
@@ -1212,6 +1277,7 @@ export function ListeningCard({
                         <HeroLyrics
                           lyrics={lyrics}
                           track={hero.track!}
+                          songwriters={songwriters}
                           reduced={Boolean(reduced)}
                         />
                       ) : (
