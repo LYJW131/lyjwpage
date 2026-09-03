@@ -7,6 +7,7 @@ import { ChargerCard } from "@/components/live/charger-card";
 import { ListeningCard } from "@/components/live/listening-card";
 import { PowerBankCard } from "@/components/live/powerbank-card";
 import { StatusDot } from "@/components/ui/status-dot";
+import type { CachedLyricsData } from "@/hooks/use-lyrics";
 import type { ArtworkPlaceholders } from "@/lib/artwork-placeholder";
 import type {
   ChargerPayload,
@@ -64,12 +65,15 @@ export function LiveMediaPair({
   powerBankFallback,
   listeningFallback,
   nowListeningFallback,
+  lyricsFallback,
   artworkPlaceholders,
 }: {
   chargerFallback: StatusResponse<ChargerPayload>;
   powerBankFallback: StatusResponse<PowerBankPayload>;
   listeningFallback: StatusResponse<ListeningPayload>;
   nowListeningFallback: StatusResponse<NowListeningPayload>;
+  /** 首屏同步歌词，由服务端在直读 Redis 缓存后冻进首屏 HTML */
+  lyricsFallback?: CachedLyricsData | null;
   /** 首屏封面的低清占位表，见 lib/artwork-placeholder；只透传给 ListeningCard */
   artworkPlaceholders: ArtworkPlaceholders;
 }) {
@@ -212,6 +216,7 @@ export function LiveMediaPair({
           <ListeningCard
             fallback={listeningFallback}
             nowFallback={nowListeningFallback}
+            lyricsFallback={lyricsFallback}
             artworkPlaceholders={artworkPlaceholders}
             className="h-full"
             wide={!isVisible}

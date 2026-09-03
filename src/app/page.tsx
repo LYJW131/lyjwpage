@@ -12,6 +12,7 @@ import { Section } from "@/components/ui/section";
 import { artworkPlaceholders } from "@/lib/artwork-placeholder";
 import { desktopIconDataUri } from "@/lib/desktop-icon-inline";
 import { githubAvatarDataUri } from "@/lib/github-avatar-icon";
+import { resolveLyrics } from "@/lib/lyrics";
 import {
   cachedActivity,
   cachedServer,
@@ -80,18 +81,24 @@ export default async function Home() {
     githubAvatarDataUri(),
   ]);
 
+  const nowSongId =
+    nowListening.ok && !nowListening.data.idle && nowListening.data.hasLyrics
+      ? nowListening.data.songId
+      : null;
+
   /**
-   * 内联素材只能排在第二轮：要压哪几张写在信封里，进不了上面那批并行。
+   * 内联素材与首屏歌词只能排在第二轮：要压哪几张、取哪首词写在信封里，进不了上面那批并行。
    * 桌面图标按 objectKey 缓存（lib/desktop-icon-inline）、封面占位按 Apple
-   * 模板 URL 缓存（lib/artwork-placeholder），命中后这里都不产生额外往返；
-   * 两者彼此无关，未命中时并行把最坏等待压到单边的超时。
+   * 模板 URL 缓存（lib/artwork-placeholder）、歌词按 songId 缓存（lib/lyrics），
+   * 命中后这里都不产生额外往返；三者彼此无关，未命中时并行把最坏等待压到单边的超时。
    */
-  const [desktopIcon, artwork] = await Promise.all([
+  const [desktopIcon, artwork, lyrics] = await Promise.all([
     desktopIconDataUri(desktop.ok ? (desktop.data.desktop?.iconUrl ?? null) : null),
     artworkPlaceholders(
       listening.ok ? listening.data.items.map((item) => item.artwork) : [],
       nowListening.ok ? (nowListening.data.music?.artworkUrl ?? null) : null,
     ),
+    nowSongId ? resolveLyrics(nowSongId).catch(() => null) : null,
   ]);
 
   return (
@@ -113,6 +120,11 @@ export default async function Home() {
                 powerBankFallback={powerBank}
                 listeningFallback={listening}
                 nowListeningFallback={nowListening}
+                lyricsFallback={
+                  lyrics && lyrics.lines.length
+                    ? { lines: lyrics.lines, songwriters: lyrics.songwriters }
+                    : null
+                }
                 artworkPlaceholders={artwork}
               />
               <ActivityCard fallback={activity} />

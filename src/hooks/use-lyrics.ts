@@ -116,12 +116,25 @@ export type UseLyricsResult = {
  * 调用方退回艺人名那一行。同时返回 isLoading，便于宽屏模式在数据加载期间
  * 提前规划双列占位，避免歌词到位后布局跳动。
  */
-export function useLyrics(songId: string | null, hasLyrics: boolean): UseLyricsResult {
+export function useLyrics(
+  songId: string | null,
+  hasLyrics: boolean,
+  initialData?: CachedLyricsData | null,
+): UseLyricsResult {
   const key = songId && hasLyrics ? songId : null;
+
+  // 首屏若带了当前曲目的歌词数据，直接预热进模块级内存缓存，避免首屏触发额外网络请求
+  if (key && initialData && initialData.lines.length && !lyricsCache.has(key)) {
+    lyricsCache.set(key, initialData);
+  }
+
   const [resolved, setResolved] = useState<{
     songId: string;
     data: CachedLyricsData | null;
-  } | null>(null);
+  } | null>(() => {
+    if (!key || !initialData || !initialData.lines.length) return null;
+    return { songId: key, data: initialData };
+  });
 
   /**
    * 负缓存到期要能自己再问一次。
