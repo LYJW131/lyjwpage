@@ -834,10 +834,10 @@ function HeroWrapper({
   wideLyrics?: boolean;
   children: ReactNode;
 }) {
-  // h-full：外层把 hero 钉在 h-20，这里填满；高度锁定靠绝对定位叠层，不靠 overflow
+  // 移动端始终为全宽 flex 排布；仅在桌面端开启宽屏歌词时切换为双列 grid
   const className = cn(
     "group h-full rounded-md",
-    wideLyrics ? "grid grid-cols-2" : "flex gap-3",
+    wideLyrics ? "flex gap-3 md:grid md:grid-cols-2 md:gap-0" : "flex gap-3",
   );
   return link ? (
     <a
