@@ -17,9 +17,13 @@ const LYRICS_ENDPOINT = "/api/lyrics";
  * 响应形状的版本，拼进查询串。路由不看它，它只是浏览器缓存的键的一部分：
  * 这条响应允许浏览器留 7 天（`Cache-Control: private`），形状变了（v2 多了
  * words）而 URL 不变的话，之前来过的访客整整一周拿到的都是旧形状。改了
+/**
+ * 响应形状的版本，拼进查询串。路由不看它，它只是浏览器缓存的键的一部分：
+ * 这条响应允许浏览器留 7 天（`Cache-Control: private`），形状变了（v2 多了
+ * words，v3 多了 songwriters）而 URL 不变的话，之前来过的访客整整一周拿到的都是旧形状。改了
  * LyricsResult 的形状就把这个数加一。
  */
-const LYRICS_FORMAT = 2;
+const LYRICS_FORMAT = 3;
 
 /**
  * 「没有」只记一小时，和服务端那条负缓存同一个尺度（lib/lyrics 的
@@ -35,13 +39,18 @@ const EMPTY_TTL_MS = 60 * 60 * 1000;
  */
 const FAILURE_TTL_MS = 5_000;
 
+export type CachedLyricsData = {
+  lines: LyricLine[];
+  songwriters?: string[];
+};
+
 /** 有词的一首歌不会变，整个页面生命周期内只问一次 */
-const lyricsCache = new Map<string, LyricLine[]>();
+const lyricsCache = new Map<string, CachedLyricsData>();
 /** 问过但没有（或接口失败）的，记到什么时候为止 */
 const emptyUntil = new Map<string, number>();
-const pending = new Map<string, Promise<LyricLine[] | null>>();
+const pending = new Map<string, Promise<CachedLyricsData | null>>();
 
-function cachedLyrics(songId: string): LyricLine[] | null | undefined {
+function cachedLyrics(songId: string): CachedLyricsData | null | undefined {
   const hit = lyricsCache.get(songId);
   if (hit) return hit;
   const until = emptyUntil.get(songId);
@@ -49,7 +58,7 @@ function cachedLyrics(songId: string): LyricLine[] | null | undefined {
   return undefined;
 }
 
-async function fetchLyrics(songId: string): Promise<LyricLine[] | null> {
+async function fetchLyrics(songId: string): Promise<CachedLyricsData | null> {
   const known = cachedLyrics(songId);
   if (known !== undefined) return known;
   const running = pending.get(songId);
@@ -64,11 +73,18 @@ async function fetchLyrics(songId: string): Promise<LyricLine[] | null> {
         emptyUntil.set(songId, Date.now() + FAILURE_TTL_MS);
         return null;
       }
-      const data = (await response.json()) as { lines?: LyricLine[] };
+      const data = (await response.json()) as { lines?: LyricLine[]; songwriters?: string[] };
       const lines = Array.isArray(data.lines) ? data.lines : [];
       if (lines.length) {
-        lyricsCache.set(songId, lines);
-        return lines;
+        const payload: CachedLyricsData = {
+          lines,
+          songwriters:
+            Array.isArray(data.songwriters) && data.songwriters.length
+              ? data.songwriters
+              : undefined,
+        };
+        lyricsCache.set(songId, payload);
+        return payload;
       }
       // 服务端明确说了「没有」（可能是没词，也可能是订阅身份那一刻没被认）
       emptyUntil.set(songId, Date.now() + EMPTY_TTL_MS);
@@ -87,6 +103,7 @@ async function fetchLyrics(songId: string): Promise<LyricLine[] | null> {
 
 export type UseLyricsResult = {
   lyrics: LyricLine[] | null;
+  songwriters?: string[];
   isLoading: boolean;
 };
 
@@ -97,9 +114,10 @@ export type UseLyricsResult = {
  */
 export function useLyrics(songId: string | null, hasLyrics: boolean): UseLyricsResult {
   const key = songId && hasLyrics ? songId : null;
-  const [resolved, setResolved] = useState<{ songId: string; lines: LyricLine[] | null } | null>(
-    null,
-  );
+  const [resolved, setResolved] = useState<{
+    songId: string;
+    data: CachedLyricsData | null;
+  } | null>(null);
 
   /**
    * 负缓存到期要能自己再问一次。
@@ -116,16 +134,19 @@ export function useLyrics(songId: string | null, hasLyrics: boolean): UseLyricsR
       if (known !== null) return;
       const until = emptyUntil.get(key);
       if (until == null) return;
-      const timer = window.setTimeout(() => setAttempt((n) => n + 1), Math.max(0, until - Date.now()));
+      const timer = window.setTimeout(
+        () => setAttempt((n) => n + 1),
+        Math.max(0, until - Date.now()),
+      );
       return () => window.clearTimeout(timer);
     }
 
     let active = true;
-    fetchLyrics(key).then((lines) => {
+    fetchLyrics(key).then((data) => {
       if (!active) return;
-      setResolved({ songId: key, lines });
+      setResolved({ songId: key, data });
       // 没取到：负缓存刚写下，让 effect 再跑一遍，走上面那个分支把到期的闹钟上好
-      if (lines === null) setAttempt((n) => n + 1);
+      if (data === null) setAttempt((n) => n + 1);
     });
 
     return () => {
@@ -137,11 +158,12 @@ export function useLyrics(songId: string | null, hasLyrics: boolean): UseLyricsR
   if (!key) return { lyrics: null, isLoading: false };
 
   const known = cachedLyrics(key);
-  const lines = known !== undefined ? known : resolved?.songId === key ? resolved.lines : null;
+  const data = known !== undefined ? known : resolved?.songId === key ? resolved.data : null;
   const isLoading = known === undefined && resolved?.songId !== key;
 
   return {
-    lyrics: lines && lines.length ? lines : null,
+    lyrics: data?.lines && data.lines.length ? data.lines : null,
+    songwriters: data?.songwriters,
     isLoading,
   };
 }

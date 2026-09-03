@@ -132,3 +132,16 @@ test("没有 begin 的 <p> 跳过，空行跳过，end 早于 begin 时钉回 be
 test("没有 body 时是空的", () => {
   assert.deepEqual(parseLyricsTtml(`<tt itunes:timing="Line"></tt>`).lines, []);
 });
+
+test("解析 head 中的创作者 songwriters 名单", () => {
+  const head =
+    `<iTunesMetadata xmlns="http://music.apple.com/lyric-ttml-internal">` +
+    `<songwriters>` +
+    `<songwriter>ひとみ</songwriter>` +
+    `<songwriter>Ayase &amp; Co.</songwriter>` +
+    `<songwriter>ひとみ</songwriter>` +
+    `</songwriters>` +
+    `</iTunesMetadata>`;
+  const parsed = parseLyricsTtml(ttml("Line", `<p begin="1.000" end="2.000">words</p>`, head));
+  assert.deepEqual(parsed.songwriters, ["ひとみ", "Ayase & Co."]);
+});

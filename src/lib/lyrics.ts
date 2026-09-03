@@ -21,6 +21,8 @@ import { parseLyricsTtml, type LyricLine } from "@/lib/lyrics-ttml";
 export type LyricsResult = {
   /** 按 startMs 升序。没有同步歌词（纯文本、或根本没有）时为空数组 */
   lines: LyricLine[];
+  /** 词曲作者 / 创作者名单 */
+  songwriters?: string[];
   error?: string;
 };
 
@@ -61,8 +63,8 @@ export async function resolveLyrics(songId: string): Promise<LyricsResult> {
   // 穿过数值转换 —— 否则它会把这条路一直标成 SSRF
   if (!/^\d{1,20}$/.test(songId)) throw new AppleUpstreamError("songId 不是目录 ID");
   const id = BigInt(songId).toString();
-  // v2：多了 words。旧条目里没有这个字段，键不换的话有逐字版本的歌会被行级那份挡一星期
-  const cacheKey = `lyrics:v2:${storefront()}:${id}`;
+  // v4：多了 songwriters 字段
+  const cacheKey = `lyrics:v4:${storefront()}:${id}`;
 
   const [hit, failure] = await Promise.all([
     get<LyricsResult>(cacheKey),
@@ -121,8 +123,8 @@ async function loadLyrics(songId: string): Promise<LyricsResult> {
     }
     const ttml = json?.data?.[0]?.attributes?.ttml;
     if (!ttml) continue;
-    const { lines } = parseLyricsTtml(ttml);
-    if (lines.length) return { lines };
+    const { lines, songwriters } = parseLyricsTtml(ttml);
+    if (lines.length) return { lines, songwriters };
   }
   return NO_LYRICS;
 }

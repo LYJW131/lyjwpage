@@ -34,6 +34,8 @@ export type ParsedLyrics = {
   timing: LyricsTiming;
   /** 按 startMs 升序。没有同步信息（timing=None、或 <p> 不带 begin）时为空 */
   lines: LyricLine[];
+  /** 从 <head><metadata><songwriters> 解析出的词曲作者 / 创作者名单 */
+  songwriters?: string[];
 };
 
 /**
@@ -164,14 +166,31 @@ function lineContent(inner: string): { text: string; words: LyricWord[] } {
   return { text: out.replace(/\s+/g, " ").trim(), words };
 }
 
+function parseSongwriters(xml: string): string[] {
+  const match = xml.match(/<songwriters>([\s\S]*?)<\/songwriters>/i);
+  if (!match) return [];
+  const writers: string[] = [];
+  const re = /<songwriter[^>]*>([\s\S]*?)<\/songwriter>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(match[1])) !== null) {
+    const name = decodeEntities(m[1]).trim();
+    if (name && !writers.includes(name)) writers.push(name);
+  }
+  return writers;
+}
+
 export function parseLyricsTtml(ttml: string): ParsedLyrics {
   const timingRaw = ttml.match(/itunes:timing\s*=\s*"([^"]*)"/)?.[1]?.toLowerCase();
   const timing: LyricsTiming =
     timingRaw === "word" ? "word" : timingRaw === "line" ? "line" : "none";
 
+  const songwriters = parseSongwriters(ttml);
+
   const bodyStart = ttml.search(/<body[\s>]/);
   const bodyEnd = ttml.lastIndexOf("</body>");
-  if (timing === "none" || bodyStart < 0) return { timing, lines: [] };
+  if (timing === "none" || bodyStart < 0) {
+    return { timing, lines: [], songwriters: songwriters.length ? songwriters : undefined };
+  }
   const body = ttml.slice(bodyStart, bodyEnd < 0 ? undefined : bodyEnd);
 
   const lines: LyricLine[] = [];
@@ -188,5 +207,5 @@ export function parseLyricsTtml(ttml: string): ParsedLyrics {
     lines.push(line);
   }
   lines.sort((a, b) => a.startMs - b.startMs);
-  return { timing, lines };
+  return { timing, lines, songwriters: songwriters.length ? songwriters : undefined };
 }
