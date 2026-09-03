@@ -1,15 +1,14 @@
-# GitHub 默认 CodeQL 会扫到 reporters/iphone-telemetry-hub 里的 Swift，
-# 但 autobuild 只在仓库根目录找 .xcodeproj / Package.swift。这个工程的
-# .xcodeproj 是 xcodegen 从 project.yml 生成的，故意不入库，所以默认
-# 配置一扫 Swift 就失败（autobuild: no-project-found）。
+# 只扫 JS/TS 和 Actions，不扫 reporters/iphone-telemetry-hub 里的 Swift。
 #
-# 这里改成 advanced setup：JS/TS 和 Actions 还是 none，Swift 自己
-# generate 再对着模拟器编（不签名 —— CI 没有设备，也申请不了带
-# HealthKit 的描述文件）。
+# Swift 那一路从前是 advanced setup 里自己 xcodegen 再对着模拟器编（默认
+# autobuild 找不到故意不入库的 .xcodeproj），但那个 macOS job 每次都要跑
+# 十几分钟，把整条 CodeQL 拖着不出结果；2026-09-03 去掉。要重新加回来，
+# 记得 brew 必须在 init 之前（init 注入 DYLD_INSERT_LIBRARIES，brew 会拒装），
+# 编译必须在 init 之后（靠 tracing 编译器抽 Swift）。
 #
-# 这个文件和 GitHub 的 CodeQL default setup 不能同时开：advanced
-# 交上去的 SARIF 会被拒（"cannot be processed when the default setup
-# is enabled"）。仓库里 default setup 已经关掉。
+# 仍然是 advanced setup，和 GitHub 的 CodeQL default setup 不能同时开：
+# advanced 交上去的 SARIF 会被拒（"cannot be processed when the default
+# setup is enabled"）。仓库里 default setup 已经关掉。
 name: CodeQL
 
 on:
@@ -29,57 +28,19 @@ permissions:
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - language: javascript-typescript
-            build-mode: none
-            os: ubuntu-latest
-          - language: actions
-            build-mode: none
-            os: ubuntu-latest
-          - language: swift
-            build-mode: manual
-            os: macos-latest
+        language: [javascript-typescript, actions]
 
     steps:
       - uses: actions/checkout@v5
 
-      # brew 必须在 CodeQL init 之前。init 会注入 DYLD_INSERT_LIBRARIES
-      # 做编译 tracing，brew 会以为自己跑在 Rosetta 下，拒绝往
-      # /opt/homebrew 装东西。
-      - name: Install XcodeGen
-        if: matrix.language == 'swift'
-        env:
-          HOMEBREW_NO_AUTO_UPDATE: "1"
-          HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: "1"
-        run: brew install xcodegen
-
       - uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
-          build-mode: ${{ matrix.build-mode }}
-
-      # 必须发生在 init 之后：CodeQL 靠 tracing 编译器调用才能抽 Swift。
-      # 装到真机那套（对着具体设备、自动签名、HealthKit 描述文件）在
-      # GitHub-hosted runner 上跑不了，见 build-install.sh 里那段注释。
-      - name: Build iPhone Telemetry Hub
-        if: matrix.build-mode == 'manual'
-        working-directory: reporters/iphone-telemetry-hub
-        run: |
-          xcodegen generate
-          xcodebuild \
-            -project iPhoneTelemetryHub.xcodeproj \
-            -scheme iPhoneTelemetryHub \
-            -configuration Debug \
-            -destination 'generic/platform=iOS Simulator' \
-            -derivedDataPath "$RUNNER_TEMP/iphone-telemetry-hub-codeql" \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY= \
-            build
+          build-mode: none
 
       - uses: github/codeql-action/analyze@v4
         with:
