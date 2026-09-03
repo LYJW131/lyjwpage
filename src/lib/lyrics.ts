@@ -57,12 +57,9 @@ function storefront(): string {
  * 而它一个键只吃一个 TTL。in-flight 去重和 5 秒负缓存照动态封面那套。
  */
 export async function resolveLyrics(songId: string): Promise<LyricsResult> {
-  // 目录 ID 只会是一串数字。路由那边已经查过，这里再收一道：拼进 URL 的东西
-  // 不该指望调用方守规矩。过一遍 BigInt 再转回来，而不是只用正则判：拼进 URL 的
-  // 从此是一个由数值重新生成的字符串，CodeQL 的污点追踪不认正则当屏障，但不会
-  // 穿过数值转换 —— 否则它会把这条路一直标成 SSRF
+  // 目录 ID 只会是一串数字；现在它来自快照（Apple 目录查回来的），这里只是防御性再查一道
   if (!/^\d{1,20}$/.test(songId)) throw new AppleUpstreamError("songId 不是目录 ID");
-  const id = BigInt(songId).toString();
+  const id = songId;
   // v4：多了 songwriters 字段
   const cacheKey = `lyrics:v4:${storefront()}:${id}`;
 
