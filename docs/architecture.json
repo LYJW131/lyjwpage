@@ -8,7 +8,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "https://github.com/LYJW131/lyjwpage",
-      "revision": "f6109aaad66a6ece2785381e27dabcb9cdf08bce"
+      "revision": "311baf28950baada48232eefdb912d4cdb7e7d3b"
     },
     "views": [
       {
@@ -75,7 +75,7 @@
       "type": "external",
       "label": "server-reporter",
       "sublabel": "东京落地节点 · systemd",
-      "tag": "每 30 秒",
+      "tag": "三档 60s / 2min / 15min",
       "pos": [
         130,
         60
@@ -98,7 +98,7 @@
       "type": "cloud",
       "label": "playstation-reporter",
       "sublabel": "Worker · cron 闸门",
-      "tag": "自适应",
+      "tag": "三档 · 每分钟 cron 闸门",
       "pos": [
         130,
         178
@@ -338,6 +338,35 @@
       "tag": "浏览器直连"
     },
     {
+      "id": "apple_music",
+      "type": "external",
+      "label": "Apple Music",
+      "sublabel": "目录 API · amp-api",
+      "tag": "站点自决",
+      "pos": [
+        820,
+        170
+      ],
+      "size": [
+        175,
+        88
+      ],
+      "sources": [
+        {
+          "path": "src/lib/apple-music.ts",
+          "label": "目录查询"
+        },
+        {
+          "path": "src/lib/apple-web-token.ts",
+          "label": "amp-api 的 web token"
+        },
+        {
+          "path": "src/app/api/lyrics/route.ts",
+          "label": "歌词 / 动态封面按此刻在播自决"
+        }
+      ]
+    },
+    {
       "id": "online_counter",
       "type": "cloud",
       "label": "online-counter",
@@ -497,6 +526,13 @@
       ]
     },
     {
+      "id": "v_apple",
+      "from": "vercel",
+      "to": "apple_music",
+      "label": "目录 · 动态封面 · 歌词",
+      "variant": "dashed"
+    },
+    {
       "id": "helpers_browser",
       "from": "edge_helpers",
       "to": "browser",
@@ -526,7 +562,7 @@
       "id": "count_psn",
       "from": "online_counter",
       "to": "psn_reporter",
-      "label": "GET /count 调频（可见）",
+      "label": "GET /count 调频（可见）· 三家都读",
       "variant": "dashed",
       "fromSide": "bottom",
       "toSide": "left",
@@ -562,30 +598,6 @@
           750
         ]
       ]
-    },
-    {
-      "id": "count_vps",
-      "from": "online_counter",
-      "to": "vps",
-      "variant": "dashed"
-    },
-    {
-      "id": "push_count_vps",
-      "from": "live_push",
-      "to": "vps",
-      "variant": "dashed"
-    },
-    {
-      "id": "push_count_psn",
-      "from": "live_push",
-      "to": "psn_reporter",
-      "variant": "dashed"
-    },
-    {
-      "id": "push_count_lan",
-      "from": "live_push",
-      "to": "lan_reporters",
-      "variant": "dashed"
     }
   ],
   "cards": [
@@ -603,8 +615,8 @@
       "title": "上报侧的节奏",
       "items": [
         "图上的源站归属取自各上报器文档里的默认 SITE_URL，MacTelemetryHub 不在本仓库内",
-        "server-reporter 每 30 秒必发一次，那份快照本身就是心跳",
-        "playstation-reporter 每分钟 cron 只是闸门，没人在线时退回约 15 分钟一轮"
+        "三家上报器逐档同数：有页面可见 60 秒、只是开着 2 分钟、都没有 15 分钟；server-reporter 每轮必发，那份快照本身就是心跳",
+        "playstation-reporter 每分钟 cron 只是闸门，按同一套三档决定这一分钟要不要真的去问 PSN"
       ]
     },
     {
@@ -612,7 +624,9 @@
       "title": "图上没画的几条",
       "items": [
         "浏览器按各自部署的 R2_PUBLIC_BASE_URL 直接取图，站点只做 HeadObject 存在性检查",
-        "站点唯一主动出网的一路是 GitHub 贡献热力图，走 api.github.com/graphql",
+        "三个上报器每轮读两个人头数定档：online-counter 的 /count（可见）画了到 PlayStation、内网那两条，server-reporter 那条和 live-push 的（页面开着）三条都没画",
+        "站点主动出网只有两路：GitHub 贡献热力图（api.github.com/graphql，没画）和 Apple Music；后者两份生产都打，图上只画了主站那条",
+        "歌词和动态封面浏览器不传参，站点按此刻在播那首自决，响应带 songId / link 供浏览器对号",
         "musickit-token 签的是每位访客的公开令牌，和 /api/ingest/apple-music 的 GET 凭据不共用一条路径"
       ]
     }
