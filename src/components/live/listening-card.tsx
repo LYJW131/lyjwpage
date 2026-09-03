@@ -837,9 +837,7 @@ function HeroWrapper({
   // h-full：外层把 hero 钉在 h-20，这里填满；高度锁定靠绝对定位叠层，不靠 overflow
   const className = cn(
     "group h-full rounded-md",
-    wideLyrics
-      ? "grid grid-cols-1 md:grid-cols-2"
-      : "grid grid-cols-1 md:flex md:gap-3",
+    wideLyrics ? "grid grid-cols-2" : "flex gap-3",
   );
   return link ? (
     <a
@@ -981,11 +979,16 @@ export function ListeningCard({
   );
 
   /**
-   * 移动端独立歌词区域：在移动端曲目有歌词时（不受宽屏属性限制），另起独立一行展示
+   * 移动端独立歌词区域：在移动端曲目有歌词时另起一行展示。
+   * 切歌期间若新曲目目录信息尚在解析中（resolvedSongId 为空），保持展示骨架屏，
+   * 避免因短暂未判定是否有歌词而导致卡片高度反复收缩和弹跳。
    */
+  const isResolvingTrack = localActive && resolvedSongId == null;
   const showMobileLyrics = Boolean(
     localActive &&
-      (Boolean(lyrics && lyrics.length > 0) || (lyricsLoading && resolvedHasLyrics)),
+      (Boolean(lyrics && lyrics.length > 0) ||
+        (lyricsLoading && resolvedHasLyrics) ||
+        isResolvingTrack),
   );
 
   /**
@@ -1118,7 +1121,7 @@ export function ListeningCard({
             首屏「读取中」不进 AnimatePresence：占位态和 hero 根本不是同一个东西，
             让它们互相淡入淡出没有意义，只会在数据到达时糊一下。等有数据再挂载，
             initial={false} 就会直接跳过入场动画，首屏不播这一下。 */}
-        <div className={cn("relative shrink-0", showMobileLyrics ? "h-auto min-h-20 md:h-20" : "h-20")}>
+        <div className="relative h-20 shrink-0">
           {!hero ? (
             <HeroWrapper link={null}>
               <div className="relative aspect-square w-20 shrink-0 overflow-hidden rounded-md border border-line bg-muted" />
@@ -1136,7 +1139,7 @@ export function ListeningCard({
             <AnimatePresence initial={false}>
               <motion.div
                 key={hero.key}
-                className={cn(showMobileLyrics ? "relative md:absolute md:inset-0" : "absolute inset-0")}
+                className="absolute inset-0"
                 variants={reduced ? STATIC_VARIANTS : HERO_VARIANTS}
                 initial="initial"
                 animate="animate"
@@ -1270,26 +1273,42 @@ export function ListeningCard({
                       )}
                     </div>
                   )}
-
-                  {showMobileLyrics && (
-                    <div className="mt-3 min-w-0 border-t border-line/60 pt-2.5 md:hidden">
-                      {lyrics ? (
-                        <HeroLyrics
-                          lyrics={lyrics}
-                          track={hero.track!}
-                          songwriters={songwriters}
-                          reduced={Boolean(reduced)}
-                        />
-                      ) : (
-                        <HeroLyricsSkeleton />
-                      )}
-                    </div>
-                  )}
                 </HeroWrapper>
               </motion.div>
             </AnimatePresence>
           )}
         </div>
+
+        {/* 移动端独立三行滚动歌词区域：位于播放器下方，切歌时与上方播放器解耦，
+            高度固定为 80px，彻底消除切歌时卡片高度上下弹跳抖动 */}
+        <AnimatePresence initial={false}>
+          {showMobileLyrics && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={
+                reduced
+                  ? { duration: 0 }
+                  : { duration: 0.25, ease: "easeInOut" }
+              }
+              className="overflow-hidden md:hidden"
+            >
+              <div className="mt-3 min-w-0 border-t border-line/60 pt-2.5">
+                {lyrics && hero?.track ? (
+                  <HeroLyrics
+                    lyrics={lyrics}
+                    track={hero.track}
+                    songwriters={songwriters}
+                    reduced={Boolean(reduced)}
+                  />
+                ) : (
+                  <HeroLyricsSkeleton />
+                )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/*
           再往前的几项。上游最多给 10 条。窄屏和桌面半宽横滑两页、宽态 4×2，
