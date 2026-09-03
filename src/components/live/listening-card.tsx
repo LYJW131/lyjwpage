@@ -952,6 +952,10 @@ export function ListeningCard({
    * 「主人停了」，先暂停、解析恢复再播放，就是切歌边界那种一停一播的来源。
    * 同一首还在播就沿用上一次解析出的 songId / 预排队列；换歌后新曲还没解析
    * 出来时不沿用 —— 那是别的歌，宁可等。
+   *
+   * link 和 songId 出自同一次目录查询，一起抖、一起丢，所以也得一起闩住：
+   * 动态封面按 hero.link 取，link 一空 videoUrl 就空，<video> 直接卸掉、
+   * 解析恢复再从头挂一个 —— 看起来就是封面播着播着定住一会、又从头播。
    */
   // 专辑也进键：录音室版和现场版同名同艺人，闩住上一首的 songId 会让跟听和歌词
   // 在新曲解析出来之前先按旧录音走一截
@@ -961,6 +965,7 @@ export function ListeningCard({
   const [lookupLatch, setLookupLatch] = useState<{
     key: string;
     songId: string;
+    link: string | null;
     upcomingSongIds: string[];
     hasLyrics: boolean;
   } | null>(null);
@@ -974,6 +979,7 @@ export function ListeningCard({
     setLookupLatch({
       key: trackKey,
       songId: live.songId,
+      link: live.link,
       upcomingSongIds: live.upcomingSongIds,
       hasLyrics: live.hasLyrics,
     });
@@ -1038,8 +1044,9 @@ export function ListeningCard({
         title: localTrack!.title ?? "",
         // 只放艺人：标题已经是曲名，专辑名多半是「曲名 - Single」这种同义重复
         subtitle: localTrack!.artist ?? "",
-        // 设备给不出可分享的地址，服务端拿曲名 + 艺人去目录里解析出来的
-        link: live?.link ?? null,
+        // 设备给不出可分享的地址，服务端拿曲名 + 艺人去目录里解析出来的；
+        // 解析抖掉的那半分钟沿用闩住的那条，动态封面才不会跟着拆一次
+        link: live?.link ?? latched?.link ?? null,
         label:
           localTrack!.state === "playing"
             ? localTrack!.repeatOne
