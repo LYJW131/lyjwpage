@@ -4,6 +4,13 @@ import NumberFlow, { NumberFlowGroup } from "@number-flow/react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import Image from "next/image";
 import {
+  ArrowUpRight,
+  ArrowLeft,
+  ArrowRight,
+  Search,
+  Disc3,
+} from "lucide-react";
+import {
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -44,9 +51,20 @@ import type {
   NowListeningPayload,
   StatusResponse,
 } from "@/lib/types";
-import { appleArtwork, ARTWORK_SCALE, needsOptimizing } from "@/lib/apple-artwork";
-import type { ArtworkDataUri, ArtworkPlaceholders } from "@/lib/artwork-placeholder";
+import {
+  appleArtwork,
+  ARTWORK_SCALE,
+  needsOptimizing,
+} from "@/lib/apple-artwork";
+import type {
+  ArtworkDataUri,
+  ArtworkPlaceholders,
+} from "@/lib/artwork-placeholder";
 import { cn } from "@/lib/utils";
+import {
+  selectedRecordIndex,
+  type RecordSelection,
+} from "@/lib/signal-presentation";
 
 /**
  * 列表变了会把完整数据推过来，轮询只兜「推送整体停用」这一种情况，所以给得很松。
@@ -294,7 +312,11 @@ function Clock({ milliseconds }: { milliseconds: number }) {
  */
 const LYRIC_LINE_VARIANTS = {
   initial: { opacity: 0, y: 4 },
-  animate: { opacity: 1, y: 0, transition: { duration: 0.26, ease: [0.22, 1, 0.36, 1] } },
+  animate: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.26, ease: [0.22, 1, 0.36, 1] },
+  },
   exit: { opacity: 0, y: -4, transition: { duration: 0.14, ease: "easeIn" } },
 };
 
@@ -309,7 +331,13 @@ const LYRIC_LINE_VARIANTS = {
  * position 和进度条、换句的闹钟是同一份算法（lib/track-position），字亮到哪儿
  * 和进度条走到哪儿永远对得上。
  */
-function LyricWords({ words, track }: { words: LyricWord[]; track: LocalNowPlaying }) {
+function LyricWords({
+  words,
+  track,
+}: {
+  words: LyricWord[];
+  track: LocalNowPlaying;
+}) {
   const ref = useRef<HTMLSpanElement>(null);
   const { state, observedAt, positionMs, durationMs, repeatOne } = track;
 
@@ -425,7 +453,8 @@ function HeroProgress({
   // 画在进度条上的和访客耳朵里放的会慢慢错开，还看不出是谁错了
   const position = trackPositionMs(track, now);
   const percent = track.durationMs ? (position / track.durationMs) * 100 : 0;
-  const gradient = palette && palette.length >= 2 ? paletteGradient(palette) : undefined;
+  const gradient =
+    palette && palette.length >= 2 ? paletteGradient(palette) : undefined;
 
   /**
    * 换句的那一刻单独定一个闹钟，不靠上面那个秒级计时器。
@@ -441,13 +470,22 @@ function HeroProgress({
   const { observedAt, positionMs, durationMs, repeatOne } = track;
   useEffect(() => {
     if (!playing || !lyrics) return;
-    const anchor = { state: "playing" as const, observedAt, positionMs, durationMs, repeatOne };
+    const anchor = {
+      state: "playing" as const,
+      observedAt,
+      positionMs,
+      durationMs,
+      repeatOne,
+    };
     const at = trackPositionMs(anchor, Math.max(now, Date.now()));
     const { until } = cueAt(lyrics, at);
     const target = until ?? (repeatOne && durationMs > 0 ? durationMs : null);
     if (target == null) return;
     // 多留几毫秒：闹钟绝不会早响，但要保证响的时候 position 已经过了边界
-    const timer = window.setTimeout(() => setTicked(Date.now()), Math.max(16, target - at + 8));
+    const timer = window.setTimeout(
+      () => setTicked(Date.now()),
+      Math.max(16, target - at + 8),
+    );
     return () => window.clearTimeout(timer);
   }, [playing, lyrics, now, observedAt, positionMs, durationMs, repeatOne]);
 
@@ -478,7 +516,10 @@ function HeroProgress({
                 <AnimatePresence initial={false} mode="popLayout">
                   <motion.span
                     key={cue.index}
-                    className={cn("block truncate", line != null && "text-foreground")}
+                    className={cn(
+                      "block truncate",
+                      line != null && "text-foreground",
+                    )}
                     variants={reduced ? STATIC_VARIANTS : LYRIC_LINE_VARIANTS}
                     initial="initial"
                     animate="animate"
@@ -554,7 +595,9 @@ function HeroLyrics({
     const first = lyrics[0];
     const last = lyrics[lyrics.length - 1];
     const creator = (
-      songwriters && songwriters.length > 0 ? songwriters.join("、") : track.artist
+      songwriters && songwriters.length > 0
+        ? songwriters.join("、")
+        : track.artist
     )?.trim();
 
     // 1. 开头：类似 Apple Music 的 3 个 · 作为启动信号
@@ -570,9 +613,21 @@ function HeroLyrics({
       words:
         dotDuration > 0
           ? [
-              { startMs: introStart, endMs: introStart + dotDuration, text: "·" },
-              { startMs: introStart + dotDuration, endMs: introStart + dotDuration * 2, text: "·" },
-              { startMs: introStart + dotDuration * 2, endMs: first.startMs, text: "·" },
+              {
+                startMs: introStart,
+                endMs: introStart + dotDuration,
+                text: "·",
+              },
+              {
+                startMs: introStart + dotDuration,
+                endMs: introStart + dotDuration * 2,
+                text: "·",
+              },
+              {
+                startMs: introStart + dotDuration * 2,
+                endMs: first.startMs,
+                text: "·",
+              },
             ]
           : undefined,
     };
@@ -592,14 +647,31 @@ function HeroLyrics({
   const { observedAt, positionMs, durationMs, repeatOne } = track;
   useEffect(() => {
     if (!playing || !displayLyrics.length) return;
-    const anchor = { state: "playing" as const, observedAt, positionMs, durationMs, repeatOne };
+    const anchor = {
+      state: "playing" as const,
+      observedAt,
+      positionMs,
+      durationMs,
+      repeatOne,
+    };
     const at = trackPositionMs(anchor, Math.max(now, Date.now()));
     const { until } = cueAt(displayLyrics, at);
     const target = until ?? (repeatOne && durationMs > 0 ? durationMs : null);
     if (target == null) return;
-    const timer = window.setTimeout(() => setTicked(Date.now()), Math.max(16, target - at + 8));
+    const timer = window.setTimeout(
+      () => setTicked(Date.now()),
+      Math.max(16, target - at + 8),
+    );
     return () => window.clearTimeout(timer);
-  }, [playing, displayLyrics, now, observedAt, positionMs, durationMs, repeatOne]);
+  }, [
+    playing,
+    displayLyrics,
+    now,
+    observedAt,
+    positionMs,
+    durationMs,
+    repeatOne,
+  ]);
 
   const position = trackPositionMs(track, now);
   const cue = cueAt(displayLyrics, position);
@@ -616,7 +688,11 @@ function HeroLyrics({
   } else {
     // 间奏、前奏或尾声：寻找最近的一行保持视野连续
     let index = -1;
-    for (let i = 0; i < displayLyrics.length && displayLyrics[i].startMs <= position; i += 1) {
+    for (
+      let i = 0;
+      i < displayLyrics.length && displayLyrics[i].startMs <= position;
+      i += 1
+    ) {
       index = i;
     }
     activeIdx = Math.max(0, Math.min(index, lastLyricIdx));
@@ -772,7 +848,10 @@ function TrackRow({
   );
 }
 
-function dedupeListeningItems(items: ListeningItem[], currentId: string | null) {
+function dedupeListeningItems(
+  items: ListeningItem[],
+  currentId: string | null,
+) {
   const seen = new Set<string>();
 
   return items.filter((item) => {
@@ -897,6 +976,7 @@ export function ListeningCard({
   artworkPlaceholders,
   className,
   wide = false,
+  presentation = "card",
 }: {
   fallback: StatusResponse<ListeningPayload>;
   nowFallback: StatusResponse<NowListeningPayload>;
@@ -913,6 +993,7 @@ export function ListeningCard({
   className?: string;
   /** 充电卡隐藏、桌面端横跨两列时，列表切成 4 × 2 的无滚动布局。 */
   wide?: boolean;
+  presentation?: "card" | "stage";
 }) {
   // 有东西可显示就走松的那档，空着就快一点，见上面两个常量
   const { data, error, isLoading } = useStatus<ListeningPayload>(
@@ -921,9 +1002,13 @@ export function ListeningCard({
     { fallback },
   );
   useLiveEvents();
-  const { data: live } = useStatus<NowListeningPayload>(NOW_LISTENING_PATH, MUSIC_REFRESH_MS, {
-    fallback: nowFallback,
-  });
+  const { data: live } = useStatus<NowListeningPayload>(
+    NOW_LISTENING_PATH,
+    MUSIC_REFRESH_MS,
+    {
+      fallback: nowFallback,
+    },
+  );
   /**
    * 暂停宽限期到点时再问一次。
    *
@@ -935,9 +1020,11 @@ export function ListeningCard({
   useExpiryRefetch(NOW_LISTENING_PATH, live?.expiresInMs);
 
   const reduced = useReducedMotion();
+  const [recordSelection, setRecordSelection] = useState<RecordSelection>(null);
+  const [recordQuery, setRecordQuery] = useState("");
 
   // MacBook 与 HomePod 都没有可用状态时才退回最近播放列表。
-  const localMusic = live?.idle ? null : live?.music ?? null;
+  const localMusic = live?.idle ? null : (live?.music ?? null);
   const localTrack =
     localMusic?.title && localMusic.state !== "stopped" ? localMusic : null;
   // 来源仍然只由服务端选，前端不重算宽限期，只负责在它到期时再问一次
@@ -984,17 +1071,22 @@ export function ListeningCard({
       hasLyrics: live.hasLyrics,
     });
   }
-  const latched = trackKey && lookupLatch?.key === trackKey ? lookupLatch : null;
+  const latched =
+    trackKey && lookupLatch?.key === trackKey ? lookupLatch : null;
   const resolvedSongId = live?.songId ?? latched?.songId ?? null;
-  const resolvedUpcoming = live?.songId ? live.upcomingSongIds : latched?.upcomingSongIds ?? [];
-  const resolvedHasLyrics = live?.songId ? live.hasLyrics : latched?.hasLyrics ?? false;
+  const resolvedUpcoming = live?.songId
+    ? live.upcomingSongIds
+    : (latched?.upcomingSongIds ?? []);
+  const resolvedHasLyrics = live?.songId
+    ? live.hasLyrics
+    : (latched?.hasLyrics ?? false);
 
   // 同步歌词跟着闩住的那个 songId 走，和跟听同一份；目录说没有就不发请求
-  const { lyrics, songwriters, isLoading: lyricsLoading } = useLyrics(
-    resolvedSongId,
-    resolvedHasLyrics,
-    lyricsFallback,
-  );
+  const {
+    lyrics,
+    songwriters,
+    isLoading: lyricsLoading,
+  } = useLyrics(resolvedSongId, resolvedHasLyrics, lyricsFallback);
 
   /**
    * 宽屏且处于实时播放中时，若曲目包含歌词（已载入或正在载入），在右半侧开辟独立
@@ -1003,7 +1095,8 @@ export function ListeningCard({
   const showSideLyrics = Boolean(
     wide &&
       localActive &&
-      (Boolean(lyrics && lyrics.length > 0) || (lyricsLoading && resolvedHasLyrics)),
+      (Boolean(lyrics && lyrics.length > 0) ||
+        (lyricsLoading && resolvedHasLyrics)),
   );
 
   /**
@@ -1110,10 +1203,278 @@ export function ListeningCard({
       ? paletteGradient(motionData.colors)
       : undefined;
 
+  if (presentation === "stage") {
+    const records: Hero[] = [
+      ...(localActive && hero ? [hero] : []),
+      ...dedupeListeningItems(
+        data?.items ?? [],
+        localActive ? (live?.id ?? null) : null,
+      ).map((item) => ({
+        key: item.id,
+        artwork: item.artwork,
+        title: item.title,
+        subtitle: item.artist,
+        link: item.link,
+        label: "最近听过",
+        playing: false,
+        palette: item.palette,
+        durationMs: item.durationMs,
+        track: null,
+      })),
+    ];
+    const selectedIndex = selectedRecordIndex(records, recordSelection);
+    const selectRecord = (record: Hero) =>
+      setRecordSelection(
+        record.track ? { kind: "live" } : { kind: "record", id: record.key },
+      );
+    const selectedRecord = records[selectedIndex];
+    const filtered = records.filter(
+      (item) =>
+        !item.track &&
+        `${item.title} ${item.subtitle}`
+          .toLocaleLowerCase()
+          .includes(recordQuery.toLocaleLowerCase()),
+    );
+    return (
+      <div
+        className="records-exhibit"
+        data-scroll
+        onKeyDown={(event) => {
+          if (event.key === "Escape") setRecordSelection(null);
+        }}
+      >
+        {listenAlong.status !== "idle" &&
+          listenAlong.status !== "unavailable" && (
+            <div className="persistent-listen">
+              <ListenAlongButton listen={listenAlong} />
+            </div>
+          )}
+        {selectedRecord ? (
+          <div className="record-detail" key={selectedRecord.key}>
+            <div
+              className="detail-haze"
+              aria-hidden="true"
+              style={{
+                backgroundImage: selectedRecord.artwork
+                  ? `url("${appleArtwork(selectedRecord.artwork, 600)}")`
+                  : undefined,
+              }}
+            />
+            <button
+              className="detail-back"
+              autoFocus
+              onClick={() => setRecordSelection(null)}
+            >
+              <ArrowLeft size={28} /> 返回专辑阵列
+            </button>
+            <button
+              className="exhibit-arrow arrow-prev"
+              aria-label="上一张专辑"
+              onClick={() =>
+                selectRecord(
+                  records[
+                    (selectedIndex + records.length - 1) % records.length
+                  ],
+                )
+              }
+            >
+              <ArrowLeft />
+            </button>
+            <div className="detail-art corner-frame">
+              <HeroMotionArtwork
+                artwork={selectedRecord.artwork}
+                title={selectedRecord.title}
+                videoUrl={
+                  selectedRecord.key === hero?.key && motionData?.hasMotion
+                    ? motionData.videoUrl
+                    : null
+                }
+                placeholder={
+                  selectedRecord.artwork
+                    ? artworkPlaceholders.hero[selectedRecord.artwork]
+                    : undefined
+                }
+                reduced={Boolean(reduced)}
+                displaySize={440}
+              />
+            </div>
+            <div className="detail-copy" data-scroll>
+              <span className="micro">
+                {selectedRecord.track
+                  ? "LIVE TRANSMISSION"
+                  : "PERSONAL RECORD / " +
+                    String(selectedIndex + 1).padStart(2, "0")}
+              </span>
+              <h2>{selectedRecord.title}</h2>
+              <p className="detail-artist">
+                {selectedRecord.subtitle || "未知艺人"}
+              </p>
+              <div className="detail-divider" aria-hidden="true" />
+              {selectedRecord.track ? (
+                <>
+                  <span className="detail-status">
+                    <Bars
+                      state={selectedRecord.playing ? "playing" : "paused"}
+                    />
+                    {selectedRecord.label} ·{" "}
+                    {selectedRecord.track.source === "homepod"
+                      ? "HomePod mini"
+                      : "MacBook Pro"}
+                  </span>
+                  <div className="record-progress">
+                    <HeroProgress
+                      track={selectedRecord.track}
+                      subtitle={selectedRecord.track.album ?? ""}
+                      palette={selectedRecord.palette}
+                      motionGradient={motionGradient}
+                      lyrics={lyrics}
+                      sideLyrics
+                    />
+                  </div>
+                  {lyrics ? (
+                    <div className="record-lyrics">
+                      <HeroLyrics
+                        lyrics={lyrics}
+                        track={selectedRecord.track}
+                        songwriters={songwriters}
+                        reduced={Boolean(reduced)}
+                      />
+                    </div>
+                  ) : lyricsLoading ? (
+                    <HeroLyricsSkeleton />
+                  ) : null}
+                </>
+              ) : (
+                <div className="record-description">
+                  <span>收录于最近的声音记忆。</span>
+                  <p>
+                    总时长{" "}
+                    <b>
+                      {selectedRecord.durationMs != null
+                        ? formatDuration(selectedRecord.durationMs)
+                        : "—"}
+                    </b>
+                  </p>
+                </div>
+              )}
+              <div className="detail-actions">
+                {selectedRecord.track && showListenAlong && (
+                  <ListenAlongButton listen={listenAlong} />
+                )}{" "}
+                {selectedRecord.link && (
+                  <a
+                    className="outline-action"
+                    href={selectedRecord.link}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                  >
+                    APPLE MUSIC <ArrowUpRight size={16} />
+                  </a>
+                )}
+              </div>
+            </div>
+            <button
+              className="exhibit-arrow arrow-next"
+              aria-label="下一张专辑"
+              onClick={() =>
+                selectRecord(records[(selectedIndex + 1) % records.length])
+              }
+            >
+              <ArrowRight />
+            </button>
+          </div>
+        ) : (
+          <>
+            <div className="exhibit-toolbar">
+              <label className="exhibit-search">
+                <input
+                  value={recordQuery}
+                  onChange={(event) => setRecordQuery(event.target.value)}
+                  placeholder="搜索声音记忆"
+                  aria-label="搜索专辑"
+                />
+                <Search size={21} />
+              </label>
+              <div className="exhibit-heading">
+                {localActive && hero && (
+                  <button
+                    className="live-entry"
+                    onClick={() => selectRecord(hero)}
+                  >
+                    ● 正在听
+                  </button>
+                )}
+                <h2>
+                  <Disc3 size={25} />
+                  专辑阵列
+                </h2>
+              </div>
+            </div>
+            <div className="cover-matrix" data-scroll aria-label="最近播放">
+              {filtered.map((item, i) => (
+                <button
+                  className="matrix-item"
+                  key={item.key}
+                  onClick={() => selectRecord(item)}
+                  aria-label={`${item.title} · ${item.subtitle}`}
+                  style={{ "--item-delay": `${i * 35}ms` } as CSSProperties}
+                >
+                  <span className="matrix-cover">
+                    {item.artwork ? (
+                      <Image
+                        src={appleArtwork(item.artwork, 480)!}
+                        alt={item.title}
+                        width={480}
+                        height={480}
+                        unoptimized={!needsOptimizing(item.artwork)}
+                        className="matrix-image"
+                      />
+                    ) : (
+                      <Disc3 size={50} />
+                    )}
+                    <span className="matrix-hover">
+                      <b>{item.title}</b>
+                      <small>{item.subtitle}</small>
+                      <ArrowUpRight size={24} />
+                    </span>
+                  </span>
+                  <span className="matrix-caption">
+                    {String(i + 1).padStart(2, "0")} <span>{item.title}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+            {!filtered.length && (
+              <div className="signal-empty">
+                {isLoading
+                  ? "正在读取声音记录…"
+                  : error
+                    ? "Apple Music 暂时未连接"
+                    : recordQuery
+                      ? "没有匹配的专辑"
+                      : "下一段旋律，尚未开始。"}
+              </div>
+            )}
+            <div className="exhibit-count">
+              <i /> {String(filtered.length).padStart(2, "0")} RECORDS / APPLE
+              MUSIC
+            </div>
+          </>
+        )}
+      </div>
+    );
+  }
+
   return (
     <Card
       label="Recently Played"
-      action={showListenAlong ? <ListenAlongButton listen={listenAlong} /> : "Apple Music"}
+      action={
+        showListenAlong ? (
+          <ListenAlongButton listen={listenAlong} />
+        ) : (
+          "Apple Music"
+        )
+      }
       className={cn("h-full min-h-93.5", className)}
     >
       <div className="flex min-h-0 flex-1 flex-col px-4 pb-4 pt-3">
@@ -1154,14 +1515,23 @@ export function ListeningCard({
                 transition={reduced ? STATIC_TRANSITION : undefined}
               >
                 <HeroWrapper link={hero.link} wideLyrics={showSideLyrics}>
-                  <div className={cn("flex min-w-0 flex-1 gap-3", showSideLyrics && "md:pr-5")}>
+                  <div
+                    className={cn(
+                      "flex min-w-0 flex-1 gap-3",
+                      showSideLyrics && "md:pr-5",
+                    )}
+                  >
                     <HeroMotionArtwork
                       artwork={hero.artwork}
                       placeholder={
-                        hero.artwork ? artworkPlaceholders.hero[hero.artwork] : undefined
+                        hero.artwork
+                          ? artworkPlaceholders.hero[hero.artwork]
+                          : undefined
                       }
                       title={hero.title}
-                      videoUrl={motionData?.hasMotion ? motionData.videoUrl : null}
+                      videoUrl={
+                        motionData?.hasMotion ? motionData.videoUrl : null
+                      }
                       reduced={Boolean(reduced)}
                     />
 
@@ -1183,13 +1553,19 @@ export function ListeningCard({
                         {/* 有 track 就是实时源：没在放就是暂停，冻住而不是弹回固定形状 */}
                         <Bars
                           state={
-                            hero.playing ? "playing" : hero.track ? "paused" : "idle"
+                            hero.playing
+                              ? "playing"
+                              : hero.track
+                                ? "paused"
+                                : "idle"
                           }
                         />
                         <span
                           className={cn(
                             "label-mono shrink-0",
-                            hero.playing ? "text-live" : "text-muted-foreground",
+                            hero.playing
+                              ? "text-live"
+                              : "text-muted-foreground",
                           )}
                         >
                           {hero.label}
@@ -1198,12 +1574,20 @@ export function ListeningCard({
                         {hero.track && (
                           <span className="ml-0.5 inline-flex min-w-0 items-center gap-1 rounded-sm border border-line px-1.5 py-px text-[10px] leading-4 text-muted-foreground">
                             {hero.track.source === "homepod" ? (
-                              <HomePodMiniIcon className="size-3 shrink-0" aria-hidden />
+                              <HomePodMiniIcon
+                                className="size-3 shrink-0"
+                                aria-hidden
+                              />
                             ) : (
-                              <MacBookProIcon className="size-3 shrink-0" aria-hidden />
+                              <MacBookProIcon
+                                className="size-3 shrink-0"
+                                aria-hidden
+                              />
                             )}
                             <span className="truncate">
-                              {hero.track.source === "homepod" ? "HomePod mini" : "MacBook Pro"}
+                              {hero.track.source === "homepod"
+                                ? "HomePod mini"
+                                : "MacBook Pro"}
                             </span>
                           </span>
                         )}
@@ -1231,7 +1615,10 @@ export function ListeningCard({
                           {/* 和实时那版的副标题行同构：左边艺人，右边时间。那边是
                               「已播 / 总长」，这边没有进度，只放总长。 */}
                           <div className="mt-px flex items-baseline gap-2 text-sm text-muted-foreground">
-                            <span className="min-w-0 flex-1 truncate" title={hero.subtitle}>
+                            <span
+                              className="min-w-0 flex-1 truncate"
+                              title={hero.subtitle}
+                            >
                               {hero.subtitle}
                             </span>
                             {hero.durationMs != null && (
@@ -1368,14 +1755,21 @@ export function ListeningCard({
                       <motion.div
                         key={restKeys[index]}
                         layout={!reduced}
-                        variants={reduced ? STATIC_VARIANTS : LIST_ITEM_VARIANTS}
+                        variants={
+                          reduced ? STATIC_VARIANTS : LIST_ITEM_VARIANTS
+                        }
                         initial="initial"
                         animate="animate"
                         exit="exit"
-                        transition={reduced ? STATIC_TRANSITION : LIST_TRANSITION}
+                        transition={
+                          reduced ? STATIC_TRANSITION : LIST_TRANSITION
+                        }
                         // 高度由 grid 轨道给；min-w-0 保住行内的 truncate
                         // 每页第一行吸附：宽态桌面 overflow:hidden，这条不会生效
-                        className={cn("min-w-0", index % VISIBLE_ROWS === 0 && "snap-start")}
+                        className={cn(
+                          "min-w-0",
+                          index % VISIBLE_ROWS === 0 && "snap-start",
+                        )}
                       >
                         <TrackRow
                           track={item}

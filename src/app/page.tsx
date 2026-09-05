@@ -1,14 +1,11 @@
+import { SignalTelemetry } from "@/components/signal/telemetry";
+import { SignalProfile } from "@/components/signal/profile";
 import { Footer } from "@/components/footer";
-import { Header } from "@/components/header";
-import { ContactCard } from "@/components/contact-card";
-import { ActivityCard } from "@/components/live/activity-card";
-import { LiveMediaPair } from "@/components/live/media-pair";
-import { ServerCard } from "@/components/live/server-card";
+import { SignalExperience } from "@/components/signal/experience";
+import { HeaderDesktop } from "@/components/live/live-desk-card";
+import { ListeningCard } from "@/components/live/listening-card";
 import { PlaystationBlock } from "@/components/live/playstation-block";
-import { TimezoneCard } from "@/components/live/timezone-card";
-import { VibeCodingCard } from "@/components/live/vibecoding-card";
 import { WatchingRow } from "@/components/live/watching-card";
-import { Section } from "@/components/ui/section";
 import { artworkPlaceholders } from "@/lib/artwork-placeholder";
 import { desktopIconDataUri } from "@/lib/desktop-icon-inline";
 import { githubAvatarDataUri } from "@/lib/github-avatar-icon";
@@ -93,7 +90,9 @@ export default async function Home() {
    * 命中后这里都不产生额外往返；三者彼此无关，未命中时并行把最坏等待压到单边的超时。
    */
   const [desktopIcon, artwork, lyrics] = await Promise.all([
-    desktopIconDataUri(desktop.ok ? (desktop.data.desktop?.iconUrl ?? null) : null),
+    desktopIconDataUri(
+      desktop.ok ? (desktop.data.desktop?.iconUrl ?? null) : null,
+    ),
     artworkPlaceholders(
       listening.ok ? listening.data.items.map((item) => item.artwork) : [],
       nowListening.ok ? (nowListening.data.music?.artworkUrl ?? null) : null,
@@ -102,54 +101,69 @@ export default async function Home() {
   ]);
 
   return (
-    <>
-      <Header desktop={desktop} desktopIconDataUri={desktopIcon} />
-
-      <main className="flex-1">
-        <div className="mx-auto my-3.5 w-[calc(100%-2rem)] max-w-5xl sm:my-4">
-          <Section id="live" className="p-0 sm:p-0">
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <ContactCard
-                avatarDataUri={avatarDataUri}
-                chartFallback={githubChart}
-                yearFallback={vibeCodingYear}
-              />
-              <TimezoneCard fallback={timezone} />
-              <LiveMediaPair
-                chargerFallback={charger}
-                powerBankFallback={powerBank}
-                listeningFallback={listening}
-                nowListeningFallback={nowListening}
-                lyricsFallback={
-                  lyrics && lyrics.lines.length
-                    ? { lines: lyrics.lines, songwriters: lyrics.songwriters }
-                    : null
-                }
-                artworkPlaceholders={artwork}
-              />
-              <ActivityCard fallback={activity} />
-              <ServerCard fallback={server} />
-              <VibeCodingCard fallback={vibeCoding} />
-            </div>
-
-            <PlaystationBlock
-              trophies={trophies}
-              playing={playing}
-              playingNow={playingNow}
-            />
-
-            <div id="watching" className="mt-6 scroll-mt-28 border-t border-line pt-5">
-              <div className="mb-3 flex items-baseline justify-between">
-                <h3 className="text-sm font-medium">最近在看</h3>
-                <span className="label-mono text-muted-foreground">Emby</span>
-              </div>
-              <WatchingRow fallback={watching} nowFallback={nowWatching} />
-            </div>
-          </Section>
-        </div>
-      </main>
-
-      <Footer />
-    </>
+    <SignalExperience
+      listening={listening}
+      nowListening={nowListening}
+      desktop={
+        <HeaderDesktop
+          key="desktop"
+          fallback={desktop}
+          iconDataUri={desktopIcon}
+        />
+      }
+      music={
+        <ListeningCard
+          key="music"
+          presentation="stage"
+          fallback={listening}
+          nowFallback={nowListening}
+          lyricsFallback={
+            lyrics && lyrics.lines.length
+              ? { lines: lyrics.lines, songwriters: lyrics.songwriters }
+              : null
+          }
+          artworkPlaceholders={artwork}
+          wide
+          className="signal-listening"
+        />
+      }
+      cinema={
+        <WatchingRow
+          key="cinema"
+          presentation="theatre"
+          fallback={watching}
+          nowFallback={nowWatching}
+        />
+      }
+      games={
+        <PlaystationBlock
+          key="games"
+          presentation="gallery"
+          trophies={trophies}
+          playing={playing}
+          playingNow={playingNow}
+        />
+      }
+      systems={
+        <SignalTelemetry
+          key="systems"
+          vibeCoding={vibeCoding}
+          server={server}
+          charger={charger}
+          powerBank={powerBank}
+          activity={activity}
+        />
+      }
+      about={
+        <SignalProfile
+          key="about"
+          avatarDataUri={avatarDataUri}
+          chartFallback={githubChart}
+          yearFallback={vibeCodingYear}
+          timezoneFallback={timezone}
+        />
+      }
+      footer={<Footer key="footer" />}
+    />
   );
 }

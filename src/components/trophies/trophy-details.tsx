@@ -15,11 +15,14 @@ import useSWR, { preload, useSWRConfig } from "swr";
 
 import { TrophyMetal } from "@/components/trophies/trophy-metal";
 import { LIST_TRANSITION, STATIC_TRANSITION } from "@/lib/motion";
-import {
-} from "@/lib/playstation-image";
 import { trophiesTilePath } from "@/lib/paths";
 import { site } from "@/lib/site";
-import type { StatusResponse, TrophiesPayload, Trophy, TrophyTitle } from "@/lib/types";
+import type {
+  StatusResponse,
+  TrophiesPayload,
+  Trophy,
+  TrophyTitle,
+} from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const CATALOG_REFRESH_MS = 10 * 60_000;
@@ -99,7 +102,9 @@ function formatEarnedRate(rate: number): string {
   return `${Number.isInteger(tenths) ? String(tenths) : tenths.toFixed(1)}%`;
 }
 
-async function fetchCatalog(path: string): Promise<StatusResponse<TrophiesPayload>> {
+async function fetchCatalog(
+  path: string,
+): Promise<StatusResponse<TrophiesPayload>> {
   const response = await fetch(path, { cache: "no-store" });
   if (!response.ok) throw new Error(`请求 ${path} 失败：${response.status}`);
   return response.json();
@@ -156,7 +161,12 @@ export function useTrophyCatalog(titleIds: string[] | null) {
   );
   return {
     titles: data?.ok ? data.data.titles : undefined,
-    error: data && !data.ok ? data.error : error ? String(error.message ?? error) : undefined,
+    error:
+      data && !data.ok
+        ? data.error
+        : error
+          ? String(error.message ?? error)
+          : undefined,
     isLoading,
   };
 }
@@ -212,23 +222,36 @@ function useRowSnap(topKey: string | undefined) {
  * 奖杯图那两格的边长：明细里是 size-11（44px），组条那格宽 w-10 但高度跟着
  * 行走、也在 44 上下。两处同一个数，取图时按它乘 3 倍。
  */
-const ICON_PX = 44;
 
-function TrophyRow({ trophy }: { trophy: Trophy }) {
+function TrophyRow({
+  trophy,
+  exhibit = false,
+}: {
+  trophy: Trophy;
+  exhibit?: boolean;
+}) {
   const hidden = trophy.hidden && !trophy.earned;
   const locked = !trophy.earned;
   const subtitle =
     trophyDetail(trophy) ??
-    (trophy.earned && trophy.earnedAt ? formatStamp(trophy.earnedAt) : "未解锁");
+    (trophy.earned && trophy.earnedAt
+      ? formatStamp(trophy.earnedAt)
+      : "未解锁");
   const rate = trophy.earnedRate;
   const fill = rate == null ? null : Math.min(100, Math.max(0, rate));
   return (
-    <div className="relative flex h-full items-center overflow-hidden rounded-md transition-colors hover:bg-surface-hover">
+    <div
+      className={
+        exhibit
+          ? "trophy-exhibit-row"
+          : "relative flex h-full items-center overflow-hidden rounded-md transition-colors hover:bg-surface-hover"
+      }
+    >
       {/*
        * 全球持有率的条就是行底那道半透明阴影，宽 = 百分比。
        * 不用 --live：那是实时数据的颜色。半透明才能让 hover 底色透出来。
        */}
-      {fill != null ? (
+      {fill != null && !exhibit ? (
         <div
           aria-hidden
           className="pointer-events-none absolute inset-y-0 left-0 bg-foreground/8"
@@ -270,7 +293,10 @@ function TrophyRow({ trophy }: { trophy: Trophy }) {
               className={cn(locked && "grayscale opacity-55")}
             />
             <span
-              className={cn("min-w-0 truncate text-sm", locked && "text-muted-foreground")}
+              className={cn(
+                "min-w-0 truncate text-sm",
+                locked && "text-muted-foreground",
+              )}
               title={hidden ? "隐藏奖杯" : trophy.name}
             >
               {hidden ? "隐藏奖杯" : trophy.name}
@@ -278,7 +304,10 @@ function TrophyRow({ trophy }: { trophy: Trophy }) {
             {/* 未解锁只靠灰阶和半透明表达，读屏取不到，补一句文本 */}
             {locked ? <span className="sr-only">未解锁</span> : null}
           </div>
-          <div className="truncate text-xs text-muted-foreground" title={subtitle}>
+          <div
+            className="truncate text-xs text-muted-foreground"
+            title={subtitle}
+          >
             {subtitle}
           </div>
         </div>
@@ -388,7 +417,9 @@ function GroupStrip({
               ) : null}
               <div className="min-w-0 flex-1 px-2 py-1.5">
                 <div className="truncate text-xs font-medium">{group.name}</div>
-                <div className="label-mono text-muted-foreground">{group.progress}%</div>
+                <div className="label-mono text-muted-foreground">
+                  {group.progress}%
+                </div>
               </div>
             </div>
           </div>
@@ -406,7 +437,10 @@ function TrophyViewport({
   children: ReactNode;
 }) {
   return (
-    <div className="relative" style={{ height: MIN_ROW_HEIGHT_PX * VISIBLE_ROWS }}>
+    <div
+      className="relative"
+      style={{ height: MIN_ROW_HEIGHT_PX * VISIBLE_ROWS }}
+    >
       <div
         ref={listRef}
         tabIndex={0}
@@ -437,7 +471,10 @@ function TrophySkeleton({ rows }: { rows: number }) {
   return (
     <TrophyViewport>
       {Array.from({ length: count }, (_, i) => (
-        <div key={i} className="flex h-full items-center gap-2.5 rounded-md px-2">
+        <div
+          key={i}
+          className="flex h-full items-center gap-2.5 rounded-md px-2"
+        >
           <div className="size-11 shrink-0 animate-pulse rounded-sm bg-muted" />
           <div className="min-w-0 flex-1 space-y-2">
             <div className="h-3 w-2/5 animate-pulse rounded bg-muted" />
@@ -458,7 +495,9 @@ export function TrophyExpand({
   knownEmpty = false,
   focusKey,
   onFocused,
+  presentation = "rows",
 }: {
+  presentation?: "rows" | "exhibit";
   name: string;
   titles: TrophyTitle[] | undefined;
   loading: boolean;
@@ -508,7 +547,9 @@ export function TrophyExpand({
 
   const [flashKey, setFlashKey] = useState<string | null>(null);
   // 下标是个数，行数组每次渲染都是新的 —— 用它当依赖，effect 才只在目录到位时跑
-  const focusIndex = focusKey ? (trophies?.findIndex((row) => row.key === focusKey) ?? -1) : -1;
+  const focusIndex = focusKey
+    ? (trophies?.findIndex((row) => row.key === focusKey) ?? -1)
+    : -1;
 
   useEffect(() => {
     const el = viewport.current;
@@ -524,7 +565,10 @@ export function TrophyExpand({
      */
     const rowHeight = el.clientHeight / VISIBLE_ROWS;
     const centered = focusIndex * rowHeight - (el.clientHeight - rowHeight) / 2;
-    const top = Math.min(Math.max(centered, 0), el.scrollHeight - el.clientHeight);
+    const top = Math.min(
+      Math.max(centered, 0),
+      el.scrollHeight - el.clientHeight,
+    );
     const key = focusKey ?? null;
     /*
      * 快到了就闪：一起手就闪的话，行还在半路、滑到中间时动画早放完了；
@@ -584,12 +628,38 @@ export function TrophyExpand({
       );
     }
     if (error) {
-      return <div className="text-sm leading-snug text-muted-foreground">{error}</div>;
+      return (
+        <div className="text-sm leading-snug text-muted-foreground">
+          {error}
+        </div>
+      );
     }
     return empty;
   }
   // 目录到了就以目录为准：摘要那份 digest 漏了这款也不算数
   if (!trophies?.length) return empty;
+
+  if (presentation === "exhibit")
+    return (
+      <div className="trophy-exhibit">
+        {groups.length > 0 && (
+          <div className="trophy-exhibit-groups">
+            {groups.map(({ key, group }) => (
+              <span key={key}>
+                {group.name} <b>{group.progress}%</b>
+              </span>
+            ))}
+          </div>
+        )}
+        <div className="trophy-exhibit-list" role="list" aria-label="奖杯">
+          {trophies.map((row) => (
+            <div role="listitem" key={row.key}>
+              <TrophyRow trophy={row.trophy} exhibit />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
 
   return (
     <div {...(groups.length ? { "data-trophy-groups-wanted": "" } : {})}>
@@ -601,7 +671,8 @@ export function TrophyExpand({
             className={cn(
               "min-w-0 rounded-md",
               // 减少动态效果时全站的动画都被压成 0.01ms，闪不出来 —— 退成一记静态底色
-              row.key === flashKey && (reduced ? "bg-surface-hover" : "animate-trophy-focus"),
+              row.key === flashKey &&
+                (reduced ? "bg-surface-hover" : "animate-trophy-focus"),
             )}
           >
             <TrophyRow trophy={row.trophy} />

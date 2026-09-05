@@ -2,7 +2,20 @@
 
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import Image from "next/image";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  ArrowUpRight,
+  Search,
+  Gamepad2,
+} from "lucide-react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 
 import { GameFlags, PlatformMarks } from "@/components/trophies/game-flags";
 import {
@@ -162,7 +175,9 @@ function consolesFromCategory(category: string | null | undefined): string[] {
   return [];
 }
 
-function consolesFromPresence(...raw: Array<string | null | undefined>): string[] {
+function consolesFromPresence(
+  ...raw: Array<string | null | undefined>
+): string[] {
   const found = new Set<string>();
   for (const value of raw) {
     const upper = value?.toUpperCase() ?? "";
@@ -216,6 +231,7 @@ function GameTile({
   selected,
   onSelect,
   onPrefetch,
+  gallery = false,
 }: {
   tile: Tile;
   eager?: boolean;
@@ -223,6 +239,7 @@ function GameTile({
   onSelect: () => void;
   /** 鼠标扫到 / 键盘走到就先取这块瓷砖的奖杯，别等点下去才开始等网络 */
   onPrefetch: () => void;
+  gallery?: boolean;
 }) {
   const trophies = tile.trophies;
   const metals = trophies
@@ -242,13 +259,19 @@ function GameTile({
         "flex h-full w-full cursor-pointer items-center overflow-hidden rounded-md text-left",
         "border bg-surface transition-colors hover:bg-surface-hover",
         selected ? "border-line-strong" : "border-line",
+        gallery && "gallery-game",
       )}
     >
       <div className="relative h-28 w-28 shrink-0 overflow-hidden border-r border-line bg-muted">
         {tile.imageUrl ? (
           <Image
             // 尺寸在 PSN 那边就选好，不进图片管道；理由见 playstation-image
-            src={playstationImage(tile.imageUrl, COVER_PX * PLAYSTATION_IMAGE_SCALE)!}
+            src={
+              playstationImage(
+                tile.imageUrl,
+                gallery ? 640 : COVER_PX * PLAYSTATION_IMAGE_SCALE,
+              )!
+            }
             alt={tile.name}
             width={COVER_PX}
             height={COVER_PX}
@@ -278,9 +301,18 @@ function GameTile({
             </span>
           )}
           {/* 这行只标预购，Plus 交给下面的平台标，同一张瓷砖不打两遍 */}
-          <GameFlags service={null} preOrder={tile.preOrder} plain className="shrink-0" />
+          <GameFlags
+            service={null}
+            preOrder={tile.preOrder}
+            plain
+            className="shrink-0"
+          />
         </div>
-        <PlatformMarks platforms={tile.platforms} service={tile.service} className="mt-1" />
+        <PlatformMarks
+          platforms={tile.platforms}
+          service={tile.service}
+          className="mt-1"
+        />
         {trophies && metals.length ? (
           <div className="mt-1 flex min-w-0 items-center gap-1.5 overflow-hidden text-xs tabular-nums text-muted-foreground">
             {metals.map((type) => (
@@ -357,12 +389,23 @@ function mergeVariants(games: PlaystationGame[]): MergedGame[] {
     }
     prior.titleIds.push(game.titleId);
     prior.playCount += game.playCount;
-    prior.playDurationMs = fold(prior.playDurationMs, game.playDurationMs, (x, y) => x + y);
-    prior.firstPlayedAt = fold(prior.firstPlayedAt, game.firstPlayedAt, Math.min);
+    prior.playDurationMs = fold(
+      prior.playDurationMs,
+      game.playDurationMs,
+      (x, y) => x + y,
+    );
+    prior.firstPlayedAt = fold(
+      prior.firstPlayedAt,
+      game.firstPlayedAt,
+      Math.min,
+    );
     prior.lastPlayedAt = fold(prior.lastPlayedAt, game.lastPlayedAt, Math.max);
     prior.service = foldService(prior.service, game.service);
     prior.preOrder = prior.preOrder === true || game.preOrder === true;
-    prior.platforms = foldConsoles(prior.platforms, consolesFromCategory(game.category));
+    prior.platforms = foldConsoles(
+      prior.platforms,
+      consolesFromCategory(game.category),
+    );
   }
   return merged;
 }
@@ -407,7 +450,9 @@ function buildTiles(
   presence: PlaystationPresencePayload | undefined,
   titles: TrophyTitleDigest[],
 ): Tile[] {
-  const games = mergeVariants((list?.items ?? []).filter((game) => !mediaApp(game.category)));
+  const games = mergeVariants(
+    (list?.items ?? []).filter((game) => !mediaApp(game.category)),
+  );
 
   const rawPlaying = presence?.playing ?? null;
   const playingCategory = rawPlaying
@@ -432,7 +477,8 @@ function buildTiles(
     playDurationMs: game.playDurationMs,
   });
 
-  if (!playing) return prioritizeTiles(games.map((game) => toTile(game, false)));
+  if (!playing)
+    return prioritizeTiles(games.map((game) => toTile(game, false)));
 
   // 开的可能是被并进来的那个 SKU，所以按 titleIds 认，不是只认主条目
   const inList = games.find((game) => game.titleIds.includes(playing.titleId));
@@ -445,7 +491,10 @@ function buildTiles(
         imageUrl: playing.iconUrl,
         // 不在最近列表里（刚开档的新游戏）就没有时长可给，退到平台标识
         subtitle:
-          playing.launchPlatform ?? playing.format ?? presence?.platform ?? "PlayStation",
+          playing.launchPlatform ??
+          playing.format ??
+          presence?.platform ??
+          "PlayStation",
         live: true,
         service: null,
         preOrder: false,
@@ -459,7 +508,9 @@ function buildTiles(
       };
   return prioritizeTiles([
     first,
-    ...games.filter((game) => game !== inList).map((game) => toTile(game, false)),
+    ...games
+      .filter((game) => game !== inList)
+      .map((game) => toTile(game, false)),
   ]);
 }
 
@@ -476,6 +527,7 @@ export function PlaystationRow({
   titles = null,
   jumpRequest,
   onJumpDone,
+  presentation = "row",
 }: {
   fallback: StatusResponse<PlaystationPlayingPayload>;
   nowFallback: StatusResponse<PlaystationPresencePayload>;
@@ -492,20 +544,33 @@ export function PlaystationRow({
   jumpRequest: TrophyJump | null;
   /** 落地或放弃都喊一声。一次性语义靠这个：同一条再点一次才还能再跳。 */
   onJumpDone: () => void;
+  presentation?: "row" | "gallery";
 }) {
   useLiveEvents();
-  const list = useStatus<PlaystationPlayingPayload>(PLAYING_PATH, LIST_REFRESH_MS, {
-    fallback,
-  });
-  const presence = useStatus<PlaystationPresencePayload>(NOW_PLAYING_PATH, NOW_REFRESH_MS, {
-    fallback: nowFallback,
-  });
+  const list = useStatus<PlaystationPlayingPayload>(
+    PLAYING_PATH,
+    LIST_REFRESH_MS,
+    {
+      fallback,
+    },
+  );
+  const presence = useStatus<PlaystationPresencePayload>(
+    NOW_PLAYING_PATH,
+    NOW_REFRESH_MS,
+    {
+      fallback: nowFallback,
+    },
+  );
 
-  const tiles = fillLastColumn(buildTiles(list.data, presence.data, titles ?? []));
+  const allTiles = buildTiles(list.data, presence.data, titles ?? []);
+  const tiles =
+    presentation === "gallery" ? allTiles : fillLastColumn(allTiles);
   const reduced = useReducedMotion();
   const scrollerRef = useRef<HTMLDivElement>(null);
   const liveTitleId = tiles[0]?.live ? tiles[0].titleId : null;
   const [openId, setOpenId] = useState<string | null>(null);
+  const [galleryQuery, setGalleryQuery] = useState("");
+  const [galleryPage, setGalleryPage] = useState(0);
   const [focusKey, setFocusKey] = useState<string | null>(null);
   const clearFocus = useCallback(() => setFocusKey(null), []);
   const openTile = tiles.find((tile) => tile.titleId === openId) ?? null;
@@ -522,8 +587,9 @@ export function PlaystationRow({
       )
     : undefined;
   const jumpTargetId = jumpDigest
-    ? (tiles.find((tile) => tile.titleIds.some((id) => jumpDigest.titleIds.includes(id)))
-        ?.titleId ?? null)
+    ? (tiles.find((tile) =>
+        tile.titleIds.some((id) => jumpDigest.titleIds.includes(id)),
+      )?.titleId ?? null)
     : null;
   // 展开哪块瓷砖就只问那块的奖杯：它的 titleIds 直接是端点的切片参数
   const catalog = useTrophyCatalog(openTile?.titleIds ?? null);
@@ -555,7 +621,10 @@ export function PlaystationRow({
 
   useEffect(() => {
     if (!liveTitleId) return;
-    scrollerRef.current?.scrollTo({ left: 0, behavior: reduced ? "auto" : "smooth" });
+    scrollerRef.current?.scrollTo({
+      left: 0,
+      behavior: reduced ? "auto" : "smooth",
+    });
   }, [liveTitleId, reduced]);
 
   /*
@@ -591,7 +660,8 @@ export function PlaystationRow({
   if (jumpRequest) {
     if (jumpTargetId) {
       if (openId !== jumpTargetId) setOpenId(jumpTargetId);
-      if (focusKey !== jumpRequest.trophyKey) setFocusKey(jumpRequest.trophyKey);
+      if (focusKey !== jumpRequest.trophyKey)
+        setFocusKey(jumpRequest.trophyKey);
       jumpLandedId = jumpTargetId;
     } else {
       jumpGaveUp = true;
@@ -606,7 +676,10 @@ export function PlaystationRow({
       );
       // offsetLeft 相对轨道里那层 relative 的格子，那层的原点就是滚动内容的原点
       if (track && tile) {
-        track.scrollTo({ left: tile.offsetLeft, behavior: reduced ? "auto" : "smooth" });
+        track.scrollTo({
+          left: tile.offsetLeft,
+          behavior: reduced ? "auto" : "smooth",
+        });
       }
     }
     // 落地和判死都要销账，销完 jumpRequest 归 null
@@ -622,11 +695,179 @@ export function PlaystationRow({
   if ((list.error && !list.data) || !tiles.length) {
     return (
       <div className="flex h-16 items-center justify-center rounded-md border border-dashed border-line text-sm text-muted-foreground">
-        {list.error && !list.data ? "还没收到 PlayStation 遥测" : "最近没有游戏记录"}
+        {list.error && !list.data
+          ? "还没收到 PlayStation 遥测"
+          : "最近没有游戏记录"}
       </div>
     );
   }
 
+  if (presentation === "gallery") {
+    const filtered = tiles.filter((tile) =>
+      tile.name.toLocaleLowerCase().includes(galleryQuery.toLocaleLowerCase()),
+    );
+    const pages = Math.max(1, Math.ceil(filtered.length / 10));
+    const page = Math.min(galleryPage, pages - 1);
+    return (
+      <div
+        className="games-exhibit"
+        data-scroll
+        onKeyDown={(event) => {
+          if (event.key === "Escape") setOpenId(null);
+        }}
+      >
+        {openTile ? (
+          <div className="game-detail" key={openTile.titleId}>
+            <button
+              className="detail-back"
+              autoFocus
+              onClick={() => setOpenId(null)}
+            >
+              <ArrowLeft size={28} /> 返回游戏阵列
+            </button>
+            <div className="game-detail-identity">
+              <div className="detail-art corner-frame">
+                {openTile.imageUrl ? (
+                  <Image
+                    src={playstationImage(openTile.imageUrl, 700)!}
+                    alt={openTile.name}
+                    width={700}
+                    height={700}
+                    unoptimized
+                  />
+                ) : (
+                  <Gamepad2 size={120} />
+                )}
+              </div>
+              <span className="micro">
+                {openTile.platforms.join(" / ")} ·{" "}
+                {openTile.live ? "正在游玩" : openTile.subtitle}
+              </span>
+              <h2>{openTile.name}</h2>
+            </div>
+            <div className="game-detail-trophies" data-scroll>
+              <span className="micro">ACHIEVEMENTS / 奖杯档案</span>
+              <TrophyExpand
+                presentation="exhibit"
+                name={openTile.name}
+                titles={catalog.titles}
+                loading={catalog.isLoading}
+                error={catalog.error}
+                knownEmpty={titles != null && openTile.trophies == null}
+                rows={
+                  openTile.trophies
+                    ? countTrophies(openTile.trophies.defined)
+                    : undefined
+                }
+                focusKey={focusKey ?? undefined}
+                onFocused={clearFocus}
+              />
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="exhibit-toolbar">
+              <label className="exhibit-search">
+                <input
+                  aria-label="搜索游戏"
+                  placeholder="搜索游戏档案"
+                  value={galleryQuery}
+                  onChange={(event) => {
+                    setGalleryQuery(event.target.value);
+                    setGalleryPage(0);
+                  }}
+                />
+                <Search size={21} />
+              </label>
+              <div className="exhibit-heading">
+                <h2>
+                  <Gamepad2 size={25} />
+                  游戏阵列
+                </h2>
+              </div>
+            </div>
+            <div
+              className="cover-matrix"
+              data-scroll
+              aria-label="游戏收藏"
+              key={`${galleryQuery}-${page}`}
+            >
+              {filtered.slice(page * 10, page * 10 + 10).map((tile, i) => (
+                <button
+                  className="matrix-item"
+                  key={tile.titleId}
+                  onMouseEnter={() => prefetch(tile.titleIds)}
+                  onFocus={() => prefetch(tile.titleIds)}
+                  onClick={() => {
+                    setOpenId(tile.titleId);
+                    setFocusKey(null);
+                    onJumpDone();
+                  }}
+                  aria-label={`查看 ${tile.name} 的奖杯`}
+                >
+                  <span className="matrix-cover">
+                    {tile.imageUrl ? (
+                      <Image
+                        src={playstationImage(tile.imageUrl, 480)!}
+                        alt={tile.name}
+                        width={480}
+                        height={480}
+                        unoptimized
+                      />
+                    ) : (
+                      <Gamepad2 size={50} />
+                    )}
+                    <span className="matrix-hover">
+                      <b>{tile.name}</b>
+                      <small>{tile.subtitle}</small>
+                      <ArrowUpRight size={24} />
+                    </span>
+                    {tile.live && (
+                      <span className="matrix-live">NOW PLAYING</span>
+                    )}
+                  </span>
+                  <span className="matrix-caption">
+                    {String(page * 10 + i + 1).padStart(2, "0")}{" "}
+                    <span>{tile.name}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+            {!filtered.length && (
+              <div className="signal-empty">没有匹配的游戏</div>
+            )}
+            <div className="matrix-pagination">
+              <button
+                aria-label="上一页游戏"
+                disabled={page === 0}
+                onClick={() => setGalleryPage(page - 1)}
+              >
+                <ArrowLeft size={24} />
+              </button>
+              {Array.from({ length: pages }, (_, i) => (
+                <button
+                  key={i}
+                  aria-label={`游戏第 ${i + 1} 页`}
+                  aria-current={page === i ? "page" : undefined}
+                  onClick={() => setGalleryPage(i)}
+                >
+                  <i />
+                </button>
+              ))}
+              <button
+                aria-label="下一页游戏"
+                disabled={page === pages - 1}
+                onClick={() => setGalleryPage(page + 1)}
+              >
+                <ArrowRight size={24} />
+              </button>
+              <span>{filtered.length} GAMES</span>
+            </div>
+          </>
+        )}
+      </div>
+    );
+  }
   return (
     <div>
       {/*
@@ -659,10 +900,11 @@ export function PlaystationRow({
                 animate="animate"
                 exit="exit"
                 transition={reduced ? STATIC_TRANSITION : LIST_TRANSITION}
-                className="min-w-0 [&:nth-child(3n+1)]:snap-start"
+                className={"min-w-0 [&:nth-child(3n+1)]:snap-start"}
               >
                 <GameTile
                   tile={tile}
+                  gallery={false}
                   eager={index < 9}
                   selected={tile.titleId === openId}
                   onPrefetch={() => prefetch(tile.titleIds)}
@@ -670,7 +912,9 @@ export function PlaystationRow({
                     // 手切瓷砖就把还挂着的跳转作废：它稍后落地会把用户拽回去
                     onJumpDone();
                     setFocusKey(null);
-                    setOpenId((current) => (current === tile.titleId ? null : tile.titleId));
+                    setOpenId((current) =>
+                      current === tile.titleId ? null : tile.titleId,
+                    );
                   }}
                 />
               </motion.div>

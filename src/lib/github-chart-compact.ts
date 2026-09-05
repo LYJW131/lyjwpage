@@ -124,6 +124,10 @@ export function monthLabels(weeks: GithubChartDay[][]): ChartLabel[] {
       text: name,
     });
   });
+  // A partial first month can be only one column wide; keep the next full label legible.
+  if (labels.length > 1 && labels[1].x - labels[0].x < STEP * 2) {
+    labels[0].hidden = true;
+  }
   return labels;
 }
 

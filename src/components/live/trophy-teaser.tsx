@@ -1,10 +1,11 @@
 import Image from "next/image";
 
 import { PsPlusMark } from "@/components/trophies/ps-plus";
-import { TrophyMetal, trophyTypeLabel } from "@/components/trophies/trophy-metal";
 import {
-  PLAYSTATION_IMAGE_SCALE,
-} from "@/lib/playstation-image";
+  TrophyMetal,
+  trophyTypeLabel,
+} from "@/components/trophies/trophy-metal";
+import { PLAYSTATION_IMAGE_SCALE } from "@/lib/playstation-image";
 import type { PlaystationPresenceKind } from "@/lib/playstation-presence";
 import { site } from "@/lib/site";
 import type {
@@ -15,7 +16,10 @@ import type {
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-const PRESENCE_DOT: Record<PlaystationPresenceKind, { className: string; label: string }> = {
+const PRESENCE_DOT: Record<
+  PlaystationPresenceKind,
+  { className: string; label: string }
+> = {
   online: { className: "bg-live", label: "在线" },
   busy: { className: "bg-live-idle", label: "忙碌" },
   offline: { className: "bg-live-off", label: "离线" },
@@ -40,10 +44,12 @@ function formatUnlock(ms: number): string {
 
 function Count({ type, value }: { type: TrophyType; value: number }) {
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="trophy-count flex items-center gap-1.5">
       <TrophyMetal kind={type} size="sm" />
       <div className="leading-tight">
-        <div className="label-mono text-muted-foreground">{trophyTypeLabel(type)}</div>
+        <div className="label-mono text-muted-foreground">
+          {trophyTypeLabel(type)}
+        </div>
         <div className="text-sm font-medium tabular-nums">{value}</div>
       </div>
     </div>
@@ -82,7 +88,7 @@ export function TrophyTeaser({
   return (
     <div
       className={cn(
-        "flex flex-col gap-3 px-3 py-3 sm:flex-row sm:items-center sm:gap-5",
+        "trophy-summary flex flex-col gap-3 px-3 py-3 sm:flex-row sm:items-center sm:gap-5",
         embedded
           ? "border-b border-line"
           : "paper-card mb-3 border border-line-strong bg-surface",
@@ -97,8 +103,19 @@ export function TrophyTeaser({
           className="relative grid h-14 w-14 shrink-0 place-items-center"
           title={`${data.profile.trophyPoint.toLocaleString("en-US")} / ${data.profile.levelNextPoint.toLocaleString("en-US")} 点`}
         >
-          <svg viewBox="0 0 36 36" className="absolute inset-0 -rotate-90 text-line" aria-hidden>
-            <circle cx="18" cy="18" r="15" fill="none" stroke="currentColor" strokeWidth="2.5" />
+          <svg
+            viewBox="0 0 36 36"
+            className="absolute inset-0 -rotate-90 text-line"
+            aria-hidden
+          >
+            <circle
+              cx="18"
+              cy="18"
+              r="15"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+            />
             <circle
               cx="18"
               cy="18"
@@ -108,7 +125,9 @@ export function TrophyTeaser({
               stroke="currentColor"
               strokeWidth="2.5"
               strokeDasharray={2 * Math.PI * 15}
-              strokeDashoffset={2 * Math.PI * 15 * (1 - data.profile.levelProgress / 100)}
+              strokeDashoffset={
+                2 * Math.PI * 15 * (1 - data.profile.levelProgress / 100)
+              }
               strokeLinecap="butt"
             />
           </svg>
@@ -154,7 +173,9 @@ export function TrophyTeaser({
         <div className="min-w-0 leading-tight">
           <div className="flex items-center gap-1.5">
             {/* PSN ID 大小写有意义，不能走会转大写的 label-mono */}
-            <span className="truncate text-sm font-medium">{data.profile.onlineId}</span>
+            <span className="truncate text-sm font-medium">
+              {data.profile.onlineId}
+            </span>
             {/* 图标不带字：位置贴着 ID 已经说明是会员标，语义留给 aria-label */}
             {data.profile.plus ? <PsPlusMark className="h-3.5 w-3.5" /> : null}
           </div>
@@ -209,7 +230,10 @@ export function TrophyTeaser({
               ) : null}
               <div className="min-w-0 truncate text-sm">
                 {recent.trophyName}
-                <span className="text-muted-foreground"> · {recent.titleName}</span>
+                <span className="text-muted-foreground">
+                  {" "}
+                  · {recent.titleName}
+                </span>
               </div>
             </div>
           </button>

@@ -20,11 +20,26 @@ export function PlaystationBlock({
   trophies,
   playing,
   playingNow,
+  presentation = "card",
 }: {
   trophies: StatusResponse<TrophiesSummaryPayload>;
   playing: StatusResponse<PlaystationPlayingPayload>;
   playingNow: StatusResponse<PlaystationPresencePayload>;
+  presentation?: "card" | "gallery";
 }) {
+  if (presentation === "gallery") {
+    return (
+      <div id={ANCHOR} className="game-collection scroll-mt-36">
+        <PlaystationPanel
+          anchorId={ANCHOR}
+          trophies={trophies}
+          playing={playing}
+          playingNow={playingNow}
+          presentation="gallery"
+        />
+      </div>
+    );
+  }
   return (
     <Card
       id={ANCHOR}

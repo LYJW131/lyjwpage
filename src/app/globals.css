@@ -125,7 +125,7 @@
   --radius-3xl: var(--radius);
   --radius-4xl: var(--radius);
 
-  /* 全站只用 Mono；唯一的 sans 标签直接走系统字体，避免预加载一整套未用 Geist Sans。 */
+  /* 状态组件沿用 Mono；沉浸式场景在自身样式中使用本地 Geist Sans。 */
   --font-sans:
     system-ui, -apple-system, "PingFang SC", "HarmonyOS Sans SC",
     "Microsoft YaHei", sans-serif;

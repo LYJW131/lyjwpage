@@ -63,3 +63,13 @@ test("紧凑信封展开出 date / weekday / label", () => {
   assert.equal(days[1]?.score, 3);
   assert.equal(JSON.stringify({ origin: "2025-08-17", counts: [0, 64], scores: [0, 3] }).includes("contributions on"), false);
 });
+
+
+test("不足两列的首月隐藏标签，避免和下个月重叠", () => {
+  const weeks = groupWeeks(expandGithubDays("2025-08-31", Array(14).fill(0), Array(14).fill(0)));
+  const labels = monthLabels(weeks);
+  assert.equal(labels[0].text, "Aug");
+  assert.equal(labels[0].hidden, true);
+  assert.equal(labels[1].text, "Sep");
+  assert.equal(labels[1].hidden, false);
+});

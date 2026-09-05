@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 // 用本地字体包而不是 next/font/google：构建时不依赖网络
 import { GeistMono } from "geist/font/mono";
+import { GeistSans } from "geist/font/sans";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 
@@ -52,13 +53,13 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="zh-CN"
       // next-themes 会往这里塞 class，交给它管，避免 hydration 报错
       suppressHydrationWarning
-      className={`${GeistMono.variable} h-full`}
+      className={`${GeistMono.variable} ${GeistSans.variable} h-full`}
     >
       <head>
         <meta name="asset-base-url" content={assetBaseUrl} />
         <script
           dangerouslySetInnerHTML={{
-            __html: `try{var t=localStorage.getItem("theme")||"system";document.documentElement.dataset.themeChoice=t;var h=localStorage.getItem(${JSON.stringify(HEATMAP_STORAGE_KEY)});document.documentElement.dataset.heatmap=h==="commit"?"commit":"tokens"}catch(e){}`,
+            __html: `try{var t=localStorage.getItem("theme")||"dark";document.documentElement.dataset.themeChoice=t;var h=localStorage.getItem(${JSON.stringify(HEATMAP_STORAGE_KEY)});document.documentElement.dataset.heatmap=h==="commit"?"commit":"tokens"}catch(e){}`,
           }}
         />
         <style

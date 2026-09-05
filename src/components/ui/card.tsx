@@ -27,19 +27,27 @@ export function Card({
   return (
     <div
       id={id}
+      data-ui="status-surface"
       className={cn(
         "paper-card relative flex flex-col overflow-hidden rounded-lg border border-line-strong bg-surface",
         className,
       )}
     >
       {(label || action) && (
-        <div className="flex min-h-9 items-center justify-between gap-2 border-b border-line bg-muted px-3 py-2">
+        <div
+          data-ui="status-heading"
+          className="flex min-h-9 items-center justify-between gap-2 border-b border-line bg-muted px-3 py-2"
+        >
           <div className="flex items-center gap-2">
             {tone && <StatusDot tone={tone} />}
-            {label && <span className="label-mono text-muted-foreground">{label}</span>}
+            {label && (
+              <span className="label-mono text-muted-foreground">{label}</span>
+            )}
           </div>
           {action && (
-            <div className="label-mono text-muted-foreground shrink-0">{action}</div>
+            <div className="label-mono text-muted-foreground shrink-0">
+              {action}
+            </div>
           )}
         </div>
       )}

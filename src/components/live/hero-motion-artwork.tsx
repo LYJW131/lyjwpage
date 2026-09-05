@@ -4,7 +4,11 @@ import type { Level } from "hls.js";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 
-import { appleArtwork, ARTWORK_SCALE, needsOptimizing } from "@/lib/apple-artwork";
+import {
+  appleArtwork,
+  ARTWORK_SCALE,
+  needsOptimizing,
+} from "@/lib/apple-artwork";
 import type { ArtworkDataUri } from "@/lib/artwork-placeholder";
 import { cn } from "@/lib/utils";
 
@@ -18,21 +22,30 @@ import { cn } from "@/lib/utils";
  *
  * 同一尺寸有多个码率时取最低的：像素数已经够了，多出来的比特只是更大的文件。
  */
-function smallestAdequateLevel(levels: Level[], video: HTMLVideoElement): number {
+function smallestAdequateLevel(
+  levels: Level[],
+  video: HTMLVideoElement,
+  fallbackSize: number,
+): number {
   if (!levels.length) return -1;
 
   const dpr = window.devicePixelRatio || 1;
-  // 元素还没上屏时 rect 是 0，退回设计稿上的 80px
-  const box = Math.round(video.getBoundingClientRect().width) || 80;
+  // 隐藏场景的 rect 是 0，仍按其展示尺寸选清晰度。
+  const box = Math.round(video.getBoundingClientRect().width) || fallbackSize;
   const target = box * dpr;
 
   const bySize = levels
-    .map((level, index) => ({ index, width: level.width, bitrate: level.bitrate }))
+    .map((level, index) => ({
+      index,
+      width: level.width,
+      bitrate: level.bitrate,
+    }))
     .sort((a, b) => a.width - b.width || a.bitrate - b.bitrate);
 
   // 全都比盒子小就用最大的那个，总比拿一档更糊的强
-  return (bySize.find((level) => level.width >= target) ?? bySize[bySize.length - 1])
-    .index;
+  return (
+    bySize.find((level) => level.width >= target) ?? bySize[bySize.length - 1]
+  ).index;
 }
 
 export function HeroMotionArtwork({
@@ -41,6 +54,7 @@ export function HeroMotionArtwork({
   videoUrl,
   placeholder,
   reduced = false,
+  displaySize = 80,
 }: {
   artwork: string | null;
   title: string;
@@ -48,6 +62,8 @@ export function HeroMotionArtwork({
   /** 首屏低清占位，见 lib/artwork-placeholder；没有就传 undefined，退回 empty */
   placeholder?: ArtworkDataUri;
   reduced?: boolean;
+  /** 展示舞台的大封面沿用动态视频及低清占位链路。 */
+  displaySize?: number;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -105,7 +121,11 @@ export function HeroMotionArtwork({
       });
       instance.on(Hls.Events.MANIFEST_PARSED, () => {
         if (unmounted) return;
-        const level = smallestAdequateLevel(instance.levels, video);
+        const level = smallestAdequateLevel(
+          instance.levels,
+          video,
+          displaySize,
+        );
         if (level >= 0) {
           // 钉死，不让 ABR 再往上跳：带宽够不是往上挑的理由，这个盒子就这么大
           instance.startLevel = level;
@@ -185,7 +205,7 @@ export function HeroMotionArtwork({
       video.removeAttribute("src");
       video.load();
     };
-  }, [videoUrl, reduced]);
+  }, [videoUrl, reduced, displaySize]);
 
   return (
     <div
@@ -227,10 +247,10 @@ export function HeroMotionArtwork({
         )}
         {artwork && (
           <Image
-            src={appleArtwork(artwork, 80 * ARTWORK_SCALE)!}
+            src={appleArtwork(artwork, displaySize * ARTWORK_SCALE)!}
             alt={`${title} 封面`}
             fill
-            sizes="80px"
+            sizes={`${displaySize}px`}
             // 这张是全站 LCP 元素：默认的 lazy 会让预加载扫描器跳过它
             loading="eager"
             fetchPriority="high"
@@ -253,7 +273,11 @@ export function HeroMotionArtwork({
              * 静态封面上，这一层在任何时刻都和底下那张图长得一样：占位符没了，
              * 动态接管的那一下也不会闪。
              */
-            poster={artwork ? (appleArtwork(artwork, 80 * ARTWORK_SCALE) ?? undefined) : undefined}
+            poster={
+              artwork
+                ? (appleArtwork(artwork, 80 * ARTWORK_SCALE) ?? undefined)
+                : undefined
+            }
             className={cn(
               "absolute inset-0 size-full object-cover transition-opacity duration-[1.2s] ease-[cubic-bezier(0.45,0,0.55,1)]",
               isPlaying ? "opacity-100" : "pointer-events-none opacity-0",

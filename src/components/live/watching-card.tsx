@@ -2,6 +2,7 @@
 
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import Image from "next/image";
+import { ArrowLeft, ArrowRight, ArrowUpRight, Film } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { StatusDot } from "@/components/ui/status-dot";
@@ -9,7 +10,11 @@ import { useLiveEvents } from "@/hooks/use-live-events";
 import { useStatus } from "@/hooks/use-status";
 import { NOW_WATCHING_PATH, WATCHING_PATH } from "@/lib/paths";
 import { stableKeys } from "@/lib/keys";
-import { isNowWatching, pinNowWatching, watchingIdentity } from "@/lib/watching";
+import {
+  isNowWatching,
+  pinNowWatching,
+  watchingIdentity,
+} from "@/lib/watching";
 import {
   LIST_DURATION,
   LIST_TRANSITION,
@@ -106,7 +111,9 @@ function Tile({
           animationTimingFunction: "linear",
           animationDelay: `-${positionMs}ms`,
           animationFillMode: "forwards" as const,
-          animationPlayState: (paused ? "paused" : "running") as "paused" | "running",
+          animationPlayState: (paused ? "paused" : "running") as
+            | "paused"
+            | "running",
         }
       : { width: `${Math.round(progress)}%` };
 
@@ -200,9 +207,11 @@ function Skeleton() {
 export function WatchingRow({
   fallback,
   nowFallback,
+  presentation = "row",
 }: {
   fallback: StatusResponse<WatchingPayload>;
   nowFallback: StatusResponse<NowWatchingPayload>;
+  presentation?: "row" | "theatre";
 }) {
   useLiveEvents();
   /**
@@ -210,16 +219,20 @@ export function WatchingRow({
    * 正在播放由 webhook 推，快。合在一个端点时，慢的那半只能跟着快的那半
    * 一起被重取。
    */
-  const { data: list, error, isLoading } = useStatus<WatchingPayload>(
-    WATCHING_PATH,
-    LIST_REFRESH_MS,
+  const {
+    data: list,
+    error,
+    isLoading,
+  } = useStatus<WatchingPayload>(WATCHING_PATH, LIST_REFRESH_MS, {
+    fallback,
+  });
+  const { data: live } = useStatus<NowWatchingPayload>(
+    NOW_WATCHING_PATH,
+    NOW_REFRESH_MS,
     {
-      fallback,
+      fallback: nowFallback,
     },
   );
-  const { data: live } = useStatus<NowWatchingPayload>(NOW_WATCHING_PATH, NOW_REFRESH_MS, {
-    fallback: nowFallback,
-  });
 
   /**
    * 播放中那一项置顶并去重。
@@ -239,6 +252,7 @@ export function WatchingRow({
     };
   })();
   const reduced = useReducedMotion();
+  const [selectedFilm, setSelectedFilm] = useState<string | null>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const nowPlayingId = data?.nowPlaying?.itemId;
   const firstItemId = data?.items[0]?.id;
@@ -296,6 +310,172 @@ export function WatchingRow({
     );
   }
 
+  if (presentation === "theatre") {
+    const selectedIndex = Math.max(
+      0,
+      data.items.findIndex((item) => item.id === selectedFilm),
+    );
+    const selected = data.items[selectedIndex];
+    const liveSelected = isNowWatching(
+      selected,
+      data.nowPlaying?.itemId,
+      liveCurrent,
+    );
+    const progress = liveSelected
+      ? (data.nowPlaying?.progress ?? selected.progress)
+      : selected.progress;
+    const position = liveSelected ? data.nowPlaying?.positionMs : null;
+    const duration = liveSelected ? data.nowPlaying?.durationMs : null;
+    const progressStyle: React.CSSProperties =
+      position != null && duration
+        ? {
+            width: `${progress}%`,
+            animation: `progress-run ${duration}ms linear -${position}ms forwards`,
+            animationPlayState: data.nowPlaying?.paused ? "paused" : "running",
+          }
+        : { width: `${progress}%` };
+    return (
+      <div className="watching-theatre" data-scroll>
+        <span className="cinema-ghost" aria-hidden="true">
+          NOW SCREENING
+        </span>
+        <div className="theatre-screen">
+          <AnimatePresence initial={false}>
+            <motion.div
+              className="theatre-backdrop"
+              key={selected.id}
+              initial={{ opacity: 0, scale: reduced ? 1 : 1.035 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: reduced ? 0 : 0.7 }}
+            >
+              {selected.backdrop || selected.poster ? (
+                <Image
+                  src={(selected.backdrop ?? selected.poster)!}
+                  alt={selected.title}
+                  fill
+                  sizes="(max-width: 700px) 100vw, 90vw"
+                  unoptimized
+                  className="object-cover"
+                />
+              ) : (
+                <Film size={120} strokeWidth={0.4} />
+              )}
+            </motion.div>
+          </AnimatePresence>
+          <div className="theatre-shade" />
+          <div className="theatre-topline">
+            <span>
+              <i />{" "}
+              {liveSelected
+                ? data.nowPlaying?.paused
+                  ? "PAUSED"
+                  : "NOW SHOWING"
+                : "CONTINUE WATCHING"}
+            </span>
+            <span>
+              {String(selectedIndex + 1).padStart(2, "0")} /{" "}
+              {String(data.items.length).padStart(2, "0")}
+            </span>
+          </div>
+          <div className="theatre-story" key={`story-${selected.id}`}>
+            <span className="theatre-year">
+              {selected.year ?? "EMBY"} ·{" "}
+              {selected.type === "Movie" ? "FILM" : "SERIES"}
+            </span>
+            <h3>{selected.title}</h3>
+            <p>{selected.subtitle}</p>
+            {selected.link && (
+              <a href={selected.link} target="_blank" rel="noreferrer noopener">
+                继续观看 <ArrowUpRight size={20} />
+              </a>
+            )}
+          </div>
+          <div className="theatre-controls">
+            <button
+              type="button"
+              aria-label="上一部影片"
+              onClick={() =>
+                setSelectedFilm(
+                  data.items[
+                    (selectedIndex + data.items.length - 1) % data.items.length
+                  ].id,
+                )
+              }
+            >
+              <ArrowLeft size={20} />
+            </button>
+            <button
+              type="button"
+              aria-label="下一部影片"
+              onClick={() =>
+                setSelectedFilm(
+                  data.items[(selectedIndex + 1) % data.items.length].id,
+                )
+              }
+            >
+              <ArrowRight size={20} />
+            </button>
+          </div>
+          <div
+            className="theatre-progress"
+            role="progressbar"
+            aria-label="播放进度"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(progress)}
+          >
+            <div style={progressStyle} />
+          </div>
+        </div>
+        <div className="archive-heading">
+          <h2>放映目录</h2>
+          <span>
+            THE WATCHLIST / {String(data.items.length).padStart(2, "0")}
+          </span>
+        </div>
+        <div
+          className="theatre-reel"
+          data-scroll
+          role="region"
+          aria-label="选择影片"
+          tabIndex={0}
+        >
+          {data.items.map((item, i) => (
+            <button
+              type="button"
+              className="reel-film"
+              key={keys[i]}
+              aria-pressed={selected.id === item.id}
+              onClick={() => setSelectedFilm(item.id)}
+            >
+              <span className="reel-number">
+                {String(i + 1).padStart(2, "0")}
+              </span>
+              <div className="reel-art">
+                {item.backdrop || item.poster ? (
+                  <Image
+                    src={(item.backdrop ?? item.poster)!}
+                    alt=""
+                    width={320}
+                    height={180}
+                    unoptimized
+                  />
+                ) : (
+                  <Film size={30} />
+                )}
+              </div>
+              <span className="reel-title">
+                {item.title}
+                <small>{item.subtitle || item.year || "FILM"}</small>
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
     // 吸附到卡片起始边，手动滑动也只会停在整卡边界上。
     // overscroll-x-contain 很关键：不然横滑到头会把滚动链给外层，
@@ -321,7 +501,11 @@ export function WatchingRow({
             后面的卡片才能一边补位、一边看着它平滑退场。 */}
         <AnimatePresence initial={false} mode="popLayout">
           {data.items.map((item, index) => {
-            const live = isNowWatching(item, data.nowPlaying?.itemId, liveCurrent);
+            const live = isNowWatching(
+              item,
+              data.nowPlaying?.itemId,
+              liveCurrent,
+            );
             return (
               <motion.div
                 key={keys[index]}
@@ -339,9 +523,15 @@ export function WatchingRow({
                   item={item}
                   live={live}
                   paused={live ? Boolean(data.nowPlaying?.paused) : false}
-                  liveProgress={live ? (data.nowPlaying?.progress ?? null) : null}
-                  positionMs={live ? (data.nowPlaying?.positionMs ?? null) : null}
-                  durationMs={live ? (data.nowPlaying?.durationMs ?? null) : null}
+                  liveProgress={
+                    live ? (data.nowPlaying?.progress ?? null) : null
+                  }
+                  positionMs={
+                    live ? (data.nowPlaying?.positionMs ?? null) : null
+                  }
+                  durationMs={
+                    live ? (data.nowPlaying?.durationMs ?? null) : null
+                  }
                   eager={index < 4}
                 />
               </motion.div>
