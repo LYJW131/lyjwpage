@@ -507,7 +507,7 @@ export type VibeCodingAgent = {
    */
   icon: string;
   models: string[];
-  /** 最近一个有用量日里的主力模型。 */
+  /** 最近使用的会话模型；会话数据缺失时回退到最近一个有用量日的主力模型。 */
   currentModel: string | null;
   /** 最近一次 session 活动；不含 session ID 或项目路径。 */
   lastActivityAt: string | null;

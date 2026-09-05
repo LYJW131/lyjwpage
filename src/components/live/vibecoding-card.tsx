@@ -789,9 +789,8 @@ function AgentPanel({
    * 着时那盏灯会一直亮，直到它醒来才灭。
    */
   const active = agent.active && !activityUnknown;
-  // 正在使用时显示会话扫描给的「此刻在用哪个」；闲置时仍显示用量那份的历史主力。
-  const displayModel =
-    (active ? agent.currentModel : agent.topModel ?? agent.currentModel) ?? "暂无模型";
+  // 会话扫描会保留最近使用的模型，闲置后继续显示它。
+  const displayModel = agent.currentModel ?? "暂无模型";
   const rows = featuredLimitRows(agent);
   return (
     <div className="flex min-w-0 flex-col px-4 py-4 md:px-5">
