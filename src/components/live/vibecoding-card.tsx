@@ -777,31 +777,6 @@ function FeaturedMark({ id, active }: { id: string; active: boolean }) {
   return <CodexActivityIndicator active={active} />;
 }
 
-/** 历史仍可展示，但成功时刻和来源错误要与摘要上报心跳分开判断。 */
-function UsageStatusNote({ agent, className }: { agent: VibeCodingAgent; className?: string }) {
-  const status = agent.usageStatus;
-  const stale = useStale(
-    status.collectedAt ? Date.parse(status.collectedAt) : null,
-    VIBECODING_STALE_MS,
-  );
-  const notes: string[] = [];
-  if (status.state === "error") notes.push(agent.today ? "用量数据有提示，显示已保存数据" : "用量数据有提示");
-  else if (status.state === "unavailable") notes.push("用量未取得");
-  else if (stale) notes.push("用量待更新");
-  if (agent.today && status.precision !== "measured") notes.push(status.precision === "mixed" ? "含估算用量" : "估算用量");
-  if (!notes.length) return null;
-  const detail = [
-    status.error,
-    status.collectedAt && `上次成功采集：${status.collectedAt}`,
-    status.coverageStart && status.coverageEnd && `历史覆盖：${status.coverageStart} — ${status.coverageEnd}`,
-  ].filter(Boolean).join("；");
-  return (
-    <div className={cn("text-xs text-muted-foreground", className)} title={detail || undefined}>
-      {notes.join(" · ")}
-    </div>
-  );
-}
-
 function AgentPanel({
   agent,
   /** 采集侧的话还算不算数，见 VibeCodingCard 里的 activityUnknown */
@@ -893,7 +868,6 @@ function AgentPanel({
           </div>
         </div>
       </div>
-      <UsageStatusNote agent={agent} className="mt-2" />
 
       <div
         className={cn("mt-5 grid gap-3 border-t border-line pt-4", limitsStale && "opacity-60")}
@@ -1068,7 +1042,6 @@ function CompactAgentRow({
           </span>
         )}
       </div>
-      <UsageStatusNote agent={agent} className="mt-1.5" />
     </div>
   );
 }
