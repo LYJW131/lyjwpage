@@ -24,8 +24,7 @@ function flag(name: string): boolean {
 }
 
 function agentIds(): AgentId[] {
-  // antigravity 走 `agy -p /usage`（实测能取），cursor 容器里还没有可用凭据，默认不在
-  const raw = process.env.AGENT_IDS?.trim() || "claude,codex,grok,antigravity";
+  const raw = process.env.AGENT_IDS?.trim() || "claude,codex,grok,cursor,antigravity";
   const ids: AgentId[] = [];
   for (const part of raw.split(",")) {
     const id = part.trim().toLowerCase();
@@ -67,8 +66,17 @@ export const config = {
 
   agentIds: agentIds(),
 
-  /** antigravity 的限额问 `agy -p /usage`；镜像里在 /usr/local/bin，别处跑可改 */
-  agyBin: process.env.AGY_BIN?.trim() || "agy",
+  /** 直接注入 Cursor JWT；没有就读 `$XDG_CONFIG_HOME/cursor/auth.json` */
+  cursorAuthToken: process.env.CURSOR_AUTH_TOKEN?.trim() ?? "",
+
+  /**
+   * Google OAuth 公开客户端。从 Antigravity CLI 自己的安装里取，不要写进仓库。
+   * 两个都空 = 不刷新。
+   */
+  antigravityOAuth: {
+    clientId: process.env.ANTIGRAVITY_OAUTH_CLIENT_ID?.trim() ?? "",
+    clientSecret: process.env.ANTIGRAVITY_OAUTH_CLIENT_SECRET?.trim() ?? "",
+  },
 
   /**
    * 凭据 home。镜像里固定 HOME=/data。Grok 另认 `GROK_HOME`，Codex 另认 `CODEX_HOME`。

@@ -22,10 +22,10 @@ RUN apk add --no-cache ca-certificates curl bash gcompat libstdc++
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/node_modules ./node_modules
 COPY package.json ./
-# 五个 CLI：三家只为在容器里登录一次，cursor-agent / agy 还要在每轮里被调用
-# （它们的 `/usage` 就是限额来源，见 src/cli-usage.ts）。凭据运行时落 /data，不拷 Mac 上那份。
+# 五个 CLI 只为在容器里登录一次。限额运行时直打各家接口，不再调 CLI。
+# 凭据运行时落 /data，不拷 Mac 上那份。
 # cursor-agent / agy 是 glibc 二进制，alpine + gcompat 能跑就跑；装不上**不挡镜像**
-# （`|| true`），只是那两行限额发不出去，登录时看 `docker compose run` 的报错。
+# （`|| true`），只是那两家登录不了，登录时看 `docker compose run` 的报错。
 RUN npm install -g @anthropic-ai/claude-code @openai/codex @xai-official/grok \
   && (curl -fsS https://cursor.com/install | bash || echo "cursor-agent 装不上，跳过") \
   && (curl -fsSL https://antigravity.google/cli/install.sh | bash || echo "agy 装不上，跳过") \
