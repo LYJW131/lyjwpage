@@ -589,6 +589,9 @@ function limitPace(limit: VibeCodingLimit, now: number): number | null {
  * 标记本身；往左挪半个身位，让它正落在刻度上而不是刻度右边。
  */
 function PaceMarker({ pace, overPace }: { pace: number; overPace: boolean }) {
+  // 只在周期进度 10%–90%（含边界）之间显示，避免贴住限额条两端。
+  if (pace < 0.1 || pace > 0.9) return null;
+
   return (
     <span
       aria-hidden
