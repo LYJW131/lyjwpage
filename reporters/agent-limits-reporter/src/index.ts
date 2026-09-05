@@ -4,6 +4,7 @@ import {
   refreshClaudeIfDue,
   refreshClaudeOauth,
 } from "./claude-oauth.js";
+import { fetchAntigravityViaCli } from "./cli-usage.js";
 import {
   collectAgents,
   fetchUsageLimits,
@@ -64,15 +65,20 @@ async function collectPayload(): Promise<PushPayload> {
   } catch (error) {
     if (config.limitsFixture) throw error;
     const message = error instanceof Error ? error.message : String(error);
-    return {
-      collectedAt: new Date().toISOString(),
-      agents: config.agentIds.map((id) => ({
+    // TokenTracker 整个挂了：走它的那几家各带一句原因；antigravity 是问 CLI 的，照常取
+    const agents: PushPayload["agents"] = config.agentIds
+      .filter((id) => id !== "antigravity" && id !== "cursor")
+      .map((id) => ({
         id,
         plan: null,
         limits: [],
         limitsError: `TokenTracker ${id}：${message}`,
-      })),
-    };
+      }));
+    if (config.agentIds.includes("antigravity")) {
+      const viaCli = await fetchAntigravityViaCli();
+      if (viaCli) agents.push(viaCli);
+    }
+    return { collectedAt: new Date().toISOString(), agents };
   }
 }
 
@@ -82,7 +88,16 @@ async function round(): Promise<void> {
     process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
     return;
   }
+  /**
+   * 一家都没有（全都「没配」）时不发：站点对空封回 400，发了只是白退避。
+   * 这是启动后还没登录任何一家的样子，记一句就好。
+   */
+  if (payload.agents.length === 0) {
+    failure("collect", new Error("一家都没登录，没有可发的限额行"));
+    return;
+  }
   await push(payload);
+  recovered("collect");
   recovered("push");
 }
 

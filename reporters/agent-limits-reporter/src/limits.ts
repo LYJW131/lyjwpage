@@ -297,7 +297,9 @@ export function usageSaysClaudeReauth(root: Record<string, unknown>): boolean {
  * antigravity：TokenTracker 问 IDE 进程，容器里改问 `agy -p /usage`（见 cli-usage.ts）。
  * fixture 模式下不跑 CLI，antigravity 从 fixture 里来。
  */
-export async function translateAndOverlay(root: Record<string, unknown>): Promise<AgentRow[]> {
+export async function translateAndOverlay(input: Record<string, unknown>): Promise<AgentRow[]> {
+  // getUsageLimits 返回的是它自己的内存缓存对象，别在上面 delete
+  const root: Record<string, unknown> = { ...input };
   if (config.agentIds.includes("cursor")) {
     delete root.cursor;
   }
