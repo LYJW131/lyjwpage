@@ -1,0 +1,30 @@
+# 部署单元。把这个目录整个拷到 NAS，旁边放一份 .env（含密钥，别进仓库），
+# 然后 `docker compose up -d --build`。完整步骤见 README。
+#
+# 自成一个 compose project（项目名取自目录名），不要并进别的 compose 文件 ——
+# 同一个 project 里 `up` 会顺带重建兄弟容器。
+
+services:
+  agent-limits-reporter:
+    build: .
+    image: agent-limits-reporter
+    container_name: agent-limits-reporter
+    restart: unless-stopped
+    volumes:
+      - ./data:/data
+    environment:
+      SITE_URL: ${SITE_URL}
+      SITE_INGEST_URL: ${SITE_INGEST_URL:-}
+      TELEMETRY_INGEST_SECRET: ${TELEMETRY_INGEST_SECRET:-}
+      PUSH_INTERVAL_MS: ${PUSH_INTERVAL_MS:-}
+      PUSH_TIMEOUT_MS: ${PUSH_TIMEOUT_MS:-}
+      CLAUDE_OAUTH_TOKEN_URL: ${CLAUDE_OAUTH_TOKEN_URL:-}
+      CLAUDE_OAUTH_CLIENT_ID: ${CLAUDE_OAUTH_CLIENT_ID:-}
+      AGENT_IDS: ${AGENT_IDS:-}
+      DRY_RUN: ${DRY_RUN:-}
+      LIMITS_FIXTURE: ${LIMITS_FIXTURE:-}
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

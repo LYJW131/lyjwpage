@@ -1,0 +1,145 @@
+# agent-limits-reporter
+
+把各 coding agent 的**账号限额**推给 lyjwpage 的小代理，跑在 NAS 上。
+
+限额（套餐 + 用量窗口）从前和 token 用量一起由 MacTelemetryHub 从本机 TokenTracker
+取来、塞进 `/api/ingest/mac` 的 `vibeCodingUsage`。Mac 合盖 / 睡眠 / 离线时限额就冻住。
+限额是厂商账号侧的事实，跟哪台 Mac 无关，所以拆到这个容器里 24 小时跑。
+
+**用量（token / 费用 / 今日 / 年度）仍由 Mac 上报，不动。**
+
+站点入口是 `POST /api/ingest/agents`（按数据是谁产生的命名，不是上报程序的名字）。
+每轮都 POST，内容没变也发 —— 那一封就是心跳，站点靠它刷新 `limitsAt`。
+
+## 它做什么
+
+每 `PUSH_INTERVAL_MS`（默认 10 分钟）一轮：
+
+1. 需要的话刷新 Claude 的 OAuth（TokenTracker 不管这件事）
+2. 调 TokenTracker 的 `getUsageLimits({ home, env, platform: "linux" })`
+3. 按 MacTelemetryHub `AgentLimitsCollector` 的规则翻译成站点请求体
+4. POST 到站点
+
+默认发 `claude` / `codex` / `grok` / `antigravity` 四家。前三家走 TokenTracker，antigravity
+直接问 `agy -p /usage`。cursor 见下面「cursor / antigravity」。
+
+## 配置
+
+全部走环境变量。镜像里 `HOME=/data`，凭据落在挂卷上。
+
+| 变量 | 必填 | 说明 |
+| --- | --- | --- |
+| `SITE_URL` | ✅ | 站点地址，如 `https://lyjw131.com`。端点路径由上报器自己拼 |
+| `SITE_INGEST_URL` | | 直接给完整端点，给了就不用 `SITE_URL`。默认 `${SITE_URL}/api/ingest/agents` |
+| `TELEMETRY_INGEST_SECRET` | ✅ | 和站点同名变量对上，作 Bearer 鉴权。站点没配时才可留空 |
+| `PUSH_INTERVAL_MS` | | 默认 `600000`（10 分钟）。要和站点的 `AGENT_LIMITS_PUSH_INTERVAL_MS` 一致 |
+| `PUSH_TIMEOUT_MS` | | 默认 `30000` |
+| `CLAUDE_OAUTH_TOKEN_URL` | | Claude OAuth 的 token 端点。和下一档都空 = 不刷新，只记一行日志 |
+| `CLAUDE_OAUTH_CLIENT_ID` | | 同上。**自己从 Claude Code 的安装里找，不要把值写进仓库或这份 README** |
+| `AGENT_IDS` | | 逗号分隔。默认 `claude,codex,grok,antigravity`。cursor 验证通过后再加 |
+| `AGY_BIN` | | `agy` 的路径，默认 `agy`（镜像里在 `/usr/local/bin`） |
+| `DRY_RUN` | | `1` 时不 POST，把请求体 JSON 打到 stdout 然后退出 |
+| `LIMITS_FIXTURE` | | 指向一份 TokenTracker `getUsageLimits` 形状的 JSON，有它就不调 TokenTracker |
+
+## 登录
+
+**凭据在容器里自己登录，不要拷 Mac 上那份。** 两份 refresh token 各自刷新会互相作废。
+
+先把卷目录建出来并交给容器里的 `node` 用户（uid 1000），不然登录时写不进去：
+
+```bash
+mkdir -p data && sudo chown 1000:1000 data
+```
+
+登录一次，凭据就在 `./data` 卷里（`/data/.claude`、`/data/.codex`、`/data/.grok`、`/data/.gemini`）。
+
+```bash
+docker compose run --rm agent-limits-reporter claude
+docker compose run --rm agent-limits-reporter codex login --device-auth
+docker compose run --rm agent-limits-reporter grok login --device-auth
+docker compose run --rm agent-limits-reporter agy
+docker compose run --rm agent-limits-reporter agent login   # cursor-agent，见下面
+```
+
+Grok 的包是 `@xai-official/grok`，命令是 `grok`，无浏览器的环境用 `--device-auth`（`--device-code` 是别名）。
+
+Claude 在 Linux 上把 OAuth 写到 `/data/.claude/.credentials.json`。TokenTracker 不刷新它，所以上报器在到期前（或 TokenTracker 报 AUTH_EXPIRED 时）自己刷。`CLAUDE_OAUTH_TOKEN_URL` 和 `CLAUDE_OAUTH_CLIENT_ID` 从 Claude Code 自己的安装里抄，两端都空就跳过刷新。**刷新请求的形状（表单编码的标准 `grant_type=refresh_token`）没在真账号上验过**，第一次跑通前盯着日志里 `claude-oauth` 那一环。
+
+Codex / Grok 的 token 由 TokenTracker 刷新并写回；agy 的登录态由 `agy` 自己维护。
+
+## cursor / antigravity
+
+用户要求五家 CLI 都装进镜像、在容器里各登录一次。
+
+**antigravity：能取。** TokenTracker 那条路要问本机正在跑的 Antigravity IDE 进程，容器里走不通；
+但 `agy -p /usage` 在 print 模式里会展开斜杠命令，直接打出四行用量（两个模型桶 × 周 / 5 小时，
+给的是剩余百分比和重置时刻，实测 2026-09-05）。上报器每轮跑一次这条命令，翻成
+`antigravity.primary … quaternary` 四扇窗口（`src/cli-usage.ts`）。CLI 没登录时那一行带
+`limitsError` 照发；二进制压根不存在才当「没配」不发。
+
+**cursor：暂时不行。** TokenTracker 打 `cursor.com/api/usage-summary` 用的 JWT 来自 Cursor **编辑器**的
+sqlite（`state.vscdb` → `cursorAuth/accessToken`）；`~/.cursor/cli-config.json` 只有
+`authInfo.authId / email`（实测），`cursor-agent` 的 print 模式也不拦截 `/usage`（会当成普通提示词交给
+模型，白花一次调用）。它 TUI 里的 `/usage` 用的凭据在容器里落在哪、能不能复用，要登录后自己找
+（`find /data -newer /data/.claude -type f`）。找到可用 JWT 再实现 cookie
+`WorkosCursorSessionToken=<userId>%3A%3A<jwt>` 那条，并把 `cursor` 加进 `AGENT_IDS`。在那之前这一行不发。
+
+alpine 上 cursor-agent / agy 是 glibc 二进制，镜像里加了 `gcompat`，装不上时 Dockerfile 不会把整次
+build 判失败（`|| true`），只是那一行限额发不出去，登录时看 `docker compose run` 的报错。
+
+## DRY_RUN
+
+不 POST，把即将发给站点的请求体打到 stdout，对照现在 `/api/status/vibecoding` 里的 limits。
+
+用一份假的 TokenTracker 输出（不碰本机凭据）：
+
+```bash
+DRY_RUN=1 LIMITS_FIXTURE=./fixture.json HOME=/tmp/empty \
+  node dist/index.js
+```
+
+`LIMITS_FIXTURE` 的形状就是 `getUsageLimits` 的返回值（按 provider 分节，带 `configured` / `error` / 各窗口）。
+
+## 在 NAS 上跑
+
+部署单元是同目录的 [compose.yaml](compose.yaml)：把这个目录整个拷到 NAS、旁边放一份 `.env`，就地 build。**别在 Mac 上 build 完把镜像拷过去** —— Mac 是 arm64、群晖是 x86_64，架构对不上。
+
+拷过去（nas-host 的 sftp 子系统是关的，`scp` 用不了，走 tar 管道）：
+
+```bash
+COPYFILE_DISABLE=1 tar czf - -C reporters --exclude node_modules --exclude dist agent-limits-reporter | ssh nas-host 'mkdir -p /srv/lyjwpage && tar xzf - -C /srv/lyjwpage'
+```
+
+`.env` 单独送，别混进源码目录一起打包：
+
+```bash
+ssh nas-host 'cat > /srv/lyjwpage/agent-limits-reporter/.env && chmod 600 /srv/lyjwpage/agent-limits-reporter/.env' < 本机那份.env
+```
+
+先登录三家（见上），再起：
+
+```bash
+ssh nas-host '/usr/local/bin/docker compose -f /srv/lyjwpage/agent-limits-reporter/compose.yaml up -d --build'
+```
+
+不映射任何端口。容器只出站连站点和各家限额接口。
+
+不进容器直接跑也行（Node ≥ 20），在这个目录：`npm run build && node dist/index.js`。
+
+## TokenTracker
+
+依赖钉的是 GitHub `LYJW131/TokenTracker#04fd7c0504d7ef2c808390a84afb9bb47c0dfaf1`（当时 origin/main 的 sha）。**本机那份 TokenTracker 领先它一批未推送的提交，升级 sha 之前先把 TokenTracker push 上去**，否则容器里拿到的还是旧的。
+
+它是 CJS，上报器用 `createRequire` 加载 `tokentracker/src/lib/usage-limits.js`。
+锁文件里它的 `resolved` 是 `git+ssh://`，那是 npm 对 GitHub 地址的规范化写法，改不掉；Dockerfile 的
+build 段用 git 的 `insteadOf` 把它改回 https，容器里不需要任何密钥。
+
+TokenTracker 自己的 dependencies 是 `@mongodb-js/zstd` / `undici` / `yauzl`。限额这条路径（`usage-limits.js` 及其 require 图）**实际不用这三个**：sqlite 走 `sqlite3` CLI 或 `node:sqlite`，压缩会话和 pet zip 才碰到 zstd / yauzl。它们仍会被 npm 装上。`@mongodb-js/zstd` 是原生模块，alpine musl 上可能编不过或装了也加载失败 —— 限额上报用不到它，编不过的话把情况记下来，不要为了它换发行版。
+
+## 容错
+
+- 站点或限额接口连不上都只是这一轮作废，进程不退；下一轮照常重试。
+- 同一个环节连续报错只在第一次和恢复时各写一句日志，中间每满 10 次再报一次。
+- 出错时下一次重试是 2 秒后，连着错才逐次翻倍退到 5 分钟（跑通一次就复位）。
+- 某个 agent「没配」（`configured: false`）这一行不发，站点按 id 留着上一次的值。
+- 「配了但取不到」发空 `limits` 加非空 `limitsError`。不要把上一次的好值再发一遍。

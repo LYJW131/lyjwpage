@@ -1,0 +1,23 @@
+{
+  "name": "@lyjwpage/agent-limits-reporter",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "把各 coding agent 的账号限额推送到 lyjwpage",
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "tokentracker": "git+https://github.com/LYJW131/TokenTracker.git#04fd7c0504d7ef2c808390a84afb9bb47c0dfaf1"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "typescript": "^5"
+  }
+}
