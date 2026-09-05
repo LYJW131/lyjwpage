@@ -6,16 +6,18 @@
 # 改了 package.json 记得重新生成锁文件：`npm install --package-lock-only`，
 # **要在一个没有 node_modules 的干净目录里跑** —— 直接在这里跑会把 pnpm 的软链
 # 农场（`link: true` 指向 ../../node_modules/.pnpm/…）写进去，那种锁文件在容器里没用。
-FROM node:22-alpine AS build
+FROM node:24-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json tsconfig.json ./
 COPY src ./src
 RUN npm ci && npm run build
 RUN npm prune --omit=dev
 
-FROM node:22-alpine
+FROM node:24-alpine
 WORKDIR /app
 ENV NODE_ENV=production
+# 上报器自己的 fetch 走 HTTP(S)_PROXY：Node 24 起认这个开关，22 的 undici 不看代理变量
+ENV NODE_USE_ENV_PROXY=1
 # 安装 CLI 时不要 HOME=/data：那是运行时的卷，build 写进去的东西会被挂卷盖掉。
 ENV PATH="/usr/local/bin:${PATH}"
 RUN apk add --no-cache ca-certificates curl bash gcompat libstdc++

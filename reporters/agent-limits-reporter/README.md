@@ -33,6 +33,7 @@
 | `TELEMETRY_INGEST_SECRET` | ✅ | 和站点同名变量对上，作 Bearer 鉴权。站点没配时才可留空 |
 | `PUSH_INTERVAL_MS` | | 默认 `600000`（10 分钟）。要和站点的 `AGENT_LIMITS_PUSH_INTERVAL_MS` 一致 |
 | `PUSH_TIMEOUT_MS` | | 默认 `30000` |
+| `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` | | NAS 出海要走代理时填（如 `http://user:pass@192.168.3.2:7893`）。上报器自己的 fetch 靠镜像里的 `NODE_USE_ENV_PROXY=1` 认它，五个 CLI 各自也认。build 时另外用 `--build-arg HTTPS_PROXY=…` |
 | `CLAUDE_OAUTH_TOKEN_URL` | | Claude OAuth 的 token 端点。和下一档都空 = 不刷新，只记一行日志 |
 | `CLAUDE_OAUTH_CLIENT_ID` | | 同上。**自己从 Claude Code 的安装里找，不要把值写进仓库或这份 README** |
 | `AGENT_IDS` | | 逗号分隔。默认 `claude,codex,grok,cursor,antigravity` |
