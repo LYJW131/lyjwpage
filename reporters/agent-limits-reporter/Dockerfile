@@ -7,11 +7,6 @@
 # **要在一个没有 node_modules 的干净目录里跑** —— 直接在这里跑会把 pnpm 的软链
 # 农场（`link: true` 指向 ../../node_modules/.pnpm/…）写进去，那种锁文件在容器里没用。
 FROM node:22-alpine AS build
-# tokentracker 是 git 依赖。npm 把 GitHub 地址一律规范化成 git+ssh 写进锁文件，
-# 容器里没有 ssh 也没有密钥，这两条 insteadOf 把它改回 https（仓库是公开的）。
-RUN apk add --no-cache git \
-  && git config --global url."https://github.com/".insteadOf "ssh://git@github.com/" \
-  && git config --global url."https://github.com/".insteadOf "git@github.com:"
 WORKDIR /app
 COPY package.json package-lock.json tsconfig.json ./
 COPY src ./src

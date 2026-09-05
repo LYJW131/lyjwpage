@@ -6,12 +6,6 @@
 const KNOWN_AGENTS = ["claude", "codex", "grok", "cursor", "antigravity"] as const;
 export type AgentId = (typeof KNOWN_AGENTS)[number];
 
-function required(name: string): string {
-  const value = process.env[name]?.trim();
-  if (!value) throw new Error(`缺少环境变量 ${name}`);
-  return value;
-}
-
 function ms(name: string, fallback: number): number {
   const raw = process.env[name]?.trim();
   if (!raw) return fallback;
@@ -46,6 +40,7 @@ function agentIds(): AgentId[] {
 }
 
 const dryRun = flag("DRY_RUN");
+const siteUrl = process.env.SITE_URL?.trim() ?? "";
 
 export const config = {
   dryRun,
@@ -53,7 +48,7 @@ export const config = {
   site: {
     ingestUrl:
       process.env.SITE_INGEST_URL?.trim() ||
-      (dryRun ? "" : `${trimSlash(required("SITE_URL"))}/api/ingest/agents`),
+      (siteUrl ? `${trimSlash(siteUrl)}/api/ingest/agents` : ""),
     secret: process.env.TELEMETRY_INGEST_SECRET?.trim() ?? "",
   },
 
@@ -76,14 +71,13 @@ export const config = {
   agyBin: process.env.AGY_BIN?.trim() || "agy",
 
   /**
-   * TokenTracker 的 home。镜像里固定 HOME=/data，凭据落在卷上。
+   * 凭据 home。镜像里固定 HOME=/data。Grok 另认 `GROK_HOME`，Codex 另认 `CODEX_HOME`。
    * 单测 / DRY_RUN 可以另指。
    */
   home: process.env.HOME?.trim() || "/data",
 
   /**
-   * 指向一份 TokenTracker `getUsageLimits` 形状的 JSON，用来 DRY_RUN / 对照站点。
-   * 有这份就不调 TokenTracker、也不碰本机凭据。
+   * `{ "<id>": <该家原始 HTTP 响应体> }`。有这份就不出网、不读凭据，走各家规整函数。
    */
   limitsFixture: process.env.LIMITS_FIXTURE?.trim() ?? "",
 } as const;
