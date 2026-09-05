@@ -340,9 +340,10 @@ POST /api/ingest/agents
 这一路不走实时推送，卡片 30 秒一轮自己来问。
 
 容器里各家 CLI 各登录一次，凭据落在自己的卷里，**不拷 Mac 的凭据** —— 两份 refresh token
-各自刷新会互相作废。Claude / Codex / Grok Build 走 TokenTracker 取；Cursor 和 Antigravity
-在本机是靠编辑器 / IDE 进程取的，容器里能不能取到看那边 README 的结论，取不到就是这两行
-没有限额。部署、登录步骤和环境变量见 `reporters/agent-limits-reporter/README.md`。
+各自刷新会互相作废。Claude / Codex / Grok Build 由上报器自己拿各家 CLI 的登录态打各家的用量
+接口（读法参考 TokenTracker，但不依赖它，容器里不装它）；Antigravity 直接跑 `agy -p /usage`；
+Cursor 的 CLI 登录态不落文件、print 模式也不拦 `/usage`，暂时没有限额。部署、登录步骤和环境变量见
+`reporters/agent-limits-reporter/README.md`。
 
 卡片顶部汇总全量 token、API 等值费用和活跃天数，并按 input、output、cache read、
 cache write 展示占比（信封里另有 reasoningTokens，尚未上屏）；下方展示 Claude Code 和 Grok Build 的今日 token、

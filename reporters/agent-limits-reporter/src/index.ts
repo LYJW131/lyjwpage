@@ -1,17 +1,6 @@
 import { config } from "./config.js";
-import {
-  claudeRefreshConfigured,
-  refreshClaudeIfDue,
-  refreshClaudeOauth,
-} from "./claude-oauth.js";
-import { fetchAntigravityViaCli } from "./cli-usage.js";
-import {
-  collectAgents,
-  fetchUsageLimits,
-  resetUsageLimitsCache,
-  translateAndOverlay,
-  usageSaysClaudeReauth,
-} from "./limits.js";
+import { refreshClaudeIfDue } from "./claude-oauth.js";
+import { collectAgents } from "./limits.js";
 import { failure, info, recovered } from "./log.js";
 import { push, type PushPayload } from "./site.js";
 
@@ -22,6 +11,8 @@ import { push, type PushPayload } from "./site.js";
  * 在 NAS 容器里 24 小时跑。用量仍由 Mac 报。
  *
  * 每轮都 POST，内容没变也发 —— 那一封就是心跳。
+ * claude / codex / grok 自己打各家接口（参考 TokenTracker 的读取逻辑，不依赖它）；
+ * Claude 401 时 refreshClaudeOauth 再试一次；antigravity 问 `agy -p /usage`。
  */
 
 const RETRY_MS = 2_000;
@@ -35,51 +26,18 @@ function sleep(ms: number) {
 
 async function collectPayload(): Promise<PushPayload> {
   /**
-   * Claude 刷新失败不能连累整轮：这一封是心跳，不发出去站点会把五家都判成陈旧。
-   * 刷不到时 TokenTracker 那边自然会报 AUTH_EXPIRED，claude 那一行带着 limitsError 照发。
+   * Claude 刷新失败不能连累整轮：这一封是心跳，不发出去站点会把各家都判成陈旧。
+   * 刷不到时 claude 那一行带着 limitsError 照发。
    */
   try {
     await refreshClaudeIfDue();
   } catch (error) {
     failure("claude-oauth", error);
   }
-  try {
-    if (config.limitsFixture) {
-      return {
-        collectedAt: new Date().toISOString(),
-        agents: await collectAgents(),
-      };
-    }
-
-    let root = await fetchUsageLimits();
-    if (usageSaysClaudeReauth(root) && claudeRefreshConfigured()) {
-      info("TokenTracker 报 Claude AUTH_EXPIRED，刷新 OAuth 后再取一次");
-      await refreshClaudeOauth();
-      resetUsageLimitsCache();
-      root = await fetchUsageLimits();
-    }
-    return {
-      collectedAt: new Date().toISOString(),
-      agents: await translateAndOverlay(root),
-    };
-  } catch (error) {
-    if (config.limitsFixture) throw error;
-    const message = error instanceof Error ? error.message : String(error);
-    // TokenTracker 整个挂了：走它的那几家各带一句原因；antigravity 是问 CLI 的，照常取
-    const agents: PushPayload["agents"] = config.agentIds
-      .filter((id) => id !== "antigravity" && id !== "cursor")
-      .map((id) => ({
-        id,
-        plan: null,
-        limits: [],
-        limitsError: `TokenTracker ${id}：${message}`,
-      }));
-    if (config.agentIds.includes("antigravity")) {
-      const viaCli = await fetchAntigravityViaCli();
-      if (viaCli) agents.push(viaCli);
-    }
-    return { collectedAt: new Date().toISOString(), agents };
-  }
+  return {
+    collectedAt: new Date().toISOString(),
+    agents: await collectAgents(),
+  };
 }
 
 async function round(): Promise<void> {
@@ -87,6 +45,9 @@ async function round(): Promise<void> {
   if (config.dryRun) {
     process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
     return;
+  }
+  if (!config.site.ingestUrl) {
+    throw new Error("缺少环境变量 SITE_URL 或 SITE_INGEST_URL");
   }
   /**
    * 一家都没有（全都「没配」）时不发：站点对空封回 400，发了只是白退避。

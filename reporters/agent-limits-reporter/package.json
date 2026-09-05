@@ -11,11 +11,10 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "tsc -p tsconfig.json && node --test --experimental-strip-types src/providers/*.test.mts",
     "start": "node dist/index.js"
   },
-  "dependencies": {
-    "tokentracker": "git+https://github.com/LYJW131/TokenTracker.git#04fd7c0504d7ef2c808390a84afb9bb47c0dfaf1"
-  },
+  "dependencies": {},
   "devDependencies": {
     "@types/node": "^20",
     "typescript": "^5"
