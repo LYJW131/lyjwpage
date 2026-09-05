@@ -72,8 +72,15 @@ export function normalizeAntigravityQuota(body: unknown): Record<string, unknown
   return node;
 }
 
-export function rowFromAntigravityQuota(body: unknown): AgentRow {
+/**
+ * 套餐：配额接口不带订阅。IDE 里那句「Google AI Pro」来自 Windsurf 那套 language server
+ * 问 aicode.googleapis.com 的 gRPC，CLI 自己从不显示；`loadCodeAssist` 回的是 Code Assist
+ * 档位（free-tier），不是订阅，拿来当套餐会显示错。所以由环境变量 ANTIGRAVITY_PLAN_LABEL
+ * 指定，没配就 null（不渲染套餐标签）。
+ */
+export function rowFromAntigravityQuota(body: unknown, planLabel = config.antigravityPlanLabel): AgentRow {
   const node = normalizeAntigravityQuota(body);
+  if (planLabel) node.plan_label = planLabel;
   return rowFromWindows("antigravity", node, genericWindows("antigravity", node));
 }
 
