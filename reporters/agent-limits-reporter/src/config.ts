@@ -70,13 +70,16 @@ export const config = {
   cursorAuthToken: process.env.CURSOR_AUTH_TOKEN?.trim() ?? "",
 
   /**
-   * Google OAuth 公开客户端。从 Antigravity CLI 自己的安装里取，不要写进仓库。
-   * 两个都空 = 不刷新。
+   * Google OAuth 客户端。配了就直接用；都空就从 `agy` 二进制里扫候选，刷新时逐对试
+   * （见 providers/antigravity-oauth-client.ts）。这两个值不要写进仓库。
    */
   antigravityOAuth: {
     clientId: process.env.ANTIGRAVITY_OAUTH_CLIENT_ID?.trim() ?? "",
     clientSecret: process.env.ANTIGRAVITY_OAUTH_CLIENT_SECRET?.trim() ?? "",
   },
+
+  /** 扫 OAuth 客户端常量用的 `agy` 二进制；镜像里在 /usr/local/bin，别处跑可改 */
+  agyBin: process.env.AGY_BIN?.trim() || "agy",
 
   /**
    * 凭据 home。镜像里固定 HOME=/data。Grok 另认 `GROK_HOME`，Codex 另认 `CODEX_HOME`。

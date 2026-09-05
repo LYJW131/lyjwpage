@@ -39,8 +39,9 @@
 | `GROK_HOME` | | Grok 凭据目录，默认 `$HOME/.grok` |
 | `CODEX_HOME` | | Codex 凭据目录，默认 `$HOME/.codex` |
 | `CURSOR_AUTH_TOKEN` | | 直接注入 Cursor JWT。没有就读 `$XDG_CONFIG_HOME/cursor/auth.json`（默认 `/data/.config/cursor/auth.json`） |
-| `ANTIGRAVITY_OAUTH_CLIENT_ID` | | Google OAuth 客户端。和下一档都空 = 不刷新 Antigravity。**从 Antigravity CLI 自己的安装里取，不写进仓库** |
+| `ANTIGRAVITY_OAUTH_CLIENT_ID` | | 可选。不填时上报器启动会从镜像里的 `agy` 二进制扫出候选、刷新时逐对试，登录完就够。填了就直接用。**不写进仓库** |
 | `ANTIGRAVITY_OAUTH_CLIENT_SECRET` | | 同上 |
+| `AGY_BIN` | | 扫 OAuth 常量用的 `agy` 路径，默认 `agy`（镜像里在 `/usr/local/bin`） |
 | `DRY_RUN` | | `1` 时不 POST，把请求体 JSON 打到 stdout 然后退出 |
 | `LIMITS_FIXTURE` | | `{ "<id>": <该家原始 HTTP 响应体> }`。有它就不出网、不读凭据 |
 
@@ -81,10 +82,12 @@ Codex / Grok 的 token 由上报器自己刷新写回（`auth.json`）。
 `Cursor session expired — run \`agent login\` to re-authenticate.`。
 
 **antigravity。** 登录态在 `/data/.gemini/antigravity-cli/antigravity-oauth-token`。上报器打
-`cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary`。到期前 5 分钟或接口回 401 时，
-用 `ANTIGRAVITY_OAUTH_CLIENT_ID` / `ANTIGRAVITY_OAUTH_CLIENT_SECRET` 向 `oauth2.googleapis.com/token`
-刷新并原子写回。这两个变量从 Antigravity CLI 自己的安装里取，**不写进仓库**；没配就不刷新，
-过期那一行带 limitsError。
+`cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary`。到期前 5 分钟或接口回 401 时向
+`oauth2.googleapis.com/token` 刷新并原子写回。刷新要的 client_id / client_secret 是 `agy` 二进制里的常量，
+token 文件里没有，而且 `agy` 自己每次跑都只在内存里刷、不写回文件 —— 所以光读文件永远是过期的。
+镜像里本来就装着 `agy`，上报器启动时把它扫一遍捞出候选（各两个，IDE 一套 CLI 一套，分不清谁配谁），
+刷新时逐对试，错的那对 Google 回 401 invalid_client，试对了记在内存里。**登录完 `agy` 就够了，
+不用手抄任何常量**；要跳过扫描就填 `ANTIGRAVITY_OAUTH_CLIENT_ID` / `SECRET`，仍然不进仓库。
 
 alpine 上 cursor-agent / agy 是 glibc 二进制，镜像里加了 `gcompat`，装不上时 Dockerfile 不会把整次
 build 判失败（`|| true`），只是那两家登录不了，登录时看 `docker compose run` 的报错。
