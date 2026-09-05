@@ -1,10 +1,11 @@
 /**
- * `vibeCodingUsage` / `vibeCodingNow` 信封的类型收敛。
+ * `vibeCodingUsage` / `vibeCodingNow`（Mac 信封）和 `/api/ingest/agents`
+ * （容器上报器）三份报文的类型收敛。
  *
  * 五个来源（Claude Code、Codex、Cursor、Grok、Antigravity）走同一套 agent
- * 形状：token、今日用量、套餐、限额窗口、展示名、图标都在行内。站点按需取用，
- * 不要再拆 `quotaProviders` —— 那是按展示形态裁过的字段，加一列明细就要
- * 改信封。
+ * 形状：token、今日用量、展示名、图标在用量那行里；套餐和限额窗口另一条路来，
+ * 按 id 贴回去。站点按需取用，不要再拆 `quotaProviders` —— 那是按展示形态裁过
+ * 的字段，加一列明细就要改信封。
  *
  * 这份文件不碰 Redis：校验是纯函数，测试和入库走同一条。
  */
@@ -35,12 +36,22 @@ export type ParsedVibeCodingUsage = {
     currentModel: string | null;
     topModel: string | null;
     today: VibeCodingDay;
-    plan: VibeCodingPlan | null;
-    limits: VibeCodingLimit[];
-    limitsError: string | null;
   }>;
   totals: VibeCodingTotals;
   topModels: Array<{ model: string; tokens: number }>;
+  collectedAt: string;
+};
+
+/** `/api/ingest/agents` 一封里的一行：某个 agent 此刻的套餐与限额窗口。 */
+export type ParsedAgentLimitsRow = {
+  id: string;
+  plan: VibeCodingPlan | null;
+  limits: VibeCodingLimit[];
+  limitsError: string | null;
+};
+
+export type ParsedAgentLimits = {
+  agents: ParsedAgentLimitsRow[];
   collectedAt: string;
 };
 
@@ -149,9 +160,6 @@ function normalizeAgent(row: Record<string, unknown>): ParsedVibeCodingUsage["ag
     today: today
       ? normalizePreparedDay(text(today.date) ?? localDate(), today as RawAgentDay)
       : emptyDay(localDate()),
-    plan: normalizePlan(row.plan),
-    limits: normalizeLimits(row.limits),
-    limitsError: text(row.limitsError),
   };
 }
 
@@ -159,12 +167,11 @@ function normalizeAgent(row: Record<string, unknown>): ParsedVibeCodingUsage["ag
  * `vibeCodingUsage`：Mac Telemetry Hub 备好的、可直接展示的累计量。
  *
  * 行与行同一形状，不认固定名单。**整份是全有或全无的**：某一行缺展示名或图标，
- * 总量就对不上，整份不收。限额那半校验仍是宽松的 ——
- * 一边取到、一边没取到是常态，缺的那边按「没配」渲染；整条限额都挂了时上报器
- * 仍会带上只有 limitsError 的行，空 limits 加上错误原因才是「配了但取不到」。
+ * 总量就对不上，整份不收。
  *
- * 不再读 `quotaProviders`。限额窗口留在 `agents[].limits` 里，站点自己挑哪一条
- * 当总限额条。
+ * 不再读 `quotaProviders`，也不再读行里的 `plan` / `limits` / `limitsError`：
+ * 套餐和限额窗口由容器上报器走 `/api/ingest/agents` 另发（见 normalizeAgentLimits），
+ * Mac 这封里带了也当没看见 —— 不留两条路。
  */
 export function normalizeVibeCodingUsage(input: unknown): ParsedVibeCodingUsage | null {
   const root = object(input);
@@ -204,6 +211,43 @@ export function normalizeVibeCodingUsage(input: unknown): ParsedVibeCodingUsage 
           return model ? [{ model, tokens: finite(row?.tokens) }] : [];
         }).slice(0, 3)
       : [],
+    collectedAt:
+      typeof root.collectedAt === "string" && Number.isFinite(Date.parse(root.collectedAt))
+        ? root.collectedAt
+        : new Date().toISOString(),
+  };
+}
+
+/**
+ * `/api/ingest/agents`：容器上报器这一轮取到的各 agent 套餐与限额窗口。
+ *
+ * 只带这次采集到的 agent，没出现的 id 站点不动（合并在 lib/vibecoding-limits）。
+ * 一行要有 id；`plan` 缺了是 null；`limits` 逐条收敛、坏行丢掉，和从前 Mac 那封
+ * 同一套宽松规则；`limits` 空且 `limitsError` 非空才是「配了但取不到」。
+ * 一封里 id 重复或一行都没有：整封不收 —— 上报器发空封没有意义，多半是它那边坏了。
+ */
+export function normalizeAgentLimits(input: unknown): ParsedAgentLimits | null {
+  const root = object(input);
+  if (!root || !Array.isArray(root.agents)) return null;
+
+  const seen = new Set<string>();
+  const agents: ParsedAgentLimitsRow[] = [];
+  for (const value of root.agents) {
+    const row = object(value);
+    const id = row ? text(row.id) : null;
+    if (!row || !id || seen.has(id)) return null;
+    seen.add(id);
+    agents.push({
+      id,
+      plan: normalizePlan(row.plan),
+      limits: normalizeLimits(row.limits),
+      limitsError: text(row.limitsError),
+    });
+  }
+  if (agents.length === 0) return null;
+
+  return {
+    agents,
     collectedAt:
       typeof root.collectedAt === "string" && Number.isFinite(Date.parse(root.collectedAt))
         ? root.collectedAt

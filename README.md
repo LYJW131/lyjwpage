@@ -113,7 +113,7 @@ Redis（见下面那节），本来就不需要谁转给谁。
 
 Redis TCP 连接按请求作用域租用：同一 Node 实例里的并发请求共用一条，最后一个请求和命令结束后主动断开。不能让 ioredis 永久单例留在 serverless 实例里——实例暂停时普通 idle timer 不会跑，旧部署和 Preview 会各留一条空闲连接。Preview 必须不配 Redis 或使用独立 `REDIS_URL`；`REDIS_PREFIX` 只隔离键，不隔离连接额度。
 
-各路数据几乎全是**推进来**的，本站没有任何按钟轮询上游的东西。推送入口共用 `/api/ingest/*` 和同一个 `TELEMETRY_INGEST_SECRET`，状态落在 `lib/redis.ts` 的 mirrorKey 里（Redis 为主、进程内存为辅，没配 `REDIS_URL` 也能跑）。六个上报侧：Mac Telemetry Hub、iPhone Telemetry Hub、Home Assistant（HomePod）、Emby 推送代理、PlayStation 上报 Worker、VPS 上的 server-reporter。剩下那两路没有上报方（Apple Music 的「最近在听」、GitHub 贡献日历）由站点自己拉，见下一段。PlayStation 那个 Worker 的 `wrangler.toml` 里 `SITE_URL` 已经填成主站，合并到 main 部署之后即开始真实上报；站点侧已经接好 `/api/ingest/playstation`、`/api/status/playing`、`/api/status/playing/now` 和 `/api/status/trophies`，Worker 的代码和部署说明在 `workers/playstation-reporter/`。它的 cron 每分钟看一眼[那两个人头数](#两个上报器共用一套三档)：有人正看着就 60 秒一轮完整 tick，页面只是开着 2 分钟一轮，一个页面都没开压回 15 分钟一轮，**每轮都发 presence** —— 内容没变也发，那一封就是心跳：站点照样落库刷新 `observedAt`，但不广播、也不急失效，只推一次普通 tag 让快照跟着走。断流判定因此在 `/api/status/playing/now` 出口每次请求现算（`PLAYSTATION_STALE_MS`，默认 50 分钟 = 闲时三轮加余量），超窗发降级信封：**Worker 死了是「不知道他在不在玩」，不是「他离线了」**，所以宁可让卡片收起「正在游玩」那一行，也不伪造一个 `online: false`。奖杯目录只在解锁指纹变化时才推，没有 `/now`，也不走实时推送。前两个是**设备级的遥测中心**：一台设备一个入口、一个信封、一个 `modules` 字典。上报器只跟一个源站说话，收到的那份会把请求原样转给对端部署，见[上面那节](#两份生产之间靠传播上报对齐)。
+各路数据几乎全是**推进来**的，本站没有任何按钟轮询上游的东西。推送入口共用 `/api/ingest/*` 和同一个 `TELEMETRY_INGEST_SECRET`，状态落在 `lib/redis.ts` 的 mirrorKey 里（Redis 为主、进程内存为辅，没配 `REDIS_URL` 也能跑）。七个上报侧：Mac Telemetry Hub、iPhone Telemetry Hub、Home Assistant（HomePod）、Emby 推送代理、PlayStation 上报 Worker、VPS 上的 server-reporter、NAS 上的各 agent 限额上报器（`reporters/agent-limits-reporter`）。剩下那两路没有上报方（Apple Music 的「最近在听」、GitHub 贡献日历）由站点自己拉，见下一段。PlayStation 那个 Worker 的 `wrangler.toml` 里 `SITE_URL` 已经填成主站，合并到 main 部署之后即开始真实上报；站点侧已经接好 `/api/ingest/playstation`、`/api/status/playing`、`/api/status/playing/now` 和 `/api/status/trophies`，Worker 的代码和部署说明在 `workers/playstation-reporter/`。它的 cron 每分钟看一眼[那两个人头数](#两个上报器共用一套三档)：有人正看着就 60 秒一轮完整 tick，页面只是开着 2 分钟一轮，一个页面都没开压回 15 分钟一轮，**每轮都发 presence** —— 内容没变也发，那一封就是心跳：站点照样落库刷新 `observedAt`，但不广播、也不急失效，只推一次普通 tag 让快照跟着走。断流判定因此在 `/api/status/playing/now` 出口每次请求现算（`PLAYSTATION_STALE_MS`，默认 50 分钟 = 闲时三轮加余量），超窗发降级信封：**Worker 死了是「不知道他在不在玩」，不是「他离线了」**，所以宁可让卡片收起「正在游玩」那一行，也不伪造一个 `online: false`。奖杯目录只在解锁指纹变化时才推，没有 `/now`，也不走实时推送。前两个是**设备级的遥测中心**：一台设备一个入口、一个信封、一个 `modules` 字典。上报器只跟一个源站说话，收到的那份会把请求原样转给对端部署，见[上面那节](#两份生产之间靠传播上报对齐)。
 
 站点会出网的有三处，都走 `src/lib/cache.ts`（带 TTL、in-flight 去重和 5 秒负缓存）：① 给此刻在播的曲子查一个可跳转的地址；② GitHub 贡献热力图（`lib/github-chart`，TTL 10 分钟）去 `api.github.com/graphql` 取日历；③ Apple Music 的「最近在听」列表（`lib/apple-music-recent`，TTL 2 分钟）。后两路没有上报方，只能自己拉。**核心原则：前端轮询多快，回源频率都不变**，由各自的 TTL 决定 —— 三处都是被访客的请求驱动的，没人看时一次都不出网，也没有任何定时器。值存 Redis（进程重启和多实例共享）；in-flight 去重始终在进程内，它挡的是同一进程的并发穿透，Redis 代劳不了。
 
@@ -298,29 +298,51 @@ hero 上此刻在播的那首，副标题那一行会跟着进度条换成正在
 
 ### Vibe Coding — TokenTracker
 
-Mac Telemetry Hub 从本机 TokenTracker 的面板接口取三份数据：按天的 token 与费用
-（按来源拆分，拼出「每天 × 每个 agent」）、各来源的套餐与限额窗口、以及最近的会话
-活动，最后一份只用来判断“正在使用”。五个来源（Claude Code、Codex、Cursor、Grok、
-Antigravity）走**同一套 agent 形状**上报：token、今日用量、套餐、限额窗口、展示名
-和图标都在行内。网站只接受上报器生成的展示摘要，不在服务端跑采集，按需取用 ——
-Claude / Grok Build 画全量面板，其余只取总限额那一行。不要再拆 `quotaProviders`。
+这张卡的数据来自两台机器。**用量**由 Mac Telemetry Hub 从本机 TokenTracker 的面板接口
+取：按天的 token 与费用（按来源拆分，拼出「每天 × 每个 agent」）和最近的会话活动，后者
+只用来判断“正在使用”。**套餐与限额窗口**由 NAS 上的容器上报器
+（`reporters/agent-limits-reporter`，见下一节）走 `/api/ingest/agents` 另发 —— 它们是厂商
+账号侧的事实，跟那台 Mac 无关，从前搭用量信封的车，Mac 合盖就冻住。五个来源（Claude Code、
+Codex、Cursor、Grok、Antigravity）走**同一套 agent 形状**：token、今日用量、展示名和图标在
+用量那行里，站点按 id 把限额贴回同一行。网站只接受上报器生成的展示摘要，不在服务端跑采集，
+按需取用 —— Claude / Grok Build 画全量面板，其余只取总限额那一行。不要再拆 `quotaProviders`。
 
-上报按**多久变一次**分成两个模块，不按数据来自哪个接口分：
+Mac 那侧按**多久变一次**分成两个模块，不按数据来自哪个接口分：
 
 | 模块 | 间隔 | 内容 | 站点怎么处理 |
 | --- | --- | --- | --- |
 | `vibeCodingNow` | 60 秒 | 此刻在不在用、用的是哪个模型、最近一次活动时刻 | 变了就推给浏览器（`vibecoding-now` 事件） |
-| `vibeCodingUsage` | 10 分钟 | 每个 agent 的 token、费用、今日用量、套餐、限额窗口、会话总数 | 只失效首屏缓存，卡片靠轮询取 |
+| `vibeCodingUsage` | 10 分钟 | 每个 agent 的 token、费用、今日用量、会话总数 | 只失效首屏缓存，卡片靠轮询取 |
 | `vibeCodingYear` | 1 小时（可改） | 过去 53 周的日合计 token，外加每天前五模型的 compact mix | 不推送；`/api/status/vibecoding/year` 回整份，浏览器长间隔来问 |
 
 从前是三个模块、三个采集器（用量 / 限额 / 会话状态各一份），那条线是按「哪条命令
 产出的」划的：当年限额和用量分别来自 CodexBar 的两条命令，其中一条要跑十几秒，它一
-失败，同一轮刚取到的限额也跟着发不出去。如今都来自同一个本机服务、跟着同两个间隔转，
-只剩「此刻」和「至今累计」这一道真实的分界线，上报器那边也跟着并成两个采集器。
+失败，同一轮刚取到的限额也跟着发不出去。后来并成两份，只剩「此刻」和「至今累计」这道线。
+现在限额又拆出去了，但这次是按**来源**划的 —— 两台机器各报各的，用量信封里带了
+`plan` / `limits` / `limitsError` 站点也当没看见，不留两条路。
 
-并成一个采集器不等于两半共命：限额挂了用量照发（那几根条沿用上次的值并带上
-`limitsError`，页面据此把「没配」和「配了但取不到」分开），用量挂了则整轮不发 ——
-限额是按 id 贴在 `agents` 上的，站点那边没有主干就没有 agents 可贴。
+### 各 agent 的限额 — 容器上报器
+
+```text
+POST /api/ingest/agents
+```
+
+请求体是 `{ collectedAt, agents: [{ id, plan, limits, limitsError }] }`，字段含义就是
+`src/lib/types.ts` 里 `VibeCodingAgent` 上同名那几个。一封只带这次采集到的 agent，**没出现
+的 id 站点不动**（按 id 合并进 `vibecoding:limits`）；某家没登录就不发那一行，登录了但取
+不到就发空 `limits` 加 `limitsError`，页面据此把「没配」和「配了但取不到」分开。取失败时
+不要把上一次的好值再发一遍，站点自己留着。
+
+**每轮必发**，内容没变也发 —— 那一封就是心跳。站点给每行盖 `limitsAt`（收到的时刻），
+把三倍间隔的窗口（`AGENT_LIMITS_PUSH_INTERVAL_MS`，默认 10 分钟 × 3）作为
+`limitsStaleAfterMs` 一起发给浏览器，陈旧与否浏览器自己算：条照画、数字停在最后一次看到
+的值，但整块淡掉并标 Stale。不在服务端拼「N 分钟没更新」—— 首屏是 `'use cache'` 冻住的。
+这一路不走实时推送，卡片 30 秒一轮自己来问。
+
+容器里各家 CLI 各登录一次，凭据落在自己的卷里，**不拷 Mac 的凭据** —— 两份 refresh token
+各自刷新会互相作废。Claude / Codex / Grok Build 走 TokenTracker 取；Cursor 和 Antigravity
+在本机是靠编辑器 / IDE 进程取的，容器里能不能取到看那边 README 的结论，取不到就是这两行
+没有限额。部署、登录步骤和环境变量见 `reporters/agent-limits-reporter/README.md`。
 
 卡片顶部汇总全量 token、API 等值费用和活跃天数，并按 input、output、cache read、
 cache write 展示占比（信封里另有 reasoningTokens，尚未上屏）；下方展示 Claude Code 和 Grok Build 的今日 token、

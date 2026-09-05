@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  normalizeAgentLimits,
   normalizeVibeCodingNow,
   normalizeVibeCodingUsage,
 } from "./vibecoding-parse.ts";
@@ -41,9 +42,6 @@ function agent(id: string, extra: Record<string, unknown> = {}) {
     currentModel: null,
     topModel: null,
     today: today(),
-    plan: null,
-    limits: [],
-    limitsError: null,
     ...extra,
   };
 }
@@ -55,9 +53,6 @@ test("五个来源同一形状就能收，不靠 quotaProviders", () => {
     agents: FIVE.map((id) => agent(id, {
       label: id === "claude" ? "Claude Code" : id,
       icon: id === "claude" ? "anthropic" : id,
-      limits: id === "cursor"
-        ? [{ key: "cursor.primary", usedPercent: 41, resetsAt: 1_800_000_000 }]
-        : [],
     })),
     totals: totals(),
     topModels: [{ model: "claude-opus-4", tokens: 12 }],
@@ -67,8 +62,76 @@ test("五个来源同一形状就能收，不靠 quotaProviders", () => {
   assert.ok(parsed);
   assert.deepEqual(parsed.agents.map((row) => row.id), FIVE);
   assert.equal(parsed.agents[0]?.label, "Claude Code");
-  assert.equal(parsed.agents[2]?.limits[0]?.usedPercent, 41);
   assert.equal("quotaProviders" in parsed, false);
+});
+
+test("用量信封里带的 plan / limits / limitsError 一律不读：限额另有来路", () => {
+  const parsed = normalizeVibeCodingUsage({
+    agents: [
+      agent("claude", {
+        label: "Claude Code",
+        icon: "anthropic",
+        plan: { tier: "max", label: "Max 5x" },
+        limits: [{ key: "claude.primary", usedPercent: 41, resetsAt: 1_800_000_000 }],
+        limitsError: "过期",
+      }),
+    ],
+    totals: totals(),
+  });
+  assert.ok(parsed);
+  const row = parsed.agents[0] as Record<string, unknown>;
+  assert.equal("plan" in row, false);
+  assert.equal("limits" in row, false);
+  assert.equal("limitsError" in row, false);
+});
+
+test("agents 入口：按 id 收行，plan 缺了是 null，坏窗口丢掉、好窗口夹到 0–100", () => {
+  const parsed = normalizeAgentLimits({
+    collectedAt: "2026-09-05T12:00:00.000Z",
+    agents: [
+      {
+        id: "claude",
+        plan: { tier: "max", label: "Max 5x" },
+        limits: [
+          { key: "claude.primary", usedPercent: 137, windowMinutes: 300, resetsAt: 1_800_000_000 },
+          { key: "", usedPercent: 10 },
+          { key: "weekly_all", usedPercent: "12" },
+        ],
+        limitsError: null,
+      },
+      { id: "codex", limits: [], limitsError: "TokenTracker codex：token expired" },
+      { id: "grok", plan: { tier: "" } },
+    ],
+  });
+  assert.ok(parsed);
+  assert.equal(parsed.collectedAt, "2026-09-05T12:00:00.000Z");
+  assert.deepEqual(parsed.agents.map((row) => row.id), ["claude", "codex", "grok"]);
+  assert.deepEqual(parsed.agents[0]?.plan, { tier: "max", label: "Max 5x" });
+  assert.deepEqual(parsed.agents[0]?.limits, [
+    {
+      key: "claude.primary",
+      label: null,
+      group: null,
+      windowMinutes: 300,
+      usedPercent: 100,
+      resetsAt: 1_800_000_000,
+    },
+  ]);
+  assert.equal(parsed.agents[1]?.limitsError, "TokenTracker codex：token expired");
+  assert.deepEqual(parsed.agents[1]?.limits, []);
+  // tier 空等于没有套餐信息，不要留一个空标签
+  assert.equal(parsed.agents[2]?.plan, null);
+  assert.equal(parsed.agents[2]?.limitsError, null);
+});
+
+test("agents 入口：没有 id、id 重复、一行都没有，整封不收", () => {
+  assert.equal(normalizeAgentLimits({ agents: [] }), null);
+  assert.equal(normalizeAgentLimits({ agents: [{ plan: null }] }), null);
+  assert.equal(
+    normalizeAgentLimits({ agents: [{ id: "claude" }, { id: "claude" }] }),
+    null,
+  );
+  assert.equal(normalizeAgentLimits({ collectedAt: "x" }), null);
 });
 
 test("缺展示名或图标的整份不收", () => {
