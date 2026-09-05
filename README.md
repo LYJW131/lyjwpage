@@ -115,6 +115,20 @@ Redis TCP 连接按请求作用域租用：同一 Node 实例里的并发请求�
 
 各路数据几乎全是**推进来**的，本站没有任何按钟轮询上游的东西。推送入口共用 `/api/ingest/*` 和同一个 `TELEMETRY_INGEST_SECRET`，状态落在 `lib/redis.ts` 的 mirrorKey 里（Redis 为主、进程内存为辅，没配 `REDIS_URL` 也能跑）。七个上报侧：Mac Telemetry Hub、iPhone Telemetry Hub、Home Assistant（HomePod）、Emby 推送代理、PlayStation 上报 Worker、VPS 上的 server-reporter、NAS 上的各 agent 限额上报器（`reporters/agent-limits-reporter`）。剩下那两路没有上报方（Apple Music 的「最近在听」、GitHub 贡献日历）由站点自己拉，见下一段。PlayStation 那个 Worker 的 `wrangler.toml` 里 `SITE_URL` 已经填成主站，合并到 main 部署之后即开始真实上报；站点侧已经接好 `/api/ingest/playstation`、`/api/status/playing`、`/api/status/playing/now` 和 `/api/status/trophies`，Worker 的代码和部署说明在 `workers/playstation-reporter/`。它的 cron 每分钟看一眼[那两个人头数](#两个上报器共用一套三档)：有人正看着就 60 秒一轮完整 tick，页面只是开着 2 分钟一轮，一个页面都没开压回 15 分钟一轮，**每轮都发 presence** —— 内容没变也发，那一封就是心跳：站点照样落库刷新 `observedAt`，但不广播、也不急失效，只推一次普通 tag 让快照跟着走。断流判定因此在 `/api/status/playing/now` 出口每次请求现算（`PLAYSTATION_STALE_MS`，默认 50 分钟 = 闲时三轮加余量），超窗发降级信封：**Worker 死了是「不知道他在不在玩」，不是「他离线了」**，所以宁可让卡片收起「正在游玩」那一行，也不伪造一个 `online: false`。奖杯目录只在解锁指纹变化时才推，没有 `/now`，也不走实时推送。前两个是**设备级的遥测中心**：一台设备一个入口、一个信封、一个 `modules` 字典。上报器只跟一个源站说话，收到的那份会把请求原样转给对端部署，见[上面那节](#两份生产之间靠传播上报对齐)。
 
+首屏 HTML 与状态 API 使用独立的 `page:<主题>` / `api:<主题>` 缓存标签和条目。
+普通上报让两份都后台更新；播放、充电结构等 urgent 上报只让 API 立即失效，首屏仍先返回
+旧 HTML、后台重建。首页保持 `revalidate: 10 分钟 / expire: 7 天`，挂载后由 SWR 和推送更新。
+共享缓存函数必须显式传入 `page` 或 `api`，嵌套调用也要沿用同一 scope，避免 API 标签传播
+到整页，使下一位访客被迫等待取数、封面和歌词重建。没有缓存或超过 7 天硬过期时仍需重建。
+
+缓存回归用生产构建（`pnpm build` + `pnpm start --port 3212`）验证，开发模式不代表 ISR 行为。
+构建和启动均需使用隔离配置：`REDIS_URL`、`INGEST_PEERS`、`NEXT_PUBLIC_LIVE_PUSH_URL`、
+`LIVE_PUSH_SECRET` 置空，`STATUS_CACHE=true`，`TELEMETRY_INGEST_SECRET=local-status-cache-verification`；
+其他上游凭据及 Worker 地址同样置空，避免测试访问线上服务。然后执行
+`node scripts/verify-status-cache.mjs`。脚本只接受本机地址，检查实际构建产物没有 API 标签泄漏，
+再验证 urgent 上报后第一次 HTML 返回旧值、第一次 API 返回新值，以及后台重建最终收敛。
+测试数据只留在该测试进程的内存里。
+
 站点会出网的有三处，都走 `src/lib/cache.ts`（带 TTL、in-flight 去重和 5 秒负缓存）：① 给此刻在播的曲子查一个可跳转的地址；② GitHub 贡献热力图（`lib/github-chart`，TTL 10 分钟）去 `api.github.com/graphql` 取日历；③ Apple Music 的「最近在听」列表（`lib/apple-music-recent`，TTL 2 分钟）。后两路没有上报方，只能自己拉。**核心原则：前端轮询多快，回源频率都不变**，由各自的 TTL 决定 —— 三处都是被访客的请求驱动的，没人看时一次都不出网，也没有任何定时器。值存 Redis（进程重启和多实例共享）；in-flight 去重始终在进程内，它挡的是同一进程的并发穿透，Redis 代劳不了。
 
 ### 推给浏览器 — 自建 Worker
