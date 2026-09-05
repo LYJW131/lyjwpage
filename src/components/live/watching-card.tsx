@@ -253,6 +253,16 @@ export function WatchingRow({
   })();
   const reduced = useReducedMotion();
   const [selectedFilm, setSelectedFilm] = useState<string | null>(null);
+  const theatreHeadingRef = useRef<HTMLHeadingElement>(null);
+  const filmFromDirectory = useRef(false);
+  useEffect(() => {
+    if (!filmFromDirectory.current) return;
+    filmFromDirectory.current = false;
+    document
+      .getElementById("scene-content")
+      ?.scrollTo({ top: 0, behavior: reduced ? "instant" : "smooth" });
+    theatreHeadingRef.current?.focus({ preventScroll: true });
+  }, [selectedFilm, reduced]);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const nowPlayingId = data?.nowPlaying?.itemId;
   const firstItemId = data?.items[0]?.id;
@@ -340,92 +350,97 @@ export function WatchingRow({
           NOW SCREENING
         </span>
         <div className="theatre-screen">
-          <AnimatePresence initial={false}>
-            <motion.div
-              className="theatre-backdrop"
-              key={selected.id}
-              initial={{ opacity: 0, scale: reduced ? 1 : 1.035 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: reduced ? 0 : 0.7 }}
+          <div className="theatre-picture">
+            <AnimatePresence initial={false}>
+              <motion.div
+                className="theatre-backdrop"
+                key={selected.id}
+                initial={{ opacity: 0, scale: reduced ? 1 : 1.035 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: reduced ? 0 : 0.7 }}
+              >
+                {selected.backdrop || selected.poster ? (
+                  <Image
+                    src={(selected.backdrop ?? selected.poster)!}
+                    alt={selected.title}
+                    fill
+                    sizes="(max-width: 700px) 100vw, 90vw"
+                    unoptimized
+                    className="object-cover"
+                  />
+                ) : (
+                  <Film size={120} strokeWidth={0.4} />
+                )}
+              </motion.div>
+            </AnimatePresence>
+            <div className="theatre-shade" />
+            <div className="theatre-topline">
+              <span>
+                <i />{" "}
+                {liveSelected
+                  ? data.nowPlaying?.paused
+                    ? "PAUSED"
+                    : "NOW SHOWING"
+                  : "CONTINUE WATCHING"}
+              </span>
+              <span>
+                {String(selectedIndex + 1).padStart(2, "0")} /{" "}
+                {String(data.items.length).padStart(2, "0")}
+              </span>
+            </div>
+            <div className="theatre-controls">
+              <button
+                type="button"
+                aria-label="上一部影片"
+                onClick={() =>
+                  setSelectedFilm(
+                    data.items[
+                      (selectedIndex + data.items.length - 1) %
+                        data.items.length
+                    ].id,
+                  )
+                }
+              >
+                <ArrowLeft size={20} />
+              </button>
+              <button
+                type="button"
+                aria-label="下一部影片"
+                onClick={() =>
+                  setSelectedFilm(
+                    data.items[(selectedIndex + 1) % data.items.length].id,
+                  )
+                }
+              >
+                <ArrowRight size={20} />
+              </button>
+            </div>
+            <div
+              className="theatre-progress"
+              role="progressbar"
+              aria-label="播放进度"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(progress)}
             >
-              {selected.backdrop || selected.poster ? (
-                <Image
-                  src={(selected.backdrop ?? selected.poster)!}
-                  alt={selected.title}
-                  fill
-                  sizes="(max-width: 700px) 100vw, 90vw"
-                  unoptimized
-                  className="object-cover"
-                />
-              ) : (
-                <Film size={120} strokeWidth={0.4} />
-              )}
-            </motion.div>
-          </AnimatePresence>
-          <div className="theatre-shade" />
-          <div className="theatre-topline">
-            <span>
-              <i />{" "}
-              {liveSelected
-                ? data.nowPlaying?.paused
-                  ? "PAUSED"
-                  : "NOW SHOWING"
-                : "CONTINUE WATCHING"}
-            </span>
-            <span>
-              {String(selectedIndex + 1).padStart(2, "0")} /{" "}
-              {String(data.items.length).padStart(2, "0")}
-            </span>
+              <div style={progressStyle} />
+            </div>
           </div>
           <div className="theatre-story" key={`story-${selected.id}`}>
             <span className="theatre-year">
               {selected.year ?? "EMBY"} ·{" "}
               {selected.type === "Movie" ? "FILM" : "SERIES"}
             </span>
-            <h3>{selected.title}</h3>
+            <h3 ref={theatreHeadingRef} tabIndex={-1}>
+              {selected.title}
+            </h3>
             <p>{selected.subtitle}</p>
             {selected.link && (
               <a href={selected.link} target="_blank" rel="noreferrer noopener">
                 继续观看 <ArrowUpRight size={20} />
               </a>
             )}
-          </div>
-          <div className="theatre-controls">
-            <button
-              type="button"
-              aria-label="上一部影片"
-              onClick={() =>
-                setSelectedFilm(
-                  data.items[
-                    (selectedIndex + data.items.length - 1) % data.items.length
-                  ].id,
-                )
-              }
-            >
-              <ArrowLeft size={20} />
-            </button>
-            <button
-              type="button"
-              aria-label="下一部影片"
-              onClick={() =>
-                setSelectedFilm(
-                  data.items[(selectedIndex + 1) % data.items.length].id,
-                )
-              }
-            >
-              <ArrowRight size={20} />
-            </button>
-          </div>
-          <div
-            className="theatre-progress"
-            role="progressbar"
-            aria-label="播放进度"
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={Math.round(progress)}
-          >
-            <div style={progressStyle} />
           </div>
         </div>
         <div className="archive-heading">
@@ -447,7 +462,17 @@ export function WatchingRow({
               className="reel-film"
               key={keys[i]}
               aria-pressed={selected.id === item.id}
-              onClick={() => setSelectedFilm(item.id)}
+              onClick={() => {
+                filmFromDirectory.current = true;
+                setSelectedFilm(item.id);
+                if (item.id === selectedFilm) {
+                  document.getElementById("scene-content")?.scrollTo({
+                    top: 0,
+                    behavior: reduced ? "instant" : "smooth",
+                  });
+                  theatreHeadingRef.current?.focus({ preventScroll: true });
+                }
+              }}
             >
               <span className="reel-number">
                 {String(i + 1).padStart(2, "0")}

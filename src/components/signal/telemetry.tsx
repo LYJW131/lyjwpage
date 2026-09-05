@@ -61,11 +61,11 @@ const bytes = (value: number, base = 1000) => {
   return `${(value / base ** i).toFixed(1)} ${units[i]}`;
 };
 const chapters = [
-  { id: "compute", label: "灵感协作", en: "COMPUTE" },
-  { id: "network", label: "远方节点", en: "NETWORK" },
-  { id: "charger", label: "桌面供电", en: "POWER" },
-  { id: "battery", label: "移动能量", en: "BATTERY" },
-  { id: "activity", label: "屏幕之外", en: "MOVEMENT" },
+  { id: "compute", label: "AI 编程", en: "COMPUTE" },
+  { id: "network", label: "服务器", en: "NETWORK" },
+  { id: "charger", label: "充电器", en: "POWER" },
+  { id: "battery", label: "充电宝", en: "BATTERY" },
+  { id: "activity", label: "活动", en: "MOVEMENT" },
 ] as const;
 type Chapter = (typeof chapters)[number]["id"];
 

@@ -25,6 +25,7 @@ import { Card } from "@/components/ui/card";
 import { HomePodMiniIcon, MacBookProIcon } from "@/components/ui/device-icons";
 import { HeroMotionArtwork } from "@/components/live/hero-motion-artwork";
 import { ListenAlongButton } from "@/components/live/listen-along-button";
+import { useExhibitDetail } from "@/hooks/use-exhibit-detail";
 import { useListenAlong } from "@/hooks/use-listen-along";
 import { useLiveEvents } from "@/hooks/use-live-events";
 import { useLyrics, type CachedLyricsData } from "@/hooks/use-lyrics";
@@ -1020,7 +1021,6 @@ export function ListeningCard({
   useExpiryRefetch(NOW_LISTENING_PATH, live?.expiresInMs);
 
   const reduced = useReducedMotion();
-  const [recordSelection, setRecordSelection] = useState<RecordSelection>(null);
   const [recordQuery, setRecordQuery] = useState("");
 
   // MacBook 与 HomePod 都没有可用状态时才退回最近播放列表。
@@ -1203,44 +1203,74 @@ export function ListeningCard({
       ? paletteGradient(motionData.colors)
       : undefined;
 
+  const records: Hero[] = [
+    ...(localActive && hero ? [hero] : []),
+    ...dedupeListeningItems(
+      data?.items ?? [],
+      localActive ? (live?.id ?? null) : null,
+    ).map((item) => ({
+      key: item.id,
+      artwork: item.artwork,
+      title: item.title,
+      subtitle: item.artist,
+      link: item.link,
+      label: "最近听过",
+      playing: false,
+      palette: item.palette,
+      durationMs: item.durationMs,
+      track: null,
+    })),
+  ];
+  const {
+    id: recordId,
+    open: openRecord,
+    close: closeRecord,
+    attachRoot: recordRef,
+  } = useExhibitDetail(
+    "music",
+    presentation === "stage",
+    data || error
+      ? [
+          ...records.map((record) => record.key),
+          ...(records.length ? ["live"] : []),
+        ]
+      : null,
+  );
+  const recordSelection: RecordSelection =
+    recordId === "live"
+      ? { kind: "live" }
+      : recordId
+        ? { kind: "record", id: recordId }
+        : null;
+
   if (presentation === "stage") {
-    const records: Hero[] = [
-      ...(localActive && hero ? [hero] : []),
-      ...dedupeListeningItems(
-        data?.items ?? [],
-        localActive ? (live?.id ?? null) : null,
-      ).map((item) => ({
-        key: item.id,
-        artwork: item.artwork,
-        title: item.title,
-        subtitle: item.artist,
-        link: item.link,
-        label: "最近听过",
-        playing: false,
-        palette: item.palette,
-        durationMs: item.durationMs,
-        track: null,
-      })),
-    ];
     const selectedIndex = selectedRecordIndex(records, recordSelection);
     const selectRecord = (record: Hero) =>
-      setRecordSelection(
-        record.track ? { kind: "live" } : { kind: "record", id: record.key },
-      );
+      openRecord(record.track ? "live" : record.key);
     const selectedRecord = records[selectedIndex];
     const filtered = records.filter(
       (item) =>
         !item.track &&
         `${item.title} ${item.subtitle}`
           .toLocaleLowerCase()
-          .includes(recordQuery.toLocaleLowerCase()),
+          .includes(recordQuery.trim().toLocaleLowerCase()),
+    );
+    const detailRecords =
+      recordSelection?.kind === "live"
+        ? selectedRecord
+          ? [selectedRecord]
+          : []
+        : filtered;
+    const detailIndex = detailRecords.findIndex(
+      (item) => item.key === selectedRecord?.key,
     );
     return (
       <div
+        ref={recordRef}
         className="records-exhibit"
         data-scroll
         onKeyDown={(event) => {
-          if (event.key === "Escape") setRecordSelection(null);
+          if (event.key === "Escape") closeRecord();
         }}
       >
         {listenAlong.status !== "idle" &&
@@ -1250,7 +1280,7 @@ export function ListeningCard({
             </div>
           )}
         {selectedRecord ? (
-          <div className="record-detail" key={selectedRecord.key}>
+          <div className="record-detail">
             <div
               className="detail-haze"
               aria-hidden="true"
@@ -1260,20 +1290,18 @@ export function ListeningCard({
                   : undefined,
               }}
             />
-            <button
-              className="detail-back"
-              autoFocus
-              onClick={() => setRecordSelection(null)}
-            >
-              <ArrowLeft size={28} /> 返回专辑阵列
+            <button className="detail-back" onClick={closeRecord}>
+              <ArrowLeft size={28} /> 返回专辑列表
             </button>
             <button
               className="exhibit-arrow arrow-prev"
               aria-label="上一张专辑"
+              disabled={detailRecords.length < 2}
               onClick={() =>
                 selectRecord(
-                  records[
-                    (selectedIndex + records.length - 1) % records.length
+                  detailRecords[
+                    (detailIndex + detailRecords.length - 1) %
+                      detailRecords.length
                   ],
                 )
               }
@@ -1376,91 +1404,97 @@ export function ListeningCard({
             <button
               className="exhibit-arrow arrow-next"
               aria-label="下一张专辑"
+              disabled={detailRecords.length < 2}
               onClick={() =>
-                selectRecord(records[(selectedIndex + 1) % records.length])
+                selectRecord(
+                  detailRecords[(detailIndex + 1) % detailRecords.length],
+                )
               }
             >
               <ArrowRight />
             </button>
           </div>
-        ) : (
-          <>
-            <div className="exhibit-toolbar">
-              <label className="exhibit-search">
-                <input
-                  value={recordQuery}
-                  onChange={(event) => setRecordQuery(event.target.value)}
-                  placeholder="搜索声音记忆"
-                  aria-label="搜索专辑"
-                />
-                <Search size={21} />
-              </label>
-              <div className="exhibit-heading">
-                {localActive && hero && (
-                  <button
-                    className="live-entry"
-                    onClick={() => selectRecord(hero)}
-                  >
-                    ● 正在听
-                  </button>
-                )}
-                <h2>
-                  <Disc3 size={25} />
-                  专辑阵列
-                </h2>
-              </div>
-            </div>
-            <div className="cover-matrix" data-scroll aria-label="最近播放">
-              {filtered.map((item, i) => (
+        ) : null}
+        <div className="exhibit-list" hidden={Boolean(selectedRecord)}>
+          <div className="exhibit-toolbar">
+            <label className="exhibit-search">
+              <input
+                value={recordQuery}
+                onChange={(event) => setRecordQuery(event.target.value)}
+                placeholder="搜索专辑或艺人"
+                aria-label="搜索专辑"
+              />
+              <Search size={21} />
+            </label>
+            <div className="exhibit-heading">
+              {localActive && hero && (
                 <button
-                  className="matrix-item"
-                  key={item.key}
-                  onClick={() => selectRecord(item)}
-                  aria-label={`${item.title} · ${item.subtitle}`}
-                  style={{ "--item-delay": `${i * 35}ms` } as CSSProperties}
+                  className="live-entry"
+                  onClick={() => selectRecord(hero)}
                 >
-                  <span className="matrix-cover">
-                    {item.artwork ? (
-                      <Image
-                        src={appleArtwork(item.artwork, 480)!}
-                        alt={item.title}
-                        width={480}
-                        height={480}
-                        unoptimized={!needsOptimizing(item.artwork)}
-                        className="matrix-image"
-                      />
-                    ) : (
-                      <Disc3 size={50} />
-                    )}
-                    <span className="matrix-hover">
-                      <b>{item.title}</b>
-                      <small>{item.subtitle}</small>
-                      <ArrowUpRight size={24} />
-                    </span>
-                  </span>
-                  <span className="matrix-caption">
-                    {String(i + 1).padStart(2, "0")} <span>{item.title}</span>
-                  </span>
+                  ● 正在听
                 </button>
-              ))}
+              )}
+              <h2>
+                <Disc3 size={25} />
+                最近在听
+              </h2>
             </div>
-            {!filtered.length && (
-              <div className="signal-empty">
-                {isLoading
-                  ? "正在读取声音记录…"
-                  : error
-                    ? "Apple Music 暂时未连接"
-                    : recordQuery
-                      ? "没有匹配的专辑"
-                      : "下一段旋律，尚未开始。"}
-              </div>
-            )}
-            <div className="exhibit-count">
-              <i /> {String(filtered.length).padStart(2, "0")} RECORDS / APPLE
-              MUSIC
+          </div>
+          <div className="cover-matrix" data-scroll aria-label="最近播放">
+            {filtered.map((item, i) => (
+              <button
+                className="matrix-item"
+                key={item.key}
+                onClick={() => selectRecord(item)}
+                aria-label={`${item.title} · ${item.subtitle}`}
+                style={{ "--item-delay": `${i * 35}ms` } as CSSProperties}
+              >
+                <span className="matrix-cover">
+                  {item.artwork ? (
+                    <Image
+                      src={appleArtwork(item.artwork, 480)!}
+                      alt={item.title}
+                      width={480}
+                      height={480}
+                      unoptimized={!needsOptimizing(item.artwork)}
+                      className="matrix-image"
+                    />
+                  ) : (
+                    <Disc3 size={50} />
+                  )}
+                  <span className="matrix-hover">
+                    <b>{item.title}</b>
+                    <small>{item.subtitle}</small>
+                    <ArrowUpRight size={24} />
+                  </span>
+                </span>
+                <span className="matrix-caption">
+                  {String(i + 1).padStart(2, "0")}{" "}
+                  <span>
+                    <b className="matrix-title">{item.title}</b>
+                    <small className="matrix-subtitle">{item.subtitle}</small>
+                  </span>
+                </span>
+              </button>
+            ))}
+          </div>
+          {!filtered.length && (
+            <div className="signal-empty">
+              {isLoading
+                ? "正在读取声音记录…"
+                : error
+                  ? "Apple Music 暂时未连接"
+                  : recordQuery
+                    ? "没有匹配的专辑"
+                    : "下一段旋律，尚未开始。"}
             </div>
-          </>
-        )}
+          )}
+          <div className="exhibit-count">
+            <i /> {String(filtered.length).padStart(2, "0")} RECORDS / APPLE
+            MUSIC
+          </div>
+        </div>
       </div>
     );
   }

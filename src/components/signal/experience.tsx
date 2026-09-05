@@ -2,12 +2,12 @@
 
 import {
   useRef,
+  useLayoutEffect,
   useState,
   useSyncExternalStore,
   type CSSProperties,
   type MouseEvent,
   type ReactNode,
-  type WheelEvent,
 } from "react";
 import { ArrowRight, ArrowLeft, ArrowUpRight, X } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -23,16 +23,19 @@ import "./signal.css";
 import "./scenes.css";
 
 const scenes = [
-  { id: "now", label: "此刻", en: "INDEX" },
+  { id: "now", label: "首页", en: "INDEX" },
   { id: "music", label: "音乐", en: "RECORDS" },
   { id: "cinema", label: "影像", en: "SCREENING" },
   { id: "games", label: "游戏", en: "COLLECTION" },
-  { id: "systems", label: "动向", en: "TRANSMISSION" },
+  { id: "systems", label: "状态", en: "TRANSMISSION" },
   { id: "about", label: "关于", en: "CONTACT" },
 ] as const;
 type SceneId = (typeof scenes)[number]["id"];
 function readScene(): SceneId {
-  return scenes.find((s) => s.id === location.hash.slice(1))?.id ?? "now";
+  return (
+    scenes.find((s) => s.id === location.hash.slice(1).split("?")[0])?.id ??
+    "now"
+  );
 }
 function subscribeScene(callback: () => void) {
   window.addEventListener("hashchange", callback);
@@ -133,7 +136,8 @@ export function SignalExperience({
   const selected = useSyncExternalStore(subscribeScene, readScene, serverScene);
   const mainRef = useRef<HTMLElement>(null);
   const navRef = useRef<HTMLElement>(null);
-  const wheel = useRef({ sum: 0, last: 0, lockedUntil: 0 });
+  const infoButtonRef = useRef<HTMLButtonElement>(null);
+  const infoPanelRef = useRef<HTMLDivElement>(null);
   const [infoOpen, setInfoOpen] = useState(false);
   const { data: recent } = useStatus<ListeningPayload>(
     LISTENING_PATH,
@@ -161,6 +165,9 @@ export function SignalExperience({
       return;
     event?.preventDefault();
     if (id !== selected) {
+      if (mainRef.current?.contains(document.activeElement)) {
+        mainRef.current.focus({ preventScroll: true });
+      }
       history.pushState(null, "", `#${id}`);
       window.dispatchEvent(new HashChangeEvent("hashchange"));
     }
@@ -169,30 +176,19 @@ export function SignalExperience({
   function change(step: number) {
     navigate(scenes[(index + step + scenes.length) % scenes.length].id);
   }
-  function handleWheel(event: WheelEvent) {
-    if (
-      event.ctrlKey ||
-      Math.abs(event.deltaX) > Math.abs(event.deltaY) ||
-      infoOpen
-    )
-      return;
-    // Lists own their scrolling. The background and unused stage space turn pages.
-    if (
-      (event.target as Element).closest('[data-scroll], input, [role="dialog"]')
-    )
-      return;
-    const now = performance.now();
-    if (now < wheel.current.lockedUntil) return;
-    if (now - wheel.current.last > 180) wheel.current.sum = 0;
-    wheel.current.last = now;
-    wheel.current.sum += event.deltaY;
-    if (Math.abs(wheel.current.sum) > 100) {
-      change(wheel.current.sum > 0 ? 1 : -1);
-      wheel.current = { sum: 0, last: now, lockedUntil: now + 1100 };
-    }
+  useLayoutEffect(() => {
+    mainRef.current?.scrollTo({ top: 0, behavior: "instant" });
+  }, [selected]);
+  useLayoutEffect(() => {
+    if (infoOpen)
+      infoPanelRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+  }, [infoOpen]);
+  function closeInfo() {
+    setInfoOpen(false);
+    infoButtonRef.current?.focus();
   }
   return (
-    <div className={`signal-site is-${selected}`} onWheel={handleWheel}>
+    <div className={`signal-site is-${selected}`}>
       <a
         className="signal-skip"
         href="#scene-content"
@@ -274,7 +270,7 @@ export function SignalExperience({
         <section
           className="signal-scene scene-now"
           hidden={selected !== "now"}
-          aria-label="此刻"
+          aria-label="首页"
         >
           <div className="index-copy">
             <span className="micro index-welcome">WELCOME TO MY EVERYDAY</span>
@@ -296,7 +292,7 @@ export function SignalExperience({
               onClick={(e) => navigate("music", e)}
             >
               <span>
-                {track ? "NOW PLAYING" : "LAST ON REPEAT"}
+                {track ? "正在听" : "最近听过"}
                 <b>{title}</b>
               </span>
               <ArrowUpRight size={25} />
@@ -339,6 +335,8 @@ export function SignalExperience({
         <span className="footer-motto">A LIFE FAMILIARLY UNKNOWN</span>
         <button
           className="site-info-toggle"
+          ref={infoButtonRef}
+          aria-controls="site-information"
           onClick={() => setInfoOpen(!infoOpen)}
           aria-expanded={infoOpen}
         >
@@ -359,11 +357,19 @@ export function SignalExperience({
       </footer>
       <div
         className="site-info-panel"
+        id="site-information"
+        ref={infoPanelRef}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            event.stopPropagation();
+            closeInfo();
+          }
+        }}
         hidden={!infoOpen}
         role="dialog"
         aria-label="站点信息"
       >
-        <button aria-label="关闭站点信息" onClick={() => setInfoOpen(false)}>
+        <button aria-label="关闭站点信息" onClick={closeInfo}>
           <X size={20} />
         </button>
         {footer}

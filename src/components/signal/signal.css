@@ -13,8 +13,8 @@
   --paper-shadow: transparent;
   position: relative;
   isolation: isolate;
-  height: 100svh;
-  min-height: 560px;
+  height: 100dvh;
+  min-height: 0;
   overflow: hidden;
   background: var(--background);
   color: var(--foreground);
@@ -25,7 +25,7 @@
   --foreground: #d7d8dc;
   --surface: #18191c;
   --muted: #292a30;
-  --muted-foreground: #8c8d94;
+  --muted-foreground: #a1a2aa;
   --surface-hover: #26272b;
   --line: #d7d8dc24;
   --line-strong: #d7d8dc50;
@@ -192,7 +192,7 @@
   animation: frequency-pulse 1s ease-in-out var(--delay) infinite alternate;
 }
 .header-transmission > span:nth-child(2) {
-  font-size: 10px;
+  font-size: 12px;
   width: 130px;
   white-space: nowrap;
   overflow: hidden;
@@ -226,7 +226,7 @@
   left: 50%;
   top: 100%;
   transform: translate(-50%, 0);
-  font: 7px var(--font-mono);
+  font: 12px var(--font-mono);
   letter-spacing: 1px;
   opacity: 0;
   transition:
@@ -257,20 +257,20 @@
 }
 .signal-main {
   position: absolute;
-  inset: 18% 11% 14%;
+  inset: 16% 9% 11%;
   outline: 0;
 }
 .signal-scene {
   position: relative;
   width: 100%;
   height: 100%;
-  animation: stage-arrive 0.85s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: stage-arrive 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
-.signal-scene[hidden] {
+.signal-site [hidden] {
   display: none !important;
 }
 .micro {
-  font: 10px var(--font-mono);
+  font: 12px var(--font-mono);
   letter-spacing: 1.8px;
   color: var(--muted-foreground);
 }
@@ -307,7 +307,7 @@
 }
 .index-logotype > span {
   position: absolute;
-  font: 8px var(--font-mono);
+  font: 12px var(--font-mono);
   letter-spacing: 2px;
   right: 0;
   top: -9px;
@@ -351,7 +351,7 @@
   display: flex;
   align-items: center;
   gap: 17px;
-  font: 8px var(--font-mono);
+  font: 12px var(--font-mono);
   color: var(--muted-foreground);
   min-width: 0;
 }
@@ -376,7 +376,7 @@
   display: flex;
   gap: 65px;
   writing-mode: vertical-rl;
-  font: 9px var(--font-mono);
+  font: 12px var(--font-mono);
   letter-spacing: 5px;
   opacity: 0.36;
 }
@@ -387,13 +387,9 @@
   display: flex;
   align-items: center;
   gap: 20px;
-  opacity: 0.6;
 }
 .index-desktop > div {
   max-width: 190px;
-}
-.index-desktop > div img {
-  filter: grayscale(1);
 }
 .signal-footer {
   position: absolute;
@@ -406,13 +402,13 @@
   z-index: 25;
 }
 .footer-motto {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 300;
   letter-spacing: 9px;
   opacity: 0.65;
 }
 .site-info-toggle {
-  font-size: 9px;
+  font-size: 12px;
   color: var(--muted-foreground);
   margin-left: auto;
 }
@@ -422,7 +418,7 @@
   gap: 24px;
 }
 .scene-pagination > span {
-  font: 10px var(--font-mono);
+  font: 12px var(--font-mono);
   color: var(--muted-foreground);
 }
 .scene-pagination b {
@@ -434,7 +430,7 @@
   align-items: center;
   gap: 14px;
   background: transparent;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
   min-height: 35px;
   transition: transform 0.3s;
@@ -458,7 +454,7 @@
   gap: 9px;
 }
 .scene-rail span {
-  font: 8px var(--font-mono);
+  font: 12px var(--font-mono);
   opacity: 0;
 }
 .scene-rail i {
@@ -560,7 +556,7 @@
     letter-spacing: 5px;
   }
   .signal-main {
-    inset: 18% 9% 14%;
+    inset: 16% 9% 11%;
   }
   .index-copy {
     margin-left: -3.5%;
@@ -573,8 +569,8 @@
   .signal-header {
     left: 6%;
     right: 6%;
-    top: 5%;
-    height: 75px;
+    top: max(12px, env(safe-area-inset-top));
+    height: 104px;
     flex-wrap: wrap;
     gap: 12px;
     align-content: space-between;
@@ -595,46 +591,66 @@
     order: 3;
     width: 100%;
     justify-content: space-between;
-    gap: 12px;
-    margin-top: 8px;
+    gap: 0;
+    margin-top: 0;
   }
   .signal-nav a {
-    font-size: 12px;
-    padding: 4px 0;
+    font-size: 14px;
+    min-height: 44px;
+    min-width: 44px;
+    display: grid;
+    place-items: center;
+    padding: 0;
   }
   .signal-nav a small {
     display: none;
   }
   .signal-main {
-    inset: 22% 8% 14%;
+    inset: 136px 20px 72px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-gutter: stable;
+  }
+  .signal-scene {
+    height: auto;
+    min-height: 100%;
+  }
+  .scene-now {
+    padding: 25px 0 65px;
   }
   .footer-motto {
-    font-size: 8px;
+    display: none;
+    font-size: 12px;
     letter-spacing: 3px;
     max-width: 190px;
     line-height: 2;
   }
   .signal-footer {
-    bottom: 5%;
+    bottom: max(10px, env(safe-area-inset-bottom));
+    left: 20px;
+    right: 20px;
+    min-height: 44px;
     gap: 14px;
   }
   .site-info-toggle {
-    display: none;
+    display: inline-flex;
+    min-height: 44px;
+    align-items: center;
   }
   .scene-pagination {
     gap: 12px;
     margin-left: auto;
   }
   .scene-pagination button {
-    font-size: 8px;
+    font-size: 12px;
     gap: 8px;
   }
   .scene-pagination button:first-child {
-    display: none;
+    display: flex;
   }
   .scene-rail {
-    right: 2%;
-    gap: 18px;
+    display: none;
   }
   .scene-rail span {
     display: none;
@@ -673,13 +689,13 @@
   }
   .index-entry > span {
     gap: 12px;
-    font-size: 7px;
+    font-size: 12px;
   }
   .index-entry b {
     font-size: 12px;
   }
   .index-welcome {
-    font-size: 9px;
+    font-size: 12px;
   }
   .index-desktop {
     right: 0;
@@ -687,7 +703,7 @@
     gap: 12px;
   }
   .index-desktop .micro {
-    font-size: 7px;
+    font-size: 12px;
   }
   .index-desktop > div {
     max-width: 130px;
@@ -737,12 +753,46 @@
 .site-info-panel[hidden] {
   display: none;
 }
+
+/* Controls keep readable labels and a reliable hit area in both themes. */
+.signal-header > button,
+.scene-pagination button,
+.site-info-panel > button {
+  min-width: 44px;
+  min-height: 44px;
+}
+.signal-nav a[aria-current="page"] > span {
+  border-bottom: 2px solid currentColor;
+  padding-bottom: 5px;
+}
+.site-info-toggle {
+  font-size: 12px;
+}
 @media (max-width: 800px) {
   .site-info-toggle {
-    display: block;
-    position: absolute;
-    right: 0;
-    top: -20px;
-    font-size: 7px;
+    margin-left: 0;
+  }
+  .header-transmission {
+    min-width: 0;
+  }
+  .header-transmission > span:not(.frequency):not(.corner-marks) {
+    display: none;
+  }
+  .site-info-panel {
+    position: fixed;
+    inset: auto 20px 70px;
+    width: auto;
+    max-height: calc(100dvh - 170px);
+    overflow: auto;
+  }
+  .index-entry > span {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .index-copy > p {
+    font-size: 16px;
+  }
+  .signal-main:focus-visible {
+    outline-offset: -2px;
   }
 }

@@ -9,11 +9,16 @@ import {
   useHeatmapOpen,
   type CellAnchor,
 } from "@/components/live/heatmap-hover";
+import { HeatmapReadout } from "@/components/live/heatmap-readout";
 import { useStatus } from "@/hooks/use-status";
 import { groupWeeks } from "@/lib/github-chart-compact";
 import { isHeatmapFuture } from "@/lib/heatmap-window";
 import { VIBECODING_YEAR_PATH } from "@/lib/paths";
-import type { GithubChartDay, StatusResponse, VibeCodingYearPayload } from "@/lib/types";
+import type {
+  GithubChartDay,
+  StatusResponse,
+  VibeCodingYearPayload,
+} from "@/lib/types";
 import {
   YEAR_MIX_SHOW,
   compactTokens,
@@ -44,7 +49,11 @@ type HoveredCell = {
   anchor: CellAnchor;
 };
 
-function toWeeks(origin: string, days: number[], through: string): GithubChartDay[][] {
+function toWeeks(
+  origin: string,
+  days: number[],
+  through: string,
+): GithubChartDay[][] {
   const scores = tokenScores(days);
   const expanded = expandYearDays(origin, days);
   return groupWeeks(
@@ -64,7 +73,12 @@ function toWeeks(origin: string, days: number[], through: string): GithubChartDa
   );
 }
 
-function mixByDate(origin: string, days: number[], models: string[], mix: number[][]) {
+function mixByDate(
+  origin: string,
+  days: number[],
+  models: string[],
+  mix: number[][],
+) {
   const byOffset = indexYearMix(models, mix);
   const byDate = new Map<string, YearModelShare[]>();
   expandYearDays(origin, days).forEach((day, index) => {
@@ -88,19 +102,36 @@ function formatPercent(tokens: number, total: number) {
 function MixBreakdown({
   tokens,
   models,
+  journal = false,
 }: {
   tokens: number;
   models: YearModelShare[];
+  journal?: boolean;
 }) {
   const rows = models.slice(0, YEAR_MIX_SHOW);
   if (rows.length === 0) return null;
+  if (journal)
+    return (
+      <ul className="heatmap-models">
+        {rows.map((row) => (
+          <li key={row.model}>
+            <span>{row.model}</span>
+            <strong>{compactTokens(row.tokens)}</strong>
+            <small>{formatPercent(row.tokens, tokens)}</small>
+          </li>
+        ))}
+      </ul>
+    );
   return (
     <div className="mt-2 min-w-0 border-t border-line pt-1.5">
       <ul className="grid min-w-0 gap-1.5">
         {rows.map((row) => (
           <li key={row.model} className="min-w-0">
             <div className="flex min-w-0 items-center gap-2">
-              <span className="min-w-0 flex-1 truncate font-mono text-[10px]" title={row.model}>
+              <span
+                className="min-w-0 flex-1 truncate font-mono text-[10px]"
+                title={row.model}
+              >
                 {row.model}
               </span>
               <span className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground">
@@ -128,19 +159,29 @@ function MixBreakdown({
 export function VibeYearChart({
   fallback,
   className,
+  presentation = "tooltip",
 }: {
   fallback: StatusResponse<VibeCodingYearPayload>;
   className?: string;
+  presentation?: "tooltip" | "journal";
 }) {
-  const { data } = useStatus<VibeCodingYearPayload>(VIBECODING_YEAR_PATH, REFRESH_MS, {
-    fallback,
-    // 首屏已经烧进去，挂载不再回源。切回标签页时拉一次，长轮询仍作兜底。
-    revalidateOnMount: false,
-    revalidateOnFocus: true,
-  });
-  const [lastDrawn, setLastDrawn] = useState(fallback.ok ? fallback.data : null);
+  const { data } = useStatus<VibeCodingYearPayload>(
+    VIBECODING_YEAR_PATH,
+    REFRESH_MS,
+    {
+      fallback,
+      // 首屏已经烧进去，挂载不再回源。切回标签页时拉一次，长轮询仍作兜底。
+      revalidateOnMount: false,
+      revalidateOnFocus: true,
+    },
+  );
+  const [lastDrawn, setLastDrawn] = useState(
+    fallback.ok ? fallback.data : null,
+  );
   if (data?.days.length && data !== lastDrawn) setLastDrawn(data);
   const snapshot = data?.days.length ? data : lastDrawn;
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const journal = presentation === "journal";
   const { svgRef, shown, hotDate, previewCell, clearPreview, togglePin } =
     useHeatmapOpen<HoveredCell>();
 
@@ -164,6 +205,15 @@ export function VibeYearChart({
     );
   }, [snapshot]);
 
+  const selectedCell = weeks?.flat().find((day) => day.date === selectedDate);
+  const selectedDay = selectedCell
+    ? {
+        date: selectedCell.date,
+        tokens: selectedCell.count,
+        models: modelsByDate.get(selectedCell.date) ?? [],
+      }
+    : null;
+
   if (!weeks?.length) return null;
 
   const cellOf = (day: GithubChartDay, target: Element): HoveredCell => ({
@@ -179,13 +229,35 @@ export function VibeYearChart({
         svgRef={svgRef}
         weeks={weeks}
         fills={FILLS}
-        hotDate={hotDate}
+        hotDate={journal ? (selectedDay?.date ?? null) : hotDate}
         label="Vibe Coding token heatmap"
-        onCellPreview={(day, target) => previewCell(cellOf(day, target))}
+        onCellPreview={(day, target) => {
+          if (!journal) previewCell(cellOf(day, target));
+        }}
+        onCellFocus={(day, target) =>
+          journal ? setSelectedDate(day.date) : previewCell(cellOf(day, target))
+        }
         onCellClear={clearPreview}
-        onCellToggle={(day, target) => togglePin(cellOf(day, target))}
+        onCellToggle={(day, target) =>
+          journal ? setSelectedDate(day.date) : togglePin(cellOf(day, target))
+        }
       />
-      {shown && (
+      {journal && (
+        <HeatmapReadout
+          date={selectedDay?.date}
+          value={selectedDay ? compactTokens(selectedDay.tokens) : undefined}
+          unit="TOKENS"
+        >
+          {selectedDay && (
+            <MixBreakdown
+              tokens={selectedDay.tokens}
+              models={selectedDay.models}
+              journal
+            />
+          )}
+        </HeatmapReadout>
+      )}
+      {!journal && shown && (
         <HeatmapTooltip
           date={shown.date}
           value={compactTokens(shown.tokens)}

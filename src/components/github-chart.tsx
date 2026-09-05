@@ -9,6 +9,7 @@ import {
   useHeatmapOpen,
   type CellAnchor,
 } from "@/components/live/heatmap-hover";
+import { HeatmapReadout } from "@/components/live/heatmap-readout";
 import { incrementalFetcher, useStatus } from "@/hooks/use-status";
 import { FILLS } from "@/lib/github-chart-compact";
 import {
@@ -18,7 +19,11 @@ import {
   seedGithubChart,
 } from "@/lib/github-chart-history";
 import { GITHUB_CHART_PATH } from "@/lib/paths";
-import type { GithubChartDay, GithubChartPayload, StatusResponse } from "@/lib/types";
+import type {
+  GithubChartDay,
+  GithubChartPayload,
+  StatusResponse,
+} from "@/lib/types";
 
 /** 贡献日历按天变。长间隔兜底，切回焦点带游标只拉窗尾。 */
 const REFRESH_MS = 6 * 60 * 60_000;
@@ -34,15 +39,25 @@ type HoveredCell = {
   anchor: CellAnchor;
 };
 
-export function GithubChart({ fallback }: { fallback: StatusResponse<GithubChartPayload> }) {
-  const { data } = useStatus<GithubChartPayload>(GITHUB_CHART_PATH, REFRESH_MS, {
-    fallback,
-    fetcher: fetchGithubChart,
-    seedFallback: seedGithubChart,
-    // 首屏已经烧进去，挂载不再回源。切回标签页时拉一次，长轮询仍作兜底。
-    revalidateOnMount: false,
-    revalidateOnFocus: true,
-  });
+export function GithubChart({
+  fallback,
+  presentation = "tooltip",
+}: {
+  fallback: StatusResponse<GithubChartPayload>;
+  presentation?: "tooltip" | "journal";
+}) {
+  const { data } = useStatus<GithubChartPayload>(
+    GITHUB_CHART_PATH,
+    REFRESH_MS,
+    {
+      fallback,
+      fetcher: fetchGithubChart,
+      seedFallback: seedGithubChart,
+      // 首屏已经烧进去，挂载不再回源。切回标签页时拉一次，长轮询仍作兜底。
+      revalidateOnMount: false,
+      revalidateOnFocus: true,
+    },
+  );
   /**
    * 留住上一份画得出来的日历，轮询在飞的时候别让图表闪空。
    *
@@ -54,9 +69,13 @@ export function GithubChart({ fallback }: { fallback: StatusResponse<GithubChart
    * React 明令禁止的（写了也不保证重渲染），effect 要多渲染一轮、中间那帧
    * 照样是空的。
    */
-  const [lastDrawn, setLastDrawn] = useState(fallback.ok ? fallback.data : null);
+  const [lastDrawn, setLastDrawn] = useState(
+    fallback.ok ? fallback.data : null,
+  );
   if (data?.counts.length && data !== lastDrawn) setLastDrawn(data);
   const snapshot = data?.counts.length ? data : lastDrawn;
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const journal = presentation === "journal";
   const { svgRef, shown, hotDate, previewCell, clearPreview, togglePin } =
     useHeatmapOpen<HoveredCell>();
 
@@ -64,6 +83,9 @@ export function GithubChart({ fallback }: { fallback: StatusResponse<GithubChart
     () => (snapshot?.counts.length ? githubChartWeeks(snapshot) : null),
     [snapshot],
   );
+
+  const selectedDay =
+    weeks?.flat().find((day) => day.date === selectedDate) ?? null;
 
   if (!weeks?.length) return null;
 
@@ -79,13 +101,27 @@ export function GithubChart({ fallback }: { fallback: StatusResponse<GithubChart
         svgRef={svgRef}
         weeks={weeks}
         fills={FILLS}
-        hotDate={hotDate}
+        hotDate={journal ? (selectedDay?.date ?? null) : hotDate}
         label="GitHub contribution heatmap"
-        onCellPreview={(day, target) => previewCell(cellOf(day, target))}
+        onCellPreview={(day, target) => {
+          if (!journal) previewCell(cellOf(day, target));
+        }}
+        onCellFocus={(day, target) =>
+          journal ? setSelectedDate(day.date) : previewCell(cellOf(day, target))
+        }
         onCellClear={clearPreview}
-        onCellToggle={(day, target) => togglePin(cellOf(day, target))}
+        onCellToggle={(day, target) =>
+          journal ? setSelectedDate(day.date) : togglePin(cellOf(day, target))
+        }
       />
-      {shown && (
+      {journal && (
+        <HeatmapReadout
+          date={selectedDay?.date}
+          value={selectedDay ? String(selectedDay.count) : undefined}
+          unit="贡献"
+        />
+      )}
+      {!journal && shown && (
         <HeatmapTooltip
           date={shown.date}
           value={String(shown.count)}

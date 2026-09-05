@@ -1,5 +1,16 @@
 import type { ChargerSample } from "@/lib/types";
 
+export function exhibitDetail(hash: string, scene: string): string | null {
+  const [current, query] = hash.slice(1).split("?");
+  return current === scene
+    ? new URLSearchParams(query).get("detail") || null
+    : null;
+}
+
+export function exhibitHash(scene: string, id: string): string {
+  return `#${scene}?${new URLSearchParams({ detail: id })}`;
+}
+
 export type RecordSelection =
   | { kind: "live" }
   | { kind: "record"; id: string }

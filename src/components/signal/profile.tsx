@@ -148,10 +148,14 @@ export function SignalProfile({
             </div>
           </div>
           <div className="heatmap-panel" data-heatmap-panel="tokens">
-            <VibeYearChart fallback={yearFallback} className="w-full" />
+            <VibeYearChart
+              fallback={yearFallback}
+              className="w-full"
+              presentation="journal"
+            />
           </div>
           <div className="heatmap-panel" data-heatmap-panel="commit">
-            <GithubChart fallback={chartFallback} />
+            <GithubChart fallback={chartFallback} presentation="journal" />
           </div>
           <span className="micro">A YEAR IN SMALL STEPS</span>
         </div>

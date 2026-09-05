@@ -25,6 +25,10 @@ import {
 } from "@/components/trophies/trophy-details";
 import { TrophyMetal } from "@/components/trophies/trophy-metal";
 import { StatusDot } from "@/components/ui/status-dot";
+import {
+  useCompactExhibit,
+  useExhibitDetail,
+} from "@/hooks/use-exhibit-detail";
 import { useLiveEvents } from "@/hooks/use-live-events";
 import { useStatus } from "@/hooks/use-status";
 import { stableKeys } from "@/lib/keys";
@@ -568,9 +572,21 @@ export function PlaystationRow({
   const reduced = useReducedMotion();
   const scrollerRef = useRef<HTMLDivElement>(null);
   const liveTitleId = tiles[0]?.live ? tiles[0].titleId : null;
-  const [openId, setOpenId] = useState<string | null>(null);
+  const [rowOpenId, setOpenId] = useState<string | null>(null);
+  const {
+    id: galleryId,
+    open: openGallery,
+    close: closeGallery,
+    attachRoot: galleryRef,
+  } = useExhibitDetail(
+    "games",
+    presentation === "gallery",
+    list.data || list.error ? tiles.map((tile) => tile.titleId) : null,
+  );
+  const openId = presentation === "gallery" ? galleryId : rowOpenId;
   const [galleryQuery, setGalleryQuery] = useState("");
   const [galleryPage, setGalleryPage] = useState(0);
+  const galleryPageSize = useCompactExhibit() ? 5 : 10;
   const [focusKey, setFocusKey] = useState<string | null>(null);
   const clearFocus = useCallback(() => setFocusKey(null), []);
   const openTile = tiles.find((tile) => tile.titleId === openId) ?? null;
@@ -633,7 +649,7 @@ export function PlaystationRow({
    * 把 state 跟上 —— 所以放在 render 里判，和上面摘吸附那处同一套，不必为它
    * 多攒一次提交。
    */
-  if (openId && !openTile) {
+  if (presentation !== "gallery" && openId && !openTile) {
     setOpenId(null);
     setFocusKey(null);
   }
@@ -657,7 +673,7 @@ export function PlaystationRow({
   /** 这一趟判死了：直接销账 */
   let jumpGaveUp = false;
 
-  if (jumpRequest) {
+  if (jumpRequest && presentation !== "gallery") {
     if (jumpTargetId) {
       if (openId !== jumpTargetId) setOpenId(jumpTargetId);
       if (focusKey !== jumpRequest.trophyKey)
@@ -667,6 +683,20 @@ export function PlaystationRow({
       jumpGaveUp = true;
     }
   }
+
+  if (
+    presentation === "gallery" &&
+    jumpRequest &&
+    focusKey !== jumpRequest.trophyKey
+  ) {
+    setFocusKey(jumpRequest.trophyKey);
+  }
+  useEffect(() => {
+    if (presentation === "gallery" && jumpRequest) {
+      if (jumpTargetId) openGallery(jumpTargetId);
+      onJumpDone();
+    }
+  }, [presentation, jumpRequest, jumpTargetId, openGallery, onJumpDone]);
 
   useEffect(() => {
     if (jumpLandedId) {
@@ -704,26 +734,25 @@ export function PlaystationRow({
 
   if (presentation === "gallery") {
     const filtered = tiles.filter((tile) =>
-      tile.name.toLocaleLowerCase().includes(galleryQuery.toLocaleLowerCase()),
+      tile.name
+        .toLocaleLowerCase()
+        .includes(galleryQuery.trim().toLocaleLowerCase()),
     );
-    const pages = Math.max(1, Math.ceil(filtered.length / 10));
+    const pages = Math.max(1, Math.ceil(filtered.length / galleryPageSize));
     const page = Math.min(galleryPage, pages - 1);
     return (
       <div
         className="games-exhibit"
+        ref={galleryRef}
         data-scroll
         onKeyDown={(event) => {
-          if (event.key === "Escape") setOpenId(null);
+          if (event.key === "Escape") closeGallery();
         }}
       >
         {openTile ? (
           <div className="game-detail" key={openTile.titleId}>
-            <button
-              className="detail-back"
-              autoFocus
-              onClick={() => setOpenId(null)}
-            >
-              <ArrowLeft size={28} /> 返回游戏阵列
+            <button className="detail-back" onClick={closeGallery}>
+              <ArrowLeft size={28} /> 返回游戏收藏
             </button>
             <div className="game-detail-identity">
               <div className="detail-art corner-frame">
@@ -733,6 +762,7 @@ export function PlaystationRow({
                     alt={openTile.name}
                     width={700}
                     height={700}
+                    loading="eager"
                     unoptimized
                   />
                 ) : (
@@ -764,42 +794,44 @@ export function PlaystationRow({
               />
             </div>
           </div>
-        ) : (
-          <>
-            <div className="exhibit-toolbar">
-              <label className="exhibit-search">
-                <input
-                  aria-label="搜索游戏"
-                  placeholder="搜索游戏档案"
-                  value={galleryQuery}
-                  onChange={(event) => {
-                    setGalleryQuery(event.target.value);
-                    setGalleryPage(0);
-                  }}
-                />
-                <Search size={21} />
-              </label>
-              <div className="exhibit-heading">
-                <h2>
-                  <Gamepad2 size={25} />
-                  游戏阵列
-                </h2>
-              </div>
+        ) : null}
+        <div className="exhibit-list" hidden={Boolean(openTile)}>
+          <div className="exhibit-toolbar">
+            <label className="exhibit-search">
+              <input
+                aria-label="搜索游戏"
+                placeholder="搜索游戏档案"
+                value={galleryQuery}
+                onChange={(event) => {
+                  setGalleryQuery(event.target.value);
+                  setGalleryPage(0);
+                }}
+              />
+              <Search size={21} />
+            </label>
+            <div className="exhibit-heading">
+              <h2>
+                <Gamepad2 size={25} />
+                游戏收藏
+              </h2>
             </div>
-            <div
-              className="cover-matrix"
-              data-scroll
-              aria-label="游戏收藏"
-              key={`${galleryQuery}-${page}`}
-            >
-              {filtered.slice(page * 10, page * 10 + 10).map((tile, i) => (
+          </div>
+          <div
+            className="cover-matrix"
+            data-scroll
+            aria-label="游戏收藏"
+            key={`${galleryQuery}-${page}`}
+          >
+            {filtered
+              .slice(page * galleryPageSize, (page + 1) * galleryPageSize)
+              .map((tile, i) => (
                 <button
                   className="matrix-item"
                   key={tile.titleId}
                   onMouseEnter={() => prefetch(tile.titleIds)}
                   onFocus={() => prefetch(tile.titleIds)}
                   onClick={() => {
-                    setOpenId(tile.titleId);
+                    openGallery(tile.titleId);
                     setFocusKey(null);
                     onJumpDone();
                   }}
@@ -827,44 +859,48 @@ export function PlaystationRow({
                     )}
                   </span>
                   <span className="matrix-caption">
-                    {String(page * 10 + i + 1).padStart(2, "0")}{" "}
-                    <span>{tile.name}</span>
+                    {String(page * galleryPageSize + i + 1).padStart(2, "0")}{" "}
+                    <span>
+                      <b className="matrix-title">{tile.name}</b>
+                      <small className="matrix-subtitle">
+                        {tile.live ? "正在游玩" : tile.subtitle}
+                      </small>
+                    </span>
                   </span>
                 </button>
               ))}
-            </div>
-            {!filtered.length && (
-              <div className="signal-empty">没有匹配的游戏</div>
-            )}
-            <div className="matrix-pagination">
+          </div>
+          {!filtered.length && (
+            <div className="signal-empty">没有匹配的游戏</div>
+          )}
+          <div className="matrix-pagination">
+            <button
+              aria-label="上一页游戏"
+              disabled={page === 0}
+              onClick={() => setGalleryPage(page - 1)}
+            >
+              <ArrowLeft size={24} />
+            </button>
+            {Array.from({ length: pages }, (_, i) => (
               <button
-                aria-label="上一页游戏"
-                disabled={page === 0}
-                onClick={() => setGalleryPage(page - 1)}
+                key={i}
+                aria-label={`游戏第 ${i + 1} 页`}
+                aria-current={page === i ? "page" : undefined}
+                onClick={() => setGalleryPage(i)}
               >
-                <ArrowLeft size={24} />
+                {i + 1}
               </button>
-              {Array.from({ length: pages }, (_, i) => (
-                <button
-                  key={i}
-                  aria-label={`游戏第 ${i + 1} 页`}
-                  aria-current={page === i ? "page" : undefined}
-                  onClick={() => setGalleryPage(i)}
-                >
-                  <i />
-                </button>
-              ))}
-              <button
-                aria-label="下一页游戏"
-                disabled={page === pages - 1}
-                onClick={() => setGalleryPage(page + 1)}
-              >
-                <ArrowRight size={24} />
-              </button>
-              <span>{filtered.length} GAMES</span>
-            </div>
-          </>
-        )}
+            ))}
+            <button
+              aria-label="下一页游戏"
+              disabled={page === pages - 1}
+              onClick={() => setGalleryPage(page + 1)}
+            >
+              <ArrowRight size={24} />
+            </button>
+            <span>{filtered.length} GAMES</span>
+          </div>
+        </div>
       </div>
     );
   }

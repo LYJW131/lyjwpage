@@ -1,5 +1,6 @@
 "use client";
 
+import { ArrowUpRight } from "lucide-react";
 import { useReducedMotion } from "motion/react";
 import { useCallback, useState } from "react";
 
@@ -77,6 +78,36 @@ export function PlaystationPanel({
   if (presentation === "gallery")
     return (
       <div className="playstation-exhibit">
+        {summary.data && (
+          <div className="latest-unlock">
+            <span>
+              {summary.data.profile.onlineId}{" "}
+              <small>奖杯等级 {summary.data.profile.level}</small>
+            </span>
+            {summary.data.recent[0] && (
+              <button
+                onClick={() => {
+                  const unlock = summary.data!.recent[0];
+                  setJump({
+                    npCommunicationId: unlock.npCommunicationId,
+                    trophyKey: trophyRowKey(
+                      unlock.npCommunicationId,
+                      unlock.groupId,
+                      unlock.id,
+                    ),
+                  });
+                }}
+              >
+                <span>
+                  <small>最近解锁 · {summary.data.recent[0].titleName}</small>
+                  <br />
+                  {summary.data.recent[0].trophyName}
+                </span>
+                <ArrowUpRight size={20} />
+              </button>
+            )}
+          </div>
+        )}
         <PlaystationRow
           presentation="gallery"
           fallback={playing}

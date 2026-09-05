@@ -546,12 +546,32 @@ export function TrophyExpand({
   );
 
   const [flashKey, setFlashKey] = useState<string | null>(null);
+  const exhibitListRef = useRef<HTMLDivElement>(null);
   // 下标是个数，行数组每次渲染都是新的 —— 用它当依赖，effect 才只在目录到位时跑
   const focusIndex = focusKey
     ? (trophies?.findIndex((row) => row.key === focusKey) ?? -1)
     : -1;
 
   useEffect(() => {
+    if (presentation === "exhibit") {
+      const row = exhibitListRef.current?.children.item(
+        focusIndex,
+      ) as HTMLElement | null;
+      if (focusIndex < 0 || !row) return;
+      row.scrollIntoView({
+        block: "center",
+        behavior: reduced ? "instant" : "smooth",
+      });
+      const timer = setTimeout(
+        () => {
+          row.focus({ preventScroll: true });
+          setFlashKey(focusKey ?? null);
+          onFocused?.();
+        },
+        reduced ? 0 : 250,
+      );
+      return () => clearTimeout(timer);
+    }
     const el = viewport.current;
     if (focusIndex < 0 || !el) return;
     /*
@@ -601,7 +621,7 @@ export function TrophyExpand({
       clearTimeout(settle);
       el.removeEventListener("scroll", onScroll);
     };
-  }, [focusIndex, focusKey, onFocused, reduced]);
+  }, [focusIndex, focusKey, onFocused, reduced, presentation]);
 
   useEffect(() => {
     if (!flashKey) return;
@@ -651,9 +671,19 @@ export function TrophyExpand({
             ))}
           </div>
         )}
-        <div className="trophy-exhibit-list" role="list" aria-label="奖杯">
+        <div
+          ref={exhibitListRef}
+          className="trophy-exhibit-list"
+          role="list"
+          aria-label="奖杯"
+        >
           {trophies.map((row) => (
-            <div role="listitem" key={row.key}>
+            <div
+              role="listitem"
+              key={row.key}
+              tabIndex={-1}
+              className={flashKey === row.key ? "trophy-highlight" : undefined}
+            >
               <TrophyRow trophy={row.trophy} exhibit />
             </div>
           ))}

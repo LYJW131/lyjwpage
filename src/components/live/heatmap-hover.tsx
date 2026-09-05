@@ -25,11 +25,21 @@ import {
 } from "@/lib/github-chart-compact";
 import type { GithubChartDay } from "@/lib/types";
 
-export type CellAnchor = { left: number; top: number; width: number; height: number };
+export type CellAnchor = {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+};
 
 export function cellAnchor(target: Element): CellAnchor {
   const rect = target.getBoundingClientRect();
-  return { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
+  return {
+    left: rect.left,
+    top: rect.top,
+    width: rect.width,
+    height: rect.height,
+  };
 }
 
 export function hoverCapable() {
@@ -115,7 +125,15 @@ export function useHeatmapOpen<T extends { date: string }>() {
     [clearDelay],
   );
 
-  return { svgRef, shown, hotDate, pinned, previewCell, clearPreview, togglePin };
+  return {
+    svgRef,
+    shown,
+    hotDate,
+    pinned,
+    previewCell,
+    clearPreview,
+    togglePin,
+  };
 }
 
 export function useHoverDismiss(
@@ -166,6 +184,7 @@ export function HeatmapGrid({
   hotDate,
   label,
   onCellPreview,
+  onCellFocus = onCellPreview,
   onCellClear,
   onCellToggle,
 }: {
@@ -177,16 +196,22 @@ export function HeatmapGrid({
   /** 整张图的可访问名 */
   label: string;
   onCellPreview: (day: GithubChartDay, target: Element) => void;
+  onCellFocus?: (day: GithubChartDay, target: Element) => void;
   onCellClear: () => void;
   onCellToggle: (day: GithubChartDay, target: Element) => void;
 }) {
   const cells = useMemo(
-    () => weeks.flatMap((week, weekIndex) => week.map((day) => ({ day, weekIndex }))),
+    () =>
+      weeks.flatMap((week, weekIndex) =>
+        week.map((day) => ({ day, weekIndex })),
+      ),
     [weeks],
   );
   const [activeDate, setActiveDate] = useState<string | null>(null);
   // 数据每 6 小时换一份，记住的那天可能已经滚出窗口 —— 落回最后一天（今天）
-  const marked = activeDate ? cells.findIndex((cell) => cell.day.date === activeDate) : -1;
+  const marked = activeDate
+    ? cells.findIndex((cell) => cell.day.date === activeDate)
+    : -1;
   const activeIndex = marked >= 0 ? marked : cells.length - 1;
   const { width, height } = chartSize(weeks.length);
 
@@ -199,7 +224,10 @@ export function HeatmapGrid({
       ?.focus();
   };
 
-  const onCellKeyDown = (event: ReactKeyboardEvent<SVGRectElement>, index: number) => {
+  const onCellKeyDown = (
+    event: ReactKeyboardEvent<SVGRectElement>,
+    index: number,
+  ) => {
     const day = cells[index]?.day;
     if (!day) return;
     if (event.key === "Enter" || event.key === " ") {
@@ -271,7 +299,7 @@ export function HeatmapGrid({
           aria-label={day.label}
           tabIndex={index === activeIndex ? 0 : -1}
           onFocus={(event) => {
-            onCellPreview(day, event.currentTarget);
+            onCellFocus(day, event.currentTarget);
           }}
           onBlur={() => {
             onCellClear();
