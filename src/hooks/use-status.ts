@@ -29,7 +29,7 @@ async function fetcher<T>(url: string): Promise<StatusResponse<T>> {
 /**
  * 增量拉取的取数壳子。
  *
- * 充电头功率和两张热力图每轮只问服务端要游标之后的新点，本地拼成完整
+ * 充电头功率和 GitHub 热力图每轮只问服务端要游标之后的新点，本地拼成完整
  * 序列。关键是 SWR 的缓存键必须保持是 path，不能把 `?since=` 拼进去 —— 那样
  * 每轮都是一个新资源，去重、keepPreviousData、轮询计时器会全部失效。所以变化
  * 的部分藏在这里面，外面看到的始终是同一个键。

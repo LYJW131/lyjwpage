@@ -109,7 +109,7 @@ Redis（见下面那节），本来就不需要谁转给谁。
 
 所有凭据只存在于服务端，浏览器只看得到 `/api/status/*` 返回的规范化数据。这些路由共用 `src/lib/api.ts` 的信封：上游挂掉时返回 `{ ok: false, error }` 而不是 5xx，让某一路数据源离线不至于把整页 SWR 打成错误态。
 
-`src/app/api/status/` 下每一条状态 GET 的快照都走 Next `'use cache'`（`lib/status-cache`），上报按 tag 失效，轮询命中时不再每次打 Redis——**除非那份部署把 `STATUS_CACHE` 填成 `false`，那时它们一律直读 Redis**（没有例外，加新端点时不用另行登记）。这个开关是给 EdgeOne 那份准备的：`revalidateTag` 只失效**本实例**那份缓存（Next 默认是每个进程各自的内存 LRU，Vercel 另接了一套共享存储所以在那边看起来是全局的），而 EdgeOne 跑的是原样的 Next（腾讯云 SCF，多实例），上报进来了 GET 也不翻新，只能等 10 分钟兜底——2026-08-16 两边并排量过（当时 revalidate 还是 60 秒），落后 12~45 秒。国内那份的 Redis 就在同一朵云上，多打几次不心疼。开关只管状态端点，首屏那份得冻着才能预渲染，所以关掉之后第一帧仍可能旧到 10 分钟，挂载后 SWR 一拉就是最新的；要连首屏一起对齐，得给两份部署各配一个共享的 `cacheHandlers`。CDN 故意 `Cache-Control: no-store`：最终响应里有存活、`?since=` 切片、`expiresInMs` 这类现算字段，不能冻在边缘。函数每次进；心跳那种不触发 tag 的戳记在 overlay 里现读一把小 key。充电头和 vibe coding 的游标、奖杯目录的 `?titleids=`（展开哪块瓷砖就只发那 1–2 款，整份目录未来是几百 KB）也都是缓存命中后在内存里切全量，不按参数分键——分了就是每个游标、每块瓷砖各占一份完整快照。
+`src/app/api/status/` 下每一条状态 GET 的快照都走 Next `'use cache'`（`lib/status-cache`），上报按 tag 失效，轮询命中时不再每次打 Redis——**除非那份部署把 `STATUS_CACHE` 填成 `false`，那时它们一律直读 Redis**（没有例外，加新端点时不用另行登记）。这个开关是给 EdgeOne 那份准备的：`revalidateTag` 只失效**本实例**那份缓存（Next 默认是每个进程各自的内存 LRU，Vercel 另接了一套共享存储所以在那边看起来是全局的），而 EdgeOne 跑的是原样的 Next（腾讯云 SCF，多实例），上报进来了 GET 也不翻新，只能等 10 分钟兜底——2026-08-16 两边并排量过（当时 revalidate 还是 60 秒），落后 12~45 秒。国内那份的 Redis 就在同一朵云上，多打几次不心疼。开关只管状态端点，首屏那份得冻着才能预渲染，所以关掉之后第一帧仍可能旧到 10 分钟，挂载后 SWR 一拉就是最新的；要连首屏一起对齐，得给两份部署各配一个共享的 `cacheHandlers`。CDN 故意 `Cache-Control: no-store`：最终响应里有存活、`?since=` 切片、`expiresInMs` 这类现算字段，不能冻在边缘。函数每次进；心跳那种不触发 tag 的戳记在 overlay 里现读一把小 key。充电头历史与 GitHub 热力图的游标、奖杯目录的 `?titleids=`（展开哪块瓷砖就只发那 1–2 款，整份目录未来是几百 KB）也都是缓存命中后在内存里切全量，不按参数分键——分了就是每个游标、每块瓷砖各占一份完整快照。
 
 Redis TCP 连接按请求作用域租用：同一 Node 实例里的并发请求共用一条，最后一个请求和命令结束后主动断开。不能让 ioredis 永久单例留在 serverless 实例里——实例暂停时普通 idle timer 不会跑，旧部署和 Preview 会各留一条空闲连接。Preview 必须不配 Redis 或使用独立 `REDIS_URL`；`REDIS_PREFIX` 只隔离键，不隔离连接额度。
 
@@ -296,30 +296,76 @@ hero 上此刻在播的那首，副标题那一行会跟着进度条换成正在
 裁剪、TTL 那一整套就都不该存在。② 即时推送的触发条件是插拔、充放电切换、热控翻转和
 整数电量跳格（外加插拔之后那段收敛窗口）；缓慢滚动的电量和功率仍然等卡片下一次轮询。
 
-### Vibe Coding — TokenTracker
+### Vibe Coding — 本地日志与云端用量
 
-这张卡的数据来自两台机器。**用量**由 Mac Telemetry Hub 从本机 TokenTracker 的面板接口
-取：按天的 token 与费用（按来源拆分，拼出「每天 × 每个 agent」）和最近的会话活动，后者
-只用来判断“正在使用”。**套餐与限额窗口**由 NAS 上的容器上报器
-（`reporters/agent-limits-reporter`，见下一节）走 `/api/ingest/agents` 另发 —— 它们是厂商
-账号侧的事实，跟那台 Mac 无关，从前搭用量信封的车，Mac 合盖就冻住。五个来源（Claude Code、
-Codex、Cursor、Grok、Antigravity）走**同一套 agent 形状**：token、今日用量、展示名和图标在
-用量那行里，站点按 id 把限额贴回同一行。网站只接受上报器生成的展示摘要，不在服务端跑采集，
-按需取用 —— Claude / Grok Build 画全量面板，其余只取总限额那一行。不要再拆 `quotaProviders`。
+**用量**由 Mac Telemetry Hub 直接采集：Claude Code、Codex、Grok 等来源读取本地日志，
+Cursor 的用量历史从账号云端获取；本地会话活动只用于判断“正在使用”，不能替代 Cursor 的
+云端 token 历史。采集器按来源保存历史，再从同一份日数据生成累计、今日用量、模型排行和年度图。
+**套餐与限额窗口**继续由 NAS 上的 `reporters/agent-limits-reporter` 走 `/api/ingest/agents`
+独立上报；Mac 用量报文不带 `plan` / `limits` / `limitsError`。
 
-Mac 那侧按**多久变一次**分成两个模块，不按数据来自哪个接口分：
+Mac 信封保持这三个模块：
 
 | 模块 | 间隔 | 内容 | 站点怎么处理 |
 | --- | --- | --- | --- |
-| `vibeCodingNow` | 60 秒 | 此刻在不在用、用的是哪个模型、最近一次活动时刻 | 变了就推给浏览器（`vibecoding-now` 事件） |
-| `vibeCodingUsage` | 10 分钟 | 每个 agent 的 token、费用、今日用量、会话总数 | 只失效首屏缓存，卡片靠轮询取 |
-| `vibeCodingYear` | 1 小时（可改） | 过去 53 周的日合计 token，外加每天前五模型的 compact mix | 不推送；`/api/status/vibecoding/year` 回整份，浏览器长间隔来问 |
+| `vibeCodingNow` | 60 秒 | 此刻是否活跃、当前模型、最近活动时刻 | 变了推 `vibecoding-now` 事件 |
+| `vibeCodingUsage` | 10 分钟 | 各来源今日用量与采集状态，累计 token、API 等值费用、活动天数和会话数 | 保存摘要并失效首屏缓存，卡片轮询 |
+| `vibeCodingYear` | 1 小时（可改） | 过去 53 周的日总量及每天前五模型 | 保存完整 371 天窗口；GET 和浏览器刷新都取整份 |
 
-从前是三个模块、三个采集器（用量 / 限额 / 会话状态各一份），那条线是按「哪条命令
-产出的」划的：当年限额和用量分别来自 CodexBar 的两条命令，其中一条要跑十几秒，它一
-失败，同一轮刚取到的限额也跟着发不出去。后来并成两份，只剩「此刻」和「至今累计」这道线。
-现在限额又拆出去了，但这次是按**来源**划的 —— 两台机器各报各的，用量信封里带了
-`plan` / `limits` / `limitsError` 站点也当没看见，不留两条路。
+主要来源 id 为 `claude`、`codex`、`cursor`、`grok`、`antigravity`，采集器还可按相同契约增加来源。
+每行 `today` 可以为 `null`，
+表示尚未取得用量；成功采集的零用量仍用数字 `0`。每行必须带 `usageStatus`：
+
+```text
+{
+  state: "ok" | "error" | "unavailable",
+  collectedAt: ISO8601 | null,
+  error: string | null,
+  coverageStart: "YYYY-MM-DD" | null,
+  coverageEnd: "YYYY-MM-DD" | null,
+  precision: "measured" | "estimated" | "mixed",
+  costComplete: boolean
+}
+```
+
+`collectedAt` 是该来源最后成功采集时间；失败时保留旧时间、覆盖范围和已保存的历史，
+只改变来源状态和错误。摘要顶层 `collectedAt` 是本轮摘要生成时间，不能拿它给失败来源续期。
+日期统一按 `Asia/Shanghai` 分桶。`activeDays` 是所有来源已有历史中非零 token 日期的并集，
+不是各来源天数相加，也不限定为热力图的 53 周。覆盖范围只代表原始来源当前能取得和已保存的历史，
+不承诺云端提供永久全量历史。
+
+`totals.costComplete` 为 `false` 时，`apiEquivalentCostUSD` 只汇总已知价格的部分；
+费用完整性保留在数据契约中，页面不单独标记。未知模型的价格不能当成零费用。
+来源用量未取得、同步失败或长期未成功更新时，
+页面保留历史并显示对应说明，限额仍按自己的成功时间展示。
+
+站点按 id 合并用量与限额，只有限额的来源也会显示。完全没有用量摘要时，status 的 `totals`、
+`collectedAt` 和 `pushedAt` 为 `null`，页面显示“等待用量上报”，不伪造累计零值。
+首页不展示 `opencode` 和 `pi` 来源行，API 和历史汇总仍保留这些数据。
+网站只接收采集器准备好的摘要，不运行本地日志解析或 Cursor 云端认证。
+
+年度图每次刷新完整窗口，云端补回或修正的旧日会直接替换浏览器已有格子。
+`/api/status/vibecoding/year` 不再使用 `since`、`daysPartial` 或 `from`；GitHub 贡献图的增量机制不变。
+
+切换采集器前应备份旧摘要与可导出的逐日历史，核对各来源 token、非零日期、会话数及费用覆盖；
+本站 Redis 里的累计摘要和每日前五模型不能还原完整逐来源明细。新用量报文要求来源状态和费用完整性，
+旧摘要不作为新协议读取，首份新摘要到达前仍可展示独立上报的限额。
+
+本地端到端回归使用 `scripts/verify-coding-usage.mjs`。先启动连接独立 Redis 的开发站点，
+显式设置测试用 `REDIS_PREFIX` 与 `TELEMETRY_INGEST_SECRET=local-token-usage-verification`，
+关闭 peers / push，并暂停向该站点写入的上报器。保留默认状态缓存，验证覆盖实际缓存失效链路：
+
+```sh
+node scripts/verify-coding-usage.mjs \
+  --redis-prefix token-usage-dev-20260905 \
+  --snapshot /tmp/lyjw-usage-snapshot.json
+```
+
+默认只连接 `http://localhost:3211` 和 `redis://127.0.0.1:6389`，可分别用 `--base`、
+`--redis-url` 指定其他本机测试地址；脚本拒绝非本机目标、默认 Redis 端口和未明确标识为测试的前缀，
+不读取 `.env`。它验证鉴权、旧协议拒绝、仅有限额、未知用量与真实零、重复上报、独立 now 更新、
+非法年度模块不部分写入、371 天整份刷新及旧日上调/下调。结束时恢复原有限额，并上报和读回
+`--snapshot` 指定的 Mac CLI `{ usage, now, year }`；未传文件则留下合成基线。
 
 ### 各 agent 的限额 — 容器上报器
 
@@ -341,15 +387,15 @@ POST /api/ingest/agents
 
 容器里各家 CLI 各登录一次，凭据落在自己的卷里，**不拷 Mac 的凭据** —— 两份 refresh token
 各自刷新会互相作废。Claude / Codex / Grok Build 由上报器自己拿各家 CLI 的登录态打各家的用量
-接口（读法参考 TokenTracker，但不依赖它，容器里不装它）；Cursor 和 Antigravity 的接口是抓 CLI
+接口（直接读取官方 CLI 的登录态）；Cursor 和 Antigravity 的接口是抓 CLI
 的 `/usage` 抓出来的，同样直打。五家的登录都在容器里做一次。部署、登录步骤和环境变量见
 `reporters/agent-limits-reporter/README.md`。
 
 卡片顶部汇总全量 token、API 等值费用和活跃天数，并按 input、output、cache read、
-cache write 展示占比（信封里另有 reasoningTokens，尚未上屏）；下方展示 Claude Code 和 Grok Build 的今日 token、
+cache write 展示占比（信封里另有 reasoningTokens，尚未上屏）；下方展示 Claude Code 和 Codex 的今日 token、
 缓存命中率、历史主力模型、套餐，以及统一的 5-hour limit 和 Weekly 两条。某一槽没有窗口
 就显示 Unlimited。年度 token 热力图和 GitHub 贡献图合在联系卡里，用 Tokens / Commit
-切换；格子悬停显示当天总量和前五模型。Cursor、Codex 和 Antigravity 同一份数据里也有
+切换；格子悬停显示当天总量和前五模型。Cursor、Grok Build 和 Antigravity 同一份数据里也有
 token 明细，首页只取用量最高的那一扇限额窗口画一条进度。最近活动时刻由会话摘要
 提供，用于真实的“正在使用”状态。
 
@@ -372,7 +418,7 @@ POST /api/ingest/mac
 
 从前心跳和优雅下线走独立的 `/api/ingest/presence`，于是「上报器还活着」这一件事在服务端有两个写入点。现在只有这一条路：`presence: "offline"` 覆盖退出、睡眠这类优雅离开，崩溃、断网、强制关机时上报器什么都发不出来，那些仍靠「多久没收到」的超时兜底（默认 5 分钟，约三倍心跳，可用 `HEARTBEAT_WINDOW_MS` 改），两者互补。窗口盖在 presence 的 `heartbeatWindowMs` 上，浏览器用这一份。存活本身单独存一个 Redis key（`lib/reporter-liveness`），不再搭遥测状态那份镜像的车——那样多实例部署时，没接过上报的实例手上永远是零，会把卡片全判成离线。
 
-各模块的指纹粒度决定了「无变化」有多容易达成：`chargingDevices`（充电头和充电宝在同一个列表里）含功率/电压/电流，充电中几乎每轮都变；`desktop` 是应用名 + bundleID + 图标，不切应用就不变；`appleMusic` 的进度**不入签名**，所以播放中也不变，只有 seek 偏离锚点超过容差才算；`timezone` 只有 IANA 标识、当前 UTC 偏移或缩写变化时才重发；两个 vibe coding 模块各看自己那份载荷有没有变，`vibeCodingUsage` 带着采集时刻所以每轮必发，`vibeCodingNow` 在没动过键盘的那些轮次里一动不动。真正的零 telemetry 场景是充电头和充电宝都没动静（没在充也没在放）、不切前台应用、音乐不换曲不 seek、时区不变、vibe coding 采集器未刷新——此时只有每 30 秒一条空 `modules` 的心跳。
+各模块的指纹粒度决定了「无变化」有多容易达成：`chargingDevices`（充电头和充电宝在同一个列表里）含功率/电压/电流，充电中几乎每轮都变；`desktop` 是应用名 + bundleID + 图标，不切应用就不变；`appleMusic` 的进度**不入签名**，所以播放中也不变，只有 seek 偏离锚点超过容差才算；`timezone` 只有 IANA 标识、当前 UTC 偏移或缩写变化时才重发；三个 vibe coding 模块各看自己那份载荷有没有变，`vibeCodingUsage` 带着采集时刻所以每轮必发，`vibeCodingNow` 在没动过键盘的那些轮次里一动不动。真正的零 telemetry 场景是充电头和充电宝都没动静（没在充也没在放）、不切前台应用、音乐不换曲不 seek、时区不变、vibe coding 采集器未刷新——此时只有每 30 秒一条空 `modules` 的心跳。
 
 前台应用图标由 Mac 一次缩放成 96px PNG（系统原生编码，不依赖任何外部二进制）并直传 R2，网站只接收对象键 `<sha256>.png`、HEAD 确认后组出公开直链。**没有服务端接收图片二进制的回退**：`iconData` 一旦出现在信封里就直接报错。`iconHash` 标识「哪个应用的图标」（应用有图标就非空，编码或上传失败也照样有），对象键标识「哪份字节」，两者分开才能让站点回执区分「这个应用没图标」和「图标还没准备好」——从前它们是同一个哈希，编码一失败就静默丢图、永不重试。状态里只存公开直链，普通状态心跳不会重复携带图片。时区模块只上传 IANA 标识、当前偏移和缩写，不上传地址。时区只进首屏，没有 status 端点。公开读取按用途拆开，以 `src/app/api/status/` 下的目录为准：`/api/status/desktop`、`/api/status/charger`、`/api/status/powerbank`、`/api/status/listening`、`/api/status/listening/now`、`/api/status/watching`、`/api/status/watching/now`、`/api/status/playing`、`/api/status/playing/now`、`/api/status/trophies`、`/api/status/vibecoding`、`/api/status/vibecoding/year`、`/api/status/activity`、`/api/status/server`、`/api/status/github-chart`。活动圆环来自 iPhone Telemetry Hub（见下面那节），落地节点那条来自节点上的上报器（`reporters/server-reporter`），最后那条不由任何上报器喂，是站点自己去 GitHub GraphQL 取的（所以它是唯一不参与 tag 失效的一条 —— 同样自己拉的「最近在听」参与，因为它落库、有 tag、也推），其余都对应上面某个模块。
 

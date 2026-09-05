@@ -28,6 +28,7 @@ function totals() {
     reasoningTokens: 5,
     totalTokens: 100,
     apiEquivalentCostUSD: 1.2,
+    costComplete: true,
     activeDays: 3,
     sessionCount: 9,
   };
@@ -42,6 +43,20 @@ function agent(id: string, extra: Record<string, unknown> = {}) {
     currentModel: null,
     topModel: null,
     today: today(),
+    usageStatus: usageStatus(),
+    ...extra,
+  };
+}
+
+function usageStatus(extra: Record<string, unknown> = {}) {
+  return {
+    state: "ok",
+    collectedAt: "2026-04-08T12:00:00.000Z",
+    error: null,
+    coverageStart: "2026-04-01",
+    coverageEnd: "2026-04-08",
+    precision: "measured",
+    costComplete: true,
     ...extra,
   };
 }
@@ -99,7 +114,7 @@ test("agents 入口：按 id 收行，plan 缺了是 null，坏窗口丢掉、�
         ],
         limitsError: null,
       },
-      { id: "codex", limits: [], limitsError: "TokenTracker codex：token expired" },
+      { id: "codex", limits: [], limitsError: "Codex：token expired" },
       { id: "grok", plan: { tier: "" } },
     ],
   });
@@ -117,7 +132,7 @@ test("agents 入口：按 id 收行，plan 缺了是 null，坏窗口丢掉、�
       resetsAt: 1_800_000_000,
     },
   ]);
-  assert.equal(parsed.agents[1]?.limitsError, "TokenTracker codex：token expired");
+  assert.equal(parsed.agents[1]?.limitsError, "Codex：token expired");
   assert.deepEqual(parsed.agents[1]?.limits, []);
   // tier 空等于没有套餐信息，不要留一个空标签
   assert.equal(parsed.agents[2]?.plan, null);
@@ -194,4 +209,54 @@ test("vibeCodingNow 按 id 收，不限 claude / codex", () => {
   );
   assert.equal(parsed.agents[0]?.active, true);
   assert.equal(parsed.agents[1]?.currentModel, null);
+});
+
+test("未知用量为 null，成功取得的零用量保持 0，不能互相转换", () => {
+  const zeroDay = Object.fromEntries(Object.keys(today()).map((key) => [key, key === "date" ? "2026-04-08" : 0]));
+  const parsed = normalizeVibeCodingUsage({
+    agents: [
+      agent("cursor", {
+        today: null,
+        usageStatus: usageStatus({ state: "unavailable", collectedAt: null, coverageStart: null, coverageEnd: null, costComplete: false }),
+      }),
+      agent("claude", { today: zeroDay }),
+    ],
+    totals: { ...totals(), costComplete: false },
+  });
+  assert.ok(parsed);
+  assert.equal(parsed.agents[0]?.today, null);
+  assert.equal(parsed.agents[0]?.usageStatus.collectedAt, null);
+  assert.equal(parsed.agents[1]?.today?.totalTokens, 0);
+  assert.equal(parsed.totals.costComplete, false);
+});
+
+test("同步失败保留缓存用量与上次成功时刻，不把摘要生成时间当成功时间", () => {
+  const status = usageStatus({ state: "error", error: "Cursor session expired", costComplete: false, precision: "mixed" });
+  const parsed = normalizeVibeCodingUsage({
+    agents: [agent("cursor", { usageStatus: status })],
+    totals: { ...totals(), costComplete: false },
+    collectedAt: "2026-04-09T12:00:00.000Z",
+  });
+  assert.ok(parsed);
+  assert.deepEqual(parsed.agents[0]?.today, today());
+  assert.deepEqual(parsed.agents[0]?.usageStatus, status);
+  assert.equal(parsed.collectedAt, "2026-04-09T12:00:00.000Z");
+  assert.equal(parsed.totals.apiEquivalentCostUSD, 1.2);
+});
+
+test("新用量契约要求来源状态、费用完整性和有效日期，旧报文不能假装成功", () => {
+  for (const extra of [
+    { usageStatus: undefined },
+    { usageStatus: usageStatus({ state: "ready" }) },
+    { usageStatus: usageStatus({ collectedAt: "invalid" }) },
+    { usageStatus: usageStatus({ coverageStart: "2026-02-30" }) },
+    { usageStatus: usageStatus({ coverageEnd: "2026-03-01" }) },
+    { usageStatus: usageStatus({ precision: "unknown" }) },
+    { usageStatus: usageStatus({ costComplete: undefined }) },
+    { today: undefined },
+    { today: { ...today(), date: "2026-02-30" } },
+  ]) {
+    assert.equal(normalizeVibeCodingUsage({ agents: [agent("cursor", extra)], totals: totals() }), null);
+  }
+  assert.equal(normalizeVibeCodingUsage({ agents: [agent("cursor")], totals: { ...totals(), costComplete: undefined } }), null);
 });
