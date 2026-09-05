@@ -43,21 +43,19 @@ export const VIBECODING_STALE_MS = 15 * 60_000;
 /**
  * 各 agent 的限额由 NAS 上的容器上报器走 `/api/ingest/agents` 推，**每轮必发**
  * （内容没变也发，那一封就是心跳），所以「多久没刷新」等价于「上报器还活着没有」。
- * 窗口取三倍间隔：漏一两轮不该翻脸，连着三轮没到才算容器死了或凭据全过期。
+ * 限额使用三档：可见 5 分钟、仅开着 10 分钟、无人 60 分钟。
+ * 窗口锚最慢档，三轮 60 分钟加 5 分钟缓存余量，默认 185 分钟。
  *
- * 间隔两边必须一致：上报器那侧是 `reporters/agent-limits-reporter` 的
- * `PUSH_INTERVAL_MS`，站点这侧是 `AGENT_LIMITS_PUSH_INTERVAL_MS`。改一边就得改另一边，
- * 顺序同上面几条：**窗口先放宽，上报器再降频**。
+ * 上报器 `IDLE_INTERVAL_MS` 改长时，站点 `AGENT_LIMITS_STALE_MS` 必须跟着放宽。
+ * 顺序同上面几条：**窗口先放宽，两份站点部署完，上报器再降频**。
  */
-export const AGENT_LIMITS_PUSH_INTERVAL_MS = 10 * 60_000;
+export const AGENT_LIMITS_STALE_MS = 185 * 60_000;
 
 export function agentLimitsStaleMs() {
-  const configured = Number(process.env.AGENT_LIMITS_PUSH_INTERVAL_MS);
-  const interval =
-    Number.isFinite(configured) && configured > 0
-      ? configured
-      : AGENT_LIMITS_PUSH_INTERVAL_MS;
-  return interval * 3;
+  const configured = Number(process.env.AGENT_LIMITS_STALE_MS);
+  return Number.isFinite(configured) && configured > 0
+    ? configured
+    : AGENT_LIMITS_STALE_MS;
 }
 
 /**

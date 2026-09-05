@@ -51,8 +51,15 @@ export const config = {
     secret: process.env.TELEMETRY_INGEST_SECRET?.trim() ?? "",
   },
 
-  /** 默认 10 分钟一轮，和站点 AGENT_LIMITS_PUSH_INTERVAL_MS 对齐 */
-  pushIntervalMs: ms("PUSH_INTERVAL_MS", 600_000),
+  /** 与 server / PlayStation 共用人数分档逻辑；限额使用 5 / 10 / 60 分钟。 */
+  cadence: {
+    liveIntervalMs: ms("LIVE_INTERVAL_MS", 300_000),
+    openIntervalMs: ms("OPEN_INTERVAL_MS", 600_000),
+    idleIntervalMs: ms("IDLE_INTERVAL_MS", 3_600_000),
+    onlineCounterUrl: trimSlash(process.env.ONLINE_COUNTER_URL?.trim() ?? ""),
+    livePushUrl: trimSlash(process.env.LIVE_PUSH_URL?.trim() ?? ""),
+    countTimeoutMs: ms("COUNT_TIMEOUT_MS", 2_500),
+  },
   pushTimeoutMs: ms("PUSH_TIMEOUT_MS", 30_000),
 
   /**

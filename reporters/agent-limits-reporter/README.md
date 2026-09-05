@@ -13,12 +13,22 @@
 
 ## 它做什么
 
-每 `PUSH_INTERVAL_MS`（默认 10 分钟）一轮：
+启动立即采集一轮，之后按页面人数选档：可见 5 分钟、仅后台开着 10 分钟、无人打开 60 分钟。每轮：
 
 1. 需要的话刷新 Claude 的 OAuth
 2. 五家自己打各家限额接口（参考了 TokenTracker 的读取逻辑，没有依赖它）
 3. 按 MacTelemetryHub `AgentLimitsCollector` 的规则翻译成站点请求体
 4. POST 到站点
+
+每轮收尾先读 `ONLINE_COUNTER_URL/count` 的 `online`，大于 0 走快档；否则再读
+`LIVE_PUSH_URL/count` 的 `connections`，大于 0 走中档，否则走闲档。与 server /
+PlayStation 上报器采用同款人数分档逻辑，限额使用自己的 5 / 10 / 60 分钟。
+计数超时、非成功响应、格式错误或未配置一律当 0，不触发上报失败重试。
+两个地址都未配置时固定走 60 分钟。
+
+长档每 5 分钟重查人数，发现更快档立即采集；人数减少不延后已经定好的下一轮。
+只查公开计数口，不带 ingest 密钥，也不在这些检查里访问厂商限额接口。
+`LIVE_PUSH_URL` 填 Vercel 那份生产，国内生产的后台连接不计入，少计只会减速。
 
 默认发 `claude` / `codex` / `grok` / `cursor` / `antigravity`。一家失败只影响那一行。
 
@@ -31,7 +41,12 @@
 | `SITE_URL` | ✅ | 站点地址，如 `https://lyjw131.com`。端点路径由上报器自己拼 |
 | `SITE_INGEST_URL` | | 直接给完整端点，给了就不用 `SITE_URL`。默认 `${SITE_URL}/api/ingest/agents` |
 | `TELEMETRY_INGEST_SECRET` | ✅ | 和站点同名变量对上，作 Bearer 鉴权。站点没配时才可留空 |
-| `PUSH_INTERVAL_MS` | | 默认 `600000`（10 分钟）。要和站点的 `AGENT_LIMITS_PUSH_INTERVAL_MS` 一致 |
+| `ONLINE_COUNTER_URL` | | online-counter 的源地址，不带 `/count`；未配视为无人可见 |
+| `LIVE_PUSH_URL` | | Vercel 那份 live-push 的源地址，不带 `/count`；未配视为无人开着 |
+| `LIVE_INTERVAL_MS` | | 默认 `300000`（5 分钟），有可见页面；也是长档重查人数的间隔 |
+| `OPEN_INTERVAL_MS` | | 默认 `600000`（10 分钟），只有后台页面 |
+| `IDLE_INTERVAL_MS` | | 默认 `3600000`（60 分钟），无人打开；改长时同步放宽站点 `AGENT_LIMITS_STALE_MS` |
+| `COUNT_TIMEOUT_MS` | | 默认 `2500`，每个计数请求的超时 |
 | `PUSH_TIMEOUT_MS` | | 默认 `30000` |
 | `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` | | NAS 出海要走代理时填（如 `http://user:pass@192.168.3.2:7893`）。上报器自己的 fetch 靠镜像里的 `NODE_USE_ENV_PROXY=1` 认它，五个 CLI 各自也认。build 时另外用 `--build-arg HTTPS_PROXY=…` |
 | `CLAUDE_OAUTH_TOKEN_URL` | | 可选覆盖。默认从镜像里的 Claude Code 自动读取生产 OAuth 配置；覆盖时必须和 client ID 一起填 |
@@ -120,22 +135,28 @@ cursor 是 `{ period, plan, hardLimit }` 三份 DashboardService 响应。有它
 
 部署单元是同目录的 [compose.yaml](compose.yaml)：把这个目录整个拷到 NAS、旁边放一份 `.env`，就地 build。**别在 Mac 上 build 完把镜像拷过去** —— Mac 是 arm64、群晖是 x86_64，架构对不上。
 
-拷过去（nas-host 的 sftp 子系统是关的，`scp` 用不了，走 tar 管道）：
+从固定间隔升级时，先将 Vercel / EdgeOne 两份站点部署为
+`AGENT_LIMITS_STALE_MS=11100000`（185 分钟，三轮闲档加缓存余量），删除旧的
+`AGENT_LIMITS_PUSH_INTERVAL_MS`。然后更新 NAS `.env`：删除 `PUSH_INTERVAL_MS`，
+配置 `ONLINE_COUNTER_URL` 和 `LIVE_PUSH_URL`，按需设置三档间隔，再重建容器。
+旧固定间隔变量已移除。
+
+拷过去（dsm 的 sftp 子系统是关的，`scp` 用不了，走 tar 管道）：
 
 ```bash
-COPYFILE_DISABLE=1 tar czf - -C reporters --exclude node_modules --exclude dist agent-limits-reporter | ssh nas-host 'mkdir -p /srv/lyjwpage && tar xzf - -C /srv/lyjwpage'
+COPYFILE_DISABLE=1 tar czf - -C reporters --exclude node_modules --exclude dist --exclude .env --exclude data agent-limits-reporter | ssh dsm 'mkdir -p /volume3/docker && tar xzf - -C /volume3/docker'
 ```
 
 `.env` 单独送，别混进源码目录一起打包：
 
 ```bash
-ssh nas-host 'cat > /srv/lyjwpage/agent-limits-reporter/.env && chmod 600 /srv/lyjwpage/agent-limits-reporter/.env' < 本机那份.env
+ssh dsm 'cat > /volume3/docker/agent-limits-reporter/.env && chmod 600 /volume3/docker/agent-limits-reporter/.env' < 本机那份.env
 ```
 
 先登录五家（见上），再起：
 
 ```bash
-ssh nas-host '/usr/local/bin/docker compose -f /srv/lyjwpage/agent-limits-reporter/compose.yaml up -d --build'
+ssh dsm '/usr/local/bin/docker compose -f /volume3/docker/agent-limits-reporter/compose.yaml up -d --build'
 ```
 
 不映射任何端口。容器只出站连站点和各家限额接口。
@@ -152,6 +173,6 @@ ssh nas-host '/usr/local/bin/docker compose -f /srv/lyjwpage/agent-limits-report
 
 - 站点或限额接口连不上都只是这一轮作废，进程不退；下一轮照常重试。
 - 同一个环节连续报错只在第一次和恢复时各写一句日志，中间每满 10 次再报一次。
-- 出错时下一次重试是 2 秒后，连着错才逐次翻倍退到 5 分钟（跑通一次就复位）。
+- 整轮采集 / 上报失败时，下一次重试是 2 秒后，连着错才逐次翻倍退到 5 分钟（跑通一次就复位）；退避期间不查人数。单家失败仍照发错误行，成功上报后按三档等下一轮。
 - 某个 agent「没配」（`configured: false`）这一行不发，站点按 id 留着上一次的值。
 - 「配了但取不到」发空 `limits` 加非空 `limitsError`。不要把上一次的好值再发一遍。
