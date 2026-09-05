@@ -8,66 +8,58 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 <!-- END:nextjs-agent-rules -->
 
-# API 命名
+# 工作方式
 
-加端点、加字段之前先对一遍这四条。这些是站点、`reporters/emby-reporter`、
-`reporters/agent-limits-reporter`、`reporters/iphone-telemetry-hub`、
-`reporters/server-reporter`、MacTelemetryHub、Home Assistant 共用的约定，改一处就得各处对齐。
+- 根据用户目标和已有上下文完成实现与必要验证；常规、可逆的实现选择自行决定，有影响的假设简短说明。用户中途补充要求或询问进度时，结合新信息继续原任务。
+- 已授权的检查、修改和修复直接推进。只有缺失信息会实质改变结果且无法从代码推断，或下一步超出授权范围时才询问；等待期间继续不依赖答案的工作。需要批准时，先准备好可审阅的改动和验证结果。
+- 在遵守系统、开发者指令和工具权限的前提下，用户明确要求优先于本文件和技能中的默认建议。技能若导致暂停或要求确认，指出实际读取的文件、具体条款和适用原因，不把自己的推断当成硬性要求。
+- 默认用简洁中文沟通，先说结果，再说明关键原因、验证和剩余问题。只报告实际完成的工作；区分本地修改、测试通过和已部署。
 
-1. **`/api/ingest/<来源>`** —— 按**数据是谁产生的**命名，不是按上报程序命名。
-   现有的是 `mac`、`iphone`、`homepod`、`emby`、`playstation`、`server`、`agents`。Emby
-   那个曾经叫 `emby-reporter`，泄漏了实现细节：换个代理程序名字就得跟着改。
-   `agents` 是各 coding agent（Claude Code / Codex / Grok Build …）**账号侧**的套餐和
-   限额窗口 —— 它们是厂商账号的事实，不属于任何一台设备，所以不进 `mac`；喂它的
-   容器叫什么都不进 URL。
-   `mac` 和 `iphone` 是**设备级**的两个遥测中心：一台设备一个入口、一个信封、
-   一个 `modules` 字典。所以充电头数据走 `mac`（观测它的是那台 Mac），活动圆环
-   走 `iphone`（采集它的是手表，但搬运和观测它的是那台手机）—— 别按数据里那个
-   牌子另开一个 URL 家族，`apple-health` 就是这么错过一次的。
-   上报器要**从站点拿东西**时走它自己那条 ingest 路径的 GET，同一个地址、同一把
-   锁，别另开一个 URL 家族。曾经的 `apple-music` 就是这么办的（POST 交列表、GET
-   取凭据），那条路随着拉列表收回站点一起退役了 —— 顺带记着它的代价：把凭据发出
-   去意味着 `TELEMETRY_INGEST_SECRET` 和那份凭据同等敏感。
-2. **`/api/status/<主题>`** —— `X` 是列表 / 历史，`X/now` 是此刻。
-   听歌是 `listening` + `listening/now`，看片是 `watching` + `watching/now`。
-   一对一对地加，别给「此刻」另起一个词（从前 `listening` 的搭档叫 `music`）。
-   **推送事件名跟着这套走**：`X` 和 `X-now`（URL 里的 `/` 在事件名里写成 `-`）。
-   两边错位过一次 —— 事件 `listening` 指此刻、端点 `listening` 指列表。
-3. **URL 段全小写，JSON 字段 camelCase。** 这不是不一致：`/api/status/vibecoding`
-   和信封里的 `vibeCoding` 模块名各守各的惯例，别去统一它俩。
-4. **同一个概念，跨来源必须同名同单位。** HomePod 和 Mac 喂的都是
-   `LocalNowPlaying`，所以两边一律 `positionMs` / `durationMs` / `repeatOne` /
-   `observedAt`（epoch 毫秒），秒转毫秒这种事在上报侧做完再发。
-   R2 上那份字节的内容地址一律叫 `objectKey`；和它并排的来源侧键要自报家门
-   （`imageKey`、`iconHash`），两个键挨在一起时光看 `key` 分不出是谁的。
+# 项目入口与验证
 
-**不留兼容路径。** 改了名就是改了，不接受旧字段、不留旧路由 —— 双份接收意味着
-两条路都得一直维护，而且坏掉的那条要等很久才会被发现。改完把四方一起更新。
+- 使用 `pnpm`；命令以各目录的 `package.json` 为准。主站开发入口是 `pnpm dev`，地址为 `http://localhost:3211`。
+- 主站页面与路由在 `src/app/`，组件在 `src/components/`，数据与共享逻辑在 `src/lib/`；上报器在 `reporters/`，Cloudflare Workers 在 `workers/`。架构与部署背景查 `README.md`，子项目操作查各自的 README。
+- 修改 Next.js 代码前，按上方要求读取本地版本中与改动相关的文档。按需检索，不为小改动遍历整个文档或技能目录。
+- 验证覆盖受影响的行为和契约。纯文档改动检查 diff、路径与命令即可；逻辑修复优先跑相关测试；类型或接口改动运行 `pnpm typecheck`；代码规范检查运行 `pnpm exec eslint <改动文件>`；涉及构建、路由或缓存行为时运行 `pnpm build`。UI 改动检查受影响页面的显示与交互。
+- 主站完整单测为 `pnpm test`；单文件可用 `node --test --experimental-strip-types --import ./src/lib/testing/register-alias.mjs src/lib/<名称>.test.mts`。上报器和 Worker 使用各自的验证方式。
+- 有回归风险时补行为测试；低影响改动不添加仅重复实现的测试。相关检查通过后，只有新改动、失败或未解疑点才扩大或重复验证。环境限制导致无法验证时说明具体缺口。
 
-# 图标
+# API 命名与跨端契约
 
-要加品牌 / 产品图标时，**先去 LobeHub 的图标集找**，别自己画、也别随手扒一张位图：
+这些约定由主站、`reporters/` 下的相关上报器、MacTelemetryHub 和 Home Assistant 共用。
+新增或修改端点、字段前，先定位对应的数据生产者、接收端、消费者和推送事件。
 
-- 在线浏览 <https://lobehub.com/icons>
-- 取文件走包更省事：`https://unpkg.com/@lobehub/icons-static-svg@<版本>/icons/<名字>.svg`
-  （903 个图标，命名规律是 `<名字>.svg` 单色、`<名字>-color.svg` 彩色、`<名字>-text.svg` 带字）
+## 入口与字段
 
-**一律优先 SVG。** 矢量在任何倍率下都清晰，体积通常还比位图小（antigravity 换成 SVG 时 72KB → 7.6KB）。
-实在只有位图时才退而求其次，并且要先压到展示尺寸再入库，不要让站点**按请求**现压。
+| 对象 | 约定 | 示例 / 边界 |
+| --- | --- | --- |
+| 上报入口 | `/api/ingest/<来源>`，来源按数据归属命名，不使用上报程序名 | 当前来源：`mac`、`iphone`、`homepod`、`emby`、`playstation`、`server`、`agents` |
+| 设备遥测 | 一台设备一个入口、一个信封、一个 `modules` 字典 | 充电头归观测它的 `mac`；活动圆环归搬运和观测它的 `iphone`，不按品牌或模块另开入口 |
+| 账号限额 | coding agent 的账号套餐和限额统一归 `agents` | 厂商账号事实不归某台 Mac，也不按采集容器命名 |
+| 上报器取数据 | 使用所属 ingest 路径的 GET，沿用相同鉴权 | 若返回凭据，`TELEMETRY_INGEST_SECRET` 就具有获取该凭据的权限，按同等敏感度处理 |
+| 状态查询 | `/api/status/X` 表示列表 / 历史，`/api/status/X/now` 表示此刻 | `listening` + `listening/now`，`watching` + `watching/now`；两者同时存在时成对命名 |
+| 推送事件 | 跟随状态 URL，`/` 替换为 `-` | 列表为 `X`，此刻为 `X-now`；事件和端点含义一致 |
+| 大小写 | URL 段全小写，JSON 字段 camelCase | `/api/status/vibecoding` 与模块 `vibeCoding` 各守其约定 |
+| 跨来源字段 | 同一概念必须同名、同单位 | Mac / HomePod 的 `LocalNowPlaying` 共用 `positionMs`、`durationMs`、`repeatOne`、`observedAt`；`observedAt` 为 epoch 毫秒，秒转毫秒在上报侧完成 |
+| 图片键 | R2 内容地址使用 `objectKey`，来源侧键用明确名称 | `imageKey`、`iconHash`，避免含义不明的 `key` |
 
-禁的是「每来一个请求压一遍」，不是压这个动作本身。**按内容地址压一次**不在此列：
-Mac 桌面图标是 R2 上的内容寻址原件（`<sha256>.png`），站点出首屏 HTML 时按
-objectKey 压一次内联进去、`cacheLife("max")` 缓存永续（见 `lib/desktop-icon-inline`）——
-键相同即字节相同，压第二次没有意义。运行时浏览器仍直连 R2 原件，站点不代理图片流量。
+## 变更完成条件
 
-两条容易踩的：
+- 重命名直接替换，不接受旧字段、不保留旧路由或兼容分支。
+- 同步更新所有受影响的生产者、接收端、消费者、推送事件、测试和文档；按实际调用链确定范围。
+- 跨仓库改动在已授权且可访问的范围内完成。外部配置或部署尚未同步时，列出具体对象和待办，不能把站点单侧修改报告成迁移完成。
 
-1. **`fill="currentColor"` 的图标不能用 `<img>`（含 `next/image`）加载。** SVG 经 `<img>` 是独立文档，
-   `currentColor` 取不到页面的文字色，会渲染成黑的。要么挑 `-color` 那版（颜色写死在文件里），
-   要么把 SVG 内联成组件——`vibecoding-card.tsx` 里的 Anthropic / OpenAI 标记就是内联的写法。
-2. **静态图标一律标 `unoptimized`。** 它们已经是最终形态，过一遍图片管道只是多一次转换、多一份
-   Vercel 配额，还把本可以直连 CDN 的请求绕回自己的函数。图片管道只留给**远端源图比展示格大、
-   源站又缩不了**的那几路（当前是自建歌单封面、PSN 头像，名单见
-   `next.config.ts` 的 `remotePatterns`），本地静态图标一路都不进。
-   GitHub 头像不在此列：它构建期就缩好内联成 data URI 进首屏 HTML（见
-   `lib/github-avatar-icon`），`remotePatterns` 里留着那条只为源图拉不到时回退。
+# 图标与图片
+
+## 选型
+
+- 新增品牌 / 产品图标先查 [LobeHub 图标集](https://lobehub.com/icons)，优先 SVG。静态包地址为 `https://unpkg.com/@lobehub/icons-static-svg@<版本>/icons/<名字>.svg`；单色 `<名字>.svg`、彩色 `<名字>-color.svg`、带字 `<名字>-text.svg`。
+- 确认所选版本和文件存在后再引入。只有位图时，先压到展示所需尺寸再入库。
+- 含 `fill="currentColor"` 的 SVG 要内联为组件；通过 `<img>` 或 `next/image` 加载时无法继承页面文字色。也可选择颜色写死的彩色版本。现有示例见 `src/components/` 下的 `vibecoding-card.tsx`。
+
+## 加载与缓存
+
+- 静态图标使用 `next/image` 时一律设 `unoptimized`，直接加载最终资源。
+- 图片优化器仅用于远端原图比展示尺寸大、且源站无法提供合适尺寸的情况；现有允许列表与原因见 `next.config.ts` 的 `images.remotePatterns`。
+- 不在每个请求中重复压图。允许按不可变内容地址压缩一次并缓存：`src/lib/desktop-icon-inline.ts` 按 `objectKey` 压缩 R2 原件、内联首屏，并用 `cacheLife("max")` 缓存；浏览器运行时直连 R2 原件，站点不代理图片流量。
+- GitHub 头像由 `src/lib/github-avatar-icon.ts` 在构建期缩小并内联为 data URI；图片优化器中的 GitHub 域名仅供源图获取失败时回退。
