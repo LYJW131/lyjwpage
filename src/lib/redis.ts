@@ -15,6 +15,28 @@ const DISABLE_MS = 30_000;
 type RedisState = {
   leases: ConnectionLeases<Redis>;
   disabledUntil: number;
+  /**
+   * 测试注入。挂在同一份 `__lyjwRedis` 上，不另起一套。
+   * `undefined` 表示没注入；`null` 表示强制不可达；有值则每次从租约里再 use 一次
+   * （租约会在 operation 结束后 disconnect）。
+   */
+  injected?: Redis | null;
+};
+
+/** ioredis 子集：redis.ts / mirrorKey / overlayHashKey 实际会调到的方法。 */
+export type InjectedPipeline = {
+  hset(key: string, object: object): InjectedPipeline;
+  hgetall(key: string): InjectedPipeline;
+  get(key: string): InjectedPipeline;
+  exec(): Promise<[Error | null, unknown][] | null>;
+};
+
+export type InjectedRedis = {
+  get(key: string): Promise<string | null>;
+  set(key: string, value: string, ...args: unknown[]): Promise<unknown>;
+  del(key: string): Promise<number>;
+  pipeline(): InjectedPipeline;
+  disconnect(): void;
 };
 
 /**
@@ -38,6 +60,14 @@ export function getRedis(): Redis | null {
 
   const current = state.leases.current();
   if (current) return current;
+
+  if ("injected" in state) {
+    if (!state.injected) return null;
+    return state.leases.use(state.injected);
+  }
+
+  // 单测进程里绝不自己去连真实 Redis。没注入就是不可达。
+  if (process.env.NODE_TEST_CONTEXT) return null;
 
   const url = process.env.REDIS_URL;
   if (!url) return null;
@@ -76,6 +106,32 @@ export function getRedis(): Redis | null {
  */
 export function withRedisScope<T>(run: () => Promise<T>): Promise<T> {
   return state.leases.scope(run);
+}
+
+/** 只给测试：把假客户端塞进 `__lyjwRedis` 租约。`null` 表示强制不可达。 */
+export function installRedisForTests(client: InjectedRedis | null): void {
+  const current = state.leases.current();
+  if (current) state.leases.disconnect(current);
+  state.disabledUntil = 0;
+  state.injected = client as Redis | null;
+}
+
+/** 只给测试：清掉注入、停用窗，并把镜像内存副本就地归零（不能换 Map，闭包还指着旧 cell）。 */
+export function resetRedisForTests(): void {
+  const current = state.leases.current();
+  if (current) state.leases.disconnect(current);
+  delete state.injected;
+  state.disabledUntil = 0;
+  const cells = (
+    globalThis as typeof globalThis & {
+      __lyjwMirrors?: Map<string, { memory: unknown; persisted: boolean }>;
+    }
+  ).__lyjwMirrors;
+  if (!cells) return;
+  for (const cell of cells.values()) {
+    cell.memory = null;
+    cell.persisted = false;
+  }
 }
 
 /** 统一加前缀，方便和同一个 Redis 里的其它东西区分开 */
