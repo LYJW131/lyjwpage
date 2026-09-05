@@ -371,6 +371,17 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
     throw new Error("遥测请求的 modules 必须是对象");
   }
   const modules = object(envelope.modules) ?? {};
+  // 三份 coding 快照必须全部合法才允许开始写。否则 year 写坏时，usage / now
+  // 已经调用 commit，会在返回 400 的同时留下半份更新。
+  const codingUsage = "vibeCodingUsage" in modules
+    ? prepareVibeCodingUsage(modules.vibeCodingUsage, receivedAt)
+    : null;
+  const codingNow = "vibeCodingNow" in modules
+    ? prepareVibeCodingNow(modules.vibeCodingNow, receivedAt)
+    : null;
+  const codingYear = "vibeCodingYear" in modules
+    ? prepareVibeCodingYear(modules.vibeCodingYear, receivedAt)
+    : null;
 
   /**
    * 这封信封用得着的键，**全部在这里一起发车**。
@@ -659,17 +670,16 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
      * 此刻状态，只有后者值得推给浏览器。理由见 lib/vibecoding 的模块注释。
      *
      * 两份拼成同一张首屏卡片，所以哪一份进来都让同一个缓存 tag 失效，
-     * 重复失效是幂等的。「某一份校验失败」不需要靠逐份落库来兜：prepare* 的校验
-     * 全排在写之前，一份写坏时另一份根本还没发车。
+     * 重复失效是幂等的。三份 coding 模块已经在入口一起校验，这里只提交。
      */
-    if ("vibeCodingUsage" in modules) {
-      writes.push(prepareVibeCodingUsage(modules.vibeCodingUsage, receivedAt).commit());
+    if (codingUsage) {
+      writes.push(codingUsage.commit());
       tags.push(VIBECODING_TAG);
       accepted += 1;
     }
 
-    if ("vibeCodingNow" in modules) {
-      const { now, commit } = prepareVibeCodingNow(modules.vibeCodingNow, receivedAt);
+    if (codingNow) {
+      const { now, commit } = codingNow;
       writes.push(commit());
       events.push({ type: "vibecoding-now", payload: now });
       tags.push(VIBECODING_TAG);
@@ -678,10 +688,10 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
 
     /**
      * 年度热力图单独一块。不推送 —— 格子按天变，浏览器长间隔和切回焦点来问。
-     * 上报仍是整年 371 个数一次给齐；GET 按游标只回窗尾。
+     * 上报和 GET 都是整年 371 个数一次给齐，云端补回的旧日也会刷新。
      */
-    if ("vibeCodingYear" in modules) {
-      writes.push(prepareVibeCodingYear(modules.vibeCodingYear, receivedAt).commit());
+    if (codingYear) {
+      writes.push(codingYear.commit());
       tags.push(VIBECODING_YEAR_TAG);
       accepted += 1;
     }

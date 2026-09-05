@@ -16,6 +16,7 @@ import type {
   VibeCodingLimit,
   VibeCodingPlan,
   VibeCodingTotals,
+  VibeCodingUsageStatus,
 } from "./types.ts";
 
 type RawAgentDay = {
@@ -35,7 +36,8 @@ export type ParsedVibeCodingUsage = {
     models: string[];
     currentModel: string | null;
     topModel: string | null;
-    today: VibeCodingDay;
+    today: VibeCodingDay | null;
+    usageStatus: VibeCodingUsageStatus;
   }>;
   totals: VibeCodingTotals;
   topModels: Array<{ model: string; tokens: number }>;
@@ -66,25 +68,6 @@ export type ParsedVibeCodingNow = {
 
 function finite(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
-}
-
-function emptyDay(date: string): VibeCodingDay {
-  return {
-    date,
-    inputTokens: 0,
-    outputTokens: 0,
-    cacheReadTokens: 0,
-    cacheCreationTokens: 0,
-    totalTokens: 0,
-    apiEquivalentCostUSD: 0,
-  };
-}
-
-function localDate(date = new Date()) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
 }
 
 function positiveOrNull(value: unknown) {
@@ -145,9 +128,12 @@ function normalizeAgent(row: Record<string, unknown>): ParsedVibeCodingUsage["ag
   const id = text(row.id);
   const label = text(row.label);
   const icon = text(row.icon);
-  if (!id || !label || !icon) return null;
+  const usageStatus = normalizeUsageStatus(row.usageStatus);
+  if (!id || !label || !icon || !usageStatus) return null;
 
   const today = object(row.today);
+  const date = today ? dayText(today.date) : null;
+  if (row.today !== null && (!today || !date)) return null;
   return {
     id,
     label,
@@ -157,9 +143,41 @@ function normalizeAgent(row: Record<string, unknown>): ParsedVibeCodingUsage["ag
       : [],
     currentModel: text(row.currentModel),
     topModel: text(row.topModel),
-    today: today
-      ? normalizePreparedDay(text(today.date) ?? localDate(), today as RawAgentDay)
-      : emptyDay(localDate()),
+    today: today && date ? normalizePreparedDay(date, today as RawAgentDay) : null,
+    usageStatus,
+  };
+}
+
+function dayText(value: unknown): string | null {
+  const date = text(value);
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  const stamp = Date.parse(`${date}T00:00:00Z`);
+  return Number.isFinite(stamp) && new Date(stamp).toISOString().slice(0, 10) === date ? date : null;
+}
+
+function normalizeUsageStatus(value: unknown): VibeCodingUsageStatus | null {
+  const row = object(value);
+  if (!row) return null;
+  const state = row.state;
+  const precision = row.precision;
+  if (state !== "ok" && state !== "error" && state !== "unavailable") return null;
+  if (precision !== "measured" && precision !== "estimated" && precision !== "mixed") return null;
+  if (typeof row.costComplete !== "boolean") return null;
+  const collectedAt = text(row.collectedAt);
+  if (row.collectedAt !== null && (!collectedAt || !Number.isFinite(Date.parse(collectedAt)))) return null;
+  const coverageStart = dayText(row.coverageStart);
+  const coverageEnd = dayText(row.coverageEnd);
+  if (row.coverageStart !== null && !coverageStart) return null;
+  if (row.coverageEnd !== null && !coverageEnd) return null;
+  if (coverageStart && coverageEnd && coverageStart > coverageEnd) return null;
+  return {
+    state,
+    collectedAt,
+    error: text(row.error),
+    coverageStart,
+    coverageEnd,
+    precision,
+    costComplete: row.costComplete,
   };
 }
 
@@ -189,6 +207,7 @@ export function normalizeVibeCodingUsage(input: unknown): ParsedVibeCodingUsage 
   if (agents.length === 0) return null;
 
   const rawTotals = root.totals as Record<string, unknown>;
+  if (typeof rawTotals.costComplete !== "boolean") return null;
   return {
     agents,
     totals: {
@@ -199,6 +218,7 @@ export function normalizeVibeCodingUsage(input: unknown): ParsedVibeCodingUsage 
       reasoningTokens: finite(rawTotals.reasoningTokens),
       totalTokens: finite(rawTotals.totalTokens),
       apiEquivalentCostUSD: finite(rawTotals.apiEquivalentCostUSD),
+      costComplete: rawTotals.costComplete,
       activeDays: finite(rawTotals.activeDays),
       // 会话总数由 60 秒那轮扫出来，搭这份的车发过来 —— 它是「一共开过多少次」，
       // 累计量归累计量那份，不该混进说「此刻」的 now 里

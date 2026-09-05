@@ -443,14 +443,14 @@ export type ChargerPayload = ChargerStatus & {
 } & ReporterPresence;
 
 /**
- * TokenTracker 的来源键，如 "claude" / "codex" / "cursor"。
+ * 用量采集来源键，如 "claude" / "codex" / "cursor"。
  *
  * 信封不写死名单：上报器发几个 agent 就收几个，站点按 id 决定展示形态。
  */
 export type VibeCodingAgentId = string;
 
 export type VibeCodingDay = {
-  /** 按本机时区生成的 YYYY-MM-DD */
+  /** 按站点统计时区 Asia/Shanghai 生成的 YYYY-MM-DD */
   date: string;
   inputTokens: number;
   outputTokens: number;
@@ -459,6 +459,20 @@ export type VibeCodingDay = {
   totalTokens: number;
   /** 按公开 API 价格估算，不是订阅账单 */
   apiEquivalentCostUSD: number;
+};
+
+/** 每个来源最近一次成功取得的用量及本轮同步状态；错误不会清空已保存历史。 */
+export type VibeCodingUsageStatus = {
+  state: "ok" | "error" | "unavailable";
+  /** 最近成功采集时刻，尚未成功过为 null；失败时保留旧时刻。 */
+  collectedAt: string | null;
+  error: string | null;
+  /** 已保存历史实际覆盖的首尾日期，YYYY-MM-DD；未知为 null。 */
+  coverageStart: string | null;
+  coverageEnd: string | null;
+  precision: "measured" | "estimated" | "mixed";
+  /** false 表示 API 等值费用只包含能估价的部分，不能当完整费用。 */
+  costComplete: boolean;
 };
 
 /** 订阅套餐等级。tier 是上游原始枚举值，label 是给人看的展示名。 */
@@ -499,10 +513,10 @@ export type VibeCodingAgent = {
   /** 上报器给的展示名，如 "Claude Code" / "Cursor" */
   label: string;
   /**
-   * 品牌图标键，如 "cursor" / "grok"。和 id 不是一回事：id 是 TokenTracker
+   * 品牌图标键，如 "cursor" / "grok"。和 id 不是一回事：id 是用量
    * 的来源名，这个是牌子。站点认不出来的键退回首字母，不是整行不渲染。
    *
-   * 全量面板不用它（Claude / Grok 各有自己的活动灯），只给按需取用的
+   * 全量面板不用它（Claude / Codex 各有自己的活动灯），只给按需取用的
    * 那几行限额条当标记。
    */
   icon: string;
@@ -521,11 +535,13 @@ export type VibeCodingAgent = {
   active: boolean;
   /** 整份历史里 token 占比最大的模型。 */
   topModel: string | null;
-  today: VibeCodingDay;
+  /** null 表示未取得用量，和已成功采集的零用量不同。 */
+  today: VibeCodingDay | null;
+  usageStatus: VibeCodingUsageStatus;
   /**
    * 下面四个字段来自另一条路：`/api/ingest/agents`，喂它的是 NAS 上的容器上报器
    * （`reporters/agent-limits-reporter`），不再随 Mac 的用量信封走。站点按 id
-   * 把它们贴到用量那一行上，所以用量里没有的 agent 不会出现在这里。
+   * 把它们贴到对应来源行上；只有限额的来源也展示，用量为 null。
    *
    * 套餐取不到、或这个 agent 从没上报过限额时是 null —— 不渲染，不占位
    */
@@ -554,6 +570,8 @@ export type VibeCodingTotals = {
   reasoningTokens: number;
   totalTokens: number;
   apiEquivalentCostUSD: number;
+  /** API 等值费用是否覆盖全部 token；false 时数值只包含已知价格的部分。 */
+  costComplete: boolean;
   activeDays: number;
   /** 所有来源的历史 session 数合计；不包含 session ID。 */
   sessionCount: number;
@@ -578,17 +596,18 @@ export type VibeCodingNowPayload = {
 export type VibeCodingPayload = {
   /**
    * 同一形状的来源列表。上报器发几个就有几个；首页按 id 取用：
-   * `claude` / `grok` 画全量面板，其余只取限额那一行。
+   * `claude` / `codex` 画全量面板，其余只取限额那一行。
    */
   agents: VibeCodingAgent[];
-  totals: VibeCodingTotals;
+  /** 限额可独立展示，尚未收到用量摘要时为 null。 */
+  totals: VibeCodingTotals | null;
   /** 所有来源合并后的历史累计 token 前三名。 */
   topModels: Array<{ model: string; tokens: number }>;
-  /** TokenTracker 扫描完成的时间，而不是浏览器取接口的时间。 */
-  collectedAt: string;
+  /** 摘要生成时间；来源成功时间分别记录在 usageStatus，尚无摘要时为 null。 */
+  collectedAt: string | null;
   source: "local" | "push";
-  /** 源站收到用量那份的时刻。会话没变就不发，采集侧活没活着只看这份。 */
-  pushedAt: number;
+  /** 源站收到用量摘要的时刻；尚未收到时为 null。来源新鲜度看各自 usageStatus。 */
+  pushedAt: number | null;
   /**
    * 限额那条路的陈旧窗口。容器上报器每轮必发（那一封就是心跳），窗口是三倍
    * 间隔，服务端按 `AGENT_LIMITS_PUSH_INTERVAL_MS` 算好盖在这里，浏览器拿它和
@@ -603,7 +622,7 @@ export type VibeCodingPayload = {
  * `days[i]` 是 origin 起第 i 天的合计。档位和文案浏览器现算，不进信封。
  * `mix` 是每天前五模型的稀疏编码，下标指 `models`。
  *
- * 增量见 `daysPartial`：切回焦点时只带窗口尾，和充电头 `historyPartial` 同一套。
+ * 每次刷新完整窗口，云端补回的旧日和模型拆分也会一起更新。
  */
 export type VibeCodingYearPayload = {
   /** 53 周窗口的第一个周日，YYYY-MM-DD */
@@ -630,13 +649,6 @@ export type VibeCodingYearPayload = {
    * 只能在取数出口现盖，见 lib/vibecoding-year 的 withYearFreshness。
    */
   todayAtSource: string;
-  /**
-   * days / mix 只覆盖 `from` 起的窗尾。缺省或 false 是整份窗口。
-   * 上报落库的那份没有这个字段。
-   */
-  daysPartial?: boolean;
-  /** daysPartial 时这段尾巴的第一天 */
-  from?: string;
 };
 
 /** 落库的那份：上报器给的窗口 + 源站盖的到达时刻，不含取数出口现算的那个今天。 */

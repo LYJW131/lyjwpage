@@ -50,7 +50,7 @@ test("一封只带来的行整行替换，没出现的 id 留着上一次的", (
   assert.equal(first.agents.claude?.limits.length, 1);
 });
 
-test("按 id 贴回用量行：用量里没有的 id 不产生新行，没上报过限额的行按「没配」", () => {
+test("按 id 合并用量和限额，缺用量的来源仍显示但不伪造零用量", () => {
   const usage = [
     { id: "claude", label: "Claude Code" },
     { id: "cursor", label: "Cursor" },
@@ -62,7 +62,7 @@ test("按 id 贴回用量行：用量里没有的 id 不产生新行，没上报
       grok: { plan: null, limits: [window], limitsError: null, pushedAt: 5_000 },
     },
   });
-  assert.deepEqual(attached.map((row) => row.id), ["claude", "cursor"]);
+  assert.deepEqual(attached.map((row) => row.id), ["claude", "cursor", "grok"]);
   assert.equal(attached[0]?.limitsAt, 4_000);
   assert.equal(attached[0]?.limits.length, 1);
   assert.deepEqual(
@@ -71,4 +71,23 @@ test("按 id 贴回用量行：用量里没有的 id 不产生新行，没上报
   );
   // 镜像还没有时也一样
   assert.equal(attachAgentLimits(usage as never, null)[0]?.limitsAt, null);
+  assert.equal(attached[2]?.label, "Grok Build");
+  assert.equal(attached[2]?.today, null);
+  assert.equal(attached[2]?.usageStatus.state, "unavailable");
+  assert.equal(attached[2]?.limitsAt, 5_000);
+});
+
+test("限额先到也能生成来源行，未知来源保留 id 而不丢弃", () => {
+  const attached = attachAgentLimits([], {
+    pushedAt: 5_000,
+    agents: {
+      cursor: { plan: null, limits: [window], limitsError: null, pushedAt: 5_000 },
+      other: { plan: null, limits: [], limitsError: "Unavailable", pushedAt: 5_000 },
+    },
+  });
+  assert.deepEqual(attached.map((row) => row.label), ["Cursor", "other"]);
+  assert.ok(attached.every((row) => row.today === null));
+  assert.ok(attached.every((row) => row.usageStatus.collectedAt === null));
+  assert.equal(attached[1]?.limitsError, "Unavailable");
+  assert.deepEqual(attachAgentLimits([], null), []);
 });

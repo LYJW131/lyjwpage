@@ -28,10 +28,11 @@ import type {
 import { cn } from "@/lib/utils";
 
 /**
- * 信封里五个来源同一形状。首页只给这两个全量面板：限额结构、活动灯
+ * 信封里各个来源同一形状。首页只给这两个全量面板：限额结构、活动灯
  * 都是为它们写的。其余同一份数据，只取总限额那一行。
  */
 const FEATURED_AGENT_IDS = ["claude", "codex"] as const;
+const HIDDEN_AGENT_IDS = new Set(["opencode", "pi"]);
 
 function agentDisplayName(agent: VibeCodingAgent) {
   return agent.id === "grok" ? "Grok Build" : agent.label;
@@ -47,7 +48,7 @@ function featuredAgents(agents: VibeCodingAgent[]) {
 
 function compactAgents(agents: VibeCodingAgent[]) {
   const featured = new Set<string>(FEATURED_AGENT_IDS);
-  return agents.filter((agent) => !featured.has(agent.id));
+  return agents.filter((agent) => !featured.has(agent.id) && !HIDDEN_AGENT_IDS.has(agent.id));
 }
 
 /**
@@ -124,7 +125,7 @@ const TOKEN_SEGMENTS = [
 
 /**
  * 紧凑行的品牌图标，按上报器给的 `icon` 键取 —— 不是按 `id`：id 是
- * TokenTracker 的来源名，这个是牌子，两者不一定一致。
+ * 用量的来源名，这个是牌子，两者不一定一致。
  *
  * 认不出来的键退回首字母。上报器新配一个来源时页面上立刻就该有一行，
  * 图标是后补的事，不该因为少一个矢量就让那行的限额也跟着看不见。
@@ -275,16 +276,18 @@ function TotalUsage({
         <div title="按公开 API 价格折算">
           <div className="label-mono text-muted-foreground">Cost</div>
           <div className="mt-2 text-3xl font-medium tracking-tight md:text-4xl">
-            <NumberFlow
-              value={totals.apiEquivalentCostUSD}
-              locales="en-US"
-              format={{
-                style: "currency",
-                currency: "USD",
-                notation: "compact",
-                maximumFractionDigits: 1,
-              }}
-            />
+            {totals.costComplete || totals.apiEquivalentCostUSD > 0 ? (
+              <NumberFlow
+                value={totals.apiEquivalentCostUSD}
+                locales="en-US"
+                format={{
+                  style: "currency",
+                  currency: "USD",
+                  notation: "compact",
+                  maximumFractionDigits: 1,
+                }}
+              />
+            ) : "—"}
           </div>
         </div>
         <div>
@@ -454,7 +457,7 @@ function featuredLimitRows(agent: VibeCodingAgent): FeaturedLimitRow[] {
   return slots.map(({ slot, title }) => {
     const limit = pickSlotLimit(agent.limits, slot);
     if (limit) return { kind: "limit" as const, key: slot, title, limit };
-    if (agent.id === "codex" && slot === "session" && agent.limitsError == null) {
+    if (agent.id === "codex" && slot === "session" && agent.limitsAt != null && agent.limitsError == null) {
       return { kind: "unlimited" as const, key: slot, title };
     }
     return {
@@ -618,9 +621,9 @@ function LimitMeter({ limit, title }: { limit: VibeCodingLimit; title: string })
    * 自己盯着重置时刻，不跟面板其它部分共用快照时间。
    *
    * 快照时间是采集那一刻，用它当基准的话「重置到点了」这件事前端永远感知不到 ——
-   * 倒计时是冻住的，只在新数据到达时跳一下。而上报器五分钟才重取一次限额、
-   * 再搭 CodexBar 的包发出、站点再轮询一轮，最坏六分多钟里这根条一直显示上一个
-   * 周期的百分比。那个数是确定错的：周期已经翻篇了。
+   * 倒计时是冻住的，只在新数据到达时跳一下。NAS 上报器几分钟才重取一次限额，
+   * 再等站点轮询，这段时间里这根条会一直显示上一个周期的百分比。
+   * 那个数是确定错的：周期已经翻篇了。
    *
    * 到点归零不是编数据 —— 重置那一刻用量就是零。之后至多低估这几分钟新用掉的
    * 量，比挂着一个上个周期的旧值准得多。
@@ -774,6 +777,31 @@ function FeaturedMark({ id, active }: { id: string; active: boolean }) {
   return <CodexActivityIndicator active={active} />;
 }
 
+/** 历史仍可展示，但成功时刻和来源错误要与摘要上报心跳分开判断。 */
+function UsageStatusNote({ agent, className }: { agent: VibeCodingAgent; className?: string }) {
+  const status = agent.usageStatus;
+  const stale = useStale(
+    status.collectedAt ? Date.parse(status.collectedAt) : null,
+    VIBECODING_STALE_MS,
+  );
+  const notes: string[] = [];
+  if (status.state === "error") notes.push(agent.today ? "用量数据有提示，显示已保存数据" : "用量数据有提示");
+  else if (status.state === "unavailable") notes.push("用量未取得");
+  else if (stale) notes.push("用量待更新");
+  if (agent.today && status.precision !== "measured") notes.push(status.precision === "mixed" ? "含估算用量" : "估算用量");
+  if (!notes.length) return null;
+  const detail = [
+    status.error,
+    status.collectedAt && `上次成功采集：${status.collectedAt}`,
+    status.coverageStart && status.coverageEnd && `历史覆盖：${status.coverageStart} — ${status.coverageEnd}`,
+  ].filter(Boolean).join("；");
+  return (
+    <div className={cn("text-xs text-muted-foreground", className)} title={detail || undefined}>
+      {notes.join(" · ")}
+    </div>
+  );
+}
+
 function AgentPanel({
   agent,
   /** 采集侧的话还算不算数，见 VibeCodingCard 里的 activityUnknown */
@@ -791,14 +819,21 @@ function AgentPanel({
    * 这一块是**上一次**的，别让访客拿它当此刻的余量。
    */
   const limitsStale = useStale(agent.limitsAt, limitsStaleAfterMs);
+  const today = agent.today;
+  // error 也可能只是本轮成功采集后的缺项提示；是否为今日取决于日桶和成功时间。
+  const dayStart = today ? Date.parse(`${today.date}T00:00:00+08:00`) : null;
+  const dayHasEnded = useStale(dayStart, 86_400_000);
+  const collectedAt = agent.usageStatus.collectedAt ? Date.parse(agent.usageStatus.collectedAt) : null;
+  const isToday = dayStart != null && collectedAt != null
+    && collectedAt >= dayStart && collectedAt < dayStart + 86_400_000 && !dayHasEnded;
   const promptTokens =
-    agent.today.inputTokens +
-    agent.today.cacheCreationTokens +
-    agent.today.cacheReadTokens;
+    (today?.inputTokens ?? 0) +
+    (today?.cacheCreationTokens ?? 0) +
+    (today?.cacheReadTokens ?? 0);
   // 命中只认 cache read；cache creation 是新写入，不能算作命中。
   // output 与 prompt cache 无关，也不应该进入分母。
   const cacheHitRate = promptTokens
-    ? (agent.today.cacheReadTokens / promptTokens) * 100
+    ? ((today?.cacheReadTokens ?? 0) / promptTokens) * 100
     : 0;
   /**
    * `agent.active` 是推来的电平，不是会自己过期的时间戳：采集侧一停就冻在最后
@@ -830,28 +865,35 @@ function AgentPanel({
 
       <div className="mt-5 grid grid-cols-[minmax(0,1fr)_auto] items-end gap-5">
         <div className="min-w-0">
-          <div className="label-mono text-muted-foreground">Today Tokens</div>
+          <div className="label-mono text-muted-foreground">
+            {today && !isToday ? `Tokens · ${today.date}` : "Today Tokens"}
+          </div>
           <div className="mt-1 text-3xl font-medium tracking-tight tabular-nums md:text-5xl">
-            <NumberFlow
-              value={agent.today.totalTokens}
-              locales="en-US"
-              format={{ notation: "compact", maximumFractionDigits: 1 }}
-            />
+            {today ? (
+              <NumberFlow
+                value={today.totalTokens}
+                locales="en-US"
+                format={{ notation: "compact", maximumFractionDigits: 1 }}
+              />
+            ) : "—"}
           </div>
         </div>
         <div className="grid gap-3 border-l border-line pl-4">
           <div title="按公开 API 价格折算">
             <div className="label-mono text-muted-foreground">Cost</div>
             <div className="mt-1 font-mono text-sm">
-              ${agent.today.apiEquivalentCostUSD.toFixed(2)}
+              {today && (agent.usageStatus.costComplete || today.apiEquivalentCostUSD > 0)
+                ? `$${today.apiEquivalentCostUSD.toFixed(2)}`
+                : "—"}
             </div>
           </div>
           <div>
             <div className="label-mono text-muted-foreground">Hit</div>
-            <div className="mt-1 font-mono text-sm">{cacheHitRate.toFixed(1)}%</div>
+            <div className="mt-1 font-mono text-sm">{today ? `${cacheHitRate.toFixed(1)}%` : "—"}</div>
           </div>
         </div>
       </div>
+      <UsageStatusNote agent={agent} className="mt-2" />
 
       <div
         className={cn("mt-5 grid gap-3 border-t border-line pt-4", limitsStale && "opacity-60")}
@@ -1026,6 +1068,7 @@ function CompactAgentRow({
           </span>
         )}
       </div>
+      <UsageStatusNote agent={agent} className="mt-1.5" />
     </div>
   );
 }
@@ -1113,7 +1156,13 @@ export function VibeCodingCard({
     >
       {data ? (
         <>
-          <TotalUsage totals={data.totals} topModels={data.topModels} />
+          {data.totals ? (
+            <TotalUsage totals={data.totals} topModels={data.topModels} />
+          ) : (
+            <div className="border-b border-line px-4 py-5 text-sm text-muted-foreground md:px-5">
+              等待用量上报
+            </div>
+          )}
           <div className="grid grid-cols-1 divide-y divide-line md:grid-cols-2 md:divide-x md:divide-y-0">
             {featuredAgents(data.agents).map((agent) => (
               <AgentPanel

@@ -58,9 +58,9 @@ type StoredNow = ParsedVibeCodingNow;
 /**
  * Mac 信封里的两个模块一律「先校验，后落库」，写留给 commit。
  *
- * 校验是同步的，所以整条信封的校验全部排在任何一次写之前 —— 后面一份写坏时，
- * 前面那份根本还没落库，不会留下半截状态。而且写不再挡着推送，见 lib/live-events
- * 的 fanout。
+ * telemetry 入口先准备全部 coding 模块，再调用 commit；年度模块写坏时，
+ * 前面那份根本还没落库，不会留下半截 coding 状态。写不再挡着推送，
+ * 见 lib/live-events 的 fanout。
  */
 export function prepareVibeCodingUsage(report: unknown, receivedAt = Date.now()) {
   const payload = normalizeVibeCodingUsage(report);
@@ -111,37 +111,36 @@ export async function getVibeCodingSnapshot(): Promise<VibeCodingPayload> {
     limitsMirror.get(),
     readLiveness(),
   ]);
-  // 用量是主干：总量、展示名、模型排行都在它那份里，缺了就没有卡片可言。
-  // 此刻那份缺了只是灯不亮，限额那份缺了只是条空着，整张卡照旧。
-  if (!usageState) throw new AwaitingReport("尚未收到 Mac Telemetry Hub 的 vibe coding 用量推送");
+  const usage = usageState ? normalizeVibeCodingUsage(usageState.payload) : null;
+  // 限额可独立到达。没有用量时仍显示这些来源，累计总量保留 null。
+  if (!usage && !limitsState) throw new AwaitingReport("尚未收到 vibe coding 用量或限额推送");
 
   const nowById = new Map(
     (nowState?.payload.agents ?? []).map((agent) => [agent.id, agent]),
   );
 
   const agents: VibeCodingAgent[] = attachAgentLimits(
-    usageState.payload.agents.map((agent) => {
-      const live = nowById.get(agent.id);
-      return {
-        ...agent,
-        // now 说的是「此刻在用哪个」，取不到才退回用量那份的「最近一个有用量日
-        // 的主力模型」。两个模块各送各的，优先级在这里定，采集端互不知情。
-        currentModel: live?.currentModel ?? agent.currentModel,
-        lastActivityAt: live?.lastActivityAt ?? null,
-        active: live?.active ?? false,
-      };
-    }),
+    (usage?.agents ?? []).map((agent) => ({ ...agent, lastActivityAt: null, active: false })),
     limitsState,
-  );
+  ).map((agent) => {
+    const live = nowById.get(agent.id);
+    return {
+      ...agent,
+      // 此刻模型优先于历史摘要；只有限额的行也可收到独立的本机会话状态。
+      currentModel: live?.currentModel ?? agent.currentModel,
+      lastActivityAt: live?.lastActivityAt ?? null,
+      active: live?.active ?? false,
+    };
+  });
 
   return withPresence(
     {
       agents,
-      totals: usageState.payload.totals,
-      topModels: usageState.payload.topModels,
-      collectedAt: usageState.payload.collectedAt,
+      totals: usage?.totals ?? null,
+      topModels: usage?.topModels ?? [],
+      collectedAt: usage?.collectedAt ?? null,
       source: "push" as const,
-      pushedAt: usageState.pushedAt,
+      pushedAt: usage && usageState ? usageState.pushedAt : null,
       limitsStaleAfterMs: agentLimitsStaleMs(),
     },
     liveness,
