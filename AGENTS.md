@@ -11,12 +11,15 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 # API 命名
 
 加端点、加字段之前先对一遍这四条。这些是站点、`reporters/emby-reporter`、
-`reporters/iphone-telemetry-hub`、`reporters/server-reporter`、MacTelemetryHub、
-Home Assistant 共用的约定，改一处就得各处对齐。
+`reporters/agent-limits-reporter`、`reporters/iphone-telemetry-hub`、
+`reporters/server-reporter`、MacTelemetryHub、Home Assistant 共用的约定，改一处就得各处对齐。
 
 1. **`/api/ingest/<来源>`** —— 按**数据是谁产生的**命名，不是按上报程序命名。
-   现有的是 `mac`、`iphone`、`homepod`、`emby`、`playstation`、`server`。Emby
+   现有的是 `mac`、`iphone`、`homepod`、`emby`、`playstation`、`server`、`agents`。Emby
    那个曾经叫 `emby-reporter`，泄漏了实现细节：换个代理程序名字就得跟着改。
+   `agents` 是各 coding agent（Claude Code / Codex / Grok Build …）**账号侧**的套餐和
+   限额窗口 —— 它们是厂商账号的事实，不属于任何一台设备，所以不进 `mac`；喂它的
+   容器叫什么都不进 URL。
    `mac` 和 `iphone` 是**设备级**的两个遥测中心：一台设备一个入口、一个信封、
    一个 `modules` 字典。所以充电头数据走 `mac`（观测它的是那台 Mac），活动圆环
    走 `iphone`（采集它的是手表，但搬运和观测它的是那台手机）—— 别按数据里那个

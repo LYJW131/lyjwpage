@@ -522,15 +522,27 @@ export type VibeCodingAgent = {
   /** 整份历史里 token 占比最大的模型。 */
   topModel: string | null;
   today: VibeCodingDay;
-  /** 旧版 Mac app 不会上报，取不到套餐时也是 null —— 不渲染，不占位 */
+  /**
+   * 下面四个字段来自另一条路：`/api/ingest/agents`，喂它的是 NAS 上的容器上报器
+   * （`reporters/agent-limits-reporter`），不再随 Mac 的用量信封走。站点按 id
+   * 把它们贴到用量那一行上，所以用量里没有的 agent 不会出现在这里。
+   *
+   * 套餐取不到、或这个 agent 从没上报过限额时是 null —— 不渲染，不占位
+   */
   plan: VibeCodingPlan | null;
-  /** 没配 CLI 路径、凭据失效、旧版上报都会是空数组，UI 要能整块不渲染 */
+  /** 没登录、凭据失效、从没上报过都会是空数组，UI 要能整块不渲染 */
   limits: VibeCodingLimit[];
   /**
    * 限额取失败的原因。空 limits 有两种含义 —— 这个 agent 没配（该整块不渲染），
    * 或者配了但取不到（该渲染并说明取不到）。靠它区分，null 表示前者。
    */
   limitsError: string | null;
+  /**
+   * 站点收到这个 agent 限额的时刻（epoch 毫秒），从没收到过是 null。
+   * 陈旧与否由浏览器拿它和 `VibeCodingPayload.limitsStaleAfterMs` 现算 ——
+   * 首屏是 `'use cache'` 冻住的，服务端拼「N 分钟没更新」会冻错。
+   */
+  limitsAt: number | null;
 };
 
 export type VibeCodingTotals = {
@@ -575,8 +587,14 @@ export type VibeCodingPayload = {
   /** TokenTracker 扫描完成的时间，而不是浏览器取接口的时间。 */
   collectedAt: string;
   source: "local" | "push";
-  /** 源站收到用量那份的时刻。限额和会话没变就不发，新鲜度只看这份。 */
+  /** 源站收到用量那份的时刻。会话没变就不发，采集侧活没活着只看这份。 */
   pushedAt: number;
+  /**
+   * 限额那条路的陈旧窗口。容器上报器每轮必发（那一封就是心跳），窗口是三倍
+   * 间隔，服务端按 `AGENT_LIMITS_PUSH_INTERVAL_MS` 算好盖在这里，浏览器拿它和
+   * 各行的 `limitsAt` 比。
+   */
+  limitsStaleAfterMs: number;
 } & ReporterPresence;
 
 /**

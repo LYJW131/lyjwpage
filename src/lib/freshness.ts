@@ -41,6 +41,26 @@ export function heartbeatWindowMs() {
 export const VIBECODING_STALE_MS = 15 * 60_000;
 
 /**
+ * 各 agent 的限额由 NAS 上的容器上报器走 `/api/ingest/agents` 推，**每轮必发**
+ * （内容没变也发，那一封就是心跳），所以「多久没刷新」等价于「上报器还活着没有」。
+ * 窗口取三倍间隔：漏一两轮不该翻脸，连着三轮没到才算容器死了或凭据全过期。
+ *
+ * 间隔两边必须一致：上报器那侧是 `reporters/agent-limits-reporter` 的
+ * `PUSH_INTERVAL_MS`，站点这侧是 `AGENT_LIMITS_PUSH_INTERVAL_MS`。改一边就得改另一边，
+ * 顺序同上面几条：**窗口先放宽，上报器再降频**。
+ */
+export const AGENT_LIMITS_PUSH_INTERVAL_MS = 10 * 60_000;
+
+export function agentLimitsStaleMs() {
+  const configured = Number(process.env.AGENT_LIMITS_PUSH_INTERVAL_MS);
+  const interval =
+    Number.isFinite(configured) && configured > 0
+      ? configured
+      : AGENT_LIMITS_PUSH_INTERVAL_MS;
+  return interval * 3;
+}
+
+/**
  * PlayStation 上报 Worker **每轮都发 presence**（内容没变也发，那一封就是心跳），
  * 所以「多久没刷新」等价于「Worker 还活着没有」。窗口取三轮多一点：漏一两轮不该
  * 让卡片翻脸，连着三轮没到才算 Worker 死了、或者 PSN 把它的令牌拒了。

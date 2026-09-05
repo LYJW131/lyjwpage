@@ -773,10 +773,19 @@ function AgentPanel({
   agent,
   /** 采集侧的话还算不算数，见 VibeCodingCard 里的 activityUnknown */
   activityUnknown,
+  limitsStaleAfterMs,
 }: {
   agent: VibeCodingAgent;
   activityUnknown: boolean;
+  /** 限额那条路的陈旧窗口，见 VibeCodingPayload */
+  limitsStaleAfterMs: number;
 }) {
+  /**
+   * 限额是另一台机器（NAS 上的容器上报器）报的，每轮必发，所以「多久没来」就是
+   * 「它还活着没有」。陈旧时条照画 —— 数字停在最后一次看到的值，但要说明白：
+   * 这一块是**上一次**的，别让访客拿它当此刻的余量。
+   */
+  const limitsStale = useStale(agent.limitsAt, limitsStaleAfterMs);
   const promptTokens =
     agent.today.inputTokens +
     agent.today.cacheCreationTokens +
@@ -840,7 +849,10 @@ function AgentPanel({
         </div>
       </div>
 
-      <div className="mt-5 grid gap-3 border-t border-line pt-4">
+      <div
+        className={cn("mt-5 grid gap-3 border-t border-line pt-4", limitsStale && "opacity-60")}
+        title={limitsStale ? "限额上报器没有消息，这是上一次的值" : undefined}
+      >
         <div className="label-mono text-muted-foreground">
           Limits
           {agent.plan && (
@@ -849,6 +861,14 @@ function AgentPanel({
                 ·
               </span>
               <span className="font-sans normal-case">{agent.plan.label}</span>
+            </span>
+          )}
+          {limitsStale && (
+            <span>
+              <span aria-hidden className="mx-1.5">
+                ·
+              </span>
+              Stale
             </span>
           )}
         </div>
@@ -866,7 +886,15 @@ function AgentPanel({
   );
 }
 
-function CompactAgentRow({ agent }: { agent: VibeCodingAgent }) {
+function CompactAgentRow({
+  agent,
+  limitsStaleAfterMs,
+}: {
+  agent: VibeCodingAgent;
+  limitsStaleAfterMs: number;
+}) {
+  // 和全量面板同一个判断：限额上报器多久没来，这一行就是上一次的值
+  const limitsStale = useStale(agent.limitsAt, limitsStaleAfterMs);
   const mountedAt = useMountedAt();
   const [ticked, setTicked] = useState(0);
   const now = ticked || mountedAt;
@@ -908,7 +936,14 @@ function CompactAgentRow({ agent }: { agent: VibeCodingAgent }) {
   const overPace = pace != null && usedPercent != null && usedPercent / 100 > pace;
 
   return (
-    <div className="min-w-0 py-3" title={agent.limitsError ?? undefined}>
+    <div
+      className={cn("min-w-0 py-3", limitsStale && "opacity-60")}
+      title={
+        limitsStale
+          ? "限额上报器没有消息，这是上一次的值"
+          : (agent.limitsError ?? undefined)
+      }
+    >
       <div className="flex flex-col gap-1 md:h-5 md:flex-row md:items-center md:justify-between md:gap-2">
         <div className="flex h-5 min-w-0 items-center gap-2">
           <span className="flex size-5 shrink-0 items-center justify-center" aria-hidden>
@@ -991,7 +1026,13 @@ function CompactAgentRow({ agent }: { agent: VibeCodingAgent }) {
   );
 }
 
-function CompactAgents({ agents }: { agents: VibeCodingAgent[] }) {
+function CompactAgents({
+  agents,
+  limitsStaleAfterMs,
+}: {
+  agents: VibeCodingAgent[];
+  limitsStaleAfterMs: number;
+}) {
   if (agents.length === 0) return null;
   // 排序不看过期（now 传 0）：这里只定行序，行内画什么由行自己判
   const sortedAgents = [...agents].sort((left, right) => {
@@ -1008,7 +1049,11 @@ function CompactAgents({ agents }: { agents: VibeCodingAgent[] }) {
     <div className="border-t border-line px-4 md:px-5">
       <div className="grid divide-y divide-line">
         {sortedAgents.map((agent) => (
-          <CompactAgentRow key={agent.id} agent={agent} />
+          <CompactAgentRow
+            key={agent.id}
+            agent={agent}
+            limitsStaleAfterMs={limitsStaleAfterMs}
+          />
         ))}
       </div>
     </div>
@@ -1022,9 +1067,10 @@ export function VibeCodingCard({
   fallback: StatusResponse<VibeCodingPayload>;
   className?: string;
 }) {
-  // 会话状态（正在用 / 换模型）走推送；token 用量仍靠轮询。
-  // 这张卡整体不当实时源：不因 Mac 掉线变灰 —— 用量、限额、曲线都是累计事实，
-  // 采集停了它们只是不再增长，不会变得不可信。
+  // 会话状态（正在用 / 换模型）走推送；token 用量和限额仍靠轮询。
+  // 这张卡整体不当实时源：不因 Mac 掉线变灰 —— 用量、曲线都是累计事实，
+  // 采集停了它们只是不再增长，不会变得不可信。限额是另一台机器报的，
+  // 有自己的陈旧判断（limitsAt），各行自己管。
   useLiveEvents();
   const { data } = useStatus<VibeCodingPayload>(VIBECODING_PATH, REFRESH_MS, {
     fallback,
@@ -1070,10 +1116,14 @@ export function VibeCodingCard({
                 key={agent.id}
                 agent={agent}
                 activityUnknown={activityUnknown}
+                limitsStaleAfterMs={data.limitsStaleAfterMs}
               />
             ))}
           </div>
-          <CompactAgents agents={compactAgents(data.agents)} />
+          <CompactAgents
+            agents={compactAgents(data.agents)}
+            limitsStaleAfterMs={data.limitsStaleAfterMs}
+          />
         </>
       ) : (
         <>
