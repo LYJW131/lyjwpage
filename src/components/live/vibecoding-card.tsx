@@ -31,7 +31,7 @@ import { cn } from "@/lib/utils";
  * 信封里五个来源同一形状。首页只给这两个全量面板：限额结构、活动灯
  * 都是为它们写的。其余同一份数据，只取总限额那一行。
  */
-const FEATURED_AGENT_IDS = ["claude", "grok"] as const;
+const FEATURED_AGENT_IDS = ["claude", "codex"] as const;
 
 function agentDisplayName(agent: VibeCodingAgent) {
   return agent.id === "grok" ? "Grok Build" : agent.label;
@@ -54,7 +54,7 @@ function compactAgents(agents: VibeCodingAgent[]) {
  * 默认那一扇窗口：几条里取用量最高的，并列时留先出现的。
  *
  * 先剔掉专项窗口 —— Spark / Fable 那类不代表这个 agent 的整体余量，全量
- * 面板的两个槽也是这么挡的（isExtraWindow），两条渲染路径得给同一个答案。
+ * 面板的主额度槽也是这么挡的（isExtraWindow），两条渲染路径得给同一个答案。
  * 已经过点的窗口按 0 参与：刚重置的那扇不该压过另一扇还有 60% 的。
  * `now` 为 0（还没挂载）时不判过期，挂载后的重渲染会自己纠正。
  */
@@ -373,10 +373,21 @@ function TotalUsage({
 /** 判定「当日档」的上限。跨过一天的窗口按周额度那类算，不该顶替 5 小时档。 */
 const SESSION_WINDOW_MAX_MINUTES = 1440;
 
-const FEATURED_LIMITS = [
-  { slot: "session", title: "5-hour limit" },
-  { slot: "weekly", title: "Weekly" },
-] as const;
+const FEATURED_LIMITS = {
+  claude: [
+    { slot: "session", title: "5-hour limit" },
+    { slot: "weekly", title: "Weekly · all models" },
+    { slot: "fable", title: "Weekly · Fable only" },
+  ],
+  codex: [
+    { slot: "weekly", title: "Weekly" },
+    { slot: "spark-session", title: "Spark · 5-hour limit" },
+    { slot: "spark-weekly", title: "Spark · Weekly" },
+  ],
+} as const;
+
+type FeaturedLimitSlot =
+  (typeof FEATURED_LIMITS)[keyof typeof FEATURED_LIMITS][number]["slot"];
 
 function isNamedLimit(limit: VibeCodingLimit, name: string) {
   return `${limit.key} ${limit.label ?? ""}`.toLowerCase().includes(name);
@@ -394,18 +405,27 @@ function isExtraWindow(limit: VibeCodingLimit) {
   return isSparkWindow(limit) || limit.key.includes("weekly-scoped") || isNamedLimit(limit, "fable");
 }
 
-function limitSlot(limit: VibeCodingLimit): "session" | "weekly" | null {
-  if (isExtraWindow(limit)) return null;
-  if (
+function isSessionWindow(limit: VibeCodingLimit) {
+  return (
     limit.group === "session" ||
     (limit.windowMinutes != null && limit.windowMinutes < SESSION_WINDOW_MAX_MINUTES)
-  ) {
-    return "session";
-  }
-  return "weekly";
+  );
 }
 
-function pickSlotLimit(limits: VibeCodingLimit[], slot: "session" | "weekly") {
+function limitSlot(limit: VibeCodingLimit): "session" | "weekly" | null {
+  if (isExtraWindow(limit)) return null;
+  return isSessionWindow(limit) ? "session" : "weekly";
+}
+
+function pickSlotLimit(limits: VibeCodingLimit[], slot: FeaturedLimitSlot) {
+  if (slot === "fable") {
+    return limits.find((limit) => isNamedLimit(limit, "fable")) ?? null;
+  }
+  if (slot === "spark-session" || slot === "spark-weekly") {
+    return limits.find((limit) =>
+      isSparkWindow(limit) && isSessionWindow(limit) === (slot === "spark-session"),
+    ) ?? null;
+  }
   const matched = limits.filter((limit) => limitSlot(limit) === slot);
   if (matched.length === 0) return null;
   if (slot === "weekly") {
@@ -414,40 +434,33 @@ function pickSlotLimit(limits: VibeCodingLimit[], slot: "session" | "weekly") {
   return matched.find((limit) => limit.key.endsWith(".primary")) ?? matched[0] ?? null;
 }
 
-/**
- * 紧凑行那一条限额。Codex 看周档：优先 `weekly_all`，它缺席就退到 limits 里
- * 第一条周档（专项窗不算，limitSlot 已经把它们判成 null）—— 所以这一档跟着
- * 上游给的排列走，并不钉死在 7 天窗上。其余的仍取最紧的那条。
- * 周档整个缺席时退回 busiestLimit，别让这一行整条空白。
- */
+/** 紧凑行只显示最紧的主额度窗口。 */
 function compactLimit(agent: VibeCodingAgent, now: number) {
-  if (agent.id === "codex") {
-    return pickSlotLimit(agent.limits, "weekly") ?? busiestLimit(agent.limits, now);
-  }
   return busiestLimit(agent.limits, now);
 }
 
 type FeaturedLimitRow =
   | { kind: "limit"; key: string; title: string; limit: VibeCodingLimit }
-  | { kind: "unlimited"; key: string; title: string }
   | { kind: "unavailable"; key: string; title: string; reason: string };
 
 /**
- * 全量面板只认两个槽：5-hour limit 和 Weekly。有数据就画那一扇窗口，没有就
- * Unlimited。Spark / Fable 专项不进这两行。
- *
- * 例外是 `limitsError`：契约里空 limits 有两种含义（types.ts），带错误说明的
- * 那种是「配了但取不到」—— 凭据失效时把缺的槽画成满格绿条 Unlimited 是在
- * 说反话，这种槽要如实写 Unavailable。
+ * 按各自的窗口展示三行：Claude 的主额度加 Fable，Codex 的周额度加两档 Spark。
+ * Codex 如果恢复主 5 小时窗口也照常显示，不能把实际上报的限额藏掉。
+ * 预期窗口没收到时保留 Unavailable，不能把采集缺失说成 Unlimited。
  */
 function featuredLimitRows(agent: VibeCodingAgent): FeaturedLimitRow[] {
-  return FEATURED_LIMITS.map(({ slot, title }) => {
+  const slots: ReadonlyArray<{ slot: FeaturedLimitSlot; title: string }> =
+    agent.id === "claude" ? FEATURED_LIMITS.claude : FEATURED_LIMITS.codex;
+  const rows = agent.id === "codex" && pickSlotLimit(agent.limits, "session")
+    ? [{ slot: "session" as const, title: "5-hour limit" }, ...slots]
+    : slots;
+  return rows.map(({ slot, title }) => {
     const limit = pickSlotLimit(agent.limits, slot);
     if (limit) return { kind: "limit" as const, key: slot, title, limit };
-    if (agent.limitsError != null) {
-      return { kind: "unavailable" as const, key: slot, title, reason: agent.limitsError };
-    }
-    return { kind: "unlimited" as const, key: slot, title };
+    return {
+      kind: "unavailable" as const, key: slot, title,
+      reason: agent.limitsError ?? "尚未收到此窗口的限额",
+    };
   });
 }
 
@@ -720,27 +733,7 @@ function LimitMeter({ limit, title }: { limit: VibeCodingLimit; title: string })
   );
 }
 
-function LimitUnlimited({ title }: { title: string }) {
-  return (
-    <div>
-      <div className="flex h-5 items-center justify-between gap-2">
-        <span className="truncate text-xs">{title}</span>
-        <span className="flex shrink-0 items-baseline gap-2">
-          <span className="text-xs text-muted-foreground">Unlimited</span>
-          <span
-            className="font-mono text-xs tabular-nums"
-            style={{ color: LIMIT_UNLIMITED_COLOR }}
-          >
-            <span className="inline-block origin-right scale-[1.6]">∞</span>
-          </span>
-        </span>
-      </div>
-      <div className="mt-1.5 h-1.5" style={{ backgroundColor: LIMIT_UNLIMITED_COLOR }} />
-    </div>
-  );
-}
-
-/** 「配了但取不到」的槽。和 Unlimited 分开画：取不到不等于没限制。 */
+/** 预期有但取不到的窗口，保留原位以免整行消失。 */
 function LimitUnavailable({ title, reason }: { title: string; reason: string }) {
   return (
     <div title={reason}>
@@ -758,14 +751,6 @@ function LimitUnavailable({ title, reason }: { title: string; reason: string }) 
 
 function FeaturedMark({ id, active }: { id: string; active: boolean }) {
   if (id === "claude") return <ClaudeSpinner active={active} />;
-  if (id === "grok") {
-    if (active) return <CodexActivityIndicator active />;
-    return (
-      <span className="flex size-5 shrink-0 items-center justify-center" aria-hidden>
-        <GrokIcon size={20} />
-      </span>
-    );
-  }
   return <CodexActivityIndicator active={active} />;
 }
 
@@ -875,10 +860,8 @@ function AgentPanel({
         {rows.map((row) =>
           row.kind === "limit" ? (
             <LimitMeter key={row.key} limit={row.limit} title={row.title} />
-          ) : row.kind === "unavailable" ? (
-            <LimitUnavailable key={row.key} title={row.title} reason={row.reason} />
           ) : (
-            <LimitUnlimited key={row.key} title={row.title} />
+            <LimitUnavailable key={row.key} title={row.title} reason={row.reason} />
           ),
         )}
       </div>
@@ -919,7 +902,7 @@ function CompactAgentRow({
   const reset = now ? formatCompactReset(resetsAt, now) : null;
 
   /**
-   * 配速指示器，和上面全量面板那两条同一套。
+   * 配速指示器，和上面全量面板的限额条同一套。
    *
    * 这一行画的是 compactLimit 挑出的那条，所以指示器跟着的也是它。
    * 上面那个定时器最疏是按小时醒，31 天的窗口一小时才挪 0.13% —— 够用，但仍然
@@ -1136,7 +1119,7 @@ export function VibeCodingCard({
             ))}
           </div>
           <div className="grid min-h-64 grid-cols-1 divide-y divide-line md:grid-cols-2 md:divide-x md:divide-y-0">
-            {["Claude Code", "Grok Build"].map((label) => (
+            {["Claude Code", "Codex"].map((label) => (
               <div key={label} className="animate-pulse px-5 py-4">
                 <div className="flex items-center gap-2">
                   <div className="h-4 w-24 rounded bg-muted" />
@@ -1144,8 +1127,9 @@ export function VibeCodingCard({
                   <div className="h-4 w-14 bg-muted" />
                 </div>
                 <div className="mt-6 h-12 w-36 rounded bg-muted" />
-                {/* 两个语义槽位，缺数据时是 Unlimited，条数固定 */}
+                {/* 与全量面板一致的三行限额占位 */}
                 <div className="mt-6 h-1.5 bg-muted" />
+                <div className="mt-3 h-1.5 bg-muted" />
                 <div className="mt-3 h-1.5 bg-muted" />
               </div>
             ))}
