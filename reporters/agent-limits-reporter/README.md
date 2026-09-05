@@ -90,8 +90,10 @@ token 文件里没有，而且 `agy` 自己每次跑都只在内存里刷、不�
 刷新时逐对试，错的那对 Google 回 401 invalid_client，试对了记在内存里。**登录完 `agy` 就够了，
 不用手抄任何常量**；要跳过扫描就填 `ANTIGRAVITY_OAUTH_CLIENT_ID` / `SECRET`，仍然不进仓库。
 
-alpine 上 cursor-agent / agy 是 glibc 二进制，镜像里加了 `gcompat`，装不上时 Dockerfile 不会把整次
-build 判失败（`|| true`），只是那两家登录不了，登录时看 `docker compose run` 的报错。
+cursor-agent（自带一个 node）和 agy 都是 glibc 二进制，alpine 加 `gcompat` 实测跑不起来（缺 `fcntl64` /
+`__open`），所以运行段是 `node:24-bookworm-slim`。agy 不走它的安装脚本（脚本按 libc 选清单，musl 那份不存在），
+Dockerfile 按 `linux_<arch>` 的清单自己下载、校验 sha512。装不上时 build 不会失败（`|| true`），只是那一家
+登录不了，登录时看 `docker compose run` 的报错。
 
 ## DRY_RUN
 
