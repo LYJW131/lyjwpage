@@ -34,8 +34,9 @@
 | `PUSH_INTERVAL_MS` | | 默认 `600000`（10 分钟）。要和站点的 `AGENT_LIMITS_PUSH_INTERVAL_MS` 一致 |
 | `PUSH_TIMEOUT_MS` | | 默认 `30000` |
 | `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` | | NAS 出海要走代理时填（如 `http://user:pass@192.168.3.2:7893`）。上报器自己的 fetch 靠镜像里的 `NODE_USE_ENV_PROXY=1` 认它，五个 CLI 各自也认。build 时另外用 `--build-arg HTTPS_PROXY=…` |
-| `CLAUDE_OAUTH_TOKEN_URL` | | Claude OAuth 的 token 端点。和下一档都空 = 不刷新，只记一行日志 |
-| `CLAUDE_OAUTH_CLIENT_ID` | | 同上。**自己从 Claude Code 的安装里找，不要把值写进仓库或这份 README** |
+| `CLAUDE_OAUTH_TOKEN_URL` | | 可选覆盖。默认从镜像里的 Claude Code 自动读取生产 OAuth 配置；覆盖时必须和 client ID 一起填 |
+| `CLAUDE_OAUTH_CLIENT_ID` | | 同上。无需手抄；客户端常量不写进仓库 |
+| `CLAUDE_BIN` | `claude` | 用来读取 OAuth 配置的 Claude Code 安装程序，可设绝对路径 |
 | `AGENT_IDS` | | 逗号分隔。默认 `claude,codex,grok,cursor,antigravity` |
 | `GROK_HOME` | | Grok 凭据目录，默认 `$HOME/.grok` |
 | `CODEX_HOME` | | Codex 凭据目录，默认 `$HOME/.codex` |
@@ -69,7 +70,11 @@ docker compose run --rm agent-limits-reporter agent login   # cursor-agent，见
 
 Grok 的包是 `@xai-official/grok`，命令是 `grok`，无浏览器的环境用 `--device-auth`（`--device-code` 是别名）。
 
-Claude 在 Linux 上把 OAuth 写到 `/data/.claude/.credentials.json`。上报器在到期前（或 usage 接口回 401 时）自己刷并原子写回。`CLAUDE_OAUTH_TOKEN_URL` 和 `CLAUDE_OAUTH_CLIENT_ID` 从 Claude Code 自己的安装里抄，两端都空就跳过刷新。**刷新请求的形状（表单编码的标准 `grant_type=refresh_token`）没在真账号上验过**，第一次跑通前盯着日志里 `claude-oauth` 那一环。
+Claude 在 Linux 上把 OAuth 写到 `/data/.claude/.credentials.json`。登录后，上报器在到期前 5 分钟内的采集轮次（或 usage 接口回 401 时）自动续期并原子写回。默认从镜像中 Claude Code 的生产配置对象读取 token 端点和 client ID，不需要手抄环境变量；扫描规则按 Claude Code 2.1.261 的原生安装包验证，只接受唯一的生产配置，无法识别会明确报错。
+
+刷新与该版本 CLI 一样使用 JSON 的 `grant_type=refresh_token`，带上凭据已有的 scopes，不请求额外权限；返回的新 access token、轮换 refresh token 和有效期会保存到原文件，保留套餐及其它顶层字段，文件权限为 `0600`。同进程的并发刷新共用一个请求。不要在上报器续期时同时运行交互式 Claude Code 登录或另一个共享同一凭据卷的实例，以免各自轮换凭据。
+
+CLI 升级改变配置结构时，可更新扫描规则，或成对填写 `CLAUDE_OAUTH_TOKEN_URL` / `CLAUDE_OAUTH_CLIENT_ID` 暂时覆盖。日志不会输出令牌；撤销登录或 refresh token 本身失效仍需重新登录。
 
 Codex / Grok 的 token 由上报器自己刷新写回（`auth.json`）。
 

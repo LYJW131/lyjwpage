@@ -56,13 +56,14 @@ export const config = {
   pushTimeoutMs: ms("PUSH_TIMEOUT_MS", 30_000),
 
   /**
-   * 两个都空 = 不刷新 Claude，只记一行日志。
-   * 值从 Claude Code 自己的安装里找，不要写进仓库。
+   * 两个都空时自动读取 Claude Code 安装包的生产配置；显式覆盖时必须一起填。
    */
   claudeOAuth: {
     tokenUrl: process.env.CLAUDE_OAUTH_TOKEN_URL?.trim() ?? "",
     clientId: process.env.CLAUDE_OAUTH_CLIENT_ID?.trim() ?? "",
   },
+
+  claudeBin: process.env.CLAUDE_BIN?.trim() || "claude",
 
   agentIds: agentIds(),
 
