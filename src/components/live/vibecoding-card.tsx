@@ -380,9 +380,9 @@ const FEATURED_LIMITS = {
     { slot: "fable", title: "Weekly · Fable only" },
   ],
   codex: [
+    { slot: "session", title: "5-hour limit" },
     { slot: "weekly", title: "Weekly" },
-    { slot: "spark-session", title: "Spark · 5-hour limit" },
-    { slot: "spark-weekly", title: "Spark · Weekly" },
+    { slot: "spark-weekly", title: "Weekly · GPT-5.3-Codex-Spark" },
   ],
 } as const;
 
@@ -421,9 +421,9 @@ function pickSlotLimit(limits: VibeCodingLimit[], slot: FeaturedLimitSlot) {
   if (slot === "fable") {
     return limits.find((limit) => isNamedLimit(limit, "fable")) ?? null;
   }
-  if (slot === "spark-session" || slot === "spark-weekly") {
+  if (slot === "spark-weekly") {
     return limits.find((limit) =>
-      isSparkWindow(limit) && isSessionWindow(limit) === (slot === "spark-session"),
+      isSparkWindow(limit) && !isSessionWindow(limit),
     ) ?? null;
   }
   const matched = limits.filter((limit) => limitSlot(limit) === slot);
@@ -441,22 +441,22 @@ function compactLimit(agent: VibeCodingAgent, now: number) {
 
 type FeaturedLimitRow =
   | { kind: "limit"; key: string; title: string; limit: VibeCodingLimit }
+  | { kind: "unlimited"; key: string; title: string }
   | { kind: "unavailable"; key: string; title: string; reason: string };
 
 /**
- * 按各自的窗口展示三行：Claude 的主额度加 Fable，Codex 的周额度加两档 Spark。
- * Codex 如果恢复主 5 小时窗口也照常显示，不能把实际上报的限额藏掉。
- * 预期窗口没收到时保留 Unavailable，不能把采集缺失说成 Unlimited。
+ * 固定三行：Claude 的主额度加 Fable；Codex 的主额度加 Spark 周额度。
+ * Codex 成功取数但没有主 5 小时窗口时显示 Unlimited；采集报错仍显示 Unavailable。
  */
 function featuredLimitRows(agent: VibeCodingAgent): FeaturedLimitRow[] {
   const slots: ReadonlyArray<{ slot: FeaturedLimitSlot; title: string }> =
     agent.id === "claude" ? FEATURED_LIMITS.claude : FEATURED_LIMITS.codex;
-  const rows = agent.id === "codex" && pickSlotLimit(agent.limits, "session")
-    ? [{ slot: "session" as const, title: "5-hour limit" }, ...slots]
-    : slots;
-  return rows.map(({ slot, title }) => {
+  return slots.map(({ slot, title }) => {
     const limit = pickSlotLimit(agent.limits, slot);
     if (limit) return { kind: "limit" as const, key: slot, title, limit };
+    if (agent.id === "codex" && slot === "session" && agent.limitsError == null) {
+      return { kind: "unlimited" as const, key: slot, title };
+    }
     return {
       kind: "unavailable" as const, key: slot, title,
       reason: agent.limitsError ?? "尚未收到此窗口的限额",
@@ -736,6 +736,23 @@ function LimitMeter({ limit, title }: { limit: VibeCodingLimit; title: string })
   );
 }
 
+function LimitUnlimited({ title }: { title: string }) {
+  return (
+    <div>
+      <div className="flex h-5 items-center justify-between gap-2">
+        <span className="truncate text-xs">{title}</span>
+        <span className="flex shrink-0 items-baseline gap-2">
+          <span className="text-xs text-muted-foreground">Unlimited</span>
+          <span className="font-mono text-xs tabular-nums" style={{ color: LIMIT_UNLIMITED_COLOR }}>
+            <span className="inline-block origin-right scale-[1.6]">∞</span>
+          </span>
+        </span>
+      </div>
+      <div className="mt-1.5 h-1.5" style={{ backgroundColor: LIMIT_UNLIMITED_COLOR }} />
+    </div>
+  );
+}
+
 /** 预期有但取不到的窗口，保留原位以免整行消失。 */
 function LimitUnavailable({ title, reason }: { title: string; reason: string }) {
   return (
@@ -862,6 +879,8 @@ function AgentPanel({
         {rows.map((row) =>
           row.kind === "limit" ? (
             <LimitMeter key={row.key} limit={row.limit} title={row.title} />
+          ) : row.kind === "unlimited" ? (
+            <LimitUnlimited key={row.key} title={row.title} />
           ) : (
             <LimitUnavailable key={row.key} title={row.title} reason={row.reason} />
           ),
