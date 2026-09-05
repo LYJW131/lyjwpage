@@ -9,6 +9,9 @@ import {
   ArrowRight,
   Search,
   Disc3,
+  Play,
+  ListPlus,
+  Headphones,
 } from "lucide-react";
 import {
   useCallback,
@@ -25,6 +28,12 @@ import { Card } from "@/components/ui/card";
 import { HomePodMiniIcon, MacBookProIcon } from "@/components/ui/device-icons";
 import { HeroMotionArtwork } from "@/components/live/hero-motion-artwork";
 import { ListenAlongButton } from "@/components/live/listen-along-button";
+import {
+  MusicPlayer,
+  type MusicPlayerHandle,
+} from "@/components/signal/music-player";
+import { playerQueue, type PlayerRecord } from "@/lib/music-player";
+import { MUSICKIT_TOKEN_ENDPOINT } from "@/lib/musickit";
 import { useExhibitDetail } from "@/hooks/use-exhibit-detail";
 import { useListenAlong } from "@/hooks/use-listen-along";
 import { useLiveEvents } from "@/hooks/use-live-events";
@@ -1094,9 +1103,9 @@ export function ListeningCard({
    */
   const showSideLyrics = Boolean(
     wide &&
-      localActive &&
-      (Boolean(lyrics && lyrics.length > 0) ||
-        (lyricsLoading && resolvedHasLyrics)),
+    localActive &&
+    (Boolean(lyrics && lyrics.length > 0) ||
+      (lyricsLoading && resolvedHasLyrics)),
   );
 
   /**
@@ -1107,9 +1116,9 @@ export function ListeningCard({
   const isResolvingTrack = localActive && resolvedSongId == null;
   const showMobileLyrics = Boolean(
     localActive &&
-      (Boolean(lyrics && lyrics.length > 0) ||
-        (lyricsLoading && resolvedHasLyrics) ||
-        isResolvingTrack),
+    (Boolean(lyrics && lyrics.length > 0) ||
+      (lyricsLoading && resolvedHasLyrics) ||
+      isResolvingTrack),
   );
 
   /**
@@ -1124,6 +1133,7 @@ export function ListeningCard({
     songId: resolvedSongId,
     upcomingSongIds: resolvedUpcoming,
   });
+  const playerRef = useRef<MusicPlayerHandle>(null);
   const showListenAlong =
     listenAlong.status !== "unavailable" &&
     (Boolean(localTrack && resolvedSongId) || listenAlong.status !== "idle");
@@ -1248,6 +1258,22 @@ export function ListeningCard({
     const selectRecord = (record: Hero) =>
       openRecord(record.track ? "live" : record.key);
     const selectedRecord = records[selectedIndex];
+    const playable = (record: Hero): PlayerRecord => ({
+      id: record.key,
+      title: record.title,
+      artist: record.subtitle,
+      artwork: record.artwork,
+      url: record.link,
+      songId: record.track ? resolvedSongId : null,
+    });
+    const playerSelection =
+      selectedRecord ?? records.find((record) => !record.track) ?? records[0];
+    const selectedPlayback = selectedRecord ? playable(selectedRecord) : null;
+    const canPlaySelection = Boolean(
+      MUSICKIT_TOKEN_ENDPOINT &&
+      selectedPlayback &&
+      playerQueue(selectedPlayback),
+    );
     const filtered = records.filter(
       (item) =>
         !item.track &&
@@ -1273,12 +1299,11 @@ export function ListeningCard({
           if (event.key === "Escape") closeRecord();
         }}
       >
-        {listenAlong.status !== "idle" &&
-          listenAlong.status !== "unavailable" && (
-            <div className="persistent-listen">
-              <ListenAlongButton listen={listenAlong} />
-            </div>
-          )}
+        <MusicPlayer
+          ref={playerRef}
+          selection={playerSelection ? playable(playerSelection) : null}
+          listen={listenAlong}
+        />
         {selectedRecord ? (
           <div className="record-detail">
             <div
@@ -1386,8 +1411,33 @@ export function ListeningCard({
                 </div>
               )}
               <div className="detail-actions">
+                <button
+                  className="outline-action"
+                  disabled={!canPlaySelection}
+                  onClick={() => {
+                    if (selectedPlayback)
+                      playerRef.current?.play(selectedPlayback);
+                  }}
+                >
+                  <Play size={17} /> 播放
+                </button>
+                <button
+                  className="outline-action"
+                  disabled={!canPlaySelection}
+                  onClick={() => {
+                    if (selectedPlayback)
+                      playerRef.current?.enqueue(selectedPlayback);
+                  }}
+                >
+                  <ListPlus size={17} /> 加入队列
+                </button>
                 {selectedRecord.track && showListenAlong && (
-                  <ListenAlongButton listen={listenAlong} />
+                  <button
+                    className="outline-action"
+                    onClick={() => playerRef.current?.follow()}
+                  >
+                    <Headphones size={17} /> 一起听
+                  </button>
                 )}{" "}
                 {selectedRecord.link && (
                   <a
@@ -1463,11 +1513,6 @@ export function ListeningCard({
                   ) : (
                     <Disc3 size={50} />
                   )}
-                  <span className="matrix-hover">
-                    <b>{item.title}</b>
-                    <small>{item.subtitle}</small>
-                    <ArrowUpRight size={24} />
-                  </span>
                 </span>
                 <span className="matrix-caption">
                   {String(i + 1).padStart(2, "0")}{" "}

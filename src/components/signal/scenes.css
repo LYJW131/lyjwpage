@@ -112,33 +112,6 @@
   height: 30%;
   opacity: 0.5;
 }
-.matrix-hover {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  gap: 9px;
-  padding: 20px;
-  color: #eee;
-  background: linear-gradient(transparent, #060709e6);
-  opacity: 0;
-  transition: opacity 0.3s;
-}
-.matrix-hover b {
-  font-size: 15px;
-  font-weight: 600;
-  line-height: 1.45;
-}
-.matrix-hover small {
-  font-size: 12px;
-  opacity: 0.65;
-}
-.matrix-hover > svg {
-  position: absolute;
-  right: 10px;
-  top: 10px;
-}
 .matrix-caption {
   font: 12px var(--font-mono);
   color: var(--muted-foreground);
@@ -155,12 +128,8 @@
   font: 14px var(--font-geist-sans);
   letter-spacing: 0.03em;
 }
-.matrix-item:hover .matrix-hover,
-.matrix-item:focus-visible .matrix-hover {
-  opacity: 1;
-}
 .matrix-item:hover img {
-  transform: scale(1.045);
+  transform: scale(1.015);
   filter: saturate(1);
 }
 .matrix-live {
@@ -1499,18 +1468,6 @@
   .matrix-caption > span {
     font-size: 12px;
   }
-  .matrix-hover {
-    padding: 12px;
-  }
-  .matrix-hover b {
-    font-size: 12px;
-  }
-  .matrix-hover small {
-    font-size: 12px;
-  }
-  .matrix-hover svg {
-    width: 20px;
-  }
   .exhibit-count {
     font-size: 12px;
     letter-spacing: 1px;
@@ -1891,20 +1848,6 @@
   }
 }
 
-.persistent-listen {
-  position: absolute;
-  left: 0;
-  bottom: -35px;
-  z-index: 15;
-}
-@media (max-width: 800px) {
-  .persistent-listen {
-    bottom: -29px;
-    transform: scale(0.85);
-    transform-origin: left center;
-  }
-}
-
 .trophy-exhibit-row {
   position: relative;
   display: flex;
@@ -2083,9 +2026,6 @@
   }
   .matrix-subtitle {
     font-size: 12px;
-  }
-  .matrix-hover {
-    display: none;
   }
   .exhibit-count {
     margin: 0;

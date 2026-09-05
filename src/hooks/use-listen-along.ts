@@ -118,7 +118,10 @@ async function syncUpcomingQueue(music: MusicKitInstance, ids: string[]) {
   }
 }
 
-function waitUntilPlaying(music: MusicKitInstance, cancelled: () => boolean): Promise<void> {
+function waitUntilPlaying(
+  music: MusicKitInstance,
+  cancelled: () => boolean,
+): Promise<void> {
   if (music.playbackState === PLAYBACK_STATE.playing) return Promise.resolve();
 
   return new Promise((resolve) => {
@@ -132,7 +135,8 @@ function waitUntilPlaying(music: MusicKitInstance, cancelled: () => boolean): Pr
       resolve();
     };
     const onState = () => {
-      if (cancelled() || music.playbackState === PLAYBACK_STATE.playing) finish();
+      if (cancelled() || music.playbackState === PLAYBACK_STATE.playing)
+        finish();
     };
     const timeout = window.setTimeout(finish, READY_TIMEOUT_MS);
     const poll = window.setInterval(onState, 250);
@@ -177,7 +181,11 @@ function isPlaybackLive(music: MusicKitInstance) {
 }
 
 /** 预切要接的下一首：上报的 Playing Next，或队列里当前曲后面那首 */
-function nextPreparedId(music: MusicKitInstance, current: string, upcoming: string[]) {
+function nextPreparedId(
+  music: MusicKitInstance,
+  current: string,
+  upcoming: string[],
+) {
   if (upcoming[0] && upcoming[0] !== current) return upcoming[0];
   const at = mediaItemIndex(music.queue?.items ?? [], current);
   if (at < 0) return null;
@@ -210,7 +218,7 @@ function upcomingAlreadyQueued(music: MusicKitInstance, ids: string[]) {
 /**
  * 加载和对齐期间把喇叭关掉。MusicKit 的 volume 是 0–1。
  *
- * 不捕获也不返回「当下音量」：这个页面里除了本 hook 没人动它，真基准恒为 1。
+ * 不捕获也不返回「当下音量」：以用户选择的 volumeRef 为基准，避免把暂时的渐弱音量当作偏好。
  * 捕获现值的话，在渐弱 / 静音途中被打断的换歌会把半衰的值当成新基准，
  * 音量随切歌棘轮式衰减到 0。
  */
@@ -229,6 +237,10 @@ export type ListenAlong = {
   audible: boolean;
   start: () => void;
   stop: () => void;
+  /** Wait until follow effects and queued MusicKit work have relinquished playback. */
+  stopForPlayback: () => Promise<void>;
+  volume: number;
+  setVolume: (volume: number) => void;
   logout: () => void;
 };
 
@@ -248,6 +260,10 @@ export function useListenAlong(source: {
   const [authorized, setAuthorized] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [audible, setAudible] = useState(false);
+  const [volume, setVolumeState] = useState(1);
+  const volumeRef = useRef(1);
+  const startGeneration = useRef(0);
+  const stopWaiters = useRef<Array<() => void>>([]);
 
   /**
    * 已经排进队列的那首。
@@ -309,7 +325,13 @@ export function useListenAlong(source: {
   useEffect(() => {
     repeatOneRef.current = repeatOne;
   }, [repeatOne]);
-  const hostRef = useRef({ state, observedAt, positionMs, durationMs, repeatOne });
+  const hostRef = useRef({
+    state,
+    observedAt,
+    positionMs,
+    durationMs,
+    repeatOne,
+  });
   useEffect(() => {
     hostRef.current = { state, observedAt, positionMs, durationMs, repeatOne };
   }, [state, observedAt, positionMs, durationMs, repeatOne]);
@@ -320,15 +342,16 @@ export function useListenAlong(source: {
    *
    * 进静音只有预切一处，出静音的口却散在好几条路上（hold 到点、切歌信号、
    * 停止、卸载、改放别的歌）—— 每条都必须走这里，谁漏了谁就把 MusicKit
-   * 单例永远留在 0：getMusicKit() 复用同一个实例，页面上又没有音量控件。
+   * 单例永远留在 0：getMusicKit() 复用同一个实例，下次播放仍应使用用户设置的音量。
    */
   const releaseHold = (player: MusicKitInstance) => {
     if (!holdUntilMs.current) return;
     holdUntilMs.current = 0;
-    player.volume = 1;
+    player.volume = volumeRef.current;
   };
 
   const stop = useCallback(() => {
+    startGeneration.current += 1;
     queuedSongId.current = null;
     readySongId.current = null;
     hasFollowed.current = false;
@@ -353,7 +376,34 @@ export function useListenAlong(source: {
     setMusic(null);
   }, []);
 
+  const stopForPlayback = useCallback(() => {
+    const stopped = musicRef.current
+      ? new Promise<void>((resolve) => stopWaiters.current.push(resolve))
+      : opChain.current;
+    stop();
+    return stopped;
+  }, [stop]);
+
+  const setVolume = useCallback((value: number) => {
+    const next = Math.max(0, Math.min(1, value));
+    const previous = volumeRef.current;
+    volumeRef.current = next;
+    setVolumeState(next);
+    const player = musicRef.current;
+    if (player) {
+      // Preserve a fade/hold multiplier; changing volume must not unmute a preloaded track.
+      const ratio =
+        previous > 0
+          ? player.volume / previous
+          : holdUntilMs.current || !readySongId.current
+            ? 0
+            : 1;
+      player.volume = Math.max(0, Math.min(1, ratio)) * next;
+    }
+  }, []);
+
   const start = useCallback(() => {
+    const generation = ++startGeneration.current;
     setError(null);
     setAudible(false);
     setStatus("starting");
@@ -361,16 +411,20 @@ export function useListenAlong(source: {
     void (async () => {
       try {
         const instance = await getMusicKit();
+        if (generation !== startGeneration.current) return;
         /*
          * 已经授权过就不再弹窗。MusicKit 把用户令牌存在本地，第二次进来
          * isAuthorized 直接是 true —— 每次都弹一遍会很烦人。
          */
         if (!instance.isAuthorized) await instance.authorize();
+        if (generation !== startGeneration.current) return;
+        if (!instance.isAuthorized) throw new Error("Apple Music 授权未完成");
         applyRepeatMode(instance, repeatOneRef.current);
         setAuthorized(instance.isAuthorized);
         setMusic(instance);
         setStatus("following");
       } catch (caught) {
+        if (generation !== startGeneration.current) return;
         /*
          * 访客自己关掉授权弹窗也走到这里。这不是故障，但也不该假装成功 ——
          * 说清楚怎么回事，按钮回到可点的样子让他再来一次。
@@ -419,14 +473,21 @@ export function useListenAlong(source: {
             await mkSafe(() => music.pause());
             return;
           }
-          if (pendingHostStop.current != null) window.clearTimeout(pendingHostStop.current);
+          if (pendingHostStop.current != null)
+            window.clearTimeout(pendingHostStop.current);
           pendingHostStop.current = window.setTimeout(() => {
             pendingHostStop.current = null;
             void runExclusive(async () => {
               // 到点重验：期间来了新锚点说他在播，或者进了预切静音，都不停
-              if (songIdRef.current && hostRef.current.state === "playing") return;
+              if (songIdRef.current && hostRef.current.state === "playing")
+                return;
               const localNow = localSongId(music);
-              if (songIdRef.current && localNow && localNow !== songIdRef.current) return;
+              if (
+                songIdRef.current &&
+                localNow &&
+                localNow !== songIdRef.current
+              )
+                return;
               if (holdUntilMs.current > Date.now()) return;
               if (isPlaybackLive(music)) await mkSafe(() => music.pause());
             });
@@ -446,9 +507,15 @@ export function useListenAlong(source: {
            */
           if (prearmedSongId.current === songId && isPlaybackLive(music)) {
             queueMicrotask(() => {
-              if (prearmedSongId.current === songId) prearmedSongId.current = null;
+              if (prearmedSongId.current === songId)
+                prearmedSongId.current = null;
             });
-            if (shouldSeekAfterTrackChange(hostRef.current.positionMs, RESYNC_THRESHOLD_MS)) {
+            if (
+              shouldSeekAfterTrackChange(
+                hostRef.current.positionMs,
+                RESYNC_THRESHOLD_MS,
+              )
+            ) {
               await mkSafe(() => music.seekToTime(hostNow() / 1000));
               lagMs.current = 0;
             } else {
@@ -458,7 +525,12 @@ export function useListenAlong(source: {
           }
           if (adopted && isPlaybackLive(music)) return;
           releaseHold(music);
-          if (shouldSeekAfterTrackChange(hostRef.current.positionMs, RESYNC_THRESHOLD_MS)) {
+          if (
+            shouldSeekAfterTrackChange(
+              hostRef.current.positionMs,
+              RESYNC_THRESHOLD_MS,
+            )
+          ) {
             await mkSafe(() => music.seekToTime(hostNow() / 1000));
             lagMs.current = 0;
           } else {
@@ -484,10 +556,15 @@ export function useListenAlong(source: {
             try {
               await mkSafe(() => music.seekToTime(hostNow() / 1000));
             } finally {
-              music.volume = 1;
+              music.volume = volumeRef.current;
             }
             lagMs.current = 0;
-          } else if (shouldSeekAfterTrackChange(hostRef.current.positionMs, RESYNC_THRESHOLD_MS)) {
+          } else if (
+            shouldSeekAfterTrackChange(
+              hostRef.current.positionMs,
+              RESYNC_THRESHOLD_MS,
+            )
+          ) {
             await mkSafe(() => music.seekToTime(hostNow() / 1000));
             lagMs.current = 0;
           } else {
@@ -511,7 +588,9 @@ export function useListenAlong(source: {
         const anchorAt = mediaItemIndex(queueItems, songId);
         const anchorBehindLocal =
           lastHostSongId.current === songId ||
-          (localId != null && anchorAt >= 0 && mediaItemIndex(queueItems, localId) > anchorAt);
+          (localId != null &&
+            anchorAt >= 0 &&
+            mediaItemIndex(queueItems, localId) > anchorAt);
         if (
           !repeatOneRef.current &&
           anchorBehindLocal &&
@@ -539,7 +618,10 @@ export function useListenAlong(source: {
             await changeToSong(music, songId);
           }
           if (cancelled || queuedSongId.current !== songId) return;
-          if (localSongId(music) === songId && music.playbackState === PLAYBACK_STATE.playing) {
+          if (
+            localSongId(music) === songId &&
+            music.playbackState === PLAYBACK_STATE.playing
+          ) {
             readySongId.current = songId;
             hasFollowed.current = true;
             lastHostSongId.current = songId;
@@ -551,29 +633,42 @@ export function useListenAlong(source: {
                 // seek 失败就停在加载完的位置，总比没声音强
               }
               lagMs.current = 0;
-            } else if (shouldSeekAfterTrackChange(hostRef.current.positionMs, RESYNC_THRESHOLD_MS)) {
+            } else if (
+              shouldSeekAfterTrackChange(
+                hostRef.current.positionMs,
+                RESYNC_THRESHOLD_MS,
+              )
+            ) {
               await mkSafe(() => music.seekToTime(hostNow() / 1000));
               lagMs.current = 0;
             } else {
               lagMs.current = playbackLagMs(hostNow(), localPositionMs(music));
             }
-            if (joining) music.volume = 1;
+            if (joining) music.volume = volumeRef.current;
             setAudible(true);
             return;
           }
-          if (music.playbackState !== PLAYBACK_STATE.playing) await playSafe(music);
+          if (music.playbackState !== PLAYBACK_STATE.playing)
+            await playSafe(music);
           if (cancelled || queuedSongId.current !== songId) return;
           await waitUntilPlaying(music, () => cancelled);
           if (cancelled || queuedSongId.current !== songId) return;
 
-          if (joining || shouldSeekAfterTrackChange(hostRef.current.positionMs, RESYNC_THRESHOLD_MS)) {
+          if (
+            joining ||
+            shouldSeekAfterTrackChange(
+              hostRef.current.positionMs,
+              RESYNC_THRESHOLD_MS,
+            )
+          ) {
             try {
               await mkSafe(() => music.seekToTime(hostNow() / 1000));
             } catch {
               // seek 失败就停在加载完的位置，总比没声音强
             }
             if (cancelled || queuedSongId.current !== songId) return;
-            if (music.playbackState !== PLAYBACK_STATE.playing) await playSafe(music);
+            if (music.playbackState !== PLAYBACK_STATE.playing)
+              await playSafe(music);
             if (cancelled || queuedSongId.current !== songId) return;
             await waitUntilPlaying(music, () => cancelled);
             if (cancelled || queuedSongId.current !== songId) return;
@@ -586,12 +681,13 @@ export function useListenAlong(source: {
           hasFollowed.current = true;
           lastHostSongId.current = songId;
           alignedSongId.current = songId;
-          if (joining) music.volume = 1;
+          if (joining) music.volume = volumeRef.current;
           setAudible(true);
-          if (!repeatOneRef.current) await syncUpcomingQueue(music, upcomingRef.current);
+          if (!repeatOneRef.current)
+            await syncUpcomingQueue(music, upcomingRef.current);
         } finally {
           // 半路 return / 抛错也不把加入时的静音留在场上
-          if (joining && music.volume === 0) music.volume = 1;
+          if (joining && music.volume === 0) music.volume = volumeRef.current;
         }
       } catch (caught) {
         if (cancelled) return;
@@ -637,13 +733,22 @@ export function useListenAlong(source: {
             !parked ||
             parked !== queuedSongId.current ||
             localSongId(music) !== parked ||
-            !hostRewoundIntoTrack(hostNow(), durationMs, SWITCH_LEAD_MS + RESYNC_THRESHOLD_MS)
+            !hostRewoundIntoTrack(
+              hostNow(),
+              durationMs,
+              SWITCH_LEAD_MS + RESYNC_THRESHOLD_MS,
+            )
           ) {
             return;
           }
           await runExclusive(async () => {
-            if (songIdRef.current !== songId || hostRef.current.state !== "playing") return;
-            if (readySongId.current !== parked || localSongId(music) !== parked) return;
+            if (
+              songIdRef.current !== songId ||
+              hostRef.current.state !== "playing"
+            )
+              return;
+            if (readySongId.current !== parked || localSongId(music) !== parked)
+              return;
             // 预切静音没解除就被拖回去重听：先放回音量，别把上一首放成哑的
             releaseHold(music);
             queuedSongId.current = songId;
@@ -651,11 +756,14 @@ export function useListenAlong(source: {
             alignedSongId.current = null;
             await changeToSong(music, songId);
             if (queuedSongId.current !== songId) return;
-            if (music.playbackState !== PLAYBACK_STATE.playing) await playSafe(music);
+            if (music.playbackState !== PLAYBACK_STATE.playing)
+              await playSafe(music);
             await waitUntilPlaying(music, () => songIdRef.current !== songId);
-            if (queuedSongId.current !== songId || songIdRef.current !== songId) return;
+            if (queuedSongId.current !== songId || songIdRef.current !== songId)
+              return;
             await mkSafe(() => music.seekToTime(hostNow() / 1000));
-            if (music.playbackState !== PLAYBACK_STATE.playing) await playSafe(music);
+            if (music.playbackState !== PLAYBACK_STATE.playing)
+              await playSafe(music);
             lagMs.current = 0;
             readySongId.current = songId;
             alignedSongId.current = songId;
@@ -685,16 +793,24 @@ export function useListenAlong(source: {
           if (holdUntilMs.current > Date.now()) return;
           if (!shouldSeekAfterTrackChange(positionMs, RESYNC_THRESHOLD_MS)) {
             lagMs.current = playbackLagMs(host, local);
-            if (prearmedSongId.current === songId && isPlaybackLive(music)) return;
+            if (prearmedSongId.current === songId && isPlaybackLive(music))
+              return;
             if (cancelled) return;
             if (!isPlaybackLive(music)) await playIfStalled();
             return;
           }
           lagMs.current = 0;
         } else if (
-          !isHostSeek(local, lagMs.current, host, RESYNC_THRESHOLD_MS, repeatOne ? durationMs : 0)
+          !isHostSeek(
+            local,
+            lagMs.current,
+            host,
+            RESYNC_THRESHOLD_MS,
+            repeatOne ? durationMs : 0,
+          )
         ) {
-          if (prearmedSongId.current === songId && isPlaybackLive(music)) return;
+          if (prearmedSongId.current === songId && isPlaybackLive(music))
+            return;
           if (cancelled) return;
           if (!isPlaybackLive(music)) await playIfStalled();
           return;
@@ -719,7 +835,8 @@ export function useListenAlong(source: {
           lagMs.current = 0;
           await mkSafe(() => music.seekToTime(nowHost / 1000));
           if (cancelled) return;
-          if (music.playbackState !== PLAYBACK_STATE.playing) await playSafe(music);
+          if (music.playbackState !== PLAYBACK_STATE.playing)
+            await playSafe(music);
         });
       } catch {
         // 巡检会再兜一次
@@ -751,7 +868,12 @@ export function useListenAlong(source: {
       );
       const target = followTargetMs(host, lagMs.current);
       if (
-        needsResync(localPositionMs(music), target, RESYNC_THRESHOLD_MS, repeatOne ? durationMs : 0)
+        needsResync(
+          localPositionMs(music),
+          target,
+          RESYNC_THRESHOLD_MS,
+          repeatOne ? durationMs : 0,
+        )
       ) {
         void runExclusive(async () => {
           if (readySongId.current !== songId) return;
@@ -796,11 +918,11 @@ export function useListenAlong(source: {
     if (!player || !songId || state !== "playing" || repeatOne) return;
 
     /*
-     * 渐弱一律从满音量的曲线算，不捕获「当下音量」当基准。从前是
+     * 渐弱一律从用户设置的音量曲线算，不捕获「当下音量」当基准。从前是
      * `baseline = player.volume` —— 但任何一次在渐弱 / 静音途中被打断的
      * 换歌（预排猜错、主人跳歌、旧锚点回声）都会把衰减到一半的值捕获成
      * 新基准，几个自然切歌之后音量就棘轮式衰到 0，听感是「暂停了」。
-     * 这个页面里 MusicKit 的音量除了这只 hook 没有别人动，真基准恒为 1。
+     * 用户音量由 volumeRef 保存，不从 MusicKit 当前的渐弱值反推。
      */
     let faded = false;
     let switched = false;
@@ -808,7 +930,8 @@ export function useListenAlong(source: {
 
     const tick = () => {
       if (switched || repeatOneRef.current) return;
-      if (songIdRef.current !== songId || hostRef.current.state !== "playing") return;
+      if (songIdRef.current !== songId || hostRef.current.state !== "playing")
+        return;
       if (readySongId.current !== songId) return;
       const host = hostRef.current;
       if (host.durationMs <= 0) return;
@@ -818,8 +941,11 @@ export function useListenAlong(source: {
       if (left > SWITCH_FADE_START_MS) return;
 
       faded = true;
-      const t = Math.min(1, Math.max(0, (SWITCH_FADE_START_MS - left) / fadeSpan));
-      player.volume = 1 - t;
+      const t = Math.min(
+        1,
+        Math.max(0, (SWITCH_FADE_START_MS - left) / fadeSpan),
+      );
+      player.volume = volumeRef.current * (1 - t);
       if (left > SWITCH_LEAD_MS) return;
 
       player.volume = 0;
@@ -837,7 +963,7 @@ export function useListenAlong(source: {
           readySongId.current !== songId ||
           localSongId(player) !== songId
         ) {
-          player.volume = 1;
+          player.volume = volumeRef.current;
           switched = false;
           return;
         }
@@ -850,7 +976,8 @@ export function useListenAlong(source: {
         player.volume = 0;
         try {
           await changeToSong(player, next);
-          if (player.playbackState !== PLAYBACK_STATE.playing) await playSafe(player);
+          if (player.playbackState !== PLAYBACK_STATE.playing)
+            await playSafe(player);
           /*
            * 这一等最长 READY_TIMEOUT_MS（25 秒），而且是在排他链里等 —— 谓词写死
            * false 的话，下一首不可播（访客区域没有、目录条目取不到）时，主人的
@@ -859,12 +986,15 @@ export function useListenAlong(source: {
            * 一遍、预切本身没意义；正常预切期间 holdUntilMs 恒为 endsAt（上面在
            * await 之前就写好了），谓词不会误伤。
            */
-          await waitUntilPlaying(player, () => holdUntilMs.current === 0 || repeatOneRef.current);
+          await waitUntilPlaying(
+            player,
+            () => holdUntilMs.current === 0 || repeatOneRef.current,
+          );
           await mkSafe(() => player.pause());
           await mkSafe(() => player.seekToTime(0));
           // 等的途中被停掉 / 卸载：音量还回去再走，别把共享的 MusicKit 单例留在 0
           if (holdUntilMs.current === 0) {
-            player.volume = 1;
+            player.volume = volumeRef.current;
             return;
           }
           player.volume = 0;
@@ -875,7 +1005,7 @@ export function useListenAlong(source: {
             void runExclusive(async () => {
               // 预切作废了（停止 / 卸载 / 改放别的歌）：这一支也得把音量还回去
               if (holdUntilMs.current === 0) {
-                player.volume = 1;
+                player.volume = volumeRef.current;
                 return;
               }
               const hostSong = songIdRef.current;
@@ -884,7 +1014,8 @@ export function useListenAlong(source: {
                * 主人还在播，或已经切到我们预切的那首：到点出声。
                * 他还停在上一首且暂停 —— 是真暂停，别替他开下一首。
                */
-              if (hostRef.current.state !== "playing" && hostSong !== next) return;
+              if (hostRef.current.state !== "playing" && hostSong !== next)
+                return;
               releaseHold(player);
               if (!isPlaybackLive(player)) await playSafe(player);
               setAudible(true);
@@ -896,7 +1027,7 @@ export function useListenAlong(source: {
           readySongId.current = null;
           alignedSongId.current = null;
           prearmedSongId.current = null;
-          player.volume = 1;
+          player.volume = volumeRef.current;
           switched = false;
         }
       });
@@ -908,7 +1039,7 @@ export function useListenAlong(source: {
       window.clearInterval(interval);
       // 渐弱到一半被取消（这首结束、暂停）：把音量还原，别留个半哑的。
       // 没写过渐弱就别碰 —— 预切静音可能还押着，这时写 1 等于提前出声
-      if (faded && !switched) player.volume = 1;
+      if (faded && !switched) player.volume = volumeRef.current;
     };
   }, [music, songId, state, repeatOne]);
 
@@ -963,7 +1094,9 @@ export function useListenAlong(source: {
            * 是叠操作，iOS 上会弹「The operation was aborted.」。先让一让，
            * 它真没接手再兜底。
            */
-          await new Promise((resolve) => window.setTimeout(resolve, REPEAT_RESTART_GRACE_MS));
+          await new Promise((resolve) =>
+            window.setTimeout(resolve, REPEAT_RESTART_GRACE_MS),
+          );
           if (music.playbackState !== PLAYBACK_STATE.ended) return;
           await mkSafe(() => music.seekToTime(0));
           await playSafe(music);
@@ -991,6 +1124,7 @@ export function useListenAlong(source: {
    */
   useEffect(() => {
     if (!music) return;
+    const pendingStops = stopWaiters.current;
     return () => {
       /*
        * 卡片直接卸载时 stop() 不会跑：预切的静音和它的定时器都得在这里收掉。
@@ -1002,7 +1136,14 @@ export function useListenAlong(source: {
         holdTimer.current = null;
       }
       releaseHold(music);
-      void music.stop().catch(() => {});
+      const waiters = pendingStops.splice(0);
+      void runExclusive(async () => {
+        await music.stop();
+      })
+        .catch(() => {})
+        .finally(() => {
+          for (const resolve of waiters) resolve();
+        });
     };
   }, [music]);
 
@@ -1037,6 +1178,9 @@ export function useListenAlong(source: {
     audible,
     start,
     stop,
+    stopForPlayback,
+    volume,
+    setVolume,
     logout,
   };
 }

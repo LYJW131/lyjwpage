@@ -2,13 +2,7 @@
 
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import Image from "next/image";
-import {
-  ArrowLeft,
-  ArrowRight,
-  ArrowUpRight,
-  Search,
-  Gamepad2,
-} from "lucide-react";
+import { ArrowLeft, ArrowRight, Search, Gamepad2 } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -270,12 +264,10 @@ function GameTile({
         {tile.imageUrl ? (
           <Image
             // 尺寸在 PSN 那边就选好，不进图片管道；理由见 playstation-image
-            src={
-              playstationImage(
-                tile.imageUrl,
-                gallery ? 640 : COVER_PX * PLAYSTATION_IMAGE_SCALE,
-              )!
-            }
+            src={playstationImage(
+              tile.imageUrl,
+              gallery ? 640 : COVER_PX * PLAYSTATION_IMAGE_SCALE,
+            )!}
             alt={tile.name}
             width={COVER_PX}
             height={COVER_PX}
@@ -849,11 +841,6 @@ export function PlaystationRow({
                     ) : (
                       <Gamepad2 size={50} />
                     )}
-                    <span className="matrix-hover">
-                      <b>{tile.name}</b>
-                      <small>{tile.subtitle}</small>
-                      <ArrowUpRight size={24} />
-                    </span>
                     {tile.live && (
                       <span className="matrix-live">NOW PLAYING</span>
                     )}

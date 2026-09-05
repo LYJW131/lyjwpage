@@ -214,16 +214,18 @@ export function SignalExperience({
           </span>
           <span className="brand-name">LYJW</span>
         </a>
-        <a
-          className="header-transmission"
-          href="#music"
-          onClick={(e) => navigate("music", e)}
-          aria-label={`查看音乐：${title}`}
-        >
-          <Frequency active={track?.state === "playing"} />
-          <span>{title}</span>
-          <span className="corner-marks" />
-        </a>
+        <div id="signal-player-slot">
+          <a
+            className="header-transmission"
+            href="#music"
+            onClick={(e) => navigate("music", e)}
+            aria-label={`查看音乐：${title}`}
+          >
+            <Frequency active={track?.state === "playing"} />
+            <span>{title}</span>
+            <span className="corner-marks" />
+          </a>
+        </div>
         <nav
           className="signal-nav"
           aria-label="场景导航"

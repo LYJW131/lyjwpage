@@ -47,7 +47,28 @@ export const PLAYBACK_STATE = {
 export const REPEAT_MODE = {
   none: 0,
   one: 1,
+  all: 2,
 } as const;
+
+export type MusicKitMediaItem = {
+  id?: string;
+  attributes?: {
+    name?: string;
+    artistName?: string;
+    albumName?: string;
+    durationInMillis?: number;
+    artwork?: { url?: string };
+    url?: string;
+  };
+};
+
+export type MusicKitQueueOptions = {
+  song?: string;
+  album?: string;
+  playlist?: string;
+  station?: string;
+  url?: string;
+};
 
 /** 主人单曲循环时这边也循环这一首，并关掉 autoplay，免得接下首 */
 export function applyRepeatMode(music: MusicKitInstance, repeatOne: boolean) {
@@ -64,14 +85,17 @@ export type MusicKitInstance = {
   playbackState: number;
   /** 播放进度，**秒**（站点内部一律毫秒，边界在 use-listen-along 里换算） */
   currentPlaybackTime: number;
+  currentPlaybackDuration?: number;
+  nowPlayingItemIndex?: number;
   /** 0–1 */
   volume: number;
-  nowPlayingItem: { id?: string } | null;
-  queue?: { items?: Array<{ id?: string }> };
+  nowPlayingItem: MusicKitMediaItem | null;
+  queue?: { items?: MusicKitMediaItem[] };
   /** 队列里有下一首时让它自己接着播。单曲循环时要关掉，否则会去接下首 */
   autoplayEnabled?: boolean;
   /** 见 REPEAT_MODE。单曲循环是 one，跟听平时是 none */
   repeatMode?: number;
+  shuffleMode?: number;
   authorize(): Promise<string>;
   unauthorize(): Promise<void>;
   /*
@@ -79,10 +103,11 @@ export type MusicKitInstance = {
    * startTime 是被否决的 seek 起播方案（换歌一律从 0 走，见 use-listen-along），
    * 别把它标回接口上邀请人用回去。
    */
-  setQueue(options: { song?: string }): Promise<unknown>;
-  playNext(options: { song?: string }, clear?: boolean): Promise<unknown>;
-  playLater(options: { song?: string }): Promise<unknown>;
+  setQueue(options: MusicKitQueueOptions): Promise<unknown>;
+  playNext(options: MusicKitQueueOptions, clear?: boolean): Promise<unknown>;
+  playLater(options: MusicKitQueueOptions): Promise<unknown>;
   skipToNextItem(): Promise<void>;
+  skipToPreviousItem?(): Promise<void>;
   changeToMediaAtIndex(index: number): Promise<void>;
   play(): Promise<void>;
   pause(): Promise<void>;
@@ -196,9 +221,11 @@ function nowSeconds(): number {
 let cachedToken: DeveloperToken | null = null;
 
 export async function fetchDeveloperToken(): Promise<DeveloperToken> {
-  if (!MUSICKIT_TOKEN_ENDPOINT) throw new Error("没有配置 MusicKit 令牌签发地址");
+  if (!MUSICKIT_TOKEN_ENDPOINT)
+    throw new Error("没有配置 MusicKit 令牌签发地址");
 
-  if (cachedToken && !pastHalfLife(cachedToken, nowSeconds())) return cachedToken;
+  if (cachedToken && !pastHalfLife(cachedToken, nowSeconds()))
+    return cachedToken;
 
   const response = await fetch(MUSICKIT_TOKEN_ENDPOINT, { cache: "no-store" });
   if (!response.ok) {
@@ -243,7 +270,11 @@ export function getMusicKit(): Promise<MusicKitInstance> {
    * 只有 start() 会调到这里，那时一定没在放（在放的话按钮是「跟听中」，点了走的
    * 是 stop），所以重配不会打断谁。
    */
-  if (instancePromise && cachedToken && pastHalfLife(cachedToken, nowSeconds())) {
+  if (
+    instancePromise &&
+    cachedToken &&
+    pastHalfLife(cachedToken, nowSeconds())
+  ) {
     instancePromise = null;
   }
   if (instancePromise) return instancePromise;
