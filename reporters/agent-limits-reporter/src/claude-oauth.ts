@@ -2,6 +2,7 @@ import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { config } from "./config.js";
+import { getClaudeOAuthClient } from "./claude-oauth-client.js";
 import { info } from "./log.js";
 
 /**
@@ -46,10 +47,6 @@ function expiryMs(value: unknown): number | null {
   return value < 1e12 ? value * 1000 : value;
 }
 
-export function claudeRefreshConfigured(): boolean {
-  return Boolean(config.claudeOAuth.tokenUrl && config.claudeOAuth.clientId);
-}
-
 export async function readClaudeOauth(home = config.home): Promise<OauthBlob | null> {
   let raw: string;
   try {
@@ -91,15 +88,11 @@ type TokenResponse = {
 };
 
 /**
- * 标准 `grant_type=refresh_token`。端点和 client_id 走环境变量，仓库里不写死。
+ * 与 Claude Code 2.1.261 一致：JSON 请求，携带已有 scopes。
+ * 端点和 client_id 默认从安装包读取；收到轮换 token 后原子写回。
  * 写回时保留文件里其它字段，先写临时文件再 rename。
  */
-export async function refreshClaudeOauth(home = config.home): Promise<boolean> {
-  if (!claudeRefreshConfigured()) {
-    info("Claude OAuth 刷新未配置（CLAUDE_OAUTH_TOKEN_URL / CLAUDE_OAUTH_CLIENT_ID 为空），跳过");
-    return false;
-  }
-
+async function refreshClaudeOauthOnce(home: string): Promise<boolean> {
   const dest = credentialsPath(home);
   let parsed: CredentialsFile;
   try {
@@ -116,29 +109,34 @@ export async function refreshClaudeOauth(home = config.home): Promise<boolean> {
   const refreshToken = asString(oauth.refreshToken);
   if (!refreshToken) throw new Error("Claude 凭据里没有 refreshToken");
 
-  const body = new URLSearchParams({
+  const client = await getClaudeOAuthClient();
+  const scopes = Array.isArray(oauth.scopes)
+    ? oauth.scopes.filter((scope): scope is string => typeof scope === "string" && !!scope.trim())
+    : [];
+  const body = JSON.stringify({
     grant_type: "refresh_token",
     refresh_token: refreshToken,
-    client_id: config.claudeOAuth.clientId,
+    client_id: client.clientId,
+    ...(scopes.length ? { scope: scopes.join(" ") } : {}),
   });
-  const response = await fetch(config.claudeOAuth.tokenUrl, {
+  const response = await fetch(client.tokenUrl, {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    headers: { "Content-Type": "application/json" },
     body,
-    signal: AbortSignal.timeout(20_000),
+    redirect: "error",
+    signal: AbortSignal.timeout(30_000),
   });
   const json = (await response.json().catch(() => null)) as TokenResponse | null;
   const accessToken = asString(json?.access_token);
-  if (!response.ok || !json || !accessToken) {
+  if (!response.ok || !json || !accessToken ||
+      typeof json.expires_in !== "number" || !Number.isFinite(json.expires_in) || json.expires_in <= 0) {
     throw new Error(`Claude OAuth 刷新失败：HTTP ${response.status}`);
   }
 
   const next: OauthBlob = { ...oauth, accessToken };
   const rotated = asString(json.refresh_token);
   if (rotated) next.refreshToken = rotated;
-  if (typeof json.expires_in === "number" && Number.isFinite(json.expires_in)) {
-    next.expiresAt = Date.now() + json.expires_in * 1000;
-  }
+  next.expiresAt = Date.now() + json.expires_in * 1000;
   if (typeof json.scope === "string" && json.scope.trim()) {
     next.scopes = json.scope.trim().split(/\s+/);
   }
@@ -147,17 +145,20 @@ export async function refreshClaudeOauth(home = config.home): Promise<boolean> {
   return true;
 }
 
-let loggedSkip = false;
+/** 同一进程中的到期检查和 401 重试共用一次刷新，避免重复轮换 refresh token。 */
+const refreshing = new Map<string, Promise<boolean>>();
 
-/** 到期前刷一次。没配刷新变量则跳过（只记一行）。凭据文件不存在也不报错。 */
+export function refreshClaudeOauth(home = config.home): Promise<boolean> {
+  const key = path.resolve(home);
+  const pending = refreshing.get(key);
+  if (pending) return pending;
+  const request = refreshClaudeOauthOnce(home).finally(() => refreshing.delete(key));
+  refreshing.set(key, request);
+  return request;
+}
+
+/** 到期前刷一次。凭据文件不存在也不报错。 */
 export async function refreshClaudeIfDue(home = config.home): Promise<void> {
-  if (!claudeRefreshConfigured()) {
-    if (!loggedSkip) {
-      info("Claude OAuth 刷新未配置（CLAUDE_OAUTH_TOKEN_URL / CLAUDE_OAUTH_CLIENT_ID 为空），跳过");
-      loggedSkip = true;
-    }
-    return;
-  }
   const oauth = await readClaudeOauth(home);
   if (!oauth) return;
   if (!claudeAccessExpired(oauth)) return;

@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 
-import { claudeRefreshConfigured, refreshClaudeOauth } from "./claude-oauth.js";
+import { refreshClaudeOauth } from "./claude-oauth.js";
 import { config, type AgentId } from "./config.js";
 import { info } from "./log.js";
 import { fetchAntigravity, rowFromAntigravityQuota } from "./providers/antigravity.js";
@@ -50,7 +50,7 @@ async function collectClaudeLive(): Promise<AgentRow | null> {
   try {
     return await fetchClaude();
   } catch (error) {
-    if (isClaudeAuthExpired(error) && claudeRefreshConfigured()) {
+    if (isClaudeAuthExpired(error)) {
       info("Claude 401，刷新 OAuth 后再取一次");
       try {
         await refreshClaudeOauth();
@@ -60,9 +60,6 @@ async function collectClaudeLive(): Promise<AgentRow | null> {
           retryError instanceof Error ? retryError.message : CLAUDE_AUTH_EXPIRED_MESSAGE;
         return { id: "claude", plan: null, limits: [], limitsError: message };
       }
-    }
-    if (isClaudeAuthExpired(error)) {
-      return { id: "claude", plan: null, limits: [], limitsError: CLAUDE_AUTH_EXPIRED_MESSAGE };
     }
     return errorRow("claude", error);
   }

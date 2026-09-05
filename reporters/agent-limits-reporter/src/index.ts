@@ -12,7 +12,7 @@ import { push, type PushPayload } from "./site.js";
  *
  * 每轮都 POST，内容没变也发 —— 那一封就是心跳。
  * 五家自己打各家限额接口。Claude 401 时 refreshClaudeOauth 再试一次；
- * Antigravity 到期或 401 时用环境变量里的 Google OAuth 客户端刷新。
+ * Claude / Antigravity 默认从各自 CLI 安装程序读取 OAuth 客户端配置。
  */
 
 const RETRY_MS = 2_000;
