@@ -3,6 +3,7 @@ import { after } from "next/server";
 
 import type { NowWatchingPayload, WatchingPayload } from "@/lib/emby";
 import { livePublishUrl } from "@/lib/live-socket";
+import { statusCacheTag } from "@/lib/status-cache-scope";
 import type {
   ChargerPayload,
   DesktopPayload,
@@ -98,7 +99,7 @@ export type LiveEvent =
   | { type: "playing"; payload: PlaystationPlayingPayload };
 
 /**
- * 首屏服务端渲染各份数据的缓存 tag，一份一个，配对见 lib/status-cache。
+ * 状态主题，一份一个。缓存标签另加 page / api 前缀，配对见 lib/status-cache。
  * （github-chart 是个例外：它那份没有 tag，只靠 cacheLife 兜底。）
  *
  * 名字和上面的事件名逐字相同，也就和 /api/status/* 的路径同一套：`X` 是列表、
@@ -166,20 +167,27 @@ export const TROPHIES_TAG = "trophies";
  * 单独传播一份缓存状态（从前是 POST 一趟对端的 /api/ingest/revalidate）。
  */
 export function expireStatus(...tags: string[]): void {
-  for (const tag of tags) revalidateTag(tag, "max");
+  for (const tag of tags) {
+    revalidateTag(statusCacheTag("page", tag), "max");
+    revalidateTag(statusCacheTag("api", tag), "max");
+  }
 }
 
 /**
- * 立即让首屏缓存失效。
+ * 立即让 API 缓存失效，首屏仍然先返回旧 HTML、后台更新。
  *
- * 充电卡是否存在会改变首屏两列布局，实时播放则直接决定 LCP hero；这两份不能
- * 像普通文字数据一样先给下一位访客旧值再后台重建。上报来自 Route Handler，
- * 按 Next 16 的约定用 `{ expire: 0 }`；下一次页面请求只为指定 tag 阻塞重算。
+ * 播放、充电结构等变化要求下一次 API 读取拿到新值，因此保留 `{ expire: 0 }`。
+ * 首屏使用独立条目和 page 标签：这里若把它也立即过期，7 天 expire 就会被绕过，
+ * 无人访问期间的上报会让下一位访客等待整页取数、封面和歌词重建。
+ * 页面挂载后由 SWR / 推送更新状态，首屏只做 stale-while-revalidate。
  *
  * 「下一次一定拿到新的」和上面一样只在本实例成立。
  */
 export function expireStatusImmediately(...tags: string[]): void {
-  for (const tag of tags) revalidateTag(tag, { expire: 0 });
+  for (const tag of tags) {
+    revalidateTag(statusCacheTag("page", tag), "max");
+    revalidateTag(statusCacheTag("api", tag), { expire: 0 });
+  }
 }
 
 type PushTarget = { url: string; secret: string };
@@ -289,9 +297,9 @@ export type Fanout = {
    * 竞态里。见下面 fanout 的规则 2。
    */
   notify?: ReadonlyArray<PendingEvent>;
-  /** 首屏缓存失效 */
+  /** 首屏与 API 均后台更新 */
   tags?: readonly string[];
-  /** 同上，但不给旧值宽限期，见 expireStatusImmediately */
+  /** API 立即失效，首屏仍后台更新，见 expireStatusImmediately */
   urgentTags?: readonly string[];
 };
 

@@ -33,25 +33,17 @@ import { readLiveness } from "@/lib/reporter-liveness";
 import { getDesktopPayload, getNowListeningSnapshot, getTimezonePayload } from "@/lib/telemetry";
 import { getVibeCodingSnapshot } from "@/lib/vibecoding";
 import { getVibeCodingYear } from "@/lib/vibecoding-year-store";
+import { statusCacheTag, type StatusCacheScope } from "@/lib/status-cache-scope";
 
 /**
- * 首屏那几份数据的缓存层。`app/api/status/` 下的状态路由（时区除外，它只给首屏）
- * 也读这里 —— 但只在 STATUS_CACHE 没被关掉时读：关掉的部署上端点走文件末尾那几对
- * 里的 `live` 那半，每次直读 Redis，见 lib/api 的 STATUS_CACHE。首屏不受那个开关管。
+ * 首屏与状态 API 的缓存层。相同 loader 按 scope 生成独立条目和标签：
+ * page 只允许后台更新，api 保留 urgent 立即失效，见 lib/live-events。
+ * 共享函数的 scope 必填，并作为可序列化参数进入 use cache 的键；嵌套缓存也必须
+ * 沿用同一个 scope，否则内层的 API 标签会传播到首屏，使整页再次阻塞重建。
  *
- * tag 只失效本实例那一套（Vercel 之外没有共享的 tag 存储，见 lib/live-events 的
- * expireStatus）—— 上报会被原样转给对端，对端自己跑一遍同一个 handler、
- * 自己走到 expireStatus，见 lib/ingest-relay。
- * Mac 存活（lastSeenAt / declaredOffline）以及充电头的 pushedAt 也在路由里
- * 现盖一层，因为心跳不触发 tag 失效。PlayStation presence 的断流判定同理在路由
- * 出口现算（见 app/api/status/playing/now）—— 它的心跳**会**推普通 tag，但
- * 「多久没刷新」这个结论光靠时间流逝就会翻面，冻进来的那份永远翻不过来。
- * 时区不看存活，只在 timezone 模块上报时失效。
- *
- * 一个主题一个缓存条目、一个 tag：充电头插拔只让充电头那份重算，不牵连另外七份。
- *
- * 为什么不能写成 `cached(tag, loader)` 这样一个泛用壳子：`use cache` 的缓存键由
- * 参数算出来，而参数必须可序列化 —— 函数不行。所以只能一个主题写一遍。
+ * STATUS_CACHE=false 只让 API 改为直读 Redis，首屏仍需缓存才能预渲染。
+ * Mac 存活、充电头 pushedAt、播放断流等随时间变化的字段在 API 出口现盖一层。
+ * Vercel 共享 tag 存储，其他多实例部署仍受本实例失效的限制，见 expireStatus。
  */
 
 /**
@@ -96,17 +88,17 @@ async function getChargerFallback() {
   return { ...payload, history: history.slice(firstInside - 1) };
 }
 
-export async function cachedDesktop() {
+export async function cachedDesktop(scope: StatusCacheScope) {
   "use cache";
   cacheLife(STATUS_LIFE);
-  cacheTag(DESKTOP_TAG);
+  cacheTag(statusCacheTag(scope, DESKTOP_TAG));
   return statusEnvelope(getDesktopPayload);
 }
 
 export async function cachedTimezone() {
   "use cache";
   cacheLife(STATUS_LIFE);
-  cacheTag(TIMEZONE_TAG);
+  cacheTag(statusCacheTag("page", TIMEZONE_TAG));
   return statusEnvelope(getTimezonePayload);
 }
 
@@ -114,7 +106,7 @@ export async function cachedTimezone() {
 export async function cachedCharger() {
   "use cache";
   cacheLife(STATUS_LIFE);
-  cacheTag(CHARGER_TAG);
+  cacheTag(statusCacheTag("page", CHARGER_TAG));
   return statusEnvelope(getChargerFallback);
 }
 
@@ -126,87 +118,86 @@ export async function cachedCharger() {
 export async function cachedPowerBank() {
   "use cache";
   cacheLife(STATUS_LIFE);
-  cacheTag(POWERBANK_TAG);
+  cacheTag(statusCacheTag("page", POWERBANK_TAG));
   return statusEnvelope(async () => withPowerBankFreshness(await getPowerBankSnapshot()));
 }
 
-/** 状态端点用的完整 400 点。和首屏那份同 tag，插拔时一起失效。 */
+/** 状态端点用的完整 400 点。插拔时立即失效，首屏那份仅后台更新。 */
 export async function cachedChargerSnapshot() {
   "use cache";
   cacheLife(STATUS_LIFE);
-  cacheTag(CHARGER_TAG);
+  cacheTag(statusCacheTag("api", CHARGER_TAG));
   return statusEnvelope(getChargerSnapshot);
 }
 
 export async function cachedPowerBankSnapshot() {
   "use cache";
   cacheLife(STATUS_LIFE);
-  cacheTag(POWERBANK_TAG);
+  cacheTag(statusCacheTag("api", POWERBANK_TAG));
   return statusEnvelope(getPowerBankSnapshot);
 }
 
 /**
- * 活动圆环。一份缓存同时喂首屏和状态端点 —— 这份没有充电头那种「首屏裁一段、
- * 端点给全量」的分歧，圈就那六个数。
+ * 活动圆环。首屏与端点共用 loader，按 scope 分开缓存。
  *
  * 「跨没跨过午夜」在这里会被冻住（最长 10 分钟），端点那侧每次请求重新盖一遍，
  * 见 app/api/status/activity 和 lib/activity 的 withActivityFreshness。
  */
-export async function cachedActivity() {
+export async function cachedActivity(scope: StatusCacheScope) {
   "use cache";
   cacheLife(STATUS_LIFE);
-  cacheTag(ACTIVITY_TAG);
+  cacheTag(statusCacheTag(scope, ACTIVITY_TAG));
   return statusEnvelope(getActivitySnapshot);
 }
 
 /**
- * 服务器快照。一份缓存同时喂首屏和状态端点。
+ * 服务器快照。首屏与端点共用 loader，按 scope 分开缓存。
  *
  * 「上报器还活着没有」在这里会被冻住（最长 10 分钟），端点那侧每次请求重新
  * 盖一遍，见 app/api/status/server 和 lib/server 的 withServerFreshness。
  */
-export async function cachedServer() {
+export async function cachedServer(scope: StatusCacheScope) {
   "use cache";
   cacheLife(STATUS_LIFE);
-  cacheTag(SERVER_TAG);
+  cacheTag(statusCacheTag(scope, SERVER_TAG));
   return statusEnvelope(getServerSnapshot);
 }
 
-export async function cachedVibeCoding() {
+export async function cachedVibeCoding(scope: StatusCacheScope) {
   "use cache";
   cacheLife(STATUS_LIFE);
-  cacheTag(VIBECODING_TAG);
+  cacheTag(statusCacheTag(scope, VIBECODING_TAG));
   return statusEnvelope(getVibeCodingSnapshot);
 }
 
-export async function cachedVibeCodingYear() {
+export async function cachedVibeCodingYear(scope: StatusCacheScope) {
   "use cache";
   cacheLife(STATUS_LIFE);
-  cacheTag(VIBECODING_YEAR_TAG);
+  cacheTag(statusCacheTag(scope, VIBECODING_YEAR_TAG));
   return statusEnvelope(getVibeCodingYear);
 }
 
-export async function cachedListening() {
+export async function cachedListening(scope: StatusCacheScope) {
   "use cache";
   cacheLife(STATUS_LIFE);
-  cacheTag(LISTENING_TAG);
+  cacheTag(statusCacheTag(scope, LISTENING_TAG));
   return statusEnvelope(getRecentlyPlayed);
 }
 
-/** 两个候选。首屏和 `/api/status/listening/now` 共用这一份，各自现选 Hero。 */
-export async function cachedNowListeningSnapshot() {
+/** 两个候选。首屏和 `/api/status/listening/now` 各自缓存，再各自选 Hero。 */
+export async function cachedNowListeningSnapshot(scope: StatusCacheScope) {
   "use cache";
   cacheLife(STATUS_LIFE);
-  cacheTag(NOW_LISTENING_TAG);
+  cacheTag(statusCacheTag(scope, NOW_LISTENING_TAG));
   return statusEnvelope(getNowListeningSnapshot);
 }
 
 export async function cachedNowListening() {
   "use cache";
   cacheLife(STATUS_LIFE);
-  cacheTag(NOW_LISTENING_TAG);
+  cacheTag(statusCacheTag("page", NOW_LISTENING_TAG));
   // 首屏冻住选好的 Hero，避免 LCP 闪。挂载后 SWR 打 listening/now 现选。
-  const envelope = await cachedNowListeningSnapshot();
+  const envelope = await cachedNowListeningSnapshot("page");
   if (!envelope.ok) return envelope;
   return statusEnvelope(async () =>
     pickNowListening(envelope.data, await readLiveness()),
@@ -214,38 +205,38 @@ export async function cachedNowListening() {
 }
 
 /** 条数用 getWatching 自己的默认值，理由同 /api/status/watching：别在两处各写一遍 */
-export async function cachedWatching() {
+export async function cachedWatching(scope: StatusCacheScope) {
   "use cache";
   cacheLife(STATUS_LIFE);
-  cacheTag(WATCHING_TAG);
+  cacheTag(statusCacheTag(scope, WATCHING_TAG));
   return statusEnvelope(getWatching);
 }
 
-export async function cachedNowWatching() {
+export async function cachedNowWatching(scope: StatusCacheScope) {
   "use cache";
   cacheLife(STATUS_LIFE);
-  cacheTag(NOW_WATCHING_TAG);
+  cacheTag(statusCacheTag(scope, NOW_WATCHING_TAG));
   return statusEnvelope(getNowWatching);
 }
 
-export async function cachedPlaying() {
+export async function cachedPlaying(scope: StatusCacheScope) {
   "use cache";
   cacheLife(STATUS_LIFE);
-  cacheTag(PLAYING_TAG);
+  cacheTag(statusCacheTag(scope, PLAYING_TAG));
   return statusEnvelope(getPlaying);
 }
 
-export async function cachedPlayingNow() {
+export async function cachedPlayingNow(scope: StatusCacheScope) {
   "use cache";
   cacheLife(STATUS_LIFE);
-  cacheTag(NOW_PLAYING_TAG);
+  cacheTag(statusCacheTag(scope, NOW_PLAYING_TAG));
   return statusEnvelope(getPlayingNow);
 }
 
 export async function cachedTrophies() {
   "use cache";
   cacheLife(STATUS_LIFE);
-  cacheTag(TROPHIES_TAG);
+  cacheTag(statusCacheTag("api", TROPHIES_TAG));
   return statusEnvelope(getTrophies);
 }
 
@@ -253,7 +244,7 @@ export async function cachedTrophies() {
 export async function cachedTrophiesSummary() {
   "use cache";
   cacheLife(STATUS_LIFE);
-  cacheTag(TROPHIES_TAG);
+  cacheTag(statusCacheTag("page", TROPHIES_TAG));
   return statusEnvelope(getTrophiesSummary);
 }
 
@@ -280,30 +271,30 @@ export async function cachedLyrics(songId: string): Promise<LyricsResult | null>
 
 /**
  * `app/api/status/` 下每条端点各自的两种取法，一条一对，见 lib/api 的
- * `StatusSource`：冻起来那份走上面的 `'use cache'`，直读那份走同一个 loader，
+ * `StatusSource`：API 缓存走上面的 `'use cache'`，直读那份走同一个 loader，
  * 由 STATUS_CACHE 选。
  *
  * 配对摆在这里而不是各条路由里：这个文件本来就同时拿着 tag 和 loader，而路由那边
  * 每加一处「哪份缓存对应哪个 loader」的知识，就多一处能对不上的地方。
  *
  * 充电头和充电宝给端点的是**完整快照**，首屏那两份（cachedCharger /
- * cachedPowerBank）裁过历史窗口，两者不是同一份。
+ * cachedPowerBank）分别裁历史窗口或盖新鲜度，两者不是同一份。
  */
-export const desktopStatus = statusSource(cachedDesktop, getDesktopPayload);
+export const desktopStatus = statusSource(() => cachedDesktop("api"), getDesktopPayload);
 export const chargerStatus = statusSource(cachedChargerSnapshot, getChargerSnapshot);
 export const powerBankStatus = statusSource(cachedPowerBankSnapshot, getPowerBankSnapshot);
-export const activityStatus = statusSource(cachedActivity, getActivitySnapshot);
-export const serverStatus = statusSource(cachedServer, getServerSnapshot);
-export const vibeCodingStatus = statusSource(cachedVibeCoding, getVibeCodingSnapshot);
-export const vibeCodingYearStatus = statusSource(cachedVibeCodingYear, getVibeCodingYear);
-export const listeningStatus = statusSource(cachedListening, getRecentlyPlayed);
+export const activityStatus = statusSource(() => cachedActivity("api"), getActivitySnapshot);
+export const serverStatus = statusSource(() => cachedServer("api"), getServerSnapshot);
+export const vibeCodingStatus = statusSource(() => cachedVibeCoding("api"), getVibeCodingSnapshot);
+export const vibeCodingYearStatus = statusSource(() => cachedVibeCodingYear("api"), getVibeCodingYear);
+export const listeningStatus = statusSource(() => cachedListening("api"), getRecentlyPlayed);
 export const nowListeningStatus = statusSource(
-  cachedNowListeningSnapshot,
+  () => cachedNowListeningSnapshot("api"),
   getNowListeningSnapshot,
 );
-export const watchingStatus = statusSource(cachedWatching, getWatching);
-export const nowWatchingStatus = statusSource(cachedNowWatching, getNowWatching);
-export const playingStatus = statusSource(cachedPlaying, getPlaying);
-export const playingNowStatus = statusSource(cachedPlayingNow, getPlayingNow);
+export const watchingStatus = statusSource(() => cachedWatching("api"), getWatching);
+export const nowWatchingStatus = statusSource(() => cachedNowWatching("api"), getNowWatching);
+export const playingStatus = statusSource(() => cachedPlaying("api"), getPlaying);
+export const playingNowStatus = statusSource(() => cachedPlayingNow("api"), getPlayingNow);
 export const trophiesStatus = statusSource(cachedTrophies, getTrophies);
 export const githubChartStatus = statusSource(cachedGithubChart, getGithubChart);

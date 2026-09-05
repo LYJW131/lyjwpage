@@ -138,7 +138,7 @@ const STATUS_CACHE = process.env.STATUS_CACHE !== "false";
  * 就同时拿着 tag 和 loader。
  */
 export type StatusSource<T> = {
-  /** 冻起来的那份，首屏也读它 */
+  /** API 专用缓存，和首屏的条目及失效标签分开 */
   cached: () => Promise<StatusResponse<T>>;
   /** 关掉缓存时直读 */
   live: () => Promise<T>;
