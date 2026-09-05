@@ -11,8 +11,8 @@ import { push, type PushPayload } from "./site.js";
  * 在 NAS 容器里 24 小时跑。用量仍由 Mac 报。
  *
  * 每轮都 POST，内容没变也发 —— 那一封就是心跳。
- * claude / codex / grok 自己打各家接口（参考 TokenTracker 的读取逻辑，不依赖它）；
- * Claude 401 时 refreshClaudeOauth 再试一次；antigravity 问 `agy -p /usage`。
+ * 五家自己打各家限额接口。Claude 401 时 refreshClaudeOauth 再试一次；
+ * Antigravity 到期或 401 时用环境变量里的 Google OAuth 客户端刷新。
  */
 
 const RETRY_MS = 2_000;

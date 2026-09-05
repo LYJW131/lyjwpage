@@ -341,8 +341,8 @@ POST /api/ingest/agents
 
 容器里各家 CLI 各登录一次，凭据落在自己的卷里，**不拷 Mac 的凭据** —— 两份 refresh token
 各自刷新会互相作废。Claude / Codex / Grok Build 由上报器自己拿各家 CLI 的登录态打各家的用量
-接口（读法参考 TokenTracker，但不依赖它，容器里不装它）；Antigravity 直接跑 `agy -p /usage`；
-Cursor 的 CLI 登录态不落文件、print 模式也不拦 `/usage`，暂时没有限额。部署、登录步骤和环境变量见
+接口（读法参考 TokenTracker，但不依赖它，容器里不装它）；Cursor 和 Antigravity 的接口是抓 CLI
+的 `/usage` 抓出来的，同样直打。五家的登录都在容器里做一次。部署、登录步骤和环境变量见
 `reporters/agent-limits-reporter/README.md`。
 
 卡片顶部汇总全量 token、API 等值费用和活跃天数，并按 input、output、cache read、

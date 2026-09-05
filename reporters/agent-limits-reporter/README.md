@@ -16,12 +16,11 @@
 每 `PUSH_INTERVAL_MS`（默认 10 分钟）一轮：
 
 1. 需要的话刷新 Claude 的 OAuth
-2. 三家自己打各家限额接口（参考了 TokenTracker 的读取逻辑，没有依赖它）
+2. 五家自己打各家限额接口（参考了 TokenTracker 的读取逻辑，没有依赖它）
 3. 按 MacTelemetryHub `AgentLimitsCollector` 的规则翻译成站点请求体
 4. POST 到站点
 
-默认发 `claude` / `codex` / `grok` / `antigravity` 四家。前三家上报器自己取、自己刷新写回凭据；
-antigravity 问 `agy -p /usage`。cursor 见下面「cursor / antigravity」。一家失败只影响那一行。
+默认发 `claude` / `codex` / `grok` / `cursor` / `antigravity`。一家失败只影响那一行。
 
 ## 配置
 
@@ -36,10 +35,12 @@ antigravity 问 `agy -p /usage`。cursor 见下面「cursor / antigravity」。�
 | `PUSH_TIMEOUT_MS` | | 默认 `30000` |
 | `CLAUDE_OAUTH_TOKEN_URL` | | Claude OAuth 的 token 端点。和下一档都空 = 不刷新，只记一行日志 |
 | `CLAUDE_OAUTH_CLIENT_ID` | | 同上。**自己从 Claude Code 的安装里找，不要把值写进仓库或这份 README** |
-| `AGENT_IDS` | | 逗号分隔。默认 `claude,codex,grok,antigravity`。cursor 验证通过后再加 |
-| `AGY_BIN` | | `agy` 的路径，默认 `agy`（镜像里在 `/usr/local/bin`） |
+| `AGENT_IDS` | | 逗号分隔。默认 `claude,codex,grok,cursor,antigravity` |
 | `GROK_HOME` | | Grok 凭据目录，默认 `$HOME/.grok` |
 | `CODEX_HOME` | | Codex 凭据目录，默认 `$HOME/.codex` |
+| `CURSOR_AUTH_TOKEN` | | 直接注入 Cursor JWT。没有就读 `$XDG_CONFIG_HOME/cursor/auth.json`（默认 `/data/.config/cursor/auth.json`） |
+| `ANTIGRAVITY_OAUTH_CLIENT_ID` | | Google OAuth 客户端。和下一档都空 = 不刷新 Antigravity。**从 Antigravity CLI 自己的安装里取，不写进仓库** |
+| `ANTIGRAVITY_OAUTH_CLIENT_SECRET` | | 同上 |
 | `DRY_RUN` | | `1` 时不 POST，把请求体 JSON 打到 stdout 然后退出 |
 | `LIMITS_FIXTURE` | | `{ "<id>": <该家原始 HTTP 响应体> }`。有它就不出网、不读凭据 |
 
@@ -53,7 +54,7 @@ antigravity 问 `agy -p /usage`。cursor 见下面「cursor / antigravity」。�
 mkdir -p data && sudo chown 1000:1000 data
 ```
 
-登录一次，凭据就在 `./data` 卷里（`/data/.claude`、`/data/.codex`、`/data/.grok`、`/data/.gemini`）。
+登录一次，凭据就在 `./data` 卷里（`/data/.claude`、`/data/.codex`、`/data/.grok`、`/data/.gemini`、`/data/.config/cursor`）。
 
 ```bash
 docker compose run --rm agent-limits-reporter claude
@@ -67,24 +68,26 @@ Grok 的包是 `@xai-official/grok`，命令是 `grok`，无浏览器的环境�
 
 Claude 在 Linux 上把 OAuth 写到 `/data/.claude/.credentials.json`。上报器在到期前（或 usage 接口回 401 时）自己刷并原子写回。`CLAUDE_OAUTH_TOKEN_URL` 和 `CLAUDE_OAUTH_CLIENT_ID` 从 Claude Code 自己的安装里抄，两端都空就跳过刷新。**刷新请求的形状（表单编码的标准 `grant_type=refresh_token`）没在真账号上验过**，第一次跑通前盯着日志里 `claude-oauth` 那一环。
 
-Codex / Grok 的 token 由上报器自己刷新写回（`auth.json`）；agy 的登录态由 `agy` 自己维护。
+Codex / Grok 的 token 由上报器自己刷新写回（`auth.json`）。
 
 ## cursor / antigravity
 
-用户要求五家 CLI 都装进镜像、在容器里各登录一次。
+五个 CLI 仍装进镜像，**只为登录一次**。限额运行时直打接口，不再调 `/usage`。
 
-**antigravity：能取。** 本机 IDE 进程那条路容器里走不通；`agy -p /usage` 在 print 模式里会展开
-斜杠命令，直接打出四行用量（两个模型桶 × 周 / 5 小时，给的是剩余百分比和重置时刻，实测 2026-09-05）。
-上报器每轮跑一次这条命令，翻成 `antigravity.primary … quaternary` 四扇窗口（`src/cli-usage.ts`）。
-CLI 没登录时那一行带 `limitsError` 照发；二进制压根不存在才当「没配」不发。
+**cursor。** Linux 上 `agent login` 把 JWT 写到 `/data/.config/cursor/auth.json` 的 `accessToken`（也可
+用 `CURSOR_AUTH_TOKEN` 直接注入）。上报器并发打 `api2.cursor.sh` 的
+`DashboardService/GetCurrentPeriodUsage`、`GetPlanInfo`、`GetHardLimit`（Connect RPC，Bearer JWT，
+不用 Cookie）。上报器不刷新这份 token，401 / 403 时那一行带
+`Cursor session expired — run \`agent login\` to re-authenticate.`。
 
-**cursor：暂时不行。** Cursor 编辑器 sqlite 里的 session JWT 容器里没有；`~/.cursor/cli-config.json`
-只有 `authInfo.authId / email`（实测），`cursor-agent` 的 print 模式也不拦截 `/usage`。找到可用
-JWT 再实现 cookie `WorkosCursorSessionToken=<userId>%3A%3A<jwt>` 那条，并把 `cursor` 加进
-`AGENT_IDS`。在那之前这一行不发。
+**antigravity。** 登录态在 `/data/.gemini/antigravity-cli/antigravity-oauth-token`。上报器打
+`cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary`。到期前 5 分钟或接口回 401 时，
+用 `ANTIGRAVITY_OAUTH_CLIENT_ID` / `ANTIGRAVITY_OAUTH_CLIENT_SECRET` 向 `oauth2.googleapis.com/token`
+刷新并原子写回。这两个变量从 Antigravity CLI 自己的安装里取，**不写进仓库**；没配就不刷新，
+过期那一行带 limitsError。
 
 alpine 上 cursor-agent / agy 是 glibc 二进制，镜像里加了 `gcompat`，装不上时 Dockerfile 不会把整次
-build 判失败（`|| true`），只是那一行限额发不出去，登录时看 `docker compose run` 的报错。
+build 判失败（`|| true`），只是那两家登录不了，登录时看 `docker compose run` 的报错。
 
 ## DRY_RUN
 
@@ -97,8 +100,9 @@ DRY_RUN=1 LIMITS_FIXTURE=./fixture.json HOME=/tmp/empty \
   node dist/index.js
 ```
 
-`LIMITS_FIXTURE` 的形状是 `{ "<id>": <该家原始 HTTP 响应体> }`：claude 是 `/api/oauth/usage` 的 JSON，
-codex 是 `wham/usage` 的 JSON，grok 是 `/v1/billing` 的 JSON。有它就不出网、不读凭据，走各家的规整函数。
+`LIMITS_FIXTURE` 的形状是 `{ "<id>": <该家原始 HTTP 响应体> }`：claude 是 `/api/oauth/usage`，
+codex 是 `wham/usage`，grok 是 `/v1/billing`，antigravity 是 `retrieveUserQuotaSummary`，
+cursor 是 `{ period, plan, hardLimit }` 三份 DashboardService 响应。有它就不出网、不读凭据。
 
 ## 在 NAS 上跑
 
@@ -116,7 +120,7 @@ COPYFILE_DISABLE=1 tar czf - -C reporters --exclude node_modules --exclude dist 
 ssh nas-host 'cat > /srv/lyjwpage/agent-limits-reporter/.env && chmod 600 /srv/lyjwpage/agent-limits-reporter/.env' < 本机那份.env
 ```
 
-先登录三家（见上），再起：
+先登录五家（见上），再起：
 
 ```bash
 ssh nas-host '/usr/local/bin/docker compose -f /srv/lyjwpage/agent-limits-reporter/compose.yaml up -d --build'

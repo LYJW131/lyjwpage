@@ -1,9 +1,9 @@
 import { readFile } from "node:fs/promises";
 
-import { fetchAntigravityViaCli, parseAgyUsage } from "./cli-usage.js";
 import { claudeRefreshConfigured, refreshClaudeOauth } from "./claude-oauth.js";
 import { config, type AgentId } from "./config.js";
 import { info } from "./log.js";
+import { fetchAntigravity, rowFromAntigravityQuota } from "./providers/antigravity.js";
 import {
   fetchClaude,
   isClaudeAuthExpired,
@@ -11,6 +11,7 @@ import {
   CLAUDE_AUTH_EXPIRED_MESSAGE,
 } from "./providers/claude.js";
 import { fetchCodex, rowFromCodexUsage } from "./providers/codex.js";
+import { fetchCursor, rowFromCursorResponses } from "./providers/cursor.js";
 import { fetchGrok, rowFromGrokBilling } from "./providers/grok.js";
 import type { AgentRow } from "./site.js";
 import { object } from "./windows.js";
@@ -39,21 +40,9 @@ function rowFromFixture(id: AgentId, body: unknown): AgentRow | null {
     case "grok":
       return rowFromGrokBilling(body);
     case "antigravity":
-      if (typeof body === "string") {
-        const limits = parseAgyUsage(body);
-        if (limits.length === 0) {
-          return {
-            id,
-            plan: null,
-            limits: [],
-            limitsError: "agy /usage 没有输出可解析的限额行，多半是没登录",
-          };
-        }
-        return { id, plan: null, limits, limitsError: null };
-      }
-      return null;
+      return rowFromAntigravityQuota(body);
     case "cursor":
-      return null;
+      return rowFromCursorResponses(body);
   }
 }
 
@@ -88,15 +77,16 @@ async function collectLive(id: AgentId): Promise<AgentRow | null> {
     case "grok":
       return fetchGrok();
     case "antigravity":
-      return fetchAntigravityViaCli();
+      return fetchAntigravity();
     case "cursor":
-      return null;
+      return fetchCursor();
   }
 }
 
 /**
  * 对 config.agentIds 里每家并发取。一家抛错只变成那一行的 limitsError。
- * cursor 仍不发。LIMITS_FIXTURE 形状是 `{ "<id>": <该家原始 HTTP 响应体> }`。
+ * LIMITS_FIXTURE：claude / codex / grok / antigravity 是原始 HTTP 响应体；
+ * cursor 是 `{ period, plan, hardLimit }` 三份。
  */
 export async function collectAgents(): Promise<AgentRow[]> {
   const fixture = config.limitsFixture ? await loadFixture(config.limitsFixture) : null;
