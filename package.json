@@ -7,7 +7,7 @@
     "dev": "next dev -p 3211",
     "build": "next build",
     "start": "next start",
-    "test": "node --test --experimental-strip-types src/lib/*.test.mts",
+    "test": "node --test --experimental-strip-types --import ./src/lib/testing/register-alias.mjs src/lib/*.test.mts",
     "typecheck": "next typegen && tsc --noEmit",
     "lint": "eslint"
   },
