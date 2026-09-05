@@ -40,6 +40,7 @@
 | `GROK_HOME` | | Grok 凭据目录，默认 `$HOME/.grok` |
 | `CODEX_HOME` | | Codex 凭据目录，默认 `$HOME/.codex` |
 | `CURSOR_AUTH_TOKEN` | | 直接注入 Cursor JWT。没有就读 `$XDG_CONFIG_HOME/cursor/auth.json`（默认 `/data/.config/cursor/auth.json`） |
+| `ANTIGRAVITY_PLAN_LABEL` | | Antigravity 的订阅名，如 `Google AI Pro`。配额接口不带订阅（IDE 里那句来自 Windsurf 那套 language server 问 aicode.googleapis.com 的 gRPC，CLI 从不显示；`loadCodeAssist` 回的 free-tier 是 Code Assist 档位不是订阅），只能人工指定；空 = 不渲染套餐 |
 | `ANTIGRAVITY_OAUTH_CLIENT_ID` | | 可选。不填时上报器启动会从镜像里的 `agy` 二进制扫出候选、刷新时逐对试，登录完就够。填了就直接用。**不写进仓库** |
 | `ANTIGRAVITY_OAUTH_CLIENT_SECRET` | | 同上 |
 | `AGY_BIN` | | 扫 OAuth 常量用的 `agy` 路径，默认 `agy`（镜像里在 `/usr/local/bin`） |
