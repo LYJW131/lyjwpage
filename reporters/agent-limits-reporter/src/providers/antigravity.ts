@@ -3,6 +3,7 @@ import path from "node:path";
 
 import { config } from "../config.js";
 import { info } from "../log.js";
+import { scanOAuthClientCandidates, type OAuthClient } from "./antigravity-oauth-client.js";
 import type { AgentRow } from "../site.js";
 import { genericWindows, object, rowFromWindows, text } from "../windows.js";
 
@@ -107,8 +108,42 @@ function accessExpired(expiry: unknown, now = Date.now()): boolean {
   return now + SKEW_MS >= ms;
 }
 
-function refreshConfigured(): boolean {
-  return Boolean(config.antigravityOAuth.clientId && config.antigravityOAuth.clientSecret);
+/**
+ * 能用的 OAuth 客户端。环境变量配了就是它；没配就从 `agy` 二进制扫候选（只扫一次），
+ * 刷新时逐对试，试对的记下来，之后不再试。
+ */
+let candidates: Promise<OAuthClient[]> | null = null;
+let working: OAuthClient | null = null;
+
+function oauthClientCandidates(): Promise<OAuthClient[]> {
+  const { clientId, clientSecret } = config.antigravityOAuth;
+  if (clientId && clientSecret) return Promise.resolve([{ clientId, clientSecret }]);
+  candidates ??= scanOAuthClientCandidates(config.agyBin);
+  return candidates;
+}
+
+async function refreshConfigured(): Promise<boolean> {
+  return (await oauthClientCandidates()).length > 0;
+}
+
+async function requestRefresh(
+  refreshToken: string,
+  client: OAuthClient,
+): Promise<{ status: number; json: Record<string, unknown> | null }> {
+  const body = new URLSearchParams({
+    grant_type: "refresh_token",
+    refresh_token: refreshToken,
+    client_id: client.clientId,
+    client_secret: client.clientSecret,
+  });
+  const res = await fetch(TOKEN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body,
+    signal: AbortSignal.timeout(20_000),
+  });
+  const json = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+  return { status: res.status, json };
 }
 
 async function readTokenFile(home = config.home): Promise<TokenFile | null> {
@@ -132,22 +167,29 @@ async function writeTokenFileAtomic(file: TokenFile, home = config.home): Promis
 async function refreshAntigravityToken(file: TokenFile, home = config.home): Promise<string> {
   const refreshToken = text(file.token?.refresh_token);
   if (!refreshToken) throw new Error("Antigravity 凭据里没有 refresh_token");
-  const body = new URLSearchParams({
-    grant_type: "refresh_token",
-    refresh_token: refreshToken,
-    client_id: config.antigravityOAuth.clientId,
-    client_secret: config.antigravityOAuth.clientSecret,
-  });
-  const res = await fetch(TOKEN_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body,
-    signal: AbortSignal.timeout(20_000),
-  });
-  const json = (await res.json().catch(() => null)) as Record<string, unknown> | null;
-  const accessToken = text(json?.access_token);
-  if (!res.ok || !accessToken) {
-    throw new Error(`Antigravity OAuth 刷新失败：HTTP ${res.status}`);
+
+  /**
+   * 先用上次试对的那对；没有就按候选顺序试。配错的那对 Google 回 401 invalid_client，
+   * 换下一对；refresh_token 本身坏了（invalid_grant）换谁都没用，直接报出去。
+   */
+  const order = working ? [working] : await oauthClientCandidates();
+  if (order.length === 0) throw new Error("没有可用的 Antigravity OAuth 客户端（环境变量没配，agy 二进制也扫不出）");
+  let accessToken: string | null = null;
+  let json: Record<string, unknown> | null = null;
+  let lastStatus = 0;
+  for (const client of order) {
+    const result = await requestRefresh(refreshToken, client);
+    lastStatus = result.status;
+    accessToken = text(result.json?.access_token);
+    if (result.status === 200 && accessToken) {
+      working = client;
+      json = result.json;
+      break;
+    }
+    if (text(result.json?.error) === "invalid_grant") break;
+  }
+  if (!accessToken) {
+    throw new Error(`Antigravity OAuth 刷新失败：HTTP ${lastStatus}`);
   }
   const token = { ...(file.token ?? {}), access_token: accessToken };
   const expiresIn = Number(json?.expires_in);
@@ -182,12 +224,13 @@ export async function fetchAntigravity(): Promise<AgentRow | null> {
   let accessToken = text(file.token.access_token);
   const expired = accessExpired(file.token.expiry);
 
-  if (expired && !refreshConfigured()) {
+  const canRefresh = await refreshConfigured();
+  if (expired && !canRefresh) {
     return { id: "antigravity", plan: null, limits: [], limitsError: EXPIRED_MESSAGE };
   }
 
   try {
-    if (expired && refreshConfigured()) {
+    if (expired && canRefresh) {
       accessToken = await refreshAntigravityToken(file);
     }
     if (!accessToken) {
@@ -195,7 +238,7 @@ export async function fetchAntigravity(): Promise<AgentRow | null> {
     }
 
     let result = await retrieveQuota(accessToken);
-    if (result.status === 401 && refreshConfigured()) {
+    if (result.status === 401 && canRefresh) {
       const latest = (await readTokenFile()) ?? file;
       accessToken = await refreshAntigravityToken(latest);
       result = await retrieveQuota(accessToken);
