@@ -113,7 +113,7 @@ Redis（见下面那节），本来就不需要谁转给谁。
 
 Redis TCP 连接按请求作用域租用：同一 Node 实例里的并发请求共用一条，最后一个请求和命令结束后主动断开。不能让 ioredis 永久单例留在 serverless 实例里——实例暂停时普通 idle timer 不会跑，旧部署和 Preview 会各留一条空闲连接。Preview 必须不配 Redis 或使用独立 `REDIS_URL`；`REDIS_PREFIX` 只隔离键，不隔离连接额度。
 
-各路数据几乎全是**推进来**的，本站没有任何按钟轮询上游的东西。推送入口共用 `/api/ingest/*` 和同一个 `TELEMETRY_INGEST_SECRET`，状态落在 `lib/redis.ts` 的 mirrorKey 里（Redis 为主、进程内存为辅，没配 `REDIS_URL` 也能跑）。七个上报侧：Mac Telemetry Hub、iPhone Telemetry Hub、Home Assistant（HomePod）、Emby 推送代理、PlayStation 上报 Worker、VPS 上的 server-reporter、NAS 上的各 agent 限额上报器（`reporters/agent-limits-reporter`）。剩下那两路没有上报方（Apple Music 的「最近在听」、GitHub 贡献日历）由站点自己拉，见下一段。PlayStation 那个 Worker 的 `wrangler.toml` 里 `SITE_URL` 已经填成主站，合并到 main 部署之后即开始真实上报；站点侧已经接好 `/api/ingest/playstation`、`/api/status/playing`、`/api/status/playing/now` 和 `/api/status/trophies`，Worker 的代码和部署说明在 `workers/playstation-reporter/`。它的 cron 每分钟看一眼[那两个人头数](#两个上报器共用一套三档)：有人正看着就 60 秒一轮完整 tick，页面只是开着 2 分钟一轮，一个页面都没开压回 15 分钟一轮，**每轮都发 presence** —— 内容没变也发，那一封就是心跳：站点照样落库刷新 `observedAt`，但不广播、也不急失效，只推一次普通 tag 让快照跟着走。断流判定因此在 `/api/status/playing/now` 出口每次请求现算（`PLAYSTATION_STALE_MS`，默认 50 分钟 = 闲时三轮加余量），超窗发降级信封：**Worker 死了是「不知道他在不在玩」，不是「他离线了」**，所以宁可让卡片收起「正在游玩」那一行，也不伪造一个 `online: false`。奖杯目录只在解锁指纹变化时才推，没有 `/now`，也不走实时推送。前两个是**设备级的遥测中心**：一台设备一个入口、一个信封、一个 `modules` 字典。上报器只跟一个源站说话，收到的那份会把请求原样转给对端部署，见[上面那节](#两份生产之间靠传播上报对齐)。
+各路数据几乎全是**推进来**的，本站没有任何按钟轮询上游的东西。推送入口共用 `/api/ingest/*` 和同一个 `TELEMETRY_INGEST_SECRET`，状态落在 `lib/redis.ts` 的 mirrorKey 里（Redis 为主、进程内存为辅，没配 `REDIS_URL` 也能跑）。七个上报侧：Mac Telemetry Hub、iPhone Telemetry Hub、Home Assistant（HomePod）、Emby 推送代理、PlayStation 上报 Worker、VPS 上的 server-reporter、NAS 上的各 agent 限额上报器（`reporters/agent-limits-reporter`）。剩下那两路没有上报方（Apple Music 的「最近在听」、GitHub 贡献日历）由站点自己拉，见下一段。PlayStation 那个 Worker 的 `wrangler.toml` 里 `SITE_URL` 已经填成主站，合并到 main 部署之后即开始真实上报；站点侧已经接好 `/api/ingest/playstation`、`/api/status/playing`、`/api/status/playing/now` 和 `/api/status/trophies`，Worker 的代码和部署说明在 `workers/playstation-reporter/`。它的 cron 每分钟看一眼[那两个人头数](#三个上报器共用一套三档)：有人正看着就 60 秒一轮完整 tick，页面只是开着 2 分钟一轮，一个页面都没开压回 15 分钟一轮，**每轮都发 presence** —— 内容没变也发，那一封就是心跳：站点照样落库刷新 `observedAt`，但不广播、也不急失效，只推一次普通 tag 让快照跟着走。断流判定因此在 `/api/status/playing/now` 出口每次请求现算（`PLAYSTATION_STALE_MS`，默认 50 分钟 = 闲时三轮加余量），超窗发降级信封：**Worker 死了是「不知道他在不在玩」，不是「他离线了」**，所以宁可让卡片收起「正在游玩」那一行，也不伪造一个 `online: false`。奖杯目录只在解锁指纹变化时才推，没有 `/now`，也不走实时推送。前两个是**设备级的遥测中心**：一台设备一个入口、一个信封、一个 `modules` 字典。上报器只跟一个源站说话，收到的那份会把请求原样转给对端部署，见[上面那节](#两份生产之间靠传播上报对齐)。
 
 首屏 HTML 与状态 API 使用独立的 `page:<主题>` / `api:<主题>` 缓存标签和条目。
 普通上报让两份都后台更新；播放、充电结构等 urgent 上报只让 API 立即失效，首屏仍先返回
@@ -394,7 +394,8 @@ POST /api/ingest/agents
 不要把上一次的好值再发一遍，站点自己留着。
 
 **每轮必发**，内容没变也发 —— 那一封就是心跳。站点给每行盖 `limitsAt`（收到的时刻），
-把三倍间隔的窗口（`AGENT_LIMITS_PUSH_INTERVAL_MS`，默认 10 分钟 × 3）作为
+采集采用[同款三档](#三个上报器共用一套三档)：可见 5 分钟、仅开着 10 分钟、无人 60 分钟。
+站点把最慢档三轮加余量的窗口（`AGENT_LIMITS_STALE_MS`，默认 185 分钟）作为
 `limitsStaleAfterMs` 一起发给浏览器，陈旧与否浏览器自己算：条照画、数字停在最后一次看到
 的值，但整块淡掉并标 Stale。不在服务端拼「N 分钟没更新」—— 首屏是 `'use cache'` 冻住的。
 这一路不走实时推送，卡片 30 秒一轮自己来问。
@@ -626,7 +627,7 @@ Authorization: Bearer <TELEMETRY_INGEST_SECRET>
 认的是人起的名字。
 
 **每封都是心跳。** 上报器每轮都发，站点拿 `pushedAt` 判断它还活着没有。节奏是
-和 PlayStation 那个 Worker 共用的那套三档（见[下一节](#两个上报器共用一套三档)）：有人正看着
+和 PlayStation 那个 Worker 共用的那套三档（见[下一节](#三个上报器共用一套三档)）：有人正看着
 60 秒、页面只是开着 2 分钟、一个页面都没开 15 分钟。断流窗口锚最慢那档，默认 50 分钟
 （可用 `SERVER_STALE_MS` 改）。这条路上没有实时推送 —— CPU 和网速每个间隔都在变，
 广播就是拿推送当轮询用；卡片 30 秒自己来问（和充电头一档，比快档还勤，多出来那趟拿到
@@ -635,17 +636,17 @@ Authorization: Bearer <TELEMETRY_INGEST_SECRET>
 
 公开读取是 `/api/status/server`，没有 `/now`：一台机器一份快照，不配列表。
 
-### 两个上报器共用一套三档
+### 三个上报器共用一套三档
 
-`server-reporter` 和 `playstation-reporter` 各自决定「下一轮多久」的方式是同一套，
-逐档同数（`apple-music-reporter` 从前也在这套里，它已经退役，那份列表改由站点在
+`server-reporter`、`playstation-reporter` 和 `agent-limits-reporter` 按相同人数口径分档，
+限额使用更长间隔（`apple-music-reporter` 从前也在这套里，它已经退役，那份列表改由站点在
 访客的请求里自己拉，见[上面那节](#最近在听--apple-music)）：
 
-| 问到什么 | 下一轮 |
-| --- | --- |
-| `online-counter` 的 `GET /count` 大于 0 —— 有页面**可见** | 60 秒 |
-| 否则 `live-push` 的 `GET /count` 大于 0 —— 有页面**开着** | 2 分钟 |
-| 两个都是 0 | 15 分钟 |
+| 问到什么 | server / PlayStation | agent limits |
+| --- | --- | --- |
+| `online-counter` 的 `GET /count` 大于 0 —— 有页面**可见** | 60 秒 | 5 分钟 |
+| 否则 `live-push` 的 `GET /count` 大于 0 —— 有页面**开着** | 2 分钟 | 10 分钟 |
+| 两个都是 0 | 15 分钟 | 60 分钟 |
 
 要两个数是因为它们是两个口径：`use-online-count` 在页面不可见时把连接整条关掉，所以
 切走的标签页、锁了屏的手机在 online-counter 那侧算 0；`use-live-events` 那条不关，于是
@@ -653,15 +654,16 @@ Authorization: Bearer <TELEMETRY_INGEST_SECRET>
 那一下不该看见一刻钟前的数字，又不值得按可见那档一直打上游。可见问到了就不问第二个。
 
 读不到（超时、非 200、形状不对、没配那个变量）一律当 0：**兜底方向是单向的**，只会往
-慢里退，永远不会因为故障变快。live-push 一份生产一个，两家读的都是 Vercel 那一份，
+慢里退，永远不会因为故障变快。live-push 一份生产一个，三家读的都是 Vercel 那一份，
 国内那份生产上开着的页面因此不进判断 —— 少数了同样只会更慢。
 
-`server-reporter` 是常驻进程，它的长档不是一觉睡满：拆成一个个快档长度的小觉，每觉
-醒来重新问一次，该走更快那档了立刻开跑，否则「从没人到有人正看着」最坏要等满一个
-闲档。PlayStation 那侧不用拆，它的 cron 每分钟看一次门，本来就是这个粒度。
+`server-reporter` 和 `agent-limits-reporter` 是常驻进程，长档拆成一个个快档长度的小觉，
+醒来重新问一次，该走更快那档了立刻开跑。限额每 5 分钟重查，server 每 60 秒重查，
+避免从无人到有人时等满整个闲档。PlayStation 那侧不用拆，它的 cron 每分钟看一次门。
 
-两条断流窗口都锚**最慢那档**（`SERVER_STALE_MS` / `PLAYSTATION_STALE_MS`，都是
-50 分钟 = 三轮 15 分钟加余量）：改闲档必须同步改 `src/lib/freshness.ts`，改另外两档不用。
+三条断流窗口都锚**最慢那档**：`SERVER_STALE_MS` / `PLAYSTATION_STALE_MS` 为
+50 分钟（三轮 15 分钟加余量），`AGENT_LIMITS_STALE_MS` 为 185 分钟（三轮 60 分钟加余量）。
+改闲档必须同步改 `src/lib/freshness.ts`，改另外两档不用。
 
 ## 改内容
 

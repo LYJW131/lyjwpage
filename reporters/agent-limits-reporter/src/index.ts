@@ -1,4 +1,5 @@
 import { config } from "./config.js";
+import { waitForNextRound } from "./cadence.js";
 import { refreshClaudeIfDue } from "./claude-oauth.js";
 import { collectAgents } from "./limits.js";
 import { failure, info, recovered } from "./log.js";
@@ -66,7 +67,7 @@ async function main() {
   info(
     config.dryRun
       ? "DRY_RUN：打印请求体然后退出"
-      : `agent-limits-reporter 启动，每 ${config.pushIntervalMs}ms 推一次`,
+      : `agent-limits-reporter 启动，三档 ${config.cadence.liveIntervalMs} / ${config.cadence.openIntervalMs} / ${config.cadence.idleIntervalMs}ms`,
   );
   let backoff = RETRY_MS;
   for (;;) {
@@ -74,7 +75,7 @@ async function main() {
       await round();
       backoff = RETRY_MS;
       if (config.dryRun) return;
-      await sleep(config.pushIntervalMs);
+      await waitForNextRound();
     } catch (error) {
       failure("push", error);
       if (config.dryRun) throw error;

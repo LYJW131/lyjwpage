@@ -609,8 +609,8 @@ export type VibeCodingPayload = {
   /** 源站收到用量摘要的时刻；尚未收到时为 null。来源新鲜度看各自 usageStatus。 */
   pushedAt: number | null;
   /**
-   * 限额那条路的陈旧窗口。容器上报器每轮必发（那一封就是心跳），窗口是三倍
-   * 间隔，服务端按 `AGENT_LIMITS_PUSH_INTERVAL_MS` 算好盖在这里，浏览器拿它和
+   * 限额那条路的陈旧窗口。容器上报器每轮必发（那一封就是心跳），窗口锚最慢档
+   * 加缓存余量，服务端按 `AGENT_LIMITS_STALE_MS` 算好盖在这里，浏览器拿它和
    * 各行的 `limitsAt` 比。
    */
   limitsStaleAfterMs: number;
