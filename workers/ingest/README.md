@@ -57,7 +57,15 @@ pnpm --dir workers/ingest exec wrangler secret put REDIS_URL
 pnpm --dir workers/ingest exec wrangler secret put TELEMETRY_INGEST_SECRET
 ```
 
-`REDIS_URL` 支持逗号分隔填入多库（主从双写）：首个为主库（负责读写），后续为镜像库（只写同步）。写入操作并发同步至所有库，镜像库失败不影响主库与上报响应。国内 EdgeOne 可配置国内 Redis 实现毫秒级直读。
+`REDIS_URL` 支持逗号分隔填入多库（主从双写）：首个为主库（负责读写），后续为镜像库（只写同步，
+构造时使用比主库更短的连接/命令超时，不可达时最多拖慢上报响应几百毫秒而非秒级）。写入操作并发
+同步至所有库，镜像库失败仅记录日志、不影响主库与上报响应。国内 EdgeOne 可配置国内 Redis 实现
+毫秒级直读。
+
+**新增镜像库前先回填已有数据**：镜像只接收部署后的增量写入，不会自动搬运主库已有的键
+（充电头历史等靠 `RPUSH` 累积的数据尤其明显，切换读取端当天会是空的）。用 `redis-cli --rdb`
+或 `DUMP`/`RESTORE` 之类的工具把主库现有键复制一份到新镜像库，再让 EdgeOne 切换过去读取；
+键前缀（`REDIS_PREFIX`）要和主库一致。
 
 站点配置 `NEXT_PUBLIC_LIVE_PUSH_URL=https://ingest.homepage.lyjw.llc` 与相同的
 `TELEMETRY_INGEST_SECRET`；浏览器由这一个源拼 `/ws` 和 `/online/ws`。所有上报器的目标为

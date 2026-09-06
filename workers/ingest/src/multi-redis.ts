@@ -9,6 +9,18 @@ export function parseRedisUrls(raw: string | undefined | null): string[] {
     .filter(Boolean);
 }
 
+function logMirrorError(context: string, error: unknown): void {
+  console.error(`[redis:mirror] ${context}`, error instanceof Error ? error.message : String(error));
+}
+
+/** ioredis 形状的 pipeline 结果：exec() 本身不因单条命令失败而 reject，失败表示为 `[error, null]`。 */
+function logMirrorPipelineErrors(results: [Error | null, unknown][] | null): void {
+  if (!results) return;
+  for (const [error] of results) {
+    if (error) logMirrorError("pipeline 命令失败", error);
+  }
+}
+
 /**
  * 多 Redis 客户端代理（主从/双写）。
  *
@@ -16,9 +28,17 @@ export function parseRedisUrls(raw: string | undefined | null): string[] {
  * hgetall / get），作为唯一权威结果返回。
  * 第 2 个及后续为镜像库（Mirrors）：只在写入（set / del / pipeline 写命令）时
  * 并发复制。只读 pipeline 不碰镜像，避免跨海读拖住上报响应。
- * pipeline.hset 与主库一样按字段合并，不先 DEL：并发心跳只带时间戳时，
- * 不能把刚写入的 music 等域整表抹掉。overlay 读会让 hash 盖住 blob。
- * 镜像库失败仅记录日志，不阻断主流程。
+ *
+ * pipeline.hset 与主库一样按字段合并，不先 DEL 整个 hash：先 DEL 再写会在两个
+ * 并发请求分别更新不同字段时，让后到的那个把先到的字段整表抹掉（例如换歌和心跳
+ * 并发时，心跳的 DEL 会吞掉刚写入的 music）。不清空的代价是，如果某次镜像写入
+ * 网络失败，那次涉及的字段会在镜像上滞留旧值，直到同一字段下次成功写入才会更新——
+ * 这是有意接受的已知限制，而不是遗漏。镜像失败（含 pipeline 里单条命令失败）仅
+ * 记录日志，不阻断主流程。
+ *
+ * 镜像客户端应使用比主库更短的连接/命令超时构造（见 redis-driver.ts 的
+ * `MIRROR_TIMEOUT_MS`），把镜像不可达时额外拖慢上报响应的时间上限收紧到几百毫秒
+ * 量级，而不是和主库一样的 2 秒。
  */
 export class MultiWorkerRedis implements RedisClient {
   readonly primary: RedisClient;
@@ -39,7 +59,7 @@ export class MultiWorkerRedis implements RedisClient {
       this.primary.set(key, value, ...args),
       ...this.mirrors.map((m) =>
         m.set(key, value, ...args).catch((error) => {
-          console.error("[redis:mirror] set 失败", error instanceof Error ? error.message : String(error));
+          logMirrorError("set 失败", error);
           return null;
         }),
       ),
@@ -52,7 +72,7 @@ export class MultiWorkerRedis implements RedisClient {
       this.primary.del(key),
       ...this.mirrors.map((m) =>
         m.del(key).catch((error) => {
-          console.error("[redis:mirror] del 失败", error instanceof Error ? error.message : String(error));
+          logMirrorError("del 失败", error);
           return 0;
         }),
       ),
@@ -118,10 +138,16 @@ export class MultiWorkerRedis implements RedisClient {
           primaryPipe.exec(),
           ...(mirrorHasWrites
             ? mirrorPipes.map((m) =>
-                m.exec().catch((error) => {
-                  console.error("[redis:mirror] pipeline 失败", error instanceof Error ? error.message : String(error));
-                  return null;
-                }),
+                m
+                  .exec()
+                  .then((result) => {
+                    logMirrorPipelineErrors(result);
+                    return result;
+                  })
+                  .catch((error) => {
+                    logMirrorError("pipeline 失败", error);
+                    return null;
+                  }),
               )
             : []),
         ]);

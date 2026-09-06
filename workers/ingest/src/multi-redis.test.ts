@@ -9,6 +9,7 @@ function createMockRedis(options: {
   setThrow?: boolean;
   delThrow?: boolean;
   pipeThrow?: boolean;
+  pipeExecResult?: [Error | null, unknown][];
 } = {}): {
   client: RedisClient;
   calls: {
@@ -67,7 +68,7 @@ function createMockRedis(options: {
     exec: async () => {
       calls.pipeExecs += 1;
       if (options.pipeThrow) throw new Error("pipe error");
-      return [[null, "OK"]];
+      return options.pipeExecResult ?? [[null, "OK"]];
     },
   };
 
@@ -226,6 +227,35 @@ test("MultiWorkerRedis pipeline 只把写复制到镜像且同步 disconnect", a
   multi.disconnect();
   assert.equal(primary.calls.disconnected, true);
   assert.equal(mirror.calls.disconnected, true);
+});
+
+test("MultiWorkerRedis pipeline 镜像单条命令失败会被记录，不影响主库结果", async () => {
+  const primary = createMockRedis();
+  // ioredis 形状：exec() 正常 resolve，失败的命令表示为 [error, null]，不会 reject
+  const mirror = createMockRedis({ pipeExecResult: [[new Error("READONLY"), null]] });
+
+  const logs: unknown[][] = [];
+  const originalConsoleError = console.error;
+  console.error = (...args: unknown[]) => {
+    logs.push(args);
+  };
+
+  try {
+    const multi = new MultiWorkerRedis([primary.client, mirror.client]);
+    const pipe = multi.pipeline();
+    pipe.set("k", "v");
+    const execResult = await pipe.exec();
+
+    assert.deepEqual(execResult, [[null, "OK"]]);
+    assert.equal(mirror.calls.pipeExecs, 1);
+  } finally {
+    console.error = originalConsoleError;
+  }
+
+  assert.ok(
+    logs.some((args) => args.some((arg) => typeof arg === "string" && arg.includes("READONLY"))),
+    "镜像 pipeline 单条命令失败应被记录到日志",
+  );
 });
 
 /** 站点 overlay：blob 打底，每个 hash 域盖上去。 */

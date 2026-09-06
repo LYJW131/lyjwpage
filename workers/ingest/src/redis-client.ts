@@ -27,6 +27,12 @@ type Command = readonly (string | number)[];
 const CONNECT_TIMEOUT_MS = 2_000;
 const COMMAND_TIMEOUT_MS = 2_000;
 
+/** 构造超时选项。镜像库用更短的值，避免不可达时把上报响应拖到主库同等量级。 */
+export interface WorkerRedisOptions {
+  connectTimeoutMs?: number;
+  commandTimeoutMs?: number;
+}
+
 export class WorkerRedis implements RedisClient {
   private readonly ready: Promise<void>;
   private socket: Socket | null = null;
@@ -35,8 +41,12 @@ export class WorkerRedis implements RedisClient {
   private readonly parser = new RespParser();
   private chain: Promise<unknown> = Promise.resolve();
   private closed = false;
+  private readonly connectTimeoutMs: number;
+  private readonly commandTimeoutMs: number;
 
-  constructor(url: string) {
+  constructor(url: string, options: WorkerRedisOptions = {}) {
+    this.connectTimeoutMs = options.connectTimeoutMs ?? CONNECT_TIMEOUT_MS;
+    this.commandTimeoutMs = options.commandTimeoutMs ?? COMMAND_TIMEOUT_MS;
     this.ready = this.open(url);
     // 打不开时这里只是标记；真正的错误在第一次命令里抛给调用方
     this.ready.catch(() => {
@@ -53,7 +63,7 @@ export class WorkerRedis implements RedisClient {
     this.socket = socket;
     this.writer = socket.writable.getWriter();
     this.reader = socket.readable.getReader();
-    await withTimeout(socket.opened, CONNECT_TIMEOUT_MS, "连接 Redis 超时");
+    await withTimeout(socket.opened, this.connectTimeoutMs, "连接 Redis 超时");
 
     const handshake: Command[] = [];
     if (address.password) {
@@ -97,7 +107,7 @@ export class WorkerRedis implements RedisClient {
       return replies;
     })();
     try {
-      return await withTimeout(work, COMMAND_TIMEOUT_MS, "Redis 命令超时");
+      return await withTimeout(work, this.commandTimeoutMs, "Redis 命令超时");
     } catch (error) {
       // 超时或半截回复之后这条连接的读写位置已经对不上，只能整条作废
       this.disconnect();

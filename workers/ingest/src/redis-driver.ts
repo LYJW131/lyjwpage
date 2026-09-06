@@ -6,6 +6,9 @@ import { MultiWorkerRedis, parseRedisUrls } from "./multi-redis";
 import { WorkerRedis } from "./redis-client";
 import { requestStore } from "./runtime";
 
+/** 镜像库专属超时：不可达时最多让写入多等这么久，不拖到主库 2s 的量级。 */
+const MIRROR_TIMEOUT_MS = 400;
+
 /**
  * `@/lib/redis-driver` 的 Worker 版。wrangler.toml 的 alias 把站点那份（ioredis）换成
  * 这一份，导出面逐个对齐 —— lib/redis 和各 store 一行不改地打进 Worker。
@@ -13,7 +16,8 @@ import { requestStore } from "./runtime";
  * 和站点那份的差别只有一处：租约按**请求**分，不按实例分（理由见 runtime.ts 的
  * RequestContext）。连不上就停用 30 秒、期间一律走内存兜底，这一点照抄。
  *
- * REDIS_URL 支持逗号分隔多个地址：首个为主库（负责读写），后续为镜像库（只负责写）。
+ * REDIS_URL 支持逗号分隔多个地址：首个为主库（负责读写），后续为镜像库（只负责写），
+ * 用 `MIRROR_TIMEOUT_MS` 单独收紧连接/命令超时。
  */
 
 export type { RedisAnswer, RedisClient, RedisPipeline };
@@ -51,7 +55,15 @@ export function getRedis(): RedisClient | null {
     return pool.use(new WorkerRedis(urls[0]!));
   }
 
-  return pool.use(new MultiWorkerRedis(urls.map((url) => new WorkerRedis(url))));
+  const [primaryUrl, ...mirrorUrls] = urls;
+  return pool.use(
+    new MultiWorkerRedis([
+      new WorkerRedis(primaryUrl!),
+      ...mirrorUrls.map(
+        (url) => new WorkerRedis(url, { connectTimeoutMs: MIRROR_TIMEOUT_MS, commandTimeoutMs: MIRROR_TIMEOUT_MS }),
+      ),
+    ]),
+  );
 }
 
 export function withRedisScope<T>(run: () => Promise<T>): Promise<T> {
