@@ -220,7 +220,6 @@ test("MultiWorkerRedis pipeline 只把写复制到镜像且同步 disconnect", a
     ["RPUSH", "list", "item"],
     ["LTRIM", "list", 0, 10],
     ["PEXPIRE", "list", 5000],
-    ["DEL", "hash"],
     ["HSET", "hash", { f1: "v1" }],
   ]);
 
@@ -318,15 +317,14 @@ function createStoreRedis(label: string, options: { failNextExec?: boolean } = {
   return { client, hashes, strings };
 }
 
-test("镜像换歌 HSET 失败后，心跳写入的 blob 不再被旧 music 盖住", async () => {
+test("镜像换歌成功后再到只带时间戳的心跳，不能抹掉 music", async () => {
   const hashK = "telemetry:fields";
   const blobK = "telemetry:state";
   const oldSong = { music: "old", at: 1 };
-  const newSong = { music: "new", at: 2 };
-  const heartbeat = { music: "new", at: 3 };
+  const staleHeartbeat = { music: "old", at: 3 };
 
   const primary = createStoreRedis("primary");
-  const mirror = createStoreRedis("mirror", { failNextExec: true });
+  const mirror = createStoreRedis("mirror");
   primary.hashes.set(hashK, new Map([["music", JSON.stringify("old")], ["at", "1"]]));
   mirror.hashes.set(hashK, new Map([["music", JSON.stringify("old")], ["at", "1"]]));
   await primary.client.set(blobK, JSON.stringify(oldSong));
@@ -337,13 +335,14 @@ test("镜像换歌 HSET 失败后，心跳写入的 blob 不再被旧 music 盖�
   const songPipe = multi.pipeline();
   songPipe.hset(hashK, { music: JSON.stringify("new"), at: "2" }).hgetall(hashK).get(blobK);
   await songPipe.exec();
-  await multi.set(blobK, JSON.stringify(newSong));
-
   const beatPipe = multi.pipeline();
   beatPipe.hset(hashK, { at: "3" }).hgetall(hashK).get(blobK);
   await beatPipe.exec();
-  await multi.set(blobK, JSON.stringify(heartbeat));
+  await multi.set(blobK, JSON.stringify(staleHeartbeat));
 
   const mirrorHash = Object.fromEntries(mirror.hashes.get(hashK) ?? []);
-  assert.deepEqual(overlayHashBlob(mirrorHash, mirror.strings.get(blobK) ?? null), heartbeat);
+  assert.deepEqual(overlayHashBlob(mirrorHash, mirror.strings.get(blobK) ?? null), {
+    music: "new",
+    at: 3,
+  });
 });

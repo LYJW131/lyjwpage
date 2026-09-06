@@ -16,7 +16,8 @@ export function parseRedisUrls(raw: string | undefined | null): string[] {
  * hgetall / get），作为唯一权威结果返回。
  * 第 2 个及后续为镜像库（Mirrors）：只在写入（set / del / pipeline 写命令）时
  * 并发复制。只读 pipeline 不碰镜像，避免跨海读拖住上报响应。
- * pipeline.hset 在镜像上先 DEL 再 HSET，避免上次失败留下的旧域盖住后续整包 blob。
+ * pipeline.hset 与主库一样按字段合并，不先 DEL：并发心跳只带时间戳时，
+ * 不能把刚写入的 music 等域整表抹掉。overlay 读会让 hash 盖住 blob。
  * 镜像库失败仅记录日志，不阻断主流程。
  */
 export class MultiWorkerRedis implements RedisClient {
@@ -101,12 +102,7 @@ export class MultiWorkerRedis implements RedisClient {
       },
       hset: (key, object) => {
         primaryPipe.hset(key, object);
-        // 镜像上先清掉整份 hash 再写入本轮字段：overlay 读会让每个 hash 域盖住
-        // blob，换歌那次 HSET 若被吞掉，心跳只带时间戳，旧 music 会一直压住新歌。
-        writeToMirrors((m) => {
-          m.del(key);
-          m.hset(key, object);
-        });
+        writeToMirrors((m) => m.hset(key, object));
         return pipe;
       },
       hgetall: (key) => {
