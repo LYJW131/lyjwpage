@@ -12,8 +12,11 @@ export function parseRedisUrls(raw: string | undefined | null): string[] {
 /**
  * 多 Redis 客户端代理（主从/双写）。
  *
- * 第 1 个为主库（Primary）：承担所有读操作（get / lrange），作为唯一权威结果返回。
- * 第 2 个及后续为镜像库（Mirrors）：在上报写入（set / del / pipeline）时并发复制。
+ * 第 1 个为主库（Primary）：承担所有读操作（get / lrange，以及 pipeline 里的
+ * hgetall / get），作为唯一权威结果返回。
+ * 第 2 个及后续为镜像库（Mirrors）：只在写入（set / del / pipeline 写命令）时
+ * 并发复制。只读 pipeline 不碰镜像，避免跨海读拖住上报响应。
+ * pipeline.hset 在镜像上先 DEL 再 HSET，避免上次失败留下的旧域盖住后续整包 blob。
  * 镜像库失败仅记录日志，不阻断主流程。
  */
 export class MultiWorkerRedis implements RedisClient {
@@ -63,57 +66,68 @@ export class MultiWorkerRedis implements RedisClient {
   pipeline(): RedisPipeline {
     const primaryPipe = this.primary.pipeline();
     const mirrorPipes = this.mirrors.map((m) => m.pipeline());
+    let mirrorHasWrites = false;
+
+    const writeToMirrors = (apply: (pipe: RedisPipeline) => void) => {
+      mirrorHasWrites = true;
+      for (const m of mirrorPipes) apply(m);
+    };
 
     const pipe: RedisPipeline = {
       set: (key, value, ...args) => {
         primaryPipe.set(key, value, ...args);
-        for (const m of mirrorPipes) m.set(key, value, ...args);
+        writeToMirrors((m) => m.set(key, value, ...args));
         return pipe;
       },
       del: (key) => {
         primaryPipe.del(key);
-        for (const m of mirrorPipes) m.del(key);
+        writeToMirrors((m) => m.del(key));
         return pipe;
       },
       rpush: (key, ...values) => {
         primaryPipe.rpush(key, ...values);
-        for (const m of mirrorPipes) m.rpush(key, ...values);
+        writeToMirrors((m) => m.rpush(key, ...values));
         return pipe;
       },
       ltrim: (key, start, stop) => {
         primaryPipe.ltrim(key, start, stop);
-        for (const m of mirrorPipes) m.ltrim(key, start, stop);
+        writeToMirrors((m) => m.ltrim(key, start, stop));
         return pipe;
       },
       pexpire: (key, ms) => {
         primaryPipe.pexpire(key, ms);
-        for (const m of mirrorPipes) m.pexpire(key, ms);
+        writeToMirrors((m) => m.pexpire(key, ms));
         return pipe;
       },
       hset: (key, object) => {
         primaryPipe.hset(key, object);
-        for (const m of mirrorPipes) m.hset(key, object);
+        // 镜像上先清掉整份 hash 再写入本轮字段：overlay 读会让每个 hash 域盖住
+        // blob，换歌那次 HSET 若被吞掉，心跳只带时间戳，旧 music 会一直压住新歌。
+        writeToMirrors((m) => {
+          m.del(key);
+          m.hset(key, object);
+        });
         return pipe;
       },
       hgetall: (key) => {
         primaryPipe.hgetall(key);
-        for (const m of mirrorPipes) m.hgetall(key);
         return pipe;
       },
       get: (key) => {
         primaryPipe.get(key);
-        for (const m of mirrorPipes) m.get(key);
         return pipe;
       },
       exec: async () => {
         const [primaryResult] = await Promise.all([
           primaryPipe.exec(),
-          ...mirrorPipes.map((m) =>
-            m.exec().catch((error) => {
-              console.error("[redis:mirror] pipeline 失败", error instanceof Error ? error.message : String(error));
-              return null;
-            }),
-          ),
+          ...(mirrorHasWrites
+            ? mirrorPipes.map((m) =>
+                m.exec().catch((error) => {
+                  console.error("[redis:mirror] pipeline 失败", error instanceof Error ? error.message : String(error));
+                  return null;
+                }),
+              )
+            : []),
         ]);
         return primaryResult;
       },

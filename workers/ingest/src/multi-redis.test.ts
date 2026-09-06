@@ -18,6 +18,7 @@ function createMockRedis(options: {
     lrange: Array<[string, number, number]>;
     disconnected: boolean;
     pipeCommands: Array<[string, ...unknown[]]>;
+    pipeExecs: number;
   };
 } {
   const calls = {
@@ -27,6 +28,7 @@ function createMockRedis(options: {
     lrange: [] as Array<[string, number, number]>,
     disconnected: false,
     pipeCommands: [] as Array<[string, ...unknown[]]>,
+    pipeExecs: 0,
   };
 
   const pipe: RedisPipeline = {
@@ -63,6 +65,7 @@ function createMockRedis(options: {
       return pipe;
     },
     exec: async () => {
+      calls.pipeExecs += 1;
       if (options.pipeThrow) throw new Error("pipe error");
       return [[null, "OK"]];
     },
@@ -163,7 +166,26 @@ test("MultiWorkerRedis 镜像库写入异常时不阻断主库返回", async () 
   assert.deepEqual(execResult, [[null, "OK"]]);
 });
 
-test("MultiWorkerRedis pipeline 广播全部指令且同步 disconnect", async () => {
+test("MultiWorkerRedis 只读 pipeline 不碰镜像库", async () => {
+  const primary = createMockRedis();
+  const mirror = createMockRedis({ pipeThrow: true });
+
+  const multi = new MultiWorkerRedis([primary.client, mirror.client]);
+  const pipe = multi.pipeline();
+  pipe.hgetall("hash").get("blob");
+  const execResult = await pipe.exec();
+
+  assert.deepEqual(execResult, [[null, "OK"]]);
+  assert.deepEqual(primary.calls.pipeCommands, [
+    ["HGETALL", "hash"],
+    ["GET", "blob"],
+  ]);
+  assert.equal(primary.calls.pipeExecs, 1);
+  assert.deepEqual(mirror.calls.pipeCommands, []);
+  assert.equal(mirror.calls.pipeExecs, 0);
+});
+
+test("MultiWorkerRedis pipeline 只把写复制到镜像且同步 disconnect", async () => {
   const primary = createMockRedis();
   const mirror = createMockRedis();
 
@@ -182,10 +204,146 @@ test("MultiWorkerRedis pipeline 广播全部指令且同步 disconnect", async (
 
   await pipe.exec();
 
-  assert.equal(primary.calls.pipeCommands.length, 8);
-  assert.equal(mirror.calls.pipeCommands.length, 8);
+  assert.deepEqual(primary.calls.pipeCommands, [
+    ["SET", "k1", "v1"],
+    ["DEL", "k2"],
+    ["RPUSH", "list", "item"],
+    ["LTRIM", "list", 0, 10],
+    ["PEXPIRE", "list", 5000],
+    ["HSET", "hash", { f1: "v1" }],
+    ["HGETALL", "hash"],
+    ["GET", "k1"],
+  ]);
+  assert.deepEqual(mirror.calls.pipeCommands, [
+    ["SET", "k1", "v1"],
+    ["DEL", "k2"],
+    ["RPUSH", "list", "item"],
+    ["LTRIM", "list", 0, 10],
+    ["PEXPIRE", "list", 5000],
+    ["DEL", "hash"],
+    ["HSET", "hash", { f1: "v1" }],
+  ]);
 
   multi.disconnect();
   assert.equal(primary.calls.disconnected, true);
   assert.equal(mirror.calls.disconnected, true);
+});
+
+/** 站点 overlay：blob 打底，每个 hash 域盖上去。 */
+function overlayHashBlob(
+  hash: Record<string, string>,
+  blob: string | null,
+): Record<string, unknown> {
+  const base = blob ? (JSON.parse(blob) as Record<string, unknown>) : {};
+  const next = { ...base };
+  for (const [field, value] of Object.entries(hash)) {
+    next[field] = JSON.parse(value);
+  }
+  return next;
+}
+
+function createStoreRedis(label: string, options: { failNextExec?: boolean } = {}): {
+  client: RedisClient;
+  hashes: Map<string, Map<string, string>>;
+  strings: Map<string, string>;
+} {
+  const hashes = new Map<string, Map<string, string>>();
+  const strings = new Map<string, string>();
+  let failNextExec = options.failNextExec ?? false;
+
+  const applyDel = (key: string) => {
+    hashes.delete(key);
+    strings.delete(key);
+  };
+  const applyHset = (key: string, object: Record<string, string>) => {
+    let hash = hashes.get(key);
+    if (!hash) {
+      hash = new Map();
+      hashes.set(key, hash);
+    }
+    for (const [field, value] of Object.entries(object)) hash.set(field, value);
+  };
+
+  const client: RedisClient = {
+    get: async (key) => strings.get(key) ?? null,
+    set: async (key, value) => {
+      strings.set(key, value);
+      return "OK";
+    },
+    del: async (key) => {
+      const had = hashes.has(key) || strings.has(key);
+      applyDel(key);
+      return had ? 1 : 0;
+    },
+    lrange: async () => [],
+    pipeline: () => {
+      const commands: Array<() => unknown> = [];
+      const pipe: RedisPipeline = {
+        set: (key, value) => {
+          commands.push(() => strings.set(key, value));
+          return pipe;
+        },
+        del: (key) => {
+          commands.push(() => applyDel(key));
+          return pipe;
+        },
+        rpush: () => pipe,
+        ltrim: () => pipe,
+        pexpire: () => pipe,
+        hset: (key, object) => {
+          commands.push(() => applyHset(key, object));
+          return pipe;
+        },
+        hgetall: (key) => {
+          commands.push(() => Object.fromEntries(hashes.get(key) ?? []));
+          return pipe;
+        },
+        get: (key) => {
+          commands.push(() => strings.get(key) ?? null);
+          return pipe;
+        },
+        exec: async () => {
+          if (failNextExec) {
+            failNextExec = false;
+            throw new Error(`${label} pipeline failed`);
+          }
+          return commands.map((command): [Error | null, unknown] => [null, command()]);
+        },
+      };
+      return pipe;
+    },
+    disconnect: () => undefined,
+  };
+
+  return { client, hashes, strings };
+}
+
+test("镜像换歌 HSET 失败后，心跳写入的 blob 不再被旧 music 盖住", async () => {
+  const hashK = "telemetry:fields";
+  const blobK = "telemetry:state";
+  const oldSong = { music: "old", at: 1 };
+  const newSong = { music: "new", at: 2 };
+  const heartbeat = { music: "new", at: 3 };
+
+  const primary = createStoreRedis("primary");
+  const mirror = createStoreRedis("mirror", { failNextExec: true });
+  primary.hashes.set(hashK, new Map([["music", JSON.stringify("old")], ["at", "1"]]));
+  mirror.hashes.set(hashK, new Map([["music", JSON.stringify("old")], ["at", "1"]]));
+  await primary.client.set(blobK, JSON.stringify(oldSong));
+  await mirror.client.set(blobK, JSON.stringify(oldSong));
+
+  const multi = new MultiWorkerRedis([primary.client, mirror.client]);
+
+  const songPipe = multi.pipeline();
+  songPipe.hset(hashK, { music: JSON.stringify("new"), at: "2" }).hgetall(hashK).get(blobK);
+  await songPipe.exec();
+  await multi.set(blobK, JSON.stringify(newSong));
+
+  const beatPipe = multi.pipeline();
+  beatPipe.hset(hashK, { at: "3" }).hgetall(hashK).get(blobK);
+  await beatPipe.exec();
+  await multi.set(blobK, JSON.stringify(heartbeat));
+
+  const mirrorHash = Object.fromEntries(mirror.hashes.get(hashK) ?? []);
+  assert.deepEqual(overlayHashBlob(mirrorHash, mirror.strings.get(blobK) ?? null), heartbeat);
 });
