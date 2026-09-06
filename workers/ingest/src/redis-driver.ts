@@ -2,6 +2,7 @@ import { ConnectionLeases } from "@/lib/connection-leases";
 // 类型从站点那份原文件拿，不走 @/lib/redis-driver：tsconfig 把那个名字映射到本文件自己
 import type { RedisAnswer, RedisClient, RedisPipeline } from "../../../src/lib/redis-driver";
 
+import { MultiWorkerRedis, parseRedisUrls } from "./multi-redis";
 import { WorkerRedis } from "./redis-client";
 import { requestStore } from "./runtime";
 
@@ -11,6 +12,8 @@ import { requestStore } from "./runtime";
  *
  * 和站点那份的差别只有一处：租约按**请求**分，不按实例分（理由见 runtime.ts 的
  * RequestContext）。连不上就停用 30 秒、期间一律走内存兜底，这一点照抄。
+ *
+ * REDIS_URL 支持逗号分隔多个地址：首个为主库（负责读写），后续为镜像库（只负责写）。
  */
 
 export type { RedisAnswer, RedisClient, RedisPipeline };
@@ -41,10 +44,14 @@ export function getRedis(): RedisClient | null {
     return pool.use(injected);
   }
 
-  const url = process.env.REDIS_URL;
-  if (!url) return null;
+  const urls = parseRedisUrls(process.env.REDIS_URL);
+  if (!urls.length) return null;
 
-  return pool.use(new WorkerRedis(url));
+  if (urls.length === 1) {
+    return pool.use(new WorkerRedis(urls[0]!));
+  }
+
+  return pool.use(new MultiWorkerRedis(urls.map((url) => new WorkerRedis(url))));
 }
 
 export function withRedisScope<T>(run: () => Promise<T>): Promise<T> {

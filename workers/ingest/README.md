@@ -50,12 +50,14 @@ Mac 上报的 Apple Music 凭据保存在 Redis，Worker 读取使用，不向�
 `wrangler.toml` 中配置公开变量 `SITE_URL`、`REDIS_PREFIX`、`R2_PUBLIC_BASE_URL`、
 `EMBY_PUBLIC_URL`、`APPLE_MUSIC_STOREFRONT`、`ALLOWED_ORIGINS`，`IMAGES` 桶绑定，
 以及 `LIVE_PUSH` / `ONLINE_COUNTER` 两个 Durable Object 绑定（迁移只追加新 tag，不改旧的）。
-Vercel 与 Worker 使用相同 Redis、键前缀和状态契约。秘密通过以下命令配置：
+Vercel 与 Worker 使用相同主库 Redis、键前缀和状态契约。秘密通过以下命令配置：
 
 ```sh
 pnpm --dir workers/ingest exec wrangler secret put REDIS_URL
 pnpm --dir workers/ingest exec wrangler secret put TELEMETRY_INGEST_SECRET
 ```
+
+`REDIS_URL` 支持逗号分隔填入多库（主从双写）：首个为主库（负责读写），后续为镜像库（只写同步）。写入操作并发同步至所有库，镜像库失败不影响主库与上报响应。国内 EdgeOne 可配置国内 Redis 实现毫秒级直读。
 
 站点配置 `NEXT_PUBLIC_LIVE_PUSH_URL=https://ingest.homepage.lyjw.llc` 与相同的
 `TELEMETRY_INGEST_SECRET`；浏览器由这一个源拼 `/ws` 和 `/online/ws`。所有上报器的目标为

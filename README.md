@@ -67,8 +67,7 @@ cron 每分钟在有存活连接时检查，Redis 闸门限制为至少两分钟
 读取侧的目录、歌词、GitHub 等按需缓存仍在站点，业务状态写入和实时发布统一在 Worker。
 
 推 main 时 CI 部署改动的 Worker；`shared/`、共用 `src/lib/`、根依赖或路径配置变化也触发 ingest 部署。
-两份生产直接读取同一份状态，不做跨站上报传播。EdgeOne 的 `STATUS_CACHE=false`，
-状态 API 每次直读 Redis；Vercel 保留 tag 缓存，由 Worker 回敲失效。
+两份生产直接读取状态，不做跨站上报传播。Worker 的 `REDIS_URL` 支持逗号分隔配置多库（首个主库负责读写，后续镜像库并发同步），EdgeOne 配置国内 Redis 时享受毫秒级直读（`STATUS_CACHE=false`）；Vercel 保留 tag 缓存，由 Worker 回敲失效。
 两站的 `NEXT_PUBLIC_LIVE_PUSH_URL` 都是 `https://ingest.homepage.lyjw.llc`，
 浏览器由它拼出 `/ws` 和 `/online/ws`，不再配置独立在线人数服务。
 

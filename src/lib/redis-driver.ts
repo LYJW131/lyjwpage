@@ -82,7 +82,11 @@ export function getRedis(): RedisClient | null {
   // 单测进程里绝不自己去连真实 Redis。没注入就是不可达。
   if (process.env.NODE_TEST_CONTEXT) return null;
 
-  const url = process.env.REDIS_URL;
+  const rawUrl = process.env.REDIS_URL;
+  if (!rawUrl) return null;
+
+  // 站点只直连自己就近的一份 Redis；若环境变量误粘了 Worker 的多库列表，取首个主库
+  const url = rawUrl.split(",")[0]?.trim();
   if (!url) return null;
 
   const raw = new Redis(url, {
