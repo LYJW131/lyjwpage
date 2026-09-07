@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { ExternalLink, Pause, Play, SkipBack, SkipForward, X } from "lucide-react";
 
-import { DialogButton } from "@/components/live/listen-along-button";
+import { SyncPlaybackButton } from "@/components/web-player/sync-playback-button";
 import { Modal } from "@/components/ui/modal";
 import { PlayerCover } from "@/components/web-player/player-cover";
 import { PlayerLyrics } from "@/components/web-player/player-lyrics";
@@ -18,6 +18,23 @@ import {
   queueOptionsFor,
   snapPlaylistScrollTop,
 } from "@/lib/web-player";
+
+function DialogButton({ children, onClick, disabled }: {
+  children: string;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className="label-mono min-w-0 flex-1 py-2.5 text-center text-foreground transition-colors hover:bg-surface-hover disabled:cursor-default disabled:opacity-60"
+    >
+      {children}
+    </button>
+  );
+}
 
 /** 滑块上会改值的键。松开这些才 seek，别的键（Tab / Escape）路过不算 */
 const SEEK_KEYS = new Set([
@@ -214,6 +231,7 @@ export function WebPlayerDialog({ player }: { player: WebPlayer }) {
             Web Player
           </span>
           <span className="label-mono text-muted-foreground/60">beta</span>
+          <SyncPlaybackButton player={player} />
         </div>
         <button
           type="button"
@@ -413,7 +431,7 @@ export function WebPlayerDialog({ player }: { player: WebPlayer }) {
                         catalogItemId(song.id) === catalogItemId(player.nowPlaying?.id);
                       return (
                         <button
-                          key={song.id ?? index}
+                          key={`${song.id ?? "song"}:${index}`}
                           type="button"
                           onClick={() => player.playAt(index)}
                           className="flex h-8 w-full items-center gap-2 px-1 py-1.5 text-left text-sm transition-colors hover:bg-surface-hover"

@@ -23,10 +23,9 @@ import {
   LyricWords,
 } from "@/components/live/hero-lyrics";
 import { HeroMotionArtwork } from "@/components/live/hero-motion-artwork";
-import { ListenAlongButton } from "@/components/live/listen-along-button";
+import { SyncPlaybackButton } from "@/components/web-player/sync-playback-button";
 import { PlayerArtworkPreload } from "@/components/web-player/player-artwork";
 import { useWebPlayer } from "@/components/web-player/web-player-provider";
-import { useListenAlong } from "@/hooks/use-listen-along";
 import { useLiveEvents } from "@/hooks/use-live-events";
 import { useLyrics, type LyricsFallback } from "@/hooks/use-lyrics";
 import { useMotionArtwork } from "@/hooks/use-motion-artwork";
@@ -62,6 +61,7 @@ import { cn } from "@/lib/utils";
  * 从前是 30 秒，那时列表要靠轮询才会翻 —— 服务端还得现打 Apple 的目录接口。
  */
 const REFRESH_MS = 10 * 60_000;
+const EMPTY_UPCOMING: string[] = [];
 /**
  * 手上一份都没有时的那一档。
  *
@@ -755,7 +755,10 @@ export function ListeningCard({
   }
   const latched = trackKey && lookupLatch?.key === trackKey ? lookupLatch : null;
   const resolvedSongId = live?.songId ?? latched?.songId ?? null;
-  const resolvedUpcoming = live?.songId ? live.upcomingSongIds : latched?.upcomingSongIds ?? [];
+  const resolvedUpcoming = useMemo(
+    () => live?.songId ? live.upcomingSongIds : latched?.upcomingSongIds ?? EMPTY_UPCOMING,
+    [live?.songId, live?.upcomingSongIds, latched?.upcomingSongIds],
+  );
   const resolvedHasLyrics = live?.songId ? live.hasLyrics : latched?.hasLyrics ?? false;
 
   // 同步歌词跟着闩住的那个 songId 走，和跟听同一份；目录说没有就不发请求
@@ -788,54 +791,27 @@ export function ListeningCard({
         isResolvingTrack),
   );
 
-  /**
-   * 跟着这首一起听。访客用自己的订阅授权，音频不经过站点，见 use-listen-along。
-   *
-   * 右上角那格平时写着「Apple Music」（说明这张卡的来源），有东西可跟听时换成
-   * 按钮 —— 那一刻「你也能听」比「这是 Apple Music」更值得占这个位置。
-   * 已经开始跟听之后一直留着，否则主人一停，访客就没地方把它关掉了。
-   */
-  const listenAlong = useListenAlong({
-    track: localTrack,
-    songId: resolvedSongId,
-    upcomingSongIds: resolvedUpcoming,
-  });
+  // 此刻在播的快照交给统一播放器，卡片只提供同步来源。
+  const setSyncSource = player?.setSyncSource;
+  useEffect(() => {
+    setSyncSource?.({
+      track: localTrack,
+      songId: resolvedSongId,
+      upcomingSongIds: resolvedUpcoming,
+    });
+  }, [setSyncSource, localTrack, resolvedSongId, resolvedUpcoming]);
+  useEffect(() => () => {
+    setSyncSource?.({ track: null, songId: null });
+  }, [setSyncSource]);
 
-  /**
-   * 网页播放器和「一起听」驱动的是同一个 MusicKit 单例，两边只能活一个。
-   *
-   * 交接必须发生在**动手之前**、在同一个点击里：跟听的 stop() 是把 music 置
-   * null，真正的 music.stop() 在那个 effect 的清理里跑，落在这次提交之后 ——
-   * 如果等播放器 active 了再去停跟听，那一记 stop() 会砸在刚装好的队列上，
-   * 专辑刚响就哑。反过来同理：先叫播放器停，再让跟听去 getMusicKit。
-   *
-   * 不可播的条目（没有目录链接）不进播放器，保留原来跳 Apple Music 的行为。
-   */
-  const stopListenAlong = listenAlong.stop;
   const openInPlayer = useCallback(
-    (item: ListeningItem) => {
-      if (!player) return;
-      stopListenAlong();
-      player.openWith(item);
-    },
-    [player, stopListenAlong],
+    (item: ListeningItem) => player?.openWith(item),
+    [player],
   );
   const canOpenInPlayer = (item: ListeningItem) =>
     Boolean(player && player.status !== "unavailable" && queueOptionsFor(item));
-  const mutualListenAlong = useMemo(
-    () => ({
-      ...listenAlong,
-      start: () => {
-        player?.stop();
-        listenAlong.start();
-      },
-    }),
-    [listenAlong, player],
-  );
-
-  const showListenAlong =
-    listenAlong.status !== "unavailable" &&
-    (Boolean(localTrack && resolvedSongId) || listenAlong.status !== "idle");
+  const showSync = player && player.status !== "unavailable" &&
+    (player.syncAvailable || player.syncing);
 
   const [latest, ...tail] = data?.items ?? [];
 
@@ -927,11 +903,11 @@ export function ListeningCard({
   return (
     <Card
       label="Recently Played"
-      action={showListenAlong ? <ListenAlongButton listen={mutualListenAlong} /> : "Apple Music"}
+      action={showSync ? <SyncPlaybackButton player={player} /> : "Apple Music"}
       className={cn("h-full min-h-93.5", className)}
     >
       <div className="flex min-h-0 flex-1 flex-col px-4 pb-4 pt-3">
-        {/* 最近的一项放大展示。整块都是链接 —— 点封面也能跳转。
+        {/* 最近的一项放大展示。点击当前歌曲一起听，点击历史条目打开专辑播放器。
             换专辑/歌单时新旧叠着交叉淡入，见 HERO_VARIANTS。
 
             外层 h-20 钉死高度：封面是 w-20 方块，整块 hero 设计上就是 80px。
@@ -968,11 +944,12 @@ export function ListeningCard({
                 transition={reduced ? STATIC_TRANSITION : undefined}
               >
                 <HeroWrapper
-                  link={hero.link}
+                  link={hero.track ? null : hero.link}
                   wideLyrics={showSideLyrics}
-                  // 只有历史那一版 hero 进播放器；本机正在放的那首已经有「一起听」
                   onOpen={
-                    !hero.track && latest && canOpenInPlayer(latest)
+                    hero.track
+                      ? showSync ? player.startSync : undefined
+                      : latest && canOpenInPlayer(latest)
                       ? () => openInPlayer(latest)
                       : undefined
                   }
@@ -1034,7 +1011,7 @@ export function ListeningCard({
                       <div
                         className={cn(
                           "mt-1 truncate font-medium leading-snug",
-                          hero.link && "group-hover:underline",
+                          (hero.track ? showSync : hero.link) && "group-hover:underline",
                         )}
                         title={hero.title}
                       >

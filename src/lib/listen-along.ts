@@ -1,5 +1,5 @@
 /**
- * 跟听的对齐算术。hooks/use-listen-along 是 React 胶水，规则放这里才能单测。
+ * 跟听的对齐算术。hooks/use-web-player 是 React 胶水，规则放这里才能单测。
  *
  * 进度条仍然用 track-position 推主人此刻的位置；跟听不能直接拿那个数去
  * seek —— 换歌时新曲目前几秒还在缓冲，主人的钟已经往前走了。把那个漂移当成
