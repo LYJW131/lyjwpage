@@ -23,7 +23,6 @@ import {
   LyricWords,
 } from "@/components/live/hero-lyrics";
 import { HeroMotionArtwork } from "@/components/live/hero-motion-artwork";
-import { SyncPlaybackButton } from "@/components/web-player/sync-playback-button";
 import { PlayerArtworkPreload } from "@/components/web-player/player-artwork";
 import { useWebPlayer } from "@/components/web-player/web-player-provider";
 import { useLiveEvents } from "@/hooks/use-live-events";
@@ -810,8 +809,6 @@ export function ListeningCard({
   );
   const canOpenInPlayer = (item: ListeningItem) =>
     Boolean(player && player.status !== "unavailable" && queueOptionsFor(item));
-  const showSync = player && player.status !== "unavailable" &&
-    (player.syncAvailable || player.syncing);
 
   const [latest, ...tail] = data?.items ?? [];
 
@@ -903,11 +900,11 @@ export function ListeningCard({
   return (
     <Card
       label="Recently Played"
-      action={showSync ? <SyncPlaybackButton player={player} /> : "Apple Music"}
+      action="Apple Music"
       className={cn("h-full min-h-93.5", className)}
     >
       <div className="flex min-h-0 flex-1 flex-col px-4 pb-4 pt-3">
-        {/* 最近的一项放大展示。点击当前歌曲一起听，点击历史条目打开专辑播放器。
+        {/* 最近的一项放大展示。当前歌曲只展示，点击历史条目打开专辑播放器。
             换专辑/歌单时新旧叠着交叉淡入，见 HERO_VARIANTS。
 
             外层 h-20 钉死高度：封面是 w-20 方块，整块 hero 设计上就是 80px。
@@ -947,9 +944,7 @@ export function ListeningCard({
                   link={hero.track ? null : hero.link}
                   wideLyrics={showSideLyrics}
                   onOpen={
-                    hero.track
-                      ? showSync ? player.startSync : undefined
-                      : latest && canOpenInPlayer(latest)
+                    !hero.track && latest && canOpenInPlayer(latest)
                       ? () => openInPlayer(latest)
                       : undefined
                   }
@@ -1011,7 +1006,7 @@ export function ListeningCard({
                       <div
                         className={cn(
                           "mt-1 truncate font-medium leading-snug",
-                          (hero.track ? showSync : hero.link) && "group-hover:underline",
+                          !hero.track && hero.link && "group-hover:underline",
                         )}
                         title={hero.title}
                       >

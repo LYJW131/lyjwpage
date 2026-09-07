@@ -6,26 +6,25 @@ import { workerUrl } from "@/lib/worker-url";
  * MusicKit JS 这一侧的全部脏活：把 Apple 那份脚本弄进页面、拿到 developer
  * token、配出一个实例。跟随播放的逻辑不在这里，见 hooks/use-web-player。
  *
- * developer token 由 workers/musickit-token 现签，站点自己不碰 .p8 —— 和
- * lib/apple-music 那条一样，私钥不进站点的运行时。区别是那条走的是 Mac 上报器
- * 推来的**私人凭据**（带 music user token，能读我的收听记录，锁在
- * TELEMETRY_INGEST_SECRET 后面），这条是发给**任意访客**的公开令牌，访客拿它去
- * 换自己那份用户令牌。两者敏感度差一个量级，所以不共用一条路径。
+ * developer token 由 api Worker 现签（workers/api/src/musickit-token.ts），站点
+ * 自己不碰 .p8 —— 和 Mac 上报的那份凭据一样，私钥不进站点的运行时。区别是那份是
+ * Mac 上报器推来的**私人凭据**（带 music user token，能读我的收听记录，只留在
+ * Worker 的 SQLite 里），这条是发给**任意访客**的公开令牌，访客拿它去换自己那份
+ * 用户令牌。两者敏感度差一个量级，所以不共用一条路径。
  */
 
 /**
- * 签发服务（workers/musickit-token）的地址，令牌在 /token 上。
+ * 签发端点：api Worker 上的 /api/musickit/token，和推送、状态读取同一个源。
  *
- * 和另外两个 Worker 一样只配源，拼接规则见 lib/worker-url。必须写成完整的
- * `process.env.XXX` 字面量：浏览器那侧没有 process，这一处是构建时按文本替换掉
- * 的，解构或动态取键都替换不到。
+ * 只配源，拼接规则见 lib/worker-url。必须写成完整的 `process.env.XXX` 字面量：
+ * 浏览器那侧没有 process，这一处是构建时按文本替换掉的，解构或动态取键都替换不到。
  *
- * 没配就整体停用 —— 「一起听」是附加功能，卡片其余部分照常，不留写死的兜底地址
- * （那等于把某一份部署的地址塞进所有部署）。
+ * 没配 NEXT_PUBLIC_BACKEND_URL 就整体停用 —— 「一起听」是附加功能，卡片其余部分
+ * 照常，不留写死的兜底地址（那等于把某一份部署的地址塞进所有部署）。
  */
 export const MUSICKIT_TOKEN_ENDPOINT = workerUrl(
-  process.env.NEXT_PUBLIC_MUSICKIT_TOKEN_URL,
-  "/token",
+  process.env.NEXT_PUBLIC_BACKEND_URL,
+  "/api/musickit/token",
 );
 
 const MUSICKIT_SRC = "https://js-cdn.music.apple.com/musickit/v3/musickit.js";
@@ -219,7 +218,7 @@ export type DeveloperToken = {
 /**
  * 过了「签发时刻 → 到期时刻」的中点就该换一份新的。
  *
- * 和 Worker 那侧逐字同一条规则（workers/musickit-token/src/index.ts 里也叫
+ * 和 Worker 那侧逐字同一条规则（workers/api/src/musickit-token.ts 里也叫
  * pastHalfLife），改一处记得对齐。用 issuedAt 而不是「我什么时候收到的」当起点：
  * Worker 自己也缓存，拿到手的可能已经是一份用掉一半的令牌。
  */

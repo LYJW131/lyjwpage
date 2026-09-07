@@ -10,6 +10,8 @@
 - `src/stores/`：上报解析与状态写入；`src/phone-telemetry.ts`、`src/homepod-ingest.ts` 组合设备信封。
 - `src/fanout.ts`：先确认写入成功，再后台广播和通知首屏 stale。
 - `src/apple-music-recent.ts`：最近在听的拉取、写入和广播。
+- `src/musickit-token.ts`：给「一起听」签 MusicKit developer token（ES256 JWT），按 origin 声明缓存、过半衰期重签。
+- `src/origins.ts`：`ALLOWED_ORIGINS` 的解析、通配匹配和 CORS 头，两条 WebSocket、公开 API 和令牌签发共用。
 - 根目录 `shared/`：读写共用的 SQLite 键、类型和状态计算；根目录 `src/lib/` 提供读取与通用工具。
 - `src/storage-driver.ts`：通过 alias 接入 StateHub 的 SQLite 存储驱动。
 - `src/r2-assets.ts`：R2 绑定 HEAD 检查，上报器仍直接上传图片。
@@ -22,6 +24,7 @@
 | GET | `/ws` | 浏览器接收事件推送的 WebSocket，页面开着就一直挂着；使用 `ALLOWED_ORIGINS` 校验来源 |
 | GET | `/online/ws` | 「此刻在线」的 WebSocket，页面不可见时站点整条关掉；同一份来源白名单 |
 | GET | `/count` | `{ ok, connections, online }`：开着的页面数与此刻可见的页面数，供上报器调频 |
+| GET | `/api/musickit/token` | `{ token, issuedAt, expiresAt }`：给「一起听」的 MusicKit developer token，同一份来源白名单；见下文 |
 | GET | `/` | 一行存活；不碰 Durable Object，根路径被探针不停打 |
 
 两个数是两个口径，也是两个 Durable Object：`LivePushRoom` 走休眠 API，静默 5 分钟不计数、
@@ -45,20 +48,48 @@ SQLite `SET NX PX` 闸门与实例节流将真正的拉取限制为至少两分�
 Mac 上报的 Apple Music 凭据保存在 SQLite，Worker 读取使用，不向外提供凭据端点。
 状态读取不再触发拉取或广播。
 
+## MusicKit 令牌
+
+访客用自己的 Apple Music 订阅跟听之前，先得有一份 developer token 才能把 MusicKit JS 配起来。
+这份令牌发给**任何一个访客**，和 SQLite 里 Mac 上报的那份私人凭据（带 music user token）
+不是一回事、不共用路径。从前是单独的 musickit-token Worker，09-07 并进来。
+
+`ALLOWED_ORIGINS` 一份名单，两道限制：
+
+1. **谁能来要令牌** —— 比请求的 `Origin` 头，配了名单之后不带这个头一律拒绝。这道只是让
+   「拿一份」不那么随手，Origin 头非浏览器伪造得了。
+2. **令牌只在这些域上有效** —— 名单里写死的域签进 JWT 的 `origin` 声明，由 Apple 校验。
+   通配项（`https://*.vercel.app`）Apple 不解析，匹配到的预览域名和 localhost **只签它自己一个**，
+   不把生产域名一起捎上；否则任何人带一句 `Origin: http://localhost:3000` 就能要走一份在
+   `lyjw.me` 上可用的令牌。
+
+同一份 origin 声明的令牌在 isolate 里复用，过了「签发 → 到期」的中点才重签；`issuedAt` 和
+`expiresAt` 一起给，站点用同一条半衰期规则决定何时再要。响应一律 `Cache-Control: no-store`。
+出错时 `{ "error": "..." }`：403 来源不对、405 方法不对、500 变量没配或私钥坏（只有自己写死
+的配置提示外带，运行时异常只进日志）。
+
+三样东西来自 [Apple Developer](https://developer.apple.com/account/resources/authkeys/list) 勾了
+**MusicKit** 的密钥：`APPLE_MUSIC_TEAM_ID`、`APPLE_MUSIC_KEY_ID` 放 `[vars]`，
+`APPLE_MUSIC_PRIVATE_KEY`（`.p8` 全文，带不带 PEM 头尾、换行是真的还是 `\n` 都吃）走 secret。
+有效期 `MUSICKIT_TOKEN_TTL_SECONDS` 不填按 7 天，上限半年；不取上限是因为令牌一旦被复制走，
+域名限制之外就只剩有效期这一道闸。
+
 ## 配置与部署
 
 `wrangler.toml` 中配置公开变量 `SITE_URL`、`STORAGE_PREFIX`、`R2_PUBLIC_BASE_URL`、
-`EMBY_PUBLIC_URL`、`APPLE_MUSIC_STOREFRONT`、`ALLOWED_ORIGINS`，`IMAGES` 桶绑定，
+`EMBY_PUBLIC_URL`、`APPLE_MUSIC_STOREFRONT`、`ALLOWED_ORIGINS`、`APPLE_MUSIC_TEAM_ID`、
+`APPLE_MUSIC_KEY_ID`，`IMAGES` 桶绑定，
 以及 `LIVE_PUSH` / `ONLINE_COUNTER` 加 `STATE` 三个 Durable Object 绑定（迁移只追加新 tag，不改旧的）。
 状态和凭据只存于 Worker 的 StateHub，Vercel 不连接数据库。秘密通过以下命令配置：
 
 ```sh
 pnpm --dir workers/api exec wrangler secret put GITHUB_TOKEN
 pnpm --dir workers/api exec wrangler secret put TELEMETRY_INGEST_SECRET
+pnpm --dir workers/api exec wrangler secret put APPLE_MUSIC_PRIVATE_KEY < AuthKey_XXXXXXXXXX.p8
 ```
 
 站点配置 `NEXT_PUBLIC_BACKEND_URL=https://api.homepage.lyjw.llc` 与相同的
-`TELEMETRY_INGEST_SECRET`；浏览器由这一个源拼 `/ws` 和 `/online/ws`。所有上报器的目标为
+`TELEMETRY_INGEST_SECRET`；浏览器由这一个源拼 `/ws`、`/online/ws` 和 `/api/musickit/token`。所有上报器的目标为
 这个 Worker 的 `/api/ingest/<来源>`，不经过站点，调频读的也是同一个源的 `/count`。实例清单见 [端点核验记录](../../docs/reporter-endpoints.md)。
 
 提交并推送 main，由 `.github/workflows/deploy-workers.yml` 自动部署。
