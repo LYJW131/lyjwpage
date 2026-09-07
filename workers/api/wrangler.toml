@@ -11,8 +11,17 @@ routes = [
 ]
 
 [vars]
-# 和 musickit-token 那份是同一个名单，加域名时两个 worker 都要改、都要重新部署。
+# 逗号分隔。两条 WebSocket、公开 API 的 CORS 和 MusicKit 令牌签发都比这份名单。
+# 对令牌它还是第二道限制：名单里写死的域会签进 JWT 的 origin 声明，由 Apple 校验，
+# 令牌被复制到别的站点上也用不了。通配项只参与第一道（Apple 不解析通配符），
+# 匹配到的预览域名和 localhost 只签它自己一个，见 src/musickit-token.ts。
 ALLOWED_ORIGINS = "https://lyjw131.com,https://lyjw.me,https://dev.lyjw.me,https://*.vercel.app"
+# MusicKit 签发用的 Team ID 和 Key ID 不是秘密；.p8 私钥走 secret，见 README。
+APPLE_MUSIC_TEAM_ID = "2VTXNMR2GL"
+APPLE_MUSIC_KEY_ID = "88KBJL3CKU"
+# 令牌有效期（秒）。不填按 7 天，Apple 允许的上限是 15777000（约半年）。
+# 续期不看这个数：过了「签发 → 到期」的中点就换一份新的，改这里不用调别处。
+# MUSICKIT_TOKEN_TTL_SECONDS = "604800"
 # 后端统一负责键前缀和公开地址；Vercel 只消费公开快照。
 STORAGE_PREFIX = "lyjwpage"
 R2_PUBLIC_BASE_URL = "https://r2.homepage.lyjw.llc"
@@ -44,7 +53,8 @@ bucket_name = "lyjw-homepage"
 [observability]
 enabled = true
 
-# 秘密通过 wrangler secret put 配置：GITHUB_TOKEN、TELEMETRY_INGEST_SECRET。
+# 秘密通过 wrangler secret put 配置：GITHUB_TOKEN、TELEMETRY_INGEST_SECRET、
+# APPLE_MUSIC_PRIVATE_KEY（MusicKit 签发用的 .p8 全文）。
 # 有页面连接时刷新最近在听，SQLite 闸门将 Apple 请求限制为两分钟一次。
 [triggers]
 crons = ["* * * * *"]

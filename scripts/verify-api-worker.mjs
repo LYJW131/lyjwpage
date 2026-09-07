@@ -41,10 +41,14 @@ try {
   const [workerPort, sitePort] = await Promise.all([port(), port()]);
   const worker = `http://127.0.0.1:${workerPort}`;
   const site = `http://127.0.0.1:${sitePort}`;
+  // 一次性 P-256 钥匙对：私钥按 .p8 的样子喂给 Worker 签 MusicKit 令牌，公钥留在这里验签
+  const musicKitKeys = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
+  const musicKitPem = `-----BEGIN PRIVATE KEY-----\n${Buffer.from(await crypto.subtle.exportKey('pkcs8', musicKitKeys.privateKey)).toString('base64')}\n-----END PRIVATE KEY-----`;
   const vars = {
     NEXT_PUBLIC_BACKEND_URL: worker, STORAGE_PREFIX: 'isolated-verify', TELEMETRY_INGEST_SECRET: secret, STATE_IMPORT_SECRET: `${secret}-import`,
     SITE_URL: site, ALLOWED_ORIGINS: '',
     R2_PUBLIC_BASE_URL: '', EMBY_PUBLIC_URL: '',
+    APPLE_MUSIC_PRIVATE_KEY: musicKitPem, APPLE_MUSIC_TEAM_ID: 'ISOLATEDTM', APPLE_MUSIC_KEY_ID: 'ISOLATEDKY',
   };
   // Config lives outside the checkout so Wrangler cannot load real .dev.vars or production bindings.
   const config = {
@@ -139,6 +143,20 @@ try {
   assert.equal(JSON.stringify(home).includes('musicUserToken'), false);
   assert.equal(JSON.stringify(home).includes('developerToken'), false);
   console.log('PASS: public snapshot, CORS, private storage removed, heartbeat does not invalidate HTML');
+  // 一起听的 developer token：同源签发、可验签、两个时刻齐全；不走 StateHub，也不被公开 API 那条兜住
+  const tokenResponse = await fetch(`${worker}/api/musickit/token`, { headers: { Origin: 'http://localhost:3000' } });
+  const tokenBody = await tokenResponse.text();
+  assert.equal(tokenResponse.status, 200, tokenBody);
+  assert.equal(tokenResponse.headers.get('cache-control'), 'no-store');
+  assert.equal(tokenResponse.headers.get('access-control-allow-origin'), 'http://localhost:3000');
+  const issued = JSON.parse(tokenBody);
+  assert.ok(Number.isSafeInteger(issued.issuedAt) && issued.expiresAt === issued.issuedAt + 7 * 24 * 3600);
+  const [tokenHeader, tokenPayload, tokenSignature] = issued.token.split('.');
+  assert.deepEqual(JSON.parse(Buffer.from(tokenHeader, 'base64url')), { alg: 'ES256', kid: 'ISOLATEDKY' });
+  assert.deepEqual(JSON.parse(Buffer.from(tokenPayload, 'base64url')), { iss: 'ISOLATEDTM', iat: issued.issuedAt, exp: issued.expiresAt });
+  assert.ok(await crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, musicKitKeys.publicKey, Buffer.from(tokenSignature, 'base64url'), Buffer.from(`${tokenHeader}.${tokenPayload}`)));
+  assert.equal((await post(worker, '/api/musickit/token', {})).status, 405);
+  console.log('PASS: /api/musickit/token issues a verifiable ES256 developer token');
   const coding = start(process.execPath, [join(root, 'scripts/verify-coding-usage.mjs'), '--base', worker, '--ingest', worker, '--storage-prefix', 'isolated-verify']);
   const [codingExit] = await once(coding, 'exit');
   assert.equal(codingExit, 0, logs.join(''));

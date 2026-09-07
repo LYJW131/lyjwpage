@@ -9,7 +9,9 @@ import type { StoredEntry } from "@shared/sqlite-store";
 import { refreshRecentlyPlayed } from "./apple-music-recent";
 
 import { ROOM_ID } from "./live-platform";
+import { ConfigError, issueMusicKitToken } from "./musickit-token";
 import { OnlineCounterRoom } from "./online-counter";
+import { getAllowedOrigins, getCorsHeaders, isAllowedOrigin, isAllowedOriginValue } from "./origins";
 import { requestStore, type Env } from "./runtime";
 
 /** 接收所有上报，在 Worker 内写 Storage、广播 WebSocket，再通知 Vercel 缓存失效。 */
@@ -23,82 +25,11 @@ const WS_PATH = "/ws";
 const ONLINE_WS_PATH = "/online/ws";
 const INGEST_PREFIX = "/api/ingest/";
 
-const LOCAL_ORIGIN_RE = /^https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/;
-
-/*
- * 下面这四个函数和 musickit-token 那个 worker 逐字一样
- * （workers/musickit-token/src/index.ts），改一处记得同步另一处。
- *
- * 没抽成共享包是故意的：域名名单本来就得在每份 wrangler.toml 里各配一次，
- * 抽包省不掉那份重复，却要多一个包和一层依赖解析。
- */
-
-function getAllowedOrigins(env: Env): string[] {
-  return (env.ALLOWED_ORIGINS || "")
-    .split(",")
-    .map((origin) => origin.trim())
-    .filter(Boolean);
-}
-
 /**
- * 允许 `https://*.vercel.app` 这样的后缀通配。
- *
- * Vercel 的预览域名每次部署都换一个（`lyjwpage-<hash>-....vercel.app`），
- * 只做全等匹配的话，预览环境永远连不上。
- *
- * 按 hostname 的后缀比，不是按字符串包含 —— 后者会把
- * `https://vercel.app.evil.com` 也放进来。
+ * 「一起听」要的 MusicKit developer token。从前是单独的 musickit-token Worker，
+ * 现在和公开 API 同源；站点从 NEXT_PUBLIC_BACKEND_URL 拼这条路径。
  */
-function originMatches(origin: string, pattern: string): boolean {
-  if (origin === pattern) return true;
-  if (!pattern.includes("*")) return false;
-
-  const wildcard = pattern.match(/^(https?:)\/\/\*\.(.+)$/);
-  if (!wildcard) return false;
-  const [, protocol, suffix] = wildcard;
-
-  try {
-    const url = new URL(origin);
-    return url.protocol === protocol && url.hostname.endsWith(`.${suffix}`);
-  } catch {
-    return false;
-  }
-}
-
-function isAllowedOriginValue(origin: string, allowed: string[]): boolean {
-  if (LOCAL_ORIGIN_RE.test(origin)) return true;
-  return allowed.some((pattern) => originMatches(origin, pattern));
-}
-
-/**
- * 没配 ALLOWED_ORIGINS 就不限制 —— `wrangler dev` 不配也要能跑，而 localhost
- * 本来就始终放行。**配了之后，不带 Origin 头一律拒绝**：浏览器发 WebSocket
- * 握手时一定带这个头，所以卡死它对真实访客零代价，却堵上了「curl 不带头就
- * 绕过白名单」这个口子。
- */
-function isAllowedOrigin(request: Request, env: Env): boolean {
-  const allowed = getAllowedOrigins(env);
-  if (allowed.length === 0) return true;
-  const origin = request.headers.get("Origin");
-  if (!origin) return false;
-  return isAllowedOriginValue(origin, allowed);
-}
-
-function getCorsHeaders(request: Request, env: Env): Headers {
-  const headers = new Headers();
-  const origin = request.headers.get("Origin");
-  const allowed = getAllowedOrigins(env);
-  if (origin && (allowed.length === 0 || isAllowedOriginValue(origin, allowed))) {
-    headers.set("Access-Control-Allow-Origin", origin);
-    headers.set("Vary", "Origin");
-  } else if (allowed.length === 0) {
-    headers.set("Access-Control-Allow-Origin", "*");
-  }
-  headers.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  headers.set("Access-Control-Max-Age", "86400");
-  return headers;
-}
+const MUSICKIT_TOKEN_PATH = "/api/musickit/token";
 
 function jsonResponse(data: unknown, init: ResponseInit = {}): Response {
   const headers = new Headers(init.headers);
@@ -252,6 +183,36 @@ async function handleImport(request: Request, env: Env): Promise<Response> {
   }
 }
 
+/**
+ * 签一份给访客的 MusicKit developer token。来源闸门和 CORS 与两条 WebSocket
+ * 共用 ALLOWED_ORIGINS；签进 JWT 的 origin 声明由 Apple 校验，见 musickit-token.ts。
+ */
+async function handleMusicKitToken(request: Request, env: Env, cors: Headers): Promise<Response> {
+  if (request.method !== "GET") {
+    return jsonResponse({ error: "只接受 GET" }, { status: 405, headers: cors });
+  }
+  if (!isAllowedOrigin(request, env)) {
+    return jsonResponse({ error: "来源不在允许的域名内" }, { status: 403, headers: cors });
+  }
+
+  try {
+    const { token, issuedAt, expiresAt } = await issueMusicKitToken(request.headers.get("Origin"), env);
+    // 两个时刻都给出去，站点那侧才算得出半衰期 —— 只给到期时刻的话，它只能拿
+    // 「我什么时候收到的」当起点，而收到的可能已经是一份用掉一半的缓存
+    return jsonResponse({ token, issuedAt, expiresAt }, { headers: cors });
+  } catch (error) {
+    /*
+     * 只有自己抛的 ConfigError 原文外带（哪个变量没配，只有部署的人能修）；
+     * 其余异常一律通用文案 —— importKey / 运行时抛出来的 message 内容不由
+     * 我们控制，随手转发等于把内部细节交给任何一个能打到这个端点的人。
+     * 完整原文进 Worker 日志，排障看那边。
+     */
+    console.error("[musickit-token] 签发失败：", error);
+    const hint = error instanceof ConfigError ? error.hint : "签发失败，详情见 Worker 日志";
+    return jsonResponse({ error: hint }, { status: 500, headers: cors });
+  }
+}
+
 const CONNECTION_STALE_MS = 5 * 60_000;
 const CONNECTION_CLOSE_MS = 30 * 60_000;
 
@@ -356,6 +317,11 @@ const worker = {
 
     if (request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: cors });
+    }
+
+    // 排在公开 API 那条之前：它不是状态读取，不进 StateHub
+    if (url.pathname === MUSICKIT_TOKEN_PATH) {
+      return handleMusicKitToken(request, env, cors);
     }
 
     if (url.pathname.startsWith("/api/")) {

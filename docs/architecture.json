@@ -465,7 +465,7 @@
       "dot": "violet",
       "title": "来源与辅助服务",
       "items": [
-        "HomePod：DSM 卧室与 N100 主卧。 独立 Worker 签发 MusicKit token。"
+        "HomePod：DSM 卧室与 N100 主卧。 api Worker 的 /api/musickit/token 签发 MusicKit token。"
       ]
     }
   ]
