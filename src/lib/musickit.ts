@@ -4,7 +4,7 @@ import { workerUrl } from "@/lib/worker-url";
 
 /**
  * MusicKit JS 这一侧的全部脏活：把 Apple 那份脚本弄进页面、拿到 developer
- * token、配出一个实例。跟随播放的逻辑不在这里，见 hooks/use-listen-along。
+ * token、配出一个实例。跟随播放的逻辑不在这里，见 hooks/use-web-player。
  *
  * developer token 由 workers/musickit-token 现签，站点自己不碰 .p8 —— 和
  * lib/apple-music 那条一样，私钥不进站点的运行时。区别是那条走的是 Mac 上报器
@@ -94,7 +94,7 @@ export type MusicKitInstance = {
   storefrontId?: string;
   /** 见 PLAYBACK_STATE */
   playbackState: number;
-  /** 播放进度，**秒**（站点内部一律毫秒，边界在 use-listen-along 里换算） */
+  /** 播放进度，**秒**（站点内部一律毫秒，边界在 use-web-player 里换算） */
   currentPlaybackTime: number;
   /** 当前曲总长，**秒**，和 currentPlaybackTime 同一个单位 */
   currentPlaybackDuration: number;
@@ -120,7 +120,7 @@ export type MusicKitInstance = {
   unauthorize(): Promise<void>;
   /*
    * 只声明用到的形态。文档上还有 songs / startPlaying / startTime 等旋钮 ——
-   * startTime 是被否决的 seek 起播方案（换歌一律从 0 走，见 use-listen-along），
+   * 对齐进度使用加载后的 seekToTime，不依赖 setQueue 的 startTime，
    * 别把它标回接口上邀请人用回去。
    */
   setQueue(options: QueueOptions): Promise<unknown>;
@@ -285,9 +285,8 @@ export function getMusicKit(): Promise<MusicKitInstance> {
    * 跟听就断在那里。清掉重来会走一遍 fetchDeveloperToken，它自己会看出手上那份
    * 该换了。
    *
-   * 两个调用方都保证调到这里时没在放：「一起听」只在 start() 调（在放的话按钮是
-   * 「跟听中」，点了走的是 stop）；网页播放器（hooks/use-web-player）手里的实例
-   * 还在放时直接复用、不再来要，见那边的 getOrReuseMusicKit。所以重配不会打断谁。
+   * 统一播放器（hooks/use-web-player）手里的实例还在播放或缓冲时直接复用，
+   * 不再来要，见那边的 getOrReuseMusicKit，避免重配打断正在播放的音乐。
    */
   if (instancePromise && cachedToken && pastHalfLife(cachedToken, nowSeconds())) {
     instancePromise = null;

@@ -17,7 +17,22 @@ import {
   type MediaItem,
   type MusicKitInstance,
 } from "@/lib/musickit";
-import type { ListeningItem } from "@/lib/types";
+import {
+  followTargetMs,
+  isHostSeek,
+  needsResync,
+  playbackLagMs,
+  shouldSeekAfterTrackChange,
+} from "@/lib/listen-along";
+import { catalogItemId, mediaItemIndex } from "@/lib/playing-queue";
+import {
+  isSyncEpochCurrent,
+  normalizeSyncUpcomingSongIds,
+  planSyncUpcomingQueue,
+  shouldKeepNaturalNext,
+} from "@/lib/web-player-sync";
+import { trackPositionMs } from "@/lib/track-position";
+import type { ListeningItem, LocalNowPlaying } from "@/lib/types";
 import {
   fetchCatalogTracks,
   filterUserQueueItems,
@@ -36,6 +51,13 @@ export type WebPlayerStatus =
   | "starting" // 正在加载 MusicKit / 取令牌 / 等授权弹窗 / 装队列
   | "ready" // 拿到已授权的实例，队列已经装进去
   | "error";
+
+/** Listening card 提供给统一播放器的同步锚点。 */
+export type SyncSource = {
+  track: LocalNowPlaying | null;
+  songId: string | null;
+  upcomingSongIds?: string[];
+};
 
 export type WebPlayer = {
   status: WebPlayerStatus;
@@ -78,6 +100,18 @@ export type WebPlayer = {
   stop: () => void;
   /** 停止并 unauthorize */
   logout: () => void;
+  /** 注册当前本机播放锚点；不直接控制播放，跟随只在 syncing 时生效。 */
+  setSyncSource: (source: SyncSource) => void;
+  /** 切换同步播放列表、进度、暂停和循环模式。 */
+  toggleSync: () => void;
+  /** 开启一起听并打开播放器；已经同步时只打开，不中断跟随。 */
+  startSync: () => void;
+  /** 当前是否由同步锚点接管播放器。 */
+  syncing: boolean;
+  /** 当前锚点是否足以开始同步。 */
+  syncAvailable: boolean;
+  /** 同步已开启，但主人暂停或没有可用曲目。 */
+  syncWaiting: boolean;
 };
 
 /** 错误转换为文案 */
@@ -87,7 +121,7 @@ function describe(error: unknown): string {
 }
 
 /**
- * 复制自 use-listen-along.ts：拦截用户或代码快速切歌、暂停时触发的正常打断报错，
+ * 拦截用户或代码快速切歌、暂停时触发的正常打断报错，
  * 避免 MusicKit 或浏览器将其作为未捕获异常抛出。
  */
 function isPlayInterrupted(error: unknown) {
@@ -121,6 +155,137 @@ function isPlaybackActive(inst: MusicKitInstance): boolean {
   );
 }
 
+function localPositionMs(music: MusicKitInstance): number {
+  const seconds = music.currentPlaybackTime;
+  return Number.isFinite(seconds) ? Math.max(0, seconds * 1000) : 0;
+}
+
+function localSongId(music: MusicKitInstance): string | null {
+  return catalogItemId(music.nowPlayingItem?.id);
+}
+
+function isPlaybackLive(music: MusicKitInstance): boolean {
+  return isPlaybackActive(music);
+}
+
+function waitUntilPlaying(
+  music: MusicKitInstance,
+  cancelled: () => boolean,
+): Promise<void> {
+  if (music.playbackState === PLAYBACK_STATE.playing) return Promise.resolve();
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeout);
+      window.clearInterval(poll);
+      music.removeEventListener("playbackStateDidChange", onState);
+      resolve();
+    };
+    const onState = () => {
+      if (cancelled() || music.playbackState === PLAYBACK_STATE.playing) finish();
+    };
+    const timeout = window.setTimeout(finish, 25_000);
+    const poll = window.setInterval(onState, 250);
+    music.addEventListener("playbackStateDidChange", onState);
+    onState();
+  });
+}
+
+function playSafe(music: MusicKitInstance): Promise<void> {
+  return mkSafe(() => music.play());
+}
+
+function syncItemForSource(source: SyncSource, previous?: ListeningItem | null): ListeningItem {
+  const track = source.track;
+  const songId = source.songId;
+  const previousTrack = previous?.id === "listen-along" ? previous : null;
+  return {
+    id: "listen-along",
+    title: track?.title || previousTrack?.title || "一起听",
+    artist: track?.artist || previousTrack?.artist || "",
+    artwork: track?.artworkUrl ?? previousTrack?.artwork ?? null,
+    // Dialog 的 playable 判定需要一个 URL；真正同步时仍按 songId 装曲目。
+    link:
+      songId != null
+        ? `https://music.apple.com/song/${encodeURIComponent(songId)}`
+        : previousTrack?.link ?? null,
+    palette: previousTrack?.palette ?? [],
+    durationMs: track?.durationMs || previousTrack?.durationMs || null,
+  };
+}
+
+function sameSyncItem(a: ListeningItem | null, b: ListeningItem): boolean {
+  return Boolean(
+    a &&
+      a.id === b.id &&
+      a.title === b.title &&
+      a.artist === b.artist &&
+      a.artwork === b.artwork &&
+      a.link === b.link &&
+      a.durationMs === b.durationMs,
+  );
+}
+
+/** 切到目录里的某首歌；已有队列就复用索引，避免无谓地重装整队。 */
+async function changeToSong(
+  music: MusicKitInstance, songId: string, cancelled: () => boolean = () => false,
+): Promise<void> {
+  const at = mediaItemIndex(music.queue?.items ?? [], songId);
+  if (at >= 0) {
+    try {
+      if (isPlaybackLive(music)) await mkSafe(() => music.pause());
+      if (cancelled()) return;
+      await music.changeToMediaAtIndex(at);
+      return;
+    } catch (error) {
+      if (!isPlayInterrupted(error)) throw error;
+    }
+  }
+  await mkSafe(() => music.stop());
+  if (cancelled()) return;
+  await mkSafe(() => music.setQueue({ song: songId }));
+}
+
+/** 把同步来源给出的后续队列覆盖到 MusicKit 当前曲后面。 */
+async function syncUpcomingQueue(
+  music: MusicKitInstance,
+  ids: string[],
+  cancelled: () => boolean,
+): Promise<boolean> {
+  const current = localSongId(music);
+  const plan = planSyncUpcomingQueue(music.queue?.items, current, ids);
+  const desired = plan.desiredSongIds;
+  if (!current || plan.action === "none") return false;
+
+  if (desired.length > 0) {
+    await mkSafe(() => music.playNext({ song: desired[0] }, true));
+    for (const id of desired.slice(1)) {
+      if (cancelled()) return true;
+      await mkSafe(() => music.playLater({ song: id }));
+    }
+    return true;
+  }
+
+  // MusicKit 没有公开的 clear-tail API。重放当前 song 会清掉旧尾巴；保存并恢复
+  // 本地位置，避免同步在这一个 await 后被取消时把自由播放重置到歌头。
+  const position = localPositionMs(music);
+  const wasLive = isPlaybackLive(music);
+  await mkSafe(() => music.stop());
+  if (cancelled()) return true;
+  await mkSafe(() => music.setQueue({ song: current }));
+  if (cancelled()) return true;
+  if (wasLive) {
+    await playSafe(music);
+    await waitUntilPlaying(music, cancelled);
+  }
+  if (cancelled()) return true;
+  if (position > 0) await mkSafe(() => music.seekToTime(position / 1000));
+  return true;
+}
+
 const setAuthorized = setMusicAuthSnapshot;
 
 export function useWebPlayerState(): WebPlayer {
@@ -141,6 +306,12 @@ export function useWebPlayerState(): WebPlayer {
   const [queue, setQueue] = useState<MediaItem[]>([]);
   const [active, setActive] = useState(false);
   const [instance, setInstance] = useState<MusicKitInstance | null>(null);
+  const [syncSource, setSyncSourceState] = useState<SyncSource>({
+    track: null,
+    songId: null,
+    upcomingSongIds: [],
+  });
+  const [syncing, setSyncing] = useState(false);
 
   const instanceRef = useRef<MusicKitInstance | null>(null);
   const itemRef = useRef<ListeningItem | null>(null);
@@ -149,6 +320,17 @@ export function useWebPlayerState(): WebPlayer {
   const openRef = useRef(false);
   /** 实例里此刻装着哪张专辑的队列。stop 会把队列清掉，那时归 null，下次要重装 */
   const loadedIdRef = useRef<string | null>(null);
+  const syncingRef = useRef(false);
+  const syncSourceRef = useRef<SyncSource>(syncSource);
+  const syncRevisionRef = useRef(0);
+  const syncGenerationRef = useRef(0);
+  const syncItemRef = useRef<ListeningItem | null>(null);
+  /** 已请求 / 已就绪的同步曲目，用来区分换歌与同曲进度更新。 */
+  const syncReadySongIdRef = useRef<string | null>(null);
+  const syncHasFollowedRef = useRef(false);
+  const syncAlignedSongIdRef = useRef<string | null>(null);
+  const syncLagMsRef = useRef(0);
+  const syncPendingHostStopRef = useRef<number | null>(null);
 
   useEffect(() => {
     itemRef.current = item;
@@ -175,13 +357,110 @@ export function useWebPlayerState(): WebPlayer {
    */
   const opChain = useRef(Promise.resolve());
   const runExclusive = useCallback((fn: () => Promise<void>) => {
-    const next = opChain.current.then(fn, fn);
+    const next = opChain.current.then(fn, fn).catch((caught: unknown) => {
+      if (!isPlayInterrupted(caught)) {
+        setError(describe(caught));
+        setStatus("error");
+      }
+    });
     opChain.current = next.then(
       () => undefined,
       () => undefined,
     );
     return next;
   }, []);
+
+  /**
+   * 同步请求的代数。来源刷新只递增 revision，用户控制和退出同步递增 generation；
+   * 两个值都要匹配，旧的 await 完成后才不会重新夺回 MusicKit。
+   */
+  const syncIsCurrent = useCallback((generation: number, revision: number) => {
+    return isSyncEpochCurrent(
+      { generation: syncGenerationRef.current, revision: syncRevisionRef.current },
+      { generation, revision },
+      syncingRef.current,
+    );
+  }, []);
+
+  const clearSyncTimers = useCallback(() => {
+    if (syncPendingHostStopRef.current != null) {
+      window.clearTimeout(syncPendingHostStopRef.current);
+      syncPendingHostStopRef.current = null;
+    }
+
+  }, []);
+
+  const resetSyncSession = useCallback(() => {
+    clearSyncTimers();
+    syncReadySongIdRef.current = null;
+    syncHasFollowedRef.current = false;
+    syncAlignedSongIdRef.current = null;
+    syncLagMsRef.current = 0;
+  }, [clearSyncTimers]);
+
+  /** 让出同步控制但保留当前 MusicKit 队列和播放状态。 */
+  const cancelSyncFollow = useCallback(
+    (reset = true) => {
+      syncGenerationRef.current += 1;
+      syncingRef.current = false;
+      setSyncing(false);
+      if (reset) resetSyncSession();
+      const inst = instanceRef.current;
+      if (inst) {
+        if (inst.volume === 0) inst.volume = 1;
+        // 同步模式临时借用了 repeat one；退出后交还给普通播放器的默认模式。
+        applyRepeatMode(inst, false);
+        inst.autoplayEnabled = false;
+        setPlaybackState(inst.playbackState);
+        setStatus(
+          activeRef.current || inst.nowPlayingItem
+            ? "ready"
+            : MUSICKIT_TOKEN_ENDPOINT
+              ? "idle"
+              : "unavailable",
+        );
+      } else {
+        setStatus(MUSICKIT_TOKEN_ENDPOINT ? "idle" : "unavailable");
+      }
+    },
+    [resetSyncSession],
+  );
+
+  /** 让同步虚拟项随着主人换歌更新，但进度刷新不会制造无意义的新对象。 */
+  const updateSyncItem = useCallback((source: SyncSource) => {
+    const next = syncItemForSource(source, syncItemRef.current);
+    syncItemRef.current = next;
+    if (
+      syncingRef.current &&
+      (itemRef.current?.id === "listen-along" || itemRef.current == null) &&
+      !sameSyncItem(itemRef.current, next)
+    ) {
+      setItem(next);
+      itemRef.current = next;
+    }
+    if (syncingRef.current && activeItemRef.current?.id === "listen-along") {
+      if (!sameSyncItem(activeItemRef.current, next)) {
+        setActiveItem(next);
+        activeItemRef.current = next;
+      }
+    }
+  }, []);
+
+  /** listening-card 的唯一来源注册入口。 */
+  const setSyncSource = useCallback(
+    (next: SyncSource) => {
+      const normalized: SyncSource = {
+        track: next.track ?? null,
+        songId: next.songId ?? null,
+        upcomingSongIds: normalizeSyncUpcomingSongIds(next.upcomingSongIds),
+      };
+      syncSourceRef.current = normalized;
+      syncRevisionRef.current += 1;
+      setSyncSourceState(normalized);
+      if (syncingRef.current) updateSyncItem(normalized);
+    },
+    [updateSyncItem],
+  );
 
   /**
    * 拿 MusicKit 实例：
@@ -237,7 +516,15 @@ export function useWebPlayerState(): WebPlayer {
     try {
       inst.volume = 1;
       applyRepeatMode(inst, false);
-      await mkSafe(() => inst.setQueue(options));
+      const saved = targetItem.id === "listen-along" ? getCachedPlaylist(targetItem.id) : null;
+      const first = catalogItemId(saved?.[0]?.id);
+      await mkSafe(() => inst.setQueue(first ? { song: first } : options));
+      if (first) {
+        for (const entry of saved!.slice(1)) {
+          const id = catalogItemId(entry.id);
+          if (id) await mkSafe(() => inst.playLater({ song: id }));
+        }
+      }
       // setQueue 内部切换 PlaybackController 会重新挂载并可能触发 startAutoplay；
       // 装完队列后显式关掉 autoplayEnabled，触发 stopAutoplay 清除推荐曲目
       inst.autoplayEnabled = false;
@@ -272,6 +559,8 @@ export function useWebPlayerState(): WebPlayer {
    * 弹窗保持当前专辑和曲目列表可见，底栏播放键恢复为 Play，用户可随时重新开播。
    */
   const stop = useCallback(() => {
+    // Stop 是用户主动控制，先立刻使所有排队中的同步任务失效。
+    cancelSyncFollow();
     setActive(false);
     activeRef.current = false;
     setActiveItem(null);
@@ -284,7 +573,7 @@ export function useWebPlayerState(): WebPlayer {
     void runExclusive(async () => {
       await inst.stop().catch(() => {});
     });
-  }, [runExclusive]);
+  }, [cancelSyncFollow, runExclusive]);
 
   /**
    * 点了某张专辑：装入、打开弹窗，**不开播**。
@@ -413,6 +702,345 @@ export function useWebPlayerState(): WebPlayer {
     activeRef.current = true;
   }, []);
 
+  /**
+   * 把 MusicKit 对齐到 listening-card 注册的 host 锚点。
+   *
+   * 这个函数只会从 runExclusive 里改播放器。每次来源刷新带一个 revision，用户
+   * 操作带一个 generation；任意 await 之后都重新检查两者，保证旧的授权、换歌或
+   * seek 完成后不会把控制权抢回去。
+   */
+  const syncReconcile = useCallback(
+    (generation: number, revision: number): Promise<void> =>
+      runExclusive(async () => {
+        if (!syncIsCurrent(generation, revision)) return;
+
+        setStatus("starting");
+        setError(null);
+        let inst: MusicKitInstance;
+        try {
+          inst = await getOrReuseMusicKit();
+          if (!syncIsCurrent(generation, revision)) return;
+
+          if (!inst.isAuthorized) await inst.authorize();
+          if (!syncIsCurrent(generation, revision)) return;
+
+          setAuthorized(inst.isAuthorized);
+          const source = syncSourceRef.current;
+          const track = source.track;
+          const hostSongId = source.songId;
+          updateSyncItem(source);
+          applyRepeatMode(inst, track?.repeatOne === true);
+
+          const setSyncQueueState = () => {
+            const items = filterUserQueueItems(inst);
+            setCachedPlaylist("listen-along", items);
+            if (itemRef.current?.id !== "listen-along") return;
+            setQueue(items);
+            setNowPlaying(inst.nowPlayingItem ?? items[0] ?? null);
+            setPlaybackState(inst.playbackState);
+          };
+
+          const schedulePause = async () => {
+            if (syncPendingHostStopRef.current != null) {
+              window.clearTimeout(syncPendingHostStopRef.current);
+            }
+            const hostPosition = track ? trackPositionMs(track, Date.now()) : 0;
+            const edgeMs = 2_000 + 5_000;
+            const midSong = Boolean(
+              hostSongId &&
+                track &&
+                track.durationMs > 0 &&
+                hostPosition > edgeMs &&
+                track.durationMs - hostPosition > edgeMs,
+            );
+
+            if (midSong) {
+              syncPendingHostStopRef.current = null;
+              await mkSafe(() => inst.pause());
+              return;
+            }
+
+            syncPendingHostStopRef.current = window.setTimeout(() => {
+              syncPendingHostStopRef.current = null;
+              void runExclusive(async () => {
+                if (!syncIsCurrent(generation, revision)) return;
+                const latest = syncSourceRef.current;
+                if (latest.track?.state === "playing" && latest.songId) return;
+                const local = localSongId(inst);
+                if (latest.songId && local && latest.songId !== local) return;
+                if (isPlaybackLive(inst)) await mkSafe(() => inst.pause());
+              });
+            }, 3_500);
+          };
+
+          if (!hostSongId || !track) {
+            await schedulePause();
+            setSyncQueueState();
+            setStatus("ready");
+            return;
+          }
+
+          if (track.state !== "playing") {
+            // 暂停来源仍要保持当前曲和后续队列，之后恢复播放可以无缝接上。
+            clearSyncTimers();
+          }
+
+          const hostPosition = trackPositionMs(track, Date.now());
+          let local = localSongId(inst);
+          const joining = !syncHasFollowedRef.current;
+
+          /*
+           * MusicKit 可能已经沿预排队列自然切到下一首，而 host 的旧锚点晚到。
+           * 只要本地确实在 host 锚点之后、旧锚点靠近歌尾，就保留本地下一首；
+           * host 真拖回歌中间时由 hostRewoundIntoTrack 放行。
+           */
+          if (local && local !== hostSongId && !track.repeatOne) {
+            const staleTail = shouldKeepNaturalNext({
+              queueItems: inst.queue?.items,
+              hostSongId,
+              localSongId: local,
+              hostPositionMs: hostPosition,
+              hostDurationMs: track.durationMs,
+            });
+            if (staleTail) {
+              setSyncQueueState();
+              setStatus("ready");
+              return;
+            }
+          }
+
+          let muted = false;
+          try {
+            if (local !== hostSongId) {
+              inst.volume = 0;
+              muted = true;
+              syncReadySongIdRef.current = null;
+              loadedIdRef.current = null;
+              await changeToSong(inst, hostSongId, () => !syncIsCurrent(generation, revision));
+              if (!syncIsCurrent(generation, revision)) return;
+              local = localSongId(inst);
+            }
+
+            if (local !== hostSongId) return;
+
+            // 重复模式下清掉旧尾巴；普通模式下精确覆盖来源传来的顺序（含重复曲）。
+            const desiredUpcoming = track.repeatOne
+              ? []
+              : normalizeSyncUpcomingSongIds(source.upcomingSongIds);
+            if (!planSyncUpcomingQueue(inst.queue?.items, local, desiredUpcoming).matches) {
+              inst.volume = 0;
+              muted = true;
+            }
+            const queueChanged = await syncUpcomingQueue(
+              inst, desiredUpcoming, () => !syncIsCurrent(generation, revision),
+            );
+            if (!syncIsCurrent(generation, revision)) return;
+            if (queueChanged && track.state !== "playing") {
+              // setQueue 可能把暂停曲重新置为 loading，下面统一 seek 后再 pause。
+              muted = true;
+              inst.volume = 0;
+            }
+
+            if (track.state !== "playing") {
+              if (isPlaybackLive(inst)) await mkSafe(() => inst.pause());
+              if (
+                needsResync(
+                  localPositionMs(inst),
+                  trackPositionMs(syncSourceRef.current.track ?? track, Date.now()),
+                  5_000,
+                  track.repeatOne ? track.durationMs : 0,
+                )
+              ) {
+                await mkSafe(() =>
+                  inst.seekToTime(
+                    trackPositionMs(syncSourceRef.current.track ?? track, Date.now()) / 1000,
+                  ),
+                );
+              }
+              if (!syncIsCurrent(generation, revision)) return;
+              syncReadySongIdRef.current = hostSongId;
+              syncHasFollowedRef.current = true;
+              syncAlignedSongIdRef.current = hostSongId;
+              syncLagMsRef.current = 0;
+              loadedIdRef.current = "listen-along";
+              setActiveItem(syncItemRef.current);
+              activeItemRef.current = syncItemRef.current;
+              setActive(true);
+              activeRef.current = true;
+              setSyncQueueState();
+              setStatus("ready");
+              return;
+            }
+
+            if (!isPlaybackLive(inst)) {
+              await playSafe(inst);
+              await waitUntilPlaying(inst, () => !syncIsCurrent(generation, revision));
+              if (!syncIsCurrent(generation, revision)) return;
+            }
+
+            const localNow = localPositionMs(inst);
+            const latestHostPosition = trackPositionMs(
+              syncSourceRef.current.track ?? track,
+              Date.now(),
+            );
+            const songChanged = syncAlignedSongIdRef.current !== hostSongId;
+            const mustAlign =
+              joining ||
+              (songChanged && shouldSeekAfterTrackChange(track.positionMs, 5_000)) ||
+              (!songChanged &&
+                isHostSeek(
+                  localNow,
+                  syncLagMsRef.current,
+                  latestHostPosition,
+                  5_000,
+                  track.repeatOne ? track.durationMs : 0,
+                ));
+
+            if (mustAlign) {
+              await mkSafe(() => inst.seekToTime(latestHostPosition / 1000));
+              syncLagMsRef.current = 0;
+            } else if (songChanged) {
+              syncLagMsRef.current = playbackLagMs(latestHostPosition, localNow);
+            }
+            if (!syncIsCurrent(generation, revision)) return;
+            if (!isPlaybackLive(inst)) await playSafe(inst);
+
+            syncReadySongIdRef.current = hostSongId;
+            syncHasFollowedRef.current = true;
+            syncAlignedSongIdRef.current = hostSongId;
+            loadedIdRef.current = "listen-along";
+            setActiveItem(syncItemRef.current);
+            activeItemRef.current = syncItemRef.current;
+            markActive(inst);
+            setSyncQueueState();
+            setStatus("ready");
+          } finally {
+            if (localSongId(inst) === hostSongId) {
+              loadedIdRef.current = "listen-along";
+              setSyncQueueState();
+            }
+            if (muted && inst.volume === 0) inst.volume = 1;
+          }
+        } catch (caught) {
+          if (!syncIsCurrent(generation, revision) || isPlayInterrupted(caught)) return;
+          cancelSyncFollow();
+          setError(describe(caught));
+          setStatus("error");
+        }
+      }),
+    [
+      cancelSyncFollow,
+      clearSyncTimers,
+      getOrReuseMusicKit,
+      markActive,
+      runExclusive,
+      syncIsCurrent,
+      updateSyncItem,
+    ],
+  );
+
+  /** 来源变化只重新排队一轮同步任务；不会创建第二个 MusicKit 实例。 */
+  useEffect(() => {
+    if (!syncing) return;
+    void syncReconcile(syncGenerationRef.current, syncRevisionRef.current);
+  }, [syncReconcile, syncSource, syncing]);
+
+  /**
+   * 来源没有新事件时，播放器自己的缓冲仍可能慢慢落后。低频巡检只负责纠偏，
+   * 换歌、暂停和首次加入仍由上面的来源 effect 处理。
+   */
+  useEffect(() => {
+    if (!syncing || !instance) return;
+    const generation = syncGenerationRef.current;
+    const timer = window.setInterval(() => {
+      const revision = syncRevisionRef.current;
+      if (!syncIsCurrent(generation, revision)) return;
+      const source = syncSourceRef.current;
+      const track = source.track;
+      const songId = source.songId;
+      if (!track || !songId || track.state !== "playing") return;
+      if (syncReadySongIdRef.current !== songId) return;
+      if (localSongId(instance) !== songId) return;
+      if (instance.playbackState !== PLAYBACK_STATE.playing) return;
+
+      const host = trackPositionMs(track, Date.now());
+      const target = followTargetMs(host, syncLagMsRef.current);
+      if (
+        !needsResync(
+          localPositionMs(instance),
+          target,
+          5_000,
+          track.repeatOne ? track.durationMs : 0,
+        )
+      ) {
+        return;
+      }
+
+      void runExclusive(async () => {
+        if (!syncIsCurrent(generation, revision)) return;
+        const latest = syncSourceRef.current;
+        if (
+          !latest.track ||
+          !latest.songId ||
+          latest.track.state !== "playing" ||
+          syncReadySongIdRef.current !== latest.songId ||
+          localSongId(instance) !== latest.songId
+        ) {
+          return;
+        }
+        await mkSafe(() =>
+          instance.seekToTime(
+            followTargetMs(trackPositionMs(latest.track!, Date.now()), syncLagMsRef.current) /
+              1000,
+          ),
+        );
+      }).catch(() => {});
+    }, 20_000);
+
+    return () => window.clearInterval(timer);
+  }, [instance, runExclusive, syncIsCurrent, syncing]);
+
+  const startSync = useCallback(() => {
+    if (!MUSICKIT_TOKEN_ENDPOINT) return;
+    if (syncingRef.current) {
+      const current = syncItemRef.current;
+      if (current) {
+        setItem(current);
+        itemRef.current = current;
+      }
+      const inst = instanceRef.current;
+      const loaded = inst && loadedIdRef.current === "listen-along";
+      setQueue(loaded ? filterUserQueueItems(inst) : []);
+      setNowPlaying(loaded ? inst.nowPlayingItem : null);
+      setOpen(true);
+      openRef.current = true;
+      return;
+    }
+
+    syncGenerationRef.current += 1;
+    resetSyncSession();
+    syncingRef.current = true;
+    setSyncing(true);
+    setError(null);
+    setStatus("starting");
+    const virtual = syncItemForSource(syncSourceRef.current, syncItemRef.current);
+    syncItemRef.current = virtual;
+    setItem(virtual);
+    itemRef.current = virtual;
+    setOpen(true);
+    openRef.current = true;
+    setQueue([]);
+    setNowPlaying(null);
+  }, [resetSyncSession]);
+
+  const toggleSync = useCallback(() => {
+    if (syncingRef.current) {
+      cancelSyncFollow();
+    } else {
+      startSync();
+    }
+  }, [cancelSyncFollow, startSync]);
+
   /** 弹窗里的 Sign in：加载 MusicKit 并 authorize，只登录不开播 */
   const signIn = useCallback(() => {
     void runExclusive(async () => {
@@ -454,8 +1082,11 @@ export function useWebPlayerState(): WebPlayer {
    * 若查看的专辑与当前正在播放的不同，停旧播、装新队并开播。
    */
   const play = useCallback(() => {
+    cancelSyncFollow();
     void runExclusive(async () => {
-      const currentItem = itemRef.current;
+      // 关闭浏览中的专辑后，页头播放器必须继续操作 activeItem 对应的实际队列。
+      const currentItem =
+        !openRef.current && activeItemRef.current ? activeItemRef.current : itemRef.current;
       if (!currentItem) return;
 
       setStatus("starting");
@@ -476,20 +1107,22 @@ export function useWebPlayerState(): WebPlayer {
       }
 
       inst.autoplayEnabled = false;
-      await mkSafe(() => inst.play());
+      if (inst.playbackState !== PLAYBACK_STATE.playing) await mkSafe(() => inst.play());
+      setStatus("ready");
       setActiveItem(currentItem);
       activeItemRef.current = currentItem;
       markActive(inst);
     });
-  }, [getOrReuseMusicKit, markActive, prepare, runExclusive]);
+  }, [cancelSyncFollow, getOrReuseMusicKit, markActive, prepare, runExclusive]);
 
   const pause = useCallback(() => {
+    cancelSyncFollow();
     void runExclusive(async () => {
       const inst = instanceRef.current;
       if (!inst) return;
       await mkSafe(() => inst.pause());
     });
-  }, [runExclusive]);
+  }, [cancelSyncFollow, runExclusive]);
 
   const toggle = useCallback(() => {
     const inst = instanceRef.current;
@@ -505,35 +1138,39 @@ export function useWebPlayerState(): WebPlayer {
   }, [pause, play]);
 
   const next = useCallback(() => {
+    cancelSyncFollow();
     void runExclusive(async () => {
       const inst = instanceRef.current;
       if (!inst) return;
       await mkSafe(() => inst.skipToNextItem());
     });
-  }, [runExclusive]);
+  }, [cancelSyncFollow, runExclusive]);
 
   const previous = useCallback(() => {
+    cancelSyncFollow();
     void runExclusive(async () => {
       const inst = instanceRef.current;
       if (!inst) return;
       await mkSafe(() => inst.skipToPreviousItem());
     });
-  }, [runExclusive]);
+  }, [cancelSyncFollow, runExclusive]);
 
   const seekTo = useCallback(
     (ms: number): Promise<void> => {
+      cancelSyncFollow();
       return runExclusive(async () => {
         const inst = instanceRef.current;
         if (!inst) return;
         await mkSafe(() => inst.seekToTime(ms / 1000));
       });
     },
-    [runExclusive],
+    [cancelSyncFollow, runExclusive],
   );
 
   /** 点队列里某一首：changeToMediaAtIndex 自己会开播，所以这里也要记 active */
   const playAt = useCallback(
     (index: number) => {
+      cancelSyncFollow();
       void runExclusive(async () => {
         const currentItem = itemRef.current;
         if (!currentItem) return;
@@ -554,13 +1191,14 @@ export function useWebPlayerState(): WebPlayer {
         }
 
         inst.autoplayEnabled = false;
+        await mkSafe(() => inst.pause());
         await mkSafe(() => inst.changeToMediaAtIndex(index));
         setActiveItem(currentItem);
         activeItemRef.current = currentItem;
         markActive(inst);
       });
     },
-    [getOrReuseMusicKit, markActive, prepare, runExclusive],
+    [cancelSyncFollow, getOrReuseMusicKit, markActive, prepare, runExclusive],
   );
 
   /** 停止并 unauthorize */
@@ -571,7 +1209,7 @@ export function useWebPlayerState(): WebPlayer {
       setError(null);
       return;
     }
-    void (async () => {
+    void runExclusive(async () => {
       try {
         await inst.unauthorize();
         setAuthorized(false);
@@ -580,8 +1218,8 @@ export function useWebPlayerState(): WebPlayer {
         setError(describe(caught));
         setStatus("error");
       }
-    })();
-  }, [stop]);
+    });
+  }, [runExclusive, stop]);
 
   /**
    * 监听 MusicKit 实例的各项事件变化。
@@ -605,7 +1243,7 @@ export function useWebPlayerState(): WebPlayer {
 
       // 如果已有权威曲目列表（如 Catalog API 返回的专辑完整曲目），绝不让 Autoplay 推荐队列覆盖
       const existing = getCachedPlaylist(currentLoadedId);
-      if (existing && existing.length > 0) return;
+      if (currentLoadedId !== "listen-along" && existing && existing.length > 0) return;
 
       const items = filterUserQueueItems(inst);
       if (items.length > 0) {
@@ -637,11 +1275,14 @@ export function useWebPlayerState(): WebPlayer {
   /** 页面/Hook 卸载时停止播放，避免音频遗留在后台 */
   useEffect(() => {
     return () => {
+      syncingRef.current = false;
+      syncGenerationRef.current += 1;
+      clearSyncTimers();
       if (instanceRef.current) {
         void instanceRef.current.stop().catch(() => {});
       }
     };
-  }, []);
+  }, [clearSyncTimers]);
 
   const visibleNowPlaying = isItemActive ? nowPlaying : null;
 
@@ -672,6 +1313,14 @@ export function useWebPlayerState(): WebPlayer {
       playAt,
       stop,
       logout,
+      setSyncSource,
+      toggleSync,
+      startSync,
+      syncing,
+      syncAvailable: Boolean(MUSICKIT_TOKEN_ENDPOINT && syncSource.songId),
+      syncWaiting:
+        syncing &&
+        (!syncSource.songId || !syncSource.track || syncSource.track.state !== "playing"),
     }),
     [
       status,
@@ -699,6 +1348,11 @@ export function useWebPlayerState(): WebPlayer {
       playAt,
       stop,
       logout,
+      setSyncSource,
+      toggleSync,
+      startSync,
+      syncing,
+      syncSource,
     ],
   );
 }
