@@ -80,6 +80,11 @@ export const config = {
   /** Antigravity 的订阅名（如 "Google AI Pro"）。配额接口不带它，只能人工指定；空 = 不渲染套餐 */
   antigravityPlanLabel: process.env.ANTIGRAVITY_PLAN_LABEL?.trim() ?? "",
 
+  /** Antigravity 配额端点；默认打 daily-cloudcode-pa */
+  antigravityQuotaUrl:
+    process.env.ANTIGRAVITY_QUOTA_URL?.trim() ||
+    "https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary",
+
   /**
    * Google OAuth 客户端。配了就直接用；都空就从 `agy` 二进制里扫候选，刷新时逐对试
    * （见 providers/antigravity-oauth-client.ts）。这两个值不要写进仓库。

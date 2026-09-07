@@ -7,7 +7,7 @@ import { scanOAuthClientCandidates, type OAuthClient } from "./antigravity-oauth
 import type { AgentRow } from "../site.js";
 import { genericWindows, object, rowFromWindows, text } from "../windows.js";
 
-const QUOTA_URL = "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary";
+const QUOTA_URL = config.antigravityQuotaUrl;
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const SKEW_MS = 5 * 60_000;
 const EXPIRED_MESSAGE =
