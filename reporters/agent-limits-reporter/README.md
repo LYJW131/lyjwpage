@@ -55,6 +55,7 @@ PlayStation 上报器采用同款人数分档逻辑，限额使用自己的 5 / 
 | `CODEX_HOME` | | Codex 凭据目录，默认 `$HOME/.codex` |
 | `CURSOR_AUTH_TOKEN` | | 直接注入 Cursor JWT。没有就读 `$XDG_CONFIG_HOME/cursor/auth.json`（默认 `/data/.config/cursor/auth.json`） |
 | `ANTIGRAVITY_PLAN_LABEL` | | Antigravity 的订阅名，如 `Google AI Pro`。配额接口不带订阅（IDE 里那句来自 Windsurf 那套 language server 问 aicode.googleapis.com 的 gRPC，CLI 从不显示；`loadCodeAssist` 回的 free-tier 是 Code Assist 档位不是订阅），只能人工指定；空 = 不渲染套餐 |
+| `ANTIGRAVITY_QUOTA_URL` | | 可选覆盖。默认 `https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary` |
 | `ANTIGRAVITY_OAUTH_CLIENT_ID` | | 可选。不填时上报器启动会从镜像里的 `agy` 二进制扫出候选、刷新时逐对试，登录完就够。填了就直接用。**不写进仓库** |
 | `ANTIGRAVITY_OAUTH_CLIENT_SECRET` | | 同上 |
 | `AGY_BIN` | | 扫 OAuth 常量用的 `agy` 路径，默认 `agy`（镜像里在 `/usr/local/bin`） |
@@ -102,7 +103,7 @@ Codex / Grok 的 token 由上报器自己刷新写回（`auth.json`）。
 `Cursor session expired — run \`agent login\` to re-authenticate.`。
 
 **antigravity。** 登录态在 `/data/.gemini/antigravity-cli/antigravity-oauth-token`。上报器打
-`cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary`。到期前 5 分钟或接口回 401 时向
+`daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary`（Antigravity 实际使用的后端端点）。到期前 5 分钟或接口回 401 时向
 `oauth2.googleapis.com/token` 刷新并原子写回。刷新要的 client_id / client_secret 是 `agy` 二进制里的常量，
 token 文件里没有，而且 `agy` 自己每次跑都只在内存里刷、不写回文件 —— 所以光读文件永远是过期的。
 镜像里本来就装着 `agy`，上报器启动时把它扫一遍捞出候选（各两个，IDE 一套 CLI 一套，分不清谁配谁），
