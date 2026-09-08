@@ -363,10 +363,13 @@ export function ActivityCard({
         { label: "爬楼", value: null },
       ]
     : [
-        { label: "步数", value: <NumberFlow value={data.steps ?? 0} /> },
-        { label: "距离", value: `${((data.distanceMeters ?? 0) / 1000).toFixed(2)} km` },
+        { label: "步数", value: <NumberFlow value={!current ? 0 : (data.steps ?? 0)} /> },
+        {
+          label: "距离",
+          value: `${((!current ? 0 : (data.distanceMeters ?? 0)) / 1000).toFixed(2)} km`,
+        },
         // 爬楼不带单位，只有数字 —— 「层」在标题里已经说清楚了
-        { label: "爬楼", value: <NumberFlow value={data.flightsClimbed ?? 0} /> },
+        { label: "爬楼", value: <NumberFlow value={!current ? 0 : (data.flightsClimbed ?? 0)} /> },
       ];
 
   return (
