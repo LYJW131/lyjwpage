@@ -10,7 +10,6 @@ import { refreshRecentlyPlayed } from "./apple-music-recent";
 
 import { ROOM_ID } from "./live-platform";
 import { ConfigError, issueMusicKitToken } from "./musickit-token";
-import { OnlineCounterRoom } from "./online-counter";
 import { getAllowedOrigins, getCorsHeaders, isAllowedOrigin, isAllowedOriginValue } from "./origins";
 import { requestStore, type Env } from "./runtime";
 
@@ -18,11 +17,9 @@ import { requestStore, type Env } from "./runtime";
 
 export type { Env };
 // Durable Object 类必须从入口模块导出，wrangler 按名字找
-export { OnlineCounterRoom, StateHub };
+export { StateHub };
 
 const WS_PATH = "/ws";
-/** 「此刻在线」的连接。和 /ws 是两个房间、两个口径，见 online-counter.ts */
-const ONLINE_WS_PATH = "/online/ws";
 const INGEST_PREFIX = "/api/ingest/";
 
 /**
@@ -56,23 +53,7 @@ function getRoom(env: Env): DurableObjectStub<LivePushRoom> {
   return env.LIVE_PUSH.get(env.LIVE_PUSH.idFromName(ROOM_ID));
 }
 
-function getOnlineRoom(env: Env): DurableObjectStub<OnlineCounterRoom> {
-  return env.ONLINE_COUNTER.get(env.ONLINE_COUNTER.idFromName(ROOM_ID));
-}
-
-/**
- * 两个人头数一起回答。`connections` 是开着的页面（含后台标签页），`online` 是
- * 此刻可见的页面；三个上报器按这两个数分档，字段名是它们那边写死的契约。
- */
-async function headCounts(env: Env): Promise<{ connections: number; online: number }> {
-  const [connections, online] = await Promise.all([
-    getRoom(env).connectionCount(),
-    getOnlineRoom(env).count(),
-  ]);
-  return { connections, online };
-}
-
-/** 两条 WebSocket 入口共用的握手前检查：来源白名单、必须是升级请求。 */
+/** WebSocket 握手前检查：来源白名单、必须是升级请求。 */
 function rejectSocket(request: Request, env: Env): Response | null {
   if (!isAllowedOrigin(request, env)) {
     return new Response("Forbidden", { status: 403 });
@@ -345,16 +326,8 @@ const worker = {
       return response;
     }
 
-    if (url.pathname === ONLINE_WS_PATH) {
-      // 不走上面那条的最近在听刷新：这条连接按可见性反复重连，每切一次标签页就
-      // 敲一次 SQLite 闸门不值得；开着页面的那条 /ws 已经把刷新带起来了
-      const rejected = rejectSocket(request, env);
-      if (rejected) return rejected;
-      return getOnlineRoom(env).fetch(request);
-    }
-
     if (url.pathname === "/count") {
-      return jsonResponse({ ok: true, ...(await headCounts(env)) }, { headers: cors });
+      return jsonResponse({ ok: true, connections: await getRoom(env).connectionCount() }, { headers: cors });
     }
 
     if (url.pathname === "/") {

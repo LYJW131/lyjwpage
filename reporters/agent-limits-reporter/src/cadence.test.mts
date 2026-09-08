@@ -6,11 +6,12 @@ const cadence = {
   liveIntervalMs: 300_000,
   openIntervalMs: 600_000,
   idleIntervalMs: 3_600_000,
+  onlineCountUrl: "https://online.example/count",
   countUrl: "https://ingest.example/count",
   countTimeoutMs: 2_500,
 };
 
-test("三档按可见、开着、无人选择；一次请求拿到两个数", async () => {
+test("三档按可见、开着、无人选择；分别读取两个域名", async () => {
   for (const [online, connections, expected] of [
     [1, 8, 300_000], [0, 2, 600_000], [0, 0, 3_600_000],
   ]) {
@@ -19,16 +20,16 @@ test("三档按可见、开着、无人选择；一次请求拿到两个数", as
       urls.push(String(url));
       assert.ok(init?.signal instanceof AbortSignal);
       assert.equal(init?.headers, undefined);
-      return Response.json({ ok: true, online, connections });
+      return Response.json(String(url).includes("online.example") ? { ok: true, online } : { ok: true, connections });
     };
     assert.equal(await nextDelay(cadence, request), expected);
-    assert.deepEqual(urls, ["https://ingest.example/count"]);
+    assert.deepEqual(urls, ["https://online.example/count", "https://ingest.example/count"]);
   }
 });
 
 test("未配置不出网；计数异常或任一字段不合法都只向慢档退", async () => {
   let calls = 0;
-  assert.equal(await nextDelay({ ...cadence, countUrl: "" }, async () => {
+  assert.equal(await nextDelay({ ...cadence, countUrl: "", onlineCountUrl: "" }, async () => {
     calls++;
     return Response.json({ online: 1, connections: 1 });
   }), 3_600_000);
@@ -40,13 +41,24 @@ test("未配置不出网；计数异常或任一字段不合法都只向慢档�
     () => new Response("unavailable", { status: 503 }),
     () => new Response("not json"),
     ...[
-      null, {}, { connections: 1 }, { online: 1 },
-      { online: "1", connections: 1 }, { online: -1, connections: 1 }, { online: 0.5, connections: 1 },
-      { online: 1, connections: "8" },
+      null, {},
+      { online: "1", connections: "1" }, { online: -1, connections: -1 }, { online: 0.5, connections: 0.5 },
     ].map(body => () => Response.json(body)),
   ];
   for (const fail of failures) {
     assert.equal(await nextDelay(cadence, async () => fail()), 3_600_000);
+  }
+});
+
+test("一端故障保留另一端有效判据", async () => {
+  for (const [failed, body, expected] of [
+    ["online.example", { connections: 2 }, 600_000],
+    ["ingest.example", { online: 1 }, 300_000],
+  ] as const) {
+    assert.equal(await nextDelay(cadence, async url => {
+      if (String(url).includes(failed)) throw new Error("timeout");
+      return Response.json(body);
+    }), expected);
   }
 });
 

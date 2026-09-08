@@ -7,6 +7,7 @@ export interface Env {
   PLAYSTATION_HIDDEN_TITLE_IDS?: string;
   /** API Worker 的**源**：上报拼 `/api/ingest/playstation`，人头数拼 `/count`。 */
   SITE_URL?: string;
+  ONLINE_COUNTER_URL?: string;
   SITE_INGEST_URL?: string;
   PSN_NPSSO?: string;
   TELEMETRY_INGEST_SECRET?: string;
@@ -69,15 +70,13 @@ export function isDryRun(env: Env): boolean {
   return ingestUrl(env) === "";
 }
 
-/**
- * 两个人头数的读取地址：API Worker 的 `/count` 一次回答 `online`（此刻**可见**
- * 的页面）和 `connections`（**开着**的页面，含后台标签页、锁了屏的手机）。站点侧
- * use-online-count 在页面不可见时把连接整条关掉，use-live-events 那条不关。
- *
- * 和上报同一个源。只配了 SITE_INGEST_URL 没配 SITE_URL 时返回空串 —— 门会按
- * 「没人」走，一路退到 15 分钟的基线，不会因为少配一个变量而变快。
- */
+/** API 的连接数与独立在线人数分别读取。 */
 export function countUrl(env: Env): string {
   const origin = env.SITE_URL?.trim();
+  return origin ? `${trimSlash(origin)}/count` : "";
+}
+
+export function onlineCountUrl(env: Env): string {
+  const origin = env.ONLINE_COUNTER_URL?.trim();
   return origin ? `${trimSlash(origin)}/count` : "";
 }

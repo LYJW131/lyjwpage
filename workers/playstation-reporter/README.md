@@ -22,7 +22,7 @@ Cloudflare Worker 上的 PSN 上报器：cron 每分钟响一次，前面挡一�
 - 读 KV 里 `meta:lastFullTick`（上一轮完整 tick 的**开始**时刻）；
 - 攒够 14.5 分钟就直接放行，连人头数都不问 —— 闲时节奏不该依赖 API Worker 可不可达；
 - 不到 55 秒直接挡回去；
-- 中间那段问一次 API Worker 的 `GET /count`（超时 2.5 秒），一次拿到两个数：
+- 中间那段并行读取在线人数和 API Worker 的 `GET /count`（各自超时 2.5 秒），分别拿到两个数：
   `online` 大于 0（有页面**可见**）就放行；否则已经攒够 115 秒、且 `connections`
   大于 0（有页面**开着**）也放行。
 
@@ -294,9 +294,8 @@ titleId，屏蔽的游戏不上报、不占窗口；改这份名单会重推奖�
 
 `SITE_URL=https://api.homepage.lyjw.llc` 已经在 `wrangler.toml` 里配好，不必再动。要临时回到 dry-run 就把它注释掉。
 
-门读的人头数也来自这同一个源（路径由这边拼 `/count`，和站点侧 `NEXT_PUBLIC_LIVE_PUSH_URL`
-同一个形状）。只配 `SITE_INGEST_URL` 不配 `SITE_URL` 时人头数读不到，上报不停摆，只是
-一路退到 15 分钟一轮的基线节奏。所有连接该 API Worker 的页面均计入人数。
+门并行读 `ONLINE_COUNTER_URL/count` 的可见人数与 `SITE_URL/count` 的推送连接数。
+每个来源未配置或读取失败时仅将其对应计数降为零；上报继续运行。
 
 本目录是独立 npm 部署单元，保留自己的 `package-lock.json`。重生成时必须在没有
 `node_modules` 的干净状态运行 `npm install --package-lock-only`，否则根工作区的 pnpm
@@ -308,3 +307,6 @@ titleId，屏蔽的游戏不上报、不占窗口；改这份名单会重推奖�
 npm ci
 npm run typecheck
 ```
+
+在线人数已恢复独立 Worker：配置 `ONLINE_COUNTER_URL=https://online.homepage.lyjw.llc`（只填源）。
+其 `/count` 的 `online` 判定快档；`SITE_URL/count` 的 `connections` 判定中档。两个查询独立超时、独立降为零。

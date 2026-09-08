@@ -5,13 +5,13 @@ compatibility_date = "2025-02-14"
 compatibility_flags = ["nodejs_compat", "nodejs_compat_populate_process_env"]
 workers_dev = true
 
-# 只有这一个域名：站点的两条 WebSocket、上报器的上报和 /count 都从它拼路径。
+# API、实时推送与连接数使用此源；可见人数由 online-counter 独立提供。
 routes = [
   { pattern = "api.homepage.lyjw.llc", custom_domain = true }
 ]
 
 [vars]
-# 逗号分隔。两条 WebSocket、公开 API 的 CORS 和 MusicKit 令牌签发都比这份名单。
+# 逗号分隔。实时推送、公开 API 的 CORS 和 MusicKit 令牌签发使用此名单。
 # 对令牌它还是第二道限制：名单里写死的域会签进 JWT 的 origin 声明，由 Apple 校验，
 # 令牌被复制到别的站点上也用不了。通配项只参与第一道（Apple 不解析通配符），
 # 匹配到的预览域名和 localhost 只签它自己一个，见 src/musickit-token.ts。
@@ -33,15 +33,11 @@ APPLE_MUSIC_STOREFRONT = "cn"
 [alias]
 "@/lib/storage-driver" = "./src/storage-driver.ts"
 
-# 两个房间、两个口径：LIVE_PUSH 数开着的页面（/ws，事件也从它广播），
-# ONLINE_COUNTER 数此刻可见的页面（/online/ws，页脚那个数）。/count 一起回答。
+# LIVE_PUSH 数开着的页面（/ws，事件也从它广播），/count 返回 connections。
 [[durable_objects.bindings]]
 name = "LIVE_PUSH"
 class_name = "LivePushRoom"
 
-[[durable_objects.bindings]]
-name = "ONLINE_COUNTER"
-class_name = "OnlineCounterRoom"
 
 
 
@@ -82,3 +78,7 @@ to = "OnlineCounterRoom"
 from = "StateHub"
 from_script = "ingest"
 to = "StateHub"
+
+[[migrations]]
+tag = "v2-split-online-counter"
+deleted_classes = ["OnlineCounterRoom"]

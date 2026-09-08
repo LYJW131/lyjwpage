@@ -58,12 +58,10 @@ try {
     alias: Object.fromEntries(['storage-driver'].map(name => [`@/lib/${name}`, join(root, `workers/api/src/${name}.ts`)])),
     durable_objects: { bindings: [
       { name: 'LIVE_PUSH', class_name: 'LivePushRoom' },
-      { name: 'ONLINE_COUNTER', class_name: 'OnlineCounterRoom' },
       { name: 'STATE', class_name: 'StateHub' },
     ] },
     migrations: [
       { tag: 'v1', new_sqlite_classes: ['LivePushRoom'] },
-      { tag: 'v2', new_sqlite_classes: ['OnlineCounterRoom'] },
       { tag: 'v3', new_sqlite_classes: ['StateHub'] },
     ],
     r2_buckets: [{ binding: 'IMAGES', bucket_name: 'isolated-images' }],
@@ -79,19 +77,11 @@ try {
   mockSite.listen(sitePort, '127.0.0.1');
   children.push({ kill: () => mockSite.close(), exitCode: 0 });
   await eventually(async () => assert.equal((await fetch(`${worker}/count`)).status, 200));
-  assert.deepEqual(await (await fetch(`${worker}/count`)).json(), { ok: true, connections: 0, online: 0 });
+  assert.deepEqual(await (await fetch(`${worker}/count`)).json(), { ok: true, connections: 0 });
   assert.equal((await post(worker, '/api/ingest/homepod', {})).status, 503);
   assert.equal((await post(worker, '/api/internal/storage/import', { entries: [], finalize: true }, `${secret}-import`)).status, 200);
-  // 「此刻在线」那条：接进来立刻广播人数，/count 的 online 跟着变；它不该带起最近在听的刷新
-  const onlineSocket = new WebSocket(`${worker.replace('http:', 'ws:')}/online/ws`);
-  const onlineMessages = [];
-  onlineSocket.addEventListener('message', e => onlineMessages.push(JSON.parse(e.data)));
-  await once(onlineSocket, 'open');
-  await eventually(async () => assert.deepEqual(onlineMessages.at(-1), { online: 1 }));
-  assert.deepEqual(await (await fetch(`${worker}/count`)).json(), { ok: true, connections: 0, online: 1 });
-  onlineSocket.close();
-  await eventually(async () => assert.deepEqual(await (await fetch(`${worker}/count`)).json(), { ok: true, connections: 0, online: 0 }));
-  console.log('PASS: /online/ws counts visible pages separately; /count answers both numbers');
+  assert.equal((await fetch(`${worker}/online/ws`)).status, 404);
+  console.log('PASS: API count only reports live-push connections; online route removed');
   const events = [];
   socket = new WebSocket(`${worker.replace('http:', 'ws:')}/ws`);
   socket.addEventListener('message', e => { if (e.data !== 'pong') events.push(JSON.parse(e.data)); });

@@ -20,7 +20,7 @@
 3. 按 MacTelemetryHub `AgentLimitsCollector` 的规则翻译成站点请求体
 4. POST 到站点
 
-每轮收尾读一次 `SITE_URL/count`：`online`（有页面**可见**）大于 0 走快档；否则
+每轮收尾并行读 `ONLINE_COUNTER_URL/count` 与 `SITE_URL/count`：`online`（有页面**可见**）大于 0 走快档；否则
 `connections`（有页面**开着**，含后台标签页）大于 0 走中档，否则走闲档。与 server /
 PlayStation 上报器采用同款人数分档逻辑，限额使用自己的 5 / 10 / 60 分钟。
 计数超时、非成功响应、格式错误一律当 0，不触发上报失败重试。
@@ -38,7 +38,7 @@ PlayStation 上报器采用同款人数分档逻辑，限额使用自己的 5 / 
 
 | 变量 | 必填 | 说明 |
 | --- | --- | --- |
-| `SITE_URL` | ✅ | 上报 Worker 的源，如 `https://api.homepage.lyjw.llc`。上报端点和人头数的 `/count` 都由上报器从它拼 |
+| `SITE_URL` | ✅ | 上报 Worker 的源，如 `https://api.homepage.lyjw.llc`。上报端点和推送连接数的 `/count` 从它拼 |
 | `SITE_INGEST_URL` | | 直接给完整端点，给了就不用 `SITE_URL` 上报；人头数仍只从 `SITE_URL` 读 |
 | `TELEMETRY_INGEST_SECRET` | ✅ | 和站点同名变量对上，作 Bearer 鉴权。站点没配时才可留空 |
 | `LIVE_INTERVAL_MS` | | 默认 `300000`（5 分钟），有可见页面；也是长档重查人数的间隔 |
@@ -137,7 +137,7 @@ cursor 是 `{ period, plan, hardLimit }` 三份 DashboardService 响应。有它
 从固定间隔升级时，先将 API Worker 的新鲜度窗口更新为
 `AGENT_LIMITS_STALE_MS=11100000`（185 分钟，三轮闲档加缓存余量），删除旧的
 `AGENT_LIMITS_PUSH_INTERVAL_MS`。然后更新 NAS `.env`：删除 `PUSH_INTERVAL_MS`、
-`ONLINE_COUNTER_URL`、`LIVE_PUSH_URL`（人头数改从 `SITE_URL` 读），按需设置三档间隔，
+`LIVE_PUSH_URL`，并设置 `ONLINE_COUNTER_URL=https://online.homepage.lyjw.llc`；按需设置三档间隔，
 再重建容器。旧变量已移除。
 
 拷过去（dsm 的 sftp 子系统是关的，`scp` 用不了，走 tar 管道）：
@@ -175,3 +175,6 @@ ssh dsm '/usr/local/bin/docker compose -f /volume3/docker/agent-limits-reporter/
 - 整轮采集 / 上报失败时，下一次重试是 2 秒后，连着错才逐次翻倍退到 5 分钟（跑通一次就复位）；退避期间不查人数。单家失败仍照发错误行，成功上报后按三档等下一轮。
 - 某个 agent「没配」（`configured: false`）这一行不发，站点按 id 留着上一次的值。
 - 「配了但取不到」发空 `limits` 加非空 `limitsError`。不要把上一次的好值再发一遍。
+
+在线人数已恢复独立 Worker：配置 `ONLINE_COUNTER_URL=https://online.homepage.lyjw.llc`（只填源）。
+其 `/count` 的 `online` 判定快档；`SITE_URL/count` 的 `connections` 判定中档。两个查询独立超时、独立降为零。

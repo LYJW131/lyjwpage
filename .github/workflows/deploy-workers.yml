@@ -55,6 +55,10 @@ jobs:
               names=$(printf '%s\napi\n' "$names" | sort -u)
             fi
           fi
+          # 在线人数入口复用 API 的纯来源检查，改名单逻辑时两边一起发布。
+          if git diff --name-only "$before" "$GITHUB_SHA" -- workers/api/src/origins.ts | awk 'END { exit NR == 0 }'; then
+            names=$(printf '%s\nonline-counter\n' "$names" | sort -u)
+          fi
           # 被整个删掉的 worker 也会出现在 diff 里，目录已不存在就不进矩阵——
           # 不滤的话 wrangler-action 会拿一个不存在的 workingDirectory 打红整步
           names=$(printf '%s\n' $names | while read -r n; do [ -d "workers/$n" ] && echo "$n"; done || true)
@@ -76,16 +80,16 @@ jobs:
       - uses: actions/checkout@v5
 
       - uses: pnpm/action-setup@v4
-        if: matrix.worker == 'api'
+        if: matrix.worker == 'api' || matrix.worker == 'online-counter'
 
       - uses: actions/setup-node@v4
-        if: matrix.worker == 'api'
+        if: matrix.worker == 'api' || matrix.worker == 'online-counter'
         with:
           node-version: 22
           cache: pnpm
 
       - name: Install shared store dependencies
-        if: matrix.worker == 'api'
+        if: matrix.worker == 'api' || matrix.worker == 'online-counter'
         run: pnpm install --frozen-lockfile
 
       # 大多数 worker 没有运行时依赖；PlayStation 上报器依赖 psn-api，
@@ -100,4 +104,4 @@ jobs:
             if [ -f package-lock.json ]; then npm ci; fi
           # 跟 workers/*/package.json devDependencies 里的 wrangler 一个版本；
           # 不钉的话 action 装它自带的旧版，和本地部署用的不是同一个打包器
-          wranglerVersion: "3.109.2"
+          wranglerVersion: ${{ matrix.worker == 'online-counter' && '4.129.1' || '3.109.2' }}

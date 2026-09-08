@@ -44,3 +44,17 @@ Worker 的三个 SQLite Durable Object 命名空间通过 transfer migration 迁
 | misaka-jp | `/opt/lyjwpage/server-reporter/.env` | `systemctl restart server-reporter` |
 
 备份路径是原路径加上述后缀。原 Worker / 域名退役后，不要单独恢复备份中的旧目的地；如需整体回滚，先恢复后端域名与服务，再切换调用方。
+
+## 2026-09-09 在线人数拆分
+
+`online-counter` 已恢复独立域名 `https://online.homepage.lyjw.llc`：
+浏览器通过 `NEXT_PUBLIC_ONLINE_COUNTER_URL` 连接 `/ws`，公开 `/count` 返回 `{ ok, online }`。
+API 的 `/count` 只保留 `{ ok, connections }`，旧 `/online/ws` 删除。
+原 API 在线计数命名空间通过 `v2-split-online-counter` 删除；其余业务数据命名空间保留。
+
+server、PlayStation 和 agent limits 新增 `ONLINE_COUNTER_URL`，并行读取两个来源的计数，
+单端失败仅将该端计数降为零。三档间隔不变。
+
+远端本次备份后缀为 `.before-online-20260909`：
+NAS 备份 `src/cadence.ts`、`src/config.ts`、`compose.yaml`、`.env`；
+server 备份 `reporter.py` 和 `.env`。回滚须与 API 旧计数契约整体恢复，不能只撤掉在线域名配置。

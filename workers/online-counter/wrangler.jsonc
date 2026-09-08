@@ -1,0 +1,38 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "online-counter",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-08",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "workers_dev": true,
+  "routes": [
+    {
+      "pattern": "online.homepage.lyjw.llc",
+      "custom_domain": true
+    }
+  ],
+  "vars": {
+    "ALLOWED_ORIGINS": "https://lyjw.me,https://lyjw131.com,https://dev.lyjw.me,https://*.vercel.app"
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "ONLINE_COUNTER",
+        "class_name": "OnlineCounterRoom"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "OnlineCounterRoom"
+      ]
+    }
+  ],
+  "observability": {
+    "enabled": true
+  }
+}

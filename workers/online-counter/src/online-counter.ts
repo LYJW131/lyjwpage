@@ -1,13 +1,13 @@
 import { DurableObject } from "cloudflare:workers";
 
-import type { Env } from "./runtime";
+
 
 /**
  * 「此刻在线」的房间：数的是**可见**的页面。
  *
  * 和 LivePushRoom 是两个口径：站点侧 `use-online-count` 在页面不可见时把连接整条
- * 关掉，`use-live-events` 那条不关。两个数三个上报器都要，所以是两个房间、一个
- * `/count` 一起回答。
+ * 关掉，`use-live-events` 那条不关。两个数三个上报器都要，分别从各自 Worker 的
+ * `/count` 读取。
  *
  * 这个房间不走休眠 API：人数一变就要向全房间广播，连接本来就得常驻在实例里。
  */
