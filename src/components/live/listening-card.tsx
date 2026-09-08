@@ -732,6 +732,7 @@ export function ListeningCard({
     : null;
   const [lookupLatch, setLookupLatch] = useState<{
     key: string;
+    id: string | null;
     songId: string;
     link: string | null;
     upcomingSongIds: string[];
@@ -746,6 +747,7 @@ export function ListeningCard({
   ) {
     setLookupLatch({
       key: trackKey,
+      id: live.id,
       songId: live.songId,
       link: live.link,
       upcomingSongIds: live.upcomingSongIds,
@@ -851,6 +853,22 @@ export function ListeningCard({
         }
       : null;
 
+  // 实时 hero 打开所属专辑，沿用普通浏览入口，不自动开启同步。
+  const heroResourceId = live?.id ?? latched?.id ?? null;
+  const heroItem: ListeningItem | null | undefined = hero?.track
+    ? data?.items.find((item) => item.id === heroResourceId) ??
+      (heroResourceId && hero.link ? {
+        id: heroResourceId,
+        title: hero.track.album || hero.title,
+        artist: hero.subtitle,
+        artwork: hero.artwork,
+        link: hero.link,
+        palette: hero.palette,
+        durationMs: null,
+      } : null)
+    : latest;
+  const canOpenHero = Boolean(heroItem && canOpenInPlayer(heroItem));
+
   // 本机那首顶替 hero 时，Apple Music 原来的第一首下沉回列表；
   // 但和实时资源 ID 相同的条目不再重复展示。
   const rest = dedupeListeningItems(
@@ -866,7 +884,7 @@ export function ListeningCard({
    */
   const preloadArtworks = Array.from(
     new Set(
-      [latest, ...rest].flatMap((entry) =>
+      [heroItem, ...rest].flatMap((entry) =>
         entry?.artwork && canOpenInPlayer(entry) ? [entry.artwork] : [],
       ),
     ),
@@ -904,7 +922,7 @@ export function ListeningCard({
       className={cn("h-full min-h-93.5", className)}
     >
       <div className="flex min-h-0 flex-1 flex-col px-4 pb-4 pt-3">
-        {/* 最近的一项放大展示。当前歌曲只展示，点击历史条目打开专辑播放器。
+        {/* 最近的一项放大展示。当前歌曲与历史条目都打开普通专辑播放器。
             换专辑/歌单时新旧叠着交叉淡入，见 HERO_VARIANTS。
 
             外层 h-20 钉死高度：封面是 w-20 方块，整块 hero 设计上就是 80px。
@@ -944,8 +962,8 @@ export function ListeningCard({
                   link={hero.track ? null : hero.link}
                   wideLyrics={showSideLyrics}
                   onOpen={
-                    !hero.track && latest && canOpenInPlayer(latest)
-                      ? () => openInPlayer(latest)
+                    canOpenHero && heroItem
+                      ? () => openInPlayer(heroItem)
                       : undefined
                   }
                 >
@@ -1006,7 +1024,7 @@ export function ListeningCard({
                       <div
                         className={cn(
                           "mt-1 truncate font-medium leading-snug",
-                          !hero.track && hero.link && "group-hover:underline",
+                          (canOpenHero || (!hero.track && hero.link)) && "group-hover:underline",
                         )}
                         title={hero.title}
                       >
