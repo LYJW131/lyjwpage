@@ -16,7 +16,7 @@ CPU 占用和网卡速率都是这一段间隔的平均，不是「这一瞬间�
 
 站点那侧**没有实时推送**。这些数字每个间隔都在变，广播就是拿推送当轮询用；卡片 30 秒自己来问。
 
-每轮收尾问一次 API Worker 的 `GET /count`（超时 2.5 秒），一次拿到两个数，据此选下一轮的档：
+每轮收尾并行读取在线人数和 API Worker 的 `GET /count`（各自超时 2.5 秒），分别拿到两个数，据此选下一轮的档：
 
 | 问到什么 | 下一轮 | 变量 |
 | --- | --- | --- |
@@ -42,7 +42,7 @@ CPU 占用和网卡速率都是这一段间隔的平均，不是「这一瞬间�
 
 | 变量 | 必填 | 说明 |
 | --- | --- | --- |
-| `SITE_URL` | ✅ | 上报 Worker 的源，如 `https://api.homepage.lyjw.llc`。上报端点和人头数的 `/count` 都由上报器从它拼 |
+| `SITE_URL` | ✅ | 上报 Worker 的源，如 `https://api.homepage.lyjw.llc`。上报端点和推送连接数的 `/count` 从它拼 |
 | `SITE_INGEST_URL` | | 直接给完整端点，给了就不用 `SITE_URL` 上报；人头数仍只从 `SITE_URL` 读，没配就永远走最慢那档 |
 | `TELEMETRY_INGEST_SECRET` | ✅ | 和站点同名变量对上，作 Bearer 鉴权。站点没配时才可留空 |
 | `HOST_ID` | | 默认 `misaka-jp`，卡片上认的名字 |
@@ -85,3 +85,6 @@ ssh misaka-jp 'install -m 644 /opt/lyjwpage/server-reporter/server-reporter.serv
 - 站点连不上只是这一轮作废，进程不退；下一轮照常重试，间隔从这一档起每连错一次翻倍，到 5 分钟封顶，跑通一次就复位。
 - 同一个环节连续报错只在第一次和恢复时各写一句日志，中间每满 10 次再报一次。
 - 网卡取默认路由那块（这台是 `enp3s0`），`lo` 不算。默认路由暂时没有时这一轮失败，不瞎猜一块。
+
+在线人数已恢复独立 Worker：配置 `ONLINE_COUNTER_URL=https://online.homepage.lyjw.llc`（只填源）。
+其 `/count` 的 `online` 判定快档；`SITE_URL/count` 的 `connections` 判定中档。两个查询独立超时、独立降为零。

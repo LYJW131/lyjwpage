@@ -22,16 +22,15 @@
 | --- | --- | --- |
 | POST | `/api/ingest/<来源>` | `mac`、`iphone`、`homepod`、`emby`、`playstation`、`server`、`agents` |
 | GET | `/ws` | 浏览器接收事件推送的 WebSocket，页面开着就一直挂着；使用 `ALLOWED_ORIGINS` 校验来源 |
-| GET | `/online/ws` | 「此刻在线」的 WebSocket，页面不可见时站点整条关掉；同一份来源白名单 |
-| GET | `/count` | `{ ok, connections, online }`：开着的页面数与此刻可见的页面数，供上报器调频 |
+| GET | `/count` | `{ ok, connections }`：开着的页面数，供上报器判定中档 |
 | GET | `/api/musickit/token` | `{ token, issuedAt, expiresAt }`：给「一起听」的 MusicKit developer token，同一份来源白名单；见下文 |
 | GET | `/` | 一行存活；不碰 Durable Object，根路径被探针不停打 |
 
-两个数是两个口径，也是两个 Durable Object：`LivePushRoom` 走休眠 API，静默 5 分钟不计数、
+两个数是两个口径，分别位于两个 Worker 的 Durable Object：`LivePushRoom` 走休眠 API，静默 5 分钟不计数、
 30 分钟才关，因为后台标签页的定时器会被浏览器节流；`OnlineCounterRoom` 把连接留在实例里，
 静默三个心跳周期（90 秒）就踢，因为可见页面不会被节流，一条僵尸多活 5 分钟就把三个上报器
 多钉在快档 5 分钟。心跳 30 秒定义在站点 `src/hooks/use-online-count.ts`，Worker 里那份是
-手抄的副本，改一边必须改另一边。`/online/ws` 不触发最近在听刷新：它按可见性反复重连。
+手抄的副本，改一边必须改另一边。独立在线人数 Worker 的 `/ws` 按可见性反复重连，不触发 API 的最近在听刷新。
 
 上报要求 `Authorization: Bearer <TELEMETRY_INGEST_SECRET>`，未配置密钥或 SQLite 返回 503，
 鉴权失败返回 401，非法报文返回 400，成功返回 202。202 表示持久化完成，广播和缓存通知由 `waitUntil` 执行。
@@ -79,7 +78,7 @@ Mac 上报的 Apple Music 凭据保存在 SQLite，Worker 读取使用，不向�
 `wrangler.toml` 中配置公开变量 `SITE_URL`、`STORAGE_PREFIX`、`R2_PUBLIC_BASE_URL`、
 `EMBY_PUBLIC_URL`、`APPLE_MUSIC_STOREFRONT`、`ALLOWED_ORIGINS`、`APPLE_MUSIC_TEAM_ID`、
 `APPLE_MUSIC_KEY_ID`，`IMAGES` 桶绑定，
-以及 `LIVE_PUSH` / `ONLINE_COUNTER` 加 `STATE` 三个 Durable Object 绑定（迁移只追加新 tag，不改旧的）。
+以及 `LIVE_PUSH` 与 `STATE` 两个 Durable Object 绑定（迁移只追加新 tag，不改旧的）。
 状态和凭据只存于 Worker 的 StateHub，Vercel 不连接数据库。秘密通过以下命令配置：
 
 ```sh
@@ -89,8 +88,8 @@ pnpm --dir workers/api exec wrangler secret put APPLE_MUSIC_PRIVATE_KEY < AuthKe
 ```
 
 站点配置 `NEXT_PUBLIC_BACKEND_URL=https://api.homepage.lyjw.llc` 与相同的
-`TELEMETRY_INGEST_SECRET`；浏览器由这一个源拼 `/ws`、`/online/ws` 和 `/api/musickit/token`。所有上报器的目标为
-这个 Worker 的 `/api/ingest/<来源>`，不经过站点，调频读的也是同一个源的 `/count`。实例清单见 [端点核验记录](../../docs/reporter-endpoints.md)。
+`TELEMETRY_INGEST_SECRET`；浏览器由这一个源拼 `/ws` 和 `/api/musickit/token`。所有上报器的目标为
+这个 Worker 的 `/api/ingest/<来源>`，不经过站点，调频同时读取此源 `/count` 的 `connections` 与 `ONLINE_COUNTER_URL/count` 的 `online`。实例清单见 [端点核验记录](../../docs/reporter-endpoints.md)。
 
 提交并推送 main，由 `.github/workflows/deploy-workers.yml` 自动部署。
 `shared/`、共用 `src/lib/`、根依赖及路径配置变化也触发 api 部署。

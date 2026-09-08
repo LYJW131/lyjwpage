@@ -1,13 +1,11 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { StorageClient } from "@shared/storage-client";
 import type { LivePushRoom } from "./index";
-import type { OnlineCounterRoom } from "./online-counter";
 import type { MusicKitTokenEnv } from "./musickit-token";
 import type { StateHub } from "./state-hub";
 
 export interface Env extends MusicKitTokenEnv {
   LIVE_PUSH: DurableObjectNamespace<LivePushRoom>;
-  ONLINE_COUNTER: DurableObjectNamespace<OnlineCounterRoom>;
   STATE: DurableObjectNamespace<StateHub>;
   IMAGES: R2Bucket;
   TELEMETRY_INGEST_SECRET?: string;

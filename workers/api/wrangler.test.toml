@@ -21,9 +21,6 @@ EMBY_PUBLIC_URL = "https://emby.lyjw131.com"
 name = "LIVE_PUSH"
 class_name = "LivePushRoom"
 [[durable_objects.bindings]]
-name = "ONLINE_COUNTER"
-class_name = "OnlineCounterRoom"
-[[durable_objects.bindings]]
 name = "STATE"
 class_name = "StateHub"
 
@@ -38,3 +35,7 @@ bucket_name = "lyjw-homepage"
 
 [observability]
 enabled = true
+
+[[migrations]]
+tag = "v2-split-online-counter"
+deleted_classes = ["OnlineCounterRoom"]

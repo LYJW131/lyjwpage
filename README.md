@@ -61,18 +61,18 @@ Vercel 没有状态 API 转发或私有存储读取端点。聚合快照只包�
 
 Worker 的 `src/fanout.ts` 将带数据的事件直接广播到 Durable Object。
 浏览器直连 `/ws`，`hooks/use-live-events.ts` 将事件写入 SWR 缓存；站点不发布事件、不持有长连接。
-页脚的「此刻在线」是同一个 Worker 上的另一条连接 `/online/ws`，`hooks/use-online-count.ts` 负责。
+页脚的「此刻在线」连接独立 `online-counter` Worker 的 `/ws`，`hooks/use-online-count.ts` 负责。
 
 | 方法 | Worker 路径 | 用途 |
 | --- | --- | --- |
 | POST | `/api/ingest/<来源>` | Bearer 鉴权，接收数据、落库、广播与缓存失效 |
 | GET | `/ws` | 浏览器收事件推送，页面开着就一直挂着；按 `ALLOWED_ORIGINS` 检查来源 |
-| GET | `/online/ws` | 「此刻在线」，页面不可见时站点整条关掉；同一份来源白名单 |
-| GET | `/count` | `{ connections, online }`：开着的页面数和可见的页面数，上报器据此调整上报频率 |
+| GET | `online.homepage.lyjw.llc/ws` | 「此刻在线」，页面不可见时站点整条关掉 |
+| GET | `/count` | API 返回 `{ connections }`，独立在线人数 Worker 返回 `{ online }`，上报器据此调频 |
 
-站点只需配置公开的 `NEXT_PUBLIC_BACKEND_URL`，浏览器由此拼接 `/ws` 和 `/online/ws`。
+站点配置 `NEXT_PUBLIC_BACKEND_URL` 与 `NEXT_PUBLIC_ONLINE_COUNTER_URL`，分别拼接各自的 `/ws`。
 
-这里从前走 Pusher 协议（云 Pusher，或自部署 [Sockudo](https://github.com/sockudo/sockudo)）。换掉的理由不是它不好用，而是这条链路上唯一还托在别人手里的一环：单条事件 10 KB 的上限就近在眼前（两张列表 4.4 KB / 2.8 KB），免费额度按连接数和消息数计，而在线人数那条当时已经在自己的 Worker 上跑着了。两条连接如今在同一个 Worker 里，但仍是两个 Durable Object：人数那个房间人一变就要广播、连接常驻实例、静默 90 秒就踢；推送那个房间走休眠 API，静默 5 分钟不计数、30 分钟才关。口径不同，清理策略也不能共用。
+这里从前走 Pusher 协议（云 Pusher，或自部署 [Sockudo](https://github.com/sockudo/sockudo)）。换掉的理由不是它不好用，而是这条链路上唯一还托在别人手里的一环：单条事件 10 KB 的上限就近在眼前（两张列表 4.4 KB / 2.8 KB），免费额度按连接数和消息数计，而在线人数那条当时已经在自己的 Worker 上跑着了。两条连接曾合并到同一个 Worker，现已重新拆开，各自使用一个 Durable Object：人数那个房间人一变就要广播、连接常驻实例、静默 90 秒就踢；推送那个房间走休眠 API，静默 5 分钟不计数、30 分钟才关。口径不同，清理策略也不能共用。
 
 推送房间的连接走休眠版的 `ctx.acceptWebSocket()`，心跳用 `setWebSocketAutoResponse` 由运行时直接回 —— 这些连接绝大多数时间空转（上报器几十秒才来一条），实例可以被回收、连接照样挂着。
 
@@ -572,7 +572,7 @@ Authorization: Bearer <TELEMETRY_INGEST_SECRET>
 `server-reporter`、`playstation-reporter` 和 `agent-limits-reporter` 按相同人数口径分档，
 限额使用更长间隔（`apple-music-reporter` 从前也在这套里，它已经退役，那份列表改由 Worker 在有页面连接时刷新，见[上面那节](#最近在听--apple-music)）：
 
-三家每轮问一次 API Worker 的 `GET /count`，一次拿到两个数：
+三家每轮并行读取 `ONLINE_COUNTER_URL/count` 的 `online` 与 `SITE_URL/count` 的 `connections`：
 
 | 问到什么 | server / PlayStation | agent limits |
 | --- | --- | --- |
@@ -586,8 +586,8 @@ Authorization: Bearer <TELEMETRY_INGEST_SECRET>
 那一下不该看见一刻钟前的数字，又不值得按可见那档一直打上游。
 
 读不到（超时、非 200、形状不对、没配 `SITE_URL`）一律当 0：**兜底方向是单向的**，只会往
-慢里退，永远不会因为故障变快。人头数读的就是上报那同一个源。API Worker 一份生产一个，
-三家都读取同一个 API Worker 的人数，所有连接该 Worker 的页面均计入判断。
+慢里退，永远不会因为故障变快。两个来源分别兜底为 0，一端故障不丢掉另一端有效结果。
+三家共用生产在线人数 Worker 与 API Worker 的计数。
 
 `server-reporter` 和 `agent-limits-reporter` 是常驻进程，长档拆成一个个快档长度的小觉，
 醒来重新问一次，该走更快那档了立刻开跑。限额每 5 分钟重查，server 每 60 秒重查，

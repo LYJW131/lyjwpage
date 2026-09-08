@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import fcntl
+from concurrent.futures import ThreadPoolExecutor
 import json
 import os
 import re
@@ -23,7 +24,7 @@ from typing import Any
 
 # 三档节奏。这份快照每轮必发（它本身就是心跳），30 秒一轮时它是站点函数调用量
 # 最大的一条路径 —— 实测 12 小时 1.5K 次。而这些数字只在有人看的时候才有人看，
-# 所以每轮收尾问一次 API Worker 的 /count，拿到两个数，据此决定下一轮多久：
+# 所以每轮收尾分别问两个 Worker 的 /count，拿到两个数，据此决定下一轮多久：
 #
 #   有人正看着（`online`，只数**可见**的页面）                      → 60 秒
 #   页面开着但都在后台（`connections`，数**开着**的连接）           → 2 分钟
@@ -88,14 +89,9 @@ def ingest_url() -> str:
     return f"{trim_slash(required('SITE_URL'))}/api/ingest/server"
 
 
-def count_url() -> str:
-    """API Worker 的 /count，和上报同一个源，路径这边拼 —— 和站点侧的
-    NEXT_PUBLIC_LIVE_PUSH_URL、另外两个上报器同一个形状。只配了 SITE_INGEST_URL
-    没配 SITE_URL 就读不到，两个数恒为 0。
-
-    所有连接该 API Worker 的页面都计入人数；读取失败时按零人数降频。
-    """
-    origin = os.environ.get("SITE_URL", "").strip()
+def count_url(variable: str) -> str:
+    """分别从 API 与在线人数 Worker 的源拼接公开计数口。"""
+    origin = os.environ.get(variable, "").strip()
     return f"{trim_slash(origin)}/count" if origin else ""
 
 
@@ -107,7 +103,8 @@ CONFIG = {
     "live_interval_s": ms("LIVE_INTERVAL_MS", LIVE_INTERVAL_MS) / 1000,
     "open_interval_s": ms("OPEN_INTERVAL_MS", OPEN_INTERVAL_MS) / 1000,
     "idle_interval_s": ms("IDLE_INTERVAL_MS", IDLE_INTERVAL_MS) / 1000,
-    "count_url": count_url(),
+    "count_url": count_url("SITE_URL"),
+    "online_count_url": count_url("ONLINE_COUNTER_URL"),
     "count_timeout_s": ms("COUNT_TIMEOUT_MS", int(COUNT_TIMEOUT_S * 1000)) / 1000,
     "push_timeout_s": ms("PUSH_TIMEOUT_MS", int(PUSH_TIMEOUT_S * 1000)) / 1000,
 }
@@ -441,23 +438,30 @@ def push(payload: dict[str, Any]) -> None:
 # ── 主循环 ────────────────────────────────────────────────
 
 
-def head_counts() -> tuple[int, int]:
-    """问 API Worker 要两个人头数 (可见, 开着)。读不到一律当 0，节奏只会因此往慢里退。"""
-    url = CONFIG["count_url"]
-    # 没配那个变量不是故障，别让它进 failure 的连击计数
+def head_count(url: str, field: str) -> int:
     if not url:
-        return 0, 0
+        return 0
+    scope = f"head-count-{field}"
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     try:
         with urllib.request.urlopen(request, timeout=CONFIG["count_timeout_s"]) as response:
             body = json.loads(response.read().decode("utf-8", errors="replace"))
-        online = int(body["online"])
-        connections = int(body["connections"])
-        recovered("head-count")
-        return max(online, 0), max(connections, 0)
-    except Exception as error:  # noqa: BLE001 — 读不到就是没人看，不影响上报
-        failure("head-count", error)
-        return 0, 0
+        value = body[field]
+        if type(value) is not int or value < 0:
+            raise ValueError(f"invalid {field}")
+        recovered(scope)
+        return value
+    except Exception as error:
+        failure(scope, error)
+        return 0
+
+
+def head_counts() -> tuple[int, int]:
+    """两个计数口并行读取，一端失败不影响另一端。"""
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        online = pool.submit(head_count, CONFIG["online_count_url"], "online")
+        connections = pool.submit(head_count, CONFIG["count_url"], "connections")
+        return online.result(), connections.result()
 
 
 def next_delay() -> float:
