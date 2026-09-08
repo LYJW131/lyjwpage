@@ -1,0 +1,3 @@
+[submodule "reporters/mac-telemetry-hub"]
+	path = reporters/mac-telemetry-hub
+	url = https://github.com/LYJW131/MacTelemetryHub.git
