@@ -347,6 +347,8 @@ Claude/Codex 订阅账单。上报摘要不含提示词、回复、session ID、
 
 ### 本机实时活动 — Mac Telemetry Hub
 
+源码在 `reporters/mac-telemetry-hub`（以子模块引入自 [LYJW131/MacTelemetryHub](https://github.com/LYJW131/MacTelemetryHub)）。
+
 `a2687-telemetry/A2687TelemetryMac` 已从单一充电头工具扩展为可插拔的本机遥测中心。充电头、前台应用、本机 Apple Music、Mac 时区和 vibe coding 都能独立开启或关闭。Apple Music 通过 macOS Apple Events 读取 Music.app 的本机播放状态，与上面的 Apple Music API“最近在听”完全独立。
 
 所有采集器统一写入：
