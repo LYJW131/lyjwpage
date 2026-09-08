@@ -39,7 +39,9 @@ Workers 是唯一数据后端：接收上报、持久化 Durable Objects SQLite�
   <img alt="主页上报与 Vercel 读取架构" src="docs/architecture-light.png">
 </picture>
 
-[交互版架构图](https://lyjw131.github.io/lyjwpage/)
+[交互版架构图](https://lyjw131.github.io/lyjwpage/) · [图源](docs/architecture.json) · [校验记录](docs/architecture.receipt.json)
+
+在线人数由 `online.homepage.lyjw.llc` 独立提供；三个调频上报器分别读取它的 `online` 与 API 的 `connections`。
 
 Vercel 没有状态 API 转发或私有存储读取端点。聚合快照只包含公开卡片数据，凭据仅留在 Worker。浏览器配置 `NEXT_PUBLIC_BACKEND_URL` 后直接查询 Worker，SWR 仍使用统一的路径键处理推送与轮询。
 

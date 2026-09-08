@@ -1,12 +1,12 @@
 {
   "type": "architecture",
   "specification": {
-    "sha256": "5cb931eb730f09cab5fe20f9973c33c68b4471b09ea9f72171ea6b1afb1919a2",
-    "bytes": 9406
+    "sha256": "f99120b2f963e6898c287f2df451712d3718606e7c5a88e2702a1ecbbc907aa0",
+    "bytes": 9979
   },
   "artifact": {
-    "sha256": "215f3ba721a38fea42ba28601c18c76e1524d3dee4110097b0ae7d660c54d4e3",
-    "bytes": 721101
+    "sha256": "f6caa695420d725cdde2d785bdaf0a0697c32fd964d9f27d07698897d69121bc",
+    "bytes": 720905
   },
   "validation": {
     "checksPassed": 9,
@@ -19,11 +19,12 @@
   "evidence": {
     "verified": true,
     "repository": "https://github.com/LYJW131/lyjwpage",
-    "revision": "f323611d70dedccaae1a6c8aa4d9d3d76b285a81",
-    "references": 15
+    "revision": "764cbbc44546705cd11c4170619fb195383a2b04",
+    "references": 17
   },
   "output": "architecture.html",
   "visual_review": "passed",
+  "correction_rounds": 1,
   "static_diagram_review": "passed: light and dark SVG rasterizations inspected",
   "viewports": [
     {
@@ -138,13 +139,13 @@
   "previews": {
     "architecture-light.png": {
       "kind": "svg-rasterization",
-      "sha256": "9dbeeec1864e9ea65bed3ee9b1e0b01784a48b54747bbb80a386aa30838d4d6e",
-      "bytes": 337394
+      "sha256": "00e91667a51dd4606e37e4344f4a00e15129e368862178cead9480398052f6ff",
+      "bytes": 334641
     },
     "architecture-dark.png": {
       "kind": "svg-rasterization",
-      "sha256": "b51a2980e853d9d65fb8085a714a63675edb7eebd904433372152ddda20a4762",
-      "bytes": 337371
+      "sha256": "5e12e1bfa423ec731d6fc2ff48116eccd4eafbe2d1d9a4fd0dd6bb9bcac5ea1d",
+      "bytes": 335012
     }
   }
 }
