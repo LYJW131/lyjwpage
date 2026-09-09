@@ -3,8 +3,9 @@ import type { StorageClient } from "@shared/storage-client";
 import type { LivePushRoom } from "./index";
 import type { MusicKitTokenEnv } from "./musickit-token";
 import type { StateHub } from "./state-hub";
+import type { EsaCacheEnv } from "./esa-cache";
 
-export interface Env extends MusicKitTokenEnv {
+export interface Env extends MusicKitTokenEnv, EsaCacheEnv {
   LIVE_PUSH: DurableObjectNamespace<LivePushRoom>;
   STATE: DurableObjectNamespace<StateHub>;
   IMAGES: R2Bucket;

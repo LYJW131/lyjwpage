@@ -10,6 +10,12 @@ APPLE_MUSIC_TEAM_ID=
 APPLE_MUSIC_KEY_ID=
 STORAGE_PREFIX=lyjwpage
 SITE_URL=http://localhost:3211
+
+# 本地默认不启用 ESA；生产使用 wrangler secret put 配置专用 RAM AccessKey。
+# ESA_SITE_ID=1113300533463584
+# ESA_CACHE_URL=https://lyjw131.com/
+# ALIYUN_ACCESS_KEY_ID=
+# ALIYUN_ACCESS_KEY_SECRET=
 ALLOWED_ORIGINS=http://localhost:3211
 R2_PUBLIC_BASE_URL=https://img.example.com
 EMBY_PUBLIC_URL=https://emby.example.com
