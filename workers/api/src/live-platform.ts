@@ -1,6 +1,8 @@
 import type { LiveEvent } from "@/lib/live-events";
 
-import { currentContext, requestStore } from "./runtime";
+import { currentContext, requestStore } from "@api/runtime";
+import { purgeEsaHomepage } from "@api/esa-cache";
+import type { Env } from "./runtime";
 
 /** Worker 后台任务、缓存失效通知和房间广播。 */
 
@@ -14,14 +16,18 @@ export function afterResponse(work: () => Promise<void>): Promise<void> {
 const REVALIDATE_TIMEOUT_MS = 5_000;
 
 /**
- * 一次上报一次 POST，普通和 urgent 一起带过去。失败只记日志：数据已经在 SQLite 里，
- * 缓存最多旧到 cacheLife 兜底的 10 分钟，为此让上报器重发同一份没有意义。
+ * 展示变化落库后，在同一后台任务并行通知 Vercel 和 ESA；失败互不影响。
+ * Vercel 保留 stale-while-revalidate；ESA 接受刷新任务不代表源站 HTML 已完成重建。
  */
 export async function expireStatusTags(
   tags: readonly string[],
 ): Promise<void> {
   if (!tags.length) return;
   const { env } = currentContext();
+  await Promise.all([revalidateVercel(env, tags), purgeEsaHomepage(env)]);
+}
+
+async function revalidateVercel(env: Env, tags: readonly string[]): Promise<void> {
   const site = env.SITE_URL?.replace(/\/+$/, "");
   const secret = env.TELEMETRY_INGEST_SECRET;
   if (!site || !secret) {

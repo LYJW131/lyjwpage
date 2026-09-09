@@ -32,7 +32,7 @@ pnpm dev
 
 ## 海外部署与数据链路
 
-Workers 是唯一数据后端：接收上报、持久化 Durable Objects SQLite、提供状态 API、获取并缓存外部数据，以及 WebSocket 和在线人数。Vercel 负责首屏 HTML、Next.js 页面缓存、静态资源和图片处理。
+Workers 是唯一数据后端：接收上报、持久化 Durable Objects SQLite、提供状态 API、获取并缓存外部数据，以及 WebSocket 和在线人数。Vercel 负责首屏 HTML、Next.js 页面缓存、静态资源和图片处理。`lyjw131.com` 经阿里云 ESA 回源 `lyjw.me`，ESA 缓存首页 HTML 和静态 JS。
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/architecture-dark.png">
@@ -49,7 +49,7 @@ Vercel 没有状态 API 转发或私有存储读取端点。聚合快照只包�
 
 `shared/` 保存存储契约和共用计算，`workers/api/src/routes/` 提供公开 API。202 应答前确认持久化成功，之后使用 `waitUntil` 广播和通知 Vercel。上报在 StateHub 中串行合并，每个请求拥有独立工作副本。SQL 批次使用事务，定时清理过期数据。
 
-发布和迁移步骤见 [状态存储架构](docs/state-storage.md)。生产使用 Vercel / Workers，腾讯云 EdgeOne 已退役；`lyjw131.com` 待用户绑定到 Vercel。
+发布和迁移步骤见 [状态存储架构](docs/state-storage.md)。生产使用 Vercel / Workers，腾讯云 EdgeOne 已退役；`lyjw131.com` 通过 ESA 加速 `lyjw.me`。展示变化落库后，API Worker 并行通知 Vercel 标签失效和 ESA 首页 `PurgeCaches`，各自失败独立处理；纯心跳与静态 JS 不参与这次首页刷新。Vercel 仍后台重建，两路通知成功不代表新 HTML 已同时生效，详见 [缓存通知契约](workers/api/README.md)。
 
 ## 状态是怎么接的
 
