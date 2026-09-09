@@ -109,7 +109,7 @@ ESA 使用独立 RAM 用户的 AccessKey。权限仅授予
 `TELEMETRY_INGEST_SECRET`；浏览器由这一个源拼 `/ws` 和 `/api/musickit/token`。所有上报器的目标为
 这个 Worker 的 `/api/ingest/<来源>`，不经过站点，调频同时读取此源 `/count` 的 `connections` 与 `ONLINE_COUNTER_URL/count` 的 `online`。实例清单见 [端点核验记录](../../docs/reporter-endpoints.md)。
 
-提交并推送 main，由 `.github/workflows/deploy-workers.yml` 自动部署。
+提交并推送 main，由 Cloudflare Workers Builds 原生 Git 集成自动部署。
 `shared/`、共用 `src/lib/`、根依赖及路径配置变化也触发 api 部署。
 
 ## 验证
