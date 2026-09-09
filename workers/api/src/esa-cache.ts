@@ -28,7 +28,7 @@ export async function purgeEsaHomepage(env: EsaCacheEnv): Promise<void> {
       accessKeySecret: env.ALIYUN_ACCESS_KEY_SECRET,
     });
     const response = await fetch(url, {
-      method: "POST", headers, signal: AbortSignal.timeout(5_000), redirect: "error",
+      method: "POST", headers, signal: AbortSignal.timeout(5_000), redirect: "manual",
     });
     const result = await response.json().catch(() => null) as {
       TaskId?: string; RequestId?: string; Code?: string;
