@@ -31,9 +31,10 @@
           "state_hub",
           "sites",
           "visitors",
-          "online_counter"
+          "online_counter",
+          "esa"
         ],
-        "note": "API Worker 保存状态并实时推送，在线人数独立部署；Vercel 读取首屏快照。"
+        "note": "Vercel 提供首屏；lyjw131.com 经 ESA 回源 lyjw.me 并缓存 HTML 与静态 JS。API 并行通知两层缓存。"
       },
       {
         "id": "cadence",
@@ -60,7 +61,7 @@
     ],
     "repository": {
       "url": "https://github.com/LYJW131/lyjwpage",
-      "revision": "764cbbc44546705cd11c4170619fb195383a2b04"
+      "revision": "1256daeda7dfe54838e0972e30f3f4f972600864"
     }
   },
   "components": [
@@ -198,7 +199,7 @@
         405
       ],
       "size": [
-        305.8,
+        278,
         112
       ],
       "sources": [
@@ -218,7 +219,7 @@
       "tag": "状态 /ws · 人数 /ws 分别直连",
       "pos": [
         1047.1,
-        735
+        675
       ],
       "size": [
         278.0,
@@ -301,6 +302,29 @@
           "path": "workers/online-counter/wrangler.jsonc"
         }
       ]
+    },
+    {
+      "id": "esa",
+      "type": "cloud",
+      "label": "阿里云 ESA",
+      "sublabel": "lyjw131.com → lyjw.me",
+      "tag": "缓存首页 HTML · 静态 JS",
+      "pos": [
+        1047.1,
+        550
+      ],
+      "size": [
+        278,
+        100
+      ],
+      "sources": [
+        {
+          "path": "workers/api/src/esa-cache.ts"
+        },
+        {
+          "path": "workers/api/wrangler.toml"
+        }
+      ]
     }
   ],
   "connections": [
@@ -370,16 +394,38 @@
       "id": "page",
       "from": "sites",
       "to": "visitors",
-      "label": "首屏 HTML",
-      "fromSide": "bottom",
-      "toSide": "top"
+      "label": "lyjw.me 直连",
+      "fromSide": "right",
+      "toSide": "bottom",
+      "via": [
+        [
+          1345,
+          461
+        ],
+        [
+          1345,
+          800
+        ],
+        [
+          1186.1,
+          800
+        ]
+      ],
+      "labelAt": [
+        1260,
+        800
+      ]
     },
     {
       "id": "push",
       "from": "api",
       "to": "visitors",
       "label": "状态 API · 推送 /ws",
-      "variant": "emphasis"
+      "variant": "emphasis",
+      "labelAt": [
+        895,
+        590
+      ]
     },
     {
       "id": "head",
@@ -405,7 +451,7 @@
         ],
         [
           1365,
-          785
+          725
         ]
       ]
     },
@@ -463,6 +509,57 @@
         898,
         680
       ]
+    },
+    {
+      "id": "esa_origin",
+      "from": "sites",
+      "to": "esa",
+      "label": "回源 HTML · JS",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelAt": [
+        1186.1,
+        536
+      ]
+    },
+    {
+      "id": "esa_page",
+      "from": "esa",
+      "to": "visitors",
+      "label": "lyjw131.com",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelAt": [
+        1186.1,
+        665
+      ]
+    },
+    {
+      "id": "esa_purge",
+      "from": "api",
+      "to": "esa",
+      "label": "PurgeCaches · 首页",
+      "variant": "dashed",
+      "labelAt": [
+        820,
+        510
+      ],
+      "fromSide": "bottom",
+      "toSide": "left",
+      "via": [
+        [
+          701.95,
+          510
+        ],
+        [
+          995,
+          510
+        ],
+        [
+          995,
+          600
+        ]
+      ]
     }
   ],
   "cards": [
@@ -482,9 +579,9 @@
     },
     {
       "dot": "violet",
-      "title": "首屏与业务状态",
+      "title": "Vercel 与 ESA",
       "items": [
-        "StateHub 持久化，Vercel 读首屏；API 签发 MusicKit 令牌。"
+        "API 并行发起标签失效和首页刷新；ESA 回源 Vercel。"
       ]
     }
   ]
