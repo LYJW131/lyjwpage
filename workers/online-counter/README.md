@@ -21,5 +21,5 @@ pnpm --dir workers/online-counter exec wrangler deploy --dry-run
 node scripts/verify-online-counter.mjs
 ```
 
-提交推送 main 自动部署。首次恢复应先发布此 Worker，确认域名和握手成功，
+提交推送 main，由 Cloudflare Workers Builds 原生 Git 集成自动部署；[构建配置与监听路径](../../docs/workers-builds.md)包含共用的 `workers/api/src/origins.ts`。首次恢复应先发布此 Worker，确认域名和握手成功，
 再发布站点、上报器及移除 API 旧计数房间；API 的删除迁移只清除原在线计数命名空间。
