@@ -1,12 +1,12 @@
 {
   "type": "architecture",
   "specification": {
-    "sha256": "718047b0e8f8366120bd6d588f7ba7859a95430e097f643525639cfb4e06e586",
-    "bytes": 11683
+    "sha256": "febf6c9c2ed6d09d85fa9e604110de9f59747e69534d295a6d244097c2863d98",
+    "bytes": 11686
   },
   "artifact": {
-    "sha256": "9b0f3e540db07fda8c1165641b2f4e29941e57ed9ad6ad4cb523b692e5ac23c3",
-    "bytes": 724735
+    "sha256": "51855600dea215f2da7b10582a200dd03057d5d6b2f50cf7928198d03b03a5eb",
+    "bytes": 724728
   },
   "validation": {
     "checksPassed": 9,
@@ -24,8 +24,8 @@
   },
   "output": "architecture.html",
   "visual_review": "passed",
-  "correction_rounds": 0,
-  "static_diagram_review": "passed: light and dark SVG rasterizations inspected",
+  "correction_rounds": 1,
+  "static_diagram_review": "passed: updated 120s label inspected",
   "viewports": [
     {
       "width": 1440,
@@ -139,13 +139,13 @@
   "previews": {
     "architecture-light.png": {
       "kind": "svg-rasterization",
-      "sha256": "fe19244c4702511bec3347a6e70fc3cd177cbb4c85ead243bee3cef4b604d6e4",
-      "bytes": 351110
+      "sha256": "35c68edb3800aeba4c3aa287c80c2e835bf1918e20c8e16133c66a7f7011c263",
+      "bytes": 351099
     },
     "architecture-dark.png": {
       "kind": "svg-rasterization",
-      "sha256": "c5c93dd1f585aae3779fec630fc3061a32ec5a201cad3d42b3ea9c3f48e749ff",
-      "bytes": 351505
+      "sha256": "e5c0bb6279d1d2218a844af5a736be69adf450279df0141b610a0670907df8e7",
+      "bytes": 351501
     }
   }
 }
