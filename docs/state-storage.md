@@ -15,7 +15,7 @@ Worker 是唯一数据后端。上报、状态 API、Apple / GitHub 获取和缓
 
 `cachedHomeSnapshot` 一次读取公开聚合快照；单个数据源不可用使用卡片降级信封。网络失败抛出错误，不用错误快照覆盖已有 Next 缓存。Next cacheLife 为 stale 300、revalidate 600、expire 604800 秒；所有状态标签使用 `page:` 前缀。
 
-Worker 写入完成后，只有展示变化才 POST `/api/revalidate`。接口校验 Bearer 和标签白名单，调用 `revalidateTag(tag, "max")`，已有 HTML 优先返回并后台重建。不使用 `expire: 0`，不因纯心跳刷新首页。同一后台任务并行调用 ESA `PurgeCaches`，只清 `https://lyjw131.com/` 的首页缓存键，两路失败互不影响。Vercel 的后台重建与 ESA 刷新任务独立完成，ESA 可能在源站重建前回源并缓存旧 HTML；不能把任务受理或标签失效当成两层 HTML 同步更新完成。浏览器查询直接访问 Worker，时间相关的新鲜度每次读取现算。
+Worker 写入完成后，只有展示变化才 POST `/api/revalidate`。接口校验 Bearer 和标签白名单，调用 `revalidateTag(tag, "max")`，已有 HTML 优先返回并后台重建。不使用 `expire: 0`，不因纯心跳刷新首页。同一后台任务并行调用 ESA `PurgeCaches`，只清 `https://lyjw131.com/` 的首页缓存键，两路失败互不影响。ESA 的全站 30 秒冷却与待刷新标记保存在 StateHub SQLite，冷却期变化合并后由 alarm 补发，重启不重置间隔；Vercel 不参与冷却。Vercel 的后台重建与 ESA 刷新任务独立完成，ESA 可能在源站重建前回源并缓存旧 HTML；不能把任务受理或标签失效当成两层 HTML 同步更新完成。浏览器查询直接访问 Worker，时间相关的新鲜度每次读取现算。
 
 ## 配置
 

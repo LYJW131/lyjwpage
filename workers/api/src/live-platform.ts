@@ -1,7 +1,6 @@
 import type { LiveEvent } from "@/lib/live-events";
 
 import { currentContext, requestStore } from "@api/runtime";
-import { purgeEsaHomepage } from "@api/esa-cache";
 import type { Env } from "./runtime";
 
 /** Worker 后台任务、缓存失效通知和房间广播。 */
@@ -23,8 +22,16 @@ export async function expireStatusTags(
   tags: readonly string[],
 ): Promise<void> {
   if (!tags.length) return;
-  const { env } = currentContext();
-  await Promise.all([revalidateVercel(env, tags), purgeEsaHomepage(env)]);
+  const { env, requestEsaPurge } = currentContext();
+  const esa = async () => {
+    try {
+      if (requestEsaPurge) await requestEsaPurge();
+      else await env.STATE.get(env.STATE.idFromName("global")).requestEsaPurge();
+    } catch (error) {
+      console.error("[esa-purge] scheduling failed", error instanceof Error ? error.name : "UnknownError");
+    }
+  };
+  await Promise.all([revalidateVercel(env, tags), esa()]);
 }
 
 async function revalidateVercel(env: Env, tags: readonly string[]): Promise<void> {
