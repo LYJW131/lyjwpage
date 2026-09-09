@@ -22,6 +22,7 @@ export type RequestContext = {
   ctx: Pick<ExecutionContext, "waitUntil">;
   /** 在状态对象内部直读本地 SQLite；普通 Worker 通过 DO binding 调用。 */
   storage?: StorageClient;
+  requestEsaPurge?: () => Promise<void>;
 };
 export const requestStore = new AsyncLocalStorage<RequestContext>();
 export function currentContext(): RequestContext {

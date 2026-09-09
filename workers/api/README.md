@@ -41,6 +41,8 @@ Worker 在 SQLite 写入完成后，仅对展示变化在同一个 `waitUntil` �
 - Vercel：POST `${SITE_URL}/api/revalidate`，使用同一 Bearer，只传 `{ tags }`。按白名单将 `page:<tag>` 标 stale，先返回已有 HTML，后台重建。
 - ESA：调用杭州端点的 `PurgeCaches`（2024-09-10），以 `Type=cachekey` 刷新 `https://lyjw131.com/`，站点 ID 为 `1113300533463584`。`lyjw131.com` 以 `lyjw.me` 为源站与回源 Host，缓存首页 HTML 和静态 JS；业务状态变化只清首页缓存键，带内容哈希的静态 JS 不随上报清理。
 
+ESA 刷新由全站唯一 StateHub 的 SQLite 保存 30 秒冷却状态：首次立即发送，冷却内的变化合并为一次待刷新，在冷却结束后由 Durable Object alarm 补发，不依赖下一次上报。重启或重新部署保留间隔；失败尝试也占用本次窗口，Vercel 标签失效不受该冷却影响。alarm 可能延迟，因此保证的是最快 30 秒一次，而非精确每 30 秒执行。
+
 两路各有 5 秒超时，失败独立记录日志，不能让已落库的上报重发。ESA 成功日志中的 TaskId 表示刷新任务已受理；可在控制台“刷新缓存”记录中确认完成。纯心跳和没有标签的广播不触发任何缓存通知。本地与测试环境不设置 ESA 变量，避免刷新生产。
 
 Vercel 仍采用后台重建，刷新通知成功不代表新 HTML 已生成。两路并行存在 ESA 回源仍取得旧 HTML 的窗口，ESA 的缓存 TTL 继续约束这段陈旧时间；这条链路不承诺两层缓存同步完成更新。

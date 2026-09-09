@@ -74,7 +74,7 @@ test("无标签不刷新；Vercel 等待或失败都不阻断 ESA", async (t) =>
     return Response.json({ TaskId: "task-2" });
   });
   const env = { ...config, SITE_URL: "https://lyjw.me", TELEMETRY_INGEST_SECRET: "test" } as Env;
-  await requestStore.run({ env, ctx: { waitUntil() {} } }, async () => {
+  await requestStore.run({ env, ctx: { waitUntil() {} }, requestEsaPurge: () => purgeEsaHomepage(env) }, async () => {
     await expireStatusTags([]);
     assert.equal(calls.length, 0);
     const work = expireStatusTags(["server"]);
