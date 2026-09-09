@@ -285,8 +285,8 @@ titleId，屏蔽的游戏不上报、不占窗口；改这份名单会重推奖�
 
 ## 部署
 
-推到 `main` 且这个目录有改动时，`.github/workflows/deploy-workers.yml` 会自动部署，
-不用在本机执行 `wrangler deploy`。首次部署后有两类手工动作：
+推到 `main` 且这个目录有改动时，Cloudflare Workers Builds 原生 Git 集成会自动部署，
+构建根目录与命令见 [原生部署配置](../../docs/workers-builds.md)，不用在本机执行 `wrangler deploy`。首次部署后有两类手工动作：
 
 1. 把备份的旧 `state/auth.json` 原样写到 KV key `auth`；
 2. 按需要写入 secret：`PSN_NPSSO`，以及站点侧要求鉴权时用的
