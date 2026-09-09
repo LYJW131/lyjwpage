@@ -1,12 +1,12 @@
 {
   "type": "architecture",
   "specification": {
-    "sha256": "f99120b2f963e6898c287f2df451712d3718606e7c5a88e2702a1ecbbc907aa0",
-    "bytes": 9979
+    "sha256": "421229e58862a97064536c6d4e818785a52fa7756b5b57af2e78f2339f860750",
+    "bytes": 11606
   },
   "artifact": {
-    "sha256": "f6caa695420d725cdde2d785bdaf0a0697c32fd964d9f27d07698897d69121bc",
-    "bytes": 720905
+    "sha256": "3c8756168646fb5b1fceaca8a50d79f1c34a936c170a6908091f45e6e0b4ec03",
+    "bytes": 724658
   },
   "validation": {
     "checksPassed": 9,
@@ -19,8 +19,8 @@
   "evidence": {
     "verified": true,
     "repository": "https://github.com/LYJW131/lyjwpage",
-    "revision": "764cbbc44546705cd11c4170619fb195383a2b04",
-    "references": 17
+    "revision": "1256daeda7dfe54838e0972e30f3f4f972600864",
+    "references": 19
   },
   "output": "architecture.html",
   "visual_review": "passed",
@@ -139,13 +139,13 @@
   "previews": {
     "architecture-light.png": {
       "kind": "svg-rasterization",
-      "sha256": "00e91667a51dd4606e37e4344f4a00e15129e368862178cead9480398052f6ff",
-      "bytes": 334641
+      "sha256": "df0c49d34c4f7a49f3141c728d266314bf6479927bac1797fe74d76a0f6c9b06",
+      "bytes": 350910
     },
     "architecture-dark.png": {
       "kind": "svg-rasterization",
-      "sha256": "5e12e1bfa423ec731d6fc2ff48116eccd4eafbe2d1d9a4fd0dd6bb9bcac5ea1d",
-      "bytes": 335012
+      "sha256": "2fa91365b1966d49011e4818e0d6c878426f5b959b13f38319e581531035131d",
+      "bytes": 351282
     }
   }
 }
