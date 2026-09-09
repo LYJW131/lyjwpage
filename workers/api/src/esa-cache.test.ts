@@ -27,6 +27,7 @@ test("ESA 按控制台元数据以 POST query 刷新唯一首页 cachekey", asyn
     assert.equal(url.hostname, "esa.cn-hangzhou.aliyuncs.com");
     assert.equal(init.method, "POST");
     assert.equal(init.body, undefined);
+    assert.equal(init.redirect, "manual");
     assert.equal(url.searchParams.get("SiteId"), config.ESA_SITE_ID);
     assert.equal(url.searchParams.get("Type"), "cachekey");
     assert.deepEqual(JSON.parse(url.searchParams.get("Content")!), {
@@ -53,11 +54,11 @@ test("ESA 配置缺失不发送签名请求，失败不泄漏密钥", async (t) 
 
 test("ESA 拒绝错误应答与缺少 TaskId 的假成功", async (t) => {
   const logs = t.mock.method(console, "error", () => {});
-  for (const response of [Response.json({ Code: "QuotaExceeded" }, { status: 400 }), Response.json({}), new Response("invalid")]) {
+  for (const response of [Response.json({ Code: "QuotaExceeded" }, { status: 400 }), Response.json({}), new Response("invalid"), new Response(null, { status: 302, headers: { location: "https://example.com/" } })]) {
     t.mock.method(globalThis, "fetch", async () => response);
     await purgeEsaHomepage(config);
   }
-  assert.equal(logs.mock.callCount(), 3);
+  assert.equal(logs.mock.callCount(), 4);
 });
 
 test("无标签不刷新；Vercel 等待或失败都不阻断 ESA", async (t) => {
