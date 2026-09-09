@@ -19,16 +19,16 @@ function fixture() {
   return { db, sent, scheduled, create, at: (value: number) => { now = value; } };
 }
 
-test("ESA 全局 30 秒冷却，突发合并并在没有新上报时补发", async () => {
+test("ESA 全局 120 秒冷却，突发合并并在没有新上报时补发", async () => {
   const f = fixture();
   try {
     const gate = f.create();
     await Promise.all(Array.from({ length: 20 }, () => gate.request()));
     assert.deepEqual(f.sent, [1000]);
-    assert.ok(f.scheduled.every(at => at === 31000));
-    f.at(30999); await gate.flush(); assert.equal(f.sent.length, 1);
-    f.at(31000); await gate.flush(); assert.deepEqual(f.sent, [1000, 31000]);
-    f.at(61000); await gate.flush(); assert.equal(f.sent.length, 2);
+    assert.ok(f.scheduled.every(at => at === 121000));
+    f.at(120999); await gate.flush(); assert.equal(f.sent.length, 1);
+    f.at(121000); await gate.flush(); assert.deepEqual(f.sent, [1000, 121000]);
+    f.at(241000); await gate.flush(); assert.equal(f.sent.length, 2);
   } finally { f.db.close(); }
 });
 
@@ -38,10 +38,10 @@ test("冷却与待刷新状态跨对象重建保留，重复 alarm 不会重复�
     await f.create().request();
     f.at(2000); await f.create().request();
     const restarted = f.create();
-    f.at(31000); await Promise.all([restarted.flush(), restarted.flush()]);
-    assert.deepEqual(f.sent, [1000, 31000]);
-    f.at(40000); await restarted.request();
-    assert.equal(f.scheduled.at(-1), 61000);
+    f.at(121000); await Promise.all([restarted.flush(), restarted.flush()]);
+    assert.deepEqual(f.sent, [1000, 121000]);
+    f.at(130000); await restarted.request();
+    assert.equal(f.scheduled.at(-1), 241000);
   } finally { f.db.close(); }
 });
 
@@ -54,7 +54,7 @@ test("发送未完成及失败时仍遵守间隔，期间的新变化保留待�
     const first = gate.request();
     await gate.request(); assert.equal(f.sent.length, 1);
     release(); await assert.rejects(first, /network/);
-    f.at(31000); await f.create().flush();
-    assert.deepEqual(f.sent, [1000, 31000]);
+    f.at(121000); await f.create().flush();
+    assert.deepEqual(f.sent, [1000, 121000]);
   } finally { f.db.close(); }
 });

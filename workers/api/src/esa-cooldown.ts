@@ -1,6 +1,6 @@
 import type { SqlDatabase } from "@shared/sqlite-store";
 
-export const ESA_COOLDOWN_MS = 30_000;
+export const ESA_COOLDOWN_MS = 120_000;
 
 /** 单个 StateHub 的持久冷却；同步领取发送资格，冷却内变化由 alarm 合并补发。 */
 export class EsaCooldown {
