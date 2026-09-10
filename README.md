@@ -615,3 +615,5 @@ Authorization: Bearer <TELEMETRY_INGEST_SECRET>
 支持浏览器安装与 iOS「添加到主屏幕」，从当前域名以独立窗口打开。Manifest 使用站点头像的 192 / 512 PNG 图标，iOS 沿用 Apple 图标。
 
 生产环境注册 `/sw.js`，只缓存 `/offline.html`；断网后重新打开显示离线提示，可点击重新连接。首页 HTML、RSC、状态 API 和媒体请求不写入 Service Worker 缓存，实时状态沿用现有 Vercel / ESA / Worker 链路。修改离线页时同步更新 `public/sw.js` 的 `OFFLINE_CACHE` 版本；Service Worker 更新时仅清理本应用的旧离线缓存。开发环境不注册。
+
+ESA 缓存规则首位设置「PWA 核心文件绕过缓存」，仅匹配 `lyjw131.com` 的 `/sw.js`、`/offline.html`、`/manifest.webmanifest`、`/pwa/icon-192.png` 和 `/pwa/icon-512.png`。此规则需位于长期缓存规则之前，避免强制 TTL 覆盖源站策略、延迟 Service Worker 和安装资源更新。
