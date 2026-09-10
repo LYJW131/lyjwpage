@@ -609,3 +609,9 @@ Authorization: Bearer <TELEMETRY_INGEST_SECRET>
 - 分隔线用 `screen-line-top/bottom`：内容居中，线横贯整个视口
 - **整站只有实时状态区允许出现彩色**，其余全是灰阶 —— 眼睛会自动被实时数据吸走
 - 全站 `tabular-nums slashed-zero`，实时数字跳动时不抖宽度
+
+## PWA
+
+支持浏览器安装与 iOS「添加到主屏幕」，从当前域名以独立窗口打开。Manifest 使用站点头像的 192 / 512 PNG 图标，iOS 沿用 Apple 图标。
+
+生产环境注册 `/sw.js`，只缓存 `/offline.html`；断网后重新打开显示离线提示，可点击重新连接。首页 HTML、RSC、状态 API 和媒体请求不写入 Service Worker 缓存，实时状态沿用现有 Vercel / ESA / Worker 链路。修改离线页时同步更新 `public/sw.js` 的 `OFFLINE_CACHE` 版本；Service Worker 更新时仅清理本应用的旧离线缓存。开发环境不注册。

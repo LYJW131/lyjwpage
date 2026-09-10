@@ -4,7 +4,7 @@ import sharp from "sharp";
 import { site } from "@/lib/site";
 
 /** 先拿够大的源图，各尺寸再往下缩，避免直接向 GitHub 要 32px 那档。 */
-const SOURCE_PX = 256;
+const SOURCE_PX = 512;
 
 /**
  * 构建期把 GitHub 头像焊进站点图标。
@@ -35,7 +35,7 @@ async function githubAvatarSource(buildId: string): Promise<Uint8Array> {
  * 卡片上那张头像的展示尺寸 ×2。
  *
  * contact-card 的容器是 `size-14` / `lg:size-16`，`sizes` 也只声明到 64px，
- * 2× 就是 128 —— 比源图的 256 小，缩得动。改组件尺寸时这个数要跟着改。
+ * 2× 就是 128 —— 比源图的 512 小，缩得动。改组件尺寸时这个数要跟着改。
  */
 const CARD_PX = 128;
 
@@ -77,6 +77,9 @@ export async function githubAvatarDataUri(): Promise<string | null> {
 }
 
 export async function githubAvatarPng(px: number): Promise<Uint8Array> {
+  "use cache";
+  cacheLife("max");
+
   const buildId = process.env.BUILD_TIME ?? process.env.COMMIT_SHA ?? "";
   try {
     const source = await githubAvatarSource(buildId);

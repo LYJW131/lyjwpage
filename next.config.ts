@@ -47,6 +47,15 @@ const nextConfig: NextConfig = {
    * 见 lib/api。首屏那份不受那个开关管 —— 冻着才有这里说的预渲染。
    */
   cacheComponents: true,
+  async headers() {
+    return [{
+      source: "/sw.js",
+      headers: [
+        { key: "Content-Type", value: "application/javascript; charset=utf-8" },
+        { key: "Cache-Control", value: "no-cache, no-store, must-revalidate" },
+      ],
+    }];
+  },
   /**
    * 分享卡片那张图要的两份 ttf（见 app/opengraph-image）。
    *

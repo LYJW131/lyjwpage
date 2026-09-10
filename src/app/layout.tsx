@@ -4,6 +4,7 @@ import { GeistMono } from "geist/font/mono";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 
+import { PwaRegistration } from "@/components/pwa-registration";
 import { ThemeProvider } from "@/components/theme-provider";
 import { HEATMAP_STORAGE_KEY } from "@/lib/heatmap-preference";
 import { site } from "@/lib/site";
@@ -26,6 +27,7 @@ export const metadata: Metadata = {
     locale: "zh_CN",
     type: "website",
   },
+  appleWebApp: { capable: true, title: site.shortName, statusBarStyle: "default" },
   robots: { index: true, follow: true },
 };
 
@@ -74,6 +76,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <link rel="preconnect" href="https://is1-ssl.mzstatic.com" />
         {assetOrigin ? <link rel="preconnect" href={assetOrigin} /> : null}
         <ThemeProvider>{children}</ThemeProvider>
+        <PwaRegistration />
         <Analytics />
         <SpeedInsights />
       </body>
