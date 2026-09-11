@@ -56,9 +56,6 @@ export function trophiesTilePath(titleIds: string[]): string {
 /** 贡献热力图。没有推送；浏览器按长间隔和切回焦点来问，切回带游标。 */
 export const GITHUB_CHART_PATH = "/api/status/github-chart";
 
-/** 本仓库的贡献统计。没有推送；变化慢，浏览器按长间隔轮询。 */
-export const GITHUB_REPO_PATH = "/api/status/github-repo";
-
 /**
  * 活动圆环。没有推送 —— 圈以分钟为尺度涨，广播它就是拿推送当轮询用，
  * 所以这个键只会被轮询和首屏填。

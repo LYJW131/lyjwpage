@@ -15,16 +15,17 @@ import { Section } from "@/components/ui/section";
 import { artworkPlaceholders } from "@/lib/artwork-placeholder";
 import { desktopIconDataUri } from "@/lib/desktop-icon-inline";
 import { githubAvatarDataUri } from "@/lib/github-avatar-icon";
-import { getGithubRepoForSite } from "@/lib/github-repo-site";
+import { getGithubRepoStats } from "@/lib/github-repo-site";
 import { getRecentCommits } from "@/lib/github-recent-commits";
 import { cachedHomeSnapshot } from "@/lib/status-cache";
-import type { GithubRepoPayload, StatusResponse } from "@/lib/types";
 
 export default async function Home() {
-  const [snapshot, avatarDataUri, recentCommits] = await Promise.all([
+  const [snapshot, avatarDataUri, recentCommits, githubRepo] = await Promise.all([
     cachedHomeSnapshot(),
     githubAvatarDataUri(),
     getRecentCommits(),
+    // 构建期一份的仓库统计；拉不到给 null，这轮不画统计，卡片只剩提交列表
+    getGithubRepoStats(),
   ]);
   const {
     desktop,
@@ -45,29 +46,6 @@ export default async function Home() {
     githubChart,
     lyrics,
   } = snapshot;
-
-  /**
-   * 生产 Worker 尚未带上 githubRepo 时（预览窗口 / 本地对着旧后端），
-   * 站点自己拉一份（公开仓，GITHUB_TOKEN 可选），避免整卡空白。Worker 就绪后仍以快照为准。
-   * 直接透传 undefined 会在 useStatus 读 fallback.ok 时整页跌进 error 边界。
-   */
-  let githubRepo: StatusResponse<GithubRepoPayload> =
-    snapshot.githubRepo ?? { ok: false, error: "状态暂不可用" };
-  if (!githubRepo.ok) {
-    try {
-      const buildId = process.env.BUILD_TIME ?? process.env.COMMIT_SHA ?? "dev";
-      const data = await getGithubRepoForSite(buildId);
-      githubRepo = data.contributors.length
-        ? { ok: true, data }
-        : { ok: false, error: "状态暂不可用" };
-    } catch (error) {
-      console.error(
-        "[github-repo]",
-        error instanceof Error ? error.message : String(error),
-      );
-      githubRepo = { ok: false, error: "状态暂不可用" };
-    }
-  }
 
   const nowSongId =
     nowListening.ok && !nowListening.data.idle && nowListening.data.hasLyrics
@@ -120,13 +98,19 @@ export default async function Home() {
                 <ActivityCard fallback={activity} />
                 <ServerCard fallback={server} />
                 <VibeCodingCard fallback={vibeCoding} />
-                <GithubRepoCard fallback={githubRepo} recentCommits={recentCommits} />
+                <PlaystationBlock
+                  trophies={trophies}
+                  playing={playing}
+                  playingNow={playingNow}
+                  className="md:col-span-2"
+                />
               </div>
 
-              <PlaystationBlock
-                trophies={trophies}
-                playing={playing}
-                playingNow={playingNow}
+              {/* 卡片网格是 gap-3，这张在网格外，间隔也得是同一个 12px */}
+              <GithubRepoCard
+                stats={githubRepo}
+                recentCommits={recentCommits}
+                className="mt-3 scroll-mt-28"
               />
 
               <div id="watching" className="mt-6 scroll-mt-28 border-t border-line pt-5">

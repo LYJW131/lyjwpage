@@ -1,4 +1,3 @@
-import { cached } from "@/lib/cache";
 import { site } from "@/lib/site";
 import type {
   GithubRepoContributor,
@@ -9,19 +8,16 @@ import type {
 /**
  * 本仓库的贡献统计，走 GitHub REST `/stats/contributors`。
  *
- * token 复用 GITHUB_TOKEN（和贡献日历同一把，不新增配置）：读公开仓的统计
- * 不需要组织权限，classic / fine-grained 都能用。公开仓不带 token 也能读，
- * 只是匿名限额低（每 IP 60 次/小时），30 分钟一次的节奏够用；有就带上。
- * GitHub 挂了要抛出去，交给 statusEnvelope 变成 ok:false，轮询那轮才不会把
- * 上一份好数据盖掉。
+ * 这份不是实时状态：仓库有新提交就意味着一次新部署，统计只在构建期取一次、
+ * 焊进 HTML 就够了（见 `github-repo-site.ts`），不经 Worker、没有状态端点、
+ * 浏览器不轮询。这个文件只放纯逻辑和取数，不碰 next/cache，单测直接跑。
  *
- * 这路和贡献日历的区别：日历是 GraphQL 按人拉全年，统计是 REST 按仓拉每周，
- * 缓存键和 TTL 各走各的。统计更新得慢（GitHub 自己也在缓存），TTL 取 30 分钟。
+ * token 用 Vercel 上的 GITHUB_TOKEN：公开仓不带 token 也能读，只是匿名限额低
+ * （每 IP 60 次/小时，构建机的出口 IP 是共用的），有就带上。
+ *
+ * 这路和贡献日历的区别：日历是 GraphQL 按人拉全年、由 Worker 常驻刷新；
+ * 统计是 REST 按仓拉每周、一次构建一份。
  */
-
-/** 窗口宽度进缓存键：改周数要换键，不然 Worker 里那份旧窗口会再活 30 分钟。 */
-const REPO_STATS_CACHE_KEY = "github-repo:v3";
-const REPO_STATS_TTL_MS = 30 * 60_000;
 
 /**
  * 柱状图只画最近 6 周；原始返回的一整年不进信封。
@@ -33,16 +29,15 @@ const DAY_MS = 86_400_000;
 const WEEK_MS = 7 * DAY_MS;
 
 /**
- * 整次取数的总预算，含等 202 和 commits 回退。
+ * 整次取数的总预算，含等 202 的时间。
  *
- * 这一路挂在 `/api/home` 的 Promise.all 里，而站点 status-cache 20 秒就会掐掉
- * 整个快照请求；GitHub 冷缓存现算时可以连续回 202 十几秒，不设上限就是让
- * 一张卡拖垮整个首页重建。预算之内等不到就退 commits，退不出来就抛。
+ * 每次部署本身就是一次 push，GitHub 会把这个仓的统计缓存作废、重新排队现算，
+ * 所以构建期几乎总会先撞上 202；实测这个仓一轮要 30 秒上下。构建期填
+ * `use cache` 的上限是 50 秒，40 秒尽量把这一轮等完、又不顶到那条线；
+ * 运行期后台重建走 Vercel 函数，默认时限远大于此。预算内等不到就抛：
+ * 结果一旦进缓存就冻到下次部署，宁可这轮不画也不能把残缺的数据焊进去。
  */
-const FETCH_BUDGET_MS = 12_000;
-
-/** 退到 commits 回退前至少给它留这么多预算，不然退了也白退。 */
-const COMMITS_RESERVE_MS = 5_000;
+const FETCH_BUDGET_MS = 40_000;
 
 type ContributorWeek = {
   w?: number;
@@ -155,20 +150,15 @@ export function summarizeRepoStats(
   };
 }
 
-/** Worker / 公开状态端点用：走 SQLite TTL 缓存。 */
-export async function getGithubRepo(): Promise<GithubRepoPayload> {
-  const token = process.env.GITHUB_TOKEN?.trim() || null;
-  const { owner, name } = repoIdFromUrl(site.repo);
-  return cached(REPO_STATS_CACHE_KEY, REPO_STATS_TTL_MS, () => fetchRepoStats(token, owner, name));
-}
-
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
- * 给站点回退和 Worker 共用的取数；不碰缓存层。
+ * 取数本体；不碰缓存层，缓存由 `github-repo-site.ts` 的 `use cache` 负责。
  *
- * 整次调用（含 202 等待、commits 回退）不超过 budgetMs：一个共享的
- * AbortSignal 挂在所有 fetch 上，等待前先看剩余预算够不够再等一轮。
+ * 只认 `/stats/contributors`（带每人每周 a/d/c）。GitHub 现算时回 202，
+ * 就按 1.5s、3s、4.5s… 退避重试；整次不超过 budgetMs，一个共享的 AbortSignal
+ * 挂在所有 fetch 上。预算内等不到、或响应不对，都抛出去 —— 没有 commits
+ * 列表那种退路：它拼不出增删行，「+0 / −0」焊进 HTML 会一直挂到下次部署。
  */
 export async function fetchRepoStats(
   token: string | null,
@@ -176,11 +166,6 @@ export async function fetchRepoStats(
   name: string,
   budgetMs: number = FETCH_BUDGET_MS,
 ): Promise<GithubRepoPayload> {
-  /**
-   * 优先走 `/stats/contributors`（带每人每周 a/d/c）。GitHub 现算时常回 202；
-   * 预算内等不到，就退到 commits 列表按作者/周聚合——没有 ++/--，但柱状图和
-   * 排名还能画，本地和 Worker 都不至于整卡空白。
-   */
   const deadline = Date.now() + budgetMs;
   const signal = AbortSignal.timeout(budgetMs);
   const headers: Record<string, string> = {
@@ -190,91 +175,23 @@ export async function fetchRepoStats(
   if (token) headers.Authorization = `Bearer ${token}`;
 
   for (let attempt = 0; ; attempt += 1) {
-    const response = await fetch(
-      `https://api.github.com/repos/${owner}/${name}/stats/contributors`,
-      { headers, signal },
-    );
+    const url = new URL(`https://api.github.com/repos/${owner}/${name}/stats/contributors`);
+    // Next 在同一次渲染里会把 URL 相同的 GET 记忆化，重试会一直拿到第一次那个
+    // 202；每轮换个查询参数把它区分开。GitHub 不认这个参数，行为不变。
+    url.searchParams.set("attempt", String(attempt));
+    const response = await fetch(url, { headers, cache: "no-store", signal });
     if (response.status === 202) {
       const wait = 1_500 * (attempt + 1);
-      if (Date.now() + wait > deadline - COMMITS_RESERVE_MS) break;
+      if (Date.now() + wait > deadline) {
+        throw new Error("GitHub 仓库统计尚未就绪（连续 202），这轮不画");
+      }
       await sleep(wait);
       continue;
     }
     const body = (await response.json().catch(() => null)) as ContributorStat[] | null;
     if (!response.ok || !Array.isArray(body)) {
-      console.error("[github-repo]", response.status, "仓库统计响应不是预期的形状");
-      break;
+      throw new Error(`GitHub 仓库统计响应不是预期的形状（HTTP ${response.status}）`);
     }
     return summarizeRepoStats(body, owner, name, Date.now());
   }
-
-  console.warn("[github-repo] stats 未就绪，改用 commits 回退");
-  return fetchRepoStatsFromCommits(owner, name, headers, signal);
-}
-
-type CommitListItem = {
-  sha?: string;
-  commit?: { author?: { date?: string } | null } | null;
-  author?: { login?: string; avatar_url?: string } | null;
-};
-
-/** 周日 00:00 UTC 的 epoch 秒，对齐 GitHub stats 的 `w`。 */
-function weekStartSeconds(iso: string): number | null {
-  const ms = new Date(iso).getTime();
-  if (Number.isNaN(ms)) return null;
-  return Math.floor(weekStartMs(ms) / 1000);
-}
-
-/**
- * 用最近若干页 commit 拼每人每周的 commit 数。增删行拿不到，记 0。
- * 只覆盖能翻到的窗口，够画卡片；完整历史仍以 stats 为准。
- * 共用外层的 signal：预算耗尽时这里的 fetch 一起中止。
- */
-async function fetchRepoStatsFromCommits(
-  owner: string,
-  name: string,
-  headers: Record<string, string>,
-  signal: AbortSignal,
-): Promise<GithubRepoPayload> {
-  const since = new Date(Date.now() - WEEK_WINDOW * WEEK_MS).toISOString();
-  const byLogin = new Map<
-    string,
-    { avatarUrl: string | null; weeks: Map<number, number> }
-  >();
-
-  for (let page = 1; page <= 5; page += 1) {
-    const url = new URL(`https://api.github.com/repos/${owner}/${name}/commits`);
-    url.searchParams.set("since", since);
-    url.searchParams.set("per_page", "100");
-    url.searchParams.set("page", String(page));
-    const response = await fetch(url, { headers, signal });
-    const body = (await response.json().catch(() => null)) as CommitListItem[] | null;
-    if (!response.ok || !Array.isArray(body)) {
-      console.error("[github-repo]", response.status, "commits 回退响应不是预期的形状");
-      throw new Error("GitHub 仓库统计取数失败");
-    }
-    if (body.length === 0) break;
-    for (const item of body) {
-      const login = item.author?.login?.trim() || "ghost";
-      const week = item.commit?.author?.date ? weekStartSeconds(item.commit.author.date) : null;
-      if (week == null) continue;
-      const row = byLogin.get(login) ?? {
-        avatarUrl: item.author?.avatar_url ?? null,
-        weeks: new Map<number, number>(),
-      };
-      if (!row.avatarUrl && item.author?.avatar_url) row.avatarUrl = item.author.avatar_url;
-      row.weeks.set(week, (row.weeks.get(week) ?? 0) + 1);
-      byLogin.set(login, row);
-    }
-    if (body.length < 100) break;
-  }
-
-  const raw: ContributorStat[] = [...byLogin.entries()].map(([login, row]) => ({
-    author: { login, avatar_url: row.avatarUrl ?? undefined },
-    total: [...row.weeks.values()].reduce((sum, n) => sum + n, 0),
-    weeks: [...row.weeks.entries()].map(([w, c]) => ({ w, a: 0, d: 0, c })),
-  }));
-
-  if (raw.length === 0) throw new Error("GitHub 仓库统计取数失败");
-  return summarizeRepoStats(raw, owner, name, Date.now());
 }

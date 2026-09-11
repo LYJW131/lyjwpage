@@ -6,7 +6,6 @@ import { statusEnvelope } from "@/lib/api";
 import { getRecentlyPlayed } from "@/lib/apple-music-store";
 import { getNowWatching, getWatching } from "@/lib/emby";
 import { getGithubChart } from "@/lib/github-chart";
-import { getGithubRepo } from "@/lib/github-repo";
 import { pickNowListening } from "@/lib/now-listening";
 import { resolveLyrics, type LyricsResult } from "@/lib/lyrics";
 import { getPlaying, getPlayingNow } from "@/lib/playstation";
@@ -40,7 +39,7 @@ async function getChargerFallback() {
 
 
 export async function publicHomeSnapshot() {
-  const [desktop, activity, server, charger, powerBank, listening, nowListening, timezone, vibeCoding, vibeCodingYear, watching, nowWatching, playing, playingNow, trophies, githubChart, githubRepo] = await Promise.all([
+  const [desktop, activity, server, charger, powerBank, listening, nowListening, timezone, vibeCoding, vibeCodingYear, watching, nowWatching, playing, playingNow, trophies, githubChart] = await Promise.all([
     statusEnvelope(getDesktopPayload),
     statusEnvelope(getActivitySnapshot),
     statusEnvelope(getServerSnapshot),
@@ -57,12 +56,11 @@ export async function publicHomeSnapshot() {
     statusEnvelope(getPlayingNow),
     statusEnvelope(getTrophiesSummary),
     statusEnvelope(getGithubChart),
-    statusEnvelope(getGithubRepo),
   ]);
   let lyrics: LyricsResult | null = null;
   if (nowListening.ok && !nowListening.data.idle && nowListening.data.hasLyrics && nowListening.data.songId) {
     try { lyrics = await resolveLyrics(nowListening.data.songId); } catch (error) { console.error("[home lyrics]", error); }
   }
-  return { desktop, activity, server, charger, powerBank, listening, nowListening, timezone, vibeCoding, vibeCodingYear, watching, nowWatching, playing, playingNow, trophies, githubChart, githubRepo, lyrics };
+  return { desktop, activity, server, charger, powerBank, listening, nowListening, timezone, vibeCoding, vibeCodingYear, watching, nowWatching, playing, playingNow, trophies, githubChart, lyrics };
 }
 export type HomeSnapshot = Awaited<ReturnType<typeof publicHomeSnapshot>>;
