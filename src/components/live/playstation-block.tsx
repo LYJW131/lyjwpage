@@ -6,6 +6,7 @@ import type {
   StatusResponse,
   TrophiesSummaryPayload,
 } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 /** 卡片锚点。跳转要滚到的也是它，所以这个 id 只写一处。 */
 const ANCHOR = "playing";
@@ -20,18 +21,20 @@ export function PlaystationBlock({
   trophies,
   playing,
   playingNow,
+  className,
 }: {
   trophies: StatusResponse<TrophiesSummaryPayload>;
   playing: StatusResponse<PlaystationPlayingPayload>;
   playingNow: StatusResponse<PlaystationPresencePayload>;
+  /** 放在卡片网格里时由调用方给跨列；不给就是一张普通卡 */
+  className?: string;
 }) {
   return (
     <Card
       id={ANCHOR}
       label="PlayStation"
       action="PS5 Pro"
-      // 卡片网格是 gap-3，这块在网格外，间隔也得是同一个 12px
-      className="mt-3 scroll-mt-28"
+      className={cn("scroll-mt-28", className)}
     >
       <PlaystationPanel
         anchorId={ANCHOR}

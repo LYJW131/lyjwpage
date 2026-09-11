@@ -74,5 +74,5 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 # 界面与交互
 
-- 站内滚动条默认隐藏：可滚动区域一律加 `scrollbar-none [&::-webkit-scrollbar]:hidden`（前者管 Firefox 的 `scrollbar-width`，后者管 Chromium 系，两句缺一不可）。现有示例：播放器队列、`github-repo-card` 的两栏。
+- 站内滚动条默认隐藏：可滚动区域一律加 `scrollbar-none [&::-webkit-scrollbar]:hidden`（前者管 Firefox 的 `scrollbar-width`，后者管 Chromium 系，两句缺一不可）。现有示例：播放器队列。
 - 条目式滚动要吸附：容器加 `snap-y snap-mandatory`（横向用 `snap-x`，见奖杯组、在看瓷砖），子项加 `snap-start`，滚动停稳后永远是整行对齐；多栏并排时各行等高（如 44px），吸住后两边才对得齐。

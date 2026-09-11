@@ -1,31 +1,23 @@
-"use client";
-
 import Image from "next/image";
-import { useMemo } from "react";
 
 import { Card } from "@/components/ui/card";
-import { useStatus } from "@/hooks/use-status";
 import type { GithubRecentCommit } from "@/lib/github-recent-commits";
-import { GITHUB_REPO_PATH } from "@/lib/paths";
 import { site } from "@/lib/site";
-import type { GithubRepoContributor, GithubRepoPayload, GithubRepoWeek, StatusResponse } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import type { GithubRepoContributor, GithubRepoPayload, GithubRepoWeek } from "@/lib/types";
 
 /**
- * 本仓库的贡献卡片。统计变化慢，30 分钟一轮，没有推送。
+ * 本仓库的贡献卡片。纯服务端组件：统计和最近提交都在构建期焊进 props，
+ * 没有轮询、没有推送 —— 仓库有新提交就是一次新部署，HTML 自然换新。
  *
- * 取数失败或仓库没有贡献者时这里直接不渲染 —— 和联系卡片里那张
- * 贡献日历同一条规矩：没数据就不占位。
- *
- * 最近提交标题由服务端构建期焊进 props，不走这条轮询。
+ * 统计拉不到、或仓库没有贡献者时不画统计那几段；连提交列表也没有就整卡
+ * 不渲染 —— 和联系卡片里那张贡献日历同一条规矩：没数据就不占位。
  */
-const REFRESH_MS = 30 * 60_000;
 
 /** 头像展示 28px，取 56 那档原图，unoptimized 直连不进优化器。 */
 const AVATAR_PX = 28;
 
-/** 明细里最多列几位；其余只进总数。 */
-const CONTRIBUTOR_LIMIT = 8;
+/** 名单只列前几位，不滚动；其余只进总数。和右边的提交列表一样长。 */
+const CONTRIBUTOR_LIMIT = 5;
 
 /**
  * 堆叠柱的分段配色，按排名取色（#1 恒为蓝）。
@@ -104,7 +96,7 @@ function ContributorRow({
       href={`https://github.com/${person.login}`}
       target="_blank"
       rel="noreferrer noopener"
-      className="group relative flex min-h-[44px] min-w-0 snap-start items-center gap-2 border border-line bg-muted/40 px-3"
+      className="group relative flex min-h-[44px] min-w-0 items-center gap-2 border border-line bg-muted/40 px-3"
     >
       {/* 骑在左边框上，和外框齐平，不被框线包在里面 */}
       <span aria-hidden className="absolute top-[-1px] bottom-[-1px] left-[-1px] w-1" style={{ backgroundColor: color }} />
@@ -143,7 +135,7 @@ function ContributorRow({
 /** 提交历史的一行，和左边的名单行同款 44px 盒子，只是不分色、不带色条。 */
 function CommitRow({ commit }: { commit: GithubRecentCommit }) {
   return (
-    <li className="snap-start">
+    <li>
       <a
         href={commit.url}
         target="_blank"
@@ -174,10 +166,7 @@ function RepoChart({
   contributors: GithubRepoContributor[];
 }) {
   /** login → 排名序号，堆叠分段和图例都从这里取色，保证两边一致 */
-  const rankByLogin = useMemo(
-    () => new Map(contributors.map((person, index) => [person.login, index])),
-    [contributors],
-  );
+  const rankByLogin = new Map(contributors.map((person, index) => [person.login, index]));
 
   if (!weeks.length) return null;
 
@@ -253,22 +242,17 @@ function RepoChart({
 }
 
 export function GithubRepoCard({
-  fallback,
+  stats,
   recentCommits,
   className,
 }: {
-  fallback: StatusResponse<GithubRepoPayload>;
+  /** 构建期焊进的仓库统计；这轮没拉到就是 null */
+  stats: GithubRepoPayload | null;
   /** 构建期焊进的最近提交；空数组就不画这一栏 */
   recentCommits: GithubRecentCommit[];
   className?: string;
 }) {
-  const { data } = useStatus<GithubRepoPayload>(GITHUB_REPO_PATH, REFRESH_MS, {
-    fallback,
-    // 统计慢，首屏已经带了；生产 Worker 未上线时回源 404，别一挂载就把好数据冲掉。
-    revalidateOnMount: false,
-    revalidateOnFocus: false,
-  });
-
+  const data = stats;
   const hasContributors = Boolean(data?.contributors.length);
   if (!hasContributors && recentCommits.length === 0) return null;
 
@@ -285,7 +269,7 @@ export function GithubRepoCard({
           {repoName}
         </a>
       }
-      className={cn("md:col-span-2", className)}
+      className={className}
     >
       {data && hasContributors && (
         <>
@@ -302,7 +286,7 @@ export function GithubRepoCard({
 
           {/*
             左边名单、右边提交历史：两边同框式（标题 + 44px 盒子行），
-            各自最多露 5 行（5×44 + 4×8 = 252px），多的在栏内滚动。
+            各自固定 5 行、不滚动，数据层就只给这么多。
             窄屏自动上下堆叠；宽屏右栏用左边线分隔。
             分割线与内容同左右边距，不贴卡片两侧。
           */}
@@ -310,7 +294,7 @@ export function GithubRepoCard({
           <div className="grid grid-cols-1 gap-4 p-4 md:grid-cols-2 lg:px-5">
             <div className="min-w-0">
               <div className="label-mono text-muted-foreground">Contributors</div>
-              <div className="mt-2 grid max-h-[252px] min-w-0 grid-cols-1 content-start gap-2 overflow-y-auto overscroll-y-contain snap-y snap-mandatory scrollbar-none [&::-webkit-scrollbar]:hidden">
+              <div className="mt-2 grid min-w-0 grid-cols-1 content-start gap-2">
                 {shown.map((person, index) => (
                   <ContributorRow key={person.login} person={person} color={colorForRank(index)} />
                 ))}
@@ -319,7 +303,7 @@ export function GithubRepoCard({
             {recentCommits.length > 0 && (
               <div className="min-w-0 md:border-l md:border-line md:pl-4">
                 <div className="label-mono text-muted-foreground">Commits</div>
-                <ul className="mt-2 grid max-h-[252px] min-w-0 grid-cols-1 content-start gap-2 overflow-y-auto overscroll-y-contain snap-y snap-mandatory scrollbar-none [&::-webkit-scrollbar]:hidden">
+                <ul className="mt-2 grid min-w-0 grid-cols-1 content-start gap-2">
                   {recentCommits.map((commit) => (
                     <CommitRow key={commit.sha} commit={commit} />
                   ))}
@@ -333,7 +317,7 @@ export function GithubRepoCard({
       {!hasContributors && recentCommits.length > 0 && (
         <div className="px-4 py-4 lg:px-5">
           <div className="label-mono text-muted-foreground">Commits</div>
-          <ul className="mt-2 grid max-h-[252px] min-w-0 grid-cols-1 content-start gap-2 overflow-y-auto overscroll-y-contain snap-y snap-mandatory scrollbar-none [&::-webkit-scrollbar]:hidden">
+          <ul className="mt-2 grid min-w-0 grid-cols-1 content-start gap-2">
             {recentCommits.map((commit) => (
               <CommitRow key={commit.sha} commit={commit} />
             ))}
