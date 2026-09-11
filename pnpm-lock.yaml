@@ -32,6 +32,9 @@ importers:
       hls.js:
         specifier: ^1.7.0
         version: 1.7.0
+      liquid-glass-canvas:
+        specifier: ^0.1.0
+        version: 0.1.0
       lucide-react:
         specifier: ^1.28.0
         version: 1.28.0(react@19.2.8)
@@ -3652,6 +3655,9 @@ packages:
   lines-and-columns@1.2.4:
     resolution: {integrity: sha512-7ylylesZQ/PV29jhEDl3Ufjo6ZX7gCqJr5F7PKrqc93v7fzSymt1BpwEU8nAUXs8qzzvqhbjhK5QZg6Mt/HkBg==}
 
+  liquid-glass-canvas@0.1.0:
+    resolution: {integrity: sha512-T1xhnMY3bNFrR+3NLkpqD9OlOGKAruIYdvgOZmABc80SBXLScu9aR6dTFzaQ2s0aCBwe7LbnDIKXgxxmRzAWLw==}
+
   lit-element@4.2.2:
     resolution: {integrity: sha512-aFKhNToWxoyhkNDmWZwEva2SlQia+jfG0fjIWV//YeTaWrVnOxD89dPKfigCUspXFmjzOEUQpOkejH5Ly6sG0w==}
 
@@ -4699,6 +4705,9 @@ packages:
   tapable@2.3.3:
     resolution: {integrity: sha512-uxc/zpqFg6x7C8vOE7lh6Lbda8eEL9zmVm/PLeTPBRhh1xCgdWaQ+J1CUieGpIfm2HdtsUpRv+HshiasBMcc6A==}
     engines: {node: '>=6'}
+
+  three@0.184.0:
+    resolution: {integrity: sha512-wtTRjG92pM5eUg/KuUnHsqSAlPM296brTOcLgMRqEeylYTh/CdtvKUvCyyCQTzFuStieWxvZb8mVTMvdPyUpxg==}
 
   throttle-debounce@5.0.2:
     resolution: {integrity: sha512-B71/4oyj61iNH0KeCamLuE2rmKuTO5byTOSVwECM5FA7TiAiAW+UqTKZ9ERueC4qvgSttUhdmq1mXC3kJqGX7A==}
@@ -8699,6 +8708,10 @@ snapshots:
 
   lines-and-columns@1.2.4: {}
 
+  liquid-glass-canvas@0.1.0:
+    dependencies:
+      three: 0.184.0
+
   lit-element@4.2.2:
     dependencies:
       '@lit-labs/ssr-dom-shim': 1.6.0
@@ -10280,6 +10293,8 @@ snapshots:
   tailwindcss@4.3.3: {}
 
   tapable@2.3.3: {}
+
+  three@0.184.0: {}
 
   throttle-debounce@5.0.2: {}
 
