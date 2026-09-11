@@ -28,9 +28,7 @@ R2_PUBLIC_BASE_URL = "https://r2.homepage.lyjw.llc"
 EMBY_PUBLIC_URL = "https://emby.lyjw131.com"
 # 处理完一次上报后回敲这份站点的 /api/revalidate
 SITE_URL = "https://lyjw.me"
-# lyjw131.com 经 ESA 回源 lyjw.me；内容变化只刷新首页缓存键。
-ESA_SITE_ID = "1113300533463584"
-ESA_CACHE_URL = "https://lyjw131.com/"
+# lyjw131.com 经 ESA 回源 lyjw.me，首页按源站 SWR 头缓存，不走刷新 API。
 APPLE_MUSIC_STOREFRONT = "cn"
 
 [alias]
@@ -55,8 +53,7 @@ bucket_name = "lyjw-homepage"
 enabled = true
 
 # 秘密通过 wrangler secret put 配置：GITHUB_TOKEN、TELEMETRY_INGEST_SECRET、
-# APPLE_MUSIC_PRIVATE_KEY（MusicKit 签发用的 .p8 全文）、
-# ALIYUN_ACCESS_KEY_ID / ALIYUN_ACCESS_KEY_SECRET（ESA 首页刷新专用 RAM 用户）。
+# APPLE_MUSIC_PRIVATE_KEY（MusicKit 签发用的 .p8 全文）。
 # 有页面连接时刷新最近在听，SQLite 闸门将 Apple 请求限制为两分钟一次。
 [triggers]
 crons = ["* * * * *"]

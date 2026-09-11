@@ -36,18 +36,13 @@
 鉴权失败返回 401，非法报文返回 400，成功返回 202。202 表示持久化完成，广播和缓存通知由 `waitUntil` 执行。
 旧站点 `/api/ingest/*` 与 Worker `/publish` 均不存在。
 
-Worker 在 SQLite 写入完成后，仅对展示变化在同一个 `waitUntil` 任务中并行通知两层缓存：
+Worker 在 SQLite 写入完成后，仅对展示变化在 `waitUntil` 后台任务中通知 Vercel：POST `${SITE_URL}/api/revalidate`，使用同一 Bearer，只传 `{ tags }`。按白名单将 `page:<tag>` 标 stale，先返回已有 HTML，后台重建。通知 5 秒超时，失败只记日志，不能让已落库的上报重发。纯心跳和没有标签的广播不触发缓存通知。
 
-- Vercel：POST `${SITE_URL}/api/revalidate`，使用同一 Bearer，只传 `{ tags }`。按白名单将 `page:<tag>` 标 stale，先返回已有 HTML，后台重建。
-- ESA：首页靠源站 `Cache-Control: public, max-age=300, stale-while-revalidate=86400, stale-if-error=86400`（根目录 `next.config.ts`）与控制台「优先遵循源站缓存策略」规则实现 SWR：5 分钟内命中，之后先回旧 HTML、后台回源取新。`lyjw131.com` 以 `lyjw.me` 为源站与回源 Host；带内容哈希的静态 JS 沿用长期缓存规则，不随上报清理。
+ESA 首页不走通知。`lyjw131.com` 以 `lyjw.me` 为源站与回源 Host，控制台缓存规则「首页遵循源站缓存」（主机名等于本站、URI 路径等于 `/`，排在 PWA 绕过规则之后）让边缘按源站 `Cache-Control: public, max-age=300, stale-while-revalidate=86400, stale-if-error=86400`（根目录 `next.config.ts`）自行缓存：5 分钟内命中，之后先回旧 HTML、后台回源取新。带内容哈希的静态 JS 按源站一年 immutable 缓存，不随上报清理。需要立即生效时去控制台手动刷新一条 URL。
 
-过渡期内仍保留 `PurgeCaches`（2024-09-10）硬刷新：以 `Type=cachekey` 刷新 `https://lyjw131.com/`，站点 ID 为 `1113300533463584`。刷新提交到全网生效约 5~6 分钟，免费版没有预热额度可回填，此前 120 秒一次只会让多个刷新任务排队、命中率归零，因此冷却放宽到 600 秒。规则切换后刷新不再造成 MISS（SWR 窗口内照常返回旧 HTML 并后台重建），只提前催新；验证命中后删除整条刷新链路（含 RAM 密钥与 `esa-*` 模块）。
+这条规则是必需的：`/` 没有文件后缀，不匹配任何默认缓存类型，没有规则覆盖时 ESA 直接判 DYNAMIC、每次回源——之前命中率归零的真正原因。`PurgeCaches` 链路（含 RAM 密钥、`esa-*` 模块、SQLite 冷却表）已随 SWR 上线删除；免费版没有预热额度、刷新本身也要 5~6 分钟才生效，不要加回来。
 
-ESA 刷新由全站唯一 StateHub 的 SQLite 保存 600 秒冷却状态：首次立即发送，冷却内的变化合并为一次待刷新，在冷却结束后由 Durable Object alarm 补发，不依赖下一次上报。重启或重新部署保留间隔；失败尝试也占用本次窗口，Vercel 标签失效不受该冷却影响。alarm 可能延迟，因此保证的是最快 600 秒一次，而非精确每 600 秒执行。
-
-两路各有 5 秒超时，失败独立记录日志，不能让已落库的上报重发。ESA 成功日志中的 TaskId 表示刷新任务已受理；可在控制台“刷新缓存”记录中确认完成。纯心跳和没有标签的广播不触发任何缓存通知。本地与测试环境不设置 ESA 变量，避免刷新生产。
-
-Vercel 仍采用后台重建，刷新通知成功不代表新 HTML 已生成。ESA 回源可能取得 Vercel 仍在重建中的旧 HTML，下一轮 SWR 后台刷新时收敛；这条链路不承诺两层缓存同步完成更新。首屏新鲜度不依赖这两层：浏览器挂载后直接向 Worker 取最新状态。
+Vercel 仍采用后台重建，通知成功不代表新 HTML 已生成。ESA 后台回源可能取得 Vercel 仍在重建中的旧 HTML，下一轮刷新时收敛；这条链路不承诺两层缓存同步完成更新。首屏新鲜度不依赖这两层：浏览器挂载后直接向 Worker 取最新状态。
 
 公开 API 为 `/api/status/*`、`/api/home`、`/api/lyrics`、`/api/motion-artwork`。浏览器挂载后直接访问这里，Vercel 只在首屏生成或重建时读取 `/api/home`。服务端凭据不进入任何公开响应，没有通用 HTTP 数据库端点。
 
@@ -90,7 +85,7 @@ Mac 上报的 Apple Music 凭据保存在 SQLite，Worker 读取使用，不向�
 
 `wrangler.toml` 中配置公开变量 `SITE_URL`、`STORAGE_PREFIX`、`R2_PUBLIC_BASE_URL`、
 `EMBY_PUBLIC_URL`、`APPLE_MUSIC_STOREFRONT`、`ALLOWED_ORIGINS`、`APPLE_MUSIC_TEAM_ID`、
-`APPLE_MUSIC_KEY_ID`、`ESA_SITE_ID`、`ESA_CACHE_URL`，`IMAGES` 桶绑定，
+`APPLE_MUSIC_KEY_ID`，`IMAGES` 桶绑定，
 以及 `LIVE_PUSH` 与 `STATE` 两个 Durable Object 绑定（迁移只追加新 tag，不改旧的）。
 状态和凭据只存于 Worker 的 StateHub，Vercel 不连接数据库。秘密通过以下命令配置：
 
@@ -98,14 +93,10 @@ Mac 上报的 Apple Music 凭据保存在 SQLite，Worker 读取使用，不向�
 pnpm --dir workers/api exec wrangler secret put GITHUB_TOKEN
 pnpm --dir workers/api exec wrangler secret put TELEMETRY_INGEST_SECRET
 pnpm --dir workers/api exec wrangler secret put APPLE_MUSIC_PRIVATE_KEY < AuthKey_XXXXXXXXXX.p8
-pnpm --dir workers/api exec wrangler secret put ALIYUN_ACCESS_KEY_ID
-pnpm --dir workers/api exec wrangler secret put ALIYUN_ACCESS_KEY_SECRET
 ```
 
-ESA 使用独立 RAM 用户的 AccessKey。权限仅授予
-`esa:PurgeCaches`，资源限定到站点 `1113300533463584`，不使用主账号密钥。
-签名采用阿里云 ACS3-HMAC-SHA256，通过 Worker 原生 HTTP 发送与控制台 TypeScript 示例相同的参数；
-密钥仅放 Worker Secrets，不进入 Vercel、前端、仓库或日志。
+Worker 不再调用阿里云 OpenAPI。旧的 `ALIYUN_ACCESS_KEY_ID` / `ALIYUN_ACCESS_KEY_SECRET`
+Secrets 与专用 RAM 用户已无用，在 Cloudflare 控制台和阿里云 RAM 控制台删掉即可。
 
 站点配置 `NEXT_PUBLIC_BACKEND_URL=https://api.homepage.lyjw.llc` 与相同的
 `TELEMETRY_INGEST_SECRET`；浏览器由这一个源拼 `/ws` 和 `/api/musickit/token`。所有上报器的目标为

@@ -26,7 +26,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 # 部署流程
 
-- 站点生产部署默认走 Git：完成必要验证后提交改动，执行 `git push origin main`，由已有集成自动部署 Vercel；腾讯云 EdgeOne 已退役。`lyjw.me` 使用 Vercel；`lyjw131.com` 经阿里云 ESA 回源 `lyjw.me`，回源 Host 跟随源站，缓存首页 HTML 与静态 JS。API Worker 对展示变化并行通知 Vercel 标签失效与 ESA 首页刷新，契约见 `workers/api/README.md`。用户要求部署站点时，包含完成这次提交与推送，无需再逐步确认。
+- 站点生产部署默认走 Git：完成必要验证后提交改动，执行 `git push origin main`，由已有集成自动部署 Vercel；腾讯云 EdgeOne 已退役。`lyjw.me` 使用 Vercel；`lyjw131.com` 经阿里云 ESA 回源 `lyjw.me`，回源 Host 跟随源站，缓存首页 HTML 与静态 JS。API Worker 对展示变化只通知 Vercel 标签失效；ESA 首页由控制台缓存规则按源站 SWR 头自行更新，契约见 `workers/api/README.md`。用户要求部署站点时，包含完成这次提交与推送，无需再逐步确认。
 - 除非用户明确要求手工部署，不运行 `vercel deploy`、`vercel --prod`、`vercel promote` 等手工发布命令；自动部署失败时先检查并修复现有流程。
 - `workers/api`、`workers/online-counter`、`workers/playstation-reporter` 使用 Cloudflare Workers Builds 原生 Git 集成，配置与监视路径见 `docs/workers-builds.md`。GitHub Actions 只保留检查，不再负责 Worker 发布；不要添加重复的自动发布任务。修改共享依赖时同步核对原生构建的触发路径。
 - 推送成功不等于部署完成：检查该次提交在 Vercel 的部署状态，并从已绑定的生产域名验证本次受影响的行为或配置。

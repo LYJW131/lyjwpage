@@ -1,5 +1,3 @@
-import { EsaCooldown } from "./esa-cooldown";
-import { purgeEsaHomepage } from "./esa-cache";
 import { withRequestState } from "@shared/request-state";
 import { publicResponse } from "./public-api";
 import { DurableObject } from "cloudflare:workers";
@@ -12,13 +10,13 @@ import { requestStore, type Env } from "./runtime";
 /** 单个站点一个对象。所有上报的读、合并、写按顺序完成，避免不同信封互相覆盖。 */
 export class StateHub extends DurableObject<Env> {
   private database: SqliteStore;
-  private esaCooldown: EsaCooldown;
   private ingestTail: Promise<unknown> = Promise.resolve();
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.database = new SqliteStore(ctx.storage.sql, (work) => ctx.storage.transactionSync(work));
     ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
-    this.esaCooldown = new EsaCooldown(ctx.storage.sql, (at) => this.scheduleAlarm(at), () => purgeEsaHomepage(this.env));
+    // PurgeCaches 链路已删除（ESA 首页改走源站 SWR），旧冷却表不再使用。
+    ctx.storage.sql.exec("DROP TABLE IF EXISTS esa_purge");
   }
 
   ready(): boolean {
@@ -34,7 +32,6 @@ export class StateHub extends DurableObject<Env> {
     await this.ingestTail;
     return withRequestState(() => requestStore.run({ env: this.env, ctx: this.ctx,
       storage: new StorageClient(async (commands) => this.database.execute(commands)),
-      requestEsaPurge: () => this.requestEsaPurge(),
     }, () => publicResponse(request)));
   }
 
@@ -52,7 +49,6 @@ export class StateHub extends DurableObject<Env> {
       env: this.env,
       ctx: this.ctx,
       storage: new StorageClient(async (commands) => this.database.execute(commands)),
-      requestEsaPurge: () => this.requestEsaPurge(),
     }, async () => {
       const data = await handler(body);
       await this.ensureAlarm();
@@ -67,15 +63,8 @@ export class StateHub extends DurableObject<Env> {
     await this.ensureAlarm();
     return count;
   }
-  async requestEsaPurge(): Promise<void> {
-    if (!this.env.ALIYUN_ACCESS_KEY_ID || !this.env.ALIYUN_ACCESS_KEY_SECRET || !this.env.ESA_SITE_ID || !this.env.ESA_CACHE_URL) {
-      await purgeEsaHomepage(this.env);
-      return;
-    }
-    await this.esaCooldown.request();
-  }
   private async scheduleAlarm(at: number): Promise<void> {
-    // ESA 补发和存储清理共享唯一 alarm；事务内只将时间提前，不能互相覆盖。
+    // 事务内只将 alarm 提前，不能互相覆盖。
     await this.ctx.storage.transaction(async (txn) => {
       const current = await txn.getAlarm();
       if (current === null || current > at) await txn.setAlarm(at);
@@ -85,7 +74,6 @@ export class StateHub extends DurableObject<Env> {
     return this.scheduleAlarm(Date.now() + 60 * 60_000);
   }
   async alarm(): Promise<void> {
-    await this.esaCooldown.flush();
     const removed = this.database.purgeExpired();
     await this.scheduleAlarm(Date.now() + (removed === 1000 ? 1000 : 60 * 60_000));
   }
