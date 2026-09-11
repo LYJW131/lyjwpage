@@ -19,7 +19,7 @@ Worker 写入完成后，只有展示变化才 POST `/api/revalidate`。接口�
 
 ## 配置
 
-Vercel 参照根 `.env.example`，仅公开后端源、缓存通知鉴权和图片配置。Worker 参照 `workers/api/.dev.vars.example` 与 wrangler.toml；状态数据用的 GitHub Token 使用 Worker Secret，Apple Music 凭据来自 Mac 上报。`UPSTREAM_API_URL` 只存在于本地 `.dev.vars`：本地 Worker 答不上来的快照字段和端点用生产的顶上（只读），生产配置不设它。`NEXT_PUBLIC_BACKEND_URL` 与 `NEXT_PUBLIC_ONLINE_COUNTER_URL` 构建期写入前端，分别提供状态/推送源与独立在线人数源，改值需要重新部署。
+Vercel 参照根 `.env.example`，仅公开后端源、缓存通知鉴权和图片配置。Worker 参照 `workers/api/.dev.vars.example` 与 wrangler.toml；状态数据用的 GitHub Token 使用 Worker Secret，Apple Music 凭据来自 Mac 上报。`UPSTREAM_API_URL` 只存在于本地 `.dev.vars`：本地 Worker 以生产为主、本地补缺，生产 `ok:true` 的快照字段和端点用生产的，生产没有的才用本地的（只读），生产配置不设它。`NEXT_PUBLIC_BACKEND_URL` 与 `NEXT_PUBLIC_ONLINE_COUNTER_URL` 构建期写入前端，分别提供状态/推送源与独立在线人数源，改值需要重新部署。
 
 Vercel 可选配一份 `GITHUB_TOKEN`，只给构建期读公开仓的首页「最近提交」列表用（`use cache` + `cacheLife("max")`，随每次部署取一次）。不配也能匿名读，配上只是避开匿名限额；它不参与状态端点，浏览器和 HTML 拿不到。「本仓库」卡的贡献统计和贡献日历一样由 Worker 取数、缓存并经 `/api/home` 与 `/api/status/github-repo` 提供。
 

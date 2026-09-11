@@ -117,8 +117,9 @@ pnpm dev:local                      # 站点指向本地 Worker
 本地用 `wrangler.test.toml`：生产配置里的 `deleted_classes` 迁移在空环境下起不来，测试配置有从头开始的迁移链，且没有生产域名和 cron。
 状态持久化在 `.wrangler/dev-state`，重装或想清库就删它，再跑一次 init。
 
-本地是空库。`.dev.vars` 里的 `UPSTREAM_API_URL` 让 `publicResponse` 把本地 `ok:false` 的快照字段和端点用生产的顶上（只读、不上报）；
-生产的 wrangler.toml 不配它。要测上报链路，直接往 `http://localhost:8788/api/ingest/<来源>` 推，鉴权用 `.dev.vars` 里的 `TELEMETRY_INGEST_SECRET`。
+本地是空库。`.dev.vars` 里的 `UPSTREAM_API_URL` 让 `publicResponse` 生产为主、本地补缺：生产 `ok:true` 的快照字段和端点用生产的，
+生产没有的（新加的端点、新字段）或生产也 `ok:false` 的才用本地的（只读、不上报）。生产的 wrangler.toml 不配它。
+要测上报链路，把这个变量注释掉让本地只看自己，然后往 `http://localhost:8788/api/ingest/<来源>` 推，鉴权用 `.dev.vars` 里的 `TELEMETRY_INGEST_SECRET`。
 
 ## 验证
 

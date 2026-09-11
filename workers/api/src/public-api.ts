@@ -44,10 +44,14 @@ const routes: Record<string, (request: Request) => Promise<Response>> = {
  *
  * `wrangler dev` 起来的 Worker 是一座空库：没有上报器往它推，除了自己去
  * GitHub 取的那几张卡，别的全是降级态，新加一张卡时页面上没东西可对照。
- * 在 .dev.vars 里配 `UPSTREAM_API_URL=https://api.homepage.lyjw.llc` 后：
- * - `/api/home`：本地答不上来的字段（`ok:false` 或空）逐个换成生产快照里的；
- * - 其余 `/api/*`：本地回 `ok:false` 的信封就转发生产的同一路径。
- * 新端点、新字段天然只有本地有，旧的照常有数据看。只读，不碰上报。
+ * 在 .dev.vars 里配 `UPSTREAM_API_URL=https://api.homepage.lyjw.llc` 后，
+ * 生产为主、本地补缺：
+ * - `/api/home`：生产快照里 ok:true 的字段直接用生产的；生产没有的字段
+ *   （新加的）或生产也 ok:false 的，才用本地的；
+ * - 其余 `/api/*`：生产回 ok:true 就用生产的，否则用本地的。
+ * 不按「本地 ok:false 才兜底」来：空库上 desktop / nowWatching / timezone 这些
+ * 会回 ok:true 的空态，那样一兜底就把生产正在放的东西盖没了。要测本地上报
+ * 链路时把这个变量注释掉，本地就只看自己。只读，不碰上报。
  *
  * 生产的 wrangler.toml 不配这个变量，线上一行都不会走到这里。
  */
@@ -78,23 +82,21 @@ async function fetchUpstreamJson(base: string, pathWithSearch: string): Promise<
   }
 }
 
-/** 快照逐字段兜底：本地为空或 ok:false 的字段，用上游里有的换掉 */
+/** 快照逐字段：上游有且不是 ok:false 的字段用上游的，其余保留本地 */
 function overlaySnapshot<T extends object>(local: T, upstream: unknown): T {
   if (typeof upstream !== "object" || upstream === null) return local;
   const merged: Record<string, unknown> = { ...(local as Record<string, unknown>) };
   for (const [key, theirs] of Object.entries(upstream as Record<string, unknown>)) {
-    const mine = merged[key];
-    const mineMissing = mine == null || (isEnvelope(mine) && !mine.ok);
     const theirsUsable = theirs != null && !(isEnvelope(theirs) && !theirs.ok);
-    if (mineMissing && theirsUsable) merged[key] = theirs;
+    if (theirsUsable) merged[key] = theirs;
   }
   return merged as T;
 }
 
-/** 单条端点兜底：本地信封 ok:false 才去问上游，头（Cache-Control、X-Fetched-At）沿用本地的 */
+/** 单条端点：上游回 ok:true 就用上游的，头（Cache-Control、X-Fetched-At）沿用本地的 */
 async function overlayResponse(local: Response, load: () => Promise<unknown>): Promise<Response> {
   const body: unknown = await local.clone().json().catch(() => null);
-  if (!isEnvelope(body) || body.ok) return local;
+  if (!isEnvelope(body)) return local;
   const theirs = await load();
   if (!isEnvelope(theirs) || !theirs.ok) return local;
   return Response.json(theirs, { status: 200, headers: local.headers });

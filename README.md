@@ -39,7 +39,7 @@ pnpm dev:worker:init     # 只需一次：空库不初始化会对所有查询�
 pnpm dev:local           # 站点，同样是 3211，只是后端指向本地 Worker
 ```
 
-本地 Worker 是空库，没有上报器往它推。`.dev.vars` 里的 `UPSTREAM_API_URL` 让它把自己答不上来的字段和端点用生产的数据顶上（只读），于是新端点看本地、旧数据看生产，页面上什么都有。三个配置在 `.claude/launch.json` 里也有（`api-worker-dev` / `lyjwpage-local`）。
+本地 Worker 是空库，没有上报器往它推。`.dev.vars` 里的 `UPSTREAM_API_URL` 让它生产为主、本地补缺：生产有的数据用生产的，生产没有的端点和字段（也就是你正在加的）用本地的，页面上什么都有。要测本地上报链路时把这个变量注释掉。三个配置在 `.claude/launch.json` 里也有（`api-worker-dev` / `lyjwpage-local`）。
 
 ## 海外部署与数据链路
 
