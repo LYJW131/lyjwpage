@@ -17,7 +17,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 # 项目入口与验证
 
-- 使用 `pnpm`；命令以各目录的 `package.json` 为准。主站开发入口是 `pnpm dev`，地址为 `http://localhost:3211`，连的是生产 Worker。改后端、新增状态端点或新卡片时用 `pnpm dev:worker`（本地 api Worker，首次后跑一次 `pnpm dev:worker:init`）加 `pnpm dev:local`；本地 Worker 缺的数据由 `.dev.vars` 的 `UPSTREAM_API_URL` 从生产兜底，见 README。
+- 使用 `pnpm`；命令以各目录的 `package.json` 为准。主站开发入口是 `pnpm dev`，地址为 `http://localhost:3211`，连的是生产 Worker。改后端、新增状态端点或新卡片时用 `pnpm dev:worker`（本地 api Worker，首次后跑一次 `pnpm dev:worker:init`）加 `pnpm dev:local`；本地 Worker 配了 `.dev.vars` 的 `UPSTREAM_API_URL` 后生产为主、本地补缺，新端点和新字段看本地，见 README。
 - 主站页面与路由在 `src/app/`，组件在 `src/components/`，数据与共享逻辑在 `src/lib/`；上报器在 `reporters/`，Cloudflare Workers 在 `workers/`。架构与部署背景查 `README.md`，子项目操作查各自的 README。
 - 修改 Next.js 代码前，按上方要求读取本地版本中与改动相关的文档。按需检索，不为小改动遍历整个文档或技能目录。
 - 验证覆盖受影响的行为和契约。纯文档改动检查 diff、路径与命令即可；逻辑修复优先跑相关测试；类型或接口改动运行 `pnpm typecheck`；代码规范检查运行 `pnpm exec eslint <改动文件>`；涉及构建、路由或缓存行为时运行 `pnpm build`。UI 改动检查受影响页面的显示与交互。
