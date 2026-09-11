@@ -9,6 +9,7 @@ import {
   type MappedItem,
 } from "./emby.js";
 import { failure, info, recovered } from "./log.js";
+import { pickMedia, playMethod } from "./playback.js";
 import { uploadImage } from "./r2.js";
 import { push, type PlayingReport, type PushPayload } from "./site.js";
 import { startWebhookServer } from "./webhook.js";
@@ -167,8 +168,18 @@ async function resumeTick() {
 
 /* ── 播放位置 ──────────────────────────────────────────────── */
 
-/** 站点手上那份锚点的副本，用来判断它推算出来的位置偏了多少 */
-let anchor: { itemId: string; positionMs: number; paused: boolean; at: number } | null = null;
+/**
+ * 站点手上那份锚点的副本，用来判断它推算出来的位置偏了多少。
+ * `signature` 是上次推出去的播放环境（客户端、设备、播放方式、规格）：中途切了
+ * 音轨或字幕，位置没偏也要推一次，但只推那一次。
+ */
+let anchor: {
+  itemId: string;
+  positionMs: number;
+  paused: boolean;
+  at: number;
+  signature: string;
+} | null = null;
 let playing: MappedItem | null = null;
 /** 连续几轮没看到会话。要连着两轮才当真，免得和刚到的开播事件抢 */
 let emptyPolls = 0;
@@ -239,17 +250,36 @@ async function sessionTick(): Promise<number> {
     projected == null || Math.abs(positionMs - projected) > config.seekToleranceMs;
   const stale = !anchor || Date.now() - anchor.at >= config.reanchorMs;
 
-  if (switched || paused !== anchor?.paused || drifted || stale) {
+  /**
+   * 在哪放、怎么放、放的是什么规格。会话有 NowPlayingItem 才读 PlayMethod ——
+   * 空闲会话上那个字段是上一次播放残留的。规格按会话选中的音轨 / 字幕从详情的
+   * 媒体源里挑，详情取失败就只报设备。
+   */
+  const client = session.Client?.trim() || null;
+  const deviceName = session.DeviceName?.trim() || null;
+  const method = playMethod(session.PlayState);
+  const media = pickMedia({
+    playState: session.PlayState,
+    nowPlaying: session.NowPlayingItem,
+    item: playing?.media ?? null,
+  });
+  const signature = JSON.stringify([client, deviceName, method, media]);
+  const changed = signature !== anchor?.signature;
+
+  if (switched || paused !== anchor?.paused || drifted || stale || changed) {
     const report: PlayingReport = {
       itemId,
       paused,
       positionTicks: Number(session.PlayState?.PositionTicks) || 0,
       runTimeTicks: Number(session.NowPlayingItem?.RunTimeTicks) || 0,
-      device: session.Client?.trim() || session.DeviceName?.trim() || "",
+      client,
+      deviceName,
+      playMethod: method,
+      media,
       item: playing?.item ?? null,
     };
     await deliver({ playing: report }, playing?.images ?? []);
-    anchor = { itemId, positionMs, paused, at: observedAt };
+    anchor = { itemId, positionMs, paused, at: observedAt, signature };
   }
 
   // 暂停时位置不会自己走，跟得那么紧没有意义；继续播时 webhook 会把我们叫醒
