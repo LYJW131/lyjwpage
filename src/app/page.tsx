@@ -3,6 +3,7 @@ import { Header } from "@/components/header";
 import { WebPlayerProvider } from "@/components/web-player/web-player-provider";
 import { ContactCard } from "@/components/contact-card";
 import { ActivityCard } from "@/components/live/activity-card";
+import { GithubRepoCard } from "@/components/live/github-repo-card";
 import { LiveMediaPair } from "@/components/live/media-pair";
 import { ServerCard } from "@/components/live/server-card";
 import { PlaystationBlock } from "@/components/live/playstation-block";
@@ -17,7 +18,7 @@ import { cachedHomeSnapshot } from "@/lib/status-cache";
 
 export default async function Home() {
   const [snapshot, avatarDataUri] = await Promise.all([cachedHomeSnapshot(), githubAvatarDataUri()]);
-  const { desktop, activity, server, charger, powerBank, listening, nowListening, timezone, vibeCoding, vibeCodingYear, watching, nowWatching, playing, playingNow, trophies, githubChart, lyrics } = snapshot;
+  const { desktop, activity, server, charger, powerBank, listening, nowListening, timezone, vibeCoding, vibeCodingYear, watching, nowWatching, playing, playingNow, trophies, githubChart, githubRepo, lyrics } = snapshot;
 
   const nowSongId =
     nowListening.ok && !nowListening.data.idle && nowListening.data.hasLyrics
@@ -68,6 +69,7 @@ export default async function Home() {
                 <ActivityCard fallback={activity} />
                 <ServerCard fallback={server} />
                 <VibeCodingCard fallback={vibeCoding} />
+                <GithubRepoCard fallback={githubRepo} />
               </div>
 
               <PlaystationBlock

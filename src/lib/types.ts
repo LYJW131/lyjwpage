@@ -731,6 +731,43 @@ export type GithubChartPayload = {
 };
 
 /**
+ * 本仓库（site.repo）的贡献统计。形状贴着 GitHub `/stats/contributors` 的返回：
+ * 每人一个 total（commit 数）加按周的 a/d/c（增/删/commit），站点只做对齐和加总。
+ */
+export type GithubRepoContributor = {
+  login: string;
+  avatarUrl: string | null;
+  commits: number;
+  additions: number;
+  deletions: number;
+};
+
+/** 各贡献者同一周加总。weekStart 是那周周日的 0 点，epoch 毫秒。 */
+export type GithubRepoWeek = {
+  weekStart: number;
+  commits: number;
+  additions: number;
+  deletions: number;
+};
+
+export type GithubRepoPayload = {
+  /** "owner/name"，如 "LYJW131/lyjwpage" */
+  repo: string;
+  /** 服务端汇总时刻，epoch 毫秒 */
+  fetchedAt: number;
+  totals: {
+    commits: number;
+    additions: number;
+    deletions: number;
+    contributors: number;
+  };
+  /** 按 commits 倒序 */
+  contributors: GithubRepoContributor[];
+  /** 按周升序，只留窗尾 */
+  weeks: GithubRepoWeek[];
+};
+
+/**
  * 所有 /api/status/* 的统一信封。
  *
  * 刻意不带时间戳。从前每个响应都盖一个 fetchedAt，结果是**任何两次响应在字节
