@@ -398,7 +398,7 @@ function prioritizeTiles(tiles: Tile[]): Tile[] {
 /**
  * 媒体应用过滤 + 同款合并 + 优先级排序，得到最终要渲染的瓷砖序列。
  *
- * 和「最近在看」的 splitNowWatching 同一个道理：正在玩的那款不一定在最近
+ * 和「最近在看」的 pinNowWatching 同一个道理：正在玩的那款不一定在最近
  * 列表里（刚开档的新游戏），不在就用 presence 里带的标题和图标现造一张。
  * presence 自己没有 category，用列表里同 titleId 的上游枚举挡媒体应用。
  */
