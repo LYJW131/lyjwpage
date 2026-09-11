@@ -1,37 +1,16 @@
 import { type StoredAppleMusicCredentialState, mirror } from "@shared/apple-music-credentials";
 
 /**
- * Mac 上报器送来的 Apple Music 凭据。
+ * Mac 上报器送来的 Apple Music 凭据：music user token。
  *
- * 存在的理由是不想把 .p8 私钥放到服务器上。签名密钥留在那台 Mac 的钥匙串里由
- * 系统保管，这边只拿一份由 MusicKit 现签的 developer token，加上同一次授权产出
- * 的 music user token。代价是这份会过期 —— 上报器按 `expiresAt` 在到期前重签
- * 重发，这边只负责收下最新的一份。
+ * 它只能来自那台 Mac —— 是用户在 MusicKit 里授权资料库的产物，服务器签不出来。
+ * developer token 则相反：api Worker 用自己那把 .p8 现签，过半衰期自动换新
+ * （见 lib/apple-music 的 resolveCredentials），不再经过上报器。上报器每五分钟
+ * 重读一次 MusicKit 缓存的 user token，变了才发；这边只负责收下最新的一份。
  *
- * 和 telemetryState 分开存，只是复用统一遥测入口接收。两个 token 在采集端各自
- * 判变，因此一次更新可以只带其中一个；这里必须把缺省字段和旧值合并，不能把
- * 「这次没变」误当成「清空」。
+ * 和 telemetryState 分开存，只是复用统一遥测入口接收。
  */
-export type StoredAppleMusicCredentials = {
-  musicUserToken: string;
-  developerToken: string;
-  /** developer token 的到期时刻，Unix 秒。上报器从 token 自己的 JWT 里解出来的 */
-  expiresAt: number;
-  /** 收到的时刻，Unix 毫秒 */
-  receivedAt: number;
-};
-
-function completeCredentials(
-  state: StoredAppleMusicCredentialState | null,
-): StoredAppleMusicCredentials | null {
-  if (!state?.musicUserToken || !state.developerToken || !state.expiresAt) return null;
-  return {
-    musicUserToken: state.musicUserToken,
-    developerToken: state.developerToken,
-    expiresAt: state.expiresAt,
-    receivedAt: state.receivedAt,
-  };
-}
+export type StoredAppleMusicCredentials = StoredAppleMusicCredentialState;
 
 /**
  * 带原因的读取。
@@ -44,8 +23,7 @@ export async function readAppleMusicCredentials(): Promise<
   | { ok: true; credentials: StoredAppleMusicCredentials }
   | { ok: false; reason: "storage-unreachable" | "never-pushed" }
 > {
-  const credentials = completeCredentials(await mirror.get());
-  if (credentials) return { ok: true, credentials };
+  const stored = await mirror.get();
+  if (stored?.musicUserToken) return { ok: true, credentials: stored };
   return { ok: false, reason: (await mirror.reachable()) ? "never-pushed" : "storage-unreachable" };
 }
-export { type AppleMusicCredentialsUpdate } from "@shared/apple-music-credentials";
