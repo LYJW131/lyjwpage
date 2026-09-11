@@ -30,6 +30,7 @@ import type {
   TimezoneActivity
 } from "@/lib/types";
 import { fanout, type PendingEvent } from "@api/fanout";
+import { parseAppleMusicCredentials } from "@api/apple-music-credentials-module";
 import { putAppleMusicCredentials } from "@api/stores/apple-music-credentials";
 import { prepareHeartbeat, prepareStatus } from "@api/stores/charger-store";
 import { writeSettlingAt } from "@api/stores/charging-settling";
@@ -506,33 +507,9 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
     }
 
     if ("appleMusicCredentials" in modules) {
-      const row = object(modules.appleMusicCredentials);
-      if (!row) throw new Error("appleMusicCredentials 必须是对象");
-      const hasMusicUserToken = "musicUserToken" in row;
-      const hasDeveloperToken = "developerToken" in row;
-      if (!hasMusicUserToken && !hasDeveloperToken) {
-        throw new Error("appleMusicCredentials 至少包含一个 token");
-      }
-
-      const musicUserToken = hasMusicUserToken ? text(row.musicUserToken) : undefined;
-      const developerToken = hasDeveloperToken ? text(row.developerToken) : undefined;
-      if (hasMusicUserToken && !musicUserToken) throw new Error("musicUserToken 不能为空");
-      if (hasDeveloperToken && !developerToken) throw new Error("developerToken 不能为空");
-
-      const expiresAt = hasDeveloperToken ? number(row.expiresAt) : undefined;
-      if (hasDeveloperToken && (expiresAt == null || !Number.isFinite(expiresAt) || expiresAt <= 0)) {
-        throw new Error("developerToken 必须带有效的 expiresAt");
-      }
-      writes.push(
-        putAppleMusicCredentials({
-          // 上面几道守卫已经保证「带了这个字段就一定非空」，但 text() 的返回类型是
-          // string | null，TS 收窄不到这一步，只能把 null 折成 undefined
-          musicUserToken: musicUserToken ?? undefined,
-          developerToken: developerToken ?? undefined,
-          expiresAt: expiresAt ?? undefined,
-          receivedAt,
-        }),
-      );
+      // 只有 music user token 来自那台 Mac；developer token 由 Worker 自签，见 musickit-token.ts
+      const { musicUserToken } = parseAppleMusicCredentials(modules.appleMusicCredentials);
+      writes.push(putAppleMusicCredentials({ musicUserToken, receivedAt }));
       accepted += 1;
     }
 

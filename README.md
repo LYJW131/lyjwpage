@@ -176,7 +176,7 @@ hero 上此刻在播的那首，副标题那一行会跟着进度条换成正在
 
 **签发在 api Worker 的 `GET /api/musickit/token`**（`workers/api/src/musickit-token.ts`）。私钥不进站点的运行时 —— 站点部署在 Vercel，函数实例、构建日志、预览环境都能碰到那份环境变量；Worker 这条路径只有一个出口、只吐一份有期限的令牌（默认 7 天，`MUSICKIT_TOKEN_TTL_SECONDS` 可改）。`.p8` 走 `wrangler secret`（`APPLE_MUSIC_PRIVATE_KEY`），Team ID 和 Key ID 不是秘密，放 `[vars]`。从前是单独的 musickit-token Worker，09-07 并进来：来源名单、CORS 和域名本来就和 api 共用一份，两个 Worker 各抄一遍只多出一处要同步改的地方。
 
-**续期看半衰期**：过了「签发 → 到期」的中点就换一份新的，Worker 的缓存和站点的内存副本用的是同一条规则（两边都叫 `pastHalfLife`），所以响应里 `issuedAt` 和 `expiresAt` 一起给 —— 只给到期时刻的话，站点只能拿「我什么时候收到的」当起点，而收到的可能已经是 Worker 缓存着的、用掉一半的那份。取相对中点而不是写死提前量，和 Mac 上报器续自己那份 developer token 是同一个理由：写死的那个在两个方向上都可能错。
+**续期看半衰期**：过了「签发 → 到期」的中点就换一份新的，Worker 的缓存和站点的内存副本用的是同一条规则（两边都叫 `pastHalfLife`），所以响应里 `issuedAt` 和 `expiresAt` 一起给 —— 只给到期时刻的话，站点只能拿「我什么时候收到的」当起点，而收到的可能已经是 Worker 缓存着的、用掉一半的那份。取相对中点而不是写死提前量：写死的那个在两个方向上都可能错。Worker 自己调 Apple Music API（找曲目链接、拉最近播放）用的是同一把钥匙另签的一份、不带 origin 声明的令牌（`issueApiDeveloperToken`），同样过半衰期换新；Mac 上报器只推 music user token，不再推会过期的 developer token。
 
 **域名限制是一份名单、两道闸**，都由 Worker 的 `ALLOWED_ORIGINS` 配：
 
