@@ -239,6 +239,8 @@ export function WebglRefractionDemo() {
   const pointerTarget = useRef({ x: 0.5, y: 0.45 });
   const pointerCurrent = useRef({ x: 0.5, y: 0.45 });
   const dragging = useRef(false);
+  /** 最近一次指针输入时间；超时后才恢复空闲漂移，避免盖住悬停 */
+  const lastPointerAt = useRef(0);
   const paramsRef = useRef({ ior: 0.85, chroma: 0.55, blur: 0.45, radius: 0.22, height: 0.72 });
   const [status, setStatus] = useState<DemoStatus>("loading");
   const [ior, setIor] = useState(0.85);
@@ -345,6 +347,7 @@ export function WebglRefractionDemo() {
       if (rect.width < 1 || rect.height < 1) return;
       pointerTarget.current.x = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
       pointerTarget.current.y = Math.min(1, Math.max(0, 1 - (clientY - rect.top) / rect.height));
+      lastPointerAt.current = performance.now();
     };
 
     const onPointerDown = (e: PointerEvent) => {
@@ -353,7 +356,8 @@ export function WebglRefractionDemo() {
       setPointerFromEvent(e.clientX, e.clientY);
     };
     const onPointerMove = (e: PointerEvent) => {
-      if (!dragging.current && e.pointerType === "touch") return;
+      // 触摸只在按下后跟随；鼠标悬停即可移动玻璃
+      if (e.pointerType === "touch" && !dragging.current) return;
       setPointerFromEvent(e.clientX, e.clientY);
     };
     const onPointerUp = (e: PointerEvent) => {
@@ -371,8 +375,8 @@ export function WebglRefractionDemo() {
       if (!visible || document.visibilityState === "hidden") return;
 
       const t = (now - start) / 1000;
-      // 未拖拽时缓慢漂移，保持「液体」感
-      if (!dragging.current) {
+      // 无指针输入约 1.8s 后恢复缓慢漂移
+      if (!dragging.current && now - lastPointerAt.current > 1800) {
         pointerTarget.current.x = 0.5 + 0.18 * Math.sin(t * 0.55);
         pointerTarget.current.y = 0.48 + 0.12 * Math.cos(t * 0.41);
       }
@@ -466,7 +470,7 @@ export function WebglRefractionDemo() {
         ) : null}
         <p
           id={labelId}
-          className="pointer-events-none absolute bottom-3 left-3 max-w-[min(100%-1.5rem,20rem)] text-xs text-white/80 mix-blend-difference"
+          className="pointer-events-none absolute bottom-3 left-3 max-w-[min(100%-1.5rem,22rem)] rounded-none bg-black/45 px-2 py-1 text-xs text-white"
         >
           拖动或滑动移动玻璃；桌面悬停也可跟随。
         </p>
