@@ -9,6 +9,20 @@
       "autoPort": false
     },
     {
+      "name": "api-worker-dev",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["dev:worker"],
+      "port": 8788,
+      "autoPort": false
+    },
+    {
+      "name": "lyjwpage-local",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["dev:local"],
+      "port": 3211,
+      "autoPort": false
+    },
+    {
       "name": "lyjwpage-attach",
       "url": "http://localhost:3211",
       "port": 3211
