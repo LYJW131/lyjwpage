@@ -19,11 +19,15 @@ import type {
  * 缓存键和 TTL 各走各的。统计更新得慢（GitHub 自己也在缓存），TTL 取 30 分钟。
  */
 
-const REPO_STATS_CACHE_KEY = "github-repo:v2";
+/** 窗口宽度进缓存键：改周数要换键，不然 Worker 里那份旧窗口会再活 30 分钟。 */
+const REPO_STATS_CACHE_KEY = "github-repo:v3";
 const REPO_STATS_TTL_MS = 30 * 60_000;
 
-/** 每人柱状图画最近几周；原始返回的一整年不进信封。 */
-const WEEK_WINDOW = 26;
+/**
+ * 柱状图只画最近 6 周；原始返回的一整年不进信封。
+ * 这个仓的提交集中在最近一两个月，拉到半年只会左边一大片空白。
+ */
+const WEEK_WINDOW = 6;
 
 const DAY_MS = 86_400_000;
 const WEEK_MS = 7 * DAY_MS;
