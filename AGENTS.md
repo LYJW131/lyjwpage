@@ -71,3 +71,8 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - 图片优化器仅用于远端原图比展示尺寸大、且源站无法提供合适尺寸的情况；现有允许列表与原因见 `next.config.ts` 的 `images.remotePatterns`。
 - 不在每个请求中重复压图。允许按不可变内容地址压缩一次并缓存：`src/lib/desktop-icon-inline.ts` 按 `objectKey` 压缩 R2 原件、内联首屏，并用 `cacheLife("max")` 缓存；浏览器运行时直连 R2 原件，站点不代理图片流量。
 - GitHub 头像由 `src/lib/github-avatar-icon.ts` 在构建期缩小并内联为 data URI；图片优化器中的 GitHub 域名仅供源图获取失败时回退。
+
+# 界面与交互
+
+- 站内滚动条默认隐藏：可滚动区域一律加 `scrollbar-none [&::-webkit-scrollbar]:hidden`（前者管 Firefox 的 `scrollbar-width`，后者管 Chromium 系，两句缺一不可）。现有示例：播放器队列、`github-repo-card` 的两栏。
+- 条目式滚动要吸附：容器加 `snap-y snap-mandatory`（横向用 `snap-x`，见奖杯组、在看瓷砖），子项加 `snap-start`，滚动停稳后永远是整行对齐；多栏并排时各行等高（如 44px），吸住后两边才对得齐。

@@ -3,6 +3,7 @@ import { Header } from "@/components/header";
 import { WebPlayerProvider } from "@/components/web-player/web-player-provider";
 import { ContactCard } from "@/components/contact-card";
 import { ActivityCard } from "@/components/live/activity-card";
+import { GithubRepoCard } from "@/components/live/github-repo-card";
 import { LiveMediaPair } from "@/components/live/media-pair";
 import { ServerCard } from "@/components/live/server-card";
 import { PlaystationBlock } from "@/components/live/playstation-block";
@@ -14,11 +15,59 @@ import { Section } from "@/components/ui/section";
 import { artworkPlaceholders } from "@/lib/artwork-placeholder";
 import { desktopIconDataUri } from "@/lib/desktop-icon-inline";
 import { githubAvatarDataUri } from "@/lib/github-avatar-icon";
+import { getGithubRepoForSite } from "@/lib/github-repo-site";
+import { getRecentCommits } from "@/lib/github-recent-commits";
 import { cachedHomeSnapshot } from "@/lib/status-cache";
+import type { GithubRepoPayload, StatusResponse } from "@/lib/types";
 
 export default async function Home() {
-  const [snapshot, avatarDataUri] = await Promise.all([cachedHomeSnapshot(), githubAvatarDataUri()]);
-  const { desktop, activity, server, charger, powerBank, listening, nowListening, timezone, vibeCoding, vibeCodingYear, watching, nowWatching, playing, playingNow, trophies, githubChart, lyrics } = snapshot;
+  const [snapshot, avatarDataUri, recentCommits] = await Promise.all([
+    cachedHomeSnapshot(),
+    githubAvatarDataUri(),
+    getRecentCommits(),
+  ]);
+  const {
+    desktop,
+    activity,
+    server,
+    charger,
+    powerBank,
+    listening,
+    nowListening,
+    timezone,
+    vibeCoding,
+    vibeCodingYear,
+    watching,
+    nowWatching,
+    playing,
+    playingNow,
+    trophies,
+    githubChart,
+    lyrics,
+  } = snapshot;
+
+  /**
+   * 生产 Worker 尚未带上 githubRepo 时（预览窗口 / 本地对着旧后端），
+   * 站点自己用 GITHUB_TOKEN 拉一份，避免整卡空白。Worker 就绪后仍以快照为准。
+   * 直接透传 undefined 会在 useStatus 读 fallback.ok 时整页跌进 error 边界。
+   */
+  let githubRepo: StatusResponse<GithubRepoPayload> =
+    snapshot.githubRepo ?? { ok: false, error: "状态暂不可用" };
+  if (!githubRepo.ok) {
+    try {
+      const buildId = process.env.BUILD_TIME ?? process.env.COMMIT_SHA ?? "dev";
+      const data = await getGithubRepoForSite(buildId);
+      githubRepo = data.contributors.length
+        ? { ok: true, data }
+        : { ok: false, error: "状态暂不可用" };
+    } catch (error) {
+      console.error(
+        "[github-repo]",
+        error instanceof Error ? error.message : String(error),
+      );
+      githubRepo = { ok: false, error: "状态暂不可用" };
+    }
+  }
 
   const nowSongId =
     nowListening.ok && !nowListening.data.idle && nowListening.data.hasLyrics
@@ -71,6 +120,7 @@ export default async function Home() {
                 <ActivityCard fallback={activity} />
                 <ServerCard fallback={server} />
                 <VibeCodingCard fallback={vibeCoding} />
+                <GithubRepoCard fallback={githubRepo} recentCommits={recentCommits} />
               </div>
 
               <PlaystationBlock
