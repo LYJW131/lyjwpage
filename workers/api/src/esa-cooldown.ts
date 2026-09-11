@@ -1,6 +1,11 @@
 import type { SqlDatabase } from "@shared/sqlite-store";
 
-export const ESA_COOLDOWN_MS = 120_000;
+/**
+ * 刷新提交到全网生效约 5~6 分钟，间隔短于这个数只会让多个刷新任务排队互相覆盖、
+ * 缓存永远处在失效边缘。600 秒是过渡值：等 ESA 控制台把首页规则切到「优先遵循
+ * 源站缓存策略」，源站的 stale-while-revalidate 会接管，整条刷新链路即可删除。
+ */
+export const ESA_COOLDOWN_MS = 600_000;
 
 /** 单个 StateHub 的持久冷却；同步领取发送资格，冷却内变化由 alarm 合并补发。 */
 export class EsaCooldown {

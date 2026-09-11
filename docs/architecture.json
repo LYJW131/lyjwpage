@@ -34,7 +34,7 @@
           "online_counter",
           "esa"
         ],
-        "note": "Vercel 提供首屏；lyjw131.com 经 ESA 回源 lyjw.me 并缓存 HTML 与静态 JS。API 并行通知两层缓存；ESA 全站 120 秒冷却与待发状态持久化，alarm 合并补发。"
+        "note": "Vercel 提供首屏；lyjw131.com 经 ESA 回源 lyjw.me，首页靠源站 SWR 头先回旧 HTML、后台取新，静态 JS 长期缓存。API 通知 Vercel 标签失效；过渡期保留 600 秒冷却的 PurgeCaches，待发状态持久化，alarm 合并补发。"
       },
       {
         "id": "cadence",
@@ -538,7 +538,7 @@
       "id": "esa_purge",
       "from": "api",
       "to": "esa",
-      "label": "PurgeCaches · ≥120s",
+      "label": "PurgeCaches · ≥600s（过渡）",
       "variant": "dashed",
       "labelAt": [
         820,
@@ -581,7 +581,7 @@
       "dot": "violet",
       "title": "Vercel 与 ESA",
       "items": [
-        "API 并行通知；ESA 全站冷却 120 秒，期间变化合并补发。"
+        "API 通知 Vercel 标签失效；ESA 首页 SWR 先回旧 HTML、后台取新，过渡期 PurgeCaches 全站冷却 600 秒，期间变化合并补发。"
       ]
     }
   ]
