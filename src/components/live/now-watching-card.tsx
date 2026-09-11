@@ -153,39 +153,43 @@ function NowWatchingHero({
         <div className="truncate text-sm text-muted-foreground" title={item?.subtitle}>
           {item ? item.subtitle || "—" : "\u00a0"}
         </div>
-        {chips.length > 0 && (
-          <ul className="mt-1 flex flex-wrap gap-1.5" aria-label="播放规格">
-            {chips.map((chip) => (
-              <li
-                key={chip}
-                // label-mono 会把字母转大写，Dolby Vision / TrueHD / Mbps 这些名字
-                // 大写了就不是它平时的样子，躲开
-                className="label-mono border border-line px-1.5 py-1 normal-case text-muted-foreground"
-              >
-                {chip}
-              </li>
-            ))}
-          </ul>
-        )}
         {/*
-          进度单独一行收尾，时间挂在条的右端，和「最近在听」hero 同一支绿：不压在剧照
-          底边 —— 剧照有深有浅，压上去常常看不清。暂停时整条灰掉。
+          规格标签和时间同一行、进度条单独在最下面：和站内其余进度条一样，文案在条
+          的上方，不挂在条的右边。时间靠右，标签折行时它落在最后一行的末尾。
         */}
-        <div className="mt-1.5 flex items-center gap-3">
-          <div className="h-0.75 min-w-0 flex-1 overflow-hidden bg-muted" aria-hidden>
-            <div
-              className={cn(
-                "h-full",
-                paused ? "bg-muted-foreground" : "bg-live transition-[width] duration-1000 ease-linear",
-              )}
-              style={{ width: `${Math.min(100, Math.max(0, percent))}%` }}
-            />
-          </div>
+        <div className="mt-1 flex flex-wrap items-end gap-x-3 gap-y-1.5">
+          {chips.length > 0 && (
+            <ul className="flex min-w-0 flex-wrap gap-1.5" aria-label="播放规格">
+              {chips.map((chip) => (
+                <li
+                  key={chip}
+                  // label-mono 会把字母转大写，Dolby Vision / TrueHD / Mbps 这些名字
+                  // 大写了就不是它平时的样子，躲开
+                  className="label-mono border border-line px-1.5 py-1 normal-case text-muted-foreground"
+                >
+                  {chip}
+                </li>
+              ))}
+            </ul>
+          )}
           {position != null && duration ? (
-            <span className="label-mono shrink-0 normal-case tabular-nums text-muted-foreground">
+            <span className="label-mono ml-auto shrink-0 normal-case tabular-nums text-muted-foreground">
               {formatClock(position)} / {formatClock(duration)}
             </span>
           ) : null}
+        </div>
+        {/*
+          进度不压在剧照底边 —— 剧照有深有浅，压上去常常看不清；和「最近在听」hero
+          同一支绿，暂停时整条灰掉。
+        */}
+        <div className="mt-1.5 h-0.75 overflow-hidden bg-muted" aria-hidden>
+          <div
+            className={cn(
+              "h-full",
+              paused ? "bg-muted-foreground" : "bg-live transition-[width] duration-1000 ease-linear",
+            )}
+            style={{ width: `${Math.min(100, Math.max(0, percent))}%` }}
+          />
         </div>
       </div>
     </HeroWrapper>

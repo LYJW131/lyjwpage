@@ -971,7 +971,11 @@ function CompactAgentRow({
           </span>
           <span className="truncate text-sm font-medium">{agentDisplayName(agent)}</span>
         </div>
-        <span className="flex h-5 min-w-0 items-baseline text-xs text-muted-foreground md:shrink-0">
+        {/*
+          读数和全量面板的 LimitMeter 一样放在条的上方、这一行的右端，条下面不再挂
+          东西：站内所有进度条的文案都在条上方。窄屏时这一行单独一行，读数靠右。
+        */}
+        <span className="flex h-5 min-w-0 items-baseline gap-2 text-xs text-muted-foreground md:shrink-0">
           {agent.plan && (
             <span className="truncate" title={`套餐 ${agent.plan.tier}`}>
               {agent.plan.label}
@@ -1014,33 +1018,31 @@ function CompactAgentRow({
               </span>
             </NumberFlowGroup>
           )}
+          {usedPercent == null ? (
+            <span
+              className="label-mono ml-auto shrink-0 text-muted-foreground md:ml-0"
+              title="Unavailable"
+            >
+              —
+            </span>
+          ) : (
+            <span
+              className="ml-auto shrink-0 font-mono tabular-nums md:ml-0"
+              style={{ color }}
+            >
+              <NumberFlow value={Math.round(usedPercent)} locales="en-US" />%
+            </span>
+          )}
         </span>
       </div>
-      <div className="mt-1.5 flex items-center gap-3">
-        <div className="relative h-1.5 min-w-8 flex-1 overflow-hidden bg-muted">
-          {usedPercent != null && (
-            <div
-              className="h-full transition-[width] duration-700"
-              style={{ width: `${usedPercent}%`, backgroundColor: color }}
-            />
-          )}
-          {pace != null && <PaceMarker pace={pace} overPace={overPace} />}
-        </div>
-        {usedPercent == null ? (
-          <span
-            className="label-mono shrink-0 text-muted-foreground"
-            title="Unavailable"
-          >
-            —
-          </span>
-        ) : (
-          <span
-            className="shrink-0 font-mono text-xs tabular-nums"
-            style={{ color }}
-          >
-            <NumberFlow value={Math.round(usedPercent)} locales="en-US" />%
-          </span>
+      <div className="relative mt-1.5 h-1.5 overflow-hidden bg-muted">
+        {usedPercent != null && (
+          <div
+            className="h-full transition-[width] duration-700"
+            style={{ width: `${usedPercent}%`, backgroundColor: color }}
+          />
         )}
+        {pace != null && <PaceMarker pace={pace} overPace={overPace} />}
       </div>
     </div>
   );
