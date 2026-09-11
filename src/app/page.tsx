@@ -3,6 +3,7 @@ import { Header } from "@/components/header";
 import { WebPlayerProvider } from "@/components/web-player/web-player-provider";
 import { ContactCard } from "@/components/contact-card";
 import { ActivityCard } from "@/components/live/activity-card";
+import { GithubRepoCard } from "@/components/live/github-repo-card";
 import { LiveMediaPair } from "@/components/live/media-pair";
 import { ServerCard } from "@/components/live/server-card";
 import { PlaystationBlock } from "@/components/live/playstation-block";
@@ -18,7 +19,7 @@ import { cachedHomeSnapshot } from "@/lib/status-cache";
 
 export default async function Home() {
   const [snapshot, avatarDataUri] = await Promise.all([cachedHomeSnapshot(), githubAvatarDataUri()]);
-  const { desktop, activity, server, charger, powerBank, listening, nowListening, timezone, vibeCoding, vibeCodingYear, watching, nowWatching, playing, playingNow, trophies, githubChart, lyrics } = snapshot;
+  const { desktop, activity, server, charger, powerBank, listening, nowListening, timezone, vibeCoding, vibeCodingYear, watching, nowWatching, playing, playingNow, trophies, githubChart, githubRepo, lyrics } = snapshot;
 
   const nowSongId =
     nowListening.ok && !nowListening.data.idle && nowListening.data.hasLyrics
@@ -71,6 +72,15 @@ export default async function Home() {
                 <ActivityCard fallback={activity} />
                 <ServerCard fallback={server} />
                 <VibeCodingCard fallback={vibeCoding} />
+                {/*
+                  预览站和 worker 先后部署的窗口里，旧后端快照没有 githubRepo。
+                  直接传 undefined 会在 useStatus 的 layout effect 里读到
+                  fallback.ok 而整页跌进 error 边界 —— 先给一个降级信封，
+                  挂载那次回源拿到新端点后自己纠正回来。
+                */}
+                <GithubRepoCard
+                  fallback={githubRepo ?? { ok: false, error: "状态暂不可用" }}
+                />
               </div>
 
               <PlaystationBlock
