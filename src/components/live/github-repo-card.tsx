@@ -283,10 +283,10 @@ export function GithubRepoCard({
       {data && hasContributors && (
         <>
           <div className="grid grid-cols-2 gap-4 px-4 pt-4 md:grid-cols-4 lg:px-5">
+            <Stat label="Contributors" value={String(data.totals.contributors)} />
             <Stat label="Commits" value={data.totals.commits.toLocaleString("en-US")} />
             <Stat label="Additions" value={`+${data.totals.additions.toLocaleString("en-US")}`} />
             <Stat label="Deletions" value={`−${data.totals.deletions.toLocaleString("en-US")}`} />
-            <Stat label="Contributors" value={String(data.totals.contributors)} />
           </div>
 
           <div className="px-4 pt-4 pb-4 lg:px-5">
