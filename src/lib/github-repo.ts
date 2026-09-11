@@ -1,27 +1,37 @@
-// 带 .ts 的相对路径而不是 `@/`：scripts/fetch-github-repo-stats.mjs 在构建前
-// 用 Node 直接 import 这个文件，Node 不认 tsconfig 的 paths 别名、也不补扩展名。
-import { site } from "./site.ts";
+import { cached, get, put } from "@/lib/cache";
+import { site } from "@/lib/site";
 import type {
   GithubRepoContributor,
   GithubRepoPayload,
   GithubRepoWeek,
-} from "./types.ts";
+} from "@/lib/types";
 
 /**
  * 本仓库的贡献统计，走 GitHub REST `/stats/contributors`。
  *
- * 这份不是实时状态：仓库有新提交就意味着一次新部署，统计在 `next build`
- * 之前由 scripts/fetch-github-repo-stats.mjs 取一次、落到 .next/cache，再由
- * next.config.ts 经 `env` 焊成常量（和 BUILD_TIME 同一条路），之后不再变，
- * 不经 Worker、没有状态端点、浏览器不轮询。这个文件只放纯逻辑和取数，
- * 不碰 next/cache，单测直接跑；读取那头见 `github-repo-build.ts`。
+ * 和贡献日历同一条流程：Worker 取数进 SQLite TTL 缓存，进 `/api/home` 快照，
+ * 也有 `/api/status/github-repo` 给浏览器按长间隔轮询；没有推送。
  *
- * token 用 Vercel 上的 GITHUB_TOKEN：公开仓不带 token 也能读，只是匿名限额低
- * （每 IP 60 次/小时，构建机的出口 IP 是共用的），有就带上。
+ * token 复用 Worker 上的 GITHUB_TOKEN（和贡献日历同一把）：公开仓不带 token
+ * 也能读，只是匿名限额低（每 IP 60 次/小时），有就带上。
  *
- * 这路和贡献日历的区别：日历是 GraphQL 按人拉全年、由 Worker 常驻刷新；
- * 统计是 REST 按仓拉每周、一次构建一份。
+ * 这路和贡献日历的区别：日历是 GraphQL 按人拉全年，统计是 REST 按仓拉每周，
+ * 缓存键和 TTL 各走各的。统计更新得慢（GitHub 自己也在缓存），TTL 取 30 分钟。
  */
+
+/** 窗口宽度进缓存键：改周数要换键，不然 Worker 里那份旧窗口会再活 30 分钟。 */
+const REPO_STATS_CACHE_KEY = "github-repo:v4";
+const REPO_STATS_TTL_MS = 30 * 60_000;
+
+/**
+ * 最近一次成功的结果，另存一份、活得久。
+ *
+ * 每次 push 后 GitHub 会作废统计缓存重新排队现算，期间一直回 202，一轮从
+ * 30 秒到几分钟都有；30 分钟 TTL 到期恰好撞上这段窗口时，拿这份顶上，
+ * 卡片不会因为 GitHub 在算就消失。顶上的那份照样按 30 分钟缓存，下一轮再试。
+ */
+const LAST_GOOD_KEY = "github-repo:last-good";
+const LAST_GOOD_TTL_MS = 7 * 86_400_000;
 
 /**
  * 柱状图只画最近 6 周；原始返回的一整年不进信封。
@@ -33,17 +43,16 @@ const DAY_MS = 86_400_000;
 const WEEK_MS = 7 * DAY_MS;
 
 /**
- * 整次取数的默认预算，含等 202 的时间。
+ * 整次取数的总预算，含等 202 的时间。
  *
- * 每次部署本身就是一次 push，GitHub 会把这个仓的统计缓存作废、重新排队现算，
- * 所以构建期几乎总会先撞上 202，实测一轮从 30 秒到三分钟以上都有。这一步
- * 跑在 `next build` 之前，没有别的时限，给 2 分钟；等不到就抛，由构建脚本
- * 决定沿用上一次构建留在 .next/cache 里的那份，不把残缺数据焊进去。
+ * 这一路挂在 `/api/home` 的 Promise.all 里，而站点 status-cache 20 秒就会掐掉
+ * 整个快照请求；不设上限就是让一张卡拖垮整个首页重建。预算内等不到就抛，
+ * 由 getGithubRepo 决定用上一次成功的那份顶上。
  */
-const FETCH_BUDGET_MS = 120_000;
+const FETCH_BUDGET_MS = 12_000;
 
-/** 等 202 的轮询间隔：GitHub 的说法是「过一会儿再来」，5 秒一问足够。 */
-const RETRY_INTERVAL_MS = 5_000;
+/** 等 202 的轮询间隔：GitHub 的说法是「过一会儿再来」。 */
+const RETRY_INTERVAL_MS = 3_000;
 
 type ContributorWeek = {
   w?: number;
@@ -156,15 +165,37 @@ export function summarizeRepoStats(
   };
 }
 
+/** Worker / 公开状态端点用：走 SQLite TTL 缓存，取不到就用上一次成功的顶上。 */
+export async function getGithubRepo(): Promise<GithubRepoPayload> {
+  const token = process.env.GITHUB_TOKEN?.trim() || null;
+  const { owner, name } = repoIdFromUrl(site.repo);
+  return cached(REPO_STATS_CACHE_KEY, REPO_STATS_TTL_MS, async () => {
+    try {
+      const stats = await fetchRepoStats(token, owner, name);
+      await put(LAST_GOOD_KEY, stats, LAST_GOOD_TTL_MS);
+      return stats;
+    } catch (error) {
+      const lastGood = await get<GithubRepoPayload>(LAST_GOOD_KEY);
+      if (!lastGood) throw error;
+      console.warn(
+        "[github-repo]",
+        error instanceof Error ? error.message : String(error),
+        "；沿用上一次成功的统计",
+      );
+      return lastGood;
+    }
+  });
+}
+
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
- * 取数本体，不带缓存；调用方是构建前脚本，结果落盘后经 `env` 焊成常量。
+ * 取数本体，不碰缓存层。
  *
  * 只认 `/stats/contributors`（带每人每周 a/d/c）。GitHub 现算时回 202，
  * 就每 5 秒再问一次；整次不超过 budgetMs，一个共享的 AbortSignal 挂在所有
  * fetch 上。预算内等不到、或响应不对，都抛出去 —— 没有 commits 列表那种
- * 退路：它拼不出增删行，「+0 / −0」焊进 HTML 会一直挂到下次部署。
+ * 退路：它拼不出增删行，「+0 / −0」会在缓存里挂半小时。
  */
 export async function fetchRepoStats(
   token: string | null,

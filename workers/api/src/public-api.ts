@@ -15,6 +15,7 @@ import { GET as route13 } from "./routes/status/watching/now/route";
 import { GET as route14 } from "./routes/status/listening/now/route";
 import { GET as route15 } from "./routes/lyrics/route";
 import { GET as route16 } from "./routes/motion-artwork/route";
+import { GET as route17 } from "./routes/status/github-repo/route";
 import { publicHomeSnapshot } from "@/lib/public-home";
 
 const routes: Record<string, (request: Request) => Promise<Response>> = {
@@ -35,6 +36,7 @@ const routes: Record<string, (request: Request) => Promise<Response>> = {
   "/api/status/listening/now": route14,
   "/api/lyrics": route15,
   "/api/motion-artwork": route16,
+  "/api/status/github-repo": route17,
 };
 export async function publicResponse(request: Request): Promise<Response> {
   if (request.method !== "GET") return new Response("Method not allowed", { status: 405 });

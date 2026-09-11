@@ -1,17 +1,22 @@
+"use client";
+
 import Image from "next/image";
 
 import { Card } from "@/components/ui/card";
+import { useStatus } from "@/hooks/use-status";
 import type { GithubRecentCommit } from "@/lib/github-recent-commits";
+import { GITHUB_REPO_PATH } from "@/lib/paths";
 import { site } from "@/lib/site";
-import type { GithubRepoContributor, GithubRepoPayload, GithubRepoWeek } from "@/lib/types";
+import type { GithubRepoContributor, GithubRepoPayload, GithubRepoWeek, StatusResponse } from "@/lib/types";
 
 /**
- * 本仓库的贡献卡片。纯服务端组件：统计和最近提交都在构建期焊进 props，
- * 没有轮询、没有推送 —— 仓库有新提交就是一次新部署，HTML 自然换新。
+ * 本仓库的贡献卡片。统计和贡献日历同一条流程：首屏吃快照，之后按长间隔
+ * 轮询 Worker，没有推送。最近提交标题由服务端构建期焊进 props，不走轮询。
  *
  * 统计拉不到、或仓库没有贡献者时不画统计那几段；连提交列表也没有就整卡
  * 不渲染 —— 和联系卡片里那张贡献日历同一条规矩：没数据就不占位。
  */
+const REFRESH_MS = 30 * 60_000;
 
 /** 头像展示 28px，取 56 那档原图，unoptimized 直连不进优化器。 */
 const AVATAR_PX = 28;
@@ -242,17 +247,21 @@ function RepoChart({
 }
 
 export function GithubRepoCard({
-  stats,
+  fallback,
   recentCommits,
   className,
 }: {
-  /** 构建期焊进的仓库统计；这轮没拉到就是 null */
-  stats: GithubRepoPayload | null;
+  fallback: StatusResponse<GithubRepoPayload>;
   /** 构建期焊进的最近提交；空数组就不画这一栏 */
   recentCommits: GithubRecentCommit[];
   className?: string;
 }) {
-  const data = stats;
+  const { data } = useStatus<GithubRepoPayload>(GITHUB_REPO_PATH, REFRESH_MS, {
+    fallback,
+    // 首屏已经带了，挂载不再回源；统计变化慢，切回标签页也不必立刻问。
+    revalidateOnMount: false,
+    revalidateOnFocus: false,
+  });
   const hasContributors = Boolean(data?.contributors.length);
   if (!hasContributors && recentCommits.length === 0) return null;
 
