@@ -1,16 +1,20 @@
-import { site } from "@/lib/site";
+// 带 .ts 的相对路径而不是 `@/`：scripts/fetch-github-repo-stats.mjs 在构建前
+// 用 Node 直接 import 这个文件，Node 不认 tsconfig 的 paths 别名、也不补扩展名。
+import { site } from "./site.ts";
 import type {
   GithubRepoContributor,
   GithubRepoPayload,
   GithubRepoWeek,
-} from "@/lib/types";
+} from "./types.ts";
 
 /**
  * 本仓库的贡献统计，走 GitHub REST `/stats/contributors`。
  *
- * 这份不是实时状态：仓库有新提交就意味着一次新部署，统计只在构建期取一次、
- * 焊进 HTML 就够了（见 `github-repo-site.ts`），不经 Worker、没有状态端点、
- * 浏览器不轮询。这个文件只放纯逻辑和取数，不碰 next/cache，单测直接跑。
+ * 这份不是实时状态：仓库有新提交就意味着一次新部署，统计在 `next build`
+ * 之前由 scripts/fetch-github-repo-stats.mjs 取一次、落到 .next/cache，再由
+ * next.config.ts 经 `env` 焊成常量（和 BUILD_TIME 同一条路），之后不再变，
+ * 不经 Worker、没有状态端点、浏览器不轮询。这个文件只放纯逻辑和取数，
+ * 不碰 next/cache，单测直接跑；读取那头见 `github-repo-build.ts`。
  *
  * token 用 Vercel 上的 GITHUB_TOKEN：公开仓不带 token 也能读，只是匿名限额低
  * （每 IP 60 次/小时，构建机的出口 IP 是共用的），有就带上。
@@ -29,15 +33,17 @@ const DAY_MS = 86_400_000;
 const WEEK_MS = 7 * DAY_MS;
 
 /**
- * 整次取数的总预算，含等 202 的时间。
+ * 整次取数的默认预算，含等 202 的时间。
  *
  * 每次部署本身就是一次 push，GitHub 会把这个仓的统计缓存作废、重新排队现算，
- * 所以构建期几乎总会先撞上 202；实测这个仓一轮要 30 秒上下。构建期填
- * `use cache` 的上限是 50 秒，40 秒尽量把这一轮等完、又不顶到那条线；
- * 运行期后台重建走 Vercel 函数，默认时限远大于此。预算内等不到就抛：
- * 结果一旦进缓存就冻到下次部署，宁可这轮不画也不能把残缺的数据焊进去。
+ * 所以构建期几乎总会先撞上 202，实测一轮从 30 秒到三分钟以上都有。这一步
+ * 跑在 `next build` 之前，没有别的时限，给 2 分钟；等不到就抛，由构建脚本
+ * 决定沿用上一次构建留在 .next/cache 里的那份，不把残缺数据焊进去。
  */
-const FETCH_BUDGET_MS = 40_000;
+const FETCH_BUDGET_MS = 120_000;
+
+/** 等 202 的轮询间隔：GitHub 的说法是「过一会儿再来」，5 秒一问足够。 */
+const RETRY_INTERVAL_MS = 5_000;
 
 type ContributorWeek = {
   w?: number;
@@ -153,12 +159,12 @@ export function summarizeRepoStats(
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
- * 取数本体；不碰缓存层，缓存由 `github-repo-site.ts` 的 `use cache` 负责。
+ * 取数本体，不带缓存；调用方是构建前脚本，结果落盘后经 `env` 焊成常量。
  *
  * 只认 `/stats/contributors`（带每人每周 a/d/c）。GitHub 现算时回 202，
- * 就按 1.5s、3s、4.5s… 退避重试；整次不超过 budgetMs，一个共享的 AbortSignal
- * 挂在所有 fetch 上。预算内等不到、或响应不对，都抛出去 —— 没有 commits
- * 列表那种退路：它拼不出增删行，「+0 / −0」焊进 HTML 会一直挂到下次部署。
+ * 就每 5 秒再问一次；整次不超过 budgetMs，一个共享的 AbortSignal 挂在所有
+ * fetch 上。预算内等不到、或响应不对，都抛出去 —— 没有 commits 列表那种
+ * 退路：它拼不出增删行，「+0 / −0」焊进 HTML 会一直挂到下次部署。
  */
 export async function fetchRepoStats(
   token: string | null,
@@ -176,16 +182,15 @@ export async function fetchRepoStats(
 
   for (let attempt = 0; ; attempt += 1) {
     const url = new URL(`https://api.github.com/repos/${owner}/${name}/stats/contributors`);
-    // Next 在同一次渲染里会把 URL 相同的 GET 记忆化，重试会一直拿到第一次那个
-    // 202；每轮换个查询参数把它区分开。GitHub 不认这个参数，行为不变。
+    // 每轮换个查询参数，免得中间任何一层把同 URL 的 GET 记忆化后一直回第一次
+    // 那个 202。GitHub 不认这个参数，行为不变。
     url.searchParams.set("attempt", String(attempt));
-    const response = await fetch(url, { headers, cache: "no-store", signal });
+    const response = await fetch(url, { headers, signal });
     if (response.status === 202) {
-      const wait = 1_500 * (attempt + 1);
-      if (Date.now() + wait > deadline) {
-        throw new Error("GitHub 仓库统计尚未就绪（连续 202），这轮不画");
+      if (Date.now() + RETRY_INTERVAL_MS > deadline) {
+        throw new Error(`GitHub 仓库统计尚未就绪（${attempt + 1} 次 202），这轮不画`);
       }
-      await sleep(wait);
+      await sleep(RETRY_INTERVAL_MS);
       continue;
     }
     const body = (await response.json().catch(() => null)) as ContributorStat[] | null;
