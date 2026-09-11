@@ -1,4 +1,5 @@
 import { config } from "./config.js";
+import type { EmbyItemMedia, EmbyPlayState } from "./playback.js";
 
 /**
  * Emby 这一侧：拉数据、挑图、把条目压成站点要的形状。
@@ -14,12 +15,20 @@ const ITEM_FIELDS = [
   "UserDataPlayCount",
 ].join(",");
 
+/**
+ * 只给「正在播放的那一项」多要媒体源和流列表 —— 站点要显示的规格从这里挑。
+ *
+ * **别加进 ITEM_FIELDS**：续播列表 60 秒一轮，而一个条目动辄二十几条字幕流，
+ * 列表那条路上带着它们只是让 Emby 每分钟多吐几十 KB 没人看的东西。
+ */
+const PLAYING_FIELDS = `${ITEM_FIELDS},MediaSources,MediaStreams`;
+
 /** Emby 的 tick 是 100 纳秒，1 毫秒 = 10000 tick */
 export const TICKS_PER_MS = 10_000;
 
 type ImageKind = "Primary" | "Backdrop" | "Thumb";
 
-type EmbyItem = {
+type EmbyItem = EmbyItemMedia & {
   Id?: string;
   Name?: string;
   ServerId?: string;
@@ -48,8 +57,8 @@ export type EmbySession = {
   UserId?: string;
   Client?: string;
   DeviceName?: string;
-  NowPlayingItem?: { Id?: string; RunTimeTicks?: number };
-  PlayState?: { PositionTicks?: number; IsPaused?: boolean };
+  NowPlayingItem?: EmbyItemMedia & { Id?: string; RunTimeTicks?: number };
+  PlayState?: EmbyPlayState;
 };
 
 /** 站点 ingest 收的条目形状 */
@@ -80,6 +89,8 @@ export type ImageRef = {
 export type MappedItem = {
   item: ReportItem;
   images: ImageRef[];
+  /** 只有 fetchItem 取回的那一项带：媒体源和流列表，给 playback 挑规格用 */
+  media?: EmbyItemMedia;
 };
 
 /**
@@ -190,14 +201,28 @@ export async function fetchResume(): Promise<MappedItem[]> {
   return (data.Items ?? []).flatMap((raw) => mapItem(raw) ?? []);
 }
 
-/** 单集详情。会话接口给的 NowPlayingItem 字段不全，挑图要的 tag 都不在里面 */
+/**
+ * 单集详情。会话接口给的 NowPlayingItem 字段不全，挑图要的 tag 都不在里面；
+ * 媒体源和流列表也在这里一并要来，规格按会话选中的音轨 / 字幕从中挑。
+ */
 export async function fetchItem(itemId: string): Promise<MappedItem | null> {
-  const params = new URLSearchParams({ Fields: ITEM_FIELDS });
+  const params = new URLSearchParams({ Fields: PLAYING_FIELDS });
   const raw = (await embyFetch(
     `/emby/Users/${config.emby.userId}/Items/${encodeURIComponent(itemId)}?${params}`,
     "json",
   )) as EmbyItem;
-  return mapItem(raw);
+  const mapped = mapItem(raw);
+  if (!mapped) return null;
+  return {
+    ...mapped,
+    // 逐个字段挑，不整个 raw 带走：条目上还有路径之类不该出这台机器的东西
+    media: {
+      Container: raw.Container,
+      Bitrate: raw.Bitrate,
+      MediaStreams: raw.MediaStreams,
+      MediaSources: raw.MediaSources,
+    },
+  };
 }
 
 /** 只关心配置里那个用户的会话，别把家里其他人在看什么推出去 */

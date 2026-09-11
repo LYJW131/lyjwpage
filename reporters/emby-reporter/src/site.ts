@@ -1,5 +1,6 @@
 import { config } from "./config.js";
 import type { ReportItem } from "./emby.js";
+import type { PlaybackMedia, PlayMethod } from "./playback.js";
 
 /** 站点 /api/ingest/emby 的请求体。三部分各推各的，都可以省略 */
 export type PushPayload = {
@@ -21,7 +22,12 @@ export type PlayingReport = {
   paused: boolean;
   positionTicks: number;
   runTimeTicks: number;
-  device: string;
+  /** 会话原样给的客户端名和设备名，拼法留给站点 */
+  client: string | null;
+  deviceName: string | null;
+  playMethod: PlayMethod | null;
+  /** 正在放的这一路的规格，见 playback.ts */
+  media: PlaybackMedia | null;
   /** 播放中那一项的详情，站点的续播列表里不一定有它 */
   item: ReportItem | null;
 };
