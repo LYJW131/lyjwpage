@@ -408,7 +408,7 @@ export function WebPlayerDialog({ player }: { player: WebPlayer }) {
               return (
                 <div
                   ref={listRef}
-                  className="mt-3 max-h-[237px] overflow-y-auto border-t border-line py-1.5"
+                  className="mt-3 max-h-[237px] overflow-y-auto border-t border-line py-1.5 scrollbar-none [&::-webkit-scrollbar]:hidden"
                   style={{ height: `${targetHeight}px` }}
                 >
                   {!hasQueue ? (
