@@ -6,6 +6,7 @@ import {
   MAX_TTL_SECONDS,
   ConfigError,
   type IssuedToken,
+  issueApiDeveloperToken,
   issueMusicKitToken,
   pastHalfLife,
   resolveTtlSeconds,
@@ -96,6 +97,41 @@ test("issueMusicKitToken：签出可验的 ES256 JWT，声明按来源分开缓�
   const renewed = await issueMusicKitToken("https://lyjw.me", env, { now: 1_700_001_800, cache });
   assert.notEqual(renewed, issued);
   assert.equal(renewed.issuedAt, 1_700_001_800);
+});
+
+test("issueApiDeveloperToken：不带 origin 声明、独立缓存、过半衰期重签", async () => {
+  const { pem, publicKey } = await generateKeyPair();
+  const env = {
+    APPLE_MUSIC_PRIVATE_KEY: pem,
+    APPLE_MUSIC_TEAM_ID: "TEAM000000",
+    APPLE_MUSIC_KEY_ID: "KEY0000000",
+    ALLOWED_ORIGINS: PRODUCTION,
+    MUSICKIT_TOKEN_TTL_SECONDS: "3600",
+  };
+  const cache = { current: null as IssuedToken | null };
+
+  const issued = await issueApiDeveloperToken(env, { now: 1_700_000_000, cache });
+  const { header, payload, signingInput, signature } = decodeJwt(issued.token);
+  assert.deepEqual(header, { alg: "ES256", kid: "KEY0000000" });
+  // 名单配着也不签 origin：这份是服务端直接打 Apple 用的，不该背着访客域名
+  assert.deepEqual(payload, { iss: "TEAM000000", iat: 1_700_000_000, exp: 1_700_003_600 });
+  assert.ok(await crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, publicKey, signature, new TextEncoder().encode(signingInput)));
+
+  // 半衰期内复用；给访客那张表不受影响
+  assert.equal(await issueApiDeveloperToken(env, { now: 1_700_001_000, cache }), issued);
+  const visitorCache = new Map<string, IssuedToken>();
+  const visitor = await issueMusicKitToken("https://lyjw.me", env, { now: 1_700_001_000, cache: visitorCache });
+  assert.notEqual(visitor.token, issued.token);
+  assert.equal(cache.current, issued);
+
+  const renewed = await issueApiDeveloperToken(env, { now: 1_700_001_800, cache });
+  assert.notEqual(renewed, issued);
+  assert.equal(renewed.issuedAt, 1_700_001_800);
+
+  await assert.rejects(
+    issueApiDeveloperToken({ ...env, APPLE_MUSIC_KEY_ID: "" }, { cache: { current: null } }),
+    (error: unknown) => error instanceof ConfigError && error.hint === "没有配置 APPLE_MUSIC_KEY_ID",
+  );
 });
 
 test("issueMusicKitToken：没配名单时不带 origin 声明；缺变量抛可外带的 ConfigError", async () => {

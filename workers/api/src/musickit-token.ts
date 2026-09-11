@@ -92,22 +92,25 @@ function decodePkcs8(pem: string): ArrayBuffer {
  *
  * 同一个 isolate 会连着服务很多请求，而 importKey 每次都要重新解析一遍 DER。
  * `extractable: false` —— 导进来之后连我们自己也读不回明文，少一条泄漏路径。
+ * 缓存记着它对应哪份 PEM：线上一个部署只有一把钥匙，但测试里会换钥匙对，
+ * `wrangler dev` 热更 secret 时也不该继续拿旧钥匙签。
  */
-let signingKey: CryptoKey | null = null;
+let signingKey: { pem: string; key: CryptoKey } | null = null;
 
 async function importSigningKey(env: MusicKitTokenEnv): Promise<CryptoKey> {
-  if (signingKey) return signingKey;
   const raw = env.APPLE_MUSIC_PRIVATE_KEY?.trim();
   if (!raw) throw new ConfigError("没有配置 APPLE_MUSIC_PRIVATE_KEY");
+  if (signingKey?.pem === raw) return signingKey.key;
 
-  signingKey = await crypto.subtle.importKey(
+  const key = await crypto.subtle.importKey(
     "pkcs8",
     decodePkcs8(raw),
     { name: "ECDSA", namedCurve: "P-256" },
     false,
     ["sign"],
   );
-  return signingKey;
+  signingKey = { pem: raw, key };
+  return key;
 }
 
 /**
@@ -192,14 +195,57 @@ export async function issueMusicKitToken(
   const cached = cache.get(cacheKey);
   if (cached && !pastHalfLife(cached, now)) return cached;
 
+  const issued = await signDeveloperToken({ teamId, keyId, origins }, env, now);
+  if (cache.size >= TOKEN_CACHE_LIMIT) {
+    const oldest = cache.keys().next().value;
+    if (oldest !== undefined) cache.delete(oldest);
+  }
+  cache.set(cacheKey, issued);
+  return issued;
+}
+
+/** Worker 自用那份只有一个，缓存就是一个格子，不进上面按声明分开的那张表 */
+const apiTokenCache: { current: IssuedToken | null } = { current: null };
+
+/**
+ * Worker 自己调 Apple Music API（找曲目链接、拉最近播放）用的 developer token。
+ *
+ * 和给访客的那份分开签：不带 origin 声明 —— 那条是 MusicKit JS 在浏览器里校验
+ * 用的，服务端直接打 api.music.apple.com 不需要，也不该把访客域名签进自己的令牌。
+ *
+ * 从前这份 token 由 Mac 上报器用 MusicKit 现签后推上来。代价是它会过期，而上报器
+ * 只在 token 变化时才发，MusicKit 的缓存又不自己轮换 —— 实测过期两天后 Worker
+ * 还拿着旧的挨 401。私钥既然已经在这里（给「一起听」签发），就不该再绕那台 Mac。
+ */
+export async function issueApiDeveloperToken(
+  env: MusicKitTokenEnv,
+  { now = Math.floor(Date.now() / 1000), cache = apiTokenCache }: { now?: number; cache?: { current: IssuedToken | null } } = {},
+): Promise<IssuedToken> {
+  const teamId = env.APPLE_MUSIC_TEAM_ID?.trim();
+  const keyId = env.APPLE_MUSIC_KEY_ID?.trim();
+  if (!teamId) throw new ConfigError("没有配置 APPLE_MUSIC_TEAM_ID");
+  if (!keyId) throw new ConfigError("没有配置 APPLE_MUSIC_KEY_ID");
+
+  if (cache.current && !pastHalfLife(cache.current, now)) return cache.current;
+  const issued = await signDeveloperToken({ teamId, keyId, origins: [] }, env, now);
+  cache.current = issued;
+  return issued;
+}
+
+/** 两种 developer token 共用的签名核心：声明由调用方定，缓存也由调用方管 */
+async function signDeveloperToken(
+  claims: { teamId: string; keyId: string; origins: string[] },
+  env: MusicKitTokenEnv,
+  now: number,
+): Promise<IssuedToken> {
   const expiresAt = now + resolveTtlSeconds(env);
-  const header = { alg: "ES256", kid: keyId };
+  const header = { alg: "ES256", kid: claims.keyId };
   const payload = {
-    iss: teamId,
+    iss: claims.teamId,
     iat: now,
     exp: expiresAt,
     // 空数组会被 Apple 当成「一个来源都不许」，没配名单时干脆不带这一条
-    ...(origins.length > 0 ? { origin: origins } : {}),
+    ...(claims.origins.length > 0 ? { origin: claims.origins } : {}),
   };
 
   const signingInput = `${base64UrlEncodeJson(header)}.${base64UrlEncodeJson(payload)}`;
@@ -215,11 +261,5 @@ export async function issueMusicKitToken(
    * 混了 Apple 会以「签名不对」拒掉，而错误信息里看不出是编码问题。
    */
   const token = `${signingInput}.${base64UrlEncode(new Uint8Array(signature))}`;
-  const issued = { token, issuedAt: now, expiresAt };
-  if (cache.size >= TOKEN_CACHE_LIMIT) {
-    const oldest = cache.keys().next().value;
-    if (oldest !== undefined) cache.delete(oldest);
-  }
-  cache.set(cacheKey, issued);
-  return issued;
+  return { token, issuedAt: now, expiresAt };
 }
