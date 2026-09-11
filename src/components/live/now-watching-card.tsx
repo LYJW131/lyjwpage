@@ -150,29 +150,8 @@ function NowWatchingHero({
         <div className="truncate text-base font-medium leading-tight sm:text-lg" title={item?.title}>
           {item?.title ?? <span className="text-muted-foreground">读取详情…</span>}
         </div>
-        {/*
-          副标题行右侧挂时间、下面单独一条进度，和「最近在听」hero 同一套：进度不压在
-          剧照底边 —— 剧照有深有浅，压上去常常看不清。走过的一段用 --live 那支绿，
-          暂停时整条灰掉。
-        */}
-        <div className="flex items-baseline gap-2 text-sm text-muted-foreground">
-          <span className="min-w-0 flex-1 truncate" title={item?.subtitle}>
-            {item ? item.subtitle || "—" : " "}
-          </span>
-          {position != null && duration ? (
-            <span className="label-mono shrink-0 normal-case tabular-nums">
-              {formatClock(position)} / {formatClock(duration)}
-            </span>
-          ) : null}
-        </div>
-        <div className="h-0.75 overflow-hidden bg-muted" aria-hidden>
-          <div
-            className={cn(
-              "h-full",
-              paused ? "bg-muted-foreground" : "bg-live transition-[width] duration-1000 ease-linear",
-            )}
-            style={{ width: `${Math.min(100, Math.max(0, percent))}%` }}
-          />
+        <div className="truncate text-sm text-muted-foreground" title={item?.subtitle}>
+          {item ? item.subtitle || "—" : "\u00a0"}
         </div>
         {chips.length > 0 && (
           <ul className="mt-1 flex flex-wrap gap-1.5" aria-label="播放规格">
@@ -188,6 +167,26 @@ function NowWatchingHero({
             ))}
           </ul>
         )}
+        {/*
+          进度单独一行收尾，时间挂在条的右端，和「最近在听」hero 同一支绿：不压在剧照
+          底边 —— 剧照有深有浅，压上去常常看不清。暂停时整条灰掉。
+        */}
+        <div className="mt-1.5 flex items-center gap-3">
+          <div className="h-0.75 min-w-0 flex-1 overflow-hidden bg-muted" aria-hidden>
+            <div
+              className={cn(
+                "h-full",
+                paused ? "bg-muted-foreground" : "bg-live transition-[width] duration-1000 ease-linear",
+              )}
+              style={{ width: `${Math.min(100, Math.max(0, percent))}%` }}
+            />
+          </div>
+          {position != null && duration ? (
+            <span className="label-mono shrink-0 normal-case tabular-nums text-muted-foreground">
+              {formatClock(position)} / {formatClock(duration)}
+            </span>
+          ) : null}
+        </div>
       </div>
     </HeroWrapper>
   );
