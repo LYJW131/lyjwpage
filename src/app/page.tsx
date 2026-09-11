@@ -48,7 +48,7 @@ export default async function Home() {
 
   /**
    * 生产 Worker 尚未带上 githubRepo 时（预览窗口 / 本地对着旧后端），
-   * 站点自己用 GITHUB_TOKEN 拉一份，避免整卡空白。Worker 就绪后仍以快照为准。
+   * 站点自己拉一份（公开仓，GITHUB_TOKEN 可选），避免整卡空白。Worker 就绪后仍以快照为准。
    * 直接透传 undefined 会在 useStatus 读 fallback.ok 时整页跌进 error 边界。
    */
   let githubRepo: StatusResponse<GithubRepoPayload> =

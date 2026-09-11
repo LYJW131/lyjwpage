@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
 /**
  * 本仓库的贡献卡片。统计变化慢，30 分钟一轮，没有推送。
  *
- * 没配 token 时取数层给的是空负载，这里直接不渲染 —— 和联系卡片里那张
+ * 取数失败或仓库没有贡献者时这里直接不渲染 —— 和联系卡片里那张
  * 贡献日历同一条规矩：没数据就不占位。
  *
  * 最近提交标题由服务端构建期焊进 props，不走这条轮询。
@@ -52,21 +52,32 @@ function avatarSrc(url: string): string {
   return url.includes("?") ? `${url}&s=${AVATAR_PX * 2}` : `${url}?s=${AVATAR_PX * 2}`;
 }
 
+/**
+ * 周边界是 GitHub 定的周日 00:00 UTC，标签也按 UTC 读，不然 UTC 以西的浏览器
+ * 会把周日起点显示成周六。这个组件在服务端（UTC）先渲染一遍再水合，
+ * 用本地时区还会让两边文字对不上。
+ */
 function formatMonthDay(ms: number): string {
   const date = new Date(ms);
-  return `${date.getMonth() + 1}/${date.getDate()}`;
+  return `${date.getUTCMonth() + 1}/${date.getUTCDate()}`;
 }
 
 function formatWeekRange(weekStart: number): string {
-  const end = new Date(weekStart + 6 * 86_400_000);
-  return `${formatMonthDay(weekStart)}–${end.getMonth() + 1}/${end.getDate()}`;
+  return `${formatMonthDay(weekStart)}–${formatMonthDay(weekStart + 6 * 86_400_000)}`;
 }
+
+/** 提交日期按站点时区显示，服务端和浏览器算出来的一样，和奖杯卡同一套。 */
+const commitDayFormat = new Intl.DateTimeFormat("en-US", {
+  month: "numeric",
+  day: "numeric",
+  timeZone: site.timezone,
+});
 
 function formatCommitDay(iso: string | null): string {
   if (!iso) return "—";
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "—";
-  return `${date.getMonth() + 1}/${date.getDate()}`;
+  return commitDayFormat.format(date);
 }
 
 function Stat({ label, value }: { label: string; value: string }) {
