@@ -1,5 +1,5 @@
 import { mirrorKey } from "@/lib/storage";
-import type { WatchingItem } from "@/lib/types";
+import type { WatchingItem, WatchingMedia, WatchingPlayMethod } from "@/lib/types";
 
 /** 事件之间可能隔很久（一部电影两小时只有首尾两条），保留时间要足够宽 */
 export const TTL_MS = 6 * 60 * 60 * 1000;
@@ -25,7 +25,17 @@ export type EmbyNowPlaying = {
   positionTicks: number;
   /** 该条目总时长，0 表示未知 */
   runTimeTicks: number;
-  device: string;
+  /**
+   * 在哪放：客户端名（Infuse-Direct / Emby for iOS）和设备名（iPad / Apple TV）。
+   * 两个都是 Emby 会话原样给的，拼法留给页面；从前合成一个 device 字符串，
+   * 结果是存了却没地方显示。
+   */
+  client: string | null;
+  deviceName: string | null;
+  /** Emby 的播放方式；会话上没有 NowPlayingItem 时那个字段是残留，上报器不带 */
+  playMethod: WatchingPlayMethod | null;
+  /** 正在放的这一路的规格，上报器按会话选中的音轨 / 字幕挑好 */
+  media: WatchingMedia | null;
   /** 事件到达时刻，毫秒 */
   at: number;
 };
