@@ -105,6 +105,21 @@ Secrets 与专用 RAM 用户已无用，在 Cloudflare 控制台和阿里云 RAM
 提交并推送 main，由 Cloudflare Workers Builds 原生 Git 集成自动部署。
 `shared/`、共用 `src/lib/`、根依赖及路径配置变化也触发 api 部署。
 
+## 本地开发
+
+```sh
+cp .dev.vars.example .dev.vars      # 填 GITHUB_TOKEN；STATE_IMPORT_SECRET 本地随便填
+pnpm dev:worker                     # 仓库根目录执行；http://localhost:8788
+pnpm dev:worker:init                # 只需一次，初始化空的 StateHub
+pnpm dev:local                      # 站点指向本地 Worker
+```
+
+本地用 `wrangler.test.toml`：生产配置里的 `deleted_classes` 迁移在空环境下起不来，测试配置有从头开始的迁移链，且没有生产域名和 cron。
+状态持久化在 `.wrangler/dev-state`，重装或想清库就删它，再跑一次 init。
+
+本地是空库。`.dev.vars` 里的 `UPSTREAM_API_URL` 让 `publicResponse` 把本地 `ok:false` 的快照字段和端点用生产的顶上（只读、不上报）；
+生产的 wrangler.toml 不配它。要测上报链路，直接往 `http://localhost:8788/api/ingest/<来源>` 推，鉴权用 `.dev.vars` 里的 `TELEMETRY_INGEST_SECRET`。
+
 ## 验证
 
 ```sh

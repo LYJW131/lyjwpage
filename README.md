@@ -30,6 +30,17 @@ pnpm dev
 
 开发服务器固定使用 `http://localhost:3211`，避开已占用的 3210。
 
+`pnpm dev` 连的是 `.env.local` 里的生产 Worker。改后端、加新的状态端点或新卡片时，生产上还没有那份数据，改用本地 Worker：
+
+```bash
+cp workers/api/.dev.vars.example workers/api/.dev.vars   # 填 GITHUB_TOKEN，其余默认即可
+pnpm dev:worker          # 本地 api Worker，http://localhost:8788，状态持久化在 workers/api/.wrangler/dev-state
+pnpm dev:worker:init     # 只需一次：空库不初始化会对所有查询回 503
+pnpm dev:local           # 站点，同样是 3211，只是后端指向本地 Worker
+```
+
+本地 Worker 是空库，没有上报器往它推。`.dev.vars` 里的 `UPSTREAM_API_URL` 让它把自己答不上来的字段和端点用生产的数据顶上（只读），于是新端点看本地、旧数据看生产，页面上什么都有。三个配置在 `.claude/launch.json` 里也有（`api-worker-dev` / `lyjwpage-local`）。
+
 ## 海外部署与数据链路
 
 Workers 是唯一数据后端：接收上报、持久化 Durable Objects SQLite、提供状态 API、获取并缓存外部数据，以及 WebSocket 和在线人数。Vercel 负责首屏 HTML、Next.js 页面缓存、静态资源和图片处理。`lyjw131.com` 经阿里云 ESA 回源 `lyjw.me`，ESA 缓存首页 HTML 和静态 JS。

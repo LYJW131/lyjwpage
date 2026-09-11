@@ -1,8 +1,12 @@
 # 本地复制为 .dev.vars；云端敏感值用 wrangler secret 配置，禁止提交真实值。
 TELEMETRY_INGEST_SECRET=
-# 临时导入权限，与上报密钥分开；初始化结束后删除。
-STATE_IMPORT_SECRET=
+# 导入 / 初始化权限，与上报密钥分开。本地随便填一个，`pnpm dev:worker:init` 用
+# --env-file 读它来初始化空库；云端只在迁移时临时配置，结束后删除。
+STATE_IMPORT_SECRET=dev-import
 GITHUB_TOKEN=
+# 只给本地开发：本地 Worker 答不上来的字段和端点，去这个源拿生产的数据顶上
+#（只读，不碰上报）。生产的 wrangler.toml 绝不配它，见 src/public-api.ts。
+UPSTREAM_API_URL=https://api.homepage.lyjw.llc
 # 「一起听」签 MusicKit developer token 用的 .p8 全文；不配则 /api/musickit/token 回 500。
 # 本地不配 ALLOWED_ORIGINS 时签出的令牌不带 origin 声明。
 APPLE_MUSIC_PRIVATE_KEY=
