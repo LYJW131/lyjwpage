@@ -48,13 +48,28 @@ const nextConfig: NextConfig = {
    */
   cacheComponents: true,
   async headers() {
-    return [{
-      source: "/sw.js",
-      headers: [
-        { key: "Content-Type", value: "application/javascript; charset=utf-8" },
-        { key: "Cache-Control", value: "no-cache, no-store, must-revalidate" },
-      ],
-    }];
+    return [
+      {
+        source: "/sw.js",
+        headers: [
+          { key: "Content-Type", value: "application/javascript; charset=utf-8" },
+          { key: "Cache-Control", value: "no-cache, no-store, must-revalidate" },
+        ],
+      },
+      {
+        // 首页外层缓存策略。ESA 对 `/` 使用「优先遵循源站缓存策略」后，过期 5 分钟
+        // 内直接命中，之后 1 天内先回旧 HTML、后台回源取新 —— 和 Vercel 那层的
+        // stale-while-revalidate 同一个行为，不再依赖 PurgeCaches 硬刷新（免费版
+        // 没有预热额度，刷新本身也要 5~6 分钟才生效，120 秒一次只会把命中率清零）。
+        // 首屏新鲜度不靠这一层：revalidateTag 照常失效 Vercel，浏览器挂载后经
+        // SWR / WebSocket 直接向 Worker 取最新状态，旧壳最多展示几秒。
+        // 注意别加 must-revalidate：它禁止返回过期缓存，和 SWR 的目标正好相反。
+        source: "/",
+        headers: [
+          { key: "Cache-Control", value: "public, max-age=300, stale-while-revalidate=86400, stale-if-error=86400" },
+        ],
+      },
+    ];
   },
   /**
    * 分享卡片那张图要的两份 ttf（见 app/opengraph-image）。
