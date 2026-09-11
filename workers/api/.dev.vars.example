@@ -8,6 +8,9 @@ GITHUB_TOKEN=
 # 字段用本地的（只读，不碰上报）。测本地上报链路时注释掉。生产的 wrangler.toml
 # 绝不配它，见 src/public-api.ts。
 UPSTREAM_API_URL=https://api.homepage.lyjw.llc
+# 只给本地开发：开放 PUT/DELETE /api/dev/override/<端点> 注入假数据（`pnpm dev:override`），
+# 注入的优先于上游和本地。生产的 wrangler.toml 绝不配它。
+DEV_OVERRIDES=true
 # 「一起听」签 MusicKit developer token 用的 .p8 全文；不配则 /api/musickit/token 回 500。
 # 本地不配 ALLOWED_ORIGINS 时签出的令牌不带 origin 声明。
 APPLE_MUSIC_PRIVATE_KEY=

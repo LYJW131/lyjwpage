@@ -11,7 +11,9 @@ import { refreshRecentlyPlayed } from "./apple-music-recent";
 import { ROOM_ID } from "./live-platform";
 import { ConfigError, issueMusicKitToken } from "./musickit-token";
 import { getAllowedOrigins, getCorsHeaders, isAllowedOrigin, isAllowedOriginValue } from "./origins";
+import { pathForEventType } from "./public-api";
 import { requestStore, type Env } from "./runtime";
+import { site } from "@/lib/site";
 
 /** 接收所有上报，在 Worker 内写 Storage、广播 WebSocket，再通知 Vercel 缓存失效。 */
 
@@ -204,6 +206,16 @@ const CONNECTION_CLOSE_MS = 30 * 60_000;
  * 自动回复也**必须登记在构造函数里**，醒来那一次没有人走接入路径。
  */
 export class LivePushRoom extends DurableObject<Env> {
+  /**
+   * 本地开发的上游推送中继（见 public-api.ts 的 UPSTREAM_API_URL）：本地没有上报进来，
+   * 房间里永远没事件；配了上游就由这个实例自己去连生产的 /ws，收到什么原样广播给
+   * 本地页面。只在有本地页面连着时保持，最后一个页面走了就断开 —— 它在生产那边
+   * 也算一条连接，别让开发机一直把生产钉在「有人在看」。生产不配这个变量，
+   * 这几个字段永远是空的。
+   */
+  private upstream: WebSocket | null = null;
+  private upstreamPing: ReturnType<typeof setInterval> | null = null;
+
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
@@ -222,8 +234,91 @@ export class LivePushRoom extends DurableObject<Env> {
 
     this.ctx.acceptWebSocket(server);
     server.serializeAttachment({ at: Date.now() });
+    this.ctx.waitUntil(this.ensureUpstreamRelay());
 
     return new Response(null, { status: 101, webSocket: client });
+  }
+
+  private async ensureUpstreamRelay(): Promise<void> {
+    const base = process.env.UPSTREAM_API_URL?.trim().replace(/\/+$/, "");
+    if (!base || this.upstream) return;
+    try {
+      // 生产按 Origin 白名单放行握手，服务端到服务端没有浏览器替我们带，手动写站点的
+      const response = await fetch(`${base}/ws`, {
+        headers: { Upgrade: "websocket", Origin: site.url },
+      });
+      const socket = response.webSocket;
+      if (!socket) {
+        console.warn("[upstream ws] 握手失败", response.status);
+        return;
+      }
+      socket.accept();
+      this.upstream = socket;
+      // 生产那边 30 分钟没 ping 会把连接当僵尸关掉，和浏览器一样每 30 秒报个到
+      this.upstreamPing = setInterval(() => {
+        try {
+          socket.send("ping");
+        } catch { }
+      }, 30_000);
+      socket.addEventListener("message", (event) => {
+        if (typeof event.data !== "string" || event.data === "pong") return;
+        void this.relayUpstreamMessage(event.data);
+      });
+      const drop = () => {
+        if (this.upstream !== socket) return;
+        this.dropUpstreamRelay();
+        // 本地还有页面挂着就重连；没有就等下一个页面接进来再连
+        if (this.ctx.getWebSockets().length > 0) {
+          setTimeout(() => void this.ensureUpstreamRelay(), 5_000);
+        }
+      };
+      socket.addEventListener("close", drop);
+      socket.addEventListener("error", drop);
+      console.log("[upstream ws] 已连上", base);
+    } catch (error) {
+      console.warn("[upstream ws]", reason(error));
+    }
+  }
+
+  /**
+   * 上游事件带着 payload，页面收到会直接写进 SWR 缓存 —— 假数据开着时生产一推，
+   * 夹具就被盖掉了。所以转发前问一下本地：这条事件对应的端点有生效的注入就把
+   * payload 换成注入的那份（页面看到的和它自己去问端点一样），没有就原样转发。
+   */
+  private async relayUpstreamMessage(raw: string): Promise<void> {
+    let message: { type?: unknown; payload?: unknown } | null = null;
+    try {
+      message = JSON.parse(raw) as { type?: unknown; payload?: unknown };
+    } catch {
+      // 不是 JSON 的照样转，页面那头自己会忽略
+    }
+    const path = typeof message?.type === "string" ? pathForEventType(message.type) : null;
+    if (path && this.env.STATE) {
+      try {
+        const hub = this.env.STATE.get(this.env.STATE.idFromName("global"));
+        const response = await hub.fetch(new Request(`https://local/api/dev/override${path}`));
+        if (response.ok) {
+          const override = (await response.json()) as { ok?: unknown; data?: unknown };
+          if (override.ok === true) {
+            this.broadcast(JSON.stringify({ ...message, payload: override.data }));
+            return;
+          }
+        }
+      } catch (error) {
+        console.warn("[upstream ws] 查注入失败，原样转发", reason(error));
+      }
+    }
+    this.broadcast(raw);
+  }
+
+  private dropUpstreamRelay(): void {
+    if (this.upstreamPing) clearInterval(this.upstreamPing);
+    this.upstreamPing = null;
+    const socket = this.upstream;
+    this.upstream = null;
+    try {
+      socket?.close(1000, "本地没有页面了");
+    } catch { }
   }
 
   broadcast(message: string): number {
@@ -275,6 +370,10 @@ export class LivePushRoom extends DurableObject<Env> {
     // 1005（没给关闭码）和 1006（没收到 close 帧）都是"保留码"：
     // 它们描述的是连接怎么断的，不能拿来当自己要发出去的关闭码，传进去会抛
     ws.close(code === 1005 || code === 1006 ? 1000 : code);
+    // 最后一个本地页面走了，上游中继也一起断，别在生产那边多占一条连接
+    if (this.upstream && this.ctx.getWebSockets().every((socket) => socket === ws)) {
+      this.dropUpstreamRelay();
+    }
   }
 }
 
@@ -306,7 +405,9 @@ const worker = {
     }
 
     if (url.pathname.startsWith("/api/")) {
-      if (request.method !== "GET") return new Response("Method not allowed", { status: 405, headers: cors });
+      // 本地假数据注入（见 public-api.ts）要 PUT / DELETE；只在 .dev.vars 开了 DEV_OVERRIDES 时放行
+      const devOverride = process.env.DEV_OVERRIDES?.trim() === "true" && url.pathname.startsWith("/api/dev/");
+      if (request.method !== "GET" && !devOverride) return new Response("Method not allowed", { status: 405, headers: cors });
       const origin = request.headers.get("Origin");
       if (origin && !isAllowedOriginValue(origin, getAllowedOrigins(env))) return jsonResponse({ ok: false }, { status: 403, headers: cors });
       const response = await env.STATE.get(env.STATE.idFromName("global")).fetch(request);

@@ -1,0 +1,34 @@
+{
+  "ok": true,
+  "data": {
+    "nowPlaying": {
+      "itemId": "22099",
+      "paused": true,
+      "progress": 61.5,
+      "client": "Emby Web (oauth2)",
+      "deviceName": "Google Chrome macOS",
+      "playMethod": "transcode",
+      "media": {
+        "container": "mkv",
+        "bitrate": 48200000,
+        "video": { "codec": "hevc", "width": 3840, "height": 1600, "range": "dolby-vision", "bitDepth": 10 },
+        "audio": { "codec": "truehd", "profile": "Dolby TrueHD + Dolby Atmos", "channels": 8, "layout": "7.1", "language": "eng" },
+        "subtitle": { "codec": "pgssub", "language": "chi", "title": null, "forced": false, "external": false }
+      },
+      "positionMs": 874000,
+      "durationMs": 1421000
+    },
+    "current": {
+      "id": "22099",
+      "title": "我推的孩子",
+      "subtitle": "S1:E5 · 恋爱实境秀",
+      "progress": 61.5,
+      "type": "Episode",
+      "year": 2023,
+      "link": "https://emby.lyjw131.com/web/index.html#!/item?id=22099&serverId=d8ba9968e481465dbec0ea0436a84a70",
+      "playedAt": null,
+      "poster": "https://r2.homepage.lyjw.llc/cb6e22913d147bea4e28bcaf5a18c6521fb5b4af120814823d4c3fa69bba296d.webp",
+      "backdrop": "https://r2.homepage.lyjw.llc/9ffcf1bc047ca4851d1538398596668b8584acb1a861fd53c839ca73019859c1.webp"
+    }
+  }
+}

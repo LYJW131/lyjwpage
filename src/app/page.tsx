@@ -2,6 +2,8 @@ import { Footer } from "@/components/footer";
 import { Header } from "@/components/header";
 import { WebPlayerProvider } from "@/components/web-player/web-player-provider";
 import { ContactCard } from "@/components/contact-card";
+import { DevFakeDataToggle } from "@/components/dev-fake-data-toggle";
+import { DevToggleDock } from "@/components/dev-toggles";
 import { ActivityCard } from "@/components/live/activity-card";
 import { GithubRepoCard } from "@/components/live/github-repo-card";
 import { LiveMediaPair } from "@/components/live/media-pair";
@@ -139,6 +141,10 @@ export default async function Home() {
       </WebPlayerProvider>
 
       <Footer />
+
+      {/* 开发环境右下角的调试胶囊：Dock 是容器，各组件把自己的开关传送进来；生产不渲染 */}
+      <DevToggleDock />
+      <DevFakeDataToggle />
     </>
   );
 }
