@@ -1,5 +1,7 @@
 import type { NextConfig } from "next";
 import { execSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 
 /**
  * 页脚那行构建信息。两个值都必须在**构建期**求值、以字面量内联进产物。
@@ -30,10 +32,28 @@ function resolveCommitSha(): string {
   }
 }
 
+/**
+ * 首页「本仓库」卡的贡献统计，构建期焊成常量，之后不再变。
+ *
+ * 取数不在这里做：这个文件会被构建主进程和每个静态生成 worker 各加载一遍，
+ * 网络等待放这里等于乘以进程数。`pnpm build` 先跑 scripts/fetch-github-repo-stats.mjs
+ * 把结果落到 .next/cache（等不到 GitHub 现算就沿用上一次构建那份），这里只是
+ * 同步读一下文件。没有文件就是空串，页面那头当 null 处理，卡片只剩提交列表。
+ * 本地 `pnpm dev` 不跑那个脚本，读到的是上一次 `pnpm build` 留下的。
+ */
+function readGithubRepoStats(): string {
+  try {
+    return readFileSync(path.join(process.cwd(), ".next", "cache", "github-repo-stats.json"), "utf8");
+  } catch {
+    return "";
+  }
+}
+
 const nextConfig: NextConfig = {
   env: {
     BUILD_TIME,
     COMMIT_SHA: resolveCommitSha(),
+    GITHUB_REPO_STATS: readGithubRepoStats(),
   },
   /**
    * 首屏那八份数据走 `use cache` + `cacheTag`，上报进来时按 tag 失效。

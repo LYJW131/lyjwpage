@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "next dev -p 3211",
-    "build": "next build",
+    "build": "node scripts/fetch-github-repo-stats.mjs && next build",
     "start": "next start",
     "test": "node --test --experimental-strip-types --import ./src/lib/testing/register-alias.mjs src/lib/*.test.mts src/lib/*.test.mjs",
     "typecheck": "next typegen && tsc --noEmit",
@@ -31,15 +31,16 @@
     "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {
+    "@next/env": "16.3.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.0",
+    "ioredis": "^6.0.0",
     "tailwindcss": "^4",
-    "typescript": "^5",
-    "ioredis": "^6.0.0"
+    "typescript": "^5"
   },
   "packageManager": "pnpm@10.14.0"
 }

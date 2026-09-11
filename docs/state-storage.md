@@ -21,7 +21,7 @@ Worker 写入完成后，只有展示变化才 POST `/api/revalidate`。接口�
 
 Vercel 参照根 `.env.example`，仅公开后端源、缓存通知鉴权和图片配置。Worker 参照 `workers/api/.dev.vars.example` 与 wrangler.toml；状态数据用的 GitHub Token 使用 Worker Secret，Apple Music 凭据来自 Mac 上报。`NEXT_PUBLIC_BACKEND_URL` 与 `NEXT_PUBLIC_ONLINE_COUNTER_URL` 构建期写入前端，分别提供状态/推送源与独立在线人数源，改值需要重新部署。
 
-Vercel 可选配一份 `GITHUB_TOKEN`，只给构建期读公开仓的两处用：首页「本仓库」卡的贡献统计和「最近提交」列表，都随每次部署取一次焊进 HTML，不经 Worker、没有状态端点。这两处不配也能匿名读，配上只是避开匿名限额；它不参与状态端点，浏览器和 HTML 拿不到。
+Vercel 可选配一份 `GITHUB_TOKEN`，只给构建期读公开仓的两处用：首页「本仓库」卡的贡献统计（`pnpm build` 先跑 `scripts/fetch-github-repo-stats.mjs`，最多等 GitHub 现算 2 分钟，结果落 `.next/cache`，再由 `next.config.ts` 经 `env` 焊成常量；等不到就沿用构建缓存里上一次的那份，最多落后一次部署）和「最近提交」列表（`use cache` + `cacheLife("max")`），都随每次部署取一次，不经 Worker、没有状态端点。这两处不配也能匿名读，配上只是避开匿名限额；它不参与状态端点，浏览器和 HTML 拿不到。
 
 迁移后从 Vercel 移除 `REDIS_URL`、R2 写入凭据及旧推送地址；保留 `TELEMETRY_INGEST_SECRET` 用于缓存通知。环境变量删除不影响已有部署的环境快照，必须在清理后通过 Git 生成新部署。删除项目变量不等于撤销原始凭据，源 Redis 可在回退观察期继续保留。
 

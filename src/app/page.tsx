@@ -15,18 +15,18 @@ import { Section } from "@/components/ui/section";
 import { artworkPlaceholders } from "@/lib/artwork-placeholder";
 import { desktopIconDataUri } from "@/lib/desktop-icon-inline";
 import { githubAvatarDataUri } from "@/lib/github-avatar-icon";
-import { getGithubRepoStats } from "@/lib/github-repo-site";
+import { builtGithubRepoStats } from "@/lib/github-repo-build";
 import { getRecentCommits } from "@/lib/github-recent-commits";
 import { cachedHomeSnapshot } from "@/lib/status-cache";
 
 export default async function Home() {
-  const [snapshot, avatarDataUri, recentCommits, githubRepo] = await Promise.all([
+  const [snapshot, avatarDataUri, recentCommits] = await Promise.all([
     cachedHomeSnapshot(),
     githubAvatarDataUri(),
     getRecentCommits(),
-    // 构建期一份的仓库统计；拉不到给 null，这轮不画统计，卡片只剩提交列表
-    getGithubRepoStats(),
   ]);
+  // 构建期焊死的仓库统计；那次构建没拿到就是 null，卡片只剩提交列表
+  const githubRepo = builtGithubRepoStats();
   const {
     desktop,
     activity,
