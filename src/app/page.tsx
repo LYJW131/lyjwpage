@@ -8,7 +8,7 @@ import { ServerCard } from "@/components/live/server-card";
 import { PlaystationBlock } from "@/components/live/playstation-block";
 import { TimezoneCard } from "@/components/live/timezone-card";
 import { VibeCodingCard } from "@/components/live/vibecoding-card";
-import { WatchingRow } from "@/components/live/watching-card";
+import { WatchingCard } from "@/components/live/watching-card";
 import { Section } from "@/components/ui/section";
 import { artworkPlaceholders } from "@/lib/artwork-placeholder";
 import { desktopIconDataUri } from "@/lib/desktop-icon-inline";
@@ -76,13 +76,7 @@ export default async function Home() {
                 playingNow={playingNow}
               />
 
-              <div id="watching" className="mt-6 scroll-mt-28 border-t border-line pt-5">
-                <div className="mb-3 flex items-baseline justify-between">
-                  <h3 className="text-sm font-medium">最近在看</h3>
-                  <span className="label-mono text-muted-foreground">Emby</span>
-                </div>
-                <WatchingRow fallback={watching} nowFallback={nowWatching} />
-              </div>
+              <WatchingCard fallback={watching} nowFallback={nowWatching} />
             </Section>
           </div>
         </main>
