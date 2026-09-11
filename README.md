@@ -112,7 +112,7 @@ Authorization: Bearer <TELEMETRY_INGEST_SECRET>
 
 Emby 对拖动进度条不发任何通知，那部分只能查会话。查的人是代理不是站点：它在播时每 2 秒问一次 `/Sessions`，但只在位置偏离站点的推算值超过 1.5 秒时才推 —— 站点算得准的时候推它等于白花一次函数调用。
 
-整块是一张卡，和 PlayStation 那张同一套骨架：卡头一盏灯跟播放走（在播绿、暂停黄）。播放中那一集单独放大成一块 —— 横版剧照、标题、**在哪放、放的是什么规格**、走动的进度和时长 —— 下面标着 Continue Watching 的才是其余续播瓷砖；没在播时只有瓷砖行。放大块的数据在 `playing` 里：`client` / `deviceName` 是会话原样给的客户端和设备名，`playMethod` 是直接播放 / 直接串流 / 转码，`media` 是容器、码率、视频的编码 / 尺寸 / 动态范围 / 位深、会话选中的那条音轨和选中的字幕。这些都是代理从 `/Sessions` 和条目详情里挑出来的原话：编码名小写、语言是 Emby 的代码、动态范围按 `ExtendedVideoType` 归成 `hdr10` / `hdr10plus` / `dolby-vision` / `hlg`（老字段只有 `hdr` / `sdr`）；「1080p · H.264 · DD+ 5.1 · 中文字幕」这些标签由浏览器现拼（`lib/watching-media`），Emby 那些本地化过的 DisplayTitle 不进来。流列表整份不出代理 —— 一个条目动辄二十几条字幕流，外挂字幕还带着 NAS 的 SMB 路径。中途切音轨或字幕，代理按签名变化推一次；转码时 `media` 里仍是源文件的规格，不是转出来的。
+播放中那一集单独一张「Now Watching」卡（`components/live/now-watching-card.tsx`），占卡片网格第二行整行、在充电卡和最近播放上面，和 PlayStation 那张同一套骨架：卡头一盏灯跟播放走（在播绿、暂停黄），里面是横版剧照、标题、**在哪放、放的是什么规格**、副标题行右侧的时长和单独一条走动的进度。没在播时整张卡收起、不占位；续播瓷砖行仍是下面「最近在看」那条分区，播放中那集照旧置顶并带角标。卡片的数据在 `playing` 里：`client` / `deviceName` 是会话原样给的客户端和设备名，`playMethod` 是直接播放 / 直接串流 / 转码，`media` 是容器、码率、视频的编码 / 尺寸 / 动态范围 / 位深、会话选中的那条音轨和选中的字幕。这些都是代理从 `/Sessions` 和条目详情里挑出来的原话：编码名小写、语言是 Emby 的代码、动态范围按 `ExtendedVideoType` 归成 `hdr10` / `hdr10plus` / `dolby-vision` / `hlg`（老字段只有 `hdr` / `sdr`）；「1080p · H.264 · DD+ 5.1 · 中文字幕」这些标签由浏览器现拼（`lib/watching-media`），Emby 那些本地化过的 DisplayTitle 不进来。流列表整份不出代理 —— 一个条目动辄二十几条字幕流，外挂字幕还带着 NAS 的 SMB 路径。中途切音轨或字幕，代理按签名变化推一次；转码时 `media` 里仍是源文件的规格，不是转出来的。
 
 状态存在 SQLite（`lib/emby-store.ts` 的 mirrorKey，SQLite 为主、进程内存为辅），站点不再向 Emby 拉任何东西。读路径上 `/api/status/watching` 和 `/api/status/watching/now` 由 Worker 直读 SQLite，和别的状态接口同一套。前端契约没变，两条仍是分开的：前者跟着 60 秒的推送走，后者跟着播放事件走，合在一起的话慢的那半只能跟着快的那半一起被重取。
 
