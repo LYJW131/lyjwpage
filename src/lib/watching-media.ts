@@ -1,9 +1,12 @@
-import type { WatchingMedia, WatchingPlayMethod } from "@/lib/types";
+import type { WatchingMedia } from "@/lib/types";
 
 /**
- * 「正在播放」那条横幅上的两样东西：在哪放（客户端 · 设备）和放的是什么规格
- * （一串短标签）。上报器只给 Emby 说的原话 —— 编码名、语言代码、像素尺寸 ——
+ * 「正在播放」那条横幅上的两样东西：在哪放（客户端、设备各一个标签）和放的是
+ * 什么规格（一串短标签）。上报器只给 Emby 说的原话 —— 编码名、语言代码、像素尺寸 ——
  * 这里把它们拼成人看的样子。纯函数，卡片和测试共用。
+ *
+ * 播放方式（直接播放 / 直接串流 / 转码）和字幕不进标签：前者说的是 Emby 怎么送的，
+ * 后者太细；信封里照旧带着，只是卡片不画。
  */
 
 /**
@@ -20,12 +23,13 @@ function clientName(client: string | null): string | null {
   return cleaned || null;
 }
 
-/** 「Infuse · iPad」；两个一样就只留一个，都没有就是 null */
-export function describeDevice(client: string | null, deviceName: string | null): string | null {
+/** 客户端和设备各一个标签（["Infuse", "iPad"]）；两个一样就只留一个，都没有就是空 */
+export function describeDevice(client: string | null, deviceName: string | null): string[] {
   const app = clientName(client);
   const device = deviceName?.trim() || null;
-  if (app && device && app.toLowerCase() !== device.toLowerCase()) return `${app} · ${device}`;
-  return app ?? device;
+  if (app && device && app.toLowerCase() !== device.toLowerCase()) return [app, device];
+  const only = app ?? device;
+  return only ? [only] : [];
 }
 
 const VIDEO_CODECS: Record<string, string> = {
@@ -63,55 +67,6 @@ const RANGES: Record<NonNullable<NonNullable<WatchingMedia["video"]>["range"]>, 
   "dolby-vision": "Dolby Vision",
   hlg: "HLG",
 };
-
-const PLAY_METHODS: Record<WatchingPlayMethod, string> = {
-  directplay: "直接播放",
-  directstream: "直接串流",
-  transcode: "转码",
-};
-
-/**
- * Emby 给的语言多是 ISO 639-2 的三字母代码（含 chi / fre / ger 这类书目码），
- * 外挂字幕按文件名给的又可能是 zh-CN。Intl.DisplayNames 认不全书目码，
- * 常见的直接查表，查不到的原样大写。
- */
-const LANGUAGES: Record<string, string> = {
-  zh: "中文",
-  chi: "中文",
-  zho: "中文",
-  ja: "日文",
-  jpn: "日文",
-  en: "英文",
-  eng: "英文",
-  ko: "韩文",
-  kor: "韩文",
-  fr: "法文",
-  fre: "法文",
-  fra: "法文",
-  de: "德文",
-  ger: "德文",
-  deu: "德文",
-  es: "西班牙文",
-  spa: "西班牙文",
-  it: "意大利文",
-  ita: "意大利文",
-  ru: "俄文",
-  rus: "俄文",
-  pt: "葡萄牙文",
-  por: "葡萄牙文",
-  th: "泰文",
-  tha: "泰文",
-  vi: "越南文",
-  vie: "越南文",
-};
-
-function languageName(code: string | null): string | null {
-  if (!code) return null;
-  const normalized = code.trim().toLowerCase();
-  // zh-CN / zh-Hant 这类先按主语言查
-  const primary = normalized.split(/[-_]/)[0];
-  return LANGUAGES[normalized] ?? LANGUAGES[primary] ?? normalized.toUpperCase();
-}
 
 function resolution(video: NonNullable<WatchingMedia["video"]>): string | null {
   const width = video.width ?? 0;
@@ -166,11 +121,6 @@ function audioLabel(audio: NonNullable<WatchingMedia["audio"]>): string | null {
   return layout ? `${base} ${layout}` : base;
 }
 
-function subtitleLabel(subtitle: NonNullable<WatchingMedia["subtitle"]>): string {
-  const language = languageName(subtitle.language) ?? subtitle.title?.trim() ?? "";
-  return `${language}${subtitle.forced ? "强制" : ""}字幕`;
-}
-
 function bitrate(bps: number | null): string | null {
   if (bps == null || bps <= 0) return null;
   if (bps >= 1_000_000) return `${(bps / 1_000_000).toFixed(1)} Mbps`;
@@ -178,22 +128,20 @@ function bitrate(bps: number | null): string | null {
 }
 
 /**
- * 规格标签，按「看一眼最想知道的」排：分辨率、动态范围、视频编码、音轨、字幕、
- * 播放方式、码率。没有的那项直接跳过，不占位。
+ * 规格标签，按「看一眼最想知道的」排：分辨率和视频编码合成一个（「1080p HEVC」，
+ * 缺一边就只写另一边），然后动态范围、音轨、码率。没有的那项直接跳过，不占位。
+ * 字幕不进标签：信封里照旧带着，卡片不画。
  */
-export function describeMedia(
-  media: WatchingMedia | null,
-  playMethod: WatchingPlayMethod | null,
-): string[] {
+export function describeMedia(media: WatchingMedia | null): string[] {
   const chips: Array<string | null> = [];
   if (media?.video) {
-    chips.push(resolution(media.video));
+    const picture = [resolution(media.video), videoCodec(media.video.codec)]
+      .filter((part): part is string => Boolean(part))
+      .join(" ");
+    chips.push(picture || null);
     chips.push(media.video.range ? RANGES[media.video.range] : null);
-    chips.push(videoCodec(media.video.codec));
   }
   if (media?.audio) chips.push(audioLabel(media.audio));
-  if (media?.subtitle) chips.push(subtitleLabel(media.subtitle));
-  if (playMethod) chips.push(PLAY_METHODS[playMethod]);
   chips.push(bitrate(media?.bitrate ?? null));
   return chips.filter((chip): chip is string => Boolean(chip));
 }

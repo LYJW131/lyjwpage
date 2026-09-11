@@ -21,6 +21,16 @@ import { cn } from "@/lib/utils";
  */
 const NOW_REFRESH_MS = 60_000;
 
+/**
+ * 展开 / 收起两态。高度之外把上边距（和上一个网格之间的 12px，即 gap-3）和
+ * 抵消阴影内距的负边距也一起动画，收到 0 时整个盒子真的是 0 高，卸载不跳。
+ *
+ * 动画的这一层自己不带 padding：framer 量 `height: auto` 时会把 padding 算进去，
+ * 再往 0 收就停在 padding 那 3px 上，卸载时跳一下。露阴影的内距放在里面一层。
+ */
+const EXPANDED = { height: "auto", opacity: 1, marginTop: 12, marginBottom: -3 };
+const COLLAPSED = { height: 0, opacity: 0, marginTop: 0, marginBottom: 0 };
+
 type NowPlaying = {
   itemId: string;
   paused: boolean;
@@ -78,8 +88,11 @@ function NowWatchingHero({
   item: WatchingItem | null;
 }) {
   const { paused } = nowPlaying;
-  const device = describeDevice(nowPlaying.client, nowPlaying.deviceName);
-  const chips = describeMedia(nowPlaying.media, nowPlaying.playMethod);
+  // 在哪放（客户端、设备各一个标签）和规格标签排在同一行，前两个打头
+  const chips = [
+    ...describeDevice(nowPlaying.client, nowPlaying.deviceName),
+    ...describeMedia(nowPlaying.media),
+  ];
 
   /**
    * 秒针。锚点跟着这份数据走：SWR 只在内容变了才给新对象，每份新数据在下一次
@@ -119,9 +132,20 @@ function NowWatchingHero({
       : (nowPlaying.progress ?? item?.progress ?? 0);
   const image = item?.backdrop ?? item?.poster ?? null;
 
+  /*
+    两列网格：剧照一列、文字一列。窄屏（< 640px）剧照只跨第一行，旁边是状态行 /
+    标题 / 副标题，规格标签、时间和进度条落到第二行、跨两列用整行 —— 并排时右边
+    只剩不到 200px，五个标签折三行、时间挤成单独一行、进度条只有右半截。剧照不放大：
+    Emby 给的剧照就 700 来像素宽，通栏到 3× 屏上会糊。sm 起剧照跨两行，右边仍是
+    从前那一整列，桌面不变。
+  */
   return (
-    <HeroWrapper link={item?.link ?? null} className="group flex gap-3 px-3 py-3 sm:gap-4">
-      <div className="relative aspect-video w-32 shrink-0 self-start overflow-hidden rounded-md border border-line bg-muted sm:w-44 md:w-52">
+    <HeroWrapper
+      link={item?.link ?? null}
+      // 右列文字行之间统一 6px（gap-y 和标题块的 gap 都是 1.5）；进度条前多留一些，见下面
+      className="group grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1.5 px-3 py-3 sm:items-center sm:gap-x-4"
+    >
+      <div className="relative aspect-video w-32 shrink-0 self-start overflow-hidden rounded-md border border-line bg-muted sm:row-span-2 sm:w-44 md:w-52">
         {image ? (
           <Image
             src={image}
@@ -135,17 +159,12 @@ function NowWatchingHero({
         ) : null}
       </div>
 
-      <div className="flex min-w-0 flex-1 flex-col justify-center gap-1">
+      <div className="flex min-w-0 flex-col justify-center gap-1.5 self-center sm:self-end">
         <div className="flex min-w-0 items-center gap-1.5">
           <StatusDot tone={paused ? "idle" : "live"} />
           <span className={cn("label-mono shrink-0", paused ? "text-muted-foreground" : "text-live")}>
             {paused ? "播放暂停" : "正在播放"}
           </span>
-          {device && (
-            <span className="label-mono min-w-0 truncate normal-case text-muted-foreground" title={device}>
-              · {device}
-            </span>
-          )}
         </div>
         <div className="truncate text-base font-medium leading-tight sm:text-lg" title={item?.title}>
           {item?.title ?? <span className="text-muted-foreground">读取详情…</span>}
@@ -153,13 +172,20 @@ function NowWatchingHero({
         <div className="truncate text-sm text-muted-foreground" title={item?.subtitle}>
           {item ? item.subtitle || "—" : "\u00a0"}
         </div>
+      </div>
+
+      <div className="col-span-2 min-w-0 sm:col-span-1 sm:col-start-2 sm:self-start">
         {/*
           规格标签和时间同一行、进度条单独在最下面：和站内其余进度条一样，文案在条
           的上方，不挂在条的右边。时间靠右，标签折行时它落在最后一行的末尾。
         */}
-        <div className="mt-1 flex flex-wrap items-end gap-x-3 gap-y-1.5">
+        {/*
+          标签和时间是同一个折行容器里的项：ul 用 `contents` 把 li 直接交给外层，
+          标签折到第二行时时间就接在那一行的末尾，不再单独占一行。
+        */}
+        <div className="flex flex-wrap items-end gap-1.5">
           {chips.length > 0 && (
-            <ul className="flex min-w-0 flex-wrap gap-1.5" aria-label="播放规格">
+            <ul className="contents" aria-label="播放规格">
               {chips.map((chip) => (
                 <li
                   key={chip}
@@ -173,7 +199,7 @@ function NowWatchingHero({
             </ul>
           )}
           {position != null && duration ? (
-            <span className="label-mono ml-auto shrink-0 normal-case tabular-nums text-muted-foreground">
+            <span className="label-mono ml-auto shrink-0 pl-1.5 normal-case tabular-nums text-muted-foreground">
               {formatClock(position)} / {formatClock(duration)}
             </span>
           ) : null}
@@ -182,7 +208,8 @@ function NowWatchingHero({
           进度不压在剧照底边 —— 剧照有深有浅，压上去常常看不清；和「最近在听」hero
           同一支绿，暂停时整条灰掉。
         */}
-        <div className="mt-1.5 h-0.75 overflow-hidden bg-muted" aria-hidden>
+        {/* 标签是带边框的盒子，和进度条之间要比文字行之间多留一点，不然条像贴在框上 */}
+        <div className="mt-3 h-0.75 overflow-hidden bg-muted" aria-hidden>
           <div
             className={cn(
               "h-full",
@@ -218,24 +245,28 @@ export function NowWatchingCard({
       {nowPlaying ? (
         <motion.div
           key="now-watching"
-          initial={reduced ? false : { height: 0, opacity: 0 }}
-          animate={{ height: "auto", opacity: 1 }}
-          exit={reduced ? undefined : { height: 0, opacity: 0 }}
+          initial={reduced ? false : COLLAPSED}
+          animate={EXPANDED}
+          exit={reduced ? undefined : COLLAPSED}
           transition={reduced ? STATIC_TRANSITION : LIST_TRANSITION}
-          // 收起动画要 overflow-hidden，而 paper-card 的 3px 硬阴影在右下：这一层向右、
-          // 向下各多出 3px，再用内距把阴影包进来，卡片本身仍和邻居同宽、右缘对齐，
-          // 下一行的 12px 网格缝也不被这 3px 撑宽 —— 和「最近在看」那排瓷砖的滚动盒同一个办法
-          className="-mb-[3px] -mr-[3px] overflow-hidden pb-[3px] pr-[3px] md:col-span-2"
+          // 收起动画要 overflow-hidden，而 paper-card 的 3px 硬阴影在右下：这一层向右
+          // 多出 3px、里面一层再用内距包回来，卡片本身仍和邻居同宽、右缘对齐。下方
+          // 那 3px 靠负边距抵消、和上一个网格之间的 12px 上边距，都写在 EXPANDED /
+          // COLLAPSED 里跟着高度一起动画 —— 留在 className 里的话收到 0 时还剩
+          // 这几个像素，卸载那一瞬会跳。
+          className="-mr-[3px] overflow-hidden"
         >
-          <Card
-            id="now-watching"
-            label="Now Watching"
-            // 卡头不点灯：在播 / 暂停已经写在里面的状态行上，进度条和秒针也在动
-            action="Emby"
-            className="scroll-mt-28"
-          >
-            <NowWatchingHero nowPlaying={nowPlaying} item={live?.current ?? null} />
-          </Card>
+          <div className="pb-[3px] pr-[3px]">
+            <Card
+              id="now-watching"
+              label="Now Watching"
+              // 卡头不点灯：在播 / 暂停已经写在里面的状态行上，进度条和秒针也在动
+              action="Emby"
+              className="scroll-mt-28"
+            >
+              <NowWatchingHero nowPlaying={nowPlaying} item={live?.current ?? null} />
+            </Card>
+          </div>
         </motion.div>
       ) : null}
     </AnimatePresence>

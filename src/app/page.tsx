@@ -86,8 +86,16 @@ export default async function Home() {
                   yearFallback={vibeCodingYear}
                 />
                 <TimezoneCard fallback={timezone} />
-                {/* 在播时占第二行整行，没在播时整个不渲染，网格不留空行 */}
-                <NowWatchingCard nowFallback={nowWatching} />
+              </div>
+
+              {/*
+                「正在播放」放在两个网格之间、不进网格：进网格的话收起时高度能到 0，
+                网格那 12px 的 gap 却要等它卸载才消失，动画末尾会跳一下。它自己的
+                上边距跟着高度一起动画，见 now-watching-card。没在播时整个不渲染。
+              */}
+              <NowWatchingCard nowFallback={nowWatching} />
+
+              <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
                 <LiveMediaPair
                   chargerFallback={charger}
                   powerBankFallback={powerBank}
