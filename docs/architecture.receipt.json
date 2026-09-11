@@ -1,12 +1,12 @@
 {
   "type": "architecture",
   "specification": {
-    "sha256": "11be4c9b14bcd8bee6fd2963b854ba80861a1d4c1627c8cac9a315d98991010a",
-    "bytes": 11851
+    "sha256": "595c609afe56108199eabd8b070772ccf08c5ae0a43395505bbfc033efe139e8",
+    "bytes": 11262
   },
   "artifact": {
-    "sha256": "50ac3a2d6ac97dc9410b43a739e0842803506150ff11135c79824d68dd035fb8",
-    "bytes": 724917
+    "sha256": "7efb613edd7a903b8e1795d4eea0e21d9319b7637e28325daba4b3975c7873e1",
+    "bytes": 723960
   },
   "validation": {
     "checksPassed": 9,
@@ -25,7 +25,7 @@
   "output": "architecture.html",
   "visual_review": "passed",
   "correction_rounds": 1,
-  "static_diagram_review": "pending: 600s transitional label edited as text only, previews not re-rendered",
+  "static_diagram_review": "pending: purge edge removed as text edit only, previews not re-rendered",
   "viewports": [
     {
       "width": 1440,

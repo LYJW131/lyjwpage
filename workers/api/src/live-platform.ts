@@ -15,23 +15,15 @@ export function afterResponse(work: () => Promise<void>): Promise<void> {
 const REVALIDATE_TIMEOUT_MS = 5_000;
 
 /**
- * 展示变化落库后，在同一后台任务并行通知 Vercel 和 ESA；失败互不影响。
- * Vercel 保留 stale-while-revalidate；ESA 接受刷新任务不代表源站 HTML 已完成重建。
+ * 展示变化落库后通知 Vercel 标签失效，已有 HTML 先返回、后台重建。
+ * ESA 首页不走通知：控制台缓存规则「首页遵循源站缓存」让边缘按源站 SWR 头
+ * 自行过期与后台取新（见根目录 next.config.ts），需要立即生效时去控制台手动刷新。
  */
 export async function expireStatusTags(
   tags: readonly string[],
 ): Promise<void> {
   if (!tags.length) return;
-  const { env, requestEsaPurge } = currentContext();
-  const esa = async () => {
-    try {
-      if (requestEsaPurge) await requestEsaPurge();
-      else await env.STATE.get(env.STATE.idFromName("global")).requestEsaPurge();
-    } catch (error) {
-      console.error("[esa-purge] scheduling failed", error instanceof Error ? error.name : "UnknownError");
-    }
-  };
-  await Promise.all([revalidateVercel(env, tags), esa()]);
+  await revalidateVercel(currentContext().env, tags);
 }
 
 async function revalidateVercel(env: Env, tags: readonly string[]): Promise<void> {

@@ -3,9 +3,8 @@ import type { StorageClient } from "@shared/storage-client";
 import type { LivePushRoom } from "./index";
 import type { MusicKitTokenEnv } from "./musickit-token";
 import type { StateHub } from "./state-hub";
-import type { EsaCacheEnv } from "./esa-cache";
 
-export interface Env extends MusicKitTokenEnv, EsaCacheEnv {
+export interface Env extends MusicKitTokenEnv {
   LIVE_PUSH: DurableObjectNamespace<LivePushRoom>;
   STATE: DurableObjectNamespace<StateHub>;
   IMAGES: R2Bucket;
@@ -22,7 +21,6 @@ export type RequestContext = {
   ctx: Pick<ExecutionContext, "waitUntil">;
   /** 在状态对象内部直读本地 SQLite；普通 Worker 通过 DO binding 调用。 */
   storage?: StorageClient;
-  requestEsaPurge?: () => Promise<void>;
 };
 export const requestStore = new AsyncLocalStorage<RequestContext>();
 export function currentContext(): RequestContext {
