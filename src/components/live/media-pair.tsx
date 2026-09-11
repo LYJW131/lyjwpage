@@ -3,10 +3,10 @@
 import { motion, useReducedMotion } from "motion/react";
 import { useCallback, useState } from "react";
 
+import { DevToggle, DevToggleSlot, isDev } from "@/components/dev-toggles";
 import { ChargerCard } from "@/components/live/charger-card";
 import { ListeningCard } from "@/components/live/listening-card";
 import { PowerBankCard } from "@/components/live/powerbank-card";
-import { StatusDot } from "@/components/ui/status-dot";
 import type { LyricsFallback } from "@/hooks/use-lyrics";
 import type { ArtworkPlaceholders } from "@/lib/artwork-placeholder";
 import type {
@@ -89,7 +89,6 @@ export function LiveMediaPair({
   );
   const [chargerOverride, setChargerOverride] = useState<boolean | null>(null);
   const [powerBankOverride, setPowerBankOverride] = useState<boolean | null>(null);
-  const isDev = process.env.NODE_ENV === "development";
 
   const chargerOn = isDev && chargerOverride !== null ? chargerOverride : chargerActive;
   const powerBankOn =
@@ -224,47 +223,25 @@ export function LiveMediaPair({
         </div>
       </div>
 
+      {/* 开发环境调试：单独强制某张卡的可见性，用来看两张卡抢同一个格子的效果。胶囊传送到页面右下角的 Dock */}
       {isDev && (
-        <div className="fixed bottom-4 right-4 z-50 flex flex-col items-end gap-2">
+        <DevToggleSlot>
           <DevToggle
             label="Charger"
             on={chargerOn}
+            title="开发环境调试：切换 Charger 面板可见性"
             onClick={() => setChargerOverride((prev) => (prev !== null ? !prev : !chargerActive))}
           />
           <DevToggle
             label="Power Bank"
             on={powerBankOn}
+            title="开发环境调试：切换 Power Bank 面板可见性"
             onClick={() =>
               setPowerBankOverride((prev) => (prev !== null ? !prev : !powerBankActive))
             }
           />
-        </div>
+        </DevToggleSlot>
       )}
     </div>
-  );
-}
-
-/** 开发环境调试：单独强制某张卡的可见性，用来看两张卡抢同一个格子的效果 */
-function DevToggle({
-  label,
-  on,
-  onClick,
-}: {
-  label: string;
-  on: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="paper-card flex h-8 items-center gap-2 rounded-md border border-line-strong bg-surface px-3 text-xs text-muted-foreground transition-colors hover:bg-surface-hover hover:text-foreground"
-      title={`开发环境调试：切换${label}面板可见性`}
-    >
-      <StatusDot tone={on ? "live" : "off"} />
-      <span className="label-mono">
-        {label}: {on ? "Shown" : "Hidden"}
-      </span>
-    </button>
   );
 }

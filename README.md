@@ -39,7 +39,18 @@ pnpm dev:worker:init     # 只需一次：空库不初始化会对所有查询�
 pnpm dev:local           # 站点，同样是 3211，只是后端指向本地 Worker
 ```
 
-本地 Worker 是空库，没有上报器往它推。`.dev.vars` 里的 `UPSTREAM_API_URL` 让它生产为主、本地补缺：生产有的数据用生产的，生产没有的端点和字段（也就是你正在加的）用本地的，页面上什么都有。要测本地上报链路时把这个变量注释掉。三个配置在 `.claude/launch.json` 里也有（`api-worker-dev` / `lyjwpage-local`）。
+本地 Worker 是空库，没有上报器往它推。`.dev.vars` 里的 `UPSTREAM_API_URL` 让它生产为主、本地补缺：生产有的数据用生产的，生产没有的端点和字段（也就是你正在加的）用本地的，页面上什么都有。要测本地上报链路时把这个变量注释掉。实时推送也一样：本地 Worker 会替页面连生产的 `/ws`，把事件转发过来。
+
+要看的状态此刻没发生（没在放片、充电头没插线），用假数据注入，优先于生产和本地：
+
+```bash
+pnpm dev:override /api/status/watching/now watching-now.json   # 夹具在 workers/api/dev-fixtures/，也可给任意路径
+pnpm dev:override /api/status/watching/now --clear
+pnpm dev:override --list
+pnpm dev:override --off        # 总开关，夹具留着只是不生效；--on 开回来
+```
+
+body 写那条端点的信封（`{ok:true,data:…}`）或直接写 data；对应的 `/api/home` 字段一起生效，存在本地 SQLite 里，热重载不丢。需要 `.dev.vars` 里 `DEV_OVERRIDES=true`。页面右下角开发环境的调试胶囊里有一粒「Fake data: On/Off」，拨的就是这个总开关，切换后各张卡当场刷新。三个配置在 `.claude/launch.json` 里也有（`api-worker-dev` / `lyjwpage-local`）。
 
 ## 海外部署与数据链路
 
