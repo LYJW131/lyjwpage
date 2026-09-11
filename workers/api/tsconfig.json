@@ -19,6 +19,9 @@
       "@/lib/storage-driver": [
         "./src/storage-driver.ts"
       ],
+      "@/lib/apple-developer-token": [
+        "./src/apple-developer-token.ts"
+      ],
       "@/*": [
         "../../src/*"
       ],

@@ -1,3 +1,4 @@
+import { appleDeveloperToken } from "@/lib/apple-developer-token";
 import { readAppleMusicCredentials } from "@/lib/apple-music-credentials";
 import {
   catalogSearchTerms,
@@ -24,10 +25,11 @@ import { cached } from "@/lib/cache";
  * 用的是扒来的 web token，歌词再多带一个这里同一份凭据里的 music user token），
  * 站点会打 Apple 的就这四处。四处都命中缓存，前端轮询多快，回源频率都不变。
  *
- * 凭据只有一个来源：Mac 上报器推来的那份。服务器上不放 .p8 —— 签名密钥留在那台
- * 机器的钥匙串里由系统保管，这边拿到的是 MusicKit 现签的 developer token 和
- * 同一次授权产出的 music user token。没有本地签名的回落：有回落就意味着私钥
- * 仍然得躺在服务器上，那这套东西就白做了。
+ * 两样凭据来路不同。developer token 由 api Worker 用自己那把 .p8 现签（同一把钥匙
+ * 也给「一起听」签发），过半衰期自动换新，不存在过期这回事。music user token 只能
+ * 来自那台 Mac：它是用户在 MusicKit 里授权的产物，上报器推上来存着，这边只管收。
+ * 从前 developer token 也由 Mac 用 MusicKit 现签后推来，代价是它会过期而上报器只在
+ * 变化时才发 —— 实测过期两天 Worker 还拿着旧的挨 401，所以收回这里自签。
  *
  * 这份凭据也不再从任何 HTTP 端点发出去。从前 `/api/ingest/apple-music` 的 GET
  * 把它转交给上报器，代价是 `TELEMETRY_INGEST_SECRET` 从此和收听记录同等敏感；
@@ -37,8 +39,6 @@ import { cached } from "@/lib/cache";
 export type Credentials = {
   developerToken: string;
   userToken: string;
-  /** developer token 的到期时刻，Unix 秒。只用来在报错里说清楚，不做提前判断 */
-  expiresAt: number;
 };
 
 /** 目录查询地区。两个调用方读的是同一个变量，别各写各的默认值 */
@@ -56,11 +56,9 @@ export async function resolveCredentials(): Promise<Credentials> {
         : "没有收到 Mac 上报器的 Apple Music 凭据 —— 在上报器的设置里授权 Apple Music",
     );
   }
-  const { credentials } = result;
   return {
-    developerToken: credentials.developerToken,
-    userToken: credentials.musicUserToken,
-    expiresAt: credentials.expiresAt,
+    developerToken: await appleDeveloperToken(),
+    userToken: result.credentials.musicUserToken,
   };
 }
 
@@ -85,13 +83,12 @@ export async function appleFetchRaw<T>(url: string, credentials: Credentials): P
 
   if (!response.ok) {
     const body = (await response.text()).slice(0, 300);
-    // 带上标称到期时刻：401 多半就是上报器没能按时续上，写出来省一次排查
-    const origin = `凭据来自 Mac 上报器，标称 ${new Date(credentials.expiresAt * 1000).toISOString()} 到期`;
+    // 两个状态码指向两台机器：401 是 Worker 自签那份不被认，403 是 Mac 推来的 user token 不再有效
     if (response.status === 401) {
-      throw new Error(`Apple Music 拒绝了 developer token（401，${origin}）：${body}`);
+      throw new Error(`Apple Music 拒绝了 Worker 自签的 developer token（401，检查 APPLE_MUSIC_TEAM_ID / KEY_ID / PRIVATE_KEY 是否同一套）：${body}`);
     }
     if (response.status === 403) {
-      throw new Error(`Music-User-Token 已失效，需要重新授权（403，${origin}）：${body}`);
+      throw new Error(`Music-User-Token 已失效，需要在 Mac 上报器里重新授权 Apple Music（403）：${body}`);
     }
     throw new Error(`Apple Music 返回 ${response.status}：${body}`);
   }

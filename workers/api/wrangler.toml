@@ -35,6 +35,8 @@ APPLE_MUSIC_STOREFRONT = "cn"
 
 [alias]
 "@/lib/storage-driver" = "./src/storage-driver.ts"
+# developer token 只在这里签：站点侧同名模块是个只会抛错的桩
+"@/lib/apple-developer-token" = "./src/apple-developer-token.ts"
 
 # LIVE_PUSH 数开着的页面（/ws，事件也从它广播），/count 返回 connections。
 [[durable_objects.bindings]]
