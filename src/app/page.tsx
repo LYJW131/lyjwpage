@@ -15,9 +15,9 @@ import { Section } from "@/components/ui/section";
 import { artworkPlaceholders } from "@/lib/artwork-placeholder";
 import { desktopIconDataUri } from "@/lib/desktop-icon-inline";
 import { githubAvatarDataUri } from "@/lib/github-avatar-icon";
-import { builtGithubRepoStats } from "@/lib/github-repo-build";
 import { getRecentCommits } from "@/lib/github-recent-commits";
 import { cachedHomeSnapshot } from "@/lib/status-cache";
+import type { GithubRepoPayload, StatusResponse } from "@/lib/types";
 
 export default async function Home() {
   const [snapshot, avatarDataUri, recentCommits] = await Promise.all([
@@ -25,8 +25,13 @@ export default async function Home() {
     githubAvatarDataUri(),
     getRecentCommits(),
   ]);
-  // 构建期焊死的仓库统计；那次构建没拿到就是 null，卡片只剩提交列表
-  const githubRepo = builtGithubRepoStats();
+  /**
+   * 仓库统计跟着快照走（Worker 取、Worker 缓存）。旧 Worker 还没带这个字段时
+   * 给一份降级信封：直接透传 undefined 会在 useStatus 读 fallback.ok 时整页
+   * 跌进 error 边界。
+   */
+  const githubRepo: StatusResponse<GithubRepoPayload> =
+    snapshot.githubRepo ?? { ok: false, error: "状态暂不可用" };
   const {
     desktop,
     activity,
@@ -108,7 +113,7 @@ export default async function Home() {
 
               {/* 卡片网格是 gap-3，这张在网格外，间隔也得是同一个 12px */}
               <GithubRepoCard
-                stats={githubRepo}
+                fallback={githubRepo}
                 recentCommits={recentCommits}
                 className="mt-3 scroll-mt-28"
               />

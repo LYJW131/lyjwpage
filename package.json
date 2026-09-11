@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "next dev -p 3211",
-    "build": "node scripts/fetch-github-repo-stats.mjs && next build",
+    "build": "next build",
     "start": "next start",
     "test": "node --test --experimental-strip-types --import ./src/lib/testing/register-alias.mjs src/lib/*.test.mts src/lib/*.test.mjs",
     "typecheck": "next typegen && tsc --noEmit",
@@ -31,7 +31,6 @@
     "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {
-    "@next/env": "16.3.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
