@@ -69,7 +69,15 @@ export default async function Home() {
                 <ActivityCard fallback={activity} />
                 <ServerCard fallback={server} />
                 <VibeCodingCard fallback={vibeCoding} />
-                <GithubRepoCard fallback={githubRepo} />
+                {/*
+                  预览站和 worker 先后部署的窗口里，旧后端快照没有 githubRepo。
+                  直接传 undefined 会在 useStatus 的 layout effect 里读到
+                  fallback.ok 而整页跌进 error 边界 —— 先给一个降级信封，
+                  挂载那次回源拿到新端点后自己纠正回来。
+                */}
+                <GithubRepoCard
+                  fallback={githubRepo ?? { ok: false, error: "状态暂不可用" }}
+                />
               </div>
 
               <PlaystationBlock
