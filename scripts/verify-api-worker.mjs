@@ -133,6 +133,45 @@ try {
   assert.equal(JSON.stringify(home).includes('musicUserToken'), false);
   assert.equal(JSON.stringify(home).includes('developerToken'), false);
   console.log('PASS: public snapshot, CORS, private storage removed, heartbeat does not invalidate HTML');
+  // Emby 正在播放：设备、播放方式和规格按契约收下、逐字段收敛，不认识的字段（外挂字幕的路径之类）不落库也不广播
+  const embyMedia = {
+    container: 'mkv', bitrate: 6421965,
+    video: { codec: 'hevc', width: 3840, height: 1600, range: 'hdr10', bitDepth: 10 },
+    audio: { codec: 'dts', profile: 'DTS-HD MA', channels: 8, layout: '7.1', language: 'jpn' },
+    subtitle: { codec: 'srt', language: 'zh-CN', title: null, forced: false, external: true, path: '\\\\nas\\private.srt' },
+  };
+  const embyReport = await post(worker, '/api/ingest/emby', { playing: {
+    itemId: 'isolated-episode', paused: false, positionTicks: 600_000_000, runTimeTicks: 14_400_000_000,
+    client: 'Infuse-Direct', deviceName: 'iPad', playMethod: 'directplay', media: embyMedia,
+    item: { id: 'isolated-episode', name: 'Pilot', type: 'Episode', serverId: null, seriesName: 'Isolated Show', season: 1, episode: 1, year: 2026, progress: 4.2, playedAt: null, posterKey: null, backdropKey: null },
+  } });
+  assert.equal(embyReport.status, 202, await embyReport.text());
+  const expectedMedia = { ...embyMedia, subtitle: { codec: 'srt', language: 'zh-CN', title: null, forced: false, external: true } };
+  await eventually(async () => {
+    const now = (await (await fetch(`${worker}/api/status/watching/now`)).json()).data;
+    assert.equal(now.nowPlaying?.client, 'Infuse-Direct');
+    assert.equal(now.nowPlaying?.deviceName, 'iPad');
+    assert.equal(now.nowPlaying?.playMethod, 'directplay');
+    assert.deepEqual(now.nowPlaying?.media, expectedMedia);
+    assert.equal(now.current?.title, 'Isolated Show');
+  });
+  await eventually(async () => assert.ok(events.some(e => e.type === 'watching-now' && e.payload.nowPlaying?.media?.audio?.profile === 'DTS-HD MA')));
+  assert.equal(JSON.stringify(events).includes('private.srt'), false);
+  const embyJunk = await post(worker, '/api/ingest/emby', { playing: {
+    itemId: 'isolated-episode', paused: true, positionTicks: 700_000_000, runTimeTicks: 14_400_000_000,
+    client: 'x'.repeat(200), deviceName: null, playMethod: 'Transcode', media: { video: { codec: 'hevc', range: 'HDR10', width: -1 } },
+  } });
+  assert.equal(embyJunk.status, 202);
+  await eventually(async () => {
+    const now = (await (await fetch(`${worker}/api/status/watching/now`)).json()).data;
+    assert.equal(now.nowPlaying?.paused, true);
+    assert.equal(now.nowPlaying?.client?.length, 64);
+    assert.equal(now.nowPlaying?.playMethod, null, 'play method is case-sensitive lowercase');
+    assert.deepEqual(now.nowPlaying?.media, { container: null, bitrate: null, video: { codec: 'hevc', width: null, height: null, range: null, bitDepth: null }, audio: null, subtitle: null });
+  });
+  assert.equal((await post(worker, '/api/ingest/emby', { playing: null })).status, 202);
+  await eventually(async () => assert.equal((await (await fetch(`${worker}/api/status/watching/now`)).json()).data.nowPlaying, null));
+  console.log('PASS: Emby playback carries device, play method and media spec; junk fields are dropped');
   // 一起听的 developer token：同源签发、可验签、两个时刻齐全；不走 StateHub，也不被公开 API 那条兜住
   const tokenResponse = await fetch(`${worker}/api/musickit/token`, { headers: { Origin: 'http://localhost:3000' } });
   const tokenBody = await tokenResponse.text();

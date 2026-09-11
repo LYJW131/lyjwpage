@@ -20,6 +20,57 @@ export type WatchingItem = {
   playedAt: string | null;
 };
 
+/**
+ * 正在播放的那一路视频的规格。上报器从 Emby 的会话和媒体流里挑出来，只带
+ * 「Emby 说了什么」：编码名原样小写，语言是 Emby 给的代码，标签由浏览器现拼
+ * （见 lib/watching-media）。Emby 那些本地化过的 DisplayTitle 不进来 —— 那是服务端
+ * 语言的字符串，不是数据。
+ *
+ * 全部可空：Emby 有些流没有对应字段，转码时上游的读数也可能缺席。
+ */
+export type WatchingMedia = {
+  /** 容器格式，如 mkv / mp4 */
+  container: string | null;
+  /** 整体码率，bit/s */
+  bitrate: number | null;
+  video: {
+    /** 如 hevc / h264 / av1 */
+    codec: string | null;
+    width: number | null;
+    height: number | null;
+    /**
+     * 动态范围。上报器按 Emby 的 ExtendedVideoType 归一，没有那个字段时退回
+     * VideoRange 给的 hdr / sdr 两档。
+     */
+    range: "sdr" | "hdr" | "hdr10" | "hdr10plus" | "dolby-vision" | "hlg" | null;
+    bitDepth: number | null;
+  } | null;
+  /** 正在输出的那条音轨 */
+  audio: {
+    /** 如 eac3 / dts / truehd */
+    codec: string | null;
+    /** 如 "DTS-HD MA"，只有部分编码带 */
+    profile: string | null;
+    channels: number | null;
+    /** 如 "5.1" */
+    layout: string | null;
+    /** Emby 的语言代码，多为 ISO 639-2 三字母，也见 zh-CN 这类 */
+    language: string | null;
+  } | null;
+  /** 选中的字幕；没开字幕就是 null */
+  subtitle: {
+    codec: string | null;
+    language: string | null;
+    /** 轨道自带的标题，如 "Simplified" */
+    title: string | null;
+    forced: boolean;
+    external: boolean;
+  } | null;
+};
+
+/** Emby 的播放方式。转码时 video / audio 里仍是源文件的规格，不是转出来的。 */
+export type WatchingPlayMethod = "directplay" | "directstream" | "transcode";
+
 /** PlayStation 最近游玩列表中的一项；图片仍是 PSN 公共 CDN 的原始地址。 */
 export type PlaystationGame = {
   titleId: string;

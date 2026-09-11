@@ -1,7 +1,7 @@
 import { getCurrentItem, getImageObjectKeys, getResume, resolveNowPlaying, type EmbyNowPlaying, type StoredWatchingItem } from "@/lib/emby-store";
 import { number, object, text } from "@/lib/json";
 import { NOW_WATCHING_TAG, WATCHING_TAG } from "@/lib/live-events";
-import type { WatchingItem } from "@/lib/types";
+import type { WatchingItem, WatchingMedia, WatchingPlayMethod } from "@/lib/types";
 import { fanout, type PendingEvent } from "@api/fanout";
 import { hasStoredImage, IMAGE_OBJECT_KEY } from "@api/r2-assets";
 import { clearNowPlaying, setCurrentItem, setImageObjectKeys, setNowPlaying, setResume } from "@api/stores/emby-store";
@@ -310,6 +310,84 @@ export async function recordEmbyReport(body: unknown) {
  * 它根本拼不出 URL。但转发丢了的话对端缺的是那次上报的全部内容，不止图。
  */
 
+/**
+ * 规格里的字符串都是编码名、语言代码这类短标识。挡个长度，别让一条上报把任意
+ * 长的文本存进 SQLite 再广播给每个在线的浏览器。
+ */
+const LABEL_LIMIT = 64;
+
+function label(value: unknown): string | null {
+  const raw = text(value);
+  return raw ? raw.slice(0, LABEL_LIMIT) : null;
+}
+
+/** 非负整数才收：宽高、声道数、位深、码率没有小数和负数 */
+function count(value: unknown): number | null {
+  const raw = number(value);
+  return raw != null && raw >= 0 ? Math.round(raw) : null;
+}
+
+type VideoRange = NonNullable<NonNullable<WatchingMedia["video"]>["range"]>;
+
+const RANGES = new Set<VideoRange>(["sdr", "hdr", "hdr10", "hdr10plus", "dolby-vision", "hlg"]);
+
+function videoRange(value: unknown): VideoRange | null {
+  const raw = text(value);
+  return raw && RANGES.has(raw as VideoRange) ? (raw as VideoRange) : null;
+}
+
+const PLAY_METHODS = new Set<WatchingPlayMethod>(["directplay", "directstream", "transcode"]);
+
+function playMethod(value: unknown): WatchingPlayMethod | null {
+  const raw = text(value);
+  return raw && PLAY_METHODS.has(raw as WatchingPlayMethod) ? (raw as WatchingPlayMethod) : null;
+}
+
+/**
+ * 上报器已经按会话选好了音轨和字幕，这里只按契约逐字段收敛，不猜、不补。
+ * 整块不是对象就当没带 —— 旧版上报器不发这个字段，位置更新照收。
+ */
+function playbackMedia(value: unknown): WatchingMedia | null {
+  const raw = object(value);
+  if (!raw) return null;
+
+  const video = object(raw.video);
+  const audio = object(raw.audio);
+  const subtitle = object(raw.subtitle);
+
+  return {
+    container: label(raw.container),
+    bitrate: count(raw.bitrate),
+    video: video
+      ? {
+          codec: label(video.codec),
+          width: count(video.width),
+          height: count(video.height),
+          range: videoRange(video.range),
+          bitDepth: count(video.bitDepth),
+        }
+      : null,
+    audio: audio
+      ? {
+          codec: label(audio.codec),
+          profile: label(audio.profile),
+          channels: count(audio.channels),
+          layout: label(audio.layout),
+          language: label(audio.language),
+        }
+      : null,
+    subtitle: subtitle
+      ? {
+          codec: label(subtitle.codec),
+          language: label(subtitle.language),
+          title: label(subtitle.title),
+          forced: subtitle.forced === true,
+          external: subtitle.external === true,
+        }
+      : null,
+  };
+}
+
 /** 收下一次播放状态：先算，写留给 commit。`state` 为 null 表示没有会话在播了 */
 function preparePlaying(value: unknown): {
   outcome: "updated" | "cleared";
@@ -334,7 +412,10 @@ function preparePlaying(value: unknown): {
     paused: raw.paused === true,
     positionTicks: number(raw.positionTicks) ?? 0,
     runTimeTicks: number(raw.runTimeTicks) ?? 0,
-    device: text(raw.device) ?? "",
+    client: label(raw.client),
+    deviceName: label(raw.deviceName),
+    playMethod: playMethod(raw.playMethod),
+    media: playbackMedia(raw.media),
     at: Date.now(),
   };
 
