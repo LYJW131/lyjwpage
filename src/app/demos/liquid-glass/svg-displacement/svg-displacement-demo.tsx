@@ -50,6 +50,7 @@ function SliderRow({
   min,
   max,
   step,
+  nudgeStep,
   display,
   onChange,
 }: {
@@ -59,26 +60,57 @@ function SliderRow({
   min: number;
   max: number;
   step: number;
+  nudgeStep?: number;
   display: string;
   onChange: (next: number) => void;
 }) {
+  const buttonStep = nudgeStep ?? step;
+  const clamp = (next: number) => Math.min(max, Math.max(min, next));
+  const precision = String(buttonStep).includes(".")
+    ? String(buttonStep).split(".")[1].length
+    : 0;
+  const nudge = (direction: -1 | 1) => {
+    const raw = value + direction * buttonStep;
+    const rounded = Number(raw.toFixed(precision));
+    onChange(clamp(rounded));
+  };
+
   return (
-    <label className="grid gap-1.5" htmlFor={id}>
-      <span className="flex items-baseline justify-between gap-3 text-xs text-muted-foreground">
-        <span>{label}</span>
+    <div className="grid gap-1.5">
+      <div className="flex items-baseline justify-between gap-3 text-xs text-muted-foreground">
+        <label htmlFor={id}>{label}</label>
         <span className="font-mono tabular-nums text-foreground">{display}</span>
-      </span>
-      <input
-        id={id}
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(event) => onChange(Number(event.target.value))}
-        className="h-8 w-full accent-[var(--foreground)]"
-      />
-    </label>
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          aria-label={`${label}减小`}
+          onClick={() => nudge(-1)}
+          className="inline-flex size-8 shrink-0 items-center justify-center border border-line bg-muted text-sm hover:bg-surface-hover"
+        >
+          −
+        </button>
+        <input
+          id={id}
+          type="range"
+          min={min}
+          max={max}
+          step={step}
+          value={value}
+          onChange={(event) => onChange(Number(event.target.value))}
+          onInput={(event) => onChange(Number((event.target as HTMLInputElement).value))}
+          className="h-8 w-full accent-[var(--foreground)]"
+        />
+        <button
+          type="button"
+          aria-label={`${label}增大`}
+          onClick={() => nudge(1)}
+          className="inline-flex size-8 shrink-0 items-center justify-center border border-line bg-muted text-sm hover:bg-surface-hover"
+        >
+          +
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -321,6 +353,7 @@ export function SvgDisplacementDemo() {
               min={0}
               max={120}
               step={1}
+              nudgeStep={10}
               display={String(scale)}
               onChange={setScale}
             />
@@ -331,6 +364,7 @@ export function SvgDisplacementDemo() {
               min={0.004}
               max={0.06}
               step={0.001}
+              nudgeStep={0.005}
               display={frequency.toFixed(3)}
               onChange={setFrequency}
             />
@@ -341,6 +375,7 @@ export function SvgDisplacementDemo() {
               min={96}
               max={260}
               step={4}
+              nudgeStep={16}
               display={`${lensSize}px`}
               onChange={setLensSize}
             />
@@ -351,6 +386,7 @@ export function SvgDisplacementDemo() {
               min={0}
               max={1.5}
               step={0.05}
+              nudgeStep={0.1}
               display={speed.toFixed(2)}
               onChange={setSpeed}
             />
