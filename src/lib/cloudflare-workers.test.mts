@@ -69,7 +69,8 @@ test("deployment permission failure preserves metrics and sends credentials only
   });
   const metrics = await fetchWorkersMetrics("test-account", "test-secret", start, end);
   const deployments = await fetchWorkerDeployments("test-account", "test-secret");
-  assert.equal(calls.length, 4);
+  // GraphQL 一次、部署三次、版本列表三次；没有任何版本号就不查构建
+  assert.equal(calls.length, 7);
   assert.equal(metrics.workers[0].metrics?.requests, 20);
   assert.deepEqual(deployments, [null, null, null]);
   assert.doesNotMatch(JSON.stringify({ metrics, deployments }), /test-secret|test-account/);
@@ -95,9 +96,39 @@ test("deployments join the commit of the highest-traffic version in one batched 
     return Response.json({ success: false }, { status: 403 });
   });
   const deployments = await fetchWorkerDeployments("test-account", "test-secret");
-  assert.equal(calls.length, 4);
+  // 部署三次、版本列表三次（全 403）、构建一次
+  assert.equal(calls.length, 7);
   assert.deepEqual(deployments[0]?.commit, { sha, branch: "main", message: "feat: x" });
   assert.deepEqual(deployments.slice(1), [null, null]);
+});
+
+test("a deployed version without a build record borrows the commit of the previous built version", async (t) => {
+  const sha = "0123456789abcdef".repeat(2) + "01234567";
+  t.mock.method(globalThis, "fetch", async (input: string | URL | Request) => {
+    const url = String(input);
+    if (url.includes("/builds/builds?")) {
+      const ids = new URL(url).searchParams.get("version_ids")?.split(",") ?? [];
+      assert.ok(ids.includes("secret-v") && ids.includes("built-v"));
+      return Response.json({ success: true, result: { builds: {
+        "built-v": { build_trigger_metadata: { branch: "main", commit_hash: sha, commit_message: "feat: y" } },
+        "older-v": { build_trigger_metadata: { branch: "main", commit_hash: "f".repeat(40), commit_message: "old" } },
+      } } });
+    }
+    if (url.includes("/workers/scripts/api/deployments")) {
+      return Response.json({ success: true, result: { deployments: [
+        { created_on: "2026-09-12T18:30:00Z", versions: [{ version_id: "secret-v", percentage: 100 }] },
+      ] } });
+    }
+    if (url.includes("/workers/scripts/api/versions")) {
+      return Response.json({ success: true, result: { items: [
+        { id: "older-v", number: 46 }, { id: "secret-v", number: 48 }, { id: "built-v", number: 47 },
+      ] } });
+    }
+    return Response.json({ success: false }, { status: 403 });
+  });
+  const deployments = await fetchWorkerDeployments("test-account", "test-secret");
+  assert.deepEqual(deployments[0]?.commit, { sha, branch: "main", message: "feat: y" });
+  assert.equal(deployments[0]?.versions[0].id, "secret-v");
 });
 
 test("metrics fall back to the last good payload when Cloudflare is unavailable, else report unavailable", async (t) => {
