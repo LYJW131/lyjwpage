@@ -143,3 +143,48 @@ SQLite 初始化、迁移与权限见 [后端架构](../../docs/state-storage.md
 ## Worker 更名
 
 生产服务为 `api`，域名 `api.homepage.lyjw.llc`。`v1-transfer-from-ingest` 将旧 Worker 的三个 SQLite Durable Object 命名空间整体转移，保持 ID 与数据不变；后续部署保留这条迁移记录。不要对这些类另加创建或删除迁移。
+## Workers 统计卡片
+
+`GET /api/status/cloudflare-workers` 与 `/api/home` 的 `cloudflareWorkers` 字段共用一份统计。
+只查询本仓库的 `api`、`online-counter`、`playstation-reporter`，不公开账号内其他 Worker。
+API Worker 使用 `CLOUDFLARE_METRICS_TOKEN`（只读 Secret）和 `CLOUDFLARE_ACCOUNT_ID`；
+本地放在忽略提交的 `.dev.vars`，生产发布前为 `api` 配置同名变量。Vercel 不需要令牌。
+
+Cloudflare GraphQL `workersInvocationsAdaptive` 提供滚动 24 小时的调用量、执行错误、子请求、
+整段窗口 CPU P50 和按小时的调用趋势；CPU 从微秒转为公开字段 `cpuTimeP50Ms`。
+首尾小时只计窗口内调用，采样统计不是账单，也不将执行错误等同于 HTTP 错误或可用率。
+部署 API 只投影部署时间、正在分流的版本 ID 与比例，不输出部署作者、邮箱或账号凭据。
+
+SQLite 缓存五分钟，浏览器五分钟轮询，无推送。上游失败时最多保留一天的最后成功结果，
+保留原始时间，卡片超过 15 分钟以黄点表示待更新；没有统计时显示 `—`，部署时间在服务名提示中查看。
+首次部署先配置 API Worker 的只读凭据，再发布 Worker 和站点；构建监视路径已有 `src/lib/*` 与 `workers/api/*`。
+
+
+## Vercel 卡片
+
+`GET /api/status/vercel-deployments` 与 `/api/home` 的 `vercelDeployments` 字段共用数据。
+API Worker 使用一个 `VERCEL_TOKEN`，以及 `VERCEL_PROJECT_ID`、`VERCEL_TEAM_ID`。Token 只放本地
+`.dev.vars` 或生产 Worker Secret，不配置到 Next.js。函数指标需要团队范围的普通 Token，具有写权限；
+代码只查询指定项目，所有请求只读取数据。凭据到期后替换同名 Secret。
+
+`GET /v9/projects/{id}` 的 `targets.production` 决定当前生产版本，随后读取该部署详情；
+`GET /v6/deployments` 读取最近五次记录。新构建失败或回滚不会把最新创建的部署误当成线上版本。
+部署缓存一分钟；上游失败最多沿用一天的成功结果，保留原始时间，超过五分钟以黄点表示待更新。
+
+性能与调用量在 `metrics` 中按组独立缓存五分钟，浏览器沿用一分钟轮询；每组保留自己的采集时间与窗口。
+上游失败只影响对应组，最多沿用一天的成功数据，超过十五分钟以黄点表示待更新；从未成功则显示 `—`。
+- `speed`：最近七天、生产环境的桌面与移动端 RES，以及 LCP、INP、CLS、FCP、TTFB 的整段窗口 P75。
+  读取控制台 `/api/speed-insights/v2/timeseries` 的 `overview`，不平均每日分位数。缺少指标显示空值。
+- `functions`：最近十二小时、生产环境的函数调用、错误、超时、CPU P75 与平均峰值内存；`history` 提供五分钟粒度的调用趋势（`at` 为 epoch 毫秒，`requests` 为该时间桶调用数）。
+  读取控制台 `/api/observability/metrics` 的整段 `summary`；错误与超时分开，CPU 不是每日或每桶 P75 的平均值。
+- `analytics`：前七个完整 UTC 日的页面浏览与访客，使用官方 `/v1/query/web-analytics/visits/count`，
+  保留接口返回的实际时间边界，不累加每日独立访客数。
+
+Speed Insights 与函数统计目前使用控制台接口，平台可能调整，解析失败会显示上次数据或暂不可用。
+仅公开上述聚合指标及部署 ID、状态、时间、生产/预览标记、提交 SHA、分支和标题；
+不转发平台原始响应、查询元数据、访问者明细、邮箱、环境变量和日志。
+首次发布先配置生产 API Worker 凭据，再发布 Worker 和站点。
+
+首页将仓库、Vercel 和 Workers 合为一张站点卡片。提交与部署按 SHA 去重，当前线上版本固定保留，
+每条占整行；运行趋势统一为带坐标轴的折线，各服务保留自己的窗口、采样间隔与纵轴刻度。
+贡献图以完整宽度显示最近六周的堆叠柱状图、周日期和提交总数。

@@ -5,7 +5,7 @@ import { ContactCard } from "@/components/contact-card";
 import { DevFakeDataToggle } from "@/components/dev-fake-data-toggle";
 import { DevToggleDock } from "@/components/dev-toggles";
 import { ActivityCard } from "@/components/live/activity-card";
-import { GithubRepoCard } from "@/components/live/github-repo-card";
+import { SiteStatusCard } from "@/components/live/site-status-card";
 import { LiveMediaPair } from "@/components/live/media-pair";
 import { ServerCard } from "@/components/live/server-card";
 import { PlaystationBlock } from "@/components/live/playstation-block";
@@ -121,11 +121,12 @@ export default async function Home() {
                 />
               </div>
 
-              {/* 卡片网格是 gap-3，这张在网格外，间隔也得是同一个 12px */}
-              <GithubRepoCard
-                fallback={githubRepo}
+              <SiteStatusCard
+                githubFallback={githubRepo}
+                vercelFallback={snapshot.vercelDeployments ?? { ok: false, error: "部署暂不可用" }}
+                cloudflareFallback={snapshot.cloudflareWorkers ?? { ok: false, error: "统计暂不可用" }}
                 recentCommits={recentCommits}
-                className="mt-3 scroll-mt-28"
+                className="mt-3"
               />
 
               <div id="watching" className="mt-6 scroll-mt-28 border-t border-line pt-5">

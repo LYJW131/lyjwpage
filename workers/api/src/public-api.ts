@@ -16,6 +16,8 @@ import { GET as route14 } from "./routes/status/listening/now/route";
 import { GET as route15 } from "./routes/lyrics/route";
 import { GET as route16 } from "./routes/motion-artwork/route";
 import { GET as route17 } from "./routes/status/github-repo/route";
+import { GET as route18 } from "./routes/status/cloudflare-workers/route";
+import { GET as route19 } from "./routes/status/vercel-deployments/route";
 import { get as cacheGet, put as cachePut, remove as cacheRemove } from "@/lib/cache";
 import { publicHomeSnapshot } from "@/lib/public-home";
 
@@ -38,6 +40,8 @@ const routes: Record<string, (request: Request) => Promise<Response>> = {
   "/api/lyrics": route15,
   "/api/motion-artwork": route16,
   "/api/status/github-repo": route17,
+  "/api/status/cloudflare-workers": route18,
+  "/api/status/vercel-deployments": route19,
 };
 
 /**
@@ -141,6 +145,8 @@ const SNAPSHOT_PATHS: Record<string, string> = {
   trophies: "/api/status/trophies",
   githubChart: "/api/status/github-chart",
   githubRepo: "/api/status/github-repo",
+  cloudflareWorkers: "/api/status/cloudflare-workers",
+  vercelDeployments: "/api/status/vercel-deployments",
 };
 
 const devOverridesEnabled = (): boolean => process.env.DEV_OVERRIDES?.trim() === "true";
