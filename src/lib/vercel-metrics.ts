@@ -44,17 +44,27 @@ export function parseVercelAnalytics(raw: unknown) {
   return { start, end, pageviews: count(data.pageviews), visitors: count(data.visitors) };
 }
 
+/**
+ * 每组独立缓存；失败时沿用 last-good（保留原采集时间）。从未成功过就把错误抛给 `cached`，
+ * 只进它 5 秒的负缓存 —— 不能把 null 按整段 TTL 存起来，否则一次失败要等十五分钟才重试。
+ */
 async function section<T extends VercelMetricWindow>(key: string, ttlMs: number, loader: () => Promise<T>): Promise<T | null> {
-  return cached<T | null>(key, ttlMs, async () => {
-    try {
-      const data = await loader();
-      await put(`${key}:last-good`, data, 86_400_000);
-      return data;
-    } catch {
-      console.warn("[vercel-metrics] 指标读取失败，保留原采集时间");
-      return await get<T>(`${key}:last-good`) ?? null;
-    }
-  });
+  try {
+    return await cached<T>(key, ttlMs, async () => {
+      try {
+        const data = await loader();
+        await put(`${key}:last-good`, data, 86_400_000);
+        return data;
+      } catch (error) {
+        console.warn(`[vercel-metrics] ${key.split(":").at(-1)} 读取失败：${error instanceof Error ? error.message : String(error)}`);
+        const previous = await get<T>(`${key}:last-good`);
+        if (previous) return previous;
+        throw error;
+      }
+    });
+  } catch {
+    return null;
+  }
 }
 
 /** 只在 API Worker 执行。起止由调用方给定，便于测试固定窗口；只要 summary，不要分桶序列。 */
@@ -84,7 +94,8 @@ export async function fetchVercelFunctions(project: string, team: string, token:
 
 /** Worker 独立缓存各指标组；任何一组失效都不影响部署或其他指标。 */
 export async function getVercelMetrics(project: string, team: string, token: string): Promise<VercelMetricsPayload> {
-  const prefix = `vercel-metrics:v1:${team}:${project}`;
+  // v2：v1 时代把失败的 null 按整段 TTL 存过，升键把线上那份直接作废。
+  const prefix = `vercel-metrics:v2:${team}:${project}`;
   const request = async (path: string, params: Record<string, string> = {}, body?: unknown) => {
     const url = new URL(path);
     url.search = new URLSearchParams({ teamId: team, ...params }).toString();
