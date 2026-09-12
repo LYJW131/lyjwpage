@@ -1,6 +1,15 @@
-import Image from "next/image";
+"use client";
 
+import ClaudeMono from "@lobehub/icons/es/Claude/components/Mono";
+import CursorMono from "@lobehub/icons/es/Cursor/components/Mono";
+import OpenAIMono from "@lobehub/icons/es/OpenAI/components/Mono";
+import Image from "next/image";
+import { Fragment, useEffect, useState } from "react";
+
+import { useMountedAt } from "@/hooks/use-mounted-at";
+import type { CommitAuthor } from "@/lib/commit-authors";
 import type { GithubRecentCommit } from "@/lib/github-recent-commits";
+import { formatRelativeTime } from "@/lib/relative-time";
 import { site } from "@/lib/site";
 import type { GithubRepoContributor, GithubRepoPayload } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -105,7 +114,71 @@ function ContributorRow({
 
 const stateLabels: Record<DeploymentState, string> = { READY: "已部署", BUILDING: "构建中", QUEUED: "排队", INITIALIZING: "准备中", ERROR: "失败", CANCELED: "取消", UNKNOWN: "—" };
 
-/** 一条提交的加高卡：状态 + 标题 + 构建信息，96px 正好占左边两行加一条缝。 */
+/** 署名行的头像 16px；GitHub 头像取 32 那档，unoptimized 直连。 */
+const AUTHOR_PX = 16;
+
+/** 没有 GitHub 头像的 agent：品牌色圆底 + 单色图标，和 GitHub 给 claude 画的那种一致。 */
+const AGENT_AVATARS: Record<NonNullable<CommitAuthor["agent"]>, { Icon: typeof ClaudeMono; background: string }> = {
+  claude: { Icon: ClaudeMono, background: "#d97757" },
+  cursor: { Icon: CursorMono, background: "#111111" },
+  openai: { Icon: OpenAIMono, background: "#111111" },
+};
+
+function AuthorAvatar({ author }: { author: CommitAuthor }) {
+  const className = "size-4 shrink-0 rounded-full border border-surface bg-muted";
+  if (author.avatarUrl) {
+    return <Image src={avatarSrc(author.avatarUrl).replace(`s=${AVATAR_PX * 2}`, `s=${AUTHOR_PX * 2}`)} alt="" width={AUTHOR_PX} height={AUTHOR_PX} unoptimized className={className} />;
+  }
+  const agent = author.agent ? AGENT_AVATARS[author.agent] : null;
+  if (agent) {
+    return (
+      <span aria-hidden className={cn(className, "flex items-center justify-center")} style={{ backgroundColor: agent.background }}>
+        <agent.Icon size={10} color="#fff" />
+      </span>
+    );
+  }
+  return <span aria-hidden className={cn(className, "flex items-center justify-center text-[9px] text-muted-foreground")}>{author.name.slice(0, 1).toUpperCase()}</span>;
+}
+
+/**
+ * GitHub 提交页那一行：叠着的头像 + `A and B committed 13 minutes ago`。
+ * 相对时间由「当下」推出，首帧（服务端和 hydrate）先画绝对时刻，挂载后换成相对的，每分钟再刷。
+ */
+function CommitByline({ authors, committedAt }: { authors: CommitAuthor[]; committedAt: string | null }) {
+  const mountedAt = useMountedAt();
+  const [tick, setTick] = useState(0);
+  const now = tick || mountedAt;
+  useEffect(() => {
+    if (!mountedAt) return;
+    const timer = window.setInterval(() => setTick(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, [mountedAt]);
+  const at = committedAt ? Date.parse(committedAt) : NaN;
+  const when = Number.isNaN(at) ? "—" : now ? formatRelativeTime(at, now) : formatCommitTime(committedAt);
+  return (
+    <div className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4 text-muted-foreground">
+      {authors.length > 0 && (
+        <span className="flex shrink-0 -space-x-1">
+          {authors.map((author) => <AuthorAvatar key={author.login ?? author.name} author={author} />)}
+        </span>
+      )}
+      <span className="min-w-0 truncate">
+        {authors.map((author, index) => (
+          <Fragment key={author.login ?? author.name}>
+            {index > 0 && (authors.length === 2 ? " and " : index === authors.length - 1 ? ", and " : ", ")}
+            {author.login
+              ? <a href={`https://github.com/${author.login}`} target="_blank" rel="noreferrer noopener" className="font-medium text-foreground hover:underline">{author.name}</a>
+              : <span className="font-medium text-foreground">{author.name}</span>}
+          </Fragment>
+        ))}
+        {authors.length > 0 ? " committed " : "committed "}
+        <time dateTime={committedAt ?? undefined} title={committedAt ? formatCommitTime(committedAt) : undefined}>{when}</time>
+      </span>
+    </div>
+  );
+}
+
+/** 一条提交的加高卡：标题 + 署名 + 部署状态，96px 正好占左边两行加一条缝。 */
 function CommitCard({ commit, deploy }: {
   commit: GithubRecentCommit;
   deploy: { deployment: VercelDeployment; production: boolean } | undefined;
@@ -115,13 +188,13 @@ function CommitCard({ commit, deploy }: {
   const status = production ? "当前线上" : !deployment ? "已提交" : deployment.state === "READY" && deployment.target === "preview" ? "预览就绪" : stateLabels[deployment.state];
   return (
     <li className="flex min-h-[96px] flex-col justify-center gap-1 border border-line bg-muted/40 px-3 py-2">
-      <div className="flex items-center gap-1.5 text-[11px] leading-4">
-        <span className={cn("size-1.5 shrink-0 rounded-full", production ? "bg-emerald-500" : deployment?.state === "ERROR" ? "bg-red-500" : deployment?.state === "BUILDING" ? "bg-amber-500" : "bg-muted-foreground/40")} />
-        <span className={cn("shrink-0", production ? "text-emerald-600 dark:text-emerald-400" : deployment?.state === "ERROR" ? "text-red-500" : "text-muted-foreground")}>{status}</span>
-        <span className="ml-auto shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground">{formatCommitTime(commit.committedAt)}</span>
-      </div>
       <a href={commit.url} target="_blank" rel="noreferrer noopener" title={commit.title} className="block truncate text-sm leading-5 hover:underline">{commit.title}</a>
-      <div className="flex items-center gap-x-3 text-[10px] leading-4 text-muted-foreground">
+      <CommitByline authors={commit.authors} committedAt={commit.committedAt} />
+      <div className="flex items-center gap-x-2.5 text-[10px] leading-4 text-muted-foreground">
+        <span className="flex items-center gap-1.5">
+          <span className={cn("size-1.5 shrink-0 rounded-full", production ? "bg-emerald-500" : deployment?.state === "ERROR" ? "bg-red-500" : deployment?.state === "BUILDING" ? "bg-amber-500" : "bg-muted-foreground/40")} />
+          <span className={cn(production ? "text-emerald-600 dark:text-emerald-400" : deployment?.state === "ERROR" ? "text-red-500" : undefined)}>{status}</span>
+        </span>
         <a href={commit.url} target="_blank" rel="noreferrer noopener" className="font-mono hover:text-foreground">{commit.shortSha}</a>
         {deployment && <a href={`${site.vercel}/${deployment.id.replace(/^dpl_/, "")}`} target="_blank" rel="noreferrer noopener" className="hover:text-foreground">{deployment.target === "production" ? "Production" : "Preview"} ↗</a>}
         {deployment?.buildDurationMs != null && <span>构建 {(deployment.buildDurationMs / 1000).toFixed(0)}s</span>}
