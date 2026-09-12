@@ -1,0 +1,478 @@
+/*
+ * Liquid Glass（CSS backdrop-filter 方向）
+ * 颜色方向：深海青绿 + 琥珀高光，刻意避开紫系与奶油衬线风。
+ */
+
+.stage {
+  --ptr-x: 0.52;
+  --ptr-y: 0.38;
+  --scroll-y: 0px;
+  --ink: #e8f2ef;
+  --ink-dim: color-mix(in oklab, var(--ink) 68%, transparent);
+  --glass-blur: 22px;
+  --glass-sat: 1.75;
+  --glass-bright: 1.08;
+
+  position: relative;
+  isolation: isolate;
+  min-height: 100dvh;
+  overflow-x: clip;
+  color: var(--ink);
+  background: #061018;
+  font-family: "Avenir Next", "Segoe UI", "PingFang SC", "Hiragino Sans GB",
+    "Noto Sans SC", sans-serif;
+}
+
+.sky {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(120% 80% at 10% -10%, #1a4d5c 0%, transparent 55%),
+    radial-gradient(90% 70% at 95% 15%, #8a4a1f 0%, transparent 45%),
+    radial-gradient(70% 50% at 50% 100%, #0d3b36 0%, transparent 55%),
+    linear-gradient(165deg, #07131c 0%, #0a1f28 45%, #102028 100%);
+  transform: translate3d(
+    calc((var(--ptr-x) - 0.5) * -18px),
+    calc((var(--ptr-y) - 0.5) * -12px + var(--scroll-y) * -0.08),
+    0
+  );
+  transition: transform 80ms linear;
+}
+
+.blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(2px);
+  opacity: 0.9;
+  will-change: transform;
+}
+
+.blobA {
+  width: min(58vw, 520px);
+  height: min(58vw, 520px);
+  left: -8%;
+  top: 8%;
+  background: radial-gradient(circle at 35% 35%, #3ecfbf, #127a8a 58%, transparent 72%);
+  animation: driftA 18s ease-in-out infinite alternate;
+}
+
+.blobB {
+  width: min(48vw, 420px);
+  height: min(48vw, 420px);
+  right: -6%;
+  top: 18%;
+  background: radial-gradient(circle at 40% 40%, #f0a35a, #c45d2a 55%, transparent 70%);
+  animation: driftB 22s ease-in-out infinite alternate;
+}
+
+.blobC {
+  width: min(70vw, 640px);
+  height: min(42vw, 380px);
+  left: 18%;
+  bottom: -8%;
+  background: radial-gradient(circle at 50% 40%, #6ad1ff, #1f6f9a 50%, transparent 72%);
+  animation: driftC 26s ease-in-out infinite alternate;
+}
+
+.grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(color-mix(in oklab, #dff7f2 10%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in oklab, #dff7f2 10%, transparent) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse at 50% 40%, #000 20%, transparent 78%);
+  opacity: 0.35;
+}
+
+.ribbon {
+  position: absolute;
+  left: -20%;
+  top: 42%;
+  width: 140%;
+  height: 28%;
+  background: linear-gradient(
+    100deg,
+    transparent 0%,
+    color-mix(in oklab, #7ef0d8 35%, transparent) 28%,
+    color-mix(in oklab, #ffb067 40%, transparent) 52%,
+    color-mix(in oklab, #5ec8ff 30%, transparent) 74%,
+    transparent 100%
+  );
+  filter: blur(28px);
+  transform: rotate(-8deg) translateY(calc(var(--scroll-y) * -0.04));
+  opacity: 0.55;
+}
+
+.orb {
+  position: absolute;
+  width: min(28vw, 220px);
+  height: min(28vw, 220px);
+  right: 18%;
+  bottom: 22%;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 32% 28%, #fff6 0%, transparent 28%),
+    radial-gradient(circle at 50% 55%, #2ad4c0, #0b5f6e 70%);
+  box-shadow:
+    0 30px 80px color-mix(in oklab, #0ff 22%, transparent),
+    inset 0 -20px 40px color-mix(in oklab, #003 35%, transparent);
+  transform: translate3d(
+    calc((var(--ptr-x) - 0.5) * 28px),
+    calc((var(--ptr-y) - 0.5) * 20px + var(--scroll-y) * -0.12),
+    0
+  );
+}
+
+.header,
+.playground,
+.notes,
+.footer {
+  position: relative;
+  z-index: 1;
+}
+
+.header {
+  max-width: 44rem;
+  padding: clamp(2rem, 6vw, 4.5rem) clamp(1.25rem, 4vw, 2.5rem) 1.25rem;
+}
+
+.kicker {
+  margin: 0 0 0.75rem;
+  font-size: 0.78rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.title {
+  margin: 0;
+  font-size: clamp(2.6rem, 9vw, 5.2rem);
+  line-height: 0.95;
+  letter-spacing: -0.04em;
+  font-weight: 650;
+  text-wrap: balance;
+}
+
+.lead {
+  margin: 1rem 0 0;
+  max-width: 36rem;
+  font-size: clamp(0.98rem, 2.4vw, 1.12rem);
+  line-height: 1.65;
+  color: var(--ink-dim);
+}
+
+.lead code,
+.notes code,
+.footer code {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 0.92em;
+  color: #b8fff0;
+}
+
+.playground {
+  display: grid;
+  gap: 1rem;
+  padding: 0 clamp(1.25rem, 4vw, 2.5rem) 2rem;
+  max-width: 68rem;
+  margin: 0 auto;
+  grid-template-columns: 1fr;
+  align-items: start;
+}
+
+@media (min-width: 860px) {
+  .playground {
+    grid-template-columns: 1.35fr 0.9fr;
+    gap: 1.25rem;
+  }
+
+  .floatPill {
+    grid-column: 1 / -1;
+    justify-self: center;
+  }
+}
+
+/* —— 玻璃原语：fill / specular / rim 三层 —— */
+
+.glass {
+  position: relative;
+  overflow: hidden;
+  border-radius: 28px;
+  isolation: isolate;
+  transform: translateZ(0);
+  box-shadow:
+    0 18px 50px color-mix(in oklab, #000 38%, transparent),
+    0 1px 0 color-mix(in oklab, #fff 18%, transparent);
+}
+
+.glassFill,
+.glassSpecular,
+.glassRim {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+.glassFill {
+  z-index: 0;
+  background:
+    linear-gradient(
+      145deg,
+      color-mix(in oklab, #d7fff6 calc(18% + var(--ptr-x) * 8%), transparent),
+      color-mix(in oklab, #9ad0ff 12%, transparent) 42%,
+      color-mix(in oklab, #ffd2a1 10%, transparent) 78%,
+      color-mix(in oklab, #ffffff 6%, transparent)
+    );
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat))
+    brightness(var(--glass-bright));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat))
+    brightness(var(--glass-bright));
+}
+
+.glassSpecular {
+  z-index: 1;
+  background:
+    radial-gradient(
+      120% 90% at calc(var(--ptr-x) * 100%) calc(var(--ptr-y) * 100%),
+      color-mix(in oklab, #fff 55%, transparent) 0%,
+      color-mix(in oklab, #fff 14%, transparent) 28%,
+      transparent 58%
+    ),
+    linear-gradient(
+      125deg,
+      color-mix(in oklab, #fff 28%, transparent),
+      transparent 38%,
+      color-mix(in oklab, #8fdfff 10%, transparent) 72%,
+      transparent
+    );
+  mix-blend-mode: soft-light;
+  opacity: 0.95;
+}
+
+.glassRim {
+  z-index: 2;
+  box-shadow:
+    inset 0 1px 0 color-mix(in oklab, #fff 55%, transparent),
+    inset 0 -1px 0 color-mix(in oklab, #000 28%, transparent),
+    inset 1px 0 0 color-mix(in oklab, #fff 18%, transparent),
+    inset -1px 0 0 color-mix(in oklab, #000 12%, transparent);
+  border: 1px solid color-mix(in oklab, #fff 28%, transparent);
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklab, #fff 16%, transparent),
+    transparent 24%,
+    transparent 76%,
+    color-mix(in oklab, #000 12%, transparent)
+  );
+  mix-blend-mode: screen;
+  opacity: 0.85;
+}
+
+.glassContent {
+  position: relative;
+  z-index: 3;
+  padding: clamp(1.15rem, 3vw, 1.75rem);
+}
+
+.glassContent h2 {
+  margin: 0 0 0.55rem;
+  font-size: clamp(1.15rem, 2.6vw, 1.45rem);
+  letter-spacing: -0.02em;
+}
+
+.glassContent p,
+.glassContent li {
+  margin: 0;
+  color: var(--ink-dim);
+  line-height: 1.6;
+  font-size: 0.98rem;
+}
+
+.glassContent ul {
+  margin: 0.85rem 0 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.panelHero {
+  min-height: 18rem;
+}
+
+.panelSide {
+  min-height: 18rem;
+}
+
+.chipRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin-top: 1.25rem;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.4rem;
+  padding: 0 0.95rem;
+  border-radius: 999px;
+  box-shadow: 0 8px 24px color-mix(in oklab, #000 22%, transparent);
+}
+
+.chip .glassFill {
+  --glass-blur: 14px;
+}
+
+.chipLabel,
+.ctaLabel {
+  position: relative;
+  z-index: 3;
+  font-size: 0.86rem;
+  letter-spacing: 0.02em;
+}
+
+.cta {
+  margin-top: 1.15rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 3rem;
+  padding: 0 1.25rem;
+  border: 0;
+  border-radius: 999px;
+  color: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+
+.cta:hover {
+  transform: translateY(-1px) scale(1.01);
+}
+
+.cta:active {
+  transform: translateY(1px) scale(0.99);
+}
+
+.cta .glassFill {
+  --glass-blur: 16px;
+  --glass-sat: 1.9;
+}
+
+.floatPill {
+  width: min(100%, 22rem);
+  height: 4.5rem;
+  border-radius: 999px;
+  margin-top: 0.25rem;
+  transform: translate3d(
+    calc((var(--ptr-x) - 0.5) * 36px),
+    calc((var(--ptr-y) - 0.5) * 18px),
+    0
+  );
+  transition: transform 90ms linear;
+}
+
+.pillGlyph {
+  position: absolute;
+  inset: 18% 12%;
+  z-index: 3;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in oklab, #fff 35%, transparent),
+    transparent
+  );
+  opacity: 0.55;
+  transform: translateX(calc((var(--ptr-x) - 0.5) * 40%));
+}
+
+.notes {
+  max-width: 68rem;
+  margin: 0 auto;
+  padding: 0 clamp(1.25rem, 4vw, 2.5rem) 3rem;
+}
+
+.noteCard {
+  border-radius: 24px;
+}
+
+.footer {
+  padding: 0 clamp(1.25rem, 4vw, 2.5rem) 2.5rem;
+  color: var(--ink-dim);
+  font-size: 0.85rem;
+}
+
+.footer p {
+  margin: 0;
+}
+
+@keyframes driftA {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    transform: translate3d(6%, 8%, 0) scale(1.08);
+  }
+}
+
+@keyframes driftB {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    transform: translate3d(-8%, 10%, 0) scale(1.05);
+  }
+}
+
+@keyframes driftC {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(4%, -6%, 0);
+  }
+}
+
+@supports not (
+  (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))
+) {
+  .glassFill {
+    background: color-mix(in oklab, #1d3d44 72%, #fff 10%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .blobA,
+  .blobB,
+  .blobC {
+    animation: none;
+  }
+
+  .sky,
+  .orb,
+  .floatPill,
+  .pillGlyph,
+  .cta {
+    transition: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .glass {
+    border-radius: 22px;
+  }
+
+  .panelHero,
+  .panelSide {
+    min-height: 0;
+  }
+
+  .floatPill {
+    height: 3.75rem;
+  }
+}
