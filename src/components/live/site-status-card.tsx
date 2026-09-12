@@ -106,15 +106,16 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
         </div>
       </section>
       <section id="cloudflare-workers" className="min-w-0 scroll-mt-28 md:border-l md:border-line" aria-label="服务运行">
-        <ul className="grid h-full auto-rows-fr grid-cols-2 gap-px bg-line">
+        {/* 窄屏两列只剩 150px 左右，名字截断、数字拆行；单列到 sm 再回两列 */}
+        <ul className="grid h-full auto-rows-fr grid-cols-1 gap-px bg-line sm:grid-cols-2">
           <li className="bg-surface px-4 py-2.5">
             <div className="flex items-center gap-1.5 text-[11px] leading-4">
               <a href={`${site.vercel}/observability/vercel-functions`} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 hover:underline"><Vercel size={11} />Vercel</a>
               <CommitSha commit={vercel?.production?.commit} />
             </div>
-            <div className="mt-1 flex gap-3 text-[10px] tabular-nums text-muted-foreground">
-              <span title={functions ? `超时 ${functions.timeouts} 次 · 平均峰值内存 ${functions.memoryAvgMb == null ? "—" : `${Math.round(functions.memoryAvgMb)} MB`}` : undefined}>调用 <span className="text-foreground">{functions ? number.format(functions.invocations) : "—"}</span></span>
-              <span>CPU <span className="text-foreground">{cpu(functions?.cpuP75Ms)}</span> P75</span>
+            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] tabular-nums text-muted-foreground">
+              <span className="whitespace-nowrap" title={functions ? `超时 ${functions.timeouts} 次 · 平均峰值内存 ${functions.memoryAvgMb == null ? "—" : `${Math.round(functions.memoryAvgMb)} MB`}` : undefined}>调用 <span className="text-foreground">{functions ? number.format(functions.invocations) : "—"}</span></span>
+              <span className="whitespace-nowrap">CPU <span className="text-foreground">{cpu(functions?.cpuP75Ms)}</span> P75</span>
             </div>
           </li>
           {CLOUDFLARE_WORKERS.map(({ name }) => {
@@ -125,9 +126,9 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
                 <span className="min-w-0 truncate">{name}</span>
                 <CommitSha commit={worker?.deployment?.commit} />
               </div>
-              <div className="mt-1 flex gap-3 text-[10px] tabular-nums text-muted-foreground">
-                <span title={metrics ? `子请求 ${number.format(metrics.subrequests)}` : undefined}>调用 <span className="text-foreground">{metrics ? number.format(metrics.requests) : "—"}</span></span>
-                <span>CPU <span className="text-foreground">{cpu(metrics?.cpuTimeP50Ms)}</span> P50</span>
+              <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] tabular-nums text-muted-foreground">
+                <span className="whitespace-nowrap" title={metrics ? `子请求 ${number.format(metrics.subrequests)}` : undefined}>调用 <span className="text-foreground">{metrics ? number.format(metrics.requests) : "—"}</span></span>
+                <span className="whitespace-nowrap">CPU <span className="text-foreground">{cpu(metrics?.cpuTimeP50Ms)}</span> P50</span>
               </div>
             </li>;
           })}
