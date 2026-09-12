@@ -133,27 +133,64 @@ export async function fetchWorkersMetrics(account: string, token: string, window
   return parseWorkersMetrics(raw, windowStart, windowEnd);
 }
 
+/** 版本列表，按版本号新到旧。 */
+export function parseVersionList(raw: unknown): { id: string; number: number }[] {
+  const body = record(raw);
+  if (body.success !== true) throw new Error("Cloudflare 版本查询失败");
+  const items = record(body.result).items;
+  if (!Array.isArray(items)) throw new Error("Cloudflare 版本格式无效");
+  return items.map((value) => {
+    const version = record(value);
+    if (typeof version.id !== "string" || !version.id || typeof version.number !== "number") throw new Error("Cloudflare 版本无效");
+    return { id: version.id, number: version.number };
+  }).sort((a, b) => b.number - a.number);
+}
+
+/** 往前翻多少个版本找构建记录；连续改几次密钥也能翻到那次 Git 部署。 */
+const VERSION_LOOKBACK = 8;
+const BUILDS_BATCH = 10;
+
 export async function fetchWorkerDeployments(account: string, token: string): Promise<(WorkerDeployment | null)[]> {
   const request = apiRequest(account, token);
-  const deployments = await Promise.all(CLOUDFLARE_WORKERS.map(async ({ name }) => {
-    // 部署权限不足不吞掉可用指标，卡片明确显示版本暂不可用。
-    try {
-      return parseWorkerDeployment(await request(`/accounts/${encodeURIComponent(account)}/workers/scripts/${name}/deployments`));
-    } catch { return null; }
-  }));
-  const versionIds = [...new Set(deployments.flatMap((deployment) => deployment?.versions.map((version) => version.id) ?? []))];
+  const scripts = `/accounts/${encodeURIComponent(account)}/workers/scripts`;
+  const [deployments, versions] = await Promise.all([
+    Promise.all(CLOUDFLARE_WORKERS.map(async ({ name }) => {
+      // 部署权限不足不吞掉可用指标，卡片明确显示版本暂不可用。
+      try {
+        return parseWorkerDeployment(await request(`${scripts}/${name}/deployments`));
+      } catch { return null; }
+    })),
+    // 改密钥、控制台上传生成的版本没有构建记录，但代码和它前一个版本一样：
+    // 顺着版本号往前找最近一个有构建的。列表查不到只是没有这条回退。
+    Promise.all(CLOUDFLARE_WORKERS.map(async ({ name }) => {
+      try {
+        return parseVersionList(await request(`${scripts}/${name}/versions?per_page=${VERSION_LOOKBACK}`));
+      } catch { return []; }
+    })),
+  ]);
+  const versionIds = [...new Set([
+    ...deployments.flatMap((deployment) => deployment?.versions.map((version) => version.id) ?? []),
+    ...versions.flat().map((version) => version.id),
+  ])];
   if (!versionIds.length) return deployments;
-  // 构建记录查不到（手动上传、权限收紧）只空着提交，不连累部署时间与版本。
-  const commits = await request(
-    `/accounts/${encodeURIComponent(account)}/builds/builds?version_ids=${versionIds.map(encodeURIComponent).join(",")}`,
-  ).then(parseBuildsByVersion).catch(() => new Map<string, NonNullable<WorkerDeployment["commit"]>>());
-  return deployments.map((deployment) => {
+  // 构建接口一次最多查 20 个版本号（超出 400），分批；查不到（权限收紧）只空着提交，不连累部署时间与版本。
+  const commits = new Map<string, NonNullable<WorkerDeployment["commit"]>>();
+  await Promise.all(Array.from({ length: Math.ceil(versionIds.length / BUILDS_BATCH) }, (_, i) =>
+    request(`/accounts/${encodeURIComponent(account)}/builds/builds?version_ids=${
+      versionIds.slice(i * BUILDS_BATCH, (i + 1) * BUILDS_BATCH).map(encodeURIComponent).join(",")}`)
+      .then((raw) => { for (const [id, commit] of parseBuildsByVersion(raw)) commits.set(id, commit); })
+      .catch(() => undefined),
+  ));
+  return deployments.map((deployment, i) => {
     if (!deployment) return deployment;
-    const commit = [...deployment.versions]
-      .sort((a, b) => b.percentage - a.percentage)
-      .map((version) => commits.get(version.id))
-      .find((item) => item != null) ?? null;
-    return { ...deployment, commit };
+    const active = [...deployment.versions].sort((a, b) => b.percentage - a.percentage);
+    const direct = active.map((version) => commits.get(version.id)).find((item) => item != null);
+    if (direct) return { ...deployment, commit: direct };
+    const current = versions[i].find((version) => version.id === active[0]?.id);
+    const previous = current
+      ? versions[i].filter((version) => version.number < current.number).map((version) => commits.get(version.id)).find((item) => item != null)
+      : undefined;
+    return { ...deployment, commit: previous ?? null };
   });
 }
 
