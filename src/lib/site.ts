@@ -14,6 +14,8 @@ export const site = {
   description: "实时展示设备、应用、音乐、影视与 AI 编程状态的个人主页。",
   /** 页脚的 commit 链接拼在它后面 */
   repo: "https://github.com/LYJW131/lyjwpage",
+  /** 控制台与单次部署的链接拼在它后面 */
+  vercel: "https://vercel.com/lyjw131s-projects/lyjwpage",
   githubLogin: "LYJW131",
   github: "https://github.com/LYJW131",
   /**

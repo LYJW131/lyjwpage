@@ -16,6 +16,8 @@ export type WorkerMetrics = {
 export type WorkerDeployment = {
   deployedAt: number;
   versions: { id: string; percentage: number }[];
+  /** 流量最大版本的构建提交；手动上传等无构建记录时为空。 */
+  commit: { sha: string; branch: string | null; message: string | null } | null;
 };
 
 export type CloudflareWorkersPayload = {

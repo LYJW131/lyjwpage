@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseVercelAnalytics, parseVercelFunctions, parseVercelWebVitals } from "./vercel-metrics.ts";
+import { fetchVercelFunctions, parseVercelAnalytics, parseVercelFunctions, parseVercelWebVitals } from "./vercel-metrics.ts";
 
 test("Web Vitals uses the full-window P75 and preserves missing metrics instead of reporting zero", () => {
   const data = parseVercelWebVitals({ overview: { RES: { p75: 100 }, LCP: { p75: 700, p99: 5500 }, CLS: { p75: 0 } }, timeseries: [{ RES: { p75: 1 } }], token: "private" });
@@ -41,4 +41,22 @@ test("function history is ordered, projects only public fields, and rejects inva
   assert.throws(() => parseVercelFunctions({ summary, data: [{ timestamp: data[0].timestamp, total: -1 }] }));
   assert.throws(() => parseVercelFunctions({ summary, data: [data[0], data[0]] }));
   assert.deepEqual(parseVercelFunctions({ summary: [], data: [] }).history, []);
+});
+
+test("functions query uses the caller-provided 12h window at 15-minute granularity", async (t) => {
+  const start = Date.parse("2026-09-12T04:15:00Z"), end = start + 12 * 3_600_000;
+  t.mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
+    const url = new URL(String(input));
+    assert.equal(url.origin, "https://vercel.com");
+    assert.equal(url.searchParams.get("teamId"), "team-test");
+    assert.equal(new Headers(init?.headers).get("Authorization"), "Bearer test-secret");
+    const body = JSON.parse(String(init?.body));
+    assert.deepEqual(body.granularity, { minutes: 15 });
+    assert.equal(body.startTime, new Date(start).toISOString());
+    assert.equal(body.endTime, new Date(end).toISOString());
+    return Response.json({ summary: [{ total: 5, errors: 0, timeouts: 0 }], data: [] });
+  });
+  const result = await fetchVercelFunctions("project-test", "team-test", "test-secret", start, end);
+  assert.equal(result.invocations, 5);
+  assert.deepEqual(result.history, []);
 });

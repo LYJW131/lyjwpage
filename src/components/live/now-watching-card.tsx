@@ -88,11 +88,8 @@ function NowWatchingHero({
   item: WatchingItem | null;
 }) {
   const { paused } = nowPlaying;
-  // 在哪放（客户端、设备各一个标签）和规格标签排在同一行，前两个打头
-  const chips = [
-    ...describeDevice(nowPlaying.client, nowPlaying.deviceName),
-    ...describeMedia(nowPlaying.media),
-  ];
+  const device = describeDevice(nowPlaying.client, nowPlaying.deviceName);
+  const chips = describeMedia(nowPlaying.media);
 
   /**
    * 秒针。锚点跟着这份数据走：SWR 只在内容变了才给新对象，每份新数据在下一次
@@ -134,18 +131,16 @@ function NowWatchingHero({
 
   /*
     两列网格：剧照一列、文字一列。窄屏（< 640px）剧照只跨第一行，旁边是状态行 /
-    标题 / 副标题，规格标签、时间和进度条落到第二行、跨两列用整行 —— 并排时右边
-    只剩不到 200px，五个标签折三行、时间挤成单独一行、进度条只有右半截。剧照不放大：
-    Emby 给的剧照就 700 来像素宽，通栏到 3× 屏上会糊。sm 起剧照跨两行，右边仍是
-    从前那一整列，桌面不变。
+    标题 / 副标题，规格标签、时间和进度条落到第二行、跨两列用整行。设备标签放在
+    状态行（和「最近在听」同款），不挤占下方的媒体规格空间。
+    sm 起剧照跨两行，右边仍是从前那一整列，桌面不变。
   */
   return (
     <HeroWrapper
       link={item?.link ?? null}
-      // 右列文字行之间统一 6px（gap-y 和标题块的 gap 都是 1.5）；进度条前多留一些，见下面
       className="group grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1.5 px-3 py-3 sm:items-center sm:gap-x-4"
     >
-      <div className="relative aspect-video w-32 shrink-0 self-start overflow-hidden rounded-md border border-line bg-muted sm:row-span-2 sm:w-44 md:w-52">
+      <div className="relative aspect-video w-32 shrink-0 self-start overflow-hidden rounded-md border border-line bg-muted sm:row-span-2 sm:w-52">
         {image ? (
           <Image
             src={image}
@@ -165,6 +160,14 @@ function NowWatchingHero({
           <span className={cn("label-mono shrink-0", paused ? "text-muted-foreground" : "text-live")}>
             {paused ? "播放暂停" : "正在播放"}
           </span>
+          {device && (
+            <span
+              className="label-mono min-w-0 max-w-[140px] truncate normal-case text-muted-foreground sm:max-w-none"
+              title={device}
+            >
+              · {device}
+            </span>
+          )}
         </div>
         <div className="truncate text-base font-medium leading-tight sm:text-lg" title={item?.title}>
           {item?.title ?? <span className="text-muted-foreground">读取详情…</span>}
@@ -175,23 +178,16 @@ function NowWatchingHero({
       </div>
 
       <div className="col-span-2 min-w-0 sm:col-span-1 sm:col-start-2 sm:self-start">
-        {/*
-          规格标签和时间同一行、进度条单独在最下面：和站内其余进度条一样，文案在条
-          的上方，不挂在条的右边。时间靠右，标签折行时它落在最后一行的末尾。
-        */}
-        {/*
-          标签和时间是同一个折行容器里的项：ul 用 `contents` 把 li 直接交给外层，
-          标签折到第二行时时间就接在那一行的末尾，不再单独占一行。
-        */}
-        <div className="flex flex-wrap items-end gap-1.5">
+        <div className="flex flex-wrap items-center justify-between gap-1.5">
           {chips.length > 0 && (
-            <ul className="contents" aria-label="播放规格">
+            <ul className="flex flex-wrap items-center gap-1.5" aria-label="播放规格">
               {chips.map((chip) => (
                 <li
                   key={chip}
-                  // label-mono 会把字母转大写，Dolby Vision / TrueHD / Mbps 这些名字
-                  // 大写了就不是它平时的样子，躲开
-                  className="label-mono border border-line px-1.5 py-1 normal-case text-muted-foreground"
+                  className={cn(
+                    "label-mono rounded-sm border border-line px-1.5 py-0.5 text-[10px] normal-case text-muted-foreground sm:text-xs",
+                    chip.endsWith("bps") && "max-sm:hidden",
+                  )}
                 >
                   {chip}
                 </li>
@@ -204,12 +200,7 @@ function NowWatchingHero({
             </span>
           ) : null}
         </div>
-        {/*
-          进度不压在剧照底边 —— 剧照有深有浅，压上去常常看不清；和「最近在听」hero
-          同一支绿，暂停时整条灰掉。
-        */}
-        {/* 标签是带边框的盒子，和进度条之间要比文字行之间多留一点，不然条像贴在框上 */}
-        <div className="mt-3 h-0.75 overflow-hidden bg-muted" aria-hidden>
+        <div className="mt-2.5 h-0.75 overflow-hidden bg-muted" aria-hidden>
           <div
             className={cn(
               "h-full",
