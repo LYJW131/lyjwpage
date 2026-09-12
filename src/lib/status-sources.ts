@@ -6,6 +6,9 @@ import { getRecentlyPlayed } from "@/lib/apple-music-store";
 import { getNowWatching, getWatching } from "@/lib/emby";
 import { getGithubChart } from "@/lib/github-chart";
 import { getGithubRepo } from "@/lib/github-repo";
+import { getVercelDeployments } from "@/lib/vercel-deployments";
+import { getCloudflareWorkers } from "@/lib/cloudflare-workers";
+
 import { getPlaying, getPlayingNow } from "@/lib/playstation";
 import { getTrophies } from "@/lib/trophies";
 import { getDesktopPayload, getNowListeningSnapshot, getTimezonePayload } from "@/lib/telemetry";
@@ -29,3 +32,6 @@ export const playingNowStatus = getPlayingNow;
 export const trophiesStatus = getTrophies;
 export const githubChartStatus = getGithubChart;
 export const githubRepoStatus = getGithubRepo;
+
+export const cloudflareWorkersStatus = getCloudflareWorkers;
+export const vercelDeploymentsStatus = getVercelDeployments;

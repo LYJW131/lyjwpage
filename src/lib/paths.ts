@@ -59,6 +59,9 @@ export const GITHUB_CHART_PATH = "/api/status/github-chart";
 /** 本仓库的贡献统计。没有推送；变化慢，浏览器按长间隔轮询。 */
 export const GITHUB_REPO_PATH = "/api/status/github-repo";
 
+/** Worker 统计，无推送；服务端缓存和客户端轮询均为五分钟。 */
+export const CLOUDFLARE_WORKERS_PATH = "/api/status/cloudflare-workers";
+
 /**
  * 活动圆环。没有推送 —— 圈以分钟为尺度涨，广播它就是拿推送当轮询用，
  * 所以这个键只会被轮询和首屏填。
@@ -70,3 +73,5 @@ export const ACTIVITY_PATH = "/api/status/activity";
  * 也不走推送（CPU 和网速每个间隔都在变，广播就是拿推送当轮询用）。
  */
 export const SERVER_PATH = "/api/status/server";
+
+export const VERCEL_DEPLOYMENTS_PATH = "/api/status/vercel-deployments";
