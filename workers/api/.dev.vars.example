@@ -4,9 +4,11 @@ TELEMETRY_INGEST_SECRET=
 # --env-file 读它来初始化空库；云端只在迁移时临时配置，结束后删除。
 STATE_IMPORT_SECRET=dev-import
 GITHUB_TOKEN=
-# Workers 卡片只读查询：仅 API Worker 使用，不放到 Next.js / NEXT_PUBLIC_*。
+# 站点卡片只读查询：仅 API Worker 使用，不放到 Next.js / NEXT_PUBLIC_*。
+# 账号 / 项目 / 团队 ID 已在 wrangler.toml 的 [vars]，本地不用重复。
 CLOUDFLARE_METRICS_TOKEN=
-CLOUDFLARE_ACCOUNT_ID=
+# Vercel 团队范围 Token：部署、Speed Insights、调用量和访问统计共用
+VERCEL_TOKEN=
 # 只给本地开发：生产为主、本地补缺 —— 生产有的数据用生产的，生产没有的端点和
 # 字段用本地的（只读，不碰上报）。测本地上报链路时注释掉。生产的 wrangler.toml
 # 绝不配它，见 src/public-api.ts。
@@ -29,8 +31,3 @@ APPLE_MUSIC_STOREFRONT=cn
 HEARTBEAT_WINDOW_MS=300000
 CHARGER_PUSH_INTERVAL_MS=30000
 AGENT_LIMITS_STALE_MS=11100000
-
-# Vercel 团队范围 Token：部署、Speed Insights、调用量和访问统计共用
-VERCEL_TOKEN=
-VERCEL_PROJECT_ID=
-VERCEL_TEAM_ID=

@@ -1,6 +1,8 @@
 import { cached, get, put } from "@/lib/cache";
-import { getServiceTrends } from "@/lib/service-trends";
 import type { VercelMetricWindow, VercelMetricsPayload, VercelWebVitals } from "@/lib/vercel-deployments-types";
+
+const FUNCTIONS_TTL_MS = 900_000;
+const FUNCTIONS_WINDOW_MS = 12 * 3_600_000;
 
 function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Vercel 指标格式无效");
@@ -23,28 +25,16 @@ export function parseVercelWebVitals(raw: unknown): VercelWebVitals {
     cls: p75("CLS"), fcpMs: p75("FCP"), ttfbMs: p75("TTFB") };
 }
 
+/** 只取整段窗口的 summary；窗口内没有调用时 summary 为空数组，视为 0。 */
 export function parseVercelFunctions(raw: unknown) {
   const response = record(raw);
-  if (!Array.isArray(response.data)) throw new Error("Vercel 调用趋势缺失");
-  const history = response.data.map(rawPoint => {
-    const point = record(rawPoint);
-    const at = typeof point.timestamp === "string" ? Date.parse(point.timestamp) : NaN;
-    if (!Number.isFinite(at)) throw new Error("Vercel 调用趋势时间无效");
-    return { at, requests: count(point.total) };
-  }).sort((a, b) => a.at - b.at);
-  if (new Set(history.map(point => point.at)).size !== history.length) throw new Error("Vercel 调用趋势时间重复");
   if (!Array.isArray(response.summary) || response.summary.length > 1) throw new Error("Vercel 调用统计缺失");
-  if (!response.summary.length) {
-    if (!Array.isArray(response.data) || response.data.length) throw new Error("Vercel 调用统计不完整");
-    return { invocations: 0, errors: 0, timeouts: 0, cpuP75Ms: null, memoryAvgMb: null, history };
-  }
+  if (!response.summary.length) return { invocations: 0, errors: 0, timeouts: 0, cpuP75Ms: null, memoryAvgMb: null };
   const row = record(response.summary[0]);
   const invocations = count(row.total), errors = count(row.errors), timeouts = count(row.timeouts);
   if (errors + timeouts > invocations) throw new Error("Vercel 调用统计无效");
-  return { invocations, errors, timeouts, cpuP75Ms: value(row.cpuP75Ms), memoryAvgMb: value(row.memoryAvgMb), history };
+  return { invocations, errors, timeouts, cpuP75Ms: value(row.cpuP75Ms), memoryAvgMb: value(row.memoryAvgMb) };
 }
-
-export type VercelFunctionsData = ReturnType<typeof parseVercelFunctions>;
 
 export function parseVercelAnalytics(raw: unknown) {
   const response = record(raw), query = record(response.query), data = record(response.data);
@@ -67,7 +57,7 @@ async function section<T extends VercelMetricWindow>(key: string, ttlMs: number,
   });
 }
 
-/** 只在 API Worker 执行。起止由调用方给定，与 Workers 趋势同一次刷新、同一窗口。 */
+/** 只在 API Worker 执行。起止由调用方给定，便于测试固定窗口；只要 summary，不要分桶序列。 */
 export async function fetchVercelFunctions(project: string, team: string, token: string, start: number, end: number) {
   const url = new URL("https://vercel.com/api/observability/metrics");
   url.search = new URLSearchParams({ teamId: team }).toString();
@@ -76,7 +66,7 @@ export async function fetchVercelFunctions(project: string, team: string, token:
     body: JSON.stringify({
       event: "serverlessFunctionInvocation", scope: { type: "project", ownerId: team, projectIds: [project] },
       startTime: new Date(start).toISOString(), endTime: new Date(end).toISOString(), granularity: { minutes: 15 },
-      filter: "environment eq 'production'", summaryOnly: false, tailRollup: "truncate", limit: 500, reason: "observability_chart",
+      filter: "environment eq 'production'", summaryOnly: true, tailRollup: "truncate", limit: 500, reason: "observability_chart",
       rollups: {
         total: { measure: "count", aggregation: "sum" },
         errors: { measure: "count", aggregation: "sum", filter: "(errorCode ne '' and errorCode ne 'timeout') or httpStatus ge 500 and httpStatus ne 504" },
@@ -111,17 +101,10 @@ export async function getVercelMetrics(project: string, team: string, token: str
       const [desktop, mobile] = await Promise.all(["desktop", "mobile"].map(device => request("https://vercel.com/api/speed-insights/v2/timeseries", { ...params, device }).then(parseVercelWebVitals)));
       return { fetchedAt: Date.now(), start, end, desktop, mobile };
     }),
-    (async () => {
-      // 函数趋势与 Workers 同一次刷新、同一窗口；共享层内部已有缓存与 last-good，这里只做组装。
-      const cfAccount = process.env.CLOUDFLARE_ACCOUNT_ID?.trim();
-      const cfToken = process.env.CLOUDFLARE_METRICS_TOKEN?.trim();
-      const trends = await getServiceTrends(
-        { project, team, token },
-        cfAccount && cfToken ? { account: cfAccount, token: cfToken } : null,
-      ).catch(() => null);
-      const side = trends?.vercel ?? null;
-      return side ? { ...side.data, fetchedAt: side.fetchedAt, start: side.windowStart, end: side.windowEnd } : null;
-    })(),
+    section(`${prefix}:functions`, FUNCTIONS_TTL_MS, async () => {
+      const end = Math.floor(Date.now() / FUNCTIONS_TTL_MS) * FUNCTIONS_TTL_MS, start = end - FUNCTIONS_WINDOW_MS;
+      return { ...await fetchVercelFunctions(project, team, token, start, end), fetchedAt: Date.now(), start, end };
+    }),
     section(`${prefix}:analytics`, 300_000, async () => {
       const end = Math.floor(Date.now() / 86_400_000) * 86_400_000, start = end - 7 * 86_400_000;
       const raw = await request("https://api.vercel.com/v1/query/web-analytics/visits/count", {

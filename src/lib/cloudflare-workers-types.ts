@@ -27,7 +27,6 @@ export type CloudflareWorkersPayload = {
   workers: {
     name: CloudflareWorkerName;
     metrics: WorkerMetrics | null;
-    history: { at: number; requests: number }[];
     deployment: WorkerDeployment | null;
   }[];
 };

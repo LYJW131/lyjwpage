@@ -30,6 +30,11 @@ EMBY_PUBLIC_URL = "https://emby.lyjw131.com"
 SITE_URL = "https://lyjw.me"
 # lyjw131.com 经 ESA 回源 lyjw.me，首页按源站 SWR 头缓存，不走刷新 API。
 APPLE_MUSIC_STOREFRONT = "cn"
+# 站点卡片只读查询的归属标识，都不是秘密（账号 ID 也写在站点的控制台链接里）；
+# 令牌走 secret：CLOUDFLARE_METRICS_TOKEN、VERCEL_TOKEN。
+CLOUDFLARE_ACCOUNT_ID = "209f2c881b1c494fec50851c067b3266"
+VERCEL_PROJECT_ID = "prj_r6sFPPmanb9zm3hzYAHAmp3KsIiC"
+VERCEL_TEAM_ID = "team_kfTnkK6X9bbqSbkgAhq7SxCd"
 
 [alias]
 "@/lib/storage-driver" = "./src/storage-driver.ts"
@@ -53,7 +58,8 @@ bucket_name = "lyjw-homepage"
 enabled = true
 
 # 秘密通过 wrangler secret put 配置：GITHUB_TOKEN、TELEMETRY_INGEST_SECRET、
-# APPLE_MUSIC_PRIVATE_KEY（MusicKit 签发用的 .p8 全文）。
+# APPLE_MUSIC_PRIVATE_KEY（MusicKit 签发用的 .p8 全文）、CLOUDFLARE_METRICS_TOKEN
+# （Workers 统计、部署与构建只读）、VERCEL_TOKEN（团队范围，部署与指标只读用）。
 # 有页面连接时刷新最近在听，SQLite 闸门将 Apple 请求限制为两分钟一次。
 [triggers]
 crons = ["* * * * *"]
