@@ -14,11 +14,12 @@ test("Web Vitals uses the full-window P75 and preserves missing metrics instead 
 });
 
 test("function totals come from the window summary, with empty and malformed responses distinguished", () => {
-  assert.deepEqual(parseVercelFunctions({ summary: [{ total: 123, errors: 2, timeouts: 1, cpuP75Ms: 20, memoryAvgMb: 230 }], data: [{ timestamp: "2026-09-12T00:05:00Z", total: 999 }], rawLogs: "private" }),
-    { invocations: 123, errors: 2, timeouts: 1, cpuP75Ms: 20, memoryAvgMb: 230, history: [{ at: Date.parse("2026-09-12T00:05:00Z"), requests: 999 }] });
-  assert.equal(parseVercelFunctions({ summary: [], data: [] }).invocations, 0);
+  const parsed = parseVercelFunctions({ summary: [{ total: 123, errors: 2, timeouts: 1, cpuP75Ms: 20, memoryAvgMb: 230, rawLogs: "private" }], data: [{ timestamp: "2026-09-12T00:05:00Z", total: 999 }] });
+  assert.deepEqual(parsed, { invocations: 123, errors: 2, timeouts: 1, cpuP75Ms: 20, memoryAvgMb: 230 });
+  assert.doesNotMatch(JSON.stringify(parsed), /private|history|999/);
+  assert.equal(parseVercelFunctions({ summary: [] }).invocations, 0);
   assert.throws(() => parseVercelFunctions({ error: "forbidden" }));
-  assert.throws(() => parseVercelFunctions({ summary: [], data: [{ total: 1 }] }));
+  assert.throws(() => parseVercelFunctions({ summary: [{ total: 1 }, { total: 2 }] }));
   assert.throws(() => parseVercelFunctions({ summary: [{ total: 1, errors: 2, timeouts: 0 }] }));
 });
 
@@ -31,19 +32,7 @@ test("analytics preserves the returned UTC reporting window and does not sum dai
 });
 
 
-test("function history is ordered, projects only public fields, and rejects invalid samples", () => {
-  const summary = [{ total: 10, errors: 0, timeouts: 0 }];
-  const data = [{ timestamp: "2026-09-12T00:05:00Z", total: 7, private: "secret" }, { timestamp: "2026-09-12T00:00:00Z", total: 3 }];
-  const parsed = parseVercelFunctions({ summary, data });
-  assert.deepEqual(parsed.history.map(p => p.requests), [3, 7]);
-  assert.doesNotMatch(JSON.stringify(parsed), /private|secret/);
-  assert.throws(() => parseVercelFunctions({ summary, data: [{ total: 1 }] }));
-  assert.throws(() => parseVercelFunctions({ summary, data: [{ timestamp: data[0].timestamp, total: -1 }] }));
-  assert.throws(() => parseVercelFunctions({ summary, data: [data[0], data[0]] }));
-  assert.deepEqual(parseVercelFunctions({ summary: [], data: [] }).history, []);
-});
-
-test("functions query uses the caller-provided 12h window at 15-minute granularity", async (t) => {
+test("functions query uses the caller-provided 12h window and asks for the summary only", async (t) => {
   const start = Date.parse("2026-09-12T04:15:00Z"), end = start + 12 * 3_600_000;
   t.mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
     const url = new URL(String(input));
@@ -51,12 +40,11 @@ test("functions query uses the caller-provided 12h window at 15-minute granulari
     assert.equal(url.searchParams.get("teamId"), "team-test");
     assert.equal(new Headers(init?.headers).get("Authorization"), "Bearer test-secret");
     const body = JSON.parse(String(init?.body));
-    assert.deepEqual(body.granularity, { minutes: 15 });
+    assert.equal(body.summaryOnly, true);
     assert.equal(body.startTime, new Date(start).toISOString());
     assert.equal(body.endTime, new Date(end).toISOString());
-    return Response.json({ summary: [{ total: 5, errors: 0, timeouts: 0 }], data: [] });
+    return Response.json({ summary: [{ total: 5, errors: 0, timeouts: 0 }] });
   });
   const result = await fetchVercelFunctions("project-test", "team-test", "test-secret", start, end);
   assert.equal(result.invocations, 5);
-  assert.deepEqual(result.history, []);
 });

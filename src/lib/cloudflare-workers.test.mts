@@ -1,24 +1,20 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { fetchWorkerDeployments, fetchWorkersMetrics, parseBuildsByVersion, parseWorkerDeployment, parseWorkersMetrics } from "./cloudflare-workers.ts";
+import { put } from "./cache.ts";
+import { fetchWorkerDeployments, fetchWorkersMetrics, getWorkersMetrics, parseBuildsByVersion, parseWorkerDeployment, parseWorkersMetrics } from "./cloudflare-workers.ts";
 
 const start = Date.parse("2026-09-10T12:30:00Z");
 const end = start + 43_200_000;
 const analytics = () => ({ data: { viewer: { accounts: [{
   summary: [{ dimensions: { scriptName: "api" }, sum: { requests: 20, errors: 2, subrequests: 30 }, quantiles: { cpuTimeP50: 735 } }],
-  series: [{ dimensions: { scriptName: "api", datetimeFifteenMinutes: "2026-09-10T13:00:00Z" }, sum: { requests: 20 } }],
 }] } }, errors: null });
 
-test("12h window includes partial buckets, preserves zero buckets, and converts microseconds", () => {
+test("summary maps every repo worker in order, converts microseconds, and leaves absent workers null", () => {
   const result = parseWorkersMetrics(analytics(), start, end);
   assert.deepEqual(result.workers.map((worker) => worker.name), ["api", "online-counter", "playstation-reporter"]);
   assert.deepEqual(result.workers[0].metrics, { requests: 20, errors: 2, subrequests: 30, cpuTimeP50Ms: 0.735 });
-  assert.equal(result.workers[0].history.length, 48);
-  assert.equal(result.workers[0].history[0].requests, 0);
-  assert.equal(result.workers[0].history[2].requests, 20);
-  assert.equal(result.workers[0].history.at(-1)?.at, Date.parse("2026-09-11T00:15:00Z"));
   assert.equal(result.workers[1].metrics, null);
-  assert.deepEqual(result.workers[1].history, []);
+  assert.deepEqual([result.windowStart, result.windowEnd], [start, end]);
 });
 
 test("GraphQL errors, inaccessible accounts and malformed metrics never become healthy zeros", () => {
@@ -29,7 +25,6 @@ test("GraphQL errors, inaccessible accounts and malformed metrics never become h
   assert.throws(() => parseWorkersMetrics(invalid, start, end));
   const empty = analytics();
   empty.data.viewer.accounts[0].summary = [];
-  empty.data.viewer.accounts[0].series = [];
   assert.ok(parseWorkersMetrics(empty, start, end).workers.every((worker) => worker.metrics === null));
 });
 
@@ -103,4 +98,12 @@ test("deployments join the commit of the highest-traffic version in one batched 
   assert.equal(calls.length, 4);
   assert.deepEqual(deployments[0]?.commit, { sha, branch: "main", message: "feat: x" });
   assert.deepEqual(deployments.slice(1), [null, null]);
+});
+
+test("metrics fall back to the last good payload when Cloudflare is unavailable, else report unavailable", async (t) => {
+  const stale = parseWorkersMetrics(analytics(), start, end);
+  await put("cloudflare-metrics:v1:acct-stale:last-good", stale, 60_000);
+  t.mock.method(globalThis, "fetch", async () => Response.json({ error: "forbidden" }, { status: 403 }));
+  assert.deepEqual(await getWorkersMetrics("acct-stale", "test-secret"), stale);
+  await assert.rejects(getWorkersMetrics("acct-none", "test-secret"), /暂不可用/);
 });

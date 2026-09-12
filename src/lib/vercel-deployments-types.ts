@@ -24,7 +24,7 @@ export type VercelWebVitals = {
 };
 export type VercelMetricsPayload = {
   speed: (VercelMetricWindow & { desktop: VercelWebVitals; mobile: VercelWebVitals }) | null;
-  functions: (VercelMetricWindow & { history: { at: number; requests: number }[]; invocations: number; errors: number; timeouts: number;
+  functions: (VercelMetricWindow & { invocations: number; errors: number; timeouts: number;
     cpuP75Ms: number | null; memoryAvgMb: number | null }) | null;
   analytics: (VercelMetricWindow & { pageviews: number; visitors: number }) | null;
 };

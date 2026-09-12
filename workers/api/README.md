@@ -147,39 +147,38 @@ SQLite 初始化、迁移与权限见 [后端架构](../../docs/state-storage.md
 
 `GET /api/status/cloudflare-workers` 与 `/api/home` 的 `cloudflareWorkers` 字段共用一份统计。
 只查询本仓库的 `api`、`online-counter`、`playstation-reporter`，不公开账号内其他 Worker。
-API Worker 使用 `CLOUDFLARE_METRICS_TOKEN`（只读 Secret）和 `CLOUDFLARE_ACCOUNT_ID`；
-本地放在忽略提交的 `.dev.vars`，生产发布前为 `api` 配置同名变量。Vercel 不需要令牌。
+API Worker 使用 `CLOUDFLARE_METRICS_TOKEN`（只读 Secret：账号分析、Workers 脚本与构建读取）和
+`wrangler.toml` `[vars]` 里的 `CLOUDFLARE_ACCOUNT_ID`；令牌本地放在忽略提交的 `.dev.vars`，
+生产发布前为 `api` 配置同名 Secret。Vercel 不需要令牌。
 
-Cloudflare GraphQL `workersInvocationsAdaptive` 提供滚动 12 小时的调用量、执行错误、子请求、
-整段窗口 CPU P50 和按 15 分钟的调用趋势；CPU 从微秒转为公开字段 `cpuTimeP50Ms`。
-首尾桶只计窗口内调用，采样统计不是账单，也不将执行错误等同于 HTTP 错误或可用率。
-调用趋势与 Vercel 函数趋势同一次刷新、同一窗口取数（`service-trends` 共享缓存十五分钟），
-正常时两边起止完全一致；单边失败只用自己的 last-good 补那一边，保留原时间。
+Cloudflare GraphQL `workersInvocationsAdaptive` 提供滚动 12 小时（窗口按 15 分钟对齐）的调用量、执行错误、
+子请求和整段窗口 CPU P50；CPU 从微秒转为公开字段 `cpuTimeP50Ms`。只取汇总，不取分桶序列。
+采样统计不是账单，也不将执行错误等同于 HTTP 错误或可用率。统计缓存十五分钟。
 部署 API 只投影部署时间、正在分流的版本 ID 与比例，再用版本号批量查构建历史拿到流量最大版本的提交 SHA、分支和标题；手动上传等无构建记录的版本提交为空。不输出部署作者、邮箱或账号凭据，独立缓存十五分钟。
 
-浏览器五分钟轮询，无推送。上游失败时最多保留一天的最后成功结果，
-保留原始时间，卡片超过 25 分钟以黄点表示待更新；没有统计时显示 `—`，部署时间在服务名提示中查看。
+浏览器五分钟轮询，无推送。上游失败时最多保留一天的最后成功结果并保留原始时间；
+没有统计时显示 `—`，部署时间与版本在服务名提示中查看。
 首次部署先配置 API Worker 的只读凭据，再发布 Worker 和站点；构建监视路径已有 `src/lib/*` 与 `workers/api/*`。
 
 
 ## Vercel 卡片
 
 `GET /api/status/vercel-deployments` 与 `/api/home` 的 `vercelDeployments` 字段共用数据。
-API Worker 使用一个 `VERCEL_TOKEN`，以及 `VERCEL_PROJECT_ID`、`VERCEL_TEAM_ID`。Token 只放本地
-`.dev.vars` 或生产 Worker Secret，不配置到 Next.js。函数指标需要团队范围的普通 Token，具有写权限；
-代码只查询指定项目，所有请求只读取数据。凭据到期后替换同名 Secret。
+API Worker 使用一个 `VERCEL_TOKEN` Secret，以及 `wrangler.toml` `[vars]` 里的 `VERCEL_PROJECT_ID`、`VERCEL_TEAM_ID`。
+Token 只放本地 `.dev.vars` 或生产 Worker Secret，不配置到 Next.js。Vercel Token 不分读写权限，
+对整个团队都能写，是这个 Worker 里权限最大的凭据：创建时选团队范围并设到期时间；代码只查询指定项目，
+所有请求只读取数据。凭据到期后替换同名 Secret。
 
 `GET /v9/projects/{id}` 的 `targets.production` 决定当前生产版本，随后读取该部署详情；
 `GET /v6/deployments` 读取最近五次记录。新构建失败或回滚不会把最新创建的部署误当成线上版本。
-部署缓存一分钟；上游失败最多沿用一天的成功结果，保留原始时间，超过五分钟以黄点表示待更新。
+部署缓存一分钟；上游失败最多沿用一天的成功结果，保留原始时间。
 
 性能与调用量在 `metrics` 中按组独立缓存，浏览器沿用一分钟轮询；每组保留自己的采集时间与窗口。
-上游失败只影响对应组，最多沿用一天的成功数据，函数组超过二十五分钟、其他组超过十五分钟以黄点表示待更新；从未成功则显示 `—`。
+上游失败只影响对应组，最多沿用一天的成功数据；从未成功则显示 `—`。
 - `speed`：最近七天、生产环境的桌面与移动端 RES，以及 LCP、INP、CLS、FCP、TTFB 的整段窗口 P75，缓存五分钟。
   读取控制台 `/api/speed-insights/v2/timeseries` 的 `overview`，不平均每日分位数。缺少指标显示空值。
-- `functions`：最近十二小时、生产环境的函数调用、错误、超时、CPU P75 与平均峰值内存；`history` 提供 15 分钟对齐的调用趋势（`at` 为 epoch 毫秒，`requests` 为该时间桶调用数）。
-  与 Workers 趋势同一次刷新、同一窗口取数（`service-trends` 共享缓存十五分钟）。
-  读取控制台 `/api/observability/metrics` 的整段 `summary`；错误与超时分开，CPU 不是每日或每桶 P75 的平均值。
+- `functions`：最近十二小时（窗口按 15 分钟对齐）、生产环境的函数调用、错误、超时、CPU P75 与平均峰值内存，缓存十五分钟。
+  读取控制台 `/api/observability/metrics` 的整段 `summary`（`summaryOnly`，不取分桶序列）；错误与超时分开，CPU 不是每日或每桶 P75 的平均值。
 - `analytics`：前七个完整 UTC 日的页面浏览与访客，使用官方 `/v1/query/web-analytics/visits/count`，
   保留接口返回的实际时间边界，不累加每日独立访客数。
 
@@ -188,7 +187,6 @@ Speed Insights 与函数统计目前使用控制台接口，平台可能调整�
 不转发平台原始响应、查询元数据、访问者明细、邮箱、环境变量和日志。
 首次发布先配置生产 API Worker 凭据，再发布 Worker 和站点。
 
-首页将仓库、Vercel 和 Workers 合为一张站点卡片。提交与部署按 SHA 去重，当前线上版本固定保留，
-每条占整行；运行趋势为左右栏：左侧服务列表（含调用与 CPU），右侧一整张绝对值分组柱状图，
-四服务同一窗口（后端同刷、前端再按并集对齐补零），纵轴统一为全场峰值。
-贡献图以完整宽度显示最近六周的堆叠柱状图、周日期和提交总数。
+首页将仓库、Vercel 和 Workers 合为一张站点卡片：顶部是七天浏览量与仓库总提交、增删行数和按提交数的贡献占比条；
+中部左侧贡献者名单、右侧最近三条提交，提交与部署按 SHA 关联，当前线上版本标绿并给出构建时长；
+下方左侧桌面 / 移动端体验评分，右侧 Vercel 与三个 Worker 的调用量、CPU 分位和当前部署的提交短哈希。

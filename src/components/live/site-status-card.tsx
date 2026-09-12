@@ -1,6 +1,8 @@
 "use client";
 
-import { Cloudflare, Github, Vercel } from "@lobehub/icons";
+import CloudflareColor from "@lobehub/icons/es/Cloudflare/components/Color";
+import Github from "@lobehub/icons/es/Github/components/Mono";
+import Vercel from "@lobehub/icons/es/Vercel/components/Mono";
 import NumberFlow from "@number-flow/react";
 import { Card } from "@/components/ui/card";
 import { colorForRank, RepoContributions } from "@/components/live/repo-contributions";
@@ -13,7 +15,6 @@ import type { GithubRepoPayload, StatusResponse } from "@/lib/types";
 import type { VercelDeployment, VercelDeploymentsPayload, VercelWebVitals } from "@/lib/vercel-deployments-types";
 import { cn } from "@/lib/utils";
 
-const cfUrl = "https://dash.cloudflare.com/209f2c881b1c494fec50851c067b3266/workers-and-pages";
 const number = new Intl.NumberFormat("en-US");
 const time = new Intl.DateTimeFormat("zh-CN", { timeZone: site.timezone, month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false });
 const cpu = (ms: number | null | undefined) => ms == null ? "—" : ms < 1 ? `${Math.round(ms * 1000)}µs` : `${Number(ms.toFixed(1))}ms`;
@@ -69,7 +70,7 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
     <div className="flex items-center gap-4">
       <a href={site.repo} target="_blank" rel="noreferrer" aria-label="GitHub 仓库" className="hover:text-foreground"><Github size={15} /></a>
       <a href={site.vercel} target="_blank" rel="noreferrer" aria-label="Vercel 控制台" className="hover:text-foreground"><Vercel size={15} /></a>
-      <a href={cfUrl} target="_blank" rel="noreferrer" aria-label="Cloudflare 控制台"><Cloudflare.Color size={19} /></a>
+      <a href={site.cloudflare} target="_blank" rel="noreferrer" aria-label="Cloudflare 控制台"><CloudflareColor size={19} /></a>
     </div>
   }>
     <div className="border-b border-line px-4 py-5 md:px-5">
@@ -120,7 +121,7 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
             const worker = cloudflare?.workers.find(w => w.name === name), metrics = worker?.metrics;
             return <li key={name} className="bg-surface px-4 py-2.5" title={worker?.deployment ? `部署于 ${time.format(worker.deployment.deployedAt)} · ${worker.deployment.versions.map(v => `${v.id.slice(0, 8)} ${v.percentage}%`).join(" / ")}` : name}>
               <div className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4">
-                <span className="flex shrink-0"><Cloudflare.Color size={14} /></span>
+                <span className="flex shrink-0"><CloudflareColor size={14} /></span>
                 <span className="min-w-0 truncate">{name}</span>
                 <CommitSha commit={worker?.deployment?.commit} />
               </div>

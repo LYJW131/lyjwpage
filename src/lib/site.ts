@@ -16,6 +16,8 @@ export const site = {
   repo: "https://github.com/LYJW131/lyjwpage",
   /** 控制台与单次部署的链接拼在它后面 */
   vercel: "https://vercel.com/lyjw131s-projects/lyjwpage",
+  /** Cloudflare 控制台的 Workers 列表；账号 ID 不是秘密，Worker 的 wrangler.toml 也写它 */
+  cloudflare: "https://dash.cloudflare.com/209f2c881b1c494fec50851c067b3266/workers-and-pages",
   githubLogin: "LYJW131",
   github: "https://github.com/LYJW131",
   /**

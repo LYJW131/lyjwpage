@@ -20,8 +20,8 @@ export type GithubRecentCommit = {
   committedAt: string | null;
 };
 
-/** 卡片右栏固定 6 行、不滚动，所以只拉 6 条。 */
-const RECENT_LIMIT = 6;
+/** 卡片右栏固定 3 张提交卡、不滚动，所以只拉 3 条。 */
+const RECENT_LIMIT = 3;
 
 type CommitListItem = {
   sha?: string;

@@ -4,11 +4,10 @@ import {
   type CloudflareWorkersPayload,
   type WorkerDeployment,
 } from "@/lib/cloudflare-workers-types";
-import { getServiceTrends } from "@/lib/service-trends";
 
 const TTL_MS = 15 * 60_000;
 const LAST_GOOD_TTL_MS = 86_400_000;
-const BUCKET_MS = 900_000;
+const WINDOW_MS = 12 * 3_600_000;
 const API = "https://api.cloudflare.com/client/v4";
 
 // 汇总不带 status / 时间维度：直接取整段窗口的 P50，不能平均各小时的 P50。
@@ -22,13 +21,6 @@ query WorkersMetrics($account: string, $start: Time, $end: Time) {
       dimensions { scriptName }
       sum { requests errors subrequests }
       quantiles { cpuTimeP50 }
-    }
-    series: workersInvocationsAdaptive(limit: 500, filter: {
-      scriptName_in: ["api", "online-counter", "playstation-reporter"],
-      datetime_geq: $start, datetime_lt: $end
-    }, orderBy: [datetimeFifteenMinutes_ASC]) {
-      dimensions { scriptName datetimeFifteenMinutes }
-      sum { requests }
     }
   } }
 }`;
@@ -55,9 +47,8 @@ export function parseWorkersMetrics(raw: unknown, windowStart: number, windowEnd
   const accounts = record(record(body.data).viewer).accounts;
   if (!Array.isArray(accounts) || accounts.length !== 1) throw new Error("Cloudflare 统计账号不可用");
   const account = record(accounts[0]);
-  if (!Array.isArray(account.summary) || !Array.isArray(account.series)) throw new Error("Cloudflare 统计数据缺失");
+  if (!Array.isArray(account.summary)) throw new Error("Cloudflare 统计数据缺失");
   const summaries = account.summary.map(record);
-  const series = account.series.map(record);
   return {
     fetchedAt: windowEnd,
     windowStart,
@@ -66,15 +57,6 @@ export function parseWorkersMetrics(raw: unknown, windowStart: number, windowEnd
       const summary = summaries.find((row) => record(row.dimensions).scriptName === name);
       const sum = summary ? record(summary.sum) : null;
       const cpu = summary ? record(summary.quantiles).cpuTimeP50 : null;
-      const points = new Map<number, number>();
-      for (const row of series) {
-        const dimensions = record(row.dimensions);
-        if (dimensions.scriptName !== name) continue;
-        const at = Date.parse(String(dimensions.datetimeFifteenMinutes));
-        if (!Number.isFinite(at)) throw new Error("Cloudflare 统计时间无效");
-        points.set(at, nonnegative(record(row.sum).requests));
-      }
-      const firstBucket = Math.floor(windowStart / BUCKET_MS) * BUCKET_MS;
       return {
         name,
         metrics: sum ? {
@@ -84,10 +66,6 @@ export function parseWorkersMetrics(raw: unknown, windowStart: number, windowEnd
           // GraphQL cpuTimeP50 单位为微秒；公开契约统一为毫秒。
           cpuTimeP50Ms: cpu == null ? null : nonnegative(cpu) / 1000,
         } : null,
-        history: summary ? Array.from({ length: Math.ceil((windowEnd - firstBucket) / BUCKET_MS) }, (_, i) => {
-          const at = firstBucket + i * BUCKET_MS;
-          return { at, requests: points.get(at) ?? 0 };
-        }) : [],
         deployment: null,
       };
     }),
@@ -146,7 +124,7 @@ function apiRequest(account: string, token: string) {
   };
 }
 
-/** 只在 API Worker 执行。起止由调用方给定，与 Vercel 函数趋势同一次刷新、同一窗口。 */
+/** 只在 API Worker 执行。起止由调用方给定，便于测试固定窗口。 */
 export async function fetchWorkersMetrics(account: string, token: string, windowStart: number, windowEnd: number): Promise<CloudflareWorkersPayload> {
   const raw = await apiRequest(account, token)("/graphql", {
     query: WORKERS_METRICS_QUERY,
@@ -193,26 +171,33 @@ export async function getWorkerDeployments(account: string, token: string): Prom
   });
 }
 
-/** 趋势与 Vercel 同一次刷新、同一窗口；上游失败沿用最后成功值，保留原时间供卡片标注陈旧。 */
+/** 滚动 12 小时、按 15 分钟对齐的窗口；失败沿用最后成功值并保留原时间，供卡片标注陈旧。 */
+export async function getWorkersMetrics(account: string, token: string): Promise<CloudflareWorkersPayload> {
+  const key = `cloudflare-metrics:v1:${account}`;
+  return cached(key, TTL_MS, async () => {
+    try {
+      const windowEnd = Math.floor(Date.now() / TTL_MS) * TTL_MS;
+      const data = { ...await fetchWorkersMetrics(account, token, windowEnd - WINDOW_MS, windowEnd), fetchedAt: Date.now() };
+      await put(`${key}:last-good`, data, LAST_GOOD_TTL_MS);
+      return data;
+    } catch {
+      const previous = await get<CloudflareWorkersPayload>(`${key}:last-good`);
+      if (previous) return previous;
+      throw new Error("Cloudflare 统计暂不可用");
+    }
+  });
+}
+
 export async function getCloudflareWorkers(): Promise<CloudflareWorkersPayload> {
   const token = process.env.CLOUDFLARE_METRICS_TOKEN?.trim();
   const account = process.env.CLOUDFLARE_ACCOUNT_ID?.trim();
   if (!token || !account) throw new Error("Cloudflare 统计未配置");
-  const vercelProject = process.env.VERCEL_PROJECT_ID?.trim();
-  const vercelTeam = process.env.VERCEL_TEAM_ID?.trim();
-  const vercelToken = process.env.VERCEL_TOKEN?.trim();
-  const [trends, deployments] = await Promise.all([
-    getServiceTrends(
-      vercelProject && vercelTeam && vercelToken ? { project: vercelProject, team: vercelTeam, token: vercelToken } : null,
-      { account, token },
-    ).catch(() => null),
+  const [metrics, deployments] = await Promise.all([
+    getWorkersMetrics(account, token),
     getWorkerDeployments(account, token),
   ]);
-  const side = trends?.workers ?? null;
-  if (!side) throw new Error("Cloudflare 统计暂不可用");
   return {
-    ...side.data,
-    fetchedAt: side.fetchedAt,
-    workers: side.data.workers.map((worker, i) => ({ ...worker, deployment: deployments[i] ?? null })),
+    ...metrics,
+    workers: metrics.workers.map((worker, i) => ({ ...worker, deployment: deployments[i] ?? null })),
   };
 }
