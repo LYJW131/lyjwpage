@@ -78,17 +78,18 @@ test("画面标签缺分辨率或缺编码时只写另一边；什么都没有�
   );
 });
 
-test("设备：客户端、设备各一个标签；Infuse 的运行模式后缀和网页端的登录方式都不算「在哪放」", () => {
-  assert.deepEqual(describeDevice("Infuse-Direct", "iPad"), ["Infuse", "iPad"]);
-  assert.deepEqual(describeDevice("Infuse-Download", "Mac"), ["Infuse", "Mac"]);
-  assert.deepEqual(describeDevice("Emby Web (oauth2)", "Google Chrome macOS"), ["Emby Web", "Google Chrome macOS"]);
-  assert.deepEqual(describeDevice("Emby for Android", "Quest 3"), ["Emby for Android", "Quest 3"]);
+test("设备：Infuse 的运行模式后缀和网页端的登录方式都不算「在哪放」", () => {
+  assert.equal(describeDevice("Infuse-Direct", "iPad"), "Infuse · iPad");
+  assert.equal(describeDevice("Infuse-Download", "Mac"), "Infuse · Mac");
+  assert.equal(describeDevice("Emby Web (oauth2)", "Google Chrome macOS"), "Emby Web · Google Chrome macOS");
+  assert.equal(describeDevice("Emby for Android", "Quest 3"), "Emby · Quest 3");
+  assert.equal(describeDevice("Emby for iOS", "iPhone"), "Emby · iPhone");
 });
 
-test("设备：只有一边、或两边一样，就只写一个；都没有是空", () => {
-  assert.deepEqual(describeDevice(null, "Apple TV"), ["Apple TV"]);
-  assert.deepEqual(describeDevice("Emby for iOS", null), ["Emby for iOS"]);
-  assert.deepEqual(describeDevice("Apple TV", "apple tv"), ["Apple TV"]);
-  assert.deepEqual(describeDevice(null, null), []);
-  assert.deepEqual(describeDevice("", "  "), []);
+test("设备：只有一边、或两边一样，就只写一个；都没有是 null", () => {
+  assert.equal(describeDevice(null, "Apple TV"), "Apple TV");
+  assert.equal(describeDevice("Emby for iOS", null), "Emby");
+  assert.equal(describeDevice("Apple TV", "apple tv"), "Apple TV");
+  assert.equal(describeDevice(null, null), null);
+  assert.equal(describeDevice("", "  "), null);
 });

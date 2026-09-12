@@ -1,4 +1,5 @@
 import { cached, get, put } from "@/lib/cache";
+import { getServiceTrends } from "@/lib/service-trends";
 import type { VercelMetricWindow, VercelMetricsPayload, VercelWebVitals } from "@/lib/vercel-deployments-types";
 
 function record(value: unknown): Record<string, unknown> {
@@ -43,6 +44,8 @@ export function parseVercelFunctions(raw: unknown) {
   return { invocations, errors, timeouts, cpuP75Ms: value(row.cpuP75Ms), memoryAvgMb: value(row.memoryAvgMb), history };
 }
 
+export type VercelFunctionsData = ReturnType<typeof parseVercelFunctions>;
+
 export function parseVercelAnalytics(raw: unknown) {
   const response = record(raw), query = record(response.query), data = record(response.data);
   const start = typeof query.since === "string" ? Date.parse(query.since) : NaN;
@@ -51,8 +54,8 @@ export function parseVercelAnalytics(raw: unknown) {
   return { start, end, pageviews: count(data.pageviews), visitors: count(data.visitors) };
 }
 
-async function section<T extends VercelMetricWindow>(key: string, loader: () => Promise<T>): Promise<T | null> {
-  return cached<T | null>(key, 300_000, async () => {
+async function section<T extends VercelMetricWindow>(key: string, ttlMs: number, loader: () => Promise<T>): Promise<T | null> {
+  return cached<T | null>(key, ttlMs, async () => {
     try {
       const data = await loader();
       await put(`${key}:last-good`, data, 86_400_000);
@@ -62,6 +65,31 @@ async function section<T extends VercelMetricWindow>(key: string, loader: () => 
       return await get<T>(`${key}:last-good`) ?? null;
     }
   });
+}
+
+/** 只在 API Worker 执行。起止由调用方给定，与 Workers 趋势同一次刷新、同一窗口。 */
+export async function fetchVercelFunctions(project: string, team: string, token: string, start: number, end: number) {
+  const url = new URL("https://vercel.com/api/observability/metrics");
+  url.search = new URLSearchParams({ teamId: team }).toString();
+  const response = await fetch(url, {
+    method: "POST",
+    body: JSON.stringify({
+      event: "serverlessFunctionInvocation", scope: { type: "project", ownerId: team, projectIds: [project] },
+      startTime: new Date(start).toISOString(), endTime: new Date(end).toISOString(), granularity: { minutes: 15 },
+      filter: "environment eq 'production'", summaryOnly: false, tailRollup: "truncate", limit: 500, reason: "observability_chart",
+      rollups: {
+        total: { measure: "count", aggregation: "sum" },
+        errors: { measure: "count", aggregation: "sum", filter: "(errorCode ne '' and errorCode ne 'timeout') or httpStatus ge 500 and httpStatus ne 504" },
+        timeouts: { measure: "count", aggregation: "sum", filter: "httpStatus eq 504 or errorCode eq 'timeout'" },
+        cpuP75Ms: { measure: "functionCpuTimeMs", aggregation: "p75" },
+        memoryAvgMb: { measure: "peakMemoryMb", aggregation: "avg" },
+      },
+    }),
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", "User-Agent": "lyjwpage-vercel-status" },
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!response.ok) throw new Error(`Vercel 指标查询失败 (${response.status})`);
+  return parseVercelFunctions(await response.json());
 }
 
 /** Worker 独立缓存各指标组；任何一组失效都不影响部署或其他指标。 */
@@ -77,29 +105,24 @@ export async function getVercelMetrics(project: string, team: string, token: str
     return response.json();
   };
   const [speed, functions, analytics] = await Promise.all([
-    section(`${prefix}:speed`, async () => {
+    section(`${prefix}:speed`, 300_000, async () => {
       const end = Math.floor(Date.now() / 300_000) * 300_000, start = end - 7 * 86_400_000;
       const params = { tz: "Asia/Shanghai", from: new Date(start).toISOString(), to: new Date(end).toISOString(), environment: "production", projectId: project };
       const [desktop, mobile] = await Promise.all(["desktop", "mobile"].map(device => request("https://vercel.com/api/speed-insights/v2/timeseries", { ...params, device }).then(parseVercelWebVitals)));
       return { fetchedAt: Date.now(), start, end, desktop, mobile };
     }),
-    section(`${prefix}:functions:v2`, async () => {
-      const end = Math.floor(Date.now() / 300_000) * 300_000, start = end - 12 * 3_600_000;
-      const raw = await request("https://vercel.com/api/observability/metrics", {}, {
-        event: "serverlessFunctionInvocation", scope: { type: "project", ownerId: team, projectIds: [project] },
-        startTime: new Date(start).toISOString(), endTime: new Date(end).toISOString(), granularity: { minutes: 5 },
-        filter: "environment eq 'production'", summaryOnly: false, tailRollup: "truncate", limit: 500, reason: "observability_chart",
-        rollups: {
-          total: { measure: "count", aggregation: "sum" },
-          errors: { measure: "count", aggregation: "sum", filter: "(errorCode ne '' and errorCode ne 'timeout') or httpStatus ge 500 and httpStatus ne 504" },
-          timeouts: { measure: "count", aggregation: "sum", filter: "httpStatus eq 504 or errorCode eq 'timeout'" },
-          cpuP75Ms: { measure: "functionCpuTimeMs", aggregation: "p75" },
-          memoryAvgMb: { measure: "peakMemoryMb", aggregation: "avg" },
-        },
-      });
-      return { ...parseVercelFunctions(raw), fetchedAt: Date.now(), start, end };
-    }),
-    section(`${prefix}:analytics`, async () => {
+    (async () => {
+      // 函数趋势与 Workers 同一次刷新、同一窗口；共享层内部已有缓存与 last-good，这里只做组装。
+      const cfAccount = process.env.CLOUDFLARE_ACCOUNT_ID?.trim();
+      const cfToken = process.env.CLOUDFLARE_METRICS_TOKEN?.trim();
+      const trends = await getServiceTrends(
+        { project, team, token },
+        cfAccount && cfToken ? { account: cfAccount, token: cfToken } : null,
+      ).catch(() => null);
+      const side = trends?.vercel ?? null;
+      return side ? { ...side.data, fetchedAt: side.fetchedAt, start: side.windowStart, end: side.windowEnd } : null;
+    })(),
+    section(`${prefix}:analytics`, 300_000, async () => {
       const end = Math.floor(Date.now() / 86_400_000) * 86_400_000, start = end - 7 * 86_400_000;
       const raw = await request("https://api.vercel.com/v1/query/web-analytics/visits/count", {
         projectId: project, since: new Date(start).toISOString(), until: new Date(end).toISOString(),

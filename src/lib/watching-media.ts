@@ -19,17 +19,17 @@ function clientName(client: string | null): string | null {
   const cleaned = client
     .replace(/^infuse-.*$/i, "Infuse")
     .replace(/\s*\((?:oauth2|direct)\)\s*$/i, "")
+    .replace(/\s+for\s+(?:iOS|iPadOS|macOS|Android|tvOS|Windows)$/i, "")
     .trim();
   return cleaned || null;
 }
 
-/** 客户端和设备各一个标签（["Infuse", "iPad"]）；两个一样就只留一个，都没有就是空 */
-export function describeDevice(client: string | null, deviceName: string | null): string[] {
+/** 「Infuse · iPad」；两个一样就只留一个，都没有就是 null */
+export function describeDevice(client: string | null, deviceName: string | null): string | null {
   const app = clientName(client);
   const device = deviceName?.trim() || null;
-  if (app && device && app.toLowerCase() !== device.toLowerCase()) return [app, device];
-  const only = app ?? device;
-  return only ? [only] : [];
+  if (app && device && app.toLowerCase() !== device.toLowerCase()) return `${app} · ${device}`;
+  return app ?? device;
 }
 
 const VIDEO_CODECS: Record<string, string> = {
