@@ -1,5 +1,6 @@
 import { cacheLife } from "next/cache";
 
+import { type CommitAuthor, mergeAuthors, parseCoAuthors } from "@/lib/commit-authors";
 import { repoIdFromUrl } from "@/lib/github-repo";
 import { site } from "@/lib/site";
 
@@ -16,7 +17,8 @@ export type GithubRecentCommit = {
   shortSha: string;
   title: string;
   url: string;
-  authorLogin: string | null;
+  /** 作者在前，`Co-authored-by` 的协作者接上，见 commit-authors */
+  authors: CommitAuthor[];
   committedAt: string | null;
 };
 
@@ -28,10 +30,18 @@ type CommitListItem = {
   html_url?: string;
   commit?: {
     message?: string;
-    author?: { date?: string } | null;
+    author?: { name?: string; date?: string } | null;
   };
-  author?: { login?: string } | null;
+  author?: { login?: string; avatar_url?: string } | null;
 };
+
+/** 提交的作者：对上了 GitHub 账号就用登录名和头像，否则只有 git 里的名字。 */
+function primaryAuthor(item: CommitListItem): CommitAuthor | null {
+  const login = item.author?.login?.trim();
+  if (login) return { name: login, login, avatarUrl: item.author?.avatar_url?.trim() || null, agent: null };
+  const name = item.commit?.author?.name?.trim();
+  return name ? { name, login: null, avatarUrl: null, agent: null } : null;
+}
 
 function firstLine(message: string): string {
   const line = message.split(/\r?\n/, 1)[0]?.trim() ?? "";
@@ -80,7 +90,7 @@ export async function getRecentCommits(): Promise<GithubRecentCommit[]> {
           shortSha: sha.slice(0, 7),
           title: firstLine(message),
           url: item.html_url?.trim() || `${site.repo}/commit/${sha}`,
-          authorLogin: item.author?.login?.trim() || null,
+          authors: mergeAuthors(primaryAuthor(item), parseCoAuthors(message)),
           committedAt: item.commit?.author?.date ?? null,
         },
       ];
