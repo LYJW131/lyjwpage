@@ -3,6 +3,7 @@ import type {
   PlaystationGame,
   PlaystationNowPlaying,
   PlaystationPlayingPayload,
+  PlaystationPowerPayload,
   PlaystationPresencePayload,
 } from "@/lib/types";
 
@@ -88,6 +89,27 @@ export function normalizePlaystationPresence(value: unknown): PlaystationPresenc
     platform: nullableText(row, "platform", "PlayStation presence"),
     lastOnlineAt: nullableNumber(row, "lastOnlineAt", "PlayStation presence"),
     playing: normalizeNowPlaying(row.playing),
+  };
+}
+
+/**
+ * HA 那条自动化送来的电源状态。`observedAt` 缺席就按收到的时刻算 —— HA 模板里
+ * 拿当前时间要绕一圈，而这条上报是事件驱动的，落地时刻和观测时刻差不了几百毫秒。
+ */
+export function normalizePlaystationPower(
+  value: unknown,
+  now = Date.now(),
+): PlaystationPowerPayload {
+  const row = object(value);
+  if (!row) throw new Error("PlayStation power 必须是对象");
+  if (typeof row.on !== "boolean") {
+    throw new Error("PlayStation power 的 on 必须是布尔值");
+  }
+  const observedAt = number(row.observedAt);
+  return {
+    on: row.on,
+    observedAt: observedAt != null && observedAt > 0 ? observedAt : now,
+    entityId: text(row.entityId) ?? null,
   };
 }
 

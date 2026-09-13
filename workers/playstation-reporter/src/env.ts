@@ -80,3 +80,12 @@ export function onlineCountUrl(env: Env): string {
   const origin = env.ONLINE_COUNTER_URL?.trim();
   return origin ? `${trimSlash(origin)}/count` : "";
 }
+
+/**
+ * 主机电源状态挂在「此刻在玩」这条读端点上：Home Assistant 把 PS5 那个开关
+ * 上报给 API Worker，读的出口把它并进 presence 一起给出来（见站点 lib/playstation）。
+ */
+export function playingNowUrl(env: Env): string {
+  const origin = env.SITE_URL?.trim();
+  return origin ? `${trimSlash(origin)}/api/status/playing/now` : "";
+}
