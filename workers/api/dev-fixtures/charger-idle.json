@@ -1,0 +1,55 @@
+{
+  "ok": true,
+  "data": {
+    "connected": false,
+    "totalPower": 0,
+    "maxPower": 160,
+    "ports": [
+      {
+        "id": "C1",
+        "active": false,
+        "power": null,
+        "voltage": null,
+        "current": null,
+        "device": null,
+        "protocol": null,
+        "cable": null
+      },
+      {
+        "id": "C2",
+        "active": false,
+        "power": null,
+        "voltage": null,
+        "current": null,
+        "device": null,
+        "protocol": null,
+        "cable": null
+      },
+      {
+        "id": "C3",
+        "active": false,
+        "power": null,
+        "voltage": null,
+        "current": null,
+        "device": null,
+        "protocol": null,
+        "cable": null
+      }
+    ],
+    "device": {
+      "serialNumber": "ASHDJW7CF49200487",
+      "firmwareVersion": "v0.0.5.1",
+      "model": "A2687"
+    },
+    "cover": null,
+    "updatedAt": "$now-2000",
+    "history": [],
+    "historyPartial": false,
+    "pushedAt": "$now",
+    "staleAfterMs": 3600000,
+    "lastSeenAt": "$now",
+    "declaredOffline": false,
+    "heartbeatWindowMs": 3600000,
+    "offlineAtSource": false
+  }
+}

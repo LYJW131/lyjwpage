@@ -1,0 +1,22 @@
+{
+  "ok": true,
+  "data": {
+    "observedAt": "$now",
+    "online": true,
+    "availability": "availableToPlay",
+    "platform": "PS5",
+    "lastOnlineAt": "$now",
+    "playing": {
+      "titleId": "PPSA02530_00",
+      "title": "PRAGMATA",
+      "format": "PS5",
+      "launchPlatform": "PS5",
+      "iconUrl": "https://image.api.playstation.com/vulcan/ap/rnd/202511/2605/3d57b6ae9b22a4982f0272ef1c716ebbfee59b7ea1fe60af.png"
+    },
+    "power": {
+      "on": true,
+      "observedAt": "$now",
+      "entityId": "switch.ps5_210_power"
+    }
+  }
+}

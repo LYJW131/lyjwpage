@@ -1,0 +1,64 @@
+{
+  "ok": true,
+  "data": {
+    "connected": true,
+    "battery": 62.45,
+    "charging": true,
+    "timeToFullMinutes": 38,
+    "thermalLimited": false,
+    "batteryHealth": 100,
+    "inputPower": 100.25,
+    "outputPower": 26.88,
+    "temperatures": [31, 32],
+    "ports": [
+      {
+        "id": "C1",
+        "active": true,
+        "direction": "out",
+        "attached": true,
+        "power": 26.88,
+        "voltage": 9.02,
+        "current": 2.98
+      },
+      {
+        "id": "C2",
+        "active": false,
+        "direction": null,
+        "attached": false,
+        "power": null,
+        "voltage": null,
+        "current": null
+      },
+      {
+        "id": "A",
+        "active": false,
+        "direction": null,
+        "attached": false,
+        "power": null,
+        "voltage": null,
+        "current": null
+      },
+      {
+        "id": "B",
+        "active": true,
+        "direction": "in",
+        "attached": true,
+        "power": 100.25,
+        "voltage": 20.05,
+        "current": 5.0
+      }
+    ],
+    "device": {
+      "serialNumber": "AJ7DLCH0F49600286",
+      "firmwareVersion": "v0.0.5.2",
+      "model": "A110G"
+    },
+    "updatedAt": "$now-2000",
+    "pushedAt": "$now",
+    "staleAfterMs": 3600000,
+    "lastSeenAt": "$now",
+    "declaredOffline": false,
+    "heartbeatWindowMs": 3600000,
+    "offlineAtSource": false
+  }
+}

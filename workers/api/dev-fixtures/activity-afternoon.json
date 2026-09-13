@@ -1,0 +1,18 @@
+{
+  "ok": true,
+  "data": {
+    "date": "2026-09-14",
+    "secondsFromGMT": 28800,
+    "moveKcal": 386,
+    "moveGoalKcal": 270,
+    "exerciseMinutes": 34,
+    "exerciseGoalMinutes": 30,
+    "standHours": 9,
+    "standGoalHours": 10,
+    "steps": 9427,
+    "distanceMeters": 7136,
+    "flightsClimbed": 6,
+    "pushedAt": "$now-600000",
+    "currentAtSource": true
+  }
+}
