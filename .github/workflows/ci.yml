@@ -46,3 +46,5 @@ jobs:
       - run: pnpm -r --include-workspace-root typecheck
 
       - run: pnpm test
+
+      - run: node --test scripts/*.test.mjs
