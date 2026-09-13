@@ -55,7 +55,10 @@ PS5 通没通电由 Home Assistant 那台机器上的开关实体（`switch.ps5_
   三档。**这一项的兜底方向和人头数相反**：人头数读不到当 0、只会变慢；这一份要是把
   故障当关机，机器明明开着却半小时才更新一次，卡片就冻住了。
 
-HA 那条自动化怎么配见站点 `docs/reporter-endpoints.md`。电源这一份不参与心跳判活 ——
+HA 那侧是 n100 上的 `rest_command.push_ps5_power` 加自动化 `lyjwpage_ps5_power`
+（`configuration.yaml` / `automations.yaml`，鉴权复用 `lyjwpage_ingest_authorization`
+那个 secret，和 HomePod 上报同一把）。自动化除了开关翻面还挂了 `homeassistant start`：
+HA 停机期间翻过面的话，起来补一封对齐。电源这一份不参与心跳判活 ——
 它可能好几天才翻一次面，PSN 上报器的死活仍然只看 presence 的 `observedAt`。
 
 KV 的读带最长 60 秒的边缘缓存，正好压在 55 秒这个阈值上，所以门还看一眼 isolate
