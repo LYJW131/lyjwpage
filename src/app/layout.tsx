@@ -4,7 +4,7 @@ import { GeistMono } from "geist/font/mono";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 
-import { AppVersionPill } from "@/components/app-version-pill";
+import { AppVersionNotice } from "@/components/app-version-notice";
 import { PwaRegistration } from "@/components/pwa-registration";
 import { ThemeProvider } from "@/components/theme-provider";
 import { HEATMAP_STORAGE_KEY } from "@/lib/heatmap-preference";
@@ -78,7 +78,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         {assetOrigin ? <link rel="preconnect" href={assetOrigin} /> : null}
         <ThemeProvider>{children}</ThemeProvider>
         <PwaRegistration />
-        <AppVersionPill />
+        <AppVersionNotice />
         <Analytics />
         <SpeedInsights />
       </body>
