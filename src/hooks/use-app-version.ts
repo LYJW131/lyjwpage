@@ -28,13 +28,13 @@ export function useAppVersion() {
   );
 
   const vercel = envelope?.ok ? envelope.data : undefined;
-  const latestCommit = vercel?.production?.commit?.sha ?? null;
+  const production = vercel?.production ?? null;
+  const latestCommit = production?.commit?.sha ?? null;
 
   const status: AppVersionStatus = useMemo(() => {
-    // 开发环境下本地 commit 与生产 worker 必然不同，不产生误报
     if (isDev) return "unknown";
     return resolveVersionStatus(pageCommit, latestCommit);
   }, [isDev, latestCommit]);
 
-  return { status, latestCommit };
+  return { status, latestCommit, pageCommit, production, isDev };
 }

@@ -1,6 +1,7 @@
 import { Footer } from "@/components/footer";
 import { Header } from "@/components/header";
 import { WebPlayerProvider } from "@/components/web-player/web-player-provider";
+import { AppVersionCard } from "@/components/app-version-card";
 import { ContactCard } from "@/components/contact-card";
 import { DevFakeDataToggle } from "@/components/dev-fake-data-toggle";
 import { DevToggleDock } from "@/components/dev-toggles";
@@ -81,6 +82,8 @@ export default async function Home() {
         <main className="flex-1">
           <div className="mx-auto my-3.5 w-[calc(100%-2rem)] max-w-5xl sm:my-4">
             <Section id="live" className="p-0 sm:p-0">
+              <AppVersionCard />
+
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 <ContactCard
                   avatarDataUri={avatarDataUri}
