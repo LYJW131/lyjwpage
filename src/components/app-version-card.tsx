@@ -45,8 +45,9 @@ export function AppVersionCard() {
   const commitMessage =
     production?.commit?.message ??
     (isDev ? "refactor(ui): 版本提示改用硬边直角面板，去除圆角与胶囊形态" : null);
+  // 取整成 0s 的不显示：那不是「构建很快」，是这一版的 ready / buildingAt 还没齐
   const buildDuration =
-    production?.buildDurationMs != null
+    production?.buildDurationMs != null && production.buildDurationMs >= 1000
       ? `${(production.buildDurationMs / 1000).toFixed(0)}s`
       : isDev
         ? "32s"
