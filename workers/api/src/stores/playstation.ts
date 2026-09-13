@@ -1,13 +1,13 @@
 import { object } from "@/lib/json";
 import { NOW_PLAYING_TAG, PLAYING_TAG, TROPHIES_TAG } from "@/lib/live-events";
-import { getPlaystationPlayedGames, getPlaystationPresence, getPlaystationTrophies } from "@/lib/playstation-store";
+import { getPlaystationPlayedGames, getPlaystationPower, getPlaystationPresence, getPlaystationTrophies } from "@/lib/playstation-store";
 import { normalizeTrophies, trophiesContent } from "@/lib/trophies";
 import type {
   PlaystationPresencePayload
 } from "@/lib/types";
 import { fanout, type PendingEvent } from "@api/fanout";
-import { setPlaystationPlayedGames, setPlaystationPresence, setPlaystationTrophies } from "@api/stores/playstation-store";
-import { normalizePlaystationPlayedGames, normalizePlaystationPresence } from "@shared/playstation";
+import { setPlaystationPlayedGames, setPlaystationPower, setPlaystationPresence, setPlaystationTrophies } from "@api/stores/playstation-store";
+import { normalizePlaystationPlayedGames, normalizePlaystationPower, normalizePlaystationPresence } from "@shared/playstation";
 
 /** observedAt 是采集时刻，不参与“内容有没有变化”的判断。 */
 function presenceContent(payload: PlaystationPresencePayload) {
@@ -46,12 +46,18 @@ export async function recordPlaystationReport(input: unknown) {
       : null;
   const incomingTrophies =
     "trophies" in envelope ? normalizeTrophies(envelope.trophies) : null;
+  /** Home Assistant 那条自动化单独发这一项，不带 presence，见 README */
+  const incomingPower =
+    "power" in envelope ? normalizePlaystationPower(envelope.power) : null;
 
-  const [previousPresence, previousPlayedGames, previousTrophies] = await Promise.all([
-    incomingPresence ? getPlaystationPresence() : null,
-    incomingPlayedGames ? getPlaystationPlayedGames() : null,
-    incomingTrophies ? getPlaystationTrophies() : null,
-  ]);
+  const [previousPresence, previousPlayedGames, previousTrophies, previousPower] =
+    await Promise.all([
+      incomingPresence ? getPlaystationPresence() : null,
+      incomingPlayedGames ? getPlaystationPlayedGames() : null,
+      incomingTrophies ? getPlaystationTrophies() : null,
+      // presence 这一封也要读：推送里的 presence 得带上电源，形状和读端点对齐
+      incomingPresence || incomingPower ? getPlaystationPower() : null,
+    ]);
 
   const presenceChanged =
     incomingPresence != null &&
@@ -66,10 +72,17 @@ export async function recordPlaystationReport(input: unknown) {
     incomingTrophies != null &&
     JSON.stringify(previousTrophies ? trophiesContent(previousTrophies) : null) !==
     JSON.stringify(trophiesContent(incomingTrophies));
+  /** 只看开关翻没翻面：HA 那条自动化只在 state 变化时触发，重复上报当没变 */
+  const powerChanged =
+    incomingPower != null && (!previousPower || previousPower.on !== incomingPower.on);
 
   const writes: Promise<unknown>[] = [];
   const events: PendingEvent[] = [];
   const tags: string[] = [];
+  /** 推送里的 presence 要和读端点给的形状一致 —— 那边会把电源并进来，见 lib/playstation */
+  const powerForEvent = incomingPower ?? previousPower;
+  /** presence 那一封发没发过 playing-now；PendingEvent 可能是 promise，回头翻不出来 */
+  let sentPlayingNow = false;
 
   if (incomingPresence) {
     /**
@@ -84,9 +97,32 @@ export async function recordPlaystationReport(input: unknown) {
      */
     writes.push(setPlaystationPresence(incomingPresence));
     if (presenceChanged || !previousPresence) {
-      events.push({ type: "playing-now", payload: incomingPresence });
+      events.push({ type: "playing-now", payload: { ...incomingPresence, power: powerForEvent } });
+      sentPlayingNow = true;
       // 「正在游玩」和听歌 now 一样：不能先把旧值再顶几分钟。
       tags.push(NOW_PLAYING_TAG);
+    }
+  }
+  if (incomingPower) {
+    /**
+     * 电源状态不参与心跳：HA 只在开关翻面时发一封，没翻面就不必重写
+     * observedAt —— 这份的新鲜度不代表任何上报器的死活，PSN 上报器的心跳
+     * 仍然只看 presence。
+     */
+    if (powerChanged || !previousPower) {
+      writes.push(setPlaystationPower(incomingPower));
+      tags.push(NOW_PLAYING_TAG);
+      /**
+       * 立刻广播一次：presence 要等 PSN 上报器下一轮（最慢一分多钟）才更新，
+       * 而关机这件事局域网里当场就知道。presence 那一封已经发过事件时不再补，
+       * 否则页面收到两条内容一样的。
+       */
+      if (!sentPlayingNow) {
+        const presence = incomingPresence ?? (await getPlaystationPresence());
+        if (presence) {
+          events.push({ type: "playing-now", payload: { ...presence, power: incomingPower } });
+        }
+      }
     }
   }
   if (incomingPlayedGames && (playedGamesChanged || !previousPlayedGames)) {
@@ -103,5 +139,5 @@ export async function recordPlaystationReport(input: unknown) {
   }
 
   await fanout({ writes, events, tags });
-  return { changed: presenceChanged || playedGamesChanged || trophiesChanged };
+  return { changed: presenceChanged || playedGamesChanged || trophiesChanged || powerChanged };
 }

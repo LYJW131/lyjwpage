@@ -1,6 +1,7 @@
 import { mirrorKey } from "@/lib/storage";
 import type {
   PlaystationPlayingPayload,
+  PlaystationPowerPayload,
   PlaystationPresencePayload,
   TrophiesPayload,
 } from "@/lib/types";
@@ -18,6 +19,16 @@ export const presenceMirror = mirrorKey<PlaystationPresencePayload>(
   ["playstation", "presence"],
   (state) => state.observedAt,
   { ttlMs: TTL_MS },
+);
+
+/**
+ * 电源状态只在 HA 那个开关翻面时上报，翻一次可能隔好几天，所以**不设 TTL** ——
+ * 过期会让判定退回「不知道」，而不知道的默认是按开机处理，等于白白多跑一整天的
+ * 快档。presence 那 30 天 TTL 在这里不适用：它每轮都刷新，这一份不会。
+ */
+export const powerMirror = mirrorKey<PlaystationPowerPayload>(
+  ["playstation", "power"],
+  (state) => state.observedAt,
 );
 
 export const playedGamesMirror = mirrorKey<PlaystationPlayingPayload>(

@@ -21,6 +21,18 @@
 | 方法 | 路径 | 用途 |
 | --- | --- | --- |
 | POST | `/api/ingest/<来源>` | `mac`、`iphone`、`homepod`、`emby`、`playstation`、`server`、`agents` |
+
+`/api/ingest/playstation` 的信封是 `{ version: 1, presence?, playedGames?, trophies?, power? }`，
+每一项各自可省、缺席表示这次不谈这一项。前三项由 `workers/playstation-reporter` 每轮交付；
+`power` 是**另一个生产者**——Home Assistant 上那台 PS5 的电源开关实体，翻面时发一封
+`{ version: 1, power: { on, observedAt?, entityId? } }`。两边互不覆盖：电源单独存一份，
+读的出口（`/api/status/playing/now`）才并进 presence，否则 PSN 上报器每轮整份覆盖
+presence 时会把它冲掉。`on` 必须是布尔值（HA 实体的 `"on"` / `"off"` 字符串要在自动化
+模板里先翻译），`observedAt` 缺席按落地时刻算。
+
+电源翻面时 API Worker 立刻广播一条 `playing-now`，页面当场就能看到；PSN 那侧的
+`presence`（在玩什么）要等上报器下一轮，约 1～2 分钟。上报器自己也读这一份决定节奏，
+见 `workers/playstation-reporter/README.md`。
 | GET | `/ws` | 浏览器接收事件推送的 WebSocket，页面开着就一直挂着；使用 `ALLOWED_ORIGINS` 校验来源 |
 | GET | `/count` | `{ ok, connections }`：开着的页面数，供上报器判定中档 |
 | GET | `/api/musickit/token` | `{ token, issuedAt, expiresAt }`：给「一起听」的 MusicKit developer token，同一份来源白名单；见下文 |

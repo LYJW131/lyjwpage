@@ -2,6 +2,7 @@ import { AuthSession } from "./auth";
 import {
   countUrl,
   onlineCountUrl,
+  playingNowUrl,
   hiddenTitleIds,
   isDryRun,
   playedGamesLimit,
@@ -297,6 +298,35 @@ async function headCount(url: string, field: "online" | "connections"): Promise<
   }
 }
 
+/** HA 报上来的主机电源状态；读不到就是 null＝不知道 */
+type Power = { on: boolean; observedAt: number } | null;
+
+/**
+ * 主机通没通电。Home Assistant 那个开关翻面时上报给 API Worker，这里从
+ * 「此刻在玩」那条读端点顺带取回来。
+ *
+ * **兜底方向和人头数相反**：人头数读不到当 0、只会变慢；这一份读不到当
+ * 「不知道」、按开机走原来的三档。反过来把故障当关机会把卡片冻在闲档，
+ * 机器明明开着却半小时才更新一次。
+ */
+async function readPower(env: Env): Promise<Power> {
+  const url = playingNowUrl(env);
+  if (!url) return null;
+  try {
+    const response = await fetch(url, { signal: AbortSignal.timeout(COUNT_TIMEOUT_MS) });
+    if (!response.ok) throw new Error(`返回 ${response.status}`);
+    const body = (await response.json()) as { data?: { power?: unknown } } | null;
+    const power = body?.data?.power as Record<string, unknown> | null | undefined;
+    if (!power || typeof power.on !== "boolean") return null;
+    const observedAt = power.observedAt;
+    if (typeof observedAt !== "number" || !Number.isFinite(observedAt)) return null;
+    return { on: power.on, observedAt };
+  } catch (error) {
+    console.warn(JSON.stringify({ event: "playstation-read-power", error: explain(error) }));
+    return null;
+  }
+}
+
 /**
  * 上一轮完整 tick 的开始时刻，isolate 本地这一份。
  *
@@ -313,6 +343,8 @@ type Gate = {
   /** 这一响真去问了的那些数；没问到那一步的留 null */
   online: number | null;
   open: number | null;
+  /** 主机电源：true 开、false 关、null 没问到或问不出来 */
+  power: boolean | null;
 };
 
 /**
@@ -330,53 +362,61 @@ async function shouldTick(env: Env): Promise<Gate> {
   const lastAt = Math.max(await readFullTickStartedAt(env.STATE), lastFullTickAt);
   const sinceMs = lastAt > 0 ? Date.now() - lastAt : Number.POSITIVE_INFINITY;
   // 攒够闲档就必跑，不必再问人数：闲时节奏不该依赖 API Worker 可不可达
-  if (sinceMs >= IDLE_TICK_INTERVAL_MS) return { run: true, sinceMs, online: null, open: null };
-  if (sinceMs < LIVE_TICK_INTERVAL_MS) return { run: false, sinceMs, online: null, open: null };
+  if (sinceMs >= IDLE_TICK_INTERVAL_MS) {
+    return { run: true, sinceMs, online: null, open: null, power: null };
+  }
+  if (sinceMs < LIVE_TICK_INTERVAL_MS) {
+    return { run: false, sinceMs, online: null, open: null, power: null };
+  }
 
-  const [online, open] = await Promise.all([
+  const [online, open, power] = await Promise.all([
     headCount(onlineCountUrl(env), "online"),
     headCount(countUrl(env), "connections"),
+    readPower(env),
   ]);
-  if (online > 0) return { run: true, sinceMs, online, open };
-  if (sinceMs < OPEN_TICK_INTERVAL_MS) return { run: false, sinceMs, online, open };
-  return { run: open > 0, sinceMs, online, open };
+  const on = power?.on ?? null;
+
+  /**
+   * 开关在上一轮之后翻过面：立刻跑一轮，不问人数。开机要尽快把「正在游玩」
+   * 接上，关机要尽快把它撤掉 —— 这两下 PSN 自己要分钟级才反应过来，而 HA
+   * 在局域网里当场就知道。翻面时刻早于上一轮就说明那一轮已经带上了，不重跑。
+   */
+  if (power && power.observedAt > lastAt) {
+    return { run: true, sinceMs, online, open, power: on };
+  }
+  /**
+   * 主机关着：presence 不会再变，只留最慢那一档。上面 `sinceMs >= IDLE` 已经
+   * 放行过闲档，走到这里就是还没攒够，直接挡回去 —— 于是关机期间恒定 30 分钟
+   * 一轮，有没有人看着都一样。读不到电源（null）时不改变原来的行为。
+   */
+  if (on === false) return { run: false, sinceMs, online, open, power: on };
+
+  if (online > 0) return { run: true, sinceMs, online, open, power: on };
+  if (sinceMs < OPEN_TICK_INTERVAL_MS) return { run: false, sinceMs, online, open, power: on };
+  return { run: open > 0, sinceMs, online, open, power: on };
 }
 
-type Inflight = { promise: Promise<TickResult>; forced: boolean };
-let inflight: Inflight | null = null;
+let inflight: Promise<TickResult> | null = null;
 
 /**
- * 同一 isolate 里只跑一轮。本地 8788 会被 Chrome 探 /json/version 再连打 GET /，
- * 这道去重就是把那一串探测压成一轮的东西。
- *
- * 强制那一轮不能拿正在跑的普通轮次充数 —— 那轮走的是缓存，正是它要绕开的。
- * 撞上了就排在后面：等普通那轮结束（成败都行），再整份跑一遍。排队的那轮从
- * 此就是锁的持有者：每轮记一个条目，收尾时**只有条目还是自己**才把锁放掉，
- * 前一轮的收尾不会把后一轮的锁顺手清了。
+ * 同一 isolate 里只跑一轮：cron 和手动 `/tick` 撞在一起时后来的搭前面那一轮的车。
+ * 收尾时**只有条目还是自己**才把锁放掉，前一轮的收尾不会把后一轮的锁顺手清了。
  */
-function tickOnce(env: Env, force = false): Promise<TickResult> {
+function tickOnce(env: Env): Promise<TickResult> {
   const current = inflight;
-  if (current && (!force || current.forced)) return current.promise;
+  if (current) return current;
 
-  const promise = current
-    ? current.promise.catch(() => undefined).then(() => tick(env, true))
-    : tick(env, force);
-  const entry: Inflight = { promise, forced: force };
-  inflight = entry;
+  const promise = tick(env);
+  inflight = promise;
   const release = () => {
-    if (inflight === entry) inflight = null;
+    if (inflight === promise) inflight = null;
   };
   // 两个分支都接上，别让 finally 派生出一条没人接的拒绝
   promise.then(release, release);
   return promise;
 }
 
-/**
- * `force` 是「把这一轮当成 KV 空着跑」：缓存、指纹、目录一律当没有，于是下面每条
- * 分支都走冷启动那一侧 —— 游玩列表整份翻、购买库重拉、奖杯目录每款都爬、资料
- * 重问、两封信不比指纹都交付。不另开一套分支，冷启动路径本来就是全量路径。
- */
-async function tick(env: Env, force = false): Promise<TickResult> {
+async function tick(env: Env): Promise<TickResult> {
   const startedAt = Date.now();
   // 同步落一份给门，别等下面那个 await —— 它要挡的就是「KV 还没读到新值」那一响
   lastFullTickAt = startedAt;
@@ -402,11 +442,11 @@ async function tick(env: Env, force = false): Promise<TickResult> {
       // 「这轮成功过」—— 上游持续故障时的重试节奏才跟基线一致。
       writeFullTickStartedAt(env.STATE, startedAt),
     ]);
-    const oldPlayedGamesFingerprint = force ? null : storedPlayedGamesFingerprint;
-    const oldTrophiesFingerprint = force ? null : storedTrophiesFingerprint;
-    const lastCatalog = force ? null : asTrophyCatalog(storedCatalog);
-    const playedCache = force ? null : asPlayedGamesCache(storedPlayedGames);
-    const libraryCache = force ? null : asLibraryCache(storedLibrary);
+    const oldPlayedGamesFingerprint = storedPlayedGamesFingerprint;
+    const oldTrophiesFingerprint = storedTrophiesFingerprint;
+    const lastCatalog = asTrophyCatalog(storedCatalog);
+    const playedCache = asPlayedGamesCache(storedPlayedGames);
+    const libraryCache = asLibraryCache(storedLibrary);
 
     const hidden = hiddenTitleIds(env);
     const auth = new AuthSession(env);
@@ -487,9 +527,6 @@ async function tick(env: Env, force = false): Promise<TickResult> {
             console.error(
               JSON.stringify({ event: "playstation-library", error: explain(error) }),
             );
-            // 强制那一轮要的就是这份库：拿不到就整轮失败，别交一份没有预购的
-            // 列表上去、再把指纹盖上 —— 那等于把预购从站点上抹掉。
-            if (force) throw new Error(`购买库拉取失败：${explain(error)}`);
             if (!libraryCache) library = [];
           }
         })(),
@@ -582,7 +619,6 @@ async function tick(env: Env, force = false): Promise<TickResult> {
       playedGamesChanged,
       trophiesChanged,
       dryRun: isDryRun(env),
-      forced: force,
     };
     await env.STATE.put(TICK_META_KEY, JSON.stringify(meta));
     console.log(JSON.stringify({ event: "playstation-tick", ...meta }));
@@ -595,7 +631,6 @@ async function tick(env: Env, force = false): Promise<TickResult> {
       playedGamesChanged,
       trophiesChanged,
       dryRun: isDryRun(env),
-      forced: force,
       error: explain(error),
     };
     await env.STATE.put(TICK_META_KEY, JSON.stringify(meta));
@@ -625,29 +660,35 @@ export default {
   },
 
   /**
-   * 两个手动入口，都不走门，都会刷新那枚开始时刻（手动跑完之后下一轮定时的
-   * 跟着往后顺延）。访问控制由前面的 Cloudflare Access 负责，token 永远不出现在
-   * 响应里。
+   * 只剩一个手动入口 `GET /tick`：普通一轮，该走缓存走缓存、比指纹、变了才交付。
+   * 不走门，会刷新那枚开始时刻（手动跑完之后下一轮定时的跟着往后顺延）。
    *
-   * - `GET /`：**全量刷新，忽略所有缓存**。游玩列表整份翻、购买库重拉、奖杯目录
-   *   每款重爬、资料重问，两封信不比指纹都交付。贵：每款奖杯 4 次出网、每款游戏
-   *   一次对齐，别把它接进任何监控或定时器。
-   * - `GET /tick`：普通一轮，该走缓存走缓存、比指纹、变了才交付。
+   * 从前根路径是「全量刷新、忽略所有缓存」，每款奖杯 4 次出网、每款游戏一次对齐，
+   * 贵到必须在前面挡一道 Cloudflare Access —— 而本地 `wrangler dev` 时 Chrome
+   * 拿调试口探一下就能把它点着。2026-09-13 整个删掉：冷启动路径本来就等价，
+   * 真要重来一遍把 KV 清掉就是了。删掉之后这个 Worker 上不再有「贵」的入口。
    *
-   * 根路径跑全量有个已知的坑：本地 `wrangler dev` 时 Chrome / Cursor 会拿调试口探
-   * `/json/version` 再连打 GET /。tickOnce 的去重把一串探测压成一轮，但那一轮仍是
-   * 全量的 —— 本地别拿浏览器开根路径。
+   * 鉴权换成和上报同一个 `TELEMETRY_INGEST_SECRET`（Bearer）：Access 撤掉之后
+   * 这个域名是公开的，不设门槛等于把 PSN 取数开放给任何人按秒点。没配这个变量
+   * 时直接 503，不退化成无鉴权。
    */
   async fetch(request, env) {
     if (request.method !== "GET") {
       return Response.json({ ok: false, error: "Method Not Allowed" }, { status: 405 });
     }
     const path = new URL(request.url).pathname;
-    if (path !== "/" && path !== "/tick") {
+    if (path !== "/tick") {
       return Response.json({ ok: false, error: "Not Found" }, { status: 404 });
     }
+    const secret = env.TELEMETRY_INGEST_SECRET?.trim();
+    if (!secret) {
+      return Response.json({ ok: false, error: "Service Unavailable" }, { status: 503 });
+    }
+    if (request.headers.get("Authorization") !== `Bearer ${secret}`) {
+      return Response.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    }
     try {
-      const { meta, presence, playedGames, trophies } = await tickOnce(env, path === "/");
+      const { meta, presence, playedGames, trophies } = await tickOnce(env);
       return Response.json({
         ...meta,
         presence,

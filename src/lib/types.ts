@@ -105,6 +105,23 @@ export type PlaystationNowPlaying = {
   iconUrl: string | null;
 };
 
+/**
+ * 主机本体的电源状态，来自 Home Assistant 里那台 PS5 的电源开关实体。
+ *
+ * 和 PSN presence 是两回事：presence 是账号在不在线（手机上开 App 也算在线），
+ * 这一份是**机器通没通电**。局域网里立刻可知，不必等 PSN 那边的分钟级延迟。
+ * 独立存放、读的时候才并进 presence —— PSN 上报器每轮都整份覆盖 presence，
+ * 混在一起会被它冲掉。
+ */
+export type PlaystationPowerPayload = {
+  /** HA 那个 switch 实体此刻是不是 on */
+  on: boolean;
+  /** HA 观测到这个状态的时刻，epoch 毫秒 */
+  observedAt: number;
+  /** 来源实体 id，排查是哪一台用；缺了不影响判断 */
+  entityId: string | null;
+};
+
 export type PlaystationPresencePayload = {
   observedAt: number;
   online: boolean;
@@ -116,6 +133,11 @@ export type PlaystationPresencePayload = {
   platform: string | null;
   lastOnlineAt: number | null;
   playing: PlaystationNowPlaying | null;
+  /**
+   * 读的出口并进来的电源状态，**不由 PSN 上报器写**：它每轮整份覆盖 presence，
+   * 带上这个字段只会把 HA 那份冲掉。没收到过 HA 的上报时是 null。
+   */
+  power?: PlaystationPowerPayload | null;
 };
 
 export const TROPHY_TYPES = ["platinum", "gold", "silver", "bronze"] as const;

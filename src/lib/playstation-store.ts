@@ -1,7 +1,11 @@
-import { playedGamesMirror, presenceMirror, trophiesMirror } from "@shared/playstation-store";
+import { playedGamesMirror, powerMirror, presenceMirror, trophiesMirror } from "@shared/playstation-store";
 
 export function getPlaystationPresence() {
   return presenceMirror.get();
+}
+
+export function getPlaystationPower() {
+  return powerMirror.get();
 }
 
 export function getPlaystationPlayedGames() {

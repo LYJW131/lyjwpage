@@ -1,6 +1,6 @@
 import { AwaitingReport } from "@/lib/awaiting-report";
 import { isStale, playstationStaleMs } from "@/lib/freshness";
-import { getPlaystationPlayedGames, getPlaystationPresence } from "@/lib/playstation-store";
+import { getPlaystationPlayedGames, getPlaystationPower, getPlaystationPresence } from "@/lib/playstation-store";
 import type {
   PlaystationPlayingPayload,
   PlaystationPresencePayload
@@ -13,9 +13,16 @@ export async function getPlaying(): Promise<PlaystationPlayingPayload> {
 }
 
 export async function getPlayingNow(): Promise<PlaystationPresencePayload> {
-  const payload = await getPlaystationPresence();
+  /**
+   * 电源是 HA 单独上报、单独存的一份，读的时候才并进来：PSN 上报器每轮整份覆盖
+   * presence，写在一起会被它冲掉。没收到过 HA 的上报时这一项是 null。
+   */
+  const [payload, power] = await Promise.all([
+    getPlaystationPresence(),
+    getPlaystationPower(),
+  ]);
   if (!payload) throw new AwaitingReport("尚未收到 PlayStation 在线状态遥测");
-  return payload;
+  return { ...payload, power: power ?? null };
 }
 
 /**
