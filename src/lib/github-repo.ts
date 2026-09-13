@@ -1,26 +1,21 @@
 import { cached, get, put } from "@/lib/cache";
 import { site } from "@/lib/site";
-import type {
-  GithubRepoContributor,
-  GithubRepoPayload,
-  GithubRepoWeek,
-} from "@/lib/types";
+import type { GithubRepoContributor, GithubRepoPayload } from "@/lib/types";
 
 /**
- * 本仓库的贡献统计，走 GitHub REST `/stats/contributors`。
+ * 本仓库的贡献统计。名单走 GitHub REST `/stats/contributors`，顶部那三个总数
+ * 另走 GraphQL —— 这两件事在 GitHub 那边不是一回事，见下面 fetchRepoTotals。
  *
  * 和贡献日历同一条流程：Worker 取数进 SQLite TTL 缓存，进 `/api/home` 快照，
  * 也有 `/api/status/github-repo` 给浏览器按长间隔轮询；没有推送。
  *
- * token 复用 Worker 上的 GITHUB_TOKEN（和贡献日历同一把）：公开仓不带 token
- * 也能读，只是匿名限额低（每 IP 60 次/小时），有就带上。
- *
- * 这路和贡献日历的区别：日历是 GraphQL 按人拉全年，统计是 REST 按仓拉每周，
- * 缓存键和 TTL 各走各的。统计更新得慢（GitHub 自己也在缓存），TTL 取 30 分钟。
+ * token 复用 Worker 上的 GITHUB_TOKEN（和贡献日历同一把）：名单那半公开仓不带
+ * token 也能读，只是匿名限额低（每 IP 60 次/小时）；总数那半是 GraphQL，没有
+ * token 就取不到，三个数字显示「—」。
  */
 
-/** 窗口宽度进缓存键：改周数要换键，不然 Worker 里那份旧窗口会再活 30 分钟。 */
-const REPO_STATS_CACHE_KEY = "github-repo:v4";
+/** 形状变过就要换键，不然旧窗口那份还会活满一个 TTL。v5 起不再有 weeks。 */
+const REPO_STATS_CACHE_KEY = "github-repo:v5";
 const REPO_STATS_TTL_MS = 30 * 60_000;
 
 /**
@@ -30,29 +25,34 @@ const REPO_STATS_TTL_MS = 30 * 60_000;
  * 30 秒到几分钟都有；30 分钟 TTL 到期恰好撞上这段窗口时，拿这份顶上，
  * 卡片不会因为 GitHub 在算就消失。顶上的那份照样按 30 分钟缓存，下一轮再试。
  */
-const LAST_GOOD_KEY = "github-repo:last-good";
+const LAST_GOOD_KEY = "github-repo:last-good:v5";
 const LAST_GOOD_TTL_MS = 7 * 86_400_000;
 
 /**
- * 柱状图只画最近 6 周；原始返回的一整年不进信封。
- * 这个仓的提交集中在最近一两个月，拉到半年只会左边一大片空白。
+ * 增删行的累计锚：`oid` 这条提交连同它全部祖先的增删行总和。
+ *
+ * 这份要能跨部署活着 —— 它替掉的是一次从 HEAD 走到根的全量翻页。锚在就只需
+ * 补上「锚之后的那几条」，稳态下一页搞定；锚过期才重新全量走一次。
  */
-const WEEK_WINDOW = 6;
-
-const DAY_MS = 86_400_000;
-const WEEK_MS = 7 * DAY_MS;
+const CHURN_ANCHOR_KEY = "github-repo:churn";
+const CHURN_ANCHOR_TTL_MS = 30 * 86_400_000;
 
 /**
  * 整次取数的总预算，含等 202 的时间。
  *
  * 这一路挂在 `/api/home` 的 Promise.all 里，而站点 status-cache 20 秒就会掐掉
- * 整个快照请求；不设上限就是让一张卡拖垮整个首页重建。预算内等不到就抛，
- * 由 getGithubRepo 决定用上一次成功的那份顶上。
+ * 整个快照请求；不设上限就是让一张卡拖垮整个首页重建。名单和总数两路并发跑，
+ * 各自在这个 deadline 前收手。
  */
 const FETCH_BUDGET_MS = 12_000;
 
 /** 等 202 的轮询间隔：GitHub 的说法是「过一会儿再来」。 */
 const RETRY_INTERVAL_MS = 3_000;
+
+const GITHUB_GRAPHQL = "https://api.github.com/graphql";
+
+/** 一页翻多少条提交，GraphQL `history` 的上限就是 100。 */
+const HISTORY_PAGE = 100;
 
 type ContributorWeek = {
   w?: number;
@@ -67,6 +67,23 @@ export type ContributorStat = {
   weeks?: ContributorWeek[];
 };
 
+/** 全仓总数。取不到就是 null，卡片显示「—」，不拿错的数字顶上。 */
+export type RepoTotals = {
+  commits: number | null;
+  additions: number | null;
+  deletions: number | null;
+};
+
+const NO_TOTALS: RepoTotals = { commits: null, additions: null, deletions: null };
+
+type ChurnAnchor = {
+  /** 默认分支上的一条提交 */
+  oid: string;
+  /** 它连同全部祖先的增删行累计 */
+  additions: number;
+  deletions: number;
+};
+
 /** 从 site.repo 抠出 owner/name，抠不出就退回 githubLogin/lyjwpage。 */
 export function repoIdFromUrl(url: string): { owner: string; name: string } {
   const match = /github\.com\/([^/\s]+)\/([^/\s]+?)(?:\.git)?\/?$/.exec(url.trim());
@@ -77,56 +94,25 @@ export function repoIdFromUrl(url: string): { owner: string; name: string } {
 const numberOrZero = (value: unknown): number =>
   typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
 
-function emptyWeek(weekStart: number): GithubRepoWeek {
-  return { weekStart, commits: 0, additions: 0, deletions: 0 };
-}
-
-/** `ms` 所在周的周日 00:00 UTC（毫秒），对齐 GitHub stats 的 `w`。 */
-export function weekStartMs(ms: number): number {
-  const date = new Date(ms);
-  const dayStart = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
-  return dayStart - date.getUTCDay() * DAY_MS;
-}
-
 /**
- * 把 `/stats/contributors` 的原始返回汇总成卡片要的形状。纯函数，不碰网络，
- * 方便单测。now 决定窗口落在哪几周，线上调用传 Date.now()。
+ * 把 `/stats/contributors` 的原始返回汇总成名单。纯函数，不碰网络，方便单测。
  *
- * 横轴是以 now 所在周收尾、连续往前数 weekWindow 周，不是「原始返回里出现过
- * 的周」：commits 回退只会带有提交的周，stats 也可能在窗尾缺几周，按出现过
- * 的周排会把空档和最近的安静周一起吞掉，等宽柱就对不上日历了。每人的
- * `weeks` 和顶层 `weeks` 共用这组 weekStart，空周补零，柱状图才能并排对齐。
+ * `totals` 单独传进来，**不是**把名单加起来 —— 见 fetchRepoTotals 的注释：
+ * 这个仓 434 条提交里有 403 条带 `Co-authored-by`，加起来会得到 811。
  */
 export function summarizeRepoStats(
   raw: ContributorStat[],
   owner: string,
   name: string,
   now: number,
-  weekWindow: number = WEEK_WINDOW,
+  totals: RepoTotals = NO_TOTALS,
 ): GithubRepoPayload {
-  const count = Math.max(1, Math.floor(weekWindow));
-  const lastStart = weekStartMs(now);
-  const windowStarts = Array.from(
-    { length: count },
-    (_, index) => lastStart - (count - 1 - index) * WEEK_MS,
-  );
-
   const contributors: GithubRepoContributor[] = raw.map((entry) => {
-    const byStart = new Map<number, GithubRepoWeek>();
     let additions = 0;
     let deletions = 0;
     for (const week of Array.isArray(entry.weeks) ? entry.weeks : []) {
-      const start = numberOrZero(week.w) * 1000;
-      if (!start) continue;
-      const row = {
-        weekStart: start,
-        commits: numberOrZero(week.c),
-        additions: numberOrZero(week.a),
-        deletions: numberOrZero(week.d),
-      };
-      byStart.set(start, row);
-      additions += row.additions;
-      deletions += row.deletions;
+      additions += numberOrZero(week.a);
+      deletions += numberOrZero(week.d);
     }
     return {
       login: entry.author?.login?.trim() || "ghost",
@@ -134,34 +120,15 @@ export function summarizeRepoStats(
       commits: numberOrZero(entry.total),
       additions,
       deletions,
-      weeks: windowStarts.map((start) => byStart.get(start) ?? emptyWeek(start)),
     };
   });
   contributors.sort((left, right) => right.commits - left.commits);
 
-  const weeks: GithubRepoWeek[] = windowStarts.map((start) => {
-    const row = emptyWeek(start);
-    for (const person of contributors) {
-      const week = person.weeks.find((item) => item.weekStart === start);
-      if (!week) continue;
-      row.commits += week.commits;
-      row.additions += week.additions;
-      row.deletions += week.deletions;
-    }
-    return row;
-  });
-
   return {
     repo: `${owner}/${name}`,
     fetchedAt: now,
-    totals: {
-      commits: contributors.reduce((sum, item) => sum + item.commits, 0),
-      additions: contributors.reduce((sum, item) => sum + item.additions, 0),
-      deletions: contributors.reduce((sum, item) => sum + item.deletions, 0),
-      contributors: contributors.length,
-    },
+    totals: { ...totals, contributors: contributors.length },
     contributors,
-    weeks,
   };
 }
 
@@ -190,12 +157,10 @@ export async function getGithubRepo(): Promise<GithubRepoPayload> {
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
- * 取数本体，不碰缓存层。
+ * 取数本体，不碰缓存层。名单和总数两路并发，共用一个 deadline 和一个 signal。
  *
- * 只认 `/stats/contributors`（带每人每周 a/d/c）。GitHub 现算时回 202，
- * 就每 5 秒再问一次；整次不超过 budgetMs，一个共享的 AbortSignal 挂在所有
- * fetch 上。预算内等不到、或响应不对，都抛出去 —— 没有 commits 列表那种
- * 退路：它拼不出增删行，「+0 / −0」会在缓存里挂半小时。
+ * 名单取不到就抛出去（由 getGithubRepo 决定用上一次成功的顶上）；总数取不到
+ * 只是三个数字变「—」，不牵连名单 —— 它们是两个接口、两种失败方式。
  */
 export async function fetchRepoStats(
   token: string | null,
@@ -211,6 +176,32 @@ export async function fetchRepoStats(
   };
   if (token) headers.Authorization = `Bearer ${token}`;
 
+  const [contributors, totals] = await Promise.all([
+    fetchContributorStats(headers, signal, deadline, owner, name),
+    fetchRepoTotals(token, owner, name, signal, deadline).catch((error: unknown) => {
+      console.warn(
+        "[github-repo]",
+        error instanceof Error ? error.message : String(error),
+        "；这轮不显示总数",
+      );
+      return NO_TOTALS;
+    }),
+  ]);
+  return summarizeRepoStats(contributors, owner, name, Date.now(), totals);
+}
+
+/**
+ * 名单那半：`/stats/contributors`，GitHub 现算时回 202，就每 3 秒再问一次。
+ * 预算内等不到、或响应不对，都抛出去 —— 没有 commits 列表那种退路：
+ * 它拼不出增删行，「+0 / −0」会在缓存里挂半小时。
+ */
+async function fetchContributorStats(
+  headers: Record<string, string>,
+  signal: AbortSignal,
+  deadline: number,
+  owner: string,
+  name: string,
+): Promise<ContributorStat[]> {
   for (let attempt = 0; ; attempt += 1) {
     const url = new URL(`https://api.github.com/repos/${owner}/${name}/stats/contributors`);
     // 每轮换个查询参数，免得中间任何一层把同 URL 的 GET 记忆化后一直回第一次
@@ -228,6 +219,156 @@ export async function fetchRepoStats(
     if (!response.ok || !Array.isArray(body)) {
       throw new Error(`GitHub 仓库统计响应不是预期的形状（HTTP ${response.status}）`);
     }
-    return summarizeRepoStats(body, owner, name, Date.now());
+    return body;
   }
+}
+
+type GraphqlHistoryNode = { oid?: string; additions?: number; deletions?: number };
+
+type GraphqlPayload = {
+  data?: {
+    repository?: {
+      defaultBranchRef?: {
+        target?: {
+          oid?: string;
+          history?: {
+            totalCount?: number;
+            pageInfo?: { hasNextPage?: boolean; endCursor?: string | null };
+            nodes?: GraphqlHistoryNode[];
+          };
+        } | null;
+      } | null;
+    } | null;
+  };
+  errors?: Array<{ message?: string }>;
+};
+
+async function graphql(
+  token: string,
+  signal: AbortSignal,
+  query: string,
+  variables: Record<string, unknown>,
+): Promise<GraphqlPayload["data"]> {
+  const response = await fetch(GITHUB_GRAPHQL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      "User-Agent": "lyjwpage",
+    },
+    body: JSON.stringify({ query, variables }),
+    signal,
+  });
+  const body = (await response.json().catch(() => null)) as GraphqlPayload | null;
+  if (!response.ok || !body?.data || body.errors?.length) {
+    // 上游原文只进日志：GitHub 的报错里可能带令牌状态、配额、组织名这类不该
+    // 出门的东西，而这条 message 会经 statusEnvelope 原样变成公开 JSON。
+    const reason = body?.errors?.map((error) => error.message).filter(Boolean).join("; ");
+    console.error("[github-repo]", response.status, reason || "GraphQL 响应不是预期的形状");
+    throw new Error("GitHub 仓库总数取数失败");
+  }
+  return body.data;
+}
+
+const HEAD_QUERY = `query ($owner: String!, $name: String!) {
+  repository(owner: $owner, name: $name) {
+    defaultBranchRef { target { oid ... on Commit { history { totalCount } } } }
+  }
+}`;
+
+const HISTORY_QUERY = `query ($owner: String!, $name: String!, $cursor: String) {
+  repository(owner: $owner, name: $name) {
+    defaultBranchRef {
+      target {
+        ... on Commit {
+          history(first: ${HISTORY_PAGE}, after: $cursor) {
+            pageInfo { hasNextPage endCursor }
+            nodes { oid additions deletions }
+          }
+        }
+      }
+    }
+  }
+}`;
+
+/**
+ * 顶部那三个总数：默认分支的提交数与全仓增删行。
+ *
+ * **不能把名单加起来。** `/stats/contributors` 是「贡献」而不是「提交归属」：
+ * 一条带 `Co-authored-by` 的提交会整条记在作者名下，也整条记在每位协作者名下，
+ * 增删行同样各记一遍。这个仓 434 条提交里 403 条是「我 + agent」的形式，于是
+ * 加总得到 811 次提交、+239386/−96550 行，都是真实值的两倍左右
+ * （真值 434 / +121476 / −44421，与 `git rev-list --count`、`git log --numstat` 一致）。
+ *
+ * 提交数用 GraphQL 的 `history.totalCount`，一次请求就精确。增删行没有现成的
+ * 全仓字段：`/stats/code_frequency` 本来正合适，但这个仓上它长期只回 202
+ * （带令牌试了二十来次都没算出来），所以只能自己把 history 翻一遍求和 ——
+ * 代价是每 100 条提交一次请求，所以结果锚在 HEAD 上存起来，之后每轮只补新增
+ * 的那几条。锚还在、HEAD 没动，就一次请求都不用翻。
+ *
+ * 预算内翻不完：提交数照样返回（它只要一次请求），增删行退回锚上那份 ——
+ * 顶多旧几条提交，下一轮继续往前推；连锚都没有就是 null，显示「—」。
+ */
+async function fetchRepoTotals(
+  token: string | null,
+  owner: string,
+  name: string,
+  signal: AbortSignal,
+  deadline: number,
+): Promise<RepoTotals> {
+  if (!token) return NO_TOTALS;
+
+  const head = await graphql(token, signal, HEAD_QUERY, { owner, name });
+  const target = head?.repository?.defaultBranchRef?.target;
+  const headOid = target?.oid?.trim() || "";
+  const commits = typeof target?.history?.totalCount === "number" ? target.history.totalCount : null;
+  if (!headOid) return { commits, additions: null, deletions: null };
+
+  const anchor = await get<ChurnAnchor>(CHURN_ANCHOR_KEY);
+  if (anchor?.oid === headOid) {
+    return { commits, additions: anchor.additions, deletions: anchor.deletions };
+  }
+
+  let additions = 0;
+  let deletions = 0;
+  let cursor: string | null = null;
+  for (;;) {
+    if (Date.now() >= deadline) {
+      // 翻不完就别写锚：这份和式缺尾巴，落盘会把它当成「到根为止」。
+      return { commits, additions: anchor?.additions ?? null, deletions: anchor?.deletions ?? null };
+    }
+    const page: GraphqlPayload["data"] = await graphql(token, signal, HISTORY_QUERY, {
+      owner,
+      name,
+      cursor,
+    });
+    const history = page?.repository?.defaultBranchRef?.target?.history;
+    const nodes = history?.nodes ?? [];
+    for (const node of nodes) {
+      // 锚那条连同它的祖先已经在 anchor 的和里了，到此为止。
+      if (anchor && node.oid === anchor.oid) {
+        return finishChurn(headOid, additions + anchor.additions, deletions + anchor.deletions, commits);
+      }
+      additions += numberOrZero(node.additions);
+      deletions += numberOrZero(node.deletions);
+    }
+    // 锚不在这条链上（rebase / force push 把它冲掉了）也不用特判：
+    // 一路翻到根，手里这份和式本身就是完整的。
+    if (!history?.pageInfo?.hasNextPage) {
+      return finishChurn(headOid, additions, deletions, commits);
+    }
+    cursor = history.pageInfo.endCursor ?? null;
+    if (!cursor) return finishChurn(headOid, additions, deletions, commits);
+  }
+}
+
+async function finishChurn(
+  oid: string,
+  additions: number,
+  deletions: number,
+  commits: number | null,
+): Promise<RepoTotals> {
+  await put<ChurnAnchor>(CHURN_ANCHOR_KEY, { oid, additions, deletions }, CHURN_ANCHOR_TTL_MS);
+  return { commits, additions, deletions };
 }

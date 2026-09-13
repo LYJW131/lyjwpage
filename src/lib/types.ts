@@ -753,22 +753,15 @@ export type GithubChartPayload = {
 };
 
 /**
- * 本仓库（site.repo）的贡献统计。形状贴着 GitHub `/stats/contributors` 的返回：
- * 每人一个 total（commit 数）加按周的 a/d/c（增/删/commit），站点只做对齐和加总。
+ * 本仓库（site.repo）里一位贡献者，形状贴着 GitHub `/stats/contributors` 的返回。
+ *
+ * 口径和 GitHub 仓库 Insights → Contributors 那一页完全一致：**这是「贡献」而不是
+ * 「提交归属」**，带 `Co-authored-by` 的提交会整条同时记在作者和每位协作者名下，
+ * 增删行也各记一遍。所以这几个数字之间会重叠，加起来不等于全仓总数。
  */
 export type GithubRepoContributor = {
   login: string;
   avatarUrl: string | null;
-  commits: number;
-  additions: number;
-  deletions: number;
-  /** 与顶层 weeks 同一组 weekStart，空周补零，供每人柱状图 */
-  weeks: GithubRepoWeek[];
-};
-
-/** 一周的增删与 commit。weekStart 是那周周日的 0 点，epoch 毫秒。 */
-export type GithubRepoWeek = {
-  weekStart: number;
   commits: number;
   additions: number;
   deletions: number;
@@ -779,16 +772,19 @@ export type GithubRepoPayload = {
   repo: string;
   /** 服务端汇总时刻，epoch 毫秒 */
   fetchedAt: number;
+  /**
+   * 全仓总数，另走 GraphQL 算，不是把 contributors 加起来（那样会重复计数）。
+   * 取不到就是 null，卡片显示「—」。
+   */
   totals: {
-    commits: number;
-    additions: number;
-    deletions: number;
+    /** 默认分支的提交数 */
+    commits: number | null;
+    additions: number | null;
+    deletions: number | null;
     contributors: number;
   };
   /** 按 commits 倒序 */
   contributors: GithubRepoContributor[];
-  /** 全仓按周升序加总，只留窗尾；与每人 weeks 对齐 */
-  weeks: GithubRepoWeek[];
 };
 
 /**

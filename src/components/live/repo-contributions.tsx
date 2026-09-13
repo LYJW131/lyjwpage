@@ -76,6 +76,9 @@ function ContributorRow({
       href={`https://github.com/${person.login}`}
       target="_blank"
       rel="noreferrer noopener"
+      // 和 GitHub Insights → Contributors 同一口径：`Co-authored-by` 的提交
+      // 作者和协作者各记一次，所以这一列加起来会超过顶部的 COMMITS。
+      title={`${person.login} · 参与 ${person.commits.toLocaleString("en-US")} 次提交（含 Co-authored-by 署名）`}
       className="group relative flex min-h-[44px] min-w-0 items-center gap-2 border border-line bg-muted/40 px-3"
     >
       {/* 骑在左边框上，和外框齐平，不被框线包在里面 */}
