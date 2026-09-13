@@ -1,0 +1,38 @@
+name: Purge ESA on Deploy
+
+on:
+  deployment_status:
+  workflow_dispatch:
+
+concurrency:
+  group: esa-purge
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  purge:
+    # 仅在生产环境（Production）部署成功时触发，或者手动 workflow_dispatch 触发
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.deployment_status.state == 'success' &&
+       (github.event.deployment.environment == 'Production' || github.event.deployment.original_environment == 'Production'))
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: Purge ESA Homepage Cache
+        env:
+          ESA_SITE_ID: "1113300533463584"
+          ESA_CACHE_URL: "https://lyjw131.com/"
+          ALIYUN_ACCESS_KEY_ID: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
+          ALIYUN_ACCESS_KEY_SECRET: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
+        run: node scripts/run-esa-purge.mjs
