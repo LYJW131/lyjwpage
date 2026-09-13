@@ -27,6 +27,62 @@
 
 界面以灰阶、细线边界和卡片布局为基础，用等宽数字稳定动态指标的排版。颜色与动效主要服务于媒体内容、状态变化和交互反馈。
 
+## 页面效果
+
+首页是动态的：正在播放、正在充电、正在游玩这些卡片只在对应的事情发生时出现，平时看不到。下面的截图在本地用示例数据把这些状态同时点亮，明暗主题跟随系统。
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/overview-dark.webp">
+  <img src="docs/screenshots/overview-light.webp" alt="首页总览：正在看、充电头与充电宝、正在听、活动圆环与服务器状态同时点亮" width="100%">
+</picture>
+
+**Emby 正在播放**：海报、剧集、进度，以及画面、音轨与码率规格。
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/now-watching-dark.webp">
+  <img src="docs/screenshots/now-watching-light.webp" alt="Emby 正在播放卡片" width="100%">
+</picture>
+
+**Apple Music 正在播放**：封面、来源设备、进度与逐字高亮的同步歌词，下方是最近收听。
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/now-listening-dark.webp">
+  <img src="docs/screenshots/now-listening-light.webp" alt="Apple Music 正在播放与逐字歌词" width="100%">
+</picture>
+
+**充电设备**：Anker 充电头各端口的功率、设备与协议，以及总功率曲线；充电宝的电量、收放电、温度与健康度。
+
+<table>
+  <tr>
+    <td width="50%">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/charger-dark.webp">
+        <img src="docs/screenshots/charger-light.webp" alt="Anker 充电头卡片：总功率、功率曲线与三个端口">
+      </picture>
+    </td>
+    <td width="50%">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/powerbank-dark.webp">
+        <img src="docs/screenshots/powerbank-light.webp" alt="Anker 充电宝卡片：电量、底座输入、输出与端口">
+      </picture>
+    </td>
+  </tr>
+</table>
+
+**PlayStation**：在线状态、正在游玩的游戏、奖杯统计与最近解锁；展开游戏卡片查看奖杯组与逐条成就。
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/playstation-trophies-dark.webp">
+  <img src="docs/screenshots/playstation-trophies-light.webp" alt="PlayStation 卡片：在线、正在游玩与展开的奖杯明细" width="100%">
+</picture>
+
+**AI Coding**：各编码工具的 Token 用量、成本估算、今日用量与账号限额窗口。
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/vibecoding-dark.webp">
+  <img src="docs/screenshots/vibecoding-light.webp" alt="AI Coding 卡片：Token 用量、成本、模型排行与限额" width="100%">
+</picture>
+
 ## 系统架构
 
 系统分为三部分：**采集端适配不同来源，Cloudflare 统一管理状态，Next.js 负责页面呈现。**
