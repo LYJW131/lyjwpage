@@ -3,6 +3,11 @@
 
 只依赖 Python 3 标准库。采集窗口就是上报间隔本身：上一轮 /proc 的读数留着，
 这一轮做差，得到的是这段时间的平均占用和平均速率，不是「这一瞬间的尖峰」。
+
+跑在容器里时 `/proc` 拿到的本来就是宿主机的数（Docker 不虚拟化 /proc），CPU、内存、
+负载、运行时间、内核都不用管；网卡那几项靠 `network_mode: host` 落在宿主机的网络
+命名空间里。剩下三样容器内会看到自己那份 —— 系统名、主机名、根分区容量 ——
+由 `HOST_ROOT` 指向宿主机挂进来的那份目录来纠正，见 README。
 """
 
 from __future__ import annotations
@@ -95,6 +100,9 @@ def count_url(variable: str) -> str:
     return f"{trim_slash(origin)}/count" if origin else ""
 
 
+# 容器里宿主机 /etc 的挂载点（compose 里是 /host/etc，只读）。留空 = 直接跑在宿主机上。
+HOST_ROOT = os.environ.get("HOST_ROOT", "").strip().rstrip("/")
+
 CONFIG = {
     "ingest_url": ingest_url(),
     "secret": os.environ.get("TELEMETRY_INGEST_SECRET", "").strip(),
@@ -147,7 +155,7 @@ def recovered(scope: str) -> None:
 def read_os() -> str:
     pretty = ""
     try:
-        with open("/etc/os-release", encoding="utf-8") as handle:
+        with open(f"{HOST_ROOT}/etc/os-release", encoding="utf-8") as handle:
             for line in handle:
                 if line.startswith("PRETTY_NAME="):
                     pretty = line.split("=", 1)[1].strip().strip('"')
@@ -177,8 +185,23 @@ def mem_bytes() -> tuple[int, int, int]:
     return total, total - available, available
 
 
-def disk_bytes(path: str = "/") -> tuple[int, int]:
-    stat = os.statvfs(path)
+def hostname() -> str:
+    """容器里 gethostname() 是容器 ID，读宿主机挂进来的 /etc/hostname 才是真名。"""
+    if HOST_ROOT:
+        try:
+            with open(f"{HOST_ROOT}/etc/hostname", encoding="utf-8") as handle:
+                name = handle.readline().strip()
+            if name:
+                return name
+        except OSError:
+            pass
+    return socket.gethostname()
+
+
+def disk_bytes(path: str = "") -> tuple[int, int]:
+    """根分区容量。容器里 statvfs("/") 量的是 overlay，改量宿主机 /etc 所在的那块盘。"""
+    target = path or (f"{HOST_ROOT}/etc" if HOST_ROOT else "/")
+    stat = os.statvfs(target)
     total = stat.f_frsize * stat.f_blocks
     used = total - stat.f_frsize * stat.f_bfree
     return total, used
@@ -362,7 +385,7 @@ def snapshot(
     return {
         "version": 1,
         "id": CONFIG["host_id"],
-        "hostname": socket.gethostname(),
+        "hostname": hostname(),
         "publicIp": public_ip,
         "country": geo.get("country"),
         "city": geo.get("city") or CONFIG["location"] or None,

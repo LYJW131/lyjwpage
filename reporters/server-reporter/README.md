@@ -46,6 +46,7 @@ CPU 占用和网卡速率都是这一段间隔的平均，不是「这一瞬间�
 | `SITE_INGEST_URL` | | 直接给完整端点，给了就不用 `SITE_URL` 上报；人头数仍只从 `SITE_URL` 读，没配就永远走最慢那档 |
 | `TELEMETRY_INGEST_SECRET` | ✅ | 和站点同名变量对上，作 Bearer 鉴权。站点没配时才可留空 |
 | `HOST_ID` | | 默认 `misaka-jp`，卡片上认的名字 |
+| `HOST_ROOT` | | 宿主机 `/etc` 挂进容器后的前缀，compose 里填 `/host`，**不写进 `.env`**。留空 = 直接跑在宿主机上，读 `/etc` 和 `/`。见[下面那节](#容器里怎么还能看见宿主机) |
 | `HOST_LOCATION` | | 默认 `Tokyo`，机房所在城市。站点不从 IP 猜 |
 | `LIVE_INTERVAL_MS` | | 默认 `60000`，有人正看着那一档 |
 | `OPEN_INTERVAL_MS` | | 默认 `120000`，页面开着但都在后台那一档 |
@@ -55,31 +56,48 @@ CPU 占用和网卡速率都是这一段间隔的平均，不是「这一瞬间�
 
 ## 在 VPS 上跑
 
-部署单元是 systemd，不是 Docker —— 为这一个进程套一层容器不值。（机器上现在是有 Docker 的，
-`agent-limits-reporter` 2026-09-13 起就跑在同一台，但这个上报器保持 systemd 不动。）
+2026-09-13 起部署单元是 Docker，和 `agent-limits-reporter` 合在
+[`reporters/compose.yaml`](../compose.yaml) 一个 project 里，misaka-jp 上一条命令起两个。
+从前这里是 systemd（`server-reporter.service`，`DynamicUser=yes`），已经删掉，不要再装。
 
-拷过去（`scp` 不一定可用，走 tar 管道）：
+ssh 直连在 kex 阶段会被对面关掉，一律走 dsm 跳板：`ssh -J dsm misaka-jp`。
+
+拷过去（`scp` 不一定可用，走 tar 管道；tar 会带上 Mac 的 uid，落地补一次 `chown`）：
 
 ```bash
-COPYFILE_DISABLE=1 tar czf - -C reporters --exclude .env server-reporter \
-  | ssh misaka-jp 'mkdir -p /opt/lyjwpage && tar xzf - -C /opt/lyjwpage'
+COPYFILE_DISABLE=1 tar czf - -C reporters --exclude .env --exclude __pycache__ compose.yaml server-reporter \
+  | ssh -J dsm misaka-jp 'mkdir -p /opt/lyjwpage && tar xzf - -C /opt/lyjwpage && chown -R root:root /opt/lyjwpage/server-reporter /opt/lyjwpage/compose.yaml'
 ```
 
 `.env` 单独送，别混进源码目录一起打包：
 
 ```bash
-ssh misaka-jp 'cat > /opt/lyjwpage/server-reporter/.env && chmod 600 /opt/lyjwpage/server-reporter/.env' < 本机那份.env
+ssh -J dsm misaka-jp 'cat > /opt/lyjwpage/server-reporter/.env && chmod 600 /opt/lyjwpage/server-reporter/.env' < 本机那份.env
 ```
 
-装 unit、拉起来：
+起来（**点名服务**，不然会连 agent-limits-reporter 那个 3GB 镜像一起重建）：
 
 ```bash
-ssh misaka-jp 'install -m 644 /opt/lyjwpage/server-reporter/server-reporter.service /etc/systemd/system/ && systemctl daemon-reload && systemctl enable --now server-reporter'
+ssh -J dsm misaka-jp 'cd /opt/lyjwpage && docker compose up -d --build server-reporter'
 ```
 
 生产的 `SITE_URL` 统一填 `https://api.homepage.lyjw.llc`，不经 Vercel 站点。
 
-看日志：`journalctl -u server-reporter -f`。
+看日志：`ssh -J dsm misaka-jp 'docker logs -f server-reporter'`。
+
+### 容器里怎么还能看见宿主机
+
+`/proc` 在 Docker 里本来就不虚拟化，CPU、内存、负载、运行时间、内核版本、核数读到的
+直接是宿主机的数。另外两块要配：
+
+| 要什么 | 怎么拿 |
+| --- | --- |
+| 网卡名、网卡上的公网 IP、收发字节 | `network_mode: host`。这三样读的是网络命名空间（`/proc/net/route`、`/proc/net/dev`、`SIOCGIFADDR`），容器自己那套是 `eth0` + `172.x` |
+| 系统名、主机名、根分区容量 | 只读挂 `/etc:/host/etc` 加 `HOST_ROOT=/host`。前两样读 `$HOST_ROOT/etc/{os-release,hostname}`；容量对 `$HOST_ROOT/etc` 做 `statvfs` —— 容器里量 `/` 量到的是 overlay，不是真正的根分区 |
+
+`HOST_ROOT` 留空就是老样子（直接跑在宿主机上、读 `/etc` 和 `/`），本地 `python3 reporter.py` 照旧。
+不挂宿主机整个 `/`：这里只 `statvfs` 一个路径、只读两个文件，`/etc` 一个挂载点就够，
+没必要为此把 `/root`、`/etc/shadow` 之类一并暴露给容器进程。
 
 ## 容错
 

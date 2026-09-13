@@ -66,10 +66,11 @@ PlayStation 上报器采用同款人数分档逻辑，限额使用自己的 5 / 
 
 **凭据在容器里自己登录，不要拷 Mac 上那份。** 两份 refresh token 各自刷新会互相作废。
 
+下面这些命令都在 compose 文件那一层跑（机器上是 `/opt/lyjwpage`，仓库里是 `reporters/`）。
 先把卷目录建出来并交给容器里的 `node` 用户（uid 1000），不然登录时写不进去：
 
 ```bash
-mkdir -p data && sudo chown 1000:1000 data
+mkdir -p agent-limits-reporter/data && sudo chown 1000:1000 agent-limits-reporter/data
 ```
 
 登录一次，凭据就在 `./data` 卷里（`/data/.claude`、`/data/.codex`、`/data/.grok`、`/data/.gemini`、`/data/.config/cursor`）。
@@ -135,7 +136,12 @@ cursor 是 `{ period, plan, hardLimit }` 三份 DashboardService 响应。有它
 
 ## 在 misaka-jp 上跑
 
-部署单元是同目录的 [compose.yaml](compose.yaml)：把这个目录整个拷到目标机器、旁边放一份 `.env`，就地 build。**别在 Mac 上 build 完把镜像拷过去** —— Mac 是 arm64、misaka-jp 是 x86_64，架构对不上。
+部署单元是上一层的 [`reporters/compose.yaml`](../compose.yaml)，和 `server-reporter` 同一个 project：
+把这个目录拷到 `/opt/lyjwpage/agent-limits-reporter`、旁边放一份 `.env`，在 `/opt/lyjwpage` 就地 build。
+**别在 Mac 上 build 完把镜像拷过去** —— Mac 是 arm64、misaka-jp 是 x86_64，架构对不上。
+
+一个 project 里两个服务，所以**不点名服务的命令会同时动两个容器**。只动限额这个就写服务名：
+`docker compose up -d --build agent-limits-reporter`。
 
 2026-09-13 从群晖（dsm `/volume3/docker`）搬到 misaka-jp `/opt/lyjwpage`，和 `server-reporter` 同一台。
 这台在日本，各家限额接口直连可达，**`.env` 里不再需要 `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY`**。
@@ -150,7 +156,7 @@ ssh 直连在 kex 阶段会被对面关掉，一律走 dsm 跳板：`ssh -J dsm 
 拷过去（跳板后面 sftp 用不了，`scp` 别想，走 tar 管道；tar 会带上 Mac 的 uid，落地补一次 `chown`）：
 
 ```bash
-COPYFILE_DISABLE=1 tar czf - -C reporters --exclude node_modules --exclude dist --exclude .env --exclude data agent-limits-reporter | ssh -J dsm misaka-jp 'mkdir -p /opt/lyjwpage && tar xzf - -C /opt/lyjwpage && chown -R root:root /opt/lyjwpage/agent-limits-reporter'
+COPYFILE_DISABLE=1 tar czf - -C reporters --exclude node_modules --exclude dist --exclude .env --exclude data compose.yaml agent-limits-reporter | ssh -J dsm misaka-jp 'mkdir -p /opt/lyjwpage && tar xzf - -C /opt/lyjwpage && chown -R root:root /opt/lyjwpage/agent-limits-reporter /opt/lyjwpage/compose.yaml'
 ```
 
 `.env` 单独送，别混进源码目录一起打包：
@@ -162,8 +168,10 @@ ssh -J dsm misaka-jp 'cat > /opt/lyjwpage/agent-limits-reporter/.env && chmod 60
 先登录五家（见上），再起：
 
 ```bash
-ssh -J dsm misaka-jp 'cd /opt/lyjwpage/agent-limits-reporter && docker compose up -d --build'
+ssh -J dsm misaka-jp 'cd /opt/lyjwpage && docker compose up -d --build agent-limits-reporter'
 ```
+
+两个上报器一起起（第一次部署、或者两边都改了）：`cd /opt/lyjwpage && docker compose up -d --build`。
 
 **换机器不用重登五家**：先停掉旧机器上的容器，再把旧机器的 `data/` 卷整个打包过来、
 `chown -R 1000:1000 data`，登录态照用。两边同时跑会各自轮换同一份 refresh token、互相作废，
