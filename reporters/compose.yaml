@@ -7,7 +7,7 @@
 #   docker compose up -d --build server-reporter
 #   docker compose up -d --build agent-limits-reporter
 # 不点名的 `up -d --build` 会连 agent-limits-reporter 的镜像一起重建 —— 那是个
-# 装了五个 CLI 的 3GB 镜像，1C2G 的机器上要十几分钟。
+# 装了五个 CLI 的 3GB 镜像，这台 1C2G 上无缓存冷 build 实测约 10 分钟。
 #
 # 各自的 .env 留在各自的子目录里：两边都有 SITE_URL / TELEMETRY_INGEST_SECRET /
 # ONLINE_COUNTER_URL，但三档间隔的值不一样（限额 5/10/60 分钟，server 1/2/15 分钟），
