@@ -147,6 +147,12 @@ type Tile = {
   imageUrl: string | null;
   subtitle: string;
   live: boolean;
+  /**
+   * 这张是非游戏应用（Netflix、YouTube 之类，上游 category 以 `_media_app` 结尾）。
+   * 只有「正在活动」那张可能是 true —— 最近列表里这类一律不进（见 buildTiles）。
+   * 用来把角标从「正在游玩」换成「正在使用」。
+   */
+  mediaApp: boolean;
   service: string | null;
   preOrder: boolean;
   /** 这张卡对上的主机，跨世代会同时有 PS4 和 PS5。 */
@@ -270,7 +276,7 @@ function GameTile({
           {tile.live ? (
             <span className="inline-flex items-center gap-1">
               <StatusDot tone="live" />
-              <span>正在游玩</span>
+              <span>{tile.mediaApp ? "正在使用" : "正在游玩"}</span>
             </span>
           ) : (
             <span className="min-w-0 truncate" title={tile.subtitle}>
@@ -409,17 +415,26 @@ function buildTiles(
 ): Tile[] {
   const games = mergeVariants((list?.items ?? []).filter((game) => !mediaApp(game.category)));
 
-  const rawPlaying = presence?.playing ?? null;
-  const playingCategory = rawPlaying
-    ? list?.items.find((game) => game.titleId === rawPlaying.titleId)?.category
-    : null;
-  const playing = rawPlaying && !mediaApp(playingCategory) ? rawPlaying : null;
+  const playing = presence?.playing ?? null;
+  /**
+   * 非游戏应用**照常显示「正在活动」**，只是不进最近列表（上面那行已经滤掉）。
+   *
+   * presence 自己不带 category，只能拿 titleId 去**没过滤的**那份列表里认。
+   * 头一回打开、还没进过最近列表的应用认不出来，会按游戏标「正在游玩」——
+   * 上游 basicPresence 里没有别的信号可用（只有 titleId / title / format /
+   * launchPlatform / iconUrl），这个缺口先认了。
+   */
+  const playingIsApp = playing
+    ? mediaApp(list?.items.find((game) => game.titleId === playing.titleId)?.category)
+    : false;
 
   const toTile = (game: MergedGame, live: boolean): Tile => ({
     titleId: game.titleId,
     titleIds: game.titleIds,
     name: game.name,
     imageUrl: game.imageUrl,
+    // 这条路只走最近列表里的条目，而那份已经把非游戏应用滤掉了
+    mediaApp: false,
     subtitle:
       game.preOrder && game.playCount === 0 && game.playDurationMs == null
         ? "尚未开档"
@@ -443,10 +458,12 @@ function buildTiles(
         titleIds: [playing.titleId],
         name: playing.title,
         imageUrl: playing.iconUrl,
-        // 不在最近列表里（刚开档的新游戏）就没有时长可给，退到平台标识
+        // 不在最近列表里（刚开档的新游戏、或任何非游戏应用）就没有时长可给，
+        // 退到平台标识
         subtitle:
           playing.launchPlatform ?? playing.format ?? presence?.platform ?? "PlayStation",
         live: true,
+        mediaApp: playingIsApp,
         service: null,
         preOrder: false,
         platforms: consolesFromPresence(
