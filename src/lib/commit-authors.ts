@@ -21,14 +21,19 @@ const AGENT_EMAILS: { pattern: RegExp; name: string; agent: NonNullable<CommitAu
   { pattern: /@openai\.com$/i, name: "codex", agent: "openai" },
 ];
 
-const GITHUB_NOREPLY = /^(\d+)\+([^@\s]+)@users\.noreply\.github\.com$/i;
+const GITHUB_NOREPLY = /^(?:(\d+)\+)?([^@\s]+)@users\.noreply\.github\.com$/i;
 const TRAILER = /^co-authored-by:\s*(.+?)\s*<([^>]+)>\s*$/i;
 
 /** 尾注里一位协作者 → 署名；空名字、解析不出的邮箱也给出一个只带名字的条目。 */
 export function authorFromTrailer(name: string, email: string): CommitAuthor {
   const github = GITHUB_NOREPLY.exec(email.trim());
   if (github) {
-    return { name: github[2], login: github[2], avatarUrl: `https://avatars.githubusercontent.com/u/${github[1]}?v=4`, agent: null };
+    const id = github[1];
+    const login = github[2];
+    const avatarUrl = id
+      ? `https://avatars.githubusercontent.com/u/${id}?v=4`
+      : `https://github.com/${login}.png`;
+    return { name: login, login, avatarUrl, agent: null };
   }
   const agent = AGENT_EMAILS.find((entry) => entry.pattern.test(email.trim()));
   if (agent) return { name: agent.name, login: null, avatarUrl: null, agent: agent.agent };
@@ -45,12 +50,12 @@ export function parseCoAuthors(message: string): CommitAuthor[] {
   return authors;
 }
 
-/** 作者在前，协作者按出现顺序接上；同一个人（登录名或显示名相同，不分大小写）只留第一次。 */
+/** 作者在前，协作者按出现顺序接上；同一个人或同一 agent 只留第一次。 */
 export function mergeAuthors(primary: CommitAuthor | null, coAuthors: CommitAuthor[]): CommitAuthor[] {
   const seen = new Set<string>();
   const result: CommitAuthor[] = [];
   for (const author of [...(primary ? [primary] : []), ...coAuthors]) {
-    const key = (author.login ?? author.name).toLowerCase();
+    const key = (author.agent ? `agent:${author.agent}` : (author.login ?? author.name)).toLowerCase();
     if (!key || seen.has(key)) continue;
     seen.add(key);
     result.push(author);
