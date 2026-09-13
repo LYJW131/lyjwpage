@@ -26,7 +26,7 @@ function CommitSha({ commit }: { commit: { sha: string; branch: string | null; m
     className="ml-auto shrink-0 font-mono text-[10px] text-muted-foreground hover:text-foreground hover:underline">{commit.sha.slice(0, 7)}</a>;
 }
 
-function Stat({ label, value, title, prefix }: { label: string; value?: number; title?: string; prefix?: string }) {
+function Stat({ label, value, title, prefix }: { label: string; value?: number | null; title?: string; prefix?: string }) {
   return (
     <div title={title}>
       <div className="label-mono text-muted-foreground">{label}</div>
@@ -65,7 +65,14 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
     }
   }
   const contributors = github?.contributors ?? [];
-  const contributorCommits = contributors.reduce((sum, person) => sum + person.commits, 0);
+  /**
+   * 只用来分占比条的宽度，不是全仓提交数。
+   *
+   * 一条「我 + agent」的提交在 GitHub 的贡献口径里作者和协作者各记一次，所以
+   * 这个和会明显大于 totals.commits（这个仓大约是两倍）。占比条要的正是这个
+   * 口径 —— 谁参与了多少 —— 顶部那个 COMMITS 才是去重后的真数。
+   */
+  const contributionShare = contributors.reduce((sum, person) => sum + person.commits, 0);
   return <Card id="site-status" label="LYJWPAGE" className={cn("scroll-mt-28", className)} action={
     <div className="flex items-center gap-4">
       <a href={site.repo} target="_blank" rel="noreferrer" aria-label="GitHub 仓库" className="hover:text-foreground"><Github size={15} /></a>
@@ -76,14 +83,14 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
     <div className="border-b border-line px-4 py-5 md:px-5">
       <div className="grid grid-cols-2 gap-5 md:grid-cols-4">
         <Stat label="VIEWS · 7D" value={analytics?.pageviews} title={analytics ? `${time.format(analytics.start)} — ${time.format(analytics.end)} · UTC+8` : undefined} />
-        <Stat label="COMMITS" value={github?.totals.commits} />
+        <Stat label="COMMITS" value={github?.totals.commits} title="默认分支上的提交数" />
         <Stat label="ADDITIONS" value={github?.totals.additions} prefix="+" title="Total lines added" />
         <Stat label="DELETIONS" value={github?.totals.deletions} prefix="−" title="Total lines removed" />
       </div>
-      {contributorCommits > 0 && (
-        <div className="mt-6 flex h-2 overflow-hidden bg-muted" role="img" aria-label={`按提交数分的贡献占比，共 ${number.format(contributorCommits)} 次提交`}>
+      {contributionShare > 0 && (
+        <div className="mt-6 flex h-2 overflow-hidden bg-muted" role="img" aria-label="按参与提交数分的贡献占比">
           {contributors.map((person, index) => person.commits > 0 ? (
-            <span key={person.login} title={`${person.login} · ${number.format(person.commits)} 次提交`} style={{ width: `${person.commits / contributorCommits * 100}%`, backgroundColor: colorForRank(index) }} />
+            <span key={person.login} title={`${person.login} · 参与 ${number.format(person.commits)} 次提交`} style={{ width: `${person.commits / contributionShare * 100}%`, backgroundColor: colorForRank(index) }} />
           ) : null)}
         </div>
       )}

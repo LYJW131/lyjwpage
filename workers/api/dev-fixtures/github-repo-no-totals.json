@@ -1,0 +1,10 @@
+{
+  "repo": "LYJW131/lyjwpage",
+  "fetchedAt": 1789000000000,
+  "totals": { "commits": null, "additions": null, "deletions": null, "contributors": 3 },
+  "contributors": [
+    { "login": "LYJW131", "avatarUrl": "https://avatars.githubusercontent.com/u/54896986?v=4", "commits": 407, "additions": 121278, "deletions": 44254 },
+    { "login": "claude", "avatarUrl": "https://avatars.githubusercontent.com/u/81847?v=4", "commits": 214, "additions": 66936, "deletions": 19482 },
+    { "login": "cursoragent", "avatarUrl": "https://avatars.githubusercontent.com/u/199161495?v=4", "commits": 82, "additions": 14609, "deletions": 6186 }
+  ]
+}
