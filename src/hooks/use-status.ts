@@ -22,11 +22,12 @@ export function usePageActive() {
   );
 }
 
-async function fetcher<T>(url: string): Promise<StatusResponse<T>> {
+export async function statusFetcher<T>(url: string): Promise<StatusResponse<T>> {
   const response = await fetch(backendUrl(url), { cache: "no-store" });
   if (!response.ok) throw new Error(`请求 ${url} 失败：${response.status}`);
   return response.json();
 }
+const fetcher = statusFetcher;
 
 /**
  * 增量拉取的取数壳子。
