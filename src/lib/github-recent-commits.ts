@@ -68,10 +68,15 @@ function firstLine(message: string): string {
 
 /**
  * 拉本仓库最近若干条提交标题。失败返回空数组，卡片少这一栏，不拖垮首页。
+ *
+ * `cacheLife` 分支写：**拿到了**才冻到下次部署，空手而归只缓存几分钟。
+ * 首页不是纯静态 —— 每次 ingest 按 tag 失效后会在某个区域重新渲染，那一次
+ * 在本区域是冷的、要真打一次 GitHub。未鉴权配额是每小时 60 次/IP，撞上 403
+ * 就会渲染出一份没有提交栏的 HTML；要是这份也按 `max` 缓存，等于一次瞬时
+ * 限流把这一栏冻到下次部署为止（2026-09-13 就这么丢过一次，见 README）。
  */
 export async function getRecentCommits(): Promise<GithubRecentCommit[]> {
   "use cache";
-  cacheLife("max");
 
   const buildId = process.env.BUILD_TIME ?? process.env.COMMIT_SHA ?? "";
   const { owner, name } = repoIdFromUrl(site.repo);
@@ -96,9 +101,10 @@ export async function getRecentCommits(): Promise<GithubRecentCommit[]> {
     const body = (await response.json().catch(() => null)) as CommitListItem[] | null;
     if (!response.ok || !Array.isArray(body)) {
       console.error("[github-commits]", response.status, "最近提交响应不是预期的形状");
+      cacheLife("minutes");
       return [];
     }
-    return body.flatMap((item) => {
+    const commits = body.flatMap((item) => {
       const sha = item.sha?.trim();
       if (!sha) return [];
       const message = item.commit?.message ?? "";
@@ -113,11 +119,19 @@ export async function getRecentCommits(): Promise<GithubRecentCommit[]> {
         },
       ];
     });
+    if (commits.length === 0) {
+      // 响应是 200 但一条都没解析出来，同样按「没拿到」处理，别冻住。
+      cacheLife("minutes");
+      return commits;
+    }
+    cacheLife("max");
+    return commits;
   } catch (error) {
     console.error(
       "[github-commits]",
       error instanceof Error ? error.message : String(error),
     );
+    cacheLife("minutes");
     return [];
   }
 }
