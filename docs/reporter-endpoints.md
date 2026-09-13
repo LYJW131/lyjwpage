@@ -8,7 +8,7 @@
 | Mac | 本机 Mac Telemetry Hub | `/api/ingest/mac` | 设置已保存；连续真实上报 202 |
 | server | `ssh -J cvm misaka-jp`，`server-reporter.service` | `/api/ingest/server` | 配置已更新、服务 active；真实上报 202 |
 | Emby | `ssh dsm`，容器 `homepage-reporter` | `/api/ingest/emby` | 容器已应用新配置；真实上报 202 |
-| agents | `ssh dsm`，容器 `agent-limits-reporter` | `/api/ingest/agents` | 容器已应用新配置；真实上报 202 |
+| agents | `ssh -J dsm misaka-jp`，容器 `agent-limits-reporter` | `/api/ingest/agents` | 容器已应用新配置；真实上报 202（2026-09-13 从 dsm 迁到 misaka-jp，见下） |
 | PlayStation | Worker `playstation-reporter` | `/api/ingest/playstation` | `SITE_URL` 已更新并部署；真实上报 202 |
 | HomePod | `ssh dsm`，Home Assistant `media_player.wo_shi` | `/api/ingest/homepod` | 配置检查通过；真实 rest_command 返回 202 |
 | HomePod | `ssh n100`，Home Assistant `media_player.zhu_wo_lyjw` | `/api/ingest/homepod` | 配置检查通过；真实 rest_command 返回 202 |
@@ -37,7 +37,7 @@ Worker 的三个 SQLite Durable Object 命名空间通过 transfer migration 迁
 
 | 主机 | 原路径 | 应用命令 |
 | --- | --- | --- |
-| dsm | `/volume3/docker/agent-limits-reporter/.env` | `/usr/local/bin/docker compose -f /volume3/docker/agent-limits-reporter/compose.yaml up -d --no-deps --no-build agent-limits-reporter` |
+| misaka-jp | `/opt/lyjwpage/agent-limits-reporter/.env` | `cd /opt/lyjwpage/agent-limits-reporter && docker compose up -d --no-deps --no-build agent-limits-reporter` |
 | dsm | `/volume3/docker/emby-proxy/.env` | `/usr/local/bin/docker compose -f /volume3/docker/emby-proxy/docker-compose.yml up -d --no-deps --no-build emby-reporter` |
 | dsm | `/volume3/docker/homeassistant/homeassistant/configuration.yaml` | Home Assistant 的 `rest_command.reload` 动作，或重启 `homeassistant` 容器 |
 | n100 | `/volume1/docker/homeassistant/homeassistant/configuration.yaml` | Home Assistant 的 `rest_command.reload` 动作，或重启 `homeassistant` 容器 |
