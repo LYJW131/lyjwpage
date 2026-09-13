@@ -8,6 +8,9 @@ concurrency:
   group: esa-purge
   cancel-in-progress: false
 
+permissions:
+  contents: read
+
 jobs:
   purge:
     # 仅在生产环境（Production）部署成功时触发，或者手动 workflow_dispatch 触发
@@ -18,6 +21,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: main
 
       - name: Setup Node.js
         uses: actions/setup-node@v5
