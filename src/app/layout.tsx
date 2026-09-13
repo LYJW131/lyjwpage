@@ -7,6 +7,8 @@ import { SpeedInsights } from "@vercel/speed-insights/next";
 import { PwaRegistration } from "@/components/pwa-registration";
 import { ThemeProvider } from "@/components/theme-provider";
 import { HEATMAP_STORAGE_KEY } from "@/lib/heatmap-preference";
+import { onlineSocketUrl } from "@/lib/live-socket";
+import { earlyOnlineSocketScript } from "@/lib/online-socket-boot";
 import { site } from "@/lib/site";
 
 import "./globals.css";
@@ -48,6 +50,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   } catch {
     // 配坏时不预连接；状态响应里的图片地址也会按原有降级逻辑为空。
   }
+  // 没配在线人数 Worker 时 workerUrl 返回 null，那段内联脚本整个不渲染
+  const earlyOnlineSocket = onlineSocketUrl();
 
   return (
     <html
@@ -63,6 +67,13 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             __html: `try{var t=localStorage.getItem("theme")||"system";document.documentElement.dataset.themeChoice=t;var h=localStorage.getItem(${JSON.stringify(HEATMAP_STORAGE_KEY)});document.documentElement.dataset.heatmap=h==="commit"?"commit":"tokens"}catch(e){}`,
           }}
         />
+        {/*
+          「此刻在线」那条 WebSocket 在这儿就起手，不等 hydration —— 整整早 850ms，
+          理由和交接方式见 lib/online-socket-boot 与 hooks/use-online-count。
+        */}
+        {earlyOnlineSocket ? (
+          <script dangerouslySetInnerHTML={{ __html: earlyOnlineSocketScript(earlyOnlineSocket) }} />
+        ) : null}
         <style
           dangerouslySetInnerHTML={{
             __html: `.theme-toggle-icon{display:none!important}html[data-theme-choice="light"] .theme-toggle-icon-light{display:block!important}html[data-theme-choice="dark"] .theme-toggle-icon-dark{display:block!important}html:not([data-theme-choice]) .theme-toggle-icon-system,html[data-theme-choice="system"] .theme-toggle-icon-system{display:block!important}.heatmap-panel{display:none!important}html:not([data-heatmap]) .heatmap-panel[data-heatmap-panel="tokens"],html[data-heatmap="tokens"] .heatmap-panel[data-heatmap-panel="tokens"],html[data-heatmap="commit"] .heatmap-panel[data-heatmap-panel="commit"]{display:block!important}html:not([data-heatmap]) .heatmap-tab[data-heatmap-tab="tokens"],html[data-heatmap="tokens"] .heatmap-tab[data-heatmap-tab="tokens"],html[data-heatmap="commit"] .heatmap-tab[data-heatmap-tab="commit"]{background-color:var(--muted)!important;color:var(--foreground)!important}`,
