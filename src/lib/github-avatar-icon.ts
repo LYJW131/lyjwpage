@@ -52,12 +52,15 @@ const CARD_PX = 128;
  *
  * 拉不到就返回 null，**不能**学 `githubAvatarPng` 回退成深色方块 —— 那是页面
  * 顶部可见的一张脸，糊成色块比慢一点糟得多。调用方拿到 null 回退到远端 URL，
- * 最坏情况等于内联之前的行为。null 会跟着 `cacheLife("max")` 一起冻到下次部署：
- * 这是有意的，改成抛出去、在缓存外面接，等于每轮重新生成都再赌一次 8 秒超时。
+ * 最坏情况等于内联之前的行为。
+ *
+ * null 仍然缓存（不抛出去在外面接 —— 那等于每轮重新生成都再赌一次 8 秒超时），
+ * 但只按 `minutes` 缓存、不跟着成功那份冻到下次部署：这一路和最近提交同一个
+ * 形状，按 tag 失效重渲染时在本区域是冷的，撞上 GitHub 限流就会拿到 null，
+ * 按 `max` 缓存等于让一次瞬时故障管到下次部署。
  */
 export async function githubAvatarDataUri(): Promise<string | null> {
   "use cache";
-  cacheLife("max");
 
   const buildId = process.env.BUILD_TIME ?? process.env.COMMIT_SHA ?? "";
   try {
@@ -66,30 +69,34 @@ export async function githubAvatarDataUri(): Promise<string | null> {
       .resize(CARD_PX, CARD_PX, { fit: "cover" })
       .webp()
       .toBuffer();
+    cacheLife("max");
     return `data:image/webp;base64,${webp.toString("base64")}`;
   } catch (error) {
     console.error(
       "[github-avatar] 内联失败，回退远端",
       error instanceof Error ? error.message : String(error),
     );
+    cacheLife("minutes");
     return null;
   }
 }
 
 export async function githubAvatarPng(px: number): Promise<Uint8Array> {
   "use cache";
-  cacheLife("max");
 
   const buildId = process.env.BUILD_TIME ?? process.env.COMMIT_SHA ?? "";
   try {
     const source = await githubAvatarSource(buildId);
     const png = await sharp(source).resize(px, px, { fit: "cover" }).png().toBuffer();
+    cacheLife("max");
     return new Uint8Array(png);
   } catch (error) {
     console.error(
       "[github-avatar]",
       error instanceof Error ? error.message : String(error),
     );
+    // 深色方块只是占位，别让它冻到下次部署 —— 下一轮再试一次。
+    cacheLife("minutes");
     const fallback = await sharp({
       create: { width: px, height: px, channels: 3, background: "#1a1a1a" },
     })
