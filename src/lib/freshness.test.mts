@@ -1,6 +1,28 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { agentLimitsStaleMs, isStale } from "./freshness.ts";
+import { agentLimitsStaleMs, isStale, playstationStaleMs } from "./freshness.ts";
+
+test("PlayStation 陈旧窗口覆盖三轮闲档（30 分钟），并在缓存余量耗尽后变陈旧", () => {
+  const previous = process.env.PLAYSTATION_STALE_MS;
+  try {
+    delete process.env.PLAYSTATION_STALE_MS;
+    const windowMs = playstationStaleMs();
+    assert.equal(windowMs, 95 * 60_000);
+    const at = 1_000;
+    assert.equal(isStale({ now: at + 3 * 30 * 60_000, at, windowMs }), false);
+    assert.equal(isStale({ now: at + windowMs, at, windowMs }), false);
+    assert.equal(isStale({ now: at + windowMs + 1, at, windowMs }), true);
+    process.env.PLAYSTATION_STALE_MS = "7200000";
+    assert.equal(playstationStaleMs(), 7_200_000);
+    for (const invalid of ["", "no", "0", "-1", "Infinity"]) {
+      process.env.PLAYSTATION_STALE_MS = invalid;
+      assert.equal(playstationStaleMs(), windowMs);
+    }
+  } finally {
+    if (previous === undefined) delete process.env.PLAYSTATION_STALE_MS;
+    else process.env.PLAYSTATION_STALE_MS = previous;
+  }
+});
 
 test("限额陈旧窗口覆盖三轮闲档，并在缓存余量耗尽后变陈旧", () => {
   const previous = process.env.AGENT_LIMITS_STALE_MS;
