@@ -55,7 +55,8 @@ CPU 占用和网卡速率都是这一段间隔的平均，不是「这一瞬间�
 
 ## 在 VPS 上跑
 
-部署单元是 systemd，不是 Docker —— 这台机器上没有 Docker，为这一个进程拉守护进程也不值。
+部署单元是 systemd，不是 Docker —— 为这一个进程套一层容器不值。（机器上现在是有 Docker 的，
+`agent-limits-reporter` 2026-09-13 起就跑在同一台，但这个上报器保持 systemd 不动。）
 
 拷过去（`scp` 不一定可用，走 tar 管道）：
 
