@@ -10,6 +10,7 @@
 | Emby | `ssh dsm`，容器 `homepage-reporter` | `/api/ingest/emby` | 容器已应用新配置；真实上报 202 |
 | agents | `ssh -J dsm misaka-jp`，容器 `agent-limits-reporter` | `/api/ingest/agents` | 容器已应用新配置；真实上报 202（2026-09-13 从 dsm 迁到 misaka-jp，见下） |
 | PlayStation | Worker `playstation-reporter` | `/api/ingest/playstation` | `SITE_URL` 已更新并部署；真实上报 202 |
+| PlayStation 电源 | `ssh n100`，Home Assistant 自动化 `lyjwpage_ps5_power` | `/api/ingest/playstation` | 2026-09-13 新增；`switch.ps5_210_power` 翻面即上报，真实上报已落地 |
 | HomePod | `ssh dsm`，Home Assistant `media_player.wo_shi` | `/api/ingest/homepod` | 配置检查通过；真实 rest_command 返回 202 |
 | HomePod | `ssh n100`，Home Assistant `media_player.zhu_wo_lyjw` | `/api/ingest/homepod` | 配置检查通过；真实 rest_command 返回 202 |
 | iPhone | iPhone 17 Pro，遥测中心 | `/api/ingest/iphone` | 用户修改设置；App 显示成功，新 Worker 收到 202 |
@@ -41,6 +42,7 @@ Worker 的三个 SQLite Durable Object 命名空间通过 transfer migration 迁
 | dsm | `/volume3/docker/emby-proxy/.env` | `/usr/local/bin/docker compose -f /volume3/docker/emby-proxy/docker-compose.yml up -d --no-deps --no-build emby-reporter` |
 | dsm | `/volume3/docker/homeassistant/homeassistant/configuration.yaml` | Home Assistant 的 `rest_command.reload` 动作，或重启 `homeassistant` 容器 |
 | n100 | `/volume1/docker/homeassistant/homeassistant/configuration.yaml` | Home Assistant 的 `rest_command.reload` 动作，或重启 `homeassistant` 容器 |
+| n100 | `/volume1/docker/homeassistant/homeassistant/automations.yaml` | Home Assistant 的 `automation.reload` 动作；备份后缀 `.before-ps5power-20260913` |
 | misaka-jp | `/opt/lyjwpage/server-reporter/.env` | `cd /opt/lyjwpage && docker compose up -d --no-deps --no-build server-reporter` |
 
 备份路径是原路径加上述后缀。原 Worker / 域名退役后，不要单独恢复备份中的旧目的地；如需整体回滚，先恢复后端域名与服务，再切换调用方。
