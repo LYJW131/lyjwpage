@@ -1,0 +1,58 @@
+# misaka-jp 上两个常驻上报器的部署单元。整个 reporters/ 拷到 /opt/lyjwpage，
+# 两个子目录各放一份自己的 .env，然后在 /opt/lyjwpage 里 `docker compose up -d --build`。
+# 完整步骤见各自的 README。
+#
+# 两个服务共用一个 compose project，所以**不带服务名的命令会同时动两个容器**。
+# 平时只改一个就点名改那个：
+#   docker compose up -d --build server-reporter
+#   docker compose up -d --build agent-limits-reporter
+# 不点名的 `up -d --build` 会连 agent-limits-reporter 的镜像一起重建 —— 那是个
+# 装了五个 CLI 的 3GB 镜像，1C2G 的机器上要十几分钟。
+#
+# 各自的 .env 留在各自的子目录里：两边都有 SITE_URL / TELEMETRY_INGEST_SECRET /
+# ONLINE_COUNTER_URL，但三档间隔的值不一样（限额 5/10/60 分钟，server 1/2/15 分钟），
+# 合成一份反而串味。
+name: lyjwpage-reporters
+
+services:
+  agent-limits-reporter:
+    build: ./agent-limits-reporter
+    image: agent-limits-reporter
+    container_name: agent-limits-reporter
+    restart: unless-stopped
+    env_file:
+      - ./agent-limits-reporter/.env
+    volumes:
+      - ./agent-limits-reporter/data:/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  server-reporter:
+    build: ./server-reporter
+    image: server-reporter
+    container_name: server-reporter
+    restart: unless-stopped
+    # 网卡名、网卡上的公网 IP、收发字节都读自网络命名空间（/proc/net/*、SIOCGIFADDR），
+    # 容器自己那套是 eth0 + 172.x，所以必须共用宿主机的。CPU / 内存 / 负载 / 运行时间
+    # 读 /proc 本来就是宿主机的数，不用额外挂。
+    network_mode: host
+    env_file:
+      - ./server-reporter/.env
+    environment:
+      HOST_ROOT: /host
+    volumes:
+      # 主机名读 /host/etc/hostname；根分区容量对 /host/etc 做 statvfs ——
+      # 容器里量 "/" 量到的是 overlay，不是真正的根分区。一个只读挂载办两件事。
+      - /etc:/host/etc:ro
+      # os-release 单独再挂一次：Ubuntu 上 /etc/os-release 是指向 ../usr/lib/os-release
+      # 的软链，跟着 /etc 整个挂进来那条链在容器里是断的（/host/usr 不存在）。
+      # 单独 bind 这个路径，Docker 在宿主机侧解完软链再挂，容器里拿到的是真文件。
+      - /etc/os-release:/host/etc/os-release:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

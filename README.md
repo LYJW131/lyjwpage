@@ -571,8 +571,8 @@ App 平时**根本不在运行**，是 HealthKit 有新数据时才把它拉起�
 ### 落地节点 — Tokyo
 
 跑在日本落地节点上的上报器，读 `/proc` 把 CPU、内存、网速推过来。站点不 ssh、
-不轮询那台机器。源码在 `reporters/server-reporter`（Python 3 标准库 + systemd，
-怎么装见那边的 README）。
+不轮询那台机器。源码在 `reporters/server-reporter`（Python 3 标准库，容器跑，
+和 `agent-limits-reporter` 合在 `reporters/compose.yaml` 一个 project 里，怎么装见那边的 README）。
 
 ```text
 POST /api/ingest/server
