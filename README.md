@@ -268,7 +268,7 @@ hero 上此刻在播的那首，副标题那一行会跟着进度条换成正在
 **用量**由 Mac Telemetry Hub 直接采集：Claude Code、Codex、Grok 等来源读取本地日志，
 Cursor 的用量历史从账号云端获取；本地会话活动只用于判断“正在使用”，不能替代 Cursor 的
 云端 token 历史。采集器按来源保存历史，再从同一份日数据生成累计、今日用量、模型排行和年度图。
-**套餐与限额窗口**继续由 NAS 上的 `reporters/agent-limits-reporter` 走 `/api/ingest/agents`
+**套餐与限额窗口**继续由 misaka-jp 上的 `reporters/agent-limits-reporter` 走 `/api/ingest/agents`
 独立上报；Mac 用量报文不带 `plan` / `limits` / `limitsError`。
 
 Mac 信封保持这三个模块：

@@ -1,6 +1,6 @@
 # agent-limits-reporter
 
-把各 coding agent 的**账号限额**推给 lyjwpage 的小代理，跑在 NAS 上。
+把各 coding agent 的**账号限额**推给 lyjwpage 的小代理，跑在日本的 misaka-jp 上。
 
 限额（套餐 + 用量窗口）从前和 token 用量一起由 MacTelemetryHub 从本机 TokenTracker
 取来、塞进 `/api/ingest/mac` 的 `vibeCodingUsage`。Mac 合盖 / 睡眠 / 离线时限额就冻住。
@@ -46,7 +46,7 @@ PlayStation 上报器采用同款人数分档逻辑，限额使用自己的 5 / 
 | `IDLE_INTERVAL_MS` | | 默认 `3600000`（60 分钟），无人打开；改长时同步放宽站点 `AGENT_LIMITS_STALE_MS` |
 | `COUNT_TIMEOUT_MS` | | 默认 `2500`，每个计数请求的超时 |
 | `PUSH_TIMEOUT_MS` | | 默认 `30000` |
-| `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` | | NAS 出海要走代理时填（如 `http://user:pass@192.168.3.2:7893`）。上报器自己的 fetch 靠镜像里的 `NODE_USE_ENV_PROXY=1` 认它，五个 CLI 各自也认。build 时另外用 `--build-arg HTTPS_PROXY=…` |
+| `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` | | 宿主机出海要走代理时填（如 `http://user:pass@192.168.3.2:7893`）。**跑在 misaka-jp 上不用填**，那台本身就在日本。上报器自己的 fetch 靠镜像里的 `NODE_USE_ENV_PROXY=1` 认它，五个 CLI 各自也认。build 时另外用 `--build-arg HTTPS_PROXY=…` |
 | `CLAUDE_OAUTH_TOKEN_URL` | | 可选覆盖。默认从镜像里的 Claude Code 自动读取生产 OAuth 配置；覆盖时必须和 client ID 一起填 |
 | `CLAUDE_OAUTH_CLIENT_ID` | | 同上。无需手抄；客户端常量不写进仓库 |
 | `CLAUDE_BIN` | `claude` | 用来读取 OAuth 配置的 Claude Code 安装程序，可设绝对路径 |
@@ -83,6 +83,9 @@ docker compose run --rm agent-limits-reporter agent login   # cursor-agent，见
 ```
 
 Grok 的包是 `@xai-official/grok`，命令是 `grok`，无浏览器的环境用 `--device-auth`（`--device-code` 是别名）。
+
+`codex login` 一启动就把旧的 `auth.json` 删掉，中途取消或设备码过期等于把 codex 这份登录态弄没了，只能重登；
+其余四家不受影响。设备码 15 分钟有效。
 
 Claude 在 Linux 上把 OAuth 写到 `/data/.claude/.credentials.json`。登录后，上报器在到期前 5 分钟内的采集轮次（或 usage 接口回 401 时）自动续期并原子写回。默认从镜像中 Claude Code 的生产配置对象读取 token 端点和 client ID，不需要手抄环境变量；扫描规则按 Claude Code 2.1.261 的原生安装包验证，只接受唯一的生产配置，无法识别会明确报错。
 
@@ -130,33 +133,41 @@ DRY_RUN=1 LIMITS_FIXTURE=./fixture.json HOME=/tmp/empty \
 codex 是 `wham/usage`，grok 是 `/v1/billing`，antigravity 是 `retrieveUserQuotaSummary`，
 cursor 是 `{ period, plan, hardLimit }` 三份 DashboardService 响应。有它就不出网、不读凭据。
 
-## 在 NAS 上跑
+## 在 misaka-jp 上跑
 
-部署单元是同目录的 [compose.yaml](compose.yaml)：把这个目录整个拷到 NAS、旁边放一份 `.env`，就地 build。**别在 Mac 上 build 完把镜像拷过去** —— Mac 是 arm64、群晖是 x86_64，架构对不上。
+部署单元是同目录的 [compose.yaml](compose.yaml)：把这个目录整个拷到目标机器、旁边放一份 `.env`，就地 build。**别在 Mac 上 build 完把镜像拷过去** —— Mac 是 arm64、misaka-jp 是 x86_64，架构对不上。
+
+2026-09-13 从群晖（dsm `/volume3/docker`）搬到 misaka-jp `/opt/lyjwpage`，和 `server-reporter` 同一台。
+这台在日本，各家限额接口直连可达，**`.env` 里不再需要 `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY`**。
+ssh 直连在 kex 阶段会被对面关掉，一律走 dsm 跳板：`ssh -J dsm misaka-jp`。
 
 从固定间隔升级时，先将 API Worker 的新鲜度窗口更新为
 `AGENT_LIMITS_STALE_MS=11100000`（185 分钟，三轮闲档加缓存余量），删除旧的
-`AGENT_LIMITS_PUSH_INTERVAL_MS`。然后更新 NAS `.env`：删除 `PUSH_INTERVAL_MS`、
+`AGENT_LIMITS_PUSH_INTERVAL_MS`。然后更新机器上的 `.env`：删除 `PUSH_INTERVAL_MS`、
 `LIVE_PUSH_URL`，并设置 `ONLINE_COUNTER_URL=https://online.homepage.lyjw.llc`；按需设置三档间隔，
 再重建容器。旧变量已移除。
 
-拷过去（dsm 的 sftp 子系统是关的，`scp` 用不了，走 tar 管道）：
+拷过去（跳板后面 sftp 用不了，`scp` 别想，走 tar 管道；tar 会带上 Mac 的 uid，落地补一次 `chown`）：
 
 ```bash
-COPYFILE_DISABLE=1 tar czf - -C reporters --exclude node_modules --exclude dist --exclude .env --exclude data agent-limits-reporter | ssh dsm 'mkdir -p /volume3/docker && tar xzf - -C /volume3/docker'
+COPYFILE_DISABLE=1 tar czf - -C reporters --exclude node_modules --exclude dist --exclude .env --exclude data agent-limits-reporter | ssh -J dsm misaka-jp 'mkdir -p /opt/lyjwpage && tar xzf - -C /opt/lyjwpage && chown -R root:root /opt/lyjwpage/agent-limits-reporter'
 ```
 
 `.env` 单独送，别混进源码目录一起打包：
 
 ```bash
-ssh dsm 'cat > /volume3/docker/agent-limits-reporter/.env && chmod 600 /volume3/docker/agent-limits-reporter/.env' < 本机那份.env
+ssh -J dsm misaka-jp 'cat > /opt/lyjwpage/agent-limits-reporter/.env && chmod 600 /opt/lyjwpage/agent-limits-reporter/.env' < 本机那份.env
 ```
 
 先登录五家（见上），再起：
 
 ```bash
-ssh dsm '/usr/local/bin/docker compose -f /volume3/docker/agent-limits-reporter/compose.yaml up -d --build'
+ssh -J dsm misaka-jp 'cd /opt/lyjwpage/agent-limits-reporter && docker compose up -d --build'
 ```
+
+**换机器不用重登五家**：先停掉旧机器上的容器，再把旧机器的 `data/` 卷整个打包过来、
+`chown -R 1000:1000 data`，登录态照用。两边同时跑会各自轮换同一份 refresh token、互相作废，
+所以顺序是「旧的停 → 拷卷 → 新的起」，旧目录等新机器验过再删。
 
 不映射任何端口。容器只出站连站点和各家限额接口。
 
