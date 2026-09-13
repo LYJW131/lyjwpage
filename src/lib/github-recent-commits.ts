@@ -1,6 +1,6 @@
 import { cacheLife } from "next/cache";
 
-import { type CommitAuthor, mergeAuthors, parseCoAuthors } from "@/lib/commit-authors";
+import { type CommitAuthor, authorFromTrailer, mergeAuthors, parseCoAuthors } from "@/lib/commit-authors";
 import { repoIdFromUrl } from "@/lib/github-repo";
 import { site } from "@/lib/site";
 
@@ -30,16 +30,35 @@ type CommitListItem = {
   html_url?: string;
   commit?: {
     message?: string;
-    author?: { name?: string; date?: string } | null;
+    author?: { name?: string; email?: string; date?: string } | null;
   };
   author?: { login?: string; avatar_url?: string } | null;
 };
 
-/** 提交的作者：对上了 GitHub 账号就用登录名和头像，否则只有 git 里的名字。 */
+/** 提交的作者：对上了 GitHub 账号就用登录名和头像，否则解析 agent 或 git 里的名字。 */
 function primaryAuthor(item: CommitListItem): CommitAuthor | null {
+  const email = item.commit?.author?.email?.trim() || "";
+  const name = item.commit?.author?.name?.trim() || "";
   const login = item.author?.login?.trim();
+
+  // 1. 如果匹配已知 Agent 邮箱或 Agent 账号名（如 cursoragent / claude），统一按 agent 处理
+  if (email) {
+    const candidate = authorFromTrailer(name, email);
+    if (candidate.agent) return candidate;
+  }
+  if (login === "cursoragent") {
+    return { name: "cursor", login: null, avatarUrl: null, agent: "cursor" };
+  }
+
+  // 2. GitHub 关联账号
   if (login) return { name: login, login, avatarUrl: item.author?.avatar_url?.trim() || null, agent: null };
-  const name = item.commit?.author?.name?.trim();
+
+  // 3. 尝试通过 git author email 解析（例如通过 noreply 邮箱或名字）
+  if (email) {
+    const candidate = authorFromTrailer(name, email);
+    if (candidate.login || candidate.name) return candidate;
+  }
+
   return name ? { name, login: null, avatarUrl: null, agent: null } : null;
 }
 

@@ -6,6 +6,9 @@ test("GitHub noreply 邮箱直接拼出登录名和头像，agent 邮箱换成�
   assert.deepEqual(authorFromTrailer("Grok 4.6", "304785771+grokkybara[bot]@users.noreply.github.com"), {
     name: "grokkybara[bot]", login: "grokkybara[bot]", avatarUrl: "https://avatars.githubusercontent.com/u/304785771?v=4", agent: null,
   });
+  assert.deepEqual(authorFromTrailer("Yangjunwei Liang", "LYJW131@users.noreply.github.com"), {
+    name: "LYJW131", login: "LYJW131", avatarUrl: "https://github.com/LYJW131.png", agent: null,
+  });
   assert.deepEqual(authorFromTrailer("Claude Fable 5.1", "noreply@anthropic.com"), { name: "claude", login: null, avatarUrl: null, agent: "claude" });
   assert.deepEqual(authorFromTrailer("Cursor Agent", "cursoragent@cursor.com"), { name: "cursor", login: null, avatarUrl: null, agent: "cursor" });
   assert.deepEqual(authorFromTrailer("gpt-6-astra", "codex@openai.com"), { name: "codex", login: null, avatarUrl: null, agent: "openai" });
@@ -23,10 +26,11 @@ test("只认 Co-authored-by 尾注，大小写不敏感，保持顺序；Assiste
   assert.deepEqual(parseCoAuthors("no trailers"), []);
 });
 
-test("作者在前、协作者去重（登录名不分大小写），主语按 GitHub 的写法连接", () => {
+test("作者在前、协作者去重（登录名不分大小写，同 agent 去重），主语按 GitHub 的写法连接", () => {
   const me = { name: "LYJW131", login: "LYJW131", avatarUrl: "https://avatars.githubusercontent.com/u/1?v=4", agent: null };
   const merged = mergeAuthors(me, [
     authorFromTrailer("me", "1+lyjw131@users.noreply.github.com"),
+    authorFromTrailer("Yangjunwei Liang", "LYJW131@users.noreply.github.com"),
     authorFromTrailer("Claude", "noreply@anthropic.com"),
     authorFromTrailer("Claude again", "noreply@anthropic.com"),
   ]);
