@@ -2,13 +2,13 @@
 
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { RotateCw, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Card } from "@/components/ui/card";
 import { StatusDot } from "@/components/ui/status-dot";
 import { DevToggle, DevToggleSlot } from "@/components/dev-toggles";
 import { useAppVersion } from "@/hooks/use-app-version";
-import { LIST_TRANSITION, STATIC_TRANSITION } from "@/lib/motion";
+import { LIST_DURATION, LIST_TRANSITION, STATIC_TRANSITION } from "@/lib/motion";
 
 /**
  * 展开 / 收起两态。
@@ -52,6 +52,35 @@ export function AppVersionCard() {
       : isDev
         ? "32s"
         : null;
+
+  /**
+   * 卡片刚展开时把页面拉回顶部。
+   *
+   * 它固定在最上面，而提示是异步来的 —— 人多半正停在半页处看别的卡，不拉一把
+   * 等于没提示。只在「这一轮刚出现」时滚一次：`visible` 一直为真的那些渲染不滚，
+   * DISMISS 之后也不会因为别的状态更新又把人拽上去。
+   *
+   * **必须等展开动画走完再滚**。同一 tick 里滚是滚不动的：卡片从 height 0 展开会
+   * 逐帧改变上方内容的高度，浏览器的滚动锚定跟着逐帧修正 scrollTop，平滑滚动一
+   * 起步就被这些修正取消掉（实测 scrollY 从 3000 只飘到 3059 就不动了）。按
+   * LIST_DURATION 这条同一时间线排到动画之后，3000px 一路滚上去都正常。
+   *
+   * 不传 `behavior`：默认值 `auto` 的含义是「按元素上 scroll-behavior 的计算值来」，
+   * 而 globals.css 已经给 html 设了 smooth、并在 prefers-reduced-motion 里用
+   * !important 关掉。写死 "smooth" 反而会绕开那条无障碍开关。降级动效时展开是
+   * 瞬时的（STATIC_TRANSITION），也就不用等，直接滚。
+   */
+  const wasVisible = useRef(false);
+  useEffect(() => {
+    const appeared = visible && !wasVisible.current;
+    wasVisible.current = visible;
+    if (!appeared) return;
+    const timer = window.setTimeout(
+      () => window.scrollTo({ top: 0 }),
+      reduced ? 0 : LIST_DURATION * 1000 + 30,
+    );
+    return () => window.clearTimeout(timer);
+  }, [visible, reduced]);
 
   const handleDismiss = () => {
     if (isDev) {
