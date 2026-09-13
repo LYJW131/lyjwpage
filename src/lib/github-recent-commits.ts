@@ -37,26 +37,25 @@ type CommitListItem = {
 
 /** 提交的作者：对上了 GitHub 账号就用登录名和头像，否则解析 agent 或 git 里的名字。 */
 function primaryAuthor(item: CommitListItem): CommitAuthor | null {
+  const login = item.author?.login?.trim();
+  const avatarUrl = item.author?.avatar_url?.trim() || null;
+
+  // 1. GitHub 官方已经关联到账号，直接信任 GitHub 数据
+  if (login) {
+    return {
+      name: login,
+      login,
+      avatarUrl,
+      agent: login === "cursoragent" ? "cursor" : null,
+    };
+  }
+
+  // 2. 没关联上账号时，尝试从 git author email 解析（如 agent 固定邮箱或 noreply 邮箱）
   const email = item.commit?.author?.email?.trim() || "";
   const name = item.commit?.author?.name?.trim() || "";
-  const login = item.author?.login?.trim();
-
-  // 1. 如果匹配已知 Agent 邮箱或 Agent 账号名（如 cursoragent / claude），统一按 agent 处理
   if (email) {
     const candidate = authorFromTrailer(name, email);
-    if (candidate.agent) return candidate;
-  }
-  if (login === "cursoragent") {
-    return { name: "cursor", login: null, avatarUrl: null, agent: "cursor" };
-  }
-
-  // 2. GitHub 关联账号
-  if (login) return { name: login, login, avatarUrl: item.author?.avatar_url?.trim() || null, agent: null };
-
-  // 3. 尝试通过 git author email 解析（例如通过 noreply 邮箱或名字）
-  if (email) {
-    const candidate = authorFromTrailer(name, email);
-    if (candidate.login || candidate.name) return candidate;
+    if (candidate.login || candidate.name || candidate.agent) return candidate;
   }
 
   return name ? { name, login: null, avatarUrl: null, agent: null } : null;

@@ -10,7 +10,12 @@ test("GitHub noreply 邮箱直接拼出登录名和头像，agent 邮箱换成�
     name: "LYJW131", login: "LYJW131", avatarUrl: "https://github.com/LYJW131.png", agent: null,
   });
   assert.deepEqual(authorFromTrailer("Claude Fable 5.1", "noreply@anthropic.com"), { name: "claude", login: null, avatarUrl: null, agent: "claude" });
-  assert.deepEqual(authorFromTrailer("Cursor Agent", "cursoragent@cursor.com"), { name: "cursor", login: null, avatarUrl: null, agent: "cursor" });
+  assert.deepEqual(authorFromTrailer("Cursor Agent", "cursoragent@cursor.com"), {
+    name: "cursoragent",
+    login: "cursoragent",
+    avatarUrl: "https://avatars.githubusercontent.com/u/199161495?v=4",
+    agent: "cursor",
+  });
   assert.deepEqual(authorFromTrailer("gpt-6-astra", "codex@openai.com"), { name: "codex", login: null, avatarUrl: null, agent: "openai" });
   assert.deepEqual(authorFromTrailer("Someone", "someone@example.com"), { name: "Someone", login: null, avatarUrl: null, agent: null });
 });
@@ -22,7 +27,7 @@ test("只认 Co-authored-by 尾注，大小写不敏感，保持顺序；Assiste
     "co-authored-by: Cursor Agent <cursoragent@cursor.com>",
     "Assisted-By: Gemini <gemini@google.com>",
   ].join("\n");
-  assert.deepEqual(parseCoAuthors(message).map((author) => author.name), ["claude", "cursor"]);
+  assert.deepEqual(parseCoAuthors(message).map((author) => author.name), ["claude", "cursoragent"]);
   assert.deepEqual(parseCoAuthors("no trailers"), []);
 });
 

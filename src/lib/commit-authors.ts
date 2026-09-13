@@ -15,9 +15,9 @@ export type CommitAuthor = {
   agent: "claude" | "cursor" | "openai" | null;
 };
 
-const AGENT_EMAILS: { pattern: RegExp; name: string; agent: NonNullable<CommitAuthor["agent"]> }[] = [
+const AGENT_EMAILS: { pattern: RegExp; name: string; agent: NonNullable<CommitAuthor["agent"]>; login?: string; avatarUrl?: string }[] = [
   { pattern: /@anthropic\.com$/i, name: "claude", agent: "claude" },
-  { pattern: /@cursor\.com$/i, name: "cursor", agent: "cursor" },
+  { pattern: /@cursor\.com$/i, name: "cursoragent", agent: "cursor", login: "cursoragent", avatarUrl: "https://avatars.githubusercontent.com/u/199161495?v=4" },
   { pattern: /@openai\.com$/i, name: "codex", agent: "openai" },
 ];
 
@@ -36,7 +36,14 @@ export function authorFromTrailer(name: string, email: string): CommitAuthor {
     return { name: login, login, avatarUrl, agent: null };
   }
   const agent = AGENT_EMAILS.find((entry) => entry.pattern.test(email.trim()));
-  if (agent) return { name: agent.name, login: null, avatarUrl: null, agent: agent.agent };
+  if (agent) {
+    return {
+      name: agent.name,
+      login: agent.login ?? null,
+      avatarUrl: agent.avatarUrl ?? null,
+      agent: agent.agent,
+    };
+  }
   return { name: name.trim() || email.trim(), login: null, avatarUrl: null, agent: null };
 }
 
