@@ -554,7 +554,7 @@
       "dot": "violet",
       "title": "Vercel 与 ESA",
       "items": [
-        "API 只通知 Vercel 标签失效；ESA 首页由缓存规则按源站 SWR 头自行更新。"
+        "API 只通知 Vercel 标签失效；ESA 首页由 SWR 自行更新，站点新构建时由 CI 触发刷新。"
       ]
     }
   ]
