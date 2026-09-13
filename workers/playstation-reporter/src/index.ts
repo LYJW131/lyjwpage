@@ -272,12 +272,12 @@ const LIVE_TICK_INTERVAL_MS = 55_000;
 const OPEN_TICK_INTERVAL_MS = 115_000;
 /**
  * 一个页面都没开时的完整 tick 间隔。同样留取整余量：每分钟的 cron 把它凑成
- * 15 分钟整一轮，和从前那根十五分钟的 cron 一模一样，闲时对 PSN 的流量不变。
+ * 30 分钟整一轮。
  *
- * 站点 `src/lib/freshness.ts` 的 `PLAYSTATION_STALE_MS`（50 分钟 = 三轮 + 余量）
+ * 站点 `src/lib/freshness.ts` 的 `PLAYSTATION_STALE_MS`（95 分钟 = 三轮 + 余量）
  * 锚的就是这个数。要动它，先去改那边。
  */
-const IDLE_TICK_INTERVAL_MS = 14.5 * 60_000;
+const IDLE_TICK_INTERVAL_MS = 29.5 * 60_000;
 /** 人头数读不回来不该拖着 tick 等，超时就当没人。 */
 const COUNT_TIMEOUT_MS = 2_500;
 
@@ -319,12 +319,12 @@ type Gate = {
  * cron 每分钟一响，这道门决定这一响要不要真跑一轮。
  *
  * 三档，由两个人头数分出来：有页面**可见**就 55 秒一轮，只是**开着**（后台标签
- * 页、锁了屏的手机）就 115 秒，一个都没有就 15 分钟。
+ * 页、锁了屏的手机）就 115 秒，一个都没有就 30 分钟。
  *
  * 门里只有两个读操作（KV 一枚时间戳 + 并行读取两个人头数），都排在任何贵操作之前：被挡
  * 下的那一轮完全不碰 PSN、不碰站点。而且是层层短路的 —— 攒够闲档就不问人数，
  * 没攒够快档阈值也不问。间隔算的是**上一轮开始**的时刻而不是成功的时刻 —— 否则
- * PSN 持续故障时，重试会从十五分钟一次恶化成每分钟一次。
+ * PSN 持续故障时，重试会从三十分钟一次恶化成每分钟一次。
  */
 async function shouldTick(env: Env): Promise<Gate> {
   const lastAt = Math.max(await readFullTickStartedAt(env.STATE), lastFullTickAt);
@@ -421,7 +421,7 @@ async function tick(env: Env, force = false): Promise<TickResult> {
 
     const playing = presence.playing != null;
     // 在玩时的 TTL 对着闲时那档完整 tick 节奏：从前「在玩每轮刷」那会儿一轮正好
-    // 15 分钟，这里维持同一个节奏，快节奏下也不会每分钟去翻一遍分页列表。
+    // 30 分钟，这里维持同一个节奏，快节奏下也不会每分钟去翻一遍分页列表。
     const playedTtlMs = playing ? PLAYED_GAMES_PLAYING_TTL_MS : PLAYED_GAMES_IDLE_TTL_MS;
     const playedFresh =
       playedCache != null && Date.now() - playedCache.fetchedAt < playedTtlMs;
@@ -607,7 +607,7 @@ async function tick(env: Env, force = false): Promise<TickResult> {
 export default {
   /**
    * cron 每分钟一响，真跑哪一响由 `shouldTick` 定：有人正看着 60 秒一轮，页面
-   * 只是开着 2 分钟一轮，一个页面都没开 15 分钟一轮。被挡下的那一响什么都不做。
+   * 只是开着 2 分钟一轮，一个页面都没开 30 分钟一轮。被挡下的那一响什么都不做。
    */
   async scheduled(_controller, env) {
     const { run, sinceMs, online, open } = await shouldTick(env);

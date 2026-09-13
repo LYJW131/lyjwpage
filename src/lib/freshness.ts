@@ -64,20 +64,20 @@ export function agentLimitsStaleMs() {
  * 让卡片翻脸，连着三轮没到才算 Worker 死了、或者 PSN 把它的令牌拒了。
  *
  * 一轮多久要看有没有人在看这个站点：Worker 的 cron 每分钟响一次，但门分三档 ——
- * 有页面可见放行到 60 秒一轮，只是开着 2 分钟一轮，一个页面都没开压回 15 分钟
+ * 有页面可见放行到 60 秒一轮，只是开着 2 分钟一轮，一个页面都没开压回 30 分钟
  * 一轮。所以这个窗口锚的是**闲时**那档 —— 有人看时只会更快，判活的下限始终由
- * 15 分钟那档决定。
+ * 30 分钟那档决定。
  *
- * 45 分钟之外还要再宽一截给缓存：端点读的是 'use cache' 那份快照，心跳只推
+ * 90 分钟之外还要再宽一截给缓存：端点读的是 'use cache' 那份快照，心跳只推
  * 普通 tag（stale-while-revalidate），拿到手的 observedAt 可能比 SQLite 里那份
- * 旧一个刷新周期。3 × 15 = 45，留到 50。上报器那侧改**闲时**那档间隔
+ * 旧一个刷新周期。3 × 30 = 90，留到 95。上报器那侧改**闲时**那档间隔
  * （`IDLE_TICK_INTERVAL_MS`）时这里要跟着改，改 cron 本身不用动这里。
  *
  * 服务端可用 PLAYSTATION_STALE_MS 改。这一路没有 declaredOffline 可用 ——
  * Worker 悄悄死掉和主机关机长得一模一样，只能靠这个窗口分开，而分不开的那半
  * （到底在不在玩）就该老实说不知道，不是说不在线。
  */
-export const PLAYSTATION_STALE_MS = 50 * 60_000;
+export const PLAYSTATION_STALE_MS = 95 * 60_000;
 
 export function playstationStaleMs() {
   const configured = Number(process.env.PLAYSTATION_STALE_MS);

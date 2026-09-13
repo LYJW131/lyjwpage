@@ -619,8 +619,7 @@ Authorization: Bearer <TELEMETRY_INGEST_SECRET>
 醒来重新问一次，该走更快那档了立刻开跑。限额每 5 分钟重查，server 每 60 秒重查，
 避免从无人到有人时等满整个闲档。PlayStation 那侧不用拆，它的 cron 每分钟看一次门。
 
-三条断流窗口都锚**最慢那档**：`SERVER_STALE_MS` / `PLAYSTATION_STALE_MS` 为
-50 分钟（三轮 15 分钟加余量），`AGENT_LIMITS_STALE_MS` 为 185 分钟（三轮 60 分钟加余量）。
+三条断流窗口都锚**最慢那档**：`SERVER_STALE_MS` 为 50 分钟（三轮 15 分钟加余量），`PLAYSTATION_STALE_MS` 为 95 分钟（三轮 30 分钟加余量），`AGENT_LIMITS_STALE_MS` 为 185 分钟（三轮 60 分钟加余量）。
 改闲档必须同步改 `src/lib/freshness.ts`，改另外两档不用。
 
 ## 改内容
