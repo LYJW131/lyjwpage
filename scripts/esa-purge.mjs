@@ -102,3 +102,36 @@ export async function purgeEsaHomepage(config) {
     };
   }
 }
+
+/**
+ * 刷新后打一下目标 URL 触发边缘回源并写入缓存（预热）。
+ * @param {string} url
+ * @param {{ timeoutMs?: number }} [options]
+ * @returns {Promise<{ ok: boolean, status?: number, error?: string }>}
+ */
+export async function warmupEsaCache(url, options = {}) {
+  const { timeoutMs = 15_000 } = options;
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; EsaWarmupBot/1.0)",
+        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      },
+      signal: AbortSignal.timeout(timeoutMs),
+      redirect: "follow",
+    });
+    // 消耗 response body 确保请求完整结束
+    await response.text().catch(() => "");
+    return {
+      ok: response.ok,
+      status: response.status,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+

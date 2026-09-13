@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { purgeEsaHomepage, signAliyunRequest } from "./esa-purge.mjs";
+import { purgeEsaHomepage, signAliyunRequest, warmupEsaCache } from "./esa-purge.mjs";
 
 const config = {
   siteId: "1113300533463584",
@@ -79,4 +79,30 @@ test("ESA 拒绝错误应答与缺少 TaskId 的假成功", async (t) => {
     const result = await purgeEsaHomepage(config);
     assert.equal(result.ok, false);
   }
+});
+
+test("warmupEsaCache 发送带标准请求头的 GET 请求预热边缘缓存", async (t) => {
+  const calls = [];
+  t.mock.method(globalThis, "fetch", async (input, init) => {
+    calls.push({ input, init });
+    return new Response("<!DOCTYPE html><html>ok</html>", { status: 200 });
+  });
+
+  const res = await warmupEsaCache("https://lyjw131.com/");
+  assert.equal(res.ok, true);
+  assert.equal(res.status, 200);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].input, "https://lyjw131.com/");
+  assert.equal(calls[0].init.method, "GET");
+  assert.ok(calls[0].init.headers["User-Agent"].includes("EsaWarmupBot"));
+});
+
+test("warmupEsaCache 妥善处理超时或网络失败", async (t) => {
+  t.mock.method(globalThis, "fetch", async () => {
+    throw new Error("connection timeout");
+  });
+
+  const res = await warmupEsaCache("https://lyjw131.com/");
+  assert.equal(res.ok, false);
+  assert.match(res.error, /connection timeout/);
 });

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { purgeEsaHomepage } from "./esa-purge.mjs";
+import { purgeEsaHomepage, warmupEsaCache } from "./esa-purge.mjs";
 
 const siteId = process.env.ESA_SITE_ID || "1113300533463584";
 const cacheUrl = process.env.ESA_CACHE_URL || "https://lyjw131.com/";
@@ -26,3 +26,11 @@ if (!result.ok) {
 }
 
 console.log(`[esa-purge] 刷新任务已成功提交！TaskId: ${result.taskId}, RequestId: ${result.requestId}`);
+
+console.log(`[esa-purge] 正在预热缓存: GET ${cacheUrl}...`);
+const warmup = await warmupEsaCache(cacheUrl);
+if (warmup.ok) {
+  console.log(`[esa-purge] 预热请求成功 (HTTP ${warmup.status})，边缘节点已回源并写入首屏缓存。`);
+} else {
+  console.warn(`[esa-purge] 预热请求未成功完成: ${warmup.error ?? `HTTP ${warmup.status}`} (刷新任务已在运行，不阻断部署)`);
+}
