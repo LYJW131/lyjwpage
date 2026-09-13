@@ -24,8 +24,13 @@ const REPO_STATS_TTL_MS = 30 * 60_000;
  * 每次 push 后 GitHub 会作废统计缓存重新排队现算，期间一直回 202，一轮从
  * 30 秒到几分钟都有；30 分钟 TTL 到期恰好撞上这段窗口时，拿这份顶上，
  * 卡片不会因为 GitHub 在算就消失。顶上的那份照样按 30 分钟缓存，下一轮再试。
+ *
+ * **键名不带版本**：撞上 202 窗口的恰恰是「刚 push 完」，也就是刚换了新版本的
+ * 那一刻。跟着 payload 形状换键等于在最需要它的时候把这条退路清空 ——
+ * 改形状后第一次部署，卡片会整个消失几分钟（2026-09-14 就这么翻过一次）。
+ * 多出来的旧字段读的人本来就不看，缺字段按可选处理。
  */
-const LAST_GOOD_KEY = "github-repo:last-good:v5";
+const LAST_GOOD_KEY = "github-repo:last-good";
 const LAST_GOOD_TTL_MS = 7 * 86_400_000;
 
 /**
@@ -149,7 +154,14 @@ export async function getGithubRepo(): Promise<GithubRepoPayload> {
         error instanceof Error ? error.message : String(error),
         "；沿用上一次成功的统计",
       );
-      return lastGood;
+      // 名单没取到不代表总数也没取到 —— 它们是两个接口。这轮算出来的总数照样
+      // 是新的，只有名单是旧的：顶部三个数字不必跟着名单一起陈旧。
+      const totals = error instanceof ContributorsUnavailable ? error.totals : NO_TOTALS;
+      if (totals.commits == null) return lastGood;
+      return {
+        ...lastGood,
+        totals: { ...totals, contributors: lastGood.totals.contributors },
+      };
     }
   });
 }
@@ -176,8 +188,11 @@ export async function fetchRepoStats(
   };
   if (token) headers.Authorization = `Bearer ${token}`;
 
-  const [contributors, totals] = await Promise.all([
-    fetchContributorStats(headers, signal, deadline, owner, name),
+  const [listed, totals] = await Promise.all([
+    fetchContributorStats(headers, signal, deadline, owner, name).then(
+      (value) => ({ ok: true as const, value }),
+      (error: unknown) => ({ ok: false as const, error }),
+    ),
     fetchRepoTotals(token, owner, name, signal, deadline).catch((error: unknown) => {
       console.warn(
         "[github-repo]",
@@ -187,7 +202,24 @@ export async function fetchRepoStats(
       return NO_TOTALS;
     }),
   ]);
-  return summarizeRepoStats(contributors, owner, name, Date.now(), totals);
+  if (!listed.ok) {
+    const message =
+      listed.error instanceof Error ? listed.error.message : String(listed.error);
+    throw new ContributorsUnavailable(message, totals);
+  }
+  return summarizeRepoStats(listed.value, owner, name, Date.now(), totals);
+}
+
+/** 名单这一路没取到，但同一轮算出来的总数还在，交给 getGithubRepo 拼进 last-good。 */
+class ContributorsUnavailable extends Error {
+  // 构造参数属性在 node --experimental-strip-types 下会直接报语法错，写成普通字段
+  totals: RepoTotals;
+
+  constructor(message: string, totals: RepoTotals) {
+    super(message);
+    this.name = "ContributorsUnavailable";
+    this.totals = totals;
+  }
 }
 
 /**
