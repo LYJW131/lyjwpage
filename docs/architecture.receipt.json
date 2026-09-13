@@ -1,12 +1,12 @@
 {
   "type": "architecture",
   "specification": {
-    "sha256": "1fc64d3844c9680f6561666791d114a3ce2417f12c032c9423e4d653c998b50a",
-    "bytes": 11278
+    "sha256": "5597e4491550e550167f7d8f81c6aff47d961a54f8d24ae33d2a88b303afef7a",
+    "bytes": 11287
   },
   "artifact": {
-    "sha256": "21bba6b7fbaacbcd8e43bfac75ea13ee11b53dd2dc30e1f42f18e27aa0512f2a",
-    "bytes": 724010
+    "sha256": "baa4e859b955dfa602bd92685e8b669ee2c98a12bb1e04234b29f217091b2bfb",
+    "bytes": 724028
   },
   "validation": {
     "checksPassed": 9,
