@@ -51,7 +51,7 @@ type ReportItem = {
  *
  * 映射是个普通对象，`objectKeys["__proto__"] = "…"` 那一下被 setter 吃掉、什么也
  * 没存（值是字符串，构不成原型污染），但**读**的那一下拿回来的是 Object.prototype
- * 本身 —— 真值，于是 publicAssetUrl 把它拼成 "[object Object]"，产出一个坏 URL。
+ * 本身 —— 真值，于是 publicAssetPath 把它拼成 "[object Object]"，产出一个坏路径。
  * 挡在入口最省事：挡住了 posterKey / backdropKey 就永远不会是这三个词，读取侧
  * 也就不会去查它们。
  */

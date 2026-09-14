@@ -21,6 +21,8 @@
 - 原始架构定义：[`architecture.json`](./architecture.json) 与 [`architecture.receipt.json`](./architecture.receipt.json)
 - 离线渲染快照：[`architecture-dark.png`](./architecture-dark.png) / [`architecture-light.png`](./architecture-light.png)
 
+改图只改 `architecture.json`，其余产物由 [`scripts/architecture-diagram.mjs`](../scripts/architecture-diagram.mjs) 一次出齐：`pnpm docs:architecture -- --validate` 反复校验布局（showcase 九项检查），通过后 `pnpm docs:architecture` 渲染 HTML、驱动无头 Chrome 用查看器自带的 PNG 导出重出明暗快照并缩到 2x、跑四个桌面视口的溢出检查、写 `architecture.receipt.json`。依赖本机的 archify 技能（默认 `~/.claude/skills/archify`，可用 `ARCHIFY_DIR` 覆盖）和 Chrome；跑完看一眼 PNG，把 receipt 里两处 `pending` 改成 `passed`。
+
 ## 页面效果图
 
 [`screenshots/`](./screenshots/) 是根 README 里的效果图，明暗各一份。用本地 Worker 的假数据注入把平时不显示的状态点亮后截的，夹具在 [`workers/api/dev-fixtures/`](../workers/api/dev-fixtures/)，注入方式见 [`workers/api/README.md`](../workers/api/README.md)。

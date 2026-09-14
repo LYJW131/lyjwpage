@@ -9,6 +9,7 @@
     "dev:worker:init": "STATE_SERVICE_URL=http://localhost:8788 node --env-file=workers/api/.dev.vars scripts/migrate-state-storage.mjs --initialize",
     "dev:local": "NEXT_PUBLIC_BACKEND_URL=http://localhost:8788 next dev -p 3211",
     "dev:override": "node scripts/dev-override.mjs",
+    "docs:architecture": "node scripts/architecture-diagram.mjs",
     "build": "next build",
     "start": "next start",
     "test": "node --test --experimental-strip-types --import ./src/lib/testing/register-alias.mjs src/lib/*.test.mts src/lib/*.test.mjs",

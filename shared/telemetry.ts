@@ -7,7 +7,7 @@ import { type NowListeningCandidate, type NowListeningSnapshot } from "@/lib/now
 import {
   type PlayingQueueTrack
 } from "@/lib/playing-queue";
-import { IMAGE_OBJECT_KEY, publicAssetUrl } from "@/lib/r2-assets";
+import { IMAGE_OBJECT_KEY, publicAssetPath } from "@/lib/asset-url";
 import { fieldMirror } from "@/lib/storage";
 import { withPresence, type Liveness } from "@/lib/reporter-liveness";
 import type {
@@ -128,7 +128,7 @@ export function desktopPayload(liveness: Liveness): DesktopPayload {
   const desktop: DesktopActivity | null = stored
     ? (() => {
       const { iconObjectKey, ...activity } = stored;
-      return { ...activity, iconUrl: iconObjectKey ? publicAssetUrl(iconObjectKey) : null };
+      return { ...activity, iconUrl: iconObjectKey ? publicAssetPath(iconObjectKey) : null };
     })()
     : null;
   return withPresence(

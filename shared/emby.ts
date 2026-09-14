@@ -1,5 +1,5 @@
 import { type ResolvedNowPlaying, type StoredWatchingItem } from "@/lib/emby-store";
-import { publicAssetUrl } from "@/lib/r2-assets";
+import { publicAssetPath } from "@/lib/asset-url";
 import type { WatchingItem } from "@/lib/types";
 
 /**
@@ -24,15 +24,15 @@ export type NowWatchingPayload = {
   current: WatchingItem | null;
 };
 
-/** 把存下来的条目里的图片键换成当前部署的公开地址。键还没对应上图就先空着 */
+/** 把存下来的条目里的图片键换成页面上的同源路径。键还没对应上图就先空着 */
 export function resolve(item: StoredWatchingItem, objectKeys: Record<string, string>): WatchingItem {
   const { posterKey, backdropKey, ...rest } = item;
   const posterObjectKey = posterKey ? objectKeys[posterKey] : null;
   const backdropObjectKey = backdropKey ? objectKeys[backdropKey] : null;
   return {
     ...rest,
-    poster: posterObjectKey ? publicAssetUrl(posterObjectKey) : null,
-    backdrop: backdropObjectKey ? publicAssetUrl(backdropObjectKey) : null,
+    poster: posterObjectKey ? publicAssetPath(posterObjectKey) : null,
+    backdrop: backdropObjectKey ? publicAssetPath(backdropObjectKey) : null,
   };
 }
 

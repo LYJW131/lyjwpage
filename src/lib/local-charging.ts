@@ -14,7 +14,7 @@
  * 端口没起来时重连就是刷屏。
  */
 
-import { assetUrl, pageAssetBase } from "./asset-url.ts";
+import { publicAssetPath } from "./asset-url.ts";
 import {
   LOCAL_CHARGING_STORAGE_KEY,
   readLocalChargingArmed,
@@ -80,9 +80,7 @@ function appendChargerSample(power: number, now: number) {
 }
 
 function localCoverIconUrl(objectKey: string | null | undefined): string | null {
-  if (!objectKey) return null;
-  const base = pageAssetBase();
-  return base ? assetUrl(base, objectKey) : null;
+  return objectKey ? publicAssetPath(objectKey) : null;
 }
 
 function chargerFromEvent(event: Record<string, unknown>): ChargerPayload {
