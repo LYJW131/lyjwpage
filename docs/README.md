@@ -33,3 +33,12 @@ curl -s 'https://api.homepage.lyjw.llc/api/lyrics?song=1490256995' \
   > /tmp/lyrics-override.json
 pnpm dev:override /api/lyrics /tmp/lyrics-override.json
 ```
+
+页头品牌字标那条是 GIF（`desktop-marks-{light,dark}.gif`），由 [`scripts/desktop-marks-gif.py`](../scripts/desktop-marks-gif.py) 生成：三段字标都从本地站点页头真实截下再拼成一条；Claude Code 那段装上 Playwright 的假时钟逐 25ms 推进，精灵 SVG 一变就截一帧，抓到完整一轮 33 个取物姿势，帧时长直接取 `src/lib/mascot-fetch.json` 的原始毫秒数。站点上每轮结束停 5 秒，GIF 里不停，首姿势只保留源数据自带的两步（767 + 258 ms），整轮 4.1 秒连续循环。需要 Python 3、`playwright`、`pillow`（`pip install playwright pillow && playwright install chromium`），本地 Worker 与 `pnpm dev:local` 在跑：
+
+```sh
+python3 scripts/desktop-marks-gif.py            # 明暗各一张
+python3 scripts/desktop-marks-gif.py --theme dark
+```
+
+脚本自己打开假数据总开关、依次注入 `desktop-claude-code / cursor / antigravity` 三个夹具，结束后清掉注入并把总开关恢复原状。字标改了外观、`mascot-fetch.json` 换了姿势或节拍时重跑一次即可。
