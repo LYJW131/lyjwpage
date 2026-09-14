@@ -43,13 +43,6 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
-  const assetBaseUrl = process.env.R2_PUBLIC_BASE_URL ?? "";
-  let assetOrigin: string | null = null;
-  try {
-    assetOrigin = assetBaseUrl ? new URL(assetBaseUrl).origin : null;
-  } catch {
-    // 配坏时不预连接；状态响应里的图片地址也会按原有降级逻辑为空。
-  }
   // 没配在线人数 Worker 时 workerUrl 返回 null，那段内联脚本整个不渲染
   const earlyOnlineSocket = onlineSocketUrl();
 
@@ -61,7 +54,6 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${GeistMono.variable} h-full`}
     >
       <head>
-        <meta name="asset-base-url" content={assetBaseUrl} />
         <script
           dangerouslySetInnerHTML={{
             __html: `try{var t=localStorage.getItem("theme")||"system";document.documentElement.dataset.themeChoice=t;var h=localStorage.getItem(${JSON.stringify(HEATMAP_STORAGE_KEY)});document.documentElement.dataset.heatmap=h==="commit"?"commit":"tokens"}catch(e){}`,
@@ -81,11 +73,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         />
       </head>
       <body className="flex min-h-full flex-col">
-        {/* 封面图（LCP）和剧照的域名，由 React 提升进 head。
-            不能加 crossOrigin：这两处都是普通 <img> 的 no-cors 请求，
-            带 crossorigin 的连接它们复用不上，等于白连一次 */}
+        {/* 封面图（LCP）的域名，由 React 提升进 head。
+            不能加 crossOrigin：那是普通 <img> 的 no-cors 请求，
+            带 crossorigin 的连接它复用不上，等于白连一次。
+            海报和图标不用预连：它们走同源 `/img/`，复用页面这条连接 */}
         <link rel="preconnect" href="https://is1-ssl.mzstatic.com" />
-        {assetOrigin ? <link rel="preconnect" href={assetOrigin} /> : null}
         <ThemeProvider>{children}</ThemeProvider>
         <PwaRegistration />
         <Analytics />

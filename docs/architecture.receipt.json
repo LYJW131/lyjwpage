@@ -1,12 +1,12 @@
 {
   "type": "architecture",
   "specification": {
-    "sha256": "5597e4491550e550167f7d8f81c6aff47d961a54f8d24ae33d2a88b303afef7a",
-    "bytes": 11287
+    "sha256": "f1089e0b219c93261296a1be05999df8a6cf6649c5940094c4be2cb1217d6f46",
+    "bytes": 12195
   },
   "artifact": {
-    "sha256": "baa4e859b955dfa602bd92685e8b669ee2c98a12bb1e04234b29f217091b2bfb",
-    "bytes": 724028
+    "sha256": "4ff55b4e3b2f26b0582ac61a9230bce1003c9327fca1ca0ad76d9a890030f05c",
+    "bytes": 727278
   },
   "validation": {
     "checksPassed": 9,
@@ -19,13 +19,13 @@
   "evidence": {
     "verified": true,
     "repository": "https://github.com/LYJW131/lyjwpage",
-    "revision": "9d6c95367331be29ae16e438b24b36c8f2475fde",
-    "references": 19
+    "revision": "ca5502089f0f69f04811183e643913180cb24767",
+    "references": 20
   },
   "output": "architecture.html",
   "visual_review": "passed",
-  "correction_rounds": 1,
-  "static_diagram_review": "pending: purge edge removed as text edit only, previews not re-rendered",
+  "correction_rounds": 6,
+  "static_diagram_review": "passed: 七个上报器各自成节点，全部自动走线，明暗快照重出并人工过目",
   "viewports": [
     {
       "width": 1440,
@@ -38,10 +38,10 @@
       "overflowX": false,
       "overflowY": false,
       "ok": true,
-      "readerWidth": 960,
-      "diagramWidth": 930,
+      "readerWidth": 1146,
+      "diagramWidth": 1116,
       "viewBoxWidth": 1390,
-      "minimumProjectedNodeTextPx": 6.0215827338129495,
+      "minimumProjectedNodeTextPx": 7.225899280575539,
       "minimumProjectedNodeText": "MacBook Pro · 本机遥测与图片",
       "minimumProjectedNodeTextDetail": "context",
       "minimumRequiredNodeTextPx": 6,
@@ -65,10 +65,10 @@
       "overflowX": false,
       "overflowY": false,
       "ok": true,
-      "readerWidth": 1055,
-      "diagramWidth": 1025,
+      "readerWidth": 1279,
+      "diagramWidth": 1249,
       "viewBoxWidth": 1390,
-      "minimumProjectedNodeTextPx": 6.636690647482014,
+      "minimumProjectedNodeTextPx": 8.08705035971223,
       "minimumProjectedNodeText": "MacBook Pro · 本机遥测与图片",
       "minimumProjectedNodeTextDetail": "context",
       "minimumRequiredNodeTextPx": 6,
@@ -92,10 +92,10 @@
       "overflowX": false,
       "overflowY": false,
       "ok": true,
-      "readerWidth": 1180,
-      "diagramWidth": 1150,
+      "readerWidth": 1432,
+      "diagramWidth": 1402,
       "viewBoxWidth": 1390,
-      "minimumProjectedNodeTextPx": 7.446043165467626,
+      "minimumProjectedNodeTextPx": 9,
       "minimumProjectedNodeText": "MacBook Pro · 本机遥测与图片",
       "minimumProjectedNodeTextDetail": "context",
       "minimumRequiredNodeTextPx": 6,
@@ -119,8 +119,8 @@
       "overflowX": false,
       "overflowY": false,
       "ok": true,
-      "readerWidth": 1493,
-      "diagramWidth": 1443,
+      "readerWidth": 1842,
+      "diagramWidth": 1792,
       "viewBoxWidth": 1390,
       "minimumProjectedNodeTextPx": 9,
       "minimumProjectedNodeText": "MacBook Pro · 本机遥测与图片",
@@ -139,13 +139,13 @@
   "previews": {
     "architecture-light.png": {
       "kind": "svg-rasterization",
-      "sha256": "35c68edb3800aeba4c3aa287c80c2e835bf1918e20c8e16133c66a7f7011c263",
-      "bytes": 351099
+      "sha256": "8923be03cd6a3d3d47f0586b15ec2a76d0f03ad9295d92551396d59d4589833a",
+      "bytes": 489028
     },
     "architecture-dark.png": {
       "kind": "svg-rasterization",
-      "sha256": "e5c0bb6279d1d2218a844af5a736be69adf450279df0141b610a0670907df8e7",
-      "bytes": 351501
+      "sha256": "d4b4aecf2cc89148e444810325db136783a06b014316574c416f1c1ee1cef3c9",
+      "bytes": 496191
     }
   }
 }

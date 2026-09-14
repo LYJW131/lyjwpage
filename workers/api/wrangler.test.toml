@@ -11,7 +11,6 @@ STORAGE_PREFIX = "lyjwpage-test"
 ALLOWED_ORIGINS = "https://*.vercel.app"
 SITE_URL = "https://lyjwpage-do-test.vercel.app"
 APPLE_MUSIC_STOREFRONT = "cn"
-R2_PUBLIC_BASE_URL = "https://r2.homepage.lyjw.llc"
 EMBY_PUBLIC_URL = "https://emby.lyjw131.com"
 
 [alias]

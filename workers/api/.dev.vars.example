@@ -25,7 +25,6 @@ STORAGE_PREFIX=lyjwpage
 SITE_URL=http://localhost:3211
 
 ALLOWED_ORIGINS=http://localhost:3211
-R2_PUBLIC_BASE_URL=https://img.example.com
 EMBY_PUBLIC_URL=https://emby.example.com
 APPLE_MUSIC_STOREFRONT=cn
 HEARTBEAT_WINDOW_MS=300000

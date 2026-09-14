@@ -27,8 +27,8 @@
       "year": 2023,
       "link": "https://emby.lyjw131.com/web/index.html#!/item?id=22099&serverId=d8ba9968e481465dbec0ea0436a84a70",
       "playedAt": null,
-      "poster": "https://r2.homepage.lyjw.llc/cb6e22913d147bea4e28bcaf5a18c6521fb5b4af120814823d4c3fa69bba296d.webp",
-      "backdrop": "https://r2.homepage.lyjw.llc/9ffcf1bc047ca4851d1538398596668b8584acb1a861fd53c839ca73019859c1.webp"
+      "poster": "/img/cb6e22913d147bea4e28bcaf5a18c6521fb5b4af120814823d4c3fa69bba296d.webp",
+      "backdrop": "/img/9ffcf1bc047ca4851d1538398596668b8584acb1a861fd53c839ca73019859c1.webp"
     }
   }
 }

@@ -2,7 +2,7 @@ import { cacheLife } from "next/cache";
 import sharp from "sharp";
 
 import { objectKeyFromAssetUrl } from "@/lib/asset-url";
-import { publicAssetUrl } from "@/lib/r2-assets";
+import { r2OriginUrl } from "@/lib/r2-assets";
 
 /**
  * 桌面卡图标的展示尺寸 ×2。
@@ -21,8 +21,9 @@ const ICON_PX = 56;
  * 换部署会重压一次，这是它的机制，不是这里的意图。）
  *
  * 不直接 fetch 传进来的那个 URL，而是拿校验过的 objectKey 重新拼：`iconUrl`
- * 是 SQLite 里的 objectKey 在读取时经 `publicAssetUrl` 拼出来的（见 telemetry），
- * 这里原样倒推回去，值不会变，但取图的地址被钉死在本部署自己的交付域上，
+ * 是 SQLite 里的 objectKey 在读取时经 `publicAssetPath` 拼出来的同源路径
+ * （见 telemetry），页面上由边缘代理到 R2；服务端在函数里没有「同源」可言，
+ * 这里拿 objectKey 直接拼 R2 原件地址（`r2OriginUrl`），不绕自己的边缘，也
  * 不会因为上游存了个意外的字符串就把服务端 fetch 带去别处。
  *
  * 失败一律返回 null，让调用方回退到远端 `<Image>`，最坏等于内联之前的行为。
@@ -34,7 +35,7 @@ async function inlineDesktopIcon(objectKey: string): Promise<string | null> {
   cacheLife("max");
 
   try {
-    const url = publicAssetUrl(objectKey);
+    const url = r2OriginUrl(objectKey);
     if (!url) return null;
 
     const res = await fetch(url, {
@@ -72,7 +73,7 @@ async function inlineDesktopIcon(objectKey: string): Promise<string | null> {
  *
  * 页头是页面最先入眼的一行，图标走远端意味着「HTML 先到、图标后到」，顶部空一格。
  * 内联掉首屏这一跳；**运行时不变** —— 挂载之后换应用、推送进来的新图标，浏览器
- * 照旧直连 R2 原件，站点不代理图片流量。
+ * 照旧走 `/img/` 同源路径由边缘取 R2 原件，不进站点的函数。
  *
  * 这层壳子不带 `use cache`：它只做一次正则校验（`objectKeyFromAssetUrl` 认
  * 64 位十六进制 + 后缀），把可缓存的那半交给 `inlineDesktopIcon`，缓存键因此

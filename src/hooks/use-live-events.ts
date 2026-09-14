@@ -6,8 +6,6 @@ import { useSWRConfig } from "swr";
 import type { ScopedMutator } from "swr";
 
 import { mergeChargerHistory } from "@/lib/charger-history";
-import { assetUrl, objectKeyFromAssetUrl, pageAssetBase } from "@/lib/asset-url";
-import type { NowWatchingPayload, WatchingPayload } from "@/lib/emby";
 import { applyVibeCodingNow } from "@/lib/vibecoding-activity";
 import type { LiveEvent } from "@/lib/live-events";
 import { rememberPushed } from "@/lib/live-freshness";
@@ -26,60 +24,9 @@ import {
 } from "@/lib/paths";
 import type {
   ChargerPayload,
-  DesktopPayload,
   StatusResponse,
   VibeCodingNowPayload,
-  WatchingItem,
 } from "@/lib/types";
-
-function localAssetUrl(url: string | null): string | null {
-  if (!url) return null;
-  const base = pageAssetBase();
-  const objectKey = objectKeyFromAssetUrl(url);
-  return base && objectKey ? assetUrl(base, objectKey) : url;
-}
-
-function localWatchingItem(item: WatchingItem): WatchingItem {
-  return {
-    ...item,
-    poster: localAssetUrl(item.poster),
-    backdrop: localAssetUrl(item.backdrop),
-  };
-}
-
-/** 把写入方推来的资产域换成本页部署自己的交付域。 */
-function localizeAssets(event: LiveEvent["type"], payload: unknown): unknown {
-  if (event === "desktop") {
-    const desktop = (payload as DesktopPayload).desktop;
-    return desktop
-      ? {
-          ...(payload as DesktopPayload),
-          desktop: { ...desktop, iconUrl: localAssetUrl(desktop.iconUrl) },
-        }
-      : payload;
-  }
-  if (event === "charger") {
-    const charger = payload as ChargerPayload;
-    return charger.cover
-      ? {
-          ...charger,
-          cover: { ...charger.cover, iconUrl: localAssetUrl(charger.cover.iconUrl) },
-        }
-      : payload;
-  }
-  if (event === "watching") {
-    const watching = payload as WatchingPayload;
-    return { ...watching, items: watching.items.map(localWatchingItem) };
-  }
-  if (event === "watching-now") {
-    const watching = payload as NowWatchingPayload;
-    return {
-      ...watching,
-      current: watching.current ? localWatchingItem(watching.current) : null,
-    };
-  }
-  return payload;
-}
 
 /**
  * 事件名 → 写哪个 SWR 缓存键，以及写进去之前要不要先过一道合并。
@@ -177,8 +124,8 @@ type Incoming = { type: LiveEvent["type"]; payload: unknown };
 function dispatch(mutate: ScopedMutator, message: Incoming): void {
   const forward = FORWARD_BY_EVENT.get(message.type);
   if (forward) {
-    const localized = localizeAssets(message.type, message.payload);
-    const data = forward.merge ? forward.merge(localized) : localized;
+    // 推来的图片地址已经是 `/img/<键>` 同源路径，和轮询拿到的一样，不用换域
+    const data = forward.merge ? forward.merge(message.payload) : message.payload;
     if (data == null) return;
     const envelope: StatusResponse<unknown> = { ok: true, data };
     // 登记这一代，好让之后回来的旧轮询结果被挡掉（lib/live-freshness）。

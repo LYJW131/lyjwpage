@@ -1,6 +1,22 @@
 import type { NextConfig } from "next";
 import { execSync } from "node:child_process";
 
+import { IMAGE_PATH_PREFIX } from "./src/lib/asset-url";
+
+/**
+ * 页面上的图片是 `/img/<sha256>.<ext>` 同源路径，这里把它代理到 R2。
+ *
+ * 只在边缘发生：外部 rewrite 由 Vercel 的代理层转发，不进 Function、不过 sharp。
+ * R2 对象带 `max-age=31536000, immutable`，配合下面 headers 里那条
+ * `x-vercel-enable-rewrite-caching`，Vercel CDN 按这份头缓存，每个区域只回 R2 一次。
+ * `lyjw131.com` 那边不经这条：ESA 按静态后缀缓存 `/img/*` 并自己回源。
+ *
+ * source 写死成「64 位十六进制 + 三种后缀」，和 IMAGE_OBJECT_KEY 一致：别放成
+ * `:path*`，那等于把整个桶的任意路径都从站点域名代理出去。
+ */
+const R2_ORIGIN = process.env.R2_PUBLIC_BASE_URL?.replace(/\/+$/, "") ?? "";
+const IMAGE_REWRITE_SOURCE = `${IMAGE_PATH_PREFIX}/:objectKey([a-f0-9]{64}\\.(?:png|webp|jpe?g))`;
+
 /**
  * 页脚那行构建信息。两个值都必须在**构建期**求值、以字面量内联进产物。
  *
@@ -47,8 +63,20 @@ const nextConfig: NextConfig = {
    * 见 lib/api。首屏那份不受那个开关管 —— 冻着才有这里说的预渲染。
    */
   cacheComponents: true,
+  async rewrites() {
+    // 没配 R2 源就不挂这条：图片 404，页面其余部分照常
+    if (!R2_ORIGIN) return [];
+    return [{ source: IMAGE_REWRITE_SOURCE, destination: `${R2_ORIGIN}/:objectKey` }];
+  },
   async headers() {
     return [
+      {
+        // 让 Vercel 遵循 R2 回来的 cache-control 缓存外部 rewrite 的响应。
+        // 2026-04 之后新建的项目默认就开（这个项目是 8 月建的），显式写一次
+        // 是不让图片缓存依赖面板里那个看不见的开关。
+        source: `${IMAGE_PATH_PREFIX}/:path*`,
+        headers: [{ key: "x-vercel-enable-rewrite-caching", value: "1" }],
+      },
       {
         source: "/sw.js",
         headers: [

@@ -69,7 +69,8 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 - 静态图标使用 `next/image` 时一律设 `unoptimized`，直接加载最终资源。
 - 图片优化器仅用于远端原图比展示尺寸大、且源站无法提供合适尺寸的情况；现有允许列表与原因见 `next.config.ts` 的 `images.remotePatterns`。
-- 不在每个请求中重复压图。允许按不可变内容地址压缩一次并缓存：`src/lib/desktop-icon-inline.ts` 按 `objectKey` 压缩 R2 原件、内联首屏，并用 `cacheLife("max")` 缓存；浏览器运行时直连 R2 原件，站点不代理图片流量。
+- 不在每个请求中重复压图。允许按不可变内容地址压缩一次并缓存：`src/lib/desktop-icon-inline.ts` 按 `objectKey` 压缩 R2 原件、内联首屏，并用 `cacheLife("max")` 缓存。
+- R2 图片在页面、状态 API 和推送里一律是 `/img/<objectKey>` 同源路径（`src/lib/asset-url.ts`），不烧交付域；`lyjw.me` 由 `next.config.ts` 的边缘 rewrite 代理到 `R2_PUBLIC_BASE_URL`（只配在 Vercel），`lyjw131.com` 由 ESA 缓存并回源。图片字节不进 Next 函数；改前缀要同步改 rewrite 和 ESA 规则。
 - GitHub 头像由 `src/lib/github-avatar-icon.ts` 在构建期缩小并内联为 data URI；图片优化器中的 GitHub 域名仅供源图获取失败时回退。
 
 # 界面与交互

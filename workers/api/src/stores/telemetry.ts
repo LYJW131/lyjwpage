@@ -23,7 +23,7 @@ import {
 } from "@/lib/playing-queue";
 import { powerBankPushPayload } from "@/lib/powerbank";
 import { readPowerBankState } from "@/lib/powerbank-store";
-import { IMAGE_OBJECT_KEY } from "@/lib/r2-assets";
+import { IMAGE_OBJECT_KEY } from "@/lib/asset-url";
 import { nextLiveness, readLiveness, type Liveness } from "@/lib/reporter-liveness";
 import type {
   LocalNowPlaying,
@@ -137,8 +137,9 @@ async function normalizeDesktop(
 
   if (row.iconData != null) throw new Error("desktop.iconData 已停用，请由上报器直传 R2");
 
-  // 上报器一次性编好小图并直传 R2，只把对象键发回来。对象键落 SQLite，URL
-  // 到读取/推送时才按当前部署的 R2_PUBLIC_BASE_URL 组，避免写入方烧死交付域名。
+  // 上报器一次性编好小图并直传 R2，只把对象键发回来。对象键落 SQLite，读取 /
+  // 推送时才拼成 `/img/<键>` 这条同源路径，交付域由访客域名的边缘决定，
+  // 见 lib/asset-url。
   //
   // 站点不在名称上报的热路径里 HEAD：上报器在后台 resolver 里先查后写，
   // 并按五分钟窗口复验，桶被清空时由它原地补回同一个内容地址。这里信任它

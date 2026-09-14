@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "viewBox": [
       1390,
-      890
+      730
     ],
     "views": [
       {
@@ -17,11 +17,13 @@
           "mac_hub",
           "iphone_hub",
           "home_assistant",
-          "emby_proxy",
-          "api",
-          "cadence_reporters"
+          "emby_reporter",
+          "agents_reporter",
+          "server_reporter",
+          "playstation_reporter",
+          "api"
         ],
-        "note": "七个数据来源、八个运行实例，统一直连 API Worker。"
+        "note": "七个数据来源各自 POST 到 API Worker 的 /api/ingest/<来源>，一台设备一个入口。"
       },
       {
         "id": "sites",
@@ -34,34 +36,38 @@
           "online_counter",
           "esa"
         ],
-        "note": "Vercel 提供首屏；lyjw131.com 经 ESA 回源 lyjw.me，首页由缓存规则按源站 SWR 头先回旧 HTML、后台取新，静态 JS 长期缓存。API 只通知 Vercel 标签失效。"
+        "note": "Vercel 提供首屏；lyjw131.com 经 ESA 回源 lyjw.me，首页按源站 SWR 头先回旧 HTML、后台取新，静态 JS 长期缓存。API 只通知 Vercel 标签失效。"
       },
       {
         "id": "cadence",
         "label": "在线人数与调频",
         "focus": [
-          "cadence_reporters",
+          "agents_reporter",
+          "server_reporter",
+          "playstation_reporter",
           "api",
           "online_counter",
           "visitors"
         ],
-        "note": "三个上报器并行读取 online 与 connections：页面可见走快档，仅后台打开走中档，无人走闲档。单端失败仅该端归零。"
+        "note": "三个上报器各自读 API 的 connections 与在线人数 Worker 的 online：页面可见走快档，仅后台打开走中档，无人走闲档。单端失败仅该端归零。"
       },
       {
         "id": "assets",
         "label": "图片链路",
         "focus": [
           "mac_hub",
-          "emby_proxy",
+          "emby_reporter",
           "images",
+          "sites",
+          "esa",
           "visitors"
         ],
-        "note": "Mac 和 Emby 上报器将图片直接上传 R2，浏览器直接取图。"
+        "note": "上报器直传 R2，页面里的图片是 /img/ 同源路径：lyjw.me 由 Vercel 边缘 rewrite 回源 R2 并按 immutable 缓存，lyjw131.com 由 ESA 缓存同一路径并回源 lyjw.me。"
       }
     ],
     "repository": {
       "url": "https://github.com/LYJW131/lyjwpage",
-      "revision": "9d6c95367331be29ae16e438b24b36c8f2475fde"
+      "revision": "ca5502089f0f69f04811183e643913180cb24767"
     }
   },
   "components": [
@@ -72,12 +78,12 @@
       "sublabel": "MacBook Pro · 本机遥测与图片",
       "tag": "/api/ingest/mac",
       "pos": [
-        32.4,
+        32,
         40
       ],
       "size": [
-        305.8,
-        86
+        306,
+        72
       ],
       "sources": [
         {
@@ -92,12 +98,12 @@
       "sublabel": "iPhone 17 Pro · 活动圆环",
       "tag": "/api/ingest/iphone",
       "pos": [
-        32.4,
-        143
+        32,
+        130
       ],
       "size": [
-        305.8,
-        86
+        306,
+        72
       ],
       "sources": [
         {
@@ -109,15 +115,15 @@
       "id": "home_assistant",
       "type": "external",
       "label": "Home Assistant",
-      "sublabel": "DSM 卧室 · N100 主卧",
+      "sublabel": "DSM 卧室 · N100 主卧 · HomePod",
       "tag": "/api/ingest/homepod",
       "pos": [
-        32.4,
-        246
+        32,
+        220
       ],
       "size": [
-        305.8,
-        86
+        306,
+        72
       ],
       "sources": [
         {
@@ -126,22 +132,102 @@
       ]
     },
     {
-      "id": "emby_proxy",
+      "id": "emby_reporter",
       "type": "external",
       "label": "Emby 上报器",
-      "sublabel": "DSM · homepage-reporter",
+      "sublabel": "DSM 容器 homepage-reporter",
       "tag": "/api/ingest/emby",
       "pos": [
-        32.4,
-        349
+        32,
+        310
       ],
       "size": [
-        305.8,
-        86
+        306,
+        72
       ],
       "sources": [
         {
           "path": "reporters/emby-reporter/README.md"
+        }
+      ]
+    },
+    {
+      "id": "agents_reporter",
+      "type": "external",
+      "label": "限额上报器",
+      "sublabel": "misaka-jp 容器 · 5 / 10 / 60 分钟",
+      "tag": "/api/ingest/agents",
+      "pos": [
+        32,
+        400
+      ],
+      "size": [
+        306,
+        72
+      ],
+      "sources": [
+        {
+          "path": "reporters/agent-limits-reporter/src/cadence.ts"
+        }
+      ]
+    },
+    {
+      "id": "server_reporter",
+      "type": "external",
+      "label": "服务器上报器",
+      "sublabel": "misaka-jp 容器 · 1 / 2 / 15 分钟",
+      "tag": "/api/ingest/server",
+      "pos": [
+        32,
+        490
+      ],
+      "size": [
+        306,
+        72
+      ],
+      "sources": [
+        {
+          "path": "reporters/server-reporter/reporter.py"
+        }
+      ]
+    },
+    {
+      "id": "playstation_reporter",
+      "type": "external",
+      "label": "PlayStation 上报器",
+      "sublabel": "Cloudflare Worker · 1 / 2 / 15 分钟",
+      "tag": "/api/ingest/playstation",
+      "pos": [
+        32,
+        580
+      ],
+      "size": [
+        306,
+        72
+      ],
+      "sources": [
+        {
+          "path": "workers/playstation-reporter/src/index.ts"
+        }
+      ]
+    },
+    {
+      "id": "state_hub",
+      "type": "database",
+      "label": "SQLite Durable Object",
+      "sublabel": "StateHub · 状态与历史",
+      "tag": "Worker 独占读写",
+      "pos": [
+        540,
+        40
+      ],
+      "size": [
+        292,
+        100
+      ],
+      "sources": [
+        {
+          "path": "workers/api/src/state-hub.ts"
         }
       ]
     },
@@ -152,11 +238,11 @@
       "sublabel": "api.homepage.lyjw.llc",
       "tag": "接收 · 状态 API · 实时推送",
       "pos": [
-        556.0,
-        306
+        540,
+        300
       ],
       "size": [
-        291.9,
+        292,
         126
       ],
       "sources": [
@@ -169,22 +255,48 @@
       ]
     },
     {
-      "id": "state_hub",
-      "type": "database",
-      "label": "SQLite Durable Object",
-      "sublabel": "StateHub · 状态与历史",
-      "tag": "Worker 独占读写",
+      "id": "online_counter",
+      "type": "messagebus",
+      "label": "在线人数 Worker",
+      "sublabel": "online.homepage.lyjw.llc",
+      "tag": "OnlineCounterRoom · /count 供上报器调频",
       "pos": [
-        1047.1,
-        100
+        540,
+        560
       ],
       "size": [
-        278.0,
+        292,
         100
       ],
       "sources": [
         {
-          "path": "workers/api/src/state-hub.ts"
+          "path": "workers/online-counter/src/index.ts"
+        },
+        {
+          "path": "workers/online-counter/wrangler.jsonc"
+        }
+      ]
+    },
+    {
+      "id": "images",
+      "type": "cloud",
+      "label": "R2 图片",
+      "sublabel": "Mac 与 Emby 上报器直接上传",
+      "tag": "内容地址 · 页面走 /img/ 同源路径",
+      "pos": [
+        960,
+        40
+      ],
+      "size": [
+        278,
+        100
+      ],
+      "sources": [
+        {
+          "path": "src/lib/asset-url.ts"
+        },
+        {
+          "path": "next.config.ts"
         }
       ]
     },
@@ -195,12 +307,12 @@
       "sublabel": "lyjw.me · Git 自动部署",
       "tag": "首屏 HTML · 后台重建",
       "pos": [
-        1047.1,
-        405
+        960,
+        300
       ],
       "size": [
         278,
-        112
+        126
       ],
       "sources": [
         {
@@ -216,13 +328,13 @@
       "type": "frontend",
       "label": "浏览器",
       "sublabel": "首屏 · SWR · WebSocket",
-      "tag": "状态 /ws · 人数 /ws 分别直连",
+      "tag": "状态 /ws · 人数 /ws 直连",
       "pos": [
-        1047.1,
-        675
+        960,
+        560
       ],
       "size": [
-        278.0,
+        160,
         100
       ],
       "sources": [
@@ -235,86 +347,17 @@
       ]
     },
     {
-      "id": "images",
-      "type": "cloud",
-      "label": "R2 图片",
-      "sublabel": "Mac 与 Emby 上报器直接上传",
-      "tag": "内容地址 · 浏览器直读",
-      "pos": [
-        556,
-        70
-      ],
-      "size": [
-        291.9,
-        100
-      ],
-      "sources": [
-        {
-          "path": "src/lib/r2-assets.ts"
-        }
-      ]
-    },
-    {
-      "id": "cadence_reporters",
-      "type": "external",
-      "label": "三档调频上报器",
-      "sublabel": "限额 · 服务器 · PlayStation",
-      "tag": "各自 POST /api/ingest/<来源>",
-      "pos": [
-        32.4,
-        650
-      ],
-      "size": [
-        305.8,
-        110
-      ],
-      "sources": [
-        {
-          "path": "reporters/agent-limits-reporter/src/cadence.ts"
-        },
-        {
-          "path": "reporters/server-reporter/reporter.py"
-        },
-        {
-          "path": "workers/playstation-reporter/src/index.ts"
-        }
-      ]
-    },
-    {
-      "id": "online_counter",
-      "type": "messagebus",
-      "label": "在线人数 Worker",
-      "sublabel": "online.homepage.lyjw.llc",
-      "tag": "OnlineCounterRoom · 可见页面",
-      "pos": [
-        556,
-        625
-      ],
-      "size": [
-        291.9,
-        110
-      ],
-      "sources": [
-        {
-          "path": "workers/online-counter/src/index.ts"
-        },
-        {
-          "path": "workers/online-counter/wrangler.jsonc"
-        }
-      ]
-    },
-    {
       "id": "esa",
       "type": "cloud",
       "label": "阿里云 ESA",
       "sublabel": "lyjw131.com → lyjw.me",
-      "tag": "缓存首页 HTML · 静态 JS",
+      "tag": "缓存 HTML · JS · /img/*",
       "pos": [
-        1047.1,
-        550
+        1200,
+        560
       ],
       "size": [
-        278,
+        158,
         100
       ],
       "sources": [
@@ -335,8 +378,8 @@
       "label": "POST",
       "variant": "emphasis",
       "labelAt": [
-        387.3,
-        83
+        388,
+        76
       ]
     },
     {
@@ -346,8 +389,8 @@
       "label": "POST",
       "variant": "emphasis",
       "labelAt": [
-        387.3,
-        186
+        388,
+        166
       ]
     },
     {
@@ -357,19 +400,52 @@
       "label": "POST",
       "variant": "emphasis",
       "labelAt": [
-        387.3,
-        289
+        388,
+        256
       ]
     },
     {
       "id": "post_emby",
-      "from": "emby_proxy",
+      "from": "emby_reporter",
       "to": "api",
       "label": "POST",
       "variant": "emphasis",
       "labelAt": [
-        387.3,
-        392
+        388,
+        346
+      ]
+    },
+    {
+      "id": "post_agents",
+      "from": "agents_reporter",
+      "to": "api",
+      "label": "POST · /count",
+      "variant": "emphasis",
+      "labelAt": [
+        388,
+        436
+      ]
+    },
+    {
+      "id": "post_server",
+      "from": "server_reporter",
+      "to": "api",
+      "label": "POST · /count",
+      "variant": "emphasis",
+      "labelAt": [
+        388,
+        526
+      ]
+    },
+    {
+      "id": "post_playstation",
+      "from": "playstation_reporter",
+      "to": "api",
+      "label": "POST · /count",
+      "variant": "emphasis",
+      "labelAt": [
+        388,
+        616
       ]
     },
     {
@@ -377,82 +453,22 @@
       "from": "api",
       "to": "state_hub",
       "label": "读写状态",
-      "variant": "emphasis"
-    },
-    {
-      "id": "revalidate",
-      "from": "api",
-      "to": "sites",
-      "label": "/api/revalidate · Vercel",
-      "variant": "dashed",
-      "labelAt": [
-        878.5,
-        480
-      ]
-    },
-    {
-      "id": "page",
-      "from": "sites",
-      "to": "visitors",
-      "label": "lyjw.me 直连",
-      "fromSide": "right",
-      "toSide": "bottom",
-      "via": [
-        [
-          1345,
-          461
-        ],
-        [
-          1345,
-          800
-        ],
-        [
-          1186.1,
-          800
-        ]
-      ],
-      "labelAt": [
-        1260,
-        800
-      ]
-    },
-    {
-      "id": "push",
-      "from": "api",
-      "to": "visitors",
-      "label": "状态 API · 推送 /ws",
       "variant": "emphasis",
       "labelAt": [
-        895,
-        590
+        686,
+        200
       ]
     },
     {
       "id": "head",
       "from": "api",
       "to": "images",
-      "label": "HEAD 确认对象"
-    },
-    {
-      "id": "image_read",
-      "from": "images",
-      "to": "visitors",
-      "label": "图片直读",
+      "label": "HEAD 确认对象",
       "fromSide": "top",
-      "toSide": "right",
-      "via": [
-        [
-          701.95,
-          20
-        ],
-        [
-          1365,
-          20
-        ],
-        [
-          1365,
-          725
-        ]
+      "toSide": "left",
+      "labelAt": [
+        791,
+        276
       ]
     },
     {
@@ -460,44 +476,80 @@
       "from": "sites",
       "to": "api",
       "label": "GET /api/home",
+      "labelDy": 13
+    },
+    {
+      "id": "revalidate",
+      "from": "api",
+      "to": "sites",
+      "label": "/api/revalidate",
+      "variant": "dashed",
+      "labelDy": 13
+    },
+    {
+      "id": "push",
+      "from": "api",
+      "to": "visitors",
+      "label": "状态 API · 推送 /ws",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "left"
+    },
+    {
+      "id": "image_rewrite",
+      "from": "images",
+      "to": "sites",
+      "label": "边缘 rewrite /img/* · immutable 缓存",
       "labelAt": [
-        886,
-        405
+        1099,
+        220
       ]
     },
     {
-      "id": "post_cadence",
-      "from": "cadence_reporters",
-      "to": "api",
-      "label": "POST 上报 · GET /count (connections)",
-      "variant": "emphasis",
-      "fromSide": "top",
-      "toSide": "left",
+      "id": "page",
+      "from": "sites",
+      "to": "visitors",
+      "label": "lyjw.me 直连 · HTML · /img/*",
+      "fromSide": "bottom",
+      "toSide": "top",
       "via": [
         [
-          185.3,
-          550
+          1099,
+          493
         ],
         [
-          495,
-          550
-        ],
-        [
-          495,
-          369
+          1040,
+          493
         ]
       ],
       "labelAt": [
-        334,
-        550
+        1099,
+        460
       ]
     },
     {
-      "id": "read_online",
-      "from": "cadence_reporters",
-      "to": "online_counter",
-      "label": "GET /count · online",
-      "variant": "dashed"
+      "id": "esa_origin",
+      "from": "sites",
+      "to": "esa",
+      "label": "回源 HTML · JS · /img/*",
+      "fromSide": "right",
+      "toSide": "top",
+      "via": [
+        [
+          1279,
+          363
+        ]
+      ],
+      "labelAt": [
+        1279,
+        470
+      ]
+    },
+    {
+      "id": "esa_page",
+      "from": "esa",
+      "to": "visitors",
+      "label": "lyjw131.com"
     },
     {
       "id": "online_ws",
@@ -505,33 +557,10 @@
       "to": "visitors",
       "label": "/ws · 在线人数",
       "variant": "emphasis",
+      "route": "straight",
       "labelAt": [
-        898,
-        680
-      ]
-    },
-    {
-      "id": "esa_origin",
-      "from": "sites",
-      "to": "esa",
-      "label": "回源 HTML · JS",
-      "fromSide": "bottom",
-      "toSide": "top",
-      "labelAt": [
-        1186.1,
-        536
-      ]
-    },
-    {
-      "id": "esa_page",
-      "from": "esa",
-      "to": "visitors",
-      "label": "lyjw131.com",
-      "fromSide": "bottom",
-      "toSide": "top",
-      "labelAt": [
-        1186.1,
-        665
+        875,
+        610
       ]
     }
   ],
@@ -545,16 +574,16 @@
     },
     {
       "dot": "emerald",
-      "title": "三个上报器 · 两个计数口",
+      "title": "三档调频 · 两个计数口",
       "items": [
-        "限额 5 / 10 / 60 分钟；server 与 PlayStation 为 1 / 2 / 15 分钟。"
+        "限额、服务器、PlayStation 三个上报器各自读 online 与 connections 决定档位。"
       ]
     },
     {
       "dot": "violet",
       "title": "Vercel 与 ESA",
       "items": [
-        "API 只通知 Vercel 标签失效；ESA 首页由 SWR 自行更新，站点新构建时由 CI 触发刷新并预热。"
+        "API 只通知 Vercel 标签失效；ESA 首页按 SWR 自更新，新构建由 CI 刷新预热。"
       ]
     }
   ]

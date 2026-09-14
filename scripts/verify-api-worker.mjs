@@ -47,7 +47,7 @@ try {
   const vars = {
     NEXT_PUBLIC_BACKEND_URL: worker, STORAGE_PREFIX: 'isolated-verify', TELEMETRY_INGEST_SECRET: secret, STATE_IMPORT_SECRET: `${secret}-import`,
     SITE_URL: site, ALLOWED_ORIGINS: '',
-    R2_PUBLIC_BASE_URL: '', EMBY_PUBLIC_URL: '',
+    EMBY_PUBLIC_URL: '',
     APPLE_MUSIC_PRIVATE_KEY: musicKitPem, APPLE_MUSIC_TEAM_ID: 'ISOLATEDTM', APPLE_MUSIC_KEY_ID: 'ISOLATEDKY',
   };
   // Config lives outside the checkout so Wrangler cannot load real .dev.vars or production bindings.

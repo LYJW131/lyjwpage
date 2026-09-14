@@ -1,7 +1,7 @@
 import { AwaitingReport } from "@/lib/awaiting-report";
 import { getStored, lastPushReceivedAt } from "@/lib/charger-store";
 import { CHARGER_STALE_MS, heartbeatWindowMs } from "@/lib/freshness";
-import { publicAssetUrl } from "@/lib/r2-assets";
+import { publicAssetPath } from "@/lib/asset-url";
 import {
   offlineByLiveness,
   readLiveness,
@@ -55,11 +55,11 @@ export function withChargerFreshness(
   };
 }
 
-/** 对象键入库，公开地址到取数出口才按当前部署拼。 */
+/** 对象键入库，同源路径到取数出口才拼。 */
 function withCoverIconUrl<T extends { cover: ChargerStatus["cover"] }>(payload: T): T {
   const cover = payload.cover;
   if (!cover) return payload;
-  const iconUrl = cover.iconObjectKey ? publicAssetUrl(cover.iconObjectKey) : null;
+  const iconUrl = cover.iconObjectKey ? publicAssetPath(cover.iconObjectKey) : null;
   if (cover.iconUrl === iconUrl) return payload;
   return { ...payload, cover: { ...cover, iconUrl } };
 }

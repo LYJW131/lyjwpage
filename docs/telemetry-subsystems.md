@@ -75,7 +75,7 @@
 
 ### 图片处理与 R2 缓存
 - **剧照 vs 海报**：剧集本身的 Primary 图通常是剧照，竖版海报由代理优先提取剧集的 `SeriesPrimaryImageTag` 并用 sharp 压缩为 `<sha256>.webp` 直传 Cloudflare R2。
-- **`missingImages` 补传机制**：条目中仅存 `imageKey`（`itemId:kind:tag:height`），读取时映射为 R2 公开 URL。若 Worker 发现缺少对应对象，会在上报回执中返回 `missingImages`，代理据此异步补传。
+- **`missingImages` 补传机制**：条目中仅存 `imageKey`（`itemId:kind:tag:height`），读取时映射为对象键并拼成 `/img/<对象键>` 同源路径，由访客域名的边缘（Vercel rewrite / ESA）回源 R2。若 Worker 发现缺少对应对象，会在上报回执中返回 `missingImages`，代理据此异步补传。
 - **HEAD 缓存 5 分钟**：Worker 对 R2 对象的 HEAD 校验缓存 5 分钟，以便桶清空或对象重建后能自动重新请求补传。
 
 ---
