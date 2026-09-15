@@ -1,0 +1,16 @@
+{
+  "ok": true,
+  "data": {
+    "desktop": {
+      "applicationName": "Ghostty",
+      "bundleIdentifier": "com.mitchellh.ghostty",
+      "iconUrl": null,
+      "observedAt": "$now-3000"
+    },
+    "receivedAt": "$now",
+    "lastSeenAt": "$now",
+    "declaredOffline": false,
+    "heartbeatWindowMs": 3600000,
+    "offlineAtSource": false
+  }
+}

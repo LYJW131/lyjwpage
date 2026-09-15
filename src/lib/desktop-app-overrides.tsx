@@ -7,6 +7,7 @@ import { EyeOff } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { ClaudeCodeMascot } from "@/components/live/claude-code-mascot";
+import { GhosttyMascot } from "@/components/live/ghostty-mascot";
 
 export const HIDDEN_DESKTOP_BUNDLE_ID =
   "com.liangyangjunwei.MacTelemetryHub.hidden";
@@ -64,6 +65,14 @@ export const DESKTOP_APP_OVERRIDES: readonly DesktopAppOverride[] = [
     ),
     renderText: ({ size = 20, className }) => (
       <CursorText size={size} className={className} />
+    ),
+  },
+  {
+    key: "ghostty",
+    displayName: "Ghostty",
+    match: (id) => id.toLowerCase().includes("ghostty"),
+    renderIcon: ({ size = 24, className }) => (
+      <GhosttyMascot size={size} className={className} />
     ),
   },
   {
