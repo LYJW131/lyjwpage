@@ -7,7 +7,10 @@ GITHUB_TOKEN=
 # 站点卡片只读查询：仅 API Worker 使用，不放到 Next.js / NEXT_PUBLIC_*。
 # 账号 / 项目 / 团队 ID 已在 wrangler.toml 的 [vars]，本地不用重复。
 CLOUDFLARE_METRICS_TOKEN=
-# Vercel 团队范围 Token：部署、Speed Insights、调用量和访问统计共用
+# Google PageSpeed Insights：cron 每小时实测一次 lyjw.me 的 Lighthouse 性能分。
+# 不配就跳过实测，卡片显示上次结果或 —。
+PAGESPEED_API_KEY=
+# Vercel 团队范围 Token：部署、调用量和访问统计共用
 VERCEL_TOKEN=
 # 只给本地开发：生产为主、本地补缺 —— 生产有的数据用生产的，生产没有的端点和
 # 字段用本地的（只读，不碰上报）。测本地上报链路时注释掉。生产的 wrangler.toml

@@ -1,4 +1,5 @@
 import { cached, get, put } from "@/lib/cache";
+import { getPageSpeed } from "@/lib/pagespeed";
 import { getVercelMetrics } from "@/lib/vercel-metrics";
 import { DEPLOYMENT_STATES, type DeploymentState, type VercelDeployment, type VercelDeploymentsPayload } from "@/lib/vercel-deployments-types";
 
@@ -69,7 +70,8 @@ export async function getVercelDeployments(): Promise<VercelDeploymentsPayload> 
   const team = process.env.VERCEL_TEAM_ID?.trim();
   if (!token || !project || !team) throw new Error("Vercel 部署读取未配置");
   const key = `vercel-deployments:v1:${team}:${project}`;
-  const [deployments, metrics] = await Promise.all([cached<VercelDeploymentsPayload>(key, 60_000, async () => {
+  // PageSpeed 只读 cron 已经跑完的那份，读路径里不等那二十多秒的实测
+  const [deployments, metrics, pagespeed] = await Promise.all([cached<VercelDeploymentsPayload>(key, 60_000, async () => {
     try {
       const data = await fetchVercelDeployments(project, team, token);
       await put(`${key}:last-good`, data, 86_400_000);
@@ -80,6 +82,6 @@ export async function getVercelDeployments(): Promise<VercelDeploymentsPayload> 
       if (previous) return previous;
       throw new Error("Vercel 部署暂不可用");
     }
-  }), getVercelMetrics(project, team, token)]);
-  return { ...deployments, metrics };
+  }), getVercelMetrics(project, team, token), getPageSpeed()]);
+  return { ...deployments, metrics, pagespeed };
 }
