@@ -163,6 +163,21 @@ function CommitByline({ authors, committedAt }: { authors: CommitAuthor[]; commi
   );
 }
 
+function CommitVerifiedIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width={12}
+      height={12}
+      fill="currentColor"
+      aria-label="已验证签名"
+      className={className}
+    >
+      <path d="M8 0a1 1 0 0 1 .7.29l1.76 1.76h2.5a1 1 0 0 1 .99 1v2.49L15.7 7.3a1 1 0 0 1 0 1.4l-1.76 1.76v2.5a1 1 0 0 1-1 .99h-2.49L8.7 15.7a1 1 0 0 1-1.4 0l-1.76-1.76h-2.5a1 1 0 0 1-.99-1v-2.49L.3 8.7a1 1 0 0 1 0-1.4l1.76-1.76v-2.5a1 1 0 0 1 1-.99h2.49L7.3.3A1 1 0 0 1 8 0M6.6 3.11l-.44.44h-2.6v2.6L1.7 8l1.84 1.84v2.6h2.6l.45.45 1.4 1.4 1.4-1.4.44-.44h2.6v-2.6l.45-.45 1.4-1.4-1.84-1.84v-2.6h-2.6L8 1.7zm4.59 3.3-3.72 3.71c-.3.3-.77.3-1.06 0L4.8 8.53l1.07-1.06 1.06 1.06 3.18-3.18z" />
+    </svg>
+  );
+}
+
 /** 一条提交的加高卡：标题 + 署名 + 部署状态，96px 正好占左边两行加一条缝。 */
 function CommitCard({ commit, deploy }: {
   commit: GithubRecentCommit;
@@ -180,7 +195,18 @@ function CommitCard({ commit, deploy }: {
           <span className={cn("size-1.5 shrink-0 rounded-full", production ? "bg-emerald-500" : deployment?.state === "ERROR" ? "bg-red-500" : deployment?.state === "BUILDING" ? "bg-amber-500" : "bg-muted-foreground/40")} />
           <span className={cn(production ? "text-emerald-600 dark:text-emerald-400" : deployment?.state === "ERROR" ? "text-red-500" : undefined)}>{status}</span>
         </span>
-        <a href={commit.url} target="_blank" rel="noreferrer noopener" className="font-mono hover:text-foreground">{commit.shortSha}</a>
+        <a
+          href={commit.url}
+          target="_blank"
+          rel="noreferrer noopener"
+          title={commit.verified ? `${commit.shortSha} · 已验证签名` : commit.shortSha}
+          className="group/sha inline-flex items-center gap-1 font-mono hover:text-foreground"
+        >
+          <span>{commit.shortSha}</span>
+          {commit.verified && (
+            <CommitVerifiedIcon className="size-3 text-muted-foreground group-hover/sha:text-foreground" />
+          )}
+        </a>
         {deployment && <a href={`${site.vercel}/${deployment.id.replace(/^dpl_/, "")}`} target="_blank" rel="noreferrer noopener" className="hover:text-foreground">{deployment.target === "production" ? "Production" : "Preview"} ↗</a>}
         {deployment?.buildDurationMs != null && <span>构建 {(deployment.buildDurationMs / 1000).toFixed(0)}s</span>}
       </div>

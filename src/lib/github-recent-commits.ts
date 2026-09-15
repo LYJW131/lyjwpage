@@ -20,6 +20,7 @@ export type GithubRecentCommit = {
   /** 作者在前，`Co-authored-by` 的协作者接上，见 commit-authors */
   authors: CommitAuthor[];
   committedAt: string | null;
+  verified: boolean;
 };
 
 /** 卡片右栏固定 3 张提交卡、不滚动，所以只拉 3 条。 */
@@ -31,6 +32,10 @@ type CommitListItem = {
   commit?: {
     message?: string;
     author?: { name?: string; email?: string; date?: string } | null;
+    verification?: {
+      verified?: boolean;
+      reason?: string | null;
+    } | null;
   };
   author?: { login?: string; avatar_url?: string } | null;
 };
@@ -139,6 +144,7 @@ export async function getRecentCommits(): Promise<GithubRecentCommit[]> {
           url: item.html_url?.trim() || `${site.repo}/commit/${sha}`,
           authors: githubAuthors.get(sha) ?? mergeAuthors(primaryAuthor(item), parseCoAuthors(message)),
           committedAt: item.commit?.author?.date ?? null,
+          verified: Boolean(item.commit?.verification?.verified),
         },
       ];
     });
