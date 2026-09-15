@@ -11,6 +11,7 @@ import { refreshRecentlyPlayed } from "./apple-music-recent";
 import { ROOM_ID } from "./live-platform";
 import { ConfigError, issueMusicKitToken } from "./musickit-token";
 import { getAllowedOrigins, getCorsHeaders, isAllowedOrigin, isAllowedOriginValue } from "./origins";
+import { refreshPageSpeed } from "@/lib/pagespeed";
 import { pathForEventType } from "./public-api";
 import { requestStore, type Env } from "./runtime";
 import { site } from "@/lib/site";
@@ -379,8 +380,12 @@ export class LivePushRoom extends DurableObject<Env> {
 
 const worker = {
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
-    if (!env.STATE || !(await getRoom(env).connectionCount())) return;
-    await withRequestState(() => requestStore.run({ env, ctx }, () => refreshRecentlyPlayed()));
+    await withRequestState(() => requestStore.run({ env, ctx }, async () => {
+      // 在听只在有人开着页面时刷；PageSpeed 自己按小时抢闸门，和有没有人看无关，
+      // 而且一轮实测要二十多秒 —— 两件事并行，别让它拖住换歌那条。
+      const listening = env.STATE && (await getRoom(env).connectionCount()) ? refreshRecentlyPlayed() : null;
+      await Promise.all([refreshPageSpeed(), listening]);
+    }));
   },
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);

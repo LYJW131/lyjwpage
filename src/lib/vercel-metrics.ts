@@ -1,5 +1,5 @@
 import { cached, get, put } from "@/lib/cache";
-import type { VercelMetricWindow, VercelMetricsPayload, VercelWebVitals } from "@/lib/vercel-deployments-types";
+import type { VercelMetricWindow, VercelMetricsPayload } from "@/lib/vercel-deployments-types";
 
 const FUNCTIONS_TTL_MS = 900_000;
 const FUNCTIONS_WINDOW_MS = 12 * 3_600_000;
@@ -15,14 +15,6 @@ function count(raw: unknown): number {
   const result = value(raw);
   if (result == null || !Number.isSafeInteger(result)) throw new Error("Vercel 计数缺失");
   return result;
-}
-
-export function parseVercelWebVitals(raw: unknown): VercelWebVitals {
-  const overview = record(record(raw).overview);
-  const p75 = (key: string) => overview[key] == null ? null : value(record(overview[key]).p75);
-  const score = p75("RES");
-  return { score: score != null && score <= 100 ? score : null, lcpMs: p75("LCP"), inpMs: p75("INP"),
-    cls: p75("CLS"), fcpMs: p75("FCP"), ttfbMs: p75("TTFB") };
 }
 
 /** 只取整段窗口的 summary；窗口内没有调用时 summary 为空数组，视为 0。 */
@@ -105,13 +97,7 @@ export async function getVercelMetrics(project: string, team: string, token: str
     if (!response.ok) throw new Error(`Vercel 指标查询失败 (${response.status})`);
     return response.json();
   };
-  const [speed, functions, analytics] = await Promise.all([
-    section(`${prefix}:speed`, 300_000, async () => {
-      const end = Math.floor(Date.now() / 300_000) * 300_000, start = end - 7 * 86_400_000;
-      const params = { tz: "Asia/Shanghai", from: new Date(start).toISOString(), to: new Date(end).toISOString(), environment: "production", projectId: project };
-      const [desktop, mobile] = await Promise.all(["desktop", "mobile"].map(device => request("https://vercel.com/api/speed-insights/v2/timeseries", { ...params, device }).then(parseVercelWebVitals)));
-      return { fetchedAt: Date.now(), start, end, desktop, mobile };
-    }),
+  const [functions, analytics] = await Promise.all([
     section(`${prefix}:functions`, FUNCTIONS_TTL_MS, async () => {
       const end = Math.floor(Date.now() / FUNCTIONS_TTL_MS) * FUNCTIONS_TTL_MS, start = end - FUNCTIONS_WINDOW_MS;
       return { ...await fetchVercelFunctions(project, team, token, start, end), fetchedAt: Date.now(), start, end };
@@ -124,5 +110,5 @@ export async function getVercelMetrics(project: string, team: string, token: str
       return { ...parseVercelAnalytics(raw), fetchedAt: Date.now() };
     }),
   ]);
-  return { speed, functions, analytics };
+  return { functions, analytics };
 }

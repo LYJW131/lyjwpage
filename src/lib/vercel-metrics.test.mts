@@ -1,17 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { fetchVercelFunctions, parseVercelAnalytics, parseVercelFunctions, parseVercelWebVitals } from "./vercel-metrics.ts";
-
-test("Web Vitals uses the full-window P75 and preserves missing metrics instead of reporting zero", () => {
-  const data = parseVercelWebVitals({ overview: { RES: { p75: 100 }, LCP: { p75: 700, p99: 5500 }, CLS: { p75: 0 } }, timeseries: [{ RES: { p75: 1 } }], token: "private" });
-  assert.equal(data.score, 100);
-  assert.equal(data.lcpMs, 700);
-  assert.equal(data.cls, 0);
-  assert.equal(data.inpMs, null);
-  assert.doesNotMatch(JSON.stringify(data), /private|timeseries|p99/);
-  assert.equal(parseVercelWebVitals({ overview: { RES: { p75: 101 } } }).score, null);
-  assert.throws(() => parseVercelWebVitals({ error: "permission denied" }));
-});
+import { fetchVercelFunctions, parseVercelAnalytics, parseVercelFunctions } from "./vercel-metrics.ts";
 
 test("function totals come from the window summary, with empty and malformed responses distinguished", () => {
   const parsed = parseVercelFunctions({ summary: [{ total: 123, errors: 2, timeouts: 1, cpuP75Ms: 20, memoryAvgMb: 230, rawLogs: "private" }], data: [{ timestamp: "2026-09-12T00:05:00Z", total: 999 }] });

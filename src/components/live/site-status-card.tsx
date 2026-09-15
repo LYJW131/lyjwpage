@@ -12,7 +12,7 @@ import type { GithubRecentCommit } from "@/lib/github-recent-commits";
 import { CLOUDFLARE_WORKERS_PATH, GITHUB_REPO_PATH, VERCEL_DEPLOYMENTS_PATH } from "@/lib/paths";
 import { site } from "@/lib/site";
 import type { GithubRepoPayload, StatusResponse } from "@/lib/types";
-import type { VercelDeployment, VercelDeploymentsPayload, VercelWebVitals } from "@/lib/vercel-deployments-types";
+import type { LighthouseVitals, VercelDeployment, VercelDeploymentsPayload } from "@/lib/vercel-deployments-types";
 import { cn } from "@/lib/utils";
 
 const number = new Intl.NumberFormat("en-US");
@@ -42,13 +42,18 @@ function Stat({ label, value, title, prefix }: { label: string; value?: number |
   );
 }
 
-const vitalRows: { label: string; key: keyof VercelWebVitals; unit: "s" | "ms" | "" }[] = [
-  { label: "LCP", key: "lcpMs", unit: "s" }, { label: "INP", key: "inpMs", unit: "ms" },
-  { label: "CLS", key: "cls", unit: "" }, { label: "FCP", key: "fcpMs", unit: "s" }, { label: "TTFB", key: "ttfbMs", unit: "s" },
+/** 顺序按 Lighthouse 报告；没有 INP（那要真实用户才测得到），同轮的 TBT 占那一列。 */
+const vitalRows: { label: string; key: Exclude<keyof LighthouseVitals, "score">; unit: "s" | "ms" | ""; title: string }[] = [
+  { label: "LCP", key: "lcpMs", unit: "s", title: "Largest Contentful Paint" },
+  { label: "TBT", key: "tbtMs", unit: "ms", title: "Total Blocking Time：实验室里代替 INP 的指标" },
+  { label: "CLS", key: "cls", unit: "", title: "Cumulative Layout Shift" },
+  { label: "FCP", key: "fcpMs", unit: "s", title: "First Contentful Paint" },
+  { label: "TTFB", key: "ttfbMs", unit: "ms", title: "Time to First Byte：根文档的服务器响应时间" },
 ];
 function vital(value: number | null | undefined, unit: string) {
   if (value == null) return "—";
-  return unit === "s" ? `${(value / 1000).toFixed(2)}s` : `${value}${unit}`;
+  // CLS 是无量纲小数，Lighthouse 自己也把末尾的零去掉（0.004 / 0）
+  return unit === "s" ? `${(value / 1000).toFixed(2)}s` : unit === "ms" ? `${Math.round(value)}ms` : String(Number(value.toFixed(3)));
 }
 
 export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallback, recentCommits, className }: {
@@ -61,7 +66,10 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
   const { data: github } = useStatus<GithubRepoPayload>(GITHUB_REPO_PATH, 30 * 60_000, { fallback: githubFallback, revalidateOnMount: false, revalidateOnFocus: false });
   const { data: vercel } = useStatus<VercelDeploymentsPayload>(VERCEL_DEPLOYMENTS_PATH, 60_000, { fallback: vercelFallback });
   const { data: cloudflare } = useStatus<CloudflareWorkersPayload>(CLOUDFLARE_WORKERS_PATH, 300_000, { fallback: cloudflareFallback });
-  const { speed, functions, analytics } = vercel?.metrics ?? {};
+  const { functions, analytics } = vercel?.metrics ?? {};
+  // 主站量的是 lyjw.me；把域名写在表头，省得和访客当前所在的域名混起来。
+  // 每一格是滚动窗口内各轮实测的中位数，轮数和窗口在表头的提示里。
+  const pagespeed = vercel?.pagespeed, measured = pagespeed ? new URL(pagespeed.url).host : null;
   const deploymentsBySha = new Map<string, { deployment: VercelDeployment; production: boolean }>();
   for (const deployment of [...vercel?.recent ?? [], ...vercel?.production ? [vercel.production] : []]) {
     const sha = deployment.commit?.sha;
@@ -104,17 +112,19 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
     </div>
     <RepoContributions data={github} recentCommits={recentCommits} deploymentsBySha={deploymentsBySha} />
     <div className="grid border-t border-line md:grid-cols-2">
-      <section className="min-w-0 border-b border-line md:border-b-0" aria-label="体验评分">
+      <section className="min-w-0 border-b border-line md:border-b-0" aria-label="性能评分">
         <div className="px-4 pt-3 pb-2">
           <div className="grid grid-cols-[40px_repeat(6,minmax(0,1fr))] items-center gap-1 text-right text-[9px] text-muted-foreground lg:grid-cols-[88px_repeat(6,minmax(0,1fr))] lg:text-[10px]">
-            <span /><span title="Real Experience Score">RES</span>{vitalRows.map(row => <span key={row.key}>{row.label}</span>)}
+            <span className="truncate text-left" title={pagespeed ? `PageSpeed Insights 实测 ${pagespeed.url}\n${pagespeed.samples} 轮的中位数 · ${time.format(pagespeed.start)} — ${time.format(pagespeed.fetchedAt)} · UTC+8` : undefined}>{measured}</span>
+            <span title="Lighthouse 性能评分，模拟设备上的实验室实测">PERF</span>{vitalRows.map(row => <span key={row.key} title={row.title}>{row.label}</span>)}
           </div>
           {(["desktop", "mobile"] as const).map(device => {
-            const score = speed?.[device].score;
+            const score = pagespeed?.[device].score;
             return <div key={device} className="grid h-11 grid-cols-[40px_repeat(6,minmax(0,1fr))] items-center gap-1 text-right text-[10px] tabular-nums lg:grid-cols-[88px_repeat(6,minmax(0,1fr))] lg:text-xs">
               <span className="text-left text-[11px] text-muted-foreground">{device === "desktop" ? "桌面" : "移动"}</span>
-              <span className={cn("text-xl font-medium lg:text-2xl", score == null ? "text-muted-foreground" : score > 90 ? "text-emerald-600 dark:text-emerald-400" : score >= 50 ? "text-amber-600" : "text-red-500")}>{score ?? "—"}</span>
-              {vitalRows.map(row => <span key={row.key}>{vital(speed?.[device][row.key], row.unit)}</span>)}
+              {/* Lighthouse 自己的档位：90 分及格算绿，50 到 89 黄 */}
+              <span className={cn("text-xl font-medium lg:text-2xl", score == null ? "text-muted-foreground" : score >= 90 ? "text-emerald-600 dark:text-emerald-400" : score >= 50 ? "text-amber-600" : "text-red-500")}>{score ?? "—"}</span>
+              {vitalRows.map(row => <span key={row.key}>{vital(pagespeed?.[device][row.key], row.unit)}</span>)}
             </div>;
           })}
         </div>
