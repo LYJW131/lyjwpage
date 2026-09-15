@@ -36,11 +36,11 @@ curl -s 'https://api.homepage.lyjw.llc/api/lyrics?song=1490256995' \
 pnpm dev:override /api/lyrics /tmp/lyrics-override.json
 ```
 
-页头品牌字标那条是 GIF（`desktop-marks-{light,dark}.gif`），由 [`scripts/desktop-marks-gif.py`](../scripts/desktop-marks-gif.py) 生成：三段字标都从本地站点页头真实截下再拼成一条；Claude Code 那段装上 Playwright 的假时钟逐 25ms 推进，精灵 SVG 一变就截一帧，抓到完整一轮 33 个取物姿势，帧时长直接取 `src/lib/mascot-fetch.json` 的原始毫秒数。站点上每轮结束停 5 秒，GIF 里不停，首姿势只保留源数据自带的两步（767 + 258 ms），整轮 4.1 秒连续循环。需要 Python 3、`playwright`、`pillow`（`pip install playwright pillow && playwright install chromium`），本地 Worker 与 `pnpm dev:local` 在跑：
+页头品牌标识那条是 GIF（`desktop-marks-{light,dark}.gif`），由 [`scripts/desktop-marks-gif.py`](../scripts/desktop-marks-gif.py) 生成：四段标识都从本地站点页头真实截下再拼成一条，两段会动的都装上 Playwright 的假时钟推进、逐帧截图。Claude Code 那段逐 25ms 推进，精灵 SVG 一变就截一帧，抓到完整一轮 33 个取物姿势，帧时长直接取 `src/lib/mascot-fetch.json` 的原始毫秒数；Ghostty 那段按 SVG 的 `data-frame` 拨到第 0 帧起逐帧截满一轮，帧时长取 `src/lib/ghostty-frames.json` 的 `frameMs`。GIF 一轮等于 Ghostty 一轮（79 × 93 ms ≈ 7.3 秒），Claude Code 跑完约 3.1 秒的取物后停在首姿势等到轮尾（站点上停 5 秒，这里约 4.3 秒）；两条时间线上任一段换帧就出一张 GIF 帧。需要 Python 3、`playwright`、`pillow`（`pip install playwright pillow && playwright install chromium`；装了 Google Chrome 可设 `PLAYWRIGHT_CHANNEL=chrome` 免下载），本地 Worker 与 `pnpm dev:local` 在跑（不在默认端口时用 `SITE_URL` / `DEV_WORKER_URL` 指过去）：
 
 ```sh
 python3 scripts/desktop-marks-gif.py            # 明暗各一张
 python3 scripts/desktop-marks-gif.py --theme dark
 ```
 
-脚本自己打开假数据总开关、依次注入 `desktop-claude-code / cursor / antigravity` 三个夹具，结束后清掉注入并把总开关恢复原状。字标改了外观、`mascot-fetch.json` 换了姿势或节拍时重跑一次即可。
+脚本自己打开假数据总开关、依次注入 `desktop-claude-code / ghostty / cursor / antigravity` 四个夹具，结束后清掉注入并把总开关恢复原状。标识改了外观、`mascot-fetch.json` 或 `ghostty-frames.json` 换了帧或节拍时重跑一次即可。

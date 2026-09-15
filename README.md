@@ -83,11 +83,11 @@
   <img src="docs/screenshots/vibecoding-light.webp" alt="AI Coding 卡片：Token 用量、成本、模型排行与限额" width="100%">
 </picture>
 
-**页头的前台应用**：页头中央显示 Mac 此刻的前台应用，图标和名字由 Mac 上报器上报。几款编码工具换成了品牌字标：Claude Code 是像素吉祥物的取物动画，来自 [mascot-fetch-loop](https://github.com/LYJW131/mascot-fetch-loop)（从屏幕录像逐帧复原的 19 个姿势，站点内联其精灵数据自行播放，[在线预览](https://lyjw131.github.io/mascot-fetch-loop/)）；Cursor 与 Antigravity 用 [LobeHub 图标集](https://github.com/lobehub/lobe-icons)的字标。
+**页头的前台应用**：页头中央显示 Mac 此刻的前台应用，图标和名字由 Mac 上报器上报。几款常用工具换成了品牌标识：Claude Code 是像素吉祥物的取物动画，来自 [mascot-fetch-loop](https://github.com/LYJW131/mascot-fetch-loop)（从屏幕录像逐帧复原的 19 个姿势，站点内联其精灵数据自行播放，[在线预览](https://lyjw131.github.io/mascot-fetch-loop/)）；Ghostty 是[官网首页](https://ghostty.org/)那只 ASCII 幽灵，`scripts/ghostty-frames.mjs` 从首页载荷里取出 235 帧 100×41 的字符画，每两列并成一个单元、按字形墨量分成本体三档和光环三档、每三帧取一帧，压成 79 帧 39×39 的粗网格（`src/lib/ghostty-frames.json`，57 KB），站内按 93 ms 一帧用 SVG 路径循环播放，本体跟随页面文字色、光环保持官网的蓝；Cursor 与 Antigravity 用 [LobeHub 图标集](https://github.com/lobehub/lobe-icons)的字标。
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/desktop-marks-dark.gif">
-  <img src="docs/screenshots/desktop-marks-light.gif" alt="页头前台应用的三种品牌字标：Claude Code 吉祥物取物动画、Cursor、Antigravity" width="577">
+  <img src="docs/screenshots/desktop-marks-light.gif" alt="页头前台应用的四种品牌标识：Claude Code 吉祥物取物动画、Ghostty ASCII 幽灵动画、Cursor、Antigravity" width="577">
 </picture>
 
 ## 系统架构
