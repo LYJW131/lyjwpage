@@ -954,6 +954,24 @@ export type ActivityPayload = ActivityStatus & {
  * `id` 是 SSH 配置里的那一个（`misaka-jp`），`hostname` 是机器自己报的
  * `uname`。两份都留：卡片上认的是人起的名字，出了问题对照机器要用另一份。
  */
+/**
+ * 计费周期内攒下来的流量。
+ *
+ * `/proc/net/dev` 那两个计数器一重启就归零，所以这份不是站点算的，也不是那两个
+ * 累计字节的换算：上报器把每轮的增量累加进当前周期、落在自己的状态文件里，跨
+ * 重启接着数。站点只负责显示。
+ */
+export type ServerTraffic = {
+  /** 当前计费周期的起点，epoch 毫秒。按 UTC 的自然月，起始日跟着套餐账单日 */
+  cycleStart: number;
+  /** 周期止点（= 下一周期的起点），epoch 毫秒 */
+  cycleEnd: number;
+  rxBytes: number;
+  txBytes: number;
+  /** 套餐配额。没配为 null，卡片那时只报用量、不画进度 */
+  quotaBytes: number | null;
+};
+
 export type ServerStatus = {
   id: string;
   hostname: string;
@@ -986,6 +1004,12 @@ export type ServerStatus = {
   networkTxBytes: number;
   networkRxBytesPerSec: number;
   networkTxBytesPerSec: number;
+  /**
+   * 计费周期内的累计流量。上报器没攒（状态文件写不进、或这台没开）时为 null。
+   *
+   * 和上面那两个累计字节不是一回事：那两个是开机以来的网卡计数器，这份跨重启。
+   */
+  traffic: ServerTraffic | null;
   uptimeSeconds: number;
   /** 采集时刻，epoch 毫秒 */
   observedAt: number;

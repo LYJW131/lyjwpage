@@ -1,0 +1,42 @@
+{
+  "ok": true,
+  "data": {
+    "id": "misaka-jp",
+    "hostname": "jp-nrt04-s3n-1c2g-1",
+    "publicIp": "103.170.233.241",
+    "country": "Japan",
+    "city": "Tokyo",
+    "isp": "Misaka Network, Inc.",
+    "asn": 142616,
+    "asnOrg": "Misaka Network, Inc.",
+    "os": "Ubuntu 26.04 LTS",
+    "kernel": "7.0.0-30-generic",
+    "cpuCores": 1,
+    "cpuUsagePercent": 12.3,
+    "load1": 0.16,
+    "load5": 0.15,
+    "load15": 0.1,
+    "memoryTotalBytes": 2147483648,
+    "memoryUsedBytes": 641728512,
+    "memoryAvailableBytes": 1468006400,
+    "diskTotalBytes": 32212254720,
+    "diskUsedBytes": 3435973836,
+    "networkInterface": "enp3s0",
+    "networkRxBytes": 28723774277,
+    "networkTxBytes": 26507550253,
+    "networkRxBytesPerSec": 1382400,
+    "networkTxBytesPerSec": 415000,
+    "traffic": {
+      "cycleStart": 1756684800000,
+      "cycleEnd": 1759276800000,
+      "rxBytes": 612400000000,
+      "txBytes": 208900000000,
+      "quotaBytes": 2000000000000
+    },
+    "uptimeSeconds": 262800,
+    "observedAt": "$now-4000",
+    "pushedAt": "$now",
+    "staleAfterMs": 3000000,
+    "staleAtSource": false
+  }
+}

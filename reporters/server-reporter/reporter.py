@@ -4,6 +4,9 @@
 只依赖 Python 3 标准库。采集窗口就是上报间隔本身：上一轮 /proc 的读数留着，
 这一轮做差，得到的是这段时间的平均占用和平均速率，不是「这一瞬间的尖峰」。
 
+同一份差值还有第二个去处：累加成计费周期的流量，落在状态文件里跨进程、跨重启
+接着数（见下面「流量统计」那节）。
+
 跑在容器里时 `/proc` 拿到的本来就是宿主机的数（Docker 不虚拟化 /proc），CPU、内存、
 负载、运行时间、内核都不用管；网卡那几项靠 `network_mode: host` 落在宿主机的网络
 命名空间里。剩下三样容器内会看到自己那份 —— 系统名、主机名、根分区容量 ——
@@ -25,6 +28,7 @@ import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable
+from datetime import datetime, timezone
 from typing import Any
 
 # 三档节奏。这份快照每轮必发（它本身就是心跳），30 秒一轮时它是站点函数调用量
@@ -55,6 +59,9 @@ IDLE_INTERVAL_MS = 900_000
 COUNT_TIMEOUT_S = 2.5
 PUSH_TIMEOUT_S = 10.0
 GEO_TTL_S = 6 * 3600
+# 流量状态文件。容器里是挂进来的卷（compose 的 ./server-reporter/data:/data）
+TRAFFIC_STATE_PATH = "/data/traffic.json"
+TRAFFIC_STATE_VERSION = 1
 GEO_TIMEOUT_S = 5.0
 USER_AGENT = "lyjwpage-server-reporter/1.0"
 AS_LINE = re.compile(r"^AS(\d+)\s*(.*)$", re.IGNORECASE)
@@ -87,6 +94,34 @@ def trim_slash(url: str) -> str:
     return url.rstrip("/")
 
 
+def cycle_day() -> int:
+    """计费周期从每月几号归零。29 之后不是每个月都有，直接不收。"""
+    raw = os.environ.get("TRAFFIC_CYCLE_DAY", "").strip()
+    if not raw:
+        return 1
+    try:
+        day = int(raw)
+    except ValueError as error:
+        raise SystemExit("TRAFFIC_CYCLE_DAY 必须是 1–28 的整数") from error
+    if not 1 <= day <= 28:
+        raise SystemExit("TRAFFIC_CYCLE_DAY 必须是 1–28 的整数（29 之后不是每个月都有）")
+    return day
+
+
+def quota_bytes() -> int | None:
+    """套餐给的周期流量，字节。没配就没有配额，卡片只报用量。"""
+    raw = os.environ.get("TRAFFIC_QUOTA_BYTES", "").strip()
+    if not raw:
+        return None
+    try:
+        value = int(raw)
+    except ValueError as error:
+        raise SystemExit("TRAFFIC_QUOTA_BYTES 必须是正整数（字节）") from error
+    if value <= 0:
+        raise SystemExit("TRAFFIC_QUOTA_BYTES 必须是正整数（字节）")
+    return value
+
+
 def ingest_url() -> str:
     explicit = os.environ.get("SITE_INGEST_URL", "").strip()
     if explicit:
@@ -115,6 +150,10 @@ CONFIG = {
     "online_count_url": count_url("ONLINE_COUNTER_URL"),
     "count_timeout_s": ms("COUNT_TIMEOUT_MS", int(COUNT_TIMEOUT_S * 1000)) / 1000,
     "push_timeout_s": ms("PUSH_TIMEOUT_MS", int(PUSH_TIMEOUT_S * 1000)) / 1000,
+    # 留空 = 不攒流量（没有能写的地方时的明确选择），这一份就不报 traffic
+    "traffic_state_path": os.environ.get("TRAFFIC_STATE_PATH", TRAFFIC_STATE_PATH).strip(),
+    "cycle_day": cycle_day(),
+    "quota_bytes": quota_bytes(),
 }
 
 
@@ -355,6 +394,148 @@ def net_bytes(iface: str) -> tuple[int, int]:
     raise RuntimeError(f"网卡 {iface} 不在 /proc/net/dev 里")
 
 
+# ── 流量统计 ──────────────────────────────────────────────
+# `/proc/net/dev` 的计数器只从开机算起，一重启就归零，「这个计费周期用了多少」
+# 得自己攒。每轮把两次读数之差累加进当前周期，连同游标原子写回状态文件：进程
+# 重启、机器重启都接着上次数下去，不从头再来。
+#
+# 计数器归零的判据是「这次比游标小」—— 重启后网卡从 0 开始，那一段就是当前读数
+# 本身。而从没攒过的那一轮只记游标、不计流量：一台开机 200 天的机器第一次跑起
+# 来，计数器里那几个 T 是过去几个月的，不该一股脑算进这个周期。
+#
+# 那一轮有个例外：开机时刻**落在这个周期之内**时，计数器里的每一个字节都是这个
+# 周期走的，整份接管过来就是准的。第一次装上去不用干等到下个月 1 号才有数。
+#
+# 周期是 UTC 的自然月，起始日由 `TRAFFIC_CYCLE_DAY` 定（跟着套餐的账单日，不是
+# 非得 1 号）。跨周期那一轮的增量整段算进新周期 —— 边界上最多差一个上报间隔，
+# 而按秒把它劈成两半要假设这段时间流量是匀速的，那个假设比这点误差更假。
+#
+# 攒得住才报：状态文件一次都没写成功过（卷是只读、目录没给写权限）就报 null，
+# 卡片上少一块，好过默默显示一个只从本次进程算起的小数。
+
+
+def shift_month(moment: datetime, months: int) -> datetime:
+    """同一个「几号」往前后挪几个月。日 ≤ 28，落在哪个月都存在。"""
+    index = moment.year * 12 + moment.month - 1 + months
+    return moment.replace(year=index // 12, month=index % 12 + 1)
+
+
+def cycle_bounds(now_s: float, day: int) -> tuple[int, int]:
+    """当前计费周期的 [起, 止)，epoch 毫秒。止就是下一周期的起。"""
+    now = datetime.fromtimestamp(now_s, timezone.utc)
+    anchor = now.replace(day=day, hour=0, minute=0, second=0, microsecond=0)
+    start = anchor if now >= anchor else shift_month(anchor, -1)
+    return int(start.timestamp() * 1000), int(shift_month(start, 1).timestamp() * 1000)
+
+
+def accumulate(
+    state: dict[str, Any],
+    iface: str,
+    rx: int,
+    tx: int,
+    now_s: float,
+    day: int,
+    boot_ms: int | None = None,
+) -> dict[str, Any]:
+    """把这一轮的增量并进周期累计，返回新状态。纯函数，可单测。"""
+    start, end = cycle_bounds(now_s, day)
+    same_iface = state.get("interface") == iface
+    # 换网卡：新计数器和上一块无关，累计和游标一起作废，从这一轮重新数
+    carry = same_iface and state.get("cycleStart") == start
+    rx_total = int(state.get("rxBytes", 0)) if carry else 0
+    tx_total = int(state.get("txBytes", 0)) if carry else 0
+    rx_cursor = state.get("rxCursor")
+    tx_cursor = state.get("txCursor")
+    if same_iface and isinstance(rx_cursor, int) and isinstance(tx_cursor, int):
+        rx_total += rx - rx_cursor if rx >= rx_cursor else rx
+        tx_total += tx - tx_cursor if tx >= tx_cursor else tx
+    elif not state and boot_ms is not None and boot_ms >= start:
+        # 头一回攒，而这台机器是这个周期之内开的：计数器里的字节全是这个周期的，
+        # 整份接管。只认「一份状态都没有」这一种情况 —— 换网卡时旧卡那段已经数
+        # 过了，再按开机时刻接管一次就是重复计数
+        rx_total, tx_total = rx, tx
+    return {
+        "version": TRAFFIC_STATE_VERSION,
+        "interface": iface,
+        "cycleStart": start,
+        "cycleEnd": end,
+        "rxBytes": rx_total,
+        "txBytes": tx_total,
+        "rxCursor": rx,
+        "txCursor": tx,
+        "updatedAt": int(now_s * 1000),
+    }
+
+
+_traffic: dict[str, Any] = {"state": {}, "loaded": False, "durable": False}
+
+
+def load_traffic_state() -> None:
+    """进程起来后读一次。读不出来不是致命的，这个周期从零重新数。"""
+    _traffic["loaded"] = True
+    path = CONFIG["traffic_state_path"]
+    if not path:
+        return
+    try:
+        with open(path, encoding="utf-8") as handle:
+            state = json.load(handle)
+    except FileNotFoundError:
+        return  # 第一次跑，等这一轮写出来
+    except (OSError, ValueError) as error:
+        failure("traffic-state", f"读不出 {path}，这个周期从零开始数：{error}")
+        return
+    if not isinstance(state, dict) or state.get("version") != TRAFFIC_STATE_VERSION:
+        failure("traffic-state", f"{path} 不是这一版的状态，丢掉重新数")
+        return
+    _traffic["state"] = state
+    # 读得出上次那份就说明这条路是通的，攒的数能接着用
+    _traffic["durable"] = True
+
+
+def save_traffic_state(state: dict[str, Any]) -> bool:
+    """原子写回：先落临时文件再 replace，断电不会留下半截 JSON。"""
+    path = CONFIG["traffic_state_path"]
+    if not path:
+        return False
+    temp = f"{path}.tmp"
+    try:
+        parent = os.path.dirname(path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        with open(temp, "w", encoding="utf-8") as handle:
+            json.dump(state, handle, separators=(",", ":"))
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp, path)
+        recovered("traffic-state")
+        return True
+    except OSError as error:
+        failure("traffic-state", f"写不进 {path}，这一份不报流量：{error}")
+        return False
+
+
+def traffic_for(
+    iface: str, rx: int, tx: int, now_s: float, boot_ms: int | None = None
+) -> dict[str, Any] | None:
+    if not _traffic["loaded"]:
+        load_traffic_state()
+    state = accumulate(
+        _traffic["state"], iface, rx, tx, now_s, CONFIG["cycle_day"], boot_ms
+    )
+    _traffic["state"] = state
+    if save_traffic_state(state):
+        _traffic["durable"] = True
+    if not _traffic["durable"]:
+        return None
+    return {
+        "cycleStart": state["cycleStart"],
+        "cycleEnd": state["cycleEnd"],
+        "rxBytes": state["rxBytes"],
+        "txBytes": state["txBytes"],
+        "quotaBytes": CONFIG["quota_bytes"],
+    }
+
+
 def cpu_percent(prev: tuple[int, int], cur: tuple[int, int]) -> float:
     idle_delta = cur[0] - prev[0]
     total_delta = cur[1] - prev[1]
@@ -376,6 +557,7 @@ def snapshot(
     elapsed = max(now - prev_at, 1e-6)
     rx, tx = cur_net
     prev_rx, prev_tx = prev_net
+    uptime_s = uptime_seconds()
     memory_total, memory_used, memory_available = mem_bytes()
     disk_total, disk_used = disk_bytes()
     load1, load5, load15 = loadavg()
@@ -409,7 +591,8 @@ def snapshot(
         "networkTxBytes": tx,
         "networkRxBytesPerSec": max(0, (rx - prev_rx) / elapsed),
         "networkTxBytesPerSec": max(0, (tx - prev_tx) / elapsed),
-        "uptimeSeconds": round(uptime_seconds()),
+        "traffic": traffic_for(iface, rx, tx, now, int((now - uptime_s) * 1000)),
+        "uptimeSeconds": round(uptime_s),
         "observedAt": int(now * 1000),
         "_cursor": {"cpu": cur_cpu, "net": cur_net, "at": now},
     }
@@ -537,6 +720,14 @@ def main() -> None:
         f"网卡 {iface}，间隔 {gears}（有人看 / 开着 / 都没有）"
         + ("" if CONFIG["count_url"] else "，没配 SITE_URL 读不到人头数，只走最慢那档")
     )
+    if CONFIG["traffic_state_path"]:
+        quota = CONFIG["quota_bytes"]
+        info(
+            f"流量每月 {CONFIG['cycle_day']} 号归零，状态存 {CONFIG['traffic_state_path']}"
+            + (f"，配额 {quota} 字节" if quota else "，没配配额")
+        )
+    else:
+        info("TRAFFIC_STATE_PATH 留空，不攒流量，这张卡上不显示那一栏")
 
     prev_cpu = cpu_times()
     prev_net = net_bytes(iface)

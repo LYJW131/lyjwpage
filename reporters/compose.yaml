@@ -51,6 +51,10 @@ services:
       # 的软链，跟着 /etc 整个挂进来那条链在容器里是断的（/host/usr 不存在）。
       # 单独 bind 这个路径，Docker 在宿主机侧解完软链再挂，容器里拿到的是真文件。
       - /etc/os-release:/host/etc/os-release:ro
+      # 流量累计的状态文件（/data/traffic.json）。网卡计数器一重启就归零，
+      # 「这个周期用了多少」只能自己攒，攒的东西得活过容器重建。
+      # 目录要先 `chown 65534:65534`（镜像里是 nobody），见 README。
+      - ./server-reporter/data:/data
     logging:
       driver: json-file
       options:

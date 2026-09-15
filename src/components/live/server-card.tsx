@@ -7,7 +7,7 @@ import { useStale } from "@/hooks/use-stale";
 import { useStatus } from "@/hooks/use-status";
 import { SERVER_STALE_MS } from "@/lib/freshness";
 import { SERVER_PATH } from "@/lib/paths";
-import type { ServerPayload, StatusResponse } from "@/lib/types";
+import type { ServerPayload, ServerTraffic, StatusResponse } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /**
@@ -52,12 +52,63 @@ function formatUptime(seconds: number): string {
   return `${Math.max(1, minutes)}m`;
 }
 
+type Tier = { div: number; unit: string; digits: number };
+
+/** 内存 / 磁盘按 1024：那是系统自己报数的方式，`/proc/meminfo` 给的就是 KiB */
+const MEMORY_TIERS: readonly Tier[] = [
+  { div: 1024 ** 3, unit: "GB", digits: 1 },
+  { div: 1024 ** 2, unit: "MB", digits: 0 },
+];
+
+/**
+ * 流量按 1000。网络那一侧从来是十进制 —— 上面两个速率就是 `1e6 B/s = MB/s`
+ * （见 rateParts），套餐写的「2T」也是 2×10¹²。这一栏跟着网络走，不跟内存走，
+ * 否则 2T 的配额在卡片上会变成「1.82 TB」，跟账单对不上。
+ */
+const TRAFFIC_TIERS: readonly Tier[] = [
+  { div: 1e12, unit: "TB", digits: 2 },
+  { div: 1e9, unit: "GB", digits: 1 },
+  { div: 1e6, unit: "MB", digits: 0 },
+];
+
+/** 档位按大的那个数选：两边同单位才比得出来 */
+function tierIndex(tiers: readonly Tier[], bytes: number): number {
+  const found = tiers.findIndex((tier) => bytes >= tier.div);
+  return found < 0 ? tiers.length - 1 : found;
+}
+
+function tierAt(tiers: readonly Tier[], index: number): Tier {
+  return tiers[Math.min(Math.max(index, 0), tiers.length - 1)];
+}
+
+function formatSize(tiers: readonly Tier[], bytes: number, tier?: Tier): string {
+  const pick = tier ?? tierAt(tiers, tierIndex(tiers, bytes));
+  return `${(bytes / pick.div).toFixed(pick.digits)} ${pick.unit}`;
+}
+
+/**
+ * `用量 / 总量`，单位跟着**分母**选。
+ *
+ * 分母才是那个说法本身 —— 套餐卖的是「2T」，就该写成 `2.00 TB`，不是
+ * `2000.0 GB`；内存是 2G，就该写成 `2.0 GB`。跟着分子选的话，用量爬过 1 TB 那
+ * 一刻整行会换一次单位，同一个配额前后两副样子。
+ *
+ * 代价是月初那几天只剩两位有效数字（`0.09 / 2.00 TB`）—— 那几天本来也没什么可
+ * 看的，真要细看，悬停有按各自单位写的上下行明细。
+ */
+function formatFraction(tiers: readonly Tier[], used: number, total: number): string {
+  const tier = tierAt(tiers, tierIndex(tiers, total));
+  return `${(used / tier.div).toFixed(tier.digits)} / ${formatSize(tiers, total, tier)}`;
+}
+
 function formatPair(used: number, total: number): string {
-  const useGb = total >= 1024 ** 3;
-  const div = useGb ? 1024 ** 3 : 1024 ** 2;
-  const unit = useGb ? "GB" : "MB";
-  const digits = useGb ? 1 : 0;
-  return `${(used / div).toFixed(digits)} / ${(total / div).toFixed(digits)} ${unit}`;
+  return formatFraction(MEMORY_TIERS, used, total);
+}
+
+/** 周期边界锚的是 UTC，这里也按 UTC 写死 —— 换成访客本地时区，服务端那份和
+ *  hydrate 之后那份会不一样，title 上就是一处 hydration 报错 */
+function formatCycleDay(atMs: number): string {
+  return new Date(atMs).toISOString().slice(0, 10);
 }
 
 function nodeId(id: string): string {
@@ -119,6 +170,57 @@ function Meter({
   );
 }
 
+/**
+ * 计费周期用了多少。
+ *
+ * 上面那两个速率是「此刻」，这一行是「这个月」—— 落地节点真正会被用完的是后者。
+ * 配了配额就和内存那条一样说 `用量 / 总量`，剩下的留白就是余量；没配配额时没有
+ * 分母，改说上下行各自多少，进度条退化成两者的比例。
+ *
+ * 条子分两段：下行实心、上行同色半透明。两段同一个色相，读起来是「同一件事的两
+ * 半」，不是绿灯黄灯两种状态。
+ */
+function Traffic({ traffic }: { traffic: ServerTraffic }) {
+  const { rxBytes, txBytes, quotaBytes } = traffic;
+  const used = rxBytes + txBytes;
+  const span = quotaBytes ?? used;
+  const scale = span > 0 ? 100 / span : 0;
+  // 两段分别夹紧会在超配额时加起来超过 100%，flex 再把它们压扁 —— 下行占满之后
+  // 上行只能拿剩下的那点，条子最多就是满格
+  const downPercent = Math.min(100, rxBytes * scale);
+  const upPercent = Math.min(100 - downPercent, txBytes * scale);
+  const detail = quotaBytes
+    ? formatFraction(TRAFFIC_TIERS, used, quotaBytes)
+    : `↓ ${formatSize(TRAFFIC_TIERS, rxBytes)} · ↑ ${formatSize(TRAFFIC_TIERS, txBytes)}`;
+
+  return (
+    <div
+      className="min-w-0"
+      title={
+        `${formatCycleDay(traffic.cycleStart)} → ${formatCycleDay(traffic.cycleEnd)}` +
+        ` · ↓ ${formatSize(TRAFFIC_TIERS, rxBytes)} ↑ ${formatSize(TRAFFIC_TIERS, txBytes)}`
+      }
+    >
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="label-mono text-muted-foreground">Traffic</span>
+        <span className="truncate font-mono text-xs tabular-nums text-muted-foreground">
+          {detail}
+        </span>
+      </div>
+      <div className="mt-1 flex h-1 bg-muted">
+        <div
+          className="h-full bg-live transition-[width] duration-700 ease-out motion-reduce:transition-none"
+          style={{ width: `${downPercent}%` }}
+        />
+        <div
+          className="h-full bg-live/40 transition-[width] duration-700 ease-out motion-reduce:transition-none"
+          style={{ width: `${upPercent}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
 export function ServerCard({
   fallback,
   className,
@@ -151,9 +253,11 @@ export function ServerCard({
       className={cn("h-full", className)}
     >
       {/*
-        三层：落地身份（小）→ 上下行（主数字）→ CPU / 内存（底栏）。
+        四层：落地身份（小）→ 上下行（主数字）→ 周期流量 → CPU / 内存（底栏）。
+        速率和流量挨着：一个是此刻、一个是这个月，同一件事的两个尺度。
+        节点报不出流量时那一层整行不占位，回到三层。
         内容区 min-h-44，卡头不算。同排的活动卡更高，这张会被拉长：多出来的高度
-        用 justify-between 摊进三层之间，别用 justify-center 摊到上下边 —— 那样
+        用 justify-between 摊进各层之间，别用 justify-center 摊到上下边 —— 那样
         边距会比左右的 p-5 大出一截，四边看着就不是一个数。
       */}
       <div className="flex h-full min-h-44 flex-col justify-between gap-3 p-4 lg:p-5">
@@ -186,6 +290,9 @@ export function ServerCard({
             />
           </div>
         </NumberFlowGroup>
+
+        {/* 报不出流量的节点（状态文件写不进、或压根没开）不占这一行 */}
+        {data?.traffic ? <Traffic traffic={data.traffic} /> : null}
 
         <div className="grid grid-cols-2 gap-3">
           <Meter
