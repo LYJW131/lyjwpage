@@ -104,6 +104,29 @@ export async function getRecentCommits(): Promise<GithubRecentCommit[]> {
       cacheLife("minutes");
       return [];
     }
+    // REST 只关联主作者；GraphQL authors 包含 GitHub 识别的协作者及其真实头像。
+    const githubAuthors = new Map<string, CommitAuthor[]>();
+    if (token) {
+      try {
+        const shas = body.map(item => item.sha).filter((sha): sha is string => !!sha && /^[a-f0-9]{40}$/i.test(sha));
+        const fields = shas.map((sha, i) => `c${i}: object(oid: "${sha}") { ... on Commit { authors(first: 100) { nodes { name avatarUrl user { login } } } } }`).join("\n");
+        const response = await fetch("https://api.github.com/graphql", {
+          method: "POST", headers, cache: "force-cache", signal: AbortSignal.timeout(8_000),
+          body: JSON.stringify({ query: `query { repository(owner: ${JSON.stringify(owner)}, name: ${JSON.stringify(name)}) { ${fields} } }` }),
+        });
+        const result = await response.json() as { data?: { repository?: Record<string, { authors?: { nodes?: { name: string; avatarUrl: string; user: { login: string } | null }[] } }> } };
+        if (!response.ok || !result.data?.repository) throw new Error("GitHub authors unavailable");
+        shas.forEach((sha, i) => {
+          const nodes = result.data?.repository?.[`c${i}`]?.authors?.nodes;
+          if (nodes?.length) githubAuthors.set(sha, nodes.map(author => ({
+            name: author.user?.login ?? author.name, login: author.user?.login ?? null,
+            avatarUrl: author.avatarUrl, agent: null,
+          })));
+        });
+      } catch (error) {
+        console.error("[github-commits] authors", error instanceof Error ? error.message : String(error));
+      }
+    }
     const commits = body.flatMap((item) => {
       const sha = item.sha?.trim();
       if (!sha) return [];
@@ -114,7 +137,7 @@ export async function getRecentCommits(): Promise<GithubRecentCommit[]> {
           shortSha: sha.slice(0, 7),
           title: firstLine(message),
           url: item.html_url?.trim() || `${site.repo}/commit/${sha}`,
-          authors: mergeAuthors(primaryAuthor(item), parseCoAuthors(message)),
+          authors: githubAuthors.get(sha) ?? mergeAuthors(primaryAuthor(item), parseCoAuthors(message)),
           committedAt: item.commit?.author?.date ?? null,
         },
       ];
@@ -124,7 +147,8 @@ export async function getRecentCommits(): Promise<GithubRecentCommit[]> {
       cacheLife("minutes");
       return commits;
     }
-    cacheLife("max");
+    if (commits.every(commit => githubAuthors.has(commit.sha))) cacheLife("max");
+    else cacheLife("minutes");
     return commits;
   } catch (error) {
     console.error(

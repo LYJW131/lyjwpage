@@ -1,8 +1,5 @@
 "use client";
 
-import ClaudeMono from "@lobehub/icons/es/Claude/components/Mono";
-import CursorMono from "@lobehub/icons/es/Cursor/components/Mono";
-import OpenAIMono from "@lobehub/icons/es/OpenAI/components/Mono";
 import Image from "next/image";
 import { Fragment, useEffect, useState } from "react";
 
@@ -120,25 +117,10 @@ const stateLabels: Record<DeploymentState, string> = { READY: "已部署", BUILD
 /** 署名行的头像 16px；GitHub 头像取 32 那档，unoptimized 直连。 */
 const AUTHOR_PX = 16;
 
-/** 没有 GitHub 头像的 agent：品牌色圆底 + 单色图标，和 GitHub 给 claude 画的那种一致。 */
-const AGENT_AVATARS: Record<NonNullable<CommitAuthor["agent"]>, { Icon: typeof ClaudeMono; background: string }> = {
-  claude: { Icon: ClaudeMono, background: "#d97757" },
-  cursor: { Icon: CursorMono, background: "#111111" },
-  openai: { Icon: OpenAIMono, background: "#111111" },
-};
-
 function AuthorAvatar({ author }: { author: CommitAuthor }) {
   const className = "size-4 shrink-0 rounded-full border border-surface bg-muted";
   if (author.avatarUrl) {
     return <Image src={avatarSrc(author.avatarUrl).replace(`s=${AVATAR_PX * 2}`, `s=${AUTHOR_PX * 2}`)} alt="" width={AUTHOR_PX} height={AUTHOR_PX} unoptimized className={className} />;
-  }
-  const agent = author.agent ? AGENT_AVATARS[author.agent] : null;
-  if (agent) {
-    return (
-      <span aria-hidden className={cn(className, "flex items-center justify-center")} style={{ backgroundColor: agent.background }}>
-        <agent.Icon size={10} color="#fff" />
-      </span>
-    );
   }
   return <span aria-hidden className={cn(className, "flex items-center justify-center text-[9px] text-muted-foreground")}>{author.name.slice(0, 1).toUpperCase()}</span>;
 }
