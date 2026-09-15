@@ -19,6 +19,13 @@ const number = new Intl.NumberFormat("en-US");
 const time = new Intl.DateTimeFormat("zh-CN", { timeZone: site.timezone, month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false });
 const cpu = (ms: number | null | undefined) => ms == null ? "—" : ms < 1 ? `${Math.round(ms * 1000)}µs` : `${Number(ms.toFixed(1))}ms`;
 
+function CollectionWindow({ start, end }: { start?: number; end?: number }) {
+  if (start == null || end == null) return null;
+  const minutes = Math.round((end - start) / 60_000);
+  const duration = minutes % 1440 === 0 ? `${minutes / 1440}d` : minutes % 60 === 0 ? `${minutes / 60}h` : `${minutes}m`;
+  return <span className="whitespace-nowrap" title={`${time.format(start)} — ${time.format(end)} · UTC+8`}>Last {duration}</span>;
+}
+
 function CommitSha({ commit }: { commit: { sha: string; branch: string | null; message: string | null } | null | undefined }) {
   if (!commit) return null;
   return <a href={`${site.repo}/commit/${commit.sha}`} target="_blank" rel="noreferrer"
@@ -123,6 +130,7 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
             <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] tabular-nums text-muted-foreground">
               <span className="whitespace-nowrap" title={functions ? `超时 ${functions.timeouts} 次 · 平均峰值内存 ${functions.memoryAvgMb == null ? "—" : `${Math.round(functions.memoryAvgMb)} MB`}` : undefined}>调用 <span className="text-foreground">{functions ? number.format(functions.invocations) : "—"}</span></span>
               <span className="whitespace-nowrap">CPU <span className="text-foreground">{cpu(functions?.cpuP75Ms)}</span> P75</span>
+              <CollectionWindow start={functions?.start} end={functions?.end} />
             </div>
           </li>
           {CLOUDFLARE_WORKERS.map(({ name }) => {
@@ -136,6 +144,7 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
               <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] tabular-nums text-muted-foreground">
                 <span className="whitespace-nowrap" title={metrics ? `子请求 ${number.format(metrics.subrequests)}` : undefined}>调用 <span className="text-foreground">{metrics ? number.format(metrics.requests) : "—"}</span></span>
                 <span className="whitespace-nowrap">CPU <span className="text-foreground">{cpu(metrics?.cpuTimeP50Ms)}</span> P50</span>
+                <CollectionWindow start={cloudflare?.windowStart} end={cloudflare?.windowEnd} />
               </div>
             </li>;
           })}
