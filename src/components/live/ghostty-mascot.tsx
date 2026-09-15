@@ -1,7 +1,7 @@
 "use client";
 
 import { useReducedMotion } from "motion/react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import data from "@/lib/ghostty-frames.json";
 import { decodeGhosttyFrames } from "@/lib/ghostty-frames";
@@ -11,8 +11,19 @@ const GLOW_COLOR = "#3551f3";
 /** 静止（减少动态效果）时停在第一帧：正脸、双眼平视 */
 const STATIC_FRAME = 0;
 
-const frames = decodeGhosttyFrames(data);
 const viewBoxWidth = data.columns * data.cellAspect;
+
+/**
+ * 79 帧解成 path 要十几毫秒（节流的手机上是这个的好几倍），所以不在模块顶层解。
+ *
+ * 这个模块被页头的应用图标表静态引着，每个访客都会加载它 —— 但幽灵只在前台
+ * 应用真是 Ghostty 时才画。放在模块顶层等于人人都替这十几毫秒买单，还正好落在
+ * 首屏最忙的那段里。解完的结果整个进程共用一份，换应用来回切也不重解。
+ */
+let decoded: ReturnType<typeof decodeGhosttyFrames> | null = null;
+function ghosttyFrames() {
+  return (decoded ??= decodeGhosttyFrames(data));
+}
 
 /**
  * ghostty.org 首页那只 ASCII 幽灵，压成 24px 图标的粗网格后原速循环
@@ -31,6 +42,7 @@ export function GhosttyMascot({
 }) {
   const reducedMotion = useReducedMotion();
   const [frameIndex, setFrameIndex] = useState(STATIC_FRAME);
+  const frames = useMemo(() => ghosttyFrames(), []);
 
   useEffect(() => {
     if (reducedMotion) return;
@@ -50,7 +62,7 @@ export function GhosttyMascot({
 
     handle = window.requestAnimationFrame(tick);
     return () => window.cancelAnimationFrame(handle);
-  }, [reducedMotion]);
+  }, [frames.length, reducedMotion]);
 
   const shownFrame = reducedMotion ? STATIC_FRAME : frameIndex;
   const layers = frames[shownFrame];
