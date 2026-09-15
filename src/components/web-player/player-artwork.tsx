@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { Fragment, type CSSProperties } from "react";
 
+import { useAfterLoad } from "@/hooks/use-after-load";
 import { appleArtwork, ARTWORK_SCALE, needsOptimizing } from "@/lib/apple-artwork";
 import { cn } from "@/lib/utils";
 
@@ -68,7 +69,16 @@ export function PlayerArtwork({
  * 不可见也不可点，读屏也跳过。
  */
 export function PlayerArtworkPreload({ artworks }: { artworks: string[] }) {
-  if (artworks.length === 0) return null;
+  /**
+   * 等首屏那阵忙完再开拉。
+   *
+   * 这几十张离屏封面各自已经是 fetchPriority=low，但低优先级只排队、不免票：
+   * 首屏那段里它们照样占着连接、照样要解码。实测（PageSpeed 移动端，模拟 4G）
+   * 它们就在首屏那几秒里和真正要显示的封面抢带宽。挪到 load + 空闲之后，
+   * 用户真去开播放器时该到的还是到了，首屏一点都不分给它们。
+   */
+  const afterLoad = useAfterLoad();
+  if (!afterLoad || artworks.length === 0) return null;
   return (
     <div
       aria-hidden

@@ -113,14 +113,28 @@ export default async function Home() {
                   }
                   artworkPlaceholders={artwork}
                 />
-                <ActivityCard fallback={activity} />
-                <ServerCard fallback={server} />
-                <VibeCodingCard fallback={vibeCoding} />
+                {/*
+                  首屏之外的大块推迟排版，见 globals.css 的 defer-offscreen。
+                  估高按 375px 上实测的高度写：Vibe Coding 那张最高，
+                  站点卡次之，锚点跳过去才落得准。
+                */}
+                <ActivityCard
+                  fallback={activity}
+                  className="defer-offscreen [contain-intrinsic-size:auto_214px]"
+                />
+                <ServerCard
+                  fallback={server}
+                  className="defer-offscreen [contain-intrinsic-size:auto_245px]"
+                />
+                <VibeCodingCard
+                  fallback={vibeCoding}
+                  className="defer-offscreen [contain-intrinsic-size:auto_1372px]"
+                />
                 <PlaystationBlock
                   trophies={trophies}
                   playing={playing}
                   playingNow={playingNow}
-                  className="md:col-span-2"
+                  className="defer-offscreen md:col-span-2 [contain-intrinsic-size:auto_643px]"
                 />
               </div>
 
@@ -129,10 +143,13 @@ export default async function Home() {
                 vercelFallback={snapshot.vercelDeployments ?? { ok: false, error: "部署暂不可用" }}
                 cloudflareFallback={snapshot.cloudflareWorkers ?? { ok: false, error: "统计暂不可用" }}
                 recentCommits={recentCommits}
-                className="mt-3"
+                className="mt-3 defer-offscreen [contain-intrinsic-size:auto_1319px]"
               />
 
-              <div id="watching" className="mt-6 scroll-mt-28 border-t border-line pt-5">
+              <div
+                id="watching"
+                className="mt-6 scroll-mt-28 border-t border-line pt-5 defer-offscreen [contain-intrinsic-size:auto_270px]"
+              >
                 <div className="mb-3 flex items-baseline justify-between">
                   <h3 className="text-sm font-medium">最近在看</h3>
                   <span className="label-mono text-muted-foreground">Emby</span>
