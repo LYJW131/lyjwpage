@@ -238,9 +238,16 @@ export function HeroMotionArtwork({
             alt={`${title} 封面`}
             fill
             sizes={`${sizePx}px`}
-            // 这张是全站 LCP 元素：默认的 lazy 会让预加载扫描器跳过它
-            loading="eager"
-            fetchPriority="high"
+            /*
+             * 这张是全站 LCP 元素。光给 eager + high 还不够：它埋在客户端组件
+             * 的标记里，预加载扫描器要等文档解到这儿才看见 —— 实测（PageSpeed
+             * 移动端）LCP 里有 908ms 花在「发现这张图」上。priority 会在 <head>
+             * 里补一条 rel=preload，连接一开始就去拉。
+             *
+             * next/image 对 fill + srcSet 的图不落 fetchpriority 属性，显式传也一样；
+             * 预载那条本身就带高优先级，浏览器按它排队。
+             */
+            priority
             className="object-cover"
             unoptimized={!needsOptimizing(artwork)}
           />
