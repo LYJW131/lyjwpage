@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { Fragment, type CSSProperties } from "react";
 
-import { useAfterLoad } from "@/hooks/use-after-load";
+import { useFirstInteraction } from "@/hooks/use-first-interaction";
 import { appleArtwork, ARTWORK_SCALE, needsOptimizing } from "@/lib/apple-artwork";
 import { cn } from "@/lib/utils";
 
@@ -70,15 +70,15 @@ export function PlayerArtwork({
  */
 export function PlayerArtworkPreload({ artworks }: { artworks: string[] }) {
   /**
-   * 等首屏那阵忙完再开拉。
+   * 等第一次交互再开拉。
    *
    * 这几十张离屏封面各自已经是 fetchPriority=low，但低优先级只排队、不免票：
-   * 首屏那段里它们照样占着连接、照样要解码。实测（PageSpeed 移动端，模拟 4G）
-   * 它们就在首屏那几秒里和真正要显示的封面抢带宽。挪到 load + 空闲之后，
-   * 用户真去开播放器时该到的还是到了，首屏一点都不分给它们。
+   * 挂在首屏里它们照样占着连接、照样要解码。而播放器那个弹窗要点一下才开 ——
+   * 没动过手的访客一张都用不上，却要全额付这份带宽。放到 useFirstInteraction
+   * 后面，用户真去点的时候封面早就在缓存里，没交互的人一个字节都不花。
    */
-  const afterLoad = useAfterLoad();
-  if (!afterLoad || artworks.length === 0) return null;
+  const interacted = useFirstInteraction();
+  if (!interacted || artworks.length === 0) return null;
   return (
     <div
       aria-hidden
