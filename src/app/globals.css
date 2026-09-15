@@ -484,6 +484,14 @@ button.paper-card {
   }
 }
 
+/*
+ * 同上，但不分宽窄都开。给**整宽**的大块用：它们不在两列网格里，退不退出
+ * 尺寸计算都牵连不到别人，所以桌面端也能省这份排版。
+ */
+@utility defer-offscreen-always {
+  content-visibility: auto;
+}
+
 @keyframes pulse-ring {
   0% {
     opacity: 0.6;
