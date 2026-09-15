@@ -31,6 +31,13 @@ function report(partial: Record<string, unknown> = {}) {
     networkTxBytes: 26_507_550_253,
     networkRxBytesPerSec: 123_456.7,
     networkTxBytesPerSec: 45_000,
+    traffic: {
+      cycleStart: 1_756_684_800_000,
+      cycleEnd: 1_759_276_800_000,
+      rxBytes: 324_000_000_000,
+      txBytes: 118_000_000_000,
+      quotaBytes: 1024 ** 4,
+    },
     uptimeSeconds: 3 * 86400 + 3600,
     observedAt: 1_700_000_000_000,
     ...partial,
@@ -88,4 +95,39 @@ test("空字符串和负数都拒", () => {
   assert.throws(() => normalizeServer(report({ id: "  " })), /id/);
   assert.throws(() => normalizeServer(report({ load1: -0.1 })), /load1/);
   assert.throws(() => normalizeServer(report({ cpuCores: 0 })), /cpuCores/);
+});
+
+test("周期流量整块跟着收，配额可以没有", () => {
+  const status = normalizeServer(report());
+  assert.equal(status.traffic?.rxBytes, 324_000_000_000);
+  assert.equal(status.traffic?.quotaBytes, 1024 ** 4);
+
+  const free = normalizeServer(
+    report({ traffic: { ...report().traffic, quotaBytes: null } }),
+  );
+  assert.equal(free.traffic?.quotaBytes, null);
+});
+
+test("攒不出流量的节点报 null / 不报，其余字段照收", () => {
+  assert.equal(normalizeServer(report({ traffic: null })).traffic, null);
+  const missing: Record<string, unknown> = report();
+  delete missing.traffic;
+  const status = normalizeServer(missing);
+  assert.equal(status.traffic, null);
+  // 少这一块不该连 CPU 一起打回
+  assert.equal(status.cpuUsagePercent, 12.3);
+});
+
+test("给了流量就得是完整一份，缺项、负数、周期倒着走都不收", () => {
+  const { traffic } = report();
+  const broken = (partial: Record<string, unknown>) => () =>
+    normalizeServer(report({ traffic: { ...traffic, ...partial } }));
+
+  assert.throws(broken({ rxBytes: undefined }), /rxBytes/);
+  assert.throws(broken({ rxBytes: -1 }), /rxBytes/);
+  assert.throws(broken({ cycleEnd: traffic.cycleStart }), /cycleEnd/);
+  assert.throws(broken({ cycleEnd: traffic.cycleStart - 1 }), /cycleEnd/);
+  assert.throws(broken({ cycleStart: 1.5 }), /epoch/);
+  assert.throws(broken({ quotaBytes: 0 }), /quotaBytes/);
+  assert.throws(() => normalizeServer(report({ traffic: "1TB" })), /traffic/);
 });

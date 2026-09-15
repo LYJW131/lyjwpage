@@ -5,7 +5,7 @@
  */
 
 import { number, object, text } from "./json.ts";
-import type { ServerStatus } from "./types.ts";
+import type { ServerStatus, ServerTraffic } from "./types.ts";
 
 function requiredText(row: Record<string, unknown>, field: string): string {
   const value = text(row[field]);
@@ -47,6 +47,40 @@ function nullableAsn(row: Record<string, unknown>): number | null {
     throw new Error("服务器上报的 asn 必须是正整数或 null");
   }
   return value;
+}
+
+/**
+ * 计费周期内的累计流量。整块可以没有 —— 那是上报器攒不住时的明确答复（状态文件
+ * 写不进、或这台节点没开），不是「字段忘了带」：一台报不出流量的节点不该连 CPU
+ * 一起被打回。给了就得是完整的一份，缺一半不收。
+ */
+function nullableTraffic(row: Record<string, unknown>): ServerTraffic | null {
+  if (row.traffic == null) return null;
+  const traffic = object(row.traffic);
+  if (!traffic) throw new Error("服务器上报的 traffic 必须是对象或 null");
+
+  const cycleStart = requiredPositive(traffic, "cycleStart");
+  const cycleEnd = requiredPositive(traffic, "cycleEnd");
+  if (!Number.isInteger(cycleStart) || !Number.isInteger(cycleEnd)) {
+    throw new Error("服务器上报的 traffic 周期边界必须是 epoch 毫秒整数");
+  }
+  if (cycleEnd <= cycleStart) {
+    throw new Error("服务器上报的 traffic.cycleEnd 必须晚于 cycleStart");
+  }
+
+  const quotaRaw = traffic.quotaBytes;
+  let quotaBytes: number | null = null;
+  if (quotaRaw != null) {
+    quotaBytes = requiredPositive(traffic, "quotaBytes");
+  }
+
+  return {
+    cycleStart,
+    cycleEnd,
+    rxBytes: Math.round(requiredNumber(traffic, "rxBytes")),
+    txBytes: Math.round(requiredNumber(traffic, "txBytes")),
+    quotaBytes,
+  };
 }
 
 const IPV4 =
@@ -121,6 +155,7 @@ export function normalizeServer(input: unknown): ServerStatus {
     networkTxBytes: requiredNumber(row, "networkTxBytes"),
     networkRxBytesPerSec: Math.round(requiredNumber(row, "networkRxBytesPerSec")),
     networkTxBytesPerSec: Math.round(requiredNumber(row, "networkTxBytesPerSec")),
+    traffic: nullableTraffic(row),
     uptimeSeconds: Math.round(requiredNumber(row, "uptimeSeconds")),
     observedAt,
   };
