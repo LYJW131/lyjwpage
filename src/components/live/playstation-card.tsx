@@ -680,7 +680,9 @@ export function PlaystationRow({
               >
                 <GameTile
                   tile={tile}
-                  eager={index < 9}
+                  // 横向吸附一屏就三块，再多的等滚到跟前再拉：这一排在移动端
+                  // 整个在首屏之外，从前那九张抢的是首屏封面的带宽
+                  eager={index < 3}
                   selected={tile.titleId === openId}
                   onPrefetch={() => prefetch(tile.titleIds)}
                   onSelect={() => {
