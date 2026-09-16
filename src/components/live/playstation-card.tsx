@@ -13,6 +13,7 @@ import {
 import { TrophyMetal } from "@/components/trophies/trophy-metal";
 import { StatusDot } from "@/components/ui/status-dot";
 import { useLiveEvents } from "@/hooks/use-live-events";
+import { useMountedAt } from "@/hooks/use-mounted-at";
 import { useStatus } from "@/hooks/use-status";
 import { stableKeys } from "@/lib/keys";
 import { foldService } from "@/lib/playstation-entitlements";
@@ -109,6 +110,8 @@ const UNSNAP_MS = LIST_DURATION * 1000 + 80;
  * 行数、吸附 `3n+1`、裁尾巴必须是同一个数，改一处漏一处最后一列就会缺格。
  */
 const TILE_ROWS = 3;
+/** 首屏只画四列；完整数据仍先参与合并与排序，已有卡片挂载后不会换位。 */
+const INITIAL_TILE_COUNT = 12;
 
 const TILE_TRACK = cn(
   "grid grid-flow-col grid-rows-3 gap-3",
@@ -519,6 +522,8 @@ export function PlaystationRow({
   });
 
   const tiles = fillLastColumn(buildTiles(list.data, presence.data, titles ?? []));
+  const mountedAt = useMountedAt();
+  const renderedTiles = mountedAt ? tiles : tiles.slice(0, INITIAL_TILE_COUNT);
   const reduced = useReducedMotion();
   const scrollerRef = useRef<HTMLDivElement>(null);
   const liveTitleId = tiles[0]?.live ? tiles[0].titleId : null;
@@ -664,7 +669,7 @@ export function PlaystationRow({
       >
         <div className={cn("relative w-full", TILE_TRACK)}>
           <AnimatePresence initial={false} mode="popLayout">
-            {tiles.map((tile, index) => (
+            {renderedTiles.map((tile, index) => (
               <motion.div
                 key={keys[index]}
                 // 跳转要按 titleId 找到这块瓷砖量它的 offsetLeft；上面那个 key 是
