@@ -15,14 +15,15 @@ import { appleArtwork } from "@/lib/apple-artwork";
  * 露出底下的 `bg-muted`。走过一轮又退回来了，见 hero-motion-artwork 的注释。
  * 真图的 `src` 和加载时序始终一个字节都没改，垫底图只是排在它前面的一层。
  *
- * 分辨率和质量按档分开定（见下面两个常量和 `QUALITY_BY_PX`）：hero 取 1×、
+ * 分辨率和质量按档分开定（见下面两个常量和 `QUALITY_BY_PX`）：hero 取 3×、
  * 列表行取 2×。列表那档撑得起字节，是因为它顶的时间最长 —— 真图是 lazy。
  */
 
 /**
- * hero 取 1× —— 它的真图是 eager，占位露脸时间短，糊一点没人看得见。
+ * hero 取 3×（80 CSS px × 3），覆盖高像素密度屏幕。
+ * 即使真图是 eager，慢网下占位也会停留，不能只按 1× 压缩。
  */
-export const HERO_PLACEHOLDER_PX = 80;
+export const HERO_PLACEHOLDER_PX = 240;
 
 /**
  * 列表行取 **2×**（44 CSS px × 2）。
@@ -45,7 +46,7 @@ export const ROW_PLACEHOLDER_PX = 88;
  * 免费，就别在这儿省 —— 糊正是要修的那个问题。
  */
 const QUALITY_BY_PX: Record<number, number> = {
-  [HERO_PLACEHOLDER_PX]: 50,
+  [HERO_PLACEHOLDER_PX]: 75,
   [ROW_PLACEHOLDER_PX]: 60,
 };
 
@@ -122,7 +123,7 @@ export type ArtworkDataUri = `data:image/${string}`;
 
 /** 组件按数据里那个原始模板 URL 查表，不必自己再算一遍 `appleArtwork`。 */
 export type ArtworkPlaceholders = {
-  /** hero 那一格，80px */
+  /** hero 那一格，240px（80 CSS px 的 3×） */
   hero: Record<string, ArtworkDataUri>;
   /** 列表行，88px（44 CSS px 的 2×） */
   rows: Record<string, ArtworkDataUri>;
@@ -157,7 +158,7 @@ async function encodeAll(
  * （上游最多 10 条）。
  *
  * hero 只可能是两者之一 —— 本机在放的那首（nowListening），或者列表头一条
- * （见 listening-card 的 `hero`），所以 80px 那档只压这两张，不是每条都压。
+ * （见 listening-card 的 `hero`），所以 240px 那档只压这两张，不是每条都压。
  */
 export async function artworkPlaceholders(
   itemArtworks: (string | null | undefined)[],
