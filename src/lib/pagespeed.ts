@@ -175,11 +175,22 @@ export async function refreshPageSpeed(): Promise<void> {
     }
     const mobile = await fetchPageSpeed(site.url, "mobile", key);
     const { history, payload } = mergePageSpeed(await get(HISTORY_KEY), { at: Date.now(), desktop: pending.desktop, mobile });
+    // pending 是「这一轮还没提交」的凭证，必须赶在 history 落盘之前消费掉。
+    //
+    // 反过来（先写 history、最后清 pending）的话：Worker 侧的 storage 写失败是冒泡的
+    // （`workers/api/src/storage-driver.ts` 特意不吞错），history 写完之后任何一步抛了都
+    // 会落进下面的 catch —— done 没写成、pending 原样留着。五分钟后 attempt 过期，下一轮
+    // 拿同一份 desktop 再测一次 mobile 又追加一条，而 mergePageSpeed 只按 at 追加、不去重，
+    // 窗口里就多出一个共用同一份 desktop 的样本，中位数被拽偏；done 一直写不成时还会每五
+    // 分钟重放一次，把 MAX_SAMPLES 那 12 格填满，真样本被挤出去。
+    //
+    // 先消费再提交之后，最坏是 history 写失败、这一轮的 desktop 白测：pending 已经空了，
+    // 下一轮从桌面端重新开始。丢一轮实测远好过让重复样本污染六小时窗口。
+    await remove(PENDING_KEY);
     await put<PageSpeedSample[]>(HISTORY_KEY, history, KEEP_MS);
     await put<PageSpeedPayload>(CACHE_KEY, payload, KEEP_MS);
     // 写成了才记账，下一轮隔一小时；写之前抛了就只等 RETRY_INTERVAL_MS
     await put(DONE_KEY, Date.now(), REFRESH_INTERVAL_MS);
-    await remove(PENDING_KEY);
   } catch (error) {
     console.warn("[pagespeed]", error instanceof Error ? error.message : String(error));
   }
