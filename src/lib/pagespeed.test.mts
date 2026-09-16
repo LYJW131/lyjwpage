@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { fetchPageSpeed, mergePageSpeed, parsePageSpeed } from "./pagespeed.ts";
+import { StorageClient } from "@shared/storage-client";
+import { get, put } from "./cache.ts";
+import { fetchPageSpeed, mergePageSpeed, parsePageSpeed, refreshPageSpeed } from "./pagespeed.ts";
+import { site } from "./site.ts";
+import { installStorageForTests, key, resetStorageForTests } from "./storage.ts";
 import type { LighthouseVitals, PageSpeedSample } from "./vercel-deployments-types.ts";
 
 /** 字段名和形状照 runPagespeed 的真实响应，只留用到的那几条审计。 */
@@ -102,4 +106,68 @@ test("某几轮测不出的指标只按测出来的那几轮算，一轮都没�
   assert.equal(payload.desktop.tbtMs, 150);
   assert.equal(payload.desktop.cls, null);
   assert.equal(payload.desktop.lcpMs, 900);
+});
+
+/**
+ * 提交顺序的回归测试。
+ *
+ * 线上失败面：Worker 侧 storage 写失败会冒泡（`workers/api/src/storage-driver.ts` 特意不吞错，
+ * `workers/api/tsconfig.json` 把 `@/lib/storage-driver` 重映射到它），所以成功路径上那几笔写
+ * 是可以中途抛的。history 先落盘、pending 最后清的话，中途抛了就把 pending 留成一张可重放的
+ * 提交凭证 —— 五分钟后 attempt 过期，拿同一份 desktop 再测一次移动端又追加一条，而
+ * mergePageSpeed 只按 at 追加、不去重，窗口里就多出一个共用同一份 desktop 的样本。
+ *
+ * 这里**测不出那次重放**：单测跑的是 `src/lib/storage-driver.ts`，它 try/catch 吞掉写失败并
+ * 返回 fallback，`put` 在 Node 下根本不抛。所以钉住的是修复本身确立的那条不变量 ——
+ * **消费 pending 必须排在提交 history 之前**。顺序反了这条就红，正是回归时会踩的那一步。
+ */
+const cacheKey = (suffix = "") => key("cache", `pagespeed:v2:${site.url}${suffix}`);
+
+/** 只实现 pagespeed 用到的 get / set / remove，顺带按顺序记录下来。 */
+function recordingStorage() {
+  const entries = new Map<string, string>();
+  const ops: string[] = [];
+  const client = new StorageClient(async (commands) => commands.map((command) => {
+    ops.push(`${command.op} ${command.key}`);
+    switch (command.op) {
+      case "get": return entries.get(command.key) ?? null;
+      case "set":
+        if (entries.has(command.key) && command.options?.ifAbsent) return false;
+        entries.set(command.key, command.value);
+        return true;
+      case "remove": return entries.delete(command.key) ? 1 : 0;
+      default: throw new Error(`unexpected op ${command.op}`);
+    }
+  }));
+  return { client, ops };
+}
+
+test("提交顺序：pending 在 history 落盘之前就被消费，不留下可重放的提交凭证", async (t) => {
+  const store = recordingStorage();
+  installStorageForTests(store.client);
+  t.after(() => resetStorageForTests());
+  process.env.PAGESPEED_API_KEY = "test-key";
+  t.after(() => { delete process.env.PAGESPEED_API_KEY; });
+
+  let mobileRuns = 0;
+  t.mock.method(globalThis, "fetch", async (input: string | URL | Request) => {
+    if (new URL(String(input)).searchParams.get("strategy") === "mobile") mobileRuns++;
+    return new Response(JSON.stringify(response()), { headers: { "Content-Type": "application/json" } });
+  });
+
+  // 这一轮的桌面端已经测完、攒在 pending 里，只差移动端
+  await put(`pagespeed:v2:${site.url}:pending`, { desktop: vitals(90) }, HOUR);
+  await refreshPageSpeed();
+
+  assert.equal(mobileRuns, 1, "pending 里有 desktop 时这一轮只该补移动端");
+  assert.equal((await get<PageSpeedSample[]>(`pagespeed:v2:${site.url}:history`))?.length, 1);
+  assert.equal(await get(`pagespeed:v2:${site.url}:pending`), undefined, "提交完 pending 必须已经空了");
+
+  const removedPending = store.ops.indexOf(`remove ${cacheKey(":pending")}`);
+  const wroteHistory = store.ops.indexOf(`set ${cacheKey(":history")}`);
+  assert.ok(removedPending >= 0, "应当消费掉 pending");
+  assert.ok(
+    removedPending < wroteHistory,
+    "消费 pending 要排在写 history 之前：反过来的话，写 history 之后任何一笔抛了都会把 pending 留成可重放的提交凭证",
+  );
 });
