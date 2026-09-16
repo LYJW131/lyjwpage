@@ -4,7 +4,6 @@ import NumberFlow, { NumberFlowGroup } from "@number-flow/react";
 import { useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
-import "@clock-ui/react/base.css";
 
 import { Card } from "@/components/ui/card";
 import { useMountedAt } from "@/hooks/use-mounted-at";
