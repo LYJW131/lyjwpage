@@ -1,4 +1,11 @@
 @import "tailwindcss";
+/*
+ * 时钟组件库的样式并进这份主样式，而不是留在 timezone-card 里 import。
+ *
+ * 那 5 KB 单独成块时是首屏第二条渲染阻塞的 CSS 请求，PageSpeed 记它 451ms ——
+ * 多的不是字节是一个来回。时钟就在首屏，这份样式怎么都要下，并进来正好。
+ */
+@import "@clock-ui/react/base.css";
 
 /* 用 class 策略；系统偏好由 next-themes 写成 .dark / .light，切换零闪烁交给它的内联脚本 */
 @custom-variant dark (&:where(.dark, .dark *));

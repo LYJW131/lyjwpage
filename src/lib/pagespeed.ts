@@ -1,12 +1,20 @@
-import { claim, get, put } from "@/lib/cache";
+import { claim, get, put, remove } from "@/lib/cache";
 import { site } from "@/lib/site";
 import type { LighthouseVitals, PageSpeedPayload, PageSpeedSample } from "@/lib/vercel-deployments-types";
 
 const ENDPOINT = "https://pagespeedonline.googleapis.com/pagespeedonline/v5/runPagespeed";
 /** 整份响应带着截图有 800 KB；只要评分和这几条审计，Worker 不必解一遍图。 */
 const FIELDS = "captchaResult,lighthouseResult(categories/performance/score,audits)";
-/** 实测一次二十多秒，别按访问频率跑：一小时一轮，两端并行。 */
+/** 实测一次二十多秒，别按访问频率跑：一小时一轮，一轮两端分两次跑。 */
 const REFRESH_INTERVAL_MS = 3_600_000;
+/**
+ * 一轮失败之后隔多久再试。
+ *
+ * 不让失败白烧掉一整个小时 —— runPagespeed 会偶发 500（`Lighthouse returned
+ * error`，自己跑十轮撞见过两轮），一小时一次的节奏下，一次偶发就是一小时的
+ * 窗口空档。成功那次按小时记账，失败只占住这几分钟，下一轮很快重来。
+ */
+const RETRY_INTERVAL_MS = 5 * 60_000;
 /** 连续失败时页面继续显示上次实测，超过一天才回到「—」。 */
 const KEEP_MS = 86_400_000;
 /**
@@ -21,6 +29,12 @@ const MAX_SAMPLES = 12;
 // v2：v1 存的是单轮实测，没有窗口字段，升键让线上那份直接作废。
 const CACHE_KEY = `pagespeed:v2:${site.url}`;
 const HISTORY_KEY = `${CACHE_KEY}:history`;
+/** 这一小时已经测过了。成功才写，所以失败不占住整点到整点那一格。 */
+const DONE_KEY = `${CACHE_KEY}:done`;
+/** 正在测。挡住并发和紧接着的重试，失败时只占住 RETRY_INTERVAL_MS。 */
+const ATTEMPT_KEY = `${CACHE_KEY}:attempt`;
+/** 这一轮里先测完的桌面端，等下一次 cron 把移动端补上再合成一个样本。 */
+const PENDING_KEY = `${CACHE_KEY}:pending`;
 
 function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("PageSpeed 结果格式无效");
@@ -66,7 +80,9 @@ export function parsePageSpeed(raw: unknown): LighthouseVitals {
 export async function fetchPageSpeed(url: string, strategy: "desktop" | "mobile", key: string): Promise<LighthouseVitals> {
   const endpoint = new URL(ENDPOINT);
   endpoint.search = new URLSearchParams({ url, strategy, category: "performance", fields: FIELDS, key }).toString();
-  const response = await fetch(endpoint, { headers: { "User-Agent": "lyjwpage-pagespeed" }, signal: AbortSignal.timeout(120_000) });
+  // 单端实测二十多秒。留 60 秒的余量，卡住的那次要落进自己的 catch 里（有日志），
+  // 别拖到被平台掐断 —— 那种死法不留任何痕迹
+  const response = await fetch(endpoint, { headers: { "User-Agent": "lyjwpage-pagespeed" }, signal: AbortSignal.timeout(60_000) });
   if (!response.ok) throw new Error(`PageSpeed 查询失败 (${response.status})`);
   return parsePageSpeed(await response.json());
 }
@@ -130,24 +146,40 @@ export function mergePageSpeed(previous: unknown, next: PageSpeedSample): { hist
 }
 
 /**
- * 每小时实测一次，只由 API Worker 的 cron 调用。
+ * 每小时实测一次，只由 API Worker 的 cron 调用（每分钟进来一次，自己判该不该跑）。
  *
- * 读路径等不起这二十多秒，所以它一步都不去跑上游：cron 抢到这一小时才实测，
- * 跑完并进窗口再写进缓存，页面永远只读已经算好的那份。抢到之后失败不回滚 ——
- * 上游正病着时不该由下一分钟立刻再试，见 cache 的 claim。
+ * 读路径等不起这二十多秒，所以它一步都不去跑上游：这里跑完并进窗口再写进缓存，
+ * 页面永远只读已经算好的那份。
+ *
+ * **一次 cron 只测一端**：先桌面、攒进 `pending`，下一次 cron 补上移动端再合成
+ * 一个样本。两端并行跑过，线上实测一次占 96 秒（cron 日志里的 wallTime，跑完了、
+ * 没被掐）—— 能跑通，但一次定时调用占着一分半实在长，上游慢一点就没有余量。
+ * 拆成两次之后每次三四十秒，加上 60 秒的 fetch 超时，卡住的那次会落进下面的 catch。
+ *
+ * 两把闸门分开：`done` 成功才写、占一小时，它决定节奏；`attempt` 一进来就抢、
+ * 只占几分钟，它挡并发和紧接着的重试。合成一把的话（从前就是），上游一次偶发
+ * 500 就把整个小时烧掉 —— 而 runPagespeed 确实会偶发 500。
  */
 export async function refreshPageSpeed(): Promise<void> {
   const key = process.env.PAGESPEED_API_KEY?.trim();
   if (!key) return;
-  if (!await claim(`${CACHE_KEY}:refresh`, REFRESH_INTERVAL_MS)) return;
+  if (await get(DONE_KEY)) return;
+  if (!await claim(ATTEMPT_KEY, RETRY_INTERVAL_MS)) return;
   try {
-    const [desktop, mobile] = await Promise.all([
-      fetchPageSpeed(site.url, "desktop", key),
-      fetchPageSpeed(site.url, "mobile", key),
-    ]);
-    const { history, payload } = mergePageSpeed(await get(HISTORY_KEY), { at: Date.now(), desktop, mobile });
+    const pending = await get<{ desktop: LighthouseVitals }>(PENDING_KEY);
+    if (!pending?.desktop) {
+      const desktop = await fetchPageSpeed(site.url, "desktop", key);
+      // 攒着等下一次 cron。这一轮没在一小时里凑齐就作废，重新从桌面端开始
+      await put(PENDING_KEY, { desktop }, REFRESH_INTERVAL_MS);
+      return;
+    }
+    const mobile = await fetchPageSpeed(site.url, "mobile", key);
+    const { history, payload } = mergePageSpeed(await get(HISTORY_KEY), { at: Date.now(), desktop: pending.desktop, mobile });
     await put<PageSpeedSample[]>(HISTORY_KEY, history, KEEP_MS);
     await put<PageSpeedPayload>(CACHE_KEY, payload, KEEP_MS);
+    // 写成了才记账，下一轮隔一小时；写之前抛了就只等 RETRY_INTERVAL_MS
+    await put(DONE_KEY, Date.now(), REFRESH_INTERVAL_MS);
+    await remove(PENDING_KEY);
   } catch (error) {
     console.warn("[pagespeed]", error instanceof Error ? error.message : String(error));
   }
