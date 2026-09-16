@@ -55,9 +55,9 @@ const QUALITY_BY_PX: Record<number, number> = {
  * 缓存键是（模板 URL, px）：Apple 目录里同一张封面的模板 URL 是稳定的，
  * 同样的键必然是同一张图，所以 `cacheLife("max")`，全站压一次。
  *
- * 只认 mzstatic：判主机名而不是找子串，理由和 `needsOptimizing` 那边一样。
- * 自建歌单封面（blobstore 预签名）**故意**挡在外面 —— 那种 URL 带
- * `X-Amz-*`，每次签出来都不一样，拿它当缓存键等于每次都重压一张。
+ * 只认 Apple 的 mzstatic 和 blobstore：判主机名而不是找子串。
+ * 自建歌单的 blobstore 预签名 URL 也需要首屏占位。保留完整签名取图并作为
+ * 缓存键；签名更新时重新压一次，同一 URL 的后续页面复用结果。
  *
  * 失败一律返回 null，调用方那一格就不铺垫底图，等于内联之前的行为。
  * null 同样会被缓存住：与另外两处内联同一取舍，免得每次页面重新生成都再赌
@@ -71,15 +71,19 @@ async function encodePlaceholder(
   cacheLife("max");
 
   try {
-    let host: string;
+    let source: URL;
     try {
-      host = new URL(templateUrl).hostname;
+      source = new URL(templateUrl);
     } catch {
       return null;
     }
-    if (!host.endsWith(".mzstatic.com")) return null;
+    if (
+      source.protocol !== "https:" ||
+      (!source.hostname.endsWith(".mzstatic.com") &&
+        !source.hostname.endsWith(".blobstore.apple.com"))
+    ) return null;
 
-    // 直接向 CDN 要展示尺寸那一档，别下 240px 的再自己缩
+    // 目录封面直接要展示尺寸；自建歌单没有尺寸模板，保留签名取原图后压缩。
     const url = appleArtwork(templateUrl, px);
     if (!url) return null;
 
