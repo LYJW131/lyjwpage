@@ -28,15 +28,6 @@ import { cn } from "@/lib/utils";
 /** 云端可能回填旧日，长间隔或切回焦点时都刷新完整的 53 周。 */
 const REFRESH_MS = 6 * 60 * 60_000;
 
-/** 蓝留给 GitHub 贡献图。这边四档绿写在 .vibe-year-chart 的 CSS 变量里。 */
-const FILLS = [
-  "var(--muted)",
-  "var(--year-score-1)",
-  "var(--year-score-2)",
-  "var(--year-score-3)",
-  "var(--year-score-4)",
-] as const;
-
 type HoveredCell = {
   date: string;
   tokens: number;
@@ -178,7 +169,6 @@ export function VibeYearChart({
       <HeatmapGrid
         svgRef={svgRef}
         weeks={weeks}
-        fills={FILLS}
         hotDate={hotDate}
         label="Vibe Coding token heatmap"
         onCellPreview={(day, target) => previewCell(cellOf(day, target))}

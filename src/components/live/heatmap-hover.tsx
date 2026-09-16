@@ -14,7 +14,6 @@ import {
 import { createPortal } from "react-dom";
 
 import {
-  CELL,
   LEFT,
   STEP,
   TOP,
@@ -162,7 +161,6 @@ const KEY_STEP: Record<string, number> = {
 export function HeatmapGrid({
   svgRef,
   weeks,
-  fills,
   hotDate,
   label,
   onCellPreview,
@@ -171,8 +169,6 @@ export function HeatmapGrid({
 }: {
   svgRef: RefObject<SVGSVGElement | null>;
   weeks: GithubChartDay[][];
-  /** 五档填充色。两张图色系不同，几何完全一致 */
-  fills: readonly string[];
   hotDate: string | null;
   /** 整张图的可访问名 */
   label: string;
@@ -195,7 +191,8 @@ export function HeatmapGrid({
     if (!cell) return;
     setActiveDate(cell.day.date);
     svgRef.current
-      ?.querySelector<SVGRectElement>(`[data-date="${cell.day.date}"]`)
+      ?.querySelectorAll<SVGRectElement>("rect[data-score]")
+      .item(index)
       ?.focus();
   };
 
@@ -221,7 +218,6 @@ export function HeatmapGrid({
   return (
     <svg
       ref={svgRef}
-      xmlns="http://www.w3.org/2000/svg"
       viewBox={`0 0 ${width} ${height}`}
       shapeRendering="geometricPrecision"
       className="block h-auto w-full"
@@ -261,12 +257,8 @@ export function HeatmapGrid({
           key={day.date}
           x={LEFT + weekIndex * STEP}
           y={TOP + day.weekday * STEP}
-          width={CELL}
-          height={CELL}
-          data-date={day.date}
           data-score={day.score}
           data-hot={hotDate === day.date ? "" : undefined}
-          fill={fills[day.score]}
           role="button"
           aria-label={day.label}
           tabIndex={index === activeIndex ? 0 : -1}

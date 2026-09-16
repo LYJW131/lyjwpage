@@ -720,8 +720,32 @@ button.paper-card {
   height: auto;
 }
 
+.github-chart {
+  --heatmap-score-1: #72b0ff;
+  --heatmap-score-2: #5896ff;
+  --heatmap-score-3: #2563eb;
+  --heatmap-score-4: #1e4fbc;
+}
+
+.github-chart svg rect[data-score] {
+  width: 10px;
+  height: 10px;
+}
+
 .github-chart svg [data-score="0"] {
-  fill: var(--muted) !important;
+  fill: var(--muted);
+}
+.github-chart svg [data-score="1"] {
+  fill: var(--heatmap-score-1);
+}
+.github-chart svg [data-score="2"] {
+  fill: var(--heatmap-score-2);
+}
+.github-chart svg [data-score="3"] {
+  fill: var(--heatmap-score-3);
+}
+.github-chart svg [data-score="4"] {
+  fill: var(--heatmap-score-4);
 }
 
 /*
@@ -729,17 +753,17 @@ button.paper-card {
  * 四档跟 --live 同一色相，浅底越深越多、深底越亮越多。
  */
 .vibe-year-chart {
-  --year-score-1: oklch(0.84 0.09 145);
-  --year-score-2: oklch(0.74 0.14 145);
-  --year-score-3: oklch(0.65 0.17 145);
-  --year-score-4: oklch(0.50 0.14 145);
+  --heatmap-score-1: oklch(0.84 0.09 145);
+  --heatmap-score-2: oklch(0.74 0.14 145);
+  --heatmap-score-3: oklch(0.65 0.17 145);
+  --heatmap-score-4: oklch(0.50 0.14 145);
 }
 
 .dark .vibe-year-chart {
-  --year-score-1: oklch(0.38 0.08 148);
-  --year-score-2: oklch(0.50 0.12 148);
-  --year-score-3: oklch(0.64 0.14 148);
-  --year-score-4: oklch(0.76 0.16 148);
+  --heatmap-score-1: oklch(0.38 0.08 148);
+  --heatmap-score-2: oklch(0.50 0.12 148);
+  --heatmap-score-3: oklch(0.64 0.14 148);
+  --heatmap-score-4: oklch(0.76 0.16 148);
 }
 
 .github-chart svg rect[data-hot] {

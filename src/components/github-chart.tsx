@@ -10,7 +10,6 @@ import {
   type CellAnchor,
 } from "@/components/live/heatmap-hover";
 import { incrementalFetcher, useStatus } from "@/hooks/use-status";
-import { FILLS } from "@/lib/github-chart-compact";
 import {
   githubChartCursor,
   githubChartWeeks,
@@ -78,7 +77,6 @@ export function GithubChart({ fallback }: { fallback: StatusResponse<GithubChart
       <HeatmapGrid
         svgRef={svgRef}
         weeks={weeks}
-        fills={FILLS}
         hotDate={hotDate}
         label="GitHub contribution heatmap"
         onCellPreview={(day, target) => previewCell(cellOf(day, target))}

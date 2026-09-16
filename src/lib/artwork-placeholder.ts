@@ -157,15 +157,15 @@ async function encodeAll(
  * 桌面端无充电卡时列表是 4×2 共 8 行。所以列表那批把信封里的条目全压上
  * （上游最多 10 条）。
  *
- * hero 只可能是两者之一 —— 本机在放的那首（nowListening），或者列表头一条
- * （见 listening-card 的 `hero`），所以 240px 那档只压这两张，不是每条都压。
+ * 调用方按同一份服务端快照算出真正会出现的 hero 和列表行，只压首帧实际渲染的
+ * 图片。运行时状态切换仍由远端真图接手，不把另一种可能也提前塞进 HTML。
  */
 export async function artworkPlaceholders(
-  itemArtworks: (string | null | undefined)[],
-  nowListeningArtwork: string | null | undefined,
+  rowArtworks: (string | null | undefined)[],
+  heroArtwork: string | null | undefined,
 ): Promise<ArtworkPlaceholders> {
-  const rows = itemArtworks.filter((url): url is string => Boolean(url));
-  const heroes = [nowListeningArtwork, rows[0]].filter((url): url is string => Boolean(url));
+  const rows = rowArtworks.filter((url): url is string => Boolean(url));
+  const heroes = heroArtwork ? [heroArtwork] : [];
 
   const [hero, rowTable] = await Promise.all([
     encodeAll(heroes, HERO_PLACEHOLDER_PX),

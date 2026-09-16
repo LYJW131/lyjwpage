@@ -60,6 +60,28 @@ export default async function Home() {
       ? nowListening.data.songId
       : null;
 
+  const listeningArtworks = listening.ok
+    ? listening.data.items.map((item) => item.artwork)
+    : [];
+  const nowMusic = nowListening.ok && !nowListening.data.idle ? nowListening.data.music : null;
+  const liveHeroArtwork =
+    nowMusic?.title && nowMusic.state !== "stopped" ? nowMusic.artworkUrl : null;
+  const heroArtwork = liveHeroArtwork ?? listeningArtworks[0];
+  // 实时曲目当 hero 时，历史列表从第一条开始；否则第一条已经被 hero 占用。
+  const rowArtworks = liveHeroArtwork ? listeningArtworks : listeningArtworks.slice(1);
+
+  /**
+   * PlayStation 在首屏之外，一屏最多显示 9 张。HTML 先带 18 条，给合并同款和
+   * 当前游戏插队留余量；客户端挂载后 useStatus 会立即拉完整列表，正常横滑和
+   * 奖杯跳转仍使用全量数据。这样不让几十张游戏卡和图片地址挤进首屏文档。
+   */
+  const initialPlaying = playing.ok
+    ? {
+        ...playing,
+        data: { ...playing.data, items: playing.data.items.slice(0, 18) },
+      }
+    : playing;
+
   /**
    * 内联素材与首屏歌词只能排在第二轮：要压哪几张、取哪首词写在信封里，进不了上面那批并行。
    * 桌面图标按 objectKey 缓存（lib/desktop-icon-inline）、封面占位按 Apple
@@ -68,10 +90,7 @@ export default async function Home() {
    */
   const [desktopIcon, artwork] = await Promise.all([
     desktopIconDataUri(desktop.ok ? (desktop.data.desktop?.iconUrl ?? null) : null),
-    artworkPlaceholders(
-      listening.ok ? listening.data.items.map((item) => item.artwork) : [],
-      nowListening.ok ? (nowListening.data.music?.artworkUrl ?? null) : null,
-    ),
+    artworkPlaceholders(rowArtworks, heroArtwork),
   ]);
 
   return (
@@ -135,7 +154,7 @@ export default async function Home() {
                 />
                 <PlaystationBlock
                   trophies={trophies}
-                  playing={playing}
+                  playing={initialPlaying}
                   playingNow={playingNow}
                   className="defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_643px]"
                 />
