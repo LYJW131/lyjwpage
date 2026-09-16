@@ -6,6 +6,7 @@ import { SpeedInsights } from "@vercel/speed-insights/next";
 
 import { PwaRegistration } from "@/components/pwa-registration";
 import { ThemeProvider } from "@/components/theme-provider";
+import { PsPlusSprite } from "@/components/trophies/ps-plus";
 import { HEATMAP_STORAGE_KEY } from "@/lib/heatmap-preference";
 import { onlineSocketUrl } from "@/lib/live-socket";
 import { earlyOnlineSocketScript } from "@/lib/online-socket-boot";
@@ -73,6 +74,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         />
       </head>
       <body className="flex min-h-full flex-col">
+        <PsPlusSprite />
         {/* 封面图（LCP）的域名，由 React 提升进 head。
             不能加 crossOrigin：那是普通 <img> 的 no-cors 请求，
             带 crossorigin 的连接它复用不上，等于白连一次。
