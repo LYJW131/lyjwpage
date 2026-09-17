@@ -18,6 +18,7 @@ import { GET as route16 } from "./routes/motion-artwork/route";
 import { GET as route17 } from "./routes/status/github-repo/route";
 import { GET as route18 } from "./routes/status/cloudflare-workers/route";
 import { GET as route19 } from "./routes/status/vercel-deployments/route";
+import { GET as route20 } from "./routes/status/activity-history/route";
 import { get as cacheGet, put as cachePut, remove as cacheRemove } from "@/lib/cache";
 import { publicHomeSnapshot } from "@/lib/public-home";
 
@@ -42,6 +43,7 @@ const routes: Record<string, (request: Request) => Promise<Response>> = {
   "/api/status/github-repo": route17,
   "/api/status/cloudflare-workers": route18,
   "/api/status/vercel-deployments": route19,
+  "/api/status/activity-history": route20,
 };
 
 /**

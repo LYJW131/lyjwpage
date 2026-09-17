@@ -1,8 +1,10 @@
+import { watchingLevel } from "@shared/activity-history-levels";
 import { getCurrentItem, getImageObjectKeys, getResume, resolveNowPlaying, type EmbyNowPlaying, type StoredWatchingItem } from "@/lib/emby-store";
 import { number, object, text } from "@/lib/json";
 import { NOW_WATCHING_TAG, WATCHING_TAG } from "@/lib/live-events";
 import type { WatchingItem, WatchingMedia, WatchingPlayMethod } from "@/lib/types";
 import { fanout, type PendingEvent } from "@api/fanout";
+import { recordActivity } from "@api/stores/activity-history";
 import { hasStoredImage, IMAGE_OBJECT_KEY } from "@api/r2-assets";
 import { clearNowPlaying, setCurrentItem, setImageObjectKeys, setNowPlaying, setResume } from "@api/stores/emby-store";
 import { nowWatchingPayload, watchingPayload } from "@shared/emby";
@@ -204,7 +206,7 @@ function missingKeys(items: StoredWatchingItem[], objectKeys: Record<string, str
  * 三个部分都可省略，各推各的：续播列表 60 秒一轮且只在有变化时推，播放位置
  * 只在拖动进度条偏离推算值时推，图片则只在没推过或 ImageTag 变了时才带。
  */
-export async function recordEmbyReport(body: unknown) {
+export async function recordEmbyReport(body: unknown, receivedAt = Date.now()) {
   const root = object(body);
   if (!root) throw new Error("请求体不是对象");
 
@@ -251,6 +253,8 @@ export async function recordEmbyReport(body: unknown) {
   const played = "playing" in root ? preparePlaying(root.playing) : null;
   if (played) {
     writes.push(played.commit());
+    const watching = watchingLevel(played.state, played.item);
+    writes.push(recordActivity("watching", { t: receivedAt, level: watching.level, hint: watching.hint }));
     // 播放状态变了就直接把新数据推给浏览器 —— 手上这份就是最新的
     events.push({
       type: "watching-now",

@@ -3,7 +3,7 @@ import { mirror } from "@shared/homepod-store";
 import { NOW_LISTENING_TAG } from "@/lib/live-events";
 import { fanout } from "@api/fanout";
 import { normalizeHomePodEvent, writeHomePodEvent } from "@api/stores/homepod-store";
-import { homePodListeningEvent } from "@api/stores/telemetry";
+import { homePodListening } from "@api/stores/telemetry";
 
 /**
  * Home Assistant 推来的 HomePod 曲目和播放状态变化。
@@ -17,9 +17,10 @@ import { homePodListeningEvent } from "@api/stores/telemetry";
 export async function recordHomePodEvent(body: unknown) {
   const stored = normalizeHomePodEvent(body);
   const changed = displayChanged(await mirror.get(), stored);
+  const listening = homePodListening(stored);
   await fanout({
-    writes: [writeHomePodEvent(stored)],
-    events: [homePodListeningEvent(stored)],
+    writes: [writeHomePodEvent(stored), listening.activity],
+    events: [listening.event],
     tags: changed ? [NOW_LISTENING_TAG] : [],
   });
   return { source: stored.music.source, state: stored.music.state };

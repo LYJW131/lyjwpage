@@ -878,6 +878,42 @@ export type PowerBankPayload = PowerBankStatus & {
 } & ReporterPresence;
 
 /**
+ * 跨域活动历史（`/api/status/activity-history`）。
+ *
+ * 和下面的 Apple Watch 活动圆环（`/api/status/activity`）不是一回事：
+ * 这里记的是 coding / listening / watching / gaming / charging 五条阶跃序列，
+ * 给将来的活动评分图当底；圆环仍走自己的端点，互不引用。
+ */
+export const ACTIVITY_DOMAINS = ["coding", "listening", "watching", "gaming", "charging"] as const;
+export type ActivityDomain = (typeof ACTIVITY_DOMAINS)[number];
+
+/** 活动强度上限。0 空闲，1 低，2 中，3 高。 */
+export const ACTIVITY_LEVEL_MAX = 3;
+export type ActivityLevel = 0 | 1 | 2 | 3;
+
+/** 一条活动历史采样。域在 list key 上，不进 JSON。 */
+export type ActivitySample = {
+  /** 源站收到时刻，epoch 毫秒 */
+  t: number;
+  level: ActivityLevel;
+  /** 紧凑标签，缺席或空串不入库 */
+  hint?: string;
+};
+
+export type ActivityDomainSeries = {
+  samples: ActivitySample[];
+  /**
+   * samples 里只有 `?since=` 之后新增的点，要接到客户端已有序列后面。
+   * false 表示这是完整快照 —— 首次请求，或客户端落后太多、中间那段已被裁掉。
+   */
+  partial: boolean;
+};
+
+export type ActivityHistoryPayload = {
+  series: Record<ActivityDomain, ActivityDomainSeries>;
+};
+
+/**
  * Apple Watch 的活动圆环：活动 / 锻炼 / 站立，一环两个数 —— 已完成和目标。
  *
  * **目标值跟着上报走，不在站点这侧写死。** 它只有原生 App 读得到

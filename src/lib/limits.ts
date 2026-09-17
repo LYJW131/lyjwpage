@@ -27,3 +27,25 @@ export const CHARGER_HISTORY_LIMIT = 400;
  */
 export const LIVE_INTERVAL_MS = 1_000;
 export const LIVE_WINDOW_MS = 2 * 60 * 1000;
+
+/**
+ * 跨域活动历史：每域保留的采样条数。
+ *
+ * 阶跃序列，不是充电头那种密采样；600 × 5 分钟确认 ≈ 两天满载非空闲，
+ * 空闲只占一条，7 天 TTL 才是真正的时间窗。改这里要和 writer 的 trim 一起看。
+ */
+export const ACTIVITY_HISTORY_LIMIT = 600;
+
+/** 活动历史键的存活时间；每次 append 都续上，停报后 7 天清掉。 */
+export const ACTIVITY_HISTORY_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * 非空闲域最多这么久再确认一次。
+ *
+ * 序列是阶跃函数：每个点一直有效到下一个点。空闲只留一条；非空闲隔这么久
+ * 再写一笔，上报器死了才会在图上露出缺口。心跳不得把 samples 表灌满。
+ */
+export const ACTIVITY_HISTORY_REPEAT_AFTER_MS = 5 * 60 * 1000;
+
+/** hint 入库上限；更长的标题在 compactHint 里截断。 */
+export const ACTIVITY_HINT_MAX = 48;
