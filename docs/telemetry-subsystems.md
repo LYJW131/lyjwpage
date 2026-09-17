@@ -19,6 +19,7 @@
 11. [活动圆环 — iPhone Telemetry Hub](#11-活动圆环--iphone-telemetry-hub)
 12. [落地节点监控与三档自适应调频](#12-落地节点监控与三档自适应调频)
 13. [PWA 与边缘缓存规则](#13-pwa-与边缘缓存规则)
+14. [跨域活动历史](#14-跨域活动历史)
 
 ---
 
@@ -276,3 +277,15 @@ payload: >-
 - 针对 `lyjw131.com` 的 ESA 缓存控制台，必须在首位配置「**PWA 核心文件绕过缓存**」规则：
   - 匹配路径：`/sw.js`、`/offline.html`、`/manifest.webmanifest`、`/pwa/icon-192.png`、`/pwa/icon-512.png`。
   - 该规则必须优先于整站长效缓存规则执行，避免客户端安装入口和离线更新被 CDN 强缓存拦截。
+
+---
+
+## 14. 跨域活动历史
+
+给将来的活动评分图（Jev Score）垫的一层存储，不是卡片。五条域 `coding` / `listening` / `watching` / `gaming` / `charging` 各占一个 SQLite list 键 `activity-history:<domain>`，样本是 `{ t, level, hint? }`：`t` 为源站 `receivedAt`（epoch 毫秒），`level` 为 0–3（空闲 / 低 / 中 / 高），`hint` 可选、截到 48 字。域不进 JSON。
+
+写入走纯函数 `planActivitySample`：没有上一笔就记；`t` 不前进丢掉（重复或乱序）；level 或 hint 变了记一笔状态翻面；非空闲且距上一笔 ≥ 5 分钟再确认一次（上报器死了会在阶跃序列上露出缺口）；空闲保持单点，5 分钟内没变的心跳不入库。每域 trim 到 600 条，每次 append 续 7 天 TTL。历史失败只打 `[activity-history]` 日志，不能让主状态上报失败。
+
+挂钩点在主状态准备好之后，promise 推进已有的 `fanout({ writes })`：Mac 信封里的充电头 / 在听 / 前台或 `vibeCodingNow`（`workers/api/src/stores/telemetry.ts`），HomePod 在听（`homepod-ingest.ts`，与推送共用一次 `NowListeningPayload`），Emby 的 `playing` 更新（`emby.ts`），PlayStation 的 `presence` 心跳（`playstation.ts`）。`recordAgentLimits` 不挂钩，限额不是活动。v0 档位是确定性规则（`shared/activity-history-levels.ts`），评分器到位后只换这一层，调用点仍只看 `{ level, hint }`。
+
+读出口 `GET /api/status/activity-history?since=`，一次 batch 读五域。`partial` 规则同充电头曲线：游标不早于还留着的最旧点才给增量，否则整份。不推送，不进 `/api/home`，不要和 `/api/status/activity`（手表圆环）搞混。
