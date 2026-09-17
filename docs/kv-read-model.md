@@ -38,15 +38,9 @@ KV miss、负缓存、旧 schema、错误正文、过龄值、异常和超过一
 
 ## 启用与回滚
 
-本 PR **不创建或修改 Cloudflare 生产资源，不包含 namespace 占位 ID**，也不部署或迁移 DO。需要在合并启用前准备独立 KV namespace，并在 `workers/api/wrangler.toml` 添加：
+生产 binding 已写在 `workers/api/wrangler.toml`：命名空间 `api-READ_MODEL`（用项目安装的 Wrangler 3 创建，`wrangler kv namespace create READ_MODEL`），binding 名 `READ_MODEL`。合并到 `main` 即随 Workers Builds 启用，不迁移 DO，也不改 DO 身份。
 
-```toml
-[[kv_namespaces]]
-binding = "READ_MODEL"
-id = "这里填 Cloudflare 返回的真实 namespace ID"
-```
-
-当前项目使用 Wrangler 3，不能依赖新版自动资源创建。可以在 Cloudflare 控制台创建 namespace，或使用项目安装的 Wrangler 创建，再把返回的真实配置写入仓库。生产、预览和本地测试不要共享一个可写 namespace；多个 StateHub 写同一前缀会破坏单写者假设。
+`wrangler.test.toml` 与本地 `.dev.vars` 环境不配这个 binding：生产、预览和本地测试不能共享一个可写 namespace，多个 StateHub 写同一前缀会破坏单写者假设。隔离脚本 `scripts/verify-kv-read-model.mjs` 用本地 `wrangler dev` 的临时持久化目录模拟 KV，不碰真实命名空间。
 
 本地 `.dev.vars` 的 `DEV_OVERRIDES=true` 或非空 `UPSTREAM_API_URL` 会同时禁用读取和发布，防止夹具或上游 overlay 污染共享投影。真实混合链路的本地验证使用下方隔离脚本。
 
