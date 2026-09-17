@@ -12,23 +12,49 @@ const SOURCE_PX = 512;
  * `BUILD_TIME` 进缓存键：每次部署换一份，Vercel 的 fetch 缓存不会把旧头像
  * 一直复用。头像 CDN 不认多余的查询参数，`b=` 只为我们自己的缓存键服务。
  */
-async function githubAvatarSource(buildId: string): Promise<Uint8Array> {
-  "use cache";
-  cacheLife("max");
-
-  const url = new URL(`https://avatars.githubusercontent.com/${site.githubLogin}`);
-  url.searchParams.set("s", String(SOURCE_PX));
-  url.searchParams.set("b", buildId);
-
+async function fetchAvatar(url: URL): Promise<Uint8Array | null> {
   const res = await fetch(url, {
     cache: "force-cache",
     signal: AbortSignal.timeout(8_000),
     headers: { Accept: "image/*" },
   });
   if (!res.ok) {
-    throw new Error(`GitHub avatar HTTP ${res.status}`);
+    console.error("[github-avatar]", `HTTP ${res.status}`, url.pathname);
+    return null;
   }
   return new Uint8Array(await res.arrayBuffer());
+}
+
+/**
+ * 拉不到返回 null，**不在这里抛**：`use cache` 函数在构建期预渲染里抛错会让
+ * `next build` 直接失败，调用方 catch 也救不了（2026-09-17 生产部署就是这么挂的）。
+ * 成功按 `max` 冻到下次部署；失败只按 `minutes` 缓存，让下一轮重渲染再试。
+ *
+ * 先按数字 ID 取（不经登录名→ID 的跳转，CDN 那一跳偶发 503），再回退登录名。
+ */
+async function githubAvatarSource(buildId: string): Promise<Uint8Array | null> {
+  "use cache";
+
+  const candidates = [
+    `https://avatars.githubusercontent.com/u/${site.githubId}`,
+    `https://avatars.githubusercontent.com/${site.githubLogin}`,
+  ];
+  for (const base of candidates) {
+    const url = new URL(base);
+    url.searchParams.set("s", String(SOURCE_PX));
+    url.searchParams.set("b", buildId);
+    try {
+      const source = await fetchAvatar(url);
+      if (source) {
+        cacheLife("max");
+        return source;
+      }
+    } catch (error) {
+      console.error("[github-avatar]", error instanceof Error ? error.message : String(error), url.pathname);
+    }
+  }
+  cacheLife("minutes");
+  return null;
 }
 
 /**
@@ -65,6 +91,7 @@ export async function githubAvatarDataUri(): Promise<string | null> {
   const buildId = process.env.BUILD_TIME ?? process.env.COMMIT_SHA ?? "";
   try {
     const source = await githubAvatarSource(buildId);
+    if (!source) throw new Error("GitHub avatar unavailable");
     const webp = await sharp(source)
       .resize(CARD_PX, CARD_PX, { fit: "cover" })
       .webp()
@@ -87,6 +114,7 @@ export async function githubAvatarPng(px: number): Promise<Uint8Array> {
   const buildId = process.env.BUILD_TIME ?? process.env.COMMIT_SHA ?? "";
   try {
     const source = await githubAvatarSource(buildId);
+    if (!source) throw new Error("GitHub avatar unavailable");
     const png = await sharp(source).resize(px, px, { fit: "cover" }).png().toBuffer();
     cacheLife("max");
     return new Uint8Array(png);
