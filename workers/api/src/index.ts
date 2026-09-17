@@ -26,9 +26,9 @@ export default {
   async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     // Rebuilds also cover external API caches, elapsed-time views and bindings added
     // to an already initialized StateHub. No visitor is needed to finish a retry.
-    const refresh = readModelEnabled(env)
-      ? env.STATE.get(env.STATE.idFromName("global")).queueReadModels()
-      : Promise.resolve();
-    await Promise.all([originWorker.scheduled(event, env, ctx), refresh]);
+    // Enqueue only after the origin cron (Apple recently played, PageSpeed) has written,
+    // so the listening projection is rendered from the refreshed list, not the previous one.
+    await originWorker.scheduled(event, env, ctx);
+    if (readModelEnabled(env)) await env.STATE.get(env.STATE.idFromName("global")).queueReadModels();
   },
 };

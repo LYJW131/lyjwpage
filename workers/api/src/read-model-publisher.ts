@@ -6,6 +6,18 @@ export interface PublicationSql {
 }
 const COALESCE_MS = 2_000;
 const RETRY_MS = 60_000;
+/** Renders call external APIs from the DO alarm; a hung one must not stall the TTL sweeper. */
+const RENDER_TIMEOUT_MS = 15_000;
+
+async function boundedRender(render: () => Promise<Response>, timeoutMs: number): Promise<Response> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      render(),
+      new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error("Public view render timeout")), timeoutMs); }),
+    ]);
+  } finally { if (timer !== undefined) clearTimeout(timer); }
+}
 
 /**
  * Single-writer, durable publication queue. DO SQLite remains authoritative.
@@ -20,15 +32,18 @@ export class ReadModelPublisher {
   private render: (path: string) => Promise<Response>;
   private now: () => number;
   private log: (path: string, error: unknown) => void;
+  private renderTimeoutMs: number;
 
   constructor(options: {
     sql: PublicationSql; kv: ReadModelKv; prefix: string;
     render: (path: string) => Promise<Response>;
     now?: () => number;
     log?: (path: string, error: unknown) => void;
+    renderTimeoutMs?: number;
   }) {
     this.sql = options.sql; this.kv = options.kv; this.prefix = options.prefix;
     this.render = options.render; this.now = options.now ?? Date.now;
+    this.renderTimeoutMs = options.renderTimeoutMs ?? RENDER_TIMEOUT_MS;
     this.log = options.log ?? ((path, error) => console.warn("[read-model]", path, error instanceof Error ? error.message : String(error)));
     this.sql.exec(`CREATE TABLE IF NOT EXISTS public_read_model_jobs (
       path TEXT PRIMARY KEY, revision INTEGER NOT NULL, published_revision INTEGER NOT NULL DEFAULT 0,
@@ -64,7 +79,11 @@ export class ReadModelPublisher {
       for (const job of jobs) {
         const path = String(job.path);
         const policy = readModelPolicy(path);
-        if (!policy) continue;
+        if (!policy) {
+          // A path removed from the policy table must not keep the alarm spinning on its stale row.
+          this.sql.exec("DELETE FROM public_read_model_jobs WHERE path = ?", path);
+          continue;
+        }
         const row = this.sql.exec("SELECT revision FROM public_read_model_jobs WHERE path = ?", path).toArray()[0];
         const revision = Number(row?.revision);
         const generatedAt = this.now();
@@ -72,7 +91,7 @@ export class ReadModelPublisher {
         this.sql.exec("UPDATE public_read_model_jobs SET not_before = ?, next_at = ? WHERE path = ?",
           generatedAt + RETRY_MS, generatedAt + RETRY_MS, path);
         try {
-          const response = await this.render(path);
+          const response = await boundedRender(() => this.render(path), this.renderTimeoutMs);
           if (response.status !== 200 || !response.headers.get("Content-Type")?.includes("application/json")) {
             throw new Error(`Public view returned ${response.status}`);
           }

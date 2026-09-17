@@ -262,3 +262,35 @@ test("publisher: empty flush is idle, bounded batch drains, and duplicate flush 
     await batch.flush(2); assert.equal(batch.nextAlarm(), null);
   } finally { f.db.close(); }
 });
+
+test("publisher: a hung render is bounded, keeps the job dirty with a retry cooldown, and later succeeds", async () => {
+  const f = setup();
+  const errors: unknown[] = [];
+  try {
+    const hung = new ReadModelPublisher({ ...f.options, renderTimeoutMs: 20, log: (_, error) => { errors.push(error); },
+      render: () => new Promise<Response>(() => {}) });
+    hung.enqueue([path]); f.advance(2_000);
+    await hung.flush();
+    assert.equal(f.written.length, 0);
+    assert.equal(errors.length, 1);
+    assert.match(String((errors[0] as Error).message), /timeout/);
+    assert.equal(hung.nextAlarm(), f.now() + 60_000);
+    const healthy = new ReadModelPublisher(f.options);
+    f.advance(60_000); await healthy.flush();
+    assert.equal(f.written.length, 1);
+    assert.equal(healthy.nextAlarm(), null);
+  } finally { f.db.close(); }
+});
+
+test("publisher: a stale row for a path no longer in the policy table is dropped instead of spinning the alarm", async () => {
+  const f = setup();
+  try {
+    const p = new ReadModelPublisher(f.options);
+    f.sql.exec("INSERT INTO public_read_model_jobs(path, revision, next_at) VALUES (?, 1, ?)", "/api/status/retired", f.now());
+    assert.equal(p.nextAlarm(), f.now());
+    await p.flush();
+    assert.equal(p.nextAlarm(), null);
+    assert.equal(f.renders(), 0);
+    assert.equal(f.sql.exec("SELECT path FROM public_read_model_jobs").toArray().length, 0);
+  } finally { f.db.close(); }
+});
