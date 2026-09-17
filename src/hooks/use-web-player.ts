@@ -117,7 +117,7 @@ export type WebPlayer = {
 /** 错误转换为文案 */
 function describe(error: unknown): string {
   if (error instanceof Error) return error.message;
-  return typeof error === "string" ? error : "未知错误";
+  return typeof error === "string" ? error : "Unknown error";
 }
 
 /**
@@ -204,7 +204,7 @@ function syncItemForSource(source: SyncSource, previous?: ListeningItem | null):
   const previousTrack = previous?.id === "listen-along" ? previous : null;
   return {
     id: "listen-along",
-    title: track?.title || previousTrack?.title || "一起听",
+    title: track?.title || previousTrack?.title || "Listen Along",
     artist: track?.artist || previousTrack?.artist || "",
     artwork: track?.artworkUrl ?? previousTrack?.artwork ?? null,
     // Dialog 的 playable 判定需要一个 URL；真正同步时仍按 songId 装曲目。

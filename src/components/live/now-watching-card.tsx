@@ -78,7 +78,7 @@ function HeroWrapper({
  * 挂载之后才开始走。
  *
  * 看的是 nowPlaying 不是 current：设备和规格跟着会话走，详情没到时标题位先写
- * 「读取详情…」，下一轮代理把详情推来就补上。
+ * 「Loading details…」，下一轮代理把详情推来就补上。
  */
 function NowWatchingHero({
   nowPlaying,
@@ -158,7 +158,7 @@ function NowWatchingHero({
         <div className="flex min-w-0 items-center gap-1.5">
           <StatusDot tone={paused ? "idle" : "live"} />
           <span className={cn("label-mono shrink-0", paused ? "text-muted-foreground" : "text-live")}>
-            {paused ? "播放暂停" : "正在播放"}
+            {paused ? "Paused" : "Now Playing"}
           </span>
           {device && (
             <span
@@ -170,7 +170,7 @@ function NowWatchingHero({
           )}
         </div>
         <div className="truncate text-base font-medium leading-tight sm:text-lg" title={item?.title}>
-          {item?.title ?? <span className="text-muted-foreground">读取详情…</span>}
+          {item?.title ?? <span className="text-muted-foreground">Loading details…</span>}
         </div>
         <div className="truncate text-sm text-muted-foreground" title={item?.subtitle}>
           {item ? item.subtitle || "—" : "\u00a0"}
@@ -180,7 +180,7 @@ function NowWatchingHero({
       <div className="col-span-2 min-w-0 sm:col-span-1 sm:col-start-2 sm:self-start">
         <div className="flex flex-wrap items-center justify-between gap-1.5">
           {chips.length > 0 && (
-            <ul className="flex flex-wrap items-center gap-1.5" aria-label="播放规格">
+            <ul className="flex flex-wrap items-center gap-1.5" aria-label="Playback specs">
               {chips.map((chip) => (
                 <li
                   key={chip}

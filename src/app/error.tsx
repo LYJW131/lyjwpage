@@ -27,7 +27,7 @@ export default function Error({
 
   return (
     <>
-      <title>{`出错了 — ${site.name}`}</title>
+      <title>{`Something went wrong — ${site.name}`}</title>
       <header className="sticky top-0 z-50 bg-background/95 backdrop-blur-sm">
         <div className="mx-auto w-[calc(100%-2rem)] max-w-5xl py-3 sm:py-4">
           <div className="flex min-h-10 items-center justify-between gap-3">
@@ -42,10 +42,10 @@ export default function Error({
           <Card label="ERROR" tone="off">
             <div className="flex flex-col items-center p-6 text-center sm:p-8">
               <div className="label-mono text-3xl font-bold tracking-widest text-foreground sm:text-4xl">
-                出错了
+                Something went wrong
               </div>
               <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-                页面渲染时发生了未预期的错误，请尝试重新加载。
+                An unexpected error occurred while rendering this page. Try reloading.
               </p>
               <div className="mt-6 flex items-center justify-center gap-3">
                 <button
@@ -53,13 +53,13 @@ export default function Error({
                   onClick={() => reset()}
                   className="paper-card inline-flex h-8 items-center justify-center rounded-md border border-line-strong bg-surface px-4 text-xs font-medium text-foreground transition-colors hover:bg-surface-hover"
                 >
-                  重试
+                  Retry
                 </button>
                 <Link
                   href="/"
                   className="paper-card inline-flex h-8 items-center justify-center rounded-md border border-line-strong bg-surface px-4 text-xs font-medium text-muted-foreground transition-colors hover:bg-surface-hover hover:text-foreground"
                 >
-                  返回首页
+                  Back to home
                 </Link>
               </div>
             </div>

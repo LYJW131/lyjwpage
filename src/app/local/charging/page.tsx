@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { LOCAL_CHARGING_STORAGE_KEY } from "@/lib/local-charging-arm";
 
 export const metadata: Metadata = {
-  title: "本机充电",
+  title: "Local Charging",
   robots: { index: false, follow: false },
 };
 

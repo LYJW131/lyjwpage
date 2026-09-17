@@ -34,7 +34,7 @@ export default async function Home() {
    * 跌进 error 边界。
    */
   const githubRepo: StatusResponse<GithubRepoPayload> =
-    snapshot.githubRepo ?? { ok: false, error: "状态暂不可用" };
+    snapshot.githubRepo ?? { ok: false, error: "Status unavailable" };
   const {
     desktop,
     activity,
@@ -150,8 +150,8 @@ export default async function Home() {
 
               <SiteStatusCard
                 githubFallback={githubRepo}
-                vercelFallback={snapshot.vercelDeployments ?? { ok: false, error: "部署暂不可用" }}
-                cloudflareFallback={snapshot.cloudflareWorkers ?? { ok: false, error: "统计暂不可用" }}
+                vercelFallback={snapshot.vercelDeployments ?? { ok: false, error: "Deployments unavailable" }}
+                cloudflareFallback={snapshot.cloudflareWorkers ?? { ok: false, error: "Stats unavailable" }}
                 recentCommits={recentCommits}
                 className="mt-3 defer-offscreen-always [contain-intrinsic-size:auto_1319px]"
               />
@@ -161,7 +161,7 @@ export default async function Home() {
                 className="mt-6 scroll-mt-28 border-t border-line pt-5 defer-offscreen-always [contain-intrinsic-size:auto_270px]"
               >
                 <div className="mb-3 flex items-baseline justify-between">
-                  <h3 className="text-sm font-medium">最近在看</h3>
+                  <h3 className="text-sm font-medium">Recently Watched</h3>
                   <span className="label-mono text-muted-foreground">Emby</span>
                 </div>
                 <WatchingRow fallback={watching} nowFallback={nowWatching} />

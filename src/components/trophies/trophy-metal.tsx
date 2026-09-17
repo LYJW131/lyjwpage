@@ -4,11 +4,11 @@ import type { TrophyType } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const LABELS: Record<TrophyType | "level", string> = {
-  platinum: "白金",
-  gold: "金",
-  silver: "银",
-  bronze: "铜",
-  level: "奖杯等级",
+  platinum: "Platinum",
+  gold: "Gold",
+  silver: "Silver",
+  bronze: "Bronze",
+  level: "Trophy level",
 };
 
 /**

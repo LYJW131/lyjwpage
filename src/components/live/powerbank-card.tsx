@@ -44,10 +44,10 @@ function portTone(port: PowerBankPort, connected: boolean): DotTone {
 /** 充满还需多久。超过一小时按时/分拆，免得出现「132 分钟」这种要心算的写法 */
 function timeToFull(minutes: number | null | undefined): string | null {
   if (minutes == null || minutes <= 0) return null;
-  if (minutes < 60) return `${minutes} 分钟`;
+  if (minutes < 60) return `${minutes} min`;
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;
-  return rest ? `${hours} 小时 ${rest} 分` : `${hours} 小时`;
+  return rest ? `${hours} hr ${rest} min` : `${hours} hr`;
 }
 
 function watts(value: number | null | undefined): string {
@@ -137,10 +137,10 @@ export function PowerBankCard({
    * 过热排最前是因为它能解释一个否则会让人以为坏了的现象 —— 插着线但不进电。
    */
   const summary = (() => {
-    if (isLoading && !data) return "读取中";
-    if (error) return "尚未收到遥测推送";
-    if (!connected) return "充电宝未连接";
-    if (limited) return "过热保护中，暂停充电";
+    if (isLoading && !data) return "Loading";
+    if (error) return "No telemetry yet";
+    if (!connected) return "Power bank disconnected";
+    if (limited) return "Overheated, charging paused";
     /**
      * 只有进电侧分状态：单口、双枪、底座是三件不同的事，充电速度和插法都不一样。
      * 出电侧不分 —— 一个口出还是两个口出，对着看的人来说都是「在往外供电」，
@@ -149,11 +149,11 @@ export function PowerBankCard({
      * 「边充边放」是双向状态本身的名字，只在进电侧没有更具体说法时才用：来路是
      * 双枪或底座的话，那个信息更值钱，别被这个词盖掉。
      */
-    const inflow = dualInput ? "双枪超充" : onDock ? "底座快充" : null;
-    if (charging && discharging) return inflow ? `${inflow} · 输出中` : "边充边放";
-    if (charging) return inflow ?? "充电中";
-    if (discharging) return "输出中";
-    return "待机";
+    const inflow = dualInput ? "Dual-port fast charge" : onDock ? "Dock fast charge" : null;
+    if (charging && discharging) return inflow ? `${inflow} · Discharging` : "Pass-through";
+    if (charging) return inflow ?? "Charging";
+    if (discharging) return "Discharging";
+    return "Standby";
   })();
 
   /**
@@ -187,7 +187,7 @@ export function PowerBankCard({
       tone={tone(data)}
       action={
         data?.device.serialNumber ? (
-          <span title={`固件 ${data.device.firmwareVersion ?? "未知"}`}>
+          <span title={`Firmware ${data.device.firmwareVersion ?? "unknown"}`}>
             {ankerModelLabel(data.device.model, POWER_BANK_MODEL)}
           </span>
         ) : (
@@ -271,22 +271,22 @@ export function PowerBankCard({
               {/* 指标网格：2×3。content-center 让两行在剩下的高度里居中，不靠边 */}
               <div className="mt-3 grid flex-1 grid-cols-3 content-center gap-x-3 gap-y-2">
                 <Metric
-                  label={dualInput ? "总输入" : onDock ? "底座输入" : "输入"}
+                  label={dualInput ? "Total Input" : onDock ? "Dock Input" : "Input"}
                   value={connected ? watts(data?.inputPower) : "—"}
                   muted={!charging}
                 />
                 <Metric
-                  label="输出"
+                  label="Output"
                   value={connected ? watts(data?.outputPower) : "—"}
                   muted={!discharging}
                 />
                 <Metric
-                  label="充满还需"
+                  label="Time to Full"
                   value={(charging && timeToFull(data?.timeToFullMinutes)) || "—"}
                   muted={!charging}
                 />
                 <Metric
-                  label="机身温度"
+                  label="Temp"
                   value={
                     connected && data && data.temperatures.length > 0
                       ? `${data.temperatures.join(" / ")}°C`
@@ -299,7 +299,7 @@ export function PowerBankCard({
                   换掉了原来写死的「额定能量 72.36 Wh」：同一个位置，真数据比铭牌值有用。
                 */}
                 <Metric
-                  label="电池健康"
+                  label="Health"
                   value={connected && data?.batteryHealth != null ? `${data.batteryHealth}%` : "—"}
                   muted={!connected}
                 />
@@ -308,7 +308,7 @@ export function PowerBankCard({
                   电量百分比的分母 —— 没有它，「36%」换不成任何一个能用的数。
                 */}
                 <Metric
-                  label="额定能量"
+                  label="Capacity"
                   value="72.36 Wh"
                   muted={!connected}
                 />
@@ -333,7 +333,7 @@ export function PowerBankCard({
                       ) : (
                         <span className="text-muted-foreground">
                           {/* 插着线但没协商上供电，和什么都没插是两回事 */}
-                          {full?.attached ? "已插线" : "闲置"}
+                          {full?.attached ? "Plugged" : "Idle"}
                         </span>
                       )}
                     </div>
@@ -393,15 +393,15 @@ export function PowerBankCard({
                           分不出它是在给充电宝充电还是在被充电宝供电。
                           ↓ 进电、↑ 出电 —— 箭头指的是电往哪边流，不是端口的角色。 */}
                       {full?.direction === "in" ? (
-                        <span className="text-foreground" title="输入">
+                        <span className="text-foreground" title="Input">
                           ↓
                         </span>
                       ) : full?.direction === "out" ? (
-                        <span className="text-foreground" title="输出">
+                        <span className="text-foreground" title="Output">
                           ↑
                         </span>
                       ) : (
-                        <span className="opacity-70">{full?.attached ? "已插线" : "闲置"}</span>
+                        <span className="opacity-70">{full?.attached ? "Plugged" : "Idle"}</span>
                       )}
                       {full?.active && full.power != null && (
                         <span className="text-foreground">{full.power.toFixed(1)}W</span>

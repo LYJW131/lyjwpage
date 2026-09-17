@@ -112,10 +112,10 @@ export function ChargerCard({
    * 顶部这两行在收放时是不动的，文案一变就等于在「不动」的地方动了一下。
    */
   const summary = (() => {
-    if (isLoading && !data) return "读取中";
-    if (error) return "尚未收到遥测推送";
-    if (!connected) return "充电器未连接";
-    if (!charging) return "待机";
+    if (isLoading && !data) return "Loading";
+    if (error) return "No telemetry yet";
+    if (!connected) return "Charger disconnected";
+    if (!charging) return "Standby";
     return `${Math.round(ratio * 100)}% / ${data?.maxPower}W`;
   })();
 
@@ -125,7 +125,7 @@ export function ChargerCard({
       tone={dot}
       action={
         data?.device.serialNumber ? (
-          <span title={`固件 ${data.device.firmwareVersion ?? "未知"}`}>
+          <span title={`Firmware ${data.device.firmwareVersion ?? "unknown"}`}>
             {ankerModelLabel(data.device.model, CHARGER_MODEL)}
           </span>
         ) : (
@@ -215,7 +215,7 @@ export function ChargerCard({
                       {full?.active && full.power != null ? (
                         `${full.power.toFixed(1)}W`
                       ) : (
-                        <span className="text-muted-foreground">闲置</span>
+                        <span className="text-muted-foreground">Idle</span>
                       )}
                     </div>
                     <div
@@ -276,11 +276,11 @@ export function ChargerCard({
                       {/* 充电头三个口恒定出电，箭头照画不省 —— 和充电宝那张的
                           同一行对齐，两张叠着时读起来才是同一种东西 */}
                       {full?.active ? (
-                        <span className="text-foreground" title="输出">
+                        <span className="text-foreground" title="Output">
                           ↑
                         </span>
                       ) : (
-                        <span className="opacity-70">闲置</span>
+                        <span className="opacity-70">Idle</span>
                       )}
                       {full?.active && full.power != null && (
                         <span className="text-foreground">{full.power.toFixed(1)}W</span>

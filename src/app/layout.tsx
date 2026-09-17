@@ -26,8 +26,8 @@ export const metadata: Metadata = {
     description: site.description,
     url: site.url,
     siteName: site.name,
-    // 页面是中文的，OG 不跟着 <html lang> 走，得自己报一次
-    locale: "zh_CN",
+    // OG 不跟着 <html lang> 走，得自己报一次
+    locale: "en_US",
     type: "website",
   },
   appleWebApp: { capable: true, title: site.shortName, statusBarStyle: "default" },
@@ -49,7 +49,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
 
   return (
     <html
-      lang="zh-CN"
+      lang="en"
       // next-themes 会往这里塞 class，交给它管，避免 hydration 报错
       suppressHydrationWarning
       className={`${GeistMono.variable} h-full`}

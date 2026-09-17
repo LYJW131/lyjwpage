@@ -7,7 +7,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: site.name,
     short_name: site.shortName,
     description: site.description,
-    lang: "zh-CN",
+    lang: "en",
     start_url: "/",
     scope: "/",
     display: "standalone",

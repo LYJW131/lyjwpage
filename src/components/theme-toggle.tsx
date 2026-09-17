@@ -5,9 +5,9 @@ import { useTheme } from "next-themes";
 import { flushSync } from "react-dom";
 
 const OPTIONS = [
-  { value: "light", label: "明亮" },
-  { value: "dark", label: "深色" },
-  { value: "system", label: "自动" },
+  { value: "light", label: "Light" },
+  { value: "dark", label: "Dark" },
+  { value: "system", label: "System" },
 ] as const;
 
 function applyTheme(setTheme: (theme: string) => void, next: string) {
@@ -36,7 +36,7 @@ export function ThemeToggle() {
   return (
     <button
       type="button"
-      aria-label="切换主题（明亮 / 深色 / 自动）"
+      aria-label="Toggle theme (light / dark / system)"
       onClick={() => {
         const currentChoice = theme ?? "system";
         const index = OPTIONS.findIndex((option) => option.value === currentChoice);

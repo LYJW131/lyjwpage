@@ -135,11 +135,11 @@ function mediaApp(category: string | null | undefined): boolean {
 }
 
 function playTime(milliseconds: number | null, playCount: number): string {
-  if (milliseconds == null) return `游玩 ${playCount} 次`;
+  if (milliseconds == null) return `${playCount} ${playCount === 1 ? "play" : "plays"}`;
   const hours = milliseconds / 3_600_000;
-  if (hours >= 10) return `累计 ${Math.round(hours)} 小时`;
-  if (hours >= 1) return `累计 ${hours.toFixed(1).replace(/\.0$/, "")} 小时`;
-  return `累计 ${Math.max(1, Math.round(milliseconds / 60_000))} 分钟`;
+  if (hours >= 10) return `${Math.round(hours)} hrs played`;
+  if (hours >= 1) return `${hours.toFixed(1).replace(/\.0$/, "")} hrs played`;
+  return `${Math.max(1, Math.round(milliseconds / 60_000))} min played`;
 }
 
 /** 行内瓷砖的数据形状：列表项直接来，正在玩但不在列表里的现造一份 */
@@ -279,7 +279,7 @@ function GameTile({
           {tile.live ? (
             <span className="inline-flex items-center gap-1">
               <StatusDot tone="live" />
-              <span>{tile.mediaApp ? "正在使用" : "正在游玩"}</span>
+              <span>{tile.mediaApp ? "Now Using" : "Now Playing"}</span>
             </span>
           ) : (
             <span className="min-w-0 truncate" title={tile.subtitle}>
@@ -440,7 +440,7 @@ function buildTiles(
     mediaApp: false,
     subtitle:
       game.preOrder && game.playCount === 0 && game.playDurationMs == null
-        ? "尚未开档"
+        ? "Not started"
         : playTime(game.playDurationMs, game.playCount),
     live,
     service: game.service,
@@ -644,7 +644,7 @@ export function PlaystationRow({
   if ((list.error && !list.data) || !tiles.length) {
     return (
       <div className="flex h-16 items-center justify-center rounded-md border border-dashed border-line text-sm text-muted-foreground">
-        {list.error && !list.data ? "还没收到 PlayStation 遥测" : "最近没有游戏记录"}
+        {list.error && !list.data ? "No PlayStation telemetry yet" : "No recent games"}
       </div>
     );
   }
@@ -660,7 +660,7 @@ export function PlaystationRow({
         ref={scrollerRef}
         tabIndex={0}
         role="region"
-        aria-label="最近在玩"
+        aria-label="Recently played"
         className={cn(
           "scroll-smooth overflow-x-auto overscroll-x-contain",
           "scrollbar-none [&::-webkit-scrollbar]:hidden",

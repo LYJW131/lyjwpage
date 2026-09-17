@@ -166,7 +166,7 @@ export function AppVersionCard() {
                     <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-sm font-medium">
                       <div className="flex items-center gap-1.5">
                         <StatusDot tone="idle" />
-                        <span>新版本!</span>
+                        <span>New version</span>
                       </div>
                       <span className="label-mono rounded-sm border border-line bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
                         {displayPageCommit ? `${displayPageCommit.slice(0, 7)} → ` : ""}
@@ -174,7 +174,7 @@ export function AppVersionCard() {
                       </span>
                       {buildDuration && (
                         <span className="label-mono text-[10px] text-muted-foreground">
-                          · 构建 {buildDuration}
+                          · built in {buildDuration}
                         </span>
                       )}
                     </div>
@@ -195,7 +195,7 @@ export function AppVersionCard() {
                       className="paper-card inline-flex h-8 w-full cursor-pointer items-center justify-center gap-1.5 rounded-md border border-line-strong bg-foreground px-4 text-xs font-medium text-background transition-opacity hover:opacity-90 sm:w-auto"
                     >
                       <RotateCw className="size-3" />
-                      <span>立即刷新</span>
+                      <span>Reload</span>
                     </button>
                   </div>
                 </div>

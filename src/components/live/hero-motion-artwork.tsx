@@ -235,7 +235,7 @@ export function HeroMotionArtwork({
         {artwork && (
           <Image
             src={appleArtwork(artwork, sizePx * ARTWORK_SCALE)!}
-            alt={`${title} 封面`}
+            alt={`${title} artwork`}
             fill
             sizes={`${sizePx}px`}
             /*

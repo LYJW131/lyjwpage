@@ -194,7 +194,7 @@ function loadMusicKitScript(): Promise<MusicKitGlobal> {
     script.addEventListener("error", () => {
       document.removeEventListener("musickitloaded", onLoaded);
       scriptPromise = null;
-      reject(new Error("MusicKit 脚本没加载起来"));
+      reject(new Error("MusicKit script failed to load"));
     });
 
     if (!existing) {
@@ -240,7 +240,7 @@ function nowSeconds(): number {
 let cachedToken: DeveloperToken | null = null;
 
 export async function fetchDeveloperToken(): Promise<DeveloperToken> {
-  if (!MUSICKIT_TOKEN_ENDPOINT) throw new Error("没有配置 MusicKit 令牌签发地址");
+  if (!MUSICKIT_TOKEN_ENDPOINT) throw new Error("MusicKit token endpoint is not configured");
 
   if (cachedToken && !pastHalfLife(cachedToken, nowSeconds())) return cachedToken;
 
@@ -254,14 +254,14 @@ export async function fetchDeveloperToken(): Promise<DeveloperToken> {
       .json()
       .then((body: { error?: string }) => body.error)
       .catch(() => null);
-    throw new Error(detail || `令牌签发服务返回 ${response.status}`);
+    throw new Error(detail || `Token service returned ${response.status}`);
   }
 
   const token = (await response.json()) as DeveloperToken;
-  if (!token.token) throw new Error("令牌签发服务没有返回令牌");
+  if (!token.token) throw new Error("Token service returned no token");
   // 两个时刻缺一个就算不出半衰期，那样这份会被当成永远新鲜或永远过期
   if (!Number.isFinite(token.issuedAt) || !Number.isFinite(token.expiresAt)) {
-    throw new Error("令牌签发服务没有给出签发 / 到期时刻");
+    throw new Error("Token service returned no issue / expiry time");
   }
   cachedToken = token;
   return token;

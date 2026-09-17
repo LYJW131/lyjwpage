@@ -827,9 +827,9 @@ export function ListeningCard({
         label:
           localTrack!.state === "playing"
             ? localTrack!.repeatOne
-              ? "单曲循环"
-              : "正在播放"
-            : "播放暂停",
+              ? "Repeat One"
+              : "Now Playing"
+            : "Paused",
         playing: localTrack!.state === "playing",
         palette:
           data?.items.find((item) => item.id === live?.id)?.palette ?? [],
@@ -845,7 +845,7 @@ export function ListeningCard({
           link: latest.link,
           // 没有实况就只说「听过」。Apple 不给可查的当前播放，站点也不再拿列表
           // 的变化去猜它，理由见 lib/apple-music-recent
-          label: "最近听过",
+          label: "Last Played",
           playing: false,
           palette: latest.palette,
           durationMs: latest.durationMs,
@@ -939,10 +939,10 @@ export function ListeningCard({
               <div className="flex min-w-0 flex-1 flex-col justify-center">
                 <div className="text-sm text-muted-foreground">
                   {isLoading
-                    ? "读取中…"
+                    ? "Loading…"
                     : error
-                      ? "Apple Music 未连接"
-                      : "最近没有播放记录"}
+                      ? "Apple Music not connected"
+                      : "Nothing played recently"}
                 </div>
               </div>
             </HeroWrapper>
@@ -1155,7 +1155,7 @@ export function ListeningCard({
               // （Firefox / 部分 Safari 不会让没有 tabindex 的滚动容器获得焦点）
               tabIndex={0}
               role="region"
-              aria-label="最近播放"
+              aria-label="Recently played"
               className={cn(
                 "absolute inset-0",
                 "recent-tracks",

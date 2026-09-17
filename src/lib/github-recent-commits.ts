@@ -68,7 +68,7 @@ function primaryAuthor(item: CommitListItem): CommitAuthor | null {
 
 function firstLine(message: string): string {
   const line = message.split(/\r?\n/, 1)[0]?.trim() ?? "";
-  return line || "(无标题)";
+  return line || "(untitled)";
 }
 
 /**

@@ -81,15 +81,15 @@ function formatStamp(ms: number): string {
 }
 
 function trophyDetail(trophy: Trophy): string | null {
-  if (trophy.hidden && !trophy.earned) return "解锁后显示";
+  if (trophy.hidden && !trophy.earned) return "Revealed once earned";
   return trophy.detail;
 }
 
 function rarityLabel(rate: number): string {
-  if (rate < 5) return "极稀有";
-  if (rate < 15) return "非常稀有";
-  if (rate < 50) return "稀有";
-  return "常见";
+  if (rate < 5) return "Ultra Rare";
+  if (rate < 15) return "Very Rare";
+  if (rate < 50) return "Rare";
+  return "Common";
 }
 
 /** 全球持有率。不到 0.1% 的不能收成 0%，极稀有和「没人拿」不是一回事。 */
@@ -102,7 +102,7 @@ function formatEarnedRate(rate: number): string {
 
 async function fetchCatalog(path: string): Promise<StatusResponse<TrophiesPayload>> {
   const response = await fetch(backendUrl(path), { cache: "no-store" });
-  if (!response.ok) throw new Error(`请求 ${path} 失败：${response.status}`);
+  if (!response.ok) throw new Error(`Request ${path} failed: ${response.status}`);
   return response.json();
 }
 
@@ -220,7 +220,7 @@ function TrophyRow({ trophy }: { trophy: Trophy }) {
   const locked = !trophy.earned;
   const subtitle =
     trophyDetail(trophy) ??
-    (trophy.earned && trophy.earnedAt ? formatStamp(trophy.earnedAt) : "未解锁");
+    (trophy.earned && trophy.earnedAt ? formatStamp(trophy.earnedAt) : "Unearned");
   const rate = trophy.earnedRate;
   const fill = rate == null ? null : Math.min(100, Math.max(0, rate));
   return (
@@ -272,12 +272,12 @@ function TrophyRow({ trophy }: { trophy: Trophy }) {
             />
             <span
               className={cn("min-w-0 truncate text-sm", locked && "text-muted-foreground")}
-              title={hidden ? "隐藏奖杯" : trophy.name}
+              title={hidden ? "Hidden trophy" : trophy.name}
             >
-              {hidden ? "隐藏奖杯" : trophy.name}
+              {hidden ? "Hidden trophy" : trophy.name}
             </span>
             {/* 未解锁只靠灰阶和半透明表达，读屏取不到，补一句文本 */}
-            {locked ? <span className="sr-only">未解锁</span> : null}
+            {locked ? <span className="sr-only">Unearned</span> : null}
           </div>
           <div className="truncate text-xs text-muted-foreground" title={subtitle}>
             {subtitle}
@@ -288,8 +288,9 @@ function TrophyRow({ trophy }: { trophy: Trophy }) {
             <span className="text-xs">{rarityLabel(rate)}</span>
             <span className="text-xs"> · </span>
             <span className="label-mono">
-              <span className="sr-only">全球玩家完成率 </span>
+              <span className="sr-only">Earned by </span>
               {formatEarnedRate(rate)}
+              <span className="sr-only"> of players</span>
             </span>
           </span>
         ) : null}
@@ -363,7 +364,7 @@ function GroupStrip({
       ref={node}
       tabIndex={0}
       role="region"
-      aria-label="奖杯组"
+      aria-label="Trophy groups"
       className={cn(
         "scroll-smooth overflow-x-auto overscroll-x-contain",
         "snap-x snap-mandatory",
@@ -412,7 +413,7 @@ function TrophyViewport({
         ref={listRef}
         tabIndex={0}
         role="region"
-        aria-label="奖杯"
+        aria-label="Trophies"
         className={cn(
           "absolute inset-0 grid overflow-y-auto",
           "scroll-smooth overscroll-y-contain [overflow-anchor:none]",
@@ -568,7 +569,7 @@ export function TrophyExpand({
 
   const empty = (
     <div className="text-sm leading-snug text-muted-foreground">
-      {name} 还没有奖杯记录
+      No trophies yet for {name}
     </div>
   );
 
@@ -579,7 +580,7 @@ export function TrophyExpand({
     if (loading) {
       // 读屏拿不到灰块的意思，状态仍旧要说出口
       return (
-        <div role="status" aria-label="正在读取奖杯">
+        <div role="status" aria-label="Loading trophies">
           <TrophySkeleton rows={rows} />
         </div>
       );

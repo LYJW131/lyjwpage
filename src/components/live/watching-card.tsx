@@ -140,7 +140,7 @@ function Tile({
           <span className="absolute right-2 top-2 flex items-center gap-1.5 border border-line bg-background/85 px-2 py-1 backdrop-blur-sm">
             <StatusDot tone={paused ? "idle" : "live"} />
             <span className="label-mono text-foreground">
-              {paused ? "播放暂停" : "正在播放"}
+              {paused ? "Paused" : "Now Playing"}
             </span>
           </span>
         )}
@@ -291,7 +291,7 @@ export function WatchingRow({
   if (error || !data?.items.length) {
     return (
       <div className="flex h-32 items-center justify-center rounded-md border border-dashed border-line text-sm text-muted-foreground">
-        {error ? "Emby 未连接" : "最近没有在追的内容"}
+        {error ? "Emby not connected" : "Nothing watched recently"}
       </div>
     );
   }
@@ -306,7 +306,7 @@ export function WatchingRow({
       // （Firefox / 部分 Safari 不会让没有 tabindex 的滚动容器获得焦点）
       tabIndex={0}
       role="region"
-      aria-label="最近在看"
+      aria-label="Recently watched"
       className={cn(
         // paper-card 硬阴影是 3px 右下。卡片仍按栏宽等分（和上面几张卡右缘
         // 对齐），滚动盒向右多出 3px 让阴影落在盒内，不要用 padding 把卡片挤窄。

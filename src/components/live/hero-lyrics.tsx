@@ -185,7 +185,7 @@ export function HeroLyrics({
     const outroLine: LyricLine = {
       startMs: outroStart,
       endMs: outroEnd,
-      text: creator ? `创作者:「${creator}」` : "创作者",
+      text: creator ? `Written by ${creator}` : "Credits",
     };
 
     return [introLine, ...lyrics, outroLine];
