@@ -19,6 +19,8 @@ export const site = {
   /** Cloudflare 控制台的 Workers 列表；账号 ID 不是秘密，Worker 的 wrangler.toml 也写它 */
   cloudflare: "https://dash.cloudflare.com/209f2c881b1c494fec50851c067b3266/workers-and-pages",
   githubLogin: "LYJW131",
+  /** 头像 CDN 按数字 ID 直取，不经登录名跳转；改账号时一起改。 */
+  githubId: 153256373,
   github: "https://github.com/LYJW131",
   /**
    * 只剩回退用途：卡片上那张头像正常走构建期内联的 data URI（见
