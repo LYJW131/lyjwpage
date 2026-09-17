@@ -3,8 +3,13 @@
  * projection. Keep that path authoritative for this page's lifetime. This also
  * covers Emby/PlayStation payloads that have no comparable version timestamp.
  */
+const kvPushPaths = new Set([
+  "/api/status/listening", "/api/status/watching", "/api/status/playing",
+]);
 const pushed = new Set<string>();
-export function markLiveRead(path: string): void { pushed.add(path); }
+export function markLiveRead(path: string): void {
+  if (kvPushPaths.has(path)) pushed.add(path);
+}
 export function authoritativeReadPath(path: string): string {
   const split = path.indexOf("?");
   const pathname = split < 0 ? path : path.slice(0, split);
