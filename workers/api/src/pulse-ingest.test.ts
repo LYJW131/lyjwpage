@@ -144,7 +144,7 @@ test("desktop 模块关掉后，留着的前台应用不再被算成 coding", as
     const off = T0 + 60_000;
     await inRequest(() =>
       recordTelemetryEnvelope(
-        envelope(off, ["vibeCodingNow"], {
+        envelope(off, ["vibeCoding"], {
           vibeCodingNow: { agents: [{ id: "claude", currentModel: "opus", active: false }] },
         }),
         off,
@@ -267,6 +267,54 @@ test("itemId 对不上的存量详情不参与 hint", async () => {
       { t: T0, level: 3, hint: "Frieren" },
       { t: other, level: 3 },
     ]);
+  } finally {
+    resetStorageForTests();
+  }
+});
+
+test("vibeCoding 模块关掉或采集器过期后，留着的 agents 不再被心跳算成 coding", async () => {
+  const storage = new FakeStorage();
+  installStorageForTests(storage);
+  try {
+    await inRequest(() =>
+      recordTelemetryEnvelope(
+        envelope(T0, ["vibeCoding"], {
+          vibeCodingNow: { agents: [{ id: "claude", currentModel: "opus", active: true }] },
+        }),
+        T0,
+      ),
+    );
+    assert.equal((await samples(storage, "coding"))[0]?.level, 3);
+
+    // 模块还开着、没过期：纯心跳按留着的 agents 再确认一次
+    const again = T0 + 6 * 60_000;
+    await inRequest(() => recordTelemetryEnvelope(envelope(again, ["vibeCoding"]), again));
+    assert.deepEqual((await samples(storage, "coding")).map((sample) => sample.level), [3, 3]);
+
+    // 模块从 activeModules 里去掉：nowMirror 里那份不再代表此刻
+    const off = again + 60_000;
+    await inRequest(() => recordTelemetryEnvelope(envelope(off, []), off));
+    assert.deepEqual((await samples(storage, "coding")).map((sample) => sample.level), [3, 3, 0]);
+  } finally {
+    resetStorageForTests();
+  }
+});
+
+test("采集器死了而 Mac 还在心跳：agents 过了卡片同一条过期线就当空闲", async () => {
+  const storage = new FakeStorage();
+  installStorageForTests(storage);
+  try {
+    await inRequest(() =>
+      recordTelemetryEnvelope(
+        envelope(T0, ["vibeCoding"], {
+          vibeCodingNow: { agents: [{ id: "claude", currentModel: "opus", active: true }] },
+        }),
+        T0,
+      ),
+    );
+    const stale = T0 + 16 * 60_000;
+    await inRequest(() => recordTelemetryEnvelope(envelope(stale, ["vibeCoding"]), stale));
+    assert.deepEqual((await samples(storage, "coding")).map((sample) => sample.level), [3, 0]);
   } finally {
     resetStorageForTests();
   }

@@ -25,6 +25,7 @@ import {
 import { powerBankPushPayload } from "@/lib/powerbank";
 import { readPowerBankState } from "@/lib/powerbank-store";
 import { IMAGE_OBJECT_KEY } from "@/lib/asset-url";
+import { VIBECODING_STALE_MS } from "@/lib/freshness";
 import { nextLiveness, readLiveness, type Liveness } from "@/lib/reporter-liveness";
 import type {
   ChargerStatus,
@@ -661,8 +662,19 @@ async function recordCodingPulse(
   mirrored: ReturnType<typeof nowMirror.get> | null,
 ): Promise<void> {
   try {
+    /**
+     * 留着的 agents 也要过闸，和前台应用一样：vibeCoding 模块关掉之后 nowMirror 里
+     * 还是最后那份，采集器死了而 Mac 还在心跳时同样如此 —— 不挡的话最后一次
+     * `active: true` 会被每 5 分钟的再确认一直算成 level 3。模块名按上报器的
+     * activeModules 来（`vibeCoding`），过期线沿用卡片那条 VIBECODING_STALE_MS。
+     */
+    const kept = incomingAgents === undefined ? await mirrored : null;
     const agents =
-      incomingAgents !== undefined ? incomingAgents : ((await mirrored)?.payload.agents ?? null);
+      incomingAgents !== undefined
+        ? incomingAgents
+        : kept && telemetryState.activeModules.has("vibeCoding") && receivedAt - kept.pushedAt < VIBECODING_STALE_MS
+          ? kept.payload.agents
+          : null;
     /**
      * 前台应用要过 activeModules 那道闸，和 desktopPayload 同一份判断。
      * 只看工作副本非空的话，desktop 模块关掉之后留着的那份还会被下一封
