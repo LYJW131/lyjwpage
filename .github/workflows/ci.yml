@@ -47,4 +47,8 @@ jobs:
 
       - run: pnpm test
 
+      - run: pnpm --filter @lyjwpage/api test
+
+      - run: node scripts/verify-kv-read-model.mjs
+
       - run: node --test scripts/*.test.mjs
