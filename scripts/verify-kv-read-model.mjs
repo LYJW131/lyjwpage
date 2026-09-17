@@ -12,6 +12,10 @@ import { createRequire } from 'node:module';
 const root = resolve(import.meta.dirname, '..');
 const require = createRequire(join(root, 'workers/api/package.json'));
 const temporary = await mkdtemp(join(tmpdir(), 'lyjw-kv-verify-'));
+// Miniflare 的 DO SQLite / KV 状态文件必须放在 harness 目录之外：wrangler dev 监视着
+// 入口所在目录，状态一落盘就会 "Reloading local server"，重启把排好的 alarm 丢掉，
+// 投影永远发不出去（本地和 CI 都复现过，五次里两次）。
+const persisted = await mkdtemp(join(tmpdir(), 'lyjw-kv-state-'));
 const logs = [];
 let child;
 let startupError;
@@ -20,6 +24,8 @@ const prefix = 'isolated-kv';
 const path = '/api/status/watching';
 const key = `${prefix}:public-read-model:v1:${path}`;
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+const reloads = () => logs.filter(chunk => chunk.includes('Reloading local server')).length;
+let reloadBaseline = Infinity;
 const request = (url, init = {}) => fetch(url, { ...init, signal: AbortSignal.timeout(15_000) });
 async function freePort() {
   const server = createServer(); server.listen(0, '127.0.0.1'); await once(server, 'listening');
@@ -32,6 +38,9 @@ async function eventually(check) {
     if (startupError) throw startupError;
     if (child && (child.exitCode !== null || child.signalCode !== null)) {
       throw new Error(`Wrangler exited before verification: ${child.exitCode ?? child.signalCode}`);
+    }
+    if (reloads() > reloadBaseline) {
+      throw new Error('wrangler dev reloaded the local server mid-test; a reload recreates the DO and drops its pending alarm');
     }
     try { return await check(); } catch (error) { failure = error; }
     await sleep(200);
@@ -84,10 +93,10 @@ export default {
   };
   const configPath = join(temporary, 'wrangler.json');
   await writeFile(configPath, JSON.stringify(config));
-  child = spawn(process.execPath, [require.resolve('wrangler'), 'dev', '--config', configPath, '--port', String(port), '--persist-to', join(temporary, 'state')], {
+  child = spawn(process.execPath, [require.resolve('wrangler'), 'dev', '--config', configPath, '--port', String(port), '--persist-to', persisted], {
     // Wrangler 3 normalizes tsconfig against cwd, while esbuild uses the harness project root.
     // Use the isolated project for both; imports and aliases still point into the checkout.
-    cwd: temporary, env: { ...process.env, WRANGLER_LOG_PATH: join(temporary, 'wrangler.log') }, stdio: ['ignore', 'pipe', 'pipe'],
+    cwd: temporary, env: { WRANGLER_LOG_PATH: join(temporary, 'wrangler.log'), ...process.env }, stdio: ['ignore', 'pipe', 'pipe'],
   });
   child.on('error', error => { startupError = error; });
   for (const stream of [child.stdout, child.stderr]) stream.on('data', value => logs.push(value.toString()));
@@ -95,6 +104,16 @@ export default {
     method: 'POST', headers: { authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(value),
   });
   await eventually(async () => assert.equal((await request(`${base}/count`)).status, 200));
+  // Wrangler 3 的 dev 起来之后总会自发 reload 一次（RemoteRuntimeController teardown），
+  // 时机从 Ready 后 0.1 秒到十几秒不等。reload 会重建 DO，把已经排好的 alarm 丢掉，
+  // 撞上上报之后那一次就永远等不到投影（本地和 CI 都是五次里两次）。等它发生完再开始；
+  // 测试中途再来一次就直接判失败，别再空等 90 秒。
+  for (const started = Date.now(); reloads() === 0 && Date.now() - started < 15_000;) await sleep(100);
+  if (reloads() > 0) {
+    await sleep(1_000);
+    await eventually(async () => assert.equal((await request(`${base}/count`)).status, 200));
+  }
+  reloadBaseline = reloads();
   assert.equal((await post('/api/internal/storage/import', {
     entries: [{ key: `${prefix}:private:test-only`, kind: 'string', value: 'do-not-project-this-secret', expiresAt: null }], finalize: true,
   }, `${secret}-import`)).status, 200);
@@ -135,12 +154,16 @@ export default {
   assert.equal(unavailable.headers.get('x-read-model'), 'origin');
   console.log('PASS: stale and failed KV fall back to authoritative reads');
 } catch (error) {
-  console.error(logs.join('').slice(-16000));
+  // 轮询的 GET 日志一秒好几行，会把 alarm / [read-model] 那几行挤出窗口；只留有信息量的
+  const noise = /GET \/(api\/status\/watching|count) 200 OK/;
+  console.error(logs.join('').split('\n').filter(line => !noise.test(line)).join('\n').slice(-16000));
   throw error;
 } finally {
+  if (process.env.KV_VERIFY_LOG_DUMP) await writeFile(process.env.KV_VERIFY_LOG_DUMP, logs.join(''));
   if (child && child.exitCode === null) {
     const exited = once(child, 'exit'); child.kill('SIGTERM');
     await Promise.race([exited, sleep(3000).then(() => child.kill('SIGKILL'))]);
   }
   await rm(temporary, { recursive: true, force: true });
+  await rm(persisted, { recursive: true, force: true });
 }
