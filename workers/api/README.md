@@ -14,6 +14,7 @@
 - `src/origins.ts`：`ALLOWED_ORIGINS` 的解析、通配匹配和 CORS 头，两条 WebSocket、公开 API 和令牌签发共用。
 - 根目录 `shared/`：读写共用的 SQLite 键、类型和状态计算；根目录 `src/lib/` 提供读取与通用工具。
 - `src/storage-driver.ts`：通过 alias 接入 StateHub 的 SQLite 存储驱动。
+- `src/read-model*.ts`：可选的 KV 公开读取投影，DO SQLite 仍是唯一权威；边界、发布节律与回滚见 `docs/kv-read-model.md`。
 - `src/r2-assets.ts`：R2 绑定 HEAD 检查，上报器仍直接上传图片。
 
 ## 端点

@@ -8,12 +8,20 @@ export interface Env extends MusicKitTokenEnv {
   LIVE_PUSH: DurableObjectNamespace<LivePushRoom>;
   STATE: DurableObjectNamespace<StateHub>;
   IMAGES: R2Bucket;
+  /** Public, rebuildable read models only. Omit to keep the authoritative read path. */
+  READ_MODEL?: KVNamespace;
   TELEMETRY_INGEST_SECRET?: string;
   /** 一次性迁移使用，迁移完成后移除，不授予站点。 */
   STATE_IMPORT_SECRET?: string;
   STORAGE_PREFIX?: string;
   SITE_URL?: string;
   ALLOWED_ORIGINS?: string;
+}
+
+/** Local fixtures and upstream overlays must never leak into a shared read model. */
+export function readModelEnabled(env: Env): boolean {
+  return !!env.READ_MODEL && process.env.DEV_OVERRIDES?.trim() !== "true" &&
+    !process.env.UPSTREAM_API_URL?.trim();
 }
 
 export type RequestContext = {
