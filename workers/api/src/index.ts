@@ -1,7 +1,7 @@
 import originWorker from "./origin-worker";
 import { getAllowedOrigins, getCorsHeaders, isAllowedOriginValue } from "./origins";
 import { serveReadModel } from "./read-model-edge";
-import { readModelEnabled, type Env } from "./runtime";
+import { historyArchiveEnabled, readModelEnabled, type Env } from "./runtime";
 
 // Keep Wrangler's existing class exports and DO migration identities unchanged.
 export { LivePushRoom, StateHub } from "./origin-worker";
@@ -29,6 +29,13 @@ export default {
     // Enqueue only after the origin cron (Apple recently played, PageSpeed) has written,
     // so the listening projection is rendered from the refreshed list, not the previous one.
     await originWorker.scheduled(event, env, ctx);
-    if (readModelEnabled(env)) await env.STATE.get(env.STATE.idFromName("global")).queueReadModels();
+    const hub = env.STATE.get(env.STATE.idFromName("global"));
+    if (readModelEnabled(env)) await hub.queueReadModels();
+    // Archiving trails the projection: it only appends to D1, is read by nobody yet, and
+    // must not delay this minute's public views. The RPC swallows per-domain failures;
+    // this catch is for the transport itself, which would otherwise fail the cron tick.
+    if (historyArchiveEnabled(env)) {
+      await hub.archivePulse().catch((error: unknown) => console.warn("[pulse-archive]", error));
+    }
   },
 };

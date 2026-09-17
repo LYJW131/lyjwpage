@@ -12,6 +12,15 @@ Worker 是唯一数据后端。上报、状态 API、Apple / GitHub 获取和缓
 - 跨域活动脉搏（pulse）键为 `pulse:<domain>`（`coding` / `listening` / `watching` / `gaming` / `charging`）。每域最多 600 条，TTL 7 天；同水平非空闲最多每 5 分钟再确认一次，空闲只留一条。没有公开 HTTP 出口；读取只在 Worker 内部（StateHub）由将来的评分器完成。
 - API Worker 的 `LIVE_PUSH` 使用可休眠 WebSocket，`api.homepage.lyjw.llc/count` 返回 `connections`（包含后台页面）。独立 `online-counter` Worker 的 `ONLINE_COUNTER` 维护可见连接，按空闲超时清扫；`online.homepage.lyjw.llc/count` 返回 `online`。三个调频上报器并行读取两个计数口，各自失败时仅该端归零。
 
+## 长期归档（D1）
+
+- 归档库 `lyjwpage-history`，Worker 里的绑定叫 `HISTORY`，只有一张表 `pulse_samples(domain, t, level, hint)`，主键 `(domain, t)`。StateHub 仍是唯一权威，这里只增不删：StateHub 每域只留 600 条 / 7 天，归档保留全部历史。
+- 写入由 cron 每分钟从 StateHub 驱动（`archivePulse()` → `workers/api/src/pulse-archive.ts`），不挂在上报路径上：上报不等 D1。每域一条水位线存在 StateHub 的 `metadata` 表里，键为 `pulse-archive:<domain>`，值是已归档的最大 `t`；只有 `INSERT OR IGNORE` 的那一批落地后水位线才前进，失败就留在原处，下一分钟重试。每批最多 100 条语句，一域失败只丢这一域，错误只进 `[pulse-archive]` 日志。
+- 本地和夹具环境不写归档：`historyArchiveEnabled` 和读模型用同一套闸门，配了 `DEV_OVERRIDES` 或 `UPSTREAM_API_URL` 就停用，没有 `HISTORY` 绑定也停用。
+- 归档暂时没有公开 HTTP 读路径，只作备份与将来评分器的取数来源；读它的入口另开时再补这一节。
+- 建表只在迁移里做，Worker 不会自己建：`pnpm --dir workers/api exec wrangler d1 migrations apply lyjwpage-history --remote`。Workers Builds 不跑 D1 迁移，必须在带 `HISTORY` 绑定的版本部署前先应用，否则第一趟 cron 就会在日志里报表不存在。
+- 回滚就是从 `wrangler.toml` 删掉 `[[d1_databases]]`，归档随即停用，StateHub 与站点行为不变；库和已归档的数据留着，重新加回绑定后从水位线继续。
+
 ## 首屏与浏览器
 
 `cachedHomeSnapshot` 一次读取公开聚合快照；单个数据源不可用使用卡片降级信封。网络失败抛出错误，不用错误快照覆盖已有 Next 缓存。Next cacheLife 为 stale 300、revalidate 600、expire 604800 秒；所有状态标签使用 `page:` 前缀。

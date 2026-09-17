@@ -5,7 +5,8 @@ import { StorageClient } from "@shared/storage-client";
 import { SqliteStore, type StoredEntry } from "@shared/sqlite-store";
 import type { StorageCommand } from "@shared/storage-contract";
 import { HANDLERS } from "./ingest-handlers";
-import { readModelEnabled, requestStore, type Env } from "./runtime";
+import { historyArchiveEnabled, readModelEnabled, requestStore, type Env } from "./runtime";
+import { PulseArchive } from "./pulse-archive";
 import { READ_MODEL_PATHS, readModelPathsForSource } from "./read-model";
 import { ReadModelPublisher } from "./read-model-publisher";
 
@@ -14,6 +15,7 @@ export class StateHub extends DurableObject<Env> {
   private database: SqliteStore;
   private ingestTail: Promise<unknown> = Promise.resolve();
   private readModels: ReadModelPublisher | null;
+  private pulseArchive: PulseArchive | null;
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.database = new SqliteStore(ctx.storage.sql, (work) => ctx.storage.transactionSync(work));
@@ -24,6 +26,12 @@ export class StateHub extends DurableObject<Env> {
       kv: env.READ_MODEL,
       prefix: env.STORAGE_PREFIX ?? "lyjwpage",
       render: (path) => this.fetch(new Request(`https://read-model.internal${path}`)),
+    }) : null;
+    // 归档表由 D1 迁移建好，这里不建表：少了迁移就该在日志里炸出来，不能被悄悄建上遮住。
+    this.pulseArchive = historyArchiveEnabled(env) && env.HISTORY ? new PulseArchive({
+      sql: ctx.storage.sql,
+      db: env.HISTORY,
+      storage: new StorageClient(async (commands) => this.database.execute(commands)),
     }) : null;
   }
 
@@ -76,6 +84,12 @@ export class StateHub extends DurableObject<Env> {
     if (!this.readModels || !this.ready()) return;
     this.readModels.enqueue(paths);
     await this.ensureAlarm();
+  }
+
+  /** cron 每分钟一趟，把 pulse 序列增量镜像进 D1。错误只进日志，调用方不受影响。 */
+  async archivePulse(): Promise<void> {
+    if (!this.pulseArchive || !this.ready()) return;
+    await this.pulseArchive.run();
   }
 
   async importMissing(entries: StoredEntry[]): Promise<number> {

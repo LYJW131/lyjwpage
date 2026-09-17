@@ -10,6 +10,8 @@ export interface Env extends MusicKitTokenEnv {
   IMAGES: R2Bucket;
   /** Public, rebuildable read models only. Omit to keep the authoritative read path. */
   READ_MODEL?: KVNamespace;
+  /** Append-only long-term activity archive. Omit to disable archiving; nothing else reads it. */
+  HISTORY?: D1Database;
   TELEMETRY_INGEST_SECRET?: string;
   /** 一次性迁移使用，迁移完成后移除，不授予站点。 */
   STATE_IMPORT_SECRET?: string;
@@ -21,6 +23,12 @@ export interface Env extends MusicKitTokenEnv {
 /** Local fixtures and upstream overlays must never leak into a shared read model. */
 export function readModelEnabled(env: Env): boolean {
   return !!env.READ_MODEL && process.env.DEV_OVERRIDES?.trim() !== "true" &&
+    !process.env.UPSTREAM_API_URL?.trim();
+}
+
+/** Same guards: local fixtures and upstream overlays must never reach the shared archive. */
+export function historyArchiveEnabled(env: Env): boolean {
+  return !!env.HISTORY && process.env.DEV_OVERRIDES?.trim() !== "true" &&
     !process.env.UPSTREAM_API_URL?.trim();
 }
 
