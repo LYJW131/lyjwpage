@@ -17,7 +17,8 @@ import { cn } from "@/lib/utils";
 
 const number = new Intl.NumberFormat("en-US");
 const time = new Intl.DateTimeFormat("zh-CN", { timeZone: site.timezone, month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false });
-const cpu = (ms: number | null | undefined) => ms == null ? "—" : ms < 1 ? `${Math.round(ms * 1000)}µs` : `${Number(ms.toFixed(1))}ms`;
+/** 10ms 以上不留小数：这一行只有 32 个字符的位置，`191.9ms` 那一位小数会把 Vercel 那格顶到两行 */
+const cpu = (ms: number | null | undefined) => ms == null ? "—" : ms < 1 ? `${Math.round(ms * 1000)}µs` : ms < 10 ? `${Number(ms.toFixed(1))}ms` : `${Math.round(ms)}ms`;
 
 function CollectionWindow({ start, end }: { start?: number; end?: number }) {
   if (start == null || end == null) return null;
@@ -138,7 +139,7 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
               <CommitSha commit={vercel?.production?.commit} />
             </div>
             <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] tabular-nums text-muted-foreground">
-              <span className="whitespace-nowrap" title={functions ? `${functions.timeouts} timeouts · avg peak memory ${functions.memoryAvgMb == null ? "—" : `${Math.round(functions.memoryAvgMb)} MB`}` : undefined}>Calls <span className="text-foreground">{functions ? number.format(functions.invocations) : "—"}</span></span>
+              <span className="whitespace-nowrap" title={functions ? `${functions.timeouts} timeouts · avg peak memory ${functions.memoryAvgMb == null ? "—" : `${Math.round(functions.memoryAvgMb)} MB`}` : undefined}>Req <span className="text-foreground">{functions ? number.format(functions.invocations) : "—"}</span></span>
               <span className="whitespace-nowrap">CPU <span className="text-foreground">{cpu(functions?.cpuP75Ms)}</span> P75</span>
               <CollectionWindow start={functions?.start} end={functions?.end} />
             </div>
@@ -152,7 +153,7 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
                 <CommitSha commit={worker?.deployment?.commit} />
               </div>
               <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] tabular-nums text-muted-foreground">
-                <span className="whitespace-nowrap" title={metrics ? `${number.format(metrics.subrequests)} subrequests` : undefined}>Calls <span className="text-foreground">{metrics ? number.format(metrics.requests) : "—"}</span></span>
+                <span className="whitespace-nowrap" title={metrics ? `${number.format(metrics.subrequests)} subrequests` : undefined}>Req <span className="text-foreground">{metrics ? number.format(metrics.requests) : "—"}</span></span>
                 <span className="whitespace-nowrap">CPU <span className="text-foreground">{cpu(metrics?.cpuTimeP50Ms)}</span> P50</span>
                 <CollectionWindow start={cloudflare?.windowStart} end={cloudflare?.windowEnd} />
               </div>
