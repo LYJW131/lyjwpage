@@ -18,4 +18,8 @@ export function withStorage<T>(run: (storage: StorageClient) => Promise<T>, fall
 export async function askStorage<T>(load: (storage: StorageClient) => Promise<T>): Promise<StorageAnswer<T>> { return { reachable: true, value: await load(getStorage()) }; }
 export async function tellStorage(run: (storage: StorageClient) => Promise<unknown>): Promise<boolean> { await run(getStorage()); return true; }
 export function resetStorageDriverForTests(): void {}
-export function installStorageForTests(): never { throw new Error("Use the Node test driver"); }
+/** 签名和 Node 驱动对齐，好让同一份测试在两套 tsconfig 下都成立；Worker 里注入没有意义。 */
+export function installStorageForTests(client: StorageClient | null): never {
+  void client;
+  throw new Error("Use the Node test driver");
+}

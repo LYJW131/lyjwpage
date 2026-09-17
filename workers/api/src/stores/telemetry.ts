@@ -27,6 +27,7 @@ import { readPowerBankState } from "@/lib/powerbank-store";
 import { IMAGE_OBJECT_KEY } from "@/lib/asset-url";
 import { nextLiveness, readLiveness, type Liveness } from "@/lib/reporter-liveness";
 import type {
+  ChargerStatus,
   LocalNowPlaying,
   TimezoneActivity,
   VibeCodingNowPayload,
@@ -42,7 +43,7 @@ import { writeLiveness } from "@api/stores/reporter-liveness";
 import { prepareVibeCodingNow, prepareVibeCodingUsage } from "@api/stores/vibecoding";
 import { prepareVibeCodingYear } from "@api/stores/vibecoding-year-store";
 import { nowMirror } from "@shared/vibecoding";
-import { DESKTOP_ICON_CACHE_LIMIT, desktopPayload, mirror, type PersistedTelemetry, snapshotFrom, bareSnapshotFrom, type StoredDesktopActivity, syncTelemetryState, telemetryState } from "@shared/telemetry";
+import { activeDesktop, DESKTOP_ICON_CACHE_LIMIT, desktopPayload, mirror, type PersistedTelemetry, snapshotFrom, bareSnapshotFrom, type StoredDesktopActivity, syncTelemetryState, telemetryState } from "@shared/telemetry";
 
 type TelemetryPatch = {
   desktop?: StoredDesktopActivity | null;
@@ -284,7 +285,13 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
     ? { charger: askSettlingAt("charger"), powerbank: askSettlingAt("powerbank") }
     : null;
   const powerBank = hasChargingDevices ? readPowerBankState() : null;
-  const homePod = "appleMusic" in modules ? getHomePodSnapshot() : null;
+  /**
+   * 这两条每封都要，包括纯心跳：在听和 coding 的档位每封重算一次（见下面那段
+   * pulse 的注释），而仲裁「谁在放」要 HomePod 那份快照，算 coding 要此刻的
+   * agents。放在这里和存活、工作副本同一批发车，心跳不会因此多一个来回。
+   */
+  const homePod = getHomePodSnapshot();
+  const storedCodingNow = codingNow ? null : nowMirror.get();
   const [, previousLiveness] = await Promise.all([syncTelemetryState(), readLiveness()]);
 
   // 落 activeModules 必须排在 syncTelemetryState 后面 —— 它会从库里那份覆盖回来
@@ -398,8 +405,7 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
         // 上面早就发车了，这里只是把它接住
         const landing = prepareStatus(status, receivedAt, await (charger ?? readChargerState()));
         writes.push(landing.commit());
-        const charging = chargingLevel(status);
-        writes.push(recordPulse("charging", { t: receivedAt, level: charging.level, hint: charging.hint }));
+        writes.push(recordChargingPulse(receivedAt, status));
         chargerWritten = true;
         /**
          * 插拔、换设备立刻推给浏览器，不等卡片下一次轮询。滚动读数照旧不走这里 ——
@@ -461,7 +467,14 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
      * 一起落了。从前两条都发，于是每个带充电头的信封都白跑一次写加两次读。
      */
     if (!chargerWritten && charger && nextActiveModules.includes("charger")) {
-      writes.push(prepareHeartbeat(receivedAt, await charger).commit());
+      const state = await charger;
+      writes.push(prepareHeartbeat(receivedAt, state).commit());
+      /**
+       * 档位也跟着续。这段时间卡片照旧显示留着的那份快照（过期只由存活和
+       * pushedAt 判，而这条心跳正在续 pushedAt），pulse 不跟着确认的话，
+       * 序列会在「还插着、还在充」的中间断成一个看起来像上报器死了的缺口。
+       */
+      if (state.previous) writes.push(recordChargingPulse(receivedAt, state.previous.status));
     }
 
     if ("desktop" in modules) {
@@ -504,14 +517,7 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
        * HomePod 那份快照上面已经发车了（另一个 key，这次上报没碰它）。
        */
       events.push(
-        listeningEvent(liveness, homePod ?? getHomePodSnapshot(), {
-          music,
-          receivedAt,
-          upcomingTracks,
-        }),
-      );
-      writes.push(
-        recordListeningPulse(receivedAt, liveness, homePod ?? getHomePodSnapshot(), {
+        listeningEvent(liveness, homePod, {
           music,
           receivedAt,
           upcomingTracks,
@@ -550,14 +556,6 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
     }
 
     /**
-     * 这一封只要带了前台或此刻 coding，就按合并后的快照记一笔。
-     * 缺的那一侧读已经 sync 过的工作副本 / nowMirror，整封只算一次。
-     */
-    if ("desktop" in modules || codingNow) {
-      writes.push(recordCodingPulse(receivedAt, codingNow?.now.agents));
-    }
-
-    /**
      * 年度热力图单独一块。不推送 —— 格子按天变，浏览器长间隔和切回焦点来问。
      * 上报和 GET 都是整年 371 个数一次给齐，云端补回的旧日也会刷新。
      */
@@ -566,6 +564,20 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
       tags.push(VIBECODING_YEAR_TAG);
       accepted += 1;
     }
+
+    /**
+     * 在听和 coding 每封都重算一笔，纯心跳也算。
+     *
+     * 采集端只在内容变化时才带上对应模块，所以「这封没带 appleMusic / desktop」
+     * 说的是「没变」，不是「没在听、没在写」。从前这两笔挂在模块出现上，于是一首
+     * 长歌、一段稳定的 coding 整段不落笔：5 分钟的再确认永远不到，暂停宽限期过了
+     * 也没人把它翻成空闲 —— 序列中间看起来像上报器死了。
+     *
+     * 档位从留着的工作副本 + 这封算出来的存活现算，**不查 Apple 目录**
+     * （bareSnapshotFrom），两笔都自己吞异常，写坏了不影响 202。
+     */
+    writes.push(recordListeningPulse(receivedAt, liveness, homePod));
+    writes.push(recordCodingPulse(receivedAt, codingNow?.now.agents, storedCodingNow));
 
     // 整封都收下了才落状态。中途抛出去时这份不写 —— 从前也是这样，
     // persistTelemetryState 就排在所有模块之后。存活不同，见上面。
@@ -622,19 +634,21 @@ async function listeningEvent(
  * pulse 序列只仲裁「谁在放」，不查 Apple 目录。
  *
  * HomePod 那次读在信封解析时已经发车；这里只接住，不另开一次 SQLite。
+ * Mac 那一侧读已经更新好的工作副本 —— 这封带了 appleMusic 的话它正是新的那份，
+ * 没带就是留着的上一份，两种情形都该按同一套规则重算一次档位。
+ *
+ * `now` 一律取 `receivedAt`，和样本的 `t` 同一把钟：暂停宽限、HomePod 静默、
+ * 存活窗口三件事都是时间的函数，判它们的时刻必须就是这一笔记下来的时刻。
  */
 async function recordListeningPulse(
   receivedAt: number,
   liveness: Liveness,
   homePod: Promise<StoredHomePod | null>,
-  mac?: {
-    music: LocalNowPlaying | null;
-    receivedAt: number;
-    upcomingTracks?: PlayingQueueTrack[];
-  },
 ): Promise<void> {
   try {
-    const scored = listeningLevel(pickNowListening(bareSnapshotFrom(await homePod, mac), liveness));
+    const scored = listeningLevel(
+      pickNowListening(bareSnapshotFrom(await homePod), liveness, receivedAt),
+    );
     await recordPulse("listening", { t: receivedAt, level: scored.level, hint: scored.hint });
   } catch (error) {
     console.error("[pulse]", error instanceof Error ? error.message : String(error));
@@ -643,21 +657,33 @@ async function recordListeningPulse(
 
 async function recordCodingPulse(
   receivedAt: number,
-  incomingAgents?: VibeCodingNowPayload["agents"],
+  incomingAgents: VibeCodingNowPayload["agents"] | undefined,
+  mirrored: ReturnType<typeof nowMirror.get> | null,
 ): Promise<void> {
   try {
     const agents =
-      incomingAgents !== undefined
-        ? incomingAgents
-        : ((await nowMirror.get())?.payload.agents ?? null);
-    const desktop = telemetryState.desktop
-      ? {
-          applicationName: telemetryState.desktop.applicationName,
-          bundleIdentifier: telemetryState.desktop.bundleIdentifier,
-        }
+      incomingAgents !== undefined ? incomingAgents : ((await mirrored)?.payload.agents ?? null);
+    /**
+     * 前台应用要过 activeModules 那道闸，和 desktopPayload 同一份判断。
+     * 只看工作副本非空的话，desktop 模块关掉之后留着的那份还会被下一封
+     * vibeCodingNow 捡起来，把早就关掉的编辑器一直算成 level 2。
+     */
+    const stored = activeDesktop();
+    const desktop = stored
+      ? { applicationName: stored.applicationName, bundleIdentifier: stored.bundleIdentifier }
       : null;
     const scored = codingLevel({ agents, desktop });
     await recordPulse("coding", { t: receivedAt, level: scored.level, hint: scored.hint });
+  } catch (error) {
+    console.error("[pulse]", error instanceof Error ? error.message : String(error));
+  }
+}
+
+/** 充电头档位。同样自己吞异常 —— 序列是次要的，不能让一封好好的上报变成 500。 */
+async function recordChargingPulse(receivedAt: number, status: ChargerStatus): Promise<void> {
+  try {
+    const scored = chargingLevel(status);
+    await recordPulse("charging", { t: receivedAt, level: scored.level, hint: scored.hint });
   } catch (error) {
     console.error("[pulse]", error instanceof Error ? error.message : String(error));
   }

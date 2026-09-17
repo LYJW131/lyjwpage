@@ -253,17 +253,20 @@ export async function recordEmbyReport(body: unknown, receivedAt = Date.now()) {
   const played = "playing" in root ? preparePlaying(root.playing) : null;
   if (played) {
     writes.push(played.commit());
-    const watching = watchingLevel(played.state, played.item);
+    /**
+     * 这次没带详情就用存着的那份，按 itemId 对上才算数（同 nowWatchingPayload
+     * 那道闸）。推送和 pulse 必须用同一份：只给 `played.item` 的话，代理推来一条
+     * 不带详情的位置更新会记出一笔没有标题的样本，而 hint 变了在 planPulseSample
+     * 眼里就是一次状态翻面 —— 同一部剧会在序列上凭空多出一个断点。
+     */
+    const kept = storedCurrent?.item ?? null;
+    const detail = played.item ?? (kept?.id === played.state?.itemId ? kept : null);
+    const watching = watchingLevel(played.state, detail);
     writes.push(recordPulse("watching", { t: receivedAt, level: watching.level, hint: watching.hint }));
     // 播放状态变了就直接把新数据推给浏览器 —— 手上这份就是最新的
     events.push({
       type: "watching-now",
-      payload: nowWatchingPayload(
-        resolveNowPlaying(played.state),
-        // 这次没带详情就用存着的那份；对不上会被 nowWatchingPayload 挡掉
-        played.item ?? storedCurrent?.item ?? null,
-        objectKeys,
-      ),
+      payload: nowWatchingPayload(resolveNowPlaying(played.state), detail, objectKeys),
     });
     tags.push(NOW_WATCHING_TAG);
   }

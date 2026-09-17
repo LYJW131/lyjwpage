@@ -286,6 +286,6 @@ payload: >-
 
 写入走纯函数 `planPulseSample`：没有上一笔就记；`t` 不前进丢掉（重复或乱序）；level 或 hint 变了记一笔状态翻面；非空闲且距上一笔 ≥ 5 分钟再确认一次（上报器死了会在阶跃序列上露出缺口）；空闲保持单点，5 分钟内没变的心跳不入库。每域 trim 到 600 条，每次 append 续 7 天 TTL。写入失败只打 `[pulse]` 日志，不能让主状态上报失败。
 
-挂钩点在主状态准备好之后，promise 推进已有的 `fanout({ writes })`：Mac 信封里的充电头 / 在听 / 前台或 `vibeCodingNow`（`workers/api/src/stores/telemetry.ts`），HomePod 在听（`homepod-ingest.ts`，推送仍走带目录的 `listeningEvent`，pulse 走 `bareSnapshotFrom`），Emby 的 `playing` 更新（`emby.ts`），PlayStation 的 `presence` 心跳（`playstation.ts`）。`recordAgentLimits` 不挂钩，限额不是活动。v0 档位是确定性规则（`shared/pulse-levels.ts`），评分器到位后只换这一层，调用点仍只看 `{ level, hint }`。
+挂钩点在主状态准备好之后，promise 推进已有的 `fanout({ writes })`。Mac 那条入口（`workers/api/src/stores/telemetry.ts`）**每封信封都重算一次在听和 coding，纯心跳也算**，`charger` 列在 `activeModules` 里时充电头也跟着确认（没带快照的那几封走 `prepareHeartbeat` 旁边那一笔）：采集端只在内容变化时才带模块，挂在「模块出现」上的话，一首长歌、一段稳定的 coding 整段不落笔，5 分钟的再确认永远不到，暂停宽限、HomePod 静默、存活过期这些时间函数也没人把它们翻成空闲。档位从留着的工作副本 + 这封算出来的存活现算，判定时刻一律取 `receivedAt`（和样本的 `t` 同一把钟），前台应用要过 `activeDesktop()` 那道 `activeModules` 闸。另外三处仍按事件来：HomePod 在听（`homepod-ingest.ts`，推送仍走带目录的 `listeningEvent`，pulse 走 `bareSnapshotFrom`；HA 只在变化时推，没有自己的心跳，静默过期靠 Mac 那侧的重算落笔），Emby 的 `playing` 更新（`emby.ts`，这次没带详情就按 itemId 沿用存着的那一项，免得 hint 少一块被当成翻面），PlayStation 的 `presence` 心跳（`playstation.ts`）。`recordAgentLimits` 不挂钩，限额不是活动。v0 档位是确定性规则（`shared/pulse-levels.ts`），评分器到位后只换这一层，调用点仍只看 `{ level, hint }`。
 
 没有公开 HTTP 出口；读取只在 Worker 内部（StateHub）由将来的评分器完成。`readPulseHistory(cursor?)` 一次 batch 读五域。`partial` 规则同充电头曲线：游标不早于还留着的最旧点才给增量，否则整份。不推送，不进 `/api/home`。

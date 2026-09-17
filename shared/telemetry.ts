@@ -117,6 +117,16 @@ export async function syncTelemetryState() {
 }
 
 /**
+ * 过了 activeModules 那道闸的前台应用。
+ *
+ * 模块关掉之后工作副本里还留着最后一次前台应用，但它不再代表此刻 —— 读取、推送
+ * 和 pulse 都得走这一份判断，各写各的话总有一处会把早就关掉的窗口继续算在活动里。
+ */
+export function activeDesktop(): StoredDesktopActivity | null {
+  return telemetryState.activeModules.has("desktop") ? telemetryState.desktop : null;
+}
+
+/**
  * 拿工作副本现拼一份前台应用。
  *
  * 取数那侧先 syncForRead 再调它；上报那侧直接调 —— 工作副本这时正是这条信封
@@ -124,7 +134,7 @@ export async function syncTelemetryState() {
  * 那会拿写之前的 SQLite 把刚更新的工作副本盖回去，而且和还在飞的那次写撞车。
  */
 export function desktopPayload(liveness: Liveness): DesktopPayload {
-  const stored = telemetryState.activeModules.has("desktop") ? telemetryState.desktop : null;
+  const stored = activeDesktop();
   const desktop: DesktopActivity | null = stored
     ? (() => {
       const { iconObjectKey, ...activity } = stored;
