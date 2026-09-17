@@ -6,7 +6,7 @@ import { once } from 'node:events';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join, relative, resolve } from 'node:path';
 import { createRequire } from 'node:module';
 
 const root = resolve(import.meta.dirname, '..');
@@ -14,11 +14,13 @@ const require = createRequire(join(root, 'workers/api/package.json'));
 const temporary = await mkdtemp(join(tmpdir(), 'lyjw-kv-verify-'));
 const logs = [];
 let child;
+let startupError;
 const secret = 'isolated-kv-test';
 const prefix = 'isolated-kv';
 const path = '/api/status/watching';
 const key = `${prefix}:public-read-model:v1:${path}`;
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+const request = (url, init = {}) => fetch(url, { ...init, signal: AbortSignal.timeout(15_000) });
 async function freePort() {
   const server = createServer(); server.listen(0, '127.0.0.1'); await once(server, 'listening');
   const port = server.address().port; await new Promise(resolve => server.close(resolve)); return port;
@@ -27,6 +29,10 @@ async function eventually(check) {
   const deadline = Date.now() + 90_000;
   let failure;
   do {
+    if (startupError) throw startupError;
+    if (child && (child.exitCode !== null || child.signalCode !== null)) {
+      throw new Error(`Wrangler exited before verification: ${child.exitCode ?? child.signalCode}`);
+    }
     try { return await check(); } catch (error) { failure = error; }
     await sleep(200);
   } while (Date.now() < deadline);
@@ -57,7 +63,8 @@ export default {
 };`);
   const config = {
     name: 'isolated-kv-read-model', main: harness,
-    tsconfig: join(root, 'workers/api/tsconfig.json'),
+    // Wrangler 3 joins this field to its config directory; absolute paths are not safe here.
+    tsconfig: relative(temporary, join(root, 'workers/api/tsconfig.json')),
     compatibility_date: '2025-02-14',
     compatibility_flags: ['nodejs_compat', 'nodejs_compat_populate_process_env'],
     vars: {
@@ -80,47 +87,48 @@ export default {
   child = spawn(process.execPath, [require.resolve('wrangler'), 'dev', '--config', configPath, '--port', String(port), '--persist-to', join(temporary, 'state')], {
     cwd: root, env: { ...process.env, WRANGLER_LOG_PATH: join(temporary, 'wrangler.log') }, stdio: ['ignore', 'pipe', 'pipe'],
   });
+  child.on('error', error => { startupError = error; });
   for (const stream of [child.stdout, child.stderr]) stream.on('data', value => logs.push(value.toString()));
-  const post = (target, value, token = secret) => fetch(`${base}${target}`, {
+  const post = (target, value, token = secret) => request(`${base}${target}`, {
     method: 'POST', headers: { authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(value),
   });
-  await eventually(async () => assert.equal((await fetch(`${base}/count`)).status, 200));
+  await eventually(async () => assert.equal((await request(`${base}/count`)).status, 200));
   assert.equal((await post('/api/internal/storage/import', {
     entries: [{ key: `${prefix}:private:test-only`, kind: 'string', value: 'do-not-project-this-secret', expiresAt: null }], finalize: true,
   }, `${secret}-import`)).status, 200);
   assert.equal((await post('/api/ingest/emby', { resume: { items: [{ id: 'one', name: 'KV integration movie', type: 'Movie' }] } })).status, 202);
   await eventually(async () => {
-    const response = await fetch(`${base}${path}`);
+    const response = await request(`${base}${path}`);
     assert.equal(response.headers.get('x-read-model'), 'kv');
     assert.match(await response.text(), /KV integration movie/);
   });
   console.log('PASS: ingest -> authoritative DO -> durable alarm -> KV -> edge hit');
   const inspect = `${base}/__test/kv?key=${encodeURIComponent(key)}`;
-  const projection = await (await fetch(inspect)).json();
+  const projection = await (await request(inspect)).json();
   assert.equal(projection.schema, 1);
   assert.equal(JSON.stringify(projection).includes('do-not-project-this-secret'), false);
-  const fresh = await fetch(`${base}${path}?fresh=1`);
+  const fresh = await request(`${base}${path}?fresh=1`);
   assert.equal(fresh.status, 200);
   assert.notEqual(fresh.headers.get('x-read-model'), 'kv');
   assert.match(await fresh.text(), /KV integration movie/);
-  const live = await fetch(`${base}/api/status/watching/now`);
+  const live = await request(`${base}/api/status/watching/now`);
   assert.notEqual(live.headers.get('x-read-model'), 'kv');
-  const denied = await fetch(`${base}${path}`, { headers: { Origin: 'https://rejected.example' } });
+  const denied = await request(`${base}${path}`, { headers: { Origin: 'https://rejected.example' } });
   assert.equal(denied.status, 403);
-  const allowed = await fetch(`${base}${path}`, { headers: { Origin: 'https://allowed.example' } });
+  const allowed = await request(`${base}${path}`, { headers: { Origin: 'https://allowed.example' } });
   assert.equal(allowed.headers.get('access-control-allow-origin'), 'https://allowed.example');
   assert.equal((await post(path, {})).status, 405);
   console.log('PASS: fresh/live bypass, CORS, methods, private data isolation');
   // A stale or unavailable projection must not turn a healthy backend into an outage.
   // Respect the actual platform's same-key write limit even in the local emulator.
   await sleep(1_100);
-  assert.equal((await fetch(inspect, { method: 'PUT', body: JSON.stringify({ ...projection, generatedAt: 0 }) })).status, 200);
+  assert.equal((await request(inspect, { method: 'PUT', body: JSON.stringify({ ...projection, generatedAt: 0 }) })).status, 200);
   await eventually(async () => {
-    const response = await fetch(`${base}${path}`);
+    const response = await request(`${base}${path}`);
     assert.equal(response.headers.get('x-read-model'), 'origin');
     assert.match(await response.text(), /KV integration movie/);
   });
-  const unavailable = await fetch(`${base}${path}`, { headers: { 'X-Test-KV-Failure': '1' } });
+  const unavailable = await request(`${base}${path}`, { headers: { 'X-Test-KV-Failure': '1' } });
   assert.equal(unavailable.status, 200);
   assert.equal(unavailable.headers.get('x-read-model'), 'origin');
   console.log('PASS: stale and failed KV fall back to authoritative reads');
