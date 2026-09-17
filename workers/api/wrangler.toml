@@ -61,6 +61,12 @@ bucket_name = "lyjw-homepage"
 binding = "READ_MODEL"
 id = "6d4a26ae1068417d8f9f7c200381826b"
 
+# 长期活动历史归档（docs/state-storage.md）：StateHub 只留 7 天，这里只增不删。
+[[d1_databases]]
+binding = "HISTORY"
+database_name = "lyjwpage-history"
+database_id = "bf3a227f-d12e-428a-8f4e-0f56b97464df"
+
 [observability]
 enabled = true
 
