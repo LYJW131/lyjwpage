@@ -274,14 +274,14 @@ export function WebPlayerDialog({ player }: { player: WebPlayer }) {
 
         {!playable ? (
           <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-            这一项没有可播放的地址。
+            This item has no playable source.
           </p>
         ) : (
           <>
             {/* 未登录也能放：MusicKit 给每首 30 秒试听。控件照常，只把这件事说清楚 */}
             {!player.authorized ? (
               <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-                未登录只能试听每首 30 秒。登录有效的 Apple Music 订阅后完整播放；站点不转发音频、储存凭据。
+                Without signing in, each track plays a 30-second preview. Sign in with an active Apple Music subscription for full playback; the site never relays audio or stores credentials.
               </p>
             ) : null}
 
@@ -318,7 +318,7 @@ export function WebPlayerDialog({ player }: { player: WebPlayer }) {
                 {/* 原生隐藏 Range Input：全权负责无障碍操作与各端拖拽事件 */}
                 <input
                   type="range"
-                  aria-label="播放进度"
+                  aria-label="Playback progress"
                   disabled={!isItemActive}
                   min={0}
                   max={durationMs > 0 ? durationMs : 1000}
@@ -356,7 +356,7 @@ export function WebPlayerDialog({ player }: { player: WebPlayer }) {
                 <span>{formatClock(positionMs)}</span>
                 {/* 试听时总长是 0:30，前面点明，免得以为整首就这么短 */}
                 <span>
-                  {previewing ? "试听 · " : null}
+                  {previewing ? "Preview · " : null}
                   {formatClock(durationMs)}
                 </span>
               </div>
@@ -365,7 +365,7 @@ export function WebPlayerDialog({ player }: { player: WebPlayer }) {
             <div className="mt-2 flex items-center justify-center gap-6">
               <button
                 type="button"
-                aria-label="上一首"
+                aria-label="Previous"
                 disabled={isStarting || !isItemActive}
                 onClick={player.previous}
                 className="p-1 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
@@ -375,7 +375,7 @@ export function WebPlayerDialog({ player }: { player: WebPlayer }) {
               {/* 还没出声时 toggle 走的是 play：装好的队列从第一首开始 */}
               <button
                 type="button"
-                aria-label={isPlaying ? "暂停" : "播放"}
+                aria-label={isPlaying ? "Pause" : "Play"}
                 disabled={isStarting}
                 onClick={isItemActive ? player.toggle : player.play}
                 className="p-1 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
@@ -388,7 +388,7 @@ export function WebPlayerDialog({ player }: { player: WebPlayer }) {
               </button>
               <button
                 type="button"
-                aria-label="下一首"
+                aria-label="Next"
                 disabled={isStarting || !isItemActive}
                 onClick={player.next}
                 className="p-1 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
@@ -445,7 +445,7 @@ export function WebPlayerDialog({ player }: { player: WebPlayer }) {
                               isCurrent && "font-medium text-live",
                             )}
                           >
-                            {song.attributes?.name ?? "未知曲目"}
+                            {song.attributes?.name ?? "Unknown track"}
                           </span>
                           <span className="label-mono shrink-0 text-muted-foreground">
                             {formatClock(song.attributes?.durationInMillis ?? 0)}

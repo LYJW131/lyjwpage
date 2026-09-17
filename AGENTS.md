@@ -76,4 +76,5 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 # 界面与交互
 
 - 站内滚动条默认隐藏：可滚动区域一律加 `scrollbar-none [&::-webkit-scrollbar]:hidden`（前者管 Firefox 的 `scrollbar-width`，后者管 Chromium 系，两句缺一不可）。现有示例：播放器队列。
+- 界面文案一律英文：标注、正文、状态、按钮、提示、无障碍文案、错误页和元数据都用英文，`<html lang>` 为 `en`；日期用 en-US（`Jun 22`、`Mon 11:00 AM`），数字用 en-US 分组。来自数据源的内容（歌名、游戏名、剧名、歌词、提交信息）照原样，不翻译。仅开发环境可见的调试开关提示可以用中文。
 - 条目式滚动要吸附：容器加 `snap-y snap-mandatory`（横向用 `snap-x`，见奖杯组、在看瓷砖），子项加 `snap-start`，滚动停稳后永远是整行对齐；多栏并排时各行等高（如 44px），吸住后两边才对得齐。

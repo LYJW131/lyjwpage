@@ -33,14 +33,14 @@ export default function NotFound() {
                 404
               </div>
               <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-                你访问的页面不存在或已被移除。
+                The page you requested doesn’t exist or has been removed.
               </p>
               <div className="mt-6">
                 <Link
                   href="/"
                   className="paper-card inline-flex h-8 items-center justify-center rounded-md border border-line-strong bg-surface px-4 text-xs font-medium text-foreground transition-colors hover:bg-surface-hover"
                 >
-                  返回首页
+                  Back to home
                 </Link>
               </div>
             </div>

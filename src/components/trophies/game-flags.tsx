@@ -70,11 +70,11 @@ export function GameFlags({
   const label = plain ? undefined : "label-mono";
   return (
     <span className={cn("inline-flex flex-wrap items-center gap-1.5", className)}>
-      {preOrder ? <span className={cn(label, "text-muted-foreground")}>预购</span> : null}
+      {preOrder ? <span className={cn(label, "text-muted-foreground")}>Pre-order</span> : null}
       {plus ? (
         <span className="inline-flex items-center gap-0.5 text-muted-foreground">
           <PsPlusMark decorative className="h-3 w-3" />
-          <span className={label}>Plus 库</span>
+          <span className={label}>Plus catalog</span>
         </span>
       ) : null}
     </span>

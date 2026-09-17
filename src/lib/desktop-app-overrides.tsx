@@ -32,7 +32,7 @@ export interface DesktopAppOverride {
 export const DESKTOP_APP_OVERRIDES: readonly DesktopAppOverride[] = [
   {
     key: "hidden",
-    displayName: "已隐藏",
+    displayName: "Hidden",
     match: (id) => id === HIDDEN_DESKTOP_BUNDLE_ID,
     renderIcon: ({ size = 24, className }) => (
       <EyeOff size={size} className={className} aria-hidden />

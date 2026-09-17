@@ -151,10 +151,10 @@ export function HeaderDesktop({
     ? "offline"
     : activeOverride?.key ?? desktop?.bundleIdentifier ?? desktop?.applicationName ?? "idle";
   const applicationName = offline
-    ? "已离线"
+    ? "Offline"
     : locked
-      ? "已锁屏"
-      : activeOverride?.displayName ?? desktop?.applicationName ?? (isLoading ? "读取中…" : "暂无活动");
+      ? "Locked"
+      : activeOverride?.displayName ?? desktop?.applicationName ?? (isLoading ? "Loading…" : "Idle");
   /**
    * 离线 / 锁屏 > 应用替换 > 源图标，图标和文字必须是同一个优先级。
    *
@@ -186,9 +186,9 @@ export function HeaderDesktop({
         activeOverride?.key === "claude-code" ? "overflow-visible" : "overflow-hidden",
         className,
       )}
-      aria-label={offline ? "Mac 上报器已离线" : `正在使用：${applicationName}`}
+      aria-label={offline ? "Mac reporter offline" : `Using ${applicationName}`}
       aria-live="polite"
-      title={offline ? "Mac 上报器已离线" : applicationName}
+      title={offline ? "Mac reporter offline" : applicationName}
     >
       {/* 内容绝对定位做切换动画，宽度得另开一行量，否则中间栏只剩 1/3 就开始省略。 */}
       <div className="pointer-events-none invisible flex items-center gap-2" aria-hidden>

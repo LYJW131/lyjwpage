@@ -45,10 +45,10 @@ function Stat({ label, value, title, prefix }: { label: string; value?: number |
 /** 顺序按 Lighthouse 报告；没有 INP（那要真实用户才测得到），同轮的 TBT 占那一列。 */
 const vitalRows: { label: string; key: Exclude<keyof LighthouseVitals, "score">; unit: "s" | "ms" | ""; title: string }[] = [
   { label: "LCP", key: "lcpMs", unit: "s", title: "Largest Contentful Paint" },
-  { label: "TBT", key: "tbtMs", unit: "ms", title: "Total Blocking Time：实验室里代替 INP 的指标" },
+  { label: "TBT", key: "tbtMs", unit: "ms", title: "Total Blocking Time: lab stand-in for INP" },
   { label: "CLS", key: "cls", unit: "", title: "Cumulative Layout Shift" },
   { label: "FCP", key: "fcpMs", unit: "s", title: "First Contentful Paint" },
-  { label: "TTFB", key: "ttfbMs", unit: "ms", title: "Time to First Byte：根文档的服务器响应时间" },
+  { label: "TTFB", key: "ttfbMs", unit: "ms", title: "Time to First Byte: server response of the root document" },
 ];
 function vital(value: number | null | undefined, unit: string) {
   if (value == null) return "—";
@@ -90,38 +90,38 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
   const contributionShare = contributors.reduce((sum, person) => sum + person.commits, 0);
   return <Card id="site-status" label="LYJWPAGE" className={cn("scroll-mt-28", className)} action={
     <div className="flex items-center gap-4">
-      <a href={site.repo} target="_blank" rel="noreferrer" aria-label="GitHub 仓库" className="hover:text-foreground"><Github size={15} /></a>
-      <a href={site.vercel} target="_blank" rel="noreferrer" aria-label="Vercel 控制台" className="hover:text-foreground"><Vercel size={15} /></a>
-      <a href={site.cloudflare} target="_blank" rel="noreferrer" aria-label="Cloudflare 控制台"><CloudflareColor size={19} /></a>
+      <a href={site.repo} target="_blank" rel="noreferrer" aria-label="GitHub repository" className="hover:text-foreground"><Github size={15} /></a>
+      <a href={site.vercel} target="_blank" rel="noreferrer" aria-label="Vercel dashboard" className="hover:text-foreground"><Vercel size={15} /></a>
+      <a href={site.cloudflare} target="_blank" rel="noreferrer" aria-label="Cloudflare dashboard"><CloudflareColor size={19} /></a>
     </div>
   }>
     <div className="border-b border-line px-4 py-5 md:px-5">
       <div className="grid grid-cols-2 gap-5 md:grid-cols-4">
         <Stat label="VIEWS · 7D" value={analytics?.pageviews} title={analytics ? `${time.format(analytics.start)} — ${time.format(analytics.end)} · UTC+8` : undefined} />
-        <Stat label="COMMITS" value={github?.totals.commits} title="默认分支上的提交数" />
+        <Stat label="COMMITS" value={github?.totals.commits} title="Commits on the default branch" />
         <Stat label="ADDITIONS" value={github?.totals.additions} prefix="+" title="Total lines added" />
         <Stat label="DELETIONS" value={github?.totals.deletions} prefix="−" title="Total lines removed" />
       </div>
       {contributionShare > 0 && (
-        <div className="mt-6 flex h-2 overflow-hidden bg-muted" role="img" aria-label="按参与提交数分的贡献占比">
+        <div className="mt-6 flex h-2 overflow-hidden bg-muted" role="img" aria-label="Contribution share by commits">
           {contributors.map((person, index) => person.commits > 0 ? (
-            <span key={person.login} title={`${person.login} · 参与 ${number.format(person.commits)} 次提交`} style={{ width: `${person.commits / contributionShare * 100}%`, backgroundColor: colorForRank(index) }} />
+            <span key={person.login} title={`${person.login} · ${number.format(person.commits)} commits`} style={{ width: `${person.commits / contributionShare * 100}%`, backgroundColor: colorForRank(index) }} />
           ) : null)}
         </div>
       )}
     </div>
     <RepoContributions data={github} recentCommits={recentCommits} deploymentsBySha={deploymentsBySha} />
     <div className="grid border-t border-line md:grid-cols-2">
-      <section className="min-w-0 border-b border-line md:border-b-0" aria-label="性能评分">
+      <section className="min-w-0 border-b border-line md:border-b-0" aria-label="Performance">
         <div className="px-4 pt-3 pb-2">
           <div className="grid grid-cols-[40px_repeat(6,minmax(0,1fr))] items-center gap-1 text-right text-[9px] text-muted-foreground lg:grid-cols-[88px_repeat(6,minmax(0,1fr))] lg:text-[10px]">
-            <span className="truncate text-left" title={pagespeed ? `PageSpeed Insights 实测 ${pagespeed.url}\n${pagespeed.samples} 轮的中位数 · ${time.format(pagespeed.start)} — ${time.format(pagespeed.fetchedAt)} · UTC+8` : undefined}>{measured}</span>
-            <span title="Lighthouse 性能评分，模拟设备上的实验室实测">PERF</span>{vitalRows.map(row => <span key={row.key} title={row.title}>{row.label}</span>)}
+            <span className="truncate text-left" title={pagespeed ? `PageSpeed Insights on ${pagespeed.url}\nMedian of ${pagespeed.samples} runs · ${time.format(pagespeed.start)} — ${time.format(pagespeed.fetchedAt)} · UTC+8` : undefined}>{measured}</span>
+            <span title="Lighthouse performance score, lab run on a simulated device">PERF</span>{vitalRows.map(row => <span key={row.key} title={row.title}>{row.label}</span>)}
           </div>
           {(["desktop", "mobile"] as const).map(device => {
             const score = pagespeed?.[device].score;
             return <div key={device} className="grid h-11 grid-cols-[40px_repeat(6,minmax(0,1fr))] items-center gap-1 text-right text-[10px] tabular-nums lg:grid-cols-[88px_repeat(6,minmax(0,1fr))] lg:text-xs">
-              <span className="text-left text-[11px] text-muted-foreground">{device === "desktop" ? "桌面" : "移动"}</span>
+              <span className="text-left text-[11px] text-muted-foreground">{device === "desktop" ? "Desktop" : "Mobile"}</span>
               {/* Lighthouse 自己的档位：90 分及格算绿，50 到 89 黄 */}
               <span className={cn("text-xl font-medium lg:text-2xl", score == null ? "text-muted-foreground" : score >= 90 ? "text-emerald-600 dark:text-emerald-400" : score >= 50 ? "text-amber-600" : "text-red-500")}>{score ?? "—"}</span>
               {vitalRows.map(row => <span key={row.key}>{vital(pagespeed?.[device][row.key], row.unit)}</span>)}
@@ -129,7 +129,7 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
           })}
         </div>
       </section>
-      <section id="cloudflare-workers" className="min-w-0 scroll-mt-28 md:border-l md:border-line" aria-label="服务运行">
+      <section id="cloudflare-workers" className="min-w-0 scroll-mt-28 md:border-l md:border-line" aria-label="Services">
         {/* 窄屏两列只剩 150px 左右，名字截断、数字拆行；单列到 sm 再回两列 */}
         <ul className="grid h-full auto-rows-fr grid-cols-1 gap-px bg-line sm:grid-cols-2">
           <li className="bg-surface px-4 py-2.5">
@@ -138,21 +138,21 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
               <CommitSha commit={vercel?.production?.commit} />
             </div>
             <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] tabular-nums text-muted-foreground">
-              <span className="whitespace-nowrap" title={functions ? `超时 ${functions.timeouts} 次 · 平均峰值内存 ${functions.memoryAvgMb == null ? "—" : `${Math.round(functions.memoryAvgMb)} MB`}` : undefined}>调用 <span className="text-foreground">{functions ? number.format(functions.invocations) : "—"}</span></span>
+              <span className="whitespace-nowrap" title={functions ? `${functions.timeouts} timeouts · avg peak memory ${functions.memoryAvgMb == null ? "—" : `${Math.round(functions.memoryAvgMb)} MB`}` : undefined}>Calls <span className="text-foreground">{functions ? number.format(functions.invocations) : "—"}</span></span>
               <span className="whitespace-nowrap">CPU <span className="text-foreground">{cpu(functions?.cpuP75Ms)}</span> P75</span>
               <CollectionWindow start={functions?.start} end={functions?.end} />
             </div>
           </li>
           {CLOUDFLARE_WORKERS.map(({ name }) => {
             const worker = cloudflare?.workers.find(w => w.name === name), metrics = worker?.metrics;
-            return <li key={name} className="bg-surface px-4 py-2.5" title={worker?.deployment ? `部署于 ${time.format(worker.deployment.deployedAt)} · ${worker.deployment.versions.map(v => `${v.id.slice(0, 8)} ${v.percentage}%`).join(" / ")}` : name}>
+            return <li key={name} className="bg-surface px-4 py-2.5" title={worker?.deployment ? `Deployed ${time.format(worker.deployment.deployedAt)} · ${worker.deployment.versions.map(v => `${v.id.slice(0, 8)} ${v.percentage}%`).join(" / ")}` : name}>
               <div className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4">
                 <span className="flex shrink-0"><CloudflareColor size={14} /></span>
                 <span className="min-w-0 truncate">{name}</span>
                 <CommitSha commit={worker?.deployment?.commit} />
               </div>
               <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] tabular-nums text-muted-foreground">
-                <span className="whitespace-nowrap" title={metrics ? `子请求 ${number.format(metrics.subrequests)}` : undefined}>调用 <span className="text-foreground">{metrics ? number.format(metrics.requests) : "—"}</span></span>
+                <span className="whitespace-nowrap" title={metrics ? `${number.format(metrics.subrequests)} subrequests` : undefined}>Calls <span className="text-foreground">{metrics ? number.format(metrics.requests) : "—"}</span></span>
                 <span className="whitespace-nowrap">CPU <span className="text-foreground">{cpu(metrics?.cpuTimeP50Ms)}</span> P50</span>
                 <CollectionWindow start={cloudflare?.windowStart} end={cloudflare?.windowEnd} />
               </div>

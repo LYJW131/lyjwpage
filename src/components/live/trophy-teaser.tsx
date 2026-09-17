@@ -16,9 +16,9 @@ import type {
 import { cn } from "@/lib/utils";
 
 const PRESENCE_DOT: Record<PlaystationPresenceKind, { className: string; label: string }> = {
-  online: { className: "bg-live", label: "在线" },
-  busy: { className: "bg-live-idle", label: "忙碌" },
-  offline: { className: "bg-live-off", label: "离线" },
+  online: { className: "bg-live", label: "Online" },
+  busy: { className: "bg-live-idle", label: "Busy" },
+  offline: { className: "bg-live-off", label: "Offline" },
 };
 
 const TYPES: TrophyType[] = ["platinum", "gold", "silver", "bronze"];
@@ -30,10 +30,10 @@ const RECENT_PX = 28;
 const AVATAR_PX = 40;
 
 function formatUnlock(ms: number): string {
-  // 「6月22日」而不是「6/22」—— 斜杠版和旁边的 442 / 1466 长得太像分数
-  return new Date(ms).toLocaleString("zh-CN", {
+  // 「Jun 22」而不是「6/22」—— 斜杠版和旁边的 442 / 1466 长得太像分数
+  return new Date(ms).toLocaleString("en-US", {
     timeZone: site.timezone,
-    month: "long",
+    month: "short",
     day: "numeric",
   });
 }
@@ -95,7 +95,7 @@ export function TrophyTeaser({
          */}
         <div
           className="relative grid h-14 w-14 shrink-0 place-items-center"
-          title={`${data.profile.trophyPoint.toLocaleString("en-US")} / ${data.profile.levelNextPoint.toLocaleString("en-US")} 点`}
+          title={`${data.profile.trophyPoint.toLocaleString("en-US")} / ${data.profile.levelNextPoint.toLocaleString("en-US")} pts`}
         >
           <svg viewBox="0 0 36 36" className="absolute inset-0 -rotate-90 text-line" aria-hidden>
             <circle cx="18" cy="18" r="15" fill="none" stroke="currentColor" strokeWidth="2.5" />
@@ -159,7 +159,7 @@ export function TrophyTeaser({
             {data.profile.plus ? <PsPlusMark className="h-3.5 w-3.5" /> : null}
           </div>
           <div className="label-mono mt-1.5 text-muted-foreground">
-            奖杯等级 {data.profile.level}
+            Trophy Level {data.profile.level}
           </div>
         </div>
       </div>
@@ -187,13 +187,13 @@ export function TrophyTeaser({
             type="button"
             onClick={() => onRecentClick(recent)}
             // 游戏名自带书名号的时候多，别再套一层
-            aria-label={`展开 ${recent.titleName} 的奖杯，定位到「${recent.trophyName}」`}
+            aria-label={`Open ${recent.titleName} trophies at “${recent.trophyName}”`}
             className="-mx-2 block cursor-pointer rounded-md px-2 py-1 text-left transition-colors hover:bg-surface-hover sm:text-right"
           >
             {/* 和四色计数同构：标签在上、内容在下 —— 裸内容一眼认不出是什么。
                 日期跟着标签走，别插在图标和奖杯名中间把名字拆开 */}
             <div className="label-mono text-muted-foreground">
-              最近解锁 · {formatUnlock(recent.earnedAt)}
+              Latest · {formatUnlock(recent.earnedAt)}
             </div>
             <div className="mt-1.5 flex items-center gap-2 sm:justify-end">
               {recent.iconUrl ? (

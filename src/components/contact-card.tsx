@@ -53,7 +53,7 @@ export function ContactCard({
               */}
               <Image
                 src={avatarDataUri ?? site.githubAvatar}
-                alt={`${site.githubLogin} 的 GitHub 头像`}
+                alt={`${site.githubLogin}'s GitHub avatar`}
                 fill
                 sizes="(min-width: 1024px) 64px, 56px"
                 className="object-cover transition-transform duration-500 group-hover:scale-[1.04]"
@@ -88,7 +88,7 @@ export function ContactCard({
           <div
             className="flex shrink-0 flex-col divide-y divide-line border border-line"
             role="group"
-            aria-label="热力图"
+            aria-label="Heatmap"
           >
             <HeatmapTab
               label="Tokens"

@@ -10,18 +10,18 @@ export function SyncPlaybackButton({ player }: { player: WebPlayer }) {
   const connecting = player.syncing && player.status === "starting";
   const Icon = connecting ? LoaderCircle : player.syncing ? Radio : ListMusic;
   const label = player.syncing
-    ? connecting ? "同步中…" : player.syncWaiting ? "等待播放" : "正在同步"
-    : "一起听";
+    ? connecting ? "Syncing…" : player.syncWaiting ? "Waiting" : "Synced"
+    : "Listen Along";
   const available = player.status !== "unavailable" && (player.syncAvailable || player.syncing);
 
   return (
     <button
       type="button"
       aria-pressed={player.syncing}
-      aria-label={player.syncing ? "停止同步播放列表和进度" : "同步播放列表和进度"}
+      aria-label={player.syncing ? "Stop syncing queue and position" : "Sync queue and position"}
       title={player.syncing
-        ? "停止同步，继续自由播放"
-        : available ? "一起听：同步播放列表和进度" : "暂无可同步的歌曲"}
+        ? "Stop syncing and play freely"
+        : available ? "Listen along: sync the queue and position" : "Nothing to sync right now"}
       disabled={!available}
       onClick={player.toggleSync}
       className={cn(

@@ -30,13 +30,14 @@ type RingId = "move" | "exercise" | "stand";
  */
 const RINGS: ReadonlyArray<{
   id: RingId;
+  /** 读数上方的等宽小字，沿用 Apple 的环名 */
   label: string;
   unit: string;
   radius: number;
 }> = [
-  { id: "move", label: "活动", unit: "千卡", radius: 44.65 },
-  { id: "exercise", label: "锻炼", unit: "分钟", radius: 32.72 },
-  { id: "stand", label: "站立", unit: "小时", radius: 20.54 },
+  { id: "move", label: "Move", unit: "kcal", radius: 44.65 },
+  { id: "exercise", label: "Exercise", unit: "min", radius: 32.72 },
+  { id: "stand", label: "Stand", unit: "hrs", radius: 20.54 },
 ];
 
 /**
@@ -130,7 +131,7 @@ function Rings({ rings, className }: { rings: RingValue[]; className?: string })
       role="img"
       aria-label={rings
         .map((ring) => `${ring.label} ${Math.round(ring.value)} / ${ring.goal} ${ring.unit}`)
-        .join("，")}
+        .join(", ")}
     >
       <defs>
         {/*
@@ -358,18 +359,18 @@ export function ActivityCard({
    */
   const extras: Extra[] = !data
     ? [
-        { label: "步数", value: null },
-        { label: "距离", value: null },
-        { label: "爬楼", value: null },
+        { label: "Steps", value: null },
+        { label: "Distance", value: null },
+        { label: "Flights", value: null },
       ]
     : [
-        { label: "步数", value: <NumberFlow value={!current ? 0 : (data.steps ?? 0)} /> },
+        { label: "Steps", value: <NumberFlow value={!current ? 0 : (data.steps ?? 0)} /> },
         {
-          label: "距离",
+          label: "Distance",
           value: `${((!current ? 0 : (data.distanceMeters ?? 0)) / 1000).toFixed(2)} km`,
         },
-        // 爬楼不带单位，只有数字 —— 「层」在标题里已经说清楚了
-        { label: "爬楼", value: <NumberFlow value={!current ? 0 : (data.flightsClimbed ?? 0)} /> },
+        // 爬楼不带单位，只有数字 —— FLIGHTS 这个标题本身就是「层」
+        { label: "Flights", value: <NumberFlow value={!current ? 0 : (data.flightsClimbed ?? 0)} /> },
       ];
 
   return (

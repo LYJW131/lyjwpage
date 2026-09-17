@@ -11,7 +11,7 @@ export const site = {
   /** 窄屏页头只留这四个字母 */
   shortName: "LYJW",
   url: "https://lyjw.me",
-  description: "实时展示设备、应用、音乐、影视与 AI 编程状态的个人主页。",
+  description: "A personal homepage with live status of devices, apps, music, media and AI coding.",
   /** 页脚的 commit 链接拼在它后面 */
   repo: "https://github.com/LYJW131/lyjwpage",
   /** 控制台与单次部署的链接拼在它后面 */

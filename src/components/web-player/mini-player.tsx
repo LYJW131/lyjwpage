@@ -26,7 +26,7 @@ export function MiniPlayer() {
       {/* 封面按钮：点击回到播放器展开页（优先展示当前正在播放的专辑） */}
       <button
         type="button"
-        aria-label="打开播放器"
+        aria-label="Open player"
         onClick={() => {
           if (player.activeItem) {
             player.openWith(player.activeItem);
@@ -45,7 +45,7 @@ export function MiniPlayer() {
 
       <button
         type="button"
-        aria-label={isPlaying ? "暂停" : "播放"}
+        aria-label={isPlaying ? "Pause" : "Play"}
         onClick={player.toggle}
         className="hidden p-1 text-muted-foreground transition-colors hover:text-foreground sm:inline-flex"
       >

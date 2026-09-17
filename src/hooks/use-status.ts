@@ -24,7 +24,7 @@ export function usePageActive() {
 
 export async function statusFetcher<T>(url: string): Promise<StatusResponse<T>> {
   const response = await fetch(backendUrl(url), { cache: "no-store" });
-  if (!response.ok) throw new Error(`请求 ${url} 失败：${response.status}`);
+  if (!response.ok) throw new Error(`Request ${url} failed: ${response.status}`);
   return response.json();
 }
 const fetcher = statusFetcher;

@@ -273,7 +273,7 @@ function TotalUsage({
             />
           </div>
         </div>
-        <div title="按公开 API 价格折算">
+        <div title="At public API prices">
           <div className="label-mono text-muted-foreground">Cost</div>
           <div className="mt-2 text-3xl font-medium tracking-tight md:text-4xl">
             {totals.costComplete || totals.apiEquivalentCostUSD > 0 ? (
@@ -462,7 +462,7 @@ function featuredLimitRows(agent: VibeCodingAgent): FeaturedLimitRow[] {
     }
     return {
       kind: "unavailable" as const, key: slot, title,
-      reason: agent.limitsError ?? "尚未收到此窗口的限额",
+      reason: agent.limitsError ?? "No limit reported for this window",
     };
   });
 }
@@ -817,7 +817,7 @@ function AgentPanel({
    */
   const active = agent.active && !activityUnknown;
   // 会话扫描会保留最近使用的模型，闲置后继续显示它。
-  const displayModel = agent.currentModel ?? "暂无模型";
+  const displayModel = agent.currentModel ?? "No model";
   const rows = featuredLimitRows(agent);
   return (
     <div className="flex min-w-0 flex-col px-4 py-4 md:px-5">
@@ -825,7 +825,7 @@ function AgentPanel({
         <div className="flex items-center gap-2">
           <FeaturedMark id={agent.id} active={active} />
           <span className="text-sm font-medium">{agentDisplayName(agent)}</span>
-          {active && <span className="label-mono text-live">正在使用</span>}
+          {active && <span className="label-mono text-live">Active</span>}
         </div>
         <span
           className={cn(
@@ -854,7 +854,7 @@ function AgentPanel({
           </div>
         </div>
         <div className="grid gap-3 border-l border-line pl-4">
-          <div title="按公开 API 价格折算">
+          <div title="At public API prices">
             <div className="label-mono text-muted-foreground">Cost</div>
             <div className="mt-1 font-mono text-sm">
               {today && (agent.usageStatus.costComplete || today.apiEquivalentCostUSD > 0)
@@ -871,12 +871,12 @@ function AgentPanel({
 
       <div
         className={cn("mt-5 grid gap-3 border-t border-line pt-4", limitsStale && "opacity-60")}
-        title={limitsStale ? "限额上报器没有消息，这是上一次的值" : undefined}
+        title={limitsStale ? "Limits reporter is silent; showing the last known values" : undefined}
       >
         <div className="label-mono text-muted-foreground">
           Limits
           {agent.plan && (
-            <span title={`套餐 ${agent.plan.tier}`}>
+            <span title={`Plan ${agent.plan.tier}`}>
               <span aria-hidden className="mx-1.5">
                 ·
               </span>
@@ -960,7 +960,7 @@ function CompactAgentRow({
       className={cn("min-w-0 py-3", limitsStale && "opacity-60")}
       title={
         limitsStale
-          ? "限额上报器没有消息，这是上一次的值"
+          ? "Limits reporter is silent; showing the last known values"
           : (agent.limitsError ?? undefined)
       }
     >
@@ -977,7 +977,7 @@ function CompactAgentRow({
         */}
         <span className="flex h-5 min-w-0 items-baseline gap-2 text-xs text-muted-foreground md:shrink-0">
           {agent.plan && (
-            <span className="truncate" title={`套餐 ${agent.plan.tier}`}>
+            <span className="truncate" title={`Plan ${agent.plan.tier}`}>
               {agent.plan.label}
             </span>
           )}
@@ -1135,7 +1135,7 @@ export function VibeCodingCard({
             <TotalUsage totals={data.totals} topModels={data.topModels} />
           ) : (
             <div className="border-b border-line px-4 py-5 text-sm text-muted-foreground md:px-5">
-              等待用量上报
+              Waiting for usage reports
             </div>
           )}
           <div className="grid grid-cols-1 divide-y divide-line md:grid-cols-2 md:divide-x md:divide-y-0">

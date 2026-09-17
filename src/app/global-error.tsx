@@ -24,9 +24,9 @@ export default function GlobalError({
   }, [error]);
 
   return (
-    <html lang="zh-CN" className="h-full" suppressHydrationWarning>
+    <html lang="en" className="h-full" suppressHydrationWarning>
       <head>
-        <title>系统异常</title>
+        <title>System error</title>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
       </head>
@@ -34,10 +34,10 @@ export default function GlobalError({
         <div className="paper-card w-full max-w-md rounded-lg border border-line-strong bg-surface p-6 text-center sm:p-8">
           <div className="label-mono text-xs text-muted-foreground">500 / SYSTEM ERROR</div>
           <h1 className="mt-2 text-xl font-bold tracking-tight text-foreground sm:text-2xl">
-            服务暂时不可用
+            Service temporarily unavailable
           </h1>
           <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-            底层系统遇到了异常，请尝试刷新或稍后重试。
+            The underlying system hit an error. Refresh or try again later.
           </p>
           <div className="mt-6 flex items-center justify-center gap-3">
             <button
@@ -45,13 +45,13 @@ export default function GlobalError({
               onClick={() => reset()}
               className="paper-card inline-flex h-8 items-center justify-center rounded-md border border-line-strong bg-surface px-4 text-xs font-medium text-foreground transition-colors hover:bg-surface-hover"
             >
-              重试
+              Retry
             </button>
             <Link
               href="/"
               className="paper-card inline-flex h-8 items-center justify-center rounded-md border border-line-strong bg-surface px-4 text-xs font-medium text-muted-foreground transition-colors hover:bg-surface-hover hover:text-foreground"
             >
-              返回首页
+              Back to home
             </Link>
           </div>
         </div>
