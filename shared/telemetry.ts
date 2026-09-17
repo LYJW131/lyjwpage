@@ -140,14 +140,50 @@ export function desktopPayload(liveness: Liveness): DesktopPayload {
   );
 }
 
+function playableCandidate(music: LocalNowPlaying | null): music is LocalNowPlaying {
+  return Boolean(music && music.state !== "stopped" && music.title);
+}
+
+function macSnapshotInput(mac?: {
+  music: LocalNowPlaying | null;
+  receivedAt: number;
+  upcomingTracks?: PlayingQueueTrack[];
+}) {
+  return (
+    mac ?? {
+      music: telemetryState.music,
+      receivedAt: telemetryState.activityReceivedAt,
+      upcomingTracks: telemetryState.upcomingTracks,
+    }
+  );
+}
+
+/** 不查目录的候选：只够仲裁「谁在放、放没放」；链接、封面、歌词位留空。给活动历史用，不给页面。 */
+export function bareCandidate(
+  music: LocalNowPlaying | null,
+  receivedAt: number,
+): NowListeningCandidate | null {
+  if (!playableCandidate(music)) return null;
+  return {
+    music,
+    receivedAt,
+    id: null,
+    link: null,
+    songId: null,
+    upcomingSongIds: [],
+    hasLyrics: false,
+  };
+}
+
 export async function decorateCandidate(
   music: LocalNowPlaying | null,
   receivedAt: number,
   upcomingTracks: PlayingQueueTrack[] = [],
 ): Promise<NowListeningCandidate | null> {
-  if (!music || music.state === "stopped" || !music.title) return null;
+  const bare = bareCandidate(music, receivedAt);
+  if (!bare) return null;
   const [lookup, ...ahead] = await Promise.all([
-    resolveTrackLookup(music),
+    resolveTrackLookup(bare.music),
     ...upcomingTracks.map((track) => resolveTrackLookup(track)),
   ]);
   return {
@@ -158,8 +194,8 @@ export async function decorateCandidate(
      * 而采集端为此要把 JPEG 二进制压进每个换歌的上报包里，是那个模块最大的一块。
      * 目录里没有的曲子（本地导入、非目录内容）查不到封面，那时仍退回采集端送来的那张。
      */
-    music: lookup.artwork ? { ...music, artworkUrl: lookup.artwork } : music,
-    receivedAt,
+    ...bare,
+    music: lookup.artwork ? { ...bare.music, artworkUrl: lookup.artwork } : bare.music,
     id: lookup.id,
     link: lookup.link || null,
     songId: lookup.songId,
@@ -177,26 +213,41 @@ export async function decorateCandidate(
 /** 工作副本 + 一份 HomePod 快照 → 两个查好链接的候选。谁都不再回 Storage 取 */
 export async function snapshotFrom(
   homePodStored: StoredHomePod | null,
-  mac: {
+  mac?: {
     music: LocalNowPlaying | null;
     receivedAt: number;
     upcomingTracks?: PlayingQueueTrack[];
-  } = {
-      music: telemetryState.music,
-      receivedAt: telemetryState.activityReceivedAt,
-      upcomingTracks: telemetryState.upcomingTracks,
-    },
+  },
 ): Promise<NowListeningSnapshot> {
+  const source = macSnapshotInput(mac);
   const musicEnabled = telemetryState.activeModules.has("appleMusic");
   const [macCandidate, homePod] = await Promise.all([
     musicEnabled
-      ? decorateCandidate(mac.music, mac.receivedAt, mac.upcomingTracks ?? telemetryState.upcomingTracks)
+      ? decorateCandidate(source.music, source.receivedAt, source.upcomingTracks ?? telemetryState.upcomingTracks)
       : null,
     homePodStored ? decorateCandidate(homePodStored.music, homePodStored.receivedAt) : null,
   ]);
   return {
     mac: macCandidate,
     homePod,
-    macReceivedAt: mac.receivedAt,
+    macReceivedAt: source.receivedAt,
+  };
+}
+
+/** 同 snapshotFrom 的仲裁输入，但不查 Apple 目录。活动历史只需要 idle / state / 曲名。 */
+export function bareSnapshotFrom(
+  homePodStored: StoredHomePod | null,
+  mac?: {
+    music: LocalNowPlaying | null;
+    receivedAt: number;
+    upcomingTracks?: PlayingQueueTrack[];
+  },
+): NowListeningSnapshot {
+  const source = macSnapshotInput(mac);
+  const musicEnabled = telemetryState.activeModules.has("appleMusic");
+  return {
+    mac: musicEnabled ? bareCandidate(source.music, source.receivedAt) : null,
+    homePod: homePodStored ? bareCandidate(homePodStored.music, homePodStored.receivedAt) : null,
+    macReceivedAt: source.receivedAt,
   };
 }
