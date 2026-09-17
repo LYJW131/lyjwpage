@@ -19,6 +19,7 @@
 11. [活动圆环 — iPhone Telemetry Hub](#11-活动圆环--iphone-telemetry-hub)
 12. [落地节点监控与三档自适应调频](#12-落地节点监控与三档自适应调频)
 13. [PWA 与边缘缓存规则](#13-pwa-与边缘缓存规则)
+14. [跨域活动脉搏（Pulse）](#14-跨域活动脉搏pulse)
 
 ---
 
@@ -276,3 +277,15 @@ payload: >-
 - 针对 `lyjw131.com` 的 ESA 缓存控制台，必须在首位配置「**PWA 核心文件绕过缓存**」规则：
   - 匹配路径：`/sw.js`、`/offline.html`、`/manifest.webmanifest`、`/pwa/icon-192.png`、`/pwa/icon-512.png`。
   - 该规则必须优先于整站长效缓存规则执行，避免客户端安装入口和离线更新被 CDN 强缓存拦截。
+
+---
+
+## 14. 跨域活动脉搏（Pulse）
+
+给将来的活动评分图（Jev Score）垫的一层存储，不是卡片。不叫 activity：那个名字在本仓库已经是 Apple Watch 圆环（`/api/status/activity`、`activity:today`、`ActivityStatus`）。五条域 `coding` / `listening` / `watching` / `gaming` / `charging` 各占一个 SQLite list 键 `pulse:<domain>`，样本是 `{ t, level, hint? }`：`t` 为源站 `receivedAt`（epoch 毫秒），`level` 为 0–3（空闲 / 低 / 中 / 高），`hint` 可选、截到 48 字。域不进 JSON。
+
+写入走纯函数 `planPulseSample`：没有上一笔就记；`t` 不前进丢掉（重复或乱序）；level 或 hint 变了记一笔状态翻面；非空闲且距上一笔 ≥ 5 分钟再确认一次（上报器死了会在阶跃序列上露出缺口）；空闲保持单点，5 分钟内没变的心跳不入库。每域 trim 到 600 条，每次 append 续 7 天 TTL。写入失败只打 `[pulse]` 日志，不能让主状态上报失败。
+
+挂钩点在主状态准备好之后，promise 推进已有的 `fanout({ writes })`。Mac 那条入口（`workers/api/src/stores/telemetry.ts`）**每封信封都重算一次在听和 coding，纯心跳也算**，`charger` 列在 `activeModules` 里时充电头也跟着确认（没带快照的那几封走 `prepareHeartbeat` 旁边那一笔）：采集端只在内容变化时才带模块，挂在「模块出现」上的话，一首长歌、一段稳定的 coding 整段不落笔，5 分钟的再确认永远不到，暂停宽限、HomePod 静默、存活过期这些时间函数也没人把它们翻成空闲。档位从留着的工作副本 + 这封算出来的存活现算，判定时刻一律取 `receivedAt`（和样本的 `t` 同一把钟），前台应用要过 `activeDesktop()` 那道 `activeModules` 闸；留着的 agents 同样要过闸——`vibeCoding` 模块不在 `activeModules` 里，或 nowMirror 那份的 `pushedAt` 过了卡片同一条 `VIBECODING_STALE_MS`，就按空闲算，采集器死了而 Mac 还在心跳时不会一直确认 level 3。另外三处仍按事件来：HomePod 在听（`homepod-ingest.ts`，推送仍走带目录的 `listeningEvent`，pulse 走 `bareSnapshotFrom`；HA 只在变化时推，没有自己的心跳，静默过期靠 Mac 那侧的重算落笔），Emby 的 `playing` 更新（`emby.ts`，这次没带详情就按 itemId 沿用存着的那一项，免得 hint 少一块被当成翻面），PlayStation 的 `presence` 心跳（`playstation.ts`）。`recordAgentLimits` 不挂钩，限额不是活动。v0 档位是确定性规则（`shared/pulse-levels.ts`），评分器到位后只换这一层，调用点仍只看 `{ level, hint }`。
+
+没有公开 HTTP 出口；读取只在 Worker 内部（StateHub）由将来的评分器完成。`readPulseHistory(cursor?)` 一次 batch 读五域。`partial` 规则同充电头曲线：游标不早于还留着的最旧点才给增量，否则整份。不推送，不进 `/api/home`。

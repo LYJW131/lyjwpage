@@ -1,8 +1,10 @@
+import { watchingLevel } from "@shared/pulse-levels";
 import { getCurrentItem, getImageObjectKeys, getResume, resolveNowPlaying, type EmbyNowPlaying, type StoredWatchingItem } from "@/lib/emby-store";
 import { number, object, text } from "@/lib/json";
 import { NOW_WATCHING_TAG, WATCHING_TAG } from "@/lib/live-events";
 import type { WatchingItem, WatchingMedia, WatchingPlayMethod } from "@/lib/types";
 import { fanout, type PendingEvent } from "@api/fanout";
+import { recordPulse } from "@api/stores/pulse";
 import { hasStoredImage, IMAGE_OBJECT_KEY } from "@api/r2-assets";
 import { clearNowPlaying, setCurrentItem, setImageObjectKeys, setNowPlaying, setResume } from "@api/stores/emby-store";
 import { nowWatchingPayload, watchingPayload } from "@shared/emby";
@@ -204,7 +206,7 @@ function missingKeys(items: StoredWatchingItem[], objectKeys: Record<string, str
  * 三个部分都可省略，各推各的：续播列表 60 秒一轮且只在有变化时推，播放位置
  * 只在拖动进度条偏离推算值时推，图片则只在没推过或 ImageTag 变了时才带。
  */
-export async function recordEmbyReport(body: unknown) {
+export async function recordEmbyReport(body: unknown, receivedAt = Date.now()) {
   const root = object(body);
   if (!root) throw new Error("请求体不是对象");
 
@@ -251,15 +253,20 @@ export async function recordEmbyReport(body: unknown) {
   const played = "playing" in root ? preparePlaying(root.playing) : null;
   if (played) {
     writes.push(played.commit());
+    /**
+     * 这次没带详情就用存着的那份，按 itemId 对上才算数（同 nowWatchingPayload
+     * 那道闸）。推送和 pulse 必须用同一份：只给 `played.item` 的话，代理推来一条
+     * 不带详情的位置更新会记出一笔没有标题的样本，而 hint 变了在 planPulseSample
+     * 眼里就是一次状态翻面 —— 同一部剧会在序列上凭空多出一个断点。
+     */
+    const kept = storedCurrent?.item ?? null;
+    const detail = played.item ?? (kept?.id === played.state?.itemId ? kept : null);
+    const watching = watchingLevel(played.state, detail);
+    writes.push(recordPulse("watching", { t: receivedAt, level: watching.level, hint: watching.hint }));
     // 播放状态变了就直接把新数据推给浏览器 —— 手上这份就是最新的
     events.push({
       type: "watching-now",
-      payload: nowWatchingPayload(
-        resolveNowPlaying(played.state),
-        // 这次没带详情就用存着的那份；对不上会被 nowWatchingPayload 挡掉
-        played.item ?? storedCurrent?.item ?? null,
-        objectKeys,
-      ),
+      payload: nowWatchingPayload(resolveNowPlaying(played.state), detail, objectKeys),
     });
     tags.push(NOW_WATCHING_TAG);
   }

@@ -1,3 +1,4 @@
+import { gamingLevel } from "@shared/pulse-levels";
 import { object } from "@/lib/json";
 import { NOW_PLAYING_TAG, PLAYING_TAG, TROPHIES_TAG } from "@/lib/live-events";
 import { getPlaystationPlayedGames, getPlaystationPower, getPlaystationPresence, getPlaystationTrophies } from "@/lib/playstation-store";
@@ -6,6 +7,7 @@ import type {
   PlaystationPresencePayload
 } from "@/lib/types";
 import { fanout, type PendingEvent } from "@api/fanout";
+import { recordPulse } from "@api/stores/pulse";
 import { setPlaystationPlayedGames, setPlaystationPower, setPlaystationPresence, setPlaystationTrophies } from "@api/stores/playstation-store";
 import { normalizePlaystationPlayedGames, normalizePlaystationPower, normalizePlaystationPresence } from "@shared/playstation";
 
@@ -32,7 +34,7 @@ function presenceContent(payload: PlaystationPresencePayload) {
  *
  * 奖杯目录只失效、不推：整份几百 KB，解锁又不是按秒翻的事。
  */
-export async function recordPlaystationReport(input: unknown) {
+export async function recordPlaystationReport(input: unknown, receivedAt = Date.now()) {
   const envelope = object(input);
   if (!envelope || envelope.version !== 1) {
     throw new Error("PlayStation 遥测协议 version 必须为 1");
@@ -96,6 +98,8 @@ export async function recordPlaystationReport(input: unknown) {
      * stale-while-revalidate，落后一个刷新周期，窗口已经把这一截算进去了。
      */
     writes.push(setPlaystationPresence(incomingPresence));
+    const gaming = gamingLevel(incomingPresence);
+    writes.push(recordPulse("gaming", { t: receivedAt, level: gaming.level, hint: gaming.hint }));
     if (presenceChanged || !previousPresence) {
       events.push({ type: "playing-now", payload: { ...incomingPresence, power: powerForEvent } });
       sentPlayingNow = true;

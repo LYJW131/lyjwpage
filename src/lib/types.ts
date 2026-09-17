@@ -878,6 +878,43 @@ export type PowerBankPayload = PowerBankStatus & {
 } & ReporterPresence;
 
 /**
+ * 跨域活动脉搏（pulse）：coding / listening / watching / gaming / charging 五条阶跃序列，
+ * 给将来的活动评分图当底。这是 Worker 内部读形状，没有公开 HTTP。
+ *
+ * 不叫 activity：那个名字在本仓库已经是 Apple Watch 圆环
+ * （`/api/status/activity`、`activity:today`、`ActivityStatus`）。
+ */
+export const PULSE_DOMAINS = ["coding", "listening", "watching", "gaming", "charging"] as const;
+export type PulseDomain = (typeof PULSE_DOMAINS)[number];
+
+/** 活动强度上限。0 空闲，1 低，2 中，3 高。 */
+export const PULSE_LEVEL_MAX = 3;
+export type PulseLevel = 0 | 1 | 2 | 3;
+
+/** 一条 pulse 采样。域在 list key 上，不进 JSON。 */
+export type PulseSample = {
+  /** 源站收到时刻，epoch 毫秒 */
+  t: number;
+  level: PulseLevel;
+  /** 紧凑标签，缺席或空串不入库 */
+  hint?: string;
+};
+
+export type PulseSeries = {
+  samples: PulseSample[];
+  /**
+   * samples 里只有游标之后新增的点，接到已有序列后面。
+   * false 表示这是完整快照 —— 没有游标，或游标落后太多、中间那段已被裁掉。
+   */
+  partial: boolean;
+};
+
+/** Worker 内部读形状；将来的评分器在 StateHub 里消费，不是 HTTP 信封。 */
+export type PulseHistory = {
+  series: Record<PulseDomain, PulseSeries>;
+};
+
+/**
  * Apple Watch 的活动圆环：活动 / 锻炼 / 站立，一环两个数 —— 已完成和目标。
  *
  * **目标值跟着上报走，不在站点这侧写死。** 它只有原生 App 读得到

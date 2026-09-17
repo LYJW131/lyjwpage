@@ -14,6 +14,7 @@ export class StorageBatch {
   fields(key: string): this { return this.queue({ op: "fields", key }); }
   patch(key: string, fields: Record<string, string>): this { return this.queue({ op: "patch", key, fields }); }
   append(key: string, ...values: string[]): this { return this.queue({ op: "append", key, values }); }
+  listRange(key: string, start: number, stop: number): this { return this.queue({ op: "listRange", key, start, stop }); }
   trim(key: string, start: number, stop: number): this { return this.queue({ op: "trim", key, start, stop }); }
   expire(key: string, ttlMs: number): this { return this.queue({ op: "expire", key, ttlMs }); }
   execute(): Promise<unknown[]> { return this.commands.length ? this.run(this.commands) : Promise.resolve([]); }
