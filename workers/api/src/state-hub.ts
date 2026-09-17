@@ -5,30 +5,38 @@ import { StorageClient } from "@shared/storage-client";
 import { SqliteStore, type StoredEntry } from "@shared/sqlite-store";
 import type { StorageCommand } from "@shared/storage-contract";
 import { HANDLERS } from "./ingest-handlers";
-import { requestStore, type Env } from "./runtime";
+import { readModelEnabled, requestStore, type Env } from "./runtime";
+import { READ_MODEL_PATHS, readModelPathsForSource } from "./read-model";
+import { ReadModelPublisher } from "./read-model-publisher";
 
-/** 单个站点一个对象。所有上报的读、合并、写按顺序完成，避免不同信封互相覆盖。 */
+/** Authoritative state and existing ingest coordination; public KV is a projection. */
 export class StateHub extends DurableObject<Env> {
   private database: SqliteStore;
   private ingestTail: Promise<unknown> = Promise.resolve();
+  private readModels: ReadModelPublisher | null;
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.database = new SqliteStore(ctx.storage.sql, (work) => ctx.storage.transactionSync(work));
     ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
-    // PurgeCaches 链路已删除（ESA 首页改走源站 SWR），旧冷却表不再使用。
     ctx.storage.sql.exec("DROP TABLE IF EXISTS esa_purge");
+    this.readModels = readModelEnabled(env) && env.READ_MODEL ? new ReadModelPublisher({
+      sql: ctx.storage.sql,
+      kv: env.READ_MODEL,
+      prefix: env.STORAGE_PREFIX ?? "lyjwpage",
+      render: (path) => this.fetch(new Request(`https://read-model.internal${path}`)),
+    }) : null;
   }
 
   ready(): boolean {
     return this.ctx.storage.sql.exec("SELECT value FROM metadata WHERE key = 'initialized'").toArray()[0]?.value === "1";
   }
-  finishImport(): void {
+  async finishImport(): Promise<void> {
     this.ctx.storage.sql.exec("INSERT INTO metadata(key, value) VALUES ('initialized', '1') ON CONFLICT(key) DO UPDATE SET value = '1'");
+    await this.queueReadModels();
   }
 
   async fetch(request: Request): Promise<Response> {
     if (!this.ready()) return Response.json({ ok: false, error: "状态存储初始化中" }, { status: 503 });
-    // 等已接受的写入完成，读取使用自己的工作副本；不与其他请求共享 Promise 或状态对象。
     await this.ingestTail;
     return withRequestState(() => requestStore.run({ env: this.env, ctx: this.ctx,
       storage: new StorageClient(async (commands) => this.database.execute(commands)),
@@ -50,12 +58,24 @@ export class StateHub extends DurableObject<Env> {
       ctx: this.ctx,
       storage: new StorageClient(async (commands) => this.database.execute(commands)),
     }, async () => {
-      const data = await handler(body);
-      await this.ensureAlarm();
-      return { ready: true, json: JSON.stringify(data) };
+      try {
+        const data = await handler(body);
+        return { ready: true, json: JSON.stringify(data) };
+      } finally {
+        // A handler can commit liveness before rejecting a later module. Rebuild
+        // from authority even then; never put KV or render public APIs in this queue.
+        this.readModels?.enqueue(readModelPathsForSource(source));
+        await this.ensureAlarm();
+      }
     })));
     this.ingestTail = result.catch(() => {});
     return result;
+  }
+
+  async queueReadModels(paths: string[] = [...READ_MODEL_PATHS]): Promise<void> {
+    if (!this.readModels || !this.ready()) return;
+    this.readModels.enqueue(paths);
+    await this.ensureAlarm();
   }
 
   async importMissing(entries: StoredEntry[]): Promise<number> {
@@ -64,17 +84,22 @@ export class StateHub extends DurableObject<Env> {
     return count;
   }
   private async scheduleAlarm(at: number): Promise<void> {
-    // 事务内只将 alarm 提前，不能互相覆盖。
     await this.ctx.storage.transaction(async (txn) => {
       const current = await txn.getAlarm();
       if (current === null || current > at) await txn.setAlarm(at);
     });
   }
   private ensureAlarm(): Promise<void> {
-    return this.scheduleAlarm(Date.now() + 60 * 60_000);
+    return this.scheduleAlarm(Math.max(Date.now() + 1, Math.min(
+      Date.now() + 60 * 60_000, this.readModels?.nextAlarm() ?? Infinity,
+    )));
   }
   async alarm(): Promise<void> {
     const removed = this.database.purgeExpired();
-    await this.scheduleAlarm(Date.now() + (removed === 1000 ? 1000 : 60 * 60_000));
+    await this.readModels?.flush();
+    await this.scheduleAlarm(Math.max(Date.now() + 1, Math.min(
+      Date.now() + (removed === 1000 ? 1000 : 60 * 60_000),
+      this.readModels?.nextAlarm() ?? Infinity,
+    )));
   }
 }
