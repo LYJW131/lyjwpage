@@ -1,4 +1,4 @@
-import { chargingLevel, codingLevel, listeningLevel } from "@shared/activity-history-levels";
+import { chargingLevel, codingLevel, listeningLevel } from "@shared/pulse-levels";
 import { chargerPushPayload } from "@/lib/anker";
 import { readChargerState } from "@/lib/charger-store";
 import {
@@ -32,7 +32,7 @@ import type {
   VibeCodingNowPayload,
 } from "@/lib/types";
 import { fanout, type PendingEvent } from "@api/fanout";
-import { recordActivity } from "@api/stores/activity-history";
+import { recordPulse } from "@api/stores/pulse";
 import { parseAppleMusicCredentials } from "@api/apple-music-credentials-module";
 import { putAppleMusicCredentials } from "@api/stores/apple-music-credentials";
 import { prepareHeartbeat, prepareStatus } from "@api/stores/charger-store";
@@ -399,7 +399,7 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
         const landing = prepareStatus(status, receivedAt, await (charger ?? readChargerState()));
         writes.push(landing.commit());
         const charging = chargingLevel(status);
-        writes.push(recordActivity("charging", { t: receivedAt, level: charging.level, hint: charging.hint }));
+        writes.push(recordPulse("charging", { t: receivedAt, level: charging.level, hint: charging.hint }));
         chargerWritten = true;
         /**
          * 插拔、换设备立刻推给浏览器，不等卡片下一次轮询。滚动读数照旧不走这里 ——
@@ -511,7 +511,7 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
         }),
       );
       writes.push(
-        recordListeningActivity(receivedAt, liveness, homePod ?? getHomePodSnapshot(), {
+        recordListeningPulse(receivedAt, liveness, homePod ?? getHomePodSnapshot(), {
           music,
           receivedAt,
           upcomingTracks,
@@ -554,7 +554,7 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
      * 缺的那一侧读已经 sync 过的工作副本 / nowMirror，整封只算一次。
      */
     if ("desktop" in modules || codingNow) {
-      writes.push(recordCodingActivity(receivedAt, codingNow?.now.agents));
+      writes.push(recordCodingPulse(receivedAt, codingNow?.now.agents));
     }
 
     /**
@@ -619,11 +619,11 @@ async function listeningEvent(
 }
 
 /**
- * 活动历史只仲裁「谁在放」，不查 Apple 目录。
+ * pulse 序列只仲裁「谁在放」，不查 Apple 目录。
  *
  * HomePod 那次读在信封解析时已经发车；这里只接住，不另开一次 SQLite。
  */
-async function recordListeningActivity(
+async function recordListeningPulse(
   receivedAt: number,
   liveness: Liveness,
   homePod: Promise<StoredHomePod | null>,
@@ -635,13 +635,13 @@ async function recordListeningActivity(
 ): Promise<void> {
   try {
     const scored = listeningLevel(pickNowListening(bareSnapshotFrom(await homePod, mac), liveness));
-    await recordActivity("listening", { t: receivedAt, level: scored.level, hint: scored.hint });
+    await recordPulse("listening", { t: receivedAt, level: scored.level, hint: scored.hint });
   } catch (error) {
-    console.error("[activity-history]", error instanceof Error ? error.message : String(error));
+    console.error("[pulse]", error instanceof Error ? error.message : String(error));
   }
 }
 
-async function recordCodingActivity(
+async function recordCodingPulse(
   receivedAt: number,
   incomingAgents?: VibeCodingNowPayload["agents"],
 ): Promise<void> {
@@ -657,34 +657,34 @@ async function recordCodingActivity(
         }
       : null;
     const scored = codingLevel({ agents, desktop });
-    await recordActivity("coding", { t: receivedAt, level: scored.level, hint: scored.hint });
+    await recordPulse("coding", { t: receivedAt, level: scored.level, hint: scored.hint });
   } catch (error) {
-    console.error("[activity-history]", error instanceof Error ? error.message : String(error));
+    console.error("[pulse]", error instanceof Error ? error.message : String(error));
   }
 }
 
 /**
  * HomePod 那条入口：Mac 工作副本和存活一起发车，推送走带目录的 snapshotFrom，
- * 活动历史走 bareSnapshotFrom。两边共用这一次 sync / 读存活。
+ * pulse 走 bareSnapshotFrom。两边共用这一次 sync / 读存活。
  */
 export function homePodListening(stored: StoredHomePod): {
   event: Promise<LiveEvent>;
-  activity: Promise<void>;
+  pulse: Promise<void>;
 } {
   const ready = Promise.all([syncTelemetryState(), readLiveness()]);
   return {
     event: ready.then(([, liveness]) =>
       listeningEvent(liveness, Promise.resolve(playableHomePod(stored))),
     ),
-    activity: ready.then(
+    pulse: ready.then(
       ([, liveness]) =>
-        recordListeningActivity(
+        recordListeningPulse(
           stored.receivedAt,
           liveness,
           Promise.resolve(playableHomePod(stored)),
         ),
       (error) => {
-        console.error("[activity-history]", error instanceof Error ? error.message : String(error));
+        console.error("[pulse]", error instanceof Error ? error.message : String(error));
       },
     ),
   };

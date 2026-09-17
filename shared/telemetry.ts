@@ -158,7 +158,7 @@ function macSnapshotInput(mac?: {
   );
 }
 
-/** 不查目录的候选：只够仲裁「谁在放、放没放」；链接、封面、歌词位留空。给活动历史用，不给页面。 */
+/** 不查目录的候选：只够仲裁「谁在放、放没放」；链接、封面、歌词位留空。给 pulse 用，不给页面。 */
 export function bareCandidate(
   music: LocalNowPlaying | null,
   receivedAt: number,
@@ -234,7 +234,7 @@ export async function snapshotFrom(
   };
 }
 
-/** 同 snapshotFrom 的仲裁输入，但不查 Apple 目录。活动历史只需要 idle / state / 曲名。 */
+/** 同 snapshotFrom 的仲裁输入，但不查 Apple 目录。pulse 只需要 idle / state / 曲名。 */
 export function bareSnapshotFrom(
   homePodStored: StoredHomePod | null,
   mac?: {

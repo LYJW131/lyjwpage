@@ -19,7 +19,7 @@ export async function recordHomePodEvent(body: unknown) {
   const changed = displayChanged(await mirror.get(), stored);
   const listening = homePodListening(stored);
   await fanout({
-    writes: [writeHomePodEvent(stored), listening.activity],
+    writes: [writeHomePodEvent(stored), listening.pulse],
     events: [listening.event],
     tags: changed ? [NOW_LISTENING_TAG] : [],
   });

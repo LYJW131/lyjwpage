@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { listeningLevel } from "@shared/activity-history-levels";
+import { listeningLevel } from "@shared/pulse-levels";
 import { withRequestState } from "@shared/request-state";
 import { bareSnapshotFrom, telemetryState } from "@shared/telemetry";
 import { MUSIC_PAUSE_GRACE_MS, pickNowListening } from "@/lib/now-listening";

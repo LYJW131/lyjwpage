@@ -1,10 +1,10 @@
-import { watchingLevel } from "@shared/activity-history-levels";
+import { watchingLevel } from "@shared/pulse-levels";
 import { getCurrentItem, getImageObjectKeys, getResume, resolveNowPlaying, type EmbyNowPlaying, type StoredWatchingItem } from "@/lib/emby-store";
 import { number, object, text } from "@/lib/json";
 import { NOW_WATCHING_TAG, WATCHING_TAG } from "@/lib/live-events";
 import type { WatchingItem, WatchingMedia, WatchingPlayMethod } from "@/lib/types";
 import { fanout, type PendingEvent } from "@api/fanout";
-import { recordActivity } from "@api/stores/activity-history";
+import { recordPulse } from "@api/stores/pulse";
 import { hasStoredImage, IMAGE_OBJECT_KEY } from "@api/r2-assets";
 import { clearNowPlaying, setCurrentItem, setImageObjectKeys, setNowPlaying, setResume } from "@api/stores/emby-store";
 import { nowWatchingPayload, watchingPayload } from "@shared/emby";
@@ -254,7 +254,7 @@ export async function recordEmbyReport(body: unknown, receivedAt = Date.now()) {
   if (played) {
     writes.push(played.commit());
     const watching = watchingLevel(played.state, played.item);
-    writes.push(recordActivity("watching", { t: receivedAt, level: watching.level, hint: watching.hint }));
+    writes.push(recordPulse("watching", { t: receivedAt, level: watching.level, hint: watching.hint }));
     // 播放状态变了就直接把新数据推给浏览器 —— 手上这份就是最新的
     events.push({
       type: "watching-now",

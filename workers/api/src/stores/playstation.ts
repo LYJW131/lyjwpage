@@ -1,4 +1,4 @@
-import { gamingLevel } from "@shared/activity-history-levels";
+import { gamingLevel } from "@shared/pulse-levels";
 import { object } from "@/lib/json";
 import { NOW_PLAYING_TAG, PLAYING_TAG, TROPHIES_TAG } from "@/lib/live-events";
 import { getPlaystationPlayedGames, getPlaystationPower, getPlaystationPresence, getPlaystationTrophies } from "@/lib/playstation-store";
@@ -7,7 +7,7 @@ import type {
   PlaystationPresencePayload
 } from "@/lib/types";
 import { fanout, type PendingEvent } from "@api/fanout";
-import { recordActivity } from "@api/stores/activity-history";
+import { recordPulse } from "@api/stores/pulse";
 import { setPlaystationPlayedGames, setPlaystationPower, setPlaystationPresence, setPlaystationTrophies } from "@api/stores/playstation-store";
 import { normalizePlaystationPlayedGames, normalizePlaystationPower, normalizePlaystationPresence } from "@shared/playstation";
 
@@ -99,7 +99,7 @@ export async function recordPlaystationReport(input: unknown, receivedAt = Date.
      */
     writes.push(setPlaystationPresence(incomingPresence));
     const gaming = gamingLevel(incomingPresence);
-    writes.push(recordActivity("gaming", { t: receivedAt, level: gaming.level, hint: gaming.hint }));
+    writes.push(recordPulse("gaming", { t: receivedAt, level: gaming.level, hint: gaming.hint }));
     if (presenceChanged || !previousPresence) {
       events.push({ type: "playing-now", payload: { ...incomingPresence, power: powerForEvent } });
       sentPlayingNow = true;

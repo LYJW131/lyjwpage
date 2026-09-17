@@ -9,9 +9,9 @@ import {
   isCodingApp,
   listeningLevel,
   watchingLevel,
-} from "@shared/activity-history-levels";
+} from "@shared/pulse-levels";
 import type { EmbyNowPlaying, StoredWatchingItem } from "@shared/emby-store";
-import { ACTIVITY_HINT_MAX } from "@/lib/limits";
+import { PULSE_HINT_MAX } from "@/lib/limits";
 import type {
   ChargerStatus,
   NowListeningPayload,
@@ -112,9 +112,9 @@ const agents = (
 test("compactHint 拼得下就拼，拼不下退回最后一段并截到 48", () => {
   assert.equal(compactHint(null, "  ", undefined), null);
   assert.equal(compactHint("Artist", "Title"), "Artist – Title");
-  const longTitle = "T".repeat(ACTIVITY_HINT_MAX + 8);
-  assert.equal(compactHint("A Very Long Artist Name Indeed", longTitle), "T".repeat(ACTIVITY_HINT_MAX));
-  assert.equal(compactHint(longTitle), "T".repeat(ACTIVITY_HINT_MAX));
+  const longTitle = "T".repeat(PULSE_HINT_MAX + 8);
+  assert.equal(compactHint("A Very Long Artist Name Indeed", longTitle), "T".repeat(PULSE_HINT_MAX));
+  assert.equal(compactHint(longTitle), "T".repeat(PULSE_HINT_MAX));
 });
 
 test("listeningLevel：空闲 / 播放 / 暂停 / 停掉，hint 优先 artist – title", () => {
@@ -171,7 +171,7 @@ test("watchingLevel：无会话 0，暂停 2，在播 3；剧名来自 item.titl
     hint: "Gundam",
   });
   const long = "M".repeat(60);
-  assert.equal(watchingLevel(playingState(false), watchingItem(long)).hint, "M".repeat(ACTIVITY_HINT_MAX));
+  assert.equal(watchingLevel(playingState(false), watchingItem(long)).hint, "M".repeat(PULSE_HINT_MAX));
 });
 
 test("gamingLevel：在玩 3，在线 1，离线 0；hint 是游戏名", () => {

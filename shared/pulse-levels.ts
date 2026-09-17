@@ -1,17 +1,17 @@
 // v0 规则：确定性、可替换。将来的活动评分器（Jev Score）会取代这些规则；调用点只依赖 { level, hint } 的形状。
 // Jev Score will supersede these rules later.
 
-import { ACTIVITY_HINT_MAX } from "@/lib/limits";
+import { PULSE_HINT_MAX } from "@/lib/limits";
 import type {
-  ActivityLevel,
   ChargerStatus,
   NowListeningPayload,
   PlaystationPresencePayload,
+  PulseLevel,
   VibeCodingNowPayload,
 } from "@/lib/types";
 import type { EmbyNowPlaying, StoredWatchingItem } from "@shared/emby-store";
 
-export type ActivityScore = { level: ActivityLevel; hint: string | null };
+export type PulseScore = { level: PulseLevel; hint: string | null };
 
 /**
  * 把若干段拼成 ≤48 字的 hint。整段能放下就用 ` – ` 拼；放不下就退回最后一段
@@ -23,9 +23,9 @@ export function compactHint(...parts: Array<string | null | undefined>): string 
     .filter(Boolean);
   if (!cleaned.length) return null;
   const joined = cleaned.join(" – ");
-  if (joined.length <= ACTIVITY_HINT_MAX) return joined;
+  if (joined.length <= PULSE_HINT_MAX) return joined;
   const fallback = cleaned[cleaned.length - 1]!;
-  return fallback.length <= ACTIVITY_HINT_MAX ? fallback : fallback.slice(0, ACTIVITY_HINT_MAX);
+  return fallback.length <= PULSE_HINT_MAX ? fallback : fallback.slice(0, PULSE_HINT_MAX);
 }
 
 /**
@@ -83,7 +83,7 @@ export function isCodingApp(
   );
 }
 
-export function listeningLevel(payload: NowListeningPayload): ActivityScore {
+export function listeningLevel(payload: NowListeningPayload): PulseScore {
   if (payload.idle || !payload.music) return { level: 0, hint: null };
   const hint = compactHint(payload.music.artist, payload.music.title);
   if (payload.music.state === "playing") return { level: 3, hint };
@@ -94,14 +94,14 @@ export function listeningLevel(payload: NowListeningPayload): ActivityScore {
 export function watchingLevel(
   state: EmbyNowPlaying | null,
   item: StoredWatchingItem | null,
-): ActivityScore {
+): PulseScore {
   const hint = compactHint(item?.title);
   if (!state) return { level: 0, hint };
   if (state.paused) return { level: 2, hint };
   return { level: 3, hint };
 }
 
-export function gamingLevel(presence: PlaystationPresencePayload): ActivityScore {
+export function gamingLevel(presence: PlaystationPresencePayload): PulseScore {
   if (presence.playing != null) {
     return { level: 3, hint: compactHint(presence.playing.title) };
   }
@@ -112,7 +112,7 @@ export function gamingLevel(presence: PlaystationPresencePayload): ActivityScore
 export function codingLevel(input: {
   agents: VibeCodingNowPayload["agents"] | null;
   desktop: { applicationName: string; bundleIdentifier: string | null } | null;
-}): ActivityScore {
+}): PulseScore {
   const active = input.agents?.find((agent) => agent.active);
   if (active) {
     return { level: 3, hint: compactHint(active.currentModel || active.id) };
@@ -123,7 +123,7 @@ export function codingLevel(input: {
   return { level: 0, hint: null };
 }
 
-export function chargingLevel(status: ChargerStatus): ActivityScore {
+export function chargingLevel(status: ChargerStatus): PulseScore {
   const activeDevice = status.ports.find((port) => port.active)?.device ?? null;
   const hint = compactHint(status.cover?.name ?? activeDevice);
   if (!status.connected) return { level: 0, hint };

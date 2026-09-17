@@ -878,39 +878,40 @@ export type PowerBankPayload = PowerBankStatus & {
 } & ReporterPresence;
 
 /**
- * 跨域活动历史（`/api/status/activity-history`）。
+ * 跨域活动脉搏（pulse）：coding / listening / watching / gaming / charging 五条阶跃序列，
+ * 给将来的活动评分图当底。这是 Worker 内部读形状，没有公开 HTTP。
  *
- * 和下面的 Apple Watch 活动圆环（`/api/status/activity`）不是一回事：
- * 这里记的是 coding / listening / watching / gaming / charging 五条阶跃序列，
- * 给将来的活动评分图当底；圆环仍走自己的端点，互不引用。
+ * 不叫 activity：那个名字在本仓库已经是 Apple Watch 圆环
+ * （`/api/status/activity`、`activity:today`、`ActivityStatus`）。
  */
-export const ACTIVITY_DOMAINS = ["coding", "listening", "watching", "gaming", "charging"] as const;
-export type ActivityDomain = (typeof ACTIVITY_DOMAINS)[number];
+export const PULSE_DOMAINS = ["coding", "listening", "watching", "gaming", "charging"] as const;
+export type PulseDomain = (typeof PULSE_DOMAINS)[number];
 
 /** 活动强度上限。0 空闲，1 低，2 中，3 高。 */
-export const ACTIVITY_LEVEL_MAX = 3;
-export type ActivityLevel = 0 | 1 | 2 | 3;
+export const PULSE_LEVEL_MAX = 3;
+export type PulseLevel = 0 | 1 | 2 | 3;
 
-/** 一条活动历史采样。域在 list key 上，不进 JSON。 */
-export type ActivitySample = {
+/** 一条 pulse 采样。域在 list key 上，不进 JSON。 */
+export type PulseSample = {
   /** 源站收到时刻，epoch 毫秒 */
   t: number;
-  level: ActivityLevel;
+  level: PulseLevel;
   /** 紧凑标签，缺席或空串不入库 */
   hint?: string;
 };
 
-export type ActivityDomainSeries = {
-  samples: ActivitySample[];
+export type PulseSeries = {
+  samples: PulseSample[];
   /**
-   * samples 里只有 `?since=` 之后新增的点，要接到客户端已有序列后面。
-   * false 表示这是完整快照 —— 首次请求，或客户端落后太多、中间那段已被裁掉。
+   * samples 里只有游标之后新增的点，接到已有序列后面。
+   * false 表示这是完整快照 —— 没有游标，或游标落后太多、中间那段已被裁掉。
    */
   partial: boolean;
 };
 
-export type ActivityHistoryPayload = {
-  series: Record<ActivityDomain, ActivityDomainSeries>;
+/** Worker 内部读形状；将来的评分器在 StateHub 里消费，不是 HTTP 信封。 */
+export type PulseHistory = {
+  series: Record<PulseDomain, PulseSeries>;
 };
 
 /**
