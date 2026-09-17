@@ -63,7 +63,7 @@ export default {
 };`);
   const config = {
     name: 'isolated-kv-read-model', main: harness,
-    // Wrangler 3 joins this field to its config directory; absolute paths are not safe here.
+    // Keep the config and bundler working directory aligned (see spawn below).
     tsconfig: relative(temporary, join(root, 'workers/api/tsconfig.json')),
     compatibility_date: '2025-02-14',
     compatibility_flags: ['nodejs_compat', 'nodejs_compat_populate_process_env'],
@@ -85,7 +85,9 @@ export default {
   const configPath = join(temporary, 'wrangler.json');
   await writeFile(configPath, JSON.stringify(config));
   child = spawn(process.execPath, [require.resolve('wrangler'), 'dev', '--config', configPath, '--port', String(port), '--persist-to', join(temporary, 'state')], {
-    cwd: root, env: { ...process.env, WRANGLER_LOG_PATH: join(temporary, 'wrangler.log') }, stdio: ['ignore', 'pipe', 'pipe'],
+    // Wrangler 3 normalizes tsconfig against cwd, while esbuild uses the harness project root.
+    // Use the isolated project for both; imports and aliases still point into the checkout.
+    cwd: temporary, env: { ...process.env, WRANGLER_LOG_PATH: join(temporary, 'wrangler.log') }, stdio: ['ignore', 'pipe', 'pipe'],
   });
   child.on('error', error => { startupError = error; });
   for (const stream of [child.stdout, child.stderr]) stream.on('data', value => logs.push(value.toString()));
