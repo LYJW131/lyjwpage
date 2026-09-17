@@ -55,6 +55,12 @@ class_name = "LivePushRoom"
 binding = "IMAGES"
 bucket_name = "lyjw-homepage"
 
+# 公开读取投影（docs/kv-read-model.md）：DO SQLite 仍是唯一权威，这里只放可重建的公开 JSON。
+# 去掉这个 binding 就回到纯 DO 读取，不需要反向迁移；生产、预览、本地不共用可写命名空间。
+[[kv_namespaces]]
+binding = "READ_MODEL"
+id = "6d4a26ae1068417d8f9f7c200381826b"
+
 [observability]
 enabled = true
 
