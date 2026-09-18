@@ -5,8 +5,9 @@ import { StorageClient } from "@shared/storage-client";
 import { SqliteStore, type StoredEntry } from "@shared/sqlite-store";
 import type { StorageCommand } from "@shared/storage-contract";
 import { HANDLERS } from "./ingest-handlers";
-import { historyArchiveEnabled, readModelEnabled, requestStore, type Env } from "./runtime";
+import { historyArchiveEnabled, pulseScoringEnabled, readModelEnabled, requestStore, type Env } from "./runtime";
 import { PulseArchive } from "./pulse-archive";
+import { PulseScorer } from "./pulse-score";
 import { READ_MODEL_PATHS, readModelPathsForSource } from "./read-model";
 import { ReadModelPublisher } from "./read-model-publisher";
 
@@ -16,6 +17,7 @@ export class StateHub extends DurableObject<Env> {
   private ingestTail: Promise<unknown> = Promise.resolve();
   private readModels: ReadModelPublisher | null;
   private pulseArchive: PulseArchive | null;
+  private pulseScorer: PulseScorer | null;
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.database = new SqliteStore(ctx.storage.sql, (work) => ctx.storage.transactionSync(work));
@@ -32,6 +34,11 @@ export class StateHub extends DurableObject<Env> {
       sql: ctx.storage.sql,
       db: env.HISTORY,
       storage: new StorageClient(async (commands) => this.database.execute(commands)),
+    }) : null;
+    // 分存在 StateHub 自己的库里（键 pulse:scores），评分器只从这里读写，不经请求作用域。
+    this.pulseScorer = pulseScoringEnabled(env) && env.TYPESAFE_API_KEY ? new PulseScorer({
+      storage: new StorageClient(async (commands) => this.database.execute(commands)),
+      apiKey: env.TYPESAFE_API_KEY,
     }) : null;
   }
 
@@ -90,6 +97,15 @@ export class StateHub extends DurableObject<Env> {
   async archivePulse(): Promise<void> {
     if (!this.pulseArchive || !this.ready()) return;
     await this.pulseArchive.run();
+  }
+
+  /**
+   * cron 每分钟一趟，由评分器自己决定要不要真打出去（十分钟一次，且要有新样本）。
+   * 错误只进 `[pulse-score]` 日志，上一份分留着。
+   */
+  async scorePulse(): Promise<void> {
+    if (!this.pulseScorer || !this.ready()) return;
+    await this.pulseScorer.run();
   }
 
   async importMissing(entries: StoredEntry[]): Promise<number> {

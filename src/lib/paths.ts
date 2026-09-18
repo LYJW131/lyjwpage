@@ -76,3 +76,9 @@ export const SERVER_PATH = "/api/status/server";
 
 /** Vercel 部署与指标，无推送；部署缓存一分钟，指标按组五到十五分钟，浏览器一分钟轮询。 */
 export const VERCEL_DEPLOYMENTS_PATH = "/api/status/vercel-deployments";
+
+/**
+ * 跨域活动脉搏。没有「此刻」—— 卡片画的就是最近 24 小时那一段，
+ * 也不走推送：分十分钟才可能变一次，广播它等于拿推送当轮询用。
+ */
+export const PULSE_PATH = "/api/status/pulse";

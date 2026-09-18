@@ -10,6 +10,7 @@ import { SiteStatusCard } from "@/components/live/site-status-card";
 import { LiveMediaPair } from "@/components/live/media-pair";
 import { ServerCard } from "@/components/live/server-card";
 import { PlaystationBlock } from "@/components/live/playstation-block";
+import { PulseCard } from "@/components/live/pulse-card";
 import { TimezoneCard } from "@/components/live/timezone-card";
 import { NowWatchingCard } from "@/components/live/now-watching-card";
 import { VibeCodingCard } from "@/components/live/vibecoding-card";
@@ -20,7 +21,7 @@ import { desktopIconDataUri } from "@/lib/desktop-icon-inline";
 import { githubAvatarDataUri } from "@/lib/github-avatar-icon";
 import { getRecentCommits } from "@/lib/github-recent-commits";
 import { cachedHomeSnapshot } from "@/lib/status-cache";
-import type { GithubRepoPayload, StatusResponse } from "@/lib/types";
+import type { GithubRepoPayload, PulsePayload, StatusResponse } from "@/lib/types";
 
 export default async function Home() {
   const [snapshot, avatarDataUri, recentCommits] = await Promise.all([
@@ -35,6 +36,9 @@ export default async function Home() {
    */
   const githubRepo: StatusResponse<GithubRepoPayload> =
     snapshot.githubRepo ?? { ok: false, error: "Status unavailable" };
+  /** 同理：Worker 还没带 pulse 字段时，卡片自己显示空态，不能让整页跌进错误边界 */
+  const pulse: StatusResponse<PulsePayload> =
+    snapshot.pulse ?? { ok: false, error: "Pulse unavailable" };
   const {
     desktop,
     activity,
@@ -139,6 +143,14 @@ export default async function Home() {
                 <VibeCodingCard
                   fallback={vibeCoding}
                   className="defer-offscreen [contain-intrinsic-size:auto_1372px]"
+                />
+                {/*
+                  五条泳道 + 五枚活动分，整宽一块。估高按 375px 上实测写，
+                  和上面那几张一样用 defer-offscreen-always（宽窄都推迟排版）。
+                */}
+                <PulseCard
+                  fallback={pulse}
+                  className="defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_260px]"
                 />
                 <PlaystationBlock
                   trophies={trophies}

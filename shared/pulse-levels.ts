@@ -1,5 +1,5 @@
-// v0 规则：确定性、可替换。将来的活动评分器（Jev Score）会取代这些规则；调用点只依赖 { level, hint } 的形状。
-// Jev Score will supersede these rules later.
+// 档位规则：确定性，按此刻算。Jev 不碰这一层 —— 它只对整段 24 小时窗口给活动分
+// （见 src/lib/pulse-window.ts），档位仍由这里的规则决定。调用点只依赖 { level, hint } 的形状。
 
 import { PULSE_HINT_MAX } from "@/lib/limits";
 import type {
@@ -11,7 +11,8 @@ import type {
 } from "@/lib/types";
 import type { EmbyNowPlaying, StoredWatchingItem } from "@shared/emby-store";
 
-export type PulseScore = { level: PulseLevel; hint: string | null };
+/** 一次档位判定的结果。真正的「分」是 Jev 给窗口打的那个，见 types.ts 的 PulseScore。 */
+export type PulseLevelResult = { level: PulseLevel; hint: string | null };
 
 /**
  * 把若干段拼成 ≤48 字的 hint。整段能放下就用 ` – ` 拼；放不下就退回最后一段
@@ -83,7 +84,7 @@ export function isCodingApp(
   );
 }
 
-export function listeningLevel(payload: NowListeningPayload): PulseScore {
+export function listeningLevel(payload: NowListeningPayload): PulseLevelResult {
   if (payload.idle || !payload.music) return { level: 0, hint: null };
   const hint = compactHint(payload.music.artist, payload.music.title);
   if (payload.music.state === "playing") return { level: 3, hint };
@@ -94,14 +95,14 @@ export function listeningLevel(payload: NowListeningPayload): PulseScore {
 export function watchingLevel(
   state: EmbyNowPlaying | null,
   item: StoredWatchingItem | null,
-): PulseScore {
+): PulseLevelResult {
   const hint = compactHint(item?.title);
   if (!state) return { level: 0, hint };
   if (state.paused) return { level: 2, hint };
   return { level: 3, hint };
 }
 
-export function gamingLevel(presence: PlaystationPresencePayload): PulseScore {
+export function gamingLevel(presence: PlaystationPresencePayload): PulseLevelResult {
   if (presence.playing != null) {
     return { level: 3, hint: compactHint(presence.playing.title) };
   }
@@ -112,7 +113,7 @@ export function gamingLevel(presence: PlaystationPresencePayload): PulseScore {
 export function codingLevel(input: {
   agents: VibeCodingNowPayload["agents"] | null;
   desktop: { applicationName: string; bundleIdentifier: string | null } | null;
-}): PulseScore {
+}): PulseLevelResult {
   const active = input.agents?.find((agent) => agent.active);
   if (active) {
     return { level: 3, hint: compactHint(active.currentModel || active.id) };
@@ -123,7 +124,7 @@ export function codingLevel(input: {
   return { level: 0, hint: null };
 }
 
-export function chargingLevel(status: ChargerStatus): PulseScore {
+export function chargingLevel(status: ChargerStatus): PulseLevelResult {
   const activeDevice = status.ports.find((port) => port.active)?.device ?? null;
   const hint = compactHint(status.cover?.name ?? activeDevice);
   if (!status.connected) return { level: 0, hint };

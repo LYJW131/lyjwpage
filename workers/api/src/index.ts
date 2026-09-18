@@ -1,7 +1,7 @@
 import originWorker from "./origin-worker";
 import { getAllowedOrigins, getCorsHeaders, isAllowedOriginValue } from "./origins";
 import { serveReadModel } from "./read-model-edge";
-import { historyArchiveEnabled, readModelEnabled, type Env } from "./runtime";
+import { historyArchiveEnabled, pulseScoringEnabled, readModelEnabled, type Env } from "./runtime";
 
 // Keep Wrangler's existing class exports and DO migration identities unchanged.
 export { LivePushRoom, StateHub } from "./origin-worker";
@@ -36,6 +36,10 @@ export default {
     // this catch is for the transport itself, which would otherwise fail the cron tick.
     if (historyArchiveEnabled(env)) {
       await hub.archivePulse().catch((error: unknown) => console.warn("[pulse-archive]", error));
+    }
+    // 活动分同理排在最后：它十分钟才真的调一次外部模型，这一分钟的公开视图不等它。
+    if (pulseScoringEnabled(env)) {
+      await hub.scorePulse().catch((error: unknown) => console.warn("[pulse-score]", error));
     }
   },
 };

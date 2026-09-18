@@ -12,6 +12,7 @@ import { getCloudflareWorkers } from "@/lib/cloudflare-workers";
 import { pickNowListening } from "@/lib/now-listening";
 import { resolveLyrics, type LyricsResult } from "@/lib/lyrics";
 import { getPlaying, getPlayingNow } from "@/lib/playstation";
+import { getPulseStatus } from "@/lib/pulse";
 import { getTrophiesSummary } from "@/lib/trophies";
 import { readLiveness } from "@/lib/reporter-liveness";
 import { getDesktopPayload, getNowListeningSnapshot, getTimezonePayload } from "@/lib/telemetry";
@@ -42,7 +43,7 @@ async function getChargerFallback() {
 
 
 export async function publicHomeSnapshot() {
-  const [desktop, activity, server, charger, powerBank, listening, nowListening, timezone, vibeCoding, vibeCodingYear, watching, nowWatching, playing, playingNow, trophies, githubChart, githubRepo, cloudflareWorkers, vercelDeployments] = await Promise.all([
+  const [desktop, activity, server, charger, powerBank, listening, nowListening, timezone, vibeCoding, vibeCodingYear, watching, nowWatching, playing, playingNow, trophies, githubChart, githubRepo, cloudflareWorkers, vercelDeployments, pulse] = await Promise.all([
     statusEnvelope(getDesktopPayload),
     statusEnvelope(getActivitySnapshot),
     statusEnvelope(getServerSnapshot),
@@ -62,11 +63,12 @@ export async function publicHomeSnapshot() {
     statusEnvelope(getGithubRepo),
     statusEnvelope(getCloudflareWorkers),
     statusEnvelope(getVercelDeployments),
+    statusEnvelope(() => getPulseStatus()),
   ]);
   let lyrics: LyricsResult | null = null;
   if (nowListening.ok && !nowListening.data.idle && nowListening.data.hasLyrics && nowListening.data.songId) {
     try { lyrics = await resolveLyrics(nowListening.data.songId); } catch (error) { console.error("[home lyrics]", error); }
   }
-  return { desktop, activity, server, charger, powerBank, listening, nowListening, timezone, vibeCoding, vibeCodingYear, watching, nowWatching, playing, playingNow, trophies, githubChart, githubRepo, cloudflareWorkers, vercelDeployments, lyrics };
+  return { desktop, activity, server, charger, powerBank, listening, nowListening, timezone, vibeCoding, vibeCodingYear, watching, nowWatching, playing, playingNow, trophies, githubChart, githubRepo, cloudflareWorkers, vercelDeployments, pulse, lyrics };
 }
 export type HomeSnapshot = Awaited<ReturnType<typeof publicHomeSnapshot>>;

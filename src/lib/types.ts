@@ -879,7 +879,7 @@ export type PowerBankPayload = PowerBankStatus & {
 
 /**
  * 跨域活动脉搏（pulse）：coding / listening / watching / gaming / charging 五条阶跃序列，
- * 给将来的活动评分图当底。这是 Worker 内部读形状，没有公开 HTTP。
+ * 首页 Pulse 卡片的底。存储形状在这里，对外那份在下面的 PulsePayload（不带 hint）。
  *
  * 不叫 activity：那个名字在本仓库已经是 Apple Watch 圆环
  * （`/api/status/activity`、`activity:today`、`ActivityStatus`）。
@@ -909,9 +909,58 @@ export type PulseSeries = {
   partial: boolean;
 };
 
-/** Worker 内部读形状；将来的评分器在 StateHub 里消费，不是 HTTP 信封。 */
+/** Worker 内部读形状；评分器和公开端点都从它出发，本身不是 HTTP 信封。 */
 export type PulseHistory = {
   series: Record<PulseDomain, PulseSeries>;
+};
+
+/** Jev 给出的趋势三选一，语义见 pulse-window 里的题面。 */
+export const PULSE_TRENDS = ["rising", "steady", "falling"] as const;
+export type PulseTrend = (typeof PULSE_TRENDS)[number];
+
+/**
+ * 一个域的活动分。`value` 是 Jev 在四档标尺上插值出来的位置（0–3），
+ * 和 PulseLevel 的 0–3 不是一回事：档位是确定性规则按此刻算的，
+ * 这个分是模型对整个 24 小时窗口的判断。
+ */
+export type PulseScore = {
+  value: number;
+  /** 模型自报的把握，0–1；没给就是 null。 */
+  confidence: number | null;
+  trend: PulseTrend;
+  scoredAt: number;
+};
+
+/**
+ * 评分器写进 StateHub 的那份（键 `pulse:scores`，不设 TTL）。
+ * 调用失败时整份留在原处，卡片宁可显示上一次的分，也不该空一格。
+ */
+export type PulseScoreRecord = {
+  scoredAt: number;
+  window: { from: number; to: number };
+  domains: Record<PulseDomain, {
+    score: number;
+    confidence: number | null;
+    trend: PulseTrend;
+    /** 打这一份分时该域最新样本的 `t`；下一轮据此判断有没有新东西可评。 */
+    latestSampleAt: number | null;
+  }>;
+};
+
+/**
+ * 公开端点 `/api/status/pulse` 的形状。
+ *
+ * **不带 hint。** 曲名、应用名、游戏名只在 Worker 内部参与评分，不出公网：
+ * 卡片画的是强度和时间，读者不需要知道那会儿在听哪首歌。
+ */
+export type PulsePayload = {
+  generatedAt: number;
+  window: { from: number; to: number };
+  domains: Record<PulseDomain, {
+    /** 窗口内的阶跃点，外加窗口左边界之前那一笔（`t` 裁到 from），泳道才从头填满 */
+    samples: { t: number; level: PulseLevel }[];
+    score: PulseScore | null;
+  }>;
 };
 
 /**

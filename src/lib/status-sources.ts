@@ -10,6 +10,7 @@ import { getVercelDeployments } from "@/lib/vercel-deployments";
 import { getCloudflareWorkers } from "@/lib/cloudflare-workers";
 
 import { getPlaying, getPlayingNow } from "@/lib/playstation";
+import { getPulseStatus } from "@/lib/pulse";
 import { getTrophies } from "@/lib/trophies";
 import { getDesktopPayload, getNowListeningSnapshot, getTimezonePayload } from "@/lib/telemetry";
 import { getVibeCodingSnapshot } from "@/lib/vibecoding";
@@ -24,6 +25,7 @@ export const listeningStatus = getRecentlyPlayed;
 export const nowListeningStatus = getNowListeningSnapshot;
 export const timezoneStatus = getTimezonePayload;
 export const vibeCodingStatus = getVibeCodingSnapshot;
+export const pulseStatus = getPulseStatus;
 export const vibeCodingYearStatus = getVibeCodingYear;
 export const watchingStatus = getWatching;
 export const nowWatchingStatus = getNowWatching;

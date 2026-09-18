@@ -57,7 +57,42 @@ ESA 首页不走数据上报通知。`lyjw131.com` 以 `lyjw.me` 为源站与回
 
 Vercel 仍采用后台重建，通知成功不代表新 HTML 已生成。ESA 后台回源可能取得 Vercel 仍在重建中的旧 HTML，下一轮刷新时收敛；这条链路不承诺两层缓存同步完成更新。首屏新鲜度不依赖这两层：浏览器挂载后直接向 Worker 取最新状态。
 
-公开 API 为 `/api/status/*`、`/api/home`、`/api/lyrics`、`/api/motion-artwork`。浏览器挂载后直接访问这里，Vercel 只在首屏生成或重建时读取 `/api/home`。服务端凭据不进入任何公开响应，没有通用 HTTP 数据库端点。跨域活动脉搏（pulse）没有公开 HTTP 出口；读取只在 Worker 内部（StateHub）由将来的评分器完成。
+公开 API 为 `/api/status/*`、`/api/home`、`/api/lyrics`、`/api/motion-artwork`。浏览器挂载后直接访问这里，Vercel 只在首屏生成或重建时读取 `/api/home`。服务端凭据不进入任何公开响应，没有通用 HTTP 数据库端点。跨域活动脉搏（pulse）的出口是 `GET /api/status/pulse`（也进 `/api/home` 的 `pulse` 字段），见下面一节。
+
+## 跨域活动脉搏与活动分（Pulse）
+
+`GET /api/status/pulse` 给出五个域（`coding` / `listening` / `watching` / `gaming` / `charging`）
+最近 24 小时的阶跃序列和各自的活动分，`/api/home` 的 `pulse` 字段是同一份，首页那张
+Pulse 卡片用它。信封形状：
+
+```jsonc
+{ "ok": true, "data": {
+  "generatedAt": 1770000000000,
+  "window": { "from": 1769913600000, "to": 1770000000000 },
+  "domains": {
+    "coding": {
+      // 窗口内的阶跃点，外加窗口左边界之前那一笔（t 压到 from），泳道才从头填满
+      "samples": [{ "t": 1769913600000, "level": 0 }, { "t": 1769920000000, "level": 3 }],
+      // 还没打过分时为 null
+      "score": { "value": 2.4, "confidence": 0.82, "trend": "rising", "scoredAt": 1769999700000 }
+    }
+    // listening / watching / gaming / charging 同形
+  }
+} }
+```
+
+**`hint` 不出公网。** 曲名、应用名、游戏名只在 Worker 内部参与打分，公开端点只有
+`{ t, level }`。`level` 是 0–3 的档位（确定性规则，见 `shared/pulse-levels.ts`），
+`value` 是 Jev 在四档标尺（idle / light / moderate / intense）上插值出来的位置，
+两者不是一回事。
+
+分由 TypeSafe AI 的 Jev 评估模型给出（直连官方 `POST /v1/systemone`，`src/pulse-score.ts`，裸 HTTP，
+不引 SDK）：cron 每分钟驱动一次，真正调用最多十分钟一次，而且要有比上一份分更新的
+样本才调（分放满一小时且窗口里还有样本时也重算一次，窗口在走）；单次 10 秒超时，失败只进 `[pulse-score]` 日志并留着上一份分。结果存在 StateHub 的
+`pulse:scores`，不设 TTL。没有 `TYPESAFE_API_KEY`、或本地配了 `DEV_OVERRIDES` /
+`UPSTREAM_API_URL` 时整个评分停用（和读模型、D1 归档同一套闸门），端点照常给泳道、分是 null。
+
+本地预览用夹具：`pnpm dev:override /api/status/pulse pulse-busy-day.json`。
 
 ## 最近在听
 
@@ -111,6 +146,7 @@ Worker 不配交付域，回源 R2 由站点的 rewrite 和 ESA 负责，见根 
 pnpm --dir workers/api exec wrangler secret put GITHUB_TOKEN
 pnpm --dir workers/api exec wrangler secret put TELEMETRY_INGEST_SECRET
 pnpm --dir workers/api exec wrangler secret put APPLE_MUSIC_PRIVATE_KEY < AuthKey_XXXXXXXXXX.p8
+pnpm --dir workers/api exec wrangler secret put TYPESAFE_API_KEY
 ```
 
 Worker 不再调用阿里云 OpenAPI。旧的 `ALIYUN_ACCESS_KEY_ID` / `ALIYUN_ACCESS_KEY_SECRET`
