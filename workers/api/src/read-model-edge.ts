@@ -25,7 +25,7 @@ async function boundedRead(kv: ReadModelKv, key: string, timeoutMs: number): Pro
 /** Cache hits never enter StateHub. Misses never publish from a distributed reader. */
 export async function serveReadModel(request: Request, reader: ReadModelReader): Promise<Response> {
   const url = new URL(request.url);
-  // Query-dependent responses (since, filters, fresh=1) retain their original semantics.
+  // Query-dependent responses (since, titleids, other search params) retain their original semantics.
   if (!reader.enabled || !reader.kv || !reader.allowedOrigin || request.method !== "GET" ||
       url.search !== "" || !readModelPolicy(url.pathname)) return reader.origin();
 

@@ -21,7 +21,7 @@ let child;
 let startupError;
 const secret = 'isolated-kv-test';
 const prefix = 'isolated-kv';
-const path = '/api/status/watching';
+const path = '/api/status/vibecoding/year';
 const key = `${prefix}:public-read-model:v1:${path}`;
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const reloads = () => logs.filter(chunk => chunk.includes('Reloading local server')).length;
@@ -117,21 +117,34 @@ export default {
   assert.equal((await post('/api/internal/storage/import', {
     entries: [{ key: `${prefix}:private:test-only`, kind: 'string', value: 'do-not-project-this-secret', expiresAt: null }], finalize: true,
   }, `${secret}-import`)).status, 200);
-  assert.equal((await post('/api/ingest/emby', { resume: { items: [{ id: 'one', name: 'KV integration movie', type: 'Movie' }] } })).status, 202);
+  assert.equal((await post('/api/ingest/mac', {
+    version: 4,
+    heartbeatAt: Date.now(),
+    presence: 'online',
+    activeModules: ['vibeCoding'],
+    modules: {
+      vibeCodingYear: {
+        origin: '2025-08-17',
+        days: Array.from({ length: 53 * 7 }, (_, i) => (i === 2 ? 80 : 0)),
+        models: ['KV integration model'],
+        mix: [[2, 0, 80]],
+      },
+    },
+  })).status, 202);
   await eventually(async () => {
     const response = await request(`${base}${path}`);
     assert.equal(response.headers.get('x-read-model'), 'kv');
-    assert.match(await response.text(), /KV integration movie/);
+    assert.match(await response.text(), /KV integration model/);
   });
   console.log('PASS: ingest -> authoritative DO -> durable alarm -> KV -> edge hit');
   const inspect = `${base}/__test/kv?key=${encodeURIComponent(key)}`;
   const projection = await (await request(inspect)).json();
   assert.equal(projection.schema, 1);
   assert.equal(JSON.stringify(projection).includes('do-not-project-this-secret'), false);
-  const fresh = await request(`${base}${path}?fresh=1`);
-  assert.equal(fresh.status, 200);
-  assert.notEqual(fresh.headers.get('x-read-model'), 'kv');
-  assert.match(await fresh.text(), /KV integration movie/);
+  const queried = await request(`${base}${path}?q=1`);
+  assert.equal(queried.status, 200);
+  assert.notEqual(queried.headers.get('x-read-model'), 'kv');
+  assert.match(await queried.text(), /KV integration model/);
   const live = await request(`${base}/api/status/watching/now`);
   assert.notEqual(live.headers.get('x-read-model'), 'kv');
   const denied = await request(`${base}${path}`, { headers: { Origin: 'https://rejected.example' } });
@@ -139,7 +152,7 @@ export default {
   const allowed = await request(`${base}${path}`, { headers: { Origin: 'https://allowed.example' } });
   assert.equal(allowed.headers.get('access-control-allow-origin'), 'https://allowed.example');
   assert.equal((await post(path, {})).status, 405);
-  console.log('PASS: fresh/live bypass, CORS, methods, private data isolation');
+  console.log('PASS: query/live bypass, CORS, methods, private data isolation');
   // A stale or unavailable projection must not turn a healthy backend into an outage.
   // Respect the actual platform's same-key write limit even in the local emulator.
   await sleep(1_100);
@@ -147,7 +160,7 @@ export default {
   await eventually(async () => {
     const response = await request(`${base}${path}`);
     assert.equal(response.headers.get('x-read-model'), 'origin');
-    assert.match(await response.text(), /KV integration movie/);
+    assert.match(await response.text(), /KV integration model/);
   });
   const unavailable = await request(`${base}${path}`, { headers: { 'X-Test-KV-Failure': '1' } });
   assert.equal(unavailable.status, 200);
@@ -155,7 +168,7 @@ export default {
   console.log('PASS: stale and failed KV fall back to authoritative reads');
 } catch (error) {
   // 轮询的 GET 日志一秒好几行，会把 alarm / [read-model] 那几行挤出窗口；只留有信息量的
-  const noise = /GET \/(api\/status\/watching|count) 200 OK/;
+  const noise = /GET \/(api\/status\/vibecoding\/year|count) 200 OK/;
   console.error(logs.join('').split('\n').filter(line => !noise.test(line)).join('\n').slice(-16000));
   throw error;
 } finally {
