@@ -49,3 +49,40 @@ export const PULSE_REPEAT_AFTER_MS = 5 * 60 * 1000;
 
 /** hint 入库上限；更长的标题在 compactHint 里截断。 */
 export const PULSE_HINT_MAX = 48;
+
+/**
+ * pulse 公开窗口与评分窗口：最近 24 小时。
+ *
+ * StateHub 留 7 天，窗口只是取其中最近的一段：卡片画的是「今天这一天」，
+ * Jev 评的也是同一段，两边必须同一个数，否则分和图对不上。
+ */
+export const PULSE_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * 一笔非空闲样本最多撑这么久。
+ *
+ * 阶跃序列里每个点撑到下一个点，但非空闲每 5 分钟就该再确认一次
+ * （PULSE_REPEAT_AFTER_MS）。超过两倍还没有下一笔，那是上报器死了，不是
+ * 「一直在放」—— 再撑下去，一条过夜的陈旧样本会把 24 小时全算成满档，
+ * 图上是一条假的实线，喂给 Jev 的分钟数也跟着错。空闲不受此限：
+ * 空闲本来就只留一个点，撑到下一次翻面才是它的语义。
+ */
+export const PULSE_SILENT_AFTER_MS = 2 * PULSE_REPEAT_AFTER_MS;
+
+/**
+ * 两次 Jev 评分之间至少隔这么久。cron 每分钟来一趟，真正调用最多十分钟一次，
+ * 而且还要有比上次更新的样本才调。
+ */
+export const PULSE_SCORE_INTERVAL_MS = 10 * 60 * 1000;
+
+/**
+ * 没有新样本也要隔这么久重算一次：窗口跟着时间走，昨天的活动会从 24 小时里滑出去，
+ * 分不跟着走的话，泳道已经空了、分还停在「Moderate」。一小时一趟，闲着时也就一天 24 次。
+ */
+export const PULSE_SCORE_REFRESH_MS = 60 * 60 * 1000;
+
+/**
+ * 分比这更老就不给公开端点：网关连挂这么久，与其挂着一份早已不代表当前窗口的判断，
+ * 不如让卡片显示 "No scores yet"。是重算间隔的六倍，正常情况下永远碰不到。
+ */
+export const PULSE_SCORE_MAX_AGE_MS = 6 * PULSE_SCORE_REFRESH_MS;
