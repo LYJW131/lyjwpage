@@ -96,7 +96,7 @@ export class ReadModelPublisher {
             throw new Error(`Public view returned ${response.status}`);
           }
           const body = await response.text();
-          if (!isPublicBody(path, body) || this.now() - generatedAt >= policy.maxAgeMs) {
+          if (!isPublicBody(body) || this.now() - generatedAt >= policy.maxAgeMs) {
             throw new Error("Public view is invalid or already stale");
           }
           const value: PublicReadModel = { schema: 1, path, revision, generatedAt, body };
