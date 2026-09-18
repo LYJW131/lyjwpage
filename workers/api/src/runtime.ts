@@ -13,8 +13,8 @@ export interface Env extends MusicKitTokenEnv {
   /** Append-only long-term activity archive. Omit to disable archiving; nothing else reads it. */
   HISTORY?: D1Database;
   TELEMETRY_INGEST_SECRET?: string;
-  /** Vercel AI Gateway 的密钥，给 pulse 活动分用（Jev 评估模型）。不配就不打分。 */
-  AI_GATEWAY_API_KEY?: string;
+  /** TypeSafe AI 的 API 密钥，给 pulse 活动分用（Jev 评估模型）。不配就不打分。 */
+  TYPESAFE_API_KEY?: string;
   /** 一次性迁移使用，迁移完成后移除，不授予站点。 */
   STATE_IMPORT_SECRET?: string;
   STORAGE_PREFIX?: string;
@@ -36,7 +36,7 @@ export function historyArchiveEnabled(env: Env): boolean {
 
 /** 同一套闸门：本地夹具和上游兜底出来的序列不该被送去打分，更不该覆盖线上那份。 */
 export function pulseScoringEnabled(env: Env): boolean {
-  return !!env.AI_GATEWAY_API_KEY?.trim() && process.env.DEV_OVERRIDES?.trim() !== "true" &&
+  return !!env.TYPESAFE_API_KEY?.trim() && process.env.DEV_OVERRIDES?.trim() !== "true" &&
     !process.env.UPSTREAM_API_URL?.trim();
 }
 

@@ -36,9 +36,9 @@ export class StateHub extends DurableObject<Env> {
       storage: new StorageClient(async (commands) => this.database.execute(commands)),
     }) : null;
     // 分存在 StateHub 自己的库里（键 pulse:scores），评分器只从这里读写，不经请求作用域。
-    this.pulseScorer = pulseScoringEnabled(env) && env.AI_GATEWAY_API_KEY ? new PulseScorer({
+    this.pulseScorer = pulseScoringEnabled(env) && env.TYPESAFE_API_KEY ? new PulseScorer({
       storage: new StorageClient(async (commands) => this.database.execute(commands)),
-      apiKey: env.AI_GATEWAY_API_KEY,
+      apiKey: env.TYPESAFE_API_KEY,
     }) : null;
   }
 

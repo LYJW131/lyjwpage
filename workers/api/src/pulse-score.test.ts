@@ -19,15 +19,10 @@ const NOW = 1_770_000_000_000;
 function answersFor(score: number, trend = "steady") {
   return {
     answers: Object.fromEntries(PULSE_DOMAINS.flatMap((domain) => [
-      [`${domain}Activity`, { type: "score", score, probabilities: { "0": 0.1, "1": 0.9 } }],
-      [`${domain}Trend`, { type: "choice", choice: trend, probabilities: { steady: 0.9 } }],
+      [`${domain}Activity`, { type: "score", score, confidence: 0.77, probabilities: { "0": 0.1, "1": 0.9 } }],
+      [`${domain}Trend`, { type: "choice", choice: trend, confidence: 0.6, probabilities: { steady: 0.9 } }],
     ])),
-    usage: { inputTokens: 425, outputTokens: 12 },
-    providerMetadata: {
-      typesafe: {
-        confidence: Object.fromEntries(PULSE_DOMAINS.map((domain) => [`${domain}Activity`, 0.77])),
-      },
-    },
+    usage: { input_tokens: 425, output_tokens: 12 },
   };
 }
 
@@ -116,13 +111,11 @@ test("请求按 Jev 契约发出：头、十道题、带 hint 的段", async () 
   await bench.scorer.run();
 
   const [request] = bench.requests;
-  assert.equal(request.headers["ai-model-id"], "typesafe-ai/jev");
-  assert.equal(request.headers["ai-evaluation-model-specification-version"], "4");
-  assert.equal(request.headers["ai-gateway-protocol-version"], "0.0.1");
   assert.equal(request.headers.Authorization, "Bearer test-key");
-  const body = request.body as { questions: Record<string, unknown>; state: Record<string, unknown>; providerOptions: unknown };
+  assert.equal(request.headers["Content-Type"], "application/json");
+  const body = request.body as { model: string; questions: Record<string, unknown>; state: Record<string, unknown> };
+  assert.equal(body.model, "jev-latest");
   assert.equal(Object.keys(body.questions).length, 10);
-  assert.deepEqual(body.providerOptions, {});
   // hint 只在这条私下的路径上出现，公开端点那侧另有断言
   assert.equal(JSON.stringify(body.state).includes("Zed"), true);
 });
@@ -204,8 +197,8 @@ test("回答缺题或类型不对时整份丢掉", () => {
   assert.throws(() => parseJevScores(badTrend, windows, NOW, window), /Trend/);
 
   // 没有把握度时按 null 存，不拿一个假的数字充数
-  const noConfidence = answersFor(1.2) as { providerMetadata?: unknown };
-  delete noConfidence.providerMetadata;
+  const noConfidence = answersFor(1.2) as { answers: Record<string, { confidence?: unknown }> };
+  delete noConfidence.answers.codingActivity.confidence;
   const record = parseJevScores(noConfidence, windows, NOW, window);
   assert.equal(record.domains.coding.confidence, null);
 });

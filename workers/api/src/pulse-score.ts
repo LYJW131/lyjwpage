@@ -26,18 +26,16 @@ import type { StorageClient } from "@shared/storage-client";
  * 确定性规则按上报那一刻算；这里问的是「这一整天有多活跃、在往哪边走」，
  * 那是一句判断，规则写不出来也不该写。
  *
- * 走 Vercel AI Gateway 的 evaluation-model 端点，**裸 HTTP**：为一次十分钟一趟的
- * 调用把 AI SDK 拖进 Worker 不值得，协议本身就是一个 POST。
+ * 直连 TypeSafe 官方 API（`POST /v1/systemone`），**裸 HTTP**：为一次十分钟一趟的
+ * 调用把 SDK 拖进 Worker 不值得，协议本身就是一个 POST；把握度就在每个答案里。
  *
  * 节奏由 cron 每分钟驱动，真正打出去最多十分钟一次，而且要有比上一份分更新的
  * 样本才打 —— 没人上报的那几个小时里不该产生任何调用。失败一律留着上一份分：
  * 卡片显示十分钟前的判断，好过空一格。
  */
 
-const ENDPOINT = "https://ai-gateway.vercel.sh/v4/ai/evaluation-model";
-const MODEL_ID = "typesafe-ai/jev";
-const SPEC_VERSION = "4";
-const PROTOCOL_VERSION = "0.0.1";
+const ENDPOINT = "https://api.typesafe.ai/v1/systemone";
+const MODEL_ID = "jev-latest";
 /** 十秒还没回来就当这轮没有分。cron 一分钟一趟，不能让它挂在这里。 */
 const TIMEOUT_MS = 10_000;
 
@@ -49,10 +47,10 @@ type JevAnswer = {
   type?: unknown;
   score?: unknown;
   choice?: unknown;
+  confidence?: unknown;
 };
 type JevResponse = {
   answers?: Record<string, JevAnswer>;
-  providerMetadata?: { typesafe?: { confidence?: Record<string, unknown> } };
 };
 
 function isTrend(value: unknown): value is PulseTrend {
@@ -73,7 +71,6 @@ export function parseJevScores(
 ): PulseScoreRecord {
   const value = (body ?? {}) as JevResponse;
   const answers = value.answers ?? {};
-  const confidences = value.providerMetadata?.typesafe?.confidence ?? {};
   const domains = {} as PulseScoreRecord["domains"];
   for (const domain of PULSE_DOMAINS) {
     const activityKey = activityQuestionKey(domain);
@@ -83,7 +80,7 @@ export function parseJevScores(
       throw new Error(`${activityKey} 没给出分`);
     }
     if (!isTrend(trend?.choice)) throw new Error(`${trendQuestionKey(domain)} 不是三选一`);
-    const confidence = confidences[activityKey];
+    const confidence = activity.confidence;
     domains[domain] = {
       score: activity.score,
       confidence: typeof confidence === "number" && Number.isFinite(confidence) ? confidence : null,
@@ -208,14 +205,11 @@ export class PulseScorer {
       headers: {
         Authorization: `Bearer ${this.apiKey}`,
         "Content-Type": "application/json",
-        "ai-model-id": MODEL_ID,
-        "ai-evaluation-model-specification-version": SPEC_VERSION,
-        "ai-gateway-protocol-version": PROTOCOL_VERSION,
       },
       body: JSON.stringify({
+        model: MODEL_ID,
         state: buildPulseState(windows, window),
         questions: pulseQuestions(),
-        providerOptions: {},
       }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });

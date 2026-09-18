@@ -86,10 +86,10 @@ Pulse 卡片用它。信封形状：
 `value` 是 Jev 在四档标尺（idle / light / moderate / intense）上插值出来的位置，
 两者不是一回事。
 
-分由 TypeSafe AI 的 Jev 评估模型经 Vercel AI Gateway 给出（`src/pulse-score.ts`，裸 HTTP，
-不引 AI SDK）：cron 每分钟驱动一次，真正调用最多十分钟一次，而且要有比上一份分更新的
+分由 TypeSafe AI 的 Jev 评估模型给出（直连官方 `POST /v1/systemone`，`src/pulse-score.ts`，裸 HTTP，
+不引 SDK）：cron 每分钟驱动一次，真正调用最多十分钟一次，而且要有比上一份分更新的
 样本才调（分放满一小时且窗口里还有样本时也重算一次，窗口在走）；单次 10 秒超时，失败只进 `[pulse-score]` 日志并留着上一份分。结果存在 StateHub 的
-`pulse:scores`，不设 TTL。没有 `AI_GATEWAY_API_KEY`、或本地配了 `DEV_OVERRIDES` /
+`pulse:scores`，不设 TTL。没有 `TYPESAFE_API_KEY`、或本地配了 `DEV_OVERRIDES` /
 `UPSTREAM_API_URL` 时整个评分停用（和读模型、D1 归档同一套闸门），端点照常给泳道、分是 null。
 
 本地预览用夹具：`pnpm dev:override /api/status/pulse pulse-busy-day.json`。
@@ -146,7 +146,7 @@ Worker 不配交付域，回源 R2 由站点的 rewrite 和 ESA 负责，见根 
 pnpm --dir workers/api exec wrangler secret put GITHUB_TOKEN
 pnpm --dir workers/api exec wrangler secret put TELEMETRY_INGEST_SECRET
 pnpm --dir workers/api exec wrangler secret put APPLE_MUSIC_PRIVATE_KEY < AuthKey_XXXXXXXXXX.p8
-pnpm --dir workers/api exec wrangler secret put AI_GATEWAY_API_KEY
+pnpm --dir workers/api exec wrangler secret put TYPESAFE_API_KEY
 ```
 
 Worker 不再调用阿里云 OpenAPI。旧的 `ALIYUN_ACCESS_KEY_ID` / `ALIYUN_ACCESS_KEY_SECRET`
