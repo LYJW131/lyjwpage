@@ -1,6 +1,7 @@
 import {
   PULSE_REPEAT_AFTER_MS,
   PULSE_HINT_MAX,
+  PULSE_SCORE_MAX_AGE_MS,
 } from "@/lib/limits";
 import { clipPulseSamples, pulseWindowAt } from "@/lib/pulse-window";
 import { askStorage, key, withStorage } from "@/lib/storage";
@@ -24,6 +25,11 @@ export function pulseKey(domain: PulseDomain): string {
 /** 评分器写的那一份，五域同一个键、一份 JSON，不设 TTL。 */
 export function pulseScoresKey(): string {
   return key("pulse", "scores");
+}
+
+/** 上一次向网关**尝试**的时刻（epoch 毫秒字符串）。失败也记，节流才不随 DO 重启归零。 */
+export function pulseScoreAttemptKey(): string {
+  return `${pulseScoresKey()}:attempt`;
 }
 
 function normalizeHint(hint: string | null | undefined): string | undefined {
@@ -183,8 +189,10 @@ export async function readPulseScores(): Promise<PulseScoreRecord | null> {
  * 分自带自己的窗口，和这次裁的窗口不必相同 —— 它最多十分钟前才打过一次。
  */
 export async function getPulseStatus(now: number = Date.now()): Promise<PulsePayload> {
-  const [history, scores] = await Promise.all([readPulseHistory(), readPulseScores()]);
+  const [history, stored] = await Promise.all([readPulseHistory(), readPulseScores()]);
   const window = pulseWindowAt(now);
+  // 过老的分不展示：它评的是早已滑走的窗口，配着空泳道只会误导
+  const scores = stored && now - stored.scoredAt <= PULSE_SCORE_MAX_AGE_MS ? stored : null;
   const domains = {} as PulsePayload["domains"];
   for (const domain of PULSE_DOMAINS) {
     const scored = scores?.domains[domain];

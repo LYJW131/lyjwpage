@@ -88,7 +88,7 @@ Pulse 卡片用它。信封形状：
 
 分由 TypeSafe AI 的 Jev 评估模型经 Vercel AI Gateway 给出（`src/pulse-score.ts`，裸 HTTP，
 不引 AI SDK）：cron 每分钟驱动一次，真正调用最多十分钟一次，而且要有比上一份分更新的
-样本才调；单次 10 秒超时，失败只进 `[pulse-score]` 日志并留着上一份分。结果存在 StateHub 的
+样本才调（分放满一小时且窗口里还有样本时也重算一次，窗口在走）；单次 10 秒超时，失败只进 `[pulse-score]` 日志并留着上一份分。结果存在 StateHub 的
 `pulse:scores`，不设 TTL。没有 `AI_GATEWAY_API_KEY`、或本地配了 `DEV_OVERRIDES` /
 `UPSTREAM_API_URL` 时整个评分停用（和读模型、D1 归档同一套闸门），端点照常给泳道、分是 null。
 

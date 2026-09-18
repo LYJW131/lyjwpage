@@ -1,5 +1,5 @@
-import { PULSE_SCORE_INTERVAL_MS } from "@/lib/limits";
-import { parsePulseSample, parsePulseScoreRecord, pulseKey, pulseScoresKey } from "@/lib/pulse";
+import { PULSE_SCORE_INTERVAL_MS, PULSE_SCORE_REFRESH_MS } from "@/lib/limits";
+import { parsePulseSample, parsePulseScoreRecord, pulseKey, pulseScoreAttemptKey, pulseScoresKey } from "@/lib/pulse";
 import {
   activityQuestionKey,
   buildPulseState,
@@ -113,12 +113,12 @@ export class PulseScorer {
   private fetch: typeof fetch;
   private now: () => number;
   private intervalMs: number;
+  private refreshMs: number;
   private log: (error: unknown) => void;
   /**
-   * 上一次**尝试**的时刻，只在内存里。
-   *
-   * 节奏不能只看存着的 `scoredAt`：网关连挂十分钟的话它根本不前进，cron 会变成
-   * 每分钟重试一次。对象被回收后从存储里的 `scoredAt` 接着算，那是安全的一侧。
+   * 上一次**尝试**的时刻。节奏不能只看存着的 `scoredAt`：网关连挂十分钟的话它根本
+   * 不前进，cron 会变成每分钟重试一次。内存里这份是快路径，存储里还有一份
+   * （`pulse:scores:attempt`），DO 被回收再起来也接得上，不会在故障期间退化成每分钟一趟。
    */
   private lastAttemptAt = 0;
   private running = false;
@@ -129,6 +129,7 @@ export class PulseScorer {
     fetch?: typeof fetch;
     now?: () => number;
     intervalMs?: number;
+    refreshMs?: number;
     log?: (error: unknown) => void;
   }) {
     this.storage = options.storage;
@@ -136,6 +137,7 @@ export class PulseScorer {
     this.fetch = options.fetch ?? ((...args: Parameters<typeof fetch>) => fetch(...args));
     this.now = options.now ?? (() => Date.now());
     this.intervalMs = options.intervalMs ?? PULSE_SCORE_INTERVAL_MS;
+    this.refreshMs = options.refreshMs ?? PULSE_SCORE_REFRESH_MS;
     this.log = options.log ?? ((error) => console.error("[pulse-score]", reason(error)));
   }
 
@@ -172,7 +174,8 @@ export class PulseScorer {
   private async tick(): Promise<void> {
     const now = this.now();
     const stored = parsePulseScoreRecord(await this.storage.get(pulseScoresKey()));
-    const lastAt = Math.max(stored?.scoredAt ?? 0, this.lastAttemptAt);
+    const attempted = Number(await this.storage.get(pulseScoreAttemptKey())) || 0;
+    const lastAt = Math.max(stored?.scoredAt ?? 0, this.lastAttemptAt, attempted);
     if (now - lastAt < this.intervalMs) return;
 
     const samples = await this.readSamples();
@@ -181,11 +184,16 @@ export class PulseScorer {
     for (const domain of PULSE_DOMAINS) {
       windows[domain] = compressPulseWindow(samples[domain], window);
     }
-    // 一整段没有任何新上报时不调用：同一份窗口再问一遍只会拿回同一个判断
-    if (!hasFreshSamples(windows, stored)) return;
+    // 没有新上报时不调用：同一份窗口再问一遍只会拿回同一个判断。
+    // 例外是分已经放了一小时：窗口跟着时间走，昨天的活动会滑出去，分得跟着重算，
+    // 否则泳道空了、分还停在旧判断上。窗口里一笔样本都没有时连这条也省掉。
+    const anySamples = PULSE_DOMAINS.some((domain) => windows[domain].latestSampleAt != null);
+    const aged = stored != null && now - stored.scoredAt >= this.refreshMs;
+    if (!hasFreshSamples(windows, stored) && !(aged && anySamples)) return;
 
-    // 打出去之前就记上：网关挂着的时候，下一分钟不该再来一趟
+    // 打出去之前就记上（内存 + 存储）：网关挂着的时候，下一分钟不该再来一趟
     this.lastAttemptAt = now;
+    await this.storage.set(pulseScoreAttemptKey(), String(now));
     const body = await this.ask(windows, window);
     const record = parseJevScores(body, windows, now, window);
     await this.storage.set(pulseScoresKey(), JSON.stringify(record));

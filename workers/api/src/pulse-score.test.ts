@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { PULSE_SCORE_INTERVAL_MS } from "@/lib/limits";
+import { PULSE_SCORE_INTERVAL_MS, PULSE_SCORE_REFRESH_MS } from "@/lib/limits";
 import { parsePulseScoreRecord, pulseKey, pulseScoresKey } from "@/lib/pulse";
 import { compressPulseWindow, pulseWindowAt } from "@/lib/pulse-window";
 import { PULSE_DOMAINS, type PulseDomain, type PulseSample } from "@/lib/types";
@@ -15,7 +15,6 @@ import { PulseScorer, hasFreshSamples, parseJevScores } from "./pulse-score.ts";
  */
 
 const NOW = 1_770_000_000_000;
-const HOUR = 3_600_000;
 
 function answersFor(score: number, trend = "steady") {
   return {
@@ -68,15 +67,18 @@ function setup(options: {
 
   let now = NOW;
   const errors: unknown[] = [];
-  const scorer = new PulseScorer({
+  const make = () => new PulseScorer({
     storage,
     apiKey: "test-key",
     fetch: fetchStub,
     now: () => now,
     log: (error) => errors.push(error),
   });
+  const scorer = make();
   return {
     scorer,
+    /** 模拟 DO 被回收后重建：内存里的尝试时刻归零，存储还是同一份 */
+    restart: make,
     requests,
     errors,
     stored: () => parsePulseScoreRecord(entries.get(pulseScoresKey()) ?? null),
@@ -138,12 +140,12 @@ test("十分钟内不再打第二次，哪怕又来了新样本", async () => {
   assert.equal(bench.calls(), 2);
 });
 
-test("没有比上一份分更新的样本就一次都不调用", async () => {
+test("没有比上一份分更新的样本就不调用（一小时内；满一小时的重算见下面那条）", async () => {
   const bench = setup({ lists: { coding: fresh() } });
   await bench.scorer.run();
   assert.equal(bench.calls(), 1);
 
-  bench.advance(5 * HOUR);
+  bench.advance(PULSE_SCORE_REFRESH_MS - 60_000);
   await bench.scorer.run();
   assert.equal(bench.calls(), 1);
   assert.equal(bench.stored()?.scoredAt, NOW);
@@ -218,4 +220,44 @@ test("新样本的判定按域，任意一域更新就够", () => {
   assert.equal(hasFreshSamples(windows, null), true);
   const stored = parseJevScores(answersFor(1), windows, NOW, window);
   assert.equal(hasFreshSamples(windows, stored), false);
+});
+
+test("没有新样本也每小时重算一次：窗口在走，昨天的活动会滑出去", async () => {
+  const bench = setup({ lists: { coding: fresh() } });
+  await bench.scorer.run();
+  assert.equal(bench.calls(), 1);
+
+  // 半小时后没新样本：不调
+  bench.advance(PULSE_SCORE_REFRESH_MS / 2);
+  await bench.scorer.run();
+  assert.equal(bench.calls(), 1);
+
+  // 满一小时：同一份样本也重算，scoredAt 往前走
+  bench.advance(PULSE_SCORE_REFRESH_MS / 2);
+  await bench.scorer.run();
+  assert.equal(bench.calls(), 2);
+  assert.equal(bench.stored()?.scoredAt, NOW + PULSE_SCORE_REFRESH_MS);
+
+  // 一笔样本都没有的窗口就算分再老也不重算
+  const empty = setup({ stored: JSON.stringify(bench.stored()) });
+  empty.advance(PULSE_SCORE_REFRESH_MS * 3);
+  await empty.scorer.run();
+  assert.equal(empty.calls(), 0);
+});
+
+test("失败的尝试时刻落盘：DO 重建后仍不会每分钟重试", async () => {
+  const bench = setup({
+    lists: { coding: fresh() },
+    respond: () => new Response("upstream is down", { status: 503 }),
+  });
+  await bench.scorer.run();
+  assert.equal(bench.calls(), 1);
+
+  bench.advance(60_000);
+  await bench.restart().run();
+  assert.equal(bench.calls(), 1, "新实例读到存储里的尝试时刻，不重试");
+
+  bench.advance(PULSE_SCORE_INTERVAL_MS);
+  await bench.restart().run();
+  assert.equal(bench.calls(), 2, "过了间隔才再试");
 });

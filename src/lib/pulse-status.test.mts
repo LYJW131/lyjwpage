@@ -4,6 +4,7 @@ import test from "node:test";
 import { getPulseStatus, pulseKey, pulseScoresKey } from "@/lib/pulse";
 import { installStorageForTests, resetStorageForTests } from "@/lib/storage";
 import { FakeStorage } from "@/lib/testing/fake-storage";
+import { PULSE_SCORE_MAX_AGE_MS } from "@/lib/limits";
 import { PULSE_DOMAINS, type PulseScoreRecord } from "@/lib/types";
 
 const NOW = 1_770_000_000_000;
@@ -80,5 +81,14 @@ test("存着的那份坏了就当没有分，不把半份数据画成分数", as
     await storage.set(pulseScoresKey(), JSON.stringify(broken));
     const payload = await getPulseStatus(NOW);
     for (const domain of PULSE_DOMAINS) assert.equal(payload.domains[domain].score, null);
+  });
+});
+
+test("分太老就不给：评的是早已滑走的窗口，配着空泳道只会误导", async () => {
+  await withStorage(async (storage) => {
+    await storage.set(pulseScoresKey(), JSON.stringify(record({ scoredAt: NOW - PULSE_SCORE_MAX_AGE_MS - 1 })));
+    assert.equal((await getPulseStatus(NOW)).domains.coding.score, null);
+    await storage.set(pulseScoresKey(), JSON.stringify(record({ scoredAt: NOW - PULSE_SCORE_MAX_AGE_MS })));
+    assert.notEqual((await getPulseStatus(NOW)).domains.coding.score, null);
   });
 });
