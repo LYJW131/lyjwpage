@@ -13,6 +13,9 @@
 - `src/musickit-token.ts`：给「一起听」签 MusicKit developer token（ES256 JWT），按 origin 声明缓存、过半衰期重签。
 - `src/origins.ts`：`ALLOWED_ORIGINS` 的解析、通配匹配和 CORS 头，两条 WebSocket、公开 API 和令牌签发共用。
 - 根目录 `shared/`：读写共用的 SQLite 键、类型和状态计算；根目录 `src/lib/` 提供读取与通用工具。
+- 根目录 `src/lib/status-views.ts`：公开状态视图登记表（`path` / `tag` / `event` / `readModel`）。路径常量、Vercel 缓存标签、事件→路径、`/api/home` 字段、KV 策略全部由它派生；有 `event` 的视图不能进 KV，模块加载时断言。
+- 根目录 `src/lib/status-loaders.ts`：按同一组 key 登记 `endpoint(params)` 与可选 `home()`。`/api/home` 对表做 `Promise.all`；单端点由 `src/public-api.ts` 通用分发到同一个 loader。`trophies` 首屏是摘要、`charger` 首屏只带最近 20 分钟历史。
+- `src/public-api.ts`：公开 API 入口。状态端点按 loader 表通用分发；`routes/lyrics`、`routes/motion-artwork` 保留。
 - `src/storage-driver.ts`：通过 alias 接入 StateHub 的 SQLite 存储驱动。
 - `src/read-model*.ts`：可选的 KV 公开读取投影，DO SQLite 仍是唯一权威；边界、发布节律与回滚见 `docs/kv-read-model.md`。
 - `src/r2-assets.ts`：R2 绑定 HEAD 检查，上报器仍直接上传图片。
@@ -57,7 +60,7 @@ ESA 首页不走数据上报通知。`lyjw131.com` 以 `lyjw.me` 为源站与回
 
 Vercel 仍采用后台重建，通知成功不代表新 HTML 已生成。ESA 后台回源可能取得 Vercel 仍在重建中的旧 HTML，下一轮刷新时收敛；这条链路不承诺两层缓存同步完成更新。首屏新鲜度不依赖这两层：浏览器挂载后直接向 Worker 取最新状态。
 
-公开 API 为 `/api/status/*`、`/api/home`、`/api/lyrics`、`/api/motion-artwork`。浏览器挂载后直接访问这里：第一轮从 `/api/home` 一次取齐，之后各端点按各自周期轮询；Vercel 只在首屏生成或重建时读取 `/api/home`。`/api/home` 不进 KV 读模型。服务端凭据不进入任何公开响应，没有通用 HTTP 数据库端点。跨域活动脉搏（pulse）的出口是 `GET /api/status/pulse`（也进 `/api/home` 的 `pulse` 字段），见下面一节。
+公开 API 为 `/api/status/*`、`/api/home`、`/api/lyrics`、`/api/motion-artwork`。浏览器挂载后直接访问这里：第一轮从 `/api/home` 一次取齐，之后各端点按各自周期轮询；Vercel 只在首屏生成或重建时读取 `/api/home`。`/api/home` 每个字段和对应单端点无参响应同源同形。`/api/home` 不进 KV 读模型。服务端凭据不进入任何公开响应，没有通用 HTTP 数据库端点。跨域活动脉搏（pulse）的出口是 `GET /api/status/pulse`（也进 `/api/home` 的 `pulse` 字段），见下面一节。
 
 ## 跨域活动脉搏与活动分（Pulse）
 

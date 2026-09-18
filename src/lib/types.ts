@@ -324,7 +324,7 @@ export type ReporterPresence = {
    * 时间函数，在取数出口现盖（首页填缓存、API overlay），卡片直接用。
    *
    * 新鲜度因此以取数出口那一刻为准：API 每次现算；首屏那份跟着页面缓存冻住
-   * （revalidate 10 分钟、expire 2 小时，见 lib/status-cache）。心跳不触发 tag
+   * （stale 300 / revalidate 600 / expire 7 天，见 lib/home-snapshot）。心跳不触发 tag
    * 失效，所以冻住的那份两个方向都可能差一会儿 —— Mac 悄悄死掉、或者悄悄回来，
    * 都要等下一次重算才反映进首屏。挂载后浏览器自己的钟接着算，加上那一次回源，
    * 差的那点会被纠正回来。
@@ -340,7 +340,7 @@ export type ListeningPayload = {
    * **不是新鲜度指标，是代数**：这份数据由访客的轮询驱动刷新，没人看时它就停在
    * 那儿，而一份冻住的「最近在听」本身没有错 —— 只是可能漏掉了这段时间在别处的
    * 播放，不该照搬别的卡那套变灰处理。它的用处是挡住晚到的旧数据，见
-   * lib/live-freshness。
+   * lib/status-reads。
    */
   fetchedAt: number;
 };
@@ -1028,7 +1028,8 @@ export type ActivityPayload = ActivityStatus & {
    *
    * 它是数据字段，服务端预渲染和 hydrate 读到的是同一个值，不会水合不一致。
    * 端点每次请求现算，所以卡片那 5 分钟一轮的轮询就是它的刷新节奏；冻住的首屏
-   * 那份最多旧 10 分钟（见 lib/status-cache），挂载时的那次回源会纠正它。
+   * 那份跟着页面缓存（stale 300 / revalidate 600 / expire 7 天，见 lib/home-snapshot），
+   * 挂载时的那次回源会纠正它。
    */
   currentAtSource: boolean;
 };
