@@ -3,7 +3,6 @@
 import { useId } from "react";
 
 import { Card } from "@/components/ui/card";
-import { useMountedAt } from "@/hooks/use-mounted-at";
 import { useStatus } from "@/hooks/use-status";
 import { PULSE_SILENT_AFTER_MS } from "@/lib/limits";
 import { PULSE_PATH } from "@/lib/paths";
@@ -18,7 +17,7 @@ import { cn } from "@/lib/utils";
  * 档位仍是确定性规则算的 —— 图和分说的是两件事，所以两样都画。
  *
  * **卡片拿不到曲名、应用名、游戏名**：那些只在 Worker 内部参与评分，公开端点
- * 剥得干干净净（见 PulsePayload）。这里画的只有强度和时间。
+ * 剥得干干净净（见 PulsePayload）。这里画的只有强度。
  *
  * 5 分钟一轮，不订阅推送：分最快十分钟才换一次，泳道也只到分钟尺度，
  * 广播它等于拿推送当轮询用。
@@ -38,16 +37,6 @@ const LANE_WIDTH = 240;
 const LANE_HEIGHT = 24;
 
 const TREND_GLYPH: Record<PulseTrend, string> = { rising: "↑", steady: "→", falling: "↓" };
-
-/**
- * 轴上取四个刻度：起点、三分之一、三分之二、此刻。最后一个写 Now，别再报一遍钟点。
- * 窄屏只留两头 —— 泳道在 375px 上只有一百来像素宽，四个钟点会挤成一团。
- */
-const TICKS = [0, 1 / 3, 2 / 3, 1];
-
-function hourLabel(at: number): string {
-  return new Intl.DateTimeFormat("en-US", { hour: "numeric" }).format(at);
-}
 
 function Lane({
   label,
@@ -112,14 +101,7 @@ export function PulseCard({
   className?: string;
 }) {
   const { data } = useStatus<PulsePayload>(PULSE_PATH, REFRESH_MS, { fallback });
-  /**
-   * 刻度写的是访客本地时刻，服务端那一遍算不出来（时区不同），所以挂载之后才画。
-   * 泳道本身不受影响：它只用窗口两端的 epoch 做线性映射，两遍完全一致。
-   */
-  const mountedAt = useMountedAt();
-
   const range = data?.window ?? { from: 0, to: 0 };
-  const span = Math.max(1, range.to - range.from);
 
   return (
     <Card label="Pulse" action="Last 24 hours" className={cn("h-full", className)}>
@@ -169,32 +151,6 @@ export function PulseCard({
             </div>
           );
         })}
-
-        {/*
-          时间轴。三列宽度和上面逐字相同，刻度才正好落在泳道的两端 ——
-          分数那列写死宽度就是为了这个：`auto` 时它在这一行塌成 0，
-          「Now」会飘到卡片右沿去，和泳道的右端差着一个徽标的宽度。
-        */}
-        <div className="grid grid-cols-[4.5rem_1fr_7rem] items-center gap-x-2 sm:grid-cols-[5.5rem_1fr_9rem] sm:gap-x-3">
-          <span />
-          <div className="relative h-4">
-            {mountedAt > 0 &&
-              data &&
-              TICKS.map((at) => (
-                <span
-                  key={at}
-                  className={cn(
-                    "label-mono absolute top-0 text-muted-foreground",
-                    at === 0 ? "left-0" : at === 1 ? "right-0" : "hidden -translate-x-1/2 sm:block",
-                  )}
-                  style={at === 0 || at === 1 ? undefined : { left: `${at * 100}%` }}
-                >
-                  {at === 1 ? "Now" : hourLabel(range.from + at * span)}
-                </span>
-              ))}
-          </div>
-          <span />
-        </div>
       </div>
     </Card>
   );

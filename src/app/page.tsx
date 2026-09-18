@@ -144,19 +144,16 @@ export default async function Home() {
                   fallback={vibeCoding}
                   className="defer-offscreen [contain-intrinsic-size:auto_1372px]"
                 />
-                {/*
-                  五条泳道 + 五枚活动分，整宽一块。估高按 375px 上实测写，
-                  和上面那几张一样用 defer-offscreen-always（宽窄都推迟排版）。
-                */}
-                <PulseCard
-                  fallback={pulse}
-                  className="defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_260px]"
-                />
                 <PlaystationBlock
                   trophies={trophies}
                   playing={playing}
                   playingNow={playingNow}
                   className="defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_643px]"
+                />
+                {/* Pulse 夹在 PlayStation 与 Emby Recently Watched 中间 */}
+                <PulseCard
+                  fallback={pulse}
+                  className="defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_240px]"
                 />
               </div>
 
