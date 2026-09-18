@@ -6,16 +6,16 @@
 
 | 路径 | 读取位置 | 发布最小间隔 / 投影最大年龄 |
 | --- | --- | --- |
-| `/api/home` | KV 首屏快照；挂载后的实时卡片仍回 DO | 60 秒 / 180 秒 |
+| `/api/home` | KV；浏览器打开页面后的第一轮取数从这里一次取齐（`src/lib/home-bootstrap.ts`）。Vercel 生成或重建首页时带 `fresh=1` 直读 DO | 60 秒 / 180 秒 |
 | `/api/status/listening`、`watching`、`playing` | KV；该页收到相应推送后改回 DO | 60 秒 / 180 秒 |
 | `trophies`、`vibecoding/year`、`github-chart`、`github-repo`、`cloudflare-workers`、`vercel-deployments`、`pulse` | KV | 300 秒 / 600 秒 |
-| 所有 `*/now`、`desktop`、`server`、`activity`、`charger`、`powerbank`、`vibecoding` | DO；包含存活、日界线、暂停宽限期或增量历史语义 | 不经 KV |
+| 所有 `*/now`、`desktop`、`server`、`activity`、`charger`、`powerbank`、`vibecoding` | DO；包含存活、日界线、暂停宽限期或增量历史语义。挂载第一轮这些字段随 `/api/home` 聚合来自 KV，之后的轮询直读 DO | 端点本身不经 KV |
 | `/ws`、`/count`、上报、MusicKit token、歌词/动态封面 | 原路径 | 不经 KV |
 | 任意带查询参数的请求 | 原路径，包括 `since`、筛选参数和 `fresh=1` | 不经 KV |
 
 表中简写均位于 `/api/status/` 下。所有 KV 响应继续使用 `Cache-Control: no-store`，避免再叠浏览器 HTTP 缓存；KV 自己使用 60 秒读取缓存。`X-Fetched-At` 是投影开始生成的时刻，不伪装成本次请求时刻。`X-Read-Model: kv | origin` 标识可缓存端点命中还是回源。
 
-`/api/home` 只承担 SSR bootstrap，不承诺实时。现有 `useStatus` 对实时卡片在挂载时重新取数，不能把它关闭。午夜边界、掉线、暂停后过期等需要重新计算的独立端点仍直读 DO。
+`/api/home` 承担两次 bootstrap：Vercel 生成或后台重建首页时读一次（带 `fresh=1` 直读 DO，重建由上报触发，KV 投影可能还慢它一分钟，不能把刚发生的变化重建成旧的）；浏览器挂载后各卡的第一次回源合成一次 `/api/home`（走 KV），之后各卡按自己的周期直连各自端点。挂载这一次不能关：「此刻」类信封里有服务端按当时时钟算的结论（存活、日界线、暂停宽限期），HTML 放一会儿就不成立。代价是首轮结论通常旧不到一分钟、最多三分钟（投影最大年龄），各卡下一轮轮询纠正；日界线正好落在这几分钟里时活动环会先显示前一天的，同样等下一轮。三条保护在 `home-bootstrap.ts`：本页收到过推送或失效通知的路径不吃聚合（登记覆盖全部推送路径，不只是走 KV 的三条）；聚合的 `X-Fetched-At` 早于首屏快照取数时刻就整份作废、各卡直接回源；只服务打开页面后 15 秒内的第一次取数。聚合请求 5 秒超时、非 2xx、字段缺失或该字段本身 `ok:false` 都退回直连。带 `since` 的增量请求也吃聚合（合并器本来就接受整份），其他查询参数不碰。
 
 ## 写入与恢复
 
