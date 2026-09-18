@@ -45,8 +45,8 @@ const CHURN_ANCHOR_TTL_MS = 30 * 86_400_000;
 /**
  * 整次取数的总预算，含等 202 的时间。
  *
- * 这一路挂在 `/api/home` 的 Promise.all 里，而站点 status-cache 20 秒就会掐掉
- * 整个快照请求；不设上限就是让一张卡拖垮整个首页重建。名单和总数两路并发跑，
+ * 这一路挂在 `/api/home` 的 Promise.all 里，而站点聚合请求 20 秒就会掐掉
+ * 整个快照；不设上限就是让一张卡拖垮整个首页重建。名单和总数两路并发跑，
  * 各自在这个 deadline 前收手。
  */
 const FETCH_BUDGET_MS = 12_000;

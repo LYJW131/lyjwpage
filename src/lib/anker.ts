@@ -41,7 +41,7 @@ export function chargerStaleAfterMs() {
  * 打成 false。卡片只看这个字段，不在浏览器再算一遍过期。
  *
  * 快照里留 SQLite 原样的 connected；过期是时间函数，在取数出口现盖
- * （首页填缓存、API overlay、推送），不要写进 cachedChargerSnapshot。
+ * （getChargerSnapshot、推送），不要写进存储。
  */
 export function withChargerFreshness(
   payload: ChargerPayload,
@@ -70,24 +70,26 @@ function withCoverIconUrl<T extends { cover: ChargerStatus["cover"] }>(payload: 
  * 曲线有 400 个点、约 15KB，而前端 30 秒取一次、每次实际只多出一两个点 ——
  * 整份重传的话 99% 是重复数据。
  *
- * 快照只盖时间戳、不改 connected。过期收卡见 withChargerFreshness。
+ * 取数出口现盖 connected：过期收卡见 withChargerFreshness。
  */
 export async function getChargerSnapshot(): Promise<ChargerPayload> {
   const stored = await getStored();
-  // 还没收到过任何推送。交给 statusRoute 变成降级信封，前端显示提示
+  // 还没收到过任何推送。交给 statusEnvelope 变成降级信封，前端显示提示
   if (!stored) throw new AwaitingReport("尚未收到充电头遥测推送");
 
   const [pushedAt, live] = await Promise.all([lastPushReceivedAt(), readLiveness()]);
 
-  return withPresence(
-    withCoverIconUrl({
-      ...stored.status,
-      history: stored.history,
-      historyPartial: false,
-      pushedAt,
-      staleAfterMs: chargerStaleAfterMs(),
-    }),
-    live,
+  return withChargerFreshness(
+    withPresence(
+      withCoverIconUrl({
+        ...stored.status,
+        history: stored.history,
+        historyPartial: false,
+        pushedAt,
+        staleAfterMs: chargerStaleAfterMs(),
+      }),
+      live,
+    ),
   );
 }
 

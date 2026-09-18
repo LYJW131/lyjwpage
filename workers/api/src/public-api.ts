@@ -1,49 +1,24 @@
-import { GET as route0 } from "./routes/status/listening/route";
-import { GET as route1 } from "./routes/status/watching/route";
-import { GET as route2 } from "./routes/status/charger/route";
-import { GET as route3 } from "./routes/status/activity/route";
-import { GET as route4 } from "./routes/status/powerbank/route";
-import { GET as route5 } from "./routes/status/trophies/route";
-import { GET as route6 } from "./routes/status/desktop/route";
-import { GET as route7 } from "./routes/status/server/route";
-import { GET as route8 } from "./routes/status/playing/route";
-import { GET as route9 } from "./routes/status/github-chart/route";
-import { GET as route10 } from "./routes/status/vibecoding/route";
-import { GET as route11 } from "./routes/status/vibecoding/year/route";
-import { GET as route12 } from "./routes/status/playing/now/route";
-import { GET as route13 } from "./routes/status/watching/now/route";
-import { GET as route14 } from "./routes/status/listening/now/route";
-import { GET as route15 } from "./routes/lyrics/route";
-import { GET as route16 } from "./routes/motion-artwork/route";
-import { GET as route17 } from "./routes/status/github-repo/route";
-import { GET as route18 } from "./routes/status/cloudflare-workers/route";
-import { GET as route19 } from "./routes/status/vercel-deployments/route";
-import { GET as route20 } from "./routes/status/pulse/route";
+import { GET as lyricsGet } from "./routes/lyrics/route";
+import { GET as motionArtworkGet } from "./routes/motion-artwork/route";
 import { get as cacheGet, put as cachePut, remove as cacheRemove } from "@/lib/cache";
 import { publicHomeSnapshot } from "@/lib/public-home";
+import {
+  sinceDateParam,
+  sinceParam,
+  statusEnvelope,
+  statusResponse,
+  titleIdsParam,
+} from "@/lib/api";
+import { loadEndpoint, type StatusLoaderParams } from "@/lib/status-loaders";
+import {
+  endpointViews,
+  pathByEvent,
+  viewKeyByPath,
+} from "@/lib/status-views";
 
-const routes: Record<string, (request: Request) => Promise<Response>> = {
-  "/api/status/listening": route0,
-  "/api/status/watching": route1,
-  "/api/status/charger": route2,
-  "/api/status/activity": route3,
-  "/api/status/powerbank": route4,
-  "/api/status/trophies": route5,
-  "/api/status/desktop": route6,
-  "/api/status/server": route7,
-  "/api/status/playing": route8,
-  "/api/status/github-chart": route9,
-  "/api/status/vibecoding": route10,
-  "/api/status/vibecoding/year": route11,
-  "/api/status/playing/now": route12,
-  "/api/status/watching/now": route13,
-  "/api/status/listening/now": route14,
-  "/api/lyrics": route15,
-  "/api/motion-artwork": route16,
-  "/api/status/github-repo": route17,
-  "/api/status/cloudflare-workers": route18,
-  "/api/status/vercel-deployments": route19,
-  "/api/status/pulse": route20,
+const extraRoutes: Record<string, (request: Request) => Promise<Response>> = {
+  "/api/lyrics": lyricsGet,
+  "/api/motion-artwork": motionArtworkGet,
 };
 
 /**
@@ -129,43 +104,19 @@ const DEV_OVERRIDE_INDEX_KEY = "dev-override-index";
 const DEV_OVERRIDE_ENABLED_KEY = "dev-override-enabled";
 const DEV_OVERRIDE_TTL_MS = 7 * 86_400_000;
 
-/** /api/home 的字段 ↔ 单条端点，注入按端点路径记，快照按这张表取 */
-const SNAPSHOT_PATHS: Record<string, string> = {
-  desktop: "/api/status/desktop",
-  activity: "/api/status/activity",
-  server: "/api/status/server",
-  charger: "/api/status/charger",
-  powerBank: "/api/status/powerbank",
-  listening: "/api/status/listening",
-  nowListening: "/api/status/listening/now",
-  vibeCoding: "/api/status/vibecoding",
-  vibeCodingYear: "/api/status/vibecoding/year",
-  watching: "/api/status/watching",
-  nowWatching: "/api/status/watching/now",
-  playing: "/api/status/playing",
-  playingNow: "/api/status/playing/now",
-  trophies: "/api/status/trophies",
-  githubChart: "/api/status/github-chart",
-  githubRepo: "/api/status/github-repo",
-  cloudflareWorkers: "/api/status/cloudflare-workers",
-  vercelDeployments: "/api/status/vercel-deployments",
-  pulse: "/api/status/pulse",
-};
-
 const devOverridesEnabled = (): boolean => process.env.DEV_OVERRIDES?.trim() === "true";
 
 /**
- * 推送事件名 ↔ 端点路径：事件名就是路径去掉 /api/status/ 再把 `/` 换成 `-`
- * （watching-now ↔ /api/status/watching/now）。反向不能直接算（github-chart 里
- * 本来就有连字符），按已知端点表反查。给上游推送中继用：事件落在有注入的端点上
- * 时要换 payload。
+ * 推送事件名 → 端点路径，给上游推送中继替换 payload 用。
+ *
+ * 登记表里 `vibecoding-now` 的事件名不等于路径派生名（它只推部分字段，端点是
+ * 整份 `/api/status/vibecoding`）：中继拿整份注入去盖部分推送会对不上，所以排除。
  */
-const PATH_BY_EVENT_TYPE = new Map(
-  Object.values(SNAPSHOT_PATHS).map((path) => [path.slice("/api/status/".length).replaceAll("/", "-"), path]),
-);
-
 export function pathForEventType(type: string): string | null {
-  return PATH_BY_EVENT_TYPE.get(type) ?? null;
+  const path = pathByEvent(type);
+  if (!path) return null;
+  const derived = path.slice("/api/status/".length).replaceAll("/", "-");
+  return derived === type ? path : null;
 }
 
 async function readOverride(path: string): Promise<Envelope | undefined> {
@@ -243,12 +194,30 @@ async function applySnapshotOverrides<T extends object>(snapshot: T): Promise<T>
   const active = await listOverrides();
   if (!active.length) return snapshot;
   const merged: Record<string, unknown> = { ...(snapshot as Record<string, unknown>) };
-  for (const [key, path] of Object.entries(SNAPSHOT_PATHS)) {
-    if (!active.includes(path)) continue;
-    const override = await readOverride(path);
+  for (const [key, view] of endpointViews()) {
+    if (!active.includes(view.path)) continue;
+    const override = await readOverride(view.path);
     if (override) merged[key] = override;
   }
   return merged as T;
+}
+
+function loaderParams(request: Request): StatusLoaderParams {
+  return {
+    since: sinceParam(request),
+    sinceDate: sinceDateParam(request),
+    titleIds: titleIdsParam(request),
+  };
+}
+
+async function serveStatus(request: Request): Promise<Response | null> {
+  const url = new URL(request.url);
+  const extra = extraRoutes[url.pathname];
+  if (extra) return extra(request);
+
+  const key = viewKeyByPath(url.pathname);
+  if (!key) return null;
+  return statusResponse(await statusEnvelope(() => loadEndpoint(key, loaderParams(request))));
 }
 
 export async function publicResponse(request: Request): Promise<Response> {
@@ -268,13 +237,12 @@ export async function publicResponse(request: Request): Promise<Response> {
     return Response.json(snapshot, { headers: { "Cache-Control": "no-store" } });
   }
 
-  const handler = routes[url.pathname];
-  if (!handler) return new Response("Not found", { status: 404 });
   if (overrides && (await overridesSwitchedOn())) {
     const override = await readOverride(url.pathname);
     if (override) return Response.json(override, { headers: statusHeaders() });
   }
-  const response = await handler(request);
+  const response = await serveStatus(request);
+  if (!response) return new Response("Not found", { status: 404 });
   if (!upstream) return response;
   return overlayResponse(response, () => fetchUpstreamJson(upstream, `${url.pathname}${url.search}`));
 }
