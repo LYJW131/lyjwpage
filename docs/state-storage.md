@@ -28,9 +28,13 @@ Worker 是唯一数据后端。上报、状态 API、Apple / GitHub 获取和缓
 
 ## 首屏与浏览器
 
-`cachedHomeSnapshot` 一次读取公开聚合快照；单个数据源不可用使用卡片降级信封。网络失败抛出错误，不用错误快照覆盖已有 Next 缓存。Next cacheLife 为 stale 300、revalidate 600、expire 604800 秒；所有状态标签使用 `page:` 前缀。
+公开状态视图登记在 `src/lib/status-views.ts`：路径、Vercel 首屏缓存标签（`page:<tag>`）、WebSocket 事件、KV 读模型策略都从这一行派生。`/api/revalidate` 的标签白名单也来自这张表。
 
-Worker 写入完成后，只有展示变化才 POST `/api/revalidate`。接口校验 Bearer 和标签白名单，调用 `revalidateTag(tag, "max")`，已有 HTML 优先返回并后台重建。不使用 `expire: 0`，不因纯心跳刷新首页。ESA 首页不走通知：控制台缓存规则「首页遵循源站缓存」让边缘按源站 `Cache-Control` 的 SWR（`max-age=300, stale-while-revalidate=86400`，见 `next.config.ts`）自行过期与后台取新；`/` 无文件后缀，没有这条规则会被判 DYNAMIC、每次回源。Vercel 的后台重建与 ESA 后台回源独立完成，ESA 可能取到重建中的旧 HTML，下一轮收敛；不能把标签失效当成两层 HTML 同步更新完成。浏览器查询直接访问 Worker，时间相关的新鲜度每次读取现算。
+`cachedHomeSnapshot`（`src/lib/home-snapshot.ts`）一次读取公开聚合快照；单个数据源不可用使用卡片降级信封。网络失败抛出错误，不用错误快照覆盖已有 Next 缓存。`use cache`，cacheLife 为 stale 300、revalidate 600、expire 7 天；所有状态标签使用 `page:` 前缀。
+
+浏览器读路径在 `src/lib/status-reads.ts`。打开页面后 15 秒内、各卡第一次取数合成一次 `/api/home`（5 秒超时，失败 / 字段缺失 / 字段 `ok:false` 回源；带 `since` 的增量请求也吃，其他查询参数不吃）。有单调时间戳的 payload 按代数挡旧值；收过推送或失效通知的路径不再吃这份聚合。之后各端点各自轮询。时间相关的新鲜度每次读取现算。
+
+Worker 写入完成后，只有展示变化才 POST `/api/revalidate`。接口校验 Bearer 和标签白名单，调用 `revalidateTag(tag, "max")`，已有 HTML 优先返回并后台重建。不使用 `expire: 0`，不因纯心跳刷新首页。ESA 首页不走通知：控制台缓存规则「首页遵循源站缓存」让边缘按源站 `Cache-Control` 的 SWR（`max-age=300, stale-while-revalidate=86400`，见 `next.config.ts`）自行过期与后台取新；`/` 无文件后缀，没有这条规则会被判 DYNAMIC、每次回源。Vercel 的后台重建与 ESA 后台回源独立完成，ESA 可能取到重建中的旧 HTML，下一轮收敛；不能把标签失效当成两层 HTML 同步更新完成。浏览器查询直接访问 Worker。
 
 ## 配置
 

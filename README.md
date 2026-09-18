@@ -159,8 +159,9 @@
 | 想了解什么 | 阅读入口 |
 | --- | --- |
 | 首页如何组合各个模块 | [`src/app/page.tsx`](./src/app/page.tsx) · [`src/components/live/`](./src/components/live/) |
-| 首屏如何读取和缓存状态 | [`src/lib/status-cache.ts`](./src/lib/status-cache.ts) |
-| 推送与轮询如何更新同一份客户端状态 | [`src/hooks/use-live-events.ts`](./src/hooks/use-live-events.ts) · [`src/hooks/use-status.ts`](./src/hooks/use-status.ts) |
+| 首屏如何读取和缓存状态 | [`src/lib/home-snapshot.ts`](./src/lib/home-snapshot.ts) |
+| 状态视图在两侧如何登记 | [`src/lib/status-views.ts`](./src/lib/status-views.ts) · [`src/lib/status-loaders.ts`](./src/lib/status-loaders.ts) |
+| 推送与轮询如何更新同一份客户端状态 | [`src/hooks/use-live-events.ts`](./src/hooks/use-live-events.ts) · [`src/hooks/use-status.ts`](./src/hooks/use-status.ts) · [`src/lib/status-reads.ts`](./src/lib/status-reads.ts) |
 | 网页播放器与歌词如何工作 | [`src/hooks/use-web-player.ts`](./src/hooks/use-web-player.ts) · [`src/hooks/use-lyrics.ts`](./src/hooks/use-lyrics.ts) |
 | 上报、状态存储与公开 API 如何组织 | [`workers/api/`](./workers/api/) |
 | 各类设备与服务如何接入 | [`reporters/`](./reporters/) · [`workers/playstation-reporter/`](./workers/playstation-reporter/) |
