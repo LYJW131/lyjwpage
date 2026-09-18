@@ -1,25 +1,12 @@
+import { READ_MODEL_PATHS as VIEW_READ_MODEL_PATHS, readModelPolicyOf } from "@/lib/status-views";
+
 /** Only public, replayable views belong here. No credentials, locks or raw store keys. */
 export type ReadModelPolicy = { intervalMs: number; maxAgeMs: number };
-const minute = 60_000;
-const recent: ReadModelPolicy = { intervalMs: minute, maxAgeMs: 3 * minute };
-const slow: ReadModelPolicy = { intervalMs: 5 * minute, maxAgeMs: 10 * minute };
+const slow: ReadModelPolicy = { intervalMs: 300_000, maxAgeMs: 600_000 };
 
-const policies: Readonly<Record<string, ReadModelPolicy>> = {
-  "/api/status/listening": recent,
-  "/api/status/watching": recent,
-  "/api/status/playing": recent,
-  "/api/status/trophies": slow,
-  "/api/status/vibecoding/year": slow,
-  "/api/status/github-chart": slow,
-  "/api/status/github-repo": slow,
-  "/api/status/cloudflare-workers": slow,
-  "/api/status/vercel-deployments": slow,
-  // 分最快十分钟一换，泳道本身也只到分钟尺度。
-  "/api/status/pulse": slow,
-};
-export const READ_MODEL_PATHS = Object.freeze(Object.keys(policies));
+export const READ_MODEL_PATHS = VIEW_READ_MODEL_PATHS;
 export function readModelPolicy(path: string): ReadModelPolicy | undefined {
-  return Object.hasOwn(policies, path) ? policies[path] : undefined;
+  return readModelPolicyOf(path) === "slow" ? slow : undefined;
 }
 export function readModelKey(prefix: string, path: string): string {
   return `${prefix}:public-read-model:v1:${path}`;
@@ -29,8 +16,6 @@ export function readModelPathsForSource(source: string): string[] {
     // /api/home is deliberately absent: both the SSR rebuild and the browser's mount
     // bootstrap read it from the DO, so a projection would have no reader.
     case "mac": return ["/api/status/vibecoding/year"];
-    case "emby": return ["/api/status/watching"];
-    case "playstation": return ["/api/status/playing", "/api/status/trophies"];
     default: return [];
   }
 }

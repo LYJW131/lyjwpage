@@ -5,7 +5,7 @@ import { ReadModelPublisher, type PublicationSql } from "./read-model-publisher.
 import { serveReadModel, type ReadModelReader } from "./read-model-edge.ts";
 import { READ_MODEL_PATHS, readModelKey, readModelPathsForSource, readModelPolicy, usableReadModel, type ReadModelKv } from "./read-model.ts";
 
-const path = "/api/status/watching";
+const path = "/api/status/github-repo";
 const body = JSON.stringify({ ok: true, data: { title: "example" } });
 function view(at: number, revision = 1) { return { schema: 1, path, revision, generatedAt: at, body }; }
 function deferred<T>() {
@@ -57,20 +57,31 @@ function reader(options: Partial<ReadModelReader> = {}) {
 }
 
 test("read model: allowlist excludes live, liveness, credentials, coordination and mutable query variants", async () => {
-  for (const target of ["/ws", "/count", "/api/home", "/api/musickit/token", "/api/ingest/mac", "/api/internal/storage/import", "/api/status/server", "/api/status/activity", "/api/status/desktop", "/api/status/charger", "/api/status/powerbank", "/api/status/vibecoding", "/api/status/listening/now", "/api/status/watching/now", "/api/status/playing/now", "/api/lyrics", "/api/motion-artwork", "constructor", "__proto__"]) {
+  for (const target of ["/ws", "/count", "/api/home", "/api/musickit/token", "/api/ingest/mac", "/api/internal/storage/import", "/api/status/server", "/api/status/activity", "/api/status/desktop", "/api/status/charger", "/api/status/powerbank", "/api/status/vibecoding", "/api/status/listening", "/api/status/listening/now", "/api/status/watching", "/api/status/watching/now", "/api/status/playing", "/api/status/playing/now", "/api/status/trophies", "/api/lyrics", "/api/motion-artwork", "constructor", "__proto__"]) {
     assert.equal(readModelPolicy(target), undefined, target);
     const { calls, deps } = reader();
     await serveReadModel(new Request(`https://api.example${target.startsWith("/") ? target : `/${target}`}`), deps);
     assert.equal(calls.get, 0, target);
     assert.equal(calls.origin, 1);
   }
-  for (const suffix of ["?fresh=1", "?since=2026-09-01", "?other=1"]) {
+  for (const suffix of ["?q=1", "?since=2026-09-01", "?other=1"]) {
     const { calls, deps } = reader();
     await serveReadModel(new Request(`https://api.example${path}${suffix}`), deps);
     assert.equal(calls.get, 0);
     assert.equal(calls.origin, 1);
   }
   assert.ok(READ_MODEL_PATHS.every(target => readModelPolicy(target)));
+  assert.deepEqual([...READ_MODEL_PATHS].sort(), [
+    "/api/status/cloudflare-workers",
+    "/api/status/github-chart",
+    "/api/status/github-repo",
+    "/api/status/pulse",
+    "/api/status/vercel-deployments",
+    "/api/status/vibecoding/year",
+  ]);
+  assert.deepEqual(readModelPathsForSource("mac"), ["/api/status/vibecoding/year"]);
+  assert.deepEqual(readModelPathsForSource("emby"), []);
+  assert.deepEqual(readModelPathsForSource("playstation"), []);
   assert.deepEqual(readModelPathsForSource("constructor"), []);
 });
 
@@ -104,7 +115,7 @@ test("read model: disabled binding, local bypass, rejected origin, POST and OPTI
 });
 
 test("read model: negative lookup, invalid schema, stale/future data and KV errors fall back without edge puts", async () => {
-  const variants = [null, {}, { ...view(999_000), schema: 2 }, view(1_001_000), view(1_000_000 - 180_000), { ...view(999_000), body: "not json" }, { ...view(999_000), body: '{"ok":false}' }, { ...view(999_000), path: "/private" }];
+  const variants = [null, {}, { ...view(999_000), schema: 2 }, view(1_001_000), view(1_000_000 - 600_000), { ...view(999_000), body: "not json" }, { ...view(999_000), body: '{"ok":false}' }, { ...view(999_000), path: "/private" }];
   for (const value of variants) {
     const { calls, deps } = reader({ kv: { async get() { return value; }, async put() { assert.fail("edge must not write"); } } });
     const response = await serveReadModel(new Request(`https://api.example${path}`), deps);
@@ -146,7 +157,7 @@ test("publisher: enqueue does no network, coalesces bursts, and stores only allo
     const value = JSON.parse(f.written[0].value);
     assert.equal(value.revision, 3);
     assert.equal(value.body, body);
-    assert.equal(f.written[0].ttl, 240);
+    assert.equal(f.written[0].ttl, 660);
     assert.equal(p.nextAlarm(), null);
     assert.equal(usableReadModel(value, path, f.now()), true);
   } finally { f.db.close(); }
@@ -165,7 +176,7 @@ test("publisher: a newer report during render stays dirty and is eventually publ
     await flush;
     assert.equal(JSON.parse(f.written[0].value).revision, 1);
     assert.notEqual(p.nextAlarm(), null);
-    f.advance(60_000); await p.flush();
+    f.advance(300_000); await p.flush();
     assert.equal(JSON.parse(f.written[1].value).revision, 2);
     assert.equal(p.nextAlarm(), null);
   } finally { f.db.close(); }
@@ -186,7 +197,7 @@ test("publisher: dirty generation arriving during KV put is not acknowledged as 
     await new Promise(resolve => setTimeout(resolve, 0));
     p.enqueue([path]); gate.resolve(); await flush;
     assert.notEqual(p.nextAlarm(), null);
-    f.advance(60_000); await p.flush();
+    f.advance(300_000); await p.flush();
     assert.equal(f.written.length, 2);
     assert.equal(p.nextAlarm(), null);
   } finally { f.db.close(); }
@@ -218,8 +229,8 @@ test("publisher: slow renders cannot cause successive puts less than the publica
     assert.equal(f.written.length, 1);
     const restarted = new ReadModelPublisher(f.options);
     await restarted.flush(); assert.equal(f.written.length, 1);
-    f.advance(60_000); await restarted.flush();
-    assert.ok(f.written[1].at - f.written[0].at >= 60_000);
+    f.advance(300_000); await restarted.flush();
+    assert.ok(f.written[1].at - f.written[0].at >= 300_000);
   } finally { f.db.close(); }
 });
 
@@ -233,7 +244,7 @@ test("publisher: HTTP/logical errors and over-age renders may not be published",
       async () => new Response("redirect", { status: 302 }),
       async () => Response.json({ ok: false, error: "upstream" }),
       async () => new Response("<html>wrong</html>"),
-      async () => { f.advance(180_000); return Response.json({ ok: true, data: 1 }); },
+      async () => { f.advance(600_000); return Response.json({ ok: true, data: 1 }); },
     ]) {
       const rejected = new ReadModelPublisher({ ...f.options, render });
       rejected.enqueue([path]); f.advance(300_000); await rejected.flush();
@@ -254,7 +265,7 @@ test("publisher: empty flush is idle, bounded batch drains, and duplicate flush 
     gate.resolve(Response.json({ ok: true, data: 1 })); await first;
     assert.equal(f.written.length, 1);
     const batch = new ReadModelPublisher(f.options);
-    batch.enqueue(["/api/status/trophies", "/api/status/listening", "/api/status/playing"]); f.advance(2_000);
+    batch.enqueue(["/api/status/github-chart", "/api/status/pulse", "/api/status/vibecoding/year"]); f.advance(2_000);
     await batch.flush(2); assert.notEqual(batch.nextAlarm(), null);
     await batch.flush(2); assert.equal(batch.nextAlarm(), null);
   } finally { f.db.close(); }
