@@ -5,6 +5,7 @@ import { AppVersionCard } from "@/components/app-version-card";
 import { ContactCard } from "@/components/contact-card";
 import { DevFakeDataToggle } from "@/components/dev-fake-data-toggle";
 import { DevToggleDock } from "@/components/dev-toggles";
+import { HomeBootstrap } from "@/components/live/home-bootstrap";
 import { ActivityCard } from "@/components/live/activity-card";
 import { SiteStatusCard } from "@/components/live/site-status-card";
 import { LiveMediaPair } from "@/components/live/media-pair";
@@ -24,7 +25,7 @@ import { cachedHomeSnapshot } from "@/lib/status-cache";
 import type { GithubRepoPayload, PulsePayload, StatusResponse } from "@/lib/types";
 
 export default async function Home() {
-  const [snapshot, avatarDataUri, recentCommits] = await Promise.all([
+  const [{ snapshot, fetchedAt }, avatarDataUri, recentCommits] = await Promise.all([
     cachedHomeSnapshot(),
     githubAvatarDataUri(),
     getRecentCommits(),
@@ -88,6 +89,8 @@ export default async function Home() {
   return (
     <>
       <WebPlayerProvider>
+        {/* 先于各卡挂载：把首屏快照的时刻交给聚合引导，见 lib/home-bootstrap */}
+        <HomeBootstrap snapshotAt={fetchedAt} />
         <Header desktop={desktop} desktopIconDataUri={desktopIcon} />
 
         <main className="flex-1">

@@ -1,11 +1,10 @@
 "use client";
 
-import { backendUrl } from "@/lib/backend-url";
-
 import { useCallback, useEffect, useLayoutEffect, useRef, useSyncExternalStore } from "react";
 import useSWR, { useSWRConfig } from "swr";
 
 import { freshest } from "@/lib/live-freshness";
+import { fetchStatus } from "@/lib/status-fetch";
 import type { StatusResponse } from "@/lib/types";
 
 function subscribeVisibility(onChange: () => void) {
@@ -22,11 +21,8 @@ export function usePageActive() {
   );
 }
 
-export async function statusFetcher<T>(url: string): Promise<StatusResponse<T>> {
-  const response = await fetch(backendUrl(url), { cache: "no-store" });
-  if (!response.ok) throw new Error(`Request ${url} failed: ${response.status}`);
-  return response.json();
-}
+/** 打开页面后的第一次由 `/api/home` 聚合代答，之后直连各自端点，见 lib/status-fetch */
+export const statusFetcher = fetchStatus;
 const fetcher = statusFetcher;
 
 /**
@@ -85,7 +81,8 @@ export type StatusOptions<T> = {
    *
    * 「此刻」类的信封里有服务端按当时的时钟算出来的结论（在不在线、陈没陈旧、
    * 宽限期还剩多久），HTML 在浏览器手上放一会儿就不成立了；实时推送连上之前
-   * 的那段空窗里发生的事也只能靠这一次补回来。
+   * 的那段空窗里发生的事也只能靠这一次补回来。这一次全站合成一个 `/api/home`
+   * 请求（lib/home-bootstrap），之后的轮询才各走各的端点。
    *
    * 几乎不变的数据（贡献日历、年度热力图）该关掉。列表不要关：
    * 首屏那份可能冻了几分钟。

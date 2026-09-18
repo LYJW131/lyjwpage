@@ -5,7 +5,8 @@ const recent: ReadModelPolicy = { intervalMs: minute, maxAgeMs: 3 * minute };
 const slow: ReadModelPolicy = { intervalMs: 5 * minute, maxAgeMs: 10 * minute };
 
 const policies: Readonly<Record<string, ReadModelPolicy>> = {
-  // SSR bootstrap only. The existing mount revalidation reads live endpoints from DO.
+  // Browser mount bootstrap: the first round of every card is one KV read of this.
+  // SSR rebuilds ask with fresh=1 and never see the projection; later polls hit their own paths.
   "/api/home": recent,
   "/api/status/listening": recent,
   "/api/status/watching": recent,

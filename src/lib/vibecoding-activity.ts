@@ -1,6 +1,6 @@
 "use client";
 
-import { backendUrl } from "@/lib/backend-url";
+import { fetchStatus } from "@/lib/status-fetch";
 import type { StatusResponse, VibeCodingNowPayload, VibeCodingPayload } from "@/lib/types";
 
 /**
@@ -20,9 +20,7 @@ export function seedVibeCoding(payload: VibeCodingPayload): void {
 export async function fetchVibeCoding(
   path: string,
 ): Promise<StatusResponse<VibeCodingPayload>> {
-  const response = await fetch(backendUrl(path), { cache: "no-store" });
-  if (!response.ok) throw new Error(`请求 ${path} 失败：${response.status}`);
-  const envelope = (await response.json()) as StatusResponse<VibeCodingPayload>;
+  const envelope = await fetchStatus<VibeCodingPayload>(path);
   if (envelope.ok) latest = envelope.data;
   return envelope;
 }

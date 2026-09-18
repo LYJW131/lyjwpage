@@ -9,6 +9,7 @@ import { mergeChargerHistory } from "@/lib/charger-history";
 import { applyVibeCodingNow } from "@/lib/vibecoding-activity";
 import type { LiveEvent } from "@/lib/live-events";
 import { rememberPushed } from "@/lib/live-freshness";
+import { markLiveRead } from "@/lib/read-model-freshness";
 import { liveSocketUrl } from "@/lib/live-socket";
 import {
   CHARGER_PATH,
@@ -137,7 +138,11 @@ function dispatch(mutate: ScopedMutator, message: Incoming): void {
 
   const invalidation = INVALIDATION_BY_EVENT.get(message.type);
   if (invalidation) {
-    for (const path of invalidation.paths) void mutate(path);
+    for (const path of invalidation.paths) {
+      // 通知的意思是「刚变了」：这次重取不能由打开页面时那份聚合代答
+      markLiveRead(path);
+      void mutate(path);
+    }
   }
 }
 
