@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createHomeBootstrap, HOME_PATH, type HomeBootstrapDeps } from "./home-bootstrap.ts";
+import { hasLiveRead, markLiveRead } from "./read-model-freshness.ts";
 
 const envelope = (label: string) => ({ ok: true as const, data: { label } });
 
@@ -24,11 +25,14 @@ function harness(overrides: Partial<HomeBootstrapDeps> & { body?: Record<string,
     charger: envelope("charger"),
     watching: envelope("watching"),
     nowListening: envelope("now"),
+    playing: envelope("playing"),
+    nowWatching: envelope("now-watching"),
+    server: { ok: false as const, error: "Status unavailable" },
   };
   const bootstrap = createHomeBootstrap({
     fetch: overrides.fetch ?? (async (path) => { calls.push(path); return overrides.response ? overrides.response() : aggregateResponse(body); }),
     now: () => now,
-    isLiveRead: (path) => live.has(path),
+    isLiveRead: overrides.isLiveRead ?? ((path) => live.has(path)),
     windowMs: overrides.windowMs,
   });
   return { bootstrap, calls, live, advance: (ms: number) => { now += ms; } };
@@ -100,6 +104,11 @@ test("home bootstrap: failed aggregate, bad status or missing field fall back to
   rejected.bootstrap.markSnapshotAt(T0);
   assert.equal(await rejected.bootstrap.slice("/api/status/desktop"), null);
 
+  // A card that failed inside the projection is fetched directly: that is what the mount round is for.
+  const failedCard = harness();
+  failedCard.bootstrap.markSnapshotAt(T0);
+  assert.equal(await failedCard.bootstrap.slice("/api/status/server"), null);
+
   // An older Worker without the pulse field: only that card fetches on its own.
   const partial = harness({ body: { desktop: envelope("desktop") } });
   partial.bootstrap.markSnapshotAt(T0);
@@ -118,4 +127,24 @@ test("home bootstrap: a path that already received a push bypasses the aggregate
   // WebSocket forward lands while the aggregate is in flight.
   live.add("/api/status/playing");
   assert.equal(await pending, null);
+  // Same body, no push: the slice is served, so the null above really came from the push.
+  const control = harness();
+  control.bootstrap.markSnapshotAt(T0);
+  assert.deepEqual(await control.bootstrap.slice("/api/status/playing"), envelope("playing"));
+});
+
+test("home bootstrap: the production live-read registry covers pushes to non-KV paths", async () => {
+  const { bootstrap } = harness({ isLiveRead: hasLiveRead });
+  bootstrap.markSnapshotAt(T0);
+  const pending = bootstrap.slice("/api/status/watching/now");
+  assert.ok(pending);
+  markLiveRead("/api/status/watching/now");
+  assert.equal(await pending, null);
+  // Control: a path nothing was pushed to is still served through the real registry.
+  const control = harness({ isLiveRead: hasLiveRead });
+  control.bootstrap.markSnapshotAt(T0);
+  assert.deepEqual(await control.bootstrap.slice("/api/status/playing"), envelope("playing"));
+  // A push that arrived before the first fetch: never even joins the aggregate.
+  markLiveRead("/api/status/charger");
+  assert.equal(bootstrap.slice("/api/status/charger"), null);
 });

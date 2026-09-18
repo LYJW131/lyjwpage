@@ -25,7 +25,10 @@ test("read model freshness: timestamp-free PlayStation pushes get the same prote
 
 test("read model freshness: live and incremental endpoints keep their original query contract", () => {
   for (const path of ["/api/status/charger", "/api/status/desktop", "/api/status/listening/now", "/api/status/vibecoding"]) {
+    assert.equal(hasLiveRead(path), false);
     markLiveRead(path);
+    // No fresh=1 (they never read KV), but the home bootstrap must still know a push arrived.
+    assert.equal(hasLiveRead(path), true);
     assert.equal(authoritativeReadPath(path), path);
     assert.equal(authoritativeReadPath(`${path}?since=123`), `${path}?since=123`);
   }

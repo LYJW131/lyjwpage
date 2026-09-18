@@ -40,6 +40,8 @@ import type { StatusResponse } from "@/lib/types";
 
 export const HOME_PATH = "/api/home";
 export const HOME_BOOTSTRAP_WINDOW_MS = 15_000;
+/** 十几张卡的第一次取数都等这一个请求，挂住就全挂住；超时后各卡自己回源 */
+export const HOME_BOOTSTRAP_TIMEOUT_MS = 5_000;
 
 /** 歌词和时区只在首屏 HTML 里用，没有自己的状态端点 */
 type SnapshotKey = Exclude<keyof HomeSnapshot, "lyrics" | "timezone">;
@@ -149,14 +151,15 @@ export function createHomeBootstrap(deps: HomeBootstrapDeps) {
         if (!result || deps.isLiveRead(path)) return null;
         if (snapshotAt == null || result.generatedAt < snapshotAt) return null;
         const envelope = result.snapshot[KEY_BY_PATH.get(path) as SnapshotKey];
-        return isEnvelope(envelope) ? (envelope as StatusResponse<T>) : null;
+        // 投影里那张卡当时就失败的话回源：挂载这一次本来就是给失败的首屏兜底的
+        return isEnvelope(envelope) && envelope.ok ? (envelope as StatusResponse<T>) : null;
       });
     },
   };
 }
 
 export const homeBootstrap = createHomeBootstrap({
-  fetch: (path) => fetch(backendUrl(path), { cache: "no-store" }),
+  fetch: (path) => fetch(backendUrl(path), { cache: "no-store", signal: AbortSignal.timeout(HOME_BOOTSTRAP_TIMEOUT_MS) }),
   now: Date.now,
   isLiveRead: hasLiveRead,
 });
