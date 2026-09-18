@@ -28,13 +28,14 @@ import type { StatusResponse } from "@/lib/types";
  * 浏览器挂载后的第一轮取数从 `/api/home` 一次取齐。
  *
  * 每张卡挂载时都要回源一次（服务端按当时时钟算的结论在 HTML 里放一会儿就不
- * 成立了），从前是十几个端点各打一枪。现在第一枪由这里统一打到聚合端点：
- * 它在 KV 里现成，一次请求带回全部信封；各卡之后的轮询仍走自己的端点和周期。
+ * 成立了），从前是十几个端点各打一枪。现在第一枪由这里统一打到聚合端点，
+ * 一次请求带回全部信封；各卡之后的轮询仍走自己的端点和周期。
  *
- * 三条不能破的规矩：
+ * `/api/home` 不进 KV、直读 DO，所以这份永远是此刻的：首屏重建是访问触发的，
+ * 若拿 KV 投影来比总会显得更旧，之前按时间戳作废聚合的守卫因此几乎每次都触发。
+ *
+ * 两条不能破的规矩：
  * - 页面收到过推送的路径不吃这份（见 lib/read-model-freshness），推来的永远最新；
- * - 聚合快照比首屏 HTML 用的那份还旧就整份作废，各卡照旧直接回源 ——
- *   Vercel 刚重建过首页时 KV 那份可能还没跟上，不能让挂载把新的盖成旧的；
  * - 只服务打开页面后头几秒内的第一次取数，之后挂载的卡片直接回源。
  */
 
@@ -73,11 +74,7 @@ const KEY_BY_PATH = new Map<string, SnapshotKey>(
   (Object.entries(SNAPSHOT_PATHS) as [SnapshotKey, string][]).map(([key, path]) => [path, key]),
 );
 
-type Aggregate = {
-  /** KV 投影开始生成的时刻；回源时就是收到的时刻 */
-  generatedAt: number;
-  snapshot: Partial<Record<SnapshotKey, unknown>>;
-};
+type Aggregate = Partial<Record<SnapshotKey, unknown>>;
 
 export type HomeBootstrapDeps = {
   /** 拿到的是 `/api/home` 这个路径，由实现自己拼后端地址 */
@@ -108,32 +105,22 @@ export function createHomeBootstrap(deps: HomeBootstrapDeps) {
   const windowMs = deps.windowMs ?? HOME_BOOTSTRAP_WINDOW_MS;
   let startedAt: number | null = null;
   let aggregate: Promise<Aggregate | null> | null = null;
-  let snapshotAt: number | null = null;
   const served = new Set<string>();
 
   async function load(): Promise<Aggregate | null> {
     try {
       const response = await deps.fetch(HOME_PATH);
       if (!response.ok) return null;
-      const generatedAt = response.headers.get("X-Read-Model") === "kv"
-        ? Date.parse(response.headers.get("X-Fetched-At") ?? "")
-        : deps.now();
-      if (!Number.isFinite(generatedAt)) return null;
-      const snapshot = (await response.json()) as Aggregate["snapshot"];
-      return { generatedAt, snapshot };
+      return (await response.json()) as Aggregate;
     } catch {
       return null;
     }
   }
 
   return {
-    /** 首屏 HTML 用的快照是什么时候取的；比它旧的聚合快照不能用 */
-    markSnapshotAt(at: number): void {
-      snapshotAt = at;
-    },
     /**
      * 该请求能不能由聚合快照代答。返回 null 表示直接回源；返回的 Promise 解析为
-     * null 也是直接回源（聚合失败、太旧、字段缺失、中途收到了推送）。
+     * null 也是直接回源（聚合失败、字段缺失或失败、中途收到了推送）。
      */
     slice<T>(url: string): Promise<StatusResponse<T> | null> | null {
       const path = eligiblePath(url);
@@ -149,8 +136,7 @@ export function createHomeBootstrap(deps: HomeBootstrapDeps) {
       const pending = aggregate as Promise<Aggregate | null>;
       return pending.then((result) => {
         if (!result || deps.isLiveRead(path)) return null;
-        if (snapshotAt == null || result.generatedAt < snapshotAt) return null;
-        const envelope = result.snapshot[KEY_BY_PATH.get(path) as SnapshotKey];
+        const envelope = result[KEY_BY_PATH.get(path) as SnapshotKey];
         // 投影里那张卡当时就失败的话回源：挂载这一次本来就是给失败的首屏兜底的
         return isEnvelope(envelope) && envelope.ok ? (envelope as StatusResponse<T>) : null;
       });

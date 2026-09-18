@@ -5,9 +5,6 @@ const recent: ReadModelPolicy = { intervalMs: minute, maxAgeMs: 3 * minute };
 const slow: ReadModelPolicy = { intervalMs: 5 * minute, maxAgeMs: 10 * minute };
 
 const policies: Readonly<Record<string, ReadModelPolicy>> = {
-  // Browser mount bootstrap: the first round of every card is one KV read of this.
-  // SSR rebuilds ask with fresh=1 and never see the projection; later polls hit their own paths.
-  "/api/home": recent,
   "/api/status/listening": recent,
   "/api/status/watching": recent,
   "/api/status/playing": recent,
@@ -29,10 +26,11 @@ export function readModelKey(prefix: string, path: string): string {
 }
 export function readModelPathsForSource(source: string): string[] {
   switch (source) {
-    case "mac": return ["/api/home", "/api/status/vibecoding/year"];
-    case "emby": return ["/api/home", "/api/status/watching"];
-    case "playstation": return ["/api/home", "/api/status/playing", "/api/status/trophies"];
-    case "iphone": case "homepod": case "server": case "agents": return ["/api/home"];
+    // /api/home is deliberately absent: both the SSR rebuild and the browser's mount
+    // bootstrap read it from the DO, so a projection would have no reader.
+    case "mac": return ["/api/status/vibecoding/year"];
+    case "emby": return ["/api/status/watching"];
+    case "playstation": return ["/api/status/playing", "/api/status/trophies"];
     default: return [];
   }
 }
@@ -53,14 +51,11 @@ const MAX_BODY_BYTES = 1024 * 1024;
 function record(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
-export function isPublicBody(path: string, body: string): boolean {
+export function isPublicBody(body: string): boolean {
   if (body.length > MAX_BODY_BYTES || new TextEncoder().encode(body).byteLength > MAX_BODY_BYTES) return false;
   try {
     const value: unknown = JSON.parse(body);
     if (!record(value)) return false;
-    // Aggregate home has per-card envelopes, not a top-level ok flag.
-    if (path === "/api/home") return ["desktop", "nowListening", "charger", "timezone"].every((key) =>
-      record(value[key]) && typeof value[key].ok === "boolean");
     return value.ok === true && Object.hasOwn(value, "data");
   } catch { return false; }
 }
@@ -71,5 +66,5 @@ export function usableReadModel(value: unknown, path: string, now: number): valu
     typeof value.revision === "number" && Number.isSafeInteger(value.revision) && value.revision > 0 &&
     typeof value.generatedAt === "number" && Number.isSafeInteger(value.generatedAt) &&
     value.generatedAt <= now && now - value.generatedAt < policy.maxAgeMs &&
-    typeof value.body === "string" && isPublicBody(path, value.body);
+    typeof value.body === "string" && isPublicBody(value.body);
 }

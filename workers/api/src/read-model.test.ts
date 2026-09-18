@@ -6,9 +6,7 @@ import { serveReadModel, type ReadModelReader } from "./read-model-edge.ts";
 import { READ_MODEL_PATHS, readModelKey, readModelPathsForSource, readModelPolicy, usableReadModel, type ReadModelKv } from "./read-model.ts";
 
 const path = "/api/status/watching";
-const home = "/api/home";
 const body = JSON.stringify({ ok: true, data: { title: "example" } });
-const homeBody = JSON.stringify(Object.fromEntries(["desktop", "nowListening", "charger", "timezone"].map(key => [key, { ok: false, error: "not configured" }])));
 function view(at: number, revision = 1) { return { schema: 1, path, revision, generatedAt: at, body }; }
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -39,7 +37,7 @@ function setup() {
   };
   const options = {
     sql, kv, prefix: "test", now: () => now,
-    render: async (target: string) => { renders++; return new Response(target === home ? homeBody : body, { headers: { "Content-Type": "application/json" } }); },
+    render: async () => { renders++; return new Response(body, { headers: { "Content-Type": "application/json" } }); },
     log: () => {},
   };
   return { db, sql, kv, values, written, options,
@@ -59,7 +57,7 @@ function reader(options: Partial<ReadModelReader> = {}) {
 }
 
 test("read model: allowlist excludes live, liveness, credentials, coordination and mutable query variants", async () => {
-  for (const target of ["/ws", "/count", "/api/musickit/token", "/api/ingest/mac", "/api/internal/storage/import", "/api/status/server", "/api/status/activity", "/api/status/desktop", "/api/status/charger", "/api/status/powerbank", "/api/status/vibecoding", "/api/status/listening/now", "/api/status/watching/now", "/api/status/playing/now", "/api/lyrics", "/api/motion-artwork", "constructor", "__proto__"]) {
+  for (const target of ["/ws", "/count", "/api/home", "/api/musickit/token", "/api/ingest/mac", "/api/internal/storage/import", "/api/status/server", "/api/status/activity", "/api/status/desktop", "/api/status/charger", "/api/status/powerbank", "/api/status/vibecoding", "/api/status/listening/now", "/api/status/watching/now", "/api/status/playing/now", "/api/lyrics", "/api/motion-artwork", "constructor", "__proto__"]) {
     assert.equal(readModelPolicy(target), undefined, target);
     const { calls, deps } = reader();
     await serveReadModel(new Request(`https://api.example${target.startsWith("/") ? target : `/${target}`}`), deps);
@@ -72,7 +70,6 @@ test("read model: allowlist excludes live, liveness, credentials, coordination a
     assert.equal(calls.get, 0);
     assert.equal(calls.origin, 1);
   }
-  assert.equal(readModelPolicy(home)?.intervalMs, 60_000);
   assert.ok(READ_MODEL_PATHS.every(target => readModelPolicy(target)));
   assert.deepEqual(readModelPathsForSource("constructor"), []);
 });
@@ -160,7 +157,7 @@ test("publisher: a newer report during render stays dirty and is eventually publ
   const gate = deferred<Response>();
   let first = true;
   try {
-    const p = new ReadModelPublisher({ ...f.options, render: target => first ? (first = false, gate.promise) : f.options.render(target) });
+    const p = new ReadModelPublisher({ ...f.options, render: () => first ? (first = false, gate.promise) : f.options.render() });
     p.enqueue([path]); f.advance(2_000);
     const flush = p.flush();
     p.enqueue([path]);
@@ -215,7 +212,7 @@ test("publisher: KV failure persists retry; restart and cron do not lose it or b
 test("publisher: slow renders cannot cause successive puts less than the publication interval apart", async () => {
   const f = setup();
   try {
-    const p = new ReadModelPublisher({ ...f.options, render: async target => { f.advance(90_000); return f.options.render(target); } });
+    const p = new ReadModelPublisher({ ...f.options, render: async () => { f.advance(90_000); return f.options.render(); } });
     p.enqueue([path]); f.advance(2_000); await p.flush();
     p.enqueue([path]); await p.flush();
     assert.equal(f.written.length, 1);
@@ -226,11 +223,11 @@ test("publisher: slow renders cannot cause successive puts less than the publica
   } finally { f.db.close(); }
 });
 
-test("publisher: partial home may be published, HTTP/logical errors and over-age renders may not", async () => {
+test("publisher: HTTP/logical errors and over-age renders may not be published", async () => {
   const f = setup();
   try {
     const p = new ReadModelPublisher(f.options);
-    p.enqueue([home]); f.advance(2_000); await p.flush();
+    p.enqueue([path]); f.advance(2_000); await p.flush();
     assert.equal(f.written.length, 1);
     for (const render of [
       async () => new Response("redirect", { status: 302 }),
@@ -257,7 +254,7 @@ test("publisher: empty flush is idle, bounded batch drains, and duplicate flush 
     gate.resolve(Response.json({ ok: true, data: 1 })); await first;
     assert.equal(f.written.length, 1);
     const batch = new ReadModelPublisher(f.options);
-    batch.enqueue([home, "/api/status/listening", "/api/status/playing"]); f.advance(2_000);
+    batch.enqueue(["/api/status/trophies", "/api/status/listening", "/api/status/playing"]); f.advance(2_000);
     await batch.flush(2); assert.notEqual(batch.nextAlarm(), null);
     await batch.flush(2); assert.equal(batch.nextAlarm(), null);
   } finally { f.db.close(); }
