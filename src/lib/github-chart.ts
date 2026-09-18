@@ -8,14 +8,12 @@ const GITHUB_GRAPHQL = "https://api.github.com/graphql";
 /**
  * 缓存这份日历。
  *
- * 其余状态源的 `live` 那半读的都是本地 SQLite，只有这条真的出网。
- * STATUS_CACHE 关掉的部署上（见 lib/api）端点走的正是 `live`，于是每一次匿名
- * GET /api/status/github-chart 都等于一次 GitHub GraphQL 调用 —— 端点不鉴权、
- * 响应又是 no-store，CDN 也不兜底，几十 rps 就能把令牌那 5000 points/hour
- * 打空，而这把令牌按注释必须是权限很宽的 classic PAT。
+ * 其余状态源读的都是本地 SQLite，只有这条真的出网。端点不鉴权、响应又是
+ * no-store，每一次匿名 GET 都等于一次 GitHub GraphQL 调用 —— 几十 rps 就能把
+ * 令牌那 5000 points/hour 打空，而这把令牌按注释必须是权限很宽的 classic PAT。
  *
- * TTL 取 STATUS_LIFE.revalidate 的同量级（10 分钟）。lib/cache 顺带给了进程内
- * in-flight 去重和 5 秒负缓存，`cached` / `live` 两条路一起被保护。
+ * 所以取数进 SQLite TTL（10 分钟，和这条慢端点的 KV 投影最大年龄同量级）。
+ * lib/cache 顺带给了进程内 in-flight 去重和 5 秒负缓存。
  *
  * 信封是 origin + 日序列，和年度 token 同一形状。逐日的 date / weekday / label
  * 浏览器现算；GitHub 的四分位不能在这边重算，所以 scores 跟着走。

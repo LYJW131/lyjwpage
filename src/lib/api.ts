@@ -1,4 +1,3 @@
-
 import { AwaitingReport } from "@/lib/awaiting-report";
 import { withStorageScope } from "@/lib/storage";
 import type { StatusResponse } from "@/lib/types";
@@ -78,29 +77,16 @@ export async function statusEnvelope<T>(
   });
 }
 
-function statusJson<T>(envelope: StatusResponse<T>): Response {
+/**
+ * 公开状态端点的 JSON 响应：信封进 body，时间戳放响应头。
+ * 时间戳不进 body：进了就等于每次响应都不一样，前端再想判断「数据变没变」永远为假。
+ */
+export function statusResponse<T>(envelope: StatusResponse<T>): Response {
   return Response.json(envelope, {
     status: 200,
-    /**
-     * 时间戳放响应头，不进 body：进了 body 就等于每次响应都不一样，
-     * 前端再想判断「数据变没变」永远为假 —— 见 StatusResponse 的注释。
-     */
     headers: {
       "Cache-Control": "no-store",
       "X-Fetched-At": new Date().toISOString(),
     },
   });
-}
-
-
-export type StatusSource<T> = () => Promise<T>;
-export function readStatus<T>(source: StatusSource<T>): Promise<StatusResponse<T>> {
-  return statusEnvelope(source);
-}
-export function statusRoute<T>(source: StatusSource<T>): Promise<Response>;
-export function statusRoute<T, U>(source: StatusSource<T>, overlay: (data: T) => Promise<U> | U): Promise<Response>;
-export async function statusRoute<T, U>(source: StatusSource<T>, overlay?: (data: T) => Promise<U> | U): Promise<Response> {
-  const envelope = await readStatus(source);
-  if (!envelope.ok || !overlay) return statusJson(envelope);
-  return statusJson(await statusEnvelope(async () => overlay(envelope.data)));
 }

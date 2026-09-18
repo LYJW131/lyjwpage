@@ -115,7 +115,8 @@ export function normalizeVibeCodingYear(
  * 在取数出口盖一次「源站此刻是哪一天」。
  *
  * 和 withActivityFreshness 同一套口径：这是唯一一个光靠时间流逝就会翻面的结论，
- * 冻在缓存里那份最多旧 10 分钟（见 lib/status-cache），端点每次请求现算。
+ * 不进存储，取数出口（getVibeCodingYear）每次请求现算。这条慢端点的 KV 投影
+ * 最多 10 分钟龄。
  *
  * 用站点时区而不是 UTC：日合计是采集侧按自己的日历分的桶，切窗必须用同一份日历，
  * 理由见 heatmap-window 的 zonedDay。
