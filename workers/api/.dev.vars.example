@@ -12,6 +12,9 @@ CLOUDFLARE_METRICS_TOKEN=
 PAGESPEED_API_KEY=
 # Vercel 团队范围 Token：部署、调用量和访问统计共用
 VERCEL_TOKEN=
+# Vercel AI Gateway 的密钥，给 pulse 活动分用（TypeSafe AI 的 Jev 评估模型，
+# 十分钟最多一次）。不配就不打分，/api/status/pulse 照常返回泳道、分是 null。
+AI_GATEWAY_API_KEY=
 # 只给本地开发：生产为主、本地补缺 —— 生产有的数据用生产的，生产没有的端点和
 # 字段用本地的（只读，不碰上报）。测本地上报链路时注释掉。生产的 wrangler.toml
 # 绝不配它，见 src/public-api.ts。

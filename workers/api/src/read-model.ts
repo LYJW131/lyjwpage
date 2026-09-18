@@ -16,6 +16,8 @@ const policies: Readonly<Record<string, ReadModelPolicy>> = {
   "/api/status/github-repo": slow,
   "/api/status/cloudflare-workers": slow,
   "/api/status/vercel-deployments": slow,
+  // 分最快十分钟一换，泳道本身也只到分钟尺度。
+  "/api/status/pulse": slow,
 };
 export const READ_MODEL_PATHS = Object.freeze(Object.keys(policies));
 export function readModelPolicy(path: string): ReadModelPolicy | undefined {

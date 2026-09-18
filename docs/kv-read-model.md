@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | `/api/home` | KV 首屏快照；挂载后的实时卡片仍回 DO | 60 秒 / 180 秒 |
 | `/api/status/listening`、`watching`、`playing` | KV；该页收到相应推送后改回 DO | 60 秒 / 180 秒 |
-| `trophies`、`vibecoding/year`、`github-chart`、`github-repo`、`cloudflare-workers`、`vercel-deployments` | KV | 300 秒 / 600 秒 |
+| `trophies`、`vibecoding/year`、`github-chart`、`github-repo`、`cloudflare-workers`、`vercel-deployments`、`pulse` | KV | 300 秒 / 600 秒 |
 | 所有 `*/now`、`desktop`、`server`、`activity`、`charger`、`powerbank`、`vibecoding` | DO；包含存活、日界线、暂停宽限期或增量历史语义 | 不经 KV |
 | `/ws`、`/count`、上报、MusicKit token、歌词/动态封面 | 原路径 | 不经 KV |
 | 任意带查询参数的请求 | 原路径，包括 `since`、筛选参数和 `fresh=1` | 不经 KV |

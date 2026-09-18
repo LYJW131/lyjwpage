@@ -73,7 +73,9 @@ enabled = true
 # 秘密通过 wrangler secret put 配置：GITHUB_TOKEN、TELEMETRY_INGEST_SECRET、
 # APPLE_MUSIC_PRIVATE_KEY（MusicKit 签发用的 .p8 全文）、CLOUDFLARE_METRICS_TOKEN
 # （Workers 统计、部署与构建只读）、VERCEL_TOKEN（团队范围，部署与指标只读用）、
-# PAGESPEED_API_KEY（Google PageSpeed Insights，cron 每小时实测一次首页性能）。
+# PAGESPEED_API_KEY（Google PageSpeed Insights，cron 每小时实测一次首页性能）、
+# AI_GATEWAY_API_KEY（Vercel AI Gateway，给 pulse 五域打活动分的 Jev 评估模型；
+# 不配就不打分，端点照常给泳道）。
 # 每分钟一趟：有页面连接时刷新最近在听（SQLite 闸门把 Apple 请求限制为两分钟一次），
 # 并按同一把闸门每小时跑一次 PageSpeed 实测。
 [triggers]

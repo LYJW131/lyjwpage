@@ -19,7 +19,7 @@
 11. [活动圆环 — iPhone Telemetry Hub](#11-活动圆环--iphone-telemetry-hub)
 12. [落地节点监控与三档自适应调频](#12-落地节点监控与三档自适应调频)
 13. [PWA 与边缘缓存规则](#13-pwa-与边缘缓存规则)
-14. [跨域活动脉搏（Pulse）](#14-跨域活动脉搏pulse)
+14. [跨域活动脉搏与活动分（Pulse）](#14-跨域活动脉搏与活动分pulse)
 
 ---
 
@@ -280,14 +280,20 @@ payload: >-
 
 ---
 
-## 14. 跨域活动脉搏（Pulse）
+## 14. 跨域活动脉搏与活动分（Pulse）
 
-给将来的活动评分图（Jev Score）垫的一层存储，不是卡片。不叫 activity：那个名字在本仓库已经是 Apple Watch 圆环（`/api/status/activity`、`activity:today`、`ActivityStatus`）。五条域 `coding` / `listening` / `watching` / `gaming` / `charging` 各占一个 SQLite list 键 `pulse:<domain>`，样本是 `{ t, level, hint? }`：`t` 为源站 `receivedAt`（epoch 毫秒），`level` 为 0–3（空闲 / 低 / 中 / 高），`hint` 可选、截到 48 字。域不进 JSON。
+首页整宽那张 Pulse 卡片的底：五条泳道 + 五枚活动分。不叫 activity：那个名字在本仓库已经是 Apple Watch 圆环（`/api/status/activity`、`activity:today`、`ActivityStatus`）。五条域 `coding` / `listening` / `watching` / `gaming` / `charging` 各占一个 SQLite list 键 `pulse:<domain>`，样本是 `{ t, level, hint? }`：`t` 为源站 `receivedAt`（epoch 毫秒），`level` 为 0–3（空闲 / 低 / 中 / 高），`hint` 可选、截到 48 字。域不进 JSON。
 
 写入走纯函数 `planPulseSample`：没有上一笔就记；`t` 不前进丢掉（重复或乱序）；level 或 hint 变了记一笔状态翻面；非空闲且距上一笔 ≥ 5 分钟再确认一次（上报器死了会在阶跃序列上露出缺口）；空闲保持单点，5 分钟内没变的心跳不入库。每域 trim 到 600 条，每次 append 续 7 天 TTL。写入失败只打 `[pulse]` 日志，不能让主状态上报失败。
 
-挂钩点在主状态准备好之后，promise 推进已有的 `fanout({ writes })`。Mac 那条入口（`workers/api/src/stores/telemetry.ts`）**每封信封都重算一次在听和 coding，纯心跳也算**，`charger` 列在 `activeModules` 里时充电头也跟着确认（没带快照的那几封走 `prepareHeartbeat` 旁边那一笔）：采集端只在内容变化时才带模块，挂在「模块出现」上的话，一首长歌、一段稳定的 coding 整段不落笔，5 分钟的再确认永远不到，暂停宽限、HomePod 静默、存活过期这些时间函数也没人把它们翻成空闲。档位从留着的工作副本 + 这封算出来的存活现算，判定时刻一律取 `receivedAt`（和样本的 `t` 同一把钟），前台应用要过 `activeDesktop()` 那道 `activeModules` 闸；留着的 agents 同样要过闸——`vibeCoding` 模块不在 `activeModules` 里，或 nowMirror 那份的 `pushedAt` 过了卡片同一条 `VIBECODING_STALE_MS`，就按空闲算，采集器死了而 Mac 还在心跳时不会一直确认 level 3。另外三处仍按事件来：HomePod 在听（`homepod-ingest.ts`，推送仍走带目录的 `listeningEvent`，pulse 走 `bareSnapshotFrom`；HA 只在变化时推，没有自己的心跳，静默过期靠 Mac 那侧的重算落笔），Emby 的 `playing` 更新（`emby.ts`，这次没带详情就按 itemId 沿用存着的那一项，免得 hint 少一块被当成翻面），PlayStation 的 `presence` 心跳（`playstation.ts`）。`recordAgentLimits` 不挂钩，限额不是活动。v0 档位是确定性规则（`shared/pulse-levels.ts`），评分器到位后只换这一层，调用点仍只看 `{ level, hint }`。
+挂钩点在主状态准备好之后，promise 推进已有的 `fanout({ writes })`。Mac 那条入口（`workers/api/src/stores/telemetry.ts`）**每封信封都重算一次在听和 coding，纯心跳也算**，`charger` 列在 `activeModules` 里时充电头也跟着确认（没带快照的那几封走 `prepareHeartbeat` 旁边那一笔）：采集端只在内容变化时才带模块，挂在「模块出现」上的话，一首长歌、一段稳定的 coding 整段不落笔，5 分钟的再确认永远不到，暂停宽限、HomePod 静默、存活过期这些时间函数也没人把它们翻成空闲。档位从留着的工作副本 + 这封算出来的存活现算，判定时刻一律取 `receivedAt`（和样本的 `t` 同一把钟），前台应用要过 `activeDesktop()` 那道 `activeModules` 闸；留着的 agents 同样要过闸——`vibeCoding` 模块不在 `activeModules` 里，或 nowMirror 那份的 `pushedAt` 过了卡片同一条 `VIBECODING_STALE_MS`，就按空闲算，采集器死了而 Mac 还在心跳时不会一直确认 level 3。另外三处仍按事件来：HomePod 在听（`homepod-ingest.ts`，推送仍走带目录的 `listeningEvent`，pulse 走 `bareSnapshotFrom`；HA 只在变化时推，没有自己的心跳，静默过期靠 Mac 那侧的重算落笔），Emby 的 `playing` 更新（`emby.ts`，这次没带详情就按 itemId 沿用存着的那一项，免得 hint 少一块被当成翻面），PlayStation 的 `presence` 心跳（`playstation.ts`）。`recordAgentLimits` 不挂钩，限额不是活动。档位是确定性规则（`shared/pulse-levels.ts`），按上报那一刻算；Jev **不碰这一层**，它只对整段窗口给分，调用点仍只看 `{ level, hint }`。
 
-没有公开 HTTP 出口；读取只在 Worker 内部（StateHub）由将来的评分器完成。`readPulseHistory(cursor?)` 一次 batch 读五域。`partial` 规则同充电头曲线：游标不早于还留着的最旧点才给增量，否则整份。不推送，不进 `/api/home`。
+公开出口是 `GET /api/status/pulse`，同一份也进 `/api/home` 的 `pulse` 字段（读模型策略 `slow`：300 秒发布间隔、600 秒最大年龄）。内部读仍是 `readPulseHistory(cursor?)`，一次 batch 读五域；`partial` 规则同充电头曲线：游标不早于还留着的最旧点才给增量，否则整份。不推送 —— 分最快十分钟换一次，泳道也只到分钟尺度。
+
+对外那份由 `getPulseStatus()`（`src/lib/pulse.ts`）裁成最近 24 小时：窗口左边界之前的最后一笔保留、`t` 压到 `from`（泳道才从头填满），**`hint` 一律剥掉** —— 曲名、应用名、游戏名只在 Worker 内部参与打分，不出公网。窗口长度、静默上限、评分间隔三个常数在 `src/lib/limits.ts`（`PULSE_WINDOW_MS` / `PULSE_SILENT_AFTER_MS` / `PULSE_SCORE_INTERVAL_MS`），卡片和评分器共用，图和分才对得上。
+
+**活动分（Jev）**：TypeSafe AI 的 Jev 评估模型，经 Vercel AI Gateway 的 `POST /v4/ai/evaluation-model`，裸 HTTP（`workers/api/src/pulse-score.ts`，不把 AI SDK 拖进 Worker）。一次请求问完五域十道题：`<域>Activity` 是 score 题，四档标尺 idle / light / moderate / intense，回来的 `score` 是插值出来的位置（如 1.68）；`<域>Trend` 是 choice 题，rising / steady / falling。喂进去的 `state` 是压好的段 + 每档分钟数 + 一份档位含义的 legend，时刻写成「距窗口起点多少分钟」（`src/lib/pulse-window.ts`，纯函数，站点和 Worker 共用）。把握度取 `providerMetadata.typesafe.confidence`。
+
+节奏：cron 每分钟调 `scorePulse()`，评分器自己判断要不要真打出去 —— 至少隔 `PULSE_SCORE_INTERVAL_MS`（10 分钟），而且要有某个域的最新样本比上一份分记下的 `latestSampleAt` 更新，没人上报的那几小时一次都不调。上一次尝试的时刻另记在内存里：只看存着的 `scoredAt` 的话，网关连挂十分钟会变成每分钟重试。单次 10 秒超时（`AbortSignal.timeout`），十道题缺一道、分不是有限数、趋势不在三选一里都算这次失败，**整份丢掉、留着上一份分**。结果存 StateHub 的 `pulse:scores`（不设 TTL），错误只进 `[pulse-score]` 日志。闸门 `pulseScoringEnabled(env)` 和读模型、D1 归档同一套：没有 `AI_GATEWAY_API_KEY`、或配了 `DEV_OVERRIDES` / `UPSTREAM_API_URL` 就停用 —— 本地夹具编出来的序列不该被送去打分，更不该盖掉线上那份。
 
 序列只在 StateHub 里留 600 条 / 7 天，长期那份镜像到 Cloudflare D1（库 `lyjwpage-history`，绑定 `HISTORY`，表 `pulse_samples`）：cron 每分钟按每域一条水位线增量追加，只增不删，同样没有公开读路径。边界、水位线语义、迁移与回滚见 [Worker 数据后端与首屏缓存](state-storage.md) 的「长期归档（D1）」。
