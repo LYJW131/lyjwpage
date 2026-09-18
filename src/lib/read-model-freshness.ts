@@ -10,6 +10,10 @@ const pushed = new Set<string>();
 export function markLiveRead(path: string): void {
   if (kvPushPaths.has(path)) pushed.add(path);
 }
+/** 本页已经收到过该路径的推送；聚合引导（lib/home-bootstrap）也不能再代答它。 */
+export function hasLiveRead(path: string): boolean {
+  return pushed.has(path);
+}
 export function authoritativeReadPath(path: string): string {
   const split = path.indexOf("?");
   const pathname = split < 0 ? path : path.slice(0, split);

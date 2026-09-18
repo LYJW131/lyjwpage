@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { authoritativeReadPath, markLiveRead } from "./read-model-freshness.ts";
+import { authoritativeReadPath, hasLiveRead, markLiveRead } from "./read-model-freshness.ts";
 
 test("read model freshness: cold page may use KV; a pushed path permanently bypasses it", () => {
   const path = "/api/status/watching";
   assert.equal(authoritativeReadPath(path), path);
+  assert.equal(hasLiveRead(path), false);
   markLiveRead(path);
+  assert.equal(hasLiveRead(path), true);
   assert.equal(authoritativeReadPath(path), `${path}?fresh=1`);
   assert.equal(authoritativeReadPath(`${path}?since=123`), `${path}?since=123&fresh=1`);
   assert.equal(authoritativeReadPath(`${path}?fresh=0&since=123`), `${path}?fresh=1&since=123`);
