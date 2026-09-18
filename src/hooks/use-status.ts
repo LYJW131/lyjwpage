@@ -3,8 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useSyncExternalStore } from "react";
 import useSWR, { useSWRConfig } from "swr";
 
-import { freshest } from "@/lib/live-freshness";
-import { fetchStatus } from "@/lib/status-fetch";
+import { fetchStatus, guardPolled } from "@/lib/status-reads";
 import type { StatusResponse } from "@/lib/types";
 
 function subscribeVisibility(onChange: () => void) {
@@ -21,7 +20,7 @@ export function usePageActive() {
   );
 }
 
-/** 打开页面后的第一次由 `/api/home` 聚合代答，之后直连各自端点，见 lib/status-fetch */
+/** 打开页面后的第一次由 `/api/home` 聚合代答，之后直连各自端点，见 lib/status-reads */
 export const statusFetcher = fetchStatus;
 const fetcher = statusFetcher;
 
@@ -82,7 +81,7 @@ export type StatusOptions<T> = {
    * 「此刻」类的信封里有服务端按当时的时钟算出来的结论（在不在线、陈没陈旧、
    * 宽限期还剩多久），HTML 在浏览器手上放一会儿就不成立了；实时推送连上之前
    * 的那段空窗里发生的事也只能靠这一次补回来。这一次全站合成一个 `/api/home`
-   * 请求（lib/home-bootstrap），之后的轮询才各走各的端点。
+   * 请求（lib/status-reads），之后的轮询才各走各的端点。
    *
    * 几乎不变的数据（贡献日历、年度热力图）该关掉。列表不要关：
    * 首屏那份可能冻了几分钟。
@@ -145,10 +144,10 @@ export function useStatus<T>(
    * 取回来的这份要是比推来的旧，就换回推来的那份。
    *
    * 包在最外面而不是塞进 fetcher 里：增量拉取那条的请求地址带着 `?since=`，
-   * 和 SWR 的键不是一个字符串，而这里认的是键。为什么要挡见 lib/live-freshness。
+   * 和 SWR 的键不是一个字符串，而这里认的是键。为什么要挡见 lib/status-reads。
    */
   const guarded = useCallback(
-    async (key: string) => freshest(key, await (customFetcher ?? fetcher<T>)(key)),
+    async (key: string) => guardPolled(key, await (customFetcher ?? fetcher<T>)(key)),
     [customFetcher],
   );
 

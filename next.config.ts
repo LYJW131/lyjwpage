@@ -57,9 +57,9 @@ const nextConfig: NextConfig = {
    * 开了它之后 `dynamic` / `revalidate` / `fetchCache` **以及 `runtime`** 这几个
    * 段配置一律不能再导出，写了就是构建期报错 —— 官方迁移文档只写了前三个和
    * `runtime = "edge"`，但 `runtime = "nodejs"`（默认值）照样被拒。全站的渲染
-   * 意图改由 `use cache` 和 `<Suspense>` 表达：取数缓存见 lib/status-cache，
+   * 意图改由 `use cache` 和 `<Suspense>` 表达：取数缓存见 lib/home-snapshot，
    * 失效点见 lib/live-events 的 expireStatus（只刷本实例）；八条状态路由也读
-   * lib/status-cache，但 STATUS_CACHE=false 的部署上它们改成每次直读 Redis，
+   * lib/home-snapshot，但 STATUS_CACHE=false 的部署上它们改成每次直读 Redis，
    * 见 lib/api。首屏那份不受那个开关管 —— 冻着才有这里说的预渲染。
    */
   cacheComponents: true,
