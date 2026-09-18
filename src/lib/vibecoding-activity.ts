@@ -1,6 +1,6 @@
 "use client";
 
-import { fetchStatus } from "@/lib/status-fetch";
+import { fetchStatus } from "@/lib/status-reads";
 import type { StatusResponse, VibeCodingNowPayload, VibeCodingPayload } from "@/lib/types";
 
 /**

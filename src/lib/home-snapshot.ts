@@ -1,5 +1,5 @@
 import { cacheLife, cacheTag } from "next/cache";
-import { STATUS_TAGS } from "@/lib/status-tags";
+import { STATUS_TAGS } from "@/lib/status-views";
 import type { HomeSnapshot } from "@/lib/public-home";
 import { backendUrl } from "@/lib/backend-url";
 

@@ -5,7 +5,7 @@ import useSWR from "swr";
 
 import { type AppVersionStatus, resolveVersionStatus, servingDeployment } from "@/lib/app-version";
 import { commitSha as pageCommit } from "@/lib/build-info";
-import { statusFetcher } from "@/hooks/use-status";
+import { fetchStatus } from "@/lib/status-reads";
 import { VERCEL_DEPLOYMENTS_PATH } from "@/lib/paths";
 import type { StatusResponse } from "@/lib/types";
 import type { VercelDeploymentsPayload } from "@/lib/vercel-deployments-types";
@@ -24,7 +24,7 @@ export function useAppVersion() {
   const isDev = process.env.NODE_ENV === "development";
   const { data: envelope } = useSWR<StatusResponse<VercelDeploymentsPayload>>(
     VERCEL_DEPLOYMENTS_PATH,
-    statusFetcher,
+    fetchStatus,
   );
 
   const vercel = envelope?.ok ? envelope.data : undefined;

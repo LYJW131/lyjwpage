@@ -8,21 +8,15 @@ import type { ScopedMutator } from "swr";
 import { mergeChargerHistory } from "@/lib/charger-history";
 import { applyVibeCodingNow } from "@/lib/vibecoding-activity";
 import type { LiveEvent } from "@/lib/live-events";
-import { rememberPushed } from "@/lib/live-freshness";
-import { markLiveRead } from "@/lib/read-model-freshness";
+import { acceptPush, markLiveRead } from "@/lib/status-reads";
 import { liveSocketUrl } from "@/lib/live-socket";
 import {
   CHARGER_PATH,
-  POWERBANK_PATH,
   DESKTOP_PATH,
-  LISTENING_PATH,
   NOW_LISTENING_PATH,
-  NOW_PLAYING_PATH,
-  NOW_WATCHING_PATH,
-  PLAYING_PATH,
   VIBECODING_PATH,
-  WATCHING_PATH,
 } from "@/lib/paths";
+import { pathByEvent } from "@/lib/status-views";
 import type {
   ChargerPayload,
   StatusResponse,
@@ -39,13 +33,12 @@ import type {
  */
 const FORWARDS: ReadonlyArray<{
   event: LiveEvent["type"];
-  path: string;
   merge?: (data: unknown) => unknown | null;
 }> = [
-  { event: "desktop", path: DESKTOP_PATH },
-  { event: "listening-now", path: NOW_LISTENING_PATH },
+  { event: "desktop" },
+  { event: "listening-now" },
   // Emby 正在播放：webhook 和推送代理驱动，服务端手上已经是最新的
-  { event: "watching-now", path: NOW_WATCHING_PATH },
+  { event: "watching-now" },
   /**
    * 两张列表也直接带数据来。
    *
@@ -53,10 +46,10 @@ const FORWARDS: ReadonlyArray<{
    * 实测 4.4 KB 和 2.8 KB，而重取要付的是每个在线标签页各一次回源。
    * 服务端那侧只在内容真的变了时才发，所以这两行不会退化成定时广播。
    */
-  { event: "listening", path: LISTENING_PATH },
-  { event: "watching", path: WATCHING_PATH },
-  { event: "playing-now", path: NOW_PLAYING_PATH },
-  { event: "playing", path: PLAYING_PATH },
+  { event: "listening" },
+  { event: "watching" },
+  { event: "playing-now" },
+  { event: "playing" },
   /**
    * 充电头只在插拔、换设备时来事件。曲线的合并走和轮询同一个累加器
    * （lib/charger-history）：推来的那份不带历史点（空增量），所以合并只是把
@@ -64,20 +57,18 @@ const FORWARDS: ReadonlyArray<{
    */
   {
     event: "charger",
-    path: CHARGER_PATH,
     merge: (data) => mergeChargerHistory(data as ChargerPayload),
   },
   /**
    * 充电宝：插拔、充放电切换、热控翻转、整数电量跳格时来事件。曲线整份发，
    * 直接替换即可，不用像充电头那样合并增量。
    */
-  { event: "powerbank", path: POWERBANK_PATH },
+  { event: "powerbank" },
   /**
    * 只带「此刻」那三个字段。并进手上已有的整份；还没有整份就丢掉，等轮询。
    */
   {
     event: "vibecoding-now",
-    path: VIBECODING_PATH,
     merge: (data) => applyVibeCodingNow(data as VibeCodingNowPayload),
   },
 ];
@@ -116,7 +107,13 @@ const INVALIDATIONS: ReadonlyArray<{
   { event: "presence", paths: PRESENCE_PATHS },
 ];
 
-const FORWARD_BY_EVENT = new Map(FORWARDS.map((entry) => [entry.event, entry]));
+const FORWARD_BY_EVENT = new Map(
+  FORWARDS.map((entry) => {
+    const path = pathByEvent(entry.event);
+    if (!path) throw new Error(`live event "${entry.event}" has no status path`);
+    return [entry.event, { ...entry, path }] as const;
+  }),
+);
 const INVALIDATION_BY_EVENT = new Map(INVALIDATIONS.map((entry) => [entry.event, entry]));
 
 /** live-push Worker 广播过来的信封，形状就是服务端那份 LiveEvent */
@@ -129,9 +126,9 @@ function dispatch(mutate: ScopedMutator, message: Incoming): void {
     const data = forward.merge ? forward.merge(message.payload) : message.payload;
     if (data == null) return;
     const envelope: StatusResponse<unknown> = { ok: true, data };
-    // 登记这一代，好让之后回来的旧轮询结果被挡掉（lib/live-freshness）。
+    // 登记这一代，好让之后回来的旧轮询结果被挡掉（lib/status-reads）。
     // 顺手也挡住乱序到达的推送本身
-    if (!rememberPushed(forward.path, envelope)) return;
+    if (!acceptPush(forward.path, envelope)) return;
     void mutate(forward.path, envelope, { revalidate: false });
     return;
   }

@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createHomeBootstrap, HOME_PATH, type HomeBootstrapDeps } from "./home-bootstrap.ts";
-import { hasLiveRead, markLiveRead } from "./read-model-freshness.ts";
+import {
+  acceptPush,
+  createHomeBootstrap,
+  guardPolled,
+  hasLiveRead,
+  HOME_PATH,
+  markLiveRead,
+  type HomeBootstrapDeps,
+} from "./status-reads.ts";
+import { STATUS_VIEWS } from "./status-views.ts";
 
 const envelope = (label: string) => ({ ok: true as const, data: { label } });
 
@@ -44,7 +52,6 @@ test("home bootstrap: first fetch of every mapped path is answered by one aggreg
   assert.deepEqual(desktop, envelope("desktop"));
   assert.deepEqual(charger, envelope("charger"));
   assert.deepEqual(watching, envelope("watching"));
-  // Second fetch of the same path goes straight to its own endpoint.
   assert.equal(bootstrap.slice("/api/status/desktop"), null);
   assert.deepEqual(calls, [HOME_PATH]);
 });
@@ -52,8 +59,10 @@ test("home bootstrap: first fetch of every mapped path is answered by one aggreg
 test("home bootstrap: unknown paths and non-since queries never touch the aggregate", () => {
   const { bootstrap, calls } = harness();
   assert.equal(bootstrap.slice("/api/status/online"), null);
-  assert.equal(bootstrap.slice("/api/status/listening?fresh=1"), null);
-  assert.equal(bootstrap.slice("/api/status/charger?since=1&fresh=1"), null);
+  assert.equal(bootstrap.slice("/api/status/trophies?titleids=CUSA00001"), null);
+  // 首屏字段是摘要、端点是整份目录：登记表标了 bootstrap: false，裸路径也不代答
+  assert.equal(bootstrap.slice(STATUS_VIEWS.trophies.path), null);
+  assert.equal(bootstrap.slice("/api/status/charger?since=1&titleids=x"), null);
   assert.deepEqual(calls, []);
 });
 
@@ -72,11 +81,9 @@ test("home bootstrap: failed aggregate, bad status or missing field fall back to
   const rejected = harness({ response: () => aggregateResponse({}, 503) });
   assert.equal(await rejected.bootstrap.slice("/api/status/desktop"), null);
 
-  // A card that failed inside the projection is fetched directly: that is what the mount round is for.
   const failedCard = harness();
   assert.equal(await failedCard.bootstrap.slice("/api/status/server"), null);
 
-  // An older Worker without the pulse field: only that card fetches on its own.
   const partial = harness({ body: { desktop: envelope("desktop") } });
   assert.equal(await partial.bootstrap.slice("/api/status/pulse"), null);
   assert.deepEqual(await partial.bootstrap.slice("/api/status/desktop"), envelope("desktop"));
@@ -89,24 +96,43 @@ test("home bootstrap: a path that already received a push bypasses the aggregate
 
   const pending = bootstrap.slice("/api/status/playing");
   assert.ok(pending);
-  // WebSocket forward lands while the aggregate is in flight.
   live.add("/api/status/playing");
   assert.equal(await pending, null);
-  // Same body, no push: the slice is served, so the null above really came from the push.
   const control = harness();
   assert.deepEqual(await control.bootstrap.slice("/api/status/playing"), envelope("playing"));
 });
 
-test("home bootstrap: the production live-read registry covers pushes to non-KV paths", async () => {
+test("home bootstrap: the production live-read registry covers pushes to paths without timestamps", async () => {
   const { bootstrap } = harness({ isLiveRead: hasLiveRead });
   const pending = bootstrap.slice("/api/status/watching/now");
   assert.ok(pending);
   markLiveRead("/api/status/watching/now");
   assert.equal(await pending, null);
-  // Control: a path nothing was pushed to is still served through the real registry.
   const control = harness({ isLiveRead: hasLiveRead });
   assert.deepEqual(await control.bootstrap.slice("/api/status/playing"), envelope("playing"));
-  // A push that arrived before the first fetch: never even joins the aggregate.
   markLiveRead("/api/status/charger");
   assert.equal(bootstrap.slice("/api/status/charger"), null);
+});
+
+test("acceptPush / guardPolled: stamped payloads drop out-of-order values", () => {
+  const path = STATUS_VIEWS.desktop.path;
+  const older = { ok: true as const, data: { receivedAt: 1_000 } };
+  const newer = { ok: true as const, data: { receivedAt: 2_000 } };
+  assert.equal(acceptPush(path, newer), true);
+  assert.equal(acceptPush(path, older), false);
+  assert.deepEqual(guardPolled(path, older), newer);
+  const equal = { ok: true as const, data: { receivedAt: 2_000, extra: "polled" } };
+  assert.deepEqual(guardPolled(path, equal), equal);
+});
+
+test("guardPolled: error envelope is visible but does not clear the live mark", () => {
+  const path = STATUS_VIEWS.powerBank.path;
+  const pushed = { ok: true as const, data: { pushedAt: 9_000 } };
+  assert.equal(acceptPush(path, pushed), true);
+  assert.equal(hasLiveRead(path), true);
+  const failed = { ok: false as const, error: "Status unavailable" };
+  assert.deepEqual(guardPolled(path, failed), failed);
+  assert.equal(hasLiveRead(path), true);
+  const { bootstrap } = harness({ isLiveRead: hasLiveRead });
+  assert.equal(bootstrap.slice(path), null);
 });
