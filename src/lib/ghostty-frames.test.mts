@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import frameData from "./ghostty-frames.json" with { type: "json" };
-import { decodeGhosttyFrame, decodeGhosttyFrames, ghosttyRowWidths } from "./ghostty-frames.ts";
+import {
+  decodeGhosttyFrame,
+  decodeGhosttyFrames,
+  ghosttyFrameIndex,
+  ghosttyRowWidths,
+} from "./ghostty-frames.ts";
 
 const data = frameData;
 
@@ -32,5 +37,22 @@ test("每一帧都同时画出幽灵本体和蓝色光环", () => {
   for (const [index, layers] of decodeGhosttyFrames(data).entries()) {
     const fills = new Set(layers.map((layer) => layer.fill));
     assert.ok(fills.has("body") && fills.has("glow"), `第 ${index} 帧缺层：${[...fills].join(",")}`);
+  }
+});
+
+test("帧号永远落在数组里：rAF 时间戳早于基准也不会算出负数", () => {
+  // 同一帧里 effect 先跑、rAF 回调后跑时，now - startedAt 会是负的
+  assert.equal(ghosttyFrameIndex(-3, data.frameMs, data.frames.length), 0);
+  assert.equal(ghosttyFrameIndex(0, data.frameMs, data.frames.length), 0);
+  assert.equal(ghosttyFrameIndex(data.frameMs * 2.5, data.frameMs, data.frames.length), 2);
+  assert.equal(
+    ghosttyFrameIndex(data.frameMs * data.frames.length, data.frameMs, data.frames.length),
+    0,
+  );
+  assert.equal(ghosttyFrameIndex(1000, data.frameMs, 0), 0);
+
+  const frames = decodeGhosttyFrames(data);
+  for (const elapsed of [-1000, -1, 0, 17, 5_000, 1e9]) {
+    assert.ok(frames[ghosttyFrameIndex(elapsed, data.frameMs, frames.length)]);
   }
 });

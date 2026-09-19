@@ -4,7 +4,7 @@ import { useReducedMotion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
 
 import data from "@/lib/ghostty-frames.json";
-import { decodeGhosttyFrames } from "@/lib/ghostty-frames";
+import { decodeGhosttyFrames, ghosttyFrameIndex } from "@/lib/ghostty-frames";
 
 /** 官网光环用的蓝 */
 const GLOW_COLOR = "#3551f3";
@@ -49,10 +49,16 @@ export function GhosttyMascot({
 
     let handle = 0;
     let current = STATIC_FRAME;
-    const startedAt = performance.now();
+    /*
+     * 基准取第一次 rAF 的时间戳，不取 effect 里的 performance.now()：rAF 给的是
+     * 这一帧开始渲染的时刻，同一帧里 effect 先跑、回调后跑时它会早几毫秒，
+     * 两边不同源就会算出负的帧号。
+     */
+    let startedAt: number | null = null;
 
     const tick = (now: number) => {
-      const next = Math.floor((now - startedAt) / data.frameMs) % frames.length;
+      startedAt ??= now;
+      const next = ghosttyFrameIndex(now - startedAt, data.frameMs, frames.length);
       if (next !== current) {
         current = next;
         setFrameIndex(next);
@@ -65,7 +71,7 @@ export function GhosttyMascot({
   }, [frames.length, reducedMotion]);
 
   const shownFrame = reducedMotion ? STATIC_FRAME : frameIndex;
-  const layers = frames[shownFrame];
+  const layers = frames[shownFrame] ?? frames[STATIC_FRAME] ?? [];
 
   return (
     <svg
