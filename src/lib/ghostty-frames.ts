@@ -61,3 +61,15 @@ export function decodeGhosttyFrame(
 export function decodeGhosttyFrames(data: GhosttyFrameData): GhosttyLayer[][] {
   return data.frames.map((frame) => decodeGhosttyFrame(frame, data.levels));
 }
+
+/**
+ * 经过 `elapsedMs` 之后该停在第几帧。永远落在 `[0, count)` 里：
+ * rAF 给的时间戳是这一帧开始渲染的时刻，可能早于 effect 里取的
+ * `performance.now()`（同一帧内先跑 effect 再跑 rAF 回调），负数取余会得出 -1，
+ * 拿它去索引帧数组就是 undefined，整页跟着炸。
+ */
+export function ghosttyFrameIndex(elapsedMs: number, frameMs: number, count: number): number {
+  if (!(count > 0)) return 0;
+  const index = Math.floor(Math.max(0, elapsedMs) / frameMs) % count;
+  return Number.isFinite(index) ? index : 0;
+}
