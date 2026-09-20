@@ -1,3 +1,5 @@
+import { recordCodingObservation } from "@api/stores/coding-pulse";
+import { isCodingApp } from "@shared/pulse-levels";
 import { chargingLevel, codingLevel, listeningLevel } from "@shared/pulse-levels";
 import { chargerPushPayload } from "@/lib/anker";
 import { readChargerState } from "@/lib/charger-store";
@@ -578,7 +580,7 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
      * （bareSnapshotFrom），两笔都自己吞异常，写坏了不影响 202。
      */
     writes.push(recordListeningPulse(receivedAt, liveness, homePod));
-    writes.push(recordCodingPulse(receivedAt, codingNow?.now.agents, storedCodingNow));
+    writes.push(recordCodingPulse(receivedAt, codingNow?.now.agents, storedCodingNow, presence === "online"));
 
     // 整封都收下了才落状态。中途抛出去时这份不写 —— 从前也是这样，
     // persistTelemetryState 就排在所有模块之后。存活不同，见上面。
@@ -660,6 +662,7 @@ async function recordCodingPulse(
   receivedAt: number,
   incomingAgents: VibeCodingNowPayload["agents"] | undefined,
   mirrored: ReturnType<typeof nowMirror.get> | null,
+  online: boolean,
 ): Promise<void> {
   try {
     /**
@@ -684,6 +687,12 @@ async function recordCodingPulse(
     const desktop = stored
       ? { applicationName: stored.applicationName, bundleIdentifier: stored.bundleIdentifier }
       : null;
+    await recordCodingObservation({
+      t: receivedAt,
+      available: online && (desktop !== null || agents !== null),
+      desktop: desktop ? { application: desktop.applicationName.slice(0, 80), coding: isCodingApp(desktop.bundleIdentifier, desktop.applicationName) } : null,
+      agents: agents?.map((agent) => ({ id: agent.id, model: agent.currentModel?.slice(0, 80) ?? null, active: agent.active })) ?? null,
+    });
     const scored = codingLevel({ agents, desktop });
     await recordPulse("coding", { t: receivedAt, level: scored.level, hint: scored.hint });
   } catch (error) {

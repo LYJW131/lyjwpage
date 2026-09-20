@@ -21,10 +21,11 @@ Worker 是唯一数据后端。上报、状态 API、Apple / GitHub 获取和缓
 - 建表只在迁移里做，Worker 不会自己建：`pnpm --dir workers/api exec wrangler d1 migrations apply lyjwpage-history --remote`。Workers Builds 不跑 D1 迁移，必须在带 `HISTORY` 绑定的版本部署前先应用，否则第一趟 cron 就会在日志里报表不存在。
 - 回滚就是从 `wrangler.toml` 删掉 `[[d1_databases]]`，归档随即停用，StateHub 与站点行为不变；库和已归档的数据留着，重新加回绑定后从水位线继续。
 
-## 活动分（pulse:scores）
+## 分段评分（pulse:assessments）
 
-- 键 `pulse:scores`（前缀之后），一份 JSON、六个域，**不设 TTL**：失败时留着上一次的判断，卡片宁可显示十分钟前的分，也不该空一格；超过 6 小时的分公开端点不再给。旁边的 `pulse:scores:attempt` 记上一次向网关尝试的时刻（失败也记），DO 重启后节流不归零。形状见 `PulseScoreRecord`（`src/lib/types.ts`），写入方是 `workers/api/src/pulse-score.ts`，读取方是 `getPulseStatus()` 与评分器自己（判断有没有新样本）。
-- 由 cron 每分钟驱动，真正调用外部模型最多十分钟一次，契约与闸门见 [遥测与实时状态子系统](telemetry-subsystems.md) 第 14 节。解析不出的存量按「没有分」处理，不做兼容分支。
+- 六域共用一个五分钟评分调度器和 `pulse:assessments` 列表，保留七天；输入哈希相同不重复调用，晚到事实可修订相应窗口。`pulse:assessment-attempt` 持久化上次尝试，失败也节流。
+- 曲线读取分段评分，24 小时摘要从相同评分按已观测时长加权计算，不再有 `pulse:scores` 或独立总评模型调用。原始状态继续用于 D1 归档，评分不混入原始表。
+- Coding 内部观测在 `pulse:coding-observations`，窗口 token 报告在 `pulse:coding-token-usage`；公开 API 不返回原始用量、应用名或模型名。契约与闸门见 [统一评分](../workers/api/README.md#pulse-统一五分钟评分)。
 
 ## 首屏与浏览器
 

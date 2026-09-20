@@ -338,9 +338,47 @@ test("iPhone activity reports create bounded physical-activity history and expos
     const expected = [{ t: start, until: start + 3_600_000, level: 3 }];
     assert.deepEqual(await samples(storage, "activity"), expected);
     const status = await inRequest(() => getPulseStatus(start + 7_200_000));
-    assert.deepEqual(status.domains.activity.samples, expected);
+    assert.deepEqual(status.domains.activity.assessments, [], "raw observations wait for Jev before public display");
     assert.equal(status.domains.activity.score, null);
     await inRequest(() => recordPhoneEnvelope(report(6000), start + 4 * 3_600_000));
     assert.deepEqual(await samples(storage, "activity"), expected, "long gaps are not filled");
   } finally { resetStorageForTests(); }
+});
+
+test("Coding observations keep foreground changes and idle heartbeats, and stop on explicit offline", async () => {
+  const { codingObservationsKey } = await import("@/lib/coding-pulse");
+  const storage = new FakeStorage(); installStorageForTests(storage);
+  try {
+    await inRequest(() => recordTelemetryEnvelope(envelope(T0, ["desktop", "vibeCoding"], {
+      desktop: { applicationName: "Cursor", bundleIdentifier: "com.todesktop.230313mzl4w4u92" },
+      vibeCodingNow: { agents: [{ id: "codex", currentModel: "test-model", active: true }] },
+    }), T0));
+    await inRequest(() => recordTelemetryEnvelope(envelope(T0 + 20_000, ["desktop", "vibeCoding"], {
+      desktop: { applicationName: "Zed", bundleIdentifier: "dev.zed.Zed" },
+    }), T0 + 20_000));
+    await inRequest(() => recordTelemetryEnvelope(envelope(T0 + 110_000, ["desktop", "vibeCoding"]), T0 + 110_000));
+    await inRequest(() => recordTelemetryEnvelope({ ...envelope(T0 + 120_000, ["desktop", "vibeCoding"]), presence: "offline" }, T0 + 120_000));
+    const rows = (await storage.listRange(codingObservationsKey(), 0, -1)).map((raw) => JSON.parse(raw));
+    assert.equal(rows.length, 4);
+    assert.equal(rows[0].desktop.application, "Cursor");
+    assert.equal(rows[1].desktop.application, "Zed");
+    assert.equal(rows[2].agents[0].active, true);
+    assert.equal(rows[3].available, false);
+  } finally { resetStorageForTests(); }
+});
+
+test('Mac token windows are stored internally and never enter the public now patch',async()=>{
+ const {prepareVibeCodingNow}=await import('./stores/vibecoding.ts');
+ const {codingTokenUsageKey}=await import('@/lib/coding-pulse');
+ const storage=new FakeStorage();installStorageForTests(storage);
+ const from=1800000000000;
+ const tokenUsage={from,to:from+300000,collectedAt:from+420000,sources:[{id:'codex',state:'ok'},{id:'claude',state:'unavailable'}],windows:[{from,to:from+300000,agents:[{id:'codex',model:'test',inputTokens:10,outputTokens:20,cacheReadTokens:0,cacheCreationTokens:0,reasoningTokens:5,eventCount:1}]}]};
+ try{
+  await inRequest(async()=>{
+   const prepared=prepareVibeCodingNow({agents:[],tokenUsage},from+420000);
+   assert.equal('tokenUsage' in prepared.now,false);
+   await prepared.commit();
+  });
+  assert.deepEqual(JSON.parse((await storage.get(codingTokenUsageKey()))!),tokenUsage);
+ }finally{resetStorageForTests();}
 });

@@ -1,27 +1,18 @@
 "use client";
 
-import { useId } from "react";
+import { useId, useState } from "react";
 
 import { Card } from "@/components/ui/card";
 import { useStatus } from "@/hooks/use-status";
 import { PULSE_SILENT_AFTER_MS } from "@/lib/limits";
 import { PULSE_PATH } from "@/lib/paths";
-import { pulseLanePath, pulseScoreWord } from "@/lib/pulse-lane";
+import { pulseLanePath, pulseScoreWord, type PulseLanePoint } from "@/lib/pulse-lane";
 import type { PulseDomain, PulsePayload, PulseTrend, StatusResponse } from "@/lib/types";
+import { CODING_INTENSITY, CODING_CONTINUITY } from "@shared/pulse-coding";
+import type { PulseAssessment } from "@shared/pulse-assessment";
 import { cn } from "@/lib/utils";
 
-/**
- * 六条泳道，一域一条：最近 24 小时的活动强度（阶跃，0–3 档），右边一枚活动分。
- *
- * 分由 Jev 评估模型对整段窗口给出（Worker 侧十分钟一次，见 workers/api/src/pulse-score.ts），
- * 档位仍是确定性规则算的 —— 图和分说的是两件事，所以两样都画。
- *
- * **卡片拿不到曲名、应用名、游戏名**：那些只在 Worker 内部参与评分，公开端点
- * 剥得干干净净（见 PulsePayload）。这里画的只有强度。
- *
- * 5 分钟一轮，不订阅推送：分最快十分钟才换一次，泳道也只到分钟尺度，
- * 广播它等于拿推送当轮询用。
- */
+/** Every lane and its summary consume the same five-minute Jev assessments. */
 const REFRESH_MS = 5 * 60_000;
 
 const LANES: ReadonlyArray<{ domain: PulseDomain; label: string }> = [
@@ -37,7 +28,7 @@ const LANES: ReadonlyArray<{ domain: PulseDomain; label: string }> = [
 const LANE_WIDTH = 240;
 const LANE_HEIGHT = 24;
 
-const TREND_GLYPH: Record<PulseTrend, string> = { rising: "↑", steady: "→", falling: "↓" };
+const TREND_GLYPH: Record<PulseTrend, string> = { rising: "↑", steady: "→", falling: "↓", unknown: "—" };
 
 function Lane({
   label,
@@ -45,7 +36,7 @@ function Lane({
   range,
 }: {
   label: string;
-  samples: PulsePayload["domains"][PulseDomain]["samples"];
+  samples: PulseLanePoint[];
   range: { from: number; to: number };
 }) {
   const id = useId();
@@ -94,6 +85,60 @@ function Lane({
   );
 }
 
+const MODE_LABELS = { idle: "Idle", brief: "Brief bursts", interactive: "Coding apps", agent: "Agent work", mixed: "Apps + agents" };
+
+function AssessmentLane({ assessments, range, label }: { assessments: PulseAssessment[]; label: string; range: { from: number; to: number } }) {
+  const [selected, setSelected] = useState<number | null>(null);
+  const active = selected == null ? null : assessments[selected];
+  const points = assessments.flatMap((assessment) => assessment.coverage.map((part) => ({
+    t: part.from, until: part.to, level: assessment.intensity.value / (CODING_INTENSITY.length - 1) * 3,
+  })));
+  const time = (at: number) => new Date(at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  const selectAt = (clientX: number, target: HTMLButtonElement) => {
+    const rect = target.getBoundingClientRect();
+    const at = range.from + (clientX - rect.left) / rect.width * (range.to - range.from);
+    const index = assessments.findIndex((assessment) => assessment.coverage.some((part) => at >= part.from && at < part.to));
+    setSelected(index >= 0 ? index : null);
+  };
+  return (
+    <div className="relative min-w-0">
+      <button
+        type="button"
+        className="block w-full cursor-crosshair rounded-sm focus-visible:outline-1 focus-visible:outline-live"
+        aria-label={`${label} intensity, scored by Jev every 5 minutes. Use arrow keys to inspect intervals.`}
+        onPointerMove={(event) => selectAt(event.clientX, event.currentTarget)}
+        onPointerLeave={(event) => { if (event.pointerType === "mouse") setSelected(null); }}
+        onFocus={() => setSelected((value) => value ?? assessments.length - 1)}
+        onBlur={() => setSelected(null)}
+        onClick={(event) => {
+          if (event.detail === 0) setSelected((value) => value ?? assessments.length - 1);
+          else selectAt(event.clientX, event.currentTarget);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") setSelected(null);
+          if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+            event.preventDefault();
+            setSelected((value) => Math.max(0, Math.min(assessments.length - 1, (value ?? assessments.length - 1) + (event.key === "ArrowLeft" ? -1 : 1))));
+          }
+        }}
+      >
+        <Lane label={`Jev ${label} intensity`} samples={points} range={range} />
+      </button>
+      {active && (
+        <div role="status" className="pointer-events-none absolute left-1/2 top-full z-20 mt-1 w-52 -translate-x-1/2 rounded border border-line-strong bg-surface p-2 text-xs shadow-sm">
+          <div className="font-mono text-muted-foreground">{time(active.from)}–{time(active.to)}</div>
+          {active.mode && <div className="mt-1 font-medium">{MODE_LABELS[active.mode.value]}</div>}
+          <div>Intensity {Math.round(active.intensity.value / (CODING_INTENSITY.length - 1) * 100)} / 100</div>
+          <div>Continuity {Math.round(active.continuity.value / (CODING_CONTINUITY.length - 1) * 100)} / 100</div>
+          <div className="mt-1 text-[10px] text-muted-foreground">
+            {Math.round(active.intensity.confidence * 100)}% confidence · {Math.round(active.coverage.reduce((sum, part) => sum + part.to - part.from, 0) / (active.to - active.from) * 100)}% observed
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function PulseCard({
   fallback,
   className,
@@ -110,16 +155,17 @@ export function PulseCard({
         {LANES.map(({ domain, label }) => {
           const view = data?.domains[domain];
           const score = view?.score ?? null;
-          const empty = !view || view.samples.length === 0;
-          const word = score ? pulseScoreWord(score.value) : null;
+          const assessments = view?.assessments ?? [];
+          const empty = assessments.length === 0;
+          const word = score ? pulseScoreWord(Number(score.value.toFixed(1))) : null;
           return (
             <div
               key={domain}
               className="grid grid-cols-[4.5rem_1fr_7rem] items-center gap-x-2 sm:grid-cols-[5.5rem_1fr_9rem] sm:gap-x-3"
-              role="img"
+              role="group"
               aria-label={
                 empty
-                  ? `${label}: no data in the last 24 hours`
+                  ? `${label}: awaiting five-minute Jev scores`
                   : `${domain === "activity" ? "Estimated physical activity" : label} over the last 24 hours: ${score && word ? `${word}, ${score.value.toFixed(1)} of 3, trending ${score.trend}` : "not scored yet"}`
               }
             >
@@ -130,9 +176,9 @@ export function PulseCard({
                 {label}
               </span>
               {empty ? (
-                <span className="text-xs text-muted-foreground">No data yet</span>
+                <span className="text-xs text-muted-foreground">Awaiting scores</span>
               ) : (
-                <Lane label={label} samples={view.samples} range={range} />
+                <AssessmentLane label={label} assessments={assessments} range={range} />
               )}
               <div className="flex min-w-0 items-baseline justify-end gap-1.5 text-right">
                 {score ? (

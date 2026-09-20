@@ -3,10 +3,7 @@ import test from "node:test";
 
 import { PULSE_SILENT_AFTER_MS, PULSE_WINDOW_MS } from "@/lib/limits";
 import {
-  buildPulseState,
-  clipPulseSamples,
   compressPulseWindow,
-  pulseQuestions,
   pulseWindowAt,
 } from "@/lib/pulse-window";
 import type { PulseSample } from "@/lib/types";
@@ -85,55 +82,4 @@ test("边界之前那笔非空闲、又早过静默上限时什么都不画", ()
   assert.deepEqual(view.minutesByLevel, [0, 0, 0, 0]);
   // 序列里确实有这笔，只是撑不到窗口里；评分器仍据此判断「有没有新东西」
   assert.equal(view.latestSampleAt, WINDOW.from - HOUR);
-});
-
-test("公开样本剥掉 hint，并把边界前那一笔压到窗口起点", () => {
-  const clipped = clipPulseSamples([
-    { t: WINDOW.from - 10 * HOUR, level: 3, hint: "老的" },
-    { t: WINDOW.from - HOUR, level: 0 },
-    { t: WINDOW.from + HOUR, level: 3, hint: "Song" },
-    { t: NOW + 60_000, level: 0 },
-  ], WINDOW);
-  assert.deepEqual(clipped, [
-    { t: WINDOW.from, level: 0 },
-    { t: WINDOW.from + HOUR, level: 3 },
-  ]);
-  assert.equal(JSON.stringify(clipped).includes("hint"), false);
-});
-
-test("边界前那一笔陈旧到撑不进窗口时一并丢掉，泳道左沿如实空着", () => {
-  // 昨夜停在「正在放」、之后再没上报：段压器什么都不画，公开样本也不该留这一笔
-  assert.deepEqual(clipPulseSamples([{ t: WINDOW.from - HOUR, level: 3 }], WINDOW), []);
-  // 刚过边界不久的非空闲还撑得进来，照留
-  assert.deepEqual(
-    clipPulseSamples([{ t: WINDOW.from - 60_000, level: 3 }], WINDOW),
-    [{ t: WINDOW.from, level: 3 }],
-  );
-});
-
-test("state 里的时刻是距窗口起点的分钟数，hint 只在有的时候多一项", () => {
-  const view = compressPulseWindow([
-    { t: WINDOW.from + HOUR, level: 3, hint: "Song" },
-    { t: WINDOW.from + 2 * HOUR, level: 0 },
-  ], WINDOW);
-  const empty = compressPulseWindow([], WINDOW);
-  const state = buildPulseState(
-    { coding: empty, listening: view, watching: empty, gaming: empty, charging: empty, activity: empty },
-    WINDOW,
-  ) as { window: { hours: number }; domains: Record<string, { segments: unknown[][] }> };
-
-  assert.equal(state.window.hours, 24);
-  assert.deepEqual(state.domains.listening.segments, [[60, 70, 3, "Song"], [120, 1440, 0]]);
-  assert.deepEqual(state.domains.coding.segments, []);
-});
-
-test("六个域各两道题，分档标尺是低到高的四档", () => {
-  const questions = pulseQuestions();
-  assert.equal(Object.keys(questions).length, 12);
-  const activity = questions.codingActivity;
-  assert.equal(activity.type, "score");
-  assert.equal(activity.type === "score" && activity.criteria.length, 4);
-  const trend = questions.gamingTrend;
-  assert.equal(trend.type, "choice");
-  assert.deepEqual(trend.type === "choice" && Object.keys(trend.criteria), ["rising", "steady", "falling"]);
 });

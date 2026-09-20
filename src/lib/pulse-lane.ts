@@ -1,4 +1,4 @@
-import { PULSE_LEVEL_MAX, type PulseLevel } from "@/lib/types";
+import { PULSE_LEVEL_MAX } from "@/lib/types";
 
 /**
  * 把一条域的阶跃点画成泳道。纯函数，卡片只负责把返回的 `d` 塞进 `<path>`。
@@ -10,7 +10,7 @@ import { PULSE_LEVEL_MAX, type PulseLevel } from "@/lib/types";
  * 采样的，均分会让一段 5 分钟的高档看起来和一段 5 小时的一样长）。
  */
 
-export type PulseLanePoint = { t: number; level: PulseLevel; until?: number };
+export type PulseLanePoint = { t: number; level: number; until?: number };
 export type PulseLaneWindow = { from: number; to: number };
 
 export type PulseLaneShape = {
@@ -21,7 +21,7 @@ export type PulseLaneShape = {
 };
 
 /** 一段静默：上一点撑满 silentAfterMs 之后还没有下一点，那段就断开 */
-type Run = { from: number; to: number; level: PulseLevel };
+type Run = { from: number; to: number; level: number };
 
 export function pulseLaneRuns(
   points: PulseLanePoint[],
@@ -56,7 +56,7 @@ export function pulseLanePath(
 ): PulseLaneShape {
   const span = Math.max(1, window.to - window.from);
   const x = (at: number) => (((at - window.from) / span) * options.width).toFixed(2);
-  const y = (level: PulseLevel) => (options.height - (level / PULSE_LEVEL_MAX) * options.height).toFixed(2);
+  const y = (level: number) => (options.height - (level / PULSE_LEVEL_MAX) * options.height).toFixed(2);
   const floor = options.height.toFixed(2);
 
   // 先按「首尾相接」分组：一组是一笔连续的泳道，组与组之间就是静默的空白

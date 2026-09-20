@@ -3,7 +3,6 @@ import {
   PULSE_WINDOW_MS,
 } from "@/lib/limits";
 import {
-  PULSE_DOMAINS,
   PULSE_LEVEL_MAX,
   type PulseDomain,
   type PulseLevel,
@@ -13,8 +12,7 @@ import {
 /**
  * 把 pulse 的阶跃序列裁成一个时间窗，给两个消费者用：
  *
- * - 公开端点 `/api/status/pulse`（`clipPulseSamples`）—— 只有 `{ t, level, until? }`，hint 剥掉；
- * - Jev 评分器（`buildPulseState`）—— 段 + 每档分钟数，hint 留着，只在 Worker 内部走。
+ * 给统一 Jev 分段评分器提供观测段，hint 仅内部使用；公开端点只读模型评估。
  *
  * 纯函数，不碰存储、不看时钟：`now` 一律由调用方传进来，测试才排得出确定的窗口。
  */
@@ -93,34 +91,6 @@ export function compressPulseWindow(
   };
 }
 
-/**
- * 公开端点那份：窗口内的点，加上窗口左边界之前的最后一笔（`t` 裁到 `from`）。
- * hint 一律剥掉 —— 它不出公网，理由见 PulsePayload。
- *
- * 边界之前那一笔要**还撑得到窗口里**才留：一条昨天夜里就停在「正在放」的陈旧样本
- * 早过了静默上限，段压器（`compressPulseWindow`，也就是 Jev 看到的那份）对它什么都
- * 不画，泳道也不该在左沿糊出一段没发生过的活动。空闲不受此限，它本来就撑到下一次翻面。
- */
-export function clipPulseSamples(
-  samples: PulseSample[],
-  window: PulseWindow,
-): Pick<PulseSample, "t" | "level" | "until">[] {
-  const clipped: Pick<PulseSample, "t" | "level" | "until">[] = [];
-  for (const sample of samples) {
-    if (sample.t > window.to) break;
-    if (sample.t < window.from) {
-      // 边界之前的只留最后一笔，压在 from 上；撑不进来的连这一笔也不留
-      clipped.length = 0;
-      if (heldUntil(sample, window.to) > window.from) {
-        clipped.push({ t: window.from, level: sample.level, ...(sample.until != null ? { until: sample.until } : {}) });
-      }
-      continue;
-    }
-    clipped.push({ t: sample.t, level: sample.level, ...(sample.until != null ? { until: Math.min(sample.until, window.to) } : {}) });
-  }
-  return clipped;
-}
-
 /** 档位在各域分别是什么意思。进 Jev 的 state，让它知道 3 不是「分」而是档。 */
 export const PULSE_LEGEND: Readonly<Record<PulseDomain, string>> = Object.freeze({
   activity: "Estimated physical activity averaged between Apple Watch reports (up to 2 hours), not live workout detection. 0 no increase, 1 light movement, 2 >= 20 steps/min or >= 10% exercise minutes, 3 >= 60 steps/min or >= 50% exercise minutes. Gaps are unknown, not idle.",
@@ -130,72 +100,3 @@ export const PULSE_LEGEND: Readonly<Record<PulseDomain, string>> = Object.freeze
   gaming: "0 offline, 1 console online, 3 in a game",
   charging: "0 unplugged, 1 trickle, 2 up to 60W, 3 60W or more",
 });
-
-type JevQuestion =
-  | { type: "score"; instructions: string; criteria: string[] }
-  | { type: "choice"; instructions: string; criteria: Record<string, string> };
-
-/** 活动分的四档标尺，低到高。Jev 在下标之间插值，所以卡片上的分就是 0–3。 */
-export const PULSE_SCORE_CRITERIA = Object.freeze([
-  "idle: no activity",
-  "light: brief or occasional activity",
-  "moderate: regular activity for a meaningful part of the day",
-  "intense: sustained high activity for much of the day",
-]);
-
-const TREND_CRITERIA = Object.freeze({
-  rising: "more active in the most recent hours than earlier",
-  steady: "about the same",
-  falling: "less active recently than earlier",
-});
-
-export function activityQuestionKey(domain: PulseDomain): string {
-  return `${domain}Activity`;
-}
-export function trendQuestionKey(domain: PulseDomain): string {
-  return `${domain}Trend`;
-}
-
-/** 六个域十二道题，一次问完。 */
-export function pulseQuestions(): Record<string, JevQuestion> {
-  const questions: Record<string, JevQuestion> = {};
-  for (const domain of PULSE_DOMAINS) {
-    questions[activityQuestionKey(domain)] = {
-      type: "score",
-      instructions: `How active was ${domain} over the last 24 hours?`,
-      criteria: [...PULSE_SCORE_CRITERIA],
-    };
-    questions[trendQuestionKey(domain)] = {
-      type: "choice",
-      instructions: `Compared with earlier in the window, how is ${domain} trending in the most recent hours?`,
-      criteria: { ...TREND_CRITERIA },
-    };
-  }
-  return questions;
-}
-
-/**
- * 喂给 Jev 的那份 state。
- *
- * 时刻写成「距窗口起点多少分钟」而不是 ISO：紧凑、和窗口自洽，模型也不用去解时区。
- * 段之外还给每档的分钟数 —— 让它从数字上读出「有多少」，不必去数一串区间。
- */
-export function buildPulseState(
-  windows: Record<PulseDomain, PulseDomainWindow>,
-  window: PulseWindow,
-): Record<string, unknown> {
-  const minutesFrom = (at: number) => Math.round((at - window.from) / 60_000);
-  return {
-    window: { hours: Math.round((window.to - window.from) / 3_600_000), unit: "minutes from window start" },
-    legend: PULSE_LEGEND,
-    domains: Object.fromEntries(PULSE_DOMAINS.map((domain) => {
-      const view = windows[domain];
-      return [domain, {
-        minutesByLevel: view.minutesByLevel,
-        segments: view.segments.map((segment) => segment.hint
-          ? [minutesFrom(segment.from), minutesFrom(segment.to), segment.level, segment.hint]
-          : [minutesFrom(segment.from), minutesFrom(segment.to), segment.level]),
-      }];
-    })),
-  };
-}

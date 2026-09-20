@@ -35,7 +35,7 @@ export class StateHub extends DurableObject<Env> {
       db: env.HISTORY,
       storage: new StorageClient(async (commands) => this.database.execute(commands)),
     }) : null;
-    // 分存在 StateHub 自己的库里（键 pulse:scores），评分器只从这里读写，不经请求作用域。
+    // 分存在 StateHub 自己的库里（键 pulse:assessments），评分器只从这里读写，不经请求作用域。
     this.pulseScorer = pulseScoringEnabled(env) && env.TYPESAFE_API_KEY ? new PulseScorer({
       storage: new StorageClient(async (commands) => this.database.execute(commands)),
       apiKey: env.TYPESAFE_API_KEY,
@@ -100,7 +100,7 @@ export class StateHub extends DurableObject<Env> {
   }
 
   /**
-   * cron 每分钟一趟，由评分器自己决定要不要真打出去（十分钟一次，且要有新样本）。
+   * cron 每分钟一趟，由评分器自己决定要不要真打出去（统一五分钟分段评分）。
    * 错误只进 `[pulse-score]` 日志，上一份分留着。
    */
   async scorePulse(): Promise<void> {
