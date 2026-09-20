@@ -1124,3 +1124,24 @@ export type ServerPayload = ServerStatus & {
    */
   staleAtSource: boolean;
 };
+
+/** Completed HealthKit workouts; epoch milliseconds, SI distance, active duration. */
+export type Workout = {
+  id: string;
+  activityType: string;
+  startedAt: number;
+  endedAt: number;
+  secondsFromGMT: number;
+  durationSeconds: number;
+  distanceMeters: number | null;
+  activeEnergyKcal: number | null;
+  averageHeartRateBpm: number | null;
+  maximumHeartRateBpm: number | null;
+  elevationAscendedMeters: number | null;
+  indoor: boolean | null;
+};
+
+export type WorkoutsPayload = {
+  items: Workout[];
+  pushedAt: number;
+};

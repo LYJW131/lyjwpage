@@ -42,6 +42,7 @@ export const STATUS_VIEWS = {
   desktop: { path: "/api/status/desktop", tag: "desktop", event: "desktop" },
   /** 只在首屏 HTML 里用，没有自己的端点 */
   timezone: { tag: "timezone" },
+  workouts: { path: "/api/status/workouts", tag: "workouts" },
   activity: { path: "/api/status/activity", tag: "activity" },
   server: { path: "/api/status/server", tag: "server" },
   charger: { path: "/api/status/charger", tag: "charger", event: "charger" },
