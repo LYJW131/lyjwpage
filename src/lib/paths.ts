@@ -21,6 +21,7 @@ export const GITHUB_CHART_PATH = STATUS_VIEWS.githubChart.path;
 export const GITHUB_REPO_PATH = STATUS_VIEWS.githubRepo.path;
 export const CLOUDFLARE_WORKERS_PATH = STATUS_VIEWS.cloudflareWorkers.path;
 export const ACTIVITY_PATH = STATUS_VIEWS.activity.path;
+export const WORKOUTS_PATH = STATUS_VIEWS.workouts.path;
 export const SERVER_PATH = STATUS_VIEWS.server.path;
 export const VERCEL_DEPLOYMENTS_PATH = STATUS_VIEWS.vercelDeployments.path;
 export const PULSE_PATH = STATUS_VIEWS.pulse.path;

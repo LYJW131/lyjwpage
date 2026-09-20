@@ -14,6 +14,7 @@ import { PlaystationBlock } from "@/components/live/playstation-block";
 import { PulseCard } from "@/components/live/pulse-card";
 import { TimezoneCard } from "@/components/live/timezone-card";
 import { NowWatchingCard } from "@/components/live/now-watching-card";
+import { TimelineCard } from "@/components/live/timeline-card";
 import { VibeCodingCard } from "@/components/live/vibecoding-card";
 import { WatchingRow } from "@/components/live/watching-card";
 import { Section } from "@/components/ui/section";
@@ -22,7 +23,13 @@ import { desktopIconDataUri } from "@/lib/desktop-icon-inline";
 import { githubAvatarDataUri } from "@/lib/github-avatar-icon";
 import { getRecentCommits } from "@/lib/github-recent-commits";
 import { cachedHomeSnapshot } from "@/lib/home-snapshot";
-import type { GithubRepoPayload, PulsePayload, StatusResponse } from "@/lib/types";
+import type { VercelDeploymentsPayload } from "@/lib/vercel-deployments-types";
+import type {
+  GithubRepoPayload,
+  PulsePayload,
+  StatusResponse,
+  WorkoutsPayload,
+} from "@/lib/types";
 
 export default async function Home() {
   const [snapshot, avatarDataUri, recentCommits] = await Promise.all([
@@ -40,6 +47,11 @@ export default async function Home() {
   /** 同理：Worker 还没带 pulse 字段时，卡片自己显示空态，不能让整页跌进错误边界 */
   const pulse: StatusResponse<PulsePayload> =
     snapshot.pulse ?? { ok: false, error: "Pulse unavailable" };
+  /** 这两份各有两个读者（活动卡 / 站点卡，以及时间线），降级信封只拼一次 */
+  const workouts: StatusResponse<WorkoutsPayload> =
+    snapshot.workouts ?? { ok: false, error: "Awaiting workout report" };
+  const deployments: StatusResponse<VercelDeploymentsPayload> =
+    snapshot.vercelDeployments ?? { ok: false, error: "Deployments unavailable" };
   const {
     desktop,
     activity,
@@ -137,7 +149,7 @@ export default async function Home() {
                   fallback={activity}
                   className="defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_350px] md:[contain-intrinsic-size:auto_253px]"
                 >
-                  <WorkoutsStrip fallback={snapshot.workouts ?? { ok: false, error: "Awaiting workout report" }} />
+                  <WorkoutsStrip fallback={workouts} />
                 </ActivityCard>
                 <ServerCard
                   fallback={server}
@@ -158,11 +170,24 @@ export default async function Home() {
                   fallback={pulse}
                   className="defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_240px]"
                 />
+                {/*
+                  时间线接在 Pulse 后面：上面那张画的是六个域最近 24 小时的强度，
+                  这张把同一段日子里真正发生过的那几件事按时刻列出来。
+                  它不新取数，读的是这几张卡已经在用的 SWR 键，见 timeline-card。
+                */}
+                <TimelineCard
+                  watchingFallback={watching}
+                  playingFallback={playing}
+                  workoutsFallback={workouts}
+                  deploymentsFallback={deployments}
+                  trophies={trophies}
+                  className="defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_390px]"
+                />
               </div>
 
               <SiteStatusCard
                 githubFallback={githubRepo}
-                vercelFallback={snapshot.vercelDeployments ?? { ok: false, error: "Deployments unavailable" }}
+                vercelFallback={deployments}
                 cloudflareFallback={snapshot.cloudflareWorkers ?? { ok: false, error: "Stats unavailable" }}
                 recentCommits={recentCommits}
                 className="mt-3 defer-offscreen-always [contain-intrinsic-size:auto_1319px]"

@@ -13,6 +13,13 @@ const ITEM_FIELDS = [
   "SeriesPrimaryImage",
   "BasicSyncInfo",
   "UserDataPlayCount",
+  /**
+   * 上次播放时刻（`UserData.LastPlayedDate`）。不点名要它，Resume 返回的 UserData
+   * 里只有 IsFavorite / PlayCount / PlaybackPositionTicks / Played 四项 —— 站点那侧
+   * 的 `playedAt` 就一直是 null，时间线里「看过什么」整条缺席。实测于本机 Emby：
+   * 加上这一项之后 LastPlayedDate 才出现在同一个 UserData 里。
+   */
+  "UserDataLastPlayedDate",
 ].join(",");
 
 /**

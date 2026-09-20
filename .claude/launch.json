@@ -35,6 +35,13 @@
       "autoPort": false
     },
     {
+      "name": "lyjwpage-prod-alt",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": ["-c", "NEXT_DIST_DIR=.next/alt exec pnpm exec next dev -p 3213"],
+      "port": 3213,
+      "autoPort": false
+    },
+    {
       "name": "lyjwpage-local-alt",
       "runtimeExecutable": "sh",
       "runtimeArgs": ["-c", "NEXT_DIST_DIR=.next/alt DEV_WORKER_PORT=8790 DEV_SITE_PORT=3213 exec pnpm dev:local"],
