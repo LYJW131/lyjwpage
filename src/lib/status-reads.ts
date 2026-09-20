@@ -1,6 +1,7 @@
 import { backendUrl } from "@/lib/backend-url";
 import { STATUS_VIEWS, bootstrapServes, viewKeyByPath } from "@/lib/status-views";
 import type {
+  DiscordNowPayload,
   DesktopPayload,
   ListeningPayload,
   NowListeningPayload,
@@ -30,6 +31,7 @@ export function hasLiveRead(path: string): boolean {
  * Emby / PlayStation 列表没有可比时刻，乱序靠 live 标记挡聚合，不在这里比大小。
  */
 const STAMPS: Record<string, (data: never) => number | null> = {
+  [STATUS_VIEWS.discord.path]: (data: DiscordNowPayload) => data.observedAt,
   [STATUS_VIEWS.desktop.path]: (data: DesktopPayload) => data.receivedAt,
   [STATUS_VIEWS.listening.path]: (data: ListeningPayload) => data.fetchedAt,
   [STATUS_VIEWS.nowListening.path]: (data: NowListeningPayload) => data.receivedAt,

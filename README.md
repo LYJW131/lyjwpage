@@ -174,3 +174,12 @@ Mac 端采集器 [MacTelemetryHub](https://github.com/LYJW131/MacTelemetryHub) �
 [遥测与实时状态子系统](./docs/telemetry-subsystems.md) 记录各数据源的接入方式、通信协议与具体实现。
 
 [Worker 数据后端与首屏缓存](./docs/state-storage.md) 说明状态持久化、公开数据边界、缓存失效与页面更新之间的关系。
+
+### Quest 3 activity
+
+[discord-reporter](reporters/discord-reporter/README.md) 通过 Discord Gateway 同步 Quest 3
+游戏到 API Worker；首页 Quest 3 卡显示游戏、封面和经过时间，只接收 `meta_quest`。
+本地模拟：`pnpm dev:override /api/status/discord discord-quest.json`，右下角 Fake data
+开关控制注入；上报器部署与站点部署独立。
+
+服务器上报器的 Compose 布局、示例配置与迁机恢复见 [reporters/README.md](reporters/README.md)。

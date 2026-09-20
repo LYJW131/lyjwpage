@@ -155,3 +155,6 @@ export function isStale({ now, at, windowMs, declaredOffline = false }: Freshnes
   if (at <= 0) return true;
   return now - at > windowMs;
 }
+
+/** Discord Gateway reporter sends a heartbeat every minute. */
+export const DISCORD_STALE_MS = 5 * 60_000;

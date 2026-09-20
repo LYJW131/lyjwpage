@@ -24,7 +24,7 @@
 
 | 方法 | 路径 | 用途 |
 | --- | --- | --- |
-| POST | `/api/ingest/<来源>` | `mac`、`iphone`、`homepod`、`emby`、`playstation`、`server`、`agents` |
+| POST | `/api/ingest/<来源>` | `mac`、`iphone`、`homepod`、`emby`、`playstation`、`server`、`agents`、`discord` |
 
 `/api/ingest/playstation` 的信封是 `{ version: 1, presence?, playedGames?, trophies?, power? }`，
 每一项各自可省、缺席表示这次不谈这一项。前三项由 `workers/playstation-reporter` 每轮交付；
@@ -297,3 +297,12 @@ Worker 侧 storage 写失败是冒泡的，先写 `:history` 再清 `:pending` �
 500（`Lighthouse returned error`，连跑十轮撞见过两轮），一小时一次的节奏下那就是一小时的窗口空档。
 密钥只走查询参数（接口只认这一种），错误信息只带状态码，不回显密钥或上游响应体。
 请求用 `fields` 裁掉截图等字段，Worker 不必解那 800 KB 的整份响应。
+
+### Quest 3 / Discord
+
+`POST /api/ingest/discord` 接收 discord-reporter 的 version 1 presence 信封，只接受
+`meta_quest` 游戏或 `playing: null`。`observedAt` 是 epoch 毫秒，旧时间戳忽略。
+存入 SQLite `discord:presence`，保留 7 天；5 分钟无心跳标记 `staleAtSource`。
+`GET /api/status/discord` 与 `/api/home.discord` 返回相同状态；变化广播 `discord`
+并失效 `page:discord`，心跳只刷新存储。此刻视图不进 KV 读模型。
+常驻 Bot 的设置见 [discord-reporter](../../reporters/discord-reporter/README.md)。

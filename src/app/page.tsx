@@ -1,3 +1,4 @@
+import { QuestCard } from "@/components/live/quest-card";
 import { Footer } from "@/components/footer";
 import { Header } from "@/components/header";
 import { WebPlayerProvider } from "@/components/web-player/web-player-provider";
@@ -143,6 +144,10 @@ export default async function Home() {
                 <VibeCodingCard
                   fallback={vibeCoding}
                   className="defer-offscreen [contain-intrinsic-size:auto_1372px]"
+                />
+                <QuestCard
+                  fallback={snapshot.discord ?? { ok: false, error: "Quest activity unavailable" }}
+                  className="scroll-mt-28 md:col-span-2"
                 />
                 <PlaystationBlock
                   trophies={trophies}

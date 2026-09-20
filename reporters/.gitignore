@@ -1,0 +1,5 @@
+# Runtime credentials and persisted state must be backed up privately.
+**/data/
+*.tar
+*.tar.gz
+*.tgz

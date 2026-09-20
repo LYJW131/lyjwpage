@@ -1,5 +1,6 @@
 import type { NowWatchingPayload, WatchingPayload } from "@/lib/emby";
 import type {
+  DiscordNowPayload,
   ChargerPayload,
   DesktopPayload,
   ListeningPayload,
@@ -21,6 +22,7 @@ import type {
  * 而同名的端点指的是列表，加上列表事件之后两套名字会正好错位。
  */
 export type LiveEvent =
+  | { type: "discord"; payload: DiscordNowPayload }
   | { type: "desktop"; payload: DesktopPayload }
   | { type: "listening-now"; payload: NowListeningPayload }
   /**

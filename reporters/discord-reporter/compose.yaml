@@ -1,0 +1,15 @@
+# Independent project beside lyjwpage-reporters; see ../README.md for recovery.
+name: discord-reporter
+services:
+  discord-reporter:
+    build: .
+    image: discord-reporter
+    container_name: discord-reporter
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

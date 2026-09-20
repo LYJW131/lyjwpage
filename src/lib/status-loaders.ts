@@ -11,6 +11,7 @@
  * - `timezone` 只有 home，没有端点。
  */
 
+import { getDiscordNow } from "@/lib/discord";
 import { getActivitySnapshot } from "@/lib/activity";
 import { getChargerSnapshot, sliceChargerHistory } from "@/lib/anker";
 import { getRecentlyPlayed } from "@/lib/apple-music-store";
@@ -75,6 +76,7 @@ export const statusLoaders = {
   timezone: { home: getTimezonePayload },
   activity: { endpoint: unparam(getActivitySnapshot) },
   server: { endpoint: unparam(getServerSnapshot) },
+  discord: { endpoint: unparam(getDiscordNow) },
   charger: {
     endpoint: async ({ since }: StatusLoaderParams) =>
       sliceChargerHistory(await getChargerSnapshot(), since),

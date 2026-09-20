@@ -50,6 +50,7 @@ const FORWARDS: ReadonlyArray<{
   { event: "watching" },
   { event: "playing-now" },
   { event: "playing" },
+  { event: "discord" },
   /**
    * 充电头只在插拔、换设备时来事件。曲线的合并走和轮询同一个累加器
    * （lib/charger-history）：推来的那份不带历史点（空增量），所以合并只是把

@@ -1,0 +1,15 @@
+{
+  "observedAt": "$now",
+  "discordStatus": "online",
+  "staleAfterMs": 86400000,
+  "staleAtSource": false,
+  "playing": {
+    "name": "Beat Saber",
+    "platform": "meta_quest",
+    "details": "Local preview \u00b7 Simulated Quest activity",
+    "state": null,
+    "startedAt": "$now-900000",
+    "applicationId": "451991967149195264",
+    "largeImageUrl": "https://cdn.discordapp.com/app-icons/451991967149195264/f613799d8419f5e7b8a7fd14cba57876.webp?size=256"
+  }
+}

@@ -6,6 +6,8 @@ import { recordServerReport } from "./stores/server";
 import { recordTelemetryEnvelope } from "./stores/telemetry";
 import { recordAgentLimits } from "./stores/vibecoding";
 
+import { recordDiscordReport } from "./stores/discord";
+
 export const HANDLERS: Record<string, (body: unknown) => Promise<unknown>> = {
   mac: recordTelemetryEnvelope,
   iphone: recordPhoneEnvelope,
@@ -14,4 +16,5 @@ export const HANDLERS: Record<string, (body: unknown) => Promise<unknown>> = {
   playstation: recordPlaystationReport,
   server: recordServerReport,
   agents: recordAgentLimits,
+  discord: recordDiscordReport,
 };

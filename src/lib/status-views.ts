@@ -43,6 +43,7 @@ export const STATUS_VIEWS = {
   /** 只在首屏 HTML 里用，没有自己的端点 */
   timezone: { tag: "timezone" },
   activity: { path: "/api/status/activity", tag: "activity" },
+  discord: { path: "/api/status/discord", tag: "discord", event: "discord" },
   server: { path: "/api/status/server", tag: "server" },
   charger: { path: "/api/status/charger", tag: "charger", event: "charger" },
   powerBank: { path: "/api/status/powerbank", tag: "powerbank", event: "powerbank" },

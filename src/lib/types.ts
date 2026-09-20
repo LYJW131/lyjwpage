@@ -1124,3 +1124,23 @@ export type ServerPayload = ServerStatus & {
    */
   staleAtSource: boolean;
 };
+
+/** Discord is the source; only the user's Quest 3 activities are accepted. */
+export type DiscordPlaying = {
+  name: string;
+  platform: "meta_quest";
+  details: string | null;
+  state: string | null;
+  startedAt: number | null;
+  applicationId: string | null;
+  largeImageUrl: string | null;
+};
+export type DiscordPresencePayload = {
+  observedAt: number;
+  discordStatus: string;
+  playing: DiscordPlaying | null;
+};
+export type DiscordNowPayload = DiscordPresencePayload & {
+  staleAfterMs: number;
+  staleAtSource: boolean;
+};
