@@ -878,13 +878,13 @@ export type PowerBankPayload = PowerBankStatus & {
 } & ReporterPresence;
 
 /**
- * 跨域活动脉搏（pulse）：coding / listening / watching / gaming / charging 五条阶跃序列，
+ * 跨域活动脉搏（pulse）：coding / listening / watching / gaming / charging / activity 六条阶跃序列，
  * 首页 Pulse 卡片的底。存储形状在这里，对外那份在下面的 PulsePayload（不带 hint）。
  *
  * 不叫 activity：那个名字在本仓库已经是 Apple Watch 圆环
  * （`/api/status/activity`、`activity:today`、`ActivityStatus`）。
  */
-export const PULSE_DOMAINS = ["coding", "listening", "watching", "gaming", "charging"] as const;
+export const PULSE_DOMAINS = ["coding", "listening", "watching", "gaming", "charging", "activity"] as const;
 export type PulseDomain = (typeof PULSE_DOMAINS)[number];
 
 /** 活动强度上限。0 空闲，1 低，2 中，3 高。 */
@@ -893,8 +893,10 @@ export type PulseLevel = 0 | 1 | 2 | 3;
 
 /** 一条 pulse 采样。域在 list key 上，不进 JSON。 */
 export type PulseSample = {
-  /** 源站收到时刻，epoch 毫秒 */
+  /** 阶跃起点，epoch 毫秒；activity 为前一次上报时刻 */
   t: number;
+  /** 已知区间的终点（epoch 毫秒）；activity 必填，不向未来延续 */
+  until?: number;
   level: PulseLevel;
   /** 紧凑标签，缺席或空串不入库 */
   hint?: string;
@@ -958,7 +960,7 @@ export type PulsePayload = {
   window: { from: number; to: number };
   domains: Record<PulseDomain, {
     /** 窗口内的阶跃点，外加窗口左边界之前那一笔（`t` 裁到 from），泳道才从头填满 */
-    samples: { t: number; level: PulseLevel }[];
+    samples: Pick<PulseSample, "t" | "level" | "until">[];
     score: PulseScore | null;
   }>;
 };

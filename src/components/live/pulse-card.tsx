@@ -11,7 +11,7 @@ import type { PulseDomain, PulsePayload, PulseTrend, StatusResponse } from "@/li
 import { cn } from "@/lib/utils";
 
 /**
- * 五条泳道，一域一条：最近 24 小时的活动强度（阶跃，0–3 档），右边一枚活动分。
+ * 六条泳道，一域一条：最近 24 小时的活动强度（阶跃，0–3 档），右边一枚活动分。
  *
  * 分由 Jev 评估模型对整段窗口给出（Worker 侧十分钟一次，见 workers/api/src/pulse-score.ts），
  * 档位仍是确定性规则算的 —— 图和分说的是两件事，所以两样都画。
@@ -30,6 +30,7 @@ const LANES: ReadonlyArray<{ domain: PulseDomain; label: string }> = [
   { domain: "watching", label: "Watching" },
   { domain: "gaming", label: "Gaming" },
   { domain: "charging", label: "Charging" },
+  { domain: "activity", label: "Activity" },
 ];
 
 /** viewBox 的单位。preserveAspectRatio="none" 拉伸填满，笔宽靠 non-scaling-stroke 保住 */
@@ -118,13 +119,18 @@ export function PulseCard({
               role="img"
               aria-label={
                 empty
-                  ? `${label}: no activity in the last 24 hours`
-                  : `${label} over the last 24 hours: ${score && word ? `${word}, ${score.value.toFixed(1)} of 3, trending ${score.trend}` : "not scored yet"}`
+                  ? `${label}: no data in the last 24 hours`
+                  : `${domain === "activity" ? "Estimated physical activity" : label} over the last 24 hours: ${score && word ? `${word}, ${score.value.toFixed(1)} of 3, trending ${score.trend}` : "not scored yet"}`
               }
             >
-              <span className="label-mono truncate text-muted-foreground">{label}</span>
+              <span
+                className="label-mono truncate text-muted-foreground"
+                title={domain === "activity" ? "Estimated physical activity between Apple Watch reports; gaps mean no data." : undefined}
+              >
+                {label}
+              </span>
               {empty ? (
-                <span className="text-xs text-muted-foreground">No activity yet</span>
+                <span className="text-xs text-muted-foreground">No data yet</span>
               ) : (
                 <Lane label={label} samples={view.samples} range={range} />
               )}

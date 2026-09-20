@@ -118,7 +118,7 @@ test("state 里的时刻是距窗口起点的分钟数，hint 只在有的时候
   ], WINDOW);
   const empty = compressPulseWindow([], WINDOW);
   const state = buildPulseState(
-    { coding: empty, listening: view, watching: empty, gaming: empty, charging: empty },
+    { coding: empty, listening: view, watching: empty, gaming: empty, charging: empty, activity: empty },
     WINDOW,
   ) as { window: { hours: number }; domains: Record<string, { segments: unknown[][] }> };
 
@@ -127,9 +127,9 @@ test("state 里的时刻是距窗口起点的分钟数，hint 只在有的时候
   assert.deepEqual(state.domains.coding.segments, []);
 });
 
-test("五个域各两道题，分档标尺是低到高的四档", () => {
+test("六个域各两道题，分档标尺是低到高的四档", () => {
   const questions = pulseQuestions();
-  assert.equal(Object.keys(questions).length, 10);
+  assert.equal(Object.keys(questions).length, 12);
   const activity = questions.codingActivity;
   assert.equal(activity.type, "score");
   assert.equal(activity.type === "score" && activity.criteria.length, 4);

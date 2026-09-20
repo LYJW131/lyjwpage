@@ -106,7 +106,7 @@ test("有新样本时打一次分，结果按域存下来", async () => {
   assert.equal(record?.domains.gaming.latestSampleAt, null);
 });
 
-test("请求按 Jev 契约发出：头、十道题、带 hint 的段", async () => {
+test("请求按 Jev 契约发出：头、十二道题、带 hint 的段", async () => {
   const bench = setup({ lists: { coding: fresh() } });
   await bench.scorer.run();
 
@@ -115,7 +115,7 @@ test("请求按 Jev 契约发出：头、十道题、带 hint 的段", async () 
   assert.equal(request.headers["Content-Type"], "application/json");
   const body = request.body as { model: string; questions: Record<string, unknown>; state: Record<string, unknown> };
   assert.equal(body.model, "jev-latest");
-  assert.equal(Object.keys(body.questions).length, 10);
+  assert.equal(Object.keys(body.questions).length, 12);
   // hint 只在这条私下的路径上出现，公开端点那侧另有断言
   assert.equal(JSON.stringify(body.state).includes("Zed"), true);
 });

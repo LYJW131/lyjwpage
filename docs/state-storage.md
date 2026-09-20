@@ -9,12 +9,12 @@ Worker 是唯一数据后端。上报、状态 API、Apple / GitHub 获取和缓
 - TTL 读取时检查，闹钟每小时分批回收过期项；导入保留原始绝对过期时间，重试不覆盖目标已有值。
 - `/api/status/*`、`/api/home`、`/api/lyrics`、`/api/motion-artwork` 只输出明确的公开模型。没有 HTTP 通用数据库读写端点，服务端凭据不进入 Vercel、HTML 或状态响应。CORS 限制浏览器来源；公开 API 不以 CORS 当作秘密鉴权。
 - `/api/ingest/*` 使用 `TELEMETRY_INGEST_SECRET`。临时 `/api/internal/storage/import` 使用独立 `STATE_IMPORT_SECRET`，不授予 Vercel，迁移后删除 Secret。
-- 跨域活动脉搏（pulse）键为 `pulse:<domain>`（`coding` / `listening` / `watching` / `gaming` / `charging`）。每域最多 600 条，TTL 7 天；同水平非空闲最多每 5 分钟再确认一次，空闲只留一条。公开出口是 `GET /api/status/pulse`（裁最近 24 小时、剥掉 `hint`）；`hint` 只留在库里和送去打分的那份里。
+- 跨域活动脉搏（pulse）键为 `pulse:<domain>`（`coding` / `listening` / `watching` / `gaming` / `charging` / `activity`）。每域最多 600 条，TTL 7 天；同水平非空闲最多每 5 分钟再确认一次，空闲只留一条。身体活动 `activity` 例外：每个有效上报区间留一条，含明确终点 `until`，不向未来延续。公开出口是 `GET /api/status/pulse`（裁最近 24 小时、剥掉 `hint`）；`hint` 只留在库里和送去打分的那份里。
 - API Worker 的 `LIVE_PUSH` 使用可休眠 WebSocket，`api.homepage.lyjw.llc/count` 返回 `connections`（包含后台页面）。独立 `online-counter` Worker 的 `ONLINE_COUNTER` 维护可见连接，按空闲超时清扫；`online.homepage.lyjw.llc/count` 返回 `online`。三个调频上报器并行读取两个计数口，各自失败时仅该端归零。
 
 ## 长期归档（D1）
 
-- 归档库 `lyjwpage-history`，Worker 里的绑定叫 `HISTORY`，只有一张表 `pulse_samples(domain, t, level, hint)`，主键 `(domain, t)`。StateHub 仍是唯一权威，这里只增不删：StateHub 每域只留 600 条 / 7 天，归档保留全部历史。
+- 归档库 `lyjwpage-history`，Worker 里的绑定叫 `HISTORY`，只有一张表 `pulse_samples(domain, t, level, hint, until_at)`，主键 `(domain, t)`。迁移 `0002_pulse_activity_intervals.sql` 增加 `until_at`（其他域为 NULL），发布带区间的 Worker 前先执行该 D1 迁移。StateHub 仍是唯一权威，这里只增不删：StateHub 每域只留 600 条 / 7 天，归档保留全部历史。
 - 写入由 cron 每分钟从 StateHub 驱动（`archivePulse()` → `workers/api/src/pulse-archive.ts`），不挂在上报路径上：上报不等 D1。每域一条水位线存在 StateHub 的 `metadata` 表里，键为 `pulse-archive:<domain>`，值是已归档的最大 `t`；只有 `INSERT OR IGNORE` 的那一批落地后水位线才前进，失败就留在原处，下一分钟重试。每批最多 100 条语句，一域失败只丢这一域，错误只进 `[pulse-archive]` 日志。
 - 本地和夹具环境不写归档：`historyArchiveEnabled` 和读模型用同一套闸门，配了 `DEV_OVERRIDES` 或 `UPSTREAM_API_URL` 就停用，没有 `HISTORY` 绑定也停用。
 - 归档暂时没有公开 HTTP 读路径，只作备份；公开的那份走 `GET /api/status/pulse`，从 StateHub 的 7 天序列里裁最近 24 小时，不读 D1。读归档的入口另开时再补这一节。
@@ -23,7 +23,7 @@ Worker 是唯一数据后端。上报、状态 API、Apple / GitHub 获取和缓
 
 ## 活动分（pulse:scores）
 
-- 键 `pulse:scores`（前缀之后），一份 JSON、五个域，**不设 TTL**：失败时留着上一次的判断，卡片宁可显示十分钟前的分，也不该空一格；超过 6 小时的分公开端点不再给。旁边的 `pulse:scores:attempt` 记上一次向网关尝试的时刻（失败也记），DO 重启后节流不归零。形状见 `PulseScoreRecord`（`src/lib/types.ts`），写入方是 `workers/api/src/pulse-score.ts`，读取方是 `getPulseStatus()` 与评分器自己（判断有没有新样本）。
+- 键 `pulse:scores`（前缀之后），一份 JSON、六个域，**不设 TTL**：失败时留着上一次的判断，卡片宁可显示十分钟前的分，也不该空一格；超过 6 小时的分公开端点不再给。旁边的 `pulse:scores:attempt` 记上一次向网关尝试的时刻（失败也记），DO 重启后节流不归零。形状见 `PulseScoreRecord`（`src/lib/types.ts`），写入方是 `workers/api/src/pulse-score.ts`，读取方是 `getPulseStatus()` 与评分器自己（判断有没有新样本）。
 - 由 cron 每分钟驱动，真正调用外部模型最多十分钟一次，契约与闸门见 [遥测与实时状态子系统](telemetry-subsystems.md) 第 14 节。解析不出的存量按「没有分」处理，不做兼容分支。
 
 ## 首屏与浏览器

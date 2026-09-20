@@ -23,8 +23,8 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-/** 一条 `INSERT OR IGNORE` 绑定过的四个值。 */
-type Row = [string, number, number, string | null];
+/** 一条 `INSERT OR IGNORE` 绑定过的五个值。 */
+type Row = [string, number, number, string | null, number | null];
 
 function series(count: number, level: 0 | 1 | 2 | 3 = 2): PulseSample[] {
   return Array.from({ length: count }, (_, index) => ({ t: T0 + index * 60_000, level }));
@@ -108,13 +108,13 @@ test("pulse archive: 新样本写进 D1，水位线停在最大的 t", async () 
 
   // hint 有无都要落库，缺 hint 必须是显式 null：D1 对 undefined 抛 D1_TYPE_ERROR。
   assert.deepEqual(world.rows(), [
-    ["coding", T0, 2, "lyjwpage"],
-    ["coding", T0 + 60_000, 0, null],
+    ["coding", T0, 2, "lyjwpage", null],
+    ["coding", T0 + 60_000, 0, null, null],
   ]);
   assert.equal(world.batches.length, 1);
   assert.equal(world.watermark("coding"), String(T0 + 60_000));
   assert.deepEqual(world.logged, []);
-  // 五域都读了一遍，空的那四域没碰 D1。
+  // 六域都读了一遍，空的那五域没碰 D1。
   assert.equal(world.reads(), PULSE_DOMAINS.length);
 });
 
@@ -140,7 +140,7 @@ test("pulse archive: 再跑一遍不重复插入，只补水位线之后的那�
   const next = setup({ lists: { listening: [...samples, later] } });
   next.seed("listening", samples[samples.length - 1].t);
   await next.archive.run();
-  assert.deepEqual(next.rows(), [["listening", later.t, 1, "Helpless"]]);
+  assert.deepEqual(next.rows(), [["listening", later.t, 1, "Helpless", null]]);
   assert.equal(next.watermark("listening"), String(later.t));
 });
 
@@ -216,7 +216,13 @@ test("pulse archive: 坏行跳过，不废掉整条序列", async () => {
   });
   await world.archive.run();
 
-  // 五域读的是同一份原始列表，每域各只留下那一条好样本。
+  // 六域读的是同一份原始列表，每域各只留下那一条好样本。
   assert.equal(world.rows().length, PULSE_DOMAINS.length);
   assert.ok(world.rows().every((row) => row[1] === T0 + 60_000 && row[2] === 1 && row[3] === null));
+});
+
+test("pulse archive: physical activity retains its interval end", async () => {
+  const world = setup({ lists: { activity: [{ t: T0, until: T0 + 3_600_000, level: 2 }] } });
+  await world.archive.run();
+  assert.deepEqual(world.rows(), [["activity", T0, 2, null, T0 + 3_600_000]]);
 });

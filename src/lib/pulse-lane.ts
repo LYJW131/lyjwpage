@@ -10,7 +10,7 @@ import { PULSE_LEVEL_MAX, type PulseLevel } from "@/lib/types";
  * 采样的，均分会让一段 5 分钟的高档看起来和一段 5 小时的一样长）。
  */
 
-export type PulseLanePoint = { t: number; level: PulseLevel };
+export type PulseLanePoint = { t: number; level: PulseLevel; until?: number };
 export type PulseLaneWindow = { from: number; to: number };
 
 export type PulseLaneShape = {
@@ -33,7 +33,7 @@ export function pulseLaneRuns(
     const point = points[index];
     const nextAt = index + 1 < points.length ? points[index + 1].t : window.to;
     const from = Math.max(point.t, window.from);
-    const to = Math.min(point.level === 0 ? nextAt : Math.min(nextAt, point.t + silentAfterMs), window.to);
+    const to = Math.min(point.until != null ? Math.min(nextAt, point.until) : point.level === 0 ? nextAt : Math.min(nextAt, point.t + silentAfterMs), window.to);
     if (to <= from) continue;
     const previous = runs[runs.length - 1];
     if (previous && previous.to === from && previous.level === point.level) previous.to = to;

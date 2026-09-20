@@ -89,7 +89,7 @@ test("recordPulse 写入、裁到上限、游标全量 / 增量 / 过旧游标",
   }
 });
 
-test("readPulseHistory 五域都在，空库是空数组，坏行跳过", async () => {
+test("readPulseHistory 六域都在，空库是空数组，坏行跳过", async () => {
   const storage = new FakeStorage();
   installStorageForTests(storage);
   try {

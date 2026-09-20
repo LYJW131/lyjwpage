@@ -319,3 +319,28 @@ test("采集器死了而 Mac 还在心跳：agents 过了卡片同一条过期�
     resetStorageForTests();
   }
 });
+
+test("iPhone activity reports create bounded physical-activity history and expose it in Pulse", async () => {
+  const { recordPhoneEnvelope } = await import("@api/phone-telemetry");
+  const { getPulseStatus } = await import("@/lib/pulse");
+  const storage = new FakeStorage();
+  installStorageForTests(storage);
+  const start = Date.parse("2026-09-20T08:00:00Z");
+  const report = (steps: number) => ({ version: 1, modules: { activity: {
+    date: "2026-09-20", secondsFromGMT: 0,
+    moveKcal: 100, moveGoalKcal: 400, exerciseMinutes: 0, exerciseGoalMinutes: 30,
+    standHours: 2, standGoalHours: 12, steps,
+  } } });
+  try {
+    await inRequest(() => recordPhoneEnvelope(report(1000), start));
+    assert.deepEqual(await samples(storage, "activity"), []);
+    await inRequest(() => recordPhoneEnvelope(report(4600), start + 3_600_000));
+    const expected = [{ t: start, until: start + 3_600_000, level: 3 }];
+    assert.deepEqual(await samples(storage, "activity"), expected);
+    const status = await inRequest(() => getPulseStatus(start + 7_200_000));
+    assert.deepEqual(status.domains.activity.samples, expected);
+    assert.equal(status.domains.activity.score, null);
+    await inRequest(() => recordPhoneEnvelope(report(6000), start + 4 * 3_600_000));
+    assert.deepEqual(await samples(storage, "activity"), expected, "long gaps are not filled");
+  } finally { resetStorageForTests(); }
+});

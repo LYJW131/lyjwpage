@@ -64,7 +64,7 @@ Vercel 仍采用后台重建，通知成功不代表新 HTML 已生成。ESA 后
 
 ## 跨域活动脉搏与活动分（Pulse）
 
-`GET /api/status/pulse` 给出五个域（`coding` / `listening` / `watching` / `gaming` / `charging`）
+`GET /api/status/pulse` 给出六个域（`coding` / `listening` / `watching` / `gaming` / `charging` / `activity`）
 最近 24 小时的阶跃序列和各自的活动分，`/api/home` 的 `pulse` 字段是同一份，首页那张
 Pulse 卡片用它。信封形状：
 
@@ -79,13 +79,13 @@ Pulse 卡片用它。信封形状：
       // 还没打过分时为 null
       "score": { "value": 2.4, "confidence": 0.82, "trend": "rising", "scoredAt": 1769999700000 }
     }
-    // listening / watching / gaming / charging 同形
+    // listening / watching / gaming / charging 同形；activity 的样本另带 until
   }
 } }
 ```
 
 **`hint` 不出公网。** 曲名、应用名、游戏名只在 Worker 内部参与打分，公开端点只有
-`{ t, level }`。`level` 是 0–3 的档位（确定性规则，见 `shared/pulse-levels.ts`），
+`{ t, level, until? }`。`level` 是 0–3 的档位（确定性规则，见 `shared/pulse-levels.ts`），
 `value` 是 Jev 在四档标尺（idle / light / moderate / intense）上插值出来的位置，
 两者不是一回事。
 
@@ -94,6 +94,20 @@ Pulse 卡片用它。信封形状：
 样本才调（分放满一小时且窗口里还有样本时也重算一次，窗口在走）；单次 10 秒超时，失败只进 `[pulse-score]` 日志并留着上一份分。结果存在 StateHub 的
 `pulse:scores`，不设 TTL。没有 `TYPESAFE_API_KEY`、或本地配了 `DEV_OVERRIDES` /
 `UPSTREAM_API_URL` 时整个评分停用（和读模型、D1 归档同一套闸门），端点照常给泳道、分是 null。
+
+
+`activity` 是 Apple Watch 身体活动，由 `/api/ingest/iphone` 的 `modules.activity`
+相邻累计快照计算，无须更新 iPhone 上报器。仅同一当地日期、同一时区且间隔 1 分钟至
+2 小时的两份快照参与；首次上报、跨日、长间隔、累计值回退时只重建基线，缺口不算空闲。
+按区间平均步频或锻炼时间占比取较高档：≥60 steps/min 或 ≥50% 为 3，
+≥20 steps/min 或 ≥10% 为 2；其余有活动能量、步数、锻炼或站立增量为 1，无增量为 0。
+这是展示用估算；HealthKit 延迟同步可能影响时间定位，不表示实时运动检测。
+样本 `{ t, until, level }` 覆盖前后两次收到上报的区间，`until` 为 epoch 毫秒；
+绘图、窗口统计和评分均在 `until` 截止，包含 0 档，不向未来延续，也不套用实时域的 10 分钟静默上限。
+首次发布此版本前执行 D1 迁移 `0002_pulse_activity_intervals.sql`
+（`pnpm --dir workers/api exec wrangler d1 migrations apply lyjwpage-history --remote`），
+归档将终点保存在 `until_at`；已有域不带此字段，值为 NULL。
+旧的五域评分会失效，下次评分生成六域记录；尚无样本时新行显示 `No data yet`。
 
 本地预览用夹具：`pnpm dev:override /api/status/pulse pulse-busy-day.json`。
 

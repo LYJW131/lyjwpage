@@ -20,7 +20,7 @@ import {
 import type { StorageClient } from "@shared/storage-client";
 
 /**
- * 用 TypeSafe AI 的 Jev 评估模型，给五个域的最近 24 小时各打一个活动分。
+ * 用 TypeSafe AI 的 Jev 评估模型，给六个域的最近 24 小时各打一个活动分。
  *
  * **Jev 只评窗口，不碰档位。** 每笔样本的 0–3 档仍由 `shared/pulse-levels.ts` 的
  * 确定性规则按上报那一刻算；这里问的是「这一整天有多活跃、在往哪边走」，
@@ -60,7 +60,7 @@ function isTrend(value: unknown): value is PulseTrend {
 /**
  * 把一次回答翻成要存的那份。
  *
- * 十道题缺一道、分不是有限数、趋势不在三选一里 —— 全都算这次失败，整份丢掉。
+ * 十二道题缺一道、分不是有限数、趋势不在三选一里 —— 全都算这次失败，整份丢掉。
  * 半份分比没有分更糟：卡片会拿一个域的旧判断配另一个域的新泳道。
  */
 export function parseJevScores(

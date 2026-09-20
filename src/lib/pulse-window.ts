@@ -13,7 +13,7 @@ import {
 /**
  * 把 pulse 的阶跃序列裁成一个时间窗，给两个消费者用：
  *
- * - 公开端点 `/api/status/pulse`（`clipPulseSamples`）—— 只有 `{ t, level }`，hint 剥掉；
+ * - 公开端点 `/api/status/pulse`（`clipPulseSamples`）—— 只有 `{ t, level, until? }`，hint 剥掉；
  * - Jev 评分器（`buildPulseState`）—— 段 + 每档分钟数，hint 留着，只在 Worker 内部走。
  *
  * 纯函数，不碰存储、不看时钟：`now` 一律由调用方传进来，测试才排得出确定的窗口。
@@ -47,8 +47,10 @@ export function pulseWindowAt(now: number): PulseWindow {
  * 非空闲每 5 分钟就该再确认一次（PULSE_REPEAT_AFTER_MS），所以超过两倍还没有
  * 下一笔就是上报器静默，那段如实空着，不拿旧值糊满整夜。空闲不设上限：
  * 空闲本来就只留一个点，它撑到下一次翻面才是它的语义。
+ * activity 为已完成的估算区间，所有档位都在 until 截止，不套用实时心跳上限。
  */
 function heldUntil(sample: PulseSample, nextAt: number): number {
+  if (sample.until != null) return Math.min(sample.until, nextAt);
   if (sample.level === 0) return nextAt;
   return Math.min(nextAt, sample.t + PULSE_SILENT_AFTER_MS);
 }
@@ -102,25 +104,26 @@ export function compressPulseWindow(
 export function clipPulseSamples(
   samples: PulseSample[],
   window: PulseWindow,
-): { t: number; level: PulseLevel }[] {
-  const clipped: { t: number; level: PulseLevel }[] = [];
+): Pick<PulseSample, "t" | "level" | "until">[] {
+  const clipped: Pick<PulseSample, "t" | "level" | "until">[] = [];
   for (const sample of samples) {
     if (sample.t > window.to) break;
     if (sample.t < window.from) {
       // 边界之前的只留最后一笔，压在 from 上；撑不进来的连这一笔也不留
       clipped.length = 0;
       if (heldUntil(sample, window.to) > window.from) {
-        clipped.push({ t: window.from, level: sample.level });
+        clipped.push({ t: window.from, level: sample.level, ...(sample.until != null ? { until: sample.until } : {}) });
       }
       continue;
     }
-    clipped.push({ t: sample.t, level: sample.level });
+    clipped.push({ t: sample.t, level: sample.level, ...(sample.until != null ? { until: Math.min(sample.until, window.to) } : {}) });
   }
   return clipped;
 }
 
 /** 档位在各域分别是什么意思。进 Jev 的 state，让它知道 3 不是「分」而是档。 */
 export const PULSE_LEGEND: Readonly<Record<PulseDomain, string>> = Object.freeze({
+  activity: "Estimated physical activity averaged between Apple Watch reports (up to 2 hours), not live workout detection. 0 no increase, 1 light movement, 2 >= 20 steps/min or >= 10% exercise minutes, 3 >= 60 steps/min or >= 50% exercise minutes. Gaps are unknown, not idle.",
   coding: "0 idle, 2 a coding app in front, 3 an agent actively working",
   listening: "0 idle, 2 paused, 3 playing",
   watching: "0 idle, 2 paused, 3 playing",
@@ -153,7 +156,7 @@ export function trendQuestionKey(domain: PulseDomain): string {
   return `${domain}Trend`;
 }
 
-/** 五个域十道题，一次问完。 */
+/** 六个域十二道题，一次问完。 */
 export function pulseQuestions(): Record<string, JevQuestion> {
   const questions: Record<string, JevQuestion> = {};
   for (const domain of PULSE_DOMAINS) {
