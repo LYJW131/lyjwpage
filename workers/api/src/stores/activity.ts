@@ -1,3 +1,5 @@
+import { activityPulseSample } from "@shared/pulse-activity";
+import { recordPulse } from "@api/stores/pulse";
 import { number, object, text } from "@/lib/json";
 import { type StoredActivity, mirror } from "@shared/activity";
 
@@ -84,6 +86,9 @@ export function normalizeActivity(
  *
  * 按日期挡也不行：往西飞过日界线时本地日会往回走一天，而手表上的圈确实跟着回去了。
  */
-export function writeActivity(stored: StoredActivity): Promise<void> {
-  return mirror.put(stored);
+export async function writeActivity(stored: StoredActivity): Promise<void> {
+  const previous = await mirror.get();
+  await mirror.put(stored);
+  const sample = activityPulseSample(previous, stored);
+  if (sample) await recordPulse("activity", sample);
 }

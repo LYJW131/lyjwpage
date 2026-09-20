@@ -4,6 +4,17 @@
     "generatedAt": "$now",
     "window": {"from": "$now-86400000", "to": "$now"},
     "domains": {
+      "activity": {
+        "samples": [
+          {"t": "$now-43200000", "until": "$now-39600000", "level": 1},
+          {"t": "$now-39600000", "until": "$now-36000000", "level": 3},
+          {"t": "$now-36000000", "until": "$now-32400000", "level": 0},
+          {"t": "$now-18000000", "until": "$now-14400000", "level": 2},
+          {"t": "$now-14400000", "until": "$now-10800000", "level": 1},
+          {"t": "$now-7200000", "until": "$now-3600000", "level": 2}
+        ],
+        "score": {"value": 1.8, "confidence": 0.78, "trend": "rising", "scoredAt": "$now-120000"}
+      },
       "coding": {
         "samples": [
           {"t": "$now-90000000", "level": 0},

@@ -51,7 +51,7 @@ test("公开端点剥掉 hint，并保留窗口之前那一笔（压到窗口起
       { t: payload.window.from, level: 0 },
       { t: NOW - 2 * HOUR, level: 3 },
     ]);
-    // 五个域一个都不能少，没有数据的那些是空序列
+    // 六个域一个都不能少，没有数据的那些是空序列
     assert.deepEqual(payload.domains.gaming.samples, []);
     const json = JSON.stringify(payload);
     assert.equal(json.includes("hint"), false);

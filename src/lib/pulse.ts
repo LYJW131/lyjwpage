@@ -22,7 +22,7 @@ export function pulseKey(domain: PulseDomain): string {
   return key("pulse", domain);
 }
 
-/** 评分器写的那一份，五域同一个键、一份 JSON，不设 TTL。 */
+/** 评分器写的那一份，各域同一个键、一份 JSON，不设 TTL。 */
 export function pulseScoresKey(): string {
   return key("pulse", "scores");
 }
@@ -47,12 +47,14 @@ export function parsePulseSample(raw: string): PulseSample | null {
   try {
     const value: unknown = JSON.parse(raw);
     if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-    const row = value as { t?: unknown; level?: unknown; hint?: unknown };
+    const row = value as { t?: unknown; level?: unknown; hint?: unknown; until?: unknown };
     if (typeof row.t !== "number" || !Number.isFinite(row.t) || !isPulseLevel(row.level)) {
       return null;
     }
+    if (row.until != null && (typeof row.until !== "number" || !Number.isFinite(row.until) || row.until <= row.t)) return null;
+    const interval = typeof row.until === "number" ? { until: row.until } : {};
     const hint = normalizeHint(typeof row.hint === "string" ? row.hint : undefined);
-    return hint ? { t: row.t, level: row.level, hint } : { t: row.t, level: row.level };
+    return { t: row.t, level: row.level, ...interval, ...(hint ? { hint } : {}) };
   } catch {
     return null;
   }
@@ -62,9 +64,10 @@ export function toPulseSample(next: {
   t: number;
   level: PulseLevel;
   hint?: string | null;
+  until?: number;
 }): PulseSample {
   const hint = normalizeHint(next.hint);
-  return hint ? { t: next.t, level: next.level, hint } : { t: next.t, level: next.level };
+  return { t: next.t, level: next.level, ...(next.until != null ? { until: next.until } : {}), ...(hint ? { hint } : {}) };
 }
 
 /**
@@ -72,6 +75,7 @@ export function toPulseSample(next: {
  *
  * - 没有上一笔 → 写入（含空闲：空闲也得有一条，后面才知道「从何时起没事」）。
  * - `t` 不前进 → 丢掉。这是源站 receivedAt，同一 StateHub 上单调；≤ 就是重复或乱序。
+ * - 带 until 的已完成区间 → 写入，包括相邻同档和空闲，不能丢失终点。
  * - level 或 hint 变了 → 写入（状态翻面）。
  * - 非空闲且距上一笔 ≥ 5 分钟 → 写入。序列是阶跃函数，每个点撑到下一个；
  *   隔这么久再确认一次，上报器死了会在图上露出缺口。
@@ -79,11 +83,12 @@ export function toPulseSample(next: {
  */
 export function planPulseSample(
   last: PulseSample | null,
-  next: { t: number; level: PulseLevel; hint?: string | null },
+  next: { t: number; level: PulseLevel; hint?: string | null; until?: number },
 ): PulseSample | null {
   const sample = toPulseSample(next);
   if (!last) return sample;
   if (sample.t <= last.t) return null;
+  if (sample.until != null) return sample;
   if (sample.level !== last.level || sample.hint !== last.hint) {
     return sample;
   }
@@ -114,7 +119,7 @@ function asStringList(value: unknown): string[] {
 }
 
 /**
- * 五域一次读完。键不存在就是空数组；坏行跳过。
+ * 各域一次读完。键不存在就是空数组；坏行跳过。
  *
  * `cursor` 按域各自切片：有的域还没数据、有的已经裁过最旧点，partial 标志互不影响。
  * 内部读形状；公开那份由下面的 getPulseStatus 裁窗、剥 hint 之后给出。
@@ -184,7 +189,7 @@ export async function readPulseScores(): Promise<PulseScoreRecord | null> {
 /**
  * 公开端点 `/api/status/pulse` 的取数。
  *
- * 五域各裁最近 24 小时（外加窗口左边界之前那一笔，压到 from，泳道才从头填满），
+ * 各域各裁最近 24 小时（外加窗口左边界之前那一笔，压到 from，泳道才从头填满），
  * **hint 一律不出来**；分从 `pulse:scores` 读，没有就是 null。
  * 分自带自己的窗口，和这次裁的窗口不必相同 —— 它最多十分钟前才打过一次。
  */

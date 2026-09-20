@@ -18,7 +18,7 @@ function reason(error: unknown): string {
  */
 export async function recordPulse(
   domain: PulseDomain,
-  next: { t: number; level: PulseLevel; hint?: string | null },
+  next: { t: number; level: PulseLevel; hint?: string | null; until?: number },
 ): Promise<void> {
   try {
     const k = pulseKey(domain);
