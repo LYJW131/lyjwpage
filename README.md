@@ -19,11 +19,12 @@
 | **音乐** | Apple Music 与 HomePod 播放状态、最近收听、逐字歌词和动态封面；访客可通过自己的 Apple Music 账号与订阅使用网页播放器和「一起听」。 |
 | **影视** | Emby 正在播放与最近观看，呈现播放进度、剧集信息、画面与音轨规格。 |
 | **游戏** | PlayStation 在线状态、游戏记录与奖杯进度，展开游戏卡片查看成就明细。 |
-| **本机与充电设备** | Mac 前台应用，以及 Anker 充电器、充电宝的端口状态、电压、电流和功率变化。 |
+| **本机与充电设备** | Mac 前台应用（几款常用工具换成品牌标识和动画），以及 Anker 充电器、充电宝的端口状态、电压、电流和功率变化。 |
 | **AI Coding** | 编码工具的 Token 用量、API 等值成本估算、年度热力图与账号限额窗口。 |
-| **运动活动** | 通过 iPhone 的 HealthKit 数据展示 Apple Watch 活动、锻炼与站立三环。 |
-| **服务器** | 节点运行时间、CPU、内存与网络吞吐。 |
-| **站点自身** | 网站版本、GitHub 仓库统计与最近提交，以及 Vercel 部署和 Cloudflare Workers 相关状态。 |
+| **运动活动** | 通过 iPhone 的 HealthKit 数据展示 Apple Watch 活动、锻炼与站立三环，以及最近 10 次训练的时长、能量和心率。 |
+| **服务器** | 落地节点的运行时间、CPU、内存、网络吞吐，以及按计费周期累计的流量。 |
+| **Pulse** | 编码、听、看、玩、充电、身体活动六个域最近 24 小时的活跃度泳道，由 TypeSafe 的 Jev 模型按五分钟窗口打分并标出趋势。 |
+| **站点自身** | 网站版本、GitHub 仓库统计与最近提交（含签名状态），PageSpeed 实验室指标的滚动中位数，以及 Vercel 部署和 Cloudflare Workers 的调用统计。 |
 
 界面以灰阶、细线边界和卡片布局为基础，用等宽数字稳定动态指标的排版。颜色与动效主要服务于媒体内容、状态变化和交互反馈。
 
@@ -33,7 +34,7 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/overview-dark.webp">
-  <img src="docs/screenshots/overview-light.webp" alt="首页总览：正在看、充电头与充电宝、正在听、活动圆环与服务器状态同时点亮" width="100%">
+  <img src="docs/screenshots/overview-light.webp" alt="首页总览：正在看、充电头与充电宝、正在听、活动圆环与最近训练、落地节点同时点亮" width="100%">
 </picture>
 
 **Emby 正在播放**：海报、剧集、进度，以及画面、音轨与码率规格。
@@ -69,11 +70,32 @@
   </tr>
 </table>
 
+**活动与训练**：Apple Watch 的活动、锻炼、站立三环与步数、距离、爬楼，右侧是最近训练，每页两条横向翻页。
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/activity-dark.webp">
+  <img src="docs/screenshots/activity-light.webp" alt="活动卡片：三环、步数与最近训练" width="100%">
+</picture>
+
+**落地节点**：位置与运营商、上下行速率、本计费周期已用流量，以及 CPU 与内存。
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/server-dark.webp">
+  <img src="docs/screenshots/server-light.webp" alt="落地节点卡片：速率、周期流量、CPU 与内存" width="100%">
+</picture>
+
 **PlayStation**：在线状态、正在游玩的游戏、奖杯统计与最近解锁；展开游戏卡片查看奖杯组与逐条成就。
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/playstation-trophies-dark.webp">
   <img src="docs/screenshots/playstation-trophies-light.webp" alt="PlayStation 卡片：在线、正在游玩与展开的奖杯明细" width="100%">
+</picture>
+
+**Pulse**：六个域最近 24 小时的活跃度泳道，右侧是当前档位、分值、趋势与把握度；分由 Jev 按五分钟窗口给出，历史每分钟归档到 D1。
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/pulse-dark.webp">
+  <img src="docs/screenshots/pulse-light.webp" alt="Pulse 卡片：六条活跃度泳道与评分" width="100%">
 </picture>
 
 **AI Coding**：各编码工具的 Token 用量、成本估算、今日用量与账号限额窗口。
@@ -103,7 +125,7 @@
 
 **采集端**运行在数据产生的位置。Mac 采集本机应用、音乐、BLE 设备与编码用量，iPhone 读取运动活动，NAS 代理 Emby 播放状态，Linux 上报器提供服务器指标和 Agent 限额。Home Assistant 接入 HomePod 等家庭设备，独立 Worker 定时同步 PlayStation 数据。
 
-**状态中枢**由 Cloudflare Workers 承担，负责接收上报、整合外部服务数据、提供公开状态 API 和实时推送。Durable Objects SQLite 保存快照与历史，R2 保存海报等图片资源；在线访客计数由独立 Worker 维护。
+**状态中枢**由 Cloudflare Workers 承担，负责接收上报、整合外部服务数据、提供公开状态 API 和实时推送。Durable Objects SQLite 保存快照与历史，是唯一权威；几条慢端点的公开读模型发布到 KV，读路径先取 KV、缺失或过旧时回源 DO。R2 保存海报等图片资源，D1 归档 Pulse 的逐分钟历史；在线访客计数由独立 Worker 维护。
 
 **展示端**运行在 Vercel。Next.js 生成首页时读取 Worker 的聚合快照，浏览器挂载后直接连接 Worker 获取最新状态，不再经由 Vercel 转发状态请求。中国大陆访问入口通过阿里云 ESA 加速页面与静态资源。
 
@@ -150,7 +172,8 @@
 | 页面与类型 | Next.js 16 App Router · React 19 · TypeScript |
 | 样式与交互 | Tailwind CSS 4 · Motion · Number Flow · Geist |
 | 客户端数据 | SWR · WebSocket |
-| 状态与资源存储 | Cloudflare Workers · Durable Objects SQLite · R2 |
+| 状态与资源存储 | Cloudflare Workers · Durable Objects SQLite · KV · D1 · R2 |
+| 活跃度评分 | TypeSafe System One（Jev） |
 | 原生设备接入 | Swift / SwiftUI · HealthKit · BLE |
 | 页面托管与分发 | Vercel · 阿里云 ESA |
 
@@ -173,8 +196,6 @@ Mac 端采集器 [MacTelemetryHub](https://github.com/LYJW131/MacTelemetryHub) �
 
 [遥测与实时状态子系统](./docs/telemetry-subsystems.md) 记录各数据源的接入方式、通信协议与具体实现。
 
-[Worker 数据后端与首屏缓存](./docs/state-storage.md) 说明状态持久化、公开数据边界、缓存失效与页面更新之间的关系。
+[Worker 数据后端与首屏缓存](./docs/state-storage.md) 说明状态持久化、公开数据边界、缓存失效与页面更新之间的关系；KV 读模型的发布与回源规则见 [KV 公开读模型](./docs/kv-read-model.md)。
 
-### 最近训练卡片
-
-首页的 Recent Workouts 展示 iPhone HealthKit 最近 10 次已完成训练；协议和部署顺序见 [iPhone Telemetry Hub](reporters/iphone-telemetry-hub/README.md) 与 [API Worker](workers/api/README.md#最近训练)。上报器 2.0.2 使用 iOS 27 原生 SwiftUI，最低系统版本 iOS 27.0。
+iPhone 端采集器 [iPhone Telemetry Hub](./reporters/iphone-telemetry-hub/README.md)（iOS 27 原生 SwiftUI）上报活动圆环与最近 10 次训练，协议和部署顺序见其 README 与 [API Worker](./workers/api/README.md#最近训练)。

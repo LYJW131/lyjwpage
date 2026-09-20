@@ -5,9 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "next dev -p 3211",
-    "dev:worker": "pnpm --dir workers/api exec wrangler dev --config wrangler.test.toml --port 8788 --persist-to .wrangler/dev-state",
-    "dev:worker:init": "STATE_SERVICE_URL=http://localhost:8788 node --env-file=workers/api/.dev.vars scripts/migrate-state-storage.mjs --initialize",
-    "dev:local": "NEXT_PUBLIC_BACKEND_URL=http://localhost:8788 next dev -p 3211",
+    "dev:worker": "pnpm --dir workers/api exec wrangler dev --config wrangler.test.toml --port ${DEV_WORKER_PORT:-8788} --persist-to .wrangler/dev-state",
+    "dev:worker:init": "STATE_SERVICE_URL=http://localhost:${DEV_WORKER_PORT:-8788} node --env-file=workers/api/.dev.vars scripts/migrate-state-storage.mjs --initialize",
+    "dev:local": "NEXT_PUBLIC_BACKEND_URL=http://localhost:${DEV_WORKER_PORT:-8788} next dev -p ${DEV_SITE_PORT:-3211}",
     "dev:override": "node scripts/dev-override.mjs",
     "docs:architecture": "node scripts/architecture-diagram.mjs",
     "build": "next build",
