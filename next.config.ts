@@ -52,6 +52,12 @@ const nextConfig: NextConfig = {
     COMMIT_SHA: resolveCommitSha(),
   },
   /**
+   * `next dev` 按 `<distDir>/dev/lock` 保证同一目录只跑一个实例。3211 上那份已经
+   * 在跑时（比如要另起一套接本地 Worker 截效果图），给第二套指一个别的目录
+   * 就能并存；只在本地设，Vercel 不配。见 .claude/launch.json 的 `*-alt`。
+   */
+  distDir: process.env.NEXT_DIST_DIR || ".next",
+  /**
    * 首屏那八份数据走 `use cache` + `cacheTag`，上报进来时按 tag 失效。
    *
    * 开了它之后 `dynamic` / `revalidate` / `fetchCache` **以及 `runtime`** 这几个

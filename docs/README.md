@@ -26,7 +26,9 @@
 
 ## 页面效果图
 
-[`screenshots/`](./screenshots/) 是根 README 里的效果图，明暗各一份。用本地 Worker 的假数据注入把平时不显示的状态点亮后截的，夹具在 [`workers/api/dev-fixtures/`](../workers/api/dev-fixtures/)，注入方式见 [`workers/api/README.md`](../workers/api/README.md)。
+[`screenshots/`](./screenshots/) 是根 README 里的效果图，明暗各一份。用本地 Worker 的假数据注入把平时不显示的状态点亮后截的，夹具在 [`workers/api/dev-fixtures/`](../workers/api/dev-fixtures/)，注入方式见 [`workers/api/README.md`](../workers/api/README.md)。截图用无头 Chrome（playwright-core 的 `channel: "chrome"`）开 1280 宽、2 倍像素密度，`colorScheme` 切明暗；裁卡片按元素 boundingBox 外扩 12px 取 `clip`，并把目标之外的兄弟节点 `visibility: hidden`，边距里才不会露出邻居卡片的边；PNG 用项目自带的 sharp 转 WebP（q 88）。
+
+3211 / 8788 被别的实例占着时，用 `.claude/launch.json` 里的 `api-worker-alt`（8790）和 `lyjwpage-local-alt`（3213）另起一套：`dev:worker` / `dev:local` 认 `DEV_WORKER_PORT` / `DEV_SITE_PORT`，`next.config.ts` 认 `NEXT_DIST_DIR`（`next dev` 按 `<distDir>/dev/lock` 保证同目录单实例，第二套要指到 `.next/alt`），`pnpm dev:override` 和截图脚本分别用 `DEV_WORKER_URL` / `SITE_URL` 指过去。
 
 歌词不入库：本地 Worker 没有 Apple Music 凭据，`/api/lyrics` 也不走上游兜底，所以截「正在听」时把生产站的响应包一层 `ok` 直接注入（`song` 取 `listening-now-*.json` 里的 `songId`）：
 

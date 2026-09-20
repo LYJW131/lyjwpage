@@ -26,6 +26,20 @@
       "name": "lyjwpage-attach",
       "url": "http://localhost:3211",
       "port": 3211
+    },
+    {
+      "name": "api-worker-alt",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": ["-c", "DEV_WORKER_PORT=8790 exec pnpm dev:worker"],
+      "port": 8790,
+      "autoPort": false
+    },
+    {
+      "name": "lyjwpage-local-alt",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": ["-c", "NEXT_DIST_DIR=.next/alt DEV_WORKER_PORT=8790 DEV_SITE_PORT=3213 exec pnpm dev:local"],
+      "port": 3213,
+      "autoPort": false
     }
   ]
 }
