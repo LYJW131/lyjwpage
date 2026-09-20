@@ -73,5 +73,7 @@ struct TelemetryEnvelope: Encodable, Sendable {
 enum Modules {
     static let activity = ActivityModule()
 
-    static let all: [any TelemetryModule] = [activity]
+    static let workouts = WorkoutsModule()
+
+    static let all: [any TelemetryModule] = [activity, workouts]
 }

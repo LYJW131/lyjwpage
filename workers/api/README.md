@@ -297,3 +297,15 @@ Worker 侧 storage 写失败是冒泡的，先写 `:history` 再清 `:pending` �
 500（`Lighthouse returned error`，连跑十轮撞见过两轮），一小时一次的节奏下那就是一小时的窗口空档。
 密钥只走查询参数（接口只认这一种），错误信息只带状态码，不回显密钥或上游响应体。
 请求用 `fields` 裁掉截图等字段，Worker 不必解那 800 KB 的整份响应。
+
+## 最近训练
+
+`POST /api/ingest/iphone` 的 v1 信封接受 `modules.workouts: { items: [...] }`，每次完整替换最近最多 10 条训练（空列表清空）。记录字段为 `id`（HealthKit UUID）、`activityType`（英文类型）、`startedAt` / `endedAt`（epoch 毫秒）、`secondsFromGMT`（训练当地 UTC 偏移秒）、`durationSeconds`（扣除暂停的活动秒数），以及可选的 `distanceMeters` / `activeEnergyKcal`、`averageHeartRateBpm` / `maximumHeartRateBpm`、`elevationAscendedMeters`、`indoor`（boolean）。缺失指标对外为 null，不能解释为零。
+
+`GET /api/status/workouts` 返回 `{ items, pushedAt }` 的标准状态信封，同时包含在 `/api/home.workouts`。快照保存在 `workouts:recent`，不按训练日期过期；超过 7 天未同步时卡片标明同步延迟。上报失效 `workouts` 首页缓存标签，浏览器每 5 分钟轮询，不新增推送事件。共享代码路径已包含在 Worker 原生构建监视范围内。
+
+本地预览：`pnpm dev:override /api/status/workouts workouts.json`，夹具仅供开发环境，启用时页面显示 Fake data。真实记录需要安装 iOS 27 上报器并允许训练读取。
+
+`workouts.json` 是 2026-09-20 从真机读取的最近 10 次训练快照（6 次剑术、3 次骑行、1 次滑冰），保留原日期与观测指标，UUID 替换为演示标识。`pushedAt` 注入时更新，但训练时间不变。剑术不把步行距离当成主要成绩；滑冰没有距离就不显示速度；网页每项最多两个指标：有距离时显示时长与距离，否则显示时长与活动消耗；不展示心率或均速。
+
+网页卡片最多显示最近 10 条，每页上下排列 2 条，横向吸附滚动（共 5 页），隐藏独立标题栏，通过触控板、触摸或键盘横向浏览；上报和存储仍保留最近 10 条。训练记录合并在 Activity 卡片右侧（窄屏放底部），圆环区域保持原高度；出口节点卡全宽排列在其下。

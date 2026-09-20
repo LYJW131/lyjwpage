@@ -1,22 +1,37 @@
 import SwiftUI
+import Observation
 
 @MainActor
-final class HubModel: ObservableObject {
-    @Published var reading: RingReading?
-    @Published var lastPush: PushRecord = HubSettings.lastPush
-    @Published var note: String = ""
-    @Published var busy = false
-    @Published var needsAuthorization = false
+@Observable
+final class HubModel {
+    var reading: RingReading?
+    var workouts: [WorkoutReading] = []
+    var workoutError: String?
+    var lastPush: PushRecord = HubSettings.lastPush
+    var note: String = ""
+    var busy = false
+    var needsAuthorization = false
 
     func refresh() async {
         reading = await Modules.activity.currentReading()
-        needsAuthorization = await !Modules.activity.isAuthorized()
+        needsAuthorization = false
+        for module in Modules.all where HubSettings.isEnabled(module.id) {
+            if await !module.isAuthorized() { needsAuthorization = true }
+        }
+        do {
+            workouts = try await Modules.workouts.recentWorkouts()
+            workoutError = nil
+        } catch {
+            workoutError = error.localizedDescription
+        }
         lastPush = HubSettings.lastPush
     }
 
     func authorize() async {
         do {
-            try await Modules.activity.requestAuthorization()
+            for module in Modules.all where HubSettings.isEnabled(module.id) {
+                try await module.requestAuthorization()
+            }
         } catch {
             note = "健康授权失败：\(error.localizedDescription)"
         }
@@ -45,11 +60,13 @@ final class HubModel: ObservableObject {
 }
 
 struct DashboardView: View {
-    @StateObject private var model = HubModel()
+    @State private var model = HubModel()
     @Environment(\.scenePhase) private var scenePhase
     @State private var showingSettings = false
     /// 开关放设置里，这里只读，回前台时重新取一次
     @State private var activityEnabled = HubSettings.isEnabled(Modules.activity.id)
+
+    @State private var workoutsEnabled = HubSettings.isEnabled(Modules.workouts.id)
 
     var body: some View {
         NavigationStack {
@@ -70,6 +87,39 @@ struct DashboardView: View {
                                 Task { await model.authorize() }
                             }
                         }
+                    }
+                }
+
+                Section(Modules.workouts.title) {
+                    if !workoutsEnabled {
+                        Text("Module disabled").foregroundStyle(.secondary)
+                    } else if let error = model.workoutError {
+                        Text(error).foregroundStyle(.secondary)
+                    } else if model.workouts.isEmpty {
+                        ContentUnavailableView("No readable workouts", systemImage: "figure.run", description: Text("Allow Health access and sync your completed workouts."))
+                    } else {
+                        ForEach(model.workouts) { workout in
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text(workout.activityType).font(.headline)
+                                if let indoor = workout.indoor {
+                                    Text(indoor ? "Indoor" : "Outdoor").font(.caption).foregroundStyle(.secondary)
+                                }
+                                Text(Date(timeIntervalSince1970: workout.startedAt / 1000), format: .dateTime.month(.abbreviated).day().hour().minute())
+                                    .font(.caption).foregroundStyle(.secondary)
+                                HStack {
+                                    Text("\(Int(workout.durationSeconds / 60)) min")
+                                    if let distance = workout.distanceMeters { Text("\(distance / 1000, specifier: "%.2f") km") }
+                                    if let energy = workout.activeEnergyKcal { Text("\(Int(energy)) kcal") }
+                                }.font(.subheadline.monospacedDigit())
+                                if let heartRate = workout.averageHeartRateBpm {
+                                    Text("Avg \(Int(heartRate.rounded())) bpm")
+                                        .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                                }
+                            }.padding(.vertical, 4)
+                        }
+                    }
+                    if model.needsAuthorization {
+                        Button("Allow Health access") { Task { await model.authorize() } }
                     }
                 }
 
@@ -132,6 +182,7 @@ struct DashboardView: View {
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
             activityEnabled = HubSettings.isEnabled(Modules.activity.id)
+            workoutsEnabled = HubSettings.isEnabled(Modules.workouts.id)
             Task {
                 await model.refresh()
                 await model.report(force: false)
@@ -141,6 +192,7 @@ struct DashboardView: View {
             // 从设置退回来：开关可能变了，读数和下一次上报都要跟着走
             guard !showing else { return }
             activityEnabled = HubSettings.isEnabled(Modules.activity.id)
+            workoutsEnabled = HubSettings.isEnabled(Modules.workouts.id)
             Task { await model.refresh() }
         }
     }

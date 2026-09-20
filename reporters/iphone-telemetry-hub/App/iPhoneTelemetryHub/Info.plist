@@ -15,12 +15,12 @@
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0.0</string>
+    <string>$(MARKETING_VERSION)</string>
     <key>CFBundleVersion</key>
-    <string>1</string>
+    <string>$(CURRENT_PROJECT_VERSION)</string>
     <!-- 活动圆环模块要的。少了这一条不是「被拒绝」，是**直接崩** -->
     <key>NSHealthShareUsageDescription</key>
-    <string>读取你的活动圆环（活动 / 锻炼 / 站立）和当天步数，上报到你自己配置的个人主页。数据只发往你填的那个地址。</string>
+    <string>读取你的活动圆环（活动 / 锻炼 / 站立）、当天步数和最近训练（类型、时间、时长、距离、活动消耗），上报到你自己配置的个人主页。数据只发往你填的那个地址。</string>
     <!-- 本机开发时上报地址是 http://192.168.x.x:3211，明文会被 ATS 挡下。
          只开局域网这一个口子，公网仍然强制 HTTPS —— 线上那个地址本来就是 https。 -->
     <key>NSAppTransportSecurity</key>

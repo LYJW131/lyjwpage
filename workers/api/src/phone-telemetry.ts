@@ -1,3 +1,5 @@
+import { normalizeWorkouts, writeWorkouts } from "@api/stores/workouts";
+import { STATUS_VIEWS } from "@/lib/status-views";
 import { object } from "@/lib/json";
 import { ACTIVITY_TAG } from "@/lib/live-events";
 import { fanout } from "@api/fanout";
@@ -22,7 +24,7 @@ import { normalizeActivity, writeActivity } from "@api/stores/activity";
  */
 
 /** 站点认得的模块名。和 `/api/status/*` 的主题同名：`activity` ↔ /api/status/activity */
-const KNOWN_MODULES = new Set(["activity"]);
+const KNOWN_MODULES = new Set(["activity", "workouts"]);
 
 type PhoneEnvelope = {
   version?: unknown;
@@ -65,6 +67,11 @@ export async function recordPhoneEnvelope(input: unknown, receivedAt = Date.now(
    * 上响应一返回随手就被掐掉。Mac 那侧踩过这个坑，见 lib/telemetry 里同样的形状。
    */
   try {
+    if ("workouts" in modules) {
+      writes.push(writeWorkouts(normalizeWorkouts(modules.workouts, receivedAt)));
+      tags.push(STATUS_VIEWS.workouts.tag);
+      accepted += 1;
+    }
     if ("activity" in modules) {
       writes.push(writeActivity(normalizeActivity(modules.activity, receivedAt)));
       tags.push(ACTIVITY_TAG);

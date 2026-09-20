@@ -174,3 +174,7 @@ Mac 端采集器 [MacTelemetryHub](https://github.com/LYJW131/MacTelemetryHub) �
 [遥测与实时状态子系统](./docs/telemetry-subsystems.md) 记录各数据源的接入方式、通信协议与具体实现。
 
 [Worker 数据后端与首屏缓存](./docs/state-storage.md) 说明状态持久化、公开数据边界、缓存失效与页面更新之间的关系。
+
+### 最近训练卡片
+
+首页的 Recent Workouts 展示 iPhone HealthKit 最近 10 次已完成训练；协议和部署顺序见 [iPhone Telemetry Hub](reporters/iphone-telemetry-hub/README.md) 与 [API Worker](workers/api/README.md#最近训练)。上报器 2.0.2 使用 iOS 27 原生 SwiftUI，最低系统版本 iOS 27.0。

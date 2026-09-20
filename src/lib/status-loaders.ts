@@ -11,6 +11,7 @@
  * - `timezone` 只有 home，没有端点。
  */
 
+import { getWorkoutsSnapshot } from "@/lib/workouts";
 import { getActivitySnapshot } from "@/lib/activity";
 import { getChargerSnapshot, sliceChargerHistory } from "@/lib/anker";
 import { getRecentlyPlayed } from "@/lib/apple-music-store";
@@ -73,6 +74,7 @@ function unparam<T>(load: () => Promise<T>): (params: StatusLoaderParams) => Pro
 export const statusLoaders = {
   desktop: { endpoint: unparam(getDesktopPayload) },
   timezone: { home: getTimezonePayload },
+  workouts: { endpoint: unparam(getWorkoutsSnapshot) },
   activity: { endpoint: unparam(getActivitySnapshot) },
   server: { endpoint: unparam(getServerSnapshot) },
   charger: {
