@@ -12,6 +12,7 @@ import { LiveMediaPair } from "@/components/live/media-pair";
 import { ServerCard } from "@/components/live/server-card";
 import { PlaystationBlock } from "@/components/live/playstation-block";
 import { PulseCard } from "@/components/live/pulse-card";
+import { TimelineCard } from "@/components/live/timeline-card";
 import { TimezoneCard } from "@/components/live/timezone-card";
 import { NowWatchingCard } from "@/components/live/now-watching-card";
 import { VibeCodingCard } from "@/components/live/vibecoding-card";
@@ -157,6 +158,18 @@ export default async function Home() {
                 <PulseCard
                   fallback={pulse}
                   className="defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_240px]"
+                />
+                <TimelineCard
+                  nowListeningFallback={nowListening}
+                  watchingFallback={watching}
+                  nowWatchingFallback={nowWatching}
+                  playingFallback={playing}
+                  playingNowFallback={playingNow}
+                  trophiesFallback={trophies}
+                  workoutsFallback={snapshot.workouts ?? { ok: false, error: "Awaiting workout report" }}
+                  vibeCodingFallback={vibeCoding}
+                  desktopFallback={desktop}
+                  className="defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_420px]"
                 />
               </div>
 
