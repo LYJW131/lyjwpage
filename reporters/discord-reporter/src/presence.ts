@@ -42,7 +42,16 @@ export type PlayingReport = {
   largeImageUrl: string | null;
 };
 
+export type PublicProfile = {
+  id: string;
+  username: string;
+  displayName: string;
+  avatarUrl: string | null;
+  connections?: { type: string; id: string; name: string }[];
+};
+
 export type PresenceReport = {
+  profile: PublicProfile | null;
   observedAt: number;
   discordStatus: string;
   playing: PlayingReport | null;
@@ -132,6 +141,7 @@ export function pickPlaying(presence: RawPresence | null | undefined): PlayingRe
 
 export function reportFrom(presence: RawPresence | null | undefined, now = Date.now()): PresenceReport {
   return {
+    profile: null,
     observedAt: now,
     discordStatus: asText(presence?.status) ?? "offline",
     playing: pickPlaying(presence),

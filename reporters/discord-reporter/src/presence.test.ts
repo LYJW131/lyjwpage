@@ -47,7 +47,7 @@ test("Quest 封面走 media proxy", () => {
 
 test("reportFrom 没 presence 就当 offline 没在玩", () => {
   const report = reportFrom(undefined, 10);
-  assert.deepEqual(report, { observedAt: 10, discordStatus: "offline", playing: null });
+  assert.deepEqual(report, { profile: null, observedAt: 10, discordStatus: "offline", playing: null });
 });
 
 test("忽略比 Quest 更新的 PlayStation 活动", () => {

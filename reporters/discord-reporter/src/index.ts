@@ -1,12 +1,14 @@
 import { Client, Events, GatewayIntentBits } from "discord.js";
 
 import { applicationCoverUrl } from "./application-cover.js";
+import { readConnections } from "./connections.js";
 import { config } from "./config.js";
 import { resolveGameApplicationId } from "./game-id.js";
 import { failure, info, recovered } from "./log.js";
 import {
   describeActivities,
   reportFrom,
+  type PublicProfile,
   type PresenceReport,
   type RawPresence,
 } from "./presence.js";
@@ -31,6 +33,33 @@ function userIdOf(presence: Record<string, unknown>): string | null {
   return typeof id === "string" ? id : null;
 }
 
+let profile: PublicProfile | null = null;
+let profileRefreshAt = 0;
+
+async function publicProfile(): Promise<PublicProfile | null> {
+  if (Date.now() < profileRefreshAt) return profile;
+  try {
+    const user = await client.users.fetch(config.discord.userId, { force: true });
+    profile = { id: user.id, username: user.username, displayName: user.globalName ?? user.username, avatarUrl: user.displayAvatarURL({ extension: "webp", size: 128 }) };
+    if (process.env.DISCORD_OAUTH_DIR) {
+      try {
+        profile.connections = await readConnections(process.env.DISCORD_OAUTH_DIR, config.discord.userId);
+        recovered("connections");
+      } catch (error) {
+        // Do not keep publishing a connection whose public visibility may have changed.
+        profile.connections = [];
+        failure("connections", error);
+      }
+    }
+    profileRefreshAt = Date.now() + 300_000;
+    recovered("profile");
+  } catch (error) {
+    profileRefreshAt = Date.now() + 60_000;
+    failure("profile", error);
+  }
+  return profile;
+}
+
 let lastPresence: RawPresence | undefined;
 let dumpedInitial = false;
 let pushedContent = "";
@@ -39,7 +68,7 @@ let pushing = false;
 let pending: { report: PresenceReport; reason: string } | null = null;
 
 function fingerprint(report: PresenceReport): string {
-  return JSON.stringify({ discordStatus: report.discordStatus, playing: report.playing });
+  return JSON.stringify({ profile: report.profile, discordStatus: report.discordStatus, playing: report.playing });
 }
 
 async function withGameProfile(report: PresenceReport): Promise<PresenceReport> {
@@ -72,7 +101,7 @@ async function deliver(report: PresenceReport, reason: string) {
       const next = pending;
       pending = null;
       try {
-        const decorated = await withGameProfile(next.report);
+        const decorated = await withGameProfile({ ...next.report, profile: await publicProfile() });
         // A newer Gateway event arrived while resolving the cover.
         if (pending) continue;
         const content = fingerprint(decorated);
@@ -123,7 +152,7 @@ client.on(Events.Raw, (packet: GatewayPacket) => {
 client.on(Events.ClientReady, (ready) => {
   recovered("gateway");
   info(`已登录 ${ready.user.tag}，盯 ${config.discord.userId}`);
-  if (lastPresence) void deliver(reportFrom(lastPresence), "ready");
+  void deliver(reportFrom(lastPresence), "ready");
 });
 
 client.on(Events.Error, (error) => failure("gateway", error));
@@ -131,10 +160,6 @@ client.on(Events.ShardDisconnect, () => failure("gateway", new Error("shard disc
 
 setInterval(() => {
   if (!client.isReady()) return;
-  if (!lastPresence) {
-    info("Gateway 已连接，尚未观察到目标用户的 presence");
-    return;
-  }
   void deliver(reportFrom(lastPresence), "heartbeat");
 }, config.heartbeatIntervalMs).unref();
 

@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useEffect, useState } from "react";
 
+import { DiscordConnectionIcon } from "@/components/live/discord-connection-icon";
 import { Card } from "@/components/ui/card";
 import { useLiveEvents } from "@/hooks/use-live-events";
 import { useMountedAt } from "@/hooks/use-mounted-at";
@@ -10,8 +11,9 @@ import { useStale } from "@/hooks/use-stale";
 import { useStatus } from "@/hooks/use-status";
 import { DISCORD_STALE_MS } from "@/lib/freshness";
 import { DISCORD_PATH } from "@/lib/paths";
+import { discordConnectionUrl, discordCreatedAt } from "@/lib/discord-profile";
 import { discordGameUrl } from "@/lib/discord-game";
-import type { DiscordNowPayload, DiscordPlaying, StatusResponse } from "@/lib/types";
+import type { DiscordNowPayload, DiscordPlaying, DiscordProfile, StatusResponse } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /** 推送驱动；一分钟兜底，和 watching/now 对齐。 */
@@ -62,9 +64,8 @@ export function QuestCard({ fallback, className }: { fallback: StatusResponse<Di
     <Card
       id="quest"
       className={className}
-      label="Quest 3"
-      tone={playing ? "live" : "off"}
-      action={playing ? "Now Playing · Discord" : "Discord"}
+      label="DISCORD"
+      action="META QUEST"
     >
       {playing ? (
         href ? (
@@ -81,6 +82,8 @@ export function QuestCard({ fallback, className }: { fallback: StatusResponse<Di
             <PlayingBody playing={playing} />
           </div>
         )
+      ) : status.data?.profile ? (
+        <ProfileBody profile={status.data.profile} unavailable={unavailable} />
       ) : (
         <div className="flex min-h-24 items-center px-3 text-sm text-muted-foreground">
           {!status.data ? "Waiting for Quest activity" : unavailable ? "Quest activity unavailable" : "Not playing"}
@@ -132,5 +135,45 @@ function PlayingBody({ playing }: { playing: DiscordPlaying }) {
         ) : null}
       </div>
     </>
+  );
+}
+
+function ProfileBody({ profile, unavailable }: { profile: DiscordProfile; unavailable: boolean }) {
+  const createdAt = discordCreatedAt(profile.id);
+  return (
+    <div className="flex items-center">
+    <a
+      href={`https://discord.com/users/${profile.id}`}
+      target="_blank"
+      rel="noreferrer noopener"
+      aria-label={`View ${profile.displayName} on Discord`}
+      className="flex min-h-24 min-w-0 flex-1 items-center gap-2 p-3 transition-colors hover:bg-surface-hover sm:gap-3"
+    >
+      {profile.avatarUrl ? (
+        <Image src={profile.avatarUrl} alt="" width={80} height={80} unoptimized className="h-10 w-10 shrink-0 rounded-full sm:h-20 sm:w-20 border border-line object-cover" />
+      ) : (
+        <div className="grid h-10 w-10 shrink-0 sm:h-20 sm:w-20 place-items-center rounded-full border border-line bg-muted text-xl">{profile.displayName.slice(0, 1)}</div>
+      )}
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-sm font-medium">{profile.displayName}</div>
+        <div className="mt-0.5 truncate text-xs text-muted-foreground">@{profile.username}</div>
+        {createdAt ? <div className="mt-1 text-xs text-muted-foreground">Member since {new Date(createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })}</div> : null}
+        <div className="mt-1 text-xs text-muted-foreground">{unavailable ? "Game activity unavailable" : "Not playing"}</div>
+      </div>
+      <span className="shrink-0 text-xs text-muted-foreground" aria-hidden="true">↗</span>
+    </a>
+    {profile.connections?.length ? (
+      <div className="flex w-[42%] shrink-0 flex-wrap justify-end gap-1.5 px-3 py-2">
+        {profile.connections.map((connection) => {
+          const href = discordConnectionUrl(connection);
+          const platform = ({ domain: "Website", github: "GitHub", playstation: "PlayStation", steam: "Steam", twitter: "X", youtube: "YouTube" } as Record<string, string>)[connection.type] ?? connection.type;
+          const label = `${platform} · ${connection.name}`;
+          const content = <><DiscordConnectionIcon type={connection.type} /><span className="truncate">{connection.name}</span></>;
+          const style = "inline-flex items-center gap-1.5 max-w-full rounded border border-line px-2 py-1 text-[11px] text-muted-foreground";
+          return href ? <a key={`${connection.type}:${connection.id}`} href={href} target="_blank" rel="noreferrer noopener" title={label} aria-label={label} className={`${style} transition-colors hover:bg-surface-hover hover:text-foreground`}>{content}<span aria-hidden="true">↗</span></a> : <span key={`${connection.type}:${connection.id}`} title={label} aria-label={label} className={style}>{content}</span>;
+        })}
+      </div>
+    ) : null}
+    </div>
   );
 }

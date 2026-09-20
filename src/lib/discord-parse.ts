@@ -1,4 +1,4 @@
-import type { DiscordPlaying, DiscordPresencePayload } from "@/lib/types";
+import type { DiscordPlaying, DiscordPresencePayload, DiscordProfile } from "@/lib/types";
 
 function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Expected an object");
@@ -18,6 +18,18 @@ function imageUrl(value: unknown): string | null {
     return url.protocol === "https:" && !url.username && !url.password &&
       ["cdn.discordapp.com", "media.discordapp.net"].includes(url.hostname) ? url.href : null;
   } catch { return null; }
+}
+function normalizeProfile(value: unknown): DiscordProfile | null {
+  if (value == null) return null;
+  const profile = record(value);
+  const id = text(profile.id);
+  const username = text(profile.username);
+  if (!id || !/^\d+$/.test(id) || !username) throw new Error("Invalid Discord profile");
+  return { id, username, displayName: text(profile.displayName) ?? username, avatarUrl: imageUrl(profile.avatarUrl), connections: Array.isArray(profile.connections) ? profile.connections.slice(0, 50).flatMap((item) => {
+    const connection = record(item);
+    const type = text(connection.type), id = text(connection.id), name = text(connection.name);
+    return type && id && name ? [{ type, id, name }] : [];
+  }) : [] };
 }
 export function normalizeDiscordReport(input: unknown): DiscordPresencePayload {
   const envelope = record(input);
@@ -39,5 +51,5 @@ export function normalizeDiscordReport(input: unknown): DiscordPresencePayload {
       largeImageUrl: imageUrl(game.largeImageUrl),
     };
   }
-  return { observedAt, discordStatus, playing: discordStatus === "offline" ? null : playing };
+  return { observedAt, discordStatus, profile: normalizeProfile(presence.profile), playing: discordStatus === "offline" ? null : playing };
 }

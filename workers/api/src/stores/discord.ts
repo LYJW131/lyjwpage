@@ -11,6 +11,7 @@ export async function recordDiscordReport(input: unknown) {
   if (previous && incoming.observedAt <= previous.observedAt) return { changed: false };
   const changed = !previous ||
     previous.discordStatus !== incoming.discordStatus ||
+    JSON.stringify(previous.profile) !== JSON.stringify(incoming.profile) ||
     JSON.stringify(previous.playing) !== JSON.stringify(incoming.playing) ||
     isStale({ now: incoming.observedAt, at: previous.observedAt, windowMs: DISCORD_STALE_MS });
   await fanout({

@@ -37,3 +37,13 @@ test("late polls and pushes cannot restore an older Quest game", () => {
   assert.equal(acceptPush(DISCORD_PATH, old), false);
   assert.deepEqual(guardPolled(DISCORD_PATH, old), fresh);
 });
+
+test("public profile allowlists fields and derives safe identity", () => {
+  const report = envelope(null);
+  const profile = { id: "1542551134319808633", username: "lyjw131", displayName: "LYJW", avatarUrl: "https://cdn.discordapp.com/avatars/1/hash.webp", email: "private@example.com", token: "private" };
+  const result = normalizeDiscordReport({ ...report, presence: { ...report.presence, profile } });
+  assert.deepEqual(result.profile, { id: profile.id, username: profile.username, displayName: profile.displayName, avatarUrl: profile.avatarUrl, connections: [] });
+  assert.equal(result.playing, null);
+  assert.throws(() => normalizeDiscordReport({ ...report, presence: { ...report.presence, profile: { ...profile, id: "../../bad" } } }), /Invalid Discord profile/);
+  assert.equal(normalizeDiscordReport({ ...report, presence: { ...report.presence, profile: { ...profile, avatarUrl: "https://untrusted.example/a.png" } } }).profile?.avatarUrl, null);
+});

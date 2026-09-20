@@ -1119,7 +1119,15 @@ export type DiscordPlaying = {
   applicationId: string | null;
   largeImageUrl: string | null;
 };
+export type DiscordProfile = {
+  id: string;
+  username: string;
+  displayName: string;
+  avatarUrl: string | null;
+  connections?: { type: string; id: string; name: string }[];
+};
 export type DiscordPresencePayload = {
+  profile: DiscordProfile | null;
   observedAt: number;
   discordStatus: string;
   playing: DiscordPlaying | null;

@@ -11,5 +11,11 @@
     "startedAt": "$now-900000",
     "applicationId": "451991967149195264",
     "largeImageUrl": "https://cdn.discordapp.com/app-icons/451991967149195264/f613799d8419f5e7b8a7fd14cba57876.webp?size=256"
+  },
+  "profile": {
+    "id": "1542551134319808633",
+    "username": "lyjw131",
+    "displayName": "LYJW",
+    "avatarUrl": "https://cdn.discordapp.com/avatars/1542551134319808633/9fc4f1d8a864226c0ca81d67b3278c3a.webp?size=128"
   }
 }

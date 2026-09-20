@@ -1,0 +1,13 @@
+{
+  "observedAt": "$now",
+  "discordStatus": "online",
+  "staleAfterMs": 86400000,
+  "staleAtSource": false,
+  "playing": null,
+  "profile": {
+    "id": "1542551134319808633",
+    "username": "lyjw131",
+    "displayName": "LYJW",
+    "avatarUrl": "https://cdn.discordapp.com/avatars/1542551134319808633/9fc4f1d8a864226c0ca81d67b3278c3a.webp?size=128"
+  }
+}
