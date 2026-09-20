@@ -18,7 +18,7 @@ function sample(t: number, level: PulseSample["level"], hint?: string): PulseSam
   return hint ? { t, level, hint } : { t, level };
 }
 
-test("planPulseSample：第一笔、乱序、翻面、hint 变化、5 分钟确认、空闲单点", () => {
+test("planPulseSample：第一笔、乱序、翻面、hint 变化、5 分钟确认、空闲心跳", () => {
   assert.deepEqual(planPulseSample(null, { t: 10, level: 0 }), sample(10, 0));
   assert.deepEqual(planPulseSample(null, { t: 10, level: 2, hint: "Cursor" }), sample(10, 2, "Cursor"));
 
@@ -39,8 +39,8 @@ test("planPulseSample：第一笔、乱序、翻面、hint 变化、5 分钟确�
     planPulseSample(sample(10, 2, "a"), { t: 10 + FIVE_MIN - 1, level: 2, hint: "a" }),
     null,
   );
-  assert.equal(planPulseSample(sample(10, 0), { t: 10 + FIVE_MIN, level: 0 }), null);
-  assert.equal(planPulseSample(sample(10, 0), { t: 10 + FIVE_MIN * 10, level: 0 }), null);
+  assert.deepEqual(planPulseSample(sample(10, 0), { t: 10 + FIVE_MIN, level: 0 }), sample(10 + FIVE_MIN, 0));
+  assert.deepEqual(planPulseSample(sample(10, 0), { t: 10 + FIVE_MIN * 10, level: 0 }), sample(10 + FIVE_MIN * 10, 0));
 
   assert.equal(planPulseSample(sample(10, 2, "a"), { t: 11, level: 2, hint: " a " }), null);
   assert.deepEqual(planPulseSample(null, { t: 1, level: 1, hint: "  " }), sample(1, 1));

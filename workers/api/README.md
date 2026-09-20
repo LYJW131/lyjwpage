@@ -74,27 +74,19 @@ Pulse 卡片用它。信封形状：
   "window": { "from": 1769913600000, "to": 1770000000000 },
   "domains": {
     "coding": {
-      // 窗口内的阶跃点，外加窗口左边界之前那一笔（t 压到 from），泳道才从头填满
-      "samples": [{ "t": 1769913600000, "level": 0 }, { "t": 1769920000000, "level": 3 }],
+      // 五分钟模型评估；尚未评分时为空数组
+      "assessments": [],
       // 还没打过分时为 null
       "score": { "value": 2.4, "confidence": 0.82, "trend": "rising", "scoredAt": 1769999700000 }
     }
-    // listening / watching / gaming / charging 同形；activity 的样本另带 until
+    // 其余五域同形
   }
 } }
 ```
 
-**`hint` 不出公网。** 曲名、应用名、游戏名只在 Worker 内部参与打分，公开端点只有
-`{ t, level, until? }`。`level` 是 0–3 的档位（确定性规则，见 `shared/pulse-levels.ts`），
-`value` 是 Jev 在四档标尺（idle / light / moderate / intense）上插值出来的位置，
-两者不是一回事。
-
-分由 TypeSafe AI 的 Jev 评估模型给出（直连官方 `POST /v1/systemone`，`src/pulse-score.ts`，裸 HTTP，
-不引 SDK）：cron 每分钟驱动一次，真正调用最多十分钟一次，而且要有比上一份分更新的
-样本才调（分放满一小时且窗口里还有样本时也重算一次，窗口在走）；单次 10 秒超时，失败只进 `[pulse-score]` 日志并留着上一份分。结果存在 StateHub 的
-`pulse:scores`，不设 TTL。没有 `TYPESAFE_API_KEY`、或本地配了 `DEV_OVERRIDES` /
-`UPSTREAM_API_URL` 时整个评分停用（和读模型、D1 归档同一套闸门），端点照常给泳道、分是 null。
-
+**原始 hint、应用/模型名称与 token 用量不出公网。** 原始状态只参与内部评分；
+公开端点返回五分钟评估和同源汇总，详细契约与调度见下方统一评分章节。
+没有 `TYPESAFE_API_KEY`、或本地配了 `DEV_OVERRIDES` / `UPSTREAM_API_URL` 时停用自动评分。
 
 `activity` 是 Apple Watch 身体活动，由 `/api/ingest/iphone` 的 `modules.activity`
 相邻累计快照计算，无须更新 iPhone 上报器。仅同一当地日期、同一时区且间隔 1 分钟至
@@ -107,9 +99,41 @@ Pulse 卡片用它。信封形状：
 首次发布此版本前执行 D1 迁移 `0002_pulse_activity_intervals.sql`
 （`pnpm --dir workers/api exec wrangler d1 migrations apply lyjwpage-history --remote`），
 归档将终点保存在 `until_at`；已有域不带此字段，值为 NULL。
-旧的五域评分会失效，下次评分生成六域记录；尚无样本时新行显示 `No data yet`。
+尚无分段评分时新行显示 `Awaiting scores`。
 
 本地预览用夹具：`pnpm dev:override /api/status/pulse pulse-busy-day.json`。
+
+### Pulse 统一五分钟评分
+
+六个领域共用 `PulseScorer`、`pulse:assessment-attempt` 和 `pulse:assessments`。
+旧的十分钟 24 小时模型总评已经删除；右侧摘要由最近 24 小时的同一批五分钟评分按
+实际覆盖时长加权，趋势比较最近三小时与此前三小时，没有两侧观测时为 `unknown`。
+曲线和摘要不再有两套评分来源。公开契约为 `domains[domain].assessments` 和 `score`，
+不再返回旧 `samples` 或根级 `codingAssessments`。
+
+每分钟 cron 检查，两轮尝试至少隔五分钟；窗口结束后留两分钟等待采集与上报。
+每个领域、每个窗口各一份官方 `jev-1.13.0` 请求，强度与连续性一起评估，Coding
+再判断模式。每轮最多 36 份请求，并发最多 3；优先新窗口，再补最近 24 小时。
+没有观测不调用；空闲观测可评分。原始状态档位作为观测事实参与输入，不直接绘图。
+相同输入哈希不重复调用；晚到 token 或活动报告改变窗口事实时只重评受影响窗口。
+失败保留旧成功记录，下一轮重试，存储读失败不会清空历史。
+
+MacTelemetryHub 的 `modules.vibeCodingNow.tokenUsage` 携带最近 24 小时的五分钟
+用量桶：`from/to/collectedAt`（epoch 毫秒）、`sources[{id,state}]`、
+`windows[{from,to,agents}]`。每行 agent 有 `id/model/inputTokens/outputTokens/
+cacheReadTokens/cacheCreationTokens/reasoningTokens/eventCount`；input 不含 cache read，
+reasoning 属于 output 子集，eventCount 是去重用量事件数，不宣称上游 HTTP 请求数。
+Codex 与 Claude 使用本地日志事件时间，sources 状态区分 ok、partial、unavailable；
+其他来源没有细粒度用量，不能由日总量拆分。该数据只入内部存储，不进入公开补丁。
+
+Coding 同时读取前台应用、Agent/模型、交集时长、切换次数、连续活动时长、观测覆盖。
+不上传提示词、回复正文、项目路径或 session ID。token 是工作活动的证据，不是生产力。
+同状态每分钟最多保存一次内部观测，变化立即记录；缺报三分钟后中断。
+其他领域的实时原始状态最长保持十分钟，activity 区间沿用明确的 until。
+
+评分和 Coding 观测在 StateHub 保留七天，新评分不写入旧 D1 原始状态归档。
+发布时先更新 Worker/前端契约，再安装新采集器；初次没有评分历史显示 Awaiting scores。
+预览：`pnpm dev:override /api/status/pulse pulse-busy-day.json`（明确标为模拟数据）。
 
 ## 最近在听
 

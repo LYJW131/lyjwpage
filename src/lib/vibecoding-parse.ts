@@ -1,3 +1,4 @@
+import { parseCodingTokenUsage, type CodingTokenUsage } from "@shared/coding-token-usage";
 /**
  * `vibeCodingUsage` / `vibeCodingNow`（Mac 信封）和 `/api/ingest/agents`
  * （容器上报器）三份报文的类型收敛。
@@ -58,6 +59,7 @@ export type ParsedAgentLimits = {
 };
 
 export type ParsedVibeCodingNow = {
+  tokenUsage?: CodingTokenUsage;
   agents: Array<{
     id: string;
     currentModel: string | null;
@@ -299,5 +301,7 @@ export function normalizeVibeCodingNow(input: unknown): ParsedVibeCodingNow | nu
       active: row.active === true,
     });
   }
-  return { agents: [...byId.values()] };
+  const tokenUsage = root.tokenUsage === undefined ? undefined : parseCodingTokenUsage(root.tokenUsage);
+  if (tokenUsage === null) return null;
+  return { agents: [...byId.values()], ...(tokenUsage ? { tokenUsage } : {}) };
 }

@@ -1,3 +1,5 @@
+import { codingTokenUsageKey } from "@/lib/coding-pulse";
+import { tellStorage } from "@/lib/storage";
 import { displayChanged } from "@shared/display-change";
 import { VIBECODING_TAG } from "@/lib/live-events";
 import type {
@@ -33,7 +35,14 @@ export function prepareVibeCodingNow(report: unknown, receivedAt = Date.now()) {
   return {
     /** 推给浏览器的此刻补丁。用量还没到过也推 —— 它不依赖那份 */
     now: { agents: payload.agents } satisfies VibeCodingNowPayload,
-    commit: () => nowMirror.put({ payload, pushedAt: receivedAt }),
+    commit: async () => {
+      if (payload.tokenUsage) await tellStorage(async (storage) => {
+        const previous = await storage.get(codingTokenUsageKey());
+        if (!previous || JSON.parse(previous).collectedAt <= payload.tokenUsage!.collectedAt)
+          await storage.set(codingTokenUsageKey(), JSON.stringify(payload.tokenUsage));
+      });
+      await nowMirror.put({ payload: { agents: payload.agents }, pushedAt: receivedAt });
+    },
   };
 }
 
