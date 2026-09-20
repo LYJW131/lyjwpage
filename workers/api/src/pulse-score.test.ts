@@ -1,256 +1,120 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-
-import { PULSE_SCORE_INTERVAL_MS, PULSE_SCORE_REFRESH_MS } from "@/lib/limits";
-import { parsePulseScoreRecord, pulseKey, pulseScoresKey } from "@/lib/pulse";
-import { compressPulseWindow, pulseWindowAt } from "@/lib/pulse-window";
-import { PULSE_DOMAINS, type PulseDomain, type PulseSample } from "@/lib/types";
-import { StorageClient } from "@shared/storage-client";
-import type { StorageCommand } from "@shared/storage-contract";
-import { PulseScorer, hasFreshSamples, parseJevScores } from "./pulse-score.ts";
-
-/**
- * 评分器守的是三条：十分钟一次、没有新样本不打、失败留着上一份分。
- * 网关用假 fetch 顶替，存储是一张内存表 —— 单测不碰网络，也不碰真 SQLite。
- */
-
-const NOW = 1_770_000_000_000;
-
-function answersFor(score: number, trend = "steady") {
-  return {
-    answers: Object.fromEntries(PULSE_DOMAINS.flatMap((domain) => [
-      [`${domain}Activity`, { type: "score", score, confidence: 0.77, probabilities: { "0": 0.1, "1": 0.9 } }],
-      [`${domain}Trend`, { type: "choice", choice: trend, confidence: 0.6, probabilities: { steady: 0.9 } }],
-    ])),
-    usage: { input_tokens: 425, output_tokens: 12 },
-  };
-}
-
-function setup(options: {
-  lists?: Partial<Record<PulseDomain, PulseSample[]>>;
-  stored?: string;
-  respond?: (call: number) => Response | Promise<Response>;
-} = {}) {
-  const entries = new Map<string, string>();
-  const lists = new Map<string, string[]>();
-  for (const [domain, samples] of Object.entries(options.lists ?? {})) {
-    lists.set(pulseKey(domain as PulseDomain), samples.map((sample) => JSON.stringify(sample)));
-  }
-  if (options.stored) entries.set(pulseScoresKey(), options.stored);
-
-  const storage = new StorageClient(async (commands: StorageCommand[]) => commands.map((command) => {
-    switch (command.op) {
-      case "get": return entries.get(command.key) ?? null;
-      case "set": entries.set(command.key, command.value); return true;
-      case "listRange": return lists.get(command.key) ?? [];
-      default: throw new Error(`没料到的命令 ${command.op}`);
-    }
-  }));
-
-  const requests: { body: unknown; headers: Record<string, string> }[] = [];
-  let calls = 0;
-  const fetchStub = (async (_url: string | URL | Request, init?: RequestInit) => {
-    calls += 1;
-    requests.push({
-      body: JSON.parse(String(init?.body)),
-      headers: init?.headers as Record<string, string>,
-    });
-    return options.respond
-      ? options.respond(calls)
-      : Response.json(answersFor(1.68));
-  }) as unknown as typeof fetch;
-
-  let now = NOW;
+import { FakeStorage } from "@/lib/testing/fake-storage";
+import { codingObservationsKey, codingTokenUsageKey } from "@/lib/coding-pulse";
+import { CODING_WINDOW_MS, parseCodingAssessment } from "@shared/pulse-coding";
+import { PulseScorer } from "./pulse-score.ts";
+import { pulseAssessmentsKey } from "@/lib/pulse-assessments";
+const T = 1_800_000_000_000;
+function setup() {
+  const storage = new FakeStorage();
+  let now = T + CODING_WINDOW_MS + 120_000;
+  const requests: Record<string, unknown>[] = [];
   const errors: unknown[] = [];
-  const make = () => new PulseScorer({
-    storage,
-    apiKey: "test-key",
-    fetch: fetchStub,
-    now: () => now,
-    log: (error) => errors.push(error),
-  });
-  const scorer = make();
-  return {
-    scorer,
-    /** 模拟 DO 被回收后重建：内存里的尝试时刻归零，存储还是同一份 */
-    restart: make,
-    requests,
-    errors,
-    stored: () => parsePulseScoreRecord(entries.get(pulseScoresKey()) ?? null),
-    /** 模拟上报器又写了一笔 */
-    push: (domain: PulseDomain, sample: PulseSample) => {
-      const key = pulseKey(domain);
-      lists.set(key, [...(lists.get(key) ?? []), JSON.stringify(sample)]);
-    },
-    advance: (ms: number) => { now += ms; },
-    calls: () => calls,
+  let fail = false;
+  const fetcher: typeof fetch = async (_input, init) => {
+    const body = JSON.parse(String(init?.body)); requests.push(body);
+    if (fail) return new Response(null, { status: 503 });
+    return Response.json({ model: "jev-1.13.0", answers: Object.fromEntries(Object.entries(body.questions).map(([id, question]) => {
+      const q = question as { type: string; criteria: string[] | Record<string, string> };
+      if (q.type === "choice") return [id, { type: "choice", choice: "mixed", confidence: 1,
+        probabilities: Object.fromEntries(Object.keys(q.criteria).map((k) => [k, k === "mixed" ? 1 : 0])) }];
+      const levels = q.criteria as string[];
+      return [id, { type: "score", score: levels.length - 1, confidence: 1,
+        probabilities: Object.fromEntries(levels.map((_, i) => [String(i), i === levels.length - 1 ? 1 : 0])) }];
+    })) });
   };
+  const make = () => new PulseScorer({ storage, apiKey: "test", now: () => now, fetch: fetcher, log: (e) => errors.push(e) });
+  const push = (at: number, available = true) => storage.append(codingObservationsKey(), JSON.stringify({ t: at, available,
+    desktop: { application: "Zed", coding: true }, agents: [{ id: "codex", model: "model", active: true }] }));
+  return { storage, make, push, requests, errors, advance: (ms: number) => { now += ms; }, fail: (value: boolean) => { fail = value; } };
 }
-
-/** 刚刚上报过的一笔：非空闲要在静默上限内，否则窗口里什么都没有 */
-function fresh(level: 0 | 1 | 2 | 3 = 3, at = NOW - 60_000): PulseSample[] {
-  return [{ t: at, level, hint: "Zed" }];
-}
-
-test("有新样本时打一次分，结果按域存下来", async () => {
-  const bench = setup({ lists: { coding: fresh(), listening: fresh(2) } });
-  await bench.scorer.run();
-
-  assert.equal(bench.calls(), 1);
-  const record = bench.stored();
-  assert.equal(record?.scoredAt, NOW);
-  assert.equal(record?.domains.coding.score, 1.68);
-  assert.equal(record?.domains.coding.confidence, 0.77);
-  assert.equal(record?.domains.coding.trend, "steady");
-  assert.equal(record?.domains.coding.latestSampleAt, NOW - 60_000);
-  assert.equal(record?.domains.gaming.latestSampleAt, null);
+test("coding scorer batches dimensions, freezes successful windows, skips unknown time", async () => {
+  const b = setup(); const scorer = b.make();
+  await scorer.run(); assert.equal(b.requests.length, 0);
+  await b.push(T); await b.push(T + 120_000); await b.push(T + 240_000);
+  await scorer.run();
+  assert.equal(b.requests.length, 1);
+  assert.equal(Object.keys(b.requests[0].questions as object).length, 3);
+  const first = await b.storage.listRange(pulseAssessmentsKey(), 0, -1);
+  assert.equal(first.length, 1);
+  assert.equal(parseCodingAssessment(first[0])?.intensity.value, 4);
+  await b.make().run(); assert.equal(b.requests.length, 1, "restart keeps throttle");
+  await b.push(T + CODING_WINDOW_MS, false);
+  b.advance(CODING_WINDOW_MS); await scorer.run();
+  assert.equal(b.requests.length, 1, "offline interval produces no call");
+  assert.deepEqual(await b.storage.listRange(pulseAssessmentsKey(), 0, -1), first);
+});
+test("coding failures retry after five minutes and never turn failed reads into empty history", async () => {
+  const b = setup(); await b.push(T);
+  b.fail(true); await b.make().run();
+  assert.equal(b.errors.length, 1);
+  assert.deepEqual(await b.storage.listRange(pulseAssessmentsKey(), 0, -1), []);
+  b.fail(false); await b.make().run(); assert.equal(b.requests.length, 1);
+  b.advance(CODING_WINDOW_MS); await b.make().run();
+  assert.equal(b.requests.length, 2);
+  const before = await b.storage.listRange(pulseAssessmentsKey(), 0, -1);
+  b.storage.setUnreachable(); b.advance(CODING_WINDOW_MS); await b.make().run();
+  assert.equal(b.requests.length, 2);
+  b.storage.setUnreachable(false);
+  assert.deepEqual(await b.storage.listRange(pulseAssessmentsKey(), 0, -1), before);
+});
+test("coding catches up bounded batches and excludes the unfinished window", async () => {
+  const b = setup();
+  for (let i = 0; i < 90; i++) await b.push(T - 60 * 60_000 + i * 60_000);
+  await b.make().run();
+  const rows = (await b.storage.listRange(pulseAssessmentsKey(), 0, -1)).map(parseCodingAssessment);
+  assert.equal(rows.length, 13);
+  assert.equal(b.requests.length, 13);
+  assert.ok(b.requests.every((request) => (request.state as { windows: unknown[] }).windows.length === 1));
+  assert.ok(rows.every((row) => row!.to <= T + CODING_WINDOW_MS));
 });
 
-test("请求按 Jev 契约发出：头、十二道题、带 hint 的段", async () => {
-  const bench = setup({ lists: { coding: fresh() } });
-  await bench.scorer.run();
-
-  const [request] = bench.requests;
-  assert.equal(request.headers.Authorization, "Bearer test-key");
-  assert.equal(request.headers["Content-Type"], "application/json");
-  const body = request.body as { model: string; questions: Record<string, unknown>; state: Record<string, unknown> };
-  assert.equal(body.model, "jev-latest");
-  assert.equal(Object.keys(body.questions).length, 12);
-  // hint 只在这条私下的路径上出现，公开端点那侧另有断言
-  assert.equal(JSON.stringify(body.state).includes("Zed"), true);
+test("coding isolates windows, bounds concurrency and saves successes when another window fails", async () => {
+  const storage = new FakeStorage();
+  for (let i = 0; i < 20; i++) await storage.append(codingObservationsKey(), JSON.stringify({
+    t: T + i * 60_000, available: true, desktop: { application: "Zed", coding: true }, agents: [],
+  }));
+  let active = 0, peak = 0, calls = 0;
+  const errors: unknown[] = [];
+  const scorer = new PulseScorer({ storage, apiKey: "test", now: () => T + 4 * CODING_WINDOW_MS + 120_000,
+    log: (error) => errors.push(error), fetch: async (_url, init) => {
+      const request = JSON.parse(String(init?.body));
+      assert.equal(request.state.windows.length, 1);
+      assert.equal(Object.keys(request.questions).length, 3);
+      active++; peak = Math.max(peak, active); calls++;
+      await new Promise((resolve) => setTimeout(resolve, 1)); active--;
+      if (request.state.windows[0].from === T) return new Response(null, { status: 503 });
+      return Response.json({ model: "jev-1.13.0", answers: {
+        w0Intensity: { type: "score", score: 3, confidence: 1, probabilities: { 0: 0, 1: 0, 2: 0, 3: 1, 4: 0 } },
+        w0Continuity: { type: "score", score: 3, confidence: 1, probabilities: { 0: 0, 1: 0, 2: 0, 3: 1 } },
+        w0Mode: { type: "choice", choice: "interactive", confidence: 1, probabilities: { idle: 0, brief: 0, interactive: 1, agent: 0, mixed: 0 } },
+      } });
+    } });
+  await scorer.run();
+  assert.equal(calls, 4); assert.equal(peak, 3); assert.equal(errors.length, 1);
+  const rows = (await storage.listRange(pulseAssessmentsKey(), 0, -1)).map(parseCodingAssessment);
+  assert.equal(rows.length, 3); assert.ok(rows.every((row) => row!.from > T));
 });
 
-test("十分钟内不再打第二次，哪怕又来了新样本", async () => {
-  const bench = setup({ lists: { coding: fresh() } });
-  await bench.scorer.run();
-  bench.advance(PULSE_SCORE_INTERVAL_MS - 1000);
-  bench.push("coding", { t: NOW + 60_000, level: 2 });
-  await bench.scorer.run();
-  assert.equal(bench.calls(), 1);
-
-  bench.advance(2000);
-  await bench.scorer.run();
-  assert.equal(bench.calls(), 2);
+test('late token evidence re-scores only changed windows; identical evidence stays frozen', async () => {
+  const b=setup(); await b.push(T); await b.make().run();
+  const report={from:T-300000,to:T+300000,collectedAt:T+420000,sources:[{id:'codex',state:'ok'},{id:'claude',state:'unavailable'}],windows:[{from:T,to:T+300000,agents:[{id:'codex',model:'test',inputTokens:100,outputTokens:50,cacheReadTokens:20,cacheCreationTokens:0,reasoningTokens:10,eventCount:1}]}]};
+  await b.storage.set(codingTokenUsageKey(),JSON.stringify(report));b.advance(CODING_WINDOW_MS);await b.make().run();
+  assert.equal(b.requests.length,2);
+  const state=b.requests[1].state as {windows:{tokenUsage:typeof report}[]};
+  assert.ok(JSON.stringify(state).includes('outputTokens'));
+  b.advance(CODING_WINDOW_MS);await b.make().run();assert.equal(b.requests.length,2);
+  const rows=await b.storage.listRange(pulseAssessmentsKey(),0,-1);assert.equal(rows.length,1);
 });
 
-test("没有比上一份分更新的样本就不调用（一小时内；满一小时的重算见下面那条）", async () => {
-  const bench = setup({ lists: { coding: fresh() } });
-  await bench.scorer.run();
-  assert.equal(bench.calls(), 1);
-
-  bench.advance(PULSE_SCORE_REFRESH_MS - 60_000);
-  await bench.scorer.run();
-  assert.equal(bench.calls(), 1);
-  assert.equal(bench.stored()?.scoredAt, NOW);
-});
-
-test("一份样本都没有时不调用", async () => {
-  const bench = setup();
-  await bench.scorer.run();
-  assert.equal(bench.calls(), 0);
-  assert.equal(bench.stored(), null);
-});
-
-test("网关失败留着上一份分，而且下一分钟不重试", async () => {
-  const bench = setup({
-    lists: { coding: fresh() },
-    respond: (call) => call === 1
-      ? Response.json(answersFor(2.4))
-      : new Response("upstream is down", { status: 503 }),
-  });
-  await bench.scorer.run();
-  const first = bench.stored();
-  assert.equal(first?.domains.coding.score, 2.4);
-
-  bench.advance(PULSE_SCORE_INTERVAL_MS + 1000);
-  // 这一轮有更新的样本（窗口跟着时间走），但网关 503
-  bench.advance(0);
-  await bench.scorer.run();
-  assert.equal(bench.calls(), 1, "没有新样本时本来就不该再调");
-
-  const busy = setup({
-    lists: { coding: fresh(3, NOW - 60_000) },
-    respond: () => new Response("upstream is down", { status: 503 }),
-  });
-  await busy.scorer.run();
-  assert.equal(busy.calls(), 1);
-  assert.equal(busy.stored(), null);
-  assert.equal(busy.errors.length, 1);
-  // 失败也记上尝试时刻：cron 下一分钟再来时不该又打一次
-  busy.advance(60_000);
-  await busy.scorer.run();
-  assert.equal(busy.calls(), 1);
-});
-
-test("回答缺题或类型不对时整份丢掉", () => {
-  const window = pulseWindowAt(NOW);
-  const windows = Object.fromEntries(PULSE_DOMAINS.map((domain) => [
-    domain,
-    compressPulseWindow([], window),
-  ])) as Record<PulseDomain, ReturnType<typeof compressPulseWindow>>;
-
-  assert.throws(() => parseJevScores({ answers: {} }, windows, NOW, window), /codingActivity/);
-  const missingTrend = answersFor(1.2);
-  delete (missingTrend.answers as Record<string, unknown>).gamingTrend;
-  assert.throws(() => parseJevScores(missingTrend, windows, NOW, window), /gamingTrend/);
-  const badTrend = answersFor(1.2, "sideways");
-  assert.throws(() => parseJevScores(badTrend, windows, NOW, window), /Trend/);
-
-  // 没有把握度时按 null 存，不拿一个假的数字充数
-  const noConfidence = answersFor(1.2) as { answers: Record<string, { confidence?: unknown }> };
-  delete noConfidence.answers.codingActivity.confidence;
-  const record = parseJevScores(noConfidence, windows, NOW, window);
-  assert.equal(record.domains.coding.confidence, null);
-});
-
-test("新样本的判定按域，任意一域更新就够", () => {
-  const window = pulseWindowAt(NOW);
-  const windows = Object.fromEntries(PULSE_DOMAINS.map((domain) => [
-    domain,
-    compressPulseWindow(domain === "gaming" ? [{ t: NOW - 60_000, level: 3 }] : [], window),
-  ])) as Record<PulseDomain, ReturnType<typeof compressPulseWindow>>;
-
-  assert.equal(hasFreshSamples(windows, null), true);
-  const stored = parseJevScores(answersFor(1), windows, NOW, window);
-  assert.equal(hasFreshSamples(windows, stored), false);
-});
-
-test("没有新样本也每小时重算一次：窗口在走，昨天的活动会滑出去", async () => {
-  const bench = setup({ lists: { coding: fresh() } });
-  await bench.scorer.run();
-  assert.equal(bench.calls(), 1);
-
-  // 半小时后没新样本：不调
-  bench.advance(PULSE_SCORE_REFRESH_MS / 2);
-  await bench.scorer.run();
-  assert.equal(bench.calls(), 1);
-
-  // 满一小时：同一份样本也重算，scoredAt 往前走
-  bench.advance(PULSE_SCORE_REFRESH_MS / 2);
-  await bench.scorer.run();
-  assert.equal(bench.calls(), 2);
-  assert.equal(bench.stored()?.scoredAt, NOW + PULSE_SCORE_REFRESH_MS);
-
-  // 一笔样本都没有的窗口就算分再老也不重算
-  const empty = setup({ stored: JSON.stringify(bench.stored()) });
-  empty.advance(PULSE_SCORE_REFRESH_MS * 3);
-  await empty.scorer.run();
-  assert.equal(empty.calls(), 0);
-});
-
-test("失败的尝试时刻落盘：DO 重建后仍不会每分钟重试", async () => {
-  const bench = setup({
-    lists: { coding: fresh() },
-    respond: () => new Response("upstream is down", { status: 503 }),
-  });
-  await bench.scorer.run();
-  assert.equal(bench.calls(), 1);
-
-  bench.advance(60_000);
-  await bench.restart().run();
-  assert.equal(bench.calls(), 1, "新实例读到存储里的尝试时刻，不重试");
-
-  bench.advance(PULSE_SCORE_INTERVAL_MS);
-  await bench.restart().run();
-  assert.equal(bench.calls(), 2, "过了间隔才再试");
+test('all domains share one scheduler and a single assessment store',async()=>{
+ const b=setup();await b.push(T);
+ const {pulseKey}=await import('@/lib/pulse');
+ for(const domain of ['listening','watching','gaming','charging','activity'] as const)
+   await b.storage.append(pulseKey(domain),JSON.stringify({t:T,until:T+CODING_WINDOW_MS,level:3}));
+ await b.make().run();assert.equal(b.requests.length,6);
+ const rows=await b.storage.listRange(pulseAssessmentsKey(),0,-1);
+ assert.equal(new Set(rows.map((r)=>JSON.parse(r).domain)).size,6);
+ b.advance(CODING_WINDOW_MS);await b.make().run();assert.equal(b.requests.length,6);
 });

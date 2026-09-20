@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { activityPulseSample } from "@shared/pulse-activity";
 import type { StoredActivity } from "@shared/activity";
-import { clipPulseSamples, compressPulseWindow } from "@/lib/pulse-window";
+import { compressPulseWindow } from "@/lib/pulse-window";
 import { pulseLaneRuns } from "@/lib/pulse-lane";
 import { parsePulseSample, planPulseSample } from "@/lib/pulse";
 
@@ -48,12 +48,12 @@ test("bounded intervals survive storage and end identically in the graph and sco
     assert.deepEqual(parsePulseSample(JSON.stringify(sample)), sample);
     assert.deepEqual(planPulseSample({ t: T - HOUR, until: T, level }, sample), sample);
     const window = { from: T + 30 * 60_000, to: T + 2 * HOUR };
-    const clipped = clipPulseSamples([sample], window);
+    const clipped = compressPulseWindow([sample], window).segments.map((part) => ({ t: part.from, until: part.to, level: part.level }));
     assert.deepEqual(clipped, [{ ...sample, t: window.from }]);
     const expected = [{ from: window.from, to: sample.until, level }];
     assert.deepEqual(compressPulseWindow([sample], window).segments, expected);
     assert.deepEqual(pulseLaneRuns(clipped, window, 600_000), expected);
-    assert.deepEqual(clipPulseSamples([sample], { from: sample.until, to: sample.until + HOUR }), []);
+    assert.deepEqual(compressPulseWindow([sample], { from: sample.until, to: sample.until + HOUR }).segments, []);
   }
   assert.equal(parsePulseSample(JSON.stringify({ t: T, until: T, level: 1 })), null);
 });

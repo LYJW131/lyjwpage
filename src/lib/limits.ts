@@ -68,21 +68,3 @@ export const PULSE_WINDOW_MS = 24 * 60 * 60 * 1000;
  * 空闲本来就只留一个点，撑到下一次翻面才是它的语义。
  */
 export const PULSE_SILENT_AFTER_MS = 2 * PULSE_REPEAT_AFTER_MS;
-
-/**
- * 两次 Jev 评分之间至少隔这么久。cron 每分钟来一趟，真正调用最多十分钟一次，
- * 而且还要有比上次更新的样本才调。
- */
-export const PULSE_SCORE_INTERVAL_MS = 10 * 60 * 1000;
-
-/**
- * 没有新样本也要隔这么久重算一次：窗口跟着时间走，昨天的活动会从 24 小时里滑出去，
- * 分不跟着走的话，泳道已经空了、分还停在「Moderate」。一小时一趟，闲着时也就一天 24 次。
- */
-export const PULSE_SCORE_REFRESH_MS = 60 * 60 * 1000;
-
-/**
- * 分比这更老就不给公开端点：网关连挂这么久，与其挂着一份早已不代表当前窗口的判断，
- * 不如让卡片显示 "No scores yet"。是重算间隔的六倍，正常情况下永远碰不到。
- */
-export const PULSE_SCORE_MAX_AGE_MS = 6 * PULSE_SCORE_REFRESH_MS;

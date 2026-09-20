@@ -323,9 +323,11 @@ type Extra = { label: string; value: ReactNode | null };
 
 export function ActivityCard({
   fallback,
+  children,
   className,
 }: {
   fallback: StatusResponse<ActivityPayload>;
+  children?: ReactNode;
   className?: string;
 }) {
   const { data } = useStatus<ActivityPayload>(ACTIVITY_PATH, REFRESH_MS, {
@@ -380,6 +382,7 @@ export function ActivityCard({
       卡上，不挤进内容区 —— 两张并排时卡头对卡头、内容对内容。
     */
     <Card label="Activity" action="Apple Watch" className={cn("h-full", className)}>
+      <div className="grid min-w-0 md:grid-cols-2">
       {/*
         环靠左、读数靠右，两边各留一个 padding —— 所以「环的左边到左沿」和「读数的
         右边到右沿」相等，而且都只有 padding 那么宽。整组居中也能让两侧相等，但那样
@@ -393,7 +396,7 @@ export function ActivityCard({
         （md 断点上 144px），而三分之一在那个断点只有 110px，等分会把环挤扁。
         两列数据各占一半、各自居中，行数也对齐（见下面 extras 的注释）。
       */}
-      <div className="grid h-full min-h-44 grid-cols-[auto_1fr] items-center justify-items-center gap-3 p-4 md:grid-cols-[auto_1fr_1fr] lg:gap-4 lg:p-5">
+      <div className="grid min-h-44 md:h-[207px] lg:h-[215px] grid-cols-[auto_1fr] items-center justify-items-center gap-3 p-4 md:grid-cols-[auto_1fr_1fr] lg:gap-4 lg:p-5">
         {/* 尺寸类和时间卡那个钟逐字相同 —— 换个断点两边一起变，不会只有一边跟着走 */}
         <Rings rings={rings} className="size-32 shrink-0 md:size-36 lg:size-40" />
 
@@ -439,6 +442,8 @@ export function ActivityCard({
             </div>
           ))}
         </div>
+      </div>
+      {children}
       </div>
     </Card>
   );

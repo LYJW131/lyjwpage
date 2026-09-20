@@ -183,3 +183,7 @@ Mac 端采集器 [MacTelemetryHub](https://github.com/LYJW131/MacTelemetryHub) �
 开关控制注入；上报器部署与站点部署独立。
 
 服务器上报器的 Compose 布局、示例配置与迁机恢复见 [reporters/README.md](reporters/README.md)。
+
+### 最近训练卡片
+
+首页的 Recent Workouts 展示 iPhone HealthKit 最近 10 次已完成训练；协议和部署顺序见 [iPhone Telemetry Hub](reporters/iphone-telemetry-hub/README.md) 与 [API Worker](workers/api/README.md#最近训练)。上报器 2.0.2 使用 iOS 27 原生 SwiftUI，最低系统版本 iOS 27.0。

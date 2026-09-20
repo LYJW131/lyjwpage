@@ -6,6 +6,7 @@ import { AppVersionCard } from "@/components/app-version-card";
 import { ContactCard } from "@/components/contact-card";
 import { DevFakeDataToggle } from "@/components/dev-fake-data-toggle";
 import { DevToggleDock } from "@/components/dev-toggles";
+import { WorkoutsStrip } from "@/components/live/workouts-strip";
 import { ActivityCard } from "@/components/live/activity-card";
 import { SiteStatusCard } from "@/components/live/site-status-card";
 import { LiveMediaPair } from "@/components/live/media-pair";
@@ -135,11 +136,13 @@ export default async function Home() {
                 */}
                 <ActivityCard
                   fallback={activity}
-                  className="defer-offscreen [contain-intrinsic-size:auto_214px]"
-                />
+                  className="defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_350px] md:[contain-intrinsic-size:auto_253px]"
+                >
+                  <WorkoutsStrip fallback={snapshot.workouts ?? { ok: false, error: "Awaiting workout report" }} />
+                </ActivityCard>
                 <ServerCard
                   fallback={server}
-                  className="defer-offscreen [contain-intrinsic-size:auto_245px]"
+                  className="defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_245px]"
                 />
                 <VibeCodingCard
                   fallback={vibeCoding}
