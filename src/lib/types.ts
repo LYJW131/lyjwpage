@@ -1129,7 +1129,7 @@ export type WorkoutsPayload = {
 
 export type PulseMeasuredSegment = { from: number; to: number; value: number; title?: string };
 export type PulseChartView =
-  | { kind: "score"; assessments: import("../../shared/pulse-assessment").PulseAssessment[] }
+  | { kind: "score"; assessments: (import("../../shared/pulse-assessment").PulseAssessment & { title?: string })[] }
   | { kind: "binary"; segments: PulseMeasuredSegment[]; activeSeconds: number }
   | { kind: "power"; segments: PulseMeasuredSegment[]; currentPowerW: number | null };
 

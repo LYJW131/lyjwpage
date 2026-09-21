@@ -291,8 +291,10 @@ Coding 另外保留前台应用与 Agent 的细粒度观测，并接入 MacTelem
 `vibeCodingNow.tokenUsage`。用量按本地日志事件时间入桶，不由日汇总差分。
 Listening 另外把「最近在听」列表的变动作为播放证据（`pulse:listening-plays`）：
 Mac 睡着、HomePod 没动时，iPhone 等设备只在这份列表上留痕迹。它没有时刻，
-只知道播放落在两次刷新之间，所以不画进曲线，只和实测段一起进入评分输入，
-且一条最多认领一个评分窗口那么长的已观测时间，其余不确定性由置信度承担。
+只知道播放落在两次刷新之间，所以一条最多认领一个评分窗口那么长的已观测时间，
+其余不确定性由置信度承担。也因为实测只看得见 Mac 和 HomePod，Listening 这条线
+画的是 Jev 评分（`kind:"score"`）而不是实测阶跃，两路证据才都在图上；
+Watching / Gaming / Charging 没有这个盲区，仍画实测。
 身体活动沿用 iPhone 累计快照生成的有界区间，跨日、长间隔和回退不填补。
 
 `PulseScorer` 每五分钟最多运行一轮，每个领域和时间窗口独立请求官方 Jev，

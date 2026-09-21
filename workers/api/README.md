@@ -338,12 +338,13 @@ Worker 侧 storage 写失败是冒泡的，先写 `:history` 再清 `:pending` �
 
 ### Pulse 实测域
 
-Listening / Watching / Gaming 返回 `{kind:"binary",segments:[{from,to,value}],activeSeconds}`，
+Watching / Gaming 返回 `{kind:"binary",segments:[{from,to,value}],activeSeconds}`，
 上述两种实测形状均额外包含 `score`，与 Coding / Activity 的右侧摘要同形。
 `value` 仅为 0 或 1：只有播放或游戏中为 1，暂停、停止和仅主机在线为 0。
 Charging 返回 `{kind:"power",segments:[{from,to,value}],currentPowerW}`，value 单位为 W。
-Listening / Watching / Gaming 的 segments 可带当时的 `title`，来自历史记录；切歌／切换影片或游戏时不合并段，停止时不沿用旧标题。
-四域的曲线独立于 Jev，仍返回 score（评分、趋势、置信度）；前端每分钟刷新。
+Watching / Gaming 的 segments 可带当时的 `title`，来自历史记录；切换影片或游戏时不合并段，停止时不沿用旧标题。
+Listening 不在此列：它返回 `{kind:"score",assessments}`，与 Coding / Activity 同形。实测只看得见 Mac 和 HomePod，在别的设备上放一整天那条线也是平的，而那些设备唯一的痕迹（「最近在听」列表变动）只有评分那一侧收得到。每份 assessment 可带 `title`，取该窗口内占时最长且 level ≥ 2 的曲名，与实测段同一份 hint、同一个公开口径。
+实测三域的曲线独立于 Jev，仍返回 score（评分、趋势、置信度）；前端每分钟刷新。
 段来自实际观测：通常超过 10 分钟未确认留空，含零值；Gaming 按 30 分钟空闲轮询设置 35 分钟有效期。Watching 的明确停止（level 0）持续至下次播放事件，暂停／播放仍按 10 分钟失效。曲线与 Jev 输入共用这些有效期；当前功率过期为 null。
 充电使用已有 Mac `totalPower`，未连接记录 0 W；功率变化最多每 30 秒取一点，
 零／非零切换立即记录，保留 6000 点。旧档位记录缺少 powerW 时留空，不推算瓦数。

@@ -91,7 +91,7 @@ const MODE_LABELS = { idle: "Idle", brief: "Brief bursts", interactive: "Coding 
 
 function AssessmentLane({ view, range, label }: { view: PulseDomainView; label: string; range: { from: number; to: number } }) {
   const maximum = view.kind === "power" ? Math.max(1, ...view.segments.map((part) => part.value)) : 1;
-  const assessments = view.kind === "score" ? view.assessments.map((row) => ({ ...row, title: undefined as string | undefined, assessment: row, value: row.intensity.value / 4 })) : view.segments.map((part) => ({ ...part, coverage: [{ from: part.from, to: part.to }], assessment: null as PulseAssessment | null, value: part.value / maximum }));
+  const assessments = view.kind === "score" ? view.assessments.map((row) => ({ ...row, title: row.title as string | undefined, assessment: row, value: row.intensity.value / 4 })) : view.segments.map((part) => ({ ...part, coverage: [{ from: part.from, to: part.to }], assessment: null as PulseAssessment | null, value: part.value / maximum }));
   const [selected, setSelected] = useState<number | null>(null);
   const [bounds, setBounds] = useState<CellAnchor | null>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
