@@ -1,6 +1,6 @@
 # API Worker 的 DO 执行边界审计
 
-状态：本次边界调整已完成并通过本地隔离验证。实现以 `52bd3cb` 为审计基线；没有读取生产日志或进行性能压测，因此本文不承诺性能提升。
+状态：本次边界调整已完成并通过本地隔离验证。实现以 `52bd3cb` 为审计基线；本文记录执行边界。后续的生产指标核验、本地 SQL 优化及性能基准见 [DO 性能审计](./do-performance-audit.md)。
 
 ## 判断标准
 
@@ -21,8 +21,8 @@ HTTP 参数处理、输入归一化、展示计算、第三方请求和结果解
 | 入口 | DO 内保留 | 普通 Worker 执行 |
 | --- | --- | --- |
 | 公开 HTTP | `publicBarrier()` 等待已经进入 StateHub `commitIngest()` 队列的提交，`publicRead()` 同步执行有界只读批次 | 已知路由、CORS、`publicResponse()`、首页聚合、展示计算、第三方请求、歌词和动态封面；未知路径直接 404 |
-| 上报 | `commitIngest()` 串行完成依赖最新状态的合并、差分、去重和持久化，并收集可序列化 effects | 鉴权、请求体读取、输入归一化、Emby R2 HEAD；提交后补充 Apple 目录、广播和缓存通知 |
-| 通用存储 | 同一命令 batch 的 SQLite 事务；写入仍唤起 Alarm | 请求内相邻只读 batch 按 128 条协议上限合并，写 batch 保持调用顺序和原事务边界 |
+| 上报 | `commitIngest()` 同时检查初始化状态，并串行完成依赖最新状态的合并、差分、去重和持久化，再收集可序列化 effects | 鉴权、请求体读取、输入归一化、Emby R2 HEAD；只有输入准备失败时才补查初始化状态以保留 503 优先级；提交后补充 Apple 目录、广播和缓存通知 |
+| 通用存储 | 同一命令 batch 的 SQLite 事务；首尾列表查询直接按索引读范围，尾部裁剪按实际 seq 边界删除；写入仍唤起 Alarm | 请求内相邻只读 batch 按 128 条协议上限合并，写 batch 保持调用顺序和原事务边界 |
 | Pulse 评分 | claim / generation / 180 秒 lease、固定输入快照、提交资格和按窗口合并 | 特征与哈希、Jev 请求和结果解析；由 cron `await`，不挂 HTTP 后台窗口 |
 | Pulse 归档 | 六域有界读取、每域水位、成功确认按 max 单调推进 | D1 `INSERT OR IGNORE` 分批写入和逐域失败处理 |
 | KV 发布 | 持久队列、revision、重试 Alarm、TTL 清理和最终 KV 单写者 | 同部署 `ReadModelRenderer` 生成公开 JSON；显式 Service Binding，不经公网 |
@@ -60,7 +60,7 @@ Worker 负责 HTTP 路由和响应；`executePublicRequest()` 先过 StateHub �
 
 ### 上报提交与通知
 
-流程为：Worker 准备输入及完成外部检查 → DO 按最新状态提交变更 → Worker 执行通知。
+流程为：Worker 准备输入及完成外部检查 → DO 按最新状态提交变更并返回初始化状态 → Worker 执行通知。合法上报不单独调用 `ready()`，热路径只有一次 StateHub RPC；输入准备失败时才补查 `ready()`，因此未初始化环境仍优先返回 503，已初始化环境仍返回 400。
 
 DO 返回提交结果和必要的事件输入。需要 Apple 目录补充的在听事件应携带本次提交对应的播放输入，避免后台再读“当前状态”时串入下一次上报的曲目。Vercel 标签失效和向 LivePushRoom 发起广播在 Worker 执行；实际 WebSocket 广播保留在 LivePushRoom。
 

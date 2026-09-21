@@ -89,11 +89,45 @@ export class SqliteStore {
       }
       case "listRange": {
         if (!this.requireKind(key, "list")) return [];
+        if (command.start >= 0 && command.stop >= -1) {
+          const limit = command.stop === -1 ? -1 : Math.max(0, command.stop - command.start + 1);
+          return this.sql.exec(
+            "SELECT value FROM samples WHERE key = ? ORDER BY seq LIMIT ? OFFSET ?",
+            key,
+            limit,
+            command.start,
+          ).toArray().map((row) => String(row.value));
+        }
+        if (command.start < 0 && command.stop < 0) {
+          const limit = Math.max(0, command.stop - command.start + 1);
+          const offset = -command.stop - 1;
+          return this.sql.exec(
+            "SELECT value FROM samples WHERE key = ? ORDER BY seq DESC LIMIT ? OFFSET ?",
+            key,
+            limit,
+            offset,
+          ).toArray().map((row) => String(row.value)).reverse();
+        }
         const [offset, limit] = this.range(this.count(key), command.start, command.stop);
         return this.sql.exec("SELECT value FROM samples WHERE key = ? ORDER BY seq LIMIT ? OFFSET ?", key, limit, offset).toArray().map((row) => String(row.value));
       }
       case "trim": {
         if (!this.requireKind(key, "list")) return true;
+        if (command.start < 0 && command.stop === -1) {
+          const keep = -command.start;
+          const boundary = this.sql.exec(
+            "SELECT seq FROM samples WHERE key = ? ORDER BY seq DESC LIMIT 1 OFFSET ?",
+            key,
+            keep - 1,
+          ).toArray()[0];
+          if (boundary) {
+            this.sql.exec("DELETE FROM samples WHERE key = ? AND seq < ?", key, Number(boundary.seq));
+            return true;
+          }
+          const first = this.sql.exec("SELECT seq FROM samples WHERE key = ? LIMIT 1", key).toArray()[0];
+          if (!first) this.remove(key);
+          return true;
+        }
         const [offset, limit] = this.range(this.count(key), command.start, command.stop);
         if (!limit) { this.remove(key); return true; }
         this.sql.exec("DELETE FROM samples WHERE key = ? AND seq NOT IN (SELECT seq FROM samples WHERE key = ? ORDER BY seq LIMIT ? OFFSET ?)", key, key, limit, offset);

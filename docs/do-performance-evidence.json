@@ -1,0 +1,1666 @@
+{
+  "capturedAt": "2026-09-21T22:40:30Z",
+  "localFollowup": {
+    "model": "gpt-5.6-sol",
+    "status": "uncommitted_not_deployed",
+    "ingest": {
+      "successfulPathStateHubRpcBefore": 2,
+      "successfulPathStateHubRpcAfter": 1,
+      "readinessErrorPriorityPreserved": true
+    },
+    "sqliteProbe": {
+      "runtime": "Miniflare / Wrangler SQLite Durable Object",
+      "rowCount": 6000,
+      "start": 0,
+      "stop": 599,
+      "equivalentResults": true,
+      "before": {
+        "countRowsRead": 6000,
+        "rangeRowsRead": 600,
+        "total": 6600
+      },
+      "after": {
+        "rangeRowsRead": 600,
+        "total": 600
+      },
+      "scope": "SQL count and range statements only; excludes metadata lookup and other operations",
+      "temporaryProbeRemoved": true
+    },
+    "validation": {
+      "workerTypecheck": "passed",
+      "workerTests": {
+        "pass": 84,
+        "fail": 0
+      },
+      "rootTests": {
+        "pass": 313,
+        "fail": 0
+      },
+      "isolatedWorkerScript": "passed",
+      "changedFileEslint": "passed",
+      "diffCheck": "passed"
+    }
+  },
+  "accountId": "209f2c881b1c494fec50851c067b3266",
+  "worker": "api",
+  "namespaceId": "08a6c22e048d4a9b915ba869ad40ffee",
+  "commit": "04edf6087dc9fb7b93d58109d9070882fcb7f5ef",
+  "deployment": {
+    "createdOn": "2026-09-21T22:17:44.401477Z",
+    "version": "fc59fa87-ed5a-4982-acd8-b50e24567dd3",
+    "previousVersion": "b0ddad1e-8b61-4f75-87c7-195c8f3ad318",
+    "buildId": "31dfef59-f33f-492b-a60a-a9a8894fc992"
+  },
+  "windows": [
+    [
+      "before",
+      "2026-09-21T22:05:00Z",
+      "2026-09-21T22:15:00Z"
+    ],
+    [
+      "after",
+      "2026-09-21T22:20:00Z",
+      "2026-09-21T22:30:00Z"
+    ]
+  ],
+  "graphql": {
+    "query": "{viewer{accounts(filter:{accountTag:\"209f2c881b1c494fec50851c067b3266\"}){beforePeriodic:durableObjectsPeriodicGroups(limit:10,filter:{datetime_geq:\"2026-09-21T22:05:00Z\",datetime_lt:\"2026-09-21T22:15:00Z\",namespaceId:\"08a6c22e048d4a9b915ba869ad40ffee\"}){sum{cpuTime activeTime duration rowsRead rowsWritten subrequests exceededCpuErrors exceededMemoryErrors fatalInternalErrors} quantiles{memoryUsageBytesP50 memoryUsageBytesP99}}\n beforeInvocations:durableObjectsInvocationsAdaptiveGroups(limit:10,filter:{datetime_geq:\"2026-09-21T22:05:00Z\",datetime_lt:\"2026-09-21T22:15:00Z\",namespaceId:\"08a6c22e048d4a9b915ba869ad40ffee\"}){avg{sampleInterval} sum{requests errors wallTime} quantiles{cpuTimeP50 cpuTimeP95 cpuTimeP99 wallTimeP50 wallTimeP95 wallTimeP99}}\n beforeWorker:workersInvocationsAdaptive(limit:10,filter:{datetime_geq:\"2026-09-21T22:05:00Z\",datetime_lt:\"2026-09-21T22:15:00Z\",scriptName:\"api\"}){avg{sampleInterval} sum{requests errors cpuTimeUs wallTime requestDuration subrequests} quantiles{requestDurationP50 requestDurationP95 requestDurationP99}}\nafterPeriodic:durableObjectsPeriodicGroups(limit:10,filter:{datetime_geq:\"2026-09-21T22:20:00Z\",datetime_lt:\"2026-09-21T22:30:00Z\",namespaceId:\"08a6c22e048d4a9b915ba869ad40ffee\"}){sum{cpuTime activeTime duration rowsRead rowsWritten subrequests exceededCpuErrors exceededMemoryErrors fatalInternalErrors} quantiles{memoryUsageBytesP50 memoryUsageBytesP99}}\n afterInvocations:durableObjectsInvocationsAdaptiveGroups(limit:10,filter:{datetime_geq:\"2026-09-21T22:20:00Z\",datetime_lt:\"2026-09-21T22:30:00Z\",namespaceId:\"08a6c22e048d4a9b915ba869ad40ffee\"}){avg{sampleInterval} sum{requests errors wallTime} quantiles{cpuTimeP50 cpuTimeP95 cpuTimeP99 wallTimeP50 wallTimeP95 wallTimeP99}}\n afterWorker:workersInvocationsAdaptive(limit:10,filter:{datetime_geq:\"2026-09-21T22:20:00Z\",datetime_lt:\"2026-09-21T22:30:00Z\",scriptName:\"api\"}){avg{sampleInterval} sum{requests errors cpuTimeUs wallTime requestDuration subrequests} quantiles{requestDurationP50 requestDurationP95 requestDurationP99}}}}}",
+    "data": {
+      "afterInvocations": [
+        {
+          "avg": {
+            "sampleInterval": 1.2765957446808511
+          },
+          "quantiles": {
+            "cpuTimeP50": 302,
+            "cpuTimeP95": 8045,
+            "cpuTimeP99": 17125,
+            "wallTimeP50": 23273,
+            "wallTimeP95": 640759,
+            "wallTimeP99": 1942855
+          },
+          "sum": {
+            "errors": 0,
+            "requests": 360,
+            "wallTime": 66382389
+          }
+        }
+      ],
+      "afterPeriodic": [
+        {
+          "quantiles": {
+            "memoryUsageBytesP50": 4454412,
+            "memoryUsageBytesP99": 18627804
+          },
+          "sum": {
+            "activeTime": 34428246,
+            "cpuTime": 572235,
+            "duration": 4.406815488,
+            "exceededCpuErrors": 0,
+            "exceededMemoryErrors": 0,
+            "fatalInternalErrors": 0,
+            "rowsRead": 902998,
+            "rowsWritten": 15367,
+            "subrequests": 0
+          }
+        }
+      ],
+      "afterWorker": [
+        {
+          "avg": {
+            "sampleInterval": 1.2521739130434784
+          },
+          "quantiles": {
+            "requestDurationP50": 38533,
+            "requestDurationP95": 481177,
+            "requestDurationP99": 496158
+          },
+          "sum": {
+            "cpuTimeUs": 1011132,
+            "errors": 0,
+            "requestDuration": 13906917,
+            "requests": 144,
+            "subrequests": 451,
+            "wallTime": 92899518
+          }
+        }
+      ],
+      "beforeInvocations": [
+        {
+          "avg": {
+            "sampleInterval": 1.0310077519379846
+          },
+          "quantiles": {
+            "cpuTimeP50": 782,
+            "cpuTimeP95": 37084,
+            "cpuTimeP99": 167220,
+            "wallTimeP50": 175396,
+            "wallTimeP95": 5267973,
+            "wallTimeP99": 6796608
+          },
+          "sum": {
+            "errors": 0,
+            "requests": 133,
+            "wallTime": 186989441
+          }
+        }
+      ],
+      "beforePeriodic": [
+        {
+          "quantiles": {
+            "memoryUsageBytesP50": 6039564,
+            "memoryUsageBytesP99": 33335308
+          },
+          "sum": {
+            "activeTime": 150701492,
+            "cpuTime": 982967,
+            "duration": 19.289790976000003,
+            "exceededCpuErrors": 0,
+            "exceededMemoryErrors": 0,
+            "fatalInternalErrors": 0,
+            "rowsRead": 670253,
+            "rowsWritten": 15069,
+            "subrequests": 78
+          }
+        }
+      ],
+      "beforeWorker": [
+        {
+          "avg": {
+            "sampleInterval": 1.2278481012658229
+          },
+          "quantiles": {
+            "requestDurationP50": 35043,
+            "requestDurationP95": 273951,
+            "requestDurationP99": 1641232
+          },
+          "sum": {
+            "cpuTimeUs": 96701,
+            "errors": 0,
+            "requestDuration": 12779164,
+            "requests": 97,
+            "subrequests": 161,
+            "wallTime": 453757367
+          }
+        }
+      ]
+    }
+  },
+  "invocationLogs": [
+    {
+      "label": "before",
+      "success": true,
+      "errors": [],
+      "events": 264,
+      "reportedCount": 264,
+      "limit": 2000,
+      "groups": {
+        "default / fetch": {
+          "n": 78,
+          "cpuN": 78,
+          "cpuMs": 23,
+          "wallMs": 13591,
+          "avgMs": 174,
+          "p50Ms": 63,
+          "p95Ms": 322,
+          "maxMs": 1641,
+          "outcomes": [
+            "ok",
+            "responseStreamDisconnected"
+          ]
+        },
+        "StateHub / fetch": {
+          "n": 18,
+          "cpuN": 18,
+          "cpuMs": 226,
+          "wallMs": 11257,
+          "avgMs": 625,
+          "p50Ms": 144,
+          "p95Ms": 1525,
+          "maxMs": 6796,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "StateHub / jsrpc": {
+          "n": 107,
+          "cpuN": 107,
+          "cpuMs": 680,
+          "wallMs": 129032,
+          "avgMs": 1206,
+          "p50Ms": 173,
+          "p95Ms": 5245,
+          "maxMs": 6678,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "LivePushRoom / jsrpc": {
+          "n": 41,
+          "cpuN": 41,
+          "cpuMs": 0,
+          "wallMs": 12674,
+          "avgMs": 309,
+          "p50Ms": 236,
+          "p95Ms": 459,
+          "maxMs": 1606,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "default / scheduled": {
+          "n": 10,
+          "cpuN": 10,
+          "cpuMs": 12,
+          "wallMs": 11460,
+          "avgMs": 1146,
+          "p50Ms": 813,
+          "p95Ms": 1947,
+          "maxMs": 2141,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "StateHub / alarm": {
+          "n": 8,
+          "cpuN": 8,
+          "cpuMs": 13,
+          "wallMs": 18131,
+          "avgMs": 2266,
+          "p50Ms": 1264,
+          "p95Ms": 2140,
+          "maxMs": 9933,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "LivePushRoom / fetch": {
+          "n": 1,
+          "cpuN": 1,
+          "cpuMs": 0,
+          "wallMs": 0,
+          "avgMs": 0,
+          "p50Ms": 0,
+          "p95Ms": 0,
+          "maxMs": 0,
+          "outcomes": [
+            "responseStreamDisconnected"
+          ]
+        },
+        "LivePushRoom / hibernatableWebSocket": {
+          "n": 1,
+          "cpuN": 1,
+          "cpuMs": 0,
+          "wallMs": 1,
+          "avgMs": 1,
+          "p50Ms": 1,
+          "p95Ms": 1,
+          "maxMs": 1,
+          "outcomes": [
+            "ok"
+          ]
+        }
+      },
+      "paths": {
+        "/api/status/pulse": {
+          "n": 2,
+          "cpuN": 2,
+          "cpuMs": 1,
+          "wallMs": 123,
+          "avgMs": 62,
+          "p50Ms": 60,
+          "p95Ms": 60,
+          "maxMs": 63,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "/api/ingest/mac": {
+          "n": 27,
+          "cpuN": 27,
+          "cpuMs": 16,
+          "wallMs": 825,
+          "avgMs": 31,
+          "p50Ms": 30,
+          "p95Ms": 35,
+          "maxMs": 39,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "/count": {
+          "n": 23,
+          "cpuN": 23,
+          "cpuMs": 1,
+          "wallMs": 7465,
+          "avgMs": 325,
+          "p50Ms": 260,
+          "p95Ms": 322,
+          "maxMs": 1641,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "/api/ingest/server": {
+          "n": 5,
+          "cpuN": 5,
+          "cpuMs": 1,
+          "wallMs": 119,
+          "avgMs": 24,
+          "p50Ms": 24,
+          "p95Ms": 24,
+          "maxMs": 25,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "/api/home": {
+          "n": 3,
+          "cpuN": 3,
+          "cpuMs": 0,
+          "wallMs": 2686,
+          "avgMs": 895,
+          "p50Ms": 1299,
+          "p95Ms": 1299,
+          "maxMs": 1315,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "/api/status/playing/now": {
+          "n": 10,
+          "cpuN": 10,
+          "cpuMs": 0,
+          "wallMs": 1576,
+          "avgMs": 158,
+          "p50Ms": 156,
+          "p95Ms": 162,
+          "maxMs": 169,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "/api/status/vibecoding/year": {
+          "n": 1,
+          "cpuN": 1,
+          "cpuMs": 0,
+          "wallMs": 249,
+          "avgMs": 249,
+          "p50Ms": 249,
+          "p95Ms": 249,
+          "maxMs": 249,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "/api/status/server": {
+          "n": 1,
+          "cpuN": 1,
+          "cpuMs": 0,
+          "wallMs": 44,
+          "avgMs": 44,
+          "p50Ms": 44,
+          "p95Ms": 44,
+          "maxMs": 44,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "/api/status/listening/now": {
+          "n": 1,
+          "cpuN": 1,
+          "cpuMs": 0,
+          "wallMs": 48,
+          "avgMs": 48,
+          "p50Ms": 48,
+          "p95Ms": 48,
+          "maxMs": 48,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "/api/status/activity": {
+          "n": 1,
+          "cpuN": 1,
+          "cpuMs": 0,
+          "wallMs": 15,
+          "avgMs": 15,
+          "p50Ms": 15,
+          "p95Ms": 15,
+          "maxMs": 15,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "/api/ingest/emby": {
+          "n": 1,
+          "cpuN": 1,
+          "cpuMs": 2,
+          "wallMs": 138,
+          "avgMs": 138,
+          "p50Ms": 138,
+          "p95Ms": 138,
+          "maxMs": 138,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "/ws": {
+          "n": 1,
+          "cpuN": 1,
+          "cpuMs": 1,
+          "wallMs": 255,
+          "avgMs": 255,
+          "p50Ms": 255,
+          "p95Ms": 255,
+          "maxMs": 255,
+          "outcomes": [
+            "responseStreamDisconnected"
+          ]
+        },
+        "/api/ingest/iphone": {
+          "n": 1,
+          "cpuN": 1,
+          "cpuMs": 1,
+          "wallMs": 26,
+          "avgMs": 26,
+          "p50Ms": 26,
+          "p95Ms": 26,
+          "maxMs": 26,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "/api/ingest/agents": {
+          "n": 1,
+          "cpuN": 1,
+          "cpuMs": 0,
+          "wallMs": 22,
+          "avgMs": 22,
+          "p50Ms": 22,
+          "p95Ms": 22,
+          "maxMs": 22,
+          "outcomes": [
+            "ok"
+          ]
+        }
+      },
+      "methods": {
+        "ingest,broadcast": {
+          "n": 17,
+          "cpuN": 17,
+          "cpuMs": 106,
+          "wallMs": 64251,
+          "avgMs": 3779,
+          "p50Ms": 5237,
+          "p95Ms": 5275,
+          "maxMs": 5710,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "ingest": {
+          "n": 18,
+          "cpuN": 18,
+          "cpuMs": 72,
+          "wallMs": 37637,
+          "avgMs": 2091,
+          "p50Ms": 286,
+          "p95Ms": 5000,
+          "maxMs": 6678,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "scorePulse": {
+          "n": 10,
+          "cpuN": 10,
+          "cpuMs": 361,
+          "wallMs": 8706,
+          "avgMs": 871,
+          "p50Ms": 155,
+          "p95Ms": 3117,
+          "maxMs": 3233,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "archivePulse": {
+          "n": 10,
+          "cpuN": 10,
+          "cpuMs": 103,
+          "wallMs": 2121,
+          "avgMs": 212,
+          "p50Ms": 201,
+          "p95Ms": 237,
+          "maxMs": 253,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "queueReadModels": {
+          "n": 10,
+          "cpuN": 10,
+          "cpuMs": 0,
+          "wallMs": 2085,
+          "avgMs": 209,
+          "p50Ms": 175,
+          "p95Ms": 305,
+          "maxMs": 312,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "execute": {
+          "n": 40,
+          "cpuN": 40,
+          "cpuMs": 38,
+          "wallMs": 13766,
+          "avgMs": 344,
+          "p50Ms": 154,
+          "p95Ms": 322,
+          "maxMs": 4709,
+          "outcomes": [
+            "ok"
+          ]
+        }
+      }
+    },
+    {
+      "label": "after",
+      "success": true,
+      "errors": [],
+      "events": 545,
+      "reportedCount": 545,
+      "limit": 2000,
+      "groups": {
+        "default / fetch": {
+          "n": 121,
+          "cpuN": 121,
+          "cpuMs": 570,
+          "wallMs": 34042,
+          "avgMs": 281,
+          "p50Ms": 231,
+          "p95Ms": 683,
+          "maxMs": 5109,
+          "outcomes": [
+            "ok",
+            "canceled"
+          ]
+        },
+        "LivePushRoom / jsrpc": {
+          "n": 54,
+          "cpuN": 54,
+          "cpuMs": 0,
+          "wallMs": 18731,
+          "avgMs": 347,
+          "p50Ms": 230,
+          "p95Ms": 543,
+          "maxMs": 4980,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "StateHub / jsrpc": {
+          "n": 339,
+          "cpuN": 339,
+          "cpuMs": 541,
+          "wallMs": 48002,
+          "avgMs": 142,
+          "p50Ms": 23,
+          "p95Ms": 579,
+          "maxMs": 1569,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "default / scheduled": {
+          "n": 10,
+          "cpuN": 10,
+          "cpuMs": 447,
+          "wallMs": 25992,
+          "avgMs": 2599,
+          "p50Ms": 2235,
+          "p95Ms": 4538,
+          "maxMs": 4860,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "StateHub / alarm": {
+          "n": 7,
+          "cpuN": 7,
+          "cpuMs": 0,
+          "wallMs": 10657,
+          "avgMs": 1522,
+          "p50Ms": 1212,
+          "p95Ms": 1942,
+          "maxMs": 3665,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "ReadModelRenderer / jsrpc": {
+          "n": 8,
+          "cpuN": 8,
+          "cpuMs": 17,
+          "wallMs": 5346,
+          "avgMs": 668,
+          "p50Ms": 15,
+          "p95Ms": 1304,
+          "maxMs": 2132,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "LivePushRoom / hibernatableWebSocket": {
+          "n": 4,
+          "cpuN": 4,
+          "cpuMs": 0,
+          "wallMs": 422,
+          "avgMs": 106,
+          "p50Ms": 8,
+          "p95Ms": 187,
+          "maxMs": 227,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "LivePushRoom / fetch": {
+          "n": 2,
+          "cpuN": 2,
+          "cpuMs": 0,
+          "wallMs": 1,
+          "avgMs": 1,
+          "p50Ms": 0,
+          "p95Ms": 0,
+          "maxMs": 1,
+          "outcomes": [
+            "ok",
+            "canceled"
+          ]
+        }
+      },
+      "paths": {
+        "/api/ingest/mac": {
+          "n": 37,
+          "cpuN": 37,
+          "cpuMs": 95,
+          "wallMs": 18879,
+          "avgMs": 510,
+          "p50Ms": 318,
+          "p95Ms": 1659,
+          "maxMs": 5109,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "/count": {
+          "n": 22,
+          "cpuN": 22,
+          "cpuMs": 2,
+          "wallMs": 3642,
+          "avgMs": 166,
+          "p50Ms": 230,
+          "p95Ms": 250,
+          "maxMs": 260,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "/api/status/playing/now": {
+          "n": 12,
+          "cpuN": 12,
+          "cpuMs": 12,
+          "wallMs": 5107,
+          "avgMs": 426,
+          "p50Ms": 482,
+          "p95Ms": 496,
+          "maxMs": 687,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "/api/home": {
+          "n": 4,
+          "cpuN": 4,
+          "cpuMs": 240,
+          "wallMs": 808,
+          "avgMs": 202,
+          "p50Ms": 178,
+          "p95Ms": 222,
+          "maxMs": 242,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "/api/ingest/server": {
+          "n": 5,
+          "cpuN": 5,
+          "cpuMs": 13,
+          "wallMs": 667,
+          "avgMs": 133,
+          "p50Ms": 100,
+          "p95Ms": 176,
+          "maxMs": 225,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "/api/ingest/agents": {
+          "n": 1,
+          "cpuN": 1,
+          "cpuMs": 2,
+          "wallMs": 78,
+          "avgMs": 78,
+          "p50Ms": 78,
+          "p95Ms": 78,
+          "maxMs": 78,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "/api/status/cloudflare-workers": {
+          "n": 2,
+          "cpuN": 2,
+          "cpuMs": 8,
+          "wallMs": 1197,
+          "avgMs": 599,
+          "p50Ms": 52,
+          "p95Ms": 52,
+          "maxMs": 1145,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "/api/status/vibecoding/year": {
+          "n": 1,
+          "cpuN": 1,
+          "cpuMs": 0,
+          "wallMs": 235,
+          "avgMs": 235,
+          "p50Ms": 235,
+          "p95Ms": 235,
+          "maxMs": 235,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "/api/status/vercel-deployments": {
+          "n": 3,
+          "cpuN": 3,
+          "cpuMs": 1,
+          "wallMs": 507,
+          "avgMs": 169,
+          "p50Ms": 243,
+          "p95Ms": 243,
+          "maxMs": 259,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "/api/status/pulse": {
+          "n": 5,
+          "cpuN": 5,
+          "cpuMs": 171,
+          "wallMs": 763,
+          "avgMs": 153,
+          "p50Ms": 120,
+          "p95Ms": 134,
+          "maxMs": 313,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "/api/status/charger": {
+          "n": 2,
+          "cpuN": 2,
+          "cpuMs": 3,
+          "wallMs": 105,
+          "avgMs": 53,
+          "p50Ms": 46,
+          "p95Ms": 46,
+          "maxMs": 59,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "/api/status/powerbank": {
+          "n": 2,
+          "cpuN": 2,
+          "cpuMs": 2,
+          "wallMs": 68,
+          "avgMs": 34,
+          "p50Ms": 32,
+          "p95Ms": 32,
+          "maxMs": 36,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "/api/status/github-chart": {
+          "n": 1,
+          "cpuN": 1,
+          "cpuMs": 1,
+          "wallMs": 28,
+          "avgMs": 28,
+          "p50Ms": 28,
+          "p95Ms": 28,
+          "maxMs": 28,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "/api/status/desktop": {
+          "n": 2,
+          "cpuN": 2,
+          "cpuMs": 0,
+          "wallMs": 60,
+          "avgMs": 30,
+          "p50Ms": 22,
+          "p95Ms": 22,
+          "maxMs": 38,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "/api/status/watching/now": {
+          "n": 2,
+          "cpuN": 2,
+          "cpuMs": 0,
+          "wallMs": 44,
+          "avgMs": 22,
+          "p50Ms": 21,
+          "p95Ms": 21,
+          "maxMs": 23,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "/api/status/listening": {
+          "n": 2,
+          "cpuN": 2,
+          "cpuMs": 0,
+          "wallMs": 44,
+          "avgMs": 22,
+          "p50Ms": 22,
+          "p95Ms": 22,
+          "maxMs": 22,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "/api/status/watching": {
+          "n": 2,
+          "cpuN": 2,
+          "cpuMs": 2,
+          "wallMs": 108,
+          "avgMs": 54,
+          "p50Ms": 46,
+          "p95Ms": 46,
+          "maxMs": 62,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "/api/status/playing": {
+          "n": 2,
+          "cpuN": 2,
+          "cpuMs": 0,
+          "wallMs": 71,
+          "avgMs": 36,
+          "p50Ms": 33,
+          "p95Ms": 33,
+          "maxMs": 38,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "/api/status/vibecoding": {
+          "n": 2,
+          "cpuN": 2,
+          "cpuMs": 2,
+          "wallMs": 44,
+          "avgMs": 22,
+          "p50Ms": 21,
+          "p95Ms": 21,
+          "maxMs": 23,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "/api/status/listening/now": {
+          "n": 2,
+          "cpuN": 2,
+          "cpuMs": 2,
+          "wallMs": 68,
+          "avgMs": 34,
+          "p50Ms": 34,
+          "p95Ms": 34,
+          "maxMs": 34,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "/api/status/workouts": {
+          "n": 2,
+          "cpuN": 2,
+          "cpuMs": 1,
+          "wallMs": 56,
+          "avgMs": 28,
+          "p50Ms": 25,
+          "p95Ms": 25,
+          "maxMs": 31,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "/api/status/activity": {
+          "n": 2,
+          "cpuN": 2,
+          "cpuMs": 0,
+          "wallMs": 44,
+          "avgMs": 22,
+          "p50Ms": 21,
+          "p95Ms": 21,
+          "maxMs": 23,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "/api/status/server": {
+          "n": 2,
+          "cpuN": 2,
+          "cpuMs": 0,
+          "wallMs": 45,
+          "avgMs": 23,
+          "p50Ms": 22,
+          "p95Ms": 22,
+          "maxMs": 23,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "/api/ingest/emby": {
+          "n": 1,
+          "cpuN": 1,
+          "cpuMs": 4,
+          "wallMs": 359,
+          "avgMs": 359,
+          "p50Ms": 359,
+          "p95Ms": 359,
+          "maxMs": 359,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "/ws": {
+          "n": 2,
+          "cpuN": 2,
+          "cpuMs": 9,
+          "wallMs": 992,
+          "avgMs": 496,
+          "p50Ms": 277,
+          "p95Ms": 277,
+          "maxMs": 715,
+          "outcomes": [
+            "canceled"
+          ]
+        },
+        "/api/motion-artwork": {
+          "n": 1,
+          "cpuN": 1,
+          "cpuMs": 0,
+          "wallMs": 23,
+          "avgMs": 23,
+          "p50Ms": 23,
+          "p95Ms": 23,
+          "maxMs": 23,
+          "outcomes": [
+            "ok"
+          ]
+        }
+      },
+      "methods": {
+        "commitIngest": {
+          "n": 44,
+          "cpuN": 44,
+          "cpuMs": 195,
+          "wallMs": 1289,
+          "avgMs": 29,
+          "p50Ms": 23,
+          "p95Ms": 36,
+          "maxMs": 177,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "ready": {
+          "n": 44,
+          "cpuN": 44,
+          "cpuMs": 2,
+          "wallMs": 649,
+          "avgMs": 15,
+          "p50Ms": 10,
+          "p95Ms": 13,
+          "maxMs": 221,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "claimPulseScore": {
+          "n": 10,
+          "cpuN": 10,
+          "cpuMs": 36,
+          "wallMs": 4760,
+          "avgMs": 476,
+          "p50Ms": 238,
+          "p95Ms": 1398,
+          "maxMs": 1474,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "confirmPulseArchive": {
+          "n": 12,
+          "cpuN": 12,
+          "cpuMs": 0,
+          "wallMs": 2962,
+          "avgMs": 247,
+          "p50Ms": 247,
+          "p95Ms": 253,
+          "maxMs": 257,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "readPulseArchive": {
+          "n": 10,
+          "cpuN": 10,
+          "cpuMs": 69,
+          "wallMs": 5302,
+          "avgMs": 530,
+          "p50Ms": 576,
+          "p95Ms": 615,
+          "maxMs": 828,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "publicRead": {
+          "n": 78,
+          "cpuN": 78,
+          "cpuMs": 111,
+          "wallMs": 11824,
+          "avgMs": 152,
+          "p50Ms": 19,
+          "p95Ms": 638,
+          "maxMs": 1569,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "queueReadModels": {
+          "n": 10,
+          "cpuN": 10,
+          "cpuMs": 0,
+          "wallMs": 2915,
+          "avgMs": 292,
+          "p50Ms": 247,
+          "p95Ms": 458,
+          "maxMs": 486,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "publicBarrier": {
+          "n": 55,
+          "cpuN": 55,
+          "cpuMs": 1,
+          "wallMs": 2967,
+          "avgMs": 54,
+          "p50Ms": 9,
+          "p95Ms": 241,
+          "maxMs": 453,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "execute": {
+          "n": 70,
+          "cpuN": 70,
+          "cpuMs": 2,
+          "wallMs": 14092,
+          "avgMs": 201,
+          "p50Ms": 230,
+          "p95Ms": 475,
+          "maxMs": 906,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "finishPulseScore": {
+          "n": 2,
+          "cpuN": 2,
+          "cpuMs": 125,
+          "wallMs": 700,
+          "avgMs": 350,
+          "p50Ms": 341,
+          "p95Ms": 341,
+          "maxMs": 359,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "activatePulseScore": {
+          "n": 2,
+          "cpuN": 2,
+          "cpuMs": 0,
+          "wallMs": 500,
+          "avgMs": 250,
+          "p50Ms": 246,
+          "p95Ms": 246,
+          "maxMs": 254,
+          "outcomes": [
+            "ok"
+          ]
+        },
+        "publicRead,publicBarrier": {
+          "n": 1,
+          "cpuN": 1,
+          "cpuMs": 0,
+          "wallMs": 22,
+          "avgMs": 22,
+          "p50Ms": 22,
+          "p95Ms": 22,
+          "maxMs": 22,
+          "outcomes": [
+            "ok"
+          ]
+        }
+      }
+    }
+  ],
+  "runtimeSettings": {
+    "success": true,
+    "observability": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+      "redact_query_string": false,
+      "logs": {
+        "enabled": true,
+        "head_sampling_rate": 1,
+        "persist": true,
+        "invocation_logs": true
+      },
+      "traces": {
+        "enabled": false,
+        "persist": true,
+        "head_sampling_rate": 1
+      }
+    },
+    "bindings": [
+      {
+        "type": "d1",
+        "name": "HISTORY"
+      },
+      {
+        "type": "durable_object_namespace",
+        "name": "LIVE_PUSH",
+        "class_name": "LivePushRoom",
+        "namespace_id": "7d366bc728244a71b06ce6cbd8267539"
+      },
+      {
+        "type": "kv_namespace",
+        "name": "READ_MODEL",
+        "namespace_id": "6d4a26ae1068417d8f9f7c200381826b"
+      },
+      {
+        "type": "service",
+        "name": "READ_MODEL_RENDERER",
+        "service": "api",
+        "entrypoint": "ReadModelRenderer"
+      },
+      {
+        "type": "durable_object_namespace",
+        "name": "STATE",
+        "class_name": "StateHub",
+        "namespace_id": "08a6c22e048d4a9b915ba869ad40ffee"
+      }
+    ]
+  },
+  "warnings": {
+    "success": true,
+    "errors": [],
+    "events": 0,
+    "reportedCount": 0,
+    "groups": {}
+  },
+  "d1": {
+    "success": true,
+    "errors": [],
+    "results": [
+      {
+        "success": true,
+        "results": [
+          {
+            "domain": "coding",
+            "latestAt": 1790030254718,
+            "rowsSinceDeployment": 6
+          }
+        ],
+        "rowsRead": 8,
+        "rowsWritten": 0
+      },
+      {
+        "success": true,
+        "results": [
+          {
+            "domain": "listening",
+            "latestAt": 1790030321020,
+            "rowsSinceDeployment": 5
+          }
+        ],
+        "rowsRead": 7,
+        "rowsWritten": 0
+      },
+      {
+        "success": true,
+        "results": [
+          {
+            "domain": "watching",
+            "latestAt": 1789993919184,
+            "rowsSinceDeployment": 0
+          }
+        ],
+        "rowsRead": 2,
+        "rowsWritten": 0
+      },
+      {
+        "success": true,
+        "results": [
+          {
+            "domain": "gaming",
+            "latestAt": 1790029154859,
+            "rowsSinceDeployment": 1
+          }
+        ],
+        "rowsRead": 3,
+        "rowsWritten": 0
+      },
+      {
+        "success": true,
+        "results": [
+          {
+            "domain": "charging",
+            "latestAt": 1790030373910,
+            "rowsSinceDeployment": 31
+          }
+        ],
+        "rowsRead": 33,
+        "rowsWritten": 0
+      },
+      {
+        "success": true,
+        "results": [
+          {
+            "domain": "activity",
+            "latestAt": 1790026433715,
+            "rowsSinceDeployment": 0
+          }
+        ],
+        "rowsRead": 2,
+        "rowsWritten": 0
+      }
+    ]
+  },
+  "probes": [
+    {
+      "path": "/api/status/vibecoding/year",
+      "status": 200,
+      "ok": true,
+      "readModel": "kv",
+      "generatedAt": "2026-09-21T22:38:52.762Z"
+    },
+    {
+      "path": "/api/status/github-chart",
+      "status": 200,
+      "ok": true,
+      "readModel": "kv",
+      "generatedAt": "2026-09-21T22:38:50.837Z"
+    },
+    {
+      "path": "/api/status/github-repo",
+      "status": 200,
+      "ok": true,
+      "readModel": "kv",
+      "generatedAt": "2026-09-21T22:38:52.130Z"
+    },
+    {
+      "path": "/api/status/vercel-deployments",
+      "status": 200,
+      "ok": true,
+      "readModel": "kv",
+      "generatedAt": "2026-09-21T22:38:48.191Z"
+    },
+    {
+      "path": "/api/status/pulse",
+      "status": 200,
+      "ok": true,
+      "readModel": null,
+      "generatedAt": "2026-09-21T22:40:29.429Z",
+      "dataKeys": [
+        "generatedAt",
+        "window",
+        "domains"
+      ],
+      "domainShape": [
+        "coding",
+        "listening",
+        "watching",
+        "gaming",
+        "charging",
+        "activity"
+      ]
+    }
+  ],
+  "limitations": [
+    "Before/after observation, not controlled load test.",
+    "Invocation counts and quantiles in GraphQL are adaptive estimates; use recorded sampleInterval.",
+    "Workers wall time includes waitUntil and is not HTTP response latency.",
+    "Local follow-up edits are not deployed and are not included in these production measurements.",
+    "Memory metrics refer to the whole isolate."
+  ],
+  "continuedAudit": {
+    "capturedAt": "2026-09-21 23:26:26 UTC",
+    "window": {
+      "from": "2026-09-21T23:05:00Z",
+      "to": "2026-09-21T23:15:00Z"
+    },
+    "deployment": {
+      "id": "00a7cd90-87b3-4175-8b65-ff6613b51342",
+      "createdOn": "2026-09-21T22:17:44.401477Z",
+      "versions": [
+        {
+          "version_id": "fc59fa87-ed5a-4982-acd8-b50e24567dd3",
+          "percentage": 100
+        }
+      ]
+    },
+    "graphql": {
+      "query": "{viewer{accounts(filter:{accountTag:\"209f2c881b1c494fec50851c067b3266\"}){currentPeriodic:durableObjectsPeriodicGroups(limit:10,filter:{datetime_geq:\"2026-09-21T23:05:00Z\",datetime_lt:\"2026-09-21T23:15:00Z\",namespaceId:\"08a6c22e048d4a9b915ba869ad40ffee\"}){sum{cpuTime activeTime duration rowsRead rowsWritten subrequests exceededCpuErrors exceededMemoryErrors fatalInternalErrors} quantiles{memoryUsageBytesP50 memoryUsageBytesP99}}\n afterInvocations:durableObjectsInvocationsAdaptiveGroups(limit:10,filter:{datetime_geq:\"2026-09-21T23:05:00Z\",datetime_lt:\"2026-09-21T23:15:00Z\",namespaceId:\"08a6c22e048d4a9b915ba869ad40ffee\"}){avg{sampleInterval} sum{requests errors wallTime} quantiles{cpuTimeP50 cpuTimeP95 cpuTimeP99 wallTimeP50 wallTimeP95 wallTimeP99}}\n afterWorker:workersInvocationsAdaptive(limit:10,filter:{datetime_geq:\"2026-09-21T23:05:00Z\",datetime_lt:\"2026-09-21T23:15:00Z\",scriptName:\"api\"}){avg{sampleInterval} sum{requests errors cpuTimeUs wallTime requestDuration subrequests} quantiles{requestDurationP50 requestDurationP95 requestDurationP99}}}}}",
+      "data": {
+        "afterInvocations": [
+          {
+            "avg": {
+              "sampleInterval": 1.099502487562189
+            },
+            "quantiles": {
+              "cpuTimeP50": 383,
+              "cpuTimeP95": 7483,
+              "cpuTimeP99": 9156,
+              "wallTimeP50": 235352,
+              "wallTimeP95": 646110,
+              "wallTimeP99": 1881426
+            },
+            "sum": {
+              "errors": 0,
+              "requests": 221,
+              "wallTime": 54947710
+            }
+          }
+        ],
+        "afterWorker": [
+          {
+            "avg": {
+              "sampleInterval": 1.1343283582089552
+            },
+            "quantiles": {
+              "requestDurationP50": 50812,
+              "requestDurationP95": 476939,
+              "requestDurationP99": 487211
+            },
+            "sum": {
+              "cpuTimeUs": 298101,
+              "errors": 0,
+              "requestDuration": 12057413,
+              "requests": 76,
+              "subrequests": 258,
+              "wallTime": 40366618
+            }
+          }
+        ],
+        "currentPeriodic": [
+          {
+            "quantiles": {
+              "memoryUsageBytesP50": 4454412,
+              "memoryUsageBytesP99": 16513036
+            },
+            "sum": {
+              "activeTime": 28646117,
+              "cpuTime": 398400,
+              "duration": 3.666702976,
+              "exceededCpuErrors": 0,
+              "exceededMemoryErrors": 0,
+              "fatalInternalErrors": 0,
+              "rowsRead": 635060,
+              "rowsWritten": 8110,
+              "subrequests": 0
+            }
+          }
+        ]
+      }
+    },
+    "invocationLogs": {
+      "success": true,
+      "timeframe": {
+        "from": "2026-09-21T23:05:00Z",
+        "to": "2026-09-21T23:15:00Z"
+      },
+      "returned": 338,
+      "reported": 338,
+      "groups": {
+        "commitIngest": {
+          "invocations": 32,
+          "cpuTimeMs": 166,
+          "outcomes": {
+            "ok": 32
+          },
+          "wallTimeP50": 25,
+          "wallTimeP95": 37
+        },
+        "ready": {
+          "invocations": 32,
+          "cpuTimeMs": 0,
+          "outcomes": {
+            "ok": 32
+          },
+          "wallTimeP50": 9,
+          "wallTimeP95": 13
+        },
+        "execute": {
+          "invocations": 61,
+          "cpuTimeMs": 3,
+          "outcomes": {
+            "ok": 61
+          },
+          "wallTimeP50": 238,
+          "wallTimeP95": 479
+        },
+        "claimPulseScore": {
+          "invocations": 10,
+          "cpuTimeMs": 18,
+          "outcomes": {
+            "ok": 10
+          },
+          "wallTimeP50": 240,
+          "wallTimeP95": 1369
+        },
+        "confirmPulseArchive": {
+          "invocations": 14,
+          "cpuTimeMs": 0,
+          "outcomes": {
+            "ok": 14
+          },
+          "wallTimeP50": 248,
+          "wallTimeP95": 253
+        },
+        "readPulseArchive": {
+          "invocations": 10,
+          "cpuTimeMs": 71,
+          "outcomes": {
+            "ok": 10
+          },
+          "wallTimeP50": 583,
+          "wallTimeP95": 607
+        },
+        "queueReadModels": {
+          "invocations": 10,
+          "cpuTimeMs": 0,
+          "outcomes": {
+            "ok": 10
+          },
+          "wallTimeP50": 247,
+          "wallTimeP95": 477
+        },
+        "publicRead": {
+          "invocations": 18,
+          "cpuTimeMs": 2,
+          "outcomes": {
+            "ok": 18
+          },
+          "wallTimeP50": 461,
+          "wallTimeP95": 1148
+        },
+        "publicBarrier": {
+          "invocations": 18,
+          "cpuTimeMs": 0,
+          "outcomes": {
+            "ok": 18
+          },
+          "wallTimeP50": 229,
+          "wallTimeP95": 482
+        },
+        "alarm": {
+          "invocations": 6,
+          "cpuTimeMs": 0,
+          "outcomes": {
+            "ok": 6
+          },
+          "wallTimeP50": 1881,
+          "wallTimeP95": 2464
+        },
+        "finishPulseScore": {
+          "invocations": 1,
+          "cpuTimeMs": 73,
+          "outcomes": {
+            "ok": 1
+          },
+          "wallTimeP50": 346,
+          "wallTimeP95": 346
+        },
+        "activatePulseScore": {
+          "invocations": 1,
+          "cpuTimeMs": 0,
+          "outcomes": {
+            "ok": 1
+          },
+          "wallTimeP50": 246,
+          "wallTimeP95": 246
+        }
+      }
+    },
+    "interpretation": "Same deployed version; short observational window with a different workload. Do not attribute these metrics to undeployed local follow-up changes. RPC methods are deduplicated per event; integer-millisecond log CPU is only for hotspot ranking.",
+    "qualityBoundaries": [
+      "SQLite remains authoritative",
+      "202 only after durable commit",
+      "Keep request visibility barrier, score leases, archive watermarks and KV single writer",
+      "No new schema or persistent list length cache"
+    ],
+    "localIterations": {
+      "baselineCommit": "04edf6087dc9fb7b93d58109d9070882fcb7f5ef",
+      "worktreeStoreSha256": "e910af285800a3747454330fd868e53ad6ba2358fa1481d94af5bda88bffd975",
+      "runtime": {
+        "node": "v26.7.0",
+        "wrangler": "3.114.17",
+        "compatibilityDate": "2025-02-14"
+      },
+      "evidenceFiles": [
+        "docs/do-storage-benchmark-read.json",
+        "docs/do-storage-benchmark-final.json"
+      ],
+      "command": "node scripts/benchmark-do-storage.mjs --ref 04edf6087dc9fb7b93d58109d9070882fcb7f5ef --rows 6000 --rounds 5 --write-rounds 100",
+      "readRounds": 5,
+      "writeRounds": 100,
+      "telemetryStorageCycle": {
+        "beforeRowsRead": 3601300,
+        "afterRowsRead": 1201100,
+        "beforeRowsWritten": 500,
+        "afterRowsWritten": 500,
+        "beforeStatements": 1300,
+        "afterStatements": 1200
+      },
+      "validation": {
+        "independentReadRangeCases": 48074,
+        "independentTrimCases": 19220,
+        "rootTests": 316,
+        "workerTests": 87,
+        "workerTypecheck": "passed",
+        "eslint": "passed",
+        "apiIsolation": "passed",
+        "kvIsolation": "passed",
+        "diffCheck": "passed",
+        "sourceHashMatchesEvidence": true
+      },
+      "stopReason": "Meaningful scan reductions without additional state, cache invalidation, schema changes or altered coordination. Remaining length and trim-boundary scans preserve the storage contract.",
+      "localStatus": "committed locally on codex/do-storage-performance; unpushed, undeployed"
+    },
+    "finalProduction": {
+      "verifiedAt": "2026-09-21 23:43:39 UTC",
+      "deployment": {
+        "id": "740fd44a-ed2a-47a2-91a6-bc6653e5ec7e",
+        "createdOn": "2026-09-21T23:26:52.540468Z",
+        "versions": [
+          {
+            "version_id": "4ba46667-1c91-4644-9a73-5303e5269a1c",
+            "percentage": 100
+          }
+        ]
+      },
+      "buildId": "27a6cd6a-e1bf-4edb-ad3e-2be761e747e4",
+      "buildOutcome": "success",
+      "commit": "dcc79d1c773962decbe9704fa6a64b144623036b",
+      "change": "External task deployed desktop windowTitle. Optimization target files are unchanged between audit baseline and fetched main.",
+      "health": {
+        "success": true,
+        "from": "2026-09-21T23:30:00Z",
+        "to": "2026-09-21T23:35:00Z",
+        "returned": 314,
+        "reported": 314,
+        "versions": {
+          "4ba46667-1c91-4644-9a73-5303e5269a1c": 314
+        },
+        "outcomes": {
+          "api:ok": 70,
+          "LivePushRoom:ok": 59,
+          "StateHub:ok": 181,
+          "ReadModelRenderer:ok": 4
+        },
+        "statuses": {
+          "200": 24,
+          "202": 41
+        }
+      }
+    },
+    "latestMainCompatibility": {
+      "mainCommit": "757ac6e10d7c6c744931267a22811ccd02210491",
+      "method": "Temporary isolated git worktree with the local patch overlaid, using 04edf60 as merge base; production dependencies symlinked from existing local installation.",
+      "merge": "Production files merged without conflict. Adjacent imports in ingest-boundary.test.ts required retaining both prepareIngestForCommit and PreparedTelemetryEnvelope; both test bodies preserved.",
+      "workerTypecheck": "passed",
+      "workerTests": 92,
+      "includesWindowTitleTests": 5,
+      "cleanup": "Temporary worktrees/directories removed; active worktree base and files unchanged.",
+      "published": false
+    }
+  }
+}

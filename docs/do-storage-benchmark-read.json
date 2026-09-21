@@ -1,0 +1,206 @@
+{
+  "ref": "HEAD",
+  "resolvedRef": "04edf6087dc9fb7b93d58109d9070882fcb7f5ef",
+  "worktreeStoreSha256": "7f09a667a6e715e9ac793102bfb368bd7723b42d87be5b3da69ab390c8c237af",
+  "rows": 6000,
+  "rounds": 5,
+  "scenarios": [
+    {
+      "name": "all",
+      "gapped": false,
+      "command": {
+        "op": "listRange",
+        "key": "history",
+        "start": 0,
+        "stop": -1
+      },
+      "actualRows": 6000,
+      "equivalent": true,
+      "base": {
+        "rowsRead": 60005,
+        "rowsWritten": 0,
+        "statements": 15
+      },
+      "worktree": {
+        "rowsRead": 30005,
+        "rowsWritten": 0,
+        "statements": 10
+      },
+      "result": {
+        "length": 6000,
+        "first": "1",
+        "last": "6000",
+        "digest": "b9056a3a635aedcba0d10ddcdbab210476b6320ace8057fd1862ba65a81ccccf"
+      }
+    },
+    {
+      "name": "tail-one",
+      "gapped": false,
+      "command": {
+        "op": "listRange",
+        "key": "history",
+        "start": -1,
+        "stop": -1
+      },
+      "actualRows": 6000,
+      "equivalent": true,
+      "base": {
+        "rowsRead": 60005,
+        "rowsWritten": 0,
+        "statements": 15
+      },
+      "worktree": {
+        "rowsRead": 10,
+        "rowsWritten": 0,
+        "statements": 10
+      },
+      "result": {
+        "length": 1,
+        "first": "6000",
+        "last": "6000",
+        "digest": "0c9fc045e416fc576dc3005c5199ac15ec3499e3968b71dc54deefa0ee03d82b"
+      }
+    },
+    {
+      "name": "tail-2000",
+      "gapped": false,
+      "command": {
+        "op": "listRange",
+        "key": "history",
+        "start": -2000,
+        "stop": -1
+      },
+      "actualRows": 6000,
+      "equivalent": true,
+      "base": {
+        "rowsRead": 60005,
+        "rowsWritten": 0,
+        "statements": 15
+      },
+      "worktree": {
+        "rowsRead": 10005,
+        "rowsWritten": 0,
+        "statements": 10
+      },
+      "result": {
+        "length": 2000,
+        "first": "4001",
+        "last": "6000",
+        "digest": "3378eb064bcaff990d38cc9909e1c7e40cc8c0c8ef8763a5ab278e10326813ff"
+      }
+    },
+    {
+      "name": "negative-slice",
+      "gapped": false,
+      "command": {
+        "op": "listRange",
+        "key": "history",
+        "start": -2000,
+        "stop": -501
+      },
+      "actualRows": 6000,
+      "equivalent": true,
+      "base": {
+        "rowsRead": 57505,
+        "rowsWritten": 0,
+        "statements": 15
+      },
+      "worktree": {
+        "rowsRead": 10005,
+        "rowsWritten": 0,
+        "statements": 10
+      },
+      "result": {
+        "length": 1500,
+        "first": "4001",
+        "last": "5500",
+        "digest": "a1d8c28ef72aeacd950ee5ba3ea943f575db6257bfa0be8b852fa38421c6f8fe"
+      }
+    },
+    {
+      "name": "first-600",
+      "gapped": false,
+      "command": {
+        "op": "listRange",
+        "key": "history",
+        "start": 0,
+        "stop": 599
+      },
+      "actualRows": 6000,
+      "equivalent": true,
+      "base": {
+        "rowsRead": 33005,
+        "rowsWritten": 0,
+        "statements": 15
+      },
+      "worktree": {
+        "rowsRead": 3005,
+        "rowsWritten": 0,
+        "statements": 10
+      },
+      "result": {
+        "length": 600,
+        "first": "1",
+        "last": "600",
+        "digest": "a4796e77e64495e80eb579144375f8bfe051441ccb8a7d25abb3d9b7df59d894"
+      }
+    },
+    {
+      "name": "gapped-tail-one",
+      "gapped": true,
+      "command": {
+        "op": "listRange",
+        "key": "history",
+        "start": -1,
+        "stop": -1
+      },
+      "actualRows": 5994,
+      "equivalent": true,
+      "base": {
+        "rowsRead": 59945,
+        "rowsWritten": 0,
+        "statements": 15
+      },
+      "worktree": {
+        "rowsRead": 10,
+        "rowsWritten": 0,
+        "statements": 10
+      },
+      "result": {
+        "length": 1,
+        "first": "6000",
+        "last": "6000",
+        "digest": "0c9fc045e416fc576dc3005c5199ac15ec3499e3968b71dc54deefa0ee03d82b"
+      }
+    },
+    {
+      "name": "gapped-negative-slice",
+      "gapped": true,
+      "command": {
+        "op": "listRange",
+        "key": "history",
+        "start": -2000,
+        "stop": -501
+      },
+      "actualRows": 5994,
+      "equivalent": true,
+      "base": {
+        "rowsRead": 57445,
+        "rowsWritten": 0,
+        "statements": 15
+      },
+      "worktree": {
+        "rowsRead": 10005,
+        "rowsWritten": 0,
+        "statements": 10
+      },
+      "result": {
+        "length": 1500,
+        "first": "3999",
+        "last": "5499",
+        "digest": "4ee2cb6218cc242e378e62a80e5315463d519e6a89aaa72e932344bde2aed4c5"
+      }
+    }
+  ],
+  "invocation": "node scripts/benchmark-do-storage.mjs --ref HEAD --rows 6000 --rounds 5"
+}

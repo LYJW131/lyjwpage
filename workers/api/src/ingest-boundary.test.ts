@@ -16,7 +16,7 @@ import { nowMirror } from "@shared/vibecoding";
 
 import { fanout } from "./fanout";
 import { collectIngestEffects, dispatchIngestEffects, type CollectedIngest } from "./ingest-effects";
-import { commitPreparedIngest, prepareIngest, type PreparedIngest } from "./ingest-handlers";
+import { commitPreparedIngest, prepareIngest, prepareIngestForCommit, type PreparedIngest } from "./ingest-handlers";
 import type { PreparedTelemetryEnvelope } from "./stores/telemetry";
 import { requestStore, type Env } from "./runtime";
 import { resetStoredImageCacheForTests } from "./r2-assets";
@@ -54,6 +54,32 @@ async function inRequest<T>(env: Env, run: () => Promise<T>): Promise<T> {
 async function commit(env: Env, command: PreparedIngest): Promise<CollectedIngest<unknown>> {
   return inRequest(env, () => collectIngestEffects(() => commitPreparedIngest(command)));
 }
+
+test("ingest preparation only checks readiness after invalid input", async () => {
+  let readyCalls = 0;
+  const valid = await prepareIngestForCommit("iphone", { version: 1 }, async () => {
+    readyCalls += 1;
+    return false;
+  });
+  assert.equal(valid?.source, "iphone");
+  assert.equal(readyCalls, 0, "valid reports must proceed directly to commitIngest");
+
+  const unavailable = await prepareIngestForCommit("iphone", {}, async () => {
+    readyCalls += 1;
+    return false;
+  });
+  assert.equal(unavailable, null);
+  assert.equal(readyCalls, 1);
+
+  await assert.rejects(
+    prepareIngestForCommit("iphone", {}, async () => {
+      readyCalls += 1;
+      return true;
+    }),
+    /version 必须为 1/,
+  );
+  assert.equal(readyCalls, 2);
+});
 
 test("Mac late validation keeps liveness but does not invent a charger heartbeat", async () => {
   const storage = new FakeStorage();

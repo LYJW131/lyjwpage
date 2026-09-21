@@ -37,6 +37,24 @@ export async function prepareIngest(
   }
 }
 
+/**
+ * Valid reports proceed directly to commitIngest, which owns the authoritative
+ * readiness check. Invalid reports probe readiness only to preserve the existing
+ * uninitialized 503 priority over module-validation errors.
+ */
+export async function prepareIngestForCommit(
+  source: string,
+  raw: unknown,
+  ready: () => Promise<boolean>,
+): Promise<PreparedIngest | null> {
+  try {
+    return await prepareIngest(source, raw);
+  } catch (error) {
+    if (!(await ready())) return null;
+    throw error;
+  }
+}
+
 /** StateHub 阶段：只做依赖权威最新状态的合并、差分与持久化。 */
 export async function commitPreparedIngest(command: PreparedIngest): Promise<unknown> {
   switch (command.source) {
