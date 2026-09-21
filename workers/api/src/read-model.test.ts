@@ -72,7 +72,6 @@ test("read model: allowlist excludes live, liveness, credentials, coordination a
   }
   assert.ok(READ_MODEL_PATHS.every(target => readModelPolicy(target)));
   assert.deepEqual([...READ_MODEL_PATHS].sort(), [
-    "/api/status/cloudflare-workers",
     "/api/status/github-chart",
     "/api/status/github-repo",
     "/api/status/vercel-deployments",

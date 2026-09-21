@@ -43,7 +43,6 @@ test("readModel 视图都没有推送事件", () => {
     }
   }
   assert.deepEqual([...READ_MODEL_PATHS].sort(), [
-    "/api/status/cloudflare-workers",
     "/api/status/github-chart",
     "/api/status/github-repo",
     "/api/status/vercel-deployments",

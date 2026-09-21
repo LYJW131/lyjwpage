@@ -62,7 +62,12 @@ export const STATUS_VIEWS = {
   trophies: { path: "/api/status/trophies", tag: "trophies", bootstrap: false },
   githubChart: { path: "/api/status/github-chart", readModel: "slow" },
   githubRepo: { path: "/api/status/github-repo", readModel: "slow" },
-  cloudflareWorkers: { path: "/api/status/cloudflare-workers", readModel: "slow" },
+  /**
+   * 不进 KV：这条带着各 Worker 当前跑的版本和构建提交，而 KV 投影在取数之后又加
+   * 一层「发布最小间隔 + 投影最大年龄」—— 刚部署完看的就是上一版。它本来就有
+   * 15 分钟的 StateHub 缓存挡住上游，回 DO 读一次不额外打 Cloudflare API。
+   */
+  cloudflareWorkers: { path: "/api/status/cloudflare-workers" },
   vercelDeployments: { path: "/api/status/vercel-deployments", readModel: "slow" },
   pulse: { path: "/api/status/pulse" },
   /** 首屏歌词，按 nowListening 的 songId 现解，没有状态端点 */
