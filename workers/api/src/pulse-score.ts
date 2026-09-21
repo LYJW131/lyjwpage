@@ -1,6 +1,6 @@
 import { codingObservationsKey, codingTokenUsageKey } from '@/lib/coding-pulse';
 import { pulseAssessmentsKey, pulseAssessmentAttemptKey } from '@/lib/pulse-assessments';
-import { measuredPulseView, parsePulseSample, pulseKey } from '@/lib/pulse';
+import { measuredPulseView, parsePulseSample, pulseKey, pulseSampleUntil } from '@/lib/pulse';
 import { compressPulseWindow, PULSE_LEGEND } from '@/lib/pulse-window';
 import { PULSE_DOMAINS, type PulseDomain } from '@/lib/types';
 import { PULSE_TTL_MS, PULSE_WINDOW_MS } from '@/lib/limits';
@@ -34,7 +34,7 @@ export class PulseScorer {
     const completed = new Map(existing.map((r)=>[`${r.domain}:${r.from}`,r]));
     const seen = observations.map(parseCodingObservation).filter((r)=>r!==null).sort((a,b)=>a.t-b.t);
     const tokenUsage = tokenRaw ? parseCodingTokenUsage(JSON.parse(tokenRaw)) : null;
-    const series = histories.map((rows)=>rows.map(parsePulseSample).filter((r)=>r!==null).map((r)=>({...r,until:r.until??r.t+10*60_000})));
+    const series = histories.map((rows, index)=>rows.map(parsePulseSample).filter((r)=>r!==null).map((r)=>({...r,until:Math.min(now, pulseSampleUntil(SCORED_DOMAINS[index], r))})));
     // Two-minute settling time allows the one-minute usage scan and transport to finish.
     const end = Math.floor((now-120_000)/CODING_WINDOW_MS)*CODING_WINDOW_MS;
     const jobs: {domain: PulseDomain; from: number; coverage: {from:number;to:number}[]; state: unknown; questions: ReturnType<typeof codingQuestions>; hash:string}[] = [];

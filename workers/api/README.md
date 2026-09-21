@@ -342,7 +342,7 @@ Listening / Watching / Gaming 返回 `{kind:"binary",segments:[{from,to,value}],
 `value` 仅为 0 或 1：只有播放或游戏中为 1，暂停、停止和仅主机在线为 0。
 Charging 返回 `{kind:"power",segments:[{from,to,value}],currentPowerW}`，value 单位为 W。
 四域的曲线独立于 Jev，仍返回 score（评分、趋势、置信度）；前端每分钟刷新。
-段来自实际观测，超过 10 分钟未确认的部分留空，含零值；当前功率过期为 null。
+段来自实际观测：通常超过 10 分钟未确认留空，含零值；Gaming 按 30 分钟空闲轮询设置 35 分钟有效期。Watching 的明确停止（level 0）持续至下次播放事件，暂停／播放仍按 10 分钟失效。曲线与 Jev 输入共用这些有效期；当前功率过期为 null。
 充电使用已有 Mac `totalPower`，未连接记录 0 W；功率变化最多每 30 秒取一点，
 零／非零切换立即记录，保留 6000 点。旧档位记录缺少 powerW 时留空，不推算瓦数。
 发布前应用 `0003_pulse_power.sql`，D1 将实测瓦数存入 power_w；其他域该列为 NULL。

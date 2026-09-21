@@ -30,7 +30,7 @@ test('summary weights actual covered time and compares observed recent periods w
 test('measured lanes map playing only, preserve silence and do not expose hints', async () => {
  const {measuredPulseView}=await import('@/lib/pulse');
  const samples=[{t:0,level:3 as const,hint:'private'},{t:60000,level:2 as const},{t:120000,level:1 as const}];
- for(const domain of ['listening','watching','gaming'] as const){
+ for(const domain of ['listening','watching'] as const){
   const view=measuredPulseView(domain,samples,{from:0,to:1000000});
   assert.deepEqual(view,{kind:'binary',segments:[{from:0,to:60000,value:1},{from:60000,to:720000,value:0}],activeSeconds:60});
  }
@@ -58,4 +58,19 @@ test('measured chart retains an independent Jev score and trend', async()=>{
   assert.equal(view.kind,'binary');assert.equal(view.score?.value,1.5);assert.equal(view.score?.trend,'unknown');
   if(view.kind==='binary')assert.deepEqual(view.segments,[{from:NOW-60000,to:NOW,value:1}]);
  }finally{resetStorageForTests();}
+});
+
+
+test('gaming supports its 30-minute reporting cadence but leaves genuine missing reports empty',async()=>{
+ const {measuredPulseView}=await import('@/lib/pulse');
+ const m=60000;
+ assert.deepEqual(measuredPulseView('gaming',[{t:0,level:0},{t:30*m,level:0},{t:60*m,level:3}],{from:0,to:120*m}),{
+  kind:'binary',segments:[{from:0,to:60*m,value:0},{from:60*m,to:95*m,value:1}],activeSeconds:35*60
+ });
+});
+test('Emby explicit stop persists until playback resumes; paused and active telemetry still expire',async()=>{
+ const {measuredPulseView}=await import('@/lib/pulse');const m=60000;
+ assert.deepEqual(measuredPulseView('watching',[{t:0,level:0},{t:180*m,level:3},{t:185*m,level:2},{t:190*m,level:3}],{from:0,to:210*m}),{
+  kind:'binary',segments:[{from:0,to:180*m,value:0},{from:180*m,to:185*m,value:1},{from:185*m,to:190*m,value:0},{from:190*m,to:200*m,value:1}],activeSeconds:15*60
+ });
 });
