@@ -26,6 +26,7 @@ Worker 是唯一数据后端。上报、状态 API、Apple / GitHub 获取和缓
 - 六域共用一个五分钟评分调度器和 `pulse:assessments` 列表，保留七天；输入哈希相同不重复调用，晚到事实可修订相应窗口。`pulse:assessment-attempt` 持久化上次尝试，失败也节流。
 - 曲线读取分段评分，24 小时摘要从相同评分按已观测时长加权计算，不再有 `pulse:scores` 或独立总评模型调用。原始状态继续用于 D1 归档，评分不混入原始表。
 - Coding 内部观测在 `pulse:coding-observations`，窗口 token 报告在 `pulse:coding-token-usage`；公开 API 不返回原始用量、应用名或模型名。契约与闸门见 [统一评分](../workers/api/README.md#pulse-统一五分钟评分)。
+- Listening 另有 `pulse:listening-plays`：「最近在听」列表每次变动（只比条目 id 和顺序，封面地址换新不算）记一条 `{t, since, hint}`，保留 2000 条 / TTL 7 天。它不是阶跃序列、不进 D1 归档、不进公开出口，只作为 Mac / HomePod 之外设备的播放证据进入 listening 窗口的评分输入；一条最多认领一个评分窗口那么长的已观测时间。
 
 ## 首屏与浏览器
 

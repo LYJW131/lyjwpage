@@ -6,6 +6,19 @@ export type PulseAssessment = Omit<CodingAssessment, 'mode'> & {
   mode: CodingAssessment['mode'] | null;
   inputHash: string;
 };
+/**
+ * 覆盖区间必须有序且不重叠 —— parsePulseAssessment 校不过就会把整条评估悄悄丢掉。
+ * 来源不止一处时（listening 的实测段加上「最近在听」痕迹）先并成一串再存。
+ */
+export function mergeCoverage(parts: { from: number; to: number }[]): { from: number; to: number }[] {
+  const merged: { from: number; to: number }[] = [];
+  for (const part of parts.filter((p) => p.to > p.from).sort((a, b) => a.from - b.from)) {
+    const last = merged[merged.length - 1];
+    if (last && part.from <= last.to) last.to = Math.max(last.to, part.to);
+    else merged.push({ from: part.from, to: part.to });
+  }
+  return merged;
+}
 /** Summary and graph use exactly the same scores. Unknown time is excluded, never zero-filled. */
 export function summarizeAssessments(rows: PulseAssessment[], from: number, to: number): PulseScore | null {
   const mean = (start: number, end: number) => {
