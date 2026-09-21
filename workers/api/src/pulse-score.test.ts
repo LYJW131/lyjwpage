@@ -1,19 +1,53 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { FakeStorage } from "@/lib/testing/fake-storage";
+import { DatabaseSync } from "node:sqlite";
 import { codingObservationsKey, codingTokenUsageKey } from "@/lib/coding-pulse";
 import { listeningPlaysKey } from "@/lib/listening-pulse";
 import { pulseKey } from "@/lib/pulse";
+import { PULSE_DOMAINS, type PulseDomain } from "@/lib/types";
 import { CODING_WINDOW_MS, parseCodingAssessment } from "@shared/pulse-coding";
+import type { PulseAssessment } from "@shared/pulse-assessment";
+import { SqliteStore, type SqlDatabase } from "@shared/sqlite-store";
+import { StorageClient } from "@shared/storage-client";
+import type { StorageCommand } from "@shared/storage-contract";
 import { PulseScorer } from "./pulse-score.ts";
+import { PulseScoreState } from "./pulse-score-state.ts";
 import { pulseAssessmentsKey } from "@/lib/pulse-assessments";
 const T = 1_800_000_000_000;
 function setup() {
-  const storage = new FakeStorage();
   let now = T + CODING_WINDOW_MS + 120_000;
+  const db = new DatabaseSync(":memory:");
+  const sql = {
+    exec(query: string, ...args: (string | number | null)[]) {
+      if (!args.length && query.includes(";")) { db.exec(query); return { toArray: () => [], rowsWritten: 0 }; }
+      const statement = db.prepare(query);
+      if (statement.columns().length) return { toArray: () => statement.all(...args) as Record<string, unknown>[], rowsWritten: 0 };
+      const result = statement.run(...args);
+      return { toArray: () => [], rowsWritten: Number(result.changes) };
+    },
+  } as unknown as SqlDatabase;
+  const transaction = <TResult>(work: () => TResult): TResult => {
+    db.exec("BEGIN");
+    try { const result = work(); db.exec("COMMIT"); return result; }
+    catch (error) { db.exec("ROLLBACK"); throw error; }
+  };
+  const store = new SqliteStore(sql, transaction, () => now);
+  db.exec("CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
+  let unreachable = false;
+  const execute = (commands: StorageCommand[]): unknown[] => {
+    if (unreachable) throw new Error("fake storage unreachable");
+    return store.execute(commands);
+  };
+  const storage = Object.assign(new StorageClient(async (commands) => execute(commands)), {
+    async append(key: string, ...values: string[]): Promise<number> {
+      return execute([{ op: "append", key, values }])[0] as number;
+    },
+    setUnreachable(value = true): void { unreachable = value; },
+  });
   const requests: Record<string, unknown>[] = [];
   const errors: unknown[] = [];
   let fail = false;
+  let nextToken = 0;
   const fetcher: typeof fetch = async (_input, init) => {
     const body = JSON.parse(String(init?.body)); requests.push(body);
     if (fail) return new Response(null, { status: 503 });
@@ -28,10 +62,12 @@ function setup() {
         probabilities: Object.fromEntries(levels.map((_, i) => [String(i), i === levels.length - 1 ? 1 : 0])) }];
     })) });
   };
-  const make = () => new PulseScorer({ storage, apiKey: "test", now: () => now, fetch: fetcher, log: (e) => errors.push(e) });
+  const coordinator = () => new PulseScoreState({ sql, execute, now: () => now, token: () => `claim-${++nextToken}` });
+  const make = () => new PulseScorer({ coordinator: coordinator(), apiKey: "test", fetch: fetcher, log: (e) => errors.push(e) });
   const push = (at: number, available = true) => storage.append(codingObservationsKey(), JSON.stringify({ t: at, available,
     desktop: { application: "Zed", coding: true }, agents: [{ id: "codex", model: "model", active: true }] }));
-  return { storage, make, push, requests, errors, advance: (ms: number) => { now += ms; }, fail: (value: boolean) => { fail = value; } };
+  return { storage, make, coordinator, push, requests, errors, now: () => now,
+    advance: (ms: number) => { now += ms; }, fail: (value: boolean) => { fail = value; } };
 }
 test("coding scorer batches dimensions, freezes successful windows, skips unknown time", async () => {
   const b = setup(); const scorer = b.make();
@@ -75,13 +111,14 @@ test("coding catches up bounded batches and excludes the unfinished window", asy
 });
 
 test("coding isolates windows, bounds concurrency and saves successes when another window fails", async () => {
-  const storage = new FakeStorage();
-  for (let i = 0; i < 20; i++) await storage.append(codingObservationsKey(), JSON.stringify({
+  const b = setup();
+  for (let i = 0; i < 20; i++) await b.storage.append(codingObservationsKey(), JSON.stringify({
     t: T + i * 60_000, available: true, desktop: { application: "Zed", coding: true }, agents: [],
   }));
   let active = 0, peak = 0, calls = 0;
   const errors: unknown[] = [];
-  const scorer = new PulseScorer({ storage, apiKey: "test", now: () => T + 4 * CODING_WINDOW_MS + 120_000,
+  b.advance(3 * CODING_WINDOW_MS);
+  const scorer = new PulseScorer({ coordinator: b.coordinator(), apiKey: "test",
     log: (error) => errors.push(error), fetch: async (_url, init) => {
       const request = JSON.parse(String(init?.body));
       assert.equal(request.state.windows.length, 1);
@@ -97,7 +134,7 @@ test("coding isolates windows, bounds concurrency and saves successes when anoth
     } });
   await scorer.run();
   assert.equal(calls, 4); assert.equal(peak, 3); assert.equal(errors.length, 1);
-  const rows = (await storage.listRange(pulseAssessmentsKey(), 0, -1)).map(parseCodingAssessment);
+  const rows = (await b.storage.listRange(pulseAssessmentsKey(), 0, -1)).map(parseCodingAssessment);
   assert.equal(rows.length, 3); assert.ok(rows.every((row) => row!.from > T));
 });
 
@@ -182,4 +219,82 @@ test('listening counts track changes in code and hands Jev named seconds, never 
   assert.equal(state.longestPlayingRunPercent, 100);
   assert.equal('segments' in state, false);
   assert.equal('legend' in state, false);
+});
+
+function assessment(domain: PulseDomain, from: number, scoredAt: number, inputHash = "hash"): PulseAssessment {
+  return {
+    domain,
+    from,
+    to: from + CODING_WINDOW_MS,
+    coverage: [{ from, to: from + CODING_WINDOW_MS }],
+    intensity: { value: 2, confidence: 1, probabilities: { 0: 0, 1: 0, 2: 1, 3: 0, 4: 0 } },
+    continuity: { value: 2, confidence: 1, probabilities: { 0: 0, 1: 0, 2: 1, 3: 0 } },
+    mode: null,
+    model: "jev-test",
+    scoredAt,
+    inputHash,
+  };
+}
+
+test("pulse score state: concurrent instances claim once and a restart preserves eligibility", async () => {
+  const b = setup();
+  const firstState = b.coordinator();
+  const restartedState = b.coordinator();
+  const [first, second] = await Promise.all([
+    firstState.claimPulseScore(),
+    restartedState.claimPulseScore(),
+  ]);
+  assert.ok(first);
+  assert.equal(second, null);
+  assert.equal(await restartedState.claimPulseScore(), null, "a new class instance sees the durable lease");
+
+  b.advance(180_001);
+  const replacement = await restartedState.claimPulseScore();
+  assert.ok(replacement);
+  assert.ok(replacement.generation > first.generation);
+  assert.equal(await firstState.finishPulseScore(first.token, first.generation, []), false);
+  assert.equal(await b.coordinator().claimPulseScore(), null, "the stale release did not clear the replacement");
+  assert.equal(await restartedState.finishPulseScore(replacement.token, replacement.generation, []), true);
+});
+
+test("pulse score state: expired results cannot overwrite a replacement window", async () => {
+  const b = setup();
+  const firstState = b.coordinator();
+  const first = await firstState.claimPulseScore();
+  assert.ok(first);
+  assert.equal(await firstState.activatePulseScore(first.token, first.generation), true);
+
+  b.advance(CODING_WINDOW_MS + 1);
+  const replacementState = b.coordinator();
+  const replacement = await replacementState.claimPulseScore();
+  assert.ok(replacement);
+  assert.equal(await replacementState.activatePulseScore(replacement.token, replacement.generation), true);
+  const from = T;
+  const current = assessment("coding", from, b.now(), "replacement");
+  assert.equal(await replacementState.finishPulseScore(replacement.token, replacement.generation, [current]), true);
+
+  const stale = assessment("coding", from, first.now, "stale");
+  assert.equal(await firstState.finishPulseScore(first.token, first.generation, [stale]), false);
+  const saved = (await b.storage.listRange(pulseAssessmentsKey(), 0, -1)).map((raw) => JSON.parse(raw) as PulseAssessment);
+  assert.equal(saved.length, 1);
+  assert.equal(saved[0].inputHash, "replacement");
+});
+
+test("pulse score state: commit merges at submit time and splits lists above 10000 values", async () => {
+  const b = setup();
+  const state = b.coordinator();
+  const claim = await state.claimPulseScore();
+  assert.ok(claim);
+  assert.equal(await state.activatePulseScore(claim.token, claim.generation), true);
+  const records = Array.from({ length: 10_001 }, (_, index) => {
+    const domain = PULSE_DOMAINS[index % PULSE_DOMAINS.length];
+    const from = T - Math.floor(index / PULSE_DOMAINS.length) * CODING_WINDOW_MS;
+    return assessment(domain, from, b.now(), `hash-${index}`);
+  });
+  const concurrent = assessment("activity", T + CODING_WINDOW_MS, b.now(), "concurrent");
+  await b.storage.append(pulseAssessmentsKey(), JSON.stringify(concurrent));
+  assert.equal(await state.finishPulseScore(claim.token, claim.generation, records), true);
+  const saved = (await b.storage.listRange(pulseAssessmentsKey(), 0, -1)).map((raw) => JSON.parse(raw) as PulseAssessment);
+  assert.equal(saved.length, 10_002);
+  assert.ok(saved.some((record) => record.inputHash === "concurrent"));
 });

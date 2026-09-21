@@ -53,8 +53,8 @@ try {
   // Test-only harness is generated outside the repo. It never ships with the Worker.
   const harness = join(temporary, 'harness.ts');
   await writeFile(harness, `
-import worker, { LivePushRoom, StateHub } from ${JSON.stringify(join(root, 'workers/api/src/index.ts'))};
-export { LivePushRoom, StateHub };
+import worker, { LivePushRoom, ReadModelRenderer, StateHub } from ${JSON.stringify(join(root, 'workers/api/src/index.ts'))};
+export { LivePushRoom, ReadModelRenderer, StateHub };
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -86,6 +86,7 @@ export default {
       { name: 'LIVE_PUSH', class_name: 'LivePushRoom' },
       { name: 'STATE', class_name: 'StateHub' },
     ] },
+    services: [{ binding: 'READ_MODEL_RENDERER', service: 'isolated-kv-read-model', entrypoint: 'ReadModelRenderer' }],
     migrations: [{ tag: 'v1', new_sqlite_classes: ['LivePushRoom', 'StateHub'] }],
     // Local-only test ID. No --remote and no production namespace is ever used.
     kv_namespaces: [{ binding: 'READ_MODEL', id: '00000000000000000000000000000001' }],

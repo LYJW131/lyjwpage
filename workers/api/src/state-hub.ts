@@ -1,23 +1,31 @@
 import { withRequestState } from "@shared/request-state";
-import { publicResponse } from "./public-api";
 import { DurableObject } from "cloudflare:workers";
 import { StorageClient } from "@shared/storage-client";
 import { SqliteStore, type StoredEntry } from "@shared/sqlite-store";
-import type { StorageCommand } from "@shared/storage-contract";
-import { HANDLERS } from "./ingest-handlers";
+import type { StorageCommand, StorageResult } from "@shared/storage-contract";
+import { commitPreparedIngest, type PreparedIngest } from "./ingest-handlers";
+import { collectIngestEffects, type IngestEffect } from "./ingest-effects";
 import { historyArchiveEnabled, pulseScoringEnabled, readModelEnabled, requestStore, type Env } from "./runtime";
-import { PulseArchive } from "./pulse-archive";
-import { PulseScorer } from "./pulse-score";
+import { PulseArchiveState, type PulseArchiveSnapshot } from "./pulse-archive";
+import { PulseScoreState, type PulseScoreClaim } from "./pulse-score-state";
+import type { PulseAssessment } from "@shared/pulse-assessment";
+import type { PulseDomain } from "@/lib/types";
 import { READ_MODEL_PATHS, readModelPathsForSource } from "./read-model";
 import { ReadModelPublisher } from "./read-model-publisher";
+import { DEV_OVERRIDE_TTL_MS, overrideIndexStorageKey, overrideStorageKey } from "./dev-overrides";
+
+type CommitIngestWire =
+  | { ready: false; ok: false; json: "null"; error: null; effects: [] }
+  | { ready: true; ok: true; json: string; error: null; effects: IngestEffect[] }
+  | { ready: true; ok: false; json: "null"; error: string; effects: IngestEffect[] };
 
 /** Authoritative state and existing ingest coordination; public KV is a projection. */
 export class StateHub extends DurableObject<Env> {
   private database: SqliteStore;
   private ingestTail: Promise<unknown> = Promise.resolve();
   private readModels: ReadModelPublisher | null;
-  private pulseArchive: PulseArchive | null;
-  private pulseScorer: PulseScorer | null;
+  private pulseArchiveState: PulseArchiveState;
+  private pulseScoreState: PulseScoreState;
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.database = new SqliteStore(ctx.storage.sql, (work) => ctx.storage.transactionSync(work));
@@ -27,19 +35,19 @@ export class StateHub extends DurableObject<Env> {
       sql: ctx.storage.sql,
       kv: env.READ_MODEL,
       prefix: env.STORAGE_PREFIX ?? "lyjwpage",
-      render: (path) => this.fetch(new Request(`https://read-model.internal${path}`)),
+      render: (path) => {
+        if (!this.env.READ_MODEL_RENDERER) throw new Error("READ_MODEL_RENDERER is not configured");
+        return this.env.READ_MODEL_RENDERER.render(path);
+      },
     }) : null;
-    // 归档表由 D1 迁移建好，这里不建表：少了迁移就该在日志里炸出来，不能被悄悄建上遮住。
-    this.pulseArchive = historyArchiveEnabled(env) && env.HISTORY ? new PulseArchive({
+    this.pulseArchiveState = new PulseArchiveState({
       sql: ctx.storage.sql,
-      db: env.HISTORY,
-      storage: new StorageClient(async (commands) => this.database.execute(commands)),
-    }) : null;
-    // 分存在 StateHub 自己的库里（键 pulse:assessments），评分器只从这里读写，不经请求作用域。
-    this.pulseScorer = pulseScoringEnabled(env) && env.TYPESAFE_API_KEY ? new PulseScorer({
-      storage: new StorageClient(async (commands) => this.database.execute(commands)),
-      apiKey: env.TYPESAFE_API_KEY,
-    }) : null;
+      execute: (commands) => this.database.execute(commands),
+    });
+    this.pulseScoreState = new PulseScoreState({
+      sql: ctx.storage.sql,
+      execute: (commands) => this.database.execute(commands),
+    });
   }
 
   ready(): boolean {
@@ -50,32 +58,61 @@ export class StateHub extends DurableObject<Env> {
     await this.queueReadModels();
   }
 
-  async fetch(request: Request): Promise<Response> {
-    if (!this.ready()) return Response.json({ ok: false, error: "状态存储初始化中" }, { status: 503 });
+  async publicBarrier(): Promise<boolean> {
+    if (!this.ready()) return false;
     await this.ingestTail;
-    return withRequestState(() => requestStore.run({ env: this.env, ctx: this.ctx,
-      storage: new StorageClient(async (commands) => this.database.execute(commands)),
-    }, () => publicResponse(request)));
+    return this.ready();
+  }
+
+  /** One strongly-consistent read batch; callers establish request visibility via publicBarrier first. */
+  publicRead(commands: StorageCommand[]): StorageResult[] {
+    if (!this.ready()) throw new Error("State storage is not initialized");
+    if (commands.some((command) => command.op !== "get" && command.op !== "fields" && command.op !== "listRange")) {
+      throw new Error("publicRead only accepts read commands");
+    }
+    return this.database.execute(commands) as StorageResult[];
+  }
+
+  /** Atomically mutate one fixture and its index; concurrent local PUT/DELETE cannot lose paths. */
+  async updateDevOverride(path: string, envelopeJson: string | null): Promise<string[]> {
+    if (!this.ready()) throw new Error("State storage is not initialized");
+    if (!path.startsWith("/api/") || path.length > 1024) throw new Error("Invalid override path");
+    if (envelopeJson !== null) {
+      const value: unknown = JSON.parse(envelopeJson);
+      if (!value || typeof value !== "object" || typeof (value as { ok?: unknown }).ok !== "boolean") {
+        throw new Error("Invalid override envelope");
+      }
+    }
+    const prefix = this.env.STORAGE_PREFIX ?? "lyjwpage";
+    const indexKey = overrideIndexStorageKey(prefix);
+    const valueKey = overrideStorageKey(prefix, path);
+    const paths = this.database.updateIndexedString(indexKey, path, valueKey, envelopeJson, DEV_OVERRIDE_TTL_MS);
+    await this.ensureAlarm();
+    return paths;
   }
 
   async execute(commands: StorageCommand[]): Promise<unknown[]> {
     const result = this.database.execute(commands);
-    await this.ensureAlarm();
+    if (commands.some((command) => command.op !== "get" && command.op !== "fields" && command.op !== "listRange")) {
+      await this.ensureAlarm();
+    }
     return result;
   }
 
-  ingest(source: string, body: unknown): Promise<{ ready: boolean; json: string }> {
-    if (!this.ready()) return Promise.resolve({ ready: false, json: "null" });
-    const handler = Object.hasOwn(HANDLERS, source) ? HANDLERS[source] : undefined;
-    if (!handler) throw new Error("Unknown ingest source");
+  commitIngest(command: PreparedIngest): Promise<CommitIngestWire> {
+    if (!this.ready()) return Promise.resolve({ ready: false, ok: false, json: "null", error: null, effects: [] });
+    const source = command.source;
     const result = this.ingestTail.then(() => withRequestState(() => requestStore.run({
       env: this.env,
       ctx: this.ctx,
       storage: new StorageClient(async (commands) => this.database.execute(commands)),
     }, async () => {
       try {
-        const data = await handler(body);
-        return { ready: true, json: JSON.stringify(data) };
+        const collected = await collectIngestEffects(() => commitPreparedIngest(command));
+        const wire: CommitIngestWire = collected.ok
+          ? { ready: true, ok: true, json: JSON.stringify(collected.value), error: null, effects: collected.effects }
+          : { ready: true, ok: false, json: "null", error: collected.error, effects: collected.effects };
+        return wire;
       } finally {
         // A handler can commit liveness before rejecting a later module. Rebuild
         // from authority even then; never put KV or render public APIs in this queue.
@@ -93,19 +130,34 @@ export class StateHub extends DurableObject<Env> {
     await this.ensureAlarm();
   }
 
-  /** cron 每分钟一趟，把 pulse 序列增量镜像进 D1。错误只进日志，调用方不受影响。 */
-  async archivePulse(): Promise<void> {
-    if (!this.pulseArchive || !this.ready()) return;
-    await this.pulseArchive.run();
+  async readPulseArchive(): Promise<PulseArchiveSnapshot> {
+    if (!this.ready() || !historyArchiveEnabled(this.env)) return { domains: [] };
+    await this.ingestTail;
+    return this.pulseArchiveState.readPulseArchive();
   }
 
-  /**
-   * cron 每分钟一趟，由评分器自己决定要不要真打出去（统一五分钟分段评分）。
-   * 错误只进 `[pulse-score]` 日志，上一份分留着。
-   */
-  async scorePulse(): Promise<void> {
-    if (!this.pulseScorer || !this.ready()) return;
-    await this.pulseScorer.run();
+  async confirmPulseArchive(domain: PulseDomain, at: number): Promise<number> {
+    if (!this.ready() || !historyArchiveEnabled(this.env)) return 0;
+    await this.ingestTail;
+    return this.pulseArchiveState.confirmPulseArchive(domain, at);
+  }
+
+  async claimPulseScore(): Promise<PulseScoreClaim | null> {
+    if (!this.ready() || !pulseScoringEnabled(this.env)) return null;
+    await this.ingestTail;
+    return this.pulseScoreState.claimPulseScore();
+  }
+
+  async activatePulseScore(token: string, generation: number): Promise<boolean> {
+    if (!this.ready() || !pulseScoringEnabled(this.env)) return false;
+    await this.ingestTail;
+    return this.pulseScoreState.activatePulseScore(token, generation);
+  }
+
+  async finishPulseScore(token: string, generation: number, records: PulseAssessment[]): Promise<boolean> {
+    if (!this.ready() || !pulseScoringEnabled(this.env)) return false;
+    await this.ingestTail;
+    return this.pulseScoreState.finishPulseScore(token, generation, records);
   }
 
   async importMissing(entries: StoredEntry[]): Promise<number> {

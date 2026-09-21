@@ -110,6 +110,28 @@ export class SqliteStore {
     });
   }
 
+  /** Atomically keep one string value and its membership in a JSON string index in sync. */
+  updateIndexedString(indexKey: string, member: string, valueKey: string, value: string | null, ttlMs: number): string[] {
+    return this.transaction(() => {
+      const raw = this.command({ op: "get", key: indexKey });
+      let current: string[] = [];
+      if (typeof raw === "string") {
+        try {
+          const decoded: unknown = JSON.parse(raw);
+          if (Array.isArray(decoded) && decoded.every((item) => typeof item === "string")) current = decoded;
+        } catch { }
+      }
+      const next = value === null
+        ? current.filter((item) => item !== member)
+        : current.includes(member) ? current : [...current, member];
+      this.command(value === null
+        ? { op: "remove", key: valueKey }
+        : { op: "set", key: valueKey, value, options: { ttlMs } });
+      this.command({ op: "set", key: indexKey, value: JSON.stringify(next), options: { ttlMs } });
+      return next;
+    });
+  }
+
   /** 迁移只写空键，绝不覆盖已经收到的新上报；过期时间沿用来源的绝对时间。 */
   importMissing(entries: StoredEntry[]): number {
     return this.transaction(() => {

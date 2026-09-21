@@ -10,6 +10,13 @@ routes = [
   { pattern = "api.homepage.lyjw.llc", custom_domain = true }
 ]
 
+# Loop back into this deployment's ordinary Worker isolate for public JSON rendering.
+# This avoids ctx.exports (which needs a newer compatibility flag) and keeps StateHub focused on coordination.
+[[services]]
+binding = "READ_MODEL_RENDERER"
+service = "api"
+entrypoint = "ReadModelRenderer"
+
 [vars]
 # 逗号分隔。实时推送、公开 API 的 CORS 和 MusicKit 令牌签发使用此名单。
 # 对令牌它还是第二道限制：名单里写死的域会签进 JWT 的 origin 声明，由 Apple 校验，

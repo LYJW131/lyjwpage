@@ -6,6 +6,11 @@ compatibility_date = "2025-02-14"
 compatibility_flags = ["nodejs_compat", "nodejs_compat_populate_process_env"]
 workers_dev = true
 
+[[services]]
+binding = "READ_MODEL_RENDERER"
+service = "ingest-do-test"
+entrypoint = "ReadModelRenderer"
+
 [vars]
 STORAGE_PREFIX = "lyjwpage-test"
 ALLOWED_ORIGINS = "https://*.vercel.app"
