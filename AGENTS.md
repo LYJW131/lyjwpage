@@ -31,6 +31,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - `workers/api`、`workers/online-counter`、`workers/playstation-reporter` 使用 Cloudflare Workers Builds 原生 Git 集成，配置与监视路径见 `docs/workers-builds.md`。GitHub Actions 只保留检查，不再负责 Worker 发布；不要添加重复的自动发布任务。修改共享依赖时同步核对原生构建的触发路径。
 - 推送成功不等于部署完成：检查该次提交在 Vercel 的部署状态，并从已绑定的生产域名验证本次受影响的行为或配置。
 - NAS 上报器与其他独立部署单元按各自 README 发布。若依赖站点的新契约或更长陈旧窗口，先确认 Vercel 站点及 Worker 契约已生效，再切换上报器，最后验证真实上报与站点读取。
+- `reporters/mac-telemetry-hub` 是 git submodule，指向 `LYJW131/MacTelemetryHub`，不会自动跟随远端。Hub 仓库推送后，在站点仓库把子模块指针挪到同一提交并单独提交推送（`chore(reporters): 更新 mac-telemetry-hub，<改了什么>`），否则站点里的上报器源码停在旧版本；Hub 本机安装走它自己的 `build-release.sh`，与指针更新是两件事。
 
 # API 命名与跨端契约
 
