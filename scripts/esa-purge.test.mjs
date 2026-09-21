@@ -81,6 +81,98 @@ test("ESA 拒绝错误应答与缺少 TaskId 的假成功", async (t) => {
   }
 });
 
+test("ESA 瞬时网络失败会按 1s、2s 退避重试，成功后停止", async (t) => {
+  const delays = [];
+  let calls = 0;
+  t.mock.method(globalThis, "fetch", async () => {
+    calls += 1;
+    if (calls < 3) {
+      const error = new TypeError("fetch failed");
+      error.cause = Object.assign(new Error("connect ECONNRESET"), { code: "ECONNRESET" });
+      throw error;
+    }
+    return Response.json({ TaskId: "task-retry", RequestId: "request-retry" });
+  });
+
+  const result = await purgeEsaHomepage(config, {
+    sleep: async (ms) => {
+      delays.push(ms);
+    },
+  });
+  assert.equal(calls, 3);
+  assert.deepEqual(delays, [1_000, 2_000]);
+  assert.equal(result.ok, true);
+  assert.equal(result.taskId, "task-retry");
+});
+
+test("ESA 瞬时网络失败耗尽 3 次后停止", async (t) => {
+  let calls = 0;
+  t.mock.method(globalThis, "fetch", async () => {
+    calls += 1;
+    const error = new DOMException("The operation was aborted due to timeout", "TimeoutError");
+    throw error;
+  });
+
+  const result = await purgeEsaHomepage(config, { sleep: async () => {} });
+  assert.equal(calls, 3);
+  assert.equal(result.ok, false);
+  assert.match(result.error, /aborted due to timeout/);
+});
+
+test("ESA 非瞬时异常不重试", async (t) => {
+  let calls = 0;
+  t.mock.method(globalThis, "fetch", async () => {
+    calls += 1;
+    throw new TypeError("Invalid URL");
+  });
+
+  const result = await purgeEsaHomepage(config, {
+    sleep: async () => {
+      throw new Error("should not retry");
+    },
+  });
+  assert.equal(calls, 1);
+  assert.equal(result.ok, false);
+  assert.match(result.error, /Invalid URL/);
+});
+
+test("ESA 4xx 鉴权或参数错误不重试", async (t) => {
+  let calls = 0;
+  t.mock.method(globalThis, "fetch", async () => {
+    calls += 1;
+    return Response.json(
+      { Code: "InvalidAccessKeyId.NotFound", Message: "not found", RequestId: "request-404" },
+      { status: 404 },
+    );
+  });
+
+  const result = await purgeEsaHomepage(config, {
+    sleep: async () => {
+      throw new Error("should not retry");
+    },
+  });
+  assert.equal(calls, 1);
+  assert.equal(result.ok, false);
+  assert.match(result.error, /HTTP 404/);
+  assert.equal(result.requestId, "request-404");
+});
+
+test("ESA 5xx 会重试，成功后停止", async (t) => {
+  let calls = 0;
+  t.mock.method(globalThis, "fetch", async () => {
+    calls += 1;
+    if (calls === 1) {
+      return Response.json({ Code: "InternalError", Message: "busy" }, { status: 503 });
+    }
+    return Response.json({ TaskId: "task-503", RequestId: "request-503" });
+  });
+
+  const result = await purgeEsaHomepage(config, { sleep: async () => {} });
+  assert.equal(calls, 2);
+  assert.equal(result.ok, true);
+  assert.equal(result.taskId, "task-503");
+});
+
 test("warmupEsaCache 发送带标准请求头的 GET 请求预热边缘缓存", async (t) => {
   const calls = [];
   t.mock.method(globalThis, "fetch", async (input, init) => {
