@@ -106,16 +106,16 @@ Pulse 卡片用它。信封形状：
 
 ### Pulse 统一五分钟评分
 
-仅 Coding 和 Activity 共用 `PulseScorer`、`pulse:assessment-attempt` 和 `pulse:assessments`。
+六个领域共用 `PulseScorer`、`pulse:assessment-attempt` 和 `pulse:assessments`。
 旧的十分钟 24 小时模型总评已经删除；右侧摘要由最近 24 小时的同一批五分钟评分按
 实际覆盖时长加权，趋势比较最近三小时与此前三小时，没有两侧观测时为 `unknown`。
 曲线和摘要不再有两套评分来源。公开契约为 `domains[domain].assessments` 和 `score`，
 不再返回旧 `samples` 或根级 `codingAssessments`。
 
 每分钟 cron 检查，两轮尝试至少隔五分钟；窗口结束后留两分钟等待采集与上报。
-上述两个领域每个窗口各一份官方 `jev-1.13.0` 请求，强度与连续性一起评估，Coding
+每个领域每个窗口各一份官方 `jev-1.13.0` 请求，强度与连续性一起评估，Coding
 再判断模式。每轮最多 36 份请求，并发最多 3；优先新窗口，再补最近 24 小时。
-没有观测不调用；空闲观测可评分。只有 Coding / Activity 的原始状态参与模型输入。
+没有观测不调用；空闲观测可评分。六项均参与模型评分；充电额外传入 powerSegments（W）及 0 / 15 / 60 W 功率判据。
 相同输入哈希不重复调用；晚到 token 或活动报告改变窗口事实时只重评受影响窗口。
 失败保留旧成功记录，下一轮重试，存储读失败不会清空历史。
 
@@ -338,9 +338,10 @@ Worker 侧 storage 写失败是冒泡的，先写 `:history` 再清 `:pending` �
 ### Pulse 实测域
 
 Listening / Watching / Gaming 返回 `{kind:"binary",segments:[{from,to,value}],activeSeconds}`，
+上述两种实测形状均额外包含 `score`，与 Coding / Activity 的右侧摘要同形。
 `value` 仅为 0 或 1：只有播放或游戏中为 1，暂停、停止和仅主机在线为 0。
 Charging 返回 `{kind:"power",segments:[{from,to,value}],currentPowerW}`，value 单位为 W。
-四域均不调用 Jev，不返回 assessments / score，前端每分钟刷新。
+四域的曲线独立于 Jev，仍返回 score（评分、趋势、置信度）；前端每分钟刷新。
 段来自实际观测，超过 10 分钟未确认的部分留空，含零值；当前功率过期为 null。
 充电使用已有 Mac `totalPower`，未连接记录 0 W；功率变化最多每 30 秒取一点，
 零／非零切换立即记录，保留 6000 点。旧档位记录缺少 powerW 时留空，不推算瓦数。

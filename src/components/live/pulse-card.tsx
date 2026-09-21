@@ -178,7 +178,7 @@ export function PulseCard({
         {LANES.map(({ domain, label }) => {
           const candidate = data?.domains[domain];
           const view = candidate && ["score", "binary", "power"].includes(candidate.kind) ? candidate : undefined;
-          const score = view?.kind === "score" ? view.score : null;
+          const score = view?.score ?? null;
           const empty = !view || (view.kind === "score" ? view.assessments.length === 0 : view.segments.length === 0);
           const word = score ? pulseScoreWord(Number(score.value.toFixed(1))) : null;
           return (
@@ -201,7 +201,7 @@ export function PulseCard({
                 view && <AssessmentLane label={label} view={view} range={range} />
               )}
               <div className="flex min-w-0 items-baseline justify-end gap-1.5 text-right">
-                {view?.kind === "binary" ? <span className="font-mono text-xs" title="Observed active time in the last 24 hours">{empty ? "No data" : `${Math.floor(view.activeSeconds / 3600)}h ${Math.floor(view.activeSeconds % 3600 / 60)}m`}</span> : view?.kind === "power" ? <span className="font-mono text-xs" title="Current measured power">{view.currentPowerW == null ? "No data" : `${view.currentPowerW.toLocaleString("en-US", { maximumFractionDigits: 2 })} W`}</span> : score ? (
+                {score ? (
                   <>
                     <span className="text-xs font-medium">{word}</span>
                     <span className="font-mono text-xs tabular-nums text-muted-foreground">

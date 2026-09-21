@@ -147,18 +147,19 @@ export async function getPulseStatus(now: number = Date.now()): Promise<PulsePay
   const [rows, history] = await Promise.all([readPulseAssessments(window.from, window.to), readPulseHistory()]);
   const domains = {} as PulsePayload['domains'];
   for (const domain of PULSE_DOMAINS) {
+    const assessments = rows.filter((r)=>r.domain===domain);
+    const score = summarizeAssessments(assessments, window.from, window.to);
     if (domain !== "coding" && domain !== "activity") {
-      domains[domain] = measuredPulseView(domain, history.series[domain].samples, window);
+      domains[domain] = { ...measuredPulseView(domain, history.series[domain].samples, window), score };
       continue;
     }
-    const assessments = rows.filter((r)=>r.domain===domain);
-    domains[domain] = { kind: "score", assessments, score: summarizeAssessments(assessments, window.from, window.to) };
+    domains[domain] = { kind: "score", assessments, score };
   }
   return { generatedAt: now, window, domains };
 }
 
 /** Preserve source boundaries and silence, including observed zero values. */
-export function measuredPulseView(domain: "listening" | "watching" | "gaming" | "charging", samples: PulseSample[], window: { from: number; to: number }): import("@/lib/types").PulseDomainView {
+export function measuredPulseView(domain: "listening" | "watching" | "gaming" | "charging", samples: PulseSample[], window: { from: number; to: number }): import("@/lib/types").PulseChartView {
   const segments: import("@/lib/types").PulseMeasuredSegment[] = [];
   for (let i = 0; i < samples.length; i++) {
     const sample = samples[i];
