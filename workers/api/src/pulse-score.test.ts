@@ -108,13 +108,14 @@ test('late token evidence re-scores only changed windows; identical evidence sta
   const rows=await b.storage.listRange(pulseAssessmentsKey(),0,-1);assert.equal(rows.length,1);
 });
 
-test('only coding and activity call Jev; measured domains never call it',async()=>{
+test('all domains retain Jev summaries independently of measured charts',async()=>{
  const b=setup();await b.push(T);
  const {pulseKey}=await import('@/lib/pulse');
  for(const domain of ['listening','watching','gaming','charging','activity'] as const)
-   await b.storage.append(pulseKey(domain),JSON.stringify({t:T,until:T+CODING_WINDOW_MS,level:3}));
- await b.make().run();assert.equal(b.requests.length,2);
+   await b.storage.append(pulseKey(domain),JSON.stringify({t:T,until:T+CODING_WINDOW_MS,level:3,...(domain === "charging" ? {powerW:72.5} : {})}));
+ await b.make().run();assert.equal(b.requests.length,6);
+ assert.ok(b.requests.some((request)=>JSON.stringify(request.state).includes('"value":72.5')));
  const rows=await b.storage.listRange(pulseAssessmentsKey(),0,-1);
- assert.equal(new Set(rows.map((r)=>JSON.parse(r).domain)).size,2);
- b.advance(CODING_WINDOW_MS);await b.make().run();assert.equal(b.requests.length,2);
+ assert.equal(new Set(rows.map((r)=>JSON.parse(r).domain)).size,6);
+ b.advance(CODING_WINDOW_MS);await b.make().run();assert.equal(b.requests.length,6);
 });

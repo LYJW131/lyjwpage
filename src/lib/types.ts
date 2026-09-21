@@ -1129,7 +1129,9 @@ export type WorkoutsPayload = {
 };
 
 export type PulseMeasuredSegment = { from: number; to: number; value: number };
-export type PulseDomainView =
-  | { kind: "score"; assessments: import("../../shared/pulse-assessment").PulseAssessment[]; score: PulseScore | null }
+export type PulseChartView =
+  | { kind: "score"; assessments: import("../../shared/pulse-assessment").PulseAssessment[] }
   | { kind: "binary"; segments: PulseMeasuredSegment[]; activeSeconds: number }
   | { kind: "power"; segments: PulseMeasuredSegment[]; currentPowerW: number | null };
+
+export type PulseDomainView = PulseChartView & { score: PulseScore | null };

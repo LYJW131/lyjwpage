@@ -16,7 +16,7 @@ test('Pulse graph and summary use the same assessments, omit raw private details
  assert.equal(payload.domains.coding.kind,"score");
  if(payload.domains.coding.kind!=="score")throw Error("kind");
  assert.equal(payload.domains.coding.assessments.length,1);assert.equal(payload.domains.coding.score?.value,1.5);
- assert.equal(payload.domains.coding.score?.trend,'unknown');assert.deepEqual(payload.domains.gaming,{kind:"binary",segments:[],activeSeconds:0});
+ assert.equal(payload.domains.coding.score?.trend,'unknown');assert.deepEqual(payload.domains.gaming,{kind:"binary",segments:[],activeSeconds:0,score:null});
  assert.equal(JSON.stringify(payload).includes('secret-app-name'),false);assert.equal('codingAssessments' in payload,false);
  }finally{resetStorageForTests();}
 });
@@ -45,4 +45,17 @@ test('power preserves watts, excludes old level-only rows and expires current va
  assert.equal(planPulseSample(current,{...current,t:90000,powerW:43})?.powerW,43);
  assert.equal(planPulseSample(current,{...current,t:70000,powerW:0})?.powerW,0);
  assert.equal(parsePulseSample(JSON.stringify({...current,powerW:-1})),null);
+});
+
+
+test('measured chart retains an independent Jev score and trend', async()=>{
+ const {pulseKey}=await import('@/lib/pulse');
+ const storage=new FakeStorage();installStorageForTests(storage);
+ try {
+  await storage.append(pulseAssessmentsKey(),JSON.stringify({...row(),domain:'listening'}));
+  await storage.append(pulseKey('listening'),JSON.stringify({t:NOW-60000,level:3}));
+  const view=(await getPulseStatus(NOW)).domains.listening;
+  assert.equal(view.kind,'binary');assert.equal(view.score?.value,1.5);assert.equal(view.score?.trend,'unknown');
+  if(view.kind==='binary')assert.deepEqual(view.segments,[{from:NOW-60000,to:NOW,value:1}]);
+ }finally{resetStorageForTests();}
 });
