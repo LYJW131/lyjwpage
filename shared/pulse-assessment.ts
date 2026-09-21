@@ -1,24 +1,21 @@
-import { CODING_WINDOW_MS, parseCodingAssessment, type CodingAssessment } from './pulse-coding';
+import { CODING_MODES, CODING_WINDOW_MS, type CodingAssessment } from './pulse-coding';
+import { LISTENING_MODES } from './pulse-listening';
 import type { PulseDomain, PulseScore } from '../src/lib/types';
-export const PULSE_ASSESSMENT_VERSION = 1;
+export { mergeCoverage } from './pulse-features';
+/**
+ * 版本 2：五个实测域不再发原始区间和图例，改发各域算好的秒数 / 次数和情境判据
+ * （见 shared/pulse-features 与各 pulse-<domain>）。升版本让全部窗口重打分，
+ * 不靠哈希碰巧变。
+ */
+export const PULSE_ASSESSMENT_VERSION = 2;
+/** 每个域自己的模式集合；没有模式的域为 null。card 的标签表按 value 查。 */
+export const PULSE_MODES: Partial<Record<PulseDomain, readonly string[]>> = { coding: CODING_MODES, listening: LISTENING_MODES };
+export type PulseMode = { value: string; confidence: number; probabilities: Record<string, number> };
 export type PulseAssessment = Omit<CodingAssessment, 'mode'> & {
   domain: PulseDomain;
-  mode: CodingAssessment['mode'] | null;
+  mode: PulseMode | null;
   inputHash: string;
 };
-/**
- * 覆盖区间必须有序且不重叠 —— parsePulseAssessment 校不过就会把整条评估悄悄丢掉。
- * 来源不止一处时（listening 的实测段加上「最近在听」痕迹）先并成一串再存。
- */
-export function mergeCoverage(parts: { from: number; to: number }[]): { from: number; to: number }[] {
-  const merged: { from: number; to: number }[] = [];
-  for (const part of parts.filter((p) => p.to > p.from).sort((a, b) => a.from - b.from)) {
-    const last = merged[merged.length - 1];
-    if (last && part.from <= last.to) last.to = Math.max(last.to, part.to);
-    else merged.push({ from: part.from, to: part.to });
-  }
-  return merged;
-}
 /** Summary and graph use exactly the same scores. Unknown time is excluded, never zero-filled. */
 export function summarizeAssessments(rows: PulseAssessment[], from: number, to: number): PulseScore | null {
   const mean = (start: number, end: number) => {
@@ -58,8 +55,20 @@ export function parsePulseAssessment(raw: string): PulseAssessment | null {
       return { value: j.value, confidence: j.confidence, probabilities };
     };
     if (typeof row.model !== 'string' || !row.model) return null;
+    // mode 是给 tooltip 的补充；它坏了只丢 mode，不把整条评估（曲线要用的强度）一起丢掉。
+    const modes = PULSE_MODES[row.domain];
+    let mode: PulseMode | null = null;
+    if (modes && row.mode) try {
+      const m = row.mode;
+      if (!modes.includes(m.value) || !Number.isFinite(m.confidence) || m.confidence < 0 || m.confidence > 1) throw Error('mode');
+      const probabilities = Object.fromEntries(modes.map((key) => {
+        const p = m.probabilities[key]; if (!Number.isFinite(p) || p < 0 || p > 1) throw Error('mode probability'); return [key, p];
+      }));
+      if (Math.abs(Object.values(probabilities).reduce((a,b)=>a+b,0)-1)>0.01) throw Error('mode total');
+      mode = { value: m.value, confidence: m.confidence, probabilities };
+    } catch { mode = null; }
     return { domain: row.domain, from: row.from, to: row.to, coverage,
       intensity: judgment(row.intensity,4), continuity: judgment(row.continuity,3),
-      mode: row.domain === 'coding' ? parseCodingAssessment(raw)?.mode ?? null : null, inputHash: row.inputHash, model: row.model, scoredAt: row.scoredAt };
+      mode, inputHash: row.inputHash, model: row.model, scoredAt: row.scoredAt };
   } catch { return null; }
 }

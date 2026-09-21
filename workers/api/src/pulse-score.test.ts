@@ -19,8 +19,10 @@ function setup() {
     if (fail) return new Response(null, { status: 503 });
     return Response.json({ model: "jev-1.13.0", answers: Object.fromEntries(Object.entries(body.questions).map(([id, question]) => {
       const q = question as { type: string; criteria: string[] | Record<string, string> };
-      if (q.type === "choice") return [id, { type: "choice", choice: "mixed", confidence: 1,
-        probabilities: Object.fromEntries(Object.keys(q.criteria).map((k) => [k, k === "mixed" ? 1 : 0])) }];
+      if (q.type === "choice") {
+        const keys = Object.keys(q.criteria); const pick = keys.includes("mixed") ? "mixed" : keys[keys.length - 1];
+        return [id, { type: "choice", choice: pick, confidence: 1, probabilities: Object.fromEntries(keys.map((k) => [k, k === pick ? 1 : 0])) }];
+      }
       const levels = q.criteria as string[];
       return [id, { type: "score", score: levels.length - 1, confidence: 1,
         probabilities: Object.fromEntries(levels.map((_, i) => [String(i), i === levels.length - 1 ? 1 : 0])) }];
@@ -116,7 +118,7 @@ test('all domains retain Jev summaries independently of measured charts',async()
  for(const domain of ['listening','watching','gaming','charging','activity'] as const)
    await b.storage.append(pulseKey(domain),JSON.stringify({t:T,until:T+CODING_WINDOW_MS,level:3,...(domain === "charging" ? {powerW:72.5} : {})}));
  await b.make().run();assert.equal(b.requests.length,6);
- assert.ok(b.requests.some((request)=>JSON.stringify(request.state).includes('"value":72.5')));
+ assert.ok(b.requests.some((request)=>JSON.stringify(request.state).includes('"peakWatts":72.5')));
  const rows=await b.storage.listRange(pulseAssessmentsKey(),0,-1);
  assert.equal(new Set(rows.map((r)=>JSON.parse(r).domain)).size,6);
  b.advance(CODING_WINDOW_MS);await b.make().run();assert.equal(b.requests.length,6);
@@ -127,16 +129,15 @@ test('listening marks score windows with no live samples and claim at most one w
   await b.storage.append(listeningPlaysKey(), JSON.stringify({ t: T + 240_000, since: T + 120_000, hint: 'Hamilton' }));
   await b.make().run();
   assert.equal(b.requests.length, 1);
-  const window = (b.requests[0].state as { windows: Record<string, unknown>[] }).windows[0];
-  assert.equal(window.domain, 'listening');
-  assert.equal(window.observedSeconds, 0, '实测段只算上报，痕迹不掺进去');
-  assert.deepEqual(window.recentlyPlayed, [
-    { observedAt: T + 240_000, since: T + 120_000, coveredFrom: T + 120_000, coveredTo: T + 240_000, hint: 'Hamilton' },
-  ]);
-  assert.ok(String((b.requests[0].questions as { w0Intensity: { instructions: string } }).w0Intensity.instructions).includes('recentlyPlayedCriteria'));
-  const row = JSON.parse((await b.storage.listRange(pulseAssessmentsKey(), 0, -1))[0]) as { domain: string; coverage: { from: number; to: number }[] };
+  const state = b.requests[0].state as Record<string, unknown>;
+  assert.equal(state.playingSeconds, 0, '实测只算上报，痕迹不掺进去');
+  assert.deepEqual(state.recentPlays, [{ title: 'Hamilton', gap: 'within five minutes' }]);
+  assert.ok(!JSON.stringify(state).includes(String(T)), '发给 Jev 的 state 里没有时间戳');
+  assert.deepEqual(Object.keys(b.requests[0].questions as object), ['intensity', 'continuity', 'mode']);
+  const row = JSON.parse((await b.storage.listRange(pulseAssessmentsKey(), 0, -1))[0]) as { domain: string; coverage: { from: number; to: number }[]; mode: { value: string } | null };
   assert.equal(row.domain, 'listening');
   assert.deepEqual(row.coverage, [{ from: T + 120_000, to: T + 240_000 }]);
+  assert.equal(row.mode?.value, 'traces');
 });
 
 test('a listening mark after hours of silence still claims only one window of time', async () => {
@@ -151,19 +152,34 @@ test('a listening mark after hours of silence still claims only one window of ti
   assert.ok(b.requests.length <= 2);
 });
 
-test('listening windows without marks stay frozen and byte-identical', async () => {
+test('listening windows without marks stay frozen when an unrelated mark arrives', async () => {
   const b = setup();
-  await b.storage.append(pulseKey('listening'), JSON.stringify({ t: T, until: T + CODING_WINDOW_MS, level: 3 }));
+  await b.storage.append(pulseKey('listening'), JSON.stringify({ t: T, until: T + CODING_WINDOW_MS, level: 3, hint: 'A' }));
   await b.make().run();
   assert.equal(b.requests.length, 1);
   const before = await b.storage.listRange(pulseAssessmentsKey(), 0, -1);
-  assert.ok(!JSON.stringify(b.requests[0]).includes('recentlyPlayed'), '没有痕迹的窗口不多一个字段');
+  assert.deepEqual((b.requests[0].state as { recentPlays: unknown[] }).recentPlays, []);
   // 痕迹落在上一个窗口：那个窗口该打分，这个窗口的 inputHash 不能因此变。
   await b.storage.append(listeningPlaysKey(), JSON.stringify({ t: T - 60_000, since: T - 120_000, hint: null }));
   b.advance(CODING_WINDOW_MS);
   await b.make().run();
   assert.equal(b.requests.length, 2);
-  assert.equal((b.requests[1].state as { windows: { from: number }[] }).windows[0].from, T - CODING_WINDOW_MS);
+  assert.equal((b.requests[1].state as { recentPlays: unknown[] }).recentPlays.length, 1);
   const rows = (await b.storage.listRange(pulseAssessmentsKey(), 0, -1)).map((raw) => JSON.parse(raw) as { from: number; inputHash: string });
   assert.equal(rows.find((row) => row.from === T)!.inputHash, (JSON.parse(before[0]) as { inputHash: string }).inputHash);
+});
+
+test('listening counts track changes in code and hands Jev named seconds, never raw segments', async () => {
+  const b = setup();
+  for (const [i, hint] of ['A', 'B', 'C', 'C'].entries())
+    await b.storage.append(pulseKey('listening'), JSON.stringify({ t: T + i * 60_000, level: 3, hint }));
+  await b.make().run();
+  const state = b.requests[0].state as Record<string, unknown>;
+  assert.equal(state.trackChanges, 2);
+  assert.equal(state.distinctTracks, 3);
+  assert.equal(state.playingSeconds, 300);
+  assert.equal(state.playingPercent, 100);
+  assert.equal(state.longestPlayingRunPercent, 100);
+  assert.equal('segments' in state, false);
+  assert.equal('legend' in state, false);
 });
