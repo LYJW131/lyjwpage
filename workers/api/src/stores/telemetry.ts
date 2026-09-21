@@ -29,6 +29,7 @@ import { readPowerBankState } from "@/lib/powerbank-store";
 import { IMAGE_OBJECT_KEY } from "@/lib/asset-url";
 import { VIBECODING_STALE_MS } from "@/lib/freshness";
 import { nextLiveness, readLiveness, type Liveness } from "@/lib/reporter-liveness";
+import { HIDDEN_DESKTOP_BUNDLE_ID } from "@/lib/types";
 import type {
   ChargerStatus,
   LocalNowPlaying,
@@ -156,6 +157,7 @@ function normalizeDesktop(
   const applicationName = text(row.applicationName);
   if (!applicationName) throw new Error("desktop 模块缺少 applicationName");
   const bundleIdentifier = text(row.bundleIdentifier);
+  const windowTitle = normalizeWindowTitle(row.windowTitle, bundleIdentifier);
   const iconHash = text(row.iconHash);
   if (iconHash != null && !/^[a-f0-9]{64}$/.test(iconHash)) {
     throw new Error("desktop.iconHash 必须是 SHA-256 十六进制字符串");
@@ -192,12 +194,42 @@ function normalizeDesktop(
     activity: {
       applicationName,
       bundleIdentifier,
+      windowTitle,
       iconObjectKey: null,
       observedAt: milliseconds(row.observedAt, receivedAt),
     },
     iconHash,
     iconObjectKey,
   };
+}
+
+/** 窗口标题的长度上限，按码点算。够放完整的文件路径或网页标题，又不至于当作日志用。 */
+const WINDOW_TITLE_MAX = 200;
+
+/**
+ * 当前窗口标题。缺席、null、空白都归 null —— 「没有标题」只有这一种表示。
+ *
+ * 类型不对要炸：标题是上报侧直接透传的系统值，收到数字或对象说明那边的取值
+ * 路径错了，静默收敛成 null 只会让它一直错下去。超长则截断不报错，标题长短
+ * 由用户此刻打开的文件决定，不是上报器的毛病。
+ *
+ * 按码点截：CJK 和 emoji 的标题很常见，按 UTF-16 码元切会把代理对劈成两半，
+ * 留下一个永远画不出来的半字符。
+ *
+ * 前台应用被隐藏时强制清空：占位 bundle id 的意思就是「这一刻不许对外说我在干
+ * 什么」，应用名已经是占位符，标题不跟着清等于从后门把它漏出去。
+ */
+function normalizeWindowTitle(value: unknown, bundleIdentifier: string | null) {
+  if (value != null && typeof value !== "string") {
+    throw new Error("desktop.windowTitle 必须是字符串或 null");
+  }
+  if (bundleIdentifier === HIDDEN_DESKTOP_BUNDLE_ID) return null;
+  const title = text(value);
+  if (title == null) return null;
+  const points = [...title];
+  return points.length > WINDOW_TITLE_MAX
+    ? points.slice(0, WINDOW_TITLE_MAX).join("")
+    : title;
 }
 
 function normalizeTimezone(

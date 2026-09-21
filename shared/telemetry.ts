@@ -136,10 +136,15 @@ export function activeDesktop(): StoredDesktopActivity | null {
 export function desktopPayload(liveness: Liveness): DesktopPayload {
   const stored = activeDesktop();
   const desktop: DesktopActivity | null = stored
-    ? (() => {
-      const { iconObjectKey, ...activity } = stored;
-      return { ...activity, iconUrl: iconObjectKey ? publicAssetPath(iconObjectKey) : null };
-    })()
+    ? {
+      applicationName: stored.applicationName,
+      bundleIdentifier: stored.bundleIdentifier,
+      // 出口这侧兜住「没有标题就是 null」：SQLite 里躺着的那条快照可能是上一次
+      // 部署写的，字段整个不在。逐字段拼而不是展开，就是为了这一格有确定的值。
+      windowTitle: stored.windowTitle ?? null,
+      iconUrl: stored.iconObjectKey ? publicAssetPath(stored.iconObjectKey) : null,
+      observedAt: stored.observedAt,
+    }
     : null;
   return withPresence(
     {
