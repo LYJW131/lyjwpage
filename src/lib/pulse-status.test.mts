@@ -52,11 +52,40 @@ test('measured chart retains an independent Jev score and trend', async()=>{
  const {pulseKey}=await import('@/lib/pulse');
  const storage=new FakeStorage();installStorageForTests(storage);
  try {
-  await storage.append(pulseAssessmentsKey(),JSON.stringify({...row(),domain:'listening'}));
-  await storage.append(pulseKey('listening'),JSON.stringify({t:NOW-60000,level:3}));
-  const view=(await getPulseStatus(NOW)).domains.listening;
+  await storage.append(pulseAssessmentsKey(),JSON.stringify({...row(),domain:'watching'}));
+  await storage.append(pulseKey('watching'),JSON.stringify({t:NOW-60000,level:3}));
+  const view=(await getPulseStatus(NOW)).domains.watching;
   assert.equal(view.kind,'binary');assert.equal(view.score?.value,1.5);assert.equal(view.score?.trend,'unknown');
   if(view.kind==='binary')assert.deepEqual(view.segments,[{from:NOW-60000,to:NOW,value:1}]);
+ }finally{resetStorageForTests();}
+});
+
+test('listening draws the Jev score, not the Mac-only measurement, and keeps the track name',async()=>{
+ const {pulseKey}=await import('@/lib/pulse');
+ const storage=new FakeStorage();installStorageForTests(storage);
+ try {
+  const scored={...row(),domain:'listening'};
+  await storage.append(pulseAssessmentsKey(),JSON.stringify(scored));
+  await storage.append(pulseKey('listening'),JSON.stringify({t:scored.from,level:3,hint:'Hamilton – Helpless'}));
+  const view=(await getPulseStatus(NOW)).domains.listening;
+  // 实测只看得见 Mac / HomePod，所以这条线画的是评分；别的设备的证据只在评分里。
+  assert.equal(view.kind,'score');
+  if(view.kind==='score'){
+   assert.equal(view.assessments.length,1);
+   assert.equal(view.assessments[0].title,'Hamilton – Helpless');
+  }
+ }finally{resetStorageForTests();}
+});
+
+test('listening keeps stopped windows nameless instead of inheriting the last track',async()=>{
+ const {pulseKey}=await import('@/lib/pulse');
+ const storage=new FakeStorage();installStorageForTests(storage);
+ try {
+  const scored={...row(),domain:'listening'};
+  await storage.append(pulseAssessmentsKey(),JSON.stringify(scored));
+  await storage.append(pulseKey('listening'),JSON.stringify({t:scored.from,level:0,hint:'Old title'}));
+  const view=(await getPulseStatus(NOW)).domains.listening;
+  if(view.kind==='score')assert.equal(view.assessments[0].title,undefined);
  }finally{resetStorageForTests();}
 });
 

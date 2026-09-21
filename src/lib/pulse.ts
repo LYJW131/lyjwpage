@@ -149,13 +149,42 @@ export async function getPulseStatus(now: number = Date.now()): Promise<PulsePay
   for (const domain of PULSE_DOMAINS) {
     const assessments = rows.filter((r)=>r.domain===domain);
     const score = summarizeAssessments(assessments, window.from, window.to);
-    if (domain !== "coding" && domain !== "activity") {
+    if (domain === "watching" || domain === "gaming" || domain === "charging") {
       domains[domain] = { ...measuredPulseView(domain, history.series[domain].samples, window), score };
       continue;
     }
-    domains[domain] = { kind: "score", assessments, score };
+    /**
+     * Listening 画评分，不画实测。
+     *
+     * 实测那条线只看得见 Mac 和 HomePod：在 iPhone 或别的设备上放一整天，它也是
+     * 平的。而那些设备唯一留下的痕迹是「最近在听」列表的变动，它没有时刻，只有
+     * 评分那一侧收得到（见 shared/pulse-listening）。画评分等于把两路证据都画上，
+     * 画实测等于只画其中一路还看不出另一路缺席。Watching / Gaming / Charging
+     * 没有这个盲区，仍画实测。
+     */
+    domains[domain] = { kind: "score", score, assessments: assessments.map((row) => {
+      const title = domain === "listening" ? assessmentTitle(history.series.listening.samples, row) : undefined;
+      return title ? { ...row, title } : row;
+    }) };
   }
   return { generatedAt: now, window, domains };
+}
+
+/**
+ * 评分窗口里在放的那首歌。分数本身不带名字，而展开卡从前在实测段上就显示它
+ * （和实测段同一份 hint、同一个公开口径），换成评分线之后不该跟着消失。
+ * 取窗口内占时最长的那一首；只认 level ≥ 2，停了不沿用旧标题。
+ */
+function assessmentTitle(samples: PulseSample[], window: { from: number; to: number }): string | undefined {
+  let longest: { title: string; ms: number } | null = null;
+  for (let index = 0; index < samples.length; index += 1) {
+    const sample = samples[index];
+    if (sample.level < 2 || !sample.hint) continue;
+    const from = Math.max(window.from, sample.t);
+    const to = Math.min(window.to, samples[index + 1]?.t ?? window.to, pulseSampleUntil("listening", sample));
+    if (to - from > (longest?.ms ?? 0)) longest = { title: sample.hint, ms: to - from };
+  }
+  return longest?.title;
 }
 
 /** Validity follows each producer's cadence and event semantics. */
