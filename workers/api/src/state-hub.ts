@@ -7,6 +7,7 @@ import type { StorageCommand } from "@shared/storage-contract";
 import { HANDLERS } from "./ingest-handlers";
 import { historyArchiveEnabled, pulseScoringEnabled, readModelEnabled, requestStore, type Env } from "./runtime";
 import { PulseArchive } from "./pulse-archive";
+import { StateJournalArchive } from "./state-journal-archive";
 import { PulseScorer } from "./pulse-score";
 import { READ_MODEL_PATHS, readModelPathsForSource } from "./read-model";
 import { ReadModelPublisher } from "./read-model-publisher";
@@ -17,6 +18,7 @@ export class StateHub extends DurableObject<Env> {
   private ingestTail: Promise<unknown> = Promise.resolve();
   private readModels: ReadModelPublisher | null;
   private pulseArchive: PulseArchive | null;
+  private stateJournal: StateJournalArchive | null;
   private pulseScorer: PulseScorer | null;
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -30,10 +32,16 @@ export class StateHub extends DurableObject<Env> {
       render: (path) => this.fetch(new Request(`https://read-model.internal${path}`)),
     }) : null;
     // 归档表由 D1 迁移建好，这里不建表：少了迁移就该在日志里炸出来，不能被悄悄建上遮住。
+    const archiveStorage = new StorageClient(async (commands) => this.database.execute(commands));
     this.pulseArchive = historyArchiveEnabled(env) && env.HISTORY ? new PulseArchive({
       sql: ctx.storage.sql,
       db: env.HISTORY,
-      storage: new StorageClient(async (commands) => this.database.execute(commands)),
+      storage: archiveStorage,
+    }) : null;
+    this.stateJournal = historyArchiveEnabled(env) && env.HISTORY ? new StateJournalArchive({
+      sql: ctx.storage.sql,
+      db: env.HISTORY,
+      storage: archiveStorage,
     }) : null;
     // 分存在 StateHub 自己的库里（键 pulse:assessments），评分器只从这里读写，不经请求作用域。
     this.pulseScorer = pulseScoringEnabled(env) && env.TYPESAFE_API_KEY ? new PulseScorer({
@@ -97,6 +105,12 @@ export class StateHub extends DurableObject<Env> {
   async archivePulse(): Promise<void> {
     if (!this.pulseArchive || !this.ready()) return;
     await this.pulseArchive.run();
+  }
+
+  /** cron 每分钟一趟，把展示状态变更镜像进 D1。错误只进日志。 */
+  async archiveStateJournal(): Promise<void> {
+    if (!this.stateJournal || !this.ready()) return;
+    await this.stateJournal.run();
   }
 
   /**

@@ -1,7 +1,9 @@
 import { displayChanged } from "@shared/display-change";
+import { serverState } from "@shared/state-journal";
 import { SERVER_TAG } from "@/lib/live-events";
 import { normalizeServer } from "@/lib/server-parse";
 import { fanout } from "@api/fanout";
+import { recordStateChange } from "@api/stores/state-journal";
 import { mirror } from "@shared/server";
 
 /**
@@ -18,7 +20,10 @@ export async function recordServerReport(input: unknown, receivedAt = Date.now()
   const changed = displayChanged(previous?.status, status);
 
   await fanout({
-    writes: [mirror.put({ status, receivedAt })],
+    writes: [(async () => {
+      await mirror.put({ status, receivedAt });
+      await recordStateChange("server", receivedAt, serverState(status));
+    })()],
     tags: changed ? [SERVER_TAG] : [],
   });
 

@@ -36,6 +36,7 @@ export default {
     // this catch is for the transport itself, which would otherwise fail the cron tick.
     if (historyArchiveEnabled(env)) {
       await hub.archivePulse().catch((error: unknown) => console.warn("[pulse-archive]", error));
+      await hub.archiveStateJournal().catch((error: unknown) => console.warn("[state-journal]", error));
     }
     // 活动分同理排在最后：统一五分钟分段评分才调外部模型，这一分钟的公开视图不等它。
     if (pulseScoringEnabled(env)) {

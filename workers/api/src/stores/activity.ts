@@ -1,5 +1,6 @@
 import { activityPulseSample } from "@shared/pulse-activity";
 import { recordPulse } from "@api/stores/pulse";
+import { recordStateChange } from "@api/stores/state-journal";
 import { number, object, text } from "@/lib/json";
 import { type StoredActivity, mirror } from "@shared/activity";
 
@@ -89,6 +90,7 @@ export function normalizeActivity(
 export async function writeActivity(stored: StoredActivity): Promise<void> {
   const previous = await mirror.get();
   await mirror.put(stored);
+  await recordStateChange("activity", stored.receivedAt, stored.activity);
   const sample = activityPulseSample(previous, stored);
   if (sample) await recordPulse("activity", sample);
 }

@@ -1,5 +1,7 @@
 import { CHARGER_HISTORY_LIMIT } from "@/lib/limits";
 import { tellStorage, withStorage } from "@/lib/storage";
+import { recordStateChange } from "@api/stores/state-journal";
+import { chargerState } from "@shared/state-journal";
 import type { ChargerSample, ChargerStatus } from "@/lib/types";
 import { type ChargerLanding, type ChargerState, DISCONNECTED_HISTORY_AFTER_MS, K_HISTORY, K_LAST_PUSH, K_LATEST, type Stored, disconnectedHistoryExpired, fallback } from "@shared/charger-store";
 
@@ -166,6 +168,7 @@ export function prepareStatus(
           fallback.history.splice(0, fallback.history.length - CHARGER_HISTORY_LIMIT);
         }
       }
+      if (fallback.persisted) await recordStateChange("charger", receivedAt, chargerState(status));
     },
   };
 }

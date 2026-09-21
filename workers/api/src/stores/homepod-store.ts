@@ -1,7 +1,9 @@
 import { createHash } from "node:crypto";
 
 import { numberish, object, text } from "@/lib/json";
+import { recordStateChange } from "@api/stores/state-journal";
 import { type StoredHomePod, mirror } from "@shared/homepod-store";
+import { listeningDeviceState } from "@shared/state-journal";
 
 /**
  * 观测时刻，epoch 毫秒。
@@ -138,6 +140,7 @@ export function normalizeHomePodEvent(
   };
 }
 
-export function writeHomePodEvent(stored: StoredHomePod): Promise<void> {
-  return mirror.put(stored);
+export async function writeHomePodEvent(stored: StoredHomePod): Promise<void> {
+  await mirror.put(stored);
+  await recordStateChange("listening-homepod", stored.receivedAt, listeningDeviceState(stored.music));
 }

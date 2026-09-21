@@ -91,7 +91,7 @@
   <img src="docs/screenshots/playstation-trophies-light.webp" alt="PlayStation 卡片：在线、正在游玩与展开的奖杯明细" width="100%">
 </picture>
 
-**Pulse**：六个域最近 24 小时的活跃度泳道，听、看、玩曲线直接显示播放／游戏状态，充电曲线和详情显示实测瓦数。六项右侧均由 Jev 五分钟评分汇总强度、趋势和置信度；历史每分钟归档到 D1。
+**Pulse**：六个域最近 24 小时的活跃度泳道，听、看、玩曲线直接显示播放／游戏状态，充电曲线和详情显示实测瓦数。六项右侧均由 Jev 五分钟评分汇总强度、趋势和置信度；活动曲线和其余展示状态的每次变化都按分钟归档到 D1。
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/pulse-dark.webp">
@@ -125,7 +125,7 @@
 
 **采集端**运行在数据产生的位置。Mac 采集本机应用、音乐、BLE 设备与编码用量，iPhone 读取运动活动，NAS 代理 Emby 播放状态，Linux 上报器提供服务器指标和 Agent 限额。Home Assistant 接入 HomePod 等家庭设备，独立 Worker 定时同步 PlayStation 数据。
 
-**状态中枢**由 Cloudflare Workers 承担，负责接收上报、整合外部服务数据、提供公开状态 API 和实时推送。Durable Objects SQLite 保存快照与历史，是唯一权威；几条慢端点的公开读模型发布到 KV，读路径先取 KV、缺失或过旧时回源 DO。R2 保存海报等图片资源，D1 归档 Pulse 的逐分钟历史；在线访客计数由独立 Worker 维护。
+**状态中枢**由 Cloudflare Workers 承担，负责接收上报、整合外部服务数据、提供公开状态 API 和实时推送。Durable Objects SQLite 保存快照与历史，是唯一权威；几条慢端点的公开读模型发布到 KV，读路径先取 KV、缺失或过旧时回源 DO。R2 保存海报等图片资源，D1 归档 Pulse 的活动曲线，以及前台应用、播放、游戏、充电结构、服务器和编码这些展示状态的每次变化；在线访客计数由独立 Worker 维护。
 
 **展示端**运行在 Vercel。Next.js 生成首页时读取 Worker 的聚合快照，浏览器挂载后直接连接 Worker 获取最新状态，不再经由 Vercel 转发状态请求。中国大陆访问入口通过阿里云 ESA 加速页面与静态资源。
 

@@ -37,6 +37,8 @@ import type {
 } from "@/lib/types";
 import { fanout, type PendingEvent } from "@api/fanout";
 import { recordPulse } from "@api/stores/pulse";
+import { recordStateChange } from "@api/stores/state-journal";
+import { desktopState, listeningDeviceState, timezoneState } from "@shared/state-journal";
 import { parseAppleMusicCredentials } from "@api/apple-music-credentials-module";
 import { putAppleMusicCredentials } from "@api/stores/apple-music-credentials";
 import { prepareHeartbeat, prepareStatus } from "@api/stores/charger-store";
@@ -85,6 +87,11 @@ async function persistTelemetryState(
   if ("music" in patch) fields.push("music", "upcomingTracks", "activityReceivedAt");
 
   await mirror.merge(incoming, fields);
+  if ("desktop" in patch) await recordStateChange("desktop", receivedAt, desktopState(patch.desktop ?? null));
+  if ("timezone" in patch) await recordStateChange("timezone", receivedAt, timezoneState(patch.timezone ?? null));
+  if ("music" in patch) {
+    await recordStateChange("listening-mac", receivedAt, listeningDeviceState(patch.music ?? null, patch.upcomingTracks ?? []));
+  }
 }
 
 type TelemetryEnvelope = {

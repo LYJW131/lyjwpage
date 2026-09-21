@@ -5,6 +5,8 @@ import { NOW_WATCHING_TAG, WATCHING_TAG } from "@/lib/live-events";
 import type { WatchingItem, WatchingMedia, WatchingPlayMethod } from "@/lib/types";
 import { fanout, type PendingEvent } from "@api/fanout";
 import { recordPulse } from "@api/stores/pulse";
+import { recordStateChange } from "@api/stores/state-journal";
+import { watchingListState, watchingNowState } from "@shared/state-journal";
 import { hasStoredImage, IMAGE_OBJECT_KEY } from "@api/r2-assets";
 import { clearNowPlaying, setCurrentItem, setImageObjectKeys, setNowPlaying, setResume } from "@api/stores/emby-store";
 import { nowWatchingPayload, watchingPayload } from "@shared/emby";
@@ -243,14 +245,18 @@ export async function recordEmbyReport(body: unknown, receivedAt = Date.now()) {
       .filter((item): item is ReportItem => item != null)
       .map(normalize);
     resumeChanged = JSON.stringify(previousResume?.items) !== JSON.stringify(list);
-    writes.push(setResume(list));
+    const items = list;
+    writes.push((async () => {
+      await setResume(items);
+      await recordStateChange("watching", receivedAt, watchingListState(items));
+    })());
   }
 
   /**
    * `playing` 缺席和为 null 是两回事：缺席表示这次不谈播放状态（比如只补图），
    * null 表示代理确认没有会话在播了，要清掉。所以判存在而不是判真假。
    */
-  const played = "playing" in root ? preparePlaying(root.playing) : null;
+  const played = "playing" in root ? preparePlaying(root.playing, receivedAt) : null;
   if (played) {
     writes.push(played.commit());
     /**
@@ -396,7 +402,7 @@ function playbackMedia(value: unknown): WatchingMedia | null {
 }
 
 /** 收下一次播放状态：先算，写留给 commit。`state` 为 null 表示没有会话在播了 */
-function preparePlaying(value: unknown): {
+function preparePlaying(value: unknown, receivedAt: number): {
   outcome: "updated" | "cleared";
   state: EmbyNowPlaying | null;
   item: StoredWatchingItem | null;
@@ -405,7 +411,15 @@ function preparePlaying(value: unknown): {
   const raw = object(value);
   const itemId = text(raw?.itemId);
   if (!raw || !itemId) {
-    return { outcome: "cleared", state: null, item: null, commit: clearNowPlaying };
+    return {
+      outcome: "cleared",
+      state: null,
+      item: null,
+      commit: async () => {
+        await clearNowPlaying();
+        await recordStateChange("watching-now", receivedAt, watchingNowState(null, null));
+      },
+    };
   }
 
   const reported = reportItem(raw.item);
@@ -432,6 +446,7 @@ function preparePlaying(value: unknown): {
     item,
     commit: async () => {
       await Promise.all([item ? setCurrentItem(item) : null, setNowPlaying(state)]);
+      await recordStateChange("watching-now", receivedAt, watchingNowState(state, item));
     },
   };
 }

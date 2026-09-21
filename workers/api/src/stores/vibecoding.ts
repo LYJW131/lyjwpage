@@ -14,6 +14,8 @@ import {
   normalizeVibeCodingUsage
 } from "@/lib/vibecoding-parse";
 import { fanout } from "@api/fanout";
+import { recordStateChange } from "@api/stores/state-journal";
+import { agentLimitsState, vibeNowState, vibeUsageState } from "@shared/state-journal";
 import { limitsMirror, nowMirror, usageMirror } from "@shared/vibecoding";
 
 /**
@@ -26,7 +28,12 @@ import { limitsMirror, nowMirror, usageMirror } from "@shared/vibecoding";
 export function prepareVibeCodingUsage(report: unknown, receivedAt = Date.now()) {
   const payload = normalizeVibeCodingUsage(report);
   if (!payload) throw new Error("vibeCodingUsage 必须是 Mac Telemetry Hub 的用量摘要");
-  return { commit: () => usageMirror.put({ payload, pushedAt: receivedAt }) };
+  return {
+    commit: async () => {
+      await usageMirror.put({ payload, pushedAt: receivedAt });
+      await recordStateChange("vibecoding-usage", receivedAt, vibeUsageState(payload));
+    },
+  };
 }
 
 export function prepareVibeCodingNow(report: unknown, receivedAt = Date.now()) {
@@ -42,6 +49,7 @@ export function prepareVibeCodingNow(report: unknown, receivedAt = Date.now()) {
           await storage.set(codingTokenUsageKey(), JSON.stringify(payload.tokenUsage));
       });
       await nowMirror.put({ payload: { agents: payload.agents }, pushedAt: receivedAt });
+      await recordStateChange("vibecoding", receivedAt, vibeNowState(payload.agents));
     },
   };
 }
@@ -62,7 +70,10 @@ export async function recordAgentLimits(input: unknown, receivedAt = Date.now())
   const changed = displayChanged(previous, next);
 
   await fanout({
-    writes: [limitsMirror.put(next)],
+    writes: [(async () => {
+      await limitsMirror.put(next);
+      await recordStateChange("agent-limits", receivedAt, agentLimitsState(next));
+    })()],
     tags: changed ? [VIBECODING_TAG] : [],
   });
 
