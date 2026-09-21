@@ -2,12 +2,14 @@ import { codingObservationsKey, codingTokenUsageKey } from '@/lib/coding-pulse';
 import { pulseAssessmentsKey, pulseAssessmentAttemptKey } from '@/lib/pulse-assessments';
 import { parsePulseSample, pulseKey } from '@/lib/pulse';
 import { compressPulseWindow, PULSE_LEGEND } from '@/lib/pulse-window';
-import { PULSE_DOMAINS, type PulseDomain } from '@/lib/types';
+import { type PulseDomain } from '@/lib/types';
 import { PULSE_TTL_MS, PULSE_WINDOW_MS } from '@/lib/limits';
 import { CODING_WINDOW_MS, codingQuestions, codingWindowFeatures, judgment, modeJudgment, parseCodingObservation } from '@shared/pulse-coding';
 import { parseCodingTokenUsage } from '@shared/coding-token-usage';
 import { PULSE_ASSESSMENT_VERSION, parsePulseAssessment, type PulseAssessment } from '@shared/pulse-assessment';
 import type { StorageClient } from '@shared/storage-client';
+
+const SCORED_DOMAINS = ["coding", "activity"] as const;
 
 /** One scheduler, one set of assessments: summaries are derived, never a second model call. */
 export class PulseScorer {
@@ -26,7 +28,7 @@ export class PulseScorer {
     if (now - (Number(await storage.get(pulseAssessmentAttemptKey())) || 0) < CODING_WINDOW_MS) return;
     const [raw, observations, tokenRaw, ...histories] = await Promise.all([
       storage.listRange(pulseAssessmentsKey(),0,-1), storage.listRange(codingObservationsKey(),0,-1),
-      storage.get(codingTokenUsageKey()), ...PULSE_DOMAINS.map((d)=>storage.listRange(pulseKey(d),0,-1)),
+      storage.get(codingTokenUsageKey()), ...SCORED_DOMAINS.map((d)=>storage.listRange(pulseKey(d),0,-1)),
     ] as const);
     const existing = raw.map(parsePulseAssessment).filter((r): r is PulseAssessment=>r!==null&&r.to>now-PULSE_TTL_MS);
     const completed = new Map(existing.map((r)=>[`${r.domain}:${r.from}`,r]));
@@ -37,7 +39,7 @@ export class PulseScorer {
     const end = Math.floor((now-120_000)/CODING_WINDOW_MS)*CODING_WINDOW_MS;
     const jobs: {domain: PulseDomain; from: number; coverage: {from:number;to:number}[]; state: unknown; questions: ReturnType<typeof codingQuestions>; hash:string}[] = [];
     for (let from=end-CODING_WINDOW_MS;from>=Math.ceil((now-PULSE_WINDOW_MS)/CODING_WINDOW_MS)*CODING_WINDOW_MS&&jobs.length<36;from-=CODING_WINDOW_MS) {
-      for (const [index,domain] of PULSE_DOMAINS.entries()) {
+      for (const [index,domain] of SCORED_DOMAINS.entries()) {
         if (jobs.length>=36) break;
         const window = {from,to:from+CODING_WINDOW_MS};
         let feature: unknown, coverage: {from:number;to:number}[], questions: ReturnType<typeof codingQuestions>;

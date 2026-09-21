@@ -46,7 +46,6 @@ test("readModel 视图都没有推送事件", () => {
     "/api/status/cloudflare-workers",
     "/api/status/github-chart",
     "/api/status/github-repo",
-    "/api/status/pulse",
     "/api/status/vercel-deployments",
     "/api/status/vibecoding/year",
   ]);

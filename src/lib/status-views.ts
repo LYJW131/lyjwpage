@@ -64,7 +64,7 @@ export const STATUS_VIEWS = {
   githubRepo: { path: "/api/status/github-repo", readModel: "slow" },
   cloudflareWorkers: { path: "/api/status/cloudflare-workers", readModel: "slow" },
   vercelDeployments: { path: "/api/status/vercel-deployments", readModel: "slow" },
-  pulse: { path: "/api/status/pulse", readModel: "slow" },
+  pulse: { path: "/api/status/pulse" },
   /** 首屏歌词，按 nowListening 的 songId 现解，没有状态端点 */
   lyrics: {},
 } as const satisfies Record<string, StatusView>;

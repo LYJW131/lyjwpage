@@ -75,7 +75,6 @@ test("read model: allowlist excludes live, liveness, credentials, coordination a
     "/api/status/cloudflare-workers",
     "/api/status/github-chart",
     "/api/status/github-repo",
-    "/api/status/pulse",
     "/api/status/vercel-deployments",
     "/api/status/vibecoding/year",
   ]);
@@ -265,7 +264,7 @@ test("publisher: empty flush is idle, bounded batch drains, and duplicate flush 
     gate.resolve(Response.json({ ok: true, data: 1 })); await first;
     assert.equal(f.written.length, 1);
     const batch = new ReadModelPublisher(f.options);
-    batch.enqueue(["/api/status/github-chart", "/api/status/pulse", "/api/status/vibecoding/year"]); f.advance(2_000);
+    batch.enqueue(["/api/status/github-chart", "/api/status/vercel-deployments", "/api/status/vibecoding/year"]); f.advance(2_000);
     await batch.flush(2); assert.notEqual(batch.nextAlarm(), null);
     await batch.flush(2); assert.equal(batch.nextAlarm(), null);
   } finally { f.db.close(); }

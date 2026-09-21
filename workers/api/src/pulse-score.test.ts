@@ -108,13 +108,13 @@ test('late token evidence re-scores only changed windows; identical evidence sta
   const rows=await b.storage.listRange(pulseAssessmentsKey(),0,-1);assert.equal(rows.length,1);
 });
 
-test('all domains share one scheduler and a single assessment store',async()=>{
+test('only coding and activity call Jev; measured domains never call it',async()=>{
  const b=setup();await b.push(T);
  const {pulseKey}=await import('@/lib/pulse');
  for(const domain of ['listening','watching','gaming','charging','activity'] as const)
    await b.storage.append(pulseKey(domain),JSON.stringify({t:T,until:T+CODING_WINDOW_MS,level:3}));
- await b.make().run();assert.equal(b.requests.length,6);
+ await b.make().run();assert.equal(b.requests.length,2);
  const rows=await b.storage.listRange(pulseAssessmentsKey(),0,-1);
- assert.equal(new Set(rows.map((r)=>JSON.parse(r).domain)).size,6);
- b.advance(CODING_WINDOW_MS);await b.make().run();assert.equal(b.requests.length,6);
+ assert.equal(new Set(rows.map((r)=>JSON.parse(r).domain)).size,2);
+ b.advance(CODING_WINDOW_MS);await b.make().run();assert.equal(b.requests.length,2);
 });

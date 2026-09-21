@@ -704,7 +704,7 @@ async function recordCodingPulse(
 async function recordChargingPulse(receivedAt: number, status: ChargerStatus): Promise<void> {
   try {
     const scored = chargingLevel(status);
-    await recordPulse("charging", { t: receivedAt, level: scored.level, hint: scored.hint });
+    await recordPulse("charging", { t: receivedAt, level: scored.level, hint: scored.hint, powerW: status.connected ? status.totalPower : 0 });
   } catch (error) {
     console.error("[pulse]", error instanceof Error ? error.message : String(error));
   }

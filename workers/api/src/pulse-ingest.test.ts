@@ -186,15 +186,15 @@ test("充电头只发心跳的那几分钟，charging 档位照样再确认", as
       ),
     );
     assert.deepEqual(await samples(storage, "charging"), [
-      { t: T0, level: 2, hint: "MacBook Pro" },
+      { t: T0, level: 2, hint: "MacBook Pro", powerW: 45 },
     ]);
 
     // 这一封没带 chargingDevices，只把 charger 列在 activeModules 里（走 prepareHeartbeat）
     const reconfirm = T0 + PULSE_REPEAT_AFTER_MS;
     await inRequest(() => recordTelemetryEnvelope(envelope(reconfirm, ["charger"]), reconfirm));
     assert.deepEqual(await samples(storage, "charging"), [
-      { t: T0, level: 2, hint: "MacBook Pro" },
-      { t: reconfirm, level: 2, hint: "MacBook Pro" },
+      { t: T0, level: 2, hint: "MacBook Pro", powerW: 45 },
+      { t: reconfirm, level: 2, hint: "MacBook Pro", powerW: 45 },
     ]);
   } finally {
     resetStorageForTests();
@@ -338,8 +338,7 @@ test("iPhone activity reports create bounded physical-activity history and expos
     const expected = [{ t: start, until: start + 3_600_000, level: 3 }];
     assert.deepEqual(await samples(storage, "activity"), expected);
     const status = await inRequest(() => getPulseStatus(start + 7_200_000));
-    assert.deepEqual(status.domains.activity.assessments, [], "raw observations wait for Jev before public display");
-    assert.equal(status.domains.activity.score, null);
+    assert.deepEqual(status.domains.activity, { kind: "score", assessments: [], score: null }, "raw observations wait for Jev before public display");
     await inRequest(() => recordPhoneEnvelope(report(6000), start + 4 * 3_600_000));
     assert.deepEqual(await samples(storage, "activity"), expected, "long gaps are not filled");
   } finally { resetStorageForTests(); }
