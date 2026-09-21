@@ -937,8 +937,7 @@ export type PulseScore = {
 /**
  * 公开端点 `/api/status/pulse` 的形状。
  *
- * **不带 hint。** 曲名、应用名、游戏名只在 Worker 内部参与评分，不出公网：
- * 卡片画的是强度和时间，读者不需要知道那会儿在听哪首歌。
+ * 实测媒体段可携带当时的 title；应用、模型、token 和会话信息仍不公开。
  */
 export type PulsePayload = {
   generatedAt: number;
@@ -1128,7 +1127,7 @@ export type WorkoutsPayload = {
   pushedAt: number;
 };
 
-export type PulseMeasuredSegment = { from: number; to: number; value: number };
+export type PulseMeasuredSegment = { from: number; to: number; value: number; title?: string };
 export type PulseChartView =
   | { kind: "score"; assessments: import("../../shared/pulse-assessment").PulseAssessment[] }
   | { kind: "binary"; segments: PulseMeasuredSegment[]; activeSeconds: number }

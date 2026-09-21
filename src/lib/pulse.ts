@@ -176,9 +176,11 @@ export function measuredPulseView(domain: "listening" | "watching" | "gaming" | 
     const to = Math.min(window.to, samples[i + 1]?.t ?? window.to, pulseSampleUntil(domain, sample));
     const value = domain === "charging" ? sample.powerW : sample.level === 3 ? 1 : 0;
     if (to <= from || value == null) continue;
+    // Only media/game labels are public; stopped sessions must not inherit their old title.
+    const title = domain !== "charging" && sample.level >= 2 ? sample.hint : undefined;
     const previous = segments.at(-1);
-    if (previous?.to === from && previous.value === value) previous.to = to;
-    else segments.push({ from, to, value });
+    if (previous?.to === from && previous.value === value && previous.title === title) previous.to = to;
+    else segments.push({ from, to, value, ...(title ? { title } : {}) });
   }
   if (domain === "charging") {
     const last = samples.at(-1);

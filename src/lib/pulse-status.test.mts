@@ -27,9 +27,9 @@ test('summary weights actual covered time and compares observed recent periods w
  assert.equal(summarizeAssessments([a],NOW-100000,NOW),null);
 });
 
-test('measured lanes map playing only, preserve silence and do not expose hints', async () => {
+test('measured lanes map playing only and preserve silence', async () => {
  const {measuredPulseView}=await import('@/lib/pulse');
- const samples=[{t:0,level:3 as const,hint:'private'},{t:60000,level:2 as const},{t:120000,level:1 as const}];
+ const samples=[{t:0,level:3 as const},{t:60000,level:2 as const},{t:120000,level:1 as const}];
  for(const domain of ['listening','watching'] as const){
   const view=measuredPulseView(domain,samples,{from:0,to:1000000});
   assert.deepEqual(view,{kind:'binary',segments:[{from:0,to:60000,value:1},{from:60000,to:720000,value:0}],activeSeconds:60});
@@ -73,4 +73,15 @@ test('Emby explicit stop persists until playback resumes; paused and active tele
  assert.deepEqual(measuredPulseView('watching',[{t:0,level:0},{t:180*m,level:3},{t:185*m,level:2},{t:190*m,level:3}],{from:0,to:210*m}),{
   kind:'binary',segments:[{from:0,to:180*m,value:0},{from:180*m,to:185*m,value:1},{from:185*m,to:190*m,value:0},{from:190*m,to:200*m,value:1}],activeSeconds:15*60
  });
+});
+
+
+test('media titles keep track boundaries without changing intensity or counting stops as playback',async()=>{
+ const {measuredPulseView}=await import('@/lib/pulse');
+ for(const domain of ['listening','watching','gaming'] as const){
+  const view=measuredPulseView(domain,[{t:0,level:3,hint:'First title'},{t:60000,level:3,hint:'Second title'},{t:120000,level:2,hint:'Second title'},{t:180000,level:0,hint:'Old title'}],{from:0,to:240000});
+  assert.deepEqual(view,{kind:'binary',activeSeconds:120,segments:[{from:0,to:60000,value:1,title:'First title'},{from:60000,to:120000,value:1,title:'Second title'},{from:120000,to:180000,value:0,title:'Second title'},{from:180000,to:240000,value:0}]});
+ }
+ const power=measuredPulseView('charging',[{t:0,level:2,powerW:40,hint:'Private device'}],{from:0,to:60000});
+ assert.equal(JSON.stringify(power).includes('Private device'),false);
 });

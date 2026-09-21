@@ -85,7 +85,7 @@ Pulse 卡片用它。信封形状：
 } }
 ```
 
-**原始 hint、应用/模型名称与 token 用量不出公网。** 播放／游戏状态与瓦数可公开；
+**仅媒体／游戏段公开当时的 title；应用/模型名称与 token 用量不出公网。** 播放／游戏状态与瓦数可公开；
 公开端点返回五分钟评估和同源汇总，详细契约与调度见下方统一评分章节。
 没有 `TYPESAFE_API_KEY`、或本地配了 `DEV_OVERRIDES` / `UPSTREAM_API_URL` 时停用自动评分。
 
@@ -341,6 +341,7 @@ Listening / Watching / Gaming 返回 `{kind:"binary",segments:[{from,to,value}],
 上述两种实测形状均额外包含 `score`，与 Coding / Activity 的右侧摘要同形。
 `value` 仅为 0 或 1：只有播放或游戏中为 1，暂停、停止和仅主机在线为 0。
 Charging 返回 `{kind:"power",segments:[{from,to,value}],currentPowerW}`，value 单位为 W。
+Listening / Watching / Gaming 的 segments 可带当时的 `title`，来自历史记录；切歌／切换影片或游戏时不合并段，停止时不沿用旧标题。
 四域的曲线独立于 Jev，仍返回 score（评分、趋势、置信度）；前端每分钟刷新。
 段来自实际观测：通常超过 10 分钟未确认留空，含零值；Gaming 按 30 分钟空闲轮询设置 35 分钟有效期。Watching 的明确停止（level 0）持续至下次播放事件，暂停／播放仍按 10 分钟失效。曲线与 Jev 输入共用这些有效期；当前功率过期为 null。
 充电使用已有 Mac `totalPower`，未连接记录 0 W；功率变化最多每 30 秒取一点，
