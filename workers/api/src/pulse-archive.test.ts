@@ -108,8 +108,8 @@ test("pulse archive: 新样本写进 D1，水位线停在最大的 t", async () 
 
   // hint 有无都要落库，缺 hint 必须是显式 null：D1 对 undefined 抛 D1_TYPE_ERROR。
   assert.deepEqual(world.rows(), [
-    ["coding", T0, 2, "lyjwpage", null],
-    ["coding", T0 + 60_000, 0, null, null],
+    ["coding", T0, 2, "lyjwpage", null, null],
+    ["coding", T0 + 60_000, 0, null, null, null],
   ]);
   assert.equal(world.batches.length, 1);
   assert.equal(world.watermark("coding"), String(T0 + 60_000));
@@ -140,7 +140,7 @@ test("pulse archive: 再跑一遍不重复插入，只补水位线之后的那�
   const next = setup({ lists: { listening: [...samples, later] } });
   next.seed("listening", samples[samples.length - 1].t);
   await next.archive.run();
-  assert.deepEqual(next.rows(), [["listening", later.t, 1, "Helpless", null]]);
+  assert.deepEqual(next.rows(), [["listening", later.t, 1, "Helpless", null, null]]);
   assert.equal(next.watermark("listening"), String(later.t));
 });
 
@@ -224,5 +224,11 @@ test("pulse archive: 坏行跳过，不废掉整条序列", async () => {
 test("pulse archive: physical activity retains its interval end", async () => {
   const world = setup({ lists: { activity: [{ t: T0, until: T0 + 3_600_000, level: 2 }] } });
   await world.archive.run();
-  assert.deepEqual(world.rows(), [["activity", T0, 2, null, T0 + 3_600_000]]);
+  assert.deepEqual(world.rows(), [["activity", T0, 2, null, T0 + 3_600_000, null]]);
+});
+
+test("pulse archive: measured watts survive archiving", async () => {
+  const world = setup({ lists: { charging: [{ t: T0, level: 2, powerW: 42.75 }] } });
+  await world.archive.run();
+  assert.deepEqual(world.rows(), [["charging", T0, 2, null, null, 42.75]]);
 });

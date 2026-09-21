@@ -18,7 +18,7 @@ function reason(error: unknown): string {
  */
 export async function recordPulse(
   domain: PulseDomain,
-  next: { t: number; level: PulseLevel; hint?: string | null; until?: number },
+  next: { t: number; level: PulseLevel; hint?: string | null; until?: number; powerW?: number },
 ): Promise<void> {
   try {
     const k = pulseKey(domain);
@@ -30,7 +30,7 @@ export async function recordPulse(
     await tellStorage(async (storage) => {
       const pipe = storage.batch();
       pipe.append(k, JSON.stringify(sample));
-      pipe.trim(k, -PULSE_HISTORY_LIMIT, -1);
+      pipe.trim(k, -(domain === "charging" ? 6000 : PULSE_HISTORY_LIMIT), -1);
       pipe.expire(k, PULSE_TTL_MS);
       return pipe.execute();
     });

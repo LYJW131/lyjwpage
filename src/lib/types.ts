@@ -898,6 +898,7 @@ export type PulseSample = {
   /** 已知区间的终点（epoch 毫秒）；activity 必填，不向未来延续 */
   until?: number;
   level: PulseLevel;
+  powerW?: number;
   /** 紧凑标签，缺席或空串不入库 */
   hint?: string;
 };
@@ -942,11 +943,8 @@ export type PulseScore = {
 export type PulsePayload = {
   generatedAt: number;
   window: { from: number; to: number };
-  domains: Record<PulseDomain, {
-    /** 五分钟模型评分，不公开原始应用、token 或会话信息。 */
-    assessments: import("../../shared/pulse-assessment").PulseAssessment[];
-    score: PulseScore | null;
-  }>;
+  domains: Record<PulseDomain, PulseDomainView>;
+
 };
 
 /**
@@ -1129,3 +1127,9 @@ export type WorkoutsPayload = {
   items: Workout[];
   pushedAt: number;
 };
+
+export type PulseMeasuredSegment = { from: number; to: number; value: number };
+export type PulseDomainView =
+  | { kind: "score"; assessments: import("../../shared/pulse-assessment").PulseAssessment[]; score: PulseScore | null }
+  | { kind: "binary"; segments: PulseMeasuredSegment[]; activeSeconds: number }
+  | { kind: "power"; segments: PulseMeasuredSegment[]; currentPowerW: number | null };

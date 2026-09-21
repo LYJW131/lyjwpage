@@ -2,6 +2,7 @@ import { readPulseAssessments } from "@/lib/pulse-assessments";
 import { summarizeAssessments } from "@shared/pulse-assessment";
 import {
   PULSE_REPEAT_AFTER_MS,
+  PULSE_SILENT_AFTER_MS,
   PULSE_HINT_MAX,
 } from "@/lib/limits";
 import { pulseWindowAt } from "@/lib/pulse-window";
@@ -35,14 +36,16 @@ export function parsePulseSample(raw: string): PulseSample | null {
   try {
     const value: unknown = JSON.parse(raw);
     if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-    const row = value as { t?: unknown; level?: unknown; hint?: unknown; until?: unknown };
+    const row = value as { t?: unknown; level?: unknown; hint?: unknown; until?: unknown; powerW?: unknown };
     if (typeof row.t !== "number" || !Number.isFinite(row.t) || !isPulseLevel(row.level)) {
       return null;
     }
     if (row.until != null && (typeof row.until !== "number" || !Number.isFinite(row.until) || row.until <= row.t)) return null;
+    if (row.powerW != null && (typeof row.powerW !== "number" || !Number.isFinite(row.powerW) || row.powerW < 0)) return null;
+    const power = typeof row.powerW === "number" ? { powerW: row.powerW } : {};
     const interval = typeof row.until === "number" ? { until: row.until } : {};
     const hint = normalizeHint(typeof row.hint === "string" ? row.hint : undefined);
-    return { t: row.t, level: row.level, ...interval, ...(hint ? { hint } : {}) };
+    return { t: row.t, level: row.level, ...interval, ...power, ...(hint ? { hint } : {}) };
   } catch {
     return null;
   }
@@ -53,9 +56,10 @@ export function toPulseSample(next: {
   level: PulseLevel;
   hint?: string | null;
   until?: number;
+  powerW?: number;
 }): PulseSample {
   const hint = normalizeHint(next.hint);
-  return { t: next.t, level: next.level, ...(next.until != null ? { until: next.until } : {}), ...(hint ? { hint } : {}) };
+  return { t: next.t, level: next.level, ...(next.powerW != null ? { powerW: next.powerW } : {}), ...(next.until != null ? { until: next.until } : {}), ...(hint ? { hint } : {}) };
 }
 
 /**
@@ -71,13 +75,16 @@ export function toPulseSample(next: {
  */
 export function planPulseSample(
   last: PulseSample | null,
-  next: { t: number; level: PulseLevel; hint?: string | null; until?: number },
+  next: { t: number; level: PulseLevel; hint?: string | null; until?: number; powerW?: number },
 ): PulseSample | null {
   const sample = toPulseSample(next);
   if (!last) return sample;
   if (sample.t <= last.t) return null;
   if (sample.until != null) return sample;
-  if (sample.level !== last.level || sample.hint !== last.hint) {
+  // Power changes are sampled at most once per 30 seconds; zero/nonzero transitions are immediate.
+  if (sample.powerW != null && last.powerW != null && sample.powerW !== last.powerW &&
+      sample.powerW > 0 && last.powerW > 0 && sample.t - last.t < 30_000) return null;
+  if (sample.level !== last.level || sample.hint !== last.hint || sample.powerW !== last.powerW) {
     return sample;
   }
   if (sample.t - last.t >= PULSE_REPEAT_AFTER_MS) {
@@ -137,11 +144,35 @@ export async function readPulseHistory(cursor?: number): Promise<PulseHistory> {
 /** Graph and summary share the same immutable observations and revision-aware assessments. */
 export async function getPulseStatus(now: number = Date.now()): Promise<PulsePayload> {
   const window = pulseWindowAt(now);
-  const rows = await readPulseAssessments(window.from, window.to);
+  const [rows, history] = await Promise.all([readPulseAssessments(window.from, window.to), readPulseHistory()]);
   const domains = {} as PulsePayload['domains'];
   for (const domain of PULSE_DOMAINS) {
+    if (domain !== "coding" && domain !== "activity") {
+      domains[domain] = measuredPulseView(domain, history.series[domain].samples, window);
+      continue;
+    }
     const assessments = rows.filter((r)=>r.domain===domain);
-    domains[domain] = { assessments, score: summarizeAssessments(assessments, window.from, window.to) };
+    domains[domain] = { kind: "score", assessments, score: summarizeAssessments(assessments, window.from, window.to) };
   }
   return { generatedAt: now, window, domains };
+}
+
+/** Preserve source boundaries and silence, including observed zero values. */
+export function measuredPulseView(domain: "listening" | "watching" | "gaming" | "charging", samples: PulseSample[], window: { from: number; to: number }): import("@/lib/types").PulseDomainView {
+  const segments: import("@/lib/types").PulseMeasuredSegment[] = [];
+  for (let i = 0; i < samples.length; i++) {
+    const sample = samples[i];
+    const from = Math.max(window.from, sample.t);
+    const to = Math.min(window.to, samples[i + 1]?.t ?? window.to, sample.until ?? sample.t + PULSE_SILENT_AFTER_MS);
+    const value = domain === "charging" ? sample.powerW : sample.level === 3 ? 1 : 0;
+    if (to <= from || value == null) continue;
+    const previous = segments.at(-1);
+    if (previous?.to === from && previous.value === value) previous.to = to;
+    else segments.push({ from, to, value });
+  }
+  if (domain === "charging") {
+    const last = samples.at(-1);
+    return { kind: "power", segments, currentPowerW: last && last.t <= window.to && window.to < (last.until ?? last.t + PULSE_SILENT_AFTER_MS) ? last.powerW ?? null : null };
+  }
+  return { kind: "binary", segments, activeSeconds: segments.reduce((sum, part) => sum + (part.value === 1 ? (part.to - part.from) / 1000 : 0), 0) };
 }

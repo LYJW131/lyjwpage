@@ -9,13 +9,13 @@ import { useStatus } from "@/hooks/use-status";
 import { PULSE_SILENT_AFTER_MS } from "@/lib/limits";
 import { PULSE_PATH } from "@/lib/paths";
 import { pulseLanePath, pulseScoreWord, type PulseLanePoint } from "@/lib/pulse-lane";
-import type { PulseDomain, PulsePayload, PulseTrend, StatusResponse } from "@/lib/types";
+import type { PulseDomainView, PulseDomain, PulsePayload, PulseTrend, StatusResponse } from "@/lib/types";
 import { CODING_INTENSITY, CODING_CONTINUITY } from "@shared/pulse-coding";
 import type { PulseAssessment } from "@shared/pulse-assessment";
 import { cn } from "@/lib/utils";
 
 /** Every lane and its summary consume the same five-minute Jev assessments. */
-const REFRESH_MS = 5 * 60_000;
+const REFRESH_MS = 60_000;
 
 const LANES: ReadonlyArray<{ domain: PulseDomain; label: string }> = [
   { domain: "coding", label: "Coding" },
@@ -89,7 +89,9 @@ function Lane({
 
 const MODE_LABELS = { idle: "Idle", brief: "Brief bursts", interactive: "Coding apps", agent: "Agent work", mixed: "Apps + agents" };
 
-function AssessmentLane({ assessments, range, label }: { assessments: PulseAssessment[]; label: string; range: { from: number; to: number } }) {
+function AssessmentLane({ view, range, label }: { view: PulseDomainView; label: string; range: { from: number; to: number } }) {
+  const maximum = view.kind === "power" ? Math.max(1, ...view.segments.map((part) => part.value)) : 1;
+  const assessments = view.kind === "score" ? view.assessments.map((row) => ({ ...row, assessment: row, value: row.intensity.value / 4 })) : view.segments.map((part) => ({ ...part, coverage: [{ from: part.from, to: part.to }], assessment: null as PulseAssessment | null, value: part.value / maximum }));
   const [selected, setSelected] = useState<number | null>(null);
   const [bounds, setBounds] = useState<CellAnchor | null>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -97,7 +99,7 @@ function AssessmentLane({ assessments, range, label }: { assessments: PulseAsses
   useHoverDismiss(buttonRef, selected != null, close);
   const active = selected == null ? null : assessments[selected];
   const points = assessments.flatMap((assessment) => assessment.coverage.map((part) => ({
-    t: part.from, until: part.to, level: assessment.intensity.value / (CODING_INTENSITY.length - 1) * 3,
+    t: part.from, until: part.to, level: assessment.value * 3,
   })));
   const time = (at: number) => new Date(at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
   const selectAt = (clientX: number, target: HTMLButtonElement) => {
@@ -113,7 +115,7 @@ function AssessmentLane({ assessments, range, label }: { assessments: PulseAsses
         ref={buttonRef}
         type="button"
         className="block w-full cursor-crosshair rounded-sm focus-visible:outline-1 focus-visible:outline-live"
-        aria-label={`${label} intensity, scored by Jev every 5 minutes. Use arrow keys to inspect intervals.`}
+        aria-label={`${label} ${view.kind === "score" ? "intensity, scored by Jev every 5 minutes" : view.kind === "power" ? "power in watts" : "active status"}. Use arrow keys to inspect intervals.`}
         onPointerMove={(event) => selectAt(event.clientX, event.currentTarget)}
         onPointerLeave={(event) => { if (event.pointerType === "mouse") setSelected(null); }}
         onFocus={(event) => { setBounds(cellAnchor(event.currentTarget)); setSelected((value) => value ?? assessments.length - 1); }}
@@ -132,7 +134,7 @@ function AssessmentLane({ assessments, range, label }: { assessments: PulseAsses
           }
         }}
       >
-        <Lane label={`Jev ${label} intensity`} samples={points} range={range} />
+        <Lane label={label} samples={points} range={range} />
       </button>
       {active && bounds && (
         <AnchoredTooltip
@@ -147,12 +149,12 @@ function AssessmentLane({ assessments, range, label }: { assessments: PulseAsses
         >
           <div className="text-xs">
           <div className="font-mono text-muted-foreground">{time(active.from)}–{time(active.to)}</div>
-          {active.mode && <div className="mt-1 font-medium">{MODE_LABELS[active.mode.value]}</div>}
-          <div>Intensity {Math.round(active.intensity.value / (CODING_INTENSITY.length - 1) * 100)} / 100</div>
-          <div>Continuity {Math.round(active.continuity.value / (CODING_CONTINUITY.length - 1) * 100)} / 100</div>
-          <div className="mt-1 text-[10px] text-muted-foreground">
-            {Math.round(active.intensity.confidence * 100)}% confidence · {Math.round(active.coverage.reduce((sum, part) => sum + part.to - part.from, 0) / (active.to - active.from) * 100)}% observed
-          </div>
+          {active.assessment ? <>
+            {active.assessment.mode && <div className="mt-1 font-medium">{MODE_LABELS[active.assessment.mode.value]}</div>}
+            <div>Intensity {Math.round(active.assessment.intensity.value / (CODING_INTENSITY.length - 1) * 100)} / 100</div>
+            <div>Continuity {Math.round(active.assessment.continuity.value / (CODING_CONTINUITY.length - 1) * 100)} / 100</div>
+            <div className="mt-1 text-[10px] text-muted-foreground">{Math.round(active.assessment.intensity.confidence * 100)}% confidence</div>
+          </> : <div className="mt-1 font-medium">{view.kind === "power" ? `${(active.value * maximum).toLocaleString("en-US", { maximumFractionDigits: 2 })} W` : active.value ? "Active" : "Inactive"}</div>}
           </div>
         </AnchoredTooltip>
       )}
@@ -174,21 +176,18 @@ export function PulseCard({
     <Card label="Pulse" action="Last 24 hours" className={cn("h-full", className)}>
       <div className="flex flex-col gap-2 p-4 lg:p-5">
         {LANES.map(({ domain, label }) => {
-          const view = data?.domains[domain];
-          const score = view?.score ?? null;
-          const assessments = view?.assessments ?? [];
-          const empty = assessments.length === 0;
+          const candidate = data?.domains[domain];
+          const view = candidate && ["score", "binary", "power"].includes(candidate.kind) ? candidate : undefined;
+          const score = view?.kind === "score" ? view.score : null;
+          const empty = !view || (view.kind === "score" ? view.assessments.length === 0 : view.segments.length === 0);
           const word = score ? pulseScoreWord(Number(score.value.toFixed(1))) : null;
           return (
             <div
               key={domain}
               className="grid grid-cols-[4.5rem_1fr_7rem] items-center gap-x-2 sm:grid-cols-[5.5rem_1fr_9rem] sm:gap-x-3"
               role="group"
-              aria-label={
-                empty
-                  ? `${label}: awaiting five-minute Jev scores`
-                  : `${domain === "activity" ? "Estimated physical activity" : label} over the last 24 hours: ${score && word ? `${word}, ${score.value.toFixed(1)} of 3, trending ${score.trend}` : "not scored yet"}`
-              }
+              aria-label={`${label} over the last 24 hours`}
+
             >
               <span
                 className="label-mono truncate text-muted-foreground"
@@ -197,12 +196,12 @@ export function PulseCard({
                 {label}
               </span>
               {empty ? (
-                <span className="text-xs text-muted-foreground">Awaiting scores</span>
+                <span className="text-xs text-muted-foreground">{view?.kind === "score" ? "Awaiting scores" : "No data"}</span>
               ) : (
-                <AssessmentLane label={label} assessments={assessments} range={range} />
+                view && <AssessmentLane label={label} view={view} range={range} />
               )}
               <div className="flex min-w-0 items-baseline justify-end gap-1.5 text-right">
-                {score ? (
+                {view?.kind === "binary" ? <span className="font-mono text-xs" title="Observed active time in the last 24 hours">{empty ? "No data" : `${Math.floor(view.activeSeconds / 3600)}h ${Math.floor(view.activeSeconds % 3600 / 60)}m`}</span> : view?.kind === "power" ? <span className="font-mono text-xs" title="Current measured power">{view.currentPowerW == null ? "No data" : `${view.currentPowerW.toLocaleString("en-US", { maximumFractionDigits: 2 })} W`}</span> : score ? (
                   <>
                     <span className="text-xs font-medium">{word}</span>
                     <span className="font-mono text-xs tabular-nums text-muted-foreground">

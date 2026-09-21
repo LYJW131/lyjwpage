@@ -65,7 +65,7 @@ Vercel 仍采用后台重建，通知成功不代表新 HTML 已生成。ESA 后
 ## 跨域活动脉搏与活动分（Pulse）
 
 `GET /api/status/pulse` 给出六个域（`coding` / `listening` / `watching` / `gaming` / `charging` / `activity`）
-最近 24 小时的阶跃序列和各自的活动分，`/api/home` 的 `pulse` 字段是同一份，首页那张
+最近 24 小时的实测阶跃序列或模型活动分，`/api/home` 的 `pulse` 字段是同一份，首页那张
 Pulse 卡片用它。信封形状：
 
 ```jsonc
@@ -74,17 +74,18 @@ Pulse 卡片用它。信封形状：
   "window": { "from": 1769913600000, "to": 1770000000000 },
   "domains": {
     "coding": {
+      "kind": "score",
       // 五分钟模型评估；尚未评分时为空数组
       "assessments": [],
       // 还没打过分时为 null
       "score": { "value": 2.4, "confidence": 0.82, "trend": "rising", "scoredAt": 1769999700000 }
     }
-    // 其余五域同形
+    // activity 同形；其余域见下方实测契约
   }
 } }
 ```
 
-**原始 hint、应用/模型名称与 token 用量不出公网。** 原始状态只参与内部评分；
+**原始 hint、应用/模型名称与 token 用量不出公网。** 播放／游戏状态与瓦数可公开；
 公开端点返回五分钟评估和同源汇总，详细契约与调度见下方统一评分章节。
 没有 `TYPESAFE_API_KEY`、或本地配了 `DEV_OVERRIDES` / `UPSTREAM_API_URL` 时停用自动评分。
 
@@ -105,16 +106,16 @@ Pulse 卡片用它。信封形状：
 
 ### Pulse 统一五分钟评分
 
-六个领域共用 `PulseScorer`、`pulse:assessment-attempt` 和 `pulse:assessments`。
+仅 Coding 和 Activity 共用 `PulseScorer`、`pulse:assessment-attempt` 和 `pulse:assessments`。
 旧的十分钟 24 小时模型总评已经删除；右侧摘要由最近 24 小时的同一批五分钟评分按
 实际覆盖时长加权，趋势比较最近三小时与此前三小时，没有两侧观测时为 `unknown`。
 曲线和摘要不再有两套评分来源。公开契约为 `domains[domain].assessments` 和 `score`，
 不再返回旧 `samples` 或根级 `codingAssessments`。
 
 每分钟 cron 检查，两轮尝试至少隔五分钟；窗口结束后留两分钟等待采集与上报。
-每个领域、每个窗口各一份官方 `jev-1.13.0` 请求，强度与连续性一起评估，Coding
+上述两个领域每个窗口各一份官方 `jev-1.13.0` 请求，强度与连续性一起评估，Coding
 再判断模式。每轮最多 36 份请求，并发最多 3；优先新窗口，再补最近 24 小时。
-没有观测不调用；空闲观测可评分。原始状态档位作为观测事实参与输入，不直接绘图。
+没有观测不调用；空闲观测可评分。只有 Coding / Activity 的原始状态参与模型输入。
 相同输入哈希不重复调用；晚到 token 或活动报告改变窗口事实时只重评受影响窗口。
 失败保留旧成功记录，下一轮重试，存储读失败不会清空历史。
 
@@ -333,3 +334,14 @@ Worker 侧 storage 写失败是冒泡的，先写 `:history` 再清 `:pending` �
 `workouts.json` 是 2026-09-20 从真机读取的最近 10 次训练快照（6 次剑术、3 次骑行、1 次滑冰），保留原日期与观测指标，UUID 替换为演示标识。`pushedAt` 注入时更新，但训练时间不变。剑术不把步行距离当成主要成绩；滑冰没有距离就不显示速度；网页每项最多两个指标：有距离时显示时长与距离，否则显示时长与活动消耗；不展示心率或均速。
 
 网页卡片最多显示最近 10 条，每页上下排列 2 条，横向吸附滚动（共 5 页），隐藏独立标题栏，通过触控板、触摸或键盘横向浏览；上报和存储仍保留最近 10 条。训练记录合并在 Activity 卡片右侧（窄屏放底部），圆环区域保持原高度；出口节点卡全宽排列在其下。
+
+### Pulse 实测域
+
+Listening / Watching / Gaming 返回 `{kind:"binary",segments:[{from,to,value}],activeSeconds}`，
+`value` 仅为 0 或 1：只有播放或游戏中为 1，暂停、停止和仅主机在线为 0。
+Charging 返回 `{kind:"power",segments:[{from,to,value}],currentPowerW}`，value 单位为 W。
+四域均不调用 Jev，不返回 assessments / score，前端每分钟刷新。
+段来自实际观测，超过 10 分钟未确认的部分留空，含零值；当前功率过期为 null。
+充电使用已有 Mac `totalPower`，未连接记录 0 W；功率变化最多每 30 秒取一点，
+零／非零切换立即记录，保留 6000 点。旧档位记录缺少 powerW 时留空，不推算瓦数。
+发布前应用 `0003_pulse_power.sql`，D1 将实测瓦数存入 power_w；其他域该列为 NULL。

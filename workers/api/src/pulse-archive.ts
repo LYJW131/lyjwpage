@@ -17,7 +17,7 @@ export interface PulseArchiveDb {
   batch(statements: unknown[]): Promise<unknown>;
 }
 
-const INSERT = "INSERT OR IGNORE INTO pulse_samples(domain, t, level, hint, until_at) VALUES (?, ?, ?, ?, ?)";
+const INSERT = "INSERT OR IGNORE INTO pulse_samples(domain, t, level, hint, until_at, power_w) VALUES (?, ?, ?, ?, ?, ?)";
 /** 一批语句的上限，D1 对单次 batch 的语句数有限制，分块也让失败只丢一小段。 */
 const CHUNK_SIZE = 100;
 const WATERMARK_PREFIX = "pulse-archive:";
@@ -112,7 +112,7 @@ export class PulseArchive {
         sample.level,
         // undefined 会让 D1 抛 D1_TYPE_ERROR，没有 hint 的样本必须显式写 null。
         sample.hint ?? null,
-        sample.until ?? null,
+        sample.until ?? null, sample.powerW ?? null,
       )));
       this.advance(domain, chunk[chunk.length - 1].t);
     }
