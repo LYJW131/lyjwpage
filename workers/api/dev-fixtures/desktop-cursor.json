@@ -4,6 +4,7 @@
     "desktop": {
       "applicationName": "Cursor",
       "bundleIdentifier": "com.todesktop.230313mzl4w4u92",
+      "windowTitle": "telemetry.ts — lyjwpage",
       "iconUrl": null,
       "observedAt": "$now-3000"
     },

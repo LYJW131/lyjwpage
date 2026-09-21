@@ -90,6 +90,8 @@ export function HeaderDesktop({
     const nextDesktop: DesktopActivity = {
       applicationName: incomingApplicationName,
       bundleIdentifier: incomingBundleIdentifier,
+      // 页头只画应用本身，窗口标题此刻不进界面
+      windowTitle: null,
       iconUrl: incomingIconUrl ?? "",
       observedAt: incomingObservedAt,
     };

@@ -4,6 +4,7 @@
     "desktop": {
       "applicationName": "Antigravity",
       "bundleIdentifier": "com.google.antigravity",
+      "windowTitle": null,
       "iconUrl": null,
       "observedAt": "$now-3000"
     },

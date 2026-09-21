@@ -4,6 +4,7 @@
     "desktop": {
       "applicationName": "Claude",
       "bundleIdentifier": "com.anthropic.claudefordesktop",
+      "windowTitle": null,
       "iconUrl": null,
       "observedAt": "$now-3000"
     },
