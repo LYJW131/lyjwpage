@@ -287,6 +287,8 @@ payload: >-
 
 采集原始状态仍存 `pulse:<domain>`，由规则解释正在播放、暂停、充电等观测状态。
 这些规则档位不直接绘图。每个领域的变化和五分钟心跳（含空闲）都记录，断流留空。
+送去 Jev 之前，每个域把窗口压成算好的命名秒数和次数（`shared/pulse-<domain>.ts`），
+模型不拿原始区间、时间戳或数字图例——它不会数数、不会算时长；档位判据写成情境。
 Coding 另外保留前台应用与 Agent 的细粒度观测，并接入 MacTelemetryHub 的
 `vibeCodingNow.tokenUsage`。用量按本地日志事件时间入桶，不由日汇总差分。
 Listening 另外把「最近在听」列表的变动作为播放证据（`pulse:listening-plays`）：

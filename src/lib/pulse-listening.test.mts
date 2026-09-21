@@ -4,7 +4,7 @@ import test from "node:test";
 import { mergeCoverage } from "@shared/pulse-assessment";
 import { CODING_WINDOW_MS } from "@shared/pulse-coding";
 import { listeningLevel } from "@shared/pulse-levels";
-import { listeningPlay, listeningPlayCoverage, parseListeningPlay } from "@shared/pulse-listening";
+import { listeningPlay, listeningPlayCoverage, listeningWindowFeatures, parseListeningPlay, playGapBucket } from "@shared/pulse-listening";
 import { withRequestState } from "@shared/request-state";
 import { bareSnapshotFrom, telemetryState } from "@shared/telemetry";
 import { MUSIC_PAUSE_GRACE_MS, pickNowListening } from "@/lib/now-listening";
@@ -177,4 +177,29 @@ test("覆盖区间合并后有序不重叠，评估才不会被解析丢掉", ()
     ]),
     [{ from: 0, to: 40 }],
   );
+});
+
+test("最近在听：口子大小在代码里分桶，不给模型时间戳", () => {
+  assert.equal(playGapBucket({ t: NOW, since: NOW - 4 * 60_000, hint: null }), "within five minutes");
+  assert.equal(playGapBucket({ t: NOW, since: NOW - 30 * 60_000, hint: null }), "within an hour");
+  assert.equal(playGapBucket({ t: NOW, since: NOW - 5 * 3_600_000, hint: null }), "several hours");
+});
+
+test("listening 特征：切歌计数、痕迹进 recentPlays、覆盖并上痕迹区间", () => {
+  const W = { from: NOW - CODING_WINDOW_MS, to: NOW };
+  const { features, coverage } = listeningWindowFeatures(
+    [
+      { t: W.from, level: 3, hint: "Hamilton – Helpless", until: W.from + 60_000 },
+      { t: W.from + 60_000, level: 3, hint: "Hamilton – Satisfied", until: W.from + 120_000 },
+    ],
+    W,
+    [{ t: NOW, since: NOW - 60_000, hint: "YOASOBI – アイドル" }],
+  );
+  assert.equal(features.trackChanges, 1);
+  assert.equal(features.distinctTracks, 2);
+  assert.equal(features.playingSeconds, 120);
+  assert.deepEqual(features.recentPlays, [{ title: "YOASOBI – アイドル", gap: "within five minutes" }]);
+  assert.deepEqual(coverage, [{ from: W.from, to: W.from + 120_000 }, { from: NOW - 60_000, to: NOW }]);
+  assert.equal(features.observedSeconds, 180);
+  assert.equal(features.unknownSeconds, 120);
 });

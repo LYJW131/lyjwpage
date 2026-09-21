@@ -4,15 +4,15 @@ import {
 } from "@/lib/limits";
 import {
   PULSE_LEVEL_MAX,
-  type PulseDomain,
   type PulseLevel,
   type PulseSample,
 } from "@/lib/types";
 
 /**
- * 把 pulse 的阶跃序列裁成一个时间窗，给两个消费者用：
+ * 把 pulse 的阶跃序列裁成一个时间窗。
  *
- * 给统一 Jev 分段评分器提供观测段，hint 仅内部使用；公开端点只读模型评估。
+ * 评分器不再读它（各域改在 shared/pulse-features 里压成命名秒数）；留给 activity 的
+ * 区间裁剪测试和任何还要按段看序列的地方。hint 仅内部使用；公开端点只读模型评估。
  *
  * 纯函数，不碰存储、不看时钟：`now` 一律由调用方传进来，测试才排得出确定的窗口。
  */
@@ -90,13 +90,3 @@ export function compressPulseWindow(
     latestSampleAt,
   };
 }
-
-/** 档位在各域分别是什么意思。进 Jev 的 state，让它知道 3 不是「分」而是档。 */
-export const PULSE_LEGEND: Readonly<Record<PulseDomain, string>> = Object.freeze({
-  activity: "Estimated physical activity averaged between Apple Watch reports (up to 2 hours), not live workout detection. 0 no increase, 1 light movement, 2 >= 20 steps/min or >= 10% exercise minutes, 3 >= 60 steps/min or >= 50% exercise minutes. Gaps are unknown, not idle.",
-  coding: "0 idle, 2 a coding app in front, 3 an agent actively working",
-  listening: "0 idle, 2 paused, 3 playing",
-  watching: "0 idle, 2 paused, 3 playing",
-  gaming: "0 offline, 1 console online, 3 in a game",
-  charging: "0 unplugged, 1 trickle, 2 up to 60W, 3 60W or more",
-});

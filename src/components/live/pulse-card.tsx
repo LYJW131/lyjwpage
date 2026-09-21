@@ -87,7 +87,11 @@ function Lane({
   );
 }
 
-const MODE_LABELS = { idle: "Idle", brief: "Brief bursts", interactive: "Coding apps", agent: "Agent work", mixed: "Apps + agents" };
+/** coding 与 listening 各自的模式；键是 Jev Choice 的 value，见 shared/pulse-assessment 的 PULSE_MODES。 */
+const MODE_LABELS: Record<string, string> = {
+  idle: "Idle", brief: "Brief bursts", interactive: "Coding apps", agent: "Agent work", mixed: "Apps + agents",
+  paused: "Paused", steady: "Playing through", selecting: "Picking tracks", traces: "Heard elsewhere",
+};
 
 function AssessmentLane({ view, range, label }: { view: PulseDomainView; label: string; range: { from: number; to: number } }) {
   const maximum = view.kind === "power" ? Math.max(1, ...view.segments.map((part) => part.value)) : 1;
@@ -151,7 +155,7 @@ function AssessmentLane({ view, range, label }: { view: PulseDomainView; label: 
           <div className="font-mono text-muted-foreground">{time(active.from)}–{time(active.to)}</div>
           {active.title && <div className="mt-1 break-words font-medium">{active.title}</div>}
           {active.assessment ? <>
-            {active.assessment.mode && <div className="mt-1 font-medium">{MODE_LABELS[active.assessment.mode.value]}</div>}
+            {active.assessment.mode && <div className="mt-1 font-medium">{MODE_LABELS[active.assessment.mode.value] ?? active.assessment.mode.value}</div>}
             <div>Intensity {Math.round(active.assessment.intensity.value / (CODING_INTENSITY.length - 1) * 100)} / 100</div>
             <div>Continuity {Math.round(active.assessment.continuity.value / (CODING_CONTINUITY.length - 1) * 100)} / 100</div>
             <div className="mt-1 text-[10px] text-muted-foreground">{Math.round(active.assessment.intensity.confidence * 100)}% confidence</div>

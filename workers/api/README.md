@@ -115,8 +115,21 @@ Pulse 卡片用它。信封形状：
 每分钟 cron 检查，两轮尝试至少隔五分钟；窗口结束后留两分钟等待采集与上报。
 每个领域每个窗口各一份官方 `jev-1.13.0` 请求，强度与连续性一起评估，Coding
 再判断模式。每轮最多 36 份请求，并发最多 3；优先新窗口，再补最近 24 小时。
-没有观测不调用；空闲观测可评分。六项均参与模型评分；充电额外传入 powerSegments（W）及 0 / 15 / 60 W 功率判据。
-Listening 在有「最近在听」痕迹的窗口额外传入 `recentlyPlayed`（`observedAt/since/coveredFrom/coveredTo/hint`）及其判据；没有痕迹的窗口输入逐字节不变，不会因此重评。
+没有观测不调用；空闲观测可评分。六项均参与模型评分。
+
+按 Jev 文档（不会数数、不会算时长、不比时间戳、档位要写情境不写程度），发给它的
+state 一律是代码算好的命名秒数和次数，没有原始区间、时间戳或数字图例；判据写在
+`instructions` / `criteria` 里，不塞在 state 里。各域的特征与问题在 `shared/pulse-<domain>.ts`，
+共用的裁窗与计数在 `shared/pulse-features.ts`：
+
+- listening：`playingSeconds / pausedSeconds / idleSeconds / longestPlayingRunSeconds`，以及占 `observedSeconds` 的整数百分比 `playingPercent / pausedPercent / longestPlayingRunPercent`（判据按百分比写，模型不用自己除），`trackChanges / distinctTracks / tracks / recentPlays`。切歌次数由样本里 hint 的变化数出来，指令说明连续换曲是有人在挑歌、一张专辑放到底也是在听。`recentPlays` 是「最近在听」列表落进这个窗口的痕迹，带 `gap`（within five minutes / within an hour / several hours）说明落位精度。另有 `mode` Choice：idle / paused / steady / selecting / traces。
+- watching：`playingSeconds / pausedSeconds / idleSeconds / longestPlayingRunSeconds`、`playingPercent / pausedPercent / longestPlayingRunPercent`、`titleChanges / titles`。
+- gaming：`inGameSeconds / onlineIdleSeconds / offlineSeconds / longestGameRunSeconds`、`inGamePercent / longestGameRunPercent`、`gameChanges / games`；「主机在线未进游戏」是它自己的桶和档位。
+- charging：`secondsByBand` 与 `percentByBand`（`unplugged / trickle / moderate / high`）、`peakWatts / longestPoweredRunSeconds / longestPoweredRunPercent`，分档阈值 0 / 15 / 60 W 与 `chargingLevel` 一致。
+- activity：`stillSeconds / lightSeconds / moderateSeconds / vigorousSeconds / longestMovingRunSeconds`、`movingPercent / vigorousPercent / longestMovingRunPercent`，每档在判据里写明对应的步频与锻炼分钟占比。
+
+`PULSE_ASSESSMENT_VERSION` 进输入哈希，改问题时升版本让全部窗口重评，不靠哈希碰巧变。
+改判据先跑 `node --experimental-strip-types --import ./src/lib/testing/register-alias.mjs scripts/jev-probe.mts`（key 读根目录 `.env.local` 的 `TYPESAFE_API_KEY`）：十几个代表性窗口打真实 Jev，每条都写着期望档位，答案偏了先改措辞再上线——上线一次就是整整 24 小时重评。
 相同输入哈希不重复调用；晚到 token 或活动报告改变窗口事实时只重评受影响窗口。
 失败保留旧成功记录，下一轮重试，存储读失败不会清空历史。
 

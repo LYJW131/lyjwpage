@@ -114,3 +114,14 @@ test('media titles keep track boundaries without changing intensity or counting 
  const power=measuredPulseView('charging',[{t:0,level:2,powerW:40,hint:'Private device'}],{from:0,to:60000});
  assert.equal(JSON.stringify(power).includes('Private device'),false);
 });
+
+test('listening mode round-trips through the parser; a bad mode drops only the mode, never the row',async()=>{
+ const {parsePulseAssessment}=await import('@shared/pulse-assessment');
+ const mode={value:'selecting',confidence:0.9,probabilities:{idle:0,paused:0,steady:0.1,selecting:0.9,traces:0}};
+ const good=parsePulseAssessment(JSON.stringify({...row(),domain:'listening',mode}));
+ assert.deepEqual(good?.mode,mode);
+ const bad=parsePulseAssessment(JSON.stringify({...row(),domain:'listening',mode:{...mode,value:'mixed'}}));
+ assert.ok(bad,'强度还在，曲线不能因为 mode 坏了消失');assert.equal(bad?.mode,null);
+ const foreign=parsePulseAssessment(JSON.stringify({...row(),domain:'watching',mode}));
+ assert.equal(foreign?.mode,null,'没有模式集合的域一律 null');
+});
