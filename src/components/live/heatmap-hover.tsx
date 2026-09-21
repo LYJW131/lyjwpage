@@ -118,7 +118,7 @@ export function useHeatmapOpen<T extends { date: string }>() {
 }
 
 export function useHoverDismiss(
-  svgRef: RefObject<SVGSVGElement | null>,
+  svgRef: RefObject<Element | null>,
   active: boolean,
   hide: () => void,
 ) {
@@ -301,6 +301,26 @@ export function HeatmapTooltip({
   anchor: CellAnchor;
   children?: ReactNode;
 }) {
+  return (
+    <AnchoredTooltip anchor={anchor} contentKey={`${date}:${unit}:${value}`}>
+      <div className="flex items-end justify-between gap-2">
+        <div className="min-w-0">
+          <div className="text-lg font-medium tracking-tight tabular-nums leading-none">{value}</div>
+          <div className="mt-1 font-mono text-[10px] leading-none text-muted-foreground">{formatDayHeading(date)}</div>
+        </div>
+        <span className="label-mono text-muted-foreground">{unit}</span>
+      </div>
+      {children}
+    </AnchoredTooltip>
+  );
+}
+
+/** Shared body portal and viewport positioning for chart details. */
+export function AnchoredTooltip({ anchor, contentKey, children }: {
+  anchor: CellAnchor;
+  contentKey: string;
+  children: ReactNode;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{
     left: number;
@@ -335,12 +355,7 @@ export function HeatmapTooltip({
         ? prev
         : { left, top, diamond, place },
     );
-    /*
-     * 依赖里不放 children：它每次父渲染都是新对象，放进来等于没有依赖数组。
-     * 内容变化带来的尺寸变化由 date / unit / value 兜住 —— children 是按同一个
-     * date 派生的模型明细，date 不变内容就不变。
-     */
-  }, [anchor.height, anchor.left, anchor.top, anchor.width, date, unit, value]);
+  }, [anchor.height, anchor.left, anchor.top, anchor.width, contentKey]);
 
   return createPortal(
     <div
@@ -353,17 +368,6 @@ export function HeatmapTooltip({
           : { left: 0, top: 0, visibility: "hidden" }
       }
     >
-      <div className="flex items-end justify-between gap-2">
-        <div className="min-w-0">
-          <div className="text-lg font-medium tracking-tight tabular-nums leading-none">
-            {value}
-          </div>
-          <div className="mt-1 font-mono text-[10px] leading-none text-muted-foreground">
-            {formatDayHeading(date)}
-          </div>
-        </div>
-        <span className="label-mono text-muted-foreground">{unit}</span>
-      </div>
       {children}
       {pos && (
         <span

@@ -1,6 +1,8 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useCallback, useId, useRef, useState } from "react";
+
+import { AnchoredTooltip, cellAnchor, type CellAnchor, useHoverDismiss } from "./heatmap-hover";
 
 import { Card } from "@/components/ui/card";
 import { useStatus } from "@/hooks/use-status";
@@ -89,13 +91,18 @@ const MODE_LABELS = { idle: "Idle", brief: "Brief bursts", interactive: "Coding 
 
 function AssessmentLane({ assessments, range, label }: { assessments: PulseAssessment[]; label: string; range: { from: number; to: number } }) {
   const [selected, setSelected] = useState<number | null>(null);
+  const [bounds, setBounds] = useState<CellAnchor | null>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const close = useCallback(() => setSelected(null), []);
+  useHoverDismiss(buttonRef, selected != null, close);
   const active = selected == null ? null : assessments[selected];
   const points = assessments.flatMap((assessment) => assessment.coverage.map((part) => ({
     t: part.from, until: part.to, level: assessment.intensity.value / (CODING_INTENSITY.length - 1) * 3,
   })));
   const time = (at: number) => new Date(at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
   const selectAt = (clientX: number, target: HTMLButtonElement) => {
-    const rect = target.getBoundingClientRect();
+    const rect = cellAnchor(target);
+    setBounds(rect);
     const at = range.from + (clientX - rect.left) / rect.width * (range.to - range.from);
     const index = assessments.findIndex((assessment) => assessment.coverage.some((part) => at >= part.from && at < part.to));
     setSelected(index >= 0 ? index : null);
@@ -103,18 +110,21 @@ function AssessmentLane({ assessments, range, label }: { assessments: PulseAsses
   return (
     <div className="relative min-w-0">
       <button
+        ref={buttonRef}
         type="button"
         className="block w-full cursor-crosshair rounded-sm focus-visible:outline-1 focus-visible:outline-live"
         aria-label={`${label} intensity, scored by Jev every 5 minutes. Use arrow keys to inspect intervals.`}
         onPointerMove={(event) => selectAt(event.clientX, event.currentTarget)}
         onPointerLeave={(event) => { if (event.pointerType === "mouse") setSelected(null); }}
-        onFocus={() => setSelected((value) => value ?? assessments.length - 1)}
+        onFocus={(event) => { setBounds(cellAnchor(event.currentTarget)); setSelected((value) => value ?? assessments.length - 1); }}
         onBlur={() => setSelected(null)}
         onClick={(event) => {
+          setBounds(cellAnchor(event.currentTarget));
           if (event.detail === 0) setSelected((value) => value ?? assessments.length - 1);
           else selectAt(event.clientX, event.currentTarget);
         }}
         onKeyDown={(event) => {
+          setBounds(cellAnchor(event.currentTarget));
           if (event.key === "Escape") setSelected(null);
           if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
             event.preventDefault();
@@ -124,8 +134,18 @@ function AssessmentLane({ assessments, range, label }: { assessments: PulseAsses
       >
         <Lane label={`Jev ${label} intensity`} samples={points} range={range} />
       </button>
-      {active && (
-        <div role="status" className="pointer-events-none absolute left-1/2 top-full z-20 mt-1 w-52 -translate-x-1/2 rounded border border-line-strong bg-surface p-2 text-xs shadow-sm">
+      {active && bounds && (
+        <AnchoredTooltip
+          contentKey={JSON.stringify(active)}
+          anchor={(() => {
+            const rect = bounds;
+            const from = Math.max(range.from, active.from);
+            const to = Math.min(range.to, active.to);
+            return { left: rect.left + (from - range.from) / (range.to - range.from) * rect.width,
+              width: (to - from) / (range.to - range.from) * rect.width, top: rect.top, height: rect.height };
+          })()}
+        >
+          <div className="text-xs">
           <div className="font-mono text-muted-foreground">{time(active.from)}–{time(active.to)}</div>
           {active.mode && <div className="mt-1 font-medium">{MODE_LABELS[active.mode.value]}</div>}
           <div>Intensity {Math.round(active.intensity.value / (CODING_INTENSITY.length - 1) * 100)} / 100</div>
@@ -133,7 +153,8 @@ function AssessmentLane({ assessments, range, label }: { assessments: PulseAsses
           <div className="mt-1 text-[10px] text-muted-foreground">
             {Math.round(active.intensity.confidence * 100)}% confidence · {Math.round(active.coverage.reduce((sum, part) => sum + part.to - part.from, 0) / (active.to - active.from) * 100)}% observed
           </div>
-        </div>
+          </div>
+        </AnchoredTooltip>
       )}
     </div>
   );
