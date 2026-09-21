@@ -1,8 +1,8 @@
 "use client";
 
-import Image from "next/image";
 import { Fragment, useEffect, useState } from "react";
 
+import Image from "@/components/app-image";
 import { useMountedAt } from "@/hooks/use-mounted-at";
 import type { CommitAuthor } from "@/lib/commit-authors";
 import type { GithubRecentCommit } from "@/lib/github-recent-commits";

@@ -5,6 +5,7 @@ import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 
 import { PwaRegistration } from "@/components/pwa-registration";
+import { RestReady } from "@/components/rest-ready";
 import { ThemeProvider } from "@/components/theme-provider";
 import { PsPlusSprite } from "@/components/trophies/ps-plus";
 import { HEATMAP_STORAGE_KEY } from "@/lib/heatmap-preference";
@@ -82,6 +83,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <link rel="preconnect" href="https://is1-ssl.mzstatic.com" />
         <ThemeProvider>{children}</ThemeProvider>
         <PwaRegistration />
+        <RestReady />
         <Analytics />
         <SpeedInsights />
       </body>

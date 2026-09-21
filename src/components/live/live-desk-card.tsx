@@ -1,9 +1,9 @@
 "use client";
 
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import Image from "next/image";
 import { useEffect, useState } from "react";
 
+import Image from "@/components/app-image";
 import { MacBookProIcon } from "@/components/ui/device-icons";
 import { useLiveEvents } from "@/hooks/use-live-events";
 import { useReporterStale } from "@/hooks/use-stale";
