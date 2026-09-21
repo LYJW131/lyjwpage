@@ -87,16 +87,80 @@ function isTransientNetworkError(error) {
   return "message" in error && error.message === "fetch failed";
 }
 
-/** 把 undici 藏在 cause 里的码和原文拼进日志，避免只剩一句 fetch failed。 */
-function describeFetchError(error) {
-  const message = error instanceof Error ? error.message : String(error);
+const CAUSE_LOG_KEYS = ["name", "code", "errno", "syscall", "hostname", "address", "port"];
+
+/** 日志里去掉密钥、签名和带 query 的 URL，避免把鉴权材料打进 Actions。 */
+function scrubLogValue(value, secrets = []) {
+  let text = String(value);
+  for (const secret of secrets) {
+    if (typeof secret === "string" && secret.length > 0) text = text.split(secret).join("[redacted]");
+  }
+  text = text.replace(/https?:\/\/\S+/gi, (url) => {
+    try {
+      const parsed = new URL(url);
+      return `${parsed.origin}${parsed.pathname}`;
+    } catch {
+      return "[url]";
+    }
+  });
+  return text.replace(
+    /(Signature|Credential|Authorization|AccessKey(?:Id|Secret)?)\s*[=:]\s*\S+/gi,
+    "$1=[redacted]",
+  );
+}
+
+/** 优先用 AggregateError 里真正带 code / syscall 的那条。 */
+function pickCauseNode(error) {
   const cause = error instanceof Error ? error.cause : undefined;
-  const code = cause && typeof cause === "object" && "code" in cause ? cause.code : undefined;
+  if (!cause || typeof cause !== "object") return undefined;
+  if (Array.isArray(cause.errors)) {
+    const inner = cause.errors.find(
+      (item) => item && typeof item === "object" && (item.code || item.syscall || item.hostname),
+    );
+    if (inner) return inner;
+  }
+  return cause;
+}
+
+function networkLogFields(error) {
+  const fields = {};
+  if (error instanceof Error) {
+    if (error.name) fields.name = error.name;
+    if (error.message) fields.message = error.message;
+  } else {
+    fields.message = String(error);
+  }
+  const cause = pickCauseNode(error);
+  if (!cause) return fields;
+  for (const key of CAUSE_LOG_KEYS) {
+    const value = cause[key];
+    if (value == null || value === "") continue;
+    if (typeof value !== "string" && typeof value !== "number") continue;
+    fields[`cause.${key}`] = value;
+  }
+  return fields;
+}
+
+function logAttemptFailure({ attempt, attempts, willRetry, delayMs, fields, secrets }) {
+  const decision = willRetry ? `还会重试（${delayMs}ms 后）` : "不再重试";
+  const parts = [`[esa-purge] 第 ${attempt}/${attempts} 次失败，${decision}`];
+  for (const [key, value] of Object.entries(fields)) {
+    if (value == null || value === "") continue;
+    parts.push(`${key}=${scrubLogValue(value, secrets)}`);
+  }
+  console.warn(parts.join(" "));
+}
+
+/** 把 undici 藏在 cause 里的码和原文拼进退出摘要，并去掉密钥。 */
+function describeFetchError(error, secrets = []) {
+  const message = error instanceof Error ? error.message : String(error);
+  const cause = pickCauseNode(error);
+  const code = cause && "code" in cause ? cause.code : undefined;
   const causeMessage = cause instanceof Error ? cause.message : "";
   const parts = [message];
   if (typeof code === "string" && code && !message.includes(code)) parts.push(code);
   if (causeMessage && causeMessage !== message && !message.includes(causeMessage)) parts.push(causeMessage);
-  return parts.join(": ");
+  return scrubLogValue(parts.join(": "), secrets);
 }
 
 /**
@@ -125,13 +189,20 @@ async function requestPurge(config) {
   });
 
   const result = await response.json().catch(() => null);
+  const code = typeof result?.Code === "string" ? result.Code : undefined;
+  const requestId = typeof result?.RequestId === "string" ? result.RequestId : undefined;
 
-  if (!response.ok || result?.Code || typeof result?.TaskId !== "string" || !result.TaskId) {
+  if (!response.ok || code || typeof result?.TaskId !== "string" || !result.TaskId) {
     return {
       ok: false,
       retryable: isTransientStatus(response.status),
-      error: `ESA 刷新失败 (HTTP ${response.status}): ${result?.Code ?? "InvalidResponse"} - ${result?.Message ?? ""}`.trim(),
-      requestId: result?.RequestId,
+      error: scrubLogValue(
+        `ESA 刷新失败 (HTTP ${response.status}): ${code ?? "InvalidResponse"} - ${result?.Message ?? ""}`.trim(),
+        [config.accessKeyId, config.accessKeySecret],
+      ),
+      requestId,
+      status: response.status,
+      code,
     };
   }
 
@@ -167,21 +238,39 @@ export async function purgeEsaHomepage(config, options = {}) {
   const attempts = options.attempts ?? PURGE_ATTEMPTS;
   const backoffMs = options.backoffMs ?? PURGE_BACKOFF_MS;
   const wait = options.sleep ?? sleep;
+  const secrets = [accessKeyId, accessKeySecret];
   let last = { ok: false, error: "ESA 刷新失败" };
 
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const delay = backoffMs[Math.min(attempt - 1, backoffMs.length - 1)] ?? 1_000;
     try {
       const outcome = await requestPurge({ siteId, cacheUrl, accessKeyId, accessKeySecret });
-      if (outcome.ok) return outcome;
+      if (outcome.ok) return { ok: true, taskId: outcome.taskId, requestId: outcome.requestId };
+      const willRetry = outcome.retryable && attempt < attempts;
+      logAttemptFailure({
+        attempt,
+        attempts,
+        willRetry,
+        delayMs: delay,
+        secrets,
+        fields: { status: outcome.status, code: outcome.code, requestId: outcome.requestId },
+      });
       last = { ok: false, error: outcome.error, requestId: outcome.requestId };
-      if (!outcome.retryable || attempt === attempts) return last;
+      if (!willRetry) return last;
     } catch (error) {
-      last = { ok: false, error: describeFetchError(error) };
-      if (!isTransientNetworkError(error) || attempt === attempts) return last;
+      const willRetry = isTransientNetworkError(error) && attempt < attempts;
+      logAttemptFailure({
+        attempt,
+        attempts,
+        willRetry,
+        delayMs: delay,
+        secrets,
+        fields: networkLogFields(error),
+      });
+      last = { ok: false, error: describeFetchError(error, secrets) };
+      if (!willRetry) return last;
     }
 
-    const delay = backoffMs[Math.min(attempt - 1, backoffMs.length - 1)] ?? 1_000;
-    console.warn(`[esa-purge] 瞬时失败，${delay}ms 后重试 (${attempt}/${attempts}): ${last.error}`);
     await wait(delay);
   }
 

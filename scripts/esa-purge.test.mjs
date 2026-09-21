@@ -173,6 +173,105 @@ test("ESA 5xx 会重试，成功后停止", async (t) => {
   assert.equal(result.taskId, "task-503");
 });
 
+function captureWarn(t) {
+  const lines = [];
+  t.mock.method(console, "warn", (line) => {
+    lines.push(String(line));
+  });
+  return lines;
+}
+
+test("失败日志写出尝试次数、重试决定和 cause 的安全字段", async (t) => {
+  const lines = captureWarn(t);
+  let calls = 0;
+  t.mock.method(globalThis, "fetch", async () => {
+    calls += 1;
+    if (calls === 1) {
+      const inner = Object.assign(new Error("connect ECONNRESET"), {
+        code: "ECONNRESET",
+        errno: -104,
+        syscall: "read",
+        hostname: "esa.cn-hangzhou.aliyuncs.com",
+        address: "203.119.128.1",
+        port: 443,
+        authorization: "ACS3 Credential=test-id Signature=deadbeef",
+      });
+      const error = new TypeError("fetch failed");
+      error.cause = new AggregateError([inner], "fetch failed");
+      throw error;
+    }
+    const error = new DOMException("The operation was aborted due to timeout", "TimeoutError");
+    throw error;
+  });
+
+  const result = await purgeEsaHomepage(config, { attempts: 2, sleep: async () => {} });
+  assert.equal(result.ok, false);
+  assert.equal(lines.length, 2);
+  assert.match(lines[0], /第 1\/2 次失败，还会重试（1000ms 后）/);
+  assert.match(lines[0], /name=TypeError/);
+  assert.match(lines[0], /message=fetch failed/);
+  assert.match(lines[0], /cause\.code=ECONNRESET/);
+  assert.match(lines[0], /cause\.errno=-104/);
+  assert.match(lines[0], /cause\.syscall=read/);
+  assert.match(lines[0], /cause\.hostname=esa\.cn-hangzhou\.aliyuncs\.com/);
+  assert.match(lines[0], /cause\.address=203\.119\.128\.1/);
+  assert.match(lines[0], /cause\.port=443/);
+  assert.doesNotMatch(lines[0], /deadbeef|Credential=|authorization=/);
+  assert.match(lines[1], /第 2\/2 次失败，不再重试/);
+  assert.match(lines[1], /name=TimeoutError/);
+  assert.match(lines[1], /message=The operation was aborted due to timeout/);
+});
+
+test("失败日志只留 HTTP status 和业务 Code，不留密钥与响应体", async (t) => {
+  const lines = captureWarn(t);
+  t.mock.method(globalThis, "fetch", async () =>
+    Response.json(
+      {
+        Code: "InvalidAccessKeyId.NotFound",
+        Message: "leak test-secret Signature=deadbeef https://esa.cn-hangzhou.aliyuncs.com/?AccessKeyId=test-id&Signature=deadbeef",
+        RequestId: "request-404",
+        AccessKeySecret: "test-secret",
+      },
+      { status: 404 },
+    ),
+  );
+
+  const result = await purgeEsaHomepage(config, { sleep: async () => { throw new Error("should not retry"); } });
+  assert.equal(result.ok, false);
+  assert.equal(lines.length, 1);
+  assert.match(lines[0], /第 1\/3 次失败，不再重试/);
+  assert.match(lines[0], /status=404/);
+  assert.match(lines[0], /code=InvalidAccessKeyId\.NotFound/);
+  assert.match(lines[0], /requestId=request-404/);
+  assert.doesNotMatch(lines[0], /test-secret|deadbeef|Signature=|AccessKeySecret|leak /);
+  assert.doesNotMatch(result.error, /test-secret|deadbeef/);
+  assert.match(result.error, /HTTP 404/);
+});
+
+test("网络错误摘要去掉密钥和带 query 的 URL", async (t) => {
+  const lines = captureWarn(t);
+  t.mock.method(globalThis, "fetch", async () => {
+    const error = new TypeError(
+      "fetch failed test-secret https://esa.cn-hangzhou.aliyuncs.com/?Signature=deadbeef&AccessKeyId=test-id",
+    );
+    error.cause = Object.assign(new Error("Authorization: Bearer test-secret"), { code: "ECONNRESET" });
+    throw error;
+  });
+
+  const result = await purgeEsaHomepage(config, {
+    attempts: 1,
+    sleep: async () => {
+      throw new Error("should not retry");
+    },
+  });
+  assert.equal(lines.length, 1);
+  assert.match(lines[0], /不再重试/);
+  assert.match(lines[0], /cause\.code=ECONNRESET/);
+  assert.match(lines[0], /https:\/\/esa\.cn-hangzhou\.aliyuncs\.com\//);
+  assert.doesNotMatch(lines[0], /test-secret|deadbeef|Signature=|AccessKeyId=/);
+  assert.doesNotMatch(result.error, /test-secret|deadbeef|Signature=/);
+});
+
 test("warmupEsaCache 发送带标准请求头的 GET 请求预热边缘缓存", async (t) => {
   const calls = [];
   t.mock.method(globalThis, "fetch", async (input, init) => {
