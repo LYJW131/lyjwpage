@@ -8,9 +8,10 @@
 
 | 路径 | 读取位置 | 发布最小间隔 / 投影最大年龄 |
 | --- | --- | --- |
-| `/api/status/vibecoding/year`、`github-chart`、`github-repo`、`cloudflare-workers`、`vercel-deployments`、`pulse` | KV | 300 秒 / 600 秒 |
+| `/api/status/vibecoding/year`、`github-chart`、`github-repo`、`vercel-deployments` | KV | 300 秒 / 600 秒 |
 | `/api/home` | DO；Vercel 生成或重建首页读一次，浏览器打开页面后各卡的第一轮取数合成一次（`src/lib/status-reads.ts`） | 不经 KV |
-| 所有 `*/now`、`desktop`、`server`、`activity`、`charger`、`powerbank`、`vibecoding` | DO；包含存活、日界线、暂停宽限期或增量历史语义 | 不经 KV |
+| 所有 `*/now`、`desktop`、`server`、`activity`、`charger`、`powerbank`、`vibecoding`、`pulse` | DO；包含存活、日界线、暂停宽限期或增量历史语义 | 不经 KV |
+| `cloudflare-workers` | DO；带各 Worker 当前版本，投影的发布间隔和最大年龄会让刚部署完读到上一版。上游由 15 分钟 StateHub 缓存挡住 | 不经 KV |
 | `listening`、`watching`、`playing` | DO；有推送事件，登记表禁止进 KV | 不经 KV |
 | `trophies` | DO；浏览器只带 `?titleids=` 从不裸读。首屏字段是摘要、端点是整份目录，登记表标 `bootstrap: false`，挂载引导也不代答 | 不经 KV |
 | `/ws`、`/count`、上报、MusicKit token、歌词/动态封面 | 原路径 | 不经 KV |
