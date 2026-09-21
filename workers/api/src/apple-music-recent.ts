@@ -14,8 +14,10 @@ import { recordListeningPlay } from "@api/stores/listening-pulse";
 import { afterResponse } from "./live-platform";
 
 /**
- * Worker 刷新最近播放列表。连接建立时检查，cron 在有存活连接时每分钟检查。
- * SQLite 的两分钟闸门限制上游请求频率；站点只读取写好的结果。
+ * Worker 刷新最近播放列表。连接建立时检查，cron 每分钟检查——不看有没有人在看：
+ * 列表变动是 listening 评分的证据（stores/listening-pulse），只在有访客时刷会漏掉
+ * 没人看站点时在 iPhone 上听的那些。SQLite 的两分钟闸门限制上游请求频率；站点只读取
+ * 写好的结果。
  */
 
 /** 上游端点的硬限制就是 10，传更大直接 400 */

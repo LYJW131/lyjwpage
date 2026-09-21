@@ -381,10 +381,13 @@ export class LivePushRoom extends DurableObject<Env> {
 const worker = {
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     await withRequestState(() => requestStore.run({ env, ctx }, async () => {
-      // 在听只在有人开着页面时刷；PageSpeed 自己按小时抢闸门，和有没有人看无关，
-      // 而且一轮实测要二十多秒 —— 两件事并行，别让它拖住换歌那条。
-      const listening = env.STATE && (await getRoom(env).connectionCount()) ? refreshRecentlyPlayed() : null;
-      await Promise.all([refreshPageSpeed(), listening]);
+      // 在听每分钟都刷，不再看有没有人开着页面：这份列表现在是 listening 评分的证据
+      // （iPhone 等没有上报器的设备只在它上面留痕迹，见 stores/listening-pulse），
+      // 只在有人看时刷的话，白天没人打开站点，那天在 iPhone 上听的就全没了。
+      // 上游频率仍由 refreshRecentlyPlayed 里两分钟的 SQLite 闸门管着，最多每两分钟
+      // 打一次 Apple。PageSpeed 自己按小时抢闸门，一轮实测要二十多秒 —— 两件事并行，
+      // 别让它拖住换歌那条。
+      await Promise.all([refreshPageSpeed(), env.STATE ? refreshRecentlyPlayed() : null]);
     }));
   },
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
