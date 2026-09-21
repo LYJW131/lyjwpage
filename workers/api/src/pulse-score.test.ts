@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { FakeStorage } from "@/lib/testing/fake-storage";
 import { codingObservationsKey, codingTokenUsageKey } from "@/lib/coding-pulse";
+import { listeningPlaysKey } from "@/lib/listening-pulse";
+import { pulseKey } from "@/lib/pulse";
 import { CODING_WINDOW_MS, parseCodingAssessment } from "@shared/pulse-coding";
 import { PulseScorer } from "./pulse-score.ts";
 import { pulseAssessmentsKey } from "@/lib/pulse-assessments";
@@ -118,4 +120,50 @@ test('all domains retain Jev summaries independently of measured charts',async()
  const rows=await b.storage.listRange(pulseAssessmentsKey(),0,-1);
  assert.equal(new Set(rows.map((r)=>JSON.parse(r).domain)).size,6);
  b.advance(CODING_WINDOW_MS);await b.make().run();assert.equal(b.requests.length,6);
+});
+
+test('listening marks score windows with no live samples and claim at most one window', async () => {
+  const b = setup();
+  await b.storage.append(listeningPlaysKey(), JSON.stringify({ t: T + 240_000, since: T + 120_000, hint: 'Hamilton' }));
+  await b.make().run();
+  assert.equal(b.requests.length, 1);
+  const window = (b.requests[0].state as { windows: Record<string, unknown>[] }).windows[0];
+  assert.equal(window.domain, 'listening');
+  assert.equal(window.observedSeconds, 0, '实测段只算上报，痕迹不掺进去');
+  assert.deepEqual(window.recentlyPlayed, [
+    { observedAt: T + 240_000, since: T + 120_000, coveredFrom: T + 120_000, coveredTo: T + 240_000, hint: 'Hamilton' },
+  ]);
+  assert.ok(String((b.requests[0].questions as { w0Intensity: { instructions: string } }).w0Intensity.instructions).includes('recentlyPlayedCriteria'));
+  const row = JSON.parse((await b.storage.listRange(pulseAssessmentsKey(), 0, -1))[0]) as { domain: string; coverage: { from: number; to: number }[] };
+  assert.equal(row.domain, 'listening');
+  assert.deepEqual(row.coverage, [{ from: T + 120_000, to: T + 240_000 }]);
+});
+
+test('a listening mark after hours of silence still claims only one window of time', async () => {
+  const b = setup();
+  await b.storage.append(listeningPlaysKey(), JSON.stringify({ t: T + 240_000, since: T - 6 * 3_600_000, hint: null }));
+  await b.make().run();
+  // 认领区间可以跨过五分钟的边界，落在两个窗口上，但加起来仍不超过一个窗口。
+  const claimed = (await b.storage.listRange(pulseAssessmentsKey(), 0, -1))
+    .flatMap((raw) => (JSON.parse(raw) as { coverage: { from: number; to: number }[] }).coverage)
+    .reduce((sum, part) => sum + (part.to - part.from), 0);
+  assert.equal(claimed, CODING_WINDOW_MS);
+  assert.ok(b.requests.length <= 2);
+});
+
+test('listening windows without marks stay frozen and byte-identical', async () => {
+  const b = setup();
+  await b.storage.append(pulseKey('listening'), JSON.stringify({ t: T, until: T + CODING_WINDOW_MS, level: 3 }));
+  await b.make().run();
+  assert.equal(b.requests.length, 1);
+  const before = await b.storage.listRange(pulseAssessmentsKey(), 0, -1);
+  assert.ok(!JSON.stringify(b.requests[0]).includes('recentlyPlayed'), '没有痕迹的窗口不多一个字段');
+  // 痕迹落在上一个窗口：那个窗口该打分，这个窗口的 inputHash 不能因此变。
+  await b.storage.append(listeningPlaysKey(), JSON.stringify({ t: T - 60_000, since: T - 120_000, hint: null }));
+  b.advance(CODING_WINDOW_MS);
+  await b.make().run();
+  assert.equal(b.requests.length, 2);
+  assert.equal((b.requests[1].state as { windows: { from: number }[] }).windows[0].from, T - CODING_WINDOW_MS);
+  const rows = (await b.storage.listRange(pulseAssessmentsKey(), 0, -1)).map((raw) => JSON.parse(raw) as { from: number; inputHash: string });
+  assert.equal(rows.find((row) => row.from === T)!.inputHash, (JSON.parse(before[0]) as { inputHash: string }).inputHash);
 });

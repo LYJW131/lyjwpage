@@ -10,6 +10,7 @@ import { withStorageScope } from "@/lib/storage";
 import type { ListeningItem } from "@/lib/types";
 import { fanout } from "@api/fanout";
 import { prepareRecentlyPlayed } from "@api/stores/apple-music-store";
+import { recordListeningPlay } from "@api/stores/listening-pulse";
 import { afterResponse } from "./live-platform";
 
 /**
@@ -279,10 +280,15 @@ export function refreshRecentlyPlayed(): Promise<void> {
       if (!(await claim(REFRESH_KEY, RECENT_REFRESH_MS))) return;
 
       try {
-        const { changed, listening, commit } = await prepareRecentlyPlayed(await assemble());
+        const { changed, play, listening, commit } = await prepareRecentlyPlayed(await assemble());
+        /**
+         * 列表变了就是「在什么设备上又放了点什么」，哪怕 Mac 睡着、HomePod 没动 ——
+         * 那时这是唯一留下的痕迹。它没有时刻，所以不进 pulse 序列、不画进图，只作为
+         * 证据交给评分器和正在播放的实测段一起打分，见 workers/api/src/pulse-score.ts。
+         */
         // 完整数据可并行广播；缓存失效必须等写完，避免重新缓存旧结果。
         await fanout({
-          writes: [commit()],
+          writes: play ? [commit(), recordListeningPlay(play)] : [commit()],
           events: changed ? [{ type: "listening", payload: listening }] : [],
           tags: changed ? [LISTENING_TAG] : [],
         });
