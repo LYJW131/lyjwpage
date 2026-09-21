@@ -1,5 +1,4 @@
-import Image from "next/image";
-
+import Image from "@/components/app-image";
 import { PsPlusMark } from "@/components/trophies/ps-plus";
 import { TrophyMetal, trophyTypeLabel } from "@/components/trophies/trophy-metal";
 import {

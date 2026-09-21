@@ -2,7 +2,6 @@
 
 import { EyeOff } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
-import Image from "next/image";
 import {
   useCallback,
   useEffect,
@@ -13,6 +12,7 @@ import {
 } from "react";
 import useSWR, { preload, useSWRConfig } from "swr";
 
+import Image from "@/components/app-image";
 import { TrophyMetal } from "@/components/trophies/trophy-metal";
 import { backendUrl } from "@/lib/backend-url";
 import { LIST_TRANSITION, STATIC_TRANSITION } from "@/lib/motion";

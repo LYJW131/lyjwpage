@@ -1,9 +1,9 @@
 "use client";
 
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import Image from "next/image";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
+import Image from "@/components/app-image";
 import { GameFlags, PlatformMarks } from "@/components/trophies/game-flags";
 import {
   TrophyExpand,
@@ -685,8 +685,9 @@ export function PlaystationRow({
               >
                 <GameTile
                   tile={tile}
-                  // 横向吸附一屏就三块，再多的等滚到跟前再拉：这一排在移动端
-                  // 整个在首屏之外，从前那九张抢的是首屏封面的带宽
+                  // 横向一屏三块。首屏期间只让这三张去拉，其余先标 lazy，
+                  // 避免和封面抢带宽。首屏 load 之后 AppImage 会把剩下的改成
+                  // eager，不再等横滑到跟前。
                   eager={index < 3}
                   selected={tile.titleId === openId}
                   onPrefetch={() => prefetch(tile.titleIds)}

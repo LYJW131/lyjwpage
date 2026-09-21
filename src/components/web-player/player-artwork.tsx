@@ -1,8 +1,8 @@
 "use client";
 
-import Image from "next/image";
 import { Fragment, type CSSProperties } from "react";
 
+import Image from "@/components/app-image";
 import { useFirstInteraction } from "@/hooks/use-first-interaction";
 import { appleArtwork, ARTWORK_SCALE, needsOptimizing } from "@/lib/apple-artwork";
 import { cn } from "@/lib/utils";
