@@ -82,8 +82,8 @@ export function parseListeningPlay(raw: string): ListeningPlay | null {
 /**
  * 一次变动能认领多长的「已观测」时间。
  *
- * 只知道播放落在 `(since, t]` 里的某处，而这份列表由访客的轮询驱动刷新，没人看时
- * 这个口子能张到几小时。整段都算成已观测的话，一次换专辑就会按几小时的权重压过
+ * 只知道播放落在 `(since, t]` 里的某处。cron 每分钟刷、两分钟闸门，平时口子只有
+ * 两分钟；但 Worker 或 Apple 那边一断，口子就能张到几小时。整段都算成已观测的话，一次换专辑就会按几小时的权重压过
  * 真实上报 —— 摘要是按覆盖时长加权的，见 summarizeAssessments。所以最多只认一个
  * 评分窗口那么长；余下的不确定性交给 Jev 的 confidence，state 里仍带着真实的
  * `since` 让它看得见口子有多大。

@@ -152,7 +152,7 @@ Coding 同时读取前台应用、Agent/模型、交集时长、切换次数、�
 
 ## 最近在听
 
-WebSocket 连接成功时检查一次。cron 每分钟检查连接数，有存活连接才刷新；无人连接时不拉 Apple。
+WebSocket 连接成功时检查一次。cron 每分钟检查，不看连接数：列表变动是 listening 评分的证据（`pulse:listening-plays`），只在有访客时刷会漏掉没人看站点时在 iPhone 上听的那些。上游频率由两分钟的 SQLite 闸门管，最多每两分钟拉一次 Apple。
 SQLite `SET NX PX` 闸门与实例节流将真正的拉取限制为至少两分钟一次。
 Mac 上报的 Apple Music 凭据保存在 SQLite，Worker 读取使用，不向外提供凭据端点。
 状态读取不再触发拉取或广播。
