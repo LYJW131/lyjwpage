@@ -158,13 +158,22 @@ export async function getPulseStatus(now: number = Date.now()): Promise<PulsePay
   return { generatedAt: now, window, domains };
 }
 
+/** Validity follows each producer's cadence and event semantics. */
+export function pulseSampleUntil(domain: PulseDomain, sample: PulseSample): number {
+  if (sample.until != null) return sample.until;
+  // Emby emits an explicit stop once; it remains stopped until the next playback event.
+  if (domain === "watching" && sample.level === 0) return Infinity;
+  // PSN's no-visitor polling cadence is 30 minutes; allow five minutes of delivery jitter.
+  return sample.t + (domain === "gaming" ? 35 * 60_000 : PULSE_SILENT_AFTER_MS);
+}
+
 /** Preserve source boundaries and silence, including observed zero values. */
 export function measuredPulseView(domain: "listening" | "watching" | "gaming" | "charging", samples: PulseSample[], window: { from: number; to: number }): import("@/lib/types").PulseChartView {
   const segments: import("@/lib/types").PulseMeasuredSegment[] = [];
   for (let i = 0; i < samples.length; i++) {
     const sample = samples[i];
     const from = Math.max(window.from, sample.t);
-    const to = Math.min(window.to, samples[i + 1]?.t ?? window.to, sample.until ?? sample.t + PULSE_SILENT_AFTER_MS);
+    const to = Math.min(window.to, samples[i + 1]?.t ?? window.to, pulseSampleUntil(domain, sample));
     const value = domain === "charging" ? sample.powerW : sample.level === 3 ? 1 : 0;
     if (to <= from || value == null) continue;
     const previous = segments.at(-1);
