@@ -13,6 +13,11 @@ export { IMAGE_OBJECT_KEY } from "@/lib/asset-url";
 const CONFIRMED_TTL_MS = 5 * 60_000;
 const confirmed = new Map<string, number>();
 
+/** Node 单测隔离正缓存；生产路径不调用。 */
+export function resetStoredImageCacheForTests(): void {
+  confirmed.clear();
+}
+
 export async function hasStoredImage(objectKey: string): Promise<boolean> {
   const seenAt = confirmed.get(objectKey);
   if (seenAt != null && seenAt > Date.now()) return true;

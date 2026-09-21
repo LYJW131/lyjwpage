@@ -141,22 +141,18 @@ function normalize(item: ReportItem): StoredWatchingItem {
 /**
  * 接收上报器已经写入 R2 的对象键；站点不再接触图片字节。
  *
- * 映射由调用方读好传进来 —— 那条读要和续播列表、播放中那两条一起发车。
- * 没有新落地的图时返回的就是传进来那个对象；有的话返回的是**落库后的那一份**
+ * 普通 Worker 先并发确认 R2 对象；StateHub 提交时再读取最新映射并逐键合并。
+ * 没有新落地的图时返回的就是最新对象；有的话返回的是**落库后的那一份**
  * （setImageObjectKeys 会按 IMAGE_LIMIT 裁），不是就地改过的那个：超限时被淘汰
  * 掉的键必须在这次的回执和推送里就体现出来，否则推给浏览器的那份会引用刚被丢掉
  * 的键，代理也不会从 missingImages 里知道要补，下一轮又变回裂图。
  *
- * 确认走并发：`hasStoredImage` 未命中 5 分钟正缓存时要跨网发一次 R2 HEAD，而
- * recordEmbyReport 整段压在 202 之前。一次补图可以带一整批（IMAGE_LIMIT = 96），
- * 首次上报或桶被清空后是全量未命中，串着做几十次很容易撞上代理 30 秒的耐心
- * 这些 HEAD 之间互不相干。
+ * 确认走并发：`hasStoredImage` 未命中 5 分钟正缓存时要跨网发一次 R2 HEAD。
+ * 一次补图可以带一整批（IMAGE_LIMIT = 96）；HEAD 之间互不相干，也不进入
+ * StateHub 的串行提交队列。
  */
-async function storeImages(
-  value: unknown,
-  objectKeys: Record<string, string>,
-): Promise<{ objectKeys: Record<string, string>; stored: number }> {
-  if (!Array.isArray(value) || !value.length) return { objectKeys, stored: 0 };
+async function prepareImages(value: unknown): Promise<Array<{ key: string; objectKey: string }>> {
+  if (!Array.isArray(value) || !value.length) return [];
 
   const candidates: { key: string; objectKey: string }[] = [];
   for (const entry of value) {
@@ -170,23 +166,30 @@ async function storeImages(
     if (!objectKey || !IMAGE_OBJECT_KEY.test(objectKey)) continue;
     candidates.push({ key, objectKey });
   }
-  if (!candidates.length) return { objectKeys, stored: 0 };
+  if (!candidates.length) return [];
 
   const confirmed = await Promise.all(
     candidates.map((candidate) => hasStoredImage(candidate.objectKey)),
   );
 
-  let stored = 0;
-  candidates.forEach((candidate, index) => {
-    if (!confirmed[index]) return;
-    // 重新插入，让它排到末尾：淘汰的总是最久没被推过的那些
+  return candidates.filter((_, index) => confirmed[index]);
+}
+
+async function mergePreparedImages(
+  candidates: ReadonlyArray<{ key: string; objectKey: string }>,
+  latest: Record<string, string>,
+): Promise<{ objectKeys: Record<string, string>; stored: number }> {
+  if (!candidates.length) return { objectKeys: latest, stored: 0 };
+  const objectKeys = { ...latest };
+  for (const candidate of candidates) {
+    // 每次提交都基于 DO 内刚读到的映射合并，慢 HEAD 不能把并发新增的键盖掉。
     delete objectKeys[candidate.key];
     objectKeys[candidate.key] = candidate.objectKey;
-    stored += 1;
-  });
-
-  if (!stored) return { objectKeys, stored };
-  return { objectKeys: await setImageObjectKeys(objectKeys), stored };
+  }
+  return {
+    objectKeys: await setImageObjectKeys(objectKeys),
+    stored: candidates.length,
+  };
 }
 
 /** 引用了却还没有图的键。回给代理，让它下一次把这些补上 */
@@ -207,29 +210,57 @@ function missingKeys(items: StoredWatchingItem[], objectKeys: Record<string, str
  * 只在拖动进度条偏离推算值时推，图片则只在没推过或 ImageTag 变了时才带。
  */
 export async function recordEmbyReport(body: unknown, receivedAt = Date.now()) {
+  return commitPreparedEmbyReport(await prepareEmbyReport(body, receivedAt));
+}
+
+export type PreparedEmbyReport = {
+  source: "emby";
+  receivedAt: number;
+  resume?: StoredWatchingItem[];
+  playing?: PreparedEmbyPlaying;
+  images: Array<{ key: string; objectKey: string }>;
+};
+
+/** 纯字段收敛和 R2 HEAD 都在普通 Worker 完成，不进入 StateHub 的提交队列。 */
+export async function prepareEmbyReport(
+  body: unknown,
+  receivedAt = Date.now(),
+): Promise<PreparedEmbyReport> {
   const root = object(body);
   if (!root) throw new Error("请求体不是对象");
+
+  const resume = object(root.resume);
+  const list = resume && Array.isArray(resume.items)
+    ? resume.items
+      .map(reportItem)
+      .filter((item): item is ReportItem => item != null)
+      .map(normalize)
+    : undefined;
+  const playing = "playing" in root ? preparePlaying(root.playing, receivedAt) : undefined;
+  const images = await prepareImages(root.images);
+  return { source: "emby", receivedAt, ...(list ? { resume: list } : {}), ...(playing ? { playing } : {}), images };
+}
+
+export async function commitPreparedEmbyReport(prepared: PreparedEmbyReport) {
+  const { receivedAt } = prepared;
 
   const writes: Promise<unknown>[] = [];
   const events: PendingEvent[] = [];
   const tags: string[] = [];
 
   /**
-   * 这次用得着的三个键一起发车。
+   * 这次用得着的三个键一起读取。
    *
-   * 同一条连接上并发的命令在网络上是重叠的，加起来只花一个来回。从前是
-   * 「读图片映射 → 读续播列表 → …→ 读播放中那一项」，三个背靠背，而它们
-   * 互不相干。三个都读满：图片映射两份 payload 都要用，续播列表既要 diff
+   * 三份都来自同一个 StateHub 本地 SQLite，但依然并行组织：图片映射两份 payload 都要用，续播列表既要 diff
    * 又是 missingImages 的底，播放中那一项在代理只推了个位置更新时要拿来配详情。
    */
-  const resume = object(root.resume);
   const [images, previousResume, storedCurrent] = await Promise.all([
     getImageObjectKeys(),
     getResume(),
-    "playing" in root ? getCurrentItem() : null,
+    prepared.playing ? getCurrentItem() : null,
   ]);
 
-  const { objectKeys, stored } = await storeImages(root.images, images);
+  const { objectKeys, stored } = await mergePreparedImages(prepared.images, images);
 
   let list: StoredWatchingItem[] | null = null;
   /**
@@ -237,11 +268,8 @@ export async function recordEmbyReport(body: unknown, receivedAt = Date.now()) {
    * 收到就发失效通知的话推送会退化成定时广播，所以这里自己比一遍。
    */
   let resumeChanged = false;
-  if (resume && Array.isArray(resume.items)) {
-    list = resume.items
-      .map(reportItem)
-      .filter((item): item is ReportItem => item != null)
-      .map(normalize);
+  if (prepared.resume) {
+    list = prepared.resume;
     resumeChanged = JSON.stringify(previousResume?.items) !== JSON.stringify(list);
     writes.push(setResume(list));
   }
@@ -250,9 +278,9 @@ export async function recordEmbyReport(body: unknown, receivedAt = Date.now()) {
    * `playing` 缺席和为 null 是两回事：缺席表示这次不谈播放状态（比如只补图），
    * null 表示代理确认没有会话在播了，要清掉。所以判存在而不是判真假。
    */
-  const played = "playing" in root ? preparePlaying(root.playing) : null;
+  const played = prepared.playing ?? null;
   if (played) {
-    writes.push(played.commit());
+    writes.push(commitPlaying(played));
     /**
      * 这次没带详情就用存着的那份，按 itemId 对上才算数（同 nowWatchingPayload
      * 那道闸）。推送和 pulse 必须用同一份：只给 `played.item` 的话，代理推来一条
@@ -396,16 +424,17 @@ function playbackMedia(value: unknown): WatchingMedia | null {
 }
 
 /** 收下一次播放状态：先算，写留给 commit。`state` 为 null 表示没有会话在播了 */
-function preparePlaying(value: unknown): {
+export type PreparedEmbyPlaying = {
   outcome: "updated" | "cleared";
   state: EmbyNowPlaying | null;
   item: StoredWatchingItem | null;
-  commit: () => Promise<void>;
-} {
+};
+
+function preparePlaying(value: unknown, receivedAt: number): PreparedEmbyPlaying {
   const raw = object(value);
   const itemId = text(raw?.itemId);
   if (!raw || !itemId) {
-    return { outcome: "cleared", state: null, item: null, commit: clearNowPlaying };
+    return { outcome: "cleared", state: null, item: null };
   }
 
   const reported = reportItem(raw.item);
@@ -423,15 +452,19 @@ function preparePlaying(value: unknown): {
     deviceName: label(raw.deviceName),
     playMethod: playMethod(raw.playMethod),
     media: playbackMedia(raw.media),
-    at: Date.now(),
+    at: receivedAt,
   };
 
-  return {
-    outcome: "updated",
-    state,
-    item,
-    commit: async () => {
-      await Promise.all([item ? setCurrentItem(item) : null, setNowPlaying(state)]);
-    },
-  };
+  return { outcome: "updated", state, item };
+}
+
+async function commitPlaying(playing: PreparedEmbyPlaying): Promise<void> {
+  if (!playing.state) {
+    await clearNowPlaying();
+    return;
+  }
+  await Promise.all([
+    playing.item ? setCurrentItem(playing.item) : null,
+    setNowPlaying(playing.state),
+  ]);
 }

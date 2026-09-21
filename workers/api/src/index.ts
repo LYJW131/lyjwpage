@@ -2,12 +2,15 @@ import originWorker from "./origin-worker";
 import { getAllowedOrigins, getCorsHeaders, isAllowedOriginValue } from "./origins";
 import { serveReadModel } from "./read-model-edge";
 import { historyArchiveEnabled, pulseScoringEnabled, readModelEnabled, type Env } from "./runtime";
+import { PulseArchive } from "./pulse-archive";
+import { PulseScorer } from "./pulse-score";
 
 // Keep Wrangler's existing class exports and DO migration identities unchanged.
 export { LivePushRoom, StateHub } from "./origin-worker";
+export { ReadModelRenderer } from "./read-model-renderer";
 export type { Env } from "./runtime";
 
-export default {
+const apiWorker = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const origin = request.headers.get("Origin");
     return serveReadModel(request, {
@@ -32,14 +35,18 @@ export default {
     const hub = env.STATE.get(env.STATE.idFromName("global"));
     if (readModelEnabled(env)) await hub.queueReadModels();
     // Archiving trails the projection: it only appends to D1, is read by nobody yet, and
-    // must not delay this minute's public views. The RPC swallows per-domain failures;
-    // this catch is for the transport itself, which would otherwise fail the cron tick.
+    // must not delay this minute's public views. The ordinary Worker runner isolates
+    // per-domain failures; this catch keeps an unexpected coordinator failure from failing the cron tick.
     if (historyArchiveEnabled(env)) {
-      await hub.archivePulse().catch((error: unknown) => console.warn("[pulse-archive]", error));
+      await new PulseArchive({ coordinator: hub, db: env.HISTORY! }).run()
+        .catch((error: unknown) => console.warn("[pulse-archive]", error));
     }
     // 活动分同理排在最后：统一五分钟分段评分才调外部模型，这一分钟的公开视图不等它。
     if (pulseScoringEnabled(env)) {
-      await hub.scorePulse().catch((error: unknown) => console.warn("[pulse-score]", error));
+      await new PulseScorer({ coordinator: hub, apiKey: env.TYPESAFE_API_KEY! }).run()
+        .catch((error: unknown) => console.warn("[pulse-score]", error));
     }
   },
 };
+
+export default apiWorker;

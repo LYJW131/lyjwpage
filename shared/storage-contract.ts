@@ -8,6 +8,9 @@ export type StorageCommand =
   | { op: "expire"; key: string; ttlMs: number }
   | { op: "patch"; key: string; fields: Record<string, string> };
 
+/** Structured-clone-safe values returned by every storage command. */
+export type StorageResult = string | boolean | number | null | string[] | Record<string, string>;
+
 export const STORAGE_MAX_BYTES = 4 * 1024 * 1024;
 export const STORAGE_MAX_COMMANDS = 128;
 

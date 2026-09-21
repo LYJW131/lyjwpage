@@ -3,10 +3,13 @@ import type { StorageClient } from "@shared/storage-client";
 import type { LivePushRoom } from "./index";
 import type { MusicKitTokenEnv } from "./musickit-token";
 import type { StateHub } from "./state-hub";
+import type { ReadModelRenderer } from "./read-model-renderer";
 
 export interface Env extends MusicKitTokenEnv {
   LIVE_PUSH: DurableObjectNamespace<LivePushRoom>;
   STATE: DurableObjectNamespace<StateHub>;
+  /** Same-deployment named WorkerEntrypoint; public JSON rendering never runs inside StateHub. */
+  READ_MODEL_RENDERER?: Service<ReadModelRenderer>;
   IMAGES: R2Bucket;
   /** Public, rebuildable read models only. Omit to keep the authoritative read path. */
   READ_MODEL?: KVNamespace;

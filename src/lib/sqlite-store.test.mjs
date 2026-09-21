@@ -75,6 +75,21 @@ test("SQLite：迁移保留 TTL、历史、凭据且不覆盖新上报", () => {
   db.close();
 });
 
+test("SQLite：索引字符串与成员值在同一事务内更新", () => {
+  const { store, advance, db } = database();
+  assert.deepEqual(store.updateIndexedString("index", "a", "value:a", '{"ok":true}', 100), ["a"]);
+  assert.deepEqual(store.updateIndexedString("index", "b", "value:b", '{"ok":true}', 100), ["a", "b"]);
+  assert.deepEqual(store.updateIndexedString("index", "a", "value:a", null, 100), ["b"]);
+  assert.deepEqual(store.execute([
+    { op: "get", key: "index" },
+    { op: "get", key: "value:a" },
+    { op: "get", key: "value:b" },
+  ]), ['["b"]', null, '{"ok":true}']);
+  advance(100);
+  assert.deepEqual(store.execute([{ op: "get", key: "index" }, { op: "get", key: "value:b" }]), [null, null]);
+  db.close();
+});
+
 test("存储协议拒绝 SQL、无效操作、非法 TTL", () => {
   assert.throws(() => parseCommands([{ op: "sql", key: "lyjwpage:a", sql: "DROP TABLE entries" }]));
   assert.throws(() => parseCommands([{ op: "set", key: "x", value: "x", options: { ttlMs: -1 } }]));
