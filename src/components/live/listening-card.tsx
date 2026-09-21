@@ -2,7 +2,6 @@
 
 import NumberFlow, { NumberFlowGroup } from "@number-flow/react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import Image from "next/image";
 import {
   useCallback,
   useEffect,
@@ -14,6 +13,7 @@ import {
   type ReactNode,
 } from "react";
 
+import Image from "@/components/app-image";
 import { Card } from "@/components/ui/card";
 import { HomePodMiniIcon, MacBookProIcon } from "@/components/ui/device-icons";
 import {

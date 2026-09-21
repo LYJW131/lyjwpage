@@ -1,5 +1,4 @@
-import Image from "next/image";
-
+import Image from "@/components/app-image";
 import type { TrophyType } from "@/lib/types";
 import { cn } from "@/lib/utils";
 

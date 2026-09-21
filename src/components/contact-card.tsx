@@ -1,8 +1,8 @@
 "use client";
 
-import Image from "next/image";
 import { useSyncExternalStore } from "react";
 
+import Image from "@/components/app-image";
 import { GithubChart } from "@/components/github-chart";
 import { VibeYearChart } from "@/components/live/vibe-year-chart";
 import { Card } from "@/components/ui/card";

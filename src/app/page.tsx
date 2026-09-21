@@ -126,12 +126,13 @@ export default async function Home() {
                   artworkPlaceholders={artwork}
                 />
                 {/*
-                  首屏之外的大块推迟排版，见 globals.css 的 defer-offscreen。
+                  首屏之外的大块先不排版，见 globals.css 的 defer-offscreen。
                   估高按 375px 上实测的高度写，锚点跳过去才落得准；`auto` 让它
                   渲染过一次之后改按真高度算，所以桌面端那份估偏也只差第一帧。
 
                   这三张是两列网格里的格子，只在窄屏（单列）开；整宽的那几块
-                  用 defer-offscreen-always，宽窄都开。
+                  用 defer-offscreen-always，宽窄都开。首屏 load 之后整页揭开，
+                  不再等滚到跟前。
                 */}
                 <ActivityCard
                   fallback={activity}

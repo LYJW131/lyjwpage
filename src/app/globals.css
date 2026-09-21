@@ -472,18 +472,22 @@ button.paper-card {
 }
 
 /*
- * 首屏之外的大块：没滚到跟前就先不排版。
+ * 首屏之外的大块：首屏排版先跳过它们。
  *
  * 这一页在 375px 上有五千多像素高，其中「Vibe Coding」和站点卡各占一千三百多。
  * 浏览器照样要给它们算样式和布局 —— 实测（Lighthouse 移动端）Style & Layout
- * 是主线程上最大的一笔，比脚本执行还多。加上这条之后，它们的排版推迟到滚近了
- * 才做，首屏省下来的直接落在 TBT 和 Speed Index 上。
+ * 是主线程上最大的一笔，比脚本执行还多。首屏期间维持 content-visibility: auto，
+ * 这份排版不进首屏。
  *
  * 只在窄屏开：窄屏是单列，每块的高度互不相干；桌面是两列网格，让网格项退出
  * 尺寸计算会牵动整行的高度。桌面端的分数本来也没问题。
  *
  * `auto <高度>` 里的 auto 是「渲染过一次之后按记住的真高度算」，给的数只是
  * 第一次的估值，各处按实测高度写，页内锚点跳转才落得准。
+ *
+ * 首屏资源一 load（见 components/rest-ready），html 带上 offscreen-revealed，
+ * 下面这条把 content-visibility 收回 visible：剩下的块立刻排版，不再等滚近。
+ * 特异性要压过上面那条 auto，宽窄都收回。
  */
 @utility defer-offscreen {
   @media (width < 48rem) {
@@ -492,11 +496,16 @@ button.paper-card {
 }
 
 /*
- * 同上，但不分宽窄都开。给**整宽**的大块用：它们不在两列网格里，退不退出
+ * 同上，但不分宽窄都开。给整宽的大块用：它们不在两列网格里，退不退出
  * 尺寸计算都牵连不到别人，所以桌面端也能省这份排版。
  */
 @utility defer-offscreen-always {
   content-visibility: auto;
+}
+
+html.offscreen-revealed .defer-offscreen,
+html.offscreen-revealed .defer-offscreen-always {
+  content-visibility: visible;
 }
 
 @keyframes pulse-ring {

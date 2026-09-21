@@ -1,9 +1,9 @@
 "use client";
 
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 
+import Image from "@/components/app-image";
 import { StatusDot } from "@/components/ui/status-dot";
 import { useLiveEvents } from "@/hooks/use-live-events";
 import { useStatus } from "@/hooks/use-status";
@@ -342,6 +342,7 @@ export function WatchingRow({
                   liveProgress={live ? (data.nowPlaying?.progress ?? null) : null}
                   positionMs={live ? (data.nowPlaying?.positionMs ?? null) : null}
                   durationMs={live ? (data.nowPlaying?.durationMs ?? null) : null}
+                  // 一屏大约四张。其余首屏期间 lazy，load 之后由 AppImage 改成 eager。
                   eager={index < 4}
                 />
               </motion.div>

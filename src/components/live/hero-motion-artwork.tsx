@@ -1,9 +1,9 @@
 "use client";
 
 import type { Level } from "hls.js";
-import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 
+import Image from "@/components/app-image";
 import { appleArtwork, ARTWORK_SCALE, needsOptimizing } from "@/lib/apple-artwork";
 import type { ArtworkDataUri } from "@/lib/artwork-placeholder";
 import { cn } from "@/lib/utils";
