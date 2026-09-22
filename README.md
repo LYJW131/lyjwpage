@@ -30,7 +30,7 @@
 
 ## 页面效果
 
-首页是动态的：正在播放、正在充电、正在游玩这些卡片只在对应的事情发生时出现，平时看不到。下面的截图在本地用示例数据把这些状态同时点亮，明暗主题跟随系统。
+首页是动态的：正在播放、正在充电、正在游玩这些卡片只在对应的事情发生时出现，平时看不到。下面的效果图在本地用示例数据把这些状态同时点亮，明暗主题跟随系统；会动的那几张是从站点上真实录下来的。
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/overview-dark.webp">
@@ -59,8 +59,8 @@
   <tr>
     <td width="50%">
       <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/charger-dark.webp">
-        <img src="docs/screenshots/charger-light.webp" alt="Anker 充电头卡片：总功率、功率曲线与三个端口">
+        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/charger-dark.gif">
+        <img src="docs/screenshots/charger-light.gif" alt="Anker 充电头卡片：总功率换档时读数滚动、曲线末尾接上新点">
       </picture>
     </td>
     <td width="50%">
@@ -75,29 +75,29 @@
 **Apple Music 正在播放**：封面、来源设备、进度与逐字高亮的同步歌词，下方是最近收听。
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/now-listening-dark.webp">
-  <img src="docs/screenshots/now-listening-light.webp" alt="Apple Music 正在播放与逐字歌词" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/now-listening-dark.gif">
+  <img src="docs/screenshots/now-listening-light.gif" alt="Apple Music 正在播放：逐字高亮的歌词一句扫过、换到下一句，下方是最近收听" width="100%">
 </picture>
 
 **活动与训练**：Apple Watch 的活动、锻炼、站立三环与步数、距离、爬楼，右侧是最近训练，每页两条横向翻页。
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/activity-dark.webp">
-  <img src="docs/screenshots/activity-light.webp" alt="活动卡片：三环、步数与最近训练" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/activity-dark.gif">
+  <img src="docs/screenshots/activity-light.gif" alt="活动卡片：读数从上午换到下午，三环转到新位置、数字滚动，右侧是最近训练" width="100%">
 </picture>
 
 **落地节点**：位置与运营商、上下行速率、本计费周期已用流量，以及 CPU 与内存。
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/server-dark.webp">
-  <img src="docs/screenshots/server-light.webp" alt="落地节点卡片：速率、周期流量、CPU 与内存" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/server-dark.gif">
+  <img src="docs/screenshots/server-light.gif" alt="落地节点卡片：上下行速率、CPU 与内存换档时读数滚动" width="100%">
 </picture>
 
 **AI Coding**：各编码工具的 Token 用量、成本估算、今日用量与账号限额窗口。
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/vibecoding-dark.webp">
-  <img src="docs/screenshots/vibecoding-light.webp" alt="AI Coding 卡片：Token 用量、成本、模型排行与限额" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/vibecoding-dark.gif">
+  <img src="docs/screenshots/vibecoding-light.gif" alt="AI Coding 卡片：用量涨一档时 Token、成本与限额百分比滚动" width="100%">
 </picture>
 
 **PlayStation**：在线状态、正在游玩的游戏、奖杯统计与最近解锁；展开游戏卡片查看奖杯组与逐条成就。
