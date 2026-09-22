@@ -74,27 +74,27 @@ function busiestLimit(limits: VibeCodingLimit[], now: number) {
 const REFRESH_MS = 2 * 60_000;
 
 /**
- * Claude 和 Cursor 的活动灯都按最近一次活动时刻自己灭，窗口 5 分钟。
- *
- * Claude 的时刻来自 Claude Code hook，Mac 不再轮询日志，所以不能靠下一轮扫描把灯关掉。
- * Cursor 的时刻来自容器的用量事件。两边都是「过了窗口由浏览器自己熄」。
+ * Cursor 最近一次活动过去多久还算「在用」，跟 MacTelemetryHub 判 active 的 300 秒一致。
+ * 容器在用时每分钟查一次（见 agent-limits-reporter 的 cursor-now.ts），窗口比查询间隔宽，
+ * 连续在用时灯不会闪。
  */
-const ACTIVITY_WINDOW_MS = 5 * 60_000;
+const CURSOR_ACTIVE_WINDOW_MS = 5 * 60_000;
 
 /**
  * 这盏灯亮不亮。
  *
- * Claude / Cursor 看 `lastActivityAt`。其余 agent 的「正在使用」不再采集，
- * 只剩限额行；如果信封里还留着旧的 `active` 电平，要和「Mac 那边的话还算不算数」
- * 取与，避免灯冻住（见 VibeCodingCard 里的 activityUnknown）。
+ * Mac 报的几家带着现成的电平，但它是推来的、不会自己过期，所以要和「Mac 那边的话
+ * 还算不算数」取与（见 VibeCodingCard 里的 activityUnknown）。
+ *
+ * Cursor 的活动来自容器查的用量事件，跟 Mac 在不在线无关，站点只给时刻不给电平：
+ * 最近一次在 5 分钟内就亮，过了由 useStale 的定时器自己熄。容器停了时刻不再前进，
+ * 灯一样会灭，不需要另一个开关。
  */
 function useAgentActive(agent: VibeCodingAgent, activityUnknown: boolean) {
   const at = agent.lastActivityAt ? Date.parse(agent.lastActivityAt) : null;
-  const expired = useStale(at, ACTIVITY_WINDOW_MS);
+  const expired = useStale(at, CURSOR_ACTIVE_WINDOW_MS);
   const mountedAt = useMountedAt();
-  if (agent.id === "cursor" || agent.id === "claude") {
-    return at != null && mountedAt > 0 && !expired;
-  }
+  if (agent.id === "cursor") return at != null && mountedAt > 0 && !expired;
   return agent.active && !activityUnknown;
 }
 

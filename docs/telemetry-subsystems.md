@@ -165,7 +165,7 @@ Anker 硬件 (BLE) ──> a2687-telemetry ──> Mac Telemetry Hub ──> POS
 
 ### 数据源与模块拆解
 Mac Telemetry Hub 采集三大模块并通过 `/api/ingest/mac` 上报：
-1. `vibeCodingNow`（Claude Code hook）：只有 Claude Code 的活动灯和当前模型。Mac 不轮询日志；站点按 `lastActivityAt` 在 5 分钟后自己熄灯。
+1. `vibeCodingNow`（Claude Code hook）：只有 Claude Code 的活动灯和当前模型。Mac 不轮询日志；最后一次 hook 过 5 分钟，Mac 自己补发一次 `active: false`。
 2. `vibeCodingUsage`（10 分钟）：只刷新 Claude Code 的当天 token、缓存命中和 API 等值费用。Cursor 的当天用量仍由容器上报。
 3. `vibeCodingYear`（1 小时）：采集全部本机 agent 的完整历史，再取过去 53 周（371 天）日总量及每日 Top 5 模型分布，不含 Cursor。Cursor 的日子由读出口并上容器上报的日桶。
 
