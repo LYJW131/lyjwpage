@@ -46,7 +46,12 @@ export function prepareVibeCodingNow(report: unknown, receivedAt = Date.now()) {
   return prepareVibeCodingNowPayload(payload, receivedAt);
 }
 
-export function prepareVibeCodingNowPayload(payload: ParsedVibeCodingNow, receivedAt: number) {
+export function prepareVibeCodingNowPayload(parsed: ParsedVibeCodingNow, receivedAt: number) {
+  /**
+   * Cursor 的此刻归容器（`cursorNow`），Mac 那份即使带着 cursor 也丢掉：Hub 的会话扫描
+   * 不看 Cursor，那一行永远是空时刻、不在用，推给浏览器会把容器报的活动盖掉。
+   */
+  const payload = { ...parsed, agents: parsed.agents.filter((agent) => agent.id !== "cursor") };
   return {
     payload,
     /** 推给浏览器的此刻补丁。用量还没到过也推 —— 它不依赖那份 */

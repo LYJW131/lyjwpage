@@ -134,6 +134,25 @@ test("Mac keeps an earlier charger write when desktop validation fails and does 
   } finally { resetStorageForTests(); }
 });
 
+test("Mac vibeCodingNow drops the cursor row so it cannot overwrite the container's activity", async () => {
+  const storage = new FakeStorage();
+  installStorageForTests(storage);
+  try {
+    const command = await inRequest(testEnv(), () => prepareIngest("mac", envelope({
+      vibeCodingNow: { agents: [
+        { id: "claude", currentModel: "opus", active: true },
+        { id: "cursor", currentModel: null, lastActivityAt: null, active: false },
+      ] },
+    }, ["vibeCoding"]), NOW));
+    const result = await commit(testEnv(), command);
+    assert.equal(result.ok, true);
+    assert.deepEqual((await nowMirror.get())?.payload.agents.map((agent) => agent.id), ["claude"]);
+    const pushed = result.effects.flatMap((effect) =>
+      effect.kind === "event" && effect.event.type === "vibecoding-now" ? effect.event.payload.agents : []);
+    assert.deepEqual(pushed.map((agent) => agent.id), ["claude"]);
+  } finally { resetStorageForTests(); }
+});
+
 test("a later Mac module failure does not notify an unpersisted telemetry patch", async () => {
   const storage = new FakeStorage();
   installStorageForTests(storage);
