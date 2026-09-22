@@ -21,7 +21,9 @@ test("取窗口内最新的一条，bot 也算，缺 token 分列的事件照样
   });
 });
 
-test("没有事件返回 null，结构不对才报错", () => {
+test("没有事件返回 null（Cursor 会把空数组整个省掉），结构不对才报错", () => {
   assert.equal(latestActivity({ usageEventsDisplay: [] }, lower, upper), null);
-  assert.throws(() => latestActivity({}, lower, upper));
+  assert.equal(latestActivity({ totalUsageEventsCount: 0 }, lower, upper), null);
+  assert.throws(() => latestActivity(null, lower, upper));
+  assert.throws(() => latestActivity({ usageEventsDisplay: "x" }, lower, upper));
 });
