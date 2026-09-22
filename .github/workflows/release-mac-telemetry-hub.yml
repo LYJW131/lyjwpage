@@ -149,8 +149,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # 工作目录在子模块里，不写 --repo 的话 gh 会按子模块的远端发到 Hub 仓库
           gh release create "hub-build-$GITHUB_RUN_NUMBER" "$RUNNER_TEMP/$ZIP_NAME" \
-            --target "$GITHUB_SHA" --latest \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --latest \
             --title "Mac Telemetry Hub build $GITHUB_RUN_NUMBER" \
             --notes "Developer ID 签名并已公证。MacTelemetryHub $HUB_SHA，站点提交 $GITHUB_SHA。"
 
