@@ -7,8 +7,8 @@ import { r2OriginUrl } from "@/lib/r2-assets";
 /**
  * 桌面卡图标的展示尺寸 ×2。
  *
- * live-desk-card 里那格是 `size-7`（28px），2× 屏要 56 物理像素。改组件尺寸时
- * 这个数要跟着改。
+ * live-desk-card 里那格最大是 `size-7`（28px），2× 屏要 56 物理像素；带窗口标题
+ * 时那格缩到 20px，用的还是这一份，缩小不吃亏。改组件尺寸上限时这个数要跟着改。
  */
 const ICON_PX = 56;
 

@@ -261,6 +261,23 @@ export function HeaderDesktop({
    */
   const ssrIconUrl = fallback.ok ? (fallback.data.desktop?.iconUrl ?? null) : null;
 
+  /**
+   * 有窗口标题才把图标缩一号，没标题就还是原来的 28px。
+   *
+   * 判据用 `measuredTitle` 而不是 `windowTitle`：标题正在淡出的那一帧还占着
+   * 高度，图标这时候弹回大号会和标题的收起动画对着干。两级尺寸都给了过渡，
+   * 所以标题进出时图标是缩放过去的，不是跳一下。
+   */
+  const compact = Boolean(measuredTitle);
+  const iconSlotClass = compact ? "size-5" : "size-7";
+  const iconGlyphClass = compact ? "size-4" : "size-5";
+  const rowGapClass = compact ? "gap-1.5" : "gap-2";
+  const overrideTextSize = compact ? 16 : 20;
+  const sizeTransition =
+    "transition-[width,height] duration-200 ease-out motion-reduce:transition-none";
+  const gapTransition =
+    "transition-[column-gap] duration-200 ease-out motion-reduce:transition-none";
+
   return (
     <div
       className={cn(
@@ -274,10 +291,12 @@ export function HeaderDesktop({
     >
       {/* 内容绝对定位做切换动画，宽度得另开一行量，否则中间栏只剩 1/3 就开始省略。 */}
       <div className="pointer-events-none invisible flex flex-col items-center justify-center" aria-hidden>
-        <div className="flex items-center gap-1.5">
-          <span className="size-5 shrink-0" />
+        <div className={cn("flex items-center", rowGapClass)}>
+          <span className={cn(iconSlotClass, "shrink-0")} />
           {overrideText ? (
-            <span className="flex shrink-0 items-center">{overrideText({ size: 16 })}</span>
+            <span className="flex shrink-0 items-center">
+              {overrideText({ size: overrideTextSize })}
+            </span>
           ) : (
             <span className="shrink-0 text-sm font-medium leading-tight">{applicationName}</span>
           )}
@@ -285,8 +304,13 @@ export function HeaderDesktop({
         {measuredTitle ? <WindowTitle title={measuredTitle} /> : null}
       </div>
       {!desktop && !offline ? (
-        <div className="absolute inset-0 flex min-w-0 items-center justify-center gap-1.5">
-          <span className="flex size-5 shrink-0 items-center justify-center text-xs text-muted-foreground">
+        <div className={cn("absolute inset-0 flex min-w-0 items-center justify-center", rowGapClass)}>
+          <span
+            className={cn(
+              "flex shrink-0 items-center justify-center text-xs text-muted-foreground",
+              iconSlotClass,
+            )}
+          >
             ⌘
           </span>
           <span className="truncate text-sm font-medium text-muted-foreground">
@@ -304,11 +328,20 @@ export function HeaderDesktop({
             transition={reduced ? STATIC_TRANSITION : APP_SWITCH_TRANSITION}
             className="absolute inset-0 flex min-w-0 flex-col items-center justify-center"
           >
-            <div className="flex items-center gap-1.5">
-              <span className="flex size-5 shrink-0 items-center justify-center">
+            <div className={cn("flex items-center", rowGapClass, gapTransition)}>
+              <span
+                className={cn(
+                  "flex shrink-0 items-center justify-center",
+                  iconSlotClass,
+                  sizeTransition,
+                )}
+              >
                 {/* 和 overrideText 同一个优先级：离线 / 锁屏 > 应用替换 > 源图标 */}
                 {offline ? (
-                  <MacBookProIcon className="size-4 text-muted-foreground" aria-hidden />
+                  <MacBookProIcon
+                    className={cn("text-muted-foreground", iconGlyphClass, sizeTransition)}
+                    aria-hidden
+                  />
                 ) : locked ? (
                   <svg
                     viewBox="0 0 24 24"
@@ -317,14 +350,14 @@ export function HeaderDesktop({
                     strokeWidth={1.6}
                     strokeLinecap="round"
                     strokeLinejoin="round"
-                    className="size-4 text-muted-foreground"
+                    className={cn("text-muted-foreground", iconGlyphClass, sizeTransition)}
                     aria-hidden
                   >
                     <rect x="4.5" y="10.5" width="15" height="10" rx="2.5" />
                     <path d="M8 10.5V7.5a4 4 0 0 1 8 0v3" />
                   </svg>
                 ) : activeOverride ? (
-                  activeOverride.renderIcon({ size: 20 })
+                  activeOverride.renderIcon({ size: compact ? 20 : 24 })
                 ) : desktop?.iconUrl ? (
                   <Image
                     src={
@@ -333,9 +366,9 @@ export function HeaderDesktop({
                         : desktop.iconUrl
                     }
                     alt=""
-                    width={20}
-                    height={20}
-                    className="size-5 object-contain"
+                    width={28}
+                    height={28}
+                    className={cn("object-contain", iconSlotClass, sizeTransition)}
                     unoptimized
                     decoding={
                       iconDataUri && desktop.iconUrl === ssrIconUrl ? "sync" : "async"
@@ -347,7 +380,7 @@ export function HeaderDesktop({
               </span>
               {overrideText ? (
                 <span className="flex shrink-0 items-center text-foreground">
-                  {overrideText({ size: 16 })}
+                  {overrideText({ size: overrideTextSize })}
                 </span>
               ) : (
                 <span
