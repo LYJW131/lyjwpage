@@ -166,8 +166,8 @@ Anker 硬件 (BLE) ──> a2687-telemetry ──> Mac Telemetry Hub ──> POS
 ### 数据源与模块拆解
 Mac Telemetry Hub 采集三大模块并通过 `/api/ingest/mac` 上报：
 1. `vibeCodingNow`（60 秒）：当前是否处于活跃编码状态、正在使用的模型、最近活动时间戳。
-2. `vibeCodingUsage`（10 分钟）：各来源（Claude Code、Codex、Cursor、Grok 等）今日 Token 用量、缓存命中率、会话数及 API 等值费用。
-3. `vibeCodingYear`（1 小时）：过去 53 周（371 天）完整日总量及每日 Top 5 模型分布。
+2. `vibeCodingUsage`（10 分钟）：各来源（Claude Code、Codex、Grok 等）今日 Token 用量、缓存命中率、会话数及 API 等值费用。Cursor 的云端历史不在这封里。
+3. `vibeCodingYear`（1 小时）：过去 53 周（371 天）日总量及每日 Top 5 模型分布，不含 Cursor。Cursor 的日子由读出口并上容器上报的日桶。
 
 ### 数据契约与分桶规范
 - **日期分桶**：全量历史数据严格按 `Asia/Shanghai` 时区划分自然日。
@@ -184,7 +184,7 @@ Mac Telemetry Hub 采集三大模块并通过 `/api/ingest/mac` 上报：
 ## 8. AI Coding Agent 账号限额
 
 ### 容器化上报架构
-- **独立容器运行**：`reporters/agent-limits-reporter` 运行在独立 Linux 容器中，每轮通过 `POST /api/ingest/agents` 统一上报。
+- **独立容器运行**：`reporters/agent-limits-reporter` 运行在独立 Linux 容器中，每轮通过 `POST /api/ingest/agents` 统一上报限额。同一封里的 `cursorUsage` 是 Cursor 云端用量日桶；Mac 不在线时站点用它继续更新 Cursor 的合计和年度图。
 - **凭据完全隔离**：容器内部独立维护各家 CLI（Claude Code、Codex 等）登录 Session，严禁复制宿主机凭据，防止 refresh token 竞态失效。
 - **心跳与超时**：
   - 即使数据无变化，每轮上报依然执行（作为存活心跳）。

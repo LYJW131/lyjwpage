@@ -1,3 +1,4 @@
+import type { CursorUsagePush } from "./cursor-usage.js";
 import { config } from "./config.js";
 
 export type AgentLimit = {
@@ -19,6 +20,8 @@ export type AgentRow = {
 export type PushPayload = {
   collectedAt: string;
   agents: AgentRow[];
+  /** 这一轮 Cursor 云端历史拉成了才带。失败或没登录就省掉，站点留着上一份。 */
+  cursorUsage?: CursorUsagePush;
 };
 
 type SiteEnvelope<T> = { ok?: boolean; error?: string; data?: T };
