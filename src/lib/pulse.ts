@@ -21,6 +21,14 @@ export function pulseKey(domain: PulseDomain): string {
   return key("pulse", domain);
 }
 
+export function pulseIntervalRangeKey(domain: "activity"): string {
+  return key("pulse", domain, "authoritative-range");
+}
+
+export function pulseIntervalRevisionKey(domain: "activity"): string {
+  return key("pulse", domain, "revision");
+}
+
 function normalizeHint(hint: string | null | undefined): string | undefined {
   if (typeof hint !== "string") return undefined;
   const trimmed = hint.trim().slice(0, PULSE_HINT_MAX);

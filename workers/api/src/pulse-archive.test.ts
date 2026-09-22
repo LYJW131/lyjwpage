@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
 
-import { pulseKey } from "@/lib/pulse";
+import { pulseIntervalRangeKey, pulseKey } from "@/lib/pulse";
 import { PULSE_HISTORY_LIMIT } from "@/lib/limits";
 import { PULSE_DOMAINS, type PulseDomain, type PulseSample } from "@/lib/types";
 import type { StorageCommand } from "@shared/storage-contract";
@@ -22,6 +22,7 @@ function deferred<T>() {
 }
 
 type Row = [string, number, number, string | null, number | null, number | null];
+type Statement = { query: string; values: unknown[] };
 
 function series(count: number, level: 0 | 1 | 2 | 3 = 2): PulseSample[] {
   return Array.from({ length: count }, (_, index) => ({ t: T0 + index * 60_000, level }));
@@ -32,7 +33,8 @@ function setup(options: {
   raw?: string[];
   failRead?: PulseDomain;
   fail?: (domain: string, attempt: number) => boolean;
-  hold?: Promise<unknown>;
+  hold?: Promise<unknown> | ((revision: number) => Promise<unknown>);
+  activityRange?: { from: number; to: number };
   chunkSize?: number;
   log?: (domain: string, error: unknown) => void;
 } = {}) {
@@ -51,10 +53,12 @@ function setup(options: {
   for (const [domain, samples] of Object.entries(options.lists ?? {})) {
     stored.set(pulseKey(domain as PulseDomain), samples.map((sample) => JSON.stringify(sample)));
   }
+  if (options.activityRange) stored.set(pulseIntervalRangeKey("activity"), [JSON.stringify(options.activityRange)]);
   const readCommands: StorageCommand[] = [];
   const execute = (commands: StorageCommand[]): unknown[] => commands.map((command) => {
-    assert.equal(command.op, "listRange");
     readCommands.push(command);
+    if (command.op === "get") return stored.get(command.key)?.[0] ?? null;
+    assert.equal(command.op, "listRange");
     if (options.failRead && command.key === pulseKey(options.failRead)) throw new Error("source unavailable");
     const rows = options.raw ?? stored.get(command.key) ?? [];
     return rows.slice(command.start, command.stop + 1);
@@ -64,18 +68,40 @@ function setup(options: {
   const batches: Row[][] = [];
   const rows = new Map<string, Row>();
   let attempts = 0;
+  let activityRevision = 0;
   const archiveDb: PulseArchiveDb = {
     prepare(query) {
-      assert.match(query, /^INSERT OR IGNORE INTO pulse_samples\b/);
-      return { bind: (...values: unknown[]) => values as Row };
+      return { bind: (...values: unknown[]) => ({ query, values }) };
     },
     async batch(statements) {
-      const batch = statements as Row[];
+      const prepared = statements as Statement[];
       const attempt = ++attempts;
-      if (options.hold) await options.hold;
-      if (options.fail?.(batch[0][0], attempt)) throw new Error("D1 unavailable");
-      batches.push(batch);
-      for (const row of batch) rows.set(`${row[0]}:${row[1]}`, row);
+      const revision = prepared.find((statement) => statement.query.startsWith("INSERT INTO pulse_archive_state"))?.values[0] as number | undefined;
+      if (typeof options.hold === "function" && revision != null) await options.hold(revision);
+      else if (options.hold) await options.hold;
+      const ordinary = prepared.filter((statement) => statement.query.startsWith("INSERT OR IGNORE"))
+        .map((statement) => statement.values as Row);
+      const domain = ordinary[0]?.[0] ?? "activity";
+      if (options.fail?.(domain, attempt)) throw new Error("D1 unavailable");
+      if (ordinary.length) {
+        batches.push(ordinary);
+        for (const row of ordinary) rows.set(`${row[0]}:${row[1]}`, row);
+      }
+      for (const statement of prepared) {
+        if (statement.query.startsWith("INSERT INTO pulse_archive_state")) {
+          activityRevision = Math.max(activityRevision, statement.values[0] as number);
+        } else if (statement.query.startsWith("DELETE FROM pulse_samples")) {
+          const [to, from, revision] = statement.values as number[];
+          if (revision === activityRevision) for (const [key, row] of rows) {
+            if (row[0] === "activity" && row[1] < to && (row[4] ?? row[1] + 1) > from) rows.delete(key);
+          }
+        } else if (statement.query.startsWith("INSERT INTO pulse_samples(domain, t")) {
+          const [json, revision] = statement.values as [string, number];
+          if (revision === activityRevision) for (const sample of JSON.parse(json) as PulseSample[]) {
+            rows.set(`activity:${sample.t}`, ["activity", sample.t, sample.level, null, sample.until ?? null, null]);
+          }
+        }
+      }
       return [];
     },
   };
@@ -95,6 +121,10 @@ function setup(options: {
     logged,
     readCommands,
     rows: () => [...rows.values()].sort((a, b) => a[1] - b[1]),
+    setActivity(samples: PulseSample[], range: { from: number; to: number }) {
+      stored.set(pulseKey("activity"), samples.map((sample) => JSON.stringify(sample)));
+      stored.set(pulseIntervalRangeKey("activity"), [JSON.stringify(range)]);
+    },
     seed(domain: PulseDomain, t: number) {
       sqlite.prepare("INSERT INTO metadata(key, value) VALUES (?, ?)").run(`pulse-archive:${domain}`, String(t));
     },
@@ -119,8 +149,9 @@ test("pulse archive: archives fields and reads every source through one bounded 
     ["activity", T0, 2, null, T0 + 3_600_000, null],
     ["coding", T0 + 60_000, 0, null, null, null],
   ]);
-  assert.equal(world.readCommands.length, PULSE_DOMAINS.length);
+  assert.equal(world.readCommands.length, PULSE_DOMAINS.length + 1);
   for (const command of world.readCommands) {
+    if (command.op === "get") continue;
     assert.equal(command.op, "listRange");
     assert.equal(command.start, 0);
     assert.equal(command.stop, command.key === pulseKey("charging") ? 5999 : PULSE_HISTORY_LIMIT - 1);
@@ -158,6 +189,16 @@ test("pulse archive: repeats only rows beyond the durable watermark", async () =
   restarted.seed("listening", samples[2].t);
   await restarted.archive.run();
   assert.deepEqual(restarted.rows(), [["listening", later.t, 1, "Helpless", null, null]]);
+});
+
+test("pulse archive: activity keeps its watermark until the first authoritative history arrives", async () => {
+  const world = setup({ lists: { activity: [
+    { t: T0, until: T0 + 300_000, level: 1 },
+  ] } });
+  await world.archive.run();
+  await world.archive.run();
+  assert.equal(world.batches.length, 1);
+  assert.equal(world.watermark("activity"), String(T0));
 });
 
 test("pulse archive: confirms each successful chunk and stops at a failed chunk", async () => {
@@ -208,6 +249,27 @@ test("pulse archive: concurrent Worker instances may replay safely and converge"
   assert.equal(world.batches.length, 2, "both snapshots may write the same idempotent D1 batch");
   assert.equal(world.rows().length, 2, "(domain,t) uniqueness collapses the replay");
   assert.equal(world.watermark("gaming"), String(T0 + 60_000));
+});
+
+test("pulse archive: newer authoritative activity deletion wins when an older snapshot finishes late", async () => {
+  const oldGate = deferred<void>();
+  const range = { from: T0, to: T0 + 3_600_000 };
+  const world = setup({
+    lists: { activity: [
+      { t: T0 - 3_600_000, until: T0 + 300_000, level: 2 },
+      { t: T0 + 600_000, until: T0 + 900_000, level: 3 },
+    ] },
+    activityRange: range,
+    hold: (revision) => revision === 1 ? oldGate.promise : Promise.resolve(),
+  });
+  const oldRun = world.archive.run();
+  await new Promise((resolve) => setTimeout(resolve, 1));
+  world.setActivity([], range);
+  await world.makeArchive().run();
+  oldGate.resolve();
+  await oldRun;
+
+  assert.deepEqual(world.rows().filter((row) => row[0] === "activity"), []);
 });
 
 test("pulse archive: late confirmations advance by max and never move backward", async () => {

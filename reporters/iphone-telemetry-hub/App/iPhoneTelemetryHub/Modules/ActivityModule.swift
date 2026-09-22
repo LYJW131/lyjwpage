@@ -66,13 +66,17 @@ final class ActivityModule: TelemetryModule {
 
     func snapshot() async throws -> AnyEncodable? {
         guard HKHealthStore.isHealthDataAvailable() else { return nil }
+        let history = try await recentHistory()
         /**
-         手表当天还没有 summary（刚过午夜、手表还没同步）时这一轮不发。
+         手表当天还没有 summary（刚过午夜、手表还没同步）时只发历史。
 
          站点校验目标值必须为正，硬发一份零目标只会换回一个 400。
          */
-        guard let reading = try await todayRings(), reading.isUsable else { return nil }
-        return AnyEncodable(reading.payload(extras: await extraCounts(for: reading)))
+        guard let reading = try? await todayRings(), reading.isUsable else {
+            // 圆环尚未同步也要把已经闭合的历史桶补上；接收端不会据此改写当前圆环。
+            return AnyEncodable(ActivityHistoryOnlyPayload(history: history))
+        }
+        return AnyEncodable(reading.payload(extras: await extraCounts(for: reading), history: history))
     }
 
     /// 界面上那一份读数，不上报，只显示
@@ -185,6 +189,66 @@ final class ActivityModule: TelemetryModule {
             store.execute(query)
         }
     }
+
+    /**
+     最近 24 小时已经结束的 UTC 五分钟统计桶。
+
+     每次上报都带完整查询范围，接收端据此权威替换：HealthKit 后续修订或删除样本时，
+     旧桶也能被删掉。某个 statistics 为 nil 代表没有可读事实，保持 nil；三个都 nil 的
+     桶不发送，站点会把那五分钟留成未知而不是静止。
+     */
+    private func recentHistory(now: Date = Date()) async throws -> ActivityHistoryPayload {
+        let bucketSeconds: TimeInterval = 5 * 60
+        let to = Date(timeIntervalSince1970: floor(now.timeIntervalSince1970 / bucketSeconds) * bucketSeconds)
+        let from = to.addingTimeInterval(-24 * 60 * 60)
+
+        async let move = bucketedSums(HKQuantityType(.activeEnergyBurned), unit: .kilocalorie(), from: from, to: to)
+        async let exercise = bucketedSums(HKQuantityType(.appleExerciseTime), unit: .minute(), from: from, to: to)
+        async let steps = bucketedSums(HKQuantityType(.stepCount), unit: .count(), from: from, to: to)
+        let values = try await (move, exercise, steps)
+        let starts = Set(values.0.keys).union(values.1.keys).union(values.2.keys).sorted()
+        let buckets = starts.compactMap { start -> ActivityHistoryBucketPayload? in
+            guard start >= epochMilliseconds(from), start < epochMilliseconds(to) else { return nil }
+            return ActivityHistoryBucketPayload(
+                from: start,
+                to: start + Int64(bucketSeconds * 1_000),
+                moveKcal: values.0[start],
+                exerciseMinutes: values.1[start],
+                steps: values.2[start]
+            )
+        }
+        return ActivityHistoryPayload(
+            from: epochMilliseconds(from),
+            to: epochMilliseconds(to),
+            buckets: buckets
+        )
+    }
+
+    private func bucketedSums(
+        _ type: HKQuantityType,
+        unit: HKUnit,
+        from: Date,
+        to: Date
+    ) async throws -> [Int64: Double] {
+        let predicate = HKQuery.predicateForSamples(withStart: from, end: to, options: [])
+        let descriptor = HKStatisticsCollectionQueryDescriptor(
+            predicate: .quantitySample(type: type, predicate: predicate),
+            options: .cumulativeSum,
+            anchorDate: Date(timeIntervalSince1970: 0),
+            intervalComponents: DateComponents(minute: 5)
+        )
+        let collection = try await descriptor.result(for: store)
+        var buckets: [Int64: Double] = [:]
+        collection.enumerateStatistics(from: from, to: to) { statistics, _ in
+            guard let quantity = statistics.sumQuantity() else { return }
+            buckets[epochMilliseconds(statistics.startDate)] = quantity.doubleValue(for: unit)
+        }
+        return buckets
+    }
+}
+
+private func epochMilliseconds(_ date: Date) -> Int64 {
+    Int64((date.timeIntervalSince1970 * 1_000).rounded())
 }
 
 /**
@@ -224,6 +288,25 @@ struct ActivityPayload: Codable, Sendable, Equatable {
     let steps: Int?
     let distanceMeters: Int?
     let flightsClimbed: Int?
+    let history: ActivityHistoryPayload
+}
+
+struct ActivityHistoryOnlyPayload: Codable, Sendable, Equatable {
+    let history: ActivityHistoryPayload
+}
+
+struct ActivityHistoryPayload: Codable, Sendable, Equatable {
+    let from: Int64
+    let to: Int64
+    let buckets: [ActivityHistoryBucketPayload]
+}
+
+struct ActivityHistoryBucketPayload: Codable, Sendable, Equatable {
+    let from: Int64
+    let to: Int64
+    let moveKcal: Double?
+    let exerciseMinutes: Double?
+    let steps: Double?
 }
 
 struct ExtraCounts: Sendable {
@@ -271,7 +354,7 @@ struct RingReading: Sendable {
         moveGoalKcal > 0 && exerciseGoalMinutes > 0 && standGoalHours > 0
     }
 
-    func payload(extras: ExtraCounts) -> ActivityPayload {
+    func payload(extras: ExtraCounts, history: ActivityHistoryPayload) -> ActivityPayload {
         ActivityPayload(
             date: date,
             secondsFromGMT: secondsFromGMT,
@@ -283,7 +366,8 @@ struct RingReading: Sendable {
             standGoalHours: Int(standGoalHours.rounded()),
             steps: extras.steps.map { Int($0.rounded()) },
             distanceMeters: extras.distanceMeters.map { Int($0.rounded()) },
-            flightsClimbed: extras.flightsClimbed.map { Int($0.rounded()) }
+            flightsClimbed: extras.flightsClimbed.map { Int($0.rounded()) },
+            history: history
         )
     }
 }

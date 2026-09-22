@@ -111,16 +111,16 @@ Pulse 卡片用它。信封形状：
 没有 `TYPESAFE_API_KEY`、或本地配了 `DEV_OVERRIDES` / `UPSTREAM_API_URL` 时停用自动评分。
 
 `activity` 是 Apple Watch 身体活动，由 `/api/ingest/iphone` 的 `modules.activity`
-相邻累计快照计算，无须更新 iPhone 上报器。仅同一当地日期、同一时区且间隔 1 分钟至
-2 小时的两份快照参与；首次上报、跨日、长间隔、累计值回退时只重建基线，缺口不算空闲。
-按区间平均步频或锻炼时间占比取较高档：≥60 steps/min 或 ≥50% 为 3，
-≥20 steps/min 或 ≥10% 为 2；其余有活动能量、步数、锻炼或站立增量为 1，无增量为 0。
-这是展示用估算；HealthKit 延迟同步可能影响时间定位，不表示实时运动检测。
-样本 `{ t, until, level }` 覆盖前后两次收到上报的区间，`until` 为 epoch 毫秒；
-绘图、窗口统计和评分均在 `until` 截止，包含 0 档，不向未来延续，也不套用实时域的 10 分钟静默上限。
-首次发布此版本前执行 D1 迁移 `0002_pulse_activity_intervals.sql`
+`history: { from, to, buckets }` 生成。iPhone 直接查询最近 24 小时已经结束的 UTC 五分钟 HealthKit
+statistics；每个桶只携带实际可读的 active energy、exercise time、steps，缺失字段不补零，三项都缺失的
+时间保持未知。`from` / `to` 是权威查询范围，后到的完整结果会修订或删除范围内旧桶。
+按桶内平均步频或锻炼时间占比取较高档：≥60 steps/min 或 ≥50% 为 3，≥20 steps/min 或 ≥10%
+为 2；其余有活动能量、步数或锻炼为 1，明确读到三项均为 0 才是 0。
+样本 `{ t, until, level }` 的 `until` 是闭合桶终点；绘图、窗口统计和评分均在此截止，不向当前时刻延伸。
+查询修订只失效事实实际变化的评分窗，运行中的旧 activity 评分也由 history revision 拒收。
+首次发布此版本前执行 D1 迁移 `0002_pulse_activity_intervals.sql` 和 `0004_pulse_archive_revisions.sql`
 （`pnpm --dir workers/api exec wrangler d1 migrations apply lyjwpage-history --remote`），
-归档将终点保存在 `until_at`；已有域不带此字段，值为 NULL。
+归档将终点保存在 `until_at`，并用范围 revision 原子替换 activity 历史，较旧的异步归档不能复活已删除桶；已有域不带终点，值为 NULL。
 尚无分段评分时新行显示 `Awaiting scores`。
 
 本地预览用夹具：`pnpm dev:override /api/status/pulse pulse-busy-day.json`。

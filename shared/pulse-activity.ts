@@ -1,6 +1,5 @@
-import { localDate } from "@/lib/freshness";
 import type { PulseSample } from "@/lib/types";
-import type { StoredActivity } from "@shared/activity";
+import type { ActivityHistoryBucket } from "@shared/activity";
 import { longestRunSeconds, measuredWindow, mergeCoverage, percent, secondsWhere, type Coverage, type ScoreQuestion } from "@shared/pulse-features";
 
 /** 一条已完成的 HealthKit 训练。时间是 epoch 毫秒；秒数是扣除暂停后的活动时长。 */
@@ -11,35 +10,21 @@ export type ActivityWorkout = {
   durationSeconds: number;
 };
 
-/** HealthKit 是累计快照；仅估算相邻有效上报之间的平均强度，不外推到此刻。 */
-export function activityPulseSample(previous: StoredActivity | null, next: StoredActivity): PulseSample | null {
-  if (!previous) return null;
-  const before = previous.activity;
-  const after = next.activity;
-  const elapsed = next.receivedAt - previous.receivedAt;
-  // 太短容易被整数取整放大；太长无法定位活动。跨日、换时区、旧日期均重新建立基线。
-  if (elapsed < 60_000 || elapsed > 2 * 3_600_000 ||
-      before.date !== after.date || before.secondsFromGMT !== after.secondsFromGMT ||
-      localDate(previous.receivedAt, before.secondsFromGMT) !== before.date ||
-      localDate(next.receivedAt, after.secondsFromGMT) !== after.date) return null;
-
-  const move = after.moveKcal - before.moveKcal;
-  const exercise = after.exerciseMinutes - before.exerciseMinutes;
-  const stand = after.standHours - before.standHours;
-  const steps = before.steps != null && after.steps != null ? after.steps - before.steps : null;
-  // HealthKit 修订累计值时不把负增量当空闲或运动。
-  if (move < 0 || exercise < 0 || stand < 0 || (steps != null && steps < 0)) return null;
-  const minutes = elapsed / 60_000;
-  const cadence = (steps ?? 0) / minutes;
-  const exerciseRatio = exercise / minutes;
+/** HealthKit 的闭合统计桶已经带时间边界；部分指标缺失且其余全为零时仍保持未知。 */
+export function activityHistoryPulseSample(bucket: ActivityHistoryBucket): (PulseSample & { until: number }) | null {
+  const values = [bucket.moveKcal, bucket.exerciseMinutes, bucket.steps];
+  if (values.some((value) => value == null) && !values.some((value) => (value ?? 0) > 0)) return null;
+  const minutes = (bucket.to - bucket.from) / 60_000;
+  const cadence = (bucket.steps ?? 0) / minutes;
+  const exerciseRatio = (bucket.exerciseMinutes ?? 0) / minutes;
   const level = cadence >= 60 || exerciseRatio >= 0.5 ? 3
     : cadence >= 20 || exerciseRatio >= 0.1 ? 2
-      : move > 0 || exercise > 0 || stand > 0 || (steps ?? 0) > 0 ? 1 : 0;
-  return { t: previous.receivedAt, until: next.receivedAt, level };
+      : (bucket.moveKcal ?? 0) > 0 || (bucket.exerciseMinutes ?? 0) > 0 || (bucket.steps ?? 0) > 0 ? 1 : 0;
+  return { t: bucket.from, until: bucket.to, level };
 }
 
 /**
- * 身体活动的五分钟事实。档位在上面 activityPulseSample 里由步频和锻炼分钟占比算出，
+ * 身体活动的五分钟事实。档位在上面 activityHistoryPulseSample 里由步频和锻炼分钟占比算出，
  * 样本只存档位，所以这里能给模型的是四个**命名**的秒数桶，每个桶在判据里写清楚
  * 它对应的步频 / 锻炼占比——不再让模型拿着 0–3 去查图例。
  */
@@ -57,7 +42,7 @@ export type ActivityWindowFeatures = {
   longestMovingRunPercent: number;
   /**
    * 已完成训练落在这个窗口里的活动秒数，按整段 `durationSeconds` 占
-   * `startedAt`–`endedAt` 的比例摊到窗口上。圆环桶不算这笔。
+   * `startedAt`–`endedAt` 的比例摊到窗口上。统计桶不算这笔。
    */
   workoutSeconds: number;
   /** workoutSeconds 占 observedSeconds 的整数百分比 */
@@ -150,7 +135,7 @@ export function activityWindowFeatures(
 export const ACTIVITY_INTENSITY = [
   "No movement: `stillSeconds` is the whole observed time, `movingPercent` is 0, and `workoutPercent` is 0.",
   "Light movement only, such as standing or a few steps: `lightSeconds` present, `movingPercent` is 0, and `workoutPercent` is 0.",
-  "Moderate movement (at least 20 steps per minute or 10% of minutes counted as exercise) for part of the observed time and no reported workout: `movingPercent` under 50 and `workoutPercent` is 0. Or a reported workout covers only a short slice while the rings are not already moderate for most of the window: `workoutPercent` is above 0 and under 25, `movingPercent` is under 50, and `vigorousPercent` is under 50.",
+  "Moderate movement (at least 20 steps per minute or 10% of minutes counted as exercise) for part of the observed time and no reported workout: `movingPercent` under 50 and `workoutPercent` is 0. Or a reported workout covers only a short slice while the movement buckets are not already moderate for most of the window: `workoutPercent` is above 0 and under 25, `movingPercent` is under 50, and `vigorousPercent` is under 50.",
   "Moderate movement for most of the observed time (`movingPercent` 50 or above), or vigorous movement (at least 60 steps per minute or half the minutes counted as exercise) for part of it (`vigorousPercent` under 50), while `workoutPercent` is under 50. Or a reported workout covers a substantial part but not most of the observed time: `workoutPercent` at least 25 and under 50.",
   "Vigorous movement for most of the observed time (`vigorousPercent` 50 or above), or a reported workout covers most of the observed time (`workoutPercent` 50 or above). The sport is the `activityType` on `workouts`.",
 ];
@@ -162,7 +147,7 @@ export const ACTIVITY_CONTINUITY = [
 ];
 
 export function activityQuestions(): { intensity: ScoreQuestion; continuity: ScoreQuestion } {
-  const context = "The state describes one five-minute window. `stillSeconds`, `lightSeconds`, `moderateSeconds` and `vigorousSeconds` are estimated from Apple Watch activity-ring totals between reports, as seconds and integer percents of `observedSeconds`. `workouts` are completed HealthKit sessions overlapping this window: each `activityType` is the reported sport name, such as Fencing, and `seconds` is that session's active duration inside the window. `workoutSeconds` is their sum and `workoutPercent` is that sum as an integer percent of `observedSeconds`. A named workout is intentional exercise even when the ring buckets are low, because cumulative reports can miss the session. `unknownSeconds` is time with neither a ring report nor a workout: it is unknown, not still.";
+  const context = "The state describes one five-minute window. `stillSeconds`, `lightSeconds`, `moderateSeconds` and `vigorousSeconds` come from closed HealthKit five-minute statistics buckets (not live workout detection), as seconds and integer percents of `observedSeconds`. `workouts` are completed HealthKit sessions overlapping this window: each `activityType` is the reported sport name, such as Fencing, and `seconds` is that session's active duration inside the window. `workoutSeconds` is their sum and `workoutPercent` is that sum as an integer percent of `observedSeconds`. A named workout is intentional exercise even when the movement buckets are low, because step and exercise statistics can under-count some sports. `unknownSeconds` is time with neither complete usable statistics nor a workout: it is unknown, not still.";
   return {
     intensity: { type: "score", instructions: `${context} How much physical activity happened in the observed time?`, criteria: ACTIVITY_INTENSITY },
     continuity: { type: "score", instructions: `${context} How continuous was the movement in the observed time?`, criteria: ACTIVITY_CONTINUITY },

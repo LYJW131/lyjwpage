@@ -2,7 +2,7 @@ import { codingObservationsKey, codingTokenUsageKey } from "@/lib/coding-pulse";
 import { listeningPlaysKey } from "@/lib/listening-pulse";
 import { workoutsKey } from "@shared/workouts";
 import { pulseAssessmentsKey, pulseAssessmentAttemptKey } from "@/lib/pulse-assessments";
-import { pulseKey } from "@/lib/pulse";
+import { pulseIntervalRevisionKey, pulseKey } from "@/lib/pulse";
 import { PULSE_TTL_MS } from "@/lib/limits";
 import { PULSE_DOMAINS, type PulseDomain } from "@/lib/types";
 import { CODING_WINDOW_MS } from "@shared/pulse-coding";
@@ -46,6 +46,7 @@ type ActiveClaim = {
   generation: number;
   leaseUntil: number;
   activatedAt?: number;
+  activityRevision?: number;
 };
 
 type PersistentState = {
@@ -121,14 +122,18 @@ export class PulseScoreState implements PulseScoreCoordinator {
           start: 0,
           stop: -1,
         })),
+        { op: "get", key: pulseIntervalRevisionKey("activity") },
       ];
       const results = this.execute(commands);
       const histories = Object.fromEntries(PULSE_DOMAINS.map((domain, index) => [
         domain,
         results[index + 5] as string[],
       ])) as Record<PulseDomain, string[]>;
+      const activityRevision = Number(results[results.length - 1]);
+      const versionedClaim = { ...claim, activityRevision: Number.isSafeInteger(activityRevision) ? activityRevision : 0 };
+      this.save({ ...this.load(), claim: versionedClaim });
       return {
-        ...claim,
+        ...versionedClaim,
         now,
         inputs: {
           assessments: results[0] as string[],
@@ -165,8 +170,12 @@ export class PulseScoreState implements PulseScoreCoordinator {
     if (records.length && state.claim.activatedAt === undefined) return false;
 
     if (records.length) {
-      const accepted = records.map((record) => parsePulseAssessment(JSON.stringify(record)));
+      let accepted = records.map((record) => parsePulseAssessment(JSON.stringify(record)));
       if (accepted.some((record) => record === null)) throw new Error("Invalid pulse assessment result");
+      const currentRevision = Number(this.execute([{ op: "get", key: pulseIntervalRevisionKey("activity") }])[0]);
+      if ((Number.isSafeInteger(currentRevision) ? currentRevision : 0) !== (state.claim.activityRevision ?? 0)) {
+        accepted = accepted.filter((record) => record?.domain !== "activity");
+      }
 
       const current = (this.execute([{
         op: "listRange",

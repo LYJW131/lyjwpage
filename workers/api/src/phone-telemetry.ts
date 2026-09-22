@@ -4,7 +4,7 @@ import { object } from "@/lib/json";
 import { ACTIVITY_TAG } from "@/lib/live-events";
 import { fanout } from "@api/fanout";
 import { normalizeActivity, writeActivity } from "@api/stores/activity";
-import type { StoredActivity } from "@shared/activity";
+import type { ActivityReport } from "@shared/activity";
 import type { WorkoutsPayload } from "@/lib/types";
 
 /**
@@ -38,7 +38,7 @@ export type PreparedPhoneEnvelope = {
   receivedAt: number;
   ignored: string[];
   workouts?: WorkoutsPayload;
-  activity?: StoredActivity;
+  activity?: ActivityReport;
   failure?: { stage: "beforeWorkouts" | "beforeActivity"; message: string };
 };
 
