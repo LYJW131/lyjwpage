@@ -34,8 +34,10 @@ const PAGE_SIZE = 5;
  */
 export function latestActivity(body: unknown, lower: number, upper: number): CursorNow | null {
   const root = body && typeof body === "object" ? (body as Record<string, unknown>) : null;
-  const rows = root?.usageEventsDisplay;
-  if (!Array.isArray(rows)) throw new Error("Cursor usage events missing");
+  if (!root) throw new Error("Cursor usage events missing");
+  // 窗口里一条都没有时 Cursor 连这个字段都省掉（protobuf 的空数组不出现在 JSON 里）
+  const rows = root.usageEventsDisplay ?? [];
+  if (!Array.isArray(rows)) throw new Error("Cursor usage events malformed");
   let latest: { at: number; model: string | null } | null = null;
   for (const value of rows) {
     const row = value && typeof value === "object" ? (value as Record<string, unknown>) : null;
