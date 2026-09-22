@@ -107,18 +107,11 @@
   <img src="docs/screenshots/playstation-trophies-light.webp" alt="PlayStation 卡片：在线、正在游玩与展开的奖杯明细" width="100%">
 </picture>
 
-**Pulse**：六个域最近 24 小时的活跃度泳道。看、玩画实测的播放与游戏状态，充电画实测瓦数；编码、听、身体活动画 Jev 的五分钟评分。听和身体活动画评分而不画实测，是因为实测那条线有盲区——在 iPhone 上听一整天，本机观测到的是一条平线，痕迹只留在「最近在听」列表的变动里；手表两次上报之间的活动同理。只有评分那一侧收得到两路证据。六项右侧统一汇总强度档位、趋势和置信度，历史每分钟归档到 D1。
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/pulse-dark.webp">
-  <img src="docs/screenshots/pulse-light.webp" alt="Pulse 卡片：六条活跃度泳道与评分" width="100%">
-</picture>
-
-悬停、点击或用方向键走到某一段，会显示这一段的时间范围、当时在听的曲目（在看的影视、在玩的游戏同理）以及该窗口的强度、连续性和置信度。播放停止的时段不沿用上一首的名字。
+**Pulse**：六个域最近 24 小时的活跃度泳道。看、玩画实测的播放与游戏状态，充电画实测瓦数；编码、听、身体活动画 Jev 的五分钟评分。听和身体活动画评分而不画实测，是因为实测那条线有盲区——在 iPhone 上听一整天，本机观测到的是一条平线，痕迹只留在「最近在听」列表的变动里；手表两次上报之间的活动同理。只有评分那一侧收得到两路证据。六项右侧统一汇总强度档位、趋势和置信度，历史每分钟归档到 D1。悬停、点击或用方向键走到某一段，会显示这一段的时间范围、当时在听的曲目（在看的影视、在玩的游戏同理）以及该窗口的强度、连续性和置信度；播放停止的时段不沿用上一首的名字。
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/pulse-detail-dark.webp">
-  <img src="docs/screenshots/pulse-detail-light.webp" alt="Pulse 泳道的时段详情：时间范围、当时的曲目与该窗口评分" width="100%">
+  <img src="docs/screenshots/pulse-detail-light.webp" alt="Pulse 卡片：六条活跃度泳道与评分，悬停某一段显示时间范围、当时的曲目与该窗口评分" width="100%">
 </picture>
 
 ## 系统架构
