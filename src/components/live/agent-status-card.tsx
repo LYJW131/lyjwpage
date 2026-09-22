@@ -101,6 +101,20 @@ function formatWhen(value: string | null): string | null {
   return incidentAt.format(parsed);
 }
 
+/**
+ * 弹窗里有没有比「Operational · No active incidents」更多的东西。
+ * 全绿就直接去官方状态页，有事才开弹窗方便快速看。
+ */
+function hasDetail(agent: AgentStatusRow): boolean {
+  return (
+    agent.indicator !== "operational" ||
+    agent.stale ||
+    agent.note !== null ||
+    agent.incidents.length > 0 ||
+    agent.components.some((component) => component.indicator !== "operational")
+  );
+}
+
 function Detail({ agent, onClose }: { agent: AgentStatusRow; onClose: () => void }) {
   const titleId = useId();
   const label = indicatorLabel(agent.indicator);
@@ -226,24 +240,33 @@ export function AgentStatusCard({
             >
               {column.map((agent) => {
                 const label = indicatorLabel(agent.indicator);
+                const rowClass =
+                  "flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-surface-hover md:px-3";
+                const row = (
+                  <>
+                    <span className="shrink-0" aria-hidden>
+                      <Brand id={agent.id} />
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium">{agent.name}</span>
+                    <span className="flex shrink-0 items-center gap-2">
+                      {agent.stale && <span className="text-xs text-muted-foreground">cached</span>}
+                      <span className={cn("size-1.5 rounded-full", indicatorDot(agent.indicator))} aria-hidden />
+                      <span className={cn("text-sm", indicatorText(agent.indicator))}>{label}</span>
+                    </span>
+                  </>
+                );
                 return (
                   <li key={agent.id}>
-                <button
-                  type="button"
-                  onClick={() => setOpenId(agent.id)}
-                  className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-surface-hover md:px-3"
-                >
-                  <span className="shrink-0" aria-hidden>
-                    <Brand id={agent.id} />
-                  </span>
-                  <span className="min-w-0 flex-1 truncate text-sm font-medium">{agent.name}</span>
-                  <span className="flex shrink-0 items-center gap-2">
-                    {agent.stale && <span className="text-xs text-muted-foreground">cached</span>}
-                    <span className={cn("size-1.5 rounded-full", indicatorDot(agent.indicator))} aria-hidden />
-                    <span className={cn("text-sm", indicatorText(agent.indicator))}>{label}</span>
-                  </span>
-                </button>
-              </li>
+                    {hasDetail(agent) ? (
+                      <button type="button" onClick={() => setOpenId(agent.id)} className={rowClass}>
+                        {row}
+                      </button>
+                    ) : (
+                      <a href={agent.statusUrl} target="_blank" rel="noreferrer" className={rowClass}>
+                        {row}
+                      </a>
+                    )}
+                  </li>
                 );
               })}
             </ul>
