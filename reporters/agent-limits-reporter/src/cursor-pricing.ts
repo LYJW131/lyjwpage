@@ -1,12 +1,16 @@
+import { failure, recovered } from "./log.js";
+
 /**
- * Cursor 事件的公开 API 等值估价。费率和别名与 MacTelemetryHub
- * `CodingUsagePricing` 同一份 models.dev 快照（catalogVersion
- * `models.dev-6e5efcd056370b0853db07ce9b4e02391c8a2d55`）。
- * 不使用 Cursor 返回的 chargedCents / totalCents。
+ * Cursor 事件的公开 API 等值估价。不使用 Cursor 返回的 chargedCents / totalCents。
  *
- * 快照之后补的几支（grok-4-7、muse-spark-1-3、kimi-k3）取 2026-09-23 models.dev 上
- * 官方厂商（xai / meta / moonshotai）那一条。MacTelemetryHub 的 app 已经不自己算
- * Cursor（includeCursor: false），那份只剩诊断工具在用，这里不再跟它逐字对齐。
+ * 价目跟 Mac 上的 ccusage 同一个做法：每轮在线取 models.dev（6 小时内复用上一份），
+ * 取不到就沿用上一份，一份都没有时退回下面编译进来的快照。新模型上线后不用发版就有价。
+ * 在线那份只认官方厂商（OFFICIAL_PROVIDERS），不认聚合商 —— 同一个模型各家转售价不一样。
+ *
+ * 快照是 ccusage 的 models.dev 数据（catalogVersion
+ * `models.dev-6e5efcd056370b0853db07ce9b4e02391c8a2d55`），之后补了 grok-4-7、
+ * muse-spark-1-3、kimi-k3。MacTelemetryHub 的 app 已经不自己算 Cursor
+ * （includeCursor: false），它那份只剩诊断工具在用，这里不再跟它对齐。
  *
  * 快照改编自 ccusage 的 models.dev 数据，MIT。
  * Copyright (c) 2025 ryoppippi / models.dev
@@ -19,7 +23,7 @@ type Rates = {
   cacheCreation: number | null;
 };
 
-type Price = {
+export type Price = {
   base: Rates;
   threshold?: number;
   longContext?: Rates;
@@ -268,6 +272,114 @@ function canonicalKey(model: string): string {
   return ALIASES[key] ?? key;
 }
 
+const MODELS_DEV_URL = "https://models.dev/api.json";
+const ONLINE_TTL_MS = 6 * 3_600_000;
+const ONLINE_TIMEOUT_MS = 20_000;
+const ONLINE_MAX_BYTES = 32 * 1024 * 1024;
+/** 同名时排在前面的赢。键跟 canonicalKey 一样把点换成连字符。 */
+const OFFICIAL_PROVIDERS = [
+  "anthropic",
+  "openai",
+  "google",
+  "xai",
+  "deepseek",
+  "moonshotai",
+  "meta",
+  "zai",
+  "zhipuai",
+  "alibaba",
+  "mistral",
+  "minimax",
+];
+
+let online: { prices: Record<string, Price>; fetchedAt: number } | null = null;
+
+function rate(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+function ratesFrom(node: Record<string, unknown>): Rates {
+  return rates(rate(node.input), rate(node.output), rate(node.cache_read), rate(node.cache_write));
+}
+
+/**
+ * models.dev 的一条 cost 收成 Price。长上下文取 tiers 里最小的 context 门槛；
+ * 只有 context_over_200k 没有 tiers 的按 20 万。输入或输出没价的整条不收。
+ */
+function priceFrom(cost: unknown): Price | null {
+  const node = cost && typeof cost === "object" ? (cost as Record<string, unknown>) : null;
+  if (!node) return null;
+  const base = ratesFrom(node);
+  if (base.input == null || base.output == null) return null;
+  const tiers = Array.isArray(node.tiers) ? node.tiers : [];
+  let threshold: number | undefined;
+  let longContext: Rates | undefined;
+  for (const entry of tiers) {
+    const row = entry && typeof entry === "object" ? (entry as Record<string, unknown>) : null;
+    const tier = row?.tier && typeof row.tier === "object" ? (row.tier as Record<string, unknown>) : null;
+    const size = typeof tier?.size === "number" && Number.isSafeInteger(tier.size) ? tier.size : null;
+    if (!row || tier?.type !== "context" || size == null || size <= 0) continue;
+    if (threshold == null || size < threshold) {
+      threshold = size;
+      longContext = ratesFrom(row);
+    }
+  }
+  const over = node.context_over_200k;
+  if (threshold == null && over && typeof over === "object") {
+    threshold = 200_000;
+    longContext = ratesFrom(over as Record<string, unknown>);
+  }
+  return threshold == null ? price(base) : price(base, threshold, longContext);
+}
+
+/** models.dev 的 api.json → 按 canonicalKey 同一口径建表。纯函数，单测直接喂。 */
+export function parseModelsDev(body: unknown): Record<string, Price> {
+  const root = body && typeof body === "object" ? (body as Record<string, unknown>) : null;
+  const prices: Record<string, Price> = {};
+  for (const provider of OFFICIAL_PROVIDERS) {
+    const entry = root?.[provider];
+    const models = entry && typeof entry === "object" ? (entry as Record<string, unknown>).models : null;
+    if (!models || typeof models !== "object") continue;
+    for (const [id, model] of Object.entries(models as Record<string, unknown>)) {
+      const key = id.trim().toLowerCase().replaceAll(".", "-");
+      if (!key || Object.hasOwn(prices, key)) continue;
+      const cost = model && typeof model === "object" ? (model as Record<string, unknown>).cost : null;
+      const row = priceFrom(cost);
+      if (row) prices[key] = row;
+    }
+  }
+  return prices;
+}
+
+/**
+ * 到期才去取，失败不抛：这一轮用上一份或快照照样算，下一轮再试。
+ * 给单测留了 fetcher 和 now 两个口子。
+ */
+export async function refreshOnlinePrices(now = Date.now(), fetcher: typeof fetch = fetch): Promise<void> {
+  if (online && now - online.fetchedAt < ONLINE_TTL_MS) return;
+  try {
+    const response = await fetcher(MODELS_DEV_URL, {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(ONLINE_TIMEOUT_MS),
+    });
+    if (response.status !== 200) throw new Error(`models.dev returned HTTP ${response.status}`);
+    const text = await response.text();
+    if (text.length > ONLINE_MAX_BYTES) throw new Error("models.dev response too large");
+    const prices = parseModelsDev(JSON.parse(text));
+    // 官方几家加起来少说几十个型号，少得离谱多半是结构变了，宁可继续用旧的
+    if (Object.keys(prices).length < 20) throw new Error("models.dev returned too few official prices");
+    online = { prices, fetchedAt: now };
+    recovered("models-dev");
+  } catch (error) {
+    failure("models-dev", error);
+  }
+}
+
+/** 单测用：换一份在线价目，传 null 回到只有快照 */
+export function setOnlinePrices(prices: Record<string, Price> | null, fetchedAt = Date.now()): void {
+  online = prices ? { prices, fetchedAt } : null;
+}
+
 function scheduledPrice(model: string, atMs: number): Price | null {
   if (model !== "deepseek-v4-flash" && model !== "deepseek-v4-pro") return null;
   const flash = model === "deepseek-v4-flash";
@@ -302,7 +414,7 @@ export function estimateCursorCost(
   const prompt = inputTokens + cached;
   if (!Number.isSafeInteger(cached) || !Number.isSafeInteger(prompt)) return null;
   const key = canonicalKey(model);
-  const row = scheduledPrice(key, atMs) ?? CATALOG[key];
+  const row = scheduledPrice(key, atMs) ?? online?.prices[key] ?? CATALOG[key];
   if (!row) return null;
   const tier = row.threshold != null && prompt > row.threshold ? row.longContext : row.base;
   if (!tier) return null;

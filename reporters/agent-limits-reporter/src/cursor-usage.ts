@@ -3,7 +3,7 @@ import { readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { config } from "./config.js";
-import { estimateCursorCost, modelName } from "./cursor-pricing.js";
+import { estimateCursorCost, modelName, refreshOnlinePrices } from "./cursor-pricing.js";
 import { readCursorAccessToken } from "./providers/cursor.js";
 
 /**
@@ -472,7 +472,7 @@ export async function collectCursorUsage(now = Date.now()): Promise<CursorUsageP
   const accessToken = await readCursorAccessToken();
   if (!accessToken) return null;
   const session = sessionFromAccessToken(accessToken);
-  const events = await fetchCursorHistory(session.cookie, now);
+  const [events] = await Promise.all([fetchCursorHistory(session.cookie, now), refreshOnlinePrices(now)]);
   const aggregated = aggregateEvents(events, now);
   const collectedAt = new Date(now).toISOString();
   const applied = applyLedger(
