@@ -13,7 +13,7 @@ import { get, put } from "@/lib/cache";
 
 const CACHE_KEY = "agent-status:v1";
 const KEEP_MS = 7 * 24 * 60 * 60 * 1000;
-const TIMEOUT_MS = 8_000;
+const TIMEOUT_MS = 15_000;
 const USER_AGENT = "lyjwpage-agent-status/1.0 (+https://lyjw.me)";
 
 async function fetchText(url: string): Promise<string> {
