@@ -3,11 +3,11 @@ import { LISTENING_MODES } from './pulse-listening';
 import type { PulseDomain, PulseScore } from '../src/lib/types';
 export { mergeCoverage } from './pulse-features';
 /**
- * 版本 2：五个实测域不再发原始区间和图例，改发各域算好的秒数 / 次数和情境判据
- * （见 shared/pulse-features 与各 pulse-<domain>）。升版本让全部窗口重打分，
- * 不靠哈希碰巧变。
+ * 版本 3：activity 的五分钟事实加上已完成训练。项目名和落在窗口内的活动秒数
+ * 跟圆环估算一起进判据，升版本让全部窗口重打分，不靠哈希碰巧变。
+ * 版本 2 起五个实测域不再发原始区间和图例。
  */
-export const PULSE_ASSESSMENT_VERSION = 2;
+export const PULSE_ASSESSMENT_VERSION = 3;
 /** 每个域自己的模式集合；没有模式的域为 null。card 的标签表按 value 查。 */
 export const PULSE_MODES: Partial<Record<PulseDomain, readonly string[]>> = { coding: CODING_MODES, listening: LISTENING_MODES };
 export type PulseMode = { value: string; confidence: number; probabilities: Record<string, number> };

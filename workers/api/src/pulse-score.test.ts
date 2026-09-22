@@ -13,6 +13,7 @@ import type { StorageCommand } from "@shared/storage-contract";
 import { PulseScorer } from "./pulse-score.ts";
 import { PulseScoreState } from "./pulse-score-state.ts";
 import { pulseAssessmentsKey } from "@/lib/pulse-assessments";
+import { workoutsKey } from "@shared/workouts";
 const T = 1_800_000_000_000;
 function setup() {
   let now = T + CODING_WINDOW_MS + 120_000;
@@ -219,6 +220,43 @@ test('listening counts track changes in code and hands Jev named seconds, never 
   assert.equal(state.longestPlayingRunPercent, 100);
   assert.equal('segments' in state, false);
   assert.equal('legend' in state, false);
+});
+
+test("activity sends a named workout into the Jev state and scores a window the rings missed", async () => {
+  const b = setup();
+  await b.storage.set(workoutsKey(), JSON.stringify({
+    pushedAt: T,
+    items: [{
+      id: "e3389897-4be9-45af-9e5d-be7480a89b50",
+      activityType: "Fencing",
+      startedAt: T,
+      endedAt: T + CODING_WINDOW_MS,
+      secondsFromGMT: 28_800,
+      durationSeconds: 300,
+      distanceMeters: null,
+      activeEnergyKcal: 200,
+      averageHeartRateBpm: null,
+      maximumHeartRateBpm: null,
+      elevationAscendedMeters: null,
+      indoor: false,
+    }],
+  }));
+  await b.make().run();
+  assert.equal(b.requests.length, 1);
+  const state = b.requests[0].state as {
+    workoutPercent: number;
+    vigorousSeconds: number;
+    workouts: { activityType: string; seconds: number }[];
+  };
+  assert.deepEqual(state.workouts, [{ activityType: "Fencing", seconds: 300 }]);
+  assert.equal(state.workoutPercent, 100);
+  assert.equal(state.vigorousSeconds, 0);
+  assert.equal(JSON.stringify(state).includes(String(T)), false);
+  const questions = b.requests[0].questions as { intensity: { criteria: string[] }; continuity: { criteria: string[] } };
+  assert.match(questions.intensity.criteria[4], /`workoutPercent` 50 or above/);
+  assert.match(questions.continuity.criteria[3], /`workoutPercent` 75 or above/);
+  const row = JSON.parse((await b.storage.listRange(pulseAssessmentsKey(), 0, -1))[0]) as { domain: string };
+  assert.equal(row.domain, "activity");
 });
 
 function assessment(domain: PulseDomain, from: number, scoredAt: number, inputHash = "hash"): PulseAssessment {
