@@ -1,5 +1,6 @@
 import { object } from "@/lib/json";
 import type { Workout, WorkoutsPayload } from "@/lib/types";
+import { recordStateChange } from "@api/stores/state-journal";
 import { mirror, WORKOUT_LIMIT } from "@shared/workouts";
 
 function amount(value: unknown, field: string): number {
@@ -56,4 +57,5 @@ export function normalizeWorkouts(input: unknown, receivedAt = Date.now()): Work
 export async function writeWorkouts(value: WorkoutsPayload): Promise<void> {
   // Full replacement also removes workouts deleted in HealthKit.
   await mirror.put(value);
+  await recordStateChange("workouts", value.pushedAt, value.items);
 }

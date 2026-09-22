@@ -1,5 +1,7 @@
 import { normalizeVibeCodingYear } from "@/lib/vibecoding-year";
 import type { StoredVibeCodingYear } from "@/lib/types";
+import { recordStateChange } from "@api/stores/state-journal";
+import { vibeYearState } from "@shared/state-journal";
 import { yearMirror } from "@shared/vibecoding-year-store";
 
 export function prepareVibeCodingYear(report: unknown, receivedAt = Date.now()) {
@@ -14,6 +16,9 @@ export function prepareVibeCodingYearPayload(
 ) {
   return {
     payload,
-    commit: () => yearMirror.put({ ...payload, pushedAt: receivedAt }),
+    commit: async () => {
+      await yearMirror.put({ ...payload, pushedAt: receivedAt });
+      await recordStateChange("vibecoding-year", receivedAt, vibeYearState(payload));
+    },
   };
 }

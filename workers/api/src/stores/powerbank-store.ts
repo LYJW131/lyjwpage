@@ -1,4 +1,6 @@
 import { tellStorage } from "@/lib/storage";
+import { recordStateChange } from "@api/stores/state-journal";
+import { powerBankState } from "@shared/state-journal";
 import type { PowerBankStatus } from "@/lib/types";
 import { fallback, K_LAST_PUSH, K_LATEST, type Stored } from "@shared/powerbank-store";
 
@@ -8,9 +10,8 @@ import { fallback, K_LAST_PUSH, K_LATEST, type Stored } from "@shared/powerbank-
  * 和充电头同一条来路：那台 Mac 把 BLE 解出来的遥测 POST 过来，这里落库。机制
  * 照搬 lib/charger-store —— SQLite 存最新快照，SQLite 不可达时退回进程内存。
  *
- * **不存历史。** 充电头那条功率曲线值得存，因为功率每帧都在跳、形状有信息；
- * 电量以小时为尺度变化，画出来几乎是条水平线，卡片上也就没画。既然没人消费，
- * 采样间隔、裁剪、TTL 那一整套就都不该存在。
+ * **不存功率曲线。** 电量以小时为尺度变化，卡片上没画曲线。插拔、充放电、
+ * 整数电量这些展示状态的变化进状态存档，不在这里留采样点。
  */
 
 const TTL_MS = 24 * 60 * 60 * 1000;
@@ -60,6 +61,7 @@ export function prepareStatus(
       fallback.latest = status;
       fallback.receivedAt = receivedAt;
       fallback.lastPushAt = receivedAt;
+      if (fallback.persisted) await recordStateChange("powerbank", receivedAt, powerBankState(status));
     },
   };
 }

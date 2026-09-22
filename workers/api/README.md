@@ -207,8 +207,8 @@ Mac 上报的 Apple Music 凭据保存在 SQLite，Worker 读取使用，不向�
 `APPLE_MUSIC_KEY_ID`，`IMAGES` 桶绑定（只 HEAD；响应里的图片地址是 `/img/<对象键>` 同源路径，
 Worker 不配交付域，回源 R2 由站点的 rewrite 和 ESA 负责，见根 README「图片」），
 以及 `LIVE_PUSH` 与 `STATE` 两个 Durable Object 绑定（迁移只追加新 tag，不改旧的）。`READ_MODEL_RENDERER` 是回绑同一 `api` 部署具名 entrypoint 的 Service Binding，不经公网，也不新增部署单元。
-`READ_MODEL` KV 绑定见 [KV 公开读模型](../../docs/kv-read-model.md)；`HISTORY` 是 pulse 长期归档用的 D1 库 `lyjwpage-history`，
-只增不删、无公开读路径，建表只在 `migrations/` 里，部署带这个绑定的版本**之前**先手动应用一次
+`READ_MODEL` KV 绑定见 [KV 公开读模型](../../docs/kv-read-model.md)；`HISTORY` 是长期归档用的 D1 库 `lyjwpage-history`，
+pulse 曲线和展示状态变更都只增不删、无公开读路径，建表只在 `migrations/` 里，部署带这个绑定的版本**之前**先手动应用一次
 （`pnpm --dir workers/api exec wrangler d1 migrations apply lyjwpage-history --remote`，Workers Builds 不跑迁移），
 边界与回滚见 [Worker 数据后端与首屏缓存](../../docs/state-storage.md)。
 状态和凭据只存于 Worker 的 StateHub，Vercel 不连接数据库。秘密通过以下命令配置：

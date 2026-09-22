@@ -5,6 +5,8 @@ import { NOW_WATCHING_TAG, WATCHING_TAG } from "@/lib/live-events";
 import type { WatchingItem, WatchingMedia, WatchingPlayMethod } from "@/lib/types";
 import { fanout, type PendingEvent } from "@api/fanout";
 import { recordPulse } from "@api/stores/pulse";
+import { recordStateChange } from "@api/stores/state-journal";
+import { watchingListState, watchingNowState } from "@shared/state-journal";
 import { hasStoredImage, IMAGE_OBJECT_KEY } from "@api/r2-assets";
 import { clearNowPlaying, setCurrentItem, setImageObjectKeys, setNowPlaying, setResume } from "@api/stores/emby-store";
 import { nowWatchingPayload, watchingPayload } from "@shared/emby";
@@ -271,7 +273,11 @@ export async function commitPreparedEmbyReport(prepared: PreparedEmbyReport) {
   if (prepared.resume) {
     list = prepared.resume;
     resumeChanged = JSON.stringify(previousResume?.items) !== JSON.stringify(list);
-    writes.push(setResume(list));
+    const items = list;
+    writes.push((async () => {
+      await setResume(items);
+      await recordStateChange("watching", receivedAt, watchingListState(items));
+    })());
   }
 
   /**
@@ -280,15 +286,18 @@ export async function commitPreparedEmbyReport(prepared: PreparedEmbyReport) {
    */
   const played = prepared.playing ?? null;
   if (played) {
-    writes.push(commitPlaying(played));
     /**
      * 这次没带详情就用存着的那份，按 itemId 对上才算数（同 nowWatchingPayload
-     * 那道闸）。推送和 pulse 必须用同一份：只给 `played.item` 的话，代理推来一条
-     * 不带详情的位置更新会记出一笔没有标题的样本，而 hint 变了在 planPulseSample
-     * 眼里就是一次状态翻面 —— 同一部剧会在序列上凭空多出一个断点。
+     * 那道闸）。推送、pulse 和状态存档必须用这一份：只给 `played.item` 的话，
+     * 代理推来一条不带详情的更新会记出没有标题的样本和存档行。播放进度不进
+     * 存档，不该因此新开一行。
      */
     const kept = storedCurrent?.item ?? null;
     const detail = played.item ?? (kept?.id === played.state?.itemId ? kept : null);
+    writes.push((async () => {
+      await commitPlaying(played);
+      await recordStateChange("watching-now", receivedAt, watchingNowState(played.state, detail));
+    })());
     const watching = watchingLevel(played.state, detail);
     writes.push(recordPulse("watching", { t: receivedAt, level: watching.level, hint: watching.hint }));
     // 播放状态变了就直接把新数据推给浏览器 —— 手上这份就是最新的

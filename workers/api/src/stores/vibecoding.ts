@@ -17,6 +17,8 @@ import {
   type ParsedVibeCodingUsage,
 } from "@/lib/vibecoding-parse";
 import { fanout } from "@api/fanout";
+import { recordStateChange } from "@api/stores/state-journal";
+import { agentLimitsState, vibeNowState, vibeUsageState } from "@shared/state-journal";
 import { limitsMirror, nowMirror, usageMirror } from "@shared/vibecoding";
 
 /**
@@ -33,7 +35,13 @@ export function prepareVibeCodingUsage(report: unknown, receivedAt = Date.now())
 }
 
 export function prepareVibeCodingUsagePayload(payload: ParsedVibeCodingUsage, receivedAt: number) {
-  return { payload, commit: () => usageMirror.put({ payload, pushedAt: receivedAt }) };
+  return {
+    payload,
+    commit: async () => {
+      await usageMirror.put({ payload, pushedAt: receivedAt });
+      await recordStateChange("vibecoding-usage", receivedAt, vibeUsageState(payload));
+    },
+  };
 }
 
 export function prepareVibeCodingNow(report: unknown, receivedAt = Date.now()) {
@@ -54,6 +62,7 @@ export function prepareVibeCodingNowPayload(payload: ParsedVibeCodingNow, receiv
           await storage.set(codingTokenUsageKey(), JSON.stringify(payload.tokenUsage));
       });
       await nowMirror.put({ payload: { agents: payload.agents }, pushedAt: receivedAt });
+      await recordStateChange("vibecoding", receivedAt, vibeNowState(payload.agents));
     },
   };
 }
@@ -88,7 +97,10 @@ export async function recordPreparedAgentLimits(parsed: ParsedAgentLimits, recei
   const changed = displayChanged(previous, next);
 
   await fanout({
-    writes: [limitsMirror.put(next)],
+    writes: [(async () => {
+      await limitsMirror.put(next);
+      await recordStateChange("agent-limits", receivedAt, agentLimitsState(next));
+    })()],
     tags: changed ? [VIBECODING_TAG] : [],
   });
 

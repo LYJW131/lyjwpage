@@ -5,11 +5,13 @@ import { SqliteStore, type StoredEntry } from "@shared/sqlite-store";
 import type { StorageCommand, StorageResult } from "@shared/storage-contract";
 import { commitPreparedIngest, type PreparedIngest } from "./ingest-handlers";
 import { collectIngestEffects, type IngestEffect } from "./ingest-effects";
+import type { PulseDomain } from "@/lib/types";
+import type { PulseAssessment } from "@shared/pulse-assessment";
+import type { JournalSubject } from "@shared/state-journal";
 import { historyArchiveEnabled, pulseScoringEnabled, readModelEnabled, requestStore, type Env } from "./runtime";
 import { PulseArchiveState, type PulseArchiveSnapshot } from "./pulse-archive";
 import { PulseScoreState, type PulseScoreClaim } from "./pulse-score-state";
-import type { PulseAssessment } from "@shared/pulse-assessment";
-import type { PulseDomain } from "@/lib/types";
+import { StateJournalArchiveState, type StateJournalSnapshot } from "./state-journal-archive";
 import { READ_MODEL_PATHS, readModelPathsForSource } from "./read-model";
 import { ReadModelPublisher } from "./read-model-publisher";
 import { DEV_OVERRIDE_TTL_MS, overrideIndexStorageKey, overrideStorageKey } from "./dev-overrides";
@@ -25,6 +27,7 @@ export class StateHub extends DurableObject<Env> {
   private ingestTail: Promise<unknown> = Promise.resolve();
   private readModels: ReadModelPublisher | null;
   private pulseArchiveState: PulseArchiveState;
+  private stateJournalState: StateJournalArchiveState;
   private pulseScoreState: PulseScoreState;
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -40,7 +43,12 @@ export class StateHub extends DurableObject<Env> {
         return this.env.READ_MODEL_RENDERER.render(path);
       },
     }) : null;
+    // 归档表由 D1 迁移建好。这里只读快照、确认水位，不建表也不写 D1。
     this.pulseArchiveState = new PulseArchiveState({
+      sql: ctx.storage.sql,
+      execute: (commands) => this.database.execute(commands),
+    });
+    this.stateJournalState = new StateJournalArchiveState({
       sql: ctx.storage.sql,
       execute: (commands) => this.database.execute(commands),
     });
@@ -140,6 +148,18 @@ export class StateHub extends DurableObject<Env> {
     if (!this.ready() || !historyArchiveEnabled(this.env)) return 0;
     await this.ingestTail;
     return this.pulseArchiveState.confirmPulseArchive(domain, at);
+  }
+
+  async readStateJournal(): Promise<StateJournalSnapshot> {
+    if (!this.ready() || !historyArchiveEnabled(this.env)) return { subjects: [] };
+    await this.ingestTail;
+    return this.stateJournalState.readStateJournal();
+  }
+
+  async confirmStateJournal(subject: JournalSubject, t: number): Promise<number> {
+    if (!this.ready() || !historyArchiveEnabled(this.env)) return 0;
+    await this.ingestTail;
+    return this.stateJournalState.confirmStateJournal(subject, t);
   }
 
   async claimPulseScore(): Promise<PulseScoreClaim | null> {

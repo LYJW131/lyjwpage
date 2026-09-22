@@ -8,7 +8,9 @@ import type {
 } from "@/lib/types";
 import { fanout, type PendingEvent } from "@api/fanout";
 import { recordPulse } from "@api/stores/pulse";
+import { recordStateChange } from "@api/stores/state-journal";
 import { setPlaystationPlayedGames, setPlaystationPower, setPlaystationPresence, setPlaystationTrophies } from "@api/stores/playstation-store";
+import { playingListState, playingNowState, playstationPowerState, trophyArchiveState } from "@shared/state-journal";
 import { normalizePlaystationPlayedGames, normalizePlaystationPower, normalizePlaystationPresence } from "@shared/playstation";
 
 /** observedAt 是采集时刻，不参与“内容有没有变化”的判断。 */
@@ -118,7 +120,11 @@ export async function commitPreparedPlaystationReport(prepared: PreparedPlaystat
      * 刷新的只有 SQLite，端点读到的还是老时刻。普通 tag 给的是
      * stale-while-revalidate，落后一个刷新周期，窗口已经把这一截算进去了。
      */
-    writes.push(setPlaystationPresence(incomingPresence));
+    const presence = incomingPresence;
+    writes.push((async () => {
+      await setPlaystationPresence(presence);
+      await recordStateChange("playing-now", receivedAt, playingNowState(presence));
+    })());
     const gaming = gamingLevel(incomingPresence);
     writes.push(recordPulse("gaming", { t: receivedAt, level: gaming.level, hint: gaming.hint }));
     if (presenceChanged || !previousPresence) {
@@ -134,8 +140,12 @@ export async function commitPreparedPlaystationReport(prepared: PreparedPlaystat
      * observedAt —— 这份的新鲜度不代表任何上报器的死活，PSN 上报器的心跳
      * 仍然只看 presence。
      */
+    const power = incomingPower;
+    writes.push((async () => {
+      if (powerChanged || !previousPower) await setPlaystationPower(power);
+      await recordStateChange("playstation-power", receivedAt, playstationPowerState(power));
+    })());
     if (powerChanged || !previousPower) {
-      writes.push(setPlaystationPower(incomingPower));
       tags.push(NOW_PLAYING_TAG);
       /**
        * 立刻广播一次：presence 要等 PSN 上报器下一轮（最慢一分多钟）才更新，
@@ -150,15 +160,27 @@ export async function commitPreparedPlaystationReport(prepared: PreparedPlaystat
       }
     }
   }
+  if (incomingPlayedGames) {
+    const played = incomingPlayedGames;
+    writes.push((async () => {
+      if (playedGamesChanged || !previousPlayedGames) await setPlaystationPlayedGames(played);
+      await recordStateChange("playing", receivedAt, playingListState(played.items));
+    })());
+  }
   if (incomingPlayedGames && (playedGamesChanged || !previousPlayedGames)) {
-    writes.push(setPlaystationPlayedGames(incomingPlayedGames));
     events.push({ type: "playing", payload: incomingPlayedGames });
     tags.push(PLAYING_TAG);
     // 奖杯目录的时长和 Plus / 预购是读时按 titleIds 盖上去的，游玩一变就得重算。
     tags.push(TROPHIES_TAG);
   }
+  if (incomingTrophies) {
+    const trophies = incomingTrophies;
+    writes.push((async () => {
+      if (trophiesChanged || !previousTrophies) await setPlaystationTrophies(trophies);
+      await recordStateChange("trophies", receivedAt, trophyArchiveState(trophies));
+    })());
+  }
   if (incomingTrophies && (trophiesChanged || !previousTrophies)) {
-    writes.push(setPlaystationTrophies(incomingTrophies));
     // 目录是整份替换：旧标题必须立刻从 status 里消失，不能再 SWR 几分钟。
     tags.push(TROPHIES_TAG);
   }

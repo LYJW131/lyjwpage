@@ -1,6 +1,8 @@
 import type { ListeningItem, ListeningPayload } from "@/lib/types";
+import { recordStateChange } from "@api/stores/state-journal";
 import { mirror } from "@shared/apple-music-store";
 import { listeningPlay, type ListeningPlay } from "@shared/pulse-listening";
+import { listeningListState } from "@shared/state-journal";
 
 /** 只比内容，不比拉取时刻 —— 每轮刷新都会重写 fetchedAt，那不该算变化 */
 function sameContent(a: ListeningItem[], b: ListeningItem[]) {
@@ -36,6 +38,9 @@ export async function prepareRecentlyPlayed(
     changed,
     play: listeningPlay(previous, { items, fetchedAt }),
     listening: { items, fetchedAt },
-    commit: () => mirror.put({ items, fetchedAt }),
+    commit: async () => {
+      await mirror.put({ items, fetchedAt });
+      await recordStateChange("listening", fetchedAt, listeningListState(items));
+    },
   };
 }

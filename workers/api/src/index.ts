@@ -4,6 +4,7 @@ import { serveReadModel } from "./read-model-edge";
 import { historyArchiveEnabled, pulseScoringEnabled, readModelEnabled, type Env } from "./runtime";
 import { PulseArchive } from "./pulse-archive";
 import { PulseScorer } from "./pulse-score";
+import { StateJournalArchive } from "./state-journal-archive";
 
 // Keep Wrangler's existing class exports and DO migration identities unchanged.
 export { LivePushRoom, StateHub } from "./origin-worker";
@@ -40,6 +41,8 @@ const apiWorker = {
     if (historyArchiveEnabled(env)) {
       await new PulseArchive({ coordinator: hub, db: env.HISTORY! }).run()
         .catch((error: unknown) => console.warn("[pulse-archive]", error));
+      await new StateJournalArchive({ coordinator: hub, db: env.HISTORY! }).run()
+        .catch((error: unknown) => console.warn("[state-journal]", error));
     }
     // 活动分同理排在最后：统一五分钟分段评分才调外部模型，这一分钟的公开视图不等它。
     if (pulseScoringEnabled(env)) {
