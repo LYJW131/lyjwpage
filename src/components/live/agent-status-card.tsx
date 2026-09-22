@@ -1,8 +1,8 @@
 "use client";
 
+import AppleIcon from "@lobehub/icons/es/Apple/components/Mono";
 import ClaudeIcon from "@lobehub/icons/es/Claude/components/Color";
 import CloudflareIcon from "@lobehub/icons/es/Cloudflare/components/Color";
-import DeepSeekIcon from "@lobehub/icons/es/DeepSeek/components/Color";
 import CursorIcon from "@lobehub/icons/es/Cursor/components/Mono";
 import GithubIcon from "@lobehub/icons/es/Github/components/Mono";
 import GrokIcon from "@lobehub/icons/es/Grok/components/Mono";
@@ -26,6 +26,7 @@ import type { StatusResponse } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const REFRESH_MS = 60_000;
+const ROWS_PER_COLUMN = 3;
 
 const checkedAt = new Intl.DateTimeFormat("en-US", {
   timeZone: "Asia/Shanghai",
@@ -72,6 +73,22 @@ function indicatorText(indicator: AgentIndicator): string {
   }
 }
 
+/** LobeHub 没有 TypeSafe；这是 typesafe.ai 页头的标志，原图 16.487×24，左右补边成方形。 */
+function TypesafeIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="-3.7565 0 24 24"
+      width={20}
+      height={20}
+      fill="currentColor"
+      className={className}
+    >
+      <path d="M 12.756 2.928 L 12.756 7.067 L 16.486 9.487 L 16.487 18.652 L 8.244 24 L 3.732 21.073 L 3.732 16.82 L 0 14.399 L 0 5.35 L 0.355 5.118 L 8.244 0 Z M 5.94 20.65 L 8.242 22.144 L 14.275 18.227 L 11.975 16.735 Z M 9.022 10.332 L 9.022 14.4 L 5.29 16.822 L 5.29 19.216 L 11.197 15.383 L 11.197 8.921 Z M 12.756 15.384 L 14.928 16.794 L 14.928 10.332 L 12.756 8.922 Z M 2.21 13.976 L 4.511 15.47 L 6.812 13.976 L 4.512 12.485 Z M 1.559 6.193 L 1.559 12.544 L 3.731 11.134 L 3.731 7.066 L 7.464 4.643 L 7.464 2.36 L 1.56 6.193 Z M 5.291 11.132 L 7.463 12.542 L 7.463 10.332 L 5.292 8.921 L 5.292 11.132 Z M 5.94 7.487 L 8.244 8.981 L 10.544 7.488 L 8.244 5.994 Z M 9.024 4.643 L 11.196 6.054 L 11.196 3.774 L 9.024 2.359 Z" />
+    </svg>
+  );
+}
+
 function Brand({ id }: { id: AgentStatusRow["id"] }) {
   const className = "text-foreground";
   switch (id) {
@@ -83,8 +100,10 @@ function Brand({ id }: { id: AgentStatusRow["id"] }) {
       return <CursorIcon size={20} className={className} />;
     case "grok":
       return <GrokIcon size={20} className={className} />;
-    case "deepseek":
-      return <DeepSeekIcon size={20} />;
+    case "typesafe":
+      return <TypesafeIcon className={className} />;
+    case "apple":
+      return <AppleIcon size={20} className={className} />;
     case "vercel":
       return <VercelIcon size={20} className={className} />;
     case "github":
@@ -217,12 +236,16 @@ export function AgentStatusCard({
   const open = data?.agents.find((agent) => agent.id === openId) ?? null;
   const checked = data ? checkedAt.format(data.fetchedAt) : null;
   /**
-   * 两列各四行：桌面并排，移动端一个视口一列，靠 scroll-snap 左右滑切换。
+   * 三列各三行，按卡片自己的宽度一次露出 3 / 2 / 1 列，放不下的靠 scroll-snap
+   * 左右滑。一列至少约 287px（2 列从卡片宽 36rem 起、3 列从 54rem 起）：
+   * 最长的一行是 Cloudflare 加 Partial outage，约 284px。
+   * 列间的竖线是容器底色从 1px 间隙里露出来的，滑到哪一列边上都不会贴着卡片边框。
    * 纯 CSS 滑动，不引轮播库。
    */
-  const columns = data
-    ? [data.agents.slice(0, 4), data.agents.slice(4)].filter((column) => column.length > 0)
-    : [];
+  const columns: AgentStatusRow[][] = [];
+  for (let start = 0; data && start < data.agents.length; start += ROWS_PER_COLUMN) {
+    columns.push(data.agents.slice(start, start + ROWS_PER_COLUMN));
+  }
 
   return (
     <Card
@@ -232,16 +255,16 @@ export function AgentStatusCard({
       action={checked ? <span title={`${checked} UTC+8`}>{checked}</span> : undefined}
     >
       {data ? (
-        <div className="flex snap-x snap-mandatory overflow-x-auto overscroll-x-contain scrollbar-none md:grid md:grid-cols-2 md:divide-x md:divide-line md:overflow-visible [&::-webkit-scrollbar]:hidden">
+        <div className="@container flex snap-x snap-mandatory gap-px overflow-x-auto overscroll-x-contain bg-line scrollbar-none [&::-webkit-scrollbar]:hidden">
           {columns.map((column) => (
             <ul
               key={column[0]?.id ?? "column"}
-              className="min-w-full shrink-0 snap-center divide-y divide-line md:min-w-0"
+              className="w-full shrink-0 snap-start divide-y divide-line bg-surface @[36rem]:w-[calc((100%-1px)/2)] @[54rem]:w-[calc((100%-2px)/3)]"
             >
               {column.map((agent) => {
                 const label = indicatorLabel(agent.indicator);
                 const rowClass =
-                  "flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-surface-hover md:px-3";
+                  "flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-surface-hover @[36rem]:px-3";
                 const row = (
                   <>
                     <span className="shrink-0" aria-hidden>

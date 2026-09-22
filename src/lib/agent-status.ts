@@ -11,7 +11,8 @@ import { collectAgentStatus, agentStatusFingerprint, emptyAgentStatus } from "@/
 import type { AgentStatusPayload } from "@/lib/agent-status-types";
 import { get, put } from "@/lib/cache";
 
-const CACHE_KEY = "agent-status:v1";
+// v2：DeepSeek 换成 TypeSafe 和 Apple。旧快照是八行，不让新卡片读到它。
+const CACHE_KEY = "agent-status:v2";
 const KEEP_MS = 7 * 24 * 60 * 60 * 1000;
 const TIMEOUT_MS = 15_000;
 const USER_AGENT = "lyjwpage-agent-status/1.0 (+https://lyjw.me)";
