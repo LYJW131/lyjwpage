@@ -116,15 +116,10 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/desktop-marks-dark.gif">
-  <img src="docs/screenshots/desktop-marks-light.gif" alt="页头前台应用的四种品牌标识：Claude Code 吉祥物取物动画、Ghostty ASCII 幽灵动画、Cursor、Antigravity" width="577">
+  <img src="docs/screenshots/desktop-marks-light.gif" alt="页头前台应用的四种品牌标识：Claude Code 吉祥物取物动画、Ghostty ASCII 幽灵动画、Cursor 与 Antigravity 下方窗口标题的出现、变化与消失" width="788">
 </picture>
 
-应用名下面还有一行淡色小字，是当前窗口的标题——但只有通过隐私判断的标题才会出现，见下文。
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/desktop-title-dark.webp">
-  <img src="docs/screenshots/desktop-title-light.webp" alt="页头徽章：品牌标识下方一行放行的窗口标题" width="183">
-</picture>
+应用名下面那行淡色小字是当前窗口的标题，Cursor 和 Antigravity 两段演示了它出现、变化和消失的样子——但只有通过隐私判断的标题才会出现，见下文。
 
 ## 系统架构
 
