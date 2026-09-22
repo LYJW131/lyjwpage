@@ -272,6 +272,60 @@ test("网络错误摘要去掉密钥和带 query 的 URL", async (t) => {
   assert.doesNotMatch(result.error, /test-secret|deadbeef|Signature=/);
 });
 
+function bodyErrorResponse(error) {
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.error(error);
+    },
+  });
+  return new Response(stream, { status: 200 });
+}
+
+test("HTTP 200 后 body 超时或断连会重试，非法 JSON 不重试", async (t) => {
+  const lines = captureWarn(t);
+  let calls = 0;
+  t.mock.method(globalThis, "fetch", async () => {
+    calls += 1;
+    if (calls === 1) {
+      const error = new Error("Body Timeout Error");
+      error.name = "BodyTimeoutError";
+      error.code = "UND_ERR_BODY_TIMEOUT";
+      return bodyErrorResponse(error);
+    }
+    if (calls === 2) {
+      const error = new TypeError("terminated");
+      error.cause = Object.assign(new Error("other side closed"), { code: "UND_ERR_SOCKET" });
+      return bodyErrorResponse(error);
+    }
+    return Response.json({ TaskId: "task-body", RequestId: "request-body" });
+  });
+
+  const result = await purgeEsaHomepage(config, { sleep: async () => {} });
+  assert.equal(calls, 3);
+  assert.equal(result.ok, true);
+  assert.equal(result.taskId, "task-body");
+  assert.match(lines[0], /第 1\/3 次失败，还会重试/);
+  assert.match(lines[0], /name=BodyTimeoutError/);
+  assert.match(lines[0], /code=UND_ERR_BODY_TIMEOUT/);
+  assert.match(lines[1], /第 2\/3 次失败，还会重试/);
+  assert.match(lines[1], /cause\.code=UND_ERR_SOCKET/);
+
+  let invalidCalls = 0;
+  t.mock.method(globalThis, "fetch", async () => {
+    invalidCalls += 1;
+    return new Response("invalid json response", { status: 200 });
+  });
+  const invalid = await purgeEsaHomepage(config, {
+    sleep: async () => {
+      throw new Error("should not retry");
+    },
+  });
+  assert.equal(invalidCalls, 1);
+  assert.equal(invalid.ok, false);
+  assert.match(invalid.error, /HTTP 200/);
+  assert.match(invalid.error, /InvalidResponse/);
+});
+
 test("warmupEsaCache 发送带标准请求头的 GET 请求预热边缘缓存", async (t) => {
   const calls = [];
   t.mock.method(globalThis, "fetch", async (input, init) => {

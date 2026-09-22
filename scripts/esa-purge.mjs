@@ -127,6 +127,7 @@ function networkLogFields(error) {
   if (error instanceof Error) {
     if (error.name) fields.name = error.name;
     if (error.message) fields.message = error.message;
+    if (typeof error.code === "string" || typeof error.code === "number") fields.code = error.code;
   } else {
     fields.message = String(error);
   }
@@ -188,7 +189,13 @@ async function requestPurge(config) {
     redirect: "manual",
   });
 
-  const result = await response.json().catch(() => null);
+  // 非法 JSON 仍当无效应答，不重试。读 body 时的断连和 UND_ERR_BODY_TIMEOUT 要抛给外层重试。
+  let result = null;
+  try {
+    result = await response.json();
+  } catch (error) {
+    if (isTransientNetworkError(error)) throw error;
+  }
   const code = typeof result?.Code === "string" ? result.Code : undefined;
   const requestId = typeof result?.RequestId === "string" ? result.RequestId : undefined;
 
