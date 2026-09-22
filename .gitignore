@@ -4,6 +4,8 @@
 node_modules/
 .pnpm-store/
 .wrangler/
+# api 预览命令临时生成，见 docs/workers-builds.md
+workers/api/wrangler.preview.json
 dist/
 /.pnp
 .pnp.*

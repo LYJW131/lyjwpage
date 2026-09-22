@@ -22,6 +22,11 @@ PlayStation 保留独立 `package-lock.json`。Wrangler 使用对应包锁定的
 
 分支名里的 `/` 会收成短横线后再传给 `--name`，这样地址和 Vercel 预览写进页面的一致。文档允许自定义预览命令，只要实际执行的是 `wrangler preview`。
 
+预览命令不直接读 `wrangler.toml`，而是按它生成一份临时的 `wrangler.preview.json`，交给 `wrangler preview --config`，跑完即删。与生产只差两处：
+
+- 迁移：每个 Preview 的 Durable Object 是空库，wrangler 会把全部迁移从头上传。v1、v2 是从旧 `ingest` 搬数据的历史步骤，v1 里 `OnlineCounterRoom` 既是新建目标又是转移目标，从头执行会被拒（10021）。Preview 把这两步折成一步，直接新建 `LivePushRoom`、`StateHub`，标签仍用 `v2-split-online-counter`，之后新增的迁移原样追加。
+- 兼容开关：多加 `global_fetch_strictly_public`。同账号 zone 上的域名默认绕过其上的 Worker 直连源站，`api.homepage.lyjw.llc` 是自定义域、没有源站，不加这个开关，`UPSTREAM_API_URL` 的请求一律 522，Preview 取不到生产数据。
+
 `workers/api` 用 Wrangler `4.136.2`。v1 迁移里补了 `OnlineCounterRoom` 的 `new_sqlite_classes`，Wrangler 4 才能接受后面那条已经生效的删除；这个标签不会再次执行。单独的 `api-preview` Worker 已删除。
 
 `feat/agent-status` 的地址是 `https://feat-agent-status-api.lyjw.workers.dev`。算法在 `scripts/preview-worker-name.mjs`，Vercel 预览构建用同一份。Preview 配置在 `workers/api/wrangler.toml` 的 `[previews.vars]`：`UPSTREAM_API_URL` 指向生产 API，生产已经返回 `ok: true` 的端点用生产的，生产没有的端点用本分支的。不挂 cron、生产域名、KV、D1、R2，也不复制 Secret。上报和存储导入直接拒绝。MusicKit 令牌、歌词、动态封面转给生产，并带上浏览器的 `Origin`。空库第一次公开读取时只把初始化标记写成完成。WebSocket 转发生产房间的事件。
