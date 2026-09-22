@@ -8,7 +8,8 @@ DERIVED_DATA="${TMPDIR:-/tmp}/iphone-telemetry-hub-xcode"
 TEAM="${IPHONE_HUB_TEAM:-2VTXNMR2GL}"
 DEVICE="${IPHONE_HUB_DEVICE:-}"
 
-# 没指定就自己挑：配对过、且这会儿不是 unavailable 的那台 iPhone。
+# 没指定就自己挑：配对过、且这会儿不是 unavailable 的那台 iPhone 真机。
+# devicectl 也会列出模拟器（reality 是 simulated），它们装不了开发签名的真机包，要排除。
 # 挑出好几台时不猜，让人自己填 —— 装错手机比装不上更烦
 if [[ -z "$DEVICE" ]]; then
   DEVICE="$(xcrun devicectl list devices --json-output - 2>/dev/null | python3 -c '
@@ -17,6 +18,7 @@ devices = json.load(sys.stdin)["result"]["devices"]
 usable = [
     d for d in devices
     if d.get("hardwareProperties", {}).get("deviceType") == "iPhone"
+    and d.get("hardwareProperties", {}).get("reality") == "physical"
     and d.get("connectionProperties", {}).get("tunnelState") != "unavailable"
 ]
 if len(usable) == 1:
