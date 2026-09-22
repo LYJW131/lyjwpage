@@ -240,14 +240,6 @@ test("Grok Build 自己的灯是 outage 时，已解决的 feed 不把它刷回�
   assert.equal(grok.incidents.length, 0);
 });
 
-test("Antigravity 没有状态页，不假装成正常", async () => {
-  const payload = await collectAgentStatus(null, pages());
-  const antigravity = row(payload, "antigravity");
-  assert.equal(antigravity.indicator, "unmonitored");
-  assert.match(antigravity.statusUrl, /aistudio\.google\.com\/status$/);
-  assert.match(antigravity.note ?? "", /doesn't publish/);
-});
-
 test("一家失败时留着上一轮，其它家照常更新", async () => {
   const first = await collectAgentStatus(null, pages(), 1_000);
   const second = await collectAgentStatus(first, pages({

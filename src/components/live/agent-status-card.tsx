@@ -1,7 +1,6 @@
 "use client";
 
 import AnthropicIcon from "@lobehub/icons/es/Anthropic/components/Mono";
-import AntigravityColor from "@lobehub/icons/es/Antigravity/components/Color";
 import CursorIcon from "@lobehub/icons/es/Cursor/components/Mono";
 import GrokIcon from "@lobehub/icons/es/Grok/components/Mono";
 import { ExternalLink, X } from "lucide-react";
@@ -80,8 +79,6 @@ function Brand({ id }: { id: AgentStatusRow["id"] }) {
       return <CursorIcon size={20} className={className} />;
     case "grok":
       return <GrokIcon size={20} className={className} />;
-    case "antigravity":
-      return <AntigravityColor size={20} />;
   }
 }
 

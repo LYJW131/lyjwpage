@@ -76,16 +76,6 @@
       "incidents": [],
       "note": null,
       "stale": true
-    },
-    {
-      "id": "antigravity",
-      "name": "Antigravity",
-      "indicator": "unmonitored",
-      "statusUrl": "https://aistudio.google.com/status",
-      "components": [],
-      "incidents": [],
-      "note": "Google doesn't publish a status page for Antigravity. This link is the Gemini API status board.",
-      "stale": false
     }
   ]
 }

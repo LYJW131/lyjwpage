@@ -29,7 +29,7 @@ export type AgentStatusComponent = {
 };
 
 export type AgentStatusRow = {
-  id: "claude" | "codex" | "cursor" | "grok" | "antigravity";
+  id: "claude" | "codex" | "cursor" | "grok";
   name: string;
   indicator: AgentIndicator;
   statusUrl: string;

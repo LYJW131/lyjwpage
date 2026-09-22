@@ -3,7 +3,7 @@
  *
  * Claude / OpenAI / Cursor 是 Statuspage，`/api/v2/summary.json` 就是当前
  * 组件和未解决事件，边缘缓存大约 10 秒。xAI 没有这份 JSON：官方机器可读源
- * 是 `/feed.xml`，此刻亮哪盏灯写在首页 HTML 里。Antigravity 没有状态页。
+ * 是 `/feed.xml`，此刻亮哪盏灯写在首页 HTML 里。
  *
  * 不在这里发请求。调用方把正文传进来，单测才能不打网。
  */
@@ -28,7 +28,6 @@ const STATUS_PAGES = {
   openai: "https://status.openai.com",
   cursor: "https://status.cursor.com",
   xai: "https://status.x.ai/grok-build",
-  antigravity: "https://aistudio.google.com/status",
 } as const;
 
 const MAX_INCIDENTS = 3;
@@ -433,19 +432,6 @@ function xaiRow(html: string | null, feed: string | null): AgentStatusRow {
   };
 }
 
-function antigravityRow(): AgentStatusRow {
-  return {
-    id: "antigravity",
-    name: "Antigravity",
-    indicator: "unmonitored",
-    statusUrl: STATUS_PAGES.antigravity,
-    components: [],
-    incidents: [],
-    note: "Google doesn't publish a status page for Antigravity. This link is the Gemini API status board.",
-    stale: false,
-  };
-}
-
 function carried(previous: AgentStatusPayload | null, id: AgentStatusRow["id"], failure: string): AgentStatusRow {
   const prior = previous?.agents.find((agent) => agent.id === id);
   if (prior) return { ...prior, stale: true };
@@ -486,7 +472,7 @@ async function load(
 }
 
 /**
- * 五行的顺序跟用量卡一致：Claude、Codex、Cursor、Grok Build、Antigravity。
+ * 四行的顺序跟用量卡一致：Claude、Codex、Cursor、Grok Build。
  * 某一家失败就留着上一轮，不让整张卡空白。
  */
 export async function collectAgentStatus(
@@ -534,7 +520,7 @@ export async function collectAgentStatus(
       return xaiRow(home.body, feed.body);
     }),
   ]);
-  return { fetchedAt: now, agents: [claude, codex, cursor, grok, antigravityRow()] };
+  return { fetchedAt: now, agents: [claude, codex, cursor, grok] };
 }
 
 /** 推送只在灯、事件或失败标记变了才发。检查时刻每分钟都变，不拿它做比较。 */
@@ -552,7 +538,6 @@ export function emptyAgentStatus(now = Date.now()): AgentStatusPayload {
       carried(null, "codex", failure),
       carried(null, "cursor", failure),
       carried(null, "grok", failure),
-      antigravityRow(),
     ],
   };
 }
