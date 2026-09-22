@@ -95,8 +95,11 @@ class_name = "StateHub"
 
 
 # 将原 ingest 的三个 SQLite 命名空间整体转移，保留对象 ID 与全部数据。
+# OnlineCounterRoom 写进 new_sqlite_classes，只为让 Wrangler 4 在 v2 删除它之前认得出这个类。
+# 这个标签已经在生产生效，上传时不会再次执行。
 [[migrations]]
 tag = "v1-transfer-from-ingest"
+new_sqlite_classes = ["OnlineCounterRoom"]
 
 [[migrations.transferred_classes]]
 from = "LivePushRoom"
