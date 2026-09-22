@@ -16,6 +16,6 @@
     "@types/node": "^24.0.0",
     "typescript": "^5.7.3",
     "wrangler": "^3.109.2",
-    "wrangler-preview": "npm:wrangler@4.135.0"
+    "preview-wrangler": "file:./preview-wrangler"
   }
 }

@@ -20,7 +20,7 @@ PlayStation 保留独立 `package-lock.json`。Wrangler 使用对应包锁定的
 
 `api` 的非生产构建使用 [Worker Previews](https://developers.cloudflare.com/workers/previews/)（Wrangler 4.135.0 起）。`wrangler preview` 在同一个 `api` Worker 下按分支开一份隔离环境，不替换 `api.homepage.lyjw.llc` 上的生产版本。Durable Object 每个 Preview 自动有自己的空库。
 
-Preview 命令需要 Wrangler `4.135.0`。生产 `wrangler deploy` 继续用 3.109：4.135 会拒绝这份已经生效的 `deleted_classes` 迁移，所以 4.135 只装在 `workers/api` 的 `wrangler-preview` 别名里，给预览脚本调用。
+Preview 命令需要 Wrangler `4.135.0`。生产 `wrangler deploy` 继续用 3.109：4.135 会拒绝这份已经生效的 `deleted_classes` 迁移。4.135 放在 `workers/api/preview-wrangler`，不挂到 `wrangler` 这个命令名上，避免生产部署误用它。
 
 | 项 | 值 |
 | --- | --- |
