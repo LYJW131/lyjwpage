@@ -1,0 +1,160 @@
+# 从子模块 reporters/mac-telemetry-hub 构建 Mac 上报器，用 Developer ID 签名、公证、钉上票据，
+# 发到本仓库的 Release，下载下来双击就能开：
+#   https://github.com/LYJW131/lyjwpage/releases/latest/download/Mac-Telemetry-Hub.zip
+#
+# main 上子模块指针一动就发一版（tag `hub-build-<运行号>`），发出来的就是站点此刻对应的那版 Hub。
+# PR 上走到公证为止、不发布，只验证签名链没断。没配签名 secret 时整个 job 跳过。
+# Hub 仓库自己的 CI 只管测试和不签名编译。
+#
+# 需要的仓库 secret：
+#   MAC_CERT_P12       Developer ID Application 证书 + 私钥的 p12，base64
+#   MAC_CERT_PASSWORD  那份 p12 的密码
+#   ASC_KEY_ID / ASC_ISSUER_ID / ASC_KEY_P8   App Store Connect API key，公证用
+name: Release Mac Telemetry Hub
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - reporters/mac-telemetry-hub
+      - .github/workflows/release-mac-telemetry-hub.yml
+  pull_request:
+    paths:
+      - reporters/mac-telemetry-hub
+      - .github/workflows/release-mac-telemetry-hub.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-mac-telemetry-hub-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    env:
+      TEAM_ID: 2VTXNMR2GL
+      APP_NAME: Mac Telemetry Hub
+      ZIP_NAME: Mac-Telemetry-Hub.zip
+    defaults:
+      run:
+        working-directory: reporters/mac-telemetry-hub
+    steps:
+      - name: Check signing secrets
+        id: gate
+        working-directory: .
+        env:
+          MAC_CERT_P12: ${{ secrets.MAC_CERT_P12 }}
+        run: |
+          if [ -z "$MAC_CERT_P12" ]; then
+            echo "skip=1" >> "$GITHUB_OUTPUT"
+            echo "::notice::没配签名 secret，跳过签名和发布"
+          fi
+
+      - uses: actions/checkout@v5
+        if: steps.gate.outputs.skip != '1'
+        with:
+          submodules: true
+
+      # 照 GitHub 文档「Installing an Apple certificate on macOS runners」：临时钥匙串 + partition list，
+      # 少一步 codesign 就会挂着等一个没人点的授权框
+      - name: Import certificate
+        if: steps.gate.outputs.skip != '1'
+        env:
+          MAC_CERT_P12: ${{ secrets.MAC_CERT_P12 }}
+          MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 24)"
+          printf '%s' "$MAC_CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/cert.p12" -P "$MAC_CERT_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security list-keychain -d user -s "$KEYCHAIN"
+          rm -f "$RUNNER_TEMP/cert.p12"
+          security find-identity -v -p codesigning "$KEYCHAIN"
+
+      - name: Build
+        if: steps.gate.outputs.skip != '1'
+        run: |
+          Tools/install-ccusage.sh
+          Tools/generate-icons.sh
+          # 没有 entitlements，不需要描述文件：手动指定身份，不用 Apple ID 登录。
+          # xcodebuild build 默认给主程序注入调试用的 get-task-allow，公证会拒，得关掉
+          xcodebuild \
+            -project MacTelemetryHub.xcodeproj \
+            -scheme MacTelemetryHub \
+            -configuration Release \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            "CONFIGURATION_BUILD_DIR=$RUNNER_TEMP/build" \
+            "DEVELOPMENT_TEAM=$TEAM_ID" \
+            CODE_SIGN_STYLE=Manual \
+            "CODE_SIGN_IDENTITY=Developer ID Application" \
+            OTHER_CODE_SIGN_FLAGS=--timestamp \
+            CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO \
+            "CURRENT_PROJECT_VERSION=$GITHUB_RUN_NUMBER" \
+            build
+          APP="$RUNNER_TEMP/build/$APP_NAME.app"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          codesign -dvv "$APP" 2>&1 | grep -E 'Authority|TeamIdentifier|Timestamp'
+          if codesign -d --entitlements - "$APP" 2>/dev/null | grep -q get-task-allow; then
+            echo "::error::主程序仍带 get-task-allow，公证会拒"; exit 1
+          fi
+          echo "APP=$APP" >> "$GITHUB_ENV"
+          echo "HUB_SHA=$(git rev-parse --short HEAD)" >> "$GITHUB_ENV"
+
+      - name: Notarize
+        if: steps.gate.outputs.skip != '1'
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          KEY="$RUNNER_TEMP/AuthKey.p8"
+          printf '%s' "$ASC_KEY_P8" > "$KEY"
+          ditto -c -k --keepParent "$APP" "$RUNNER_TEMP/submit.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/submit.zip" \
+            --key "$KEY" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID" \
+            --wait --timeout 30m --output-format json > "$RUNNER_TEMP/notary.json" || true
+          cat "$RUNNER_TEMP/notary.json"
+          ID="$(plutil -extract id raw "$RUNNER_TEMP/notary.json" 2>/dev/null || true)"
+          STATUS="$(plutil -extract status raw "$RUNNER_TEMP/notary.json" 2>/dev/null || true)"
+          if [ "$STATUS" != Accepted ]; then
+            [ -n "$ID" ] && xcrun notarytool log "$ID" --key "$KEY" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID"
+            rm -f "$KEY"
+            exit 1
+          fi
+          rm -f "$KEY"
+          # 钉上票据改了包，钉完再打一次 zip，发出去的是钉好的那份
+          xcrun stapler staple "$APP"
+          xcrun stapler validate "$APP"
+          spctl --assess --type execute -vv "$APP"
+          ditto -c -k --keepParent "$APP" "$RUNNER_TEMP/$ZIP_NAME"
+
+      - uses: actions/upload-artifact@v7
+        if: steps.gate.outputs.skip != '1'
+        with:
+          name: ${{ env.ZIP_NAME }}
+          path: ${{ runner.temp }}/${{ env.ZIP_NAME }}
+          retention-days: 14
+
+      - name: Publish release
+        if: steps.gate.outputs.skip != '1' && github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "hub-build-$GITHUB_RUN_NUMBER" "$RUNNER_TEMP/$ZIP_NAME" \
+            --target "$GITHUB_SHA" --latest \
+            --title "Mac Telemetry Hub build $GITHUB_RUN_NUMBER" \
+            --notes "Developer ID 签名并已公证。MacTelemetryHub $HUB_SHA，站点提交 $GITHUB_SHA。"
+
+      - name: Remove keychain
+        if: always() && steps.gate.outputs.skip != '1'
+        working-directory: .
+        run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true
