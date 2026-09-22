@@ -147,7 +147,7 @@ state 一律是代码算好的命名秒数和次数，没有原始区间、时�
 - watching：`playingSeconds / pausedSeconds / idleSeconds / longestPlayingRunSeconds`、`playingPercent / pausedPercent / longestPlayingRunPercent`、`titleChanges / titles`。
 - gaming：`inGameSeconds / onlineIdleSeconds / offlineSeconds / longestGameRunSeconds`、`inGamePercent / longestGameRunPercent`、`gameChanges / games`；「主机在线未进游戏」是它自己的桶和档位。
 - charging：`secondsByBand` 与 `percentByBand`（`unplugged / trickle / moderate / high`）、`peakWatts / longestPoweredRunSeconds / longestPoweredRunPercent`，分档阈值 0 / 15 / 60 W 与 `chargingLevel` 一致。
-- activity：`stillSeconds / lightSeconds / moderateSeconds / vigorousSeconds / longestMovingRunSeconds`、`movingPercent / vigorousPercent / longestMovingRunPercent`，每档在判据里写明对应的步频与锻炼分钟占比。
+- activity：圆环估算仍是 `stillSeconds / lightSeconds / moderateSeconds / vigorousSeconds / longestMovingRunSeconds`、`movingPercent / vigorousPercent / longestMovingRunPercent`，每档写明对应的步频与锻炼分钟占比。另外从 `workouts:recent` 读已完成训练，放进 `workoutSeconds / workoutPercent / workouts[{activityType, seconds}]`。`activityType` 是上报的项目名（例如 Fencing），`seconds` 是该次训练摊到这个五分钟窗口里的活动秒数，不含时间戳。`workoutPercent` 达到 50 对上强度最高档，达到 75 对上连续性最高档；没有圆环样本但有训练覆盖的窗口也会打分。圆环桶不把这笔时长混进去。
 
 `PULSE_ASSESSMENT_VERSION` 进输入哈希，改问题时升版本让全部窗口重评，不靠哈希碰巧变。
 改判据先跑 `node --experimental-strip-types --import ./src/lib/testing/register-alias.mjs scripts/jev-probe.mts`（key 读根目录 `.env.local` 的 `TYPESAFE_API_KEY`）：十几个代表性窗口打真实 Jev，每条都写着期望档位，答案偏了先改措辞再上线——上线一次就是整整 24 小时重评。

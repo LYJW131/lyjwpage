@@ -4,7 +4,7 @@ import { PULSE_TTL_MS, PULSE_WINDOW_MS } from '@/lib/limits';
 import { CODING_WINDOW_MS, codingQuestions, codingWindowFeatures, judgment, parseCodingObservation } from '@shared/pulse-coding';
 import { parseCodingTokenUsage } from '@shared/coding-token-usage';
 import { PULSE_ASSESSMENT_VERSION, PULSE_MODES, parsePulseAssessment, type PulseAssessment, type PulseMode } from '@shared/pulse-assessment';
-import { activityQuestions, activityWindowFeatures } from '@shared/pulse-activity';
+import { activityQuestions, activityWindowFeatures, parseActivityWorkouts, type ActivityWorkout } from '@shared/pulse-activity';
 import { chargingQuestions, chargingWindowFeatures } from '@shared/pulse-charging';
 import type { Coverage, PulseQuestion } from '@shared/pulse-features';
 import { gamingQuestions, gamingWindowFeatures } from '@shared/pulse-gaming';
@@ -18,14 +18,14 @@ import type { PulseScoreCoordinator } from './pulse-score-state';
  * 返回的 questions 用 intensity / continuity / mode 做 id；coding 沿用它的 w0*。
  */
 type Built = { state: unknown; coverage: Coverage[]; questions: Record<string, PulseQuestion>; ids: { intensity: string; continuity: string; mode: string | null } };
-function buildMeasured(domain: Exclude<PulseDomain, 'coding'>, samples: PulseSample[], window: Coverage, plays: ListeningPlay[]): Built {
+function buildMeasured(domain: Exclude<PulseDomain, 'coding'>, samples: PulseSample[], window: Coverage, plays: ListeningPlay[], workouts: ActivityWorkout[]): Built {
   const ids = { intensity: 'intensity', continuity: 'continuity', mode: null as string | null };
   switch (domain) {
     case 'listening': { const { features, coverage } = listeningWindowFeatures(samples, window, plays); return { state: features, coverage, questions: listeningQuestions(), ids: { ...ids, mode: 'mode' } }; }
     case 'watching': { const { features, coverage } = watchingWindowFeatures(samples, window); return { state: features, coverage, questions: watchingQuestions(), ids }; }
     case 'gaming': { const { features, coverage } = gamingWindowFeatures(samples, window); return { state: features, coverage, questions: gamingQuestions(), ids }; }
     case 'charging': { const { features, coverage } = chargingWindowFeatures(samples, window); return { state: features, coverage, questions: chargingQuestions(), ids }; }
-    case 'activity': { const { features, coverage } = activityWindowFeatures(samples, window); return { state: features, coverage, questions: activityQuestions(), ids }; }
+    case 'activity': { const { features, coverage } = activityWindowFeatures(samples, window, workouts); return { state: features, coverage, questions: activityQuestions(), ids }; }
   }
 }
 /** Choice 答案按该域的模式集合校验，形状同 pulse-coding 的 modeJudgment。 */
@@ -57,6 +57,7 @@ export class PulseScorer {
       const observations = inputs.codingObservations;
       const tokenRaw = inputs.codingTokenUsage;
       const playRows = inputs.listeningPlays;
+      const workouts = parseActivityWorkouts(inputs.workouts);
       const histories = SCORED_DOMAINS.map((domain) => inputs.histories[domain]);
       const existing = raw.map(parsePulseAssessment).filter((r): r is PulseAssessment=>r!==null&&r.to>now-PULSE_TTL_MS);
       const completed = new Map(existing.map((r)=>[`${r.domain}:${r.from}`,r]));
@@ -79,7 +80,7 @@ export class PulseScorer {
             const tokens=validUsage?{sources:tokenUsage.sources,agents:tokenUsage.windows.find((w)=>w.from===from)?.agents??[]}:null;
             built={state:{windows:[{...facts,tokenUsage:tokens}]},coverage:facts.coverage,questions:codingQuestions([facts]) as Record<string, PulseQuestion>,ids:{intensity:'w0Intensity',continuity:'w0Continuity',mode:'w0Mode'}};
           } else {
-            built=buildMeasured(domain, series[index], window, plays);
+            built=buildMeasured(domain, series[index], window, plays, workouts);
           }
           if (!built.coverage.length) continue;
           const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify({version:PULSE_ASSESSMENT_VERSION,state:built.state,questions:built.questions})));

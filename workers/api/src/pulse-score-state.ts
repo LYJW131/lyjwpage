@@ -1,5 +1,6 @@
 import { codingObservationsKey, codingTokenUsageKey } from "@/lib/coding-pulse";
 import { listeningPlaysKey } from "@/lib/listening-pulse";
+import { workoutsKey } from "@shared/workouts";
 import { pulseAssessmentsKey, pulseAssessmentAttemptKey } from "@/lib/pulse-assessments";
 import { pulseKey } from "@/lib/pulse";
 import { PULSE_TTL_MS } from "@/lib/limits";
@@ -19,6 +20,8 @@ export type PulseScoreInputs = {
   codingObservations: string[];
   codingTokenUsage: string | null;
   listeningPlays: string[];
+  /** `workouts:recent` 的整份 JSON；没有上报时为 null。 */
+  workouts: string | null;
   histories: Record<PulseDomain, string[]>;
 };
 
@@ -111,6 +114,7 @@ export class PulseScoreState implements PulseScoreCoordinator {
         { op: "listRange", key: codingObservationsKey(), start: 0, stop: -1 },
         { op: "get", key: codingTokenUsageKey() },
         { op: "listRange", key: listeningPlaysKey(), start: 0, stop: -1 },
+        { op: "get", key: workoutsKey() },
         ...PULSE_DOMAINS.map((domain): StorageCommand => ({
           op: "listRange",
           key: pulseKey(domain),
@@ -121,7 +125,7 @@ export class PulseScoreState implements PulseScoreCoordinator {
       const results = this.execute(commands);
       const histories = Object.fromEntries(PULSE_DOMAINS.map((domain, index) => [
         domain,
-        results[index + 4] as string[],
+        results[index + 5] as string[],
       ])) as Record<PulseDomain, string[]>;
       return {
         ...claim,
@@ -131,6 +135,7 @@ export class PulseScoreState implements PulseScoreCoordinator {
           codingObservations: results[1] as string[],
           codingTokenUsage: results[2] as string | null,
           listeningPlays: results[3] as string[],
+          workouts: results[4] as string | null,
           histories,
         },
       };

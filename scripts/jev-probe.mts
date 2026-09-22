@@ -40,6 +40,7 @@ cases.push({ name: "charging · 72 W 整窗", expect: "intensity 4 · continuity
 cases.push({ name: "charging · 8 W 涓流整窗", expect: "intensity 1 · continuity 3", state: chargingWindowFeatures([s(0, 1, 5, { powerW: 8 })], W).features, questions: chargingQuestions() });
 cases.push({ name: "activity · 整窗 vigorous", expect: "intensity 4 · continuity 3", state: activityWindowFeatures([s(0, 3, 5)], W).features, questions: activityQuestions() });
 cases.push({ name: "activity · 只有 light", expect: "intensity 1 · continuity 0", state: activityWindowFeatures([s(0, 1, 5)], W).features, questions: activityQuestions() });
+cases.push({ name: "activity · 没有圆环，整窗是一次击剑", expect: "intensity 4 · continuity 3", state: activityWindowFeatures([], W, [{ activityType: "Fencing", startedAt: T, endedAt: T + 5 * M, durationSeconds: 300 }]).features, questions: activityQuestions() });
 
 for (const c of cases) {
   const res = await fetch("https://api.typesafe.ai/v1/systemone", {
