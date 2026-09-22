@@ -11,7 +11,10 @@ import {
 import {
   normalizeAgentLimits,
   normalizeVibeCodingNow,
-  normalizeVibeCodingUsage
+  normalizeVibeCodingUsage,
+  type ParsedAgentLimits,
+  type ParsedVibeCodingNow,
+  type ParsedVibeCodingUsage,
 } from "@/lib/vibecoding-parse";
 import { fanout } from "@api/fanout";
 import { recordStateChange } from "@api/stores/state-journal";
@@ -28,7 +31,12 @@ import { limitsMirror, nowMirror, usageMirror } from "@shared/vibecoding";
 export function prepareVibeCodingUsage(report: unknown, receivedAt = Date.now()) {
   const payload = normalizeVibeCodingUsage(report);
   if (!payload) throw new Error("vibeCodingUsage 必须是 Mac Telemetry Hub 的用量摘要");
+  return prepareVibeCodingUsagePayload(payload, receivedAt);
+}
+
+export function prepareVibeCodingUsagePayload(payload: ParsedVibeCodingUsage, receivedAt: number) {
   return {
+    payload,
     commit: async () => {
       await usageMirror.put({ payload, pushedAt: receivedAt });
       await recordStateChange("vibecoding-usage", receivedAt, vibeUsageState(payload));
@@ -39,7 +47,12 @@ export function prepareVibeCodingUsage(report: unknown, receivedAt = Date.now())
 export function prepareVibeCodingNow(report: unknown, receivedAt = Date.now()) {
   const payload = normalizeVibeCodingNow(report);
   if (!payload) throw new Error("vibeCodingNow 必须带 agents 数组");
+  return prepareVibeCodingNowPayload(payload, receivedAt);
+}
+
+export function prepareVibeCodingNowPayload(payload: ParsedVibeCodingNow, receivedAt: number) {
   return {
+    payload,
     /** 推给浏览器的此刻补丁。用量还没到过也推 —— 它不依赖那份 */
     now: { agents: payload.agents } satisfies VibeCodingNowPayload,
     commit: async () => {
@@ -63,8 +76,22 @@ export function prepareVibeCodingNow(report: unknown, receivedAt = Date.now()) {
  * 不该再给旧的降级快照顶几分钟。
  */
 export async function recordAgentLimits(input: unknown, receivedAt = Date.now()) {
+  return recordPreparedAgentLimits(prepareAgentLimits(input, receivedAt).limits, receivedAt);
+}
+
+export type PreparedAgentLimits = {
+  source: "agents";
+  receivedAt: number;
+  limits: ParsedAgentLimits;
+};
+
+export function prepareAgentLimits(input: unknown, receivedAt = Date.now()): PreparedAgentLimits {
   const parsed = normalizeAgentLimits(input);
   if (!parsed) throw new Error("agents 必须是带 id 的限额行数组，id 不能重复");
+  return { source: "agents", receivedAt, limits: parsed };
+}
+
+export async function recordPreparedAgentLimits(parsed: ParsedAgentLimits, receivedAt: number) {
   const previous = await limitsMirror.get();
   const next = mergeAgentLimits(previous, parsed, receivedAt);
   const changed = displayChanged(previous, next);

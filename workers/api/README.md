@@ -5,19 +5,19 @@
 
 ## 代码职责
 
-- `src/index.ts`：七个上报来源、两条 WebSocket 接入、人头数、定时刷新。
+- `src/index.ts`：默认 Worker 入口、KV 读模型前置与 cron；`src/origin-worker.ts` 负责七个上报来源、WebSocket 接入、人头数和公开 HTTP。
 - `src/online-counter.ts`：「此刻在线」的房间，只数可见的页面，人数一变就广播给房间里所有连接。
-- `src/stores/`：上报解析与状态写入；`src/phone-telemetry.ts`、`src/homepod-ingest.ts` 组合设备信封。
-- `src/fanout.ts`：先确认写入成功，再后台广播和通知首屏 stale。
+- `src/stores/`：上报的 Worker 准备阶段与 StateHub 提交阶段；`src/phone-telemetry.ts`、`src/homepod-ingest.ts` 组合设备信封。
+- `src/ingest-effects.ts`、`src/fanout.ts`：StateHub 提交时只收集可序列化效果；持久化确认后由普通 Worker 补充外部数据、广播并通知首屏 stale。
 - `src/apple-music-recent.ts`：最近在听的拉取、写入和广播。
 - `src/musickit-token.ts`：给「一起听」签 MusicKit developer token（ES256 JWT），按 origin 声明缓存、过半衰期重签。
 - `src/origins.ts`：`ALLOWED_ORIGINS` 的解析、通配匹配和 CORS 头，两条 WebSocket、公开 API 和令牌签发共用。
 - 根目录 `shared/`：读写共用的 SQLite 键、类型和状态计算；根目录 `src/lib/` 提供读取与通用工具。
 - 根目录 `src/lib/status-views.ts`：公开状态视图登记表（`path` / `tag` / `event` / `readModel`）。路径常量、Vercel 缓存标签、事件→路径、`/api/home` 字段、KV 策略全部由它派生；有 `event` 的视图不能进 KV，模块加载时断言。
 - 根目录 `src/lib/status-loaders.ts`：按同一组 key 登记 `endpoint(params)` 与可选 `home()`。`/api/home` 对表做 `Promise.all`；单端点由 `src/public-api.ts` 通用分发到同一个 loader。`trophies` 首屏是摘要、`charger` 首屏只带最近 20 分钟历史。
-- `src/public-api.ts`：公开 API 入口。状态端点按 loader 表通用分发；`routes/lyrics`、`routes/motion-artwork` 保留。
-- `src/storage-driver.ts`：通过 alias 接入 StateHub 的 SQLite 存储驱动。
-- `src/read-model*.ts`：可选的 KV 公开读取投影，DO SQLite 仍是唯一权威；边界、发布节律与回滚见 `docs/kv-read-model.md`。
+- `src/public-api.ts`、`src/public-execution.ts`：普通 Worker 中的公开 API 入口。已知路由先匹配，再过 StateHub 初始化/提交可见性屏障；状态端点按 loader 表通用分发。屏障等待已经进入 `commitIngest()` 队列的提交，不等待仍在普通 Worker 做输入准备或 R2 HEAD 的请求；提交返回 202 后，经过 StateHub 的权威读取可见其持久化结果。命中 KV 的四条投影路径仍按下文的 revision、刷新间隔和最大年龄最终收敛。
+- `src/storage-driver.ts`：通过 alias 接入 StateHub 的 SQLite 存储驱动；同一公开请求、同一 microtask 的相邻只读批次合并成一次最多 128 条的 DO RPC，写批次保持原事务顺序。
+- `src/read-model*.ts`：可选的 KV 公开读取投影。DO alarm 保留持久队列、重试与最终 KV 单写者，JSON 由同部署 `ReadModelRenderer` 普通 Worker entrypoint 生成；边界见 `docs/kv-read-model.md`。
 - `src/r2-assets.ts`：R2 绑定 HEAD 检查，上报器仍直接上传图片。
 
 ## 端点
@@ -25,6 +25,21 @@
 | 方法 | 路径 | 用途 |
 | --- | --- | --- |
 | POST | `/api/ingest/<来源>` | `mac`、`iphone`、`homepod`、`emby`、`playstation`、`server`、`agents` |
+
+`/api/ingest/mac` 的 `modules.desktop` 描述此刻的前台应用：`applicationName`（必填）、
+`bundleIdentifier`、`windowTitle`、`iconHash` 与 `iconObjectKey`（内容地址，见下文图标那段）、
+`observedAt`。这一段校验不过时响应 400，`desktop` 及其后的模块都不落地，排在它前面、已经承诺过
+的写保留。窗口标题的四条规则，入库、`/api/status/desktop` 和 `desktop` 推送三处一致：
+
+- 类型只收字符串或 `null`；给数字、对象这类值按上面那条失败，不静默当成没有标题 —— 那是上报侧
+  取值路径错了，收敛掉只会让它一直错下去。
+- 前后空白剪掉；剪完是空串的按没有标题算。
+- 上限 200 个**码点**，超出截断且不报错。按码点不按 UTF-16 码元，否则 CJK 和 emoji 的标题会在
+  边界上被劈成半个字符。
+- `bundleIdentifier` 是隐藏占位符 `com.liangyangjunwei.MacTelemetryHub.hidden` 时强制 `null`。
+  占位符的意思就是「这一刻不许对外说我在干什么」，应用名已经是占位符，标题不跟着清等于开后门。
+
+出口一律带 `windowTitle`：没有标题是 `null`，不是缺字段，消费方只判空。站点界面此刻不展示它。
 
 `/api/ingest/playstation` 的信封是 `{ version: 1, presence?, playedGames?, trophies?, power? }`，
 每一项各自可省、缺席表示这次不谈这一项。前三项由 `workers/playstation-reporter` 每轮交付；
@@ -106,7 +121,7 @@ Pulse 卡片用它。信封形状：
 
 ### Pulse 统一五分钟评分
 
-六个领域共用 `PulseScorer`、`pulse:assessment-attempt` 和 `pulse:assessments`。
+六个领域共用 `PulseScorer` 和 `pulse:assessments`。StateHub 的 metadata 保存评分 claim、generation、lease 和最近尝试时刻；普通 Worker 领取固定输入快照、执行模型请求，再用 token + generation 提交，过期任务不能覆盖新结果。
 旧的十分钟 24 小时模型总评已经删除；右侧摘要由最近 24 小时的同一批五分钟评分按
 实际覆盖时长加权，趋势比较最近三小时与此前三小时，没有两侧观测时为 `unknown`。
 曲线和摘要不再有两套评分来源。公开契约为 `domains[domain].assessments` 和 `score`，
@@ -191,7 +206,7 @@ Mac 上报的 Apple Music 凭据保存在 SQLite，Worker 读取使用，不向�
 `EMBY_PUBLIC_URL`、`APPLE_MUSIC_STOREFRONT`、`ALLOWED_ORIGINS`、`APPLE_MUSIC_TEAM_ID`、
 `APPLE_MUSIC_KEY_ID`，`IMAGES` 桶绑定（只 HEAD；响应里的图片地址是 `/img/<对象键>` 同源路径，
 Worker 不配交付域，回源 R2 由站点的 rewrite 和 ESA 负责，见根 README「图片」），
-以及 `LIVE_PUSH` 与 `STATE` 两个 Durable Object 绑定（迁移只追加新 tag，不改旧的）。
+以及 `LIVE_PUSH` 与 `STATE` 两个 Durable Object 绑定（迁移只追加新 tag，不改旧的）。`READ_MODEL_RENDERER` 是回绑同一 `api` 部署具名 entrypoint 的 Service Binding，不经公网，也不新增部署单元。
 `READ_MODEL` KV 绑定见 [KV 公开读模型](../../docs/kv-read-model.md)；`HISTORY` 是长期归档用的 D1 库 `lyjwpage-history`，
 pulse 曲线和展示状态变更都只增不删、无公开读路径，建表只在 `migrations/` 里，部署带这个绑定的版本**之前**先手动应用一次
 （`pnpm --dir workers/api exec wrangler d1 migrations apply lyjwpage-history --remote`，Workers Builds 不跑迁移），
@@ -242,12 +257,11 @@ pnpm dev:local                      # 站点指向本地 Worker
 ```sh
 pnpm --dir workers/api typecheck
 pnpm --dir workers/api test
-pnpm build
-node scripts/verify-api-worker.mjs
+node scripts/verify-api-worker.mjs --build
+node scripts/verify-kv-read-model.mjs
 ```
 
-集成脚本启动隔离 SQLite、Worker 和缓存通知测试服务器，检查鉴权、404、写入、缓存失效、两条真实 WebSocket
-和 `/count` 的两个数，退出时清理临时状态。不要在本地开发配置中使用生产 SQLite。
+集成脚本启动隔离 SQLite、Worker、KV 和缓存通知测试服务器，检查鉴权、404、初始化屏障、并发假数据索引、写入、缓存失效、真实 WebSocket、重启持久化，以及 StateHub alarm → 内部 renderer → StateHub 批量读取 → KV 的循环调用。`--build` 还会在已初始化的隔离 Worker 存活期间，把 `NEXT_PUBLIC_BACKEND_URL` 和在线人数源指向该本地地址并运行生产构建。退出时清理临时状态，不使用生产绑定或凭据。
 
 SQLite 初始化、迁移与权限见 [后端架构](../../docs/state-storage.md)。
 

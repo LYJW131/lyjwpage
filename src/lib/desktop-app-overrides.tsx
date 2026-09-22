@@ -8,9 +8,7 @@ import type { ReactNode } from "react";
 
 import { ClaudeCodeMascot } from "@/components/live/claude-code-mascot";
 import { GhosttyMascot } from "@/components/live/ghostty-mascot";
-
-export const HIDDEN_DESKTOP_BUNDLE_ID =
-  "com.liangyangjunwei.MacTelemetryHub.hidden";
+import { HIDDEN_DESKTOP_BUNDLE_ID } from "@/lib/types";
 
 export interface DesktopAppOverride {
   /** 唯一标识，用于动画与缓存 key */

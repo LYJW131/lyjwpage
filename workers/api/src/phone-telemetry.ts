@@ -4,6 +4,8 @@ import { object } from "@/lib/json";
 import { ACTIVITY_TAG } from "@/lib/live-events";
 import { fanout } from "@api/fanout";
 import { normalizeActivity, writeActivity } from "@api/stores/activity";
+import type { StoredActivity } from "@shared/activity";
+import type { WorkoutsPayload } from "@/lib/types";
 
 /**
  * iPhone 遥测中心的信封。
@@ -31,21 +33,56 @@ type PhoneEnvelope = {
   modules?: unknown;
 };
 
-export async function recordPhoneEnvelope(input: unknown, receivedAt = Date.now()) {
-  // 校验排在任何 I/O 之前：纯计算，不值得为一封写坏的报文先跑一趟 SQLite
+export type PreparedPhoneEnvelope = {
+  source: "iphone";
+  receivedAt: number;
+  ignored: string[];
+  workouts?: WorkoutsPayload;
+  activity?: StoredActivity;
+  failure?: { stage: "beforeWorkouts" | "beforeActivity"; message: string };
+};
+
+export function preparePhoneEnvelope(input: unknown, receivedAt = Date.now()): PreparedPhoneEnvelope {
   const envelope = object(input) as PhoneEnvelope | null;
   if (!envelope || envelope.version !== 1) {
     throw new Error("手机遥测协议 version 必须为 1");
   }
-  /**
-   * 只有「给了但不是对象」才算写坏。一个模块都没有的信封是合法的空转 ——
-   * 上报器那侧内容没变时压根不会发，但为一封形状正确、只是没带东西的报文回 400
-   * 没有意义，回执里的 `accepted: 0` 已经把这件事说清楚了。
-   */
   if (envelope.modules != null && !object(envelope.modules)) {
     throw new Error("手机遥测请求的 modules 必须是对象");
   }
   const modules = object(envelope.modules) ?? {};
+  const prepared: PreparedPhoneEnvelope = {
+    source: "iphone",
+    receivedAt,
+    ignored: Object.keys(modules).filter((name) => !KNOWN_MODULES.has(name)),
+  };
+  if ("workouts" in modules) {
+    try { prepared.workouts = normalizeWorkouts(modules.workouts, receivedAt); }
+    catch (error) {
+      prepared.failure = {
+        stage: "beforeWorkouts",
+        message: error instanceof Error ? error.message : String(error),
+      };
+      return prepared;
+    }
+  }
+  if ("activity" in modules) {
+    try { prepared.activity = normalizeActivity(modules.activity, receivedAt); }
+    catch (error) {
+      prepared.failure = {
+        stage: "beforeActivity",
+        message: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+  return prepared;
+}
+
+export async function recordPhoneEnvelope(input: unknown, receivedAt = Date.now()) {
+  return commitPreparedPhoneEnvelope(preparePhoneEnvelope(input, receivedAt));
+}
+
+export async function commitPreparedPhoneEnvelope(prepared: PreparedPhoneEnvelope) {
 
   const writes: Promise<unknown>[] = [];
   const tags: string[] = [];
@@ -56,7 +93,7 @@ export async function recordPhoneEnvelope(input: unknown, receivedAt = Date.now(
    * 唯一看得见这件事的地方就是这个回执 —— 否则表现是「那份数据一直没出现」，
    * 而两边都不报错。
    */
-  const ignored = Object.keys(modules).filter((name) => !KNOWN_MODULES.has(name));
+  const { ignored } = prepared;
   let accepted = 0;
 
   /**
@@ -67,13 +104,15 @@ export async function recordPhoneEnvelope(input: unknown, receivedAt = Date.now(
    * 上响应一返回随手就被掐掉。Mac 那侧踩过这个坑，见 lib/telemetry 里同样的形状。
    */
   try {
-    if ("workouts" in modules) {
-      writes.push(writeWorkouts(normalizeWorkouts(modules.workouts, receivedAt)));
+    if (prepared.failure?.stage === "beforeWorkouts") throw new Error(prepared.failure.message);
+    if (prepared.workouts) {
+      writes.push(writeWorkouts(prepared.workouts));
       tags.push(STATUS_VIEWS.workouts.tag);
       accepted += 1;
     }
-    if ("activity" in modules) {
-      writes.push(writeActivity(normalizeActivity(modules.activity, receivedAt)));
+    if (prepared.failure?.stage === "beforeActivity") throw new Error(prepared.failure.message);
+    if (prepared.activity) {
+      writes.push(writeActivity(prepared.activity));
       tags.push(ACTIVITY_TAG);
       accepted += 1;
     }

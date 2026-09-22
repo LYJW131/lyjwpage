@@ -6,7 +6,7 @@ export interface PublicationSql {
 }
 const COALESCE_MS = 2_000;
 const RETRY_MS = 60_000;
-/** Renders call external APIs from the DO alarm; a hung one must not stall the TTL sweeper. */
+/** The alarm awaits an ordinary-Worker renderer; a hung render must not stall the TTL sweeper. */
 const RENDER_TIMEOUT_MS = 15_000;
 
 async function boundedRender(render: () => Promise<Response>, timeoutMs: number): Promise<Response> {

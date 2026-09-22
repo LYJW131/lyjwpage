@@ -1,5 +1,5 @@
-import { journalKey, JOURNAL_SUBJECTS, parseJournalEntry, type JournalEntry, type JournalSubject } from "@shared/state-journal";
-import type { StorageClient } from "@shared/storage-client";
+import { JOURNAL_LIMIT, JOURNAL_SUBJECTS, journalKey, parseJournalEntry, type JournalEntry, type JournalSubject } from "@shared/state-journal";
+import type { StorageCommand } from "@shared/storage-contract";
 
 import type { ArchiveSql, PulseArchiveDb } from "./pulse-archive";
 
@@ -11,49 +11,71 @@ function reason(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+export type StateJournalSubjectSnapshot = {
+  subject: JournalSubject;
+  watermark: number;
+  /** Raw authoritative rows; parsing and sorting are Worker work. */
+  rows: string[];
+  /** A broken subject remains isolated inside the single coordinator RPC. */
+  error?: string;
+};
+
+export type StateJournalSnapshot = { subjects: StateJournalSubjectSnapshot[] };
+
+/** RPC shape implemented by StateHub and consumed by the ordinary Worker executor. */
+export interface StateJournalCoordinator {
+  readStateJournal(): Promise<StateJournalSnapshot>;
+  confirmStateJournal(subject: JournalSubject, t: number): Promise<number>;
+}
+
 /**
- * 把 StateHub 的状态变更镜像进 D1。
- *
- * 和 pulse 归档同一套规矩：cron 每分钟驱动，不挂在上报的成功与否上（上报当时
- * 已经把热数据写进 StateHub）。水位线是已归档的最大 `t`，只有 batch 落地后才
- * 前进；失败留在原处，下一分钟整段重试。`INSERT OR IGNORE` 让重放无害。
+ * Durable state half of the display-state journal. It exposes one bounded
+ * snapshot RPC and monotonic acknowledgements; it never talks to D1.
  */
-export class StateJournalArchive {
+export class StateJournalArchiveState implements StateJournalCoordinator {
   private sql: ArchiveSql;
-  private db: PulseArchiveDb;
-  private storage: StorageClient;
-  private chunkSize: number;
-  private log: (subject: string, error: unknown) => void;
-  private running = false;
+  private execute: (commands: StorageCommand[]) => unknown[];
 
   constructor(options: {
     sql: ArchiveSql;
-    db: PulseArchiveDb;
-    storage: StorageClient;
-    chunkSize?: number;
-    log?: (subject: string, error: unknown) => void;
+    execute: (commands: StorageCommand[]) => unknown[];
   }) {
     this.sql = options.sql;
-    this.db = options.db;
-    this.storage = options.storage;
-    this.chunkSize = options.chunkSize ?? CHUNK_SIZE;
-    this.log = options.log ?? ((subject, error) => console.warn("[state-journal]", subject, reason(error)));
+    this.execute = options.execute;
   }
 
-  async run(): Promise<void> {
-    if (this.running) return;
-    this.running = true;
-    try {
-      for (const subject of JOURNAL_SUBJECTS) {
-        try {
-          await this.archiveSubject(subject);
-        } catch (error) {
-          this.log(subject, error);
-        }
+  async readStateJournal(): Promise<StateJournalSnapshot> {
+    const subjects: StateJournalSubjectSnapshot[] = [];
+    for (const subject of JOURNAL_SUBJECTS) {
+      try {
+        const rows = this.execute([{
+          op: "listRange",
+          key: journalKey(subject),
+          start: 0,
+          stop: JOURNAL_LIMIT - 1,
+        }])[0] as string[];
+        subjects.push({ subject, watermark: this.watermark(subject), rows });
+      } catch (error) {
+        subjects.push({ subject, watermark: 0, rows: [], error: reason(error) });
       }
-    } finally {
-      this.running = false;
     }
+    return { subjects };
+  }
+
+  async confirmStateJournal(subject: JournalSubject, t: number): Promise<number> {
+    if (!(JOURNAL_SUBJECTS as readonly string[]).includes(subject) || !Number.isSafeInteger(t) || t < 0) {
+      throw new Error("Invalid state journal confirmation");
+    }
+    this.sql.exec(
+      `INSERT INTO metadata(key, value) VALUES (?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = CASE
+         WHEN CAST(excluded.value AS INTEGER) > CAST(metadata.value AS INTEGER) THEN excluded.value
+         ELSE metadata.value
+       END`,
+      WATERMARK_PREFIX + subject,
+      String(t),
+    );
+    return this.watermark(subject);
   }
 
   private watermark(subject: JournalSubject): number {
@@ -61,38 +83,65 @@ export class StateJournalArchive {
     const at = Number(row?.value);
     return Number.isFinite(at) ? at : 0;
   }
+}
 
-  private advance(subject: JournalSubject, t: number): void {
-    this.sql.exec(
-      "INSERT INTO metadata(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-      WATERMARK_PREFIX + subject,
-      String(t),
-    );
+/**
+ * Ordinary Worker half of the display-state journal.
+ *
+ * Cron drives this once a minute. Ingest has already appended the hot row to
+ * StateHub; this only mirrors it. The watermark is the largest archived `t`.
+ * It advances only after `INSERT OR IGNORE` lands, and only forward, so a
+ * failed or older chunk is replayed next minute. One subject failing does not
+ * block the others.
+ */
+export class StateJournalArchive {
+  private coordinator: StateJournalCoordinator;
+  private db: PulseArchiveDb;
+  private chunkSize: number;
+  private log: (subject: string, error: unknown) => void;
+
+  constructor(options: {
+    coordinator: StateJournalCoordinator;
+    db: PulseArchiveDb;
+    chunkSize?: number;
+    log?: (subject: string, error: unknown) => void;
+  }) {
+    this.coordinator = options.coordinator;
+    this.db = options.db;
+    this.chunkSize = options.chunkSize ?? CHUNK_SIZE;
+    this.log = options.log ?? ((subject, error) => console.warn("[state-journal]", subject, reason(error)));
   }
 
-  private async pending(subject: JournalSubject): Promise<JournalEntry[]> {
-    const watermark = this.watermark(subject);
-    const rows = await this.storage.listRange(journalKey(subject), 0, -1);
-    const entries: JournalEntry[] = [];
-    for (const raw of rows) {
-      const entry = parseJournalEntry(raw);
-      if (entry && entry.t > watermark) entries.push(entry);
+  async run(): Promise<void> {
+    const snapshot = await this.coordinator.readStateJournal();
+    for (const subject of snapshot.subjects) {
+      try {
+        await this.archiveSubject(subject);
+      } catch (error) {
+        this.log(subject.subject, error);
+      }
     }
-    return entries.sort((a, b) => a.t - b.t);
   }
 
-  private async archiveSubject(subject: JournalSubject): Promise<void> {
-    const entries = await this.pending(subject);
+  private async archiveSubject(snapshot: StateJournalSubjectSnapshot): Promise<void> {
+    if (snapshot.error) throw new Error(snapshot.error);
+    const entries: JournalEntry[] = [];
+    for (const raw of snapshot.rows) {
+      const entry = parseJournalEntry(raw);
+      if (entry && entry.t > snapshot.watermark) entries.push(entry);
+    }
+    entries.sort((a, b) => a.t - b.t);
     if (!entries.length) return;
+
     for (let at = 0; at < entries.length; at += this.chunkSize) {
       const chunk = entries.slice(at, at + this.chunkSize);
       await this.db.batch(chunk.map((entry) => this.db.prepare(INSERT).bind(
-        subject,
+        snapshot.subject,
         entry.t,
         entry.at,
         JSON.stringify(entry.state ?? null),
       )));
-      this.advance(subject, chunk[chunk.length - 1].t);
+      await this.coordinator.confirmStateJournal(snapshot.subject, chunk[chunk.length - 1].t);
     }
   }
 }

@@ -4,6 +4,7 @@
     "desktop": {
       "applicationName": "Ghostty",
       "bundleIdentifier": "com.mitchellh.ghostty",
+      "windowTitle": "~/Developer/lyjwpage — zsh — 160×48",
       "iconUrl": null,
       "observedAt": "$now-3000"
     },

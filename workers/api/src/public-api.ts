@@ -1,6 +1,6 @@
 import { GET as lyricsGet } from "./routes/lyrics/route";
 import { GET as motionArtworkGet } from "./routes/motion-artwork/route";
-import { get as cacheGet, put as cachePut, remove as cacheRemove } from "@/lib/cache";
+import { get as cacheGet, put as cachePut } from "@/lib/cache";
 import { publicHomeSnapshot } from "@/lib/public-home";
 import {
   sinceDateParam,
@@ -15,6 +15,15 @@ import {
   pathByEvent,
   viewKeyByPath,
 } from "@/lib/status-views";
+import {
+  DEV_OVERRIDE_ENABLED_KEY,
+  DEV_OVERRIDE_INDEX_KEY,
+  DEV_OVERRIDE_KEY,
+  DEV_OVERRIDE_PREFIX,
+  DEV_OVERRIDES_LIST_PATH,
+  DEV_OVERRIDE_TTL_MS,
+} from "./dev-overrides";
+import { currentContext } from "./runtime";
 
 const extraRoutes: Record<string, (request: Request) => Promise<Response>> = {
   "/api/lyrics": lyricsGet,
@@ -96,15 +105,13 @@ async function overlayResponse(local: Response, load: () => Promise<unknown>): P
  * 存在本地 SQLite 里（7 天），wrangler 热重载不会丢。现成夹具在 dev-fixtures/，
  * 用 `pnpm dev:override` 推。
  */
-const DEV_OVERRIDE_PREFIX = "/api/dev/override";
-const DEV_OVERRIDES_LIST_PATH = "/api/dev/overrides";
-const DEV_OVERRIDE_KEY = "dev-override:";
-const DEV_OVERRIDE_INDEX_KEY = "dev-override-index";
-/** 总开关：关着时夹具都还在，只是不生效。页面右下角那粒「Fake data」胶囊拨的就是它 */
-const DEV_OVERRIDE_ENABLED_KEY = "dev-override-enabled";
-const DEV_OVERRIDE_TTL_MS = 7 * 86_400_000;
-
 const devOverridesEnabled = (): boolean => process.env.DEV_OVERRIDES?.trim() === "true";
+
+/** Reject known-missing API paths before paying for a StateHub visibility barrier. */
+export function isPublicApiPath(path: string): boolean {
+  if (path === "/api/home" || Object.hasOwn(extraRoutes, path) || viewKeyByPath(path)) return true;
+  return devOverridesEnabled() && (path === DEV_OVERRIDES_LIST_PATH || path.startsWith(`${DEV_OVERRIDE_PREFIX}/`));
+}
 
 /**
  * 推送事件名 → 端点路径，给上游推送中继替换 payload 用。
@@ -133,15 +140,15 @@ async function overridesSwitchedOn(): Promise<boolean> {
 }
 
 async function writeOverride(path: string, envelope: Envelope): Promise<void> {
-  await cachePut(`${DEV_OVERRIDE_KEY}${path}`, envelope, DEV_OVERRIDE_TTL_MS);
-  const index = await listOverrides();
-  if (!index.includes(path)) await cachePut(DEV_OVERRIDE_INDEX_KEY, [...index, path], DEV_OVERRIDE_TTL_MS);
+  const { env } = currentContext();
+  const hub = env.STATE.get(env.STATE.idFromName("global"));
+  await hub.updateDevOverride(path, JSON.stringify(envelope));
 }
 
 async function clearOverride(path: string): Promise<void> {
-  await cacheRemove(`${DEV_OVERRIDE_KEY}${path}`);
-  const index = await listOverrides();
-  await cachePut(DEV_OVERRIDE_INDEX_KEY, index.filter((item) => item !== path), DEV_OVERRIDE_TTL_MS);
+  const { env } = currentContext();
+  const hub = env.STATE.get(env.STATE.idFromName("global"));
+  await hub.updateDevOverride(path, null);
 }
 
 function statusHeaders(): HeadersInit {

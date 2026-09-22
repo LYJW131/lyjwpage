@@ -8,6 +8,7 @@ import { installStorageForTests, resetStorageForTests } from "@/lib/storage";
 import { FakeStorage } from "@/lib/testing/fake-storage";
 import type { PulseDomain, PulseSample } from "@/lib/types";
 import { withRequestState } from "@shared/request-state";
+import { journalKey, type JournalEntry } from "@shared/state-journal";
 import { requestStore, type Env } from "@api/runtime";
 import { recordEmbyReport } from "@api/stores/emby";
 import { recordTelemetryEnvelope } from "@api/stores/telemetry";
@@ -231,6 +232,51 @@ test("Emby 只推位置更新时，watching 的 hint 沿用存着的标题", asy
     assert.deepEqual(await samples(storage, "watching"), [
       { t: T0, level: 3, hint: "Frieren" },
       { t: paused, level: 2, hint: "Frieren" },
+    ]);
+  } finally {
+    resetStorageForTests();
+  }
+});
+
+test("位置更新不带 item 时，watching-now 存档沿用标题，纯进度不新开一行", async () => {
+  const storage = new FakeStorage();
+  installStorageForTests(storage);
+  try {
+    await inRequest(() =>
+      recordEmbyReport(
+        {
+          playing: {
+            itemId: "42",
+            paused: false,
+            positionTicks: 0,
+            runTimeTicks: 36_000_000_000,
+            item: { id: "42", name: "Frieren", type: "Series" },
+          },
+        },
+        T0,
+      ),
+    );
+    await inRequest(() =>
+      recordEmbyReport(
+        { playing: { itemId: "42", paused: false, positionTicks: 5_000_000, runTimeTicks: 36_000_000_000 } },
+        T0 + 30_000,
+      ),
+    );
+    const paused = T0 + 60_000;
+    await inRequest(() =>
+      recordEmbyReport(
+        { playing: { itemId: "42", paused: true, positionTicks: 6_000_000, runTimeTicks: 36_000_000_000 } },
+        paused,
+      ),
+    );
+    const rows = (await storage.listRange(journalKey("watching-now"), 0, -1))
+      .map((raw) => JSON.parse(raw) as JournalEntry);
+    assert.deepEqual(rows.map((row) => {
+      const state = row.state as { playing: boolean; title: string | null; paused?: boolean };
+      return [row.t, state.playing, state.title, state.paused];
+    }), [
+      [T0, true, "Frieren", false],
+      [paused, true, "Frieren", true],
     ]);
   } finally {
     resetStorageForTests();

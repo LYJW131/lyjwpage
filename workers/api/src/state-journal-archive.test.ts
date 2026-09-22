@@ -2,16 +2,15 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
 
-import { StorageClient } from "@shared/storage-client";
 import type { StorageCommand } from "@shared/storage-contract";
 import { JOURNAL_SUBJECTS, journalKey, type JournalSubject } from "@shared/state-journal";
 import type { ArchiveSql, PulseArchiveDb } from "./pulse-archive.ts";
 
-import { StateJournalArchive } from "./state-journal-archive.ts";
+import { StateJournalArchive, StateJournalArchiveState } from "./state-journal-archive.ts";
 
 /**
  * 状态存档守的是「没落地的变更不能记成已归档」。水位线在真 SQLite 上，
- * D1 只记录每条 bind 过的值。
+ * D1 只记录每条 bind 过的值。普通 Worker 写 D1，StateHub 只提供快照和确认。
  */
 
 type Row = [string, number, number, string];
@@ -44,11 +43,12 @@ function setup(options: {
     stored.set(journalKey(subject as JournalSubject), rows);
   }
   let reads = 0;
-  const storage = new StorageClient(async (commands: StorageCommand[]) => commands.map((command) => {
+  const execute = (commands: StorageCommand[]) => commands.map((command) => {
     assert.equal(command.op, "listRange");
     reads += 1;
     return stored.get(command.key) ?? [];
-  }));
+  });
+  const state = new StateJournalArchiveState({ sql, execute });
   const batches: Row[][] = [];
   const archiveDb: PulseArchiveDb = {
     prepare(query) {
@@ -64,9 +64,8 @@ function setup(options: {
   };
   const logged: string[] = [];
   const archive = new StateJournalArchive({
-    sql,
+    coordinator: state,
     db: archiveDb,
-    storage,
     chunkSize: options.chunkSize,
     log: (subject, error) => logged.push(`${subject}: ${error instanceof Error ? error.message : String(error)}`),
   });
@@ -152,4 +151,15 @@ test("state journal archive advances the watermark per chunk and skips corrupt r
   assert.deepEqual(world.rows().map((row) => row[1]), [1, 3]);
   assert.equal(world.watermark("activity"), "3");
   assert.deepEqual(world.logged, []);
+});
+
+test("state journal archive does not rewind a watermark that is already ahead", async () => {
+  const world = setup({ lists: { desktop: [
+    { t: 10, state: { applicationName: "Cursor" } },
+  ] } });
+  await world.archive.run();
+  assert.equal(world.watermark("desktop"), "10");
+  await world.archive.run();
+  assert.equal(world.watermark("desktop"), "10");
+  assert.equal(world.rows().length, 1);
 });

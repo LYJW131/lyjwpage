@@ -17,7 +17,7 @@ import {
   type StoredHomePod,
 } from "@/lib/homepod-store";
 import { number, object, text } from "@/lib/json";
-import { CHARGER_TAG, DESKTOP_TAG, NOW_LISTENING_TAG, POWERBANK_TAG, TIMEZONE_TAG, VIBECODING_TAG, VIBECODING_YEAR_TAG, type LiveEvent } from "@/lib/live-events";
+import { CHARGER_TAG, DESKTOP_TAG, NOW_LISTENING_TAG, POWERBANK_TAG, TIMEZONE_TAG, VIBECODING_TAG, VIBECODING_YEAR_TAG } from "@/lib/live-events";
 import { pickNowListening } from "@/lib/now-listening";
 import {
   normalizePlayingQueue,
@@ -29,13 +29,17 @@ import { readPowerBankState } from "@/lib/powerbank-store";
 import { IMAGE_OBJECT_KEY } from "@/lib/asset-url";
 import { VIBECODING_STALE_MS } from "@/lib/freshness";
 import { nextLiveness, readLiveness, type Liveness } from "@/lib/reporter-liveness";
+import { HIDDEN_DESKTOP_BUNDLE_ID } from "@/lib/types";
 import type {
   ChargerStatus,
   LocalNowPlaying,
+  PowerBankStatus,
+  StoredVibeCodingYear,
   TimezoneActivity,
   VibeCodingNowPayload,
 } from "@/lib/types";
 import { fanout, type PendingEvent } from "@api/fanout";
+import type { ListeningEffect } from "@api/ingest-effects";
 import { recordPulse } from "@api/stores/pulse";
 import { recordStateChange } from "@api/stores/state-journal";
 import { desktopState, listeningDeviceState, timezoneState } from "@shared/state-journal";
@@ -45,10 +49,11 @@ import { prepareHeartbeat, prepareStatus } from "@api/stores/charger-store";
 import { writeSettlingAt } from "@api/stores/charging-settling";
 import { prepareStatus as preparePowerBankStatus } from "@api/stores/powerbank-store";
 import { writeLiveness } from "@api/stores/reporter-liveness";
-import { prepareVibeCodingNow, prepareVibeCodingUsage } from "@api/stores/vibecoding";
-import { prepareVibeCodingYear } from "@api/stores/vibecoding-year-store";
+import { prepareVibeCodingNow, prepareVibeCodingNowPayload, prepareVibeCodingUsage, prepareVibeCodingUsagePayload } from "@api/stores/vibecoding";
+import { prepareVibeCodingYear, prepareVibeCodingYearPayload } from "@api/stores/vibecoding-year-store";
+import type { ParsedVibeCodingNow, ParsedVibeCodingUsage } from "@/lib/vibecoding-parse";
 import { nowMirror } from "@shared/vibecoding";
-import { activeDesktop, DESKTOP_ICON_CACHE_LIMIT, desktopPayload, mirror, type PersistedTelemetry, snapshotFrom, bareSnapshotFrom, type StoredDesktopActivity, syncTelemetryState, telemetryState } from "@shared/telemetry";
+import { activeDesktop, DESKTOP_ICON_CACHE_LIMIT, desktopPayload, mirror, type PersistedTelemetry, bareSnapshotFrom, type StoredDesktopActivity, syncTelemetryState, telemetryState } from "@shared/telemetry";
 
 type TelemetryPatch = {
   desktop?: StoredDesktopActivity | null;
@@ -102,6 +107,38 @@ type TelemetryEnvelope = {
   modules?: unknown;
 };
 
+type PreparedDesktop = {
+  activity: StoredDesktopActivity | null;
+  iconHash: string | null;
+  iconObjectKey: string | null;
+};
+
+export type PreparedTelemetryEnvelope = {
+  source: "mac";
+  receivedAt: number;
+  presence: "online" | "offline";
+  activeModules: string[];
+  modules: {
+    chargingDevices?: {
+      charger: ChargerStatus | null;
+      powerBank: PowerBankStatus | null;
+      failureAfterCharger?: string;
+    };
+    desktop?: PreparedDesktop;
+    timezone?: TimezoneActivity | null;
+    appleMusic?: { music: LocalNowPlaying | null; upcomingTracks: PlayingQueueTrack[] };
+    appleMusicCredentials?: { musicUserToken: string };
+    vibeCodingUsage?: ParsedVibeCodingUsage;
+    vibeCodingNow?: ParsedVibeCodingNow;
+    vibeCodingYear?: Omit<StoredVibeCodingYear, "pushedAt">;
+  };
+  /** 晚模块失败仍要让 DO 在原执行位置抛错，保留此前已承诺的写。 */
+  failure?: {
+    stage: "beforeCharging" | "beforeDesktop" | "beforeTimezone" | "beforeAppleMusic" | "beforeAppleMusicCredentials";
+    message: string;
+  };
+};
+
 function milliseconds(value: unknown, fallback = Date.now()) {
   const parsed = number(value);
   if (parsed == null) return fallback;
@@ -118,15 +155,16 @@ function rememberDesktopIcon(hash: string, objectKey: string) {
   }
 }
 
-async function normalizeDesktop(
+function normalizeDesktop(
   value: unknown,
   receivedAt: number,
-): Promise<{ activity: StoredDesktopActivity | null; iconAvailable: boolean }> {
+): PreparedDesktop {
   const row = object(value);
-  if (!row) return { activity: null, iconAvailable: true };
+  if (!row) return { activity: null, iconHash: null, iconObjectKey: null };
   const applicationName = text(row.applicationName);
   if (!applicationName) throw new Error("desktop 模块缺少 applicationName");
   const bundleIdentifier = text(row.bundleIdentifier);
+  const windowTitle = normalizeWindowTitle(row.windowTitle, bundleIdentifier);
   const iconHash = text(row.iconHash);
   if (iconHash != null && !/^[a-f0-9]{64}$/.test(iconHash)) {
     throw new Error("desktop.iconHash 必须是 SHA-256 十六进制字符串");
@@ -159,23 +197,46 @@ async function normalizeDesktop(
   // 站点不在名称上报的热路径里 HEAD：上报器在后台 resolver 里先查后写，
   // 并按五分钟窗口复验，桶被清空时由它原地补回同一个内容地址。这里信任它
   // 已确认的对象键，避免图片存储的一次慢响应拖住整次前台切换。
-  if (iconObjectKey && iconHash) {
-    rememberDesktopIcon(iconHash, iconObjectKey);
-  }
-
-  const storedIconObjectKey = iconHash
-    ? (telemetryState.desktopIconAssets.get(iconHash) ?? null)
-    : null;
-  if (iconHash && storedIconObjectKey) rememberDesktopIcon(iconHash, storedIconObjectKey);
   return {
     activity: {
       applicationName,
       bundleIdentifier,
-      iconObjectKey: storedIconObjectKey,
+      windowTitle,
+      iconObjectKey: null,
       observedAt: milliseconds(row.observedAt, receivedAt),
     },
-    iconAvailable: iconHash == null || storedIconObjectKey != null,
+    iconHash,
+    iconObjectKey,
   };
+}
+
+/** 窗口标题的长度上限，按码点算。够放完整的文件路径或网页标题，又不至于当作日志用。 */
+const WINDOW_TITLE_MAX = 200;
+
+/**
+ * 当前窗口标题。缺席、null、空白都归 null —— 「没有标题」只有这一种表示。
+ *
+ * 类型不对要炸：标题是上报侧直接透传的系统值，收到数字或对象说明那边的取值
+ * 路径错了，静默收敛成 null 只会让它一直错下去。超长则截断不报错，标题长短
+ * 由用户此刻打开的文件决定，不是上报器的毛病。
+ *
+ * 按码点截：CJK 和 emoji 的标题很常见，按 UTF-16 码元切会把代理对劈成两半，
+ * 留下一个永远画不出来的半字符。
+ *
+ * 前台应用被隐藏时强制清空：占位 bundle id 的意思就是「这一刻不许对外说我在干
+ * 什么」，应用名已经是占位符，标题不跟着清等于从后门把它漏出去。
+ */
+function normalizeWindowTitle(value: unknown, bundleIdentifier: string | null) {
+  if (value != null && typeof value !== "string") {
+    throw new Error("desktop.windowTitle 必须是字符串或 null");
+  }
+  if (bundleIdentifier === HIDDEN_DESKTOP_BUNDLE_ID) return null;
+  const title = text(value);
+  if (title == null) return null;
+  const points = [...title];
+  return points.length > WINDOW_TITLE_MAX
+    ? points.slice(0, WINDOW_TITLE_MAX).join("")
+    : title;
 }
 
 function normalizeTimezone(
@@ -194,10 +255,10 @@ function normalizeTimezone(
   };
 }
 
-async function normalizeMusic(
+function normalizeMusic(
   value: unknown,
   receivedAt: number,
-): Promise<LocalNowPlaying | null> {
+): LocalNowPlaying | null {
   const row = object(value);
   if (!row) return null;
   const rawState = text(row.state);
@@ -221,6 +282,110 @@ async function normalizeMusic(
   };
 }
 
+export function prepareTelemetryEnvelope(input: unknown, receivedAt = Date.now()): PreparedTelemetryEnvelope {
+  const envelope = object(input) as TelemetryEnvelope | null;
+  if (!envelope || envelope.version !== 4) throw new Error("遥测协议 version 必须为 4");
+  if (number(envelope.heartbeatAt) == null) throw new Error("遥测请求缺少 heartbeatAt");
+  if (!Array.isArray(envelope.activeModules)) throw new Error("遥测请求缺少 activeModules");
+  const activeModules = envelope.activeModules.filter(
+    (value): value is string => typeof value === "string",
+  );
+  if (activeModules.length !== envelope.activeModules.length) {
+    throw new Error("activeModules 只能包含字符串");
+  }
+  const presence = text(envelope.presence);
+  if (presence !== "online" && presence !== "offline") {
+    throw new Error("遥测请求的 presence 必须是 online 或 offline");
+  }
+  const normalizedPresence: "online" | "offline" = presence;
+  if (envelope.modules != null && !object(envelope.modules)) {
+    throw new Error("遥测请求的 modules 必须是对象");
+  }
+  const raw = object(envelope.modules) ?? {};
+
+  // 这三份原本就先全校验；任一坏掉时连 liveness 都不落，保持既有契约。
+  const codingUsage = "vibeCodingUsage" in raw
+    ? prepareVibeCodingUsage(raw.vibeCodingUsage, receivedAt).payload
+    : undefined;
+  const codingNow = "vibeCodingNow" in raw
+    ? prepareVibeCodingNow(raw.vibeCodingNow, receivedAt).payload
+    : undefined;
+  const codingYear = "vibeCodingYear" in raw
+    ? prepareVibeCodingYear(raw.vibeCodingYear, receivedAt).payload
+    : undefined;
+
+  const modules: PreparedTelemetryEnvelope["modules"] = {};
+  const fail = (
+    stage: NonNullable<PreparedTelemetryEnvelope["failure"]>["stage"],
+    error: unknown,
+  ): PreparedTelemetryEnvelope => ({
+    source: "mac" as const,
+    receivedAt,
+    presence: normalizedPresence,
+    activeModules,
+    modules,
+    failure: { stage, message: error instanceof Error ? error.message : String(error) },
+  });
+
+  if ("chargingDevices" in raw) {
+    try {
+      const devices = object(raw.chargingDevices) as RawChargingDevices | null;
+      if (!devices) throw new Error("chargingDevices 模块必须是对象");
+      const charger = pickCharger(devices);
+      if (charger && !charger.updatedAt) throw new Error("chargingDevices 里的充电头缺少 updatedAt");
+      modules.chargingDevices = {
+        charger: charger ? normalizeChargingDevice(charger) : null,
+        powerBank: null,
+      };
+      try {
+        const powerBank = pickPowerBank(devices);
+        if (powerBank && !powerBank.updatedAt) {
+          throw new Error("chargingDevices 里的充电宝缺少 updatedAt");
+        }
+        modules.chargingDevices.powerBank = powerBank ? normalizePowerBank(powerBank) : null;
+      } catch (error) {
+        modules.chargingDevices.failureAfterCharger =
+          error instanceof Error ? error.message : String(error);
+        return { source: "mac", receivedAt, presence: normalizedPresence, activeModules, modules };
+      }
+    } catch (error) {
+      return fail("beforeCharging", error);
+    }
+  }
+  if ("desktop" in raw) {
+    try { modules.desktop = normalizeDesktop(raw.desktop, receivedAt); }
+    catch (error) { return fail("beforeDesktop", error); }
+  }
+  if ("timezone" in raw) {
+    try { modules.timezone = normalizeTimezone(raw.timezone, receivedAt); }
+    catch (error) { return fail("beforeTimezone", error); }
+  }
+  if ("appleMusic" in raw) {
+    try {
+      const musicRow = object(raw.appleMusic);
+      const music = normalizeMusic(raw.appleMusic, receivedAt);
+      modules.appleMusic = {
+        music,
+        upcomingTracks: musicRow ? upcomingFromMusicRow(musicRow, music?.title ?? null) : [],
+      };
+    } catch (error) {
+      return fail("beforeAppleMusic", error);
+    }
+  }
+  if ("appleMusicCredentials" in raw) {
+    try {
+      modules.appleMusicCredentials = parseAppleMusicCredentials(raw.appleMusicCredentials);
+    } catch (error) {
+      return fail("beforeAppleMusicCredentials", error);
+    }
+  }
+  if (codingUsage) modules.vibeCodingUsage = codingUsage;
+  if (codingNow) modules.vibeCodingNow = codingNow;
+  if (codingYear) modules.vibeCodingYear = codingYear;
+
+  return { source: "mac", receivedAt, presence: normalizedPresence, activeModules, modules };
+}
+
 function upcomingFromMusicRow(row: Record<string, unknown>, title: string | null) {
   return upcomingQueueTracks(normalizePlayingQueue(row.queue), title);
 }
@@ -236,41 +401,19 @@ function upcomingFromMusicRow(row: Record<string, unknown>, title: string | null
  * 现在只有这一条路：每条信封都刷新存活，声明翻转时发一次 presence 事件。
  */
 export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.now()) {
-  // 校验排在任何 I/O 之前：纯计算，不值得为一封写坏的报文先跑一趟 SQLite
-  const envelope = object(input) as TelemetryEnvelope | null;
-  if (!envelope || envelope.version !== 4) throw new Error("遥测协议 version 必须为 4");
-  if (number(envelope.heartbeatAt) == null) throw new Error("遥测请求缺少 heartbeatAt");
-  if (!Array.isArray(envelope.activeModules)) throw new Error("遥测请求缺少 activeModules");
-  const nextActiveModules = envelope.activeModules.filter(
-    (value): value is string => typeof value === "string",
-  );
-  if (nextActiveModules.length !== envelope.activeModules.length) {
-    throw new Error("activeModules 只能包含字符串");
-  }
-  const presence = text(envelope.presence);
-  if (presence !== "online" && presence !== "offline") {
-    throw new Error("遥测请求的 presence 必须是 online 或 offline");
-  }
-  /**
-   * modules 省略或为空 = 纯心跳。
-   *
-   * 只有「给了但不是对象」才算写坏 —— 那是上报器组包出了错，不能默默当成心跳
-   * 收下，否则真实的模块数据丢了也没人知道。
-   */
-  if (envelope.modules != null && !object(envelope.modules)) {
-    throw new Error("遥测请求的 modules 必须是对象");
-  }
-  const modules = object(envelope.modules) ?? {};
-  // 三份 coding 快照必须全部合法才允许开始写。否则 year 写坏时，usage / now
-  // 已经调用 commit，会在返回 400 的同时留下半份更新。
-  const codingUsage = "vibeCodingUsage" in modules
-    ? prepareVibeCodingUsage(modules.vibeCodingUsage, receivedAt)
+  return commitPreparedTelemetryEnvelope(prepareTelemetryEnvelope(input, receivedAt));
+}
+
+export async function commitPreparedTelemetryEnvelope(command: PreparedTelemetryEnvelope) {
+  const { receivedAt, presence, activeModules: nextActiveModules, modules } = command;
+  const codingUsage = modules.vibeCodingUsage
+    ? prepareVibeCodingUsagePayload(modules.vibeCodingUsage, receivedAt)
     : null;
-  const codingNow = "vibeCodingNow" in modules
-    ? prepareVibeCodingNow(modules.vibeCodingNow, receivedAt)
+  const codingNow = modules.vibeCodingNow
+    ? prepareVibeCodingNowPayload(modules.vibeCodingNow, receivedAt)
     : null;
-  const codingYear = "vibeCodingYear" in modules
-    ? prepareVibeCodingYear(modules.vibeCodingYear, receivedAt)
+  const codingYear = modules.vibeCodingYear
+    ? prepareVibeCodingYearPayload(modules.vibeCodingYear, receivedAt)
     : null;
 
   /**
@@ -330,7 +473,12 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
   const writes: Promise<unknown>[] = [];
   const events: PendingEvent[] = [];
   const notify: PendingEvent[] = [];
+  const listening: ListeningEffect[] = [];
   const tags: string[] = [];
+  // 这三组都依赖 telemetry fields 真正落库；较晚模块失败时不能推一份未持久化状态。
+  const telemetryEvents: PendingEvent[] = [];
+  const telemetryListening: ListeningEffect[] = [];
+  const telemetryTags: string[] = [];
 
   let accepted = 0;
   let desktopIconAvailable: boolean | undefined;
@@ -374,8 +522,11 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
    *
    * 注意等它们的不再是这一层：fanout 走 after()，写和推送都在响应之后跑
    * （见 lib/live-events 的 afterResponse），保住它们的是平台的 waitUntil。
-   */
+  */
   try {
+    if (command.failure?.stage === "beforeCharging") {
+      throw new Error(command.failure.message);
+    }
     /**
      * 充电设备。
      *
@@ -388,14 +539,10 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
      */
     let chargerWritten = false;
     if ("chargingDevices" in modules) {
-      const raw = object(modules.chargingDevices) as RawChargingDevices | null;
-      if (!raw) throw new Error("chargingDevices 模块必须是对象");
-
-      const device = pickCharger(raw);
+      const device = modules.chargingDevices?.charger ?? null;
       // 只开了充电宝模块时列表里就没有充电头。那不是错误，收下心跳即可。
       if (device) {
-        if (!device.updatedAt) throw new Error("chargingDevices 里的充电头缺少 updatedAt");
-        let status = normalizeChargingDevice(device);
+        let status = device;
         if (status.cover?.iconHash && status.cover.iconObjectKey) {
           rememberDesktopIcon(status.cover.iconHash, status.cover.iconObjectKey);
         }
@@ -442,10 +589,13 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
         }
       }
 
-      const bank = pickPowerBank(raw);
+      if (modules.chargingDevices?.failureAfterCharger) {
+        throw new Error(modules.chargingDevices.failureAfterCharger);
+      }
+
+      const bank = modules.chargingDevices?.powerBank ?? null;
       if (bank) {
-        if (!bank.updatedAt) throw new Error("chargingDevices 里的充电宝缺少 updatedAt");
-        const status = normalizePowerBank(bank);
+        const status = bank;
         const landing = preparePowerBankStatus(
           status,
           receivedAt,
@@ -487,34 +637,56 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
       if (state.previous) writes.push(recordChargingPulse(receivedAt, state.previous.status));
     }
 
+    if (command.failure?.stage === "beforeDesktop") {
+      throw new Error(command.failure.message);
+    }
+
     if ("desktop" in modules) {
-      const normalized = await normalizeDesktop(modules.desktop, receivedAt);
-      desktopIconAvailable = normalized.iconAvailable;
+      const normalized = modules.desktop!;
+      if (normalized.iconObjectKey && normalized.iconHash) {
+        rememberDesktopIcon(normalized.iconHash, normalized.iconObjectKey);
+      }
+      const storedIconObjectKey = normalized.iconHash
+        ? (telemetryState.desktopIconAssets.get(normalized.iconHash) ?? null)
+        : null;
+      if (normalized.iconHash && storedIconObjectKey) {
+        rememberDesktopIcon(normalized.iconHash, storedIconObjectKey);
+      }
+      const activity = normalized.activity
+        ? { ...normalized.activity, iconObjectKey: storedIconObjectKey }
+        : null;
+      desktopIconAvailable = normalized.iconHash == null || storedIconObjectKey != null;
       // 名字立刻推。图标没就位也推 —— 卡着不发的话页头会停在上一个应用，
       // 比短暂的占位符更糟。desktopIconAvailable 仍然回给上报器，让它补图。
-      telemetryState.desktop = normalized.activity;
+      telemetryState.desktop = activity;
       telemetryState.activityReceivedAt = receivedAt;
-      patch.desktop = normalized.activity;
+      patch.desktop = activity;
       patch.desktopIconAssets = [...telemetryState.desktopIconAssets];
       accepted += 1;
-      events.push({ type: "desktop", payload: desktopPayload(liveness) });
-      tags.push(DESKTOP_TAG);
+      telemetryEvents.push({ type: "desktop", payload: desktopPayload(liveness) });
+      telemetryTags.push(DESKTOP_TAG);
+    }
+
+    if (command.failure?.stage === "beforeTimezone") {
+      throw new Error(command.failure.message);
     }
 
     if ("timezone" in modules) {
-      telemetryState.timezone = normalizeTimezone(modules.timezone, receivedAt);
+      telemetryState.timezone = modules.timezone ?? null;
       telemetryState.timezoneReceivedAt = receivedAt;
       patch.timezone = telemetryState.timezone;
       // 没有对应的推送事件（时区一年变两次，不值得为它开一路广播），
       // 但首屏那份缓存得知道自己过期了 —— 失效是白给的，广播才是按人头付钱的
-      tags.push(TIMEZONE_TAG);
+      telemetryTags.push(TIMEZONE_TAG);
       accepted += 1;
     }
 
+    if (command.failure?.stage === "beforeAppleMusic") {
+      throw new Error(command.failure.message);
+    }
+
     if ("appleMusic" in modules) {
-      const musicRow = object(modules.appleMusic);
-      const music = await normalizeMusic(modules.appleMusic, receivedAt);
-      const upcomingTracks = musicRow ? upcomingFromMusicRow(musicRow, music?.title ?? null) : [];
+      const { music, upcomingTracks } = modules.appleMusic!;
       telemetryState.music = music;
       telemetryState.upcomingTracks = upcomingTracks;
       telemetryState.activityReceivedAt = receivedAt;
@@ -522,23 +694,26 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
       patch.upcomingTracks = upcomingTracks;
       accepted += 1;
       /**
-       * 这一份还要现算：曲目链接和封面要查一次 Apple 目录。整个交给 fanout 和
-       * 写库并行 —— 慢的是那次目录查询，等它的同时写库正好也在跑。
-       * HomePod 那份快照上面已经发车了（另一个 key，这次上报没碰它）。
+       * 只把本次提交对应的 Mac / HomePod 快照收进 effect。StateHub 确认写入后，
+       * 普通 Worker 才查 Apple 目录并广播；后台不重读“当前曲目”，避免串到下一封。
        */
-      events.push(
-        listeningEvent(liveness, homePod, {
+      telemetryListening.push(
+        listeningEffect(liveness, playableHomePod(await homePod), {
           music,
           receivedAt,
           upcomingTracks,
         }),
       );
-      tags.push(NOW_LISTENING_TAG);
+      telemetryTags.push(NOW_LISTENING_TAG);
+    }
+
+    if (command.failure?.stage === "beforeAppleMusicCredentials") {
+      throw new Error(command.failure.message);
     }
 
     if ("appleMusicCredentials" in modules) {
       // 只有 music user token 来自那台 Mac；developer token 由 Worker 自签，见 musickit-token.ts
-      const { musicUserToken } = parseAppleMusicCredentials(modules.appleMusicCredentials);
+      const { musicUserToken } = modules.appleMusicCredentials!;
       writes.push(putAppleMusicCredentials({ musicUserToken, receivedAt }));
       accepted += 1;
     }
@@ -593,6 +768,9 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
     // persistTelemetryState 就排在所有模块之后。存活不同，见上面。
     // 只 HSET 这封碰过的字段：心跳和换歌并发时，整包 SET 会把 SQLite 里的新歌盖回上一首。
     writes.push(persistTelemetryState(receivedAt, patch, nextActiveModules));
+    events.push(...telemetryEvents);
+    listening.push(...telemetryListening);
+    tags.push(...telemetryTags);
   } finally {
     /**
      * 只在模块真的来了才推。
@@ -605,7 +783,7 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
      * 代价是上报器从离线恢复时，「在线」最迟等下一轮轮询（30 秒）才显示，不再是
      * 收到心跳的那一刻。换来的是推送通道上只跑真正的状态变化。
      */
-    await fanout({ writes, events, notify, tags });
+    await fanout({ writes, events, notify, listening, tags });
   }
 
   return { accepted, heartbeat: true, desktopIconAvailable, chargerCoverIconAvailable };
@@ -621,30 +799,41 @@ export async function recordTelemetryEnvelope(input: unknown, receivedAt = Date.
  * 现在改成 payload 自带 expiresInMs，由浏览器把下一次取数排在那一刻，
  * 服务端只对「收到上报」这一件事做出反应，不欠任何未来的动作。
  *
- * `homePod` 收的是一个还没落地的读 —— 调用方在信封解析完就把它发车了，这里
- * 只负责接住。HomePod 那条入口传的则是刚收下的那份（`Promise.resolve`）：那正是
- * 它自己要写的 key，读回来只会更慢，还可能读到写之前的。
+ * 描述符只带这次提交已经捕获的 Mac、HomePod 与存活快照。普通 Worker 收到提交
+ * 结果后再查 Apple 目录，不能在后台重读“当前曲目”，否则慢查询会串到下一封上报。
  */
-async function listeningEvent(
+function listeningEffect(
   liveness: Liveness,
-  homePod: Promise<StoredHomePod | null>,
+  homePod: StoredHomePod | null,
   mac?: {
     music: LocalNowPlaying | null;
     receivedAt: number;
     upcomingTracks?: PlayingQueueTrack[];
   },
-): Promise<LiveEvent> {
+): ListeningEffect {
+  const source = mac ?? {
+    music: telemetryState.music,
+    receivedAt: telemetryState.activityReceivedAt,
+    upcomingTracks: telemetryState.upcomingTracks,
+  };
   return {
-    type: "listening-now",
-    payload: pickNowListening(await snapshotFrom(await homePod, mac), liveness),
+    kind: "listening",
+    liveness,
+    activeModules: [...telemetryState.activeModules],
+    homePod,
+    mac: {
+      music: source.music,
+      receivedAt: source.receivedAt,
+      upcomingTracks: source.upcomingTracks ?? [],
+    },
   };
 }
 
 /**
  * pulse 序列只仲裁「谁在放」，不查 Apple 目录。
  *
- * HomePod 那次读在信封解析时已经发车；这里只接住，不另开一次 SQLite。
- * Mac 那一侧读已经更新好的工作副本 —— 这封带了 appleMusic 的话它正是新的那份，
+ * HomePod 入口直接使用本次已经规范化并写入的值，不另开一次 SQLite。
+ * Mac 那一侧使用已经更新好的工作副本 —— 这封带了 appleMusic 的话它正是新的那份，
  * 没带就是留着的上一份，两种情形都该按同一套规则重算一次档位。
  *
  * `now` 一律取 `receivedAt`，和样本的 `t` 同一把钟：暂停宽限、HomePod 静默、
@@ -718,17 +907,17 @@ async function recordChargingPulse(receivedAt: number, status: ChargerStatus): P
 }
 
 /**
- * HomePod 那条入口：Mac 工作副本和存活一起发车，推送走带目录的 snapshotFrom，
- * pulse 走 bareSnapshotFrom。两边共用这一次 sync / 读存活。
+ * HomePod 那条入口：Mac 工作副本和存活一起读取。推送只收集可序列化描述符，
+ * Apple 目录补充交给普通 Worker；pulse 仍在 DO 内按裸快照算档位。
  */
 export function homePodListening(stored: StoredHomePod): {
-  event: Promise<LiveEvent>;
+  effect: Promise<ListeningEffect>;
   pulse: Promise<void>;
 } {
   const ready = Promise.all([syncTelemetryState(), readLiveness()]);
   return {
-    event: ready.then(([, liveness]) =>
-      listeningEvent(liveness, Promise.resolve(playableHomePod(stored))),
+    effect: ready.then(([, liveness]) =>
+      listeningEffect(liveness, playableHomePod(stored)),
     ),
     pulse: ready.then(
       ([, liveness]) =>

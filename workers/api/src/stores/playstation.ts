@@ -37,22 +37,43 @@ function presenceContent(payload: PlaystationPresencePayload) {
  * 奖杯目录只失效、不推：整份几百 KB，解锁又不是按秒翻的事。
  */
 export async function recordPlaystationReport(input: unknown, receivedAt = Date.now()) {
+  return commitPreparedPlaystationReport(preparePlaystationReport(input, receivedAt));
+}
+
+export type PreparedPlaystationReport = {
+  source: "playstation";
+  receivedAt: number;
+  presence: ReturnType<typeof normalizePlaystationPresence> | null;
+  playedGames: ReturnType<typeof normalizePlaystationPlayedGames> | null;
+  trophies: ReturnType<typeof normalizeTrophies> | null;
+  power: ReturnType<typeof normalizePlaystationPower> | null;
+};
+
+export function preparePlaystationReport(input: unknown, receivedAt = Date.now()): PreparedPlaystationReport {
   const envelope = object(input);
   if (!envelope || envelope.version !== 1) {
     throw new Error("PlayStation 遥测协议 version 必须为 1");
   }
-
-  const incomingPresence =
-    "presence" in envelope ? normalizePlaystationPresence(envelope.presence) : null;
-  const incomingPlayedGames =
-    "playedGames" in envelope
+  return {
+    source: "playstation",
+    receivedAt,
+    presence: "presence" in envelope ? normalizePlaystationPresence(envelope.presence) : null,
+    playedGames: "playedGames" in envelope
       ? normalizePlaystationPlayedGames(envelope.playedGames)
-      : null;
-  const incomingTrophies =
-    "trophies" in envelope ? normalizeTrophies(envelope.trophies) : null;
-  /** Home Assistant 那条自动化单独发这一项，不带 presence，见 README */
-  const incomingPower =
-    "power" in envelope ? normalizePlaystationPower(envelope.power) : null;
+      : null,
+    trophies: "trophies" in envelope ? normalizeTrophies(envelope.trophies) : null,
+    power: "power" in envelope ? normalizePlaystationPower(envelope.power) : null,
+  };
+}
+
+export async function commitPreparedPlaystationReport(prepared: PreparedPlaystationReport) {
+  const {
+    presence: incomingPresence,
+    playedGames: incomingPlayedGames,
+    trophies: incomingTrophies,
+    power: incomingPower,
+    receivedAt,
+  } = prepared;
 
   const [previousPresence, previousPlayedGames, previousTrophies, previousPower] =
     await Promise.all([

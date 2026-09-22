@@ -1,7 +1,8 @@
 import { withRequestState } from "@shared/request-state";
 import { DurableObject } from "cloudflare:workers";
 
-import { HANDLERS } from "./ingest-handlers";
+import { INGEST_SOURCES, prepareIngestForCommit } from "./ingest-handlers";
+import { dispatchIngestEffects } from "./ingest-effects";
 import { StateHub } from "./state-hub";
 import { STORAGE_MAX_BYTES } from "@shared/storage-contract";
 import type { StoredEntry } from "@shared/sqlite-store";
@@ -12,7 +13,8 @@ import { ROOM_ID } from "./live-platform";
 import { ConfigError, issueMusicKitToken } from "./musickit-token";
 import { getAllowedOrigins, getCorsHeaders, isAllowedOrigin, isAllowedOriginValue } from "./origins";
 import { refreshPageSpeed } from "@/lib/pagespeed";
-import { pathForEventType } from "./public-api";
+import { isPublicApiPath, pathForEventType } from "./public-api";
+import { executePublicRequest } from "./public-execution";
 import { requestStore, type Env } from "./runtime";
 import { site } from "@/lib/site";
 
@@ -101,8 +103,7 @@ async function handleIngest(
     return jsonResponse({ ok: false, error: "Worker 未配置 STATE" }, { status: 503 });
   }
 
-  const handler = Object.hasOwn(HANDLERS, source) ? HANDLERS[source] : undefined;
-  if (!handler) return jsonResponse({ ok: false, error: `没有这个上报来源：${source}` }, { status: 404 });
+  if (!INGEST_SOURCES.has(source)) return jsonResponse({ ok: false, error: `没有这个上报来源：${source}` }, { status: 404 });
 
   let raw: string;
   try {
@@ -115,9 +116,15 @@ async function handleIngest(
   try {
     const body = parseBody(raw);
     const hub = env.STATE.get(env.STATE.idFromName("global"));
-    const result = await hub.ingest(source, body);
-    if (!result.ready) return jsonResponse({ ok: false, error: "状态存储初始化中" }, { status: 503 });
-    return jsonResponse({ ok: true, data: JSON.parse(result.json) }, { status: 202 });
+    return await withRequestState(() => requestStore.run({ env, ctx }, async () => {
+      const command = await prepareIngestForCommit(source, body, () => hub.ready());
+      if (!command) return jsonResponse({ ok: false, error: "状态存储初始化中" }, { status: 503 });
+      const result = await hub.commitIngest(command);
+      await dispatchIngestEffects(result.effects);
+      if (!result.ready) return jsonResponse({ ok: false, error: "状态存储初始化中" }, { status: 503 });
+      if (!result.ok) throw new Error(result.error);
+      return jsonResponse({ ok: true, data: JSON.parse(result.json) }, { status: 202 });
+    }));
   } catch (error) {
     console.error("[ingest]", source, reason(error));
     return jsonResponse({ ok: false, error: "上报数据无效或处理失败" }, { status: 400 });
@@ -294,10 +301,9 @@ export class LivePushRoom extends DurableObject<Env> {
       // 不是 JSON 的照样转，页面那头自己会忽略
     }
     const path = typeof message?.type === "string" ? pathForEventType(message.type) : null;
-    if (path && this.env.STATE) {
+    if (path && this.env.READ_MODEL_RENDERER) {
       try {
-        const hub = this.env.STATE.get(this.env.STATE.idFromName("global"));
-        const response = await hub.fetch(new Request(`https://local/api/dev/override${path}`));
+        const response = await this.env.READ_MODEL_RENDERER.devOverride(path);
         if (response.ok) {
           const override = (await response.json()) as { ok?: unknown; data?: unknown };
           if (override.ok === true) {
@@ -418,7 +424,8 @@ const worker = {
       if (request.method !== "GET" && !devOverride) return new Response("Method not allowed", { status: 405, headers: cors });
       const origin = request.headers.get("Origin");
       if (origin && !isAllowedOriginValue(origin, getAllowedOrigins(env))) return jsonResponse({ ok: false }, { status: 403, headers: cors });
-      const response = await env.STATE.get(env.STATE.idFromName("global")).fetch(request);
+      if (!isPublicApiPath(url.pathname)) return new Response("Not found", { status: 404, headers: cors });
+      const response = await executePublicRequest(request, env, ctx);
       const headers = new Headers(response.headers);
       cors.forEach((value, name) => headers.set(name, value));
       headers.set("Access-Control-Expose-Headers", "X-Fetched-At");

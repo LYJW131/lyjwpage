@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/** Isolated Worker → Durable Objects SQLite → Next cache + WebSocket verification. Requires Node 24 and pnpm build. */
+/** Isolated Worker → Durable Objects SQLite → Next cache + WebSocket verification. Pass --build to build Next against it. */
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
@@ -17,6 +17,7 @@ const children = [];
 const logs = [];
 let socket;
 const secret = 'local-token-usage-verification';
+const verifyBuild = process.argv.includes('--build');
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function port() {
   const server = createServer(); server.listen(0, '127.0.0.1'); await once(server, 'listening');
@@ -47,6 +48,7 @@ try {
   const vars = {
     NEXT_PUBLIC_BACKEND_URL: worker, STORAGE_PREFIX: 'isolated-verify', TELEMETRY_INGEST_SECRET: secret, STATE_IMPORT_SECRET: `${secret}-import`,
     SITE_URL: site, ALLOWED_ORIGINS: '',
+    DEV_OVERRIDES: 'true',
     EMBY_PUBLIC_URL: '',
     APPLE_MUSIC_PRIVATE_KEY: musicKitPem, APPLE_MUSIC_TEAM_ID: 'ISOLATEDTM', APPLE_MUSIC_KEY_ID: 'ISOLATEDKY',
   };
@@ -60,6 +62,7 @@ try {
       { name: 'LIVE_PUSH', class_name: 'LivePushRoom' },
       { name: 'STATE', class_name: 'StateHub' },
     ] },
+    services: [{ binding: 'READ_MODEL_RENDERER', service: 'isolated-ingest', entrypoint: 'ReadModelRenderer' }],
     migrations: [
       { tag: 'v1', new_sqlite_classes: ['LivePushRoom'] },
       { tag: 'v3', new_sqlite_classes: ['StateHub'] },
@@ -79,7 +82,31 @@ try {
   await eventually(async () => assert.equal((await fetch(`${worker}/count`)).status, 200));
   assert.deepEqual(await (await fetch(`${worker}/count`)).json(), { ok: true, connections: 0 });
   assert.equal((await post(worker, '/api/ingest/homepod', {})).status, 503);
+  assert.equal((await post(worker, '/api/ingest/iphone', { version: 1 })).status, 503);
+  assert.equal((await post(worker, '/api/ingest/iphone', {})).status, 503);
+  assert.equal((await fetch(`${worker}/api/status/listening/now`)).status, 503);
+  assert.equal((await fetch(`${worker}/api/status/not-a-route`)).status, 404);
   assert.equal((await post(worker, '/api/internal/storage/import', { entries: [], finalize: true }, `${secret}-import`)).status, 200);
+  console.log('PASS: known public routes preserve the initialization barrier; unknown routes stay in the Worker');
+  const overridePaths = [
+    '/api/status/activity', '/api/status/server', '/api/status/workouts',
+    '/api/status/watching', '/api/status/watching/now', '/api/status/listening/now',
+  ];
+  const putOverride = path => fetch(`${worker}/api/dev/override${path}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ marker: path }),
+  });
+  assert.ok((await Promise.all(overridePaths.map(putOverride))).every(response => response.status === 200));
+  let overrideList = await (await fetch(`${worker}/api/dev/overrides`)).json();
+  assert.deepEqual([...overrideList.paths].sort(), [...overridePaths].sort());
+  assert.ok((await Promise.all(overridePaths.filter((_, index) => index % 2 === 0).map(path =>
+    fetch(`${worker}/api/dev/override${path}`, { method: 'DELETE' })
+  ))).every(response => response.status === 200));
+  overrideList = await (await fetch(`${worker}/api/dev/overrides`)).json();
+  assert.deepEqual([...overrideList.paths].sort(), overridePaths.filter((_, index) => index % 2 === 1).sort());
+  assert.ok((await Promise.all(overridePaths.map(path =>
+    fetch(`${worker}/api/dev/override${path}`, { method: 'DELETE' })
+  ))).every(response => response.status === 200));
+  console.log('PASS: concurrent local overrides atomically maintain their StateHub index');
   assert.equal((await fetch(`${worker}/online/ws`)).status, 404);
   console.log('PASS: API count only reports live-push connections; online route removed');
   const events = [];
@@ -205,6 +232,15 @@ try {
   await eventually(async () => assert.equal(await nowPlaying(), 'isolated-second'));
   assert.equal((await (await fetch(`${worker}/api/home`)).json()).timezone.ok, true);
   console.log('PASS: restart preserves initialized state and snapshots');
+  if (verifyBuild) {
+    const build = start('pnpm', ['build'], {
+      NEXT_PUBLIC_BACKEND_URL: worker,
+      NEXT_PUBLIC_ONLINE_COUNTER_URL: worker,
+    });
+    const [buildExit] = await once(build, 'exit');
+    assert.equal(buildExit, 0, logs.join('').slice(-12000));
+    console.log('PASS: Next production build completes against the initialized isolated Worker');
+  }
   assert.equal(logs.some(line => /Cannot perform I\/O|\[storage\]|\[revalidate\]|Uncaught/.test(line)), false, logs.join(''));
 } catch (error) {
   console.error(logs.join('').slice(-12000));
