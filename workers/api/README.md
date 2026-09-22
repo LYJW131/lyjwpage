@@ -126,7 +126,7 @@ state 一律是代码算好的命名秒数和次数，没有原始区间、时�
 - watching：`playingSeconds / pausedSeconds / idleSeconds / longestPlayingRunSeconds`、`playingPercent / pausedPercent / longestPlayingRunPercent`、`titleChanges / titles`。
 - gaming：`inGameSeconds / onlineIdleSeconds / offlineSeconds / longestGameRunSeconds`、`inGamePercent / longestGameRunPercent`、`gameChanges / games`；「主机在线未进游戏」是它自己的桶和档位。
 - charging：`secondsByBand` 与 `percentByBand`（`unplugged / trickle / moderate / high`）、`peakWatts / longestPoweredRunSeconds / longestPoweredRunPercent`，分档阈值 0 / 15 / 60 W 与 `chargingLevel` 一致。
-- activity：`stillSeconds / lightSeconds / moderateSeconds / vigorousSeconds / longestMovingRunSeconds`、`movingPercent / vigorousPercent / longestMovingRunPercent`，每档在判据里写明对应的步频与锻炼分钟占比。
+- activity：圆环估算仍是 `stillSeconds / lightSeconds / moderateSeconds / vigorousSeconds / longestMovingRunSeconds`、`movingPercent / vigorousPercent / longestMovingRunPercent`，每档写明对应的步频与锻炼分钟占比。另外从 `workouts:recent` 读已完成训练，放进 `workoutSeconds / workoutPercent / workouts[{activityType, seconds}]`。`activityType` 是上报的项目名（例如 Fencing），`seconds` 是该次训练摊到这个五分钟窗口里的活动秒数，不含时间戳。`workoutPercent` 达到 50 对上强度最高档，达到 75 对上连续性最高档；没有圆环样本但有训练覆盖的窗口也会打分。圆环桶不把这笔时长混进去。
 
 `PULSE_ASSESSMENT_VERSION` 进输入哈希，改问题时升版本让全部窗口重评，不靠哈希碰巧变。
 改判据先跑 `node --experimental-strip-types --import ./src/lib/testing/register-alias.mjs scripts/jev-probe.mts`（key 读根目录 `.env.local` 的 `TYPESAFE_API_KEY`）：十几个代表性窗口打真实 Jev，每条都写着期望档位，答案偏了先改措辞再上线——上线一次就是整整 24 小时重评。
@@ -346,7 +346,7 @@ Worker 侧 storage 写失败是冒泡的，先写 `:history` 再清 `:pending` �
 
 `workouts.json` 是 2026-09-20 从真机读取的最近 10 次训练快照（6 次剑术、3 次骑行、1 次滑冰），保留原日期与观测指标，UUID 替换为演示标识。`pushedAt` 注入时更新，但训练时间不变。剑术不把步行距离当成主要成绩；滑冰没有距离就不显示速度；网页每项最多两个指标：有距离时显示时长与距离，否则显示时长与活动消耗；不展示心率或均速。
 
-网页卡片最多显示最近 10 条，每页上下排列 2 条，横向吸附滚动（共 5 页），隐藏独立标题栏，通过触控板、触摸或键盘横向浏览；上报和存储仍保留最近 10 条。训练记录合并在 Activity 卡片右侧（窄屏放底部），圆环区域保持原高度；出口节点卡全宽排列在其下。Pulse 的身体活动泳道另读这份列表，把与最近 24 小时有交集的训练按 `startedAt` / `endedAt` 标上 `activityType`，不写入 pulse 样本，也不送去 Jev。
+网页卡片最多显示最近 10 条，每页上下排列 2 条，横向吸附滚动（共 5 页），隐藏独立标题栏，通过触控板、触摸或键盘横向浏览；上报和存储仍保留最近 10 条。训练记录合并在 Activity 卡片右侧（窄屏放底部），圆环区域保持原高度；出口节点卡全宽排列在其下。
 
 ### Pulse 实测域
 
