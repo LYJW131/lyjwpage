@@ -239,8 +239,12 @@ export async function publicResponse(request: Request): Promise<Response> {
   const upstream = upstreamBase();
 
   if (url.pathname === "/api/home") {
-    const local = await publicHomeSnapshot();
-    const overlaid = upstream ? overlaySnapshot(local, await fetchUpstreamJson(upstream, "/api/home")) : local;
+    // 两路互不依赖，并行取：Preview 的空库本地快照冷启动就要好几秒。
+    const [local, theirs] = await Promise.all([
+      publicHomeSnapshot(),
+      upstream ? fetchUpstreamJson(upstream, "/api/home") : null,
+    ]);
+    const overlaid = upstream ? overlaySnapshot(local, theirs) : local;
     const snapshot = overrides ? await applySnapshotOverrides(overlaid) : overlaid;
     return Response.json(snapshot, { headers: { "Cache-Control": "no-store" } });
   }

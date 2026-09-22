@@ -10,7 +10,7 @@
     "dev:local": "NEXT_PUBLIC_BACKEND_URL=http://localhost:${DEV_WORKER_PORT:-8788} next dev -p ${DEV_SITE_PORT:-3211}",
     "dev:override": "node scripts/dev-override.mjs",
     "docs:architecture": "node scripts/architecture-diagram.mjs",
-    "build": "next build",
+    "build": "node scripts/build.mjs",
     "start": "next start",
     "test": "node --test --experimental-strip-types --import ./src/lib/testing/register-alias.mjs src/lib/*.test.mts src/lib/*.test.mjs",
     "typecheck": "next typegen && tsc --noEmit",
