@@ -72,6 +72,37 @@ test("a window filled by a named workout matches the top intensity and continuit
   assert.match(activityQuestions().intensity.instructions, /Fencing/);
 });
 
+test("a ring-only moderate majority stays on band 3, not the short-workout band", () => {
+  const window = { from: 0, to: WINDOW_MS };
+  const features = activityWindowFeatures([{ t: 0, until: WINDOW_MS, level: 2 }], window).features;
+  assert.equal(features.workoutPercent, 0);
+  assert.equal(features.vigorousPercent, 0);
+  assert.equal(features.movingPercent, 100);
+  const band = ACTIVITY_INTENSITY[2];
+  assert.match(band, /`movingPercent` under 50 and `workoutPercent` is 0/);
+  assert.match(band, /`workoutPercent` is above 0 and under 25, `movingPercent` is under 50, and `vigorousPercent` is under 50/);
+  assert.equal(band.includes("`workoutPercent` under 25"), false);
+  assert.match(ACTIVITY_INTENSITY[3], /`movingPercent` 50 or above/);
+  const shortWorkout = features.workoutPercent > 0 && features.workoutPercent < 25 && features.movingPercent < 50 && features.vigorousPercent < 50;
+  const partialModerate = features.movingPercent < 50 && features.workoutPercent === 0;
+  const moderateMajority = features.movingPercent >= 50 && features.workoutPercent < 50 && features.vigorousPercent < 50;
+  assert.equal(shortWorkout || partialModerate, false);
+  assert.equal(moderateMajority, true);
+});
+
+test("a short workout inside a still window stays on the short-slice gates", () => {
+  const window = { from: 0, to: WINDOW_MS };
+  const features = activityWindowFeatures(
+    [{ t: 0, until: WINDOW_MS, level: 0 }],
+    window,
+    [{ activityType: "Fencing", startedAt: window.from, endedAt: window.from + 60_000, durationSeconds: 60 }],
+  ).features;
+  assert.equal(features.movingPercent, 0);
+  assert.equal(features.vigorousPercent, 0);
+  assert.ok(features.workoutPercent > 0 && features.workoutPercent < 25);
+  assert.equal(features.workouts[0]?.activityType, "Fencing");
+});
+
 test("ring-only windows keep their buckets and record no workout", () => {
   const window = { from: 0, to: WINDOW_MS };
   const features = activityWindowFeatures([{ t: 0, until: WINDOW_MS, level: 3 }], window).features;

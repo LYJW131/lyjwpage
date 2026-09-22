@@ -150,7 +150,7 @@ export function activityWindowFeatures(
 export const ACTIVITY_INTENSITY = [
   "No movement: `stillSeconds` is the whole observed time, `movingPercent` is 0, and `workoutPercent` is 0.",
   "Light movement only, such as standing or a few steps: `lightSeconds` present, `movingPercent` is 0, and `workoutPercent` is 0.",
-  "Moderate movement (at least 20 steps per minute or 10% of minutes counted as exercise) for part of the observed time and no reported workout: `movingPercent` under 50 and `workoutPercent` is 0. Or a reported workout covers only a short slice: `workoutPercent` under 25 while `vigorousPercent` is under 50.",
+  "Moderate movement (at least 20 steps per minute or 10% of minutes counted as exercise) for part of the observed time and no reported workout: `movingPercent` under 50 and `workoutPercent` is 0. Or a reported workout covers only a short slice while the rings are not already moderate for most of the window: `workoutPercent` is above 0 and under 25, `movingPercent` is under 50, and `vigorousPercent` is under 50.",
   "Moderate movement for most of the observed time (`movingPercent` 50 or above), or vigorous movement (at least 60 steps per minute or half the minutes counted as exercise) for part of it (`vigorousPercent` under 50), while `workoutPercent` is under 50. Or a reported workout covers a substantial part but not most of the observed time: `workoutPercent` at least 25 and under 50.",
   "Vigorous movement for most of the observed time (`vigorousPercent` 50 or above), or a reported workout covers most of the observed time (`workoutPercent` 50 or above). The sport is the `activityType` on `workouts`.",
 ];
