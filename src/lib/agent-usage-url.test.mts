@@ -5,7 +5,7 @@ import { agentUsageLabel, agentUsageUrl } from "./agent-usage-url.ts";
 
 test("有官方用量页的 agent 链到该页", () => {
   assert.equal(agentUsageUrl("claude"), "https://claude.ai/settings/usage");
-  assert.equal(agentUsageUrl("cursor"), "https://cursor.com/dashboard/usage");
+  assert.equal(agentUsageUrl("cursor"), "https://cursor.com/dashboard/spending");
   assert.equal(agentUsageUrl("codex"), "https://chatgpt.com/codex/cloud/settings/analytics#usage");
   assert.equal(agentUsageUrl("grok"), "https://grok.com/?_s=usage");
 });

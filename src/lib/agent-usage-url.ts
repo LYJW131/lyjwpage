@@ -6,7 +6,7 @@
  */
 const AGENT_USAGE_URLS: Record<string, string> = {
   claude: "https://claude.ai/settings/usage",
-  cursor: "https://cursor.com/dashboard/usage",
+  cursor: "https://cursor.com/dashboard/spending",
   codex: "https://chatgpt.com/codex/cloud/settings/analytics#usage",
   grok: "https://grok.com/?_s=usage",
 };
