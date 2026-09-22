@@ -22,7 +22,7 @@ import { desktopIconDataUri } from "@/lib/desktop-icon-inline";
 import { githubAvatarDataUri } from "@/lib/github-avatar-icon";
 import { getRecentCommits } from "@/lib/github-recent-commits";
 import { cachedHomeSnapshot } from "@/lib/home-snapshot";
-import type { GithubRepoPayload, PulsePayload, StatusResponse } from "@/lib/types";
+import type { GithubRepoPayload, PulsePayload, StatusResponse, WorkoutsPayload } from "@/lib/types";
 
 export default async function Home() {
   const [snapshot, avatarDataUri, recentCommits] = await Promise.all([
@@ -40,6 +40,8 @@ export default async function Home() {
   /** 同理：Worker 还没带 pulse 字段时，卡片自己显示空态，不能让整页跌进错误边界 */
   const pulse: StatusResponse<PulsePayload> =
     snapshot.pulse ?? { ok: false, error: "Pulse unavailable" };
+  const workouts: StatusResponse<WorkoutsPayload> =
+    snapshot.workouts ?? { ok: false, error: "Awaiting workout report" };
   const {
     desktop,
     activity,
@@ -138,7 +140,7 @@ export default async function Home() {
                   fallback={activity}
                   className="defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_350px] md:[contain-intrinsic-size:auto_253px]"
                 >
-                  <WorkoutsStrip fallback={snapshot.workouts ?? { ok: false, error: "Awaiting workout report" }} />
+                  <WorkoutsStrip fallback={workouts} />
                 </ActivityCard>
                 <ServerCard
                   fallback={server}
@@ -157,6 +159,7 @@ export default async function Home() {
                 {/* Pulse 夹在 PlayStation 与 Emby Recently Watched 中间 */}
                 <PulseCard
                   fallback={pulse}
+                  workoutsFallback={workouts}
                   className="defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_240px]"
                 />
               </div>

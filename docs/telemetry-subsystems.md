@@ -297,7 +297,7 @@ Mac 睡着、HomePod 没动时，iPhone 等设备只在这份列表上留痕迹�
 其余不确定性由置信度承担。也因为实测只看得见 Mac 和 HomePod，Listening 这条线
 画的是 Jev 评分（`kind:"score"`）而不是实测阶跃，两路证据才都在图上；
 Watching / Gaming / Charging 没有这个盲区，仍画实测。
-身体活动沿用 iPhone 累计快照生成的有界区间，跨日、长间隔和回退不填补。
+身体活动沿用 iPhone 累计快照生成的有界区间，跨日、长间隔和回退不填补。活动泳道另外把 `/api/status/workouts` 里与这 24 小时有交集的已完成训练标在同一条时间轴上，名称用上报的 `activityType`（例如 Fencing），时间用记录自己的 `startedAt` / `endedAt`。这些记录不进入 Jev，也不改圆环强度。
 
 `PulseScorer` 每五分钟最多运行一轮，每个领域和时间窗口独立请求官方 Jev，
 统一保存 `pulse:assessments`。相同输入哈希不重复评分，迟到用量可触发对应窗口修订。

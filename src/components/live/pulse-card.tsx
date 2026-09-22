@@ -9,13 +9,20 @@ import { useStatus } from "@/hooks/use-status";
 import { PULSE_SILENT_AFTER_MS } from "@/lib/limits";
 import { PULSE_PATH } from "@/lib/paths";
 import { pulseLanePath, pulseScoreWord, type PulseLanePoint } from "@/lib/pulse-lane";
-import type { PulseDomainView, PulseDomain, PulsePayload, PulseTrend, StatusResponse } from "@/lib/types";
+import { pulseWorkoutMarks, type PulseWorkoutMark } from "@/lib/pulse-workouts";
+import { site } from "@/lib/site";
+import { STATUS_VIEWS } from "@/lib/status-views";
+import type { PulseDomainView, PulseDomain, PulsePayload, PulseTrend, StatusResponse, WorkoutsPayload } from "@/lib/types";
+import { workoutDuration } from "@/lib/workout-display";
 import { CODING_INTENSITY, CODING_CONTINUITY } from "@shared/pulse-coding";
 import type { PulseAssessment } from "@shared/pulse-assessment";
 import { cn } from "@/lib/utils";
 
 /** Every lane and its summary consume the same five-minute Jev assessments. */
 const REFRESH_MS = 60_000;
+/** Same cadence as the workouts strip; both share the `/api/status/workouts` cache key. */
+const WORKOUT_REFRESH_MS = 300_000;
+const WORKOUT_ROW_PX = 16;
 
 const LANES: ReadonlyArray<{ domain: PulseDomain; label: string }> = [
   { domain: "coding", label: "Coding" },
@@ -93,7 +100,89 @@ const MODE_LABELS: Record<string, string> = {
   paused: "Paused", steady: "Playing through", selecting: "Picking tracks", traces: "Heard elsewhere",
 };
 
-function AssessmentLane({ view, range, label }: { view: PulseDomainView; label: string; range: { from: number; to: number } }) {
+function shanghaiClock(at: number) {
+  return new Date(at).toLocaleTimeString("en-US", {
+    timeZone: site.timezone,
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function workoutCaption(mark: PulseWorkoutMark) {
+  return `${mark.activityType}, ${workoutDuration(mark.durationSeconds)}, ${shanghaiClock(mark.startedAt)}–${shanghaiClock(mark.endedAt)}`;
+}
+
+function workoutsOverlapping(marks: PulseWorkoutMark[], from: number, to: number) {
+  const names = marks.filter((mark) => mark.endedAt > from && mark.startedAt < to).map((mark) => mark.activityType);
+  return [...new Set(names)];
+}
+
+/** Named workouts on the same 24-hour axis as the ring curve. The curve itself stays the Jev score. */
+function WorkoutMarks({ marks }: { marks: PulseWorkoutMark[] }) {
+  if (!marks.length) return null;
+  const rows = Math.max(...marks.map((mark) => mark.row)) + 1;
+  return (
+    <ol aria-label="Workouts" className="relative mt-1" style={{ height: rows * WORKOUT_ROW_PX }}>
+      {marks.map((mark) => (
+        <li
+          key={mark.id}
+          className="absolute flex max-w-[70%] items-center gap-1 text-[11px] font-medium leading-4 text-lime-700 dark:text-lime-400"
+          style={
+            mark.alignEnd
+              ? { right: `${(1 - (mark.start + mark.span)) * 100}%`, top: mark.row * WORKOUT_ROW_PX }
+              : { left: `${mark.start * 100}%`, top: mark.row * WORKOUT_ROW_PX }
+          }
+          title={workoutCaption(mark)}
+          aria-label={workoutCaption(mark)}
+        >
+          <span className="size-1.5 shrink-0 rounded-sm bg-lime-500" aria-hidden />
+          <span className="min-w-0 truncate">{mark.activityType}</span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function MarkedLane({
+  label,
+  samples,
+  range,
+  workouts,
+}: {
+  label: string;
+  samples: PulseLanePoint[];
+  range: { from: number; to: number };
+  workouts: PulseWorkoutMark[];
+}) {
+  return (
+    <span className="relative block">
+      <Lane label={label} samples={samples} range={range} />
+      {workouts.length > 0 && (
+        <span className="pointer-events-none absolute inset-0" aria-hidden>
+          {workouts.map((mark) => (
+            <span
+              key={mark.id}
+              className="absolute inset-y-0 bg-lime-400/45"
+              style={{ left: `${mark.start * 100}%`, width: `${Math.max(mark.span * 100, 0.6)}%` }}
+            />
+          ))}
+        </span>
+      )}
+    </span>
+  );
+}
+
+function AssessmentLane({
+  view,
+  range,
+  label,
+  workouts = [],
+}: {
+  view: PulseDomainView;
+  label: string;
+  range: { from: number; to: number };
+  workouts?: PulseWorkoutMark[];
+}) {
   const maximum = view.kind === "power" ? Math.max(1, ...view.segments.map((part) => part.value)) : 1;
   const assessments = view.kind === "score" ? view.assessments.map((row) => ({ ...row, title: row.title as string | undefined, assessment: row, value: row.intensity.value / 4 })) : view.segments.map((part) => ({ ...part, coverage: [{ from: part.from, to: part.to }], assessment: null as PulseAssessment | null, value: part.value / maximum }));
   const [selected, setSelected] = useState<number | null>(null);
@@ -119,7 +208,7 @@ function AssessmentLane({ view, range, label }: { view: PulseDomainView; label: 
         ref={buttonRef}
         type="button"
         className="block w-full cursor-crosshair rounded-sm focus-visible:outline-1 focus-visible:outline-live"
-        aria-label={`${label} ${view.kind === "score" ? "intensity, scored by Jev every 5 minutes" : view.kind === "power" ? "power in watts" : "active status"}. Use arrow keys to inspect intervals.`}
+        aria-label={`${label} ${view.kind === "score" ? "intensity, scored by Jev every 5 minutes" : view.kind === "power" ? "power in watts" : "active status"}${workouts.length ? `. Workouts: ${workouts.map((mark) => workoutCaption(mark)).join("; ")}` : ""}. Use arrow keys to inspect intervals.`}
         onPointerMove={(event) => selectAt(event.clientX, event.currentTarget)}
         onPointerLeave={(event) => { if (event.pointerType === "mouse") setSelected(null); }}
         onFocus={(event) => { setBounds(cellAnchor(event.currentTarget)); setSelected((value) => value ?? assessments.length - 1); }}
@@ -138,11 +227,11 @@ function AssessmentLane({ view, range, label }: { view: PulseDomainView; label: 
           }
         }}
       >
-        <Lane label={label} samples={points} range={range} />
+        <MarkedLane label={label} samples={points} range={range} workouts={workouts} />
       </button>
       {active && bounds && (
         <AnchoredTooltip
-          contentKey={JSON.stringify(active)}
+          contentKey={JSON.stringify({ active, workouts: workoutsOverlapping(workouts, active.from, active.to) })}
           anchor={(() => {
             const rect = bounds;
             const from = Math.max(range.from, active.from);
@@ -153,6 +242,9 @@ function AssessmentLane({ view, range, label }: { view: PulseDomainView; label: 
         >
           <div className="text-xs">
           <div className="font-mono text-muted-foreground">{time(active.from)}–{time(active.to)}</div>
+          {workoutsOverlapping(workouts, active.from, active.to).map((name) => (
+            <div key={name} className="mt-1 font-medium">{name}</div>
+          ))}
           {active.title && <div className="mt-1 break-words font-medium">{active.title}</div>}
           {active.assessment ? <>
             {active.assessment.mode && <div className="mt-1 font-medium">{MODE_LABELS[active.assessment.mode.value] ?? active.assessment.mode.value}</div>}
@@ -169,13 +261,17 @@ function AssessmentLane({ view, range, label }: { view: PulseDomainView; label: 
 
 export function PulseCard({
   fallback,
+  workoutsFallback,
   className,
 }: {
   fallback: StatusResponse<PulsePayload>;
+  workoutsFallback: StatusResponse<WorkoutsPayload>;
   className?: string;
 }) {
   const { data } = useStatus<PulsePayload>(PULSE_PATH, REFRESH_MS, { fallback });
+  const { data: workouts } = useStatus<WorkoutsPayload>(STATUS_VIEWS.workouts.path, WORKOUT_REFRESH_MS, { fallback: workoutsFallback });
   const range = data?.window ?? { from: 0, to: 0 };
+  const workoutMarks = data?.window ? pulseWorkoutMarks(workouts?.items ?? [], data.window) : [];
 
   return (
     <Card label="Pulse" action="Last 24 hours" className={cn("h-full", className)}>
@@ -184,27 +280,32 @@ export function PulseCard({
           const candidate = data?.domains[domain];
           const view = candidate && ["score", "binary", "power"].includes(candidate.kind) ? candidate : undefined;
           const score = view?.score ?? null;
-          const empty = !view || (view.kind === "score" ? view.assessments.length === 0 : view.segments.length === 0);
+          const marks = domain === "activity" ? workoutMarks : [];
+          const chartEmpty = !view || (view.kind === "score" ? view.assessments.length === 0 : view.segments.length === 0);
+          const empty = chartEmpty && marks.length === 0;
           const word = score ? pulseScoreWord(Number(score.value.toFixed(1))) : null;
           return (
             <div
               key={domain}
               className="grid grid-cols-[4.5rem_1fr_7rem] items-center gap-x-2 sm:grid-cols-[5.5rem_1fr_9rem] sm:gap-x-3"
               role="group"
-              aria-label={`${label} over the last 24 hours`}
+              aria-label={marks.length ? `${label} over the last 24 hours, including ${marks.map((mark) => mark.activityType).join(", ")}` : `${label} over the last 24 hours`}
 
             >
               <span
                 className="label-mono truncate text-muted-foreground"
-                title={domain === "activity" ? "Estimated physical activity between Apple Watch reports; gaps mean no data." : undefined}
+                title={domain === "activity" ? "Ring estimates between Apple Watch reports, plus completed workouts by name. Gaps mean no ring data." : undefined}
               >
                 {label}
               </span>
               {empty ? (
                 <span className="text-xs text-muted-foreground">{view?.kind === "score" ? "Awaiting scores" : "No data"}</span>
-              ) : (
-                view && <AssessmentLane label={label} view={view} range={range} />
-              )}
+              ) : view ? (
+                <div className="min-w-0">
+                  {chartEmpty ? <MarkedLane label={label} samples={[]} range={range} workouts={marks} /> : <AssessmentLane label={label} view={view} range={range} workouts={marks} />}
+                  <WorkoutMarks marks={marks} />
+                </div>
+              ) : null}
               <div className="flex min-w-0 items-baseline justify-end gap-1.5 text-right">
                 {score ? (
                   <>
