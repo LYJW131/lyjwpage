@@ -126,3 +126,22 @@ test("估价别名和长上下文门槛跟 Mac 的快照一致", () => {
   assert.equal(estimateCursorCost("gpt-5.5", 20_000, 1_000, 252_000, 0, at), 0.1 + 0.03 + 0.126);
   assert.equal(estimateCursorCost("gpt-5.5", 1_000, 2_000, 0, 1, at), null);
 });
+
+test("快照之后补的 grok-4.7 按 xAI 公开价，档位后缀与 fast 都归到基础型号", () => {
+  const at = Date.parse("2026-09-23T12:00:00Z");
+  // 10 万输入 + 10 万缓存读，prompt 正好 20 万，还在基础档：$2 / $6 / $0.5 每百万
+  const base = estimateCursorCost("grok-4.7", 100_000, 100_000, 100_000, 0, at);
+  assert.ok(base != null && Math.abs(base - (0.2 + 0.6 + 0.05)) < 1e-9);
+  for (const model of ["grok-4.7-high", "grok-4.7-xhigh-fast", "grok-4.7-medium-fast"]) {
+    assert.equal(
+      estimateCursorCost(model, 1_000, 2_000, 3_000, 0, at),
+      estimateCursorCost("grok-4.7", 1_000, 2_000, 3_000, 0, at),
+    );
+  }
+  // 超过 20 万 prompt 走长上下文档
+  assert.equal(estimateCursorCost("grok-4.7", 250_000, 0, 0, 0, at), 1);
+  assert.notEqual(estimateCursorCost("muse-spark-1.3-max", 1_000, 1_000, 0, 0, at), null);
+  assert.notEqual(estimateCursorCost("kimi-k3-max", 1_000, 1_000, 0, 0, at), null);
+  assert.equal(estimateCursorCost("composer-2.5-fast", 1_000, 0, 0, 0, at), null);
+  assert.equal(estimateCursorCost("grok-bot-default", 1_000, 0, 0, 0, at), null);
+});
