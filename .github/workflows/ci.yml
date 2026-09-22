@@ -2,7 +2,7 @@
 # 这里只跑 Vercel 覆盖不到的三件事：
 #   1. eslint —— Next 16 的 build 不再顺带 lint
 #   2. reporters/ 和 workers/ 的类型 —— 它们不进站点构建，跑在 NAS 和 Cloudflare 上
-#   3. src/lib 下的单测
+#   3. src/lib、api Worker 和上报器的单测
 # 所以这里不跑 `next build`：多花几分钟，换不到新信号。
 name: CI
 
@@ -48,6 +48,13 @@ jobs:
       - run: pnpm test
 
       - run: pnpm --filter @lyjwpage/api test
+
+      # 上报器跑在别的机器上，它们的单测只有这里会跑
+      - run: pnpm --filter @lyjwpage/agent-limits-reporter --filter @lyjwpage/emby-reporter test
+
+      # 只用标准库，runner 自带的 python3 就够
+      - run: python3 reporter_test.py
+        working-directory: reporters/server-reporter
 
       - run: node scripts/verify-kv-read-model.mjs
 
