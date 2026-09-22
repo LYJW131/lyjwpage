@@ -65,6 +65,16 @@ export const config = {
   pushTimeoutMs: ms("PUSH_TIMEOUT_MS", 30_000),
 
   /**
+   * Cursor 活动那条小循环，跟限额同一套人数分档，只是快得多：有人在看时每分钟查一次
+   * 最近的用量事件，灯才跟得上。没人看时放慢，省得一直打 Cursor 的 dashboard 接口。
+   */
+  cursorNow: {
+    liveIntervalMs: ms("CURSOR_NOW_LIVE_INTERVAL_MS", 60_000),
+    openIntervalMs: ms("CURSOR_NOW_OPEN_INTERVAL_MS", 300_000),
+    idleIntervalMs: ms("CURSOR_NOW_IDLE_INTERVAL_MS", 900_000),
+  },
+
+  /**
    * 两个都空时自动读取 Claude Code 安装包的生产配置；显式覆盖时必须一起填。
    */
   claudeOAuth: {

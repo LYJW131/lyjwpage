@@ -5,6 +5,7 @@ import {
   normalizeAgentLimits,
   normalizeVibeCodingNow,
   normalizeVibeCodingUsage,
+  normalizeCursorNow,
 } from "./vibecoding-parse.ts";
 
 function today() {
@@ -259,4 +260,17 @@ test("新用量契约要求来源状态、费用完整性和有效日期，旧�
     assert.equal(normalizeVibeCodingUsage({ agents: [agent("cursor", extra)], totals: totals() }), null);
   }
   assert.equal(normalizeVibeCodingUsage({ agents: [agent("cursor")], totals: { ...totals(), costComplete: undefined } }), null);
+});
+
+test("normalizeCursorNow 只收可解析的时刻，模型名可缺省", () => {
+  assert.deepEqual(
+    normalizeCursorNow({ lastActivityAt: "2026-09-23T01:00:00+08:00", currentModel: "github_bugbot" }),
+    { lastActivityAt: "2026-09-22T17:00:00.000Z", currentModel: "github_bugbot" },
+  );
+  assert.deepEqual(normalizeCursorNow({ lastActivityAt: "2026-09-22T17:00:00.000Z" }), {
+    lastActivityAt: "2026-09-22T17:00:00.000Z",
+    currentModel: null,
+  });
+  assert.equal(normalizeCursorNow({ lastActivityAt: "not a date" }), null);
+  assert.equal(normalizeCursorNow({ lastActivityAt: "2026-09-22T17:00:00.000Z", currentModel: 3 }), null);
 });

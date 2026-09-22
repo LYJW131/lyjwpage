@@ -63,6 +63,17 @@ export type ParsedAgentLimits = {
   collectedAt: string;
 };
 
+/**
+ * `/api/ingest/agents` 的 `cursorNow`：Cursor 账号最近一条用量事件的时刻和模型。
+ *
+ * Cursor 没有会话级的「此刻在用」，用量事件却几秒内就能查到，而且 IDE、CLI、云端
+ * agent、Bugbot 都走这一处。站点只存这两个事实，在不在用由浏览器按时刻现算。
+ */
+export type ParsedCursorNow = {
+  lastActivityAt: string;
+  currentModel: string | null;
+};
+
 export type ParsedVibeCodingNow = {
   tokenUsage?: CodingTokenUsage;
   agents: Array<{
@@ -290,6 +301,16 @@ export function normalizeAgentLimits(input: unknown): ParsedAgentLimits | null {
         ? root.collectedAt
         : new Date().toISOString(),
   };
+}
+
+export function normalizeCursorNow(input: unknown): ParsedCursorNow | null {
+  const root = object(input);
+  const at = root ? text(root.lastActivityAt) : null;
+  if (!root || !at || !Number.isFinite(Date.parse(at))) return null;
+  if (root.currentModel != null && typeof root.currentModel !== "string") return null;
+  const model = text(root.currentModel);
+  if (model && model.length > 200) return null;
+  return { lastActivityAt: new Date(Date.parse(at)).toISOString(), currentModel: model };
 }
 
 /**

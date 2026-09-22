@@ -682,7 +682,7 @@ export type VibeCodingNowPayload = {
 export type VibeCodingPayload = {
   /**
    * 同一形状的来源列表。上报器发几个就有几个；首页按 id 取用：
-   * `claude` / `codex` 画全量面板，其余只取限额那一行。
+   * `claude` / `cursor` 画全量面板，其余只取限额那一行。
    */
   agents: VibeCodingAgent[];
   /** 限额可独立展示，尚未收到用量摘要时为 null。 */
