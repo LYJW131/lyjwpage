@@ -45,7 +45,7 @@ export function playbackSignature(items: ListeningItem[]): string {
  * 两轮列表之间有没有发生播放。
  *
  * 没有上一份就返回 null：第一次拉回来的列表整份都是「新」的，却不代表刚刚在放，
- * 和 activityPulseSample 需要基线是同一个理由。
+ * 要等下一份列表与这份基线比较，才能判断两轮之间的变化。
  */
 export function listeningPlay(
   previous: { items: ListeningItem[]; fetchedAt: number } | null,

@@ -1,11 +1,18 @@
 import {
   parsePulseSample,
   planPulseSample,
+  pulseIntervalRangeKey,
+  pulseIntervalRevisionKey,
   pulseKey,
+  toPulseSample,
 } from "@/lib/pulse";
 import { PULSE_HISTORY_LIMIT, PULSE_TTL_MS } from "@/lib/limits";
 import { askStorage, tellStorage } from "@/lib/storage";
 import type { PulseDomain, PulseLevel } from "@/lib/types";
+import type { ActivityHistory } from "@shared/activity";
+import { pulseAssessmentsKey } from "@/lib/pulse-assessments";
+import { parsePulseAssessment } from "@shared/pulse-assessment";
+import { compressPulseWindow } from "@/lib/pulse-window";
 
 function reason(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -37,4 +44,57 @@ export async function recordPulse(
   } catch (error) {
     console.error("[pulse]", reason(error));
   }
+}
+
+/**
+ * 用一次 HealthKit 查询结果权威替换范围内的闭合桶。StateHub 的 ingestTail 会把
+ * ingest 串行化，所以这里的读、合并、整表替换不会和另一封 iPhone 上报交错。
+ */
+export async function replacePulseIntervals(
+  domain: "activity",
+  range: Pick<ActivityHistory, "from" | "to">,
+  replacements: { t: number; level: PulseLevel; until: number }[],
+): Promise<void> {
+  const k = pulseKey(domain);
+  const answered = await askStorage(async (storage) => {
+    const rows = await storage.batch()
+      .listRange(k, 0, -1)
+      .listRange(pulseAssessmentsKey(), 0, -1)
+      .get(pulseIntervalRevisionKey(domain))
+      .execute();
+    return { samples: rows[0] as string[], assessments: rows[1] as string[], revision: rows[2] as string | null };
+  });
+  if (!answered.reachable) return;
+  const previous = answered.value.samples.map(parsePulseSample).filter((sample): sample is NonNullable<typeof sample> => sample !== null);
+  // 旧的累计估算可能从范围外起步却穿进范围内，不能让它覆盖权威查询中的未知空缺。
+  const kept = previous.filter((sample) =>
+    (sample.until ?? sample.t) <= range.from || sample.t >= range.to);
+  const merged = [...kept, ...replacements.map(toPulseSample)]
+    .sort((a, b) => a.t - b.t)
+    .slice(-PULSE_HISTORY_LIMIT);
+  const nextSamples = replacements.map(toPulseSample);
+  const beforeRange = previous.filter((sample) => sample.t < range.to && (sample.until ?? sample.t) > range.from);
+  const changed = JSON.stringify(beforeRange) !== JSON.stringify(nextSamples);
+  const assessments = answered.value.assessments
+    .map(parsePulseAssessment)
+    .filter((row): row is NonNullable<typeof row> => row !== null &&
+      (!changed || row.domain !== domain ||
+        JSON.stringify(compressPulseWindow(previous, row).segments) === JSON.stringify(compressPulseWindow(merged, row).segments)));
+  await tellStorage(async (storage) => {
+    const pipe = storage.batch().remove(k);
+    if (merged.length) pipe.append(k, ...merged.map((sample) => JSON.stringify(sample)));
+    pipe.expire(k, PULSE_TTL_MS);
+    pipe.set(pulseIntervalRangeKey(domain), JSON.stringify(range), { ttlMs: PULSE_TTL_MS });
+    if (changed) {
+      const revision = Number(answered.value.revision);
+      pipe.set(pulseIntervalRevisionKey(domain), String(Number.isSafeInteger(revision) ? revision + 1 : 1), { ttlMs: PULSE_TTL_MS });
+      pipe.remove(pulseAssessmentsKey());
+      const serialized = assessments.map((row) => JSON.stringify(row));
+      for (let at = 0; at < serialized.length; at += 10_000) {
+        pipe.append(pulseAssessmentsKey(), ...serialized.slice(at, at + 10_000));
+      }
+      pipe.expire(pulseAssessmentsKey(), PULSE_TTL_MS);
+    }
+    return pipe.execute();
+  });
 }

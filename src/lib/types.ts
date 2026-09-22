@@ -906,9 +906,9 @@ export type PulseLevel = 0 | 1 | 2 | 3;
 
 /** 一条 pulse 采样。域在 list key 上，不进 JSON。 */
 export type PulseSample = {
-  /** 阶跃起点，epoch 毫秒；activity 为前一次上报时刻 */
+  /** 阶跃起点，epoch 毫秒；activity 为闭合 HealthKit 五分钟桶的起点 */
   t: number;
-  /** 已知区间的终点（epoch 毫秒）；activity 必填，不向未来延续 */
+  /** 已知区间的终点（epoch 毫秒）；activity 为桶终点，必填，不向当前时刻延续 */
   until?: number;
   level: PulseLevel;
   powerW?: number;

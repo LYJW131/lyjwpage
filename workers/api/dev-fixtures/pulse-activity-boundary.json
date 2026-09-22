@@ -1,0 +1,1347 @@
+{
+  "ok": true,
+  "data": {
+    "generatedAt": "$now",
+    "window": {
+      "from": "$now-86400000",
+      "to": "$now"
+    },
+    "domains": {
+      "coding": {
+        "kind": "score",
+        "assessments": [],
+        "score": null
+      },
+      "listening": {
+        "kind": "score",
+        "assessments": [],
+        "score": null
+      },
+      "watching": {
+        "kind": "binary",
+        "segments": [],
+        "activeSeconds": 0,
+        "score": null
+      },
+      "gaming": {
+        "kind": "binary",
+        "segments": [],
+        "activeSeconds": 0,
+        "score": null
+      },
+      "charging": {
+        "kind": "power",
+        "segments": [],
+        "currentPowerW": null,
+        "score": null
+      },
+      "activity": {
+        "kind": "score",
+        "assessments": [
+          {
+            "domain": "activity",
+            "inputHash": "activity-boundary",
+            "from": "$now-28800000",
+            "to": "$now-28500000",
+            "coverage": [
+              {
+                "from": "$now-28800000",
+                "to": "$now-28500000"
+              }
+            ],
+            "intensity": {
+              "value": 0,
+              "confidence": 1,
+              "probabilities": {
+                "0": 1,
+                "1": 0,
+                "2": 0,
+                "3": 0,
+                "4": 0
+              }
+            },
+            "continuity": {
+              "value": 0,
+              "confidence": 1,
+              "probabilities": {
+                "0": 1,
+                "1": 0,
+                "2": 0,
+                "3": 0
+              }
+            },
+            "mode": null,
+            "model": "fixture-jev",
+            "scoredAt": "$now"
+          },
+          {
+            "domain": "activity",
+            "inputHash": "activity-boundary",
+            "from": "$now-28500000",
+            "to": "$now-28200000",
+            "coverage": [
+              {
+                "from": "$now-28500000",
+                "to": "$now-28200000"
+              }
+            ],
+            "intensity": {
+              "value": 0,
+              "confidence": 1,
+              "probabilities": {
+                "0": 1,
+                "1": 0,
+                "2": 0,
+                "3": 0,
+                "4": 0
+              }
+            },
+            "continuity": {
+              "value": 0,
+              "confidence": 1,
+              "probabilities": {
+                "0": 1,
+                "1": 0,
+                "2": 0,
+                "3": 0
+              }
+            },
+            "mode": null,
+            "model": "fixture-jev",
+            "scoredAt": "$now"
+          },
+          {
+            "domain": "activity",
+            "inputHash": "activity-boundary",
+            "from": "$now-28200000",
+            "to": "$now-27900000",
+            "coverage": [
+              {
+                "from": "$now-28200000",
+                "to": "$now-27900000"
+              }
+            ],
+            "intensity": {
+              "value": 0,
+              "confidence": 1,
+              "probabilities": {
+                "0": 1,
+                "1": 0,
+                "2": 0,
+                "3": 0,
+                "4": 0
+              }
+            },
+            "continuity": {
+              "value": 0,
+              "confidence": 1,
+              "probabilities": {
+                "0": 1,
+                "1": 0,
+                "2": 0,
+                "3": 0
+              }
+            },
+            "mode": null,
+            "model": "fixture-jev",
+            "scoredAt": "$now"
+          },
+          {
+            "domain": "activity",
+            "inputHash": "activity-boundary",
+            "from": "$now-27900000",
+            "to": "$now-27600000",
+            "coverage": [
+              {
+                "from": "$now-27900000",
+                "to": "$now-27600000"
+              }
+            ],
+            "intensity": {
+              "value": 0,
+              "confidence": 1,
+              "probabilities": {
+                "0": 1,
+                "1": 0,
+                "2": 0,
+                "3": 0,
+                "4": 0
+              }
+            },
+            "continuity": {
+              "value": 0,
+              "confidence": 1,
+              "probabilities": {
+                "0": 1,
+                "1": 0,
+                "2": 0,
+                "3": 0
+              }
+            },
+            "mode": null,
+            "model": "fixture-jev",
+            "scoredAt": "$now"
+          },
+          {
+            "domain": "activity",
+            "inputHash": "activity-boundary",
+            "from": "$now-27600000",
+            "to": "$now-27300000",
+            "coverage": [
+              {
+                "from": "$now-27600000",
+                "to": "$now-27300000"
+              }
+            ],
+            "intensity": {
+              "value": 0,
+              "confidence": 1,
+              "probabilities": {
+                "0": 1,
+                "1": 0,
+                "2": 0,
+                "3": 0,
+                "4": 0
+              }
+            },
+            "continuity": {
+              "value": 0,
+              "confidence": 1,
+              "probabilities": {
+                "0": 1,
+                "1": 0,
+                "2": 0,
+                "3": 0
+              }
+            },
+            "mode": null,
+            "model": "fixture-jev",
+            "scoredAt": "$now"
+          },
+          {
+            "domain": "activity",
+            "inputHash": "activity-boundary",
+            "from": "$now-27300000",
+            "to": "$now-27000000",
+            "coverage": [
+              {
+                "from": "$now-27300000",
+                "to": "$now-27000000"
+              }
+            ],
+            "intensity": {
+              "value": 0,
+              "confidence": 1,
+              "probabilities": {
+                "0": 1,
+                "1": 0,
+                "2": 0,
+                "3": 0,
+                "4": 0
+              }
+            },
+            "continuity": {
+              "value": 0,
+              "confidence": 1,
+              "probabilities": {
+                "0": 1,
+                "1": 0,
+                "2": 0,
+                "3": 0
+              }
+            },
+            "mode": null,
+            "model": "fixture-jev",
+            "scoredAt": "$now"
+          },
+          {
+            "domain": "activity",
+            "inputHash": "activity-boundary",
+            "from": "$now-27000000",
+            "to": "$now-26700000",
+            "coverage": [
+              {
+                "from": "$now-27000000",
+                "to": "$now-26700000"
+              }
+            ],
+            "intensity": {
+              "value": 0,
+              "confidence": 1,
+              "probabilities": {
+                "0": 1,
+                "1": 0,
+                "2": 0,
+                "3": 0,
+                "4": 0
+              }
+            },
+            "continuity": {
+              "value": 0,
+              "confidence": 1,
+              "probabilities": {
+                "0": 1,
+                "1": 0,
+                "2": 0,
+                "3": 0
+              }
+            },
+            "mode": null,
+            "model": "fixture-jev",
+            "scoredAt": "$now"
+          },
+          {
+            "domain": "activity",
+            "inputHash": "activity-boundary",
+            "from": "$now-26700000",
+            "to": "$now-26400000",
+            "coverage": [
+              {
+                "from": "$now-26700000",
+                "to": "$now-26400000"
+              }
+            ],
+            "intensity": {
+              "value": 0,
+              "confidence": 1,
+              "probabilities": {
+                "0": 1,
+                "1": 0,
+                "2": 0,
+                "3": 0,
+                "4": 0
+              }
+            },
+            "continuity": {
+              "value": 0,
+              "confidence": 1,
+              "probabilities": {
+                "0": 1,
+                "1": 0,
+                "2": 0,
+                "3": 0
+              }
+            },
+            "mode": null,
+            "model": "fixture-jev",
+            "scoredAt": "$now"
+          },
+          {
+            "domain": "activity",
+            "inputHash": "activity-boundary",
+            "from": "$now-26400000",
+            "to": "$now-26100000",
+            "coverage": [
+              {
+                "from": "$now-26400000",
+                "to": "$now-26100000"
+              }
+            ],
+            "intensity": {
+              "value": 0,
+              "confidence": 1,
+              "probabilities": {
+                "0": 1,
+                "1": 0,
+                "2": 0,
+                "3": 0,
+                "4": 0
+              }
+            },
+            "continuity": {
+              "value": 0,
+              "confidence": 1,
+              "probabilities": {
+                "0": 1,
+                "1": 0,
+                "2": 0,
+                "3": 0
+              }
+            },
+            "mode": null,
+            "model": "fixture-jev",
+            "scoredAt": "$now"
+          },
+          {
+            "domain": "activity",
+            "inputHash": "activity-boundary",
+            "from": "$now-26100000",
+            "to": "$now-25800000",
+            "coverage": [
+              {
+                "from": "$now-26100000",
+                "to": "$now-25800000"
+              }
+            ],
+            "intensity": {
+              "value": 0,
+              "confidence": 1,
+              "probabilities": {
+                "0": 1,
+                "1": 0,
+                "2": 0,
+                "3": 0,
+                "4": 0
+              }
+            },
+            "continuity": {
+              "value": 0,
+              "confidence": 1,
+              "probabilities": {
+                "0": 1,
+                "1": 0,
+                "2": 0,
+                "3": 0
+              }
+            },
+            "mode": null,
+            "model": "fixture-jev",
+            "scoredAt": "$now"
+          },
+          {
+            "domain": "activity",
+            "inputHash": "activity-boundary",
+            "from": "$now-25800000",
+            "to": "$now-25500000",
+            "coverage": [
+              {
+                "from": "$now-25800000",
+                "to": "$now-25500000"
+              }
+            ],
+            "intensity": {
+              "value": 0,
+              "confidence": 1,
+              "probabilities": {
+                "0": 1,
+                "1": 0,
+                "2": 0,
+                "3": 0,
+                "4": 0
+              }
+            },
+            "continuity": {
+              "value": 0,
+              "confidence": 1,
+              "probabilities": {
+                "0": 1,
+                "1": 0,
+                "2": 0,
+                "3": 0
+              }
+            },
+            "mode": null,
+            "model": "fixture-jev",
+            "scoredAt": "$now"
+          },
+          {
+            "domain": "activity",
+            "inputHash": "activity-boundary",
+            "from": "$now-25500000",
+            "to": "$now-25200000",
+            "coverage": [
+              {
+                "from": "$now-25500000",
+                "to": "$now-25200000"
+              }
+            ],
+            "intensity": {
+              "value": 0,
+              "confidence": 1,
+              "probabilities": {
+                "0": 1,
+                "1": 0,
+                "2": 0,
+                "3": 0,
+                "4": 0
+              }
+            },
+            "continuity": {
+              "value": 0,
+              "confidence": 1,
+              "probabilities": {
+                "0": 1,
+                "1": 0,
+                "2": 0,
+                "3": 0
+              }
+            },
+            "mode": null,
+            "model": "fixture-jev",
+            "scoredAt": "$now"
+          },
+          {
+            "domain": "activity",
+            "inputHash": "activity-boundary",
+            "from": "$now-25200000",
+            "to": "$now-24900000",
+            "coverage": [
+              {
+                "from": "$now-25200000",
+                "to": "$now-24900000"
+              }
+            ],
+            "intensity": {
+              "value": 0,
+              "confidence": 1,
+              "probabilities": {
+                "0": 1,
+                "1": 0,
+                "2": 0,
+                "3": 0,
+                "4": 0
+              }
+            },
+            "continuity": {
+              "value": 0,
+              "confidence": 1,
+              "probabilities": {
+                "0": 1,
+                "1": 0,
+                "2": 0,
+                "3": 0
+              }
+            },
+            "mode": null,
+            "model": "fixture-jev",
+            "scoredAt": "$now"
+          },
+          {
+            "domain": "activity",
+            "inputHash": "activity-boundary",
+            "from": "$now-24900000",
+            "to": "$now-24600000",
+            "coverage": [
+              {
+                "from": "$now-24900000",
+                "to": "$now-24600000"
+              }
+            ],
+            "intensity": {
+              "value": 0,
+              "confidence": 1,
+              "probabilities": {
+                "0": 1,
+                "1": 0,
+                "2": 0,
+                "3": 0,
+                "4": 0
+              }
+            },
+            "continuity": {
+              "value": 0,
+              "confidence": 1,
+              "probabilities": {
+                "0": 1,
+                "1": 0,
+                "2": 0,
+                "3": 0
+              }
+            },
+            "mode": null,
+            "model": "fixture-jev",
+            "scoredAt": "$now"
+          },
+          {
+            "domain": "activity",
+            "inputHash": "activity-boundary",
+            "from": "$now-24600000",
+            "to": "$now-24300000",
+            "coverage": [
+              {
+                "from": "$now-24600000",
+                "to": "$now-24300000"
+              }
+            ],
+            "intensity": {
+              "value": 0,
+              "confidence": 1,
+              "probabilities": {
+                "0": 1,
+                "1": 0,
+                "2": 0,
+                "3": 0,
+                "4": 0
+              }
+            },
+            "continuity": {
+              "value": 0,
+              "confidence": 1,
+              "probabilities": {
+                "0": 1,
+                "1": 0,
+                "2": 0,
+                "3": 0
+              }
+            },
+            "mode": null,
+            "model": "fixture-jev",
+            "scoredAt": "$now"
+          },
+          {
+            "domain": "activity",
+            "inputHash": "activity-boundary",
+            "from": "$now-24300000",
+            "to": "$now-24000000",
+            "coverage": [
+              {
+                "from": "$now-24300000",
+                "to": "$now-24000000"
+              }
+            ],
+            "intensity": {
+              "value": 0,
+              "confidence": 1,
+              "probabilities": {
+                "0": 1,
+                "1": 0,
+                "2": 0,
+                "3": 0,
+                "4": 0
+              }
+            },
+            "continuity": {
+              "value": 0,
+              "confidence": 1,
+              "probabilities": {
+                "0": 1,
+                "1": 0,
+                "2": 0,
+                "3": 0
+              }
+            },
+            "mode": null,
+            "model": "fixture-jev",
+            "scoredAt": "$now"
+          },
+          {
+            "domain": "activity",
+            "inputHash": "activity-boundary",
+            "from": "$now-24000000",
+            "to": "$now-23700000",
+            "coverage": [
+              {
+                "from": "$now-24000000",
+                "to": "$now-23700000"
+              }
+            ],
+            "intensity": {
+              "value": 0,
+              "confidence": 1,
+              "probabilities": {
+                "0": 1,
+                "1": 0,
+                "2": 0,
+                "3": 0,
+                "4": 0
+              }
+            },
+            "continuity": {
+              "value": 0,
+              "confidence": 1,
+              "probabilities": {
+                "0": 1,
+                "1": 0,
+                "2": 0,
+                "3": 0
+              }
+            },
+            "mode": null,
+            "model": "fixture-jev",
+            "scoredAt": "$now"
+          },
+          {
+            "domain": "activity",
+            "inputHash": "activity-boundary",
+            "from": "$now-23700000",
+            "to": "$now-23400000",
+            "coverage": [
+              {
+                "from": "$now-23700000",
+                "to": "$now-23400000"
+              }
+            ],
+            "intensity": {
+              "value": 0,
+              "confidence": 1,
+              "probabilities": {
+                "0": 1,
+                "1": 0,
+                "2": 0,
+                "3": 0,
+                "4": 0
+              }
+            },
+            "continuity": {
+              "value": 0,
+              "confidence": 1,
+              "probabilities": {
+                "0": 1,
+                "1": 0,
+                "2": 0,
+                "3": 0
+              }
+            },
+            "mode": null,
+            "model": "fixture-jev",
+            "scoredAt": "$now"
+          },
+          {
+            "domain": "activity",
+            "inputHash": "activity-boundary",
+            "from": "$now-23400000",
+            "to": "$now-23100000",
+            "coverage": [
+              {
+                "from": "$now-23400000",
+                "to": "$now-23100000"
+              }
+            ],
+            "intensity": {
+              "value": 0,
+              "confidence": 1,
+              "probabilities": {
+                "0": 1,
+                "1": 0,
+                "2": 0,
+                "3": 0,
+                "4": 0
+              }
+            },
+            "continuity": {
+              "value": 0,
+              "confidence": 1,
+              "probabilities": {
+                "0": 1,
+                "1": 0,
+                "2": 0,
+                "3": 0
+              }
+            },
+            "mode": null,
+            "model": "fixture-jev",
+            "scoredAt": "$now"
+          },
+          {
+            "domain": "activity",
+            "inputHash": "activity-boundary",
+            "from": "$now-23100000",
+            "to": "$now-22800000",
+            "coverage": [
+              {
+                "from": "$now-23100000",
+                "to": "$now-22800000"
+              }
+            ],
+            "intensity": {
+              "value": 0,
+              "confidence": 1,
+              "probabilities": {
+                "0": 1,
+                "1": 0,
+                "2": 0,
+                "3": 0,
+                "4": 0
+              }
+            },
+            "continuity": {
+              "value": 0,
+              "confidence": 1,
+              "probabilities": {
+                "0": 1,
+                "1": 0,
+                "2": 0,
+                "3": 0
+              }
+            },
+            "mode": null,
+            "model": "fixture-jev",
+            "scoredAt": "$now"
+          },
+          {
+            "domain": "activity",
+            "inputHash": "activity-boundary",
+            "from": "$now-22800000",
+            "to": "$now-22500000",
+            "coverage": [
+              {
+                "from": "$now-22800000",
+                "to": "$now-22500000"
+              }
+            ],
+            "intensity": {
+              "value": 0,
+              "confidence": 1,
+              "probabilities": {
+                "0": 1,
+                "1": 0,
+                "2": 0,
+                "3": 0,
+                "4": 0
+              }
+            },
+            "continuity": {
+              "value": 0,
+              "confidence": 1,
+              "probabilities": {
+                "0": 1,
+                "1": 0,
+                "2": 0,
+                "3": 0
+              }
+            },
+            "mode": null,
+            "model": "fixture-jev",
+            "scoredAt": "$now"
+          },
+          {
+            "domain": "activity",
+            "inputHash": "activity-boundary",
+            "from": "$now-22500000",
+            "to": "$now-22200000",
+            "coverage": [
+              {
+                "from": "$now-22500000",
+                "to": "$now-22200000"
+              }
+            ],
+            "intensity": {
+              "value": 0,
+              "confidence": 1,
+              "probabilities": {
+                "0": 1,
+                "1": 0,
+                "2": 0,
+                "3": 0,
+                "4": 0
+              }
+            },
+            "continuity": {
+              "value": 0,
+              "confidence": 1,
+              "probabilities": {
+                "0": 1,
+                "1": 0,
+                "2": 0,
+                "3": 0
+              }
+            },
+            "mode": null,
+            "model": "fixture-jev",
+            "scoredAt": "$now"
+          },
+          {
+            "domain": "activity",
+            "inputHash": "activity-boundary",
+            "from": "$now-22200000",
+            "to": "$now-21900000",
+            "coverage": [
+              {
+                "from": "$now-22200000",
+                "to": "$now-21900000"
+              }
+            ],
+            "intensity": {
+              "value": 0,
+              "confidence": 1,
+              "probabilities": {
+                "0": 1,
+                "1": 0,
+                "2": 0,
+                "3": 0,
+                "4": 0
+              }
+            },
+            "continuity": {
+              "value": 0,
+              "confidence": 1,
+              "probabilities": {
+                "0": 1,
+                "1": 0,
+                "2": 0,
+                "3": 0
+              }
+            },
+            "mode": null,
+            "model": "fixture-jev",
+            "scoredAt": "$now"
+          },
+          {
+            "domain": "activity",
+            "inputHash": "activity-boundary",
+            "from": "$now-21900000",
+            "to": "$now-21600000",
+            "coverage": [
+              {
+                "from": "$now-21900000",
+                "to": "$now-21600000"
+              }
+            ],
+            "intensity": {
+              "value": 0,
+              "confidence": 1,
+              "probabilities": {
+                "0": 1,
+                "1": 0,
+                "2": 0,
+                "3": 0,
+                "4": 0
+              }
+            },
+            "continuity": {
+              "value": 0,
+              "confidence": 1,
+              "probabilities": {
+                "0": 1,
+                "1": 0,
+                "2": 0,
+                "3": 0
+              }
+            },
+            "mode": null,
+            "model": "fixture-jev",
+            "scoredAt": "$now"
+          },
+          {
+            "domain": "activity",
+            "inputHash": "activity-boundary",
+            "from": "$now-14400000",
+            "to": "$now-14100000",
+            "coverage": [
+              {
+                "from": "$now-14400000",
+                "to": "$now-14100000"
+              }
+            ],
+            "intensity": {
+              "value": 3,
+              "confidence": 1,
+              "probabilities": {
+                "0": 0,
+                "1": 0,
+                "2": 0,
+                "3": 1,
+                "4": 0
+              }
+            },
+            "continuity": {
+              "value": 2,
+              "confidence": 1,
+              "probabilities": {
+                "0": 0,
+                "1": 0,
+                "2": 1,
+                "3": 0
+              }
+            },
+            "mode": null,
+            "model": "fixture-jev",
+            "scoredAt": "$now"
+          },
+          {
+            "domain": "activity",
+            "inputHash": "activity-boundary",
+            "from": "$now-14100000",
+            "to": "$now-13800000",
+            "coverage": [
+              {
+                "from": "$now-14100000",
+                "to": "$now-13800000"
+              }
+            ],
+            "intensity": {
+              "value": 3,
+              "confidence": 1,
+              "probabilities": {
+                "0": 0,
+                "1": 0,
+                "2": 0,
+                "3": 1,
+                "4": 0
+              }
+            },
+            "continuity": {
+              "value": 2,
+              "confidence": 1,
+              "probabilities": {
+                "0": 0,
+                "1": 0,
+                "2": 1,
+                "3": 0
+              }
+            },
+            "mode": null,
+            "model": "fixture-jev",
+            "scoredAt": "$now"
+          },
+          {
+            "domain": "activity",
+            "inputHash": "activity-boundary",
+            "from": "$now-13800000",
+            "to": "$now-13500000",
+            "coverage": [
+              {
+                "from": "$now-13800000",
+                "to": "$now-13500000"
+              }
+            ],
+            "intensity": {
+              "value": 3,
+              "confidence": 1,
+              "probabilities": {
+                "0": 0,
+                "1": 0,
+                "2": 0,
+                "3": 1,
+                "4": 0
+              }
+            },
+            "continuity": {
+              "value": 2,
+              "confidence": 1,
+              "probabilities": {
+                "0": 0,
+                "1": 0,
+                "2": 1,
+                "3": 0
+              }
+            },
+            "mode": null,
+            "model": "fixture-jev",
+            "scoredAt": "$now"
+          },
+          {
+            "domain": "activity",
+            "inputHash": "activity-boundary",
+            "from": "$now-13500000",
+            "to": "$now-13200000",
+            "coverage": [
+              {
+                "from": "$now-13500000",
+                "to": "$now-13200000"
+              }
+            ],
+            "intensity": {
+              "value": 3,
+              "confidence": 1,
+              "probabilities": {
+                "0": 0,
+                "1": 0,
+                "2": 0,
+                "3": 1,
+                "4": 0
+              }
+            },
+            "continuity": {
+              "value": 2,
+              "confidence": 1,
+              "probabilities": {
+                "0": 0,
+                "1": 0,
+                "2": 1,
+                "3": 0
+              }
+            },
+            "mode": null,
+            "model": "fixture-jev",
+            "scoredAt": "$now"
+          },
+          {
+            "domain": "activity",
+            "inputHash": "activity-boundary",
+            "from": "$now-13200000",
+            "to": "$now-12900000",
+            "coverage": [
+              {
+                "from": "$now-13200000",
+                "to": "$now-12900000"
+              }
+            ],
+            "intensity": {
+              "value": 3,
+              "confidence": 1,
+              "probabilities": {
+                "0": 0,
+                "1": 0,
+                "2": 0,
+                "3": 1,
+                "4": 0
+              }
+            },
+            "continuity": {
+              "value": 2,
+              "confidence": 1,
+              "probabilities": {
+                "0": 0,
+                "1": 0,
+                "2": 1,
+                "3": 0
+              }
+            },
+            "mode": null,
+            "model": "fixture-jev",
+            "scoredAt": "$now"
+          },
+          {
+            "domain": "activity",
+            "inputHash": "activity-boundary",
+            "from": "$now-12900000",
+            "to": "$now-12600000",
+            "coverage": [
+              {
+                "from": "$now-12900000",
+                "to": "$now-12600000"
+              }
+            ],
+            "intensity": {
+              "value": 3,
+              "confidence": 1,
+              "probabilities": {
+                "0": 0,
+                "1": 0,
+                "2": 0,
+                "3": 1,
+                "4": 0
+              }
+            },
+            "continuity": {
+              "value": 2,
+              "confidence": 1,
+              "probabilities": {
+                "0": 0,
+                "1": 0,
+                "2": 1,
+                "3": 0
+              }
+            },
+            "mode": null,
+            "model": "fixture-jev",
+            "scoredAt": "$now"
+          },
+          {
+            "domain": "activity",
+            "inputHash": "activity-boundary",
+            "from": "$now-12600000",
+            "to": "$now-12300000",
+            "coverage": [
+              {
+                "from": "$now-12600000",
+                "to": "$now-12300000"
+              }
+            ],
+            "intensity": {
+              "value": 3,
+              "confidence": 1,
+              "probabilities": {
+                "0": 0,
+                "1": 0,
+                "2": 0,
+                "3": 1,
+                "4": 0
+              }
+            },
+            "continuity": {
+              "value": 2,
+              "confidence": 1,
+              "probabilities": {
+                "0": 0,
+                "1": 0,
+                "2": 1,
+                "3": 0
+              }
+            },
+            "mode": null,
+            "model": "fixture-jev",
+            "scoredAt": "$now"
+          },
+          {
+            "domain": "activity",
+            "inputHash": "activity-boundary",
+            "from": "$now-12300000",
+            "to": "$now-12000000",
+            "coverage": [
+              {
+                "from": "$now-12300000",
+                "to": "$now-12000000"
+              }
+            ],
+            "intensity": {
+              "value": 3,
+              "confidence": 1,
+              "probabilities": {
+                "0": 0,
+                "1": 0,
+                "2": 0,
+                "3": 1,
+                "4": 0
+              }
+            },
+            "continuity": {
+              "value": 2,
+              "confidence": 1,
+              "probabilities": {
+                "0": 0,
+                "1": 0,
+                "2": 1,
+                "3": 0
+              }
+            },
+            "mode": null,
+            "model": "fixture-jev",
+            "scoredAt": "$now"
+          },
+          {
+            "domain": "activity",
+            "inputHash": "activity-boundary",
+            "from": "$now-12000000",
+            "to": "$now-11700000",
+            "coverage": [
+              {
+                "from": "$now-12000000",
+                "to": "$now-11700000"
+              }
+            ],
+            "intensity": {
+              "value": 3,
+              "confidence": 1,
+              "probabilities": {
+                "0": 0,
+                "1": 0,
+                "2": 0,
+                "3": 1,
+                "4": 0
+              }
+            },
+            "continuity": {
+              "value": 2,
+              "confidence": 1,
+              "probabilities": {
+                "0": 0,
+                "1": 0,
+                "2": 1,
+                "3": 0
+              }
+            },
+            "mode": null,
+            "model": "fixture-jev",
+            "scoredAt": "$now"
+          },
+          {
+            "domain": "activity",
+            "inputHash": "activity-boundary",
+            "from": "$now-11700000",
+            "to": "$now-11400000",
+            "coverage": [
+              {
+                "from": "$now-11700000",
+                "to": "$now-11400000"
+              }
+            ],
+            "intensity": {
+              "value": 3,
+              "confidence": 1,
+              "probabilities": {
+                "0": 0,
+                "1": 0,
+                "2": 0,
+                "3": 1,
+                "4": 0
+              }
+            },
+            "continuity": {
+              "value": 2,
+              "confidence": 1,
+              "probabilities": {
+                "0": 0,
+                "1": 0,
+                "2": 1,
+                "3": 0
+              }
+            },
+            "mode": null,
+            "model": "fixture-jev",
+            "scoredAt": "$now"
+          },
+          {
+            "domain": "activity",
+            "inputHash": "activity-boundary",
+            "from": "$now-11400000",
+            "to": "$now-11100000",
+            "coverage": [
+              {
+                "from": "$now-11400000",
+                "to": "$now-11100000"
+              }
+            ],
+            "intensity": {
+              "value": 3,
+              "confidence": 1,
+              "probabilities": {
+                "0": 0,
+                "1": 0,
+                "2": 0,
+                "3": 1,
+                "4": 0
+              }
+            },
+            "continuity": {
+              "value": 2,
+              "confidence": 1,
+              "probabilities": {
+                "0": 0,
+                "1": 0,
+                "2": 1,
+                "3": 0
+              }
+            },
+            "mode": null,
+            "model": "fixture-jev",
+            "scoredAt": "$now"
+          },
+          {
+            "domain": "activity",
+            "inputHash": "activity-boundary",
+            "from": "$now-11100000",
+            "to": "$now-10800000",
+            "coverage": [
+              {
+                "from": "$now-11100000",
+                "to": "$now-10800000"
+              }
+            ],
+            "intensity": {
+              "value": 3,
+              "confidence": 1,
+              "probabilities": {
+                "0": 0,
+                "1": 0,
+                "2": 0,
+                "3": 1,
+                "4": 0
+              }
+            },
+            "continuity": {
+              "value": 2,
+              "confidence": 1,
+              "probabilities": {
+                "0": 0,
+                "1": 0,
+                "2": 1,
+                "3": 0
+              }
+            },
+            "mode": null,
+            "model": "fixture-jev",
+            "scoredAt": "$now"
+          }
+        ],
+        "score": {
+          "value": 0.75,
+          "confidence": 1,
+          "trend": "unknown",
+          "scoredAt": "$now"
+        }
+      }
+    }
+  }
+}

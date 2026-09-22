@@ -13,8 +13,8 @@ settings:
   base:
     SWIFT_VERSION: "6.0"
     DEVELOPMENT_TEAM: 2VTXNMR2GL
-    MARKETING_VERSION: "2.0.2"
-    CURRENT_PROJECT_VERSION: "4"
+    MARKETING_VERSION: "2.0.3"
+    CURRENT_PROJECT_VERSION: "5"
     # 显式 Info.plist，和 MacTelemetryHub 一致：各模块的权限说明和 ATS 例外都要手写
     GENERATE_INFOPLIST_FILE: NO
 

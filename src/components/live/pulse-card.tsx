@@ -196,7 +196,7 @@ export function PulseCard({
             >
               <span
                 className="label-mono truncate text-muted-foreground"
-                title={domain === "activity" ? "Estimated physical activity between Apple Watch reports; gaps mean no data." : undefined}
+                title={domain === "activity" ? "Physical activity from closed HealthKit five-minute buckets; gaps are unknown, not still." : undefined}
               >
                 {label}
               </span>

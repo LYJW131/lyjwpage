@@ -3,7 +3,7 @@ import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
 import { codingObservationsKey, codingTokenUsageKey } from "@/lib/coding-pulse";
 import { listeningPlaysKey } from "@/lib/listening-pulse";
-import { pulseKey } from "@/lib/pulse";
+import { pulseIntervalRevisionKey, pulseKey } from "@/lib/pulse";
 import { PULSE_DOMAINS, type PulseDomain } from "@/lib/types";
 import { CODING_WINDOW_MS, parseCodingAssessment } from "@shared/pulse-coding";
 import type { PulseAssessment } from "@shared/pulse-assessment";
@@ -316,6 +316,21 @@ test("pulse score state: expired results cannot overwrite a replacement window",
   const saved = (await b.storage.listRange(pulseAssessmentsKey(), 0, -1)).map((raw) => JSON.parse(raw) as PulseAssessment);
   assert.equal(saved.length, 1);
   assert.equal(saved[0].inputHash, "replacement");
+});
+
+test("pulse score state: an activity history revision rejects stale activity results only", async () => {
+  const b = setup();
+  const state = b.coordinator();
+  const claim = await state.claimPulseScore();
+  assert.ok(claim);
+  assert.equal(await state.activatePulseScore(claim.token, claim.generation), true);
+  await b.storage.set(pulseIntervalRevisionKey("activity"), "1");
+
+  const activity = assessment("activity", T, b.now(), "stale-activity");
+  const coding = assessment("coding", T, b.now(), "current-coding");
+  assert.equal(await state.finishPulseScore(claim.token, claim.generation, [activity, coding]), true);
+  const saved = (await b.storage.listRange(pulseAssessmentsKey(), 0, -1)).map((raw) => JSON.parse(raw) as PulseAssessment);
+  assert.deepEqual(saved.map((row) => row.inputHash), ["current-coding"]);
 });
 
 test("pulse score state: commit merges at submit time and splits lists above 10000 values", async () => {

@@ -1,0 +1,15 @@
+{
+  "ok": true,
+  "data": {
+    "generatedAt": "$now",
+    "window": { "from": "$now-86400000", "to": "$now" },
+    "domains": {
+      "coding": { "kind": "score", "assessments": [], "score": null },
+      "listening": { "kind": "score", "assessments": [], "score": null },
+      "watching": { "kind": "binary", "segments": [], "activeSeconds": 0, "score": null },
+      "gaming": { "kind": "binary", "segments": [], "activeSeconds": 0, "score": null },
+      "charging": { "kind": "power", "segments": [], "currentPowerW": null, "score": null },
+      "activity": { "kind": "score", "assessments": [], "score": null }
+    }
+  }
+}
