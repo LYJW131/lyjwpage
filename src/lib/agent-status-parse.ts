@@ -210,6 +210,27 @@ function isCodexComponent(name: string): boolean {
   }
 }
 
+/**
+ * 站点实际跑在这些产品上，再加上域名能解析所靠的基础面。
+ * Workers、Durable Objects、KV、R2、D1、WebSockets 是三个 Worker 的运行时；
+ * Workers Builds 和 API 是发布与统计卡在用的控制面；
+ * Authoritative DNS、DNS Updates 扛 api / online / playstation-reporter 的自定义域名。
+ * 机房、WARP、Bot Management、CDN 不进这一行：主站不在 Cloudflare 的缓存上。
+ * 用全名，避免 Workers 带上 Workers AI，API 带上 API Shield。
+ */
+const CLOUDFLARE_SITE_COMPONENTS: Record<string, true> = {
+  api: true,
+  "authoritative dns": true,
+  d1: true,
+  "dns updates": true,
+  "durable objects": true,
+  r2: true,
+  websockets: true,
+  workers: true,
+  "workers builds": true,
+  "workers kv": true,
+};
+
 function parseStatuspage(body: string, pageUrl: string): {
   page: AgentIndicator | null;
   components: StatuspageComponent[];
@@ -302,9 +323,8 @@ function statuspageRow(
     (incident) => touches(incident) && incident.status.toLowerCase() === "scheduled",
   );
   /**
-   * 整页行的灯跟页面灯和事件走，不跟组件走：Cloudflare 这类页面按机房列组件，
-   * 上百个里几个 partial_outage / under_maintenance 是常态，不该把整行点得比
-   * 页面自己的灯更红。页面灯缺失（词没对上）时才退回组件。
+   * 整页行的灯跟页面灯和事件走，不跟组件走。页面上几个组件异常是常态，
+   * 不该把整行点得比页面自己的灯更红。页面灯缺失（词没对上）时才退回组件。
    */
   const incidentIndicators: AgentIndicator[] = [];
   for (const incident of active) {
@@ -657,8 +677,8 @@ export async function collectAgentStatus(
         "Cloudflare",
         STATUS_PAGES.cloudflare,
         await text(AGENT_STATUS_URLS.cloudflare),
-        () => true,
-        true,
+        (name) => name.trim().toLowerCase() in CLOUDFLARE_SITE_COMPONENTS,
+        false,
       ),
     ),
   ]);

@@ -172,7 +172,24 @@ const github = summary({
 
 const cloudflare = summary({
   status: { indicator: "critical", description: "Major Service Outage" },
-  components: [{ name: "CDN/Edge", status: "major_outage" }],
+  components: [
+    { name: "CDN/Cache", status: "major_outage" },
+    { name: "Workers", status: "operational" },
+    { name: "Workers AI", status: "major_outage" },
+    { name: "Authoritative DNS", status: "operational" },
+    { name: "Africa", status: "partial_outage" },
+  ],
+  incidents: [
+    {
+      id: "warp-geo",
+      name: "Incorrect geo location for some Cloudflare WARP users",
+      status: "identified",
+      impact: "critical",
+      shortlink: "https://www.cloudflarestatus.com/incidents/warp-geo",
+      components: [{ name: "WARP" }, { name: "Cloudflare Sites and Services" }],
+      incident_updates: [{ body: "A fix is being rolled out.", created_at: "2026-09-22T01:00:00Z" }],
+    },
+  ],
 });
 
 function pages(extra: Record<string, string | Error> = {}): (url: string) => Promise<string> {
@@ -231,40 +248,83 @@ test("DeepSeek 全部 resolved 就是 Operational，事件列表空", async () =
   assert.equal(deepseek.note, null);
 });
 
-test("Vercel / GitHub / Cloudflare 走 Statuspage 整页，页面灯直接进这一行", async () => {
+test("Vercel / GitHub 走 Statuspage 整页，页面灯直接进这一行", async () => {
   const payload = await collectAgentStatus(null, pages());
   const vercelRow = row(payload, "vercel");
   assert.equal(vercelRow.indicator, "degraded");
   assert.equal(vercelRow.incidents[0]?.title, "Build delays");
   assert.ok(vercelRow.components.some((component) => component.name === "Builds"));
   assert.equal(row(payload, "github").indicator, "operational");
-  assert.equal(row(payload, "cloudflare").indicator, "major_outage");
 });
 
-test("整页行不跟组件加码：机房组件掉线不盖过页面灯", async () => {
-  const minorPage = summary({
-    status: { indicator: "minor", description: "Minor Service Outage" },
+test("Cloudflare 只盯站点用到的产品和 DNS，不跟整页灯、机房或 WARP 走", async () => {
+  const payload = await collectAgentStatus(null, pages());
+  const cloudflareRow = row(payload, "cloudflare");
+  assert.equal(cloudflareRow.indicator, "operational");
+  assert.equal(cloudflareRow.incidents.length, 0);
+  assert.deepEqual(
+    cloudflareRow.components.map((component) => component.name),
+    ["Workers", "Authoritative DNS"],
+  );
+});
+
+test("Cloudflare 的灯跟盯着的组件和点名它们的事件走", async () => {
+  const body = summary({
+    status: { indicator: "none", description: "All Systems Operational" },
     components: [
-      { name: "Cloudflare Sites and Services", status: "degraded_performance" },
-      { name: "Africa", status: "partial_outage" },
+      { name: "Workers", status: "partial_outage" },
+      { name: "Authoritative DNS", status: "degraded_performance" },
+      { name: "DNS Updates", status: "operational" },
+      { name: "Bot Management", status: "major_outage" },
       { name: "Baghdad, Iraq - (BGW)", status: "under_maintenance" },
     ],
     incidents: [
       {
-        id: "warp-geo",
-        name: "Incorrect geo location for some Cloudflare WARP users",
-        status: "identified",
-        impact: "minor",
-        shortlink: "https://www.cloudflarestatus.com/incidents/warp-geo",
-        components: [{ name: "Cloudflare Sites and Services" }],
-        incident_updates: [{ body: "A fix is being rolled out.", created_at: "2026-09-22T01:00:00Z" }],
+        id: "workers",
+        name: "Workers elevated errors",
+        status: "investigating",
+        impact: "major",
+        shortlink: "https://www.cloudflarestatus.com/incidents/workers",
+        components: [{ name: "Workers" }],
+        incident_updates: [{ body: "Error rate is elevated.", created_at: "2026-09-22T02:00:00Z" }],
+      },
+      {
+        id: "bots",
+        name: "Bot Management delays",
+        status: "investigating",
+        impact: "critical",
+        shortlink: "https://www.cloudflarestatus.com/incidents/bots",
+        components: [{ name: "Bot Management" }],
+        incident_updates: [{ body: "Unrelated.", created_at: "2026-09-22T02:00:00Z" }],
       },
     ],
   });
-  const payload = await collectAgentStatus(null, pages({ [AGENT_STATUS_URLS.cloudflare]: minorPage }));
+  const payload = await collectAgentStatus(null, pages({ [AGENT_STATUS_URLS.cloudflare]: body }));
   const cloudflareRow = row(payload, "cloudflare");
-  assert.equal(cloudflareRow.indicator, "degraded");
-  assert.equal(cloudflareRow.incidents.length, 1);
+  assert.equal(cloudflareRow.indicator, "partial_outage");
+  assert.deepEqual(
+    cloudflareRow.incidents.map((incident) => incident.id),
+    ["workers"],
+  );
+  assert.equal(
+    cloudflareRow.components.some((component) => component.name === "Bot Management"),
+    false,
+  );
+});
+
+test("Cloudflare 状态页不再列出盯着的产品时，不退回整页灯", async () => {
+  const body = summary({
+    status: { indicator: "critical", description: "Major Service Outage" },
+    components: [
+      { name: "WARP", status: "major_outage" },
+      { name: "Africa", status: "partial_outage" },
+    ],
+  });
+  const payload = await collectAgentStatus(null, pages({ [AGENT_STATUS_URLS.cloudflare]: body }));
+  const cloudflareRow = row(payload, "cloudflare");
+  assert.equal(cloudflareRow.indicator, "unavailable");
+  assert.match(cloudflareRow.note ?? "", /no longer lists/);
+  assert.equal(cloudflareRow.incidents.length, 0);
 });
 
 test("DeepSeek 的 feed 读不出来时这一行是 Unavailable 并留说明", async () => {
