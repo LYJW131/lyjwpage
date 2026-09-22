@@ -35,11 +35,14 @@ const BUILD_TIME = new Date().toISOString();
 /**
  * 生产构建沿用 Vercel 上的 NEXT_PUBLIC_BACKEND_URL。预览构建改连该分支的
  * Worker Preview：`env` 会盖过环境里那份生产地址。main 的预览仍走生产。
- * Preview 还没发出来时，页面会先连不上。
+ * scripts/build.mjs 会先等 Preview 就绪，把结果放进 PREVIEW_BACKEND_URL；
+ * 等不到时是空串，这次构建连生产。
  */
 function resolvePublicBackendUrl(): string | undefined {
   const configured = process.env.NEXT_PUBLIC_BACKEND_URL;
   if (process.env.VERCEL_ENV !== "preview") return configured;
+  const waited = process.env.PREVIEW_BACKEND_URL;
+  if (waited !== undefined) return waited || configured;
   return previewWorkerOrigin(process.env.VERCEL_GIT_COMMIT_REF ?? "") ?? configured;
 }
 
