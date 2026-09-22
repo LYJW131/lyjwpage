@@ -6,7 +6,7 @@ import CursorIcon from "@lobehub/icons/es/Cursor/components/Mono";
 import GrokIcon from "@lobehub/icons/es/Grok/components/Mono";
 import OpenAIIcon from "@lobehub/icons/es/OpenAI/components/Mono";
 import NumberFlow, { NumberFlowGroup } from "@number-flow/react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { ClaudeSpinner } from "@/components/live/claude-spinner";
 import { CodexActivityIndicator, CodexMark } from "@/components/live/codex-activity-indicator";
@@ -15,6 +15,7 @@ import { useLiveEvents } from "@/hooks/use-live-events";
 import { useMountedAt } from "@/hooks/use-mounted-at";
 import { useReporterStale, useStale } from "@/hooks/use-stale";
 import { useStatus } from "@/hooks/use-status";
+import { agentUsageLabel, agentUsageUrl } from "@/lib/agent-usage-url";
 import { VIBECODING_STALE_MS } from "@/lib/freshness";
 import { VIBECODING_PATH } from "@/lib/paths";
 import { fetchVibeCoding, seedVibeCoding } from "@/lib/vibecoding-activity";
@@ -672,7 +673,46 @@ function nextCompactTickDelay(remain: number) {
   return remain % 60_000 || 60_000;
 }
 
-function LimitMeter({ limit, title }: { limit: VibeCodingLimit; title: string }) {
+/**
+ * 进度条本身是链接。条只有 6px，上下补一点点击区，再用负边距把多出来的高度还回去，
+ * 行距不变。没有官方用量页的 agent（Antigravity）保持普通条。
+ */
+function UsageMeter({
+  href,
+  label,
+  children,
+}: {
+  href: string | null;
+  label: string;
+  children?: ReactNode;
+}) {
+  if (!href) {
+    return <div className="relative mt-1.5 h-1.5 overflow-hidden bg-muted">{children}</div>;
+  }
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer noopener"
+      aria-label={label}
+      className="-mb-2 mt-1.5 block pb-2 focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-live"
+    >
+      <span className="relative block h-1.5 overflow-hidden bg-muted">{children}</span>
+    </a>
+  );
+}
+
+function LimitMeter({
+  limit,
+  title,
+  href,
+  label,
+}: {
+  limit: VibeCodingLimit;
+  title: string;
+  href: string | null;
+  label: string;
+}) {
   /**
    * 自己盯着重置时刻，不跟面板其它部分共用快照时间。
    *
@@ -784,19 +824,29 @@ function LimitMeter({ limit, title }: { limit: VibeCodingLimit; title: string })
           </span>
         </span>
       </div>
-      <div className="relative mt-1.5 h-1.5 overflow-hidden bg-muted">
+      <UsageMeter href={href} label={label}>
         <div
           className="h-full transition-[width] duration-700"
           style={{ width: `${usedPercent}%`, backgroundColor: color }}
         />
         {pace != null && <PaceMarker pace={pace} overPace={overPace} />}
-      </div>
+      </UsageMeter>
     </div>
   );
 }
 
 /** 预期有但取不到的窗口，保留原位以免整行消失。 */
-function LimitUnavailable({ title, reason }: { title: string; reason: string }) {
+function LimitUnavailable({
+  title,
+  reason,
+  href,
+  label,
+}: {
+  title: string;
+  reason: string;
+  href: string | null;
+  label: string;
+}) {
   return (
     <div title={reason}>
       <div className="flex h-5 items-center justify-between gap-2">
@@ -806,7 +856,7 @@ function LimitUnavailable({ title, reason }: { title: string; reason: string }) 
           <span className="label-mono text-muted-foreground">—</span>
         </span>
       </div>
-      <div className="mt-1.5 h-1.5 bg-muted" />
+      <UsageMeter href={href} label={label} />
     </div>
   );
 }
@@ -867,6 +917,7 @@ function AgentPanel({
   // 会话扫描会保留最近使用的模型，闲置后继续显示它。
   const displayModel = agent.currentModel ? displayModelName(agent.currentModel) : "No model";
   const rows = featuredLimitRows(agent);
+  const usageUrl = agentUsageUrl(agent.id);
   return (
     <div className="flex min-w-0 flex-col px-4 py-4 md:px-5">
       <div className="flex items-center justify-between gap-3">
@@ -942,9 +993,21 @@ function AgentPanel({
         </div>
         {rows.map((row) =>
           row.kind === "limit" ? (
-            <LimitMeter key={row.key} limit={row.limit} title={row.title} />
+            <LimitMeter
+              key={row.key}
+              limit={row.limit}
+              title={row.title}
+              href={usageUrl}
+              label={agentUsageLabel(agentDisplayName(agent), row.title)}
+            />
           ) : (
-            <LimitUnavailable key={row.key} title={row.title} reason={row.reason} />
+            <LimitUnavailable
+              key={row.key}
+              title={row.title}
+              reason={row.reason}
+              href={usageUrl}
+              label={agentUsageLabel(agentDisplayName(agent), row.title)}
+            />
           ),
         )}
       </div>
@@ -1005,6 +1068,7 @@ function CompactAgentRow({
   const overPace = pace != null && usedPercent != null && usedPercent / 100 > pace;
   // 和全量面板同一盏灯，只是不像全量面板那样换模型名
   const active = useAgentActive(agent, activityUnknown);
+  const usageUrl = agentUsageUrl(agent.id);
 
   return (
     <div
@@ -1092,7 +1156,7 @@ function CompactAgentRow({
           )}
         </span>
       </div>
-      <div className="relative mt-1.5 h-1.5 overflow-hidden bg-muted">
+      <UsageMeter href={usageUrl} label={agentUsageLabel(agentDisplayName(agent))}>
         {usedPercent != null && (
           <div
             className="h-full transition-[width] duration-700"
@@ -1100,7 +1164,7 @@ function CompactAgentRow({
           />
         )}
         {pace != null && <PaceMarker pace={pace} overPace={overPace} />}
-      </div>
+      </UsageMeter>
     </div>
   );
 }
