@@ -21,10 +21,6 @@ if (!process.env.CLOUDFLARE_API_TOKEN?.trim()) {
 
 const apiDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const wrangler = resolve(apiDir, "node_modules/wrangler/bin/wrangler.js");
-const env = { ...process.env };
-if (env.WRANGLER_CI_OVERRIDE_NAME && env.WRANGLER_CI_OVERRIDE_NAME !== "api") {
-  delete env.WRANGLER_CI_OVERRIDE_NAME;
-}
 const result = spawnSync(process.execPath, [
   wrangler,
   "preview",
@@ -34,7 +30,7 @@ const result = spawnSync(process.execPath, [
   "--worker-name",
   "api",
   "--skip-confirmation",
-], { cwd: apiDir, encoding: "utf8", env });
+], { cwd: apiDir, encoding: "utf8" });
 
 const output = `${result.stdout ?? ""}${result.stderr ?? ""}`;
 if (output) process.stdout.write(output);

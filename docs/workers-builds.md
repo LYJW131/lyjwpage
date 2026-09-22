@@ -18,16 +18,11 @@ PlayStation 保留独立 `package-lock.json`。Wrangler 使用对应包锁定的
 
 ## 分支预览
 
-`api` 的非生产构建使用 [Worker Previews](https://developers.cloudflare.com/workers/previews/)（Wrangler 4.135.0 起）。`wrangler preview` 在同一个 `api` Worker 下按分支开一份隔离环境，不替换 `api.homepage.lyjw.llc` 上的生产版本。Durable Object 每个 Preview 自动有自己的空库。
+`api` 已按 [Worker Previews](https://developers.cloudflare.com/workers/previews/) 的文档切过去：设置 → 构建里打开了 Worker 预览的构建。推 `main` 仍执行 `pnpm --dir workers/api exec wrangler deploy`，不换 `api.homepage.lyjw.llc`。其他分支执行预览命令 `node workers/api/scripts/deploy-preview.mjs`，里面跑的是 `wrangler preview`。Durable Object 每个 Preview 自动有自己的空库。
 
-`workers/api` 的生产部署和 Preview 都用 Wrangler `4.136.2`。v1 迁移里补了 `OnlineCounterRoom` 的 `new_sqlite_classes`，Wrangler 4 才能接受后面那条已经生效的删除；这个标签不会再次执行。
+分支名里的 `/` 会收成短横线后再传给 `--name`，这样地址和 Vercel 预览写进页面的一致。文档允许自定义预览命令，只要实际执行的是 `wrangler preview`。
 
-| 项 | 值 |
-| --- | --- |
-| 跑在哪个 Worker | 生产 `api`。另建的 `api-preview` 项目如果还在，停掉它的非生产构建，避免再发旧的独立脚本 |
-| 非生产分支构建 | 在 `api` 上开启。已有构建连接要在设置里一次性切到 Worker Previews，预览命令改成下面这一条 |
-| 预览命令 | `node workers/api/scripts/deploy-preview.mjs` |
-| 生产部署命令 | 保持 `pnpm --dir workers/api exec wrangler deploy`，不要改成 `wrangler preview` |
+`workers/api` 用 Wrangler `4.136.2`。v1 迁移里补了 `OnlineCounterRoom` 的 `new_sqlite_classes`，Wrangler 4 才能接受后面那条已经生效的删除；这个标签不会再次执行。单独的 `api-preview` Worker 已删除。
 
 `feat/agent-status` 的地址是 `https://feat-agent-status-api.lyjw.workers.dev`。算法在 `scripts/preview-worker-name.mjs`，Vercel 预览构建用同一份。Preview 配置在 `workers/api/wrangler.toml` 的 `[previews.vars]`：`UPSTREAM_API_URL` 指向生产 API，生产已经返回 `ok: true` 的端点用生产的，生产没有的端点用本分支的。不挂 cron、生产域名、KV、D1、R2，也不复制 Secret。上报和存储导入直接拒绝。MusicKit 令牌、歌词、动态封面转给生产，并带上浏览器的 `Origin`。空库第一次公开读取时只把初始化标记写成完成。WebSocket 转发生产房间的事件。
 
