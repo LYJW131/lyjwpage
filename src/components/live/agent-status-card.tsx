@@ -104,7 +104,7 @@ function formatWhen(value: string | null): string | null {
 function Detail({ agent, onClose }: { agent: AgentStatusRow; onClose: () => void }) {
   const titleId = useId();
   const label = indicatorLabel(agent.indicator);
-  /** 只列有异常的组件，最多六行 —— Cloudflare 按机房列组件，全铺开是灾难 */
+  /** 只列有异常的组件，最多六行。 */
   const troubled = agent.components.filter((component) => component.indicator !== "operational");
   const shown = troubled.slice(0, 6);
   return (
