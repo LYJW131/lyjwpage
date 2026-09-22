@@ -195,6 +195,13 @@ def bring_into_view(page, selector: str) -> None:
         }"""
     )
     page.wait_for_timeout(400)
+    # 上面那步对加载失败也放行；卡片里有坏图就别录，不然 GIF 里留一个破图标（自建歌单封面是
+    # 24 小时预签名地址，本机取图还可能被代理的 fake-IP 挡掉）
+    broken = page.locator(selector).first.evaluate(
+        "el => [...el.querySelectorAll('img')].filter((img) => img.complete && img.naturalWidth === 0).map((img) => img.alt || img.src)"
+    )
+    if broken:
+        raise SystemExit(f"{selector} 里有图片没加载出来：{broken}")
 
 
 def box_of(page, selector: str) -> dict[str, float]:
