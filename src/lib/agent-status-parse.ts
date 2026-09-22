@@ -3,7 +3,8 @@
  *
  * Claude / OpenAI / Cursor 是 Statuspage，`/api/v2/summary.json` 就是当前
  * 组件和未解决事件，边缘缓存大约 10 秒。xAI 没有这份 JSON：官方机器可读源
- * 是 `/feed.xml`，此刻亮哪盏灯写在首页 HTML 里。
+ * 是 `/feed.xml`，此刻亮哪盏灯写在首页 HTML 里。DeepSeek 是 Flashduty 的
+ * `/feed.atom`：事件状态和受影响组件都在条目摘要里，灯按有没有未结束事件推。
  *
  * 不在这里发请求。调用方把正文传进来，单测才能不打网。
  */
@@ -21,6 +22,10 @@ export const AGENT_STATUS_URLS = {
   cursor: "https://status.cursor.com/api/v2/summary.json",
   xaiHome: "https://status.x.ai/",
   xaiFeed: "https://status.x.ai/feed.xml",
+  deepseekFeed: "https://status.deepseek.com/feed.atom",
+  vercel: "https://www.vercel-status.com/api/v2/summary.json",
+  github: "https://www.githubstatus.com/api/v2/summary.json",
+  cloudflare: "https://www.cloudflarestatus.com/api/v2/summary.json",
 } as const;
 
 const STATUS_PAGES = {
@@ -28,6 +33,10 @@ const STATUS_PAGES = {
   openai: "https://status.openai.com",
   cursor: "https://status.cursor.com",
   xai: "https://status.x.ai/grok-build",
+  deepseek: "https://status.deepseek.com",
+  vercel: "https://www.vercel-status.com",
+  github: "https://www.githubstatus.com",
+  cloudflare: "https://www.cloudflarestatus.com",
 } as const;
 
 const MAX_INCIDENTS = 3;
@@ -292,15 +301,24 @@ function statuspageRow(
   const scheduled = parsed.maintenances.filter(
     (incident) => touches(incident) && incident.status.toLowerCase() === "scheduled",
   );
-  const indicators = selected.map((component) => component.indicator);
+  /**
+   * 整页行的灯跟页面灯和事件走，不跟组件走：Cloudflare 这类页面按机房列组件，
+   * 上百个里几个 partial_outage / under_maintenance 是常态，不该把整行点得比
+   * 页面自己的灯更红。页面灯缺失（词没对上）时才退回组件。
+   */
+  const incidentIndicators: AgentIndicator[] = [];
   for (const incident of active) {
     const impact = rollupIndicator(incident.impact);
-    if (impact) indicators.push(impact);
+    if (impact) incidentIndicators.push(impact);
     if (incident.status.toLowerCase() === "in_progress" || incident.status.toLowerCase() === "verifying") {
-      indicators.push("maintenance");
+      incidentIndicators.push("maintenance");
     }
   }
-  if (wholePage && parsed.page) indicators.push(parsed.page);
+  const componentIndicators = selected.map((component) => component.indicator);
+  const indicators =
+    wholePage && parsed.page
+      ? [parsed.page, ...incidentIndicators]
+      : [...componentIndicators, ...incidentIndicators];
   const missing = selected.length === 0 && !wholePage;
   return {
     id,
@@ -415,7 +433,7 @@ function xaiRow(html: string | null, feed: string | null): AgentStatusRow {
   const unreadable = indicators.length === 0;
   return {
     id: "grok",
-    name: "Grok Build",
+    name: "Grok",
     indicator: unreadable ? "unavailable" : worst(indicators),
     statusUrl: STATUS_PAGES.xai,
     components: badgeIndicator ? [{ name: "Grok Build", indicator: badgeIndicator }] : [],
@@ -432,21 +450,113 @@ function xaiRow(html: string | null, feed: string | null): AgentStatusRow {
   };
 }
 
+type DeepseekItem = {
+  id: string;
+  title: string;
+  url: string;
+  updatedAt: string | null;
+  status: string;
+  resolved: boolean;
+  severity: Exclude<AgentIndicator, "unavailable" | "unmonitored">;
+  body: string;
+  componentNames: string[];
+};
+
+/**
+ * Flashduty 的条目摘要是一段被转义的 HTML：Status、正文、Affected components
+ * 各占一个 <p>。链接挂在 <link href> 上，不在标签体里。
+ */
+export function parseDeepseekFeed(xml: string): DeepseekItem[] {
+  return xml
+    .split(/<entry\b/i)
+    .slice(1)
+    .map((chunk) => {
+      const title = plain(xmlTag(chunk, "title"));
+      const id = xmlTag(chunk, "id").trim() || title;
+      if (!title || !id) return null;
+      const linkTag = /<link\b[^>]*>/i.exec(chunk)?.[0] ?? "";
+      const url = /href="([^"]*)"/i.exec(linkTag)?.[1]?.trim() || STATUS_PAGES.deepseek;
+      const summary = decodeEntities(xmlTag(chunk, "summary"));
+      const statusLine = /<strong>\s*Status:\s*<\/strong>\s*([^<]+)/i.exec(summary)?.[1]?.trim() ?? "";
+      const affected = /<strong>\s*Affected components:\s*<\/strong>\s*([^<]+)/i.exec(summary)?.[1]?.trim() ?? "";
+      const message = [...summary.matchAll(/<p>([\s\S]*?)<\/p>/gi)]
+        .map((match) => match[1])
+        .filter((block) => !/<strong>/i.test(block));
+      return {
+        id,
+        title,
+        url,
+        updatedAt: iso(xmlTag(chunk, "updated").trim() || null),
+        status: displayStatus(statusLine || "update"),
+        resolved: /^resolved$/i.test(statusLine),
+        severity: deepseekSeverity(title),
+        body: clip(message.map(plain).join(" ")),
+        componentNames: affected
+          ? affected
+              .split(/[,，]/)
+              .map((name) => plain(name))
+              .filter(Boolean)
+          : [],
+      };
+    })
+    .filter((item): item is DeepseekItem => !!item);
+}
+
+/** 标题写明严重程度：中断 / unavailable 归 Partial outage，性能下降、异常归 Degraded。 */
+function deepseekSeverity(title: string): Exclude<AgentIndicator, "unavailable" | "unmonitored"> {
+  if (/维护|maintenance/i.test(title)) return "maintenance";
+  if (/重大|完全中断|major outage|total outage/i.test(title)) return "major_outage";
+  if (/中断|unavailable|outage/i.test(title)) return "partial_outage";
+  return "degraded";
+}
+
+function deepseekRow(feed: string | null): AgentStatusRow {
+  const readable = !!feed && /<feed[\s>]/i.test(feed);
+  const items = readable ? parseDeepseekFeed(feed) : [];
+  const active = items.filter((item) => !item.resolved);
+  const names = [...new Set(active.flatMap((item) => item.componentNames))];
+  return {
+    id: "deepseek",
+    name: "DeepSeek",
+    indicator: readable ? (active.length ? worst(active.map((item) => item.severity)) : "operational") : "unavailable",
+    statusUrl: STATUS_PAGES.deepseek,
+    components: names.map((name) => ({
+      name,
+      indicator: worst(active.filter((item) => item.componentNames.includes(name)).map((item) => item.severity)),
+    })),
+    incidents: active.slice(0, MAX_INCIDENTS).map((item) => ({
+      id: item.id,
+      title: item.title,
+      status: item.status,
+      url: item.url,
+      updatedAt: item.updatedAt,
+      body: item.body,
+    })),
+    note: readable ? null : "DeepSeek status could not be read from status.deepseek.com.",
+    stale: false,
+  };
+}
+
+const FALLBACK: Record<AgentStatusRow["id"], { name: string; statusPage: string }> = {
+  claude: { name: "Claude", statusPage: STATUS_PAGES.claude },
+  codex: { name: "ChatGPT", statusPage: STATUS_PAGES.openai },
+  cursor: { name: "Cursor", statusPage: STATUS_PAGES.cursor },
+  grok: { name: "Grok", statusPage: STATUS_PAGES.xai },
+  deepseek: { name: "DeepSeek", statusPage: STATUS_PAGES.deepseek },
+  vercel: { name: "Vercel", statusPage: STATUS_PAGES.vercel },
+  github: { name: "GitHub", statusPage: STATUS_PAGES.github },
+  cloudflare: { name: "Cloudflare", statusPage: STATUS_PAGES.cloudflare },
+};
+
 function carried(previous: AgentStatusPayload | null, id: AgentStatusRow["id"], failure: string): AgentStatusRow {
   const prior = previous?.agents.find((agent) => agent.id === id);
   if (prior) return { ...prior, stale: true };
+  const fallback = FALLBACK[id];
   return {
     id,
-    name: id === "claude" ? "Claude Code" : id === "codex" ? "Codex" : id === "cursor" ? "Cursor" : "Grok Build",
+    name: fallback.name,
     indicator: "unavailable",
-    statusUrl:
-      id === "claude"
-        ? STATUS_PAGES.claude
-        : id === "codex"
-          ? STATUS_PAGES.openai
-          : id === "cursor"
-            ? STATUS_PAGES.cursor
-            : STATUS_PAGES.xai,
+    statusUrl: fallback.statusPage,
     components: [],
     incidents: [],
     note: failure,
@@ -472,7 +582,8 @@ async function load(
 }
 
 /**
- * 四行的顺序跟用量卡一致：Claude、Codex、Cursor、Grok Build。
+ * 行序跟用量卡一致：Claude、ChatGPT、Cursor、Grok，DeepSeek 和基础设施
+ * 三家（Vercel / GitHub / Cloudflare）排在后面。
  * 某一家失败就留着上一轮，不让整张卡空白。
  */
 export async function collectAgentStatus(
@@ -481,11 +592,11 @@ export async function collectAgentStatus(
   now = Date.now(),
 ): Promise<AgentStatusPayload> {
   const text = async (url: string) => fetchText(url);
-  const [claude, codex, cursor, grok] = await Promise.all([
+  const [claude, codex, cursor, grok, deepseek, vercel, github, cloudflare] = await Promise.all([
     load(previous, "claude", async () =>
       statuspageRow(
         "claude",
-        "Claude Code",
+        "Claude",
         STATUS_PAGES.claude,
         await text(AGENT_STATUS_URLS.claude),
         isClaudeComponent,
@@ -495,7 +606,7 @@ export async function collectAgentStatus(
     load(previous, "codex", async () =>
       statuspageRow(
         "codex",
-        "Codex",
+        "ChatGPT",
         STATUS_PAGES.openai,
         await text(AGENT_STATUS_URLS.openai),
         isCodexComponent,
@@ -519,8 +630,42 @@ export async function collectAgentStatus(
       if (!home.ok && !feed.ok) throw new Error("status.x.ai unreachable");
       return xaiRow(home.body, feed.body);
     }),
+    load(previous, "deepseek", async () => deepseekRow(await text(AGENT_STATUS_URLS.deepseekFeed))),
+    load(previous, "vercel", async () =>
+      statuspageRow(
+        "vercel",
+        "Vercel",
+        STATUS_PAGES.vercel,
+        await text(AGENT_STATUS_URLS.vercel),
+        () => true,
+        true,
+      ),
+    ),
+    load(previous, "github", async () =>
+      statuspageRow(
+        "github",
+        "GitHub",
+        STATUS_PAGES.github,
+        await text(AGENT_STATUS_URLS.github),
+        () => true,
+        true,
+      ),
+    ),
+    load(previous, "cloudflare", async () =>
+      statuspageRow(
+        "cloudflare",
+        "Cloudflare",
+        STATUS_PAGES.cloudflare,
+        await text(AGENT_STATUS_URLS.cloudflare),
+        () => true,
+        true,
+      ),
+    ),
   ]);
-  return { fetchedAt: now, agents: [claude, codex, cursor, grok] };
+  return {
+    fetchedAt: now,
+    agents: [claude, codex, cursor, grok, deepseek, vercel, github, cloudflare],
+  };
 }
 
 /** 推送只在灯、事件或失败标记变了才发。检查时刻每分钟都变，不拿它做比较。 */
@@ -538,6 +683,10 @@ export function emptyAgentStatus(now = Date.now()): AgentStatusPayload {
       carried(null, "codex", failure),
       carried(null, "cursor", failure),
       carried(null, "grok", failure),
+      carried(null, "deepseek", failure),
+      carried(null, "vercel", failure),
+      carried(null, "github", failure),
+      carried(null, "cloudflare", failure),
     ],
   };
 }

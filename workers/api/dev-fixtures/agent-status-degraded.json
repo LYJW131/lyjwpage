@@ -3,7 +3,7 @@
   "agents": [
     {
       "id": "claude",
-      "name": "Claude Code",
+      "name": "Claude",
       "indicator": "degraded",
       "statusUrl": "https://status.claude.com",
       "components": [
@@ -25,7 +25,7 @@
     },
     {
       "id": "codex",
-      "name": "Codex",
+      "name": "ChatGPT",
       "indicator": "major_outage",
       "statusUrl": "https://status.openai.com",
       "components": [
@@ -69,7 +69,7 @@
     },
     {
       "id": "grok",
-      "name": "Grok Build",
+      "name": "Grok",
       "indicator": "operational",
       "statusUrl": "https://status.x.ai/grok-build",
       "components": [{ "name": "Grok Build", "indicator": "operational" }],

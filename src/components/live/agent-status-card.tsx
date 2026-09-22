@@ -1,12 +1,16 @@
 "use client";
 
-import AnthropicIcon from "@lobehub/icons/es/Anthropic/components/Mono";
+import ClaudeIcon from "@lobehub/icons/es/Claude/components/Color";
+import CloudflareIcon from "@lobehub/icons/es/Cloudflare/components/Color";
+import DeepSeekIcon from "@lobehub/icons/es/DeepSeek/components/Color";
 import CursorIcon from "@lobehub/icons/es/Cursor/components/Mono";
+import GithubIcon from "@lobehub/icons/es/Github/components/Mono";
 import GrokIcon from "@lobehub/icons/es/Grok/components/Mono";
+import OpenAIIcon from "@lobehub/icons/es/OpenAI/components/Mono";
+import VercelIcon from "@lobehub/icons/es/Vercel/components/Mono";
 import { ExternalLink, X } from "lucide-react";
 import { useCallback, useId, useState } from "react";
 
-import { CodexMark } from "@/components/live/codex-activity-indicator";
 import { Card } from "@/components/ui/card";
 import { Modal } from "@/components/ui/modal";
 import { useLiveEvents } from "@/hooks/use-live-events";
@@ -72,13 +76,21 @@ function Brand({ id }: { id: AgentStatusRow["id"] }) {
   const className = "text-foreground";
   switch (id) {
     case "claude":
-      return <AnthropicIcon size={20} className={className} />;
+      return <ClaudeIcon size={20} />;
     case "codex":
-      return <CodexMark />;
+      return <OpenAIIcon size={20} className={className} />;
     case "cursor":
       return <CursorIcon size={20} className={className} />;
     case "grok":
       return <GrokIcon size={20} className={className} />;
+    case "deepseek":
+      return <DeepSeekIcon size={20} />;
+    case "vercel":
+      return <VercelIcon size={20} className={className} />;
+    case "github":
+      return <GithubIcon size={20} className={className} />;
+    case "cloudflare":
+      return <CloudflareIcon size={20} />;
   }
 }
 
@@ -92,6 +104,9 @@ function formatWhen(value: string | null): string | null {
 function Detail({ agent, onClose }: { agent: AgentStatusRow; onClose: () => void }) {
   const titleId = useId();
   const label = indicatorLabel(agent.indicator);
+  /** 只列有异常的组件，最多六行 —— Cloudflare 按机房列组件，全铺开是灾难 */
+  const troubled = agent.components.filter((component) => component.indicator !== "operational");
+  const shown = troubled.slice(0, 6);
   return (
     <Modal titleId={titleId} onClose={onClose} className="max-w-md">
       <header className="flex items-center justify-between gap-2 px-4">
@@ -120,9 +135,9 @@ function Detail({ agent, onClose }: { agent: AgentStatusRow; onClose: () => void
             The last check failed. Showing the previous result.
           </p>
         )}
-        {agent.components.some((component) => component.indicator !== "operational") && (
+        {troubled.length > 0 && (
           <ul className="mt-4 grid divide-y divide-line border-y border-line">
-            {agent.components.map((component) => (
+            {shown.map((component) => (
               <li key={component.name} className="flex items-center justify-between gap-3 py-2 text-sm">
                 <span className="min-w-0 truncate">{component.name}</span>
                 <span className={cn("shrink-0", indicatorText(component.indicator))}>
@@ -130,6 +145,9 @@ function Detail({ agent, onClose }: { agent: AgentStatusRow; onClose: () => void
                 </span>
               </li>
             ))}
+            {troubled.length > shown.length && (
+              <li className="py-2 text-sm text-muted-foreground">+{troubled.length - shown.length} more</li>
+            )}
           </ul>
         )}
         {agent.incidents.length > 0 ? (
@@ -145,7 +163,9 @@ function Detail({ agent, onClose }: { agent: AgentStatusRow; onClose: () => void
                     {incident.status}
                     {when ? ` · ${when} UTC+8` : ""}
                   </p>
-                  {incident.body && <p className="mt-1 text-sm text-muted-foreground">{incident.body}</p>}
+                  {incident.body && !/scheduled|planned/i.test(incident.status) && (
+                    <p className="mt-1 line-clamp-3 text-sm text-muted-foreground">{incident.body}</p>
+                  )}
                 </li>
               );
             })}

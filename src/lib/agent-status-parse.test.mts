@@ -7,6 +7,7 @@ import {
   collectAgentStatus,
   parseXaiFeed,
   parseXaiServiceBadges,
+  parseDeepseekFeed,
 } from "./agent-status-parse.ts";
 import type { AgentStatusPayload } from "./agent-status-types.ts";
 
@@ -125,6 +126,55 @@ const xaiFeed = `<?xml version="1.0"?>
   </item>
 </channel></rss>`;
 
+const deepseekFeed = `<?xml version="1.0" encoding="UTF-8"?><feed xmlns="http://www.w3.org/2005/Atom">
+  <title>DeepSeek</title>
+  <entry>
+    <title>DeepSeek 网页/API 部分中断（DeepSeek Web/API Partially Unavailable）</title>
+    <updated>2026-09-22T01:00:00+08:00</updated>
+    <id>urn:flashduty:change:1</id>
+    <link href="https://status.deepseek.com/incidents/1" rel="alternate"></link>
+    <summary type="html">&lt;p&gt;&lt;strong&gt;Status:&lt;/strong&gt; investigating&lt;/p&gt;&lt;p&gt;我们正在抢修。&#xA;&#xA;We are working on it.&lt;/p&gt;&lt;p&gt;&lt;strong&gt;Affected components:&lt;/strong&gt; 对话服务(Chatservice), DeepSeek V4.1 Flash API服务(API Service)&lt;/p&gt;</summary>
+  </entry>
+  <entry>
+    <title>DeepSeek API 性能下降（DeepSeek API Degraded Performance）</title>
+    <updated>2026-08-01T10:00:00+08:00</updated>
+    <id>urn:flashduty:change:2</id>
+    <link href="https://status.deepseek.com/incidents/2" rel="alternate"></link>
+    <summary type="html">&lt;p&gt;&lt;strong&gt;Status:&lt;/strong&gt; resolved&lt;/p&gt;&lt;p&gt;本次问题已解决，服务已恢复。&lt;/p&gt;&lt;p&gt;&lt;strong&gt;Affected components:&lt;/strong&gt; DeepSeek V4.1 Flash API服务(API Service)&lt;/p&gt;</summary>
+  </entry>
+</feed>`;
+
+const deepseekResolved = deepseekFeed.replace(
+  "Status:&lt;/strong&gt; investigating",
+  "Status:&lt;/strong&gt; resolved",
+);
+
+const vercel = summary({
+  status: { indicator: "minor", description: "Partial System Outage" },
+  components: [{ name: "Builds", status: "degraded_performance" }],
+  incidents: [
+    {
+      id: "v1",
+      name: "Build delays",
+      status: "investigating",
+      impact: "minor",
+      shortlink: "https://www.vercelstatus.com/incidents/v1",
+      components: [{ name: "Builds" }],
+      incident_updates: [{ body: "Builds are delayed.", created_at: "2026-09-22T01:00:00Z" }],
+    },
+  ],
+});
+
+const github = summary({
+  status: { indicator: "none", description: "All Systems Operational" },
+  components: [{ name: "Git Operations", status: "operational" }],
+});
+
+const cloudflare = summary({
+  status: { indicator: "critical", description: "Major Service Outage" },
+  components: [{ name: "CDN/Edge", status: "major_outage" }],
+});
+
 function pages(extra: Record<string, string | Error> = {}): (url: string) => Promise<string> {
   const bodies = new Map<string, string | Error>([
     [AGENT_STATUS_URLS.claude, claude],
@@ -132,6 +182,10 @@ function pages(extra: Record<string, string | Error> = {}): (url: string) => Pro
     [AGENT_STATUS_URLS.cursor, cursor],
     [AGENT_STATUS_URLS.xaiHome, xaiHome],
     [AGENT_STATUS_URLS.xaiFeed, xaiFeed],
+    [AGENT_STATUS_URLS.deepseekFeed, deepseekResolved],
+    [AGENT_STATUS_URLS.vercel, vercel],
+    [AGENT_STATUS_URLS.github, github],
+    [AGENT_STATUS_URLS.cloudflare, cloudflare],
   ]);
   for (const [url, body] of Object.entries(extra)) bodies.set(url, body);
   return async (url) => {
@@ -147,6 +201,81 @@ function row(payload: AgentStatusPayload, id: AgentStatusPayload["agents"][numbe
   assert.ok(agent, id);
   return agent;
 }
+
+test("DeepSeek 的灯按未结束事件走，受影响组件从摘要里读", async () => {
+  const items = parseDeepseekFeed(deepseekFeed);
+  assert.equal(items.length, 2);
+  assert.equal(items[0]?.resolved, false);
+  assert.equal(items[0]?.severity, "partial_outage");
+  assert.equal(items[0]?.url, "https://status.deepseek.com/incidents/1");
+  assert.deepEqual(items[0]?.componentNames, ["对话服务(Chatservice)", "DeepSeek V4.1 Flash API服务(API Service)"]);
+  assert.equal(items[1]?.resolved, true);
+
+  const payload = await collectAgentStatus(null, pages({ [AGENT_STATUS_URLS.deepseekFeed]: deepseekFeed }));
+  const deepseek = row(payload, "deepseek");
+  assert.equal(deepseek.indicator, "partial_outage");
+  assert.equal(deepseek.incidents.length, 1);
+  assert.equal(deepseek.incidents[0]?.status, "Investigating");
+  assert.equal(deepseek.incidents[0]?.body, "我们正在抢修。 We are working on it.");
+  assert.deepEqual(
+    deepseek.components.map((component) => component.name),
+    ["对话服务(Chatservice)", "DeepSeek V4.1 Flash API服务(API Service)"],
+  );
+});
+
+test("DeepSeek 全部 resolved 就是 Operational，事件列表空", async () => {
+  const payload = await collectAgentStatus(null, pages());
+  const deepseek = row(payload, "deepseek");
+  assert.equal(deepseek.indicator, "operational");
+  assert.equal(deepseek.incidents.length, 0);
+  assert.equal(deepseek.note, null);
+});
+
+test("Vercel / GitHub / Cloudflare 走 Statuspage 整页，页面灯直接进这一行", async () => {
+  const payload = await collectAgentStatus(null, pages());
+  const vercelRow = row(payload, "vercel");
+  assert.equal(vercelRow.indicator, "degraded");
+  assert.equal(vercelRow.incidents[0]?.title, "Build delays");
+  assert.ok(vercelRow.components.some((component) => component.name === "Builds"));
+  assert.equal(row(payload, "github").indicator, "operational");
+  assert.equal(row(payload, "cloudflare").indicator, "major_outage");
+});
+
+test("整页行不跟组件加码：机房组件掉线不盖过页面灯", async () => {
+  const minorPage = summary({
+    status: { indicator: "minor", description: "Minor Service Outage" },
+    components: [
+      { name: "Cloudflare Sites and Services", status: "degraded_performance" },
+      { name: "Africa", status: "partial_outage" },
+      { name: "Baghdad, Iraq - (BGW)", status: "under_maintenance" },
+    ],
+    incidents: [
+      {
+        id: "warp-geo",
+        name: "Incorrect geo location for some Cloudflare WARP users",
+        status: "identified",
+        impact: "minor",
+        shortlink: "https://www.cloudflarestatus.com/incidents/warp-geo",
+        components: [{ name: "Cloudflare Sites and Services" }],
+        incident_updates: [{ body: "A fix is being rolled out.", created_at: "2026-09-22T01:00:00Z" }],
+      },
+    ],
+  });
+  const payload = await collectAgentStatus(null, pages({ [AGENT_STATUS_URLS.cloudflare]: minorPage }));
+  const cloudflareRow = row(payload, "cloudflare");
+  assert.equal(cloudflareRow.indicator, "degraded");
+  assert.equal(cloudflareRow.incidents.length, 1);
+});
+
+test("DeepSeek 的 feed 读不出来时这一行是 Unavailable 并留说明", async () => {
+  const payload = await collectAgentStatus(
+    null,
+    pages({ [AGENT_STATUS_URLS.deepseekFeed]: "<html>maintenance page</html>" }),
+  );
+  const deepseek = row(payload, "deepseek");
+  assert.equal(deepseek.indicator, "unavailable");
+  assert.match(deepseek.note ?? "", /could not be read/);
+});
 
 test("Claude 只看 Code 和 API，不跟 claude.ai 的全站故障走", async () => {
   const payload = await collectAgentStatus(null, pages());
