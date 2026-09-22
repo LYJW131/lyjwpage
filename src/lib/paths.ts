@@ -9,6 +9,7 @@ export const DESKTOP_PATH = STATUS_VIEWS.desktop.path;
 export const CHARGER_PATH = STATUS_VIEWS.charger.path;
 export const POWERBANK_PATH = STATUS_VIEWS.powerBank.path;
 export const VIBECODING_PATH = STATUS_VIEWS.vibeCoding.path;
+export const AGENT_STATUS_PATH = STATUS_VIEWS.agentStatus.path;
 export const VIBECODING_YEAR_PATH = STATUS_VIEWS.vibeCodingYear.path;
 export const LISTENING_PATH = STATUS_VIEWS.listening.path;
 export const NOW_LISTENING_PATH = STATUS_VIEWS.nowListening.path;

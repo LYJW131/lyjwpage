@@ -84,7 +84,8 @@ enabled = true
 # TYPESAFE_API_KEY（TypeSafe AI 官方 API，给 pulse 六域打活动分的 Jev 评估模型；
 # 不配就不打分，端点照常给泳道）。
 # 每分钟一趟：有页面连接时刷新最近在听（SQLite 闸门把 Apple 请求限制为两分钟一次），
-# 并按同一把闸门每小时跑一次 PageSpeed 实测。
+# 并按同一把闸门每小时跑一次 PageSpeed 实测。厂商状态页也在这一分钟里拉，
+# 只有结果变了才推送。
 [triggers]
 crons = ["* * * * *"]
 
