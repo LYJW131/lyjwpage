@@ -218,7 +218,7 @@ export function AgentStatusCard({
       action={checked ? <span title={`${checked} UTC+8`}>{checked}</span> : undefined}
     >
       {data ? (
-        <div className="flex snap-x snap-mandatory overflow-x-auto overscroll-x-contain scrollbar-none md:grid md:grid-cols-2 md:gap-x-4 md:overflow-visible [&::-webkit-scrollbar]:hidden">
+        <div className="flex snap-x snap-mandatory overflow-x-auto overscroll-x-contain scrollbar-none md:grid md:grid-cols-2 md:divide-x md:divide-line md:overflow-visible [&::-webkit-scrollbar]:hidden">
           {columns.map((column) => (
             <ul
               key={column[0]?.id ?? "column"}
@@ -231,7 +231,7 @@ export function AgentStatusCard({
                 <button
                   type="button"
                   onClick={() => setOpenId(agent.id)}
-                  className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-surface-hover md:px-5"
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-surface-hover md:px-3"
                 >
                   <span className="shrink-0" aria-hidden>
                     <Brand id={agent.id} />
