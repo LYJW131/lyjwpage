@@ -1,39 +1,41 @@
 #!/usr/bin/env node
 /**
- * Workers Builds 的非生产部署命令。按 WORKERS_CI_BRANCH 发布独立脚本，
- * 不碰生产的 api。main 直接成功退出，避免误配时把构建打红。
+ * Workers Builds 的非生产部署命令。在生产脚本 `api` 上创建或更新该分支的
+ * Worker Preview，不发布生产版本。main 直接成功退出。
  */
 import { spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { previewWorkerName } from "../../../scripts/preview-worker-name.mjs";
+import { previewWorkerName, previewWorkerOrigin } from "../../../scripts/preview-worker-name.mjs";
 
 const branch = process.env.WORKERS_CI_BRANCH?.trim() ?? "";
 const name = previewWorkerName(branch);
 if (!name) {
-  console.log(`[preview] 分支 ${JSON.stringify(branch)} 不部署影子 Worker`);
+  console.log(`[preview] 分支 ${JSON.stringify(branch)} 不部署 Preview`);
   process.exit(0);
 }
 
 const apiDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const wrangler = resolve(apiDir, "node_modules/wrangler/bin/wrangler.js");
+// 生产 deploy 仍用 Wrangler 3：4.135 拒绝这份已经生效的 deleted_classes 迁移。
+// Preview 命令只在 4.135 里，单独装一份。
+const wrangler = resolve(apiDir, "node_modules/wrangler-preview/bin/wrangler.js");
 /**
- * Workers Builds 会把 WRANGLER_CI_OVERRIDE_NAME 设成项目自己的 Worker 名（api-preview），
- * wrangler 见到它就盖掉 --name，影子全发到占位名上互相覆盖。发到按分支算的名字，
- * 必须把这两个 CI 变量清掉；WRANGLER_CI_MATCH_TAG 也清，免得部署完还去核对 CI 标签。
+ * Workers Builds 用 WRANGLER_CI_OVERRIDE_NAME 指定 Worker 名，而且它压过
+ * --worker-name。预览必须落在生产脚本 api 上；连到别的构建项目时清掉覆盖。
  */
 const env = { ...process.env };
-delete env.WRANGLER_CI_OVERRIDE_NAME;
-delete env.WRANGLER_CI_MATCH_TAG;
+if (env.WRANGLER_CI_OVERRIDE_NAME && env.WRANGLER_CI_OVERRIDE_NAME !== "api") {
+  delete env.WRANGLER_CI_OVERRIDE_NAME;
+}
 const result = spawnSync(process.execPath, [
   wrangler,
-  "deploy",
-  "--config",
-  "wrangler.preview.toml",
+  "preview",
   "--name",
   name,
+  "--worker-name",
+  "api",
 ], { cwd: apiDir, stdio: "inherit", env });
 
 if (result.status !== 0) process.exit(result.status ?? 1);
-console.log(`[preview] https://${name}.lyjw.workers.dev`);
+console.log(`[preview] ${previewWorkerOrigin(branch)}`);

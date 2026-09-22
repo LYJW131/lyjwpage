@@ -44,8 +44,8 @@ const extraRoutes: Record<string, (request: Request) => Promise<Response>> = {
  * 会回 ok:true 的空态，那样一兜底就把生产正在放的东西盖没了。要测本地上报
  * 链路时把这个变量注释掉，本地就只看自己。只读，不碰上报。
  *
- * 生产的 wrangler.toml 不配这个变量。分支影子的 wrangler.preview.toml 会配，
- * 读取和本地一样；影子另外拒绝上报和导入。
+ * 生产版本不配这个变量。分支 Preview 的 [previews.vars] 会配，
+ * 读取和本地一样；Preview 另外拒绝上报和导入。
  */
 const UPSTREAM_TIMEOUT_MS = 10_000;
 

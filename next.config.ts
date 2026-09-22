@@ -33,9 +33,9 @@ const IMAGE_REWRITE_SOURCE = `${IMAGE_PATH_PREFIX}/:objectKey([a-f0-9]{64}\\.(?:
 const BUILD_TIME = new Date().toISOString();
 
 /**
- * 生产构建沿用 Vercel 上的 NEXT_PUBLIC_BACKEND_URL。预览构建改连同名影子 Worker：
- * `env` 会盖过环境里那份生产地址，浏览器和首屏取数都吃到分支地址。
- * main 的预览（如果有）仍走生产。影子 Worker 还没发出来时，页面会先连不上。
+ * 生产构建沿用 Vercel 上的 NEXT_PUBLIC_BACKEND_URL。预览构建改连该分支的
+ * Worker Preview：`env` 会盖过环境里那份生产地址。main 的预览仍走生产。
+ * Preview 还没发出来时，页面会先连不上。
  */
 function resolvePublicBackendUrl(): string | undefined {
   const configured = process.env.NEXT_PUBLIC_BACKEND_URL;

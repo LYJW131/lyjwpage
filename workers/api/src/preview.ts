@@ -1,6 +1,6 @@
 /**
- * 分支影子 Worker。wrangler.preview.toml 才把 PREVIEW_WORKER 设成 true。
- * 生产配置不设它，下面这些分支在线上走不到。
+ * 分支 Worker Preview。wrangler.toml 的 [previews.vars] 才把 PREVIEW_WORKER 设成 true。
+ * 生产版本不设它，下面这些分支在线上走不到。
  */
 
 const PROXY_PATHS = new Set([
