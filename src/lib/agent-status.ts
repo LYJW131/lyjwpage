@@ -16,7 +16,7 @@ const KEEP_MS = 7 * 24 * 60 * 60 * 1000;
 const TIMEOUT_MS = 15_000;
 const USER_AGENT = "lyjwpage-agent-status/1.0 (+https://lyjw.me)";
 
-async function fetchText(url: string): Promise<string> {
+export async function fetchText(url: string): Promise<string> {
   const host = new URL(url).host;
   let last: unknown;
   // 状态页偶发一次连接被掐（本地复现过 status.claude.com 的 fetch failed）。
@@ -35,7 +35,8 @@ async function fetchText(url: string): Promise<string> {
     } catch (error) {
       last = error;
       const message = error instanceof Error ? error.message : "";
-      if (/^[45]\d\d /.test(message)) break;
+      // 只有对方明确拒绝（4xx）才不重试；5xx 和网络错误留给下一次尝试。
+      if (/^4\d\d /.test(message)) break;
     }
   }
   throw last instanceof Error ? last : new Error(`${host} unreachable`);
