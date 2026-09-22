@@ -45,8 +45,8 @@ PlayStation 上报器采用同款人数分档逻辑，限额使用自己的 5 / 
 | `OPEN_INTERVAL_MS` | | 默认 `600000`（10 分钟），只有后台页面 |
 | `IDLE_INTERVAL_MS` | | 默认 `3600000`（60 分钟），无人打开；改长时同步放宽站点 `AGENT_LIMITS_STALE_MS` |
 | `COUNT_TIMEOUT_MS` | | 默认 `2500`，每个计数请求的超时 |
-| `CURSOR_NOW_LIVE_INTERVAL_MS` | | 默认 `60000`，有可见页面时查 Cursor 最近用量事件的间隔 |
-| `CURSOR_NOW_OPEN_INTERVAL_MS` | | 默认 `300000`，只有后台页面 |
+| `CURSOR_NOW_LIVE_INTERVAL_MS` | | 默认 `300000`，有可见页面时查 Cursor 最近用量事件的间隔；站点灯的 10 分钟窗口按它放宽，改时一起改 |
+| `CURSOR_NOW_OPEN_INTERVAL_MS` | | 默认 `600000`，只有后台页面 |
 | `CURSOR_NOW_IDLE_INTERVAL_MS` | | 默认 `900000`，无人打开 |
 | `PUSH_TIMEOUT_MS` | | 默认 `30000` |
 | `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` | | 宿主机出海要走代理时填（如 `http://user:pass@192.168.3.2:7893`）。**跑在 misaka-jp 上不用填**，那台本身就在日本。上报器自己的 fetch 靠镜像里的 `NODE_USE_ENV_PROXY=1` 认它，五个 CLI 各自也认。在墙内本地 build 时另外用 `--build-arg HTTPS_PROXY=…` |
@@ -117,7 +117,7 @@ Mac 上的 ccusage 一样在线取 `https://models.dev/api.json`（只认官方�
 `cursorUsage`，站点留着上一份。上报器不刷新这份 token，401 / 403 时限额那一行带
 `Cursor session expired — run \`agent login\` to re-authenticate.`。
 
-Cursor 那盏「在用」的灯另起一条快循环（`src/cursor-now.ts`）：同一份会话 cookie 查最近 10 分钟的用量事件，
+Cursor 那盏「在用」的灯另起一条快循环（`src/cursor-now.ts`）：同一份会话 cookie 查最近 15 分钟的用量事件，
 只取最新一条的时刻和模型，变了才单独 POST 一封只带 `cursorNow` 的信封。IDE、CLI、云端 agent、
 Bugbot / Grok Bot 都会出现在这里，不管在哪台机器上跑。查询间隔按人数分档，见上表。
 
