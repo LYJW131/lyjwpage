@@ -10,6 +10,7 @@ import { HIDDEN_DESKTOP_BUNDLE_ID } from "@/lib/types";
 import { getWorkoutsSnapshot } from "@/lib/workouts";
 import { withRequestState } from "@shared/request-state";
 import { K_LAST_PUSH } from "@shared/charger-store";
+import { cursorNowMirror } from "@shared/cursor-usage";
 import { limitsMirror } from "@shared/vibecoding";
 import { mirror as telemetryMirror } from "@shared/telemetry";
 import { nowMirror } from "@shared/vibecoding";
@@ -265,6 +266,48 @@ test("agent limit commits merge ids instead of replacing a concurrent update", a
     assert.equal((await commit(env, first)).ok, true);
     assert.equal((await commit(env, second)).ok, true);
     assert.deepEqual(Object.keys((await limitsMirror.get())?.agents ?? {}).sort(), ["claude", "codex"]);
+  } finally { resetStorageForTests(); }
+});
+
+test("cursorNow-only agents envelopes skip the limits mirror and push the cursor activity", async () => {
+  const storage = new FakeStorage();
+  installStorageForTests(storage);
+  const env = testEnv();
+  try {
+    const limits = await inRequest(env, () => prepareIngest("agents", {
+      agents: [{ id: "cursor", plan: { tier: "Ultra" }, limits: [] }],
+      collectedAt: new Date(NOW).toISOString(),
+    }, NOW));
+    assert.equal((await commit(env, limits)).ok, true);
+    const before = await limitsMirror.get();
+
+    const lastActivityAt = new Date(NOW + 30_000).toISOString();
+    const activity = await inRequest(env, () => prepareIngest("agents", {
+      collectedAt: new Date(NOW + 60_000).toISOString(),
+      cursorNow: { lastActivityAt, currentModel: "grok-4.7-xhigh" },
+    }, NOW + 60_000));
+    const result = await commit(env, activity);
+    assert.equal(result.ok, true);
+    assert.deepEqual(await limitsMirror.get(), before);
+    assert.deepEqual((await cursorNowMirror.get())?.now, { lastActivityAt, currentModel: "grok-4.7-xhigh" });
+    assert.deepEqual(result.effects.find((effect) => effect.kind === "event")?.event, {
+      type: "vibecoding-now",
+      payload: { agents: [{ id: "cursor", lastActivityAt, currentModel: "grok-4.7-xhigh", active: false }] },
+    });
+
+    // 同一条事件再报一次不再推
+    const again = await inRequest(env, () => prepareIngest("agents", {
+      cursorNow: { lastActivityAt, currentModel: "grok-4.7-xhigh" },
+    }, NOW + 120_000));
+    const repeated = await commit(env, again);
+    assert.equal(repeated.effects.some((effect) => effect.kind === "event"), false);
+
+    await assert.rejects(
+      inRequest(env, () => prepareIngest("agents", { collectedAt: new Date(NOW).toISOString() }, NOW)),
+    );
+    await assert.rejects(
+      inRequest(env, () => prepareIngest("agents", { cursorNow: { currentModel: "x" } }, NOW)),
+    );
   } finally { resetStorageForTests(); }
 });
 

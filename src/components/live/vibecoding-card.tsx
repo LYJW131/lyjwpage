@@ -73,6 +73,38 @@ function busiestLimit(limits: VibeCodingLimit[], now: number) {
 
 const REFRESH_MS = 2 * 60_000;
 
+/** 最近一次活动过去多久还算「在用」。跟 MacTelemetryHub 判 active 的 300 秒一致。 */
+const ACTIVE_WINDOW_MS = 5 * 60_000;
+
+/**
+ * 这盏灯亮不亮。
+ *
+ * Mac 报的几家带着现成的电平，但它是推来的、不会自己过期，所以要和「Mac 那边的话
+ * 还算不算数」取与（见 VibeCodingCard 里的 activityUnknown）。
+ *
+ * Cursor 的活动来自容器查的用量事件，跟 Mac 在不在线无关，站点只给时刻不给电平：
+ * 最近一次在 5 分钟内就亮，过了由 useStale 的定时器自己熄。容器停了时刻不再前进，
+ * 灯一样会灭，不需要另一个开关。
+ */
+function useAgentActive(agent: VibeCodingAgent, activityUnknown: boolean) {
+  const at = agent.lastActivityAt ? Date.parse(agent.lastActivityAt) : null;
+  const expired = useStale(at, ACTIVE_WINDOW_MS);
+  const mountedAt = useMountedAt();
+  if (agent.id === "cursor") return at != null && mountedAt > 0 && !expired;
+  return agent.active && !activityUnknown;
+}
+
+/**
+ * Cursor 的 Bugbot、Grok Bot 用量事件报的是内部名，面板上换成产品名。
+ * 其余模型名照原样显示，和其他几家一致。
+ */
+function displayModelName(model: string) {
+  if (model === "github_bugbot") return "Bugbot";
+  if (model.startsWith("grok-bot-")) return "Grok Bot";
+  if (model === "agent_review") return "Agent Review";
+  return model;
+}
+
 /**
  * 分档阈值。条和数字共用同一组，别在两处各写一遍 —— 分开写迟早改漏一个，
  * 出现「条红了数字还是蓝的」。
@@ -776,17 +808,14 @@ function LimitUnavailable({ title, reason }: { title: string; reason: string }) 
 }
 
 /**
- * Cursor 没有活动信号：Mac 的会话扫描不看 Cursor，云端用量是容器几分钟到一小时
- * 拉一轮的日桶，拿它点「此刻在用」就是编。所以只放静态标，`active` 真有人报了
- * 再跟着变色。
+ * Cursor 自己没有终端里那种活动动画，在用时借 Codex 的 Braille 转圈，闲着显示原本的标。
+ * 在不在用见 useAgentActive。
  */
 function FeaturedMark({ id, active }: { id: string; active: boolean }) {
   if (id === "claude") return <ClaudeSpinner active={active} />;
+  if (active) return <CodexActivityIndicator active />;
   return (
-    <span
-      className={cn("flex size-5 shrink-0 items-center justify-center", active && "text-live")}
-      aria-hidden
-    >
+    <span className="flex size-5 shrink-0 items-center justify-center" aria-hidden>
       <CursorIcon size={18} />
     </span>
   );
@@ -830,9 +859,9 @@ function AgentPanel({
    * 一次推送的值上。所以点灯前要和「这句话现在还算不算数」取与 —— 否则 Mac 睡
    * 着时那盏灯会一直亮，直到它醒来才灭。
    */
-  const active = agent.active && !activityUnknown;
+  const active = useAgentActive(agent, activityUnknown);
   // 会话扫描会保留最近使用的模型，闲置后继续显示它。
-  const displayModel = agent.currentModel ?? "No model";
+  const displayModel = agent.currentModel ? displayModelName(agent.currentModel) : "No model";
   const rows = featuredLimitRows(agent);
   return (
     <div className="flex min-w-0 flex-col px-4 py-4 md:px-5">
@@ -970,8 +999,8 @@ function CompactAgentRow({
 
   const pace = limit ? limitPace(limit, now) : null;
   const overPace = pace != null && usedPercent != null && usedPercent / 100 > pace;
-  // Mac 的会话扫描照样报这几家在不在用，紧凑行也点灯，只是不像全量面板那样换模型名
-  const active = agent.active && !activityUnknown;
+  // 和全量面板同一盏灯，只是不像全量面板那样换模型名
+  const active = useAgentActive(agent, activityUnknown);
 
   return (
     <div

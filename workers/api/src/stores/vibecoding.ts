@@ -2,8 +2,8 @@ import { codingTokenUsageKey } from "@/lib/coding-pulse";
 import { normalizeCursorUsageReport, type ParsedCursorUsage } from "@/lib/cursor-usage";
 import { tellStorage } from "@/lib/storage";
 import { displayChanged } from "@shared/display-change";
-import { cursorUsageMirror } from "@shared/cursor-usage";
-import { VIBECODING_TAG, VIBECODING_YEAR_TAG } from "@/lib/live-events";
+import { cursorNowMirror, cursorUsageMirror } from "@shared/cursor-usage";
+import { VIBECODING_TAG, VIBECODING_YEAR_TAG, type LiveEvent } from "@/lib/live-events";
 import type {
   VibeCodingNowPayload
 } from "@/lib/types";
@@ -12,9 +12,11 @@ import {
 } from "@/lib/vibecoding-limits";
 import {
   normalizeAgentLimits,
+  normalizeCursorNow,
   normalizeVibeCodingNow,
   normalizeVibeCodingUsage,
   type ParsedAgentLimits,
+  type ParsedCursorNow,
   type ParsedVibeCodingNow,
   type ParsedVibeCodingUsage,
 } from "@/lib/vibecoding-parse";
@@ -67,6 +69,10 @@ export function prepareVibeCodingNowPayload(payload: ParsedVibeCodingNow, receiv
  * 判不出它是什么时候死的。不广播 —— 限额几分钟才动一次，卡片 30 秒一轮自己来问；
  * 只推普通 tag 让首屏那份快照跟着走。第一次用 urgent：从「没有限额」到「有」，
  * 不该再给旧的降级快照顶几分钟。
+ *
+ * `cursorNow` 是另一条节奏：容器有人看时每分钟查一次 Cursor 最近的用量事件，变了
+ * 才单独发一封，这种信封不带 `agents`。不带就完全不碰限额镜像 —— 否则限额的心跳会被
+ * 活动信号顶着，上报器限额那条路死了也看不出来。
  */
 export async function recordAgentLimits(input: unknown, receivedAt = Date.now()) {
   return recordPreparedAgentLimits(prepareAgentLimits(input, receivedAt));
@@ -75,13 +81,12 @@ export async function recordAgentLimits(input: unknown, receivedAt = Date.now())
 export type PreparedAgentLimits = {
   source: "agents";
   receivedAt: number;
-  limits: ParsedAgentLimits;
+  limits: ParsedAgentLimits | null;
   cursorUsage?: ParsedCursorUsage;
+  cursorNow?: ParsedCursorNow;
 };
 
 export function prepareAgentLimits(input: unknown, receivedAt = Date.now()): PreparedAgentLimits {
-  const parsed = normalizeAgentLimits(input);
-  if (!parsed) throw new Error("agents 必须是带 id 的限额行数组，id 不能重复");
   const root = input && typeof input === "object" ? (input as Record<string, unknown>) : null;
   let cursorUsage: ParsedCursorUsage | undefined;
   if (root && "cursorUsage" in root && root.cursorUsage != null) {
@@ -89,16 +94,31 @@ export function prepareAgentLimits(input: unknown, receivedAt = Date.now()): Pre
     if (!report) throw new Error("cursorUsage 必须是 Cursor 的日桶");
     cursorUsage = report;
   }
-  return { source: "agents", receivedAt, limits: parsed, cursorUsage };
+  let cursorNow: ParsedCursorNow | undefined;
+  if (root && "cursorNow" in root && root.cursorNow != null) {
+    const now = normalizeCursorNow(root.cursorNow);
+    if (!now) throw new Error("cursorNow 必须带 lastActivityAt");
+    cursorNow = now;
+  }
+  const omitted = !root || root.agents == null || (Array.isArray(root.agents) && root.agents.length === 0);
+  const parsed = omitted && (cursorUsage || cursorNow) ? null : normalizeAgentLimits(input);
+  if (!parsed && !(omitted && (cursorUsage || cursorNow))) {
+    throw new Error("agents 必须是带 id 的限额行数组，id 不能重复");
+  }
+  return { source: "agents", receivedAt, limits: parsed, cursorUsage, cursorNow };
 }
 
 export async function recordPreparedAgentLimits(prepared: PreparedAgentLimits) {
-  const { limits: parsed, receivedAt, cursorUsage } = prepared;
-  const previous = await limitsMirror.get();
-  const next = mergeAgentLimits(previous, parsed, receivedAt);
-  const changed = displayChanged(previous, next);
-  const writes = [limitsMirror.put(next)];
-  const tags = new Set<string>(changed ? [VIBECODING_TAG] : []);
+  const { limits: parsed, receivedAt, cursorUsage, cursorNow } = prepared;
+  const writes: Promise<unknown>[] = [];
+  const tags = new Set<string>();
+  const events: LiveEvent[] = [];
+  if (parsed) {
+    const previous = await limitsMirror.get();
+    const next = mergeAgentLimits(previous, parsed, receivedAt);
+    if (displayChanged(previous, next)) tags.add(VIBECODING_TAG);
+    writes.push(limitsMirror.put(next));
+  }
   if (cursorUsage) {
     const previousUsage = await cursorUsageMirror.get();
     if (displayChanged(previousUsage?.report, cursorUsage)) {
@@ -107,8 +127,27 @@ export async function recordPreparedAgentLimits(prepared: PreparedAgentLimits) {
     }
     writes.push(cursorUsageMirror.put({ report: cursorUsage, pushedAt: receivedAt }));
   }
+  if (cursorNow) {
+    const previousNow = await cursorNowMirror.get();
+    if (displayChanged(previousNow?.now, cursorNow)) {
+      tags.add(VIBECODING_TAG);
+      /**
+       * 电平一律给 false，灯由浏览器按 lastActivityAt 现算：服务端算的电平会冻在
+       * 两次推送之间，Cursor 那行不再有新事件时就没人来把它改回去。
+       */
+      events.push({
+        type: "vibecoding-now",
+        payload: { agents: [{ id: "cursor", ...cursorNow, active: false }] },
+      });
+    }
+    writes.push(cursorNowMirror.put({ now: cursorNow, pushedAt: receivedAt }));
+  }
 
-  await fanout({ writes, tags: [...tags] });
+  await fanout({ writes, events, tags: [...tags] });
 
-  return { accepted: parsed.agents.length, cursorUsage: Boolean(cursorUsage) };
+  return {
+    accepted: parsed?.agents.length ?? 0,
+    cursorUsage: Boolean(cursorUsage),
+    cursorNow: Boolean(cursorNow),
+  };
 }

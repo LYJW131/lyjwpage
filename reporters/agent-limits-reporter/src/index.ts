@@ -1,6 +1,7 @@
 import { config } from "./config.js";
 import { waitForNextRound } from "./cadence.js";
 import { refreshClaudeIfDue } from "./claude-oauth.js";
+import { runCursorNowLoop } from "./cursor-now.js";
 import { collectCursorUsage } from "./cursor-usage.js";
 import { collectAgents } from "./limits.js";
 import { failure, info, recovered } from "./log.js";
@@ -67,7 +68,7 @@ async function round(): Promise<void> {
    * 一家都没有（全都「没配」）时不发：站点对空封回 400，发了只是白退避。
    * 这是启动后还没登录任何一家的样子，记一句就好。
    */
-  if (payload.agents.length === 0) {
+  if (!payload.agents?.length) {
     failure("collect", new Error("一家都没登录，没有可发的限额行"));
     return;
   }
@@ -82,6 +83,8 @@ async function main() {
       ? "DRY_RUN：打印请求体然后退出"
       : `agent-limits-reporter 启动，三档 ${config.cadence.liveIntervalMs} / ${config.cadence.openIntervalMs} / ${config.cadence.idleIntervalMs}ms`,
   );
+  // Cursor 活动走自己的快循环。试跑和夹具模式不出网，不起它。
+  if (!config.dryRun && !config.limitsFixture && config.site.ingestUrl) void runCursorNowLoop();
   let backoff = RETRY_MS;
   for (;;) {
     try {

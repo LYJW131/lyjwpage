@@ -380,12 +380,13 @@ export function applyLedger(
 type FetchResult = { status: number; body: unknown; location: string | null };
 type PageFetch = typeof fetch;
 
-async function postPage(
+export async function postPage(
   cookie: string,
   page: number,
   lower: number,
   upper: number,
   fetchPage: PageFetch = fetch,
+  pageSize = PAGE_SIZE,
 ): Promise<FetchResult> {
   let url = CURSOR_USAGE_URL;
   for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -398,7 +399,7 @@ async function postPage(
         Accept: "application/json",
         Origin: new URL(url).origin,
       },
-      body: JSON.stringify({ page, pageSize: PAGE_SIZE, startDate: String(lower), endDate: String(upper) }),
+      body: JSON.stringify({ page, pageSize, startDate: String(lower), endDate: String(upper) }),
       signal: AbortSignal.timeout(PAGE_TIMEOUT_MS),
     });
     if (response.status === 401 || response.status === 403) throw new CursorUsageError("Cursor session expired");

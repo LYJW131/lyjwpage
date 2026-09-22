@@ -12,7 +12,7 @@ import {
   normalizeVibeCodingUsage
 } from "@/lib/vibecoding-parse";
 import { mergeCursorUsage } from "@/lib/cursor-usage";
-import { cursorUsageMirror } from "@shared/cursor-usage";
+import { cursorNowMirror, cursorUsageMirror } from "@shared/cursor-usage";
 import { limitsMirror, nowMirror, usageMirror } from "@shared/vibecoding";
 import { yearMirror } from "@shared/vibecoding-year-store";
 
@@ -20,11 +20,12 @@ import { yearMirror } from "@shared/vibecoding-year-store";
  * 新鲜度只盖 pushedAt / lastSeenAt / declaredOffline / limitsAt，stale 由浏览器现算。
  */
 export async function getVibeCodingSnapshot(): Promise<VibeCodingPayload> {
-  const [usageState, nowState, limitsState, cursorState, yearState, liveness] = await Promise.all([
+  const [usageState, nowState, limitsState, cursorState, cursorNowState, yearState, liveness] = await Promise.all([
     usageMirror.get(),
     nowMirror.get(),
     limitsMirror.get(),
     cursorUsageMirror.get(),
+    cursorNowMirror.get(),
     yearMirror.get(),
     readLiveness(),
   ]);
@@ -39,6 +40,10 @@ export async function getVibeCodingSnapshot(): Promise<VibeCodingPayload> {
   const nowById = new Map(
     (nowState?.payload.agents ?? []).map((agent) => [agent.id, agent]),
   );
+  // Cursor 的此刻来自容器查的用量事件，不在 Mac 那份里。电平给 false，浏览器按时刻现算。
+  if (cursorNowState) {
+    nowById.set("cursor", { id: "cursor", ...cursorNowState.now, active: false });
+  }
 
   const agents: VibeCodingAgent[] = attachAgentLimits(
     (usage?.agents ?? []).map((agent) => ({ ...agent, lastActivityAt: null, active: false })),

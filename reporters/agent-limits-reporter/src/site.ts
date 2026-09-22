@@ -1,3 +1,4 @@
+import type { CursorNow } from "./cursor-now.js";
 import type { CursorUsagePush } from "./cursor-usage.js";
 import { config } from "./config.js";
 
@@ -19,9 +20,12 @@ export type AgentRow = {
 
 export type PushPayload = {
   collectedAt: string;
-  agents: AgentRow[];
+  /** 限额那一轮必带；Cursor 活动那条小信封不带，站点就不碰限额镜像 */
+  agents?: AgentRow[];
   /** 这一轮 Cursor 云端历史拉成了才带。失败或没登录就省掉，站点留着上一份。 */
   cursorUsage?: CursorUsagePush;
+  /** Cursor 最近一条用量事件，见 cursor-now.ts */
+  cursorNow?: CursorNow;
 };
 
 type SiteEnvelope<T> = { ok?: boolean; error?: string; data?: T };
