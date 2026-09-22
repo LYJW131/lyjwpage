@@ -20,7 +20,8 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - 使用 `pnpm`；命令以各目录的 `package.json` 为准。主站开发入口是 `pnpm dev`，地址为 `http://localhost:3211`，连的是生产 Worker。改后端、新增状态端点或新卡片时用 `pnpm dev:worker`（本地 api Worker，首次后跑一次 `pnpm dev:worker:init`）加 `pnpm dev:local`；本地 Worker 配了 `.dev.vars` 的 `UPSTREAM_API_URL` 后生产为主、本地补缺，新端点和新字段看本地；要看此刻没发生的状态用 `pnpm dev:override <端点> <夹具>` 注入假数据（夹具在 `workers/api/dev-fixtures/`），见 README。
 - 主站页面与路由在 `src/app/`，组件在 `src/components/`，数据与共享逻辑在 `src/lib/`；上报器在 `reporters/`，Cloudflare Workers 在 `workers/`。架构与部署背景查 `README.md`，子项目操作查各自的 README。
 - 修改 Next.js 代码前，按上方要求读取本地版本中与改动相关的文档。按需检索，不为小改动遍历整个文档或技能目录。
-- 验证覆盖受影响的行为和契约。纯文档改动检查 diff、路径与命令即可；逻辑修复优先跑相关测试；类型或接口改动运行 `pnpm typecheck`；代码规范检查运行 `pnpm exec eslint <改动文件>`；涉及构建、路由或缓存行为时运行 `pnpm build`。UI 改动检查受影响页面的显示与交互。
+- 验证覆盖受影响的行为和契约。纯文档改动检查 diff、路径与命令即可；逻辑修复优先跑相关测试；类型或接口改动运行 `pnpm typecheck`；代码规范检查运行 `pnpm exec eslint <改动文件>`；涉及构建、路由或缓存行为时运行 `pnpm build`。站点 UI 改动按下一条走浏览器端到端测试。
+- 站点 UI 改动以浏览器端到端测试为准，单元测试不是必需：起开发服务器，在浏览器里实际打开受影响页面，覆盖相关宽度（至少桌面与 375px 手机）、交互和不同数据状态（此刻没发生的状态用 `pnpm dev:override` 注入夹具），并查看控制台错误。向用户汇报时附效果图；浏览器面板截不出图时改用无头 Chrome 截图。开发服务器保持运行并给出地址，让用户能亲自测试；清注入、停服务这些收尾等用户看完再做。
 - 主站完整单测为 `pnpm test`；单文件可用 `node --test --experimental-strip-types --import ./src/lib/testing/register-alias.mjs src/lib/<名称>.test.mts`。上报器和 Worker 使用各自的验证方式。
 - 有回归风险时补行为测试；低影响改动不添加仅重复实现的测试。相关检查通过后，只有新改动、失败或未解疑点才扩大或重复验证。环境限制导致无法验证时说明具体缺口。
 
