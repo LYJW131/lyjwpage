@@ -160,13 +160,13 @@ state 一律是代码算好的命名秒数和次数，没有原始区间、时�
 相同输入哈希不重复调用；晚到 token 或活动报告改变窗口事实时只重评受影响窗口。
 失败保留旧成功记录，下一轮重试，存储读失败不会清空历史。
 
-MacTelemetryHub 的 `modules.vibeCodingNow.tokenUsage` 携带最近 24 小时的五分钟
-用量桶：`from/to/collectedAt`（epoch 毫秒）、`sources[{id,state}]`、
-`windows[{from,to,agents}]`。每行 agent 有 `id/model/inputTokens/outputTokens/
-cacheReadTokens/cacheCreationTokens/reasoningTokens/eventCount`；input 不含 cache read，
-reasoning 属于 output 子集，eventCount 是去重用量事件数，不宣称上游 HTTP 请求数。
-Codex 与 Claude 使用本地日志事件时间，sources 状态区分 ok、partial、unavailable；
-其他来源没有细粒度用量，不能由日总量拆分。该数据只入内部存储，不进入公开补丁。
+`modules.vibeCodingNow.tokenUsage` 若出现，是最近 24 小时的五分钟用量桶：
+`from/to/collectedAt`（epoch 毫秒）、`sources[{id,state}]`、`windows[{from,to,agents}]`。
+每行 agent 有 `id/model/inputTokens/outputTokens/cacheReadTokens/cacheCreationTokens/
+reasoningTokens/eventCount`；input 不含 cache read，reasoning 属于 output 子集，
+eventCount 是去重用量事件数，不宣称上游 HTTP 请求数。sources 状态区分 ok、partial、
+unavailable。当前 Mac 的「正在使用」改由 Claude Code hook 触发，不再附带这段扫描；
+缺窗口按未知处理，不当成零。该数据只入内部存储，不进入公开补丁。
 
 Coding 同时读取前台应用、Agent/模型、交集时长、切换次数、连续活动时长、观测覆盖。
 不上传提示词、回复正文、项目路径或 session ID。token 是工作活动的证据，不是生产力。

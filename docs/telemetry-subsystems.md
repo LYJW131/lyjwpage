@@ -165,9 +165,9 @@ Anker 硬件 (BLE) ──> a2687-telemetry ──> Mac Telemetry Hub ──> POS
 
 ### 数据源与模块拆解
 Mac Telemetry Hub 采集三大模块并通过 `/api/ingest/mac` 上报：
-1. `vibeCodingNow`（60 秒）：当前是否处于活跃编码状态、正在使用的模型、最近活动时间戳。
-2. `vibeCodingUsage`（10 分钟）：各来源（Claude Code、Codex、Grok 等）今日 Token 用量、缓存命中率、会话数及 API 等值费用。Cursor 的云端历史不在这封里。
-3. `vibeCodingYear`（1 小时）：过去 53 周（371 天）日总量及每日 Top 5 模型分布，不含 Cursor。Cursor 的日子由读出口并上容器上报的日桶。
+1. `vibeCodingNow`（Claude Code hook）：只有 Claude Code 的活动灯和当前模型。Mac 不轮询日志；站点按 `lastActivityAt` 在 5 分钟后自己熄灯。
+2. `vibeCodingUsage`（10 分钟）：只刷新 Claude Code 的当天 token、缓存命中和 API 等值费用。Cursor 的当天用量仍由容器上报。
+3. `vibeCodingYear`（1 小时）：采集全部本机 agent 的完整历史，再取过去 53 周（371 天）日总量及每日 Top 5 模型分布，不含 Cursor。Cursor 的日子由读出口并上容器上报的日桶。
 
 ### 数据契约与分桶规范
 - **日期分桶**：全量历史数据严格按 `Asia/Shanghai` 时区划分自然日。
@@ -289,8 +289,9 @@ payload: >-
 这些规则档位不直接绘图。每个领域的变化和五分钟心跳（含空闲）都记录，断流留空。
 送去 Jev 之前，每个域把窗口压成算好的命名秒数和次数（`shared/pulse-<domain>.ts`），
 模型不拿原始区间、时间戳或数字图例——它不会数数、不会算时长；档位判据写成情境。
-Coding 另外保留前台应用与 Agent 的细粒度观测，并接入 MacTelemetryHub 的
-`vibeCodingNow.tokenUsage`。用量按本地日志事件时间入桶，不由日汇总差分。
+Coding 另外保留前台应用与 Agent 的细粒度观测。当前 Mac 上报不再附带
+`vibeCodingNow.tokenUsage`；缺了这段用量时按未知处理，不当成零。旧信封里的五分钟桶
+仍按事件时间入账，不由日汇总差分。
 Listening 另外把「最近在听」列表的变动作为播放证据（`pulse:listening-plays`）：
 Mac 睡着、HomePod 没动时，iPhone 等设备只在这份列表上留痕迹。它没有时刻，
 只知道播放落在两次刷新之间，所以一条最多认领一个评分窗口那么长的已观测时间，
