@@ -108,7 +108,9 @@ Codex / Grok 的 token 由上报器自己刷新写回（`auth.json`）。
 `https://cursor.com/api/dashboard/get-sand-usage-status`，凭据是下面那份会话 cookie；它拿不到只少这一扇。
 用量历史用同一份 JWT 拼 `WorkosCursorSessionToken`，分页打
 `https://cursor.com/api/dashboard/get-filtered-usage-events`，按 `Asia/Shanghai` 收成日桶，
-账本在数据卷的 `cursor-usage.json`（只有聚合，没有 token）。拉失败不挡限额心跳，这一轮不带
+账本在数据卷的 `cursor-usage.json`（只有聚合，没有 token）。每条请求按公开 API 价估一次费用：价目跟
+Mac 上的 ccusage 一样在线取 `https://models.dev/api.json`（只认官方厂商，6 小时内复用），取不到沿用上一份，
+一份都没有时用编译进镜像的快照；Composer、Auto、Bugbot 这类没有公开价的记 0 并把当天标成不完整。拉失败不挡限额心跳，这一轮不带
 `cursorUsage`，站点留着上一份。上报器不刷新这份 token，401 / 403 时限额那一行带
 `Cursor session expired — run \`agent login\` to re-authenticate.`。
 
