@@ -31,7 +31,9 @@ PlayStation 保留独立 `package-lock.json`。Wrangler 使用对应包锁定的
 
 `feat/agent-status` 的地址是 `https://feat-agent-status-api.lyjw.workers.dev`。算法在 `scripts/preview-worker-name.mjs`，Vercel 预览构建用同一份。Preview 配置在 `workers/api/wrangler.toml` 的 `[previews.vars]`：`UPSTREAM_API_URL` 指向生产 API，生产已经返回 `ok: true` 的端点用生产的，生产没有的端点用本分支的。不挂 cron、生产域名、KV、D1、R2，也不复制 Secret。上报和存储导入直接拒绝。MusicKit 令牌、歌词、动态封面转给生产，并带上浏览器的 `Origin`。空库第一次公开读取时只把初始化标记写成完成。WebSocket 转发生产房间的事件。
 
-`api` 的监视路径不放宽，否则无关的 `main` 提交也会重新发布生产版本。只改了监视路径以外的文件的分支不会触发 Preview 构建，Vercel 仍会连这个地址，要等一次会触发构建的提交。
+`api` 的监视路径不放宽，否则无关的 `main` 提交也会重新发布生产版本。只改了监视路径以外的文件的分支不会触发 Preview 构建。
+
+Vercel 与 Workers Builds 并行，新分支第一次推送时 Vercel 常常先到。`pnpm build`（`scripts/build.mjs`）在 Vercel 预览构建里先轮询本分支 Preview 的 `/api/home`，最多等 3 分钟：就绪就连它；等不到（Preview 还没发出来，或这个分支从没触发过 Preview 构建）这次构建连生产，页面和浏览器都用生产 API，下一次推送再重新判断。结果经 `PREVIEW_BACKEND_URL` 交给 `next.config.ts`，配置文件里不做网络等待。
 
 PR 关闭时 `.github/workflows/preview-api-worker.yml` 执行 `wrangler preview delete`。仓库 Secret `CLOUDFLARE_API_TOKEN` 需要能管理这个 Worker 的 Preview。没配令牌时工作流跳过。
 
