@@ -136,10 +136,10 @@ export class StateHub extends DurableObject<Env> {
     return this.pulseArchiveState.readPulseArchive();
   }
 
-  async confirmPulseArchive(domain: PulseDomain, at: number): Promise<number> {
+  async confirmPulseArchive(domain: PulseDomain, at: number, replaceToken?: string): Promise<number> {
     if (!this.ready() || !historyArchiveEnabled(this.env)) return 0;
     await this.ingestTail;
-    return this.pulseArchiveState.confirmPulseArchive(domain, at);
+    return this.pulseArchiveState.confirmPulseArchive(domain, at, replaceToken);
   }
 
   async claimPulseScore(): Promise<PulseScoreClaim | null> {

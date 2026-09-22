@@ -11,6 +11,7 @@ import { withRequestState } from "@shared/request-state";
 import { requestStore, type Env } from "@api/runtime";
 import { recordEmbyReport } from "@api/stores/emby";
 import { recordTelemetryEnvelope } from "@api/stores/telemetry";
+import { pulseAssessmentsKey } from "@/lib/pulse-assessments";
 
 /**
  * pulse 的挂钩点，按信封驱动。
@@ -326,21 +327,81 @@ test("iPhone activity reports create bounded physical-activity history and expos
   const storage = new FakeStorage();
   installStorageForTests(storage);
   const start = Date.parse("2026-09-20T08:00:00Z");
-  const report = (steps: number) => ({ version: 1, modules: { activity: {
+  const current = {
     date: "2026-09-20", secondsFromGMT: 0,
     moveKcal: 100, moveGoalKcal: 400, exerciseMinutes: 0, exerciseGoalMinutes: 30,
-    standHours: 2, standGoalHours: 12, steps,
+    standHours: 2, standGoalHours: 12, steps: 1000,
+  };
+  const report = (buckets: object[]) => ({ version: 1, modules: { activity: {
+    ...current,
+    history: { from: start, to: start + 3_600_000, buckets },
   } } });
+  const historyOnly = (buckets: object[]) => ({ version: 1, modules: { activity: {
+    history: { from: start, to: start + 3_600_000, buckets },
+  } } });
+  const assessment = (from: number, hash: string) => ({
+    domain: "activity", from, to: from + 300_000, coverage: [{ from, to: from + 300_000 }],
+    intensity: { value: 1, confidence: 1, probabilities: { 0: 0, 1: 1, 2: 0, 3: 0, 4: 0 } },
+    continuity: { value: 0, confidence: 1, probabilities: { 0: 1, 1: 0, 2: 0, 3: 0 } },
+    mode: null, model: "test", scoredAt: start + 3_600_000, inputHash: hash,
+  });
   try {
-    await inRequest(() => recordPhoneEnvelope(report(1000), start));
-    assert.deepEqual(await samples(storage, "activity"), []);
-    await inRequest(() => recordPhoneEnvelope(report(4600), start + 3_600_000));
-    const expected = [{ t: start, until: start + 3_600_000, level: 3 }];
+    await inRequest(() => recordPhoneEnvelope({ version: 1, modules: { activity: current } }, start));
+    await inRequest(() => recordPhoneEnvelope({ version: 1, modules: { activity: { ...current, steps: 4600 } } }, start + 3_600_000));
+    const { mirror } = await import("@shared/activity");
+    assert.equal((await mirror.get())?.activity.steps, 4600, "current-only reports still update rings");
+    assert.deepEqual(await samples(storage, "activity"), [], "daily totals no longer invent upload-time intervals");
+    await inRequest(() => recordPhoneEnvelope(report([
+      { from: start, to: start + 300_000, steps: 300 },
+      { from: start + 600_000, to: start + 900_000, moveKcal: 1 },
+      { from: start + 1_200_000, to: start + 1_500_000, moveKcal: 1 },
+    ]), start + 3_600_000));
+    const expected = [
+      { t: start, until: start + 300_000, level: 3 },
+      { t: start + 600_000, until: start + 900_000, level: 1 },
+      { t: start + 1_200_000, until: start + 1_500_000, level: 1 },
+    ];
     assert.deepEqual(await samples(storage, "activity"), expected);
     const status = await inRequest(() => getPulseStatus(start + 7_200_000));
     assert.deepEqual(status.domains.activity, { kind: "score", assessments: [], score: null }, "raw observations wait for Jev before public display");
-    await inRequest(() => recordPhoneEnvelope(report(6000), start + 4 * 3_600_000));
-    assert.deepEqual(await samples(storage, "activity"), expected, "long gaps are not filled");
+    await storage.append(pulseAssessmentsKey(),
+      JSON.stringify(assessment(start, "changed-level")),
+      JSON.stringify(assessment(start + 600_000, "deleted-bucket")),
+      JSON.stringify(assessment(start + 1_200_000, "unchanged-window")),
+    );
+    const corrected = [
+      { from: start, to: start + 300_000, moveKcal: 1 },
+      { from: start + 1_200_000, to: start + 1_500_000, moveKcal: 1 },
+    ];
+    await inRequest(() => recordPhoneEnvelope(historyOnly(corrected), start + 3_600_000));
+    assert.deepEqual(await samples(storage, "activity"), [
+      { t: start, until: start + 300_000, level: 1 },
+      { t: start + 1_200_000, until: start + 1_500_000, level: 1 },
+    ], "the authoritative range revises buckets and leaves omitted time unknown");
+    assert.deepEqual((await storage.listRange(pulseAssessmentsKey(), 0, -1)).map((raw) => JSON.parse(raw).inputHash), ["unchanged-window"]);
+    await inRequest(() => recordPhoneEnvelope(historyOnly(corrected), start + 3_600_000));
+    assert.deepEqual((await storage.listRange(pulseAssessmentsKey(), 0, -1)).map((raw) => JSON.parse(raw).inputHash), ["unchanged-window"], "an identical replay does not invalidate scores");
+  } finally { resetStorageForTests(); }
+});
+
+test("iPhone activity history rejects future and misaligned authoritative buckets", async () => {
+  const { recordPhoneEnvelope } = await import("@api/phone-telemetry");
+  const storage = new FakeStorage(); installStorageForTests(storage);
+  const at = Date.parse("2026-09-20T08:00:00Z");
+  const envelope = (history: object) => ({ version: 1, modules: { activity: { history } } });
+  try {
+    await assert.rejects(() => inRequest(() => recordPhoneEnvelope(envelope({
+      from: at, to: at + 300_000, buckets: [],
+    }), at)), /已结束/);
+    // 手机钟快几十秒、刚跨过边界：仍当作已结束的范围收下
+    await inRequest(() => recordPhoneEnvelope(envelope({
+      from: at, to: at + 300_000, buckets: [{ from: at, to: at + 300_000, steps: 10 }],
+    }), at + 270_000));
+    assert.equal((await storage.listRange(pulseKey("activity"), 0, -1)).length, 1);
+    await assert.rejects(() => inRequest(() => recordPhoneEnvelope(envelope({
+      from: at, to: at + 600_000,
+      buckets: [{ from: at + 1, to: at + 300_001, steps: 10 }],
+    }), at + 600_000)), /历史桶/);
   } finally { resetStorageForTests(); }
 });
 

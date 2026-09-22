@@ -45,7 +45,7 @@ export function pulseWindowAt(now: number): PulseWindow {
  * 非空闲每 5 分钟就该再确认一次（PULSE_REPEAT_AFTER_MS），所以超过两倍还没有
  * 下一笔就是上报器静默，那段如实空着，不拿旧值糊满整夜。空闲不设上限：
  * 空闲本来就只留一个点，它撑到下一次翻面才是它的语义。
- * activity 为已完成的估算区间，所有档位都在 until 截止，不套用实时心跳上限。
+ * activity 为已经闭合的 HealthKit 五分钟桶，所有档位都在 until 截止，不向当前时刻延续，也不套用实时心跳上限。
  */
 function heldUntil(sample: PulseSample, nextAt: number): number {
   if (sample.until != null) return Math.min(sample.until, nextAt);
