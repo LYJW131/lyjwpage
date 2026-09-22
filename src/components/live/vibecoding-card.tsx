@@ -74,11 +74,11 @@ function busiestLimit(limits: VibeCodingLimit[], now: number) {
 const REFRESH_MS = 2 * 60_000;
 
 /**
- * Cursor 最近一次活动过去多久还算「在用」。容器 5 分钟才查一次用量事件，窗口要比
- * 查询间隔宽，否则连续在用时每轮都会在下一次查到之前灭一下；所以是间隔再加上
- * MacTelemetryHub 判 active 的 5 分钟。改容器的 CURSOR_NOW_LIVE_INTERVAL_MS 要一起改。
+ * Cursor 最近一次活动过去多久还算「在用」，跟 MacTelemetryHub 判 active 的 300 秒一致。
+ * 容器在用时每分钟查一次（见 agent-limits-reporter 的 cursor-now.ts），窗口比查询间隔宽，
+ * 连续在用时灯不会闪。
  */
-const CURSOR_ACTIVE_WINDOW_MS = 10 * 60_000;
+const CURSOR_ACTIVE_WINDOW_MS = 5 * 60_000;
 
 /**
  * 这盏灯亮不亮。
@@ -87,7 +87,7 @@ const CURSOR_ACTIVE_WINDOW_MS = 10 * 60_000;
  * 还算不算数」取与（见 VibeCodingCard 里的 activityUnknown）。
  *
  * Cursor 的活动来自容器查的用量事件，跟 Mac 在不在线无关，站点只给时刻不给电平：
- * 最近一次在 10 分钟内就亮，过了由 useStale 的定时器自己熄。容器停了时刻不再前进，
+ * 最近一次在 5 分钟内就亮，过了由 useStale 的定时器自己熄。容器停了时刻不再前进，
  * 灯一样会灭，不需要另一个开关。
  */
 function useAgentActive(agent: VibeCodingAgent, activityUnknown: boolean) {

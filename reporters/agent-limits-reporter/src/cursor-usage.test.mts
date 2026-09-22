@@ -4,7 +4,9 @@ import test from "node:test";
 import { estimateCursorCost } from "../dist/cursor-pricing.js";
 import {
   aggregateEvents,
+  applyIncrementalLedger,
   applyLedger,
+  incrementalSince,
   parseUsagePage,
   reconcilePages,
   sessionFromAccessToken,
@@ -144,4 +146,47 @@ test("快照之后补的 grok-4.7 按 xAI 公开价，档位后缀与 fast 都�
   assert.notEqual(estimateCursorCost("kimi-k3-max", 1_000, 1_000, 0, 0, at), null);
   assert.equal(estimateCursorCost("composer-2.5-fast", 1_000, 0, 0, 0, at), null);
   assert.equal(estimateCursorCost("grok-bot-default", 1_000, 0, 0, 0, at), null);
+});
+
+test("增量那一轮只替换拉到的两天，其余日子和上次全量的结论原样沿用", () => {
+  const day = (date: string, tokens: number) => ({
+    date,
+    inputTokens: tokens,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheCreationTokens: 0,
+    totalTokens: tokens,
+    apiEquivalentCostUSD: tokens / 100,
+    costComplete: true,
+    models: tokens > 0 ? [{ model: "gpt-5", tokens }] : [],
+  });
+  const full = applyLedger(
+    null,
+    "same",
+    [day("2026-08-01", 5), day("2026-09-22", 7)],
+    "2026-09-22T12:00:00.000Z",
+    false,
+    3,
+  );
+  assert.equal(full.ledger.fullAt, "2026-09-22T12:00:00.000Z");
+  assert.deepEqual(full.ledger.fullProblems, ["3 historical requests had no token counts"]);
+  const next = applyIncrementalLedger(
+    full.ledger,
+    [day("2026-09-22", 9), day("2026-09-23", 4)],
+    "2026-09-23T01:00:00.000Z",
+    true,
+  );
+  assert.deepEqual(
+    next.push.days.map((row) => [row.date, row.totalTokens]),
+    [["2026-08-01", 5], ["2026-09-22", 9], ["2026-09-23", 4]],
+  );
+  assert.equal(next.ledger.fullAt, "2026-09-22T12:00:00.000Z");
+  assert.equal(next.push.error, "3 historical requests had no token counts");
+  assert.equal(next.push.costComplete, false);
+  assert.equal(next.push.collectedAt, "2026-09-23T01:00:00.000Z");
+});
+
+test("增量从上海时间昨天 0 点开始拉", () => {
+  // 上海 9/23 00:30 → 从 9/22 00:00（上海）起
+  assert.equal(incrementalSince(Date.parse("2026-09-22T16:30:00Z")), Date.parse("2026-09-21T16:00:00Z"));
 });

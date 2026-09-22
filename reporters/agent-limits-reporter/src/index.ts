@@ -1,7 +1,7 @@
 import { config } from "./config.js";
 import { waitForNextRound } from "./cadence.js";
 import { refreshClaudeIfDue } from "./claude-oauth.js";
-import { runCursorNowLoop } from "./cursor-now.js";
+import { markCursorNowSent, observeCursorActivity, runCursorNowLoop } from "./cursor-now.js";
 import { collectCursorUsage } from "./cursor-usage.js";
 import { collectAgents } from "./limits.js";
 import { failure, info, recovered } from "./log.js";
@@ -34,7 +34,7 @@ async function collectPayload(): Promise<PushPayload> {
    * 刷不到时 claude 那一行带着 limitsError 照发。
    * Cursor 历史拉失败同样不能挡住限额心跳，这一轮就不带 cursorUsage。
    */
-  const [agents, cursorUsage] = await Promise.all([
+  const [agents, cursor] = await Promise.all([
     (async () => {
       try {
         await refreshClaudeIfDue();
@@ -48,10 +48,12 @@ async function collectPayload(): Promise<PushPayload> {
       return null;
     }),
   ]);
+  const cursorNow = observeCursorActivity(cursor?.latest ?? null);
   return {
     collectedAt: new Date().toISOString(),
     agents,
-    ...(cursorUsage ? { cursorUsage } : {}),
+    ...(cursor ? { cursorUsage: cursor.push } : {}),
+    ...(cursorNow ? { cursorNow } : {}),
   };
 }
 
@@ -73,6 +75,7 @@ async function round(): Promise<void> {
     return;
   }
   await push(payload);
+  if (payload.cursorNow) markCursorNowSent(payload.cursorNow);
   recovered("collect");
   recovered("push");
 }
@@ -83,7 +86,7 @@ async function main() {
       ? "DRY_RUN：打印请求体然后退出"
       : `agent-limits-reporter 启动，三档 ${config.cadence.liveIntervalMs} / ${config.cadence.openIntervalMs} / ${config.cadence.idleIntervalMs}ms`,
   );
-  // Cursor 活动走自己的快循环。试跑和夹具模式不出网，不起它。
+  // Cursor 活动的快循环平时睡着，等限额那一轮看到 5 分钟内的事件才醒。试跑和夹具模式不起它。
   if (!config.dryRun && !config.limitsFixture && config.site.ingestUrl) void runCursorNowLoop();
   let backoff = RETRY_MS;
   for (;;) {
