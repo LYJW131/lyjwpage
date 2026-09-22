@@ -393,6 +393,11 @@ test("iPhone activity history rejects future and misaligned authoritative bucket
     await assert.rejects(() => inRequest(() => recordPhoneEnvelope(envelope({
       from: at, to: at + 300_000, buckets: [],
     }), at)), /已结束/);
+    // 手机钟快几十秒、刚跨过边界：仍当作已结束的范围收下
+    await inRequest(() => recordPhoneEnvelope(envelope({
+      from: at, to: at + 300_000, buckets: [{ from: at, to: at + 300_000, steps: 10 }],
+    }), at + 270_000));
+    assert.equal((await storage.listRange(pulseKey("activity"), 0, -1)).length, 1);
     await assert.rejects(() => inRequest(() => recordPhoneEnvelope(envelope({
       from: at, to: at + 600_000,
       buckets: [{ from: at + 1, to: at + 300_001, steps: 10 }],

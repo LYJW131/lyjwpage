@@ -120,7 +120,7 @@ statistics；每个桶只携带实际可读的 active energy、exercise time、s
 查询修订只失效事实实际变化的评分窗，运行中的旧 activity 评分也由 history revision 拒收。
 首次发布此版本前执行 D1 迁移 `0002_pulse_activity_intervals.sql` 和 `0004_pulse_archive_revisions.sql`
 （`pnpm --dir workers/api exec wrangler d1 migrations apply lyjwpage-history --remote`），
-归档将终点保存在 `until_at`，并用范围 revision 原子替换 activity 历史，较旧的异步归档不能复活已删除桶；已有域不带终点，值为 NULL。
+归档将终点保存在 `until_at`，并用范围 revision 原子替换 activity 历史，较旧的异步归档不能复活已删除桶；StateHub 记下已归档的查询范围与版本，没有新上报时每分钟的归档不碰 D1，替换时也只写实际新增、修订或删除的行；已有域不带终点，值为 NULL。
 尚无分段评分时新行显示 `Awaiting scores`。
 
 本地预览用夹具：`pnpm dev:override /api/status/pulse pulse-busy-day.json`。

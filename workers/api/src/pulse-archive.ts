@@ -1,4 +1,4 @@
-import { parsePulseSample, pulseIntervalRangeKey, pulseKey } from "@/lib/pulse";
+import { parsePulseSample, pulseIntervalRangeKey, pulseIntervalRevisionKey, pulseKey } from "@/lib/pulse";
 import { PULSE_HISTORY_LIMIT } from "@/lib/limits";
 import { PULSE_DOMAINS, type PulseDomain, type PulseSample } from "@/lib/types";
 import type { StorageCommand } from "@shared/storage-contract";
@@ -21,6 +21,8 @@ export type PulseArchiveDomainSnapshot = {
   revision: number;
   watermark: number;
   replaceRange?: { from: number; to: number };
+  /** 本次权威替换对应的 StateHub 版本；确认后同一份历史不再重复写 D1。 */
+  replaceToken?: string;
   /** Raw authoritative rows; parsing and sorting are Worker work. */
   rows: string[];
   /** A broken domain remains isolated inside the single coordinator RPC. */
@@ -32,23 +34,28 @@ export type PulseArchiveSnapshot = { domains: PulseArchiveDomainSnapshot[] };
 /** RPC shape implemented by StateHub and consumed by the ordinary Worker executor. */
 export interface PulseArchiveCoordinator {
   readPulseArchive(): Promise<PulseArchiveSnapshot>;
-  confirmPulseArchive(domain: PulseDomain, t: number): Promise<number>;
+  confirmPulseArchive(domain: PulseDomain, t: number, replaceToken?: string): Promise<number>;
 }
 
 const INSERT = "INSERT OR IGNORE INTO pulse_samples(domain, t, level, hint, until_at, power_w) VALUES (?, ?, ?, ?, ?, ?)";
 const CLAIM_ACTIVITY_REVISION = `INSERT INTO pulse_archive_state(domain, revision) VALUES ('activity', ?)
   ON CONFLICT(domain) DO UPDATE SET revision = MAX(revision, excluded.revision)`;
+// 新快照里仍在的桶交给下面的 upsert，只删真正消失的；未变的行不产生 D1 写入。
 const DELETE_ACTIVITY_RANGE = `DELETE FROM pulse_samples WHERE domain = 'activity' AND t < ? AND COALESCE(until_at, t + 1) > ?
+  AND t NOT IN (SELECT json_extract(value, '$.t') FROM json_each(?))
   AND (SELECT revision FROM pulse_archive_state WHERE domain = 'activity') = ?`;
 const REPLACE_ACTIVITY = `INSERT INTO pulse_samples(domain, t, level, hint, until_at, power_w)
   SELECT 'activity', json_extract(value, '$.t'), json_extract(value, '$.level'), NULL,
     json_extract(value, '$.until'), NULL FROM json_each(?)
   WHERE (SELECT revision FROM pulse_archive_state WHERE domain = 'activity') = ?
   ON CONFLICT(domain, t) DO UPDATE SET level = excluded.level, hint = NULL,
-    until_at = excluded.until_at, power_w = NULL`;
+    until_at = excluded.until_at, power_w = NULL
+  WHERE pulse_samples.level IS NOT excluded.level OR pulse_samples.until_at IS NOT excluded.until_at
+    OR pulse_samples.hint IS NOT NULL OR pulse_samples.power_w IS NOT NULL`;
 const CHUNK_SIZE = 100;
 const WATERMARK_PREFIX = "pulse-archive:";
 const REVISION_KEY = "pulse-archive:revision";
+const ACTIVITY_REPLACED_KEY = "pulse-archive:activity-replaced";
 const CHARGING_HISTORY_LIMIT = 6000;
 
 function reason(error: unknown): string {
@@ -82,7 +89,12 @@ export class PulseArchiveState implements PulseArchiveCoordinator {
           start: 0,
           stop: (domain === "charging" ? CHARGING_HISTORY_LIMIT : PULSE_HISTORY_LIMIT) - 1,
         }];
-        if (domain === "activity") commands.push({ op: "get", key: pulseIntervalRangeKey("activity") });
+        if (domain === "activity") {
+          commands.push(
+            { op: "get", key: pulseIntervalRangeKey("activity") },
+            { op: "get", key: pulseIntervalRevisionKey("activity") },
+          );
+        }
         const result = this.execute(commands);
         const rows = result[0] as string[];
         const parsedRange = domain === "activity" && typeof result[1] === "string"
@@ -92,7 +104,16 @@ export class PulseArchiveState implements PulseArchiveCoordinator {
           (parsedRange.from as number) < (parsedRange.to as number)
           ? { from: parsedRange.from as number, to: parsedRange.to as number }
           : undefined;
-        domains.push({ domain, revision, watermark: this.watermark(domain), rows, ...(replaceRange ? { replaceRange } : {}) });
+        // 范围或事实版本没变就是 D1 已有的那一份；每分钟重放会白白删了又写几百行。
+        const replaceToken = replaceRange ? JSON.stringify([result[2] ?? null, replaceRange.from, replaceRange.to]) : undefined;
+        const pending = replaceToken !== undefined && replaceToken !== this.metadata(ACTIVITY_REPLACED_KEY);
+        domains.push({
+          domain,
+          revision,
+          watermark: this.watermark(domain),
+          rows,
+          ...(pending ? { replaceRange, replaceToken } : {}),
+        });
       } catch (error) {
         domains.push({ domain, revision, watermark: 0, rows: [], error: reason(error) });
       }
@@ -100,9 +121,18 @@ export class PulseArchiveState implements PulseArchiveCoordinator {
     return { domains };
   }
 
-  async confirmPulseArchive(domain: PulseDomain, t: number): Promise<number> {
-    if (!PULSE_DOMAINS.includes(domain) || !Number.isSafeInteger(t) || t < 0) {
+  async confirmPulseArchive(domain: PulseDomain, t: number, replaceToken?: string): Promise<number> {
+    if (!PULSE_DOMAINS.includes(domain) || !Number.isSafeInteger(t) || t < 0 ||
+        (replaceToken !== undefined && (domain !== "activity" || typeof replaceToken !== "string"))) {
       throw new Error("Invalid Pulse archive confirmation");
+    }
+    // 较旧的任务晚确认只会让下一分钟多做一次无变化的替换，D1 的范围版本保证不回退数据。
+    if (replaceToken !== undefined) {
+      this.sql.exec(
+        `INSERT INTO metadata(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+        ACTIVITY_REPLACED_KEY,
+        replaceToken,
+      );
     }
     this.sql.exec(
       `INSERT INTO metadata(key, value) VALUES (?, ?)
@@ -117,9 +147,13 @@ export class PulseArchiveState implements PulseArchiveCoordinator {
   }
 
   private watermark(domain: PulseDomain): number {
-    const row = this.sql.exec("SELECT value FROM metadata WHERE key = ?", WATERMARK_PREFIX + domain).toArray()[0];
-    const at = Number(row?.value);
+    const at = Number(this.metadata(WATERMARK_PREFIX + domain));
     return Number.isFinite(at) ? at : 0;
+  }
+
+  private metadata(key: string): string | null {
+    const row = this.sql.exec("SELECT value FROM metadata WHERE key = ?", key).toArray()[0];
+    return typeof row?.value === "string" ? row.value : null;
   }
 
   private nextRevision(): number {
@@ -178,12 +212,14 @@ export class PulseArchive {
     samples.sort((a, b) => a.t - b.t);
 
     if (snapshot.domain === "activity" && snapshot.replaceRange) {
+      const json = JSON.stringify(samples);
       await this.db.batch([
         this.db.prepare(CLAIM_ACTIVITY_REVISION).bind(snapshot.revision),
-        this.db.prepare(DELETE_ACTIVITY_RANGE).bind(snapshot.replaceRange.to, snapshot.replaceRange.from, snapshot.revision),
-        this.db.prepare(REPLACE_ACTIVITY).bind(JSON.stringify(samples), snapshot.revision),
+        this.db.prepare(DELETE_ACTIVITY_RANGE).bind(snapshot.replaceRange.to, snapshot.replaceRange.from, json, snapshot.revision),
+        this.db.prepare(REPLACE_ACTIVITY).bind(json, snapshot.revision),
       ]);
-      if (samples.length) await this.coordinator.confirmPulseArchive(snapshot.domain, samples[samples.length - 1].t);
+      const last = samples.length ? samples[samples.length - 1].t : snapshot.watermark;
+      await this.coordinator.confirmPulseArchive(snapshot.domain, last, snapshot.replaceToken);
       return;
     }
 

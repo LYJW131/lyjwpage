@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
 
-import { pulseIntervalRangeKey, pulseKey } from "@/lib/pulse";
+import { pulseIntervalRangeKey, pulseIntervalRevisionKey, pulseKey } from "@/lib/pulse";
+import { readFileSync, readdirSync } from "node:fs";
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { PULSE_HISTORY_LIMIT } from "@/lib/limits";
 import { PULSE_DOMAINS, type PulseDomain, type PulseSample } from "@/lib/types";
 import type { StorageCommand } from "@shared/storage-contract";
@@ -91,9 +94,10 @@ function setup(options: {
         if (statement.query.startsWith("INSERT INTO pulse_archive_state")) {
           activityRevision = Math.max(activityRevision, statement.values[0] as number);
         } else if (statement.query.startsWith("DELETE FROM pulse_samples")) {
-          const [to, from, revision] = statement.values as number[];
+          const [to, from, json, revision] = statement.values as [number, number, string, number];
+          const kept = new Set((JSON.parse(json) as PulseSample[]).map((sample) => sample.t));
           if (revision === activityRevision) for (const [key, row] of rows) {
-            if (row[0] === "activity" && row[1] < to && (row[4] ?? row[1] + 1) > from) rows.delete(key);
+            if (row[0] === "activity" && row[1] < to && (row[4] ?? row[1] + 1) > from && !kept.has(row[1])) rows.delete(key);
           }
         } else if (statement.query.startsWith("INSERT INTO pulse_samples(domain, t")) {
           const [json, revision] = statement.values as [string, number];
@@ -149,7 +153,7 @@ test("pulse archive: archives fields and reads every source through one bounded 
     ["activity", T0, 2, null, T0 + 3_600_000, null],
     ["coding", T0 + 60_000, 0, null, null, null],
   ]);
-  assert.equal(world.readCommands.length, PULSE_DOMAINS.length + 1);
+  assert.equal(world.readCommands.length, PULSE_DOMAINS.length + 2, "activity also reads its range and revision");
   for (const command of world.readCommands) {
     if (command.op === "get") continue;
     assert.equal(command.op, "listRange");
@@ -278,4 +282,77 @@ test("pulse archive: late confirmations advance by max and never move backward",
   assert.equal(await world.state.confirmPulseArchive("coding", T0 + 60_000), T0 + 120_000);
   assert.equal(await world.state.confirmPulseArchive("coding", T0 + 180_000), T0 + 180_000);
   assert.equal(world.watermark("coding"), String(T0 + 180_000));
+});
+
+test("pulse archive: authoritative activity writes only changed D1 rows and skips an unchanged snapshot", async () => {
+  // 用真实 SQLite 跑迁移和归档 SQL：计的是 D1 按行计费的 changes，不是替身里的推断。
+  const d1 = new DatabaseSync(":memory:");
+  const migrations = `${dirname(fileURLToPath(import.meta.url))}/../migrations/`;
+  for (const file of readdirSync(migrations).filter((name) => name.endsWith(".sql")).sort()) {
+    d1.exec(readFileSync(`${migrations}${file}`, "utf8"));
+  }
+  let written = 0;
+  let batches = 0;
+  const db: PulseArchiveDb = {
+    prepare: (query) => ({ bind: (...values: unknown[]) => ({ query, values }) }),
+    async batch(statements) {
+      batches += 1;
+      d1.exec("BEGIN");
+      for (const { query, values } of statements as Statement[]) {
+        written += Number(d1.prepare(query).run(...(values as (string | number | null)[])).changes);
+      }
+      d1.exec("COMMIT");
+      return [];
+    },
+  };
+  const meta = new DatabaseSync(":memory:");
+  meta.exec("CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
+  const sql: ArchiveSql = {
+    exec(query, ...bindings) {
+      const statement = meta.prepare(query);
+      if (/^\s*SELECT\b/i.test(query)) return { toArray: () => statement.all(...bindings) as Record<string, unknown>[] };
+      statement.run(...bindings);
+      return { toArray: () => [] };
+    },
+  };
+  const stored = new Map<string, string | string[]>();
+  const execute = (commands: StorageCommand[]): unknown[] => commands.map((command) => {
+    if (command.op === "get") return stored.get(command.key) ?? null;
+    assert.equal(command.op, "listRange");
+    return ((stored.get(command.key) ?? []) as string[]).slice(command.start, command.stop + 1);
+  });
+  const archive = new PulseArchive({
+    coordinator: new PulseArchiveState({ sql, execute }),
+    db,
+    log: (domain, error) => assert.fail(`${domain}: ${String(error)}`),
+  });
+  const publish = (samples: PulseSample[], range: { from: number; to: number }, revision: number) => {
+    stored.set(pulseKey("activity"), samples.map((sample) => JSON.stringify(sample)));
+    stored.set(pulseIntervalRangeKey("activity"), JSON.stringify(range));
+    stored.set(pulseIntervalRevisionKey("activity"), String(revision));
+  };
+  const bucket = (index: number, level: 0 | 1 | 2 | 3): PulseSample =>
+    ({ t: T0 + index * 300_000, until: T0 + (index + 1) * 300_000, level });
+  const rows = () => d1.prepare("SELECT t, level, until_at FROM pulse_samples WHERE domain = 'activity' ORDER BY t").all()
+    .map((row) => [row.t, row.level, row.until_at]);
+
+  publish([bucket(0, 1), bucket(1, 2), bucket(2, 3)], { from: T0, to: T0 + 900_000 }, 1);
+  await archive.run();
+  assert.equal(written, 1 + 3, "claim plus three new buckets");
+  assert.equal(batches, 1);
+
+  written = 0;
+  await archive.run();
+  await archive.run();
+  assert.equal(batches, 1, "the same range and revision do not touch D1 again");
+
+  // 下一次上报：中间那桶被 HealthKit 删掉，最后一桶修订，新增一桶，第一桶不变。
+  publish([bucket(0, 1), bucket(2, 1), bucket(3, 2)], { from: T0, to: T0 + 1_200_000 }, 2);
+  await archive.run();
+  assert.equal(written, 1 + 1 + 1 + 1, "claim, one delete, one revision, one insert; the unchanged bucket is not rewritten");
+  assert.deepEqual(rows(), [
+    [T0, 1, T0 + 300_000],
+    [T0 + 600_000, 1, T0 + 900_000],
+    [T0 + 900_000, 2, T0 + 1_200_000],
+  ]);
 });
