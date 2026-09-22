@@ -202,6 +202,13 @@ export function AgentStatusCard({
   const close = useCallback(() => setOpenId(null), []);
   const open = data?.agents.find((agent) => agent.id === openId) ?? null;
   const checked = data ? checkedAt.format(data.fetchedAt) : null;
+  /**
+   * 两列各四行：桌面并排，移动端一个视口一列，靠 scroll-snap 左右滑切换。
+   * 纯 CSS 滑动，不引轮播库。
+   */
+  const columns = data
+    ? [data.agents.slice(0, 4), data.agents.slice(4)].filter((column) => column.length > 0)
+    : [];
 
   return (
     <Card
@@ -211,11 +218,16 @@ export function AgentStatusCard({
       action={checked ? <span title={`${checked} UTC+8`}>{checked}</span> : undefined}
     >
       {data ? (
-        <ul className="grid divide-y divide-line">
-          {data.agents.map((agent) => {
-            const label = indicatorLabel(agent.indicator);
-            return (
-              <li key={agent.id}>
+        <div className="flex snap-x snap-mandatory overflow-x-auto overscroll-x-contain scrollbar-none md:grid md:grid-cols-2 md:gap-x-4 md:overflow-visible [&::-webkit-scrollbar]:hidden">
+          {columns.map((column) => (
+            <ul
+              key={column[0]?.id ?? "column"}
+              className="min-w-full shrink-0 snap-center divide-y divide-line md:min-w-0"
+            >
+              {column.map((agent) => {
+                const label = indicatorLabel(agent.indicator);
+                return (
+                  <li key={agent.id}>
                 <button
                   type="button"
                   onClick={() => setOpenId(agent.id)}
@@ -232,9 +244,11 @@ export function AgentStatusCard({
                   </span>
                 </button>
               </li>
-            );
-          })}
-        </ul>
+                );
+              })}
+            </ul>
+          ))}
+        </div>
       ) : (
         <p className="px-4 py-5 text-sm text-muted-foreground md:px-5">
           {error ? "Status unavailable" : "Checking status"}
