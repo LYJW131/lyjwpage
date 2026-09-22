@@ -9,11 +9,13 @@ import type { StoredEntry } from "@shared/sqlite-store";
 
 import { refreshRecentlyPlayed } from "./apple-music-recent";
 
-import { ROOM_ID } from "./live-platform";
+import { expireStatusTags, publish, ROOM_ID } from "./live-platform";
 import { ConfigError, issueMusicKitToken } from "./musickit-token";
 import { getAllowedOrigins, getCorsHeaders, isAllowedOrigin, isAllowedOriginValue } from "./origins";
+import { refreshAgentStatus } from "@/lib/agent-status";
 import { refreshPageSpeed } from "@/lib/pagespeed";
 import { fetchPreviewUpstream, isPreviewProxyPath, previewWorkerEnabled } from "./preview";
+import { STATUS_VIEWS } from "@/lib/status-views";
 import { isPublicApiPath, pathForEventType } from "./public-api";
 import { executePublicRequest } from "./public-execution";
 import { requestStore, type Env } from "./runtime";
@@ -388,6 +390,15 @@ export class LivePushRoom extends DurableObject<Env> {
   }
 }
 
+/** 厂商状态变了才推，并让下一份首页 HTML 带上新灯。没变就什么都不做。 */
+async function publishAgentStatus(): Promise<void> {
+  const changed = await refreshAgentStatus();
+  if (!changed) return;
+  await publish({ type: "agent-status", payload: changed });
+  const tag = STATUS_VIEWS.agentStatus.tag;
+  if (tag) await expireStatusTags([tag]);
+}
+
 const worker = {
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     await withRequestState(() => requestStore.run({ env, ctx }, async () => {
@@ -395,9 +406,14 @@ const worker = {
       // （iPhone 等没有上报器的设备只在它上面留痕迹，见 stores/listening-pulse），
       // 只在有人看时刷的话，白天没人打开站点，那天在 iPhone 上听的就全没了。
       // 上游频率仍由 refreshRecentlyPlayed 里两分钟的 SQLite 闸门管着，最多每两分钟
-      // 打一次 Apple。PageSpeed 自己按小时抢闸门，一轮实测要二十多秒 —— 两件事并行，
-      // 别让它拖住换歌那条。
-      await Promise.all([refreshPageSpeed(), env.STATE ? refreshRecentlyPlayed() : null]);
+      // 打一次 Apple。PageSpeed 自己按小时抢闸门，一轮实测要二十多秒。厂商状态
+      // 通常一两秒。三件事并行，别让 PageSpeed 拖住换歌和状态推送。状态只有
+      // 结果变了才推，开着的页面不用等下一分钟的轮询。
+      await Promise.all([
+        refreshPageSpeed(),
+        env.STATE ? refreshRecentlyPlayed() : null,
+        publishAgentStatus(),
+      ]);
     }));
   },
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {

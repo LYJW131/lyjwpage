@@ -14,6 +14,7 @@ import { PlaystationBlock } from "@/components/live/playstation-block";
 import { PulseCard } from "@/components/live/pulse-card";
 import { TimezoneCard } from "@/components/live/timezone-card";
 import { NowWatchingCard } from "@/components/live/now-watching-card";
+import { AgentStatusCard } from "@/components/live/agent-status-card";
 import { VibeCodingCard } from "@/components/live/vibecoding-card";
 import { WatchingRow } from "@/components/live/watching-card";
 import { Section } from "@/components/ui/section";
@@ -143,6 +144,10 @@ export default async function Home() {
                 <ServerCard
                   fallback={server}
                   className="defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_245px]"
+                />
+                <AgentStatusCard
+                  fallback={snapshot.agentStatus ?? { ok: false, error: "Status unavailable" }}
+                  className="defer-offscreen-always [contain-intrinsic-size:auto_292px]"
                 />
                 <VibeCodingCard
                   fallback={vibeCoding}

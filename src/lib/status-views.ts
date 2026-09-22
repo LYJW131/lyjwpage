@@ -50,6 +50,11 @@ export const STATUS_VIEWS = {
   listening: { path: "/api/status/listening", tag: "listening", event: "listening" },
   nowListening: { path: "/api/status/listening/now", tag: "listening-now", event: "listening-now" },
   vibeCoding: { path: "/api/status/vibecoding", tag: "vibecoding", event: "vibecoding-now" },
+  /**
+   * 厂商状态页。cron 每分钟拉官方 JSON / RSS，只有结果变了才推。
+   * 不进 KV：开着的页面要的是刚推来的那份，投影会把旧的盖回去。
+   */
+  agentStatus: { path: "/api/status/agent-status", tag: "agent-status", event: "agent-status" },
   vibeCodingYear: { path: "/api/status/vibecoding/year", tag: "vibecoding-year", readModel: "slow" },
   watching: { path: "/api/status/watching", tag: "watching", event: "watching" },
   nowWatching: { path: "/api/status/watching/now", tag: "watching-now", event: "watching-now" },
