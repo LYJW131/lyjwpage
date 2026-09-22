@@ -102,7 +102,10 @@ Codex / Grok 的 token 由上报器自己刷新写回（`auth.json`）。
 
 **cursor。** Linux 上 `agent login` 把 JWT 写到 `/data/.config/cursor/auth.json` 的 `accessToken`（也可
 用 `CURSOR_AUTH_TOKEN` 直接注入）。限额打 `api2.cursor.sh` 的
-`DashboardService/GetCurrentPeriodUsage`、`GetPlanInfo`、`GetHardLimit`（Connect RPC，Bearer JWT）。
+`DashboardService/GetCurrentPeriodUsage`、`GetPlanInfo`、`GetHardLimit`（Connect RPC，Bearer JWT），
+收成四扇窗口：`cursor.primary` 总额、`secondary` Cursor 自家模型（Auto / Composer / Cursor Grok）、
+`tertiary` 其他厂商模型、`quaternary` Grok Bot 周额度。Grok Bot 只有网页接口
+`https://cursor.com/api/dashboard/get-sand-usage-status`，凭据是下面那份会话 cookie；它拿不到只少这一扇。
 用量历史用同一份 JWT 拼 `WorkosCursorSessionToken`，分页打
 `https://cursor.com/api/dashboard/get-filtered-usage-events`，按 `Asia/Shanghai` 收成日桶，
 账本在数据卷的 `cursor-usage.json`（只有聚合，没有 token）。拉失败不挡限额心跳，这一轮不带
@@ -140,7 +143,7 @@ DRY_RUN=1 LIMITS_FIXTURE=./fixture.json HOME=/tmp/empty \
 
 `LIMITS_FIXTURE` 的形状是 `{ "<id>": <该家原始 HTTP 响应体> }`：claude 是 `/api/oauth/usage`，
 codex 是 `wham/usage`，grok 是 `/v1/billing`，antigravity 是 `retrieveUserQuotaSummary`，
-cursor 是 `{ period, plan, hardLimit }` 三份 DashboardService 响应。有它就不出网、不读凭据。
+cursor 是 `{ period, plan, hardLimit, sand }`：三份 DashboardService 响应加 Grok Bot 那份（可省）。有它就不出网、不读凭据。
 
 ## 在 misaka-jp 上跑
 
