@@ -1,3 +1,4 @@
+import type { AgentStatusPayload } from "@/lib/agent-status-types";
 import { backendUrl } from "@/lib/backend-url";
 import { STATUS_VIEWS, bootstrapServes, viewKeyByPath } from "@/lib/status-views";
 import type {
@@ -34,6 +35,7 @@ const STAMPS: Record<string, (data: never) => number | null> = {
   [STATUS_VIEWS.listening.path]: (data: ListeningPayload) => data.fetchedAt,
   [STATUS_VIEWS.nowListening.path]: (data: NowListeningPayload) => data.receivedAt,
   [STATUS_VIEWS.powerBank.path]: (data: PowerBankPayload) => data.pushedAt,
+  [STATUS_VIEWS.agentStatus.path]: (data: AgentStatusPayload) => data.fetchedAt,
 };
 
 function stampOf(path: string, envelope: StatusResponse<unknown>): number | null {

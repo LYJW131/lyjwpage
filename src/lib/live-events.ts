@@ -1,4 +1,5 @@
 import type { NowWatchingPayload, WatchingPayload } from "@/lib/emby";
+import type { AgentStatusPayload } from "@/lib/agent-status-types";
 import type {
   ChargerPayload,
   DesktopPayload,
@@ -57,6 +58,11 @@ export type LiveEvent =
    * 把推送当轮询用。
    */
   | { type: "vibecoding-now"; payload: VibeCodingNowPayload }
+  /**
+   * 厂商状态页变了。整份替换：五行加未解决事件，实测远小于推送上限。
+   * cron 每分钟都拉，但只有灯、事件或失败标记变了才发这一条。
+   */
+  | { type: "agent-status"; payload: AgentStatusPayload }
   /**
    * 上报器上下线。只发失效通知 —— 亲口离线是布尔值，得把新的
    * declaredOffline 取回来；超时那条浏览器拿手上的 lastSeenAt 自己就能翻。

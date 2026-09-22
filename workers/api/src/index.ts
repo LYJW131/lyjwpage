@@ -33,7 +33,7 @@ const apiWorker = {
     if (previewWorkerEnabled()) return;
     // Rebuilds also cover external API caches, elapsed-time views and bindings added
     // to an already initialized StateHub. No visitor is needed to finish a retry.
-    // Enqueue only after the origin cron (Apple recently played, PageSpeed) has written,
+    // Enqueue only after the origin cron (Apple recently played, PageSpeed, agent status) has written,
     // so the listening projection is rendered from the refreshed list, not the previous one.
     await originWorker.scheduled(event, env, ctx);
     const hub = env.STATE.get(env.STATE.idFromName("global"));

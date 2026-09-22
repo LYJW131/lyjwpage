@@ -125,6 +125,17 @@ test("acceptPush / guardPolled: stamped payloads drop out-of-order values", () =
   assert.deepEqual(guardPolled(path, equal), equal);
 });
 
+test("acceptPush / guardPolled: agent-status fetchedAt rejects an older poll", () => {
+  const path = STATUS_VIEWS.agentStatus.path;
+  const older = { ok: true as const, data: { fetchedAt: 1_000, agents: [] } };
+  const newer = { ok: true as const, data: { fetchedAt: 2_000, agents: [{ id: "claude" }] } };
+  assert.equal(acceptPush(path, newer), true);
+  assert.equal(acceptPush(path, older), false);
+  assert.deepEqual(guardPolled(path, older), newer);
+  const equal = { ok: true as const, data: { fetchedAt: 2_000, agents: [{ id: "codex" }] } };
+  assert.deepEqual(guardPolled(path, equal), equal);
+});
+
 test("guardPolled: error envelope is visible but does not clear the live mark", () => {
   const path = STATUS_VIEWS.powerBank.path;
   const pushed = { ok: true as const, data: { pushedAt: 9_000 } };

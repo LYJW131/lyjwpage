@@ -1,0 +1,81 @@
+{
+  "fetchedAt": "$now",
+  "agents": [
+    {
+      "id": "claude",
+      "name": "Claude",
+      "indicator": "degraded",
+      "statusUrl": "https://status.claude.com",
+      "components": [
+        { "name": "Claude Code", "indicator": "operational" },
+        { "name": "Claude API (api.anthropic.com)", "indicator": "degraded" }
+      ],
+      "incidents": [
+        {
+          "id": "api-errors",
+          "title": "Elevated error rates on the Claude API",
+          "status": "Identified",
+          "url": "https://status.claude.com",
+          "updatedAt": "$now",
+          "body": "Some Claude API requests are failing. Claude Code itself is still up."
+        }
+      ],
+      "note": null,
+      "stale": false
+    },
+    {
+      "id": "codex",
+      "name": "ChatGPT",
+      "indicator": "major_outage",
+      "statusUrl": "https://status.openai.com",
+      "components": [
+        { "name": "Codex API", "indicator": "major_outage" },
+        { "name": "CLI", "indicator": "operational" }
+      ],
+      "incidents": [
+        {
+          "id": "codex-down",
+          "title": "Codex API unavailable",
+          "status": "Investigating",
+          "url": "https://status.openai.com",
+          "updatedAt": "$now",
+          "body": "Codex API requests are failing. The CLI is still operational."
+        }
+      ],
+      "note": null,
+      "stale": false
+    },
+    {
+      "id": "cursor",
+      "name": "Cursor",
+      "indicator": "maintenance",
+      "statusUrl": "https://status.cursor.com",
+      "components": [
+        { "name": "IDE", "indicator": "operational" },
+        { "name": "Cloud Agents", "indicator": "maintenance" }
+      ],
+      "incidents": [
+        {
+          "id": "cursor-maint",
+          "title": "Cloud Agents upgrade",
+          "status": "In progress",
+          "url": "https://status.cursor.com",
+          "updatedAt": "$now",
+          "body": "Cloud Agents are upgrading. The IDE is unaffected."
+        }
+      ],
+      "note": null,
+      "stale": false
+    },
+    {
+      "id": "grok",
+      "name": "Grok",
+      "indicator": "operational",
+      "statusUrl": "https://status.x.ai/grok-build",
+      "components": [{ "name": "Grok Build", "indicator": "operational" }],
+      "incidents": [],
+      "note": null,
+      "stale": true
+    }
+  ]
+}

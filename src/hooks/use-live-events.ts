@@ -71,6 +71,7 @@ const FORWARDS: ReadonlyArray<{
     event: "vibecoding-now",
     merge: (data) => applyVibeCodingNow(data as VibeCodingNowPayload),
   },
+  { event: "agent-status" },
 ];
 
 /**
