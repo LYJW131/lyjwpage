@@ -43,6 +43,12 @@ APPLE_MUSIC_STOREFRONT = "cn"
 CLOUDFLARE_ACCOUNT_ID = "209f2c881b1c494fec50851c067b3266"
 VERCEL_PROJECT_ID = "prj_r6sFPPmanb9zm3hzYAHAmp3KsIiC"
 VERCEL_TEAM_ID = "team_kfTnkK6X9bbqSbkgAhq7SxCd"
+# Sentry 的写入地址（DSN 本身公开，不是秘密）。本地 wrangler.test.toml 不配，本地就不上报。
+SENTRY_DSN = "https://13ba806bda9ae5a9086576b2e3d23cfb@o4511888459890688.ingest.us.sentry.io/4512132602855424"
+
+# Sentry 从这里取 release（Worker 版本 ID），和控制台的部署记录一一对应。
+[version_metadata]
+binding = "CF_VERSION_METADATA"
 
 [alias]
 "@/lib/storage-driver" = "./src/storage-driver.ts"
@@ -125,6 +131,7 @@ deleted_classes = ["OnlineCounterRoom"]
 # 不挂 cron、生产域名、KV、D1、R2。公开读取靠 UPSTREAM_API_URL 以生产为准。
 [previews.vars]
 PREVIEW_WORKER = "true"
+SENTRY_DSN = "https://13ba806bda9ae5a9086576b2e3d23cfb@o4511888459890688.ingest.us.sentry.io/4512132602855424"
 UPSTREAM_API_URL = "https://api.homepage.lyjw.llc"
 STORAGE_PREFIX = "lyjwpage-preview"
 ALLOWED_ORIGINS = "https://*.vercel.app"

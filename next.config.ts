@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withSentryConfig } from "@sentry/nextjs/config";
 import { execSync } from "node:child_process";
 
 import { IMAGE_PATH_PREFIX } from "./src/lib/asset-url";
@@ -66,6 +67,8 @@ const nextConfig: NextConfig = {
     BUILD_TIME,
     COMMIT_SHA: resolveCommitSha(),
     NEXT_PUBLIC_BACKEND_URL: resolvePublicBackendUrl(),
+    // Sentry 按部署类型分环境（见 lib/sentry）；本地 development 默认不上报
+    SENTRY_ENVIRONMENT: process.env.VERCEL_ENV ?? "development",
   },
   /**
    * `next dev` 按 `<distDir>/dev/lock` 保证同一目录只跑一个实例。3211 上那份已经
@@ -196,4 +199,28 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+/**
+ * Sentry 的构建期部分：上报隧道、release 注入、source map 上传。
+ *
+ * tunnelRoute 写死一条固定路径而不是每次构建随机：lyjw131.com 的 ESA 会把首页 HTML
+ * 和 JS 缓存到一天（stale-while-revalidate），旧 JS 还会往上一版的路径发。`/relay`
+ * 没有文件后缀，ESA 不缓存，POST 原样回源 lyjw.me。
+ *
+ * source map 只在有 SENTRY_AUTH_TOKEN 时上传，上传完即删，不对外发布；没有令牌
+ * （本地、没装 Sentry 的 Vercel 集成）时照常构建，只是 Sentry 里的调用栈是压缩后的。
+ */
+export default withSentryConfig(nextConfig, {
+  org: "yangjunwei-liang",
+  project: "lyjwpage",
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+  silent: !process.env.CI,
+  telemetry: false,
+  tunnelRoute: "/relay",
+  widenClientFileUpload: true,
+  sourcemaps: { deleteSourcemapsAfterUpload: true },
+  bundleSizeOptimizations: {
+    excludeDebugStatements: true,
+    excludeReplayIframe: true,
+    excludeReplayShadowDom: true,
+  },
+});

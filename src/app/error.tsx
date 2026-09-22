@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import * as Sentry from "@sentry/nextjs";
 import Link from "next/link";
 
 import { Footer } from "@/components/footer";
@@ -12,7 +13,7 @@ import { site } from "@/lib/site";
 /**
  * 首页段的错误边界。错误边界必须是客户端组件，导不出 metadata，标题用
  * React 的 <title> 元素自己拼。error.message 不端给访客：里面可能带 SQLite
- * 地址、上游响应之类的内部信息，只进 console。
+ * 地址、上游响应之类的内部信息，只进 console 和 Sentry。
  */
 export default function Error({
   error,
@@ -23,6 +24,7 @@ export default function Error({
 }) {
   useEffect(() => {
     console.error(error);
+    Sentry.captureException(error);
   }, [error]);
 
   return (

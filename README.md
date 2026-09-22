@@ -171,6 +171,10 @@
 
 `lyjw.me` 上由 `next.config.ts` 的 rewrite 把 `/img/*` 代理到 R2 公开源（`R2_PUBLIC_BASE_URL`，只配在 Vercel）：Vercel 边缘转发并按 R2 的 `immutable` 头缓存，不进 Function。`lyjw131.com` 上由 ESA 按静态后缀缓存同一路径并回源，中国大陆访客不再直连 Cloudflare。对象带一年不可变缓存，地址即内容指纹，所以两层边缘都不需要主动刷新。
 
+### 报错与性能交给 Sentry
+
+站点（浏览器与 Vercel 函数）和 `api` Worker（请求、分钟 cron、两个 Durable Object）各报到一个 Sentry 项目。浏览器端经同源的 `/relay` 转发，广告拦截和直连不上 sentry.io 的访客也报得上来；Session Replay 单独成块、页面空闲后才加载，只保留出错那一段。分钟 cron 有心跳监控，`lyjw.me` 有每分钟的在线探测。采样按免费额度设，入口见 [`src/lib/sentry.ts`](./src/lib/sentry.ts) 与 [`workers/api/src/sentry.ts`](./workers/api/src/sentry.ts)；本地默认不上报，要试就在 `.env.local` 设 `NEXT_PUBLIC_SENTRY_DEV=true`。
+
 ## 技术组成
 
 | 层次 | 主要技术 |
@@ -182,6 +186,7 @@
 | 活跃度评分 | TypeSafe System One（Jev） |
 | 原生设备接入 | Swift / SwiftUI · HealthKit · BLE |
 | 页面托管与分发 | Vercel · 阿里云 ESA |
+| 报错与性能监控 | Sentry |
 
 ## 从哪里读源码
 

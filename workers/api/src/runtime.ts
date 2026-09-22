@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { StorageClient } from "@shared/storage-client";
-import type { LivePushRoom } from "./index";
+import type { LivePushRoom } from "./origin-worker";
 import type { MusicKitTokenEnv } from "./musickit-token";
 import type { StateHub } from "./state-hub";
 import type { ReadModelRenderer } from "./read-model-renderer";
@@ -24,6 +24,12 @@ export interface Env extends MusicKitTokenEnv {
   STORAGE_PREFIX?: string;
   SITE_URL?: string;
   ALLOWED_ORIGINS?: string;
+  /** Sentry 的公开写入地址；不配就不上报（本地 wrangler.test.toml 即如此），见 src/sentry.ts。 */
+  SENTRY_DSN?: string;
+  /** 不配时按生产 / Preview 自动判断；本地试 Sentry 时设 development。 */
+  SENTRY_ENVIRONMENT?: string;
+  /** Sentry SDK 从这里取 release（版本 ID），不在代码里读。 */
+  CF_VERSION_METADATA?: WorkerVersionMetadata;
 }
 
 /** 夹具、上游兜底和分支影子都不能往共享的 KV、归档或评分里写。 */
