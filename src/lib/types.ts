@@ -345,12 +345,26 @@ export type ListeningPayload = {
 };
 
 /**
- * 由本机遥测应用直接观测到的前台应用。只有应用本身的身份和图标，
- * 不含窗口标题、文件路径、提示词等任何窗口内容。
+ * 遥测应用主动隐藏前台应用时上报的占位 bundle id。
+ *
+ * 由 Mac 端产生、Worker 入库时据此强制清掉窗口标题、站点据此画「Hidden」。
+ * 三处都要认同一个字面量，所以它和 `DesktopActivity` 放在一起 —— 这个文件
+ * 没有任何 import，Worker 和浏览器包都能拿，不会把存储层拖进客户端。
+ */
+export const HIDDEN_DESKTOP_BUNDLE_ID =
+  "com.liangyangjunwei.MacTelemetryHub.hidden";
+
+/**
+ * 由本机遥测应用直接观测到的前台应用：应用本身的身份、图标，以及当前窗口标题。
+ *
+ * `windowTitle` 是唯一一项窗口内容，仍不含文件路径、提示词等其它窗口内部信息。
+ * 没有标题（应用没给、被裁成空、或前台应用被隐藏）一律是 `null`，不是缺字段 ——
+ * 消费方只需判空，不必再分「没上报」和「没有标题」。
  */
 export type DesktopActivity = {
   applicationName: string;
   bundleIdentifier: string | null;
+  windowTitle: string | null;
   iconUrl: string | null;
   observedAt: number;
 };

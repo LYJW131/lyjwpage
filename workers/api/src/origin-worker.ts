@@ -1,7 +1,7 @@
 import { withRequestState } from "@shared/request-state";
 import { DurableObject } from "cloudflare:workers";
 
-import { INGEST_SOURCES, prepareIngest } from "./ingest-handlers";
+import { INGEST_SOURCES, prepareIngestForCommit } from "./ingest-handlers";
 import { dispatchIngestEffects } from "./ingest-effects";
 import { StateHub } from "./state-hub";
 import { STORAGE_MAX_BYTES } from "@shared/storage-contract";
@@ -116,10 +116,9 @@ async function handleIngest(
   try {
     const body = parseBody(raw);
     const hub = env.STATE.get(env.STATE.idFromName("global"));
-    // Keep the historical error priority: valid input reaches 503 before module validation.
-    if (!(await hub.ready())) return jsonResponse({ ok: false, error: "状态存储初始化中" }, { status: 503 });
     return await withRequestState(() => requestStore.run({ env, ctx }, async () => {
-      const command = await prepareIngest(source, body);
+      const command = await prepareIngestForCommit(source, body, () => hub.ready());
+      if (!command) return jsonResponse({ ok: false, error: "状态存储初始化中" }, { status: 503 });
       const result = await hub.commitIngest(command);
       await dispatchIngestEffects(result.effects);
       if (!result.ready) return jsonResponse({ ok: false, error: "状态存储初始化中" }, { status: 503 });

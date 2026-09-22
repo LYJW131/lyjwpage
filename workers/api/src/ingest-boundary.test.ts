@@ -6,6 +6,7 @@ import { getImageObjectKeys } from "@/lib/emby-store";
 import { readLiveness } from "@/lib/reporter-liveness";
 import { installStorageForTests, resetStorageForTests } from "@/lib/storage";
 import { FakeStorage } from "@/lib/testing/fake-storage";
+import { HIDDEN_DESKTOP_BUNDLE_ID } from "@/lib/types";
 import { getWorkoutsSnapshot } from "@/lib/workouts";
 import { withRequestState } from "@shared/request-state";
 import { K_LAST_PUSH } from "@shared/charger-store";
@@ -15,7 +16,8 @@ import { nowMirror } from "@shared/vibecoding";
 
 import { fanout } from "./fanout";
 import { collectIngestEffects, dispatchIngestEffects, type CollectedIngest } from "./ingest-effects";
-import { commitPreparedIngest, prepareIngest, type PreparedIngest } from "./ingest-handlers";
+import { commitPreparedIngest, prepareIngest, prepareIngestForCommit, type PreparedIngest } from "./ingest-handlers";
+import type { PreparedTelemetryEnvelope } from "./stores/telemetry";
 import { requestStore, type Env } from "./runtime";
 import { resetStoredImageCacheForTests } from "./r2-assets";
 
@@ -52,6 +54,32 @@ async function inRequest<T>(env: Env, run: () => Promise<T>): Promise<T> {
 async function commit(env: Env, command: PreparedIngest): Promise<CollectedIngest<unknown>> {
   return inRequest(env, () => collectIngestEffects(() => commitPreparedIngest(command)));
 }
+
+test("ingest preparation only checks readiness after invalid input", async () => {
+  let readyCalls = 0;
+  const valid = await prepareIngestForCommit("iphone", { version: 1 }, async () => {
+    readyCalls += 1;
+    return false;
+  });
+  assert.equal(valid?.source, "iphone");
+  assert.equal(readyCalls, 0, "valid reports must proceed directly to commitIngest");
+
+  const unavailable = await prepareIngestForCommit("iphone", {}, async () => {
+    readyCalls += 1;
+    return false;
+  });
+  assert.equal(unavailable, null);
+  assert.equal(readyCalls, 1);
+
+  await assert.rejects(
+    prepareIngestForCommit("iphone", {}, async () => {
+      readyCalls += 1;
+      return true;
+    }),
+    /version 必须为 1/,
+  );
+  assert.equal(readyCalls, 2);
+});
 
 test("Mac late validation keeps liveness but does not invent a charger heartbeat", async () => {
   const storage = new FakeStorage();
@@ -344,4 +372,136 @@ test("commit performs no room or Vercel I/O and Worker dispatch performs both", 
     globalThis.fetch = originalFetch;
     resetStorageForTests();
   }
+});
+
+/**
+ * 窗口标题。入库和推送是同一份值，所以每条都两头都看 —— 只看其中一头的话，
+ * 出口那侧漏拼一个字段可以一直不被发现。
+ */
+
+function desktopPush(result: CollectedIngest<unknown>) {
+  const effect = result.effects.find(
+    (item) => item.kind === "event" && item.event.type === "desktop",
+  );
+  if (!(effect?.kind === "event" && effect.event.type === "desktop")) {
+    throw new Error("没有推送 desktop 事件");
+  }
+  const { desktop } = effect.event.payload;
+  if (!desktop) throw new Error("desktop 推送里没有前台应用");
+  return desktop;
+}
+
+async function landDesktop(env: Env, desktop: Record<string, unknown>) {
+  const command = await inRequest(env, () =>
+    prepareIngest("mac", envelope({ desktop }, ["desktop"]), NOW));
+  const result = await commit(env, command);
+  return { command, result };
+}
+
+test("desktop 的窗口标题入库并随推送发出", async () => {
+  const storage = new FakeStorage();
+  installStorageForTests(storage);
+  const env = testEnv();
+  try {
+    const { result } = await landDesktop(env, {
+      applicationName: "Ghostty",
+      bundleIdentifier: "com.mitchellh.ghostty",
+      windowTitle: "  ~/Developer/lyjwpage — zsh  ",
+      observedAt: NOW,
+    });
+    assert.equal(result.ok, true);
+    // 前后空白在入口就剪掉，存的和推的都是剪好的那一份
+    assert.equal((await telemetryMirror.get())?.desktop?.windowTitle, "~/Developer/lyjwpage — zsh");
+    assert.equal(desktopPush(result).windowTitle, "~/Developer/lyjwpage — zsh");
+  } finally { resetStorageForTests(); }
+});
+
+test("desktop 缺席或空白的窗口标题一律是 null，不是缺字段", async () => {
+  const storage = new FakeStorage();
+  installStorageForTests(storage);
+  const env = testEnv();
+  try {
+    const blank = await landDesktop(env, {
+      applicationName: "Ghostty",
+      windowTitle: "   ",
+      observedAt: NOW,
+    });
+    assert.equal(blank.result.ok, true);
+    assert.equal((await telemetryMirror.get())?.desktop?.windowTitle, null);
+    const blankPush = desktopPush(blank.result);
+    assert.equal(blankPush.windowTitle, null);
+    // 是 null，不是整个字段不在 —— 消费方只判空
+    assert.ok("windowTitle" in blankPush);
+
+    const absent = await landDesktop(env, { applicationName: "Ghostty", observedAt: NOW + 1 });
+    assert.equal(absent.result.ok, true);
+    assert.equal((await telemetryMirror.get())?.desktop?.windowTitle, null);
+    const absentPush = desktopPush(absent.result);
+    assert.equal(absentPush.windowTitle, null);
+    assert.ok("windowTitle" in absentPush);
+  } finally { resetStorageForTests(); }
+});
+
+test("desktop 的超长窗口标题按码点截断，不劈开代理对", async () => {
+  const storage = new FakeStorage();
+  installStorageForTests(storage);
+  const env = testEnv();
+  try {
+    // 每个 emoji 一个码点、两个 UTF-16 码元：按码元切会在第 200 个位置留下半个字符
+    const { result } = await landDesktop(env, {
+      applicationName: "Ghostty",
+      windowTitle: "🎬".repeat(250),
+      observedAt: NOW,
+    });
+    assert.equal(result.ok, true);
+    const stored = (await telemetryMirror.get())?.desktop?.windowTitle;
+    assert.equal(stored, "🎬".repeat(200));
+    assert.equal([...(stored ?? "")].length, 200);
+    assert.equal(desktopPush(result).windowTitle, stored);
+
+    // 正好压线的一个字都不动
+    const exact = await landDesktop(env, {
+      applicationName: "Ghostty",
+      windowTitle: "标".repeat(200),
+      observedAt: NOW + 1,
+    });
+    assert.equal((await telemetryMirror.get())?.desktop?.windowTitle, "标".repeat(200));
+    assert.equal(desktopPush(exact.result).windowTitle, "标".repeat(200));
+  } finally { resetStorageForTests(); }
+});
+
+test("desktop 的窗口标题类型不对时该模块及其后的模块都不落地", async () => {
+  const storage = new FakeStorage();
+  installStorageForTests(storage);
+  const env = testEnv();
+  try {
+    const { command, result } = await landDesktop(env, {
+      applicationName: "Ghostty",
+      windowTitle: 42,
+      observedAt: NOW,
+    });
+    // 认准是 desktop 这一段炸的，不是随便哪个模块失败都算这条用例通过
+    assert.equal((command as PreparedTelemetryEnvelope).failure?.stage, "beforeDesktop");
+    assert.equal(result.ok, false);
+    assert.equal(await telemetryMirror.get(), null);
+    assert.equal(result.effects.some((effect) =>
+      effect.kind === "event" && effect.event.type === "desktop"), false);
+  } finally { resetStorageForTests(); }
+});
+
+test("隐藏前台应用时窗口标题被强制清空", async () => {
+  const storage = new FakeStorage();
+  installStorageForTests(storage);
+  const env = testEnv();
+  try {
+    const { result } = await landDesktop(env, {
+      applicationName: "Hidden",
+      bundleIdentifier: HIDDEN_DESKTOP_BUNDLE_ID,
+      windowTitle: "私密项目 — 不该出现在站点上",
+      observedAt: NOW,
+    });
+    assert.equal(result.ok, true);
+    assert.equal((await telemetryMirror.get())?.desktop?.windowTitle, null);
+    assert.equal(desktopPush(result).windowTitle, null);
+  } finally { resetStorageForTests(); }
 });

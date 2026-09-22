@@ -82,6 +82,8 @@ try {
   await eventually(async () => assert.equal((await fetch(`${worker}/count`)).status, 200));
   assert.deepEqual(await (await fetch(`${worker}/count`)).json(), { ok: true, connections: 0 });
   assert.equal((await post(worker, '/api/ingest/homepod', {})).status, 503);
+  assert.equal((await post(worker, '/api/ingest/iphone', { version: 1 })).status, 503);
+  assert.equal((await post(worker, '/api/ingest/iphone', {})).status, 503);
   assert.equal((await fetch(`${worker}/api/status/listening/now`)).status, 503);
   assert.equal((await fetch(`${worker}/api/status/not-a-route`)).status, 404);
   assert.equal((await post(worker, '/api/internal/storage/import', { entries: [], finalize: true }, `${secret}-import`)).status, 200);
