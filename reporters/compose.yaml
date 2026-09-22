@@ -1,13 +1,13 @@
-# misaka-jp 上两个常驻上报器的部署单元。整个 reporters/ 拷到 /opt/lyjwpage，
-# 两个子目录各放一份自己的 .env，然后在 /opt/lyjwpage 里 `docker compose up -d --build`。
+# misaka-jp 上两个常驻上报器的部署单元。机器上只放这份 compose.yaml，
+# 两个子目录各放一份自己的 .env 和状态卷 data/，镜像从 GHCR 拉，不在机器上 build。
+# 镜像由 .github/workflows/build-reporters.yml 在 GitHub 上构建，合进 main 推 `latest`。
 # 完整步骤见各自的 README。
 #
 # 两个服务共用一个 compose project，所以**不带服务名的命令会同时动两个容器**。
-# 平时只改一个就点名改那个：
-#   docker compose up -d --build server-reporter
-#   docker compose up -d --build agent-limits-reporter
-# 不点名的 `up -d --build` 会连 agent-limits-reporter 的镜像一起重建 —— 那是个
-# 装了五个 CLI 的 3GB 镜像，这台 1C2G 上无缓存冷 build 实测约 10 分钟。
+# 平时只换一个就点名换那个：
+#   docker compose pull server-reporter && docker compose up -d --no-deps server-reporter
+#   docker compose pull agent-limits-reporter && docker compose up -d --no-deps agent-limits-reporter
+# 要回退就把 `latest` 临时改成 Actions 推的 `sha-<短哈希>`。
 #
 # 各自的 .env 留在各自的子目录里：两边都有 SITE_URL / TELEMETRY_INGEST_SECRET /
 # ONLINE_COUNTER_URL，但三档间隔的值不一样（限额 5/10/60 分钟，server 1/2/15 分钟），
@@ -16,8 +16,7 @@ name: lyjwpage-reporters
 
 services:
   agent-limits-reporter:
-    build: ./agent-limits-reporter
-    image: agent-limits-reporter
+    image: ghcr.io/lyjw131/agent-limits-reporter:latest
     container_name: agent-limits-reporter
     restart: unless-stopped
     env_file:
@@ -31,8 +30,7 @@ services:
         max-file: "3"
 
   server-reporter:
-    build: ./server-reporter
-    image: server-reporter
+    image: ghcr.io/lyjw131/server-reporter:latest
     container_name: server-reporter
     restart: unless-stopped
     # 网卡名、网卡上的公网 IP、收发字节都读自网络命名空间（/proc/net/*、SIOCGIFADDR），
