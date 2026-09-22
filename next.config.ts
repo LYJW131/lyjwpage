@@ -2,6 +2,7 @@ import type { NextConfig } from "next";
 import { execSync } from "node:child_process";
 
 import { IMAGE_PATH_PREFIX } from "./src/lib/asset-url";
+import { previewWorkerOrigin } from "./scripts/preview-worker-name.mjs";
 
 /**
  * 页面上的图片是 `/img/<sha256>.<ext>` 同源路径，这里把它代理到 R2。
@@ -31,6 +32,17 @@ const IMAGE_REWRITE_SOURCE = `${IMAGE_PATH_PREFIX}/:objectKey([a-f0-9]{64}\\.(?:
  */
 const BUILD_TIME = new Date().toISOString();
 
+/**
+ * 生产构建沿用 Vercel 上的 NEXT_PUBLIC_BACKEND_URL。预览构建改连该分支的
+ * Worker Preview：`env` 会盖过环境里那份生产地址。main 的预览仍走生产。
+ * Preview 还没发出来时，页面会先连不上。
+ */
+function resolvePublicBackendUrl(): string | undefined {
+  const configured = process.env.NEXT_PUBLIC_BACKEND_URL;
+  if (process.env.VERCEL_ENV !== "preview") return configured;
+  return previewWorkerOrigin(process.env.VERCEL_GIT_COMMIT_REF ?? "") ?? configured;
+}
+
 /** Vercel 自动注入完整 sha；本地开发没有这个变量，回退问 git */
 function resolveCommitSha(): string {
   const fromVercel = process.env.VERCEL_GIT_COMMIT_SHA;
@@ -50,6 +62,7 @@ const nextConfig: NextConfig = {
   env: {
     BUILD_TIME,
     COMMIT_SHA: resolveCommitSha(),
+    NEXT_PUBLIC_BACKEND_URL: resolvePublicBackendUrl(),
   },
   /**
    * `next dev` 按 `<distDir>/dev/lock` 保证同一目录只跑一个实例。3211 上那份已经

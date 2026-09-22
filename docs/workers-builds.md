@@ -14,7 +14,23 @@ GitHub Actions 负责 lint、类型检查、单测与 CodeQL；Worker 发布由 
 
 Workers Builds 在构建命令之前安装依赖。前两个使用根目录 `pnpm-lock.yaml` 与工作区；
 PlayStation 保留独立 `package-lock.json`。Wrangler 使用对应包锁定的版本。
-三个 Worker 均启用构建缓存，关闭非生产分支构建；目前没有独立的预览数据绑定。
+三个生产 Worker 均启用构建缓存。`api`、`online-counter`、`playstation-reporter` 的生产版本只从 `main` 用 `wrangler deploy` 发布。
+
+## 分支预览
+
+`api` 已按 [Worker Previews](https://developers.cloudflare.com/workers/previews/) 的文档切过去：设置 → 构建里打开了 Worker 预览的构建。推 `main` 仍执行 `pnpm --dir workers/api exec wrangler deploy`，不换 `api.homepage.lyjw.llc`。其他分支执行预览命令 `node workers/api/scripts/deploy-preview.mjs`，里面跑的是 `wrangler preview`。Durable Object 每个 Preview 自动有自己的空库。
+
+分支名里的 `/` 会收成短横线后再传给 `--name`，这样地址和 Vercel 预览写进页面的一致。文档允许自定义预览命令，只要实际执行的是 `wrangler preview`。
+
+`workers/api` 用 Wrangler `4.136.2`。v1 迁移里补了 `OnlineCounterRoom` 的 `new_sqlite_classes`，Wrangler 4 才能接受后面那条已经生效的删除；这个标签不会再次执行。单独的 `api-preview` Worker 已删除。
+
+`feat/agent-status` 的地址是 `https://feat-agent-status-api.lyjw.workers.dev`。算法在 `scripts/preview-worker-name.mjs`，Vercel 预览构建用同一份。Preview 配置在 `workers/api/wrangler.toml` 的 `[previews.vars]`：`UPSTREAM_API_URL` 指向生产 API，生产已经返回 `ok: true` 的端点用生产的，生产没有的端点用本分支的。不挂 cron、生产域名、KV、D1、R2，也不复制 Secret。上报和存储导入直接拒绝。MusicKit 令牌、歌词、动态封面转给生产，并带上浏览器的 `Origin`。空库第一次公开读取时只把初始化标记写成完成。WebSocket 转发生产房间的事件。
+
+`api` 的监视路径不放宽，否则无关的 `main` 提交也会重新发布生产版本。只改了监视路径以外的文件的分支不会触发 Preview 构建，Vercel 仍会连这个地址，要等一次会触发构建的提交。
+
+PR 关闭时 `.github/workflows/preview-api-worker.yml` 执行 `wrangler preview delete`。仓库 Secret `CLOUDFLARE_API_TOKEN` 需要能管理这个 Worker 的 Preview。没配令牌时工作流跳过。
+
+改过已有端点、而生产仍返回 `ok: true` 的计算，预览页看到的还是生产结果。写入路径不会在 Preview 的空库里发生，因为没有上报进来。
 
 ## 构建监视路径
 

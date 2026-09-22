@@ -1,0 +1,114 @@
+# 容器上报器的镜像在这里构建，推到 GHCR；机器上只 `docker compose pull`，不再现场 build。
+# 从前是把源码 tar 到机器上就地 build：agent-limits-reporter 装五个 CLI，
+# misaka-jp 那台 1C2G 冷 build 约 10 分钟。
+#
+# 只构建改了的那几个：一个目录（或这个文件）有变化才进 matrix。
+# PR 只 build 不推，验证 Dockerfile 还能跑通；合进 main 才推 `latest` 和 `sha-<短哈希>`。
+# 手动触发（workflow_dispatch）三个全推，用来刷新基础镜像或 CLI 版本。
+#
+# 发布到这里就停：机器在内网或跳板后面，Actions 够不着，拉新镜像见各自 README。
+name: Build reporters
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - reporters/agent-limits-reporter/**
+      - reporters/server-reporter/**
+      - reporters/emby-reporter/**
+      - .github/workflows/build-reporters.yml
+  pull_request:
+    paths:
+      - reporters/agent-limits-reporter/**
+      - reporters/server-reporter/**
+      - reporters/emby-reporter/**
+      - .github/workflows/build-reporters.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      images: ${{ steps.pick.outputs.images }}
+    steps:
+      - uses: actions/checkout@v5
+
+      # 改了 workflow 本身三个都重跑一遍，确认改动对每个镜像都成立
+      - uses: dorny/paths-filter@v4
+        id: filter
+        if: github.event_name != 'workflow_dispatch'
+        with:
+          filters: |
+            agent-limits-reporter:
+              - reporters/agent-limits-reporter/**
+              - .github/workflows/build-reporters.yml
+            server-reporter:
+              - reporters/server-reporter/**
+              - .github/workflows/build-reporters.yml
+            emby-reporter:
+              - reporters/emby-reporter/**
+              - .github/workflows/build-reporters.yml
+
+      - id: pick
+        env:
+          CHANGED: ${{ steps.filter.outputs.changes }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            CHANGED='["agent-limits-reporter","server-reporter","emby-reporter"]'
+          fi
+          echo "images=${CHANGED:-[]}" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: changes
+    if: needs.changes.outputs.images != '[]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ${{ fromJSON(needs.changes.outputs.images) }}
+    # 同一镜像同一分支连推几次，只留最后一次
+    concurrency:
+      group: build-${{ matrix.image }}-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        if: github.event_name != 'pull_request'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # 仓库名里的大写由它转小写：ghcr.io/lyjw131/<镜像>
+      - uses: docker/metadata-action@v6
+        id: meta
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix=sha-
+            type=ref,event=pr
+
+      # 只出 amd64：misaka-jp 和 dsm 都是 x86_64，没有 arm64 的消费者。
+      # 缓存用 mode=min：agent-limits 那层有几个 GB，mode=max 会很快挤满仓库的 Actions 缓存额度。
+      - uses: docker/build-push-action@v7
+        with:
+          context: reporters/${{ matrix.image }}
+          platforms: linux/amd64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,scope=${{ matrix.image }},mode=min

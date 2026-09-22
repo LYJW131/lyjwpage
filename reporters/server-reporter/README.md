@@ -101,11 +101,15 @@ python3 reporter_test.py
 
 ssh 直连在 kex 阶段会被对面关掉，一律走 dsm 跳板：`ssh -J dsm misaka-jp`。
 
-拷过去（`scp` 不一定可用，走 tar 管道；tar 会带上 Mac 的 uid，落地补一次 `chown`）：
+镜像由 [`build-reporters.yml`](../../.github/workflows/build-reporters.yml) 在 GitHub Actions 上构建
+（只出 `linux/amd64`），这个目录有改动合进 main 就推 `ghcr.io/lyjw131/server-reporter:latest` 和
+`sha-<短哈希>`。机器上只拉镜像，不放源码、不 build。
+`/opt/lyjwpage/server-reporter/` 下只有 `.env` 和 `data/` 卷。
+
+`compose.yaml` 改了才需要送（`scp` 不一定可用，走 ssh 管道）：
 
 ```bash
-COPYFILE_DISABLE=1 tar czf - -C reporters --exclude .env --exclude __pycache__ --exclude data compose.yaml server-reporter \
-  | ssh -J dsm misaka-jp 'mkdir -p /opt/lyjwpage && tar xzf - -C /opt/lyjwpage && chown -R root:root /opt/lyjwpage/server-reporter /opt/lyjwpage/compose.yaml'
+ssh -J dsm misaka-jp 'mkdir -p /opt/lyjwpage && cat > /opt/lyjwpage/compose.yaml' < reporters/compose.yaml
 ```
 
 状态卷的目录先建好并交给容器里的 `nobody`（镜像里是 uid 65534），否则写不进去、
@@ -115,16 +119,16 @@ COPYFILE_DISABLE=1 tar czf - -C reporters --exclude .env --exclude __pycache__ -
 ssh -J dsm misaka-jp 'mkdir -p /opt/lyjwpage/server-reporter/data && chown 65534:65534 /opt/lyjwpage/server-reporter/data'
 ```
 
-`.env` 单独送，别混进源码目录一起打包：
+`.env` 单独送：
 
 ```bash
 ssh -J dsm misaka-jp 'cat > /opt/lyjwpage/server-reporter/.env && chmod 600 /opt/lyjwpage/server-reporter/.env' < 本机那份.env
 ```
 
-起来（**点名服务**，不然会连 agent-limits-reporter 那个 3GB 镜像一起重建）：
+起来；之后每次 Actions 推了新镜像也是这一句（**点名服务**，不然会连 agent-limits-reporter 一起换）：
 
 ```bash
-ssh -J dsm misaka-jp 'cd /opt/lyjwpage && docker compose up -d --build server-reporter'
+ssh -J dsm misaka-jp 'cd /opt/lyjwpage && docker compose pull server-reporter && docker compose up -d --no-deps server-reporter'
 ```
 
 生产的 `SITE_URL` 统一填 `https://api.homepage.lyjw.llc`，不经 Vercel 站点。

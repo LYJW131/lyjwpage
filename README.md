@@ -16,13 +16,13 @@
 
 | 模块 | 展示与交互 |
 | --- | --- |
-| **音乐** | Apple Music 与 HomePod 播放状态、最近收听、逐字歌词和动态封面；访客可通过自己的 Apple Music 账号与订阅使用网页播放器和「一起听」。 |
-| **影视** | Emby 正在播放与最近观看，呈现播放进度、剧集信息、画面与音轨规格。 |
-| **游戏** | PlayStation 在线状态、游戏记录与奖杯进度，展开游戏卡片查看成就明细。 |
 | **本机与充电设备** | Mac 前台应用（几款常用工具换成品牌标识和动画），以及通过隐私判断放行的窗口标题；Anker 充电器、充电宝的端口状态、电压、电流和功率变化。 |
-| **AI Coding** | 编码工具的 Token 用量、API 等值成本估算、年度热力图与账号限额窗口。 |
+| **影视** | Emby 正在播放与最近观看，呈现播放进度、剧集信息、画面与音轨规格。 |
+| **音乐** | Apple Music 与 HomePod 播放状态、最近收听、逐字歌词和动态封面；访客可通过自己的 Apple Music 账号与订阅使用网页播放器和「一起听」。 |
 | **运动活动** | 通过 iPhone 的 HealthKit 数据展示 Apple Watch 活动、锻炼与站立三环，以及最近 10 次训练的时长、能量和心率。 |
 | **服务器** | 落地节点的运行时间、CPU、内存、网络吞吐，以及按计费周期累计的流量。 |
+| **AI Coding** | 编码工具的 Token 用量、API 等值成本估算、年度热力图与账号限额窗口。 |
+| **游戏** | PlayStation 在线状态、游戏记录与奖杯进度，展开游戏卡片查看成就明细。 |
 | **Pulse** | 编码、听、看、玩、充电、身体活动六个域最近 24 小时的活跃度泳道；悬停任一时段可看当时在听的曲目、在看的影视、在玩的游戏与该窗口的评分。 |
 | **站点自身** | 网站版本、GitHub 仓库统计与最近提交（含签名状态），PageSpeed 实验室指标的滚动中位数，以及 Vercel 部署和 Cloudflare Workers 的调用统计。 |
 
@@ -30,12 +30,21 @@
 
 ## 页面效果
 
-首页是动态的：正在播放、正在充电、正在游玩这些卡片只在对应的事情发生时出现，平时看不到。下面的截图在本地用示例数据把这些状态同时点亮，明暗主题跟随系统。
+首页是动态的：正在播放、正在充电、正在游玩这些卡片只在对应的事情发生时出现，平时看不到。下面的效果图在本地用示例数据把这些状态同时点亮，明暗主题跟随系统；会动的那几张是从站点上真实录下来的。
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/overview-dark.webp">
   <img src="docs/screenshots/overview-light.webp" alt="首页总览：正在看、充电头与充电宝、正在听、活动圆环与最近训练、落地节点同时点亮" width="100%">
 </picture>
+
+**页头的前台应用**：页头中央显示 Mac 此刻的前台应用，图标和名字由 Mac 上报器上报。几款常用工具换成了品牌标识：Claude Code 是像素吉祥物的取物动画，来自 [mascot-fetch-loop](https://github.com/LYJW131/mascot-fetch-loop)（从屏幕录像逐帧复原的 19 个姿势，站点内联其精灵数据自行播放，[在线预览](https://lyjw131.github.io/mascot-fetch-loop/)）；Ghostty 是[官网首页](https://ghostty.org/)那只 ASCII 幽灵，`scripts/ghostty-frames.mjs` 从首页载荷里取出 235 帧 100×41 的字符画，每两列并成一个单元、按字形墨量分成本体三档和光环三档、每三帧取一帧，压成 79 帧 39×39 的粗网格（`src/lib/ghostty-frames.json`，57 KB），站内按 93 ms 一帧用 SVG 路径循环播放，本体跟随页面文字色、光环保持官网的蓝；Cursor 与 Antigravity 用 [LobeHub 图标集](https://github.com/lobehub/lobe-icons)的字标。
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/desktop-marks-dark.gif">
+  <img src="docs/screenshots/desktop-marks-light.gif" alt="页头前台应用的四种品牌标识：Claude Code 吉祥物取物动画、Ghostty ASCII 幽灵动画、Cursor 与 Antigravity 下方窗口标题的出现、变化与消失" width="788">
+</picture>
+
+应用名下面那行淡色小字是当前窗口的标题，Cursor 和 Antigravity 两段演示了它出现、变化和消失的样子——但只有通过隐私判断的标题才会出现，见下文。
 
 **Emby 正在播放**：海报、剧集、进度，以及画面、音轨与码率规格。
 
@@ -44,21 +53,14 @@
   <img src="docs/screenshots/now-watching-light.webp" alt="Emby 正在播放卡片" width="100%">
 </picture>
 
-**Apple Music 正在播放**：封面、来源设备、进度与逐字高亮的同步歌词，下方是最近收听。
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/now-listening-dark.webp">
-  <img src="docs/screenshots/now-listening-light.webp" alt="Apple Music 正在播放与逐字歌词" width="100%">
-</picture>
-
 **充电设备**：Anker 充电头各端口的功率、设备与协议，以及总功率曲线；充电宝的电量、收放电、温度与健康度。
 
 <table>
   <tr>
     <td width="50%">
       <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/charger-dark.webp">
-        <img src="docs/screenshots/charger-light.webp" alt="Anker 充电头卡片：总功率、功率曲线与三个端口">
+        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/charger-dark.gif">
+        <img src="docs/screenshots/charger-light.gif" alt="Anker 充电头卡片：总功率换档时读数滚动、曲线末尾接上新点">
       </picture>
     </td>
     <td width="50%">
@@ -70,18 +72,32 @@
   </tr>
 </table>
 
+**Apple Music 正在播放**：封面、来源设备、进度与逐字高亮的同步歌词，下方是最近收听。
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/now-listening-dark.gif">
+  <img src="docs/screenshots/now-listening-light.gif" alt="Apple Music 正在播放：逐字高亮的歌词一句扫过、换到下一句，下方是最近收听" width="100%">
+</picture>
+
 **活动与训练**：Apple Watch 的活动、锻炼、站立三环与步数、距离、爬楼，右侧是最近训练，每页两条横向翻页。
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/activity-dark.webp">
-  <img src="docs/screenshots/activity-light.webp" alt="活动卡片：三环、步数与最近训练" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/activity-dark.gif">
+  <img src="docs/screenshots/activity-light.gif" alt="活动卡片：读数从上午换到下午，三环转到新位置、数字滚动，右侧是最近训练" width="100%">
 </picture>
 
 **落地节点**：位置与运营商、上下行速率、本计费周期已用流量，以及 CPU 与内存。
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/server-dark.webp">
-  <img src="docs/screenshots/server-light.webp" alt="落地节点卡片：速率、周期流量、CPU 与内存" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/server-dark.gif">
+  <img src="docs/screenshots/server-light.gif" alt="落地节点卡片：上下行速率、CPU 与内存换档时读数滚动" width="100%">
+</picture>
+
+**AI Coding**：各编码工具的 Token 用量、成本估算、今日用量与账号限额窗口。
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/vibecoding-dark.gif">
+  <img src="docs/screenshots/vibecoding-light.gif" alt="AI Coding 卡片：用量涨一档时 Token、成本与限额百分比滚动" width="100%">
 </picture>
 
 **PlayStation**：在线状态、正在游玩的游戏、奖杯统计与最近解锁；展开游戏卡片查看奖杯组与逐条成就。
@@ -91,39 +107,11 @@
   <img src="docs/screenshots/playstation-trophies-light.webp" alt="PlayStation 卡片：在线、正在游玩与展开的奖杯明细" width="100%">
 </picture>
 
-**Pulse**：六个域最近 24 小时的活跃度泳道。看、玩画实测的播放与游戏状态，充电画实测瓦数；编码、听、身体活动画 Jev 的五分钟评分。听和身体活动画评分而不画实测，是因为实测那条线有盲区——在 iPhone 上听一整天，本机观测到的是一条平线，痕迹只留在「最近在听」列表的变动里；手表两次上报之间的活动同理。只有评分那一侧收得到两路证据。身体活动的判据除了圆环估算，还包括已完成训练的项目名和落在每个五分钟窗口里的活动秒数。六项右侧统一汇总强度档位、趋势和置信度，历史每分钟归档到 D1。
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/pulse-dark.webp">
-  <img src="docs/screenshots/pulse-light.webp" alt="Pulse 卡片：六条活跃度泳道与评分" width="100%">
-</picture>
-
-悬停、点击或用方向键走到某一段，会显示这一段的时间范围、当时在听的曲目（在看的影视、在玩的游戏同理）以及该窗口的强度、连续性和置信度。播放停止的时段不沿用上一首的名字。
+**Pulse**：六个域最近 24 小时的活跃度泳道。看、玩画实测的播放与游戏状态，充电画实测瓦数；编码、听、身体活动画 Jev 的五分钟评分。听和身体活动画评分而不画实测，是因为实测那条线有盲区——在 iPhone 上听一整天，本机观测到的是一条平线，痕迹只留在「最近在听」列表的变动里；手表两次上报之间的活动同理。只有评分那一侧收得到两路证据。身体活动的判据除了圆环估算，还包括已完成训练的项目名和落在每个五分钟窗口里的活动秒数。六项右侧统一汇总强度档位、趋势和置信度，历史每分钟归档到 D1。悬停、点击或用方向键走到某一段，会显示这一段的时间范围、当时在听的曲目（在看的影视、在玩的游戏同理）以及该窗口的强度、连续性和置信度；播放停止的时段不沿用上一首的名字。
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/pulse-detail-dark.webp">
-  <img src="docs/screenshots/pulse-detail-light.webp" alt="Pulse 泳道的时段详情：时间范围、当时的曲目与该窗口评分" width="100%">
-</picture>
-
-**AI Coding**：各编码工具的 Token 用量、成本估算、今日用量与账号限额窗口。
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/vibecoding-dark.webp">
-  <img src="docs/screenshots/vibecoding-light.webp" alt="AI Coding 卡片：Token 用量、成本、模型排行与限额" width="100%">
-</picture>
-
-**页头的前台应用**：页头中央显示 Mac 此刻的前台应用，图标和名字由 Mac 上报器上报。几款常用工具换成了品牌标识：Claude Code 是像素吉祥物的取物动画，来自 [mascot-fetch-loop](https://github.com/LYJW131/mascot-fetch-loop)（从屏幕录像逐帧复原的 19 个姿势，站点内联其精灵数据自行播放，[在线预览](https://lyjw131.github.io/mascot-fetch-loop/)）；Ghostty 是[官网首页](https://ghostty.org/)那只 ASCII 幽灵，`scripts/ghostty-frames.mjs` 从首页载荷里取出 235 帧 100×41 的字符画，每两列并成一个单元、按字形墨量分成本体三档和光环三档、每三帧取一帧，压成 79 帧 39×39 的粗网格（`src/lib/ghostty-frames.json`，57 KB），站内按 93 ms 一帧用 SVG 路径循环播放，本体跟随页面文字色、光环保持官网的蓝；Cursor 与 Antigravity 用 [LobeHub 图标集](https://github.com/lobehub/lobe-icons)的字标。
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/desktop-marks-dark.gif">
-  <img src="docs/screenshots/desktop-marks-light.gif" alt="页头前台应用的四种品牌标识：Claude Code 吉祥物取物动画、Ghostty ASCII 幽灵动画、Cursor、Antigravity" width="577">
-</picture>
-
-应用名下面还有一行淡色小字，是当前窗口的标题——但只有通过隐私判断的标题才会出现，见下文。
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/desktop-title-dark.webp">
-  <img src="docs/screenshots/desktop-title-light.webp" alt="页头徽章：品牌标识下方一行放行的窗口标题" width="183">
+  <img src="docs/screenshots/pulse-detail-light.webp" alt="Pulse 卡片：六条活跃度泳道与评分，悬停某一段显示时间范围、当时的曲目与该窗口评分" width="100%">
 </picture>
 
 ## 系统架构

@@ -26,6 +26,12 @@
 | --- | --- | --- |
 | POST | `/api/ingest/<来源>` | `mac`、`iphone`、`homepod`、`emby`、`playstation`、`server`、`agents` |
 
+`/api/ingest/agents` 的主体仍是各家限额行。可选的 `cursorUsage` 是 Cursor 云端用量日桶
+（`Asia/Shanghai`，字段与 Mac 的日用量相同，另加 `models`）。缺省表示这一轮没拉到，
+站点留着上一份。读 `/api/status/vibecoding` 和 `/api/status/vibecoding/year` 时并进 Mac 的合计：
+Mac 用量带 `omittedSources: ["cursor"]` 时整份另加；没有这个字段的旧 Mac 已经把 Cursor 算进合计，
+锚定日按字段做差，之后的日子整段补上。`cursorUsage` 形状不合法时整封 400，限额也不会落地。
+
 `/api/ingest/mac` 的 `modules.desktop` 描述此刻的前台应用：`applicationName`（必填）、
 `bundleIdentifier`、`windowTitle`、`iconHash` 与 `iconObjectKey`（内容地址，见下文图标那段）、
 `observedAt`。这一段校验不过时响应 400，`desktop` 及其后的模块都不落地，排在它前面、已经承诺过
@@ -244,6 +250,7 @@ pnpm dev:local                      # 站点指向本地 Worker
 
 本地是空库。`.dev.vars` 里的 `UPSTREAM_API_URL` 让 `publicResponse` 生产为主、本地补缺：生产 `ok:true` 的快照字段和端点用生产的，
 生产没有的（新加的端点、新字段）或生产也 `ok:false` 的才用本地的（只读、不上报）。生产的 wrangler.toml 不配它。
+分支预览是同一套兜底的线上版：`wrangler preview` 在生产脚本 `api` 上按分支开一份隔离的 Preview，Vercel 预览改连它。见 [Workers 构建](../../docs/workers-builds.md)。
 要测上报链路，把这个变量注释掉让本地只看自己，然后往 `http://localhost:8788/api/ingest/<来源>` 推，鉴权用 `.dev.vars` 里的 `TELEMETRY_INGEST_SECRET`。
 
 配了 `UPSTREAM_API_URL` 后，本地的推送房间还会在有页面连着时自己去连生产的 `/ws`，把事件转发给本地页面（最后一个页面断开就跟着断，不多占生产那边的连接数），所以本地也能收到实时推送。事件对应的端点有生效的注入时，payload 换成注入的那份，假数据不会被生产一推就盖掉。

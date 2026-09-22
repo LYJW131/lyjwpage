@@ -84,7 +84,8 @@ enabled = true
 # TYPESAFE_API_KEY（TypeSafe AI 官方 API，给 pulse 六域打活动分的 Jev 评估模型；
 # 不配就不打分，端点照常给泳道）。
 # 每分钟一趟：有页面连接时刷新最近在听（SQLite 闸门把 Apple 请求限制为两分钟一次），
-# 并按同一把闸门每小时跑一次 PageSpeed 实测。
+# 并按同一把闸门每小时跑一次 PageSpeed 实测。厂商状态页也在这一分钟里拉，
+# 只有结果变了才推送。
 [triggers]
 crons = ["* * * * *"]
 
@@ -94,8 +95,11 @@ class_name = "StateHub"
 
 
 # 将原 ingest 的三个 SQLite 命名空间整体转移，保留对象 ID 与全部数据。
+# OnlineCounterRoom 写进 new_sqlite_classes，只为让 Wrangler 4 在 v2 删除它之前认得出这个类。
+# 这个标签已经在生产生效，上传时不会再次执行。
 [[migrations]]
 tag = "v1-transfer-from-ingest"
+new_sqlite_classes = ["OnlineCounterRoom"]
 
 [[migrations.transferred_classes]]
 from = "LivePushRoom"
@@ -115,3 +119,22 @@ to = "StateHub"
 [[migrations]]
 tag = "v2-split-online-counter"
 deleted_classes = ["OnlineCounterRoom"]
+
+# 分支 Preview（wrangler preview）。不继承上面的生产绑定。
+# Durable Object 每个 Preview 各有一套空库；代码走 env.STATE / env.LIVE_PUSH，所以绑定要再声明一次。
+# 不挂 cron、生产域名、KV、D1、R2。公开读取靠 UPSTREAM_API_URL 以生产为准。
+[previews.vars]
+PREVIEW_WORKER = "true"
+UPSTREAM_API_URL = "https://api.homepage.lyjw.llc"
+STORAGE_PREFIX = "lyjwpage-preview"
+ALLOWED_ORIGINS = "https://*.vercel.app"
+EMBY_PUBLIC_URL = "https://emby.lyjw131.com"
+APPLE_MUSIC_STOREFRONT = "cn"
+
+[[previews.durable_objects.bindings]]
+name = "LIVE_PUSH"
+class_name = "LivePushRoom"
+
+[[previews.durable_objects.bindings]]
+name = "STATE"
+class_name = "StateHub"

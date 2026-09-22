@@ -11,6 +11,7 @@
  * - `timezone` 只有 home，没有端点。
  */
 
+import { getAgentStatus } from "@/lib/agent-status";
 import { getWorkoutsSnapshot } from "@/lib/workouts";
 import { getActivitySnapshot } from "@/lib/activity";
 import { getChargerSnapshot, sliceChargerHistory } from "@/lib/anker";
@@ -86,6 +87,7 @@ export const statusLoaders = {
   listening: { endpoint: unparam(getRecentlyPlayed) },
   nowListening: { endpoint: unparam(getNowListening) },
   vibeCoding: { endpoint: unparam(getVibeCodingSnapshot) },
+  agentStatus: { endpoint: unparam(getAgentStatus) },
   vibeCodingYear: { endpoint: unparam(getVibeCodingYear) },
   watching: { endpoint: unparam(getWatching) },
   nowWatching: { endpoint: unparam(getNowWatching) },

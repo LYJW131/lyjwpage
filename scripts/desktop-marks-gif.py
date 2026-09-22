@@ -2,15 +2,21 @@
 """
 生成根 README 里「页头的前台应用」那条品牌标识 GIF（docs/screenshots/desktop-marks-{light,dark}.gif）。
 
-四段标识（Claude Code / Ghostty / Cursor / Antigravity）都从本地站点的页头真实截下来再拼成一条。
-两段会动，都装上 Playwright 的假时钟推进、逐帧截图：
-  - Claude Code 是像素吉祥物的取物动画：逐 25ms 推进，精灵 SVG 内容一变就截一帧，抓到完整一轮
-    33 个姿势；帧时长不用实测值，直接取 src/lib/mascot-fetch.json 里每一步的原始毫秒数。
-  - Ghostty 是官网那只 ASCII 幽灵：按 SVG 的 data-frame 拨到第 0 帧起逐帧截满一轮，帧时长取
-    src/lib/ghostty-frames.json 的 frameMs。
+四段标识（Claude Code / Ghostty / Cursor / Antigravity）都从本地站点的页头真实截下来再拼成一条，
+四段都会动、都逐帧截图：
+  - Claude Code 是像素吉祥物的取物动画：装上 Playwright 的假时钟逐 25ms 推进，精灵 SVG 内容一变就
+    截一帧，抓到完整一轮 33 个姿势；帧时长不用实测值，直接取 src/lib/mascot-fetch.json 里每一步的
+    原始毫秒数。
+  - Ghostty 是官网那只 ASCII 幽灵：同样在假时钟下按 SVG 的 data-frame 拨到第 0 帧起逐帧截满一轮，
+    帧时长取 src/lib/ghostty-frames.json 的 frameMs。
+  - Cursor 和 Antigravity 演示应用名下面那行窗口标题：各按 TITLE_SCRIPTS 的剧本让标题出现、变化、
+    消失。这两段不用假时钟——标题的淡入淡出由 motion 交给 Web Animations API，那条时间线假时钟
+    拨不动（钟拨快 5 秒，透明度动画就真的晚 5 秒才开始）。改成真实时间：注入新标题后借 SWR 的
+    revalidateOnFocus 让页面回源一次（注入不发推送事件），数据一到就连续截图 0.7 秒，画面一变
+    留一帧，帧时刻按真实经过的毫秒记；两次变化之间等多久都不进时间线。
 GIF 一轮的长度等于 Ghostty 一轮（79 × 93ms ≈ 7.3 秒）：Claude Code 先跑完约 3.1 秒的取物，然后停在
-首姿势等 Ghostty 转完（站点上每轮结束停 5 秒，这里停到轮尾约 4.3 秒）。两条时间线上任何一段换帧
-就出一张 GIF 帧，其余段保持上一帧。
+首姿势等 Ghostty 转完（站点上每轮结束停 5 秒，这里停到轮尾约 4.3 秒）；标题剧本首尾都没有标题，
+循环回到起点才接得上。四条时间线上任何一段换帧就出一张 GIF 帧，其余段保持上一帧。
 
 前置：
   1. pnpm dev:worker 与 pnpm dev:local 已在跑（workers/api/.dev.vars 里 DEV_OVERRIDES=true）
@@ -32,6 +38,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -39,7 +46,7 @@ from pathlib import Path
 
 try:
     from PIL import Image
-    from playwright.sync_api import sync_playwright
+    from playwright.sync_api import TimeoutError as PlaywrightTimeoutError, sync_playwright
 except ImportError as error:  # 给个能照着做的提示，别只抛 traceback
     sys.exit(f"缺少依赖 {error.name}：pip install playwright pillow && playwright install chromium")
 
@@ -56,10 +63,24 @@ MARKS = [
     ("cursor", "desktop-cursor.json", "Cursor"),
     ("antigravity", "desktop-antigravity.json", "Google Antigravity"),
 ]
-ANIMATED = {"claude-code", "ghostty"}
+DESKTOP_PATH = "/api/status/desktop"
+# 窗口标题剧本：(毫秒, 标题)，None 是没有标题。首尾都没有标题，循环才接得上；两段错开，不在同一刻动。
+TITLE_SCRIPTS: dict[str, list[tuple[int, str | None]]] = {
+    "cursor": [
+        (1100, "telemetry.ts — lyjwpage"),
+        (3600, "live-desk-card.tsx — lyjwpage"),
+        (5900, None),
+    ],
+    "antigravity": [
+        (2400, "pulse.ts — lyjwpage"),
+        (4800, None),
+    ],
+}
 PAD_X, PAD_Y = 24, 16  # 标识四周留白（CSS px），吉祥物取物时会探出左边界，左侧要够
 GAP = 32  # 各段之间的间距（设备像素，2x）
 STEP_MS = 25  # 吉祥物用的假时钟步长；源序列最短一步 50ms，25ms 不会漏帧
+SETTLE_S = 0.7  # 每次换标题后连续截图这么久（真实秒）：标题的淡入淡出和图标缩放都是 280ms
+FOCUS_THROTTLE_S = 5.1  # SWR 对 focus 触发的回源节流 5 秒（真实时间），两次触发之间至少等这么久
 
 sequence = json.loads((ROOT / "src/lib/mascot-fetch.json").read_text())["sequence"]
 # 第 1..33 步是取物过程；第 34 步和第 0 步都是姿势 0，合成轮尾的停顿
@@ -109,10 +130,24 @@ def clip_of(element) -> dict[str, float]:
     }
 
 
-def capture_static(page, sel: str, path: Path) -> None:
-    element = page.wait_for_selector(sel, timeout=30_000)
-    page.wait_for_timeout(1500)  # 等应用切换的入场动画停稳
-    page.screenshot(path=str(path), clip=clip_of(element), scale="device")
+def new_page(browser, theme: str, *, clock: bool):
+    ctx = browser.new_context(
+        viewport={"width": 1280, "height": 800},
+        device_scale_factor=2,
+        color_scheme=theme,
+    )
+    page = ctx.new_page()
+    if clock:
+        page.clock.install()
+    page.goto(SITE_URL, wait_until="load", timeout=120_000)
+    # 页面上总有轮询和长连接在跑，networkidle 等不到就算了；各段自己等标识出现、动画停稳
+    try:
+        page.wait_for_load_state("networkidle", timeout=10_000)
+    except PlaywrightTimeoutError:
+        pass
+    if theme == "dark":
+        page.wait_for_selector("html.dark")
+    return page
 
 
 def freeze_at_mark(page, sel: str, name: str):
@@ -127,9 +162,10 @@ def freeze_at_mark(page, sel: str, name: str):
     element = page.query_selector(sel)
     page.clock.run_for(1500)
     # 冻结：之后时间只随 run_for 走，截图花的真实时间不会混进测得的时长。
-    # Python 绑定把数字当秒处理，这里必须传 datetime。
+    # Python 绑定把数字当秒处理，这里必须传 datetime。读 Date.now() 到真正暂停之间
+    # 钟还在按真实时间走，pause_at 不能落在过去，往前多给 1 秒（入场动画早已停稳）。
     now_ms = page.evaluate("Date.now()")
-    page.clock.pause_at(datetime.fromtimestamp(now_ms / 1000, tz=timezone.utc))
+    page.clock.pause_at(datetime.fromtimestamp((now_ms + 1000) / 1000, tz=timezone.utc))
     return element
 
 
@@ -202,45 +238,108 @@ def capture_ghostty(page, sel: str, frames_dir: Path, theme: str) -> Timeline:
     return Timeline([i * GHOSTTY_FRAME_MS for i in range(GHOSTTY_FRAME_COUNT)], paths)
 
 
-def capture(theme: str, frames_dir: Path) -> dict[str, Timeline | Path]:
-    captured: dict[str, Timeline | Path] = {}
+def titled_fixture(base: str, title: str | None, path: Path) -> Path:
+    """从 dev-fixtures 里的 desktop 夹具派生一份只改 windowTitle 的临时夹具（dev-override 认任意路径）。"""
+    fixture = json.loads((ROOT / "workers/api/dev-fixtures" / base).read_text())
+    fixture["data"]["desktop"]["windowTitle"] = title
+    path.write_text(json.dumps(fixture, ensure_ascii=False))
+    return path
+
+
+def capture_titles(browser, key: str, fixture: str, name: str, frames_dir: Path, theme: str) -> Timeline:
+    """按剧本让标题出现 / 变化 / 消失，每次变化后在真实时间里连续截图，画面一变就留一帧。"""
+    sel = f'[aria-label="Using {name}"]'
+    script = TITLE_SCRIPTS[key]
+    variants = {
+        title: titled_fixture(fixture, title, frames_dir / f"{key}-{index}.json")
+        for index, title in enumerate(dict.fromkeys([None, *(title for _, title in script)]))
+    }
+
+    # 徽章在页头居中，带标题时两边一起变宽：先量出每种状态的框，取并集当这一段所有帧的裁剪框
+    x0 = y0 = float("inf")
+    x1 = y1 = float("-inf")
+    for title, path in variants.items():
+        override(DESKTOP_PATH, str(path))
+        page = new_page(browser, theme, clock=False)
+        element = page.wait_for_selector(sel, timeout=30_000)
+        page.wait_for_timeout(1500)
+        box = clip_of(element)
+        x0, y0 = min(x0, box["x"]), min(y0, box["y"])
+        x1, y1 = max(x1, box["x"] + box["width"]), max(y1, box["y"] + box["height"])
+        page.context.close()
+    clip = {"x": x0, "y": y0, "width": x1 - x0, "height": y1 - y0}
+
+    override(DESKTOP_PATH, str(variants[None]))
+    page = new_page(browser, theme, clock=False)
+    page.wait_for_selector(sel, timeout=30_000)
+    page.wait_for_timeout(1500)  # 等应用切换的入场动画停稳
+    shot = page.screenshot(clip=clip, scale="device")
+    path = frames_dir / f"{key}-{theme}-000.png"
+    path.write_bytes(shot)
+    starts, paths = [0], [path]
+    last_focus = float("-inf")
+    for at_ms, title in script:
+        if at_ms <= starts[-1]:
+            raise SystemExit(f"{key} 剧本 {at_ms}ms 那步来得太早，上一步的过渡 {starts[-1]}ms 才收完")
+        override(DESKTOP_PATH, str(variants[title]))
+        # 注入不发推送事件，借 SWR 的 revalidateOnFocus 回源一次；它对 focus 节流 5 秒，不够就等够
+        page.wait_for_timeout(max(0.0, FOCUS_THROTTLE_S - (time.perf_counter() - last_focus)) * 1000)
+        page.evaluate("window.dispatchEvent(new Event('focus'))")
+        last_focus = time.perf_counter()
+        hover = f"{name} · {title}" if title else name  # 数据一到，容器的 title（hoverText）同步换掉
+        for _ in range(150):
+            if page.get_attribute(sel, "title") == hover:
+                break
+            page.wait_for_timeout(20)
+        else:
+            raise SystemExit(f"focus 后 3 秒页面还没拿到「{hover}」，检查夹具是否注入、总开关是否打开")
+        arrived = time.perf_counter()
+        while True:
+            now = time.perf_counter()
+            if now - arrived > SETTLE_S:
+                break
+            frame = page.screenshot(clip=clip, scale="device")
+            if frame != shot:
+                shot = frame
+                path = frames_dir / f"{key}-{theme}-{len(paths):03d}.png"
+                path.write_bytes(shot)
+                paths.append(path)
+                starts.append(at_ms + round((now - arrived) * 1000))
+    if len(paths) < len(script) + 1:
+        raise SystemExit(f"{key} 只截到 {len(paths)} 帧，标题变化没画出来")
+    page.context.close()
+    print(f"  {theme} {name}: {len(paths)} 帧，标题剧本 {len(script)} 步", file=sys.stderr)
+    return Timeline(starts, paths)
+
+
+def capture(theme: str, frames_dir: Path) -> dict[str, Timeline]:
+    captured: dict[str, Timeline] = {}
     with sync_playwright() as p:
         browser = p.chromium.launch(channel=BROWSER_CHANNEL)
         for key, fixture, name in MARKS:
-            override("/api/status/desktop", fixture)
-            ctx = browser.new_context(
-                viewport={"width": 1280, "height": 800},
-                device_scale_factor=2,
-                color_scheme=theme,
-            )
-            page = ctx.new_page()
-            if key in ANIMATED:
-                page.clock.install()
-            page.goto(SITE_URL, wait_until="networkidle")
-            if theme == "dark":
-                page.wait_for_selector("html.dark")
-            sel = f'[aria-label="正在使用：{name}"]'
+            if key in TITLE_SCRIPTS:
+                captured[key] = capture_titles(browser, key, fixture, name, frames_dir, theme)
+                continue
+            # 这两段只看标识本身：夹具里带的窗口标题去掉
+            override(DESKTOP_PATH, str(titled_fixture(fixture, None, frames_dir / f"{key}-untitled.json")))
+            page = new_page(browser, theme, clock=True)
+            sel = f'[aria-label="Using {name}"]'
             if key == "claude-code":
                 captured[key] = capture_mascot(page, sel, frames_dir, theme)
-            elif key == "ghostty":
-                captured[key] = capture_ghostty(page, sel, frames_dir, theme)
             else:
-                path = frames_dir / f"{key}-{theme}.png"
-                capture_static(page, sel, path)
-                captured[key] = path
-            ctx.close()
+                captured[key] = capture_ghostty(page, sel, frames_dir, theme)
+            page.context.close()
         browser.close()
     return captured
 
 
-def compose(theme: str, captured: dict[str, Timeline | Path]) -> Path:
-    statics = {key: Image.open(item).convert("RGB") for key, item in captured.items() if isinstance(item, Path)}
-    background = statics["cursor"].getpixel((0, 0))
+def compose(theme: str, captured: dict[str, Timeline]) -> Path:
+    background = Image.open(captured["cursor"].paths[0]).convert("RGB").getpixel((0, 0))
 
     # 任一段换帧的时刻都出一张 GIF 帧，其余段保持上一帧。GIF 的延时以 10ms 计，浏览器又把
     # ≤10ms 当 100ms 播，所以相距不到 20ms 的换帧并成一张（画面取靠后那一刻的状态），
     # 帧时长按 10ms 网格累计取整，一轮总长不漂。
-    events = sorted({0} | {ms for item in captured.values() if isinstance(item, Timeline) for ms in item.starts if ms < CYCLE_MS})
+    events = sorted({0} | {ms for item in captured.values() for ms in item.starts if ms < CYCLE_MS})
     clusters: list[list[int]] = []
     for ms in events:
         if clusters and ms - clusters[-1][0] < 20:
@@ -252,10 +351,7 @@ def compose(theme: str, captured: dict[str, Timeline | Path]) -> Path:
     durations = []
     for index, cluster in enumerate(clusters):
         ms = cluster[-1]
-        parts = []
-        for key, _, _ in MARKS:
-            item = captured[key]
-            parts.append(Image.open(item.at(ms)).convert("RGB") if isinstance(item, Timeline) else statics[key])
+        parts = [Image.open(captured[key].at(ms)).convert("RGB") for key, _, _ in MARKS]
         height = parts[0].height
         assert all(part.height == height for part in parts)
         width = sum(part.width for part in parts) + GAP * (len(parts) - 1)
@@ -269,7 +365,7 @@ def compose(theme: str, captured: dict[str, Timeline | Path]) -> Path:
         durations.append(grid(next_ms) - grid(cluster[0]))
     assert min(durations) >= 20, durations
 
-    # 全帧共用一个调色板，静止的 Cursor / Antigravity 才不会在帧间抖色
+    # 全帧共用一个调色板，没在动的那几段才不会在帧间抖色
     sheet = Image.new("RGB", (frames[0].width, frames[0].height * len(frames)))
     for i, frame in enumerate(frames):
         sheet.paste(frame, (0, i * frame.height))
@@ -309,7 +405,7 @@ def main() -> None:
                 print(f"截取 {theme}…", file=sys.stderr)
                 compose(theme, capture(theme, frames_dir))
     finally:
-        override("/api/status/desktop", "--clear")
+        override(DESKTOP_PATH, "--clear")
         if not was_enabled:
             override("--off")
 

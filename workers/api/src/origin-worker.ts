@@ -9,10 +9,13 @@ import type { StoredEntry } from "@shared/sqlite-store";
 
 import { refreshRecentlyPlayed } from "./apple-music-recent";
 
-import { ROOM_ID } from "./live-platform";
+import { expireStatusTags, publish, ROOM_ID } from "./live-platform";
 import { ConfigError, issueMusicKitToken } from "./musickit-token";
 import { getAllowedOrigins, getCorsHeaders, isAllowedOrigin, isAllowedOriginValue } from "./origins";
+import { refreshAgentStatus } from "@/lib/agent-status";
 import { refreshPageSpeed } from "@/lib/pagespeed";
+import { fetchPreviewUpstream, isPreviewProxyPath, previewWorkerEnabled } from "./preview";
+import { STATUS_VIEWS } from "@/lib/status-views";
 import { isPublicApiPath, pathForEventType } from "./public-api";
 import { executePublicRequest } from "./public-execution";
 import { requestStore, type Env } from "./runtime";
@@ -89,6 +92,9 @@ async function handleIngest(
   ctx: ExecutionContext,
   source: string,
 ): Promise<Response> {
+  if (previewWorkerEnabled()) {
+    return jsonResponse({ ok: false, error: "预览 Worker 不接收上报" }, { status: 403 });
+  }
   if (request.method !== "POST") return jsonResponse({ ok: false, error: "只接受 POST" }, { status: 405 });
 
   const expected = env.TELEMETRY_INGEST_SECRET;
@@ -384,6 +390,15 @@ export class LivePushRoom extends DurableObject<Env> {
   }
 }
 
+/** 厂商状态变了才推，并让下一份首页 HTML 带上新灯。没变就什么都不做。 */
+async function publishAgentStatus(): Promise<void> {
+  const changed = await refreshAgentStatus();
+  if (!changed) return;
+  await publish({ type: "agent-status", payload: changed });
+  const tag = STATUS_VIEWS.agentStatus.tag;
+  if (tag) await expireStatusTags([tag]);
+}
+
 const worker = {
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     await withRequestState(() => requestStore.run({ env, ctx }, async () => {
@@ -391,15 +406,23 @@ const worker = {
       // （iPhone 等没有上报器的设备只在它上面留痕迹，见 stores/listening-pulse），
       // 只在有人看时刷的话，白天没人打开站点，那天在 iPhone 上听的就全没了。
       // 上游频率仍由 refreshRecentlyPlayed 里两分钟的 SQLite 闸门管着，最多每两分钟
-      // 打一次 Apple。PageSpeed 自己按小时抢闸门，一轮实测要二十多秒 —— 两件事并行，
-      // 别让它拖住换歌那条。
-      await Promise.all([refreshPageSpeed(), env.STATE ? refreshRecentlyPlayed() : null]);
+      // 打一次 Apple。PageSpeed 自己按小时抢闸门，一轮实测要二十多秒。厂商状态
+      // 通常一两秒。三件事并行，别让 PageSpeed 拖住换歌和状态推送。状态只有
+      // 结果变了才推，开着的页面不用等下一分钟的轮询。
+      await Promise.all([
+        refreshPageSpeed(),
+        env.STATE ? refreshRecentlyPlayed() : null,
+        publishAgentStatus(),
+      ]);
     }));
   },
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
 
-    if (url.pathname === "/api/internal/storage/import") return handleImport(request, env);
+    if (url.pathname === "/api/internal/storage/import") {
+      if (previewWorkerEnabled()) return new Response("Not found", { status: 404 });
+      return handleImport(request, env);
+    }
 
     if (url.pathname.startsWith(INGEST_PREFIX)) {
       return handleIngest(request, env, ctx, url.pathname.slice(INGEST_PREFIX.length));
@@ -411,6 +434,18 @@ const worker = {
 
     if (request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: cors });
+    }
+
+    // 令牌、歌词、动态封面没有 {ok} 信封，空库也签不出令牌。转给生产，并带上访客的 Origin。
+    if (previewWorkerEnabled() && isPreviewProxyPath(url.pathname)) {
+      if (request.method !== "GET") return new Response("Method not allowed", { status: 405, headers: cors });
+      if (!isAllowedOrigin(request, env)) {
+        return jsonResponse({ error: "来源不在允许的域名内" }, { status: 403, headers: cors });
+      }
+      const upstream = await fetchPreviewUpstream(request);
+      const headers = new Headers(upstream.headers);
+      cors.forEach((value, name) => headers.set(name, value));
+      return new Response(upstream.body, { status: upstream.status, headers });
     }
 
     // 排在公开 API 那条之前：它不是状态读取，不进 StateHub
@@ -436,7 +471,8 @@ const worker = {
       const rejected = rejectSocket(request, env);
       if (rejected) return rejected;
       const response = await getRoom(env).fetch(request);
-      if (response.status === 101 && env.STATE) {
+      // 影子房间只转发生产的 /ws。这里再刷 Apple 会写进空库，并把本地事件推给预览页。
+      if (response.status === 101 && env.STATE && !previewWorkerEnabled()) {
         await withRequestState(() => requestStore.run({ env, ctx }, () => refreshRecentlyPlayed()));
       }
       return response;

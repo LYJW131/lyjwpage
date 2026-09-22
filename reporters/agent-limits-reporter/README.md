@@ -6,7 +6,7 @@
 取来、塞进 `/api/ingest/mac` 的 `vibeCodingUsage`。Mac 合盖 / 睡眠 / 离线时限额就冻住。
 限额是厂商账号侧的事实，跟哪台 Mac 无关，所以拆到这个容器里 24 小时跑。
 
-**用量（token / 费用 / 今日 / 年度）仍由 Mac 上报，不动。**
+Claude、Codex、Grok、Antigravity 的用量仍由 Mac 从本机日志上报。Cursor 的用量历史在云端，Mac 合盖时云端线程还在跑，所以这份历史跟限额一起由这个容器拉，用的是同一份 `accessToken`。
 
 站点入口是 `POST /api/ingest/agents`（按数据是谁产生的命名，不是上报程序的名字）。
 每轮都 POST，内容没变也发 —— 那一封就是心跳，站点靠它刷新 `limitsAt`。
@@ -46,7 +46,7 @@ PlayStation 上报器采用同款人数分档逻辑，限额使用自己的 5 / 
 | `IDLE_INTERVAL_MS` | | 默认 `3600000`（60 分钟），无人打开；改长时同步放宽站点 `AGENT_LIMITS_STALE_MS` |
 | `COUNT_TIMEOUT_MS` | | 默认 `2500`，每个计数请求的超时 |
 | `PUSH_TIMEOUT_MS` | | 默认 `30000` |
-| `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` | | 宿主机出海要走代理时填（如 `http://user:pass@192.168.3.2:7893`）。**跑在 misaka-jp 上不用填**，那台本身就在日本。上报器自己的 fetch 靠镜像里的 `NODE_USE_ENV_PROXY=1` 认它，五个 CLI 各自也认。build 时另外用 `--build-arg HTTPS_PROXY=…` |
+| `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` | | 宿主机出海要走代理时填（如 `http://user:pass@192.168.3.2:7893`）。**跑在 misaka-jp 上不用填**，那台本身就在日本。上报器自己的 fetch 靠镜像里的 `NODE_USE_ENV_PROXY=1` 认它，五个 CLI 各自也认。在墙内本地 build 时另外用 `--build-arg HTTPS_PROXY=…` |
 | `CLAUDE_OAUTH_TOKEN_URL` | | 可选覆盖。默认从镜像里的 Claude Code 自动读取生产 OAuth 配置；覆盖时必须和 client ID 一起填 |
 | `CLAUDE_OAUTH_CLIENT_ID` | | 同上。无需手抄；客户端常量不写进仓库 |
 | `CLAUDE_BIN` | `claude` | 用来读取 OAuth 配置的 Claude Code 安装程序，可设绝对路径 |
@@ -101,10 +101,18 @@ Codex / Grok 的 token 由上报器自己刷新写回（`auth.json`）。
 五个 CLI 仍装进镜像，**只为登录一次**。限额运行时直打接口，不再调 `/usage`。
 
 **cursor。** Linux 上 `agent login` 把 JWT 写到 `/data/.config/cursor/auth.json` 的 `accessToken`（也可
-用 `CURSOR_AUTH_TOKEN` 直接注入）。上报器并发打 `api2.cursor.sh` 的
-`DashboardService/GetCurrentPeriodUsage`、`GetPlanInfo`、`GetHardLimit`（Connect RPC，Bearer JWT，
-不用 Cookie）。上报器不刷新这份 token，401 / 403 时那一行带
+用 `CURSOR_AUTH_TOKEN` 直接注入）。限额打 `api2.cursor.sh` 的
+`DashboardService/GetCurrentPeriodUsage`、`GetPlanInfo`、`GetHardLimit`（Connect RPC，Bearer JWT）。
+用量历史用同一份 JWT 拼 `WorkosCursorSessionToken`，分页打
+`https://cursor.com/api/dashboard/get-filtered-usage-events`，按 `Asia/Shanghai` 收成日桶，
+账本在数据卷的 `cursor-usage.json`（只有聚合，没有 token）。拉失败不挡限额心跳，这一轮不带
+`cursorUsage`，站点留着上一份。上报器不刷新这份 token，401 / 403 时限额那一行带
 `Cursor session expired — run \`agent login\` to re-authenticate.`。
+
+站点读出口才把这份日桶并进 Mac 的合计和年度图。旧 Mac 的合计里已经有 Cursor，锚定日按字段做差，
+之后的日子整段补上；新 Mac 在用量信封里带 `omittedSources: ["cursor"]`，整份日桶另加。
+所以先更新 Worker 和这个容器，再装新的 Mac 上报器。顺序反了的话，新 Mac 不再把 Cursor 算进合计，
+而旧 Worker 还不认识这份日桶，Cursor 会从总数里消失，直到 Worker 更新。
 
 **antigravity。** 登录态在 `/data/.gemini/antigravity-cli/antigravity-oauth-token`。上报器打
 `daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary`（Antigravity 实际使用的后端端点）。到期前 5 分钟或接口回 401 时向
@@ -137,11 +145,14 @@ cursor 是 `{ period, plan, hardLimit }` 三份 DashboardService 响应。有它
 ## 在 misaka-jp 上跑
 
 部署单元是上一层的 [`reporters/compose.yaml`](../compose.yaml)，和 `server-reporter` 同一个 project：
-把这个目录拷到 `/opt/lyjwpage/agent-limits-reporter`、旁边放一份 `.env`，在 `/opt/lyjwpage` 就地 build。
-**别在 Mac 上 build 完把镜像拷过去** —— Mac 是 arm64、misaka-jp 是 x86_64，架构对不上。
+机器上 `/opt/lyjwpage` 放 `compose.yaml`，`agent-limits-reporter/` 下只有 `.env` 和 `data/` 卷。
+镜像由 [`build-reporters.yml`](../../.github/workflows/build-reporters.yml) 在 GitHub Actions 上构建
+（只出 `linux/amd64`），这个目录有改动合进 main 就推 `ghcr.io/lyjw131/agent-limits-reporter:latest` 和
+`sha-<短哈希>`。机器上只拉镜像，不放源码、不 build。
+从前在 misaka-jp（1C2G）上现场 build 这个装了五个 CLI 的镜像，冷 build 约 10 分钟。
 
 一个 project 里两个服务，所以**不点名服务的命令会同时动两个容器**。只动限额这个就写服务名：
-`docker compose up -d --build agent-limits-reporter`。
+`docker compose pull agent-limits-reporter && docker compose up -d --no-deps agent-limits-reporter`。
 
 2026-09-13 从群晖（dsm `/volume3/docker`）搬到 misaka-jp `/opt/lyjwpage`，和 `server-reporter` 同一台。
 这台在日本，各家限额接口直连可达，**`.env` 里不再需要 `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY`**。
@@ -153,25 +164,26 @@ ssh 直连在 kex 阶段会被对面关掉，一律走 dsm 跳板：`ssh -J dsm 
 `LIVE_PUSH_URL`，并设置 `ONLINE_COUNTER_URL=https://online.homepage.lyjw.llc`；按需设置三档间隔，
 再重建容器。旧变量已移除。
 
-拷过去（跳板后面 sftp 用不了，`scp` 别想，走 tar 管道；tar 会带上 Mac 的 uid，落地补一次 `chown`）：
+`compose.yaml` 改了才需要送（跳板后面 sftp 用不了，`scp` 别想，走 ssh 管道）：
 
 ```bash
-COPYFILE_DISABLE=1 tar czf - -C reporters --exclude node_modules --exclude dist --exclude .env --exclude data compose.yaml agent-limits-reporter | ssh -J dsm misaka-jp 'mkdir -p /opt/lyjwpage && tar xzf - -C /opt/lyjwpage && chown -R root:root /opt/lyjwpage/agent-limits-reporter /opt/lyjwpage/compose.yaml'
+ssh -J dsm misaka-jp 'mkdir -p /opt/lyjwpage/agent-limits-reporter && cat > /opt/lyjwpage/compose.yaml' < reporters/compose.yaml
 ```
 
-`.env` 单独送，别混进源码目录一起打包：
+`.env` 单独送：
 
 ```bash
 ssh -J dsm misaka-jp 'cat > /opt/lyjwpage/agent-limits-reporter/.env && chmod 600 /opt/lyjwpage/agent-limits-reporter/.env' < 本机那份.env
 ```
 
-先登录五家（见上），再起：
+先登录五家（见上），再起；之后每次 Actions 推了新镜像也是这一句：
 
 ```bash
-ssh -J dsm misaka-jp 'cd /opt/lyjwpage && docker compose up -d --build agent-limits-reporter'
+ssh -J dsm misaka-jp 'cd /opt/lyjwpage && docker compose pull agent-limits-reporter && docker compose up -d --no-deps agent-limits-reporter'
 ```
 
-两个上报器一起起（第一次部署、或者两边都改了）：`cd /opt/lyjwpage && docker compose up -d --build`。
+两个上报器一起换（第一次部署、或者两边都改了）：`cd /opt/lyjwpage && docker compose pull && docker compose up -d`。
+要回退就把 `compose.yaml` 里的 `latest` 临时换成 Actions 推过的 `sha-<短哈希>`。
 
 **换机器不用重登五家**：先停掉旧机器上的容器，再把旧机器的 `data/` 卷整个打包过来、
 `chown -R 1000:1000 data`，登录态照用。两边同时跑会各自轮换同一份 refresh token、互相作废，
