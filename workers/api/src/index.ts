@@ -1,5 +1,6 @@
 import originWorker from "./origin-worker";
 import { getAllowedOrigins, getCorsHeaders, isAllowedOriginValue } from "./origins";
+import { previewWorkerEnabled } from "./preview";
 import { serveReadModel } from "./read-model-edge";
 import { historyArchiveEnabled, pulseScoringEnabled, readModelEnabled, type Env } from "./runtime";
 import { PulseArchive } from "./pulse-archive";
@@ -27,6 +28,9 @@ const apiWorker = {
     });
   },
   async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    // 影子脚本不挂 cron。这里再挡一次，避免有人把生产的分钟触发抄到预览配置上，
+    // 每个分支都去打 PageSpeed 和 Apple。
+    if (previewWorkerEnabled()) return;
     // Rebuilds also cover external API caches, elapsed-time views and bindings added
     // to an already initialized StateHub. No visitor is needed to finish a retry.
     // Enqueue only after the origin cron (Apple recently played, PageSpeed) has written,

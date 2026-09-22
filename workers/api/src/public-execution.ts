@@ -1,4 +1,5 @@
 import { withRequestState } from "@shared/request-state";
+import { ensurePreviewState } from "./preview";
 import { publicResponse } from "./public-api";
 import { requestStore, type Env } from "./runtime";
 import { createPublicStorage } from "./storage-driver";
@@ -10,6 +11,7 @@ export async function executePublicRequest(
   ctx: Pick<ExecutionContext, "waitUntil">,
 ): Promise<Response> {
   const hub = env.STATE.get(env.STATE.idFromName("global"));
+  await ensurePreviewState(hub);
   if (!(await hub.publicBarrier())) {
     return Response.json(
       { ok: false, error: "状态存储初始化中" },
