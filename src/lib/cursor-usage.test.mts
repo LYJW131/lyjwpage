@@ -141,6 +141,20 @@ test("Mac 声明省略 Cursor 时，整份日桶加进合计", () => {
   assert.ok(merged.year && normalizeVibeCodingYear(merged.year));
 });
 
+test("当前模型取最近一个有用量的日子里用得最多的那个", () => {
+  const base = usage(null, ["cursor"]);
+  base.agents = base.agents.filter((agent) => agent.id !== "cursor");
+  const busy = day("2026-09-05", 150, "grok-4");
+  busy.models = [{ model: "default", tokens: 50 }, { model: "grok-4", tokens: 100 }];
+  const merged = mergeCursorUsage(
+    base,
+    cursor([day("2026-09-04", 900, "claude-opus-5"), busy, day("2026-09-06", 0)]),
+    null,
+    Date.parse("2026-09-06T03:00:00Z"),
+  );
+  assert.equal(merged.usage.agents.find((agent) => agent.id === "cursor")?.currentModel, "grok-4");
+});
+
 test("容器比 Mac 旧时不回退合计", () => {
   const report = cursor([day("2026-09-05", 1)]);
   report.collectedAt = "2026-09-04T00:00:00.000Z";

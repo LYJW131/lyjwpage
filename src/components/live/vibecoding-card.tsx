@@ -28,10 +28,14 @@ import type {
 import { cn } from "@/lib/utils";
 
 /**
- * 信封里各个来源同一形状。首页只给这两个全量面板：限额结构、活动灯
- * 都是为它们写的。其余同一份数据，只取总限额那一行。
+ * 信封里各个来源同一形状。首页只给这两个全量面板：限额结构是按它们各自的
+ * 窗口写的（见 FEATURED_LIMITS）。其余同一份数据，只取最紧的那一行。
+ *
+ * 选谁进全量面板看限额有几条：Codex 只剩一条周额度，挤在三行的面板里两行空着；
+ * Cursor 正好有自家模型、其他模型、Grok Bot 三条。
  */
-const FEATURED_AGENT_IDS = ["claude", "codex"] as const;
+const FEATURED_AGENT_IDS = ["claude", "cursor"] as const;
+type FeaturedAgentId = (typeof FEATURED_AGENT_IDS)[number];
 const HIDDEN_AGENT_IDS = new Set(["opencode", "pi"]);
 
 function agentDisplayName(agent: VibeCodingAgent) {
@@ -87,17 +91,14 @@ const LIMIT_BAR_COLOR = "oklch(0.63 0.18 250)";
 /** 预警档。沿用同文件 Cache read 那支琥珀（也是 --live-idle 的色相），不另挑一支黄。 */
 const LIMIT_WARN_COLOR = "oklch(0.72 0.16 75)";
 const LIMIT_ALERT_COLOR = "oklch(0.62 0.21 25)";
-/** 不受限那一档。沿用同文件 Reasoning 那支绿（也是 --live 用的那支），不再多引入一种色相。 */
-const LIMIT_UNLIMITED_COLOR = "oklch(0.65 0.17 145)";
-
 /**
  * 配速指示器那根竖线的两支颜色：用得比时钟快是红，没快是绿。
  *
- * 都是这张卡上已经有的颜色（告警那支红、不受限那支绿），不为这件事再引入新色相。
+ * 红是告警那支；绿沿用 --live 那支的色相，不为这件事再引入新色相。
  * 条本身不受影响，仍按用量分档 —— 见 LimitMeter 里的 overPace。
  */
 const LIMIT_OVER_PACE_COLOR = LIMIT_ALERT_COLOR;
-const LIMIT_ON_PACE_COLOR = LIMIT_UNLIMITED_COLOR;
+const LIMIT_ON_PACE_COLOR = "oklch(0.65 0.17 145)";
 
 /** 蓝 → 琥珀 → 红，只有三档没有渐变：中间色会让人去猜具体数，而数就写在旁边 */
 function limitColor(usedPercent: number) {
@@ -376,21 +377,37 @@ function TotalUsage({
 /** 判定「当日档」的上限。跨过一天的窗口按周额度那类算，不该顶替 5 小时档。 */
 const SESSION_WINDOW_MAX_MINUTES = 1440;
 
-const FEATURED_LIMITS = {
+/**
+ * Claude 的窗口按时长和名字认；Cursor 按上报器的键直接认。
+ *
+ * Cursor 三行对它网页 dashboard 的三根条：自家模型、其他模型两个月度池子，加 Grok Bot
+ * 周额度。套餐总额那扇（cursor.primary）不画，它只是两个池子折算后的合计。
+ * 不能走时长推断：`cursor.tertiary` 会被 isSparkWindow 的 `.tertiary` 规则当成专项
+ * 窗口剔掉 —— 那恰好常是最紧的一条。口径见 agent-limits-reporter 的 providers/cursor.ts。
+ */
+const FEATURED_LIMITS: Record<
+  FeaturedAgentId,
+  ReadonlyArray<{ slot: FeaturedLimitSlot; title: string }>
+> = {
   claude: [
     { slot: "session", title: "5-hour limit" },
     { slot: "weekly", title: "Weekly · all models" },
     { slot: "fable", title: "Weekly · Fable only" },
   ],
-  codex: [
-    { slot: "session", title: "5-hour limit" },
-    { slot: "weekly", title: "Weekly" },
-    { slot: "spark-weekly", title: "Weekly · GPT-5.3-Codex-Spark" },
+  cursor: [
+    { slot: "cursor.secondary", title: "Monthly · Cursor models" },
+    { slot: "cursor.tertiary", title: "Monthly · other models" },
+    { slot: "cursor.quaternary", title: "Weekly · Grok Bot" },
   ],
-} as const;
+};
 
 type FeaturedLimitSlot =
-  (typeof FEATURED_LIMITS)[keyof typeof FEATURED_LIMITS][number]["slot"];
+  | "session"
+  | "weekly"
+  | "fable"
+  | "cursor.secondary"
+  | "cursor.tertiary"
+  | "cursor.quaternary";
 
 function isNamedLimit(limit: VibeCodingLimit, name: string) {
   return `${limit.key} ${limit.label ?? ""}`.toLowerCase().includes(name);
@@ -424,10 +441,8 @@ function pickSlotLimit(limits: VibeCodingLimit[], slot: FeaturedLimitSlot) {
   if (slot === "fable") {
     return limits.find((limit) => isNamedLimit(limit, "fable")) ?? null;
   }
-  if (slot === "spark-weekly") {
-    return limits.find((limit) =>
-      isSparkWindow(limit) && !isSessionWindow(limit),
-    ) ?? null;
+  if (slot !== "session" && slot !== "weekly") {
+    return limits.find((limit) => limit.key === slot) ?? null;
   }
   const matched = limits.filter((limit) => limitSlot(limit) === slot);
   if (matched.length === 0) return null;
@@ -444,22 +459,14 @@ function compactLimit(agent: VibeCodingAgent, now: number) {
 
 type FeaturedLimitRow =
   | { kind: "limit"; key: string; title: string; limit: VibeCodingLimit }
-  | { kind: "unlimited"; key: string; title: string }
   | { kind: "unavailable"; key: string; title: string; reason: string };
 
-/**
- * 固定三行：Claude 的主额度加 Fable；Codex 的主额度加 Spark 周额度。
- * Codex 成功取数但没有主 5 小时窗口时显示 Unlimited；采集报错仍显示 Unavailable。
- */
+/** 固定三行，取不到的那行留着占位写 Unavailable，不让面板高度跟着变。 */
 function featuredLimitRows(agent: VibeCodingAgent): FeaturedLimitRow[] {
-  const slots: ReadonlyArray<{ slot: FeaturedLimitSlot; title: string }> =
-    agent.id === "claude" ? FEATURED_LIMITS.claude : FEATURED_LIMITS.codex;
+  const slots = FEATURED_LIMITS[agent.id as FeaturedAgentId] ?? [];
   return slots.map(({ slot, title }) => {
     const limit = pickSlotLimit(agent.limits, slot);
     if (limit) return { kind: "limit" as const, key: slot, title, limit };
-    if (agent.id === "codex" && slot === "session" && agent.limitsAt != null && agent.limitsError == null) {
-      return { kind: "unlimited" as const, key: slot, title };
-    }
     return {
       kind: "unavailable" as const, key: slot, title,
       reason: agent.limitsError ?? "No limit reported for this window",
@@ -476,6 +483,10 @@ function featuredLimitRows(agent: VibeCodingAgent): FeaturedLimitRow[] {
  *
  * resetsAt 是 Unix 秒，不是毫秒。
  */
+const WEEK_MS = 7 * 86_400_000;
+/** setTimeout 的上限是 2^31-1 毫秒（约 24.8 天），调用点还要再加半秒，留足余量 */
+const MAX_TIMEOUT_MS = 24 * 86_400_000;
+
 type ResetDisplay =
   /** 一天以内：时和分要滚，所以拆成数字，不拼成整句 */
   | { kind: "relative"; hours: number; minutes: number }
@@ -491,6 +502,13 @@ function formatReset(resetsAt: number | null, referenceTime: number): ResetDispl
     // 四舍五入到整分：同时重置的两条上游给的是 02:59:59 和 03:00:00，
     // 直接截断会显示成差一分钟，看着像两个不同的时刻
     const at = new Date(Math.round(resetsAt / 60) * 60_000);
+    // 一周以外说星期几就分不清是哪一周了（Cursor 是按月的计费周期），改报日期
+    if (remain >= WEEK_MS) {
+      return {
+        kind: "absolute",
+        text: `Resets ${at.toLocaleString("en-US", { month: "short", day: "numeric" })}`,
+      };
+    }
     // 分两次格式化：合在一起 en-US 会插一个逗号（"Mon, 11:00 AM"）
     const weekday = at.toLocaleString("en-US", { weekday: "short" });
     const clock = at.toLocaleString("en-US", { hour: "numeric", minute: "2-digit" });
@@ -509,12 +527,14 @@ function formatReset(resetsAt: number | null, referenceTime: number): ResetDispl
  *
  * 只在文案真的会变的时刻醒，不做无谓的定时重渲染：
  *
- * - 超过一天时显示的是「Resets Mon 11:00 AM」，那句话跟时间流逝无关，
- *   一直等到它跌破一天、要换成相对写法时才需要醒。周额度因此几小时才醒一次。
+ * - 超过一天时显示的是「Resets Mon 11:00 AM」或「Resets Oct 16」，那句话跟时间
+ *   流逝无关，只在跌破一周（日期换星期几）和跌破一天（换相对写法）时才需要醒。
  * - 一天以内显示到分钟，所以在每个整分边界醒一次。
  * - 剩不到一分钟时直接等到点，那一下要同时翻文案和把条归零。
  */
 function nextTickDelay(remain: number) {
+  // 超过上限的延迟会立刻触发、每轮重排停不下来，月度窗口够得着这个数
+  if (remain > WEEK_MS) return Math.min(remain - WEEK_MS, MAX_TIMEOUT_MS);
   if (remain > 86_400_000) return remain - 86_400_000;
   if (remain <= 60_000) return Math.max(0, remain);
   return remain % 60_000 || 60_000;
@@ -739,23 +759,6 @@ function LimitMeter({ limit, title }: { limit: VibeCodingLimit; title: string })
   );
 }
 
-function LimitUnlimited({ title }: { title: string }) {
-  return (
-    <div>
-      <div className="flex h-5 items-center justify-between gap-2">
-        <span className="truncate text-xs">{title}</span>
-        <span className="flex shrink-0 items-baseline gap-2">
-          <span className="text-xs text-muted-foreground">Unlimited</span>
-          <span className="font-mono text-xs tabular-nums" style={{ color: LIMIT_UNLIMITED_COLOR }}>
-            <span className="inline-block origin-right scale-[1.6]">∞</span>
-          </span>
-        </span>
-      </div>
-      <div className="mt-1.5 h-1.5" style={{ backgroundColor: LIMIT_UNLIMITED_COLOR }} />
-    </div>
-  );
-}
-
 /** 预期有但取不到的窗口，保留原位以免整行消失。 */
 function LimitUnavailable({ title, reason }: { title: string; reason: string }) {
   return (
@@ -772,9 +775,21 @@ function LimitUnavailable({ title, reason }: { title: string; reason: string }) 
   );
 }
 
+/**
+ * Cursor 没有活动信号：Mac 的会话扫描不看 Cursor，云端用量是容器几分钟到一小时
+ * 拉一轮的日桶，拿它点「此刻在用」就是编。所以只放静态标，`active` 真有人报了
+ * 再跟着变色。
+ */
 function FeaturedMark({ id, active }: { id: string; active: boolean }) {
   if (id === "claude") return <ClaudeSpinner active={active} />;
-  return <CodexActivityIndicator active={active} />;
+  return (
+    <span
+      className={cn("flex size-5 shrink-0 items-center justify-center", active && "text-live")}
+      aria-hidden
+    >
+      <CursorIcon size={18} />
+    </span>
+  );
 }
 
 function AgentPanel({
@@ -895,8 +910,6 @@ function AgentPanel({
         {rows.map((row) =>
           row.kind === "limit" ? (
             <LimitMeter key={row.key} limit={row.limit} title={row.title} />
-          ) : row.kind === "unlimited" ? (
-            <LimitUnlimited key={row.key} title={row.title} />
           ) : (
             <LimitUnavailable key={row.key} title={row.title} reason={row.reason} />
           ),
@@ -908,9 +921,12 @@ function AgentPanel({
 
 function CompactAgentRow({
   agent,
+  activityUnknown,
   limitsStaleAfterMs,
 }: {
   agent: VibeCodingAgent;
+  /** 和全量面板同一个开关，见 VibeCodingCard 里的 activityUnknown */
+  activityUnknown: boolean;
   limitsStaleAfterMs: number;
 }) {
   // 和全量面板同一个判断：限额上报器多久没来，这一行就是上一次的值
@@ -954,6 +970,8 @@ function CompactAgentRow({
 
   const pace = limit ? limitPace(limit, now) : null;
   const overPace = pace != null && usedPercent != null && usedPercent / 100 > pace;
+  // Mac 的会话扫描照样报这几家在不在用，紧凑行也点灯，只是不像全量面板那样换模型名
+  const active = agent.active && !activityUnknown;
 
   return (
     <div
@@ -967,9 +985,15 @@ function CompactAgentRow({
       <div className="flex flex-col gap-1 md:h-5 md:flex-row md:items-center md:justify-between md:gap-2">
         <div className="flex h-5 min-w-0 items-center gap-2">
           <span className="flex size-5 shrink-0 items-center justify-center" aria-hidden>
-            <BrandMark icon={agent.icon} label={agent.label} className="size-5" />
+            {/* Codex 从全量面板挪下来，终端里那个 spinner 跟着它走 */}
+            {agent.id === "codex" ? (
+              <CodexActivityIndicator active={active} />
+            ) : (
+              <BrandMark icon={agent.icon} label={agent.label} className="size-5" />
+            )}
           </span>
           <span className="truncate text-sm font-medium">{agentDisplayName(agent)}</span>
+          {active && <span className="label-mono shrink-0 text-live">Active</span>}
         </div>
         {/*
           读数和全量面板的 LimitMeter 一样放在条的上方、这一行的右端，条下面不再挂
@@ -1050,9 +1074,11 @@ function CompactAgentRow({
 
 function CompactAgents({
   agents,
+  activityUnknown,
   limitsStaleAfterMs,
 }: {
   agents: VibeCodingAgent[];
+  activityUnknown: boolean;
   limitsStaleAfterMs: number;
 }) {
   if (agents.length === 0) return null;
@@ -1074,6 +1100,7 @@ function CompactAgents({
           <CompactAgentRow
             key={agent.id}
             agent={agent}
+            activityUnknown={activityUnknown}
             limitsStaleAfterMs={limitsStaleAfterMs}
           />
         ))}
@@ -1101,7 +1128,7 @@ export function VibeCodingCard({
   });
 
   /**
-   * 例外只有一处：两个 agent 的活动灯。整张卡就这一处说的是「此刻」，
+   * 例外只有一处：各 agent 的活动灯。整张卡就这一处说的是「此刻」，
    * 而它偏偏是全卡最不该冻住的东西 —— 剩下的冻住只是停在昨天，它冻住是在说谎。
    *
    * 两个判据取或，规矩见 lib/reporter-liveness 的模块注释：
@@ -1150,6 +1177,7 @@ export function VibeCodingCard({
           </div>
           <CompactAgents
             agents={compactAgents(data.agents)}
+            activityUnknown={activityUnknown}
             limitsStaleAfterMs={data.limitsStaleAfterMs}
           />
         </>
@@ -1164,7 +1192,7 @@ export function VibeCodingCard({
             ))}
           </div>
           <div className="grid min-h-64 grid-cols-1 divide-y divide-line md:grid-cols-2 md:divide-x md:divide-y-0">
-            {["Claude Code", "Codex"].map((label) => (
+            {["Claude Code", "Cursor"].map((label) => (
               <div key={label} className="animate-pulse px-5 py-4">
                 <div className="flex items-center gap-2">
                   <div className="h-4 w-24 rounded bg-muted" />

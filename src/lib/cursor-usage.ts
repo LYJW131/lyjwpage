@@ -196,6 +196,21 @@ function rankedModels(days: CursorUsageDay[]): Array<{ model: string; tokens: nu
     .sort((left, right) => right.tokens - left.tokens || left.model.localeCompare(right.model));
 }
 
+/**
+ * 最近一个有用量的日子里用得最多的模型。Cursor 没有会话级的「此刻在用哪个」，
+ * 跟 MacTelemetryHub 的 fallbackModel 同一个口径：闲置时显示最近在用的模型。
+ */
+function latestModel(days: CursorUsageDay[]): string | null {
+  for (let index = days.length - 1; index >= 0; index -= 1) {
+    const top = days[index]?.models.reduce<CursorUsageDay["models"][number] | null>(
+      (best, row) => (best == null || row.tokens > best.tokens ? row : best),
+      null,
+    );
+    if (top) return top.model;
+  }
+  return null;
+}
+
 type Contribution = {
   /** 要加进合计的差值。锚定日可以是负数。 */
   delta: CursorUsageDay;
@@ -300,6 +315,7 @@ function encodeMix(days: number[], shares: Map<number, Map<string, number>>): { 
 
 function overlayAgent(usage: ParsedVibeCodingUsage, cursor: ParsedCursorUsage, now: number): ParsedVibeCodingUsage["agents"] {
   const models = rankedModels(cursor.days);
+  const currentModel = latestModel(cursor.days);
   const next = {
     models: models.map((row) => row.model),
     topModel: models[0]?.model ?? null,
@@ -313,6 +329,7 @@ function overlayAgent(usage: ParsedVibeCodingUsage, cursor: ParsedCursorUsage, n
     existing.topModel = next.topModel;
     existing.today = next.today;
     existing.usageStatus = next.usageStatus;
+    existing.currentModel = currentModel ?? existing.currentModel;
     return agents;
   }
   if (!usage.omittedSources?.includes("cursor")) return agents;
@@ -320,7 +337,7 @@ function overlayAgent(usage: ParsedVibeCodingUsage, cursor: ParsedCursorUsage, n
     id: "cursor",
     label: "Cursor",
     icon: "cursor",
-    currentModel: null,
+    currentModel,
     ...next,
   });
   return agents;

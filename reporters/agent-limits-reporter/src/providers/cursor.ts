@@ -3,11 +3,14 @@ import os from "node:os";
 import path from "node:path";
 
 import { config } from "../config.js";
+import { sessionFromAccessToken } from "../cursor-usage.js";
 import type { AgentRow } from "../site.js";
 import { genericWindows, object, rowFromWindows, text } from "../windows.js";
 
 const CURSOR_SESSION_EXPIRED = "Cursor session expired — run `agent login` to re-authenticate.";
 const CURSOR_RPC = "https://api2.cursor.sh/aiserver.v1.DashboardService";
+/** 网页 dashboard 的 Grok Bot 周额度。只有网页接口，凭据走和用量历史同一份会话 cookie。 */
+const CURSOR_GROK_BOT_URL = "https://cursor.com/api/dashboard/get-sand-usage-status";
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return object(value);
@@ -47,11 +50,35 @@ function usageWindow(
   return node;
 }
 
-/** 把三份 DashboardService 响应规整成 genericWindows("cursor") 吃的形状。纯函数。 */
+/**
+ * Grok Bot 是独立的周额度，不在套餐那份用量里。没开（额度为 0）就不报这扇窗口。
+ * usagePercent 已经是 0~100，不用再乘。
+ */
+function grokBotWindow(sand: unknown): Record<string, unknown> | null {
+  const rec = asRecord(sand);
+  if (!rec || rec.hasNonZeroIncludedLimit !== true) return null;
+  const start = Date.parse(text(rec.currentPeriodStart) ?? "");
+  const end = Date.parse(text(rec.nextResetTimestampUtc) ?? "");
+  return usageWindow(
+    rec.usagePercent,
+    Number.isFinite(end) ? new Date(end).toISOString() : null,
+    Number.isFinite(start) && Number.isFinite(end) ? windowSeconds(start, end) : null,
+    "Grok Bot",
+  );
+}
+
+/**
+ * 把 DashboardService 的响应和网页的 Grok Bot 额度规整成 genericWindows("cursor")
+ * 吃的形状。纯函数。
+ *
+ * 四扇窗口对网页 dashboard 的 Included in Ultra 与 Grok Bot 两块：总额、Cursor 自家
+ * 模型（Auto / Composer / Cursor Grok）、其他厂商模型、Grok Bot 周额度。
+ */
 export function normalizeCursorUsage(
   period: unknown,
   plan: unknown,
   _hardLimit: unknown,
+  sand: unknown = null,
 ): Record<string, unknown> {
   const periodRec = asRecord(period);
   const planRec = asRecord(asRecord(plan)?.planInfo) ?? asRecord(plan);
@@ -63,14 +90,15 @@ export function normalizeCursorUsage(
   return {
     plan_label: text(planRec?.planName),
     primary_window: usageWindow(usage?.totalPercentUsed, resetAt, seconds, "Included"),
-    secondary_window: usageWindow(usage?.autoPercentUsed, resetAt, seconds, "Auto"),
-    tertiary_window: usageWindow(usage?.apiPercentUsed, resetAt, seconds, "API"),
+    secondary_window: usageWindow(usage?.autoPercentUsed, resetAt, seconds, "Cursor models"),
+    tertiary_window: usageWindow(usage?.apiPercentUsed, resetAt, seconds, "Other models"),
+    quaternary_window: grokBotWindow(sand),
   };
 }
 
 export function rowFromCursorResponses(input: unknown): AgentRow {
   const rec = asRecord(input) ?? {};
-  const node = normalizeCursorUsage(rec.period, rec.plan, rec.hardLimit);
+  const node = normalizeCursorUsage(rec.period, rec.plan, rec.hardLimit, rec.sand);
   return rowFromWindows("cursor", node, genericWindows("cursor", node));
 }
 
@@ -107,15 +135,40 @@ async function cursorRpc(accessToken: string, method: string): Promise<{ status:
   return { status: res.status, body };
 }
 
+/**
+ * Grok Bot 那扇拿不到只少一行，不拖累另外三扇：返回 null，站点那行写 Unavailable。
+ * 不跟随跳转 —— cookie 里是登录凭据，不能被带去别处。
+ */
+async function fetchGrokBot(accessToken: string): Promise<unknown> {
+  try {
+    const res = await fetch(CURSOR_GROK_BOT_URL, {
+      method: "POST",
+      redirect: "error",
+      headers: {
+        Cookie: sessionFromAccessToken(accessToken).cookie,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        Origin: "https://cursor.com",
+      },
+      body: "{}",
+      signal: AbortSignal.timeout(15_000),
+    });
+    return res.status === 200 ? await res.json().catch(() => null) : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function fetchCursor(): Promise<AgentRow | null> {
   const accessToken = await readCursorAccessToken();
   if (!accessToken) return null;
 
   try {
-    const [period, plan, hardLimit] = await Promise.all([
+    const [period, plan, hardLimit, sand] = await Promise.all([
       cursorRpc(accessToken, "GetCurrentPeriodUsage"),
       cursorRpc(accessToken, "GetPlanInfo"),
       cursorRpc(accessToken, "GetHardLimit"),
+      fetchGrokBot(accessToken),
     ]);
     if ([period, plan, hardLimit].some((r) => r.status === 401 || r.status === 403)) {
       return { id: "cursor", plan: null, limits: [], limitsError: CURSOR_SESSION_EXPIRED };
@@ -128,6 +181,7 @@ export async function fetchCursor(): Promise<AgentRow | null> {
       period: period.body,
       plan: plan.body,
       hardLimit: hardLimit.body,
+      sand,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
