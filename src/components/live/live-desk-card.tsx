@@ -231,15 +231,25 @@ export function HeaderDesktop({
       ? (incomingDesktop?.windowTitle ?? null)
       : null;
 
+  /**
+   * 标题退场期间还占着位置的那份缓存，按应用记。
+   *
+   * 换了应用就不接力：新面板的尺寸只看它自己有没有标题。从前缓存不分应用，
+   * 从带标题的 Ghostty 切到没标题的 Claude Code 时，新面板先按「有标题」的
+   * 小号进场，等旧面板里那条标题收完（约 0.28 秒）才弹回大号 —— 字标和
+   * 吉祥物在滑入尾声硬跳一号。离线和锁屏各自是一个 key，自然也会清掉。
+   */
   const [titleCache, setTitleCache] = useState({
+    key: applicationKey,
     current: windowTitle,
     cached: windowTitle,
   });
 
-  if (windowTitle !== titleCache.current) {
+  if (windowTitle !== titleCache.current || applicationKey !== titleCache.key) {
     setTitleCache({
+      key: applicationKey,
       current: windowTitle,
-      cached: windowTitle ?? (offline || locked ? null : titleCache.cached),
+      cached: windowTitle ?? (applicationKey === titleCache.key ? titleCache.cached : null),
     });
   }
 
@@ -265,18 +275,33 @@ export function HeaderDesktop({
    * 有窗口标题才把图标缩一号，没标题就还是原来的 28px。
    *
    * 判据用 `measuredTitle` 而不是 `windowTitle`：标题正在淡出的那一帧还占着
-   * 高度，图标这时候弹回大号会和标题的收起动画对着干。两级尺寸都给了过渡，
-   * 所以标题进出时图标是缩放过去的，不是跳一下。
+   * 高度，图标这时候弹回大号会和标题的收起动画对着干。
+   *
+   * 尺寸、间距和字标高度都交给 motion，和标题共用同一份 transition。从前它们
+   * 走 CSS transition（200ms ease-out），和标题的 280ms 曲线各走各的钟，两条
+   * 曲线一起挪同一个垂直居中，看着就是一顿一顿的。量宽那行也要一起动：
+   * 容器宽度跟着它，它要是瞬间变窄，正在缩的那一行会被 overflow-hidden 切掉
+   * 两侧各 5px。
    */
   const compact = Boolean(measuredTitle);
-  const iconSlotClass = compact ? "size-5" : "size-7";
-  const iconGlyphClass = compact ? "size-4" : "size-5";
-  const rowGapClass = compact ? "gap-1.5" : "gap-2";
-  const overrideTextSize = compact ? 16 : 20;
-  const sizeTransition =
-    "transition-[width,height] duration-200 ease-out motion-reduce:transition-none";
-  const gapTransition =
-    "transition-[column-gap] duration-200 ease-out motion-reduce:transition-none";
+  const slotSize = compact ? 20 : 28;
+  const glyphSize = compact ? 20 : 24;
+  // 带单位：motion 不给 column-gap 补 px，裸数字写进去是无效样式，间距就停在原地
+  const rowGap = compact ? 6 : 8;
+  const wordmarkHeight = compact ? 16 : 20;
+  const sizeTransition = reduced ? STATIC_TRANSITION : TITLE_SWITCH_TRANSITION;
+  const renderWordmark = (className?: string) =>
+    overrideText ? (
+      <motion.span
+        className={cn("flex shrink-0 items-center", className)}
+        initial={false}
+        animate={{ height: wordmarkHeight }}
+        transition={sizeTransition}
+      >
+        {/* 字标只给高度，宽度按 viewBox 比例自己算；h-full 压过它自带的 height 属性 */}
+        {overrideText({ size: 20, className: "h-full w-auto" })}
+      </motion.span>
+    ) : null;
 
   return (
     <div
@@ -291,26 +316,27 @@ export function HeaderDesktop({
     >
       {/* 内容绝对定位做切换动画，宽度得另开一行量，否则中间栏只剩 1/3 就开始省略。 */}
       <div className="pointer-events-none invisible flex flex-col items-center justify-center" aria-hidden>
-        <div className={cn("flex items-center", rowGapClass)}>
-          <span className={cn(iconSlotClass, "shrink-0")} />
-          {overrideText ? (
-            <span className="flex shrink-0 items-center">
-              {overrideText({ size: overrideTextSize })}
-            </span>
-          ) : (
+        <motion.div
+          className="flex shrink-0 items-center"
+          initial={false}
+          animate={{ columnGap: `${rowGap}px` }}
+          transition={sizeTransition}
+        >
+          <motion.span
+            className="shrink-0"
+            initial={false}
+            animate={{ width: slotSize, height: slotSize }}
+            transition={sizeTransition}
+          />
+          {renderWordmark() ?? (
             <span className="shrink-0 text-sm font-medium leading-tight">{applicationName}</span>
           )}
-        </div>
+        </motion.div>
         {measuredTitle ? <WindowTitle title={measuredTitle} /> : null}
       </div>
       {!desktop && !offline ? (
-        <div className={cn("absolute inset-0 flex min-w-0 items-center justify-center", rowGapClass)}>
-          <span
-            className={cn(
-              "flex shrink-0 items-center justify-center text-xs text-muted-foreground",
-              iconSlotClass,
-            )}
-          >
+        <div className="absolute inset-0 flex min-w-0 items-center justify-center gap-2">
+          <span className="flex size-7 shrink-0 items-center justify-center text-xs text-muted-foreground">
             ⌘
           </span>
           <span className="truncate text-sm font-medium text-muted-foreground">
@@ -328,20 +354,21 @@ export function HeaderDesktop({
             transition={reduced ? STATIC_TRANSITION : APP_SWITCH_TRANSITION}
             className="absolute inset-0 flex min-w-0 flex-col items-center justify-center"
           >
-            <div className={cn("flex items-center", rowGapClass, gapTransition)}>
-              <span
-                className={cn(
-                  "flex shrink-0 items-center justify-center",
-                  iconSlotClass,
-                  sizeTransition,
-                )}
+            <motion.div
+              className="flex shrink-0 items-center"
+              initial={false}
+              animate={{ columnGap: `${rowGap}px` }}
+              transition={sizeTransition}
+            >
+              <motion.span
+                className="flex shrink-0 items-center justify-center"
+                initial={false}
+                animate={{ width: slotSize, height: slotSize }}
+                transition={sizeTransition}
               >
                 {/* 和 overrideText 同一个优先级：离线 / 锁屏 > 应用替换 > 源图标 */}
                 {offline ? (
-                  <MacBookProIcon
-                    className={cn("text-muted-foreground", iconGlyphClass, sizeTransition)}
-                    aria-hidden
-                  />
+                  <MacBookProIcon className="size-5 text-muted-foreground" aria-hidden />
                 ) : locked ? (
                   <svg
                     viewBox="0 0 24 24"
@@ -350,14 +377,22 @@ export function HeaderDesktop({
                     strokeWidth={1.6}
                     strokeLinecap="round"
                     strokeLinejoin="round"
-                    className={cn("text-muted-foreground", iconGlyphClass, sizeTransition)}
+                    className="size-5 text-muted-foreground"
                     aria-hidden
                   >
                     <rect x="4.5" y="10.5" width="15" height="10" rx="2.5" />
                     <path d="M8 10.5V7.5a4 4 0 0 1 8 0v3" />
                   </svg>
                 ) : activeOverride ? (
-                  activeOverride.renderIcon({ size: compact ? 20 : 24 })
+                  <motion.span
+                    className="flex items-center justify-center"
+                    initial={false}
+                    animate={{ width: glyphSize, height: glyphSize }}
+                    transition={sizeTransition}
+                  >
+                    {/* 替换图标自带 width/height 属性，size-full 压过去，跟着外面这层缩放 */}
+                    {activeOverride.renderIcon({ size: 24, className: "size-full" })}
+                  </motion.span>
                 ) : desktop?.iconUrl ? (
                   <Image
                     src={
@@ -368,7 +403,7 @@ export function HeaderDesktop({
                     alt=""
                     width={28}
                     height={28}
-                    className={cn("object-contain", iconSlotClass, sizeTransition)}
+                    className="size-full object-contain"
                     unoptimized
                     decoding={
                       iconDataUri && desktop.iconUrl === ssrIconUrl ? "sync" : "async"
@@ -377,12 +412,8 @@ export function HeaderDesktop({
                 ) : (
                   <span className="text-xs text-muted-foreground">⌘</span>
                 )}
-              </span>
-              {overrideText ? (
-                <span className="flex shrink-0 items-center text-foreground">
-                  {overrideText({ size: overrideTextSize })}
-                </span>
-              ) : (
+              </motion.span>
+              {renderWordmark("text-foreground") ?? (
                 <span
                   className={cn(
                     "shrink-0 text-sm font-medium leading-tight",
@@ -392,11 +423,15 @@ export function HeaderDesktop({
                   {applicationName}
                 </span>
               )}
-            </div>
+            </motion.div>
             <AnimatePresence
               initial={false}
               onExitComplete={() => {
-                setTitleCache((prev) => ({ ...prev, cached: null }));
+                // 只清自己这个应用的那份：正在滑出的旧面板用的是它最后一次渲染的
+                // props，这个回调可能从那里来，那时新应用的接力不归它管。
+                setTitleCache((prev) =>
+                  prev.key === applicationKey ? { ...prev, cached: null } : prev,
+                );
               }}
             >
               {windowTitle ? (
@@ -407,7 +442,13 @@ export function HeaderDesktop({
                   animate="animate"
                   exit="exit"
                   transition={reduced ? STATIC_TRANSITION : TITLE_SWITCH_TRANSITION}
-                  className="block max-w-full overflow-hidden truncate text-[11px] leading-tight text-muted-foreground"
+                  /*
+                   * shrink-0 是必须的：容器定高 36px，标题进场那一刻图标还是 28px，
+                   * 28 + 2 + 13.75 装不下，flex 会把标题这个 overflow:hidden 的项压到
+                   * 8px —— motion 量 `auto` 高度量到的就是这个被压过的数，动画朝 8px
+                   * 走，结束一放开又跳回 13.75px，肉眼就是一顿。
+                   */
+                  className="block max-w-full shrink-0 overflow-hidden truncate text-[11px] leading-tight text-muted-foreground"
                   aria-hidden
                 >
                   {windowTitle}
