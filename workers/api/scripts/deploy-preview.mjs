@@ -8,6 +8,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { previewWorkerName, previewWorkerOrigin } from "../../../scripts/preview-worker-name.mjs";
+import { previewWranglerBin } from "./preview-wrangler-bin.mjs";
 
 const branch = process.env.WORKERS_CI_BRANCH?.trim() ?? "";
 const name = previewWorkerName(branch);
@@ -17,9 +18,7 @@ if (!name) {
 }
 
 const apiDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-// 生产 deploy 仍用 Wrangler 3：4.135 拒绝这份已经生效的 deleted_classes 迁移。
-// Preview 命令只在 4.135 里，单独装一份。
-const wrangler = resolve(apiDir, "node_modules/wrangler-preview/bin/wrangler.js");
+const wrangler = previewWranglerBin();
 /**
  * Workers Builds 用 WRANGLER_CI_OVERRIDE_NAME 指定 Worker 名，而且它压过
  * --worker-name。预览必须落在生产脚本 api 上；连到别的构建项目时清掉覆盖。

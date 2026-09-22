@@ -1,0 +1,9 @@
+{
+  "name": "preview-wrangler",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Wrangler 4 for wrangler preview only. Its bin must not replace workers/api's wrangler 3.",
+  "dependencies": {
+    "wrangler": "4.135.0"
+  }
+}

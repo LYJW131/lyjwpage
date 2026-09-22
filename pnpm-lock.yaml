@@ -118,15 +118,15 @@ importers:
       '@types/node':
         specifier: ^24.0.0
         version: 24.13.3
+      preview-wrangler:
+        specifier: file:./preview-wrangler
+        version: file:workers/api/preview-wrangler(@cloudflare/workers-types@4.20260702.1)(@types/node@24.13.3)
       typescript:
         specifier: ^5.7.3
         version: 5.9.3
       wrangler:
         specifier: ^3.109.2
         version: 3.109.2(@cloudflare/workers-types@4.20260702.1)
-      wrangler-preview:
-        specifier: npm:wrangler@4.135.0
-        version: wrangler@4.135.0(@cloudflare/workers-types@4.20260702.1)(@types/node@24.13.3)
 
   workers/online-counter:
     devDependencies:
@@ -4391,6 +4391,9 @@ packages:
   prelude-ls@1.2.1:
     resolution: {integrity: sha512-vkcDPrRZo1QZLbn5RLGPpg/WmIQ65qoWWhcGKf/b5eplkkarX0m9z8ppCat4mlOqUsWpyNuYgO3VRyrYHSzX5g==}
     engines: {node: '>= 0.8.0'}
+
+  preview-wrangler@file:workers/api/preview-wrangler:
+    resolution: {directory: workers/api/preview-wrangler, type: directory}
 
   printable-characters@1.0.42:
     resolution: {integrity: sha512-dKp+C4iXWK4vVYZmYSd0KBH5F/h1HoZRsbJ82AVKRO3PEo8L4lBS/vLwhVtpwwuYcoIsVY+1JYKR268yn480uQ==}
@@ -9985,6 +9988,15 @@ snapshots:
       source-map-js: 1.2.1
 
   prelude-ls@1.2.1: {}
+
+  preview-wrangler@file:workers/api/preview-wrangler(@cloudflare/workers-types@4.20260702.1)(@types/node@24.13.3):
+    dependencies:
+      wrangler: 4.135.0(@cloudflare/workers-types@4.20260702.1)(@types/node@24.13.3)
+    transitivePeerDependencies:
+      - '@cloudflare/workers-types'
+      - '@types/node'
+      - bufferutil
+      - utf-8-validate
 
   printable-characters@1.0.42: {}
 
