@@ -3,6 +3,7 @@ import { readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { config } from "./config.js";
+import type { CursorNow } from "./cursor-now.js";
 import { estimateCursorCost, modelName, refreshOnlinePrices } from "./cursor-pricing.js";
 import { readCursorAccessToken } from "./providers/cursor.js";
 
@@ -64,7 +65,18 @@ type Ledger = {
   accountHash: string;
   collectedAt: string;
   days: Record<string, CursorUsageDay>;
+  /**
+   * 上一次全量拉取的时刻和结论。增量那几轮只拉最近两天，判不出「云端还返回哪些旧日」
+   * 「历史里有多少请求没 token 数」这类整段历史才有的事，沿用这次的结论。旧账本没有
+   * 这几个字段，读到时按「从没全量过」处理，下一轮就会全量拉一次。
+   */
+  fullAt?: string;
+  fullProblems?: string[];
+  fullCostComplete?: boolean;
 };
+
+/** 多久全量拉一次，重新核对整段历史（Cursor 迟到的事件、改过的旧事件、新价目）。 */
+const FULL_REFRESH_MS = 6 * 3_600_000;
 
 export class CursorUsageError extends Error {
   constructor(message: string) {
@@ -311,6 +323,11 @@ async function readLedger(): Promise<Ledger | null> {
       accountHash: row.accountHash,
       collectedAt: typeof row.collectedAt === "string" ? row.collectedAt : "",
       days: row.days,
+      ...(typeof row.fullAt === "string" ? { fullAt: row.fullAt } : {}),
+      ...(Array.isArray(row.fullProblems) && row.fullProblems.every((item) => typeof item === "string")
+        ? { fullProblems: row.fullProblems }
+        : {}),
+      ...(typeof row.fullCostComplete === "boolean" ? { fullCostComplete: row.fullCostComplete } : {}),
     };
   } catch {
     return null;
@@ -357,24 +374,74 @@ export function applyLedger(
   const missing = previousDates.filter((date) => !incomingDates.has(date));
   if (missing.length > 0) problems.push(`Kept ${missing.length} active days the cloud no longer returns`);
   for (const day of incoming) fresh[day.date] = day;
-  const ledger: Ledger = { version: 1, accountHash, collectedAt, days: fresh };
-  const days = Object.values(fresh).sort((left, right) => (left.date < right.date ? -1 : 1));
+  const ledger: Ledger = {
+    version: 1,
+    accountHash,
+    collectedAt,
+    days: fresh,
+    fullAt: collectedAt,
+    fullProblems: problems,
+    fullCostComplete: costComplete,
+  };
+  return { ledger, push: pushFrom(ledger, problems, costComplete) };
+}
+
+/**
+ * 增量那一轮：只拉了最近两天，这两天整天替换，其余日子原样留着。整段历史的结论
+ * （问题、费用是否完整）沿用上次全量的，这两天自己不完整的话再往下拉。
+ */
+export function applyIncrementalLedger(
+  previous: Ledger,
+  incoming: CursorUsageDay[],
+  collectedAt: string,
+  costComplete: boolean,
+): { ledger: Ledger; push: CursorUsagePush } {
+  const days = { ...previous.days };
+  for (const day of incoming) days[day.date] = day;
+  const ledger: Ledger = { ...previous, collectedAt, days };
+  return {
+    ledger,
+    push: pushFrom(ledger, previous.fullProblems ?? [], (previous.fullCostComplete ?? false) && costComplete),
+  };
+}
+
+function pushFrom(ledger: Ledger, problems: string[], costComplete: boolean): CursorUsagePush {
+  const { collectedAt } = ledger;
+  const collectedAtMs = Date.parse(collectedAt);
+  const days = Object.values(ledger.days).sort((left, right) => (left.date < right.date ? -1 : 1));
   const coverageStart = days.find((day) => day.totalTokens > 0)?.date ?? days[0]?.date ?? null;
   const coverageEnd = days.at(-1)?.date ?? null;
   const failed = problems.length > 0 || !costComplete;
   return {
-    ledger,
-    push: {
-      collectedAt,
-      state: problems.length > 0 ? "error" : "ok",
-      error: problems.length > 0 ? problems.join("; ") : null,
-      coverageStart,
-      coverageEnd,
-      precision: "measured",
-      costComplete: !failed && Number.isFinite(collectedAtMs),
-      days,
-    },
+    collectedAt,
+    state: problems.length > 0 ? "error" : "ok",
+    error: problems.length > 0 ? problems.join("; ") : null,
+    coverageStart,
+    coverageEnd,
+    precision: "measured",
+    costComplete: !failed && Number.isFinite(collectedAtMs),
+    days,
   };
+}
+
+/** 上海时间「昨天」0 点。增量从这里拉，跨午夜那几分钟和迟到的事件都盖得住。 */
+export function incrementalSince(now: number): number {
+  return Date.parse(`${shanghaiDay(now - 86_400_000)}T00:00:00+08:00`);
+}
+
+function needsFullRefresh(ledger: Ledger | null, accountHash: string, now: number): boolean {
+  if (!ledger || ledger.accountHash !== accountHash || !ledger.fullAt) return true;
+  const fullAt = Date.parse(ledger.fullAt);
+  return !Number.isFinite(fullAt) || now - fullAt >= FULL_REFRESH_MS || now < fullAt;
+}
+
+/** 一批事件里最新的一条，给活动灯用。见 cursor-now.ts。 */
+function latestEvent(events: UsageEvent[]): CursorNow | null {
+  let latest: UsageEvent | null = null;
+  for (const event of events) if (!latest || event.timestampMs > latest.timestampMs) latest = event;
+  return latest
+    ? { lastActivityAt: new Date(latest.timestampMs).toISOString(), currentModel: latest.model || null }
+    : null;
 }
 
 type FetchResult = { status: number; body: unknown; location: string | null };
@@ -436,8 +503,9 @@ export async function fetchCursorHistory(
   cookie: string,
   untilMs: number,
   fetchPage?: PageFetch,
+  sinceMs = 0,
 ): Promise<UsageEvent[]> {
-  const lower = 0;
+  const lower = sinceMs;
   const upper = untilMs;
   if (!Number.isSafeInteger(upper) || upper < lower) throw new CursorUsageError("invalid date range");
   const pages: UsageEvent[][] = [];
@@ -467,23 +535,46 @@ export async function fetchCursorHistory(
   return reconcilePages(pages, expected);
 }
 
-/** 拉完整历史、并进本地账本。没配凭据返回 null。失败不改账本。 */
-export async function collectCursorUsage(now = Date.now()): Promise<CursorUsagePush | null> {
+/**
+ * 拉 Cursor 用量、并进本地账本。没配凭据返回 null。失败不改账本。
+ *
+ * 平时只拉上海时间昨天 0 点以来的事件，账本里其余日子原样留着；6 小时、换账号、或账本
+ * 还没全量过时整段历史重拉一次核对。顺带把拉到的最新一条事件交出去，活动灯用。
+ */
+export async function collectCursorUsage(
+  now = Date.now(),
+): Promise<{ push: CursorUsagePush; latest: CursorNow | null } | null> {
   if (config.limitsFixture) return null;
   const accessToken = await readCursorAccessToken();
   if (!accessToken) return null;
   const session = sessionFromAccessToken(accessToken);
-  const [events] = await Promise.all([fetchCursorHistory(session.cookie, now), refreshOnlinePrices(now)]);
+  const previous = await readLedger();
+  const full = needsFullRefresh(previous, session.accountHash, now);
+  const since = full ? 0 : incrementalSince(now);
+  const [events] = await Promise.all([
+    fetchCursorHistory(session.cookie, now, undefined, since),
+    refreshOnlinePrices(now),
+  ]);
   const aggregated = aggregateEvents(events, now);
   const collectedAt = new Date(now).toISOString();
-  const applied = applyLedger(
-    await readLedger(),
-    session.accountHash,
-    aggregated.days,
-    collectedAt,
-    aggregated.costComplete,
-    aggregated.unmeasured,
-  );
+  let applied: { ledger: Ledger; push: CursorUsagePush };
+  if (full || !previous) {
+    applied = applyLedger(
+      previous,
+      session.accountHash,
+      aggregated.days,
+      collectedAt,
+      aggregated.costComplete,
+      aggregated.unmeasured,
+    );
+  } else {
+    // 窗口里没事件的那天也要写成 0：这两天是这次拉全了的，不是没拉到
+    const yesterday = shanghaiDay(now - 86_400_000);
+    const days = aggregated.days.some((day) => day.date === yesterday)
+      ? aggregated.days
+      : [emptyDay(yesterday), ...aggregated.days];
+    applied = applyIncrementalLedger(previous, days, collectedAt, aggregated.costComplete);
+  }
   await writeLedger(applied.ledger);
-  return applied.push;
+  return { push: applied.push, latest: latestEvent(events) };
 }
