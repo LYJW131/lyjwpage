@@ -65,12 +65,13 @@ export const config = {
   pushTimeoutMs: ms("PUSH_TIMEOUT_MS", 30_000),
 
   /**
-   * Cursor 活动那条小循环，跟限额同一套人数分档，只是快得多：有人在看时每分钟查一次
-   * 最近的用量事件，灯才跟得上。没人看时放慢，省得一直打 Cursor 的 dashboard 接口。
+   * Cursor 活动那条小循环，跟限额同一套人数分档：有人在看时 5 分钟查一次最近的用量事件，
+   * 没人看时再放慢，不一直打 Cursor 的 dashboard 接口。站点那盏灯的窗口按这里的快档放宽，
+   * 见 vibecoding-card 的 CURSOR_ACTIVE_WINDOW_MS，改这里要一起改。
    */
   cursorNow: {
-    liveIntervalMs: ms("CURSOR_NOW_LIVE_INTERVAL_MS", 60_000),
-    openIntervalMs: ms("CURSOR_NOW_OPEN_INTERVAL_MS", 300_000),
+    liveIntervalMs: ms("CURSOR_NOW_LIVE_INTERVAL_MS", 300_000),
+    openIntervalMs: ms("CURSOR_NOW_OPEN_INTERVAL_MS", 600_000),
     idleIntervalMs: ms("CURSOR_NOW_IDLE_INTERVAL_MS", 900_000),
   },
 

@@ -75,7 +75,7 @@ export function prepareVibeCodingNowPayload(parsed: ParsedVibeCodingNow, receive
  * 只推普通 tag 让首屏那份快照跟着走。第一次用 urgent：从「没有限额」到「有」，
  * 不该再给旧的降级快照顶几分钟。
  *
- * `cursorNow` 是另一条节奏：容器有人看时每分钟查一次 Cursor 最近的用量事件，变了
+ * `cursorNow` 是另一条节奏：容器有人看时 5 分钟查一次 Cursor 最近的用量事件，变了
  * 才单独发一封，这种信封不带 `agents`。不带就完全不碰限额镜像 —— 否则限额的心跳会被
  * 活动信号顶着，上报器限额那条路死了也看不出来。
  */

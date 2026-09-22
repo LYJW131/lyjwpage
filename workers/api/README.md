@@ -33,9 +33,9 @@ Mac 用量带 `omittedSources: ["cursor"]` 时整份另加；没有这个字段�
 锚定日按字段做差，之后的日子整段补上。`cursorUsage` 形状不合法时整封 400，限额也不会落地。
 
 可选的 `cursorNow` 是 Cursor 账号最近一条用量事件：`lastActivityAt`（ISO 时刻，必填）和 `currentModel`。
-容器有人看时每分钟查一次，变了才单独发一封，这种信封可以不带 `agents`；不带时完全不碰限额镜像，
+容器有人看时 5 分钟查一次，变了才单独发一封，这种信封可以不带 `agents`；不带时完全不碰限额镜像，
 限额的心跳只看限额那一轮。存在 `vibecoding:cursor-now`，变了就推一条 `vibecoding-now`，
-里面 `active` 固定为 `false` —— Cursor 那盏灯由浏览器按 `lastActivityAt` 在 5 分钟内现算，
+里面 `active` 固定为 `false` —— Cursor 那盏灯由浏览器按 `lastActivityAt` 在 10 分钟内现算（查询间隔加 5 分钟），
 事件停了灯自己灭。`agents`、`cursorUsage`、`cursorNow` 三者全缺时 400。
 
 `/api/ingest/mac` 的 `modules.desktop` 描述此刻的前台应用：`applicationName`（必填）、
