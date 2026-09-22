@@ -76,6 +76,83 @@
       "incidents": [],
       "note": null,
       "stale": true
+    },
+    {
+      "id": "typesafe",
+      "name": "TypeSafe",
+      "indicator": "degraded",
+      "statusUrl": "https://status.typesafe.ai",
+      "components": [
+        { "name": "api.typesafe.ai", "indicator": "degraded" },
+        { "name": "console.typesafe.ai", "indicator": "operational" }
+      ],
+      "incidents": [
+        {
+          "id": "1070670",
+          "title": "API issues",
+          "status": "Degraded",
+          "url": "https://status.typesafe.ai/incident/1070670",
+          "updatedAt": "$now",
+          "body": "We are seeing intermittent downtime and system instability. We are actively investigating."
+        }
+      ],
+      "note": null,
+      "stale": false
+    },
+    {
+      "id": "apple",
+      "name": "Apple",
+      "indicator": "partial_outage",
+      "statusUrl": "https://developer.apple.com/system-status/",
+      "components": [
+        { "name": "Apple Music API", "indicator": "operational" },
+        { "name": "Certificates, Identifiers & Profiles", "indicator": "operational" },
+        { "name": "Developer ID Notary Service", "indicator": "partial_outage" },
+        { "name": "Provisioning Profile Service", "indicator": "operational" },
+        { "name": "Xcode Automatic Configuration", "indicator": "operational" }
+      ],
+      "incidents": [
+        {
+          "id": "notary-outage",
+          "title": "Developer ID Notary Service",
+          "status": "Ongoing",
+          "url": "https://developer.apple.com/system-status/",
+          "updatedAt": "$now",
+          "body": "Users are experiencing a problem with this service. Some users are affected"
+        }
+      ],
+      "note": null,
+      "stale": false
+    },
+    {
+      "id": "vercel",
+      "name": "Vercel",
+      "indicator": "operational",
+      "statusUrl": "https://www.vercel-status.com",
+      "components": [{ "name": "Builds", "indicator": "operational" }],
+      "incidents": [],
+      "note": null,
+      "stale": false
+    },
+    {
+      "id": "github",
+      "name": "GitHub",
+      "indicator": "operational",
+      "statusUrl": "https://www.githubstatus.com",
+      "components": [{ "name": "Git Operations", "indicator": "operational" }],
+      "incidents": [],
+      "note": null,
+      "stale": false
+    },
+    {
+      "id": "cloudflare",
+      "name": "Cloudflare",
+      "indicator": "operational",
+      "statusUrl": "https://www.cloudflarestatus.com",
+      "components": [{ "name": "Workers", "indicator": "operational" }],
+      "incidents": [],
+      "note": null,
+      "stale": false
     }
   ]
 }

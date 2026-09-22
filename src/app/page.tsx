@@ -147,7 +147,7 @@ export default async function Home() {
                 />
                 <AgentStatusCard
                   fallback={snapshot.agentStatus ?? { ok: false, error: "Status unavailable" }}
-                  className="defer-offscreen-always [contain-intrinsic-size:auto_292px]"
+                  className="defer-offscreen-always [contain-intrinsic-size:auto_172px]"
                 />
                 <VibeCodingCard
                   fallback={vibeCoding}

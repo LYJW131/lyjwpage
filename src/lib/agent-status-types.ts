@@ -29,7 +29,16 @@ export type AgentStatusComponent = {
 };
 
 export type AgentStatusRow = {
-  id: "claude" | "codex" | "cursor" | "grok" | "deepseek" | "vercel" | "github" | "cloudflare";
+  id:
+    | "claude"
+    | "codex"
+    | "cursor"
+    | "grok"
+    | "typesafe"
+    | "apple"
+    | "vercel"
+    | "github"
+    | "cloudflare";
   name: string;
   indicator: AgentIndicator;
   statusUrl: string;
