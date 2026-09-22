@@ -65,30 +65,35 @@ webhook 各版本的字段位置本来就不一致，用它带的值等于把版
 
 ## 在 NAS 上跑
 
-部署单元是同目录的 [compose.yaml](compose.yaml)：把这个目录整个拷到 NAS、旁边放一份
-`.env`，就地 build。**别在 Mac 上 build 完把镜像拷过去** —— Mac 是 arm64、群晖是
-x86_64，架构对不上。
+部署单元是同目录的 [compose.yaml](compose.yaml)：NAS 上只放它和旁边一份 `.env`。
+镜像由 [`build-reporters.yml`](../../.github/workflows/build-reporters.yml) 在 GitHub Actions 上构建
+（只出 `linux/amd64`），这个目录有改动合进 main 就推 `ghcr.io/lyjw131/emby-reporter:latest` 和
+`sha-<短哈希>`。机器上只拉镜像，不放源码、不 build。
+线上那份并在 dsm 的 `/volume3/docker/emby-proxy/docker-compose.yml` 里（服务名 `emby-reporter`），
+那边的服务定义要跟这份一样写 `image:`、不写 `build:`。
 
 容器里的端口固定 8787，宿主端口由 `.env` 的 `WEBHOOK_HOST_PORT` 决定：
 nas-host 上 8787 已经归 `homepage-reporter`，那台填 8788。
 
-拷过去（nas-host 的 sftp 子系统是关的，`scp` 用不了，走 tar 管道）：
+送 compose 文件（nas-host 的 sftp 子系统是关的，`scp` 用不了，走 ssh 管道）：
 
 ```bash
-COPYFILE_DISABLE=1 tar czf - -C reporters --exclude node_modules --exclude dist emby-reporter | ssh nas-host 'mkdir -p /srv/lyjwpage && tar xzf - -C /srv/lyjwpage'
+ssh nas-host 'mkdir -p /srv/lyjwpage/emby-reporter && cat > /srv/lyjwpage/emby-reporter/compose.yaml' < reporters/emby-reporter/compose.yaml
 ```
 
-`.env` 单独送，别混进源码目录一起打包：
+`.env` 单独送：
 
 ```bash
 ssh nas-host 'cat > /srv/lyjwpage/emby-reporter/.env && chmod 600 /srv/lyjwpage/emby-reporter/.env' < 本机那份.env
 ```
 
-起：
+起；之后每次 Actions 推了新镜像也是这一句：
 
 ```bash
-ssh nas-host '/usr/local/bin/docker compose -f /srv/lyjwpage/emby-reporter/compose.yaml up -d --build'
+ssh nas-host '/usr/local/bin/docker compose -f /srv/lyjwpage/emby-reporter/compose.yaml pull && /usr/local/bin/docker compose -f /srv/lyjwpage/emby-reporter/compose.yaml up -d'
 ```
+
+群晖的 Docker 要能连上 `ghcr.io`（和拉 Docker Hub 基础镜像一样，按需给 daemon 配代理）。
 
 （`docker` 不在群晖的非交互 PATH 里，得写绝对路径。`-f` 指到哪个文件，compose 就拿
 那个目录当项目目录 —— `.env` 和项目名都从那儿取，不会和 NAS 上别的 compose 项目串。）

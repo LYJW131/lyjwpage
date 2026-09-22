@@ -1,13 +1,14 @@
-# 部署单元。把这个目录整个拷到 NAS，旁边放一份 .env（含密钥，别进仓库），
-# 然后 `docker compose up -d --build`。完整步骤见 README。
+# 部署单元。机器上只放这份 compose.yaml 和旁边一份 .env（含密钥，别进仓库），
+# 然后 `docker compose pull && docker compose up -d`。镜像由
+# .github/workflows/build-reporters.yml 在 GitHub 上构建并推到 GHCR，不在 NAS 上 build。
+# 完整步骤见 README。
 #
 # 自成一个 compose project（项目名取自目录名），不要并进别的 compose 文件 ——
 # 同一个 project 里 `up` 会顺带重建兄弟容器。
 
 services:
   emby-reporter:
-    build: .
-    image: emby-reporter
+    image: ghcr.io/lyjw131/emby-reporter:latest
     container_name: emby-reporter
     restart: unless-stopped
     ports:
