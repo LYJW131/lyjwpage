@@ -4,6 +4,10 @@
  * `models.dev-6e5efcd056370b0853db07ce9b4e02391c8a2d55`）。
  * 不使用 Cursor 返回的 chargedCents / totalCents。
  *
+ * 快照之后补的几支（grok-4-7、muse-spark-1-3、kimi-k3）取 2026-09-23 models.dev 上
+ * 官方厂商（xai / meta / moonshotai）那一条。MacTelemetryHub 的 app 已经不自己算
+ * Cursor（includeCursor: false），那份只剩诊断工具在用，这里不再跟它逐字对齐。
+ *
  * 快照改编自 ccusage 的 models.dev 数据，MIT。
  * Copyright (c) 2025 ryoppippi / models.dev
  */
@@ -82,11 +86,13 @@ const ALIASES: Record<string, string> = {
   "claude-opus-5-thinking-high": "claude-opus-5",
   "claude-sonnet-4-20250514": "claude-sonnet-4",
   "claude-sonnet-5-thinking-high": "claude-sonnet-5",
+  "claude-sonnet-5-thinking-medium": "claude-sonnet-5",
   "cursor-grok-4-5-high": "grok-4-5",
   "cursor-grok-4-5-high-fast": "grok-4-5",
   "cursor-grok-4-6-high": "grok-4-6",
   "cursor-grok-4-6-high-fast": "grok-4-6",
   "cursor-grok-4-6-medium-fast": "grok-4-6",
+  "cursor-grok-4-6-xhigh": "grok-4-6",
   "cursor-grok-4-6-xhigh-fast": "grok-4-6",
   "glm-5-2-high": "glm-5-2",
   "gpt-5-1-codex-high": "gpt-5-1-codex",
@@ -104,6 +110,15 @@ const ALIASES: Record<string, string> = {
   "grok-4-5-fast-xhigh": "grok-4-5",
   "grok-4-5-high": "grok-4-5",
   "grok-4-5-xhigh": "grok-4-5",
+  "grok-4-7-high": "grok-4-7",
+  "grok-4-7-high-fast": "grok-4-7",
+  "grok-4-7-medium-fast": "grok-4-7",
+  "grok-4-7-xhigh": "grok-4-7",
+  "grok-4-7-xhigh-fast": "grok-4-7",
+  "gemini-3-1-pro": "gemini-3-1-pro-preview",
+  "kimi-k3-max": "kimi-k3",
+  "muse-spark-1-3-high": "muse-spark-1-3",
+  "muse-spark-1-3-max": "muse-spark-1-3",
   "premium (codex 5-3)": "gpt-5-3-codex",
   "gemini-3-6-flash-high": "gemini-3-6-flash",
   "gemini-3-6-flash-medium": "gemini-3-6-flash",
@@ -215,9 +230,12 @@ const CATALOG: Record<string, Price> = {
   "grok-4-3": price(rates(1.25, 2.5, 0.2, null), 200_000, rates(2.5, 5, 0.4, null)),
   "grok-4-5": price(rates(2, 6, 0.3, null), 200_000, rates(4, 12, 0.6, null)),
   "grok-4-6": price(rates(2, 6, 0.5, null), 200_000, rates(4, 12, 1, null)),
+  "grok-4-7": price(rates(2, 6, 0.5, null), 200_000, rates(4, 12, 1, null)),
   "grok-build-0-1": price(rates(1, 2, 0.2, null), 200_000, rates(2, 4, 0.4, null)),
   "grok-code-fast-1": price(rates(0.2, 1.5, 0.02, null)),
   "kimi-k2-5": price(rates(0.6, 3, 0.1, null)),
+  "kimi-k3": price(rates(3, 15, 0.3, null)),
+  "muse-spark-1-3": price(rates(1.25, 4.25, 0.15, null)),
   o1: price(rates(15, 60, 7.5, null)),
   "o1-pro": price(rates(150, 600, null, null)),
   o3: price(rates(2, 8, 0.5, null)),
