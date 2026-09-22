@@ -1,7 +1,9 @@
 import { codingTokenUsageKey } from "@/lib/coding-pulse";
+import { normalizeCursorUsageReport, type ParsedCursorUsage } from "@/lib/cursor-usage";
 import { tellStorage } from "@/lib/storage";
 import { displayChanged } from "@shared/display-change";
-import { VIBECODING_TAG } from "@/lib/live-events";
+import { cursorUsageMirror } from "@shared/cursor-usage";
+import { VIBECODING_TAG, VIBECODING_YEAR_TAG } from "@/lib/live-events";
 import type {
   VibeCodingNowPayload
 } from "@/lib/types";
@@ -67,30 +69,46 @@ export function prepareVibeCodingNowPayload(payload: ParsedVibeCodingNow, receiv
  * 不该再给旧的降级快照顶几分钟。
  */
 export async function recordAgentLimits(input: unknown, receivedAt = Date.now()) {
-  return recordPreparedAgentLimits(prepareAgentLimits(input, receivedAt).limits, receivedAt);
+  return recordPreparedAgentLimits(prepareAgentLimits(input, receivedAt));
 }
 
 export type PreparedAgentLimits = {
   source: "agents";
   receivedAt: number;
   limits: ParsedAgentLimits;
+  cursorUsage?: ParsedCursorUsage;
 };
 
 export function prepareAgentLimits(input: unknown, receivedAt = Date.now()): PreparedAgentLimits {
   const parsed = normalizeAgentLimits(input);
   if (!parsed) throw new Error("agents 必须是带 id 的限额行数组，id 不能重复");
-  return { source: "agents", receivedAt, limits: parsed };
+  const root = input && typeof input === "object" ? (input as Record<string, unknown>) : null;
+  let cursorUsage: ParsedCursorUsage | undefined;
+  if (root && "cursorUsage" in root && root.cursorUsage != null) {
+    const report = normalizeCursorUsageReport(root.cursorUsage);
+    if (!report) throw new Error("cursorUsage 必须是 Cursor 的日桶");
+    cursorUsage = report;
+  }
+  return { source: "agents", receivedAt, limits: parsed, cursorUsage };
 }
 
-export async function recordPreparedAgentLimits(parsed: ParsedAgentLimits, receivedAt: number) {
+export async function recordPreparedAgentLimits(prepared: PreparedAgentLimits) {
+  const { limits: parsed, receivedAt, cursorUsage } = prepared;
   const previous = await limitsMirror.get();
   const next = mergeAgentLimits(previous, parsed, receivedAt);
   const changed = displayChanged(previous, next);
+  const writes = [limitsMirror.put(next)];
+  const tags = new Set<string>(changed ? [VIBECODING_TAG] : []);
+  if (cursorUsage) {
+    const previousUsage = await cursorUsageMirror.get();
+    if (displayChanged(previousUsage?.report, cursorUsage)) {
+      tags.add(VIBECODING_TAG);
+      tags.add(VIBECODING_YEAR_TAG);
+    }
+    writes.push(cursorUsageMirror.put({ report: cursorUsage, pushedAt: receivedAt }));
+  }
 
-  await fanout({
-    writes: [limitsMirror.put(next)],
-    tags: changed ? [VIBECODING_TAG] : [],
-  });
+  await fanout({ writes, tags: [...tags] });
 
-  return { accepted: parsed.agents.length };
+  return { accepted: parsed.agents.length, cursorUsage: Boolean(cursorUsage) };
 }

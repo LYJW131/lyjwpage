@@ -1,6 +1,7 @@
 import { config } from "./config.js";
 import { waitForNextRound } from "./cadence.js";
 import { refreshClaudeIfDue } from "./claude-oauth.js";
+import { collectCursorUsage } from "./cursor-usage.js";
 import { collectAgents } from "./limits.js";
 import { failure, info, recovered } from "./log.js";
 import { push, type PushPayload } from "./site.js";
@@ -9,7 +10,8 @@ import { push, type PushPayload } from "./site.js";
  * 各 agent 账号限额 → lyjwpage `/api/ingest/agents`。
  *
  * 限额是厂商账号侧的事实，跟哪台 Mac 无关，所以从 Mac 上报器拆出来，
- * 在 NAS 容器里 24 小时跑。用量仍由 Mac 报。
+ * 在容器里 24 小时跑。Cursor 的用量历史也是账号侧的云端事实，用同一份
+ * 登录态拉，跟限额一起 POST。其余来源的用量仍由 Mac 报。
  *
  * 每轮都 POST，内容没变也发 —— 那一封就是心跳。
  * 五家自己打各家限额接口。Claude 401 时 refreshClaudeOauth 再试一次；
@@ -29,15 +31,26 @@ async function collectPayload(): Promise<PushPayload> {
   /**
    * Claude 刷新失败不能连累整轮：这一封是心跳，不发出去站点会把各家都判成陈旧。
    * 刷不到时 claude 那一行带着 limitsError 照发。
+   * Cursor 历史拉失败同样不能挡住限额心跳，这一轮就不带 cursorUsage。
    */
-  try {
-    await refreshClaudeIfDue();
-  } catch (error) {
-    failure("claude-oauth", error);
-  }
+  const [agents, cursorUsage] = await Promise.all([
+    (async () => {
+      try {
+        await refreshClaudeIfDue();
+      } catch (error) {
+        failure("claude-oauth", error);
+      }
+      return collectAgents();
+    })(),
+    collectCursorUsage().catch((error: unknown) => {
+      failure("cursor-usage", error);
+      return null;
+    }),
+  ]);
   return {
     collectedAt: new Date().toISOString(),
-    agents: await collectAgents(),
+    agents,
+    ...(cursorUsage ? { cursorUsage } : {}),
   };
 }
 

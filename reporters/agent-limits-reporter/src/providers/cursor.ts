@@ -80,7 +80,7 @@ function cursorAuthPath(): string {
   return path.join(base, "cursor", "auth.json");
 }
 
-async function readCursorAccessToken(): Promise<string | null> {
+export async function readCursorAccessToken(): Promise<string | null> {
   const fromEnv = config.cursorAuthToken;
   if (fromEnv) return fromEnv;
   try {

@@ -43,6 +43,11 @@ export type ParsedVibeCodingUsage = {
   totals: VibeCodingTotals;
   topModels: Array<{ model: string; tokens: number }>;
   collectedAt: string;
+  /**
+   * 新版 Mac 显式列出没算进 totals / year 的来源。缺省是旧版 Mac，
+   * Cursor 仍算在合计里。空数组表示新版、而且没有省略任何来源。
+   */
+  omittedSources: string[] | null;
 };
 
 /** `/api/ingest/agents` 一封里的一行：某个 agent 此刻的套餐与限额窗口。 */
@@ -210,6 +215,8 @@ export function normalizeVibeCodingUsage(input: unknown): ParsedVibeCodingUsage 
 
   const rawTotals = root.totals as Record<string, unknown>;
   if (typeof rawTotals.costComplete !== "boolean") return null;
+  const omittedSources = normalizeOmittedSources(root.omittedSources, "omittedSources" in root);
+  if (omittedSources === false) return null;
   return {
     agents,
     totals: {
@@ -237,7 +244,15 @@ export function normalizeVibeCodingUsage(input: unknown): ParsedVibeCodingUsage 
       typeof root.collectedAt === "string" && Number.isFinite(Date.parse(root.collectedAt))
         ? root.collectedAt
         : new Date().toISOString(),
+    omittedSources,
   };
+}
+
+/** 字段缺省是 null（旧 Mac）。在了但不是字符串数组，整份用量不收。 */
+function normalizeOmittedSources(value: unknown, present: boolean): string[] | null | false {
+  if (!present) return null;
+  if (!Array.isArray(value) || value.some((entry) => typeof entry !== "string" || !entry)) return false;
+  return value;
 }
 
 /**

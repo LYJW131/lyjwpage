@@ -6,7 +6,7 @@
 取来、塞进 `/api/ingest/mac` 的 `vibeCodingUsage`。Mac 合盖 / 睡眠 / 离线时限额就冻住。
 限额是厂商账号侧的事实，跟哪台 Mac 无关，所以拆到这个容器里 24 小时跑。
 
-**用量（token / 费用 / 今日 / 年度）仍由 Mac 上报，不动。**
+Claude、Codex、Grok、Antigravity 的用量仍由 Mac 从本机日志上报。Cursor 的用量历史在云端，Mac 合盖时云端线程还在跑，所以这份历史跟限额一起由这个容器拉，用的是同一份 `accessToken`。
 
 站点入口是 `POST /api/ingest/agents`（按数据是谁产生的命名，不是上报程序的名字）。
 每轮都 POST，内容没变也发 —— 那一封就是心跳，站点靠它刷新 `limitsAt`。
@@ -101,10 +101,18 @@ Codex / Grok 的 token 由上报器自己刷新写回（`auth.json`）。
 五个 CLI 仍装进镜像，**只为登录一次**。限额运行时直打接口，不再调 `/usage`。
 
 **cursor。** Linux 上 `agent login` 把 JWT 写到 `/data/.config/cursor/auth.json` 的 `accessToken`（也可
-用 `CURSOR_AUTH_TOKEN` 直接注入）。上报器并发打 `api2.cursor.sh` 的
-`DashboardService/GetCurrentPeriodUsage`、`GetPlanInfo`、`GetHardLimit`（Connect RPC，Bearer JWT，
-不用 Cookie）。上报器不刷新这份 token，401 / 403 时那一行带
+用 `CURSOR_AUTH_TOKEN` 直接注入）。限额打 `api2.cursor.sh` 的
+`DashboardService/GetCurrentPeriodUsage`、`GetPlanInfo`、`GetHardLimit`（Connect RPC，Bearer JWT）。
+用量历史用同一份 JWT 拼 `WorkosCursorSessionToken`，分页打
+`https://cursor.com/api/dashboard/get-filtered-usage-events`，按 `Asia/Shanghai` 收成日桶，
+账本在数据卷的 `cursor-usage.json`（只有聚合，没有 token）。拉失败不挡限额心跳，这一轮不带
+`cursorUsage`，站点留着上一份。上报器不刷新这份 token，401 / 403 时限额那一行带
 `Cursor session expired — run \`agent login\` to re-authenticate.`。
+
+站点读出口才把这份日桶并进 Mac 的合计和年度图。旧 Mac 的合计里已经有 Cursor，锚定日按字段做差，
+之后的日子整段补上；新 Mac 在用量信封里带 `omittedSources: ["cursor"]`，整份日桶另加。
+所以先更新 Worker 和这个容器，再装新的 Mac 上报器。顺序反了的话，新 Mac 不再把 Cursor 算进合计，
+而旧 Worker 还不认识这份日桶，Cursor 会从总数里消失，直到 Worker 更新。
 
 **antigravity。** 登录态在 `/data/.gemini/antigravity-cli/antigravity-oauth-token`。上报器打
 `daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary`（Antigravity 实际使用的后端端点）。到期前 5 分钟或接口回 401 时向

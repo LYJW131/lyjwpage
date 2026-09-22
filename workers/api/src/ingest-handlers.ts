@@ -64,6 +64,6 @@ export async function commitPreparedIngest(command: PreparedIngest): Promise<unk
     case "emby": return commitPreparedEmbyReport(command);
     case "playstation": return commitPreparedPlaystationReport(command);
     case "server": return commitPreparedServerReport(command);
-    case "agents": return recordPreparedAgentLimits(command.limits, command.receivedAt);
+    case "agents": return recordPreparedAgentLimits(command);
   }
 }
