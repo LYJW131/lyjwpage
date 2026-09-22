@@ -116,3 +116,22 @@ to = "StateHub"
 [[migrations]]
 tag = "v2-split-online-counter"
 deleted_classes = ["OnlineCounterRoom"]
+
+# 分支 Preview（wrangler preview）。不继承上面的生产绑定。
+# Durable Object 每个 Preview 各有一套空库；代码走 env.STATE / env.LIVE_PUSH，所以绑定要再声明一次。
+# 不挂 cron、生产域名、KV、D1、R2。公开读取靠 UPSTREAM_API_URL 以生产为准。
+[previews.vars]
+PREVIEW_WORKER = "true"
+UPSTREAM_API_URL = "https://api.homepage.lyjw.llc"
+STORAGE_PREFIX = "lyjwpage-preview"
+ALLOWED_ORIGINS = "https://*.vercel.app"
+EMBY_PUBLIC_URL = "https://emby.lyjw131.com"
+APPLE_MUSIC_STOREFRONT = "cn"
+
+[[previews.durable_objects.bindings]]
+name = "LIVE_PUSH"
+class_name = "LivePushRoom"
+
+[[previews.durable_objects.bindings]]
+name = "STATE"
+class_name = "StateHub"

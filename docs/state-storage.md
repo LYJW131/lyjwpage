@@ -40,7 +40,7 @@ Worker 写入完成后，只有展示变化才 POST `/api/revalidate`。接口�
 
 ## 配置
 
-Vercel 参照根 `.env.example`，仅公开后端源、缓存通知鉴权和 R2 公开源（`/img/*` rewrite 的目的地与首屏图标内联的来源；Worker 不配交付域）。Worker 参照 `workers/api/.dev.vars.example` 与 wrangler.toml；状态数据用的 GitHub Token 使用 Worker Secret，Apple Music 凭据来自 Mac 上报。`UPSTREAM_API_URL` 出现在本地 `.dev.vars` 和分支影子 `wrangler.preview.toml`：以生产为主、本地或影子补缺，生产 `ok:true` 的快照字段和端点用生产的，生产没有的才用这边的（只读），生产配置不设它。`NEXT_PUBLIC_BACKEND_URL` 与 `NEXT_PUBLIC_ONLINE_COUNTER_URL` 构建期写入前端，分别提供状态/推送源与独立在线人数源。Vercel 预览构建会把后端源改成该分支的影子 Worker，生产构建仍用面板里的值。改值需要重新部署。
+Vercel 参照根 `.env.example`，仅公开后端源、缓存通知鉴权和 R2 公开源（`/img/*` rewrite 的目的地与首屏图标内联的来源；Worker 不配交付域）。Worker 参照 `workers/api/.dev.vars.example` 与 wrangler.toml；状态数据用的 GitHub Token 使用 Worker Secret，Apple Music 凭据来自 Mac 上报。`UPSTREAM_API_URL` 出现在本地 `.dev.vars` 和 `wrangler.toml` 的 `[previews.vars]`：以生产为主、本地或 Preview 补缺，生产 `ok:true` 的快照字段和端点用生产的，生产没有的才用这边的（只读），生产版本不设它。`NEXT_PUBLIC_BACKEND_URL` 与 `NEXT_PUBLIC_ONLINE_COUNTER_URL` 构建期写入前端，分别提供状态/推送源与独立在线人数源。Vercel 预览构建会把后端源改成该分支的影子 Worker，生产构建仍用面板里的值。改值需要重新部署。
 
 Vercel 可选配一份 `GITHUB_TOKEN`，只给构建期读公开仓的首页「最近提交」列表用（`use cache` + `cacheLife("max")`，随每次部署取一次）。不配也能匿名读，配上只是避开匿名限额；它不参与状态端点，浏览器和 HTML 拿不到。「本仓库」卡的贡献统计和贡献日历一样由 Worker 取数、缓存并经 `/api/home` 与 `/api/status/github-repo` 提供。贡献者名单走 REST `/stats/contributors`（匿名也能读），顶部 COMMITS / ADDITIONS / DELETIONS 三个总数走 GraphQL，必须有 Worker 上的 `GITHUB_TOKEN`，没有就显示「—」；这三个数不能由名单加总得出，因为 `Co-authored-by` 的提交在贡献口径下会按人各记一遍。增删行要翻整条提交历史，结果以 `github-repo:churn` 锚在当前 HEAD 上存 30 天，之后每轮只补新增的那几条。
 
