@@ -261,6 +261,26 @@ test("一家失败时留着上一轮，其它家照常更新", async () => {
   assert.notEqual(agentStatusFingerprint(first), agentStatusFingerprint(second));
 });
 
+test("HTML 实体只解一层，双重编码不会再被解开", () => {
+  const feed = `<?xml version="1.0"?>
+<rss><channel>
+  <item>
+    <title>Grok Build</title>
+    <link>https://status.x.ai/grok-build/INC3</link>
+    <guid>INC3</guid>
+    <category>disruption</category>
+    <description><![CDATA[
+      <h3>Status: IDENTIFIED</h3>
+      <p>Severity: disruption</p>
+      <h3>Update</h3>
+      <p>Tom &amp;amp; Jerry saw &amp;lt;build&amp;gt; &#39;ok&#39; &#x26;lt;script&amp;gt;</p>
+    ]]></description>
+  </item>
+</channel></rss>`;
+  const items = parseXaiFeed(feed);
+  assert.equal(items[0]?.body, "Tom &amp; Jerry saw &lt;build&gt; 'ok' &lt;script&gt;");
+});
+
 test("状态页不再列出盯着的组件时，不退回整页灯", async () => {
   const body = summary({
     status: { indicator: "none" },

@@ -125,19 +125,27 @@ function clip(value: string): string {
 }
 
 function decodeEntities(value: string): string {
-  const named = value
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;|&#39;/g, "'");
-  const code = (raw: string, radix: number) => {
-    const point = Number.parseInt(raw, radix);
-    return Number.isFinite(point) && point >= 0 && point <= 0x10ffff ? String.fromCodePoint(point) : "";
-  };
-  return named
-    .replace(/&#(\d+);/g, (_, digits: string) => code(digits, 10))
-    .replace(/&#x([0-9a-f]+);/gi, (_, digits: string) => code(digits, 16));
+  return value.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (whole, body: string) => {
+    if (body[0] === "#") {
+      const hex = body[1]?.toLowerCase() === "x";
+      const code = Number.parseInt(body.slice(hex ? 2 : 1), hex ? 16 : 10);
+      return Number.isFinite(code) && code >= 0 && code <= 0x10ffff ? String.fromCodePoint(code) : "";
+    }
+    switch (body.toLowerCase()) {
+      case "amp":
+        return "&";
+      case "lt":
+        return "<";
+      case "gt":
+        return ">";
+      case "quot":
+        return '"';
+      case "apos":
+        return "'";
+      default:
+        return whole;
+    }
+  });
 }
 
 function plain(html: string): string {

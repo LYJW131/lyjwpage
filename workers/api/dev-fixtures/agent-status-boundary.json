@@ -1,0 +1,57 @@
+{
+  "fetchedAt": "$now",
+  "agents": [
+    {
+      "id": "claude",
+      "name": "Claude Code",
+      "indicator": "unavailable",
+      "statusUrl": "https://status.claude.com",
+      "components": [],
+      "incidents": [],
+      "note": "The status page no longer lists the components this row watches.",
+      "stale": false
+    },
+    {
+      "id": "codex",
+      "name": "Codex",
+      "indicator": "partial_outage",
+      "statusUrl": "https://status.openai.com",
+      "components": [
+        { "name": "CLI", "indicator": "partial_outage" }
+      ],
+      "incidents": [],
+      "note": null,
+      "stale": true
+    },
+    {
+      "id": "cursor",
+      "name": "Cursor",
+      "indicator": "unavailable",
+      "statusUrl": "https://status.cursor.com",
+      "components": [],
+      "incidents": [],
+      "note": "Status check failed.",
+      "stale": false
+    },
+    {
+      "id": "grok",
+      "name": "Grok Build",
+      "indicator": "unavailable",
+      "statusUrl": "https://status.x.ai/grok-build",
+      "components": [],
+      "incidents": [],
+      "note": "Grok Build status could not be read from status.x.ai.",
+      "stale": false
+    },
+    {
+      "id": "antigravity",
+      "name": "Antigravity",
+      "indicator": "unmonitored",
+      "statusUrl": "https://aistudio.google.com/status",
+      "components": [],
+      "incidents": [],
+      "note": "Google doesn't publish a status page for Antigravity. This link is the Gemini API status board.",
+      "stale": false
+    }
+  ]
+}
