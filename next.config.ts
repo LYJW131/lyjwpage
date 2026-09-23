@@ -185,17 +185,17 @@ const nextConfig: NextConfig = {
       },
     ],
     /**
-     * 仅供「自建部署 + 本机走 fake-IP 代理」这一种情况。
+     * 本机走 fake-IP 代理时放行图片优化器取「私有 IP」上的源图。
      *
-     * Clash/Surge 那类代理在 TUN 模式下把域名解析到 198.18.0.0/15，而 Next 16
-     * 的 SSRF 防护看到私有 IP 就拒绝取图（实测：hostname resolved to private
+     * Clash/Surge（本机是 OpenClash）那类代理在 TUN 模式下把域名解析到 198.18.0.0/15，
+     * 而 Next 16 的 SSRF 防护看到私有 IP 就拒绝取图（实测：hostname resolved to private
      * IP 198.18.8.12，连问 1.1.1.1 都是这个结果，是网络层劫持不是本机 DNS）。
      *
-     * 默认关，Vercel 上不要设 —— 那边解析得到真实公网 IP，开了纯属白白削弱
-     * SSRF 防护。真正干净的解法是在代理里给 blobstore.apple.com 配直连规则，
-     * 这个开关只是不想让部署被代理配置卡住。
+     * `next dev` 一律放开：开发服务器只在本机跑，不开的话封面、头像全是 400。
+     * 生产构建默认关，Vercel 上不要设 —— 那边解析得到真实公网 IP，开了纯属白白
+     * 削弱 SSRF 防护；自建部署又在 fake-IP 网络里时才设 IMAGE_ALLOW_LOCAL_IP=true。
      */
-    dangerouslyAllowLocalIP: process.env.IMAGE_ALLOW_LOCAL_IP === "true",
+    dangerouslyAllowLocalIP: process.env.NODE_ENV === "development" || process.env.IMAGE_ALLOW_LOCAL_IP === "true",
   },
 };
 
