@@ -4,16 +4,21 @@ import CloudflareColor from "@lobehub/icons/es/Cloudflare/components/Color";
 import Github from "@lobehub/icons/es/Github/components/Mono";
 import Vercel from "@lobehub/icons/es/Vercel/components/Mono";
 import NumberFlow from "@number-flow/react";
+import { Server as ServerIcon } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { colorForRank, RepoContributions } from "@/components/live/repo-contributions";
+import { formatUptime } from "@/components/live/server-card";
 import { percent, SentryMark, UptimeStrip } from "@/components/live/uptime-strip";
+import { useStale } from "@/hooks/use-stale";
+import { fieldPerformanceScore } from "@/lib/field-score";
+import { SERVER_STALE_MS } from "@/lib/freshness";
 import { useStatus } from "@/hooks/use-status";
 import { CLOUDFLARE_WORKERS, type CloudflareWorkersPayload } from "@/lib/cloudflare-workers-types";
 import type { GithubRecentCommit } from "@/lib/github-recent-commits";
-import { CLOUDFLARE_WORKERS_PATH, GITHUB_REPO_PATH, SENTRY_PATH, VERCEL_DEPLOYMENTS_PATH } from "@/lib/paths";
+import { CLOUDFLARE_WORKERS_PATH, GITHUB_REPO_PATH, SENTRY_PATH, SERVER_PATH, VERCEL_DEPLOYMENTS_PATH } from "@/lib/paths";
 import type { SentryErrorSeries, SentryStatusPayload } from "@/lib/sentry-status-types";
 import { site } from "@/lib/site";
-import type { GithubRepoPayload, StatusResponse } from "@/lib/types";
+import type { GithubRepoPayload, ServerPayload, StatusResponse } from "@/lib/types";
 import type { LighthouseVitals, VercelDeployment, VercelDeploymentsPayload } from "@/lib/vercel-deployments-types";
 import { cn } from "@/lib/utils";
 
@@ -62,6 +67,17 @@ function vital(value: number | null | undefined, unit: string) {
   return unit === "s" ? `${(value / 1000).toFixed(2)}s` : unit === "ms" ? `${Math.round(value)}ms` : String(Number(value.toFixed(3)));
 }
 
+/** Lighthouse 自己的档位：90 分及格算绿，50 到 89 黄；真实访客的分沿用同一套 */
+const scoreTone = (score: number | null | undefined) =>
+  score == null ? "text-muted-foreground" : score >= 90 ? "text-emerald-600 dark:text-emerald-400" : score >= 50 ? "text-amber-600" : "text-red-500";
+
+const CRON_LABEL = { ok: "OK", error: "Failing", missed: "Missed", timeout: "Timed out", unknown: "Waiting" } as const;
+
+/** 服务格的一行小字：标签淡、值实，和 Req / CPU 那几段同一种写法 */
+function Fact({ label, value, title, className }: { label: string; value: string; title?: string; className?: string }) {
+  return <span className="whitespace-nowrap" title={title}>{label} <span className={cn("text-foreground", className)}>{value}</span></span>;
+}
+
 /** 真实访客那一行，列与上面两行对齐：TBT 那一列换成 INP */
 const fieldValues = (vitals: SentryStatusPayload["vitals"]) => ({
   lcpMs: vitals?.lcpP75Ms, tbtMs: vitals?.inpP75Ms, cls: vitals?.clsP75, fcpMs: vitals?.fcpP75Ms, ttfbMs: vitals?.ttfbP75Ms,
@@ -76,11 +92,12 @@ function ErrorCount({ series, title }: { series: SentryErrorSeries | undefined; 
   </span>;
 }
 
-export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallback, sentryFallback, recentCommits, className }: {
+export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallback, sentryFallback, serverFallback, recentCommits, className }: {
   githubFallback: StatusResponse<GithubRepoPayload>;
   vercelFallback: StatusResponse<VercelDeploymentsPayload>;
   cloudflareFallback: StatusResponse<CloudflareWorkersPayload>;
   sentryFallback: StatusResponse<SentryStatusPayload>;
+  serverFallback: StatusResponse<ServerPayload>;
   recentCommits: GithubRecentCommit[];
   className?: string;
 }) {
@@ -90,6 +107,10 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
   const { data: sentry } = useStatus<SentryStatusPayload>(SENTRY_PATH, 5 * 60_000, { fallback: sentryFallback });
   const { functions, analytics } = vercel?.metrics ?? {};
   const cron = sentry?.cron, siteErrors = sentry?.errors?.site, apiErrors = sentry?.errors?.worker;
+  // 出口节点那张卡用的同一条键，SWR 只取一份
+  const { data: server } = useStatus<ServerPayload>(SERVER_PATH, 60_000, { fallback: serverFallback });
+  const serverStale = useStale(server?.pushedAt, server?.staleAfterMs ?? SERVER_STALE_MS) || Boolean(server?.staleAtSource);
+  const unresolved = sentry?.errors ? sentry.errors.site.unresolved + sentry.errors.worker.unresolved : null;
   // 主站量的是 lyjw.me；把域名写在表头，省得和访客当前所在的域名混起来。
   // 每一格是滚动窗口内各轮实测的中位数，轮数和窗口在表头的提示里。
   const pagespeed = vercel?.pagespeed, measured = pagespeed ? new URL(pagespeed.url).host : null;
@@ -150,16 +171,17 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
             return <div key={device} className="grid h-11 grid-cols-[40px_repeat(6,minmax(0,1fr))] items-center gap-1 text-right text-[10px] tabular-nums lg:grid-cols-[88px_repeat(6,minmax(0,1fr))] lg:text-xs">
               <span className="text-left text-[11px] text-muted-foreground">{device === "desktop" ? "Desktop" : "Mobile"}</span>
               {/* Lighthouse 自己的档位：90 分及格算绿，50 到 89 黄 */}
-              <span className={cn("text-xl font-medium lg:text-2xl", score == null ? "text-muted-foreground" : score >= 90 ? "text-emerald-600 dark:text-emerald-400" : score >= 50 ? "text-amber-600" : "text-red-500")}>{score ?? "—"}</span>
+              <span className={cn("text-xl font-medium lg:text-2xl", scoreTone(score))}>{score ?? "—"}</span>
               {vitalRows.map(row => <span key={row.key}>{vital(pagespeed?.[device][row.key], row.unit)}</span>)}
             </div>;
           })}
           {sentry?.vitals && (() => {
-            const field = fieldValues(sentry.vitals), samples = sentry.vitals.samples;
+            const field = fieldValues(sentry.vitals), samples = sentry.vitals.samples, score = fieldPerformanceScore(sentry.vitals);
             return <div className="grid h-11 grid-cols-[40px_repeat(6,minmax(0,1fr))] items-center gap-1 text-right text-[10px] tabular-nums lg:grid-cols-[88px_repeat(6,minmax(0,1fr))] lg:text-xs"
               title={samples ? `Real visitors via Sentry · p75 of ${number.format(samples)} page loads, last 7 days` : "Real visitors via Sentry · no page loads sampled yet"}>
               <span className="text-left text-[11px] text-muted-foreground">Users</span>
-              <span className="text-[10px] text-muted-foreground">p75</span>
+              <span className={cn("text-xl font-medium lg:text-2xl", scoreTone(score))}
+                title="Web Vitals score of real visitors: LCP 30%, INP 30%, CLS 15%, FCP 15%, TTFB 10%, from 7-day p75">{score ?? "—"}</span>
               {vitalRows.map(row => <span key={row.key}>{vital(field[row.key], row.unit)}</span>)}
             </div>;
           })()}
@@ -171,7 +193,7 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
           <li className="bg-surface px-4 py-2.5">
             <div className="flex items-center gap-1.5 text-[11px] leading-4">
               <a href={`${site.vercel}/observability/vercel-functions`} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 hover:underline"><Vercel size={11} />Vercel</a>
-              <ErrorCount series={siteErrors} title={`Site errors in 24h (browser + functions) · crash-free sessions ${percent(sentry?.sessions?.crashFreeRate)}`} />
+              <ErrorCount series={siteErrors} title="Site errors in 24h (browser + functions)" />
               <CommitSha commit={vercel?.production?.commit} />
             </div>
             <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] tabular-nums text-muted-foreground">
@@ -186,10 +208,6 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
               <div className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4">
                 <span className="flex shrink-0"><CloudflareColor size={14} /></span>
                 <span className="min-w-0 truncate">{name}</span>
-                {name === "api" && cron && (
-                  <span title={`Every-minute cron: ${cron.status}${cron.lastCheckInAt ? ` · last check-in ${time.format(cron.lastCheckInAt)} UTC+8` : ""}`}
-                    className={cn("size-1.5 shrink-0 rounded-full", cron.status === "ok" ? "bg-live" : cron.status === "unknown" ? "bg-live-off" : "bg-red-500")} />
-                )}
                 {name === "api" && <ErrorCount series={apiErrors} title="API Worker errors in 24h" />}
                 <CommitSha commit={worker?.deployment?.commit} />
               </div>
@@ -200,6 +218,31 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
               </div>
             </li>;
           })}
+          <li className="bg-surface px-4 py-2.5" title={server ? `${server.hostname} · ${server.city ?? ""} · load ${server.load1.toFixed(2)}` : "Exit node"}>
+            <div className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4">
+              <ServerIcon size={12} className="shrink-0" aria-hidden />
+              <a href="#exit-node" className="min-w-0 truncate hover:underline">{server?.id ?? "misaka-jp"}</a>
+              <span className={cn("ml-auto shrink-0 text-[10px]", server && serverStale ? "text-red-500" : "text-muted-foreground")}>{server ? (serverStale ? "Offline" : `Up ${formatUptime(server.uptimeSeconds)}`) : "—"}</span>
+            </div>
+            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] tabular-nums text-muted-foreground">
+              <Fact label="CPU" value={server ? `${server.cpuUsagePercent.toFixed(1)}%` : "—"} />
+              <Fact label="Mem" value={server ? `${Math.round(server.memoryUsedBytes / server.memoryTotalBytes * 100)}%` : "—"} />
+              <Fact label="Disk" value={server ? `${Math.round(server.diskUsedBytes / server.diskTotalBytes * 100)}%` : "—"} />
+            </div>
+          </li>
+          <li className="bg-surface px-4 py-2.5">
+            <div className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4">
+              <a href={site.sentry} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 hover:underline"><SentryMark size={12} />Sentry</a>
+            </div>
+            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] tabular-nums text-muted-foreground">
+              <Fact label="Crash-free" value={percent(sentry?.sessions?.crashFreeRate)}
+                title={sentry?.sessions ? `${number.format(sentry.sessions.count)} browser sessions in 24h` : undefined} />
+              <Fact label="Open" value={unresolved == null ? "—" : number.format(unresolved)} title="Unresolved issues, site and API" />
+              <Fact label="Cron" value={cron ? CRON_LABEL[cron.status] : "—"}
+                className={cron && cron.status !== "ok" && cron.status !== "unknown" ? "text-red-500" : undefined}
+                title={cron?.lastCheckInAt ? `API Worker every-minute cron · last check-in ${time.format(cron.lastCheckInAt)} UTC+8` : "API Worker every-minute cron"} />
+            </div>
+          </li>
         </ul>
       </section>
     </div>
