@@ -9,7 +9,7 @@ import GrokIcon from "@lobehub/icons/es/Grok/components/Mono";
 import OpenAIIcon from "@lobehub/icons/es/OpenAI/components/Mono";
 import VercelIcon from "@lobehub/icons/es/Vercel/components/Mono";
 import { ExternalLink, X } from "lucide-react";
-import { useCallback, useId, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 import { Card } from "@/components/ui/card";
 import { Modal } from "@/components/ui/modal";
@@ -235,11 +235,48 @@ export function AgentStatusCard({
   const close = useCallback(() => setOpenId(null), []);
   const open = data?.agents.find((agent) => agent.id === openId) ?? null;
   const checked = data ? checkedAt.format(data.fetchedAt) : null;
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const hasColumns = Boolean(data?.agents.length);
+  /**
+   * 没被手动滑过就一直停在第一列：换列数、数据刷新、浏览器恢复滚动位置
+   * 或吸附重算把它挪走时都拉回最左。摸到、滚轮横滑或键盘操作过才算手动。
+   */
+  useEffect(() => {
+    const scroller = scrollerRef.current;
+    if (!scroller) return;
+    let touched = false;
+    const touch = () => {
+      touched = true;
+    };
+    const touchWheel = (event: WheelEvent) => {
+      if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) touched = true;
+    };
+    const home = () => {
+      if (!touched && scroller.scrollLeft !== 0) scroller.scrollTo({ left: 0, behavior: "instant" });
+    };
+    const observer = new ResizeObserver(home);
+    observer.observe(scroller);
+    scroller.addEventListener("pointerdown", touch, { passive: true });
+    scroller.addEventListener("touchstart", touch, { passive: true });
+    scroller.addEventListener("keydown", touch);
+    scroller.addEventListener("wheel", touchWheel, { passive: true });
+    scroller.addEventListener("scroll", home, { passive: true });
+    home();
+    return () => {
+      observer.disconnect();
+      scroller.removeEventListener("pointerdown", touch);
+      scroller.removeEventListener("touchstart", touch);
+      scroller.removeEventListener("keydown", touch);
+      scroller.removeEventListener("wheel", touchWheel);
+      scroller.removeEventListener("scroll", home);
+    };
+  }, [hasColumns]);
   /**
    * 三列各三行，按卡片自己的宽度一次露出 3 / 2 / 1 列，放不下的靠 scroll-snap
    * 左右滑。一列至少约 287px（2 列从卡片宽 36rem 起、3 列从 54rem 起）：
    * 最长的一行是 Cloudflare 加 Partial outage，约 284px。
-   * 列间的竖线是容器底色从 1px 间隙里露出来的，滑到哪一列边上都不会贴着卡片边框。
+   * 列间竖线是每列左侧 1px 间隙里的伪元素，跟着内容一起滑，滑到哪一列边上都不会
+   * 贴着卡片边框；容器本身不上底色，iOS 横向回弹拉出来的只是卡片本色。
    * 纯 CSS 滑动，不引轮播库。
    */
   const columns: AgentStatusRow[][] = [];
@@ -255,11 +292,14 @@ export function AgentStatusCard({
       action={checked ? <span title={`${checked} UTC+8`}>{checked}</span> : undefined}
     >
       {data ? (
-        <div className="@container flex snap-x snap-mandatory gap-px overflow-x-auto overscroll-x-contain bg-line scrollbar-none [&::-webkit-scrollbar]:hidden">
+        <div
+          ref={scrollerRef}
+          className="@container flex snap-x snap-mandatory gap-px overflow-x-auto overscroll-x-contain scrollbar-none [&::-webkit-scrollbar]:hidden"
+        >
           {columns.map((column) => (
             <ul
               key={column[0]?.id ?? "column"}
-              className="w-full shrink-0 snap-start divide-y divide-line bg-surface @[36rem]:w-[calc((100%-1px)/2)] @[54rem]:w-[calc((100%-2px)/3)]"
+              className="relative w-full shrink-0 snap-start divide-y divide-line not-first:before:absolute not-first:before:inset-y-0 not-first:before:-left-px not-first:before:w-px not-first:before:bg-line @[36rem]:w-[calc((100%-1px)/2)] @[54rem]:w-[calc((100%-2px)/3)]"
             >
               {column.map((agent) => {
                 const label = indicatorLabel(agent.indicator);
