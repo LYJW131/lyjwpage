@@ -54,6 +54,12 @@ test('power preserves watts, excludes old level-only rows and expires current va
  assert.equal(planPulseSample(current,{...current,t:90000,powerW:48.26})?.powerW,48.3);
  assert.equal(planPulseSample(current,{...current,t:60000+300000,powerW:43})?.powerW,43);
  assert.equal(planPulseSample(current,{...current,t:70000,powerW:0})?.powerW,0);
+ // 待机门槛以下的 0 ↔ 0.5 W 抖动不记；跨过门槛立刻记
+ const idle={t:60000,level:1 as const,powerW:0};
+ assert.equal(planPulseSample(idle,{...idle,t:100000,powerW:0.5}),null);
+ assert.equal(planPulseSample({...idle,powerW:0.5},{...idle,t:100000,powerW:0}),null);
+ assert.equal(planPulseSample(idle,{...idle,t:61000,powerW:5})?.powerW,5);
+ assert.equal(planPulseSample({...idle,powerW:5},{...idle,t:61000,powerW:0.5})?.powerW,0.5);
  assert.equal(parsePulseSample(JSON.stringify({...current,powerW:-1})),null);
 });
 

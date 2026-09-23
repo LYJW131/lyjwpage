@@ -5,6 +5,7 @@ import {
   PULSE_SILENT_AFTER_MS,
   PULSE_HINT_MAX,
 } from "@/lib/limits";
+import { CHARGING_IDLE_MAX_W } from "@/lib/home-layout";
 import { toAssessmentColumns, toSegmentColumns } from "@/lib/pulse-columns";
 import { pulseWindowAt } from "@/lib/pulse-window";
 import { key, withStorage } from "@/lib/storage";
@@ -82,8 +83,9 @@ export function toPulseSample(next: {
  * - `t` 不前进 → 丢掉。这是源站 receivedAt，同一 StateHub 上单调；≤ 就是重复或乱序。
  * - 带 until 的已完成区间 → 写入，包括相邻同档和空闲，不能丢失终点。
  * - level 或 hint 变了 → 写入（状态翻面）。
- * - 瓦数：归零 / 通电立刻写；都在通电时至少隔 30 秒，且变得够明显（≥ 2 W 且 ≥ 10%）
- *   才写。插着线时读数每封都在抖，逐封记下来一天两三千条、画出来看不出差别；
+ * - 瓦数：跨过待机门槛（CHARGING_IDLE_MAX_W）立刻写；门槛以下的抖动不写——插着线
+ *   不在充时读数在 0 和 0.5 W 之间约 40 秒跳一次，从前每跳一次记一条，占了充电
+ *   泳道八成；都在通电时至少隔 30 秒，且变得够明显（≥ 2 W 且 ≥ 10%）才写。
  *   小幅漂移由 5 分钟再确认那一笔带上最新读数。跨档由上面的 level 接住。
  * - 距上一笔 ≥ 5 分钟 → 写入。序列是阶跃函数，每个点撑到下一个；
  *   隔这么久再确认一次，上报器死了会在图上露出缺口。
@@ -97,9 +99,9 @@ export function planPulseSample(
   if (!last) return sample;
   if (sample.t <= last.t) return null;
   if (sample.until != null) return sample;
-  // Power changes are sampled at most once per 30 seconds; zero/nonzero transitions are immediate.
+  // Power changes are sampled at most once per 30 seconds; crossing the idle threshold is immediate.
   if (sample.powerW != null && last.powerW != null && sample.powerW !== last.powerW &&
-      sample.powerW > 0 && last.powerW > 0 && sample.t - last.t < 30_000) return null;
+      sample.powerW > CHARGING_IDLE_MAX_W && last.powerW > CHARGING_IDLE_MAX_W && sample.t - last.t < 30_000) return null;
   if (sample.level !== last.level || sample.hint !== last.hint || powerMoved(last.powerW, sample.powerW)) {
     return sample;
   }
@@ -111,7 +113,10 @@ export function planPulseSample(
 
 function powerMoved(before: number | undefined, after: number | undefined): boolean {
   if (before === after) return false;
-  if (before == null || after == null || before === 0 || after === 0) return true;
+  if (before == null || after == null) return true;
+  const idleBefore = before <= CHARGING_IDLE_MAX_W;
+  if (idleBefore !== after <= CHARGING_IDLE_MAX_W) return true;
+  if (idleBefore) return false;
   return Math.abs(after - before) >= Math.max(2, 0.1 * Math.max(before, after));
 }
 

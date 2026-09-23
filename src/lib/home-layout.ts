@@ -12,9 +12,15 @@ import type { ChargerStatus, LocalNowPlaying, PowerBankStatus, VibeCodingPayload
  * 判据写在这里而不是各自抄一份：组件改了阈值，Worker 这侧跟着变。
  */
 
+/**
+ * 这个瓦数以下算待机：插着线、没真在充时，读数在 0 和零点几瓦之间来回跳。
+ * 充电头这一格和 Pulse 充电泳道的「通电 / 断电」共用这一个门槛。
+ */
+export const CHARGING_IDLE_MAX_W = 1;
+
 /** 充电头这一格亮不亮（media-pair 按它排版） */
 export function chargerActive(status: Pick<ChargerStatus, "connected" | "totalPower"> | null | undefined): boolean {
-  return Boolean(status?.connected && status.totalPower > 1);
+  return Boolean(status?.connected && status.totalPower > CHARGING_IDLE_MAX_W);
 }
 
 /**
