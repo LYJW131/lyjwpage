@@ -31,7 +31,8 @@ function CollectionWindow({ start, end }: { start?: number; end?: number }) {
   if (start == null || end == null) return null;
   const minutes = Math.round((end - start) / 60_000);
   const duration = minutes % 1440 === 0 ? `${minutes / 1440}d` : minutes % 60 === 0 ? `${minutes / 60}h` : `${minutes}m`;
-  return <span className="whitespace-nowrap" title={`${time.format(start)} — ${time.format(end)} · UTC+8`}>Last {duration}</span>;
+  // 靠右，和名字那一行的提交哈希对齐成一列
+  return <span className="ml-auto whitespace-nowrap" title={`${time.format(start)} — ${time.format(end)} · UTC+8`}>Last {duration}</span>;
 }
 
 function CommitSha({ commit }: { commit: { sha: string; branch: string | null; message: string | null } | null | undefined }) {
