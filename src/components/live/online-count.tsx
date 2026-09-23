@@ -75,7 +75,7 @@ function SourceHint({ connected }: { connected: boolean }) {
         aria-label="Data source"
         aria-expanded={open}
         onClick={() => setOpen((prev) => !prev)}
-        className="text-muted-foreground/70 transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:outline-none"
+        className="-m-2 p-2 text-muted-foreground/70 transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:outline-none"
       >
         <CircleQuestionMark className="size-3.5" aria-hidden />
       </button>
