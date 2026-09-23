@@ -1059,7 +1059,7 @@ export type ServerWindow = {
   /** 窗口起止，epoch 毫秒 */
   start: number;
   end: number;
-  /** 窗口内上报了几轮，站点卡片 misaka-jp 那格的 Req */
+  /** 窗口内上报了几轮，站点卡片 misaka-jp 那格的 Push */
   reports: number;
   /** 0–100，按每段时长加权 */
   cpuAvgPercent: number | null;
