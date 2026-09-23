@@ -1,5 +1,6 @@
 "use client";
 import { backendUrl } from "@/lib/backend-url";
+import { parseAppleMusicUrl } from "@/lib/motion-artwork-url";
 import { useEffect, useState } from "react";
 
 export type MotionArtworkResult = {
@@ -18,14 +19,11 @@ const pendingRequests = new Map<string, Promise<MotionArtworkResult | null>>();
 const MOTION_ENDPOINT = "/api/motion-artwork";
 
 /**
- * 校验是否为合法的 Apple Music 资源地址（专辑 / 歌单 / 歌曲），过滤搜索页与空链接。
+ * 只问服务端解析得了的链接（目录专辑 / 单曲）。和路由共用 parseAppleMusicUrl：
+ * 歌单（尤其私人歌单）、资料库条目、搜索页问了也只会拿到 400。
  */
 function isValidAppleMusicUrl(url: string | null | undefined): url is string {
-  if (!url) return false;
-  return (
-    url.startsWith("https://music.apple.com/") &&
-    !url.includes("music.apple.com/search")
-  );
+  return !!url && parseAppleMusicUrl(url) !== null;
 }
 
 export async function fetchMotionArtwork(
