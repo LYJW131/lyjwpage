@@ -4,13 +4,12 @@ import {
   SENTRY_CRON_MONITOR_SLUG,
   SENTRY_ORG,
   SENTRY_SITE_PROJECT_ID,
-  SENTRY_UPTIME_DETECTOR_ID,
   SENTRY_WORKER_PROJECT_ID,
 } from "@/lib/sentry";
-import type { SentryErrorSeries, SentryStatusPayload, SentryUptime, SentryVitals, UptimeDay } from "@/lib/sentry-status-types";
+import type { SentryErrorSeries, SentryStatusPayload, SentryVitals } from "@/lib/sentry-status-types";
 
 /**
- * 站点卡片（LYJWPAGE）里在线率、错误数、真实用户指标和 cron 心跳的数据：只在 API Worker 里跑，用 `SENTRY_API_TOKEN`（组织只读令牌，
+ * 站点卡片（LYJWPAGE）里错误数、会话、真实用户指标和 cron 心跳的数据：只在 API Worker 里跑，用 `SENTRY_API_TOKEN`（组织只读令牌，
  * org:read / project:read / event:read）调 Sentry API。
  *
  * 一轮十来个请求，分块各自降级：某一块失败只让那一块为 null，不拖垮整张卡。
@@ -22,8 +21,6 @@ import type { SentryErrorSeries, SentryStatusPayload, SentryUptime, SentryVitals
 
 const CACHE_TTL_MS = 5 * 60_000;
 const LAST_GOOD_TTL_MS = 24 * 60 * 60_000;
-const DAY_MS = 24 * 60 * 60_000;
-const UPTIME_DAYS = 30;
 
 type Json = Record<string, unknown>;
 
@@ -43,47 +40,6 @@ function isoToMs(value: unknown): number | null {
   if (typeof value !== "string") return null;
   const ms = Date.parse(value);
   return Number.isFinite(ms) ? ms : null;
-}
-
-/** 成功 / (成功 + 失败)；missed 是探测自己没跑成，不算站点的账 */
-export function availability(days: Pick<UptimeDay, "success" | "failure">[]): number | null {
-  const success = days.reduce((sum, day) => sum + day.success, 0);
-  const failure = days.reduce((sum, day) => sum + day.failure, 0);
-  return success + failure > 0 ? success / (success + failure) : null;
-}
-
-/** `uptime-stats` 的一个探测器序列 → 按桶计数；`failure_incident` 是事故期间的失败，同样算宕机 */
-export function parseUptimeBuckets(raw: unknown, detectorId: string): UptimeDay[] {
-  const series = record(raw)[detectorId];
-  if (!Array.isArray(series)) throw new Error("Sentry 在线统计格式无效");
-  return series.map((entry) => {
-    const [seconds, counts] = Array.isArray(entry) ? entry : [];
-    const c = record(counts);
-    return {
-      dayStart: num(seconds) * 1000,
-      success: num(c.success),
-      failure: num(c.failure) + num(c.failure_incident),
-      missed: num(c.missed_window),
-    };
-  });
-}
-
-/** 探测器详情里的 uptimeStatus：1 正常、2 失败（连续失败到阈值才翻） */
-export function parseUptimeStatus(raw: unknown): { status: SentryUptime["status"]; url: string; intervalSeconds: number } {
-  const detail = record(raw);
-  const status = detail.uptimeStatus === 1 ? "up" : detail.uptimeStatus === 2 ? "down" : "unknown";
-  return {
-    status,
-    url: typeof detail.url === "string" ? detail.url : "",
-    intervalSeconds: num(detail.intervalSeconds) || 60,
-  };
-}
-
-export function parseLastCheck(raw: unknown): SentryUptime["lastCheck"] {
-  const first = Array.isArray(raw) ? record(raw[0]) : {};
-  const at = isoToMs(first.timestamp);
-  if (at == null) return null;
-  return { at, durationMs: numOrNull(first.durationMs), httpStatus: numOrNull(first.httpStatusCode) };
 }
 
 /** Discover 的单行聚合 → 第一行的字段 */
@@ -116,8 +72,6 @@ export function parseCron(raw: unknown): SentryStatusPayload["cron"] {
 export type SentryGet = (path: string, params: Record<string, string | string[]>) => Promise<unknown>;
 
 const ORG_PATH = `/organizations/${SENTRY_ORG}`;
-/** 在线监测挂在站点项目下 */
-const UPTIME_PATH = `/projects/${SENTRY_ORG}/lyjwpage/uptime/${SENTRY_UPTIME_DETECTOR_ID}`;
 
 export function sentryClient(token: string): SentryGet {
   return async (path, params) => {
@@ -131,35 +85,6 @@ export function sentryClient(token: string): SentryGet {
     });
     if (!response.ok) throw new Error(`Sentry 查询失败 (${response.status} ${path})`);
     return response.json();
-  };
-}
-
-async function fetchUptime(api: SentryGet, now: number): Promise<SentryUptime> {
-  const seconds = (ms: number) => String(Math.floor(ms / 1000));
-  const today = Math.floor(now / DAY_MS) * DAY_MS;
-  const [detail, daily, hourly, checks] = await Promise.all([
-    api(`${UPTIME_PATH}/`, {}).catch(() => null),
-    api(`${ORG_PATH}/uptime-stats/`, {
-      uptimeDetectorId: SENTRY_UPTIME_DETECTOR_ID,
-      since: seconds(today - (UPTIME_DAYS - 1) * DAY_MS),
-      until: seconds(now),
-      resolution: "1d",
-    }),
-    api(`${ORG_PATH}/uptime-stats/`, {
-      uptimeDetectorId: SENTRY_UPTIME_DETECTOR_ID,
-      since: seconds(now - DAY_MS),
-      until: seconds(now),
-      resolution: "1h",
-    }),
-    api(`${UPTIME_PATH}/checks/`, { per_page: "1" }).catch(() => null),
-  ]);
-  const days = parseUptimeBuckets(daily, SENTRY_UPTIME_DETECTOR_ID);
-  return {
-    ...parseUptimeStatus(detail),
-    availability24h: availability(parseUptimeBuckets(hourly, SENTRY_UPTIME_DETECTOR_ID)),
-    availability30d: availability(days),
-    days,
-    lastCheck: parseLastCheck(checks),
   };
 }
 
@@ -206,8 +131,7 @@ export async function fetchSentryStatus(api: SentryGet, now = Date.now()): Promi
     console.warn("[sentry-status]", error instanceof Error ? error.message : String(error));
     return null;
   });
-  const [uptime, site, worker, sessions, cron, vitals] = await Promise.all([
-    settle(fetchUptime(api, now)),
+  const [site, worker, sessions, cron, vitals] = await Promise.all([
     settle(fetchErrors(api, SENTRY_SITE_PROJECT_ID)),
     settle(fetchErrors(api, SENTRY_WORKER_PROJECT_ID)),
     settle(api(`${ORG_PATH}/sessions/`, {
@@ -220,10 +144,9 @@ export async function fetchSentryStatus(api: SentryGet, now = Date.now()): Promi
     settle(api(`${ORG_PATH}/monitors/${SENTRY_CRON_MONITOR_SLUG}/`, {}).then(parseCron)),
     settle(fetchVitals(api)),
   ]);
-  if (!uptime && !site && !worker && !sessions && !cron && !vitals) throw new Error("Sentry 全部查询失败");
+  if (!site && !worker && !sessions && !cron && !vitals) throw new Error("Sentry 全部查询失败");
   return {
     fetchedAt: now,
-    uptime,
     errors: site && worker ? { site, worker } : null,
     sessions,
     cron,
@@ -234,8 +157,8 @@ export async function fetchSentryStatus(api: SentryGet, now = Date.now()): Promi
 export async function getSentryStatus(): Promise<SentryStatusPayload> {
   const token = process.env.SENTRY_API_TOKEN?.trim();
   if (!token) throw new Error("Sentry 读取未配置");
-  // v2：错误数改成 12h 窗口、去掉逐小时序列
-  const key = `sentry-status:v2:${SENTRY_ORG}`;
+  // v3：去掉在线率（站点卡片不再展示，监测本身留在 Sentry 里报警）
+  const key = `sentry-status:v3:${SENTRY_ORG}`;
   return cached<SentryStatusPayload>(key, CACHE_TTL_MS, async () => {
     try {
       const data = await fetchSentryStatus(sentryClient(token));

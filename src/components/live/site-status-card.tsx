@@ -8,7 +8,7 @@ import { Server as ServerIcon } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { colorForRank, RepoContributions } from "@/components/live/repo-contributions";
 import { formatUptime } from "@/components/live/server-card";
-import { percent, SentryMark, UptimeStrip } from "@/components/live/uptime-strip";
+import { SentryMark } from "@/components/live/sentry-mark";
 import { useStale } from "@/hooks/use-stale";
 import { fieldPerformanceScore } from "@/lib/field-score";
 import { SERVER_STALE_MS } from "@/lib/freshness";
@@ -65,6 +65,13 @@ function vital(value: number | null | undefined, unit: string) {
   if (value == null) return "—";
   // CLS 是无量纲小数，Lighthouse 自己也把末尾的零去掉（0.004 / 0）
   return unit === "s" ? `${(value / 1000).toFixed(2)}s` : unit === "ms" ? `${Math.round(value)}ms` : String(Number(value.toFixed(3)));
+}
+
+/** 99.95% 这种要看到小数点后两位才有区别；整 100 就写 100% */
+function percent(ratio: number | null | undefined): string {
+  if (ratio == null) return "—";
+  const value = ratio * 100;
+  return value >= 99.995 ? "100%" : `${value.toFixed(2)}%`;
 }
 
 /** Lighthouse 自己的档位：90 分及格算绿，50 到 89 黄；真实访客的分沿用同一套 */
@@ -132,9 +139,7 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
    * 口径 —— 谁参与了多少 —— 顶部那个 COMMITS 才是去重后的真数。
    */
   const contributionShare = contributors.reduce((sum, person) => sum + person.commits, 0);
-  // 标题旁的灯跟着 Sentry 对 lyjw.me 的探测走；还没有探测结果时不点灯
-  const tone = sentry?.uptime?.status === "up" ? "live" : sentry?.uptime?.status === "down" ? "off" : undefined;
-  return <Card id="site-status" label="LYJWPAGE" tone={tone} className={cn("scroll-mt-28", className)} action={
+  return <Card id="site-status" label="LYJWPAGE" className={cn("scroll-mt-28", className)} action={
     <div className="flex items-center gap-4">
       <a href={site.repo} target="_blank" rel="noreferrer" aria-label="GitHub repository" className="hover:text-foreground"><Github size={15} /></a>
       <a href={site.vercel} target="_blank" rel="noreferrer" aria-label="Vercel dashboard" className="hover:text-foreground"><Vercel size={15} /></a>
@@ -158,7 +163,6 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
       )}
     </div>
     <RepoContributions data={github} recentCommits={recentCommits} deploymentsBySha={deploymentsBySha} />
-    {sentry?.uptime && <UptimeStrip uptime={sentry.uptime} />}
     <div className="grid border-t border-line md:grid-cols-2">
       <section className="min-w-0 border-b border-line md:border-b-0" aria-label="Performance">
         <div className="px-4 pt-3 pb-2">
