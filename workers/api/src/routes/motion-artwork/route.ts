@@ -1,4 +1,4 @@
-import { NO_MOTION, resolveMotionArtwork, type MotionResult } from "@/lib/motion-artwork";
+import { motionArtworkCacheKey, NO_MOTION, resolveMotionArtwork, type MotionResult } from "@/lib/motion-artwork";
 import { parseAppleMusicUrl } from "@/lib/motion-artwork-url";
 import { withStorageScope } from "@/lib/storage";
 
@@ -8,8 +8,22 @@ import { withStorageScope } from "@/lib/storage";
  */
 export type MotionResponse = MotionResult & { link: string | null };
 
+function requestedLink(request: Request): string {
+  return new URL(request.url).searchParams.get("url")?.trim() ?? "";
+}
+
+/**
+ * 边缘缓存的键：参数不合法时为 null，那种 400 不进缓存。响应原样回显 `link`，
+ * 所以键里除了解析后的身份还要带上原始链接，不能让两条链接共用一份响应。
+ */
+export function edgeCacheKey(request: Request): string | null {
+  const requested = requestedLink(request);
+  const parsed = requested ? parseAppleMusicUrl(requested) : null;
+  return parsed ? `${motionArtworkCacheKey(parsed)}:${encodeURIComponent(requested)}` : null;
+}
+
 export async function GET(request: Request) {
-  const requested = new URL(request.url).searchParams.get("url")?.trim() ?? "";
+  const requested = requestedLink(request);
   const parsed = requested ? parseAppleMusicUrl(requested) : null;
   if (!parsed) {
     return jsonResponse(

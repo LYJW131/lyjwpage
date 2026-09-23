@@ -41,6 +41,16 @@ const NEGATIVE_TTL_MS = 5_000;
 const inflight = new Map<string, Promise<MotionResult>>();
 
 /**
+ * 一条资源的动态封面在 SQLite 里的键。API Worker 的边缘缓存也拿它拼键：结果形状变了
+ * 在这里升版本，两层一起作废。
+ */
+export function motionArtworkCacheKey(parsed: AppleMusicParsed): string {
+  return parsed.albumId
+    ? `motion-artwork:v1:${parsed.storefront}:album:${parsed.albumId}`
+    : `motion-artwork:v1:${parsed.storefront}:song:${parsed.songId}`;
+}
+
+/**
  * 解析一条已经 parse 过的 Apple Music 资源的动态封面。上游异常往上抛，
  * 由路由决定响应形状 —— 抛和「上游明确说没有」不能混成同一个 null。
  *
@@ -50,9 +60,7 @@ const inflight = new Map<string, Promise<MotionResult>>();
  * 该命中同一条。
  */
 export async function resolveMotionArtwork(parsed: AppleMusicParsed): Promise<MotionResult> {
-  const cacheKey = parsed.albumId
-    ? `motion-artwork:v1:${parsed.storefront}:album:${parsed.albumId}`
-    : `motion-artwork:v1:${parsed.storefront}:song:${parsed.songId}`;
+  const cacheKey = motionArtworkCacheKey(parsed);
 
   const [hit, failure] = await Promise.all([
     get<MotionResult>(cacheKey),

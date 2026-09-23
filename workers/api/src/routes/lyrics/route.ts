@@ -1,4 +1,4 @@
-import { resolveLyrics, type LyricsResult } from "@/lib/lyrics";
+import { lyricsCacheKey, resolveLyrics, type LyricsResult } from "@/lib/lyrics";
 import { withStorageScope } from "@/lib/storage";
 
 /**
@@ -7,9 +7,21 @@ import { withStorageScope } from "@/lib/storage";
  */
 export type LyricsResponse = LyricsResult & { songId: string | null };
 
+function requestedSong(request: Request): string {
+  return new URL(request.url).searchParams.get("song")?.trim() ?? "";
+}
+
+const validSong = (song: string): boolean => /^\d{1,20}$/.test(song);
+
+/** 边缘缓存的键：参数不合法时为 null，那种 400 不进缓存 */
+export function edgeCacheKey(request: Request): string | null {
+  const requested = requestedSong(request);
+  return validSong(requested) ? lyricsCacheKey(requested) : null;
+}
+
 export async function GET(request: Request) {
-  const requested = new URL(request.url).searchParams.get("song")?.trim() ?? "";
-  if (!/^\d{1,20}$/.test(requested)) {
+  const requested = requestedSong(request);
+  if (!validSong(requested)) {
     return jsonResponse(
       { songId: null, lines: [], error: 'Missing or invalid "song" query parameter' },
       400,
