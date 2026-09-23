@@ -6,10 +6,12 @@ import Vercel from "@lobehub/icons/es/Vercel/components/Mono";
 import NumberFlow from "@number-flow/react";
 import { Card } from "@/components/ui/card";
 import { colorForRank, RepoContributions } from "@/components/live/repo-contributions";
+import { percent, SentryMark, UptimeStrip } from "@/components/live/uptime-strip";
 import { useStatus } from "@/hooks/use-status";
 import { CLOUDFLARE_WORKERS, type CloudflareWorkersPayload } from "@/lib/cloudflare-workers-types";
 import type { GithubRecentCommit } from "@/lib/github-recent-commits";
-import { CLOUDFLARE_WORKERS_PATH, GITHUB_REPO_PATH, VERCEL_DEPLOYMENTS_PATH } from "@/lib/paths";
+import { CLOUDFLARE_WORKERS_PATH, GITHUB_REPO_PATH, SENTRY_PATH, VERCEL_DEPLOYMENTS_PATH } from "@/lib/paths";
+import type { SentryErrorSeries, SentryStatusPayload } from "@/lib/sentry-status-types";
 import { site } from "@/lib/site";
 import type { GithubRepoPayload, StatusResponse } from "@/lib/types";
 import type { LighthouseVitals, VercelDeployment, VercelDeploymentsPayload } from "@/lib/vercel-deployments-types";
@@ -43,10 +45,13 @@ function Stat({ label, value, title, prefix }: { label: string; value?: number |
   );
 }
 
-/** 顺序按 Lighthouse 报告；没有 INP（那要真实用户才测得到），同轮的 TBT 占那一列。 */
+/**
+ * 顺序按 Lighthouse 报告。实验室跑不出 INP（要真实用户才测得到），同轮的 TBT 占那一列；
+ * 第三行真实访客（Sentry 采样的 p75）在这一列放的才是 INP。
+ */
 const vitalRows: { label: string; key: Exclude<keyof LighthouseVitals, "score">; unit: "s" | "ms" | ""; title: string }[] = [
   { label: "LCP", key: "lcpMs", unit: "s", title: "Largest Contentful Paint" },
-  { label: "TBT", key: "tbtMs", unit: "ms", title: "Total Blocking Time: lab stand-in for INP" },
+  { label: "TBT/INP", key: "tbtMs", unit: "ms", title: "Total Blocking Time for lab runs; Interaction to Next Paint for real users" },
   { label: "CLS", key: "cls", unit: "", title: "Cumulative Layout Shift" },
   { label: "FCP", key: "fcpMs", unit: "s", title: "First Contentful Paint" },
   { label: "TTFB", key: "ttfbMs", unit: "ms", title: "Time to First Byte: server response of the root document" },
@@ -57,17 +62,34 @@ function vital(value: number | null | undefined, unit: string) {
   return unit === "s" ? `${(value / 1000).toFixed(2)}s` : unit === "ms" ? `${Math.round(value)}ms` : String(Number(value.toFixed(3)));
 }
 
-export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallback, recentCommits, className }: {
+/** 真实访客那一行，列与上面两行对齐：TBT 那一列换成 INP */
+const fieldValues = (vitals: SentryStatusPayload["vitals"]) => ({
+  lcpMs: vitals?.lcpP75Ms, tbtMs: vitals?.inpP75Ms, cls: vitals?.clsP75, fcpMs: vitals?.fcpP75Ms, ttfbMs: vitals?.ttfbP75Ms,
+});
+
+/** 服务格名字那一行的错误数：有错才标红，零就淡着 */
+function ErrorCount({ series, title }: { series: SentryErrorSeries | undefined; title: string }) {
+  if (!series) return null;
+  return <span title={`${title} · ${number.format(series.count7d)} in 7d · ${number.format(series.unresolved)} unresolved`}
+    className={cn("shrink-0 text-[10px] tabular-nums", series.count24h ? "text-red-500" : "text-muted-foreground")}>
+    {number.format(series.count24h)} err
+  </span>;
+}
+
+export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallback, sentryFallback, recentCommits, className }: {
   githubFallback: StatusResponse<GithubRepoPayload>;
   vercelFallback: StatusResponse<VercelDeploymentsPayload>;
   cloudflareFallback: StatusResponse<CloudflareWorkersPayload>;
+  sentryFallback: StatusResponse<SentryStatusPayload>;
   recentCommits: GithubRecentCommit[];
   className?: string;
 }) {
   const { data: github } = useStatus<GithubRepoPayload>(GITHUB_REPO_PATH, 30 * 60_000, { fallback: githubFallback, revalidateOnMount: false, revalidateOnFocus: false });
   const { data: vercel } = useStatus<VercelDeploymentsPayload>(VERCEL_DEPLOYMENTS_PATH, 60_000, { fallback: vercelFallback });
   const { data: cloudflare } = useStatus<CloudflareWorkersPayload>(CLOUDFLARE_WORKERS_PATH, 300_000, { fallback: cloudflareFallback });
+  const { data: sentry } = useStatus<SentryStatusPayload>(SENTRY_PATH, 5 * 60_000, { fallback: sentryFallback });
   const { functions, analytics } = vercel?.metrics ?? {};
+  const cron = sentry?.cron, siteErrors = sentry?.errors?.site, apiErrors = sentry?.errors?.worker;
   // 主站量的是 lyjw.me；把域名写在表头，省得和访客当前所在的域名混起来。
   // 每一格是滚动窗口内各轮实测的中位数，轮数和窗口在表头的提示里。
   const pagespeed = vercel?.pagespeed, measured = pagespeed ? new URL(pagespeed.url).host : null;
@@ -89,11 +111,14 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
    * 口径 —— 谁参与了多少 —— 顶部那个 COMMITS 才是去重后的真数。
    */
   const contributionShare = contributors.reduce((sum, person) => sum + person.commits, 0);
-  return <Card id="site-status" label="LYJWPAGE" className={cn("scroll-mt-28", className)} action={
+  // 标题旁的灯跟着 Sentry 对 lyjw.me 的探测走；还没有探测结果时不点灯
+  const tone = sentry?.uptime?.status === "up" ? "live" : sentry?.uptime?.status === "down" ? "off" : undefined;
+  return <Card id="site-status" label="LYJWPAGE" tone={tone} className={cn("scroll-mt-28", className)} action={
     <div className="flex items-center gap-4">
       <a href={site.repo} target="_blank" rel="noreferrer" aria-label="GitHub repository" className="hover:text-foreground"><Github size={15} /></a>
       <a href={site.vercel} target="_blank" rel="noreferrer" aria-label="Vercel dashboard" className="hover:text-foreground"><Vercel size={15} /></a>
       <a href={site.cloudflare} target="_blank" rel="noreferrer" aria-label="Cloudflare dashboard"><CloudflareColor size={19} /></a>
+      <a href={site.sentry} target="_blank" rel="noreferrer" aria-label="Sentry dashboard" className="flex hover:text-foreground"><SentryMark /></a>
     </div>
   }>
     <div className="border-b border-line px-4 py-5 md:px-5">
@@ -112,6 +137,7 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
       )}
     </div>
     <RepoContributions data={github} recentCommits={recentCommits} deploymentsBySha={deploymentsBySha} />
+    {sentry?.uptime && <UptimeStrip uptime={sentry.uptime} />}
     <div className="grid border-t border-line md:grid-cols-2">
       <section className="min-w-0 border-b border-line md:border-b-0" aria-label="Performance">
         <div className="px-4 pt-3 pb-2">
@@ -128,6 +154,15 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
               {vitalRows.map(row => <span key={row.key}>{vital(pagespeed?.[device][row.key], row.unit)}</span>)}
             </div>;
           })}
+          {sentry?.vitals && (() => {
+            const field = fieldValues(sentry.vitals), samples = sentry.vitals.samples;
+            return <div className="grid h-11 grid-cols-[40px_repeat(6,minmax(0,1fr))] items-center gap-1 text-right text-[10px] tabular-nums lg:grid-cols-[88px_repeat(6,minmax(0,1fr))] lg:text-xs"
+              title={samples ? `Real visitors via Sentry · p75 of ${number.format(samples)} page loads, last 7 days` : "Real visitors via Sentry · no page loads sampled yet"}>
+              <span className="text-left text-[11px] text-muted-foreground">Users</span>
+              <span className="text-[10px] text-muted-foreground">p75</span>
+              {vitalRows.map(row => <span key={row.key}>{vital(field[row.key], row.unit)}</span>)}
+            </div>;
+          })()}
         </div>
       </section>
       <section id="cloudflare-workers" className="min-w-0 scroll-mt-28 md:border-l md:border-line" aria-label="Services">
@@ -136,6 +171,7 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
           <li className="bg-surface px-4 py-2.5">
             <div className="flex items-center gap-1.5 text-[11px] leading-4">
               <a href={`${site.vercel}/observability/vercel-functions`} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 hover:underline"><Vercel size={11} />Vercel</a>
+              <ErrorCount series={siteErrors} title={`Site errors in 24h (browser + functions) · crash-free sessions ${percent(sentry?.sessions?.crashFreeRate)}`} />
               <CommitSha commit={vercel?.production?.commit} />
             </div>
             <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] tabular-nums text-muted-foreground">
@@ -150,6 +186,11 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
               <div className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4">
                 <span className="flex shrink-0"><CloudflareColor size={14} /></span>
                 <span className="min-w-0 truncate">{name}</span>
+                {name === "api" && cron && (
+                  <span title={`Every-minute cron: ${cron.status}${cron.lastCheckInAt ? ` · last check-in ${time.format(cron.lastCheckInAt)} UTC+8` : ""}`}
+                    className={cn("size-1.5 shrink-0 rounded-full", cron.status === "ok" ? "bg-live" : cron.status === "unknown" ? "bg-live-off" : "bg-red-500")} />
+                )}
+                {name === "api" && <ErrorCount series={apiErrors} title="API Worker errors in 24h" />}
                 <CommitSha commit={worker?.deployment?.commit} />
               </div>
               <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] tabular-nums text-muted-foreground">

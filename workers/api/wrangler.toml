@@ -89,7 +89,7 @@ enabled = true
 # PAGESPEED_API_KEY（Google PageSpeed Insights，cron 每小时实测一次首页性能）、
 # TYPESAFE_API_KEY（TypeSafe AI 官方 API，给 pulse 六域打活动分的 Jev 评估模型；
 # 不配就不打分，端点照常给泳道）、SENTRY_API_TOKEN（Sentry 组织只读令牌，
-# org:read / project:read / event:read，给可靠性卡片取数；不配卡片显示暂无数据）。
+# org:read / project:read / event:read，给站点卡片的在线率、错误数取数；不配这几处就不显示）。
 # 每分钟一趟：有页面连接时刷新最近在听（SQLite 闸门把 Apple 请求限制为两分钟一次），
 # 并按同一把闸门每小时跑一次 PageSpeed 实测。厂商状态页也在这一分钟里拉，
 # 只有结果变了才推送。

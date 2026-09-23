@@ -15,7 +15,7 @@ VERCEL_TOKEN=
 # TypeSafe AI 的 API 密钥，给 pulse 活动分用（Jev 评估模型，十分钟最多一次）。
 # 不配就不打分，/api/status/pulse 照常返回泳道、分是 null。
 TYPESAFE_API_KEY=
-# 可选。Sentry 组织只读令牌（org:read / project:read / event:read），可靠性卡片用；
+# 可选。Sentry 组织只读令牌（org:read / project:read / event:read），站点卡片的在线率与错误数用；
 # 不配时 /api/status/sentry 回暂无数据，本地看效果用 pnpm dev:override 注入夹具。
 SENTRY_API_TOKEN=
 # 只给本地开发：生产为主、本地补缺 —— 生产有的数据用生产的，生产没有的端点和

@@ -10,7 +10,7 @@ import {
 import type { SentryErrorSeries, SentryStatusPayload, SentryUptime, SentryVitals, UptimeDay } from "@/lib/sentry-status-types";
 
 /**
- * 站点可靠性卡片的数据：只在 API Worker 里跑，用 `SENTRY_API_TOKEN`（组织只读令牌，
+ * 站点卡片（LYJWPAGE）里在线率、错误数、真实用户指标和 cron 心跳的数据：只在 API Worker 里跑，用 `SENTRY_API_TOKEN`（组织只读令牌，
  * org:read / project:read / event:read）调 Sentry API。
  *
  * 一轮十来个请求，分块各自降级：某一块失败只让那一块为 null，不拖垮整张卡。
