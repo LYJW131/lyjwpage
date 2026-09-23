@@ -100,6 +100,26 @@ test("键里的字符都经过编码，落在保留前缀下", () => {
   const request = edgeCacheRequest("https://api.example", "motion-artwork:v1:cn:album:1:https%3A%2F%2Fmusic.apple.com%2F?x=1");
   const url = new URL(request.url);
   assert.equal(url.origin, "https://api.example");
-  assert.ok(url.pathname.startsWith("/__edge-cache/v1/"));
+  assert.ok(url.pathname.startsWith("/__edge-cache/v2/"));
   assert.equal(url.search, "");
+});
+
+test("命中时恢复原始 Cache-Control，内部头不外露", async () => {
+  const { cache } = memoryCache();
+  const pending: Promise<unknown>[] = [];
+  const key = edgeCacheRequest("https://api.example", "k");
+  const origin = async () => new Response("{}", { headers: { "Cache-Control": "public, max-age=3600, s-maxage=3600" } });
+  await serveWithEdgeCache({ cache, key, origin, waitUntil: (p) => pending.push(p) });
+  await Promise.all(pending);
+  // 模拟 Cloudflare 按区域浏览器 TTL 改写了存着的那份
+  const stored = await cache.match(key);
+  assert.ok(stored);
+  const rewritten = new Headers(stored.headers);
+  rewritten.set("Cache-Control", "public, max-age=14400, s-maxage=3600");
+  await cache.put(key, new Response(await stored.text(), { headers: rewritten }));
+
+  const hit = await serveWithEdgeCache({ cache, key, origin, waitUntil: () => {} });
+  assert.equal(hit.headers.get("X-Edge-Cache"), "hit");
+  assert.equal(hit.headers.get("Cache-Control"), "public, max-age=3600, s-maxage=3600");
+  assert.equal(hit.headers.get("X-Origin-Cache-Control"), null);
 });
