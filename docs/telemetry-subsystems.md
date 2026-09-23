@@ -251,7 +251,7 @@ payload: >-
 ## 12. 落地节点监控与三档自适应调频
 
 ### 节点监控
-- `reporters/server-reporter` 部署于云端 Linux 节点，基于 Python 标准库采集 `/proc/stat` 与 `/proc/net/dev`，上报 CPU、内存及网络吞吐，前端 30 秒轮询。
+- `reporters/server-reporter` 部署于云端 Linux 节点（TypeScript / Node，和 agents-reporter 同一套结构），采集 `/proc/stat` 与 `/proc/net/dev`，上报 CPU、内存及网络吞吐，前端 30 秒轮询。
 
 ### 三档自适应调频算法
 为最大化节省服务器资源与外部 API 配额，`server-reporter`、`playstation-reporter` 和 `agents-reporter` 均遵循三档自适应调频：

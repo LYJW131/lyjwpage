@@ -50,11 +50,7 @@ jobs:
       - run: pnpm --filter @lyjwpage/api test
 
       # 上报器跑在别的机器上，它们的单测只有这里会跑
-      - run: pnpm --filter @lyjwpage/agents-reporter --filter @lyjwpage/emby-reporter test
-
-      # 只用标准库，runner 自带的 python3 就够
-      - run: python3 reporter_test.py
-        working-directory: reporters/server-reporter
+      - run: pnpm --filter @lyjwpage/agents-reporter --filter @lyjwpage/server-reporter --filter @lyjwpage/emby-reporter test
 
       - run: node scripts/verify-kv-read-model.mjs
 

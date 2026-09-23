@@ -5,11 +5,11 @@ import { commitPreparedPlaystationReport, preparePlaystationReport, type Prepare
 import { commitPreparedServerReport, prepareServerReport, type PreparedServerReport } from "./stores/server";
 import { commitPreparedTelemetryEnvelope, prepareTelemetryEnvelope, type PreparedTelemetryEnvelope } from "./stores/telemetry";
 import { prepareAgentLimits, recordPreparedAgentLimits, type PreparedAgentLimits } from "./stores/vibecoding";
-import { recordReporterPush } from "./stores/reporter-ledger";
-import { REPORTER_BY_SOURCE, reporterCommitOf } from "@/lib/reporter-ledger";
+import { recordReporterBlock } from "./stores/reporter-ledger";
+import { REPORTER_BY_SOURCE, reporterBlockOf, type ReporterBlock } from "@/lib/reporter-ledger";
 
-/** 常驻上报器（server、agents）的报文顺带一个 reporterCommit，收件时记进账本 */
-type WithReporter<T> = T & { reporterCommit?: string | null };
+/** 常驻上报器（server、agents）的报文顶上带一个 `reporter` 块，收下时存进账本 */
+type WithReporter<T> = T & { reporter?: ReporterBlock | null };
 
 export type PreparedIngest = WithReporter<
   | PreparedTelemetryEnvelope
@@ -37,8 +37,8 @@ export async function prepareIngest(
     case "homepod": return prepareHomePodEvent(raw, receivedAt);
     case "emby": return prepareEmbyReport(raw, receivedAt);
     case "playstation": return preparePlaystationReport(raw, receivedAt);
-    case "server": return { ...prepareServerReport(raw, receivedAt), reporterCommit: reporterCommitOf(raw) };
-    case "agents": return { ...prepareAgentLimits(raw, receivedAt), reporterCommit: reporterCommitOf(raw) };
+    case "server": return { ...prepareServerReport(raw, receivedAt), reporter: reporterBlockOf(raw) };
+    case "agents": return { ...prepareAgentLimits(raw, receivedAt), reporter: reporterBlockOf(raw) };
     default: throw new Error("Unknown ingest source");
   }
 }
@@ -64,9 +64,9 @@ export async function prepareIngestForCommit(
 /** StateHub 阶段：只做依赖权威最新状态的合并、差分与持久化。 */
 export async function commitPreparedIngest(command: PreparedIngest): Promise<unknown> {
   const result = await commitBySource(command);
-  // 收成了才记账：被拒的那封不算这个上报器的一次推送
-  if (command.source === "server" || command.source === "agents") {
-    await recordReporterPush(REPORTER_BY_SOURCE[command.source], command.receivedAt, command.reporterCommit ?? null);
+  // 收成了才存：被拒的那封里的账本不算数
+  if ((command.source === "server" || command.source === "agents") && command.reporter) {
+    await recordReporterBlock(REPORTER_BY_SOURCE[command.source], command.reporter, command.receivedAt);
   }
   return result;
 }

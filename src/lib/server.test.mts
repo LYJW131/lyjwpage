@@ -136,10 +136,10 @@ test("12 小时窗口：旧版不带按 null 收，带了就要合法", () => {
   assert.equal(normalizeServer(report()).window, null);
   const fresh = normalizeServer(report({
     window: { start: 1_790_000_000_000, end: 1_790_043_200_000, cpuAvgPercent: 4.26 },
-    reporterCommit: "b15e3cc0123456789abcdef0123456789abcdef0",
+    reporter: { commit: "b15e3cc", pushes: 3, start: 1, end: 2 },
   }));
   assert.deepEqual(fresh.window, { start: 1_790_000_000_000, end: 1_790_043_200_000, cpuAvgPercent: 4.3 });
-  // 提交归账本管，不进服务器快照
-  assert.equal("reporterCommit" in fresh, false);
+  // 账本归 lib/reporter-ledger 管，不进服务器快照
+  assert.equal("reporter" in fresh, false);
   assert.throws(() => normalizeServer(report({ window: { start: 2, end: 1 } })), /window/);
 });

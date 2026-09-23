@@ -59,6 +59,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# Python 字节码：server-reporter 本地跑一次就会生成，不进仓库
+# Python 字节码（scripts/ 下的截图脚本）
 __pycache__/
 *.pyc

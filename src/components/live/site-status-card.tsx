@@ -106,7 +106,7 @@ function ReporterTile({ name, stat, staleMs, title, children }: {
       <CommitSha commit={stat?.commit ? { sha: stat.commit, branch: null, message: `${name} image` } : null} />
     </div>
     <div className="mt-1 flex gap-x-3 text-[10px] tabular-nums text-muted-foreground">
-      <Fact label="Push" value={stat ? number.format(stat.pushes) : "—"} title="Reports received from this reporter" />
+      <Fact label="Push" value={stat ? number.format(stat.pushes) : "—"} title="Reports this reporter pushed successfully" />
       {children}
       <CollectionWindow start={stat?.start} end={stat?.end} />
     </div>
@@ -242,8 +242,8 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
           })}
           {/*
             misaka-jp 上两个常驻上报器，和上面几格同一种写法：名字一行带镜像的提交，
-            小字一行是 12 小时窗口。Push 是这段时间 Worker 收到它几封（不叫 Req：
-            上面那几格是收到的请求，这里是往外发的）；次数和提交都记在收件那一侧的账本里。
+            小字一行是 12 小时窗口。Push 是这段时间它推成功几封（不叫 Req：上面那几格
+            是收到的请求，这里是往外发的）；次数和提交都由上报器自己在报文里带来。
             server-reporter 那格的 CPU 是它所在的 misaka-jp 这台机器的 12 小时平均。
           */}
           <ReporterTile name="server-reporter" stat={reporters?.reporters["server-reporter"]} staleMs={SERVER_STALE_MS}

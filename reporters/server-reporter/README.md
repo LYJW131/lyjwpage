@@ -3,7 +3,9 @@
 把日本落地节点的 CPU、内存、磁盘、网速、周期流量推给 lyjwpage 的小进程，跑在节点自己上面。
 
 站点够不着这台机器的 `/proc`（将来还要部署到 Vercel），所以该给的东西由这边送过去。
-只依赖 Python 3 标准库，这台 1C2G 的 Ubuntu 上没装 Node，也不为此装。
+TypeScript / Node，和 [agents-reporter](../agents-reporter) 同一套结构（`config` / `log` / `cadence` /
+`site` / `push-ledger` 各一份）。没有运行时依赖，跑在容器里，机器上不用装 Node。2026-09 前是 Python
+标准库写的，改写时报文字段和状态文件格式都没变。
 
 ## 它做什么
 
@@ -13,7 +15,7 @@
 | 公网 IP 的 Location / ISP / ASN | 地址变了才查，否则缓存 6 小时 | 跟着上面那份一起推。查的是网卡上的地址，不是「我访问某个 what-is-my-ip 看到的出口」 |
 | 计费周期内的累计流量 | 每轮把这一段的增量并进去 | 跟着一起推。攒不住（状态文件写不进）时报 `null`，卡片上那一栏整行不出现 |
 | 最近 12 小时的平均 CPU（`window`） | 每轮追加一条、丢掉 12 小时前的，和流量累计存在同一个状态文件里 | 跟着一起推，站点卡片 misaka-jp 那格用它，和 Vercel / Workers 的 12 小时窗口对齐。CPU 按每段时长加权；刚起来时窗口不满 12 小时，`start` 说明实际从哪算起。攒不住时同样报 `null` |
-| 镜像的提交（`reporterCommit`） | 镜像构建时由 Actions 以 `GIT_SHA` 烧进 `REPORTER_COMMIT` | 跟着一起推，Worker 收件时记进上报器账本（连同 12 小时收到几封），站点卡片显示线上跑的是哪一版。本地直接 `python3 reporter.py` 时为 `null` |
+| 推送账本（`reporter` 块） | 站点回 ok 才记一笔，十分钟一格存在 `PUSH_LEDGER_PATH` | 每封都带：镜像提交（Actions 以 `GIT_SHA` 烧进 `REPORTER_COMMIT`）、过去 12 小时推成功几封（含这一封）、窗口起止。站点卡片服务区据此显示 Push 次数和线上跑的哪一版。和 agents-reporter 同一份 `push-ledger.ts` |
 
 CPU 占用和网卡速率都是这一段间隔的平均，不是「这一瞬间的尖峰」：上一轮 `/proc` 的读数留着，这一轮做差。第一封在启动后约 1 秒就发出去，卡片不必干等一个完整间隔。
 
@@ -46,10 +48,10 @@ CPU 占用和网卡速率都是这一段间隔的平均，不是「这一瞬间�
 就是这个口径；按 1024 算的话 2T 会显示成「1.82 TB」，和账单对不上。内存和磁盘不受
 影响，它们仍按 1024 —— 那是系统自己报数的方式。
 
-累计那两个纯函数（周期边界、增量累加）有单测，标准库 unittest，不装东西：
+周期边界、增量累加、12 小时窗口、推送账本这几个纯函数有单测：
 
 ```bash
-python3 reporter_test.py
+pnpm --filter @lyjwpage/server-reporter test
 ```
 
 站点那侧**没有实时推送**。这些数字每个间隔都在变，广播就是拿推送当轮询用；卡片 30 秒自己来问。
@@ -94,6 +96,8 @@ python3 reporter_test.py
 | `IDLE_INTERVAL_MS` | | 默认 `900000`，一个页面都没开那一档。站点的 `SERVER_STALE_MS` 锚着它 |
 | `COUNT_TIMEOUT_MS` | | 默认 `2500`，问人头数那一次请求的超时 |
 | `PUSH_TIMEOUT_MS` | | 默认 `10000` |
+| `PUSH_LEDGER_PATH` | | 默认 `/data/pushes.json`，推送账本。留空 = 只记在内存里，重启后从零数 |
+| `DRY_RUN` | | `1` 时采一轮、把报文打到 stdout 就退出，不推送 |
 
 ## 在 VPS 上跑
 
@@ -146,11 +150,12 @@ ssh -J dsm misaka-jp 'cd /opt/lyjwpage && docker compose pull server-reporter &&
 
 | 要什么 | 怎么拿 |
 | --- | --- |
-| 网卡名、网卡上的公网 IP、收发字节 | `network_mode: host`。这三样读的是网络命名空间（`/proc/net/route`、`/proc/net/dev`、`SIOCGIFADDR`），容器自己那套是 `eth0` + `172.x` |
-| 系统名、主机名、根分区容量 | 只读挂 `/etc:/host/etc` 加 `HOST_ROOT=/host`。前两样读 `$HOST_ROOT/etc/{os-release,hostname}`；容量对 `$HOST_ROOT/etc` 做 `statvfs` —— 容器里量 `/` 量到的是 overlay，不是真正的根分区 |
+| 网卡名、网卡上的公网 IP、收发字节 | `network_mode: host`。这三样读的是网络命名空间（`/proc/net/route`、`/proc/net/dev`、`os.networkInterfaces()`），容器自己那套是 `eth0` + `172.x` |
+| 系统名、主机名、根分区容量 | 只读挂 `/etc:/host/etc` 加 `HOST_ROOT=/host`。前两样读 `$HOST_ROOT/etc/{os-release,hostname}`；容量对 `$HOST_ROOT/etc` 做 `statfs` —— 容器里量 `/` 量到的是 overlay，不是真正的根分区 |
 
-`HOST_ROOT` 留空就是老样子（直接跑在宿主机上、读 `/etc` 和 `/`），本地 `python3 reporter.py` 照旧。
-不挂宿主机整个 `/`：这里只 `statvfs` 一个路径、只读两个文件，`/etc` 一个挂载点就够，
+`HOST_ROOT` 留空就是直接跑在宿主机上、读 `/etc` 和 `/`（`pnpm build && node dist/index.js`，要 Linux）。
+想看一眼报文不推送：`DRY_RUN=1` 采一轮打到 stdout 就退出。
+不挂宿主机整个 `/`：这里只 `statfs` 一个路径、只读两个文件，`/etc` 一个挂载点就够，
 没必要为此把 `/root`、`/etc/shadow` 之类一并暴露给容器进程。
 
 ## 容错

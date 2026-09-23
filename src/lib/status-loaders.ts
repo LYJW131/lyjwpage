@@ -110,7 +110,7 @@ export const statusLoaders = {
   cloudflareWorkers: { endpoint: unparam(getCloudflareWorkers) },
   vercelDeployments: { endpoint: unparam(getVercelDeployments) },
   sentry: { endpoint: unparam(getSentryStatus) },
-  reporters: { endpoint: unparam(() => getReportersStatus()) },
+  reporters: { endpoint: unparam(getReportersStatus) },
   pulse: { endpoint: unparam(() => getPulseStatus()) },
 } satisfies { [K in Exclude<StatusViewKey, "lyrics">]: LoaderFor<K> };
 

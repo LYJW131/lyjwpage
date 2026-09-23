@@ -47,6 +47,8 @@ export const config = {
 
   /** 镜像构建时烧进来的提交（build-reporters.yml 传 GIT_SHA），站点卡片据此显示线上跑的是哪一版 */
   reporterCommit: process.env.REPORTER_COMMIT?.trim() || null,
+  /** 推送账本（过去 12 小时推成功几封），和凭据同在挂进来的 /data 卷上；留空 = 只记在内存里 */
+  pushLedgerPath: process.env.PUSH_LEDGER_PATH === undefined ? "/data/pushes.json" : process.env.PUSH_LEDGER_PATH.trim(),
 
   site: {
     ingestUrl:

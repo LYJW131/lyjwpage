@@ -59,4 +59,4 @@ server、PlayStation 和 agent limits 新增 `ONLINE_COUNTER_URL`，并行读取
 
 远端本次备份后缀为 `.before-online-20260909`：
 NAS 备份 `src/cadence.ts`、`src/config.ts`、`compose.yaml`、`.env`；
-server 备份 `reporter.py` 和 `.env`。回滚须与 API 旧计数契约整体恢复，不能只撤掉在线域名配置。
+server 备份 `.env`（代码随镜像走，回退改 `sha-<短哈希>` 标签）。回滚须与 API 旧计数契约整体恢复，不能只撤掉在线域名配置。
