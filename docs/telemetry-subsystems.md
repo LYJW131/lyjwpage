@@ -117,8 +117,8 @@
   - 换句动作由边界精确定时器驱动，与当前音轨算法一致。
 
 ### 接口缓存与公开查询策略
-- `GET /api/lyrics?song=<ID>`：支持传入曲目 ID，供网页播放器点播历史曲目歌词使用，结果按 URL 进行 `public, s-maxage` 长效缓存（有词存 7 天，无词存 1 小时）。
-- `GET /api/lyrics`（无参数）：直接读取当前正在播放的曲目歌词，响应标为 `no-store`，防内容跨歌混淆。
+- `GET /api/lyrics?song=<ID>`：按曲目 ID 查询，`song` 必填，卡片 hero 与网页播放器都走这条；结果按 URL 进行 `public, s-maxage` 长效缓存（有词存 7 天，无词存 1 小时）。
+- 首屏那首的歌词在 `/api/home` 的 `lyrics` 字段里由 Worker 现解；`/api/lyrics` 与 `/api/motion-artwork` 只做按键查询，不回答「此刻」，所以不归 `/api/status/*`。
 
 ---
 
