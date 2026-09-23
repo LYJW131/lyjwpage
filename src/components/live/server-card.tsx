@@ -71,6 +71,11 @@ const TRAFFIC_TIERS: readonly Tier[] = [
   { div: 1e6, unit: "MB", digits: 0 },
 ];
 
+/** 单个流量数，按十进制档位（站点卡片 misaka-jp 那一格的 12 小时进出量用） */
+export function formatTraffic(bytes: number): string {
+  return formatSize(TRAFFIC_TIERS, bytes);
+}
+
 /** 档位按大的那个数选：两边同单位才比得出来 */
 function tierIndex(tiers: readonly Tier[], bytes: number): number {
   const found = tiers.findIndex((tier) => bytes >= tier.div);

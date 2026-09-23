@@ -33,6 +33,14 @@
       "txBytes": 208900000000,
       "quotaBytes": 2000000000000
     },
+    "window": {
+      "start": "$now-43200000",
+      "end": "$now",
+      "cpuAvgPercent": 3.8,
+      "rxBytes": 21500000000,
+      "txBytes": 19800000000
+    },
+    "reporterCommit": "b15e3cc4f1c2a8e9d7b6a5f4e3d2c1b0a9f8e7d6",
     "uptimeSeconds": 262800,
     "observedAt": "$now-4000",
     "pushedAt": "$now",

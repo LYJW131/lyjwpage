@@ -7,7 +7,7 @@ import NumberFlow from "@number-flow/react";
 import { Server as ServerIcon } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { colorForRank, RepoContributions } from "@/components/live/repo-contributions";
-import { formatUptime } from "@/components/live/server-card";
+import { formatTraffic, formatUptime } from "@/components/live/server-card";
 import { SentryMark } from "@/components/live/sentry-mark";
 import { useStale } from "@/hooks/use-stale";
 import { fieldPerformanceScore } from "@/lib/field-score";
@@ -227,16 +227,25 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
               </div>
             </li>;
           })}
-          <li className="bg-surface px-4 py-2.5" title={server ? `${server.hostname} · ${server.city ?? ""} · load ${server.load1.toFixed(2)}` : "Exit node"}>
+          {/*
+            和上面几格同一种写法：名字一行带上报器镜像的提交，小字一行是 12 小时窗口。
+            出口节点没有「请求数」这回事，它干的活就是转发流量，所以用进出字节顶 Req 那一栏；
+            此刻的 CPU / 内存 / 磁盘在 Exit Node 卡片上，这里只放窗口平均。
+          */}
+          <li className="bg-surface px-4 py-2.5"
+            title={server ? `${server.hostname} · ${server.city ?? ""} · up ${formatUptime(server.uptimeSeconds)} · load ${server.load1.toFixed(2)}` : "Exit node"}>
             <div className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4">
               <ServerIcon size={12} className="shrink-0" aria-hidden />
               <a href="#exit-node" className="min-w-0 truncate hover:underline">{server?.id ?? "misaka-jp"}</a>
-              <span className={cn("ml-auto shrink-0 text-[10px]", server && serverStale ? "text-red-500" : "text-muted-foreground")}>{server ? (serverStale ? "Offline" : `Up ${formatUptime(server.uptimeSeconds)}`) : "—"}</span>
+              {server && serverStale && <span className="shrink-0 text-[10px] text-red-500">offline</span>}
+              <CommitSha commit={server?.reporterCommit ? { sha: server.reporterCommit, branch: null, message: "server-reporter image" } : null} />
             </div>
             <div className="mt-1 flex gap-x-3 text-[10px] tabular-nums text-muted-foreground">
-              <Fact label="CPU" value={server ? `${server.cpuUsagePercent.toFixed(1)}%` : "—"} />
-              <Fact label="Mem" value={server ? `${Math.round(server.memoryUsedBytes / server.memoryTotalBytes * 100)}%` : "—"} />
-              <Fact label="Disk" value={server ? `${Math.round(server.diskUsedBytes / server.diskTotalBytes * 100)}%` : "—"} />
+              <Fact label="Net" value={server?.window ? formatTraffic(server.window.rxBytes + server.window.txBytes) : "—"}
+                title={server?.window ? `In ${formatTraffic(server.window.rxBytes)} · Out ${formatTraffic(server.window.txBytes)}` : undefined} />
+              <Fact label="CPU" value={server?.window?.cpuAvgPercent != null ? `${server.window.cpuAvgPercent.toFixed(1)}%` : "—"}
+                title="Average CPU usage over the window" />
+              <CollectionWindow start={server?.window?.start} end={server?.window?.end} />
             </div>
           </li>
           <li className="bg-surface px-4 py-2.5">

@@ -131,3 +131,17 @@ test("给了流量就得是完整一份，缺项、负数、周期倒着走都�
   assert.throws(broken({ quotaBytes: 0 }), /quotaBytes/);
   assert.throws(() => normalizeServer(report({ traffic: "1TB" })), /traffic/);
 });
+
+test("12 小时窗口和上报器提交：旧版不带按 null 收，带了就要合法", () => {
+  const old = normalizeServer(report());
+  assert.equal(old.window, null);
+  assert.equal(old.reporterCommit, null);
+  const fresh = normalizeServer(report({
+    window: { start: 1_790_000_000_000, end: 1_790_043_200_000, cpuAvgPercent: 4.26, rxBytes: 1.5e9, txBytes: 8e8 },
+    reporterCommit: "b15e3cc0123456789abcdef0123456789abcdef0",
+  }));
+  assert.deepEqual(fresh.window, { start: 1_790_000_000_000, end: 1_790_043_200_000, cpuAvgPercent: 4.3, rxBytes: 1.5e9, txBytes: 8e8 });
+  assert.equal(fresh.reporterCommit, "b15e3cc0123456789abcdef0123456789abcdef0");
+  assert.throws(() => normalizeServer(report({ window: { start: 2, end: 1, rxBytes: 0, txBytes: 0 } })), /window/);
+  assert.throws(() => normalizeServer(report({ reporterCommit: "not a sha" })), /reporterCommit/);
+});

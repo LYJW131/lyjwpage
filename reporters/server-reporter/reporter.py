@@ -62,6 +62,10 @@ GEO_TTL_S = 6 * 3600
 # 流量状态文件。容器里是挂进来的卷（compose 的 ./server-reporter/data:/data）
 TRAFFIC_STATE_PATH = "/data/traffic.json"
 TRAFFIC_STATE_VERSION = 1
+# 站点卡片那一格的滚动窗口，和 Vercel / Workers 的 Req、CPU 同一个 12 小时
+WINDOW_MS = 12 * 3_600_000
+# 镜像构建时烧进去的提交（build-reporters.yml 传 GIT_SHA），本地直接跑时没有
+REPORTER_COMMIT = os.environ.get("REPORTER_COMMIT", "").strip() or None
 GEO_TIMEOUT_S = 5.0
 USER_AGENT = "lyjwpage-server-reporter/1.0"
 AS_LINE = re.compile(r"^AS(\d+)\s*(.*)$", re.IGNORECASE)
@@ -467,6 +471,42 @@ def accumulate(
     }
 
 
+def counter_delta(cur: int, cursor: object) -> int | None:
+    """两次读数之差；比游标小就是重启过，那一段是当前读数本身。没有游标是 None"""
+    if not isinstance(cursor, int):
+        return None
+    return cur - cursor if cur >= cursor else cur
+
+
+# ── 12 小时窗口 ────────────────────────────────────────────
+# 每轮一条 [at, dt, cpu%, rx, tx]：dt 是这份 CPU 占用覆盖的时长（上一轮到这一轮），
+# rx / tx 是这一段的字节增量。和流量累计存在同一个状态文件里，进程重启接着算。
+# 12 小时满打满算七百来条、三十几 KB，每轮原子写一次，这台机器扛得住。
+
+
+def record_window(
+    samples: list[list[float]], now_ms: int, dt_ms: int, cpu_pct: float, rx: int, tx: int
+) -> list[list[float]]:
+    """追加这一轮、丢掉窗口外的。纯函数，可单测。"""
+    kept = [s for s in samples if isinstance(s, list) and len(s) == 5 and s[0] > now_ms - WINDOW_MS]
+    return kept + [[now_ms, dt_ms, round(cpu_pct, 1), rx, tx]]
+
+
+def summarize_window(samples: list[list[float]], now_ms: int) -> dict[str, Any] | None:
+    """窗口内按时长加权的平均 CPU 和进出字节。起点取最早那一段的开头，但不早于 12 小时前"""
+    kept = [s for s in samples if s[0] > now_ms - WINDOW_MS]
+    if not kept:
+        return None
+    total_dt = sum(s[1] for s in kept)
+    return {
+        "start": int(max(now_ms - WINDOW_MS, min(s[0] - s[1] for s in kept))),
+        "end": int(now_ms),
+        "cpuAvgPercent": round(sum(s[2] * s[1] for s in kept) / total_dt, 1) if total_dt > 0 else None,
+        "rxBytes": int(sum(s[3] for s in kept)),
+        "txBytes": int(sum(s[4] for s in kept)),
+    }
+
+
 _traffic: dict[str, Any] = {"state": {}, "loaded": False, "durable": False}
 
 
@@ -515,25 +555,39 @@ def save_traffic_state(state: dict[str, Any]) -> bool:
 
 
 def traffic_for(
-    iface: str, rx: int, tx: int, now_s: float, boot_ms: int | None = None
-) -> dict[str, Any] | None:
+    iface: str,
+    rx: int,
+    tx: int,
+    now_s: float,
+    boot_ms: int | None = None,
+    cpu_pct: float = 0.0,
+    elapsed_s: float = 0.0,
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """周期累计和 12 小时窗口一起算、一起落盘；攒不住时两份都报 None"""
     if not _traffic["loaded"]:
         load_traffic_state()
-    state = accumulate(
-        _traffic["state"], iface, rx, tx, now_s, CONFIG["cycle_day"], boot_ms
+    previous = _traffic["state"]
+    same_iface = previous.get("interface") == iface
+    rx_delta = counter_delta(rx, previous.get("rxCursor")) if same_iface else None
+    tx_delta = counter_delta(tx, previous.get("txCursor")) if same_iface else None
+    state = accumulate(previous, iface, rx, tx, now_s, CONFIG["cycle_day"], boot_ms)
+    now_ms = int(now_s * 1000)
+    window = previous.get("window") if isinstance(previous.get("window"), list) else []
+    state["window"] = record_window(
+        window, now_ms, int(elapsed_s * 1000), cpu_pct, rx_delta or 0, tx_delta or 0
     )
     _traffic["state"] = state
     if save_traffic_state(state):
         _traffic["durable"] = True
     if not _traffic["durable"]:
-        return None
+        return None, None
     return {
         "cycleStart": state["cycleStart"],
         "cycleEnd": state["cycleEnd"],
         "rxBytes": state["rxBytes"],
         "txBytes": state["txBytes"],
         "quotaBytes": CONFIG["quota_bytes"],
-    }
+    }, summarize_window(state["window"], now_ms)
 
 
 def cpu_percent(prev: tuple[int, int], cur: tuple[int, int]) -> float:
@@ -564,6 +618,10 @@ def snapshot(
     uname = os.uname()
     public_ip = iface_ipv4(iface)
     geo = geo_for(public_ip)
+    cpu = cpu_percent(prev_cpu, cur_cpu)
+    traffic, window = traffic_for(
+        iface, rx, tx, now, int((now - uptime_s) * 1000), cpu, elapsed
+    )
     return {
         "version": 1,
         "id": CONFIG["host_id"],
@@ -577,7 +635,7 @@ def snapshot(
         "os": read_os(),
         "kernel": uname.release,
         "cpuCores": os.cpu_count() or 1,
-        "cpuUsagePercent": round(cpu_percent(prev_cpu, cur_cpu), 1),
+        "cpuUsagePercent": round(cpu, 1),
         "load1": round(load1, 2),
         "load5": round(load5, 2),
         "load15": round(load15, 2),
@@ -591,7 +649,9 @@ def snapshot(
         "networkTxBytes": tx,
         "networkRxBytesPerSec": max(0, (rx - prev_rx) / elapsed),
         "networkTxBytesPerSec": max(0, (tx - prev_tx) / elapsed),
-        "traffic": traffic_for(iface, rx, tx, now, int((now - uptime_s) * 1000)),
+        "traffic": traffic,
+        "window": window,
+        "reporterCommit": REPORTER_COMMIT,
         "uptimeSeconds": round(uptime_s),
         "observedAt": int(now * 1000),
         "_cursor": {"cpu": cur_cpu, "net": cur_net, "at": now},
