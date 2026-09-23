@@ -32,6 +32,15 @@ function percent(ratio: number | null | undefined): string {
   return value >= 99.995 ? "100%" : `${value.toFixed(2)}%`;
 }
 
+const PERCENT_FORMAT = { style: "percent", maximumFractionDigits: 2 } as const;
+
+/** 大号百分比也走 NumberFlow：和旁边两格同一套字形与基线，数值变了有过渡 */
+function Percent({ ratio }: { ratio: number | null | undefined }) {
+  if (ratio == null) return <>—</>;
+  // 截到两位小数再交给格式化，99.999% 不会被四舍五入成 100%
+  return <NumberFlow value={Math.floor(ratio * 10_000) / 10_000} format={PERCENT_FORMAT} locales="en-US" />;
+}
+
 /**
  * 每日色块的档位，和状态页的习惯一致：全绿 / 有抖动 / 明显宕机。
  * 没有样本的日子（监测开通之前）画成底色，不冒充 100%。
@@ -40,8 +49,8 @@ function dayTone(entry: UptimeDay): { className: string; label: string } {
   const total = entry.success + entry.failure;
   if (total === 0) return { className: "bg-muted", label: "No data" };
   const ratio = entry.success / total;
-  if (ratio >= 0.9995) return { className: "bg-emerald-500/80 dark:bg-emerald-400/80", label: percent(ratio) };
-  if (ratio >= 0.99) return { className: "bg-amber-500/80", label: percent(ratio) };
+  if (ratio >= 0.9995) return { className: "bg-live/85", label: percent(ratio) };
+  if (ratio >= 0.99) return { className: "bg-live-idle", label: percent(ratio) };
   return { className: "bg-red-500/80", label: percent(ratio) };
 }
 
@@ -157,9 +166,9 @@ export function ReliabilityCard({ fallback, className }: {
       <div className="border-b border-line px-4 py-5 md:px-5">
         <div className="grid grid-cols-2 gap-5 md:grid-cols-4">
           <Stat label="UPTIME · 30D" title={`Availability of ${host}, checked every ${uptime?.intervalSeconds ?? 60}s`}>
-            {percent(uptime?.availability30d)}
+            <Percent ratio={uptime?.availability30d} />
           </Stat>
-          <Stat label="UPTIME · 24H">{percent(uptime?.availability24h)}</Stat>
+          <Stat label="UPTIME · 24H"><Percent ratio={uptime?.availability24h} /></Stat>
           <Stat
             label="RESPONSE"
             title={uptime?.lastCheck ? `Last check ${clock.format(uptime.lastCheck.at)} · HTTP ${uptime.lastCheck.httpStatus ?? "—"}` : undefined}
@@ -198,7 +207,7 @@ export function ReliabilityCard({ fallback, className }: {
         <section className="min-w-0 px-4 py-3 md:border-l md:border-line md:px-5" aria-label="Real user performance">
           <div className="mb-2 flex items-baseline justify-between text-[10px] text-muted-foreground">
             <span className="label-mono">Real users · p75 · 7d</span>
-            <span className="tabular-nums">{vitals?.samples ? `${number.format(vitals.samples)} page loads` : "Awaiting visits"}</span>
+            <span className="tabular-nums">{vitals ? (vitals.samples ? `${number.format(vitals.samples)} page loads` : "Awaiting visits") : null}</span>
           </div>
           <div className="grid grid-cols-4 gap-2">
             {VITALS.map((vital) => {
