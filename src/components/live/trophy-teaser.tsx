@@ -39,12 +39,14 @@ function formatUnlock(ms: number): string {
 
 function Count({ type, value }: { type: TrophyType; value: number }) {
   return (
-    <div className="flex items-center gap-1.5">
-      <TrophyMetal kind={type} size="sm" />
-      <div className="leading-tight">
-        <div className="label-mono text-muted-foreground">{trophyTypeLabel(type)}</div>
-        <div className="text-sm font-medium tabular-nums">{value}</div>
+    // 四格平分窄屏那一行时，杯子 + 「PLATINUM」比一格宽，会顶到下一格的杯子：
+    // 窄屏标签独占第一行，杯子和数字并排在第二行；sm 起杯子回到左侧跨两行。
+    <div className="grid grid-cols-[auto_1fr] items-center gap-x-1.5 gap-y-1 leading-tight sm:gap-y-0">
+      <TrophyMetal kind={type} size="sm" className="max-sm:row-start-2 sm:row-span-2" />
+      <div className="label-mono text-muted-foreground max-sm:col-span-2 max-sm:row-start-1">
+        {trophyTypeLabel(type)}
       </div>
+      <div className="text-sm font-medium tabular-nums max-sm:row-start-2">{value}</div>
     </div>
   );
 }
@@ -80,7 +82,7 @@ export function TrophyTeaser({
   return (
     <div
       className={cn(
-        "flex flex-col gap-3 px-3 py-3 sm:flex-row sm:items-center sm:gap-5",
+        "flex flex-col gap-3 px-3 py-3 md:flex-row md:flex-wrap md:items-center md:gap-x-5 lg:flex-nowrap",
         embedded
           ? "border-b border-line"
           : "paper-card mb-3 border border-line-strong bg-surface",
@@ -166,15 +168,18 @@ export function TrophyTeaser({
        * 四色计数按内容宽，不再 flex-1 摊满：摊满时四个两位数被推得老远，
        * 中间全是空的。左右两块可伸缩，让它们去吃剩下的空间。
        */}
-      <div className="grid grid-cols-4 gap-2 border-t border-line pt-3 sm:shrink-0 sm:gap-5 sm:border-t-0 sm:pt-0">
+      <div className="grid grid-cols-4 gap-2 border-t border-line pt-3 md:ml-auto md:shrink-0 md:gap-5 md:border-t-0 md:pt-0 lg:ml-0">
         {TYPES.map((type) => (
           <Count key={type} type={type} value={data.earned[type]} />
         ))}
       </div>
 
-      {/* 中间那块不再撑开，靠 ml-auto 把这块推回右边缘 */}
+      {/*
+        中间那块不再撑开，靠 ml-auto 把这块推回右边缘。三块排一行要 ~840px，
+        md 那一段放不下：这块折到第二行，头像和计数留在第一行；lg 才并回一行。
+      */}
       {recent ? (
-        <div className="min-w-0 border-t border-line pt-3 sm:ml-auto sm:max-w-64 sm:border-t-0 sm:pt-0 sm:text-right">
+        <div className="min-w-0 border-t border-line pt-3 md:basis-full lg:ml-auto lg:max-w-64 lg:basis-auto lg:border-t-0 lg:pt-0 lg:text-right">
           {/*
            * 整块可点：它就是「展开下面那款游戏的奖杯」的按钮。
            * 负外边距配等量内边距，悬停的底色比文字宽一圈，文字本身仍旧
@@ -186,14 +191,14 @@ export function TrophyTeaser({
             onClick={() => onRecentClick(recent)}
             // 游戏名自带书名号的时候多，别再套一层
             aria-label={`Open ${recent.titleName} trophies at “${recent.trophyName}”`}
-            className="-mx-2 block cursor-pointer rounded-md px-2 py-1 text-left transition-colors hover:bg-surface-hover sm:text-right"
+            className="-mx-2 block cursor-pointer rounded-md px-2 py-1 text-left transition-colors hover:bg-surface-hover lg:text-right"
           >
             {/* 和四色计数同构：标签在上、内容在下 —— 裸内容一眼认不出是什么。
                 日期跟着标签走，别插在图标和奖杯名中间把名字拆开 */}
             <div className="label-mono text-muted-foreground">
               Latest · {formatUnlock(recent.earnedAt)}
             </div>
-            <div className="mt-1.5 flex items-center gap-2 sm:justify-end">
+            <div className="mt-1.5 flex items-center gap-2 lg:justify-end">
               {recent.iconUrl ? (
                 <Image
                   // 尺寸在 PSN 那边就选好，不进图片管道；理由见 playstation-image

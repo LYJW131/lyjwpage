@@ -22,10 +22,14 @@ export function Footer() {
       {/*
         间隔点用相邻兄弟的伪元素画，不写成一个个 <span>：构建信息取不到时对应
         元素整个不渲染，相邻关系会自动重排，不用把「前面还有没有东西」一路传下去。
+
+        一行要 ~460px，窄于 512px 时会折行，折下去的那段会以一个孤零零的点开头：
+        这时让在线人数自己占第二行，它前面的点也不画。
       */}
       <div
         className={cn(
           "label-mono flex flex-wrap items-center justify-center gap-x-2 gap-y-2 border-t border-line px-4 pt-4 text-muted-foreground [&>*+*]:before:mr-2 [&>*+*]:before:text-muted-foreground/50 [&>*+*]:before:content-['·']",
+          "max-[32rem]:[&>*:last-child]:basis-full max-[32rem]:[&>*:last-child]:justify-center max-[32rem]:[&>*:last-child]:before:hidden",
           EXTRA_TEXT ? "pb-2" : "pb-4",
         )}
       >

@@ -174,7 +174,8 @@ export function AppVersionCard() {
                       </span>
                       {buildDuration && (
                         <span className="label-mono text-[10px] text-muted-foreground">
-                          · built in {buildDuration}
+                          {/* 手机上这段总会折到第二行，行首挂个点不好看 */}
+                          <span className="max-sm:hidden">· </span>built in {buildDuration}
                         </span>
                       )}
                     </div>

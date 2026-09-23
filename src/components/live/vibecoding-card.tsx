@@ -1095,6 +1095,7 @@ function CompactAgentRow({
         {/*
           读数和全量面板的 LimitMeter 一样放在条的上方、这一行的右端，条下面不再挂
           东西：站内所有进度条的文案都在条上方。窄屏时这一行单独一行，读数靠右。
+          行高钉在 h-5，倒计时一换行就压到条上：倒计时不换行，放不下时截套餐名。
         */}
         <span className="flex h-5 min-w-0 items-baseline gap-2 text-xs text-muted-foreground md:shrink-0">
           {agent.plan && (
@@ -1109,7 +1110,7 @@ function CompactAgentRow({
           )}
           {reset?.kind === "days" && (
             <NumberFlowGroup>
-              <span className="tabular-nums">
+              <span className="shrink-0 whitespace-nowrap tabular-nums">
                 Resets in{" "}
                 <NumberFlow value={reset.days} locales="en-US" />{" "}
                 {reset.days === 1 ? "day" : "days"}
@@ -1124,7 +1125,7 @@ function CompactAgentRow({
           )}
           {reset?.kind === "relative" && (
             <NumberFlowGroup>
-              <span className="tabular-nums">
+              <span className="shrink-0 whitespace-nowrap tabular-nums">
                 Resets in{" "}
                 {reset.hours > 0 && (
                   <>
