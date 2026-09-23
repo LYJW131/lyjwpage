@@ -60,8 +60,6 @@ test("home bootstrap: unknown paths and non-since queries never touch the aggreg
   const { bootstrap, calls } = harness();
   assert.equal(bootstrap.slice("/api/status/online"), null);
   assert.equal(bootstrap.slice("/api/status/trophies?titleids=CUSA00001"), null);
-  // 首屏字段是摘要、端点是整份目录：登记表标了 bootstrap: false，裸路径也不代答
-  assert.equal(bootstrap.slice(STATUS_VIEWS.trophies.path), null);
   assert.equal(bootstrap.slice("/api/status/charger?since=1&titleids=x"), null);
   assert.deepEqual(calls, []);
 });

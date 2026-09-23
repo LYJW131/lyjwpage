@@ -2,7 +2,7 @@ import { gamingLevel } from "@shared/pulse-levels";
 import { object } from "@/lib/json";
 import { PLAYING_TAG, TROPHIES_TAG } from "@/lib/live-events";
 import { getPlaystationPlayedGames, getPlaystationPower, getPlaystationPresence, getPlaystationTrophies } from "@/lib/playstation-store";
-import { normalizeTrophies, trophiesContent } from "@/lib/trophies";
+import { normalizeTrophies, summarizeTrophies, trophiesContent } from "@/lib/trophies";
 import type {
   PlaystationPresencePayload
 } from "@/lib/types";
@@ -156,6 +156,12 @@ export async function commitPreparedPlaystationReport(prepared: PreparedPlaystat
   }
   if (incomingTrophies && (trophiesChanged || !previousTrophies)) {
     writes.push(setPlaystationTrophies(incomingTrophies));
+    /**
+     * 推摘要，不推整份：摘要里的各款进度不吃游玩时长覆盖，拿进来的这份直接算，
+     * 和端点读回去再算的是同一份。trophiesChanged 不看 observedAt 和游玩时长，
+     * 上报器每轮整份重交也不会退化成定时广播。
+     */
+    events.push({ type: "trophies", payload: summarizeTrophies(incomingTrophies) });
     // 首屏的奖杯条只有「有没有」这一种布局差别；目录内容交给定时重建
     if (!previousTrophies) tags.push(TROPHIES_TAG);
   }

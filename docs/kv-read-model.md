@@ -13,7 +13,7 @@
 | 所有 `*/now`、`desktop`、`server`、`activity`、`charger`、`powerbank`、`vibecoding`、`pulse` | DO；包含存活、日界线、暂停宽限期或增量历史语义 | 不经 KV |
 | `cloudflare-workers` | DO；带各 Worker 当前版本，投影的发布间隔和最大年龄会让刚部署完读到上一版。上游由 15 分钟 StateHub 缓存挡住 | 不经 KV |
 | `listening`、`watching`、`playing` | DO；有推送事件，登记表禁止进 KV | 不经 KV |
-| `trophies` | DO；浏览器只带 `?titleids=` 从不裸读。首屏字段是摘要、端点是整份目录，登记表标 `bootstrap: false`，挂载引导也不代答 | 不经 KV |
+| `trophies` | DO；无参是摘要（与首屏字段、`trophies` 推送同形状，挂载引导可代答），`?titleids=` 是那几款的完整目录。有推送事件，登记表禁止进 KV | 不经 KV |
 | `/ws`、`/count`、上报、MusicKit token、歌词/动态封面 | 原路径 | 不经 KV |
 | 任意带查询参数的请求 | 原路径，包括 `since` 和筛选参数 | 不经 KV |
 

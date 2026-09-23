@@ -7,6 +7,7 @@ import type {
   NowListeningPayload,
   PlaystationPlayingPayload,
   PlaystationPresencePayload,
+  TrophiesSummaryPayload,
   VibeCodingNowPayload,
   PowerBankPayload,
 } from "@/lib/types";
@@ -88,7 +89,14 @@ export type LiveEvent =
   /** PlayStation 此刻在线 / 在玩状态。 */
   | { type: "playing-now"; payload: PlaystationPresencePayload }
   /** PlayStation 最近游玩列表；整份替换，直接写进浏览器 SWR 缓存。 */
-  | { type: "playing"; payload: PlaystationPlayingPayload };
+  | { type: "playing"; payload: PlaystationPlayingPayload }
+  /**
+   * PlayStation 奖杯变了（解锁、新 DLC、等级）。带的是摘要 —— 等级、合计、最近
+   * 解锁、各款进度，和 `/api/status/trophies` 无参回的同一份，实测 8 KB 级。
+   * 整份目录每个奖杯都带说明和图标，几百 KB 还要乘在线人头，不推；展开着的
+   * 瓷砖收到这条自己去重取那一两款的切片。
+   */
+  | { type: "trophies"; payload: TrophiesSummaryPayload };
 
 /**
  * 状态 tag 常量在 lib/status-tags，这里原样再导出：失效和推送是同一个变化的两条腿，

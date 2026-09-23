@@ -7,6 +7,7 @@ import type {
   NowListeningPayload,
   PowerBankPayload,
   StatusResponse,
+  TrophiesSummaryPayload,
 } from "@/lib/types";
 
 /**
@@ -36,6 +37,8 @@ const STAMPS: Record<string, (data: never) => number | null> = {
   [STATUS_VIEWS.nowListening.path]: (data: NowListeningPayload) => data.receivedAt,
   [STATUS_VIEWS.powerBank.path]: (data: PowerBankPayload) => data.pushedAt,
   [STATUS_VIEWS.agentStatus.path]: (data: AgentStatusPayload) => data.fetchedAt,
+  // 只在内容真变了才落库，所以存着的 observedAt 就是那一代的时刻
+  [STATUS_VIEWS.trophies.path]: (data: TrophiesSummaryPayload) => data.observedAt,
 };
 
 function stampOf(path: string, envelope: StatusResponse<unknown>): number | null {
