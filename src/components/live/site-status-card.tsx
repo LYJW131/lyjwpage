@@ -38,7 +38,11 @@ function Stat({ label, value, title, prefix }: { label: string; value?: number |
   return (
     <div title={title}>
       <div className="label-mono text-muted-foreground">{label}</div>
-      <div className="mt-2 text-3xl font-medium tracking-tight md:text-4xl">{value == null ? "—" : <>{prefix}<NumberFlow value={value} locales="en-US" /></>}</div>
+      {/*
+        「+」和数字不能断开；六位数的增删行数在 360 两列、768 四列时都比格子宽，
+        所以窄屏降一档字号，四列要到 lg 才用 4xl。
+      */}
+      <div className="mt-2 whitespace-nowrap text-2xl font-medium tracking-tight min-[400px]:text-3xl lg:text-4xl">{value == null ? "—" : <>{prefix}<NumberFlow value={value} locales="en-US" /></>}</div>
     </div>
   );
 }

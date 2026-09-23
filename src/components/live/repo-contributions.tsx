@@ -73,7 +73,7 @@ function ContributorRow({
       // 和 GitHub Insights → Contributors 同一口径：`Co-authored-by` 的提交
       // 作者和协作者各记一次，所以这一列加起来会超过顶部的 COMMITS。
       title={`${person.login} · ${person.commits.toLocaleString("en-US")} commits (including Co-authored-by)`}
-      className="relative flex min-h-[44px] min-w-0 items-center gap-2 border border-line bg-muted/40 px-3"
+      className="relative flex min-h-[44px] min-w-0 items-center gap-2 border border-line bg-muted/40 px-3 max-sm:flex-wrap max-sm:gap-y-0 max-sm:py-1"
     >
       {/* 骑在左边框上，和外框齐平，不被框线包在里面 */}
       <span aria-hidden className="absolute top-[-1px] bottom-[-1px] left-[-1px] w-1" style={{ backgroundColor: color }} />
@@ -82,7 +82,7 @@ function ContributorRow({
         href={`https://github.com/${person.login}`}
         target="_blank"
         rel="noreferrer noopener"
-        className="group mr-auto flex min-w-0 items-center gap-2 self-stretch"
+        className="group mr-auto flex min-w-0 items-center gap-2 self-stretch max-sm:items-start max-sm:self-auto"
       >
         {person.avatarUrl ? (
           <Image
@@ -105,13 +105,17 @@ function ContributorRow({
           {person.login}
         </span>
       </a>
-      <span className="shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground">
-        {person.commits.toLocaleString("en-US")} commits
-      </span>
-      <span className="shrink-0 font-mono text-[11px] tabular-nums">
-        <span style={{ color: "var(--signal-green)" }}>+{person.additions.toLocaleString("en-US")}</span>
-        <span className="text-muted-foreground">/</span>
-        <span style={{ color: "var(--signal-red)" }}>−{person.deletions.toLocaleString("en-US")}</span>
+      {/*
+        窄屏上两段读数就占掉 180px，名字只剩三个字母：读数折到第二行，缩进到
+        名字底下，名字贴头像顶，两行加 py-1 仍是 44px 行高。sm 起并回一行。
+      */}
+      <span className="flex shrink-0 gap-2 font-mono text-[11px] leading-4 tabular-nums max-sm:-mt-2 max-sm:basis-full max-sm:pl-9">
+        <span className="text-muted-foreground">{person.commits.toLocaleString("en-US")} commits</span>
+        <span>
+          <span style={{ color: "var(--signal-green)" }}>+{person.additions.toLocaleString("en-US")}</span>
+          <span className="text-muted-foreground">/</span>
+          <span style={{ color: "var(--signal-red)" }}>−{person.deletions.toLocaleString("en-US")}</span>
+        </span>
       </span>
     </div>
   );
@@ -195,7 +199,7 @@ function CommitCard({ commit, deploy }: {
     <li className="flex min-h-[96px] flex-col justify-center gap-1 border border-line bg-muted/40 px-3 py-2">
       <a href={commit.url} target="_blank" rel="noreferrer noopener" title={commit.title} className="-mt-2 block truncate pt-2 text-sm leading-5 hover:underline">{commit.title}</a>
       <CommitByline authors={commit.authors} committedAt={commit.committedAt} />
-      <div className="flex items-center gap-x-2.5 text-[10px] leading-4 text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 whitespace-nowrap text-[10px] leading-4 text-muted-foreground">
         <span className="flex items-center gap-1.5">
           <span className={cn("size-1.5 shrink-0 rounded-full", production ? "bg-emerald-500" : deployment?.state === "ERROR" ? "bg-red-500" : deployment?.state === "BUILDING" ? "bg-amber-500" : "bg-muted-foreground/40")} />
           <span className={cn(production ? "text-emerald-600 dark:text-emerald-400" : deployment?.state === "ERROR" ? "text-red-500" : undefined)}>{status}</span>
