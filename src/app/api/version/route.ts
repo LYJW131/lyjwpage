@@ -17,7 +17,8 @@ import type { AppVersionPayload } from "@/lib/app-version";
 export function GET() {
   const payload: AppVersionPayload = {
     commit: commitSha,
-    message: process.env.VERCEL_GIT_COMMIT_MESSAGE?.trim() || null,
+    // 只要标题那一行，和 Commit 栏同一口径（lib/vercel-deployments）；正文进卡片会接在标题后面
+    message: process.env.VERCEL_GIT_COMMIT_MESSAGE?.split("\n")[0].trim().slice(0, 180) || null,
     builtAt: process.env.BUILD_TIME || null,
   };
   return Response.json(payload);
