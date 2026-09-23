@@ -7,7 +7,7 @@ import { Card } from "@/components/ui/card";
 import type { DotTone } from "@/components/ui/status-dot";
 import { useStatus } from "@/hooks/use-status";
 import { SENTRY_PATH } from "@/lib/paths";
-import type { SentryErrorSeries, SentryStatusPayload, UptimeDay } from "@/lib/sentry-status-types";
+import type { SentryStatusPayload, UptimeDay } from "@/lib/sentry-status-types";
 import { site } from "@/lib/site";
 import type { StatusResponse } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -20,6 +20,7 @@ function SentryMark({ size = 15 }: { size?: number }) {
     </svg>
   );
 }
+
 
 const day = new Intl.DateTimeFormat("en-US", { timeZone: "UTC", month: "short", day: "numeric" });
 const clock = new Intl.DateTimeFormat("en-US", { timeZone: site.timezone, month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
@@ -34,13 +35,6 @@ function percent(ratio: number | null | undefined): string {
 
 const PERCENT_FORMAT = { style: "percent", maximumFractionDigits: 2 } as const;
 
-/** 大号百分比也走 NumberFlow：和旁边两格同一套字形与基线，数值变了有过渡 */
-function Percent({ ratio }: { ratio: number | null | undefined }) {
-  if (ratio == null) return <>—</>;
-  // 截到两位小数再交给格式化，99.999% 不会被四舍五入成 100%
-  return <NumberFlow value={Math.floor(ratio * 10_000) / 10_000} format={PERCENT_FORMAT} locales="en-US" />;
-}
-
 /**
  * 每日色块的档位，和状态页的习惯一致：全绿 / 有抖动 / 明显宕机。
  * 没有样本的日子（监测开通之前）画成底色，不冒充 100%。
@@ -54,77 +48,7 @@ function dayTone(entry: UptimeDay): { className: string; label: string } {
   return { className: "bg-red-500/80", label: percent(ratio) };
 }
 
-function Stat({ label, children, title }: { label: string; children: ReactNode; title?: string }) {
-  return (
-    <div title={title}>
-      <div className="label-mono text-muted-foreground">{label}</div>
-      <div className="mt-2 text-3xl font-medium tracking-tight tabular-nums md:text-4xl">{children}</div>
-    </div>
-  );
-}
-
-function UptimeBar({ days }: { days: UptimeDay[] }) {
-  return (
-    <div>
-      <div className="flex h-8 gap-[3px]" role="img" aria-label={`Daily availability, last ${days.length} days`}>
-        {days.map((entry) => {
-          const tone = dayTone(entry);
-          const downtime = entry.failure ? ` · ${number.format(entry.failure)} failed checks` : "";
-          return (
-            <span
-              key={entry.dayStart}
-              title={`${day.format(entry.dayStart)} · ${tone.label}${downtime}`}
-              className={cn("min-w-0 flex-1 rounded-[2px]", tone.className)}
-            />
-          );
-        })}
-      </div>
-      <div className="mt-1.5 flex justify-between text-[10px] text-muted-foreground">
-        <span>{days.length} days ago</span>
-        <span>Today (UTC)</span>
-      </div>
-    </div>
-  );
-}
-
-/** 24 根小时柱，前端在下、API 叠在上；全零时留一条基线，不画空白 */
-function ErrorBars({ site: front, worker }: { site: SentryErrorSeries; worker: SentryErrorSeries }) {
-  const hours = front.hourly.map((count, index) => ({ front: count, api: worker.hourly[index] ?? 0 }));
-  const peak = Math.max(1, ...hours.map((hour) => hour.front + hour.api));
-  return (
-    <div className="flex h-10 items-end gap-[2px]" role="img" aria-label="Errors per hour, last 24 hours">
-      {hours.map((hour, index) => {
-        const total = hour.front + hour.api;
-        return (
-          <span
-            key={index}
-            title={`${24 - index}h ago · ${hour.front} frontend · ${hour.api} API`}
-            className="flex min-w-0 flex-1 flex-col-reverse"
-            style={{ height: `${Math.max(total / peak, 0.04) * 100}%` }}
-          >
-            {total === 0 ? (
-              <span className="h-full rounded-[1px] bg-line" />
-            ) : (
-              <>
-                <span className="rounded-[1px] bg-red-500/70" style={{ height: `${(hour.front / total) * 100}%` }} />
-                <span className="rounded-[1px] bg-amber-500/80" style={{ height: `${(hour.api / total) * 100}%` }} />
-              </>
-            )}
-          </span>
-        );
-      })}
-    </div>
-  );
-}
-
 /** Web Vitals 的官方档位：good / needs improvement / poor */
-const VITALS = [
-  { key: "lcpP75Ms", label: "LCP", title: "Largest Contentful Paint", good: 2500, poor: 4000, format: (v: number) => `${(v / 1000).toFixed(2)}s` },
-  { key: "inpP75Ms", label: "INP", title: "Interaction to Next Paint", good: 200, poor: 500, format: (v: number) => `${Math.round(v)}ms` },
-  { key: "clsP75", label: "CLS", title: "Cumulative Layout Shift", good: 0.1, poor: 0.25, format: (v: number) => String(Number(v.toFixed(3))) },
-  { key: "ttfbP75Ms", label: "TTFB", title: "Time to First Byte", good: 800, poor: 1800, format: (v: number) => `${Math.round(v)}ms` },
-] as const;
-
 function vitalTone(value: number, good: number, poor: number) {
   return value <= good ? "text-emerald-600 dark:text-emerald-400" : value <= poor ? "text-amber-600" : "text-red-500";
 }
@@ -141,15 +65,27 @@ function uptimeTone(status: string | undefined): DotTone {
   return status === "up" ? "live" : status === "down" ? "off" : "idle";
 }
 
+/** 下排一格：小标签 + 一个数。细节都放进 title，版面只留结论 */
+function Metric({ label, title, className, children }: { label: string; title?: string; className?: string; children: ReactNode }) {
+  return (
+    <div className="bg-surface px-4 py-3 md:px-5" title={title}>
+      <div className="label-mono truncate text-muted-foreground">{label}</div>
+      <div className={cn("mt-1.5 truncate text-xl font-medium tabular-nums", className)}>{children}</div>
+    </div>
+  );
+}
+
 export function ReliabilityCard({ fallback, className }: {
   fallback: StatusResponse<SentryStatusPayload>;
   className?: string;
 }) {
   const { data } = useStatus<SentryStatusPayload>(SENTRY_PATH, 5 * 60_000, { fallback });
   const uptime = data?.uptime, errors = data?.errors, vitals = data?.vitals, cron = data?.cron, sessions = data?.sessions;
-  const errors24h = errors ? errors.site.count24h + errors.worker.count24h : null;
-  const unresolved = errors ? errors.site.unresolved + errors.worker.unresolved : null;
   const host = uptime?.url ? new URL(uptime.url).host : "lyjw.me";
+  const errors24h = errors ? errors.site.count24h + errors.worker.count24h : null;
+  const vital = (value: number | null | undefined, good: number, poor: number) =>
+    value == null ? "text-muted-foreground" : vitalTone(value, good, poor);
+  const vitalsTitle = vitals?.samples ? `p75 of ${number.format(vitals.samples)} real page loads, last 7 days` : "Real visitors, p75 over 7 days";
 
   return (
     <Card
@@ -163,74 +99,63 @@ export function ReliabilityCard({ fallback, className }: {
         </a>
       }
     >
-      <div className="border-b border-line px-4 py-5 md:px-5">
-        <div className="grid grid-cols-2 gap-5 md:grid-cols-4">
-          <Stat label="UPTIME · 30D" title={`Availability of ${host}, checked every ${uptime?.intervalSeconds ?? 60}s`}>
-            <Percent ratio={uptime?.availability30d} />
-          </Stat>
-          <Stat label="UPTIME · 24H"><Percent ratio={uptime?.availability24h} /></Stat>
-          <Stat
-            label="RESPONSE"
-            title={uptime?.lastCheck ? `Last check ${clock.format(uptime.lastCheck.at)} · HTTP ${uptime.lastCheck.httpStatus ?? "—"}` : undefined}
-          >
-            {uptime?.lastCheck?.durationMs == null ? "—" : <><NumberFlow value={uptime.lastCheck.durationMs} locales="en-US" /><span className="text-lg text-muted-foreground">ms</span></>}
-          </Stat>
-          <Stat label="ERRORS · 24H" title={errors ? `${errors.site.count7d + errors.worker.count7d} in the last 7 days` : undefined}>
-            {errors24h == null ? "—" : <NumberFlow value={errors24h} locales="en-US" />}
-          </Stat>
+      <div className="flex flex-col gap-4 border-b border-line px-4 py-5 md:flex-row md:items-end md:gap-8 md:px-5">
+        <div className="shrink-0" title={uptime ? `24h ${percent(uptime.availability24h)} · checked every ${uptime.intervalSeconds}s` : undefined}>
+          <div className="label-mono text-muted-foreground">UPTIME · 30D</div>
+          <div className="mt-2 text-4xl font-medium tracking-tight tabular-nums">
+            {uptime?.availability30d == null ? "—" : (
+              // 截到两位小数再格式化，99.999% 不会被四舍五入成 100%
+              <NumberFlow value={Math.floor(uptime.availability30d * 10_000) / 10_000} format={PERCENT_FORMAT} locales="en-US" />
+            )}
+          </div>
+          <div className="mt-1 text-[11px] tabular-nums text-muted-foreground"
+            title={uptime?.lastCheck ? `Last check ${clock.format(uptime.lastCheck.at)} · HTTP ${uptime.lastCheck.httpStatus ?? "—"}` : undefined}>
+            {host}{uptime?.lastCheck?.durationMs != null && <> · {number.format(uptime.lastCheck.durationMs)} ms</>}
+          </div>
         </div>
         {uptime && uptime.days.length > 0 && (
-          <div className="mt-6">
-            <UptimeBar days={uptime.days} />
+          <div className="min-w-0 flex-1">
+            <div className="flex h-7 gap-[3px]" role="img" aria-label={`Daily availability, last ${uptime.days.length} days`}>
+              {uptime.days.map((entry) => {
+                const tone = dayTone(entry);
+                const failed = entry.failure ? ` · ${number.format(entry.failure)} failed checks` : "";
+                return <span key={entry.dayStart} title={`${day.format(entry.dayStart)} · ${tone.label}${failed}`} className={cn("min-w-0 flex-1 rounded-[2px]", tone.className)} />;
+              })}
+            </div>
+            <div className="mt-1.5 flex justify-between text-[10px] text-muted-foreground">
+              <span>{uptime.days.length} days ago</span>
+              <span>Today</span>
+            </div>
           </div>
         )}
       </div>
 
-      <div className="grid md:grid-cols-2">
-        <section className="min-w-0 border-b border-line px-4 py-3 md:border-b-0 md:px-5" aria-label="Errors">
-          <div className="mb-2 flex items-baseline justify-between text-[10px] text-muted-foreground">
-            <span className="label-mono">Errors per hour</span>
-            <span className="flex gap-3 tabular-nums">
-              <span className="flex items-center gap-1"><span className="size-1.5 rounded-full bg-red-500/70" />Frontend <span className="text-foreground">{errors ? number.format(errors.site.count24h) : "—"}</span></span>
-              <span className="flex items-center gap-1"><span className="size-1.5 rounded-full bg-amber-500/80" />API <span className="text-foreground">{errors ? number.format(errors.worker.count24h) : "—"}</span></span>
-            </span>
-          </div>
-          {errors ? <ErrorBars site={errors.site} worker={errors.worker} /> : <div className="h-10" />}
-          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-0.5 text-[10px] tabular-nums text-muted-foreground">
-            <span>Unresolved <span className="text-foreground">{unresolved == null ? "—" : number.format(unresolved)}</span></span>
-            <span title={sessions ? `${number.format(sessions.count)} browser sessions in 24h` : undefined}>
-              Crash-free sessions <span className="text-foreground">{percent(sessions?.crashFreeRate)}</span>
-            </span>
-          </div>
-        </section>
-
-        <section className="min-w-0 px-4 py-3 md:border-l md:border-line md:px-5" aria-label="Real user performance">
-          <div className="mb-2 flex items-baseline justify-between text-[10px] text-muted-foreground">
-            <span className="label-mono">Real users · p75 · 7d</span>
-            <span className="tabular-nums">{vitals ? (vitals.samples ? `${number.format(vitals.samples)} page loads` : "Awaiting visits") : null}</span>
-          </div>
-          <div className="grid grid-cols-4 gap-2">
-            {VITALS.map((vital) => {
-              const value = vitals?.[vital.key];
-              return (
-                <div key={vital.key} title={vital.title}>
-                  <div className="text-[10px] text-muted-foreground">{vital.label}</div>
-                  <div className={cn("mt-0.5 text-lg font-medium tabular-nums lg:text-xl", value == null ? "text-muted-foreground" : vitalTone(value, vital.good, vital.poor))}>
-                    {value == null ? "—" : vital.format(value)}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-0.5 text-[10px] tabular-nums text-muted-foreground">
-            <span className="flex items-center gap-1.5" title={cron?.lastCheckInAt ? `Last check-in ${clock.format(cron.lastCheckInAt)}` : "Every-minute cron on the API Worker"}>
-              API cron
-              <span className={cn("size-1.5 rounded-full", cron?.status === "ok" ? "bg-live" : cron && cron.status !== "unknown" ? "bg-red-500" : "bg-live-off")} />
-              <span className="text-foreground">{cron ? CRON_LABEL[cron.status] : "—"}</span>
-            </span>
-            {uptime?.lastCheck && <span>Checked {clock.format(uptime.lastCheck.at)}</span>}
-          </div>
-        </section>
+      {/* 六格同一种样式：窄屏三列两行，宽屏一行；1px 缝靠底色透出来当分隔线 */}
+      <div className="grid grid-cols-3 gap-px bg-line md:grid-cols-6">
+        <Metric
+          label="ERRORS"
+          title={errors ? `Last 24h · Frontend ${number.format(errors.site.count24h)} · API ${number.format(errors.worker.count24h)} · ${number.format(errors.site.unresolved + errors.worker.unresolved)} unresolved` : undefined}
+        >
+          {errors24h == null ? "—" : number.format(errors24h)}
+        </Metric>
+        <Metric label="CRASH-FREE" title={sessions ? `${number.format(sessions.count)} browser sessions in 24h` : undefined}>
+          {percent(sessions?.crashFreeRate)}
+        </Metric>
+        <Metric label="LCP" title={`Largest Contentful Paint · ${vitalsTitle}`} className={vital(vitals?.lcpP75Ms, 2500, 4000)}>
+          {vitals?.lcpP75Ms == null ? "—" : `${(vitals.lcpP75Ms / 1000).toFixed(2)}s`}
+        </Metric>
+        <Metric label="INP" title={`Interaction to Next Paint · ${vitalsTitle}`} className={vital(vitals?.inpP75Ms, 200, 500)}>
+          {vitals?.inpP75Ms == null ? "—" : `${Math.round(vitals.inpP75Ms)}ms`}
+        </Metric>
+        <Metric label="CLS" title={`Cumulative Layout Shift · ${vitalsTitle}`} className={vital(vitals?.clsP75, 0.1, 0.25)}>
+          {vitals?.clsP75 == null ? "—" : String(Number(vitals.clsP75.toFixed(3)))}
+        </Metric>
+        <Metric label="API CRON" title={cron?.lastCheckInAt ? `Every-minute cron · last check-in ${clock.format(cron.lastCheckInAt)}` : "Every-minute cron on the API Worker"}>
+          <span className="flex items-center gap-2">
+            <span className={cn("size-2 shrink-0 rounded-full", cron?.status === "ok" ? "bg-live" : cron && cron.status !== "unknown" ? "bg-red-500" : "bg-live-off")} />
+            {cron ? CRON_LABEL[cron.status] : "—"}
+          </span>
+        </Metric>
       </div>
     </Card>
   );
