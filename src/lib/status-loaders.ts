@@ -23,6 +23,7 @@ import { getGithubRepo } from "@/lib/github-repo";
 import { getPlaying, getPlayingNow } from "@/lib/playstation";
 import { getPowerBankSnapshot } from "@/lib/powerbank";
 import { getPulseStatus } from "@/lib/pulse";
+import { getSentryStatus } from "@/lib/sentry-status";
 import { getServerSnapshot } from "@/lib/server";
 import { STATUS_VIEWS, type EndpointViewKey, type StatusViewKey } from "@/lib/status-views";
 import { getDesktopPayload, getNowListening, getTimezonePayload } from "@/lib/telemetry";
@@ -107,6 +108,7 @@ export const statusLoaders = {
   githubRepo: { endpoint: unparam(getGithubRepo) },
   cloudflareWorkers: { endpoint: unparam(getCloudflareWorkers) },
   vercelDeployments: { endpoint: unparam(getVercelDeployments) },
+  sentry: { endpoint: unparam(getSentryStatus) },
   pulse: { endpoint: unparam(() => getPulseStatus()) },
 } satisfies { [K in Exclude<StatusViewKey, "lyrics">]: LoaderFor<K> };
 

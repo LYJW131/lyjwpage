@@ -18,6 +18,8 @@ export const site = {
   vercel: "https://vercel.com/lyjw131s-projects/lyjwpage",
   /** Cloudflare 控制台的 Workers 列表；账号 ID 不是秘密，Worker 的 wrangler.toml 也写它 */
   cloudflare: "https://dash.cloudflare.com/209f2c881b1c494fec50851c067b3266/workers-and-pages",
+  /** Sentry 组织首页；站点报错、在线监测和 cron 心跳都在这里 */
+  sentry: "https://yangjunwei-liang.sentry.io",
   githubLogin: "LYJW131",
   /** 头像 CDN 按数字 ID 直取，不经登录名跳转；改账号时一起改。 */
   githubId: 153256373,

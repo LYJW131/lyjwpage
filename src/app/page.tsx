@@ -8,6 +8,7 @@ import { DevToggleDock } from "@/components/dev-toggles";
 import { WorkoutsStrip } from "@/components/live/workouts-strip";
 import { ActivityCard } from "@/components/live/activity-card";
 import { SiteStatusCard } from "@/components/live/site-status-card";
+import { ReliabilityCard } from "@/components/live/reliability-card";
 import { LiveMediaPair } from "@/components/live/media-pair";
 import { ServerCard } from "@/components/live/server-card";
 import { PlaystationBlock } from "@/components/live/playstation-block";
@@ -172,6 +173,11 @@ export default async function Home() {
                 cloudflareFallback={snapshot.cloudflareWorkers ?? { ok: false, error: "Stats unavailable" }}
                 recentCommits={recentCommits}
                 className="mt-3 defer-offscreen-always [contain-intrinsic-size:auto_1319px]"
+              />
+
+              <ReliabilityCard
+                fallback={snapshot.sentry ?? { ok: false, error: "Reliability unavailable" }}
+                className="mt-3 defer-offscreen-always [contain-intrinsic-size:auto_420px]"
               />
 
               <div

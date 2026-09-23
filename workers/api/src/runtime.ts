@@ -28,6 +28,8 @@ export interface Env extends MusicKitTokenEnv {
   SENTRY_DSN?: string;
   /** 不配时按生产 / Preview 自动判断；本地试 Sentry 时设 development。 */
   SENTRY_ENVIRONMENT?: string;
+  /** Sentry 组织只读令牌，给 `/api/status/sentry` 取数；不配这张卡就显示暂无数据 */
+  SENTRY_API_TOKEN?: string;
   /** Sentry SDK 从这里取 release（版本 ID），不在代码里读。 */
   CF_VERSION_METADATA?: WorkerVersionMetadata;
 }

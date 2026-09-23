@@ -13,3 +13,16 @@ export const SENTRY_ENVIRONMENT = process.env.SENTRY_ENVIRONMENT || "development
 
 export const SENTRY_ENABLED =
   SENTRY_ENVIRONMENT !== "development" || process.env.NEXT_PUBLIC_SENTRY_DEV === "true";
+
+/**
+ * 组织与项目的标识，都不是秘密。站点卡片取数（lib/sentry-status）和 Worker 的
+ * cron 心跳（workers/api/src/sentry.ts）共用，改名要两边一起动。
+ */
+export const SENTRY_ORG = "yangjunwei-liang";
+/** 组织落在美区，带令牌的 API 请求要打到这个区域域名 */
+export const SENTRY_API_ORIGIN = "https://us.sentry.io";
+export const SENTRY_SITE_PROJECT_ID = "4512132602331136";
+export const SENTRY_WORKER_PROJECT_ID = "4512132602855424";
+/** lyjw.me 的每分钟在线探测（Sentry 里的 uptime detector） */
+export const SENTRY_UPTIME_DETECTOR_ID = "10416301";
+export const SENTRY_CRON_MONITOR_SLUG = "api-minute-cron";
