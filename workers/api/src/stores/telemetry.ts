@@ -17,7 +17,8 @@ import {
   type StoredHomePod,
 } from "@/lib/homepod-store";
 import { number, object, text } from "@/lib/json";
-import { CHARGER_TAG, DESKTOP_TAG, NOW_LISTENING_TAG, POWERBANK_TAG, TIMEZONE_TAG, VIBECODING_TAG, VIBECODING_YEAR_TAG } from "@/lib/live-events";
+import { chargerActive, liveTrack, powerBankActive } from "@/lib/home-layout";
+import { CHARGER_TAG, DESKTOP_TAG, NOW_LISTENING_TAG, POWERBANK_TAG, VIBECODING_TAG } from "@/lib/live-events";
 import { pickNowListening } from "@/lib/now-listening";
 import {
   normalizePlayingQueue,
@@ -553,7 +554,8 @@ export async function commitPreparedTelemetryEnvelope(command: PreparedTelemetry
           patch.desktopIconAssets = [...telemetryState.desktopIconAssets];
         }
         // 上面早就发车了，这里只是把它接住
-        const landing = prepareStatus(status, receivedAt, await (charger ?? readChargerState()));
+        const chargerState = await (charger ?? readChargerState());
+        const landing = prepareStatus(status, receivedAt, chargerState);
         writes.push(landing.commit());
         writes.push(recordChargingPulse(receivedAt, status));
         chargerWritten = true;
@@ -578,8 +580,9 @@ export async function commitPreparedTelemetryEnvelope(command: PreparedTelemetry
               liveness,
             }),
           });
-          tags.push(CHARGER_TAG);
         }
+        // 首屏只关心这一格亮没亮：插着线的功率滚动、收敛窗口里那几帧都只走推送
+        if (chargerActive(chargerState.previous?.status) !== chargerActive(status)) tags.push(CHARGER_TAG);
       }
 
       if (modules.chargingDevices?.failureAfterCharger) {
@@ -589,11 +592,8 @@ export async function commitPreparedTelemetryEnvelope(command: PreparedTelemetry
       const bank = modules.chargingDevices?.powerBank ?? null;
       if (bank) {
         const status = bank;
-        const landing = preparePowerBankStatus(
-          status,
-          receivedAt,
-          await (powerBank ?? readPowerBankState()),
-        );
+        const previousBank = await (powerBank ?? readPowerBankState());
+        const landing = preparePowerBankStatus(status, receivedAt, previousBank);
         writes.push(landing.commit());
         // 和充电头同一套：插拔、充放电切换、热控翻转、整数电量跳格即时推，加上
         // 插拔之后那段收敛窗口；缓慢滚动的电量和功率仍然等下一次轮询。
@@ -608,8 +608,8 @@ export async function commitPreparedTelemetryEnvelope(command: PreparedTelemetry
             type: "powerbank",
             payload: powerBankPushPayload({ status, receivedAt, liveness }),
           });
-          tags.push(POWERBANK_TAG);
         }
+        if (powerBankActive(previousBank?.status) !== powerBankActive(status)) tags.push(POWERBANK_TAG);
       }
       accepted += 1;
     }
@@ -656,8 +656,8 @@ export async function commitPreparedTelemetryEnvelope(command: PreparedTelemetry
       patch.desktop = activity;
       patch.desktopIconAssets = [...telemetryState.desktopIconAssets];
       accepted += 1;
+      // 页头那一格定宽，换应用只换内容，首屏交给定时重建；上下线的翻转在上面单独失效
       telemetryEvents.push({ type: "desktop", payload: desktopPayload(liveness) });
-      telemetryTags.push(DESKTOP_TAG);
     }
 
     if (command.failure?.stage === "beforeTimezone") {
@@ -668,9 +668,8 @@ export async function commitPreparedTelemetryEnvelope(command: PreparedTelemetry
       telemetryState.timezone = modules.timezone ?? null;
       telemetryState.timezoneReceivedAt = receivedAt;
       patch.timezone = telemetryState.timezone;
-      // 没有对应的推送事件（时区一年变两次，不值得为它开一路广播），
-      // 但首屏那份缓存得知道自己过期了 —— 失效是白给的，广播才是按人头付钱的
-      telemetryTags.push(TIMEZONE_TAG);
+      // 没有推送事件（时区一年变两次），也不失效首屏：卡片定高，换时区只换内容，
+      // 定时重建会带上，浏览器挂载后也直接问 Worker
       accepted += 1;
     }
 
@@ -680,6 +679,7 @@ export async function commitPreparedTelemetryEnvelope(command: PreparedTelemetry
 
     if ("appleMusic" in modules) {
       const { music, upcomingTracks } = modules.appleMusic!;
+      const wasLive = liveTrack(telemetryState.music) != null;
       telemetryState.music = music;
       telemetryState.upcomingTracks = upcomingTracks;
       telemetryState.activityReceivedAt = receivedAt;
@@ -697,7 +697,8 @@ export async function commitPreparedTelemetryEnvelope(command: PreparedTelemetry
           upcomingTracks,
         }),
       );
-      telemetryTags.push(NOW_LISTENING_TAG);
+      // 换歌、进度只换 hero 里的内容；开始 / 停止放歌才换掉整块 hero
+      if (wasLive !== (liveTrack(music) != null)) telemetryTags.push(NOW_LISTENING_TAG);
     }
 
     if (command.failure?.stage === "beforeAppleMusicCredentials") {
@@ -716,8 +717,9 @@ export async function commitPreparedTelemetryEnvelope(command: PreparedTelemetry
      * `vibeCodingUsage` 是十几分钟一份的累计量，`vibeCodingNow` 是 60 秒一轮的
      * 此刻状态，只有后者值得推给浏览器。理由见 lib/vibecoding 的模块注释。
      *
-     * 两份拼成同一张首屏卡片，所以哪一份进来都让同一个缓存 tag 失效，
-     * 重复失效是幂等的。三份 coding 模块已经在入口一起校验，这里只提交。
+     * 两份拼成同一张首屏卡片。只有累计量会增减行、换出总量和常用模型两块，
+     * 所以只有它报缓存 tag；真正发不发由出口按卡片骨架再筛一遍，见 live-platform。
+     * 三份 coding 模块已经在入口一起校验，这里只提交。
      */
     if (codingUsage) {
       writes.push(codingUsage.commit());
@@ -728,18 +730,18 @@ export async function commitPreparedTelemetryEnvelope(command: PreparedTelemetry
     if (codingNow) {
       const { now, commit } = codingNow;
       writes.push(commit());
+      // 此刻只改已有那几行的灯和模型，行从用量和限额来：只推送，不失效首屏
       events.push({ type: "vibecoding-now", payload: now });
-      tags.push(VIBECODING_TAG);
       accepted += 1;
     }
 
     /**
      * 年度热力图单独一块。不推送 —— 格子按天变，浏览器长间隔和切回焦点来问。
      * 上报和 GET 都是整年 371 个数一次给齐，云端补回的旧日也会刷新。
+     * 也不失效首屏：格子颜色是内容，交给定时重建。
      */
     if (codingYear) {
       writes.push(codingYear.commit());
-      tags.push(VIBECODING_YEAR_TAG);
       accepted += 1;
     }
 

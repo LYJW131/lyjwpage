@@ -3,7 +3,7 @@ import { normalizeCursorUsageReport, type ParsedCursorUsage } from "@/lib/cursor
 import { tellStorage } from "@/lib/storage";
 import { displayChanged } from "@shared/display-change";
 import { cursorNowMirror, cursorUsageMirror } from "@shared/cursor-usage";
-import { VIBECODING_TAG, VIBECODING_YEAR_TAG, type LiveEvent } from "@/lib/live-events";
+import { VIBECODING_TAG, type LiveEvent } from "@/lib/live-events";
 import type {
   VibeCodingNowPayload
 } from "@/lib/types";
@@ -128,14 +128,13 @@ export async function recordPreparedAgentLimits(prepared: PreparedAgentLimits) {
     const previousUsage = await cursorUsageMirror.get();
     if (displayChanged(previousUsage?.report, cursorUsage)) {
       tags.add(VIBECODING_TAG);
-      tags.add(VIBECODING_YEAR_TAG);
     }
     writes.push(cursorUsageMirror.put({ report: cursorUsage, pushedAt: receivedAt }));
   }
   if (cursorNow) {
     const previousNow = await cursorNowMirror.get();
+    // 此刻只改 Cursor 那行的灯和模型，不增减行：只推送，不失效首屏
     if (displayChanged(previousNow?.now, cursorNow)) {
-      tags.add(VIBECODING_TAG);
       /**
        * 电平一律给 false，灯由浏览器按 lastActivityAt 现算：服务端算的电平会冻在
        * 两次推送之间，Cursor 那行不再有新事件时就没人来把它改回去。

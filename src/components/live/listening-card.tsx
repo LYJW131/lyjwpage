@@ -52,6 +52,7 @@ import type {
 } from "@/lib/types";
 import { appleArtwork, ARTWORK_SCALE, needsOptimizing } from "@/lib/apple-artwork";
 import type { ArtworkDataUri, ArtworkPlaceholders } from "@/lib/artwork-placeholder";
+import { liveTrack } from "@/lib/home-layout";
 import { queueOptionsFor } from "@/lib/web-player";
 import { cn } from "@/lib/utils";
 
@@ -706,8 +707,7 @@ export function ListeningCard({
 
   // MacBook 与 HomePod 都没有可用状态时才退回最近播放列表。
   const localMusic = live?.idle ? null : live?.music ?? null;
-  const localTrack =
-    localMusic?.title && localMusic.state !== "stopped" ? localMusic : null;
+  const localTrack = liveTrack(localMusic);
   // 来源仍然只由服务端选，前端不重算宽限期，只负责在它到期时再问一次
   // （见上面的 nowListeningInterval），所以这里渲染的始终是服务端的结论。
   const localActive = Boolean(localTrack);

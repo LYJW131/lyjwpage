@@ -9,13 +9,12 @@ import type { StoredEntry } from "@shared/sqlite-store";
 
 import { refreshRecentlyPlayed } from "./apple-music-recent";
 
-import { expireStatusTags, publish, ROOM_ID } from "./live-platform";
+import { publish, ROOM_ID } from "./live-platform";
 import { ConfigError, issueMusicKitToken } from "./musickit-token";
 import { getAllowedOrigins, getCorsHeaders, isAllowedOrigin, isAllowedOriginValue } from "./origins";
 import { refreshAgentStatus } from "@/lib/agent-status";
 import { refreshPageSpeed } from "@/lib/pagespeed";
 import { fetchPreviewUpstream, isPreviewProxyPath, previewWorkerEnabled } from "./preview";
-import { STATUS_VIEWS } from "@/lib/status-views";
 import { isPublicApiPath, pathForEventType } from "./public-api";
 import { executePublicRequest } from "./public-execution";
 import { requestStore, type Env } from "./runtime";
@@ -390,13 +389,14 @@ export class LivePushRoom extends DurableObject<Env> {
   }
 }
 
-/** 厂商状态变了才推，并让下一份首页 HTML 带上新灯。没变就什么都不做。 */
+/**
+ * 厂商状态变了才推，没变就什么都不做。首屏不失效：九家固定排成三列，灯色和
+ * 「cached」标签只是内容，交给定时重建（见 lib/home-layout）。
+ */
 async function publishAgentStatus(): Promise<void> {
   const changed = await refreshAgentStatus();
   if (!changed) return;
   await publish({ type: "agent-status", payload: changed });
-  const tag = STATUS_VIEWS.agentStatus.tag;
-  if (tag) await expireStatusTags([tag]);
 }
 
 const worker = {
