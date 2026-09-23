@@ -14,6 +14,7 @@ import {
   CHARGER_PATH,
   DESKTOP_PATH,
   NOW_LISTENING_PATH,
+  TROPHIES_PATH,
   VIBECODING_PATH,
 } from "@/lib/paths";
 import { pathByEvent } from "@/lib/status-views";
@@ -34,6 +35,8 @@ import type {
 const FORWARDS: ReadonlyArray<{
   event: LiveEvent["type"];
   merge?: (data: unknown) => unknown | null;
+  /** 写完这份之后还要让哪些**正挂着**的键重取一次（推来的只是摘要、明细在别的键上） */
+  refetch?: (key: string) => boolean;
 }> = [
   { event: "desktop" },
   { event: "listening-now" },
@@ -50,6 +53,14 @@ const FORWARDS: ReadonlyArray<{
   { event: "watching" },
   { event: "playing-now" },
   { event: "playing" },
+  /**
+   * 奖杯只推摘要：提要、瓷砖上的杯数直接换。展开着的那块瓷砖明细在
+   * `?titleids=` 的切片键上，推来的不含逐个奖杯，让它自己重取那一两款。
+   */
+  {
+    event: "trophies",
+    refetch: (key) => key.startsWith(`${TROPHIES_PATH}?`),
+  },
   /**
    * 充电头只在插拔、换设备时来事件。曲线的合并走和轮询同一个累加器
    * （lib/charger-history）：推来的那份不带历史点（空增量），所以合并只是把
@@ -131,6 +142,8 @@ function dispatch(mutate: ScopedMutator, message: Incoming): void {
     // 顺手也挡住乱序到达的推送本身
     if (!acceptPush(forward.path, envelope)) return;
     void mutate(forward.path, envelope, { revalidate: false });
+    const refetch = forward.refetch;
+    if (refetch) void mutate((key) => typeof key === "string" && refetch(key));
     return;
   }
 

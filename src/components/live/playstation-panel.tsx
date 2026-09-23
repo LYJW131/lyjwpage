@@ -11,7 +11,7 @@ import { useStale } from "@/hooks/use-stale";
 import { useStatus } from "@/hooks/use-status";
 import { playstationStaleMs } from "@/lib/freshness";
 import { LIST_DURATION } from "@/lib/motion";
-import { NOW_PLAYING_PATH } from "@/lib/paths";
+import { NOW_PLAYING_PATH, TROPHIES_PATH } from "@/lib/paths";
 import { playstationPresenceKind } from "@/lib/playstation-presence";
 import type {
   PlaystationPlayingPayload,
@@ -22,6 +22,11 @@ import type {
 
 /** 和瓷砖行问 playing/now 同一个间隔，SWR 会去重。 */
 const NOW_REFRESH_MS = 60_000;
+/**
+ * 奖杯摘要靠推送换（解锁那一轮上报就到），这条轮询只是推送断了时的兜底，
+ * 和展开明细那条同一个间隔。
+ */
+const TROPHIES_REFRESH_MS = 10 * 60_000;
 
 /**
  * 提要和瓷砖行之间那点联动状态就住在这里。
@@ -49,6 +54,17 @@ export function PlaystationPanel({
   const presence = useStatus<PlaystationPresencePayload>(NOW_PLAYING_PATH, NOW_REFRESH_MS, {
     fallback: playingNow,
   });
+  /**
+   * 首屏那份摘要只是种子：挂载时由 `/api/home` 聚合代答一次（首屏 HTML 可能冻了
+   * 几分钟），之后解锁由 `trophies` 推送直接写进这个键，提要和瓷砖杯数一起换。
+   * 取不到时退回服务端那份信封，别让一次失败的重取把提要整块撤掉。
+   */
+  const summary = useStatus<TrophiesSummaryPayload>(TROPHIES_PATH, TROPHIES_REFRESH_MS, {
+    fallback: trophies,
+  });
+  const liveTrophies: StatusResponse<TrophiesSummaryPayload> = summary.data
+    ? { ok: true, data: summary.data }
+    : trophies;
   const mountedAt = useMountedAt();
   const presenceStale = useStale(presence.data?.observedAt, playstationStaleMs());
   /**
@@ -62,7 +78,7 @@ export function PlaystationPanel({
   return (
     <>
       <TrophyTeaser
-        fallback={trophies}
+        fallback={liveTrophies}
         embedded
         presence={presenceKind}
         onRecentClick={(unlock) => {
@@ -117,7 +133,7 @@ export function PlaystationPanel({
           fallback={playing}
           nowFallback={playingNow}
           // 摘要取不到就传 null：那是「不知道」，传空数组会被读成「每款都没奖杯」
-          titles={trophies.ok ? (trophies.data.titles ?? []) : null}
+          titles={liveTrophies.ok ? (liveTrophies.data.titles ?? []) : null}
           jumpRequest={jump}
           onJumpDone={clearJump}
         />

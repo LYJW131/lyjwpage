@@ -50,9 +50,8 @@ function Count({ type, value }: { type: TrophyType; value: number }) {
 }
 
 /**
- * 首屏提要。只吃服务端裁过的摘要，不订阅 /api/status/trophies ——
- * 那个端点是整份目录，点瓷砖展开才去拉；和这里的形状不是一份，
- * 塞进同一个 SWR 键会互相冲掉。
+ * 首屏提要。只管画：摘要由外层（playstation-panel）订阅 /api/status/trophies
+ * 并跟着 `trophies` 推送换新，这里拿到的就是最新那份。
  */
 export function TrophyTeaser({
   fallback,
