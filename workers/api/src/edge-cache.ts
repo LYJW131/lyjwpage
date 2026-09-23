@@ -8,9 +8,15 @@
  */
 
 /** 路由响应外形（不止 SQLite 里的结果）变了时升它 */
-const EDGE_CACHE_VERSION = "v1";
+const EDGE_CACHE_VERSION = "v2";
 /** 合成缓存键的路径前缀，不是真实路由，外部请求打不到 */
 const EDGE_CACHE_PATH = "/__edge-cache";
+
+/**
+ * 写入时另存的原始 Cache-Control。命中时 Cloudflare 会按区域的浏览器缓存 TTL（4 小时）
+ * 把更短的 max-age 改写掉，「确认没有」那 1 小时就成了 4 小时；读出来时照这份恢复。
+ */
+const ORIGIN_CACHE_CONTROL = "X-Origin-Cache-Control";
 
 export type EdgeCacheStatus = "hit" | "miss" | "bypass";
 export type EdgeCache = Pick<Cache, "match" | "put">;
@@ -26,7 +32,17 @@ export function edgeCacheRequest(origin: string, key: string): Request {
 
 function withStatus(response: Response, status: EdgeCacheStatus): Response {
   const headers = new Headers(response.headers);
+  const cacheControl = headers.get(ORIGIN_CACHE_CONTROL);
+  if (cacheControl) headers.set("Cache-Control", cacheControl);
+  headers.delete(ORIGIN_CACHE_CONTROL);
   headers.set("X-Edge-Cache", status);
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
+
+function forStorage(response: Response): Response {
+  const headers = new Headers(response.headers);
+  const cacheControl = headers.get("Cache-Control");
+  if (cacheControl) headers.set(ORIGIN_CACHE_CONTROL, cacheControl);
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
 
@@ -52,7 +68,7 @@ export async function serveWithEdgeCache(options: {
 
   const response = await origin();
   if (response.status === 200) {
-    waitUntil(cache.put(key, response.clone()).catch((error: unknown) => console.warn("[edge-cache] put", error)));
+    waitUntil(cache.put(key, forStorage(response.clone())).catch((error: unknown) => console.warn("[edge-cache] put", error)));
   }
   return withStatus(response, "miss");
 }
