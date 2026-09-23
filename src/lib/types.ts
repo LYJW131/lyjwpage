@@ -1140,10 +1140,62 @@ export type WorkoutsPayload = {
   pushedAt: number;
 };
 
-export type PulseMeasuredSegment = { from: number; to: number; value: number; title?: string };
+/**
+ * Pulse 公开出口的线上格式：**按列**，时刻是**相对 `window.from` 的整秒**。
+ *
+ * 24 小时三个评分域快八百条五分钟评分、再加上千段实测，从前一条一个对象，
+ * 同一组字段名和嵌套在首屏 HTML 与 RSC 里各重复上千遍，比数据本身还大；毫秒戳
+ * 也换成最多 5 位的相对秒（泳道和悬停只精确到分钟）。各列等长，第 i 行就是
+ * 各列的第 i 个。卡片用 lib/pulse-columns 还原成下面的行对象再画。
+ * 还原时刻：`window.from + startSec * 1000`。
+ */
+export type PulseSpan = { startSec: number; endSec: number };
+
+/** 实测一段（行对象，只在内存里用） */
+export type PulseMeasuredSegment = PulseSpan & { value: number; title?: string };
+
+/**
+ * 一条五分钟评分（行对象，只在内存里用）：只留卡片画线和悬停要用的。
+ *
+ * 库里那份（`PulseAssessment`）每条带三组概率分布、输入哈希、模型名和评分时刻，
+ * 一条五百多字节，这些只服务于评分器自己（去重、修订、审计），页面一个都不读。
+ */
+export type PulsePublicAssessment = PulseSpan & {
+  /** 实际观测到的区间；和整窗 `[startSec, endSec]` 一样时省略 */
+  coverage?: PulseSpan[];
+  intensity: { value: number; confidence: number };
+  continuity: { value: number };
+  mode: { value: string } | null;
+  /** listening：窗口里占时最长的那首 */
+  title?: string;
+};
+
+/** 评分的列 */
+export type PulseAssessmentColumns = {
+  startSec: number[];
+  endSec: number[];
+  intensity: number[];
+  confidence: number[];
+  continuity: number[];
+  mode: (string | null)[];
+  /** 只有带歌名的域才有这一列 */
+  title?: (string | null)[];
+  /** 实际观测和整窗不同的那几行，键是行号；大多数行没有，所以不开整列 */
+  coverage?: Record<string, PulseSpan[]>;
+};
+
+/** 实测段的列 */
+export type PulseSegmentColumns = {
+  startSec: number[];
+  endSec: number[];
+  value: number[];
+  /** 只有带标题的域才有这一列 */
+  title?: (string | null)[];
+};
+
 export type PulseChartView =
-  | { kind: "score"; assessments: (import("../../shared/pulse-assessment").PulseAssessment & { title?: string })[] }
-  | { kind: "binary"; segments: PulseMeasuredSegment[]; activeSeconds: number }
-  | { kind: "power"; segments: PulseMeasuredSegment[]; currentPowerW: number | null };
+  | { kind: "score"; assessments: PulseAssessmentColumns }
+  | { kind: "binary"; segments: PulseSegmentColumns; activeSeconds: number }
+  | { kind: "power"; segments: PulseSegmentColumns; currentPowerW: number | null };
 
 export type PulseDomainView = PulseChartView & { score: PulseScore | null };

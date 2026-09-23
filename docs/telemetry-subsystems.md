@@ -309,7 +309,8 @@ Watching / Gaming / Charging 没有这个盲区，仍画实测。
 缺乏任一侧观测时趋势是 unknown，不冒充稳定。没有第二条日总评模型调用链。
 
 公开端点 `GET /api/status/pulse` 与 `/api/home.pulse` 返回
-`domains[domain].assessments/score`。原始应用、曲名、token 和会话信息不公开。
+`domains[domain].assessments/score`（按列、时刻为相对 `window.from` 的秒）。评分只公开区间、强度（含置信度）、连续性和模式，
+概率分布、输入哈希、模型名和评分时刻不出库。原始应用、曲名、token 和会话信息不公开。
 读模型仍为 slow 策略，页面五分钟轮询，发布和浏览器读取可能增加显示延迟。
 
 原始状态按水位归档 D1；Activity 的权威查询范围按 revision 原子替换，保留修订和删除。

@@ -102,8 +102,13 @@ Pulse 卡片用它。信封形状：
   "domains": {
     "coding": {
       "kind": "score",
-      // 五分钟模型评估；尚未评分时为空数组
-      "assessments": [],
+      // 五分钟模型评估，按列；尚未评分时各列为空数组
+      "assessments": {
+        "startSec": [85500, 85800], "endSec": [85800, 86100],
+        "intensity": [2.1, 3.9], "confidence": [0.83, 0.94], "continuity": [2, 3],
+        "mode": ["agent", "mixed"]
+        // listening 另有 "title": [..]；观测不满整窗的行在 "coverage": { "<行号>": [{ "startSec", "endSec" }] }
+      },
       // 还没打过分时为 null
       "score": { "value": 2.4, "confidence": 0.82, "trend": "rising", "scoredAt": 1769999700000 }
     }
@@ -111,6 +116,12 @@ Pulse 卡片用它。信封形状：
   }
 } }
 ```
+
+评分与实测段都**按列**给出：各列等长，第 i 行是各列的第 i 个（实测段为 `startSec` / `endSec` /
+`value`，带标题的域另有 `title`）。时刻一律是**相对 `window.from` 的整秒**，还原为
+`window.from + startSec * 1000`；`window` 与 `generatedAt` 仍是 epoch 毫秒。从前一条一个对象，
+同一组字段名和嵌套在首屏 HTML 与 RSC 里各重复上千遍，比数据本身还大。行 ⇄ 列的转换在
+`src/lib/pulse-columns.ts`，出口和卡片共用。
 
 **仅媒体／游戏段公开当时的 title；应用/模型名称与 token 用量不出公网。** 播放／游戏状态与瓦数可公开；
 公开端点返回五分钟评估和同源汇总，详细契约与调度见下方统一评分章节。
@@ -137,7 +148,9 @@ statistics；每个桶只携带实际可读的 active energy、exercise time、s
 旧的十分钟 24 小时模型总评已经删除；右侧摘要由最近 24 小时的同一批五分钟评分按
 实际覆盖时长加权，趋势比较最近三小时与此前三小时，没有两侧观测时为 `unknown`。
 曲线和摘要不再有两套评分来源。公开契约为 `domains[domain].assessments` 和 `score`，
-不再返回旧 `samples` 或根级 `codingAssessments`。
+不再返回旧 `samples` 或根级 `codingAssessments`。公开的评分只有区间、强度与置信度、连续性、
+模式、listening 的歌名，以及和整窗不同时才给的 `coverage`；概率分布、输入哈希、模型名和
+评分时刻只留在库里（投影在 `src/lib/pulse.ts` 的 `publicAssessment`）。
 
 每分钟 cron 检查，两轮尝试至少隔五分钟；窗口结束后留两分钟等待采集与上报。
 每个领域每个窗口各一份官方 `jev-1.13.0` 请求，强度与连续性一起评估，Coding
@@ -378,12 +391,12 @@ Worker 侧 storage 写失败是冒泡的，先写 `:history` 再清 `:pending` �
 
 ### Pulse 实测域
 
-Watching / Gaming 返回 `{kind:"binary",segments:[{from,to,value}],activeSeconds}`，
+Watching / Gaming 返回 `{kind:"binary",segments:{startSec,endSec,value},activeSeconds}`（按列、相对秒，见上文），
 上述两种实测形状均额外包含 `score`，与 Coding / Activity 的右侧摘要同形。
 `value` 仅为 0 或 1：只有播放或游戏中为 1，暂停、停止和仅主机在线为 0。
-Charging 返回 `{kind:"power",segments:[{from,to,value}],currentPowerW}`，value 单位为 W。
-Watching / Gaming 的 segments 可带当时的 `title`，来自历史记录；切换影片或游戏时不合并段，停止时不沿用旧标题。
-Listening 不在此列：它返回 `{kind:"score",assessments}`，与 Coding / Activity 同形。实测只看得见 Mac 和 HomePod，在别的设备上放一整天那条线也是平的，而那些设备唯一的痕迹（「最近在听」列表变动）只有评分那一侧收得到。每份 assessment 可带 `title`，取该窗口内占时最长且 level ≥ 2 的曲名，与实测段同一份 hint、同一个公开口径。
+Charging 返回 `{kind:"power",segments:{startSec,endSec,value},currentPowerW}`，value 单位为 W。
+Watching / Gaming 的 segments 可带 `title` 列，每段是当时的标题，来自历史记录；切换影片或游戏时不合并段，停止时不沿用旧标题。
+Listening 不在此列：它返回 `{kind:"score",assessments}`，与 Coding / Activity 同形。实测只看得见 Mac 和 HomePod，在别的设备上放一整天那条线也是平的，而那些设备唯一的痕迹（「最近在听」列表变动）只有评分那一侧收得到。评分另有 `title` 列，每行取该窗口内占时最长且 level ≥ 2 的曲名，与实测段同一份 hint、同一个公开口径。
 实测三域的曲线独立于 Jev，仍返回 score（评分、趋势、置信度）；前端每分钟刷新。
 段来自实际观测：通常超过 10 分钟未确认留空，含零值；Gaming 按 30 分钟空闲轮询设置 35 分钟有效期。Watching 的明确停止（level 0）持续至下次播放事件，暂停／播放仍按 10 分钟失效。曲线与 Jev 输入共用这些有效期；当前功率过期为 null。
 充电使用已有 Mac `totalPower`，未连接记录 0 W；功率变化最多每 30 秒取一点，
