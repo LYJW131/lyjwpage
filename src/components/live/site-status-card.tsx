@@ -164,8 +164,12 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
       )}
     </div>
     <RepoContributions data={github} recentCommits={recentCommits} deploymentsBySha={deploymentsBySha} />
-    <div className="grid border-t border-line md:grid-cols-2">
-      <section className="min-w-0 border-b border-line md:border-b-0" aria-label="Performance">
+    {/*
+      性能表和服务格到 lg 才并排：768–1023 之间并排的话每格只剩 150–200px，
+      「Req · CPU · Last 12h」一行放不下会折行，所以这一段和手机一样上下叠。
+    */}
+    <div className="grid border-t border-line lg:grid-cols-2">
+      <section className="min-w-0 border-b border-line lg:border-b-0" aria-label="Performance">
         <div className="px-4 pt-3 pb-2">
           <div className="grid grid-cols-[40px_repeat(6,minmax(0,1fr))] items-center gap-1 text-right text-[9px] text-muted-foreground lg:grid-cols-[88px_repeat(6,minmax(0,1fr))] lg:text-[10px]">
             <span className="truncate text-left" title={pagespeed ? `PageSpeed Insights on ${pagespeed.url}\nMedian of ${pagespeed.samples} runs · ${time.format(pagespeed.start)} — ${time.format(pagespeed.fetchedAt)} · UTC+8` : undefined}>{measured}</span>
@@ -192,7 +196,7 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
           })()}
         </div>
       </section>
-      <section id="cloudflare-workers" className="min-w-0 scroll-mt-28 md:border-l md:border-line" aria-label="Services">
+      <section id="cloudflare-workers" className="min-w-0 scroll-mt-28 lg:border-l lg:border-line" aria-label="Services">
         {/* 窄屏两列只剩 150px 左右，名字截断、数字拆行；单列到 sm 再回两列 */}
         <ul className="grid h-full auto-rows-fr grid-cols-1 gap-px bg-line sm:grid-cols-2">
           <li className="bg-surface px-4 py-2.5">
@@ -201,7 +205,7 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
               <ErrorCount series={siteErrors} title="Site errors in the last 12h (browser + functions)" />
               <CommitSha commit={vercel?.production?.commit} />
             </div>
-            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] tabular-nums text-muted-foreground">
+            <div className="mt-1 flex gap-x-3 text-[10px] tabular-nums text-muted-foreground">
               <span className="whitespace-nowrap" title={functions ? `${functions.timeouts} timeouts · avg peak memory ${functions.memoryAvgMb == null ? "—" : `${Math.round(functions.memoryAvgMb)} MB`}` : undefined}>Req <span className="text-foreground">{functions ? number.format(functions.invocations) : "—"}</span></span>
               <span className="whitespace-nowrap" title="P75 CPU time per function invocation">CPU <span className="text-foreground">{cpu(functions?.cpuP75Ms)}</span></span>
               <CollectionWindow start={functions?.start} end={functions?.end} />
@@ -216,7 +220,7 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
                 {name === "api" && <ErrorCount series={apiErrors} title="API Worker errors in the last 12h" />}
                 <CommitSha commit={worker?.deployment?.commit} />
               </div>
-              <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] tabular-nums text-muted-foreground">
+              <div className="mt-1 flex gap-x-3 text-[10px] tabular-nums text-muted-foreground">
                 <span className="whitespace-nowrap" title={metrics ? `${number.format(metrics.subrequests)} subrequests` : undefined}>Req <span className="text-foreground">{metrics ? number.format(metrics.requests) : "—"}</span></span>
                 <span className="whitespace-nowrap" title="P50 CPU time per request">CPU <span className="text-foreground">{cpu(metrics?.cpuTimeP50Ms)}</span></span>
                 <CollectionWindow start={cloudflare?.windowStart} end={cloudflare?.windowEnd} />
@@ -229,7 +233,7 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
               <a href="#exit-node" className="min-w-0 truncate hover:underline">{server?.id ?? "misaka-jp"}</a>
               <span className={cn("ml-auto shrink-0 text-[10px]", server && serverStale ? "text-red-500" : "text-muted-foreground")}>{server ? (serverStale ? "Offline" : `Up ${formatUptime(server.uptimeSeconds)}`) : "—"}</span>
             </div>
-            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] tabular-nums text-muted-foreground">
+            <div className="mt-1 flex gap-x-3 text-[10px] tabular-nums text-muted-foreground">
               <Fact label="CPU" value={server ? `${server.cpuUsagePercent.toFixed(1)}%` : "—"} />
               <Fact label="Mem" value={server ? `${Math.round(server.memoryUsedBytes / server.memoryTotalBytes * 100)}%` : "—"} />
               <Fact label="Disk" value={server ? `${Math.round(server.diskUsedBytes / server.diskTotalBytes * 100)}%` : "—"} />
@@ -239,7 +243,7 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
             <div className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4">
               <a href={site.sentry} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 hover:underline"><SentryMark size={12} />Sentry</a>
             </div>
-            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] tabular-nums text-muted-foreground">
+            <div className="mt-1 flex gap-x-3 text-[10px] tabular-nums text-muted-foreground">
               <Fact label="Crash-free" value={percent(sentry?.sessions?.crashFreeRate)}
                 title={sentry?.sessions ? `${number.format(sentry.sessions.count)} browser sessions in 24h` : undefined} />
               <Fact label="Open" value={unresolved == null ? "—" : number.format(unresolved)} title="Unresolved issues, site and API" />
