@@ -15,7 +15,7 @@ export function HomeLink() {
   return (
     <Link
       href="/"
-      className="min-w-0 justify-self-start truncate text-sm font-bold tracking-tight"
+      className="-m-2 min-w-0 justify-self-start truncate p-2 text-sm font-bold tracking-tight"
       onClick={(event) => {
         if (window.location.pathname !== "/") return;
         event.preventDefault();

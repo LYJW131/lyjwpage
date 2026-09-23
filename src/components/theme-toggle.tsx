@@ -43,7 +43,7 @@ export function ThemeToggle() {
         const next = OPTIONS[(index + 1) % OPTIONS.length].value;
         applyTheme(setTheme, next);
       }}
-      className="paper-card flex size-8 items-center justify-center rounded-md border border-line-strong bg-surface text-muted-foreground hover:bg-surface-hover hover:text-foreground"
+      className="paper-card relative flex size-8 items-center justify-center rounded-md border border-line-strong bg-surface text-muted-foreground hover:bg-surface-hover hover:text-foreground after:absolute after:-inset-1"
     >
       <Sun className="theme-toggle-icon theme-toggle-icon-light size-4" />
       <Moon className="theme-toggle-icon theme-toggle-icon-dark size-4" />

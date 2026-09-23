@@ -72,13 +72,13 @@ export function ContactCard({
                 href={site.github}
                 target="_blank"
                 rel="noreferrer noopener"
-                className="block truncate text-lg font-bold tracking-tight leading-tight sm:text-xl lg:text-2xl"
+                className="-mt-2 block truncate pt-2 text-lg font-bold tracking-tight leading-tight sm:text-xl lg:text-2xl"
               >
                 {site.githubLogin}
               </a>
               <a
                 href={`mailto:${site.email}`}
-                className="mt-1 block truncate font-mono text-xs leading-none text-muted-foreground transition-colors hover:text-foreground"
+                className="-mb-3 mt-1 block truncate pb-3 font-mono text-xs leading-none text-muted-foreground transition-colors hover:text-foreground"
               >
                 {site.email}
               </a>
@@ -138,7 +138,7 @@ function HeatmapTab({
       aria-pressed={pressed}
       onClick={onClick}
       className={cn(
-        "heatmap-tab label-mono w-full px-2 py-1 text-center text-muted-foreground transition-colors hover:text-foreground",
+        "heatmap-tab label-mono min-h-6 w-full px-2 py-1.5 text-center text-muted-foreground transition-colors hover:text-foreground",
       )}
     >
       {label}

@@ -36,7 +36,7 @@ export function Footer() {
             rel="noreferrer"
             // label-mono 会把字母转大写，sha 得躲开：大写的 commit 哈希不是
             // 它平时的样子，看着像另一个东西
-            className="normal-case transition-colors hover:text-foreground"
+            className="-my-2 py-2 normal-case transition-colors hover:text-foreground"
           >
             {commit.short}
           </a>
@@ -51,7 +51,7 @@ export function Footer() {
               href={EXTRA_HREF}
               target="_blank"
               rel="noreferrer"
-              className="transition-colors hover:text-foreground"
+              className="pt-1 pb-2 transition-colors hover:text-foreground"
             >
               {EXTRA_TEXT}
             </a>

@@ -674,8 +674,8 @@ function nextCompactTickDelay(remain: number) {
 }
 
 /**
- * 进度条本身是链接。条只有 6px，上下补一点点击区，再用负边距把多出来的高度还回去，
- * 行距不变。没有官方用量页的 agent（Antigravity）保持普通条。
+ * 进度条本身是链接。条只有 6px：上方的间距改成链接自己的内边距，下方补到和下一行
+ * 之间的缝一样高，再用负边距把多出来的高度还回去，行距不变，点击区凑够 24px。没有官方用量页的 agent（Antigravity）保持普通条。
  */
 function UsageMeter({
   href,
@@ -695,7 +695,7 @@ function UsageMeter({
       target="_blank"
       rel="noreferrer noopener"
       aria-label={label}
-      className="-mb-2 mt-1.5 block pb-2 focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-live"
+      className="-mb-3 block pt-1.5 pb-3 focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-live"
     >
       <span className="relative block h-1.5 overflow-hidden bg-muted">{children}</span>
     </a>
