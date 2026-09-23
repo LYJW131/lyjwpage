@@ -44,6 +44,8 @@ export async function expireStatusTags(
   }
   if (!pending.length) return;
   const delivered = await revalidateVercel(currentContext().env, pending);
+  // 留一行好按 tag 分组数：首屏每小时重建多少次、是哪几张卡在触发，全看这里
+  if (delivered) console.log("[revalidate]", pending.join(","));
   // 没送到就不记：下一次上报还会再比一次、再通知一次
   if (delivered && vibeCodingLayout !== null) {
     await notifiedVibeCodingLayout.put({ key: vibeCodingLayout, at: Date.now() });
