@@ -14,7 +14,8 @@
 | `cloudflare-workers` | DO；带各 Worker 当前版本，投影的发布间隔和最大年龄会让刚部署完读到上一版。上游由 15 分钟 StateHub 缓存挡住 | 不经 KV |
 | `listening`、`watching`、`playing` | DO；有推送事件，登记表禁止进 KV | 不经 KV |
 | `trophies` | DO；无参是摘要（与首屏字段、`trophies` 推送同形状，挂载引导可代答），`?titleids=` 是那几款的完整目录。有推送事件，登记表禁止进 KV | 不经 KV |
-| `/ws`、`/count`、上报、MusicKit token、歌词/动态封面 | 原路径 | 不经 KV |
+| `/ws`、`/count`、上报、MusicKit token | 原路径 | 不经 KV |
+| `/api/lyrics`、`/api/motion-artwork` | 机房级 Cache API，未命中回 DO，不过公开读屏障（见 `workers/api/README.md`） | 不经 KV |
 | 任意带查询参数的请求 | 原路径，包括 `since` 和筛选参数 | 不经 KV |
 
 表中简写均位于 `/api/status/` 下。所有 KV 响应继续使用 `Cache-Control: no-store`，避免再叠浏览器 HTTP 缓存；KV 自己使用 60 秒读取缓存。`X-Fetched-At` 是投影开始生成的时刻，不伪装成本次请求时刻。`X-Read-Model: kv | origin` 标识可缓存端点命中还是回源。

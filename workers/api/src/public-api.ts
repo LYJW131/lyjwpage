@@ -1,5 +1,3 @@
-import { GET as lyricsGet } from "./routes/lyrics/route";
-import { GET as motionArtworkGet } from "./routes/motion-artwork/route";
 import { get as cacheGet, put as cachePut } from "@/lib/cache";
 import { publicHomeSnapshot } from "@/lib/public-home";
 import {
@@ -24,11 +22,6 @@ import {
   DEV_OVERRIDE_TTL_MS,
 } from "./dev-overrides";
 import { currentContext } from "./runtime";
-
-const extraRoutes: Record<string, (request: Request) => Promise<Response>> = {
-  "/api/lyrics": lyricsGet,
-  "/api/motion-artwork": motionArtworkGet,
-};
 
 /**
  * 本地开发的上游兜底。
@@ -110,7 +103,7 @@ const devOverridesEnabled = (): boolean => process.env.DEV_OVERRIDES?.trim() ===
 
 /** Reject known-missing API paths before paying for a StateHub visibility barrier. */
 export function isPublicApiPath(path: string): boolean {
-  if (path === "/api/home" || Object.hasOwn(extraRoutes, path) || viewKeyByPath(path)) return true;
+  if (path === "/api/home" || viewKeyByPath(path)) return true;
   return devOverridesEnabled() && (path === DEV_OVERRIDES_LIST_PATH || path.startsWith(`${DEV_OVERRIDE_PREFIX}/`));
 }
 
@@ -220,9 +213,6 @@ function loaderParams(request: Request): StatusLoaderParams {
 
 async function serveStatus(request: Request): Promise<Response | null> {
   const url = new URL(request.url);
-  const extra = extraRoutes[url.pathname];
-  if (extra) return extra(request);
-
   const key = viewKeyByPath(url.pathname);
   if (!key) return null;
   return statusResponse(await statusEnvelope(() => loadEndpoint(key, loaderParams(request))));

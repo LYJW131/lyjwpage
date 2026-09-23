@@ -50,6 +50,14 @@ function storefront(): string {
 }
 
 /**
+ * 一首歌的歌词在 SQLite 里的键。API Worker 的边缘缓存也拿它拼键：结果形状变了
+ * 在这里升版本，两层一起作废。v4：多了 songwriters 字段
+ */
+export function lyricsCacheKey(songId: string): string {
+  return `lyrics:v4:${storefront()}:${songId}`;
+}
+
+/**
  * 取一首歌的歌词。上游异常往上抛，由路由决定响应形状 —— 抛和「上游明确说没有」
  * 不能混成同一个空数组。
  *
@@ -60,8 +68,7 @@ export async function resolveLyrics(songId: string): Promise<LyricsResult> {
   // 目录 ID 只会是一串数字；路由那边对请求参数查过一道，这里防御性再查一道
   if (!/^\d{1,20}$/.test(songId)) throw new AppleUpstreamError("songId 不是目录 ID");
   const id = songId;
-  // v4：多了 songwriters 字段
-  const cacheKey = `lyrics:v4:${storefront()}:${id}`;
+  const cacheKey = lyricsCacheKey(id);
 
   const [hit, failure] = await Promise.all([
     get<LyricsResult>(cacheKey),

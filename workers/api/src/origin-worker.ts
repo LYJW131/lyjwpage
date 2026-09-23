@@ -17,6 +17,7 @@ import { refreshPageSpeed } from "@/lib/pagespeed";
 import { fetchPreviewUpstream, isPreviewProxyPath, previewWorkerEnabled } from "./preview";
 import { isPublicApiPath, pathForEventType } from "./public-api";
 import { executePublicRequest } from "./public-execution";
+import { isLookupPath, serveLookup } from "./lookup-routes";
 import { requestStore, type Env } from "./runtime";
 import { site } from "@/lib/site";
 
@@ -459,11 +460,13 @@ const worker = {
       if (request.method !== "GET" && !devOverride) return new Response("Method not allowed", { status: 405, headers: cors });
       const origin = request.headers.get("Origin");
       if (origin && !isAllowedOriginValue(origin, getAllowedOrigins(env))) return jsonResponse({ ok: false }, { status: 403, headers: cors });
-      if (!isPublicApiPath(url.pathname)) return new Response("Not found", { status: 404, headers: cors });
-      const response = await executePublicRequest(request, env, ctx);
+      // 歌词、动态封面按参数查，不过公开读屏障，先问本机房的边缘缓存（见 edge-cache.ts）
+      const lookup = isLookupPath(url.pathname);
+      if (!lookup && !isPublicApiPath(url.pathname)) return new Response("Not found", { status: 404, headers: cors });
+      const response = lookup ? await serveLookup(request, env, ctx) : await executePublicRequest(request, env, ctx);
       const headers = new Headers(response.headers);
       cors.forEach((value, name) => headers.set(name, value));
-      headers.set("Access-Control-Expose-Headers", "X-Fetched-At");
+      headers.set("Access-Control-Expose-Headers", "X-Fetched-At, X-Edge-Cache");
       return new Response(response.body, { status: response.status, headers });
     }
 

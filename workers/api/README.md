@@ -16,6 +16,7 @@
 - 根目录 `src/lib/status-views.ts`：公开状态视图登记表（`path` / `tag` / `event` / `readModel`）。路径常量、Vercel 缓存标签、事件→路径、`/api/home` 字段、KV 策略全部由它派生；有 `event` 的视图不能进 KV，模块加载时断言。
 - 根目录 `src/lib/status-loaders.ts`：按同一组 key 登记 `endpoint(params)` 与可选 `home()`。`/api/home` 对表做 `Promise.all`；单端点由 `src/public-api.ts` 通用分发到同一个 loader。`trophies` 无参回摘要（与首屏、推送同形状），带 `?titleids=` 回那几款的完整目录；`charger` 首屏只带最近 20 分钟历史。
 - `src/public-api.ts`、`src/public-execution.ts`：普通 Worker 中的公开 API 入口。已知路由先匹配，再过 StateHub 初始化/提交可见性屏障；状态端点按 loader 表通用分发。屏障等待已经进入 `commitIngest()` 队列的提交，不等待仍在普通 Worker 做输入准备或 R2 HEAD 的请求；提交返回 202 后，经过 StateHub 的权威读取可见其持久化结果。命中 KV 的四条投影路径仍按下文的 revision、刷新间隔和最大年龄最终收敛。
+- `src/lookup-routes.ts`、`src/edge-cache.ts`：`/api/lyrics`、`/api/motion-artwork` 按参数查询，结果只由参数决定，不过公开读屏障。先查当前机房的 Cache API（`caches.default`），命中不进 StateHub；未命中回源，只有 200 写回，按响应的 `max-age` 过期。条目只在当前机房、跨部署保留、不合并并发未命中，键里带 SQLite 那层的版本段，响应外形变了升 `EDGE_CACHE_VERSION`。存的响应不含 CORS 头，`X-Edge-Cache: hit | miss | bypass` 标识命中。
 - `src/storage-driver.ts`：通过 alias 接入 StateHub 的 SQLite 存储驱动；同一公开请求、同一 microtask 的相邻只读批次合并成一次最多 128 条的 DO RPC，写批次保持原事务顺序。
 - `src/read-model*.ts`：可选的 KV 公开读取投影。DO alarm 保留持久队列、重试与最终 KV 单写者，JSON 由同部署 `ReadModelRenderer` 普通 Worker entrypoint 生成；边界见 `docs/kv-read-model.md`。
 - `src/r2-assets.ts`：R2 绑定 HEAD 检查，上报器仍直接上传图片。
