@@ -1,11 +1,10 @@
 import type { Metadata, Viewport } from "next";
 // 用本地字体包而不是 next/font/google：构建时不依赖网络
 import { GeistMono } from "geist/font/mono";
-import { Analytics } from "@vercel/analytics/next";
-import { SpeedInsights } from "@vercel/speed-insights/next";
 
 import { PwaRegistration } from "@/components/pwa-registration";
 import { RestReady } from "@/components/rest-ready";
+import { SiteAnalytics } from "@/components/site-analytics";
 import { ThemeProvider } from "@/components/theme-provider";
 import { PsPlusSprite } from "@/components/trophies/ps-plus";
 import { HEATMAP_STORAGE_KEY } from "@/lib/heatmap-preference";
@@ -84,8 +83,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <ThemeProvider>{children}</ThemeProvider>
         <PwaRegistration />
         <RestReady />
-        <Analytics />
-        <SpeedInsights />
+        <SiteAnalytics />
       </body>
     </html>
   );
