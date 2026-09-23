@@ -6,7 +6,11 @@
 # PR 只 build 不推，验证 Dockerfile 还能跑通；合进 main 才推 `latest` 和 `sha-<短哈希>`。
 # 手动触发（workflow_dispatch）三个全推，用来刷新基础镜像或 CLI 版本。
 #
-# 发布到这里就停：机器在内网或跳板后面，Actions 够不着，拉新镜像见各自 README。
+# misaka-jp 上的两个（server-reporter、agent-limits-reporter）推完镜像接着自动换：
+# deploy 这一步用一把只能跑 /opt/lyjwpage/deploy.sh 的密钥 ssh 过去，脚本点名
+# pull、重建那一个、清悬空镜像（见 reporters/misaka-deploy.sh）。密钥、主机指纹和
+# 地址在 `misaka-jp` 这个 environment 里，只有 main 能用。
+# emby-reporter 在内网的 dsm 上，Actions 够不着，仍按它的 README 手动拉。
 name: Build reporters
 
 on:
@@ -36,6 +40,7 @@ jobs:
       pull-requests: read
     outputs:
       images: ${{ steps.pick.outputs.images }}
+      misaka: ${{ steps.pick.outputs.misaka }}
     steps:
       - uses: actions/checkout@v5
 
@@ -63,6 +68,8 @@ jobs:
             CHANGED='["agent-limits-reporter","server-reporter","emby-reporter"]'
           fi
           echo "images=${CHANGED:-[]}" >> "$GITHUB_OUTPUT"
+          # 其中跑在 misaka-jp 上、推完要自动换的那几个
+          echo "misaka=$(echo "${CHANGED:-[]}" | jq -c '[.[] | select(. == "server-reporter" or . == "agent-limits-reporter")]')" >> "$GITHUB_OUTPUT"
 
   build:
     needs: changes
@@ -114,3 +121,52 @@ jobs:
           build-args: GIT_SHA=${{ github.sha }}
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,scope=${{ matrix.image }},mode=min
+
+  deploy:
+    needs: [changes, build]
+    # 只有合进 main（或在 main 上手动触发）推了 latest 才换；PR 只 build
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && needs.changes.outputs.misaka != '[]'
+    runs-on: ubuntu-latest
+    environment: misaka-jp
+    permissions:
+      contents: read
+    # 同一台机器、同一个 compose project：一个一个来，也不和下一次推送的部署抢
+    concurrency:
+      group: deploy-misaka-jp
+      cancel-in-progress: false
+    strategy:
+      max-parallel: 1
+      fail-fast: false
+      matrix:
+        service: ${{ fromJSON(needs.changes.outputs.misaka) }}
+    steps:
+      - name: Prepare SSH
+        env:
+          DEPLOY_KEY: ${{ secrets.MISAKA_DEPLOY_KEY }}
+          KNOWN_HOSTS: ${{ secrets.MISAKA_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/deploy
+          chmod 600 ~/.ssh/deploy
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      # 服务名是 ssh 发过去的「命令」，机器那头的 command= 只把它当 SSH_ORIGINAL_COMMAND 读
+      - name: Pull and restart ${{ matrix.service }}
+        env:
+          HOST: ${{ secrets.MISAKA_HOST }}
+        run: |
+          set -o pipefail
+          ssh -i ~/.ssh/deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o ConnectTimeout=20 -o ServerAliveInterval=15 \
+            "root@$HOST" "${{ matrix.service }}" | tee deploy.log
+
+      - name: Verify
+        env:
+          SERVICE: ${{ matrix.service }}
+          SHA: ${{ github.sha }}
+        run: |
+          grep -q '^status=running restarts=0 ' deploy.log || { echo "::error::$SERVICE is not running cleanly"; exit 1; }
+          # 只有 server-reporter 的镜像里烧了提交；对上了才算换到这一版
+          if [ "$SERVICE" = server-reporter ]; then
+            grep -qx "REPORTER_COMMIT=$SHA" deploy.log || { echo "::error::$SERVICE is not running $SHA"; exit 1; }
+          fi

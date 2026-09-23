@@ -3,8 +3,11 @@
 # 镜像由 .github/workflows/build-reporters.yml 在 GitHub 上构建，合进 main 推 `latest`。
 # 完整步骤见各自的 README。
 #
+# 合进 main 后由 build-reporters.yml 的 deploy 自动换（ssh 进来只能跑 /opt/lyjwpage/deploy.sh，
+# 即仓库里的 reporters/misaka-deploy.sh）。
+#
 # 两个服务共用一个 compose project，所以**不带服务名的命令会同时动两个容器**。
-# 平时只换一个就点名换那个：
+# 手动只换一个就点名换那个：
 #   docker compose pull server-reporter && docker compose up -d --no-deps server-reporter
 #   docker compose pull agent-limits-reporter && docker compose up -d --no-deps agent-limits-reporter
 # 要回退就把 `latest` 临时改成 Actions 推的 `sha-<短哈希>`。

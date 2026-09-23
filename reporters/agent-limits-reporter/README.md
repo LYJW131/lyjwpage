@@ -190,11 +190,13 @@ ssh -J dsm misaka-jp 'mkdir -p /opt/lyjwpage/agent-limits-reporter && cat > /opt
 ssh -J dsm misaka-jp 'cat > /opt/lyjwpage/agent-limits-reporter/.env && chmod 600 /opt/lyjwpage/agent-limits-reporter/.env' < 本机那份.env
 ```
 
-先登录五家（见上），再起；之后每次 Actions 推了新镜像也是这一句：
+先登录五家（见上），再起：
 
 ```bash
 ssh -J dsm misaka-jp 'cd /opt/lyjwpage && docker compose pull agent-limits-reporter && docker compose up -d --no-deps agent-limits-reporter'
 ```
+
+合进 main 之后不用再手动换：`build-reporters.yml` 推完镜像会用部署密钥 ssh 过去自动 pull 并重建这一个服务（见 `reporters/misaka-deploy.sh`）。手动换还是上面那一句。
 
 两个上报器一起换（第一次部署、或者两边都改了）：`cd /opt/lyjwpage && docker compose pull && docker compose up -d`。
 要回退就把 `compose.yaml` 里的 `latest` 临时换成 Actions 推过的 `sha-<短哈希>`。

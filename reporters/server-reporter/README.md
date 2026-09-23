@@ -127,11 +127,13 @@ ssh -J dsm misaka-jp 'mkdir -p /opt/lyjwpage/server-reporter/data && chown 65534
 ssh -J dsm misaka-jp 'cat > /opt/lyjwpage/server-reporter/.env && chmod 600 /opt/lyjwpage/server-reporter/.env' < 本机那份.env
 ```
 
-起来；之后每次 Actions 推了新镜像也是这一句（**点名服务**，不然会连 agent-limits-reporter 一起换）：
+起来：
 
 ```bash
 ssh -J dsm misaka-jp 'cd /opt/lyjwpage && docker compose pull server-reporter && docker compose up -d --no-deps server-reporter'
 ```
+
+合进 main 之后不用再手动换：`build-reporters.yml` 推完镜像会用部署密钥 ssh 过去自动 pull 并重建这一个服务（见 `reporters/misaka-deploy.sh`）。手动换还是上面那一句。
 
 生产的 `SITE_URL` 统一填 `https://api.homepage.lyjw.llc`，不经 Vercel 站点。
 
