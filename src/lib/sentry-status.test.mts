@@ -5,7 +5,6 @@ import {
   availability,
   fetchSentryStatus,
   parseCron,
-  parseEventCounts,
   parseLastCheck,
   parseSessions,
   parseUptimeBuckets,
@@ -35,8 +34,7 @@ test("uptime status and last check", () => {
   assert.equal(parseLastCheck([]), null);
 });
 
-test("event counts, sessions and cron", () => {
-  assert.deepEqual(parseEventCounts({ data: [[1790118000, [{ count: 2 }]], [1790121600, [{ count: 0 }]]] }), [2, 0]);
+test("sessions and cron", () => {
   assert.deepEqual(parseSessions({ groups: [{ totals: { "crash_free_rate(session)": 0.992, "sum(session)": 876 } }] }), { crashFreeRate: 0.992, count: 876 });
   // 没有会话时 Sentry 仍给一个比率，不能当成 100% 展示
   assert.deepEqual(parseSessions({ groups: [{ totals: { "crash_free_rate(session)": 1, "sum(session)": 0 } }] }), { crashFreeRate: null, count: 0 });

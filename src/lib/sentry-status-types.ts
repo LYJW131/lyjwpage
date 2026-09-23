@@ -29,11 +29,10 @@ export type SentryUptime = {
   lastCheck: { at: number; durationMs: number | null; httpStatus: number | null } | null;
 };
 
+/** 12 小时和站点卡片服务格里 Vercel / Workers 的 Req、CPU 同一个窗口 */
 export type SentryErrorSeries = {
-  count24h: number;
+  count12h: number;
   count7d: number;
-  /** 最近 24 小时逐小时的错误事件数，旧的在前 */
-  hourly: number[];
   unresolved: number;
 };
 

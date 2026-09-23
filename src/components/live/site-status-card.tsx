@@ -87,8 +87,8 @@ const fieldValues = (vitals: SentryStatusPayload["vitals"]) => ({
 function ErrorCount({ series, title }: { series: SentryErrorSeries | undefined; title: string }) {
   if (!series) return null;
   return <span title={`${title} · ${number.format(series.count7d)} in 7d · ${number.format(series.unresolved)} unresolved`}
-    className={cn("shrink-0 text-[10px] tabular-nums", series.count24h ? "text-red-500" : "text-muted-foreground")}>
-    {number.format(series.count24h)} err
+    className={cn("shrink-0 text-[10px] tabular-nums", series.count12h ? "text-red-500" : "text-muted-foreground")}>
+    {number.format(series.count12h)} err
   </span>;
 }
 
@@ -193,7 +193,7 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
           <li className="bg-surface px-4 py-2.5">
             <div className="flex items-center gap-1.5 text-[11px] leading-4">
               <a href={`${site.vercel}/observability/vercel-functions`} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 hover:underline"><Vercel size={11} />Vercel</a>
-              <ErrorCount series={siteErrors} title="Site errors in 24h (browser + functions)" />
+              <ErrorCount series={siteErrors} title="Site errors in the last 12h (browser + functions)" />
               <CommitSha commit={vercel?.production?.commit} />
             </div>
             <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] tabular-nums text-muted-foreground">
@@ -208,7 +208,7 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
               <div className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4">
                 <span className="flex shrink-0"><CloudflareColor size={14} /></span>
                 <span className="min-w-0 truncate">{name}</span>
-                {name === "api" && <ErrorCount series={apiErrors} title="API Worker errors in 24h" />}
+                {name === "api" && <ErrorCount series={apiErrors} title="API Worker errors in the last 12h" />}
                 <CommitSha commit={worker?.deployment?.commit} />
               </div>
               <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] tabular-nums text-muted-foreground">

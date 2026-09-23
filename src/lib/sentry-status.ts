@@ -86,16 +86,6 @@ export function parseLastCheck(raw: unknown): SentryUptime["lastCheck"] {
   return { at, durationMs: numOrNull(first.durationMs), httpStatus: numOrNull(first.httpStatusCode) };
 }
 
-/** `events-stats` 单序列 → 逐桶计数，旧的在前 */
-export function parseEventCounts(raw: unknown): number[] {
-  const data = record(raw).data;
-  if (!Array.isArray(data)) throw new Error("Sentry 事件统计格式无效");
-  return data.map((entry) => {
-    const values = Array.isArray(entry) ? entry[1] : null;
-    return Array.isArray(values) ? values.reduce((sum: number, value) => sum + num(record(value).count), 0) : 0;
-  });
-}
-
 /** Discover 的单行聚合 → 第一行的字段 */
 export function parseAggregateRow(raw: unknown): Json {
   const data = record(raw).data;
@@ -175,16 +165,14 @@ async function fetchUptime(api: SentryGet, now: number): Promise<SentryUptime> {
 
 async function fetchErrors(api: SentryGet, project: string): Promise<SentryErrorSeries> {
   const env = { project, environment: "production" };
-  const [hourly, day, week, unresolved] = await Promise.all([
-    api(`${ORG_PATH}/events-stats/`, { ...env, dataset: "errors", yAxis: "count()", interval: "1h", statsPeriod: "24h" }),
-    api(`${ORG_PATH}/events/`, { ...env, dataset: "errors", field: "count()", statsPeriod: "24h" }),
+  const [recent, week, unresolved] = await Promise.all([
+    api(`${ORG_PATH}/events/`, { ...env, dataset: "errors", field: "count()", statsPeriod: "12h" }),
     api(`${ORG_PATH}/events/`, { ...env, dataset: "errors", field: "count()", statsPeriod: "7d" }),
     api(`${ORG_PATH}/issues-count/`, { ...env, query: "is:unresolved" }),
   ]);
   return {
-    count24h: num(parseAggregateRow(day)["count()"]),
+    count12h: num(parseAggregateRow(recent)["count()"]),
     count7d: num(parseAggregateRow(week)["count()"]),
-    hourly: parseEventCounts(hourly).slice(-24),
     unresolved: num(record(unresolved)["is:unresolved"]),
   };
 }
@@ -246,7 +234,8 @@ export async function fetchSentryStatus(api: SentryGet, now = Date.now()): Promi
 export async function getSentryStatus(): Promise<SentryStatusPayload> {
   const token = process.env.SENTRY_API_TOKEN?.trim();
   if (!token) throw new Error("Sentry 读取未配置");
-  const key = `sentry-status:v1:${SENTRY_ORG}`;
+  // v2：错误数改成 12h 窗口、去掉逐小时序列
+  const key = `sentry-status:v2:${SENTRY_ORG}`;
   return cached<SentryStatusPayload>(key, CACHE_TTL_MS, async () => {
     try {
       const data = await fetchSentryStatus(sentryClient(token));
