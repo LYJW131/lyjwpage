@@ -31,11 +31,11 @@ const SCROLL_TO_TOP_TIMEOUT_MS = 2000;
  * 最顶部的版本更新卡片。
  *
  * 遵循整站技术图纸风格的硬边纸片（paper-card）与分段布局规范。
- * 平时完全收起隐藏，仅在检测到线上存在更新的生产部署时平滑展开。
+ * 平时完全收起隐藏，仅在此刻接管生产域名的部署（/api/version）与页面不是同一版时平滑展开。
  * 在开发环境下默认收起，并通过右下角 DevToggle 调试开关自由切换预览。
  */
 export function AppVersionCard() {
-  const { status, latestCommit, pageCommit, production, isDev } = useAppVersion();
+  const { status, latestCommit, pageCommit, message, buildDurationMs, isDev } = useAppVersion();
   const [dismissedFor, setDismissedFor] = useState<string | null>(null);
   // 开发环境调试覆盖：默认跟随真实状态（平时隐藏），可通过右下角调试开关随时展开/收起
   const [override, setOverride] = useState<boolean | null>(null);
@@ -51,12 +51,12 @@ export function AppVersionCard() {
   const displayPageCommit =
     pageCommit ?? (isDev ? "452c6ce4599787f5ed76044e0fa7f1399dbb5506" : null);
   const commitMessage =
-    production?.commit?.message ??
+    message ??
     (isDev ? "refactor(ui): 版本提示改用硬边直角面板，去除圆角与胶囊形态" : null);
   // 取整成 0s 的不显示：那不是「构建很快」，是这一版的 ready / buildingAt 还没齐
   const buildDuration =
-    production?.buildDurationMs != null && production.buildDurationMs >= 1000
-      ? `${(production.buildDurationMs / 1000).toFixed(0)}s`
+    buildDurationMs != null && buildDurationMs >= 1000
+      ? `${(buildDurationMs / 1000).toFixed(0)}s`
       : isDev
         ? "32s"
         : null;
