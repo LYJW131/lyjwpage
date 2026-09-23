@@ -1,10 +1,11 @@
 import { readPulseAssessments } from "@/lib/pulse-assessments";
-import { summarizeAssessments } from "@shared/pulse-assessment";
+import { summarizeAssessments, type PulseAssessment } from "@shared/pulse-assessment";
 import {
   PULSE_REPEAT_AFTER_MS,
   PULSE_SILENT_AFTER_MS,
   PULSE_HINT_MAX,
 } from "@/lib/limits";
+import { toAssessmentColumns, toSegmentColumns } from "@/lib/pulse-columns";
 import { pulseWindowAt } from "@/lib/pulse-window";
 import { key, withStorage } from "@/lib/storage";
 import {
@@ -13,6 +14,8 @@ import {
   type PulseHistory,
   type PulseLevel,
   type PulsePayload,
+  type PulsePublicAssessment,
+  type PulseSpan,
   type PulseSample,
   type PulseSeries,
 } from "@/lib/types";
@@ -67,7 +70,9 @@ export function toPulseSample(next: {
   powerW?: number;
 }): PulseSample {
   const hint = normalizeHint(next.hint);
-  return { t: next.t, level: next.level, ...(next.powerW != null ? { powerW: next.powerW } : {}), ...(next.until != null ? { until: next.until } : {}), ...(hint ? { hint } : {}) };
+  // 瓦数留一位小数：泳道和评分都用不上固件那两位，多出来的只会让每封读数都「不一样」
+  const powerW = next.powerW != null ? Math.round(next.powerW * 10) / 10 : undefined;
+  return { t: next.t, level: next.level, ...(powerW != null ? { powerW } : {}), ...(next.until != null ? { until: next.until } : {}), ...(hint ? { hint } : {}) };
 }
 
 /**
@@ -77,6 +82,9 @@ export function toPulseSample(next: {
  * - `t` 不前进 → 丢掉。这是源站 receivedAt，同一 StateHub 上单调；≤ 就是重复或乱序。
  * - 带 until 的已完成区间 → 写入，包括相邻同档和空闲，不能丢失终点。
  * - level 或 hint 变了 → 写入（状态翻面）。
+ * - 瓦数：归零 / 通电立刻写；都在通电时至少隔 30 秒，且变得够明显（≥ 2 W 且 ≥ 10%）
+ *   才写。插着线时读数每封都在抖，逐封记下来一天两三千条、画出来看不出差别；
+ *   小幅漂移由 5 分钟再确认那一笔带上最新读数。跨档由上面的 level 接住。
  * - 距上一笔 ≥ 5 分钟 → 写入。序列是阶跃函数，每个点撑到下一个；
  *   隔这么久再确认一次，上报器死了会在图上露出缺口。
  * - 其余 → 丢掉。空闲也保留五分钟心跳，评分时才能区分空闲与缺报。
@@ -92,13 +100,19 @@ export function planPulseSample(
   // Power changes are sampled at most once per 30 seconds; zero/nonzero transitions are immediate.
   if (sample.powerW != null && last.powerW != null && sample.powerW !== last.powerW &&
       sample.powerW > 0 && last.powerW > 0 && sample.t - last.t < 30_000) return null;
-  if (sample.level !== last.level || sample.hint !== last.hint || sample.powerW !== last.powerW) {
+  if (sample.level !== last.level || sample.hint !== last.hint || powerMoved(last.powerW, sample.powerW)) {
     return sample;
   }
   if (sample.t - last.t >= PULSE_REPEAT_AFTER_MS) {
     return sample;
   }
   return null;
+}
+
+function powerMoved(before: number | undefined, after: number | undefined): boolean {
+  if (before === after) return false;
+  if (before == null || after == null || before === 0 || after === 0) return true;
+  return Math.abs(after - before) >= Math.max(2, 0.1 * Math.max(before, after));
 }
 
 /**
@@ -170,12 +184,29 @@ export async function getPulseStatus(now: number = Date.now()): Promise<PulsePay
      * 画实测等于只画其中一路还看不出另一路缺席。Watching / Gaming / Charging
      * 没有这个盲区，仍画实测。
      */
-    domains[domain] = { kind: "score", score, assessments: assessments.map((row) => {
-      const title = domain === "listening" ? assessmentTitle(history.series.listening.samples, row) : undefined;
-      return title ? { ...row, title } : row;
-    }) };
+    domains[domain] = { kind: "score", score, assessments: toAssessmentColumns(assessments.map((row) =>
+      publicAssessment(row, window, domain === "listening" ? assessmentTitle(history.series.listening.samples, row) : undefined),
+    )) };
   }
   return { generatedAt: now, window, domains };
+}
+
+/** 窗口内的绝对区间 → 相对 `window.from` 的整秒，见 PulseSpan */
+export function pulseSpan(window: { from: number }, from: number, to: number): PulseSpan {
+  return { startSec: Math.round((from - window.from) / 1000), endSec: Math.round((to - window.from) / 1000) };
+}
+
+/** 评分行的公开投影，字段取舍见 PulsePublicAssessment */
+export function publicAssessment(row: PulseAssessment, window: { from: number }, title?: string): PulsePublicAssessment {
+  const whole = row.coverage.length === 1 && row.coverage[0].from === row.from && row.coverage[0].to === row.to;
+  return {
+    ...pulseSpan(window, row.from, row.to),
+    ...(whole ? {} : { coverage: row.coverage.map((part) => pulseSpan(window, part.from, part.to)) }),
+    intensity: { value: row.intensity.value, confidence: Math.round(row.intensity.confidence * 100) / 100 },
+    continuity: { value: row.continuity.value },
+    mode: row.mode ? { value: row.mode.value } : null,
+    ...(title ? { title } : {}),
+  };
 }
 
 /**
@@ -206,7 +237,8 @@ export function pulseSampleUntil(domain: PulseDomain, sample: PulseSample): numb
 
 /** Preserve source boundaries and silence, including observed zero values. */
 export function measuredPulseView(domain: "listening" | "watching" | "gaming" | "charging", samples: PulseSample[], window: { from: number; to: number }): import("@/lib/types").PulseChartView {
-  const segments: import("@/lib/types").PulseMeasuredSegment[] = [];
+  // 先按绝对毫秒合并相邻同值段，出口处再换成相对秒
+  const merged: { from: number; to: number; value: number; title?: string }[] = [];
   for (let i = 0; i < samples.length; i++) {
     const sample = samples[i];
     const from = Math.max(window.from, sample.t);
@@ -215,13 +247,14 @@ export function measuredPulseView(domain: "listening" | "watching" | "gaming" | 
     if (to <= from || value == null) continue;
     // Only media/game labels are public; stopped sessions must not inherit their old title.
     const title = domain !== "charging" && sample.level >= 2 ? sample.hint : undefined;
-    const previous = segments.at(-1);
+    const previous = merged.at(-1);
     if (previous?.to === from && previous.value === value && previous.title === title) previous.to = to;
-    else segments.push({ from, to, value, ...(title ? { title } : {}) });
+    else merged.push({ from, to, value, ...(title ? { title } : {}) });
   }
+  const segments = toSegmentColumns(merged.map(({ from, to, ...rest }) => ({ ...pulseSpan(window, from, to), ...rest })));
   if (domain === "charging") {
     const last = samples.at(-1);
     return { kind: "power", segments, currentPowerW: last && last.t <= window.to && window.to < (last.until ?? last.t + PULSE_SILENT_AFTER_MS) ? last.powerW ?? null : null };
   }
-  return { kind: "binary", segments, activeSeconds: segments.reduce((sum, part) => sum + (part.value === 1 ? (part.to - part.from) / 1000 : 0), 0) };
+  return { kind: "binary", segments, activeSeconds: merged.reduce((sum, part) => sum + (part.value === 1 ? (part.to - part.from) / 1000 : 0), 0) };
 }

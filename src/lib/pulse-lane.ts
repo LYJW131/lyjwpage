@@ -55,9 +55,11 @@ export function pulseLanePath(
   options: { width: number; height: number; silentAfterMs: number },
 ): PulseLaneShape {
   const span = Math.max(1, window.to - window.from);
-  const x = (at: number) => (((at - window.from) / span) * options.width).toFixed(2);
-  const y = (level: number) => (options.height - (level / PULSE_LEVEL_MAX) * options.height).toFixed(2);
-  const floor = options.height.toFixed(2);
+  // 一位小数足够：泳道 viewBox 只有几百单位宽，第二位小数在屏幕上不到一像素的零头，
+  // 却让首屏 HTML 里每条路径多出三成字符
+  const x = (at: number) => (((at - window.from) / span) * options.width).toFixed(1);
+  const y = (level: number) => (options.height - (level / PULSE_LEVEL_MAX) * options.height).toFixed(1);
+  const floor = options.height.toFixed(1);
 
   // 先按「首尾相接」分组：一组是一笔连续的泳道，组与组之间就是静默的空白
   const chains: Run[][] = [];

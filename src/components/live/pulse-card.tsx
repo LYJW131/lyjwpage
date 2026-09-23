@@ -8,14 +8,18 @@ import { Card } from "@/components/ui/card";
 import { useStatus } from "@/hooks/use-status";
 import { PULSE_SILENT_AFTER_MS } from "@/lib/limits";
 import { PULSE_PATH } from "@/lib/paths";
+import { assessmentRows, segmentRows } from "@/lib/pulse-columns";
 import { pulseLanePath, pulseScoreWord, type PulseLanePoint } from "@/lib/pulse-lane";
-import type { PulseDomainView, PulseDomain, PulsePayload, PulseTrend, StatusResponse } from "@/lib/types";
+import type { PulseDomainView, PulseDomain, PulsePayload, PulsePublicAssessment, PulseSpan, PulseTrend, StatusResponse } from "@/lib/types";
 import { CODING_INTENSITY, CODING_CONTINUITY } from "@shared/pulse-coding";
-import type { PulseAssessment } from "@shared/pulse-assessment";
 import { cn } from "@/lib/utils";
 
-/** Every lane and its summary consume the same five-minute Jev assessments. */
-const REFRESH_MS = 60_000;
+/**
+ * Every lane and its summary consume the same five-minute Jev assessments.
+ * 所以五分钟问一次：从前一分钟一次，五次里有四次拿回同一批评分，
+ * 实测泳道最右那一截晚几分钟画上，对 24 小时的总览无关紧要。
+ */
+const REFRESH_MS = 5 * 60_000;
 
 const LANES: ReadonlyArray<{ domain: PulseDomain; label: string }> = [
   { domain: "coding", label: "Coding" },
@@ -94,8 +98,10 @@ const MODE_LABELS: Record<string, string> = {
 };
 
 function AssessmentLane({ view, range, label }: { view: PulseDomainView; label: string; range: { from: number; to: number } }) {
-  const maximum = view.kind === "power" ? Math.max(1, ...view.segments.map((part) => part.value)) : 1;
-  const assessments = view.kind === "score" ? view.assessments.map((row) => ({ ...row, title: row.title as string | undefined, assessment: row, value: row.intensity.value / 4 })) : view.segments.map((part) => ({ ...part, coverage: [{ from: part.from, to: part.to }], assessment: null as PulseAssessment | null, value: part.value / maximum }));
+  const maximum = view.kind === "power" ? Math.max(1, ...view.segments.value) : 1;
+  // 载荷里是相对 range.from 的秒（见 PulseSpan），这里换回绝对毫秒再画
+  const absolute = ({ startSec, endSec }: PulseSpan) => ({ from: range.from + startSec * 1000, to: range.from + endSec * 1000 });
+  const assessments = view.kind === "score" ? assessmentRows(view.assessments).map((row) => ({ ...absolute(row), coverage: (row.coverage ?? [row]).map(absolute), title: row.title as string | undefined, assessment: row as PulsePublicAssessment | null, value: row.intensity.value / 4 })) : segmentRows(view.segments).map((part) => ({ ...absolute(part), coverage: [absolute(part)], title: part.title, assessment: null as PulsePublicAssessment | null, value: part.value / maximum }));
   const [selected, setSelected] = useState<number | null>(null);
   const [bounds, setBounds] = useState<CellAnchor | null>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -167,6 +173,16 @@ function AssessmentLane({ view, range, label }: { view: PulseDomainView; label: 
   );
 }
 
+/**
+ * 认得这一域的形状才画。站点和 API Worker 各自部署，两边契约一改（比如改成按列）
+ * 中间总有一段新页面拿到旧载荷、或旧页面的首屏缓存里是旧形状；认不出就当没数据，
+ * 不能让一张卡片的 TypeError 把整页送进错误边界。
+ */
+function readable(view: PulseDomainView): boolean {
+  const columns = view.kind === "score" ? view.assessments : view.kind === "binary" || view.kind === "power" ? view.segments : null;
+  return !!columns && Array.isArray((columns as { startSec?: unknown }).startSec);
+}
+
 export function PulseCard({
   fallback,
   className,
@@ -182,9 +198,9 @@ export function PulseCard({
       <div className="flex flex-col gap-2 p-4 lg:p-5">
         {LANES.map(({ domain, label }) => {
           const candidate = data?.domains[domain];
-          const view = candidate && ["score", "binary", "power"].includes(candidate.kind) ? candidate : undefined;
+          const view = candidate && readable(candidate) ? candidate : undefined;
           const score = view?.score ?? null;
-          const empty = !view || (view.kind === "score" ? view.assessments.length === 0 : view.segments.length === 0);
+          const empty = !view || (view.kind === "score" ? view.assessments.startSec.length === 0 : view.segments.startSec.length === 0);
           const word = score ? pulseScoreWord(Number(score.value.toFixed(1))) : null;
           return (
             <div
