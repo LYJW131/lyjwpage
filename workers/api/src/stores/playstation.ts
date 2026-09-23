@@ -1,6 +1,6 @@
 import { gamingLevel } from "@shared/pulse-levels";
 import { object } from "@/lib/json";
-import { NOW_PLAYING_TAG, PLAYING_TAG, TROPHIES_TAG } from "@/lib/live-events";
+import { PLAYING_TAG, TROPHIES_TAG } from "@/lib/live-events";
 import { getPlaystationPlayedGames, getPlaystationPower, getPlaystationPresence, getPlaystationTrophies } from "@/lib/playstation-store";
 import { normalizeTrophies, trophiesContent } from "@/lib/trophies";
 import type {
@@ -113,10 +113,11 @@ export async function commitPreparedPlaystationReport(prepared: PreparedPlaystat
      * observedAt 就是心跳本身，不刷新它的话读那侧永远判不出 Worker 是什么时候
      * 死的，断流判定（assertPresenceFresh）等于白写。
      *
-     * 但没变就不广播 —— 推一条一模一样的事件是拿推送当轮询用。tag 仍然要推，
-     * 走普通那半：不推的话 'use cache' 里那份快照的 observedAt 跟着冻住，心跳
-     * 刷新的只有 SQLite，端点读到的还是老时刻。普通 tag 给的是
-     * stale-while-revalidate，落后一个刷新周期，窗口已经把这一截算进去了。
+     * 但没变就不广播 —— 推一条一模一样的事件是拿推送当轮询用。
+     *
+     * 首屏也不失效：「正在玩」那块瓷砖插在定高的三行网格最前面，开始 / 结束
+     * 游戏只换网格内容，不改布局（见 lib/home-layout）。首屏交给定时重建，
+     * 浏览器挂载后直接问 Worker；端点读的是 SQLite，不经过首屏缓存。
      */
     writes.push(setPlaystationPresence(incomingPresence));
     const gaming = gamingLevel(incomingPresence);
@@ -124,8 +125,6 @@ export async function commitPreparedPlaystationReport(prepared: PreparedPlaystat
     if (presenceChanged || !previousPresence) {
       events.push({ type: "playing-now", payload: { ...incomingPresence, power: powerForEvent } });
       sentPlayingNow = true;
-      // 「正在游玩」和听歌 now 一样：不能先把旧值再顶几分钟。
-      tags.push(NOW_PLAYING_TAG);
     }
   }
   if (incomingPower) {
@@ -136,7 +135,6 @@ export async function commitPreparedPlaystationReport(prepared: PreparedPlaystat
      */
     if (powerChanged || !previousPower) {
       writes.push(setPlaystationPower(incomingPower));
-      tags.push(NOW_PLAYING_TAG);
       /**
        * 立刻广播一次：presence 要等 PSN 上报器下一轮（最慢一分多钟）才更新，
        * 而关机这件事局域网里当场就知道。presence 那一封已经发过事件时不再补，
@@ -153,14 +151,13 @@ export async function commitPreparedPlaystationReport(prepared: PreparedPlaystat
   if (incomingPlayedGames && (playedGamesChanged || !previousPlayedGames)) {
     writes.push(setPlaystationPlayedGames(incomingPlayedGames));
     events.push({ type: "playing", payload: incomingPlayedGames });
-    tags.push(PLAYING_TAG);
-    // 奖杯目录的时长和 Plus / 预购是读时按 titleIds 盖上去的，游玩一变就得重算。
-    tags.push(TROPHIES_TAG);
+    // 网格定高，只有空列表和有瓷砖之间换的是另一块占位
+    if (!previousPlayedGames?.items.length !== !incomingPlayedGames.items.length) tags.push(PLAYING_TAG);
   }
   if (incomingTrophies && (trophiesChanged || !previousTrophies)) {
     writes.push(setPlaystationTrophies(incomingTrophies));
-    // 目录是整份替换：旧标题必须立刻从 status 里消失，不能再 SWR 几分钟。
-    tags.push(TROPHIES_TAG);
+    // 首屏的奖杯条只有「有没有」这一种布局差别；目录内容交给定时重建
+    if (!previousTrophies) tags.push(TROPHIES_TAG);
   }
 
   await fanout({ writes, events, tags });

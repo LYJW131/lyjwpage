@@ -18,6 +18,7 @@ import {
   CHARGER_MODEL,
   ankerModelLabel,
 } from "@/lib/charging-device";
+import { chargerActive } from "@/lib/home-layout";
 import { CHARGER_PATH } from "@/lib/paths";
 import type {
   ChargerPayload,
@@ -95,7 +96,7 @@ export function ChargerCard({
   const power = data?.totalPower ?? 0;
   // mode 可能在设备刚停止取电后仍保持开启；实际功率超过空载阈值才算正在充电。
   // 这也和状态灯的 live 判定保持一致，避免一处说“正在充”、一处显示 idle。
-  const charging = connected && power > 1;
+  const charging = chargerActive(data);
 
   // 卡片自己最先拿到轮询/推送后的供电态；把它交给外层只为协调两张卡的布局动画。
   // 不在这里卸载组件，否则隐藏后就收不到下一次轮询或“重新连接”的实时推送了。

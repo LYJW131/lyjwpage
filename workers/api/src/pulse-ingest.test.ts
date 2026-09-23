@@ -363,7 +363,7 @@ test("iPhone activity reports create bounded physical-activity history and expos
     ];
     assert.deepEqual(await samples(storage, "activity"), expected);
     const status = await inRequest(() => getPulseStatus(start + 7_200_000));
-    assert.deepEqual(status.domains.activity, { kind: "score", assessments: [], score: null }, "raw observations wait for Jev before public display");
+    assert.deepEqual(status.domains.activity, { kind: "score", assessments: { startSec: [], endSec: [], intensity: [], confidence: [], continuity: [], mode: [] }, score: null }, "raw observations wait for Jev before public display");
     await storage.append(pulseAssessmentsKey(),
       JSON.stringify(assessment(start, "changed-level")),
       JSON.stringify(assessment(start + 600_000, "deleted-bucket")),

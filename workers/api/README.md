@@ -79,7 +79,7 @@ presence 时会把它冲掉。`on` 必须是布尔值（HA 实体的 `"on"` / `"
 鉴权失败返回 401，非法报文返回 400，成功返回 202。202 表示持久化完成，广播和缓存通知由 `waitUntil` 执行。
 旧站点 `/api/ingest/*` 与 Worker `/publish` 均不存在。
 
-Worker 在 SQLite 写入完成后，仅对展示变化在 `waitUntil` 后台任务中通知 Vercel：POST `${SITE_URL}/api/revalidate`，使用同一 Bearer，只传 `{ tags }`。按白名单将 `page:<tag>` 标 stale，先返回已有 HTML，后台重建。通知 5 秒超时，失败只记日志，不能让已落库的上报重发。纯心跳和没有标签的广播不触发缓存通知。
+Worker 在 SQLite 写入完成后，仅对首屏布局变化在 `waitUntil` 后台任务中通知 Vercel：POST `${SITE_URL}/api/revalidate`，使用同一 Bearer，只传 `{ tags }`。按白名单将 `page:<tag>` 标 stale，先返回已有 HTML，后台重建。首页整页只有一个缓存条目，任何标签失效都是整页重建，所以各上报在自己手里的新旧两份上判断布局有没有变：充电头 / 充电宝那一格亮灭、在听的 hero 出现或消失、「正在看」开播停播、续看和游玩列表空与非空、服务器首报 / 流量行 / 断流后回来、奖杯首次到达、训练条目。判据与页面共用 `src/lib/home-layout.ts`。Vibe coding 的骨架由三路拼成，在出口按拼好的那份比对上一次通知时的骨架（`home-layout:vibecoding`），行数、总量与常用模型的有无变了才发。读数、标题、进度、灯色等内容变化不通知，由首屏快照 `revalidate: 600` 定时重建；浏览器挂载后直接问 Worker。通知 5 秒超时，失败只记日志，不能让已落库的上报重发。纯心跳和没有标签的广播不触发缓存通知。
 
 ESA 首页不走数据上报通知。`lyjw131.com` 以 `lyjw.me` 为源站与回源 Host，控制台缓存规则「首页遵循源站缓存」（主机名等于本站、URI 路径等于 `/`，排在 PWA 绕过规则之后）让边缘按源站 `Cache-Control: public, max-age=300, stale-while-revalidate=86400, stale-if-error=86400`（根目录 `next.config.ts`）自行缓存：5 分钟内命中，之后先回旧 HTML、后台回源取新。带内容哈希的静态 JS 按源站一年 immutable 缓存，不随上报清理。新版本部署上线时，由 GitHub Actions（`.github/workflows/purge-esa.yml`）在 Vercel 生产部署完成后自动调用 `PurgeCaches` 刷新一条首页 cachekey，随后主动发起请求预热边缘节点缓存；日常上报不触发刷新。
 
@@ -102,8 +102,13 @@ Pulse 卡片用它。信封形状：
   "domains": {
     "coding": {
       "kind": "score",
-      // 五分钟模型评估；尚未评分时为空数组
-      "assessments": [],
+      // 五分钟模型评估，按列；尚未评分时各列为空数组
+      "assessments": {
+        "startSec": [85500, 85800], "endSec": [85800, 86100],
+        "intensity": [2.1, 3.9], "confidence": [0.83, 0.94], "continuity": [2, 3],
+        "mode": ["agent", "mixed"]
+        // listening 另有 "title": [..]；观测不满整窗的行在 "coverage": { "<行号>": [{ "startSec", "endSec" }] }
+      },
       // 还没打过分时为 null
       "score": { "value": 2.4, "confidence": 0.82, "trend": "rising", "scoredAt": 1769999700000 }
     }
@@ -111,6 +116,12 @@ Pulse 卡片用它。信封形状：
   }
 } }
 ```
+
+评分与实测段都**按列**给出：各列等长，第 i 行是各列的第 i 个（实测段为 `startSec` / `endSec` /
+`value`，带标题的域另有 `title`）。时刻一律是**相对 `window.from` 的整秒**，还原为
+`window.from + startSec * 1000`；`window` 与 `generatedAt` 仍是 epoch 毫秒。从前一条一个对象，
+同一组字段名和嵌套在首屏 HTML 与 RSC 里各重复上千遍，比数据本身还大。行 ⇄ 列的转换在
+`src/lib/pulse-columns.ts`，出口和卡片共用。
 
 **仅媒体／游戏段公开当时的 title；应用/模型名称与 token 用量不出公网。** 播放／游戏状态与瓦数可公开；
 公开端点返回五分钟评估和同源汇总，详细契约与调度见下方统一评分章节。
@@ -137,7 +148,9 @@ statistics；每个桶只携带实际可读的 active energy、exercise time、s
 旧的十分钟 24 小时模型总评已经删除；右侧摘要由最近 24 小时的同一批五分钟评分按
 实际覆盖时长加权，趋势比较最近三小时与此前三小时，没有两侧观测时为 `unknown`。
 曲线和摘要不再有两套评分来源。公开契约为 `domains[domain].assessments` 和 `score`，
-不再返回旧 `samples` 或根级 `codingAssessments`。
+不再返回旧 `samples` 或根级 `codingAssessments`。公开的评分只有区间、强度与置信度、连续性、
+模式、listening 的歌名，以及和整窗不同时才给的 `coverage`；概率分布、输入哈希、模型名和
+评分时刻只留在库里（投影在 `src/lib/pulse.ts` 的 `publicAssessment`）。
 
 每分钟 cron 检查，两轮尝试至少隔五分钟；窗口结束后留两分钟等待采集与上报。
 每个领域每个窗口各一份官方 `jev-1.13.0` 请求，强度与连续性一起评估，Coding
@@ -378,12 +391,12 @@ Worker 侧 storage 写失败是冒泡的，先写 `:history` 再清 `:pending` �
 
 ### Pulse 实测域
 
-Watching / Gaming 返回 `{kind:"binary",segments:[{from,to,value}],activeSeconds}`，
+Watching / Gaming 返回 `{kind:"binary",segments:{startSec,endSec,value},activeSeconds}`（按列、相对秒，见上文），
 上述两种实测形状均额外包含 `score`，与 Coding / Activity 的右侧摘要同形。
 `value` 仅为 0 或 1：只有播放或游戏中为 1，暂停、停止和仅主机在线为 0。
-Charging 返回 `{kind:"power",segments:[{from,to,value}],currentPowerW}`，value 单位为 W。
-Watching / Gaming 的 segments 可带当时的 `title`，来自历史记录；切换影片或游戏时不合并段，停止时不沿用旧标题。
-Listening 不在此列：它返回 `{kind:"score",assessments}`，与 Coding / Activity 同形。实测只看得见 Mac 和 HomePod，在别的设备上放一整天那条线也是平的，而那些设备唯一的痕迹（「最近在听」列表变动）只有评分那一侧收得到。每份 assessment 可带 `title`，取该窗口内占时最长且 level ≥ 2 的曲名，与实测段同一份 hint、同一个公开口径。
+Charging 返回 `{kind:"power",segments:{startSec,endSec,value},currentPowerW}`，value 单位为 W。
+Watching / Gaming 的 segments 可带 `title` 列，每段是当时的标题，来自历史记录；切换影片或游戏时不合并段，停止时不沿用旧标题。
+Listening 不在此列：它返回 `{kind:"score",assessments}`，与 Coding / Activity 同形。实测只看得见 Mac 和 HomePod，在别的设备上放一整天那条线也是平的，而那些设备唯一的痕迹（「最近在听」列表变动）只有评分那一侧收得到。评分另有 `title` 列，每行取该窗口内占时最长且 level ≥ 2 的曲名，与实测段同一份 hint、同一个公开口径。
 实测三域的曲线独立于 Jev，仍返回 score（评分、趋势、置信度）；前端每分钟刷新。
 段来自实际观测：通常超过 10 分钟未确认留空，含零值；Gaming 按 30 分钟空闲轮询设置 35 分钟有效期。Watching 的明确停止（level 0）持续至下次播放事件，暂停／播放仍按 10 分钟失效。曲线与 Jev 输入共用这些有效期；当前功率过期为 null。
 充电使用已有 Mac `totalPower`，未连接记录 0 W；功率变化最多每 30 秒取一点，

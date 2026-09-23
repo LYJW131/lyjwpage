@@ -4,7 +4,8 @@ import type { HomeSnapshot } from "@/lib/public-home";
 import { backendUrl } from "@/lib/backend-url";
 
 /**
- * 首屏先返回已有 HTML；展示内容变化只标 stale，重建在后台读取一次公开快照。
+ * 首屏先返回已有 HTML；布局变化（见 lib/home-layout）由 Worker 标 stale，内容变化
+ * 等 `revalidate` 到期，两者都在后台读取一次公开快照重建。
  * `/api/home` 不进 KV，这里和浏览器挂载那一次读到的都是 DO 此刻的状态。
  */
 export async function cachedHomeSnapshot(): Promise<HomeSnapshot> {

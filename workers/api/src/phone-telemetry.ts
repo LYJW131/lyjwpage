@@ -1,7 +1,6 @@
 import { normalizeWorkouts, writeWorkouts } from "@api/stores/workouts";
 import { STATUS_VIEWS } from "@/lib/status-views";
 import { object } from "@/lib/json";
-import { ACTIVITY_TAG } from "@/lib/live-events";
 import { fanout } from "@api/fanout";
 import { normalizeActivity, writeActivity } from "@api/stores/activity";
 import type { ActivityReport } from "@shared/activity";
@@ -113,12 +112,12 @@ export async function commitPreparedPhoneEnvelope(prepared: PreparedPhoneEnvelop
     if (prepared.failure?.stage === "beforeActivity") throw new Error(prepared.failure.message);
     if (prepared.activity) {
       writes.push(writeActivity(prepared.activity));
-      tags.push(ACTIVITY_TAG);
       accepted += 1;
     }
   } finally {
-    // 不推送：圈以分钟为尺度涨，广播它就是拿推送当轮询用。只失效首屏那份缓存，
-    // 卡片按自己的长间隔轮询 —— 见 lib/activity 的模块注释
+    // 不推送：圈以分钟为尺度涨，广播它就是拿推送当轮询用。卡片按自己的长间隔轮询，
+    // 见 lib/activity 的模块注释。圆环卡定高，首屏只让训练条目失效（一次训练一条，
+    // 有无训练换的是另一块占位）；圆环读数交给定时重建。
     await fanout({ writes, tags });
   }
 

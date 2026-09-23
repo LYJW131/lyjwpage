@@ -5,7 +5,6 @@ import {
   type Credentials,
 } from "@/lib/apple-music";
 import { cached, claim } from "@/lib/cache";
-import { LISTENING_TAG } from "@/lib/live-events";
 import { withStorageScope } from "@/lib/storage";
 import type { ListeningItem } from "@/lib/types";
 import { fanout } from "@api/fanout";
@@ -288,11 +287,11 @@ export function refreshRecentlyPlayed(): Promise<void> {
          * 那时这是唯一留下的痕迹。它没有时刻，所以不进 pulse 序列、不画进图，只作为
          * 证据交给评分器和正在播放的实测段一起打分，见 workers/api/src/pulse-score.ts。
          */
-        // 完整数据可并行广播；缓存失效必须等写完，避免重新缓存旧结果。
+        // 完整数据可并行广播。首屏不失效：列表区定高、条目绝对定位，换歌只换内容，
+        // 交给定时重建（见 lib/home-layout）。
         await fanout({
           writes: play ? [commit(), recordListeningPlay(play)] : [commit()],
           events: changed ? [{ type: "listening", payload: listening }] : [],
-          tags: changed ? [LISTENING_TAG] : [],
         });
       } catch (error) {
         console.error("[apple-music]", error instanceof Error ? error.message : String(error));

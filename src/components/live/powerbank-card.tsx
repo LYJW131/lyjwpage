@@ -12,6 +12,7 @@ import {
   POWER_BANK_MODEL,
   ankerModelLabel,
 } from "@/lib/charging-device";
+import { powerBankActive } from "@/lib/home-layout";
 import { POWERBANK_PATH } from "@/lib/paths";
 import type {
   PowerBankPayload,
@@ -113,7 +114,7 @@ export function PowerBankCard({
    * 和充电头一样，这只用来协调外层布局，不在这里卸载组件：隐藏之后还得继续
    * 收轮询和推送，否则它永远不知道自己该回来了。
    */
-  const flowing = charging || discharging;
+  const flowing = powerBankActive(data);
   useEffect(() => {
     onActiveChange?.(flowing);
   }, [flowing, onActiveChange]);
