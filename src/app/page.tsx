@@ -172,6 +172,7 @@ export default async function Home() {
                 cloudflareFallback={snapshot.cloudflareWorkers ?? { ok: false, error: "Stats unavailable" }}
                 sentryFallback={snapshot.sentry ?? { ok: false, error: "Reliability unavailable" }}
                 serverFallback={server}
+                reportersFallback={snapshot.reporters ?? { ok: false, error: "Reporters unavailable" }}
                 recentCommits={recentCommits}
                 className="mt-3 defer-offscreen-always [contain-intrinsic-size:auto_1440px]"
               />

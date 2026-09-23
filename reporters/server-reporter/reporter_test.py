@@ -139,7 +139,6 @@ class Window(unittest.TestCase):
         samples = record_window(samples, now, 60_000, 70.0)  # 1 分钟 70%
         summary = summarize_window(samples, now)
         self.assertAlmostEqual(summary["cpuAvgPercent"], round((10 * 900 + 70 * 60) / 960, 1))
-        self.assertEqual(summary["reports"], 2)
         self.assertEqual(summary["start"], now - 900_000 - 900_000)
         self.assertEqual(summary["end"], now)
 
@@ -150,7 +149,6 @@ class Window(unittest.TestCase):
         samples = record_window(samples, now, 60_000, 5.0)
         self.assertEqual(len(samples), 2)
         summary = summarize_window(samples, now)
-        self.assertEqual(summary["reports"], 2)
         # 窗口起点不早于 12 小时前
         self.assertGreaterEqual(summary["start"], now - WINDOW_MS)
         self.assertIsNone(summarize_window([], now))

@@ -14,14 +14,6 @@
         "unresolved": 1
       }
     },
-    "sessions": {
-      "crashFreeRate": 0.9962,
-      "count": 1284
-    },
-    "cron": {
-      "status": "ok",
-      "lastCheckInAt": "$now-40000"
-    },
     "vitals": {
       "lcpP75Ms": 1850,
       "inpP75Ms": 96,

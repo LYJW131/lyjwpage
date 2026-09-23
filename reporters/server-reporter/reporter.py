@@ -44,7 +44,7 @@ from typing import Any
 # 被切回来，那一下不该看见十分钟前的 CPU。而事件推送那条连接不管可不可见都挂
 # 着，正好是「开着本站」的口径。
 #
-# 三档和另外两个上报器逐档对齐（agent-limits-reporter、playstation-reporter），
+# 三档和另外两个上报器逐档对齐（agents-reporter、playstation-reporter），
 # 同一个概念同一个数，别在三处各调各的。
 #
 # 慢档锚着站点的 SERVER_STALE_MS（lib/freshness，50 分钟 = 三轮 + 一个刷新周期的
@@ -486,7 +486,8 @@ def record_window(
 
 
 def summarize_window(samples: list[list[float]], now_ms: int) -> dict[str, Any] | None:
-    """窗口内的上报轮数和按时长加权的平均 CPU。起点取最早那一段的开头，但不早于 12 小时前"""
+    """窗口内按时长加权的平均 CPU。起点取最早那一段的开头，但不早于 12 小时前。
+    上报了几次不在这里数：Worker 收件时记账（lib/reporter-ledger），推送失败的那轮不算"""
     kept = [s for s in samples if s[0] > now_ms - WINDOW_MS]
     if not kept:
         return None
@@ -494,8 +495,6 @@ def summarize_window(samples: list[list[float]], now_ms: int) -> dict[str, Any] 
     return {
         "start": int(max(now_ms - WINDOW_MS, min(s[0] - s[1] for s in kept))),
         "end": int(now_ms),
-        # 每轮一条样本，条数就是这段时间里上报了几次（推送失败的那轮也算在内）
-        "reports": len(kept),
         "cpuAvgPercent": round(sum(s[2] * s[1] for s in kept) / total_dt, 1) if total_dt > 0 else None,
     }
 

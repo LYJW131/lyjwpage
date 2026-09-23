@@ -1,7 +1,6 @@
 import { cached, get, put } from "@/lib/cache";
 import {
   SENTRY_API_ORIGIN,
-  SENTRY_CRON_MONITOR_SLUG,
   SENTRY_ORG,
   SENTRY_SITE_PROJECT_ID,
   SENTRY_WORKER_PROJECT_ID,
@@ -9,14 +8,14 @@ import {
 import type { SentryErrorSeries, SentryStatusPayload, SentryVitals } from "@/lib/sentry-status-types";
 
 /**
- * 站点卡片（LYJWPAGE）里错误数、会话、真实用户指标和 cron 心跳的数据：只在 API Worker 里跑，用 `SENTRY_API_TOKEN`（组织只读令牌，
+ * 站点卡片（LYJWPAGE）里错误数和真实用户指标的数据：只在 API Worker 里跑，用 `SENTRY_API_TOKEN`（组织只读令牌，
  * org:read / project:read / event:read）调 Sentry API。
  *
  * 一轮十来个请求，分块各自降级：某一块失败只让那一块为 null，不拖垮整张卡。
  * 结果缓存 5 分钟，另留一份 last-good 撑过 Sentry 短暂不可用。这条视图是慢端点
  * （进 KV 投影），分钟 cron 顺带重渲染，访客的请求不直接打 Sentry。
  *
- * 错误、会话、Vitals 都只算 production 环境：本地与分支预览的测试数据不进卡片。
+ * 错误、Vitals 都只算 production 环境：本地与分支预览的测试数据不进卡片。
  */
 
 const CACHE_TTL_MS = 5 * 60_000;
@@ -36,36 +35,10 @@ function numOrNull(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-function isoToMs(value: unknown): number | null {
-  if (typeof value !== "string") return null;
-  const ms = Date.parse(value);
-  return Number.isFinite(ms) ? ms : null;
-}
-
 /** Discover 的单行聚合 → 第一行的字段 */
 export function parseAggregateRow(raw: unknown): Json {
   const data = record(raw).data;
   return Array.isArray(data) ? record(data[0]) : {};
-}
-
-export function parseSessions(raw: unknown): SentryStatusPayload["sessions"] {
-  const groups = record(raw).groups;
-  const totals = Array.isArray(groups) ? record(record(groups[0]).totals) : {};
-  const count = num(totals["sum(session)"]);
-  return { crashFreeRate: count > 0 ? numOrNull(totals["crash_free_rate(session)"]) : null, count };
-}
-
-const CRON_STATUSES = { ok: "ok", error: "error", missed_checkin: "missed", timeout: "timeout" } as const;
-
-/** 只看 production 那一格；还没报到过（刚上线或只有本地测试）是 unknown */
-export function parseCron(raw: unknown): SentryStatusPayload["cron"] {
-  const environments = record(raw).environments;
-  const production = Array.isArray(environments)
-    ? environments.map(record).find((env) => env.name === "production")
-    : undefined;
-  if (!production) return { status: "unknown", lastCheckInAt: null };
-  const status = CRON_STATUSES[production.status as keyof typeof CRON_STATUSES] ?? "unknown";
-  return { status, lastCheckInAt: isoToMs(production.lastCheckIn) };
 }
 
 /** path 从 `/api/0` 之后写起；组织级接口用 ORG_PATH 开头 */
@@ -131,25 +104,15 @@ export async function fetchSentryStatus(api: SentryGet, now = Date.now()): Promi
     console.warn("[sentry-status]", error instanceof Error ? error.message : String(error));
     return null;
   });
-  const [site, worker, sessions, cron, vitals] = await Promise.all([
+  const [site, worker, vitals] = await Promise.all([
     settle(fetchErrors(api, SENTRY_SITE_PROJECT_ID)),
     settle(fetchErrors(api, SENTRY_WORKER_PROJECT_ID)),
-    settle(api(`${ORG_PATH}/sessions/`, {
-      project: SENTRY_SITE_PROJECT_ID,
-      environment: "production",
-      field: ["crash_free_rate(session)", "sum(session)"],
-      statsPeriod: "24h",
-      interval: "1d",
-    }).then(parseSessions)),
-    settle(api(`${ORG_PATH}/monitors/${SENTRY_CRON_MONITOR_SLUG}/`, {}).then(parseCron)),
     settle(fetchVitals(api)),
   ]);
-  if (!site && !worker && !sessions && !cron && !vitals) throw new Error("Sentry 全部查询失败");
+  if (!site && !worker && !vitals) throw new Error("Sentry 全部查询失败");
   return {
     fetchedAt: now,
     errors: site && worker ? { site, worker } : null,
-    sessions,
-    cron,
     vitals,
   };
 }
@@ -157,8 +120,8 @@ export async function fetchSentryStatus(api: SentryGet, now = Date.now()): Promi
 export async function getSentryStatus(): Promise<SentryStatusPayload> {
   const token = process.env.SENTRY_API_TOKEN?.trim();
   if (!token) throw new Error("Sentry 读取未配置");
-  // v3：去掉在线率（站点卡片不再展示，监测本身留在 Sentry 里报警）
-  const key = `sentry-status:v3:${SENTRY_ORG}`;
+  // v4：去掉会话与 cron 心跳（站点卡片不再展示，监控本身留在 Sentry 里报警）
+  const key = `sentry-status:v4:${SENTRY_ORG}`;
   return cached<SentryStatusPayload>(key, CACHE_TTL_MS, async () => {
     try {
       const data = await fetchSentryStatus(sentryClient(token));

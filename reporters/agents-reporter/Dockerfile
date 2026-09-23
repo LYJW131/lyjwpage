@@ -43,6 +43,9 @@ RUN npm install -g @anthropic-ai/claude-code @openai/codex @xai-official/grok \
   && mkdir -p /data \
   && chown -R node:node /data /app
 ENV HOME=/data
+# 构建这份镜像的提交，每封上报都带上
+ARG GIT_SHA=""
+ENV REPORTER_COMMIT=$GIT_SHA
 USER node
 VOLUME /data
 CMD ["node", "dist/index.js"]

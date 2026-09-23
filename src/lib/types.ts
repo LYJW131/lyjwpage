@@ -626,7 +626,7 @@ export type VibeCodingAgent = {
   usageStatus: VibeCodingUsageStatus;
   /**
    * 下面四个字段来自另一条路：`/api/ingest/agents`，喂它的是 NAS 上的容器上报器
-   * （`reporters/agent-limits-reporter`），不再随 Mac 的用量信封走。站点按 id
+   * （`reporters/agents-reporter`），不再随 Mac 的用量信封走。站点按 id
    * 把它们贴到对应来源行上；只有限额的来源也展示，用量为 null。
    *
    * 套餐取不到、或这个 agent 从没上报过限额时是 null —— 不渲染，不占位
@@ -1059,8 +1059,6 @@ export type ServerWindow = {
   /** 窗口起止，epoch 毫秒 */
   start: number;
   end: number;
-  /** 窗口内上报了几轮，站点卡片 misaka-jp 那格的 Push */
-  reports: number;
   /** 0–100，按每段时长加权 */
   cpuAvgPercent: number | null;
 };
@@ -1104,12 +1102,10 @@ export type ServerStatus = {
    */
   traffic: ServerTraffic | null;
   /**
-   * 最近 12 小时（上报器刚起来时更短，看 start）的上报轮数和平均 CPU，
+   * 最近 12 小时（上报器刚起来时更短，看 start）的平均 CPU，
    * 和站点卡片里 Vercel / Workers 的 12 小时窗口对齐。上报器攒不住或是旧版本时为 null。
    */
   window: ServerWindow | null;
-  /** 上报器镜像构建时的提交；本地直接跑或旧版本时为 null */
-  reporterCommit: string | null;
   uptimeSeconds: number;
   /** 采集时刻，epoch 毫秒 */
   observedAt: number;

@@ -184,7 +184,7 @@ Mac Telemetry Hub 采集三大模块并通过 `/api/ingest/mac` 上报：
 ## 8. AI Coding Agent 账号限额
 
 ### 容器化上报架构
-- **独立容器运行**：`reporters/agent-limits-reporter` 运行在独立 Linux 容器中，每轮通过 `POST /api/ingest/agents` 统一上报限额。同一封里的 `cursorUsage` 是 Cursor 云端用量日桶；Mac 不在线时站点用它继续更新 Cursor 的合计和年度图。同一封还带 `cursorNow`（最近一条用量事件）；Cursor 在用时容器改为每分钟查一次、变了单独发，停用后间隔逐步拉长再交回限额那一轮。卡片上 Cursor 的活动灯按它在 5 分钟内现算。Cursor 历史平时只增量拉最近两天，每 6 小时整段重拉核对。
+- **独立容器运行**：`reporters/agents-reporter` 运行在独立 Linux 容器中，每轮通过 `POST /api/ingest/agents` 统一上报限额。同一封里的 `cursorUsage` 是 Cursor 云端用量日桶；Mac 不在线时站点用它继续更新 Cursor 的合计和年度图。同一封还带 `cursorNow`（最近一条用量事件）；Cursor 在用时容器改为每分钟查一次、变了单独发，停用后间隔逐步拉长再交回限额那一轮。卡片上 Cursor 的活动灯按它在 5 分钟内现算。Cursor 历史平时只增量拉最近两天，每 6 小时整段重拉核对。
 - **凭据完全隔离**：容器内部独立维护各家 CLI（Claude Code、Codex 等）登录 Session，严禁复制宿主机凭据，防止 refresh token 竞态失效。
 - **心跳与超时**：
   - 即使数据无变化，每轮上报依然执行（作为存活心跳）。
@@ -254,7 +254,7 @@ payload: >-
 - `reporters/server-reporter` 部署于云端 Linux 节点，基于 Python 标准库采集 `/proc/stat` 与 `/proc/net/dev`，上报 CPU、内存及网络吞吐，前端 30 秒轮询。
 
 ### 三档自适应调频算法
-为最大化节省服务器资源与外部 API 配额，`server-reporter`、`playstation-reporter` 和 `agent-limits-reporter` 均遵循三档自适应调频：
+为最大化节省服务器资源与外部 API 配额，`server-reporter`、`playstation-reporter` 和 `agents-reporter` 均遵循三档自适应调频：
 
 | 触发条件 | 说明 | server / PlayStation 间隔 | agent limits 间隔 |
 | --- | --- | --- | --- |

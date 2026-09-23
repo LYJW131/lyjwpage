@@ -1,9 +1,9 @@
 {
-  "name": "@lyjwpage/agent-limits-reporter",
+  "name": "@lyjwpage/agents-reporter",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "把各 coding agent 的账号限额推送到 lyjwpage",
+  "description": "把各 coding agent 的账号限额和 Cursor 用量推送到 lyjwpage",
   "engines": {
     "node": ">=20"
   },

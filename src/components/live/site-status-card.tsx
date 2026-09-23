@@ -4,18 +4,20 @@ import CloudflareColor from "@lobehub/icons/es/Cloudflare/components/Color";
 import Github from "@lobehub/icons/es/Github/components/Mono";
 import Vercel from "@lobehub/icons/es/Vercel/components/Mono";
 import NumberFlow from "@number-flow/react";
-import { Server as ServerIcon } from "lucide-react";
+import { Container } from "lucide-react";
+import type { ReactNode } from "react";
 import { Card } from "@/components/ui/card";
 import { colorForRank, RepoContributions } from "@/components/live/repo-contributions";
 import { formatUptime } from "@/components/live/server-card";
 import { SentryMark } from "@/components/live/sentry-mark";
 import { useStale } from "@/hooks/use-stale";
 import { fieldPerformanceScore } from "@/lib/field-score";
-import { SERVER_STALE_MS } from "@/lib/freshness";
+import { AGENT_LIMITS_STALE_MS, SERVER_STALE_MS } from "@/lib/freshness";
+import type { ReporterName, ReporterStat, ReportersPayload } from "@/lib/reporter-ledger";
 import { useStatus } from "@/hooks/use-status";
 import { CLOUDFLARE_WORKERS, type CloudflareWorkersPayload } from "@/lib/cloudflare-workers-types";
 import type { GithubRecentCommit } from "@/lib/github-recent-commits";
-import { CLOUDFLARE_WORKERS_PATH, GITHUB_REPO_PATH, SENTRY_PATH, SERVER_PATH, VERCEL_DEPLOYMENTS_PATH } from "@/lib/paths";
+import { CLOUDFLARE_WORKERS_PATH, GITHUB_REPO_PATH, REPORTERS_PATH, SENTRY_PATH, SERVER_PATH, VERCEL_DEPLOYMENTS_PATH } from "@/lib/paths";
 import type { SentryErrorSeries, SentryStatusPayload } from "@/lib/sentry-status-types";
 import { site } from "@/lib/site";
 import type { GithubRepoPayload, ServerPayload, StatusResponse } from "@/lib/types";
@@ -68,18 +70,9 @@ function vital(value: number | null | undefined, unit: string) {
   return unit === "s" ? `${(value / 1000).toFixed(2)}s` : unit === "ms" ? `${Math.round(value)}ms` : String(Number(value.toFixed(3)));
 }
 
-/** 99.95% 这种要看到小数点后两位才有区别；整 100 就写 100% */
-function percent(ratio: number | null | undefined): string {
-  if (ratio == null) return "—";
-  const value = ratio * 100;
-  return value >= 99.995 ? "100%" : `${value.toFixed(2)}%`;
-}
-
 /** Lighthouse 自己的档位：90 分及格算绿，50 到 89 黄；真实访客的分沿用同一套 */
 const scoreTone = (score: number | null | undefined) =>
   score == null ? "text-muted-foreground" : score >= 90 ? "text-emerald-600 dark:text-emerald-400" : score >= 50 ? "text-amber-600" : "text-red-500";
-
-const CRON_LABEL = { ok: "OK", error: "Failing", missed: "Missed", timeout: "Timed out", unknown: "Waiting" } as const;
 
 /** 服务格的一行小字：标签淡、值实，和 Req / CPU 那几段同一种写法 */
 function Fact({ label, value, title, className }: { label: string; value: string; title?: string; className?: string }) {
@@ -100,12 +93,33 @@ function ErrorCount({ series, title }: { series: SentryErrorSeries | undefined; 
   </span>;
 }
 
-export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallback, sentryFallback, serverFallback, recentCommits, className }: {
+/** 常驻上报器一格。名字链到仓库里它的目录；太久没收到就在名字旁标 offline */
+function ReporterTile({ name, stat, staleMs, title, children }: {
+  name: ReporterName; stat: ReporterStat | null | undefined; staleMs: number; title?: string; children?: ReactNode;
+}) {
+  const stale = useStale(stat?.lastPushAt, staleMs);
+  return <li className="bg-surface px-4 py-2.5" title={title}>
+    <div className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4">
+      <Container size={12} className="shrink-0" aria-hidden />
+      <a href={`${site.repo}/tree/main/reporters/${name}`} target="_blank" rel="noreferrer" className="min-w-0 truncate hover:underline">{name}</a>
+      {stat && stale && <span className="shrink-0 text-[10px] text-red-500">offline</span>}
+      <CommitSha commit={stat?.commit ? { sha: stat.commit, branch: null, message: `${name} image` } : null} />
+    </div>
+    <div className="mt-1 flex gap-x-3 text-[10px] tabular-nums text-muted-foreground">
+      <Fact label="Push" value={stat ? number.format(stat.pushes) : "—"} title="Reports received from this reporter" />
+      {children}
+      <CollectionWindow start={stat?.start} end={stat?.end} />
+    </div>
+  </li>;
+}
+
+export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallback, sentryFallback, serverFallback, reportersFallback, recentCommits, className }: {
   githubFallback: StatusResponse<GithubRepoPayload>;
   vercelFallback: StatusResponse<VercelDeploymentsPayload>;
   cloudflareFallback: StatusResponse<CloudflareWorkersPayload>;
   sentryFallback: StatusResponse<SentryStatusPayload>;
   serverFallback: StatusResponse<ServerPayload>;
+  reportersFallback: StatusResponse<ReportersPayload>;
   recentCommits: GithubRecentCommit[];
   className?: string;
 }) {
@@ -114,11 +128,10 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
   const { data: cloudflare } = useStatus<CloudflareWorkersPayload>(CLOUDFLARE_WORKERS_PATH, 300_000, { fallback: cloudflareFallback });
   const { data: sentry } = useStatus<SentryStatusPayload>(SENTRY_PATH, 5 * 60_000, { fallback: sentryFallback });
   const { functions, analytics } = vercel?.metrics ?? {};
-  const cron = sentry?.cron, siteErrors = sentry?.errors?.site, apiErrors = sentry?.errors?.worker;
+  const siteErrors = sentry?.errors?.site, apiErrors = sentry?.errors?.worker;
   // 出口节点那张卡用的同一条键，SWR 只取一份
   const { data: server } = useStatus<ServerPayload>(SERVER_PATH, 60_000, { fallback: serverFallback });
-  const serverStale = useStale(server?.pushedAt, server?.staleAfterMs ?? SERVER_STALE_MS) || Boolean(server?.staleAtSource);
-  const unresolved = sentry?.errors ? sentry.errors.site.unresolved + sentry.errors.worker.unresolved : null;
+  const { data: reporters } = useStatus<ReportersPayload>(REPORTERS_PATH, 5 * 60_000, { fallback: reportersFallback });
   // 主站量的是 lyjw.me；把域名写在表头，省得和访客当前所在的域名混起来。
   // 每一格是滚动窗口内各轮实测的中位数，轮数和窗口在表头的提示里。
   const pagespeed = vercel?.pagespeed, measured = pagespeed ? new URL(pagespeed.url).host : null;
@@ -228,39 +241,18 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
             </li>;
           })}
           {/*
-            和上面几格同一种写法：名字一行带上报器镜像的提交，小字一行是 12 小时窗口。
-            Push 是上报器这段时间推了几轮（不叫 Req：那几格是收到的请求，这里是往外发的）；流量和此刻的 CPU / 内存 / 磁盘都在 Exit Node
-            卡片上，这里只放窗口平均。
+            misaka-jp 上两个常驻上报器，和上面几格同一种写法：名字一行带镜像的提交，
+            小字一行是 12 小时窗口。Push 是这段时间 Worker 收到它几封（不叫 Req：
+            上面那几格是收到的请求，这里是往外发的）；次数和提交都记在收件那一侧的账本里。
+            server-reporter 那格的 CPU 是它所在的 misaka-jp 这台机器的 12 小时平均。
           */}
-          <li className="bg-surface px-4 py-2.5"
-            title={server ? `${server.hostname} · ${server.city ?? ""} · up ${formatUptime(server.uptimeSeconds)} · load ${server.load1.toFixed(2)}` : "Exit node"}>
-            <div className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4">
-              <ServerIcon size={12} className="shrink-0" aria-hidden />
-              <a href="#exit-node" className="min-w-0 truncate hover:underline">{server?.id ?? "misaka-jp"}</a>
-              {server && serverStale && <span className="shrink-0 text-[10px] text-red-500">offline</span>}
-              <CommitSha commit={server?.reporterCommit ? { sha: server.reporterCommit, branch: null, message: "server-reporter image" } : null} />
-            </div>
-            <div className="mt-1 flex gap-x-3 text-[10px] tabular-nums text-muted-foreground">
-              <Fact label="Push" value={server?.window ? number.format(server.window.reports) : "—"}
-                title="Reports pushed by server-reporter" />
-              <Fact label="CPU" value={server?.window?.cpuAvgPercent != null ? `${server.window.cpuAvgPercent.toFixed(1)}%` : "—"}
-                title="Average CPU usage over the window" />
-              <CollectionWindow start={server?.window?.start} end={server?.window?.end} />
-            </div>
-          </li>
-          <li className="bg-surface px-4 py-2.5">
-            <div className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4">
-              <a href={site.sentry} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 hover:underline"><SentryMark size={12} />Sentry</a>
-            </div>
-            <div className="mt-1 flex gap-x-3 text-[10px] tabular-nums text-muted-foreground">
-              <Fact label="Crash-free" value={percent(sentry?.sessions?.crashFreeRate)}
-                title={sentry?.sessions ? `${number.format(sentry.sessions.count)} browser sessions in 24h` : undefined} />
-              <Fact label="Open" value={unresolved == null ? "—" : number.format(unresolved)} title="Unresolved issues, site and API" />
-              <Fact label="Cron" value={cron ? CRON_LABEL[cron.status] : "—"}
-                className={cron && cron.status !== "ok" && cron.status !== "unknown" ? "text-red-500" : undefined}
-                title={cron?.lastCheckInAt ? `API Worker every-minute cron · last check-in ${time.format(cron.lastCheckInAt)} UTC+8` : "API Worker every-minute cron"} />
-            </div>
-          </li>
+          <ReporterTile name="server-reporter" stat={reporters?.reporters["server-reporter"]} staleMs={SERVER_STALE_MS}
+            title={server ? `Exit node ${server.id} · ${server.hostname} · up ${formatUptime(server.uptimeSeconds)} · load ${server.load1.toFixed(2)}` : undefined}>
+            <Fact label="CPU" value={server?.window?.cpuAvgPercent != null ? `${server.window.cpuAvgPercent.toFixed(1)}%` : "—"}
+              title="Average CPU of misaka-jp over the window" />
+          </ReporterTile>
+          <ReporterTile name="agents-reporter" stat={reporters?.reporters["agents-reporter"]} staleMs={AGENT_LIMITS_STALE_MS}
+            title="Coding agent plan limits and Cursor usage" />
         </ul>
       </section>
     </div>

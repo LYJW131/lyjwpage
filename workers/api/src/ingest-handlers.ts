@@ -5,15 +5,21 @@ import { commitPreparedPlaystationReport, preparePlaystationReport, type Prepare
 import { commitPreparedServerReport, prepareServerReport, type PreparedServerReport } from "./stores/server";
 import { commitPreparedTelemetryEnvelope, prepareTelemetryEnvelope, type PreparedTelemetryEnvelope } from "./stores/telemetry";
 import { prepareAgentLimits, recordPreparedAgentLimits, type PreparedAgentLimits } from "./stores/vibecoding";
+import { recordReporterPush } from "./stores/reporter-ledger";
+import { REPORTER_BY_SOURCE, reporterCommitOf } from "@/lib/reporter-ledger";
 
-export type PreparedIngest =
+/** 常驻上报器（server、agents）的报文顺带一个 reporterCommit，收件时记进账本 */
+type WithReporter<T> = T & { reporterCommit?: string | null };
+
+export type PreparedIngest = WithReporter<
   | PreparedTelemetryEnvelope
   | PreparedPhoneEnvelope
   | PreparedHomePodEvent
   | PreparedEmbyReport
   | PreparedPlaystationReport
   | PreparedServerReport
-  | PreparedAgentLimits;
+  | PreparedAgentLimits
+>;
 
 export const INGEST_SOURCES = new Set([
   "mac", "iphone", "homepod", "emby", "playstation", "server", "agents",
@@ -31,8 +37,8 @@ export async function prepareIngest(
     case "homepod": return prepareHomePodEvent(raw, receivedAt);
     case "emby": return prepareEmbyReport(raw, receivedAt);
     case "playstation": return preparePlaystationReport(raw, receivedAt);
-    case "server": return prepareServerReport(raw, receivedAt);
-    case "agents": return prepareAgentLimits(raw, receivedAt);
+    case "server": return { ...prepareServerReport(raw, receivedAt), reporterCommit: reporterCommitOf(raw) };
+    case "agents": return { ...prepareAgentLimits(raw, receivedAt), reporterCommit: reporterCommitOf(raw) };
     default: throw new Error("Unknown ingest source");
   }
 }
@@ -57,6 +63,15 @@ export async function prepareIngestForCommit(
 
 /** StateHub 阶段：只做依赖权威最新状态的合并、差分与持久化。 */
 export async function commitPreparedIngest(command: PreparedIngest): Promise<unknown> {
+  const result = await commitBySource(command);
+  // 收成了才记账：被拒的那封不算这个上报器的一次推送
+  if (command.source === "server" || command.source === "agents") {
+    await recordReporterPush(REPORTER_BY_SOURCE[command.source], command.receivedAt, command.reporterCommit ?? null);
+  }
+  return result;
+}
+
+function commitBySource(command: PreparedIngest): Promise<unknown> {
   switch (command.source) {
     case "mac": return commitPreparedTelemetryEnvelope(command);
     case "iphone": return commitPreparedPhoneEnvelope(command);

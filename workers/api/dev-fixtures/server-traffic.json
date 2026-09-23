@@ -36,10 +36,8 @@
     "window": {
       "start": "$now-43200000",
       "end": "$now",
-      "reports": 618,
       "cpuAvgPercent": 3.8
     },
-    "reporterCommit": "b15e3cc4f1c2a8e9d7b6a5f4e3d2c1b0a9f8e7d6",
     "uptimeSeconds": 262800,
     "observedAt": "$now-4000",
     "pushedAt": "$now",

@@ -9,7 +9,7 @@
 # 两个服务共用一个 compose project，所以**不带服务名的命令会同时动两个容器**。
 # 手动只换一个就点名换那个：
 #   docker compose pull server-reporter && docker compose up -d --no-deps server-reporter
-#   docker compose pull agent-limits-reporter && docker compose up -d --no-deps agent-limits-reporter
+#   docker compose pull agents-reporter && docker compose up -d --no-deps agents-reporter
 # 要回退就把 `latest` 临时改成 Actions 推的 `sha-<短哈希>`。
 #
 # 各自的 .env 留在各自的子目录里：两边都有 SITE_URL / TELEMETRY_INGEST_SECRET /
@@ -18,14 +18,14 @@
 name: lyjwpage-reporters
 
 services:
-  agent-limits-reporter:
-    image: ghcr.io/lyjw131/agent-limits-reporter:latest
-    container_name: agent-limits-reporter
+  agents-reporter:
+    image: ghcr.io/lyjw131/agents-reporter:latest
+    container_name: agents-reporter
     restart: unless-stopped
     env_file:
-      - ./agent-limits-reporter/.env
+      - ./agents-reporter/.env
     volumes:
-      - ./agent-limits-reporter/data:/data
+      - ./agents-reporter/data:/data
     logging:
       driver: json-file
       options:

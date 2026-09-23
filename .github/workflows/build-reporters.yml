@@ -1,12 +1,12 @@
 # 容器上报器的镜像在这里构建，推到 GHCR；机器上只 `docker compose pull`，不再现场 build。
-# 从前是把源码 tar 到机器上就地 build：agent-limits-reporter 装五个 CLI，
+# 从前是把源码 tar 到机器上就地 build：agents-reporter 装五个 CLI，
 # misaka-jp 那台 1C2G 冷 build 约 10 分钟。
 #
 # 只构建改了的那几个：一个目录（或这个文件）有变化才进 matrix。
 # PR 只 build 不推，验证 Dockerfile 还能跑通；合进 main 才推 `latest` 和 `sha-<短哈希>`。
 # 手动触发（workflow_dispatch）三个全推，用来刷新基础镜像或 CLI 版本。
 #
-# misaka-jp 上的两个（server-reporter、agent-limits-reporter）推完镜像接着自动换：
+# misaka-jp 上的两个（server-reporter、agents-reporter）推完镜像接着自动换：
 # deploy 这一步用一把只能跑 /opt/lyjwpage/deploy.sh 的密钥 ssh 过去，脚本点名
 # pull、重建那一个、清悬空镜像（见 reporters/misaka-deploy.sh）。密钥、主机指纹和
 # 地址在 `misaka-jp` 这个 environment 里，只有 main 能用。
@@ -17,13 +17,13 @@ on:
   push:
     branches: [main]
     paths:
-      - reporters/agent-limits-reporter/**
+      - reporters/agents-reporter/**
       - reporters/server-reporter/**
       - reporters/emby-reporter/**
       - .github/workflows/build-reporters.yml
   pull_request:
     paths:
-      - reporters/agent-limits-reporter/**
+      - reporters/agents-reporter/**
       - reporters/server-reporter/**
       - reporters/emby-reporter/**
       - .github/workflows/build-reporters.yml
@@ -50,8 +50,8 @@ jobs:
         if: github.event_name != 'workflow_dispatch'
         with:
           filters: |
-            agent-limits-reporter:
-              - reporters/agent-limits-reporter/**
+            agents-reporter:
+              - reporters/agents-reporter/**
               - .github/workflows/build-reporters.yml
             server-reporter:
               - reporters/server-reporter/**
@@ -65,11 +65,11 @@ jobs:
           CHANGED: ${{ steps.filter.outputs.changes }}
         run: |
           if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
-            CHANGED='["agent-limits-reporter","server-reporter","emby-reporter"]'
+            CHANGED='["agents-reporter","server-reporter","emby-reporter"]'
           fi
           echo "images=${CHANGED:-[]}" >> "$GITHUB_OUTPUT"
           # 其中跑在 misaka-jp 上、推完要自动换的那几个
-          echo "misaka=$(echo "${CHANGED:-[]}" | jq -c '[.[] | select(. == "server-reporter" or . == "agent-limits-reporter")]')" >> "$GITHUB_OUTPUT"
+          echo "misaka=$(echo "${CHANGED:-[]}" | jq -c '[.[] | select(. == "server-reporter" or . == "agents-reporter")]')" >> "$GITHUB_OUTPUT"
 
   build:
     needs: changes
@@ -109,7 +109,7 @@ jobs:
             type=ref,event=pr
 
       # 只出 amd64：misaka-jp 和 dsm 都是 x86_64，没有 arm64 的消费者。
-      # 缓存用 mode=min：agent-limits 那层有几个 GB，mode=max 会很快挤满仓库的 Actions 缓存额度。
+      # 缓存用 mode=min：agents-reporter 那层有几个 GB，mode=max 会很快挤满仓库的 Actions 缓存额度。
       - uses: docker/build-push-action@v7
         with:
           context: reporters/${{ matrix.image }}

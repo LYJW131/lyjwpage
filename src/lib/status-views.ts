@@ -76,6 +76,8 @@ export const STATUS_VIEWS = {
   vercelDeployments: { path: "/api/status/vercel-deployments", readModel: "slow" },
   /** 在线率、错误量、会话与 cron 心跳，来自 Sentry；Worker 缓存 5 分钟，分钟级才变 */
   sentry: { path: "/api/status/sentry", readModel: "slow" },
+  /** 常驻上报器 12 小时收到几封、跑的哪个提交；收件时记账，分钟级才变 */
+  reporters: { path: "/api/status/reporters", readModel: "slow" },
   pulse: { path: "/api/status/pulse" },
   /** 首屏歌词，按 nowListening 的 songId 现解，没有状态端点 */
   lyrics: {},

@@ -167,7 +167,7 @@
       ],
       "sources": [
         {
-          "path": "reporters/agent-limits-reporter/src/cadence.ts"
+          "path": "reporters/agents-reporter/src/cadence.ts"
         }
       ]
     },

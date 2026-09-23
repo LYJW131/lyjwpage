@@ -45,6 +45,9 @@ const onlineCounterUrl = process.env.ONLINE_COUNTER_URL?.trim() ?? "";
 export const config = {
   dryRun,
 
+  /** 镜像构建时烧进来的提交（build-reporters.yml 传 GIT_SHA），站点卡片据此显示线上跑的是哪一版 */
+  reporterCommit: process.env.REPORTER_COMMIT?.trim() || null,
+
   site: {
     ingestUrl:
       process.env.SITE_INGEST_URL?.trim() ||

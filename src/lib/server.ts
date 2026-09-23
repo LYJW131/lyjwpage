@@ -23,7 +23,6 @@ function toPayload(stored: StoredServer): ServerPayload {
     // 加流量之前存下的那份没有这个键。契约说的是「可以是 null」，不是「可以没有」
     traffic: stored.status.traffic ?? null,
     window: stored.status.window ?? null,
-    reporterCommit: stored.status.reporterCommit ?? null,
     pushedAt: stored.receivedAt,
     staleAfterMs: serverStaleMs(),
     staleAtSource: false,

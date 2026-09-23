@@ -84,8 +84,8 @@ function nullableTraffic(row: Record<string, unknown>): ServerTraffic | null {
 }
 
 /**
- * 12 小时窗口和上报器提交是后加的：旧版上报器压根不带这两个键，缺了按 null 收，
- * 不像 traffic 那样要求键必须在。给了就得完整、合法。
+ * 12 小时窗口是后加的：旧版上报器压根不带这个键，缺了按 null 收，不像 traffic
+ * 那样要求键必须在。给了就得完整、合法。上报器提交不在这里收，见 lib/reporter-ledger。
  */
 function optionalWindow(row: Record<string, unknown>): ServerWindow | null {
   if (row.window == null) return null;
@@ -99,16 +99,8 @@ function optionalWindow(row: Record<string, unknown>): ServerWindow | null {
   return {
     start,
     end,
-    reports: Math.round(requiredNumber(window, "reports")),
     cpuAvgPercent: window.cpuAvgPercent == null ? null : requiredPercent(window, "cpuAvgPercent"),
   };
-}
-
-function optionalCommit(row: Record<string, unknown>): string | null {
-  if (row.reporterCommit == null) return null;
-  const value = text(row.reporterCommit);
-  if (!value || !/^[0-9a-f]{7,40}$/.test(value)) throw new Error("服务器上报的 reporterCommit 必须是提交哈希");
-  return value;
 }
 
 const IPV4 =
@@ -185,7 +177,6 @@ export function normalizeServer(input: unknown): ServerStatus {
     networkTxBytesPerSec: Math.round(requiredNumber(row, "networkTxBytesPerSec")),
     traffic: nullableTraffic(row),
     window: optionalWindow(row),
-    reporterCommit: optionalCommit(row),
     uptimeSeconds: Math.round(requiredNumber(row, "uptimeSeconds")),
     observedAt,
   };

@@ -54,7 +54,8 @@ export async function push(payload: PushPayload): Promise<void> {
   const response = await fetch(config.site.ingestUrl, {
     method: "POST",
     headers: { ...authHeaders(), "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    // 每一封都带上自己的提交：限额那轮和 Cursor 小信封都算这个上报器的一次推送
+    body: JSON.stringify({ ...payload, reporterCommit: config.reporterCommit }),
     signal: AbortSignal.timeout(config.pushTimeoutMs),
   });
   await readEnvelope(response);

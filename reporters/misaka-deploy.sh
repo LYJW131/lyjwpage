@@ -8,7 +8,7 @@
 # 客户端发的那串（服务名）落在 SSH_ORIGINAL_COMMAND 里，这里按白名单认。
 #
 # 做的事和 compose.yaml 开头写的手动步骤一样：点名 pull、只重建这一个、清掉悬空镜像
-# （盘只有 30 GB，agent-limits 一份就 3.4 GB）。最后报容器状态和镜像里的提交，
+# （盘只有 30 GB，agents-reporter 一份就 3.4 GB）。最后报容器状态和镜像里的提交，
 # 由 workflow 判断成没成。
 #
 # 这份文件改了不会自己同步到机器上：改完要手动重新装一次（见 reporters/README）。
@@ -16,7 +16,7 @@ set -eu
 
 service="${SSH_ORIGINAL_COMMAND:-}"
 case "$service" in
-  server-reporter | agent-limits-reporter) ;;
+  server-reporter | agents-reporter) ;;
   *)
     echo "refused: '$service' is not a deployable service" >&2
     exit 2
