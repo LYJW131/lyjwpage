@@ -145,9 +145,12 @@ try {
   await sleep(200);
   assert.equal(notices.length, homePodNotices, 'HomePod position heartbeat must not invalidate page');
   console.log('PASS: Worker write → Durable Object SQLite → /api/revalidate → direct Worker status; WebSocket receives both updates');
+  const beforeTimezone = notices.length;
   const response = await post(worker, '/api/ingest/mac', { version: 4, heartbeatAt: Date.now(), presence: 'online', activeModules: ['timezone'], modules: { timezone: { identifier: 'Asia/Singapore', secondsFromGMT: 28800 } } });
   assert.equal(response.status, 202);
-  await eventually(async () => assert.ok(notices.some(n => n.tags?.includes('timezone'))));
+  await sleep(300);
+  // 时区卡定高，换时区只换内容：交给首屏定时重建，不失效（见 src/lib/home-layout.ts）
+  assert.equal(notices.slice(beforeTimezone).some(n => n.tags?.includes('timezone')), false, 'Timezone content change must not invalidate page');
   const before = notices.length;
   assert.equal((await post(worker, '/api/ingest/mac', { version: 4, heartbeatAt: Date.now(), presence: 'online', activeModules: ['timezone'], modules: {} })).status, 202);
   await sleep(300);

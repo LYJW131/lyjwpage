@@ -1,5 +1,5 @@
-import { displayChanged } from "@shared/display-change";
 import { mirror } from "@shared/homepod-store";
+import { liveTrack } from "@/lib/home-layout";
 import { NOW_LISTENING_TAG } from "@/lib/live-events";
 import { fanout } from "@api/fanout";
 import { normalizeHomePodEvent, writeHomePodEvent } from "@api/stores/homepod-store";
@@ -26,12 +26,14 @@ export function prepareHomePodEvent(body: unknown, receivedAt = Date.now()): Pre
 }
 
 export async function commitPreparedHomePodEvent({ stored }: PreparedHomePodEvent) {
-  const changed = displayChanged(await mirror.get(), stored);
+  const previous = await mirror.get();
+  // 首屏只在「有没有在放」翻面时失效：换歌、暂停续播只换 hero 里的内容，见 lib/home-layout
+  const layoutChanged = (liveTrack(previous?.music) != null) !== (liveTrack(stored.music) != null);
   const listening = homePodListening(stored);
   await fanout({
     writes: [writeHomePodEvent(stored), listening.pulse],
     listening: [listening.effect],
-    tags: changed ? [NOW_LISTENING_TAG] : [],
+    tags: layoutChanged ? [NOW_LISTENING_TAG] : [],
   });
   return { source: stored.music.source, state: stored.music.state };
 }

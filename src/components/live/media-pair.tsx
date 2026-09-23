@@ -9,6 +9,7 @@ import { ListeningCard } from "@/components/live/listening-card";
 import { PowerBankCard } from "@/components/live/powerbank-card";
 import type { LyricsFallback } from "@/hooks/use-lyrics";
 import type { ArtworkPlaceholders } from "@/lib/artwork-placeholder";
+import { chargerActive as chargerIsActive, powerBankActive as powerBankIsActive } from "@/lib/home-layout";
 import type {
   ChargerPayload,
   ListeningPayload,
@@ -78,14 +79,10 @@ export function LiveMediaPair({
   artworkPlaceholders: ArtworkPlaceholders;
 }) {
   const [chargerActive, setChargerActive] = useState(
-    chargerFallback.ok &&
-      chargerFallback.data.connected &&
-      chargerFallback.data.totalPower > 1,
+    chargerFallback.ok && chargerIsActive(chargerFallback.data),
   );
   const [powerBankActive, setPowerBankActive] = useState(
-    powerBankFallback.ok &&
-      powerBankFallback.data.connected &&
-      (powerBankFallback.data.inputPower > 1 || powerBankFallback.data.outputPower > 1),
+    powerBankFallback.ok && powerBankIsActive(powerBankFallback.data),
   );
   const [chargerOverride, setChargerOverride] = useState<boolean | null>(null);
   const [powerBankOverride, setPowerBankOverride] = useState<boolean | null>(null);

@@ -420,9 +420,12 @@ test("commit performs no room or Vercel I/O and Worker dispatch performs both", 
     throw new Error(`unexpected fetch ${String(input)}`);
   }) as typeof fetch;
   try {
+    // 插上充电头：既有推送，又换了首屏那一格的布局
     const command = await inRequest(env, () => prepareIngest("mac", envelope({
-      desktop: { applicationName: "Cursor", observedAt: NOW },
-    }, ["desktop"]), NOW));
+      chargingDevices: { devices: [
+        { id: "charger", kind: "charger", connected: true, updatedAt: NOW, totalOutputW: 40 },
+      ] },
+    }, ["charger"]), NOW));
     const result = await commit(env, command);
     assert.equal(result.ok, true);
     assert.equal(broadcasts, 0);

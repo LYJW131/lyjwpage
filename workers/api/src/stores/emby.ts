@@ -1,5 +1,5 @@
 import { watchingLevel } from "@shared/pulse-levels";
-import { getCurrentItem, getImageObjectKeys, getResume, resolveNowPlaying, type EmbyNowPlaying, type StoredWatchingItem } from "@/lib/emby-store";
+import { getCurrentItem, getImageObjectKeys, getNowPlaying, getResume, resolveNowPlaying, type EmbyNowPlaying, type StoredWatchingItem } from "@/lib/emby-store";
 import { number, object, text } from "@/lib/json";
 import { NOW_WATCHING_TAG, WATCHING_TAG } from "@/lib/live-events";
 import type { WatchingItem, WatchingMedia, WatchingPlayMethod } from "@/lib/types";
@@ -254,10 +254,11 @@ export async function commitPreparedEmbyReport(prepared: PreparedEmbyReport) {
    * 三份都来自同一个 StateHub 本地 SQLite，但依然并行组织：图片映射两份 payload 都要用，续播列表既要 diff
    * 又是 missingImages 的底，播放中那一项在代理只推了个位置更新时要拿来配详情。
    */
-  const [images, previousResume, storedCurrent] = await Promise.all([
+  const [images, previousResume, storedCurrent, previousNowPlaying] = await Promise.all([
     getImageObjectKeys(),
     getResume(),
     prepared.playing ? getCurrentItem() : null,
+    prepared.playing ? getNowPlaying() : null,
   ]);
 
   const { objectKeys, stored } = await mergePreparedImages(prepared.images, images);
@@ -272,6 +273,8 @@ export async function commitPreparedEmbyReport(prepared: PreparedEmbyReport) {
     list = prepared.resume;
     resumeChanged = JSON.stringify(previousResume?.items) !== JSON.stringify(list);
     writes.push(setResume(list));
+    // 瓷砖行横向滚动、定高，条目增减不改布局；只有空和非空之间换的是另一块占位
+    if (!previousResume?.items.length !== !list.length) tags.push(WATCHING_TAG);
   }
 
   /**
@@ -292,11 +295,16 @@ export async function commitPreparedEmbyReport(prepared: PreparedEmbyReport) {
     const watching = watchingLevel(played.state, detail);
     writes.push(recordPulse("watching", { t: receivedAt, level: watching.level, hint: watching.hint }));
     // 播放状态变了就直接把新数据推给浏览器 —— 手上这份就是最新的
+    const nowPlaying = resolveNowPlaying(played.state);
     events.push({
       type: "watching-now",
-      payload: nowWatchingPayload(resolveNowPlaying(played.state), detail, objectKeys),
+      payload: nowWatchingPayload(nowPlaying, detail, objectKeys),
     });
-    tags.push(NOW_WATCHING_TAG);
+    /**
+     * 「正在看」整张卡只在有会话时渲染（暂停也算），所以首屏只在开播和停播时失效。
+     * 进度、暂停续播、拖进度条都只换卡里的内容，交给定时重建。
+     */
+    if ((previousNowPlaying == null) !== (nowPlaying == null)) tags.push(NOW_WATCHING_TAG);
   }
 
   /**
@@ -322,7 +330,6 @@ export async function commitPreparedEmbyReport(prepared: PreparedEmbyReport) {
    */
   if ((resumeChanged || stored > 0) && referenced) {
     events.push({ type: "watching", payload: watchingPayload(referenced, objectKeys) });
-    tags.push(WATCHING_TAG);
   }
 
   // 落库和推送同时发车，失效等它们完成，见 lib/live-events 的 fanout

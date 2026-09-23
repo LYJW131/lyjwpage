@@ -22,6 +22,7 @@ import { artworkPlaceholders } from "@/lib/artwork-placeholder";
 import { desktopIconDataUri } from "@/lib/desktop-icon-inline";
 import { githubAvatarDataUri } from "@/lib/github-avatar-icon";
 import { getRecentCommits } from "@/lib/github-recent-commits";
+import { liveTrack } from "@/lib/home-layout";
 import { cachedHomeSnapshot } from "@/lib/home-snapshot";
 import type { GithubRepoPayload, PulsePayload, StatusResponse } from "@/lib/types";
 
@@ -70,8 +71,7 @@ export default async function Home() {
     ? listening.data.items.map((item) => item.artwork)
     : [];
   const nowMusic = nowListening.ok && !nowListening.data.idle ? nowListening.data.music : null;
-  const liveHeroArtwork =
-    nowMusic?.title && nowMusic.state !== "stopped" ? nowMusic.artworkUrl : null;
+  const liveHeroArtwork = liveTrack(nowMusic)?.artworkUrl ?? null;
   const heroArtwork = liveHeroArtwork ?? listeningArtworks[0];
   // 实时曲目当 hero 时，历史列表从第一条开始；否则第一条已经被 hero 占用。
   const rowArtworks = liveHeroArtwork ? listeningArtworks : listeningArtworks.slice(1);
