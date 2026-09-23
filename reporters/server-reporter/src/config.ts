@@ -47,7 +47,6 @@ function pathOr(name: string, fallback: string): string {
 }
 
 const siteUrl = process.env.SITE_URL?.trim() ?? "";
-const onlineCounterUrl = process.env.ONLINE_COUNTER_URL?.trim() ?? "";
 
 export const config = {
   /** 采一轮、把报文打到 stdout 就退出，不推送 */
@@ -67,23 +66,13 @@ export const config = {
   hostRoot: (process.env.HOST_ROOT?.trim() ?? "").replace(/\/+$/, ""),
 
   /**
-   * 三档节奏，和 agents-reporter、playstation-reporter 逐档对齐：
+   * 固定每分钟推一次。这份快照本身就是心跳，站点拿 pushedAt 判断上报器还活着没有。
    *
-   *   有人正看着（`online`，只数**可见**的页面）      → 60 秒
-   *   页面开着但都在后台（`connections`，数开着的连接） → 2 分钟
-   *   一个页面都没开                                  → 15 分钟
-   *
-   * 这份快照本身就是心跳。慢档锚着站点的 SERVER_STALE_MS（lib/freshness，50 分钟
-   * = 三轮 + 余量）：改慢档必须同步改那边。
+   * 从前按有没有人在看分 60 秒 / 2 分钟 / 15 分钟三档，为的是给 Vercel 函数减负
+   * （上报曾经经过 Vercel，这条是全站调用量最大的路径）。上报改进 api Worker 之后
+   * 那个理由没了，三档反而更费：闲着时每分钟问两个 Worker 的 /count，比直接推一次还多。
    */
-  cadence: {
-    liveIntervalMs: ms("LIVE_INTERVAL_MS", 60_000),
-    openIntervalMs: ms("OPEN_INTERVAL_MS", 120_000),
-    idleIntervalMs: ms("IDLE_INTERVAL_MS", 900_000),
-    onlineCountUrl: onlineCounterUrl ? `${trimSlash(onlineCounterUrl)}/count` : "",
-    countUrl: siteUrl ? `${trimSlash(siteUrl)}/count` : "",
-    countTimeoutMs: ms("COUNT_TIMEOUT_MS", 2_500),
-  },
+  intervalMs: ms("INTERVAL_MS", 60_000),
   pushTimeoutMs: ms("PUSH_TIMEOUT_MS", 10_000),
 
   /** 流量累计与 12 小时 CPU 窗口的状态文件；留空 = 不攒，报文里这两块为 null */

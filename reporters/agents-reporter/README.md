@@ -22,8 +22,9 @@ Claude、Codex、Grok、Antigravity 的用量仍由 Mac 从本机日志上报。
 4. POST 到站点
 
 每轮收尾并行读 `ONLINE_COUNTER_URL/count` 与 `SITE_URL/count`：`online`（有页面**可见**）大于 0 走快档；否则
-`connections`（有页面**开着**，含后台标签页）大于 0 走中档，否则走闲档。与 server /
-PlayStation 上报器采用同款人数分档逻辑，限额使用自己的 5 / 10 / 60 分钟。
+`connections`（有页面**开着**，含后台标签页）大于 0 走中档，否则走闲档。与
+PlayStation 上报器采用同款人数分档逻辑，限额使用自己的 5 / 10 / 60 分钟。调频在这里控制的是打各家
+限额接口的频率（server-reporter 已改成固定每分钟，它当初调频只为给 Vercel 减负）。
 计数超时、非成功响应、格式错误一律当 0，不触发上报失败重试。
 只配 `SITE_INGEST_URL` 不配 `SITE_URL` 时读不到人头数，固定走 60 分钟。
 

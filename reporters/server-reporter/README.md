@@ -3,15 +3,15 @@
 把日本落地节点的 CPU、内存、磁盘、网速、周期流量推给 lyjwpage 的小进程，跑在节点自己上面。
 
 站点够不着这台机器的 `/proc`（将来还要部署到 Vercel），所以该给的东西由这边送过去。
-TypeScript / Node，和 [agents-reporter](../agents-reporter) 同一套结构（`config` / `log` / `cadence` /
-`site` / `push-ledger` 各一份）。没有运行时依赖，跑在容器里，机器上不用装 Node。2026-09 前是 Python
+TypeScript / Node，和 [agents-reporter](../agents-reporter) 同一套结构（`config` / `log` /
+`site` / `push-ledger` 各一份；它按人数调频的那份这里不用，见下面「节奏」）。没有运行时依赖，跑在容器里，机器上不用装 Node。2026-09 前是 Python
 标准库写的，改写时报文字段和状态文件格式都没变。
 
 ## 它做什么
 
 | 内容 | 节奏 | 什么时候真的推 |
 | --- | --- | --- |
-| CPU / 负载 / 内存 / 磁盘 / 网速 / 运行时间 | 三档：有人正看着 60 秒，页面开着但在后台 2 分钟，一个页面都没开 15 分钟 | **每轮都推**。这份快照本身就是心跳，站点拿 `pushedAt` 判断上报器还活着没有 |
+| CPU / 负载 / 内存 / 磁盘 / 网速 / 运行时间 | 固定每分钟一轮（`INTERVAL_MS`） | **每轮都推**。这份快照本身就是心跳，站点拿 `pushedAt` 判断上报器还活着没有 |
 | 公网 IP 的 Location / ISP / ASN | 地址变了才查，否则缓存 6 小时 | 跟着上面那份一起推。查的是网卡上的地址，不是「我访问某个 what-is-my-ip 看到的出口」 |
 | 计费周期内的累计流量 | 每轮把这一段的增量并进去 | 跟着一起推。攒不住（状态文件写不进）时报 `null`，卡片上那一栏整行不出现 |
 | 最近 12 小时的平均 CPU（`window`） | 每轮追加一条、丢掉 12 小时前的，和流量累计存在同一个状态文件里 | 跟着一起推，站点卡片 misaka-jp 那格用它，和 Vercel / Workers 的 12 小时窗口对齐。CPU 按每段时长加权；刚起来时窗口不满 12 小时，`start` 说明实际从哪算起。攒不住时同样报 `null` |
@@ -56,25 +56,13 @@ pnpm --filter @lyjwpage/server-reporter test
 
 站点那侧**没有实时推送**。这些数字每个间隔都在变，广播就是拿推送当轮询用；卡片 30 秒自己来问。
 
-每轮收尾并行读取在线人数和 API Worker 的 `GET /count`（各自超时 2.5 秒），分别拿到两个数，据此选下一轮的档：
+### 节奏
 
-| 问到什么 | 下一轮 | 变量 |
-| --- | --- | --- |
-| `online > 0` —— 有页面**可见** | 60 秒 | `LIVE_INTERVAL_MS` |
-| `connections > 0` —— 有页面**开着** | 2 分钟 | `OPEN_INTERVAL_MS` |
-| 两个都是 0 | 15 分钟 | `IDLE_INTERVAL_MS` |
+固定每分钟推一次，按轮的起点对齐（采集和推送花掉的时间从这一分钟里扣）。
 
-两个数是两个口径，这也正是要两个的原因：站点侧 `use-online-count` 在页面不可见时把连接整条关掉，所以锁屏、切走的标签页在 `online` 里算 0；而 `use-live-events` 那条连接不管可不可见都挂着，它们在 `connections` 里。中间那档就是为「切走了但还会切回来」留的 —— 切回来那一下不该看见十分钟前的 CPU。
+从前按有没有人在看分三档（可见 60 秒、只是开着 2 分钟、都没有 15 分钟），为的是给 Vercel 函数减负：上报曾经经过 Vercel，30 秒一轮时这条是全站函数调用量最大的路径（实测 12 小时 1.5K 次）。上报改进 api Worker 之后那个理由没了，三档反而更费 —— 闲着时每分钟要问两个 Worker 的 `/count`，一天约 2880 次，比固定每分钟推一次（1440 次）还多。2026-09 起去掉。agents-reporter 和 playstation-reporter 还在按人数调频：它们控制的是打厂商 / PSN 接口的频率，那个理由还在。
 
-三档和另外两个上报器（agents-reporter、playstation-reporter）逐档对齐，同一个概念同一个数。这份快照每轮必发（它本身就是心跳），30 秒一轮时 `/api/ingest/server` 是站点函数调用量最大的一条路径，实测 12 小时 1.5K 次。人头数读不回来一律当 0，只会往慢里退，永远不会因为故障变快。
-
-长档不是一觉睡满：拆成一个个快档长度的小觉，每觉醒来重新问一次人头数，该走更快那档了就立刻回去开跑。否则「从没人到有人正看着」最坏要等满一个慢档（15 分钟），而那正是有人盯着屏幕等的那一刻。上一轮出错时走的是退避表，那段时间不问人头数。
-
-卡片那侧仍是 30 秒一问（和充电头一档），比快档还勤 —— 多出来那一趟拿到的是同一份数字，是有意留的：那是浏览器自己的节奏，不该由上报器的档位决定。
-
-人数读取上报使用的同一个 `SITE_URL`，所有连接该 API Worker 的页面都计入判断。
-
-断流窗口锚的是**慢档**：站点 `lib/freshness` 的 `SERVER_STALE_MS` 默认 50 分钟 = 三轮 + 缓存余量，和另外两路的窗口同一个数。改慢档必须同步改那边，改另外两档不用。顺序是**站点那侧先放宽窗口并部署，这边再降频**，反过来做中间那段时间卡片会一直显示离线。
+断流窗口是站点 `lib/freshness` 的 `SERVER_STALE_MS`（默认 50 分钟，按从前的慢档定的）。现在每分钟一轮，窗口可以缩到几分钟；**顺序是这边先提速、确认跑稳，站点再缩窗口**，反过来做中间那段时间卡片会断续显示离线。
 
 ## 配置
 
@@ -82,8 +70,8 @@ pnpm --filter @lyjwpage/server-reporter test
 
 | 变量 | 必填 | 说明 |
 | --- | --- | --- |
-| `SITE_URL` | ✅ | 上报 Worker 的源，如 `https://api.homepage.lyjw.llc`。上报端点和推送连接数的 `/count` 从它拼 |
-| `SITE_INGEST_URL` | | 直接给完整端点，给了就不用 `SITE_URL` 上报；人头数仍只从 `SITE_URL` 读，没配就永远走最慢那档 |
+| `SITE_URL` | ✅ | 上报 Worker 的源，如 `https://api.homepage.lyjw.llc`，上报端点从它拼 |
+| `SITE_INGEST_URL` | | 直接给完整端点，给了就不用 `SITE_URL` |
 | `TELEMETRY_INGEST_SECRET` | ✅ | 和站点同名变量对上，作 Bearer 鉴权。站点没配时才可留空 |
 | `HOST_ID` | | 默认 `misaka-jp`，卡片上认的名字 |
 | `HOST_ROOT` | | 宿主机 `/etc` 挂进容器后的前缀，compose 里填 `/host`，**不写进 `.env`**。留空 = 直接跑在宿主机上，读 `/etc` 和 `/`。见[下面那节](#容器里怎么还能看见宿主机) |
@@ -91,10 +79,7 @@ pnpm --filter @lyjwpage/server-reporter test
 | `TRAFFIC_STATE_PATH` | | 默认 `/data/traffic.json`，流量累计的状态文件。**留空 = 不攒流量**，报文里 `traffic` 为 `null` |
 | `TRAFFIC_CYCLE_DAY` | | 默认 `1`，周期从每月几号按 UTC 归零。跟着套餐账单日填，只收 1–28 |
 | `TRAFFIC_QUOTA_BYTES` | | 套餐配额，字节。配了卡片才画进度条（按上下行之和）；没配只报用量 |
-| `LIVE_INTERVAL_MS` | | 默认 `60000`，有人正看着那一档 |
-| `OPEN_INTERVAL_MS` | | 默认 `120000`，页面开着但都在后台那一档 |
-| `IDLE_INTERVAL_MS` | | 默认 `900000`，一个页面都没开那一档。站点的 `SERVER_STALE_MS` 锚着它 |
-| `COUNT_TIMEOUT_MS` | | 默认 `2500`，问人头数那一次请求的超时 |
+| `INTERVAL_MS` | | 默认 `60000`，每轮间隔 |
 | `PUSH_TIMEOUT_MS` | | 默认 `10000` |
 | `PUSH_LEDGER_PATH` | | 默认 `/data/pushes.json`，推送账本。留空 = 只记在内存里，重启后从零数 |
 | `DRY_RUN` | | `1` 时采一轮、把报文打到 stdout 就退出，不推送 |
@@ -160,10 +145,7 @@ ssh -J dsm misaka-jp 'cd /opt/lyjwpage && docker compose pull server-reporter &&
 
 ## 容错
 
-- 站点连不上只是这一轮作废，进程不退；下一轮照常重试，间隔从这一档起每连错一次翻倍，到 5 分钟封顶，跑通一次就复位。
+- 站点连不上只是这一轮作废，进程不退；下一轮照常重试，间隔从一分钟起每连错一次翻倍，到 5 分钟封顶，跑通一次就复位。
 - 同一个环节连续报错只在第一次和恢复时各写一句日志，中间每满 10 次再报一次。
 - 网卡取默认路由那块（这台是 `enp3s0`），`lo` 不算。默认路由暂时没有时这一轮失败，不瞎猜一块。
 - 流量状态文件读不出来（坏了、是别的版本）只丢掉这份历史、从零重新数，不挡这一轮上报；写不进去时这一份报 `traffic: null`，其余照报。
-
-在线人数已恢复独立 Worker：配置 `ONLINE_COUNTER_URL=https://online.homepage.lyjw.llc`（只填源）。
-其 `/count` 的 `online` 判定快档；`SITE_URL/count` 的 `connections` 判定中档。两个查询独立超时、独立降为零。

@@ -1,6 +1,5 @@
 import { cpus } from "node:os";
 
-import { waitForNextRound } from "./cadence.js";
 import { config } from "./config.js";
 import { geoFor } from "./geo.js";
 import { failure, info, recovered } from "./log.js";
@@ -16,7 +15,7 @@ import { trafficAndWindow } from "./traffic.js";
  *
  * 采集窗口就是上报间隔本身：上一轮 /proc 的读数留着，这一轮做差，得到的是这段时间的
  * 平均占用和平均速率，不是「这一瞬间的尖峰」。同一份差值还累加成计费周期的流量、
- * 攒成 12 小时的 CPU 窗口（见 traffic.ts）。每轮都推，这份快照本身就是心跳。
+ * 攒成 12 小时的 CPU 窗口（见 traffic.ts）。固定每分钟推一次，这份快照本身就是心跳。
  *
  * 2026-09 前是 Python 标准库写的，为了和 agents-reporter 同一套结构改写成 TypeScript；
  * 报文字段和状态文件格式都没变。
@@ -89,11 +88,8 @@ async function main() {
   if (!config.dryRun && !config.site.ingestUrl) throw new Error("缺少环境变量 SITE_URL 或 SITE_INGEST_URL");
 
   const iface = defaultIface();
-  const { liveIntervalMs, openIntervalMs, idleIntervalMs } = config.cadence;
-  info(
-    `网卡 ${iface}，间隔 ${liveIntervalMs / 1000}s / ${openIntervalMs / 1000}s / ${idleIntervalMs / 1000}s（有人看 / 开着 / 都没有）` +
-      (config.cadence.countUrl ? "" : "，没配 SITE_URL 读不到人头数，只走最慢那档"),
-  );
+  const { intervalMs } = config;
+  info(`网卡 ${iface}，每 ${intervalMs / 1000}s 推一次`);
   info(
     config.trafficStatePath
       ? `流量每月 ${config.cycleDay} 号归零，状态存 ${config.trafficStatePath}` +
@@ -105,7 +101,7 @@ async function main() {
   // 先采 1 秒做出第一份，卡片不必干等到一个完整间隔
   await sleep(1_000);
 
-  let backoff = liveIntervalMs;
+  let backoff = intervalMs;
   for (;;) {
     try {
       const round = await snapshot(iface, cursor);
@@ -116,11 +112,12 @@ async function main() {
       await push(round.payload);
       recovered("push");
       cursor = round.cursor;
-      backoff = liveIntervalMs;
-      await waitForNextRound();
+      backoff = intervalMs;
+      // 按轮的起点对齐：采集和推送花掉的时间从这一分钟里扣，不往后攒
+      await sleep(Math.max(0, intervalMs - (Date.now() - round.cursor.at)));
     } catch (error) {
       if (config.dryRun) throw error;
-      // 这一轮作废，进程不退：按退避表等，这段时间不问人头数
+      // 这一轮作废，进程不退：按退避表等，连错一次翻倍、5 分钟封顶
       failure("push", error);
       await sleep(backoff);
       backoff = Math.min(backoff * 2, 5 * 60_000);

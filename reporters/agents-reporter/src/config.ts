@@ -57,7 +57,7 @@ export const config = {
     secret: process.env.TELEMETRY_INGEST_SECRET?.trim() ?? "",
   },
 
-  /** 与 server / PlayStation 共用人数分档逻辑；限额使用 5 / 10 / 60 分钟。 */
+  /** 与 PlayStation 共用人数分档逻辑，控制打各家限额接口的频率；限额使用 5 / 10 / 60 分钟。 */
   cadence: {
     liveIntervalMs: ms("LIVE_INTERVAL_MS", 300_000),
     openIntervalMs: ms("OPEN_INTERVAL_MS", 600_000),

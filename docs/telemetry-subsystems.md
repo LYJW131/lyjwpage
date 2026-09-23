@@ -254,9 +254,9 @@ payload: >-
 - `reporters/server-reporter` 部署于云端 Linux 节点（TypeScript / Node，和 agents-reporter 同一套结构），采集 `/proc/stat` 与 `/proc/net/dev`，上报 CPU、内存及网络吞吐，前端 30 秒轮询。
 
 ### 三档自适应调频算法
-为最大化节省服务器资源与外部 API 配额，`server-reporter`、`playstation-reporter` 和 `agents-reporter` 均遵循三档自适应调频：
+为节省外部 API 配额，`playstation-reporter` 和 `agents-reporter` 遵循三档自适应调频（`server-reporter` 2026-09 起固定每分钟一推：当初调频是为了给 Vercel 函数减负，上报改进 api Worker 后不再需要，见它的 README「节奏」）：
 
-| 触发条件 | 说明 | server / PlayStation 间隔 | agent limits 间隔 |
+| 触发条件 | 说明 | PlayStation 间隔 | agent limits 间隔 |
 | --- | --- | --- | --- |
 | `online > 0` | 存在处于**前台可见**状态的访问者页面 | 60 秒 | 5 分钟 |
 | `connections > 0` | 无前台可见页面，但存在**后台打开**的标签页 | 2 分钟 | 10 分钟 |

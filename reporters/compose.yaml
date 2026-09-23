@@ -13,8 +13,7 @@
 # 要回退就把 `latest` 临时改成 Actions 推的 `sha-<短哈希>`。
 #
 # 各自的 .env 留在各自的子目录里：两边都有 SITE_URL / TELEMETRY_INGEST_SECRET /
-# ONLINE_COUNTER_URL，但三档间隔的值不一样（限额 5/10/60 分钟，server 1/2/15 分钟），
-# 合成一份反而串味。
+# 其余配置，节奏各管各的（限额按人数 5/10/60 分钟，server 固定每分钟），合成一份反而串味。
 name: lyjwpage-reporters
 
 services:
