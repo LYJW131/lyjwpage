@@ -99,9 +99,8 @@ function optionalWindow(row: Record<string, unknown>): ServerWindow | null {
   return {
     start,
     end,
+    reports: Math.round(requiredNumber(window, "reports")),
     cpuAvgPercent: window.cpuAvgPercent == null ? null : requiredPercent(window, "cpuAvgPercent"),
-    rxBytes: Math.round(requiredNumber(window, "rxBytes")),
-    txBytes: Math.round(requiredNumber(window, "txBytes")),
   };
 }
 

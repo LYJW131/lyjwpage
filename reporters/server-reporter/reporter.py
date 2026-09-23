@@ -471,29 +471,22 @@ def accumulate(
     }
 
 
-def counter_delta(cur: int, cursor: object) -> int | None:
-    """两次读数之差；比游标小就是重启过，那一段是当前读数本身。没有游标是 None"""
-    if not isinstance(cursor, int):
-        return None
-    return cur - cursor if cur >= cursor else cur
-
-
 # ── 12 小时窗口 ────────────────────────────────────────────
-# 每轮一条 [at, dt, cpu%, rx, tx]：dt 是这份 CPU 占用覆盖的时长（上一轮到这一轮），
-# rx / tx 是这一段的字节增量。和流量累计存在同一个状态文件里，进程重启接着算。
-# 12 小时满打满算七百来条、三十几 KB，每轮原子写一次，这台机器扛得住。
+# 每轮一条 [at, dt, cpu%]：dt 是这份 CPU 占用覆盖的时长（上一轮到这一轮）。
+# 和流量累计存在同一个状态文件里，进程重启接着算。12 小时满打满算七百来条、
+# 二十来 KB，每轮原子写一次，这台机器扛得住。流量不在这里：出口节点卡片有周期累计。
 
 
 def record_window(
-    samples: list[list[float]], now_ms: int, dt_ms: int, cpu_pct: float, rx: int, tx: int
+    samples: list[list[float]], now_ms: int, dt_ms: int, cpu_pct: float
 ) -> list[list[float]]:
     """追加这一轮、丢掉窗口外的。纯函数，可单测。"""
-    kept = [s for s in samples if isinstance(s, list) and len(s) == 5 and s[0] > now_ms - WINDOW_MS]
-    return kept + [[now_ms, dt_ms, round(cpu_pct, 1), rx, tx]]
+    kept = [s for s in samples if isinstance(s, list) and len(s) == 3 and s[0] > now_ms - WINDOW_MS]
+    return kept + [[now_ms, dt_ms, round(cpu_pct, 1)]]
 
 
 def summarize_window(samples: list[list[float]], now_ms: int) -> dict[str, Any] | None:
-    """窗口内按时长加权的平均 CPU 和进出字节。起点取最早那一段的开头，但不早于 12 小时前"""
+    """窗口内的上报轮数和按时长加权的平均 CPU。起点取最早那一段的开头，但不早于 12 小时前"""
     kept = [s for s in samples if s[0] > now_ms - WINDOW_MS]
     if not kept:
         return None
@@ -501,9 +494,9 @@ def summarize_window(samples: list[list[float]], now_ms: int) -> dict[str, Any] 
     return {
         "start": int(max(now_ms - WINDOW_MS, min(s[0] - s[1] for s in kept))),
         "end": int(now_ms),
+        # 每轮一条样本，条数就是这段时间里上报了几次（推送失败的那轮也算在内）
+        "reports": len(kept),
         "cpuAvgPercent": round(sum(s[2] * s[1] for s in kept) / total_dt, 1) if total_dt > 0 else None,
-        "rxBytes": int(sum(s[3] for s in kept)),
-        "txBytes": int(sum(s[4] for s in kept)),
     }
 
 
@@ -567,15 +560,10 @@ def traffic_for(
     if not _traffic["loaded"]:
         load_traffic_state()
     previous = _traffic["state"]
-    same_iface = previous.get("interface") == iface
-    rx_delta = counter_delta(rx, previous.get("rxCursor")) if same_iface else None
-    tx_delta = counter_delta(tx, previous.get("txCursor")) if same_iface else None
     state = accumulate(previous, iface, rx, tx, now_s, CONFIG["cycle_day"], boot_ms)
     now_ms = int(now_s * 1000)
     window = previous.get("window") if isinstance(previous.get("window"), list) else []
-    state["window"] = record_window(
-        window, now_ms, int(elapsed_s * 1000), cpu_pct, rx_delta or 0, tx_delta or 0
-    )
+    state["window"] = record_window(window, now_ms, int(elapsed_s * 1000), cpu_pct)
     _traffic["state"] = state
     if save_traffic_state(state):
         _traffic["durable"] = True

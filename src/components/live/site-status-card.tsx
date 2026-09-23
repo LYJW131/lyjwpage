@@ -7,7 +7,7 @@ import NumberFlow from "@number-flow/react";
 import { Server as ServerIcon } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { colorForRank, RepoContributions } from "@/components/live/repo-contributions";
-import { formatTraffic, formatUptime } from "@/components/live/server-card";
+import { formatUptime } from "@/components/live/server-card";
 import { SentryMark } from "@/components/live/sentry-mark";
 import { useStale } from "@/hooks/use-stale";
 import { fieldPerformanceScore } from "@/lib/field-score";
@@ -229,8 +229,8 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
           })}
           {/*
             和上面几格同一种写法：名字一行带上报器镜像的提交，小字一行是 12 小时窗口。
-            出口节点没有「请求数」这回事，它干的活就是转发流量，所以用进出字节顶 Req 那一栏；
-            此刻的 CPU / 内存 / 磁盘在 Exit Node 卡片上，这里只放窗口平均。
+            Req 是上报器这段时间推了几轮；流量和此刻的 CPU / 内存 / 磁盘都在 Exit Node
+            卡片上，这里只放窗口平均。
           */}
           <li className="bg-surface px-4 py-2.5"
             title={server ? `${server.hostname} · ${server.city ?? ""} · up ${formatUptime(server.uptimeSeconds)} · load ${server.load1.toFixed(2)}` : "Exit node"}>
@@ -241,8 +241,8 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
               <CommitSha commit={server?.reporterCommit ? { sha: server.reporterCommit, branch: null, message: "server-reporter image" } : null} />
             </div>
             <div className="mt-1 flex gap-x-3 text-[10px] tabular-nums text-muted-foreground">
-              <Fact label="Net" value={server?.window ? formatTraffic(server.window.rxBytes + server.window.txBytes) : "—"}
-                title={server?.window ? `In ${formatTraffic(server.window.rxBytes)} · Out ${formatTraffic(server.window.txBytes)}` : undefined} />
+              <Fact label="Req" value={server?.window ? number.format(server.window.reports) : "—"}
+                title="Reports pushed by server-reporter" />
               <Fact label="CPU" value={server?.window?.cpuAvgPercent != null ? `${server.window.cpuAvgPercent.toFixed(1)}%` : "—"}
                 title="Average CPU usage over the window" />
               <CollectionWindow start={server?.window?.start} end={server?.window?.end} />

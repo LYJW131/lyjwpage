@@ -1059,10 +1059,10 @@ export type ServerWindow = {
   /** 窗口起止，epoch 毫秒 */
   start: number;
   end: number;
+  /** 窗口内上报了几轮，站点卡片 misaka-jp 那格的 Req */
+  reports: number;
   /** 0–100，按每段时长加权 */
   cpuAvgPercent: number | null;
-  rxBytes: number;
-  txBytes: number;
 };
 
 export type ServerStatus = {
@@ -1104,7 +1104,7 @@ export type ServerStatus = {
    */
   traffic: ServerTraffic | null;
   /**
-   * 最近 12 小时（上报器刚起来时更短，看 start）的平均 CPU 和进出字节，
+   * 最近 12 小时（上报器刚起来时更短，看 start）的上报轮数和平均 CPU，
    * 和站点卡片里 Vercel / Workers 的 12 小时窗口对齐。上报器攒不住或是旧版本时为 null。
    */
   window: ServerWindow | null;

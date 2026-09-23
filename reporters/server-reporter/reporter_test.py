@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 os.environ.setdefault("SITE_URL", "https://example.invalid")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from reporter import WINDOW_MS, accumulate, counter_delta, cycle_bounds, record_window, shift_month, summarize_window  # noqa: E402
+from reporter import WINDOW_MS, accumulate, cycle_bounds, record_window, shift_month, summarize_window  # noqa: E402
 
 
 def at(text: str) -> float:
@@ -135,29 +135,30 @@ class Accumulate(unittest.TestCase):
 class Window(unittest.TestCase):
     def test_cpu_average_is_weighted_by_duration(self):
         now = 1_790_200_000_000
-        samples = record_window([], now - 900_000, 900_000, 10.0, 0, 0)  # 15 分钟 10%
-        samples = record_window(samples, now, 60_000, 70.0, 0, 0)  # 1 分钟 70%
+        samples = record_window([], now - 900_000, 900_000, 10.0)  # 15 分钟 10%
+        samples = record_window(samples, now, 60_000, 70.0)  # 1 分钟 70%
         summary = summarize_window(samples, now)
         self.assertAlmostEqual(summary["cpuAvgPercent"], round((10 * 900 + 70 * 60) / 960, 1))
+        self.assertEqual(summary["reports"], 2)
         self.assertEqual(summary["start"], now - 900_000 - 900_000)
         self.assertEqual(summary["end"], now)
 
-    def test_bytes_sum_and_old_samples_fall_out(self):
+    def test_old_samples_fall_out(self):
         now = 1_790_200_000_000
-        samples = record_window([], now - WINDOW_MS - 60_000, 60_000, 5.0, 999, 999)
-        samples = record_window(samples, now - 120_000, 60_000, 5.0, 1_000, 200)
-        samples = record_window(samples, now, 60_000, 5.0, 3_000, 800)
+        samples = record_window([], now - WINDOW_MS - 60_000, 60_000, 5.0)
+        samples = record_window(samples, now - 120_000, 60_000, 5.0)
+        samples = record_window(samples, now, 60_000, 5.0)
         self.assertEqual(len(samples), 2)
         summary = summarize_window(samples, now)
-        self.assertEqual((summary["rxBytes"], summary["txBytes"]), (4_000, 1_000))
+        self.assertEqual(summary["reports"], 2)
         # 窗口起点不早于 12 小时前
         self.assertGreaterEqual(summary["start"], now - WINDOW_MS)
         self.assertIsNone(summarize_window([], now))
 
-    def test_counter_delta_handles_reboot_and_missing_cursor(self):
-        self.assertEqual(counter_delta(1_800, 1_000), 800)
-        self.assertEqual(counter_delta(300, 10_000), 300)
-        self.assertIsNone(counter_delta(300, None))
+    def test_samples_from_an_older_shape_are_dropped(self):
+        now = 1_790_200_000_000
+        samples = record_window([[now - 60_000, 60_000, 5.0, 10, 10]], now, 60_000, 5.0)
+        self.assertEqual(samples, [[now, 60_000, 5.0]])
 
 
 if __name__ == "__main__":

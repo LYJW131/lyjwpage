@@ -137,11 +137,11 @@ test("12 小时窗口和上报器提交：旧版不带按 null 收，带了就�
   assert.equal(old.window, null);
   assert.equal(old.reporterCommit, null);
   const fresh = normalizeServer(report({
-    window: { start: 1_790_000_000_000, end: 1_790_043_200_000, cpuAvgPercent: 4.26, rxBytes: 1.5e9, txBytes: 8e8 },
+    window: { start: 1_790_000_000_000, end: 1_790_043_200_000, reports: 612, cpuAvgPercent: 4.26 },
     reporterCommit: "b15e3cc0123456789abcdef0123456789abcdef0",
   }));
-  assert.deepEqual(fresh.window, { start: 1_790_000_000_000, end: 1_790_043_200_000, cpuAvgPercent: 4.3, rxBytes: 1.5e9, txBytes: 8e8 });
+  assert.deepEqual(fresh.window, { start: 1_790_000_000_000, end: 1_790_043_200_000, reports: 612, cpuAvgPercent: 4.3 });
   assert.equal(fresh.reporterCommit, "b15e3cc0123456789abcdef0123456789abcdef0");
-  assert.throws(() => normalizeServer(report({ window: { start: 2, end: 1, rxBytes: 0, txBytes: 0 } })), /window/);
+  assert.throws(() => normalizeServer(report({ window: { start: 2, end: 1, reports: 0 } })), /window/);
   assert.throws(() => normalizeServer(report({ reporterCommit: "not a sha" })), /reporterCommit/);
 });
