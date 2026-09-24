@@ -54,6 +54,7 @@ function usageStatus(extra: Record<string, unknown> = {}) {
     state: "ok",
     collectedAt: "2026-04-08T12:00:00.000Z",
     error: null,
+    warning: null,
     coverageStart: "2026-04-01",
     coverageEnd: "2026-04-08",
     precision: "measured",
@@ -229,6 +230,16 @@ test("未知用量为 null，成功取得的零用量保持 0，不能互相转�
   assert.equal(parsed.agents[0]?.usageStatus.collectedAt, null);
   assert.equal(parsed.agents[1]?.today?.totalTokens, 0);
   assert.equal(parsed.totals.costComplete, false);
+});
+
+test("采到了但有缺口：state 仍是 ok，缺口在 warning；旧版不带 warning 按 null 收", () => {
+  const status = usageStatus({ warning: "历史记录有 4947 token 未提供分列，已保留实测总量", costComplete: false });
+  const parsed = normalizeVibeCodingUsage({ agents: [agent("codex", { usageStatus: status })], totals: totals() });
+  assert.deepEqual(parsed?.agents[0]?.usageStatus, status);
+  const legacy: Record<string, unknown> = usageStatus();
+  delete legacy.warning;
+  const old = normalizeVibeCodingUsage({ agents: [agent("codex", { usageStatus: legacy })], totals: totals() });
+  assert.equal(old?.agents[0]?.usageStatus.warning, null);
 });
 
 test("同步失败保留缓存用量与上次成功时刻，不把摘要生成时间当成功时间", () => {

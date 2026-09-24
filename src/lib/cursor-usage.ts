@@ -33,6 +33,8 @@ export type ParsedCursorUsage = {
   collectedAt: string;
   state: "ok" | "error";
   error: string | null;
+  /** 采到了但有缺口（部分请求没有 token 数、云端历史变短……），state 仍为 ok */
+  warning: string | null;
   coverageStart: string | null;
   coverageEnd: string | null;
   precision: "measured";
@@ -107,6 +109,7 @@ export function normalizeCursorUsageReport(input: unknown): ParsedCursorUsage | 
   if (root.state !== "ok" && root.state !== "error") return null;
   if (root.precision !== "measured" || typeof root.costComplete !== "boolean") return null;
   if (root.error != null && typeof root.error !== "string") return null;
+  if (root.warning != null && typeof root.warning !== "string") return null;
   const coverageStart = dayText(root.coverageStart);
   const coverageEnd = dayText(root.coverageEnd);
   if (root.coverageStart != null && !coverageStart) return null;
@@ -125,6 +128,7 @@ export function normalizeCursorUsageReport(input: unknown): ParsedCursorUsage | 
     collectedAt,
     state: root.state,
     error: text(root.error),
+    warning: text(root.warning),
     coverageStart,
     coverageEnd,
     precision: "measured",
@@ -160,6 +164,7 @@ function statusOf(cursor: ParsedCursorUsage): VibeCodingUsageStatus {
     state: cursor.state,
     collectedAt: cursor.collectedAt,
     error: cursor.error,
+    warning: cursor.warning,
     coverageStart: cursor.coverageStart,
     coverageEnd: cursor.coverageEnd,
     precision: cursor.precision,

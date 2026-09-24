@@ -81,7 +81,7 @@ test("事件按上海自然日分桶，缓存写入单独计，套餐扣费不�
   assert.equal(aggregated.days[0]?.models[0]?.model, "claude-4.5-sonnet-thinking");
 });
 
-test("云端没再返回的旧活动日留在账本里，并标成不完整", () => {
+test("云端没再返回的旧活动日留在账本里：仍是 ok，缺口进 warning、费用不完整", () => {
   const kept = {
     date: "2026-08-01",
     inputTokens: 5,
@@ -109,8 +109,9 @@ test("云端没再返回的旧活动日留在账本里，并标成不完整", ()
     0,
   );
   assert.equal(applied.push.days.find((day) => day.date === "2026-08-01")?.totalTokens, 5);
-  assert.equal(applied.push.state, "error");
-  assert.match(applied.push.error ?? "", /Kept 1/);
+  assert.equal(applied.push.state, "ok");
+  assert.equal(applied.push.error, null);
+  assert.match(applied.push.warning ?? "", /Kept 1/);
   assert.equal(applied.push.costComplete, false);
 });
 
@@ -181,7 +182,10 @@ test("增量那一轮只替换拉到的两天，其余日子和上次全量的�
     [["2026-08-01", 5], ["2026-09-22", 9], ["2026-09-23", 4]],
   );
   assert.equal(next.ledger.fullAt, "2026-09-22T12:00:00.000Z");
-  assert.equal(next.push.error, "3 historical requests had no token counts");
+  // 拉到了就是 ok：没有 token 数的那部分是提醒，不是失败
+  assert.equal(next.push.state, "ok");
+  assert.equal(next.push.error, null);
+  assert.equal(next.push.warning, "3 historical requests had no token counts");
   assert.equal(next.push.costComplete, false);
   assert.equal(next.push.collectedAt, "2026-09-23T01:00:00.000Z");
 });
