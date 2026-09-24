@@ -626,7 +626,7 @@ export type VibeCodingAgent = {
   usageStatus: VibeCodingUsageStatus;
   /**
    * 下面四个字段来自另一条路：`/api/ingest/agents`，喂它的是 NAS 上的容器上报器
-   * （`reporters/agent-limits-reporter`），不再随 Mac 的用量信封走。站点按 id
+   * （`reporters/agents-reporter`），不再随 Mac 的用量信封走。站点按 id
    * 把它们贴到对应来源行上；只有限额的来源也展示，用量为 null。
    *
    * 套餐取不到、或这个 agent 从没上报过限额时是 null —— 不渲染，不占位

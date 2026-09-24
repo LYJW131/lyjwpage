@@ -348,7 +348,7 @@ export async function fetchCodex(): Promise<AgentRow | null> {
   const headers: Record<string, string> = {
     Authorization: `Bearer ${auth.accessToken}`,
     Accept: "application/json",
-    "User-Agent": "agent-limits-reporter",
+    "User-Agent": "agents-reporter",
   };
   if (auth.accountId) headers["ChatGPT-Account-Id"] = auth.accountId;
 

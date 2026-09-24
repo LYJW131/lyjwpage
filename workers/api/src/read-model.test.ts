@@ -74,6 +74,8 @@ test("read model: allowlist excludes live, liveness, credentials, coordination a
   assert.deepEqual([...READ_MODEL_PATHS].sort(), [
     "/api/status/github-chart",
     "/api/status/github-repo",
+    "/api/status/reporters",
+    "/api/status/sentry",
     "/api/status/vercel-deployments",
     "/api/status/vibecoding/year",
   ]);

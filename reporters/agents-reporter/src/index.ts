@@ -84,7 +84,7 @@ async function main() {
   info(
     config.dryRun
       ? "DRY_RUN：打印请求体然后退出"
-      : `agent-limits-reporter 启动，三档 ${config.cadence.liveIntervalMs} / ${config.cadence.openIntervalMs} / ${config.cadence.idleIntervalMs}ms`,
+      : `agents-reporter 启动，三档 ${config.cadence.liveIntervalMs} / ${config.cadence.openIntervalMs} / ${config.cadence.idleIntervalMs}ms`,
   );
   // Cursor 活动的快循环平时睡着，等限额那一轮看到 5 分钟内的事件才醒。试跑和夹具模式不起它。
   if (!config.dryRun && !config.limitsFixture && config.site.ingestUrl) void runCursorNowLoop();

@@ -76,7 +76,7 @@ const REFRESH_MS = 2 * 60_000;
 
 /**
  * Cursor 最近一次活动过去多久还算「在用」，跟 MacTelemetryHub 判 active 的 300 秒一致。
- * 容器在用时每分钟查一次（见 agent-limits-reporter 的 cursor-now.ts），窗口比查询间隔宽，
+ * 容器在用时每分钟查一次（见 agents-reporter 的 cursor-now.ts），窗口比查询间隔宽，
  * 连续在用时灯不会闪。
  */
 const CURSOR_ACTIVE_WINDOW_MS = 5 * 60_000;
@@ -420,7 +420,7 @@ const SESSION_WINDOW_MAX_MINUTES = 1440;
  * Cursor 三行对它网页 dashboard 的三根条：自家模型、其他模型两个月度池子，加 Grok Bot
  * 周额度。套餐总额那扇（cursor.primary）不画，它只是两个池子折算后的合计。
  * 不能走时长推断：`cursor.tertiary` 会被 isSparkWindow 的 `.tertiary` 规则当成专项
- * 窗口剔掉 —— 那恰好常是最紧的一条。口径见 agent-limits-reporter 的 providers/cursor.ts。
+ * 窗口剔掉 —— 那恰好常是最紧的一条。口径见 agents-reporter 的 providers/cursor.ts。
  */
 const FEATURED_LIMITS: Record<
   FeaturedAgentId,
