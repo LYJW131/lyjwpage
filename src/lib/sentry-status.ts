@@ -1,22 +1,23 @@
 import { cached, get, put } from "@/lib/cache";
 import {
   SENTRY_API_ORIGIN,
+  SENTRY_CRON_MONITOR_SLUG,
   SENTRY_ORG,
   SENTRY_SITE_PROJECT_ID,
   SENTRY_UPTIME_DETECTOR_ID,
   SENTRY_WORKER_PROJECT_ID,
 } from "@/lib/sentry";
-import type { SentryErrorSeries, SentryStatusPayload, SentryUptime, SentryVitals, UptimeDay } from "@/lib/sentry-status-types";
+import type { HealthSeries, SentryErrorSeries, SentryStatusPayload, SentryUptime, SentryVitals, UptimeDay } from "@/lib/sentry-status-types";
 
 /**
- * 站点卡片（LYJWPAGE）里在线率、错误数和真实用户指标的数据：只在 API Worker 里跑，用 `SENTRY_API_TOKEN`（组织只读令牌，
+ * 站点卡片（LYJWPAGE）里在线率、api Worker 心跳、错误数和真实用户指标的数据：只在 API Worker 里跑，用 `SENTRY_API_TOKEN`（组织只读令牌，
  * org:read / project:read / event:read）调 Sentry API。
  *
  * 一轮十来个请求，分块各自降级：某一块失败只让那一块为 null，不拖垮整张卡。
  * 结果缓存 5 分钟，另留一份 last-good 撑过 Sentry 短暂不可用。这条视图是慢端点
  * （进 KV 投影），分钟 cron 顺带重渲染，访客的请求不直接打 Sentry。
  *
- * 错误、Vitals 都只算 production 环境：本地与分支预览的测试数据不进卡片。
+ * 心跳、错误、Vitals 都只算 production 环境：本地与分支预览的测试数据不进卡片。
  */
 
 const CACHE_TTL_MS = 5 * 60_000;
@@ -62,9 +63,33 @@ export function parseUptimeBuckets(raw: unknown, detectorId: string): UptimeDay[
 }
 
 /** 探测器详情里的 uptimeStatus：1 正常、2 失败 */
-export function parseUptimeStatus(raw: unknown): SentryUptime["status"] {
+export function parseUptimeStatus(raw: unknown): HealthSeries["status"] {
   const status = record(raw).uptimeStatus;
   return status === 1 ? "up" : status === 2 ? "down" : "unknown";
+}
+
+/** cron 监控 `stats` 的一段 → 按桶计数。心跳缺席（missed）、超时、报错都是 Worker 这边的事，全算失败 */
+export function parseCronBuckets(raw: unknown): UptimeDay[] {
+  if (!Array.isArray(raw)) throw new Error("Sentry cron 统计格式无效");
+  return raw.map((entry) => {
+    const c = record(entry);
+    return {
+      dayStart: num(c.ts) * 1000,
+      success: num(c.ok),
+      failure: num(c.error) + num(c.missed) + num(c.timeout),
+      missed: 0,
+    };
+  });
+}
+
+/** 监控详情里 production 环境的状态；这个环境还没报到过是 unknown */
+export function parseCronStatus(raw: unknown): HealthSeries["status"] {
+  const envs = record(raw).environments;
+  const production = Array.isArray(envs) ? envs.map(record).find((env) => env.name === "production") : undefined;
+  const status = production?.status;
+  if (status === "ok") return "up";
+  if (status === "error" || status === "missed_checkin" || status === "timeout") return "down";
+  return "unknown";
 }
 
 /** Discover 的单行聚合 → 第一行的字段 */
@@ -79,6 +104,7 @@ export type SentryGet = (path: string, params: Record<string, string | string[]>
 const ORG_PATH = `/organizations/${SENTRY_ORG}`;
 /** 在线监测挂在站点项目下 */
 const UPTIME_PATH = `/projects/${SENTRY_ORG}/lyjwpage/uptime/${SENTRY_UPTIME_DETECTOR_ID}`;
+const CRON_PATH = `${ORG_PATH}/monitors/${SENTRY_CRON_MONITOR_SLUG}`;
 
 export function sentryClient(token: string): SentryGet {
   return async (path, params) => {
@@ -120,6 +146,25 @@ async function fetchUptime(api: SentryGet, now: number): Promise<SentryUptime> {
     url: typeof info.url === "string" ? info.url : "",
     intervalSeconds: num(info.intervalSeconds) || 60,
     availability24h: availability(parseUptimeBuckets(hourly, SENTRY_UPTIME_DETECTOR_ID)),
+    availability30d: availability(days),
+    days,
+  };
+}
+
+async function fetchHeartbeat(api: SentryGet, now: number): Promise<HealthSeries> {
+  const seconds = (ms: number) => String(Math.floor(ms / 1000));
+  const today = Math.floor(now / DAY_MS) * DAY_MS;
+  const stats = (since: number, resolution: string) =>
+    api(`${CRON_PATH}/stats/`, { since: seconds(since), until: seconds(now), resolution, environment: "production" });
+  const [detail, daily, hourly] = await Promise.all([
+    api(`${CRON_PATH}/`, {}).catch(() => null),
+    stats(today - (UPTIME_DAYS - 1) * DAY_MS, "1d"),
+    stats(now - DAY_MS, "1h"),
+  ]);
+  const days = parseCronBuckets(daily);
+  return {
+    status: parseCronStatus(detail),
+    availability24h: availability(parseCronBuckets(hourly)),
     availability30d: availability(days),
     days,
   };
@@ -168,16 +213,18 @@ export async function fetchSentryStatus(api: SentryGet, now = Date.now()): Promi
     console.warn("[sentry-status]", error instanceof Error ? error.message : String(error));
     return null;
   });
-  const [uptime, site, worker, vitals] = await Promise.all([
+  const [uptime, heartbeat, site, worker, vitals] = await Promise.all([
     settle(fetchUptime(api, now)),
+    settle(fetchHeartbeat(api, now)),
     settle(fetchErrors(api, SENTRY_SITE_PROJECT_ID)),
     settle(fetchErrors(api, SENTRY_WORKER_PROJECT_ID)),
     settle(fetchVitals(api)),
   ]);
-  if (!uptime && !site && !worker && !vitals) throw new Error("Sentry 全部查询失败");
+  if (!uptime && !heartbeat && !site && !worker && !vitals) throw new Error("Sentry 全部查询失败");
   return {
     fetchedAt: now,
     uptime,
+    heartbeat,
     errors: site && worker ? { site, worker } : null,
     vitals,
   };
@@ -186,8 +233,8 @@ export async function fetchSentryStatus(api: SentryGet, now = Date.now()): Promi
 export async function getSentryStatus(): Promise<SentryStatusPayload> {
   const token = process.env.SENTRY_API_TOKEN?.trim();
   if (!token) throw new Error("Sentry 读取未配置");
-  // v6：在线率带上探测器此刻的状态（v5 加回在线率，v4 去掉会话与 cron 心跳）
-  const key = `sentry-status:v6:${SENTRY_ORG}`;
+  // v7：加回 api Worker 的 cron 心跳，和站点探测各一条（v6 带上探测器状态，v5 加回在线率）
+  const key = `sentry-status:v7:${SENTRY_ORG}`;
   return cached<SentryStatusPayload>(key, CACHE_TTL_MS, async () => {
     try {
       const data = await fetchSentryStatus(sentryClient(token));

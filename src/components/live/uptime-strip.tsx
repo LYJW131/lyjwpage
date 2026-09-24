@@ -1,6 +1,6 @@
 "use client";
 
-import type { SentryUptime, UptimeDay } from "@/lib/sentry-status-types";
+import type { HealthSeries, SentryUptime, UptimeDay } from "@/lib/sentry-status-types";
 import { cn } from "@/lib/utils";
 
 const day = new Intl.DateTimeFormat("en-US", { timeZone: "UTC", month: "short", day: "numeric" });
@@ -29,45 +29,67 @@ function dayTone(entry: UptimeDay): { className: string; label: string } {
 }
 
 /** 状态页的叫法；down 是探测器连续失败到阈值之后才翻的 */
-const STATUS: Record<SentryUptime["status"], { label: string; className: string }> = {
+const STATUS: Record<HealthSeries["status"], { label: string; className: string }> = {
   up: { label: "Operational", className: "text-live" },
   down: { label: "Down", className: "text-red-500" },
   unknown: { label: "Unknown", className: "text-muted-foreground" },
 };
 
-/**
- * 站点卡片里的在线率一条，状态页的写法：顶上一行站名和此刻状态，中间每天一格，下面一行「30 days ago —— 99.97% uptime
- * —— Today」。数据来自 Sentry 对 lyjw.me 的每分钟探测（HEAD /api/version，lib/sentry-status）；
- * 拿不到时整条不渲染，交给卡片其余部分。
- */
-export function UptimeStrip({ uptime }: { uptime: SentryUptime }) {
-  // 缓存里旧形状的那份没有 status，按还没探测过处理
-  const status = STATUS[uptime.status] ?? STATUS.unknown;
+/** 一个组件一块：顶上名字和此刻状态，中间每天一格，下面「30 days ago —— 99.97% uptime —— Today」 */
+function HealthRow({ name, health, statusTitle, footTitle, unit }: {
+  name: string; health: HealthSeries; statusTitle: string; footTitle: string; unit: string;
+}) {
+  // 缓存里旧形状的那份没有 status，按还没有记录处理
+  const status = STATUS[health.status] ?? STATUS.unknown;
   return (
-    <div className="border-t border-line px-4 py-4 md:px-5">
+    <div>
       <div className="mb-2.5 flex items-baseline justify-between gap-3">
-        <span className="text-sm font-medium">{uptime.url ? new URL(uptime.url).host : "lyjw.me"}</span>
-        <span className={cn("text-xs", status.className)} title={`Per-minute check · HEAD ${uptime.url || "https://lyjw.me/"}`}>{status.label}</span>
+        <span className="text-sm font-medium">{name}</span>
+        <span className={cn("text-xs", status.className)} title={statusTitle}>{status.label}</span>
       </div>
-      {uptime.days.length > 0 && (
-        <div className="flex h-6 gap-[3px]" role="img" aria-label={`Daily availability, last ${uptime.days.length} days`}>
-          {uptime.days.map((entry) => {
+      {health.days.length > 0 && (
+        <div className="flex h-6 gap-[3px]" role="img" aria-label={`${name} daily availability, last ${health.days.length} days`}>
+          {health.days.map((entry) => {
             const tone = dayTone(entry);
-            const failed = entry.failure ? ` · ${number.format(entry.failure)} failed checks` : "";
+            const failed = entry.failure ? ` · ${number.format(entry.failure)} failed ${unit}` : "";
             return <span key={entry.dayStart} title={`${day.format(entry.dayStart)} · ${tone.label}${failed}`} className={cn("min-w-0 flex-1 rounded-[2px]", tone.className)} />;
           })}
         </div>
       )}
       <div className="mt-2 flex items-center gap-3 text-[11px] tabular-nums text-muted-foreground">
-        <span className="shrink-0">{uptime.days.length || 30} days ago</span>
+        <span className="shrink-0">{health.days.length || 30} days ago</span>
         <span className="h-px min-w-3 flex-1 bg-line" aria-hidden />
-        <span className="shrink-0 whitespace-nowrap"
-          title={`24h ${percent(uptime.availability24h)} · checked every ${uptime.intervalSeconds}s${uptime.url ? ` · ${uptime.url}` : ""}`}>
-          {percent(uptime.availability30d)} uptime
+        <span className="shrink-0 whitespace-nowrap" title={`24h ${percent(health.availability24h)} · ${footTitle}`}>
+          {percent(health.availability30d)} uptime
         </span>
         <span className="h-px min-w-3 flex-1 bg-line" aria-hidden />
         <span className="shrink-0">Today</span>
       </div>
+    </div>
+  );
+}
+
+/**
+ * 站点卡片里的在线状态，状态页的写法，一个组件一块：
+ * - lyjw.me：Sentry 每分钟 HEAD /api/version。那是构建期生成的静态路由，只能说明 Vercel 还在出页面
+ * - API：api Worker 分钟 cron 的 Sentry 心跳。每轮都要经过 Worker、Durable Object 和 KV，
+ *   补上后端那一截；漏报、超时、报错都算失败
+ * 数据来自 lib/sentry-status；两块都拿不到时整段不渲染，只缺一块就只画另一块。
+ */
+export function UptimeStrip({ site, api }: { site: SentryUptime | null; api: HealthSeries | null }) {
+  if (!site && !api) return null;
+  return (
+    <div className="flex flex-col gap-5 border-t border-line px-4 py-4 md:px-5">
+      {site && (
+        <HealthRow name={site.url ? new URL(site.url).host : "lyjw.me"} health={site} unit="checks"
+          statusTitle={`Per-minute check · HEAD ${site.url || "https://lyjw.me/"}`}
+          footTitle={`checked every ${site.intervalSeconds}s`} />
+      )}
+      {api && (
+        <HealthRow name="API" health={api} unit="heartbeats"
+          statusTitle="Per-minute cron heartbeat of the api Worker (Durable Objects and KV)"
+          footTitle="cron heartbeat every minute" />
+      )}
     </div>
   );
 }

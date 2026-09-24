@@ -183,7 +183,7 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
       )}
     </div>
     <RepoContributions data={github} recentCommits={recentCommits} deploymentsBySha={deploymentsBySha} />
-    {sentry?.uptime && <UptimeStrip uptime={sentry.uptime} />}
+    {sentry && <UptimeStrip site={sentry.uptime} api={sentry.heartbeat ?? null} />}
     {/*
       性能表和服务格到 lg 才并排：768–1023 之间并排的话每格只剩 150–200px，
       「Req · CPU · Last 12h」一行放不下会折行，所以这一段和手机一样上下叠。

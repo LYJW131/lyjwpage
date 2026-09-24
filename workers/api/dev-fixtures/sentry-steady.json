@@ -191,6 +191,193 @@
         }
       ]
     },
+    "heartbeat": {
+      "status": "up",
+      "availability24h": 1,
+      "availability30d": 0.99989,
+      "days": [
+        {
+          "dayStart": "$now-2505600000",
+          "success": 0,
+          "failure": 0,
+          "missed": 0
+        },
+        {
+          "dayStart": "$now-2419200000",
+          "success": 0,
+          "failure": 0,
+          "missed": 0
+        },
+        {
+          "dayStart": "$now-2332800000",
+          "success": 0,
+          "failure": 0,
+          "missed": 0
+        },
+        {
+          "dayStart": "$now-2246400000",
+          "success": 0,
+          "failure": 0,
+          "missed": 0
+        },
+        {
+          "dayStart": "$now-2160000000",
+          "success": 0,
+          "failure": 0,
+          "missed": 0
+        },
+        {
+          "dayStart": "$now-2073600000",
+          "success": 0,
+          "failure": 0,
+          "missed": 0
+        },
+        {
+          "dayStart": "$now-1987200000",
+          "success": 1440,
+          "failure": 0,
+          "missed": 0
+        },
+        {
+          "dayStart": "$now-1900800000",
+          "success": 1440,
+          "failure": 0,
+          "missed": 0
+        },
+        {
+          "dayStart": "$now-1814400000",
+          "success": 1440,
+          "failure": 0,
+          "missed": 0
+        },
+        {
+          "dayStart": "$now-1728000000",
+          "success": 1440,
+          "failure": 0,
+          "missed": 0
+        },
+        {
+          "dayStart": "$now-1641600000",
+          "success": 1440,
+          "failure": 0,
+          "missed": 0
+        },
+        {
+          "dayStart": "$now-1555200000",
+          "success": 1440,
+          "failure": 0,
+          "missed": 0
+        },
+        {
+          "dayStart": "$now-1468800000",
+          "success": 1440,
+          "failure": 0,
+          "missed": 0
+        },
+        {
+          "dayStart": "$now-1382400000",
+          "success": 1440,
+          "failure": 0,
+          "missed": 0
+        },
+        {
+          "dayStart": "$now-1296000000",
+          "success": 1440,
+          "failure": 0,
+          "missed": 0
+        },
+        {
+          "dayStart": "$now-1209600000",
+          "success": 1440,
+          "failure": 0,
+          "missed": 0
+        },
+        {
+          "dayStart": "$now-1123200000",
+          "success": 1440,
+          "failure": 0,
+          "missed": 0
+        },
+        {
+          "dayStart": "$now-1036800000",
+          "success": 1440,
+          "failure": 0,
+          "missed": 0
+        },
+        {
+          "dayStart": "$now-950400000",
+          "success": 1440,
+          "failure": 0,
+          "missed": 0
+        },
+        {
+          "dayStart": "$now-864000000",
+          "success": 1440,
+          "failure": 0,
+          "missed": 0
+        },
+        {
+          "dayStart": "$now-777600000",
+          "success": 1440,
+          "failure": 0,
+          "missed": 0
+        },
+        {
+          "dayStart": "$now-691200000",
+          "success": 1436,
+          "failure": 4,
+          "missed": 0
+        },
+        {
+          "dayStart": "$now-604800000",
+          "success": 1440,
+          "failure": 0,
+          "missed": 0
+        },
+        {
+          "dayStart": "$now-518400000",
+          "success": 1440,
+          "failure": 0,
+          "missed": 0
+        },
+        {
+          "dayStart": "$now-432000000",
+          "success": 1440,
+          "failure": 0,
+          "missed": 0
+        },
+        {
+          "dayStart": "$now-345600000",
+          "success": 1440,
+          "failure": 0,
+          "missed": 0
+        },
+        {
+          "dayStart": "$now-259200000",
+          "success": 1440,
+          "failure": 0,
+          "missed": 0
+        },
+        {
+          "dayStart": "$now-172800000",
+          "success": 1440,
+          "failure": 0,
+          "missed": 0
+        },
+        {
+          "dayStart": "$now-86400000",
+          "success": 1440,
+          "failure": 0,
+          "missed": 0
+        },
+        {
+          "dayStart": "$now",
+          "success": 1440,
+          "failure": 0,
+          "missed": 0
+        }
+      ]
+    },
     "errors": {
       "site": {
         "count12h": 9,
