@@ -38,35 +38,41 @@ function dayTone(entry: UptimeDay): { className: string; label: string } {
 export function UptimeStrip({ uptime }: { uptime: SentryUptime }) {
   const host = uptime.url ? new URL(uptime.url).host : "lyjw.me";
   return (
-    <div className="flex flex-col gap-3 border-t border-line px-4 py-4 md:flex-row md:items-end md:gap-8 md:px-5">
-      <div className="shrink-0" title={`24h ${percent(uptime.availability24h)} · checked every ${uptime.intervalSeconds}s`}>
-        <div className="label-mono text-muted-foreground">UPTIME · 30D</div>
-        <div className="mt-1.5 text-3xl font-medium tracking-tight tabular-nums">
-          {uptime.availability30d == null ? "—" : (
-            // 截到两位小数再格式化，99.999% 不会被四舍五入成 100%
-            <NumberFlow value={Math.floor(uptime.availability30d * 10_000) / 10_000} format={PERCENT_FORMAT} locales="en-US" />
-          )}
-        </div>
-        <div className="mt-0.5 text-[11px] tabular-nums text-muted-foreground"
-          title={uptime.lastCheck ? `Last check ${clock.format(uptime.lastCheck.at)} · HTTP ${uptime.lastCheck.httpStatus ?? "—"}` : undefined}>
-          {host}{uptime.lastCheck?.durationMs != null && <> · {number.format(uptime.lastCheck.durationMs)} ms</>}
-        </div>
+    <div className="border-t border-line px-4 py-4 md:px-5">
+      {/* 标签一左一右占满整条：左边说是什么，右边说统计了多久 */}
+      <div className="flex justify-between label-mono text-muted-foreground">
+        <span>UPTIME</span>
+        <span>LAST {uptime.days.length || 30}D</span>
       </div>
-      {uptime.days.length > 0 && (
-        <div className="min-w-0 flex-1">
-          <div className="flex h-6 gap-[3px]" role="img" aria-label={`Daily availability, last ${uptime.days.length} days`}>
-            {uptime.days.map((entry) => {
-              const tone = dayTone(entry);
-              const failed = entry.failure ? ` · ${number.format(entry.failure)} failed checks` : "";
-              return <span key={entry.dayStart} title={`${day.format(entry.dayStart)} · ${tone.label}${failed}`} className={cn("min-w-0 flex-1 rounded-[2px]", tone.className)} />;
-            })}
+      <div className="mt-1.5 flex flex-col gap-3 md:flex-row md:items-end md:gap-8">
+        <div className="shrink-0" title={`24h ${percent(uptime.availability24h)} · checked every ${uptime.intervalSeconds}s`}>
+          <div className="text-3xl font-medium tracking-tight tabular-nums">
+            {uptime.availability30d == null ? "—" : (
+              // 截到两位小数再格式化，99.999% 不会被四舍五入成 100%
+              <NumberFlow value={Math.floor(uptime.availability30d * 10_000) / 10_000} format={PERCENT_FORMAT} locales="en-US" />
+            )}
           </div>
-          <div className="mt-1.5 flex justify-between text-[10px] text-muted-foreground">
-            <span>{uptime.days.length} days ago</span>
-            <span>Today</span>
+          <div className="mt-0.5 text-[11px] tabular-nums text-muted-foreground"
+            title={uptime.lastCheck ? `Last check ${clock.format(uptime.lastCheck.at)} · HTTP ${uptime.lastCheck.httpStatus ?? "—"}` : undefined}>
+            {host}{uptime.lastCheck?.durationMs != null && <> · {number.format(uptime.lastCheck.durationMs)} ms</>}
           </div>
         </div>
-      )}
+        {uptime.days.length > 0 && (
+          <div className="min-w-0 flex-1">
+            <div className="flex h-6 gap-[3px]" role="img" aria-label={`Daily availability, last ${uptime.days.length} days`}>
+              {uptime.days.map((entry) => {
+                const tone = dayTone(entry);
+                const failed = entry.failure ? ` · ${number.format(entry.failure)} failed checks` : "";
+                return <span key={entry.dayStart} title={`${day.format(entry.dayStart)} · ${tone.label}${failed}`} className={cn("min-w-0 flex-1 rounded-[2px]", tone.className)} />;
+              })}
+            </div>
+            <div className="mt-1.5 flex justify-between text-[10px] text-muted-foreground">
+              <span>{uptime.days.length} days ago</span>
+              <span>Today</span>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
