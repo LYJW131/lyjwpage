@@ -6,7 +6,8 @@
  *
  * - `endpoint(params)`：单端点。有 path 的视图必有。params 里 `since` /
  *   `sinceDate` / `titleIds` 各自用得上才读，缺席 = 整份。
- * - `home()`：首屏字段与无参端点不同时才写（trophies 摘要、charger 20 分钟窗）。
+ * - `home()`：首屏字段与无参端点不同时才写（charger 20 分钟窗）；trophies 写它只为
+ *   让首屏类型收窄到摘要 —— 端点无参时回的也是同一份摘要。
  *   没写的视图，`/api/home` 调 `endpoint({})`。
  * - `timezone` 只有 home，没有端点。
  */
@@ -28,7 +29,7 @@ import { getSentryStatus } from "@/lib/sentry-status";
 import { getServerSnapshot } from "@/lib/server";
 import { STATUS_VIEWS, type EndpointViewKey, type StatusViewKey } from "@/lib/status-views";
 import { getDesktopPayload, getNowListening, getTimezonePayload } from "@/lib/telemetry";
-import { getTrophies, getTrophiesSummary, sliceTrophies } from "@/lib/trophies";
+import { getTrophies, getTrophiesSummary, sliceTrophies, summarizeTrophies } from "@/lib/trophies";
 import { getVercelDeployments } from "@/lib/vercel-deployments";
 import { getVibeCodingSnapshot } from "@/lib/vibecoding";
 import { getVibeCodingYear } from "@/lib/vibecoding-year-store";
@@ -95,10 +96,14 @@ export const statusLoaders = {
   nowWatching: { endpoint: unparam(getNowWatching) },
   playing: { endpoint: unparam(getPlaying) },
   playingNow: { endpoint: unparam(getPlayingNow) },
+  /**
+   * 无参是摘要（和首屏字段、`trophies` 推送同一个形状），带 `?titleids=` 是那几款的
+   * 完整目录切片。整份目录几百 KB，没有谁需要一次拿全，所以不再有「裸读整份」这一档。
+   */
   trophies: {
     endpoint: async ({ titleIds }: StatusLoaderParams) => {
       const data = await getTrophies();
-      return titleIds == null ? data : sliceTrophies(data, titleIds);
+      return titleIds == null ? summarizeTrophies(data) : sliceTrophies(data, titleIds);
     },
     home: getTrophiesSummary,
   },

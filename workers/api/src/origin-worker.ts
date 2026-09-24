@@ -13,10 +13,12 @@ import { publish, ROOM_ID } from "./live-platform";
 import { ConfigError, issueMusicKitToken } from "./musickit-token";
 import { getAllowedOrigins, getCorsHeaders, isAllowedOrigin, isAllowedOriginValue } from "./origins";
 import { refreshAgentStatus } from "@/lib/agent-status";
+import type { LiveEvent } from "@/lib/live-events";
 import { refreshPageSpeed } from "@/lib/pagespeed";
 import { fetchPreviewUpstream, isPreviewProxyPath, previewWorkerEnabled } from "./preview";
 import { isPublicApiPath, pathForEventType } from "./public-api";
 import { executePublicRequest } from "./public-execution";
+import { isLookupPath, serveLookup } from "./lookup-routes";
 import { requestStore, type Env } from "./runtime";
 import { site } from "@/lib/site";
 
@@ -177,6 +179,27 @@ async function handleImport(request: Request, env: Env): Promise<Response> {
     console.error("[storage]", reason(error));
     return jsonResponse({ ok: false, error: "存储请求失败" }, { status: 400 });
   }
+}
+
+const SITE_DEPLOYED_PATH = "/api/internal/site-deployed";
+
+/**
+ * 站点新部署接管了生产域名：广播一条 `version` 失效通知，开着的页面重问 /api/version。
+ *
+ * 只有 GitHub Actions（.github/workflows/purge-esa.yml）调用，鉴权沿用上报的
+ * TELEMETRY_INGEST_SECRET。不走 /api/ingest：没有要落库的数据，不进 StateHub。
+ * 请求体不读 —— 推什么版本由域名上那次部署自己回答。
+ */
+async function handleSiteDeployed(request: Request, env: Env): Promise<Response> {
+  if (request.method !== "POST") return jsonResponse({ ok: false, error: "只接受 POST" }, { status: 405 });
+  const expected = env.TELEMETRY_INGEST_SECRET;
+  if (!expected) return jsonResponse({ ok: false, error: "Worker 未配置 TELEMETRY_INGEST_SECRET" }, { status: 503 });
+  const provided = bearerToken(request);
+  if (!provided || !secretMatches(provided, expected)) {
+    return jsonResponse({ ok: false, error: "未授权" }, { status: 401 });
+  }
+  const delivered = await getRoom(env).broadcast(JSON.stringify({ type: "version", payload: null } satisfies LiveEvent));
+  return jsonResponse({ ok: true, delivered });
 }
 
 /**
@@ -424,6 +447,12 @@ const worker = {
       return handleImport(request, env);
     }
 
+    if (url.pathname === SITE_DEPLOYED_PATH) {
+      // 预览 Worker 的房间连的是预览页，生产部署跟它无关
+      if (previewWorkerEnabled()) return new Response("Not found", { status: 404 });
+      return handleSiteDeployed(request, env);
+    }
+
     if (url.pathname.startsWith(INGEST_PREFIX)) {
       return handleIngest(request, env, ctx, url.pathname.slice(INGEST_PREFIX.length));
     }
@@ -459,11 +488,13 @@ const worker = {
       if (request.method !== "GET" && !devOverride) return new Response("Method not allowed", { status: 405, headers: cors });
       const origin = request.headers.get("Origin");
       if (origin && !isAllowedOriginValue(origin, getAllowedOrigins(env))) return jsonResponse({ ok: false }, { status: 403, headers: cors });
-      if (!isPublicApiPath(url.pathname)) return new Response("Not found", { status: 404, headers: cors });
-      const response = await executePublicRequest(request, env, ctx);
+      // 歌词、动态封面按参数查，不过公开读屏障，先问本机房的边缘缓存（见 edge-cache.ts）
+      const lookup = isLookupPath(url.pathname);
+      if (!lookup && !isPublicApiPath(url.pathname)) return new Response("Not found", { status: 404, headers: cors });
+      const response = lookup ? await serveLookup(request, env, ctx) : await executePublicRequest(request, env, ctx);
       const headers = new Headers(response.headers);
       cors.forEach((value, name) => headers.set(name, value));
-      headers.set("Access-Control-Expose-Headers", "X-Fetched-At");
+      headers.set("Access-Control-Expose-Headers", "X-Fetched-At, X-Edge-Cache");
       return new Response(response.body, { status: response.status, headers });
     }
 

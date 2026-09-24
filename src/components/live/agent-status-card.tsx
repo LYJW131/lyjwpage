@@ -303,32 +303,47 @@ export function AgentStatusCard({
             >
               {column.map((agent) => {
                 const label = indicatorLabel(agent.indicator);
-                const rowClass =
-                  "flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-surface-hover @[36rem]:px-3";
-                const row = (
+                /**
+                 * 只有右边的状态可点，整行不是点击区：有故障的弹详情，正常的去官方状态页。
+                 * 上下用负边距吃满行高，点击区跟整行一样高，版面不动。
+                 */
+                const triggerClass =
+                  "-mx-2 -my-3 flex items-center gap-2 px-2 py-3 hover:underline hover:underline-offset-4";
+                const status = (
                   <>
+                    <span className={cn("size-1.5 rounded-full", indicatorDot(agent.indicator))} aria-hidden />
+                    <span className={cn("text-sm", indicatorText(agent.indicator))}>{label}</span>
+                  </>
+                );
+                return (
+                  <li key={agent.id} className="flex w-full items-center gap-3 px-4 py-3 @[36rem]:px-3">
                     <span className="shrink-0" aria-hidden>
                       <Brand id={agent.id} />
                     </span>
                     <span className="min-w-0 flex-1 truncate text-sm font-medium">{agent.name}</span>
                     <span className="flex shrink-0 items-center gap-2">
                       {agent.stale && <span className="text-xs text-muted-foreground">cached</span>}
-                      <span className={cn("size-1.5 rounded-full", indicatorDot(agent.indicator))} aria-hidden />
-                      <span className={cn("text-sm", indicatorText(agent.indicator))}>{label}</span>
+                      {hasDetail(agent) ? (
+                        <button
+                          type="button"
+                          onClick={() => setOpenId(agent.id)}
+                          aria-label={`${agent.name}: ${label}, show details`}
+                          className={triggerClass}
+                        >
+                          {status}
+                        </button>
+                      ) : (
+                        <a
+                          href={agent.statusUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          aria-label={`${agent.name}: ${label}, open status page`}
+                          className={triggerClass}
+                        >
+                          {status}
+                        </a>
+                      )}
                     </span>
-                  </>
-                );
-                return (
-                  <li key={agent.id}>
-                    {hasDetail(agent) ? (
-                      <button type="button" onClick={() => setOpenId(agent.id)} className={rowClass}>
-                        {row}
-                      </button>
-                    ) : (
-                      <a href={agent.statusUrl} target="_blank" rel="noreferrer" className={rowClass}>
-                        {row}
-                      </a>
-                    )}
                   </li>
                 );
               })}

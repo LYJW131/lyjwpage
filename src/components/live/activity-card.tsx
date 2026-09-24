@@ -390,13 +390,14 @@ export function ActivityCard({
       */}
       {/*
         两列数据：三环读数 + 步数/距离/爬楼。手机上后一列不画 —— 窄屏上它会把
-        「活动 123 / 400 千卡」挤到截断，把空间留给三环更值。md 起才恢复三列。
+        「活动 123 / 400 千卡」挤到截断，把空间留给三环更值。md 这张卡虽已整宽，
+        环这半边只有 ~370px，三列照样截断（768 上 11 / 270 kcal 就放不下），lg 起才恢复三列。
 
         环那列走 `auto` 而不是等分的三分之一 —— 它的直径必须和时间卡那个钟相等
         （md 断点上 144px），而三分之一在那个断点只有 110px，等分会把环挤扁。
         两列数据各占一半、各自居中，行数也对齐（见下面 extras 的注释）。
       */}
-      <div className="grid min-h-44 md:h-[207px] lg:h-[215px] grid-cols-[auto_1fr] items-center justify-items-center gap-3 p-4 md:grid-cols-[auto_1fr_1fr] lg:gap-4 lg:p-5">
+      <div className="grid min-h-44 md:h-[207px] lg:h-[215px] grid-cols-[auto_1fr] items-center justify-items-center gap-3 p-4 lg:grid-cols-[auto_1fr_1fr] lg:gap-4 lg:p-5">
         {/* 尺寸类和时间卡那个钟逐字相同 —— 换个断点两边一起变，不会只有一边跟着走 */}
         <Rings rings={rings} className="size-32 shrink-0 md:size-36 lg:size-40" />
 
@@ -432,7 +433,7 @@ export function ActivityCard({
           </div>
         </div>
 
-        <div className="hidden min-w-0 gap-1.5 md:grid">
+        <div className="hidden min-w-0 gap-1.5 lg:grid">
           {extras.map((item) => (
             <div key={item.label} className="min-w-0">
               <div className="label-mono text-muted-foreground">{item.label}</div>

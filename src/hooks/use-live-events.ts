@@ -10,10 +10,12 @@ import { applyVibeCodingNow } from "@/lib/vibecoding-activity";
 import type { LiveEvent } from "@/lib/live-events";
 import { acceptPush, markLiveRead } from "@/lib/status-reads";
 import { liveSocketUrl } from "@/lib/live-socket";
+import { APP_VERSION_PATH } from "@/lib/app-version";
 import {
   CHARGER_PATH,
   DESKTOP_PATH,
   NOW_LISTENING_PATH,
+  TROPHIES_PATH,
   VIBECODING_PATH,
 } from "@/lib/paths";
 import { pathByEvent } from "@/lib/status-views";
@@ -34,6 +36,8 @@ import type {
 const FORWARDS: ReadonlyArray<{
   event: LiveEvent["type"];
   merge?: (data: unknown) => unknown | null;
+  /** 写完这份之后还要让哪些**正挂着**的键重取一次（推来的只是摘要、明细在别的键上） */
+  refetch?: (key: string) => boolean;
 }> = [
   { event: "desktop" },
   { event: "listening-now" },
@@ -50,6 +54,14 @@ const FORWARDS: ReadonlyArray<{
   { event: "watching" },
   { event: "playing-now" },
   { event: "playing" },
+  /**
+   * 奖杯只推摘要：提要、瓷砖上的杯数直接换。展开着的那块瓷砖明细在
+   * `?titleids=` 的切片键上，推来的不含逐个奖杯，让它自己重取那一两款。
+   */
+  {
+    event: "trophies",
+    refetch: (key) => key.startsWith(`${TROPHIES_PATH}?`),
+  },
   /**
    * 充电头只在插拔、换设备时来事件。曲线的合并走和轮询同一个累加器
    * （lib/charger-history）：推来的那份不带历史点（空增量），所以合并只是把
@@ -97,8 +109,9 @@ const PRESENCE_PATHS = [
 /**
  * 不带数据的事件 → 收到后要重取哪几个键。
  *
- * 只剩存活这一条：亲口离线要重取 declaredOffline；超时那条浏览器拿
- * lastSeenAt 现算，但优雅离开发生在心跳窗口内，本地钟还没走到。
+ * 存活：亲口离线要重取 declaredOffline；超时那条浏览器拿 lastSeenAt 现算，
+ * 但优雅离开发生在心跳窗口内，本地钟还没走到。
+ * 版本：部署完成后的更新提示，见 lib/live-events 的 `version`。
  */
 const INVALIDATIONS: ReadonlyArray<{
   event: LiveEvent["type"];
@@ -106,6 +119,8 @@ const INVALIDATIONS: ReadonlyArray<{
 }> = [
   // 上报器上下线：不带数据，只让它供数的那几张卡重取一次，换新的 declaredOffline
   { event: "presence", paths: PRESENCE_PATHS },
+  // 新部署接管了生产域名：重问 /api/version，由域名上那一版自己回答，不信推来的 sha
+  { event: "version", paths: [APP_VERSION_PATH] },
 ];
 
 const FORWARD_BY_EVENT = new Map(
@@ -131,6 +146,8 @@ function dispatch(mutate: ScopedMutator, message: Incoming): void {
     // 顺手也挡住乱序到达的推送本身
     if (!acceptPush(forward.path, envelope)) return;
     void mutate(forward.path, envelope, { revalidate: false });
+    const refetch = forward.refetch;
+    if (refetch) void mutate((key) => typeof key === "string" && refetch(key));
     return;
   }
 

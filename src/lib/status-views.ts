@@ -61,10 +61,11 @@ export const STATUS_VIEWS = {
   playing: { path: "/api/status/playing", tag: "playing", event: "playing" },
   playingNow: { path: "/api/status/playing/now", tag: "playing-now", event: "playing-now" },
   /**
-   * 首屏字段是摘要（TrophiesSummaryPayload），单端点是整份目录 / 按 titleIds 切片
-   * （TrophiesPayload）；浏览器从不裸读这条端点，只带 `?titleids=`，所以它不进 KV。
+   * 无参端点、首屏字段、推送三者同是摘要（TrophiesSummaryPayload，实测 8 KB 级）；
+   * 带 `?titleids=` 才是那几款的完整目录（TrophiesPayload），展开瓷砖时取。
+   * 有推送所以不进 KV。
    */
-  trophies: { path: "/api/status/trophies", tag: "trophies", bootstrap: false },
+  trophies: { path: "/api/status/trophies", tag: "trophies", event: "trophies" },
   githubChart: { path: "/api/status/github-chart", readModel: "slow" },
   githubRepo: { path: "/api/status/github-repo", readModel: "slow" },
   /**

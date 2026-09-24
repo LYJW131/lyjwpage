@@ -41,14 +41,18 @@ function CommitSha({ commit }: { commit: { sha: string; branch: string | null; m
   if (!commit) return null;
   return <a href={`${site.repo}/commit/${commit.sha}`} target="_blank" rel="noreferrer"
     title={commit.message ? `${commit.branch ?? "main"} · ${commit.message}` : commit.branch ?? undefined}
-    className="ml-auto shrink-0 font-mono text-[10px] text-muted-foreground hover:text-foreground hover:underline">{commit.sha.slice(0, 7)}</a>;
+    className="-mt-2 ml-auto shrink-0 pt-2 font-mono text-[10px] text-muted-foreground hover:text-foreground hover:underline">{commit.sha.slice(0, 7)}</a>;
 }
 
 function Stat({ label, value, title, prefix }: { label: string; value?: number | null; title?: string; prefix?: string }) {
   return (
     <div title={title}>
       <div className="label-mono text-muted-foreground">{label}</div>
-      <div className="mt-2 text-3xl font-medium tracking-tight md:text-4xl">{value == null ? "—" : <>{prefix}<NumberFlow value={value} locales="en-US" /></>}</div>
+      {/*
+        「+」和数字不能断开；六位数的增删行数在 360 两列、768 四列时都比格子宽，
+        所以窄屏降一档字号，四列要到 lg 才用 4xl。
+      */}
+      <div className="mt-2 whitespace-nowrap text-2xl font-medium tracking-tight min-[400px]:text-3xl lg:text-4xl">{value == null ? "—" : <>{prefix}<NumberFlow value={value} locales="en-US" /></>}</div>
     </div>
   );
 }
@@ -155,10 +159,10 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
   const contributionShare = contributors.reduce((sum, person) => sum + person.commits, 0);
   return <Card id="site-status" label="LYJWPAGE" className={cn("scroll-mt-28", className)} action={
     <div className="flex items-center gap-4">
-      <a href={site.repo} target="_blank" rel="noreferrer" aria-label="GitHub repository" className="hover:text-foreground"><Github size={15} /></a>
-      <a href={site.vercel} target="_blank" rel="noreferrer" aria-label="Vercel dashboard" className="hover:text-foreground"><Vercel size={15} /></a>
-      <a href={site.cloudflare} target="_blank" rel="noreferrer" aria-label="Cloudflare dashboard"><CloudflareColor size={19} /></a>
-      <a href={site.sentry} target="_blank" rel="noreferrer" aria-label="Sentry dashboard" className="flex hover:text-foreground"><SentryMark /></a>
+      <a href={site.repo} target="_blank" rel="noreferrer" aria-label="GitHub repository" className="-m-2 flex p-2 hover:text-foreground"><Github size={15} /></a>
+      <a href={site.vercel} target="_blank" rel="noreferrer" aria-label="Vercel dashboard" className="-m-2 flex p-2 hover:text-foreground"><Vercel size={15} /></a>
+      <a href={site.cloudflare} target="_blank" rel="noreferrer" aria-label="Cloudflare dashboard" className="-m-2 flex p-2"><CloudflareColor size={19} /></a>
+      <a href={site.sentry} target="_blank" rel="noreferrer" aria-label="Sentry dashboard" className="-m-2 flex p-2 hover:text-foreground"><SentryMark /></a>
     </div>
   }>
     <div className="border-b border-line px-4 py-5 md:px-5">
@@ -214,7 +218,7 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
         <ul className="grid h-full auto-rows-fr grid-cols-1 gap-px bg-line sm:grid-cols-2">
           <li className="bg-surface px-4 py-2.5">
             <div className="flex items-center gap-1.5 text-[11px] leading-4">
-              <a href={`${site.vercel}/observability/vercel-functions`} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 hover:underline"><Vercel size={11} />Vercel</a>
+              <span className="flex items-center gap-1.5"><Vercel size={11} />Vercel</span>
               <ErrorCount series={siteErrors} title="Site errors in the last 12h (browser + functions)" />
               <CommitSha commit={vercel?.production?.commit} />
             </div>

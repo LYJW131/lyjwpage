@@ -7,6 +7,7 @@ import type {
   NowListeningPayload,
   PlaystationPlayingPayload,
   PlaystationPresencePayload,
+  TrophiesSummaryPayload,
   VibeCodingNowPayload,
   PowerBankPayload,
 } from "@/lib/types";
@@ -79,6 +80,15 @@ export type LiveEvent =
    */
   | { type: "presence"; payload: null }
   /**
+   * 站点新部署接管了生产域名，并且 ESA 首页已刷新。只发失效通知：浏览器收到后
+   * 重问同源的 `/api/version`（不是 `/api/status/*`，事件名按同一规则取 `version`）。
+   * 不带 sha —— 回滚、别名切换时只有域名上那次部署自己答得准。
+   *
+   * 唯一的发出点是 Worker 的 `/api/internal/site-deployed`，由 GitHub Actions
+   * （.github/workflows/purge-esa.yml）在确认两个域名都答新 sha 之后调用。
+   */
+  | { type: "version"; payload: null }
+  /**
    * Emby 正在播放。webhook 和推送代理驱动，服务端收到时手上就是最新的，
    * 所以直接带数据。
    */
@@ -88,7 +98,14 @@ export type LiveEvent =
   /** PlayStation 此刻在线 / 在玩状态。 */
   | { type: "playing-now"; payload: PlaystationPresencePayload }
   /** PlayStation 最近游玩列表；整份替换，直接写进浏览器 SWR 缓存。 */
-  | { type: "playing"; payload: PlaystationPlayingPayload };
+  | { type: "playing"; payload: PlaystationPlayingPayload }
+  /**
+   * PlayStation 奖杯变了（解锁、新 DLC、等级）。带的是摘要 —— 等级、合计、最近
+   * 解锁、各款进度，和 `/api/status/trophies` 无参回的同一份，实测 8 KB 级。
+   * 整份目录每个奖杯都带说明和图标，几百 KB 还要乘在线人头，不推；展开着的
+   * 瓷砖收到这条自己去重取那一两款的切片。
+   */
+  | { type: "trophies"; payload: TrophiesSummaryPayload };
 
 /**
  * 状态 tag 常量在 lib/status-tags，这里原样再导出：失效和推送是同一个变化的两条腿，

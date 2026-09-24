@@ -6,8 +6,8 @@ import type { AppleMusicParsed } from "@/lib/motion-artwork-url";
  * Apple Music 正方形动态封面（`motionDetailSquare`）解析。
  *
  * 从前是独立的 Cloudflare Worker（am-motion-artwork），现在收编进站点：
- * `/api/motion-artwork` 按 `url` 参数答，不带参数时由服务端按此刻在播那首的链接
- * 自决，少一个要单独部署、单独配 ALLOWED_ORIGINS 的部件。逻辑原样搬来 —— 用从 music.apple.com 网页 JS 里
+ * `/api/motion-artwork` 按必填的 `url` 参数答，少一个要单独部署、单独配
+ * ALLOWED_ORIGINS 的部件。逻辑原样搬来 —— 用从 music.apple.com 网页 JS 里
  * 扒的 web token 打 amp-api，**不用** Mac 上报器推来的那份 MusicKit 凭据：
  * `editorialVideo` 是 amp-api 的扩展属性，公开目录 API 认不认它没有验证过，
  * 而扒来的 token 本来就一分钱凭据不用。token 的扒取、缓存、401 作废在
@@ -16,8 +16,8 @@ import type { AppleMusicParsed } from "@/lib/motion-artwork-url";
  * 缓存从 Cloudflare 边缘缓存换成 lib/cache（SQLite 为主、进程内存兜底），
  * TTL 沿用 Worker 的约定：**有**动态封面 24 小时，**确认没有** 1 小时 ——
  * 后者短是留给「专辑后来补了动态封面」的翻案窗口。上游出错不写缓存，
- * 只留 5 秒负缓存挡穿透。带参的响应 CDN 也存一份，不带参的 no-store（见
- * app/api/motion-artwork/route.ts）。
+ * 只留 5 秒负缓存挡穿透。响应 CDN 也按同样两档存一份（见
+ * workers/api/src/routes/motion-artwork/route.ts）。
  */
 
 /** 所有 JSON 响应共用这一个形状，调用方不用按状态码分路解析 */
@@ -41,6 +41,16 @@ const NEGATIVE_TTL_MS = 5_000;
 const inflight = new Map<string, Promise<MotionResult>>();
 
 /**
+ * 一条资源的动态封面在 SQLite 里的键。API Worker 的边缘缓存也拿它拼键：结果形状变了
+ * 在这里升版本，两层一起作废。
+ */
+export function motionArtworkCacheKey(parsed: AppleMusicParsed): string {
+  return parsed.albumId
+    ? `motion-artwork:v1:${parsed.storefront}:album:${parsed.albumId}`
+    : `motion-artwork:v1:${parsed.storefront}:song:${parsed.songId}`;
+}
+
+/**
  * 解析一条已经 parse 过的 Apple Music 资源的动态封面。上游异常往上抛，
  * 由路由决定响应形状 —— 抛和「上游明确说没有」不能混成同一个 null。
  *
@@ -50,9 +60,7 @@ const inflight = new Map<string, Promise<MotionResult>>();
  * 该命中同一条。
  */
 export async function resolveMotionArtwork(parsed: AppleMusicParsed): Promise<MotionResult> {
-  const cacheKey = parsed.albumId
-    ? `motion-artwork:v1:${parsed.storefront}:album:${parsed.albumId}`
-    : `motion-artwork:v1:${parsed.storefront}:song:${parsed.songId}`;
+  const cacheKey = motionArtworkCacheKey(parsed);
 
   const [hit, failure] = await Promise.all([
     get<MotionResult>(cacheKey),

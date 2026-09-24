@@ -27,9 +27,9 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 # 部署流程
 
-- 站点生产部署默认走 Git：完成必要验证后提交改动，执行 `git push origin main`，由已有集成自动部署 Vercel；腾讯云 EdgeOne 已退役。`lyjw.me` 使用 Vercel；`lyjw131.com` 经阿里云 ESA 回源 `lyjw.me`，回源 Host 跟随源站，缓存首页 HTML 与静态 JS。API Worker 对展示变化只通知 Vercel 标签失效；ESA 首页由控制台缓存规则按源站 SWR 头自行更新，新版本部署成功时由 GitHub Actions（`.github/workflows/purge-esa.yml`）自动刷新首页 cachekey 并主动预热缓存，契约见 `workers/api/README.md`。用户要求部署站点时，包含完成这次提交与推送，无需再逐步确认。
+- 站点生产部署默认走 Git：完成必要验证后提交改动，执行 `git push origin main`，由已有集成自动部署 Vercel。`lyjw.me` 使用 Vercel；`lyjw131.com` 经阿里云 ESA 回源 `lyjw.me`，回源 Host 跟随源站，缓存首页 HTML 与静态 JS。API Worker 对展示变化只通知 Vercel 标签失效；ESA 首页由控制台缓存规则按源站 SWR 头自行更新，新版本部署成功时由 GitHub Actions（`.github/workflows/purge-esa.yml`）自动刷新首页 cachekey 并主动预热缓存，确认两个域名都换上新版后再经 Worker 推 `version` 事件让开着的页面立刻弹更新提示，契约见 `workers/api/README.md`。用户要求部署站点时，包含完成这次提交与推送，无需再逐步确认。
 - 除非用户明确要求手工部署，不运行 `vercel deploy`、`vercel --prod`、`vercel promote` 等手工发布命令；自动部署失败时先检查并修复现有流程。
-- `workers/api`、`workers/online-counter`、`workers/playstation-reporter` 使用 Cloudflare Workers Builds 原生 Git 集成，配置与监视路径见 `docs/workers-builds.md`。GitHub Actions 只保留检查，不再负责 Worker 发布；不要添加重复的自动发布任务。修改共享依赖时同步核对原生构建的触发路径。
+- `workers/api`、`workers/online-counter`、`workers/playstation-reporter` 使用 Cloudflare Workers Builds 原生 Git 集成，配置与监视路径见 `docs/workers-builds.md`。GitHub Actions 只做检查，不添加 Worker 发布任务。修改共享依赖时同步核对原生构建的触发路径。
 - 推送成功不等于部署完成：检查该次提交在 Vercel 的部署状态，并从已绑定的生产域名验证本次受影响的行为或配置。
 - NAS 上报器与其他独立部署单元按各自 README 发布。若依赖站点的新契约或更长陈旧窗口，先确认 Vercel 站点及 Worker 契约已生效，再切换上报器，最后验证真实上报与站点读取。
 - `reporters/mac-telemetry-hub` 是 git submodule，指向 `LYJW131/MacTelemetryHub`，不会自动跟随远端。Hub 仓库推送后，站点仓库的子模块指针要挪到同一提交，否则站点里的上报器源码停在旧版本。跨两个仓库的同一件事（如新契约两边同时改）把指针挪动并进站点那次提交，一次提交说完整件事；站点本身没改动时才单独提 `chore(reporters): 更新 mac-telemetry-hub，<改了什么>`。Hub 本机安装走它自己的 `build-release.sh`，与指针更新是两件事。
@@ -63,9 +63,8 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 ## 选型
 
-- 新增品牌 / 产品图标先查 [LobeHub 图标集](https://lobehub.com/icons)，优先 SVG。静态包地址为 `https://unpkg.com/@lobehub/icons-static-svg@<版本>/icons/<名字>.svg`；单色 `<名字>.svg`、彩色 `<名字>-color.svg`、带字 `<名字>-text.svg`。
-- 确认所选版本和文件存在后再引入。只有位图时，先压到展示所需尺寸再入库。
-- 含 `fill="currentColor"` 的 SVG 要内联为组件；通过 `<img>` 或 `next/image` 加载时无法继承页面文字色。也可选择颜色写死的彩色版本。现有示例见 `src/components/` 下的 `vibecoding-card.tsx`。
+- 新增品牌 / 产品图标先查 [LobeHub 图标集](https://lobehub.com/icons)。项目已装 `@lobehub/icons`，按深路径导入 React 组件：单色 `@lobehub/icons/es/<名字>/components/Mono`（继承文字色）、彩色 `.../Color`、带字 `.../Text`；示例见 `src/components/live/vibecoding-card.tsx`。
+- LobeHub 没有的品牌再找官方 SVG：含 `fill="currentColor"` 的要内联为组件，通过 `<img>` 或 `next/image` 加载时无法继承页面文字色；示例见 `src/components/live/agent-status-card.tsx` 的 `TypesafeIcon`。只有位图时，先压到展示所需尺寸再入库。
 
 ## 加载与缓存
 

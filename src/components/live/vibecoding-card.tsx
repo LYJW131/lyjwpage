@@ -674,8 +674,8 @@ function nextCompactTickDelay(remain: number) {
 }
 
 /**
- * 进度条本身是链接。条只有 6px，上下补一点点击区，再用负边距把多出来的高度还回去，
- * 行距不变。没有官方用量页的 agent（Antigravity）保持普通条。
+ * 进度条本身是链接。条只有 6px：上方的间距改成链接自己的内边距，下方补到和下一行
+ * 之间的缝一样高，再用负边距把多出来的高度还回去，行距不变，点击区凑够 24px。没有官方用量页的 agent（Antigravity）保持普通条。
  */
 function UsageMeter({
   href,
@@ -695,7 +695,7 @@ function UsageMeter({
       target="_blank"
       rel="noreferrer noopener"
       aria-label={label}
-      className="-mb-2 mt-1.5 block pb-2 focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-live"
+      className="-mb-3 block pt-1.5 pb-3 focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-live"
     >
       <span className="relative block h-1.5 overflow-hidden bg-muted">{children}</span>
     </a>
@@ -1095,6 +1095,7 @@ function CompactAgentRow({
         {/*
           读数和全量面板的 LimitMeter 一样放在条的上方、这一行的右端，条下面不再挂
           东西：站内所有进度条的文案都在条上方。窄屏时这一行单独一行，读数靠右。
+          行高钉在 h-5，倒计时一换行就压到条上：倒计时不换行，放不下时截套餐名。
         */}
         <span className="flex h-5 min-w-0 items-baseline gap-2 text-xs text-muted-foreground md:shrink-0">
           {agent.plan && (
@@ -1109,7 +1110,7 @@ function CompactAgentRow({
           )}
           {reset?.kind === "days" && (
             <NumberFlowGroup>
-              <span className="tabular-nums">
+              <span className="shrink-0 whitespace-nowrap tabular-nums">
                 Resets in{" "}
                 <NumberFlow value={reset.days} locales="en-US" />{" "}
                 {reset.days === 1 ? "day" : "days"}
@@ -1124,7 +1125,7 @@ function CompactAgentRow({
           )}
           {reset?.kind === "relative" && (
             <NumberFlowGroup>
-              <span className="tabular-nums">
+              <span className="shrink-0 whitespace-nowrap tabular-nums">
                 Resets in{" "}
                 {reset.hours > 0 && (
                   <>

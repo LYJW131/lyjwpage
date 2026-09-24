@@ -103,6 +103,13 @@ const nextConfig: NextConfig = {
         headers: [{ key: "x-vercel-enable-rewrite-caching", value: "1" }],
       },
       {
+        // 更新提示的真相源（app/api/version）。预渲染响应默认带 s-maxage=31536000，
+        // Vercel 按部署缓存它没问题，但下游（ESA、浏览器）照这个头缓存一年的话，
+        // lyjw131.com 就永远看不到新版本。显式要求每次都回源确认。
+        source: "/api/version",
+        headers: [{ key: "Cache-Control", value: "public, max-age=0, must-revalidate" }],
+      },
+      {
         source: "/sw.js",
         headers: [
           { key: "Content-Type", value: "application/javascript; charset=utf-8" },

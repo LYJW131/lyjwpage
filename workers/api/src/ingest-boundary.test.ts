@@ -353,6 +353,54 @@ test("desktop icon commits merge the latest map without losing another report", 
   } finally { resetStorageForTests(); }
 });
 
+function trophiesReport(observedAt: number, earned: boolean) {
+  const counts = (bronze: number) => ({ platinum: 0, gold: 0, silver: 0, bronze });
+  return {
+    observedAt,
+    profile: {
+      onlineId: "tester", avatarUrl: null, plus: false, level: 1, tier: 1,
+      trophyPoint: 0, levelBasePoint: 0, levelNextPoint: 60, levelProgress: 0,
+      earned: counts(earned ? 1 : 0),
+    },
+    titles: [{
+      npCommunicationId: "NPWR00001_00", name: "Game", localizedName: null,
+      titleIds: ["PPSA00001_00"], iconUrl: null, platform: "PS5",
+      progress: earned ? 100 : 0, defined: counts(1), earned: counts(earned ? 1 : 0),
+      lastUpdatedAt: earned ? observedAt : null, playDurationMs: null, playCount: 1,
+      firstPlayedAt: null, lastPlayedAt: null, service: null, preOrder: false,
+      groups: [{
+        id: "default", name: "Game", iconUrl: null, progress: earned ? 100 : 0,
+        defined: counts(1), earned: counts(earned ? 1 : 0),
+      }],
+      trophies: [{
+        id: 0, type: "bronze", name: "First", detail: null, iconUrl: null, hidden: false,
+        groupId: "default", earned, earnedAt: earned ? observedAt : null, earnedRate: 50,
+      }],
+    }],
+  };
+}
+
+test("PlayStation trophies push the summary only when the catalog content changes", async () => {
+  installStorageForTests(new FakeStorage());
+  const env = testEnv();
+  const ingest = async (observedAt: number, earned: boolean) => commit(env, await inRequest(env, () =>
+    prepareIngest("playstation", { version: 1, trophies: trophiesReport(observedAt, earned) }, observedAt)));
+  const pushed = (result: CollectedIngest<unknown>) => result.effects.flatMap((effect) =>
+    effect.kind === "event" && effect.event.type === "trophies" ? [effect.event.payload] : []);
+  try {
+    assert.equal(pushed(await ingest(NOW, false)).length, 1);
+    // 上报器每轮整份重交：只有 observedAt 变了，不推
+    assert.deepEqual(pushed(await ingest(NOW + 60_000, false)), []);
+
+    const [summary] = pushed(await ingest(NOW + 120_000, true));
+    assert.ok(summary);
+    // 推的是摘要：各款只带进度，不带逐个奖杯
+    assert.equal(Object.hasOwn(summary.titles[0]!, "trophies"), false);
+    assert.deepEqual(summary.earned, { platinum: 0, gold: 0, silver: 0, bronze: 1 });
+    assert.equal(summary.recent[0]?.trophyName, "First");
+  } finally { resetStorageForTests(); }
+});
+
 test("listening effects retain the track from their own commit", async () => {
   const storage = new FakeStorage();
   installStorageForTests(storage);

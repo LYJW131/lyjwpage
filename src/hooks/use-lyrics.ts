@@ -10,9 +10,7 @@ import type { LyricLine } from "@/lib/lyrics-ttml";
  * 不作数。
  *
  * 按 `song=<目录曲目 ID>` 去问：卡片 hero 问的是此刻在播那首，网页播放器问的是
- * 访客自己正在放的那首 —— 后者服务端的快照说不了，所以由浏览器传。响应里带
- * `songId` 用来对号；不对号只挡 5 秒（短暂不一致），并把返回的结果按响应的
- * songId 存进缓存备用。
+ * 访客自己正在放的那首 —— 后者服务端的快照说不了，所以由浏览器传。
  *
  * 键是目录曲目 ID（卡片传的是闩住的那份，见 listening-card 的 lookupLatch；
  * 播放器传的是 MusicKit 队列条目的 ID）。只在目录说 `hasLyrics` 时才问。
@@ -23,8 +21,7 @@ const LYRICS_ENDPOINT = "/api/lyrics";
  * 响应形状的版本，拼进查询串。路由不看它，它只是浏览器缓存的键的一部分：
  * 带参的响应允许浏览器和 CDN 留 7 天，形状变了而 URL 不变
  * 的话，之前来过的访客整整一周拿到的都是旧形状。改了 LyricsResult 的形状就把
- * 这个数加一。v4：响应多了 songId（09-03 到 09-07 之间不传参那版留下的 v3 缓存
- * 没有它，对号会永远失败）。
+ * 这个数加一。v4：响应多了 songId。
  */
 const LYRICS_FORMAT = 4;
 
@@ -80,7 +77,6 @@ async function fetchLyrics(songId: string): Promise<CachedLyricsData | null> {
         return null;
       }
       const data = (await response.json()) as {
-        songId?: string | null;
         lines?: LyricLine[];
         songwriters?: string[];
       };
@@ -93,14 +89,6 @@ async function fetchLyrics(songId: string): Promise<CachedLyricsData | null> {
             : undefined,
       };
 
-      // 服务端快照和浏览器短暂不一致：不对号只挡 5 秒，把返回结果按 data.songId 预热进缓存
-      if (data.songId !== songId) {
-        emptyUntil.set(songId, Date.now() + FAILURE_TTL_MS);
-        if (data.songId && lines.length) {
-          lyricsCache.set(data.songId, payload);
-        }
-        return null;
-      }
 
       if (lines.length) {
         lyricsCache.set(songId, payload);
