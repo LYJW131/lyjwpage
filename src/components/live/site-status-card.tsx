@@ -9,6 +9,7 @@ import { Card } from "@/components/ui/card";
 import { colorForRank, RepoContributions } from "@/components/live/repo-contributions";
 import { formatUptime } from "@/components/live/server-card";
 import { SentryMark } from "@/components/live/sentry-mark";
+import { UptimeStrip } from "@/components/live/uptime-strip";
 import { useStale } from "@/hooks/use-stale";
 import { fieldPerformanceScore } from "@/lib/field-score";
 import { AGENT_LIMITS_STALE_MS, SERVER_STALE_MS } from "@/lib/freshness";
@@ -182,6 +183,7 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
       )}
     </div>
     <RepoContributions data={github} recentCommits={recentCommits} deploymentsBySha={deploymentsBySha} />
+    {sentry?.uptime && <UptimeStrip uptime={sentry.uptime} />}
     {/*
       性能表和服务格到 lg 才并排：768–1023 之间并排的话每格只剩 150–200px，
       「Req · CPU · Last 12h」一行放不下会折行，所以这一段和手机一样上下叠。

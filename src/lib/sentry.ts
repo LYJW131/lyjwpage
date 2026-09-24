@@ -23,4 +23,6 @@ export const SENTRY_ORG = "yangjunwei-liang";
 export const SENTRY_API_ORIGIN = "https://us.sentry.io";
 export const SENTRY_SITE_PROJECT_ID = "4512132602331136";
 export const SENTRY_WORKER_PROJECT_ID = "4512132602855424";
+/** lyjw.me 的每分钟在线探测（Sentry 里的 uptime detector，HEAD /api/version） */
+export const SENTRY_UPTIME_DETECTOR_ID = "10416301";
 export const SENTRY_CRON_MONITOR_SLUG = "api-minute-cron";
