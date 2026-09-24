@@ -3,26 +3,28 @@
 # 镜像由 .github/workflows/build-reporters.yml 在 GitHub 上构建，合进 main 推 `latest`。
 # 完整步骤见各自的 README。
 #
+# 合进 main 后由 build-reporters.yml 的 deploy 自动换（ssh 进来只能跑 /opt/lyjwpage/deploy.sh，
+# 即仓库里的 reporters/misaka-deploy.sh）。
+#
 # 两个服务共用一个 compose project，所以**不带服务名的命令会同时动两个容器**。
-# 平时只换一个就点名换那个：
+# 手动只换一个就点名换那个：
 #   docker compose pull server-reporter && docker compose up -d --no-deps server-reporter
-#   docker compose pull agent-limits-reporter && docker compose up -d --no-deps agent-limits-reporter
+#   docker compose pull agents-reporter && docker compose up -d --no-deps agents-reporter
 # 要回退就把 `latest` 临时改成 Actions 推的 `sha-<短哈希>`。
 #
 # 各自的 .env 留在各自的子目录里：两边都有 SITE_URL / TELEMETRY_INGEST_SECRET /
-# ONLINE_COUNTER_URL，但三档间隔的值不一样（限额 5/10/60 分钟，server 1/2/15 分钟），
-# 合成一份反而串味。
+# 其余配置，节奏各管各的（限额按人数 5/10/60 分钟，server 固定每分钟），合成一份反而串味。
 name: lyjwpage-reporters
 
 services:
-  agent-limits-reporter:
-    image: ghcr.io/lyjw131/agent-limits-reporter:latest
-    container_name: agent-limits-reporter
+  agents-reporter:
+    image: ghcr.io/lyjw131/agents-reporter:latest
+    container_name: agents-reporter
     restart: unless-stopped
     env_file:
-      - ./agent-limits-reporter/.env
+      - ./agents-reporter/.env
     volumes:
-      - ./agent-limits-reporter/data:/data
+      - ./agents-reporter/data:/data
     logging:
       driver: json-file
       options:

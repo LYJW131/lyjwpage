@@ -1,6 +1,7 @@
-# agent-limits-reporter
+# agents-reporter
 
-把各 coding agent 的**账号限额**推给 lyjwpage 的小代理，跑在日本的 misaka-jp 上。
+把各 coding agent 的**账号限额**和 **Cursor 的云端用量**推给 lyjwpage 的小代理，跑在日本的 misaka-jp 上。
+（2026-09-24 前叫 agent-limits-reporter；后来不止报限额，按入口 `/api/ingest/agents` 改名。）
 
 限额（套餐 + 用量窗口）从前和 token 用量一起由 MacTelemetryHub 从本机 TokenTracker
 取来、塞进 `/api/ingest/mac` 的 `vibeCodingUsage`。Mac 合盖 / 睡眠 / 离线时限额就冻住。
@@ -21,8 +22,9 @@ Claude、Codex、Grok、Antigravity 的用量仍由 Mac 从本机日志上报。
 4. POST 到站点
 
 每轮收尾并行读 `ONLINE_COUNTER_URL/count` 与 `SITE_URL/count`：`online`（有页面**可见**）大于 0 走快档；否则
-`connections`（有页面**开着**，含后台标签页）大于 0 走中档，否则走闲档。与 server /
-PlayStation 上报器采用同款人数分档逻辑，限额使用自己的 5 / 10 / 60 分钟。
+`connections`（有页面**开着**，含后台标签页）大于 0 走中档，否则走闲档。与
+PlayStation 上报器采用同款人数分档逻辑，限额使用自己的 5 / 10 / 60 分钟。调频在这里控制的是打各家
+限额接口的频率（server-reporter 已改成固定每分钟，它当初调频只为给 Vercel 减负）。
 计数超时、非成功响应、格式错误一律当 0，不触发上报失败重试。
 只配 `SITE_INGEST_URL` 不配 `SITE_URL` 时读不到人头数，固定走 60 分钟。
 
@@ -72,17 +74,17 @@ PlayStation 上报器采用同款人数分档逻辑，限额使用自己的 5 / 
 先把卷目录建出来并交给容器里的 `node` 用户（uid 1000），不然登录时写不进去：
 
 ```bash
-mkdir -p agent-limits-reporter/data && sudo chown 1000:1000 agent-limits-reporter/data
+mkdir -p agents-reporter/data && sudo chown 1000:1000 agents-reporter/data
 ```
 
 登录一次，凭据就在 `./data` 卷里（`/data/.claude`、`/data/.codex`、`/data/.grok`、`/data/.gemini`、`/data/.config/cursor`）。
 
 ```bash
-docker compose run --rm agent-limits-reporter claude
-docker compose run --rm agent-limits-reporter codex login --device-auth
-docker compose run --rm agent-limits-reporter grok login --device-auth
-docker compose run --rm agent-limits-reporter agy
-docker compose run --rm agent-limits-reporter agent login   # cursor-agent，见下面
+docker compose run --rm agents-reporter claude
+docker compose run --rm agents-reporter codex login --device-auth
+docker compose run --rm agents-reporter grok login --device-auth
+docker compose run --rm agents-reporter agy
+docker compose run --rm agents-reporter agent login   # cursor-agent，见下面
 ```
 
 Grok 的包是 `@xai-official/grok`，命令是 `grok`，无浏览器的环境用 `--device-auth`（`--device-code` 是别名）。
@@ -159,14 +161,14 @@ cursor 是 `{ period, plan, hardLimit, sand }`：三份 DashboardService 响应�
 ## 在 misaka-jp 上跑
 
 部署单元是上一层的 [`reporters/compose.yaml`](../compose.yaml)，和 `server-reporter` 同一个 project：
-机器上 `/opt/lyjwpage` 放 `compose.yaml`，`agent-limits-reporter/` 下只有 `.env` 和 `data/` 卷。
+机器上 `/opt/lyjwpage` 放 `compose.yaml`，`agents-reporter/` 下只有 `.env` 和 `data/` 卷。
 镜像由 [`build-reporters.yml`](../../.github/workflows/build-reporters.yml) 在 GitHub Actions 上构建
-（只出 `linux/amd64`），这个目录有改动合进 main 就推 `ghcr.io/lyjw131/agent-limits-reporter:latest` 和
+（只出 `linux/amd64`），这个目录有改动合进 main 就推 `ghcr.io/lyjw131/agents-reporter:latest` 和
 `sha-<短哈希>`。机器上只拉镜像，不放源码、不 build。
 从前在 misaka-jp（1C2G）上现场 build 这个装了五个 CLI 的镜像，冷 build 约 10 分钟。
 
 一个 project 里两个服务，所以**不点名服务的命令会同时动两个容器**。只动限额这个就写服务名：
-`docker compose pull agent-limits-reporter && docker compose up -d --no-deps agent-limits-reporter`。
+`docker compose pull agents-reporter && docker compose up -d --no-deps agents-reporter`。
 
 2026-09-13 从群晖（dsm `/volume3/docker`）搬到 misaka-jp `/opt/lyjwpage`，和 `server-reporter` 同一台。
 这台在日本，各家限额接口直连可达，**`.env` 里不再需要 `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY`**。
@@ -181,20 +183,22 @@ ssh 直连在 kex 阶段会被对面关掉，一律走 dsm 跳板：`ssh -J dsm 
 `compose.yaml` 改了才需要送（跳板后面 sftp 用不了，`scp` 别想，走 ssh 管道）：
 
 ```bash
-ssh -J dsm misaka-jp 'mkdir -p /opt/lyjwpage/agent-limits-reporter && cat > /opt/lyjwpage/compose.yaml' < reporters/compose.yaml
+ssh -J dsm misaka-jp 'mkdir -p /opt/lyjwpage/agents-reporter && cat > /opt/lyjwpage/compose.yaml' < reporters/compose.yaml
 ```
 
 `.env` 单独送：
 
 ```bash
-ssh -J dsm misaka-jp 'cat > /opt/lyjwpage/agent-limits-reporter/.env && chmod 600 /opt/lyjwpage/agent-limits-reporter/.env' < 本机那份.env
+ssh -J dsm misaka-jp 'cat > /opt/lyjwpage/agents-reporter/.env && chmod 600 /opt/lyjwpage/agents-reporter/.env' < 本机那份.env
 ```
 
-先登录五家（见上），再起；之后每次 Actions 推了新镜像也是这一句：
+先登录五家（见上），再起：
 
 ```bash
-ssh -J dsm misaka-jp 'cd /opt/lyjwpage && docker compose pull agent-limits-reporter && docker compose up -d --no-deps agent-limits-reporter'
+ssh -J dsm misaka-jp 'cd /opt/lyjwpage && docker compose pull agents-reporter && docker compose up -d --no-deps agents-reporter'
 ```
+
+合进 main 之后不用再手动换：`build-reporters.yml` 推完镜像会用部署密钥 ssh 过去自动 pull 并重建这一个服务（见 `reporters/misaka-deploy.sh`）。手动换还是上面那一句。
 
 两个上报器一起换（第一次部署、或者两边都改了）：`cd /opt/lyjwpage && docker compose pull && docker compose up -d`。
 要回退就把 `compose.yaml` 里的 `latest` 临时换成 Actions 推过的 `sha-<短哈希>`。

@@ -131,3 +131,8 @@ test("给了流量就得是完整一份，缺项、负数、周期倒着走都�
   assert.throws(broken({ quotaBytes: 0 }), /quotaBytes/);
   assert.throws(() => normalizeServer(report({ traffic: "1TB" })), /traffic/);
 });
+
+test("账本归 lib/reporter-ledger 管，不进服务器快照", () => {
+  const fresh = normalizeServer(report({ reporter: { commit: "b15e3cc", pushes: 3, rttMs: 180, start: 1, end: 2 } }));
+  assert.equal("reporter" in fresh, false);
+});

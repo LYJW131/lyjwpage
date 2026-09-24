@@ -1,0 +1,22 @@
+{
+  "name": "@lyjwpage/agents-reporter",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "把各 coding agent 的账号限额和 Cursor 用量推送到 lyjwpage",
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "tsc -p tsconfig.json && node --test --experimental-strip-types src/*.test.mts src/providers/*.test.mts",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^20",
+    "typescript": "^5"
+  }
+}

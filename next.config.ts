@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withSentryConfig } from "@sentry/nextjs/config";
 import { execSync } from "node:child_process";
 
 import { IMAGE_PATH_PREFIX } from "./src/lib/asset-url";
@@ -66,6 +67,8 @@ const nextConfig: NextConfig = {
     BUILD_TIME,
     COMMIT_SHA: resolveCommitSha(),
     NEXT_PUBLIC_BACKEND_URL: resolvePublicBackendUrl(),
+    // Sentry 按部署类型分环境（见 lib/sentry）；本地 development 默认不上报
+    SENTRY_ENVIRONMENT: process.env.VERCEL_ENV ?? "development",
   },
   /**
    * `next dev` 按 `<distDir>/dev/lock` 保证同一目录只跑一个实例。3211 上那份已经
@@ -189,18 +192,42 @@ const nextConfig: NextConfig = {
       },
     ],
     /**
-     * 仅供「自建部署 + 本机走 fake-IP 代理」这一种情况。
+     * 本机走 fake-IP 代理时放行图片优化器取「私有 IP」上的源图。
      *
-     * Clash/Surge 那类代理在 TUN 模式下把域名解析到 198.18.0.0/15，而 Next 16
-     * 的 SSRF 防护看到私有 IP 就拒绝取图（实测：hostname resolved to private
+     * Clash/Surge（本机是 OpenClash）那类代理在 TUN 模式下把域名解析到 198.18.0.0/15，
+     * 而 Next 16 的 SSRF 防护看到私有 IP 就拒绝取图（实测：hostname resolved to private
      * IP 198.18.8.12，连问 1.1.1.1 都是这个结果，是网络层劫持不是本机 DNS）。
      *
-     * 默认关，Vercel 上不要设 —— 那边解析得到真实公网 IP，开了纯属白白削弱
-     * SSRF 防护。真正干净的解法是在代理里给 blobstore.apple.com 配直连规则，
-     * 这个开关只是不想让部署被代理配置卡住。
+     * `next dev` 一律放开：开发服务器只在本机跑，不开的话封面、头像全是 400。
+     * 生产构建默认关，Vercel 上不要设 —— 那边解析得到真实公网 IP，开了纯属白白
+     * 削弱 SSRF 防护；自建部署又在 fake-IP 网络里时才设 IMAGE_ALLOW_LOCAL_IP=true。
      */
-    dangerouslyAllowLocalIP: process.env.IMAGE_ALLOW_LOCAL_IP === "true",
+    dangerouslyAllowLocalIP: process.env.NODE_ENV === "development" || process.env.IMAGE_ALLOW_LOCAL_IP === "true",
   },
 };
 
-export default nextConfig;
+/**
+ * Sentry 的构建期部分：上报隧道、release 注入、source map 上传。
+ *
+ * tunnelRoute 写死一条固定路径而不是每次构建随机：lyjw131.com 的 ESA 会把首页 HTML
+ * 和 JS 缓存到一天（stale-while-revalidate），旧 JS 还会往上一版的路径发。`/relay`
+ * 没有文件后缀，ESA 不缓存，POST 原样回源 lyjw.me。
+ *
+ * source map 只在有 SENTRY_AUTH_TOKEN 时上传，上传完即删，不对外发布；没有令牌
+ * （本地、没装 Sentry 的 Vercel 集成）时照常构建，只是 Sentry 里的调用栈是压缩后的。
+ */
+export default withSentryConfig(nextConfig, {
+  org: "yangjunwei-liang",
+  project: "lyjwpage",
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+  silent: !process.env.CI,
+  telemetry: false,
+  tunnelRoute: "/relay",
+  widenClientFileUpload: true,
+  sourcemaps: { deleteSourcemapsAfterUpload: true },
+  bundleSizeOptimizations: {
+    excludeDebugStatements: true,
+    excludeReplayIframe: true,
+    excludeReplayShadowDom: true,
+  },
+});

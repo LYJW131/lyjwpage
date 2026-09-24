@@ -45,6 +45,11 @@ const onlineCounterUrl = process.env.ONLINE_COUNTER_URL?.trim() ?? "";
 export const config = {
   dryRun,
 
+  /** 镜像构建时烧进来的提交（build-reporters.yml 传 GIT_SHA），站点卡片据此显示线上跑的是哪一版 */
+  reporterCommit: process.env.REPORTER_COMMIT?.trim() || null,
+  /** 推送账本（过去 12 小时推成功几封），和凭据同在挂进来的 /data 卷上；留空 = 只记在内存里 */
+  pushLedgerPath: process.env.PUSH_LEDGER_PATH === undefined ? "/data/pushes.json" : process.env.PUSH_LEDGER_PATH.trim(),
+
   site: {
     ingestUrl:
       process.env.SITE_INGEST_URL?.trim() ||
@@ -52,7 +57,7 @@ export const config = {
     secret: process.env.TELEMETRY_INGEST_SECRET?.trim() ?? "",
   },
 
-  /** 与 server / PlayStation 共用人数分档逻辑；限额使用 5 / 10 / 60 分钟。 */
+  /** 与 PlayStation 共用人数分档逻辑，控制打各家限额接口的频率；限额使用 5 / 10 / 60 分钟。 */
   cadence: {
     liveIntervalMs: ms("LIVE_INTERVAL_MS", 300_000),
     openIntervalMs: ms("OPEN_INTERVAL_MS", 600_000),

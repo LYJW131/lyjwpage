@@ -24,6 +24,8 @@ export const CLOUDFLARE_WORKERS_PATH = STATUS_VIEWS.cloudflareWorkers.path;
 export const ACTIVITY_PATH = STATUS_VIEWS.activity.path;
 export const SERVER_PATH = STATUS_VIEWS.server.path;
 export const VERCEL_DEPLOYMENTS_PATH = STATUS_VIEWS.vercelDeployments.path;
+export const SENTRY_PATH = STATUS_VIEWS.sentry.path;
+export const REPORTERS_PATH = STATUS_VIEWS.reporters.path;
 export const PULSE_PATH = STATUS_VIEWS.pulse.path;
 
 /**

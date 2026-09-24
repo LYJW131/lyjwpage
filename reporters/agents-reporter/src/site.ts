@@ -1,6 +1,10 @@
 import type { CursorNow } from "./cursor-now.js";
 import type { CursorUsagePush } from "./cursor-usage.js";
 import { config } from "./config.js";
+import { failure } from "./log.js";
+import { createPushLedger } from "./push-ledger.js";
+
+const ledger = createPushLedger(config.pushLedgerPath, config.reporterCommit, (error) => failure("push-ledger", error));
 
 export type AgentLimit = {
   key: string;
@@ -51,11 +55,16 @@ async function readEnvelope<T>(response: Response): Promise<T | undefined> {
 }
 
 export async function push(payload: PushPayload): Promise<void> {
+  const at = Date.now();
   const response = await fetch(config.site.ingestUrl, {
     method: "POST",
     headers: { ...authHeaders(), "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    // 每一封带上自己的推送账本：镜像提交 + 过去 12 小时推成功几封（含这一封）与往返中位数。
+    // 限额那轮和 Cursor 小信封都算这个上报器的一次推送
+    body: JSON.stringify({ ...payload, reporter: await ledger.block(at) }),
     signal: AbortSignal.timeout(config.pushTimeoutMs),
   });
   await readEnvelope(response);
+  // 站点收下了才记账；往返从发出请求算到读完回执
+  await ledger.succeeded(at, Date.now() - at);
 }

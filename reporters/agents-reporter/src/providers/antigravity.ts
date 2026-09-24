@@ -216,7 +216,7 @@ async function retrieveQuota(accessToken: string): Promise<{ status: number; bod
     headers: {
       Authorization: `Bearer ${accessToken}`,
       "Content-Type": "application/json",
-      "User-Agent": "antigravity/cli (agent-limits-reporter)",
+      "User-Agent": "antigravity/cli (agents-reporter)",
     },
     body: JSON.stringify({ project: "aicode-consumers" }),
     signal: AbortSignal.timeout(20_000),
