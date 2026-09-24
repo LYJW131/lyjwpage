@@ -9,14 +9,19 @@ import {
   type AppVersionStatus,
   resolveVersionStatus,
 } from "@/lib/app-version";
+import { useLiveEvents } from "@/hooks/use-live-events";
 import { commitSha as pageCommit } from "@/lib/build-info";
 import { fetchStatus } from "@/lib/status-reads";
 import { VERCEL_DEPLOYMENTS_PATH } from "@/lib/paths";
 import type { StatusResponse } from "@/lib/types";
 import type { VercelDeploymentsPayload } from "@/lib/vercel-deployments-types";
 
-/** 五分钟一问，切回页面时再问一次；响应几十字节，是随部署分发的静态文件 */
-const REFRESH_MS = 5 * 60_000;
+/**
+ * 半小时一问只是兜底。打开页面和切回页面时照样各问一次；新部署接管域名后由
+ * GitHub Actions 经 Worker 推一条 `version` 通知（hooks/use-live-events），
+ * 开着的页面当场重问，不靠这条轮询赶上。
+ */
+const REFRESH_MS = 30 * 60_000;
 
 async function fetchVersion(path: string): Promise<AppVersionPayload> {
   // 同源、不走 SWR 的状态读路径；浏览器缓存也不能用，要的就是此刻接管域名的那一版
@@ -36,6 +41,8 @@ async function fetchVersion(path: string): Promise<AppVersionPayload> {
  */
 export function useAppVersion() {
   const isDev = process.env.NODE_ENV === "development";
+  // 共用整页那一条连接；`version` 通知靠它送到
+  useLiveEvents();
   const { data: latest } = useSWR<AppVersionPayload>(APP_VERSION_PATH, fetchVersion, {
     refreshInterval: REFRESH_MS,
     revalidateOnFocus: true,
