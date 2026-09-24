@@ -76,7 +76,7 @@ default / look-left / look-right / arms-up / 蹲下 + 烟尘，以及官方入�
 - 推送连接用 Hibernation API，ping/pong 由运行时自动应答，不唤醒 DO。
 
 ## 08 站点自检 —— 报错和在线，交给 Sentry
-- 每分钟两个方向相反的信号：Sentry 来敲门（在线探测 HEAD /api/version，只说明 Vercel 还在出页面）；Worker 去报到（Sentry.withMonitor 包着整轮分钟 cron，跑完才报；途中叫 StateHub 排队重建读模型，KV 是之后 DO 定时任务才写的，所以心跳证明的是 cron 和 DO，不含 KV——README 与卡片悬停提示写了 KV，以代码为准）。
+- 两个方向相反的信号：Sentry 每分钟来敲门（在线探测 HEAD /api/version，只说明 Vercel 还在出页面）；Worker 每 5 分钟去报到（cron 仍每分钟跑，2026-09-25 起只有整 5 分钟那一轮包上 Sentry.withMonitor，跑完才报；途中叫 StateHub 排队重建读模型，KV 是之后 DO 定时任务才写的，所以心跳证明的是 cron 和 DO，不含 KV——README 与卡片悬停提示写了 KV，以代码为准）。
 - Worker 用只读令牌取回报错、在线、性能等结果，进 KV 读模型，经 /api/status/sentry 变成 LYJWPAGE 卡片上的两行在线状态（30 天一天一格、Operational；卡片下的两行中文是讲解标注，真实卡片没有）；之后每次敲门 / 报到，今天那一格亮一下。
 - 结尾 Clawd：「线上出错时，我先来这儿查证据。」（AGENTS.md：排查线上报错先经 Sentry 查证据再读代码）
 - 不上画面：组织名、探测器 ID、真实报错标题与可用率数字；令牌只说「只读」。

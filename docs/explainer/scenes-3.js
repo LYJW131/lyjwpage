@@ -634,7 +634,7 @@
   // =====================================================================
   // 08 站点自检（8 小节，19.2 s）：每分钟两个方向相反的信号，结果再取回卡片
   // Sentry 来敲门（在线探测 HEAD /api/version，只能说明页面还在出）；
-  // Worker 去报到（分钟 cron 跑完一整轮才报到，途中会叫 Durable Object 排队重建读模型；KV 是之后才写的）
+  // Worker 去报到（cron 每分钟跑，每 5 分钟那一轮跑完才报到，途中会叫 Durable Object 排队重建读模型；KV 是之后才写的）
   // =====================================================================
   const cS = chapter("站点自检", "报错和在线，交给 Sentry", 8);
   css(`
@@ -655,8 +655,8 @@
   `);
   // Sentry 标（Simple Icons，CC0；站点 sentry-mark.tsx 用的同一份）
   const SENTRY_MARK = `<svg viewBox="0 0 24 24" width="32" height="32" fill="currentColor"><path d="M13.91 2.505c-.873-1.448-2.972-1.448-3.844 0L6.904 7.92a15.478 15.478 0 0 1 8.53 12.811h-2.221A13.301 13.301 0 0 0 5.784 9.814l-2.926 5.06a7.65 7.65 0 0 1 4.435 5.848H2.194a.365.365 0 0 1-.298-.534l1.413-2.402a5.16 5.16 0 0 0-1.614-.913L.296 19.275a2.182 2.182 0 0 0 .812 2.999 2.24 2.24 0 0 0 1.086.288h6.983a9.322 9.322 0 0 0-3.845-8.318l1.11-1.922a11.47 11.47 0 0 1 4.95 10.24h5.915a17.242 17.242 0 0 0-7.885-15.28l2.244-3.845a.37.37 0 0 1 .504-.13c.255.14 9.75 16.708 9.928 16.9a.365.365 0 0 1-.327.543h-2.287c.029.612.029 1.223 0 1.831h2.297a2.206 2.206 0 0 0 1.922-3.31z"/></svg>`;
-  // 敲门（探测）和报到（心跳）的时刻；中间 11–14 s 是取回结果那一段，信号先停一停
-  const PROBES = [3.2, 5.6, 8.0, 10.4, 14.4, 16.8], BEATS = [4.4, 6.8, 9.2, 15.6];
+  // 敲门（探测，每分钟）和报到（心跳，每 5 分钟一次，比敲门稀）；中间 11–14 s 是取回结果那一段，信号先停一停
+  const PROBES = [3.2, 5.6, 8.0, 10.4, 14.4, 16.8], BEATS = [6.8, 15.6];
   scene(cS, 1.9, 19.2, (root, s) => {
     const T0 = s.t0 - cS.t0;
     const wl = wireLayer(root);
@@ -666,14 +666,14 @@
       lines: [`<div class="s8-chain"><b>cron</b><i>→</i><b>DO</b></div>`] });
     worker.querySelector(".hd").style.fontSize = "24px";
     const chain = [...worker.querySelectorAll(".s8-chain b")];
-    const tProbe = L("tg p", root, "在线探测 · 每分钟"), tBeat = L("tg o", root, "cron 心跳 · 每分钟");
+    const tProbe = L("tg p", root, "在线探测 · 每分钟"), tBeat = L("tg o", root, "cron 心跳 · 每 5 分钟");
     const kvTag = L("tg", root, "KV 读模型");
     const ok = L("tg g", root, "200");
     const cells = (n) => Array.from({ length: n }, () => "<i></i>").join("");
     const panel = L("card s8-panel", root);
     panel.innerHTML = `<div class="s8-top"><b>LYJWPAGE</b><span>站点卡片里的在线状态</span></div>` +
       `<div class="s8-row"><div class="s8-rh">lyjw.me<span>Operational</span></div><div class="s8-cells">${cells(30)}</div><div class="s8-note">Sentry 每分钟来敲门 · 只说明页面还在出</div></div>` +
-      `<div class="s8-row"><div class="s8-rh">API<span>Operational</span></div><div class="s8-cells">${cells(30)}</div><div class="s8-note">Worker 每分钟去报到 · cron 跑完一整轮才算</div></div>`;
+      `<div class="s8-row"><div class="s8-rh">API<span>Operational</span></div><div class="s8-cells">${cells(30)}</div><div class="s8-note">Worker 每 5 分钟去报到 · cron 跑完一整轮才算</div></div>`;
     panel.__x = 1060; panel.__y = 560;
     const rows = [...panel.querySelectorAll(".s8-cells")].map((r) => [...r.children]);
     const jo = { color: "#1F1E1B", opacity: 0.42 };
@@ -737,7 +737,7 @@
   at(cS, 0, LEFT[0], LEFT[1]);
   look(cS, 0.5, 1);
   emote(cS, 13.2, "spark", 1.0);
-  say(cS, 2.6, 6.6, "每分钟两个信号，方向相反：\nSentry 来敲门，Worker 去报到。");
+  say(cS, 2.6, 6.6, "两个信号，方向相反：Sentry 每分钟\n来敲门，Worker 每 5 分钟去报到。");
   say(cS, 7.0, 10.8, "敲门只说明页面还在出；\n报到说明 cron 跑完了一整轮。");
   say(cS, 12.2, 16.0, "Worker 用只读令牌取回结果，\n变成卡片上的两行在线状态。");
   say(cS, 16.05, 18.6, "线上出错时，\n我先来这儿查证据。");
