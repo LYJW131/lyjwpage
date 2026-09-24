@@ -188,12 +188,7 @@
           "failure": 0,
           "missed": 0
         }
-      ],
-      "lastCheck": {
-        "at": "$now-25000",
-        "durationMs": 312,
-        "httpStatus": 200
-      }
+      ]
     },
     "errors": {
       "site": {

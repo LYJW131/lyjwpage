@@ -23,7 +23,6 @@ export type SentryUptime = {
   availability30d: number | null;
   /** 最近 30 天，旧的在前；监测开通前的日子 success/failure 都是 0 */
   days: UptimeDay[];
-  lastCheck: { at: number; durationMs: number | null; httpStatus: number | null } | null;
 };
 
 /** 12 小时和站点卡片服务格里 Vercel / Workers 的 Req、CPU 同一个窗口 */

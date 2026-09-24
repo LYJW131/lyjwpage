@@ -38,12 +38,6 @@ function numOrNull(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-function isoToMs(value: unknown): number | null {
-  if (typeof value !== "string") return null;
-  const ms = Date.parse(value);
-  return Number.isFinite(ms) ? ms : null;
-}
-
 /** 成功 / (成功 + 失败)；missed 是探测自己没跑成，不算站点的账 */
 export function availability(days: Pick<UptimeDay, "success" | "failure">[]): number | null {
   const success = days.reduce((sum, day) => sum + day.success, 0);
@@ -65,13 +59,6 @@ export function parseUptimeBuckets(raw: unknown, detectorId: string): UptimeDay[
       missed: num(c.missed_window),
     };
   });
-}
-
-export function parseLastCheck(raw: unknown): SentryUptime["lastCheck"] {
-  const first = Array.isArray(raw) ? record(raw[0]) : {};
-  const at = isoToMs(first.timestamp);
-  if (at == null) return null;
-  return { at, durationMs: numOrNull(first.durationMs), httpStatus: numOrNull(first.httpStatusCode) };
 }
 
 /** Discover 的单行聚合 → 第一行的字段 */
@@ -105,7 +92,7 @@ export function sentryClient(token: string): SentryGet {
 async function fetchUptime(api: SentryGet, now: number): Promise<SentryUptime> {
   const seconds = (ms: number) => String(Math.floor(ms / 1000));
   const today = Math.floor(now / DAY_MS) * DAY_MS;
-  const [detail, daily, hourly, checks] = await Promise.all([
+  const [detail, daily, hourly] = await Promise.all([
     api(`${UPTIME_PATH}/`, {}).catch(() => null),
     api(`${ORG_PATH}/uptime-stats/`, {
       uptimeDetectorId: SENTRY_UPTIME_DETECTOR_ID,
@@ -119,7 +106,6 @@ async function fetchUptime(api: SentryGet, now: number): Promise<SentryUptime> {
       until: seconds(now),
       resolution: "1h",
     }),
-    api(`${UPTIME_PATH}/checks/`, { per_page: "1" }).catch(() => null),
   ]);
   const info = record(detail);
   const days = parseUptimeBuckets(daily, SENTRY_UPTIME_DETECTOR_ID);
@@ -129,7 +115,6 @@ async function fetchUptime(api: SentryGet, now: number): Promise<SentryUptime> {
     availability24h: availability(parseUptimeBuckets(hourly, SENTRY_UPTIME_DETECTOR_ID)),
     availability30d: availability(days),
     days,
-    lastCheck: parseLastCheck(checks),
   };
 }
 

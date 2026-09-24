@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { availability, fetchSentryStatus, parseLastCheck, parseUptimeBuckets } from "./sentry-status.ts";
+import { availability, fetchSentryStatus, parseUptimeBuckets } from "./sentry-status.ts";
 
 // 形状取自 2026-09-23 对 Sentry API 的真实响应，只删了用不到的字段
 
@@ -16,11 +16,6 @@ test("uptime buckets count incident failures as downtime and ignore missed windo
   assert.equal(availability(days), (19 + 187) / (19 + 187 + 3));
   assert.equal(availability([{ success: 0, failure: 0 }]), null);
   assert.throws(() => parseUptimeBuckets({}, "10416301"));
-});
-
-test("uptime last check", () => {
-  assert.deepEqual(parseLastCheck([{ timestamp: "2026-09-23T03:01:37Z", durationMs: 411, httpStatusCode: 200 }]), { at: Date.parse("2026-09-23T03:01:37Z"), durationMs: 411, httpStatus: 200 });
-  assert.equal(parseLastCheck([]), null);
 });
 
 test("one failing block degrades to null without failing the round", async () => {
