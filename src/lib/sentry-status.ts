@@ -14,13 +14,13 @@ import type { HealthSeries, SentryErrorSeries, SentryStatusPayload, SentryUptime
  * org:read / project:read / event:read）调 Sentry API。
  *
  * 一轮十来个请求，分块各自降级：某一块失败只让那一块为 null，不拖垮整张卡。
- * 结果缓存 5 分钟，另留一份 last-good 撑过 Sentry 短暂不可用。这条视图是慢端点
- * （进 KV 投影），分钟 cron 顺带重渲染，访客的请求不直接打 Sentry。
+ * 按需取：不进 KV 投影、不跟分钟 cron，有人读才打 Sentry；结果缓存 15 分钟（这些数
+ * 按天、按 12 小时或 7 天统计，更勤也看不出差别），另留一份 last-good 撑过 Sentry 短暂不可用。
  *
  * 心跳、错误、Vitals 都只算 production 环境：本地与分支预览的测试数据不进卡片。
  */
 
-const CACHE_TTL_MS = 5 * 60_000;
+const CACHE_TTL_MS = 15 * 60_000;
 const LAST_GOOD_TTL_MS = 24 * 60 * 60_000;
 const DAY_MS = 24 * 60 * 60_000;
 const UPTIME_DAYS = 30;

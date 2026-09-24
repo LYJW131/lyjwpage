@@ -386,7 +386,7 @@ Worker 侧 storage 写失败是冒泡的，先写 `:history` 再清 `:pending` �
 
 ## Sentry 卡片
 
-`GET /api/status/sentry`（慢端点，进 KV 读模型）给站点卡片四块数据，全部由 Worker 用 `SENTRY_API_TOKEN`
+`GET /api/status/sentry` 给站点卡片四块数据，全部由 Worker 用 `SENTRY_API_TOKEN`
 取：Sentry 内部集成「lyjwpage status card」的令牌，只有 `org:read` / `project:read` / `event:read`，本地放 `.dev.vars`，
 生产配同名 Secret，Vercel 不需要。
 
@@ -398,7 +398,9 @@ Worker 侧 storage 写失败是冒泡的，先写 `:history` 再清 `:pending` �
 | `vitals` | 站点项目 production 的 pageload / 交互 span | 7 天 p75 的 LCP、INP、CLS、FCP、TTFB 与样本数，站点按 Lighthouse 曲线算出 Users 那行的分 |
 
 只放计数、比率和时刻，不放 issue 标题、报错内容和调用栈。各块并行、各自降级，全挂才算这一轮失败；
-结果缓存 5 分钟，另留一天的 last-good。改了返回形状就把 `src/lib/sentry-status.ts` 里的缓存键升一版。
+按需取：这条不进 KV 读模型、不跟分钟 cron，有人读（卡片 15 分钟轮询一次、首页生成时读一次）且缓存过期才打
+Sentry，结果缓存 15 分钟，另留一天的 last-good；没人看的时候一次都不打。改了返回形状就把 `src/lib/sentry-status.ts`
+里的缓存键升一版。
 没配令牌时端点回 `状态暂不可用`，卡片上这几块不画，其余照常。
 
 ## 常驻上报器账本
