@@ -24,7 +24,7 @@
 | **AI Coding** | 编码工具的 Token 用量、API 等值成本估算、年度热力图与账号限额窗口。 |
 | **游戏** | PlayStation 在线状态、游戏记录与奖杯进度，展开游戏卡片查看成就明细。 |
 | **Pulse** | 编码、听、看、玩、充电、身体活动六个域最近 24 小时的活跃度泳道；悬停任一时段可看当时在听的曲目、在看的影视、在玩的游戏与该窗口的评分。 |
-| **站点自身** | 网站版本、GitHub 仓库统计与最近提交（含签名状态），PageSpeed 实验室指标的滚动中位数，以及 Vercel 部署和 Cloudflare Workers 的调用统计。 |
+| **站点自身** | 网站版本、GitHub 仓库统计与最近提交（含签名状态）；站点与 API 两行 30 天在线状态，PageSpeed 实验室指标的滚动中位数与真实访客的性能分；Vercel 部署、Cloudflare Workers 的调用统计与 12 小时报错数，以及落地节点上两个常驻上报器的推送次数、往返延迟和线上版本。 |
 
 界面以灰阶、细线边界和卡片布局为基础，用等宽数字稳定动态指标的排版。颜色与动效主要服务于媒体内容、状态变化和交互反馈。
 
@@ -174,6 +174,8 @@
 ### 报错与性能交给 Sentry
 
 站点（浏览器与 Vercel 函数）和 `api` Worker（请求、分钟 cron、两个 Durable Object）各报到一个 Sentry 项目。浏览器端经同源的 `/relay` 转发，广告拦截和直连不上 sentry.io 的访客也报得上来；Session Replay 单独成块、页面空闲后才加载，只保留出错那一段。分钟 cron 有心跳监控，`lyjw.me` 有每分钟的在线探测。采样按免费额度设，入口见 [`src/lib/sentry.ts`](./src/lib/sentry.ts) 与 [`workers/api/src/sentry.ts`](./workers/api/src/sentry.ts)；本地默认不上报，要试就在 `.env.local` 设 `NEXT_PUBLIC_SENTRY_DEV=true`。
+
+Sentry 里的数据也回到页面上：`api` Worker 用只读令牌取回两个项目的报错数、真实访客的 Web Vitals、在线探测与 cron 心跳，经 KV 读模型给站点卡片（`/api/status/sentry`）。在线状态分两行：`lyjw.me` 那行探测的是 Vercel 上的静态路由，只说明前端还在出页面；`API` 那行看 cron 心跳，每一轮都要经过 Worker、Durable Object 与 KV，补上后端那一截。排查线上报错时 agent 先经 Sentry MCP 查证据再读代码，规矩写在 [`AGENTS.md`](./AGENTS.md)。
 
 ## 技术组成
 

@@ -249,6 +249,7 @@ pnpm --dir workers/api exec wrangler secret put GITHUB_TOKEN
 pnpm --dir workers/api exec wrangler secret put TELEMETRY_INGEST_SECRET
 pnpm --dir workers/api exec wrangler secret put APPLE_MUSIC_PRIVATE_KEY < AuthKey_XXXXXXXXXX.p8
 pnpm --dir workers/api exec wrangler secret put TYPESAFE_API_KEY
+pnpm --dir workers/api exec wrangler secret put SENTRY_API_TOKEN
 ```
 
 Worker 不再调用阿里云 OpenAPI。旧的 `ALIYUN_ACCESS_KEY_ID` / `ALIYUN_ACCESS_KEY_SECRET`
@@ -256,7 +257,7 @@ Secrets 与专用 RAM 用户已无用，在 Cloudflare 控制台和阿里云 RAM
 
 站点配置 `NEXT_PUBLIC_BACKEND_URL=https://api.homepage.lyjw.llc` 与相同的
 `TELEMETRY_INGEST_SECRET`；浏览器由这一个源拼 `/ws` 和 `/api/musickit/token`。所有上报器的目标为
-这个 Worker 的 `/api/ingest/<来源>`，不经过站点，调频同时读取此源 `/count` 的 `connections` 与 `ONLINE_COUNTER_URL/count` 的 `online`。实例清单见 [端点核验记录](../../docs/reporter-endpoints.md)。
+这个 Worker 的 `/api/ingest/<来源>`，不经过站点；按人数调频的（如 agents-reporter）同时读取此源 `/count` 的 `connections` 与 `ONLINE_COUNTER_URL/count` 的 `online`，server-reporter 固定每分钟推一次。实例清单见 [端点核验记录](../../docs/reporter-endpoints.md)。
 
 提交并推送 main，由 Cloudflare Workers Builds 原生 Git 集成自动部署。
 `shared/`、共用 `src/lib/`、根依赖及路径配置变化也触发 api 部署。
@@ -382,6 +383,30 @@ Worker 侧 storage 写失败是冒泡的，先写 `:history` 再清 `:pending` �
 500（`Lighthouse returned error`，连跑十轮撞见过两轮），一小时一次的节奏下那就是一小时的窗口空档。
 密钥只走查询参数（接口只认这一种），错误信息只带状态码，不回显密钥或上游响应体。
 请求用 `fields` 裁掉截图等字段，Worker 不必解那 800 KB 的整份响应。
+
+## Sentry 卡片
+
+`GET /api/status/sentry`（慢端点，进 KV 读模型）给站点卡片四块数据，全部由 Worker 用 `SENTRY_API_TOKEN`
+取：Sentry 内部集成「lyjwpage status card」的令牌，只有 `org:read` / `project:read` / `event:read`，本地放 `.dev.vars`，
+生产配同名 Secret，Vercel 不需要。
+
+| 字段 | 来源 | 说明 |
+| --- | --- | --- |
+| `uptime` | 在线探测（每分钟 HEAD `https://lyjw.me/api/version`） | 此刻状态、24 小时与 30 天可用率、每天一格。探测缺席（Sentry 自己没跑成）不算宕机 |
+| `heartbeat` | 分钟 cron 的心跳监控 `api-minute-cron`，只算 production | 同上的形状。漏报、超时、报错都算失败 |
+| `errors` | 两个项目 production 环境的报错 | 12 小时与 7 天的事件数、未解决 issue 数 |
+| `vitals` | 站点项目 production 的 pageload / 交互 span | 7 天 p75 的 LCP、INP、CLS、FCP、TTFB 与样本数，站点按 Lighthouse 曲线算出 Users 那行的分 |
+
+只放计数、比率和时刻，不放 issue 标题、报错内容和调用栈。各块并行、各自降级，全挂才算这一轮失败；
+结果缓存 5 分钟，另留一天的 last-good。改了返回形状就把 `src/lib/sentry-status.ts` 里的缓存键升一版。
+没配令牌时端点回 `状态暂不可用`，卡片上这几块不画，其余照常。
+
+## 常驻上报器账本
+
+misaka-jp 上的 server-reporter 与 agents-reporter 每封报文顶上带一个 `reporter` 块：镜像提交（Actions 以 `GIT_SHA`
+烧进 `REPORTER_COMMIT`）、过去 12 小时推成功几封（含这一封）、这些封往返的中位数 `rttMs`、窗口起止。次数和延迟由
+上报器自己数（两边同一份 `push-ledger.ts`），这里只校验、存最新一份并加上收到的时刻，由
+`GET /api/status/reporters`（慢端点）给卡片服务区最后两格。块写坏或旧版没带都当没有，不因此拒掉整封上报。
 
 ## 最近训练
 
