@@ -75,11 +75,8 @@ export const STATUS_VIEWS = {
    */
   cloudflareWorkers: { path: "/api/status/cloudflare-workers" },
   vercelDeployments: { path: "/api/status/vercel-deployments", readModel: "slow" },
-  /**
-   * 在线状态、错误量与真实访客指标，来自 Sentry。不进 KV：进了就得靠分钟 cron 每 5 分钟
-   * 重渲染一次，没人看也照打 Sentry。现在有人读才取，Worker 缓存 15 分钟
-   */
-  sentry: { path: "/api/status/sentry" },
+  /** 在线状态、错误量与真实访客指标，来自 Sentry；Worker 缓存 5 分钟，分钟级才变 */
+  sentry: { path: "/api/status/sentry", readModel: "slow" },
   /** 常驻上报器报来的账本：12 小时推成功几封、跑的哪个提交。分钟级才变 */
   reporters: { path: "/api/status/reporters", readModel: "slow" },
   pulse: { path: "/api/status/pulse" },

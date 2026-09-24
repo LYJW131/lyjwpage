@@ -46,6 +46,7 @@ test("readModel 视图都没有推送事件", () => {
     "/api/status/github-chart",
     "/api/status/github-repo",
     "/api/status/reporters",
+    "/api/status/sentry",
     "/api/status/vercel-deployments",
     "/api/status/vibecoding/year",
   ]);
