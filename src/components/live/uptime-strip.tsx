@@ -87,8 +87,8 @@ export function UptimeStrip({ site, api }: { site: SentryUptime | null; api: Hea
       )}
       {api && (
         <HealthRow name="API" health={api} unit="heartbeats"
-          statusTitle="Per-minute cron heartbeat of the api Worker (Durable Objects and KV)"
-          footTitle="cron heartbeat every minute" />
+          statusTitle="Cron heartbeat of the api Worker every 5 minutes (Durable Objects and KV)"
+          footTitle="cron heartbeat every 5 minutes" />
       )}
     </div>
   );

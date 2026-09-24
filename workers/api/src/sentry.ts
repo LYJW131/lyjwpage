@@ -1,5 +1,4 @@
 import { consoleLoggingIntegration, type CloudflareOptions } from "@sentry/cloudflare";
-import { SENTRY_CRON_MONITOR_SLUG } from "@/lib/sentry";
 
 import { previewWorkerEnabled } from "./preview";
 import type { Env } from "./runtime";
@@ -26,17 +25,3 @@ export function sentryOptions(env: Env): CloudflareOptions {
     sendDefaultPii: false,
   };
 }
-
-/**
- * 分钟 cron 的心跳（免费档只有一个监控位，给它）。连续三次没按时报到或报错才开 issue，
- * 单次 Apple / PageSpeed 抖动不吵人。slug 就是 Sentry 里那条监控的名字。
- */
-export const CRON_MONITOR_SLUG = SENTRY_CRON_MONITOR_SLUG;
-export const CRON_MONITOR_CONFIG = {
-  schedule: { type: "crontab", value: "* * * * *" },
-  checkinMargin: 2,
-  maxRuntime: 5,
-  timezone: "UTC",
-  failureIssueThreshold: 3,
-  recoveryThreshold: 1,
-} as const;

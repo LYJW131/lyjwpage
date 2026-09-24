@@ -8,7 +8,8 @@ import { historyArchiveEnabled, pulseScoringEnabled, readModelEnabled, type Env 
 import { PulseArchive } from "./pulse-archive";
 import { PulseScorer } from "./pulse-score";
 import { ReadModelRenderer as ReadModelRendererBase } from "./read-model-renderer";
-import { CRON_MONITOR_CONFIG, CRON_MONITOR_SLUG, sentryOptions } from "./sentry";
+import { CRON_MONITOR_CONFIG, CRON_MONITOR_SLUG, heartbeatDue } from "./cron-heartbeat";
+import { sentryOptions } from "./sentry";
 
 // Keep Wrangler's existing class exports and DO migration identities unchanged:
 // bindings and migrations key on these export names, the Sentry wrappers only subclass them.
@@ -37,6 +38,8 @@ const apiWorker = {
     // 影子脚本不挂 cron。这里再挡一次，避免有人把生产的分钟触发抄到预览配置上，
     // 每个分支都去打 PageSpeed 和 Apple。
     if (previewWorkerEnabled()) return;
+    // 每 5 分钟那一轮才包上心跳，其余几轮照常跑、不往 Sentry 报到
+    if (!heartbeatDue(event.scheduledTime)) return runScheduled(event, env, ctx);
     await Sentry.withMonitor(CRON_MONITOR_SLUG, () => runScheduled(event, env, ctx), CRON_MONITOR_CONFIG);
   },
 };
