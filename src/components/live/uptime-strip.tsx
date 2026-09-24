@@ -43,9 +43,14 @@ export function UptimeStrip({ uptime }: { uptime: SentryUptime }) {
         <span>UPTIME</span>
         <span>LAST {uptime.days.length || 30}D</span>
       </div>
-      <div className="mt-1.5 flex flex-col gap-3 md:flex-row md:items-end md:gap-8">
-        <div className="shrink-0" title={`24h ${percent(uptime.availability24h)} · checked every ${uptime.intervalSeconds}s`}>
-          <div className="text-3xl font-medium tracking-tight tabular-nums">
+      {/*
+        宽屏是两行两列的网格：百分比和色块同一行、居中对齐，耗时和「30 days ago / Today」
+        同一行。窄屏两组各自上下叠（md:contents 让两组的子项在宽屏直接落进网格）。
+      */}
+      <div className="mt-1.5 flex flex-col gap-3 md:grid md:grid-cols-[auto_minmax(0,1fr)] md:items-center md:gap-x-8 md:gap-y-1.5">
+        <div className="md:contents">
+          <div className="text-3xl font-medium tracking-tight tabular-nums md:col-start-1 md:row-start-1"
+            title={`24h ${percent(uptime.availability24h)} · checked every ${uptime.intervalSeconds}s`}>
             {uptime.availability30d == null ? "—" : (
               // 截到两位小数再格式化，99.999% 不会被四舍五入成 100%
               <NumberFlow value={Math.floor(uptime.availability30d * 10_000) / 10_000} format={PERCENT_FORMAT} locales="en-US" />
@@ -53,22 +58,22 @@ export function UptimeStrip({ uptime }: { uptime: SentryUptime }) {
           </div>
           {/* 最近一次探测的耗时；探的是哪个地址放进悬停提示 */}
           {uptime.lastCheck?.durationMs != null && (
-            <div className="mt-0.5 text-[11px] tabular-nums text-muted-foreground"
+            <div className="mt-0.5 text-[11px] tabular-nums text-muted-foreground md:col-start-1 md:row-start-2 md:mt-0"
               title={`Last check ${clock.format(uptime.lastCheck.at)} · HTTP ${uptime.lastCheck.httpStatus ?? "—"}${uptime.url ? ` · ${uptime.url}` : ""}`}>
               {number.format(uptime.lastCheck.durationMs)} ms
             </div>
           )}
         </div>
         {uptime.days.length > 0 && (
-          <div className="min-w-0 flex-1">
-            <div className="flex h-6 gap-[3px]" role="img" aria-label={`Daily availability, last ${uptime.days.length} days`}>
+          <div className="min-w-0 md:contents">
+            <div className="flex h-6 gap-[3px] md:col-start-2 md:row-start-1" role="img" aria-label={`Daily availability, last ${uptime.days.length} days`}>
               {uptime.days.map((entry) => {
                 const tone = dayTone(entry);
                 const failed = entry.failure ? ` · ${number.format(entry.failure)} failed checks` : "";
                 return <span key={entry.dayStart} title={`${day.format(entry.dayStart)} · ${tone.label}${failed}`} className={cn("min-w-0 flex-1 rounded-[2px]", tone.className)} />;
               })}
             </div>
-            <div className="mt-1.5 flex justify-between text-[10px] text-muted-foreground">
+            <div className="mt-1.5 flex justify-between text-[10px] text-muted-foreground md:col-start-2 md:row-start-2 md:mt-0">
               <span>{uptime.days.length} days ago</span>
               <span>Today</span>
             </div>
