@@ -36,7 +36,6 @@ function dayTone(entry: UptimeDay): { className: string; label: string } {
  * lyjw.me 的每分钟探测（HEAD /api/version，lib/sentry-status）；拿不到时整条不渲染，交给卡片其余部分。
  */
 export function UptimeStrip({ uptime }: { uptime: SentryUptime }) {
-  const host = uptime.url ? new URL(uptime.url).host : "lyjw.me";
   return (
     <div className="border-t border-line px-4 py-4 md:px-5">
       {/* 标签一左一右占满整条：左边说是什么，右边说统计了多久 */}
@@ -52,10 +51,13 @@ export function UptimeStrip({ uptime }: { uptime: SentryUptime }) {
               <NumberFlow value={Math.floor(uptime.availability30d * 10_000) / 10_000} format={PERCENT_FORMAT} locales="en-US" />
             )}
           </div>
-          <div className="mt-0.5 text-[11px] tabular-nums text-muted-foreground"
-            title={uptime.lastCheck ? `Last check ${clock.format(uptime.lastCheck.at)} · HTTP ${uptime.lastCheck.httpStatus ?? "—"}` : undefined}>
-            {host}{uptime.lastCheck?.durationMs != null && <> · {number.format(uptime.lastCheck.durationMs)} ms</>}
-          </div>
+          {/* 最近一次探测的耗时；探的是哪个地址放进悬停提示 */}
+          {uptime.lastCheck?.durationMs != null && (
+            <div className="mt-0.5 text-[11px] tabular-nums text-muted-foreground"
+              title={`Last check ${clock.format(uptime.lastCheck.at)} · HTTP ${uptime.lastCheck.httpStatus ?? "—"}${uptime.url ? ` · ${uptime.url}` : ""}`}>
+              {number.format(uptime.lastCheck.durationMs)} ms
+            </div>
+          )}
         </div>
         {uptime.days.length > 0 && (
           <div className="min-w-0 flex-1">
