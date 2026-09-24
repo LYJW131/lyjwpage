@@ -10,6 +10,7 @@ import { applyVibeCodingNow } from "@/lib/vibecoding-activity";
 import type { LiveEvent } from "@/lib/live-events";
 import { acceptPush, markLiveRead } from "@/lib/status-reads";
 import { liveSocketUrl } from "@/lib/live-socket";
+import { APP_VERSION_PATH } from "@/lib/app-version";
 import {
   CHARGER_PATH,
   DESKTOP_PATH,
@@ -108,8 +109,9 @@ const PRESENCE_PATHS = [
 /**
  * 不带数据的事件 → 收到后要重取哪几个键。
  *
- * 只剩存活这一条：亲口离线要重取 declaredOffline；超时那条浏览器拿
- * lastSeenAt 现算，但优雅离开发生在心跳窗口内，本地钟还没走到。
+ * 存活：亲口离线要重取 declaredOffline；超时那条浏览器拿 lastSeenAt 现算，
+ * 但优雅离开发生在心跳窗口内，本地钟还没走到。
+ * 版本：部署完成后的更新提示，见 lib/live-events 的 `version`。
  */
 const INVALIDATIONS: ReadonlyArray<{
   event: LiveEvent["type"];
@@ -117,6 +119,8 @@ const INVALIDATIONS: ReadonlyArray<{
 }> = [
   // 上报器上下线：不带数据，只让它供数的那几张卡重取一次，换新的 declaredOffline
   { event: "presence", paths: PRESENCE_PATHS },
+  // 新部署接管了生产域名：重问 /api/version，由域名上那一版自己回答，不信推来的 sha
+  { event: "version", paths: [APP_VERSION_PATH] },
 ];
 
 const FORWARD_BY_EVENT = new Map(

@@ -13,6 +13,7 @@ import { publish, ROOM_ID } from "./live-platform";
 import { ConfigError, issueMusicKitToken } from "./musickit-token";
 import { getAllowedOrigins, getCorsHeaders, isAllowedOrigin, isAllowedOriginValue } from "./origins";
 import { refreshAgentStatus } from "@/lib/agent-status";
+import type { LiveEvent } from "@/lib/live-events";
 import { refreshPageSpeed } from "@/lib/pagespeed";
 import { fetchPreviewUpstream, isPreviewProxyPath, previewWorkerEnabled } from "./preview";
 import { isPublicApiPath, pathForEventType } from "./public-api";
@@ -178,6 +179,27 @@ async function handleImport(request: Request, env: Env): Promise<Response> {
     console.error("[storage]", reason(error));
     return jsonResponse({ ok: false, error: "存储请求失败" }, { status: 400 });
   }
+}
+
+const SITE_DEPLOYED_PATH = "/api/internal/site-deployed";
+
+/**
+ * 站点新部署接管了生产域名：广播一条 `version` 失效通知，开着的页面重问 /api/version。
+ *
+ * 只有 GitHub Actions（.github/workflows/purge-esa.yml）调用，鉴权沿用上报的
+ * TELEMETRY_INGEST_SECRET。不走 /api/ingest：没有要落库的数据，不进 StateHub。
+ * 请求体不读 —— 推什么版本由域名上那次部署自己回答。
+ */
+async function handleSiteDeployed(request: Request, env: Env): Promise<Response> {
+  if (request.method !== "POST") return jsonResponse({ ok: false, error: "只接受 POST" }, { status: 405 });
+  const expected = env.TELEMETRY_INGEST_SECRET;
+  if (!expected) return jsonResponse({ ok: false, error: "Worker 未配置 TELEMETRY_INGEST_SECRET" }, { status: 503 });
+  const provided = bearerToken(request);
+  if (!provided || !secretMatches(provided, expected)) {
+    return jsonResponse({ ok: false, error: "未授权" }, { status: 401 });
+  }
+  const delivered = await getRoom(env).broadcast(JSON.stringify({ type: "version", payload: null } satisfies LiveEvent));
+  return jsonResponse({ ok: true, delivered });
 }
 
 /**
@@ -423,6 +445,12 @@ const worker = {
     if (url.pathname === "/api/internal/storage/import") {
       if (previewWorkerEnabled()) return new Response("Not found", { status: 404 });
       return handleImport(request, env);
+    }
+
+    if (url.pathname === SITE_DEPLOYED_PATH) {
+      // 预览 Worker 的房间连的是预览页，生产部署跟它无关
+      if (previewWorkerEnabled()) return new Response("Not found", { status: 404 });
+      return handleSiteDeployed(request, env);
     }
 
     if (url.pathname.startsWith(INGEST_PREFIX)) {

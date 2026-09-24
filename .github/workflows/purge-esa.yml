@@ -1,4 +1,4 @@
-name: Purge ESA on Deploy
+name: Purge ESA and Notify Pages on Deploy
 
 on:
   deployment_status:
@@ -37,3 +37,37 @@ jobs:
           ALIYUN_ACCESS_KEY_ID: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
           ALIYUN_ACCESS_KEY_SECRET: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
         run: node scripts/run-esa-purge.mjs
+
+  # ESA 首页刷完之后才通知：先通知的话，lyjw131.com 上的访客点刷新拿回的还是旧 HTML。
+  # 再等两个域名的 /api/version 都答出这次的 sha（部署成功到别名切换可能差几秒），
+  # 然后让 Worker 广播 `version`，开着的页面当场重问、弹更新提示。
+  notify:
+    needs: purge
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Wait for production domains to serve the new build
+        env:
+          # 手动触发没有部署 sha，跳过等待直接通知
+          EXPECTED_SHA: ${{ github.event.deployment.sha }}
+        run: |
+          [ -n "$EXPECTED_SHA" ] || { echo "没有部署 sha，跳过等待"; exit 0; }
+          for origin in https://lyjw.me https://lyjw131.com; do
+            for attempt in $(seq 1 30); do
+              commit=$(curl -fsS --max-time 10 -H 'Cache-Control: no-cache' "$origin/api/version" | jq -r '.commit // empty' || true)
+              if [ "$commit" = "$EXPECTED_SHA" ]; then echo "$origin 已是 $commit"; continue 2; fi
+              echo "$origin 仍是 ${commit:-未知}，第 $attempt 次，10 秒后重试"
+              sleep 10
+            done
+            # 等不到也照常通知：页面重问的是域名上那一版，最坏只是不弹提示
+            echo "::warning::$origin 5 分钟内没有答出 $EXPECTED_SHA"
+          done
+
+      - name: Notify open pages
+        env:
+          TELEMETRY_INGEST_SECRET: ${{ secrets.TELEMETRY_INGEST_SECRET }}
+        run: |
+          [ -n "$TELEMETRY_INGEST_SECRET" ] || { echo "::error::仓库没配 TELEMETRY_INGEST_SECRET"; exit 1; }
+          curl -fsS --max-time 15 -X POST \
+            -H "Authorization: Bearer $TELEMETRY_INGEST_SECRET" \
+            https://api.homepage.lyjw.llc/api/internal/site-deployed
