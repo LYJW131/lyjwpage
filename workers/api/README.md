@@ -393,7 +393,7 @@ Worker 侧 storage 写失败是冒泡的，先写 `:history` 再清 `:pending` �
 | 字段 | 来源 | 说明 |
 | --- | --- | --- |
 | `uptime` | 在线探测（每分钟 HEAD `https://lyjw.me/api/version`） | 此刻状态、24 小时与 30 天可用率、每天一格。探测缺席（Sentry 自己没跑成）不算宕机 |
-| `heartbeat` | 分钟 cron 的心跳监控 `api-minute-cron`，只算 production | 同上的形状。漏报、超时、报错都算失败 |
+| `heartbeat` | 分钟 cron 的心跳监控 `api-minute-cron`，只算 production | 同上的形状。cron 每分钟跑，心跳只在整 5 分钟那一轮报到（`src/cron-heartbeat.ts`）；漏报、超时、报错都算失败 |
 | `errors` | 两个项目 production 环境的报错 | 12 小时与 7 天的事件数、未解决 issue 数 |
 | `vitals` | 站点项目 production 的 pageload / 交互 span | 7 天 p75 的 LCP、INP、CLS、FCP、TTFB 与样本数，站点按 Lighthouse 曲线算出 Users 那行的分 |
 
