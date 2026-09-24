@@ -38,19 +38,14 @@ function dayTone(entry: UptimeDay): { className: string; label: string } {
 export function UptimeStrip({ uptime }: { uptime: SentryUptime }) {
   return (
     <div className="border-t border-line px-4 py-4 md:px-5">
-      {/* 标签一左一右占满整条：左边说是什么，右边说统计了多久 */}
-      <div className="flex justify-between label-mono text-muted-foreground">
-        <span>UPTIME</span>
-        <span>LAST {uptime.days.length || 30}D</span>
-      </div>
       {/*
         宽屏是两行两列的网格：百分比和色块同一行、居中对齐，耗时和「30 days ago / Today」
         同一行。窄屏百分比和耗时并排一行、耗时靠右，色块那组叠在下面（md:contents 让两组的子项在宽屏直接落进网格）。
       */}
-      <div className="mt-1.5 flex flex-col gap-3 md:grid md:grid-cols-[auto_minmax(0,1fr)] md:items-center md:gap-x-8 md:gap-y-1.5">
+      <div className="flex flex-col gap-3 md:grid md:grid-cols-[auto_minmax(0,1fr)] md:items-center md:gap-x-8 md:gap-y-1.5">
         <div className="flex items-baseline justify-between gap-3 md:contents">
           <div className="text-3xl font-medium tracking-tight tabular-nums md:col-start-1 md:row-start-1"
-            title={`24h ${percent(uptime.availability24h)} · checked every ${uptime.intervalSeconds}s`}>
+            title={`Uptime, last ${uptime.days.length} days · 24h ${percent(uptime.availability24h)} · checked every ${uptime.intervalSeconds}s`}>
             {uptime.availability30d == null ? "—" : (
               // 截到两位小数再格式化，99.999% 不会被四舍五入成 100%
               <NumberFlow value={Math.floor(uptime.availability30d * 10_000) / 10_000} format={PERCENT_FORMAT} locales="en-US" />
