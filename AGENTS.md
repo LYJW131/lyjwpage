@@ -34,6 +34,13 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - NAS 上报器与其他独立部署单元按各自 README 发布。若依赖站点的新契约或更长陈旧窗口，先确认 Vercel 站点及 Worker 契约已生效，再切换上报器，最后验证真实上报与站点读取。
 - `reporters/mac-telemetry-hub` 是 git submodule，指向 `LYJW131/MacTelemetryHub`，不会自动跟随远端。Hub 仓库推送后，站点仓库的子模块指针要挪到同一提交，否则站点里的上报器源码停在旧版本。跨两个仓库的同一件事（如新契约两边同时改）把指针挪动并进站点那次提交，一次提交说完整件事；站点本身没改动时才单独提 `chore(reporters): 更新 mac-telemetry-hub，<改了什么>`。Hub 本机安装走它自己的 `build-release.sh`，与指针更新是两件事。
 
+# 排查线上错误
+
+- 线上报错、页面异常、Worker 或 cron 失败，先用 Sentry MCP 查证据，再读代码：用 `search_issues` / `search_events` 找报错和 warn / error 日志，用 `get_sentry_resource` 看调用栈、面包屑和出错录像，拿到 release 和堆栈再对源码定位。不凭猜测改代码，也不借浏览器登录态调 Sentry 接口；MCP 不可用时告诉用户，而不是绕开。
+- 组织 `yangjunwei-liang`，区域 `https://us.sentry.io`。项目 `lyjwpage` 收浏览器和 Vercel 函数，release 是提交 SHA；项目 `api-worker` 收 api Worker（含 Durable Object 与分钟 cron），release 是 Cloudflare 版本 ID。环境分 `production` / `preview` / `development`，排查线上问题默认只看 `production`。cron 心跳监控是 `api-minute-cron`，在线探测每分钟 HEAD `https://lyjw.me/api/version`。
+- `online-counter`、`playstation-reporter` 两个 Worker 和 `reporters/` 下的上报器没接 Sentry：前者查 Cloudflare Workers 日志，后者查所在机器的容器日志。
+- Sentry 里只读不写是默认。把 issue 标为 resolved / ignored、改负责人这类写操作，在修复部署并从生产验证后再做，并在汇报里说明；删除数据、改告警规则、项目或集成设置，先问用户。
+
 # API 命名与跨端契约
 
 这些约定由主站、`reporters/` 下的相关上报器、MacTelemetryHub 和 Home Assistant 共用。
