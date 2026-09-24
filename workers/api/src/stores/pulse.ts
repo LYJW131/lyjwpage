@@ -11,7 +11,7 @@ import { askStorage, tellStorage } from "@/lib/storage";
 import type { PulseDomain, PulseLevel } from "@/lib/types";
 import type { ActivityHistory } from "@shared/activity";
 import { pulseAssessmentsKey } from "@/lib/pulse-assessments";
-import { parsePulseAssessment } from "@shared/pulse-assessment";
+import { latestPulseAssessments } from "@shared/pulse-assessment";
 import { compressPulseWindow } from "@/lib/pulse-window";
 
 function reason(error: unknown): string {
@@ -75,11 +75,12 @@ export async function replacePulseIntervals(
   const nextSamples = replacements.map(toPulseSample);
   const beforeRange = previous.filter((sample) => sample.t < range.to && (sample.until ?? sample.t) > range.from);
   const changed = JSON.stringify(beforeRange) !== JSON.stringify(nextSamples);
-  const assessments = answered.value.assessments
-    .map(parsePulseAssessment)
-    .filter((row): row is NonNullable<typeof row> => row !== null &&
-      (!changed || row.domain !== domain ||
-        JSON.stringify(compressPulseWindow(previous, row).segments) === JSON.stringify(compressPulseWindow(merged, row).segments)));
+  const current = latestPulseAssessments(answered.value.assessments);
+  const assessments = current.filter((row) =>
+    !changed || row.domain !== domain ||
+      JSON.stringify(compressPulseWindow(previous, row).segments) === JSON.stringify(compressPulseWindow(merged, row).segments));
+  // 真有评估作废了才重写评估表（顺带压掉重复行）；多数推送只是补上最新一格，还没有评估可作废
+  const invalidated = assessments.length !== current.length;
   await tellStorage(async (storage) => {
     const pipe = storage.batch().remove(k);
     if (merged.length) pipe.append(k, ...merged.map((sample) => JSON.stringify(sample)));
@@ -88,6 +89,8 @@ export async function replacePulseIntervals(
     if (changed) {
       const revision = Number(answered.value.revision);
       pipe.set(pulseIntervalRevisionKey(domain), String(Number.isSafeInteger(revision) ? revision + 1 : 1), { ttlMs: PULSE_TTL_MS });
+    }
+    if (invalidated) {
       pipe.remove(pulseAssessmentsKey());
       const serialized = assessments.map((row) => JSON.stringify(row));
       for (let at = 0; at < serialized.length; at += 10_000) {

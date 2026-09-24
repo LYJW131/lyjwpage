@@ -6,7 +6,7 @@ import { listeningPlaysKey } from "@/lib/listening-pulse";
 import { pulseIntervalRevisionKey, pulseKey } from "@/lib/pulse";
 import { PULSE_DOMAINS, type PulseDomain } from "@/lib/types";
 import { CODING_WINDOW_MS, parseCodingAssessment } from "@shared/pulse-coding";
-import type { PulseAssessment } from "@shared/pulse-assessment";
+import { latestPulseAssessments, type PulseAssessment } from "@shared/pulse-assessment";
 import { SqliteStore, type SqlDatabase } from "@shared/sqlite-store";
 import { StorageClient } from "@shared/storage-client";
 import type { StorageCommand } from "@shared/storage-contract";
@@ -350,4 +350,48 @@ test("pulse score state: commit merges at submit time and splits lists above 100
   const saved = (await b.storage.listRange(pulseAssessmentsKey(), 0, -1)).map((raw) => JSON.parse(raw) as PulseAssessment);
   assert.equal(saved.length, 10_002);
   assert.ok(saved.some((record) => record.inputHash === "concurrent"));
+});
+
+async function finishWith(b: ReturnType<typeof setup>, records: PulseAssessment[]) {
+  const state = b.coordinator();
+  const claim = await state.claimPulseScore();
+  assert.ok(claim);
+  assert.equal(await state.activatePulseScore(claim.token, claim.generation), true);
+  assert.equal(await state.finishPulseScore(claim.token, claim.generation, records), true);
+}
+
+test("pulse score state: a round only appends its new results, never rewrites the list", async () => {
+  const b = setup();
+  const seeded = Array.from({ length: 20 }, (_, i) => JSON.stringify(assessment("coding", T - i * CODING_WINDOW_MS, b.now(), `seed-${i}`)));
+  await b.storage.append(pulseAssessmentsKey(), ...seeded);
+  await finishWith(b, [assessment("listening", T, b.now(), "new")]);
+  const rows = await b.storage.listRange(pulseAssessmentsKey(), 0, -1);
+  assert.equal(rows.length, 21);
+  assert.deepEqual(rows.slice(0, 20), seeded, "existing rows are left in place");
+});
+
+test("pulse score state: a re-scored window is appended and the later row wins for every reader", async () => {
+  const b = setup();
+  const seeded = Array.from({ length: 20 }, (_, i) => JSON.stringify(assessment("coding", T - i * CODING_WINDOW_MS, b.now(), `seed-${i}`)));
+  await b.storage.append(pulseAssessmentsKey(), ...seeded);
+  await finishWith(b, [assessment("coding", T, b.now(), "rescored")]);
+  const rows = await b.storage.listRange(pulseAssessmentsKey(), 0, -1);
+  assert.equal(rows.length, 21);
+  const latest = latestPulseAssessments(rows);
+  assert.equal(latest.length, 20);
+  assert.equal(latest.find((row) => row.from === T)?.inputHash, "rescored");
+});
+
+test("pulse score state: once superseded rows outweigh half the live ones the list is compacted", async () => {
+  const b = setup();
+  const live = Array.from({ length: 10 }, (_, i) => assessment("coding", T - i * CODING_WINDOW_MS, b.now(), `live-${i}`));
+  // 同一批窗口的六份旧评分：被覆盖的行远多于有效行
+  const stale = Array.from({ length: 6 }, (_, n) => live.map((row) => JSON.stringify({ ...row, inputHash: `old-${n}` }))).flat();
+  await b.storage.append(pulseAssessmentsKey(), ...stale, ...live.map((row) => JSON.stringify(row)));
+  await finishWith(b, [assessment("listening", T, b.now(), "new")]);
+  const rows = await b.storage.listRange(pulseAssessmentsKey(), 0, -1);
+  assert.equal(rows.length, 11);
+  const parsed = rows.map((raw) => JSON.parse(raw) as PulseAssessment);
+  assert.ok(parsed.every((row) => !row.inputHash.startsWith("old-")));
+  assert.deepEqual(parsed.map((row) => row.from), [...parsed.map((row) => row.from)].sort((a, b) => a - b));
 });

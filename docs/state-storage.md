@@ -24,6 +24,7 @@ Worker 是唯一数据后端。上报、状态 API、Apple / GitHub 获取和缓
 ## 分段评分（pulse:assessments）
 
 - 六域共用一个五分钟评分调度器和 `pulse:assessments` 列表，保留七天；输入哈希相同不重复调用，晚到事实可修订相应窗口。输入哈希含 `PULSE_ASSESSMENT_VERSION`。StateHub metadata 持久化 claim token、generation、180 秒 lease 与最近尝试；普通 Worker 从固定快照提取特征和调用模型，提交时 StateHub 校验资格并与最新结果合并。
+- 列表追加写：每轮只追加新评出来的几行，同一窗口以最后一行为准（读者一律走 `latestPulseAssessments`，否则摘要会把重复行的时长算两遍）。被覆盖的旧行和过期行多过有效行的一半、或总行数超过上限的 1.5 倍时才整表压缩重写。从前每轮整表重写，七天攒满一万两千行后一天七百万行 SQLite 写入，远超 Workers Paid 每月五千万的包含量。Activity 权威替换只在确有评估作废时才重写这张表。
 - 曲线读取分段评分，24 小时摘要从相同评分按已观测时长加权计算，不再有 `pulse:scores` 或独立总评模型调用。原始状态继续用于 D1 归档，评分不混入原始表。
 - Coding 内部观测在 `pulse:coding-observations`，窗口 token 报告在 `pulse:coding-token-usage`；公开 API 不返回原始用量、应用名或模型名。契约与闸门见 [统一评分](../workers/api/README.md#pulse-统一五分钟评分)。
 - Listening 另有 `pulse:listening-plays`：「最近在听」列表每次变动（只比条目 id 和顺序，封面地址换新不算）记一条 `{t, since, hint}`，保留 2000 条 / TTL 7 天。它不是阶跃序列、不进 D1 归档、不进公开出口，只作为 Mac / HomePod 之外设备的播放证据进入 listening 窗口的评分输入；一条最多认领一个评分窗口那么长的已观测时间。
