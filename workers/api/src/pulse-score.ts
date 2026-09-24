@@ -3,7 +3,7 @@ import { PULSE_DOMAINS, type PulseDomain, type PulseSample } from '@/lib/types';
 import { PULSE_TTL_MS, PULSE_WINDOW_MS } from '@/lib/limits';
 import { CODING_WINDOW_MS, codingQuestions, codingWindowFeatures, judgment, parseCodingObservation } from '@shared/pulse-coding';
 import { parseCodingTokenUsage } from '@shared/coding-token-usage';
-import { PULSE_ASSESSMENT_VERSION, PULSE_MODES, parsePulseAssessment, type PulseAssessment, type PulseMode } from '@shared/pulse-assessment';
+import { PULSE_ASSESSMENT_VERSION, PULSE_MODES, latestPulseAssessments, type PulseAssessment, type PulseMode } from '@shared/pulse-assessment';
 import { activityQuestions, activityWindowFeatures, parseActivityWorkouts, type ActivityWorkout } from '@shared/pulse-activity';
 import { chargingQuestions, chargingWindowFeatures } from '@shared/pulse-charging';
 import type { Coverage, PulseQuestion } from '@shared/pulse-features';
@@ -59,7 +59,7 @@ export class PulseScorer {
       const playRows = inputs.listeningPlays;
       const workouts = parseActivityWorkouts(inputs.workouts);
       const histories = SCORED_DOMAINS.map((domain) => inputs.histories[domain]);
-      const existing = raw.map(parsePulseAssessment).filter((r): r is PulseAssessment=>r!==null&&r.to>now-PULSE_TTL_MS);
+      const existing = latestPulseAssessments(raw).filter((r)=>r.to>now-PULSE_TTL_MS);
       const completed = new Map(existing.map((r)=>[`${r.domain}:${r.from}`,r]));
       const seen = observations.map(parseCodingObservation).filter((r)=>r!==null).sort((a,b)=>a.t-b.t);
       const tokenUsage = tokenRaw ? parseCodingTokenUsage(JSON.parse(tokenRaw)) : null;

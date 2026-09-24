@@ -6,7 +6,7 @@ import { pulseIntervalRevisionKey, pulseKey } from "@/lib/pulse";
 import { PULSE_TTL_MS } from "@/lib/limits";
 import { PULSE_DOMAINS, type PulseDomain } from "@/lib/types";
 import { CODING_WINDOW_MS } from "@shared/pulse-coding";
-import { parsePulseAssessment, type PulseAssessment } from "@shared/pulse-assessment";
+import { latestPulseAssessments, parsePulseAssessment, type PulseAssessment } from "@shared/pulse-assessment";
 import type { StorageCommand } from "@shared/storage-contract";
 
 type SqlValue = string | number | null;
@@ -57,6 +57,13 @@ type PersistentState = {
 
 const STATE_KEY = "pulse-score:state";
 const MAX_ASSESSMENTS = 2016 * PULSE_DOMAINS.length;
+/**
+ * 评估平时只追加这一轮新评的几行；列表里被覆盖的旧行和过期行多过有效行的一半、或者总行数
+ * 超过上限的一倍半，才整表压缩重写一次。从前每轮都整表重写：七天攒满一万两千行，每五分钟
+ * 删一遍再写一遍，一天七百万行写入，远超套餐的每月五千万。现在平时一天几千行，压缩约三天一次。
+ */
+const COMPACT_GARBAGE_RATIO = 0.5;
+const COMPACT_MAX_ROWS = MAX_ASSESSMENTS * 1.5;
 
 /**
  * 36 jobs / 3 concurrent requests / 10 second request timeout has a 120 second
@@ -177,23 +184,24 @@ export class PulseScoreState implements PulseScoreCoordinator {
         accepted = accepted.filter((record) => record?.domain !== "activity");
       }
 
-      const current = (this.execute([{
+      const raw = this.execute([{
         op: "listRange",
         key: pulseAssessmentsKey(),
         start: 0,
         stop: -1,
-      }])[0] as string[])
-        .map(parsePulseAssessment)
-        .filter((record): record is PulseAssessment => record !== null && record.to > now - PULSE_TTL_MS);
+      }])[0] as string[];
+      const current = latestPulseAssessments(raw).filter((record) => record.to > now - PULSE_TTL_MS);
       const merged = new Map(current.map((record) => [`${record.domain}:${record.from}`, record]));
       for (const record of accepted as PulseAssessment[]) merged.set(`${record.domain}:${record.from}`, record);
       const ordered = [...merged.values()]
         .sort((a, b) => a.from - b.from || PULSE_DOMAINS.indexOf(a.domain) - PULSE_DOMAINS.indexOf(b.domain))
         .slice(-MAX_ASSESSMENTS);
-      const writes: StorageCommand[] = [
-        { op: "remove", key: pulseAssessmentsKey() },
-      ];
-      const serialized = ordered.map((record) => JSON.stringify(record));
+      // 追加之后列表会有多少行、其中多少是被覆盖或过期的
+      const rows = raw.length + accepted.length;
+      const compact = rows - ordered.length > ordered.length * COMPACT_GARBAGE_RATIO || rows > COMPACT_MAX_ROWS;
+      const writes: StorageCommand[] = [];
+      const serialized = (compact ? ordered : accepted as PulseAssessment[]).map((record) => JSON.stringify(record));
+      if (compact) writes.push({ op: "remove", key: pulseAssessmentsKey() });
       for (let at = 0; at < serialized.length; at += 10_000) {
         writes.push({ op: "append", key: pulseAssessmentsKey(), values: serialized.slice(at, at + 10_000) });
       }

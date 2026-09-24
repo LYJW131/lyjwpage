@@ -72,3 +72,20 @@ export function parsePulseAssessment(raw: string): PulseAssessment | null {
       mode, inputHash: row.inputHash, model: row.model, scoredAt: row.scoredAt };
   } catch { return null; }
 }
+
+/**
+ * 评估列表是追加写的（整表重写一轮要写一万多行，每五分钟一轮，见 pulse-score-state）：
+ * 同一窗口可能有好几行，后评的排在后面。所有读评估的地方都走这里，按 `${domain}:${from}`
+ * 只留最后一行 —— 汇总按行累加覆盖时长，重复行会把权重算两遍。坏行跳过，不顶掉之前的好行。
+ */
+export function latestPulseAssessments(rows: readonly string[]): PulseAssessment[] {
+  const latest = new Map<string, PulseAssessment>();
+  for (const raw of rows) {
+    const row = parsePulseAssessment(raw);
+    if (!row) continue;
+    const key = `${row.domain}:${row.from}`;
+    latest.delete(key);
+    latest.set(key, row);
+  }
+  return [...latest.values()];
+}
