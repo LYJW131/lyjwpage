@@ -16,6 +16,8 @@ export type UptimeDay = {
 };
 
 export type SentryUptime = {
+  /** 探测器此刻的结论：连续失败到阈值才翻成 down；还没探测过是 unknown */
+  status: "up" | "down" | "unknown";
   url: string;
   intervalSeconds: number;
   /** 成功探测 / (成功 + 失败)，没有样本是 null */

@@ -3,6 +3,7 @@
   "data": {
     "fetchedAt": "$now",
     "uptime": {
+      "status": "up",
       "url": "https://lyjw.me/api/version",
       "intervalSeconds": 60,
       "availability24h": 1,

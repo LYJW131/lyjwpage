@@ -28,14 +28,27 @@ function dayTone(entry: UptimeDay): { className: string; label: string } {
   return { className: "bg-red-500/80", label: percent(ratio) };
 }
 
+/** 状态页的叫法；down 是探测器连续失败到阈值之后才翻的 */
+const STATUS: Record<SentryUptime["status"], { label: string; className: string }> = {
+  up: { label: "Operational", className: "text-live" },
+  down: { label: "Down", className: "text-red-500" },
+  unknown: { label: "Unknown", className: "text-muted-foreground" },
+};
+
 /**
- * 站点卡片里的在线率一条，状态页的写法：上面每天一格，下面一行「30 days ago —— 99.97% uptime
+ * 站点卡片里的在线率一条，状态页的写法：顶上一行站名和此刻状态，中间每天一格，下面一行「30 days ago —— 99.97% uptime
  * —— Today」。数据来自 Sentry 对 lyjw.me 的每分钟探测（HEAD /api/version，lib/sentry-status）；
  * 拿不到时整条不渲染，交给卡片其余部分。
  */
 export function UptimeStrip({ uptime }: { uptime: SentryUptime }) {
+  // 缓存里旧形状的那份没有 status，按还没探测过处理
+  const status = STATUS[uptime.status] ?? STATUS.unknown;
   return (
     <div className="border-t border-line px-4 py-4 md:px-5">
+      <div className="mb-2.5 flex items-baseline justify-between gap-3">
+        <span className="text-sm font-medium">{uptime.url ? new URL(uptime.url).host : "lyjw.me"}</span>
+        <span className={cn("text-xs", status.className)} title={`Per-minute check · HEAD ${uptime.url || "https://lyjw.me/"}`}>{status.label}</span>
+      </div>
       {uptime.days.length > 0 && (
         <div className="flex h-6 gap-[3px]" role="img" aria-label={`Daily availability, last ${uptime.days.length} days`}>
           {uptime.days.map((entry) => {

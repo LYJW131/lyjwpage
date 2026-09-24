@@ -61,6 +61,12 @@ export function parseUptimeBuckets(raw: unknown, detectorId: string): UptimeDay[
   });
 }
 
+/** 探测器详情里的 uptimeStatus：1 正常、2 失败 */
+export function parseUptimeStatus(raw: unknown): SentryUptime["status"] {
+  const status = record(raw).uptimeStatus;
+  return status === 1 ? "up" : status === 2 ? "down" : "unknown";
+}
+
 /** Discover 的单行聚合 → 第一行的字段 */
 export function parseAggregateRow(raw: unknown): Json {
   const data = record(raw).data;
@@ -110,6 +116,7 @@ async function fetchUptime(api: SentryGet, now: number): Promise<SentryUptime> {
   const info = record(detail);
   const days = parseUptimeBuckets(daily, SENTRY_UPTIME_DETECTOR_ID);
   return {
+    status: parseUptimeStatus(detail),
     url: typeof info.url === "string" ? info.url : "",
     intervalSeconds: num(info.intervalSeconds) || 60,
     availability24h: availability(parseUptimeBuckets(hourly, SENTRY_UPTIME_DETECTOR_ID)),
@@ -179,8 +186,8 @@ export async function fetchSentryStatus(api: SentryGet, now = Date.now()): Promi
 export async function getSentryStatus(): Promise<SentryStatusPayload> {
   const token = process.env.SENTRY_API_TOKEN?.trim();
   if (!token) throw new Error("Sentry 读取未配置");
-  // v5：在线率加回来（v4 去掉了会话与 cron 心跳）
-  const key = `sentry-status:v5:${SENTRY_ORG}`;
+  // v6：在线率带上探测器此刻的状态（v5 加回在线率，v4 去掉会话与 cron 心跳）
+  const key = `sentry-status:v6:${SENTRY_ORG}`;
   return cached<SentryStatusPayload>(key, CACHE_TTL_MS, async () => {
     try {
       const data = await fetchSentryStatus(sentryClient(token));
