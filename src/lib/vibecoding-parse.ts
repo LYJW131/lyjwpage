@@ -192,6 +192,7 @@ function normalizeUsageStatus(value: unknown): VibeCodingUsageStatus | null {
     state,
     collectedAt,
     error: text(row.error),
+    warning: text(row.warning),
     coverageStart,
     coverageEnd,
     precision,

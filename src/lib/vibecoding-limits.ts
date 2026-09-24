@@ -89,6 +89,7 @@ export function attachAgentLimits(
         state: "unavailable",
         collectedAt: null,
         error: null,
+        warning: null,
         coverageStart: null,
         coverageEnd: null,
         precision: "measured",

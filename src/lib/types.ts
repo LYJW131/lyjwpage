@@ -552,7 +552,13 @@ export type VibeCodingUsageStatus = {
   state: "ok" | "error" | "unavailable";
   /** 最近成功采集时刻，尚未成功过为 null；失败时保留旧时刻。 */
   collectedAt: string | null;
+  /** 这一轮什么都没采到的原因（state 为 error），数据停在 collectedAt。 */
   error: string | null;
+  /**
+   * 采到了但有缺口：token 未分列、历史变短而保留了旧日子、会话元数据失败等。state 仍为 ok；
+   * 有缺口时 costComplete 一定是 false。旧版采集侧不带这个键，按 null 收。
+   */
+  warning: string | null;
   /** 已保存历史实际覆盖的首尾日期，YYYY-MM-DD；未知为 null。 */
   coverageStart: string | null;
   coverageEnd: string | null;

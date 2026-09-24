@@ -40,6 +40,8 @@ export type CursorUsagePush = {
   collectedAt: string;
   state: "ok" | "error";
   error: string | null;
+  /** 拉到了但有缺口（部分请求没有 token 数、云端历史变短）：state 仍为 ok，和 Mac 那本账同一条 */
+  warning: string | null;
   coverageStart: string | null;
   coverageEnd: string | null;
   precision: "measured";
@@ -414,8 +416,9 @@ function pushFrom(ledger: Ledger, problems: string[], costComplete: boolean): Cu
   const failed = problems.length > 0 || !costComplete;
   return {
     collectedAt,
-    state: problems.length > 0 ? "error" : "ok",
-    error: problems.length > 0 ? problems.join("; ") : null,
+    state: "ok",
+    error: null,
+    warning: problems.length > 0 ? problems.join("; ") : null,
     coverageStart,
     coverageEnd,
     precision: "measured",
