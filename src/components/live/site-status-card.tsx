@@ -132,7 +132,7 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
   const { data: github } = useStatus<GithubRepoPayload>(GITHUB_REPO_PATH, 30 * 60_000, { fallback: githubFallback, revalidateOnMount: false, revalidateOnFocus: false });
   const { data: vercel } = useStatus<VercelDeploymentsPayload>(VERCEL_DEPLOYMENTS_PATH, 60_000, { fallback: vercelFallback });
   const { data: cloudflare } = useStatus<CloudflareWorkersPayload>(CLOUDFLARE_WORKERS_PATH, 300_000, { fallback: cloudflareFallback });
-  const { data: sentry } = useStatus<SentryStatusPayload>(SENTRY_PATH, 5 * 60_000, { fallback: sentryFallback });
+  const { data: sentry } = useStatus<SentryStatusPayload>(SENTRY_PATH, 15 * 60_000, { fallback: sentryFallback });
   const { functions, analytics } = vercel?.metrics ?? {};
   const siteErrors = sentry?.errors?.site, apiErrors = sentry?.errors?.worker;
   // 出口节点那张卡用的同一条键，SWR 只取一份
