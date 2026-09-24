@@ -164,13 +164,14 @@
 
   // --- 片尾 ---
   scene(c8, 28.8, 34.9, (root) => {
-    const t1 = L("end-t", root, [..."谢谢观看"].map((c) => `<span>${c}</span>`).join(""));
+    const t1 = L("end-t", root, [...window.__tr("谢谢观看")].map((c) => `<span>${c === " " ? "&nbsp;" : c}</span>`).join(""));
     const chars = [...t1.children];
     const t2 = L("end-s", root, "讲解：Claude · Opus 5.5");
     const t3 = L("end-s mono", root, "lyjw.me · lyjw131.com");
     return (lt) => {
       chars.forEach((c, i) => {
-        const k = seg(lt, 0.3 + i * 0.12, 0.65 + i * 0.12);
+        const st = 0.36 / Math.max(1, chars.length - 1); // 逐字跳出的总时长固定（中文四个字正好每字 0.12 s），英文字母多也按时出齐
+        const k = seg(lt, 0.3 + i * st, 0.65 + i * st);
         c.style.transform = `translateY(${(36 * (1 - E.back(k))).toFixed(2)}px)`;
         c.style.opacity = k.toFixed(3);
       });

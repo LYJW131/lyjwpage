@@ -25,7 +25,7 @@
     box.appendChild(mini.el);
     const info = mk("div", "t", wel, `<b>Claude Code</b><br><span class="dim">Opus 5.5</span><br><span class="dim">~/Developer/lyjwpage</span>`);
     const l2 = mk("div", "", b);
-    const cmd = "claude", ask = "讲讲 lyjw.me 是怎么运转的";
+    const cmd = "claude", ask = window.__tr("讲讲 lyjw.me 是怎么运转的");
     return (lt) => {
       // Clawd 一跳出来，终端就散掉，免得他从输入行上压过去
       const a = E.out(seg(lt, 0.1, 0.4)), z = E.out(seg(lt, 3.65, 4.15));

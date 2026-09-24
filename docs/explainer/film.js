@@ -108,10 +108,25 @@
   // 用 click 不用 pointerdown：按下时底栏就变成可点，紧跟着的 click 会落到刚出现的按钮上（误触暂停）
   document.getElementById("frame").addEventListener("click", () => { if (started) flash(); });
   ui.addEventListener("pointerdown", flash);
+  // 中英切换：记下选择，带着进度重新载入（i18n.js 在载入时按语言换文字）；按钮上写的是另一种语言
+  document.querySelectorAll("[data-lang-switch]").forEach((b) => {
+    b.textContent = window.LANG === "en" ? "中文" : "English";
+    b.addEventListener("click", () => {
+      try {
+        localStorage.setItem("lyjw-explainer-lang", window.LANG === "en" ? "zh" : "en");
+        if (started) sessionStorage.setItem("lyjw-explainer-resume", String(pos));
+      } catch {}
+      const u = new URL(location.href);
+      u.searchParams.delete("lang");
+      location.replace(u.href);
+    });
+  });
+  let resumeAt = 0;
+  try { resumeAt = Math.min(DUR, +sessionStorage.getItem("lyjw-explainer-resume") || 0); sessionStorage.removeItem("lyjw-explainer-resume"); } catch {}
   startEl.querySelectorAll("button[data-style]").forEach((b) => b.addEventListener("click", () => {
     started = true; startEl.remove(); ui.inert = false;
     flash();
-    pos = 0;
+    pos = resumeAt; // 切换语言前正在看的位置，没有就从头
     setStyle(b.dataset.style, true);
   }));
   segBtns.forEach((b) => b.addEventListener("click", () => { if (started && b.dataset.style !== style) setStyle(b.dataset.style, !audio.paused); }));

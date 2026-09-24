@@ -528,7 +528,7 @@
     const net = L("", pc, `<div style="display:flex;align-items:center;gap:10px;font-size:24px;white-space:nowrap">${icon("wifi", 26, 2.2)}网络请求 <b class="mono" data-k="n" style="font-size:36px;line-height:1">0</b></div>`);
     const netN = net.querySelector('[data-k="n"]');
     const ly = L("", pc); ly.style.cssText += ";font-size:30px;font-weight:600;white-space:nowrap";
-    const LY = "（当前这句歌词）";
+    const LY = window.__tr("（当前这句歌词）");
     const pen = penLayer(root);
     // 下划线先建出来（引擎按建好的连线配音），位置等首帧量完字再定
     const netLine = penLine(pen, 0, 0, 10, 0, { seed: 4 });

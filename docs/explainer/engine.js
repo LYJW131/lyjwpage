@@ -126,8 +126,9 @@
     return s;
   }
   // 旁白：章节内时间 a..b
+  // 英文模式下整句换成译文（i18n.js）；打字时长和说话音效仍按中文原句算，两种语言共用同一条配乐
   function say(ch, a, b, text, placeHow = "right") {
-    BUBBLES.push({ a: ch.t0 + a, b: ch.t0 + b, text, place: placeHow });
+    BUBBLES.push({ a: ch.t0 + a, b: ch.t0 + b, text: window.__tr ? window.__tr(text) : text, zh: text, place: placeHow });
   }
   // Clawd 轨迹：章节内时间 t 时站在 (x=脚底中点, y=地面)
   function at(ch, t, x, y, how, extra = {}) { CRAB.path.push({ t: ch.t0 + t, x, y, how, ...extra }); }
@@ -478,21 +479,26 @@
   }
   const CPS = 16;
   const WARN = [];
+  function tokens(text) {
+    const toks = [];
+    let code = false, em = false;
+    for (const ch of text) {
+      if (ch === "{") { code = true; continue; }
+      if (ch === "}") { code = false; continue; }
+      if (ch === "[") { em = true; continue; }
+      if (ch === "]") { em = false; continue; }
+      toks.push(ch === "\n" ? { br: true } : { ch, code, em });
+    }
+    return toks;
+  }
   function prepBubbles() {
     for (const b of BUBBLES) {
-      const toks = [];
-      let code = false, em = false;
-      for (const ch of b.text) {
-        if (ch === "{") { code = true; continue; }
-        if (ch === "}") { code = false; continue; }
-        if (ch === "[") { em = true; continue; }
-        if (ch === "]") { em = false; continue; }
-        toks.push(ch === "\n" ? { br: true } : { ch, code, em });
-      }
+      const toks = tokens(b.text);
       b.toks = toks;
+      b.ztoks = b.zh === b.text ? toks : tokens(b.zh);
       b.n = toks.filter((x) => !x.br).length;
       b.ts = b.a + 0.18;
-      b.te = b.ts + b.n / CPS;
+      b.te = b.ts + b.ztoks.filter((x) => !x.br).length / CPS;
       setHTML(bMeasure, richHTML(toks, b.n, false));
       b.w = bOuter.offsetWidth; b.h = bOuter.offsetHeight;
     }
@@ -532,7 +538,7 @@
       bShadow.style.width = b.w + "px"; bShadow.style.height = b.h + "px";
       lastBubble = b;
     }
-    const n = Math.floor(clamp((t - b.ts) * CPS, 0, b.n));
+    const n = Math.floor(b.n * clamp((t - b.ts) / (b.te - b.ts)));
     setHTML(bTyped, richHTML(b.toks, n, t < b.te + 0.3));
     const p = crabPos(b.a + 0.01);
     let x, y, tail, ox;
@@ -591,7 +597,7 @@
     for (const b of BUBBLES) {
       add(b.a + 0.02, "bubble");
       let i = 0;
-      for (const tk of b.toks) {
+      for (const tk of b.ztoks) {
         if (tk.br) continue;
         if (!PUNCT.has(tk.ch) && i % 2 === 0) add(b.ts + i / CPS, "talk", { i });
         i++;

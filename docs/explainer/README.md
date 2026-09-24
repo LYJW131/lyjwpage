@@ -16,6 +16,18 @@
 
 四个配乐 `music-{chip,piano,lofi,pluck}.mp3`（128 kbps）随页面入库；发布到 Artifact 用的 `artifact.html` 是生成物，不进仓库。
 
+## 中英两版
+
+默认中文，`?lang=en` 或页面上的「English / 中文」切换（记在 localStorage，切换时带着进度重新载入）。英文不改场景代码：`i18n.js` 在英文模式下把写进 `innerHTML` / `textContent` 的文字片段按 `i18n-en.js` 的对照表替换；气泡在 `say()` 里整句替换，打字时长和说话音效仍按中文原句算，所以两种语言共用同一条配乐。逐字出现的文字（终端提问、LLM 对照行、歌词占位、片尾）在源头用 `window.__tr()` 整句换。歌名、剧名、人名这类数据源内容照原样。
+
+改了中文文字后，英文对照表要跟上：
+
+```bash
+node $R/harvest.mjs "$H" /tmp/missing.json      # 英文模式下没查到译文的中文片段（应为 0）
+node $R/bubblehit.mjs "$H"                      # 英文气泡比中文多压到的元素
+node $R/overflow.mjs "$H" en                    # 卡片里溢出边框的文字（缩小的主页模型本来就裁切，可忽略）
+```
+
 ## 预览
 
 ```bash
