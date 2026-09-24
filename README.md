@@ -1,5 +1,7 @@
 <div align="center">
 
+**中文** · [English](./README.en.md)
+
 # lyjwpage
 
 **一个由真实设备与日常活动驱动的个人主页。**
