@@ -91,12 +91,12 @@ function ContributorRow({
             width={AVATAR_PX}
             height={AVATAR_PX}
             unoptimized
-            className="size-7 shrink-0 rounded-full border border-line bg-muted"
+            className="size-7 shrink-0 rounded-full border border-line bg-muted max-sm:mt-1"
           />
         ) : (
           <span
             aria-hidden
-            className="flex size-7 shrink-0 items-center justify-center rounded-full border border-line bg-muted text-xs text-muted-foreground"
+            className="flex size-7 shrink-0 items-center justify-center rounded-full border border-line bg-muted text-xs text-muted-foreground max-sm:mt-1"
           >
             {person.login.slice(0, 1).toUpperCase()}
           </span>
@@ -107,9 +107,10 @@ function ContributorRow({
       </a>
       {/*
         窄屏上两段读数就占掉 180px，名字只剩三个字母：读数折到第二行，缩进到
-        名字底下，名字贴头像顶，两行加 py-1 仍是 44px 行高。sm 起并回一行。
+        名字底下。名字 20 + 读数 16 = 36px 的字块比头像高 8px，头像下移 4px
+        居中其中，读数上提贴回名字底，头像上下各留 8px。sm 起并回一行。
       */}
-      <span className="flex shrink-0 gap-2 font-mono text-[11px] leading-4 tabular-nums max-sm:-mt-2 max-sm:basis-full max-sm:pl-9">
+      <span className="flex shrink-0 gap-2 font-mono text-[11px] leading-4 tabular-nums max-sm:-mt-3 max-sm:basis-full max-sm:pl-9">
         <span className="text-muted-foreground">{person.commits.toLocaleString("en-US")} commits</span>
         <span>
           <span style={{ color: "var(--signal-green)" }}>+{person.additions.toLocaleString("en-US")}</span>
