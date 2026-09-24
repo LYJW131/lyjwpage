@@ -5,7 +5,6 @@ import Github from "@lobehub/icons/es/Github/components/Mono";
 import Vercel from "@lobehub/icons/es/Vercel/components/Mono";
 import NumberFlow from "@number-flow/react";
 import { Container } from "lucide-react";
-import type { ReactNode } from "react";
 import { Card } from "@/components/ui/card";
 import { colorForRank, RepoContributions } from "@/components/live/repo-contributions";
 import { formatUptime } from "@/components/live/server-card";
@@ -97,9 +96,11 @@ function ErrorCount({ series, title }: { series: SentryErrorSeries | undefined; 
   </span>;
 }
 
+const rtt = (ms: number | null | undefined) => ms == null ? "—" : ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`;
+
 /** 常驻上报器一格。名字链到仓库里它的目录；太久没收到就在名字旁标 offline */
-function ReporterTile({ name, stat, staleMs, title, children }: {
-  name: ReporterName; stat: ReporterStat | null | undefined; staleMs: number; title?: string; children?: ReactNode;
+function ReporterTile({ name, stat, staleMs, title }: {
+  name: ReporterName; stat: ReporterStat | null | undefined; staleMs: number; title?: string;
 }) {
   const stale = useStale(stat?.lastPushAt, staleMs);
   return <li className="bg-surface px-4 py-2.5" title={title}>
@@ -111,7 +112,7 @@ function ReporterTile({ name, stat, staleMs, title, children }: {
     </div>
     <div className="mt-1 flex gap-x-3 text-[10px] tabular-nums text-muted-foreground">
       <Fact label="Push" value={stat ? number.format(stat.pushes) : "—"} title="Reports this reporter pushed successfully" />
-      {children}
+      <Fact label="RTT" value={rtt(stat?.rttMs)} title="Median round trip of a successful push to the API Worker" />
       <CollectionWindow start={stat?.start} end={stat?.end} />
     </div>
   </li>;
@@ -247,14 +248,11 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
           {/*
             misaka-jp 上两个常驻上报器，和上面几格同一种写法：名字一行带镜像的提交，
             小字一行是 12 小时窗口。Push 是这段时间它推成功几封（不叫 Req：上面那几格
-            是收到的请求，这里是往外发的）；次数和提交都由上报器自己在报文里带来。
-            server-reporter 那格的 CPU 是它所在的 misaka-jp 这台机器的 12 小时平均。
+            是收到的请求，这里是往外发的）；RTT 是这些封从发出到读完回执的中位数，看
+            misaka-jp 到 Worker 这条链路。次数、RTT 和提交都由上报器自己在报文里带来。
           */}
           <ReporterTile name="server-reporter" stat={reporters?.reporters["server-reporter"]} staleMs={SERVER_STALE_MS}
-            title={server ? `Exit node ${server.id} · ${server.hostname} · up ${formatUptime(server.uptimeSeconds)} · load ${server.load1.toFixed(2)}` : undefined}>
-            <Fact label="CPU" value={server?.window?.cpuAvgPercent != null ? `${server.window.cpuAvgPercent.toFixed(1)}%` : "—"}
-              title="Average CPU of misaka-jp over the window" />
-          </ReporterTile>
+            title={server ? `Exit node ${server.id} · ${server.hostname} · up ${formatUptime(server.uptimeSeconds)} · load ${server.load1.toFixed(2)}` : undefined} />
           <ReporterTile name="agents-reporter" stat={reporters?.reporters["agents-reporter"]} staleMs={AGENT_LIMITS_STALE_MS}
             title="Coding agent plan limits and Cursor usage" />
         </ul>

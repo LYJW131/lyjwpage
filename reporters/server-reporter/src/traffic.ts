@@ -1,5 +1,5 @@
 /**
- * 计费周期的流量累计，和最近 12 小时的 CPU 窗口，存在同一个状态文件里。
+ * 计费周期的流量累计，存在状态文件里。
  *
  * `/proc/net/dev` 的计数器只从开机算起，一重启就归零，「这个计费周期用了多少」
  * 得自己攒。每轮把两次读数之差累加进当前周期，连同游标原子写回状态文件：进程
@@ -25,11 +25,6 @@ import { config } from "./config.js";
 import { failure, recovered } from "./log.js";
 
 export const TRAFFIC_STATE_VERSION = 1;
-/** 12 小时 CPU 窗口，和站点卡片里 Vercel / Workers 的窗口同长 */
-export const WINDOW_MS = 12 * 3_600_000;
-
-/** [时刻, 这份占用覆盖的时长, CPU%] */
-export type WindowSample = [number, number, number];
 
 export type TrafficState = {
   version: number;
@@ -41,7 +36,6 @@ export type TrafficState = {
   rxCursor: number;
   txCursor: number;
   updatedAt: number;
-  window?: WindowSample[];
 };
 
 export type TrafficReport = {
@@ -51,8 +45,6 @@ export type TrafficReport = {
   txBytes: number;
   quotaBytes: number | null;
 };
-
-export type WindowReport = { start: number; end: number; cpuAvgPercent: number | null };
 
 /** 同一个「几号」往前后挪几个月。日 ≤ 28，落在哪个月都存在 */
 export function shiftMonth(moment: Date, months: number): Date {
@@ -69,7 +61,7 @@ export function cycleBounds(nowMs: number, day: number): [number, number] {
   return [start.getTime(), shiftMonth(start, 1).getTime()];
 }
 
-/** 把这一轮的增量并进周期累计，返回新状态（不带 window）。纯函数 */
+/** 把这一轮的增量并进周期累计，返回新状态。纯函数 */
 export function accumulate(
   state: Partial<TrafficState>,
   iface: string,
@@ -105,26 +97,6 @@ export function accumulate(
     rxCursor: rx,
     txCursor: tx,
     updatedAt: nowMs,
-  };
-}
-
-/** 追加这一轮、丢掉窗口外的。纯函数 */
-export function recordWindow(samples: unknown, nowMs: number, dtMs: number, cpuPct: number): WindowSample[] {
-  const kept = (Array.isArray(samples) ? samples : []).filter(
-    (s): s is WindowSample => Array.isArray(s) && s.length === 3 && s.every(Number.isFinite) && s[0] > nowMs - WINDOW_MS,
-  );
-  return [...kept, [nowMs, dtMs, Math.round(cpuPct * 10) / 10]];
-}
-
-/** 窗口内按时长加权的平均 CPU。起点取最早那一段的开头，但不早于 12 小时前。纯函数 */
-export function summarizeWindow(samples: WindowSample[], nowMs: number): WindowReport | null {
-  const kept = samples.filter((s) => s[0] > nowMs - WINDOW_MS);
-  if (!kept.length) return null;
-  const totalDt = kept.reduce((sum, s) => sum + s[1], 0);
-  return {
-    start: Math.max(nowMs - WINDOW_MS, Math.min(...kept.map((s) => s[0] - s[1]))),
-    end: nowMs,
-    cpuAvgPercent: totalDt > 0 ? Math.round((kept.reduce((sum, s) => sum + s[2] * s[1], 0) / totalDt) * 10) / 10 : null,
   };
 }
 
@@ -174,33 +146,25 @@ async function saveState(state: TrafficState): Promise<boolean> {
   }
 }
 
-/** 周期累计和 12 小时窗口一起算、一起落盘；攒不住时两份都报 null */
-export async function trafficAndWindow(
+/** 这一轮并进周期累计、落盘；攒不住时报 null */
+export async function traffic(
   iface: string,
   rx: number,
   tx: number,
   nowMs: number,
   bootMs: number,
-  cpuPct: number,
-  elapsedMs: number,
-): Promise<{ traffic: TrafficReport | null; window: WindowReport | null }> {
+): Promise<TrafficReport | null> {
   if (!store.loaded) await loadState();
-  const previous = store.state;
-  const state: TrafficState = {
-    ...accumulate(previous, iface, rx, tx, nowMs, config.cycleDay, bootMs),
-    window: recordWindow(previous.window, nowMs, Math.round(elapsedMs), cpuPct),
-  };
+  // 从前带过 12 小时 CPU 窗口，accumulate 只挑自己的字段，旧文件里那一块下次写回就没了
+  const state = accumulate(store.state, iface, rx, tx, nowMs, config.cycleDay, bootMs);
   store.state = state;
   if (await saveState(state)) store.durable = true;
-  if (!store.durable) return { traffic: null, window: null };
+  if (!store.durable) return null;
   return {
-    traffic: {
-      cycleStart: state.cycleStart,
-      cycleEnd: state.cycleEnd,
-      rxBytes: state.rxBytes,
-      txBytes: state.txBytes,
-      quotaBytes: config.quotaBytes,
-    },
-    window: summarizeWindow(state.window ?? [], nowMs),
+    cycleStart: state.cycleStart,
+    cycleEnd: state.cycleEnd,
+    rxBytes: state.rxBytes,
+    txBytes: state.txBytes,
+    quotaBytes: config.quotaBytes,
   };
 }

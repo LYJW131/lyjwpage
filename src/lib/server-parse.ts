@@ -5,7 +5,7 @@
  */
 
 import { number, object, text } from "./json.ts";
-import type { ServerStatus, ServerTraffic, ServerWindow } from "./types.ts";
+import type { ServerStatus, ServerTraffic } from "./types.ts";
 
 function requiredText(row: Record<string, unknown>, field: string): string {
   const value = text(row[field]);
@@ -83,26 +83,6 @@ function nullableTraffic(row: Record<string, unknown>): ServerTraffic | null {
   };
 }
 
-/**
- * 12 小时窗口是后加的：旧版上报器压根不带这个键，缺了按 null 收，不像 traffic
- * 那样要求键必须在。给了就得完整、合法。上报器提交不在这里收，见 lib/reporter-ledger。
- */
-function optionalWindow(row: Record<string, unknown>): ServerWindow | null {
-  if (row.window == null) return null;
-  const window = object(row.window);
-  if (!window) throw new Error("服务器上报的 window 必须是对象或 null");
-  const start = requiredPositive(window, "start");
-  const end = requiredPositive(window, "end");
-  if (!Number.isInteger(start) || !Number.isInteger(end) || end < start) {
-    throw new Error("服务器上报的 window 起止必须是 epoch 毫秒整数且 end 不早于 start");
-  }
-  return {
-    start,
-    end,
-    cpuAvgPercent: window.cpuAvgPercent == null ? null : requiredPercent(window, "cpuAvgPercent"),
-  };
-}
-
 const IPV4 =
   /^(?:25[0-5]|2[0-4]\d|1?\d?\d)\.(?:25[0-5]|2[0-4]\d|1?\d?\d)\.(?:25[0-5]|2[0-4]\d|1?\d?\d)\.(?:25[0-5]|2[0-4]\d|1?\d?\d)$/;
 
@@ -176,7 +156,6 @@ export function normalizeServer(input: unknown): ServerStatus {
     networkRxBytesPerSec: Math.round(requiredNumber(row, "networkRxBytesPerSec")),
     networkTxBytesPerSec: Math.round(requiredNumber(row, "networkTxBytesPerSec")),
     traffic: nullableTraffic(row),
-    window: optionalWindow(row),
     uptimeSeconds: Math.round(requiredNumber(row, "uptimeSeconds")),
     observedAt,
   };

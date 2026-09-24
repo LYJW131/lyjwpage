@@ -1,12 +1,12 @@
 /**
- * 流量累计、12 小时窗口、推送账本这几个纯函数的单测（从 Python 版 reporter_test.py 搬过来）。
+ * 流量累计、推送账本这几个纯函数的单测（从 Python 版 reporter_test.py 搬过来）。
  * 采集和推送要么读 /proc、要么打网络，没有值得钉住的判断；这几个函数错了是「流量默默
  * 多算一倍」这种没人看得出来的错，正是要钉住的那类。
  */
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { accumulate, cycleBounds, recordWindow, shiftMonth, summarizeWindow, WINDOW_MS } from "../dist/traffic.js";
+import { accumulate, cycleBounds, shiftMonth } from "../dist/traffic.js";
 import { BUCKET_MS, countPushes, recordPush, WINDOW_MS as LEDGER_WINDOW_MS } from "../dist/push-ledger.js";
 import { cpuPercent } from "../dist/system.js";
 import { parseAs } from "../dist/geo.js";
@@ -65,30 +65,28 @@ test("跨周期那一轮整段算进新周期", () => {
   assert.deepEqual([rolled.rxBytes, rolled.txBytes], [500, 400]);
 });
 
-test("12 小时 CPU 窗口按时长加权，旧样本滑出去，起点不早于 12 小时前", () => {
-  const now = 1_790_200_000_000;
-  let samples = recordWindow([], now - 900_000, 900_000, 10);
-  samples = recordWindow(samples, now, 60_000, 70);
-  const summary = summarizeWindow(samples, now)!;
-  assert.equal(summary.cpuAvgPercent, Math.round(((10 * 900 + 70 * 60) / 960) * 10) / 10);
-  assert.equal(summary.start, now - 1_800_000);
-  let long = recordWindow([], now - WINDOW_MS - 60_000, 60_000, 5);
-  long = recordWindow(long, now, 60_000, 5);
-  assert.equal(long.length, 1);
-  assert.equal(summarizeWindow([], now), null);
-  // 别的形状的旧样本（比如 5 元组）直接丢掉
-  assert.deepEqual(recordWindow([[now - 1, 1, 1, 1, 1]], now, 60_000, 5), [[now, 60_000, 5]]);
-});
-
 test("推送账本：同一格累加、跨格新开、滑出窗口；起点不冒充满 12 小时", () => {
   const t0 = 1_790_200_200_000;
-  let buckets = recordPush([], t0);
-  buckets = recordPush(buckets, t0 + 1_000);
-  buckets = recordPush(buckets, t0 + BUCKET_MS);
+  let buckets = recordPush([], t0, 120);
+  buckets = recordPush(buckets, t0 + 1_000, 80.4);
+  buckets = recordPush(buckets, t0 + BUCKET_MS, 300);
   assert.deepEqual(countPushes(buckets, t0 + BUCKET_MS).pushes, 3);
   assert.ok(countPushes(buckets, t0 + BUCKET_MS).start <= t0);
   assert.equal(countPushes(buckets, t0 + LEDGER_WINDOW_MS + 2 * BUCKET_MS).pushes, 0);
-  assert.deepEqual(recordPush(buckets, t0 + LEDGER_WINDOW_MS + 2 * BUCKET_MS).map(([, n]) => n), [1]);
+  assert.deepEqual(recordPush(buckets, t0 + LEDGER_WINDOW_MS + 2 * BUCKET_MS, 50).map(([, rtts]) => rtts), [[50]]);
+});
+
+test("推送账本：RTT 取窗口内中位数，偶数封取中间两封的均值，没有样本为 null", () => {
+  const t0 = 1_790_200_200_000;
+  let buckets = recordPush([], t0, 120);
+  buckets = recordPush(buckets, t0 + 1_000, 80.4);
+  buckets = recordPush(buckets, t0 + BUCKET_MS, 300);
+  assert.equal(countPushes(buckets, t0 + BUCKET_MS).rttMs, 120);
+  buckets = recordPush(buckets, t0 + BUCKET_MS + 1_000, 200);
+  assert.equal(countPushes(buckets, t0 + BUCKET_MS).rttMs, 160);
+  assert.equal(countPushes([], t0).rttMs, null);
+  // 滑出窗口的那几封不再参与
+  assert.equal(countPushes(buckets, t0 + LEDGER_WINDOW_MS + BUCKET_MS).rttMs, 250);
 });
 
 test("CPU 占用与 AS 行解析", () => {

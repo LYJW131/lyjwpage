@@ -59,12 +59,12 @@ export async function push(payload: PushPayload): Promise<void> {
   const response = await fetch(config.site.ingestUrl, {
     method: "POST",
     headers: { ...authHeaders(), "Content-Type": "application/json" },
-    // 每一封带上自己的推送账本：镜像提交 + 过去 12 小时推成功几封（含这一封）。
+    // 每一封带上自己的推送账本：镜像提交 + 过去 12 小时推成功几封（含这一封）与往返中位数。
     // 限额那轮和 Cursor 小信封都算这个上报器的一次推送
     body: JSON.stringify({ ...payload, reporter: await ledger.block(at) }),
     signal: AbortSignal.timeout(config.pushTimeoutMs),
   });
   await readEnvelope(response);
-  // 站点收下了才记账
-  await ledger.succeeded(at);
+  // 站点收下了才记账；往返从发出请求算到读完回执
+  await ledger.succeeded(at, Date.now() - at);
 }

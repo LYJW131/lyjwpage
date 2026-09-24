@@ -132,14 +132,7 @@ test("给了流量就得是完整一份，缺项、负数、周期倒着走都�
   assert.throws(() => normalizeServer(report({ traffic: "1TB" })), /traffic/);
 });
 
-test("12 小时窗口：旧版不带按 null 收，带了就要合法", () => {
-  assert.equal(normalizeServer(report()).window, null);
-  const fresh = normalizeServer(report({
-    window: { start: 1_790_000_000_000, end: 1_790_043_200_000, cpuAvgPercent: 4.26 },
-    reporter: { commit: "b15e3cc", pushes: 3, start: 1, end: 2 },
-  }));
-  assert.deepEqual(fresh.window, { start: 1_790_000_000_000, end: 1_790_043_200_000, cpuAvgPercent: 4.3 });
-  // 账本归 lib/reporter-ledger 管，不进服务器快照
+test("账本归 lib/reporter-ledger 管，不进服务器快照", () => {
+  const fresh = normalizeServer(report({ reporter: { commit: "b15e3cc", pushes: 3, rttMs: 180, start: 1, end: 2 } }));
   assert.equal("reporter" in fresh, false);
-  assert.throws(() => normalizeServer(report({ window: { start: 2, end: 1 } })), /window/);
 });

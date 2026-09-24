@@ -26,7 +26,7 @@ export async function push(payload: Record<string, unknown>): Promise<void> {
       "User-Agent": "lyjwpage-server-reporter/2.0",
       ...(config.site.secret ? { Authorization: `Bearer ${config.site.secret}` } : {}),
     },
-    // 每一封带上自己的推送账本：镜像提交 + 过去 12 小时推成功几封（含这一封）
+    // 每一封带上自己的推送账本：镜像提交 + 过去 12 小时推成功几封（含这一封）与往返中位数
     body: JSON.stringify({ ...payload, reporter: await ledger.block(at) }),
     signal: AbortSignal.timeout(config.pushTimeoutMs),
   });
@@ -34,6 +34,6 @@ export async function push(payload: Record<string, unknown>): Promise<void> {
   if (!response.ok || body?.ok !== true) {
     throw new Error(`站点返回 ${response.status}${body?.error ? `：${body.error}` : ""}`);
   }
-  // 站点收下了才记账
-  await ledger.succeeded(at);
+  // 站点收下了才记账；往返从发出请求算到读完回执
+  await ledger.succeeded(at, Date.now() - at);
 }

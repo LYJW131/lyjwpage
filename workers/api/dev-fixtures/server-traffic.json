@@ -33,11 +33,6 @@
       "txBytes": 208900000000,
       "quotaBytes": 2000000000000
     },
-    "window": {
-      "start": "$now-43200000",
-      "end": "$now",
-      "cpuAvgPercent": 3.8
-    },
     "uptimeSeconds": 262800,
     "observedAt": "$now-4000",
     "pushedAt": "$now",
