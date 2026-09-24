@@ -2,7 +2,13 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
+<script>
+  // 站点上的地址是 /explainer（没有结尾斜杠，由 next.config 的 rewrite 指到这份文件），
+  // 相对路径会按根目录算；补一个 base，让脚本、字体、配乐都从 /explainer/ 下取
+  if (/^https?:$/.test(location.protocol) && !/\/$|\.html$/.test(location.pathname)) document.write('<base href="' + location.pathname + '/">');
+</script>
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" href="/icon" type="image/png">
 <title>lyjw.me 运行原理</title>
 <style>
 @font-face{font-family:"Geist Mono";src:url(fonts/GeistMono-Regular.woff2) format("woff2");font-weight:400}
@@ -290,16 +296,9 @@ body.export #ui,body.export #start{display:none}
 </div>
 <div id="ui" inert><button id="pp" type="button">暂停</button><span id="tc">0:00</span><input id="scrub" type="range" min="0" max="300" step="0.01" value="0" aria-label="进度"><div id="sty" role="group" aria-label="配乐"><button type="button" data-style="chip">芯片</button><button type="button" data-style="piano">钢琴</button><button type="button" data-style="lofi">Lo-fi</button><button type="button" data-style="pluck">拨弦</button></div><button id="fs" type="button">全屏</button></div>
 <audio id="music" preload="none"></audio>
-<script src="icons.js"></script>
-<script src="clawd.js"></script>
-<script src="music.js"></script>
-<script src="engine.js"></script>
-<script src="kit.js"></script>
-<script src="scenes-0.js"></script>
-<script src="scenes-1.js"></script>
-<script src="scenes-2.js"></script>
-<script src="scenes-3.js"></script>
-<script src="scenes-4.js"></script>
-<script src="film.js"></script>
+<script>
+  // 用 document.write 按顺序载入：顶上补的 base 生效之后才解析这些相对路径（直接写 <script src>，预加载扫描器会先按根目录去取）
+  for (const f of ["icons", "clawd", "music", "engine", "kit", "scenes-0", "scenes-1", "scenes-2", "scenes-3", "scenes-4", "film"]) document.write('<script src="' + f + '.js"><\/script>');
+</script>
 </body>
 </html>

@@ -30,6 +30,7 @@ const eslintConfig = defineConfig([
     ".claude/**",
     // 讲解动画是独立的静态页面和渲染脚本（浏览器全局 + 本机 Chrome），不走站点的前端规则
     "docs/explainer/**",
+    "public/explainer/**",
   ]),
 ]);
 

@@ -2,8 +2,7 @@
 
 # dependencies
 node_modules/
-# 讲解动画的配乐与发布页由 docs/explainer/render 生成（成品发布在 Artifact 上），不进仓库
-docs/explainer/music-*.mp3
+# 讲解动画的 Artifact 发布页由 docs/explainer/render/build-artifact.py 生成，不进仓库
 docs/explainer/artifact.html
 .pnpm-store/
 .wrangler/

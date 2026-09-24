@@ -11,7 +11,7 @@ const I0 = lufs(music), gain = (+target - I0).toFixed(2);
 const fc = `[0:a]volume=${gain}dB[mu];[mu][1:a]amultiply[m];[2:a]volume=${g}[s];[m][s]amix=inputs=2:normalize=0:duration=first,volume=2.6dB[x];[x]alimiter=limit=0.94:attack=3:release=60:level=disabled[y]`;
 let r = spawnSync("ffmpeg", ["-v", "error", "-y", "-i", music, "-i", `${dir}/duck.wav`, "-i", `${dir}/sfx.wav`, "-filter_complex", fc, "-map", "[y]", "-c:a", "pcm_s16le", `${out}.wav`], { encoding: "utf8" });
 if (r.status) { console.error(r.stderr); process.exit(1); }
-r = spawnSync("ffmpeg", ["-v", "error", "-y", "-i", `${out}.wav`, "-c:a", "libmp3lame", "-b:a", "192k", `${out}.mp3`], { encoding: "utf8" });
+r = spawnSync("ffmpeg", ["-v", "error", "-y", "-i", `${out}.wav`, "-c:a", "libmp3lame", "-b:a", "128k", `${out}.mp3`], { encoding: "utf8" });
 if (r.status) { console.error(r.stderr); process.exit(1); }
 const pk = spawnSync("ffmpeg", ["-hide_banner", "-nostats", "-i", `${out}.wav`, "-af", "ebur128=peak=true", "-f", "null", "-"], { encoding: "utf8" }).stderr;
 const peak = [...pk.matchAll(/Peak:\s+(-?[\d.]+) dBFS/g)].pop();

@@ -89,9 +89,11 @@ const nextConfig: NextConfig = {
    */
   cacheComponents: true,
   async rewrites() {
-    // 没配 R2 源就不挂这条：图片 404，页面其余部分照常
-    if (!R2_ORIGIN) return [];
-    return [{ source: IMAGE_REWRITE_SOURCE, destination: `${R2_ORIGIN}/:objectKey` }];
+    // 讲解动画是 public/explainer 下的静态页，/explainer 指到它的 index.html
+    const explainer = { source: "/explainer", destination: "/explainer/index.html" };
+    // 没配 R2 源就不挂图片那条：图片 404，页面其余部分照常
+    if (!R2_ORIGIN) return [explainer];
+    return [explainer, { source: IMAGE_REWRITE_SOURCE, destination: `${R2_ORIGIN}/:objectKey` }];
   },
   async headers() {
     return [
