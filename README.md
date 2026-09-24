@@ -182,7 +182,7 @@
 
 站点（浏览器与 Vercel 函数）和 `api` Worker（请求、分钟 cron、两个 Durable Object）各报到一个 Sentry 项目。浏览器端经同源的 `/relay` 转发，广告拦截和直连不上 sentry.io 的访客也报得上来；Session Replay 单独成块、页面空闲后才加载，只保留出错那一段。分钟 cron 每 5 分钟报一次心跳，`lyjw.me` 有每分钟的在线探测。采样按免费额度设，入口见 [`src/lib/sentry.ts`](./src/lib/sentry.ts) 与 [`workers/api/src/sentry.ts`](./workers/api/src/sentry.ts)；本地默认不上报，要试就在 `.env.local` 设 `NEXT_PUBLIC_SENTRY_DEV=true`。
 
-Sentry 里的数据也回到页面上：`api` Worker 用只读令牌取回两个项目的报错数、真实访客的 Web Vitals、在线探测与 cron 心跳，有人读才取、缓存 15 分钟，给站点卡片（`/api/status/sentry`）。在线状态分两行：`lyjw.me` 那行探测的是 Vercel 上的静态路由，只说明前端还在出页面；`API` 那行看 cron 心跳，每一轮都要经过 Worker、Durable Object 与 KV，补上后端那一截。排查线上报错时 agent 先经 Sentry MCP 查证据再读代码，规矩写在 [`AGENTS.md`](./AGENTS.md)。
+Sentry 里的数据也回到页面上：`api` Worker 用只读令牌取回两个项目的报错数、真实访客的 Web Vitals、在线探测与 cron 心跳，经 KV 读模型给站点卡片（`/api/status/sentry`）。在线状态分两行：`lyjw.me` 那行探测的是 Vercel 上的静态路由，只说明前端还在出页面；`API` 那行看 cron 心跳，每一轮都要经过 Worker、Durable Object 与 KV，补上后端那一截。排查线上报错时 agent 先经 Sentry MCP 查证据再读代码，规矩写在 [`AGENTS.md`](./AGENTS.md)。
 
 ## 技术组成
 

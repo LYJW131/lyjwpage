@@ -8,10 +8,9 @@
 
 | 路径 | 读取位置 | 发布最小间隔 / 投影最大年龄 |
 | --- | --- | --- |
-| `/api/status/vibecoding/year`、`github-chart`、`github-repo`、`vercel-deployments`、`reporters` | KV | 300 秒 / 600 秒 |
+| `/api/status/vibecoding/year`、`github-chart`、`github-repo`、`vercel-deployments`、`sentry`、`reporters` | KV | 300 秒 / 600 秒 |
 | `/api/home` | DO；Vercel 生成或重建首页读一次，浏览器打开页面后各卡的第一轮取数合成一次（`src/lib/status-reads.ts`） | 不经 KV |
 | 所有 `*/now`、`desktop`、`server`、`activity`、`charger`、`powerbank`、`vibecoding`、`pulse` | DO；包含存活、日界线、暂停宽限期或增量历史语义 | 不经 KV |
-| `sentry` | DO；按需取 Sentry，StateHub 缓存 15 分钟。进 KV 就得每 5 分钟由 cron 重渲染一次，没人看也照打 Sentry | 不经 KV |
 | `cloudflare-workers` | DO；带各 Worker 当前版本，投影的发布间隔和最大年龄会让刚部署完读到上一版。上游由 15 分钟 StateHub 缓存挡住 | 不经 KV |
 | `listening`、`watching`、`playing` | DO；有推送事件，登记表禁止进 KV | 不经 KV |
 | `trophies` | DO；无参是摘要（与首屏字段、`trophies` 推送同形状，挂载引导可代答），`?titleids=` 是那几款的完整目录。有推送事件，登记表禁止进 KV | 不经 KV |
@@ -27,7 +26,7 @@
 
 1. 上报继续在 StateHub 确认权威写入，LivePushRoom 的连接、计数、广播协议不变。
 2. 上报完成（包括已经部分写入而最终报错）仅在 SQLite 中标记 `readModelPathsForSource` 给出的路径。mac 上报只标记 `vibecoding/year`；emby、playstation 上报不标记任何 KV 路径。**不在上报队列里等待 KV put 或重建公开响应**。
-3. 每分钟已有 cron 也标记登记表中的全部 KV 路径（五条），覆盖外部查询缓存、只随时间变化的视图，以及给已有 DO 新增 KV binding 的首次回填。标记在原 cron（最近播放刷新、PageSpeed）写完之后才入队。
+3. 每分钟已有 cron 也标记登记表中的全部 KV 路径（六条），覆盖外部查询缓存、只随时间变化的视图，以及给已有 DO 新增 KV binding 的首次回填。标记在原 cron（最近播放刷新、PageSpeed）写完之后才入队。
 4. DO alarm 从 `public_read_model_jobs` 取到期项，经同部署 `READ_MODEL_RENDERER` Service Binding 调用普通 Worker 的公开 API 生成结果，再回到 StateHub 完成 KV 写入；调用不经公网，也没有新增 Worker 部署。每轮最多处理三个，单次生成 15 秒超时。策略表里已删除的旧行直接删除。只有这个对象向对应 KV 键发布；边缘读 miss 仅请求补建，绝不回写自己读到的旧响应。
 5. 重复标记合并，不把截止时间不断推后；每键最小间隔 300 秒。网络调用前、结束后均持久化冷却期限，避免慢请求、重启或不确定写入后立即再写同键。
 6. 发布只确认其捕获的 revision；生成或 KV put 期间收到的新上报仍保留 dirty。失败保留队列并由 alarm 重试，不依赖 JS `setTimeout` 或下一位访客。失败不会把已确认的上报改成失败。
