@@ -89,12 +89,19 @@ const nextConfig: NextConfig = {
    */
   cacheComponents: true,
   async rewrites() {
-    // 没配 R2 源就不挂这条：图片 404，页面其余部分照常
-    if (!R2_ORIGIN) return [];
-    return [{ source: IMAGE_REWRITE_SOURCE, destination: `${R2_ORIGIN}/:objectKey` }];
+    // 讲解动画是 public/explainer 下的静态页，/explainer 指到它的 index.html
+    const explainer = { source: "/explainer", destination: "/explainer/index.html" };
+    // 没配 R2 源就不挂图片那条：图片 404，页面其余部分照常
+    if (!R2_ORIGIN) return [explainer];
+    return [explainer, { source: IMAGE_REWRITE_SOURCE, destination: `${R2_ORIGIN}/:objectKey` }];
   },
   async headers() {
     return [
+      {
+        // 讲解动画的资源都按内容哈希命名（scripts/build-explainer.mjs），地址即版本，可以缓存一年；入口 index.html 不在这里
+        source: "/explainer/a/:path*",
+        headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }],
+      },
       {
         // 让 Vercel 遵循 R2 回来的 cache-control 缓存外部 rewrite 的响应。
         // 2026-04 之后新建的项目默认就开（这个项目是 8 月建的），显式写一次

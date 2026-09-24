@@ -38,5 +38,9 @@ if (origin) {
   console.log(ready ? `[preview] 后端用 ${origin}` : "[preview] 等不到本分支的 Worker Preview，这次构建连生产");
 }
 
+// 讲解动画的静态页（public/explainer）是生成物，先出好再让 next build 收进 public
+const explainer = spawnSync(process.execPath, ["scripts/build-explainer.mjs"], { stdio: "inherit", env });
+if (explainer.status !== 0) process.exit(explainer.status ?? 1);
+
 const result = spawnSync("next", ["build"], { stdio: "inherit", env });
 process.exit(result.status ?? 1);

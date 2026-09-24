@@ -1,0 +1,14 @@
+import { chromium } from "playwright-core";
+import fs from "node:fs";
+const [html, out] = process.argv.slice(2);
+const b = await chromium.launch({ channel: "chrome", headless: true });
+const p = await b.newPage({ viewport: { width: 1920, height: 1080 } });
+p.on("pageerror", (e) => console.log("pageerror:", e.message));
+p.on("console", (m) => { if (m.type() === "error") console.log("console error:", m.text()); });
+await p.goto("file://" + html + "?export");
+await p.evaluate(() => window.__ready);
+const cues = await p.evaluate(() => window.__cues());
+const warn = await p.evaluate(() => window.__warn());
+fs.writeFileSync(out, JSON.stringify(cues));
+console.log("cues", cues.length, "warn", warn.length, warn.join(" | "));
+await b.close();
