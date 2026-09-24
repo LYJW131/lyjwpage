@@ -45,10 +45,10 @@ export function UptimeStrip({ uptime }: { uptime: SentryUptime }) {
       </div>
       {/*
         宽屏是两行两列的网格：百分比和色块同一行、居中对齐，耗时和「30 days ago / Today」
-        同一行。窄屏百分比和耗时并排一行，色块那组叠在下面（md:contents 让两组的子项在宽屏直接落进网格）。
+        同一行。窄屏百分比和耗时并排一行、耗时靠右，色块那组叠在下面（md:contents 让两组的子项在宽屏直接落进网格）。
       */}
       <div className="mt-1.5 flex flex-col gap-3 md:grid md:grid-cols-[auto_minmax(0,1fr)] md:items-center md:gap-x-8 md:gap-y-1.5">
-        <div className="flex items-baseline gap-3 md:contents">
+        <div className="flex items-baseline justify-between gap-3 md:contents">
           <div className="text-3xl font-medium tracking-tight tabular-nums md:col-start-1 md:row-start-1"
             title={`24h ${percent(uptime.availability24h)} · checked every ${uptime.intervalSeconds}s`}>
             {uptime.availability30d == null ? "—" : (
