@@ -114,6 +114,13 @@
   <img src="docs/screenshots/pulse-detail-light.webp" alt="Pulse 卡片：六条活跃度泳道与评分，悬停某一段显示时间范围、当时的曲目与该窗口评分" width="100%">
 </picture>
 
+**站点自身（LYJWPAGE）**：仓库统计、贡献者与最近提交；下面是状态页式的两行在线状态——`lyjw.me` 看 Sentry 的每分钟探测，`API` 看 api Worker 分钟 cron 的心跳，各带 30 天每天一格和可用率；再往下是 PageSpeed 实验室分与真实访客的 Users 分，以及各服务 12 小时的请求、CPU、报错数，落地节点上两个常驻上报器的推送次数、往返延迟与线上版本。
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/site-status-dark.webp">
+  <img src="docs/screenshots/site-status-light.webp" alt="LYJWPAGE 卡片：仓库统计与提交、lyjw.me 与 API 两行 30 天在线状态、性能分与各服务、上报器的 12 小时指标" width="100%">
+</picture>
+
 ## 系统架构
 
 系统分为三部分：**采集端适配不同来源，Cloudflare 统一管理状态，Next.js 负责页面呈现。**
