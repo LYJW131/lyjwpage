@@ -2,7 +2,8 @@
 
 # dependencies
 node_modules/
-# 讲解动画的 Artifact 发布页由 docs/explainer/render/build-artifact.py 生成，不进仓库
+# 讲解动画：站点版由 scripts/build-explainer.mjs 在构建时生成（资源按内容哈希命名），Artifact 发布页由 build-artifact.py 生成，都不进仓库
+/public/explainer/
 docs/explainer/artifact.html
 .pnpm-store/
 .wrangler/

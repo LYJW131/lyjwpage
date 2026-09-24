@@ -98,6 +98,11 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
+        // 讲解动画的资源都按内容哈希命名（scripts/build-explainer.mjs），地址即版本，可以缓存一年；入口 index.html 不在这里
+        source: "/explainer/a/:path*",
+        headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }],
+      },
+      {
         // 让 Vercel 遵循 R2 回来的 cache-control 缓存外部 rewrite 的响应。
         // 2026-04 之后新建的项目默认就开（这个项目是 8 月建的），显式写一次
         // 是不让图片缓存依赖面板里那个看不见的开关。

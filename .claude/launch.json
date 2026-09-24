@@ -37,7 +37,7 @@
     {
       "name": "explainer-preview",
       "runtimeExecutable": "node",
-      "runtimeArgs": ["docs/explainer/render/serve.mjs", "public", "4817"],
+      "runtimeArgs": ["docs/explainer/render/serve.mjs", "docs/explainer", "4817"],
       "port": 4817,
       "autoPort": false
     },

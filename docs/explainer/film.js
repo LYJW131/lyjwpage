@@ -73,7 +73,7 @@
     try { localStorage.setItem("lyjw-explainer-style", k); } catch {}
     segBtns.forEach((b) => { const on = b.dataset.style === k; b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on)); });
     audio.preload = "auto";
-    audio.src = `music-${k}.mp3`;
+    audio.src = (window.__assets || {})[`music-${k}.mp3`] || `music-${k}.mp3`; // 站点上是按内容哈希命名的那份
     audio.load();
     if (resume) play(); // 在点击里就发出播放请求，手机浏览器才不拦
   }

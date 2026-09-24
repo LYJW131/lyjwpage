@@ -297,8 +297,9 @@ body.export #ui,body.export #start{display:none}
 <div id="ui" inert><button id="pp" type="button">暂停</button><span id="tc">0:00</span><input id="scrub" type="range" min="0" max="300" step="0.01" value="0" aria-label="进度"><div id="sty" role="group" aria-label="配乐"><button type="button" data-style="chip">芯片</button><button type="button" data-style="piano">钢琴</button><button type="button" data-style="lofi">Lo-fi</button><button type="button" data-style="pluck">拨弦</button></div><button id="fs" type="button">全屏</button></div>
 <audio id="music" preload="none"></audio>
 <script>
-  // 用 document.write 按顺序载入：顶上补的 base 生效之后才解析这些相对路径（直接写 <script src>，预加载扫描器会先按根目录去取）
-  for (const f of ["icons", "clawd", "music", "engine", "kit", "scenes-0", "scenes-1", "scenes-2", "scenes-3", "scenes-4", "film"]) document.write('<script src="' + f + '.js"><\/script>');
+  // 用 document.write 按顺序载入：顶上补的 base 生效之后才解析这些相对路径（直接写 <script src>，预加载扫描器会先按根目录去取）。
+  // 站点上的版本由 scripts/build-explainer.mjs 注入 window.__assets，文件名换成按内容哈希的那份；本地和 Artifact 里没有它，用原名
+  for (const f of ["icons", "clawd", "music", "engine", "kit", "scenes-0", "scenes-1", "scenes-2", "scenes-3", "scenes-4", "film"]) document.write('<script src="' + ((window.__assets || {})[f + ".js"] || f + ".js") + '"><\/script>');
 </script>
 </body>
 </html>
