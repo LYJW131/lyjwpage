@@ -71,4 +71,5 @@ fi
 echo
 echo "装好了。第一次打开要做两件事："
 echo "  1. 允许读取健康数据（活动、锻炼、站立、步数、距离、爬楼层数及训练记录全都要勾）"
-echo "  2. 右上角齿轮里填上报地址和 Access service token（lyjwpage-iphone）的 Client ID / Secret，保存后按一次「立刻上报」"
+echo "  2. 右上角齿轮里点「登录 Cloudflare 获取上报凭据」，浏览器里确认后按一次「立刻上报」"
+echo "     （登录不了时手填上报地址和 lyjwpage-iphone 的 Client ID / Secret 作后备）"

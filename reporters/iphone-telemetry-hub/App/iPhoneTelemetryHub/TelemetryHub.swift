@@ -171,6 +171,7 @@ actor TelemetryHub {
         var request = URLRequest(url: destination.url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(HubUserAgent.value, forHTTPHeaderField: "User-Agent")
         if !destination.clientID.isEmpty {
             // Access 在边缘核对这把 service token，放行后 Worker 验它签的 JWT
             request.setValue(destination.clientID, forHTTPHeaderField: "CF-Access-Client-Id")

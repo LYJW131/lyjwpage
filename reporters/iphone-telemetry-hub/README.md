@@ -60,10 +60,15 @@
 第一次打开要做两件事：
 
 1. 允许读取健康数据 —— **活动与训练所需的读取权限全勾**。少勾哪项就少哪项，站点那边对应的格子直接不渲染。
-2. 右上角齿轮里填上报地址（`https://ingest.homepage.lyjw.llc/api/ingest/iphone`），以及
-   Cloudflare Access 里 `lyjwpage-iphone` 那把 service token 的 Client ID 和 Client Secret，
-   保存，按一次「立刻上报」。Secret 存钥匙串，
+2. 右上角齿轮里点「登录 Cloudflare 获取上报凭据」：浏览器里用 Cloudflare Access 登录、
+   在确认页点 Allow，上报地址、Client ID、Client Secret 自动填好并当场存下，再按一次
+   「立刻上报」。流程是授权码 + PKCE，见仓库根目录 `docs/reporter-pairing.md`；重新登录
+   就是换钥，旧 Secret 当场作废。Secret 存钥匙串，
    `kSecAttrAccessibleAfterFirstUnlock` —— 锁屏状态下被唤醒也要读得到它。
+
+   登录不了时（配对服务不可用、本机联调）手填作后备：上报地址
+   `https://ingest.homepage.lyjw.llc/api/ingest/iphone`，以及 Cloudflare Access 里
+   `lyjwpage-iphone` 那把 service token 的 Client ID 和 Client Secret，保存。
    过渡期 Client ID 留空时按旧的共用 Bearer 发，Secret 一栏填 `TELEMETRY_INGEST_SECRET`。
 
 本机联调把地址填成 `http://<Mac 局域网 IP>:8788/api/ingest/iphone` 就行，
