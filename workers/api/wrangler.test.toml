@@ -17,6 +17,13 @@ ALLOWED_ORIGINS = "https://*.vercel.app"
 SITE_URL = "https://lyjwpage-do-test.vercel.app"
 APPLE_MUSIC_STOREFRONT = "cn"
 EMBY_PUBLIC_URL = "https://emby.lyjw131.com"
+# 本地没有 Access：上报的 JWT 用 scripts/dev-access.mjs 生成的测试钥匙签，公钥放 .dev.vars 的 ACCESS_DEV_JWKS。
+# 只有 team 域名是这个 .invalid 假地址时 Worker 才认那份公钥，见 src/access-auth.ts。
+ACCESS_TEAM_DOMAIN = "https://access.local.invalid"
+ACCESS_AUD = "local-dev"
+
+[vars.ACCESS_CLIENTS]
+"local-dev.access" = ["ingest:mac", "ingest:iphone", "ingest:homepod", "ingest:emby", "ingest:playstation", "ingest:server", "ingest:agents", "internal:site-deployed"]
 
 [alias]
 "@/lib/storage-driver" = "./src/storage-driver.ts"

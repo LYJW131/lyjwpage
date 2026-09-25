@@ -11,10 +11,6 @@ function ms(name: string, fallback: number): number {
   return value;
 }
 
-function trimSlash(url: string) {
-  return url.replace(/\/+$/, "");
-}
-
 function flag(name: string): boolean {
   const raw = process.env[name]?.trim().toLowerCase();
   return raw === "1" || raw === "true" || raw === "yes";
@@ -46,21 +42,15 @@ function pathOr(name: string, fallback: string): string {
   return raw === undefined ? fallback : raw.trim();
 }
 
-const siteUrl = process.env.SITE_URL?.trim() ?? "";
 
 export const config = {
   /** 采一轮、把报文打到 stdout 就退出，不推送 */
   dryRun: flag("DRY_RUN"),
 
   site: {
-    ingestUrl:
-      process.env.SITE_INGEST_URL?.trim() ||
-      (siteUrl ? `${trimSlash(siteUrl)}/api/ingest/server` : ""),
-    secret: process.env.TELEMETRY_INGEST_SECRET?.trim() ?? "",
-    /**
-     * Cloudflare Access service token（这个来源专用的那一把），配了就走
-     * `ingest.homepage.lyjw.llc` + Access；过渡期没配时退回旧的共用 Bearer。
-     */
+    /** 上报端点，形如 https://ingest.homepage.lyjw.llc/api/ingest/server */
+    ingestUrl: process.env.SITE_INGEST_URL?.trim() ?? "",
+    /** Cloudflare Access service token（这个来源专用的那一把），Access 在边缘核对，Worker 再验 JWT */
     accessClientId: process.env.ACCESS_CLIENT_ID?.trim() ?? "",
     accessClientSecret: process.env.ACCESS_CLIENT_SECRET?.trim() ?? "",
   },

@@ -9,6 +9,7 @@ import { createServer as httpServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 import { createRequire } from 'node:module';
+import { createDevAccess } from './dev-access.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const require = createRequire(join(root, 'workers/api/package.json'));
@@ -17,6 +18,8 @@ const children = [];
 const logs = [];
 let socket;
 const secret = 'local-token-usage-verification';
+// 本地没有 Access：上报带的 JWT 用这把一次性测试钥匙签，Worker 认 ACCESS_DEV_JWKS 里的公钥
+const access = await createDevAccess();
 const verifyBuild = process.argv.includes('--build');
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function port() {
@@ -46,7 +49,7 @@ try {
   const musicKitKeys = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
   const musicKitPem = `-----BEGIN PRIVATE KEY-----\n${Buffer.from(await crypto.subtle.exportKey('pkcs8', musicKitKeys.privateKey)).toString('base64')}\n-----END PRIVATE KEY-----`;
   const vars = {
-    NEXT_PUBLIC_BACKEND_URL: worker, STORAGE_PREFIX: 'isolated-verify', TELEMETRY_INGEST_SECRET: secret, STATE_IMPORT_SECRET: `${secret}-import`,
+    NEXT_PUBLIC_BACKEND_URL: worker, STORAGE_PREFIX: 'isolated-verify', STATE_IMPORT_SECRET: `${secret}-import`, REVALIDATE_SECRET: `${secret}-revalidate`, ...access.vars,
     SITE_URL: site, ALLOWED_ORIGINS: '',
     DEV_OVERRIDES: 'true',
     EMBY_PUBLIC_URL: '',
@@ -75,7 +78,7 @@ try {
   const notices = [];
   const mockSite = httpServer((request, response) => {
     let body = ''; request.on('data', chunk => body += chunk);
-    request.on('end', () => { notices.push(JSON.parse(body)); response.setHeader('content-type', 'application/json'); response.end('{"ok":true}'); });
+    request.on('end', () => { assert.equal(request.headers.authorization, `Bearer ${secret}-revalidate`); notices.push(JSON.parse(body)); response.setHeader('content-type', 'application/json'); response.end('{"ok":true}'); });
   });
   mockSite.listen(sitePort, '127.0.0.1');
   children.push({ kill: () => mockSite.close(), exitCode: 0 });
@@ -113,8 +116,10 @@ try {
   socket = new WebSocket(`${worker.replace('http:', 'ws:')}/ws`);
   socket.addEventListener('message', e => { if (e.data !== 'pong') events.push(JSON.parse(e.data)); });
   await once(socket, 'open');
-  async function post(base, path, body, token = secret) {
-    return fetch(`${base}${path}`, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(15_000) });
+  // 不给 token 就按上报器那样带 Access JWT；给了就是 Bearer（存储导入用，或故意给错的）
+  async function post(base, path, body, token) {
+    const auth = token === undefined ? await access.headers() : { authorization: `Bearer ${token}` };
+    return fetch(`${base}${path}`, { method: 'POST', headers: { ...auth, 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(15_000) });
   }
   assert.equal((await post(worker, '/publish', { type: 'presence', payload: null })).status, 404);
   assert.equal((await post(worker, '/api/ingest/homepod', {}, 'wrong')).status, 401);
@@ -123,7 +128,7 @@ try {
   assert.equal(invalidEnvelope.status, 400);
   assert.deepEqual(await invalidEnvelope.json(), { ok: false, error: '上报数据无效或处理失败' });
   const invalidJson = await fetch(`${worker}/api/ingest/mac`, {
-    method: 'POST', headers: { authorization: `Bearer ${secret}` },
+    method: 'POST', headers: await access.headers(),
     body: '{"private-marker":',
   });
   assert.equal(invalidJson.status, 400);
@@ -216,7 +221,7 @@ try {
   assert.ok(await crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, musicKitKeys.publicKey, Buffer.from(tokenSignature, 'base64url'), Buffer.from(`${tokenHeader}.${tokenPayload}`)));
   assert.equal((await post(worker, '/api/musickit/token', {})).status, 405);
   console.log('PASS: /api/musickit/token issues a verifiable ES256 developer token');
-  const coding = start(process.execPath, [join(root, 'scripts/verify-coding-usage.mjs'), '--base', worker, '--ingest', worker, '--storage-prefix', 'isolated-verify']);
+  const coding = start(process.execPath, [join(root, 'scripts/verify-coding-usage.mjs'), '--base', worker, '--ingest', worker, '--storage-prefix', 'isolated-verify'], { LOCAL_ACCESS_PRIVATE_JWK: JSON.stringify(access.privateJwk) });
   const [codingExit] = await once(coding, 'exit');
   assert.equal(codingExit, 0, logs.join(''));
   console.log('PASS: coding usage, limits, history and invalid-envelope regression');

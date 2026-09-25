@@ -8,8 +8,8 @@ import { get, put, remove } from "@/lib/cache";
  * JWT，一分钱订阅都不带，谁都扒得到。它能打的是 amp-api（Apple 网页播放器自己
  * 用的内部端点）—— 动态封面的 `editorialVideo`、歌词的 `syllable-lyrics` 这些
  * **公开目录 API 不给**的扩展属性只在那儿有。另一条是 Mac 上报器推来的
- * MusicKit 凭据（lib/apple-music-credentials），那条锁在 TELEMETRY_INGEST_SECRET
- * 后面，别混用。
+ * MusicKit 凭据（lib/apple-music-credentials），那条只能由 mac 那把上报凭据写入，
+ * 别混用。
  *
  * 从动态封面（lib/motion-artwork）里抽出来的：歌词也要走同一份 token、同一套
  * 401 作废逻辑，两处各扒一遍就是两份缓存、两个刷新点，401 时还得各清各的。

@@ -34,7 +34,7 @@
 
 | 方法 | 路径 | 鉴权 | 作用 |
 | --- | --- | --- | --- |
-| `POST` | `ingest.homepage.lyjw.llc/api/ingest/<来源>` | Cloudflare Access service token（每来源一把，Worker 再验 JWT 并按来源限权；过渡期旧 `Bearer <TELEMETRY_INGEST_SECRET>` 仍有效） | 接收上报数据、落库、触发广播与首页缓存失效 |
+| `POST` | `ingest.homepage.lyjw.llc/api/ingest/<来源>` | Cloudflare Access service token（每来源一把，Worker 再验 JWT 并按来源限权） | 接收上报数据、落库、触发广播与首页缓存失效 |
 | `GET` | `/ws` | 来源校验（`ALLOWED_ORIGINS`） | 浏览器直连的实时事件推送长连接 |
 | `GET` | `online.homepage.lyjw.llc/ws` | 来源校验 | 「此刻在线」人数统计长连接（页面可见时开启，切走关闭） |
 | `GET` | `/count` | 公开 | API Worker 返回 `{ connections }`；在线人数 Worker 返回 `{ online }` |

@@ -32,7 +32,7 @@ import { cached } from "@/lib/cache";
  * 变化时才发 —— 实测过期两天 Worker 还拿着旧的挨 401，所以收回这里自签。
  *
  * 这份凭据也不再从任何 HTTP 端点发出去。从前 `/api/ingest/apple-music` 的 GET
- * 把它转交给上报器，代价是 `TELEMETRY_INGEST_SECRET` 从此和收听记录同等敏感；
+ * 把它转交给上报器，代价是当时共用的上报密钥从此和收听记录同等敏感；
  * 拉列表的活收回站点之后，那条路连同那个代价一起没了。
  */
 

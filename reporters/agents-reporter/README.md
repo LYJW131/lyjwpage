@@ -26,7 +26,7 @@ Claude、Codex、Grok、Antigravity 的用量仍由 Mac 从本机日志上报。
 PlayStation 上报器采用同款人数分档逻辑，限额使用自己的 5 / 10 / 60 分钟。调频在这里控制的是打各家
 限额接口的频率（server-reporter 已改成固定每分钟，它当初调频只为给 Vercel 减负）。
 计数超时、非成功响应、格式错误一律当 0，不触发上报失败重试。
-只配 `SITE_INGEST_URL` 不配 `SITE_URL` 时读不到人头数，固定走 60 分钟。
+不配 `SITE_URL` 时读不到人头数，固定走 60 分钟。
 
 长档每 5 分钟重查人数，发现更快档立即采集；人数减少不延后已经定好的下一轮。
 只查公开计数口，不带 ingest 密钥，也不在这些检查里访问厂商限额接口。
@@ -40,11 +40,10 @@ PlayStation 上报器采用同款人数分档逻辑，限额使用自己的 5 / 
 
 | 变量 | 必填 | 说明 |
 | --- | --- | --- |
-| `SITE_URL` | ✅ | 上报 Worker 的源，如 `https://api.homepage.lyjw.llc`。上报端点和推送连接数的 `/count` 从它拼 |
-| `SITE_INGEST_URL` | | 直接给完整端点，给了就不用 `SITE_URL` 上报；人头数仍只从 `SITE_URL` 读 |
-| `ACCESS_CLIENT_ID` | ✅ | Cloudflare Access service token `lyjwpage-agents` 的 client id；配了就走 Access，`SITE_INGEST_URL` 填 `https://ingest.homepage.lyjw.llc/api/ingest/agents` |
+| `SITE_URL` | | API Worker 的源 `https://api.homepage.lyjw.llc`，只用来读推送连接数 `/count` |
+| `SITE_INGEST_URL` | ✅ | 上报端点 `https://ingest.homepage.lyjw.llc/api/ingest/agents` |
+| `ACCESS_CLIENT_ID` | ✅ | Cloudflare Access service token `lyjwpage-agents` 的 client id |
 | `ACCESS_CLIENT_SECRET` | ✅ | 同一把 token 的 secret，只在 Zero Trust 控制台创建或轮换时显示一次 |
-| `TELEMETRY_INGEST_SECRET` | | 过渡期的旧共用 Bearer，没配 Access 凭据时才用；全部迁完后删除 |
 | `LIVE_INTERVAL_MS` | | 默认 `300000`（5 分钟），有可见页面；也是长档重查人数的间隔 |
 | `OPEN_INTERVAL_MS` | | 默认 `600000`（10 分钟），只有后台页面 |
 | `IDLE_INTERVAL_MS` | | 默认 `3600000`（60 分钟），无人打开；改长时同步放宽站点 `AGENT_LIMITS_STALE_MS` |

@@ -453,7 +453,7 @@ test("commit performs no room or Vercel I/O and Worker dispatch performs both", 
   const env = {
     ...testEnv(),
     SITE_URL: "https://site.example",
-    TELEMETRY_INGEST_SECRET: "secret",
+    REVALIDATE_SECRET: "secret",
     LIVE_PUSH: {
       idFromName: () => null,
       get: () => ({ broadcast: async () => { broadcasts += 1; } }),

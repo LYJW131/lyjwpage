@@ -65,8 +65,7 @@ async function currentVibeCodingLayout(): Promise<string> {
 
 async function revalidateVercel(env: Env, tags: readonly string[]): Promise<boolean> {
   const site = env.SITE_URL?.replace(/\/+$/, "");
-  // 过渡期：REVALIDATE_SECRET 还没配上时退回旧的共用密钥，站点两把都认（见 src/app/api/revalidate）
-  const secret = env.REVALIDATE_SECRET ?? env.TELEMETRY_INGEST_SECRET;
+  const secret = env.REVALIDATE_SECRET;
   if (!site || !secret) {
     console.warn("[revalidate] 没配 SITE_URL / REVALIDATE_SECRET，缓存失效停用");
     return false;

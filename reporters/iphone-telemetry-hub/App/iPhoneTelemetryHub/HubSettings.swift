@@ -4,8 +4,7 @@ import Security
 /// 上报目的地。地址和 client id 存 UserDefaults，密钥存钥匙串
 struct Destination: Sendable {
     var url: URL
-    /// Cloudflare Access service token 的 client id（不是秘密）。填了就按 Access 发，
-    /// 这时 `secret` 是那把 token 的 client secret；空着是过渡期的旧 Bearer
+    /// Cloudflare Access service token 的 client id（不是秘密），`secret` 是它的 client secret
     var clientID: String
     var secret: String
 }
@@ -59,9 +58,10 @@ enum HubSettings {
         set { keychainWrite(newValue.trimmingCharacters(in: .whitespacesAndNewlines)) }
     }
 
-    /// 地址填全了才算配好。没配好时上报直接跳过，不去打一个空 URL
+    /// 地址和 Access 凭据都填全了才算配好。没配好时上报直接跳过，不去打一个注定被拒的请求
     static func destination() -> Destination? {
         guard let url = URL(string: endpoint), url.scheme != nil, url.host != nil else { return nil }
+        guard !clientID.isEmpty, !secret.isEmpty else { return nil }
         return Destination(url: url, clientID: clientID, secret: secret)
     }
 

@@ -82,9 +82,11 @@ function sleep(ms: number) {
 }
 
 async function main() {
-  info(`server-reporter 启动：${config.hostId} (${config.location}) → ${config.site.ingestUrl || "（没配 SITE_URL）"}`);
-  if (!config.site.secret && !config.dryRun) info("没配 TELEMETRY_INGEST_SECRET —— 只有站点也没配时才可以这样");
-  if (!config.dryRun && !config.site.ingestUrl) throw new Error("缺少环境变量 SITE_URL 或 SITE_INGEST_URL");
+  info(`server-reporter 启动：${config.hostId} (${config.location}) → ${config.site.ingestUrl || "（没配 SITE_INGEST_URL）"}`);
+  if (!config.dryRun && !config.site.ingestUrl) throw new Error("缺少环境变量 SITE_INGEST_URL");
+  if (!config.dryRun && !(config.site.accessClientId && config.site.accessClientSecret)) {
+    throw new Error("缺少环境变量 ACCESS_CLIENT_ID / ACCESS_CLIENT_SECRET");
+  }
 
   const iface = defaultIface();
   const { intervalMs } = config;

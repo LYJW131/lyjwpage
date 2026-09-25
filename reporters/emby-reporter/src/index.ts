@@ -365,9 +365,6 @@ function scheduleImageFlush() {
 
 function main() {
   info(`emby-reporter 启动：${config.emby.url} → ${config.site.ingestUrl}`);
-  if (!config.site.secret) {
-    info("没配 TELEMETRY_INGEST_SECRET —— 只有站点也没配时才可以这样");
-  }
 
   const kickResume = loop(
     "emby-resume",

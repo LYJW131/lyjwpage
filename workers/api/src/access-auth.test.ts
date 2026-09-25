@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { setJwksFetcherForTests, verifyAccessJwt } from "@shared/access-jwt";
 
-import { authorize, type AccessEnv } from "./access-auth";
+import { authorize, DEV_ACCESS_ISSUER, type AccessEnv } from "./access-auth";
 
 const ISSUER = "https://team.cloudflareaccess.com";
 const AUD = "aud-tag";
@@ -21,7 +21,6 @@ const env: AccessEnv = {
   ACCESS_TEAM_DOMAIN: `${ISSUER}/`,
   ACCESS_AUD: AUD,
   ACCESS_CLIENTS: { [MAC]: ["ingest:mac"], [HA]: ["ingest:homepod", "ingest:playstation"] },
-  TELEMETRY_INGEST_SECRET: "legacy",
 };
 
 function b64url(data: Uint8Array | string): string {
@@ -54,7 +53,7 @@ setJwksFetcherForTests(async (issuer) => {
 test("a valid Access JWT authorizes only the permissions listed for its client id", async () => {
   const token = await sign(claims());
   assert.deepEqual(await authorize(request({ "Cf-Access-Jwt-Assertion": token }), env, "ingest:mac"),
-    { ok: true, via: "access", clientId: MAC });
+    { ok: true, clientId: MAC });
   const other = await authorize(request({ "Cf-Access-Jwt-Assertion": token }), env, "ingest:emby");
   assert.equal(other.ok, false);
   assert.equal(!other.ok && other.status, 403);
@@ -80,20 +79,20 @@ test("JWTs with the wrong audience, issuer, expiry, algorithm or signature are r
   }
 });
 
-test("a forged assertion does not fall back to the legacy bearer", async () => {
-  const result = await authorize(
-    request({ "Cf-Access-Jwt-Assertion": "x.y.z", Authorization: "Bearer legacy" }),
-    env,
-    "ingest:mac",
-  );
-  assert.equal(result.ok, false);
+test("the old shared bearer is no longer accepted", async () => {
+  assert.equal((await authorize(request({ Authorization: "Bearer legacy" }), env, "ingest:mac")).ok, false);
 });
 
-test("the legacy bearer still works during the transition, and only with the exact secret", async () => {
-  assert.deepEqual(await authorize(request({ Authorization: "Bearer legacy" }), env, "ingest:mac"), { ok: true, via: "legacy-bearer" });
-  assert.equal((await authorize(request({ Authorization: "Bearer legacy2" }), env, "ingest:mac")).ok, false);
-  assert.equal((await authorize(request({}), env, "ingest:mac")).ok, false);
-  assert.equal((await authorize(request({ Authorization: "Bearer legacy" }), { ...env, TELEMETRY_INGEST_SECRET: undefined }, "ingest:mac")).ok, false);
+test("a local test key set is honoured only under the dev issuer", async () => {
+  const jwks = JSON.stringify({ keys: [publicJwk] });
+  const dev: AccessEnv = { ...env, ACCESS_TEAM_DOMAIN: DEV_ACCESS_ISSUER, ACCESS_DEV_JWKS: jwks };
+  setJwksFetcherForTests(async () => { throw new Error("dev keys must not hit the network"); });
+  const token = await sign(claims({ iss: DEV_ACCESS_ISSUER }));
+  assert.equal((await authorize(request({ "Cf-Access-Jwt-Assertion": token }), dev, "ingest:mac")).ok, true);
+  // 真实 team 域名下误配了 ACCESS_DEV_JWKS：照样去拉线上公钥，不认测试钥匙
+  const prod: AccessEnv = { ...env, ACCESS_DEV_JWKS: jwks };
+  setJwksFetcherForTests(async () => []);
+  assert.equal((await authorize(request({ "Cf-Access-Jwt-Assertion": await sign(claims()) }), prod, "ingest:mac")).ok, false);
 });
 
 test("an unknown kid refetches the key set, at most once a minute", async () => {

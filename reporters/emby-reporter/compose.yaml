@@ -22,13 +22,10 @@ services:
       EMBY_URL: ${EMBY_URL}
       EMBY_API_KEY: ${EMBY_API_KEY}
       EMBY_USER_ID: ${EMBY_USER_ID}
-      SITE_URL: ${SITE_URL}
-      SITE_INGEST_URL: ${SITE_INGEST_URL:-}
-      # Access service token（lyjwpage-emby）。配了就走 Access，SITE_INGEST_URL 指向 ingest 域名
-      ACCESS_CLIENT_ID: ${ACCESS_CLIENT_ID:-}
-      ACCESS_CLIENT_SECRET: ${ACCESS_CLIENT_SECRET:-}
-      # 过渡期的旧共用密钥，迁到 Access 后删掉
-      TELEMETRY_INGEST_SECRET: ${TELEMETRY_INGEST_SECRET:-}
+      SITE_INGEST_URL: ${SITE_INGEST_URL}
+      # Cloudflare Access service token（lyjwpage-emby）
+      ACCESS_CLIENT_ID: ${ACCESS_CLIENT_ID}
+      ACCESS_CLIENT_SECRET: ${ACCESS_CLIENT_SECRET}
       R2_ENDPOINT: ${R2_ENDPOINT}
       R2_BUCKET: ${R2_BUCKET}
       R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID}

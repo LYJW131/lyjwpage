@@ -134,7 +134,7 @@ struct SettingsView: View {
         guard HubSettings.destination() != nil else {
             // 地址不成立就不关窗：关掉的话人以为存上了，实际每次上报都在跳过
             endpoint = HubSettings.endpoint
-            note = "地址填得不完整，要带 https:// 和域名"
+            note = "地址要带 https:// 和域名，Client ID 和 Client Secret 都要填（或者直接点上面的登录）"
             return
         }
         dismiss()
