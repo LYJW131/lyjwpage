@@ -1,3 +1,5 @@
+import { verifyAccessJwt } from "../../../shared/access-jwt";
+
 import { AuthSession } from "./auth";
 import {
   countUrl,
@@ -668,9 +670,9 @@ export default {
    * 拿调试口探一下就能把它点着。2026-09-13 整个删掉：冷启动路径本来就等价，
    * 真要重来一遍把 KV 清掉就是了。删掉之后这个 Worker 上不再有「贵」的入口。
    *
-   * 鉴权换成和上报同一个 `TELEMETRY_INGEST_SECRET`（Bearer）：Access 撤掉之后
-   * 这个域名是公开的，不设门槛等于把 PSN 取数开放给任何人按秒点。没配这个变量
-   * 时直接 503，不退化成无鉴权。
+   * 鉴权交给 Cloudflare Access：这个域名的 `/tick` 挂在 Access 应用「playstation-reporter tick」
+   * 后面，浏览器打开会先要邮箱登录。Worker 还得自己验 Access 签的 JWT —— workers.dev
+   * 那条路不过 Access。没配 ACCESS_* 时一律 401，不退化成无鉴权。
    */
   async fetch(request, env) {
     if (request.method !== "GET") {
@@ -680,11 +682,11 @@ export default {
     if (path !== "/tick") {
       return Response.json({ ok: false, error: "Not Found" }, { status: 404 });
     }
-    const secret = env.TELEMETRY_INGEST_SECRET?.trim();
-    if (!secret) {
-      return Response.json({ ok: false, error: "Service Unavailable" }, { status: 503 });
-    }
-    if (request.headers.get("Authorization") !== `Bearer ${secret}`) {
+    const assertion = request.headers.get("Cf-Access-Jwt-Assertion");
+    const claims = assertion
+      ? await verifyAccessJwt(assertion, { teamDomain: env.ACCESS_TEAM_DOMAIN, audience: env.ACCESS_AUD })
+      : null;
+    if (!claims) {
       return Response.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
     try {
