@@ -41,11 +41,9 @@ webhook 各版本的字段位置本来就不一致，用它带的值等于把版
 | `EMBY_URL` | ✅ | 内网地址，如 `http://emby.local:8096` |
 | `EMBY_API_KEY` | ✅ | Emby 后台「高级 → API 密钥」 |
 | `EMBY_USER_ID` | ✅ | 要跟的那个用户；别人在看什么不会被推出去 |
-| `SITE_URL` | ✅ | 上报 Worker 的源，如 `https://api.homepage.lyjw.llc`。端点路径由上报器自己拼 |
-| `SITE_INGEST_URL` | | 直接给完整端点，给了就不用 `SITE_URL` |
-| `ACCESS_CLIENT_ID` | ✅ | Cloudflare Access service token `lyjwpage-emby` 的 client id；配了就走 Access，`SITE_INGEST_URL` 填 `https://ingest.homepage.lyjw.llc/api/ingest/emby` |
+| `SITE_INGEST_URL` | ✅ | 上报端点 `https://ingest.homepage.lyjw.llc/api/ingest/emby` |
+| `ACCESS_CLIENT_ID` | ✅ | Cloudflare Access service token `lyjwpage-emby` 的 client id |
 | `ACCESS_CLIENT_SECRET` | ✅ | 同一把 token 的 secret，只在 Zero Trust 控制台创建或轮换时显示一次 |
-| `TELEMETRY_INGEST_SECRET` | | 过渡期的旧共用 Bearer，没配 Access 凭据时才用；全部迁完后删除 |
 | `R2_ENDPOINT` | ✅ | R2 S3 API 地址，如 `https://<account>.r2.cloudflarestorage.com` |
 | `R2_BUCKET` | ✅ | 图片 bucket 名称 |
 | `R2_ACCESS_KEY_ID` | ✅ | 只授予该 bucket 写权限的访问密钥 ID |
@@ -100,7 +98,7 @@ ssh nas-host '/usr/local/bin/docker compose -f /srv/lyjwpage/emby-reporter/compo
 （`docker` 不在群晖的非交互 PATH 里，得写绝对路径。`-f` 指到哪个文件，compose 就拿
 那个目录当项目目录 —— `.env` 和项目名都从那儿取，不会和 NAS 上别的 compose 项目串。）
 
-生产的 `SITE_URL` 统一填 `https://api.homepage.lyjw.llc`，不经 Vercel 站点。
+生产的 `SITE_INGEST_URL` 填 `https://ingest.homepage.lyjw.llc/api/ingest/emby`，不经 Vercel 站点。
 
 不进容器直接跑也行（Node ≥ 20），在仓库根目录：
 `pnpm --filter @lyjwpage/emby-reporter build && node reporters/emby-reporter/dist/index.js`。

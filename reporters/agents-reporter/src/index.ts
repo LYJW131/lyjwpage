@@ -64,7 +64,10 @@ async function round(): Promise<void> {
     return;
   }
   if (!config.site.ingestUrl) {
-    throw new Error("缺少环境变量 SITE_URL 或 SITE_INGEST_URL");
+    throw new Error("缺少环境变量 SITE_INGEST_URL");
+  }
+  if (!config.site.accessClientId || !config.site.accessClientSecret) {
+    throw new Error("缺少环境变量 ACCESS_CLIENT_ID / ACCESS_CLIENT_SECRET");
   }
   /**
    * 一家都没有（全都「没配」）时不发：站点对空封回 400，发了只是白退避。

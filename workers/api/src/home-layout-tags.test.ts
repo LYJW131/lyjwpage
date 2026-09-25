@@ -157,7 +157,7 @@ function limits(agents: { id: string; tier: string }[], at: number) {
 
 test("Vibe coding：出口按卡片骨架比对上一次通知，行数变了才通知", withStorage(async () => {
   let revalidates = 0;
-  const env = testEnv({ SITE_URL: "https://site.example", TELEMETRY_INGEST_SECRET: "secret" } as Partial<Env>);
+  const env = testEnv({ SITE_URL: "https://site.example", REVALIDATE_SECRET: "secret" } as Partial<Env>);
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input) => {
     if (String(input) === "https://site.example/api/revalidate") {

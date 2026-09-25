@@ -122,7 +122,6 @@ enabled = true
 
 # 秘密通过 wrangler secret put 配置：GITHUB_TOKEN、REVALIDATE_SECRET（调站点 /api/revalidate）、
 # PAIRING_KEY / CF_ACCESS_API_TOKEN（配对登录）、
-# TELEMETRY_INGEST_SECRET（过渡期的旧上报密钥，上报器都迁到 Access 后删除）、
 # APPLE_MUSIC_PRIVATE_KEY（MusicKit 签发用的 .p8 全文）、CLOUDFLARE_METRICS_TOKEN
 # （Workers 统计、部署与构建只读）、VERCEL_TOKEN（团队范围，部署与指标只读用）、
 # PAGESPEED_API_KEY（Google PageSpeed Insights，cron 每小时实测一次首页性能）、

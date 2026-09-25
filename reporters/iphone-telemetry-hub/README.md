@@ -69,10 +69,9 @@
    登录不了时（配对服务不可用、本机联调）手填作后备：上报地址
    `https://ingest.homepage.lyjw.llc/api/ingest/iphone`，以及 Cloudflare Access 里
    `lyjwpage-iphone` 那把 service token 的 Client ID 和 Client Secret，保存。
-   过渡期 Client ID 留空时按旧的共用 Bearer 发，Secret 一栏填 `TELEMETRY_INGEST_SECRET`。
 
-本机联调把地址填成 `http://<Mac 局域网 IP>:8788/api/ingest/iphone` 就行，
-Info.plist 里开了 `NSAllowsLocalNetworking`。**别填 `dev.lyjw.me`** —— 那份预览部署
+本机 Worker 没有 Access，只认 `scripts/dev-access.mjs` 签的 JWT，App 发不出这个头，
+所以本机联调上报链路用那个脚本配 curl；Info.plist 里的 `NSAllowsLocalNetworking` 留着给别的本机调试。**别填 `dev.lyjw.me`** —— 那份预览部署
 开着 Vercel Authentication，App 的 POST 过不去。
 
 ## 签名会过期

@@ -6,7 +6,7 @@
  * 签名验得过的 JWT 才说明请求真的过了门。只用 WebCrypto，不依赖 Node 兼容层。
  */
 
-type Jwk = JsonWebKey & { kid?: string };
+export type Jwk = JsonWebKey & { kid?: string };
 type JwtHeader = { alg?: string; kid?: string };
 type JwtPayload = {
   aud?: string | string[];
@@ -90,7 +90,7 @@ export type AccessJwtClaims = { commonName: string | null; email: string | null 
  */
 export async function verifyAccessJwt(
   token: string,
-  options: { teamDomain?: string; audience?: string },
+  options: { teamDomain?: string; audience?: string; jwks?: Jwk[] },
   now = Date.now(),
 ): Promise<AccessJwtClaims | null> {
   const issuer = options.teamDomain?.trim() ? trimSlash(options.teamDomain.trim()) : "";
@@ -110,7 +110,8 @@ export async function verifyAccessJwt(
   }
   if (header.alg !== "RS256" || !header.kid) return null;
 
-  const key = await keyFor(issuer, header.kid, now);
+  // 本地开发与隔离验证传进来一份测试公钥，不出网；线上一律从 team 域名拉
+  const key = options.jwks ? (await importKeys(options.jwks)).get(header.kid) ?? null : await keyFor(issuer, header.kid, now);
   if (!key) return null;
   const valid = await crypto.subtle.verify(
     "RSASSA-PKCS1-v1_5",

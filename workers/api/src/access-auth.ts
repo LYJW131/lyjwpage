@@ -8,13 +8,11 @@
  * 看这把 token 许不许写这个来源。边缘那道门挡陌生人，这张表管「谁能写什么」，
  * 而且跟着 Git 走。绕过 Access 直接打 workers.dev 或 api 域名的请求拿不出合法 JWT。
  *
- * 旧路：共用的 TELEMETRY_INGEST_SECRET（Bearer）。过渡期保留，用到就记一条
- * `[auth] 旧 Bearer` 日志，日志里不再出现某个来源时说明它迁完了；全部迁完后删掉这条路。
+ * 本地没有 Access：`ACCESS_TEAM_DOMAIN` 设成 DEV_ACCESS_ISSUER 时改用 `ACCESS_DEV_JWKS` 里的
+ * 测试公钥，由 scripts/dev-access.mjs 生成、签 JWT。只认这个假域名，线上误配这个变量也不生效。
  */
 
-import { timingSafeEqual } from "node:crypto";
-
-import { verifyAccessJwt } from "@shared/access-jwt";
+import { verifyAccessJwt, type Jwk } from "@shared/access-jwt";
 
 import type { Env } from "./runtime";
 
@@ -22,11 +20,18 @@ import type { Env } from "./runtime";
 export type Permission = `ingest:${string}` | "internal:site-deployed";
 
 export type AuthResult =
-  | { ok: true; via: "access"; clientId: string }
-  | { ok: true; via: "legacy-bearer" }
+  | { ok: true; clientId: string }
   | { ok: false; status: 401 | 403 | 503; error: string };
 
-export type AccessEnv = Pick<Env, "ACCESS_TEAM_DOMAIN" | "ACCESS_AUD" | "ACCESS_CLIENTS" | "TELEMETRY_INGEST_SECRET">;
+export type AccessEnv = Pick<Env, "ACCESS_TEAM_DOMAIN" | "ACCESS_AUD" | "ACCESS_CLIENTS" | "ACCESS_DEV_JWKS">;
+
+/** 本地开发专用的 team 域名，.invalid 保证它永远解析不到真实服务。 */
+export const DEV_ACCESS_ISSUER = "https://access.local.invalid";
+
+export function devJwks(env: Pick<Env, "ACCESS_TEAM_DOMAIN" | "ACCESS_DEV_JWKS">): Jwk[] | undefined {
+  if (env.ACCESS_TEAM_DOMAIN?.trim() !== DEV_ACCESS_ISSUER || !env.ACCESS_DEV_JWKS) return undefined;
+  return (JSON.parse(env.ACCESS_DEV_JWKS) as { keys: Jwk[] }).keys;
+}
 
 function allowedFor(env: AccessEnv, clientId: string): readonly string[] {
   const table = env.ACCESS_CLIENTS;
@@ -35,24 +40,12 @@ function allowedFor(env: AccessEnv, clientId: string): readonly string[] {
   return Array.isArray(entry) ? entry.filter((item): item is string => typeof item === "string") : [];
 }
 
-function secretMatches(provided: string, expected: string): boolean {
-  const a = new TextEncoder().encode(provided);
-  const b = new TextEncoder().encode(expected);
-  if (a.byteLength !== b.byteLength) return false;
-  return timingSafeEqual(a, b);
-}
-
-function bearerToken(request: Request): string | null {
-  const match = request.headers.get("Authorization")?.match(/^Bearer\s+(.+)$/i);
-  return match?.[1]?.trim() ?? null;
-}
-
 export async function authorize(request: Request, env: AccessEnv, permission: Permission): Promise<AuthResult> {
   const assertion = request.headers.get("Cf-Access-Jwt-Assertion");
   if (assertion) {
     let clientId: string | null;
     try {
-      const claims = await verifyAccessJwt(assertion, { teamDomain: env.ACCESS_TEAM_DOMAIN, audience: env.ACCESS_AUD });
+      const claims = await verifyAccessJwt(assertion, { teamDomain: env.ACCESS_TEAM_DOMAIN, audience: env.ACCESS_AUD, jwks: devJwks(env) });
       clientId = claims?.commonName ?? null;
     } catch (error) {
       console.error("[auth] 验 Access JWT 出错", error);
@@ -63,16 +56,7 @@ export async function authorize(request: Request, env: AccessEnv, permission: Pe
       console.warn("[auth] 越权", clientId, permission);
       return { ok: false, status: 403, error: "这把凭据不能做这件事" };
     }
-    return { ok: true, via: "access", clientId };
-  }
-
-  const expected = env.TELEMETRY_INGEST_SECRET;
-  const provided = bearerToken(request);
-  if (expected && provided && secretMatches(provided, expected)) {
-    // log 而不是 warn：Sentry 只收 warn / error，这条每封旧上报都打，别刷进 Sentry Logs。
-    // 迁移进度看 Workers 日志里还有没有它
-    console.log("[auth] 旧 Bearer", permission);
-    return { ok: true, via: "legacy-bearer" };
+    return { ok: true, clientId };
   }
   return { ok: false, status: 401, error: "未授权" };
 }

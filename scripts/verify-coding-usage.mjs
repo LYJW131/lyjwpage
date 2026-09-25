@@ -4,6 +4,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { parseArgs } from "node:util";
 
+import { devAccessFromEnv } from "./dev-access.mjs";
+
 const { values } = parseArgs({ options: {
   ingest: { type: "string", default: "http://127.0.0.1:8787" },
   base: { type: "string", default: "http://localhost:3211" },
@@ -13,7 +15,7 @@ const { values } = parseArgs({ options: {
 } });
 if (values.help) {
   console.log("node scripts/verify-coding-usage.mjs --storage-prefix <isolated-dev-prefix> [--snapshot <Mac CLI JSON>] [--base http://localhost:3211] [--ingest http://127.0.0.1:8787]");
-  console.log("Requires dedicated local Next and Worker servers with the same empty isolated Durable Object, and TELEMETRY_INGEST_SECRET=local-token-usage-verification; production services must not be configured. Leaves the input snapshot (or synthetic baseline) installed and synthetic limits.");
+  console.log("Requires dedicated local Next and Worker servers with the same empty isolated Durable Object, with the local Access test key (LOCAL_ACCESS_PRIVATE_JWK, see scripts/dev-access.mjs); production services must not be configured. Leaves the input snapshot (or synthetic baseline) installed and synthetic limits.");
   process.exit(0);
 }
 
@@ -32,7 +34,9 @@ assert.equal(ingest.pathname, "/");
 const prefix = values["storage-prefix"];
 assert.ok(prefix && /^[a-zA-Z0-9:_-]+$/.test(prefix) && /(?:^|[-_:])(test|dev|verify)(?:[-_:]|$)/.test(prefix), "Supply an explicit test/dev/verify storage prefix; production prefixes are forbidden");
 
-const secret = "local-token-usage-verification";
+// 父进程（verify-api-worker.mjs）把它那把测试钥匙经 LOCAL_ACCESS_PRIVATE_JWK 传下来
+const access = await devAccessFromEnv();
+assert.ok(access, "LOCAL_ACCESS_PRIVATE_JWK is required: run through scripts/verify-api-worker.mjs, or export the key from scripts/dev-access.mjs");
 const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 const date = (stamp) => new Date(stamp).toISOString().slice(0, 10);
 
@@ -76,17 +80,19 @@ function envelope(snapshot, parts = ["usage", "now", "year"]) {
   const names = { usage: "vibeCodingUsage", now: "vibeCodingNow", year: "vibeCodingYear" };
   return { version: 4, heartbeatAt: Date.now(), presence: "online", activeModules: ["vibeCoding"], modules: Object.fromEntries(parts.map((part) => [names[part], snapshot[part]])) };
 }
-async function request(path, body, authorization = secret) {
+// authorization：默认带 Access JWT；null 不带任何凭据；字符串按旧式 Bearer 发（应当被拒）
+async function request(path, body, authorization = "access") {
+  const auth = authorization === "access" ? await access.headers() : authorization ? { authorization: `Bearer ${authorization}` } : {};
   const response = await fetch(new URL(path, ingest), {
     method: body === undefined ? "GET" : "POST",
-    headers: { "content-type": "application/json", ...(authorization ? { authorization: `Bearer ${authorization}` } : {}) },
+    headers: { "content-type": "application/json", ...auth },
     body: body === undefined ? undefined : JSON.stringify(body),
     redirect: "error",
     signal: AbortSignal.timeout(30_000),
   });
   return { status: response.status, body: await response.json() };
 }
-async function post(path, body, status = 202, authorization = secret) {
+async function post(path, body, status = 202, authorization = "access") {
   const result = await request(path, body, authorization);
   assert.equal(result.status, status, `${path}: ${JSON.stringify(result.body)}`);
   assert.equal(result.body.ok, status === 202);

@@ -16,12 +16,12 @@ export interface Env extends MusicKitTokenEnv {
   READ_MODEL?: KVNamespace;
   /** Append-only long-term activity archive. Omit to disable archiving; nothing else reads it. */
   HISTORY?: D1Database;
-  /** 旧的共用上报密钥，过渡期保留（见 access-auth.ts），全部上报器迁到 Access 后删除。 */
-  TELEMETRY_INGEST_SECRET?: string;
   /** Access 的 team 域名（`https://<team>.cloudflareaccess.com`），也是 JWT 的签发方。 */
   ACCESS_TEAM_DOMAIN?: string;
   /** `lyjwpage ingest` 这个 Access 应用的 AUD 标签。 */
   ACCESS_AUD?: string;
+  /** 只在本地：team 域名为 DEV_ACCESS_ISSUER 时用这份 JWKS 验 JWT，见 access-auth.ts。 */
+  ACCESS_DEV_JWKS?: string;
   /** service token 的 client id → 允许的权限串，见 wrangler.toml 的 [vars.ACCESS_CLIENTS]。 */
   ACCESS_CLIENTS?: Record<string, string[]>;
   /** Worker 调站点 /api/revalidate 用的密钥，只有 Worker 和 Vercel 两边有。 */

@@ -39,16 +39,9 @@ type PushResult = {
 
 type SiteEnvelope<T> = { ok?: boolean; error?: string; data?: T };
 
-/**
- * 有 Access service token 就带它（Access 在边缘核对，放行后 Worker 验 JWT）；
- * 过渡期没配时退回旧的共用 Bearer。
- */
+/** 这个来源专用的 Access service token：Access 在边缘核对，放行后 Worker 验 JWT */
 function authHeaders(): Record<string, string> {
-  const { accessClientId, accessClientSecret, secret } = config.site;
-  if (accessClientId && accessClientSecret) {
-    return { "CF-Access-Client-Id": accessClientId, "CF-Access-Client-Secret": accessClientSecret };
-  }
-  return secret ? { Authorization: `Bearer ${secret}` } : {};
+  return { "CF-Access-Client-Id": config.site.accessClientId, "CF-Access-Client-Secret": config.site.accessClientSecret };
 }
 
 /**

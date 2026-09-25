@@ -1,7 +1,9 @@
 # 本地复制为 .dev.vars；云端敏感值用 wrangler secret 配置，禁止提交真实值。
-# 本地上报鉴权。线上上报走 Cloudflare Access（见 src/access-auth.ts），本地没有 Access，
-# 过渡期用这把旧 Bearer 往本地 Worker 推；调站点 /api/revalidate 也退回用它。
-TELEMETRY_INGEST_SECRET=
+# 本地上报鉴权。线上走 Cloudflare Access，本地没有：`node scripts/dev-access.mjs init` 生成测试钥匙，
+# 把它打印的这一行填进来；往本地推时用 `node scripts/dev-access.mjs header` 打出的请求头。
+ACCESS_DEV_JWKS=
+# 本地 Worker 调站点 /api/revalidate 用；和站点 .env.local 的同名变量对上，随便填一个。
+REVALIDATE_SECRET=
 # 导入 / 初始化权限，与上报密钥分开。本地随便填一个，`pnpm dev:worker:init` 用
 # --env-file 读它来初始化空库；云端只在迁移时临时配置，结束后删除。
 STATE_IMPORT_SECRET=dev-import

@@ -29,20 +29,11 @@ export const config = {
   },
 
   site: {
-    /**
-     * 直接给完整端点也行，省得为了改路径去动代码。
-     */
-    ingestUrl:
-      process.env.SITE_INGEST_URL?.trim() ||
-      `${trimSlash(required("SITE_URL"))}/api/ingest/emby`,
-    /** 和站点的 TELEMETRY_INGEST_SECRET 对上。站点没配时才允许留空 */
-    secret: process.env.TELEMETRY_INGEST_SECRET?.trim() ?? "",
-    /**
-     * Cloudflare Access service token（这个来源专用的那一把），配了就走
-     * `ingest.homepage.lyjw.llc` + Access；过渡期没配时退回旧的共用 Bearer。
-     */
-    accessClientId: process.env.ACCESS_CLIENT_ID?.trim() ?? "",
-    accessClientSecret: process.env.ACCESS_CLIENT_SECRET?.trim() ?? "",
+    /** 上报端点，形如 https://ingest.homepage.lyjw.llc/api/ingest/emby */
+    ingestUrl: required("SITE_INGEST_URL"),
+    /** Cloudflare Access service token（这个来源专用的那一把），Access 在边缘核对，Worker 再验 JWT */
+    accessClientId: required("ACCESS_CLIENT_ID"),
+    accessClientSecret: required("ACCESS_CLIENT_SECRET"),
   },
 
   r2: {

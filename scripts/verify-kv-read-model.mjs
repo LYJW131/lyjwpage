@@ -8,6 +8,7 @@ import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
 import { createRequire } from 'node:module';
+import { createDevAccess } from './dev-access.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const require = createRequire(join(root, 'workers/api/package.json'));
@@ -20,6 +21,7 @@ const logs = [];
 let child;
 let startupError;
 const secret = 'isolated-kv-test';
+const access = await createDevAccess();
 const prefix = 'isolated-kv';
 const path = '/api/status/vibecoding/year';
 const key = `${prefix}:public-read-model:v1:${path}`;
@@ -77,7 +79,7 @@ export default {
     compatibility_date: '2025-02-14',
     compatibility_flags: ['nodejs_compat', 'nodejs_compat_populate_process_env'],
     vars: {
-      STORAGE_PREFIX: prefix, TELEMETRY_INGEST_SECRET: secret, STATE_IMPORT_SECRET: `${secret}-import`,
+      STORAGE_PREFIX: prefix, STATE_IMPORT_SECRET: `${secret}-import`, ...access.vars,
       ALLOWED_ORIGINS: 'https://allowed.example', SITE_URL: '', EMBY_PUBLIC_URL: '',
       DEV_OVERRIDES: 'false', UPSTREAM_API_URL: '',
     },
@@ -101,8 +103,9 @@ export default {
   });
   child.on('error', error => { startupError = error; });
   for (const stream of [child.stdout, child.stderr]) stream.on('data', value => logs.push(value.toString()));
-  const post = (target, value, token = secret) => request(`${base}${target}`, {
-    method: 'POST', headers: { authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(value),
+  // 不给 token 就带本地 Access JWT（上报）；给了是存储导入用的 Bearer
+  const post = async (target, value, token) => request(`${base}${target}`, {
+    method: 'POST', headers: { ...(token === undefined ? await access.headers() : { authorization: `Bearer ${token}` }), 'Content-Type': 'application/json' }, body: JSON.stringify(value),
   });
   await eventually(async () => assert.equal((await request(`${base}/count`)).status, 200));
   // Wrangler 3 的 dev 起来之后总会自发 reload 一次（RemoteRuntimeController teardown），

@@ -69,11 +69,9 @@ pnpm --filter @lyjwpage/server-reporter test
 
 | 变量 | 必填 | 说明 |
 | --- | --- | --- |
-| `SITE_URL` | ✅ | 上报 Worker 的源，如 `https://api.homepage.lyjw.llc`，上报端点从它拼 |
-| `SITE_INGEST_URL` | | 直接给完整端点，给了就不用 `SITE_URL` |
-| `ACCESS_CLIENT_ID` | ✅ | Cloudflare Access service token `lyjwpage-server` 的 client id；配了就走 Access，`SITE_INGEST_URL` 填 `https://ingest.homepage.lyjw.llc/api/ingest/server` |
+| `SITE_INGEST_URL` | ✅ | 上报端点 `https://ingest.homepage.lyjw.llc/api/ingest/server` |
+| `ACCESS_CLIENT_ID` | ✅ | Cloudflare Access service token `lyjwpage-server` 的 client id |
 | `ACCESS_CLIENT_SECRET` | ✅ | 同一把 token 的 secret，只在 Zero Trust 控制台创建或轮换时显示一次 |
-| `TELEMETRY_INGEST_SECRET` | | 过渡期的旧共用 Bearer，没配 Access 凭据时才用；全部迁完后删除 |
 | `HOST_ID` | | 默认 `misaka-jp`，卡片上认的名字 |
 | `HOST_ROOT` | | 宿主机 `/etc` 挂进容器后的前缀，compose 里填 `/host`，**不写进 `.env`**。留空 = 直接跑在宿主机上，读 `/etc` 和 `/`。见[下面那节](#容器里怎么还能看见宿主机) |
 | `HOST_LOCATION` | | 默认 `Tokyo`，机房所在城市。站点不从 IP 猜 |
@@ -125,7 +123,7 @@ ssh -J dsm misaka-jp 'cd /opt/lyjwpage && docker compose pull server-reporter &&
 
 合进 main 之后不用再手动换：`build-reporters.yml` 推完镜像会用部署密钥 ssh 过去自动 pull 并重建这一个服务（见 `reporters/misaka-deploy.sh`）。手动换还是上面那一句。
 
-生产的 `SITE_URL` 统一填 `https://api.homepage.lyjw.llc`，不经 Vercel 站点。
+生产的 `SITE_INGEST_URL` 填 `https://ingest.homepage.lyjw.llc/api/ingest/server`，不经 Vercel 站点。
 
 看日志：`ssh -J dsm misaka-jp 'docker logs -f server-reporter'`。
 
