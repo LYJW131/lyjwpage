@@ -60,9 +60,11 @@
 第一次打开要做两件事：
 
 1. 允许读取健康数据 —— **活动与训练所需的读取权限全勾**。少勾哪项就少哪项，站点那边对应的格子直接不渲染。
-2. 右上角齿轮里填上报地址（`https://api.homepage.lyjw.llc/api/ingest/iphone`）和
-   `TELEMETRY_INGEST_SECRET`，保存，按一次「立刻上报」。密钥存钥匙串，
+2. 右上角齿轮里填上报地址（`https://ingest.homepage.lyjw.llc/api/ingest/iphone`），以及
+   Cloudflare Access 里 `lyjwpage-iphone` 那把 service token 的 Client ID 和 Client Secret，
+   保存，按一次「立刻上报」。Secret 存钥匙串，
    `kSecAttrAccessibleAfterFirstUnlock` —— 锁屏状态下被唤醒也要读得到它。
+   过渡期 Client ID 留空时按旧的共用 Bearer 发，Secret 一栏填 `TELEMETRY_INGEST_SECRET`。
 
 本机联调把地址填成 `http://<Mac 局域网 IP>:8788/api/ingest/iphone` 就行，
 Info.plist 里开了 `NSAllowsLocalNetworking`。**别填 `dev.lyjw.me`** —— 那份预览部署

@@ -24,7 +24,10 @@ services:
       EMBY_USER_ID: ${EMBY_USER_ID}
       SITE_URL: ${SITE_URL}
       SITE_INGEST_URL: ${SITE_INGEST_URL:-}
-      # 站点没配同名变量时可以空着，那时它不校验
+      # Access service token（lyjwpage-emby）。配了就走 Access，SITE_INGEST_URL 指向 ingest 域名
+      ACCESS_CLIENT_ID: ${ACCESS_CLIENT_ID:-}
+      ACCESS_CLIENT_SECRET: ${ACCESS_CLIENT_SECRET:-}
+      # 过渡期的旧共用密钥，迁到 Access 后删掉
       TELEMETRY_INGEST_SECRET: ${TELEMETRY_INGEST_SECRET:-}
       R2_ENDPOINT: ${R2_ENDPOINT}
       R2_BUCKET: ${R2_BUCKET}

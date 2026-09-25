@@ -171,7 +171,12 @@ actor TelemetryHub {
         var request = URLRequest(url: destination.url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        if !destination.secret.isEmpty {
+        if !destination.clientID.isEmpty {
+            // Access 在边缘核对这把 service token，放行后 Worker 验它签的 JWT
+            request.setValue(destination.clientID, forHTTPHeaderField: "CF-Access-Client-Id")
+            request.setValue(destination.secret, forHTTPHeaderField: "CF-Access-Client-Secret")
+        } else if !destination.secret.isEmpty {
+            // 过渡期的旧共用 Bearer，迁到 Access 后删掉这一支
             request.setValue("Bearer \(destination.secret)", forHTTPHeaderField: "Authorization")
         }
         request.httpBody = try encoder.encode(envelope)

@@ -34,8 +34,16 @@ export type PushPayload = {
 
 type SiteEnvelope<T> = { ok?: boolean; error?: string; data?: T };
 
+/**
+ * 有 Access service token 就带它（Access 在边缘核对，放行后 Worker 验 JWT）；
+ * 过渡期没配时退回旧的共用 Bearer。
+ */
 function authHeaders(): Record<string, string> {
-  return config.site.secret ? { Authorization: `Bearer ${config.site.secret}` } : {};
+  const { accessClientId, accessClientSecret, secret } = config.site;
+  if (accessClientId && accessClientSecret) {
+    return { "CF-Access-Client-Id": accessClientId, "CF-Access-Client-Secret": accessClientSecret };
+  }
+  return secret ? { Authorization: `Bearer ${secret}` } : {};
 }
 
 /**

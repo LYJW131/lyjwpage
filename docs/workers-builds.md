@@ -45,7 +45,7 @@ PR 关闭时 `.github/workflows/preview-api-worker.yml` 执行 `wrangler preview
 
 - `api`：`workers/api/*`、`src/lib/*`、`shared/*`、`tsconfig.json`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`。
 - `online-counter`：`workers/online-counter/*`、`workers/api/src/origins.ts`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`。
-- `playstation-reporter`：`workers/playstation-reporter/*`。
+- `playstation-reporter`：`workers/playstation-reporter/*`、`shared/access-jwt.ts`。
 
 API 的共享状态代码变化必须触发发布；来源白名单由 API 与在线人数共用，修改时必须同时发布两者。
 增加共享依赖或移动文件时，同步调整 Cloudflare 的监视路径与本文。

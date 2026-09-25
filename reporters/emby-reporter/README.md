@@ -15,8 +15,8 @@
 | 转发 Emby 的播放通知 | 事件驱动 | 收到就转 |
 
 **Emby 的 webhook 现在发给这个代理，不再直发站点。** Emby 后台那个配置项加不了
-自定义请求头，直发站点就只能开一个不鉴权的入口；经代理转发后，站点只保留
-`TELEMETRY_INGEST_SECRET` 这一种鉴权方式。
+自定义请求头，直发站点就只能开一个不鉴权的入口；经代理转发后，上报一律带着
+这个来源自己的 Access service token 进站。
 
 事件本身只当触发器用，位置、暂停状态、设备名一律以 `/Sessions` 的回答为准 ——
 webhook 各版本的字段位置本来就不一致，用它带的值等于把版本差异一路带进站点。
@@ -43,7 +43,9 @@ webhook 各版本的字段位置本来就不一致，用它带的值等于把版
 | `EMBY_USER_ID` | ✅ | 要跟的那个用户；别人在看什么不会被推出去 |
 | `SITE_URL` | ✅ | 上报 Worker 的源，如 `https://api.homepage.lyjw.llc`。端点路径由上报器自己拼 |
 | `SITE_INGEST_URL` | | 直接给完整端点，给了就不用 `SITE_URL` |
-| `TELEMETRY_INGEST_SECRET` | ✅ | 和站点同名变量对上，作 Bearer 鉴权。站点没配时才可留空 |
+| `ACCESS_CLIENT_ID` | ✅ | Cloudflare Access service token `lyjwpage-emby` 的 client id；配了就走 Access，`SITE_INGEST_URL` 填 `https://ingest.homepage.lyjw.llc/api/ingest/emby` |
+| `ACCESS_CLIENT_SECRET` | ✅ | 同一把 token 的 secret，只在 Zero Trust 控制台创建或轮换时显示一次 |
+| `TELEMETRY_INGEST_SECRET` | | 过渡期的旧共用 Bearer，没配 Access 凭据时才用；全部迁完后删除 |
 | `R2_ENDPOINT` | ✅ | R2 S3 API 地址，如 `https://<account>.r2.cloudflarestorage.com` |
 | `R2_BUCKET` | ✅ | 图片 bucket 名称 |
 | `R2_ACCESS_KEY_ID` | ✅ | 只授予该 bucket 写权限的访问密钥 ID |

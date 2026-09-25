@@ -16,6 +16,18 @@ type SiteEnvelope = { ok?: boolean; error?: string };
  * 会用 200 之外的状态码和一个 `ok: false` 的信封表示软失败，认错了就会把它当成
  * 上报成功。和 agents-reporter 的 site.ts 同一条，抄的时候一起抄走。
  */
+/**
+ * 有 Access service token 就带它（Access 在边缘核对，放行后 Worker 验 JWT）；
+ * 过渡期没配时退回旧的共用 Bearer。
+ */
+function authHeaders(): Record<string, string> {
+  const { accessClientId, accessClientSecret, secret } = config.site;
+  if (accessClientId && accessClientSecret) {
+    return { "CF-Access-Client-Id": accessClientId, "CF-Access-Client-Secret": accessClientSecret };
+  }
+  return secret ? { Authorization: `Bearer ${secret}` } : {};
+}
+
 export async function push(payload: Record<string, unknown>): Promise<void> {
   const at = Date.now();
   const response = await fetch(config.site.ingestUrl, {
@@ -24,7 +36,7 @@ export async function push(payload: Record<string, unknown>): Promise<void> {
       "Content-Type": "application/json",
       Accept: "application/json",
       "User-Agent": "lyjwpage-server-reporter/2.0",
-      ...(config.site.secret ? { Authorization: `Bearer ${config.site.secret}` } : {}),
+      ...authHeaders(),
     },
     // 每一封带上自己的推送账本：镜像提交 + 过去 12 小时推成功几封（含这一封）与往返中位数
     body: JSON.stringify({ ...payload, reporter: await ledger.block(at) }),
