@@ -46,10 +46,13 @@ async function authorizePage(email = "owner@example.com", params: Record<string,
   }), env);
 }
 
-async function submit(fields: Record<string, string>, origin = ORIGIN): Promise<Response> {
+async function submit(fields: Record<string, string>, origin: string | null = ORIGIN, fetchSite?: string): Promise<Response> {
+  const headers: Record<string, string> = { "Cf-Access-Jwt-Assertion": await jwt("owner@example.com"), "Content-Type": "application/x-www-form-urlencoded" };
+  if (origin !== null) headers.Origin = origin;
+  if (fetchSite) headers["Sec-Fetch-Site"] = fetchSite;
   return handleAuthorize(new Request(`${ORIGIN}/pair/authorize`, {
     method: "POST",
-    headers: { "Cf-Access-Jwt-Assertion": await jwt("owner@example.com"), Origin: origin, "Content-Type": "application/x-www-form-urlencoded" },
+    headers,
     body: new URLSearchParams(fields),
   }), env);
 }
@@ -89,6 +92,10 @@ test("allow redirects a code to the app; deny, cross-site and tampered forms do 
   assert.equal(denied.searchParams.get("code"), null);
 
   assert.equal((await submit({ ...fields, decision: "allow" }, "https://evil.example")).status, 403);
+  // Origin 发成 null 时看 Sec-Fetch-Site
+  assert.equal((await submit({ ...fields, decision: "allow" }, "null", "same-origin")).status, 302);
+  assert.equal((await submit({ ...fields, decision: "allow" }, "null", "cross-site")).status, 403);
+  assert.equal((await submit({ ...fields, decision: "allow" }, null)).status, 403);
   assert.equal((await submit({ ...fields, state: "other", decision: "allow" })).status, 400);
   assert.equal((await submit({ ...fields, form_token: "1.AAAA", decision: "allow" })).status, 400);
 });

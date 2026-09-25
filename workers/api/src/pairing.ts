@@ -188,7 +188,8 @@ button[value=allow]{background:CanvasText;color:Canvas;border-color:CanvasText}
       "Cache-Control": "no-store",
       // Chrome 对表单提交后的跳转也执行 form-action，App 的回调 scheme 得在名单里
       "Content-Security-Policy": `default-src 'none'; style-src 'unsafe-inline'; form-action 'self' ${schemes}; frame-ancestors 'none'; base-uri 'none'`,
-      "Referrer-Policy": "no-referrer",
+      // 不能用 no-referrer：那样浏览器提交表单时把 Origin 发成 null，同源检查会把自己拒掉
+      "Referrer-Policy": "same-origin",
     },
   });
 }
@@ -197,6 +198,16 @@ function redirectTo(uri: string, query: Record<string, string>): Response {
   const target = new URL(uri);
   for (const [key, value] of Object.entries(query)) target.searchParams.set(key, value);
   return new Response(null, { status: 302, headers: { Location: target.toString(), "Cache-Control": "no-store" } });
+}
+
+/**
+ * 表单只能从这个页面自己提交。认 Origin；Origin 缺席或是 null（隐私设置、老版本浏览器）时
+ * 退到浏览器自己加、页面改不了的 Sec-Fetch-Site。两样都不说同源就拒。防伪字段另外照验。
+ */
+function sameOriginSubmission(request: Request): boolean {
+  const origin = request.headers.get("Origin");
+  if (origin && origin !== "null") return origin === new URL(request.url).origin;
+  return request.headers.get("Sec-Fetch-Site") === "same-origin";
 }
 
 export async function handleAuthorize(request: Request, env: PairingEnv, now = Date.now()): Promise<Response> {
@@ -220,8 +231,8 @@ export async function handleAuthorize(request: Request, env: PairingEnv, now = D
   }
 
   if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });
-  // 表单只能从这个页面自己提交
-  if (request.headers.get("Origin") !== new URL(request.url).origin) {
+  if (!sameOriginSubmission(request)) {
+    console.log("[pairing] 拒绝跨站提交", request.headers.get("Origin"), request.headers.get("Sec-Fetch-Site"));
     return page("Invalid request", "<h1>Invalid request</h1><p>Cross-site submission rejected.</p>", env, 403);
   }
   const form = await request.formData();
