@@ -90,6 +90,9 @@ Access 在边缘核对，不对直接回 401；放行的请求带着 Access 签�
 `wrangler.toml` 的 `[vars.ACCESS_CLIENTS]`，只许写登记的来源，越权回 403。新增或轮换 token 在 Zero Trust 控制台做，
 新 token 要加进策略，再把 client id 登记进那张表。
 
+Mac 与 iPhone 的 Hub 不用手抄 token：App 里点登录，浏览器过 Access 确认，Worker 轮换这个来源的 token 并把新凭据交回 App，
+见 [上报器配对登录](../../docs/reporter-pairing.md)（`src/pairing.ts`）。
+
 **过渡期**：旧的共用 `Authorization: Bearer <TELEMETRY_INGEST_SECRET>` 仍然有效，走 `api.` 域名的旧配置照常上报，
 每用一次记一条 `[auth] 旧 Bearer <权限>` 日志。Workers 日志里某个来源不再出现这条，就说明它迁完了；
 全部迁完后删掉这条路和那个 Secret。

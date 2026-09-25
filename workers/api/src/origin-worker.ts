@@ -5,6 +5,7 @@ import { INGEST_SOURCES, prepareIngestForCommit } from "./ingest-handlers";
 import { dispatchIngestEffects } from "./ingest-effects";
 import { StateHub } from "./state-hub";
 import { authorize } from "./access-auth";
+import { handleAuthorize, handleExchange, PAIR_AUTHORIZE_PATH, PAIR_TOKEN_PATH } from "./pairing";
 import { STORAGE_MAX_BYTES } from "@shared/storage-contract";
 import type { StoredEntry } from "@shared/sqlite-store";
 
@@ -452,6 +453,12 @@ const worker = {
 
     if (url.pathname.startsWith(INGEST_PREFIX)) {
       return handleIngest(request, env, ctx, url.pathname.slice(INGEST_PREFIX.length));
+    }
+
+    // 配对登录只在生产：预览没有 Access 应用，也没有轮换用的 API token
+    if (url.pathname === PAIR_AUTHORIZE_PATH || url.pathname === PAIR_TOKEN_PATH) {
+      if (previewWorkerEnabled()) return new Response("Not found", { status: 404 });
+      return url.pathname === PAIR_AUTHORIZE_PATH ? handleAuthorize(request, env) : handleExchange(request, env);
     }
 
     // 每条返回都带上，不只是成功那条：只有 200 带 CORS 头的话，浏览器侧的调用方

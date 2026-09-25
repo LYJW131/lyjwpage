@@ -26,6 +26,17 @@ export interface Env extends MusicKitTokenEnv {
   ACCESS_CLIENTS?: Record<string, string[]>;
   /** Worker 调站点 /api/revalidate 用的密钥，只有 Worker 和 Vercel 两边有。 */
   REVALIDATE_SECRET?: string;
+  /** 配对登录（docs/reporter-pairing.md）：「lyjwpage pairing」Access 应用的 AUD 标签。 */
+  PAIRING_ACCESS_AUD?: string;
+  /** 逗号分隔，允许确认配对的邮箱。 */
+  PAIRING_EMAILS?: string;
+  /** 可配对的来源 → service token ID、client id、App 回调，见 wrangler.toml 的 [vars.PAIRING_SOURCES]。 */
+  PAIRING_SOURCES?: Record<string, { tokenId: string; clientId: string; redirectUri: string; label?: string }>;
+  /** 32 字节随机数（base64），加密授权码、签确认页表单。 */
+  PAIRING_KEY?: string;
+  /** 只有 Access: Service Tokens Write 权限的 Cloudflare API token，兑换时轮换 service token 用。 */
+  CF_ACCESS_API_TOKEN?: string;
+  CLOUDFLARE_ACCOUNT_ID?: string;
   /** TypeSafe AI 的 API 密钥，给 pulse 活动分用（Jev 评估模型）。不配就不打分。 */
   TYPESAFE_API_KEY?: string;
   /** 一次性迁移使用，迁移完成后移除，不授予站点。 */

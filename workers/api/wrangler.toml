@@ -53,6 +53,8 @@ SENTRY_DSN = "https://13ba806bda9ae5a9086576b2e3d23cfb@o4511888459890688.ingest.
 # Cloudflare Access：team 域名即 JWT 签发方，AUD 是「lyjwpage ingest」应用的受众标签。都不是秘密。
 ACCESS_TEAM_DOMAIN = "https://lyjw2007.cloudflareaccess.com"
 ACCESS_AUD = "a1557bcf1114491b462c7ee722ae97032405c43fa831812c8403e6d7366fba01"
+PAIRING_ACCESS_AUD = "db3ea54c338e489eacad142600d745b3f55db421094e3f67a7fc6d6ef560004d"
+PAIRING_EMAILS = "lyjw2007@gmail.com"
 
 # 每把 service token（client id）能做什么。Access 策略只管「是不是这几把之一」，
 # 写哪个来源由这张表定：拿 Emby 的 token 写 mac 会被拒成 403。client id 不是秘密；
@@ -65,6 +67,21 @@ ACCESS_AUD = "a1557bcf1114491b462c7ee722ae97032405c43fa831812c8403e6d7366fba01"
 "ef47dda27da6a8428cee4cdebbf2951b.access" = ["ingest:agents"]                          # lyjwpage-agents
 "04fb01940873a28a7ef42f9b5bfbad9d.access" = ["ingest:homepod", "ingest:playstation"]   # lyjwpage-home-assistant（HomePod 与 PS5 电源）
 "c9437b45b762a36199e243df0df35ec4.access" = ["internal:site-deployed"]                 # lyjwpage-github-actions
+
+# 配对登录（docs/reporter-pairing.md）：App 里点登录，过 Access 应用「lyjwpage pairing」
+# （api.homepage.lyjw.llc/pair）确认后换回这个来源的 service token。AUD、邮箱、token ID 都不是秘密；
+# PAIRING_KEY 与 CF_ACCESS_API_TOKEN（只有 Access: Service Tokens Write）走 secret。
+[vars.PAIRING_SOURCES.mac]
+tokenId = "269bc717-e328-47e2-b3c1-1516cea84ae1"
+clientId = "4ec7a9e98b7d3bc641c5eb97fddcb4f7.access"
+redirectUri = "mactelemetryhub://pair"
+label = "Mac Telemetry Hub"
+
+[vars.PAIRING_SOURCES.iphone]
+tokenId = "b9635e38-3556-47fa-87ca-42f2a5abdbd3"
+clientId = "8dfbbba29d501f75ff7763a598d6ada0.access"
+redirectUri = "iphonetelemetryhub://pair"
+label = "iPhone Telemetry Hub"
 
 # Sentry 从这里取 release（Worker 版本 ID），和控制台的部署记录一一对应。
 [version_metadata]
@@ -104,6 +121,7 @@ database_id = "bf3a227f-d12e-428a-8f4e-0f56b97464df"
 enabled = true
 
 # 秘密通过 wrangler secret put 配置：GITHUB_TOKEN、REVALIDATE_SECRET（调站点 /api/revalidate）、
+# PAIRING_KEY / CF_ACCESS_API_TOKEN（配对登录）、
 # TELEMETRY_INGEST_SECRET（过渡期的旧上报密钥，上报器都迁到 Access 后删除）、
 # APPLE_MUSIC_PRIVATE_KEY（MusicKit 签发用的 .p8 全文）、CLOUDFLARE_METRICS_TOKEN
 # （Workers 统计、部署与构建只读）、VERCEL_TOKEN（团队范围，部署与指标只读用）、
