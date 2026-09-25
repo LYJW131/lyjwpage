@@ -1,7 +1,7 @@
 import SwiftUI
 
 /**
- 上报地址、密钥、模块开关。
+ 上报地址、Access 凭据、模块开关。
 
  和 Mac 那个的设置窗口对应；模块开关按 `Modules.all` 现列，加模块不用改这里。
  */
@@ -9,6 +9,7 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var endpoint = HubSettings.endpoint
+    @State private var clientID = HubSettings.clientID
     @State private var secret = HubSettings.secret
     @State private var enabled: [String: Bool] = Dictionary(
         uniqueKeysWithValues: Modules.all.map { ($0.id, HubSettings.isEnabled($0.id)) }
@@ -24,13 +25,16 @@ struct SettingsView: View {
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .keyboardType(.URL)
-                    SecureField("密钥", text: $secret)
+                    TextField("Client ID", text: $clientID)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    SecureField("Client Secret", text: $secret)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                 } header: {
                     Text("上报到哪儿")
                 } footer: {
-                    Text("地址形如 https://api.homepage.lyjw.llc/api/ingest/iphone，密钥就是站点的 TELEMETRY_INGEST_SECRET。密钥存在钥匙串里，数据只发往这一个地址。")
+                    Text("地址填 https://ingest.homepage.lyjw.llc/api/ingest/iphone，Client ID 和 Client Secret 是 Cloudflare Access 里 lyjwpage-iphone 那把 service token。Secret 存在钥匙串里，数据只发往这一个地址。")
                 }
 
                 Section {
@@ -67,6 +71,7 @@ struct SettingsView: View {
 
     private func save() {
         HubSettings.endpoint = endpoint
+        HubSettings.clientID = clientID
         HubSettings.secret = secret
         for (id, isOn) in enabled {
             HubSettings.setEnabled(isOn, for: id)

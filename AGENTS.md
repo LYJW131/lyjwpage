@@ -53,7 +53,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 | 上报入口 | `/api/ingest/<来源>`，来源按数据归属命名，不使用上报程序名；仅由 `workers/api` 接收，站点不提供上报路由、rewrite 或转发 | 当前来源：`mac`、`iphone`、`homepod`、`emby`、`playstation`、`server`、`agents` |
 | 设备遥测 | 一台设备一个入口、一个信封、一个 `modules` 字典 | 充电头归观测它的 `mac`；活动圆环归搬运和观测它的 `iphone`，不按品牌或模块另开入口 |
 | 账号限额 | coding agent 的账号套餐和限额统一归 `agents` | 厂商账号事实不归某台 Mac，也不按采集容器命名 |
-| 上报器取数据 | 使用所属 ingest 路径的 GET，沿用相同鉴权 | 若返回凭据，`TELEMETRY_INGEST_SECRET` 就具有获取该凭据的权限，按同等敏感度处理 |
+| 上报鉴权 | 走 `ingest.homepage.lyjw.llc`，每个来源一把 Cloudflare Access service token，Worker 按 `[vars.ACCESS_CLIENTS]` 限定可写来源 | 新来源要新建 token、加进 Access 策略并登记 client id；不再让一把凭据通吃所有来源 |
 | 状态查询 | `/api/status/X` 表示列表 / 历史，`/api/status/X/now` 表示此刻 | `listening` + `listening/now`，`watching` + `watching/now`；两者同时存在时成对命名 |
 | 推送事件 | 跟随状态 URL，`/` 替换为 `-` | 列表为 `X`，此刻为 `X-now`；事件和端点含义一致 |
 | 大小写 | URL 段全小写，JSON 字段 camelCase | `/api/status/vibecoding` 与模块 `vibeCoding` 各守其约定 |

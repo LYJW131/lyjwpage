@@ -71,7 +71,9 @@ pnpm --filter @lyjwpage/server-reporter test
 | --- | --- | --- |
 | `SITE_URL` | ✅ | 上报 Worker 的源，如 `https://api.homepage.lyjw.llc`，上报端点从它拼 |
 | `SITE_INGEST_URL` | | 直接给完整端点，给了就不用 `SITE_URL` |
-| `TELEMETRY_INGEST_SECRET` | ✅ | 和站点同名变量对上，作 Bearer 鉴权。站点没配时才可留空 |
+| `ACCESS_CLIENT_ID` | ✅ | Cloudflare Access service token `lyjwpage-server` 的 client id；配了就走 Access，`SITE_INGEST_URL` 填 `https://ingest.homepage.lyjw.llc/api/ingest/server` |
+| `ACCESS_CLIENT_SECRET` | ✅ | 同一把 token 的 secret，只在 Zero Trust 控制台创建或轮换时显示一次 |
+| `TELEMETRY_INGEST_SECRET` | | 过渡期的旧共用 Bearer，没配 Access 凭据时才用；全部迁完后删除 |
 | `HOST_ID` | | 默认 `misaka-jp`，卡片上认的名字 |
 | `HOST_ROOT` | | 宿主机 `/etc` 挂进容器后的前缀，compose 里填 `/host`，**不写进 `.env`**。留空 = 直接跑在宿主机上，读 `/etc` 和 `/`。见[下面那节](#容器里怎么还能看见宿主机) |
 | `HOST_LOCATION` | | 默认 `Tokyo`，机房所在城市。站点不从 IP 猜 |

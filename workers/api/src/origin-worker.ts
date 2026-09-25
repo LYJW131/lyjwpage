@@ -4,6 +4,7 @@ import { DurableObject } from "cloudflare:workers";
 import { INGEST_SOURCES, prepareIngestForCommit } from "./ingest-handlers";
 import { dispatchIngestEffects } from "./ingest-effects";
 import { StateHub } from "./state-hub";
+import { authorize } from "./access-auth";
 import { STORAGE_MAX_BYTES } from "@shared/storage-contract";
 import type { StoredEntry } from "@shared/sqlite-store";
 
@@ -98,19 +99,9 @@ async function handleIngest(
   }
   if (request.method !== "POST") return jsonResponse({ ok: false, error: "只接受 POST" }, { status: 405 });
 
-  const expected = env.TELEMETRY_INGEST_SECRET;
-  if (!expected) {
-    return jsonResponse({ ok: false, error: "Worker 未配置 TELEMETRY_INGEST_SECRET" }, { status: 503 });
-  }
-  const provided = bearerToken(request);
-  if (!provided || !secretMatches(provided, expected)) {
-    return jsonResponse({ ok: false, error: "未授权" }, { status: 401 });
-  }
-  if (!env.STATE) {
-    return jsonResponse({ ok: false, error: "Worker 未配置 STATE" }, { status: 503 });
-  }
-
   if (!INGEST_SOURCES.has(source)) return jsonResponse({ ok: false, error: `没有这个上报来源：${source}` }, { status: 404 });
+  const auth = await authorize(request, env, `ingest:${source}`);
+  if (!auth.ok) return jsonResponse({ ok: false, error: auth.error }, { status: auth.status });
 
   let raw: string;
   try {
@@ -119,7 +110,17 @@ async function handleIngest(
     console.error("[ingest] 读取请求体失败", source, reason(error));
     return jsonResponse({ ok: false, error: "无法读取上报数据" }, { status: 400 });
   }
+  return commitIngest(env, ctx, source, raw);
+}
 
+/**
+ * 解析、落库、广播与首屏通知。HTTP 上报和同账号 Worker 的 Service Binding 调用
+ * （见 PlaystationIngest）共用这一段；鉴权由各自的入口做完再进来。
+ */
+export async function commitIngest(env: Env, ctx: ExecutionContext, source: string, raw: string): Promise<Response> {
+  if (!env.STATE) {
+    return jsonResponse({ ok: false, error: "Worker 未配置 STATE" }, { status: 503 });
+  }
   try {
     const body = parseBody(raw);
     const hub = env.STATE.get(env.STATE.idFromName("global"));
@@ -186,18 +187,14 @@ const SITE_DEPLOYED_PATH = "/api/internal/site-deployed";
 /**
  * 站点新部署接管了生产域名：广播一条 `version` 失效通知，开着的页面重问 /api/version。
  *
- * 只有 GitHub Actions（.github/workflows/purge-esa.yml）调用，鉴权沿用上报的
- * TELEMETRY_INGEST_SECRET。不走 /api/ingest：没有要落库的数据，不进 StateHub。
+ * 只有 GitHub Actions（.github/workflows/purge-esa.yml）调用，用它自己那把 Access
+ * service token（见 access-auth.ts）。不走 /api/ingest：没有要落库的数据，不进 StateHub。
  * 请求体不读 —— 推什么版本由域名上那次部署自己回答。
  */
 async function handleSiteDeployed(request: Request, env: Env): Promise<Response> {
   if (request.method !== "POST") return jsonResponse({ ok: false, error: "只接受 POST" }, { status: 405 });
-  const expected = env.TELEMETRY_INGEST_SECRET;
-  if (!expected) return jsonResponse({ ok: false, error: "Worker 未配置 TELEMETRY_INGEST_SECRET" }, { status: 503 });
-  const provided = bearerToken(request);
-  if (!provided || !secretMatches(provided, expected)) {
-    return jsonResponse({ ok: false, error: "未授权" }, { status: 401 });
-  }
+  const auth = await authorize(request, env, "internal:site-deployed");
+  if (!auth.ok) return jsonResponse({ ok: false, error: auth.error }, { status: auth.status });
   const delivered = await getRoom(env).broadcast(JSON.stringify({ type: "version", payload: null } satisfies LiveEvent));
   return jsonResponse({ ok: true, delivered });
 }

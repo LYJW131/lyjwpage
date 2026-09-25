@@ -34,7 +34,7 @@
 
 | 方法 | 路径 | 鉴权 | 作用 |
 | --- | --- | --- | --- |
-| `POST` | `/api/ingest/<来源>` | `Bearer <TELEMETRY_INGEST_SECRET>` | 接收上报数据、落库、触发广播与首页缓存失效 |
+| `POST` | `ingest.homepage.lyjw.llc/api/ingest/<来源>` | Cloudflare Access service token（每来源一把，Worker 再验 JWT 并按来源限权；过渡期旧 `Bearer <TELEMETRY_INGEST_SECRET>` 仍有效） | 接收上报数据、落库、触发广播与首页缓存失效 |
 | `GET` | `/ws` | 来源校验（`ALLOWED_ORIGINS`） | 浏览器直连的实时事件推送长连接 |
 | `GET` | `online.homepage.lyjw.llc/ws` | 来源校验 | 「此刻在线」人数统计长连接（页面可见时开启，切走关闭） |
 | `GET` | `/count` | 公开 | API Worker 返回 `{ connections }`；在线人数 Worker 返回 `{ online }` |
@@ -65,7 +65,7 @@
 - **NAS 推送代理**：由 NAS 上的 `reporters/emby-reporter` 负责观测 Emby，并通过 `POST /api/ingest/emby` 将规范化数据推送到 Worker。
 
 ### 数据流与触发条件
-1. **播放通知转发**：Emby 原生 Webhook 缺乏自定义 Header 支持，由 NAS 代理接收 Webhook 并添加 `TELEMETRY_INGEST_SECRET` 后转发。
+1. **播放通知转发**：Emby 原生 Webhook 缺乏自定义 Header 支持，由 NAS 代理接收 Webhook，带上 Emby 那把 Access service token 后转发。
 2. **播放位置与偏离推算**：
    - 代理仅在播放状态切换（开始/暂停/继续/停止）及用户**拖动进度条**时推送事件。
    - Emby 不对进度拖动发 Webhook，因此 NAS 代理在播放时每 2 秒轮询一次 `/Sessions`；但仅在真实进度与站点推算值偏差超过 1.5 秒时才触发网络推送。

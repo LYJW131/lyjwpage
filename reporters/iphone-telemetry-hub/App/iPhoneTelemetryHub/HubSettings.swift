@@ -1,9 +1,12 @@
 import Foundation
 import Security
 
-/// 上报目的地。地址存 UserDefaults，密钥存钥匙串
+/// 上报目的地。地址和 client id 存 UserDefaults，密钥存钥匙串
 struct Destination: Sendable {
     var url: URL
+    /// Cloudflare Access service token 的 client id（不是秘密）。填了就按 Access 发，
+    /// 这时 `secret` 是那把 token 的 client secret；空着是过渡期的旧 Bearer
+    var clientID: String
     var secret: String
 }
 
@@ -26,6 +29,7 @@ enum HubSettings {
     private static let service = "com.liangyangjunwei.iPhoneTelemetryHub"
     private static let secretAccount = "telemetry-ingest-secret"
     private static let endpointKey = "endpointURL"
+    private static let clientIDKey = "accessClientID"
     private static let lastPushAtKey = "lastPushAt"
     private static let lastErrorKey = "lastPushError"
     private static func moduleKey(_ id: String) -> String { "module.\(id).enabled" }
@@ -40,6 +44,16 @@ enum HubSettings {
         }
     }
 
+    static var clientID: String {
+        get { UserDefaults.standard.string(forKey: clientIDKey) ?? "" }
+        set {
+            UserDefaults.standard.set(
+                newValue.trimmingCharacters(in: .whitespacesAndNewlines),
+                forKey: clientIDKey
+            )
+        }
+    }
+
     static var secret: String {
         get { keychainRead() ?? "" }
         set { keychainWrite(newValue.trimmingCharacters(in: .whitespacesAndNewlines)) }
@@ -48,7 +62,7 @@ enum HubSettings {
     /// 地址填全了才算配好。没配好时上报直接跳过，不去打一个空 URL
     static func destination() -> Destination? {
         guard let url = URL(string: endpoint), url.scheme != nil, url.host != nil else { return nil }
-        return Destination(url: url, secret: secret)
+        return Destination(url: url, clientID: clientID, secret: secret)
     }
 
     /// 模块开关，**默认开** —— 装上就该开始报，不该等人再去打开一次
@@ -107,7 +121,7 @@ enum HubSettings {
          解锁后可读，且**允许后台访问**。
 
          默认的 `WhenUnlocked` 在这里不够：系统会在手机锁着的时候把 App 拉起来
-         上报，那时读不到密钥就只能带着空 Authorization 头去打站点、被 401 拒掉。
+         上报，那时读不到密钥就只能带着空凭据去打站点、被 401 拒掉。
          `AfterFirstUnlock` 是「开机后解锁过一次就能读」，正好覆盖这种场景。
          */
         item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock

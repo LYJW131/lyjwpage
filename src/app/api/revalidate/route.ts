@@ -22,16 +22,19 @@ function authorized(request: Request, expected: string) {
  * 只能在 Next 进程内调 —— 所以要留这一个口子。它只传 tag 名，不传数据：数据早就
  * 在 SQLite 里了，下一次读自己会去拿。请求体的形状和校验见 lib/revalidate-request。
  *
- * 鉴权沿用 TELEMETRY_INGEST_SECRET（Worker 收上报时验的就是它，手上本来就有）。
- * **没配密钥就一律 503，不像 ingest 那样放行**：这一个端点公网可达、专供 Worker，
- * 没有「本地开发不配密钥」的场景。
+ * 鉴权用 REVALIDATE_SECRET，只有这里和 api Worker 两边有。过渡期也认旧的
+ * TELEMETRY_INGEST_SECRET：Worker 先后切换时两边不必同一刻换好，全部上报器迁到
+ * Access 之后删掉这一支。
+ * **没配密钥就一律 503**：这一个端点公网可达、专供 Worker，没有「本地开发不配密钥」的场景。
  */
 export async function POST(request: Request) {
-  const secret = process.env.TELEMETRY_INGEST_SECRET;
-  if (!secret) {
-    return failure("站点未配置 TELEMETRY_INGEST_SECRET", 503);
+  const secrets = [process.env.REVALIDATE_SECRET, process.env.TELEMETRY_INGEST_SECRET].filter(
+    (value): value is string => !!value,
+  );
+  if (!secrets.length) {
+    return failure("站点未配置 REVALIDATE_SECRET", 503);
   }
-  if (!authorized(request, secret)) return failure("未授权", 401);
+  if (!secrets.some((secret) => authorized(request, secret))) return failure("未授权", 401);
 
   let body: unknown;
   try {

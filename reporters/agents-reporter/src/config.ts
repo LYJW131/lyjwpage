@@ -55,6 +55,12 @@ export const config = {
       process.env.SITE_INGEST_URL?.trim() ||
       (siteUrl ? `${trimSlash(siteUrl)}/api/ingest/agents` : ""),
     secret: process.env.TELEMETRY_INGEST_SECRET?.trim() ?? "",
+    /**
+     * Cloudflare Access service token（这个来源专用的那一把），配了就走
+     * `ingest.homepage.lyjw.llc` + Access；过渡期没配时退回旧的共用 Bearer。
+     */
+    accessClientId: process.env.ACCESS_CLIENT_ID?.trim() ?? "",
+    accessClientSecret: process.env.ACCESS_CLIENT_SECRET?.trim() ?? "",
   },
 
   /** 与 PlayStation 共用人数分档逻辑，控制打各家限额接口的频率；限额使用 5 / 10 / 60 分钟。 */

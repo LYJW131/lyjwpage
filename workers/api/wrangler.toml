@@ -5,11 +5,16 @@ compatibility_date = "2025-02-14"
 compatibility_flags = ["nodejs_compat", "nodejs_compat_populate_process_env"]
 workers_dev = true
 
-# API、实时推送与连接数使用此源；可见人数由 online-counter 独立提供。
+# API、实时推送与连接数使用 api 源；可见人数由 online-counter 独立提供。
+# ingest 源只收上报和内部通知，前面挡着 Cloudflare Access（应用「lyjwpage ingest」），
+# 上报器凭各自的 service token 进来，Worker 再验 Access 签的 JWT，见 src/access-auth.ts。
 routes = [
-  { pattern = "api.homepage.lyjw.llc", custom_domain = true }
+  { pattern = "api.homepage.lyjw.llc", custom_domain = true },
+  { pattern = "ingest.homepage.lyjw.llc", custom_domain = true }
 ]
 
+# playstation-reporter 经 Service Binding 调 PlaystationIngest 上报（见 src/playstation-ingest.ts），
+# 这里不用声明：entrypoint 由调用方的 binding 指定。
 # Loop back into this deployment's ordinary Worker isolate for public JSON rendering.
 # This avoids ctx.exports (which needs a newer compatibility flag) and keeps StateHub focused on coordination.
 [[services]]
@@ -45,6 +50,21 @@ VERCEL_PROJECT_ID = "prj_r6sFPPmanb9zm3hzYAHAmp3KsIiC"
 VERCEL_TEAM_ID = "team_kfTnkK6X9bbqSbkgAhq7SxCd"
 # Sentry 的写入地址（DSN 本身公开，不是秘密）。本地 wrangler.test.toml 不配，本地就不上报。
 SENTRY_DSN = "https://13ba806bda9ae5a9086576b2e3d23cfb@o4511888459890688.ingest.us.sentry.io/4512132602855424"
+# Cloudflare Access：team 域名即 JWT 签发方，AUD 是「lyjwpage ingest」应用的受众标签。都不是秘密。
+ACCESS_TEAM_DOMAIN = "https://lyjw2007.cloudflareaccess.com"
+ACCESS_AUD = "a1557bcf1114491b462c7ee722ae97032405c43fa831812c8403e6d7366fba01"
+
+# 每把 service token（client id）能做什么。Access 策略只管「是不是这几把之一」，
+# 写哪个来源由这张表定：拿 Emby 的 token 写 mac 会被拒成 403。client id 不是秘密；
+# 新增 token 在 Zero Trust 控制台建好、加进策略，再把 client id 登记到这里。
+[vars.ACCESS_CLIENTS]
+"4ec7a9e98b7d3bc641c5eb97fddcb4f7.access" = ["ingest:mac"]                             # lyjwpage-mac
+"8dfbbba29d501f75ff7763a598d6ada0.access" = ["ingest:iphone"]                          # lyjwpage-iphone
+"01031f46aaeb93099ea40287f2c85f61.access" = ["ingest:emby"]                            # lyjwpage-emby
+"fd30812b4dfd526c6ffd7801f07a6563.access" = ["ingest:server"]                          # lyjwpage-server
+"ef47dda27da6a8428cee4cdebbf2951b.access" = ["ingest:agents"]                          # lyjwpage-agents
+"04fb01940873a28a7ef42f9b5bfbad9d.access" = ["ingest:homepod", "ingest:playstation"]   # lyjwpage-home-assistant（HomePod 与 PS5 电源）
+"c9437b45b762a36199e243df0df35ec4.access" = ["internal:site-deployed"]                 # lyjwpage-github-actions
 
 # Sentry 从这里取 release（Worker 版本 ID），和控制台的部署记录一一对应。
 [version_metadata]
@@ -83,7 +103,8 @@ database_id = "bf3a227f-d12e-428a-8f4e-0f56b97464df"
 [observability]
 enabled = true
 
-# 秘密通过 wrangler secret put 配置：GITHUB_TOKEN、TELEMETRY_INGEST_SECRET、
+# 秘密通过 wrangler secret put 配置：GITHUB_TOKEN、REVALIDATE_SECRET（调站点 /api/revalidate）、
+# TELEMETRY_INGEST_SECRET（过渡期的旧上报密钥，上报器都迁到 Access 后删除）、
 # APPLE_MUSIC_PRIVATE_KEY（MusicKit 签发用的 .p8 全文）、CLOUDFLARE_METRICS_TOKEN
 # （Workers 统计、部署与构建只读）、VERCEL_TOKEN（团队范围，部署与指标只读用）、
 # PAGESPEED_API_KEY（Google PageSpeed Insights，cron 每小时实测一次首页性能）、

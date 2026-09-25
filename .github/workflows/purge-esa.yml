@@ -67,9 +67,12 @@ jobs:
       # 旧 Worker 答 404/405。重试十分钟等它追上。
       - name: Notify open pages
         env:
-          TELEMETRY_INGEST_SECRET: ${{ secrets.TELEMETRY_INGEST_SECRET }}
+          # Cloudflare Access 里 lyjwpage-github-actions 那把 service token，只能调这一个内部接口
+          ACCESS_CLIENT_ID: ${{ secrets.ACCESS_CLIENT_ID }}
+          ACCESS_CLIENT_SECRET: ${{ secrets.ACCESS_CLIENT_SECRET }}
         run: |
-          [ -n "$TELEMETRY_INGEST_SECRET" ] || { echo "::error::仓库没配 TELEMETRY_INGEST_SECRET"; exit 1; }
+          [ -n "$ACCESS_CLIENT_ID" ] && [ -n "$ACCESS_CLIENT_SECRET" ] || { echo "::error::仓库没配 ACCESS_CLIENT_ID / ACCESS_CLIENT_SECRET"; exit 1; }
           curl -fsS --max-time 15 --retry 30 --retry-all-errors --retry-delay 20 --retry-max-time 600 -X POST \
-            -H "Authorization: Bearer $TELEMETRY_INGEST_SECRET" \
-            https://api.homepage.lyjw.llc/api/internal/site-deployed
+            -H "CF-Access-Client-Id: $ACCESS_CLIENT_ID" \
+            -H "CF-Access-Client-Secret: $ACCESS_CLIENT_SECRET" \
+            https://ingest.homepage.lyjw.llc/api/internal/site-deployed

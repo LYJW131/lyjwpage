@@ -8,6 +8,7 @@ import { historyArchiveEnabled, pulseScoringEnabled, readModelEnabled, type Env 
 import { PulseArchive } from "./pulse-archive";
 import { PulseScorer } from "./pulse-score";
 import { ReadModelRenderer as ReadModelRendererBase } from "./read-model-renderer";
+import { PlaystationIngest as PlaystationIngestBase } from "./playstation-ingest";
 import { CRON_MONITOR_CONFIG, CRON_MONITOR_SLUG, heartbeatDue } from "./cron-heartbeat";
 import { sentryOptions } from "./sentry";
 
@@ -16,6 +17,7 @@ import { sentryOptions } from "./sentry";
 export const LivePushRoom = Sentry.instrumentDurableObjectWithSentry(sentryOptions, LivePushRoomBase);
 export const StateHub = Sentry.instrumentDurableObjectWithSentry(sentryOptions, StateHubBase);
 export const ReadModelRenderer = Sentry.withSentry(sentryOptions, ReadModelRendererBase);
+export const PlaystationIngest = Sentry.withSentry(sentryOptions, PlaystationIngestBase);
 export type { Env } from "./runtime";
 
 const apiWorker = {
