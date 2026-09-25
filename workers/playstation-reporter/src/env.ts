@@ -5,12 +5,16 @@ export interface Env {
   PLAYED_GAMES_LIMIT?: string;
   /** 逗号或空白分隔的 titleId（PPSA… / CUSA…），不上报、不占最近窗口。 */
   PLAYSTATION_HIDDEN_TITLE_IDS?: string;
-  /** API Worker 的**源**：上报拼 `/api/ingest/playstation`，人头数拼 `/count`。 */
+  /** API Worker 的**源**：人头数拼 `/count`，主机电源拼 `/api/status/playing/now`。 */
   SITE_URL?: string;
   ONLINE_COUNTER_URL?: string;
-  SITE_INGEST_URL?: string;
+  /** api Worker 的 PlaystationIngest（Service Binding）。不绑就是 dry-run，只打日志。 */
+  API?: Fetcher & { ingest(raw: string): Promise<Response> };
   PSN_NPSSO?: string;
-  TELEMETRY_INGEST_SECRET?: string;
+  /** Access 的 team 域名，`/tick` 验 JWT 用。 */
+  ACCESS_TEAM_DOMAIN?: string;
+  /** 「playstation-reporter tick」这个 Access 应用的 AUD 标签。 */
+  ACCESS_AUD?: string;
 }
 
 function positiveInteger(raw: string | undefined, fallback: number): number {
@@ -59,15 +63,8 @@ function trimSlash(url: string): string {
   return url.slice(0, end);
 }
 
-export function ingestUrl(env: Env): string {
-  const explicit = env.SITE_INGEST_URL?.trim();
-  if (explicit) return explicit;
-  const site = env.SITE_URL?.trim();
-  return site ? `${trimSlash(site)}/api/ingest/playstation` : "";
-}
-
 export function isDryRun(env: Env): boolean {
-  return ingestUrl(env) === "";
+  return !env.API;
 }
 
 /** API 的连接数与独立在线人数分别读取。 */

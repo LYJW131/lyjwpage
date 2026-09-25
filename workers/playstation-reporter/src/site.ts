@@ -1,4 +1,4 @@
-import { ingestUrl, isDryRun, type Env } from "./env";
+import { isDryRun, type Env } from "./env";
 import type { PlayedGamesReport, PresenceReport } from "./psn";
 import type { TrophiesReport } from "./trophies";
 
@@ -26,16 +26,26 @@ export async function deliver(env: Env, envelope: PlaystationEnvelope): Promise<
     return { changed: true };
   }
 
-  const secret = env.TELEMETRY_INGEST_SECRET?.trim();
-  const response = await fetch(ingestUrl(env), {
-    method: "POST",
-    headers: {
-      ...(secret ? { Authorization: `Bearer ${secret}` } : {}),
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(envelope),
-    signal: AbortSignal.timeout(envelope.trophies ? 30_000 : 15_000),
-  });
+  // 经 Service Binding 直接调 api Worker 的 PlaystationIngest：不走公网，不带凭据，
+  // 只有声明了这个 binding 的 Worker 调得到。超时照旧：奖杯那封大，给得宽一些
+  const response = await withTimeout(
+    env.API!.ingest(JSON.stringify(envelope)),
+    envelope.trophies ? 30_000 : 15_000,
+  );
   const data = await readEnvelope<{ changed?: boolean }>(response);
   return { changed: data?.changed === true };
+}
+
+async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`上报超时（${ms} ms）`)), ms);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
 }

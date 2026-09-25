@@ -11,8 +11,8 @@ Cloudflare Worker 上的 PSN 上报器：cron 每分钟响一次，前面挡一�
 当轮爬完、对齐、整份交付。
 
 鉴权链和两个读取端点已经用真实凭据跑通，也确认 `Accept-Language: zh-Hans` 会返回
-官方中文名。API Worker 的 `/api/ingest/playstation` 已经存在，`wrangler.toml` 里也配了
-`SITE_URL`，所以默认不是 dry-run。
+官方中文名。上报经 Service Binding 交给 API Worker 的 `PlaystationIngest`，`wrangler.toml`
+里配着这个 binding，所以默认不是 dry-run。
 
 ## 调度与状态
 
@@ -138,20 +138,18 @@ Worker 的 HTTP `fetch` 只剩一个手动触发入口 `GET /tick`：普通一�
 把这轮的元信息和 presence、played games 一并返回；出错回 502 并带上错误和 KV 里最近
 一轮的记录 —— 任何一封信没交付成功，这一轮都算失败。
 
-带上和上报同一个密钥：
-
-```bash
-curl -H "Authorization: Bearer $TELEMETRY_INGEST_SECRET" \
-  https://playstation-reporter.homepage.lyjw.llc/tick
-```
-
-没配 `TELEMETRY_INGEST_SECRET` 时这条直接 503，不会退化成无鉴权。`/` 和其余路径 404。
+`/tick` 挂在 Cloudflare Access 应用「playstation-reporter tick」后面：浏览器直接打开
+https://playstation-reporter.homepage.lyjw.llc/tick ，按提示用邮箱验证码或 GitHub 登录即可。
+Worker 自己再验 Access 签的 JWT（`ACCESS_TEAM_DOMAIN` / `ACCESS_AUD`，见 `wrangler.toml`），
+从 workers.dev 绕过 Access 的请求一律 401。本地 `wrangler dev` 没有 Access，要跑一轮用
+`--test-scheduled` 打开的 `/__scheduled`（走门）。`/` 和其余路径 404。
 
 **2026-09-13 删掉了根路径那个「全量刷新」**。它把整轮当成 KV 空着跑（游玩列表整份翻、
 购买库重拉、奖杯目录每款重爬、资料重问），每款奖杯 4 次出网、每款游戏一次对齐，贵到
 必须在前面挡一道 Cloudflare Access —— 而本地 `wrangler dev` 时 Chrome 探一下调试口就能
 把它点着。冷启动路径本来就等价，真要整份重来一次把 KV 里的缓存键清掉即可。删掉之后
-这个 Worker 上没有「贵」的入口，Access 也跟着撤了，改由上面那个 Bearer 挡。
+这个 Worker 上没有「贵」的入口，Access 一度撤掉、改由共用 Bearer 挡；2026-09-25 起
+`/tick` 重新挂回 Access，这回只罩这一条路径、用邮箱登录，不再和上报共用密钥。
 
 ## 鉴权
 
@@ -301,10 +299,9 @@ titleId，屏蔽的游戏不上报、不占窗口；改这份名单会重推奖�
 }
 ```
 
-配了 `SITE_INGEST_URL` 就直接使用；否则由 `SITE_URL` 拼
-`/api/ingest/playstation`。两者都没配才是 dry-run；现在 `wrangler.toml` 里配了
-`SITE_URL`，所以默认走真推。真推时可选 secret `TELEMETRY_INGEST_SECRET`
-会作为 Bearer token。
+上报经 Service Binding 直接调 api Worker 的 `PlaystationIngest` entrypoint（`wrangler.toml` 的
+`[[services]]`），不走公网、不带凭据，只能写 `playstation` 这一个来源。把那段 binding 注释掉
+就是 dry-run：信封只打进日志。
 
 ## 部署
 
@@ -312,10 +309,9 @@ titleId，屏蔽的游戏不上报、不占窗口；改这份名单会重推奖�
 构建根目录与命令见 [原生部署配置](../../docs/workers-builds.md)，不用在本机执行 `wrangler deploy`。首次部署后有两类手工动作：
 
 1. 把备份的旧 `state/auth.json` 原样写到 KV key `auth`；
-2. 按需要写入 secret：`PSN_NPSSO`，以及站点侧要求鉴权时用的
-   `TELEMETRY_INGEST_SECRET`。
+2. 按需要写入 secret：`PSN_NPSSO`。上报走 Service Binding，不需要上报密钥。
 
-`SITE_URL=https://api.homepage.lyjw.llc` 已经在 `wrangler.toml` 里配好，不必再动。要临时回到 dry-run 就把它注释掉。
+`SITE_URL=https://api.homepage.lyjw.llc` 已经在 `wrangler.toml` 里配好，只用来读人头数和主机电源。
 
 门并行读 `ONLINE_COUNTER_URL/count` 的可见人数与 `SITE_URL/count` 的推送连接数。
 每个来源未配置或读取失败时仅将其对应计数降为零；上报继续运行。
