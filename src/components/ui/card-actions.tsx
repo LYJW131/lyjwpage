@@ -191,6 +191,7 @@ export function CardActions({ label }: { label: string }) {
           canvasHeight: renderHeight,
           pixelRatio: 1,
           cacheBust: true,
+          style: { margin: "0" },
           filter: (node) => !(node instanceof Element && node.hasAttribute("data-card-control")),
         });
       } finally {
