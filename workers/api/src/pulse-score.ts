@@ -1,7 +1,7 @@
 import { parsePulseSample, pulseSampleUntil } from '@/lib/pulse';
 import { PULSE_DOMAINS, type PulseDomain, type PulseSample } from '@/lib/types';
 import { PULSE_TTL_MS, PULSE_WINDOW_MS } from '@/lib/limits';
-import { CODING_WINDOW_MS, codingQuestions, codingWindowFeatures, judgment, parseCodingObservation } from '@shared/pulse-coding';
+import { PULSE_SCORE_WINDOW_MS, codingQuestions, codingWindowFeatures, judgment, parseCodingObservation } from '@shared/pulse-coding';
 import { parseCodingTokenUsage } from '@shared/coding-token-usage';
 import { PULSE_ASSESSMENT_VERSION, PULSE_MODES, latestPulseAssessments, type PulseAssessment, type PulseMode } from '@shared/pulse-assessment';
 import { activityQuestions, activityWindowFeatures, parseActivityWorkouts, type ActivityWorkout } from '@shared/pulse-activity';
@@ -67,17 +67,33 @@ export class PulseScorer {
       const plays = playRows.map(parseListeningPlay).filter((r)=>r!==null).sort((a,b)=>a.t-b.t);
       const series = histories.map((rows, index)=>rows.map(parsePulseSample).filter((r)=>r!==null).map((r)=>({...r,until:Math.min(now, pulseSampleUntil(SCORED_DOMAINS[index], r))})));
       // Two-minute settling time allows the one-minute usage scan and transport to finish.
-      const end = Math.floor((now-120_000)/CODING_WINDOW_MS)*CODING_WINDOW_MS;
+      const end = Math.floor((now-120_000)/PULSE_SCORE_WINDOW_MS)*PULSE_SCORE_WINDOW_MS;
       const jobs: {domain: PulseDomain; from: number; coverage: Coverage[]; state: unknown; questions: Record<string, PulseQuestion>; ids: Built['ids']; hash:string}[] = [];
-      for (let from=end-CODING_WINDOW_MS;from>=Math.ceil((now-PULSE_WINDOW_MS)/CODING_WINDOW_MS)*CODING_WINDOW_MS&&jobs.length<36;from-=CODING_WINDOW_MS) {
+      for (let from=end-PULSE_SCORE_WINDOW_MS;from>=Math.ceil((now-PULSE_WINDOW_MS)/PULSE_SCORE_WINDOW_MS)*PULSE_SCORE_WINDOW_MS&&jobs.length<36;from-=PULSE_SCORE_WINDOW_MS) {
         for (const [index,domain] of SCORED_DOMAINS.entries()) {
           if (jobs.length>=36) break;
-          const window = {from,to:from+CODING_WINDOW_MS};
+          const window = {from,to:from+PULSE_SCORE_WINDOW_MS};
           let built: Built;
           if (domain==='coding') {
-            const facts=codingWindowFeatures(seen,from);
-            const validUsage=tokenUsage&&tokenUsage.from<=from&&tokenUsage.to>=window.to;
-            const tokens=validUsage?{sources:tokenUsage.sources,agents:tokenUsage.windows.find((w)=>w.from===from)?.agents??[]}:null;
+            const facts=codingWindowFeatures(seen,from,PULSE_SCORE_WINDOW_MS);
+            // The producer emits only buckets with events. An absent bucket inside its
+            // reported range is measured zero; outside that range it is unknown.
+            const coveredBuckets = tokenUsage ? Array.from({length: 3}, (_, i) => from + i * 300_000)
+              .filter((bucket) => bucket >= tokenUsage.from && bucket + 300_000 <= tokenUsage.to) : [];
+            const usageWindows = tokenUsage?.windows.filter((w) => coveredBuckets.includes(w.from)) ?? [];
+            const tokens = tokenUsage && coveredBuckets.length ? {
+              sources: tokenUsage.sources,
+              observedBucketCount: coveredBuckets.length,
+              unknownBucketCount: 3 - coveredBuckets.length,
+              agents: Object.values(usageWindows.flatMap((w) => w.agents).reduce<Record<string, typeof usageWindows[number]['agents'][number]>>((all, agent) => {
+                const key = JSON.stringify([agent.id, agent.model]);
+                const prior = all[key];
+                all[key] = prior ? { ...agent, inputTokens: prior.inputTokens + agent.inputTokens, outputTokens: prior.outputTokens + agent.outputTokens,
+                  cacheReadTokens: prior.cacheReadTokens + agent.cacheReadTokens, cacheCreationTokens: prior.cacheCreationTokens + agent.cacheCreationTokens,
+                  reasoningTokens: prior.reasoningTokens + agent.reasoningTokens, eventCount: prior.eventCount + agent.eventCount } : { ...agent };
+                return all;
+              }, {})),
+            } : null;
             built={state:{windows:[{...facts,tokenUsage:tokens}]},coverage:facts.coverage,questions:codingQuestions([facts]) as Record<string, PulseQuestion>,ids:{intensity:'w0Intensity',continuity:'w0Continuity',mode:'w0Mode'}};
           } else {
             built=buildMeasured(domain, series[index], window, plays, workouts);
@@ -103,7 +119,7 @@ export class PulseScorer {
           if(!response.ok)throw Error(`Jev HTTP ${response.status}`);
           const body=await response.json() as {model:string;answers:Record<string,unknown>};
           if (typeof body.model !== 'string' || !body.model || !body.answers) throw Error('Invalid Jev response');
-          return {from:job.from,to:job.from+CODING_WINDOW_MS,coverage:job.coverage,
+          return {from:job.from,to:job.from+PULSE_SCORE_WINDOW_MS,coverage:job.coverage,
             intensity:judgment(body.answers[job.ids.intensity],5,true),continuity:judgment(body.answers[job.ids.continuity],4,true),
             mode:job.ids.mode?modeAnswer(body.answers[job.ids.mode],job.domain):null,
             model:body.model,scoredAt:now,domain:job.domain,inputHash:job.hash};

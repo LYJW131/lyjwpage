@@ -16,7 +16,7 @@ CLOUDFLARE_METRICS_TOKEN=
 PAGESPEED_API_KEY=
 # Vercel 团队范围 Token：部署、调用量和访问统计共用
 VERCEL_TOKEN=
-# TypeSafe AI 的 API 密钥，给 pulse 活动分用（Jev 评估模型，十分钟最多一次）。
+# TypeSafe AI 的 API 密钥，给 pulse 活动分用（Jev 评估模型，每域每十五分钟窗口最多一次，变化可触发重评）。
 # 不配就不打分，/api/status/pulse 照常返回泳道、分是 null。
 TYPESAFE_API_KEY=
 # 可选。Sentry 组织只读令牌（org:read / project:read / event:read），站点卡片的在线率与错误数用；

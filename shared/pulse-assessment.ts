@@ -1,4 +1,4 @@
-import { CODING_MODES, CODING_WINDOW_MS, type CodingAssessment } from './pulse-coding';
+import { CODING_MODES, CODING_WINDOW_MS, PULSE_SCORE_WINDOW_MS, type CodingAssessment } from './pulse-coding';
 import { LISTENING_MODES } from './pulse-listening';
 import type { PulseDomain, PulseScore } from '../src/lib/types';
 export { mergeCoverage } from './pulse-features';
@@ -39,7 +39,7 @@ export function parsePulseAssessment(raw: string): PulseAssessment | null {
   try {
     const row = JSON.parse(raw) as PulseAssessment;
     if (!['coding','listening','watching','gaming','charging','activity'].includes(row.domain) || typeof row.inputHash !== 'string') return null;
-    if (!Number.isSafeInteger(row.from) || row.from < 0 || row.to !== row.from + CODING_WINDOW_MS || !Number.isFinite(row.scoredAt)) return null;
+    if (!Number.isSafeInteger(row.from) || row.from < 0 || (row.to !== row.from + CODING_WINDOW_MS && row.to !== row.from + PULSE_SCORE_WINDOW_MS) || !Number.isFinite(row.scoredAt)) return null;
     if (!Array.isArray(row.coverage) || !row.coverage.length) return null;
     let end = row.from;
     const coverage = row.coverage.map((p) => {
@@ -74,8 +74,8 @@ export function parsePulseAssessment(raw: string): PulseAssessment | null {
 }
 
 /**
- * 评估列表是追加写的（整表重写一轮要写一万多行，每五分钟一轮，见 pulse-score-state）：
- * 同一窗口可能有好几行，后评的排在后面。所有读评估的地方都走这里，按 `${domain}:${from}`
+ * 评估列表是追加写的（整表重写一轮要写一万多行，见 pulse-score-state）：
+ * 同一窗口可能有好几行，后评的排在后面。所有读评估的地方都走这里，按 `${domain}:${from}:${to}`
  * 只留最后一行 —— 汇总按行累加覆盖时长，重复行会把权重算两遍。坏行跳过，不顶掉之前的好行。
  */
 export function latestPulseAssessments(rows: readonly string[]): PulseAssessment[] {
@@ -83,9 +83,14 @@ export function latestPulseAssessments(rows: readonly string[]): PulseAssessment
   for (const raw of rows) {
     const row = parsePulseAssessment(raw);
     if (!row) continue;
-    const key = `${row.domain}:${row.from}`;
+    const key = `${row.domain}:${row.from}:${row.to}`;
     latest.delete(key);
     latest.set(key, row);
   }
-  return [...latest.values()];
+  // A new 15-minute assessment replaces its three legacy five-minute rows.
+  // Until that score exists, old rows remain readable in history and summaries.
+  const current = [...latest.values()];
+  const wide = new Set(current.filter((row) => row.to - row.from === PULSE_SCORE_WINDOW_MS).map((row) => `${row.domain}:${row.from}`));
+  return current.filter((row) => row.to - row.from === PULSE_SCORE_WINDOW_MS || !wide.has(`${row.domain}:${Math.floor(row.from / PULSE_SCORE_WINDOW_MS) * PULSE_SCORE_WINDOW_MS}`))
+    .sort((a, b) => a.from - b.from || a.domain.localeCompare(b.domain));
 }
