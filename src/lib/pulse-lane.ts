@@ -46,7 +46,7 @@ export function pulseLaneRuns(
  * 段 → SVG 路径。
  *
  * 0 档也照画一条贴着底边的段：泳道要连续，断开的地方才是「没有上报」。
- * 所以填充路径里 0 档的高度是 0（看不见），而顶边折线仍然走过去，
+ * 0 档留一 viewBox 单位的可见底线；贴在 SVG 边界的描边会被裁掉。
  * 静默那一段两条都不画。
  */
 export function pulseLanePath(
@@ -58,7 +58,7 @@ export function pulseLanePath(
   // 一位小数足够：泳道 viewBox 只有几百单位宽，第二位小数在屏幕上不到一像素的零头，
   // 却让首屏 HTML 里每条路径多出三成字符
   const x = (at: number) => (((at - window.from) / span) * options.width).toFixed(1);
-  const y = (level: number) => (options.height - (level / PULSE_LEVEL_MAX) * options.height).toFixed(1);
+  const y = (level: number) => (level === 0 ? options.height - 1 : options.height - (level / PULSE_LEVEL_MAX) * options.height).toFixed(1);
   const floor = options.height.toFixed(1);
 
   // 先按「首尾相接」分组：一组是一笔连续的泳道，组与组之间就是静默的空白

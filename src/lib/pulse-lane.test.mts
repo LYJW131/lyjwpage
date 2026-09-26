@@ -24,9 +24,19 @@ test("阶跃路径先竖后横，档位映射到高度", () => {
     RANGE,
     OPTIONS,
   );
-  // 3 档贴顶（y=0），0 档贴底（y=30）；x 按窗口线性映射，50/1000 → 5
-  assert.equal(area, "M0.0 30.0 L0.0 0.0 L5.0 0.0 L5.0 30.0 L100.0 30.0 L100.0 30.0 Z");
-  assert.equal(line, "M0.0 0.0 L5.0 0.0 L5.0 30.0 L100.0 30.0");
+  // 3 档贴顶（y=0），0 档留可见底线（y=29）；x 按窗口线性映射
+  assert.equal(area, "M0.0 30.0 L0.0 0.0 L5.0 0.0 L5.0 29.0 L100.0 29.0 L100.0 30.0 Z");
+  assert.equal(line, "M0.0 0.0 L5.0 0.0 L5.0 29.0 L100.0 29.0");
+});
+
+test("已观测零档有可见底线，未知间隙仍断开", () => {
+  const shape = pulseLanePath(
+    [{ t: 0, level: 0, until: 200 }, { t: 500, level: 0, until: 700 }],
+    RANGE,
+    OPTIONS,
+  );
+  assert.equal(shape.line, "M0.0 29.0 L20.0 29.0 M50.0 29.0 L70.0 29.0");
+  assert.equal(shape.area.match(/Z/g)?.length, 2);
 });
 
 test("静默断口把泳道拆成两笔，中间是真的空白", () => {
