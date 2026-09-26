@@ -5,7 +5,7 @@ import { codingObservationsKey, codingTokenUsageKey } from "@/lib/coding-pulse";
 import { listeningPlaysKey } from "@/lib/listening-pulse";
 import { pulseIntervalRevisionKey, pulseKey } from "@/lib/pulse";
 import { PULSE_DOMAINS, type PulseDomain } from "@/lib/types";
-import { CODING_WINDOW_MS, parseCodingAssessment } from "@shared/pulse-coding";
+import { CODING_WINDOW_MS, PULSE_SCORE_WINDOW_MS, parseCodingAssessment } from "@shared/pulse-coding";
 import { latestPulseAssessments, type PulseAssessment } from "@shared/pulse-assessment";
 import { SqliteStore, type SqlDatabase } from "@shared/sqlite-store";
 import { StorageClient } from "@shared/storage-client";
@@ -16,7 +16,7 @@ import { pulseAssessmentsKey } from "@/lib/pulse-assessments";
 import { workoutsKey } from "@shared/workouts";
 const T = 1_800_000_000_000;
 function setup() {
-  let now = T + CODING_WINDOW_MS + 120_000;
+  let now = T + PULSE_SCORE_WINDOW_MS + 120_000;
   const db = new DatabaseSync(":memory:");
   const sql = {
     exec(query: string, ...args: (string | number | null)[]) {
@@ -81,8 +81,8 @@ test("coding scorer batches dimensions, freezes successful windows, skips unknow
   assert.equal(first.length, 1);
   assert.equal(parseCodingAssessment(first[0])?.intensity.value, 4);
   await b.make().run(); assert.equal(b.requests.length, 1, "restart keeps throttle");
-  await b.push(T + CODING_WINDOW_MS, false);
-  b.advance(CODING_WINDOW_MS); await scorer.run();
+  await b.push(T + PULSE_SCORE_WINDOW_MS, false);
+  b.advance(PULSE_SCORE_WINDOW_MS); await scorer.run();
   assert.equal(b.requests.length, 1, "offline interval produces no call");
   assert.deepEqual(await b.storage.listRange(pulseAssessmentsKey(), 0, -1), first);
 });
@@ -105,10 +105,10 @@ test("coding catches up bounded batches and excludes the unfinished window", asy
   for (let i = 0; i < 90; i++) await b.push(T - 60 * 60_000 + i * 60_000);
   await b.make().run();
   const rows = (await b.storage.listRange(pulseAssessmentsKey(), 0, -1)).map(parseCodingAssessment);
-  assert.equal(rows.length, 13);
-  assert.equal(b.requests.length, 13);
+  assert.equal(rows.length, 5);
+  assert.equal(b.requests.length, 5);
   assert.ok(b.requests.every((request) => (request.state as { windows: unknown[] }).windows.length === 1));
-  assert.ok(rows.every((row) => row!.to <= T + CODING_WINDOW_MS));
+  assert.ok(rows.every((row) => row!.to <= T + PULSE_SCORE_WINDOW_MS));
 });
 
 test("coding isolates windows, bounds concurrency and saves successes when another window fails", async () => {
@@ -134,9 +134,9 @@ test("coding isolates windows, bounds concurrency and saves successes when anoth
       } });
     } });
   await scorer.run();
-  assert.equal(calls, 4); assert.equal(peak, 3); assert.equal(errors.length, 1);
+  assert.equal(calls, 2); assert.equal(peak, 2); assert.equal(errors.length, 1);
   const rows = (await b.storage.listRange(pulseAssessmentsKey(), 0, -1)).map(parseCodingAssessment);
-  assert.equal(rows.length, 3); assert.ok(rows.every((row) => row!.from > T));
+  assert.equal(rows.length, 1); assert.ok(rows.every((row) => row!.from > T));
 });
 
 test('late token evidence re-scores only changed windows; identical evidence stays frozen', async () => {
@@ -215,7 +215,7 @@ test('listening counts track changes in code and hands Jev named seconds, never 
   const state = b.requests[0].state as Record<string, unknown>;
   assert.equal(state.trackChanges, 2);
   assert.equal(state.distinctTracks, 3);
-  assert.equal(state.playingSeconds, 300);
+  assert.equal(state.playingSeconds, 780);
   assert.equal(state.playingPercent, 100);
   assert.equal(state.longestPlayingRunPercent, 100);
   assert.equal('segments' in state, false);
@@ -394,4 +394,49 @@ test("pulse score state: once superseded rows outweigh half the live ones the li
   const parsed = rows.map((raw) => JSON.parse(raw) as PulseAssessment);
   assert.ok(parsed.every((row) => !row.inputHash.startsWith("old-")));
   assert.deepEqual(parsed.map((row) => row.from), [...parsed.map((row) => row.from)].sort((a, b) => a - b));
+});
+
+test('coding score aggregates sparse factual token buckets and keeps zero-event buckets', async () => {
+  const b = setup();
+  await b.push(T); await b.push(T + 300_000); await b.push(T + 600_000);
+  const agent = (outputTokens: number) => ({id:'codex',model:'model',inputTokens:10,outputTokens,cacheReadTokens:2,cacheCreationTokens:1,reasoningTokens:1,eventCount:1});
+  const usage = {from:T,to:T+900_000,collectedAt:T+1_020_000,sources:[{id:'codex',state:'partial'},{id:'claude',state:'unavailable'}],windows:[
+    {from:T,to:T+300_000,agents:[agent(20)]},
+    {from:T+600_000,to:T+900_000,agents:[agent(30)]},
+  ]};
+  await b.storage.set(codingTokenUsageKey(), JSON.stringify(usage));
+  await b.make().run();
+  const token = ((b.requests[0].state as {windows:{tokenUsage:{agents:{outputTokens:number}[];observedBucketCount:number;unknownBucketCount:number}}[]}).windows[0].tokenUsage);
+  assert.equal(token.agents[0].outputTokens, 50);
+  assert.equal(token.observedBucketCount, 3);
+  assert.equal(token.unknownBucketCount, 0);
+  const row = latestPulseAssessments(await b.storage.listRange(pulseAssessmentsKey(),0,-1))[0];
+  assert.equal(row.to-row.from,PULSE_SCORE_WINDOW_MS);
+});
+
+
+test('coding token usage keeps an empty reported interval as measured zero', async () => {
+  const b = setup(); await b.push(T);
+  await b.storage.set(codingTokenUsageKey(), JSON.stringify({from:T,to:T+900_000,collectedAt:T+1_020_000,
+    sources:[{id:'codex',state:'ok'},{id:'claude',state:'ok'}],windows:[]}));
+  await b.make().run();
+  const token = ((b.requests[0].state as {windows:{tokenUsage:{agents:unknown[];observedBucketCount:number;unknownBucketCount:number}}[]}).windows[0].tokenUsage);
+  assert.deepEqual(token.agents,[]);
+  assert.equal(token.observedBucketCount,3);
+  assert.equal(token.unknownBucketCount,0);
+});
+
+test('coding token usage excludes partially reported boundary buckets', async () => {
+  const b = setup(); await b.push(T);
+  const agent = {id:'codex',model:'model',inputTokens:1,outputTokens:10,cacheReadTokens:0,cacheCreationTokens:0,reasoningTokens:0,eventCount:1};
+  await b.storage.set(codingTokenUsageKey(), JSON.stringify({from:T+150_000,to:T+750_000,collectedAt:T+1_020_000,
+    sources:[{id:'codex',state:'partial'},{id:'claude',state:'unavailable'}],windows:[
+      {from:T,to:T+300_000,agents:[agent]}, {from:T+300_000,to:T+600_000,agents:[agent]},
+      {from:T+600_000,to:T+900_000,agents:[agent]}]}));
+  await b.make().run();
+  const token = ((b.requests[0].state as {windows:{tokenUsage:{agents:{outputTokens:number}[];observedBucketCount:number;unknownBucketCount:number;sources:{state:string}[]}}[]}).windows[0].tokenUsage);
+  assert.equal(token.agents[0].outputTokens,10);
+  assert.equal(token.observedBucketCount,1);
+  assert.equal(token.unknownBucketCount,2);
+  assert.deepEqual(token.sources.map((source)=>source.state),['partial','unavailable']);
 });

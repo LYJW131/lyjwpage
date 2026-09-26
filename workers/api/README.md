@@ -141,7 +141,7 @@ Pulse 卡片用它。信封形状：
 `src/lib/pulse-columns.ts`，出口和卡片共用。
 
 **仅媒体／游戏段公开当时的 title；应用/模型名称与 token 用量不出公网。** 播放／游戏状态与瓦数可公开；
-公开端点返回五分钟评估和同源汇总，详细契约与调度见下方统一评分章节。
+公开端点返回十五分钟评估（过渡期可读旧五分钟评估）和同源汇总，详细契约与调度见下方统一评分章节。
 没有 `TYPESAFE_API_KEY`、或本地配了 `DEV_OVERRIDES` / `UPSTREAM_API_URL` 时停用自动评分。
 
 `activity` 是 Apple Watch 身体活动，由 `/api/ingest/iphone` 的 `modules.activity`
@@ -159,10 +159,10 @@ statistics；每个桶只携带实际可读的 active energy、exercise time、s
 
 本地预览用夹具：`pnpm dev:override /api/status/pulse pulse-busy-day.json`。
 
-### Pulse 统一五分钟评分
+### Pulse 统一十五分钟评分
 
 六个领域共用 `PulseScorer` 和 `pulse:assessments`。StateHub 的 metadata 保存评分 claim、generation、lease 和最近尝试时刻；普通 Worker 领取固定输入快照、执行模型请求，再用 token + generation 提交，过期任务不能覆盖新结果。
-旧的十分钟 24 小时模型总评已经删除；右侧摘要由最近 24 小时的同一批五分钟评分按
+旧的十分钟 24 小时模型总评已经删除；右侧摘要由最近 24 小时的同一批十五分钟评分按
 实际覆盖时长加权，趋势比较最近三小时与此前三小时，没有两侧观测时为 `unknown`。
 曲线和摘要不再有两套评分来源。公开契约为 `domains[domain].assessments` 和 `score`，
 不再返回旧 `samples` 或根级 `codingAssessments`。公开的评分只有区间、强度与置信度、连续性、
@@ -170,8 +170,8 @@ statistics；每个桶只携带实际可读的 active energy、exercise time、s
 评分时刻只留在库里（投影在 `src/lib/pulse.ts` 的 `publicAssessment`）。
 
 每分钟 cron 检查，两轮尝试至少隔五分钟；窗口结束后留两分钟等待采集与上报。
-每个领域每个窗口各一份官方 `jev-1.13.0` 请求，强度与连续性一起评估，Coding
-再判断模式。每轮最多 36 份请求，并发最多 3；优先新窗口，再补最近 24 小时。
+每个领域每个十五分钟窗口各一份官方 `jev-1.13.0` 请求，强度与连续性一起评估，Coding
+再判断模式。每轮最多 36 份请求，并发最多 3；优先新窗口，再补最近 24 小时。稳定时六域最多每小时 24 次 Jev 请求（原先 72 次），一次性迁移补评按每轮上限逐步完成；旧五分钟评估保留读取，新窗口落库后覆盖其三个旧窗口，避免摘要和曲线重复计权。
 没有观测不调用；空闲观测可评分。六项均参与模型评分。
 
 按 Jev 文档（不会数数、不会算时长、不比时间戳、档位要写情境不写程度），发给它的
@@ -183,15 +183,14 @@ state 一律是代码算好的命名秒数和次数，没有原始区间、时�
 - watching：`playingSeconds / pausedSeconds / idleSeconds / longestPlayingRunSeconds`、`playingPercent / pausedPercent / longestPlayingRunPercent`、`titleChanges / titles`。
 - gaming：`inGameSeconds / onlineIdleSeconds / offlineSeconds / longestGameRunSeconds`、`inGamePercent / longestGameRunPercent`、`gameChanges / games`；「主机在线未进游戏」是它自己的桶和档位。
 - charging：`secondsByBand` 与 `percentByBand`（`unplugged / trickle / moderate / high`）、`peakWatts / longestPoweredRunSeconds / longestPoweredRunPercent`，分档阈值 0 / 15 / 60 W 与 `chargingLevel` 一致。
-- activity：圆环估算仍是 `stillSeconds / lightSeconds / moderateSeconds / vigorousSeconds / longestMovingRunSeconds`、`movingPercent / vigorousPercent / longestMovingRunPercent`，每档写明对应的步频与锻炼分钟占比。另外从 `workouts:recent` 读已完成训练，放进 `workoutSeconds / workoutPercent / workouts[{activityType, seconds}]`。`activityType` 是上报的项目名（例如 Fencing），`seconds` 是该次训练摊到这个五分钟窗口里的活动秒数，不含时间戳。`workoutPercent` 达到 50 对上强度最高档，达到 75 对上连续性最高档；没有圆环样本但有训练覆盖的窗口也会打分。圆环桶不把这笔时长混进去。
+- activity：圆环估算仍是 `stillSeconds / lightSeconds / moderateSeconds / vigorousSeconds / longestMovingRunSeconds`、`movingPercent / vigorousPercent / longestMovingRunPercent`，每档写明对应的步频与锻炼分钟占比。另外从 `workouts:recent` 读已完成训练，放进 `workoutSeconds / workoutPercent / workouts[{activityType, seconds}]`。`activityType` 是上报的项目名（例如 Fencing），`seconds` 是该次训练摊到这个十五分钟评分窗口里的活动秒数，不含时间戳。`workoutPercent` 达到 50 对上强度最高档，达到 75 对上连续性最高档；没有圆环样本但有训练覆盖的窗口也会打分。圆环桶不把这笔时长混进去。
 
 `PULSE_ASSESSMENT_VERSION` 进输入哈希，改问题时升版本让全部窗口重评，不靠哈希碰巧变。
-改判据先跑 `node --experimental-strip-types --import ./src/lib/testing/register-alias.mjs scripts/jev-probe.mts`（key 读根目录 `.env.local` 的 `TYPESAFE_API_KEY`）：十几个代表性窗口打真实 Jev，每条都写着期望档位，答案偏了先改措辞再上线——上线一次就是整整 24 小时重评。
+改判据先跑 `node --experimental-strip-types --import ./src/lib/testing/register-alias.mjs scripts/jev-probe.mts`（key 读根目录 `.env.local` 的 `TYPESAFE_API_KEY`）：十几个代表性窗口打真实 Jev，每条都写着期望档位，答案偏了先改措辞再上线——改判据上线会触发最近 24 小时重评。
 相同输入哈希不重复调用；晚到 token 或活动报告改变窗口事实时只重评受影响窗口。
 失败保留旧成功记录，下一轮重试，存储读失败不会清空历史。
 
-MacTelemetryHub 的 `modules.vibeCodingNow.tokenUsage` 携带最近 24 小时的五分钟
-用量桶：`from/to/collectedAt`（epoch 毫秒）、`sources[{id,state}]`、
+MacTelemetryHub 的 `modules.vibeCodingNow.tokenUsage` 携带最近 24 小时的用量桶。原始桶保持五分钟，不随 Jev 评分改动；评分时聚合窗口内三个桶，完整上报范围内缺失的桶视为零事件，范围外或来源 partial/unavailable 保留 unknown。字段为 `from/to/collectedAt`（epoch 毫秒）、`sources[{id,state}]`、
 `windows[{from,to,agents}]`。每行 agent 有 `id/model/inputTokens/outputTokens/
 cacheReadTokens/cacheCreationTokens/reasoningTokens/eventCount`；input 不含 cache read，
 reasoning 属于 output 子集，eventCount 是去重用量事件数，不宣称上游 HTTP 请求数。

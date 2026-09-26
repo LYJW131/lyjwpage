@@ -153,3 +153,18 @@ test('columns round-trip rows, keep only the titles and partial coverage that ex
  assert.deepEqual(toSegmentColumns(segments),{startSec:[0,60],endSec:[60,90],value:[42.5,0]});
  assert.deepEqual(segmentRows(toSegmentColumns(segments)),segments);
 });
+
+test('mixed five- and fifteen-minute assessments never double-weight coverage', async () => {
+ const {latestPulseAssessments, summarizeAssessments} = await import('@shared/pulse-assessment');
+ const base = 1_800_000_000_000;
+ const old = [0, 300_000, 600_000].map((offset) => ({...row(), domain:'coding', from:base+offset, to:base+offset+300_000, coverage:[{from:base+offset,to:base+offset+300_000}], inputHash:`old-${offset}`}));
+ const wide = {...row(), domain:'coding', from:base, to:base+900_000, coverage:[{from:base,to:base+120_000}], inputHash:'wide'};
+ const raw = [...old, wide, old[0]].map((value) => JSON.stringify(value));
+ const result = latestPulseAssessments(raw);
+ assert.equal(result.length,1,'a late legacy row cannot replace the wide score');
+ assert.equal(result[0].inputHash,'wide');
+ assert.deepEqual(result[0].coverage,wide.coverage,'unknown time is not filled with old coverage');
+ assert.equal(summarizeAssessments(result,base,base+900_000)?.value,1.5);
+ const legacy = latestPulseAssessments(old.map((value) => JSON.stringify(value)));
+ assert.equal(legacy.length,3,'all old rows remain readable before a wide replacement exists');
+});

@@ -15,7 +15,7 @@ import { CODING_INTENSITY, CODING_CONTINUITY } from "@shared/pulse-coding";
 import { cn } from "@/lib/utils";
 
 /**
- * Every lane and its summary consume the same five-minute Jev assessments.
+ * Every lane and its summary consume the same 15-minute Jev assessments.
  * 所以五分钟问一次：从前一分钟一次，五次里有四次拿回同一批评分，
  * 实测泳道最右那一截晚几分钟画上，对 24 小时的总览无关紧要。
  */
@@ -125,7 +125,7 @@ function AssessmentLane({ view, range, label }: { view: PulseDomainView; label: 
         ref={buttonRef}
         type="button"
         className="block w-full cursor-crosshair rounded-sm focus-visible:outline-1 focus-visible:outline-live"
-        aria-label={`${label} ${view.kind === "score" ? "intensity, scored by Jev every 5 minutes" : view.kind === "power" ? "power in watts" : "active status"}. Use arrow keys to inspect intervals.`}
+        aria-label={`${label} ${view.kind === "score" ? "intensity, scored by Jev every 15 minutes" : view.kind === "power" ? "power in watts" : "active status"}. Use arrow keys to inspect intervals.`}
         onPointerMove={(event) => selectAt(event.clientX, event.currentTarget)}
         onPointerLeave={(event) => { if (event.pointerType === "mouse") setSelected(null); }}
         onFocus={(event) => { setBounds(cellAnchor(event.currentTarget)); setSelected((value) => value ?? assessments.length - 1); }}
