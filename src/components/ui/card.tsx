@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import { StatusDot, type DotTone } from "@/components/ui/status-dot";
+import { CardActions } from "@/components/ui/card-actions";
 import { cn } from "@/lib/utils";
 
 /**
@@ -33,16 +34,18 @@ export function Card({
       )}
     >
       {(label || action) && (
-        <div className="flex min-h-9 items-center justify-between gap-2 border-b border-line bg-muted px-3 py-2">
+        <div className="flex min-h-9 flex-wrap items-center justify-between gap-2 border-b border-line bg-muted px-3 py-2">
           <div className="flex items-center gap-2">
             {tone && <StatusDot tone={tone} />}
             {label && <span className="label-mono text-muted-foreground">{label}</span>}
           </div>
-          {action && (
-            <div className="label-mono text-muted-foreground shrink-0">{action}</div>
-          )}
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            {action && <div className="label-mono text-muted-foreground">{action}</div>}
+            <CardActions label={label ?? "Card"} />
+          </div>
         </div>
       )}
+      {!label && !action && <div className="absolute right-2 top-2 z-10"><CardActions label="Card" /></div>}
       {children}
     </div>
   );
