@@ -1,0 +1,37 @@
+{
+  "ok": true,
+  "data": {
+    "generatedAt": "$now",
+    "window": { "from": "$now-86400000", "to": "$now" },
+    "domains": {
+      "coding": {
+        "kind": "score",
+        "assessments": {
+          "startSec": [0, 10800, 50400],
+          "endSec": [10800, 43200, 86400],
+          "intensity": [3, 0, 0],
+          "confidence": [0.9, 0.9, 0.9],
+          "continuity": [3, 0, 0],
+          "mode": ["interactive", "idle", "idle"]
+        },
+        "score": { "value": 0, "confidence": 0.9, "trend": "steady", "scoredAt": "$now" }
+      },
+      "listening": {
+        "kind": "score",
+        "assessments": {
+          "startSec": [0, 10800, 50400],
+          "endSec": [10800, 43200, 86400],
+          "intensity": [3, 0, 0],
+          "confidence": [0.9, 0.9, 0.9],
+          "continuity": [3, 0, 0],
+          "mode": ["steady", "paused", "paused"]
+        },
+        "score": { "value": 0, "confidence": 0.9, "trend": "steady", "scoredAt": "$now" }
+      },
+      "watching": { "kind": "binary", "segments": { "startSec": [], "endSec": [], "value": [] }, "activeSeconds": 0, "score": null },
+      "gaming": { "kind": "binary", "segments": { "startSec": [], "endSec": [], "value": [] }, "activeSeconds": 0, "score": null },
+      "charging": { "kind": "power", "segments": { "startSec": [], "endSec": [], "value": [] }, "currentPowerW": null, "score": null },
+      "activity": { "kind": "score", "assessments": { "startSec": [], "endSec": [], "intensity": [], "confidence": [], "continuity": [], "mode": [] }, "score": null }
+    }
+  }
+}
