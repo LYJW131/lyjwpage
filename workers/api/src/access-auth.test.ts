@@ -79,6 +79,14 @@ test("JWTs with the wrong audience, issuer, expiry, algorithm or signature are r
   }
 });
 
+test("team domain normalization handles long slash runs without changing issuer validation", async () => {
+  const token = await sign(claims());
+  const options = { audience: AUD, jwks: [publicJwk] };
+  assert.equal((await verifyAccessJwt(token, { ...options, teamDomain: `${ISSUER}${"/".repeat(100_000)}` }))?.commonName, MAC);
+  assert.equal(await verifyAccessJwt(token, { ...options, teamDomain: `${ISSUER}${"/".repeat(100_000)}x` }), null);
+  assert.equal(await verifyAccessJwt(token, { ...options, teamDomain: `${ISSUER}/other/` }), null);
+});
+
 test("the old shared bearer is no longer accepted", async () => {
   assert.equal((await authorize(request({ Authorization: "Bearer legacy" }), env, "ingest:mac")).ok, false);
 });

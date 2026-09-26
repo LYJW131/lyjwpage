@@ -35,7 +35,9 @@ export function setJwksFetcherForTests(fetcher: ((issuer: string) => Promise<Jwk
 }
 
 function trimSlash(value: string): string {
-  return value.replace(/\/+$/, "");
+  let end = value.length;
+  while (end > 0 && value.charCodeAt(end - 1) === 47) end -= 1;
+  return value.slice(0, end);
 }
 
 function base64UrlDecode(part: string): Uint8Array<ArrayBuffer> {
