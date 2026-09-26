@@ -13,6 +13,61 @@ function validDimension(value: number) {
   return Number.isInteger(value) && value >= 320 && value <= 4096;
 }
 
+/** SVG-in-foreignObject loses CSS Color 4 (lab/oklch) and inherited theme vars.
+ * Resolve only SVG paint to sRGB for the capture, then restore the live nodes. */
+function prepareSvgPaint(card: HTMLElement): () => void {
+  const colorCanvas = document.createElement("canvas");
+  colorCanvas.width = colorCanvas.height = 1;
+  const context = colorCanvas.getContext("2d", { willReadFrequently: true });
+  if (!context) return () => {};
+  const cache = new Map<string, string>();
+  const toRgb = (value: string) => {
+    if (!value || value === "none" || value.startsWith("url(")) return value;
+    const cached = cache.get(value);
+    if (cached) return cached;
+    context.clearRect(0, 0, 1, 1);
+    context.fillStyle = value;
+    context.fillRect(0, 0, 1, 1);
+    const [r, g, b, a] = context.getImageData(0, 0, 1, 1).data;
+    const result = `rgba(${r}, ${g}, ${b}, ${a / 255})`;
+    cache.set(value, result);
+    return result;
+  };
+  const paints = Array.from(card.querySelectorAll<SVGElement>("svg, svg *"), (element) => {
+    const computed = getComputedStyle(element);
+    return {
+      element,
+      values: ["color", "fill", "stroke", "stop-color"].map((property) => [property, computed.getPropertyValue(property)] as const),
+      size: element instanceof SVGRectElement ? { width: computed.width, height: computed.height } : null,
+    };
+  });
+  const saved: Array<{ element: SVGElement; property: string; value: string; priority: string }> = [];
+  const sizes: Array<{ element: SVGRectElement; width: string | null; height: string | null }> = [];
+  for (const { element, values, size } of paints) {
+    for (const [property, value] of values) {
+      if (!value || value === "none" || value.startsWith("url(")) continue;
+      saved.push({ element, property, value: element.style.getPropertyValue(property), priority: element.style.getPropertyPriority(property) });
+      element.style.setProperty(property, toRgb(value), "important");
+    }
+    // Heatmap cell geometry lives in CSS; SVG-as-image needs explicit attributes.
+    if (size && element instanceof SVGRectElement) {
+      sizes.push({ element, width: element.getAttribute("width"), height: element.getAttribute("height") });
+      element.setAttribute("width", size.width);
+      element.setAttribute("height", size.height);
+    }
+  }
+  return () => {
+    for (const { element, property, value, priority } of saved) {
+      if (value) element.style.setProperty(property, value, priority);
+      else element.style.removeProperty(property);
+    }
+    for (const { element, width, height } of sizes) {
+      if (width === null) element.removeAttribute("width"); else element.setAttribute("width", width);
+      if (height === null) element.removeAttribute("height"); else element.setAttribute("height", height);
+    }
+  };
+}
+
 export function CardActions({ label }: { label: string }) {
   const expandRef = useRef<HTMLButtonElement>(null);
   const exportRef = useRef<HTMLButtonElement>(null);
@@ -128,13 +183,19 @@ export function CardActions({ label }: { label: string }) {
       const scale = Math.min(width / bounds.width, height / bounds.height);
       const renderWidth = Math.max(1, Math.round(bounds.width * scale));
       const renderHeight = Math.max(1, Math.round(bounds.height * scale));
-      const dataUrl = await toPng(card, {
-        canvasWidth: renderWidth,
-        canvasHeight: renderHeight,
-        pixelRatio: 1,
-        cacheBust: true,
-        filter: (node) => !(node instanceof Element && node.hasAttribute("data-card-control")),
-      });
+      const restoreSvg = prepareSvgPaint(card);
+      let dataUrl: string;
+      try {
+        dataUrl = await toPng(card, {
+          canvasWidth: renderWidth,
+          canvasHeight: renderHeight,
+          pixelRatio: 1,
+          cacheBust: true,
+          filter: (node) => !(node instanceof Element && node.hasAttribute("data-card-control")),
+        });
+      } finally {
+        restoreSvg();
+      }
       const link = document.createElement("a");
       if (!dataUrl.startsWith("data:image/png;base64,")) throw new Error("Invalid PNG");
       const rendered = new Image();
