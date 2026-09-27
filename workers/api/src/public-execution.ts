@@ -18,6 +18,6 @@ export async function executePublicRequest(
       { status: 503, headers: { "Cache-Control": "no-store" } },
     );
   }
-  const storage = createPublicStorage(hub);
+  const storage = createPublicStorage(hub, () => env.STATE.get(env.STATE.idFromName("global")));
   return withRequestState(() => requestStore.run({ env, ctx, storage }, () => publicResponse(request)));
 }

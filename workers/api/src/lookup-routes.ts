@@ -34,7 +34,7 @@ export async function serveLookup(request: Request, env: Env, ctx: ExecutionCont
     key: key ? edgeCacheRequest(url.origin, key) : null,
     waitUntil: (promise) => ctx.waitUntil(promise),
     origin: () => {
-      const storage = createPublicStorage(env.STATE.get(env.STATE.idFromName("global")));
+      const storage = createPublicStorage(env.STATE.get(env.STATE.idFromName("global")), () => env.STATE.get(env.STATE.idFromName("global")));
       return withRequestState(() => requestStore.run({ env, ctx, storage }, () => route.GET(request)));
     },
   });

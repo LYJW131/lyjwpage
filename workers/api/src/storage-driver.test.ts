@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { StorageCommand, StorageResult } from "@shared/storage-contract";
-import { createPublicStorage } from "./storage-driver";
+import { createPublicStorage, retryRead } from "./storage-driver";
 
 function harness(initial: Record<string, string> = {}) {
   const values = new Map(Object.entries(initial));
@@ -71,4 +71,18 @@ test("public storage leaves an oversized original batch for the protocol to reje
   for (let index = 0; index < 129; index += 1) batch.get(`k${index}`);
   await assert.rejects(batch.execute(), /Invalid storage batch/);
   assert.deepEqual(calls.map((call) => call.commands.length), [129]);
+});
+
+test("retryRead retries a reset read once on a fresh hub, never writes", async () => {
+  const reset = Object.assign(new Error("Durable Object reset because its code was updated."), { retryable: true });
+  let calls = 0;
+  let renewed = 0;
+  const value = await retryRead([{ op: "get", key: "k" }], async () => {
+    calls += 1;
+    if (calls === 1) throw reset;
+    return "ok";
+  }, () => { renewed += 1; });
+  assert.equal(value, "ok");
+  assert.equal(renewed, 1);
+  await assert.rejects(retryRead([{ op: "set", key: "k", value: "1" }], async () => { throw reset; }), reset);
 });
