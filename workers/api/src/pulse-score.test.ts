@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
-import { codingObservationsKey, codingTokenUsageKey } from "@/lib/coding-pulse";
-import { listeningPlaysKey } from "@/lib/listening-pulse";
+import { codingObservationsKey, codingTokenUsageKey, cursorObservationsKey } from "@/lib/coding-pulse";
+import { listeningPlaysKey, listeningChecksKey } from "@/lib/listening-pulse";
 import { pulseIntervalRevisionKey, pulseKey } from "@/lib/pulse";
 import { PULSE_DOMAINS, type PulseDomain } from "@/lib/types";
 import { CODING_OBSERVATION_HOLD_MS, CODING_WINDOW_MS, PULSE_SCORE_WINDOW_MS, parseCodingAssessment } from "@shared/pulse-coding";
@@ -13,6 +13,12 @@ import type { StorageCommand } from "@shared/storage-contract";
 import { PulseScorer } from "./pulse-score.ts";
 import { PulseScoreState } from "./pulse-score-state.ts";
 import { pulseAssessmentsKey } from "@/lib/pulse-assessments";
+import { resetStorageForTests } from '@/lib/storage';
+import { installStorageForTests } from '../../../src/lib/storage-driver';
+import { withRequestState } from '@shared/request-state';
+import { requestStore, type Env } from './runtime';
+import { recordAgentLimits } from './stores/vibecoding';
+import { prepareRecentlyPlayed } from './stores/apple-music-store';
 import { workoutsKey } from "@shared/workouts";
 const T = 1_800_000_000_000;
 function setup() {
@@ -547,4 +553,76 @@ test("a zero window is skipped while another window of the same lane still calls
   }
   assert.equal(rows.find((row) => row.domain === "listening" && row.from === T)?.mode?.value, "idle");
   assert.equal(rows.find((row) => row.domain === "activity" && row.from === T)?.mode, null);
+});
+
+
+test("Mac-offline account evidence reaches scoring and the public chart, then disappears after source expiry", async () => {
+  const b = setup();
+  // Drive the actual producer commits into the same SQLite store used by the scorer.
+  installStorageForTests(b.storage);
+  const pending: Promise<unknown>[] = [];
+  try {
+    await requestStore.run({ env: { LIVE_PUSH: { idFromName: () => null, get: () => ({ broadcast: async () => {} }) } } as unknown as Env,
+      ctx: { waitUntil: (promise: Promise<unknown>) => { pending.push(promise); } } }, () => withRequestState(async () => {
+      await recordAgentLimits({ cursorUsage: { collectedAt: new Date(T).toISOString(), state: 'ok', error: null,
+        warning: null, coverageStart: null, coverageEnd: null, precision: 'measured', costComplete: true, days: [] } }, T);
+      for (let at = T; at <= T + PULSE_SCORE_WINDOW_MS; at += 180_000) await (await prepareRecentlyPlayed([], at)).commit();
+    }));
+  } finally { await Promise.allSettled(pending); resetStorageForTests(); }
+  await b.make().run();
+  assert.equal(b.requests.length, 0, "checked but inactive sources use a limited-confidence zero baseline");
+  const { publicAssessment } = await import('@/lib/pulse');
+  const rows = latestPulseAssessments(await b.storage.listRange(pulseAssessmentsKey(), 0, -1));
+  for (const row of rows) {
+    assert.deepEqual(row.coverage, [{ from: T, to: T + PULSE_SCORE_WINDOW_MS }]);
+    assert.equal(row.model, 'rules:limited-source');
+    assert.equal(row.intensity.value, 0);
+    assert.equal(row.intensity.confidence, 0.5);
+    assert.equal(row.continuity.value, 0);
+    assert.equal(row.mode?.value, 'idle');
+    const exposed = publicAssessment(row, { from: T });
+    assert.equal(exposed.startSec, 0);
+    assert.equal(exposed.endSec, 900);
+    assert.equal(exposed.coverage, undefined);
+    assert.equal(JSON.stringify(exposed).includes('cursor'), false, "private source facts stay internal");
+  }
+  b.advance(2 * 3_600_000);
+  await b.make().run();
+  const later = latestPulseAssessments(await b.storage.listRange(pulseAssessmentsKey(), 0, -1));
+  assert.equal(later.some((r) => r.from >= T + 75 * 60_000), false, "expired sources never fill later windows");
+});
+
+
+test("independent source baseline never hides Cursor, token or recent playback activity", async () => {
+  const cursor = setup();
+  await cursor.storage.append(cursorObservationsKey(), JSON.stringify({ t: T, available: true, lastActivityAt: T }));
+  await cursor.make().run();
+  assert.equal(cursor.requests.length, 1);
+  assert.equal((cursor.requests[0].state as { windows: { cursorActiveSeconds: number }[] }).windows[0].cursorActiveSeconds, 300);
+  const music = setup();
+  for (let at = T; at <= T + PULSE_SCORE_WINDOW_MS; at += 180_000) await music.storage.append(listeningChecksKey(), JSON.stringify({ t: at }));
+  await music.storage.append(listeningPlaysKey(), JSON.stringify({ since: T, t: T + 120_000, hint: "Album" }));
+  await music.make().run();
+  assert.equal(music.requests.length, 1);
+  assert.equal((music.requests[0].state as { recentPlays: unknown[] }).recentPlays.length, 1);
+  const token = setup();
+  await token.storage.append(cursorObservationsKey(), JSON.stringify({ t: T, available: true, lastActivityAt: null }));
+  await token.storage.set(codingTokenUsageKey(), JSON.stringify({ from: T, to: T + 300_000, collectedAt: T + 300_000,
+    sources: [{ id: 'codex', state: 'ok' }, { id: 'claude', state: 'unavailable' }], windows: [{ from: T, to: T + 300_000, agents: [{ id: 'codex', model: null,
+      inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheCreationTokens: 0, reasoningTokens: 0, eventCount: 1 }] }] }));
+  await token.make().run();
+  assert.equal(token.requests.length, 1);
+});
+
+
+test("Cursor coverage does not turn a missing Mac agent module into a certain zero", async () => {
+  const b = setup();
+  for (let t = T; t < T + PULSE_SCORE_WINDOW_MS; t += 120_000) {
+    await b.storage.append(codingObservationsKey(), JSON.stringify({ t, available: true, desktop: { application: 'Finder', coding: false }, agents: null }));
+  }
+  await b.storage.append(cursorObservationsKey(), JSON.stringify({ t: T, available: true, lastActivityAt: null }));
+  await b.storage.set(codingTokenUsageKey(), JSON.stringify({ from: T, to: T + PULSE_SCORE_WINDOW_MS, collectedAt: T + PULSE_SCORE_WINDOW_MS,
+    sources: [{ id: 'codex', state: 'ok' }, { id: 'claude', state: 'ok' }], windows: [] }));
+  await b.make().run();
+  assert.equal(b.requests.length, 1);
 });

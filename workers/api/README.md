@@ -85,7 +85,7 @@ OTEL_METRIC_EXPORT_INTERVAL=60000
 浏览器按 5 分钟窗口现算，和 Mac 报的 `active` 取或 —— Mac 合盖、上报器离线时云端在跑照样亮。
 云端比本机新时，此刻模型换成云端最近用的那个。时刻往前走了大半分钟或换了模型，就推一条
 `vibecoding-now`（整行，Mac 的 `active` / `lastActivityAt` 照抄权威值）；Mac 的推送不带这个字段，
-浏览器保留手上的。云端活动不进 Pulse，和 Cursor 一样。
+浏览器保留手上的。Claude 云端活动不进 Pulse；Cursor 账号观测独立参与 Pulse。
 
 `/api/ingest/mac` 的 `modules.desktop` 描述此刻的前台应用：`applicationName`（必填）、
 `bundleIdentifier`、`windowTitle`、`iconHash` 与 `iconObjectKey`（内容地址，见下文图标那段）、
@@ -246,7 +246,9 @@ Codex 与 Claude 使用本地日志事件时间，sources 状态区分 ok、part
 
 Coding 同时读取前台应用、Agent/模型、交集时长、切换次数、连续活动时长、观测覆盖。
 不上传提示词、回复正文、项目路径或 session ID。token 是工作活动的证据，不是生产力。
-同状态每分钟最多保存一次内部观测，变化立即记录；缺报三分钟后中断。
+Mac 同状态每分钟最多保存一次内部观测，变化立即记录；缺报三分钟后中断。
+Cursor 使用独立的 `pulse:cursor-observations`：`cursorNow` 或成功的 `cursorUsage` 检查都会记录，日桶内容没变化也更新观测。重复、乱序的采集时刻不延长有效期，error / warning 不当成零活动。闲时上报周期最长一小时，因此检查覆盖最多保持 65 分钟；最近事件只按 5 分钟活动窗口计入，之后仅表示 Cursor 来源可用。Mac 离线不会抹掉这份覆盖，Cursor 过期也不会抹掉 Mac 的覆盖；两者并集去重。仅 Cursor 可用且没有活动或正 token 证据时直接写 0，置信度为 0.5，内部模型标记为 `rules:limited-source`，不调用 Jev；这不等于确定全局没有 Coding。
+最近播放列表每次成功刷新都追加 `pulse:listening-checks`，相邻成功检查间隔不超过 5 分钟才构成覆盖，不跨故障缺口回填。列表变化仍作为 `recentPlays` 正证据。仅列表可用且无变化时同样直接写低置信度 0（0.5）：同一专辑持续播放可能不改变列表，不能记录成实测静音。有实时播放或列表变化时照常保留活动。
 其他领域的实时原始状态最长保持十分钟，activity 区间沿用明确的 until。
 
 评分和 Coding 观测在 StateHub 保留七天，新评分不写入旧 D1 原始状态归档。
@@ -255,7 +257,7 @@ Coding 同时读取前台应用、Agent/模型、交集时长、切换次数、�
 
 ## 最近在听
 
-WebSocket 连接成功时检查一次。cron 每分钟检查，不看连接数：列表变动是 listening 评分的证据（`pulse:listening-plays`），只在有访客时刷会漏掉没人看站点时在 iPhone 上听的那些。上游频率由两分钟的 SQLite 闸门管，最多每两分钟拉一次 Apple。
+WebSocket 连接成功时检查一次。cron 每分钟检查，不看连接数：成功检查和列表变动都是 listening 评分的证据（`pulse:listening-checks` / `pulse:listening-plays`），只在有访客时刷会漏掉没人看站点时在 iPhone 上听的那些。上游频率由两分钟的 SQLite 闸门管，最多每两分钟拉一次 Apple。
 SQLite `SET NX PX` 闸门与实例节流将真正的拉取限制为至少两分钟一次。
 Mac 上报的 Apple Music 凭据保存在 SQLite，Worker 读取使用，不向外提供凭据端点。
 状态读取不再触发拉取或广播。

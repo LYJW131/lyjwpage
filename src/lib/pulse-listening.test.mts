@@ -203,3 +203,28 @@ test("listening 特征：切歌计数、痕迹进 recentPlays、覆盖并上痕�
   assert.equal(features.observedSeconds, 180);
   assert.equal(features.unknownSeconds, 120);
 });
+
+
+test("successful unchanged list polls cover Mac-offline windows without claiming live silence", () => {
+  const window = { from: NOW, to: NOW + 300_000 };
+  const checks = [NOW, NOW + 120_000, NOW + 240_000, NOW + 360_000];
+  const idle = listeningWindowFeatures([], window, [], checks);
+  assert.deepEqual(idle.coverage, [window]);
+  assert.equal(idle.features.observedSeconds, 300);
+  assert.equal(idle.features.liveObservedSeconds, 0);
+  assert.equal(idle.features.recentListObservedSeconds, 300);
+  assert.equal(idle.features.idleSeconds, 0, "list stability is not observed silence");
+  const playing = listeningWindowFeatures([{ t: NOW, level: 3, until: window.to }], window, [], checks);
+  assert.equal(playing.features.playingSeconds, 300);
+  assert.equal(playing.features.observedSeconds, 300, "overlap is counted once");
+  const partialCheck = listeningWindowFeatures([{ t: NOW + 60_000, level: 3, until: window.to }], window, [], [NOW, NOW + 120_000]);
+  assert.equal(partialCheck.features.recentListObservedSeconds, 120, "merging live coverage must not enlarge check coverage");
+});
+
+test("list polling cannot backfill an outage or extend the latest check indefinitely", () => {
+  const window = { from: NOW, to: NOW + 900_000 };
+  const data = listeningWindowFeatures([], window, [], [NOW, NOW + 120_000, NOW + 720_000, NOW + 840_000]);
+  assert.deepEqual(data.coverage, [{ from: NOW, to: NOW + 120_000 }, { from: NOW + 720_000, to: NOW + 840_000 }]);
+  assert.equal(data.features.unknownSeconds, 660);
+  assert.deepEqual(listeningWindowFeatures([], window, [], [NOW + 900_000]).coverage, []);
+});

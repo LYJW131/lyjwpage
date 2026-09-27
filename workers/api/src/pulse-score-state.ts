@@ -1,5 +1,5 @@
-import { codingObservationsKey, codingTokenUsageKey } from "@/lib/coding-pulse";
-import { listeningPlaysKey } from "@/lib/listening-pulse";
+import { codingObservationsKey, codingTokenUsageKey, cursorObservationsKey } from "@/lib/coding-pulse";
+import { listeningPlaysKey, listeningChecksKey } from "@/lib/listening-pulse";
 import { workoutsKey } from "@shared/workouts";
 import { pulseAssessmentsKey, pulseAssessmentAttemptKey } from "@/lib/pulse-assessments";
 import { pulseIntervalRevisionKey, pulseKey } from "@/lib/pulse";
@@ -20,6 +20,8 @@ export type PulseScoreInputs = {
   codingObservations: string[];
   codingTokenUsage: string | null;
   listeningPlays: string[];
+  cursorObservations: string[];
+  listeningChecks: string[];
   /** `workouts:recent` 的整份 JSON；没有上报时为 null。 */
   workouts: string | null;
   histories: Record<PulseDomain, string[]>;
@@ -129,6 +131,8 @@ export class PulseScoreState implements PulseScoreCoordinator {
           start: 0,
           stop: -1,
         })),
+        { op: "listRange", key: cursorObservationsKey(), start: 0, stop: -1 },
+        { op: "listRange", key: listeningChecksKey(), start: 0, stop: -1 },
         { op: "get", key: pulseIntervalRevisionKey("activity") },
       ];
       const results = this.execute(commands);
@@ -147,6 +151,8 @@ export class PulseScoreState implements PulseScoreCoordinator {
           codingObservations: results[1] as string[],
           codingTokenUsage: results[2] as string | null,
           listeningPlays: results[3] as string[],
+          cursorObservations: results[5 + PULSE_DOMAINS.length] as string[],
+          listeningChecks: results[6 + PULSE_DOMAINS.length] as string[],
           workouts: results[4] as string | null,
           histories,
         },
