@@ -6,12 +6,12 @@
  * 新 Mac 用 `omittedSources: ["cursor"]` 声明合计里没有 Cursor，整份日桶另加。
  */
 
-import { diffDays, zonedDay } from "./heatmap-window.ts";
+import { zonedDay } from "./heatmap-window.ts";
 import { object, text } from "./json.ts";
 import { site } from "./site.ts";
 import type { VibeCodingDay, VibeCodingUsageStatus } from "./types.ts";
+import { addUsageDays, type UsageDayContribution, type YearShape } from "./usage-day-merge.ts";
 import type { ParsedVibeCodingUsage } from "./vibecoding-parse.ts";
-import { YEAR_DAYS } from "./vibecoding-year.ts";
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_DAYS = 4_000;
@@ -40,13 +40,6 @@ export type ParsedCursorUsage = {
   precision: "measured";
   costComplete: boolean;
   days: CursorUsageDay[];
-};
-
-type YearShape = {
-  origin: string;
-  days: number[];
-  models: string[];
-  mix: number[][];
 };
 
 function dayText(value: unknown): string | null {
@@ -137,16 +130,6 @@ export function normalizeCursorUsageReport(input: unknown): ParsedCursorUsage | 
   };
 }
 
-function clamp(value: number): number {
-  if (!Number.isFinite(value) || value <= 0) return 0;
-  return Math.min(Math.round(value), Number.MAX_SAFE_INTEGER);
-}
-
-function addCost(left: number, right: number): number {
-  const sum = left + right;
-  return Number.isFinite(sum) && sum > 0 ? sum : 0;
-}
-
 function toPublicDay(day: CursorUsageDay): VibeCodingDay {
   return {
     date: day.date,
@@ -216,13 +199,7 @@ function latestModel(days: CursorUsageDay[]): string | null {
   return null;
 }
 
-type Contribution = {
-  /** 要加进合计的差值。锚定日可以是负数。 */
-  delta: CursorUsageDay;
-  /** 这一天的模型拆分也要跟着加。锚定日拆分不在 Mac 合计里单列，不动。 */
-  adjustModels: boolean;
-  costComplete: boolean;
-};
+type Contribution = UsageDayContribution;
 
 function deltaFrom(day: CursorUsageDay, base: VibeCodingDay | null): CursorUsageDay {
   return {
@@ -258,64 +235,6 @@ function contributions(usage: ParsedVibeCodingUsage, cursor: ParsedCursorUsage):
     rows.push({ delta: day, adjustModels: true, costComplete: day.costComplete });
   }
   return rows;
-}
-
-function decodeMix(year: YearShape): Map<number, Map<string, number>> {
-  const shares = new Map<number, Map<string, number>>();
-  for (const row of year.mix) {
-    const offset = row[0];
-    if (offset == null) continue;
-    const models = new Map<string, number>();
-    for (let index = 1; index + 1 < row.length; index += 2) {
-      const modelIndex = row[index];
-      const tokens = row[index + 1];
-      const name = modelIndex == null ? undefined : year.models[modelIndex];
-      if (name && tokens && tokens > 0) models.set(name, tokens);
-    }
-    shares.set(offset, models);
-  }
-  return shares;
-}
-
-function encodeMix(days: number[], shares: Map<number, Map<string, number>>): { models: string[]; mix: number[][] } {
-  const ranked = new Map<number, Array<{ model: string; tokens: number }>>();
-  const used = new Set<string>();
-  for (const [offset, models] of shares) {
-    const dayTotal = days[offset] ?? 0;
-    if (dayTotal <= 0) continue;
-    const rows = [...models]
-      .filter(([, tokens]) => tokens > 0)
-      .map(([model, tokens]) => ({ model, tokens }))
-      .sort((left, right) => right.tokens - left.tokens || left.model.localeCompare(right.model))
-      .slice(0, 5);
-    let sum = rows.reduce((total, row) => total + row.tokens, 0);
-    while (sum > dayTotal && rows.length > 0) {
-      const last = rows[rows.length - 1];
-      if (!last) break;
-      const overflow = sum - dayTotal;
-      if (last.tokens > overflow) {
-        last.tokens -= overflow;
-        sum = dayTotal;
-      } else {
-        sum -= last.tokens;
-        rows.pop();
-      }
-    }
-    const kept = rows.filter((row) => row.tokens > 0);
-    if (kept.length === 0) continue;
-    ranked.set(offset, kept);
-    for (const row of kept) used.add(row.model);
-  }
-  const models = [...used].sort();
-  const indexes = new Map(models.map((model, index) => [model, index]));
-  const mix = [...ranked.entries()]
-    .sort((left, right) => left[0] - right[0])
-    .map(([offset, rows]) => {
-      const encoded = [offset];
-      for (const row of rows) encoded.push(indexes.get(row.model) ?? 0, row.tokens);
-      return encoded;
-    });
-  return { models, mix };
 }
 
 function overlayAgent(usage: ParsedVibeCodingUsage, cursor: ParsedCursorUsage, now: number): ParsedVibeCodingUsage["agents"] {
@@ -361,58 +280,16 @@ export function mergeCursorUsage<Year extends YearShape>(
   if (!cursor) return { usage, year };
   const rows = contributions(usage, cursor);
   if (!rows) return { usage, year };
-  const totals = { ...usage.totals };
-  const top = new Map(usage.topModels.map((row) => [row.model, row.tokens]));
-  const nextYear = year
-    ? { ...year, days: [...year.days], models: [...year.models], mix: year.mix.map((row) => [...row]) }
-    : null;
-  const shares = nextYear ? decodeMix(nextYear) : null;
-  for (const row of rows) {
-    const { delta } = row;
-    totals.inputTokens = clamp(totals.inputTokens + delta.inputTokens);
-    totals.outputTokens = clamp(totals.outputTokens + delta.outputTokens);
-    totals.cacheReadTokens = clamp(totals.cacheReadTokens + delta.cacheReadTokens);
-    totals.cacheCreationTokens = clamp(totals.cacheCreationTokens + delta.cacheCreationTokens);
-    totals.totalTokens = clamp(totals.totalTokens + delta.totalTokens);
-    totals.apiEquivalentCostUSD = addCost(totals.apiEquivalentCostUSD, delta.apiEquivalentCostUSD);
-    if (!row.costComplete) totals.costComplete = false;
-    if (shares && nextYear) {
-      const offset = diffDays(nextYear.origin, delta.date);
-      if (offset >= 0 && offset < YEAR_DAYS && offset < nextYear.days.length) {
-        const before = nextYear.days[offset] ?? 0;
-        const after = clamp(before + delta.totalTokens);
-        nextYear.days[offset] = after;
-        if (before <= 0 && after > 0) totals.activeDays += 1;
-        if (before > 0 && after <= 0) totals.activeDays = Math.max(0, totals.activeDays - 1);
-        if (row.adjustModels) {
-          const models = shares.get(offset) ?? new Map<string, number>();
-          for (const model of delta.models) models.set(model.model, (models.get(model.model) ?? 0) + model.tokens);
-          shares.set(offset, models);
-        }
-      }
-    }
-    if (row.adjustModels) {
-      for (const model of delta.models) top.set(model.model, (top.get(model.model) ?? 0) + model.tokens);
-    }
-  }
-  if (nextYear && shares) {
-    const encoded = encodeMix(nextYear.days, shares);
-    nextYear.models = encoded.models;
-    nextYear.mix = encoded.mix;
-  }
+  const merged = addUsageDays(usage, rows, year);
   const collectedAt = Date.parse(cursor.collectedAt) > Date.parse(usage.collectedAt) ? cursor.collectedAt : usage.collectedAt;
   return {
     usage: {
       ...usage,
       agents: overlayAgent(usage, cursor, now),
-      totals,
-      topModels: [...top]
-        .filter(([, tokens]) => tokens > 0)
-        .map(([model, tokens]) => ({ model, tokens: clamp(tokens) }))
-        .sort((left, right) => right.tokens - left.tokens || left.model.localeCompare(right.model))
-        .slice(0, 3),
+      totals: merged.totals,
+      topModels: merged.topModels,
       collectedAt,
     },
-    year: nextYear,
+    year: merged.year,
   };
 }

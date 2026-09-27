@@ -88,30 +88,44 @@ function parseBody(raw: string): unknown {
   }
 }
 
+/** 云端遥测独享 ingest:agents-otlp 权限，不复用限额上报器的 ingest:agents。 */
+const OTLP_INGEST_PATH = "/api/ingest/agents/otlp";
+
 /** 鉴权、解析与持久化在 202 应答前完成，广播和首屏通知由 waitUntil 执行。 */
 async function handleIngest(
   request: Request,
   env: Env,
   ctx: ExecutionContext,
   source: string,
+  otlp = false,
 ): Promise<Response> {
   if (previewWorkerEnabled()) {
     return jsonResponse({ ok: false, error: "预览 Worker 不接收上报" }, { status: 403 });
   }
   if (request.method !== "POST") return jsonResponse({ ok: false, error: "只接受 POST" }, { status: 405 });
 
-  if (!INGEST_SOURCES.has(source)) return jsonResponse({ ok: false, error: `没有这个上报来源：${source}` }, { status: 404 });
+  if (!otlp && !INGEST_SOURCES.has(source)) return jsonResponse({ ok: false, error: `没有这个上报来源：${source}` }, { status: 404 });
   const auth = await authorize(request, env, `ingest:${source}`);
   if (!auth.ok) return jsonResponse({ ok: false, error: auth.error }, { status: auth.status });
 
   let raw: string;
   try {
-    raw = await readBoundedBody(request);
+    // 只在 OTLP 路由解压；按解压后的实际字节数限制大小。
+    const encoding = otlp ? request.headers.get("Content-Encoding")?.trim().toLowerCase() : undefined;
+    if (encoding && encoding !== "identity" && encoding !== "gzip") {
+      return jsonResponse({ ok: false, error: `不支持的压缩：${encoding}` }, { status: 415 });
+    }
+    const body = encoding === "gzip" && request.body
+      ? request.body.pipeThrough(new DecompressionStream("gzip"))
+      : request.body;
+    raw = await readBoundedBody(body);
   } catch (error) {
     console.error("[ingest] 读取请求体失败", source, reason(error));
     return jsonResponse({ ok: false, error: "无法读取上报数据" }, { status: 400 });
   }
-  return commitIngest(env, ctx, source, raw);
+  const response = await commitIngest(env, ctx, source, raw);
+  // OTLP exporter 需要 ExportMetricsServiceResponse；只转换成功响应，保留失败状态。
+  return otlp && response.status === 202 ? jsonResponse({}) : response;
 }
 
 /**
@@ -141,9 +155,9 @@ export async function commitIngest(env: Env, ctx: ExecutionContext, source: stri
 }
 
 /** 限制实际读取字节数，不依赖可能缺失或伪造的 Content-Length。 */
-async function readBoundedBody(request: Request): Promise<string> {
-  if (!request.body) return "";
-  const reader = request.body.getReader();
+async function readBoundedBody(stream: ReadableStream<Uint8Array> | null): Promise<string> {
+  if (!stream) return "";
+  const reader = stream.getReader();
   const decoder = new TextDecoder();
   let bytes = 0;
   let result = "";
@@ -166,7 +180,7 @@ async function handleImport(request: Request, env: Env): Promise<Response> {
   const provided = bearerToken(request);
   if (!provided || !secretMatches(provided, expected)) return jsonResponse({ ok: false }, { status: 401 });
   try {
-    const body = JSON.parse(await readBoundedBody(request));
+    const body = JSON.parse(await readBoundedBody(request.body));
     const hub = env.STATE.get(env.STATE.idFromName("global"));
     const prefix = env.STORAGE_PREFIX ?? "lyjwpage";
     {
@@ -449,6 +463,10 @@ const worker = {
       // 预览 Worker 的房间连的是预览页，生产部署跟它无关
       if (previewWorkerEnabled()) return new Response("Not found", { status: 404 });
       return handleSiteDeployed(request, env);
+    }
+
+    if (url.pathname === OTLP_INGEST_PATH) {
+      return handleIngest(request, env, ctx, "agents-otlp", true);
     }
 
     if (url.pathname.startsWith(INGEST_PREFIX)) {

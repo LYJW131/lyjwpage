@@ -29,7 +29,8 @@ export async function fetchVibeCoding(
  * 把「此刻」那份补丁盖进手上的整份。还没有整份（首屏没种上）就返回 null，
  * 调用方别把空卡片写进 SWR。
  *
- * 只碰三个字段。会话总数不在这条里 —— 它是累计量，跟着十几分钟一份的用量走。
+ * 只碰这几个字段。会话总数不在这条里 —— 它是累计量，跟着十几分钟一份的用量走。
+ * `cloudActivityAt` 只有云端遥测那条推送带，没带就留着手上的。
  */
 export function applyVibeCodingNow(patch: VibeCodingNowPayload): VibeCodingPayload | null {
   if (!latest) return null;
@@ -44,6 +45,7 @@ export function applyVibeCodingNow(patch: VibeCodingNowPayload): VibeCodingPaylo
         currentModel: live.currentModel ?? agent.currentModel,
         lastActivityAt: live.lastActivityAt,
         active: live.active,
+        cloudActivityAt: live.cloudActivityAt === undefined ? agent.cloudActivityAt : live.cloudActivityAt,
       };
     }),
   };

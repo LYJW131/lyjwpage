@@ -65,6 +65,17 @@ function usageStatus(extra: Record<string, unknown> = {}) {
 
 const FIVE = ["claude", "codex", "cursor", "grok", "antigravity"];
 
+test("缺省 omittedSources 的用量入库后仍可读取，非法省略列表仍拒绝", () => {
+  const raw = { agents: [agent("claude")], totals: totals(), collectedAt: "2026-04-08T12:00:00.000Z" };
+  const stored = normalizeVibeCodingUsage(raw);
+  assert.ok(stored);
+  assert.equal(stored.omittedSources, null);
+  assert.deepEqual(normalizeVibeCodingUsage(JSON.parse(JSON.stringify(stored))), stored);
+  for (const omittedSources of ["cursor", [null], [""], {}]) {
+    assert.equal(normalizeVibeCodingUsage({ ...raw, omittedSources }), null);
+  }
+});
+
 test("五个来源同一形状就能收，不靠 quotaProviders", () => {
   const parsed = normalizeVibeCodingUsage({
     agents: FIVE.map((id) => agent(id, {

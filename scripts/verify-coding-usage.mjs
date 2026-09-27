@@ -48,7 +48,7 @@ function fixture() {
   const origin = date(midnight - (new Date(midnight).getUTCDay() + 364) * 86_400_000);
   const todayOffset = Math.round((midnight - Date.parse(`${origin}T00:00:00Z`)) / 86_400_000);
   const day = (tokens) => ({ date: today, inputTokens: tokens, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, totalTokens: tokens, apiEquivalentCostUSD: tokens / 1_000 });
-  const status = { state: "ok", collectedAt, error: null, coverageStart: origin, coverageEnd: today, precision: "measured", costComplete: true };
+  const status = { state: "ok", collectedAt, error: null, warning: null, coverageStart: origin, coverageEnd: today, precision: "measured", costComplete: true };
   const agents = [
     ["claude", "Claude Code", "anthropic"], ["codex", "Codex", "openai"],
     ["cursor", "Cursor", "cursor"], ["grok", "Grok Build", "grok"],

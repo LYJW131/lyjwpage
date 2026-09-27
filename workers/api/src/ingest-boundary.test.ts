@@ -10,6 +10,7 @@ import { HIDDEN_DESKTOP_BUNDLE_ID } from "@/lib/types";
 import { getWorkoutsSnapshot } from "@/lib/workouts";
 import { withRequestState } from "@shared/request-state";
 import { K_LAST_PUSH } from "@shared/charger-store";
+import { claudeCloudUsageMirror } from "@shared/claude-cloud-usage";
 import { cursorNowMirror } from "@shared/cursor-usage";
 import { limitsMirror } from "@shared/vibecoding";
 import { mirror as telemetryMirror } from "@shared/telemetry";
@@ -327,6 +328,63 @@ test("cursorNow-only agents envelopes skip the limits mirror and push the cursor
     await assert.rejects(
       inRequest(env, () => prepareIngest("agents", { cursorNow: { currentModel: "x" } }, NOW)),
     );
+  } finally { resetStorageForTests(); }
+});
+
+function otlpTokens(at: number, input: number) {
+  const time = `${BigInt(at) * BigInt(1_000_000)}`;
+  const attributes = (type: string) => [
+    ["session.id", "session-a"], ["user.email", "someone@example.com"], ["model", "claude-fable-5-1"], ["type", type],
+  ].map(([key, value]) => ({ key, value: { stringValue: value } }));
+  return {
+    resourceMetrics: [{ scopeMetrics: [{ metrics: [
+      { name: "claude_code.active_time.total", sum: { aggregationTemporality: 2, dataPoints: [] } },
+      { name: "claude_code.token.usage", sum: { aggregationTemporality: 2, dataPoints: [
+        { attributes: attributes("input"), startTimeUnixNano: "1", timeUnixNano: time, asDouble: input },
+      ] } },
+    ] }] }],
+  };
+}
+
+test("agents-otlp commits cumulative deltas and throttles the vibecoding tag", async () => {
+  const storage = new FakeStorage();
+  installStorageForTests(storage);
+  const env = testEnv();
+  const tagged = (result: CollectedIngest<unknown>) =>
+    result.effects.some((effect) => effect.kind === "tags" && effect.tags.includes("vibecoding"));
+  try {
+    const first = await commit(env, await inRequest(env, () => prepareIngest("agents-otlp", otlpTokens(NOW, 100), NOW)));
+    assert.equal(first.ok, true);
+    assert.equal(tagged(first), true);
+
+    const second = await commit(env, await inRequest(env, () => prepareIngest("agents-otlp", otlpTokens(NOW + 60_000, 250), NOW + 60_000)));
+    assert.equal(tagged(second), false, "五分钟内不再失效首屏");
+    const later = await commit(env, await inRequest(env, () => prepareIngest("agents-otlp", otlpTokens(NOW + 400_000, 300), NOW + 400_000)));
+    assert.equal(tagged(later), true);
+
+    const pushed = (result: CollectedIngest<unknown>) =>
+      result.effects.find((effect) => effect.kind === "event")?.event;
+    assert.deepEqual(pushed(first), {
+      type: "vibecoding-now",
+      payload: { agents: [{
+        id: "claude",
+        currentModel: "claude-fable-5-1",
+        lastActivityAt: null,
+        active: false,
+        cloudActivityAt: new Date(NOW).toISOString(),
+      }] },
+    });
+    assert.equal((pushed(second) as { payload: { agents: Array<{ cloudActivityAt?: string }> } })
+      .payload.agents[0]?.cloudActivityAt, new Date(NOW + 60_000).toISOString());
+    // 累计值没涨：时刻不动，不推
+    const idle = await commit(env, await inRequest(env, () => prepareIngest("agents-otlp", otlpTokens(NOW + 460_000, 300), NOW + 460_000)));
+    assert.equal(pushed(idle), undefined);
+
+    const stored = await claudeCloudUsageMirror.get();
+    assert.equal(stored?.usage.days.reduce((sum, day) => sum + day.inputTokens, 0), 300);
+    assert.ok(!JSON.stringify(stored).includes("someone@example.com"));
+
+    await assert.rejects(inRequest(env, () => prepareIngest("agents-otlp", { nope: true }, NOW)));
   } finally { resetStorageForTests(); }
 });
 

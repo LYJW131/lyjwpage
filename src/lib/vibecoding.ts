@@ -11,7 +11,9 @@ import {
 import {
   normalizeVibeCodingUsage
 } from "@/lib/vibecoding-parse";
+import { claudeCloudNow, mergeClaudeCloudUsage } from "@/lib/claude-cloud-usage";
 import { mergeCursorUsage } from "@/lib/cursor-usage";
+import { claudeCloudUsageMirror } from "@shared/claude-cloud-usage";
 import { cursorNowMirror, cursorUsageMirror } from "@shared/cursor-usage";
 import { limitsMirror, nowMirror, usageMirror } from "@shared/vibecoding";
 import { yearMirror } from "@shared/vibecoding-year-store";
@@ -20,19 +22,24 @@ import { yearMirror } from "@shared/vibecoding-year-store";
  * 新鲜度只盖 pushedAt / lastSeenAt / declaredOffline / limitsAt，stale 由浏览器现算。
  */
 export async function getVibeCodingSnapshot(): Promise<VibeCodingPayload> {
-  const [usageState, nowState, limitsState, cursorState, cursorNowState, yearState, liveness] = await Promise.all([
+  const [usageState, nowState, limitsState, cursorState, cursorNowState, cloudState, yearState, liveness] = await Promise.all([
     usageMirror.get(),
     nowMirror.get(),
     limitsMirror.get(),
     cursorUsageMirror.get(),
     cursorNowMirror.get(),
+    claudeCloudUsageMirror.get(),
     yearMirror.get(),
     readLiveness(),
   ]);
   const storedUsage = usageState ? normalizeVibeCodingUsage(usageState.payload) : null;
-  // 年度图一起拿进来，新的 Cursor 活动日才能把 Active 加上。不在这里改年度图本身。
-  const usage = storedUsage
-    ? mergeCursorUsage(storedUsage, cursorState?.report ?? null, yearState, Date.now()).usage
+  // 年度图一起拿进来，新的 Cursor / 云端活动日才能把 Active 加上。不在这里改年度图本身。
+  const now = Date.now();
+  const withCursor = storedUsage
+    ? mergeCursorUsage(storedUsage, cursorState?.report ?? null, yearState, now)
+    : null;
+  const usage = withCursor
+    ? mergeClaudeCloudUsage(withCursor.usage, cloudState?.usage ?? null, withCursor.year, now).usage
     : null;
   // 限额可独立到达。没有用量时仍显示这些来源，累计总量保留 null。
   if (!usage && !limitsState) throw new AwaitingReport("尚未收到 vibe coding 用量或限额推送");
@@ -50,13 +57,17 @@ export async function getVibeCodingSnapshot(): Promise<VibeCodingPayload> {
     limitsState,
   ).map((agent) => {
     const live = nowById.get(agent.id);
-    return {
+    const row = {
       ...agent,
       // 此刻模型优先于历史摘要；只有限额的行也可收到独立的本机会话状态。
       currentModel: live?.currentModel ?? agent.currentModel,
       lastActivityAt: live?.lastActivityAt ?? null,
       active: live?.active ?? false,
     };
+    if (agent.id !== "claude" || !cloudState) return row;
+    // 云端线程的灯单独一个时刻，不进 Mac 那个电平：Mac 合盖时那个电平不算数，云端的照样算
+    const cloud = claudeCloudNow(cloudState.usage, live ?? null);
+    return { ...row, cloudActivityAt: cloud.cloudActivityAt, currentModel: cloud.currentModel ?? row.currentModel };
   });
 
   return withPresence(

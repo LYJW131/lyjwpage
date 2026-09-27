@@ -75,11 +75,12 @@ function busiestLimit(limits: VibeCodingLimit[], now: number) {
 const REFRESH_MS = 2 * 60_000;
 
 /**
- * Cursor 最近一次活动过去多久还算「在用」，跟 MacTelemetryHub 判 active 的 300 秒一致。
- * 容器在用时每分钟查一次（见 agents-reporter 的 cursor-now.ts），窗口比查询间隔宽，
+ * 只给时刻的那几盏灯（Cursor、Claude 云端线程）最近一次活动过去多久还算「在用」，
+ * 跟 MacTelemetryHub 判 active 的 300 秒一致。两边在用时都每分钟来一次新时刻
+ * （Cursor 见 agents-reporter 的 cursor-now.ts，云端是遥测导出间隔），窗口比间隔宽，
  * 连续在用时灯不会闪。
  */
-const CURSOR_ACTIVE_WINDOW_MS = 5 * 60_000;
+const ACTIVE_WINDOW_MS = 5 * 60_000;
 
 /**
  * 这盏灯亮不亮。
@@ -90,13 +91,19 @@ const CURSOR_ACTIVE_WINDOW_MS = 5 * 60_000;
  * Cursor 的活动来自容器查的用量事件，跟 Mac 在不在线无关，站点只给时刻不给电平：
  * 最近一次在 5 分钟内就亮，过了由 useStale 的定时器自己熄。容器停了时刻不再前进，
  * 灯一样会灭，不需要另一个开关。
+ *
+ * Claude 另有云端线程那条路（`cloudActivityAt`，OTLP 遥测），同样按时刻现算，
+ * 和 Mac 那个电平取或：Mac 合盖了，云端在跑照样亮。
  */
 function useAgentActive(agent: VibeCodingAgent, activityUnknown: boolean) {
   const at = agent.lastActivityAt ? Date.parse(agent.lastActivityAt) : null;
-  const expired = useStale(at, CURSOR_ACTIVE_WINDOW_MS);
+  const cloudAt = agent.cloudActivityAt ? Date.parse(agent.cloudActivityAt) : null;
+  const expired = useStale(at, ACTIVE_WINDOW_MS);
+  const cloudExpired = useStale(cloudAt, ACTIVE_WINDOW_MS);
   const mountedAt = useMountedAt();
   if (agent.id === "cursor") return at != null && mountedAt > 0 && !expired;
-  return agent.active && !activityUnknown;
+  const cloudActive = cloudAt != null && mountedAt > 0 && !cloudExpired;
+  return (agent.active && !activityUnknown) || cloudActive;
 }
 
 /**

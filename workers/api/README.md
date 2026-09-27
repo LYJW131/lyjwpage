@@ -26,6 +26,7 @@
 | 方法 | 路径 | 用途 |
 | --- | --- | --- |
 | POST | `/api/ingest/<来源>` | `mac`、`iphone`、`homepod`、`emby`、`playstation`、`server`、`agents` |
+| POST | `/api/ingest/agents/otlp` | Claude Code 云端线程的内置遥测（OTLP/HTTP JSON 指标），Access 权限 `ingest:agents-otlp` |
 
 `/api/ingest/agents` 的主体仍是各家限额行。可选的 `cursorUsage` 是 Cursor 云端用量日桶
 （`Asia/Shanghai`，字段与 Mac 的日用量相同，另加 `models`）。缺省表示这一轮没拉到，
@@ -38,6 +39,53 @@ Mac 用量带 `omittedSources: ["cursor"]` 时整份另加；没有这个字段�
 限额的心跳只看限额那一轮。存在 `vibecoding:cursor-now`，变了就推一条 `vibecoding-now`，
 里面 `active` 固定为 `false` —— Cursor 那盏灯由浏览器按 `lastActivityAt` 在 5 分钟内现算，
 事件停了灯自己灭。`agents`、`cursorUsage`、`cursorNow` 三者全缺时 400。
+
+### Claude Code 云端线程用量
+
+Mac 的 ccusage 只扫本机会话记录，看不到云端线程。云端环境打开 Claude Code 内置遥测，
+每分钟把指标推到 `/api/ingest/agents/otlp`。这组变量**只配在云端环境设置里**，不进仓库的
+`.claude/settings.json`，也不配在本机：本机会话已经由 ccusage 统计，再走遥测会重复计数。
+
+```sh
+CLAUDE_CODE_ENABLE_TELEMETRY=1
+OTEL_METRICS_EXPORTER=otlp
+OTEL_LOGS_EXPORTER=none
+OTEL_EXPORTER_OTLP_PROTOCOL=http/json
+OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=cumulative
+OTEL_EXPORTER_OTLP_METRICS_ENDPOINT=https://ingest.homepage.lyjw.llc/api/ingest/agents/otlp
+OTEL_EXPORTER_OTLP_HEADERS="CF-Access-Client-Id=<ACCESS_CLIENT_ID>,CF-Access-Client-Secret=<ACCESS_CLIENT_SECRET>"
+OTEL_METRIC_EXPORT_INTERVAL=60000
+```
+
+端点要用 `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`（原样使用）；通用的 `OTEL_EXPORTER_OTLP_ENDPOINT` 会被自动拼上 `/v1/metrics`。
+只认 JSON（可 gzip），不认 protobuf。鉴权复用 Access JWT 校验，要求专属 `ingest:agents-otlp` 权限；
+`ingest:agents` 不能写此端点，云端凭据也不能写限额或设备上报。不接受 Bearer 密钥。
+
+上线前在 Zero Trust 创建独立 service token（建议名 `lyjwpage-claude-cloud`），加入
+`lyjwpage ingest` 应用的 Service Auth 策略，并将真实 client ID 登记到 `wrangler.toml`
+的 `[vars.ACCESS_CLIENTS]`，仅授予 `["ingest:agents-otlp"]`。当前未登记生产云端 token，
+未登记的 client ID 会返回 403。Client Secret 只放云端环境，不用配置 Worker secret。
+请求头格式见 [Cloudflare service tokens](https://developers.cloudflare.com/cloudflare-one/access-controls/service-credentials/service-tokens/)。
+
+本地沿用 `node scripts/dev-access.mjs init` 生成的测试钥匙和 `header` 输出的
+`Cf-Access-Jwt-Assertion`；本地 endpoint 用 `http://localhost:8788/api/ingest/agents/otlp`，
+把该 JWT 填入 `OTEL_EXPORTER_OTLP_HEADERS="Cf-Access-Jwt-Assertion=<本地 JWT>"`。
+测试 JWT 十分钟过期，长期调试需重新生成请求头。
+
+只收 `claude_code.token.usage` 与 `claude_code.cost.usage`，其余指标收下后忽略（返回 200 `{}`，
+整封拒掉 exporter 不重试，这一轮的数就丢了）。数据点上的邮箱、账号 ID、组织 ID 在解析时丢掉，
+只存 session、model、token 类型、值和时刻。cumulative 时序下每条序列（指标、进程起点、全部属性，主会话和子代理的 `query_source` 不同就是两条）
+记上次的累计值（键和会话都只存摘要），只加差值：丢一轮下一轮补齐，重发、乱序不多算；线程恢复成新进程时起点变了，按新计数器计。
+差值按数据点时刻归到 `Asia/Shanghai` 日，存在 `vibecoding:claude-cloud-usage`，日桶留 400 天，进程计数器 30 天没见就清掉。
+读 `/api/status/vibecoding` 与 `/vibecoding/year` 时接在 Cursor 之后整份并进 Mac 的合计、`claude` 那一行的今天和年度图：
+两边会话不重叠，不做差。费用直接用 Claude Code 报的 `cost.usage`，和它自己 `/cost` 的口径一致。
+首屏标签最多 5 分钟失效一次，卡片挂载后自己定时来问。
+
+同一份数据点亮 Claude 那盏灯：最近一次有 token 增量的时刻作为 `claude` 行的 `cloudActivityAt`，
+浏览器按 5 分钟窗口现算，和 Mac 报的 `active` 取或 —— Mac 合盖、上报器离线时云端在跑照样亮。
+云端比本机新时，此刻模型换成云端最近用的那个。时刻往前走了大半分钟或换了模型，就推一条
+`vibecoding-now`（整行，Mac 的 `active` / `lastActivityAt` 照抄权威值）；Mac 的推送不带这个字段，
+浏览器保留手上的。云端活动不进 Pulse，和 Cursor 一样。
 
 `/api/ingest/mac` 的 `modules.desktop` 描述此刻的前台应用：`applicationName`（必填）、
 `bundleIdentifier`、`windowTitle`、`iconHash` 与 `iconObjectKey`（内容地址，见下文图标那段）、
