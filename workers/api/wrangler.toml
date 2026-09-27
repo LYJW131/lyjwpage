@@ -59,8 +59,9 @@ PAIRING_EMAILS = "lyjw2007@gmail.com"
 # 每把 service token（client id）能做什么。Access 策略只管「是不是这几把之一」，
 # 写哪个来源由这张表定：拿 Emby 的 token 写 mac 会被拒成 403。client id 不是秘密；
 # 新增 token 在 Zero Trust 控制台建好、加进策略，再把 client id 登记到这里。
-# 云端 Claude 遥测另建 token，仅登记 ["ingest:agents-otlp"]；生产 client ID 待创建后填入，见 README。
+# 云端 Claude 遥测使用独立 token，仅授予 ingest:agents-otlp。
 [vars.ACCESS_CLIENTS]
+"267c1f87539a30657986e9d719663dcd.access" = ["ingest:agents-otlp"]                    # lyjwpage-claude-cloud
 "4ec7a9e98b7d3bc641c5eb97fddcb4f7.access" = ["ingest:mac"]                             # lyjwpage-mac
 "8dfbbba29d501f75ff7763a598d6ada0.access" = ["ingest:iphone"]                          # lyjwpage-iphone
 "01031f46aaeb93099ea40287f2c85f61.access" = ["ingest:emby"]                            # lyjwpage-emby

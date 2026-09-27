@@ -61,9 +61,9 @@ OTEL_METRIC_EXPORT_INTERVAL=60000
 只认 JSON（可 gzip），不认 protobuf。鉴权复用 Access JWT 校验，要求专属 `ingest:agents-otlp` 权限；
 `ingest:agents` 不能写此端点，云端凭据也不能写限额或设备上报。不接受 Bearer 密钥。
 
-上线前在 Zero Trust 创建独立 service token（建议名 `lyjwpage-claude-cloud`），加入
-`lyjwpage ingest` 应用的 Service Auth 策略，并将真实 client ID 登记到 `wrangler.toml`
-的 `[vars.ACCESS_CLIENTS]`，仅授予 `["ingest:agents-otlp"]`。当前未登记生产云端 token，
+生产使用独立 service token `lyjwpage-claude-cloud`，已加入
+`lyjwpage ingest` 应用的 Service Auth 策略，其 client ID 登记在 `wrangler.toml`
+的 `[vars.ACCESS_CLIENTS]`，仅授予 `["ingest:agents-otlp"]`。轮换时同步更新策略与登记表；
 未登记的 client ID 会返回 403。Client Secret 只放云端环境，不用配置 Worker secret。
 请求头格式见 [Cloudflare service tokens](https://developers.cloudflare.com/cloudflare-one/access-controls/service-credentials/service-tokens/)。
 
