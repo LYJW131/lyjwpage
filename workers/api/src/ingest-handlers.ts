@@ -1,3 +1,4 @@
+import { prepareClaudeCloudUsage, recordPreparedClaudeCloudUsage, type PreparedClaudeCloudUsage } from "./stores/claude-cloud";
 import { commitPreparedHomePodEvent, prepareHomePodEvent, type PreparedHomePodEvent } from "./homepod-ingest";
 import { commitPreparedPhoneEnvelope, preparePhoneEnvelope, type PreparedPhoneEnvelope } from "./phone-telemetry";
 import { commitPreparedEmbyReport, prepareEmbyReport, type PreparedEmbyReport } from "./stores/emby";
@@ -19,6 +20,7 @@ export type PreparedIngest = WithReporter<
   | PreparedPlaystationReport
   | PreparedServerReport
   | PreparedAgentLimits
+  | PreparedClaudeCloudUsage
 >;
 
 export const INGEST_SOURCES = new Set([
@@ -39,6 +41,8 @@ export async function prepareIngest(
     case "playstation": return preparePlaystationReport(raw, receivedAt);
     case "server": return { ...prepareServerReport(raw, receivedAt), reporter: reporterBlockOf(raw) };
     case "agents": return { ...prepareAgentLimits(raw, receivedAt), reporter: reporterBlockOf(raw) };
+    // Claude Code 云端线程的 OTLP 指标，走 /api/ingest/agents/otlp 与独立的 Access 权限，不在 INGEST_SOURCES 里
+    case "agents-otlp": return prepareClaudeCloudUsage(raw, receivedAt);
     default: throw new Error("Unknown ingest source");
   }
 }
@@ -80,5 +84,6 @@ function commitBySource(command: PreparedIngest): Promise<unknown> {
     case "playstation": return commitPreparedPlaystationReport(command);
     case "server": return commitPreparedServerReport(command);
     case "agents": return recordPreparedAgentLimits(command);
+    case "agents-otlp": return recordPreparedClaudeCloudUsage(command);
   }
 }

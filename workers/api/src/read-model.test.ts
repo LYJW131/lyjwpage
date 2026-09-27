@@ -80,6 +80,7 @@ test("read model: allowlist excludes live, liveness, credentials, coordination a
     "/api/status/vibecoding/year",
   ]);
   assert.deepEqual(readModelPathsForSource("mac"), ["/api/status/vibecoding/year"]);
+  assert.deepEqual(readModelPathsForSource("agents-otlp"), ["/api/status/vibecoding/year"]);
   assert.deepEqual(readModelPathsForSource("emby"), []);
   assert.deepEqual(readModelPathsForSource("playstation"), []);
   assert.deepEqual(readModelPathsForSource("constructor"), []);

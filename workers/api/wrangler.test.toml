@@ -23,7 +23,7 @@ ACCESS_TEAM_DOMAIN = "https://access.local.invalid"
 ACCESS_AUD = "local-dev"
 
 [vars.ACCESS_CLIENTS]
-"local-dev.access" = ["ingest:mac", "ingest:iphone", "ingest:homepod", "ingest:emby", "ingest:playstation", "ingest:server", "ingest:agents", "internal:site-deployed"]
+"local-dev.access" = ["ingest:mac", "ingest:iphone", "ingest:homepod", "ingest:emby", "ingest:playstation", "ingest:server", "ingest:agents", "ingest:agents-otlp", "internal:site-deployed"]
 
 [alias]
 "@/lib/storage-driver" = "./src/storage-driver.ts"

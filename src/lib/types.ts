@@ -625,6 +625,12 @@ export type VibeCodingAgent = {
    * 取与，见 vibecoding-card 的 activityUnknown。
    */
   active: boolean;
+  /**
+   * Claude Code 云端线程最近一次有 token 增量的时刻（OTLP 遥测，见 lib/claude-cloud-usage）。
+   * 只有 claude 那一行有。和 Mac 在不在线无关，浏览器按时刻现算：5 分钟内就亮，
+   * 不和 activityUnknown 取与。缺省同 null。
+   */
+  cloudActivityAt?: string | null;
   /** 整份历史里 token 占比最大的模型。 */
   topModel: string | null;
   /** null 表示未取得用量，和已成功采集的零用量不同。 */
@@ -682,6 +688,8 @@ export type VibeCodingNowPayload = {
     currentModel: string | null;
     lastActivityAt: string | null;
     active: boolean;
+    /** 只有云端遥测那条推送带；Mac 的推送不带，浏览器保留手上的值 */
+    cloudActivityAt?: string | null;
   }>;
 };
 

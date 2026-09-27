@@ -260,9 +260,9 @@ export function normalizeVibeCodingUsage(input: unknown): ParsedVibeCodingUsage 
   };
 }
 
-/** 字段缺省是 null（旧 Mac）。在了但不是字符串数组，整份用量不收。 */
+/** 缺省与落库后的 null 都表示旧 Mac；其他值必须是字符串数组。 */
 function normalizeOmittedSources(value: unknown, present: boolean): string[] | null | false {
-  if (!present) return null;
+  if (!present || value === null) return null;
   if (!Array.isArray(value) || value.some((entry) => typeof entry !== "string" || !entry)) return false;
   return value;
 }

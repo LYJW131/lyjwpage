@@ -9,6 +9,8 @@ import { createServer as httpServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 import { createRequire } from 'node:module';
+import { gzipSync } from 'node:zlib';
+import { stripVTControlCharacters } from 'node:util';
 import { createDevAccess } from './dev-access.mjs';
 
 const root = resolve(import.meta.dirname, '..');
@@ -20,6 +22,14 @@ let socket;
 const secret = 'local-token-usage-verification';
 // 本地没有 Access：上报带的 JWT 用这把一次性测试钥匙签，Worker 认 ACCESS_DEV_JWKS 里的公钥
 const access = await createDevAccess();
+const cloudClient = 'cloud-only.access';
+const agentsClient = 'agents-only.access';
+const macClient = 'mac-only.access';
+Object.assign(access.vars.ACCESS_CLIENTS, {
+  [cloudClient]: ['ingest:agents-otlp'],
+  [agentsClient]: ['ingest:agents'],
+  [macClient]: ['ingest:mac'],
+});
 const verifyBuild = process.argv.includes('--build');
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function port() {
@@ -45,6 +55,13 @@ try {
   const [workerPort, sitePort] = await Promise.all([port(), port()]);
   const worker = `http://127.0.0.1:${workerPort}`;
   const site = `http://127.0.0.1:${sitePort}`;
+  const otlpPath = '/api/ingest/agents/otlp';
+  const emptyMetrics = JSON.stringify({ resourceMetrics: [] });
+  async function otlp(body = emptyMetrics, headers = {}, clientId = cloudClient, path = otlpPath) {
+    return fetch(`${worker}${path}`, {
+      method: 'POST', headers: { ...await access.headers(clientId), 'content-type': 'application/json', ...headers }, body,
+    });
+  }
   // 一次性 P-256 钥匙对：私钥按 .p8 的样子喂给 Worker 签 MusicKit 令牌，公钥留在这里验签
   const musicKitKeys = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
   const musicKitPem = `-----BEGIN PRIVATE KEY-----\n${Buffer.from(await crypto.subtle.exportKey('pkcs8', musicKitKeys.privateKey)).toString('base64')}\n-----END PRIVATE KEY-----`;
@@ -84,6 +101,7 @@ try {
   children.push({ kill: () => mockSite.close(), exitCode: 0 });
   await eventually(async () => assert.equal((await fetch(`${worker}/count`)).status, 200));
   assert.deepEqual(await (await fetch(`${worker}/count`)).json(), { ok: true, connections: 0 });
+  assert.equal((await otlp()).status, 503, 'OTLP must preserve the storage initialization barrier');
   assert.equal((await post(worker, '/api/ingest/homepod', {})).status, 503);
   assert.equal((await post(worker, '/api/ingest/iphone', { version: 1 })).status, 503);
   assert.equal((await post(worker, '/api/ingest/iphone', {})).status, 503);
@@ -91,6 +109,32 @@ try {
   assert.equal((await fetch(`${worker}/api/status/not-a-route`)).status, 404);
   assert.equal((await post(worker, '/api/internal/storage/import', { entries: [], finalize: true }, `${secret}-import`)).status, 200);
   console.log('PASS: known public routes preserve the initialization barrier; unknown routes stay in the Worker');
+
+  for (const client of [agentsClient, macClient, 'unregistered.access']) {
+    assert.equal((await otlp(emptyMetrics, {}, client)).status, 403, `${client} cannot submit cloud usage`);
+  }
+  for (const path of ['/api/ingest/agents', '/api/ingest/mac', '/api/internal/site-deployed']) {
+    assert.equal((await otlp('{}', {}, cloudClient, path)).status, 403, `cloud token cannot write ${path}`);
+  }
+  assert.equal((await fetch(`${worker}${otlpPath}`, {
+    method: 'POST', headers: { authorization: 'Bearer retired-cloud-secret' }, body: emptyMetrics,
+  })).status, 401);
+  assert.equal((await fetch(`${worker}${otlpPath}`, {
+    method: 'POST', headers: { 'CF-Access-Client-Id': cloudClient, 'CF-Access-Client-Secret': 'unsigned' }, body: emptyMetrics,
+  })).status, 401, 'origin trusts only the signed Access assertion');
+  assert.equal((await otlp(emptyMetrics, {}, cloudClient, '/api/ingest/agents-otlp')).status, 404);
+  assert.equal((await fetch(`${worker}${otlpPath}`, { headers: await access.headers(cloudClient) })).status, 405);
+  for (const compressed of [false, true]) {
+    const response = await otlp(compressed ? gzipSync(emptyMetrics) : emptyMetrics, compressed ? { 'content-encoding': 'gzip' } : {});
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {});
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+  }
+  assert.equal((await otlp('{}')).status, 400);
+  assert.equal((await otlp('invalid gzip', { 'content-encoding': 'gzip' })).status, 400);
+  assert.equal((await otlp(emptyMetrics, { 'content-encoding': 'br' })).status, 415);
+  console.log('PASS: OTLP Access permissions are isolated; JSON/gzip responses and failure statuses match the exporter contract');
+
   const overridePaths = [
     '/api/status/activity', '/api/status/server', '/api/status/workouts',
     '/api/status/watching', '/api/status/watching/now', '/api/status/listening/now',
@@ -222,6 +266,7 @@ try {
   assert.equal((await post(worker, '/api/musickit/token', {})).status, 405);
   console.log('PASS: /api/musickit/token issues a verifiable ES256 developer token');
   const coding = start(process.execPath, [join(root, 'scripts/verify-coding-usage.mjs'), '--base', worker, '--ingest', worker, '--storage-prefix', 'isolated-verify'], { LOCAL_ACCESS_PRIVATE_JWK: JSON.stringify(access.privateJwk) });
+  coding.stdout.pipe(process.stdout, { end: false });
   const [codingExit] = await once(coding, 'exit');
   assert.equal(codingExit, 0, logs.join(''));
   console.log('PASS: coding usage, limits, history and invalid-envelope regression');
@@ -249,7 +294,9 @@ try {
     assert.equal(buildExit, 0, logs.join('').slice(-12000));
     console.log('PASS: Next production build completes against the initialized isolated Worker');
   }
-  assert.equal(logs.some(line => /Cannot perform I\/O|\[storage\]|\[revalidate\]|Uncaught/.test(line)), false, logs.join(''));
+  const logLines = stripVTControlCharacters(logs.join('')).split('\n');
+  assert.equal(logLines.some(line => /Cannot perform I\/O|\[storage\]|Uncaught/.test(line)
+    || /\[(?:ERROR|WARNING)\].*\[revalidate\]/.test(line)), false, logs.join(''));
 } catch (error) {
   console.error(logs.join('').slice(-12000));
   throw error;

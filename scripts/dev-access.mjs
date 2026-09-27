@@ -18,7 +18,7 @@ export const DEV_ISSUER = 'https://access.local.invalid';
 export const DEV_AUD = 'local-dev';
 export const DEV_CLIENT_ID = 'local-dev.access';
 const INGEST_SOURCES = ['mac', 'iphone', 'homepod', 'emby', 'playstation', 'server', 'agents'];
-const DEV_PERMISSIONS = [...INGEST_SOURCES.map((source) => `ingest:${source}`), 'internal:site-deployed'];
+const DEV_PERMISSIONS = [...INGEST_SOURCES.map((source) => `ingest:${source}`), 'ingest:agents-otlp', 'internal:site-deployed'];
 const KEY_FILE = resolve(import.meta.dirname, '../workers/api/.dev.vars.access-key.json');
 const ALGORITHM = { name: 'RSASSA-PKCS1-v1_5', modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' };
 

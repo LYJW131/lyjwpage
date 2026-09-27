@@ -15,7 +15,9 @@ export function readModelPathsForSource(source: string): string[] {
   switch (source) {
     // /api/home is deliberately absent: both the SSR rebuild and the browser's mount
     // bootstrap read it from the DO, so a projection would have no reader.
-    case "mac": return ["/api/status/vibecoding/year"];
+    case "mac":
+    case "agents-otlp":
+      return ["/api/status/vibecoding/year"];
     default: return [];
   }
 }
