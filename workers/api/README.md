@@ -268,7 +268,7 @@ Secrets 与专用 RAM 用户已无用，在 Cloudflare 控制台和阿里云 RAM
 站点配置 `NEXT_PUBLIC_BACKEND_URL=https://api.homepage.lyjw.llc` 与相同的
 `REVALIDATE_SECRET`；浏览器由这一个源拼 `/ws` 和 `/api/musickit/token`。所有上报器的目标为
 这个 Worker 在 ingest 域名上的 `/api/ingest/<来源>`，不经过站点；playstation-reporter 例外，经 Service Binding
-直接调 `PlaystationIngest` 这个 entrypoint（`src/playstation-ingest.ts`），只能写 `playstation`，不带凭据；按人数调频的（如 agents-reporter）同时读取此源 `/count` 的 `connections` 与 `ONLINE_COUNTER_URL/count` 的 `online`，server-reporter 固定每分钟推一次。实例清单见 [端点核验记录](../../docs/reporter-endpoints.md)。
+直接调 `PlaystationIngest` 这个 entrypoint（`src/playstation-ingest.ts`），只能写 `playstation`，并通过 `count()` / `playingNow()` 读取连接数与主机电源，不带凭据；按人数调频的（如 agents-reporter）同时读取此源 `/count` 的 `connections` 与 `ONLINE_COUNTER_URL/count` 的 `online`，server-reporter 固定每分钟推一次。实例清单见 [端点核验记录](../../docs/reporter-endpoints.md)。
 
 提交并推送 main，由 Cloudflare Workers Builds 原生 Git 集成自动部署。
 `shared/`、共用 `src/lib/`、根依赖及路径配置变化也触发 api 部署。

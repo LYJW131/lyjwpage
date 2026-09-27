@@ -77,3 +77,9 @@ server 备份 `.env`（代码随镜像走，回退改 `sha-<短哈希>` 标签�
 
 远端改动前的备份后缀为 `.before-access-<时间戳>`。token 有效期到 2027-09-25，续期或轮换在 Zero Trust 控制台做；
 轮换 mac / iphone 直接在 App 里重新登录。
+
+## 2026-09-27 PlayStation Worker 内部通讯
+
+`PlaystationIngest` Service Binding 已承接上报；连接数和电源读取也改为该入口的 `count()` / `playingNow()`，PS Worker 删除 `SITE_URL`。独立 online-counter 的可见人数查询仍走 `ONLINE_COUNTER_URL`。
+
+通过 ego lite 核对生产配置：PS Worker 只有 `PSN_NPSSO` secret，没有上报鉴权 secret；Zero Trust 的 7 把服务令牌及 reporters 策略均不含 PS Worker 专属凭据，无需删除。`lyjwpage-home-assistant` 仍供 HomePod 与 PS5 电源上报使用，`/tick` 的邮箱 Access 应用继续保留。

@@ -311,9 +311,9 @@ titleId，屏蔽的游戏不上报、不占窗口；改这份名单会重推奖�
 1. 把备份的旧 `state/auth.json` 原样写到 KV key `auth`；
 2. 按需要写入 secret：`PSN_NPSSO`。上报走 Service Binding，不需要上报密钥。
 
-`SITE_URL=https://api.homepage.lyjw.llc` 已经在 `wrangler.toml` 里配好，只用来读人头数和主机电源。
+API 连接数和主机电源通过同一个 `API` Service Binding 的 `count()` / `playingNow()` 读取，不需要 `SITE_URL`。
 
-门并行读 `ONLINE_COUNTER_URL/count` 的可见人数与 `SITE_URL/count` 的推送连接数。
+门并行读 `ONLINE_COUNTER_URL/count` 的可见人数与 `API.count()` 的推送连接数。
 每个来源未配置或读取失败时仅将其对应计数降为零；上报继续运行。
 
 本目录是独立 npm 部署单元，保留自己的 `package-lock.json`。重生成时必须在没有
@@ -328,4 +328,10 @@ npm run typecheck
 ```
 
 在线人数已恢复独立 Worker：配置 `ONLINE_COUNTER_URL=https://online.homepage.lyjw.llc`（只填源）。
-其 `/count` 的 `online` 判定快档；`SITE_URL/count` 的 `connections` 判定中档。两个查询独立超时、独立降为零。
+其 `/count` 的 `online` 判定快档；`API.count()` 的 `connections` 判定中档。两个查询独立超时、独立降为零。
+
+### Service Binding 发布顺序
+
+新增 RPC 方法时先发布 api Worker，再发布 playstation-reporter；两个 Workers Builds 独立运行。
+API 尚未更新时读取失败仍分别降为 0 / 未知，不影响原有 `ingest()` 上报。
+本地联调需要同时运行两个 Worker；移除 `API` binding 时仅打印上报，连接数为 0、电源为未知。
