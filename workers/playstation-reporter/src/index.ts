@@ -2,9 +2,7 @@ import { verifyAccessJwt } from "../../../shared/access-jwt";
 
 import { AuthSession } from "./auth";
 import {
-  countUrl,
   onlineCountUrl,
-  playingNowUrl,
   hiddenTitleIds,
   isDryRun,
   playedGamesLimit,
@@ -23,7 +21,7 @@ import {
   type PlayedGamesReport,
   type PresenceReport,
 } from "./psn";
-import { deliver } from "./site";
+import { deliver, headCount, readPower, COUNT_TIMEOUT_MS } from "./site";
 import {
   LIBRARY_CACHE_KEY,
   LIBRARY_TTL_MS,
@@ -281,54 +279,6 @@ const OPEN_TICK_INTERVAL_MS = 115_000;
  * 锚的就是这个数。要动它，先去改那边。
  */
 const IDLE_TICK_INTERVAL_MS = 29.5 * 60_000;
-/** 人头数读不回来不该拖着 tick 等，超时就当没人。 */
-const COUNT_TIMEOUT_MS = 2_500;
-
-/** 每个来源独立兜底；不让失败的连接数查询掩盖可见访客。 */
-async function headCount(url: string, field: "online" | "connections"): Promise<number> {
-  if (!url) return 0;
-  try {
-    const response = await fetch(url, { signal: AbortSignal.timeout(COUNT_TIMEOUT_MS) });
-    if (!response.ok) throw new Error(`返回 ${response.status}`);
-    const body = (await response.json()) as Record<string, unknown> | null;
-    const value = body?.[field];
-    if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) throw new Error(`invalid ${field}`);
-    return value;
-  } catch (error) {
-    console.warn(JSON.stringify({ event: "playstation-head-count", field, error: explain(error) }));
-    return 0;
-  }
-}
-
-/** HA 报上来的主机电源状态；读不到就是 null＝不知道 */
-type Power = { on: boolean; observedAt: number } | null;
-
-/**
- * 主机通没通电。Home Assistant 那个开关翻面时上报给 API Worker，这里从
- * 「此刻在玩」那条读端点顺带取回来。
- *
- * **兜底方向和人头数相反**：人头数读不到当 0、只会变慢；这一份读不到当
- * 「不知道」、按开机走原来的三档。反过来把故障当关机会把卡片冻在闲档，
- * 机器明明开着却半小时才更新一次。
- */
-async function readPower(env: Env): Promise<Power> {
-  const url = playingNowUrl(env);
-  if (!url) return null;
-  try {
-    const response = await fetch(url, { signal: AbortSignal.timeout(COUNT_TIMEOUT_MS) });
-    if (!response.ok) throw new Error(`返回 ${response.status}`);
-    const body = (await response.json()) as { data?: { power?: unknown } } | null;
-    const power = body?.data?.power as Record<string, unknown> | null | undefined;
-    if (!power || typeof power.on !== "boolean") return null;
-    const observedAt = power.observedAt;
-    if (typeof observedAt !== "number" || !Number.isFinite(observedAt)) return null;
-    return { on: power.on, observedAt };
-  } catch (error) {
-    console.warn(JSON.stringify({ event: "playstation-read-power", error: explain(error) }));
-    return null;
-  }
-}
-
 /**
  * 上一轮完整 tick 的开始时刻，isolate 本地这一份。
  *
@@ -371,9 +321,10 @@ async function shouldTick(env: Env): Promise<Gate> {
     return { run: false, sinceMs, online: null, open: null, power: null };
   }
 
+  const onlineUrl = onlineCountUrl(env);
   const [online, open, power] = await Promise.all([
-    headCount(onlineCountUrl(env), "online"),
-    headCount(countUrl(env), "connections"),
+    headCount(onlineUrl ? () => fetch(onlineUrl, { signal: AbortSignal.timeout(COUNT_TIMEOUT_MS) }) : undefined, "online"),
+    headCount(env.API ? () => env.API!.count() : undefined, "connections"),
     readPower(env),
   ]);
   const on = power?.on ?? null;

@@ -36,7 +36,7 @@ export async function deliver(env: Env, envelope: PlaystationEnvelope): Promise<
   return { changed: data?.changed === true };
 }
 
-async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+export async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
@@ -48,4 +48,55 @@ async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   } finally {
     if (timer !== undefined) clearTimeout(timer);
   }
+}
+
+/** 人头数读不回来不该拖着 tick 等，超时就当没人。 */
+export const COUNT_TIMEOUT_MS = 2_500;
+
+/** 每个来源独立兜底；不让失败的连接数查询掩盖可见访客。 */
+export async function headCount(request: (() => Promise<Response>) | undefined, field: "online" | "connections"): Promise<number> {
+  if (!request) return 0;
+  try {
+    const body = await readQuery<Record<string, unknown>>(request());
+    const value = body?.[field];
+    if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) throw new Error(`invalid ${field}`);
+    return value;
+  } catch (error) {
+    console.warn(JSON.stringify({ event: "playstation-head-count", field, error: error instanceof Error ? error.message : String(error) }));
+    return 0;
+  }
+}
+
+/** HA 报上来的主机电源状态；读不到就是 null＝不知道 */
+type Power = { on: boolean; observedAt: number } | null;
+
+/**
+ * 主机通没通电。Home Assistant 那个开关翻面时上报给 API Worker，这里从
+ * 「此刻在玩」那条读端点顺带取回来。
+ *
+ * **兜底方向和人头数相反**：人头数读不到当 0、只会变慢；这一份读不到当
+ * 「不知道」、按开机走原来的三档。反过来把故障当关机会把卡片冻在闲档，
+ * 机器明明开着却半小时才更新一次。
+ */
+export async function readPower(env: Env): Promise<Power> {
+  if (!env.API) return null;
+  try {
+    const body = await readQuery<{ data?: { power?: unknown } }>(env.API.playingNow());
+    const power = body?.data?.power as Record<string, unknown> | null | undefined;
+    if (!power || typeof power.on !== "boolean") return null;
+    const observedAt = power.observedAt;
+    if (typeof observedAt !== "number" || !Number.isFinite(observedAt)) return null;
+    return { on: power.on, observedAt };
+  } catch (error) {
+    console.warn(JSON.stringify({ event: "playstation-read-power", error: error instanceof Error ? error.message : String(error) }));
+    return null;
+  }
+}
+
+/** 计时包含响应体读取，RPC 没有 HTTP AbortSignal。 */
+function readQuery<T>(response: Promise<Response>): Promise<T | null> {
+  return withTimeout(response.then(async (result) => {
+    if (!result.ok) throw new Error(`返回 ${result.status}`);
+    return await result.json() as T | null;
+  }), COUNT_TIMEOUT_MS);
 }

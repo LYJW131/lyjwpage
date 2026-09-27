@@ -5,11 +5,13 @@ export interface Env {
   PLAYED_GAMES_LIMIT?: string;
   /** 逗号或空白分隔的 titleId（PPSA… / CUSA…），不上报、不占最近窗口。 */
   PLAYSTATION_HIDDEN_TITLE_IDS?: string;
-  /** API Worker 的**源**：人头数拼 `/count`，主机电源拼 `/api/status/playing/now`。 */
-  SITE_URL?: string;
   ONLINE_COUNTER_URL?: string;
-  /** api Worker 的 PlaystationIngest（Service Binding）。不绑就是 dry-run，只打日志。 */
-  API?: Fetcher & { ingest(raw: string): Promise<Response> };
+  /** api Worker 的 PlaystationIngest：上报、连接数和电源读取。不绑就是 dry-run。 */
+  API?: {
+    ingest(raw: string): Promise<Response>;
+    count(): Promise<Response>;
+    playingNow(): Promise<Response>;
+  };
   PSN_NPSSO?: string;
   /** Access 的 team 域名，`/tick` 验 JWT 用。 */
   ACCESS_TEAM_DOMAIN?: string;
@@ -67,22 +69,7 @@ export function isDryRun(env: Env): boolean {
   return !env.API;
 }
 
-/** API 的连接数与独立在线人数分别读取。 */
-export function countUrl(env: Env): string {
-  const origin = env.SITE_URL?.trim();
-  return origin ? `${trimSlash(origin)}/count` : "";
-}
-
 export function onlineCountUrl(env: Env): string {
   const origin = env.ONLINE_COUNTER_URL?.trim();
   return origin ? `${trimSlash(origin)}/count` : "";
-}
-
-/**
- * 主机电源状态挂在「此刻在玩」这条读端点上：Home Assistant 把 PS5 那个开关
- * 上报给 API Worker，读的出口把它并进 presence 一起给出来（见站点 lib/playstation）。
- */
-export function playingNowUrl(env: Env): string {
-  const origin = env.SITE_URL?.trim();
-  return origin ? `${trimSlash(origin)}/api/status/playing/now` : "";
 }
