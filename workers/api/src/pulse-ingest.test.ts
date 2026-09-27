@@ -3,6 +3,10 @@ import test from "node:test";
 
 import { PULSE_REPEAT_AFTER_MS } from "@/lib/limits";
 import { MUSIC_PAUSE_GRACE_MS } from "@/lib/now-listening";
+import { cursorObservationsKey } from "@/lib/coding-pulse";
+import { listeningChecksKey } from "@/lib/listening-pulse";
+import { recordAgentLimits } from "@api/stores/vibecoding";
+import { prepareRecentlyPlayed } from "@api/stores/apple-music-store";
 import { pulseKey } from "@/lib/pulse";
 import { installStorageForTests, resetStorageForTests } from "@/lib/storage";
 import { FakeStorage } from "@/lib/testing/fake-storage";
@@ -441,4 +445,43 @@ test('Mac token windows are stored internally and never enter the public now pat
   });
   assert.deepEqual(JSON.parse((await storage.get(codingTokenUsageKey()))!),tokenUsage);
  }finally{resetStorageForTests();}
+});
+
+
+test("Cursor history success renews independent observations even without a changed cursorNow", async () => {
+  const storage = new FakeStorage(); installStorageForTests(storage);
+  const at = Date.now();
+  const usage = (t: number) => ({ collectedAt: new Date(t).toISOString(), state: "ok", error: null, warning: null,
+    coverageStart: null, coverageEnd: null, precision: "measured", costComplete: true, days: [] });
+  try {
+    await inRequest(async () => {
+      await recordAgentLimits({ cursorNow: { lastActivityAt: new Date(at).toISOString(), currentModel: "cursor-model" } }, at);
+      await recordAgentLimits({ cursorNow: { lastActivityAt: new Date(at).toISOString(), currentModel: "cursor-model" } }, at + 30_000);
+      await recordAgentLimits({ cursorUsage: usage(at + 60_000) }, at + 60_000);
+      await recordAgentLimits({ cursorUsage: usage(at + 60_000) }, at + 120_000);
+      await recordAgentLimits({ cursorUsage: usage(at - 60_000) }, at + 180_000);
+      const rows = (await storage.listRange(cursorObservationsKey(), 0, -1)).map((raw) => JSON.parse(raw));
+      assert.deepEqual(rows, [{ t: at, available: true, lastActivityAt: at }, { t: at + 60_000, available: true, lastActivityAt: at }]);
+      await recordAgentLimits({ cursorUsage: { ...usage(at + 240_000), warning: "incomplete history" } }, at + 240_000);
+      assert.equal(JSON.parse((await storage.listRange(cursorObservationsKey(), -1, -1))[0]).available, false);
+    });
+  } finally { resetStorageForTests(); }
+});
+
+test("unchanged Apple Music success records a check; preparing, replays and old refreshes do not", async () => {
+  const storage = new FakeStorage(); installStorageForTests(storage);
+  const at = Date.now();
+  try {
+    await inRequest(async () => {
+      const first = await prepareRecentlyPlayed([], at);
+      assert.deepEqual(await storage.listRange(listeningChecksKey(), 0, -1), []);
+      await first.commit();
+      const next = await prepareRecentlyPlayed([], at + 120_000);
+      assert.equal(next.changed, false);
+      assert.equal(next.play, null);
+      await next.commit(); await next.commit();
+      await (await prepareRecentlyPlayed([], at - 120_000)).commit();
+      assert.deepEqual((await storage.listRange(listeningChecksKey(), 0, -1)).map((raw) => JSON.parse(raw).t), [at, at + 120_000]);
+    });
+  } finally { resetStorageForTests(); }
 });

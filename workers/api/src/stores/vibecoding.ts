@@ -1,3 +1,4 @@
+import { recordCursorObservation } from "@api/stores/pulse-source-observations";
 import { codingTokenUsageKey } from "@/lib/coding-pulse";
 import { normalizeCursorUsageReport, type ParsedCursorUsage } from "@/lib/cursor-usage";
 import { tellStorage } from "@/lib/storage";
@@ -124,6 +125,7 @@ export async function recordPreparedAgentLimits(prepared: PreparedAgentLimits) {
     if (displayChanged(previous, next)) tags.add(VIBECODING_TAG);
     writes.push(limitsMirror.put(next));
   }
+  const previousCursor = cursorUsage || cursorNow ? await cursorNowMirror.get() : null;
   if (cursorUsage) {
     const previousUsage = await cursorUsageMirror.get();
     if (displayChanged(previousUsage?.report, cursorUsage)) {
@@ -131,8 +133,19 @@ export async function recordPreparedAgentLimits(prepared: PreparedAgentLimits) {
     }
     writes.push(cursorUsageMirror.put({ report: cursorUsage, pushedAt: receivedAt }));
   }
+  if (cursorUsage || (cursorNow && (!previousCursor || Date.parse(cursorNow.lastActivityAt) > Date.parse(previousCursor.now.lastActivityAt)))) {
+    // A successful history refresh is a heartbeat even when cursorNow was deduplicated.
+    // Use collection time so replaying an old report cannot revive source coverage.
+    const t = cursorUsage ? Date.parse(cursorUsage.collectedAt) : receivedAt;
+    const latest = cursorNow ?? previousCursor?.now;
+    if (Number.isFinite(t) && t <= receivedAt + 60_000) {
+      writes.push(recordCursorObservation({ t: Math.min(t, receivedAt),
+        available: cursorUsage ? cursorUsage.state === "ok" && !cursorUsage.warning : true,
+        lastActivityAt: latest ? Date.parse(latest.lastActivityAt) : null }));
+    }
+  }
   if (cursorNow) {
-    const previousNow = await cursorNowMirror.get();
+    const previousNow = previousCursor;
     // 此刻只改 Cursor 那行的灯和模型，不增减行：只推送，不失效首屏
     if (displayChanged(previousNow?.now, cursorNow)) {
       /**

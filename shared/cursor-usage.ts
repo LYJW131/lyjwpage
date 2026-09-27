@@ -13,7 +13,7 @@ export const cursorUsageMirror = mirrorKey<{ report: ParsedCursorUsage; pushedAt
 
 /**
  * 容器上报的 Cursor 最近一条用量事件。不进 `vibecoding:now`：那份是 Mac 整份替换的，
- * 下一封 Mac 推送就会把这行抹掉；Pulse 吃的也是那份，不该被云端 agent 的活动带动。
+ * 下一封 Mac 推送就会把这行抹掉。Pulse 单独记录 Cursor 观测，独立计算有效期。
  */
 export const cursorNowMirror = mirrorKey<{ now: ParsedCursorNow; pushedAt: number }>(
   ["vibecoding", "cursor-now"],

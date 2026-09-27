@@ -8,4 +8,6 @@ import { key } from "@/lib/storage";
  * 那条序列，把没有时刻的痕迹画成「此刻在放」是假的。只进评分器，见
  * workers/api/src/pulse-score.ts。
  */
+// Successful polls are stored separately from actual playlist changes.
+export const listeningChecksKey = () => key("pulse", "listening-checks");
 export const listeningPlaysKey = () => key("pulse", "listening-plays");

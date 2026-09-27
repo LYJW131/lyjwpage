@@ -1,4 +1,5 @@
 import type { ListeningItem, ListeningPayload } from "@/lib/types";
+import { recordListeningCheck } from "@api/stores/pulse-source-observations";
 import { mirror } from "@shared/apple-music-store";
 import { listeningPlay, type ListeningPlay } from "@shared/pulse-listening";
 
@@ -36,6 +37,9 @@ export async function prepareRecentlyPlayed(
     changed,
     play: listeningPlay(previous, { items, fetchedAt }),
     listening: { items, fetchedAt },
-    commit: () => mirror.put({ items, fetchedAt }),
+    commit: async () => {
+      await recordListeningCheck(fetchedAt);
+      await mirror.put({ items, fetchedAt });
+    },
   };
 }

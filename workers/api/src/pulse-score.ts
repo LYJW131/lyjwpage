@@ -2,6 +2,7 @@ import { parsePulseSample, pulseSampleUntil } from '@/lib/pulse';
 import { PULSE_DOMAINS, type PulseDomain, type PulseSample } from '@/lib/types';
 import { PULSE_TTL_MS, PULSE_WINDOW_MS } from '@/lib/limits';
 import { CODING_WINDOW_MS, PULSE_SCORE_WINDOW_MS, codingQuestions, codingWindowFeatures, judgment, parseCodingObservation } from '@shared/pulse-coding';
+import { parseCursorObservation } from '@shared/pulse-cursor';
 import { parseCodingTokenUsage } from '@shared/coding-token-usage';
 import { PULSE_ASSESSMENT_VERSION, PULSE_MODES, latestPulseAssessments, type PulseAssessment, type PulseMode } from '@shared/pulse-assessment';
 import { activityQuestions, activityWindowFeatures, parseActivityWorkouts, type ActivityWorkout } from '@shared/pulse-activity';
@@ -18,10 +19,10 @@ import type { PulseScoreCoordinator } from './pulse-score-state';
  * 返回的 questions 用 intensity / continuity / mode 做 id；coding 沿用它的 w0*。
  */
 type Built = { state: unknown; coverage: Coverage[]; questions: Record<string, PulseQuestion>; ids: { intensity: string; continuity: string; mode: string | null } };
-function buildMeasured(domain: Exclude<PulseDomain, 'coding'>, samples: PulseSample[], window: Coverage, plays: ListeningPlay[], workouts: ActivityWorkout[]): Built {
+function buildMeasured(domain: Exclude<PulseDomain, 'coding'>, samples: PulseSample[], window: Coverage, plays: ListeningPlay[], workouts: ActivityWorkout[], checks: number[]): Built {
   const ids = { intensity: 'intensity', continuity: 'continuity', mode: null as string | null };
   switch (domain) {
-    case 'listening': { const { features, coverage } = listeningWindowFeatures(samples, window, plays); return { state: features, coverage, questions: listeningQuestions(), ids: { ...ids, mode: 'mode' } }; }
+    case 'listening': { const { features, coverage } = listeningWindowFeatures(samples, window, plays, checks); return { state: features, coverage, questions: listeningQuestions(), ids: { ...ids, mode: 'mode' } }; }
     case 'watching': { const { features, coverage } = watchingWindowFeatures(samples, window); return { state: features, coverage, questions: watchingQuestions(), ids }; }
     case 'gaming': { const { features, coverage } = gamingWindowFeatures(samples, window); return { state: features, coverage, questions: gamingQuestions(), ids }; }
     case 'charging': { const { features, coverage } = chargingWindowFeatures(samples, window); return { state: features, coverage, questions: chargingQuestions(), ids }; }
@@ -87,7 +88,8 @@ function codingZero(state: unknown): boolean {
   const facts = row && Array.isArray(row.windows) ? record(row.windows[0]) : null;
   const observed = facts ? num(facts, "observedSeconds") : null;
   if (!facts || observed == null || observed <= 0) return false;
-  if (num(facts, "desktopObservedSeconds") !== observed || num(facts, "agentObservedSeconds") !== observed) return false;
+  if (num(facts, "desktopObservedSeconds") !== observed || num(facts, "macAgentObservedSeconds") !== observed) return false;
+  if (num(facts, "cursorActiveSeconds") !== 0) return false;
   if (num(facts, "codingAppSeconds") !== 0 || num(facts, "agentActiveSeconds") !== 0 || num(facts, "longestCodingRunSeconds") !== 0) return false;
   if (!Array.isArray(facts.agents) || facts.agents.length !== 0) return false;
   const usage = record(facts.tokenUsage);
@@ -107,16 +109,37 @@ function definiteZero(domain: PulseDomain, state: unknown, coverage: Coverage[],
   if (!covers(coverage, from, from + PULSE_SCORE_WINDOW_MS)) return false;
   return domain === "coding" ? codingZero(state) : measuredZero(domain, state);
 }
-/** 题目最低档，置信度取确定（1）且概率全部落在这一档。走现有 judgment / modeAnswer。 */
-function certainScore(question: ScoreQuestion) {
-  const probabilities = Object.fromEntries(question.criteria.map((_, index) => [String(index), index === 0 ? 1 : 0]));
-  return judgment({ type: "score", score: 0, confidence: 1, probabilities }, question.criteria.length, true);
+/** No activity in the available account source, with the live source absent.
+ * This is an inferred baseline with limited confidence, never measured silence.
+ */
+function quietIndependentSource(domain: PulseDomain, state: unknown): boolean {
+  const row = record(state);
+  if (!row) return false;
+  if (domain === "listening") {
+    return num(row, "liveObservedSeconds") === 0 && (num(row, "recentListObservedSeconds") ?? 0) > 0
+      && num(row, "playingSeconds") === 0 && num(row, "pausedSeconds") === 0
+      && Array.isArray(row.recentPlays) && row.recentPlays.length === 0;
+  }
+  if (domain !== "coding" || !Array.isArray(row.windows)) return false;
+  const facts = record(row.windows[0]);
+  if (!facts || num(facts, "desktopObservedSeconds") !== 0 || num(facts, "macAgentObservedSeconds") !== 0
+    || (num(facts, "cursorObservedSeconds") ?? 0) <= 0 || num(facts, "cursorActiveSeconds") !== 0) return false;
+  const usage = record(facts.tokenUsage);
+  return !usage || (Array.isArray(usage.agents) && usage.agents.every((agent) => {
+    const counts = record(agent);
+    return counts != null && TOKEN_COUNT_KEYS.every((key) => num(counts, key) === 0);
+  }));
 }
-function certainIdle(question: ChoiceQuestion, domain: PulseDomain): PulseMode {
+/** The baseline is conditional on the observed sources; confidence records completeness. */
+function baselineScore(question: ScoreQuestion, confidence: number) {
+  const probabilities = Object.fromEntries(question.criteria.map((_, index) => [String(index), index === 0 ? 1 : 0]));
+  return judgment({ type: "score", score: 0, confidence, probabilities }, question.criteria.length, true);
+}
+function baselineIdle(question: ChoiceQuestion, domain: PulseDomain, confidence: number): PulseMode {
   const modes = PULSE_MODES[domain];
   if (!modes?.includes("idle") || !Object.hasOwn(question.criteria, "idle")) throw new Error("Missing idle choice");
   const probabilities = Object.fromEntries(modes.map((key) => [key, key === "idle" ? 1 : 0]));
-  return modeAnswer({ type: "choice", choice: "idle", confidence: 1, probabilities }, domain);
+  return modeAnswer({ type: "choice", choice: "idle", confidence, probabilities }, domain);
 }
 
 /** One scheduler, one set of assessments: summaries are derived, never a second model call. */
@@ -135,6 +158,11 @@ export class PulseScorer {
       const raw = inputs.assessments;
       const observations = inputs.codingObservations;
       const tokenRaw = inputs.codingTokenUsage;
+      const cursor = inputs.cursorObservations.map(parseCursorObservation).filter((row) => row !== null).sort((a, b) => a.t - b.t);
+      const checks = inputs.listeningChecks.flatMap((raw) => {
+        try { const row = JSON.parse(raw); return Number.isFinite(row?.t) ? [row.t as number] : []; }
+        catch { return []; }
+      }).sort((a, b) => a - b);
       const playRows = inputs.listeningPlays;
       const workouts = parseActivityWorkouts(inputs.workouts);
       const histories = SCORED_DOMAINS.map((domain) => inputs.histories[domain]);
@@ -155,7 +183,7 @@ export class PulseScorer {
           const window = {from,to:from+PULSE_SCORE_WINDOW_MS};
           let built: Built;
           if (domain==='coding') {
-            const facts=codingWindowFeatures(seen,from,PULSE_SCORE_WINDOW_MS);
+            const facts=codingWindowFeatures(seen,from,PULSE_SCORE_WINDOW_MS,cursor);
             // The producer emits only buckets with events. An absent bucket inside its
             // reported range is measured zero; outside that range it is unknown.
             const coveredBuckets = tokenUsage ? Array.from({length: 3}, (_, i) => from + i * 300_000)
@@ -176,22 +204,24 @@ export class PulseScorer {
             } : null;
             built={state:{windows:[{...facts,tokenUsage:tokens}]},coverage:facts.coverage,questions:codingQuestions([facts]) as Record<string, PulseQuestion>,ids:{intensity:'w0Intensity',continuity:'w0Continuity',mode:'w0Mode'}};
           } else {
-            built=buildMeasured(domain, series[index], window, plays, workouts);
+            built=buildMeasured(domain, series[index], window, plays, workouts, checks);
           }
           if (!built.coverage.length) continue;
           const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify({version:PULSE_ASSESSMENT_VERSION,state:built.state,questions:built.questions})));
           const hash=Array.from(new Uint8Array(digest),(b)=>b.toString(16).padStart(2,'0')).join('');
           if(completed.get(`${domain}:${from}`)?.inputHash===hash) continue;
-          if (definiteZero(domain, built.state, built.coverage, from)) {
+          const limitedZero = quietIndependentSource(domain, built.state);
+          if (definiteZero(domain, built.state, built.coverage, from) || limitedZero) {
+            const confidence = limitedZero ? 0.5 : 1;
             const intensity = built.questions[built.ids.intensity];
             const continuity = built.questions[built.ids.continuity];
             const modeQuestion = built.ids.mode ? built.questions[built.ids.mode] : null;
             const modeReady = built.ids.mode == null || modeQuestion?.type === "choice";
             if (intensity?.type === "score" && continuity?.type === "score" && modeReady) {
               ruled.push({ from, to: from + PULSE_SCORE_WINDOW_MS, coverage: built.coverage,
-                intensity: certainScore(intensity), continuity: certainScore(continuity),
-                mode: modeQuestion?.type === "choice" ? certainIdle(modeQuestion, domain) : null,
-                model: PULSE_RULE_MODEL, scoredAt: now, domain, inputHash: hash });
+                intensity: baselineScore(intensity, confidence), continuity: baselineScore(continuity, confidence),
+                mode: modeQuestion?.type === "choice" ? baselineIdle(modeQuestion, domain, confidence) : null,
+                model: limitedZero ? "rules:limited-source" : PULSE_RULE_MODEL, scoredAt: now, domain, inputHash: hash });
               continue;
             }
           }

@@ -51,3 +51,30 @@ test("coding rejects malformed model output rather than saving fake zeroes", () 
   assert.equal(parseCodingAssessment('{}'), null);
   assert.equal(parseCodingObservation('{"t":5,"available":true,"agents":[null]}'), null);
 });
+
+
+test("Cursor survives Mac offline independently, expires on its own cadence and cannot double count coverage", () => {
+  const cursor = [{ t: T, available: true, lastActivityAt: T }];
+  const idleMac = { ...observation(T), available: false };
+  const window = codingWindowFeatures([idleMac], T, 900_000, cursor);
+  assert.equal(window.observedSeconds, 900);
+  assert.equal(window.desktopObservedSeconds, 0);
+  assert.equal(window.cursorObservedSeconds, 900);
+  assert.equal(window.cursorActiveSeconds, 300);
+  assert.equal(window.agentActiveSeconds, 300);
+  assert.equal(window.agentObservedSeconds, 900);
+  assert.equal(window.macAgentObservedSeconds, 0);
+  const overlap = codingWindowFeatures([observation(T)], T, 900_000, cursor);
+  assert.equal(overlap.agentActiveSeconds, 300);
+  assert.equal(overlap.concurrentAgentSeconds, 180);
+  assert.equal(overlap.codingAppAndAgentSeconds, 180);
+  assert.equal(overlap.longestCodingRunSeconds, 300);
+  assert.equal(window.longestCursorRunSeconds, 300);
+  assert.equal(codingWindowFeatures([observation(T)], T, 900_000, cursor).observedSeconds, 900);
+  const idle = codingWindowFeatures([], T + 900_000, 900_000, cursor);
+  assert.equal(idle.cursorActiveSeconds, 0);
+  assert.equal(idle.observedSeconds, 900);
+  assert.equal(codingWindowFeatures([], T + 65 * 60_000, 900_000, cursor).observedSeconds, 0);
+  const failed = [...cursor, { t: T + 60_000, available: false, lastActivityAt: T }];
+  assert.equal(codingWindowFeatures([], T, 900_000, failed).observedSeconds, 60);
+});
