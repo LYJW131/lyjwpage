@@ -1,12 +1,12 @@
 import { parsePulseSample, pulseSampleUntil } from '@/lib/pulse';
 import { PULSE_DOMAINS, type PulseDomain, type PulseSample } from '@/lib/types';
 import { PULSE_TTL_MS, PULSE_WINDOW_MS } from '@/lib/limits';
-import { PULSE_SCORE_WINDOW_MS, codingQuestions, codingWindowFeatures, judgment, parseCodingObservation } from '@shared/pulse-coding';
+import { CODING_WINDOW_MS, PULSE_SCORE_WINDOW_MS, codingQuestions, codingWindowFeatures, judgment, parseCodingObservation } from '@shared/pulse-coding';
 import { parseCodingTokenUsage } from '@shared/coding-token-usage';
 import { PULSE_ASSESSMENT_VERSION, PULSE_MODES, latestPulseAssessments, type PulseAssessment, type PulseMode } from '@shared/pulse-assessment';
 import { activityQuestions, activityWindowFeatures, parseActivityWorkouts, type ActivityWorkout } from '@shared/pulse-activity';
 import { chargingQuestions, chargingWindowFeatures } from '@shared/pulse-charging';
-import type { Coverage, PulseQuestion } from '@shared/pulse-features';
+import type { ChoiceQuestion, Coverage, PulseQuestion, ScoreQuestion } from '@shared/pulse-features';
 import { gamingQuestions, gamingWindowFeatures } from '@shared/pulse-gaming';
 import { listeningQuestions, listeningWindowFeatures, parseListeningPlay, type ListeningPlay } from '@shared/pulse-listening';
 import { watchingQuestions, watchingWindowFeatures } from '@shared/pulse-watching';
@@ -39,6 +39,85 @@ function modeAnswer(raw: unknown, domain: PulseDomain): PulseMode {
 }
 
 const SCORED_DOMAINS = PULSE_DOMAINS;
+/** 没问 Jev 时记在已有 model 字段上。置信度仍用答案里的 confidence，不另加字段。 */
+const PULSE_RULE_MODEL = "rules";
+const TOKEN_COUNT_KEYS = ["inputTokens", "outputTokens", "cacheReadTokens", "cacheCreationTokens", "reasoningTokens", "eventCount"] as const;
+
+function record(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+function num(row: Record<string, unknown>, key: string): number | null {
+  const value = row[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+/** 覆盖区间首尾相接铺满整个评分窗。缺口不算 0。 */
+function covers(coverage: Coverage[], from: number, to: number): boolean {
+  let cursor = from;
+  for (const part of coverage) {
+    if (part.from > cursor) return false;
+    cursor = Math.max(cursor, part.to);
+  }
+  return cursor >= to;
+}
+function measuredZero(domain: Exclude<PulseDomain, "coding">, state: unknown): boolean {
+  const row = record(state);
+  const observed = row ? num(row, "observedSeconds") : null;
+  if (!row || observed == null || observed <= 0) return false;
+  const zero = (key: string) => num(row, key) === 0;
+  switch (domain) {
+    case "listening":
+      return zero("playingSeconds") && zero("pausedSeconds") && num(row, "idleSeconds") === observed
+        && Array.isArray(row.recentPlays) && row.recentPlays.length === 0;
+    case "watching":
+      return zero("playingSeconds") && zero("pausedSeconds") && num(row, "idleSeconds") === observed;
+    case "gaming":
+      return zero("inGameSeconds") && zero("onlineIdleSeconds") && num(row, "offlineSeconds") === observed;
+    case "charging": {
+      const bands = record(row.secondsByBand);
+      return row.peakWatts === 0 && bands != null && num(bands, "unplugged") === observed
+        && num(bands, "trickle") === 0 && num(bands, "moderate") === 0 && num(bands, "high") === 0;
+    }
+    case "activity":
+      return num(row, "stillSeconds") === observed && zero("lightSeconds") && zero("moderateSeconds")
+        && zero("vigorousSeconds") && zero("workoutSeconds") && Array.isArray(row.workouts) && row.workouts.length === 0;
+  }
+}
+function codingZero(state: unknown): boolean {
+  const row = record(state);
+  const facts = row && Array.isArray(row.windows) ? record(row.windows[0]) : null;
+  const observed = facts ? num(facts, "observedSeconds") : null;
+  if (!facts || observed == null || observed <= 0) return false;
+  if (num(facts, "desktopObservedSeconds") !== observed || num(facts, "agentObservedSeconds") !== observed) return false;
+  if (num(facts, "codingAppSeconds") !== 0 || num(facts, "agentActiveSeconds") !== 0 || num(facts, "longestCodingRunSeconds") !== 0) return false;
+  if (!Array.isArray(facts.agents) || facts.agents.length !== 0) return false;
+  const usage = record(facts.tokenUsage);
+  const buckets = PULSE_SCORE_WINDOW_MS / CODING_WINDOW_MS;
+  if (!usage || num(usage, "observedBucketCount") !== buckets || num(usage, "unknownBucketCount") !== 0) return false;
+  if (!Array.isArray(usage.sources) || usage.sources.length === 0 || !usage.sources.every((source) => record(source)?.state === "ok")) return false;
+  return Array.isArray(usage.agents) && usage.agents.every((agent) => {
+    const counts = record(agent);
+    return counts != null && TOKEN_COUNT_KEYS.every((key) => num(counts, key) === 0);
+  });
+}
+/**
+ * 这一窗被观测到，而且证据就是零活动。缺报、未知、覆盖不全都不是 0。
+ * activity 的缺口是未知；charging 的 0 瓦必须是实测峰值，没有瓦数不算。
+ */
+function definiteZero(domain: PulseDomain, state: unknown, coverage: Coverage[], from: number): boolean {
+  if (!covers(coverage, from, from + PULSE_SCORE_WINDOW_MS)) return false;
+  return domain === "coding" ? codingZero(state) : measuredZero(domain, state);
+}
+/** 题目最低档，置信度取确定（1）且概率全部落在这一档。走现有 judgment / modeAnswer。 */
+function certainScore(question: ScoreQuestion) {
+  const probabilities = Object.fromEntries(question.criteria.map((_, index) => [String(index), index === 0 ? 1 : 0]));
+  return judgment({ type: "score", score: 0, confidence: 1, probabilities }, question.criteria.length, true);
+}
+function certainIdle(question: ChoiceQuestion, domain: PulseDomain): PulseMode {
+  const modes = PULSE_MODES[domain];
+  if (!modes?.includes("idle") || !Object.hasOwn(question.criteria, "idle")) throw new Error("Missing idle choice");
+  const probabilities = Object.fromEntries(modes.map((key) => [key, key === "idle" ? 1 : 0]));
+  return modeAnswer({ type: "choice", choice: "idle", confidence: 1, probabilities }, domain);
+}
 
 /** One scheduler, one set of assessments: summaries are derived, never a second model call. */
 export class PulseScorer {
@@ -69,6 +148,7 @@ export class PulseScorer {
       // Two-minute settling time allows the one-minute usage scan and transport to finish.
       const end = Math.floor((now-120_000)/PULSE_SCORE_WINDOW_MS)*PULSE_SCORE_WINDOW_MS;
       const jobs: {domain: PulseDomain; from: number; coverage: Coverage[]; state: unknown; questions: Record<string, PulseQuestion>; ids: Built['ids']; hash:string}[] = [];
+      const ruled: PulseAssessment[] = [];
       for (let from=end-PULSE_SCORE_WINDOW_MS;from>=Math.ceil((now-PULSE_WINDOW_MS)/PULSE_SCORE_WINDOW_MS)*PULSE_SCORE_WINDOW_MS&&jobs.length<36;from-=PULSE_SCORE_WINDOW_MS) {
         for (const [index,domain] of SCORED_DOMAINS.entries()) {
           if (jobs.length>=36) break;
@@ -102,15 +182,28 @@ export class PulseScorer {
           const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify({version:PULSE_ASSESSMENT_VERSION,state:built.state,questions:built.questions})));
           const hash=Array.from(new Uint8Array(digest),(b)=>b.toString(16).padStart(2,'0')).join('');
           if(completed.get(`${domain}:${from}`)?.inputHash===hash) continue;
+          if (definiteZero(domain, built.state, built.coverage, from)) {
+            const intensity = built.questions[built.ids.intensity];
+            const continuity = built.questions[built.ids.continuity];
+            const modeQuestion = built.ids.mode ? built.questions[built.ids.mode] : null;
+            const modeReady = built.ids.mode == null || modeQuestion?.type === "choice";
+            if (intensity?.type === "score" && continuity?.type === "score" && modeReady) {
+              ruled.push({ from, to: from + PULSE_SCORE_WINDOW_MS, coverage: built.coverage,
+                intensity: certainScore(intensity), continuity: certainScore(continuity),
+                mode: modeQuestion?.type === "choice" ? certainIdle(modeQuestion, domain) : null,
+                model: PULSE_RULE_MODEL, scoredAt: now, domain, inputHash: hash });
+              continue;
+            }
+          }
           jobs.push({domain,from,coverage:built.coverage,state:built.state,questions:built.questions,ids:built.ids,hash});
         }
       }
-      if(!jobs.length) {
+      if(!jobs.length && !ruled.length) {
         await this.options.coordinator.finishPulseScore(claim.token, claim.generation, []);
         return;
       }
       if (!await this.options.coordinator.activatePulseScore(claim.token, claim.generation)) return;
-      const records: PulseAssessment[]=[];
+      const records: PulseAssessment[]=[...ruled];
       for(let i=0;i<jobs.length;i+=3){
         const results=await Promise.allSettled(jobs.slice(i,i+3).map(async(job)=>{
           const response=await(this.options.fetch??fetch)('https://api.typesafe.ai/v1/systemone',{

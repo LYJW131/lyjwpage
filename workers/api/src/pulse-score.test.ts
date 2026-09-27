@@ -5,7 +5,7 @@ import { codingObservationsKey, codingTokenUsageKey } from "@/lib/coding-pulse";
 import { listeningPlaysKey } from "@/lib/listening-pulse";
 import { pulseIntervalRevisionKey, pulseKey } from "@/lib/pulse";
 import { PULSE_DOMAINS, type PulseDomain } from "@/lib/types";
-import { CODING_WINDOW_MS, PULSE_SCORE_WINDOW_MS, parseCodingAssessment } from "@shared/pulse-coding";
+import { CODING_OBSERVATION_HOLD_MS, CODING_WINDOW_MS, PULSE_SCORE_WINDOW_MS, parseCodingAssessment } from "@shared/pulse-coding";
 import { latestPulseAssessments, type PulseAssessment } from "@shared/pulse-assessment";
 import { SqliteStore, type SqlDatabase } from "@shared/sqlite-store";
 import { StorageClient } from "@shared/storage-client";
@@ -439,4 +439,112 @@ test('coding token usage excludes partially reported boundary buckets', async ()
   assert.equal(token.observedBucketCount,1);
   assert.equal(token.unknownBucketCount,2);
   assert.deepEqual(token.sources.map((source)=>source.state),['partial','unavailable']);
+});
+
+async function cover(b: ReturnType<typeof setup>, domain: PulseDomain, level: number, extra: Record<string, unknown> = {}) {
+  for (let index = 0; index < 3; index += 1) {
+    const t = T + index * CODING_WINDOW_MS;
+    await b.storage.append(pulseKey(domain), JSON.stringify({ t, until: t + CODING_WINDOW_MS, level, ...extra }));
+  }
+}
+
+test("fully observed zero windows skip Jev and store the lowest certain score", async () => {
+  const b = setup();
+  for (let index = 0; index < PULSE_SCORE_WINDOW_MS / CODING_OBSERVATION_HOLD_MS; index += 1) {
+    await b.storage.append(codingObservationsKey(), JSON.stringify({
+      t: T + index * CODING_OBSERVATION_HOLD_MS, available: true,
+      desktop: { application: "Safari", coding: false }, agents: [],
+    }));
+  }
+  await b.storage.set(codingTokenUsageKey(), JSON.stringify({
+    from: T, to: T + PULSE_SCORE_WINDOW_MS, collectedAt: T + PULSE_SCORE_WINDOW_MS + 60_000,
+    sources: [{ id: "codex", state: "ok" }, { id: "claude", state: "ok" }], windows: [],
+  }));
+  await cover(b, "listening", 0);
+  await b.storage.append(pulseKey("watching"), JSON.stringify({ t: T, level: 0 }));
+  await b.storage.append(pulseKey("gaming"), JSON.stringify({ t: T, level: 0 }));
+  for (let index = 0; index < 3; index += 1) {
+    await b.storage.append(pulseKey("charging"), JSON.stringify({ t: T + index * CODING_WINDOW_MS, level: 0, powerW: 0 }));
+  }
+  await cover(b, "activity", 0);
+  await b.make().run();
+  assert.equal(b.requests.length, 0);
+  const rows = latestPulseAssessments(await b.storage.listRange(pulseAssessmentsKey(), 0, -1));
+  assert.deepEqual(rows.map((row) => row.domain).sort(), [...PULSE_DOMAINS].sort());
+  for (const row of rows) {
+    assert.equal(row.model, "rules");
+    assert.equal(row.to - row.from, PULSE_SCORE_WINDOW_MS);
+    assert.deepEqual(row.coverage, [{ from: row.from, to: row.to }]);
+    assert.equal(row.intensity.value, 0);
+    assert.equal(row.intensity.confidence, 1);
+    assert.equal(row.intensity.probabilities["0"], 1);
+    assert.equal(Object.values(row.intensity.probabilities).reduce((sum, p) => sum + p, 0), 1);
+    assert.equal(row.continuity.value, 0);
+    assert.equal(row.continuity.confidence, 1);
+    assert.equal(row.continuity.probabilities["0"], 1);
+    assert.equal(row.mode?.value ?? null, row.domain === "coding" || row.domain === "listening" ? "idle" : null);
+    if (row.mode) assert.equal(row.mode.confidence, 1);
+    if (row.mode) assert.equal(row.mode.probabilities.idle, 1);
+  }
+  await b.make().run();
+  assert.equal(b.requests.length, 0);
+  assert.equal((await b.storage.listRange(pulseAssessmentsKey(), 0, -1)).length, PULSE_DOMAINS.length);
+});
+
+test("nonzero signals and incomplete or missing evidence still call Jev", async () => {
+  const b = setup();
+  await b.storage.append(pulseKey("listening"), JSON.stringify({ t: T, level: 0 }));
+  await b.storage.append(pulseKey("watching"), JSON.stringify({ t: T, until: T + 60_000, level: 3, hint: "Show" }));
+  await b.storage.append(pulseKey("gaming"), JSON.stringify({ t: T, level: 1 }));
+  await b.storage.append(pulseKey("charging"), JSON.stringify({ t: T, until: T + PULSE_SCORE_WINDOW_MS, level: 0 }));
+  await b.storage.append(pulseKey("activity"), JSON.stringify({ t: T, until: T + CODING_WINDOW_MS, level: 0 }));
+  for (let index = 0; index < PULSE_SCORE_WINDOW_MS / CODING_OBSERVATION_HOLD_MS; index += 1) {
+    await b.storage.append(codingObservationsKey(), JSON.stringify({
+      t: T + index * CODING_OBSERVATION_HOLD_MS, available: true,
+      desktop: { application: "Safari", coding: false }, agents: [],
+    }));
+  }
+  await b.make().run();
+  assert.equal(b.requests.length, PULSE_DOMAINS.length);
+  const rows = latestPulseAssessments(await b.storage.listRange(pulseAssessmentsKey(), 0, -1));
+  assert.equal(rows.length, PULSE_DOMAINS.length);
+  assert.ok(rows.every((row) => row.model === "jev-1.13.0"));
+  const gaming = b.requests.find((request) => "onlineIdleSeconds" in (request.state as object));
+  assert.ok(gaming && (gaming.state as { onlineIdleSeconds: number }).onlineIdleSeconds > 0);
+  const coding = b.requests.find((request) => "windows" in (request.state as object));
+  assert.equal((coding?.state as { windows: { tokenUsage: unknown }[] }).windows[0].tokenUsage, null);
+  const activity = b.requests.find((request) => "stillSeconds" in (request.state as object));
+  assert.ok(activity && (activity.state as { unknownSeconds: number }).unknownSeconds > 0);
+});
+
+test("a zero window is skipped while another window of the same lane still calls Jev", async () => {
+  const b = setup();
+  await cover(b, "listening", 0);
+  await cover(b, "activity", 0);
+  const next = T + PULSE_SCORE_WINDOW_MS;
+  for (let index = 0; index < 3; index += 1) {
+    const t = next + index * CODING_WINDOW_MS;
+    await b.storage.append(pulseKey("listening"), JSON.stringify({ t, until: t + CODING_WINDOW_MS, level: 3, hint: "Song" }));
+    await b.storage.append(pulseKey("activity"), JSON.stringify({ t, until: t + CODING_WINDOW_MS, level: 3 }));
+  }
+  b.advance(PULSE_SCORE_WINDOW_MS);
+  await b.make().run();
+  assert.equal(b.requests.length, 2);
+  const states = b.requests.map((request) => request.state as { playingSeconds?: number; vigorousSeconds?: number });
+  assert.equal(states.filter((state) => (state.playingSeconds ?? 0) > 0).length, 1);
+  assert.equal(states.filter((state) => (state.vigorousSeconds ?? 0) > 0).length, 1);
+  const rows = latestPulseAssessments(await b.storage.listRange(pulseAssessmentsKey(), 0, -1));
+  assert.equal(rows.length, 4);
+  for (const domain of ["listening", "activity"] as const) {
+    const idle = rows.find((row) => row.domain === domain && row.from === T);
+    const busy = rows.find((row) => row.domain === domain && row.from === next);
+    assert.equal(idle?.model, "rules");
+    assert.equal(idle?.intensity.value, 0);
+    assert.equal(idle?.intensity.confidence, 1);
+    assert.equal(idle?.continuity.value, 0);
+    assert.equal(busy?.model, "jev-1.13.0");
+    assert.ok((busy?.intensity.value ?? 0) > 0);
+  }
+  assert.equal(rows.find((row) => row.domain === "listening" && row.from === T)?.mode?.value, "idle");
+  assert.equal(rows.find((row) => row.domain === "activity" && row.from === T)?.mode, null);
 });
