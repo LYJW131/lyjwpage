@@ -9,8 +9,25 @@ export type StorageAnswer<T> = { reachable: true; value: T } | { reachable: fals
 export function getStorage(): StorageClient {
   const context = currentContext();
   if (context.storage) return context.storage;
-  const hub = context.env.STATE.get(context.env.STATE.idFromName("global"));
-  return new StorageClient((commands) => hub.execute(commands));
+  const stub = () => context.env.STATE.get(context.env.STATE.idFromName("global"));
+  let hub = stub();
+  return new StorageClient((commands) => retryRead(commands, () => hub.execute(commands), () => { hub = stub(); }));
+}
+
+/**
+ * DO 部署或迁移时会重置实例，正在飞的调用抛 retryable 错误。只读命令没有副作用，
+ * 换一个新 stub 重试一次；写操作可能已提交，照旧冒泡交给上报器重试。
+ */
+export async function retryRead<T>(commands: readonly StorageCommand[], run: () => Promise<T>, renew?: () => void): Promise<T> {
+  try {
+    return await run();
+  } catch (error) {
+    const retryable = (error as { retryable?: unknown } | null)?.retryable === true;
+    const overloaded = (error as { overloaded?: unknown } | null)?.overloaded === true;
+    if (!retryable || overloaded || !readOnly(commands)) throw error;
+    renew?.();
+    return run();
+  }
 }
 
 type PendingRead = {
@@ -34,7 +51,8 @@ type PublicStorageHub = {
   execute(commands: StorageCommand[]): Promise<unknown[]>;
 };
 
-export function createPublicStorage(hub: PublicStorageHub): StorageClient {
+export function createPublicStorage(hub: PublicStorageHub, renewHub?: () => PublicStorageHub): StorageClient {
+  const renew = renewHub && (() => { hub = renewHub(); });
   let pending: PendingRead[] = [];
   let scheduled = false;
   let tail = Promise.resolve();
@@ -60,7 +78,8 @@ export function createPublicStorage(hub: PublicStorageHub): StorageClient {
           offset += 1;
         }
         try {
-          const values: StorageResult[] = await hub.publicRead(group.flatMap((item) => item.commands));
+          const commands = group.flatMap((item) => item.commands);
+          const values: StorageResult[] = await retryRead(commands, () => hub.publicRead(commands), renew);
           let valueOffset = 0;
           for (const item of group) {
             item.resolve(values.slice(valueOffset, valueOffset + item.commands.length));
@@ -79,7 +98,7 @@ export function createPublicStorage(hub: PublicStorageHub): StorageClient {
       return new Promise<unknown[]>((resolve, reject) => {
         enqueue(async () => {
           try {
-            const values = readOnly(commands) ? await hub.publicRead(commands) : await hub.execute(commands);
+            const values = readOnly(commands) ? await retryRead(commands, () => hub.publicRead(commands), renew) : await hub.execute(commands);
             resolve(values);
           } catch (error) { reject(error); }
         });
