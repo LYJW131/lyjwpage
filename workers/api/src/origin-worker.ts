@@ -11,7 +11,6 @@ import { STORAGE_MAX_BYTES } from "@shared/storage-contract";
 import { writeAppleMusicCredentials } from "@shared/credentials";
 import type { StoredEntry } from "@shared/sqlite-store";
 
-import { refreshRecentlyPlayed } from "./apple-music-recent";
 
 import { expireStatusTags, publish, ROOM_ID } from "./live-platform";
 import { ConfigError, issueMusicKitToken } from "./musickit-token";
@@ -460,16 +459,11 @@ async function publishAgentStatus(): Promise<void> {
 const worker = {
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     await withRequestState(() => requestStore.run({ env, ctx }, async () => {
-      // 在听每分钟都刷，不再看有没有人开着页面：这份列表现在是 listening 评分的证据
-      // （iPhone 等没有上报器的设备只在它上面留痕迹，见 stores/listening-pulse），
-      // 只在有人看时刷的话，白天没人打开站点，那天在 iPhone 上听的就全没了。
-      // 上游频率仍由 refreshRecentlyPlayed 里两分钟的 SQLite 闸门管着，最多每两分钟
-      // 打一次 Apple。PageSpeed 自己按小时抢闸门，一轮实测要二十多秒。厂商状态
-      // 通常一两秒。三件事并行，别让 PageSpeed 拖住换歌和状态推送。状态只有
-      // 结果变了才推，开着的页面不用等下一分钟的轮询。
+      // 最近在听已由采集 Worker 每两分钟拉取、经 StateCore.commitRecentlyPlayed 交回来。
+      // PageSpeed 自己按小时抢闸门，一轮实测要二十多秒；厂商状态通常一两秒，两件事并行。
+      // 状态只有结果变了才推，开着的页面不用等下一分钟的轮询。
       await Promise.all([
         refreshPageSpeed(),
-        env.STATE ? refreshRecentlyPlayed() : null,
         publishAgentStatus(),
       ]);
     }));
@@ -540,12 +534,7 @@ const worker = {
     if (url.pathname === WS_PATH) {
       const rejected = rejectSocket(request, env);
       if (rejected) return rejected;
-      const response = await getRoom(env).fetch(request);
-      // 影子房间只转发生产的 /ws。这里再刷 Apple 会写进空库，并把本地事件推给预览页。
-      if (response.status === 101 && env.STATE && !previewWorkerEnabled()) {
-        await withRequestState(() => requestStore.run({ env, ctx }, () => refreshRecentlyPlayed()));
-      }
-      return response;
+      return getRoom(env).fetch(request);
     }
 
     if (url.pathname === "/count") {

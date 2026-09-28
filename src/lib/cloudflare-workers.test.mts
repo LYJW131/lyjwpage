@@ -133,7 +133,7 @@ test("a deployed version without a build record borrows the commit of the previo
 
 test("metrics fall back to the last good payload when Cloudflare is unavailable, else report unavailable", async (t) => {
   const stale = parseWorkersMetrics(analytics(), start, end);
-  await put("cloudflare-metrics:v1:acct-stale:last-good", stale, 60_000);
+  await put("cloudflare-metrics:v2:acct-stale:last-good", stale, 60_000);
   t.mock.method(globalThis, "fetch", async () => Response.json({ error: "forbidden" }, { status: 403 }));
   assert.deepEqual(await getWorkersMetrics("acct-stale", "test-secret"), stale);
   await assert.rejects(getWorkersMetrics("acct-none", "test-secret"), /暂不可用/);
