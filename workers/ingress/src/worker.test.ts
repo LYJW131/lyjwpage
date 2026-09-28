@@ -79,7 +79,7 @@ function world(setup: Setup = {}) {
     },
     broadcastVersion: async () => { calls.broadcasts += 1; return 3; },
     revalidate: async (tags) => { calls.revalidated.push(tags); },
-    connections: async () => 0,
+    audience: async () => ({ connections: 0, online: 0 }),
     playstationPower: async () => null,
     appleDeveloperToken: async () => { throw new Error("not used"); },
     commitRecentlyPlayed: async () => { throw new Error("not used"); },
