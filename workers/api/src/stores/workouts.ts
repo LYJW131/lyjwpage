@@ -1,6 +1,7 @@
 import { object } from "@/lib/json";
 import type { Workout, WorkoutsPayload } from "@/lib/types";
 import { mirror, WORKOUT_LIMIT } from "@shared/workouts";
+import { writePulseWorkouts } from "@api/stores/pulse";
 
 function amount(value: unknown, field: string): number {
   if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
@@ -55,5 +56,10 @@ export function normalizeWorkouts(input: unknown, receivedAt = Date.now()): Work
 
 export async function writeWorkouts(value: WorkoutsPayload): Promise<void> {
   // Full replacement also removes workouts deleted in HealthKit.
-  await mirror.put(value);
+  // Pulse 的训练区间单独留一份在状态核心里：训练卡片的数据以后可能挪去 KV，
+  // 活动道的时间线仍要在这里读得到。
+  await Promise.all([
+    mirror.put(value),
+    writePulseWorkouts(value.items.map(({ startedAt, endedAt, activityType }) => ({ startedAt, endedAt, activityType }))),
+  ]);
 }

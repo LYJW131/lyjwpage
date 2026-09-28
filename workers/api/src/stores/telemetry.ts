@@ -1,6 +1,6 @@
 import { recordCodingObservation } from "@api/stores/coding-pulse";
-import { isCodingApp } from "@shared/pulse-levels";
-import { chargingLevel, codingLevel, listeningLevel } from "@shared/pulse-levels";
+import { isCodingApp } from "@shared/coding-apps";
+import { listeningFacts } from "@shared/pulse-listening";
 import { chargerPushPayload } from "@/lib/anker";
 import { readChargerState } from "@/lib/charger-store";
 import {
@@ -19,7 +19,6 @@ import {
 import { number, object, text } from "@/lib/json";
 import { chargerActive, liveTrack, powerBankActive } from "@/lib/home-layout";
 import { CHARGER_TAG, DESKTOP_TAG, NOW_LISTENING_TAG, POWERBANK_TAG, VIBECODING_TAG } from "@/lib/live-events";
-import { pickNowListening } from "@/lib/now-listening";
 import {
   normalizePlayingQueue,
   upcomingQueueTracks,
@@ -41,7 +40,7 @@ import type {
 } from "@/lib/types";
 import { fanout, type PendingEvent } from "@api/fanout";
 import type { ListeningEffect } from "@api/ingest-effects";
-import { recordPulse } from "@api/stores/pulse";
+import { recordChargingSample, recordStateObservation } from "@api/stores/pulse";
 import { parseAppleMusicCredentials } from "@api/apple-music-credentials-module";
 import { prepareHeartbeat, prepareStatus } from "@api/stores/charger-store";
 import { writeSettlingAt } from "@api/stores/charging-settling";
@@ -51,7 +50,7 @@ import { prepareVibeCodingNow, prepareVibeCodingNowPayload, prepareVibeCodingUsa
 import { prepareVibeCodingYear, prepareVibeCodingYearPayload } from "@api/stores/vibecoding-year-store";
 import type { ParsedVibeCodingNow, ParsedVibeCodingUsage } from "@/lib/vibecoding-parse";
 import { nowMirror } from "@shared/vibecoding";
-import { activeDesktop, DESKTOP_ICON_CACHE_LIMIT, desktopPayload, mirror, type PersistedTelemetry, bareSnapshotFrom, type StoredDesktopActivity, syncTelemetryState, telemetryState } from "@shared/telemetry";
+import { activeDesktop, DESKTOP_ICON_CACHE_LIMIT, desktopPayload, mirror, type PersistedTelemetry, type StoredDesktopActivity, syncTelemetryState, telemetryState } from "@shared/telemetry";
 
 type TelemetryPatch = {
   desktop?: StoredDesktopActivity | null;
@@ -740,15 +739,15 @@ export async function commitPreparedTelemetryEnvelope(command: PreparedTelemetry
     }
 
     /**
-     * 在听和 coding 每封都重算一笔，纯心跳也算。
+     * 在听和 coding 每封都记一次观测，纯心跳也算。
      *
      * 采集端只在内容变化时才带上对应模块，所以「这封没带 appleMusic / desktop」
      * 说的是「没变」，不是「没在听、没在写」。从前这两笔挂在模块出现上，于是一首
-     * 长歌、一段稳定的 coding 整段不落笔：5 分钟的再确认永远不到，暂停宽限期过了
-     * 也没人把它翻成空闲 —— 序列中间看起来像上报器死了。
+     * 长歌、一段稳定的 coding 整段不落笔，时间线中间看起来像上报器死了。
+     * 同一状态续区间最多每分钟写一次，见 shared/pulse-timeline。
      *
-     * 档位从留着的工作副本 + 这封算出来的存活现算，**不查 Apple 目录**
-     * （bareSnapshotFrom），两笔都自己吞异常，写坏了不影响 202。
+     * 事实从留着的工作副本 + 这封算出来的存活现算，**不查 Apple 目录**，
+     * 两笔都自己吞异常，写坏了不影响 202。
      */
     writes.push(recordListeningPulse(receivedAt, liveness, homePod));
     writes.push(recordCodingPulse(receivedAt, codingNow?.now.agents, storedCodingNow, presence === "online"));
@@ -819,14 +818,14 @@ function listeningEffect(
 }
 
 /**
- * pulse 序列只仲裁「谁在放」，不查 Apple 目录。
+ * Pulse 听歌道的一次观测：谁在放、放的什么，不查 Apple 目录。
  *
  * HomePod 入口直接使用本次已经规范化并写入的值，不另开一次 SQLite。
  * Mac 那一侧使用已经更新好的工作副本 —— 这封带了 appleMusic 的话它正是新的那份，
- * 没带就是留着的上一份，两种情形都该按同一套规则重算一次档位。
+ * 没带就是留着的上一份，两种情形都该按同一套规则重算一次。
  *
- * `now` 一律取 `receivedAt`，和样本的 `t` 同一把钟：暂停宽限、HomePod 静默、
- * 存活窗口三件事都是时间的函数，判它们的时刻必须就是这一笔记下来的时刻。
+ * `now` 一律取 `receivedAt`，和区间的时刻同一把钟：HomePod 静默、存活窗口都是时间的函数，
+ * 判它们的时刻必须就是这一笔记下来的时刻。
  */
 async function recordListeningPulse(
   receivedAt: number,
@@ -834,10 +833,12 @@ async function recordListeningPulse(
   homePod: Promise<StoredHomePod | null>,
 ): Promise<void> {
   try {
-    const scored = listeningLevel(
-      pickNowListening(bareSnapshotFrom(await homePod), liveness, receivedAt),
-    );
-    await recordPulse("listening", { t: receivedAt, level: scored.level, hint: scored.hint });
+    const facts = listeningFacts({
+      mac: telemetryState.music,
+      macObserved: telemetryState.activeModules.has("appleMusic"),
+      homePod: await homePod,
+    }, liveness, receivedAt);
+    await recordStateObservation("listening", receivedAt, facts);
   } catch (error) {
     console.error("[pulse]", error instanceof Error ? error.message : String(error));
   }
@@ -853,7 +854,7 @@ async function recordCodingPulse(
     /**
      * 留着的 agents 也要过闸，和前台应用一样：vibeCoding 模块关掉之后 nowMirror 里
      * 还是最后那份，采集器死了而 Mac 还在心跳时同样如此 —— 不挡的话最后一次
-     * `active: true` 会被每 5 分钟的再确认一直算成 level 3。模块名按上报器的
+     * `active: true` 会被每封心跳一直算成 agent 在跑。模块名按上报器的
      * activeModules 来（`vibeCoding`），过期线沿用卡片那条 VIBECODING_STALE_MS。
      */
     const kept = incomingAgents === undefined ? await mirrored : null;
@@ -866,38 +867,30 @@ async function recordCodingPulse(
     /**
      * 前台应用要过 activeModules 那道闸，和 desktopPayload 同一份判断。
      * 只看工作副本非空的话，desktop 模块关掉之后留着的那份还会被下一封
-     * vibeCodingNow 捡起来，把早就关掉的编辑器一直算成 level 2。
+     * vibeCodingNow 捡起来，把早就关掉的编辑器一直算成在写代码。
      */
-    const stored = activeDesktop();
-    const desktop = stored
-      ? { applicationName: stored.applicationName, bundleIdentifier: stored.bundleIdentifier }
-      : null;
+    const desktop = activeDesktop();
+    // 三色带与 Jev 都从这份原始观测现算；不再另写一条档位序列。
     await recordCodingObservation({
       t: receivedAt,
       available: online && (desktop !== null || agents !== null),
       desktop: desktop ? { application: desktop.applicationName.slice(0, 80), coding: isCodingApp(desktop.bundleIdentifier, desktop.applicationName) } : null,
       agents: agents?.map((agent) => ({ id: agent.id, model: agent.currentModel?.slice(0, 80) ?? null, active: agent.active })) ?? null,
     });
-    const scored = codingLevel({ agents, desktop });
-    await recordPulse("coding", { t: receivedAt, level: scored.level, hint: scored.hint });
   } catch (error) {
     console.error("[pulse]", error instanceof Error ? error.message : String(error));
   }
 }
 
-/** 充电头档位。同样自己吞异常 —— 序列是次要的，不能让一封好好的上报变成 500。 */
+/** 充电头的实测瓦数。同样自己吞异常 —— 时间线是次要的，不能让一封好好的上报变成 500。 */
 async function recordChargingPulse(receivedAt: number, status: ChargerStatus): Promise<void> {
-  try {
-    const scored = chargingLevel(status);
-    await recordPulse("charging", { t: receivedAt, level: scored.level, hint: scored.hint, powerW: status.connected ? status.totalPower : 0 });
-  } catch (error) {
-    console.error("[pulse]", error instanceof Error ? error.message : String(error));
-  }
+  const device = status.cover?.name ?? status.ports.find((port) => port.active)?.device ?? null;
+  await recordChargingSample(receivedAt, status.connected ? status.totalPower : 0, device);
 }
 
 /**
  * HomePod 那条入口：Mac 工作副本和存活一起读取。推送只收集可序列化描述符，
- * Apple 目录补充交给普通 Worker；pulse 仍在 DO 内按裸快照算档位。
+ * Apple 目录补充交给普通 Worker；Pulse 听歌道仍在 DO 内按裸快照记一笔。
  */
 export function homePodListening(stored: StoredHomePod): {
   effect: Promise<ListeningEffect>;
@@ -913,7 +906,7 @@ export function homePodListening(stored: StoredHomePod): {
         recordListeningPulse(
           stored.receivedAt,
           liveness,
-          Promise.resolve(playableHomePod(stored)),
+          Promise.resolve(stored),
         ),
       (error) => {
         console.error("[pulse]", error instanceof Error ? error.message : String(error));

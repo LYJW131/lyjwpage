@@ -6,10 +6,9 @@ import type { StorageCommand, StorageResult } from "@shared/storage-contract";
 import { commitPreparedIngest, type PreparedIngest } from "./ingest-handlers";
 import { collectIngestEffects, type IngestEffect } from "./ingest-effects";
 import { historyArchiveEnabled, pulseScoringEnabled, requestStore, type Env } from "./runtime";
-import { PulseArchiveState, type PulseArchiveSnapshot } from "./pulse-archive";
+import { PulseArchiveState, type ArchiveStream, type PulseArchiveSnapshot } from "./pulse-archive";
 import { PulseScoreState, type PulseScoreClaim } from "./pulse-score-state";
 import type { PulseAssessment } from "@shared/pulse-assessment";
-import type { PulseDomain } from "@/lib/types";
 import { DEV_OVERRIDE_TTL_MS, overrideIndexStorageKey, overrideStorageKey } from "./dev-overrides";
 
 type CommitIngestWire =
@@ -110,15 +109,15 @@ export class StateHub extends DurableObject<Env> {
   }
 
   async readPulseArchive(): Promise<PulseArchiveSnapshot> {
-    if (!this.ready() || !historyArchiveEnabled(this.env)) return { domains: [] };
+    if (!this.ready() || !historyArchiveEnabled(this.env)) return { now: Date.now(), streams: [] };
     await this.ingestTail;
     return this.pulseArchiveState.readPulseArchive();
   }
 
-  async confirmPulseArchive(domain: PulseDomain, at: number, replaceToken?: string): Promise<number> {
+  async confirmPulseArchive(stream: ArchiveStream, at: number, replaceToken?: string): Promise<number> {
     if (!this.ready() || !historyArchiveEnabled(this.env)) return 0;
     await this.ingestTail;
-    return this.pulseArchiveState.confirmPulseArchive(domain, at, replaceToken);
+    return this.pulseArchiveState.confirmPulseArchive(stream, at, replaceToken);
   }
 
   async claimPulseScore(): Promise<PulseScoreClaim | null> {

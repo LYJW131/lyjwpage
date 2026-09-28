@@ -2,9 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
 import { codingObservationsKey, codingTokenUsageKey, cursorObservationsKey } from "@/lib/coding-pulse";
-import { listeningPlaysKey, listeningChecksKey } from "@/lib/listening-pulse";
-import { pulseIntervalRevisionKey, pulseKey } from "@/lib/pulse";
-import { PULSE_DOMAINS, type PulseDomain } from "@/lib/types";
 import { CODING_OBSERVATION_HOLD_MS, CODING_WINDOW_MS, PULSE_SCORE_WINDOW_MS, parseCodingAssessment } from "@shared/pulse-coding";
 import { latestPulseAssessments, type PulseAssessment } from "@shared/pulse-assessment";
 import { SqliteStore, type SqlDatabase } from "@shared/sqlite-store";
@@ -18,8 +15,6 @@ import { installStorageForTests } from '../../../src/lib/storage-driver';
 import { withRequestState } from '@shared/request-state';
 import { requestStore, type Env } from './runtime';
 import { recordAgentLimits } from './stores/vibecoding';
-import { prepareRecentlyPlayed } from './stores/apple-music-store';
-import { workoutsKey } from "@shared/workouts";
 const T = 1_800_000_000_000;
 function setup() {
   let now = T + PULSE_SCORE_WINDOW_MS + 120_000;
@@ -156,121 +151,12 @@ test('late token evidence re-scores only changed windows; identical evidence sta
   const rows=await b.storage.listRange(pulseAssessmentsKey(),0,-1);assert.equal(rows.length,1);
 });
 
-test('all domains retain Jev summaries independently of measured charts',async()=>{
- const b=setup();await b.push(T);
- const {pulseKey}=await import('@/lib/pulse');
- for(const domain of ['listening','watching','gaming','charging','activity'] as const)
-   await b.storage.append(pulseKey(domain),JSON.stringify({t:T,until:T+CODING_WINDOW_MS,level:3,...(domain === "charging" ? {powerW:72.5} : {})}));
- await b.make().run();assert.equal(b.requests.length,6);
- assert.ok(b.requests.some((request)=>JSON.stringify(request.state).includes('"peakWatts":72.5')));
- const rows=await b.storage.listRange(pulseAssessmentsKey(),0,-1);
- assert.equal(new Set(rows.map((r)=>JSON.parse(r).domain)).size,6);
- b.advance(CODING_WINDOW_MS);await b.make().run();assert.equal(b.requests.length,6);
-});
-
-test('listening marks score windows with no live samples and claim at most one window', async () => {
-  const b = setup();
-  await b.storage.append(listeningPlaysKey(), JSON.stringify({ t: T + 240_000, since: T + 120_000, hint: 'Hamilton' }));
-  await b.make().run();
-  assert.equal(b.requests.length, 1);
-  const state = b.requests[0].state as Record<string, unknown>;
-  assert.equal(state.playingSeconds, 0, '实测只算上报，痕迹不掺进去');
-  assert.deepEqual(state.recentPlays, [{ title: 'Hamilton', gap: 'within five minutes' }]);
-  assert.ok(!JSON.stringify(state).includes(String(T)), '发给 Jev 的 state 里没有时间戳');
-  assert.deepEqual(Object.keys(b.requests[0].questions as object), ['intensity', 'continuity', 'mode']);
-  const row = JSON.parse((await b.storage.listRange(pulseAssessmentsKey(), 0, -1))[0]) as { domain: string; coverage: { from: number; to: number }[]; mode: { value: string } | null };
-  assert.equal(row.domain, 'listening');
-  assert.deepEqual(row.coverage, [{ from: T + 120_000, to: T + 240_000 }]);
-  assert.equal(row.mode?.value, 'traces');
-});
-
-test('a listening mark after hours of silence still claims only one window of time', async () => {
-  const b = setup();
-  await b.storage.append(listeningPlaysKey(), JSON.stringify({ t: T + 240_000, since: T - 6 * 3_600_000, hint: null }));
-  await b.make().run();
-  // 认领区间可以跨过五分钟的边界，落在两个窗口上，但加起来仍不超过一个窗口。
-  const claimed = (await b.storage.listRange(pulseAssessmentsKey(), 0, -1))
-    .flatMap((raw) => (JSON.parse(raw) as { coverage: { from: number; to: number }[] }).coverage)
-    .reduce((sum, part) => sum + (part.to - part.from), 0);
-  assert.equal(claimed, CODING_WINDOW_MS);
-  assert.ok(b.requests.length <= 2);
-});
-
-test('listening windows without marks stay frozen when an unrelated mark arrives', async () => {
-  const b = setup();
-  await b.storage.append(pulseKey('listening'), JSON.stringify({ t: T, until: T + CODING_WINDOW_MS, level: 3, hint: 'A' }));
-  await b.make().run();
-  assert.equal(b.requests.length, 1);
-  const before = await b.storage.listRange(pulseAssessmentsKey(), 0, -1);
-  assert.deepEqual((b.requests[0].state as { recentPlays: unknown[] }).recentPlays, []);
-  // 痕迹落在上一个窗口：那个窗口该打分，这个窗口的 inputHash 不能因此变。
-  await b.storage.append(listeningPlaysKey(), JSON.stringify({ t: T - 60_000, since: T - 120_000, hint: null }));
-  b.advance(CODING_WINDOW_MS);
-  await b.make().run();
-  assert.equal(b.requests.length, 2);
-  assert.equal((b.requests[1].state as { recentPlays: unknown[] }).recentPlays.length, 1);
-  const rows = (await b.storage.listRange(pulseAssessmentsKey(), 0, -1)).map((raw) => JSON.parse(raw) as { from: number; inputHash: string });
-  assert.equal(rows.find((row) => row.from === T)!.inputHash, (JSON.parse(before[0]) as { inputHash: string }).inputHash);
-});
-
-test('listening counts track changes in code and hands Jev named seconds, never raw segments', async () => {
-  const b = setup();
-  for (const [i, hint] of ['A', 'B', 'C', 'C'].entries())
-    await b.storage.append(pulseKey('listening'), JSON.stringify({ t: T + i * 60_000, level: 3, hint }));
-  await b.make().run();
-  const state = b.requests[0].state as Record<string, unknown>;
-  assert.equal(state.trackChanges, 2);
-  assert.equal(state.distinctTracks, 3);
-  assert.equal(state.playingSeconds, 780);
-  assert.equal(state.playingPercent, 100);
-  assert.equal(state.longestPlayingRunPercent, 100);
-  assert.equal('segments' in state, false);
-  assert.equal('legend' in state, false);
-});
-
-test("activity sends a named workout into the Jev state and scores a window the rings missed", async () => {
-  const b = setup();
-  await b.storage.set(workoutsKey(), JSON.stringify({
-    pushedAt: T,
-    items: [{
-      id: "e3389897-4be9-45af-9e5d-be7480a89b50",
-      activityType: "Fencing",
-      startedAt: T,
-      endedAt: T + CODING_WINDOW_MS,
-      secondsFromGMT: 28_800,
-      durationSeconds: 300,
-      distanceMeters: null,
-      activeEnergyKcal: 200,
-      averageHeartRateBpm: null,
-      maximumHeartRateBpm: null,
-      elevationAscendedMeters: null,
-      indoor: false,
-    }],
-  }));
-  await b.make().run();
-  assert.equal(b.requests.length, 1);
-  const state = b.requests[0].state as {
-    workoutPercent: number;
-    vigorousSeconds: number;
-    workouts: { activityType: string; seconds: number }[];
-  };
-  assert.deepEqual(state.workouts, [{ activityType: "Fencing", seconds: 300 }]);
-  assert.equal(state.workoutPercent, 100);
-  assert.equal(state.vigorousSeconds, 0);
-  assert.equal(JSON.stringify(state).includes(String(T)), false);
-  const questions = b.requests[0].questions as { intensity: { criteria: string[] }; continuity: { criteria: string[] } };
-  assert.match(questions.intensity.criteria[4], /`workoutPercent` 50 or above/);
-  assert.match(questions.continuity.criteria[3], /`workoutPercent` 75 or above/);
-  const row = JSON.parse((await b.storage.listRange(pulseAssessmentsKey(), 0, -1))[0]) as { domain: string };
-  assert.equal(row.domain, "activity");
-});
-
-function assessment(domain: PulseDomain, from: number, scoredAt: number, inputHash = "hash"): PulseAssessment {
+function assessment(domain: "coding", from: number, scoredAt: number, inputHash = "hash"): PulseAssessment {
   return {
     domain,
     from,
-    to: from + CODING_WINDOW_MS,
-    coverage: [{ from, to: from + CODING_WINDOW_MS }],
+    to: from + PULSE_SCORE_WINDOW_MS,
+    coverage: [{ from, to: from + PULSE_SCORE_WINDOW_MS }],
     intensity: { value: 2, confidence: 1, probabilities: { 0: 0, 1: 0, 2: 1, 3: 0, 4: 0 } },
     continuity: { value: 2, confidence: 1, probabilities: { 0: 0, 1: 0, 2: 1, 3: 0 } },
     mode: null,
@@ -324,37 +210,18 @@ test("pulse score state: expired results cannot overwrite a replacement window",
   assert.equal(saved[0].inputHash, "replacement");
 });
 
-test("pulse score state: an activity history revision rejects stale activity results only", async () => {
+test("pulse score state: commit merges at submit time and compacts a list past its cap to the newest rows", async () => {
   const b = setup();
   const state = b.coordinator();
   const claim = await state.claimPulseScore();
   assert.ok(claim);
   assert.equal(await state.activatePulseScore(claim.token, claim.generation), true);
-  await b.storage.set(pulseIntervalRevisionKey("activity"), "1");
-
-  const activity = assessment("activity", T, b.now(), "stale-activity");
-  const coding = assessment("coding", T, b.now(), "current-coding");
-  assert.equal(await state.finishPulseScore(claim.token, claim.generation, [activity, coding]), true);
-  const saved = (await b.storage.listRange(pulseAssessmentsKey(), 0, -1)).map((raw) => JSON.parse(raw) as PulseAssessment);
-  assert.deepEqual(saved.map((row) => row.inputHash), ["current-coding"]);
-});
-
-test("pulse score state: commit merges at submit time and splits lists above 10000 values", async () => {
-  const b = setup();
-  const state = b.coordinator();
-  const claim = await state.claimPulseScore();
-  assert.ok(claim);
-  assert.equal(await state.activatePulseScore(claim.token, claim.generation), true);
-  const records = Array.from({ length: 10_001 }, (_, index) => {
-    const domain = PULSE_DOMAINS[index % PULSE_DOMAINS.length];
-    const from = T - Math.floor(index / PULSE_DOMAINS.length) * CODING_WINDOW_MS;
-    return assessment(domain, from, b.now(), `hash-${index}`);
-  });
-  const concurrent = assessment("activity", T + CODING_WINDOW_MS, b.now(), "concurrent");
+  const records = Array.from({ length: 10_001 }, (_, index) => assessment("coding", T - index * PULSE_SCORE_WINDOW_MS, b.now(), `hash-${index}`));
+  const concurrent = assessment("coding", T + PULSE_SCORE_WINDOW_MS, b.now(), "concurrent");
   await b.storage.append(pulseAssessmentsKey(), JSON.stringify(concurrent));
   assert.equal(await state.finishPulseScore(claim.token, claim.generation, records), true);
   const saved = (await b.storage.listRange(pulseAssessmentsKey(), 0, -1)).map((raw) => JSON.parse(raw) as PulseAssessment);
-  assert.equal(saved.length, 10_002);
+  assert.equal(saved.length, 2016);
   assert.ok(saved.some((record) => record.inputHash === "concurrent"));
 });
 
@@ -368,9 +235,9 @@ async function finishWith(b: ReturnType<typeof setup>, records: PulseAssessment[
 
 test("pulse score state: a round only appends its new results, never rewrites the list", async () => {
   const b = setup();
-  const seeded = Array.from({ length: 20 }, (_, i) => JSON.stringify(assessment("coding", T - i * CODING_WINDOW_MS, b.now(), `seed-${i}`)));
+  const seeded = Array.from({ length: 20 }, (_, i) => JSON.stringify(assessment("coding", T - i * PULSE_SCORE_WINDOW_MS, b.now(), `seed-${i}`)));
   await b.storage.append(pulseAssessmentsKey(), ...seeded);
-  await finishWith(b, [assessment("listening", T, b.now(), "new")]);
+  await finishWith(b, [assessment("coding", T + PULSE_SCORE_WINDOW_MS, b.now(), "new")]);
   const rows = await b.storage.listRange(pulseAssessmentsKey(), 0, -1);
   assert.equal(rows.length, 21);
   assert.deepEqual(rows.slice(0, 20), seeded, "existing rows are left in place");
@@ -378,7 +245,7 @@ test("pulse score state: a round only appends its new results, never rewrites th
 
 test("pulse score state: a re-scored window is appended and the later row wins for every reader", async () => {
   const b = setup();
-  const seeded = Array.from({ length: 20 }, (_, i) => JSON.stringify(assessment("coding", T - i * CODING_WINDOW_MS, b.now(), `seed-${i}`)));
+  const seeded = Array.from({ length: 20 }, (_, i) => JSON.stringify(assessment("coding", T - i * PULSE_SCORE_WINDOW_MS, b.now(), `seed-${i}`)));
   await b.storage.append(pulseAssessmentsKey(), ...seeded);
   await finishWith(b, [assessment("coding", T, b.now(), "rescored")]);
   const rows = await b.storage.listRange(pulseAssessmentsKey(), 0, -1);
@@ -390,11 +257,11 @@ test("pulse score state: a re-scored window is appended and the later row wins f
 
 test("pulse score state: once superseded rows outweigh half the live ones the list is compacted", async () => {
   const b = setup();
-  const live = Array.from({ length: 10 }, (_, i) => assessment("coding", T - i * CODING_WINDOW_MS, b.now(), `live-${i}`));
+  const live = Array.from({ length: 10 }, (_, i) => assessment("coding", T - i * PULSE_SCORE_WINDOW_MS, b.now(), `live-${i}`));
   // 同一批窗口的六份旧评分：被覆盖的行远多于有效行
   const stale = Array.from({ length: 6 }, (_, n) => live.map((row) => JSON.stringify({ ...row, inputHash: `old-${n}` }))).flat();
   await b.storage.append(pulseAssessmentsKey(), ...stale, ...live.map((row) => JSON.stringify(row)));
-  await finishWith(b, [assessment("listening", T, b.now(), "new")]);
+  await finishWith(b, [assessment("coding", T + PULSE_SCORE_WINDOW_MS, b.now(), "new")]);
   const rows = await b.storage.listRange(pulseAssessmentsKey(), 0, -1);
   assert.equal(rows.length, 11);
   const parsed = rows.map((raw) => JSON.parse(raw) as PulseAssessment);
@@ -447,36 +314,26 @@ test('coding token usage excludes partially reported boundary buckets', async ()
   assert.deepEqual(token.sources.map((source)=>source.state),['partial','unavailable']);
 });
 
-async function cover(b: ReturnType<typeof setup>, domain: PulseDomain, level: number, extra: Record<string, unknown> = {}) {
-  for (let index = 0; index < 3; index += 1) {
-    const t = T + index * CODING_WINDOW_MS;
-    await b.storage.append(pulseKey(domain), JSON.stringify({ t, until: t + CODING_WINDOW_MS, level, ...extra }));
+async function quietCoding(b: ReturnType<typeof setup>, from: number) {
+  for (let index = 0; index < PULSE_SCORE_WINDOW_MS / CODING_OBSERVATION_HOLD_MS; index += 1) {
+    await b.storage.append(codingObservationsKey(), JSON.stringify({
+      t: from + index * CODING_OBSERVATION_HOLD_MS, available: true,
+      desktop: { application: "Safari", coding: false }, agents: [],
+    }));
   }
 }
 
 test("fully observed zero windows skip Jev and store the lowest certain score", async () => {
   const b = setup();
-  for (let index = 0; index < PULSE_SCORE_WINDOW_MS / CODING_OBSERVATION_HOLD_MS; index += 1) {
-    await b.storage.append(codingObservationsKey(), JSON.stringify({
-      t: T + index * CODING_OBSERVATION_HOLD_MS, available: true,
-      desktop: { application: "Safari", coding: false }, agents: [],
-    }));
-  }
+  await quietCoding(b, T);
   await b.storage.set(codingTokenUsageKey(), JSON.stringify({
     from: T, to: T + PULSE_SCORE_WINDOW_MS, collectedAt: T + PULSE_SCORE_WINDOW_MS + 60_000,
     sources: [{ id: "codex", state: "ok" }, { id: "claude", state: "ok" }], windows: [],
   }));
-  await cover(b, "listening", 0);
-  await b.storage.append(pulseKey("watching"), JSON.stringify({ t: T, level: 0 }));
-  await b.storage.append(pulseKey("gaming"), JSON.stringify({ t: T, level: 0 }));
-  for (let index = 0; index < 3; index += 1) {
-    await b.storage.append(pulseKey("charging"), JSON.stringify({ t: T + index * CODING_WINDOW_MS, level: 0, powerW: 0 }));
-  }
-  await cover(b, "activity", 0);
   await b.make().run();
   assert.equal(b.requests.length, 0);
   const rows = latestPulseAssessments(await b.storage.listRange(pulseAssessmentsKey(), 0, -1));
-  assert.deepEqual(rows.map((row) => row.domain).sort(), [...PULSE_DOMAINS].sort());
+  assert.deepEqual(rows.map((row) => row.domain), ["coding"]);
   for (const row of rows) {
     assert.equal(row.model, "rules");
     assert.equal(row.to - row.from, PULSE_SCORE_WINDOW_MS);
@@ -488,73 +345,43 @@ test("fully observed zero windows skip Jev and store the lowest certain score", 
     assert.equal(row.continuity.value, 0);
     assert.equal(row.continuity.confidence, 1);
     assert.equal(row.continuity.probabilities["0"], 1);
-    assert.equal(row.mode?.value ?? null, row.domain === "coding" || row.domain === "listening" ? "idle" : null);
-    if (row.mode) assert.equal(row.mode.confidence, 1);
-    if (row.mode) assert.equal(row.mode.probabilities.idle, 1);
+    assert.equal(row.mode?.value, "idle");
+    assert.equal(row.mode?.confidence, 1);
+    assert.equal(row.mode?.probabilities.idle, 1);
   }
   await b.make().run();
   assert.equal(b.requests.length, 0);
-  assert.equal((await b.storage.listRange(pulseAssessmentsKey(), 0, -1)).length, PULSE_DOMAINS.length);
+  assert.equal((await b.storage.listRange(pulseAssessmentsKey(), 0, -1)).length, 1);
 });
 
-test("nonzero signals and incomplete or missing evidence still call Jev", async () => {
+test("missing token evidence still calls Jev for an idle-looking window", async () => {
   const b = setup();
-  await b.storage.append(pulseKey("listening"), JSON.stringify({ t: T, level: 0 }));
-  await b.storage.append(pulseKey("watching"), JSON.stringify({ t: T, until: T + 60_000, level: 3, hint: "Show" }));
-  await b.storage.append(pulseKey("gaming"), JSON.stringify({ t: T, level: 1 }));
-  await b.storage.append(pulseKey("charging"), JSON.stringify({ t: T, until: T + PULSE_SCORE_WINDOW_MS, level: 0 }));
-  await b.storage.append(pulseKey("activity"), JSON.stringify({ t: T, until: T + CODING_WINDOW_MS, level: 0 }));
-  for (let index = 0; index < PULSE_SCORE_WINDOW_MS / CODING_OBSERVATION_HOLD_MS; index += 1) {
-    await b.storage.append(codingObservationsKey(), JSON.stringify({
-      t: T + index * CODING_OBSERVATION_HOLD_MS, available: true,
-      desktop: { application: "Safari", coding: false }, agents: [],
-    }));
-  }
+  await quietCoding(b, T);
   await b.make().run();
-  assert.equal(b.requests.length, PULSE_DOMAINS.length);
+  assert.equal(b.requests.length, 1);
   const rows = latestPulseAssessments(await b.storage.listRange(pulseAssessmentsKey(), 0, -1));
-  assert.equal(rows.length, PULSE_DOMAINS.length);
   assert.ok(rows.every((row) => row.model === "jev-1.13.0"));
-  const gaming = b.requests.find((request) => "onlineIdleSeconds" in (request.state as object));
-  assert.ok(gaming && (gaming.state as { onlineIdleSeconds: number }).onlineIdleSeconds > 0);
-  const coding = b.requests.find((request) => "windows" in (request.state as object));
-  assert.equal((coding?.state as { windows: { tokenUsage: unknown }[] }).windows[0].tokenUsage, null);
-  const activity = b.requests.find((request) => "stillSeconds" in (request.state as object));
-  assert.ok(activity && (activity.state as { unknownSeconds: number }).unknownSeconds > 0);
+  assert.equal((b.requests[0].state as { windows: { tokenUsage: unknown }[] }).windows[0].tokenUsage, null);
 });
 
-test("a zero window is skipped while another window of the same lane still calls Jev", async () => {
+test("a zero window is skipped while another coding window still calls Jev", async () => {
   const b = setup();
-  await cover(b, "listening", 0);
-  await cover(b, "activity", 0);
+  await quietCoding(b, T);
   const next = T + PULSE_SCORE_WINDOW_MS;
-  for (let index = 0; index < 3; index += 1) {
-    const t = next + index * CODING_WINDOW_MS;
-    await b.storage.append(pulseKey("listening"), JSON.stringify({ t, until: t + CODING_WINDOW_MS, level: 3, hint: "Song" }));
-    await b.storage.append(pulseKey("activity"), JSON.stringify({ t, until: t + CODING_WINDOW_MS, level: 3 }));
-  }
+  for (let index = 0; index < 5; index += 1) await b.push(next + index * CODING_OBSERVATION_HOLD_MS);
+  await b.storage.set(codingTokenUsageKey(), JSON.stringify({
+    from: T, to: next + PULSE_SCORE_WINDOW_MS, collectedAt: next + PULSE_SCORE_WINDOW_MS + 60_000,
+    sources: [{ id: "codex", state: "ok" }, { id: "claude", state: "ok" }], windows: [],
+  }));
   b.advance(PULSE_SCORE_WINDOW_MS);
   await b.make().run();
-  assert.equal(b.requests.length, 2);
-  const states = b.requests.map((request) => request.state as { playingSeconds?: number; vigorousSeconds?: number });
-  assert.equal(states.filter((state) => (state.playingSeconds ?? 0) > 0).length, 1);
-  assert.equal(states.filter((state) => (state.vigorousSeconds ?? 0) > 0).length, 1);
+  assert.equal(b.requests.length, 1);
   const rows = latestPulseAssessments(await b.storage.listRange(pulseAssessmentsKey(), 0, -1));
-  assert.equal(rows.length, 4);
-  for (const domain of ["listening", "activity"] as const) {
-    const idle = rows.find((row) => row.domain === domain && row.from === T);
-    const busy = rows.find((row) => row.domain === domain && row.from === next);
-    assert.equal(idle?.model, "rules");
-    assert.equal(idle?.intensity.value, 0);
-    assert.equal(idle?.intensity.confidence, 1);
-    assert.equal(idle?.continuity.value, 0);
-    assert.equal(busy?.model, "jev-1.13.0");
-    assert.ok((busy?.intensity.value ?? 0) > 0);
-  }
-  assert.equal(rows.find((row) => row.domain === "listening" && row.from === T)?.mode?.value, "idle");
-  assert.equal(rows.find((row) => row.domain === "activity" && row.from === T)?.mode, null);
+  assert.equal(rows.find((row) => row.from === T)?.model, "rules");
+  assert.equal(rows.find((row) => row.from === T)?.mode?.value, "idle");
+  assert.equal(rows.find((row) => row.from === next)?.model, "jev-1.13.0");
+  assert.ok((rows.find((row) => row.from === next)?.intensity.value ?? 0) > 0);
 });
-
 
 test("Mac-offline account evidence reaches scoring and the public chart, then disappears after source expiry", async () => {
   const b = setup();
@@ -566,13 +393,13 @@ test("Mac-offline account evidence reaches scoring and the public chart, then di
       ctx: { waitUntil: (promise: Promise<unknown>) => { pending.push(promise); } } }, () => withRequestState(async () => {
       await recordAgentLimits({ cursorUsage: { collectedAt: new Date(T).toISOString(), state: 'ok', error: null,
         warning: null, coverageStart: null, coverageEnd: null, precision: 'measured', costComplete: true, days: [] } }, T);
-      for (let at = T; at <= T + PULSE_SCORE_WINDOW_MS; at += 180_000) await (await prepareRecentlyPlayed([], at)).commit();
     }));
   } finally { await Promise.allSettled(pending); resetStorageForTests(); }
   await b.make().run();
   assert.equal(b.requests.length, 0, "checked but inactive sources use a limited-confidence zero baseline");
-  const { publicAssessment } = await import('@/lib/pulse');
+  const { codingLaneView } = await import('@/lib/pulse');
   const rows = latestPulseAssessments(await b.storage.listRange(pulseAssessmentsKey(), 0, -1));
+  assert.deepEqual(rows.map((row) => row.domain), ['coding']);
   for (const row of rows) {
     assert.deepEqual(row.coverage, [{ from: T, to: T + PULSE_SCORE_WINDOW_MS }]);
     assert.equal(row.model, 'rules:limited-source');
@@ -580,10 +407,8 @@ test("Mac-offline account evidence reaches scoring and the public chart, then di
     assert.equal(row.intensity.confidence, 0.5);
     assert.equal(row.continuity.value, 0);
     assert.equal(row.mode?.value, 'idle');
-    const exposed = publicAssessment(row, { from: T });
-    assert.equal(exposed.startSec, 0);
-    assert.equal(exposed.endSec, 900);
-    assert.equal(exposed.coverage, undefined);
+    const exposed = codingLaneView([], [], [row], { from: T, to: T + PULSE_SCORE_WINDOW_MS });
+    assert.deepEqual(exposed.assessments, { startSec: [0], endSec: [900], intensity: [0], confidence: [0.5], mode: ['idle'] });
     assert.equal(JSON.stringify(exposed).includes('cursor'), false, "private source facts stay internal");
   }
   b.advance(2 * 3_600_000);
@@ -593,18 +418,12 @@ test("Mac-offline account evidence reaches scoring and the public chart, then di
 });
 
 
-test("independent source baseline never hides Cursor, token or recent playback activity", async () => {
+test("independent source baseline never hides Cursor or token activity", async () => {
   const cursor = setup();
   await cursor.storage.append(cursorObservationsKey(), JSON.stringify({ t: T, available: true, lastActivityAt: T }));
   await cursor.make().run();
   assert.equal(cursor.requests.length, 1);
   assert.equal((cursor.requests[0].state as { windows: { cursorActiveSeconds: number }[] }).windows[0].cursorActiveSeconds, 300);
-  const music = setup();
-  for (let at = T; at <= T + PULSE_SCORE_WINDOW_MS; at += 180_000) await music.storage.append(listeningChecksKey(), JSON.stringify({ t: at }));
-  await music.storage.append(listeningPlaysKey(), JSON.stringify({ since: T, t: T + 120_000, hint: "Album" }));
-  await music.make().run();
-  assert.equal(music.requests.length, 1);
-  assert.equal((music.requests[0].state as { recentPlays: unknown[] }).recentPlays.length, 1);
   const token = setup();
   await token.storage.append(cursorObservationsKey(), JSON.stringify({ t: T, available: true, lastActivityAt: null }));
   await token.storage.set(codingTokenUsageKey(), JSON.stringify({ from: T, to: T + 300_000, collectedAt: T + 300_000,

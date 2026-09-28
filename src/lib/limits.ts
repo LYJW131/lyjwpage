@@ -28,43 +28,28 @@ export const CHARGER_HISTORY_LIMIT = 400;
 export const LIVE_INTERVAL_MS = 1_000;
 export const LIVE_WINDOW_MS = 2 * 60 * 1000;
 
-/**
- * 跨域活动脉搏（pulse）：每域保留的采样条数。
- *
- * 阶跃序列，不是充电头那种密采样；600 × 5 分钟确认 ≈ 两天满载非空闲，
- * 空闲只占一条，7 天 TTL 才是真正的时间窗。改这里要和 writer 的 trim 一起看。
- */
-export const PULSE_HISTORY_LIMIT = 600;
-
-/** pulse 键的存活时间；每次 append 都续上，停报后 7 天清掉。 */
+/** pulse 键的存活时间；每次写入都续上，停报后 7 天清掉。各键的条数上限见 shared/pulse-timeline。 */
 export const PULSE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
- * 非空闲域最多这么久再确认一次。
- *
- * 序列是阶跃函数：每个点一直有效到下一个点。空闲只留一条；非空闲隔这么久
- * 再写一笔，上报器死了才会在图上露出缺口。心跳不得把 samples 表灌满。
+ * 充电瓦数没变时最多这么久再确认一次：上报器死了才会在图上露出缺口，
+ * 心跳又不至于把 samples 表灌满。
  */
 export const PULSE_REPEAT_AFTER_MS = 5 * 60 * 1000;
 
-/** hint 入库上限；更长的标题在 compactHint 里截断。 */
-export const PULSE_HINT_MAX = 48;
-
 /**
- * pulse 公开窗口与评分窗口：最近 24 小时。
+ * pulse 公开窗口与 Coding 评分窗口：最近 24 小时。
  *
  * StateHub 留 7 天，窗口只是取其中最近的一段：卡片画的是「今天这一天」，
- * Jev 评的也是同一段，两边必须同一个数，否则分和图对不上。
+ * Jev 评的也是同一段，悬停里的强度才对得上图上的那一段。
  */
 export const PULSE_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 /**
- * 一笔非空闲样本最多撑这么久。
+ * 一次观测最多撑这么久：状态区间两次确认之间、一笔瓦数到下一笔之间。
  *
- * 阶跃序列里每个点撑到下一个点，但非空闲每 5 分钟就该再确认一次
- * （PULSE_REPEAT_AFTER_MS）。超过两倍还没有下一笔，那是上报器死了，不是
- * 「一直在放」—— 再撑下去，一条过夜的陈旧样本会把 24 小时全算成满档，
- * 图上是一条假的实线，喂给 Jev 的分钟数也跟着错。空闲不受此限：
- * 空闲本来就只留一个点，撑到下一次翻面才是它的语义。
+ * 上报器每 30 秒一封，瓦数最迟 5 分钟再确认一次（PULSE_REPEAT_AFTER_MS）。
+ * 超过两倍还没有下一笔，那是上报器死了，不是「一直在放」—— 再撑下去，一条
+ * 过夜的陈旧观测会把整夜画成实线。那段如实空着，是未知。
  */
 export const PULSE_SILENT_AFTER_MS = 2 * PULSE_REPEAT_AFTER_MS;

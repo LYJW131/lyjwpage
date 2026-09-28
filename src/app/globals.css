@@ -42,6 +42,15 @@
   --live-idle: oklch(0.7 0.15 75);
   --live-off: oklch(0.62 0 0);
 
+  /*
+   * Pulse 的 Coding 三色带：前台是 coding 应用、agent 在跑、两者同时。
+   * 同样只给实时数据用；agent 沿用 --live。三色不光靠色相分：「两者同时」压暗
+   * 一大截，红绿色弱时蓝与深紫也靠亮度分得开；对卡片底色都在 3:1 上下或以上。
+   */
+  --pulse-human: oklch(0.64 0.13 248);
+  --pulse-agent: var(--live);
+  --pulse-both: oklch(0.42 0.17 300);
+
   /* Claude 官方橙 #D97757，只给那朵菊花用 */
   --claude: oklch(0.672 0.131 38.8);
 
@@ -100,6 +109,9 @@
   --live: oklch(0.76 0.16 148);
   --live-idle: oklch(0.8 0.13 78);
   --live-off: oklch(0.5 0 0);
+
+  --pulse-human: oklch(0.84 0.09 240);
+  --pulse-both: oklch(0.6 0.17 300);
 
   --claude: oklch(0.74 0.115 39);
 
@@ -213,6 +225,22 @@
 
 /* 参考终端面板的硬边纸片：阴影不是漂浮，而是印刷套版般的固定错位。
    卡片保持静态；按压缩进只给真正的 button（主题切换等）。 */
+/*
+ * Pulse 听歌道的不确定区间：「最近在听」列表说这段时间里某处放过，却不说几点。
+ * 两种画法由开发环境开关切换，默认斜线。SVG 泳道横向拉伸，斜线只能画在 HTML 上。
+ */
+.pulse-trace-hatched {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    color-mix(in oklab, var(--live) 70%, transparent) 0 1.5px,
+    transparent 1.5px 4px
+  );
+}
+
+.pulse-trace-faint {
+  background-color: color-mix(in oklab, var(--live) 22%, transparent);
+}
+
 .paper-card {
   box-shadow: 3px 3px 0 var(--paper-shadow);
 }

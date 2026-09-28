@@ -1,358 +1,265 @@
 import assert from "node:assert/strict";
-import test from "node:test";
-import { DatabaseSync } from "node:sqlite";
-
-import { pulseIntervalRangeKey, pulseIntervalRevisionKey, pulseKey } from "@/lib/pulse";
 import { readFileSync, readdirSync } from "node:fs";
 import { dirname } from "node:path";
+import { DatabaseSync } from "node:sqlite";
+import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { PULSE_HISTORY_LIMIT } from "@/lib/limits";
-import { PULSE_DOMAINS, type PulseDomain, type PulseSample } from "@/lib/types";
-import type { StorageCommand } from "@shared/storage-contract";
-import {
-  PulseArchive,
-  PulseArchiveState,
-  type ArchiveSql,
-  type PulseArchiveDb,
-} from "./pulse-archive.ts";
 
-const T0 = 1_760_000_000_000;
+import { codingObservationsKey, codingTokenUsageKey, cursorObservationsKey } from "@/lib/coding-pulse";
+import { pulseListeningTracesKey } from "@/lib/pulse-keys";
+import { installStorageForTests, key, resetStorageForTests } from "@/lib/storage";
+import type { HistoryDb } from "@shared/history-ingest";
+import { SqliteStore, type SqlDatabase } from "@shared/sqlite-store";
+import { StorageClient } from "@shared/storage-client";
+import { recordChargingSample, recordStateObservation, replacePulseActivity } from "./stores/pulse.ts";
+import { PulseArchive, PulseArchiveState, activeSecondsByDay, archiveStatements, siteDate, type ArchiveStream } from "./pulse-archive.ts";
 
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((yes) => { resolve = yes; });
-  return { promise, resolve };
-}
+/** 2026-09-28 10:00 Asia/Shanghai */
+const T0 = Date.UTC(2026, 8, 28, 2, 0, 0);
+const M = 60_000;
 
-type Row = [string, number, number, string | null, number | null, number | null];
 type Statement = { query: string; values: unknown[] };
 
-function series(count: number, level: 0 | 1 | 2 | 3 = 2): PulseSample[] {
-  return Array.from({ length: count }, (_, index) => ({ t: T0 + index * 60_000, level }));
-}
-
-function setup(options: {
-  lists?: Partial<Record<PulseDomain, PulseSample[]>>;
-  raw?: string[];
-  failRead?: PulseDomain;
-  fail?: (domain: string, attempt: number) => boolean;
-  hold?: Promise<unknown> | ((revision: number) => Promise<unknown>);
-  activityRange?: { from: number; to: number };
-  chunkSize?: number;
-  log?: (domain: string, error: unknown) => void;
-} = {}) {
-  const sqlite = new DatabaseSync(":memory:");
-  sqlite.exec("CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
-  const sql: ArchiveSql = {
-    exec(query, ...bindings) {
-      const statement = sqlite.prepare(query);
-      if (/^\s*SELECT\b/i.test(query)) return { toArray: () => statement.all(...bindings) as Record<string, unknown>[] };
-      statement.run(...bindings);
-      return { toArray: () => [] };
+/**
+ * 两个真实 SQLite：一个当 StateHub（SqliteStore + metadata，Pulse 的写入函数直接写它），
+ * 一个跑全部 D1 迁移。upsert 的冲突与 WHERE 条件要在引擎里验，不在替身里推断。
+ */
+function setup(options: { failStream?: ArchiveStream } = {}) {
+  let now = T0;
+  const hub = new DatabaseSync(":memory:");
+  const sql = {
+    exec(query: string, ...args: (string | number | null)[]) {
+      if (!args.length && query.includes(";")) { hub.exec(query); return { toArray: () => [], rowsWritten: 0 }; }
+      const statement = hub.prepare(query);
+      if (statement.columns().length) return { toArray: () => statement.all(...args) as Record<string, unknown>[], rowsWritten: 0 };
+      const result = statement.run(...args);
+      return { toArray: () => [], rowsWritten: Number(result.changes) };
     },
+  } as unknown as SqlDatabase;
+  const transaction = <T>(work: () => T): T => {
+    hub.exec("BEGIN");
+    try { const result = work(); hub.exec("COMMIT"); return result; } catch (error) { hub.exec("ROLLBACK"); throw error; }
   };
+  const store = new SqliteStore(sql, transaction, () => now);
+  hub.exec("CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
+  const storage = new StorageClient(async (commands) => store.execute(commands));
+  const state = new PulseArchiveState({ sql: sql as never, execute: (commands) => store.execute(commands), now: () => now });
 
-  const stored = new Map<string, string[]>();
-  for (const [domain, samples] of Object.entries(options.lists ?? {})) {
-    stored.set(pulseKey(domain as PulseDomain), samples.map((sample) => JSON.stringify(sample)));
-  }
-  if (options.activityRange) stored.set(pulseIntervalRangeKey("activity"), [JSON.stringify(options.activityRange)]);
-  const readCommands: StorageCommand[] = [];
-  const execute = (commands: StorageCommand[]): unknown[] => commands.map((command) => {
-    readCommands.push(command);
-    if (command.op === "get") return stored.get(command.key)?.[0] ?? null;
-    assert.equal(command.op, "listRange");
-    if (options.failRead && command.key === pulseKey(options.failRead)) throw new Error("source unavailable");
-    const rows = options.raw ?? stored.get(command.key) ?? [];
-    return rows.slice(command.start, command.stop + 1);
-  });
-  const state = new PulseArchiveState({ sql, execute });
-
-  const batches: Row[][] = [];
-  const rows = new Map<string, Row>();
-  let attempts = 0;
-  let activityRevision = 0;
-  const archiveDb: PulseArchiveDb = {
-    prepare(query) {
-      return { bind: (...values: unknown[]) => ({ query, values }) };
+  const d1 = new DatabaseSync(":memory:");
+  const migrations = `${dirname(fileURLToPath(import.meta.url))}/../migrations/`;
+  for (const file of readdirSync(migrations).filter((name) => name.endsWith(".sql")).sort()) d1.exec(readFileSync(`${migrations}${file}`, "utf8"));
+  let changes = 0;
+  const db: HistoryDb = {
+    prepare: (query) => {
+      const statement: Statement & { bind(...values: unknown[]): typeof statement } = { query, values: [], bind: (...values) => ({ ...statement, values }) };
+      return statement;
     },
     async batch(statements) {
-      const prepared = statements as Statement[];
-      const attempt = ++attempts;
-      const revision = prepared.find((statement) => statement.query.startsWith("INSERT INTO pulse_archive_state"))?.values[0] as number | undefined;
-      if (typeof options.hold === "function" && revision != null) await options.hold(revision);
-      else if (options.hold) await options.hold;
-      const ordinary = prepared.filter((statement) => statement.query.startsWith("INSERT OR IGNORE"))
-        .map((statement) => statement.values as Row);
-      const domain = ordinary[0]?.[0] ?? "activity";
-      if (options.fail?.(domain, attempt)) throw new Error("D1 unavailable");
-      if (ordinary.length) {
-        batches.push(ordinary);
-        for (const row of ordinary) rows.set(`${row[0]}:${row[1]}`, row);
-      }
-      for (const statement of prepared) {
-        if (statement.query.startsWith("INSERT INTO pulse_archive_state")) {
-          activityRevision = Math.max(activityRevision, statement.values[0] as number);
-        } else if (statement.query.startsWith("DELETE FROM pulse_samples")) {
-          const [to, from, json, revision] = statement.values as [number, number, string, number];
-          const kept = new Set((JSON.parse(json) as PulseSample[]).map((sample) => sample.t));
-          if (revision === activityRevision) for (const [key, row] of rows) {
-            if (row[0] === "activity" && row[1] < to && (row[4] ?? row[1] + 1) > from && !kept.has(row[1])) rows.delete(key);
-          }
-        } else if (statement.query.startsWith("INSERT INTO pulse_samples(domain, t")) {
-          const [json, revision] = statement.values as [string, number];
-          if (revision === activityRevision) for (const sample of JSON.parse(json) as PulseSample[]) {
-            rows.set(`activity:${sample.t}`, ["activity", sample.t, sample.level, null, sample.until ?? null, null]);
-          }
-        }
-      }
+      const list = statements as unknown as Statement[];
+      if (options.failStream === "gaming" && list.some((row) => row.query.includes("game_sessions"))) throw new Error("D1 unavailable");
+      d1.exec("BEGIN");
+      try {
+        for (const { query, values } of list) changes += Number(d1.prepare(query).run(...(values as (string | number | null)[])).changes);
+        d1.exec("COMMIT");
+      } catch (error) { d1.exec("ROLLBACK"); throw error; }
       return [];
     },
   };
-
   const logged: string[] = [];
-  const makeArchive = () => new PulseArchive({
-    coordinator: state,
-    db: archiveDb,
-    chunkSize: options.chunkSize,
-    log: options.log ?? ((domain, error) => logged.push(`${domain}: ${error instanceof Error ? error.message : String(error)}`)),
-  });
+  const archive = () => new PulseArchive({ coordinator: state, db, log: (stream, error) => logged.push(`${stream}: ${error instanceof Error ? error.message : String(error)}`) });
   return {
-    state,
-    archive: makeArchive(),
-    makeArchive,
-    batches,
-    logged,
-    readCommands,
-    rows: () => [...rows.values()].sort((a, b) => a[1] - b[1]),
-    setActivity(samples: PulseSample[], range: { from: number; to: number }) {
-      stored.set(pulseKey("activity"), samples.map((sample) => JSON.stringify(sample)));
-      stored.set(pulseIntervalRangeKey("activity"), [JSON.stringify(range)]);
-    },
-    seed(domain: PulseDomain, t: number) {
-      sqlite.prepare("INSERT INTO metadata(key, value) VALUES (?, ?)").run(`pulse-archive:${domain}`, String(t));
-    },
-    watermark(domain: PulseDomain): string | null {
-      const row = sqlite.prepare("SELECT value FROM metadata WHERE key = ?").get(`pulse-archive:${domain}`) as { value?: string } | undefined;
-      return row?.value ?? null;
+    storage, state, archive, logged, db,
+    at: (t: number) => { now = t; },
+    all: (query: string) => d1.prepare(query).all().map((row) => ({ ...row })) as Record<string, unknown>[],
+    changes: () => changes,
+    watermark: (stream: ArchiveStream) => (hub.prepare("SELECT value FROM metadata WHERE key = ?").get(`pulse-archive:v2:${stream}`) as { value?: string } | undefined)?.value ?? null,
+    /** 以这个 Hub 为存储跑一段写入 */
+    async write(run: () => Promise<unknown>) {
+      installStorageForTests(storage);
+      try { await run(); } finally { resetStorageForTests(); }
     },
   };
 }
 
-test("pulse archive: archives fields and reads every source through one bounded snapshot", async () => {
-  const world = setup({ lists: {
-    coding: [{ t: T0, level: 2, hint: "lyjwpage" }, { t: T0 + 60_000, level: 0 }],
-    activity: [{ t: T0, until: T0 + 3_600_000, level: 2 }],
-    charging: [{ t: T0, level: 2, powerW: 42.75 }],
-  } });
-  await world.archive.run();
+const music = (title: string, state: "playing" | "paused" | "idle" = "playing") => ({
+  state, source: state === "idle" ? null : "mac" as const, title: state === "idle" ? null : title, artist: "Hamilton", album: "Hamilton", trackId: null,
+});
 
-  assert.deepEqual(world.rows(), [
-    ["coding", T0, 2, "lyjwpage", null, null],
-    ["charging", T0, 2, null, null, 42.75],
-    ["activity", T0, 2, null, T0 + 3_600_000, null],
-    ["coding", T0 + 60_000, 0, null, null, null],
+test("pulse archive: closed playing intervals and recent-list traces become listening plays, idempotently", async () => {
+  const b = setup();
+  await b.write(async () => {
+    await recordStateObservation("listening", T0, music("Helpless"));
+    await recordStateObservation("listening", T0 + 3 * M, music("Helpless", "paused"));
+    await recordStateObservation("listening", T0 + 5 * M, music("Satisfied"));
+    await recordStateObservation("listening", T0 + 9 * M, { ...music("x", "idle"), artist: null, album: null });
+    await b.storage.batch().append(pulseListeningTracesKey(), JSON.stringify({ since: T0 - 4 * M, t: T0 - 2 * M, title: "THE BOOK 3", artist: "YOASOBI", itemId: "1" })).execute();
+  });
+  b.at(T0 + 10 * M);
+  await b.archive().run();
+  assert.deepEqual(b.logged, []);
+  assert.deepEqual(b.all("SELECT source, started_at, ended_at, certain, title, album, item_id FROM listening_plays ORDER BY started_at"), [
+    { source: "recent", started_at: T0 - 4 * M, ended_at: T0 - 2 * M, certain: 0, title: null, album: "THE BOOK 3", item_id: "1" },
+    { source: "mac", started_at: T0, ended_at: T0 + 3 * M, certain: 1, title: "Helpless", album: "Hamilton", item_id: null },
+    { source: "mac", started_at: T0 + 5 * M, ended_at: T0 + 9 * M, certain: 1, title: "Satisfied", album: "Hamilton", item_id: null },
+  ], "paused and idle spans are not plays");
+  assert.equal(b.watermark("listening"), String(T0 + 9 * M));
+  const before = b.changes();
+  await b.archive().run();
+  assert.equal(b.changes(), before, "a replay past the watermark writes nothing");
+});
+
+test("pulse archive: watching sessions merge playing and paused spans of one item and grow as they continue", async () => {
+  const b = setup();
+  const video = (state: "playing" | "paused" | "idle", itemId: string | null = "42") =>
+    ({ state, itemId: state === "idle" ? null : itemId, title: state === "idle" ? null : "Frieren", subtitle: state === "idle" ? null : "S01E05" });
+  await b.write(async () => {
+    await recordStateObservation("watching", T0, video("playing"));
+    await recordStateObservation("watching", T0 + 10 * M, video("paused"));
+    await recordStateObservation("watching", T0 + 12 * M, video("playing"));
+  });
+  b.at(T0 + 13 * M);
+  await b.archive().run();
+  assert.deepEqual(b.all("SELECT item_id, started_at, ended_at, playing_seconds, title FROM watching_sessions"), [
+    { item_id: "42", started_at: T0, ended_at: T0 + 12 * M, playing_seconds: 600, title: "Frieren" },
   ]);
-  assert.equal(world.readCommands.length, PULSE_DOMAINS.length + 2, "activity also reads its range and revision");
-  for (const command of world.readCommands) {
-    if (command.op === "get") continue;
-    assert.equal(command.op, "listRange");
-    assert.equal(command.start, 0);
-    assert.equal(command.stop, command.key === pulseKey("charging") ? 5999 : PULSE_HISTORY_LIMIT - 1);
-  }
-  assert.equal(world.watermark("coding"), String(T0 + 60_000));
-  assert.deepEqual(world.logged, []);
-});
-
-test("pulse archive: empty and malformed sources do not touch D1 or watermarks", async () => {
-  const empty = setup();
-  await empty.archive.run();
-  assert.deepEqual(empty.batches, []);
-  for (const domain of PULSE_DOMAINS) assert.equal(empty.watermark(domain), null);
-
-  const malformed = setup({ raw: [
-    "not json",
-    JSON.stringify({ t: T0, level: 9 }),
-    JSON.stringify({ t: "later", level: 1 }),
-    JSON.stringify({ t: T0 + 60_000, level: 1 }),
-  ] });
-  await malformed.archive.run();
-  assert.equal(malformed.rows().length, PULSE_DOMAINS.length);
-  assert.ok(malformed.rows().every((row) => row[1] === T0 + 60_000));
-});
-
-test("pulse archive: repeats only rows beyond the durable watermark", async () => {
-  const samples = series(3);
-  const first = setup({ lists: { listening: samples } });
-  await first.archive.run();
-  await first.archive.run();
-  assert.equal(first.batches.length, 1);
-
-  const later: PulseSample = { t: T0 + 3 * 60_000, level: 1, hint: "Helpless" };
-  const restarted = setup({ lists: { listening: [...samples, later] } });
-  restarted.seed("listening", samples[2].t);
-  await restarted.archive.run();
-  assert.deepEqual(restarted.rows(), [["listening", later.t, 1, "Helpless", null, null]]);
-});
-
-test("pulse archive: activity keeps its watermark until the first authoritative history arrives", async () => {
-  const world = setup({ lists: { activity: [
-    { t: T0, until: T0 + 300_000, level: 1 },
-  ] } });
-  await world.archive.run();
-  await world.archive.run();
-  assert.equal(world.batches.length, 1);
-  assert.equal(world.watermark("activity"), String(T0));
-});
-
-test("pulse archive: confirms each successful chunk and stops at a failed chunk", async () => {
-  const world = setup({ lists: { coding: series(250) }, fail: (_domain, attempt) => attempt === 3 });
-  await world.archive.run();
-  assert.deepEqual(world.batches.map((batch) => batch.length), [100, 100]);
-  assert.equal(world.watermark("coding"), String(T0 + 199 * 60_000));
-  assert.deepEqual(world.logged, ["coding: D1 unavailable"]);
-
-  await world.archive.run();
-  assert.deepEqual(world.batches.map((batch) => batch.length), [100, 100, 50]);
-  assert.equal(world.rows().length, 250);
-  assert.equal(world.watermark("coding"), String(T0 + 249 * 60_000));
-});
-
-test("pulse archive: one domain failure does not block another domain", async () => {
-  const world = setup({
-    lists: { coding: series(1), watching: series(1, 1), charging: series(1, 3) },
-    fail: (domain) => domain === "watching",
+  await b.write(async () => {
+    // Emby 在播时最迟 10 分钟再推一次进度
+    await recordStateObservation("watching", T0 + 21 * M, video("playing"));
+    await recordStateObservation("watching", T0 + 30 * M, video("idle"));
   });
-  await world.archive.run();
-  assert.deepEqual(world.rows().map((row) => row[0]), ["coding", "charging"]);
-  assert.equal(world.watermark("watching"), null);
-  assert.deepEqual(world.logged, ["watching: D1 unavailable"]);
+  await b.archive().run();
+  assert.deepEqual(b.all("SELECT item_id, started_at, ended_at, playing_seconds FROM watching_sessions"), [
+    { item_id: "42", started_at: T0, ended_at: T0 + 30 * M, playing_seconds: 600 + 18 * 60 },
+  ], "the same session row is extended, not duplicated");
 });
 
-test("pulse archive: one source read failure does not block another domain", async () => {
-  const world = setup({
-    lists: { coding: series(1), watching: series(1, 1) },
-    failRead: "coding",
+test("pulse archive: in-game spans become game sessions; charging keeps samples and derives sessions", async () => {
+  const b = setup();
+  await b.write(async () => {
+    await recordStateObservation("gaming", T0, { state: "online", titleId: null, title: null });
+    await recordStateObservation("gaming", T0 + 5 * M, { state: "in-game", titleId: "PPSA01", title: "Pragmata" });
+    // PSN 没人看时半小时一查：中间那次确认让这一段连成一次
+    await recordStateObservation("gaming", T0 + 35 * M, { state: "in-game", titleId: "PPSA01", title: "Pragmata" });
+    await recordStateObservation("gaming", T0 + 65 * M, { state: "offline", titleId: null, title: null });
+    await recordChargingSample(T0, 0, null);
+    await recordChargingSample(T0 + M, 60, "MacBook Pro");
+    await recordChargingSample(T0 + 6 * M, 60, "MacBook Pro");
+    await recordChargingSample(T0 + 11 * M, 0.4, "MacBook Pro");
   });
-  await world.archive.run();
-  assert.deepEqual(world.rows().map((row) => row[0]), ["watching"]);
-  assert.equal(world.watermark("coding"), null);
-  assert.equal(world.watermark("watching"), String(T0));
-  assert.deepEqual(world.logged, ["coding: source unavailable"]);
+  b.at(T0 + 70 * M);
+  await b.archive().run();
+  assert.deepEqual(b.all("SELECT title_id, started_at, ended_at, title FROM game_sessions"), [
+    { title_id: "PPSA01", started_at: T0 + 5 * M, ended_at: T0 + 65 * M, title: "Pragmata" },
+  ]);
+  assert.deepEqual(b.all("SELECT t, watts FROM charging_samples ORDER BY t").map((row) => row.watts), [0, 60, 60, 0.4]);
+  assert.deepEqual(b.all("SELECT started_at, ended_at, peak_w, energy_wh, device FROM charging_sessions"), [
+    { started_at: T0 + M, ended_at: T0 + 11 * M, peak_w: 60, energy_wh: 10, device: "MacBook Pro" },
+  ]);
 });
 
-test("pulse archive: concurrent Worker instances may replay safely and converge", async () => {
-  const gate = deferred<void>();
-  const world = setup({ lists: { gaming: series(2, 3) }, hold: gate.promise });
-  const first = world.archive.run();
-  const second = world.makeArchive().run();
-  await new Promise((resolve) => setTimeout(resolve, 1));
-  gate.resolve();
-  await Promise.all([first, second]);
-
-  assert.equal(world.batches.length, 2, "both snapshots may write the same idempotent D1 batch");
-  assert.equal(world.rows().length, 2, "(domain,t) uniqueness collapses the replay");
-  assert.equal(world.watermark("gaming"), String(T0 + 60_000));
+test("pulse archive: authoritative activity replacement writes only changed rows and a newer revision wins", async () => {
+  const b = setup();
+  const range = { from: T0, to: T0 + 60 * M };
+  const bucket = (offset: number, steps: number | null) => ({ from: T0 + offset * M, to: T0 + (offset + 5) * M, steps, moveKcal: 1, exerciseMinutes: null });
+  await b.write(() => replacePulseActivity(range, [bucket(0, 300), bucket(5, 20)]));
+  await b.archive().run();
+  assert.deepEqual(b.all("SELECT started_at, steps, move_kcal, exercise_minutes FROM activity_buckets ORDER BY started_at"), [
+    { started_at: T0, steps: 300, move_kcal: 1, exercise_minutes: null },
+    { started_at: T0 + 5 * M, steps: 20, move_kcal: 1, exercise_minutes: null },
+  ]);
+  const before = b.changes();
+  await b.archive().run();
+  assert.equal(b.changes(), before, "an unchanged snapshot is not replayed");
+  await b.write(() => replacePulseActivity(range, [bucket(0, 300), bucket(10, null)]));
+  await b.archive().run();
+  assert.deepEqual(b.all("SELECT started_at, steps FROM activity_buckets ORDER BY started_at"), [
+    { started_at: T0, steps: 300 },
+    { started_at: T0 + 10 * M, steps: null },
+  ], "HealthKit's revision deletes the vanished bucket and leaves missing steps unknown");
+  assert.equal(b.changes() - before, 3, "only the revision claim, the deleted and the new bucket are written");
 });
 
-test("pulse archive: newer authoritative activity deletion wins when an older snapshot finishes late", async () => {
-  const oldGate = deferred<void>();
-  const range = { from: T0, to: T0 + 3_600_000 };
-  const world = setup({
-    lists: { activity: [
-      { t: T0 - 3_600_000, until: T0 + 300_000, level: 2 },
-      { t: T0 + 600_000, until: T0 + 900_000, level: 3 },
-    ] },
-    activityRange: range,
-    hold: (revision) => revision === 1 ? oldGate.promise : Promise.resolve(),
+test("pulse archive: an older activity snapshot finishing late cannot undo a newer replacement", async () => {
+  const b = setup();
+  const range = { from: T0, to: T0 + 60 * M };
+  const bucket = (offset: number, steps: number) => ({ from: T0 + offset * M, to: T0 + (offset + 5) * M, steps, moveKcal: null, exerciseMinutes: null });
+  await b.write(() => replacePulseActivity(range, [bucket(0, 300), bucket(5, 20)]));
+  const older = (await b.state.readPulseArchive()).streams.find((stream) => stream.stream === "activity")!;
+  await b.write(() => replacePulseActivity(range, [bucket(0, 310)]));
+  const newer = (await b.state.readPulseArchive()).streams.find((stream) => stream.stream === "activity")!;
+  await b.db.batch(archiveStatements(b.db, newer, T0).statements);
+  await b.db.batch(archiveStatements(b.db, older, T0).statements);
+  assert.deepEqual(b.all("SELECT started_at, steps FROM activity_buckets"), [{ started_at: T0, steps: 310 }]);
+});
+
+test("pulse archive: coding observations, active seconds, token buckets and daily usage per agent and model", async () => {
+  const b = setup();
+  const observation = (t: number, agents: { id: string; model: string | null; active: boolean }[]) =>
+    JSON.stringify({ t, available: true, desktop: { application: "Zed", coding: true }, agents });
+  await b.storage.batch()
+    .append(codingObservationsKey(),
+      observation(T0, [{ id: "claude", model: "claude-opus", active: true }, { id: "codex", model: "gpt", active: false }]),
+      observation(T0 + 2 * M, [{ id: "claude", model: "claude-opus", active: true }, { id: "codex", model: "gpt", active: true }]),
+      observation(T0 + 4 * M, [{ id: "claude", model: "claude-opus", active: false }]))
+    .append(cursorObservationsKey(), JSON.stringify({ t: T0, available: true, lastActivityAt: T0 }))
+    .set(codingTokenUsageKey(), JSON.stringify({
+      from: T0 - 5 * M, to: T0 + 5 * M, collectedAt: T0 + 6 * M,
+      sources: [{ id: "codex", state: "ok" }, { id: "claude", state: "ok" }],
+      windows: [{ from: T0, to: T0 + 5 * M, agents: [
+        { id: "claude", model: "claude-opus", inputTokens: 10, outputTokens: 20, cacheReadTokens: 30, cacheCreationTokens: 5, reasoningTokens: 0, eventCount: 2 },
+        { id: "codex", model: null, inputTokens: 1, outputTokens: 2, cacheReadTokens: 0, cacheCreationTokens: 0, reasoningTokens: 1, eventCount: 1 },
+      ] }],
+    }))
+    .set(key("vibecoding", "usage"), JSON.stringify({ pushedAt: T0 + 6 * M, payload: { agents: [
+      { id: "claude", today: { date: "2026-09-28", inputTokens: 100, outputTokens: 200, cacheReadTokens: 300, cacheCreationTokens: 50, totalTokens: 650, apiEquivalentCostUSD: 1.25 } },
+      { id: "cursor", today: { date: "2026-09-28", inputTokens: 9, outputTokens: 9, cacheReadTokens: 9, cacheCreationTokens: 9, totalTokens: 36, apiEquivalentCostUSD: 9 } },
+    ] } }))
+    .set(key("vibecoding", "cursor-usage"), JSON.stringify({ pushedAt: T0 + 6 * M, report: { days: [
+      { date: "2026-09-28", inputTokens: 5, outputTokens: 6, cacheReadTokens: 7, cacheCreationTokens: 0, totalTokens: 18, apiEquivalentCostUSD: 0.5, costComplete: true, models: [{ model: "composer-1", tokens: 18 }] },
+    ] } }))
+    .execute();
+  b.at(T0 + 7 * M);
+  await b.archive().run();
+  assert.deepEqual(b.logged, []);
+  assert.equal(b.all("SELECT COUNT(*) AS n FROM coding_observations")[0].n, 3);
+  assert.deepEqual(b.all("SELECT agent, model, input_tokens, total_tokens, event_count, cost_usd, active_seconds FROM agent_usage_days ORDER BY agent, model"), [
+    { agent: "claude", model: "*", input_tokens: 100, total_tokens: 650, event_count: null, cost_usd: 1.25, active_seconds: 240 },
+    { agent: "claude", model: "claude-opus", input_tokens: 10, total_tokens: 65, event_count: 2, cost_usd: null, active_seconds: 240 },
+    { agent: "codex", model: "", input_tokens: 1, total_tokens: 3, event_count: 1, cost_usd: null, active_seconds: null },
+    { agent: "codex", model: "*", input_tokens: null, total_tokens: null, event_count: null, cost_usd: null, active_seconds: 120 },
+    { agent: "codex", model: "gpt", input_tokens: null, total_tokens: null, event_count: null, cost_usd: null, active_seconds: 120 },
+    { agent: "cursor", model: "*", input_tokens: 5, total_tokens: 18, event_count: null, cost_usd: 0.5, active_seconds: 300 },
+    { agent: "cursor", model: "composer-1", input_tokens: null, total_tokens: 18, event_count: null, cost_usd: null, active_seconds: null },
+  ], "the Mac's stale Cursor row is ignored; cost exists only per agent");
+  const before = b.changes();
+  await b.archive().run();
+  assert.equal(b.changes(), before, "unchanged sources write nothing");
+});
+
+test("pulse archive: active seconds split at the site midnight", () => {
+  const midnight = Date.UTC(2026, 8, 28, 16, 0, 0); // 2026-09-29 00:00 in Shanghai
+  const rows = activeSecondsByDay([{ t: midnight - M, available: true, desktop: null, agents: [{ id: "claude", model: "m", active: true }] }], [], midnight - 2 * M, midnight + 10 * M);
+  assert.deepEqual(rows.filter((row) => row.model === "m").map((row) => [row.date, row.seconds]), [["2026-09-28", 60], ["2026-09-29", 120]]);
+  assert.equal(siteDate(midnight), "2026-09-29");
+});
+
+test("pulse archive: one stream failure does not block the others and keeps its watermark", async () => {
+  const b = setup({ failStream: "gaming" });
+  await b.write(async () => {
+    await recordStateObservation("gaming", T0, { state: "in-game", titleId: "PPSA01", title: "Pragmata" });
+    await recordStateObservation("gaming", T0 + 5 * M, { state: "offline", titleId: null, title: null });
+    await recordStateObservation("listening", T0, music("Helpless"));
+    await recordStateObservation("listening", T0 + 5 * M, music("Satisfied"));
   });
-  const oldRun = world.archive.run();
-  await new Promise((resolve) => setTimeout(resolve, 1));
-  world.setActivity([], range);
-  await world.makeArchive().run();
-  oldGate.resolve();
-  await oldRun;
-
-  assert.deepEqual(world.rows().filter((row) => row[0] === "activity"), []);
+  await b.archive().run();
+  assert.deepEqual(b.logged, ["gaming: D1 unavailable"]);
+  assert.equal(b.watermark("gaming"), null);
+  assert.equal(b.all("SELECT COUNT(*) AS n FROM listening_plays")[0].n, 1);
 });
 
 test("pulse archive: late confirmations advance by max and never move backward", async () => {
-  const world = setup();
-  assert.equal(await world.state.confirmPulseArchive("coding", T0 + 120_000), T0 + 120_000);
-  assert.equal(await world.state.confirmPulseArchive("coding", T0 + 60_000), T0 + 120_000);
-  assert.equal(await world.state.confirmPulseArchive("coding", T0 + 180_000), T0 + 180_000);
-  assert.equal(world.watermark("coding"), String(T0 + 180_000));
-});
-
-test("pulse archive: authoritative activity writes only changed D1 rows and skips an unchanged snapshot", async () => {
-  // 用真实 SQLite 跑迁移和归档 SQL：计的是 D1 按行计费的 changes，不是替身里的推断。
-  const d1 = new DatabaseSync(":memory:");
-  const migrations = `${dirname(fileURLToPath(import.meta.url))}/../migrations/`;
-  for (const file of readdirSync(migrations).filter((name) => name.endsWith(".sql")).sort()) {
-    d1.exec(readFileSync(`${migrations}${file}`, "utf8"));
-  }
-  let written = 0;
-  let batches = 0;
-  const db: PulseArchiveDb = {
-    prepare: (query) => ({ bind: (...values: unknown[]) => ({ query, values }) }),
-    async batch(statements) {
-      batches += 1;
-      d1.exec("BEGIN");
-      for (const { query, values } of statements as Statement[]) {
-        written += Number(d1.prepare(query).run(...(values as (string | number | null)[])).changes);
-      }
-      d1.exec("COMMIT");
-      return [];
-    },
-  };
-  const meta = new DatabaseSync(":memory:");
-  meta.exec("CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
-  const sql: ArchiveSql = {
-    exec(query, ...bindings) {
-      const statement = meta.prepare(query);
-      if (/^\s*SELECT\b/i.test(query)) return { toArray: () => statement.all(...bindings) as Record<string, unknown>[] };
-      statement.run(...bindings);
-      return { toArray: () => [] };
-    },
-  };
-  const stored = new Map<string, string | string[]>();
-  const execute = (commands: StorageCommand[]): unknown[] => commands.map((command) => {
-    if (command.op === "get") return stored.get(command.key) ?? null;
-    assert.equal(command.op, "listRange");
-    return ((stored.get(command.key) ?? []) as string[]).slice(command.start, command.stop + 1);
-  });
-  const archive = new PulseArchive({
-    coordinator: new PulseArchiveState({ sql, execute }),
-    db,
-    log: (domain, error) => assert.fail(`${domain}: ${String(error)}`),
-  });
-  const publish = (samples: PulseSample[], range: { from: number; to: number }, revision: number) => {
-    stored.set(pulseKey("activity"), samples.map((sample) => JSON.stringify(sample)));
-    stored.set(pulseIntervalRangeKey("activity"), JSON.stringify(range));
-    stored.set(pulseIntervalRevisionKey("activity"), String(revision));
-  };
-  const bucket = (index: number, level: 0 | 1 | 2 | 3): PulseSample =>
-    ({ t: T0 + index * 300_000, until: T0 + (index + 1) * 300_000, level });
-  const rows = () => d1.prepare("SELECT t, level, until_at FROM pulse_samples WHERE domain = 'activity' ORDER BY t").all()
-    .map((row) => [row.t, row.level, row.until_at]);
-
-  publish([bucket(0, 1), bucket(1, 2), bucket(2, 3)], { from: T0, to: T0 + 900_000 }, 1);
-  await archive.run();
-  assert.equal(written, 1 + 3, "claim plus three new buckets");
-  assert.equal(batches, 1);
-
-  written = 0;
-  await archive.run();
-  await archive.run();
-  assert.equal(batches, 1, "the same range and revision do not touch D1 again");
-
-  // 下一次上报：中间那桶被 HealthKit 删掉，最后一桶修订，新增一桶，第一桶不变。
-  publish([bucket(0, 1), bucket(2, 1), bucket(3, 2)], { from: T0, to: T0 + 1_200_000 }, 2);
-  await archive.run();
-  assert.equal(written, 1 + 1 + 1 + 1, "claim, one delete, one revision, one insert; the unchanged bucket is not rewritten");
-  assert.deepEqual(rows(), [
-    [T0, 1, T0 + 300_000],
-    [T0 + 600_000, 1, T0 + 900_000],
-    [T0 + 900_000, 2, T0 + 1_200_000],
-  ]);
+  const b = setup();
+  assert.equal(await b.state.confirmPulseArchive("charging", T0 + 10), T0 + 10);
+  assert.equal(await b.state.confirmPulseArchive("charging", T0), T0 + 10);
+  await assert.rejects(() => b.state.confirmPulseArchive("charging", T0, "token"), /Invalid/);
 });

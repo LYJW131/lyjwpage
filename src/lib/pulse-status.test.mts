@@ -1,170 +1,138 @@
-import assert from 'node:assert/strict';
-import test from 'node:test';
-import {getPulseStatus} from '@/lib/pulse';
-import {assessmentRows,segmentRows,toAssessmentColumns,toSegmentColumns} from '@/lib/pulse-columns';
-import type {PulseChartView} from '@/lib/types';
-/** 线上是列，断言按行写更好读 */
-const rowsOf=(view:PulseChartView)=>view.kind==='score'?{...view,assessments:assessmentRows(view.assessments)}:{...view,segments:segmentRows(view.segments)};
-import {pulseAssessmentsKey} from '@/lib/pulse-assessments';
-import {installStorageForTests,resetStorageForTests} from '@/lib/storage';
-import {FakeStorage} from '@/lib/testing/fake-storage';
-import {summarizeAssessments, type PulseAssessment} from '@shared/pulse-assessment';
-const NOW=1_800_000_000_000;
-function row(from=NOW-600000, value=2): PulseAssessment {return {domain:'coding',inputHash:'test',from,to:from+300000,coverage:[{from,to:from+300000}],
- intensity:{value,confidence:1,probabilities:{0:0,1:0,2:1,3:0,4:0}},continuity:{value:2,confidence:1,probabilities:{0:0,1:0,2:1,3:0}},
- mode:null,model:'jev-1.13.0',scoredAt:NOW};}
-test('Pulse graph and summary use the same assessments, omit raw private details and stale rows',async()=>{
- const storage=new FakeStorage();installStorageForTests(storage);
- try{await storage.append(pulseAssessmentsKey(),JSON.stringify({...row(),privateDetail:'secret-app-name'}),JSON.stringify(row(NOW-90000000)), '{bad');
- const payload=await getPulseStatus(NOW);
- assert.equal(payload.domains.coding.kind,"score");
- if(payload.domains.coding.kind!=="score")throw Error("kind");
- assert.equal(payload.domains.coding.assessments.startSec.length,1);assert.equal(payload.domains.coding.score?.value,1.5);
- assert.equal(payload.domains.coding.score?.trend,'unknown');assert.deepEqual(payload.domains.gaming,{kind:"binary",segments:{startSec:[],endSec:[],value:[]},activeSeconds:0,score:null});
- assert.equal(JSON.stringify(payload).includes('secret-app-name'),false);assert.equal('codingAssessments' in payload,false);
- // 公开那份只留卡片要用的：没有概率、哈希、模型、评分时刻；覆盖和整窗一样时省略
- // 时刻是相对 window.from（NOW - 24h）的整秒
- assert.deepEqual(assessmentRows(payload.domains.coding.assessments)[0],{startSec:85800,endSec:86100,intensity:{value:2,confidence:1},continuity:{value:2},mode:null});
- }finally{resetStorageForTests();}
-});
-test('summary weights actual covered time and compares observed recent periods without zero filling',()=>{
- const a=row(NOW-4*3600000,0), b=row(NOW-600000,4);b.coverage=[{from:b.from,to:b.from+100000}];
- const score=summarizeAssessments([a,b],NOW-86400000,NOW)!;
- assert.equal(score.value,0.75);assert.equal(score.trend,'rising');
- assert.equal(summarizeAssessments([a],NOW-100000,NOW),null);
-});
+import assert from "node:assert/strict";
+import test from "node:test";
 
-test('measured lanes map playing only and preserve silence', async () => {
- const {measuredPulseView}=await import('@/lib/pulse');
- const samples=[{t:0,level:3 as const},{t:60000,level:2 as const},{t:120000,level:1 as const}];
- for(const domain of ['listening','watching'] as const){
-  const view=measuredPulseView(domain,samples,{from:0,to:1000000});
-  assert.deepEqual(rowsOf(view),{kind:'binary',segments:[{startSec:0,endSec:60,value:1},{startSec:60,endSec:720,value:0}],activeSeconds:60});
- }
-});
-test('power preserves watts, excludes old level-only rows and expires current value',async()=>{
- const {measuredPulseView,planPulseSample,parsePulseSample}=await import('@/lib/pulse');
- const old={t:0,level:3 as const};const current={t:60000,level:2 as const,powerW:42.75};
- assert.deepEqual(rowsOf(measuredPulseView('charging',[old,current],{from:0,to:120000})),{kind:'power',segments:[{startSec:60,endSec:120,value:42.75}],currentPowerW:42.75});
- const stale=measuredPulseView('charging',[current],{from:0,to:700000});
- assert.equal(stale.kind,'power');if(stale.kind==='power')assert.equal(stale.currentPowerW,null);
- assert.equal(planPulseSample(current,{...current,t:70000,powerW:43}),null);
- // 插着线的小幅抖动不记，交给 5 分钟再确认；变得明显才记，瓦数留一位小数
- assert.equal(planPulseSample(current,{...current,t:90000,powerW:43}),null);
- assert.equal(planPulseSample(current,{...current,t:90000,powerW:48.26})?.powerW,48.3);
- assert.equal(planPulseSample(current,{...current,t:60000+300000,powerW:43})?.powerW,43);
- assert.equal(planPulseSample(current,{...current,t:70000,powerW:0})?.powerW,0);
- // 待机门槛以下的 0 ↔ 0.5 W 抖动不记；跨过门槛立刻记
- const idle={t:60000,level:1 as const,powerW:0};
- assert.equal(planPulseSample(idle,{...idle,t:100000,powerW:0.5}),null);
- assert.equal(planPulseSample({...idle,powerW:0.5},{...idle,t:100000,powerW:0}),null);
- assert.equal(planPulseSample(idle,{...idle,t:61000,powerW:5})?.powerW,5);
- assert.equal(planPulseSample({...idle,powerW:5},{...idle,t:61000,powerW:0.5})?.powerW,0.5);
- assert.equal(parsePulseSample(JSON.stringify({...current,powerW:-1})),null);
+import { codingObservationsKey, cursorObservationsKey } from "@/lib/coding-pulse";
+import { getPulseStatus } from "@/lib/pulse";
+import { pulseAssessmentsKey } from "@/lib/pulse-assessments";
+import { columnRows } from "@/lib/pulse-columns";
+import {
+  pulseActivityKey,
+  pulseChargingKey,
+  pulseLaneKey,
+  pulseLaneOpenKey,
+  pulseListeningTracesKey,
+  pulseWorkoutsKey,
+} from "@/lib/pulse-keys";
+import { installStorageForTests, resetStorageForTests } from "@/lib/storage";
+import { FakeStorage } from "@/lib/testing/fake-storage";
+import type { PulseAssessment } from "@shared/pulse-assessment";
+
+const NOW = 1_800_000_000_000;
+const FROM = NOW - 24 * 3_600_000;
+const M = 60_000;
+const sec = (at: number) => Math.round((at - FROM) / 1000);
+
+async function withStorage(run: (storage: FakeStorage) => Promise<void>) {
+  const storage = new FakeStorage();
+  installStorageForTests(storage);
+  try { await run(storage); } finally { resetStorageForTests(); }
+}
+
+test("empty storage is an all-unknown timeline, not an error", async () => {
+  await withStorage(async () => {
+    const payload = await getPulseStatus(NOW);
+    assert.deepEqual(payload.window, { from: FROM, to: NOW });
+    assert.deepEqual(payload.lanes.listening.segments, { startSec: [], endSec: [], state: [], title: [], subtitle: [] });
+    assert.deepEqual(payload.lanes.listening.uncertain, { startSec: [], endSec: [], title: [], subtitle: [] });
+    assert.equal(payload.lanes.charging.currentPowerW, null);
+    assert.deepEqual(payload.lanes.coding.summary, { humanSeconds: 0, agentSeconds: 0, bothSeconds: 0 });
+  });
 });
 
-
-test('measured chart retains an independent Jev score and trend', async()=>{
- const {pulseKey}=await import('@/lib/pulse');
- const storage=new FakeStorage();installStorageForTests(storage);
- try {
-  await storage.append(pulseAssessmentsKey(),JSON.stringify({...row(),domain:'watching'}));
-  await storage.append(pulseKey('watching'),JSON.stringify({t:NOW-60000,level:3}));
-  const view=(await getPulseStatus(NOW)).domains.watching;
-  assert.equal(view.kind,'binary');assert.equal(view.score?.value,1.5);assert.equal(view.score?.trend,'unknown');
-  if(view.kind==='binary')assert.deepEqual(segmentRows(view.segments),[{startSec:86340,endSec:86400,value:1}]);
- }finally{resetStorageForTests();}
+test("coding band shows human, agent and both from raw observations; app and model names never leave", async () => {
+  await withStorage(async (storage) => {
+    const obs = (t: number, coding: boolean, active: boolean) => JSON.stringify({
+      t, available: true, desktop: { application: "SecretEditor", coding }, agents: [{ id: "claude", model: "secret-model", active }],
+    });
+    await storage.append(codingObservationsKey(),
+      obs(NOW - 60 * M, true, false), obs(NOW - 58 * M, true, true), obs(NOW - 56 * M, false, true),
+      JSON.stringify({ t: NOW - 54 * M, available: false, desktop: null, agents: null }));
+    // Mac 离线后 Cursor 账号那一路仍看得见，最近的活动算 agent
+    await storage.append(cursorObservationsKey(), JSON.stringify({ t: NOW - 30 * M, available: true, lastActivityAt: NOW - 30 * M }));
+    const scored: PulseAssessment = { domain: "coding", from: NOW - 60 * M, to: NOW - 45 * M, coverage: [{ from: NOW - 60 * M, to: NOW - 54 * M }],
+      intensity: { value: 3, confidence: 0.876, probabilities: { 0: 0, 1: 0, 2: 0, 3: 1, 4: 0 } },
+      continuity: { value: 2, confidence: 1, probabilities: { 0: 0, 1: 0, 2: 1, 3: 0 } },
+      mode: { value: "mixed", confidence: 1, probabilities: { idle: 0, brief: 0, interactive: 0, agent: 0, mixed: 1 } },
+      model: "jev-1.13.0", scoredAt: NOW, inputHash: "h" };
+    await storage.append(pulseAssessmentsKey(), JSON.stringify(scored), JSON.stringify({ ...scored, domain: "listening" }));
+    const { coding } = (await getPulseStatus(NOW)).lanes;
+    assert.deepEqual(columnRows(coding.segments, ["value"]), [
+      { startSec: sec(NOW - 60 * M), endSec: sec(NOW - 58 * M), value: 1 },
+      { startSec: sec(NOW - 58 * M), endSec: sec(NOW - 56 * M), value: 3 },
+      { startSec: sec(NOW - 56 * M), endSec: sec(NOW - 54 * M), value: 2 },
+      { startSec: sec(NOW - 30 * M), endSec: sec(NOW - 25 * M), value: 2 },
+      { startSec: sec(NOW - 25 * M), endSec: sec(NOW), value: 0 },
+    ]);
+    assert.deepEqual(coding.summary, { humanSeconds: 120, agentSeconds: 420, bothSeconds: 120 });
+    assert.deepEqual(coding.assessments, { startSec: [sec(NOW - 60 * M)], endSec: [sec(NOW - 45 * M)], intensity: [3], confidence: [0.88], mode: ["mixed"] });
+    const wire = JSON.stringify(coding);
+    assert.equal(wire.includes("SecretEditor") || wire.includes("secret-model") || wire.includes("claude"), false);
+  });
 });
 
-test('listening draws the Jev score, not the Mac-only measurement, and keeps the track name',async()=>{
- const {pulseKey}=await import('@/lib/pulse');
- const storage=new FakeStorage();installStorageForTests(storage);
- try {
-  const scored={...row(),domain:'listening'};
-  await storage.append(pulseAssessmentsKey(),JSON.stringify(scored));
-  await storage.append(pulseKey('listening'),JSON.stringify({t:scored.from,level:3,hint:'Hamilton – Helpless'}));
-  const view=(await getPulseStatus(NOW)).domains.listening;
-  // 实测只看得见 Mac / HomePod，所以这条线画的是评分；别的设备的证据只在评分里。
-  assert.equal(view.kind,'score');
-  if(view.kind==='score'){
-   assert.equal(view.assessments.startSec.length,1);
-   assert.equal(assessmentRows(view.assessments)[0].title,'Hamilton – Helpless');
-  }
- }finally{resetStorageForTests();}
+test("state lanes keep unknown apart from idle, expose titles only while active, and draw traces the Mac cannot explain", async () => {
+  await withStorage(async (storage) => {
+    const music = (state: string, title: string | null, album: string | null) => ({ state, source: state === "idle" ? null : "mac", title, artist: title && "Hamilton", album, trackId: null });
+    await storage.append(pulseLaneKey("listening"),
+      JSON.stringify({ ...music("playing", "Helpless", "Hamilton"), from: NOW - 120 * M, to: NOW - 100 * M }),
+      JSON.stringify({ ...music("paused", "Helpless", "Hamilton"), from: NOW - 100 * M, to: NOW - 90 * M }),
+      JSON.stringify({ ...music("idle", null, null), from: NOW - 90 * M, to: NOW - 80 * M }));
+    await storage.set(pulseLaneOpenKey("listening"), JSON.stringify({ ...music("playing", "Satisfied", "Hamilton"), from: NOW - 20 * M, seenAt: NOW - M }));
+    await storage.append(pulseListeningTracesKey(),
+      JSON.stringify({ since: NOW - 115 * M, t: NOW - 113 * M, title: "Hamilton", artist: "Lin-Manuel Miranda", itemId: "1" }),
+      JSON.stringify({ since: NOW - 60 * M, t: NOW - 58 * M, title: "THE BOOK 3", artist: "YOASOBI", itemId: "2" }));
+    const { listening } = (await getPulseStatus(NOW)).lanes;
+    assert.deepEqual(columnRows(listening.segments, ["state", "title", "subtitle"]), [
+      { startSec: sec(NOW - 120 * M), endSec: sec(NOW - 100 * M), state: 2, title: "Helpless", subtitle: "Hamilton" },
+      { startSec: sec(NOW - 100 * M), endSec: sec(NOW - 90 * M), state: 1, title: "Helpless", subtitle: "Hamilton" },
+      { startSec: sec(NOW - 90 * M), endSec: sec(NOW - 80 * M), state: 0, title: null, subtitle: null },
+      { startSec: sec(NOW - 20 * M), endSec: sec(NOW), state: 2, title: "Satisfied", subtitle: "Hamilton" },
+    ], "80–20 minutes ago has no segment: unknown");
+    assert.deepEqual(columnRows(listening.uncertain!, ["title", "subtitle"]), [
+      { startSec: sec(NOW - 60 * M), endSec: sec(NOW - 58 * M), title: "THE BOOK 3", subtitle: "YOASOBI" },
+    ], "a trace already explained by the Mac playing that album is not drawn twice");
+    assert.deepEqual(listening.summary, { activeSeconds: 40 * 60, titles: 2 });
+
+    await storage.set(pulseLaneOpenKey("gaming"), JSON.stringify({ state: "online", titleId: null, title: null, from: NOW - 50 * M, seenAt: NOW - 30 * M }));
+    const { gaming } = (await getPulseStatus(NOW)).lanes;
+    assert.deepEqual(columnRows(gaming.segments, ["state", "title"]), [{ startSec: sec(NOW - 50 * M), endSec: sec(NOW), state: 1, title: null }],
+      "PSN's 35-minute hold keeps a 30-minute-old confirmation current");
+  });
 });
 
-test('listening keeps stopped windows nameless instead of inheriting the last track',async()=>{
- const {pulseKey}=await import('@/lib/pulse');
- const storage=new FakeStorage();installStorageForTests(storage);
- try {
-  const scored={...row(),domain:'listening'};
-  await storage.append(pulseAssessmentsKey(),JSON.stringify(scored));
-  await storage.append(pulseKey('listening'),JSON.stringify({t:scored.from,level:0,hint:'Old title'}));
-  const view=(await getPulseStatus(NOW)).domains.listening;
-  if(view.kind==='score')assert.equal(assessmentRows(view.assessments)[0].title,undefined);
- }finally{resetStorageForTests();}
+test("charging draws measured watts with outages left empty; activity exposes step buckets and workouts", async () => {
+  await withStorage(async (storage) => {
+    await storage.append(pulseChargingKey(),
+      JSON.stringify({ t: NOW - 60 * M, watts: 0 }),
+      JSON.stringify({ t: NOW - 50 * M, watts: 65, device: "Private MacBook" }),
+      JSON.stringify({ t: NOW - 45 * M, watts: 30, device: "Private MacBook" }));
+    await storage.append(pulseActivityKey(),
+      JSON.stringify({ from: FROM - 2 * M, to: FROM + 3 * M, steps: 500, moveKcal: 1, exerciseMinutes: null }),
+      JSON.stringify({ from: NOW - 30 * M, to: NOW - 25 * M, steps: 812, moveKcal: 20, exerciseMinutes: 5 }),
+      JSON.stringify({ from: NOW - 25 * M, to: NOW - 20 * M, steps: null, moveKcal: 3, exerciseMinutes: 0 }));
+    await storage.set(pulseWorkoutsKey(), JSON.stringify({ items: [{ startedAt: NOW - 40 * M, endedAt: NOW - 20 * M, activityType: "Fencing" }] }));
+    const { charging, activity } = (await getPulseStatus(NOW)).lanes;
+    assert.deepEqual(columnRows(charging.segments, ["watts"]), [
+      { startSec: sec(NOW - 60 * M), endSec: sec(NOW - 50 * M), watts: 0 },
+      { startSec: sec(NOW - 50 * M), endSec: sec(NOW - 45 * M), watts: 65 },
+      { startSec: sec(NOW - 45 * M), endSec: sec(NOW - 35 * M), watts: 30 },
+    ]);
+    assert.equal(charging.currentPowerW, null);
+    assert.deepEqual(charging.summary, { peakW: 65, energyWh: 10.4 });
+    assert.equal(JSON.stringify(charging).includes("Private"), false);
+    assert.deepEqual(columnRows(activity.buckets, ["steps"]), [
+      { startSec: 0, endSec: 180, steps: 500 },
+      { startSec: sec(NOW - 30 * M), endSec: sec(NOW - 25 * M), steps: 812 },
+    ], "buckets without a step count stay unknown");
+    assert.deepEqual(activity.summary, { steps: 300 + 812 });
+    assert.deepEqual(columnRows(activity.workouts, ["activityType"]), [{ startSec: sec(NOW - 40 * M), endSec: sec(NOW - 20 * M), activityType: "Fencing" }]);
+  });
 });
 
-
-test('gaming supports its 30-minute reporting cadence but leaves genuine missing reports empty',async()=>{
- const {measuredPulseView}=await import('@/lib/pulse');
- const m=60000;
- assert.deepEqual(rowsOf(measuredPulseView('gaming',[{t:0,level:0},{t:30*m,level:0},{t:60*m,level:3}],{from:0,to:120*m})),{
-  kind:'binary',segments:[{startSec:0,endSec:60*60,value:0},{startSec:60*60,endSec:95*60,value:1}],activeSeconds:35*60
- });
-});
-test('Emby explicit stop persists until playback resumes; paused and active telemetry still expire',async()=>{
- const {measuredPulseView}=await import('@/lib/pulse');const m=60000;
- assert.deepEqual(rowsOf(measuredPulseView('watching',[{t:0,level:0},{t:180*m,level:3},{t:185*m,level:2},{t:190*m,level:3}],{from:0,to:210*m})),{
-  kind:'binary',segments:[{startSec:0,endSec:180*60,value:0},{startSec:180*60,endSec:185*60,value:1},{startSec:185*60,endSec:190*60,value:0},{startSec:190*60,endSec:200*60,value:1}],activeSeconds:15*60
- });
-});
-
-
-test('media titles keep track boundaries without changing intensity or counting stops as playback',async()=>{
- const {measuredPulseView}=await import('@/lib/pulse');
- for(const domain of ['listening','watching','gaming'] as const){
-  const view=measuredPulseView(domain,[{t:0,level:3,hint:'First title'},{t:60000,level:3,hint:'Second title'},{t:120000,level:2,hint:'Second title'},{t:180000,level:0,hint:'Old title'}],{from:0,to:240000});
-  assert.deepEqual(rowsOf(view),{kind:'binary',activeSeconds:120,segments:[{startSec:0,endSec:60,value:1,title:'First title'},{startSec:60,endSec:120,value:1,title:'Second title'},{startSec:120,endSec:180,value:0,title:'Second title'},{startSec:180,endSec:240,value:0}]});
- }
- const power=measuredPulseView('charging',[{t:0,level:2,powerW:40,hint:'Private device'}],{from:0,to:60000});
- assert.equal(JSON.stringify(power).includes('Private device'),false);
-});
-
-test('listening mode round-trips through the parser; a bad mode drops only the mode, never the row',async()=>{
- const {parsePulseAssessment}=await import('@shared/pulse-assessment');
- const mode={value:'selecting',confidence:0.9,probabilities:{idle:0,paused:0,steady:0.1,selecting:0.9,traces:0}};
- const good=parsePulseAssessment(JSON.stringify({...row(),domain:'listening',mode}));
- assert.deepEqual(good?.mode,mode);
- const bad=parsePulseAssessment(JSON.stringify({...row(),domain:'listening',mode:{...mode,value:'mixed'}}));
- assert.ok(bad,'强度还在，曲线不能因为 mode 坏了消失');assert.equal(bad?.mode,null);
- const foreign=parsePulseAssessment(JSON.stringify({...row(),domain:'watching',mode}));
- assert.equal(foreign?.mode,null,'没有模式集合的域一律 null');
-});
-
-test('columns round-trip rows, keep only the titles and partial coverage that exist',()=>{
- const rows=[{startSec:0,endSec:300,intensity:{value:2,confidence:0.8},continuity:{value:1},mode:{value:'agent'}},
-  {startSec:300,endSec:600,coverage:[{startSec:320,endSec:600}],intensity:{value:0,confidence:1},continuity:{value:0},mode:null,title:'Song'}];
- const columns=toAssessmentColumns(rows);
- assert.deepEqual(columns,{startSec:[0,300],endSec:[300,600],intensity:[2,0],confidence:[0.8,1],continuity:[1,0],mode:['agent',null],title:[null,'Song'],coverage:{'1':[{startSec:320,endSec:600}]}});
- assert.deepEqual(assessmentRows(columns),rows);
- assert.deepEqual(toAssessmentColumns([rows[0]]),{startSec:[0],endSec:[300],intensity:[2],confidence:[0.8],continuity:[1],mode:['agent']});
- const segments=[{startSec:0,endSec:60,value:42.5},{startSec:60,endSec:90,value:0}];
- assert.deepEqual(toSegmentColumns(segments),{startSec:[0,60],endSec:[60,90],value:[42.5,0]});
- assert.deepEqual(segmentRows(toSegmentColumns(segments)),segments);
-});
-
-test('mixed five- and fifteen-minute assessments never double-weight coverage', async () => {
- const {latestPulseAssessments, summarizeAssessments} = await import('@shared/pulse-assessment');
- const base = 1_800_000_000_000;
- const old = [0, 300_000, 600_000].map((offset) => ({...row(), domain:'coding', from:base+offset, to:base+offset+300_000, coverage:[{from:base+offset,to:base+offset+300_000}], inputHash:`old-${offset}`}));
- const wide = {...row(), domain:'coding', from:base, to:base+900_000, coverage:[{from:base,to:base+120_000}], inputHash:'wide'};
- const raw = [...old, wide, old[0]].map((value) => JSON.stringify(value));
- const result = latestPulseAssessments(raw);
- assert.equal(result.length,1,'a late legacy row cannot replace the wide score');
- assert.equal(result[0].inputHash,'wide');
- assert.deepEqual(result[0].coverage,wide.coverage,'unknown time is not filled with old coverage');
- assert.equal(summarizeAssessments(result,base,base+900_000)?.value,1.5);
- const legacy = latestPulseAssessments(old.map((value) => JSON.stringify(value)));
- assert.equal(legacy.length,3,'all old rows remain readable before a wide replacement exists');
+test("column rows reject a payload from another deploy instead of throwing", () => {
+  type StateColumns = { startSec: number[]; endSec: number[]; state: number[] };
+  assert.equal(columnRows({ startSec: [1], endSec: [2] } as unknown as StateColumns, ["state"]), null);
+  assert.equal(columnRows<StateColumns>({ startSec: [1, 2], endSec: [2], state: [0, 1] }, ["state"]), null);
+  assert.equal(columnRows<StateColumns>(undefined, ["state"]), null);
+  assert.deepEqual(columnRows<StateColumns>({ startSec: [], endSec: [], state: [] }, ["state"]), []);
 });

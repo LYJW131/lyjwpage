@@ -2,7 +2,7 @@ import { withStorageScope } from "@/lib/storage";
 import type { ListeningItem } from "@/lib/types";
 import { fanout } from "@api/fanout";
 import { prepareRecentlyPlayed } from "@api/stores/apple-music-store";
-import { recordListeningPlay } from "@api/stores/listening-pulse";
+import { recordListeningTrace } from "@api/stores/listening-pulse";
 
 /**
  * 收下采集 Worker 拉回来的一份最近在听：差分、落库、推 `listening`、记听歌痕迹。
@@ -12,16 +12,16 @@ import { recordListeningPlay } from "@api/stores/listening-pulse";
  */
 export async function commitRecentlyPlayed(items: ListeningItem[]): Promise<{ changed: boolean }> {
   return withStorageScope(async () => {
-    const { changed, play, listening, commit } = await prepareRecentlyPlayed(items);
+    const { changed, trace, listening, commit } = await prepareRecentlyPlayed(items);
     /**
      * 列表变了就是「在什么设备上又放了点什么」，哪怕 Mac 睡着、HomePod 没动 ——
-     * 那时这是唯一留下的痕迹。它没有时刻，所以不进 pulse 序列、不画进图，只作为
-     * 证据交给评分器和正在播放的实测段一起打分，见 workers/api/src/pulse-score.ts。
+     * 那时这是唯一留下的痕迹。它没有时刻，只知道落在上一轮刷新和这一轮之间，
+     * 所以 Pulse 把它画成一段不确定区间，不当成此刻在放，见 shared/pulse-listening。
      */
     // 完整数据可并行广播。首屏不失效：列表区定高、条目绝对定位，换歌只换内容，
     // 交给定时重建（见 lib/home-layout）。
     await fanout({
-      writes: play ? [commit(), recordListeningPlay(play)] : [commit()],
+      writes: trace ? [commit(), recordListeningTrace(trace)] : [commit()],
       events: changed ? [{ type: "listening", payload: listening }] : [],
     });
     return { changed };

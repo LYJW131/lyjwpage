@@ -1,265 +1,243 @@
-import { readPulseAssessments } from "@/lib/pulse-assessments";
-import { summarizeAssessments, type PulseAssessment } from "@shared/pulse-assessment";
+import { codingObservationsKey, cursorObservationsKey } from "@/lib/coding-pulse";
+import { PULSE_WINDOW_MS } from "@/lib/limits";
+import { pulseAssessmentsKey } from "@/lib/pulse-assessments";
+import { toColumns } from "@/lib/pulse-columns";
 import {
-  PULSE_REPEAT_AFTER_MS,
-  PULSE_SILENT_AFTER_MS,
-  PULSE_HINT_MAX,
-} from "@/lib/limits";
-import { CHARGING_IDLE_MAX_W } from "@/lib/home-layout";
-import { toAssessmentColumns, toSegmentColumns } from "@/lib/pulse-columns";
-import { pulseWindowAt } from "@/lib/pulse-window";
-import { key, withStorage } from "@/lib/storage";
-import {
-  PULSE_DOMAINS,
-  type PulseDomain,
-  type PulseHistory,
-  type PulseLevel,
-  type PulsePayload,
-  type PulsePublicAssessment,
-  type PulseSpan,
-  type PulseSample,
-  type PulseSeries,
+  pulseActivityKey,
+  pulseChargingKey,
+  pulseLaneKey,
+  pulseLaneOpenKey,
+  pulseListeningTracesKey,
+  pulseWorkoutsKey,
+} from "@/lib/pulse-keys";
+import { withStorage } from "@/lib/storage";
+import type {
+  PulseCodingLane,
+  PulsePayload,
+  PulsePowerLane,
+  PulseStateLane,
+  PulseStepsLane,
 } from "@/lib/types";
+import { latestPulseAssessments, type PulseAssessment } from "@shared/pulse-assessment";
+import { codingBand, parseCodingObservation, type CodingObservation } from "@shared/pulse-coding";
+import { parseCursorObservation, type CursorObservation } from "@shared/pulse-cursor";
+import { parseListeningTrace, type ListeningTrace } from "@shared/pulse-listening";
+import {
+  activeState,
+  chargingSegments,
+  chargingSummary,
+  currentChargingPower,
+  parseActivityBucket,
+  parseChargingSample,
+  parseClosedInterval,
+  parseOpenInterval,
+  parseWorkoutIntervals,
+  stateSegments,
+  GAMING_STATES,
+  LISTENING_STATES,
+  WATCHING_STATES,
+  type ActivityBucket,
+  type ChargingSample,
+  type ClosedInterval,
+  type OpenInterval,
+  type StateLane,
+  type StateLaneFacts,
+  type WorkoutInterval,
+} from "@shared/pulse-timeline";
 
-export function pulseKey(domain: PulseDomain): string {
-  return key("pulse", domain);
-}
+export type PulseWindow = { from: number; to: number };
 
-export function pulseIntervalRangeKey(domain: "activity"): string {
-  return key("pulse", domain, "authoritative-range");
-}
-
-export function pulseIntervalRevisionKey(domain: "activity"): string {
-  return key("pulse", domain, "revision");
-}
-
-function normalizeHint(hint: string | null | undefined): string | undefined {
-  if (typeof hint !== "string") return undefined;
-  const trimmed = hint.trim().slice(0, PULSE_HINT_MAX);
-  return trimmed || undefined;
-}
-
-function isPulseLevel(value: unknown): value is PulseLevel {
-  return value === 0 || value === 1 || value === 2 || value === 3;
-}
-
-/** 脏行丢掉，不因为一条坏 JSON 废掉整条序列。 */
-export function parsePulseSample(raw: string): PulseSample | null {
-  try {
-    const value: unknown = JSON.parse(raw);
-    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-    const row = value as { t?: unknown; level?: unknown; hint?: unknown; until?: unknown; powerW?: unknown };
-    if (typeof row.t !== "number" || !Number.isFinite(row.t) || !isPulseLevel(row.level)) {
-      return null;
-    }
-    if (row.until != null && (typeof row.until !== "number" || !Number.isFinite(row.until) || row.until <= row.t)) return null;
-    if (row.powerW != null && (typeof row.powerW !== "number" || !Number.isFinite(row.powerW) || row.powerW < 0)) return null;
-    const power = typeof row.powerW === "number" ? { powerW: row.powerW } : {};
-    const interval = typeof row.until === "number" ? { until: row.until } : {};
-    const hint = normalizeHint(typeof row.hint === "string" ? row.hint : undefined);
-    return { t: row.t, level: row.level, ...interval, ...power, ...(hint ? { hint } : {}) };
-  } catch {
-    return null;
-  }
-}
-
-export function toPulseSample(next: {
-  t: number;
-  level: PulseLevel;
-  hint?: string | null;
-  until?: number;
-  powerW?: number;
-}): PulseSample {
-  const hint = normalizeHint(next.hint);
-  // 瓦数留一位小数：泳道和评分都用不上固件那两位，多出来的只会让每封读数都「不一样」
-  const powerW = next.powerW != null ? Math.round(next.powerW * 10) / 10 : undefined;
-  return { t: next.t, level: next.level, ...(powerW != null ? { powerW } : {}), ...(next.until != null ? { until: next.until } : {}), ...(hint ? { hint } : {}) };
+export function pulseWindowAt(now: number): PulseWindow {
+  return { from: now - PULSE_WINDOW_MS, to: now };
 }
 
 /**
- * 这一帧该不该进 samples 表。纯函数，不碰存储。
- *
- * - 没有上一笔 → 写入（含空闲：空闲也得有一条，后面才知道「从何时起没事」）。
- * - `t` 不前进 → 丢掉。这是源站 receivedAt，同一 StateHub 上单调；≤ 就是重复或乱序。
- * - 带 until 的已完成区间 → 写入，包括相邻同档和空闲，不能丢失终点。
- * - level 或 hint 变了 → 写入（状态翻面）。
- * - 瓦数：跨过待机门槛（CHARGING_IDLE_MAX_W）立刻写；门槛以下的抖动不写——插着线
- *   不在充时读数在 0 和 0.5 W 之间约 40 秒跳一次，从前每跳一次记一条，占了充电
- *   泳道八成；都在通电时至少隔 30 秒，且变得够明显（≥ 2 W 且 ≥ 10%）才写。
- *   小幅漂移由 5 分钟再确认那一笔带上最新读数。跨档由上面的 level 接住。
- * - 距上一笔 ≥ 5 分钟 → 写入。序列是阶跃函数，每个点撑到下一个；
- *   隔这么久再确认一次，上报器死了会在图上露出缺口。
- * - 其余 → 丢掉。空闲也保留五分钟心跳，评分时才能区分空闲与缺报。
+ * 每个键读多长的尾巴。列表按时间追加，24 小时只落在最后一截；整串读七天
+ * （Coding 观测一万条、瓦数六千条）每次请求都白解析。尾巴按最密的上报节奏估，
+ * 留一倍余量。
  */
-export function planPulseSample(
-  last: PulseSample | null,
-  next: { t: number; level: PulseLevel; hint?: string | null; until?: number; powerW?: number },
-): PulseSample | null {
-  const sample = toPulseSample(next);
-  if (!last) return sample;
-  if (sample.t <= last.t) return null;
-  if (sample.until != null) return sample;
-  // Power changes are sampled at most once per 30 seconds; crossing the idle threshold is immediate.
-  if (sample.powerW != null && last.powerW != null && sample.powerW !== last.powerW &&
-      sample.powerW > CHARGING_IDLE_MAX_W && last.powerW > CHARGING_IDLE_MAX_W && sample.t - last.t < 30_000) return null;
-  if (sample.level !== last.level || sample.hint !== last.hint || powerMoved(last.powerW, sample.powerW)) {
-    return sample;
-  }
-  if (sample.t - last.t >= PULSE_REPEAT_AFTER_MS) {
-    return sample;
-  }
-  return null;
-}
+const TAIL = {
+  listening: 1500,
+  watching: 500,
+  gaming: 500,
+  traces: 1000,
+  charging: 3500,
+  activity: 400,
+  coding: 5000,
+  cursor: 2000,
+} as const;
 
-function powerMoved(before: number | undefined, after: number | undefined): boolean {
-  if (before === after) return false;
-  if (before == null || after == null) return true;
-  const idleBefore = before <= CHARGING_IDLE_MAX_W;
-  if (idleBefore !== after <= CHARGING_IDLE_MAX_W) return true;
-  if (idleBefore) return false;
-  return Math.abs(after - before) >= Math.max(2, 0.1 * Math.max(before, after));
-}
-
-/**
- * 按游标切一条域的序列。规则同充电头 `sliceChargerHistory`：
- * 只有游标不早于还留着的最旧点时增量才连续，否则整份重发。
- */
-export function slicePulseSeries(
-  samples: PulseSample[],
-  cursor?: number,
-): PulseSeries {
-  const oldest = samples[0] ?? null;
-  const partial = cursor != null && oldest != null && cursor >= oldest.t;
-  return {
-    samples: partial ? samples.filter((sample) => sample.t > cursor) : samples,
-    partial,
-  };
-}
-
-function asStringList(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
-}
-
-/**
- * 各域一次读完。键不存在就是空数组；坏行跳过。
- *
- * `cursor` 按域各自切片：有的域还没数据、有的已经裁过最旧点，partial 标志互不影响。
- * 内部读形状；公开那份由下面的 getPulseStatus 裁窗、剥 hint 之后给出。
- */
-export async function readPulseHistory(cursor?: number): Promise<PulseHistory> {
-  const rows = await withStorage(async (storage) => {
-    const pipe = storage.batch();
-    for (const domain of PULSE_DOMAINS) {
-      pipe.listRange(pulseKey(domain), 0, -1);
-    }
-    return pipe.execute();
-  }, PULSE_DOMAINS.map(() => [] as string[]));
-
-  const series = {} as Record<PulseDomain, PulseSeries>;
-  PULSE_DOMAINS.forEach((domain, index) => {
-    const samples: PulseSample[] = [];
-    for (const raw of asStringList(rows[index])) {
-      const sample = parsePulseSample(raw);
-      if (sample) samples.push(sample);
-    }
-    series[domain] = slicePulseSeries(samples, cursor);
-  });
-  return { series };
-}
-
-
-/** Graph and summary share the same immutable observations and revision-aware assessments. */
-export async function getPulseStatus(now: number = Date.now()): Promise<PulsePayload> {
-  const window = pulseWindowAt(now);
-  const [rows, history] = await Promise.all([readPulseAssessments(window.from, window.to), readPulseHistory()]);
-  const domains = {} as PulsePayload['domains'];
-  for (const domain of PULSE_DOMAINS) {
-    const assessments = rows.filter((r)=>r.domain===domain);
-    const score = summarizeAssessments(assessments, window.from, window.to);
-    if (domain === "watching" || domain === "gaming" || domain === "charging") {
-      domains[domain] = { ...measuredPulseView(domain, history.series[domain].samples, window), score };
-      continue;
-    }
-    /**
-     * Listening 画评分，不画实测。
-     *
-     * 实测那条线只看得见 Mac 和 HomePod：在 iPhone 或别的设备上放一整天，它也是
-     * 平的。而那些设备唯一留下的痕迹是「最近在听」列表的变动，它没有时刻，只有
-     * 评分那一侧收得到（见 shared/pulse-listening）。画评分等于把两路证据都画上，
-     * 画实测等于只画其中一路还看不出另一路缺席。Watching / Gaming / Charging
-     * 没有这个盲区，仍画实测。
-     */
-    domains[domain] = { kind: "score", score, assessments: toAssessmentColumns(assessments.map((row) =>
-      publicAssessment(row, window, domain === "listening" ? assessmentTitle(history.series.listening.samples, row) : undefined),
-    )) };
-  }
-  return { generatedAt: now, window, domains };
-}
-
-/** 窗口内的绝对区间 → 相对 `window.from` 的整秒，见 PulseSpan */
-export function pulseSpan(window: { from: number }, from: number, to: number): PulseSpan {
+/** 窗口内的绝对区间 → 相对 `window.from` 的整秒 */
+function span(window: PulseWindow, from: number, to: number) {
   return { startSec: Math.round((from - window.from) / 1000), endSec: Math.round((to - window.from) / 1000) };
 }
 
-/** 评分行的公开投影，字段取舍见 PulsePublicAssessment */
-export function publicAssessment(row: PulseAssessment, window: { from: number }, title?: string): PulsePublicAssessment {
-  const whole = row.coverage.length === 1 && row.coverage[0].from === row.from && row.coverage[0].to === row.to;
+function seconds(ms: number): number {
+  return Math.round(ms / 1000);
+}
+
+const STATE_CODES: { [L in StateLane]: readonly StateLaneFacts[L]["state"][] } = {
+  listening: LISTENING_STATES,
+  watching: WATCHING_STATES,
+  gaming: GAMING_STATES,
+};
+
+type StateLaneInput<L extends StateLane> = { closed: ClosedInterval<StateLaneFacts[L]>[]; open: OpenInterval<StateLaneFacts[L]> | null };
+
+function publicTitle(lane: StateLane, row: StateLaneFacts[StateLane]): { title: string | null; subtitle: string | null } {
+  if (row.state === "idle" || row.state === "offline" || row.state === "online") return { title: null, subtitle: null };
+  if (lane === "listening") {
+    const music = row as StateLaneFacts["listening"];
+    return { title: music.title, subtitle: music.artist };
+  }
+  if (lane === "watching") {
+    const video = row as StateLaneFacts["watching"];
+    return { title: video.title, subtitle: video.subtitle };
+  }
+  return { title: (row as StateLaneFacts["gaming"]).title, subtitle: null };
+}
+
+export function stateLaneView<L extends StateLane>(lane: L, input: StateLaneInput<L>, window: PulseWindow, traces: ListeningTrace[] = []): PulseStateLane {
+  const segments = stateSegments(lane, input.closed, input.open, window);
+  const codes = STATE_CODES[lane] as readonly string[];
+  const rows = segments.flatMap((segment) => {
+    const at = span(window, segment.from, segment.to);
+    if (at.endSec <= at.startSec) return [];
+    return [{ ...at, state: codes.indexOf(segment.state), ...publicTitle(lane, segment) }];
+  });
+  const active = segments.filter((segment) => segment.state === activeState(lane));
+  const view: PulseStateLane = {
+    kind: "state",
+    segments: toColumns(rows, ["state", "title", "subtitle"] as const),
+    summary: {
+      activeSeconds: seconds(active.reduce((sum, segment) => sum + segment.to - segment.from, 0)),
+      titles: new Set(active.map((segment) => segment.title).filter(Boolean)).size,
+    },
+  };
+  if (lane === "listening") {
+    const music = segments as unknown as (StateLaneFacts["listening"] & { from: number; to: number })[];
+    const uncertain = traces.flatMap((trace) => {
+      const from = Math.max(window.from, trace.since), to = Math.min(window.to, trace.t);
+      if (to <= from) return [];
+      // Mac / HomePod 那一路正放着同一张专辑：痕迹已经被实测解释了，不再另画一段
+      const named = trace.title?.toLowerCase();
+      if (named && music.some((segment) => segment.state !== "idle" && segment.to > trace.since && segment.from < trace.t && segment.album?.toLowerCase() === named)) return [];
+      const at = span(window, from, to);
+      return at.endSec > at.startSec ? [{ ...at, title: trace.title, subtitle: trace.artist }] : [];
+    });
+    view.uncertain = toColumns(uncertain, ["title", "subtitle"] as const);
+  }
+  return view;
+}
+
+export function codingLaneView(observations: CodingObservation[], cursor: CursorObservation[], assessments: PulseAssessment[], window: PulseWindow): PulseCodingLane {
+  const band = codingBand(observations, cursor, window);
+  const rows = band.flatMap((segment) => {
+    const at = span(window, segment.from, segment.to);
+    return at.endSec > at.startSec ? [{ ...at, value: segment.value }] : [];
+  });
+  const total = (value: number) => seconds(band.filter((segment) => segment.value === value).reduce((sum, segment) => sum + segment.to - segment.from, 0));
+  const scored = assessments.filter((row) => row.domain === "coding" && row.to > window.from && row.from < window.to)
+    .map((row) => ({
+      ...span(window, Math.max(window.from, row.from), Math.min(window.to, row.to)),
+      intensity: row.intensity.value,
+      confidence: Math.round(row.intensity.confidence * 100) / 100,
+      mode: row.mode?.value ?? null,
+    }))
+    .filter((row) => row.endSec > row.startSec);
   return {
-    ...pulseSpan(window, row.from, row.to),
-    ...(whole ? {} : { coverage: row.coverage.map((part) => pulseSpan(window, part.from, part.to)) }),
-    intensity: { value: row.intensity.value, confidence: Math.round(row.intensity.confidence * 100) / 100 },
-    continuity: { value: row.continuity.value },
-    mode: row.mode ? { value: row.mode.value } : null,
-    ...(title ? { title } : {}),
+    kind: "coding",
+    segments: toColumns(rows, ["value"] as const),
+    assessments: toColumns(scored, ["intensity", "confidence", "mode"] as const),
+    summary: { humanSeconds: total(1), agentSeconds: total(2), bothSeconds: total(3) },
   };
 }
 
+export function chargingLaneView(samples: ChargingSample[], window: PulseWindow): PulsePowerLane {
+  const segments = chargingSegments(samples, window);
+  const rows = segments.flatMap((segment) => {
+    const at = span(window, segment.from, segment.to);
+    return at.endSec > at.startSec ? [{ ...at, watts: segment.watts }] : [];
+  });
+  return {
+    kind: "power",
+    segments: toColumns(rows, ["watts"] as const),
+    currentPowerW: currentChargingPower(samples, window.to),
+    summary: chargingSummary(segments),
+  };
+}
+
+export function activityLaneView(buckets: ActivityBucket[], workouts: WorkoutInterval[], window: PulseWindow): PulseStepsLane {
+  let steps = 0;
+  const rows = buckets.flatMap((bucket) => {
+    const from = Math.max(window.from, bucket.from), to = Math.min(window.to, bucket.to);
+    if (to <= from || bucket.steps == null) return [];
+    // 窗口左边切进一个桶时按比例算进合计；柱子照画整桶的步数
+    steps += bucket.steps * (to - from) / (bucket.to - bucket.from);
+    const at = span(window, from, to);
+    return at.endSec > at.startSec ? [{ ...at, steps: bucket.steps }] : [];
+  });
+  const sessions = workouts.flatMap((workout) => {
+    const from = Math.max(window.from, workout.startedAt), to = Math.min(window.to, workout.endedAt);
+    if (to <= from) return [];
+    const at = span(window, from, to);
+    return at.endSec > at.startSec ? [{ ...at, activityType: workout.activityType }] : [];
+  });
+  return {
+    kind: "steps",
+    buckets: toColumns(rows, ["steps"] as const),
+    workouts: toColumns(sessions, ["activityType"] as const),
+    summary: { steps: Math.round(steps) },
+  };
+}
+
+function parsed<T>(rows: unknown, parse: (raw: string) => T | null): T[] {
+  if (!Array.isArray(rows)) return [];
+  return rows.flatMap((raw) => {
+    if (typeof raw !== "string") return [];
+    const row = parse(raw);
+    return row ? [row] : [];
+  });
+}
+
 /**
- * 评分窗口里在放的那首歌。分数本身不带名字，而展开卡从前在实测段上就显示它
- * （和实测段同一份 hint、同一个公开口径），换成评分线之后不该跟着消失。
- * 取窗口内占时最长的那一首；只认 level ≥ 2，停了不沿用旧标题。
+ * 公开端点 `/api/status/pulse`：一次读完各道的原始事实，在这里裁窗、换算成列。
+ * 读不到存储就是一份全空的时间线（全部未知），不是报错。
  */
-function assessmentTitle(samples: PulseSample[], window: { from: number; to: number }): string | undefined {
-  let longest: { title: string; ms: number } | null = null;
-  for (let index = 0; index < samples.length; index += 1) {
-    const sample = samples[index];
-    if (sample.level < 2 || !sample.hint) continue;
-    const from = Math.max(window.from, sample.t);
-    const to = Math.min(window.to, samples[index + 1]?.t ?? window.to, pulseSampleUntil("listening", sample));
-    if (to - from > (longest?.ms ?? 0)) longest = { title: sample.hint, ms: to - from };
-  }
-  return longest?.title;
-}
-
-/** Validity follows each producer's cadence and event semantics. */
-export function pulseSampleUntil(domain: PulseDomain, sample: PulseSample): number {
-  if (sample.until != null) return sample.until;
-  // Emby emits an explicit stop once; it remains stopped until the next playback event.
-  if (domain === "watching" && sample.level === 0) return Infinity;
-  // PSN's no-visitor polling cadence is 30 minutes; allow five minutes of delivery jitter.
-  return sample.t + (domain === "gaming" ? 35 * 60_000 : PULSE_SILENT_AFTER_MS);
-}
-
-/** Preserve source boundaries and silence, including observed zero values. */
-export function measuredPulseView(domain: "listening" | "watching" | "gaming" | "charging", samples: PulseSample[], window: { from: number; to: number }): import("@/lib/types").PulseChartView {
-  // 先按绝对毫秒合并相邻同值段，出口处再换成相对秒
-  const merged: { from: number; to: number; value: number; title?: string }[] = [];
-  for (let i = 0; i < samples.length; i++) {
-    const sample = samples[i];
-    const from = Math.max(window.from, sample.t);
-    const to = Math.min(window.to, samples[i + 1]?.t ?? window.to, pulseSampleUntil(domain, sample));
-    const value = domain === "charging" ? sample.powerW : sample.level === 3 ? 1 : 0;
-    if (to <= from || value == null) continue;
-    // Only media/game labels are public; stopped sessions must not inherit their old title.
-    const title = domain !== "charging" && sample.level >= 2 ? sample.hint : undefined;
-    const previous = merged.at(-1);
-    if (previous?.to === from && previous.value === value && previous.title === title) previous.to = to;
-    else merged.push({ from, to, value, ...(title ? { title } : {}) });
-  }
-  const segments = toSegmentColumns(merged.map(({ from, to, ...rest }) => ({ ...pulseSpan(window, from, to), ...rest })));
-  if (domain === "charging") {
-    const last = samples.at(-1);
-    return { kind: "power", segments, currentPowerW: last && last.t <= window.to && window.to < (last.until ?? last.t + PULSE_SILENT_AFTER_MS) ? last.powerW ?? null : null };
-  }
-  return { kind: "binary", segments, activeSeconds: merged.reduce((sum, part) => sum + (part.value === 1 ? (part.to - part.from) / 1000 : 0), 0) };
+export async function getPulseStatus(now: number = Date.now()): Promise<PulsePayload> {
+  const window = pulseWindowAt(now);
+  const empty: unknown[] = [];
+  const rows = await withStorage(async (storage) => storage.batch()
+    .listRange(pulseLaneKey("listening"), -TAIL.listening, -1)
+    .get(pulseLaneOpenKey("listening"))
+    .listRange(pulseLaneKey("watching"), -TAIL.watching, -1)
+    .get(pulseLaneOpenKey("watching"))
+    .listRange(pulseLaneKey("gaming"), -TAIL.gaming, -1)
+    .get(pulseLaneOpenKey("gaming"))
+    .listRange(pulseListeningTracesKey(), -TAIL.traces, -1)
+    .listRange(pulseChargingKey(), -TAIL.charging, -1)
+    .listRange(pulseActivityKey(), -TAIL.activity, -1)
+    .get(pulseWorkoutsKey())
+    .listRange(codingObservationsKey(), -TAIL.coding, -1)
+    .listRange(cursorObservationsKey(), -TAIL.cursor, -1)
+    .listRange(pulseAssessmentsKey(), 0, -1)
+    .execute(), empty);
+  const text = (index: number) => (typeof rows[index] === "string" ? rows[index] as string : null);
+  const lane = <L extends StateLane>(name: L, index: number): StateLaneInput<L> => ({
+    closed: parsed(rows[index], (raw) => parseClosedInterval(name, raw)),
+    open: parseOpenInterval(name, text(index + 1)),
+  });
+  const assessments = latestPulseAssessments(Array.isArray(rows[12]) ? rows[12] as string[] : []);
+  return {
+    generatedAt: now,
+    window,
+    lanes: {
+      coding: codingLaneView(parsed(rows[10], parseCodingObservation), parsed(rows[11], parseCursorObservation), assessments, window),
+      listening: stateLaneView("listening", lane("listening", 0), window, parsed(rows[6], parseListeningTrace)),
+      watching: stateLaneView("watching", lane("watching", 2), window),
+      gaming: stateLaneView("gaming", lane("gaming", 4), window),
+      charging: chargingLaneView(parsed(rows[7], parseChargingSample), window),
+      activity: activityLaneView(parsed(rows[8], parseActivityBucket), parseWorkoutIntervals(text(9)), window),
+    },
+  };
 }

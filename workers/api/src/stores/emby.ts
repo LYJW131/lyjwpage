@@ -1,10 +1,10 @@
-import { watchingLevel } from "@shared/pulse-levels";
 import { getCurrentItem, getImageObjectKeys, getNowPlaying, getResume, resolveNowPlaying, type EmbyNowPlaying, type StoredWatchingItem } from "@/lib/emby-store";
 import { number, object, text } from "@/lib/json";
 import { NOW_WATCHING_TAG, WATCHING_TAG } from "@/lib/live-events";
 import type { WatchingItem, WatchingMedia, WatchingPlayMethod } from "@/lib/types";
 import { fanout, type PendingEvent } from "@api/fanout";
-import { recordPulse } from "@api/stores/pulse";
+import { recordStateObservation } from "@api/stores/pulse";
+import { watchingFacts } from "@shared/pulse-timeline";
 import { hasStoredImage, IMAGE_OBJECT_KEY } from "@api/r2-assets";
 import { clearNowPlaying, setCurrentItem, setImageObjectKeys, setNowPlaying, setResume } from "@api/stores/emby-store";
 import { nowWatchingPayload, watchingPayload } from "@shared/emby";
@@ -286,14 +286,13 @@ export async function commitPreparedEmbyReport(prepared: PreparedEmbyReport) {
     writes.push(commitPlaying(played));
     /**
      * 这次没带详情就用存着的那份，按 itemId 对上才算数（同 nowWatchingPayload
-     * 那道闸）。推送和 pulse 必须用同一份：只给 `played.item` 的话，代理推来一条
-     * 不带详情的位置更新会记出一笔没有标题的样本，而 hint 变了在 planPulseSample
-     * 眼里就是一次状态翻面 —— 同一部剧会在序列上凭空多出一个断点。
+     * 那道闸）。推送和 Pulse 必须用同一份：只给 `played.item` 的话，代理推来一条
+     * 不带详情的位置更新会记出一段没有标题的区间，而标题变了在时间线眼里就是
+     * 换了一段 —— 同一部剧会凭空多出一个断点。
      */
     const kept = storedCurrent?.item ?? null;
     const detail = played.item ?? (kept?.id === played.state?.itemId ? kept : null);
-    const watching = watchingLevel(played.state, detail);
-    writes.push(recordPulse("watching", { t: receivedAt, level: watching.level, hint: watching.hint }));
+    writes.push(recordStateObservation("watching", receivedAt, watchingFacts(played.state, detail)));
     // 播放状态变了就直接把新数据推给浏览器 —— 手上这份就是最新的
     const nowPlaying = resolveNowPlaying(played.state);
     events.push({

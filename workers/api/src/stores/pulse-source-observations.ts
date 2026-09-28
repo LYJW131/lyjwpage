@@ -1,5 +1,4 @@
 import { cursorObservationsKey } from '@/lib/coding-pulse';
-import { listeningChecksKey } from '@/lib/listening-pulse';
 import { PULSE_TTL_MS } from '@/lib/limits';
 import { tellStorage } from '@/lib/storage';
 import type { CursorObservation } from '@shared/pulse-cursor';
@@ -14,7 +13,4 @@ async function appendObservation(key: string, observation: { t: number }) {
 }
 export function recordCursorObservation(observation: CursorObservation) {
   return appendObservation(cursorObservationsKey(), observation);
-}
-export function recordListeningCheck(t: number) {
-  return appendObservation(listeningChecksKey(), { t });
 }

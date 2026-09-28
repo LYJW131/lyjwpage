@@ -173,30 +173,13 @@ function macSnapshotInput(mac?: {
   );
 }
 
-/** 不查目录的候选：只够仲裁「谁在放、放没放」；链接、封面、歌词位留空。给 pulse 用，不给页面。 */
-export function bareCandidate(
-  music: LocalNowPlaying | null,
-  receivedAt: number,
-): NowListeningCandidate | null {
-  if (!playableCandidate(music)) return null;
-  return {
-    music,
-    receivedAt,
-    id: null,
-    link: null,
-    songId: null,
-    upcomingSongIds: [],
-    hasLyrics: false,
-  };
-}
-
 export async function decorateCandidate(
   music: LocalNowPlaying | null,
   receivedAt: number,
   upcomingTracks: PlayingQueueTrack[] = [],
 ): Promise<NowListeningCandidate | null> {
-  const bare = bareCandidate(music, receivedAt);
-  if (!bare) return null;
+  if (!playableCandidate(music)) return null;
+  const bare: NowListeningCandidate = { music, receivedAt, id: null, link: null, songId: null, upcomingSongIds: [], hasLyrics: false };
   const [lookup, ...ahead] = await Promise.all([
     resolveTrackLookup(bare.music),
     ...upcomingTracks.map((track) => resolveTrackLookup(track)),
@@ -249,20 +232,3 @@ export async function snapshotFrom(
   };
 }
 
-/** 同 snapshotFrom 的仲裁输入，但不查 Apple 目录。pulse 只需要 idle / state / 曲名。 */
-export function bareSnapshotFrom(
-  homePodStored: StoredHomePod | null,
-  mac?: {
-    music: LocalNowPlaying | null;
-    receivedAt: number;
-    upcomingTracks?: PlayingQueueTrack[];
-  },
-): NowListeningSnapshot {
-  const source = macSnapshotInput(mac);
-  const musicEnabled = telemetryState.activeModules.has("appleMusic");
-  return {
-    mac: musicEnabled ? bareCandidate(source.music, source.receivedAt) : null,
-    homePod: homePodStored ? bareCandidate(homePodStored.music, homePodStored.receivedAt) : null,
-    macReceivedAt: source.receivedAt,
-  };
-}

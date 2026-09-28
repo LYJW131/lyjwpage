@@ -1,23 +1,33 @@
 "use client";
 
-import { useCallback, useId, useRef, useState } from "react";
+import { type ReactNode, type RefObject, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { AnchoredTooltip, cellAnchor, type CellAnchor, useHoverDismiss } from "./heatmap-hover";
 
+import { DevToggle, DevToggleSlot, isDev } from "@/components/dev-toggles";
 import { Card } from "@/components/ui/card";
 import { useStatus } from "@/hooks/use-status";
-import { PULSE_SILENT_AFTER_MS } from "@/lib/limits";
 import { PULSE_PATH } from "@/lib/paths";
-import { assessmentRows, segmentRows } from "@/lib/pulse-columns";
-import { pulseLanePath, pulseScoreWord, type PulseLanePoint } from "@/lib/pulse-lane";
-import type { PulseDomainView, PulseDomain, PulsePayload, PulsePublicAssessment, PulseSpan, PulseTrend, StatusResponse } from "@/lib/types";
-import { CODING_INTENSITY, CODING_CONTINUITY } from "@shared/pulse-coding";
+import { columnRows } from "@/lib/pulse-columns";
+import type {
+  PulseCodingLane,
+  PulseDomain,
+  PulsePayload,
+  PulsePowerLane,
+  PulseStateLane,
+  PulseStepsLane,
+  StatusResponse,
+} from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /**
- * Every lane and its summary consume the same 15-minute Jev assessments.
- * 所以五分钟问一次：从前一分钟一次，五次里有四次拿回同一批评分，
- * 实测泳道最右那一截晚几分钟画上，对 24 小时的总览无关紧要。
+ * Pulse：最近 24 小时「在做什么」的事实时间线。
+ *
+ * 载荷里只有原始事实（状态、标题、瓦数、步数），档位、颜色、摘要全在这里现算，
+ * 换展示方式不用动存储。没有段的时间就是没有观测（未知），和观测到的空闲不同：
+ * 空闲画一条贴底的细线，未知什么都不画，只剩那条很淡的轨道。
+ *
+ * 五分钟问一次：区间按分钟级变化，24 小时的总览晚几分钟画上无关紧要。
  */
 const REFRESH_MS = 5 * 60_000;
 
@@ -33,140 +43,373 @@ const LANES: ReadonlyArray<{ domain: PulseDomain; label: string }> = [
 /** viewBox 的单位。preserveAspectRatio="none" 拉伸填满，笔宽靠 non-scaling-stroke 保住 */
 const LANE_WIDTH = 240;
 const LANE_HEIGHT = 24;
+/** 满格的段从这里画到底；顶上留一点空，泳道之间不糊成一片 */
+const BAND_TOP = 4;
+const IDLE_HEIGHT = 2;
 
-const TREND_GLYPH: Record<PulseTrend, string> = { rising: "↑", steady: "→", falling: "↓", unknown: "—" };
+type Range = { from: number; to: number };
+type TraceStyle = "hatched" | "faint";
 
-function Lane({
-  label,
-  samples,
-  range,
-}: {
-  label: string;
-  samples: PulseLanePoint[];
-  range: { from: number; to: number };
-}) {
-  const id = useId();
-  const shape = pulseLanePath(samples, range, {
-    width: LANE_WIDTH,
-    height: LANE_HEIGHT,
-    silentAfterMs: PULSE_SILENT_AFTER_MS,
-  });
+type LaneItem = {
+  from: number;
+  to: number;
+  /** 同一时刻落在几个条目里时，数小的先被悬停选中 */
+  rank: number;
+  content: ReactNode;
+};
+
+type LaneModel = {
+  items: LaneItem[];
+  /** SVG 泳道本体 */
+  svg: ReactNode;
+  /**
+   * 叠在 SVG 后面 / 上面的 HTML：不确定区间的斜线、训练标签。SVG 被横向拉伸，
+   * 斜线图案和文字放进去会被拉歪，只能用百分比定位的 div。
+   */
+  under?: ReactNode;
+  over?: ReactNode;
+  summary: { value: string; detail: ReactNode } | null;
+  aria: string;
+};
+
+const time = (at: number) => new Date(at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+
+/** 「2h 14m」「45m」，不足一分钟算 0m */
+export function pulseDuration(seconds: number): string {
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  return hours ? `${hours}h ${minutes % 60}m` : `${minutes}m`;
+}
+
+function x(range: Range, at: number): number {
+  return ((at - range.from) / Math.max(1, range.to - range.from)) * LANE_WIDTH;
+}
+function percent(range: Range, at: number): string {
+  return `${((at - range.from) / Math.max(1, range.to - range.from)) * 100}%`;
+}
+function absolute(range: Range, row: { startSec: number; endSec: number }) {
+  return { from: range.from + row.startSec * 1000, to: range.from + row.endSec * 1000 };
+}
+
+function Rect({ range, from, to, top, fill, opacity = 1 }: { range: Range; from: number; to: number; top: number; fill: string; opacity?: number }) {
+  const left = x(range, from);
+  return <rect x={left} y={top} width={Math.max(0.2, x(range, to) - left)} height={LANE_HEIGHT - top} fill={fill} fillOpacity={opacity} />;
+}
+
+/** 观测到的空闲 / 离线 / 0 瓦：贴底一条细线，要比底下那条轨道明显 */
+function IdleLine({ range, from, to }: { range: Range; from: number; to: number }) {
+  return <Rect range={range} from={from} to={to} top={LANE_HEIGHT - IDLE_HEIGHT} fill="currentColor" opacity={0.42} />;
+}
+
+function Tooltip({ from, to, head, lines }: { from: number; to: number; head: string; lines: (ReactNode | null | false)[] }) {
   return (
-    <svg
-      viewBox={`0 0 ${LANE_WIDTH} ${LANE_HEIGHT}`}
-      preserveAspectRatio="none"
-      className="h-6 w-full"
-      aria-hidden
-    >
-      <defs>
-        <linearGradient id={`pulse-${id}`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="var(--live)" stopOpacity="0.9" />
-          <stop offset="100%" stopColor="var(--live)" stopOpacity="0.3" />
-        </linearGradient>
-      </defs>
-      {/* 底线恒在：泳道空着的时候也要看得出这里有一条轨道，而不是漏画了 */}
-      <line
-        x1="0"
-        y1={LANE_HEIGHT - 0.5}
-        x2={LANE_WIDTH}
-        y2={LANE_HEIGHT - 0.5}
-        stroke="currentColor"
-        strokeOpacity="0.18"
-        strokeWidth="1"
-        vectorEffect="non-scaling-stroke"
-      />
-      {shape.area && <path d={shape.area} fill={`url(#pulse-${id})`} />}
-      {shape.line && (
-        <path
-          d={shape.line}
-          fill="none"
-          stroke="var(--live)"
-          strokeWidth="1.25"
-          strokeLinejoin="round"
-          vectorEffect="non-scaling-stroke"
-        />
-      )}
-      <title>{label}</title>
-    </svg>
+    <div className="text-xs">
+      <div className="font-mono text-muted-foreground">{time(from)}–{time(to)}</div>
+      <div className="mt-1 font-medium">{head}</div>
+      {lines.filter(Boolean).map((line, index) => <div key={index} className="mt-0.5 break-words">{line}</div>)}
+    </div>
   );
 }
 
-/** coding 与 listening 各自的模式；键是 Jev Choice 的 value，见 shared/pulse-assessment 的 PULSE_MODES。 */
+const CODING_WORDS = ["No coding", "Coding app", "Agent", "Coding app + agent"] as const;
+const CODING_FILLS = ["", "var(--pulse-human)", "var(--pulse-agent)", "var(--pulse-both)"] as const;
+/** Jev 的模式；键是 Choice 的 value，见 shared/pulse-coding 的 CODING_MODES */
 const MODE_LABELS: Record<string, string> = {
-  idle: "Idle", brief: "Brief bursts", interactive: "Coding apps", agent: "Agent work", mixed: "Apps + agents",
-  paused: "Paused", steady: "Playing through", selecting: "Picking tracks", traces: "Heard elsewhere",
+  idle: "Idle", brief: "Brief bursts", interactive: "In coding apps", agent: "Agent work", mixed: "Apps + agents",
 };
 
-function AssessmentLane({ view, range, label }: { view: PulseDomainView; label: string; range: { from: number; to: number } }) {
-  const maximum = view.kind === "power" ? Math.max(1, ...view.segments.value) : 1;
-  // 载荷里是相对 range.from 的秒（见 PulseSpan），这里换回绝对毫秒再画
-  const absolute = ({ startSec, endSec }: PulseSpan) => ({ from: range.from + startSec * 1000, to: range.from + endSec * 1000 });
-  const assessments = view.kind === "score" ? assessmentRows(view.assessments).map((row) => ({ ...absolute(row), coverage: (row.coverage ?? [row]).map(absolute), title: row.title as string | undefined, assessment: row as PulsePublicAssessment | null, value: row.intensity.value / 4 })) : segmentRows(view.segments).map((part) => ({ ...absolute(part), coverage: [absolute(part)], title: part.title, assessment: null as PulsePublicAssessment | null, value: part.value / maximum }));
+function codingModel(lane: PulseCodingLane, range: Range): LaneModel | null {
+  const segments = columnRows(lane.segments, ["value"]);
+  const assessments = columnRows(lane.assessments, ["intensity", "confidence", "mode"]);
+  if (!segments || !assessments || !lane.summary) return null;
+  const scored = assessments.map((row) => ({ ...row, ...absolute(range, row) }));
+  const items = segments.map((row, index): LaneItem => {
+    const { from, to } = absolute(range, row);
+    const middle = (from + to) / 2;
+    const assessment = scored.find((score) => score.from <= middle && middle < score.to)
+      ?? scored.find((score) => score.from < to && score.to > from);
+    return {
+      from, to, rank: row.value ? 0 : 1,
+      content: (
+        <Tooltip key={index} from={from} to={to} head={CODING_WORDS[row.value] ?? "Coding"} lines={[
+          assessment && <span key="i">Jev intensity {Math.round(assessment.intensity / 4 * 100)}/100</span>,
+          assessment?.mode && <span key="m" className="text-muted-foreground">{MODE_LABELS[assessment.mode] ?? assessment.mode}</span>,
+        ]} />
+      ),
+    };
+  });
+  const { humanSeconds, agentSeconds, bothSeconds } = lane.summary;
+  const total = humanSeconds + agentSeconds + bothSeconds;
+  return {
+    items,
+    svg: segments.map((row, index) => {
+      const { from, to } = absolute(range, row);
+      return row.value ? <Rect key={index} range={range} from={from} to={to} top={BAND_TOP} fill={CODING_FILLS[row.value] ?? "var(--pulse-both)"} /> : <IdleLine key={index} range={range} from={from} to={to} />;
+    }),
+    summary: segments.length ? { value: pulseDuration(total), detail: `agent ${pulseDuration(agentSeconds + bothSeconds)}` } : null,
+    aria: "coding timeline: coding app in front, agent running, or both",
+  };
+}
+
+function runs(rows: { from: number; to: number; state: number }[]) {
+  const merged: { from: number; to: number; state: number }[] = [];
+  for (const row of rows) {
+    const last = merged.at(-1);
+    if (last && last.to === row.from && last.state === row.state) last.to = row.to;
+    else merged.push({ ...row });
+  }
+  return merged;
+}
+
+const STATE_WORDS: Record<"listening" | "watching" | "gaming", readonly string[]> = {
+  listening: ["Idle", "Paused", "Playing"],
+  watching: ["Idle", "Paused", "Playing"],
+  gaming: ["Offline", "Online", "In game"],
+};
+const ACTIVE_WORDS = { listening: "playing", watching: "watching", gaming: "in game" } as const;
+
+function stateModel(domain: "listening" | "watching" | "gaming", lane: PulseStateLane, range: Range, traceStyle: TraceStyle): LaneModel | null {
+  const segments = columnRows(lane.segments, ["state", "title", "subtitle"]);
+  const traces = lane.uncertain ? columnRows(lane.uncertain, ["title", "subtitle"]) : [];
+  if (!segments || !traces || !lane.summary) return null;
+  const words = STATE_WORDS[domain];
+  const items: LaneItem[] = [
+    ...segments.map((row, index): LaneItem => {
+      const { from, to } = absolute(range, row);
+      return {
+        // 在放的那一段压过不确定区间；暂停、空闲时悬停先给出「别处放过」
+        from, to, rank: row.state >= 2 ? 0 : 2,
+        content: <Tooltip key={`s${index}`} from={from} to={to} head={words[row.state] ?? "Active"} lines={[
+          row.title,
+          row.subtitle && <span className="text-muted-foreground">{row.subtitle}</span>,
+        ]} />,
+      };
+    }),
+    ...traces.map((row, index): LaneItem => {
+      const { from, to } = absolute(range, row);
+      return {
+        from, to, rank: 1,
+        content: <Tooltip key={`t${index}`} from={from} to={to} head="Played somewhere in this span" lines={[
+          row.title,
+          row.subtitle && <span className="text-muted-foreground">{row.subtitle}</span>,
+          <span key="n" className="text-[10px] text-muted-foreground">From Apple Music&apos;s recently played list, which has no timestamps</span>,
+        ]} />,
+      };
+    }),
+  ].sort((a, b) => a.from - b.from || a.rank - b.rank);
+  const { activeSeconds, titles } = lane.summary;
+  return {
+    items,
+    // 画的时候首尾相接的同一状态并成一块：逐首画会在每次换曲处留一道发丝缝，换曲在悬停里看
+    svg: runs(segments.map((row) => ({ ...absolute(range, row), state: row.state }))).map((run, index) => {
+      if (run.state >= 2) return <Rect key={index} range={range} from={run.from} to={run.to} top={BAND_TOP} fill="var(--live)" opacity={0.85} />;
+      if (run.state === 1) return <Rect key={index} range={range} from={run.from} to={run.to} top={14} fill="var(--live)" opacity={0.4} />;
+      return <IdleLine key={index} range={range} from={run.from} to={run.to} />;
+    }),
+    under: traces.map((row, index) => {
+      const { from, to } = absolute(range, row);
+      return (
+        <span
+          key={index}
+          aria-hidden
+          className={cn("pulse-trace absolute bottom-0", traceStyle === "hatched" ? "pulse-trace-hatched" : "pulse-trace-faint")}
+          style={{ left: percent(range, from), width: `max(2px, calc(${percent(range, to)} - ${percent(range, from)}))`, top: BAND_TOP }}
+        />
+      );
+    }),
+    summary: segments.length || traces.length
+      ? { value: pulseDuration(activeSeconds), detail: domain === "listening" && titles ? `${titles.toLocaleString("en-US")} ${titles === 1 ? "track" : "tracks"}` : ACTIVE_WORDS[domain] }
+      : null,
+    aria: domain === "gaming" ? "PlayStation status: offline, online or in a game" : `${domain} status: idle, paused or playing`,
+  };
+}
+
+/** 瓦数刻度至少到 20 W：一台手机涓流充电不该画成满格 */
+const POWER_SCALE_MIN_W = 20;
+
+function powerModel(lane: PulsePowerLane, range: Range): LaneModel | null {
+  const segments = columnRows(lane.segments, ["watts"]);
+  if (!segments || !lane.summary) return null;
+  const scale = Math.max(POWER_SCALE_MIN_W, lane.summary.peakW ?? 0);
+  const rows = segments.map((row) => ({ ...absolute(range, row), watts: row.watts }));
+  const y = (watts: number) => (watts <= 0 ? LANE_HEIGHT - 1 : LANE_HEIGHT - Math.max(1.5, (watts / scale) * (LANE_HEIGHT - BAND_TOP)));
+  // 首尾相接的一串画成一笔阶跃；断开的地方是断流，留白
+  // 0 瓦是观测到的没在充，和别的道的空闲同一条灰线；通电的部分才画曲线
+  const chains: (typeof rows)[] = [];
+  for (const row of rows) {
+    if (row.watts <= 0) continue;
+    const chain = chains.at(-1);
+    if (chain && chain.at(-1)!.to === row.from) chain.push(row);
+    else chains.push([row]);
+  }
+  const fixed = (value: number) => value.toFixed(1);
+  const area = chains.map((chain) => `M${fixed(x(range, chain[0].from))} ${LANE_HEIGHT}${chain.map((row) => ` L${fixed(x(range, row.from))} ${fixed(y(row.watts))} L${fixed(x(range, row.to))} ${fixed(y(row.watts))}`).join("")} L${fixed(x(range, chain.at(-1)!.to))} ${LANE_HEIGHT} Z`).join(" ");
+  const line = chains.map((chain) => `M${fixed(x(range, chain[0].from))} ${fixed(y(chain[0].watts))}${chain.map((row) => ` L${fixed(x(range, row.from))} ${fixed(y(row.watts))} L${fixed(x(range, row.to))} ${fixed(y(row.watts))}`).join("")}`).join(" ");
+  const watts = (value: number) => `${value.toLocaleString("en-US", { maximumFractionDigits: 1 })} W`;
+  const { peakW, energyWh } = lane.summary;
+  return {
+    items: rows.map((row, index) => ({
+      from: row.from, to: row.to, rank: 0,
+      content: <Tooltip key={index} from={row.from} to={row.to} head={row.watts > 1 ? watts(row.watts) : row.watts > 0 ? `${watts(row.watts)} · standby` : "Not charging"} lines={[]} />,
+    })),
+    svg: (
+      <>
+        {rows.filter((row) => row.watts <= 0).map((row, index) => <IdleLine key={index} range={range} from={row.from} to={row.to} />)}
+        {chains.length > 0 && <path d={area} fill="var(--live)" fillOpacity={0.3} />}
+        {chains.length > 0 && <path d={line} fill="none" stroke="var(--live)" strokeWidth="1.25" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />}
+      </>
+    ),
+    summary: rows.length && peakW != null
+      ? peakW > 0
+        ? { value: `Peak ${watts(peakW)}`, detail: lane.currentPowerW != null && lane.currentPowerW > 1 ? `now ${watts(lane.currentPowerW)}` : `${energyWh.toLocaleString("en-US")} Wh` }
+        : { value: "0 W", detail: "not charging" }
+      : null,
+    aria: "charger output in watts",
+  };
+}
+
+/** 五分钟桶的步数刻度至少到这么多：零星几步不该画成满格 */
+const STEPS_SCALE_MIN = 400;
+
+function stepsModel(lane: PulseStepsLane, range: Range, width: number): LaneModel | null {
+  const buckets = columnRows(lane.buckets, ["steps"]);
+  const workouts = columnRows(lane.workouts, ["activityType"]);
+  if (!buckets || !workouts || !lane.summary) return null;
+  const scale = Math.max(STEPS_SCALE_MIN, ...buckets.map((row) => row.steps));
+  const sessions = workouts.map((row) => ({ ...absolute(range, row), activityType: row.activityType }));
+  const items: LaneItem[] = [
+    ...buckets.map((row, index): LaneItem => {
+      const { from, to } = absolute(range, row);
+      const workout = sessions.find((session) => session.from < to && session.to > from);
+      return {
+        from, to, rank: 0,
+        content: <Tooltip key={`b${index}`} from={from} to={to} head={`${row.steps.toLocaleString("en-US")} ${row.steps === 1 ? "step" : "steps"}`} lines={[
+          workout && <span key="w" className="text-muted-foreground">During {workout.activityType}</span>,
+        ]} />,
+      };
+    }),
+    ...sessions.map((session, index): LaneItem => ({
+      from: session.from, to: session.to, rank: 1,
+      content: <Tooltip key={`w${index}`} from={session.from} to={session.to} head={session.activityType} lines={[<span key="d" className="text-muted-foreground">Workout · {pulseDuration((session.to - session.from) / 1000)}</span>]} />,
+    })),
+  ].sort((a, b) => a.from - b.from || a.rank - b.rank);
+  const { steps } = lane.summary;
+  return {
+    items,
+    svg: buckets.map((row, index) => {
+      const { from, to } = absolute(range, row);
+      if (row.steps <= 0) return <IdleLine key={index} range={range} from={from} to={to} />;
+      const height = Math.max(1.5, (row.steps / scale) * (LANE_HEIGHT - BAND_TOP));
+      return <Rect key={index} range={range} from={from} to={to} top={LANE_HEIGHT - height} fill="var(--live)" opacity={0.85} />;
+    }),
+    under: sessions.map((session, index) => (
+      <span
+        key={index}
+        aria-hidden
+        className="absolute bottom-0 top-0 border-t-2 border-live bg-live/12"
+        style={{ left: percent(range, session.from), width: `max(2px, calc(${percent(range, session.to)} - ${percent(range, session.from)}))` }}
+      />
+    )),
+    // 训练名从训练开始处写起，可以越过训练本身，一直写到下一次训练或泳道尽头；
+    // 连那也放不下（两次训练挨得太近）才不写，悬停里有
+    over: sessions.map((session, index) => {
+      const room = ((Math.min(range.to, sessions[index + 1]?.from ?? range.to) - session.from) / Math.max(1, range.to - range.from)) * width;
+      if (room < session.activityType.length * 5.5 + 6) return null;
+      const left = (session.from - range.from) / Math.max(1, range.to - range.from) * width;
+      // 贴着泳道右端的训练往左让，别被裁掉
+      const shift = Math.min(0, width - left - (session.activityType.length * 5.5 + 6));
+      return (
+        <span
+          key={index}
+          aria-hidden
+          className="pointer-events-none absolute top-0.5 whitespace-nowrap bg-surface/85 px-0.5 text-[9px] font-medium leading-none text-foreground"
+          style={{ left: percent(range, session.from), transform: shift ? `translateX(${shift}px)` : undefined }}
+        >
+          {session.activityType}
+        </span>
+      );
+    }),
+    summary: buckets.length || sessions.length
+      ? { value: steps.toLocaleString("en-US"), detail: <>steps{sessions.length > 0 && <span className="hidden sm:inline"> · {sessions.length} {sessions.length === 1 ? "workout" : "workouts"}</span>}</> }
+      : null,
+    aria: "steps per five minutes from HealthKit, with completed workouts",
+  };
+}
+
+function useWidth(ref: RefObject<HTMLElement | null>): number {
+  const [width, setWidth] = useState(0);
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    const observer = new ResizeObserver(([entry]) => setWidth(entry.contentRect.width));
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [ref]);
+  return width;
+}
+
+function LaneView({ label, model, range }: { label: string; model: LaneModel; range: Range }) {
+  const { items } = model;
   const [selected, setSelected] = useState<number | null>(null);
   const [bounds, setBounds] = useState<CellAnchor | null>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const close = useCallback(() => setSelected(null), []);
   useHoverDismiss(buttonRef, selected != null, close);
-  const active = selected == null ? null : assessments[selected];
-  const points = assessments.flatMap((assessment) => assessment.coverage.map((part) => ({
-    t: part.from, until: part.to, level: assessment.value * 3,
-  })));
-  const time = (at: number) => new Date(at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  const active = selected == null ? null : items[selected];
   const selectAt = (clientX: number, target: HTMLButtonElement) => {
     const rect = cellAnchor(target);
     setBounds(rect);
     const at = range.from + (clientX - rect.left) / rect.width * (range.to - range.from);
-    const index = assessments.findIndex((assessment) => assessment.coverage.some((part) => at >= part.from && at < part.to));
-    setSelected(index >= 0 ? index : null);
+    let best = -1;
+    items.forEach((item, index) => {
+      if (at >= item.from && at < item.to && (best < 0 || item.rank < items[best].rank)) best = index;
+    });
+    setSelected(best >= 0 ? best : null);
   };
   return (
     <div className="relative min-w-0">
+      {model.under && <div className="pointer-events-none absolute inset-0 overflow-hidden">{model.under}</div>}
       <button
         ref={buttonRef}
         type="button"
-        className="block w-full cursor-crosshair rounded-sm focus-visible:outline-1 focus-visible:outline-live"
-        aria-label={`${label} ${view.kind === "score" ? "intensity, scored by Jev every 15 minutes" : view.kind === "power" ? "power in watts" : "active status"}. Use arrow keys to inspect intervals.`}
+        className="relative block w-full cursor-crosshair rounded-sm focus-visible:outline-1 focus-visible:outline-live"
+        aria-label={`${label}: ${model.aria}. Use arrow keys to inspect intervals.`}
         onPointerMove={(event) => selectAt(event.clientX, event.currentTarget)}
         onPointerLeave={(event) => { if (event.pointerType === "mouse") setSelected(null); }}
-        onFocus={(event) => { setBounds(cellAnchor(event.currentTarget)); setSelected((value) => value ?? assessments.length - 1); }}
+        onFocus={(event) => { setBounds(cellAnchor(event.currentTarget)); setSelected((value) => value ?? (items.length ? items.length - 1 : null)); }}
         onBlur={() => setSelected(null)}
         onClick={(event) => {
           setBounds(cellAnchor(event.currentTarget));
-          if (event.detail === 0) setSelected((value) => value ?? assessments.length - 1);
+          if (event.detail === 0) setSelected((value) => value ?? (items.length ? items.length - 1 : null));
           else selectAt(event.clientX, event.currentTarget);
         }}
         onKeyDown={(event) => {
           setBounds(cellAnchor(event.currentTarget));
           if (event.key === "Escape") setSelected(null);
-          if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+          if ((event.key === "ArrowLeft" || event.key === "ArrowRight") && items.length) {
             event.preventDefault();
-            setSelected((value) => Math.max(0, Math.min(assessments.length - 1, (value ?? assessments.length - 1) + (event.key === "ArrowLeft" ? -1 : 1))));
+            setSelected((value) => Math.max(0, Math.min(items.length - 1, (value ?? items.length - 1) + (event.key === "ArrowLeft" ? -1 : 1))));
           }
         }}
       >
-        <Lane label={label} samples={points} range={range} />
+        <svg viewBox={`0 0 ${LANE_WIDTH} ${LANE_HEIGHT}`} preserveAspectRatio="none" className="h-6 w-full" aria-hidden>
+          {/* 轨道恒在：空着的地方是未知，也要看得出这里有一条道 */}
+          <line x1="0" y1={LANE_HEIGHT - 0.5} x2={LANE_WIDTH} y2={LANE_HEIGHT - 0.5} stroke="currentColor" strokeOpacity="0.12" strokeWidth="1" strokeDasharray="2 3" vectorEffect="non-scaling-stroke" />
+          {model.svg}
+        </svg>
       </button>
+      {model.over && <div className="pointer-events-none absolute inset-0 overflow-hidden">{model.over}</div>}
       {active && bounds && (
         <AnchoredTooltip
-          contentKey={JSON.stringify(active)}
+          contentKey={`${active.from}:${active.to}:${active.rank}`}
           anchor={(() => {
-            const rect = bounds;
             const from = Math.max(range.from, active.from);
             const to = Math.min(range.to, active.to);
-            return { left: rect.left + (from - range.from) / (range.to - range.from) * rect.width,
-              width: (to - from) / (range.to - range.from) * rect.width, top: rect.top, height: rect.height };
+            return { left: bounds.left + (from - range.from) / (range.to - range.from) * bounds.width,
+              width: Math.max(2, (to - from) / (range.to - range.from) * bounds.width), top: bounds.top, height: bounds.height };
           })()}
         >
-          <div className="text-xs">
-          <div className="font-mono text-muted-foreground">{time(active.from)}–{time(active.to)}</div>
-          {active.title && <div className="mt-1 break-words font-medium">{active.title}</div>}
-          {active.assessment ? <>
-            {active.assessment.mode && <div className="mt-1 font-medium">{MODE_LABELS[active.assessment.mode.value] ?? active.assessment.mode.value}</div>}
-            <div>Intensity {Math.round(active.assessment.intensity.value / (CODING_INTENSITY.length - 1) * 100)} / 100</div>
-            <div>Continuity {Math.round(active.assessment.continuity.value / (CODING_CONTINUITY.length - 1) * 100)} / 100</div>
-            <div className="mt-1 text-[10px] text-muted-foreground">{Math.round(active.assessment.intensity.confidence * 100)}% confidence</div>
-          </> : <div className="mt-1 font-medium">{view.kind === "power" ? `${(active.value * maximum).toLocaleString("en-US", { maximumFractionDigits: 2 })} W` : active.value ? "Active" : "Inactive"}</div>}
-          </div>
+          {active.content}
         </AnchoredTooltip>
       )}
     </div>
@@ -174,13 +417,22 @@ function AssessmentLane({ view, range, label }: { view: PulseDomainView; label: 
 }
 
 /**
- * 认得这一域的形状才画。站点和 API Worker 各自部署，两边契约一改（比如改成按列）
- * 中间总有一段新页面拿到旧载荷、或旧页面的首屏缓存里是旧形状；认不出就当没数据，
- * 不能让一张卡片的 TypeError 把整页送进错误边界。
+ * 开发环境调试：不确定区间两种画法切着看，选择只记在本机。生产构建固定斜线。
+ * 走 useSyncExternalStore：服务端和 hydrate 那一遍都是默认值，之后才读本地存储。
  */
-function readable(view: PulseDomainView): boolean {
-  const columns = view.kind === "score" ? view.assessments : view.kind === "binary" || view.kind === "power" ? view.segments : null;
-  return !!columns && Array.isArray((columns as { startSec?: unknown }).startSec);
+const TRACE_STYLE_KEY = "pulse:trace-style";
+const traceStyleListeners = new Set<() => void>();
+function readTraceStyle(): TraceStyle {
+  if (!isDev) return "hatched";
+  try { return localStorage.getItem(TRACE_STYLE_KEY) === "faint" ? "faint" : "hatched"; } catch { return "hatched"; }
+}
+function subscribeTraceStyle(onChange: () => void) {
+  traceStyleListeners.add(onChange);
+  return () => { traceStyleListeners.delete(onChange); };
+}
+function toggleTraceStyle() {
+  try { localStorage.setItem(TRACE_STYLE_KEY, readTraceStyle() === "hatched" ? "faint" : "hatched"); } catch { return; }
+  for (const listener of traceStyleListeners) listener();
 }
 
 export function PulseCard({
@@ -192,60 +444,92 @@ export function PulseCard({
 }) {
   const { data } = useStatus<PulsePayload>(PULSE_PATH, REFRESH_MS, { fallback });
   const range = data?.window ?? { from: 0, to: 0 };
+  const lanes = data?.lanes;
+  const traceStyle = useSyncExternalStore(subscribeTraceStyle, readTraceStyle, () => "hatched" as const);
+  const activityRef = useRef<HTMLDivElement>(null);
+  const activityWidth = useWidth(activityRef);
+
+  /**
+   * 认得这一道的形状才画。站点和 API Worker 各自部署，两边契约一改中间总有一段
+   * 新页面拿到旧载荷、或旧页面的首屏缓存里是旧形状；认不出就当没数据，
+   * 不能让一张卡片的 TypeError 把整页送进错误边界。
+   */
+  const modelOf = (domain: PulseDomain): LaneModel | null => {
+    const lane = lanes && typeof lanes === "object" ? lanes[domain] : undefined;
+    if (!lane || typeof lane !== "object") return null;
+    try {
+      switch (domain) {
+        case "coding": return lane.kind === "coding" ? codingModel(lane, range) : null;
+        case "listening": case "watching": case "gaming": return lane.kind === "state" ? stateModel(domain, lane, range, traceStyle) : null;
+        case "charging": return lane.kind === "power" ? powerModel(lane, range) : null;
+        case "activity": return lane.kind === "steps" ? stepsModel(lane, range, activityWidth) : null;
+      }
+    } catch {
+      return null;
+    }
+  };
 
   return (
     <Card label="Pulse" action="Last 24 hours" className={cn("h-full", className)}>
       <div className="flex flex-col gap-2 p-4 lg:p-5">
         {LANES.map(({ domain, label }) => {
-          // 形状变了的 payload（换代部署那几分钟）没有 domains，当没数据画，不让整页抛错
-          const candidate = data?.domains?.[domain];
-          const view = candidate && readable(candidate) ? candidate : undefined;
-          const score = view?.score ?? null;
-          const empty = !view || (view.kind === "score" ? view.assessments.startSec.length === 0 : view.segments.startSec.length === 0);
-          const word = score ? pulseScoreWord(Number(score.value.toFixed(1))) : null;
+          const model = modelOf(domain);
+          const empty = !model || !model.items.length;
           return (
             <div
               key={domain}
-              className="grid grid-cols-[4.5rem_1fr_7rem] items-center gap-x-2 sm:grid-cols-[5.5rem_1fr_9rem] sm:gap-x-3"
+              className="grid grid-cols-[4.5rem_1fr_6rem] items-center gap-x-2 sm:grid-cols-[5.5rem_1fr_8rem] sm:gap-x-3"
               role="group"
               aria-label={`${label} over the last 24 hours`}
-
             >
               <span
                 className="label-mono truncate text-muted-foreground"
-                title={domain === "activity" ? "Physical activity from closed HealthKit five-minute buckets; gaps are unknown, not still." : undefined}
+                title={domain === "activity" ? "Steps from closed HealthKit five-minute buckets; gaps are unknown, not still." : undefined}
               >
                 {label}
               </span>
-              {empty ? (
-                <span className="text-xs text-muted-foreground">{view?.kind === "score" ? "Awaiting scores" : "No data"}</span>
-              ) : (
-                view && <AssessmentLane label={label} view={view} range={range} />
-              )}
-              <div className="flex min-w-0 items-baseline justify-end gap-1.5 text-right">
-                {score ? (
+              <div ref={domain === "activity" ? activityRef : undefined} className="min-w-0">
+                {empty ? (
+                  <span className="text-xs text-muted-foreground">No data</span>
+                ) : (
+                  <LaneView label={label} model={model} range={range} />
+                )}
+              </div>
+              <div className="flex min-w-0 flex-col items-end text-right leading-tight">
+                {model?.summary ? (
                   <>
-                    <span className="text-xs font-medium">{word}</span>
-                    <span className="font-mono text-xs tabular-nums text-muted-foreground">
-                      {score.value.toFixed(1)}
-                    </span>
-                    <span aria-hidden className="text-xs text-muted-foreground">
-                      {TREND_GLYPH[score.trend]}
-                    </span>
-                    {score.confidence != null && (
-                      <span className="hidden font-mono text-[10px] tabular-nums text-muted-foreground sm:inline">
-                        {Math.round(score.confidence * 100)}%
-                      </span>
-                    )}
+                    <span className="max-w-full truncate font-mono text-xs font-medium tabular-nums">{model.summary.value}</span>
+                    <span className="max-w-full truncate text-[10px] text-muted-foreground">{model.summary.detail}</span>
                   </>
                 ) : (
-                  <span className="text-xs text-muted-foreground">No scores yet</span>
+                  <span className="text-xs text-muted-foreground">—</span>
                 )}
               </div>
             </div>
           );
         })}
+        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-muted-foreground" aria-hidden>
+          <span className="flex items-center gap-1"><span className="size-2 bg-(--pulse-human)" />Coding app</span>
+          <span className="flex items-center gap-1"><span className="size-2 bg-(--pulse-agent)" />Agent</span>
+          <span className="flex items-center gap-1"><span className="size-2 bg-(--pulse-both)" />Both</span>
+          <span className="flex items-center gap-1">
+            <span className={cn("pulse-trace relative inline-block h-2 w-3", traceStyle === "hatched" ? "pulse-trace-hatched" : "pulse-trace-faint")} />
+            Played elsewhere, time unknown
+          </span>
+          <span className="flex items-center gap-1"><span className="h-0.5 w-3 bg-current opacity-45" />Idle</span>
+        </div>
       </div>
+      {isDev && (
+        <DevToggleSlot>
+          <DevToggle
+            label="Traces"
+            on={traceStyle === "hatched"}
+            states={["Hatched", "Faint"]}
+            title="开发环境调试：切换 Pulse 听歌道「不确定区间」的画法（斜线 / 淡色填充）"
+            onClick={toggleTraceStyle}
+          />
+        </DevToggleSlot>
+      )}
     </Card>
   );
 }
