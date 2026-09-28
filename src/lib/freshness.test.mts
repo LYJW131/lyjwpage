@@ -158,13 +158,13 @@ test("访客钟：deadline 已过真实时间、但晚于手上那把钟时也�
   const clock = 1_000; // 冻住的钟：挂载那一刻，或上一次推钟
   const realNow = 50_000; // 后台回来、轮询刚把 lastSeenAt 换成更旧一代之后的真实时间
   // 新数据的 deadline 在钟和此刻之间：马上推，不再等 250ms
-  assert.deepEqual(clockAdvance(clock, [20_000], realNow), { kind: "now" });
+  assert.deepEqual(clockAdvance(clock, [20_000], realNow), { kind: "now", to: 20_000 });
   // 未来的：到点（加 250ms）再推
-  assert.deepEqual(clockAdvance(clock, [60_000], realNow), { kind: "later", delayMs: 10_250 });
+  assert.deepEqual(clockAdvance(clock, [60_000], realNow), { kind: "later", delayMs: 10_250, to: 60_000 });
   // 两扇窗口里有一个已经过了：马上推，推完再排另一个
-  assert.deepEqual(clockAdvance(clock, [60_000, 20_000], realNow), { kind: "now" });
-  assert.deepEqual(clockAdvance(20_000 + 1, [60_000, 20_000], realNow), { kind: "later", delayMs: 10_250 });
-  assert.deepEqual(clockAdvance(clock, [null, 60_000], realNow), { kind: "later", delayMs: 10_250 });
+  assert.deepEqual(clockAdvance(clock, [60_000, 20_000], realNow), { kind: "now", to: 20_000 });
+  assert.deepEqual(clockAdvance(20_000 + 1, [60_000, 20_000], realNow), { kind: "later", delayMs: 10_250, to: 60_000 });
+  assert.deepEqual(clockAdvance(clock, [null, 60_000], realNow), { kind: "later", delayMs: 10_250, to: 60_000 });
 });
 
 test("访客钟：不早于钟的 deadline 不再处理，推完一次就不会原地循环", () => {
@@ -290,4 +290,20 @@ test("可滞后层首帧：首屏缓存填的那一刻已经过了阈值的，�
   assert.equal(isStale({ now: clockReading(0, 0, servedAt), at: fetchedAt, windowMs }), true);
   // 填缓存时还新鲜：首帧照常，挂载后由浏览器的钟接着判
   assert.equal(isStale({ now: clockReading(0, 0, fetchedAt + 60_000), at: fetchedAt, windowMs }), false);
+});
+
+test("推钟推到此刻与 deadline 里较晚的那个：系统时钟往回调过也跨得过去", () => {
+  // 钟在 50s，deadline 在 60s；定时器醒来时系统时钟被往回拨到 40s
+  const advance = clockAdvance(50_000, [60_000], 55_000);
+  assert.equal(advance.kind, "later");
+  const ticked = Math.max(40_000, advance.kind === "later" ? advance.to : 0);
+  assert.equal(ticked, 60_000);
+  assert.deepEqual(clockAdvance(ticked, [60_000], 40_000), { kind: "idle" }, "跨过去之后不再挂着");
+});
+
+test("刚好推到窗口那一刻也判得出过期：deadline 取窗口之后那一毫秒", () => {
+  const at = 1_000, windowMs = 60_000;
+  const deadline = at + windowMs + 1; // hooks/use-stale 的 deadlineOf
+  assert.equal(isStale({ now: deadline, at, windowMs }), true);
+  assert.equal(isStale({ now: deadline - 1, at, windowMs }), false);
 });
