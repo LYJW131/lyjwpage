@@ -14,7 +14,7 @@ import { TrophyMetal } from "@/components/trophies/trophy-metal";
 import { StatusDot } from "@/components/ui/status-dot";
 import { useLiveEvents } from "@/hooks/use-live-events";
 import { useMountedAt } from "@/hooks/use-mounted-at";
-import { useConfirmedStale, useStale } from "@/hooks/use-stale";
+import { useConfirmedClockStale } from "@/hooks/use-stale";
 import { useStatus } from "@/hooks/use-status";
 import { PLAYSTATION_STALE_MS } from "@/lib/freshness";
 import { stableKeys } from "@/lib/keys";
@@ -531,8 +531,10 @@ export function PlaystationRow({
    * 不举「正在游玩」，免得挂载后整排瓷砖再重排一次；挂载后按浏览器的钟判出的过期
    * 要等那次回源回来才认，见 useConfirmedStale。
    */
-  const presenceByClock = useStale(presence.data?.observedAt, PLAYSTATION_STALE_MS, presence.servedAt);
-  const presenceStale = useConfirmedStale(presenceByClock, presence.isValidating);
+  const presenceStale = useConfirmedClockStale(presence.data?.observedAt, PLAYSTATION_STALE_MS, {
+    validating: presence.isValidating,
+    servedAt: presence.servedAt,
+  });
   const livePresence = presenceStale ? undefined : presence.data;
 
   const tiles = fillLastColumn(buildTiles(list.data, livePresence, titles ?? []));

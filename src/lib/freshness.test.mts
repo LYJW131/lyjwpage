@@ -3,9 +3,13 @@ import test from "node:test";
 import {
   AGENT_LIMITS_STALE_MS,
   chargingFeedClockStale,
-  clockAdvanceDelay,
+  RESUME_REFETCH_GRACE_MS,
+  clockAdvance,
   clockReading,
   confirmStale,
+  hasPendingDeadline,
+  resumeStep,
+  resumeTimedOut,
   isStale,
   liveChargingFeed,
   liveNowListening,
@@ -153,22 +157,89 @@ test("正在听：选中的是 HomePod 时不看 Mac 的存活", () => {
 test("访客钟：deadline 已过真实时间、但晚于手上那把钟时也要推（不然永远判不出过期）", () => {
   const clock = 1_000; // 冻住的钟：挂载那一刻，或上一次推钟
   const realNow = 50_000; // 后台回来、轮询刚把 lastSeenAt 换成更旧一代之后的真实时间
-  // 新数据的 deadline 在钟和此刻之间：立刻推
-  assert.equal(clockAdvanceDelay(clock, [20_000], realNow), 250);
-  // 未来的：到点再推
-  assert.equal(clockAdvanceDelay(clock, [60_000], realNow), 10_250);
-  // 两扇窗口取最早那个
-  assert.equal(clockAdvanceDelay(clock, [60_000, 20_000], realNow), 250);
-  assert.equal(clockAdvanceDelay(clock, [null, 60_000], realNow), 10_250);
+  // 新数据的 deadline 在钟和此刻之间：马上推，不再等 250ms
+  assert.deepEqual(clockAdvance(clock, [20_000], realNow), { kind: "now" });
+  // 未来的：到点（加 250ms）再推
+  assert.deepEqual(clockAdvance(clock, [60_000], realNow), { kind: "later", delayMs: 10_250 });
+  // 两扇窗口里有一个已经过了：马上推，推完再排另一个
+  assert.deepEqual(clockAdvance(clock, [60_000, 20_000], realNow), { kind: "now" });
+  assert.deepEqual(clockAdvance(20_000 + 1, [60_000, 20_000], realNow), { kind: "later", delayMs: 10_250 });
+  assert.deepEqual(clockAdvance(clock, [null, 60_000], realNow), { kind: "later", delayMs: 10_250 });
 });
 
-test("访客钟：不早于钟的 deadline 不再排，推完一次就不会原地循环", () => {
-  assert.equal(clockAdvanceDelay(20_000, [20_000], 50_000), null);
-  assert.equal(clockAdvanceDelay(20_000, [5_000, null], 50_000), null);
-  assert.equal(clockAdvanceDelay(20_000, [], 50_000), null);
-  // 推钟之后钟 = 触发时的真实时间，已不早于那个 deadline
-  const fired = 20_250;
-  assert.equal(clockAdvanceDelay(fired, [20_000], fired), null);
+test("访客钟：不早于钟的 deadline 不再处理，推完一次就不会原地循环", () => {
+  assert.deepEqual(clockAdvance(20_000, [20_000], 50_000), { kind: "idle" });
+  assert.deepEqual(clockAdvance(20_000, [5_000, null], 50_000), { kind: "idle" });
+  assert.deepEqual(clockAdvance(20_000, [], 50_000), { kind: "idle" });
+  // 推钟之后钟 = 推的那一刻的真实时间，已不早于那个 deadline
+  assert.deepEqual(clockAdvance(50_000, [20_000], 50_000), { kind: "idle" });
+});
+
+test("钟作不作准：有晚于钟的 deadline 就得先核对", () => {
+  assert.equal(hasPendingDeadline(1_000, [20_000]), true);
+  assert.equal(hasPendingDeadline(20_000, [20_000, null]), false);
+  assert.equal(hasPendingDeadline(1_000, [null, null]), false);
+});
+
+test("按钟判的过期：钟还没追上新数据的 deadline 时，不因「不过期」松开按住的离线", () => {
+  // 按住的离线 + 新数据，deadline 晚于钟但可能早已过去：这一刻的「不过期」不作数
+  assert.deepEqual(
+    confirmStale(true, { stale: false, active: true, validating: false, settled: false }),
+    { held: true, stale: true },
+  );
+  // 钟推上去之后真的过期：照旧按住
+  assert.deepEqual(
+    confirmStale(true, { stale: true, active: true, validating: false, settled: true }),
+    { held: true, stale: true },
+  );
+  // 核对过 deadline 都还没到：真的新鲜，松开
+  assert.deepEqual(
+    confirmStale(true, { stale: false, active: true, validating: false, settled: true }),
+    { held: false, stale: false },
+  );
+  // 没按住的不受影响
+  assert.deepEqual(
+    confirmStale(false, { stale: false, active: true, validating: false, settled: false }),
+    { held: false, stale: false },
+  );
+});
+
+test("切回前台：回源开始又结束之前都算回源途中", () => {
+  let state = { active: true, resuming: false, sawValidating: false };
+  state = resumeStep(state, { active: false, validating: false });
+  assert.deepEqual(state, { active: false, resuming: false, sawValidating: false });
+  // 切回来那一拍：usePageActive 已经翻了，SWR 的回源还没开始
+  state = resumeStep(state, { active: true, validating: false });
+  assert.equal(state.resuming, true);
+  assert.equal(
+    confirmStale(false, { stale: true, active: true, validating: state.resuming }).stale,
+    false,
+  );
+  // 回源开始
+  state = resumeStep(state, { active: true, validating: true });
+  assert.deepEqual(state, { active: true, resuming: true, sawValidating: true });
+  // 回源结束：不再等
+  state = resumeStep(state, { active: true, validating: false });
+  assert.deepEqual(state, { active: true, resuming: false, sawValidating: false });
+});
+
+test("切回前台：没变化时返回同一个对象（渲染期对齐不会死循环）", () => {
+  const idle = { active: true, resuming: false, sawValidating: false };
+  assert.equal(resumeStep(idle, { active: true, validating: true }), idle);
+  assert.equal(resumeStep(idle, { active: true, validating: false }), idle);
+  const hidden = { active: false, resuming: false, sawValidating: false };
+  assert.equal(resumeStep(hidden, { active: false, validating: true }), hidden);
+  const waiting = { active: true, resuming: true, sawValidating: false };
+  assert.equal(resumeStep(waiting, { active: true, validating: false }), waiting);
+});
+
+test("切回前台：等不来回源（SWR 节流）就在宽限之后不再等", () => {
+  assert.ok(RESUME_REFETCH_GRACE_MS > 0 && RESUME_REFETCH_GRACE_MS <= 2_000);
+  const waiting = { active: true, resuming: true, sawValidating: false };
+  assert.deepEqual(resumeTimedOut(waiting), { active: true, resuming: false, sawValidating: false });
+  // 回源已经开始了的不打断，等它回来
+  const inFlight = { active: true, resuming: true, sawValidating: true };
+  assert.equal(resumeTimedOut(inFlight), inFlight);
 });
 
 test("按钟判的过期：回源途中或后台不做新的确认", () => {
@@ -202,6 +273,10 @@ test("访客钟读数：首帧用首屏信封的 servedAt，挂载后换挂载�
   assert.equal(clockReading(0, 0, 5_000), 5_000);
   assert.equal(clockReading(0, 9_000, 5_000), 9_000);
   assert.equal(clockReading(12_000, 9_000, 5_000), 12_000);
+  // 访客的钟比源站慢：挂载时刻早于 servedAt，读数不倒退，停在 servedAt 等它追上
+  assert.equal(clockReading(0, 4_000, 5_000), 5_000);
+  assert.equal(clockReading(4_500, 4_000, 5_000), 5_000);
+  assert.equal(clockReading(6_000, 4_000, 5_000), 6_000);
   // 首帧连 servedAt 都没有：0，isStale 什么都不判
   assert.equal(clockReading(0, 0, undefined), 0);
   assert.equal(isStale({ now: clockReading(0, 0, undefined), at: 1, windowMs: 1 }), false);

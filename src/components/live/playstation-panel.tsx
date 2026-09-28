@@ -7,7 +7,7 @@ import { PlaystationRow, type TrophyJump } from "@/components/live/playstation-c
 import { TrophyTeaser } from "@/components/live/trophy-teaser";
 import { trophyRowKey } from "@/components/trophies/trophy-details";
 import { useMountedAt } from "@/hooks/use-mounted-at";
-import { useConfirmedStale, useStale } from "@/hooks/use-stale";
+import { useConfirmedClockStale } from "@/hooks/use-stale";
 import { useStatus } from "@/hooks/use-status";
 import { PLAYSTATION_STALE_MS } from "@/lib/freshness";
 import { LIST_DURATION } from "@/lib/motion";
@@ -72,8 +72,10 @@ export function PlaystationPanel({
    * 回源回来才认。首帧连 servedAt 都没有（旧版源站）时不能拿冻着的那份当真，等挂载。
    * 断流是不知道，不画点；离线是 availability: unavailable，画灰点。
    */
-  const presenceByClock = useStale(presence.data?.observedAt, PLAYSTATION_STALE_MS, presence.servedAt);
-  const presenceStale = useConfirmedStale(presenceByClock, presence.isValidating);
+  const presenceStale = useConfirmedClockStale(presence.data?.observedAt, PLAYSTATION_STALE_MS, {
+    validating: presence.isValidating,
+    servedAt: presence.servedAt,
+  });
   const presenceKind =
     Boolean(mountedAt || presence.servedAt) && !presenceStale
       ? playstationPresenceKind(presence.data)
