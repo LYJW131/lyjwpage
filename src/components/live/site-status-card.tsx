@@ -6,6 +6,7 @@ import Vercel from "@lobehub/icons/es/Vercel/components/Mono";
 import NumberFlow from "@number-flow/react";
 import { Container } from "lucide-react";
 import { Card } from "@/components/ui/card";
+import { FlowDash } from "@/components/ui/flow-dash";
 import { colorForRank, RepoContributions } from "@/components/live/repo-contributions";
 import { formatUptime } from "@/components/live/server-card";
 import { SentryMark } from "@/components/live/sentry-mark";
@@ -52,7 +53,7 @@ function Stat({ label, value, title, prefix }: { label: string; value?: number |
         「+」和数字不能断开；六位数的增删行数在 360 两列、768 四列时都比格子宽，
         所以窄屏降一档字号，四列要到 lg 才用 4xl。
       */}
-      <div className="mt-2 whitespace-nowrap text-2xl font-medium tracking-tight min-[400px]:text-3xl lg:text-4xl">{value == null ? "—" : <>{prefix}<NumberFlow value={value} locales="en-US" /></>}</div>
+      <div className="mt-2 whitespace-nowrap text-2xl font-medium tracking-tight min-[400px]:text-3xl lg:text-4xl">{value == null ? <FlowDash /> : <>{prefix}<NumberFlow value={value} locales="en-US" /></>}</div>
     </div>
   );
 }
