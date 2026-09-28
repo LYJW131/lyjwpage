@@ -1243,7 +1243,7 @@ export function VibeCodingCard({
     fetcher: fetchVibeCoding,
     seedFallback: seedVibeCoding,
   });
-  const { data: limits, servedAt: limitsServedAt } = useStatus<AgentLimitsPayload>(LIMITS_PATH, REFRESH_MS, {
+  const { data: limits, servedAt: limitsServedAt } = useStatus<AgentLimitsPayload>(LIMITS_PATH, {
     fallback: limitsFallback,
   });
   const clocks = useMemo<FirstFrameClocks>(

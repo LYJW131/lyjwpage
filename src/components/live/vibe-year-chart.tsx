@@ -25,8 +25,6 @@ import {
 } from "@/lib/vibecoding-year";
 import { cn } from "@/lib/utils";
 
-/** 云端可能回填旧日，长间隔或切回焦点时都刷新完整的 53 周。 */
-const REFRESH_MS = 6 * 60 * 60_000;
 
 type HoveredCell = {
   date: string;
@@ -119,9 +117,9 @@ export function VibeYearChart({
   fallback: StatusResponse<VibeCodingYearPayload>;
   className?: string;
 }) {
-  const { data } = useStatus<VibeCodingYearPayload>(VIBECODING_YEAR_PATH, REFRESH_MS, {
+  const { data } = useStatus<VibeCodingYearPayload>(VIBECODING_YEAR_PATH, {
     fallback,
-    // 首屏已经烧进去，挂载不再回源。切回标签页时拉一次，长轮询仍作兜底。
+    // 首屏已经烧进去，挂载不再回源。切回标签页时拉一次，之后按登记表的 6 小时节奏取。
     revalidateOnMount: false,
     revalidateOnFocus: true,
   });

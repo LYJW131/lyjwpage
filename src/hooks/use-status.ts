@@ -1,10 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import useSWR, { useSWRConfig } from "swr";
 
 import { fetchStatus, guardPolled, withoutServedAt } from "@/lib/status-reads";
-import { layerOfPath } from "@/lib/status-views";
+import { useLiveSocketConnected } from "@/hooks/use-live-events";
+import { lagOverdue, nextLagDelay, realtimeInterval } from "@/lib/poll-schedule";
+import { cadenceOfPath, layerOfPath, pushCoversPath } from "@/lib/status-views";
 import type { StatusResponse } from "@/lib/types";
 
 function subscribeVisibility(onChange: () => void) {
@@ -89,9 +91,9 @@ export type StatusOptions<T> = {
    * 挂载时要不要立刻回源一次。不传时按数据层（lib/status-views 的 layer）定：
    *
    * - 实时层：要。HTML 生成后到推送连上之间的空窗里发生的事只能靠这一次补回来。
-   * - 可滞后层：首屏那份的 `updatedAt` 还在一个轮询间隔以内就不回源，直接用它、
-   *   按自己的节奏轮询；HTML 放久了（没人访问时首页可能几个小时没重建）才在挂载
-   *   后补取一次，等于把第一次轮询提前到此刻。
+   * - 可滞后层：首屏那份还没过下一次预期写入（`updatedAt + cadenceMs + 宽限`）就不
+   *   回源，直接用它、到那一刻再取；HTML 放久了（没人访问时首页可能几个小时没重建）
+   *   才在挂载后补取一次。
    *
    * 显式传 false 的（贡献日历、年度热力图）永远不在挂载时回源。
    */
@@ -105,44 +107,82 @@ export type StatusOptions<T> = {
   revalidateOnFocus?: boolean;
 };
 
+/** 卡片给的轮询间隔：传函数可以按当前数据动态决定，比如「有东西在播就调快」 */
+export type RefreshInterval<T> = number | ((data: T | undefined) => number);
+
 /**
  * 统一的状态数据 hook。
  *
  * 路由返回的信封里 ok:false 也是 200，所以这里把它翻译成 error，
  * 让「上游挂了」和「网络请求失败」走同一条渲染分支。
  *
- * refreshInterval 由调用方按当前状态给：有播放中/正在充电的东西就调快，
- * 空闲时调慢。真正打到 SQLite 的频率由服务端快照缓存决定，前端调快
- * 不会等比传导过去。
+ * 轮询节奏（纯函数在 lib/poll-schedule）：
+ *
+ * - 可滞后层：不传间隔，`useStatus(path, options)`。下一次取排在登记表
+ *   （lib/status-views 的 `cadenceMs`）算出的下一次预期写入之后，改节奏只改登记表。
+ * - 实时层：`useStatus(path, interval, options)`，间隔由调用方按当前状态给（有播放中 /
+ *   正在充电的东西就调快）。推送连着且该视图 `pushCovers` 时退成 5 分钟兜底，断开时
+ *   用这里给的间隔。
  */
+export function useStatus<T>(path: string, options: StatusOptions<T>): StatusState<T>;
+export function useStatus<T>(path: string, refreshInterval: RefreshInterval<T>, options: StatusOptions<T>): StatusState<T>;
 export function useStatus<T>(
   path: string,
-  /** 传函数可以按当前数据动态决定间隔，比如「有东西在播就调快」 */
-  refreshInterval: number | ((data: T | undefined) => number),
-  {
+  intervalOrOptions: RefreshInterval<T> | StatusOptions<T>,
+  maybeOptions?: StatusOptions<T>,
+): StatusState<T> {
+  const refreshInterval: RefreshInterval<T> | undefined =
+    typeof intervalOrOptions === "object" ? undefined : intervalOrOptions;
+  const {
     fallback,
     fetcher: customFetcher,
     seedFallback,
     revalidateOnMount,
     revalidateOnFocus,
-  }: StatusOptions<T>,
-): StatusState<T> {
+  } = (typeof intervalOrOptions === "object" ? intervalOrOptions : maybeOptions) as StatusOptions<T>;
   const active = usePageActive();
+  const socketConnected = useLiveSocketConnected();
+  const lag = layerOfPath(path) === "lag";
+  const cadenceMs = lag ? cadenceOfPath(path) : undefined;
+  const pushCovers = pushCoversPath(path);
+  if (process.env.NODE_ENV !== "production" && lag === (refreshInterval !== undefined)) {
+    throw new Error(`useStatus("${path}"): lag views take their cadence from lib/status-views; realtime views need an interval`);
+  }
   const refreshIntervalRef = useRef(refreshInterval);
   useEffect(() => {
     refreshIntervalRef.current = refreshInterval;
   }, [refreshInterval]);
+  const fallbackRef = useRef(fallback);
+  useEffect(() => {
+    fallbackRef.current = fallback;
+  }, [fallback]);
+
+  /**
+   * 可滞后层排期的锚：手上那份的 `updatedAt`。SWR 只在自己的计时器触发时才重算间隔，
+   * 挂载补取、切回焦点这类回源拿回的新 `updatedAt` 不会重排已经挂着的计时器；
+   * 让锚进下面 interval 的依赖，一变就换引用，SWR 按新数据重排。
+   */
+  const [lagAnchor, setLagAnchor] = useState<number | undefined>(() => (fallback.ok ? fallback.updatedAt : undefined));
 
   // SWR 会在 refreshInterval 函数引用变化时重置计时器。调用组件可能因为
-  // 播放进度等 UI 每秒重渲染，所以这里只让函数在可见性变化时才换引用。
+  // 播放进度等 UI 每秒重渲染，所以这里只让函数在可见性、推送连接、可滞后层的
+  // 锚变化时才换引用。连接一变计时器就按新间隔重排：断开时立刻回到快间隔。
   const interval = useCallback(
     (envelope: StatusResponse<T> | undefined) => {
       if (!active) return 0;
-      const latestInterval = refreshIntervalRef.current;
-      if (typeof latestInterval === "number") return latestInterval;
-      return latestInterval(envelope?.ok ? envelope.data : undefined);
+      // 挂载时 SWR 缓存里还没有 fallbackData，拿首屏那份的 updatedAt 排第一次
+      const current = envelope ?? fallbackRef.current;
+      if (lag) {
+        if (!cadenceMs) return 0;
+        return nextLagDelay(current.ok ? current.updatedAt : undefined, cadenceMs, Date.now());
+      }
+      const latestInterval = refreshIntervalRef.current ?? 0;
+      const cardMs = typeof latestInterval === "number" ? latestInterval : latestInterval(current?.ok ? current.data : undefined);
+      return realtimeInterval(cardMs, socketConnected, pushCovers);
     },
-    [active],
+    // lagAnchor 不在函数体里读，只用来换引用、让 SWR 重排计时器
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [active, lag, cadenceMs, socketConnected, pushCovers, lagAnchor],
   );
 
   useLayoutEffect(() => {
@@ -166,7 +206,6 @@ export function useStatus<T>(
    */
   const fallbackData = useMemo(() => withoutServedAt(fallback), [fallback]);
 
-  const lag = layerOfPath(path) === "lag";
   /**
    * 回源途中来了一条推送：SWR 会把这次回源的结果整份丢掉（它认推送写进缓存的那一刻
    * 比请求新），isValidating 照样落下。推来的若是整份，丢了无妨；若只是局部补丁
@@ -200,24 +239,24 @@ export function useStatus<T>(
     shouldRetryOnError: false,
   });
 
+  const currentUpdatedAt = lag && data?.ok ? data.updatedAt : undefined;
+  // 渲染期就地对齐（同 hooks/use-stale 的做法），不放进 effect
+  if (lag && currentUpdatedAt !== undefined && currentUpdatedAt !== lagAnchor) setLagAnchor(currentUpdatedAt);
+
   /**
    * 可滞后层首屏那份太旧时的补取。放在 effect 里：要拿此刻的钟去比 `updatedAt`，
    * 渲染期间不读钟。只看挂载那一刻的首屏信封，之后交给轮询。
    */
   const mountFallback = useRef(fallback);
-  const mountInterval = useRef(refreshInterval);
   const mountChecked = useRef(false);
   useEffect(() => {
     const initial = mountFallback.current;
     // 开发模式的严格模式会把 effect 跑两遍，补取只该有一次
     if (mountChecked.current) return;
     mountChecked.current = true;
-    if (!lag || revalidateOnMount === false || !initial.ok) return;
-    const every = mountInterval.current;
-    const periodMs = typeof every === "number" ? every : every(initial.data);
-    const updatedAt = initial.updatedAt;
-    if (updatedAt == null || Date.now() - updatedAt >= periodMs) void mutate();
-  }, [lag, revalidateOnMount, mutate]);
+    if (!lag || !cadenceMs || revalidateOnMount === false || !initial.ok) return;
+    if (lagOverdue(initial.updatedAt, cadenceMs, Date.now())) void mutate();
+  }, [lag, cadenceMs, revalidateOnMount, mutate]);
 
   return {
     data: data?.ok ? data.data : undefined,

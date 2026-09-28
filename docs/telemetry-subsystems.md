@@ -53,7 +53,7 @@
   - **事件负载设计**：
     - `desktop`、`listening-now`、`watching-now`、`playing-now`、`charger`、`listening`、`watching`、`playing`：**一律携带最新数据**，浏览器收到后直接更新 SWR 缓存，避免回源请求打满并发。
     - `presence`：**仅发送失效通知**（payload 为 `null`），浏览器根据本地保存的 `lastSeenAt` 和 `heartbeatWindowMs` 自行判定是否真正超时断流。
-- **5 分钟兜底轮询**：WebSocket 推送保障秒级响应，SWR 依然保留 5 分钟轮询兜底，以应对极端网络断线或推送不可用场景。
+- **5 分钟兜底轮询**：推送覆盖整份的实时视图（登记表 `pushCovers`）在 WebSocket 连着时只保留 5 分钟轮询兜底；断开时回到卡片自己的快间隔，重连后立即回源一次补上漏掉的推送。带心跳判活（`lastSeenAt`）或滚动读数的卡不退，照常轮询。
 
 ---
 
@@ -243,7 +243,7 @@ payload: >-
 ### 数据采集特性
 - **原生读取真实目标**：通过原生 Swift 代码从 `HKActivitySummary` 读取用户当天的真实目标卡路里、锻炼时长与站立次数（非预设常量）。
 - **设备时区为准**：上报日期取 Apple Watch 当地自然日（`YYYY-MM-DD`）与 `secondsFromGMT`。跨时区旅行过日界线时，按手表本地日推进，服务端不做时区矫正。
-- **iOS 后台节流容忍**：iOS 系统对 HealthKit 数据的后台推送存在约每小时一次的系统级节流，因此该模块不建立 WebSocket 推送，前端采用 5 分钟轮询。
+- **iOS 后台节流容忍**：iOS 系统对 HealthKit 数据的后台推送存在约每小时一次的系统级节流，因此该模块不建立 WebSocket 推送，前端按上报节奏（每小时）在下一次预期上报后取，逾期后退避到最多 5 分钟一次。
 - **读数与训练在可滞后层**：圆环读数（KV `activity:v1`）与最近训练（KV `workouts:v1`）由上报入口在状态核心那一半成功之后写入，状态核心只留 Pulse 用的五分钟统计桶和训练区间。圆环超过 12 小时（一夜加余量）没有新读数时卡片写 Unavailable；训练是历史事实，不设过期。
 
 ---
@@ -251,7 +251,7 @@ payload: >-
 ## 12. 落地节点监控与三档自适应调频
 
 ### 节点监控
-- `reporters/server-reporter` 部署于云端 Linux 节点（TypeScript / Node，和 agents-reporter 同一套结构），采集 `/proc/stat` 与 `/proc/net/dev`，上报 CPU、内存及网络吞吐，前端 30 秒轮询。
+- `reporters/server-reporter` 部署于云端 Linux 节点（TypeScript / Node，和 agents-reporter 同一套结构），采集 `/proc/stat` 与 `/proc/net/dev`，上报 CPU、内存及网络吞吐，每分钟一推；前端在下一次预期上报后几秒去取。
 
 ### 三档自适应调频算法
 为节省外部 API 配额，采集 Worker 的 PlayStation 任务（`workers/collector`，2026-09-28 前是独立的 `playstation-reporter`）和 `agents-reporter` 遵循三档自适应调频（`server-reporter` 2026-09 起固定每分钟一推：当初调频是为了给 Vercel 函数减负，上报改进 api Worker 后不再需要，见它的 README「节奏」）：

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { useSWRConfig } from "swr";
 
 import type { ScopedMutator } from "swr";
@@ -20,7 +20,7 @@ import {
   TROPHIES_PATH,
   VIBECODING_PATH,
 } from "@/lib/paths";
-import { pathByEvent } from "@/lib/status-views";
+import { isRealtimeViewPath, pathByEvent } from "@/lib/status-views";
 import type {
   ChargerPayload,
   StatusResponse,
@@ -201,6 +201,31 @@ let activeMutate: ScopedMutator | null = null;
 let reportedVisible: boolean | null = null;
 
 /**
+ * 连接状态，给 useStatus 调轮询用：连着时推送覆盖整份的实时卡只留 5 分钟兜底，
+ * 断开时回到卡片自己的快间隔（lib/poll-schedule）。
+ */
+let connected = false;
+/** 这一页连上过没有：再连上（重连）时要补取断线期间漏掉的推送 */
+let everConnected = false;
+const connectionListeners = new Set<() => void>();
+
+function publishConnected(next: boolean): void {
+  if (connected === next) return;
+  connected = next;
+  for (const listener of connectionListeners) listener();
+}
+
+function subscribeConnection(listener: () => void) {
+  connectionListeners.add(listener);
+  return () => connectionListeners.delete(listener);
+}
+
+/** 推送 WebSocket 此刻连着没有。服务端渲染和没配实时服务时都是 false */
+export function useLiveSocketConnected(): boolean {
+  return useSyncExternalStore(subscribeConnection, () => connected, () => false);
+}
+
+/**
  * 心跳间隔。Worker 那侧用 setWebSocketAutoResponse 直接回 "pong"，不唤醒实例，
  * 所以这条保活对它是免费的；没有它中间的代理会把空转的连接掐掉。
  *
@@ -215,6 +240,7 @@ function pageVisible(): boolean {
 }
 
 function setConnected(value: boolean): void {
+  publishConnected(value);
   if (activeMutate) void activeMutate(ONLINE_CONNECTED_KEY, value, { revalidate: false });
 }
 
@@ -316,7 +342,15 @@ function open(mutate: ScopedMutator): void {
    */
   const onReady = () => {
     retryAttempts = 0;
+    const reconnect = everConnected;
+    everConnected = true;
     setConnected(true);
+    /**
+     * 重连：断开期间的推送丢了，挂着的实时视图各回源一次。走 SWR 的 mutate，
+     * 所以照样经过 useStatus 的 guardPolled，不会把连上后先到的推送盖回去。
+     * 首次连上不用：挂载校验已经补过 HTML 生成后到连上之间那段。
+     */
+    if (reconnect) void mutate((key) => typeof key === "string" && isRealtimeViewPath(key));
     // 握手之后可见性可能已经变了（排队重连期间切过标签），对一次
     reportVisibility();
     heartbeatTimer = setInterval(() => {
@@ -405,10 +439,9 @@ function handlePageShow(event: PageTransitionEvent): void {
  * 推来的活动状态直接写进 SWR 缓存，所以组件那边照旧用 useStatus 读，
  * 不用管数据是推来的还是轮询来的。
  *
- * 卡片拿不到连接状态。从前暴露过一个 connected，让几张卡在断开时把轮询从
- * 30 秒压到 3 秒 —— 但断线几秒内就会被上面那个退避重连自愈，那次加速几乎只
- * 发得出一轮；实时服务真挂了的话压到 3 秒也换不来新数据，只是把请求翻十倍。
- * 现在的 ONLINE_CONNECTED_KEY 只给页脚那个点用，别拿它调轮询。
+ * 连接状态经 useLiveSocketConnected 暴露给 useStatus，方向和从前（断开时把轮询压到
+ * 3 秒）相反：连着时让推送覆盖整份的卡退成 5 分钟兜底，断开时回到卡片原来的间隔。
+ * ONLINE_CONNECTED_KEY 只给页脚那个点用。
  */
 export function useLiveEvents() {
   const { mutate } = useSWRConfig();

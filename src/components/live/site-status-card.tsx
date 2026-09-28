@@ -143,11 +143,11 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
   recentCommits: GithubRecentCommit[];
   className?: string;
 }) {
-  // 挂载时按可滞后层的策略：首屏那份超过一个轮询间隔才补取（旧 HTML、久藏的标签页）
-  const { data: github, servedAt: githubServedAt } = useStatus<GithubRepoPayload>(GITHUB_REPO_PATH, 30 * 60_000, { fallback: githubFallback });
-  const { data: vercel, servedAt: vercelServedAt } = useStatus<VercelDeploymentsPayload>(VERCEL_DEPLOYMENTS_PATH, 60_000, { fallback: vercelFallback });
-  const { data: cloudflare, servedAt: cloudflareServedAt } = useStatus<CloudflareWorkersPayload>(CLOUDFLARE_WORKERS_PATH, 300_000, { fallback: cloudflareFallback });
-  const { data: sentry, servedAt: sentryServedAt } = useStatus<SentryStatusPayload>(SENTRY_PATH, 5 * 60_000, { fallback: sentryFallback });
+  // 挂载时按可滞后层的策略：首屏那份过了下一次预期写入才补取（旧 HTML、久藏的标签页）；之后按登记表的节奏在写入后取
+  const { data: github, servedAt: githubServedAt } = useStatus<GithubRepoPayload>(GITHUB_REPO_PATH, { fallback: githubFallback });
+  const { data: vercel, servedAt: vercelServedAt } = useStatus<VercelDeploymentsPayload>(VERCEL_DEPLOYMENTS_PATH, { fallback: vercelFallback });
+  const { data: cloudflare, servedAt: cloudflareServedAt } = useStatus<CloudflareWorkersPayload>(CLOUDFLARE_WORKERS_PATH, { fallback: cloudflareFallback });
+  const { data: sentry, servedAt: sentryServedAt } = useStatus<SentryStatusPayload>(SENTRY_PATH, { fallback: sentryFallback });
   /**
    * 这些都在可滞后层，由采集 Worker 各按各的节奏写，每块带着自己的采集时刻。
    * 过了阈值（lib/freshness）那一块就不再拿旧数冒充此刻：数字回到「—」、提交哈希不显示、
@@ -175,8 +175,8 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
   const production = deploymentsStale ? null : vercel?.production;
   const siteErrors = errorsStale ? undefined : sentry?.errors?.site, apiErrors = errorsStale ? undefined : sentry?.errors?.worker;
   // 出口节点那张卡用的同一条键，SWR 只取一份
-  const { data: server } = useStatus<ServerPayload>(SERVER_PATH, 60_000, { fallback: serverFallback });
-  const { data: reporters, servedAt: reportersServedAt } = useStatus<ReportersPayload>(REPORTERS_PATH, 5 * 60_000, { fallback: reportersFallback });
+  const { data: server } = useStatus<ServerPayload>(SERVER_PATH, { fallback: serverFallback });
+  const { data: reporters, servedAt: reportersServedAt } = useStatus<ReportersPayload>(REPORTERS_PATH, { fallback: reportersFallback });
   // 主站量的是 lyjw.me；把域名写在表头，省得和访客当前所在的域名混起来。
   // 每一格是滚动窗口内各轮实测的中位数，轮数和窗口在表头的提示里。
   const measured = vercel?.pagespeed ? new URL(vercel.pagespeed.url).host : null;

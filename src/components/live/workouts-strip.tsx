@@ -34,7 +34,7 @@ function WorkoutTile({ workout }: { workout: Workout }) {
 }
 
 export function WorkoutsStrip({ fallback }: { fallback: StatusResponse<WorkoutsPayload> }) {
-  const { data, error } = useStatus<WorkoutsPayload>(STATUS_VIEWS.workouts.path, 300_000, { fallback });
+  const { data, error } = useStatus<WorkoutsPayload>(STATUS_VIEWS.workouts.path, { fallback });
   const listRef = useRef<HTMLUListElement>(null);
   const items = data?.items.slice(0, 10) ?? [];
   // Preserve the visible pair when the card width changes.
