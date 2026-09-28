@@ -141,7 +141,12 @@ export function monthLabels(weeks: GithubChartDay[][]): ChartLabel[] {
       text: name,
     });
   });
-  return labels;
+  // 三字母标题需要两列宽度；窗口两端不足两列的月份不显示标题，避免重叠或越界。
+  const right = chartSize(weeks.length).width;
+  return labels.map((label, index) => ({
+    ...label,
+    hidden: (labels[index + 1]?.x ?? right) - label.x < 2 * STEP,
+  }));
 }
 
 export function chartSize(weekCount: number) {

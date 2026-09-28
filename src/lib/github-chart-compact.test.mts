@@ -42,6 +42,26 @@ test("53 周画布对上从前的 663×104", () => {
   assert.deepEqual(chartSize(53), { width: 663, height: 104 });
 });
 
+test("年度窗口边缘的单列月份隐藏标题，避免跨月重叠和右侧越界", () => {
+  for (const through of ["2026-09-29", "2026-10-04", "2026-01-04"]) {
+    const weeks = groupWeeks(heatmapFrame(through).map((date) => ({
+      date, weekday: weekdayOf(date), count: 0, score: 0 as const, label: "",
+    })));
+    const labels = monthLabels(weeks);
+    const visible = labels.filter((label) => !label.hidden);
+    for (let index = 0; index < visible.length; index++) {
+      assert.ok((visible[index + 1]?.x ?? chartSize(weeks.length).width) - visible[index]!.x >= 24);
+    }
+    if (through === "2026-09-29") {
+      assert.equal(labels[0]?.text, "Sep");
+      assert.equal(labels[0]?.hidden, true);
+      assert.equal(visible[0]?.text, "Oct");
+    } else {
+      assert.equal(labels.at(-1)?.hidden, true);
+    }
+  }
+});
+
 test("weekday 按 UTC 日历算，周日是 0", () => {
   assert.equal(weekdayOf("2025-08-17"), 0);
   assert.equal(weekdayOf("2026-08-18"), 2);
