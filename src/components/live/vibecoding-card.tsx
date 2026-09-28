@@ -11,6 +11,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { ClaudeSpinner } from "@/components/live/claude-spinner";
 import { CodexActivityIndicator, CodexMark } from "@/components/live/codex-activity-indicator";
 import { Card } from "@/components/ui/card";
+import { FlowDash } from "@/components/ui/flow-dash";
 import { useLiveEvents } from "@/hooks/use-live-events";
 import { useMountedAt } from "@/hooks/use-mounted-at";
 import { useReporterStale, useStale } from "@/hooks/use-stale";
@@ -333,7 +334,7 @@ function TotalUsage({
                   maximumFractionDigits: 1,
                 }}
               />
-            ) : "—"}
+            ) : <FlowDash />}
           </div>
         </div>
         <div>
@@ -957,7 +958,7 @@ function AgentPanel({
                 locales="en-US"
                 format={{ notation: "compact", maximumFractionDigits: 1 }}
               />
-            ) : "—"}
+            ) : <FlowDash />}
           </div>
         </div>
         <div className="grid gap-3 border-l border-line pl-4">
