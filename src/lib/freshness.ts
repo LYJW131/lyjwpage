@@ -132,7 +132,10 @@ export function localDate(at: number, secondsFromGMT: number): string {
 export const CHARGER_STALE_MS = 90_000;
 
 export type FreshnessInput = {
-  /** 访客钟。首帧没有时刻时传 0，不当过期，避免和服务端 HTML 对不上。 */
+  /**
+   * 访客钟。首帧用首屏信封的 servedAt（服务端预渲染和 hydrate 读的是同一个值）；
+   * 连那个也没有时传 0，不当过期，避免和服务端 HTML 对不上。
+   */
   now: number;
   /** 源站盖章的到来时刻。0 / 缺省 = 从没见过 */
   at: number | null | undefined;
@@ -144,8 +147,8 @@ export type FreshnessInput = {
 /**
  * 这份快照现在算不算过期。
  *
- * `now === 0` 是首屏哨兵（见 useMountedAt）：还没有访客钟，除了亲口离线
- * 以外都不判过期，否则服务端 HTML 和 hydrate 会各画各的。
+ * `now === 0` 是首屏哨兵（见 useMountedAt）：首帧既没有访客钟、信封里也没有
+ * servedAt 时，除了亲口离线以外都不判过期，否则服务端 HTML 和 hydrate 会各画各的。
  */
 export function isStale({ now, at, windowMs, declaredOffline = false }: FreshnessInput) {
   if (declaredOffline) return true;
@@ -153,6 +156,57 @@ export function isStale({ now, at, windowMs, declaredOffline = false }: Freshnes
   if (at == null) return false;
   if (at <= 0) return true;
   return now - at > windowMs;
+}
+
+/**
+ * 访客钟下一次该往前推是在多少毫秒之后；没有要等的 deadline 就是 null。
+ *
+ * `clock` 是手上那把钟此刻的读数（首帧是首屏信封的 servedAt，挂载后是挂载那一刻，
+ * 之后是上一次推钟的时刻），`realNow` 是 Date.now()。钟只在 deadline 处往前推，
+ * 所以**凡是晚于 clock 的 deadline 都得排上** —— 包括真实时间里其实已经过了的：
+ * 新数据带来的 deadline 可能正好落在「钟」和「此刻」之间（后台标签页回来时 Mac
+ * 早已悄悄断了、轮询在 deadline 和定时器之间换了 lastSeenAt），只排未来的话钟就
+ * 停在原地，这份数据永远判不出过期。已经过了的立刻推（只留 250ms 余量）；推完钟
+ * 不早于那个 deadline，它就不会再被排一次。
+ */
+export function clockAdvanceDelay(
+  clock: number,
+  deadlines: readonly (number | null)[],
+  realNow: number,
+): number | null {
+  const pending = deadlines.filter((at): at is number => at != null && at > clock);
+  if (!pending.length) return null;
+  return Math.max(0, Math.min(...pending) - realNow) + 250;
+}
+
+export type StaleHoldInput = {
+  /** 按钟判是不是过期了 */
+  stale: boolean;
+  /** 页面在前台 */
+  active: boolean;
+  /** 这份数据所在的 SWR 键正在回源 */
+  validating: boolean;
+};
+
+/**
+ * 按钟判出来的过期要不要当真（hooks/use-stale 的 useConfirmedStale 的纯逻辑）。
+ *
+ * 返回新的「按住」状态和此刻该显示的结论：
+ *
+ * - 不过期了（推送或轮询送来了新数据）才松开，这是唯一的松开条件。页面退到后台
+ *   **不松**：否则每次切走再切回，已经断了的那路都会先被当成活的画一遍（充电格
+ *   重新展开、正在听换回死掉的那台 Mac、跟听在后台跟着它重排）。
+ * - 新的确认只在页面在前台、且不在回源途中时发生：回源途中手上这份可能正要被
+ *   换掉（首屏 HTML 冻了好几分钟、标签页刚从后台回来），先等它回来再判。
+ * - 已经按住的，回源途中和后台都照旧显示过期，每一轮轮询不会把它闪回去。
+ */
+export function confirmStale(
+  held: boolean,
+  { stale, active, validating }: StaleHoldInput,
+): { held: boolean; stale: boolean } {
+  if (!stale) return { held: false, stale: false };
+  const next = held || (active && !validating);
+  return { held: next, stale: next };
 }
 
 /**
@@ -191,7 +245,7 @@ export function chargingFeedClockStale(feed: ChargingFeed, now: number): boolean
  * 从前这一步在源站取数出口做，结论跟着首屏缓存冻住；现在源站只给原样的
  * `connected` 和几个时刻，卡片和 media-pair 的排版都过这一道，谁也不各算各的。
  * `clockStale` 由调用方给（hooks/use-stale 的 useLiveChargingFeed 按访客钟算、
- * 并挡掉回源途中那段）；首帧没有钟，传 false。
+ * 并挡掉回源途中那段）；首帧拿首屏信封的 servedAt 当钟，用 chargingFeedClockStale 算。
  */
 export function liveChargingFeed<T extends ChargingFeed>(feed: T, clockStale: boolean): T {
   const connected = feed.connected && !feed.declaredOffline && !clockStale;

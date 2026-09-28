@@ -7,7 +7,7 @@ import { PlaystationRow, type TrophyJump } from "@/components/live/playstation-c
 import { TrophyTeaser } from "@/components/live/trophy-teaser";
 import { trophyRowKey } from "@/components/trophies/trophy-details";
 import { useMountedAt } from "@/hooks/use-mounted-at";
-import { useStale } from "@/hooks/use-stale";
+import { useConfirmedStale, useStale } from "@/hooks/use-stale";
 import { useStatus } from "@/hooks/use-status";
 import { PLAYSTATION_STALE_MS } from "@/lib/freshness";
 import { LIST_DURATION } from "@/lib/motion";
@@ -66,15 +66,18 @@ export function PlaystationPanel({
     ? { ok: true, data: summary.data }
     : trophies;
   const mountedAt = useMountedAt();
-  const presenceStale = useStale(presence.data?.observedAt, PLAYSTATION_STALE_MS);
   /**
-   * 首帧没有访客钟，不能拿服务端冻着的 presence 当真 —— 源站不判断流，原样交出
-   * 最后那份。挂载之后用自己的钟判 observedAt，和瓷砖行（playstation-card）同一扇
-   * 窗口；窗口到点 useStale 会自己翻。
+   * 源站不判断流，原样交出最后那份 presence。判法和瓷砖行（playstation-card）完全
+   * 一样：同一扇窗口，首帧拿首屏信封的 servedAt 当钟，挂载后按浏览器的钟、过期要等
+   * 回源回来才认。首帧连 servedAt 都没有（旧版源站）时不能拿冻着的那份当真，等挂载。
    * 断流是不知道，不画点；离线是 availability: unavailable，画灰点。
    */
+  const presenceByClock = useStale(presence.data?.observedAt, PLAYSTATION_STALE_MS, presence.servedAt);
+  const presenceStale = useConfirmedStale(presenceByClock, presence.isValidating);
   const presenceKind =
-    Boolean(mountedAt) && !presenceStale ? playstationPresenceKind(presence.data) : null;
+    Boolean(mountedAt || presence.servedAt) && !presenceStale
+      ? playstationPresenceKind(presence.data)
+      : null;
 
   return (
     <>

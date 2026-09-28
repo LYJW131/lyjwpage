@@ -527,10 +527,11 @@ export function PlaystationRow({
    * （playstation-panel）同一扇窗口。断了就当手上没有 presence：最近在玩的瓷砖
    * 照旧，只是不再有「正在游玩」那一格 —— 不知道，不是下线。
    *
-   * 首帧没有钟，照着首屏那份画（和点不一样：点要等挂载，这一格挂载前后换会让整排
-   * 瓷砖重排）；挂载后的过期要等那次回源回来才认，见 useConfirmedStale。
+   * 首帧拿首屏信封的 servedAt 当钟：Worker 死了很久时，冻住的那份 presence 首帧就
+   * 不举「正在游玩」，免得挂载后整排瓷砖再重排一次；挂载后按浏览器的钟判出的过期
+   * 要等那次回源回来才认，见 useConfirmedStale。
    */
-  const presenceByClock = useStale(presence.data?.observedAt, PLAYSTATION_STALE_MS);
+  const presenceByClock = useStale(presence.data?.observedAt, PLAYSTATION_STALE_MS, presence.servedAt);
   const presenceStale = useConfirmedStale(presenceByClock, presence.isValidating);
   const livePresence = presenceStale ? undefined : presence.data;
 

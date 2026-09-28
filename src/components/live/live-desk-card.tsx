@@ -101,21 +101,21 @@ export function HeaderDesktop({
   className?: string;
 }) {
   useLiveEvents();
-  const { data, error, isLoading, isValidating } = useStatus<DesktopPayload>(DESKTOP_PATH, REFRESH_MS, {
+  const { data, error, isLoading, isValidating, servedAt } = useStatus<DesktopPayload>(DESKTOP_PATH, REFRESH_MS, {
     fallback,
   });
   const [displayedDesktop, setDisplayedDesktop] = useState<DesktopActivity | null>(null);
   const reduced = useReducedMotion();
 
-  const { declared, byClock } = useReporterStale(data);
+  const { declared, byClock } = useReporterStale(data, servedAt);
   /**
    * 按钟判的掉线要过 useConfirmedStale：首屏 HTML 冻了几分钟、或标签页从后台
    * 唤醒时，lastSeenAt 老化只说明没人去问，不说明 Mac 掉了 —— 挂载校验 / 切回
    * 前台的那次回源回来之前不认。认下来之后按住，别让每一轮轮询闪回最后那个应用。
    *
    * 亲口离线（declared）不受这条守卫限制：它是数据字段，不是本地钟算出来的，
-   * 首帧就能直接画「Offline」。Mac 悄悄死掉那种，首帧照着冻住的那份画，挂载后
-   * 那次回源回来再翻 —— 源站不再替首帧判，见 ReporterPresence 的注释。
+   * 首帧就能直接画「Offline」。Mac 悄悄死掉那种，首帧拿首屏信封的 servedAt 当钟
+   * 判（等于填缓存那一刻源站的结论），判出来就直接算确认过，见 useConfirmedStale。
    */
   const clockOffline = useConfirmedStale(byClock, isValidating);
   const offline = Boolean(error || declared || clockOffline);
