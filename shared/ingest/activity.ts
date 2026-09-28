@@ -85,10 +85,17 @@ const MAX_HISTORY_MS = 25 * 60 * 60_000;
 /** 手机时钟略快时，刚过五分钟边界算出的 `to` 会稍晚于源站收到的时刻；只容忍这点偏差。 */
 const CLOCK_SKEW_MS = 60_000;
 
-function nullableAmount(value: unknown): number | null {
+/**
+ * 历史桶的数值按固定精度量化。HealthKit 每次重新聚合同一个桶，末几位小数都会抖动；
+ * 不收敛的话每次上报整窗的桶都被当成「变了」，D1 与 DO 每次重写整整 24 小时。
+ * 在入口量化一次，下游（DO 证据、滞后层、D1 `activity_buckets`）拿到的都是同一份值。
+ */
+function nullableAmount(value: unknown, decimals: number): number | null {
   if (value == null) return null;
   const parsed = number(value);
-  return parsed == null || parsed < 0 ? null : parsed;
+  if (parsed == null || parsed < 0) return null;
+  const scale = 10 ** decimals;
+  return Math.round(parsed * scale) / scale;
 }
 
 function normalizeHistory(input: unknown, receivedAt: number): ActivityHistory {
@@ -108,9 +115,9 @@ function normalizeHistory(input: unknown, receivedAt: number): ActivityHistory {
     if (!bucket) throw new Error("活动上报的历史桶必须是 JSON 对象");
     const bucketFrom = number(bucket.from);
     const bucketTo = number(bucket.to);
-    const moveKcal = nullableAmount(bucket.moveKcal);
-    const exerciseMinutes = nullableAmount(bucket.exerciseMinutes);
-    const steps = nullableAmount(bucket.steps);
+    const moveKcal = nullableAmount(bucket.moveKcal, 1);
+    const exerciseMinutes = nullableAmount(bucket.exerciseMinutes, 2);
+    const steps = nullableAmount(bucket.steps, 0);
     if (typeof bucketFrom !== "number" || !Number.isSafeInteger(bucketFrom) || bucketFrom % BUCKET_MS !== 0 || bucketTo !== bucketFrom + BUCKET_MS ||
         bucketFrom < from || bucketTo > to || bucketFrom <= previousFrom ||
         (moveKcal == null && exerciseMinutes == null && steps == null)) {
