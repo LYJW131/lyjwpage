@@ -107,7 +107,7 @@ export function HeaderDesktop({
   const [displayedDesktop, setDisplayedDesktop] = useState<DesktopActivity | null>(null);
   const reduced = useReducedMotion();
 
-  const { declared, byClock } = useReporterStale(data, servedAt);
+  const { declared, byClock, settled } = useReporterStale(data, servedAt);
   /**
    * 按钟判的掉线要过 useConfirmedStale：首屏 HTML 冻了几分钟、或标签页从后台
    * 唤醒时，lastSeenAt 老化只说明没人去问，不说明 Mac 掉了 —— 挂载校验 / 切回
@@ -117,7 +117,7 @@ export function HeaderDesktop({
    * 首帧就能直接画「Offline」。Mac 悄悄死掉那种，首帧拿首屏信封的 servedAt 当钟
    * 判（等于填缓存那一刻源站的结论），判出来就直接算确认过，见 useConfirmedStale。
    */
-  const clockOffline = useConfirmedStale(byClock, isValidating);
+  const clockOffline = useConfirmedStale(byClock, isValidating, settled);
   const offline = Boolean(error || declared || clockOffline);
   const incomingDesktop = data?.desktop ?? null;
   const incomingBundleIdentifier = incomingDesktop?.bundleIdentifier ?? null;

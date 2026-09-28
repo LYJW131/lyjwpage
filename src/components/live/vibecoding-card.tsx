@@ -14,7 +14,7 @@ import { Card } from "@/components/ui/card";
 import { FlowDash } from "@/components/ui/flow-dash";
 import { useLiveEvents } from "@/hooks/use-live-events";
 import { useMountedAt } from "@/hooks/use-mounted-at";
-import { useReporterStale, useStale } from "@/hooks/use-stale";
+import { useConfirmedClockStale, useConfirmedStale, useReporterStale, useStale } from "@/hooks/use-stale";
 import { useStatus } from "@/hooks/use-status";
 import { agentUsageLabel, agentUsageUrl } from "@/lib/agent-usage-url";
 import { AGENT_LIMITS_STALE_MS, VIBECODING_STALE_MS } from "@/lib/freshness";
@@ -91,6 +91,11 @@ const ACTIVE_WINDOW_MS = 5 * 60_000;
 type FirstFrameClocks = {
   /** /api/status/vibecoding：活动灯、今日用量 */
   usage?: number;
+  /**
+   * 用量那份 SWR 键在不在回源。活动灯按钟判的熄灭要过 useConfirmedStale：放了五分钟
+   * 以上的首屏 HTML 挂载时按访客钟全都「过了五分钟」，不挡的话灯先灭、回源回来再亮。
+   */
+  usageValidating: boolean;
   /** /api/status/limits：限额读数 */
   limits?: number;
 };
@@ -111,8 +116,9 @@ type FirstFrameClocks = {
 function useAgentActive(agent: VibeCodingAgent, activityUnknown: boolean, clocks: FirstFrameClocks) {
   const at = agent.lastActivityAt ? Date.parse(agent.lastActivityAt) : null;
   const cloudAt = agent.cloudActivityAt ? Date.parse(agent.cloudActivityAt) : null;
-  const expired = useStale(at, ACTIVE_WINDOW_MS, clocks.usage);
-  const cloudExpired = useStale(cloudAt, ACTIVE_WINDOW_MS, clocks.usage);
+  const timing = { validating: clocks.usageValidating, servedAt: clocks.usage };
+  const expired = useConfirmedClockStale(at, ACTIVE_WINDOW_MS, timing);
+  const cloudExpired = useConfirmedClockStale(cloudAt, ACTIVE_WINDOW_MS, timing);
   const mountedAt = useMountedAt();
   // 首帧有 servedAt 当钟就照它判（首屏填缓存那一刻的结论）；连它也没有才等挂载
   const clockKnown = mountedAt > 0 || clocks.usage != null;
@@ -1232,7 +1238,7 @@ export function VibeCodingCard({
   // 采集停了它们只是不再增长，不会变得不可信。限额在可滞后层，另一台机器报的，
   // 有自己的阈值（limitsAt），各行自己管。
   useLiveEvents();
-  const { data, servedAt } = useStatus<VibeCodingPayload>(VIBECODING_PATH, REFRESH_MS, {
+  const { data, servedAt, isValidating } = useStatus<VibeCodingPayload>(VIBECODING_PATH, REFRESH_MS, {
     fallback,
     fetcher: fetchVibeCoding,
     seedFallback: seedVibeCoding,
@@ -1241,8 +1247,8 @@ export function VibeCodingCard({
     fallback: limitsFallback,
   });
   const clocks = useMemo<FirstFrameClocks>(
-    () => ({ usage: servedAt, limits: limitsServedAt }),
-    [servedAt, limitsServedAt],
+    () => ({ usage: servedAt, usageValidating: isValidating, limits: limitsServedAt }),
+    [servedAt, isValidating, limitsServedAt],
   );
   // 只有限额的来源也要一行；用量那份还没到时，这张卡照样能先画出限额
   const agents = data || limits ? attachAgentLimits(data?.agents ?? [], limits ?? null) : null;
@@ -1258,16 +1264,20 @@ export function VibeCodingCard({
    *   采集间隔必发一次），说明采集侧不转了 —— 此刻那份也就跟着不可信。
    *   `pushedAt` 盯的正是用量那份，见 VibeCodingPayload。
    *
-   * 不学 live-desk-card 那样拿 `isValidating` 挡一手：那边挡的是「回源没完成时
-   * 别把整块内容判没」，而这里判错的方向是安全的 —— 多说一句「没在用」只是少
-   * 报，下一轮就纠正回来；反过来在 Mac 睡着时还点着灯是实打实的错。
+   * 按钟判的两条都和 live-desk-card 一样过 useConfirmedStale：放久了的首屏 HTML
+   * 挂载时按访客钟两条都成立，不挡的话每次打开页面灯都先灭、挂载校验回来再亮。
+   * 亲口离线不是时间函数，直接认。
    *
-   * 两个 hook 都要无条件调用，别写成 `useReporterStale(...) || useStale(...)` ——
+   * 这几个 hook 都要无条件调用，别写成 `useReporterStale(...) || useStale(...)` ——
    * `||` 会短路掉后一个。
    */
-  const { offline: reporterOffline } = useReporterStale(data, servedAt);
-  const collectorStale = useStale(data?.pushedAt, VIBECODING_STALE_MS, servedAt);
-  const activityUnknown = reporterOffline || collectorStale;
+  const reporter = useReporterStale(data, servedAt);
+  const reporterClockOffline = useConfirmedStale(reporter.byClock, isValidating, reporter.settled);
+  const collectorStale = useConfirmedClockStale(data?.pushedAt, VIBECODING_STALE_MS, {
+    validating: isValidating,
+    servedAt,
+  });
+  const activityUnknown = reporter.declared || reporterClockOffline || collectorStale;
 
   return (
     <Card

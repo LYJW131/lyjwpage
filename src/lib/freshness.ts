@@ -164,30 +164,95 @@ export function isStale({ now, at, windowMs, declaredOffline = false }: Freshnes
  * 首帧（服务端预渲染和 hydrate，`mountedAt` 为 0）读首屏那份信封的 `servedAt`：
  * 两边读到同一个值，判出来的是填缓存那一刻源站会下的结论。挂载后换成挂载那一刻，
  * 推过钟之后是推钟的时刻。三样都没有是 0，isStale 把它当「没有钟」，什么都不判。
+ *
+ * **只进不退**：取三者最大。访客的钟比源站慢时，挂载那一刻会早于 servedAt，
+ * 直接换过去钟就倒退了 —— 首帧按 servedAt 判出、已经按住的过期会被这一退松开，
+ * 等访客的钟追上来再翻回去。停在 servedAt 等它追上，判的仍是源站当时的结论。
  */
 export function clockReading(ticked: number, mountedAt: number, servedAt: number | undefined): number {
-  return ticked || mountedAt || servedAt || 0;
+  return Math.max(ticked, mountedAt, servedAt ?? 0);
+}
+
+/** 访客钟该怎么往前推（hooks/use-stale 的 useClock） */
+export type ClockAdvance =
+  /** 没有晚于钟的 deadline，不用推 */
+  | { kind: "idle" }
+  /** 有 deadline 在真实时间里已经过了：马上推到此刻 */
+  | { kind: "now" }
+  /** 最早那个 deadline 还没到：这么多毫秒之后推 */
+  | { kind: "later"; delayMs: number };
+
+/** 有没有晚于钟的 deadline。没有的话，这把钟对手上这份数据来说就是准的 */
+export function hasPendingDeadline(clock: number, deadlines: readonly (number | null)[]): boolean {
+  return deadlines.some((at) => at != null && at > clock);
 }
 
 /**
- * 访客钟下一次该往前推是在多少毫秒之后；没有要等的 deadline 就是 null。
+ * 访客钟下一步怎么推。
  *
- * `clock` 是手上那把钟此刻的读数（首帧是首屏信封的 servedAt，挂载后是挂载那一刻，
- * 之后是上一次推钟的时刻），`realNow` 是 Date.now()。钟只在 deadline 处往前推，
- * 所以**凡是晚于 clock 的 deadline 都得排上** —— 包括真实时间里其实已经过了的：
+ * `clock` 是手上那把钟此刻的读数，`realNow` 是 Date.now()。钟只在 deadline 处往前推，
+ * 所以**凡是晚于 clock 的 deadline 都得处理** —— 包括真实时间里其实已经过了的：
  * 新数据带来的 deadline 可能正好落在「钟」和「此刻」之间（后台标签页回来时 Mac
- * 早已悄悄断了、轮询在 deadline 和定时器之间换了 lastSeenAt），只排未来的话钟就
- * 停在原地，这份数据永远判不出过期。已经过了的立刻推（只留 250ms 余量）；推完钟
- * 不早于那个 deadline，它就不会再被排一次。
+ * 早已悄悄断了、轮询在 deadline 和定时器之间换了 lastSeenAt），不管它的话钟就停在
+ * 原地，这份数据永远判不出过期。
+ *
+ * 已经过了的立刻推（下一个任务就推，不再等 250ms）；在推上去之前，这把钟对这份
+ * 数据不作准（useClock 的 settled 为假），按住的过期不因为钟慢而松开 —— 否则会先
+ * 按新鲜画一帧，看上去离线 → 在线 → 离线闪一下。还没到的排定时器，多等 250ms 免得
+ * 早醒一点白跑。推完钟不早于那个 deadline，它就不会再被处理一次。
  */
-export function clockAdvanceDelay(
+export function clockAdvance(
   clock: number,
   deadlines: readonly (number | null)[],
   realNow: number,
-): number | null {
+): ClockAdvance {
   const pending = deadlines.filter((at): at is number => at != null && at > clock);
-  if (!pending.length) return null;
-  return Math.max(0, Math.min(...pending) - realNow) + 250;
+  if (!pending.length) return { kind: "idle" };
+  if (pending.some((at) => at <= realNow)) return { kind: "now" };
+  return { kind: "later", delayMs: Math.min(...pending) - realNow + 250 };
+}
+
+/**
+ * 切回前台之后、那次回源回来之前的这段（hooks/use-stale 的 useConfirmedStale）。
+ *
+ * 页面从后台回来那一刻，usePageActive 先翻（微任务），SWR 的切回前台回源要再晚一拍
+ * 才开始，中间有一次渲染是「在前台、不在回源」—— 这时按钟判的过期只说明后台那段
+ * 没人去问，不能当真，否则每次切回都先闪一下离线、收一下充电格，回源回来再复原。
+ * 所以把「刚切回来」到「下一次回源开始又结束」这段也当作回源途中。
+ */
+export type ResumeState = {
+  /** 上一次渲染时页面在不在前台 */
+  active: boolean;
+  /** 刚切回前台，还在等那次回源 */
+  resuming: boolean;
+  /** 等的这段里已经见过回源开始 */
+  sawValidating: boolean;
+};
+
+export function resumeStep(
+  state: ResumeState,
+  { active, validating }: { active: boolean; validating: boolean },
+): ResumeState {
+  if (!active) {
+    return state.active || state.resuming || state.sawValidating
+      ? { active: false, resuming: false, sawValidating: false }
+      : state;
+  }
+  if (!state.active) return { active: true, resuming: true, sawValidating: validating };
+  if (!state.resuming) return state;
+  if (validating) return state.sawValidating ? state : { ...state, sawValidating: true };
+  // 回源开始过、现在结束了：等的那一次回来了
+  return state.sawValidating ? { active: true, resuming: false, sawValidating: false } : state;
+}
+
+/**
+ * 等不来回源（SWR 切回前台的回源有节流，几秒内切两次第二次不发）：过了这么久还没
+ * 见到回源开始，就不再等，按手上的判。
+ */
+export const RESUME_REFETCH_GRACE_MS = 1_000;
+
+export function resumeTimedOut(state: ResumeState): ResumeState {
+  return state.resuming && !state.sawValidating ? { ...state, resuming: false } : state;
 }
 
 export type StaleHoldInput = {
@@ -195,8 +260,13 @@ export type StaleHoldInput = {
   stale: boolean;
   /** 页面在前台 */
   active: boolean;
-  /** 这份数据所在的 SWR 键正在回源 */
+  /** 这份数据所在的 SWR 键正在回源（含刚切回前台、回源还没开始的那一拍） */
   validating: boolean;
+  /**
+   * 钟对手上这份数据作不作准：新数据带来的 deadline 晚于钟、还没核对是不是已经
+   * 过了时为假。那时的「不过期」可能只是钟慢了，不能拿它松开按住的过期。
+   */
+  settled?: boolean;
 };
 
 /**
@@ -204,7 +274,8 @@ export type StaleHoldInput = {
  *
  * 返回新的「按住」状态和此刻该显示的结论：
  *
- * - 不过期了（推送或轮询送来了新数据）才松开，这是唯一的松开条件。页面退到后台
+ * - 不过期了（推送或轮询送来了新数据）才松开，这是唯一的松开条件，而且要等钟
+ *   对新数据作准了（settled）才算数。页面退到后台
  *   **不松**：否则每次切走再切回，已经断了的那路都会先被当成活的画一遍（充电格
  *   重新展开、正在听换回死掉的那台 Mac、跟听在后台跟着它重排）。
  * - 新的确认只在页面在前台、且不在回源途中时发生：回源途中手上这份可能正要被
@@ -213,9 +284,9 @@ export type StaleHoldInput = {
  */
 export function confirmStale(
   held: boolean,
-  { stale, active, validating }: StaleHoldInput,
+  { stale, active, validating, settled = true }: StaleHoldInput,
 ): { held: boolean; stale: boolean } {
-  if (!stale) return { held: false, stale: false };
+  if (!stale) return held && !settled ? { held: true, stale: true } : { held: false, stale: false };
   const next = held || (active && !validating);
   return { held: next, stale: next };
 }
