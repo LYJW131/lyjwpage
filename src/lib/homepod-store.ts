@@ -52,12 +52,30 @@ export function homePodVisibleAt(
   stored: { music: LocalNowPlaying; receivedAt: number },
   now: number,
 ) {
+  return now <= homePodVisibleUntil(stored);
+}
+
+/**
+ * 这份快照最晚撑到哪一刻（含）。HA 只在状态变化时推，一首长歌、单曲循环、长时间
+ * 暂停都可能很久只有这一份；Pulse 听歌道拿它当这次观测的有效期，见 shared/pulse-listening。
+ */
+/**
+ * 这份快照里的曲子按剩余时长该放完的那一刻。单曲循环、没有时长时说不出，返回 null。
+ * Pulse 在 HA 再也没推来时，只把这一段认到这里，不把等待宽限算进去。
+ */
+export function homePodTrackEnd(stored: { music: LocalNowPlaying; receivedAt: number }): number | null {
   const { music, receivedAt } = stored;
-  if (music.repeatOne) return now - receivedAt <= REPEAT_SILENCE_GRACE_MS;
+  if (music.repeatOne || music.durationMs <= 0) return null;
+  return receivedAt + Math.max(0, music.durationMs - music.positionMs);
+}
+
+export function homePodVisibleUntil(stored: { music: LocalNowPlaying; receivedAt: number }): number {
+  const { music, receivedAt } = stored;
+  if (music.repeatOne) return receivedAt + REPEAT_SILENCE_GRACE_MS;
   if (music.durationMs > 0) {
     const remaining = Math.max(0, music.durationMs - music.positionMs);
-    return now <= receivedAt + remaining + SILENCE_GRACE_MS;
+    return receivedAt + remaining + SILENCE_GRACE_MS;
   }
-  return now - receivedAt <= UNKNOWN_DURATION_STALE_MS;
+  return receivedAt + UNKNOWN_DURATION_STALE_MS;
 }
 export { type StoredHomePod } from "@shared/homepod-store";

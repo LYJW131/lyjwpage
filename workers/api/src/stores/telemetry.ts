@@ -1,6 +1,6 @@
 import { recordCodingObservation } from "@api/stores/coding-pulse";
 import { isCodingApp } from "@shared/coding-apps";
-import { listeningFacts } from "@shared/pulse-listening";
+import { listeningObservation } from "@shared/pulse-listening";
 import { chargerPushPayload } from "@/lib/anker";
 import { readChargerState } from "@/lib/charger-store";
 import {
@@ -833,12 +833,12 @@ async function recordListeningPulse(
   homePod: Promise<StoredHomePod | null>,
 ): Promise<void> {
   try {
-    const facts = listeningFacts({
+    const observed = listeningObservation({
       mac: telemetryState.music,
       macObserved: telemetryState.activeModules.has("appleMusic"),
       homePod: await homePod,
     }, liveness, receivedAt);
-    await recordStateObservation("listening", receivedAt, facts);
+    await recordStateObservation("listening", receivedAt, observed?.facts ?? null, observed?.hold);
   } catch (error) {
     console.error("[pulse]", error instanceof Error ? error.message : String(error));
   }

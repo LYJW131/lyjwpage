@@ -89,7 +89,7 @@ function withStorage(run: (storage: FakeStorage) => Promise<void>) {
 
 test("Mac 心跳续同一段在听，每分钟最多写一次；换曲关上旧段", withStorage(async (storage) => {
   await inRequest(() => recordTelemetryEnvelope(envelope(T0, ["appleMusic"], { appleMusic: music("playing", T0) }), T0));
-  assert.deepEqual(await open(storage, "listening"), { state: "playing", ...helpless, from: T0, seenAt: T0 });
+  assert.deepEqual(await open(storage, "listening"), { state: "playing", ...helpless, from: T0, seenAt: T0, holdUntil: T0 + 10 * 60_000, endsBy: null });
 
   // 心跳不带任何模块 —— 采集端只在内容变化时才带，这一封说的是「还在放同一首」
   await inRequest(() => recordTelemetryEnvelope(envelope(T0 + 30_000, ["appleMusic"]), T0 + 30_000));
@@ -111,7 +111,7 @@ test("暂停是事实，不套首页的 10 秒宽限；停掉之后是空闲", w
   const stopped = later + 60_000;
   await inRequest(() => recordTelemetryEnvelope(envelope(stopped, ["appleMusic"], { appleMusic: { ...music("paused", stopped), state: "stopped" } }), stopped));
   assert.deepEqual((await closed(storage, "listening")).map((row) => [row.state, row.from, row.to]), [["paused", T0, stopped]]);
-  assert.deepEqual(await open(storage, "listening"), { state: "idle", source: null, title: null, artist: null, album: null, trackId: null, from: stopped, seenAt: stopped });
+  assert.deepEqual(await open(storage, "listening"), { state: "idle", source: null, title: null, artist: null, album: null, trackId: null, from: stopped, seenAt: stopped, holdUntil: stopped + 10 * 60_000, endsBy: null });
 }));
 
 test("Mac 下线又没有 HomePod：开着的那段到此为止，之后是未知", withStorage(async (storage) => {
@@ -120,6 +120,35 @@ test("Mac 下线又没有 HomePod：开着的那段到此为止，之后是未�
   await inRequest(() => recordTelemetryEnvelope({ ...envelope(off, ["appleMusic"]), presence: "offline" }, off));
   assert.deepEqual((await closed(storage, "listening")).map((row) => [row.state, row.from, row.to]), [["playing", T0, off]]);
   assert.equal(await open(storage, "listening"), null);
+}));
+
+test("HomePod 只在换曲时推：Mac 离线时一首二十分钟的歌照样整段留下，断了也只认到曲终", withStorage(async (storage) => {
+  const { commitPreparedHomePodEvent, prepareHomePodEvent } = await import("@api/homepod-ingest");
+  const push = (at: number, title: string) => inRequest(() => commitPreparedHomePodEvent(prepareHomePodEvent({
+    state: "playing", title, artist: "Max Richter", album: "Sleep", positionMs: 0, durationMs: 20 * 60_000, entityId: "media_player.homepod",
+  }, at)));
+  await push(T0, "Path 5");
+  const first = await open(storage, "listening");
+  assert.deepEqual([first.holdUntil, first.endsBy], [T0 + 25 * 60_000, T0 + 20 * 60_000], "open until the grace, known until the track end");
+  await push(T0 + 20 * 60_000, "Path 6");
+  // 这一首之后 HA 再没推来：四十分钟后的下一次推送只把它认到曲终，不含那五分钟宽限
+  await push(T0 + 80 * 60_000, "Path 7");
+  assert.deepEqual((await closed(storage, "listening")).map((row) => [row.source, row.title, row.from, row.to]), [
+    ["homepod", "Path 5", T0, T0 + 20 * 60_000],
+    ["homepod", "Path 6", T0 + 20 * 60_000, T0 + 40 * 60_000],
+  ]);
+}));
+
+test("Mac 死了：在听的那一段只认到最后一次心跳", withStorage(async (storage) => {
+  await inRequest(() => recordTelemetryEnvelope(envelope(T0, ["appleMusic"], { appleMusic: music("playing", T0) }), T0));
+  await inRequest(() => recordTelemetryEnvelope(envelope(T0 + 60_000, ["appleMusic"]), T0 + 60_000));
+  await inRequest(() => recordTelemetryEnvelope(envelope(T0 + 90_000, ["appleMusic"]), T0 + 90_000));
+  // 之后半小时没有任何信封；Mac 回来时还是同一首
+  const back = T0 + 30 * 60_000;
+  await inRequest(() => recordTelemetryEnvelope(envelope(back, ["appleMusic"]), back));
+  assert.deepEqual((await closed(storage, "listening")).map((row) => [row.state, row.from, row.to]), [["playing", T0, T0 + 60_000]],
+    "the last written confirmation, not ten more minutes of assumed listening");
+  assert.equal((await open(storage, "listening")).from, back);
 }));
 
 test("desktop 模块关掉后，留着的前台应用不再被记成 coding", withStorage(async (storage) => {
@@ -197,7 +226,7 @@ test("Emby：位置更新沿用存着的标题，itemId 对不上不借标题，
 
   const other = paused + 30_000;
   await inRequest(() => recordEmbyReport({ playing: { itemId: "77", paused: false, positionTicks: 0, runTimeTicks: 36_000_000_000 } }, other));
-  assert.deepEqual(await open(storage, "watching"), { state: "playing", itemId: "77", title: null, subtitle: null, from: other, seenAt: other });
+  assert.deepEqual(await open(storage, "watching"), { state: "playing", itemId: "77", title: null, subtitle: null, from: other, seenAt: other, holdUntil: other + 10 * 60_000, endsBy: null });
 
   const stop = other + 60_000;
   await inRequest(() => recordEmbyReport({ playing: null }, stop));

@@ -20,6 +20,7 @@ import {
   planStateObservation,
   replaceActivityBuckets,
   type ActivityBucket,
+  type ObservationHold,
   type StateLane,
   type StateLaneFacts,
   type WorkoutInterval,
@@ -33,18 +34,22 @@ function reason(error: unknown): string {
  * 一条状态道的一次观测。时间线是次要的：失败只打日志，不能让主状态上报 500。
  *
  * 读开着的那段 → 规划 → 有要写的才在同一批里追加关闭区间、改写或删掉开着那段。
- * `facts` 为 null 表示这一刻看不见这条道，开着那段到此为止。
+ * `facts` 为 null 表示这一刻看不见这条道，开着那段到此为止；`hold` 是这次观测的
+ * 有效期与来源说得出的结束时刻，见 planStateObservation。
  */
 export async function recordStateObservation<L extends StateLane>(
   lane: L,
   t: number,
   facts: StateLaneFacts[L] | null,
+  hold?: ObservationHold,
 ): Promise<void> {
   try {
     const openKey = pulseLaneOpenKey(lane);
     const answered = await askStorage((storage) => storage.get(openKey));
     if (!answered.reachable) return;
-    const plan = planStateObservation(lane, parseOpenInterval(lane, answered.value), t, facts);
+    const open = parseOpenInterval(lane, answered.value);
+    // 不传有效期就按道和状态的固定值（defaultHoldUntil）；HomePod 这类来源自己给
+    const plan = hold === undefined ? planStateObservation(lane, open, t, facts) : planStateObservation(lane, open, t, facts, hold);
     if (!plan) return;
     await tellStorage(async (storage) => {
       const pipe = storage.batch();
@@ -54,7 +59,8 @@ export async function recordStateObservation<L extends StateLane>(
         pipe.trim(listKey, -STATE_LANE_CAPS[lane], -1);
         pipe.expire(listKey, PULSE_TTL_MS);
       }
-      if (plan.open) pipe.set(openKey, JSON.stringify(plan.open), { ttlMs: PULSE_TTL_MS });
+      // 一直有效的那一段（Emby 明确停播后的空闲）不设过期：七天没开播仍是观测到的空闲，不是未知
+      if (plan.open) pipe.set(openKey, JSON.stringify(plan.open), plan.open.holdUntil === null ? undefined : { ttlMs: PULSE_TTL_MS });
       else pipe.remove(openKey);
       return pipe.execute();
     });
