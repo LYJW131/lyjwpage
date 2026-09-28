@@ -153,88 +153,118 @@ Vercel 仍采用后台重建，通知成功不代表新 HTML 已生成。ESA 后
 
 公开 API 为 `/api/status/*`、`/api/lyrics`、`/api/motion-artwork`，没有聚合端点。Vercel 生成或重建首页时按卡读各条端点（`src/lib/first-screen.ts`），浏览器挂载后实时卡各自回源一次、之后各端点按各自周期轮询。服务端凭据不进入任何公开响应，没有通用 HTTP 数据库端点。跨域活动脉搏（pulse）的出口是 `GET /api/status/pulse`，见下面一节。
 
-## 跨域活动脉搏与活动分（Pulse）
+## 跨域活动脉搏（Pulse）
 
-`GET /api/status/pulse` 给出六个域（`coding` / `listening` / `watching` / `gaming` / `charging` / `activity`）
-最近 24 小时的实测阶跃序列或模型活动分，`/api/home` 的 `pulse` 字段是同一份，首页那张
-Pulse 卡片用它。信封形状：
+`GET /api/status/pulse` 是最近 24 小时「在做什么」的事实时间线，六条道：`coding` / `listening` /
+`watching` / `gaming` / `charging` / `activity`，归实时层（状态核心 DO 直读，不进 KV），首页那张
+Pulse 卡片首屏按卡读它（`src/lib/first-screen.ts`）、挂载后五分钟轮询一次。**只给原始事实**（状态、标题、瓦数、步数），档位、颜色、摘要文案都在卡片里现算，
+以后换展示方式不用迁移数据。信封形状：
 
 ```jsonc
 { "ok": true, "data": {
   "generatedAt": 1770000000000,
   "window": { "from": 1769913600000, "to": 1770000000000 },
-  "domains": {
-    "coding": {
-      "kind": "score",
-      // 五分钟模型评估，按列；尚未评分时各列为空数组
-      "assessments": {
-        "startSec": [85500, 85800], "endSec": [85800, 86100],
-        "intensity": [2.1, 3.9], "confidence": [0.83, 0.94], "continuity": [2, 3],
-        "mode": ["agent", "mixed"]
-        // listening 另有 "title": [..]；观测不满整窗的行在 "coverage": { "<行号>": [{ "startSec", "endSec" }] }
-      },
-      // 还没打过分时为 null
-      "score": { "value": 2.4, "confidence": 0.82, "trend": "rising", "scoredAt": 1769999700000 }
-    }
-    // activity 同形；其余域见下方实测契约
+  "lanes": {
+    // value：0 两者都没有，1 只有前台 coding 应用，2 只有 agent 在跑，3 两者同时
+    "coding": { "kind": "coding",
+      "segments": { "startSec": [0, 3600], "endSec": [3600, 7200], "value": [1, 3] },
+      // Jev 的十五分钟评估：强度 0–4、置信度、模式；只在悬停里出现
+      "assessments": { "startSec": [0], "endSec": [900], "intensity": [3], "confidence": [0.88], "mode": ["mixed"] },
+      "summary": { "humanSeconds": 3600, "agentSeconds": 0, "bothSeconds": 3600 } },
+    // listening / watching：0 空闲，1 暂停，2 在放；gaming：0 离线，1 在线，2 在游戏里
+    "listening": { "kind": "state",
+      "segments": { "startSec": [1800], "endSec": [2040], "state": [2], "title": ["群青"], "subtitle": ["YOASOBI"] },
+      // 只有 listening 有：「最近在听」列表变动，只知道落在 (start, end] 之间某处
+      "uncertain": { "startSec": [12000], "endSec": [18600], "title": ["THE BOOK 3"], "subtitle": ["YOASOBI"] },
+      "summary": { "activeSeconds": 240, "titles": 1 } },
+    "watching": { "kind": "state", "segments": { /* 同上，title 片名、subtitle 集数 */ }, "summary": { } },
+    "gaming": { "kind": "state", "segments": { /* 同上，title 游戏名 */ }, "summary": { } },
+    // 每段一个实测读数；段之间的空当是断流
+    "charging": { "kind": "power", "segments": { "startSec": [7200], "endSec": [7800], "watts": [65] },
+      "currentPowerW": null, "summary": { "peakW": 65, "energyWh": 10.8 } },
+    // HealthKit 五分钟桶的步数（没有步数的桶不出现），加上已完成训练
+    "activity": { "kind": "steps", "buckets": { "startSec": [0], "endSec": [300], "steps": [480] },
+      "workouts": { "startSec": [0], "endSec": [1500], "activityType": ["Cycling"] }, "summary": { "steps": 480 } }
   }
 } }
 ```
 
-评分与实测段都**按列**给出：各列等长，第 i 行是各列的第 i 个（实测段为 `startSec` / `endSec` /
-`value`，带标题的域另有 `title`）。时刻一律是**相对 `window.from` 的整秒**，还原为
-`window.from + startSec * 1000`；`window` 与 `generatedAt` 仍是 epoch 毫秒。从前一条一个对象，
-同一组字段名和嵌套在首屏 HTML 与 RSC 里各重复上千遍，比数据本身还大。行 ⇄ 列的转换在
-`src/lib/pulse-columns.ts`，出口和卡片共用。
+各道都**按列**给出：各列等长，第 i 行是各列的第 i 个。时刻一律是**相对 `window.from` 的整秒**，
+还原为 `window.from + startSec * 1000`；`window` 与 `generatedAt` 仍是 epoch 毫秒。行 ⇄ 列的转换在
+`src/lib/pulse-columns.ts`，出口和卡片共用；卡片认不出的形状（站点与 Worker 部署有先后）当没数据。
+**没有段的时间就是未知**（没有观测），和观测到的空闲、离线、0 瓦、0 步分开：卡片上空闲是一条贴底的
+细灰线，未知只剩虚线轨道。
 
-**仅媒体／游戏段公开当时的 title；应用/模型名称与 token 用量不出公网。** 播放／游戏状态与瓦数可公开；
-公开端点返回十五分钟评估（过渡期可读旧五分钟评估）和同源汇总，详细契约与调度见下方统一评分章节。
-没有 `TYPESAFE_API_KEY`、或本地配了 `DEV_OVERRIDES` / `UPSTREAM_API_URL` 时停用自动评分。
+**只有媒体与游戏标题公开**；应用名、模型名、token 用量、充电设备名不出这个端点，Coding 只给三色带和
+Jev 的强度、模式。
 
-`activity` 是 Apple Watch 身体活动，由 `/api/ingest/iphone` 的 `modules.activity`
-`history: { from, to, buckets }` 生成。iPhone 直接查询最近 24 小时已经结束的 UTC 五分钟 HealthKit
-statistics；每个桶只携带实际可读的 active energy、exercise time、steps，缺失字段不补零，三项都缺失的
-时间保持未知。`from` / `to` 是权威查询范围，后到的完整结果会修订或删除范围内旧桶。
-按桶内平均步频或锻炼时间占比取较高档：≥60 steps/min 或 ≥50% 为 3，≥20 steps/min 或 ≥10%
-为 2；其余有活动能量、步数或锻炼为 1，明确读到三项均为 0 才是 0。
-样本 `{ t, until, level }` 的 `until` 是闭合桶终点；绘图、窗口统计和评分均在此截止，不向当前时刻延伸。
-查询修订只失效事实实际变化的评分窗，运行中的旧 activity 评分也由 history revision 拒收。
-首次发布此版本前执行 D1 迁移 `0002_pulse_activity_intervals.sql` 和 `0004_pulse_archive_revisions.sql`
-（`pnpm --dir workers/api exec wrangler d1 migrations apply lyjwpage-history --remote`），
-归档将终点保存在 `until_at`，并用范围 revision 原子替换 activity 历史，较旧的异步归档不能复活已删除桶；StateHub 记下已归档的查询范围与版本，没有新上报时每分钟的归档不碰 D1，替换时也只写实际新增、修订或删除的行；已有域不带终点，值为 NULL。
-尚无分段评分时新行显示 `Awaiting scores`。
+### 存储：事实时间线
 
-本地预览用夹具：`pnpm dev:override /api/status/pulse pulse-busy-day.json`。
+纯函数在 `shared/pulse-timeline.ts`，写入在 `workers/api/src/stores/pulse.ts`，键在 `src/lib/pulse-keys.ts`。
+全部在 StateHub SQLite，TTL 7 天。
 
-### Pulse 统一十五分钟评分
+- **状态区间**（listening / watching / gaming）：每条道一个开着的区间 `pulse:v2:<道>:open`
+  （`{from, seenAt, state, …原始字段}`）加一串已关闭区间 `pulse:v2:<道>`（`{from, to, state, …}`，
+  上限 3000 / 1000 / 1000 段）。同一状态、同一标题只续 `seenAt`，每条道每分钟最多写一次；状态或标题变了
+  在那一刻关上旧段、开新段；两次观测隔得比有效期久，旧段只认到最后一次确认的 `seenAt`，中间是未知。
+  有效期：Mac / HomePod 播放与 Emby 播放、暂停 10 分钟；PSN 没人看站点时 29.5 分钟才查一次，35 分钟；
+  Emby 明确停播之后一直是空闲，直到下一次开播。原始字段分开存：listening 是
+  `source`（mac / homepod）、`title`、`artist`、`album`、`trackId`；watching 是 `itemId`、`title`、`subtitle`；
+  gaming 是 `titleId`、`title`。标题只防病态长度（200 字），不再压成 48 字 hint。
+  - listening 每封 Mac 信封（纯心跳也算）和每次 HomePod 事件都记一次，不查 Apple 目录：
+    Mac 在放 → HomePod 在放 → Mac 暂停 → HomePod 暂停 → 空闲。不套首页 Hero 的 10 秒暂停宽限，
+    音乐 App 停在暂停就是暂停。Mac 离线（或关了 `appleMusic` 模块）而 HomePod 也没有有效快照时是未知。
+  - watching 只在 Emby 推来播放状态时记；详情按 itemId 对上才用，位置更新没带详情时沿用存着的那份。
+  - gaming 每次 PSN presence 都记（它本身就是心跳）。
+- **「最近在听」不确定区间** `pulse:v2:listening-traces`：Apple 的列表按最后播放倒序、不给时刻，
+  列表变动（只比条目 id 与顺序）只能说明在上一轮成功刷新 `since` 与这一轮 `t` 之间某处放过，
+  记 `{since, t, title, artist, itemId}`（条目是专辑 / 歌单），上限 2000。出口如实给出 `(since, t]`；
+  Mac / HomePod 那一路正放着同一张专辑的痕迹已被实测解释，不再重复给。
+- **Coding 三色带**不另存：读时从 `pulse:coding-observations` 与 `pulse:cursor-observations` 现算，
+  切片规则同 Jev 特征（每条 Mac 观测撑到下一条或 3 分钟，`available: false` 不算观测）。
+  human 是前台为 coding 应用（`desktop.coding`），agent 是有 agent `active`，或 Cursor 账号最近 5 分钟有活动。
+  Cursor 那一路的覆盖也算「看得见」：Mac 离线而 Cursor 覆盖着且没有活动时画 0（观测到没有 agent 活动），
+  这时前台其实是未知，和 Jev 特征的口径一致。不读档位时代的 `pulse:coding`（它让 agent 压过前台，画不出「两者同时」）。
+- **充电瓦数** `pulse:v2:charging` `{t, watts, device?}`，上限 6000。闸门：跨 1 W 待机门槛立刻写；通电时至少隔
+  30 秒、且变化 ≥ 2 W 且 ≥ 10% 才写；换设备立刻写；其余最多 5 分钟再确认一次。一笔撑到下一笔或 10 分钟；
+  最后一笔过期后 `currentPowerW` 为 null。
+- **活动** `pulse:v2:activity` 原样留 HealthKit 五分钟桶 `{from, to, steps, moveKcal, exerciseMinutes}`（缺项为 null），
+  iPhone 每次查询是一段权威范围：范围内旧桶按新结果修订或删除，`pulse:v2:activity:range` 记范围，
+  `pulse:v2:activity:revision` 在内容真变了时 +1（归档用它挡较旧的替换）。写入只从第一处不同的桶往后重写，
+  通常每封只动最后一两行。训练区间 `pulse:v2:workouts` `{items:[{startedAt, endedAt, activityType}]}` 由 iPhone 训练
+  写入口自己留一份（训练卡片的数据以后可能挪去 KV），内容没变不写。
 
-六个领域共用 `PulseScorer` 和 `pulse:assessments`。StateHub 的 metadata 保存评分 claim、generation、lease 和最近尝试时刻；普通 Worker 领取固定输入快照、执行模型请求，再用 token + generation 提交，过期任务不能覆盖新结果。
-旧的十分钟 24 小时模型总评已经删除；右侧摘要由最近 24 小时的同一批十五分钟评分按
-实际覆盖时长加权，趋势比较最近三小时与此前三小时，没有两侧观测时为 `unknown`。
-曲线和摘要不再有两套评分来源。公开契约为 `domains[domain].assessments` 和 `score`，
-不再返回旧 `samples` 或根级 `codingAssessments`。公开的评分只有区间、强度与置信度、连续性、
-模式、listening 的歌名，以及和整窗不同时才给的 `coverage`；概率分布、输入哈希、模型名和
-评分时刻只留在库里（投影在 `src/lib/pulse.ts` 的 `publicAssessment`）。
+档位时代的 `pulse:<domain>`、`pulse:listening-plays`、`pulse:listening-checks` 不再写，随 TTL 过期，不迁移。
 
-每分钟 cron 检查，两轮尝试至少隔五分钟；窗口结束后留两分钟等待采集与上报。
-有活动，或覆盖不全、缺报、未知的窗口，每个领域每个十五分钟各一份官方 `jev-1.13.0` 请求，强度与连续性一起评估，Coding 与 listening 再判断模式。窗口被完整观测且信号全是 0 时不请求 Jev，按该域题目的最低档写成确定评分：强度 0、连续性 0、置信度 1，coding 与 listening 的 mode 为 idle，模型名记为 `rules`。按窗口判断，同一泳道别的窗口有活动仍打 Jev。activity 的缺口是未知不是静止；charging 只有实测到的 0 瓦才算零，没有瓦数不算。每轮最多 36 份 Jev 请求，并发最多 3；优先新窗口，再补最近 24 小时。稳定时六域最多每小时 24 次 Jev 请求（原先 72 次），全零窗口不再计入；一次性迁移补评按每轮上限逐步完成；旧五分钟评估保留读取，新窗口落库后覆盖其三个旧窗口，避免摘要和曲线重复计权。
-没有观测不调用，也不写评分。
+本地预览用夹具：`pnpm dev:override /api/status/pulse pulse-busy-day.json`（另有 `pulse-empty`、`pulse-zero-lanes`、
+`pulse-activity-boundary`）。卡片右下角开发开关「Traces」切换不确定区间的斜线 / 淡色画法，默认斜线。
 
-按 Jev 文档（不会数数、不会算时长、不比时间戳、档位要写情境不写程度），发给它的
-state 一律是代码算好的命名秒数和次数，没有原始区间、时间戳或数字图例；判据写在
-`instructions` / `criteria` 里，不塞在 state 里。各域的特征与问题在 `shared/pulse-<domain>.ts`，
-共用的裁窗与计数在 `shared/pulse-features.ts`：
+### Coding 的 Jev 评估
 
-- listening：`playingSeconds / pausedSeconds / idleSeconds / longestPlayingRunSeconds`，以及占 `observedSeconds` 的整数百分比 `playingPercent / pausedPercent / longestPlayingRunPercent`（判据按百分比写，模型不用自己除），`trackChanges / distinctTracks / tracks / recentPlays`。切歌次数由样本里 hint 的变化数出来，指令说明连续换曲是有人在挑歌、一张专辑放到底也是在听。`recentPlays` 是「最近在听」列表落进这个窗口的痕迹，带 `gap`（within five minutes / within an hour / several hours）说明落位精度。另有 `mode` Choice：idle / paused / steady / selecting / traces。
-- watching：`playingSeconds / pausedSeconds / idleSeconds / longestPlayingRunSeconds`、`playingPercent / pausedPercent / longestPlayingRunPercent`、`titleChanges / titles`。
-- gaming：`inGameSeconds / onlineIdleSeconds / offlineSeconds / longestGameRunSeconds`、`inGamePercent / longestGameRunPercent`、`gameChanges / games`；「主机在线未进游戏」是它自己的桶和档位。
-- charging：`secondsByBand` 与 `percentByBand`（`unplugged / trickle / moderate / high`）、`peakWatts / longestPoweredRunSeconds / longestPoweredRunPercent`，分档阈值 0 / 15 / 60 W 与 `chargingLevel` 一致。
-- activity：圆环估算仍是 `stillSeconds / lightSeconds / moderateSeconds / vigorousSeconds / longestMovingRunSeconds`、`movingPercent / vigorousPercent / longestMovingRunPercent`，每档写明对应的步频与锻炼分钟占比。另外从 `workouts:recent` 读已完成训练，放进 `workoutSeconds / workoutPercent / workouts[{activityType, seconds}]`。`activityType` 是上报的项目名（例如 Fencing），`seconds` 是该次训练摊到这个十五分钟评分窗口里的活动秒数，不含时间戳。`workoutPercent` 达到 50 对上强度最高档，达到 75 对上连续性最高档；没有圆环样本但有训练覆盖的窗口也会打分。圆环桶不把这笔时长混进去。
+Jev 只给 Coding 打分：原始观测说得出「前台是不是 coding 应用、agent 在不在跑」，说不出「写得多投入」，
+强度和模式仍问 Jev，只在悬停里出现。别的道画的就是事实本身，不再有模型分、趋势和置信度。
+`PulseScorer` 和 `pulse:assessments` 只剩 `coding`；StateHub 的 metadata 保存评分 claim、generation、lease 和
+最近尝试时刻；普通 Worker 领取固定输入快照（评估、Coding 观测、token 报告、Cursor 观测）、执行模型请求，
+再用 token + generation 提交，过期任务不能覆盖新结果。公开的评估只有区间、强度、置信度与模式；
+概率分布、输入哈希、模型名和评分时刻只留在库里。
 
-`PULSE_ASSESSMENT_VERSION` 进输入哈希，改问题时升版本让全部窗口重评，不靠哈希碰巧变。
-改判据先跑 `node --experimental-strip-types --import ./src/lib/testing/register-alias.mjs scripts/jev-probe.mts`（key 读根目录 `.env.local` 的 `TYPESAFE_API_KEY`）：十几个代表性窗口打真实 Jev，每条都写着期望档位，答案偏了先改措辞再上线——改判据上线会触发最近 24 小时重评。
-相同输入哈希不重复调用；晚到 token 或活动报告改变窗口事实时只重评受影响窗口。
-失败保留旧成功记录，下一轮重试，存储读失败不会清空历史。
+每分钟 cron 检查，两轮尝试至少隔五分钟；窗口结束后留两分钟等待采集与上报。有活动，或覆盖不全、缺报、
+未知的窗口，每个十五分钟一份官方 `jev-1.13.0` 请求，强度、连续性、模式一起评估。窗口被完整观测且信号
+全是 0 时不请求 Jev，写成确定的最低档（强度 0、连续性 0、置信度 1、mode idle，模型名 `rules`）。每轮最多
+36 份请求、并发最多 3，优先新窗口再补最近 24 小时，稳定时每小时最多 4 次。没有观测不调用，也不写评分。
+没有 `TYPESAFE_API_KEY`、或本地配了 `DEV_OVERRIDES` / `UPSTREAM_API_URL` 时停用。
+
+按 Jev 文档（不会数数、不会算时长、不比时间戳），发给它的 state 是代码算好的命名秒数和次数
+（`shared/pulse-coding.ts` 的 `codingWindowFeatures`）：`codingAppSeconds`、`agentActiveSeconds`、
+`concurrentAgentSeconds`、`codingAppAndAgentSeconds`、切换次数、最长连续时长、观测覆盖和前几个应用 / agent，
+没有原始区间或时间戳；判据写在 `instructions` / `criteria` 里。
+
+`PULSE_ASSESSMENT_VERSION`（现为 5）进输入哈希，改问题时升版本让全部窗口重评，不靠哈希碰巧变。
+改判据先跑 `node --experimental-strip-types --import ./src/lib/testing/register-alias.mjs scripts/jev-probe.mts`
+（key 读根目录 `.env.local` 的 `TYPESAFE_API_KEY`）：几个代表性的 Coding 窗口打真实 Jev，每条都写着期望答案，
+偏了先改措辞再上线——改判据上线会触发最近 24 小时重评。相同输入哈希不重复调用；晚到 token 改变窗口事实时
+只重评受影响窗口。失败保留旧成功记录，下一轮重试，存储读失败不会清空历史。评估列表追加写，同一窗口以
+最后一行为准，被覆盖的行多过有效行一半或总数超过上限（2016）的 1.5 倍才整表压缩。
 
 MacTelemetryHub 的 `modules.vibeCodingNow.tokenUsage` 携带最近 24 小时的用量桶。原始桶保持五分钟，不随 Jev 评分改动；评分时聚合窗口内三个桶，完整上报范围内缺失的桶视为零事件，范围外或来源 partial/unavailable 保留 unknown。字段为 `from/to/collectedAt`（epoch 毫秒）、`sources[{id,state}]`、
 `windows[{from,to,agents}]`。每行 agent 有 `id/model/inputTokens/outputTokens/
@@ -243,23 +273,43 @@ reasoning 属于 output 子集，eventCount 是去重用量事件数，不宣称
 Codex 与 Claude 使用本地日志事件时间，sources 状态区分 ok、partial、unavailable；
 其他来源没有细粒度用量，不能由日总量拆分。该数据只入内部存储，不进入公开补丁。
 
-Coding 同时读取前台应用、Agent/模型、交集时长、切换次数、连续活动时长、观测覆盖。
 不上传提示词、回复正文、项目路径或 session ID。token 是工作活动的证据，不是生产力。
 Mac 同状态每分钟最多保存一次内部观测，变化立即记录；缺报三分钟后中断。
 Cursor 使用独立的 `pulse:cursor-observations`：`cursorNow` 或成功的 `cursorUsage` 检查都会记录，日桶内容没变化也更新观测。重复、乱序的采集时刻不延长有效期，error / warning 不当成零活动。闲时上报周期最长一小时，因此检查覆盖最多保持 65 分钟；最近事件只按 5 分钟活动窗口计入，之后仅表示 Cursor 来源可用。Mac 离线不会抹掉这份覆盖，Cursor 过期也不会抹掉 Mac 的覆盖；两者并集去重。仅 Cursor 可用且没有活动或正 token 证据时直接写 0，置信度为 0.5，内部模型标记为 `rules:limited-source`，不调用 Jev；这不等于确定全局没有 Coding。
-最近播放列表每次成功刷新都追加 `pulse:listening-checks`，相邻成功检查间隔不超过 5 分钟才构成覆盖，不跨故障缺口回填。列表变化仍作为 `recentPlays` 正证据。仅列表可用且无变化时同样直接写低置信度 0（0.5）：同一专辑持续播放可能不改变列表，不能记录成实测静音。有实时播放或列表变化时照常保留活动。
-其他领域的实时原始状态最长保持十分钟，activity 区间沿用明确的 until。
 
-评分和 Coding 观测在 StateHub 保留七天，新评分不写入旧 D1 原始状态归档。
-发布时先更新 Worker/前端契约，再安装新采集器；初次没有评分历史显示 Awaiting scores。
-预览：`pnpm dev:override /api/status/pulse pulse-busy-day.json`（明确标为模拟数据）。
+### 长期归档（D1）
+
+写入方是状态核心：cron 每分钟由 StateHub 按各路水位（metadata `pulse-archive:v2:<路>`）给出一份有界快照，
+普通 Worker 拼成按自然键幂等的 upsert 写 D1，全部成功后才确认水位；一路读坏、写坏不挡别的路。
+代码在 `src/pulse-archive.ts`，表在迁移 `0007_history_pulse.sql`：
+
+| 表 | 内容 | 自然键 |
+| --- | --- | --- |
+| `listening_plays` | 每段实测在放（`certain = 1`，来源 mac / homepod，曲名 / 艺人 / 专辑 / 曲目 id）与不确定区间（`certain = 0`，`source = 'recent'`，专辑 / 歌单名在 `album`、目录 id 在 `item_id`） | `(source, started_at)` |
+| `watching_sessions` | 同一条目首尾相接的播放 + 暂停，`playing_seconds` 只算在播 | `(item_id, started_at)` |
+| `game_sessions` | 在游戏里的时段 | `(title_id, started_at)` |
+| `charging_samples` / `charging_sessions` | 过了闸门的瓦数；一次充电的起止、峰值、能量、设备 | `t` / `started_at` |
+| `activity_buckets` | HealthKit 五分钟桶原值；范围替换由 `pulse_archive_state` 里 `activity_buckets` 那行的版本挡住旧快照 | `started_at` |
+| `coding_observations` | Coding 原始观测（agents 为 JSON） | `t` |
+| `coding_token_buckets` | Mac 本机五分钟 token 桶，agent × 模型 | `(bucket_at, agent, model)` |
+| `agent_usage_days` | 每天（Asia/Shanghai）× agent × 模型，各来源只填真有的列 | `(date, agent, model)` |
+
+`agent_usage_days` 的来源与缺口：具体模型的行里，codex / claude 由 `coding_token_buckets` 汇总（token 分类、
+reasoning、事件数），cursor / claude-cloud 只有云端日桶给的每模型 `total_tokens`；`model = '*'` 是这个 agent 当天
+的合计，token 分类与 API 等值费用只在这一级（没有按模型的费用），codex / claude 取 Mac 用量摘要的 `today`
+（只归档到那天最后一次采集），cursor / claude-cloud 取各自日桶；`active_seconds` 来自 Coding 观测
+（agent 在跑的时长，3 分钟保持，按 max 只增不减），Cursor 只有账号级。`model = ''` 是没有模型名的 token 事件。
+token 报告范围本身不归档，所以归档里「没有行」分不清是零事件还是没报。
+
+旧表 `pulse_samples` 原样冻结，不再写。首次部署带本版本的 Worker 之前先应用迁移
+（`pnpm --dir workers/api exec wrangler d1 migrations apply lyjwpage-history --remote`）。
 
 ## 最近在听
 
 拉取在采集 Worker（`workers/collector` 的 `apple-recent`，每两分钟一轮，不看有没有人在看），
-拉回来的列表经 `StateCore.commitRecentlyPlayed` 交给这里差分、落库、推 `listening`、记听歌痕迹。
-api 自己不再拉，WebSocket 连上也不触发。Mac 上报的 Apple Music 凭据在凭据 KV（`shared/credentials.ts`），
-不向外提供凭据端点；状态读取不触发拉取或广播。
+拉回来的列表经 `StateCore.commitRecentlyPlayed` 交给这里差分、落库、推 `listening`，列表变动记成 Pulse
+听歌道上的不确定区间（`pulse:v2:listening-traces`）。api 自己不再拉，WebSocket 连上也不触发。
+Mac 上报的 Apple Music 凭据在凭据 KV（`shared/credentials.ts`），不向外提供凭据端点；状态读取不触发拉取或广播。
 
 ## MusicKit 令牌
 
@@ -295,7 +345,7 @@ api 自己不再拉，WebSocket 连上也不触发。Mac 上报的 Apple Music �
 `EMBY_PUBLIC_URL`、`APPLE_MUSIC_STOREFRONT`、`ALLOWED_ORIGINS`、`APPLE_MUSIC_TEAM_ID`、
 `APPLE_MUSIC_KEY_ID`，`IMAGES` 桶绑定（只 HEAD；响应里的图片地址是 `/img/<对象键>` 同源路径，
 Worker 不配交付域，回源 R2 由站点的 rewrite 和 ESA 负责，见根 README「图片」），
-以及 `LIVE_PUSH` 与 `STATE` 两个 Durable Object 绑定（迁移只追加新 tag，不改旧的）。`LAG`、`CREDENTIALS` 两个 KV 绑定见 `shared/lag.ts`、`shared/credentials.ts`；`HISTORY` 是 pulse 长期归档用的 D1 库 `lyjwpage-history`，
+以及 `LIVE_PUSH` 与 `STATE` 两个 Durable Object 绑定（迁移只追加新 tag，不改旧的）。`LAG`、`CREDENTIALS` 两个 KV 绑定见 `shared/lag.ts`、`shared/credentials.ts`；`HISTORY` 是长期归档用的 D1 库 `lyjwpage-history`（上报入口的四张表与 Pulse 事实表，见上文「长期归档（D1）」），
 只增不删、无公开读路径，建表只在 `migrations/` 里，部署带这个绑定的版本**之前**先手动应用一次
 （`pnpm --dir workers/api exec wrangler d1 migrations apply lyjwpage-history --remote`，Workers Builds 不跑迁移），
 边界与回滚见 [Worker 数据后端与首屏缓存](../../docs/state-storage.md)。
@@ -445,16 +495,3 @@ misaka-jp 上的 server-reporter 与 agents-reporter 每封报文顶上带一个
 
 网页卡片最多显示最近 10 条，每页上下排列 2 条，横向吸附滚动（共 5 页），隐藏独立标题栏，通过触控板、触摸或键盘横向浏览；上报和存储仍保留最近 10 条。训练记录合并在 Activity 卡片右侧（窄屏放底部），圆环区域保持原高度；出口节点卡全宽排列在其下。
 
-### Pulse 实测域
-
-Watching / Gaming 返回 `{kind:"binary",segments:{startSec,endSec,value},activeSeconds}`（按列、相对秒，见上文），
-上述两种实测形状均额外包含 `score`，与 Coding / Activity 的右侧摘要同形。
-`value` 仅为 0 或 1：只有播放或游戏中为 1，暂停、停止和仅主机在线为 0。
-Charging 返回 `{kind:"power",segments:{startSec,endSec,value},currentPowerW}`，value 单位为 W。
-Watching / Gaming 的 segments 可带 `title` 列，每段是当时的标题，来自历史记录；切换影片或游戏时不合并段，停止时不沿用旧标题。
-Listening 不在此列：它返回 `{kind:"score",assessments}`，与 Coding / Activity 同形。实测只看得见 Mac 和 HomePod，在别的设备上放一整天那条线也是平的，而那些设备唯一的痕迹（「最近在听」列表变动）只有评分那一侧收得到。评分另有 `title` 列，每行取该窗口内占时最长且 level ≥ 2 的曲名，与实测段同一份 hint、同一个公开口径。
-实测三域的曲线独立于 Jev，仍返回 score（评分、趋势、置信度）；前端每分钟刷新。
-段来自实际观测：通常超过 10 分钟未确认留空，含零值；Gaming 按 30 分钟空闲轮询设置 35 分钟有效期。Watching 的明确停止（level 0）持续至下次播放事件，暂停／播放仍按 10 分钟失效。曲线与 Jev 输入共用这些有效期；当前功率过期为 null。
-充电使用已有 Mac `totalPower`，未连接记录 0 W；功率变化最多每 30 秒取一点，
-零／非零切换立即记录，保留 6000 点。旧档位记录缺少 powerW 时留空，不推算瓦数。
-发布前应用 `0003_pulse_power.sql`，D1 将实测瓦数存入 power_w；其他域该列为 NULL。
