@@ -4,6 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useSyncExternalStore }
 import useSWR, { useSWRConfig } from "swr";
 
 import { fetchStatus, guardPolled } from "@/lib/status-reads";
+import { layerOfPath } from "@/lib/status-views";
 import type { StatusResponse } from "@/lib/types";
 
 function subscribeVisibility(onChange: () => void) {
@@ -20,7 +21,7 @@ export function usePageActive() {
   );
 }
 
-/** 打开页面后的第一次由 `/api/home` 聚合代答，之后直连各自端点，见 lib/status-reads */
+/** 各卡直连自己的端点，见 lib/status-reads */
 export const statusFetcher = fetchStatus;
 const fetcher = statusFetcher;
 
@@ -76,15 +77,14 @@ export type StatusOptions<T> = {
    */
   seedFallback?: (data: T) => void;
   /**
-   * 挂载时要不要立刻回源一次。默认要。
+   * 挂载时要不要立刻回源一次。不传时按数据层（lib/status-views 的 layer）定：
    *
-   * 「此刻」类的信封里有服务端按当时的时钟算出来的结论（在不在线、陈没陈旧、
-   * 宽限期还剩多久），HTML 在浏览器手上放一会儿就不成立了；实时推送连上之前
-   * 的那段空窗里发生的事也只能靠这一次补回来。这一次全站合成一个 `/api/home`
-   * 请求（lib/status-reads），之后的轮询才各走各的端点。
+   * - 实时层：要。HTML 生成后到推送连上之间的空窗里发生的事只能靠这一次补回来。
+   * - 可滞后层：首屏那份的 `updatedAt` 还在一个轮询间隔以内就不回源，直接用它、
+   *   按自己的节奏轮询；HTML 放久了（没人访问时首页可能几个小时没重建）才在挂载
+   *   后补取一次，等于把第一次轮询提前到此刻。
    *
-   * 几乎不变的数据（贡献日历、年度热力图）该关掉。列表不要关：
-   * 首屏那份可能冻了几分钟。
+   * 显式传 false 的（贡献日历、年度热力图）永远不在挂载时回源。
    */
   revalidateOnMount?: boolean;
   /**
@@ -151,7 +151,8 @@ export function useStatus<T>(
     [customFetcher],
   );
 
-  const { data, error, isLoading, isValidating } = useSWR<StatusResponse<T>>(path, guarded, {
+  const lag = layerOfPath(path) === "lag";
+  const { data, error, isLoading, isValidating, mutate } = useSWR<StatusResponse<T>>(path, guarded, {
     fallbackData: fallback,
     /**
      * SWR 的默认是「有 fallbackData 也照样在挂载时回源」—— revalidateIfStale
@@ -161,7 +162,7 @@ export function useStatus<T>(
      * 服务端那一路当时就挂了的话不关：降级信封得靠挂载这一次去纠正，
      * 不然一张卡会顶着「未连接」等满一个轮询周期。
      */
-    revalidateOnMount: revalidateOnMount === false && fallback.ok ? false : undefined,
+    revalidateOnMount: fallback.ok && (revalidateOnMount === false || lag) ? false : undefined,
     refreshInterval: interval,
     // 是否暂停由上面的 usePageActive 统一决定，避免 SWR 内置的可见性/在线
     // 判定与应用内浏览器状态不一致，导致首次请求后再也不轮询。
@@ -172,6 +173,25 @@ export function useStatus<T>(
     // 上游本来就会返回降级信封，重试意义不大，交给下一次轮询
     shouldRetryOnError: false,
   });
+
+  /**
+   * 可滞后层首屏那份太旧时的补取。放在 effect 里：要拿此刻的钟去比 `updatedAt`，
+   * 渲染期间不读钟。只看挂载那一刻的首屏信封，之后交给轮询。
+   */
+  const mountFallback = useRef(fallback);
+  const mountInterval = useRef(refreshInterval);
+  const mountChecked = useRef(false);
+  useEffect(() => {
+    const initial = mountFallback.current;
+    // 开发模式的严格模式会把 effect 跑两遍，补取只该有一次
+    if (mountChecked.current) return;
+    mountChecked.current = true;
+    if (!lag || revalidateOnMount === false || !initial.ok) return;
+    const every = mountInterval.current;
+    const periodMs = typeof every === "number" ? every : every(initial.data);
+    const updatedAt = initial.updatedAt;
+    if (updatedAt == null || Date.now() - updatedAt >= periodMs) void mutate();
+  }, [lag, revalidateOnMount, mutate]);
 
   return {
     data: data?.ok ? data.data : undefined,

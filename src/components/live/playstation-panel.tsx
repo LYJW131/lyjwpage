@@ -55,8 +55,8 @@ export function PlaystationPanel({
     fallback: playingNow,
   });
   /**
-   * 首屏那份摘要只是种子：挂载时由 `/api/home` 聚合代答一次（首屏 HTML 可能冻了
-   * 几分钟），之后解锁由 `trophies` 推送直接写进这个键，提要和瓷砖杯数一起换。
+   * 首屏那份摘要只是种子：挂载时回源校验一次（首屏 HTML 可能冻了几分钟），
+   * 之后解锁由 `trophies` 推送直接写进这个键，提要和瓷砖杯数一起换。
    * 取不到时退回服务端那份信封，别让一次失败的重取把提要整块撤掉。
    */
   const summary = useStatus<TrophiesSummaryPayload>(TROPHIES_PATH, TROPHIES_REFRESH_MS, {

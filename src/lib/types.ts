@@ -823,9 +823,13 @@ export type GithubRepoPayload = {
  * 动画的列表，全都白跑）。
  *
  * 而且全站没有任何组件读它。真要知道服务端什么时候算的，看响应头 X-Fetched-At。
+ *
+ * `updatedAt` 不是那种时间戳：它只出现在可滞后层（见 lib/status-views 的 layer），
+ * 是写入方最后一次成功取到这份数据的时刻，随写入方的节奏变，不随每次请求变。
+ * 浏览器拿它按各卡的阈值判断这份是不是已经过时，以及首屏那份要不要挂载后补取。
  */
 export type StatusResponse<T> =
-  | { ok: true; data: T }
+  | { ok: true; data: T; updatedAt?: number }
   | { ok: false; error: string };
 
 /** 上报被拒。不带 data，且与 T 无关 —— 各 ingest 端点共用同一种失败形状 */

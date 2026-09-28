@@ -1,12 +1,12 @@
 /**
  * 公开状态视图的唯一登记表。
  *
- * 一个视图 = 首页快照 `/api/home` 里的一个字段。它在两侧的所有名字都从这里派生：
- * 单端点路径（`/api/status/...`）、Vercel 缓存标签（`page:<tag>`）、WebSocket
- * 事件名、KV 读模型策略。以前这些名字分散在七八张手写表里，新加一张卡要改十个
- * 文件，而且表和表之间没有编译期约束。现在只加这里一行，其余各处按 key 取。
+ * 一个视图 = 一条 `/api/status/*` 公开端点。它在两侧的所有名字都从这里派生：
+ * 端点路径、Vercel 首屏缓存标签（`page:<tag>`）、WebSocket 事件名、所在的数据层。
+ * 以前这些名字分散在七八张手写表里，新加一张卡要改十个文件，而且表和表之间没有
+ * 编译期约束。现在只加这里一行，其余各处按 key 取。
  *
- * 这个文件必须保持同构：浏览器（SWR 键、推送分发、挂载引导）和 Worker 都会 import，
+ * 这个文件必须保持同构：浏览器（SWR 键、推送分发、挂载校验）和 Worker 都会 import，
  * 所以只放元数据，不放取数函数。服务端 loader 按同一组 key 登记在
  * `src/lib/status-loaders.ts`，两张表由 `satisfies Record<StatusViewKey, …>` 强制对齐。
  *
@@ -15,81 +15,75 @@
  * 字段、并进 `/api/status/vibecoding` 整份里，没有独立端点。
  */
 
-/** KV 公开读取投影策略。只剩慢端点一档：分钟级才变、没有推送、浏览器裸轮询。 */
+/**
+ * 数据层（见重构方案「两层数据」）：
+ * - `realtime`：状态核心 DO 是权威，变了立刻推、读到必是最新，或参与 pulse 计算。
+ *   首屏按卡读取后，页面打开时每张实时卡各自回源校验一次，补上 HTML 生成后到推送
+ *   连上之间的空窗。
+ * - `lag`：可滞后层。写入方直接写 KV、不推送；每份带 `updatedAt`，过没过时由浏览器
+ *   按该卡的阈值判断。页面打开后直接用首屏那份，之后按各自节奏轮询。
+ */
+export type StatusLayer = "realtime" | "lag";
+
+/** KV 公开读取投影策略，随可滞后层直写 KV 删除 */
 export type ReadModelPolicy = "slow";
 
 export type StatusView = {
-  /** 单端点路径。没有的视图只活在 `/api/home` 里（timezone、lyrics）。 */
-  path?: `/api/status/${string}`;
+  path: `/api/status/${string}`;
+  layer: StatusLayer;
   /** Vercel 首屏缓存标签（不带 `page:` 前缀）。没有的视图变化不触发首屏重建。 */
   tag?: string;
   /**
    * 带数据的推送事件名。收到后直接写进该视图的 SWR 键。
-   * 有事件的视图**不能**进 KV：推来的永远最新，投影最多几分钟旧，两者不能共存。
-   * `readModelViews()` 下面的断言在模块加载时就把这条守住。
+   * 只有实时层能推：可滞后层的写入方不推送，模块加载时断言。
    */
   event?: string;
-  /** 进 KV 投影。只有没有推送、没有「此刻」语义的慢端点才配。 */
+  /** KV 公开读取投影。只有没有推送、没有「此刻」语义的慢端点才配（随可滞后层直写 KV 删除）。 */
   readModel?: ReadModelPolicy;
-  /**
-   * 首屏字段和无参端点形状不同（loader 表里有 `home()` 覆盖且类型不同）时置 false：
-   * 浏览器挂载引导不能拿 `/api/home` 里这一格去代答该端点的请求。
-   */
-  bootstrap?: false;
 };
 
 export const STATUS_VIEWS = {
-  desktop: { path: "/api/status/desktop", tag: "desktop", event: "desktop" },
-  /** 只在首屏 HTML 里用，没有自己的端点 */
-  timezone: { tag: "timezone" },
-  workouts: { path: "/api/status/workouts", tag: "workouts" },
-  activity: { path: "/api/status/activity", tag: "activity" },
-  server: { path: "/api/status/server", tag: "server" },
-  charger: { path: "/api/status/charger", tag: "charger", event: "charger" },
-  powerBank: { path: "/api/status/powerbank", tag: "powerbank", event: "powerbank" },
-  listening: { path: "/api/status/listening", tag: "listening", event: "listening" },
-  nowListening: { path: "/api/status/listening/now", tag: "listening-now", event: "listening-now" },
-  vibeCoding: { path: "/api/status/vibecoding", tag: "vibecoding", event: "vibecoding-now" },
+  desktop: { path: "/api/status/desktop", layer: "realtime", tag: "desktop", event: "desktop" },
+  /** Mac 时区模块；没有推送，首屏那份之后不再轮询 */
+  timezone: { path: "/api/status/timezone", layer: "lag", tag: "timezone" },
+  workouts: { path: "/api/status/workouts", layer: "lag", tag: "workouts" },
+  /** 圆环读数；五分钟统计桶另走 pulse，归实时层 */
+  activity: { path: "/api/status/activity", layer: "lag", tag: "activity" },
+  server: { path: "/api/status/server", layer: "lag", tag: "server" },
+  charger: { path: "/api/status/charger", layer: "realtime", tag: "charger", event: "charger" },
+  powerBank: { path: "/api/status/powerbank", layer: "realtime", tag: "powerbank", event: "powerbank" },
+  listening: { path: "/api/status/listening", layer: "realtime", tag: "listening", event: "listening" },
+  nowListening: { path: "/api/status/listening/now", layer: "realtime", tag: "listening-now", event: "listening-now" },
+  vibeCoding: { path: "/api/status/vibecoding", layer: "realtime", tag: "vibecoding", event: "vibecoding-now" },
+  /** 厂商状态页。采集 Worker 每分钟拉官方 JSON / RSS 写 KV，不推送 */
+  agentStatus: { path: "/api/status/agent-status", layer: "lag", tag: "agent-status" },
+  vibeCodingYear: { path: "/api/status/vibecoding/year", layer: "lag", tag: "vibecoding-year", readModel: "slow" },
+  watching: { path: "/api/status/watching", layer: "realtime", tag: "watching", event: "watching" },
+  nowWatching: { path: "/api/status/watching/now", layer: "realtime", tag: "watching-now", event: "watching-now" },
+  playing: { path: "/api/status/playing", layer: "realtime", tag: "playing", event: "playing" },
+  playingNow: { path: "/api/status/playing/now", layer: "realtime", tag: "playing-now", event: "playing-now" },
   /**
-   * 厂商状态页。cron 每分钟拉官方 JSON / RSS，只有结果变了才推。
-   * 不进 KV：开着的页面要的是刚推来的那份，投影会把旧的盖回去。
-   */
-  agentStatus: { path: "/api/status/agent-status", tag: "agent-status", event: "agent-status" },
-  vibeCodingYear: { path: "/api/status/vibecoding/year", tag: "vibecoding-year", readModel: "slow" },
-  watching: { path: "/api/status/watching", tag: "watching", event: "watching" },
-  nowWatching: { path: "/api/status/watching/now", tag: "watching-now", event: "watching-now" },
-  playing: { path: "/api/status/playing", tag: "playing", event: "playing" },
-  playingNow: { path: "/api/status/playing/now", tag: "playing-now", event: "playing-now" },
-  /**
-   * 无参端点、首屏字段、推送三者同是摘要（TrophiesSummaryPayload，实测 8 KB 级）；
+   * 无参端点、首屏、推送三者同是摘要（TrophiesSummaryPayload，实测 8 KB 级）；
    * 带 `?titleids=` 才是那几款的完整目录（TrophiesPayload），展开瓷砖时取。
-   * 有推送所以不进 KV。
    */
-  trophies: { path: "/api/status/trophies", tag: "trophies", event: "trophies" },
-  githubChart: { path: "/api/status/github-chart", readModel: "slow" },
-  githubRepo: { path: "/api/status/github-repo", readModel: "slow" },
-  /**
-   * 不进 KV：这条带着各 Worker 当前跑的版本和构建提交，而 KV 投影在取数之后又加
-   * 一层「发布最小间隔 + 投影最大年龄」—— 刚部署完看的就是上一版。它本来就有
-   * 15 分钟的 StateHub 缓存挡住上游，回 DO 读一次不额外打 Cloudflare API。
-   */
-  cloudflareWorkers: { path: "/api/status/cloudflare-workers" },
-  vercelDeployments: { path: "/api/status/vercel-deployments", readModel: "slow" },
-  /** 在线状态、错误量与真实访客指标，来自 Sentry；Worker 缓存 5 分钟，分钟级才变 */
-  sentry: { path: "/api/status/sentry", readModel: "slow" },
-  /** 常驻上报器报来的账本：12 小时推成功几封、跑的哪个提交。分钟级才变 */
-  reporters: { path: "/api/status/reporters", readModel: "slow" },
-  pulse: { path: "/api/status/pulse" },
-  /** 首屏歌词，按 nowListening 的 songId 现解，没有状态端点 */
-  lyrics: {},
+  trophies: { path: "/api/status/trophies", layer: "realtime", tag: "trophies", event: "trophies" },
+  githubChart: { path: "/api/status/github-chart", layer: "lag", readModel: "slow" },
+  githubRepo: { path: "/api/status/github-repo", layer: "lag", readModel: "slow" },
+  /** 各 Worker 当前部署的版本与构建提交、12 小时调用统计 */
+  cloudflareWorkers: { path: "/api/status/cloudflare-workers", layer: "lag" },
+  vercelDeployments: { path: "/api/status/vercel-deployments", layer: "lag", readModel: "slow" },
+  /** 在线状态、错误量与真实访客指标，来自 Sentry */
+  sentry: { path: "/api/status/sentry", layer: "lag", readModel: "slow" },
+  /** 常驻上报器报来的账本：12 小时推成功几封、跑的哪个提交 */
+  reporters: { path: "/api/status/reporters", layer: "lag", readModel: "slow" },
+  /** 最近 24 小时的事实时间线；由状态核心从实时层算出，不推送、按分钟轮询 */
+  pulse: { path: "/api/status/pulse", layer: "realtime" },
 } as const satisfies Record<string, StatusView>;
 
 export type StatusViewKey = keyof typeof STATUS_VIEWS;
-
-type ViewsWithPath = { [K in StatusViewKey]: (typeof STATUS_VIEWS)[K] extends { path: string } ? K : never }[StatusViewKey];
-/** 有单端点的视图 key */
-export type EndpointViewKey = ViewsWithPath;
-export type StatusPath = (typeof STATUS_VIEWS)[EndpointViewKey]["path"];
+/** 每个视图都有自己的端点；保留这个名字给按端点取数的调用方 */
+export type EndpointViewKey = StatusViewKey;
+export type StatusPath = (typeof STATUS_VIEWS)[StatusViewKey]["path"];
 
 export const STATUS_VIEW_KEYS = Object.keys(STATUS_VIEWS) as StatusViewKey[];
 
@@ -97,9 +91,9 @@ function entries(): [StatusViewKey, StatusView][] {
   return Object.entries(STATUS_VIEWS) as [StatusViewKey, StatusView][];
 }
 
-/** 有单端点的视图，按登记顺序 */
-export function endpointViews(): [EndpointViewKey, StatusView & { path: string }][] {
-  return entries().filter((entry): entry is [EndpointViewKey, StatusView & { path: string }] => !!entry[1].path);
+/** 全部视图，按登记顺序 */
+export function endpointViews(): [StatusViewKey, StatusView][] {
+  return entries();
 }
 
 const KEY_BY_PATH = new Map<string, EndpointViewKey>(endpointViews().map(([key, view]) => [view.path, key]));
@@ -108,10 +102,10 @@ export function viewKeyByPath(path: string): EndpointViewKey | undefined {
   return KEY_BY_PATH.get(path);
 }
 
-/** 该端点的挂载引导能否由 `/api/home` 同名字段代答 */
-export function bootstrapServes(path: string): boolean {
+/** 该路径所在的数据层；不认识的路径（歌词、令牌）按实时层处理，挂载时照常回源 */
+export function layerOfPath(path: string): StatusLayer {
   const key = viewKeyByPath(path);
-  return !!key && (STATUS_VIEWS[key] as StatusView).bootstrap !== false;
+  return key ? (STATUS_VIEWS[key] as StatusView).layer : "realtime";
 }
 
 const PATH_BY_EVENT = new Map<string, string>(
@@ -137,8 +131,8 @@ export function readModelPolicyOf(path: string): ReadModelPolicy | undefined {
   return key ? (STATUS_VIEWS[key] as StatusView).readModel : undefined;
 }
 
-// 推送与 KV 互斥：有事件的视图进了 KV，推来的新值会被几分钟旧的投影盖回去。
+// 可滞后层不推送：写入方直接写 KV，推来的新值会和几分钟旧的 KV 读数来回打架。
 for (const [key, view] of entries()) {
-  if (view.event && view.readModel) throw new Error(`status view "${key}" has both a push event and a read model`);
-  if (view.readModel && !view.path) throw new Error(`status view "${key}" has a read model but no endpoint`);
+  if (view.layer === "lag" && view.event) throw new Error(`status view "${key}" is lag-layer but has a push event`);
+  if (view.readModel && view.layer !== "lag") throw new Error(`status view "${key}" has a read model but is realtime`);
 }

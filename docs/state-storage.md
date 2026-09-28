@@ -1,13 +1,13 @@
 # Worker 数据后端与首屏缓存
 
-Worker 是唯一数据后端。上报、状态 API、Apple / GitHub 获取和缓存、WebSocket、在线人数均在 Cloudflare。Vercel 只在生成或后台重建首页时 GET `/api/home`；浏览器挂载后直接请求 Worker（第一轮合成一次 `/api/home`，之后各端点各自轮询），不存在 Vercel 状态代理。`lyjw131.com` 经 ESA 回源 `lyjw.me`（回源 Host 同为 `lyjw.me`），ESA 缓存首页 HTML 与静态 JS。
+Worker 是唯一数据后端。上报、状态 API、Apple / GitHub 获取和缓存、WebSocket、在线人数均在 Cloudflare。Vercel 只在生成或后台重建首页时按卡 GET 各条 `/api/status/*`；浏览器挂载后直接请求 Worker，不存在 Vercel 状态代理，也没有聚合端点。`lyjw131.com` 经 ESA 回源 `lyjw.me`（回源 Host 同为 `lyjw.me`），ESA 缓存首页 HTML 与静态 JS。
 
 ## 数据及权限
 
 - `StateHub` 使用 SQLite Durable Object，`entries`、`fields`、`samples` 分别保存快照、字段和历史。SQLite 是唯一持久状态，DO 重启不丢数据。
 - 上报先在普通 Worker 完成独立校验、归一化和 R2 HEAD，再由 StateHub 按对象队列串行合并权威状态；提交后普通 Worker 才广播和通知。每次请求有独立工作副本，存储批次由同步事务提交，返回 202 前已确认写入。
 - TTL 读取时检查，闹钟每小时分批回收过期项；导入保留原始绝对过期时间，重试不覆盖目标已有值。
-- `/api/status/*`、`/api/home`、`/api/lyrics`、`/api/motion-artwork` 在普通 Worker 聚合，只输出明确的公开模型。StateHub 先提供初始化屏障，并等待已经进入 `commitIngest()` 队列的提交，再按请求合并相邻只读批次；仍在普通 Worker 准备输入的上报尚未进入该边界。未知路径无需进入 DO。没有 HTTP 通用数据库读写端点，服务端凭据不进入 Vercel、HTML 或状态响应。
+- `/api/status/*`、`/api/lyrics`、`/api/motion-artwork` 在普通 Worker 取数，只输出明确的公开模型。StateHub 先提供初始化屏障，并等待已经进入 `commitIngest()` 队列的提交，再按请求合并相邻只读批次；仍在普通 Worker 准备输入的上报尚未进入该边界。未知路径无需进入 DO。没有 HTTP 通用数据库读写端点，服务端凭据不进入 Vercel、HTML 或状态响应。
 - `/api/ingest/*` 使用 Cloudflare Access service token，每来源一把（见 `workers/api/src/access-auth.ts`）。临时 `/api/internal/storage/import` 使用独立 `STATE_IMPORT_SECRET`，不授予 Vercel，迁移后删除 Secret。
 - 跨域活动脉搏（pulse）键为 `pulse:<domain>`（`coding` / `listening` / `watching` / `gaming` / `charging` / `activity`）。每域最多 600 条，TTL 7 天；同水平非空闲最多每 5 分钟再确认一次，空闲只留一条。身体活动 `activity` 例外：每个有效上报区间留一条，含明确终点 `until`，不向未来延续。公开出口是 `GET /api/status/pulse`（裁最近 24 小时、剥掉 `hint`）；`hint` 只留在库里和送去打分的那份里。
 - API Worker 的 `LIVE_PUSH` 使用可休眠 WebSocket，`api.homepage.lyjw.llc/count` 返回 `connections`（包含后台页面）。独立 `online-counter` Worker 的 `ONLINE_COUNTER` 维护可见连接，按空闲超时清扫；`online.homepage.lyjw.llc/count` 返回 `online`。三个调频上报器并行读取两个计数口，各自失败时仅该端归零。
@@ -43,11 +43,11 @@ D1 是整站的长期历史归档：DO 管实时状态与 7 天热数据，KV �
 
 ## 首屏与浏览器
 
-公开状态视图登记在 `src/lib/status-views.ts`：路径、Vercel 首屏缓存标签（`page:<tag>`）、WebSocket 事件、KV 读模型策略都从这一行派生。`/api/revalidate` 的标签白名单也来自这张表。
+公开状态视图登记在 `src/lib/status-views.ts`：路径、所在的数据层（`realtime` / `lag`）、Vercel 首屏缓存标签（`page:<tag>`）、WebSocket 事件都从这一行派生，可滞后层不许带推送事件（模块加载时断言）。`/api/revalidate` 的标签白名单也来自这张表。
 
-`cachedHomeSnapshot`（`src/lib/home-snapshot.ts`）一次读取公开聚合快照；单个数据源不可用使用卡片降级信封。网络失败抛出错误，不用错误快照覆盖已有 Next 缓存。`use cache`，cacheLife 为 stale 300、revalidate 600、expire 7 天；所有状态标签使用 `page:` 前缀。
+首屏按卡读取（`src/lib/first-screen.ts`）：每张卡一条 `use cache` 条目，各挂自己的 `page:<tag>`、各读自己的端点，并行发出。实时卡的端点读状态核心 DO，可滞后卡的端点读 KV，任何一条都不在请求路径上现拉外部 API；从前的 `/api/home` 把两类绑在一次读取里，慢卡现拉上游会拖住整个首屏，已删除。单个端点回 `ok:false` 用卡片降级信封；网络失败、5xx 抛出错误，不用错误快照覆盖已有 Next 缓存；端点还没部署（404）降级为那张卡不可用。cacheLife 为 stale 300、revalidate 600、expire 7 天。首屏歌词在拿到「此刻在听」之后按曲目读 `/api/lyrics`（同样缓存）。
 
-浏览器读路径在 `src/lib/status-reads.ts`。打开页面后 15 秒内、各卡第一次取数合成一次 `/api/home`（5 秒超时，失败 / 字段缺失 / 字段 `ok:false` 回源；带 `since` 的增量请求也吃，其他查询参数不吃）。有单调时间戳的 payload 按代数挡旧值；收过推送或失效通知的路径不再吃这份聚合。之后各端点各自轮询。时间相关的新鲜度每次读取现算。
+浏览器读路径在 `src/lib/status-reads.ts` 与 `src/hooks/use-status.ts`。页面打开后只有实时卡各自回源校验一次，补上 HTML 生成后到推送连上之间的空窗；可滞后卡直接用首屏那份，按各自节奏轮询——只有首屏那份的 `updatedAt` 已经超过它的轮询间隔（没人访问时首页可能几个小时没重建）才在挂载后补取一次。有单调时间戳的 payload 按代数挡旧值。时间相关的新鲜度每次读取现算。
 
 Worker 写入完成后，只有首屏布局变化才 POST `/api/revalidate`（判据见 `src/lib/home-layout.ts` 与 `workers/api/README.md`），内容变化交给首屏快照 `revalidate: 600` 的定时重建。接口校验 Bearer 和标签白名单，调用 `revalidateTag(tag, "max")`，已有 HTML 优先返回并后台重建。不使用 `expire: 0`，不因纯心跳刷新首页。ESA 首页不走通知：控制台缓存规则「首页遵循源站缓存」让边缘按源站 `Cache-Control` 的 SWR（`max-age=300, stale-while-revalidate=86400`，见 `next.config.ts`）自行过期与后台取新；`/` 无文件后缀，没有这条规则会被判 DYNAMIC、每次回源。Vercel 的后台重建与 ESA 后台回源独立完成，ESA 可能取到重建中的旧 HTML，下一轮收敛；不能把标签失效当成两层 HTML 同步更新完成。浏览器查询直接访问 Worker。
 

@@ -204,14 +204,16 @@ try {
   assert.equal((await post(worker, '/api/ingest/mac', { version: 4, heartbeatAt: Date.now(), presence: 'online', activeModules: ['timezone'], modules: {} })).status, 202);
   await sleep(300);
   assert.equal(notices.length, before, 'Pure heartbeat must not invalidate page');
-  const home = await (await fetch(`${worker}/api/home`)).json();
-  assert.equal(home.timezone.ok, true);
+  const timezone = await (await fetch(`${worker}/api/status/timezone`)).json();
+  assert.equal(timezone.ok, true);
+  assert.equal((await fetch(`${worker}/api/home`)).status, 404, 'The aggregate endpoint is gone; the first screen reads per card');
   assert.equal((await fetch(`${worker}/api/internal/storage`)).status, 404);
   assert.equal((await post(worker, '/api/internal/storage', { commands: [] })).status, 405);
   assert.equal((await fetch(`${worker}/api/status/listening/now`, { headers: { Origin: 'http://localhost:3000' } })).headers.get('access-control-allow-origin'), 'http://localhost:3000');
-  assert.equal(JSON.stringify(home).includes('musicUserToken'), false);
-  assert.equal(JSON.stringify(home).includes('developerToken'), false);
-  console.log('PASS: public snapshot, CORS, private storage removed, heartbeat does not invalidate HTML');
+  const publicBodies = await Promise.all(['/api/status/listening/now', '/api/status/listening', '/api/status/desktop', '/api/status/timezone']
+    .map(async (path) => (await fetch(`${worker}${path}`)).text()));
+  assert.equal(publicBodies.some((body) => body.includes('musicUserToken') || body.includes('developerToken')), false);
+  console.log('PASS: per-card endpoints, CORS, private storage removed, heartbeat does not invalidate HTML');
   // Emby 正在播放：设备、播放方式和规格按契约收下、逐字段收敛，不认识的字段（外挂字幕的路径之类）不落库也不广播
   const embyMedia = {
     container: 'mkv', bitrate: 6421965,
@@ -275,7 +277,7 @@ try {
     modules: i % 2 ? {} : { timezone: { identifier: 'Asia/Singapore', secondsFromGMT: 28800 } },
   }));
   assert.ok((await Promise.all(concurrent)).every(response => response.status === 202));
-  assert.equal((await (await fetch(`${worker}/api/home`)).json()).timezone.ok, true);
+  assert.equal((await (await fetch(`${worker}/api/status/timezone`)).json()).ok, true);
   console.log('PASS: concurrent heartbeats preserve a separately updated module');
   socket.close();
   const exited = once(workerChild, 'exit');
@@ -283,7 +285,7 @@ try {
   await exited;
   start(process.execPath, [require.resolve('wrangler'), 'dev', '--config', configPath, '--port', String(workerPort), '--test-scheduled', '--persist-to', join(temporary, 'state')]);
   await eventually(async () => assert.equal(await nowPlaying(), 'isolated-second'));
-  assert.equal((await (await fetch(`${worker}/api/home`)).json()).timezone.ok, true);
+  assert.equal((await (await fetch(`${worker}/api/status/timezone`)).json()).ok, true);
   console.log('PASS: restart preserves initialized state and snapshots');
   if (verifyBuild) {
     const build = start('pnpm', ['build'], {

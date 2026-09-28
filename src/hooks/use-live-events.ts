@@ -8,7 +8,7 @@ import type { ScopedMutator } from "swr";
 import { mergeChargerHistory } from "@/lib/charger-history";
 import { applyVibeCodingNow } from "@/lib/vibecoding-activity";
 import type { LiveEvent } from "@/lib/live-events";
-import { acceptPush, markLiveRead } from "@/lib/status-reads";
+import { acceptPush } from "@/lib/status-reads";
 import { liveSocketUrl } from "@/lib/live-socket";
 import { APP_VERSION_PATH } from "@/lib/app-version";
 import {
@@ -83,14 +83,12 @@ const FORWARDS: ReadonlyArray<{
     event: "vibecoding-now",
     merge: (data) => applyVibeCodingNow(data as VibeCodingNowPayload),
   },
-  { event: "agent-status" },
 ];
 
 /**
  * 上报器上下线时要重取的键。
  *
- * 只有 Mac 上报器供数、并且还在轮询的那几张卡在列。时区只吃首屏，没有
- * status 端点可重取。Emby 正在看不在其中 —— 那条的数据来自 Emby 的 webhook
+ * 只有 Mac 上报器供数、并且还在轮询的那几张卡在列。时区只吃首屏，不在这里重取。Emby 正在看不在其中 —— 那条的数据来自 Emby 的 webhook
  * 和 NAS 上的推送代理，和 Mac 上报器无关，Mac 睡了不影响你在 Emby 上看什么，
  * 跟着重取纯属白跑一趟。
  *
@@ -153,11 +151,7 @@ function dispatch(mutate: ScopedMutator, message: Incoming): void {
 
   const invalidation = INVALIDATION_BY_EVENT.get(message.type);
   if (invalidation) {
-    for (const path of invalidation.paths) {
-      // 通知的意思是「刚变了」：这次重取不能由打开页面时那份聚合代答
-      markLiveRead(path);
-      void mutate(path);
-    }
+    for (const path of invalidation.paths) void mutate(path);
   }
 }
 
