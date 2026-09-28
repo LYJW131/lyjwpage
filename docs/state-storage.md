@@ -9,7 +9,7 @@ Worker 是唯一数据后端。上报、状态 API、Apple / GitHub 获取和缓
 - TTL 读取时检查，闹钟每小时分批回收过期项；导入保留原始绝对过期时间，重试不覆盖目标已有值。
 - `/api/status/*`、`/api/lyrics`、`/api/motion-artwork` 在普通 Worker 取数，只输出明确的公开模型。StateHub 先提供初始化屏障，并等待已经进入 `commitIngest()` 队列的提交，再按请求合并相邻只读批次；仍在普通 Worker 准备输入的上报尚未进入该边界。未知路径无需进入 DO。没有 HTTP 通用数据库读写端点，服务端凭据不进入 Vercel、HTML 或状态响应。
 - `/api/ingest/*` 使用 Cloudflare Access service token，每来源一把（见 `workers/api/src/access-auth.ts`）。临时 `/api/internal/storage/import` 使用独立 `STATE_IMPORT_SECRET`，不授予 Vercel，迁移后删除 Secret。
-- 跨域活动脉搏（pulse）键为 `pulse:<domain>`（`coding` / `listening` / `watching` / `gaming` / `charging` / `activity`）。每域最多 600 条，TTL 7 天；同水平非空闲最多每 5 分钟再确认一次，空闲只留一条。身体活动 `activity` 例外：每个有效上报区间留一条，含明确终点 `until`，不向未来延续。公开出口是 `GET /api/status/pulse`（裁最近 24 小时、剥掉 `hint`）；`hint` 只留在库里和送去打分的那份里。
+- 跨域活动脉搏（pulse）是事实时间线，只存原始值，TTL 7 天：听、看、玩各一个开着的区间 `pulse:v2:<道>:open` 加一串已关闭区间 `pulse:v2:<道>`（同一状态每分钟最多续写一次，变了才换段）；「最近在听」列表变动记在 `pulse:v2:listening-traces`（只知道落在两次刷新之间的不确定区间）；充电瓦数 `pulse:v2:charging`（跨待机立刻、通电时 ≥ 30 秒且变化明显、最迟 5 分钟一笔，6000 条）；活动五分钟桶 `pulse:v2:activity`（权威范围替换，只从第一处变化往后重写，范围与版本在 `pulse:v2:activity:range` / `:revision`）；训练区间 `pulse:v2:workouts`。Coding 三色带读时从 `pulse:coding-observations` 与 `pulse:cursor-observations` 现算。公开出口是 `GET /api/status/pulse`（裁最近 24 小时，只给媒体与游戏标题，应用名、模型名、token、设备名不出门）。档位时代的 `pulse:<domain>` 已停写、随 TTL 过期。契约见 [跨域活动脉搏](../workers/api/README.md#跨域活动脉搏pulse)。
 - API Worker 的 `LIVE_PUSH` 使用可休眠 WebSocket，`api.homepage.lyjw.llc/count` 返回 `connections`（包含后台页面）。独立 `online-counter` Worker 的 `ONLINE_COUNTER` 维护可见连接，按空闲超时清扫；`online.homepage.lyjw.llc/count` 返回 `online`。三个调频上报器并行读取两个计数口，各自失败时仅该端归零。
 
 ## 可滞后层（KV）
@@ -33,24 +33,31 @@ D1 是整站的长期历史归档：DO 管实时状态与 7 天热数据，KV �
 | `activity_days` | 每天活动圆环的终值（手表本地日） | 上报入口 | `date`，同一天取最晚一封 |
 | `limit_snapshots` | 各厂商限额每日快照（Asia/Shanghai 日） | 上报入口 | `(date, agent, limit_key)`，取当天最后一次读数 |
 | `server_hours` | 服务器按 UTC 整点汇总：样本数（即在线分钟）、CPU 与负载的和与峰值、内存、速率峰值、周期累计流量的末值、运行时长 | 上报入口 | `(host, hour_at)`；同一 `observedAt` 的重放不重复计数 |
-| `pulse_samples` | 9 月 17 日起的旧档位数据，保留原样，不迁移也不再扩展 | 状态核心 | `(domain, t)` |
+| `listening_plays` | 实测在放的每一段（mac / homepod）与「最近在听」的不确定区间（`certain = 0`） | 状态核心 | `(source, started_at)` |
+| `watching_sessions` | 同一条目首尾相接的播放 + 暂停，含实际在播秒数 | 状态核心 | `(item_id, started_at)`，延续时改写同一行 |
+| `game_sessions` | 在游戏里的时段 | 状态核心 | `(title_id, started_at)` |
+| `charging_samples` | 过了写入闸门的实测瓦数 | 状态核心 | `t` |
+| `charging_sessions` | 一次充电的起止、峰值、能量、设备 | 状态核心 | `started_at`，还在充时每分钟改写 |
+| `activity_buckets` | HealthKit 五分钟桶原值（步数、活动千卡、锻炼分钟） | 状态核心 | `started_at`，范围替换由版本挡旧快照 |
+| `coding_observations` | Coding 原始观测：前台应用、是否 coding 应用、各 agent 在不在跑 | 状态核心 | `t` |
+| `coding_token_buckets` | Mac 本机五分钟 token 桶，agent × 模型 | 状态核心 | `(bucket_at, agent, model)` |
+| `agent_usage_days` | 每天 × agent × 模型的 token、事件数、费用（只有 agent 合计 `model = '*'` 有）、活跃秒数 | 状态核心 | `(date, agent, model)` |
+| `pulse_samples` | 9 月 17 日至 Pulse 改成事实时间线之间的旧档位数据，原样冻结，不迁移也不再写 | — | `(domain, t)` |
 
 上报入口的四张表由 `shared/history-ingest.ts` 拼语句，在上报落库成功之后 `waitUntil` 整批提交；失败只记 `[history]` 日志，不让已收下的上报重发。迁移 `0005_history_ingest.sql` 建表，部署写这些表的版本之前先应用。
 
-- 旧表 `pulse_samples(domain, t, level, hint, until_at)`，主键 `(domain, t)`。迁移 `0002_pulse_activity_intervals.sql` 增加 `until_at`（其他域为 NULL），发布带区间的 Worker 前先执行该 D1 迁移。StateHub 仍是唯一权威，这里只增不删：StateHub 每域只留 600 条 / 7 天，归档保留全部历史。
-- cron 每分钟从 StateHub 一次取得六域有界快照与水位，普通 Worker 分批写 D1，再逐批向 StateHub 确认水位；上报不等待归档。每域水位存在 metadata 的 `pulse-archive:<domain>`，确认按 max 单调前进。只有 `INSERT OR IGNORE` 成功的批次会确认，失败留待下一分钟重放；每批最多 100 条，一域失败不阻塞其他域。
+- Pulse 事实表由状态核心写：cron 每分钟从 StateHub 取一份有界快照（各路水位之后的新行，外加推导会话所需的一点上下文），普通 Worker 拼成按自然键幂等的 upsert（`INSERT OR IGNORE` 或 `DO UPDATE … WHERE` 值变了才写）写 D1，全部成功后再向 StateHub 确认水位；上报不等待归档。水位存在 metadata 的 `pulse-archive:v2:<路>`，确认按 max 单调前进；失败留待下一分钟重放，一路失败不阻塞其他路。表与各来源的缺口见 [长期归档](../workers/api/README.md#长期归档d1)，迁移 `0007_history_pulse.sql`（`0006` 留给采集 Worker）。
+- 旧表 `pulse_samples(domain, t, level, hint, until_at, power_w)` 原样冻结。StateHub 仍是唯一权威，这里只增不删：StateHub 只留 7 天，归档保留全部历史。
 - 本地和夹具环境不写归档：`historyArchiveEnabled` 和 Jev 打分用同一套闸门，配了 `DEV_OVERRIDES` 或 `UPSTREAM_API_URL` 就停用，没有 `HISTORY` 绑定也停用。
 - 归档暂时没有公开 HTTP 读路径，只作备份；公开的那份走 `GET /api/status/pulse`，从 StateHub 的 7 天序列里裁最近 24 小时，不读 D1。读归档的入口另开时再补这一节。
 - 建表只在迁移里做，Worker 不会自己建：`pnpm --dir workers/api exec wrangler d1 migrations apply lyjwpage-history --remote`。Workers Builds 不跑 D1 迁移，必须在带 `HISTORY` 绑定的版本部署前先应用，否则第一趟 cron 就会在日志里报表不存在。
 - 回滚就是从 `wrangler.toml` 删掉 `[[d1_databases]]`，归档随即停用，StateHub 与站点行为不变；库和已归档的数据留着，重新加回绑定后从水位线继续。
 
-## 分段评分（pulse:assessments）
+## Coding 评估（pulse:assessments）
 
-- 六域共用一个五分钟评分调度器和 `pulse:assessments` 列表，保留七天；输入哈希相同不重复调用，晚到事实可修订相应窗口。输入哈希含 `PULSE_ASSESSMENT_VERSION`。StateHub metadata 持久化 claim token、generation、180 秒 lease 与最近尝试；普通 Worker 从固定快照提取特征和调用模型，提交时 StateHub 校验资格并与最新结果合并。
-- 列表追加写：每轮只追加新评出来的几行，同一窗口以最后一行为准（读者一律走 `latestPulseAssessments`，否则摘要会把重复行的时长算两遍）。被覆盖的旧行和过期行多过有效行的一半、或总行数超过上限的 1.5 倍时才整表压缩重写。从前每轮整表重写，七天攒满一万两千行后一天七百万行 SQLite 写入，远超 Workers Paid 每月五千万的包含量。Activity 权威替换只在确有评估作废时才重写这张表。
-- 曲线读取分段评分，24 小时摘要从相同评分按已观测时长加权计算，不再有 `pulse:scores` 或独立总评模型调用。原始状态继续用于 D1 归档，评分不混入原始表。
-- Coding 内部观测在 `pulse:coding-observations`，窗口 token 报告在 `pulse:coding-token-usage`；公开 API 不返回原始用量、应用名或模型名。契约与闸门见 [统一评分](../workers/api/README.md#pulse-统一五分钟评分)。
-- Listening 另有 `pulse:listening-plays`：「最近在听」列表每次变动（只比条目 id 和顺序，封面地址换新不算）记一条 `{t, since, hint}`，保留 2000 条 / TTL 7 天。它不是阶跃序列、不进 D1 归档、不进公开出口，只作为 Mac / HomePod 之外设备的播放证据进入 listening 窗口的评分输入；一条最多认领一个评分窗口那么长的已观测时间。
+- Jev 只给 Coding 打分，其余道画的是事实本身。一个十五分钟评分调度器和 `pulse:assessments` 列表，保留七天；输入哈希相同不重复调用，晚到的 token 可修订相应窗口。输入哈希含 `PULSE_ASSESSMENT_VERSION`（现为 5）。StateHub metadata 持久化 claim token、generation、180 秒 lease 与最近尝试；普通 Worker 从固定快照提取特征和调用模型，提交时 StateHub 校验资格并与最新结果合并。
+- 列表追加写：每轮只追加新评出来的几行，同一窗口以最后一行为准（读者一律走 `latestPulseAssessments`）。被覆盖的旧行和过期行多过有效行的一半、或总行数超过上限（2016）的 1.5 倍时才整表压缩重写。从前每轮整表重写，七天攒满后一天七百万行 SQLite 写入，远超 Workers Paid 每月五千万的包含量。别的域的旧评估读时丢掉，下次压缩时清出。
+- 评估只出现在 Coding 悬停里（强度、置信度、模式）。Coding 内部观测在 `pulse:coding-observations`，窗口 token 报告在 `pulse:coding-token-usage`；公开 API 不返回原始用量、应用名或模型名。契约与闸门见 [Coding 的 Jev 评估](../workers/api/README.md#coding-的-jev-评估)。
 
 ## 首屏与浏览器
 
