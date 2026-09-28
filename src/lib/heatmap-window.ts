@@ -43,6 +43,20 @@ export function zonedDay(now: number, timezone: string): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: timezone }).format(now);
 }
 
+/** `timezone` 里 `now` 之后第一次换日的时刻（毫秒，新一天的第一毫秒）。按小时往前探，再二分；夏令时那天也对 */
+export function nextZonedDayStart(now: number, timezone: string): number {
+  const today = zonedDay(now, timezone);
+  let hi = now + 3_600_000;
+  while (zonedDay(hi, timezone) === today) hi += 3_600_000;
+  let lo = hi - 3_600_000;
+  while (hi - lo > 1) {
+    const mid = Math.floor((lo + hi) / 2);
+    if (zonedDay(mid, timezone) === today) lo = mid;
+    else hi = mid;
+  }
+  return hi;
+}
+
 /** 53 周窗会填到本周六；今天之后的空格不能点、不能走键盘。 */
 export function isHeatmapFuture(date: string, today = utcToday()): boolean {
   return date > today;

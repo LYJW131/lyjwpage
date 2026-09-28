@@ -11,6 +11,7 @@ import {
   sliceHeatmapWindow,
   utcToday,
   zonedDay,
+  nextZonedDayStart,
 } from "./heatmap-window.ts";
 
 const ORIGIN = "2025-08-17";
@@ -91,4 +92,17 @@ test("切窗按采集侧时区的日历，不按 UTC", () => {
   assert.equal(zonedDay(pushedAt, "Asia/Shanghai"), "2026-08-27");
   assert.equal(isHeatmapFuture("2026-08-27", zonedDay(pushedAt, "Asia/Shanghai")), false);
   assert.equal(isHeatmapFuture("2026-08-28", zonedDay(pushedAt, "Asia/Shanghai")), true);
+});
+
+test("下一次换日：UTC+8 的零点精确到秒，刚过零点就排到明天那一个", () => {
+  const justBefore = Date.parse("2026-09-28T15:59:58Z"); // 上海 23:59:58
+  assert.equal(nextZonedDayStart(justBefore, "Asia/Shanghai"), Date.parse("2026-09-28T16:00:00Z"));
+  const justAfter = Date.parse("2026-09-28T16:00:01Z");
+  assert.equal(nextZonedDayStart(justAfter, "Asia/Shanghai"), Date.parse("2026-09-29T16:00:00Z"));
+});
+
+test("下一次换日：夏令时开始那天只有 23 小时也照样落在零点", () => {
+  // 纽约 2026-03-08 凌晨 2 点跳到 3 点；3 月 8 日的下一个零点是 3 月 9 日 00:00 EDT = 04:00Z
+  const noon = Date.parse("2026-03-08T16:00:00Z");
+  assert.equal(nextZonedDayStart(noon, "America/New_York"), Date.parse("2026-03-09T04:00:00Z"));
 });
