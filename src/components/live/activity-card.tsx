@@ -332,7 +332,7 @@ export function ActivityCard({
   children?: ReactNode;
   className?: string;
 }) {
-  const { data: latest, updatedAt } = useStatus<ActivityPayload>(ACTIVITY_PATH, REFRESH_MS, {
+  const { data: latest, updatedAt, servedAt } = useStatus<ActivityPayload>(ACTIVITY_PATH, REFRESH_MS, {
     fallback,
   });
   /**
@@ -340,7 +340,8 @@ export function ActivityCard({
    * 见 freshness 的 ACTIVITY_STALE_MS），手机那头就是没在报：读数整张回到「—」、卡头写
    * Unavailable。和「一份都没收到」走同一套占位，版面一格不动。
    */
-  const stale = useStale(updatedAt ?? latest?.pushedAt, ACTIVITY_STALE_MS);
+  // 首帧拿首屏信封的 servedAt 当钟：放久了的 HTML 一出来就是 Unavailable，不在挂载后翻
+  const stale = useStale(updatedAt ?? latest?.pushedAt, ACTIVITY_STALE_MS, servedAt);
   const data = stale ? undefined : latest;
 
   /**
