@@ -7,10 +7,11 @@ compatibility_date = "2025-02-14"
 compatibility_flags = ["nodejs_compat", "nodejs_compat_populate_process_env"]
 workers_dev = true
 
+# LivePushRoom 转发生产推送前查本地假数据注入（src/dev-override-reader.ts），只在本地绑
 [[services]]
-binding = "READ_MODEL_RENDERER"
+binding = "DEV_OVERRIDE_READER"
 service = "api"
-entrypoint = "ReadModelRenderer"
+entrypoint = "DevOverrideReader"
 
 [vars]
 STORAGE_PREFIX = "lyjwpage-test"

@@ -84,7 +84,7 @@ try {
       { name: 'LIVE_PUSH', class_name: 'LivePushRoom' },
       { name: 'STATE', class_name: 'StateHub' },
     ] },
-    services: [{ binding: 'READ_MODEL_RENDERER', service: 'isolated-ingest', entrypoint: 'ReadModelRenderer' }],
+    services: [{ binding: 'DEV_OVERRIDE_READER', service: 'isolated-ingest', entrypoint: 'DevOverrideReader' }],
     migrations: [
       { tag: 'v1', new_sqlite_classes: ['LivePushRoom'] },
       { tag: 'v3', new_sqlite_classes: ['StateHub'] },

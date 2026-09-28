@@ -1,0 +1,86 @@
+{
+  "ok": true,
+  "updatedAt": "$now-60000",
+  "data": {
+    "fetchedAt": "$now-4000000",
+    "windowStart": "$now-47200000",
+    "windowEnd": "$now-4000000",
+    "deploymentsFetchedAt": "$now-60000",
+    "workers": [
+      {
+        "name": "api",
+        "metrics": {
+          "requests": 9495,
+          "errors": 0,
+          "subrequests": 34509,
+          "cpuTimeP50Ms": 4.441
+        },
+        "deployment": {
+          "deployedAt": 1790605643922,
+          "versions": [
+            {
+              "id": "9faafb7e-45a3-4158-aab8-10f3fc6433e3",
+              "percentage": 100
+            }
+          ],
+          "commit": {
+            "sha": "8c291fcd773aa1e5084c8e4446421a4ee998ec11",
+            "branch": "main",
+            "message": "refactor(api): 最近在听只收采集 Worker 交回的列表，撤掉临时令牌交接入口"
+          }
+        }
+      },
+      {
+        "name": "ingress",
+        "metrics": null,
+        "deployment": null
+      },
+      {
+        "name": "collector",
+        "metrics": {
+          "requests": 718,
+          "errors": 224,
+          "subrequests": 5204,
+          "cpuTimeP50Ms": 9.293
+        },
+        "deployment": {
+          "deployedAt": 1790605676779,
+          "versions": [
+            {
+              "id": "f2e1d8b3-04e5-4168-bbe4-921e9908cffc",
+              "percentage": 100
+            }
+          ],
+          "commit": {
+            "sha": "8c291fcd773aa1e5084c8e4446421a4ee998ec11",
+            "branch": "main",
+            "message": "refactor(api): 最近在听只收采集 Worker 交回的列表，撤掉临时令牌交接入口"
+          }
+        }
+      },
+      {
+        "name": "online-counter",
+        "metrics": {
+          "requests": 922,
+          "errors": 0,
+          "subrequests": 911,
+          "cpuTimeP50Ms": 0.97
+        },
+        "deployment": {
+          "deployedAt": 1790605645825,
+          "versions": [
+            {
+              "id": "cb8563be-a834-422a-89b6-86d1cb07d5b7",
+              "percentage": 100
+            }
+          ],
+          "commit": {
+            "sha": "8c291fcd773aa1e5084c8e4446421a4ee998ec11",
+            "branch": "main",
+            "message": "refactor(api): 最近在听只收采集 Worker 交回的列表，撤掉临时令牌交接入口"
+          }
+        }
+      }
+    ]
+  }
+}

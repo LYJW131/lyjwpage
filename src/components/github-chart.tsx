@@ -9,7 +9,9 @@ import {
   useHeatmapOpen,
   type CellAnchor,
 } from "@/components/live/heatmap-hover";
+import { useStale } from "@/hooks/use-stale";
 import { incrementalFetcher, useStatus } from "@/hooks/use-status";
+import { GITHUB_CHART_STALE_MS } from "@/lib/freshness";
 import {
   githubChartCursor,
   githubChartWeeks,
@@ -18,6 +20,7 @@ import {
 } from "@/lib/github-chart-history";
 import { GITHUB_CHART_PATH } from "@/lib/paths";
 import type { GithubChartDay, GithubChartPayload, StatusResponse } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 /** 贡献日历按天变。长间隔兜底，切回焦点带游标只拉窗尾。 */
 const REFRESH_MS = 6 * 60 * 60_000;
@@ -34,14 +37,16 @@ type HoveredCell = {
 };
 
 export function GithubChart({ fallback }: { fallback: StatusResponse<GithubChartPayload> }) {
-  const { data } = useStatus<GithubChartPayload>(GITHUB_CHART_PATH, REFRESH_MS, {
+  const { data, updatedAt } = useStatus<GithubChartPayload>(GITHUB_CHART_PATH, REFRESH_MS, {
     fallback,
     fetcher: fetchGithubChart,
     seedFallback: seedGithubChart,
-    // 首屏已经烧进去，挂载不再回源。切回标签页时拉一次，长轮询仍作兜底。
-    revalidateOnMount: false,
+    // 首屏已经烧进去：可滞后层的挂载策略只在首屏那份超过一个轮询间隔时才补取。
+    // 切回标签页时拉一次，长轮询仍作兜底。
     revalidateOnFocus: true,
   });
+  /** 采集 Worker 每 10 分钟拉一次；超过阈值就把整张图压淡、标 Unavailable，不拿旧日历冒充今天 */
+  const stale = useStale(updatedAt ?? (fallback.ok ? fallback.updatedAt : undefined), GITHUB_CHART_STALE_MS);
   /**
    * 留住上一份画得出来的日历，轮询在飞的时候别让图表闪空。
    *
@@ -73,16 +78,23 @@ export function GithubChart({ fallback }: { fallback: StatusResponse<GithubChart
   });
 
   return (
-    <div className="github-chart w-full">
-      <HeatmapGrid
-        svgRef={svgRef}
-        weeks={weeks}
-        hotDate={hotDate}
-        label="GitHub contribution heatmap"
-        onCellPreview={(day, target) => previewCell(cellOf(day, target))}
-        onCellClear={clearPreview}
-        onCellToggle={(day, target) => togglePin(cellOf(day, target))}
-      />
+    <div className="github-chart relative w-full">
+      {stale && (
+        <span className="absolute inset-0 z-10 flex items-center justify-center text-xs text-muted-foreground">
+          Unavailable
+        </span>
+      )}
+      <div className={cn(stale && "opacity-30")} aria-hidden={stale || undefined}>
+        <HeatmapGrid
+          svgRef={svgRef}
+          weeks={weeks}
+          hotDate={hotDate}
+          label="GitHub contribution heatmap"
+          onCellPreview={(day, target) => previewCell(cellOf(day, target))}
+          onCellClear={clearPreview}
+          onCellToggle={(day, target) => togglePin(cellOf(day, target))}
+        />
+      </div>
       {shown && (
         <HeatmapTooltip
           date={shown.date}

@@ -1,0 +1,72 @@
+{
+  "ok": true,
+  "updatedAt": "$now-12000000",
+  "data": {
+    "repo": "LYJW131/lyjwpage",
+    "fetchedAt": "$now-12000000",
+    "totals": {
+      "commits": 608,
+      "additions": 175647,
+      "deletions": 61319,
+      "contributors": 8
+    },
+    "contributors": [
+      {
+        "login": "LYJW131",
+        "avatarUrl": "https://avatars.githubusercontent.com/u/153256373?v=4",
+        "commits": 580,
+        "additions": 183070,
+        "deletions": 68806
+      },
+      {
+        "login": "claude",
+        "avatarUrl": "https://avatars.githubusercontent.com/u/81847?v=4",
+        "commits": 338,
+        "additions": 113451,
+        "deletions": 39020
+      },
+      {
+        "login": "cursoragent",
+        "avatarUrl": "https://avatars.githubusercontent.com/u/199161495?v=4",
+        "commits": 97,
+        "additions": 21315,
+        "deletions": 8282
+      },
+      {
+        "login": "codex",
+        "avatarUrl": "https://avatars.githubusercontent.com/u/267193182?v=4",
+        "commits": 92,
+        "additions": 37226,
+        "deletions": 22832
+      },
+      {
+        "login": "grokkybara[bot]",
+        "avatarUrl": "https://avatars.githubusercontent.com/in/4293548?v=4",
+        "commits": 48,
+        "additions": 13181,
+        "deletions": 3711
+      },
+      {
+        "login": "roboomp",
+        "avatarUrl": "https://avatars.githubusercontent.com/u/284758152?v=4",
+        "commits": 2,
+        "additions": 1837,
+        "deletions": 30
+      },
+      {
+        "login": "An0nCh1hayaa",
+        "avatarUrl": "https://avatars.githubusercontent.com/u/300701323?v=4",
+        "commits": 2,
+        "additions": 2032,
+        "deletions": 3341
+      },
+      {
+        "login": "vercel[bot]",
+        "avatarUrl": "https://avatars.githubusercontent.com/in/8329?v=4",
+        "commits": 2,
+        "additions": 77,
+        "deletions": 0
+      }
+    ]
+  }
+}

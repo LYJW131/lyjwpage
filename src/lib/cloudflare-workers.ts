@@ -1,13 +1,15 @@
-import { cached, get, put } from "@/lib/cache";
+import { AwaitingReport } from "@/lib/awaiting-report";
 import {
   CLOUDFLARE_WORKERS,
+  type CloudflareDeploymentsPayload,
+  type CloudflareMetricsPayload,
   type CloudflareWorkersPayload,
   type WorkerDeployment,
 } from "@/lib/cloudflare-workers-types";
+import { LagResult } from "@/lib/lag-result";
+import { readLagEntry } from "@/lib/lag-store";
+import { LAG_KEYS } from "@shared/lag";
 
-const TTL_MS = 15 * 60_000;
-const LAST_GOOD_TTL_MS = 86_400_000;
-const WINDOW_MS = 12 * 3_600_000;
 const API = "https://api.cloudflare.com/client/v4";
 
 // 汇总不带 status / 时间维度：直接取整段窗口的 P50，不能平均各小时的 P50。
@@ -40,7 +42,7 @@ function nonnegative(value: unknown): number {
   return value;
 }
 
-export function parseWorkersMetrics(raw: unknown, windowStart: number, windowEnd: number): CloudflareWorkersPayload {
+export function parseWorkersMetrics(raw: unknown, windowStart: number, windowEnd: number): CloudflareMetricsPayload {
   const body = record(raw);
   if (body.errors != null && (!Array.isArray(body.errors) || body.errors.length > 0)) {
     throw new Error("Cloudflare 统计查询失败");
@@ -67,7 +69,6 @@ export function parseWorkersMetrics(raw: unknown, windowStart: number, windowEnd
           // GraphQL cpuTimeP50 单位为微秒；公开契约统一为毫秒。
           cpuTimeP50Ms: cpu == null ? null : nonnegative(cpu) / 1000,
         } : null,
-        deployment: null,
       };
     }),
   };
@@ -126,7 +127,7 @@ function apiRequest(account: string, token: string) {
 }
 
 /** 只在 API Worker 执行。起止由调用方给定，便于测试固定窗口。 */
-export async function fetchWorkersMetrics(account: string, token: string, windowStart: number, windowEnd: number): Promise<CloudflareWorkersPayload> {
+export async function fetchWorkersMetrics(account: string, token: string, windowStart: number, windowEnd: number): Promise<CloudflareMetricsPayload> {
   const raw = await apiRequest(account, token)("/graphql", {
     query: WORKERS_METRICS_QUERY,
     variables: { account, start: new Date(windowStart).toISOString(), end: new Date(windowEnd).toISOString() },
@@ -195,47 +196,28 @@ export async function fetchWorkerDeployments(account: string, token: string): Pr
   });
 }
 
-/** 部署版本独立缓存；失败沿用上次版本，全无才报空。两份缓存按下标拼接，Worker 名单一变两边的键都要换版本 */
-export async function getWorkerDeployments(account: string, token: string): Promise<(WorkerDeployment | null)[]> {
-  const key = `cloudflare-deployments:v2:${account}`;
-  return cached(key, TTL_MS, async () => {
-    try {
-      const data = await fetchWorkerDeployments(account, token);
-      await put(`${key}:last-good`, data, LAST_GOOD_TTL_MS);
-      return data;
-    } catch {
-      return await get<(WorkerDeployment | null)[]>(`${key}:last-good`) ?? CLOUDFLARE_WORKERS.map(() => null);
-    }
-  });
-}
-
-/** 滚动 12 小时、按 15 分钟对齐的窗口；失败沿用最后成功值并保留原时间，供卡片标注陈旧。 */
-export async function getWorkersMetrics(account: string, token: string): Promise<CloudflareWorkersPayload> {
-  const key = `cloudflare-metrics:v2:${account}`;
-  return cached(key, TTL_MS, async () => {
-    try {
-      const windowEnd = Math.floor(Date.now() / TTL_MS) * TTL_MS;
-      const data = { ...await fetchWorkersMetrics(account, token, windowEnd - WINDOW_MS, windowEnd), fetchedAt: Date.now() };
-      await put(`${key}:last-good`, data, LAST_GOOD_TTL_MS);
-      return data;
-    } catch {
-      const previous = await get<CloudflareWorkersPayload>(`${key}:last-good`);
-      if (previous) return previous;
-      throw new Error("Cloudflare 统计暂不可用");
-    }
-  });
-}
-
-export async function getCloudflareWorkers(): Promise<CloudflareWorkersPayload> {
-  const token = process.env.CLOUDFLARE_METRICS_TOKEN?.trim();
-  const account = process.env.CLOUDFLARE_ACCOUNT_ID?.trim();
-  if (!token || !account) throw new Error("Cloudflare 统计未配置");
+/**
+ * 公开端点：统计（每 15 分钟）和部署（每 2 分钟）是采集 Worker 各自写的两条键，按名字
+ * 拼成卡片要的一份。两半各带采集时刻；信封的 `updatedAt` 取两半里较新的那个。
+ * 两条都还没写过才是等采集。
+ */
+export async function getCloudflareWorkers(): Promise<LagResult<CloudflareWorkersPayload>> {
   const [metrics, deployments] = await Promise.all([
-    getWorkersMetrics(account, token),
-    getWorkerDeployments(account, token),
+    readLagEntry<CloudflareMetricsPayload>(LAG_KEYS.cloudflareMetrics),
+    readLagEntry<CloudflareDeploymentsPayload>(LAG_KEYS.cloudflareDeployments),
   ]);
-  return {
-    ...metrics,
-    workers: metrics.workers.map((worker, i) => ({ ...worker, deployment: deployments[i] ?? null })),
-  };
+  if (!metrics && !deployments) throw new AwaitingReport("Waiting for the first Workers check");
+  const metricsByName = new Map(metrics?.data.workers.map((worker) => [worker.name, worker.metrics]));
+  const deploymentByName = new Map(deployments?.data.workers.map((worker) => [worker.name, worker.deployment]));
+  return new LagResult<CloudflareWorkersPayload>({
+    fetchedAt: metrics?.data.fetchedAt ?? null,
+    windowStart: metrics?.data.windowStart ?? null,
+    windowEnd: metrics?.data.windowEnd ?? null,
+    deploymentsFetchedAt: deployments?.data.fetchedAt ?? null,
+    workers: CLOUDFLARE_WORKERS.map(({ name }) => ({
+      name,
+      metrics: metricsByName.get(name) ?? null,
+      deployment: deploymentByName.get(name) ?? null,
+    })),
+  }, Math.max(metrics?.updatedAt ?? 0, deployments?.updatedAt ?? 0));
 }

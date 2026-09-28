@@ -14,6 +14,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Modal } from "@/components/ui/modal";
 import { useLiveEvents } from "@/hooks/use-live-events";
+import { useStale } from "@/hooks/use-stale";
 import { useStatus } from "@/hooks/use-status";
 import {
   indicatorLabel,
@@ -21,6 +22,7 @@ import {
   type AgentStatusPayload,
   type AgentStatusRow,
 } from "@/lib/agent-status-types";
+import { AGENT_STATUS_STALE_MS } from "@/lib/freshness";
 import { AGENT_STATUS_PATH } from "@/lib/paths";
 import type { StatusResponse } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -222,6 +224,11 @@ function Detail({ agent, onClose }: { agent: AgentStatusRow; onClose: () => void
   );
 }
 
+/** 过期时的一行：只留名字和状态页，灯色、事件、组件都不再作数；详情里说明最后一次检查在什么时候 */
+function unavailableRow(agent: AgentStatusRow, note: string): AgentStatusRow {
+  return { ...agent, indicator: "unavailable", components: [], incidents: [], note, stale: false };
+}
+
 export function AgentStatusCard({
   fallback,
   className,
@@ -230,7 +237,19 @@ export function AgentStatusCard({
   className?: string;
 }) {
   useLiveEvents();
-  const { data, error } = useStatus<AgentStatusPayload>(AGENT_STATUS_PATH, REFRESH_MS, { fallback });
+  const { data: fetched, error } = useStatus<AgentStatusPayload>(AGENT_STATUS_PATH, REFRESH_MS, { fallback });
+  /**
+   * 采集 Worker 每分钟检查一轮；这份太久没更新（采集停了、出不去）就不再拿旧灯色冒充此刻：
+   * 九行照排、行高不变，每行都换成 Unavailable，点过去是官方状态页。右上角仍是最后检查的时刻。
+   */
+  const stale = useStale(fetched?.fetchedAt, AGENT_STATUS_STALE_MS);
+  const data = fetched && stale
+    ? {
+        ...fetched,
+        agents: fetched.agents.map((agent) =>
+          unavailableRow(agent, `No status check since ${checkedAt.format(fetched.fetchedAt)} UTC+8.`)),
+      }
+    : fetched;
   const [openId, setOpenId] = useState<AgentStatusRow["id"] | null>(null);
   const close = useCallback(() => setOpenId(null), []);
   const open = data?.agents.find((agent) => agent.id === openId) ?? null;

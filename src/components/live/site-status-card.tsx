@@ -13,13 +13,23 @@ import { SentryMark } from "@/components/live/sentry-mark";
 import { UptimeStrip } from "@/components/live/uptime-strip";
 import { useStale } from "@/hooks/use-stale";
 import { fieldPerformanceScore } from "@/lib/field-score";
-import { AGENT_LIMITS_STALE_MS, SERVER_STALE_MS } from "@/lib/freshness";
+import {
+  AGENT_LIMITS_STALE_MS,
+  CLOUDFLARE_DEPLOYMENTS_STALE_MS,
+  CLOUDFLARE_METRICS_STALE_MS,
+  GITHUB_REPO_STALE_MS,
+  PAGESPEED_STALE_MS,
+  SENTRY_STALE_MS,
+  SERVER_STALE_MS,
+  VERCEL_DEPLOYMENTS_STALE_MS,
+  VERCEL_METRICS_STALE_MS,
+} from "@/lib/freshness";
 import type { ReporterName, ReporterStat, ReportersPayload } from "@/lib/reporter-ledger";
 import { useStatus } from "@/hooks/use-status";
 import { CLOUDFLARE_WORKERS, type CloudflareWorkersPayload } from "@/lib/cloudflare-workers-types";
 import type { GithubRecentCommit } from "@/lib/github-recent-commits";
 import { CLOUDFLARE_WORKERS_PATH, GITHUB_REPO_PATH, REPORTERS_PATH, SENTRY_PATH, SERVER_PATH, VERCEL_DEPLOYMENTS_PATH } from "@/lib/paths";
-import type { SentryErrorSeries, SentryStatusPayload } from "@/lib/sentry-status-types";
+import type { SentryBlock, SentryErrorSeries, SentryStatusPayload } from "@/lib/sentry-status-types";
 import { site } from "@/lib/site";
 import type { GithubRepoPayload, ServerPayload, StatusResponse } from "@/lib/types";
 import type { LighthouseVitals, VercelDeployment, VercelDeploymentsPayload } from "@/lib/vercel-deployments-types";
@@ -134,14 +144,36 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
   const { data: vercel } = useStatus<VercelDeploymentsPayload>(VERCEL_DEPLOYMENTS_PATH, 60_000, { fallback: vercelFallback });
   const { data: cloudflare } = useStatus<CloudflareWorkersPayload>(CLOUDFLARE_WORKERS_PATH, 300_000, { fallback: cloudflareFallback });
   const { data: sentry } = useStatus<SentryStatusPayload>(SENTRY_PATH, 5 * 60_000, { fallback: sentryFallback });
-  const { functions, analytics } = vercel?.metrics ?? {};
-  const siteErrors = sentry?.errors?.site, apiErrors = sentry?.errors?.worker;
+  /**
+   * 这些都在可滞后层，由采集 Worker 各按各的节奏写，每块带着自己的采集时刻。
+   * 过了阈值（lib/freshness）那一块就不再拿旧数冒充此刻：数字回到「—」、提交哈希不显示、
+   * 在线条写 Unavailable；版面不动。部署过哪些提交是历史事实，不跟着过期。
+   */
+  const githubStale = useStale(github?.fetchedAt, GITHUB_REPO_STALE_MS);
+  const deploymentsStale = useStale(vercel?.fetchedAt, VERCEL_DEPLOYMENTS_STALE_MS);
+  const functionsStale = useStale(vercel?.metrics?.functions?.fetchedAt, VERCEL_METRICS_STALE_MS);
+  const analyticsStale = useStale(vercel?.metrics?.analytics?.fetchedAt, VERCEL_METRICS_STALE_MS);
+  const pagespeedStale = useStale(vercel?.pagespeed?.fetchedAt, PAGESPEED_STALE_MS);
+  const workerMetricsStale = useStale(cloudflare?.fetchedAt, CLOUDFLARE_METRICS_STALE_MS);
+  const workerDeploymentsStale = useStale(cloudflare?.deploymentsFetchedAt, CLOUDFLARE_DEPLOYMENTS_STALE_MS);
+  // Sentry 各块可能沿用上一轮（最多 30 分钟），按各块自己取到的时刻算
+  const sentryAt = (block: SentryBlock) => sentry ? sentry.blockAt?.[block] ?? sentry.fetchedAt : undefined;
+  const uptimeStale = useStale(sentryAt("uptime"), SENTRY_STALE_MS);
+  const heartbeatStale = useStale(sentryAt("heartbeat"), SENTRY_STALE_MS);
+  const errorsStale = useStale(sentryAt("errors"), SENTRY_STALE_MS);
+  const vitalsStale = useStale(sentryAt("vitals"), SENTRY_STALE_MS);
+  const functions = functionsStale ? null : vercel?.metrics?.functions;
+  const analytics = analyticsStale ? null : vercel?.metrics?.analytics;
+  const totals = githubStale ? null : github?.totals;
+  const production = deploymentsStale ? null : vercel?.production;
+  const siteErrors = errorsStale ? undefined : sentry?.errors?.site, apiErrors = errorsStale ? undefined : sentry?.errors?.worker;
   // 出口节点那张卡用的同一条键，SWR 只取一份
   const { data: server } = useStatus<ServerPayload>(SERVER_PATH, 60_000, { fallback: serverFallback });
   const { data: reporters } = useStatus<ReportersPayload>(REPORTERS_PATH, 5 * 60_000, { fallback: reportersFallback });
   // 主站量的是 lyjw.me；把域名写在表头，省得和访客当前所在的域名混起来。
   // 每一格是滚动窗口内各轮实测的中位数，轮数和窗口在表头的提示里。
-  const pagespeed = vercel?.pagespeed, measured = pagespeed ? new URL(pagespeed.url).host : null;
+  const measured = vercel?.pagespeed ? new URL(vercel.pagespeed.url).host : null;
+  const pagespeed = pagespeedStale ? null : vercel?.pagespeed;
   const deploymentsBySha = new Map<string, { deployment: VercelDeployment; production: boolean }>();
   for (const deployment of [...vercel?.recent ?? [], ...vercel?.production ? [vercel.production] : []]) {
     const sha = deployment.commit?.sha;
@@ -170,10 +202,10 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
   }>
     <div className="border-b border-line px-4 py-5 md:px-5">
       <div className="grid grid-cols-2 gap-5 md:grid-cols-4">
-        <Stat label="VIEWS · 7D" value={analytics?.pageviews} title={analytics ? `${time.format(analytics.start)} — ${time.format(analytics.end)} · UTC+8` : undefined} />
-        <Stat label="COMMITS" value={github?.totals.commits} title="Commits on the default branch" />
-        <Stat label="ADDITIONS" value={github?.totals.additions} prefix="+" title="Total lines added" />
-        <Stat label="DELETIONS" value={github?.totals.deletions} prefix="−" title="Total lines removed" />
+        <Stat label="VIEWS · 7D" value={analytics?.pageviews} title={analytics ? `${time.format(analytics.start)} — ${time.format(analytics.end)} · UTC+8` : analyticsStale ? "Unavailable" : undefined} />
+        <Stat label="COMMITS" value={totals?.commits} title={githubStale ? "Unavailable" : "Commits on the default branch"} />
+        <Stat label="ADDITIONS" value={totals?.additions} prefix="+" title={githubStale ? "Unavailable" : "Total lines added"} />
+        <Stat label="DELETIONS" value={totals?.deletions} prefix="−" title={githubStale ? "Unavailable" : "Total lines removed"} />
       </div>
       {contributionShare > 0 && (
         <div className="mt-6 flex h-2 overflow-hidden bg-muted" role="img" aria-label="Contribution share by commits">
@@ -184,7 +216,7 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
       )}
     </div>
     <RepoContributions data={github} recentCommits={recentCommits} deploymentsBySha={deploymentsBySha} />
-    {sentry && <UptimeStrip site={sentry.uptime} api={sentry.heartbeat ?? null} />}
+    {sentry && <UptimeStrip site={sentry.uptime} api={sentry.heartbeat ?? null} siteStale={uptimeStale} apiStale={heartbeatStale} />}
     {/*
       性能表和服务格到 lg 才并排：768–1023 之间并排的话每格只剩 150–200px，
       「Req · CPU · Last 12h」一行放不下会折行，所以这一段和手机一样上下叠。
@@ -193,7 +225,7 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
       <section className="min-w-0 border-b border-line lg:border-b-0" aria-label="Performance">
         <div className="px-4 pt-3 pb-2">
           <div className="grid grid-cols-[40px_repeat(6,minmax(0,1fr))] items-center gap-1 text-right text-[9px] text-muted-foreground lg:grid-cols-[88px_repeat(6,minmax(0,1fr))] lg:text-[10px]">
-            <span className="truncate text-left" title={pagespeed ? `PageSpeed Insights on ${pagespeed.url}\nMedian of ${pagespeed.samples} runs · ${time.format(pagespeed.start)} — ${time.format(pagespeed.fetchedAt)} · UTC+8` : undefined}>{measured}</span>
+            <span className="truncate text-left" title={pagespeed ? `PageSpeed Insights on ${pagespeed.url}\nMedian of ${pagespeed.samples} runs · ${time.format(pagespeed.start)} — ${time.format(pagespeed.fetchedAt)} · UTC+8` : pagespeedStale ? "Unavailable" : undefined}>{measured}</span>
             <span title="Lighthouse performance score, lab run on a simulated device">PERF</span>{vitalRows.map(row => <span key={row.key} title={row.title}>{row.label}</span>)}
           </div>
           {(["desktop", "mobile"] as const).map(device => {
@@ -206,9 +238,11 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
             </div>;
           })}
           {sentry?.vitals && (() => {
-            const field = fieldValues(sentry.vitals), samples = sentry.vitals.samples, score = fieldPerformanceScore(sentry.vitals);
+            // 行留着、数字换成「—」：真实访客那一块过期了也不让表格少一行
+            const vitals = vitalsStale ? null : sentry.vitals;
+            const field = fieldValues(vitals), samples = vitals?.samples, score = vitals ? fieldPerformanceScore(vitals) : null;
             return <div className="grid h-11 grid-cols-[40px_repeat(6,minmax(0,1fr))] items-center gap-1 text-right text-[10px] tabular-nums lg:grid-cols-[88px_repeat(6,minmax(0,1fr))] lg:text-xs"
-              title={samples ? `Real visitors via Sentry · p75 of ${number.format(samples)} page loads, last 7 days` : "Real visitors via Sentry · no page loads sampled yet"}>
+              title={vitalsStale ? "Real visitors via Sentry · unavailable" : samples ? `Real visitors via Sentry · p75 of ${number.format(samples)} page loads, last 7 days` : "Real visitors via Sentry · no page loads sampled yet"}>
               <span className="text-left text-[11px] text-muted-foreground">Users</span>
               <span className={cn("text-xl font-medium lg:text-2xl", scoreTone(score))}
                 title="Web Vitals score of real visitors: LCP 30%, INP 30%, CLS 15%, FCP 15%, TTFB 10%, from 7-day p75">{score ?? "—"}</span>
@@ -224,7 +258,7 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
             <div className="flex items-center gap-1.5 text-[11px] leading-4">
               <span className="flex items-center gap-1.5"><Vercel size={11} />Vercel</span>
               <ErrorCount series={siteErrors} title="Site errors in the last 12h (browser + functions)" />
-              <CommitSha commit={vercel?.production?.commit} />
+              <CommitSha commit={production?.commit} />
             </div>
             <div className="mt-1 flex gap-x-3 text-[10px] tabular-nums text-muted-foreground">
               <span className="whitespace-nowrap" title={functions ? `${functions.timeouts} timeouts · avg peak memory ${functions.memoryAvgMb == null ? "—" : `${Math.round(functions.memoryAvgMb)} MB`}` : undefined}>Req <span className="text-foreground">{functions ? number.format(functions.invocations) : "—"}</span></span>
@@ -233,18 +267,19 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
             </div>
           </li>
           {CLOUDFLARE_WORKERS.map(({ name }) => {
-            const worker = cloudflare?.workers.find(w => w.name === name), metrics = worker?.metrics;
-            return <li key={name} className="bg-surface px-4 py-2.5" title={worker?.deployment ? `Deployed ${time.format(worker.deployment.deployedAt)} · ${worker.deployment.versions.map(v => `${v.id.slice(0, 8)} ${v.percentage}%`).join(" / ")}` : name}>
+            const worker = cloudflare?.workers.find(w => w.name === name);
+            const metrics = workerMetricsStale ? null : worker?.metrics, deployment = workerDeploymentsStale ? null : worker?.deployment;
+            return <li key={name} className="bg-surface px-4 py-2.5" title={deployment ? `Deployed ${time.format(deployment.deployedAt)} · ${deployment.versions.map(v => `${v.id.slice(0, 8)} ${v.percentage}%`).join(" / ")}` : name}>
               <div className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4">
                 <span className="flex shrink-0"><CloudflareColor size={14} /></span>
                 <span className="min-w-0 truncate">{name}</span>
                 {name === "api" && <ErrorCount series={apiErrors} title="API Worker errors in the last 12h" />}
-                <CommitSha commit={worker?.deployment?.commit} />
+                <CommitSha commit={deployment?.commit} />
               </div>
               <div className="mt-1 flex gap-x-3 text-[10px] tabular-nums text-muted-foreground">
                 <span className="whitespace-nowrap" title={metrics ? `${number.format(metrics.subrequests)} subrequests` : undefined}>Req <span className="text-foreground">{metrics ? number.format(metrics.requests) : "—"}</span></span>
                 <span className="whitespace-nowrap" title="P50 CPU time per request">CPU <span className="text-foreground">{cpu(metrics?.cpuTimeP50Ms)}</span></span>
-                <CollectionWindow start={cloudflare?.windowStart} end={cloudflare?.windowEnd} />
+                {!workerMetricsStale && <CollectionWindow start={cloudflare?.windowStart ?? undefined} end={cloudflare?.windowEnd ?? undefined} />}
               </div>
             </li>;
           })}

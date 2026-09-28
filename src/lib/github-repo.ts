@@ -1,37 +1,21 @@
-import { cached, get, put } from "@/lib/cache";
+import { get, put } from "@/lib/cache";
+import { loadLag, type LagResult } from "@/lib/lag-result";
 import { site } from "@/lib/site";
 import type { GithubRepoContributor, GithubRepoPayload } from "@/lib/types";
+import { LAG_KEYS } from "@shared/lag";
 
 /**
  * 本仓库的贡献统计。名单走 GitHub REST `/stats/contributors`，顶部那三个总数
  * 另走 GraphQL —— 这两件事在 GitHub 那边不是一回事，见下面 fetchRepoTotals。
  *
- * 和贡献日历同一条流程：Worker 取数进 SQLite TTL 缓存，进 `/api/home` 快照，
- * 也有 `/api/status/github-repo` 给浏览器按长间隔轮询；没有推送。
+ * 和贡献日历同一条流程：采集 Worker 每 30 分钟取一轮写进可滞后层（名单和总数各自
+ * 降级，见 workers/collector 的 github-repo），`/api/status/github-repo` 只读那一份，
+ * 浏览器按长间隔轮询；没有推送。
  *
- * token 复用 Worker 上的 GITHUB_TOKEN（和贡献日历同一把）：名单那半公开仓不带
+ * token 是采集 Worker 上的 GITHUB_TOKEN（和贡献日历同一把）：名单那半公开仓不带
  * token 也能读，只是匿名限额低（每 IP 60 次/小时）；总数那半是 GraphQL，没有
  * token 就取不到，三个数字显示「—」。
  */
-
-/** 形状变过就要换键，不然旧窗口那份还会活满一个 TTL。v5 起不再有 weeks。 */
-const REPO_STATS_CACHE_KEY = "github-repo:v5";
-const REPO_STATS_TTL_MS = 30 * 60_000;
-
-/**
- * 最近一次成功的结果，另存一份、活得久。
- *
- * 每次 push 后 GitHub 会作废统计缓存重新排队现算，期间一直回 202，一轮从
- * 30 秒到几分钟都有；30 分钟 TTL 到期恰好撞上这段窗口时，拿这份顶上，
- * 卡片不会因为 GitHub 在算就消失。顶上的那份照样按 30 分钟缓存，下一轮再试。
- *
- * **键名不带版本**：撞上 202 窗口的恰恰是「刚 push 完」，也就是刚换了新版本的
- * 那一刻。跟着 payload 形状换键等于在最需要它的时候把这条退路清空 ——
- * 改形状后第一次部署，卡片会整个消失几分钟（2026-09-14 就这么翻过一次）。
- * 多出来的旧字段读的人本来就不看，缺字段按可选处理。
- */
-const LAST_GOOD_KEY = "github-repo:last-good";
-const LAST_GOOD_TTL_MS = 7 * 86_400_000;
 
 /**
  * 增删行的累计锚：`oid` 这条提交连同它全部祖先的增删行总和。
@@ -43,11 +27,7 @@ const CHURN_ANCHOR_KEY = "github-repo:churn";
 const CHURN_ANCHOR_TTL_MS = 30 * 86_400_000;
 
 /**
- * 整次取数的总预算，含等 202 的时间。
- *
- * 这一路挂在 `/api/home` 的 Promise.all 里，而站点聚合请求 20 秒就会掐掉
- * 整个快照；不设上限就是让一张卡拖垮整个首页重建。名单和总数两路并发跑，
- * 各自在这个 deadline 前收手。
+ * 整次取数的总预算，含等 202 的时间。名单和总数两路并发跑，各自在这个 deadline 前收手。
  */
 const FETCH_BUDGET_MS = 12_000;
 
@@ -137,33 +117,9 @@ export function summarizeRepoStats(
   };
 }
 
-/** Worker / 公开状态端点用：走 SQLite TTL 缓存，取不到就用上一次成功的顶上。 */
-export async function getGithubRepo(): Promise<GithubRepoPayload> {
-  const token = process.env.GITHUB_TOKEN?.trim() || null;
-  const { owner, name } = repoIdFromUrl(site.repo);
-  return cached(REPO_STATS_CACHE_KEY, REPO_STATS_TTL_MS, async () => {
-    try {
-      const stats = await fetchRepoStats(token, owner, name);
-      await put(LAST_GOOD_KEY, stats, LAST_GOOD_TTL_MS);
-      return stats;
-    } catch (error) {
-      const lastGood = await get<GithubRepoPayload>(LAST_GOOD_KEY);
-      if (!lastGood) throw error;
-      console.warn(
-        "[github-repo]",
-        error instanceof Error ? error.message : String(error),
-        "；沿用上一次成功的统计",
-      );
-      // 名单没取到不代表总数也没取到 —— 它们是两个接口。这轮算出来的总数照样
-      // 是新的，只有名单是旧的：顶部三个数字不必跟着名单一起陈旧。
-      const totals = error instanceof ContributorsUnavailable ? error.totals : NO_TOTALS;
-      if (totals.commits == null) return lastGood;
-      return {
-        ...lastGood,
-        totals: { ...totals, contributors: lastGood.totals.contributors },
-      };
-    }
-  });
+/** 公开端点：可滞后层里采集 Worker 写的那份；还没写过就是等采集 */
+export function getGithubRepo(): Promise<LagResult<GithubRepoPayload>> {
+  return loadLag<GithubRepoPayload>(LAG_KEYS.githubRepo, "Waiting for the first repository stats");
 }
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
@@ -171,7 +127,7 @@ const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
 /**
  * 取数本体，不碰缓存层。名单和总数两路并发，共用一个 deadline 和一个 signal。
  *
- * 名单取不到就抛出去（由 getGithubRepo 决定用上一次成功的顶上）；总数取不到
+ * 名单取不到就抛出去（采集那一轮沿用上一份的名单）；总数取不到
  * 只是三个数字变「—」，不牵连名单 —— 它们是两个接口、两种失败方式。
  */
 export async function fetchRepoStats(
@@ -210,7 +166,7 @@ export async function fetchRepoStats(
   return summarizeRepoStats(listed.value, owner, name, Date.now(), totals);
 }
 
-/** 名单这一路没取到，但同一轮算出来的总数还在，交给 getGithubRepo 拼进 last-good。 */
+/** 名单这一路没取到，但同一轮算出来的总数还在，交给采集那一轮拼进上一份。 */
 export class ContributorsUnavailable extends Error {
   // 构造参数属性在 node --experimental-strip-types 下会直接报语法错，写成普通字段
   totals: RepoTotals;

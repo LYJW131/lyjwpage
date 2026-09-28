@@ -5,7 +5,7 @@ import type { CollectorJobOutcome, CollectorRpc } from "@shared/collector";
 import type { Env } from "./env";
 import { runNamed, runScheduled } from "./registry";
 import { bindEnv } from "./runtime";
-import { sentryOptions } from "./sentry";
+import { reportJobFailure, sentryOptions } from "./sentry";
 
 /**
  * 采集 Worker：所有定时的外部拉取都在这里。只展示的结果直接写可滞后层 KV，
@@ -19,7 +19,7 @@ export type { Env } from "./env";
  */
 class CollectorBase extends WorkerEntrypoint<Env> implements CollectorRpc {
   async refresh(jobs: string[]): Promise<CollectorJobOutcome[]> {
-    return runNamed(bindEnv(this.env), Array.isArray(jobs) ? jobs.filter((job) => typeof job === "string") : []);
+    return runNamed(bindEnv(this.env), Array.isArray(jobs) ? jobs.filter((job) => typeof job === "string") : [], { report: reportJobFailure });
   }
 }
 
@@ -29,7 +29,7 @@ const notFound = () => Response.json({ ok: false, error: "Not Found" }, { status
 
 const collector = {
   async scheduled(controller: ScheduledController, env: Env): Promise<void> {
-    await runScheduled(bindEnv(env), controller.scheduledTime, { monitor: Sentry.withMonitor });
+    await runScheduled(bindEnv(env), controller.scheduledTime, { monitor: Sentry.withMonitor, report: reportJobFailure });
   },
 
   /**

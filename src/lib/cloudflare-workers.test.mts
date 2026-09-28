@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { put } from "./cache.ts";
-import { fetchWorkerDeployments, fetchWorkersMetrics, getWorkersMetrics, parseBuildsByVersion, parseWorkerDeployment, parseWorkersMetrics } from "./cloudflare-workers.ts";
+import { installLagStoreForTests } from "./lag-store.ts";
+import { LAG_KEYS, type LagEntry } from "@shared/lag";
+import { fetchWorkerDeployments, fetchWorkersMetrics, getCloudflareWorkers, parseBuildsByVersion, parseWorkerDeployment, parseWorkersMetrics } from "./cloudflare-workers.ts";
 
 const start = Date.parse("2026-09-10T12:30:00Z");
 const end = start + 43_200_000;
@@ -131,10 +132,32 @@ test("a deployed version without a build record borrows the commit of the previo
   assert.equal(deployments[0]?.versions[0].id, "secret-v");
 });
 
-test("metrics fall back to the last good payload when Cloudflare is unavailable, else report unavailable", async (t) => {
-  const stale = parseWorkersMetrics(analytics(), start, end);
-  await put("cloudflare-metrics:v2:acct-stale:last-good", stale, 60_000);
-  t.mock.method(globalThis, "fetch", async () => Response.json({ error: "forbidden" }, { status: 403 }));
-  assert.deepEqual(await getWorkersMetrics("acct-stale", "test-secret"), stale);
-  await assert.rejects(getWorkersMetrics("acct-none", "test-secret"), /暂不可用/);
+test("the public payload joins metrics and deployments by name, each half with its own time", async (t) => {
+  const metrics = { ...parseWorkersMetrics(analytics(), start, end), fetchedAt: end + 5 };
+  const deployment = { deployedAt: 1, versions: [{ id: "v1", percentage: 100 }], commit: null };
+  // 部署那一份的名单顺序和统计不同，也缺一个：按名字拼，不按下标
+  const deployments = { fetchedAt: end + 60, workers: [{ name: "collector", deployment }, { name: "api", deployment: null }] };
+  const store = new Map<string, LagEntry<unknown>>([
+    [LAG_KEYS.cloudflareMetrics, { updatedAt: end + 5, data: metrics }],
+    [LAG_KEYS.cloudflareDeployments, { updatedAt: end + 60, data: deployments }],
+  ]);
+  installLagStoreForTests(async (key) => store.get(key) ?? null);
+  t.after(() => installLagStoreForTests(null));
+
+  const result = await getCloudflareWorkers();
+  assert.equal(result.updatedAt, end + 60);
+  assert.equal(result.data.fetchedAt, end + 5);
+  assert.equal(result.data.deploymentsFetchedAt, end + 60);
+  assert.deepEqual(result.data.workers.map((worker) => [worker.name, worker.metrics?.requests ?? null, worker.deployment?.versions[0].id ?? null]), [
+    ["api", 20, null], ["ingress", null, null], ["collector", null, "v1"], ["online-counter", null, null],
+  ]);
+
+  // 统计还没写过：那一半为空，部署照样出
+  store.delete(LAG_KEYS.cloudflareMetrics);
+  const partial = await getCloudflareWorkers();
+  assert.equal(partial.data.fetchedAt, null);
+  assert.equal(partial.data.workers[2].deployment?.versions[0].id, "v1");
+
+  store.delete(LAG_KEYS.cloudflareDeployments);
+  await assert.rejects(getCloudflareWorkers(), /Waiting/);
 });

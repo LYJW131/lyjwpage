@@ -3,17 +3,15 @@ import type { StorageClient } from "@shared/storage-client";
 import type { LivePushRoom } from "./origin-worker";
 import type { MusicKitTokenEnv } from "./musickit-token";
 import type { StateHub } from "./state-hub";
-import type { ReadModelRenderer } from "./read-model-renderer";
+import type { DevOverrideReader } from "./dev-override-reader";
 import { previewWorkerEnabled } from "./preview";
 
 export interface Env extends MusicKitTokenEnv {
   LIVE_PUSH: DurableObjectNamespace<LivePushRoom>;
   STATE: DurableObjectNamespace<StateHub>;
-  /** Same-deployment named WorkerEntrypoint; public JSON rendering never runs inside StateHub. */
-  READ_MODEL_RENDERER?: Service<ReadModelRenderer>;
+  /** 只在本地：LivePushRoom 转发上游推送前查假数据注入，见 dev-override-reader.ts */
+  DEV_OVERRIDE_READER?: Service<DevOverrideReader>;
   IMAGES: R2Bucket;
-  /** Public, rebuildable read models only. Omit to keep the authoritative read path. */
-  READ_MODEL?: KVNamespace;
   /** Append-only long-term activity archive. Omit to disable archiving; nothing else reads it. */
   HISTORY?: D1Database;
   /** 共享凭据（shared/credentials.ts）：Mac 推来的 Apple Music user token。公开读取不碰它 */
@@ -55,12 +53,7 @@ function isolatedFromSharedWrites(): boolean {
     previewWorkerEnabled();
 }
 
-/** Local fixtures and upstream overlays must never leak into a shared read model. */
-export function readModelEnabled(env: Env): boolean {
-  return !!env.READ_MODEL && !isolatedFromSharedWrites();
-}
-
-/** Same guards: local fixtures and upstream overlays must never reach the shared archive. */
+/** Local fixtures and upstream overlays must never reach the shared archive. */
 export function historyArchiveEnabled(env: Env): boolean {
   return !!env.HISTORY && !isolatedFromSharedWrites();
 }

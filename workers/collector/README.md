@@ -66,6 +66,12 @@
 
 手动触发（`Collector.refresh`、本地调试入口）不报到。
 
+**名额**：组织的 cron 监控名额只有一个，给了 api 的 `api-minute-cron`；这 11 条是报到时自动建出来的，
+超出名额所以都是停用状态，报到被 Sentry 丢弃。加了名额之后在 Sentry 的 Crons 页启用即可，代码不用动。
+在那之前，任务真失败（已知的外部故障除外，PS 连着失败到监控要报 error 的那几轮也算）会直接开一个 Sentry issue，
+按任务分组（fingerprint `collector-job` + 任务名，tag `collector.job`），同一任务在一个 isolate 里 15 分钟最多报一次
+（`src/sentry.ts` 的 `reportJobFailure`）。
+
 ## PlayStation
 
 cron 每分钟响一次，**不等于每分钟跑一轮**：先看退避，再过一道门，门开了才是一轮完整 tick。

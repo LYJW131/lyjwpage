@@ -1,22 +1,9 @@
-import { claim, get, put, remove } from "@/lib/cache";
 import { site } from "@/lib/site";
 import type { LighthouseVitals, PageSpeedPayload, PageSpeedSample } from "@/lib/vercel-deployments-types";
 
 const ENDPOINT = "https://pagespeedonline.googleapis.com/pagespeedonline/v5/runPagespeed";
 /** 整份响应带着截图有 800 KB；只要评分和这几条审计，Worker 不必解一遍图。 */
 const FIELDS = "captchaResult,lighthouseResult(categories/performance/score,audits)";
-/** 实测一次二十多秒，别按访问频率跑：一小时一轮，一轮两端分两次跑。 */
-const REFRESH_INTERVAL_MS = 3_600_000;
-/**
- * 一轮失败之后隔多久再试。
- *
- * 不让失败白烧掉一整个小时 —— runPagespeed 会偶发 500（`Lighthouse returned
- * error`，自己跑十轮撞见过两轮），一小时一次的节奏下，一次偶发就是一小时的
- * 窗口空档。成功那次按小时记账，失败只占住这几分钟，下一轮很快重来。
- */
-const RETRY_INTERVAL_MS = 5 * 60_000;
-/** 连续失败时页面继续显示上次实测，超过一天才回到「—」。 */
-const KEEP_MS = 86_400_000;
 /**
  * 参与中位数的滚动窗口：只算这段时间里跑过的轮次，按小时一轮大约六个样本。
  *
@@ -26,16 +13,6 @@ const KEEP_MS = 86_400_000;
 const WINDOW_MS = 6 * 3_600_000;
 /** 窗口内万一跑得比预期密（比如改了 cron），也不把无上限的历史塞进一条记录。 */
 const MAX_SAMPLES = 12;
-// v2：v1 存的是单轮实测，没有窗口字段，升键让线上那份直接作废。
-const CACHE_KEY = `pagespeed:v2:${site.url}`;
-const HISTORY_KEY = `${CACHE_KEY}:history`;
-/** 这一小时已经测过了。成功才写，所以失败不占住整点到整点那一格。 */
-const DONE_KEY = `${CACHE_KEY}:done`;
-/** 正在测。挡住并发和紧接着的重试，失败时只占住 RETRY_INTERVAL_MS。 */
-const ATTEMPT_KEY = `${CACHE_KEY}:attempt`;
-/** 这一轮里先测完的桌面端，等下一次 cron 把移动端补上再合成一个样本。 */
-const PENDING_KEY = `${CACHE_KEY}:pending`;
-
 function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("PageSpeed 结果格式无效");
   return value as Record<string, unknown>;
@@ -143,59 +120,4 @@ export function mergePageSpeed(previous: unknown, next: PageSpeedSample): { hist
       desktop: summarize(history, "desktop"), mobile: summarize(history, "mobile"),
     },
   };
-}
-
-/**
- * 每小时实测一次，只由 API Worker 的 cron 调用（每分钟进来一次，自己判该不该跑）。
- *
- * 读路径等不起这二十多秒，所以它一步都不去跑上游：这里跑完并进窗口再写进缓存，
- * 页面永远只读已经算好的那份。
- *
- * **一次 cron 只测一端**：先桌面、攒进 `pending`，下一次 cron 补上移动端再合成
- * 一个样本。两端并行跑过，线上实测一次占 96 秒（cron 日志里的 wallTime，跑完了、
- * 没被掐）—— 能跑通，但一次定时调用占着一分半实在长，上游慢一点就没有余量。
- * 拆成两次之后每次三四十秒，加上 60 秒的 fetch 超时，卡住的那次会落进下面的 catch。
- *
- * 两把闸门分开：`done` 成功才写、占一小时，它决定节奏；`attempt` 一进来就抢、
- * 只占几分钟，它挡并发和紧接着的重试。合成一把的话（从前就是），上游一次偶发
- * 500 就把整个小时烧掉 —— 而 runPagespeed 确实会偶发 500。
- */
-export async function refreshPageSpeed(): Promise<void> {
-  const key = process.env.PAGESPEED_API_KEY?.trim();
-  if (!key) return;
-  if (await get(DONE_KEY)) return;
-  if (!await claim(ATTEMPT_KEY, RETRY_INTERVAL_MS)) return;
-  try {
-    const pending = await get<{ desktop: LighthouseVitals }>(PENDING_KEY);
-    if (!pending?.desktop) {
-      const desktop = await fetchPageSpeed(site.url, "desktop", key);
-      // 攒着等下一次 cron。这一轮没在一小时里凑齐就作废，重新从桌面端开始
-      await put(PENDING_KEY, { desktop }, REFRESH_INTERVAL_MS);
-      return;
-    }
-    const mobile = await fetchPageSpeed(site.url, "mobile", key);
-    const { history, payload } = mergePageSpeed(await get(HISTORY_KEY), { at: Date.now(), desktop: pending.desktop, mobile });
-    // pending 是「这一轮还没提交」的凭证，必须赶在 history 落盘之前消费掉。
-    //
-    // 反过来（先写 history、最后清 pending）的话：Worker 侧的 storage 写失败是冒泡的
-    // （`workers/api/src/storage-driver.ts` 特意不吞错），history 写完之后任何一步抛了都
-    // 会落进下面的 catch —— done 没写成、pending 原样留着。五分钟后 attempt 过期，下一轮
-    // 拿同一份 desktop 再测一次 mobile 又追加一条，而 mergePageSpeed 只按 at 追加、不去重，
-    // 窗口里就多出一个共用同一份 desktop 的样本，中位数被拽偏；done 一直写不成时还会每五
-    // 分钟重放一次，把 MAX_SAMPLES 那 12 格填满，真样本被挤出去。
-    //
-    // 先消费再提交之后，最坏是 history 写失败、这一轮的 desktop 白测：pending 已经空了，
-    // 下一轮从桌面端重新开始。丢一轮实测远好过让重复样本污染六小时窗口。
-    await remove(PENDING_KEY);
-    await put<PageSpeedSample[]>(HISTORY_KEY, history, KEEP_MS);
-    await put<PageSpeedPayload>(CACHE_KEY, payload, KEEP_MS);
-    // 写成了才记账，下一轮隔一小时；写之前抛了就只等 RETRY_INTERVAL_MS
-    await put(DONE_KEY, Date.now(), REFRESH_INTERVAL_MS);
-  } catch (error) {
-    console.warn("[pagespeed]", error instanceof Error ? error.message : String(error));
-  }
-}
-
-export async function getPageSpeed(): Promise<PageSpeedPayload | null> {
-  return await get<PageSpeedPayload>(CACHE_KEY) ?? null;
 }

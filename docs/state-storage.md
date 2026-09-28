@@ -39,7 +39,7 @@ D1 是整站的长期历史归档：DO 管实时状态与 7 天热数据，KV �
 
 - 旧表 `pulse_samples(domain, t, level, hint, until_at)`，主键 `(domain, t)`。迁移 `0002_pulse_activity_intervals.sql` 增加 `until_at`（其他域为 NULL），发布带区间的 Worker 前先执行该 D1 迁移。StateHub 仍是唯一权威，这里只增不删：StateHub 每域只留 600 条 / 7 天，归档保留全部历史。
 - cron 每分钟从 StateHub 一次取得六域有界快照与水位，普通 Worker 分批写 D1，再逐批向 StateHub 确认水位；上报不等待归档。每域水位存在 metadata 的 `pulse-archive:<domain>`，确认按 max 单调前进。只有 `INSERT OR IGNORE` 成功的批次会确认，失败留待下一分钟重放；每批最多 100 条，一域失败不阻塞其他域。
-- 本地和夹具环境不写归档：`historyArchiveEnabled` 和读模型用同一套闸门，配了 `DEV_OVERRIDES` 或 `UPSTREAM_API_URL` 就停用，没有 `HISTORY` 绑定也停用。
+- 本地和夹具环境不写归档：`historyArchiveEnabled` 和 Jev 打分用同一套闸门，配了 `DEV_OVERRIDES` 或 `UPSTREAM_API_URL` 就停用，没有 `HISTORY` 绑定也停用。
 - 归档暂时没有公开 HTTP 读路径，只作备份；公开的那份走 `GET /api/status/pulse`，从 StateHub 的 7 天序列里裁最近 24 小时，不读 D1。读归档的入口另开时再补这一节。
 - 建表只在迁移里做，Worker 不会自己建：`pnpm --dir workers/api exec wrangler d1 migrations apply lyjwpage-history --remote`。Workers Builds 不跑 D1 迁移，必须在带 `HISTORY` 绑定的版本部署前先应用，否则第一趟 cron 就会在日志里报表不存在。
 - 回滚就是从 `wrangler.toml` 删掉 `[[d1_databases]]`，归档随即停用，StateHub 与站点行为不变；库和已归档的数据留着，重新加回绑定后从水位线继续。

@@ -1,19 +1,16 @@
 /**
- * 厂商状态的缓存和每分钟刷新。
+ * 厂商状态页的取数与读取。
  *
- * 读路径只在缓存是空的时候才打上游（部署后的第一次）。之后由 API Worker
- * 的 cron 每分钟重拉，变了才推 `agent-status`。公开 webhook 只有 Claude 和
- * Cursor 开着，要人工订阅，回执也不签名，不能当事实来源。邮件比这一分钟
- * 更慢，正文没有稳定字段，所以不走 Email Routing。
+ * 拉取在采集 Worker（`provider-status`，每分钟一轮，结果写进可滞后层）；公开端点
+ * 只读那一份，不推送，过没过时由卡片按 AGENT_STATUS_STALE_MS 判断。公开 webhook
+ * 只有 Claude 和 Cursor 开着，要人工订阅，回执也不签名，不能当事实来源。邮件比这
+ * 一分钟更慢，正文没有稳定字段，所以不走 Email Routing。
  */
 
-import { collectAgentStatus, agentStatusFingerprint, emptyAgentStatus } from "@/lib/agent-status-parse";
 import type { AgentStatusPayload } from "@/lib/agent-status-types";
-import { get, put } from "@/lib/cache";
+import { loadLag, type LagResult } from "@/lib/lag-result";
+import { LAG_KEYS } from "@shared/lag";
 
-// v2：DeepSeek 换成 TypeSafe 和 Apple。旧快照是八行，不让新卡片读到它。
-const CACHE_KEY = "agent-status:v2";
-const KEEP_MS = 7 * 24 * 60 * 60 * 1000;
 const TIMEOUT_MS = 15_000;
 const USER_AGENT = "lyjwpage-agent-status/1.0 (+https://lyjw.me)";
 
@@ -43,29 +40,7 @@ export async function fetchText(url: string): Promise<string> {
   throw last instanceof Error ? last : new Error(`${host} unreachable`);
 }
 
-/**
- * 拉一轮并写进缓存。
- *
- * 返回值是「这一轮和上一轮不一样」时的新快照，没变就是 null。
- * 调用方用它决定要不要推送。检查时刻每分钟都变，不在比较里。
- */
-export async function refreshAgentStatus(): Promise<AgentStatusPayload | null> {
-  try {
-    const previous = (await get<AgentStatusPayload>(CACHE_KEY)) ?? null;
-    const payload = await collectAgentStatus(previous, fetchText);
-    await put(CACHE_KEY, payload, KEEP_MS);
-    return agentStatusFingerprint(previous) === agentStatusFingerprint(payload) ? null : payload;
-  } catch (error) {
-    console.warn("[agent-status]", error instanceof Error ? error.message : String(error));
-    return null;
-  }
-}
-
-/** 页面和 `/api/home` 只读缓存。缓存还没有时现拉一轮，不让第一眼是空白。 */
-export async function getAgentStatus(): Promise<AgentStatusPayload> {
-  const hit = await get<AgentStatusPayload>(CACHE_KEY);
-  if (hit) return hit;
-  const changed = await refreshAgentStatus();
-  if (changed) return changed;
-  return (await get<AgentStatusPayload>(CACHE_KEY)) ?? emptyAgentStatus();
+/** 公开端点：可滞后层里采集 Worker 写的那份；还没写过就是等采集 */
+export function getAgentStatus(): Promise<LagResult<AgentStatusPayload>> {
+  return loadLag<AgentStatusPayload>(LAG_KEYS.agentStatus, "Waiting for the first status check");
 }

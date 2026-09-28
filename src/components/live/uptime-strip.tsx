@@ -35,14 +35,16 @@ const STATUS: Record<HealthSeries["status"], { label: string; className: string 
   unknown: { label: "Unknown", className: "text-muted-foreground" },
 };
 
+const UNAVAILABLE = { label: "Unavailable", className: "text-muted-foreground" };
+
 /** 一个组件一块：顶上名字和此刻状态，中间每天一格，下面「30 days ago —— 99.97% uptime —— Today」 */
-function HealthRow({ name, health, statusTitle, footTitle, unit }: {
-  name: string; health: HealthSeries; statusTitle: string; footTitle: string; unit: string;
+function HealthRow({ name, health, statusTitle, footTitle, unit, stale }: {
+  name: string; health: HealthSeries; statusTitle: string; footTitle: string; unit: string; stale: boolean;
 }) {
-  // 缓存里旧形状的那份没有 status，按还没有记录处理
-  const status = STATUS[health.status] ?? STATUS.unknown;
+  // 缓存里旧形状的那份没有 status，按还没有记录处理；这一块太久没更新就不报此刻状态，整行压淡
+  const status = stale ? UNAVAILABLE : STATUS[health.status] ?? STATUS.unknown;
   return (
-    <div>
+    <div className={cn(stale && "[&>:not(:first-child)]:opacity-40")}>
       <div className="mb-2.5 flex items-baseline justify-between gap-3">
         <span className="text-sm font-medium">{name}</span>
         <span className={cn("text-xs", status.className)} title={statusTitle}>{status.label}</span>
@@ -76,17 +78,19 @@ function HealthRow({ name, health, statusTitle, footTitle, unit }: {
  *   补上后端那一截；漏报、超时、报错都算失败
  * 数据来自 lib/sentry-status；两块都拿不到时整段不渲染，只缺一块就只画另一块。
  */
-export function UptimeStrip({ site, api }: { site: SentryUptime | null; api: HealthSeries | null }) {
+export function UptimeStrip({ site, api, siteStale = false, apiStale = false }: {
+  site: SentryUptime | null; api: HealthSeries | null; siteStale?: boolean; apiStale?: boolean;
+}) {
   if (!site && !api) return null;
   return (
     <div className="flex flex-col gap-5 border-t border-line px-4 py-4 md:px-5">
       {site && (
-        <HealthRow name={site.url ? new URL(site.url).host : "lyjw.me"} health={site} unit="checks"
+        <HealthRow name={site.url ? new URL(site.url).host : "lyjw.me"} health={site} unit="checks" stale={siteStale}
           statusTitle={`Per-minute check · HEAD ${site.url || "https://lyjw.me/"}`}
           footTitle={`checked every ${site.intervalSeconds}s`} />
       )}
       {api && (
-        <HealthRow name="API" health={api} unit="heartbeats"
+        <HealthRow name="API" health={api} unit="heartbeats" stale={apiStale}
           statusTitle="Cron heartbeat of the api Worker every 5 minutes (Durable Objects and KV)"
           footTitle="cron heartbeat every 5 minutes" />
       )}

@@ -13,14 +13,8 @@ routes = [
   { pattern = "ingest.homepage.lyjw.llc", custom_domain = true }
 ]
 
-# 采集 Worker 经 Service Binding 调 StateCore（见 src/state-core.ts；旧的 PlaystationIngest 留到原脚本退场），
+# 采集 Worker 经 Service Binding 调 StateCore（见 src/state-core.ts），
 # 这里不用声明：entrypoint 由调用方的 binding 指定。
-# Loop back into this deployment's ordinary Worker isolate for public JSON rendering.
-# This avoids ctx.exports (which needs a newer compatibility flag) and keeps StateHub focused on coordination.
-[[services]]
-binding = "READ_MODEL_RENDERER"
-service = "api"
-entrypoint = "ReadModelRenderer"
 
 [vars]
 # 逗号分隔。实时推送、公开 API 的 CORS 和 MusicKit 令牌签发使用此名单。
@@ -43,11 +37,6 @@ EMBY_PUBLIC_URL = "https://emby.lyjw131.com"
 SITE_URL = "https://lyjw.me"
 # lyjw131.com 经 ESA 回源 lyjw.me，首页按源站 SWR 头缓存，不走刷新 API。
 APPLE_MUSIC_STOREFRONT = "cn"
-# 站点卡片只读查询的归属标识，都不是秘密（账号 ID 也写在站点的控制台链接里）；
-# 令牌走 secret：CLOUDFLARE_METRICS_TOKEN、VERCEL_TOKEN。
-CLOUDFLARE_ACCOUNT_ID = "209f2c881b1c494fec50851c067b3266"
-VERCEL_PROJECT_ID = "prj_r6sFPPmanb9zm3hzYAHAmp3KsIiC"
-VERCEL_TEAM_ID = "team_kfTnkK6X9bbqSbkgAhq7SxCd"
 # Sentry 的写入地址（DSN 本身公开，不是秘密）。本地 wrangler.test.toml 不配，本地就不上报。
 SENTRY_DSN = "https://13ba806bda9ae5a9086576b2e3d23cfb@o4511888459890688.ingest.us.sentry.io/4512132602855424"
 # Cloudflare Access：team 域名即 JWT 签发方，AUD 是「lyjwpage ingest」应用的受众标签。都不是秘密。
@@ -93,12 +82,6 @@ class_name = "LivePushRoom"
 binding = "IMAGES"
 bucket_name = "lyjw-homepage"
 
-# 公开读取投影（docs/kv-read-model.md）：DO SQLite 仍是唯一权威，这里只放可重建的公开 JSON。
-# 去掉这个 binding 就回到纯 DO 读取，不需要反向迁移；生产、预览、本地不共用可写命名空间。
-[[kv_namespaces]]
-binding = "READ_MODEL"
-id = "6d4a26ae1068417d8f9f7c200381826b"
-
 # 共享凭据（shared/credentials.ts）：Mac 推来的 Apple Music user token。和可滞后层分开，
 # 公开读取的代码路径只碰 LAG，白名单写错也漏不出这里的东西。
 [[kv_namespaces]]
@@ -119,16 +102,11 @@ database_id = "bf3a227f-d12e-428a-8f4e-0f56b97464df"
 [observability]
 enabled = true
 
-# 秘密通过 wrangler secret put 配置：GITHUB_TOKEN、REVALIDATE_SECRET（调站点 /api/revalidate）、
-# APPLE_MUSIC_PRIVATE_KEY（MusicKit 签发用的 .p8 全文）、CLOUDFLARE_METRICS_TOKEN
-# （Workers 统计、部署与构建只读）、VERCEL_TOKEN（团队范围，部署与指标只读用）、
-# PAGESPEED_API_KEY（Google PageSpeed Insights，cron 每小时实测一次首页性能）、
-# TYPESAFE_API_KEY（TypeSafe AI 官方 API，给 pulse 六域打活动分的 Jev 评估模型；
-# 不配就不打分，端点照常给泳道）、SENTRY_API_TOKEN（Sentry 组织只读令牌，
-# org:read / project:read / event:read，给站点卡片的在线率、错误数取数；不配这几处就不显示）。
-# 每分钟一趟：有页面连接时刷新最近在听（SQLite 闸门把 Apple 请求限制为两分钟一次），
-# 并按同一把闸门每小时跑一次 PageSpeed 实测。厂商状态页也在这一分钟里拉，
-# 只有结果变了才推送。
+# 秘密通过 wrangler secret put 配置：REVALIDATE_SECRET（调站点 /api/revalidate）、
+# APPLE_MUSIC_PRIVATE_KEY（MusicKit 签发用的 .p8 全文）、
+# TYPESAFE_API_KEY（TypeSafe AI 官方 API，给 pulse 打活动分的 Jev 评估模型；不配就不打分，端点照常给泳道）。
+# 外部数据的只读令牌（GitHub、Vercel、Cloudflare、Sentry、PageSpeed）都在采集 Worker 上，这里没有。
+# 每分钟一趟：pulse 归档与评分、Sentry 心跳（api-minute-cron）。外部拉取都在采集 Worker。
 [triggers]
 crons = ["* * * * *"]
 

@@ -93,5 +93,5 @@ PSN 拉取并进 `workers/collector`（任务 `playstation`，见它的 README�
 
 `GET /tick` 连同它的 Access 应用「playstation-reporter tick」一起取消，自定义域
 `playstation-reporter.homepage.lyjw.llc` 不再使用；本地调试改走 `pnpm dev:worker` 的 `/__dev/collector/run?job=playstation`。
-待办：部署后在 Workers 日志确认 `playstation-tick` 的 `ok:true` 与 `/api/status/playing/now` 的新 `observedAt`，
-再删掉那个 Access 应用和自定义域；api 上的 `PlaystationIngest` 在旧脚本不再调用后删除。
+2026-09-28 核验：collector 部署（8c291fc）后 Workers 日志里每分钟一轮 `playstation-tick-gate`（有人看时 55 秒档放行）
+与 `playstation-tick` 的 `ok:true`；那个 Access 应用和自定义域已删，api 上的 `PlaystationIngest` 随后删除。
