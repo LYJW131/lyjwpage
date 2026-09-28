@@ -9,7 +9,7 @@
 - `src/online-counter.ts`：「此刻在线」的房间，只数可见的页面，人数一变就广播给房间里所有连接。
 - `src/stores/`：上报的 Worker 准备阶段与 StateHub 提交阶段；`src/phone-telemetry.ts`、`src/homepod-ingest.ts` 组合设备信封。
 - `src/ingest-effects.ts`、`src/fanout.ts`：StateHub 提交时只收集可序列化效果；持久化确认后由普通 Worker 补充外部数据、广播并通知首屏 stale。
-- `src/apple-music-recent.ts`：最近在听的拉取、写入和广播。
+- `src/apple-music-recent.ts`：收下采集 Worker 拉回的最近在听，差分、写入和广播。
 - `src/musickit-token.ts`：给「一起听」签 MusicKit developer token（ES256 JWT），按 origin 声明缓存、过半衰期重签。
 - `src/origins.ts`：`ALLOWED_ORIGINS` 的解析、通配匹配和 CORS 头，两条 WebSocket、公开 API 和令牌签发共用。
 - 根目录 `shared/`：读写共用的 SQLite 键、类型和状态计算；根目录 `src/lib/` 提供读取与通用工具。
@@ -128,7 +128,7 @@ presence 时会把它冲掉。`on` 必须是布尔值（HA 实体的 `"on"` / `"
 30 分钟才关，因为后台标签页的定时器会被浏览器节流；`OnlineCounterRoom` 把连接留在实例里，
 静默三个心跳周期（90 秒）就踢，因为可见页面不会被节流，一条僵尸多活 5 分钟就把三个上报器
 多钉在快档 5 分钟。心跳 30 秒定义在站点 `src/hooks/use-online-count.ts`，Worker 里那份是
-手抄的副本，改一边必须改另一边。独立在线人数 Worker 的 `/ws` 按可见性反复重连，不触发 API 的最近在听刷新。
+手抄的副本，改一边必须改另一边。
 
 上报走 `https://ingest.homepage.lyjw.llc/api/ingest/<来源>`。这个域名整站挂在 Cloudflare Access 应用「lyjwpage ingest」后面，
 策略只放行登记过的 service token：每个来源一把（`lyjwpage-mac`、`-iphone`、`-emby`、`-server`、`-agents`、
@@ -255,10 +255,10 @@ Cursor 使用独立的 `pulse:cursor-observations`：`cursorNow` 或成功的 `c
 
 ## 最近在听
 
-WebSocket 连接成功时检查一次。cron 每分钟检查，不看连接数：成功检查和列表变动都是 listening 评分的证据（`pulse:listening-checks` / `pulse:listening-plays`），只在有访客时刷会漏掉没人看站点时在 iPhone 上听的那些。上游频率由两分钟的 SQLite 闸门管，最多每两分钟拉一次 Apple。
-SQLite `SET NX PX` 闸门与实例节流将真正的拉取限制为至少两分钟一次。
-Mac 上报的 Apple Music 凭据保存在 SQLite，Worker 读取使用，不向外提供凭据端点。
-状态读取不再触发拉取或广播。
+拉取在采集 Worker（`workers/collector` 的 `apple-recent`，每两分钟一轮，不看有没有人在看），
+拉回来的列表经 `StateCore.commitRecentlyPlayed` 交给这里差分、落库、推 `listening`、记听歌痕迹。
+api 自己不再拉，WebSocket 连上也不触发。Mac 上报的 Apple Music 凭据在凭据 KV（`shared/credentials.ts`），
+不向外提供凭据端点；状态读取不触发拉取或广播。
 
 ## MusicKit 令牌
 
