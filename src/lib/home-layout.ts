@@ -57,3 +57,13 @@ export function vibeCodingLayoutKey(payload: Pick<VibeCodingPayload, "agents" | 
     topModels: payload.topModels.length > 0,
   });
 }
+
+/**
+ * 训练条目那一块的骨架：还没收到过、收到了但一条都读不出、有训练，三种各是一块不同的
+ * 占位。有几条、是哪几条都只是内容（条目横向翻页、定高）。圆环卡读数变化、从没有到有
+ * 都画在同一个骨架里，不需要判据。
+ */
+export function workoutsLayoutKey(payload: { items: readonly unknown[] } | null): "none" | "empty" | "list" {
+  if (!payload) return "none";
+  return payload.items.length ? "list" : "empty";
+}

@@ -143,7 +143,7 @@ Access 在边缘核对，不对直接回 401；放行的请求带着 Access 签�
 SQLite 未就绪返回 503，鉴权失败返回 401，非法报文返回 400，成功返回 202。202 表示持久化完成，广播和缓存通知由 `waitUntil` 执行。
 旧站点 `/api/ingest/*` 与 Worker `/publish` 均不存在。
 
-Worker 在 SQLite 写入完成后，仅对首屏布局变化在 `waitUntil` 后台任务中通知 Vercel：POST `${SITE_URL}/api/revalidate`，Bearer 用只有 Worker 和 Vercel 两边有的 `REVALIDATE_SECRET`，只传 `{ tags }`。按白名单将 `page:<tag>` 标 stale，先返回已有 HTML，后台重建。首页整页只有一个缓存条目，任何标签失效都是整页重建，所以各上报在自己手里的新旧两份上判断布局有没有变：充电头 / 充电宝那一格亮灭、在听的 hero 出现或消失、「正在看」开播停播、续看和游玩列表空与非空、服务器首报 / 流量行 / 断流后回来、奖杯首次到达、训练条目。判据与页面共用 `src/lib/home-layout.ts`。Vibe coding 的骨架由三路拼成，在出口按拼好的那份比对上一次通知时的骨架（`home-layout:vibecoding`），行数、总量与常用模型的有无变了才发。读数、标题、进度、灯色等内容变化不通知，由首屏快照 `revalidate: 600` 定时重建；浏览器挂载后直接问 Worker。通知 5 秒超时，失败只记日志，不能让已落库的上报重发。纯心跳和没有标签的广播不触发缓存通知。
+Worker 在 SQLite 写入完成后，仅对首屏布局变化在 `waitUntil` 后台任务中通知 Vercel：POST `${SITE_URL}/api/revalidate`，Bearer 用只有 Worker 和 Vercel 两边有的 `REVALIDATE_SECRET`，只传 `{ tags }`。按白名单将 `page:<tag>` 标 stale，先返回已有 HTML，后台重建。首页整页只有一个缓存条目，任何标签失效都是整页重建，所以各上报在自己手里的新旧两份上判断布局有没有变：充电头 / 充电宝那一格亮灭、在听的 hero 出现或消失、「正在看」开播停播、续看和游玩列表空与非空、服务器首报 / 流量行 / 断流后回来、奖杯首次到达、训练那一块换占位（没收到过 / 一条都读不出 / 有训练）。判据与页面共用 `src/lib/home-layout.ts`。Vibe coding 的骨架由三路拼成，在出口按拼好的那份比对上一次通知时的骨架（`home-layout:vibecoding`），行数、总量与常用模型的有无变了才发。读数、标题、进度、灯色等内容变化不通知，由首屏快照 `revalidate: 600` 定时重建；浏览器挂载后直接问 Worker。通知 5 秒超时，失败只记日志，不能让已落库的上报重发。纯心跳和没有标签的广播不触发缓存通知。
 
 ESA 首页不走数据上报通知。`lyjw131.com` 以 `lyjw.me` 为源站与回源 Host，控制台缓存规则「首页遵循源站缓存」（主机名等于本站、URI 路径等于 `/`，排在 PWA 绕过规则之后）让边缘按源站 `Cache-Control: public, max-age=300, stale-while-revalidate=86400, stale-if-error=86400`（根目录 `next.config.ts`）自行缓存：5 分钟内命中，之后先回旧 HTML、后台回源取新。带内容哈希的静态 JS 按源站一年 immutable 缓存，不随上报清理。新版本部署上线时，由 GitHub Actions（`.github/workflows/purge-esa.yml`）在 Vercel 生产部署完成后自动调用 `PurgeCaches` 刷新一条首页 cachekey，随后主动发起请求预热边缘节点缓存；日常上报不触发刷新。同一工作流的第二步等 `lyjw.me` 与 `lyjw131.com` 的 `/api/version` 都答出这次部署的 sha，再用 `lyjwpage-github-actions` 那把 service token（仓库 secret `ACCESS_CLIENT_ID` / `ACCESS_CLIENT_SECRET`）调 `POST https://ingest.homepage.lyjw.llc/api/internal/site-deployed`，Worker 向所有连着的页面广播不带数据的 `version` 事件，页面重问 `/api/version` 并弹出更新提示；站点自己的版本轮询因此只作半小时一次的兜底。
 
@@ -238,7 +238,7 @@ Jev 的强度、模式。
   iPhone 每次查询是一段权威范围：范围内旧桶按新结果修订或删除，`pulse:v2:activity:range` 记范围，
   `pulse:v2:activity:revision` 在内容真变了时 +1（归档用它挡较旧的替换）。写入只从第一处不同的桶往后重写，
   通常每封只动最后一两行。训练区间 `pulse:v2:workouts` `{items:[{startedAt, endedAt, activityType}]}` 由 iPhone 训练
-  写入口自己留一份（训练卡片的数据以后可能挪去 KV），内容没变不写。
+  写入口自己留一份（训练卡片那份列表在可滞后层 `workouts:v1`），内容没变不写。
 
 档位时代的 `pulse:<domain>`、`pulse:listening-plays`、`pulse:listening-checks` 不再写，随 TTL 过期，不迁移。
 
@@ -493,11 +493,13 @@ misaka-jp 上的 server-reporter 与 agents-reporter 每封报文顶上带一个
 
 `POST /api/ingest/iphone` 的 v1 信封接受 `modules.workouts: { items: [...] }`，每次完整替换最近最多 10 条训练（空列表清空）。记录字段为 `id`（HealthKit UUID）、`activityType`（英文类型）、`startedAt` / `endedAt`（epoch 毫秒）、`secondsFromGMT`（训练当地 UTC 偏移秒）、`durationSeconds`（扣除暂停的活动秒数），以及可选的 `distanceMeters` / `activeEnergyKcal`、`averageHeartRateBpm` / `maximumHeartRateBpm`、`elevationAscendedMeters`、`indoor`（boolean）。缺失指标对外为 null，不能解释为零。
 
-`GET /api/status/workouts` 返回 `{ items, pushedAt }` 的标准状态信封。快照保存在 `workouts:recent`，不按训练日期过期；超过 7 天未同步时卡片标明同步延迟。上报失效 `workouts` 首页缓存标签，浏览器每 5 分钟轮询，不新增推送事件。共享代码路径已包含在 Worker 原生构建监视范围内。
+`GET /api/status/workouts` 返回 `{ items, pushedAt }` 的标准状态信封，信封带 `updatedAt`。训练列表是可滞后层的一条（KV `workouts:v1`，`{ updatedAt, data: { items } }`），由上报入口在这封 iPhone 上报的状态核心那一半成功之后整份写入；`pushedAt` 就是 `updatedAt`，读时补上。状态核心只留 Pulse 活动道要的训练区间（`pulse:v2:workouts`）。训练是历史事实，列表不设过期阈值，只有取数失败时卡片注明同步延迟。首页 `workouts` 缓存标签只在训练那一块换占位（没收到过 / 一条都读不出 / 有训练）时失效，条目增减交给定时重建；浏览器每 5 分钟轮询，不新增推送事件。共享代码路径已包含在 Worker 原生构建监视范围内。
+
+活动圆环（`modules.activity` 里的当天圆环）同理：读数在 KV `activity:v1`（`{ updatedAt, data: ActivityStatus }`），只在这封带了当天圆环时写，只带五分钟统计桶的上报不碰它；五分钟桶是 Pulse 的输入，留在状态核心。`GET /api/status/activity` 读 KV，`pushedAt` 取 `updatedAt`，「手表那边还是不是这一天」（`currentAtSource`）在读时按源站的钟现算。卡片超过 `ACTIVITY_STALE_MS`（12 小时，一夜加余量）没有新读数就写 Unavailable，版面不动。
 
 本地预览：`pnpm dev:override /api/status/workouts workouts.json`，夹具仅供开发环境，启用时页面显示 Fake data。真实记录需要安装 iOS 27 上报器并允许训练读取。
 
-`workouts.json` 是 2026-09-20 从真机读取的最近 10 次训练快照（6 次剑术、3 次骑行、1 次滑冰），保留原日期与观测指标，UUID 替换为演示标识。`pushedAt` 注入时更新，但训练时间不变。剑术不把步行距离当成主要成绩；滑冰没有距离就不显示速度；网页每项最多两个指标：有距离时显示时长与距离，否则显示时长与活动消耗；不展示心率或均速。
+`workouts.json` 是 2026-09-20 从真机读取的最近 10 次训练快照（6 次剑术、3 次骑行、1 次滑冰），保留原日期与观测指标，UUID 替换为演示标识。信封的 `updatedAt` 与 `pushedAt` 注入时更新，但训练时间不变；圆环夹具 `activity-afternoon.json` 同样带信封级 `updatedAt`。剑术不把步行距离当成主要成绩；滑冰没有距离就不显示速度；网页每项最多两个指标：有距离时显示时长与距离，否则显示时长与活动消耗；不展示心率或均速。
 
 网页卡片最多显示最近 10 条，每页上下排列 2 条，横向吸附滚动（共 5 页），隐藏独立标题栏，通过触控板、触摸或键盘横向浏览；上报和存储仍保留最近 10 条。训练记录合并在 Activity 卡片右侧（窄屏放底部），圆环区域保持原高度；出口节点卡全宽排列在其下。
 

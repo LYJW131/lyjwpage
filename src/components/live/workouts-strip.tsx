@@ -3,7 +3,6 @@
 import { useEffect, useRef } from "react";
 import { Bike, Dumbbell, Swords, Footprints } from "lucide-react";
 import { useStatus } from "@/hooks/use-status";
-import { useStale } from "@/hooks/use-stale";
 import { STATUS_VIEWS } from "@/lib/status-views";
 import { workoutMetrics } from "@/lib/workout-display";
 import type { StatusResponse, Workout, WorkoutsPayload } from "@/lib/types";
@@ -35,7 +34,7 @@ function WorkoutTile({ workout }: { workout: Workout }) {
 }
 
 export function WorkoutsStrip({ fallback }: { fallback: StatusResponse<WorkoutsPayload> }) {
-  const { data, error, servedAt } = useStatus<WorkoutsPayload>(STATUS_VIEWS.workouts.path, 300_000, { fallback });
+  const { data, error } = useStatus<WorkoutsPayload>(STATUS_VIEWS.workouts.path, 300_000, { fallback });
   const listRef = useRef<HTMLUListElement>(null);
   const items = data?.items.slice(0, 10) ?? [];
   // Preserve the visible pair when the card width changes.
@@ -61,8 +60,8 @@ export function WorkoutsStrip({ fallback }: { fallback: StatusResponse<WorkoutsP
       list.removeEventListener("scroll", rememberPosition);
     };
   }, [items.length]);
-  // 首帧拿首屏信封的 servedAt 当钟（见 hooks/use-stale）
-  const stale = useStale(data?.pushedAt, 7 * 86400_000, servedAt);
+  // 训练是历史事实，手机多久没报也不会变假，所以这里没有过期阈值（见 freshness 的 ACTIVITY_STALE_MS）；
+  // 只在这一轮取数失败、手上是旧的那份时注一行
   return (
     <section id="workouts" aria-label="Recent workouts" className="@container flex min-w-0 flex-col justify-center border-t border-line md:border-t-0 md:border-l">
       {!data ? (
@@ -74,7 +73,7 @@ export function WorkoutsStrip({ fallback }: { fallback: StatusResponse<WorkoutsP
           {items.map((workout) => <WorkoutTile key={workout.id} workout={workout} />)}
         </ul>
       )}
-      {data && (stale || error) && <p className="border-t border-line p-4 text-xs lg:p-5 text-muted-foreground">Sync delayed · Last report {new Date(data.pushedAt).toLocaleDateString("en-US", { timeZone: "UTC", month: "short", day: "numeric" })} (UTC)</p>}
+      {data && error && <p className="border-t border-line p-4 text-xs lg:p-5 text-muted-foreground">Sync delayed · Last report {new Date(data.pushedAt).toLocaleDateString("en-US", { timeZone: "UTC", month: "short", day: "numeric" })} (UTC)</p>}
     </section>
   );
 }

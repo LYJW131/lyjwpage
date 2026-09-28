@@ -1,5 +1,6 @@
 {
   "ok": true,
+  "updatedAt": "$now-600000",
   "data": {
     "date": "2026-09-14",
     "secondsFromGMT": 28800,

@@ -1,6 +1,6 @@
 import { object } from "@/lib/json";
 import type { Workout, WorkoutsPayload } from "@/lib/types";
-import { mirror, WORKOUT_LIMIT } from "@shared/workouts";
+import { WORKOUT_LIMIT } from "@shared/workouts";
 import { writePulseWorkouts } from "@api/stores/pulse";
 
 function amount(value: unknown, field: string): number {
@@ -54,12 +54,11 @@ export function normalizeWorkouts(input: unknown, receivedAt = Date.now()): Work
   return { items, pushedAt: receivedAt };
 }
 
+/**
+ * 状态核心这一半只留 Pulse 活动道要的训练区间（时间与项目名）。训练列表本身是展示
+ * 快照，由上报入口整份写进可滞后层（见 workers/api/src/lag-ingest），HealthKit 里删掉
+ * 的训练随整份替换一起消失。
+ */
 export async function writeWorkouts(value: WorkoutsPayload): Promise<void> {
-  // Full replacement also removes workouts deleted in HealthKit.
-  // Pulse 的训练区间单独留一份在状态核心里：训练卡片的数据以后可能挪去 KV，
-  // 活动道的时间线仍要在这里读得到。
-  await Promise.all([
-    mirror.put(value),
-    writePulseWorkouts(value.items.map(({ startedAt, endedAt, activityType }) => ({ startedAt, endedAt, activityType }))),
-  ]);
+  await writePulseWorkouts(value.items.map(({ startedAt, endedAt, activityType }) => ({ startedAt, endedAt, activityType })));
 }

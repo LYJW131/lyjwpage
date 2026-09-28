@@ -16,10 +16,10 @@ Worker 是唯一数据后端。上报、状态 API、Apple / GitHub 获取和缓
 
 判断标准只有一条：这份数据是否需要「变了立刻推、读到必是最新」，或是否参与 pulse 计算。是则归实时层（状态核心 DO），否则归可滞后层，存在 KV 命名空间 `lyjwpage-lag`（binding `LAG`，键表与 `{ updatedAt, data }` 格式见 `shared/lag.ts`）。
 
-- 写入方直接写 KV、不推送：上报入口写落地节点、限额、时区、常驻上报器账本（`workers/api/src/lag-ingest.ts`，在这封上报的状态核心那一半成功之后）；采集 Worker 写外部拉取的结果。取数失败不写，KV 里的值本身就是上次成功值，不另存 last-good。
+- 写入方直接写 KV、不推送：上报入口写落地节点、限额、时区、常驻上报器账本、活动圆环读数与最近训练（`workers/api/src/lag-ingest.ts`，在这封上报的状态核心那一半成功之后）；采集 Worker 写外部拉取的结果。取数失败不写，KV 里的值本身就是上次成功值，不另存 last-good。iPhone 那一封里，状态核心只留 Pulse 的输入（五分钟统计桶、训练区间），圆环读数（`activity:v1`，只在这封带了当天圆环时写）和训练列表（`workouts:v1`，整份替换）在 KV，`updatedAt` 是最后一次带来它的那封上报的收到时刻。
 - 状态核心的公开读取端点只读 KV（`src/lib/lag-result.ts` 经 `@/lib/lag-store` 别名读 `LAG`），信封里带上 `updatedAt`；服务端不下「过没过时」的结论。
-- 浏览器按各卡阈值判断：超过就显示 Unavailable（落地节点 `SERVER_STALE_MS` 10 分钟，限额 `AGENT_LIMITS_STALE_MS` 185 分钟，账本各格同上）。页面打开后可滞后卡直接用首屏那份，只有 `updatedAt` 已超过它的轮询间隔才补取一次。
-- 首屏缓存失效由写 KV 的一方发起，判据仍是布局变化（见 `src/lib/home-layout.ts`）：落地节点首报 / 断流回来 / 流量行出没，限额的来源集合变化。
+- 浏览器按各卡阈值判断：超过就显示 Unavailable（落地节点 `SERVER_STALE_MS` 10 分钟，限额 `AGENT_LIMITS_STALE_MS` 185 分钟，账本各格同上，活动圆环 `ACTIVITY_STALE_MS` 12 小时 —— iPhone 只在 HealthKit 有新样本时被唤起，睡一夜一封都没有是正常的，理由见 `src/lib/freshness.ts`）。训练列表不设阈值：完成过的训练是历史事实，手机多久没报也不会变假。页面打开后可滞后卡直接用首屏那份，只有 `updatedAt` 已超过它的轮询间隔才补取一次。
+- 首屏缓存失效由写 KV 的一方发起，判据仍是布局变化（见 `src/lib/home-layout.ts`）：落地节点首报 / 断流回来 / 流量行出没，限额的来源集合变化，训练那一块在「没收到过 / 一条都读不出 / 有训练」三种占位之间换。圆环读数的变化只是内容，不失效首屏。
 - Apple Music user token 在另一个命名空间 `lyjwpage-credentials`（binding `CREDENTIALS`，`shared/credentials.ts`）：公开读取的代码路径只碰 `LAG`，白名单写错也漏不出凭据。
 - 本地开发的 `wrangler.test.toml` 给这两个 binding 配了固定的本地 id，多个本地 Worker 用同一个 id 才读得到彼此写的值；分支 Preview 不绑 KV，读不到时由上游兜底补上。
 

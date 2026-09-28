@@ -1,6 +1,6 @@
 import { replacePulseActivity } from "@api/stores/pulse";
 import { number, object, text } from "@/lib/json";
-import { type ActivityHistory, type ActivityHistoryBucket, type ActivityReport, mirror } from "@shared/activity";
+import { type ActivityHistory, type ActivityHistoryBucket, type ActivityReport } from "@shared/activity";
 
 const DATE_PATTERN = /^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])$/;
 
@@ -122,18 +122,15 @@ function normalizeHistory(input: unknown, receivedAt: number): ActivityHistory {
 }
 
 /**
- * 落库。整份替换，后到的就是对的。
+ * 状态核心这一半只落 Pulse 的五分钟桶（步数、活动千卡、锻炼分钟，不换算成档位）。
+ * 当天圆环读数是展示快照，由上报入口写进可滞后层（见 workers/api/src/lag-ingest）。
  *
- * **没有「旧的不许盖新的」那道闸，也不该有。** 上报器每封都发当天的全量绝对值、
+ * **两边都没有「旧的不许盖新的」那道闸，也不该有。** 上报器每封都发当天的全量绝对值、
  * 发的都是它此刻看到的真相，而且失败了不补发旧报文（见那边的 README）—— 这两件事
  * 是一对：哪天给上报器加了后台重试队列，这里就得把顺序闸一起加回来。
  *
  * 按日期挡也不行：往西飞过日界线时本地日会往回走一天，而手表上的圈确实跟着回去了。
  */
 export async function writeActivity(report: ActivityReport): Promise<void> {
-  const writes: Promise<unknown>[] = [];
-  // Pulse 留原始的五分钟桶（步数、活动千卡、锻炼分钟），不再换算成档位
-  if (report.history) writes.push(replacePulseActivity(report.history, report.history.buckets));
-  if (report.current) writes.push(mirror.put(report.current));
-  await Promise.all(writes);
+  if (report.history) await replacePulseActivity(report.history, report.history.buckets);
 }

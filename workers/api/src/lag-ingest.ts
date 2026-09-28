@@ -1,7 +1,9 @@
 import { SERVER_STALE_MS } from "@/lib/freshness";
+import { workoutsLayoutKey } from "@/lib/home-layout";
 import { LIMITS_TAG, SERVER_TAG } from "@/lib/live-events";
+import { STATUS_VIEWS } from "@/lib/status-views";
 import { REPORTER_BY_SOURCE, type ReporterBlock, type ReporterStat } from "@/lib/reporter-ledger";
-import type { ServerPayload, TimezoneActivity } from "@/lib/types";
+import type { ActivityStatus, ServerPayload, TimezoneActivity, Workout } from "@/lib/types";
 import { agentLimitsLayoutKey, mergeAgentLimits, type AgentLimitsPayload } from "@/lib/vibecoding-limits";
 import { LAG_KEYS, readLag, writeLag, type LagStore } from "@shared/lag";
 import type { PreparedIngest } from "./ingest-handlers";
@@ -13,6 +15,8 @@ import type { PreparedIngest } from "./ingest-handlers";
  * - server：整封都在这里（落地节点读数 + 账本），状态核心不再存它。
  * - agents：限额按 id 合并后写回，账本单独一条；Cursor 的用量与此刻仍进状态核心。
  * - mac：只有 timezone 模块在这里，其余模块照旧进状态核心。
+ * - iphone：圆环读数与训练列表这两份展示快照在这里；状态核心只留 Pulse 要的
+ *   五分钟桶和训练区间（见 stores/activity、stores/workouts）。
  *
  * 只在这封上报的状态核心那一半成功之后才写，返回要失效的首屏标签（只在布局变化时，
  * 判据和从前一样，见 lib/home-layout）。KV 读的是写入方自己上一次写的值，
@@ -59,6 +63,23 @@ export async function commitLagIngest(kv: LagStore, command: PreparedIngest): Pr
         if (previous?.data.timezone) await writeTimezone(kv, null, command.receivedAt);
       }
       return [];
+    }
+    case "iphone": {
+      const writes: Promise<void>[] = [];
+      const tags: string[] = [];
+      // 只写这封真带了的模块：只带历史桶的圆环上报不碰读数，`updatedAt` 是最后一次带来它的那封
+      if (command.activity?.current) {
+        const { activity, receivedAt } = command.activity.current;
+        writes.push(writeLag<ActivityStatus>(kv, LAG_KEYS.activity, activity, receivedAt));
+      }
+      if (command.workouts) {
+        const previous = await readLag<{ items: Workout[] }>(kv, LAG_KEYS.workouts);
+        const next = { items: command.workouts.items };
+        writes.push(writeLag(kv, LAG_KEYS.workouts, next, command.receivedAt));
+        if (workoutsLayoutKey(previous?.data ?? null) !== workoutsLayoutKey(next)) tags.push(STATUS_VIEWS.workouts.tag);
+      }
+      await Promise.all(writes);
+      return tags;
     }
     default:
       return [];

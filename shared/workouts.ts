@@ -1,6 +1,2 @@
-import { key, mirrorKey } from "@/lib/storage";
-import type { WorkoutsPayload } from "@/lib/types";
-
+/** iPhone 每封整份发来的最近训练条数上限；上报入口按它校验 */
 export const WORKOUT_LIMIT = 10;
-export const workoutsKey = () => key("workouts", "recent");
-export const mirror = mirrorKey<WorkoutsPayload>(["workouts", "recent"], (value) => value.pushedAt);

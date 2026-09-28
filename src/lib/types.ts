@@ -1003,8 +1003,9 @@ export type ActivityStatus = ActivityRings & {
  *
  * **没有 `ReporterPresence`。** 这不是 Mac 上报器那种「一直在线才算数」的数据源：
  * 手机整夜不动就没有新样本可推，那时圆环冻在最后一次推送上是正确的，不是掉线。
- * 真正会让这份数据变错的只有一件事 —— 手表那边跨过了午夜，圆环已经归零而站点
- * 还举着昨天那份，所以只盖 `currentAtSource` 这一个判定。
+ * 光靠时间流逝会让这份数据变错的是手表那边跨过了午夜：圆环已经归零而站点还举着
+ * 昨天那份，所以源站盖 `currentAtSource`。另外它在可滞后层，信封带 `updatedAt`，
+ * 超过一夜还没刷新（ACTIVITY_STALE_MS）卡片就写 Unavailable。
  */
 export type ActivityPayload = ActivityStatus & {
   /** 源站收到这份的时刻。卡片拿它写「几分钟前」，不用来判过期 */
@@ -1019,7 +1020,7 @@ export type ActivityPayload = ActivityStatus & {
    *
    * 它是数据字段，服务端预渲染和 hydrate 读到的是同一个值，不会水合不一致。
    * 端点每次请求现算，所以卡片那 5 分钟一轮的轮询就是它的刷新节奏；冻住的首屏
-   * 那份跟着页面缓存（stale 300 / revalidate 600 / expire 7 天，见 lib/home-snapshot），
+   * 那份跟着首屏缓存（stale 300 / revalidate 600 / expire 7 天，见 lib/first-screen），
    * 挂载时的那次回源会纠正它。
    */
   currentAtSource: boolean;
