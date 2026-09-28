@@ -1,4 +1,3 @@
-import { SENTRY_STALE_MS } from "@/lib/freshness";
 import { loadLag, type LagResult } from "@/lib/lag-result";
 import {
   SENTRY_API_ORIGIN,
@@ -17,7 +16,7 @@ import { LAG_KEYS } from "@shared/lag";
  * 采集 Worker（`sentry-status`，每 5 分钟），用 `SENTRY_API_TOKEN`（组织只读令牌，
  * org:read / project:read / event:read）调 Sentry API，写进可滞后层；公开端点只读那一份。
  *
- * 一轮十来个请求，分块各自降级：某一块失败沿用上一份的那一块（最多 30 分钟，见
+ * 一轮十来个请求，分块各自降级：某一块失败沿用上一份的那一块（带着原来的时刻，见
  * mergeSentryStatus），不拖垮整张卡。访客的请求不直接打 Sentry。
  *
  * 心跳、错误、Vitals 都只算 production 环境：本地与分支预览的测试数据不进卡片。
@@ -233,13 +232,17 @@ export async function fetchSentryStatus(api: SentryGet, now = Date.now()): Promi
   };
 }
 
-/** 块级沿用最多撑这么久，和卡片判 Sentry 那一格过期的阈值是同一个；再旧就当这一块没有 */
-export const SENTRY_BLOCK_CARRY_MS = SENTRY_STALE_MS;
+/**
+ * 块级沿用最多撑这么久，再旧就当这一块没有。比卡片的过期阈值（SENTRY_STALE_MS，30 分钟）
+ * 长得多：过没过期由卡片按 `blockAt` 判，那一格先显示「—」/ Unavailable、行留着；
+ * 这里只防一块几天前的旧数一直留在可滞后层里
+ */
+export const SENTRY_BLOCK_CARRY_MS = 24 * 3_600_000;
 
 /**
  * 这一轮没取到的块沿用上一份（带着上一份自己的数和取到时刻），取到的用新的。
- * 采集 Worker 写可滞后层时用：块级降级，而不是整张卡回到上一轮。沿用的块超过
- * SENTRY_BLOCK_CARRY_MS 就不再沿用，那一格回到「没有」，不拿旧数冒充新的。
+ * 采集 Worker 写可滞后层时用：块级降级，而不是整张卡回到上一轮。沿用的块带着自己取到的
+ * 时刻（`blockAt`），卡片据此判过期；超过 SENTRY_BLOCK_CARRY_MS 才不再沿用。
  */
 export function mergeSentryStatus(next: SentryStatusPayload, previous: SentryStatusPayload | null): SentryStatusPayload {
   const blockAt: Partial<Record<SentryBlock, number>> = {};

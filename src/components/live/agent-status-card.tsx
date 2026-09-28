@@ -206,7 +206,8 @@ function Detail({ agent, onClose }: { agent: AgentStatusRow; onClose: () => void
             })}
           </ul>
         ) : (
-          agent.indicator !== "unmonitored" && (
+          // 没有此刻的检查结果（unavailable）就不能说没有事件
+          agent.indicator !== "unmonitored" && agent.indicator !== "unavailable" && (
             <p className="mt-4 text-sm text-muted-foreground">No active incidents.</p>
           )
         )}

@@ -794,8 +794,13 @@ export type GithubRepoContributor = {
 export type GithubRepoPayload = {
   /** "owner/name"，如 "LYJW131/lyjwpage" */
   repo: string;
-  /** 服务端汇总时刻，epoch 毫秒 */
+  /** 贡献者名单取到的时刻，epoch 毫秒 */
   fetchedAt: number;
+  /**
+   * 顶部三个总数取到的时刻。名单和总数是两个接口、各自沿用上一份（见采集 Worker 的
+   * github-repo），卡片按它判总数过没过期；没写时就是 fetchedAt
+   */
+  totalsAt?: number;
   /**
    * 全仓总数，另走 GraphQL 算，不是把 contributors 加起来（那样会重复计数）。
    * 取不到就是 null，卡片显示「—」。

@@ -140,7 +140,8 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
   recentCommits: GithubRecentCommit[];
   className?: string;
 }) {
-  const { data: github } = useStatus<GithubRepoPayload>(GITHUB_REPO_PATH, 30 * 60_000, { fallback: githubFallback, revalidateOnMount: false, revalidateOnFocus: false });
+  // 挂载时按可滞后层的策略：首屏那份超过一个轮询间隔才补取（旧 HTML、久藏的标签页）
+  const { data: github } = useStatus<GithubRepoPayload>(GITHUB_REPO_PATH, 30 * 60_000, { fallback: githubFallback });
   const { data: vercel } = useStatus<VercelDeploymentsPayload>(VERCEL_DEPLOYMENTS_PATH, 60_000, { fallback: vercelFallback });
   const { data: cloudflare } = useStatus<CloudflareWorkersPayload>(CLOUDFLARE_WORKERS_PATH, 300_000, { fallback: cloudflareFallback });
   const { data: sentry } = useStatus<SentryStatusPayload>(SENTRY_PATH, 5 * 60_000, { fallback: sentryFallback });
@@ -149,7 +150,8 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
    * 过了阈值（lib/freshness）那一块就不再拿旧数冒充此刻：数字回到「—」、提交哈希不显示、
    * 在线条写 Unavailable；版面不动。部署过哪些提交是历史事实，不跟着过期。
    */
-  const githubStale = useStale(github?.fetchedAt, GITHUB_REPO_STALE_MS);
+  // 名单和总数各自沿用上一份，总数按自己取到的时刻判
+  const githubStale = useStale(github ? github.totalsAt ?? github.fetchedAt : undefined, GITHUB_REPO_STALE_MS);
   const deploymentsStale = useStale(vercel?.fetchedAt, VERCEL_DEPLOYMENTS_STALE_MS);
   const functionsStale = useStale(vercel?.metrics?.functions?.fetchedAt, VERCEL_METRICS_STALE_MS);
   const analyticsStale = useStale(vercel?.metrics?.analytics?.fetchedAt, VERCEL_METRICS_STALE_MS);
@@ -180,7 +182,8 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
     if (!sha) continue;
     const prev = deploymentsBySha.get(sha);
     if (!prev || deployment.createdAt > prev.deployment.createdAt) {
-      deploymentsBySha.set(sha, { deployment, production: vercel?.production?.commit?.sha === sha });
+      // 生产版本那一份过期了就不再标 Live：不知道此刻线上是不是它
+      deploymentsBySha.set(sha, { deployment, production: !deploymentsStale && vercel?.production?.commit?.sha === sha });
     }
   }
   const contributors = github?.contributors ?? [];
