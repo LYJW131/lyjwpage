@@ -39,7 +39,7 @@
 要是哪天想给协议加一个 `dashboardView()`，那就过线了 —— 每个模块的展示形态本来就
 天差地别。
 
-站点那边也要认这个模块名：`workers/api/src/phone-telemetry.ts` 的 `KNOWN_MODULES`。
+站点那边也要认这个模块名：`shared/ingest/phone.ts` 的 `KNOWN_MODULES`（上报入口 prepare 时用）。
 没认的模块会原样出现在回执的 `ignored` 里 —— 手机先于站点发版时，那是唯一看得见
 这件事的地方。
 

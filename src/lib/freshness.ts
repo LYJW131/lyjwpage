@@ -55,19 +55,21 @@ export const VIBECODING_STALE_MS = 15 * 60_000;
 export const AGENT_LIMITS_STALE_MS = 185 * 60_000;
 
 /**
- * PlayStation 上报 Worker **每轮都发 presence**（内容没变也发，那一封就是心跳），
- * 所以「多久没刷新」等价于「Worker 还活着没有」。窗口取三轮多一点：漏一两轮不该
- * 让卡片翻脸，连着三轮没到才算 Worker 死了、或者 PSN 把它的令牌拒了。
+ * PlayStation 由采集 Worker 的 playstation 任务上报，**每轮都发 presence**（内容
+ * 没变也发，那一封就是心跳），所以「多久没刷新」等价于「Worker 还活着没有」。窗口
+ * 取三轮多一点：漏一两轮不该让卡片翻脸，连着三轮没到才算 Worker 死了、或者 PSN
+ * 把它的令牌拒了。
  *
  * 一轮多久要看有没有人在看这个站点：Worker 的 cron 每分钟响一次，但门分三档 ——
  * 有页面可见放行到 60 秒一轮，只是开着 2 分钟一轮，一个页面都没开压回 30 分钟
  * 一轮。所以这个窗口锚的是**闲时**那档 —— 有人看时只会更快，判活的下限始终由
  * 30 分钟那档决定。
  *
- * 90 分钟之外还要再宽一截给缓存：端点读的是 'use cache' 那份快照，心跳只推
- * 普通 tag（stale-while-revalidate），拿到手的 observedAt 可能比 SQLite 里那份
- * 旧一个刷新周期。3 × 30 = 90，留到 95。上报器那侧改**闲时**那档间隔
- * （`IDLE_TICK_INTERVAL_MS`）时这里要跟着改，改 cron 本身不用动这里。
+ * 90 分钟之外还要再宽一截：内容没变的心跳只落库、不广播，也不失效首屏，浏览器
+ * 手里的 observedAt 要等下一次兜底轮询（推送连着时 5 分钟，见 lib/status-views）
+ * 才刷新，可能比 SQLite 里那份旧一个轮询周期。3 × 30 = 90，留到 95。上报侧改
+ * **闲时**那档间隔（`workers/collector` 的 `IDLE_TICK_INTERVAL_MS`）时这里要跟着
+ * 改，改 cron 本身不用动这里。
  *
  * 只有浏览器判它（源站原样交出最后那份 presence，见 lib/playstation），所以没有
  * 服务端环境变量可调 —— 从前那个 PLAYSTATION_STALE_MS 变量只管源站那道判定，

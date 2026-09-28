@@ -66,7 +66,8 @@ export const config = {
    *
    * 从前按有没有人在看分 60 秒 / 2 分钟 / 15 分钟三档，为的是给 Vercel 函数减负
    * （上报曾经经过 Vercel，这条是全站调用量最大的路径）。上报改进 api Worker 之后
-   * 那个理由没了，三档反而更费：闲着时每分钟问两个 Worker 的 /count，比直接推一次还多。
+   * 那个理由没了，三档反而更费：闲着时每分钟问两个 Worker 的 /count（当时在线人数另在
+   * online-counter 上，2026-09-29 已并回 api，只剩一个），比直接推一次还多。
    */
   intervalMs: ms("INTERVAL_MS", 60_000),
   pushTimeoutMs: ms("PUSH_TIMEOUT_MS", 10_000),

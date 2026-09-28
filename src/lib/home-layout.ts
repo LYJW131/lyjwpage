@@ -3,11 +3,11 @@ import type { ChargerStatus, LocalNowPlaying, PowerBankStatus, VibeCodingPayload
 /**
  * 首屏布局的判据，页面和 Worker 共用一份。
  *
- * 首页整页只有一个 `'use cache'` 条目，任何一个 tag 失效都是整页重建（见
- * lib/home-snapshot）。所以上报侧只在**布局**变了时发 tag：卡片出现 / 消失、
- * 换形态、行数变了。数字、标题、进度这类内容变化交给 `revalidate: 600` 的定时
- * 重建 —— 浏览器挂载后本来就会直接问 Worker 取最新，首屏 HTML 旧几分钟只影响
- * 第一帧里的数字。
+ * 首页每张卡一个 `'use cache'` 条目，tag 失效时那张卡回源、整页在后台重建（见
+ * lib/first-screen）。上报侧只在**布局**变了时发 tag：卡片出现 / 消失、换形态、
+ * 行数变了。数字、标题、进度这类内容变化交给 `revalidate: 600` 的定时重建 ——
+ * 浏览器挂载后本来就会直接问 Worker 取最新，首屏 HTML 旧几分钟只影响第一帧里
+ * 的数字。
  *
  * 判据写在这里而不是各自抄一份：组件改了阈值，Worker 这侧跟着变。
  */

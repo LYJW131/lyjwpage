@@ -42,7 +42,7 @@
 | 401 / 403 / 503 | `{ ok: false, error }` | 没有合法的 Access JWT / 这把凭据不能写这个来源 / 暂时验不了 JWT |
 | 415 | `{ ok: false, error: "不支持的压缩：<编码>" }` | 只在 OTLP 路由：`Content-Encoding` 不是 `identity` / `gzip` |
 | 400 | `{ ok: false, error: "无法读取上报数据" }` | 读不出请求体（含解压失败、解压后超过 4 MiB） |
-| 503 | `{ ok: false, error: "状态存储初始化中" }` | 状态核心还没初始化；报文本身坏了也先回这个 |
+| 503 | `{ ok: false, error: "状态存储初始化中" }` | 状态核心还没初始化；报文是 JSON 但校验不过时也先回这个（不是 JSON 直接 400） |
 | 400 | `{ ok: false, error: "上报数据无效或处理失败" }` | 报文不是 JSON、校验不过、状态核心拒收或调不通、写 KV 失败 |
 
 大小按实际读到的字节限制（`STORAGE_MAX_BYTES`，4 MiB），不信 `Content-Length`；超过也回 400，没有 413。
@@ -74,8 +74,8 @@ prepare 之后，一封上报按数据层拆开（`src/worker.ts` 的 `commitIng
 状态核心拒收时后三步都不做，回 400。唯一的例外是 iPhone：训练收下、圆环被拒（prepare 记下 `failure.stage = beforeActivity`，
 状态核心已经落了训练区间）时，可滞后层和归档照同样的口径写训练列表，再回 400，上报器整封重发。
 
-校验只在报文坏了时才问一次状态核心 `ready()`：未初始化回 503 的优先级高于报文 400，和从前同一个 Worker 里时一样；
-好报文直接提交，由 `commitIngest` 自己判初始化。
+校验不过时才问一次状态核心 `ready()`：未初始化回 503 的优先级高于校验 400，和从前同一个 Worker 里时一样；
+请求体不是 JSON 在这之前就回 400，不问 `ready()`；好报文直接提交，由 `commitIngest` 自己判初始化。
 
 ### Claude Code 云端线程用量
 
