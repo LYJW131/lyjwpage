@@ -67,7 +67,6 @@ function presence(now: number): ReporterPresence {
     lastSeenAt: now,
     declaredOffline: false,
     heartbeatWindowMs: LOCAL_STALE_MS,
-    offlineAtSource: false,
   };
 }
 

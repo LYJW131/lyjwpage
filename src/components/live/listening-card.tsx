@@ -29,6 +29,7 @@ import { useLiveEvents } from "@/hooks/use-live-events";
 import { useLyrics, type LyricsFallback } from "@/hooks/use-lyrics";
 import { useMotionArtwork } from "@/hooks/use-motion-artwork";
 import { useMountedAt } from "@/hooks/use-mounted-at";
+import { useLiveNowListening } from "@/hooks/use-stale";
 import { useExpiryRefetch, useStatus } from "@/hooks/use-status";
 import { stableKeys } from "@/lib/keys";
 import { cueAt, NO_CUE } from "@/lib/lyrics-cue";
@@ -690,9 +691,18 @@ export function ListeningCard({
   );
   useLiveEvents();
   const player = useWebPlayer();
-  const { data: live } = useStatus<NowListeningPayload>(NOW_LISTENING_PATH, MUSIC_REFRESH_MS, {
-    fallback: nowFallback,
-  });
+  const { data: nowListening, isValidating: nowValidating } = useStatus<NowListeningPayload>(
+    NOW_LISTENING_PATH,
+    MUSIC_REFRESH_MS,
+    { fallback: nowFallback },
+  );
+  /**
+   * 源站选的来源只在取数那一刻成立。选中 Mac 那首之后 Mac 悄悄断了，不会有推送
+   * 来纠正（首屏 HTML 更是冻着的），所以 Mac 的存活由这里拿访客钟判：掉了就换成
+   * payload 里的 alternate（HomePod 还在放的那首），没有就当没在放。下面一律读
+   * 换好的这份。
+   */
+  const live = useLiveNowListening(nowListening, nowValidating);
   /**
    * 暂停宽限期到点时再问一次。
    *
@@ -708,8 +718,8 @@ export function ListeningCard({
   // MacBook 与 HomePod 都没有可用状态时才退回最近播放列表。
   const localMusic = live?.idle ? null : live?.music ?? null;
   const localTrack = liveTrack(localMusic);
-  // 来源仍然只由服务端选，前端不重算宽限期，只负责在它到期时再问一次
-  // （见上面的 nowListeningInterval），所以这里渲染的始终是服务端的结论。
+  // 来源由服务端选，前端不重算宽限期，只负责在它到期时再问一次；唯一的例外是
+  // Mac 掉线时换到 alternate（见上面的 useLiveNowListening）。
   const localActive = Boolean(localTrack);
 
   /**

@@ -9,7 +9,7 @@ import { trophyRowKey } from "@/components/trophies/trophy-details";
 import { useMountedAt } from "@/hooks/use-mounted-at";
 import { useStale } from "@/hooks/use-stale";
 import { useStatus } from "@/hooks/use-status";
-import { playstationStaleMs } from "@/lib/freshness";
+import { PLAYSTATION_STALE_MS } from "@/lib/freshness";
 import { LIST_DURATION } from "@/lib/motion";
 import { NOW_PLAYING_PATH, TROPHIES_PATH } from "@/lib/paths";
 import { playstationPresenceKind } from "@/lib/playstation-presence";
@@ -66,10 +66,11 @@ export function PlaystationPanel({
     ? { ok: true, data: summary.data }
     : trophies;
   const mountedAt = useMountedAt();
-  const presenceStale = useStale(presence.data?.observedAt, playstationStaleMs());
+  const presenceStale = useStale(presence.data?.observedAt, PLAYSTATION_STALE_MS);
   /**
-   * 首帧没有访客钟，不能拿服务端冻着的 presence 当真 —— 那份没过断流判定。
-   * 挂载之后用自己的钟判 observedAt，和端点同一扇窗口；窗口到点 useStale 会自己翻。
+   * 首帧没有访客钟，不能拿服务端冻着的 presence 当真 —— 源站不判断流，原样交出
+   * 最后那份。挂载之后用自己的钟判 observedAt，和瓷砖行（playstation-card）同一扇
+   * 窗口；窗口到点 useStale 会自己翻。
    * 断流是不知道，不画点；离线是 availability: unavailable，画灰点。
    */
   const presenceKind =

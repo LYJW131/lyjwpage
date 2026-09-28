@@ -22,12 +22,6 @@ function presenceContent(payload: PlaystationPresencePayload) {
   };
 }
 
-/*
- * 首屏那份**不**过这道判定：它在预渲染里跑，而 Date.now() 进预渲染就是
- * E1432（首屏必须冻得住）。和充电头、活动圆环同一个取舍 —— 第一帧可能举着
- * 断流前的旧状态，挂载后第一次回源走上面的路由 overlay 就纠正了。
- */
-
 /**
  * 三部分各自可省；缺席表示这次不谈这一项。站点再比一次内容，避免重试或手工
  * 兜底上报退化成广播。写、带数据推送与 tag 失效统一交给 fanout 排序。
@@ -110,8 +104,8 @@ export async function commitPreparedPlaystationReport(prepared: PreparedPlaystat
   if (incomingPresence) {
     /**
      * 内容没变也要落库：presence 是心跳（Worker 每轮 cron 都发一封），
-     * observedAt 就是心跳本身，不刷新它的话读那侧永远判不出 Worker 是什么时候
-     * 死的，断流判定（assertPresenceFresh）等于白写。
+     * observedAt 就是心跳本身，不刷新它的话浏览器永远判不出 Worker 是什么时候
+     * 死的，卡片上的断流判定（按 observedAt 和 PLAYSTATION_STALE_MS）等于白写。
      *
      * 但没变就不广播 —— 推一条一模一样的事件是拿推送当轮询用。
      *

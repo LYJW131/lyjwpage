@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import Image from "@/components/app-image";
 import { MacBookProIcon } from "@/components/ui/device-icons";
 import { useLiveEvents } from "@/hooks/use-live-events";
-import { useReporterStale } from "@/hooks/use-stale";
+import { useConfirmedStale, useReporterStale } from "@/hooks/use-stale";
 import { useStatus } from "@/hooks/use-status";
 import { findDesktopOverride } from "@/lib/desktop-app-overrides";
 import { STATIC_TRANSITION, STATIC_VARIANTS } from "@/lib/motion";
@@ -107,18 +107,18 @@ export function HeaderDesktop({
   const [displayedDesktop, setDisplayedDesktop] = useState<DesktopActivity | null>(null);
   const reduced = useReducedMotion();
 
-  const { atSource, byClock } = useReporterStale(data);
+  const { declared, byClock } = useReporterStale(data);
   /**
-   * 当标签页从后台唤醒时，SWR 会立即触发回源校验（isValidating）。在回源未完成前，
-   * 不根据休眠期间老化的客户端时间戳（byClock）误判离线 —— 那段时间轮询是停的
-   * （usePageActive），lastSeenAt 老化只说明没人去问，不说明 Mac 掉了。
+   * 按钟判的掉线要过 useConfirmedStale：首屏 HTML 冻了几分钟、或标签页从后台
+   * 唤醒时，lastSeenAt 老化只说明没人去问，不说明 Mac 掉了 —— 挂载校验 / 切回
+   * 前台的那次回源回来之前不认。认下来之后按住，别让每一轮轮询闪回最后那个应用。
    *
-   * `atSource` 不受这条守卫限制，它不是本地钟算出来的：源站给这份数据时就已经
-   * 判过一次。首屏尤其只能靠它 —— 那一帧 byClock 恒为 false，从前于是照着
-   * Mac 掉线前最后那个前台应用画（睡下去的话就是「已锁屏」），要等挂载**并且**
-   * 回源完成才翻成「已离线」，两级延迟叠在一起。
+   * 亲口离线（declared）不受这条守卫限制：它是数据字段，不是本地钟算出来的，
+   * 首帧就能直接画「Offline」。Mac 悄悄死掉那种，首帧照着冻住的那份画，挂载后
+   * 那次回源回来再翻 —— 源站不再替首帧判，见 ReporterPresence 的注释。
    */
-  const offline = Boolean(error || atSource || (byClock && !isValidating));
+  const clockOffline = useConfirmedStale(byClock, isValidating);
+  const offline = Boolean(error || declared || clockOffline);
   const incomingDesktop = data?.desktop ?? null;
   const incomingBundleIdentifier = incomingDesktop?.bundleIdentifier ?? null;
   const incomingOverride = findDesktopOverride(incomingBundleIdentifier);

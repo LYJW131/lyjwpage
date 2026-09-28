@@ -534,7 +534,6 @@
     "staleAfterMs": 3600000,
     "lastSeenAt": "$now",
     "declaredOffline": false,
-    "heartbeatWindowMs": 3600000,
-    "offlineAtSource": false
+    "heartbeatWindowMs": 3600000
   }
 }

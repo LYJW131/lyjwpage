@@ -30,6 +30,10 @@ function listening(
     upcomingSongIds: [],
     hasLyrics: false,
     expiresInMs: null,
+    alternate: null,
+    lastSeenAt: 1,
+    declaredOffline: false,
+    heartbeatWindowMs: 300_000,
     ...partial,
   };
 }
