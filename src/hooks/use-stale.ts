@@ -22,9 +22,13 @@ import {
 } from "@/lib/freshness";
 import type { NowListeningPayload, ReporterPresence } from "@/lib/types";
 
-/** `at` 过了 `windowMs` 的那一刻；从没见过（0 / 缺省）没有到点可等 */
+/**
+ * `at` 开始算过期的第一刻：isStale 判的是「超过」窗口（严格大于），所以是窗口之后那一毫秒。
+ * 取窗口本身的话，钟正好推到那一刻时判不出过期、deadline 又不再晚于钟，钟就停住了。
+ * 从没见过（0 / 缺省）没有到点可等。
+ */
 function deadlineOf(at: number | null | undefined, windowMs: number): number | null {
-  return at != null && at > 0 ? at + windowMs : null;
+  return at != null && at > 0 ? at + windowMs + 1 : null;
 }
 
 /** 访客钟此刻的读数，以及它对手上这份数据作不作准 */
@@ -63,13 +67,15 @@ function useClock(servedAt: number | undefined, first: number | null, second: nu
   useEffect(() => {
     const advance = clockAdvance(now, [first, second], Date.now());
     if (advance.kind === "idle") return;
+    // 推到此刻与 deadline 里较晚的那个：系统时钟往回调过也保证跨过它（见 clockAdvance）
+    const tick = () => setTicked(Math.max(Date.now(), advance.to));
     if (advance.kind === "now") {
-      const timer = window.setTimeout(() => setTicked(Date.now()), 0);
+      const timer = window.setTimeout(tick, 0);
       return () => window.clearTimeout(timer);
     }
     // 都还没到：这把钟对这份数据是准的，放行；到点再推
     const settle = window.setTimeout(() => setChecked(key), 0);
-    const timer = window.setTimeout(() => setTicked(Date.now()), advance.delayMs);
+    const timer = window.setTimeout(tick, advance.delayMs);
     return () => {
       window.clearTimeout(settle);
       window.clearTimeout(timer);

@@ -167,7 +167,18 @@ export function useStatus<T>(
   const fallbackData = useMemo(() => withoutServedAt(fallback), [fallback]);
 
   const lag = layerOfPath(path) === "lag";
+  /**
+   * 回源途中来了一条推送：SWR 会把这次回源的结果整份丢掉（它认推送写进缓存的那一刻
+   * 比请求新），isValidating 照样落下。推来的若是整份，丢了无妨；若只是局部补丁
+   * （vibecoding-now 只改几个字段），缓存里的时间戳就还是回源之前那份，按钟判出的过期
+   * 会被当成「回源回来了还是过期」确认掉。被丢了就再问一次。
+   */
+  const { mutate: revalidateKey } = useSWRConfig();
+  const onDiscarded = useCallback((key: string) => {
+    void revalidateKey(key);
+  }, [revalidateKey]);
   const { data, error, isLoading, isValidating, mutate } = useSWR<StatusResponse<T>>(path, guarded, {
+    onDiscarded,
     fallbackData,
     /**
      * SWR 的默认是「有 fallbackData 也照样在挂载时回源」—— revalidateIfStale

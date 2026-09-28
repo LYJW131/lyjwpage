@@ -177,10 +177,10 @@ export function clockReading(ticked: number, mountedAt: number, servedAt: number
 export type ClockAdvance =
   /** 没有晚于钟的 deadline，不用推 */
   | { kind: "idle" }
-  /** 有 deadline 在真实时间里已经过了：马上推到此刻 */
-  | { kind: "now" }
-  /** 最早那个 deadline 还没到：这么多毫秒之后推 */
-  | { kind: "later"; delayMs: number };
+  /** 有 deadline 在真实时间里已经过了：马上推，推到 `to` 与此刻里较晚的那个 */
+  | { kind: "now"; to: number }
+  /** 最早那个 deadline（`to`）还没到：这么多毫秒之后推 */
+  | { kind: "later"; delayMs: number; to: number };
 
 /** 有没有晚于钟的 deadline。没有的话，这把钟对手上这份数据来说就是准的 */
 export function hasPendingDeadline(clock: number, deadlines: readonly (number | null)[]): boolean {
@@ -199,7 +199,11 @@ export function hasPendingDeadline(clock: number, deadlines: readonly (number | 
  * 已经过了的立刻推（下一个任务就推，不再等 250ms）；在推上去之前，这把钟对这份
  * 数据不作准（useClock 的 settled 为假），按住的过期不因为钟慢而松开 —— 否则会先
  * 按新鲜画一帧，看上去离线 → 在线 → 离线闪一下。还没到的排定时器，多等 250ms 免得
- * 早醒一点白跑。推完钟不早于那个 deadline，它就不会再被处理一次。
+ * 早醒一点白跑。
+ *
+ * 推到哪：此刻与那个 deadline（`to`）里较晚的那个。只读 Date.now() 的话，系统时钟往回
+ * 调过（NTP 校时、手动改钟）时推出来的读数可能不比钟大，钟停在原地、deadline 一直
+ * 挂着；推到 deadline 至少保证它被跨过去，不会再被处理一次。
  */
 export function clockAdvance(
   clock: number,
@@ -208,8 +212,9 @@ export function clockAdvance(
 ): ClockAdvance {
   const pending = deadlines.filter((at): at is number => at != null && at > clock);
   if (!pending.length) return { kind: "idle" };
-  if (pending.some((at) => at <= realNow)) return { kind: "now" };
-  return { kind: "later", delayMs: Math.min(...pending) - realNow + 250 };
+  const to = Math.min(...pending);
+  if (to <= realNow) return { kind: "now", to };
+  return { kind: "later", delayMs: to - realNow + 250, to };
 }
 
 /**
