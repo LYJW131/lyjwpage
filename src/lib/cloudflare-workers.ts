@@ -195,9 +195,9 @@ export async function fetchWorkerDeployments(account: string, token: string): Pr
   });
 }
 
-/** 部署版本独立缓存；失败沿用上次版本，全无才报空。 */
+/** 部署版本独立缓存；失败沿用上次版本，全无才报空。两份缓存按下标拼接，Worker 名单一变两边的键都要换版本 */
 export async function getWorkerDeployments(account: string, token: string): Promise<(WorkerDeployment | null)[]> {
-  const key = `cloudflare-deployments:v1:${account}`;
+  const key = `cloudflare-deployments:v2:${account}`;
   return cached(key, TTL_MS, async () => {
     try {
       const data = await fetchWorkerDeployments(account, token);
@@ -211,7 +211,7 @@ export async function getWorkerDeployments(account: string, token: string): Prom
 
 /** 滚动 12 小时、按 15 分钟对齐的窗口；失败沿用最后成功值并保留原时间，供卡片标注陈旧。 */
 export async function getWorkersMetrics(account: string, token: string): Promise<CloudflareWorkersPayload> {
-  const key = `cloudflare-metrics:v1:${account}`;
+  const key = `cloudflare-metrics:v2:${account}`;
   return cached(key, TTL_MS, async () => {
     try {
       const windowEnd = Math.floor(Date.now() / TTL_MS) * TTL_MS;

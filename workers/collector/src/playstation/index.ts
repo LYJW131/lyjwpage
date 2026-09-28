@@ -709,6 +709,8 @@ export const playstationJob: Job = {
   offset: 0,
   // 奖杯整份重爬（清过 KV、换了账号）能跑好几分钟
   maxRuntimeMinutes: 10,
+  // 门里的在线人数只给 2.5 秒，别和同一响里别的任务抢连接
+  headStart: true,
   run: ({ env }) => runPlaystation(env),
 };
 
