@@ -6,6 +6,8 @@
  * Worker 对内能做什么，就是下面这几个方法。只放类型，调用方和实现方各自 import。
  *
  * 方法只能加不能改：api 与调用方分开部署，新方法先随 api 上线，调用方后推。
+ * 例外：2026-09-29 `connections()` 与调用方同一次提交换成 `audience()`，两边部署的空档里
+ * 采集 Worker 读人头数失败按 0 算，只慢一轮，不值得留一个兼容方法。
  */
 
 import type { ListeningItem } from "@/lib/types";
@@ -24,6 +26,12 @@ export type CommitReply =
   | { ready: true; ok: true; data: unknown }
   | { ready: true; ok: false; error: string };
 
+/**
+ * 推送房间的人头数。`connections`：开着的页面，含后台标签页；`online`：此刻可见的页面。
+ * 调频上报器按「有人可见 → 快档、只是开着 → 中档、都没有 → 闲档」选节奏。
+ */
+export type CoreAudience = { connections: number; online: number };
+
 /** PS5 电源开关（Home Assistant 报的那份）；从没报过为 null */
 export type CorePower = { on: boolean; observedAt: number } | null;
 
@@ -41,8 +49,8 @@ export interface StateCoreRpc {
   commitIngest(command: CoreCommand): Promise<CommitReply>;
   /** 站点新部署接管了生产域名：向推送房间广播不带数据的 `version` 事件，返回送达的连接数 */
   broadcastVersion(): Promise<number>;
-  /** 开着的页面数（推送房间的连接，含后台标签页），同 `/count` 的 connections */
-  connections(): Promise<number>;
+  /** 推送房间的两个人头数，同 `/count`（口径见 workers/api/src/live-census.ts） */
+  audience(): Promise<CoreAudience>;
   playstationPower(): Promise<CorePower>;
   /** Apple Music API 的 developer token；私钥只在 api 上，调用方按到期时刻自己缓存 */
   appleDeveloperToken(): Promise<{ token: string; expiresAt: number }>;

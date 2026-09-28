@@ -4,28 +4,31 @@ import { failure, recovered } from "./log.js";
 
 type Cadence = typeof config.cadence;
 
-/** 两个计数口各自超时、各自降为零，不丢掉另一端的有效结果。 */
-async function headCount(
-  url: string,
-  field: "online" | "connections",
-  timeoutMs: number,
-  request: typeof fetch,
-): Promise<number> {
-  if (!url) return 0;
-  const scope = `head-count-${field}`;
+type Audience = { online: number; connections: number };
+
+function count(body: Record<string, unknown>, field: keyof Audience): number {
+  const value = body[field];
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : 0;
+}
+
+/**
+ * api Worker 的 `GET /count` 一次回两个数：`online`（可见页面）与 `connections`（开着的页面）。
+ * 读不到、超时、格式不对一律当没人，只会让节奏变慢；某一个字段不合法只降它自己。
+ */
+async function readAudience(url: string, timeoutMs: number, request: typeof fetch): Promise<Audience> {
+  if (!url) return { online: 0, connections: 0 };
+  const scope = "head-count";
   try {
     const response = await request(url, { signal: AbortSignal.timeout(timeoutMs) });
     if (!response.ok) throw new Error(`计数接口返回 ${response.status}`);
     const body: unknown = await response.json();
-    const value = body && typeof body === "object" ? (body as Record<string, unknown>)[field] : undefined;
-    if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
-      throw new Error(`计数接口缺少合法 ${field}`);
-    }
+    if (!body || typeof body !== "object") throw new Error("计数接口返回的不是对象");
+    const audience = { online: count(body as Record<string, unknown>, "online"), connections: count(body as Record<string, unknown>, "connections") };
     recovered(scope);
-    return value;
+    return audience;
   } catch (error) {
     failure(scope, error);
-    return 0;
+    return { online: 0, connections: 0 };
   }
 }
 
@@ -33,10 +36,7 @@ export async function nextDelay(
   cadence: Cadence = config.cadence,
   request: typeof fetch = fetch,
 ): Promise<number> {
-  const [online, connections] = await Promise.all([
-    headCount(cadence.onlineCountUrl, "online", cadence.countTimeoutMs, request),
-    headCount(cadence.countUrl, "connections", cadence.countTimeoutMs, request),
-  ]);
+  const { online, connections } = await readAudience(cadence.countUrl, cadence.countTimeoutMs, request);
   if (online > 0) return cadence.liveIntervalMs;
   if (connections > 0) return cadence.openIntervalMs;
   return cadence.idleIntervalMs;

@@ -5,7 +5,7 @@ import { workerUrl } from "./worker-url.ts";
 
 test("三个 Worker 变量只填源，路径由调用点拼上去", () => {
   assert.equal(workerUrl("https://live.example.com", "/publish"), "https://live.example.com/publish");
-  assert.equal(workerUrl("https://online.example.com", "/count"), "https://online.example.com/count");
+  assert.equal(workerUrl("https://api.example.com", "/count"), "https://api.example.com/count");
   assert.equal(workerUrl("https://token.example.com", "/token"), "https://token.example.com/token");
 });
 

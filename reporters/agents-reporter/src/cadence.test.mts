@@ -6,12 +6,11 @@ const cadence = {
   liveIntervalMs: 300_000,
   openIntervalMs: 600_000,
   idleIntervalMs: 3_600_000,
-  onlineCountUrl: "https://online.example/count",
-  countUrl: "https://ingest.example/count",
+  countUrl: "https://api.example/count",
   countTimeoutMs: 2_500,
 };
 
-test("三档按可见、开着、无人选择；分别读取两个域名", async () => {
+test("三档按可见、开着、无人选择；一个计数口读两个数", async () => {
   for (const [online, connections, expected] of [
     [1, 8, 300_000], [0, 2, 600_000], [0, 0, 3_600_000],
   ]) {
@@ -20,16 +19,16 @@ test("三档按可见、开着、无人选择；分别读取两个域名", async
       urls.push(String(url));
       assert.ok(init?.signal instanceof AbortSignal);
       assert.equal(init?.headers, undefined);
-      return Response.json(String(url).includes("online.example") ? { ok: true, online } : { ok: true, connections });
+      return Response.json({ ok: true, online, connections });
     };
     assert.equal(await nextDelay(cadence, request), expected);
-    assert.deepEqual(urls, ["https://online.example/count", "https://ingest.example/count"]);
+    assert.deepEqual(urls, ["https://api.example/count"]);
   }
 });
 
-test("未配置不出网；计数异常或任一字段不合法都只向慢档退", async () => {
+test("未配置不出网；计数异常或字段不合法都只向慢档退", async () => {
   let calls = 0;
-  assert.equal(await nextDelay({ ...cadence, countUrl: "", onlineCountUrl: "" }, async () => {
+  assert.equal(await nextDelay({ ...cadence, countUrl: "" }, async () => {
     calls++;
     return Response.json({ online: 1, connections: 1 });
   }), 3_600_000);
@@ -50,15 +49,12 @@ test("未配置不出网；计数异常或任一字段不合法都只向慢档�
   }
 });
 
-test("一端故障保留另一端有效判据", async () => {
-  for (const [failed, body, expected] of [
-    ["online.example", { connections: 2 }, 600_000],
-    ["ingest.example", { online: 1 }, 300_000],
+test("一个字段不合法只降它自己", async () => {
+  for (const [body, expected] of [
+    [{ online: "x", connections: 2 }, 600_000],
+    [{ online: 1, connections: -1 }, 300_000],
   ] as const) {
-    assert.equal(await nextDelay(cadence, async url => {
-      if (String(url).includes(failed)) throw new Error("timeout");
-      return Response.json(body);
-    }), expected);
+    assert.equal(await nextDelay(cadence, async () => Response.json(body)), expected);
   }
 });
 

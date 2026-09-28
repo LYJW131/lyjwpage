@@ -10,7 +10,7 @@ Worker 是唯一数据后端。上报、状态 API、Apple / GitHub 获取和缓
 - `/api/status/*`、`/api/lyrics`、`/api/motion-artwork` 在普通 Worker 取数，只输出明确的公开模型。StateHub 先提供初始化屏障，并等待已经进入 `commitIngest()` 队列的提交，再按请求合并相邻只读批次；仍在上报入口准备输入的上报尚未进入该边界。未知路径无需进入 DO。没有 HTTP 通用数据库读写端点，服务端凭据不进入 Vercel、HTML 或状态响应。
 - `/api/ingest/*` 只在上报入口，使用 Cloudflare Access service token，每来源一把（见 `workers/ingress/src/access-auth.ts`）。临时 `/api/internal/storage/import` 使用独立 `STATE_IMPORT_SECRET`，不授予 Vercel，迁移后删除 Secret。
 - 跨域活动脉搏（pulse）是事实时间线，只存原始值，TTL 7 天：听、看、玩各一个开着的区间 `pulse:v2:<道>:open` 加一串已关闭区间 `pulse:v2:<道>`（同一状态每分钟最多续写一次，变了才换段）；「最近在听」列表变动记在 `pulse:v2:listening-traces`（只知道落在两次刷新之间的不确定区间）；充电瓦数 `pulse:v2:charging`（跨待机立刻、通电时 ≥ 30 秒且变化明显、最迟 5 分钟一笔，6000 条）；活动五分钟桶 `pulse:v2:activity`（权威范围替换，只从第一处变化往后重写，范围与版本在 `pulse:v2:activity:range` / `:revision`）；训练区间 `pulse:v2:workouts`。Coding 三色带读时从 `pulse:coding-observations` 与 `pulse:cursor-observations` 现算。公开出口是 `GET /api/status/pulse`（裁最近 24 小时，只给媒体与游戏标题，应用名、模型名、token、设备名不出门）。档位时代的 `pulse:<domain>` 已停写、随 TTL 过期。契约见 [跨域活动脉搏](../workers/api/README.md#跨域活动脉搏pulse)。
-- API Worker 的 `LIVE_PUSH` 使用可休眠 WebSocket，`api.homepage.lyjw.llc/count` 返回 `connections`（包含后台页面）。独立 `online-counter` Worker 的 `ONLINE_COUNTER` 维护可见连接，按空闲超时清扫；`online.homepage.lyjw.llc/count` 返回 `online`。三个调频上报器并行读取两个计数口，各自失败时仅该端归零。
+- API Worker 的 `LIVE_PUSH` 使用可休眠 WebSocket，一条连接数出两个口径（`workers/api/src/live-census.ts`）：`connections` 含后台页面，`online` 只数页面报了 `visible` 且 90 秒内有心跳的连接，可见人数一变就广播 `online` 事件，有人可见时挂 30 秒清扫闹钟。`api.homepage.lyjw.llc/count` 一次返回两个数，调频的上报器读它，采集 Worker 经 `StateCore.audience()` 读；读不到一律当 0。
 
 ## 可滞后层（KV）
 

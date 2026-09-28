@@ -40,7 +40,6 @@ function agentIds(): AgentId[] {
 
 const dryRun = flag("DRY_RUN");
 const siteUrl = process.env.SITE_URL?.trim() ?? "";
-const onlineCounterUrl = process.env.ONLINE_COUNTER_URL?.trim() ?? "";
 
 export const config = {
   dryRun,
@@ -63,8 +62,7 @@ export const config = {
     liveIntervalMs: ms("LIVE_INTERVAL_MS", 300_000),
     openIntervalMs: ms("OPEN_INTERVAL_MS", 600_000),
     idleIntervalMs: ms("IDLE_INTERVAL_MS", 3_600_000),
-    /** 两个独立 Worker 的计数口，不携带上报凭据。 */
-    onlineCountUrl: onlineCounterUrl ? `${trimSlash(onlineCounterUrl)}/count` : "",
+    /** api Worker 的公开计数口，一次回 online 与 connections，不携带上报凭据。 */
     countUrl: siteUrl ? `${trimSlash(siteUrl)}/count` : "",
     countTimeoutMs: ms("COUNT_TIMEOUT_MS", 2_500),
   },

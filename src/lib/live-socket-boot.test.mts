@@ -2,29 +2,31 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
-  EARLY_ONLINE_SOCKET_KEY,
-  EARLY_ONLINE_SOCKET_WATCHDOG_MS,
-  earlyOnlineSocketScript,
-} from "./online-socket-boot.ts";
+  EARLY_LIVE_SOCKET_KEY,
+  EARLY_LIVE_SOCKET_QUEUE_LIMIT,
+  EARLY_LIVE_SOCKET_WATCHDOG_MS,
+  earlyLiveSocketScript,
+} from "./live-socket-boot.ts";
 
-const URL_ = "wss://online.homepage.lyjw.llc/ws";
+const URL_ = "wss://api.homepage.lyjw.llc/ws";
+const OPENED = `${URL_}?visible=1`;
 
 test("生成的内联脚本是合法 JS —— 它走 dangerouslySetInnerHTML，引号错一个就静默炸掉", () => {
-  const script = earlyOnlineSocketScript(URL_);
+  const script = earlyLiveSocketScript(URL_);
   assert.doesNotThrow(() => new Function(script));
-  assert.ok(script.includes(JSON.stringify(URL_)), "地址要原样进脚本");
-  assert.ok(script.includes(`window.${EARLY_ONLINE_SOCKET_KEY}`), "交接字段名要和 hook 读的一致");
-  assert.ok(script.includes(String(EARLY_ONLINE_SOCKET_WATCHDOG_MS)), "自毁时限要写进脚本");
+  assert.ok(script.includes(JSON.stringify(OPENED)), "地址原样进脚本，带上可见");
+  assert.ok(script.includes(`window.${EARLY_LIVE_SOCKET_KEY}`), "交接字段名要和 hook 读的一致");
+  assert.ok(script.includes(String(EARLY_LIVE_SOCKET_WATCHDOG_MS)), "自毁时限要写进脚本");
 });
 
 test("脚本里不可能出现 </script>", () => {
   // 正常情况下 workerUrl 已经把地址限死成 wss://host/path，但转义是这里的责任
-  const script = earlyOnlineSocketScript("wss://evil.example/</script><script>alert(1)</script>");
+  const script = earlyLiveSocketScript("wss://evil.example/</script><script>alert(1)</script>");
   assert.ok(!script.toLowerCase().includes("</script"), "`<` 必须转成 \\u003c");
   assert.doesNotThrow(() => new Function(script));
 });
 
-test("脚本真的会开连接、记人数，并在没人接手时自毁", async () => {
+test("脚本真的会开连接、攒消息，并在没人接手时自毁", async () => {
   // 用一对最小替身跑一遍脚本本体，验证行为而不是字符串长相
   const timers: { fn: () => void; ms: number }[] = [];
   const sockets: FakeSocket[] = [];
@@ -51,7 +53,7 @@ test("脚本真的会开连接、记人数，并在没人接手时自毁", async
     "WebSocket",
     "setTimeout",
     "clearTimeout",
-    earlyOnlineSocketScript(URL_),
+    earlyLiveSocketScript(URL_),
   );
   run(
     win,
@@ -61,24 +63,25 @@ test("脚本真的会开连接、记人数，并在没人接手时自毁", async
     () => {},
   );
 
-  const early = win[EARLY_ONLINE_SOCKET_KEY] as { socket: FakeSocket; count?: number };
+  const early = win[EARLY_LIVE_SOCKET_KEY] as { socket: FakeSocket; queue: string[] };
   assert.ok(early, "可见时要把连接挂到 window 上");
-  assert.equal(early.socket.url, URL_);
-  assert.equal(early.count, undefined);
+  assert.equal(early.socket.url, OPENED);
+  assert.deepEqual(early.queue, []);
 
-  // 房间连上就广播一次人数，交接前一直覆盖成最新的那条
-  early.socket.onmessage?.({ data: JSON.stringify({ online: 3 }) });
-  assert.equal(early.count, 3);
-  early.socket.onmessage?.({ data: JSON.stringify({ online: 5 }) });
-  assert.equal(early.count, 5);
-  early.socket.onmessage?.({ data: "不是 JSON" });
-  assert.equal(early.count, 5, "脏消息不该把已经收到的人数冲掉");
+  // 人数和卡片事件都原样按顺序攒下，交接时由 hook 重放；解析归 hook
+  const online = JSON.stringify({ type: "online", payload: { online: 3 } });
+  const desktop = JSON.stringify({ type: "desktop", payload: {} });
+  early.socket.onmessage?.({ data: online });
+  early.socket.onmessage?.({ data: desktop });
+  assert.deepEqual(early.queue, [online, desktop]);
+  for (let i = 0; i < EARLY_LIVE_SOCKET_QUEUE_LIMIT; i++) early.socket.onmessage?.({ data: "x" });
+  assert.equal(early.queue.length, EARLY_LIVE_SOCKET_QUEUE_LIMIT, "页面卡死时不无限攒");
 
-  // 没人接手：到点自己关掉并摘掉字段，免得人数虚高到 Worker 清扫为止
-  assert.equal(timers[0]?.ms, EARLY_ONLINE_SOCKET_WATCHDOG_MS);
+  // 没人接手：到点自己关掉并摘掉字段，免得人数虚高到房间清扫为止
+  assert.equal(timers[0]?.ms, EARLY_LIVE_SOCKET_WATCHDOG_MS);
   timers[0]?.fn();
   assert.equal(early.socket.closed, true);
-  assert.equal(win[EARLY_ONLINE_SOCKET_KEY], undefined);
+  assert.equal(win[EARLY_LIVE_SOCKET_KEY], undefined);
 });
 
 test("页面不可见时根本不开这条连接", () => {
@@ -90,7 +93,7 @@ test("页面不可见时根本不开这条连接", () => {
     "WebSocket",
     "setTimeout",
     "clearTimeout",
-    earlyOnlineSocketScript(URL_),
+    earlyLiveSocketScript(URL_),
   );
   run(
     win,
@@ -102,7 +105,7 @@ test("页面不可见时根本不开这条连接", () => {
     () => {},
   );
   assert.equal(built, 0);
-  assert.equal(win[EARLY_ONLINE_SOCKET_KEY], undefined);
+  assert.equal(win[EARLY_LIVE_SOCKET_KEY], undefined);
 });
 
 test("连不上时自己摘掉字段，交给 hook 走它那套重连退避", () => {
@@ -119,12 +122,12 @@ test("连不上时自己摘掉字段，交给 hook 走它那套重连退避", ()
     "WebSocket",
     "setTimeout",
     "clearTimeout",
-    earlyOnlineSocketScript(URL_),
+    earlyLiveSocketScript(URL_),
   );
   run(win, { visibilityState: "visible" }, FakeSocket, () => 0, () => {});
 
-  const early = win[EARLY_ONLINE_SOCKET_KEY] as { socket: FakeSocket };
+  const early = win[EARLY_LIVE_SOCKET_KEY] as { socket: FakeSocket };
   assert.ok(early);
   early.socket.onerror?.();
-  assert.equal(win[EARLY_ONLINE_SOCKET_KEY], undefined, "内联脚本不重连，只负责让位");
+  assert.equal(win[EARLY_LIVE_SOCKET_KEY], undefined, "内联脚本不重连，只负责让位");
 });

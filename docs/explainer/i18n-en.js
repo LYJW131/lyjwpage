@@ -300,7 +300,7 @@ window.EXPLAINER_EN = {
 
   // ---- 07 自适应调频 ----
   "推送连接 · 含后台": "Push connections · incl. background",
-  "在线人数 /count": "Viewers /count",
+  "同一条 /ws": "Same /ws",
   "可见页面": "Visible pages",
   "上报器": "Reporter",
   "快档 · 有人正看": "Fast · watched",

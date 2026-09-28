@@ -10,6 +10,7 @@ import { applyVibeCodingNow } from "@/lib/vibecoding-activity";
 import type { LiveEvent } from "@/lib/live-events";
 import { acceptPush } from "@/lib/status-reads";
 import { liveSocketUrl } from "@/lib/live-socket";
+import { EARLY_LIVE_SOCKET_KEY, type EarlyLiveSocket } from "@/lib/live-socket-boot";
 import { APP_VERSION_PATH } from "@/lib/app-version";
 import {
   CHARGER_PATH,
@@ -134,10 +135,21 @@ const FORWARD_BY_EVENT = new Map(
 );
 const INVALIDATION_BY_EVENT = new Map(INVALIDATIONS.map((entry) => [entry.event, entry]));
 
-/** live-push Worker 广播过来的信封，形状就是服务端那份 LiveEvent */
+/** 推送房间广播过来的信封，形状就是服务端那份 LiveEvent */
 type Incoming = { type: LiveEvent["type"]; payload: unknown };
 
+/** 页脚「Online now」读的两个键，只由这条连接写 */
+export const ONLINE_COUNT_KEY = "worker:online-count";
+export const ONLINE_CONNECTED_KEY = "worker:online-connected";
+
 function dispatch(mutate: ScopedMutator, message: Incoming): void {
+  // 在线人数不是状态端点，没有 FORWARDS 那种路径，单独写进页脚的键
+  if (message.type === "online") {
+    const online = (message.payload as { online?: unknown } | null)?.online;
+    if (typeof online === "number") void mutate(ONLINE_COUNT_KEY, online, { revalidate: false });
+    return;
+  }
+
   const forward = FORWARD_BY_EVENT.get(message.type);
   if (forward) {
     // 推来的图片地址已经是 `/img/<键>` 同源路径，和轮询拿到的一样，不用换域
@@ -159,25 +171,52 @@ function dispatch(mutate: ScopedMutator, message: Incoming): void {
   }
 }
 
+function receive(mutate: ScopedMutator, raw: unknown): void {
+  // 心跳的 "pong" 也从这里过，不是 JSON，解析失败就当没看见
+  if (typeof raw !== "string" || raw === "pong") return;
+  let message: Incoming;
+  try {
+    message = JSON.parse(raw) as Incoming;
+  } catch {
+    return;
+  }
+  if (!message || typeof message.type !== "string") return;
+  dispatch(mutate, message);
+}
+
 /**
  * 整页共用一条连接。
  *
  * 现在有多个组件要读活动状态（Live Desk 的前台应用、Recently Played 的本机
- * 播放），如果每个都自己建一条 WebSocket，一个页面就会占掉好几条长连接。
- * 所以连接做成模块级单例，按订阅者数量开关。
+ * 播放、页脚的在线人数），如果每个都自己建一条 WebSocket，一个页面就会占掉好几条
+ * 长连接。所以连接做成模块级单例，按订阅者数量开关。
  */
 let socket: WebSocket | null = null;
 let refCount = 0;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let retryAttempts = 0;
+let activeMutate: ScopedMutator | null = null;
+/** 房间眼下以为这一页可见与否：握手参数带过去的，或最近一次成功发出去的 */
+let reportedVisible: boolean | null = null;
 
 /**
  * 心跳间隔。Worker 那侧用 setWebSocketAutoResponse 直接回 "pong"，不唤醒实例，
  * 所以这条保活对它是免费的；没有它中间的代理会把空转的连接掐掉。
+ *
+ * 房间判「可见的页面还在不在」的 90 秒线是从它推的（workers/api/src/live-census.ts
+ * 的 HEARTBEAT_INTERVAL_MS 是手抄的副本），改这里必须同步改那边。
  */
 const HEARTBEAT_MS = 30_000;
 const MAX_BACKOFF_MS = 30_000;
+
+function pageVisible(): boolean {
+  return typeof document === "undefined" || document.visibilityState !== "hidden";
+}
+
+function setConnected(value: boolean): void {
+  if (activeMutate) void activeMutate(ONLINE_CONNECTED_KEY, value, { revalidate: false });
+}
 
 function clearTimers(): void {
   if (heartbeatTimer) {
@@ -192,6 +231,7 @@ function clearTimers(): void {
 
 function teardown(): void {
   clearTimers();
+  reportedVisible = null;
   if (!socket) return;
   // 先摘监听再关：否则自己调的 close 会触发 onclose、排一次不该有的重连
   socket.onopen = null;
@@ -204,23 +244,81 @@ function teardown(): void {
   socket = null;
 }
 
+/**
+ * 把此刻的可见性告诉房间（`visible` / `hidden`）。和房间眼下以为的一样就不发：
+ * 每条都会唤醒休眠中的房间。连接还没开好时先不发，onReady 里再对一次。
+ */
+function reportVisibility(): void {
+  const ws = socket;
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  const visible = pageVisible();
+  if (visible === reportedVisible) return;
+  try {
+    ws.send(visible ? "visible" : "hidden");
+    reportedVisible = visible;
+  } catch {}
+}
+
+/**
+ * 把 `<head>` 里内联脚本早开的那条连接取走（见 lib/live-socket-boot）。
+ *
+ * 先从 window 上摘掉再判断状态：不管接不接得上，那个字段都不该留到下一次 open。
+ * 内联脚本装的 handler 在这里就卸掉 —— 接下来 open 会装自己的，两次赋值之间
+ * 是同步的，排队中的 message 事件真正派发时读到的已经是新 handler，不会丢。
+ */
+function adoptEarlySocket(): EarlyLiveSocket | null {
+  if (typeof window === "undefined") return null;
+  const early = window[EARLY_LIVE_SOCKET_KEY];
+  if (!early) return null;
+  delete window[EARLY_LIVE_SOCKET_KEY];
+  if (early.watchdog) clearTimeout(early.watchdog);
+  early.socket.onmessage = null;
+  early.socket.onclose = null;
+  early.socket.onerror = null;
+  const state = early.socket.readyState;
+  if (state !== WebSocket.CONNECTING && state !== WebSocket.OPEN) {
+    try {
+      early.socket.close();
+    } catch {}
+    return null;
+  }
+  return early;
+}
+
 function open(mutate: ScopedMutator): void {
   if (socket) return;
-  const url = liveSocketUrl();
+  const base = liveSocketUrl();
   // 没配实时服务：卡片照常轮询，只是不会被推着翻
-  if (!url || typeof window === "undefined") return;
+  if (!base || typeof window === "undefined") return;
 
+  const early = adoptEarlySocket();
   let ws: WebSocket;
-  try {
-    ws = new WebSocket(url);
-  } catch (error) {
-    console.error("[live]", error instanceof Error ? error.message : String(error));
-    return;
+  if (early) {
+    ws = early.socket;
+    // 内联脚本只在可见时起手，握手带的是 visible=1
+    reportedVisible = true;
+  } else {
+    const visible = pageVisible();
+    try {
+      ws = new WebSocket(`${base}?visible=${visible ? 1 : 0}`);
+    } catch (error) {
+      console.error("[live]", error instanceof Error ? error.message : String(error));
+      return;
+    }
+    reportedVisible = visible;
   }
   socket = ws;
 
-  ws.onopen = () => {
+  /**
+   * 连上之后要做的事。单独拎出来是因为**接手的那条多半已经 open 了** ——
+   * 内联脚本 30ms 起手、300ms 不到就连上，而这里是 hydration 之后才跑，
+   * `onopen` 早就过去了，只挂 handler 的话心跳和「已连接」永远不会被点亮。
+   */
+  const onReady = () => {
     retryAttempts = 0;
+    setConnected(true);
+    // 握手之后可见性可能已经变了（排队重连期间切过标签），对一次
+    reportVisibility();
     heartbeatTimer = setInterval(() => {
       if (ws.readyState === WebSocket.OPEN) {
         try {
@@ -230,18 +328,7 @@ function open(mutate: ScopedMutator): void {
     }, HEARTBEAT_MS);
   };
 
-  ws.onmessage = (event) => {
-    // 心跳的 "pong" 也从这里过，不是 JSON，解析失败就当没看见
-    if (typeof event.data !== "string" || event.data === "pong") return;
-    let message: Incoming;
-    try {
-      message = JSON.parse(event.data) as Incoming;
-    } catch {
-      return;
-    }
-    if (!message || typeof message.type !== "string") return;
-    dispatch(mutate, message);
-  };
+  ws.onmessage = (event) => receive(mutate, event.data);
 
   ws.onerror = () => {
     // onerror 之后紧跟着就是 onclose，重连排在那里，这里不重复排
@@ -252,6 +339,7 @@ function open(mutate: ScopedMutator): void {
 
   ws.onclose = () => {
     teardown();
+    setConnected(false);
     if (refCount <= 0) return;
     /**
      * 退避重连。pusher-js 时代这是 SDK 自带的，裸 WebSocket 得自己来 ——
@@ -264,11 +352,51 @@ function open(mutate: ScopedMutator): void {
       if (refCount > 0) open(mutate);
     }, delay);
   };
+
+  if (ws.readyState === WebSocket.OPEN) onReady();
+  else ws.onopen = onReady;
+
+  // 交接前攒下的消息按顺序重放。放在装完 handler 之后、同步执行：排队中还没派发的
+  // 那些随后才到，顺序不会颠倒
+  if (early) for (const raw of early.queue) receive(mutate, raw);
 }
 
 function close(): void {
   retryAttempts = 0;
   teardown();
+  setConnected(false);
+}
+
+/**
+ * 切标签只报一声，不断开：连接闲置时只有心跳，成本远低于反复重连。
+ * 切回来时如果连接正在退避重连，就别再等了。
+ */
+function handleVisibilityChange(): void {
+  if (refCount <= 0 || !activeMutate) return;
+  if (socket) {
+    reportVisibility();
+    return;
+  }
+  if (pageVisible()) {
+    retryAttempts = 0;
+    clearTimers();
+    open(activeMutate);
+  }
+}
+
+/**
+ * 从 bfcache 回来时补连。进 bfcache 时浏览器可能把连接掐了，恢复时 visibilitychange
+ * 不一定触发（Safari 上只发 pageshow），没有这条路页面会一直停在断开状态。
+ */
+function handlePageShow(event: PageTransitionEvent): void {
+  if (!event.persisted || refCount <= 0 || !activeMutate) return;
+  if (socket && socket.readyState <= WebSocket.OPEN) {
+    reportVisibility();
+    return;
+  }
+  teardown();
+  retryAttempts = 0;
+  open(activeMutate);
 }
 
 /**
@@ -277,23 +405,31 @@ function close(): void {
  * 推来的活动状态直接写进 SWR 缓存，所以组件那边照旧用 useStatus 读，
  * 不用管数据是推来的还是轮询来的。
  *
- * 不对外暴露连接状态。从前暴露了一个 connected，让几张卡在断开时把轮询从
+ * 卡片拿不到连接状态。从前暴露过一个 connected，让几张卡在断开时把轮询从
  * 30 秒压到 3 秒 —— 但断线几秒内就会被上面那个退避重连自愈，那次加速几乎只
  * 发得出一轮；实时服务真挂了的话压到 3 秒也换不来新数据，只是把请求翻十倍。
- *
- * 不随页面可见性断开：连接闲置时只有心跳，成本远低于反复重连。
- * （在线人数那条是另一套取舍，它按可见性开关 —— 见 use-online-count。）
+ * 现在的 ONLINE_CONNECTED_KEY 只给页脚那个点用，别拿它调轮询。
  */
 export function useLiveEvents() {
   const { mutate } = useSWRConfig();
   useEffect(() => {
+    activeMutate = mutate;
     refCount += 1;
+    if (refCount === 1 && typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", handleVisibilityChange);
+      window.addEventListener("pageshow", handlePageShow);
+    }
     open(mutate);
     return () => {
       refCount -= 1;
       if (refCount <= 0) {
         refCount = 0;
         close();
+        if (typeof document !== "undefined") {
+          document.removeEventListener("visibilitychange", handleVisibilityChange);
+          window.removeEventListener("pageshow", handlePageShow);
+        }
+        activeMutate = null;
       }
     };
   }, [mutate]);

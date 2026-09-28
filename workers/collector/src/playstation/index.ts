@@ -2,7 +2,6 @@ import { archiveTrophies } from "../history";
 import { ok, skipMissing, type Job, type JobResult } from "../job";
 import { AuthSession } from "./auth";
 import {
-  onlineCountUrl,
   hiddenTitleIds,
   isDryRun,
   playedGamesLimit,
@@ -21,7 +20,7 @@ import {
   type PlayedGamesReport,
   type PresenceReport,
 } from "./psn";
-import { deliver, headCount, readOnlineCount, readPower } from "./site";
+import { deliver, readAudience, readPower } from "./site";
 import {
   LIBRARY_CACHE_KEY,
   LIBRARY_TTL_MS,
@@ -274,8 +273,7 @@ const LIVE_TICK_INTERVAL_MS = 55_000;
  * 5 秒取整余量：2 分钟一轮。
  *
  * 这一档是为「切走了但还会切回来」留的 —— 那些页面在 `online` 那个数里算 0
- * （站点侧 use-online-count 在不可见时把连接整条关掉），但事件推送那条不关，
- * 它们还在 `connections` 里。
+ * （站点侧切到后台时向推送房间报 `hidden`），但连接不断，它们还在 `connections` 里。
  */
 const OPEN_TICK_INTERVAL_MS = 115_000;
 /**
@@ -312,7 +310,7 @@ type Gate = {
  * 三档，由两个人头数分出来：有页面**可见**就 55 秒一轮，只是**开着**（后台标签
  * 页、锁了屏的手机）就 115 秒，一个都没有就 30 分钟。
  *
- * 门里只有两个读操作（KV 一枚时间戳 + 并行读取两个人头数），都排在任何贵操作之前：被挡
+ * 门里只有两个读操作（KV 一枚时间戳 + 并行经 CORE 读人头数与电源），都排在任何贵操作之前：被挡
  * 下的那一轮完全不碰 PSN、不碰站点。而且是层层短路的 —— 攒够闲档就不问人数，
  * 没攒够快档阈值也不问。间隔算的是**上一轮开始**的时刻而不是成功的时刻 —— 否则
  * PSN 持续故障时，重试会从三十分钟一次恶化成每分钟一次。
@@ -328,12 +326,7 @@ async function shouldTick(env: Env): Promise<Gate> {
     return { run: false, sinceMs, online: null, open: null, power: null };
   }
 
-  const onlineUrl = onlineCountUrl(env);
-  const [online, open, power] = await Promise.all([
-    headCount(onlineUrl ? () => readOnlineCount(onlineUrl) : undefined, "online"),
-    headCount(() => env.CORE.connections(), "connections"),
-    readPower(env),
-  ]);
+  const [{ online, open }, power] = await Promise.all([readAudience(env), readPower(env)]);
   const on = power?.on ?? null;
 
   /**

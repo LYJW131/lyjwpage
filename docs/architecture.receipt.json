@@ -1,12 +1,12 @@
 {
   "type": "architecture",
   "specification": {
-    "sha256": "f1089e0b219c93261296a1be05999df8a6cf6649c5940094c4be2cb1217d6f46",
-    "bytes": 12195
+    "sha256": "3292049c20cf1080c6c1d7249d35862015317564daf2b565ea42645b0ca66859",
+    "bytes": 11403
   },
   "artifact": {
-    "sha256": "4ff55b4e3b2f26b0582ac61a9230bce1003c9327fca1ca0ad76d9a890030f05c",
-    "bytes": 727278
+    "sha256": "030622e1fc5736f6161f29084851ec73c4d88a67b0cb744395ed46b3cf9fe7cf",
+    "bytes": 724588
   },
   "validation": {
     "checksPassed": 9,
@@ -20,12 +20,12 @@
     "verified": true,
     "repository": "https://github.com/LYJW131/lyjwpage",
     "revision": "ca5502089f0f69f04811183e643913180cb24767",
-    "references": 20
+    "references": 18
   },
   "output": "architecture.html",
   "visual_review": "passed",
   "correction_rounds": 6,
-  "static_diagram_review": "passed: 七个上报器各自成节点，全部自动走线，明暗快照重出并人工过目",
+  "static_diagram_review": "passed: 在线人数 Worker 并回 API Worker 后重出，浏览器只剩一条 /ws，明暗快照重出并过目",
   "viewports": [
     {
       "width": 1440,
@@ -139,13 +139,13 @@
   "previews": {
     "architecture-light.png": {
       "kind": "svg-rasterization",
-      "sha256": "8923be03cd6a3d3d47f0586b15ec2a76d0f03ad9295d92551396d59d4589833a",
-      "bytes": 489028
+      "sha256": "e0e0743ae4c9c14170360a799fd198b342460e034a8b79f52799a5a339883293",
+      "bytes": 461789
     },
     "architecture-dark.png": {
       "kind": "svg-rasterization",
-      "sha256": "d4b4aecf2cc89148e444810325db136783a06b014316574c416f1c1ee1cef3c9",
-      "bytes": 496191
+      "sha256": "64d970e49a433adc539b63faacd190690496beae6938b24554a185d52691719d",
+      "bytes": 470027
     }
   }
 }

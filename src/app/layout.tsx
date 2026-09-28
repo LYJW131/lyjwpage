@@ -8,8 +8,8 @@ import { SiteAnalytics } from "@/components/site-analytics";
 import { ThemeProvider } from "@/components/theme-provider";
 import { PsPlusSprite } from "@/components/trophies/ps-plus";
 import { HEATMAP_STORAGE_KEY } from "@/lib/heatmap-preference";
-import { onlineSocketUrl } from "@/lib/live-socket";
-import { earlyOnlineSocketScript } from "@/lib/online-socket-boot";
+import { liveSocketUrl } from "@/lib/live-socket";
+import { earlyLiveSocketScript } from "@/lib/live-socket-boot";
 import { site } from "@/lib/site";
 
 import "./globals.css";
@@ -44,8 +44,8 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
-  // 没配在线人数 Worker 时 workerUrl 返回 null，那段内联脚本整个不渲染
-  const earlyOnlineSocket = onlineSocketUrl();
+  // 没配 api Worker 时 workerUrl 返回 null，那段内联脚本整个不渲染
+  const earlyLiveSocket = liveSocketUrl();
 
   return (
     <html
@@ -61,11 +61,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           }}
         />
         {/*
-          「此刻在线」那条 WebSocket 在这儿就起手，不等 hydration —— 整整早 850ms，
-          理由和交接方式见 lib/online-socket-boot 与 hooks/use-online-count。
+          推送那条 WebSocket（也带着在线人数）在这儿就起手，不等 hydration —— 整整早 850ms，
+          理由和交接方式见 lib/live-socket-boot 与 hooks/use-live-events。
         */}
-        {earlyOnlineSocket ? (
-          <script dangerouslySetInnerHTML={{ __html: earlyOnlineSocketScript(earlyOnlineSocket) }} />
+        {earlyLiveSocket ? (
+          <script dangerouslySetInnerHTML={{ __html: earlyLiveSocketScript(earlyLiveSocket) }} />
         ) : null}
         <style
           dangerouslySetInnerHTML={{
