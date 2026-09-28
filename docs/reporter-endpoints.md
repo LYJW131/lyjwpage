@@ -9,7 +9,7 @@
 | server | `ssh -J dsm misaka-jp`，容器 `server-reporter` | `/api/ingest/server` | 配置已更新、容器 Up；真实上报 202（2026-09-13 从 systemd 改成 Docker，见下） |
 | Emby | `ssh dsm`，容器 `homepage-reporter` | `/api/ingest/emby` | 容器已应用新配置；真实上报 202 |
 | agents | `ssh -J dsm misaka-jp`，容器 `agents-reporter` | `/api/ingest/agents` | 容器已应用新配置；真实上报 202（2026-09-13 从 dsm 迁到 misaka-jp，见下） |
-| PlayStation | Worker `collector` 的 `playstation` 任务（2026-09-28 前是独立的 `playstation-reporter`） | `StateCore.ingest("playstation")`，不经 HTTP | 旧 Worker 真实上报 202；并入采集 Worker 后待部署核验，见下 |
+| PlayStation | Worker `collector` 的 `playstation` 任务（2026-09-28 前是独立的 `playstation-reporter`） | 本地 prepare 后 `StateCore.commitIngest`，不经 HTTP | 旧 Worker 真实上报 202；并入采集 Worker 后 2026-09-28 核验通过，见下 |
 | PlayStation 电源 | `ssh n100`，Home Assistant 自动化 `lyjwpage_ps5_power` | `/api/ingest/playstation` | 2026-09-13 新增；`switch.ps5_210_power` 翻面即上报，真实上报已落地 |
 | HomePod | `ssh dsm`，Home Assistant `media_player.wo_shi` | `/api/ingest/homepod` | 配置检查通过；真实 rest_command 返回 202 |
 | HomePod | `ssh n100`，Home Assistant `media_player.zhu_wo_lyjw` | `/api/ingest/homepod` | 配置检查通过；真实 rest_command 返回 202 |
@@ -64,7 +64,8 @@ server 备份 `.env`（代码随镜像走，回退改 `sha-<短哈希>` 标签�
 ## 2026-09-25 上报鉴权迁到 Cloudflare Access
 
 共用的 `TELEMETRY_INGEST_SECRET` 退役。上报一律走 `https://ingest.homepage.lyjw.llc/api/ingest/<来源>`，
-每个来源一把 Access service token，Worker 按 `[vars.ACCESS_CLIENTS]` 限定可写来源（见 `workers/api/src/access-auth.ts`）。
+每个来源一把 Access service token，Worker 按 `[vars.ACCESS_CLIENTS]` 限定可写来源（2026-09-29 起在上报入口 Worker，
+见 `workers/ingress/src/access-auth.ts` 与下文）。
 
 | 来源 | 凭据 | 放在哪 |
 | --- | --- | --- |
@@ -73,7 +74,7 @@ server 备份 `.env`（代码随镜像走，回退改 `sha-<短哈希>` 标签�
 | HomePod、PS5 电源 | `lyjwpage-home-assistant` | dsm 与 n100 的 Home Assistant `secrets.yaml`：`lyjwpage_access_client_id` / `lyjwpage_access_client_secret` |
 | mac、iphone | `lyjwpage-mac`、`lyjwpage-iphone` | App 设置里手填 Client ID / Client Secret，Secret 存钥匙串 |
 | 部署通知 | `lyjwpage-github-actions` | 仓库 secret `ACCESS_CLIENT_ID` / `ACCESS_CLIENT_SECRET` |
-| playstation | 无 | 采集 Worker 经 Service Binding 调 api 的 `StateCore.ingest("playstation", …)` |
+| playstation | 无 | 采集 Worker 经 Service Binding 调 api 的 `StateCore.commitIngest(command)`（2026-09-29 前是 `ingest("playstation", …)`） |
 
 远端改动前的备份后缀为 `.before-access-<时间戳>`。token 有效期到 2027-09-25，续期或轮换在 Zero Trust 控制台做；
 mac / iphone 轮换时在 Zero Trust 里重新生成这把 service token 的 secret，再贴进 App 设置。
@@ -95,3 +96,19 @@ PSN 拉取并进 `workers/collector`（任务 `playstation`，见它的 README�
 `playstation-reporter.homepage.lyjw.llc` 不再使用；本地调试改走 `pnpm dev:worker` 的 `/__dev/collector/run?job=playstation`。
 2026-09-28 核验：collector 部署（8c291fc）后 Workers 日志里每分钟一轮 `playstation-tick-gate`（有人看时 55 秒档放行）
 与 `playstation-tick` 的 `ok:true`；那个 Access 应用和自定义域已删，api 上的 `PlaystationIngest` 随后删除。
+
+## 2026-09-29 上报入口拆出 api
+
+上报的鉴权、校验与拆分从 api Worker 拆到无状态的上报入口 Worker `ingress`（`workers/ingress`，见它的 README）。
+对上报器什么都没变：URL（`https://ingest.homepage.lyjw.llc/api/ingest/<来源>`、`/api/ingest/agents/otlp`、
+`/api/internal/site-deployed`）、Access 应用「lyjwpage ingest」、各把 service token 与权限、报文格式、回执状态码和正文
+都照旧，远端配置不用改，也没有备份。`[vars.ACCESS_CLIENTS]` 从 `workers/api/wrangler.toml` 搬到 `workers/ingress/wrangler.toml`。
+
+上报入口验完 Access、prepare 好之后，实时那一半经 Service Binding 调 api 的 `StateCore.commitIngest(command)`，
+可滞后层、D1 归档和 Apple Music 凭据自己写；部署通知改由它调 `StateCore.broadcastVersion()`，并请采集 Worker
+`Collector.refresh(["vercel-deployments", "cloudflare-deployments"])`。采集 Worker 的 PlayStation 信封在它那边 prepare，
+改调 `StateCore.commitIngest`，`StateCore.ingest` 删除。
+
+自定义域名 `ingest.homepage.lyjw.llc` 写在 `workers/ingress/wrangler.toml`，由 ingress 的部署从 `api` 接管（Access 应用跟着
+主机名走）。切换时按 api → ingress → collector 手动部署一遍，再推 main。待部署核验：七个来源与 OTLP 的真实上报 202、
+一次部署通知的 `delivered`、Sentry `api-worker` 项目里带 `worker:ingress` 标签的事件。

@@ -1,6 +1,6 @@
 # Workers 原生 Git 部署
 
-仓库 `LYJW131/lyjwpage` 的三个 Worker（`api`、`online-counter`、`collector`）连接 Cloudflare Workers Builds，生产分支均为 `main`。
+仓库 `LYJW131/lyjwpage` 的四个 Worker（`api`、`ingress`、`online-counter`、`collector`）连接 Cloudflare Workers Builds，生产分支均为 `main`。
 GitHub Actions 负责 lint、类型检查、单测与 CodeQL；Worker 发布由 Cloudflare GitHub App 触发，
 构建状态通过 GitHub check run 回传。Vercel 和 GitHub Pages 保持各自原生集成与现有工作流。
 
@@ -9,13 +9,18 @@ GitHub Actions 负责 lint、类型检查、单测与 CodeQL；Worker 发布由 
 | Worker | 根目录 | 构建命令 | 部署命令 |
 | --- | --- | --- | --- |
 | `api` | `/` | `pnpm --dir workers/api typecheck` | `pnpm --dir workers/api exec wrangler deploy` |
+| `ingress` | `/` | `pnpm --dir workers/ingress typecheck` | `pnpm --dir workers/ingress exec wrangler deploy` |
 | `online-counter` | `/` | `pnpm --dir workers/online-counter typecheck` | `pnpm --dir workers/online-counter exec wrangler deploy` |
 | `collector` | `/` | `pnpm --dir workers/collector typecheck` | `pnpm --dir workers/collector exec wrangler deploy` |
 
-Workers Builds 在构建命令之前安装依赖。三个都使用根目录 `pnpm-lock.yaml` 与工作区，Wrangler 使用对应包锁定的版本。
-三个生产 Worker 均启用构建缓存，生产版本只从 `main` 用 `wrangler deploy` 发布。
+Workers Builds 在构建命令之前安装依赖。四个都使用根目录 `pnpm-lock.yaml` 与工作区，Wrangler 使用对应包锁定的版本。
+四个生产 Worker 均启用构建缓存，生产版本只从 `main` 用 `wrangler deploy` 发布。
 `collector` 的分支预览构建和非生产分支构建都关掉：它的 `CORE` Service Binding 指向生产 `api`，
 预览版一跑就会往生产状态里写；非生产分支的默认命令还会把版本传到生产脚本上。
+`ingress` 同理，两项都关：它的 `CORE` 指向生产 `api`，预览版收下的上报会直接写进生产状态；
+`wrangler.toml` 的 `[previews.vars]` 另设了 `PREVIEW_WORKER`，万一有预览版本跑起来也只会拒收（上报 403、部署通知 404）。
+`ingress` 没有 secret，公开变量与绑定全在它的 `wrangler.toml`，自定义域名 `ingest.homepage.lyjw.llc` 也写在那里：
+Workers Builds 里 `wrangler deploy` 会直接接管挂在别的 Worker 上的自定义域名，见 [上报入口 README](../workers/ingress/README.md)「上线与域名」。
 `collector` 由原 `playstation-reporter` 脚本改名而来（沿用它的 `PSN_NPSSO` secret 和 KV）；
 它原来的构建设置（根目录 `workers/playstation-reporter`、npm 命令、监视路径）要改成本文这一行，
 那个目录已经删除，npm 的 `package-lock.json` 也不再有。
@@ -35,7 +40,7 @@ Workers Builds 在构建命令之前安装依赖。三个都使用根目录 `pnp
 
 `workers/api` 用 Wrangler `4.136.2`。v1 迁移里补了 `OnlineCounterRoom` 的 `new_sqlite_classes`，Wrangler 4 才能接受后面那条已经生效的删除；这个标签不会再次执行。单独的 `api-preview` Worker 已删除。
 
-`feat/agent-status` 的地址是 `https://feat-agent-status-api.lyjw.workers.dev`。算法在 `scripts/preview-worker-name.mjs`，Vercel 预览构建用同一份。Preview 配置在 `workers/api/wrangler.toml` 的 `[previews.vars]`：`UPSTREAM_API_URL` 指向生产 API，生产已经返回 `ok: true` 的端点用生产的，生产没有的端点用本分支的。不挂 cron、生产域名、KV、D1、R2，也不复制 Secret。上报和存储导入直接拒绝。MusicKit 令牌、歌词、动态封面转给生产，并带上浏览器的 `Origin`。空库第一次公开读取时只把初始化标记写成完成。WebSocket 转发生产房间的事件。
+`feat/agent-status` 的地址是 `https://feat-agent-status-api.lyjw.workers.dev`。算法在 `scripts/preview-worker-name.mjs`，Vercel 预览构建用同一份。Preview 配置在 `workers/api/wrangler.toml` 的 `[previews.vars]`：`UPSTREAM_API_URL` 指向生产 API，生产已经返回 `ok: true` 的端点用生产的，生产没有的端点用本分支的。不挂 cron、生产域名、KV、D1，也不复制 Secret。存储导入直接拒绝；上报不经过 `api`（在 `ingress`，它不开预览）。MusicKit 令牌、歌词、动态封面转给生产，并带上浏览器的 `Origin`。空库第一次公开读取时只把初始化标记写成完成。WebSocket 转发生产房间的事件。
 
 `api` 的监视路径不放宽，否则无关的 `main` 提交也会重新发布生产版本。只改了监视路径以外的文件的分支不会触发 Preview 构建。
 
@@ -47,13 +52,20 @@ PR 关闭时 `.github/workflows/preview-api-worker.yml` 执行 `wrangler preview
 
 ## 构建监视路径
 
-路径相对于 Git 仓库根目录。Cloudflare 的末尾 `*` 覆盖该目录下的所有文件，包含子目录；排除路径均为空。
+路径相对于 Git 仓库根目录。Cloudflare 的末尾 `*` 覆盖该目录下的所有文件，包含子目录；除 `api` 外排除路径均为空。
 
-- `api`：`workers/api/*`、`src/lib/*`、`shared/*`、`tsconfig.json`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`。
+- `api`：`workers/api/*`、`src/lib/*`、`shared/*`、`tsconfig.json`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`；排除 `shared/ingest/*`。
+- `ingress`：`workers/ingress/*`、`shared/*`、`src/lib/*`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`、`tsconfig.json`。
 - `online-counter`：`workers/online-counter/*`、`workers/api/src/origins.ts`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`。
 - `collector`：`workers/collector/*`、`shared/*`、`src/lib/*`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`、`tsconfig.json`。
 
 API 的共享状态代码变化必须触发发布；来源白名单由 API 与在线人数共用，修改时必须同时发布两者。
+上报的校验与收敛（`shared/ingest/`）只打包进 `ingress` 和 `collector`（后者只用 PlayStation 那一份）：`api` 的运行时只
+`import type` 这里的命令类型（`eslint.config.mjs` 按规则挡住值导入），所以 `api` 排除这个目录，改校验不重新发布带
+Durable Object 的 `api`、不断开页面的 WebSocket。命令的形状变了（新字段、新模块）要同时改 `workers/api/src/stores/` 的
+commit 那一半，`api` 照样会因为自己的目录变化而发布；上线顺序是 `api` 先、`ingress` 后，契约只能加不能改，见 `shared/state-core.ts`。
+上报入口还打包 `src/lib` 的收敛工具（`json`、`vibecoding-parse`、`trophies` 等）和 `shared/` 的契约（`state-core.ts`、`lag.ts`、
+`credentials.ts`、`history-ingest.ts`），这些变化要触发它的发布。
 采集 Worker 直接打包 `src/lib` 的取数模块和 `shared/` 的契约（`state-core.ts`、`lag.ts`、`collector.ts`），
 这些变化同样要触发它的发布；D1 表结构归 `workers/api/migrations`，新表先在 api 那边 apply 再发布它。
 增加共享依赖或移动文件时，同步调整 Cloudflare 的监视路径与本文。

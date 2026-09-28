@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 /**
  * 本地没有 Cloudflare Access，上报要带的 `Cf-Access-Jwt-Assertion` 由这里用一把测试钥匙自己签。
- * 本地 Worker 在 `ACCESS_TEAM_DOMAIN` 为 DEV_ISSUER 时认 `ACCESS_DEV_JWKS` 里的公钥
- * （见 workers/api/src/access-auth.ts）；线上的 team 域名是真的，这把钥匙在那边一文不值。
+ * 本地上报入口 Worker 在 `ACCESS_TEAM_DOMAIN` 为 DEV_ISSUER 时认 `ACCESS_DEV_JWKS` 里的公钥
+ * （见 workers/ingress/src/access-auth.ts）；线上的 team 域名是真的，这把钥匙在那边一文不值。
  *
  * 命令行：
- *   node scripts/dev-access.mjs init    生成钥匙（workers/api/.dev.vars.access-key.json，已被 gitignore），
- *                                       打印要加进 workers/api/.dev.vars 的 ACCESS_DEV_JWKS 那一行
+ *   node scripts/dev-access.mjs init    生成钥匙（workers/ingress/.dev.vars.access-key.json，已被 gitignore），
+ *                                       打印要加进 workers/ingress/.dev.vars 的 ACCESS_DEV_JWKS 那一行
  *   node scripts/dev-access.mjs header  打印一个 10 分钟有效的请求头，curl -H 直接用
  *
  * 隔离验证脚本直接 import createDevAccess()：每次现生成一对钥匙，vars 交给 Worker，headers() 签请求。
@@ -19,7 +19,7 @@ export const DEV_AUD = 'local-dev';
 export const DEV_CLIENT_ID = 'local-dev.access';
 const INGEST_SOURCES = ['mac', 'iphone', 'homepod', 'emby', 'playstation', 'server', 'agents'];
 const DEV_PERMISSIONS = [...INGEST_SOURCES.map((source) => `ingest:${source}`), 'ingest:agents-otlp', 'internal:site-deployed'];
-const KEY_FILE = resolve(import.meta.dirname, '../workers/api/.dev.vars.access-key.json');
+const KEY_FILE = resolve(import.meta.dirname, '../workers/ingress/.dev.vars.access-key.json');
 const ALGORITHM = { name: 'RSASSA-PKCS1-v1_5', modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' };
 
 const b64url = (data) => Buffer.from(data).toString('base64url');
@@ -60,7 +60,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   if (command === 'init') {
     const access = await createDevAccess();
     await writeFile(KEY_FILE, JSON.stringify(access.privateJwk), { mode: 0o600 });
-    console.log(`钥匙写在 ${KEY_FILE}。把下面这行加进 workers/api/.dev.vars：\n`);
+    console.log(`钥匙写在 ${KEY_FILE}。把下面这行加进 workers/ingress/.dev.vars：\n`);
     console.log(`ACCESS_DEV_JWKS=${access.vars.ACCESS_DEV_JWKS}`);
   } else if (command === 'header') {
     const access = await fromPrivateJwk(JSON.parse(await readFile(KEY_FILE, 'utf8')));

@@ -1,21 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { normalizeWorkouts } from "@api/stores/workouts";
 import { getWorkoutsSnapshot } from "@/lib/workouts";
-import { installStorageForTests, resetStorageForTests } from "@/lib/storage";
-import { FakeStorage } from "@/lib/testing/fake-storage";
-import { withRequestState } from "@shared/request-state";
-import { commitPreparedIngest, prepareIngest } from "@api/ingest-handlers";
-import { commitLagIngest } from "@api/lag-ingest";
-import type { LagResult } from "@/lib/lag-result";
 import { MemoryKv } from "@/lib/testing/memory-kv";
+import { viewKeyByPath } from "@/lib/status-views";
+import { prepareIngest } from "@shared/ingest/prepare";
+import { normalizeWorkouts } from "@shared/ingest/workouts";
 import { readLag } from "@shared/lag";
 import { installLagStoreForTests } from "../../../src/lib/lag-store.ts";
-import type { WorkoutsPayload } from "@/lib/types";
 
-import { requestStore, type Env } from "@api/runtime";
-import { loadEndpoint } from "@/lib/status-loaders";
-import { viewKeyByPath } from "@/lib/status-views";
+import { commitLagIngest } from "./lag-ingest";
 
 const now = 1_790_000_000_000;
 const workout = {
@@ -45,31 +38,23 @@ test("workouts reject malformed histories, timestamps, duplicate ids and numeric
 });
 
 test("iPhone ingest exposes workouts through the lag layer and replaces deleted history", async () => {
-  resetStorageForTests();
-  installStorageForTests(new FakeStorage());
-  // node --test 把 @/lib/lag-store 解析到站点那份（可注入），Worker 打包时才换成读 env.LAG 的实现
+  // node --test 把 @/lib/lag-store 解析到站点那份（可注入），api Worker 打包时才换成读 env.LAG 的实现
   const kv = new MemoryKv();
   installLagStoreForTests((key) => readLag(kv, key));
-  const pending: Promise<unknown>[] = [];
-  const land = async (items: unknown[], at: number) => {
-    const command = await prepareIngest("iphone", { version: 1, modules: { workouts: { items } } }, at);
-    await commitPreparedIngest(command);
-    return commitLagIngest(kv, command);
-  };
+  // 只走上报入口这一半：训练列表是可滞后层的快照，状态核心那份 Pulse 区间见 api 的 pulse-ingest.test
+  const land = async (items: unknown[], at: number) =>
+    commitLagIngest(kv, await prepareIngest("iphone", { version: 1, modules: { workouts: { items } } }, at));
   try {
-    await requestStore.run({ env: {} as Env, ctx: { waitUntil: (p) => { pending.push(p); } } }, () => withRequestState(async () => {
-      await assert.rejects(getWorkoutsSnapshot, /Awaiting/);
-      assert.deepEqual(await land([workout], now), ["workouts"], "first list: the strip changes shape");
-      assert.equal(viewKeyByPath("/api/status/workouts"), "workouts");
-      const loaded = await loadEndpoint("workouts") as LagResult<WorkoutsPayload>;
-      assert.deepEqual(loaded.data, normalizeWorkouts({ items: [workout] }, now));
-      assert.equal(loaded.updatedAt, now);
-      assert.deepEqual(await land([workout], now + 500), [], "same shape: content only");
-      assert.deepEqual(await land([], now + 1000), ["workouts"], "emptied: another placeholder");
-      assert.deepEqual((await getWorkoutsSnapshot()).data, { items: [], pushedAt: now + 1000 });
-    }));
-    await Promise.allSettled(pending);
-  } finally { resetStorageForTests(); installLagStoreForTests(null); }
+    await assert.rejects(getWorkoutsSnapshot, /Awaiting/);
+    assert.deepEqual(await land([workout], now), ["workouts"], "first list: the strip changes shape");
+    assert.equal(viewKeyByPath("/api/status/workouts"), "workouts");
+    const loaded = await getWorkoutsSnapshot();
+    assert.deepEqual(loaded.data, normalizeWorkouts({ items: [workout] }, now));
+    assert.equal(loaded.updatedAt, now);
+    assert.deepEqual(await land([workout], now + 500), [], "same shape: content only");
+    assert.deepEqual(await land([], now + 1000), ["workouts"], "emptied: another placeholder");
+    assert.deepEqual((await getWorkoutsSnapshot()).data, { items: [], pushedAt: now + 1000 });
+  } finally { installLagStoreForTests(null); }
 });
 
 test("workouts retain measured heart rate, environment and elevation without inventing absent values", () => {

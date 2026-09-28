@@ -7,8 +7,8 @@ import type { StateCoreRpc } from "@shared/state-core";
 export interface Env {
   /** 采集 Worker 私有 KV：PSN 登录、指纹、目录与游玩列表缓存、门和退避的时间戳 */
   COLLECTOR_KV: KVNamespace;
-  /** 状态核心：上报、推送连接数、主机电源 */
-  CORE: Pick<StateCoreRpc, "ingest" | "connections" | "playstationPower">;
+  /** 状态核心：提交 prepare 好的信封、推送连接数、主机电源 */
+  CORE: Pick<StateCoreRpc, "commitIngest" | "connections" | "playstationPower">;
   /** 长期归档；不绑就不归档奖杯 */
   HISTORY?: D1Database;
   PSN_LANGUAGE?: string;

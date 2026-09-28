@@ -11,21 +11,12 @@ export interface Env extends MusicKitTokenEnv {
   STATE: DurableObjectNamespace<StateHub>;
   /** 只在本地：LivePushRoom 转发上游推送前查假数据注入，见 dev-override-reader.ts */
   DEV_OVERRIDE_READER?: Service<DevOverrideReader>;
-  IMAGES: R2Bucket;
-  /** Append-only long-term activity archive. Omit to disable archiving; nothing else reads it. */
+  /** Append-only long-term activity archive（pulse 事实表）. Omit to disable archiving; nothing else reads it. */
   HISTORY?: D1Database;
-  /** 共享凭据（shared/credentials.ts）：Mac 推来的 Apple Music user token。公开读取不碰它 */
+  /** 共享凭据（shared/credentials.ts）：上报入口写 Mac 推来的 Apple Music user token，这里只读（歌词、曲目查询） */
   CREDENTIALS?: KVNamespace;
   /** 可滞后层（shared/lag.ts）：公开读取端点只读 */
   LAG?: KVNamespace;
-  /** Access 的 team 域名（`https://<team>.cloudflareaccess.com`），也是 JWT 的签发方。 */
-  ACCESS_TEAM_DOMAIN?: string;
-  /** `lyjwpage ingest` 这个 Access 应用的 AUD 标签。 */
-  ACCESS_AUD?: string;
-  /** 只在本地：team 域名为 DEV_ACCESS_ISSUER 时用这份 JWKS 验 JWT，见 access-auth.ts。 */
-  ACCESS_DEV_JWKS?: string;
-  /** service token 的 client id → 允许的权限串，见 wrangler.toml 的 [vars.ACCESS_CLIENTS]。 */
-  ACCESS_CLIENTS?: Record<string, string[]>;
   /** Worker 调站点 /api/revalidate 用的密钥，只有 Worker 和 Vercel 两边有。 */
   REVALIDATE_SECRET?: string;
   CLOUDFLARE_ACCOUNT_ID?: string;

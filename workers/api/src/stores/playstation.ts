@@ -1,7 +1,6 @@
-import { object } from "@/lib/json";
 import { PLAYING_TAG, TROPHIES_TAG } from "@/lib/live-events";
 import { getPlaystationPlayedGames, getPlaystationPower, getPlaystationPresence, getPlaystationTrophies } from "@/lib/playstation-store";
-import { normalizeTrophies, summarizeTrophies, trophiesContent } from "@/lib/trophies";
+import { summarizeTrophies, trophiesContent } from "@/lib/trophies";
 import type {
   PlaystationPresencePayload
 } from "@/lib/types";
@@ -9,7 +8,7 @@ import { fanout, type PendingEvent } from "@api/fanout";
 import { recordStateObservation } from "@api/stores/pulse";
 import { gamingFacts } from "@shared/pulse-timeline";
 import { setPlaystationPlayedGames, setPlaystationPower, setPlaystationPresence, setPlaystationTrophies } from "@api/stores/playstation-store";
-import { normalizePlaystationPlayedGames, normalizePlaystationPower, normalizePlaystationPresence } from "@shared/playstation";
+import type { PreparedPlaystationReport } from "@shared/ingest/playstation";
 
 /** observedAt 是采集时刻，不参与“内容有没有变化”的判断。 */
 function presenceContent(payload: PlaystationPresencePayload) {
@@ -27,37 +26,8 @@ function presenceContent(payload: PlaystationPresencePayload) {
  * 兜底上报退化成广播。写、带数据推送与 tag 失效统一交给 fanout 排序。
  *
  * 奖杯目录只失效、不推：整份几百 KB，解锁又不是按秒翻的事。
+ * 收敛在 prepare 那一侧（shared/ingest/playstation.ts），这里只收已经收敛过的那份。
  */
-export async function recordPlaystationReport(input: unknown, receivedAt = Date.now()) {
-  return commitPreparedPlaystationReport(preparePlaystationReport(input, receivedAt));
-}
-
-export type PreparedPlaystationReport = {
-  source: "playstation";
-  receivedAt: number;
-  presence: ReturnType<typeof normalizePlaystationPresence> | null;
-  playedGames: ReturnType<typeof normalizePlaystationPlayedGames> | null;
-  trophies: ReturnType<typeof normalizeTrophies> | null;
-  power: ReturnType<typeof normalizePlaystationPower> | null;
-};
-
-export function preparePlaystationReport(input: unknown, receivedAt = Date.now()): PreparedPlaystationReport {
-  const envelope = object(input);
-  if (!envelope || envelope.version !== 1) {
-    throw new Error("PlayStation 遥测协议 version 必须为 1");
-  }
-  return {
-    source: "playstation",
-    receivedAt,
-    presence: "presence" in envelope ? normalizePlaystationPresence(envelope.presence) : null,
-    playedGames: "playedGames" in envelope
-      ? normalizePlaystationPlayedGames(envelope.playedGames)
-      : null,
-    trophies: "trophies" in envelope ? normalizeTrophies(envelope.trophies) : null,
-    power: "power" in envelope ? normalizePlaystationPower(envelope.power) : null,
-  };
-}
-
 export async function commitPreparedPlaystationReport(prepared: PreparedPlaystationReport) {
   const {
     presence: incomingPresence,

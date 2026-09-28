@@ -7,7 +7,7 @@ import {
   type HistoryDb,
   type HistoryStatement,
 } from "@shared/history-ingest";
-import type { PreparedIngest } from "./ingest-handlers";
+import type { PreparedIngest } from "@shared/ingest/prepare";
 
 /**
  * 一封上报落库之后，把其中要长期留存的事实追加进 D1。

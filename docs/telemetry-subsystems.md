@@ -26,7 +26,7 @@
 ## 1. 统一数据后端与通信模型
 
 ### 架构边界
-- **唯一数据后端**：Cloudflare Workers 承担接收上报、持久化（Durable Objects SQLite）、提供状态 API、缓存外部数据、WebSocket 广播以及在线人数统计。
+- **唯一数据后端**：Cloudflare Workers 承担接收上报、持久化（Durable Objects SQLite）、提供状态 API、缓存外部数据、WebSocket 广播以及在线人数统计。上报由无状态的上报入口 Worker（`workers/ingress`）鉴权、校验并按数据层拆开，实时那一半经 Service Binding 交给持有 Durable Object 的状态核心（`workers/api`）。
 - **无状态渲染**：Vercel 仅负责首屏 HTML 生成、Next.js 页面缓存、静态资源分发和图片优化。Vercel 内部没有状态 API 代理或数据库直连端点。
 - **客户端直连**：浏览器端配置 `NEXT_PUBLIC_BACKEND_URL` 直接与 Worker 通信，SWR 统一管理数据缓存与实时更新。
 
@@ -34,7 +34,7 @@
 
 | 方法 | 路径 | 鉴权 | 作用 |
 | --- | --- | --- | --- |
-| `POST` | `ingest.homepage.lyjw.llc/api/ingest/<来源>` | Cloudflare Access service token（每来源一把，Worker 再验 JWT 并按来源限权） | 接收上报数据、落库、触发广播与首页缓存失效 |
+| `POST` | `ingest.homepage.lyjw.llc/api/ingest/<来源>` | Cloudflare Access service token（每来源一把，上报入口 Worker 再验 JWT 并按来源限权） | 上报入口校验、拆分；状态核心落库、触发广播与首页缓存失效 |
 | `GET` | `/ws` | 来源校验（`ALLOWED_ORIGINS`） | 浏览器直连的实时事件推送长连接 |
 | `GET` | `online.homepage.lyjw.llc/ws` | 来源校验 | 「此刻在线」人数统计长连接（页面可见时开启，切走关闭） |
 | `GET` | `/count` | 公开 | API Worker 返回 `{ connections }`；在线人数 Worker 返回 `{ online }` |

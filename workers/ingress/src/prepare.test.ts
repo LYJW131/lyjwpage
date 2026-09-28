@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { parseAppleMusicCredentials } from "@api/apple-music-credentials-module";
+import { parseAppleMusicCredentials } from "@shared/ingest/telemetry";
 
 test("parseAppleMusicCredentials：只收 musicUserToken，去掉首尾空白", () => {
   assert.deepEqual(parseAppleMusicCredentials({ musicUserToken: " token-value " }), { musicUserToken: "token-value" });

@@ -1,4 +1,4 @@
-# 本地开发用（根目录 `pnpm dev:worker` 以多配置方式和 dev-router、采集 Worker 一起起）。
+# 本地开发用（根目录 `pnpm dev:worker` 以多配置方式和 dev-router、上报入口、采集 Worker 一起起）。
 # 名字与生产相同，别的本地 Worker 的 service binding 才按生产名字找到它；
 # 状态全在本地的 --persist-to 目录里，与生产完全独立；没有生产域名或 cron。
 name = "api"
@@ -18,14 +18,6 @@ STORAGE_PREFIX = "lyjwpage-test"
 ALLOWED_ORIGINS = "https://*.vercel.app"
 SITE_URL = "https://lyjwpage-do-test.vercel.app"
 APPLE_MUSIC_STOREFRONT = "cn"
-EMBY_PUBLIC_URL = "https://emby.lyjw131.com"
-# 本地没有 Access：上报的 JWT 用 scripts/dev-access.mjs 生成的测试钥匙签，公钥放 .dev.vars 的 ACCESS_DEV_JWKS。
-# 只有 team 域名是这个 .invalid 假地址时 Worker 才认那份公钥，见 src/access-auth.ts。
-ACCESS_TEAM_DOMAIN = "https://access.local.invalid"
-ACCESS_AUD = "local-dev"
-
-[vars.ACCESS_CLIENTS]
-"local-dev.access" = ["ingest:mac", "ingest:iphone", "ingest:homepod", "ingest:emby", "ingest:playstation", "ingest:server", "ingest:agents", "ingest:agents-otlp", "internal:site-deployed"]
 
 [alias]
 "@/lib/storage-driver" = "./src/storage-driver.ts"
@@ -51,11 +43,6 @@ class_name = "StateHub"
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["LivePushRoom", "OnlineCounterRoom", "StateHub"]
-
-# 只有 HEAD 读取；测试上报使用模拟数据，不上传或修改生产图片。
-[[r2_buckets]]
-binding = "IMAGES"
-bucket_name = "lyjw-homepage"
 
 [observability]
 enabled = true

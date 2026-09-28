@@ -13,7 +13,8 @@
   差分、推送、pulse 证据都在那边做。
 
 另开一个具名 entrypoint `Collector`（契约见 `shared/collector.ts`）：同账号的 Worker 调
-`refresh(jobs)` 就能点名立刻跑几个任务，比如站点部署完成后重拉部署列表。
+`refresh(jobs)` 就能点名立刻跑几个任务，比如上报入口（`workers/ingress`）收到站点部署通知后请它重拉
+`vercel-deployments` 与 `cloudflare-deployments`。
 没有路由、没有域名；生产上 `fetch` 一律 404。
 
 ## 任务
@@ -22,7 +23,7 @@
 
 | 任务 | 节奏 | 去向 | 需要 | Sentry 监控 · 报到 |
 | --- | --- | --- | --- | --- |
-| `playstation` | 每分钟（另有人头数门与退避，见下） | `CORE.ingest("playstation")`；奖杯另归档 D1 `trophies` | `PSN_NPSSO` 或 KV 里的登录 | `collector-playstation` · `*/5` |
+| `playstation` | 每分钟（另有人头数门与退避，见下） | 本地 prepare 后 `CORE.commitIngest(command)`；奖杯另归档 D1 `trophies` | `PSN_NPSSO` 或 KV 里的登录 | `collector-playstation` · `*/5` |
 | `apple-recent` | 每 2 分钟 | `CORE.commitRecentlyPlayed(items)` | 凭据 KV 里的 user token；developer token 经 `CORE` 取 | `collector-apple-recent` · `*/10` |
 | `provider-status` | 每分钟 | `LAG agent-status:v1`；灯色变了才 `CORE.revalidate(["agent-status"])` | 无 | `collector-provider-status` · `*/5` |
 | `pagespeed` | 每小时 · 第 7 分钟 | `LAG pagespeed:v1`（6 小时滚动中位数） | `PAGESPEED_API_KEY` | `collector-pagespeed` · `7 * * * *` |
@@ -41,7 +42,7 @@
 - **部分成功**：GitHub 仓库统计的名单和总数、Vercel 指标的两组、Sentry 的五块都是各拉各的，
   这一轮没取到的那一部分沿用可滞后层里上一份的（带着它原来的采集时刻）；全都没取到才算失败、不写。
   Sentry 各块取到的时刻记在 `blockAt`，卡片按它判过期（30 分钟）；沿用最多 24 小时，再旧那一块才回到「没有」。
-  Cloudflare 部署逐个 Worker 查，单个查不到只空那一格（`ingress` 还没部署时就是这样），
+  Cloudflare 部署逐个 Worker 查，单个查不到只空那一格（某个 Worker 还没部署时就是这样），
   全部查不到才算失败。
 - **厂商状态**九家各自降级：某一家失败沿用上一轮那一行并标 `stale`；九家全失败是这边出不去，
   整轮抛错、不写，监控报 error。上一轮是 KV 里那份，同一 isolate 里自己上一轮写的更新时用它
@@ -113,7 +114,9 @@ cron 每分钟响一次，**不等于每分钟跑一轮**：先看退避，再�
    奖杯那封交付成功后，把其中每个已获得的奖杯 upsert 进 D1 `trophies`（没变的行不写，
    每批最多 100 条，失败只记日志；dry-run 与没绑 D1 时跳过）。
 
-交付走 `CORE.ingest("playstation", raw)`：回执 2xx 且 `body.ok === true` 才算收下。
+交付前在这边过一遍和上报入口同一份 prepare（`shared/ingest/playstation.ts` 的 `preparePlaystationReport`），
+再调 `CORE.commitIngest(command)`：回执 `ready` 且 `ok` 才算收下（`ready: false` 是状态核心还没初始化，
+`ok: false` 带着拒收原因）；自己组坏的信封在这边就被拒，不去状态核心。
 `PS_DRY_RUN=true` 时信封只打进日志（本地默认如此）。
 
 会越界的值在 Worker 里钳好（百分比 0–100、id 非负整数、空串回落）：状态核心的校验是信封级

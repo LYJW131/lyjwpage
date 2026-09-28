@@ -8,14 +8,15 @@ import { fileURLToPath } from "node:url";
 import { siteDay, type HistoryDb } from "@shared/history-ingest";
 import type { ServerStatus, Workout } from "@/lib/types";
 import { archiveIngest } from "./ingest-archive";
-import type { PreparedIngest } from "./ingest-handlers";
+import type { PreparedIngest } from "@shared/ingest/prepare";
 
 type Statement = { query: string; values: unknown[] };
 
 /** 真实 SQLite 跑全部迁移：upsert 的冲突与 WHERE 条件要在引擎里验，不在替身里推断 */
 function historyDb() {
   const sqlite = new DatabaseSync(":memory:");
-  const migrations = `${dirname(fileURLToPath(import.meta.url))}/../migrations/`;
+  // 表结构归 api Worker 的迁移管（上报入口只写，不建表）
+  const migrations = `${dirname(fileURLToPath(import.meta.url))}/../../api/migrations/`;
   for (const file of readdirSync(migrations).filter((name) => name.endsWith(".sql")).sort()) {
     sqlite.exec(readFileSync(`${migrations}${file}`, "utf8"));
   }

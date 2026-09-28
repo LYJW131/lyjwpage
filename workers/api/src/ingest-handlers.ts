@@ -1,86 +1,28 @@
-import { prepareClaudeCloudUsage, recordPreparedClaudeCloudUsage, type PreparedClaudeCloudUsage } from "./stores/claude-cloud";
-import { commitPreparedHomePodEvent, prepareHomePodEvent, type PreparedHomePodEvent } from "./homepod-ingest";
-import { commitPreparedPhoneEnvelope, preparePhoneEnvelope, type PreparedPhoneEnvelope } from "./phone-telemetry";
-import { commitPreparedEmbyReport, prepareEmbyReport, type PreparedEmbyReport } from "./stores/emby";
-import { commitPreparedPlaystationReport, preparePlaystationReport, type PreparedPlaystationReport } from "./stores/playstation";
-import { prepareServerReport, type PreparedServerReport } from "./stores/server";
-import { commitPreparedTelemetryEnvelope, prepareTelemetryEnvelope, type PreparedTelemetryEnvelope } from "./stores/telemetry";
-import { prepareAgentLimits, recordPreparedAgentLimits, type PreparedAgentLimits } from "./stores/vibecoding";
-import { reporterBlockOf, type ReporterBlock } from "@/lib/reporter-ledger";
-
-/** 常驻上报器（server、agents）的报文顶上带一个 `reporter` 块，上报入口收下后写进可滞后层（lag-ingest） */
-type WithReporter<T> = T & { reporter?: ReporterBlock | null };
-
-export type PreparedIngest = WithReporter<
-  | PreparedTelemetryEnvelope
-  | PreparedPhoneEnvelope
-  | PreparedHomePodEvent
-  | PreparedEmbyReport
-  | PreparedPlaystationReport
-  | PreparedServerReport
-  | PreparedAgentLimits
-  | PreparedClaudeCloudUsage
->;
-
-export const INGEST_SOURCES = new Set([
-  "mac", "iphone", "homepod", "emby", "playstation", "server", "agents",
-]);
-
-/** 普通 Worker 阶段：输入收敛；Emby 的 R2 HEAD 也在这里完成。 */
-export async function prepareIngest(
-  source: string,
-  raw: unknown,
-  receivedAt = Date.now(),
-): Promise<PreparedIngest> {
-  switch (source) {
-    case "mac": return prepareTelemetryEnvelope(raw, receivedAt);
-    case "iphone": return preparePhoneEnvelope(raw, receivedAt);
-    case "homepod": return prepareHomePodEvent(raw, receivedAt);
-    case "emby": return prepareEmbyReport(raw, receivedAt);
-    case "playstation": return preparePlaystationReport(raw, receivedAt);
-    case "server": return { ...prepareServerReport(raw, receivedAt), reporter: reporterBlockOf(raw) };
-    case "agents": return { ...prepareAgentLimits(raw, receivedAt), reporter: reporterBlockOf(raw) };
-    // Claude Code 云端线程的 OTLP 指标，走 /api/ingest/agents/otlp 与独立的 Access 权限，不在 INGEST_SOURCES 里
-    case "agents-otlp": return prepareClaudeCloudUsage(raw, receivedAt);
-    default: throw new Error("Unknown ingest source");
-  }
-}
+import { recordPreparedClaudeCloudUsage } from "./stores/claude-cloud";
+import { commitPreparedHomePodEvent } from "./homepod-ingest";
+import { commitPreparedPhoneEnvelope } from "./phone-telemetry";
+import { commitPreparedEmbyReport } from "./stores/emby";
+import { commitPreparedPlaystationReport } from "./stores/playstation";
+import { commitPreparedTelemetryEnvelope } from "./stores/telemetry";
+import { recordPreparedAgentLimits } from "./stores/vibecoding";
+import type { CoreCommand } from "@shared/ingest/prepare";
 
 /**
- * Valid reports proceed directly to commitIngest, which owns the authoritative
- * readiness check. Invalid reports probe readiness only to preserve the existing
- * uninitialized 503 priority over module-validation errors.
+ * StateHub 阶段：只做依赖权威最新状态的合并、差分与持久化。
+ *
+ * 命令在上报入口（workers/ingress）或采集 Worker 里 prepare 好（shared/ingest），经
+ * `StateCore.commitIngest` 进来；这里只 import 它们的类型，不带任何校验代码。可滞后层
+ * 那一半（落地节点、限额、账本、时区、圆环读数、训练列表）由上报入口直接写 KV，不进这里。
  */
-export async function prepareIngestForCommit(
-  source: string,
-  raw: unknown,
-  ready: () => Promise<boolean>,
-): Promise<PreparedIngest | null> {
-  try {
-    return await prepareIngest(source, raw);
-  } catch (error) {
-    if (!(await ready())) return null;
-    throw error;
-  }
-}
-
-/**
- * StateHub 阶段：只做依赖权威最新状态的合并、差分与持久化。可滞后层那一半
- * （落地节点、限额、账本、时区）由上报入口直接写 KV，不进这里，见 lag-ingest。
- */
-export async function commitPreparedIngest(command: PreparedIngest): Promise<unknown> {
-  return commitBySource(command);
-}
-
-function commitBySource(command: PreparedIngest): Promise<unknown> {
+export async function commitPreparedIngest(command: CoreCommand): Promise<unknown> {
   switch (command.source) {
     case "mac": return commitPreparedTelemetryEnvelope(command);
     case "iphone": return commitPreparedPhoneEnvelope(command);
     case "homepod": return commitPreparedHomePodEvent(command);
     case "emby": return commitPreparedEmbyReport(command);
     case "playstation": return commitPreparedPlaystationReport(command);
-    case "server": throw new Error("server 上报整封在可滞后层，不经过状态核心");
     case "agents": return recordPreparedAgentLimits(command);
     case "agents-otlp": return recordPreparedClaudeCloudUsage(command);
+    default: throw new Error(`状态核心不收这个来源：${(command as { source?: unknown }).source}`);
   }
 }

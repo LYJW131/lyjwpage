@@ -7,7 +7,7 @@ import { MemoryKv } from "@/lib/testing/memory-kv";
 import type { AgentLimitsPayload } from "@/lib/vibecoding-limits";
 import { LAG_KEYS, readLag } from "@shared/lag";
 
-import { prepareIngest } from "./ingest-handlers";
+import { prepareIngest } from "@shared/ingest/prepare";
 import { commitLagIngest } from "./lag-ingest";
 
 const NOW = 1_800_000_000_000;

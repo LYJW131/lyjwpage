@@ -1,6 +1,5 @@
 import { recordCursorObservation } from "@api/stores/pulse-source-observations";
 import { codingTokenUsageKey } from "@/lib/coding-pulse";
-import { normalizeCursorUsageReport, type ParsedCursorUsage } from "@/lib/cursor-usage";
 import { tellStorage } from "@/lib/storage";
 import { displayChanged } from "@shared/display-change";
 import { cursorNowMirror, cursorUsageMirror } from "@shared/cursor-usage";
@@ -8,40 +7,19 @@ import { VIBECODING_TAG, type LiveEvent } from "@/lib/live-events";
 import type {
   VibeCodingNowPayload
 } from "@/lib/types";
-import {
-  normalizeAgentLimits,
-  normalizeCursorNow,
-  normalizeVibeCodingNow,
-  normalizeVibeCodingUsage,
-  type ParsedAgentLimits,
-  type ParsedCursorNow,
-  type ParsedVibeCodingNow,
-  type ParsedVibeCodingUsage,
-} from "@/lib/vibecoding-parse";
+import type { ParsedVibeCodingNow, ParsedVibeCodingUsage } from "@/lib/vibecoding-parse";
+import type { PreparedAgentLimits } from "@shared/ingest/agents";
 import { fanout } from "@api/fanout";
 import { nowMirror, usageMirror } from "@shared/vibecoding";
 
 /**
- * Mac 信封里的两个模块一律「先校验，后落库」，写留给 commit。
- *
- * telemetry 入口先准备全部 coding 模块，再调用 commit；年度模块写坏时，
- * 前面那份根本还没落库，不会留下半截 coding 状态。写不再挡着推送，
+ * Mac 信封里的两个模块一律「先校验，后落库」：校验在上报入口（shared/ingest/telemetry.ts），
+ * 这里只把已经收敛过的那份包成写，留给 commit。三份 coding 模块在入口一起校验过，
+ * 年度模块写坏时整封在入口就被拒，不会留下半截 coding 状态。写不再挡着推送，
  * 见 lib/live-events 的 fanout。
  */
-export function prepareVibeCodingUsage(report: unknown, receivedAt = Date.now()) {
-  const payload = normalizeVibeCodingUsage(report);
-  if (!payload) throw new Error("vibeCodingUsage 必须是 Mac Telemetry Hub 的用量摘要");
-  return prepareVibeCodingUsagePayload(payload, receivedAt);
-}
-
 export function prepareVibeCodingUsagePayload(payload: ParsedVibeCodingUsage, receivedAt: number) {
   return { payload, commit: () => usageMirror.put({ payload, pushedAt: receivedAt }) };
-}
-
-export function prepareVibeCodingNow(report: unknown, receivedAt = Date.now()) {
-  const payload = normalizeVibeCodingNow(report);
-  if (!payload) throw new Error("vibeCodingNow 必须带 agents 数组");
-  return prepareVibeCodingNowPayload(payload, receivedAt);
 }
 
 export function prepareVibeCodingNowPayload(parsed: ParsedVibeCodingNow, receivedAt: number) {
@@ -66,57 +44,17 @@ export function prepareVibeCodingNowPayload(parsed: ParsedVibeCodingNow, receive
 }
 
 /**
- * `/api/ingest/agents`：容器上报器这一轮的限额，按 id 并进镜像。
+ * `/api/ingest/agents` 的状态核心那一半：Cursor 的用量与此刻。限额在可滞后层，
+ * 由上报入口直接写 KV（workers/ingress 的 lag-ingest），不进这里；收敛见 shared/ingest/agents.ts。
  *
- * 每封都落库：上报器每轮必发，这一封就是心跳，不刷新 pushedAt 的话读那侧永远
- * 判不出它是什么时候死的。不广播 —— 限额几分钟才动一次，卡片 30 秒一轮自己来问；
- * 只推普通 tag 让首屏那份快照跟着走。第一次用 urgent：从「没有限额」到「有」，
- * 不该再给旧的降级快照顶几分钟。
- *
- * `cursorNow` 是 Cursor 最近一条用量事件：平时随限额那一轮带上；Cursor 在用时容器每分钟
- * 查一次，变了单独发一封，这种信封不带 `agents`。不带就完全不碰限额镜像 —— 否则限额的心跳会被
- * 活动信号顶着，上报器限额那条路死了也看不出来。
+ * Cursor 用量每封都落库；此刻变了才推 `vibecoding-now`，只推送、不失效首屏。
  */
-export async function recordAgentLimits(input: unknown, receivedAt = Date.now()) {
-  return recordPreparedAgentLimits(prepareAgentLimits(input, receivedAt));
-}
-
-export type PreparedAgentLimits = {
-  source: "agents";
-  receivedAt: number;
-  limits: ParsedAgentLimits | null;
-  cursorUsage?: ParsedCursorUsage;
-  cursorNow?: ParsedCursorNow;
-};
-
-export function prepareAgentLimits(input: unknown, receivedAt = Date.now()): PreparedAgentLimits {
-  const root = input && typeof input === "object" ? (input as Record<string, unknown>) : null;
-  let cursorUsage: ParsedCursorUsage | undefined;
-  if (root && "cursorUsage" in root && root.cursorUsage != null) {
-    const report = normalizeCursorUsageReport(root.cursorUsage);
-    if (!report) throw new Error("cursorUsage 必须是 Cursor 的日桶");
-    cursorUsage = report;
-  }
-  let cursorNow: ParsedCursorNow | undefined;
-  if (root && "cursorNow" in root && root.cursorNow != null) {
-    const now = normalizeCursorNow(root.cursorNow);
-    if (!now) throw new Error("cursorNow 必须带 lastActivityAt");
-    cursorNow = now;
-  }
-  const omitted = !root || root.agents == null || (Array.isArray(root.agents) && root.agents.length === 0);
-  const parsed = omitted && (cursorUsage || cursorNow) ? null : normalizeAgentLimits(input);
-  if (!parsed && !(omitted && (cursorUsage || cursorNow))) {
-    throw new Error("agents 必须是带 id 的限额行数组，id 不能重复");
-  }
-  return { source: "agents", receivedAt, limits: parsed, cursorUsage, cursorNow };
-}
-
 export async function recordPreparedAgentLimits(prepared: PreparedAgentLimits) {
   const { limits: parsed, receivedAt, cursorUsage, cursorNow } = prepared;
   const writes: Promise<unknown>[] = [];
   const tags = new Set<string>();
   const events: LiveEvent[] = [];
-  // 限额在可滞后层，由上报入口直接写 KV（lag-ingest）；这里只剩 Cursor 的用量与此刻
+  // 限额在可滞后层，由上报入口直接写 KV（workers/ingress 的 lag-ingest）；这里只剩 Cursor 的用量与此刻
   const previousCursor = cursorUsage || cursorNow ? await cursorNowMirror.get() : null;
   if (cursorUsage) {
     const previousUsage = await cursorUsageMirror.get();

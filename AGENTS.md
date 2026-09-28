@@ -27,9 +27,9 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 # 部署流程
 
-- 站点生产部署默认走 Git：完成必要验证后提交改动，执行 `git push origin main`，由已有集成自动部署 Vercel。`lyjw.me` 使用 Vercel；`lyjw131.com` 经阿里云 ESA 回源 `lyjw.me`，回源 Host 跟随源站，缓存首页 HTML 与静态 JS。API Worker 对展示变化只通知 Vercel 标签失效；ESA 首页由控制台缓存规则按源站 SWR 头自行更新，新版本部署成功时由 GitHub Actions（`.github/workflows/purge-esa.yml`）自动刷新首页 cachekey 并主动预热缓存，确认两个域名都换上新版后再经 Worker 推 `version` 事件让开着的页面立刻弹更新提示，契约见 `workers/api/README.md`。用户要求部署站点时，包含完成这次提交与推送，无需再逐步确认。
+- 站点生产部署默认走 Git：完成必要验证后提交改动，执行 `git push origin main`，由已有集成自动部署 Vercel。`lyjw.me` 使用 Vercel；`lyjw131.com` 经阿里云 ESA 回源 `lyjw.me`，回源 Host 跟随源站，缓存首页 HTML 与静态 JS。API Worker 对展示变化只通知 Vercel 标签失效；ESA 首页由控制台缓存规则按源站 SWR 头自行更新，新版本部署成功时由 GitHub Actions（`.github/workflows/purge-esa.yml`）自动刷新首页 cachekey 并主动预热缓存，确认两个域名都换上新版后再经上报入口 Worker 请状态核心推 `version` 事件让开着的页面立刻弹更新提示，契约见 `workers/ingress/README.md`。用户要求部署站点时，包含完成这次提交与推送，无需再逐步确认。
 - 除非用户明确要求手工部署，不运行 `vercel deploy`、`vercel --prod`、`vercel promote` 等手工发布命令；自动部署失败时先检查并修复现有流程。
-- `workers/api`、`workers/collector`、`workers/online-counter` 使用 Cloudflare Workers Builds 原生 Git 集成，配置与监视路径见 `docs/workers-builds.md`。GitHub Actions 只做检查，不添加 Worker 发布任务。修改共享依赖时同步核对原生构建的触发路径。
+- `workers/api`、`workers/ingress`、`workers/collector`、`workers/online-counter` 使用 Cloudflare Workers Builds 原生 Git 集成，配置与监视路径见 `docs/workers-builds.md`。GitHub Actions 只做检查，不添加 Worker 发布任务。修改共享依赖时同步核对原生构建的触发路径。
 - 推送成功不等于部署完成：检查该次提交在 Vercel 的部署状态，并从已绑定的生产域名验证本次受影响的行为或配置。
 - NAS 上报器与其他独立部署单元按各自 README 发布。若依赖站点的新契约或更长陈旧窗口，先确认 Vercel 站点及 Worker 契约已生效，再切换上报器，最后验证真实上报与站点读取。
 - `reporters/mac-telemetry-hub` 是 git submodule，指向 `LYJW131/MacTelemetryHub`，不会自动跟随远端。Hub 仓库推送后，站点仓库的子模块指针要挪到同一提交，否则站点里的上报器源码停在旧版本。跨两个仓库的同一件事（如新契约两边同时改）把指针挪动并进站点那次提交，一次提交说完整件事；站点本身没改动时才单独提 `chore(reporters): 更新 mac-telemetry-hub，<改了什么>`。Hub 本机安装走它自己的 `build-release.sh`，与指针更新是两件事。
@@ -37,7 +37,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 # 排查线上错误
 
 - 线上报错、页面异常、Worker 或 cron 失败，先用 Sentry MCP 查证据，再读代码：用 `search_issues` / `search_events` 找报错和 warn / error 日志，用 `get_sentry_resource` 看调用栈、面包屑和出错录像，拿到 release 和堆栈再对源码定位。不凭猜测改代码，也不借浏览器登录态调 Sentry 接口；MCP 不可用时告诉用户，而不是绕开。
-- 组织 `yangjunwei-liang`，区域 `https://us.sentry.io`。项目 `lyjwpage` 收浏览器和 Vercel 函数，release 是提交 SHA；项目 `api-worker` 收 api Worker（含 Durable Object 与分钟 cron），项目 `collector-worker` 收采集 Worker（全部定时拉取与 PSN），两者 release 都是 Cloudflare 版本 ID。环境分 `production` / `preview` / `development`，排查线上问题默认只看 `production`。cron 心跳监控是 `api-minute-cron`；采集 Worker 每个任务一条 `collector-<任务>`，但监控名额只有一个，这些是停用状态，任务失败看 `collector-worker` 里 tag `collector.job` 的 issue；在线探测每分钟 HEAD `https://lyjw.me/api/version`。
+- 组织 `yangjunwei-liang`，区域 `https://us.sentry.io`。项目 `lyjwpage` 收浏览器和 Vercel 函数，release 是提交 SHA；项目 `api-worker` 收 api Worker（含 Durable Object 与分钟 cron）和上报入口 Worker `ingress`（事件带 tag `worker:ingress`，查上报的鉴权、校验与拆分按它过滤），项目 `collector-worker` 收采集 Worker（全部定时拉取与 PSN），两者 release 都是 Cloudflare 版本 ID。环境分 `production` / `preview` / `development`，排查线上问题默认只看 `production`。cron 心跳监控是 `api-minute-cron`；采集 Worker 每个任务一条 `collector-<任务>`，但监控名额只有一个，这些是停用状态，任务失败看 `collector-worker` 里 tag `collector.job` 的 issue；在线探测每分钟 HEAD `https://lyjw.me/api/version`。
 - `online-counter` Worker 和 `reporters/` 下的上报器没接 Sentry：前者查 Cloudflare Workers 日志，后者查所在机器的容器日志。
 - Sentry 里只读不写是默认。把 issue 标为 resolved / ignored、改负责人这类写操作，在修复部署并从生产验证后再做，并在汇报里说明；删除数据、改告警规则、项目或集成设置，先问用户。
 
@@ -50,10 +50,10 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 | 对象 | 约定 | 示例 / 边界 |
 | --- | --- | --- |
-| 上报入口 | `/api/ingest/<来源>`，来源按数据归属命名，不使用上报程序名；仅由 `workers/api` 接收，站点不提供上报路由、rewrite 或转发 | 当前来源：`mac`、`iphone`、`homepod`、`emby`、`playstation`、`server`、`agents` |
+| 上报入口 | `/api/ingest/<来源>`，来源按数据归属命名，不使用上报程序名；仅由 `workers/ingress` 接收（校验在 `shared/ingest/`，实时那一半经 Service Binding 交给 `workers/api` 的 `StateCore.commitIngest`），站点不提供上报路由、rewrite 或转发 | 当前来源：`mac`、`iphone`、`homepod`、`emby`、`playstation`、`server`、`agents` |
 | 设备遥测 | 一台设备一个入口、一个信封、一个 `modules` 字典 | 充电头归观测它的 `mac`；活动圆环归搬运和观测它的 `iphone`，不按品牌或模块另开入口 |
 | 账号限额 | coding agent 的账号套餐和限额统一归 `agents` | 厂商账号事实不归某台 Mac，也不按采集容器命名 |
-| 上报鉴权 | 走 `ingest.homepage.lyjw.llc`，每个来源一把 Cloudflare Access service token，Worker 按 `[vars.ACCESS_CLIENTS]` 限定可写来源 | 新来源要新建 token、加进 Access 策略并登记 client id；不再让一把凭据通吃所有来源 |
+| 上报鉴权 | 走 `ingest.homepage.lyjw.llc`，每个来源一把 Cloudflare Access service token，上报入口按 `workers/ingress/wrangler.toml` 的 `[vars.ACCESS_CLIENTS]` 限定可写来源 | 新来源要新建 token、加进 Access 策略并登记 client id；不再让一把凭据通吃所有来源 |
 | 状态查询 | `/api/status/X` 表示列表 / 历史，`/api/status/X/now` 表示此刻 | `listening` + `listening/now`，`watching` + `watching/now`；两者同时存在时成对命名 |
 | 推送事件 | 跟随状态 URL，`/` 替换为 `-` | 列表为 `X`，此刻为 `X-now`；事件和端点含义一致 |
 | 大小写 | URL 段全小写，JSON 字段 camelCase | `/api/status/vibecoding` 与模块 `vibeCoding` 各守其约定 |

@@ -1,14 +1,14 @@
 # Worker 数据后端与首屏缓存
 
-Worker 是唯一数据后端。上报、状态 API、Apple / GitHub 获取和缓存、WebSocket、在线人数均在 Cloudflare。Vercel 只在生成或后台重建首页时按卡 GET 各条 `/api/status/*`；浏览器挂载后直接请求 Worker，不存在 Vercel 状态代理，也没有聚合端点。`lyjw131.com` 经 ESA 回源 `lyjw.me`（回源 Host 同为 `lyjw.me`），ESA 缓存首页 HTML 与静态 JS。
+Worker 是唯一数据后端。上报、状态 API、Apple / GitHub 获取和缓存、WebSocket、在线人数均在 Cloudflare：上报先到无状态的上报入口 Worker（`workers/ingress`），状态核心（`workers/api`，持有 Durable Object）只收它 prepare 好的命令。Vercel 只在生成或后台重建首页时按卡 GET 各条 `/api/status/*`；浏览器挂载后直接请求 Worker，不存在 Vercel 状态代理，也没有聚合端点。`lyjw131.com` 经 ESA 回源 `lyjw.me`（回源 Host 同为 `lyjw.me`），ESA 缓存首页 HTML 与静态 JS。
 
 ## 数据及权限
 
 - `StateHub` 使用 SQLite Durable Object，`entries`、`fields`、`samples` 分别保存快照、字段和历史。SQLite 是唯一持久状态，DO 重启不丢数据。
-- 上报先在普通 Worker 完成独立校验、归一化和 R2 HEAD，再由 StateHub 按对象队列串行合并权威状态；提交后普通 Worker 才广播和通知。每次请求有独立工作副本，存储批次由同步事务提交，返回 202 前已确认写入。
+- 上报先在上报入口 Worker 完成鉴权、独立校验、归一化和 R2 HEAD（`shared/ingest/`），命令经 Service Binding 交给状态核心的 `StateCore.commitIngest`，再由 StateHub 按对象队列串行合并权威状态；提交后状态核心的普通 Worker 部分才广播和通知。每次请求有独立工作副本，存储批次由同步事务提交，返回 202 前已确认写入。状态核心只 `import type` 命令的类型，改校验只重新发布上报入口，不动 Durable Object。
 - TTL 读取时检查，闹钟每小时分批回收过期项；导入保留原始绝对过期时间，重试不覆盖目标已有值。
-- `/api/status/*`、`/api/lyrics`、`/api/motion-artwork` 在普通 Worker 取数，只输出明确的公开模型。StateHub 先提供初始化屏障，并等待已经进入 `commitIngest()` 队列的提交，再按请求合并相邻只读批次；仍在普通 Worker 准备输入的上报尚未进入该边界。未知路径无需进入 DO。没有 HTTP 通用数据库读写端点，服务端凭据不进入 Vercel、HTML 或状态响应。
-- `/api/ingest/*` 使用 Cloudflare Access service token，每来源一把（见 `workers/api/src/access-auth.ts`）。临时 `/api/internal/storage/import` 使用独立 `STATE_IMPORT_SECRET`，不授予 Vercel，迁移后删除 Secret。
+- `/api/status/*`、`/api/lyrics`、`/api/motion-artwork` 在普通 Worker 取数，只输出明确的公开模型。StateHub 先提供初始化屏障，并等待已经进入 `commitIngest()` 队列的提交，再按请求合并相邻只读批次；仍在上报入口准备输入的上报尚未进入该边界。未知路径无需进入 DO。没有 HTTP 通用数据库读写端点，服务端凭据不进入 Vercel、HTML 或状态响应。
+- `/api/ingest/*` 只在上报入口，使用 Cloudflare Access service token，每来源一把（见 `workers/ingress/src/access-auth.ts`）。临时 `/api/internal/storage/import` 使用独立 `STATE_IMPORT_SECRET`，不授予 Vercel，迁移后删除 Secret。
 - 跨域活动脉搏（pulse）是事实时间线，只存原始值，TTL 7 天：听、看、玩各一个开着的区间 `pulse:v2:<道>:open` 加一串已关闭区间 `pulse:v2:<道>`（同一状态每分钟最多续写一次，变了才换段）；「最近在听」列表变动记在 `pulse:v2:listening-traces`（只知道落在两次刷新之间的不确定区间）；充电瓦数 `pulse:v2:charging`（跨待机立刻、通电时 ≥ 30 秒且变化明显、最迟 5 分钟一笔，6000 条）；活动五分钟桶 `pulse:v2:activity`（权威范围替换，只从第一处变化往后重写，范围与版本在 `pulse:v2:activity:range` / `:revision`）；训练区间 `pulse:v2:workouts`。Coding 三色带读时从 `pulse:coding-observations` 与 `pulse:cursor-observations` 现算。公开出口是 `GET /api/status/pulse`（裁最近 24 小时，只给媒体与游戏标题，应用名、模型名、token、设备名不出门）。档位时代的 `pulse:<domain>` 已停写、随 TTL 过期。契约见 [跨域活动脉搏](../workers/api/README.md#跨域活动脉搏pulse)。
 - API Worker 的 `LIVE_PUSH` 使用可休眠 WebSocket，`api.homepage.lyjw.llc/count` 返回 `connections`（包含后台页面）。独立 `online-counter` Worker 的 `ONLINE_COUNTER` 维护可见连接，按空闲超时清扫；`online.homepage.lyjw.llc/count` 返回 `online`。三个调频上报器并行读取两个计数口，各自失败时仅该端归零。
 
@@ -16,7 +16,7 @@ Worker 是唯一数据后端。上报、状态 API、Apple / GitHub 获取和缓
 
 判断标准只有一条：这份数据是否需要「变了立刻推、读到必是最新」，或是否参与 pulse 计算。是则归实时层（状态核心 DO），否则归可滞后层，存在 KV 命名空间 `lyjwpage-lag`（binding `LAG`，键表与 `{ updatedAt, data }` 格式见 `shared/lag.ts`）。
 
-- 写入方直接写 KV、不推送：上报入口写落地节点、限额、时区、常驻上报器账本、活动圆环读数与最近训练（`workers/api/src/lag-ingest.ts`，在这封上报的状态核心那一半成功之后）；采集 Worker 写外部拉取的结果。取数失败不写，KV 里的值本身就是上次成功值，不另存 last-good。iPhone 那一封里，状态核心只留 Pulse 的输入（五分钟统计桶、训练区间），圆环读数（`activity:v1`，只在这封带了当天圆环时写）和训练列表（`workouts:v1`，整份替换）在 KV，`updatedAt` 是最后一次带来它的那封上报的收到时刻。
+- 写入方直接写 KV、不推送：上报入口写落地节点、限额、时区、常驻上报器账本、活动圆环读数与最近训练（`workers/ingress/src/lag-ingest.ts`，在这封上报的状态核心那一半成功之后）；采集 Worker 写外部拉取的结果。取数失败不写，KV 里的值本身就是上次成功值，不另存 last-good。iPhone 那一封里，状态核心只留 Pulse 的输入（五分钟统计桶、训练区间），圆环读数（`activity:v1`，只在这封带了当天圆环时写）和训练列表（`workouts:v1`，整份替换）在 KV，`updatedAt` 是最后一次带来它的那封上报的收到时刻。
 - 状态核心的公开读取端点只读 KV（`src/lib/lag-result.ts` 经 `@/lib/lag-store` 别名读 `LAG`），信封里带上 `updatedAt`；服务端不下「过没过时」的结论。
 - 浏览器按各卡阈值判断：超过就显示 Unavailable（落地节点 `SERVER_STALE_MS` 10 分钟，限额 `AGENT_LIMITS_STALE_MS` 185 分钟，账本各格同上，活动圆环 `ACTIVITY_STALE_MS` 12 小时 —— iPhone 只在 HealthKit 有新样本时被唤起，睡一夜一封都没有是正常的，理由见 `src/lib/freshness.ts`）。训练列表不设阈值：完成过的训练是历史事实，手机多久没报也不会变假。页面打开后可滞后卡直接用首屏那份，只有 `updatedAt` 已超过它的轮询间隔才补取一次。
 - 首屏缓存失效由写 KV 的一方发起，判据仍是布局变化（见 `src/lib/home-layout.ts`）：落地节点首报 / 断流回来 / 流量行出没，限额的来源集合变化，训练那一块在「没收到过 / 一条都读不出 / 有训练」三种占位之间换。圆环读数的变化只是内容，不失效首屏。
@@ -44,7 +44,7 @@ D1 是整站的长期历史归档：DO 管实时状态与 7 天热数据，KV �
 | `agent_usage_days` | 每天 × agent × 模型的 token、事件数、费用（只有 agent 合计 `model = '*'` 有）、活跃秒数 | 状态核心 | `(date, agent, model)` |
 | `pulse_samples` | 9 月 17 日至 Pulse 改成事实时间线之间的旧档位数据，原样冻结，不迁移也不再写 | — | `(domain, t)` |
 
-上报入口的四张表由 `shared/history-ingest.ts` 拼语句，在上报落库成功之后 `waitUntil` 整批提交；失败只记 `[history]` 日志，不让已收下的上报重发。迁移 `0005_history_ingest.sql` 建表，部署写这些表的版本之前先应用。
+上报入口的四张表由 `shared/history-ingest.ts` 拼语句，上报入口 Worker（`workers/ingress/src/ingest-archive.ts`）在状态核心那一半提交成功之后 `waitUntil` 整批提交；失败只记 `[history]` 日志，不让已收下的上报重发。迁移 `0005_history_ingest.sql` 建表，部署写这些表的版本之前先应用。
 
 - Pulse 事实表由状态核心写：cron 每分钟从 StateHub 取一份有界快照（各路水位之后的新行，外加推导会话所需的一点上下文），普通 Worker 拼成按自然键幂等的 upsert（`INSERT OR IGNORE` 或 `DO UPDATE … WHERE` 值变了才写）写 D1，全部成功后再向 StateHub 确认水位；上报不等待归档。水位存在 metadata 的 `pulse-archive:v2:<路>`，确认按 max 单调前进；失败留待下一分钟重放，一路失败不阻塞其他路。表与各来源的缺口见 [长期归档](../workers/api/README.md#长期归档d1)，迁移 `0007_history_pulse.sql`（`0006` 留给采集 Worker）。
 - 旧表 `pulse_samples(domain, t, level, hint, until_at, power_w)` 原样冻结。StateHub 仍是唯一权威，这里只增不删：StateHub 只留 7 天，归档保留全部历史。
@@ -81,8 +81,8 @@ Vercel 可选配一份 `GITHUB_TOKEN`，只给构建期读公开仓的首页「�
 
 ## 验证与发布
 
-1. `pnpm test`、`pnpm typecheck`、`pnpm exec tsc --noEmit -p workers/api/tsconfig.json`。
-2. `node scripts/verify-api-worker.mjs` 启动隔离 SQLite 和模拟缓存通知服务器，验证鉴权、CORS、直接查询、WebSocket、心跳无失效、并发合并及重启持久化。
+1. `pnpm test`、`pnpm typecheck`、`pnpm exec tsc --noEmit -p workers/api/tsconfig.json`、`pnpm --dir workers/ingress test`。
+2. `node scripts/verify-api-worker.mjs` 以 dev-router、上报入口和 api 三份配置启动隔离 SQLite 和模拟缓存通知服务器，上报经上报入口、Service Binding 进 api，验证鉴权、CORS、直接查询、WebSocket、部署通知、心跳无失效、并发合并及重启持久化。
 3. `NEXT_PUBLIC_BACKEND_URL=<测试 Worker 源> pnpm build`；在小号仓库和小号 Vercel 验证静态首页、缓存后台刷新以及浏览器网络路径。
 4. 测试 Worker 用 `wrangler.test.toml`，独立对象命名空间，无生产域名或 cron。fork 的生产 Worker workflow 有仓库身份限制。
 5. 测试通过后才合并主分支。生产采用 Git 自动部署，不手动发布 Vercel。腾讯云 EdgeOne 已退役，Vercel 提供源站，ESA 加速 `lyjw131.com`。缓存通知改动还需核验 ESA 刷新任务与域名响应。

@@ -16,6 +16,24 @@ const eslintConfig = defineConfig([
         }, {
           group: ["**/workers/collector/**"],
           message: "定时采集只属于采集 Worker；共享类型、键和契约放在 shared（如 shared/collector.ts）。",
+        }, {
+          group: ["**/workers/ingress/**"],
+          message: "上报鉴权与拆分只属于上报入口 Worker；prepare 放在 shared/ingest，契约放在 shared/state-core.ts。",
+        }],
+      }],
+    },
+  },
+  {
+    // 状态核心只 import 上报命令的类型：校验与收敛的实现在上报入口，改它们不该重新发布
+    // 带 Durable Object 的 api Worker（Workers Builds 的监视路径据此排除 shared/ingest，见 docs/workers-builds.md）
+    files: ["workers/api/src/**/*.ts"],
+    ignores: ["workers/api/src/**/*.test.ts"],
+    rules: {
+      "@typescript-eslint/no-restricted-imports": ["error", {
+        patterns: [{
+          group: ["@shared/ingest/*"],
+          allowTypeImports: true,
+          message: "状态核心只收 prepare 好的命令：从 shared/ingest 只能 import type，校验放在上报入口。",
         }],
       }],
     },

@@ -60,7 +60,7 @@ function environment(kv: MemoryKv, vars: Partial<Env> = {}): Env {
   return {
     COLLECTOR_KV: kv.asKv(),
     CORE: {
-      ingest: async () => { throw new Error("must not deliver during an outage"); },
+      commitIngest: async () => { throw new Error("must not deliver during an outage"); },
       connections: async () => 0,
       playstationPower: async () => null,
     },

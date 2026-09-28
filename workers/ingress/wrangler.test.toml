@@ -1,0 +1,45 @@
+# 本地开发用（根目录 `pnpm dev:worker` 以多配置方式和 dev-router、api、采集 Worker 一起起）。
+# 名字与生产相同，Service Binding 才按生产名字互相找到；dev-router 把 `/api/ingest/*` 和
+# `/api/internal/site-deployed` 转到这里。KV 全是本地的，id 和另外两份 wrangler.test.toml 一致；
+# 没有 D1（归档那一步自动跳过），没有域名。
+name = "ingress"
+main = "src/index.ts"
+compatibility_date = "2026-09-08"
+compatibility_flags = ["nodejs_compat", "nodejs_compat_populate_process_env"]
+workers_dev = false
+
+[vars]
+EMBY_PUBLIC_URL = "https://emby.lyjw131.com"
+# 本地没有 Access：上报的 JWT 用 scripts/dev-access.mjs 生成的测试钥匙签，公钥放本目录 .dev.vars 的 ACCESS_DEV_JWKS。
+# 只有 team 域名是这个 .invalid 假地址时 Worker 才认那份公钥，见 src/access-auth.ts。
+ACCESS_TEAM_DOMAIN = "https://access.local.invalid"
+ACCESS_AUD = "local-dev"
+
+[vars.ACCESS_CLIENTS]
+"local-dev.access" = ["ingest:mac", "ingest:iphone", "ingest:homepod", "ingest:emby", "ingest:playstation", "ingest:server", "ingest:agents", "ingest:agents-otlp", "internal:site-deployed"]
+
+[[services]]
+binding = "CORE"
+service = "api"
+entrypoint = "StateCore"
+
+[[services]]
+binding = "COLLECTOR"
+service = "collector"
+entrypoint = "Collector"
+
+# 只有 HEAD 读取；本地模拟桶，测试上报不上传或修改生产图片。
+[[r2_buckets]]
+binding = "IMAGES"
+bucket_name = "lyjw-homepage"
+
+[[kv_namespaces]]
+binding = "LAG"
+id = "00000000000000000000000000000001"
+
+[[kv_namespaces]]
+binding = "CREDENTIALS"
+id = "00000000000000000000000000000002"
+
+[observability]
+enabled = true

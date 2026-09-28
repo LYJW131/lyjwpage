@@ -1,14 +1,20 @@
-# API 中枢
+# API 中枢（状态核心）
 
-所有上报器直连此 Worker。它负责鉴权、解析、写 SQLite、广播 WebSocket 和通知 Vercel 缓存失效。
+实时状态的唯一权威：StateHub 的 SQLite、公开读取、WebSocket 推送、首屏缓存失效和 pulse 的分钟 cron。
+上报器不直连这里：外部上报由上报入口 Worker（[`workers/ingress`](../ingress/README.md)）验明身份、校验收敛、按数据层拆开，
+实时那一半经 Service Binding 调这里的 `StateCore.commitIngest`；采集 Worker 同样经 `StateCore` 交数据。
 站点没有上报路由、rewrite、中继和事件发布逻辑。站点部署在 Vercel，腾讯云 EdgeOne 已退役。
 
 ## 代码职责
 
-- `src/index.ts`：默认 Worker 入口与分钟 cron（只剩 pulse 归档与评分）；`src/origin-worker.ts` 负责七个上报来源、WebSocket 接入、人头数和公开 HTTP。
+- `src/index.ts`：默认 Worker 入口与分钟 cron（只剩 pulse 归档与评分）；`src/origin-worker.ts` 负责 WebSocket 接入、人头数、公开 HTTP 和存储导入。
+- `src/state-core.ts`：对内的 RPC 入口 `StateCore`（契约 `shared/state-core.ts`），上报入口和采集 Worker 经 Service Binding 调：
+  `ready()`、`commitIngest(command)`（prepare 好的上报进 StateHub，效果在这里派发）、`broadcastVersion()`、`connections()`、
+  `playstationPower()`、`appleDeveloperToken()`、`commitRecentlyPlayed()`、`revalidate()`。
 - `src/online-counter.ts`：「此刻在线」的房间，只数可见的页面，人数一变就广播给房间里所有连接。
-- `src/stores/`：上报的 Worker 准备阶段与 StateHub 提交阶段；`src/phone-telemetry.ts`、`src/homepod-ingest.ts` 组合设备信封。
-- `src/ingest-effects.ts`、`src/fanout.ts`：StateHub 提交时只收集可序列化效果；持久化确认后由普通 Worker 补充外部数据、广播并通知首屏 stale。
+- `src/ingest-handlers.ts`、`src/stores/`：上报的 StateHub 提交阶段，按来源分发；`src/phone-telemetry.ts`、`src/homepod-ingest.ts` 组合设备信封。
+  准备阶段（收敛、校验、Emby 的 R2 HEAD）在根目录 `shared/ingest/`，跑在上报入口；这里只 `import type` 命令的类型（eslint 挡住值导入）。
+- `src/ingest-effects.ts`、`src/fanout.ts`：StateHub 提交时只收集可序列化效果；持久化确认后由 `StateCore.commitIngest` 在 `waitUntil` 里补充外部数据、广播并通知首屏 stale。
 - `src/apple-music-recent.ts`：收下采集 Worker 拉回的最近在听，差分、写入和广播。
 - `src/musickit-token.ts`：给「一起听」签 MusicKit developer token（ES256 JWT），按 origin 声明缓存、过半衰期重签。
 - `src/origins.ts`：`ALLOWED_ORIGINS` 的解析、通配匹配和 CORS 头，两条 WebSocket、公开 API 和令牌签发共用。
@@ -20,14 +26,18 @@
 - `src/storage-driver.ts`：通过 alias 接入 StateHub 的 SQLite 存储驱动；同一公开请求、同一 microtask 的相邻只读批次合并成一次最多 128 条的 DO RPC，写批次保持原事务顺序。
 - `src/lag-store.ts`：`@/lib/lag-store` 在 Worker 里的实现，读 `LAG` KV（可滞后层，格式见 `shared/lag.ts`）。厂商状态、GitHub、Vercel、Cloudflare、Sentry 这几条端点只读采集 Worker 写的那几条键，Vercel 与 Cloudflare 两条按名字把几条键拼成一份。
 - `src/dev-override-reader.ts`：只在本地绑定的具名入口 `DevOverrideReader`，推送房间转发生产事件前经它查假数据注入。
-- `src/r2-assets.ts`：R2 绑定 HEAD 检查，上报器仍直接上传图片。
 
 ## 端点
 
 | 方法 | 路径 | 用途 |
 | --- | --- | --- |
-| POST | `/api/ingest/<来源>` | `mac`、`iphone`、`homepod`、`emby`、`playstation`、`server`、`agents` |
-| POST | `/api/ingest/agents/otlp` | Claude Code 云端线程的内置遥测（OTLP/HTTP JSON 指标），Access 权限 `ingest:agents-otlp` |
+| GET | `/ws` | 浏览器接收事件推送的 WebSocket，页面开着就一直挂着；使用 `ALLOWED_ORIGINS` 校验来源 |
+| GET | `/count` | `{ ok, connections }`：开着的页面数，供上报器判定中档 |
+| GET | `/api/musickit/token` | `{ token, issuedAt, expiresAt }`：给「一起听」的 MusicKit developer token，同一份来源白名单；见下文 |
+| GET | `/` | 一行存活；不碰 Durable Object，根路径被探针不停打 |
+
+上报端点（`/api/ingest/<来源>`、`/api/ingest/agents/otlp`、`/api/internal/site-deployed`）、鉴权和回执契约都在
+[上报入口](../ingress/README.md)，这里没有上报路由。下面几节讲的是各来源收下之后在状态核心里怎么存、怎么推。
 
 `/api/ingest/agents` 的主体仍是各家限额行，按 id 合并后写进可滞后层 KV（`limits:v1`），由 `GET /api/status/limits` 读出，浏览器按 id 贴回 vibecoding 的用量行；限额的来源集合变了才失效首屏标签 `limits`。可选的 `cursorUsage` 是 Cursor 云端用量日桶
 （`Asia/Shanghai`，字段与 Mac 的日用量相同，另加 `models`）。缺省表示这一轮没拉到，
@@ -44,34 +54,8 @@ Mac 用量带 `omittedSources: ["cursor"]` 时整份另加；没有这个字段�
 ### Claude Code 云端线程用量
 
 Mac 的 ccusage 只扫本机会话记录，看不到云端线程。云端环境打开 Claude Code 内置遥测，
-每分钟把指标推到 `/api/ingest/agents/otlp`。这组变量**只配在云端环境设置里**，不进仓库的
-`.claude/settings.json`，也不配在本机：本机会话已经由 ccusage 统计，再走遥测会重复计数。
-
-```sh
-CLAUDE_CODE_ENABLE_TELEMETRY=1
-OTEL_METRICS_EXPORTER=otlp
-OTEL_LOGS_EXPORTER=none
-OTEL_EXPORTER_OTLP_PROTOCOL=http/json
-OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=cumulative
-OTEL_EXPORTER_OTLP_METRICS_ENDPOINT=https://ingest.homepage.lyjw.llc/api/ingest/agents/otlp
-OTEL_EXPORTER_OTLP_HEADERS="CF-Access-Client-Id=<ACCESS_CLIENT_ID>,CF-Access-Client-Secret=<ACCESS_CLIENT_SECRET>"
-OTEL_METRIC_EXPORT_INTERVAL=60000
-```
-
-端点要用 `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`（原样使用）；通用的 `OTEL_EXPORTER_OTLP_ENDPOINT` 会被自动拼上 `/v1/metrics`。
-只认 JSON（可 gzip），不认 protobuf。鉴权复用 Access JWT 校验，要求专属 `ingest:agents-otlp` 权限；
-`ingest:agents` 不能写此端点，云端凭据也不能写限额或设备上报。不接受 Bearer 密钥。
-
-生产使用独立 service token `lyjwpage-claude-cloud`，已加入
-`lyjwpage ingest` 应用的 Service Auth 策略，其 client ID 登记在 `wrangler.toml`
-的 `[vars.ACCESS_CLIENTS]`，仅授予 `["ingest:agents-otlp"]`。轮换时同步更新策略与登记表；
-未登记的 client ID 会返回 403。Client Secret 只放云端环境，不用配置 Worker secret。
-请求头格式见 [Cloudflare service tokens](https://developers.cloudflare.com/cloudflare-one/access-controls/service-credentials/service-tokens/)。
-
-本地沿用 `node scripts/dev-access.mjs init` 生成的测试钥匙和 `header` 输出的
-`Cf-Access-Jwt-Assertion`；本地 endpoint 用 `http://localhost:8788/api/ingest/agents/otlp`，
-把该 JWT 填入 `OTEL_EXPORTER_OTLP_HEADERS="Cf-Access-Jwt-Assertion=<本地 JWT>"`。
-测试 JWT 十分钟过期，长期调试需重新生成请求头。
+每分钟把指标推到上报入口的 `/api/ingest/agents/otlp`；云端环境变量、专属 Access 权限和本地调试见
+[上报入口 README](../ingress/README.md#claude-code-云端线程用量)。
 
 只收 `claude_code.token.usage` 与 `claude_code.cost.usage`，其余指标收下后忽略（返回 200 `{}`，
 整封拒掉 exporter 不重试，这一轮的数就丢了）。数据点上的邮箱、账号 ID、组织 ID 在解析时丢掉，
@@ -105,14 +89,14 @@ OTEL_METRIC_EXPORT_INTERVAL=60000
 
 `/api/ingest/playstation` 的信封是 `{ version: 1, presence?, playedGames?, trophies?, power? }`，
 每一项各自可省、缺席表示这次不谈这一项。前三项由采集 Worker（`workers/collector` 的 `playstation` 任务）
-每轮经 `StateCore.ingest("playstation", raw)` 交付，不走 HTTP；
+每轮在它那边 prepare 好（`shared/ingest/playstation.ts`）、经 `StateCore.commitIngest` 交付，不走 HTTP；
 `power` 是**另一个生产者**——Home Assistant 上那台 PS5 的电源开关实体，翻面时发一封
 `{ version: 1, power: { on, observedAt?, entityId? } }`。两边互不覆盖：电源单独存一份，
 读的出口（`/api/status/playing/now`）才并进 presence，否则 PSN 上报器每轮整份覆盖
 presence 时会把它冲掉。`on` 必须是布尔值（HA 实体的 `"on"` / `"off"` 字符串要在自动化
 模板里先翻译），`observedAt` 缺席按落地时刻算。
 
-电源翻面时 API Worker 立刻广播一条 `playing-now`，页面当场就能看到；PSN 那侧的
+电源翻面时状态核心立刻广播一条 `playing-now`，页面当场就能看到；PSN 那侧的
 `presence`（在玩什么）要等采集 Worker 下一轮，约 1～2 分钟。它自己也经 `StateCore.playstationPower()`
 读这一份决定节奏，见 `workers/collector/README.md`。
 
@@ -120,10 +104,6 @@ presence 时会把它冲掉。`on` 必须是布尔值（HA 实体的 `"on"` / `"
 带的是摘要 —— 等级、合计、最近解锁、各款进度，和 `GET /api/status/trophies` 无参回的
 同一份，8 KB 级。整份目录不推：展开着的瓷砖收到后自己重取 `?titleids=` 那一两款的切片。
 解锁到页面的延迟就是上报器发现它的延迟，也就是完整 tick 的节奏。
-| GET | `/ws` | 浏览器接收事件推送的 WebSocket，页面开着就一直挂着；使用 `ALLOWED_ORIGINS` 校验来源 |
-| GET | `/count` | `{ ok, connections }`：开着的页面数，供上报器判定中档 |
-| GET | `/api/musickit/token` | `{ token, issuedAt, expiresAt }`：给「一起听」的 MusicKit developer token，同一份来源白名单；见下文 |
-| GET | `/` | 一行存活；不碰 Durable Object，根路径被探针不停打 |
 
 两个数是两个口径，分别位于两个 Worker 的 Durable Object：`LivePushRoom` 走休眠 API，静默 5 分钟不计数、
 30 分钟才关，因为后台标签页的定时器会被浏览器节流；`OnlineCounterRoom` 把连接留在实例里，
@@ -131,21 +111,14 @@ presence 时会把它冲掉。`on` 必须是布尔值（HA 实体的 `"on"` / `"
 多钉在快档 5 分钟。心跳 30 秒定义在站点 `src/hooks/use-online-count.ts`，Worker 里那份是
 手抄的副本，改一边必须改另一边。
 
-上报走 `https://ingest.homepage.lyjw.llc/api/ingest/<来源>`。这个域名整站挂在 Cloudflare Access 应用「lyjwpage ingest」后面，
-策略只放行登记过的 service token：每个来源一把（`lyjwpage-mac`、`-iphone`、`-emby`、`-server`、`-agents`、
-`-home-assistant`、`-github-actions`），上报器带 `CF-Access-Client-Id` / `CF-Access-Client-Secret` 两个头。
-Access 在边缘核对，不对直接回 401；放行的请求带着 Access 签的 JWT（`Cf-Access-Jwt-Assertion`）到 Worker，
-`src/access-auth.ts` 再验一遍签名、受众（`ACCESS_AUD`）、签发方（`ACCESS_TEAM_DOMAIN`）和时效 —— 同一个 Worker
-还能从 `api.` 域名和 workers.dev 进来，那两条路不过 Access。验过之后按 JWT 里的 `common_name`（client id）查
-`wrangler.toml` 的 `[vars.ACCESS_CLIENTS]`，只许写登记的来源，越权回 403。新增或轮换 token 在 Zero Trust 控制台做，
-新 token 要加进策略，再把 client id 登记进那张表。
-
-SQLite 未就绪返回 503，鉴权失败返回 401，非法报文返回 400，成功返回 202。202 表示持久化完成，广播和缓存通知由 `waitUntil` 执行。
-旧站点 `/api/ingest/*` 与 Worker `/publish` 均不存在。
+上报走 `https://ingest.homepage.lyjw.llc/api/ingest/<来源>`，由上报入口 Worker 接收：Cloudflare Access 与 service token、
+`[vars.ACCESS_CLIENTS]` 权限表、回执状态码都在 [上报入口 README](../ingress/README.md)。它收下的实时那一半经
+`StateCore.commitIngest` 进这里：StateHub 按到达顺序串行提交，回 `{ ready, ok, data | error }`，未初始化时什么都不写；
+提交确认后，推送与首屏失效由这边的 `waitUntil` 执行。api Worker 上没有 `/api/ingest/*`，旧的 `/publish` 也不存在。
 
 Worker 在 SQLite 写入完成后，仅对首屏布局变化在 `waitUntil` 后台任务中通知 Vercel：POST `${SITE_URL}/api/revalidate`，Bearer 用只有 Worker 和 Vercel 两边有的 `REVALIDATE_SECRET`，只传 `{ tags }`。按白名单将 `page:<tag>` 标 stale，先返回已有 HTML，后台重建。首页整页只有一个缓存条目，任何标签失效都是整页重建，所以各上报在自己手里的新旧两份上判断布局有没有变：充电头 / 充电宝那一格亮灭、在听的 hero 出现或消失、「正在看」开播停播、续看和游玩列表空与非空、服务器首报 / 流量行 / 断流后回来、奖杯首次到达、训练那一块换占位（没收到过 / 一条都读不出 / 有训练）。判据与页面共用 `src/lib/home-layout.ts`。Vibe coding 的骨架由三路拼成，在出口按拼好的那份比对上一次通知时的骨架（`home-layout:vibecoding`），行数、总量与常用模型的有无变了才发。读数、标题、进度、灯色等内容变化不通知，由首屏快照 `revalidate: 600` 定时重建；浏览器挂载后直接问 Worker。通知 5 秒超时，失败只记日志，不能让已落库的上报重发。纯心跳和没有标签的广播不触发缓存通知。
 
-ESA 首页不走数据上报通知。`lyjw131.com` 以 `lyjw.me` 为源站与回源 Host，控制台缓存规则「首页遵循源站缓存」（主机名等于本站、URI 路径等于 `/`，排在 PWA 绕过规则之后）让边缘按源站 `Cache-Control: public, max-age=300, stale-while-revalidate=86400, stale-if-error=86400`（根目录 `next.config.ts`）自行缓存：5 分钟内命中，之后先回旧 HTML、后台回源取新。带内容哈希的静态 JS 按源站一年 immutable 缓存，不随上报清理。新版本部署上线时，由 GitHub Actions（`.github/workflows/purge-esa.yml`）在 Vercel 生产部署完成后自动调用 `PurgeCaches` 刷新一条首页 cachekey，随后主动发起请求预热边缘节点缓存；日常上报不触发刷新。同一工作流的第二步等 `lyjw.me` 与 `lyjw131.com` 的 `/api/version` 都答出这次部署的 sha，再用 `lyjwpage-github-actions` 那把 service token（仓库 secret `ACCESS_CLIENT_ID` / `ACCESS_CLIENT_SECRET`）调 `POST https://ingest.homepage.lyjw.llc/api/internal/site-deployed`，Worker 向所有连着的页面广播不带数据的 `version` 事件，页面重问 `/api/version` 并弹出更新提示；站点自己的版本轮询因此只作半小时一次的兜底。
+ESA 首页不走数据上报通知。`lyjw131.com` 以 `lyjw.me` 为源站与回源 Host，控制台缓存规则「首页遵循源站缓存」（主机名等于本站、URI 路径等于 `/`，排在 PWA 绕过规则之后）让边缘按源站 `Cache-Control: public, max-age=300, stale-while-revalidate=86400, stale-if-error=86400`（根目录 `next.config.ts`）自行缓存：5 分钟内命中，之后先回旧 HTML、后台回源取新。带内容哈希的静态 JS 按源站一年 immutable 缓存，不随上报清理。新版本部署上线时，由 GitHub Actions（`.github/workflows/purge-esa.yml`）在 Vercel 生产部署完成后自动调用 `PurgeCaches` 刷新一条首页 cachekey，随后主动发起请求预热边缘节点缓存；日常上报不触发刷新。同一工作流的第二步等 `lyjw.me` 与 `lyjw131.com` 的 `/api/version` 都答出这次部署的 sha，再用 `lyjwpage-github-actions` 那把 service token（仓库 secret `ACCESS_CLIENT_ID` / `ACCESS_CLIENT_SECRET`）调上报入口的 `POST https://ingest.homepage.lyjw.llc/api/internal/site-deployed`；上报入口验过之后调这里的 `StateCore.broadcastVersion()`，向所有连着的页面广播不带数据的 `version` 事件，页面重问 `/api/version` 并弹出更新提示（同时请采集 Worker 重拉部署列表，见上报入口 README）；站点自己的版本轮询因此只作半小时一次的兜底。
 
 这条规则是必需的：`/` 没有文件后缀，不匹配任何默认缓存类型，没有规则覆盖时 ESA 直接判 DYNAMIC、每次回源——之前命中率归零的真正原因。针对高频数据上报的 `PurgeCaches` 链路（含 RAM 密钥、Worker 冷却表）已删除；日常依赖 SWR 自行收敛，仅在站点全量新构建发布时由 CI 触发单次刷新。
 
@@ -348,10 +321,10 @@ Mac 上报的 Apple Music 凭据在凭据 KV（`shared/credentials.ts`），不�
 生产发布走 Cloudflare Workers Builds 原生 Git 集成，推送 `main` 且本 Worker 或共享代码变化时触发。构建命令、监视路径与验收流程见 [原生部署配置](../../docs/workers-builds.md)。
 
 `wrangler.toml` 中配置公开变量 `SITE_URL`、`STORAGE_PREFIX`、
-`EMBY_PUBLIC_URL`、`APPLE_MUSIC_STOREFRONT`、`ALLOWED_ORIGINS`、`APPLE_MUSIC_TEAM_ID`、
-`APPLE_MUSIC_KEY_ID`，`IMAGES` 桶绑定（只 HEAD；响应里的图片地址是 `/img/<对象键>` 同源路径，
-Worker 不配交付域，回源 R2 由站点的 rewrite 和 ESA 负责，见根 README「图片」），
-以及 `LIVE_PUSH` 与 `STATE` 两个 Durable Object 绑定（迁移只追加新 tag，不改旧的）。`LAG`、`CREDENTIALS` 两个 KV 绑定见 `shared/lag.ts`、`shared/credentials.ts`；`HISTORY` 是长期归档用的 D1 库 `lyjwpage-history`（上报入口的四张表与 Pulse 事实表，见上文「长期归档（D1）」），
+`APPLE_MUSIC_STOREFRONT`、`ALLOWED_ORIGINS`、`APPLE_MUSIC_TEAM_ID`、
+`APPLE_MUSIC_KEY_ID`（响应里的图片地址是 `/img/<对象键>` 同源路径，Worker 不配交付域，
+回源 R2 由站点的 rewrite 和 ESA 负责，见根 README「图片」；上报器直传图片那个桶的 HEAD 在上报入口），
+以及 `LIVE_PUSH` 与 `STATE` 两个 Durable Object 绑定（迁移只追加新 tag，不改旧的）。`LAG`、`CREDENTIALS` 两个 KV 绑定见 `shared/lag.ts`、`shared/credentials.ts`，这里只读；`HISTORY` 是长期归档用的 D1 库 `lyjwpage-history`（这里写 Pulse 事实表，上报的四张表由上报入口写，见上文「长期归档（D1）」），
 只增不删、无公开读路径，建表只在 `migrations/` 里，部署带这个绑定的版本**之前**先手动应用一次
 （`pnpm --dir workers/api exec wrangler d1 migrations apply lyjwpage-history --remote`，Workers Builds 不跑迁移），
 边界与回滚见 [Worker 数据后端与首屏缓存](../../docs/state-storage.md)。
@@ -370,12 +343,12 @@ Secrets 与专用 RAM 用户已无用，在 Cloudflare 控制台和阿里云 RAM
 
 站点配置 `NEXT_PUBLIC_BACKEND_URL=https://api.homepage.lyjw.llc` 与相同的
 `REVALIDATE_SECRET`；浏览器由这一个源拼 `/ws` 和 `/api/musickit/token`。所有上报器的目标为
-这个 Worker 在 ingest 域名上的 `/api/ingest/<来源>`，不经过站点；PlayStation 例外，由采集 Worker（`workers/collector`）
-经 Service Binding 调具名 entrypoint `StateCore`（`src/state-core.ts`，契约 `shared/state-core.ts`）的 `ingest("playstation", raw)`，
+上报入口 Worker（`workers/ingress`）在 ingest 域名上的 `/api/ingest/<来源>`，不经过站点；PlayStation 例外，由采集 Worker（`workers/collector`）
+自己 prepare 好信封，经 Service Binding 调具名 entrypoint `StateCore`（`src/state-core.ts`，契约 `shared/state-core.ts`）的 `commitIngest(command)`，
 并通过 `connections()` / `playstationPower()` 读取连接数与主机电源，不带凭据；按人数调频的（如 agents-reporter）同时读取此源 `/count` 的 `connections` 与 `ONLINE_COUNTER_URL/count` 的 `online`，server-reporter 固定每分钟推一次。实例清单见 [端点核验记录](../../docs/reporter-endpoints.md)。
 
 提交并推送 main，由 Cloudflare Workers Builds 原生 Git 集成自动部署。
-`shared/`、共用 `src/lib/`、根依赖及路径配置变化也触发 api 部署。
+`shared/`（`shared/ingest/` 除外，校验改了只发布上报入口）、共用 `src/lib/`、根依赖及路径配置变化也触发 api 部署，见 [原生部署配置](../../docs/workers-builds.md)。
 
 ## 本地开发
 
@@ -386,12 +359,12 @@ pnpm dev:worker:init                # 只需一次，初始化空的 StateHub
 pnpm dev:local                      # 站点指向本地 Worker
 ```
 
-`pnpm dev:worker` 是一个 `wrangler dev` 进程、三份配置：`workers/dev-router/wrangler.toml`（第一个，拿端口）、
-本目录的 `wrangler.test.toml` 和 `workers/collector/wrangler.test.toml`。多配置下只有第一个 Worker 有端口，
+`pnpm dev:worker` 是一个 `wrangler dev` 进程、四份配置：`workers/dev-router/wrangler.toml`（第一个，拿端口）、
+本目录的 `wrangler.test.toml`、`workers/ingress/wrangler.test.toml` 和 `workers/collector/wrangler.test.toml`。多配置下只有第一个 Worker 有端口，
 dev-router 按路径分发：`/__dev/collector/*` 给采集 Worker 的调试入口（见它的 README），
-`/api/ingest/*`、`/api/internal/*` 以及其余一切（含 `/ws`）给 api。三个 Worker 共用 `--persist-to`，
+`/api/ingest/*` 与 `/api/internal/site-deployed` 给上报入口，其余一切（含 `/ws`、`/api/internal/storage/import`）给 api。四个 Worker 共用 `--persist-to`，
 `LAG`、`CREDENTIALS` 两个本地 KV 用同一个 id，一边写的另一边读得到；Service Binding 按生产名字
-（`api`、`collector`）互相找到，所以本地 api 的名字也是 `api`。
+（`api`、`ingress`、`collector`）互相找到，所以本地 api 的名字也是 `api`。
 `curl localhost:8788/cdn-cgi/local/scheduled` 触发的是 dev-router 的 `scheduled`，它让采集 Worker 跑这一分钟到期的任务；
 api 自己的分钟 cron 本地触发不到（Service Binding 调不了别的 Worker 的 `scheduled`），它本地要做的
 D1 归档、Jev 打分本来也被隔离开关关着。
@@ -403,9 +376,9 @@ D1 归档、Jev 打分本来也被隔离开关关着。
 本地是空库。`.dev.vars` 里的 `UPSTREAM_API_URL` 让 `publicResponse` 生产为主、本地补缺：生产 `ok:true` 的快照字段和端点用生产的，
 生产没有的（新加的端点、新字段）或生产也 `ok:false` 的才用本地的（只读、不上报）。生产的 wrangler.toml 不配它。
 分支预览是同一套兜底的线上版：`wrangler preview` 在生产脚本 `api` 上按分支开一份隔离的 Preview，Vercel 预览改连它。见 [Workers 构建](../../docs/workers-builds.md)。
-要测上报链路，把这个变量注释掉让本地只看自己，然后往 `http://localhost:8788/api/ingest/<来源>` 推。本地没有 Access：
-先 `node scripts/dev-access.mjs init` 生成测试钥匙、把它打印的 `ACCESS_DEV_JWKS` 填进 `.dev.vars`，
-推的时候带 `node scripts/dev-access.mjs header` 打出的 `Cf-Access-Jwt-Assertion` 头（10 分钟有效）。
+要测上报链路，把这个变量注释掉让本地只看自己，然后往 `http://localhost:8788/api/ingest/<来源>` 推（dev-router 转给上报入口）。本地没有 Access：
+先 `node scripts/dev-access.mjs init` 生成测试钥匙、把它打印的 `ACCESS_DEV_JWKS` 填进 `workers/ingress/.dev.vars`（上报入口那份，不是本目录的），
+推的时候带 `node scripts/dev-access.mjs header` 打出的 `Cf-Access-Jwt-Assertion` 头（10 分钟有效），见 [上报入口 README](../ingress/README.md#本地开发)。
 
 配了 `UPSTREAM_API_URL` 后，本地的推送房间还会在有页面连着时自己去连生产的 `/ws`，把事件转发给本地页面（最后一个页面断开就跟着断，不多占生产那边的连接数），所以本地也能收到实时推送。事件对应的端点有生效的注入时，payload 换成注入的那份，假数据不会被生产一推就盖掉。
 
@@ -421,7 +394,7 @@ pnpm --dir workers/api test
 node scripts/verify-api-worker.mjs --build
 ```
 
-集成脚本启动隔离 SQLite、Worker、KV 和缓存通知测试服务器，检查鉴权、404、初始化屏障、并发假数据索引、写入、缓存失效、真实 WebSocket、重启持久化。`--build` 还会在已初始化的隔离 Worker 存活期间，把 `NEXT_PUBLIC_BACKEND_URL` 和在线人数源指向该本地地址并运行生产构建。退出时清理临时状态，不使用生产绑定或凭据。
+集成脚本和 `pnpm dev:worker` 一样用 dev-router 把上报路由到上报入口、经 Service Binding 打本 Worker，启动隔离 SQLite、KV 和缓存通知测试服务器，检查鉴权、404、初始化屏障、并发假数据索引、写入、缓存失效、真实 WebSocket（含部署通知的 `version` 事件）、重启持久化。`--build` 还会在已初始化的隔离 Worker 存活期间，把 `NEXT_PUBLIC_BACKEND_URL` 和在线人数源指向该本地地址并运行生产构建。退出时清理临时状态，不使用生产绑定或凭据。
 
 SQLite 初始化、迁移与权限见 [后端架构](../../docs/state-storage.md)。
 
@@ -486,7 +459,7 @@ GraphQL 的 `scriptName_in` 跟着它），不公开账号内其他 Worker；还
 
 misaka-jp 上的 server-reporter 与 agents-reporter 每封报文顶上带一个 `reporter` 块：镜像提交（Actions 以 `GIT_SHA`
 烧进 `REPORTER_COMMIT`）、过去 12 小时推成功几封（含这一封）、这些封往返的中位数 `rttMs`、窗口起止。次数和延迟由
-上报器自己数（两边同一份 `push-ledger.ts`），这里只校验、把最新一份加上收到的时刻写进可滞后层（每个上报器一条，
+上报器自己数（两边同一份 `push-ledger.ts`），上报入口只校验、把最新一份加上收到的时刻写进可滞后层（每个上报器一条，
 `reporter:server-reporter:v1` / `reporter:agents-reporter:v1`），由 `GET /api/status/reporters` 给卡片服务区最后两格。块写坏或旧版没带都当没有，不因此拒掉整封上报。
 
 ## 最近训练
