@@ -1,5 +1,13 @@
 import Foundation
 
+/// 发往自家 Worker 的请求一律带这个 UA：Cloudflare 的浏览器完整性检查会拦某些默认 UA
+enum HubUserAgent {
+    static let value: String = {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "2"
+        return "iphone-telemetry-hub/\(version)"
+    }()
+}
+
 /**
  收集各模块 → 拼信封 → POST。整个 App 只有这一条上报链路。
 

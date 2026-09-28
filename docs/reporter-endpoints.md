@@ -71,12 +71,12 @@ server 备份 `.env`（代码随镜像走，回退改 `sha-<短哈希>` 标签�
 | server、agents | `lyjwpage-server`、`lyjwpage-agents` | misaka-jp `/opt/lyjwpage/<服务>/.env` 的 `SITE_INGEST_URL` / `ACCESS_CLIENT_ID` / `ACCESS_CLIENT_SECRET` |
 | emby | `lyjwpage-emby` | dsm `/volume3/docker/emby-proxy/.env`（600），`docker-compose.yml` 里 emby-reporter 引用这三个变量 |
 | HomePod、PS5 电源 | `lyjwpage-home-assistant` | dsm 与 n100 的 Home Assistant `secrets.yaml`：`lyjwpage_access_client_id` / `lyjwpage_access_client_secret` |
-| mac、iphone | `lyjwpage-mac`、`lyjwpage-iphone` | App 里「登录 Cloudflare 获取上报凭据」配对取得（`docs/reporter-pairing.md`），存钥匙串 |
+| mac、iphone | `lyjwpage-mac`、`lyjwpage-iphone` | App 设置里手填 Client ID / Client Secret，Secret 存钥匙串 |
 | 部署通知 | `lyjwpage-github-actions` | 仓库 secret `ACCESS_CLIENT_ID` / `ACCESS_CLIENT_SECRET` |
 | playstation | 无 | playstation-reporter 经 Service Binding 调 `PlaystationIngest` |
 
 远端改动前的备份后缀为 `.before-access-<时间戳>`。token 有效期到 2027-09-25，续期或轮换在 Zero Trust 控制台做；
-轮换 mac / iphone 直接在 App 里重新登录。
+mac / iphone 轮换时在 Zero Trust 里重新生成这把 service token 的 secret，再贴进 App 设置。
 
 ## 2026-09-27 PlayStation Worker 内部通讯
 

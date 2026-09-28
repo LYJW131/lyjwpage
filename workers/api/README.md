@@ -138,9 +138,6 @@ Access 在边缘核对，不对直接回 401；放行的请求带着 Access 签�
 `wrangler.toml` 的 `[vars.ACCESS_CLIENTS]`，只许写登记的来源，越权回 403。新增或轮换 token 在 Zero Trust 控制台做，
 新 token 要加进策略，再把 client id 登记进那张表。
 
-Mac 与 iPhone 的 Hub 不用手抄 token：App 里点登录，浏览器过 Access 确认，Worker 轮换这个来源的 token 并把新凭据交回 App，
-见 [上报器配对登录](../../docs/reporter-pairing.md)（`src/pairing.ts`）。
-
 SQLite 未就绪返回 503，鉴权失败返回 401，非法报文返回 400，成功返回 202。202 表示持久化完成，广播和缓存通知由 `waitUntil` 执行。
 旧站点 `/api/ingest/*` 与 Worker `/publish` 均不存在。
 
