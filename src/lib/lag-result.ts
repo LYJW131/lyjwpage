@@ -13,6 +13,11 @@ export class LagResult<T> {
     this.data = data;
     this.updatedAt = updatedAt;
   }
+
+  /** 换一个形状（切片、合并），时刻不变 */
+  map<U>(transform: (data: T) => U): LagResult<U> {
+    return new LagResult(transform(this.data), this.updatedAt);
+  }
 }
 
 /** 读一条可滞后层数据；还没有写入过就是「等上报」，端点回 ok:false */

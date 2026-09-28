@@ -1,0 +1,552 @@
+{
+  "ok": true,
+  "updatedAt": "$now-1200000",
+  "data": {
+    "fetchedAt": "$now-1200000",
+    "agents": [
+      {
+        "id": "claude",
+        "name": "Claude",
+        "indicator": "operational",
+        "statusUrl": "https://status.claude.com",
+        "components": [
+          {
+            "name": "Claude API (api.anthropic.com)",
+            "indicator": "operational"
+          },
+          {
+            "name": "Claude Code",
+            "indicator": "operational"
+          }
+        ],
+        "incidents": [],
+        "note": null,
+        "stale": false
+      },
+      {
+        "id": "codex",
+        "name": "ChatGPT",
+        "indicator": "operational",
+        "statusUrl": "https://status.openai.com",
+        "components": [
+          {
+            "name": "Codex Web",
+            "indicator": "operational"
+          },
+          {
+            "name": "CLI",
+            "indicator": "operational"
+          },
+          {
+            "name": "VS Code extension",
+            "indicator": "operational"
+          },
+          {
+            "name": "Codex API",
+            "indicator": "operational"
+          }
+        ],
+        "incidents": [],
+        "note": null,
+        "stale": false
+      },
+      {
+        "id": "cursor",
+        "name": "Cursor",
+        "indicator": "operational",
+        "statusUrl": "https://status.cursor.com",
+        "components": [
+          {
+            "name": "Automations",
+            "indicator": "operational"
+          },
+          {
+            "name": "Review Agents",
+            "indicator": "operational"
+          },
+          {
+            "name": "CLI",
+            "indicator": "operational"
+          },
+          {
+            "name": "Cloud Agents",
+            "indicator": "operational"
+          },
+          {
+            "name": "cursor.com",
+            "indicator": "operational"
+          },
+          {
+            "name": "IDE",
+            "indicator": "operational"
+          },
+          {
+            "name": "Origin",
+            "indicator": "operational"
+          },
+          {
+            "name": "Grok Bot",
+            "indicator": "operational"
+          }
+        ],
+        "incidents": [],
+        "note": null,
+        "stale": false
+      },
+      {
+        "id": "grok",
+        "name": "Grok",
+        "indicator": "operational",
+        "statusUrl": "https://status.x.ai/grok-build",
+        "components": [
+          {
+            "name": "Grok Build",
+            "indicator": "operational"
+          }
+        ],
+        "incidents": [],
+        "note": null,
+        "stale": false
+      },
+      {
+        "id": "typesafe",
+        "name": "TypeSafe",
+        "indicator": "operational",
+        "statusUrl": "https://status.typesafe.ai",
+        "components": [
+          {
+            "name": "api.typesafe.ai",
+            "indicator": "operational"
+          },
+          {
+            "name": "console.typesafe.ai",
+            "indicator": "operational"
+          }
+        ],
+        "incidents": [],
+        "note": null,
+        "stale": false
+      },
+      {
+        "id": "apple",
+        "name": "Apple",
+        "indicator": "operational",
+        "statusUrl": "https://developer.apple.com/system-status/",
+        "components": [
+          {
+            "name": "Apple Music API",
+            "indicator": "operational"
+          },
+          {
+            "name": "Certificates, Identifiers & Profiles",
+            "indicator": "operational"
+          },
+          {
+            "name": "Developer ID Notary Service",
+            "indicator": "operational"
+          },
+          {
+            "name": "Provisioning Profile Service",
+            "indicator": "operational"
+          },
+          {
+            "name": "Xcode Automatic Configuration",
+            "indicator": "operational"
+          }
+        ],
+        "incidents": [],
+        "note": null,
+        "stale": false
+      },
+      {
+        "id": "vercel",
+        "name": "Vercel",
+        "indicator": "operational",
+        "statusUrl": "https://www.vercel-status.com",
+        "components": [
+          {
+            "name": "Dashboard",
+            "indicator": "operational"
+          },
+          {
+            "name": "Builds",
+            "indicator": "operational"
+          },
+          {
+            "name": "ARN1 - Stockholm, Sweden",
+            "indicator": "operational"
+          },
+          {
+            "name": "Drains",
+            "indicator": "operational"
+          },
+          {
+            "name": "Builds",
+            "indicator": "operational"
+          },
+          {
+            "name": "Blob",
+            "indicator": "operational"
+          },
+          {
+            "name": "Output Generation",
+            "indicator": "operational"
+          },
+          {
+            "name": "AI Gateway",
+            "indicator": "operational"
+          },
+          {
+            "name": "API",
+            "indicator": "operational"
+          },
+          {
+            "name": "BOM1 - Mumbai, India",
+            "indicator": "operational"
+          },
+          {
+            "name": "Logs",
+            "indicator": "operational"
+          },
+          {
+            "name": "Global Config",
+            "indicator": "operational"
+          },
+          {
+            "name": "npm Registry",
+            "indicator": "operational"
+          },
+          {
+            "name": "Support Center",
+            "indicator": "operational"
+          },
+          {
+            "name": "Dashboard",
+            "indicator": "operational"
+          },
+          {
+            "name": "CDG1 - Paris, France, Europe",
+            "indicator": "operational"
+          },
+          {
+            "name": "Deploy Hooks",
+            "indicator": "operational"
+          },
+          {
+            "name": "Build & Deploy",
+            "indicator": "operational"
+          },
+          {
+            "name": "Support Chat",
+            "indicator": "operational"
+          },
+          {
+            "name": "Observability",
+            "indicator": "operational"
+          },
+          {
+            "name": "CLE1 - Cleveland, East US",
+            "indicator": "operational"
+          },
+          {
+            "name": "Git Integrations",
+            "indicator": "operational"
+          },
+          {
+            "name": "CI/CD",
+            "indicator": "operational"
+          },
+          {
+            "name": "Speed Insights",
+            "indicator": "operational"
+          },
+          {
+            "name": "CDN",
+            "indicator": "operational"
+          },
+          {
+            "name": "CPT1 - Cape Town, South Africa",
+            "indicator": "operational"
+          },
+          {
+            "name": "Web Analytics",
+            "indicator": "operational"
+          },
+          {
+            "name": "DUB1 - Dublin, Ireland",
+            "indicator": "operational"
+          },
+          {
+            "name": "Community",
+            "indicator": "operational"
+          },
+          {
+            "name": "Integration Webhooks",
+            "indicator": "operational"
+          },
+          {
+            "name": "Cron Jobs",
+            "indicator": "operational"
+          },
+          {
+            "name": "DXB1 - Dubai, UAE",
+            "indicator": "operational"
+          },
+          {
+            "name": "FRA1 - Frankfurt, Germany, Europe",
+            "indicator": "operational"
+          },
+          {
+            "name": "Dashboard",
+            "indicator": "operational"
+          },
+          {
+            "name": "GRU1 - São Paulo, Brazil",
+            "indicator": "operational"
+          },
+          {
+            "name": "Data Cache",
+            "indicator": "operational"
+          },
+          {
+            "name": "DNS",
+            "indicator": "operational"
+          },
+          {
+            "name": "HKG1 - Hong Kong",
+            "indicator": "operational"
+          },
+          {
+            "name": "Domain Registration",
+            "indicator": "operational"
+          },
+          {
+            "name": "HND1 - Tokyo, Japan",
+            "indicator": "operational"
+          },
+          {
+            "name": "IAD1 - Washington DC, USA",
+            "indicator": "operational"
+          },
+          {
+            "name": "Firewall",
+            "indicator": "operational"
+          },
+          {
+            "name": "ICN1 - Seoul, South Korea",
+            "indicator": "operational"
+          },
+          {
+            "name": "Functions",
+            "indicator": "operational"
+          },
+          {
+            "name": "Image Optimization",
+            "indicator": "operational"
+          },
+          {
+            "name": "KIX1 - Osaka, Japan",
+            "indicator": "operational"
+          },
+          {
+            "name": "LHR1 - London, UK",
+            "indicator": "operational"
+          },
+          {
+            "name": "Observability",
+            "indicator": "operational"
+          },
+          {
+            "name": "PDX1 - Portland, West US",
+            "indicator": "operational"
+          },
+          {
+            "name": "SFO1 - San Francisco, CA, USA",
+            "indicator": "operational"
+          },
+          {
+            "name": "Marketplace",
+            "indicator": "operational"
+          },
+          {
+            "name": "SIN1 - Singapore",
+            "indicator": "operational"
+          },
+          {
+            "name": "Queues",
+            "indicator": "operational"
+          },
+          {
+            "name": "SYD1 - Sydney, Australia",
+            "indicator": "operational"
+          },
+          {
+            "name": "Remote Caching",
+            "indicator": "operational"
+          },
+          {
+            "name": "Routing Middleware",
+            "indicator": "operational"
+          },
+          {
+            "name": "YUL1 - Montréal, Canada",
+            "indicator": "operational"
+          },
+          {
+            "name": "SAML Single Sign-On",
+            "indicator": "operational"
+          },
+          {
+            "name": "Sandbox",
+            "indicator": "operational"
+          },
+          {
+            "name": "Secure Compute",
+            "indicator": "operational"
+          },
+          {
+            "name": "TLS Certificates",
+            "indicator": "operational"
+          },
+          {
+            "name": "Storage",
+            "indicator": "operational"
+          },
+          {
+            "name": "v0",
+            "indicator": "operational"
+          },
+          {
+            "name": "Workflow",
+            "indicator": "operational"
+          },
+          {
+            "name": "Container Registry",
+            "indicator": "operational"
+          },
+          {
+            "name": "Key Management Service",
+            "indicator": "operational"
+          },
+          {
+            "name": "Connect",
+            "indicator": "operational"
+          }
+        ],
+        "incidents": [],
+        "note": null,
+        "stale": false
+      },
+      {
+        "id": "github",
+        "name": "GitHub",
+        "indicator": "operational",
+        "statusUrl": "https://www.githubstatus.com",
+        "components": [
+          {
+            "name": "Git Operations",
+            "indicator": "operational"
+          },
+          {
+            "name": "Webhooks",
+            "indicator": "operational"
+          },
+          {
+            "name": "Visit www.githubstatus.com for more information",
+            "indicator": "operational"
+          },
+          {
+            "name": "API Requests",
+            "indicator": "operational"
+          },
+          {
+            "name": "Issues",
+            "indicator": "operational"
+          },
+          {
+            "name": "Pull Requests",
+            "indicator": "operational"
+          },
+          {
+            "name": "Actions",
+            "indicator": "operational"
+          },
+          {
+            "name": "Packages",
+            "indicator": "operational"
+          },
+          {
+            "name": "Pages",
+            "indicator": "operational"
+          },
+          {
+            "name": "Copilot",
+            "indicator": "operational"
+          },
+          {
+            "name": "Codespaces",
+            "indicator": "operational"
+          },
+          {
+            "name": "Copilot AI Model Providers",
+            "indicator": "operational"
+          }
+        ],
+        "incidents": [],
+        "note": null,
+        "stale": false
+      },
+      {
+        "id": "cloudflare",
+        "name": "Cloudflare",
+        "indicator": "operational",
+        "statusUrl": "https://www.cloudflarestatus.com",
+        "components": [
+          {
+            "name": "API",
+            "indicator": "operational"
+          },
+          {
+            "name": "Authoritative DNS",
+            "indicator": "operational"
+          },
+          {
+            "name": "D1",
+            "indicator": "operational"
+          },
+          {
+            "name": "DNS Updates",
+            "indicator": "operational"
+          },
+          {
+            "name": "Durable Objects",
+            "indicator": "operational"
+          },
+          {
+            "name": "R2",
+            "indicator": "operational"
+          },
+          {
+            "name": "WebSockets",
+            "indicator": "operational"
+          },
+          {
+            "name": "Workers",
+            "indicator": "operational"
+          },
+          {
+            "name": "Workers Builds",
+            "indicator": "operational"
+          },
+          {
+            "name": "Workers KV",
+            "indicator": "operational"
+          }
+        ],
+        "incidents": [],
+        "note": null,
+        "stale": false
+      }
+    ]
+  }
+}

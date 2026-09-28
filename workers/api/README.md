@@ -5,7 +5,7 @@
 
 ## 代码职责
 
-- `src/index.ts`：默认 Worker 入口、KV 读模型前置与 cron；`src/origin-worker.ts` 负责七个上报来源、WebSocket 接入、人头数和公开 HTTP。
+- `src/index.ts`：默认 Worker 入口与分钟 cron（只剩 pulse 归档与评分）；`src/origin-worker.ts` 负责七个上报来源、WebSocket 接入、人头数和公开 HTTP。
 - `src/online-counter.ts`：「此刻在线」的房间，只数可见的页面，人数一变就广播给房间里所有连接。
 - `src/stores/`：上报的 Worker 准备阶段与 StateHub 提交阶段；`src/phone-telemetry.ts`、`src/homepod-ingest.ts` 组合设备信封。
 - `src/ingest-effects.ts`、`src/fanout.ts`：StateHub 提交时只收集可序列化效果；持久化确认后由普通 Worker 补充外部数据、广播并通知首屏 stale。
@@ -15,10 +15,11 @@
 - 根目录 `shared/`：读写共用的 SQLite 键、类型和状态计算；根目录 `src/lib/` 提供读取与通用工具。
 - 根目录 `src/lib/status-views.ts`：公开状态视图登记表（`path` / `layer` / `tag` / `event`）。路径常量、数据层、Vercel 缓存标签、事件→路径全部由它派生；可滞后层（`layer: "lag"`）不能带推送事件，模块加载时断言。
 - 根目录 `src/lib/status-loaders.ts`：按同一组 key 登记 `endpoint(params)`，单端点由 `src/public-api.ts` 通用分发到对应 loader。`trophies` 无参回摘要（与首屏、推送同形状），带 `?titleids=` 回那几款的完整目录。
-- `src/public-api.ts`、`src/public-execution.ts`：普通 Worker 中的公开 API 入口。已知路由先匹配，再过 StateHub 初始化/提交可见性屏障；状态端点按 loader 表通用分发。屏障等待已经进入 `commitIngest()` 队列的提交，不等待仍在普通 Worker 做输入准备或 R2 HEAD 的请求；提交返回 202 后，经过 StateHub 的权威读取可见其持久化结果。命中 KV 的四条投影路径仍按下文的 revision、刷新间隔和最大年龄最终收敛。
+- `src/public-api.ts`、`src/public-execution.ts`：普通 Worker 中的公开 API 入口。已知路由先匹配，再过 StateHub 初始化/提交可见性屏障；状态端点按 loader 表通用分发。屏障等待已经进入 `commitIngest()` 队列的提交，不等待仍在普通 Worker 做输入准备或 R2 HEAD 的请求；提交返回 202 后，经过 StateHub 的权威读取可见其持久化结果。可滞后层的端点只读 `LAG` KV，不过屏障。
 - `src/lookup-routes.ts`、`src/edge-cache.ts`：`/api/lyrics`、`/api/motion-artwork` 按参数查询，结果只由参数决定，不过公开读屏障。先查当前机房的 Cache API（`caches.default`），命中不进 StateHub；未命中回源，只有 200 写回，按响应的 `max-age` 过期。条目只在当前机房、跨部署保留、不合并并发未命中，键里带 SQLite 那层的版本段，响应外形变了升 `EDGE_CACHE_VERSION`。存的响应不含 CORS 头，`X-Edge-Cache: hit | miss | bypass` 标识命中。
 - `src/storage-driver.ts`：通过 alias 接入 StateHub 的 SQLite 存储驱动；同一公开请求、同一 microtask 的相邻只读批次合并成一次最多 128 条的 DO RPC，写批次保持原事务顺序。
-- `src/read-model*.ts`：可选的 KV 公开读取投影。DO alarm 保留持久队列、重试与最终 KV 单写者，JSON 由同部署 `ReadModelRenderer` 普通 Worker entrypoint 生成；边界见 `docs/kv-read-model.md`。
+- `src/lag-store.ts`：`@/lib/lag-store` 在 Worker 里的实现，读 `LAG` KV（可滞后层，格式见 `shared/lag.ts`）。厂商状态、GitHub、Vercel、Cloudflare、Sentry 这几条端点只读采集 Worker 写的那几条键，Vercel 与 Cloudflare 两条按名字把几条键拼成一份。
+- `src/dev-override-reader.ts`：只在本地绑定的具名入口 `DevOverrideReader`，推送房间转发生产事件前经它查假数据注入。
 - `src/r2-assets.ts`：R2 绑定 HEAD 检查，上报器仍直接上传图片。
 
 ## 端点
@@ -294,8 +295,7 @@ api 自己不再拉，WebSocket 连上也不触发。Mac 上报的 Apple Music �
 `EMBY_PUBLIC_URL`、`APPLE_MUSIC_STOREFRONT`、`ALLOWED_ORIGINS`、`APPLE_MUSIC_TEAM_ID`、
 `APPLE_MUSIC_KEY_ID`，`IMAGES` 桶绑定（只 HEAD；响应里的图片地址是 `/img/<对象键>` 同源路径，
 Worker 不配交付域，回源 R2 由站点的 rewrite 和 ESA 负责，见根 README「图片」），
-以及 `LIVE_PUSH` 与 `STATE` 两个 Durable Object 绑定（迁移只追加新 tag，不改旧的）。`READ_MODEL_RENDERER` 是回绑同一 `api` 部署具名 entrypoint 的 Service Binding，不经公网，也不新增部署单元。
-`READ_MODEL` KV 绑定见 [KV 公开读模型](../../docs/kv-read-model.md)；`HISTORY` 是 pulse 长期归档用的 D1 库 `lyjwpage-history`，
+以及 `LIVE_PUSH` 与 `STATE` 两个 Durable Object 绑定（迁移只追加新 tag，不改旧的）。`LAG`、`CREDENTIALS` 两个 KV 绑定见 `shared/lag.ts`、`shared/credentials.ts`；`HISTORY` 是 pulse 长期归档用的 D1 库 `lyjwpage-history`，
 只增不删、无公开读路径，建表只在 `migrations/` 里，部署带这个绑定的版本**之前**先手动应用一次
 （`pnpm --dir workers/api exec wrangler d1 migrations apply lyjwpage-history --remote`，Workers Builds 不跑迁移），
 边界与回滚见 [Worker 数据后端与首屏缓存](../../docs/state-storage.md)。
@@ -316,8 +316,7 @@ Secrets 与专用 RAM 用户已无用，在 Cloudflare 控制台和阿里云 RAM
 `REVALIDATE_SECRET`；浏览器由这一个源拼 `/ws` 和 `/api/musickit/token`。所有上报器的目标为
 这个 Worker 在 ingest 域名上的 `/api/ingest/<来源>`，不经过站点；PlayStation 例外，由采集 Worker（`workers/collector`）
 经 Service Binding 调具名 entrypoint `StateCore`（`src/state-core.ts`，契约 `shared/state-core.ts`）的 `ingest("playstation", raw)`，
-并通过 `connections()` / `playstationPower()` 读取连接数与主机电源，不带凭据（`src/playstation-ingest.ts` 的旧入口只留到原
-playstation-reporter 脚本退场）；按人数调频的（如 agents-reporter）同时读取此源 `/count` 的 `connections` 与 `ONLINE_COUNTER_URL/count` 的 `online`，server-reporter 固定每分钟推一次。实例清单见 [端点核验记录](../../docs/reporter-endpoints.md)。
+并通过 `connections()` / `playstationPower()` 读取连接数与主机电源，不带凭据；按人数调频的（如 agents-reporter）同时读取此源 `/count` 的 `connections` 与 `ONLINE_COUNTER_URL/count` 的 `online`，server-reporter 固定每分钟推一次。实例清单见 [端点核验记录](../../docs/reporter-endpoints.md)。
 
 提交并推送 main，由 Cloudflare Workers Builds 原生 Git 集成自动部署。
 `shared/`、共用 `src/lib/`、根依赖及路径配置变化也触发 api 部署。
@@ -338,7 +337,7 @@ dev-router 按路径分发：`/__dev/collector/*` 给采集 Worker 的调试入�
 `LAG`、`CREDENTIALS` 两个本地 KV 用同一个 id，一边写的另一边读得到；Service Binding 按生产名字
 （`api`、`collector`）互相找到，所以本地 api 的名字也是 `api`。
 `curl localhost:8788/cdn-cgi/local/scheduled` 触发的是 dev-router 的 `scheduled`，它让采集 Worker 跑这一分钟到期的任务；
-api 自己的分钟 cron 本地触发不到（Service Binding 调不了别的 Worker 的 `scheduled`），它本地要做的读模型发布、
+api 自己的分钟 cron 本地触发不到（Service Binding 调不了别的 Worker 的 `scheduled`），它本地要做的
 D1 归档、Jev 打分本来也被隔离开关关着。
 
 本地用 `wrangler.test.toml`：生产配置里的 `deleted_classes` 迁移在空环境下起不来，测试配置有从头开始的迁移链，且没有生产域名和 cron。
@@ -364,116 +363,68 @@ D1 归档、Jev 打分本来也被隔离开关关着。
 pnpm --dir workers/api typecheck
 pnpm --dir workers/api test
 node scripts/verify-api-worker.mjs --build
-node scripts/verify-kv-read-model.mjs
 ```
 
-集成脚本启动隔离 SQLite、Worker、KV 和缓存通知测试服务器，检查鉴权、404、初始化屏障、并发假数据索引、写入、缓存失效、真实 WebSocket、重启持久化，以及 StateHub alarm → 内部 renderer → StateHub 批量读取 → KV 的循环调用。`--build` 还会在已初始化的隔离 Worker 存活期间，把 `NEXT_PUBLIC_BACKEND_URL` 和在线人数源指向该本地地址并运行生产构建。退出时清理临时状态，不使用生产绑定或凭据。
+集成脚本启动隔离 SQLite、Worker、KV 和缓存通知测试服务器，检查鉴权、404、初始化屏障、并发假数据索引、写入、缓存失效、真实 WebSocket、重启持久化。`--build` 还会在已初始化的隔离 Worker 存活期间，把 `NEXT_PUBLIC_BACKEND_URL` 和在线人数源指向该本地地址并运行生产构建。退出时清理临时状态，不使用生产绑定或凭据。
 
 SQLite 初始化、迁移与权限见 [后端架构](../../docs/state-storage.md)。
 
 ## Worker 更名
 
 生产服务为 `api`，域名 `api.homepage.lyjw.llc`。`v1-transfer-from-ingest` 将旧 Worker 的三个 SQLite Durable Object 命名空间整体转移，保持 ID 与数据不变；后续部署保留这条迁移记录。不要对这些类另加创建或删除迁移。
-## Workers 统计卡片
+## 外部数据卡片（可滞后层）
 
-`GET /api/status/cloudflare-workers` 给站点卡片的 Workers 统计。
+厂商状态、GitHub 贡献日历与仓库统计、Vercel、Cloudflare Workers、Sentry 这几条端点的数据都由采集 Worker
+（`workers/collector`）按各自节奏拉取、写进可滞后层 KV（`shared/lag.ts` 的键表），这里的公开端点**只读**：
+不持有任何外部令牌、不在读路径上现拉、不推送。每条都带写入方最后一次成功取到的时刻，信封里给 `updatedAt`；
+过没过时由浏览器按 `src/lib/freshness.ts` 里各块的阈值判断，过了那一格回到「—」或 Unavailable，服务端不下结论。
+还没写过的键回 `ok: false`（等采集）。取数口径、失败时的沿用规则、节奏与监控见
+[采集 Worker 的 README](../collector/README.md)。
+
+| 端点 | 读哪几条键 | 卡片阈值 |
+| --- | --- | --- |
+| `/api/status/agent-status` | `agent-status:v1` | 10 分钟 |
+| `/api/status/github-chart`（可带 `?since=`） | `github-chart:v1`，切片在这一侧做 | 6 小时 |
+| `/api/status/github-repo` | `github-repo:v1` | 3 小时 |
+| `/api/status/vercel-deployments` | `vercel-deployments:v1` + `vercel-metrics:v1` + `pagespeed:v1` | 部署 10 分钟、指标 1 小时、PageSpeed 3 小时 |
+| `/api/status/cloudflare-workers` | `cloudflare-metrics:v1` + `cloudflare-deployments:v1`，按 Worker 名拼 | 统计 1 小时、部署 15 分钟 |
+| `/api/status/sentry` | `sentry:v1` | 各块 30 分钟 |
+
+几份拼起来的端点，各部分带自己的采集时刻（Vercel 部署的 `fetchedAt`、指标每组的 `fetchedAt`、PageSpeed 最近一轮的
+`fetchedAt`；Cloudflare 统计的 `fetchedAt` 与部署的 `deploymentsFetchedAt`；Sentry 各块的 `blockAt`），卡片分别判过期。
+信封的 `updatedAt` 取最常刷新的那一份，只用来决定挂载时要不要补取一次。
+
+### Workers 统计
+
 只查询本仓库的 `api`、`ingress`、`collector`、`online-counter`（名单在 `src/lib/cloudflare-workers-types.ts`，
 GraphQL 的 `scriptName_in` 跟着它），不公开账号内其他 Worker；还没部署的脚本那一格为空。
-API Worker 使用 `CLOUDFLARE_METRICS_TOKEN`（只读 Secret：账号分析、Workers 脚本与构建读取）和
-`wrangler.toml` `[vars]` 里的 `CLOUDFLARE_ACCOUNT_ID`；令牌本地放在忽略提交的 `.dev.vars`，
-生产发布前为 `api` 配置同名 Secret。Vercel 不需要令牌。
+统计是滚动 12 小时（窗口按 15 分钟对齐）的调用量、执行错误、子请求和整段窗口 CPU P50（微秒转成 `cpuTimeP50Ms`），
+采样统计不是账单，也不将执行错误等同于 HTTP 错误或可用率。部署只投影部署时间、正在分流的版本与比例，
+以及流量最大版本的提交 SHA、分支和标题（改密钥这类没有构建记录的版本借前一个有构建的版本的提交）。
+两半按 Worker 名拼，名单再变也不会错位。不输出部署作者、邮箱或账号凭据。
 
-Cloudflare GraphQL `workersInvocationsAdaptive` 提供滚动 12 小时（窗口按 15 分钟对齐）的调用量、执行错误、
-子请求和整段窗口 CPU P50；CPU 从微秒转为公开字段 `cpuTimeP50Ms`。只取汇总，不取分桶序列。
-采样统计不是账单，也不将执行错误等同于 HTTP 错误或可用率。统计缓存十五分钟。
-部署 API 只投影部署时间、正在分流的版本 ID 与比例，再用版本号批量查构建历史拿到流量最大版本的提交 SHA、分支和标题。改密钥、控制台上传生成的版本没有构建记录但代码与前一版相同，按版本列表往前找最近一个有构建记录的版本借用其提交（最多回看 8 个）；都没有才为空。不输出部署作者、邮箱或账号凭据，独立缓存十五分钟。
+### Vercel 部署与指标
 
-浏览器五分钟轮询，无推送。上游失败时最多保留一天的最后成功结果并保留原始时间；
-没有统计时显示 `—`，部署时间与版本在服务名提示中查看。
-首次部署先配置 API Worker 的只读凭据，再发布 Worker 和站点；构建监视路径已有 `src/lib/*` 与 `workers/api/*`。
-
-
-## Vercel 卡片
-
-`GET /api/status/vercel-deployments` 给站点卡片的 Vercel 部署与指标。
-API Worker 使用一个 `VERCEL_TOKEN` Secret，以及 `wrangler.toml` `[vars]` 里的 `VERCEL_PROJECT_ID`、`VERCEL_TEAM_ID`。
-Token 只放本地 `.dev.vars` 或生产 Worker Secret，不配置到 Next.js。Vercel Token 不分读写权限，
-对整个团队都能写，是这个 Worker 里权限最大的凭据：创建时选团队范围并设到期时间；代码只查询指定项目，
-所有请求只读取数据。凭据到期后替换同名 Secret。
-
-`GET /v9/projects/{id}` 的 `targets.production` 决定当前生产版本，随后读取该部署详情；
-`GET /v6/deployments` 读取最近五次记录。新构建失败或回滚不会把最新创建的部署误当成线上版本。
-部署缓存一分钟；上游失败最多沿用一天的成功结果，保留原始时间。
-
-调用量与访问统计在 `metrics` 中按组独立缓存，浏览器沿用一分钟轮询；每组保留自己的采集时间与窗口。
-上游失败只影响对应组，最多沿用一天的成功数据；从未成功则显示 `—`。
-- `functions`：最近十二小时（窗口按 15 分钟对齐）、生产环境的函数调用、错误、超时、CPU P75 与平均峰值内存，缓存十五分钟。
-  读取控制台 `/api/observability/metrics` 的整段 `summary`（`summaryOnly`，不取分桶序列）；错误与超时分开，CPU 不是每日或每桶 P75 的平均值。
-- `analytics`：前七个完整 UTC 日的页面浏览与访客，使用官方 `/v1/query/web-analytics/visits/count`，
-  保留接口返回的实际时间边界，不累加每日独立访客数。
-
-函数统计目前使用控制台接口，平台可能调整，解析失败会显示上次数据或暂不可用。
-仅公开上述聚合指标及部署 ID、状态、时间、生产/预览标记、提交 SHA、分支和标题；
-不转发平台原始响应、查询元数据、访问者明细、邮箱、环境变量和日志。
-首次发布先配置生产 API Worker 凭据，再发布 Worker 和站点。
-
-首页将仓库、Vercel 和 Workers 合为一张站点卡片：顶部是七天浏览量与仓库总提交、增删行数和按提交数的贡献占比条；
-中部左侧贡献者名单、右侧最近三条提交，提交与部署按 SHA 关联，当前线上版本标绿并给出构建时长；
-下方左侧桌面 / 移动端性能评分，右侧 Vercel 与三个 Worker 的调用量、CPU 分位和当前部署的提交短哈希。
+`targets.production` 决定当前生产版本，新构建失败或回滚不会把最新创建的部署误当成线上版本；另带最近五次部署。
+`metrics` 两组各带采集时刻与窗口：`functions` 是最近十二小时生产环境的函数调用、错误、超时、CPU P75 与平均峰值内存；
+`analytics` 是前七个完整 UTC 日的页面浏览与访客（不累加每日独立访客数）。
+仅公开这些聚合指标及部署 ID、状态、时间、生产/预览标记、提交 SHA、分支和标题。
 
 ### 性能评分（PageSpeed Insights）
 
 同一份载荷的 `pagespeed` 字段，数据来自 Google `runPagespeed`，与 Vercel 无关，所以不在 `metrics` 里。
-每轮桌面与移动端各测一次，取 Lighthouse 性能分与 LCP、TBT、CLS、FCP、TTFB（`server-response-time`）。
 测的是 `lyjw.me`（`src/lib/site.ts` 的 `site.url`），载荷里带着这个地址，卡片表头显示它。
+这是**实验室数据**：一台模拟设备上跑出来的，不是访客的真实体验，所以没有 INP，表上那一列是同一轮测出的 TBT。
+**每一格是 6 小时滚动窗口内各轮实测的中位数**（按小时一轮约六个样本，上限 12 条），一轮异常被旁边几轮压住；
+载荷里的 `samples` 与 `start` 是参与的轮数和最早一轮的时间。
 
-这是**实验室数据**：一台模拟设备上跑出来的，不是访客的真实体验。PSI 同时会返回 CrUX 真实用户字段，
-但这个站的流量不够进 CrUX 数据集，那两段是空的 —— 所以没有 INP（它只有真实用户才测得到），
-表上那一列是同一轮测出的 TBT。
+### Sentry
 
-**卡片上每一格是滚动窗口内各轮实测的中位数，不是某一轮的完整报告。** Google 那边的跑测机偶尔会卡一下，
-TBT 和总分能跳出明显偏低的一轮（实测见过桌面端 96 掉到 65）；窗口取最近 **6 小时**（按小时一轮约六个样本，
-上限 12 条），逐格取中位数，一轮异常就被旁边几轮压住。代价是滞后：真的变慢了也要过半个窗口才在卡片上稳下来。
-
-窗口按时间而不是条数定 —— Worker 停过一段时间之后，剩下的样本得是真的近期实测，不是几天前那几轮凑数；
-窗口里只剩一轮时中位数就是那一轮。逐格算意味着某几轮测不出的指标只按测出来的那几轮算，一轮都没测出才是空。
-载荷里带着 `samples`（参与的轮数）和 `start`（最早一轮的时间），卡片表头的提示显示它们。
-
-一轮实测要二十多秒，读路径一步都不去跑上游：由 cron 每分钟进来一次、自己判该不该跑，
-跑完并进窗口、重算中位数再写进缓存，`/api/status/vercel-deployments` 只读已经算好的那份。
-缓存和样本历史各保留一天，连续失败超过一天才回到 `—`。没配 `PAGESPEED_API_KEY` 就整段跳过。
-
-**一次 cron 只测一端**：先桌面、攒进 `:pending`，下一次 cron 补上移动端再合成一个样本，
-所以一轮要跨两次 cron（配着五分钟的重试锁，大约五六分钟凑齐）。两端并行跑过，线上一次占 96 秒
-（cron 日志里的 `wallTime`，跑完了、没被掐）—— 能跑通，但一次定时调用占着一分半实在长，
-上游慢一点就没有余量。拆成两次之后每次三四十秒，`fetch` 超时 60 秒，卡住的那次会落进 catch
-留下 `[pagespeed]` 日志。
-
-两把闸门分开：`:done` 成功才写、占一小时，它决定节奏；`:attempt` 一进来就抢、只占五分钟，
-它挡并发和紧接着的重试。`:pending` 则是「这一轮还没提交」的凭证，**必须赶在写 `:history` 之前消费掉** ——
-Worker 侧 storage 写失败是冒泡的，先写 `:history` 再清 `:pending` 的话，中间抛了就会把 `:pending`
-留成一张可重放的凭证：五分钟后拿同一份桌面端再配一次移动端，窗口里多出一个共用同一份 desktop
-的样本（`mergePageSpeed` 只按 `at` 追加、不去重）。合成一把的话，上游一次偶发就把整个小时烧掉 —— `runPagespeed` 确实会偶发
-500（`Lighthouse returned error`，连跑十轮撞见过两轮），一小时一次的节奏下那就是一小时的窗口空档。
-密钥只走查询参数（接口只认这一种），错误信息只带状态码，不回显密钥或上游响应体。
-请求用 `fields` 裁掉截图等字段，Worker 不必解那 800 KB 的整份响应。
-
-## Sentry 卡片
-
-`GET /api/status/sentry`（慢端点，进 KV 读模型）给站点卡片四块数据，全部由 Worker 用 `SENTRY_API_TOKEN`
-取：Sentry 内部集成「lyjwpage status card」的令牌，只有 `org:read` / `project:read` / `event:read`，本地放 `.dev.vars`，
-生产配同名 Secret，Vercel 不需要。
-
-| 字段 | 来源 | 说明 |
-| --- | --- | --- |
-| `uptime` | 在线探测（每分钟 HEAD `https://lyjw.me/api/version`） | 此刻状态、24 小时与 30 天可用率、每天一格。探测缺席（Sentry 自己没跑成）不算宕机 |
-| `heartbeat` | 分钟 cron 的心跳监控 `api-minute-cron`，只算 production | 同上的形状。cron 每分钟跑，心跳只在整 5 分钟那一轮报到（`src/cron-heartbeat.ts`）；漏报、超时、报错都算失败 |
-| `errors` | production 环境的报错：`site` 是站点项目，`worker` 是 api 与采集 Worker（`collector-worker`）两个项目合计 | 12 小时与 7 天的事件数、未解决 issue 数 |
-| `vitals` | 站点项目 production 的 pageload / 交互 span | 7 天 p75 的 LCP、INP、CLS、FCP、TTFB 与样本数，站点按 Lighthouse 曲线算出 Users 那行的分 |
-
-只放计数、比率和时刻，不放 issue 标题、报错内容和调用栈。各块并行、各自降级，全挂才算这一轮失败；
-结果缓存 5 分钟，另留一天的 last-good。改了返回形状就把 `src/lib/sentry-status.ts` 里的缓存键升一版。
-没配令牌时端点回 `状态暂不可用`，卡片上这几块不画，其余照常。
+四块数据：`uptime`（每分钟 HEAD `https://lyjw.me/api/version` 的在线探测）、`heartbeat`（本 Worker 分钟 cron 的
+心跳监控 `api-minute-cron`，只算 production，心跳只在整 5 分钟那一轮报到，见 `src/cron-heartbeat.ts`）、
+`errors`（production 报错：`site` 是站点项目，`worker` 是 api 与采集 Worker 两个项目合计）、
+`vitals`（站点 production 的 7 天 p75 与样本数，站点按 Lighthouse 曲线算出 Users 那行的分）。
+只放计数、比率和时刻，不放 issue 标题、报错内容和调用栈。
 
 ## 常驻上报器账本
 

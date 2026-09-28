@@ -46,6 +46,12 @@ export function dueJobs(time: number, jobs: readonly Job[] = JOBS): Job[] {
  */
 export type MonitorRunner = <T>(slug: string, run: () => Promise<T>, config: ReturnType<typeof monitorConfig>) => Promise<T>;
 
+/**
+ * 任务真失败时报给 Sentry issue 的钩子，由入口注进来（同 MonitorRunner，这个文件不依赖 SDK）。
+ * 监控名额有限、多出来的监控会被停用，靠它在 issue 里也能看到失败；已知的外部故障不报。
+ */
+export type FailureReporter = (job: Job["name"], error: Error) => void;
+
 /** 监控要求报 error、但任务本身只是跳过：抛这个，外层按跳过记 */
 class MonitorFailure extends Error {
   result: JobResult;
@@ -63,7 +69,7 @@ class MonitorFailure extends Error {
 export async function runJob(
   job: Job,
   env: Env,
-  options: { now?: number; scheduled?: boolean; monitor?: MonitorRunner } = {},
+  options: { now?: number; scheduled?: boolean; monitor?: MonitorRunner; report?: FailureReporter } = {},
 ): Promise<CollectorJobOutcome> {
   const started = Date.now();
   const now = options.now ?? started;
@@ -78,11 +84,16 @@ export async function runJob(
       : await execute();
     return outcome(job, result.status, result.detail ?? result.failing, started);
   } catch (error) {
-    if (error instanceof MonitorFailure) return outcome(job, error.result.status, error.message, started);
+    // 连着失败了好几轮（PS 的退避期）：这一轮只是跳过，但该让人知道了
+    if (error instanceof MonitorFailure) {
+      options.report?.(job.name, new Error(error.message));
+      return outcome(job, error.result.status, error.message, started);
+    }
     const failed = outcome(job, "error", explain(error), started);
-    // 已知的外部故障（比如 PSN 前面的 CDN 挡人）任务自己记过 warn 了，这里也只记 warn；监控照样报 error
+    // 已知的外部故障（比如 PSN 前面的 CDN 挡人）任务自己记过 warn 了，这里也只记 warn、不开 issue；监控照样报 error
     const outage = (error as { outage?: unknown } | null)?.outage === true;
     (outage ? console.warn : console.error)(JSON.stringify({ event: "collector-job", ...failed }));
+    if (!outage) options.report?.(job.name, error instanceof Error ? error : new Error(explain(error)));
     return failed;
   }
 }
@@ -105,12 +116,13 @@ export const HEAD_START_MS = 3_000;
 export async function runScheduled(
   env: Env,
   scheduledTime: number,
-  options: { monitor?: MonitorRunner; jobs?: readonly Job[]; headStartMs?: number } = {},
+  options: { monitor?: MonitorRunner; report?: FailureReporter; jobs?: readonly Job[]; headStartMs?: number } = {},
 ): Promise<CollectorJobOutcome[]> {
   const run = (job: Job) => runJob(job, env, {
     now: scheduledTime,
     scheduled: true,
     monitor: options.monitor && checkinDue(job, scheduledTime) ? options.monitor : undefined,
+    report: options.report,
   });
   const due = dueJobs(scheduledTime, options.jobs);
   const first = due.filter((job) => job.headStart).map(run);
@@ -128,9 +140,13 @@ export async function runScheduled(
 }
 
 /** RPC 与本地调试：点名就跑，不看节奏、不报到；不认识的名字按 error 回，不抛 */
-export async function runNamed(env: Env, names: readonly string[], jobs: readonly Job[] = JOBS): Promise<CollectorJobOutcome[]> {
+export async function runNamed(
+  env: Env,
+  names: readonly string[],
+  options: { jobs?: readonly Job[]; report?: FailureReporter } = {},
+): Promise<CollectorJobOutcome[]> {
   return Promise.all([...new Set(names)].map((name) => {
-    const job = findJob(name, jobs);
-    return job ? runJob(job, env) : Promise.resolve<CollectorJobOutcome>({ job: name, status: "error", detail: "unknown job", ms: 0 });
+    const job = findJob(name, options.jobs);
+    return job ? runJob(job, env, { report: options.report }) : Promise.resolve<CollectorJobOutcome>({ job: name, status: "error", detail: "unknown job", ms: 0 });
   }));
 }

@@ -1,7 +1,15 @@
-import { cached, get, put } from "@/lib/cache";
-import { getPageSpeed } from "@/lib/pagespeed";
-import { getVercelMetrics } from "@/lib/vercel-metrics";
-import { DEPLOYMENT_STATES, type DeploymentState, type VercelDeployment, type VercelDeploymentsPayload } from "@/lib/vercel-deployments-types";
+import { AwaitingReport } from "@/lib/awaiting-report";
+import { LagResult } from "@/lib/lag-result";
+import { readLagEntry } from "@/lib/lag-store";
+import {
+  DEPLOYMENT_STATES,
+  type DeploymentState,
+  type PageSpeedPayload,
+  type VercelDeployment,
+  type VercelDeploymentsPayload,
+  type VercelMetricsPayload,
+} from "@/lib/vercel-deployments-types";
+import { LAG_KEYS } from "@shared/lag";
 
 function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Vercel 部署格式无效");
@@ -38,7 +46,7 @@ export function parseVercelDeployment(raw: unknown): VercelDeployment {
   };
 }
 
-/** 只在 API Worker 调用；当前生产版本以项目 targets.production 为准，支持回滚。 */
+/** 采集 Worker 调；当前生产版本以项目 targets.production 为准，支持回滚。 */
 export async function fetchVercelDeployments(project: string, team: string, token: string): Promise<VercelDeploymentsPayload> {
   const signal = AbortSignal.timeout(8_000);
   const request = async (path: string, params: Record<string, string> = {}) => {
@@ -64,24 +72,21 @@ export async function fetchVercelDeployments(project: string, team: string, toke
   };
 }
 
-export async function getVercelDeployments(): Promise<VercelDeploymentsPayload> {
-  const token = process.env.VERCEL_TOKEN?.trim();
-  const project = process.env.VERCEL_PROJECT_ID?.trim();
-  const team = process.env.VERCEL_TEAM_ID?.trim();
-  if (!token || !project || !team) throw new Error("Vercel 部署读取未配置");
-  const key = `vercel-deployments:v1:${team}:${project}`;
-  // PageSpeed 只读 cron 已经跑完的那份，读路径里不等那二十多秒的实测
-  const [deployments, metrics, pagespeed] = await Promise.all([cached<VercelDeploymentsPayload>(key, 60_000, async () => {
-    try {
-      const data = await fetchVercelDeployments(project, team, token);
-      await put(`${key}:last-good`, data, 86_400_000);
-      return data;
-    } catch (error) {
-      console.warn("[vercel-deployments]", error instanceof Error && error.message.startsWith("Vercel ") ? error.message : "上游网络请求失败");
-      const previous = await get<VercelDeploymentsPayload>(`${key}:last-good`);
-      if (previous) return previous;
-      throw new Error("Vercel 部署暂不可用");
-    }
-  }), getVercelMetrics(project, team, token), getPageSpeed()]);
-  return { ...deployments, metrics, pagespeed };
+/**
+ * 公开端点：部署、指标、PageSpeed 是可滞后层里三条各自写的键（采集节奏不同），
+ * 这里拼成卡片要的一份。各部分带自己的采集时刻（部署 `fetchedAt`、指标每组
+ * `fetchedAt`、PageSpeed 最近一轮的 `fetchedAt`），卡片分别判过期；信封的
+ * `updatedAt` 跟最常刷新的部署那条。部署那条还没写过就是等采集。
+ */
+export async function getVercelDeployments(): Promise<LagResult<VercelDeploymentsPayload>> {
+  const [deployments, metrics, pagespeed] = await Promise.all([
+    readLagEntry<VercelDeploymentsPayload>(LAG_KEYS.vercelDeployments),
+    readLagEntry<VercelMetricsPayload>(LAG_KEYS.vercelMetrics),
+    readLagEntry<PageSpeedPayload>(LAG_KEYS.pagespeed),
+  ]);
+  if (!deployments) throw new AwaitingReport("Waiting for the first deployment check");
+  return new LagResult(
+    { ...deployments.data, metrics: metrics?.data ?? null, pagespeed: pagespeed?.data ?? null },
+    deployments.updatedAt,
+  );
 }

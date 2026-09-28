@@ -1,7 +1,7 @@
-import { cached, get, put } from "@/lib/cache";
-import type { VercelMetricWindow, VercelMetricsPayload } from "@/lib/vercel-deployments-types";
+import type { VercelMetricsPayload } from "@/lib/vercel-deployments-types";
 
-const FUNCTIONS_TTL_MS = 900_000;
+/** 函数统计窗口按 15 分钟对齐，和采集节奏一致 */
+const FUNCTIONS_ALIGN_MS = 900_000;
 const FUNCTIONS_WINDOW_MS = 12 * 3_600_000;
 
 function record(value: unknown): Record<string, unknown> {
@@ -36,30 +36,7 @@ export function parseVercelAnalytics(raw: unknown) {
   return { start, end, pageviews: count(data.pageviews), visitors: count(data.visitors) };
 }
 
-/**
- * 每组独立缓存；失败时沿用 last-good（保留原采集时间）。从未成功过就把错误抛给 `cached`，
- * 只进它 5 秒的负缓存 —— 不能把 null 按整段 TTL 存起来，否则一次失败要等十五分钟才重试。
- */
-async function section<T extends VercelMetricWindow>(key: string, ttlMs: number, loader: () => Promise<T>): Promise<T | null> {
-  try {
-    return await cached<T>(key, ttlMs, async () => {
-      try {
-        const data = await loader();
-        await put(`${key}:last-good`, data, 86_400_000);
-        return data;
-      } catch (error) {
-        console.warn(`[vercel-metrics] ${key.split(":").at(-1)} 读取失败：${error instanceof Error ? error.message : String(error)}`);
-        const previous = await get<T>(`${key}:last-good`);
-        if (previous) return previous;
-        throw error;
-      }
-    });
-  } catch {
-    return null;
-  }
-}
-
-/** 只在 API Worker 执行。起止由调用方给定，便于测试固定窗口；只要 summary，不要分桶序列。 */
+/** 采集 Worker 调。起止由调用方给定，便于测试固定窗口；只要 summary，不要分桶序列。 */
 export async function fetchVercelFunctions(project: string, team: string, token: string, start: number, end: number) {
   const url = new URL("https://vercel.com/api/observability/metrics");
   url.search = new URLSearchParams({ teamId: team }).toString();
@@ -86,7 +63,7 @@ export async function fetchVercelFunctions(project: string, team: string, token:
 
 /** 函数调用那一组：滚动 12 小时、按 15 分钟对齐的窗口，带自己的采集时刻 */
 export async function fetchVercelFunctionsGroup(project: string, team: string, token: string, now = Date.now()): Promise<NonNullable<VercelMetricsPayload["functions"]>> {
-  const end = Math.floor(now / FUNCTIONS_TTL_MS) * FUNCTIONS_TTL_MS, start = end - FUNCTIONS_WINDOW_MS;
+  const end = Math.floor(now / FUNCTIONS_ALIGN_MS) * FUNCTIONS_ALIGN_MS, start = end - FUNCTIONS_WINDOW_MS;
   return { ...await fetchVercelFunctions(project, team, token, start, end), fetchedAt: Date.now(), start, end };
 }
 
@@ -103,15 +80,4 @@ export async function fetchVercelAnalyticsGroup(project: string, team: string, t
   });
   if (!response.ok) throw new Error(`Vercel 指标查询失败 (${response.status})`);
   return { ...parseVercelAnalytics(await response.json()), fetchedAt: Date.now() };
-}
-
-/** Worker 独立缓存各指标组；任何一组失效都不影响部署或其他指标。 */
-export async function getVercelMetrics(project: string, team: string, token: string): Promise<VercelMetricsPayload> {
-  // v2：v1 时代把失败的 null 按整段 TTL 存过，升键把线上那份直接作废。
-  const prefix = `vercel-metrics:v2:${team}:${project}`;
-  const [functions, analytics] = await Promise.all([
-    section(`${prefix}:functions`, FUNCTIONS_TTL_MS, () => fetchVercelFunctionsGroup(project, team, token)),
-    section(`${prefix}:analytics`, 300_000, () => fetchVercelAnalyticsGroup(project, team, token)),
-  ]);
-  return { functions, analytics };
 }

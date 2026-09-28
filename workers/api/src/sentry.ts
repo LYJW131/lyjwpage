@@ -4,7 +4,7 @@ import { previewWorkerEnabled } from "./preview";
 import type { Env } from "./runtime";
 
 /**
- * Sentry 的 Worker 侧配置，普通请求、cron、两个 Durable Object 和 ReadModelRenderer 共用。
+ * Sentry 的 Worker 侧配置，普通请求、cron、两个 Durable Object 和具名入口（StateCore、DevOverrideReader）共用。
  *
  * DSN 只配在 wrangler.toml 的 `[vars]` / `[previews.vars]`：本地 `wrangler.test.toml`
  * 不配，`pnpm dev:worker` 就不往 Sentry 报；本地要试就 `--var SENTRY_DSN:… --var

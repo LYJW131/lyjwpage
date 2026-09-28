@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { fetchVercelDeployments, parseVercelDeployment } from "./vercel-deployments.ts";
+import { LAG_KEYS, type LagEntry } from "@shared/lag";
+import { installLagStoreForTests } from "./lag-store.ts";
+import { fetchVercelDeployments, getVercelDeployments, parseVercelDeployment } from "./vercel-deployments.ts";
 
 const deployment = (id = "active", state = "READY", created = 1000) => ({
   id, state, created, target: "production", buildingAt: 1100, ready: 1500,
@@ -45,4 +47,28 @@ test("an empty project is distinct from an upstream permission error", async (t)
   t.mock.restoreAll();
   t.mock.method(globalThis, "fetch", async () => Response.json({ error: { message: "private upstream detail" } }, { status: 403 }));
   await assert.rejects(fetchVercelDeployments("p", "t", "s"), /Vercel 查询失败 \(403\)/);
+});
+
+test("the public payload composes three lag keys; metrics and PageSpeed are optional, deployments are not", async (t) => {
+  const deployments = { fetchedAt: 30, production: null, recent: [] };
+  const metrics = { functions: null, analytics: { fetchedAt: 10, start: 0, end: 10, pageviews: 5, visitors: 2 } };
+  const pagespeed = { fetchedAt: 20, start: 5, samples: 3, url: "https://lyjw.me", desktop: null, mobile: null };
+  const store = new Map<string, LagEntry<unknown>>([
+    [LAG_KEYS.vercelDeployments, { updatedAt: 30, data: deployments }],
+    [LAG_KEYS.vercelMetrics, { updatedAt: 10, data: metrics }],
+    [LAG_KEYS.pagespeed, { updatedAt: 20, data: pagespeed }],
+  ]);
+  installLagStoreForTests(async (key) => store.get(key) ?? null);
+  t.after(() => installLagStoreForTests(null));
+
+  const result = await getVercelDeployments();
+  assert.equal(result.updatedAt, 30, "信封跟最常刷新的部署那条");
+  assert.deepEqual(result.data, { ...deployments, metrics, pagespeed });
+
+  store.delete(LAG_KEYS.pagespeed);
+  store.delete(LAG_KEYS.vercelMetrics);
+  assert.deepEqual((await getVercelDeployments()).data, { ...deployments, metrics: null, pagespeed: null });
+
+  store.delete(LAG_KEYS.vercelDeployments);
+  await assert.rejects(getVercelDeployments(), /Waiting/);
 });

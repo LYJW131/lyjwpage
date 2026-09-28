@@ -1,26 +1,18 @@
-import { cached } from "@/lib/cache";
 import { heatmapSliceFrom, sliceHeatmapWindow } from "@/lib/heatmap-window";
+import { loadLag, type LagResult } from "@/lib/lag-result";
 import { site } from "@/lib/site";
 import type { GithubChartPayload } from "@/lib/types";
+import { LAG_KEYS } from "@shared/lag";
 
 const GITHUB_GRAPHQL = "https://api.github.com/graphql";
 
 /**
- * 缓存这份日历。
- *
- * 其余状态源读的都是本地 SQLite，只有这条真的出网。端点不鉴权、响应又是
- * no-store，每一次匿名 GET 都等于一次 GitHub GraphQL 调用 —— 几十 rps 就能把
- * 令牌那 5000 points/hour 打空，而这把令牌按注释必须是权限很宽的 classic PAT。
- *
- * 所以取数进 SQLite TTL（10 分钟，和这条慢端点的 KV 投影最大年龄同量级）。
- * lib/cache 顺带给了进程内 in-flight 去重和 5 秒负缓存。
+ * 贡献日历。拉取在采集 Worker（`github-chart`，每 10 分钟），整年一份写进可滞后层；
+ * 公开端点只读那一份，`?since=` 的切片在读取这一侧做。令牌只在采集 Worker 上。
  *
  * 信封是 origin + 日序列，和年度 token 同一形状。逐日的 date / weekday / label
  * 浏览器现算；GitHub 的四分位不能在这边重算，所以 scores 跟着走。
  */
-const CHART_CACHE_KEY = "github-chart:v2";
-const CHART_TTL_MS = 10 * 60_000;
-
 const CALENDAR_QUERY = `query ($login: String!) {
   user(login: $login) {
     contributionsCollection {
@@ -68,8 +60,6 @@ type CalendarPayload = {
   errors?: Array<{ message?: string }>;
 };
 
-const EMPTY_CHART: GithubChartPayload = { origin: "", counts: [], scores: [] };
-
 function scoreOf(level: string | undefined): GithubChartPayload["scores"][number] | null {
   if (!level || !(level in LEVEL_SCORE)) return null;
   return LEVEL_SCORE[level as ContributionLevel];
@@ -95,20 +85,9 @@ function mapDays(payload: CalendarPayload): GithubChartPayload | null {
   return origin && counts.length ? { origin, counts, scores } : null;
 }
 
-/**
- * 用 GraphQL 拉过去一年的贡献日历。
- *
- * token 见 GITHUB_TOKEN。Fine-grained 个人令牌看不见组织仓，classic 才能和
- * 资料页对上。没配则返回空序列，联系卡片不画这栏；GitHub 挂了要抛出去，
- * 交给 statusEnvelope 变成 ok:false，轮询那轮才不会把上一张好图盖掉。
- *
- * 没配令牌时连缓存都不进：空序列是个常量，为它去问一次 SQLite 是白问的。
- */
-export async function getGithubChart(): Promise<GithubChartPayload> {
-  const token = process.env.GITHUB_TOKEN?.trim();
-  if (!token) return EMPTY_CHART;
-
-  return cached(CHART_CACHE_KEY, CHART_TTL_MS, () => fetchGithubChart(token));
+/** 公开端点：可滞后层里的整年日历；还没写过就是等采集 */
+export function getGithubChart(): Promise<LagResult<GithubChartPayload>> {
+  return loadLag<GithubChartPayload>(LAG_KEYS.githubChart, "Waiting for the first contribution calendar");
 }
 
 export function sliceGithubChart(
@@ -132,6 +111,12 @@ export function sliceGithubChart(
   };
 }
 
+/**
+ * 用 GraphQL 拉过去一年的贡献日历（采集 Worker 调）。
+ *
+ * Fine-grained 个人令牌看不见组织仓，classic 才能和资料页对上。GitHub 挂了就抛，
+ * 采集那一轮不写，可滞后层里上一张好图原样留着。
+ */
 export async function fetchGithubChart(token: string): Promise<GithubChartPayload> {
   const response = await fetch(GITHUB_GRAPHQL, {
     method: "POST",

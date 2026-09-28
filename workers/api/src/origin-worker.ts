@@ -12,12 +12,10 @@ import { writeAppleMusicCredentials } from "@shared/credentials";
 import type { StoredEntry } from "@shared/sqlite-store";
 
 
-import { expireStatusTags, publish, ROOM_ID } from "./live-platform";
+import { expireStatusTags, ROOM_ID } from "./live-platform";
 import { ConfigError, issueMusicKitToken } from "./musickit-token";
 import { getAllowedOrigins, getCorsHeaders, isAllowedOrigin, isAllowedOriginValue } from "./origins";
-import { refreshAgentStatus } from "@/lib/agent-status";
 import type { LiveEvent } from "@/lib/live-events";
-import { refreshPageSpeed } from "@/lib/pagespeed";
 import { fetchPreviewUpstream, isPreviewProxyPath, previewWorkerEnabled } from "./preview";
 import { isPublicApiPath, pathForEventType } from "./public-api";
 import { executePublicRequest } from "./public-execution";
@@ -131,7 +129,7 @@ async function handleIngest(
 
 /**
  * 解析、落库、广播与首屏通知。HTTP 上报和同账号 Worker 的 Service Binding 调用
- * （见 PlaystationIngest）共用这一段；鉴权由各自的入口做完再进来。
+ * （见 state-core.ts 的 StateCore.ingest）共用这一段；鉴权由各自的入口做完再进来。
  */
 export async function commitIngest(env: Env, ctx: ExecutionContext, source: string, raw: string): Promise<Response> {
   if (!env.STATE) {
@@ -363,9 +361,9 @@ export class LivePushRoom extends DurableObject<Env> {
       // 不是 JSON 的照样转，页面那头自己会忽略
     }
     const path = typeof message?.type === "string" ? pathForEventType(message.type) : null;
-    if (path && this.env.READ_MODEL_RENDERER) {
+    if (path && this.env.DEV_OVERRIDE_READER) {
       try {
-        const response = await this.env.READ_MODEL_RENDERER.devOverride(path);
+        const response = await this.env.DEV_OVERRIDE_READER.devOverride(path);
         if (response.ok) {
           const override = (await response.json()) as { ok?: unknown; data?: unknown };
           if (override.ok === true) {
@@ -446,28 +444,7 @@ export class LivePushRoom extends DurableObject<Env> {
   }
 }
 
-/**
- * 厂商状态变了才推，没变就什么都不做。首屏不失效：九家固定排成三列，灯色和
- * 「cached」标签只是内容，交给定时重建（见 lib/home-layout）。
- */
-async function publishAgentStatus(): Promise<void> {
-  const changed = await refreshAgentStatus();
-  if (!changed) return;
-  await publish({ type: "agent-status", payload: changed });
-}
-
 const worker = {
-  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
-    await withRequestState(() => requestStore.run({ env, ctx }, async () => {
-      // 最近在听已由采集 Worker 每两分钟拉取、经 StateCore.commitRecentlyPlayed 交回来。
-      // PageSpeed 自己按小时抢闸门，一轮实测要二十多秒；厂商状态通常一两秒，两件事并行。
-      // 状态只有结果变了才推，开着的页面不用等下一分钟的轮询。
-      await Promise.all([
-        refreshPageSpeed(),
-        publishAgentStatus(),
-      ]);
-    }));
-  },
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
 

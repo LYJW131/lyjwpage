@@ -93,10 +93,13 @@ function recordingMonitor() {
 test("a job failure becomes an error outcome and an error check-in instead of rejecting", async (t) => {
   const logged = t.mock.method(console, "error", () => {});
   const { monitor, checkins } = recordingMonitor();
-  const result = await runJob(fakeJob(async () => { throw new Error("upstream 503"); }), env, { monitor });
+  const reported: [string, string][] = [];
+  const report = (job: string, error: Error) => { reported.push([job, error.message]); };
+  const result = await runJob(fakeJob(async () => { throw new Error("upstream 503"); }), env, { monitor, report });
   assert.equal(result.status, "error");
   assert.equal(result.detail, "upstream 503");
   assert.equal(logged.mock.callCount(), 1);
+  assert.deepEqual(reported, [["github-chart", "upstream 503"]], "真失败开 issue");
   assert.deepEqual(checkins, [{ slug: "collector-github-chart", status: "error", schedule: "1-59/10 * * * *" }]);
 });
 
@@ -105,8 +108,10 @@ test("a known upstream outage is still an error check-in but is logged at warn",
   const warnings = t.mock.method(console, "warn", () => {});
   const { monitor, checkins } = recordingMonitor();
   const outage = Object.assign(new Error("PSN 上游不可用（presence）"), { outage: true });
-  const result = await runJob(fakeJob(async () => { throw outage; }), env, { monitor });
+  const reported: string[] = [];
+  const result = await runJob(fakeJob(async () => { throw outage; }), env, { monitor, report: (job) => { reported.push(job); } });
   assert.equal(result.status, "error");
+  assert.deepEqual(reported, [], "已知外部故障不开 issue");
   assert.equal(errors.mock.callCount(), 0);
   assert.equal(warnings.mock.callCount(), 1);
   assert.deepEqual(checkins.map((row) => row.status), ["error"]);
@@ -115,7 +120,9 @@ test("a known upstream outage is still an error check-in but is logged at warn",
 test("a skip that asks the monitor to fail stays a skip in the outcome but checks in as error", async () => {
   const failing = fakeJob(async () => ({ status: "skipped", detail: "backoff", failing: "PSN 已连续 3 轮失败" }));
   const { monitor, checkins } = recordingMonitor();
-  const outcome = await runJob(failing, env, { monitor });
+  const reported: string[] = [];
+  const outcome = await runJob(failing, env, { monitor, report: (_, error) => { reported.push(error.message); } });
+  assert.deepEqual(reported, ["PSN 已连续 3 轮失败"], "连着失败好几轮才开 issue");
   assert.deepEqual({ ...outcome, ms: 0 }, { job: "github-chart", status: "skipped", detail: "PSN 已连续 3 轮失败", ms: 0 });
   assert.deepEqual(checkins.map((row) => row.status), ["error"]);
   // 手动触发不报到，也就不必把跳过翻成失败

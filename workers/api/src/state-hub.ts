@@ -5,13 +5,11 @@ import { SqliteStore, type StoredEntry } from "@shared/sqlite-store";
 import type { StorageCommand, StorageResult } from "@shared/storage-contract";
 import { commitPreparedIngest, type PreparedIngest } from "./ingest-handlers";
 import { collectIngestEffects, type IngestEffect } from "./ingest-effects";
-import { historyArchiveEnabled, pulseScoringEnabled, readModelEnabled, requestStore, type Env } from "./runtime";
+import { historyArchiveEnabled, pulseScoringEnabled, requestStore, type Env } from "./runtime";
 import { PulseArchiveState, type PulseArchiveSnapshot } from "./pulse-archive";
 import { PulseScoreState, type PulseScoreClaim } from "./pulse-score-state";
 import type { PulseAssessment } from "@shared/pulse-assessment";
 import type { PulseDomain } from "@/lib/types";
-import { READ_MODEL_PATHS, readModelPathsForSource } from "./read-model";
-import { ReadModelPublisher } from "./read-model-publisher";
 import { DEV_OVERRIDE_TTL_MS, overrideIndexStorageKey, overrideStorageKey } from "./dev-overrides";
 
 type CommitIngestWire =
@@ -19,11 +17,10 @@ type CommitIngestWire =
   | { ready: true; ok: true; json: string; error: null; effects: IngestEffect[] }
   | { ready: true; ok: false; json: "null"; error: string; effects: IngestEffect[] };
 
-/** Authoritative state and existing ingest coordination; public KV is a projection. */
+/** Authoritative realtime state and ingest coordination. The lag layer lives in KV (shared/lag.ts), not here. */
 export class StateHub extends DurableObject<Env> {
   private database: SqliteStore;
   private ingestTail: Promise<unknown> = Promise.resolve();
-  private readModels: ReadModelPublisher | null;
   private pulseArchiveState: PulseArchiveState;
   private pulseScoreState: PulseScoreState;
   constructor(ctx: DurableObjectState, env: Env) {
@@ -31,15 +28,8 @@ export class StateHub extends DurableObject<Env> {
     this.database = new SqliteStore(ctx.storage.sql, (work) => ctx.storage.transactionSync(work));
     ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
     ctx.storage.sql.exec("DROP TABLE IF EXISTS esa_purge");
-    this.readModels = readModelEnabled(env) && env.READ_MODEL ? new ReadModelPublisher({
-      sql: ctx.storage.sql,
-      kv: env.READ_MODEL,
-      prefix: env.STORAGE_PREFIX ?? "lyjwpage",
-      render: (path) => {
-        if (!this.env.READ_MODEL_RENDERER) throw new Error("READ_MODEL_RENDERER is not configured");
-        return this.env.READ_MODEL_RENDERER.render(path);
-      },
-    }) : null;
+    // 公开读取的 KV 投影已删，它的发布队列表跟着清掉
+    ctx.storage.sql.exec("DROP TABLE IF EXISTS public_read_model_jobs");
     this.pulseArchiveState = new PulseArchiveState({
       sql: ctx.storage.sql,
       execute: (commands) => this.database.execute(commands),
@@ -55,7 +45,6 @@ export class StateHub extends DurableObject<Env> {
   }
   async finishImport(): Promise<void> {
     this.ctx.storage.sql.exec("INSERT INTO metadata(key, value) VALUES ('initialized', '1') ON CONFLICT(key) DO UPDATE SET value = '1'");
-    await this.queueReadModels();
   }
 
   async publicBarrier(): Promise<boolean> {
@@ -101,7 +90,6 @@ export class StateHub extends DurableObject<Env> {
 
   commitIngest(command: PreparedIngest): Promise<CommitIngestWire> {
     if (!this.ready()) return Promise.resolve({ ready: false, ok: false, json: "null", error: null, effects: [] });
-    const source = command.source;
     const result = this.ingestTail.then(() => withRequestState(() => requestStore.run({
       env: this.env,
       ctx: this.ctx,
@@ -114,20 +102,11 @@ export class StateHub extends DurableObject<Env> {
           : { ready: true, ok: false, json: "null", error: collected.error, effects: collected.effects };
         return wire;
       } finally {
-        // A handler can commit liveness before rejecting a later module. Rebuild
-        // from authority even then; never put KV or render public APIs in this queue.
-        this.readModels?.enqueue(readModelPathsForSource(source));
         await this.ensureAlarm();
       }
     })));
     this.ingestTail = result.catch(() => {});
     return result;
-  }
-
-  async queueReadModels(paths: string[] = [...READ_MODEL_PATHS]): Promise<void> {
-    if (!this.readModels || !this.ready()) return;
-    this.readModels.enqueue(paths);
-    await this.ensureAlarm();
   }
 
   async readPulseArchive(): Promise<PulseArchiveSnapshot> {
@@ -171,17 +150,12 @@ export class StateHub extends DurableObject<Env> {
       if (current === null || current > at) await txn.setAlarm(at);
     });
   }
+  /** 闹钟只用来清过期键：每小时一次，一轮删满 1000 条说明还有，一秒后接着删 */
   private ensureAlarm(): Promise<void> {
-    return this.scheduleAlarm(Math.max(Date.now() + 1, Math.min(
-      Date.now() + 60 * 60_000, this.readModels?.nextAlarm() ?? Infinity,
-    )));
+    return this.scheduleAlarm(Date.now() + 60 * 60_000);
   }
   async alarm(): Promise<void> {
     const removed = this.database.purgeExpired();
-    await this.readModels?.flush();
-    await this.scheduleAlarm(Math.max(Date.now() + 1, Math.min(
-      Date.now() + (removed === 1000 ? 1000 : 60 * 60_000),
-      this.readModels?.nextAlarm() ?? Infinity,
-    )));
+    await this.scheduleAlarm(Date.now() + (removed === 1000 ? 1000 : 60 * 60_000));
   }
 }

@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/cloudflare";
 import { consoleLoggingIntegration, type CloudflareOptions } from "@sentry/cloudflare";
 
 import type { Env } from "./env";
@@ -18,4 +19,26 @@ export function sentryOptions(env: Env): CloudflareOptions {
     integrations: [consoleLoggingIntegration({ levels: ["warn", "error"] })],
     sendDefaultPii: false,
   };
+}
+
+/** 同一个任务在一个 isolate 里多久最多开一次 issue：分钟级任务连着失败时不刷屏 */
+const REPORT_EVERY_MS = 15 * 60_000;
+const reportedAt = new Map<string, number>();
+
+/**
+ * 任务真失败时开 Sentry issue，按任务分组（fingerprint `collector-job` + 任务名）。
+ *
+ * 每个任务本来有一条 cron 监控（`collector-<任务>`），但组织的监控名额只有一个，已经给了
+ * `api-minute-cron`，多出来的监控建出来就是停用状态。issue 不占名额：失败照样看得见、能配告警。
+ * 监控那边的报到照常发，名额加上之后在 Sentry 里启用即可，不用改代码。
+ */
+export function reportJobFailure(job: string, error: Error): void {
+  const now = Date.now();
+  if (now - (reportedAt.get(job) ?? 0) < REPORT_EVERY_MS) return;
+  reportedAt.set(job, now);
+  Sentry.withScope((scope) => {
+    scope.setTag("collector.job", job);
+    scope.setFingerprint(["collector-job", job]);
+    Sentry.captureException(error);
+  });
 }

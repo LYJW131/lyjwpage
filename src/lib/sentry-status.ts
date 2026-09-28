@@ -1,4 +1,5 @@
-import { cached, get, put } from "@/lib/cache";
+import { SENTRY_STALE_MS } from "@/lib/freshness";
+import { loadLag, type LagResult } from "@/lib/lag-result";
 import {
   SENTRY_API_ORIGIN,
   SENTRY_COLLECTOR_PROJECT_ID,
@@ -9,20 +10,19 @@ import {
   SENTRY_WORKER_PROJECT_ID,
 } from "@/lib/sentry";
 import type { HealthSeries, SentryBlock, SentryErrorSeries, SentryStatusPayload, SentryUptime, SentryVitals, UptimeDay } from "@/lib/sentry-status-types";
+import { LAG_KEYS } from "@shared/lag";
 
 /**
- * 站点卡片（LYJWPAGE）里在线率、api Worker 心跳、错误数和真实用户指标的数据：只在 API Worker 里跑，用 `SENTRY_API_TOKEN`（组织只读令牌，
- * org:read / project:read / event:read）调 Sentry API。
+ * 站点卡片（LYJWPAGE）里在线率、api Worker 心跳、错误数和真实用户指标的数据。取数在
+ * 采集 Worker（`sentry-status`，每 5 分钟），用 `SENTRY_API_TOKEN`（组织只读令牌，
+ * org:read / project:read / event:read）调 Sentry API，写进可滞后层；公开端点只读那一份。
  *
- * 一轮十来个请求，分块各自降级：某一块失败只让那一块为 null，不拖垮整张卡。
- * 结果缓存 5 分钟，另留一份 last-good 撑过 Sentry 短暂不可用。这条视图是慢端点
- * （进 KV 投影），分钟 cron 顺带重渲染，访客的请求不直接打 Sentry。
+ * 一轮十来个请求，分块各自降级：某一块失败沿用上一份的那一块（最多 30 分钟，见
+ * mergeSentryStatus），不拖垮整张卡。访客的请求不直接打 Sentry。
  *
  * 心跳、错误、Vitals 都只算 production 环境：本地与分支预览的测试数据不进卡片。
  */
 
-const CACHE_TTL_MS = 5 * 60_000;
-const LAST_GOOD_TTL_MS = 24 * 60 * 60_000;
 const DAY_MS = 24 * 60 * 60_000;
 const UPTIME_DAYS = 30;
 
@@ -233,8 +233,8 @@ export async function fetchSentryStatus(api: SentryGet, now = Date.now()): Promi
   };
 }
 
-/** 块级沿用最多撑这么久，和卡片判 Sentry 那一格过期的阈值一致；再旧就当这一块没有 */
-export const SENTRY_BLOCK_CARRY_MS = 30 * 60_000;
+/** 块级沿用最多撑这么久，和卡片判 Sentry 那一格过期的阈值是同一个；再旧就当这一块没有 */
+export const SENTRY_BLOCK_CARRY_MS = SENTRY_STALE_MS;
 
 /**
  * 这一轮没取到的块沿用上一份（带着上一份自己的数和取到时刻），取到的用新的。
@@ -263,21 +263,7 @@ export function mergeSentryStatus(next: SentryStatusPayload, previous: SentrySta
   };
 }
 
-export async function getSentryStatus(): Promise<SentryStatusPayload> {
-  const token = process.env.SENTRY_API_TOKEN?.trim();
-  if (!token) throw new Error("Sentry 读取未配置");
-  // v7：加回 api Worker 的 cron 心跳，和站点探测各一条（v6 带上探测器状态，v5 加回在线率）
-  const key = `sentry-status:v7:${SENTRY_ORG}`;
-  return cached<SentryStatusPayload>(key, CACHE_TTL_MS, async () => {
-    try {
-      const data = await fetchSentryStatus(sentryClient(token));
-      await put(`${key}:last-good`, data, LAST_GOOD_TTL_MS);
-      return data;
-    } catch (error) {
-      console.warn("[sentry-status]", error instanceof Error ? error.message : String(error));
-      const previous = await get<SentryStatusPayload>(`${key}:last-good`);
-      if (previous) return previous;
-      throw new Error("Sentry 状态暂不可用");
-    }
-  });
+/** 公开端点：可滞后层里采集 Worker 写的那份；还没写过就是等采集 */
+export function getSentryStatus(): Promise<LagResult<SentryStatusPayload>> {
+  return loadLag<SentryStatusPayload>(LAG_KEYS.sentry, "Waiting for the first Sentry check");
 }

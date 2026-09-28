@@ -138,7 +138,7 @@ The system has three parts: **collectors adapt to each source, Cloudflare manage
 
 **Collectors** run where the data is produced. The Mac collects local apps, music, BLE devices and coding usage; the iPhone reads activity; the NAS relays Emby playback; Linux reporters provide server metrics and agent limits. Home Assistant brings in HomePod and other home devices, and a separate Worker syncs PlayStation data on a schedule.
 
-**The state hub** is Cloudflare Workers: it receives reports, merges data from external services, and serves the public status API and live push. Durable Objects SQLite holds snapshots and history and is the single source of truth. Public read models for a few slow endpoints are published to KV; reads try KV first and fall back to the DO when an entry is missing or too old. R2 stores images such as posters, D1 archives Pulse's per-minute history, and a separate Worker keeps the online visitor count.
+**The state hub** is Cloudflare Workers: it receives reports, merges data from external services, and serves the public status API and live push. Durable Objects SQLite holds the realtime layer's snapshots and history and is the single source of truth. Display-only data that may lag a few minutes (external service stats, the exit node, plan limits and so on) is written straight into a KV lag layer by its producers; every entry carries its update time, and the browser decides against each card's threshold whether it is stale. R2 stores images such as posters, D1 archives Pulse's per-minute history, and a separate Worker keeps the online visitor count.
 
 **The frontend** runs on Vercel. Next.js reads the Worker's aggregated snapshot when building the homepage; once mounted, the browser connects straight to the Worker for the latest state, and Vercel no longer relays status requests. The mainland China entry point accelerates pages and static assets through Alibaba Cloud ESA.
 
@@ -222,6 +222,6 @@ The following documents are in Chinese.
 
 [Telemetry and live state subsystems](./docs/telemetry-subsystems.md) covers how each data source is connected, its protocol and its implementation.
 
-[Worker data backend and first-paint cache](./docs/state-storage.md) explains how state persistence, public data boundaries, cache invalidation and page updates relate; publishing and fallback rules for KV read models are in [KV public read models](./docs/kv-read-model.md).
+[Worker data backend and first-paint cache](./docs/state-storage.md) explains how state persistence, the realtime and lag layers, public data boundaries, cache invalidation and page updates relate.
 
 The iPhone collector [iPhone Telemetry Hub](./reporters/iphone-telemetry-hub/README.md) (native SwiftUI on iOS 27) reports activity rings and the 10 most recent workouts; for the protocol and rollout order, see its README and the [API Worker](./workers/api/README.md#最近训练) docs.

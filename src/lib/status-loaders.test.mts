@@ -7,8 +7,6 @@ import {
   STATUS_VIEW_KEYS,
   layerOfPath,
   pathByEvent,
-  readModelPolicyOf,
-  READ_MODEL_PATHS,
   type StatusView,
 } from "./status-views.ts";
 
@@ -28,22 +26,4 @@ test("可滞后层不推送，推送事件只落在实时层的端点上", () =>
   }
   assert.equal(STATUS_VIEWS.agentStatus.layer, "lag");
   assert.equal(layerOfPath("/api/lyrics"), "realtime");
-});
-
-test("readModel 只出现在可滞后层", () => {
-  for (const key of STATUS_VIEW_KEYS) {
-    const view: StatusView = STATUS_VIEWS[key];
-    if (view.readModel) {
-      assert.equal(view.layer, "lag", key);
-      assert.equal(readModelPolicyOf(view.path), "slow", key);
-    }
-  }
-  assert.deepEqual([...READ_MODEL_PATHS].sort(), [
-    "/api/status/github-chart",
-    "/api/status/github-repo",
-    "/api/status/reporters",
-    "/api/status/sentry",
-    "/api/status/vercel-deployments",
-    "/api/status/vibecoding/year",
-  ]);
 });

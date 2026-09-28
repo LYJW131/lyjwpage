@@ -92,6 +92,33 @@ export function playstationStaleMs() {
 export const SERVER_STALE_MS = 10 * 60_000;
 
 /**
+ * 采集 Worker 写的可滞后层各块的过期阈值（节奏见 workers/collector/README.md 的任务表）。
+ *
+ * 每块带着自己的采集时刻（`fetchedAt` 或信封的 `updatedAt`），浏览器拿它和这里比，
+ * 过了就不再拿旧数冒充此刻：卡片那一格回到「—」或 Unavailable。阈值取几轮采集的余量，
+ * 漏一两轮、KV 跨机房一分钟左右的可见延迟都不翻脸；采集 Worker 停了、令牌失效时
+ * 一两个阈值之内卡片就说实话。采集降频时**先放宽这里、站点部署完，再改采集节奏**。
+ */
+/** 厂商状态页，每分钟一轮 */
+export const AGENT_STATUS_STALE_MS = 10 * 60_000;
+/** GitHub 贡献日历，每 10 分钟一轮；日历按天变，放得最宽 */
+export const GITHUB_CHART_STALE_MS = 6 * 3_600_000;
+/** 本仓库统计，每 30 分钟一轮（push 后 GitHub 现算统计时会连着几轮 202） */
+export const GITHUB_REPO_STALE_MS = 3 * 3_600_000;
+/** Vercel 生产版本与最近部署，每分钟一轮 */
+export const VERCEL_DEPLOYMENTS_STALE_MS = 10 * 60_000;
+/** Vercel 函数与访问统计，每 15 分钟一轮，两组各带采集时刻 */
+export const VERCEL_METRICS_STALE_MS = 3_600_000;
+/** PageSpeed 实验室分，每小时一轮；按最近一轮实测的时刻算 */
+export const PAGESPEED_STALE_MS = 3 * 3_600_000;
+/** 各 Worker 部署的版本与提交，每 2 分钟一轮 */
+export const CLOUDFLARE_DEPLOYMENTS_STALE_MS = 15 * 60_000;
+/** 各 Worker 12 小时调用统计，每 15 分钟一轮 */
+export const CLOUDFLARE_METRICS_STALE_MS = 3_600_000;
+/** Sentry 在线探测、心跳、错误数、真实访客指标，每 5 分钟一轮；各块按自己取到的时刻算 */
+export const SENTRY_STALE_MS = 30 * 60_000;
+
+/**
  * `at` 这一刻，UTC 偏移为 `secondsFromGMT` 的地方是哪一天（YYYY-MM-DD）。
  *
  * 摆在这个文件里是因为它前后端各算一遍：服务端在取数出口盖 `currentAtSource`

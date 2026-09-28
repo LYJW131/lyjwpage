@@ -25,9 +25,6 @@
  */
 export type StatusLayer = "realtime" | "lag";
 
-/** KV 公开读取投影策略，随可滞后层直写 KV 删除 */
-export type ReadModelPolicy = "slow";
-
 export type StatusView = {
   path: `/api/status/${string}`;
   layer: StatusLayer;
@@ -38,8 +35,6 @@ export type StatusView = {
    * 只有实时层能推：可滞后层的写入方不推送，模块加载时断言。
    */
   event?: string;
-  /** KV 公开读取投影。只有没有推送、没有「此刻」语义的慢端点才配（随可滞后层直写 KV 删除）。 */
-  readModel?: ReadModelPolicy;
 };
 
 export const STATUS_VIEWS = {
@@ -59,7 +54,7 @@ export const STATUS_VIEWS = {
   limits: { path: "/api/status/limits", layer: "lag", tag: "limits" },
   /** 厂商状态页。采集 Worker 每分钟拉官方 JSON / RSS 写 KV，不推送 */
   agentStatus: { path: "/api/status/agent-status", layer: "lag", tag: "agent-status" },
-  vibeCodingYear: { path: "/api/status/vibecoding/year", layer: "lag", tag: "vibecoding-year", readModel: "slow" },
+  vibeCodingYear: { path: "/api/status/vibecoding/year", layer: "lag", tag: "vibecoding-year" },
   watching: { path: "/api/status/watching", layer: "realtime", tag: "watching", event: "watching" },
   nowWatching: { path: "/api/status/watching/now", layer: "realtime", tag: "watching-now", event: "watching-now" },
   playing: { path: "/api/status/playing", layer: "realtime", tag: "playing", event: "playing" },
@@ -69,15 +64,15 @@ export const STATUS_VIEWS = {
    * 带 `?titleids=` 才是那几款的完整目录（TrophiesPayload），展开瓷砖时取。
    */
   trophies: { path: "/api/status/trophies", layer: "realtime", tag: "trophies", event: "trophies" },
-  githubChart: { path: "/api/status/github-chart", layer: "lag", readModel: "slow" },
-  githubRepo: { path: "/api/status/github-repo", layer: "lag", readModel: "slow" },
+  githubChart: { path: "/api/status/github-chart", layer: "lag" },
+  githubRepo: { path: "/api/status/github-repo", layer: "lag" },
   /** 各 Worker 当前部署的版本与构建提交、12 小时调用统计 */
   cloudflareWorkers: { path: "/api/status/cloudflare-workers", layer: "lag" },
-  vercelDeployments: { path: "/api/status/vercel-deployments", layer: "lag", readModel: "slow" },
+  vercelDeployments: { path: "/api/status/vercel-deployments", layer: "lag" },
   /** 在线状态、错误量与真实访客指标，来自 Sentry */
-  sentry: { path: "/api/status/sentry", layer: "lag", readModel: "slow" },
+  sentry: { path: "/api/status/sentry", layer: "lag" },
   /** 常驻上报器报来的账本：12 小时推成功几封、跑的哪个提交 */
-  reporters: { path: "/api/status/reporters", layer: "lag", readModel: "slow" },
+  reporters: { path: "/api/status/reporters", layer: "lag" },
   /** 最近 24 小时的事实时间线；由状态核心从实时层算出，不推送、按分钟轮询 */
   pulse: { path: "/api/status/pulse", layer: "realtime" },
 } as const satisfies Record<string, StatusView>;
@@ -123,18 +118,7 @@ export const STATUS_TAGS: readonly string[] = Object.freeze(
   entries().flatMap(([, view]) => (view.tag ? [view.tag] : [])),
 );
 
-/** 进 KV 投影的端点路径 */
-export const READ_MODEL_PATHS: readonly string[] = Object.freeze(
-  entries().flatMap(([, view]) => (view.readModel && view.path ? [view.path] : [])),
-);
-
-export function readModelPolicyOf(path: string): ReadModelPolicy | undefined {
-  const key = viewKeyByPath(path);
-  return key ? (STATUS_VIEWS[key] as StatusView).readModel : undefined;
-}
-
 // 可滞后层不推送：写入方直接写 KV，推来的新值会和几分钟旧的 KV 读数来回打架。
 for (const [key, view] of entries()) {
   if (view.layer === "lag" && view.event) throw new Error(`status view "${key}" is lag-layer but has a push event`);
-  if (view.readModel && view.layer !== "lag") throw new Error(`status view "${key}" has a read model but is realtime`);
 }

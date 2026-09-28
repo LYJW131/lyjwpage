@@ -810,26 +810,8 @@ export async function collectAgentStatus(
   };
 }
 
-/** 推送只在灯、事件或失败标记变了才发。检查时刻每分钟都变，不拿它做比较。 */
+/** 灯、事件或失败标记变了才算变了（采集 Worker 据此失效首屏）。检查时刻每分钟都变，不拿它做比较。 */
 export function agentStatusFingerprint(payload: AgentStatusPayload | null): string {
   if (!payload) return "";
   return JSON.stringify(payload.agents);
-}
-
-export function emptyAgentStatus(now = Date.now()): AgentStatusPayload {
-  const failure = "Status check failed.";
-  return {
-    fetchedAt: now,
-    agents: [
-      carried(null, "claude", failure),
-      carried(null, "codex", failure),
-      carried(null, "cursor", failure),
-      carried(null, "grok", failure),
-      carried(null, "typesafe", failure),
-      carried(null, "apple", failure),
-      carried(null, "vercel", failure),
-      carried(null, "github", failure),
-      carried(null, "cloudflare", failure),
-    ],
-  };
 }

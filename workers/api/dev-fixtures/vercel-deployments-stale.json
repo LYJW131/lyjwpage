@@ -1,0 +1,122 @@
+{
+  "ok": true,
+  "updatedAt": "$now-900000",
+  "data": {
+    "fetchedAt": "$now-900000",
+    "production": {
+      "id": "dpl_9ZNbHsmMYCwfj3cuEbzceJQntU5R",
+      "state": "READY",
+      "createdAt": 1790605466707,
+      "buildDurationMs": 69834,
+      "target": "production",
+      "commit": {
+        "sha": "8c291fcd773aa1e5084c8e4446421a4ee998ec11",
+        "branch": "main",
+        "message": "refactor(api): 最近在听只收采集 Worker 交回的列表，撤掉临时令牌交接入口"
+      }
+    },
+    "recent": [
+      {
+        "id": "dpl_9ZNbHsmMYCwfj3cuEbzceJQntU5R",
+        "state": "READY",
+        "createdAt": 1790605466707,
+        "buildDurationMs": 69834,
+        "target": "production",
+        "commit": {
+          "sha": "8c291fcd773aa1e5084c8e4446421a4ee998ec11",
+          "branch": "main",
+          "message": "refactor(api): 最近在听只收采集 Worker 交回的列表，撤掉临时令牌交接入口"
+        }
+      },
+      {
+        "id": "dpl_8esHNBEifNLbzKjwoXL9rreaUcfx",
+        "state": "READY",
+        "createdAt": 1790604751301,
+        "buildDurationMs": 57397,
+        "target": "production",
+        "commit": {
+          "sha": "b9c074b292cfca158e2640bb3ce61c7169e333f5",
+          "branch": "main",
+          "message": "chore(api): 临时开放令牌交接入口，给采集 Worker 迁移只读令牌"
+        }
+      },
+      {
+        "id": "dpl_AVDRdRpDeXw7wGjyEnojGjFNMKjb",
+        "state": "READY",
+        "createdAt": 1790603786235,
+        "buildDurationMs": 62298,
+        "target": "production",
+        "commit": {
+          "sha": "b40d6e781f76b84bac71fdd92f6bf6178c5145bd",
+          "branch": "main",
+          "message": "feat(lag): 落地节点、限额、上报器账本、时区改由上报入口直写 KV"
+        }
+      },
+      {
+        "id": "dpl_8bFQjyQvmfTJfbvKdCkMcy7RMCCk",
+        "state": "READY",
+        "createdAt": 1790601950323,
+        "buildDurationMs": 60015,
+        "target": "production",
+        "commit": {
+          "sha": "897745729181838217350b69a61d902840ffa7e8",
+          "branch": "main",
+          "message": "refactor(site): 删除 /api/home，首屏改为按卡读取"
+        }
+      },
+      {
+        "id": "dpl_GwTsSf1fapdErnKLFMv2vraKNn55",
+        "state": "READY",
+        "createdAt": 1790600336662,
+        "buildDurationMs": 58260,
+        "target": "production",
+        "commit": {
+          "sha": "e205c9c50d57436edd72b4fa5f2ad765e9e21fd3",
+          "branch": "main",
+          "message": "feat(api): Apple Music 凭据移到独立的凭据 KV，登记可滞后层键表"
+        }
+      }
+    ],
+    "metrics": {
+      "functions": {
+        "invocations": 147,
+        "errors": 0,
+        "timeouts": 0,
+        "cpuP75Ms": 1160,
+        "memoryAvgMb": 292.68027210884355,
+        "fetchedAt": "$now-4000000",
+        "start": 1790567100000,
+        "end": 1790610300000
+      },
+      "analytics": {
+        "start": 1789948800000,
+        "end": 1790553600000,
+        "pageviews": 331,
+        "visitors": 92,
+        "fetchedAt": "$now-600000"
+      }
+    },
+    "pagespeed": {
+      "fetchedAt": "$now-12000000",
+      "url": "https://lyjw.me",
+      "samples": 6,
+      "start": "$now-30000000",
+      "desktop": {
+        "score": 84,
+        "lcpMs": 666,
+        "tbtMs": 241,
+        "cls": 0.004,
+        "fcpMs": 351,
+        "ttfbMs": 448
+      },
+      "mobile": {
+        "score": 76,
+        "lcpMs": 3489,
+        "tbtMs": 405,
+        "cls": 0,
+        "fcpMs": 1351,
+        "ttfbMs": 412
+      }
+    }
+  }
+}

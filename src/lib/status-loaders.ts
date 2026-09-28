@@ -80,7 +80,7 @@ export const statusLoaders = {
   },
   githubChart: {
     endpoint: async ({ sinceDate }: StatusLoaderParams) =>
-      sliceGithubChart(await getGithubChart(), sinceDate),
+      (await getGithubChart()).map((chart) => sliceGithubChart(chart, sinceDate)),
   },
   githubRepo: { endpoint: unparam(getGithubRepo) },
   cloudflareWorkers: { endpoint: unparam(getCloudflareWorkers) },
