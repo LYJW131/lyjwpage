@@ -4,7 +4,7 @@
 **一个入口、一个信封、一个模块字典**，只带这次真的变了的模块，POST 到
 `/api/ingest/iphone`。站点那侧怎么收、卡片怎么画，见仓库根目录 README。
 
-原生 SwiftUI App，最低 **iOS 27.0**，使用 Xcode 27 / iOS 27 SDK 编译；版本 2.0.3。
+原生 SwiftUI App，最低 **iOS 27.0**，使用 Xcode 27 / iOS 27 SDK 编译；版本 2.0.4。
 
 - **活动圆环**：三环（活动 / 锻炼 / 站立）加当天步数、距离、爬楼层数；同时读取最近 24 小时已经结束的 UTC 五分钟 HealthKit 统计桶，供 Pulse 回填真实时段。
 - **最近训练**：HealthKit 最近 10 次已完成训练，按结束时间倒序；包含类型、开始/结束时间、实际活动时长（扣除暂停）、距离和活动消耗。距离与消耗没有读数时省略，不补零。同时读取训练自带的平均/最高心率统计、室内外标记及爬升（如有）；不查询逐点心率样本、路线或位置。距离和消耗保留原始精度，展示时才格式化。
@@ -60,15 +60,11 @@
 第一次打开要做两件事：
 
 1. 允许读取健康数据 —— **活动与训练所需的读取权限全勾**。少勾哪项就少哪项，站点那边对应的格子直接不渲染。
-2. 右上角齿轮里点「登录 Cloudflare 获取上报凭据」：浏览器里用 Cloudflare Access 登录、
-   在确认页点 Allow，上报地址、Client ID、Client Secret 自动填好并当场存下，再按一次
-   「立刻上报」。流程是授权码 + PKCE，见仓库根目录 `docs/reporter-pairing.md`；重新登录
-   就是换钥，旧 Secret 当场作废。Secret 存钥匙串，
-   `kSecAttrAccessibleAfterFirstUnlock` —— 锁屏状态下被唤醒也要读得到它。
-
-   登录不了时（配对服务不可用、本机联调）手填作后备：上报地址
-   `https://ingest.homepage.lyjw.llc/api/ingest/iphone`，以及 Cloudflare Access 里
-   `lyjwpage-iphone` 那把 service token 的 Client ID 和 Client Secret，保存。
+2. 右上角齿轮里手填上报地址 `https://ingest.homepage.lyjw.llc/api/ingest/iphone`，以及
+   Cloudflare Access 里 `lyjwpage-iphone` 那把 service token 的 Client ID 和 Client Secret，
+   保存后按一次「立刻上报」。Secret 存钥匙串，`kSecAttrAccessibleAfterFirstUnlock` ——
+   锁屏状态下被唤醒也要读得到它。换钥就在 Zero Trust 控制台重新生成这把 token 的 Secret，
+   再贴进设置里保存。
 
 本机 Worker 没有 Access，只认 `scripts/dev-access.mjs` 签的 JWT，App 发不出这个头，
 所以本机联调上报链路用那个脚本配 curl；Info.plist 里的 `NSAllowsLocalNetworking` 留着给别的本机调试。**别填 `dev.lyjw.me`** —— 那份预览部署
