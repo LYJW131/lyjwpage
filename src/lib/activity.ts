@@ -1,11 +1,7 @@
-import { AwaitingReport } from "@/lib/awaiting-report";
 import { localDate } from "@/lib/freshness";
-import type { ActivityPayload } from "@/lib/types";
-import { type StoredActivity, mirror } from "@shared/activity";
-
-export function readActivityState(): Promise<StoredActivity | null> {
-  return mirror.get();
-}
+import { loadLag, type LagResult } from "@/lib/lag-result";
+import type { ActivityPayload, ActivityStatus } from "@/lib/types";
+import { LAG_KEYS } from "@shared/lag";
 
 /**
  * 在取数出口盖一次「手表那边现在还是不是这一天」。
@@ -26,15 +22,12 @@ export function withActivityFreshness(
   };
 }
 
-export async function getActivitySnapshot(): Promise<ActivityPayload> {
-  const stored = await readActivityState();
-  // 还没收到过任何上报。交给 statusEnvelope 变成降级信封，卡片自己不写提示
-  if (!stored) throw new AwaitingReport("尚未收到活动圆环上报");
-
-  return withActivityFreshness({
-    ...stored.activity,
-    pushedAt: stored.receivedAt,
-    currentAtSource: true,
-  });
+/**
+ * 圆环读数在可滞后层（KV `activity:v1`），由 iPhone 上报入口写。`pushedAt` 就是那条
+ * 记录的 `updatedAt`（最后一次带来圆环的那封上报的收到时刻），不另存一份。
+ */
+export async function getActivitySnapshot(): Promise<LagResult<ActivityPayload>> {
+  // 还没收到过任何上报：交给 statusEnvelope 变成降级信封，卡片自己不写提示
+  const stored = await loadLag<ActivityStatus>(LAG_KEYS.activity, "尚未收到活动圆环上报");
+  return stored.map((activity) => withActivityFreshness({ ...activity, pushedAt: stored.updatedAt, currentAtSource: true }));
 }
-export { type StoredActivity } from "@shared/activity";

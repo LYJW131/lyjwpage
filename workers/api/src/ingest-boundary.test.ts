@@ -7,7 +7,7 @@ import { readLiveness } from "@/lib/reporter-liveness";
 import { installStorageForTests, resetStorageForTests } from "@/lib/storage";
 import { FakeStorage } from "@/lib/testing/fake-storage";
 import { HIDDEN_DESKTOP_BUNDLE_ID } from "@/lib/types";
-import { getWorkoutsSnapshot } from "@/lib/workouts";
+import { pulseWorkoutsKey } from "@/lib/pulse-keys";
 import { withRequestState } from "@shared/request-state";
 import { K_LAST_PUSH } from "@shared/charger-store";
 import { claudeCloudUsageMirror } from "@shared/claude-cloud-usage";
@@ -171,7 +171,7 @@ test("a later Mac module failure does not notify an unpersisted telemetry patch"
   } finally { resetStorageForTests(); }
 });
 
-test("iPhone keeps workouts when the following activity module is invalid", async () => {
+test("iPhone keeps the Pulse workout copy when the following activity module is invalid", async () => {
   const storage = new FakeStorage();
   installStorageForTests(storage);
   try {
@@ -189,7 +189,8 @@ test("iPhone keeps workouts when the following activity module is invalid", asyn
     }, NOW));
     const result = await commit(testEnv(), command);
     assert.equal(result.ok, false);
-    assert.equal((await getWorkoutsSnapshot()).items[0]?.id, workout.id);
+    // 已经发车的写不丢；训练列表那份展示快照在可滞后层，状态核心这一半失败时上报入口不写它
+    assert.equal(JSON.parse((await storage.get(pulseWorkoutsKey()))!).items[0]?.activityType, workout.activityType);
   } finally { resetStorageForTests(); }
 });
 

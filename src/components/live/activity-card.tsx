@@ -4,7 +4,9 @@ import NumberFlow from "@number-flow/react";
 import type { ReactNode } from "react";
 
 import { Card } from "@/components/ui/card";
+import { useStale } from "@/hooks/use-stale";
 import { useStatus } from "@/hooks/use-status";
+import { ACTIVITY_STALE_MS } from "@/lib/freshness";
 import { ACTIVITY_PATH } from "@/lib/paths";
 import type { ActivityPayload, StatusResponse } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -330,9 +332,16 @@ export function ActivityCard({
   children?: ReactNode;
   className?: string;
 }) {
-  const { data } = useStatus<ActivityPayload>(ACTIVITY_PATH, REFRESH_MS, {
+  const { data: latest, updatedAt } = useStatus<ActivityPayload>(ACTIVITY_PATH, REFRESH_MS, {
     fallback,
   });
+  /**
+   * 可滞后层：上报入口每收到一份圆环就重写 `updatedAt`。超过一夜还没新的（阈值的理由
+   * 见 freshness 的 ACTIVITY_STALE_MS），手机那头就是没在报：读数整张回到「—」、卡头写
+   * Unavailable。和「一份都没收到」走同一套占位，版面一格不动。
+   */
+  const stale = useStale(updatedAt ?? latest?.pushedAt, ACTIVITY_STALE_MS);
+  const data = stale ? undefined : latest;
 
   /**
    * 这份圈说的还是不是「今天」。**只信源站在取数出口盖的那一个**
@@ -381,7 +390,7 @@ export function ActivityCard({
       （144px），内容区 min-h-44 = 176px。卡头 36px 算在这张卡自己和右边服务器
       卡上，不挤进内容区 —— 两张并排时卡头对卡头、内容对内容。
     */
-    <Card label="Activity" action="Apple Watch" className={cn("h-full", className)}>
+    <Card label="Activity" action={stale ? "Unavailable" : "Apple Watch"} className={cn("h-full", className)}>
       <div className="grid min-w-0 md:grid-cols-2">
       {/*
         环靠左、读数靠右，两边各留一个 padding —— 所以「环的左边到左沿」和「读数的

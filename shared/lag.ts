@@ -42,6 +42,10 @@ export const LAG_KEYS = {
   limits: "limits:v1",
   /** Mac 此刻所在时区（上报入口，mac 上报的 timezone 模块） */
   timezone: "timezone:v1",
+  /** Apple Watch 活动圆环的读数（上报入口，iphone 上报的 activity 模块带了当天圆环时） */
+  activity: "activity:v1",
+  /** 最近十次训练，整份替换（上报入口，iphone 上报的 workouts 模块） */
+  workouts: "workouts:v1",
   /** 常驻上报器的推送账本，一个上报器一条，互不覆盖（上报入口） */
   reporterServer: "reporter:server-reporter:v1",
   reporterAgents: "reporter:agents-reporter:v1",

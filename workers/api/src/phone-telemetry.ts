@@ -1,5 +1,4 @@
 import { normalizeWorkouts, writeWorkouts } from "@api/stores/workouts";
-import { STATUS_VIEWS } from "@/lib/status-views";
 import { object } from "@/lib/json";
 import { fanout } from "@api/fanout";
 import { normalizeActivity, writeActivity } from "@api/stores/activity";
@@ -84,7 +83,6 @@ export async function recordPhoneEnvelope(input: unknown, receivedAt = Date.now(
 export async function commitPreparedPhoneEnvelope(prepared: PreparedPhoneEnvelope) {
 
   const writes: Promise<unknown>[] = [];
-  const tags: string[] = [];
   /**
    * 收到了但不认识的模块名，原样回给上报器。
    *
@@ -106,7 +104,6 @@ export async function commitPreparedPhoneEnvelope(prepared: PreparedPhoneEnvelop
     if (prepared.failure?.stage === "beforeWorkouts") throw new Error(prepared.failure.message);
     if (prepared.workouts) {
       writes.push(writeWorkouts(prepared.workouts));
-      tags.push(STATUS_VIEWS.workouts.tag);
       accepted += 1;
     }
     if (prepared.failure?.stage === "beforeActivity") throw new Error(prepared.failure.message);
@@ -115,10 +112,9 @@ export async function commitPreparedPhoneEnvelope(prepared: PreparedPhoneEnvelop
       accepted += 1;
     }
   } finally {
-    // 不推送：圈以分钟为尺度涨，广播它就是拿推送当轮询用。卡片按自己的长间隔轮询，
-    // 见 lib/activity 的模块注释。圆环卡定高，首屏只让训练条目失效（一次训练一条，
-    // 有无训练换的是另一块占位）；圆环读数交给定时重建。
-    await fanout({ writes, tags });
+    // 状态核心这一半只有 Pulse 的输入，不推送、不失效首屏：圆环读数与训练列表这两份
+    // 展示快照由上报入口在这之后写进可滞后层，首屏标签也由那边按布局判（见 lag-ingest）。
+    await fanout({ writes });
   }
 
   return { accepted, ignored };

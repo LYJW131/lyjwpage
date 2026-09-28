@@ -124,3 +124,22 @@ test("时区只在模块带来时重写，模块关掉后写成 null 一次", as
   await land(kv, "mac", mac([], {}, NOW + 90_000), NOW + 90_000);
   assert.equal(kv.writes, afterNull, "已经是 null 就不再写");
 });
+
+const rings = {
+  date: "2026-09-29", secondsFromGMT: 28_800,
+  moveKcal: 320, moveGoalKcal: 400, exerciseMinutes: 12, exerciseGoalMinutes: 30,
+  standHours: 6, standGoalHours: 12, steps: 5_400,
+};
+
+test("iPhone：圆环读数写进可滞后层，只带历史桶的上报不碰它，圆环卡不失效首屏", async () => {
+  const kv = new MemoryKv();
+  assert.deepEqual(await land(kv, "iphone", { version: 1, modules: { activity: rings } }, NOW), []);
+  const stored = await readLag<{ moveKcal: number; date: string }>(kv, LAG_KEYS.activity);
+  assert.deepEqual([stored?.data.moveKcal, stored?.data.date, stored?.updatedAt], [320, "2026-09-29", NOW]);
+  const bucketEnd = Math.floor(NOW / 300_000) * 300_000;
+  await land(kv, "iphone", { version: 1, modules: { activity: {
+    history: { from: bucketEnd - 300_000, to: bucketEnd, buckets: [{ from: bucketEnd - 300_000, to: bucketEnd, steps: 10 }] },
+  } } }, NOW + 60_000);
+  assert.equal((await readLag(kv, LAG_KEYS.activity))?.updatedAt, NOW, "updatedAt is the report that last carried the rings");
+  assert.equal(kv.values.has(LAG_KEYS.workouts), false, "a report without workouts leaves the list alone");
+});

@@ -1,11 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { normalizeWorkouts, writeWorkouts } from "@api/stores/workouts";
+import { normalizeWorkouts } from "@api/stores/workouts";
 import { getWorkoutsSnapshot } from "@/lib/workouts";
 import { installStorageForTests, resetStorageForTests } from "@/lib/storage";
 import { FakeStorage } from "@/lib/testing/fake-storage";
 import { withRequestState } from "@shared/request-state";
-import { recordPhoneEnvelope } from "@api/phone-telemetry";
+import { commitPreparedIngest, prepareIngest } from "@api/ingest-handlers";
+import { commitLagIngest } from "@api/lag-ingest";
+import type { LagResult } from "@/lib/lag-result";
+import { MemoryKv } from "@/lib/testing/memory-kv";
+import { readLag } from "@shared/lag";
+import { installLagStoreForTests } from "../../../src/lib/lag-store.ts";
+import type { WorkoutsPayload } from "@/lib/types";
+
 import { requestStore, type Env } from "@api/runtime";
 import { loadEndpoint } from "@/lib/status-loaders";
 import { viewKeyByPath } from "@/lib/status-views";
@@ -37,21 +44,32 @@ test("workouts reject malformed histories, timestamps, duplicate ids and numeric
   }
 });
 
-test("iPhone ingest exposes workouts through the public loader and replaces deleted history", async () => {
+test("iPhone ingest exposes workouts through the lag layer and replaces deleted history", async () => {
   resetStorageForTests();
   installStorageForTests(new FakeStorage());
+  // node --test 把 @/lib/lag-store 解析到站点那份（可注入），Worker 打包时才换成读 env.LAG 的实现
+  const kv = new MemoryKv();
+  installLagStoreForTests((key) => readLag(kv, key));
   const pending: Promise<unknown>[] = [];
+  const land = async (items: unknown[], at: number) => {
+    const command = await prepareIngest("iphone", { version: 1, modules: { workouts: { items } } }, at);
+    await commitPreparedIngest(command);
+    return commitLagIngest(kv, command);
+  };
   try {
     await requestStore.run({ env: {} as Env, ctx: { waitUntil: (p) => { pending.push(p); } } }, () => withRequestState(async () => {
       await assert.rejects(getWorkoutsSnapshot, /Awaiting/);
-      assert.deepEqual(await recordPhoneEnvelope({ version: 1, modules: { workouts: { items: [workout] } } }, now), { accepted: 1, ignored: [] });
+      assert.deepEqual(await land([workout], now), ["workouts"], "first list: the strip changes shape");
       assert.equal(viewKeyByPath("/api/status/workouts"), "workouts");
-      assert.deepEqual(await loadEndpoint("workouts"), normalizeWorkouts({ items: [workout] }, now));
-      await writeWorkouts(normalizeWorkouts({ items: [] }, now + 1000));
-      assert.deepEqual((await getWorkoutsSnapshot()).items, []);
+      const loaded = await loadEndpoint("workouts") as LagResult<WorkoutsPayload>;
+      assert.deepEqual(loaded.data, normalizeWorkouts({ items: [workout] }, now));
+      assert.equal(loaded.updatedAt, now);
+      assert.deepEqual(await land([workout], now + 500), [], "same shape: content only");
+      assert.deepEqual(await land([], now + 1000), ["workouts"], "emptied: another placeholder");
+      assert.deepEqual((await getWorkoutsSnapshot()).data, { items: [], pushedAt: now + 1000 });
     }));
     await Promise.allSettled(pending);
-  } finally { resetStorageForTests(); }
+  } finally { resetStorageForTests(); installLagStoreForTests(null); }
 });
 
 test("workouts retain measured heart rate, environment and elevation without inventing absent values", () => {
