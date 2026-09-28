@@ -1,22 +1,19 @@
 import { mirrorKey } from "@/lib/storage";
 import {
-  type StoredAgentLimits
-} from "@/lib/vibecoding-limits";
-import {
   type ParsedVibeCodingNow,
   type ParsedVibeCodingUsage
 } from "@/lib/vibecoding-parse";
 
 /**
- * 三份存储，按**谁产生、多久变一次**分。
+ * 两份存储（限额另在可滞后层），按**谁产生、多久变一次**分。
  *
  * - `now`：此刻在不在用、用的是哪个模型。Mac 报，60 秒一轮，变了就推给浏览器。
  * - `usage`：token、费用、会话总数。Mac 报本机来源，十几分钟才动一次，只失效首屏缓存，不推送。
  *   Cursor 的云端日桶另存在 `cursor-usage`、Claude Code 云端线程的另存在 `claude-cloud-usage`，
  *   读的时候并进来。
- * - `limits`：各 agent 账号侧的套餐与用量窗口。**容器上报器**走 `/api/ingest/agents`
- *   报，几分钟一轮、每轮必发。从前它搭 usage 的车，Mac 合盖就冻住；限额是厂商
- *   账号的事实，跟那台 Mac 无关，所以拆出去在 NAS 上 24 小时跑。
+ * - 限额：各 agent 账号侧的套餐与用量窗口。**容器上报器**走 `/api/ingest/agents`
+ *   报，几分钟一轮、每轮必发；不推送、不参与 pulse，所以不在这里，由上报入口写进
+ *   可滞后层 KV（`limits:v1`，见 lib/vibecoding-limits）。
  *
  * 从前 usage 和 limits 是一份，再往前是三份（按「哪条命令产出的」划）。现在这道
  * 线是按来源划的：两台机器各报各的，站点按 id 拼成一行。
@@ -30,11 +27,6 @@ export const usageMirror = mirrorKey<{ payload: StoredUsage; pushedAt: number }>
 
 export const nowMirror = mirrorKey<{ payload: StoredNow; pushedAt: number }>(
   ["vibecoding", "now"],
-  (state) => state.pushedAt,
-);
-
-export const limitsMirror = mirrorKey<StoredAgentLimits>(
-  ["vibecoding", "limits"],
   (state) => state.pushedAt,
 );
 

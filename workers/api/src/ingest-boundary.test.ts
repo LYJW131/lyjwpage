@@ -12,7 +12,6 @@ import { withRequestState } from "@shared/request-state";
 import { K_LAST_PUSH } from "@shared/charger-store";
 import { claudeCloudUsageMirror } from "@shared/claude-cloud-usage";
 import { cursorNowMirror } from "@shared/cursor-usage";
-import { limitsMirror } from "@shared/vibecoding";
 import { mirror as telemetryMirror } from "@shared/telemetry";
 import { nowMirror } from "@shared/vibecoding";
 
@@ -270,26 +269,7 @@ test("Emby image commits merge against the latest map without losing concurrent 
   } finally { resetStorageForTests(); }
 });
 
-test("agent limit commits merge ids instead of replacing a concurrent update", async () => {
-  const storage = new FakeStorage();
-  installStorageForTests(storage);
-  const env = testEnv();
-  try {
-    const first = await inRequest(env, () => prepareIngest("agents", {
-      agents: [{ id: "codex", plan: { tier: "pro" }, limits: [] }],
-      collectedAt: new Date(NOW).toISOString(),
-    }, NOW));
-    const second = await inRequest(env, () => prepareIngest("agents", {
-      agents: [{ id: "claude", plan: { tier: "max" }, limits: [] }],
-      collectedAt: new Date(NOW + 1).toISOString(),
-    }, NOW + 1));
-    assert.equal((await commit(env, first)).ok, true);
-    assert.equal((await commit(env, second)).ok, true);
-    assert.deepEqual(Object.keys((await limitsMirror.get())?.agents ?? {}).sort(), ["claude", "codex"]);
-  } finally { resetStorageForTests(); }
-});
-
-test("cursorNow-only agents envelopes skip the limits mirror and push the cursor activity", async () => {
+test("cursorNow-only agents envelopes push the cursor activity", async () => {
   const storage = new FakeStorage();
   installStorageForTests(storage);
   const env = testEnv();
@@ -299,7 +279,6 @@ test("cursorNow-only agents envelopes skip the limits mirror and push the cursor
       collectedAt: new Date(NOW).toISOString(),
     }, NOW));
     assert.equal((await commit(env, limits)).ok, true);
-    const before = await limitsMirror.get();
 
     const lastActivityAt = new Date(NOW + 30_000).toISOString();
     const activity = await inRequest(env, () => prepareIngest("agents", {
@@ -308,7 +287,6 @@ test("cursorNow-only agents envelopes skip the limits mirror and push the cursor
     }, NOW + 60_000));
     const result = await commit(env, activity);
     assert.equal(result.ok, true);
-    assert.deepEqual(await limitsMirror.get(), before);
     assert.deepEqual((await cursorNowMirror.get())?.now, { lastActivityAt, currentModel: "grok-4.7-xhigh" });
     assert.deepEqual(result.effects.find((effect) => effect.kind === "event")?.event, {
       type: "vibecoding-now",

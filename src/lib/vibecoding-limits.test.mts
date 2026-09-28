@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { attachAgentLimits, mergeAgentLimits } from "./vibecoding-limits.ts";
+import { agentLimitsLayoutKey, attachAgentLimits, mergeAgentLimits } from "./vibecoding-limits.ts";
 
 const window = {
   key: "claude.primary",
@@ -24,8 +24,7 @@ test("一封只带来的行整行替换，没出现的 id 留着上一次的", (
     },
     1_000,
   );
-  assert.equal(first.pushedAt, 1_000);
-  assert.equal(first.agents.claude?.pushedAt, 1_000);
+  assert.equal(first.agents.claude?.updatedAt, 1_000);
 
   const second = mergeAgentLimits(
     first,
@@ -36,15 +35,14 @@ test("一封只带来的行整行替换，没出现的 id 留着上一次的", (
     },
     2_000,
   );
-  assert.equal(second.pushedAt, 2_000);
   assert.deepEqual(second.agents.claude, {
     plan: null,
     limits: [],
     limitsError: "token expired",
-    pushedAt: 2_000,
+    updatedAt: 2_000,
   });
   // codex 这封没提，原样保留，包括它自己的收到时刻
-  assert.equal(second.agents.codex?.pushedAt, 1_000);
+  assert.equal(second.agents.codex?.updatedAt, 1_000);
   assert.equal(second.agents.codex?.limitsError, "过期");
   // 不改动传进来的上一份
   assert.equal(first.agents.claude?.limits.length, 1);
@@ -56,10 +54,9 @@ test("按 id 合并用量和限额，缺用量的来源仍显示但不伪造零�
     { id: "cursor", label: "Cursor" },
   ];
   const attached = attachAgentLimits(usage as never, {
-    pushedAt: 5_000,
     agents: {
-      claude: { plan: { tier: "max", label: "Max 5x" }, limits: [window], limitsError: null, pushedAt: 4_000 },
-      grok: { plan: null, limits: [window], limitsError: null, pushedAt: 5_000 },
+      claude: { plan: { tier: "max", label: "Max 5x" }, limits: [window], limitsError: null, updatedAt: 4_000 },
+      grok: { plan: null, limits: [window], limitsError: null, updatedAt: 5_000 },
     },
   });
   assert.deepEqual(attached.map((row) => row.id), ["claude", "cursor", "grok"]);
@@ -79,10 +76,9 @@ test("按 id 合并用量和限额，缺用量的来源仍显示但不伪造零�
 
 test("限额先到也能生成来源行，未知来源保留 id 而不丢弃", () => {
   const attached = attachAgentLimits([], {
-    pushedAt: 5_000,
     agents: {
-      cursor: { plan: null, limits: [window], limitsError: null, pushedAt: 5_000 },
-      other: { plan: null, limits: [], limitsError: "Unavailable", pushedAt: 5_000 },
+      cursor: { plan: null, limits: [window], limitsError: null, updatedAt: 5_000 },
+      other: { plan: null, limits: [], limitsError: "Unavailable", updatedAt: 5_000 },
     },
   });
   assert.deepEqual(attached.map((row) => row.label), ["Cursor", "other"]);
@@ -90,4 +86,12 @@ test("限额先到也能生成来源行，未知来源保留 id 而不丢弃", (
   assert.ok(attached.every((row) => row.usageStatus.collectedAt === null));
   assert.equal(attached[1]?.limitsError, "Unavailable");
   assert.deepEqual(attachAgentLimits([], null), []);
+});
+
+test("布局键只看来源集合，读数变了不算布局变化", () => {
+  const row = { plan: null, limits: [window], limitsError: null, updatedAt: 1 };
+  const a = agentLimitsLayoutKey({ agents: { codex: row, claude: row } });
+  assert.equal(a, agentLimitsLayoutKey({ agents: { claude: { ...row, updatedAt: 9 }, codex: row } }));
+  assert.notEqual(a, agentLimitsLayoutKey({ agents: { claude: row } }));
+  assert.equal(agentLimitsLayoutKey(null), "[]");
 });

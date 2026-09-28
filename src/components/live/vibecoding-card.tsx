@@ -16,9 +16,10 @@ import { useMountedAt } from "@/hooks/use-mounted-at";
 import { useReporterStale, useStale } from "@/hooks/use-stale";
 import { useStatus } from "@/hooks/use-status";
 import { agentUsageLabel, agentUsageUrl } from "@/lib/agent-usage-url";
-import { VIBECODING_STALE_MS } from "@/lib/freshness";
-import { VIBECODING_PATH } from "@/lib/paths";
+import { AGENT_LIMITS_STALE_MS, VIBECODING_STALE_MS } from "@/lib/freshness";
+import { LIMITS_PATH, VIBECODING_PATH } from "@/lib/paths";
 import { fetchVibeCoding, seedVibeCoding } from "@/lib/vibecoding-activity";
+import { attachAgentLimits, type AgentLimitsPayload } from "@/lib/vibecoding-limits";
 import type {
   StatusResponse,
   VibeCodingAgent,
@@ -882,23 +883,23 @@ function FeaturedMark({ id, active }: { id: string; active: boolean }) {
   );
 }
 
+/** 限额上报器多久没来就不再展示那份读数，统一说取不到 */
+const LIMITS_SILENT = "Limits reporter is silent";
+
 function AgentPanel({
   agent,
   /** 采集侧的话还算不算数，见 VibeCodingCard 里的 activityUnknown */
   activityUnknown,
-  limitsStaleAfterMs,
 }: {
   agent: VibeCodingAgent;
   activityUnknown: boolean;
-  /** 限额那条路的陈旧窗口，见 VibeCodingPayload */
-  limitsStaleAfterMs: number;
 }) {
   /**
-   * 限额是另一台机器（NAS 上的容器上报器）报的，每轮必发，所以「多久没来」就是
-   * 「它还活着没有」。陈旧时条照画 —— 数字停在最后一次看到的值，但要说明白：
-   * 这一块是**上一次**的，别让访客拿它当此刻的余量。
+   * 限额在可滞后层，是另一台机器（NAS 上的容器上报器）报的，每轮必发，所以
+   * 「多久没来」就是「它还活着没有」。过了阈值就不再画那份读数：固定的三行照样
+   * 占位，统一写 Unavailable，别让访客拿停住的数字当此刻的余量。
    */
-  const limitsStale = useStale(agent.limitsAt, limitsStaleAfterMs);
+  const limitsStale = useStale(agent.limitsAt, AGENT_LIMITS_STALE_MS);
   const today = agent.today;
   // error 也可能只是本轮成功采集后的缺项提示；是否为今日取决于日桶和成功时间。
   const dayStart = today ? Date.parse(`${today.date}T00:00:00+08:00`) : null;
@@ -923,7 +924,7 @@ function AgentPanel({
   const active = useAgentActive(agent, activityUnknown);
   // 会话扫描会保留最近使用的模型，闲置后继续显示它。
   const displayModel = agent.currentModel ? displayModelName(agent.currentModel) : "No model";
-  const rows = featuredLimitRows(agent);
+  const rows = featuredLimitRows(limitsStale ? { ...agent, limits: [], limitsError: LIMITS_SILENT } : agent);
   const usageUrl = agentUsageUrl(agent.id);
   return (
     <div className="flex min-w-0 flex-col px-4 py-4 md:px-5">
@@ -975,10 +976,7 @@ function AgentPanel({
         </div>
       </div>
 
-      <div
-        className={cn("mt-5 grid gap-3 border-t border-line pt-4", limitsStale && "opacity-60")}
-        title={limitsStale ? "Limits reporter is silent; showing the last known values" : undefined}
-      >
+      <div className="mt-5 grid gap-3 border-t border-line pt-4">
         <div className="label-mono text-muted-foreground">
           Limits
           {agent.plan && (
@@ -987,14 +985,6 @@ function AgentPanel({
                 ·
               </span>
               <span className="font-sans normal-case">{agent.plan.label}</span>
-            </span>
-          )}
-          {limitsStale && (
-            <span>
-              <span aria-hidden className="mx-1.5">
-                ·
-              </span>
-              Stale
             </span>
           )}
         </div>
@@ -1025,19 +1015,17 @@ function AgentPanel({
 function CompactAgentRow({
   agent,
   activityUnknown,
-  limitsStaleAfterMs,
 }: {
   agent: VibeCodingAgent;
   /** 和全量面板同一个开关，见 VibeCodingCard 里的 activityUnknown */
   activityUnknown: boolean;
-  limitsStaleAfterMs: number;
 }) {
-  // 和全量面板同一个判断：限额上报器多久没来，这一行就是上一次的值
-  const limitsStale = useStale(agent.limitsAt, limitsStaleAfterMs);
+  // 和全量面板同一个判断：限额上报器过了阈值没来，这一行不再画读数
+  const limitsStale = useStale(agent.limitsAt, AGENT_LIMITS_STALE_MS);
   const mountedAt = useMountedAt();
   const [ticked, setTicked] = useState(0);
   const now = ticked || mountedAt;
-  const limit = compactLimit(agent, now);
+  const limit = limitsStale ? null : compactLimit(agent, now);
   const usedPercentValue = limit?.usedPercent ?? null;
   const resetsAt = limit?.resetsAt ?? null;
   useEffect(() => {
@@ -1079,12 +1067,8 @@ function CompactAgentRow({
 
   return (
     <div
-      className={cn("min-w-0 py-3", limitsStale && "opacity-60")}
-      title={
-        limitsStale
-          ? "Limits reporter is silent; showing the last known values"
-          : (agent.limitsError ?? undefined)
-      }
+      className="min-w-0 py-3"
+      title={limitsStale ? LIMITS_SILENT : (agent.limitsError ?? undefined)}
     >
       <div className="flex flex-col gap-1 md:h-5 md:flex-row md:items-center md:justify-between md:gap-2">
         <div className="flex h-5 min-w-0 items-center gap-2">
@@ -1180,11 +1164,9 @@ function CompactAgentRow({
 function CompactAgents({
   agents,
   activityUnknown,
-  limitsStaleAfterMs,
 }: {
   agents: VibeCodingAgent[];
   activityUnknown: boolean;
-  limitsStaleAfterMs: number;
 }) {
   if (agents.length === 0) return null;
   // 排序不看过期（now 传 0）：这里只定行序，行内画什么由行自己判
@@ -1206,7 +1188,6 @@ function CompactAgents({
             key={agent.id}
             agent={agent}
             activityUnknown={activityUnknown}
-            limitsStaleAfterMs={limitsStaleAfterMs}
           />
         ))}
       </div>
@@ -1216,21 +1197,29 @@ function CompactAgents({
 
 export function VibeCodingCard({
   fallback,
+  limitsFallback,
   className,
 }: {
   fallback: StatusResponse<VibeCodingPayload>;
+  /** 可滞后层那份限额（/api/status/limits），按 id 贴回用量行 */
+  limitsFallback: StatusResponse<AgentLimitsPayload>;
   className?: string;
 }) {
-  // 会话状态（正在用 / 换模型）走推送；token 用量和限额仍靠轮询。
+  // 会话状态（正在用 / 换模型）走推送；token 用量靠轮询。
   // 这张卡整体不当实时源：不因 Mac 掉线变灰 —— 用量、曲线都是累计事实，
-  // 采集停了它们只是不再增长，不会变得不可信。限额是另一台机器报的，
-  // 有自己的陈旧判断（limitsAt），各行自己管。
+  // 采集停了它们只是不再增长，不会变得不可信。限额在可滞后层，另一台机器报的，
+  // 有自己的阈值（limitsAt），各行自己管。
   useLiveEvents();
   const { data } = useStatus<VibeCodingPayload>(VIBECODING_PATH, REFRESH_MS, {
     fallback,
     fetcher: fetchVibeCoding,
     seedFallback: seedVibeCoding,
   });
+  const { data: limits } = useStatus<AgentLimitsPayload>(LIMITS_PATH, REFRESH_MS, {
+    fallback: limitsFallback,
+  });
+  // 只有限额的来源也要一行；用量那份还没到时，这张卡照样能先画出限额
+  const agents = data || limits ? attachAgentLimits(data?.agents ?? [], limits ?? null) : null;
 
   /**
    * 例外只有一处：各 agent 的活动灯。整张卡就这一处说的是「此刻」，
@@ -1261,9 +1250,9 @@ export function VibeCodingCard({
       action="MacBook Pro"
       className={cn("md:col-span-2", className)}
     >
-      {data ? (
+      {agents ? (
         <>
-          {data.totals ? (
+          {data?.totals ? (
             <TotalUsage totals={data.totals} topModels={data.topModels} />
           ) : (
             <div className="border-b border-line px-4 py-5 text-sm text-muted-foreground md:px-5">
@@ -1271,19 +1260,17 @@ export function VibeCodingCard({
             </div>
           )}
           <div className="grid grid-cols-1 divide-y divide-line md:grid-cols-2 md:divide-x md:divide-y-0">
-            {featuredAgents(data.agents).map((agent) => (
+            {featuredAgents(agents).map((agent) => (
               <AgentPanel
                 key={agent.id}
                 agent={agent}
                 activityUnknown={activityUnknown}
-                limitsStaleAfterMs={data.limitsStaleAfterMs}
               />
             ))}
           </div>
           <CompactAgents
-            agents={compactAgents(data.agents)}
+            agents={compactAgents(agents)}
             activityUnknown={activityUnknown}
-            limitsStaleAfterMs={data.limitsStaleAfterMs}
           />
         </>
       ) : (

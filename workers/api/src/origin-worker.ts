@@ -4,6 +4,7 @@ import { DurableObject } from "cloudflare:workers";
 import { INGEST_SOURCES, prepareIngestForCommit } from "./ingest-handlers";
 import { dispatchIngestEffects } from "./ingest-effects";
 import { archiveIngest } from "./ingest-archive";
+import { commitLagIngest } from "./lag-ingest";
 import { StateHub } from "./state-hub";
 import { authorize } from "./access-auth";
 import { STORAGE_MAX_BYTES } from "@shared/storage-contract";
@@ -12,7 +13,7 @@ import type { StoredEntry } from "@shared/sqlite-store";
 
 import { refreshRecentlyPlayed } from "./apple-music-recent";
 
-import { publish, ROOM_ID } from "./live-platform";
+import { expireStatusTags, publish, ROOM_ID } from "./live-platform";
 import { ConfigError, issueMusicKitToken } from "./musickit-token";
 import { getAllowedOrigins, getCorsHeaders, isAllowedOrigin, isAllowedOriginValue } from "./origins";
 import { refreshAgentStatus } from "@/lib/agent-status";
@@ -143,10 +144,22 @@ export async function commitIngest(env: Env, ctx: ExecutionContext, source: stri
     return await withRequestState(() => requestStore.run({ env, ctx }, async () => {
       const command = await prepareIngestForCommit(source, body, () => hub.ready());
       if (!command) return jsonResponse({ ok: false, error: "状态存储初始化中" }, { status: 503 });
-      const result = await hub.commitIngest(command);
-      await dispatchIngestEffects(result.effects);
-      if (!result.ready) return jsonResponse({ ok: false, error: "状态存储初始化中" }, { status: 503 });
-      if (!result.ok) throw new Error(result.error);
+      let data: unknown;
+      if (command.source === "server") {
+        // 落地节点整封都在可滞后层，不经过状态核心
+        data = { id: command.status.id };
+      } else {
+        const result = await hub.commitIngest(command);
+        await dispatchIngestEffects(result.effects);
+        if (!result.ready) return jsonResponse({ ok: false, error: "状态存储初始化中" }, { status: 503 });
+        if (!result.ok) throw new Error(result.error);
+        data = JSON.parse(result.json);
+      }
+      // 可滞后层的那一半：状态核心那一半成功之后直接写 KV，布局变了才失效首屏
+      if (env.LAG) {
+        const tags = await commitLagIngest(env.LAG, command);
+        if (tags.length) ctx.waitUntil(expireStatusTags(tags));
+      }
       // 收下了才归档；归档失败只记日志，不能让已落库的上报重发
       if (historyArchiveEnabled(env)) ctx.waitUntil(archiveIngest(env.HISTORY!, command));
       // Apple Music user token 只在变了时才推，这一次写不进去就等下一次换令牌，所以等它写完再回 202
@@ -156,7 +169,7 @@ export async function commitIngest(env: Env, ctx: ExecutionContext, source: stri
           receivedAt: command.receivedAt,
         });
       }
-      return jsonResponse({ ok: true, data: JSON.parse(result.json) }, { status: 202 });
+      return jsonResponse({ ok: true, data }, { status: 202 });
     }));
   } catch (error) {
     console.error("[ingest]", source, reason(error));

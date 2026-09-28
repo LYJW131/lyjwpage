@@ -78,6 +78,7 @@ binding = "CF_VERSION_METADATA"
 "@/lib/apple-developer-token" = "./src/apple-developer-token.ts"
 # music user token 读凭据 KV：站点侧同名模块同样只会抛错
 "@/lib/apple-music-credentials" = "./src/apple-music-credentials.ts"
+"@/lib/lag-store" = "./src/lag-store.ts"
 
 # LIVE_PUSH 数开着的页面（/ws，事件也从它广播），/count 返回 connections。
 [[durable_objects.bindings]]

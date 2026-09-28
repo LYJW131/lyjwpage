@@ -144,15 +144,13 @@ try {
   mutated = true;
   await post("/api/ingest/agents", limits);
   await eventually(async () => {
-    const usage = await data("/api/status/vibecoding");
-    assert.equal(usage.totals, null);
-    assert.equal(usage.collectedAt, null);
-    assert.equal(usage.pushedAt, null);
-    assert.deepEqual(usage.agents.map(({ id }) => id).sort(), limits.agents.map(({ id }) => id).sort());
-    assert.ok(usage.agents.every(({ today, usageStatus }) => today === null && usageStatus.state === "unavailable"));
-    assert.equal(usage.agents.find(({ id }) => id === "claude").limits[0].usedPercent, 20);
+    const stored = await data("/api/status/limits");
+    assert.deepEqual(Object.keys(stored.agents).sort(), limits.agents.map(({ id }) => id).sort());
+    assert.equal(stored.agents.claude.limits[0].usedPercent, 20);
+    assert.equal(stored.agents["limits-only-demo"].limitsError, "Verification: limits unavailable");
+    assert.equal((await request("/api/status/vibecoding")).body.ok, false, "Limits live in the lag layer, not in the usage view");
   }, "limits-only state");
-  pass("Limits-only sources render data with unknown totals and today, not zero");
+  pass("Limits land in the lag layer; the usage view stays empty until usage arrives");
 
   const old = structuredClone(baseline);
   delete old.usage.agents[0].usageStatus;
@@ -170,8 +168,8 @@ try {
   const initial = await assertSnapshot(baseline);
   assert.equal(initial.usage.agents.find(({ id }) => id === "codex").today.totalTokens, 0);
   assert.equal(initial.usage.agents.find(({ id }) => id === "grok").today, null);
-  assert.ok(initial.usage.agents.some(({ id }) => id === "limits-only-demo"));
-  pass("Mac usage/now/year survive ingest; zero, unknown, cached error and limits-only rows remain distinct");
+  assert.ok((await data("/api/status/limits")).agents["limits-only-demo"], "The limits-only source stays in the lag layer for the card to merge");
+  pass("Mac usage/now/year survive ingest; zero, unknown and cached error rows remain distinct, limits-only rows stay in the lag layer");
 
   for (const since of [baseline.year.origin, "9999-12-31", "invalid"]) {
     const year = await data(`/api/status/vibecoding/year?since=${since}`);

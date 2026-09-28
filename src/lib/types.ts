@@ -638,8 +638,9 @@ export type VibeCodingAgent = {
   usageStatus: VibeCodingUsageStatus;
   /**
    * 下面四个字段来自另一条路：`/api/ingest/agents`，喂它的是 NAS 上的容器上报器
-   * （`reporters/agents-reporter`），不再随 Mac 的用量信封走。站点按 id
-   * 把它们贴到对应来源行上；只有限额的来源也展示，用量为 null。
+   * （`reporters/agents-reporter`），存在可滞后层（`/api/status/limits`）。浏览器
+   * 按 id 把它们贴到对应来源行上（lib/vibecoding-limits 的 attachAgentLimits）；
+   * 只有限额的来源也展示，用量为 null。
    *
    * 套餐取不到、或这个 agent 从没上报过限额时是 null —— 不渲染，不占位
    */
@@ -652,12 +653,14 @@ export type VibeCodingAgent = {
    */
   limitsError: string | null;
   /**
-   * 站点收到这个 agent 限额的时刻（epoch 毫秒），从没收到过是 null。
-   * 陈旧与否由浏览器拿它和 `VibeCodingPayload.limitsStaleAfterMs` 现算 ——
-   * 首屏是 `'use cache'` 冻住的，服务端拼「N 分钟没更新」会冻错。
+   * 上报入口收到这个 agent 限额的时刻（epoch 毫秒），从没收到过是 null。
+   * 过没过时由浏览器拿它和 `AGENT_LIMITS_STALE_MS` 现算，过了显示 Unavailable。
    */
   limitsAt: number | null;
 };
+
+/** `/api/status/vibecoding` 的一行：用量与此刻，不带限额（限额在可滞后层，浏览器贴回） */
+export type VibeCodingUsageAgent = Omit<VibeCodingAgent, "plan" | "limits" | "limitsError" | "limitsAt">;
 
 export type VibeCodingTotals = {
   inputTokens: number;
@@ -695,10 +698,10 @@ export type VibeCodingNowPayload = {
 
 export type VibeCodingPayload = {
   /**
-   * 同一形状的来源列表。上报器发几个就有几个；首页按 id 取用：
-   * `claude` / `cursor` 画全量面板，其余只取限额那一行。
+   * 同一形状的来源列表。上报器发几个就有几个；首页按 id 取用，并与
+   * `/api/status/limits` 按 id 合并：`claude` / `cursor` 画全量面板，其余只取限额那一行。
    */
-  agents: VibeCodingAgent[];
+  agents: VibeCodingUsageAgent[];
   /** 限额可独立展示，尚未收到用量摘要时为 null。 */
   totals: VibeCodingTotals | null;
   /** 所有来源合并后的历史累计 token 前三名。 */
@@ -708,12 +711,6 @@ export type VibeCodingPayload = {
   source: "local" | "push";
   /** 源站收到用量摘要的时刻；尚未收到时为 null。来源新鲜度看各自 usageStatus。 */
   pushedAt: number | null;
-  /**
-   * 限额那条路的陈旧窗口。容器上报器每轮必发（那一封就是心跳），窗口锚最慢档
-   * 加缓存余量，服务端按 `AGENT_LIMITS_STALE_MS` 算好盖在这里，浏览器拿它和
-   * 各行的 `limitsAt` 比。
-   */
-  limitsStaleAfterMs: number;
 } & ReporterPresence;
 
 /**
@@ -1117,24 +1114,15 @@ export type ServerStatus = {
 };
 
 /**
- * 落地节点对外那一份。
+ * 落地节点对外那一份，存在可滞后层（KV `server:v1`）。
  *
  * **没有 `ReporterPresence`。** 那套是 Mac 上报器的存活：亲口离线、心跳窗口、
- * 全站四张卡共用一个答案。这台节点的上报器挂了只影响这一张卡，用自己的
- * `staleAfterMs` 判定就够了，不该绑到 Mac 那份存活上。
+ * 全站四张卡共用一个答案。这台节点的上报器挂了只影响这一张卡：信封里的
+ * `updatedAt` 超过 `SERVER_STALE_MS` 就是 Unavailable，由浏览器判断。
  */
 export type ServerPayload = ServerStatus & {
   /** 源站收到这份的时刻 */
   pushedAt: number;
-  /** 这份数据自己的过期窗口；默认 90 秒，服务端可按上报间隔加长 */
-  staleAfterMs: number;
-  /**
-   * 源站在取数出口按自己的钟算的那一次「这会儿算不算断流」。
-   *
-   * 为首帧准备 —— 那一帧浏览器还没有钟（useMountedAt 为 0），拿 pushedAt
-   * 什么也判不出来。它是数据字段，服务端预渲染和 hydrate 读到的是同一个值。
-   */
-  staleAtSource: boolean;
 };
 
 /** Completed HealthKit workouts; epoch milliseconds, SI distance, active duration. */

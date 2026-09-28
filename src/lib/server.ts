@@ -1,35 +1,8 @@
-import { AwaitingReport } from "@/lib/awaiting-report";
-import { isStale, serverStaleMs } from "@/lib/freshness";
+import { loadLag, type LagResult } from "@/lib/lag-result";
 import type { ServerPayload } from "@/lib/types";
-import { mirror, type StoredServer } from "@shared/server";
+import { LAG_KEYS } from "@shared/lag";
 
-export function withServerFreshness(
-  payload: ServerPayload,
-  now = Date.now(),
-): ServerPayload {
-  return {
-    ...payload,
-    staleAtSource: isStale({
-      now,
-      at: payload.pushedAt,
-      windowMs: payload.staleAfterMs,
-    }),
-  };
-}
-
-function toPayload(stored: StoredServer): ServerPayload {
-  return withServerFreshness({
-    ...stored.status,
-    // 加流量之前存下的那份没有这个键。契约说的是「可以是 null」，不是「可以没有」
-    traffic: stored.status.traffic ?? null,
-    pushedAt: stored.receivedAt,
-    staleAfterMs: serverStaleMs(),
-    staleAtSource: false,
-  });
-}
-
-export async function getServerSnapshot(): Promise<ServerPayload> {
-  const stored = await mirror.get();
-  if (!stored) throw new AwaitingReport("尚未收到落地节点上报");
-  return toPayload(stored);
+/** 落地节点最新一封，由上报入口写进可滞后层；过没过时由浏览器按 updatedAt 判断 */
+export function getServerSnapshot(): Promise<LagResult<ServerPayload>> {
+  return loadLag<ServerPayload>(LAG_KEYS.server, "尚未收到落地节点上报");
 }

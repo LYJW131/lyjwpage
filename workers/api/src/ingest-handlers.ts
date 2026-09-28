@@ -3,13 +3,12 @@ import { commitPreparedHomePodEvent, prepareHomePodEvent, type PreparedHomePodEv
 import { commitPreparedPhoneEnvelope, preparePhoneEnvelope, type PreparedPhoneEnvelope } from "./phone-telemetry";
 import { commitPreparedEmbyReport, prepareEmbyReport, type PreparedEmbyReport } from "./stores/emby";
 import { commitPreparedPlaystationReport, preparePlaystationReport, type PreparedPlaystationReport } from "./stores/playstation";
-import { commitPreparedServerReport, prepareServerReport, type PreparedServerReport } from "./stores/server";
+import { prepareServerReport, type PreparedServerReport } from "./stores/server";
 import { commitPreparedTelemetryEnvelope, prepareTelemetryEnvelope, type PreparedTelemetryEnvelope } from "./stores/telemetry";
 import { prepareAgentLimits, recordPreparedAgentLimits, type PreparedAgentLimits } from "./stores/vibecoding";
-import { recordReporterBlock } from "./stores/reporter-ledger";
-import { REPORTER_BY_SOURCE, reporterBlockOf, type ReporterBlock } from "@/lib/reporter-ledger";
+import { reporterBlockOf, type ReporterBlock } from "@/lib/reporter-ledger";
 
-/** 常驻上报器（server、agents）的报文顶上带一个 `reporter` 块，收下时存进账本 */
+/** 常驻上报器（server、agents）的报文顶上带一个 `reporter` 块，上报入口收下后写进可滞后层（lag-ingest） */
 type WithReporter<T> = T & { reporter?: ReporterBlock | null };
 
 export type PreparedIngest = WithReporter<
@@ -65,14 +64,12 @@ export async function prepareIngestForCommit(
   }
 }
 
-/** StateHub 阶段：只做依赖权威最新状态的合并、差分与持久化。 */
+/**
+ * StateHub 阶段：只做依赖权威最新状态的合并、差分与持久化。可滞后层那一半
+ * （落地节点、限额、账本、时区）由上报入口直接写 KV，不进这里，见 lag-ingest。
+ */
 export async function commitPreparedIngest(command: PreparedIngest): Promise<unknown> {
-  const result = await commitBySource(command);
-  // 收成了才存：被拒的那封里的账本不算数
-  if ((command.source === "server" || command.source === "agents") && command.reporter) {
-    await recordReporterBlock(REPORTER_BY_SOURCE[command.source], command.reporter, command.receivedAt);
-  }
-  return result;
+  return commitBySource(command);
 }
 
 function commitBySource(command: PreparedIngest): Promise<unknown> {
@@ -82,7 +79,7 @@ function commitBySource(command: PreparedIngest): Promise<unknown> {
     case "homepod": return commitPreparedHomePodEvent(command);
     case "emby": return commitPreparedEmbyReport(command);
     case "playstation": return commitPreparedPlaystationReport(command);
-    case "server": return commitPreparedServerReport(command);
+    case "server": throw new Error("server 上报整封在可滞后层，不经过状态核心");
     case "agents": return recordPreparedAgentLimits(command);
     case "agents-otlp": return recordPreparedClaudeCloudUsage(command);
   }

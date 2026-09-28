@@ -47,16 +47,10 @@ export const VIBECODING_STALE_MS = 15 * 60_000;
  * 窗口锚最慢档，三轮 60 分钟加 5 分钟缓存余量，默认 185 分钟。
  *
  * 上报器 `IDLE_INTERVAL_MS` 改长时，站点 `AGENT_LIMITS_STALE_MS` 必须跟着放宽。
- * 顺序同上面几条：**窗口先放宽，两份站点部署完，上报器再降频**。
+ * 顺序同上面几条：**窗口先放宽，站点部署完，上报器再降频**。限额在可滞后层
+ * （KV），每行带自己的更新时刻，过了这个阈值浏览器显示 Unavailable。
  */
 export const AGENT_LIMITS_STALE_MS = 185 * 60_000;
-
-export function agentLimitsStaleMs() {
-  const configured = Number(process.env.AGENT_LIMITS_STALE_MS);
-  return Number.isFinite(configured) && configured > 0
-    ? configured
-    : AGENT_LIMITS_STALE_MS;
-}
 
 /**
  * PlayStation 上报 Worker **每轮都发 presence**（内容没变也发，那一封就是心跳），
@@ -87,35 +81,15 @@ export function playstationStaleMs() {
 }
 
 /**
- * 服务器上报器 2026-09 起固定每分钟一推（`reporters/server-reporter` 的 `INTERVAL_MS`）。
- * 这份快照本身就是心跳，每轮必发，所以「多久没刷新」等价于「上报器还活着没有」。
+ * 服务器上报器固定每分钟一推（`reporters/server-reporter` 的 `INTERVAL_MS`），
+ * 每轮必发，所以「多久没刷新」等价于「上报器还活着没有」。
  *
- * 下面这个 50 分钟还是按从前的三档慢档（15 分钟）定的，现在可以缩到几分钟 ——
- * 等新上报器上线跑稳再缩，**顺序是上报器先提速、站点再缩窗口**，反过来做中间那段
- * 时间旧上报器 15 分钟才来一条，卡片会断续显示离线。以下是从前的考虑，留作背景：
- *
- * 这个窗口锚的是**慢档**：有人看时只会更快，判活的下限始终由 15 分钟那档定。
- * 三轮多一点不该翻脸 —— 3 × 15 = 45 分钟，再给缓存留一点余量（首屏那份快照
- * stale 300 / revalidate 600，见 lib/home-snapshot），到 50 分钟，和另外两路的
- * 窗口同一个数。
- *
- * 从 30 秒一轮 / 90 秒窗口改成分档，是因为 `/api/ingest/server` 每轮必发、
- * 30 秒一轮时是全站函数调用量最大的一条路径（实测 12 小时 1.5K 次），而没人
- * 看的时候那些数字只是记给没人看的卡片。和 apple-music / playstation 两个
- * 上报器同一套判断。
- *
- * ⚠️ 顺序不能反：**窗口先放宽、部署完，上报器再降频**。反过来做的话中间那段
- * 时间里上报器 15 分钟才来一条、站点还按旧窗口判，卡片会一直显示离线。
- * 改**慢档**要跟着改这里，改另外两档不用。卡片那侧仍是 30 秒一问（和充电头一档），
- * 比快档还勤 —— 多出来那一趟拿到的是同一份数字，那是浏览器自己的节奏。
- * 服务端可用 `SERVER_STALE_MS` 改。
+ * 这份数据在可滞后层（KV，见 shared/lag.ts）：上报入口每封都重写、带上
+ * `updatedAt`，浏览器拿它和这个阈值比，过了就显示 Unavailable，服务端不下结论。
+ * 取十轮：漏几封不该翻脸，KV 跨机房的一分钟左右可见延迟也包在里面。
+ * 上报器降频时**先放宽这里、站点部署完，再降频**。
  */
-export const SERVER_STALE_MS = 50 * 60_000;
-
-export function serverStaleMs() {
-  const configured = Number(process.env.SERVER_STALE_MS);
-  return Number.isFinite(configured) && configured > 0 ? configured : SERVER_STALE_MS;
-}
+export const SERVER_STALE_MS = 10 * 60_000;
 
 /**
  * `at` 这一刻，UTC 偏移为 `secondsFromGMT` 的地方是哪一天（YYYY-MM-DD）。

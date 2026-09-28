@@ -28,7 +28,7 @@
 | POST | `/api/ingest/<来源>` | `mac`、`iphone`、`homepod`、`emby`、`playstation`、`server`、`agents` |
 | POST | `/api/ingest/agents/otlp` | Claude Code 云端线程的内置遥测（OTLP/HTTP JSON 指标），Access 权限 `ingest:agents-otlp` |
 
-`/api/ingest/agents` 的主体仍是各家限额行。可选的 `cursorUsage` 是 Cursor 云端用量日桶
+`/api/ingest/agents` 的主体仍是各家限额行，按 id 合并后写进可滞后层 KV（`limits:v1`），由 `GET /api/status/limits` 读出，浏览器按 id 贴回 vibecoding 的用量行；限额的来源集合变了才失效首屏标签 `limits`。可选的 `cursorUsage` 是 Cursor 云端用量日桶
 （`Asia/Shanghai`，字段与 Mac 的日用量相同，另加 `models`）。缺省表示这一轮没拉到，
 站点留着上一份。读 `/api/status/vibecoding` 和 `/api/status/vibecoding/year` 时并进 Mac 的合计：
 Mac 用量带 `omittedSources: ["cursor"]` 时整份另加；没有这个字段的旧 Mac 已经把 Cursor 算进合计，
@@ -464,8 +464,8 @@ Worker 侧 storage 写失败是冒泡的，先写 `:history` 再清 `:pending` �
 
 misaka-jp 上的 server-reporter 与 agents-reporter 每封报文顶上带一个 `reporter` 块：镜像提交（Actions 以 `GIT_SHA`
 烧进 `REPORTER_COMMIT`）、过去 12 小时推成功几封（含这一封）、这些封往返的中位数 `rttMs`、窗口起止。次数和延迟由
-上报器自己数（两边同一份 `push-ledger.ts`），这里只校验、存最新一份并加上收到的时刻，由
-`GET /api/status/reporters`（慢端点）给卡片服务区最后两格。块写坏或旧版没带都当没有，不因此拒掉整封上报。
+上报器自己数（两边同一份 `push-ledger.ts`），这里只校验、把最新一份加上收到的时刻写进可滞后层（每个上报器一条，
+`reporter:server-reporter:v1` / `reporter:agents-reporter:v1`），由 `GET /api/status/reporters` 给卡片服务区最后两格。块写坏或旧版没带都当没有，不因此拒掉整封上报。
 
 ## 最近训练
 
