@@ -112,3 +112,12 @@ PSN 拉取并进 `workers/collector`（任务 `playstation`，见它的 README�
 自定义域名 `ingest.homepage.lyjw.llc` 写在 `workers/ingress/wrangler.toml`，由 ingress 的部署从 `api` 接管（Access 应用跟着
 主机名走）。切换时按 api → ingress → collector 手动部署一遍，再推 main。待部署核验：七个来源与 OTLP 的真实上报 202、
 一次部署通知的 `delivered`、Sentry `api-worker` 项目里带 `worker:ingress` 标签的事件。
+
+## 2026-09-29 在线人数并回推送房间
+
+独立的 `online-counter` Worker（`online.homepage.lyjw.llc`，不休眠的 `OnlineCounterRoom`）退役。浏览器只剩一条
+`/ws`：握手带 `?visible=1|0`，切标签时发 `visible` / `hidden`，api 的 `LivePushRoom` 在同一条连接上数出
+`connections` 与 `online`（口径见 `workers/api/src/live-census.ts`），可见人数变了广播 `online` 事件。
+`api.homepage.lyjw.llc/count` 改回 `{ ok, connections, online }`；采集 Worker 改调 `StateCore.audience()`（取代 `connections()`），
+agents-reporter 只读 `SITE_URL/count`。站点删掉 `NEXT_PUBLIC_ONLINE_COUNTER_URL`，采集 Worker 删掉 `ONLINE_COUNTER_URL`。
+api 没有新迁移。旧 Worker、它的自定义域、Workers Builds 项目和 Vercel 上的旧变量在新版核验后手工删除。

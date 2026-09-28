@@ -26,7 +26,6 @@ export interface Env {
   PSN_ACCOUNT_ID?: string;
   PLAYED_GAMES_LIMIT?: string;
   PLAYSTATION_HIDDEN_TITLE_IDS?: string;
-  ONLINE_COUNTER_URL?: string;
   APPLE_MUSIC_STOREFRONT?: string;
   CLOUDFLARE_ACCOUNT_ID?: string;
   VERCEL_PROJECT_ID?: string;

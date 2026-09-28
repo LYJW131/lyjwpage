@@ -12,7 +12,7 @@ const analytics = () => ({ data: { viewer: { accounts: [{
 
 test("summary maps every repo worker in order, converts microseconds, and leaves absent workers null", () => {
   const result = parseWorkersMetrics(analytics(), start, end);
-  assert.deepEqual(result.workers.map((worker) => worker.name), ["api", "ingress", "collector", "online-counter"]);
+  assert.deepEqual(result.workers.map((worker) => worker.name), ["api", "ingress", "collector"]);
   assert.deepEqual(result.workers[0].metrics, { requests: 20, errors: 2, subrequests: 30, cpuTimeP50Ms: 0.735 });
   assert.equal(result.workers[1].metrics, null);
   assert.deepEqual([result.windowStart, result.windowEnd], [start, end]);
@@ -70,10 +70,10 @@ test("deployment permission failure preserves metrics and sends credentials only
   });
   const metrics = await fetchWorkersMetrics("test-account", "test-secret", start, end);
   const deployments = await fetchWorkerDeployments("test-account", "test-secret");
-  // GraphQL 一次、部署四次、版本列表四次；没有任何版本号就不查构建
-  assert.equal(calls.length, 9);
+  // GraphQL 一次、部署三次、版本列表三次；没有任何版本号就不查构建
+  assert.equal(calls.length, 7);
   assert.equal(metrics.workers[0].metrics?.requests, 20);
-  assert.deepEqual(deployments, [null, null, null, null]);
+  assert.deepEqual(deployments, [null, null, null]);
   assert.doesNotMatch(JSON.stringify({ metrics, deployments }), /test-secret|test-account/);
 });
 
@@ -97,10 +97,10 @@ test("deployments join the commit of the highest-traffic version in one batched 
     return Response.json({ success: false }, { status: 403 });
   });
   const deployments = await fetchWorkerDeployments("test-account", "test-secret");
-  // 部署四次、版本列表四次（全 403）、构建一次
-  assert.equal(calls.length, 9);
+  // 部署三次、版本列表三次（全 403）、构建一次
+  assert.equal(calls.length, 7);
   assert.deepEqual(deployments[0]?.commit, { sha, branch: "main", message: "feat: x" });
-  assert.deepEqual(deployments.slice(1), [null, null, null]);
+  assert.deepEqual(deployments.slice(1), [null, null]);
 });
 
 test("a deployed version without a build record borrows the commit of the previous built version", async (t) => {
@@ -149,7 +149,7 @@ test("the public payload joins metrics and deployments by name, each half with i
   assert.equal(result.data.fetchedAt, end + 5);
   assert.equal(result.data.deploymentsFetchedAt, end + 60);
   assert.deepEqual(result.data.workers.map((worker) => [worker.name, worker.metrics?.requests ?? null, worker.deployment?.versions[0].id ?? null]), [
-    ["api", 20, null], ["ingress", null, null], ["collector", null, "v1"], ["online-counter", null, null],
+    ["api", 20, null], ["ingress", null, null], ["collector", null, "v1"],
   ]);
 
   // 统计还没写过：那一半为空，部署照样出

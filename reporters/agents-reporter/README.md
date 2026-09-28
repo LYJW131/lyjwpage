@@ -21,11 +21,11 @@ Claude、Codex、Grok、Antigravity 的用量仍由 Mac 从本机日志上报。
 3. 按 MacTelemetryHub `AgentLimitsCollector` 的规则翻译成站点请求体
 4. POST 到站点
 
-每轮收尾并行读 `ONLINE_COUNTER_URL/count` 与 `SITE_URL/count`：`online`（有页面**可见**）大于 0 走快档；否则
+每轮收尾读 `SITE_URL/count`：`online`（有页面**可见**）大于 0 走快档；否则
 `connections`（有页面**开着**，含后台标签页）大于 0 走中档，否则走闲档。与
 PlayStation 上报器采用同款人数分档逻辑，限额使用自己的 5 / 10 / 60 分钟。调频在这里控制的是打各家
 限额接口的频率（server-reporter 已改成固定每分钟，它当初调频只为给 Vercel 减负）。
-计数超时、非成功响应、格式错误一律当 0，不触发上报失败重试。
+计数超时、非成功响应、格式错误一律当 0（某个字段不合法只降它自己），不触发上报失败重试。
 不配 `SITE_URL` 时读不到人头数，固定走 60 分钟。
 
 长档每 5 分钟重查人数，发现更快档立即采集；人数减少不延后已经定好的下一轮。
@@ -177,7 +177,7 @@ ssh 直连在 kex 阶段会被对面关掉，一律走 dsm 跳板：`ssh -J dsm 
 
 限额在站点的可滞后层，浏览器按 `src/lib/freshness.ts` 的 `AGENT_LIMITS_STALE_MS`（185 分钟，三轮闲档加余量）判断过没过时。
 从固定间隔升级时更新机器上的 `.env`：删除 `PUSH_INTERVAL_MS`、
-`LIVE_PUSH_URL`，并设置 `ONLINE_COUNTER_URL=https://online.homepage.lyjw.llc`；按需设置三档间隔，
+`LIVE_PUSH_URL`、`ONLINE_COUNTER_URL`；按需设置三档间隔，
 再重建容器。旧变量已移除。
 
 `compose.yaml` 改了才需要送（跳板后面 sftp 用不了，`scp` 别想，走 ssh 管道）：
@@ -225,5 +225,5 @@ ssh -J dsm misaka-jp 'cd /opt/lyjwpage && docker compose pull agents-reporter &&
 - 某个 agent「没配」（`configured: false`）这一行不发，站点按 id 留着上一次的值。
 - 「配了但取不到」发空 `limits` 加非空 `limitsError`。不要把上一次的好值再发一遍。
 
-在线人数已恢复独立 Worker：配置 `ONLINE_COUNTER_URL=https://online.homepage.lyjw.llc`（只填源）。
-其 `/count` 的 `online` 判定快档；`SITE_URL/count` 的 `connections` 判定中档。两个查询独立超时、独立降为零。
+2026-09-29 起在线人数并回 api 的推送房间，`SITE_URL/count` 一次回 `online`（判快档）与 `connections`（判中档），
+`ONLINE_COUNTER_URL` 不再读取，机器上的 `.env` 里留着也无害。

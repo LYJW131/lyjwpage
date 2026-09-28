@@ -83,6 +83,14 @@ export type LiveEvent =
    */
   | { type: "version"; payload: null }
   /**
+   * 此刻可见的页面数变了（页脚的「Online now」）。推送房间自己数、自己发，见
+   * workers/api/src/live-census.ts；页面接入时也单独收到一条当前值。
+   *
+   * 不守「事件跟随状态 URL」那条命名规则：人数没有 `/api/status/*` 端点，
+   * 对外的读口是 Worker 的 `/count`，事件名就叫它的字段名。
+   */
+  | { type: "online"; payload: { online: number } }
+  /**
    * Emby 正在播放。webhook 和推送代理驱动，服务端收到时手上就是最新的，
    * 所以直接带数据。
    */

@@ -454,7 +454,7 @@
       return { c, box, v: box.querySelector(".v span") };
     };
     const cA = counter(740, "orange", "radio", "API Worker /count", "推送连接 · 含后台", "connections");
-    const cB = counter(1300, "blue", "eye", "在线人数 /count", "可见页面", "online");
+    const cB = counter(1300, "blue", "eye", "同一条 /ws", "可见页面", "online");
     // 三档表
     // 服务器上报器是对照行：固定每分钟，三档一样（置灰）
     const ROWS = [["服务器上报器", "固定每分钟 · 不问人数", "60 秒", "60 秒", "60 秒", true], ["PlayStation 上报器", "每分钟 cron + 门控", "约 1 分钟", "约 2 分钟", "约 30 分钟"], ["限额上报器", "", "5 分钟", "10 分钟", "60 分钟"]];

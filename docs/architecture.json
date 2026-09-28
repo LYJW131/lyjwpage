@@ -33,7 +33,6 @@
           "state_hub",
           "sites",
           "visitors",
-          "online_counter",
           "esa"
         ],
         "note": "Vercel 提供首屏；lyjw131.com 经 ESA 回源 lyjw.me，首页按源站 SWR 头先回旧 HTML、后台取新，静态 JS 长期缓存。API 只通知 Vercel 标签失效。"
@@ -46,10 +45,9 @@
           "server_reporter",
           "playstation_reporter",
           "api",
-          "online_counter",
           "visitors"
         ],
-        "note": "三个上报器各自读 API 的 connections 与在线人数 Worker 的 online：页面可见走快档，仅后台打开走中档，无人走闲档。单端失败仅该端归零。"
+        "note": "调频的上报器读 API 的 /count，一次拿到 online 与 connections：页面可见走快档，仅后台打开走中档，无人走闲档。读不到当 0。"
       },
       {
         "id": "assets",
@@ -255,29 +253,6 @@
       ]
     },
     {
-      "id": "online_counter",
-      "type": "messagebus",
-      "label": "在线人数 Worker",
-      "sublabel": "online.homepage.lyjw.llc",
-      "tag": "OnlineCounterRoom · /count 供上报器调频",
-      "pos": [
-        540,
-        560
-      ],
-      "size": [
-        292,
-        100
-      ],
-      "sources": [
-        {
-          "path": "workers/online-counter/src/index.ts"
-        },
-        {
-          "path": "workers/online-counter/wrangler.jsonc"
-        }
-      ]
-    },
-    {
       "id": "images",
       "type": "cloud",
       "label": "R2 图片",
@@ -328,7 +303,7 @@
       "type": "frontend",
       "label": "浏览器",
       "sublabel": "首屏 · SWR · WebSocket",
-      "tag": "状态 /ws · 人数 /ws 直连",
+      "tag": "状态与人数同一条 /ws",
       "pos": [
         960,
         560
@@ -342,7 +317,7 @@
           "path": "src/lib/live-socket.ts"
         },
         {
-          "path": "src/hooks/use-online-count.ts"
+          "path": "src/hooks/use-live-events.ts"
         }
       ]
     },
@@ -490,7 +465,7 @@
       "id": "push",
       "from": "api",
       "to": "visitors",
-      "label": "状态 API · 推送 /ws",
+      "label": "状态 API · 推送与人数 /ws",
       "variant": "emphasis",
       "fromSide": "bottom",
       "toSide": "left"
@@ -550,33 +525,21 @@
       "from": "esa",
       "to": "visitors",
       "label": "lyjw131.com"
-    },
-    {
-      "id": "online_ws",
-      "from": "online_counter",
-      "to": "visitors",
-      "label": "/ws · 在线人数",
-      "variant": "emphasis",
-      "route": "straight",
-      "labelAt": [
-        875,
-        610
-      ]
     }
   ],
   "cards": [
     {
       "dot": "cyan",
-      "title": "在线人数独立部署",
+      "title": "一条 /ws 数两个口径",
       "items": [
-        "online 只计可见页面；API 的 connections 包含后台页面。"
+        "页面切后台只报 hidden、不断开；online 只计可见页面，connections 包含后台页面。"
       ]
     },
     {
       "dot": "emerald",
-      "title": "三档调频 · 两个计数口",
+      "title": "三档调频 · 一个计数口",
       "items": [
-        "限额、服务器、PlayStation 三个上报器各自读 online 与 connections 决定档位。"
+        "限额、PlayStation 按 /count 的 online 与 connections 决定档位。"
       ]
     },
     {

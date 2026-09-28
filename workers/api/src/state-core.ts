@@ -1,7 +1,7 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
 import { withRequestState } from "@shared/request-state";
 import type { CoreCommand } from "@shared/ingest/prepare";
-import type { CommitReply, CorePower, StateCoreRpc } from "@shared/state-core";
+import type { CommitReply, CoreAudience, CorePower, StateCoreRpc } from "@shared/state-core";
 import type { LiveEvent } from "@/lib/live-events";
 import { getPlaystationPower } from "@/lib/playstation-store";
 import type { ListeningItem } from "@/lib/types";
@@ -45,8 +45,8 @@ export class StateCore extends WorkerEntrypoint<Env> implements StateCoreRpc {
     return this.room().broadcast(JSON.stringify({ type: "version", payload: null } satisfies LiveEvent));
   }
 
-  async connections(): Promise<number> {
-    return this.room().connectionCount();
+  async audience(): Promise<CoreAudience> {
+    return this.room().audience();
   }
 
   async playstationPower(): Promise<CorePower> {

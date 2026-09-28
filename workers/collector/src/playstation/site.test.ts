@@ -5,14 +5,14 @@ import type { CoreCommand } from "@shared/ingest/prepare";
 import type { CommitReply, CorePower } from "@shared/state-core";
 
 import type { Env } from "./env";
-import { deliver, headCount, readPower, withTimeout } from "./site";
+import { deliver, readAudience, readPower, withTimeout } from "./site";
 
 type Core = Env["CORE"];
 
 function environment(overrides: Partial<Core> = {}, vars: Partial<Env> = {}): Env {
   const core: Core = {
     commitIngest: async (): Promise<CommitReply> => ({ ready: true, ok: true, data: { changed: false } }),
-    connections: async () => 3,
+    audience: async () => ({ connections: 3, online: 1 }),
     playstationPower: async (): Promise<CorePower> => ({ on: false, observedAt: 123 }),
     ...overrides,
   };
@@ -34,7 +34,7 @@ test("PS delivery prepares the envelope here and commits it through StateCore.co
   assert.ok(call.receivedAt >= before && call.receivedAt <= Date.now());
   // 命令要跨 Service Binding 结构化复制
   assert.deepEqual(structuredClone(call), call);
-  assert.equal(await headCount(() => env.CORE.connections(), "connections"), 3);
+  assert.deepEqual(await readAudience(env), { online: 1, open: 3 });
   assert.deepEqual(await readPower(env), { on: false, observedAt: 123 });
 });
 
@@ -56,11 +56,10 @@ test("dry run only logs the envelope and never calls the core", async (t) => {
 test("failed and invalid reads preserve independent cadence fallbacks", async (t) => {
   t.mock.method(console, "warn", () => {});
   const failure = async (): Promise<never> => { throw new Error("unavailable"); };
-  assert.equal(await headCount(failure, "connections"), 0);
-  assert.equal(await headCount(async () => -1, "connections"), 0);
-  assert.equal(await headCount(async () => 1.5, "online"), 0);
-  assert.equal(await headCount(undefined, "connections"), 0);
-  assert.equal(await headCount(async () => 1, "online"), 1);
+  assert.deepEqual(await readAudience(environment({ audience: failure })), { online: 0, open: 0 });
+  // 一个数不合法只降它自己
+  assert.deepEqual(await readAudience(environment({ audience: async () => ({ connections: -1, online: 2 }) })), { online: 2, open: 0 });
+  assert.deepEqual(await readAudience(environment({ audience: async () => ({ connections: 4, online: 1.5 }) })), { online: 0, open: 4 });
   // 电源读不到是「不知道」，不是关机
   assert.equal(await readPower(environment({ playstationPower: failure })), null);
   assert.equal(await readPower(environment({ playstationPower: async () => null })), null);

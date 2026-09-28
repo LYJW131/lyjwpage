@@ -56,25 +56,22 @@ export async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T
 /** 人头数读不回来不该拖着 tick 等，超时就当没人。 */
 export const COUNT_TIMEOUT_MS = 2_500;
 
-/** 每个来源独立兜底；不让失败的连接数查询掩盖可见访客。 */
-export async function headCount(read: (() => Promise<number>) | undefined, field: "online" | "connections"): Promise<number> {
-  if (!read) return 0;
-  try {
-    const value = await withTimeout(read(), COUNT_TIMEOUT_MS);
-    if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) throw new Error(`invalid ${field}`);
-    return value;
-  } catch (error) {
-    console.warn(JSON.stringify({ event: "playstation-head-count", field, error: error instanceof Error ? error.message : String(error) }));
-    return 0;
-  }
+function count(value: unknown): number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : 0;
 }
 
-/** online-counter 的 `GET /count`：计时包含响应体读取 */
-export async function readOnlineCount(url: string): Promise<number> {
-  const response = await fetch(url, { signal: AbortSignal.timeout(COUNT_TIMEOUT_MS) });
-  if (!response.ok) throw new Error(`返回 ${response.status}`);
-  const body = (await response.json()) as { online?: unknown } | null;
-  return body?.online as number;
+/**
+ * 推送房间的两个人头数，经 CORE 一次读回。读不到、超时一律当没人，只会让节奏变慢；
+ * 某一个数不合法只把它自己降成 0，不连累另一个。
+ */
+export async function readAudience(env: Pick<Env, "CORE">): Promise<{ online: number; open: number }> {
+  try {
+    const audience = await withTimeout(env.CORE.audience(), COUNT_TIMEOUT_MS);
+    return { online: count(audience?.online), open: count(audience?.connections) };
+  } catch (error) {
+    console.warn(JSON.stringify({ event: "playstation-head-count", error: error instanceof Error ? error.message : String(error) }));
+    return { online: 0, open: 0 };
+  }
 }
 
 /** HA 报上来的主机电源状态；读不到就是 null＝不知道 */

@@ -18,8 +18,6 @@ PSN_ACCOUNT_ID = "me"
 PLAYED_GAMES_LIMIT = "100"
 # 三角洲行动、明日方舟：终末地
 PLAYSTATION_HIDDEN_TITLE_IDS = "PPSA28884_00,PPSA18538_00"
-# 在线人数 /count 的 online 判定快档；推送连接数与电源状态走 CORE。
-ONLINE_COUNTER_URL = "https://online.homepage.lyjw.llc"
 APPLE_MUSIC_STOREFRONT = "cn"
 # 站点卡片只读查询的归属标识，都不是秘密；令牌走 secret（见文末）。
 CLOUDFLARE_ACCOUNT_ID = "209f2c881b1c494fec50851c067b3266"

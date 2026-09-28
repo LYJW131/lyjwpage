@@ -1,6 +1,6 @@
 # Workers 原生 Git 部署
 
-仓库 `LYJW131/lyjwpage` 的四个 Worker（`api`、`ingress`、`online-counter`、`collector`）连接 Cloudflare Workers Builds，生产分支均为 `main`。
+仓库 `LYJW131/lyjwpage` 的三个 Worker（`api`、`ingress`、`collector`）连接 Cloudflare Workers Builds，生产分支均为 `main`。
 GitHub Actions 负责 lint、类型检查、单测与 CodeQL；Worker 发布由 Cloudflare GitHub App 触发，
 构建状态通过 GitHub check run 回传。Vercel 和 GitHub Pages 保持各自原生集成与现有工作流。
 
@@ -10,7 +10,6 @@ GitHub Actions 负责 lint、类型检查、单测与 CodeQL；Worker 发布由 
 | --- | --- | --- | --- |
 | `api` | `/` | `pnpm --dir workers/api typecheck` | `pnpm --dir workers/api exec wrangler deploy` |
 | `ingress` | `/` | `pnpm --dir workers/ingress typecheck` | `pnpm --dir workers/ingress exec wrangler deploy` |
-| `online-counter` | `/` | `pnpm --dir workers/online-counter typecheck` | `pnpm --dir workers/online-counter exec wrangler deploy` |
 | `collector` | `/` | `pnpm --dir workers/collector typecheck` | `pnpm --dir workers/collector exec wrangler deploy` |
 
 Workers Builds 在构建命令之前安装依赖。四个都使用根目录 `pnpm-lock.yaml` 与工作区，Wrangler 使用对应包锁定的版本。
@@ -56,10 +55,9 @@ PR 关闭时 `.github/workflows/preview-api-worker.yml` 执行 `wrangler preview
 
 - `api`：`workers/api/*`、`src/lib/*`、`shared/*`、`tsconfig.json`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`；排除 `shared/ingest/*`。
 - `ingress`：`workers/ingress/*`、`shared/*`、`src/lib/*`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`、`tsconfig.json`。
-- `online-counter`：`workers/online-counter/*`、`workers/api/src/origins.ts`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`。
 - `collector`：`workers/collector/*`、`shared/*`、`src/lib/*`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`、`tsconfig.json`。
 
-API 的共享状态代码变化必须触发发布；来源白名单由 API 与在线人数共用，修改时必须同时发布两者。
+API 的共享状态代码变化必须触发发布。在线人数 Worker `online-counter` 2026-09-29 并回 api 的推送房间，仓库里已删；它的构建项目待在控制台手工删除，删之前每次推送都会留一条失败的构建。
 上报的校验与收敛（`shared/ingest/`）只打包进 `ingress` 和 `collector`（后者只用 PlayStation 那一份）：`api` 的运行时只
 `import type` 这里的命令类型（`eslint.config.mjs` 按规则挡住值导入），所以 `api` 排除这个目录，改校验不重新发布带
 Durable Object 的 `api`、不断开页面的 WebSocket。命令的形状变了（新字段、新模块）要同时改 `workers/api/src/stores/` 的

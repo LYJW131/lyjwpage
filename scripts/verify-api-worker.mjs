@@ -136,7 +136,7 @@ try {
   await eventually(async () => assert.equal((await fetch(`${worker}/count`)).status, 200));
   // 路由 Worker 先起来时，后面两个可能还没注册好；等上报入口也答得上话
   await eventually(async () => assert.deepEqual(await (await fetch(`${worker}/api/ingest/mac`)).json(), { ok: false, error: '只接受 POST' }));
-  assert.deepEqual(await (await fetch(`${worker}/count`)).json(), { ok: true, connections: 0 });
+  assert.deepEqual(await (await fetch(`${worker}/count`)).json(), { ok: true, connections: 0, online: 0 });
   assert.equal((await otlp()).status, 503, 'OTLP must preserve the storage initialization barrier');
   assert.equal((await post(worker, '/api/ingest/homepod', {})).status, 503);
   assert.equal((await post(worker, '/api/ingest/iphone', { version: 1 })).status, 503);
@@ -191,11 +191,34 @@ try {
   ))).every(response => response.status === 200));
   console.log('PASS: concurrent local overrides atomically maintain their StateHub index');
   assert.equal((await fetch(`${worker}/online/ws`)).status, 404);
-  console.log('PASS: API count only reports live-push connections; online route removed');
   const events = [];
-  socket = new WebSocket(`${worker.replace('http:', 'ws:')}/ws`);
+  const onlineSeen = () => events.filter(e => e.type === 'online').map(e => e.payload.online);
+  const audience = async () => (await (await fetch(`${worker}/count`)).json());
+  // 后台打开的页面：只算开着，但接上就要单独收到一条当前人数
+  const background = new WebSocket(`${worker.replace('http:', 'ws:')}/ws?visible=0`);
+  const backgroundSeen = [];
+  background.addEventListener('message', e => { if (e.data !== 'pong') backgroundSeen.push(JSON.parse(e.data)); });
+  await once(background, 'open');
+  await eventually(async () => assert.deepEqual(backgroundSeen, [{ type: 'online', payload: { online: 0 } }]));
+  assert.deepEqual(await audience(), { ok: true, connections: 1, online: 0 });
+  socket = new WebSocket(`${worker.replace('http:', 'ws:')}/ws?visible=1`);
   socket.addEventListener('message', e => { if (e.data !== 'pong') events.push(JSON.parse(e.data)); });
   await once(socket, 'open');
+  await eventually(async () => assert.deepEqual(onlineSeen(), [1]));
+  await eventually(async () => assert.ok(backgroundSeen.some(e => e.payload.online === 1), 'visible arrivals are broadcast to everyone'));
+  assert.deepEqual(await audience(), { ok: true, connections: 2, online: 1 });
+  socket.send('hidden');
+  await eventually(async () => assert.deepEqual(onlineSeen(), [1, 0]));
+  assert.deepEqual(await audience(), { ok: true, connections: 2, online: 0 });
+  socket.send('hidden');
+  socket.send('visible');
+  await eventually(async () => assert.deepEqual(onlineSeen(), [1, 0, 1]));
+  background.send('visible');
+  await eventually(async () => assert.deepEqual(onlineSeen(), [1, 0, 1, 2]));
+  background.close();
+  await eventually(async () => assert.deepEqual(onlineSeen(), [1, 0, 1, 2, 1]));
+  assert.deepEqual(await audience(), { ok: true, connections: 1, online: 1 });
+  console.log('PASS: one push socket carries both counts; visibility handshake, visible/hidden messages and close all rebroadcast online');
   // 不给 token 就按上报器那样带 Access JWT；给了就是 Bearer（存储导入用，或故意给错的）
   async function post(base, path, body, token) {
     const auth = token === undefined ? await access.headers() : { authorization: `Bearer ${token}` };
@@ -332,7 +355,6 @@ try {
   if (verifyBuild) {
     const build = start('pnpm', ['build'], {
       NEXT_PUBLIC_BACKEND_URL: worker,
-      NEXT_PUBLIC_ONLINE_COUNTER_URL: worker,
     });
     const [buildExit] = await once(build, 'exit');
     assert.equal(buildExit, 0, logs.join('').slice(-12000));

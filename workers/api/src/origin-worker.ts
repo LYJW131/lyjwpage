@@ -4,6 +4,17 @@ import { StateHub } from "./state-hub";
 import { STORAGE_MAX_BYTES } from "@shared/storage-contract";
 import type { StoredEntry } from "@shared/sqlite-store";
 
+import type { LiveEvent } from "@/lib/live-events";
+
+import {
+  HEARTBEAT_INTERVAL_MS,
+  parseVisibility,
+  readMark,
+  takeCensus,
+  type Census,
+  type SocketMark,
+  type SocketSample,
+} from "./live-census";
 import { ROOM_ID } from "./live-platform";
 import { ConfigError, issueMusicKitToken } from "./musickit-token";
 import { getAllowedOrigins, getCorsHeaders, isAllowedOrigin, isAllowedOriginValue } from "./origins";
@@ -145,14 +156,18 @@ async function handleMusicKitToken(request: Request, env: Env, cors: Headers): P
   }
 }
 
-const CONNECTION_STALE_MS = 5 * 60_000;
-const CONNECTION_CLOSE_MS = 30 * 60_000;
+/** 清扫节奏。一条消失的可见连接最坏在人数里多留 VISIBLE_STALE_MS + 这个值（当前 120 秒） */
+const SWEEP_INTERVAL_MS = HEARTBEAT_INTERVAL_MS;
 
 /**
- * 全站一个房间。连接走休眠版 `ctx.acceptWebSocket()`，心跳由运行时用
+ * 全站一个房间，也是全站唯一一条 WebSocket：事件从这里广播，两个人头数也从这里数
+ * （口径见 live-census.ts）。连接走休眠版 `ctx.acceptWebSocket()`，心跳由运行时用
  * `setWebSocketAutoResponse` 直接回，实例可以被回收、连接照样挂着。
- * 所以**不能把连接存在实例字段里**，连接列表一律现问 `ctx.getWebSockets()`；
- * 自动回复也**必须登记在构造函数里**，醒来那一次没有人走接入路径。
+ * 所以**不能把连接存在实例字段里**，连接列表一律现问 `ctx.getWebSockets()`，
+ * 可见性记在各自的 attachment 上；自动回复也**必须登记在构造函数里**，醒来那一次
+ * 没有人走接入路径。
+ *
+ * 只有接入、断开、页面切可见性和清扫闹钟会唤醒实例；可见人数变了才广播 `online`。
  */
 export class LivePushRoom extends DurableObject<Env> {
   /**
@@ -181,9 +196,15 @@ export class LivePushRoom extends DurableObject<Env> {
     const client = pair[0];
     const server = pair[1];
 
+    // 可见性跟着握手来，不等第一条消息：否则可见的新访客先收到一个不含自己的人数，
+    // 紧接着又被自己那条 visible 改掉，页脚闪一下
+    const now = Date.now();
+    const visible = new URL(request.url).searchParams.get("visible") === "1";
     this.ctx.acceptWebSocket(server);
-    server.serializeAttachment({ at: Date.now() });
+    server.serializeAttachment({ at: now, visible, seenAt: now } satisfies SocketMark);
     this.ctx.waitUntil(this.ensureUpstreamRelay());
+    // 新连接一接上就要拿到此刻的人数（页脚靠这第一条），人数变了就顺带播给所有人
+    this.ctx.waitUntil(this.announce(this.census(), server));
 
     return new Response(null, { status: 101, webSocket: client });
   }
@@ -241,6 +262,8 @@ export class LivePushRoom extends DurableObject<Env> {
     } catch {
       // 不是 JSON 的照样转，页面那头自己会忽略
     }
+    // 在线人数是本地房间自己数的，生产那边的人数不转：转了本地页脚会被生产的数盖掉
+    if (message?.type === "online") return;
     const path = typeof message?.type === "string" ? pathForEventType(message.type) : null;
     if (path && this.env.DEV_OVERRIDE_READER) {
       try {
@@ -283,45 +306,107 @@ export class LivePushRoom extends DurableObject<Env> {
   }
 
   /**
-   * 数人头时跳过静默超过 5 分钟的连接：对端消失却没发过 close 帧的连接会一直挂在
-   * 列表里，一条这样的僵尸就足以把上报器永远钉在中档。判据是运行时替我们记的 ping
-   * 自动回复时刻（浏览器每 30 秒发一个），阈值取 5 分钟而不是贴着心跳画线 —— 后台
-   * 标签页的定时器会被浏览器节流到最多每分钟一响。
+   * 两个人头数，一趟遍历数完（口径见 live-census.ts）。静默超过 30 分钟的顺路关掉，
+   * 不额外挂闹钟。
    *
-   * 「不计数」和「关掉」是两条线：锁屏、移动端后台会被整个冻结，随时会解冻回来，
-   * 关掉只会逼它重连。所以关的那条线推到 30 分钟，顺路在数人头时做掉，不额外挂闹钟。
+   * `leaving`：正在 webSocketClose / webSocketError 里的那条。回调跑的时候它还在
+   * `getWebSockets()` 里，数的时候得自己剔掉。
    */
-  connectionCount(now = Date.now()): number {
-    let alive = 0;
+  private census(leaving?: WebSocket, now = Date.now()): Census<WebSocket> {
+    const samples: SocketSample<WebSocket>[] = [];
     for (const socket of this.ctx.getWebSockets()) {
-      const pinged = this.ctx.getWebSocketAutoResponseTimestamp(socket);
-      const attachment = socket.deserializeAttachment() as { at?: unknown } | null;
-      const acceptedAt = typeof attachment?.at === "number" ? attachment.at : null;
-      // 两样都没有：这次部署之前接进来的旧连接，且此后一个 ping 都没发过
-      const lastSeen = pinged?.getTime() ?? acceptedAt;
-      const silentMs = lastSeen === null ? Number.POSITIVE_INFINITY : now - lastSeen;
-      if (silentMs <= CONNECTION_STALE_MS) {
-        alive += 1;
-      } else if (silentMs > CONNECTION_CLOSE_MS) {
-        // 1001 = going away。关不掉（已经断了）就算了，运行时随后会清理
-        try {
-          socket.close(1001, "静默过久");
-        } catch { }
-      }
+      if (socket === leaving) continue;
+      samples.push({
+        socket,
+        pinged: this.ctx.getWebSocketAutoResponseTimestamp(socket)?.getTime() ?? null,
+        mark: readMark(socket.deserializeAttachment()),
+      });
     }
-    return alive;
+    const result = takeCensus(samples, now);
+    for (const socket of result.expired) {
+      // 1001 = going away。关不掉（已经断了）就算了，运行时随后会清理
+      try {
+        socket.close(1001, "静默过久");
+      } catch { }
+    }
+    return result;
   }
 
-  async webSocketMessage(): Promise<void> { }
+  /** 两个数一起：`/count` 与 `StateCore.audience()`。只读，不广播 */
+  audience(): { connections: number; online: number } {
+    const { connections, online } = this.census();
+    return { connections, online };
+  }
+
+  /**
+   * 上一次播出去的可见人数。实例休眠醒来就回到 null，那一次多播一遍同样的数，无害；
+   * 存进 storage 反而是每次切标签都多一次写。
+   */
+  private lastOnline: number | null = null;
+
+  /** 可见人数变了就播给所有连接；没变但有新来的，只告诉它一个 */
+  private publishOnline(census: Census<WebSocket>, newcomer?: WebSocket): void {
+    const message = JSON.stringify({ type: "online", payload: { online: census.online } } satisfies LiveEvent);
+    if (census.online !== this.lastOnline) {
+      this.lastOnline = census.online;
+      this.broadcast(message);
+    } else if (newcomer) {
+      try {
+        newcomer.send(message);
+      } catch { }
+    }
+  }
+
+  /**
+   * 播人数，有人可见时再排一次清扫：对端没发 close 帧就消失的可见连接，要靠它把
+   * 人数降回来。已经排着就别动 —— 每次都 setAlarm 会把待跑的那次往后推，访客持续
+   * 切标签时清扫被无限推迟。
+   */
+  private async announce(census: Census<WebSocket>, newcomer?: WebSocket): Promise<void> {
+    this.publishOnline(census, newcomer);
+    if (census.online > 0 && (await this.ctx.storage.getAlarm()) === null) {
+      await this.ctx.storage.setAlarm(Date.now() + SWEEP_INTERVAL_MS);
+    }
+  }
+
+  /**
+   * 清扫。房间里还有人可见就续订，没人可见了不再续、链条自己结束 —— 只剩后台
+   * 标签页挂着时房间不会被闹钟叫醒。
+   * 用闹钟而不是只在 `/count` 被读时惰性清：那个入口的调用方是外部的上报器，
+   * 页脚的人数不能押在别人的 cron 上。
+   */
+  async alarm(): Promise<void> {
+    const census = this.census();
+    this.publishOnline(census);
+    if (census.online > 0) await this.ctx.storage.setAlarm(Date.now() + SWEEP_INTERVAL_MS);
+  }
+
+  /** 页面切可见性时发 `visible` / `hidden`；"ping" 由运行时自动回，到不了这里 */
+  async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
+    const visible = parseVisibility(message);
+    if (visible === null) return;
+    const now = Date.now();
+    const mark = readMark(ws.deserializeAttachment(), now);
+    ws.serializeAttachment({ at: mark?.at ?? now, visible, seenAt: now } satisfies SocketMark);
+    await this.announce(this.census(undefined, now));
+  }
 
   async webSocketClose(ws: WebSocket, code: number): Promise<void> {
     // 1005（没给关闭码）和 1006（没收到 close 帧）都是"保留码"：
     // 它们描述的是连接怎么断的，不能拿来当自己要发出去的关闭码，传进去会抛
-    ws.close(code === 1005 || code === 1006 ? 1000 : code);
+    try {
+      ws.close(code === 1005 || code === 1006 ? 1000 : code);
+    } catch { }
     // 最后一个本地页面走了，上游中继也一起断，别在生产那边多占一条连接
     if (this.upstream && this.ctx.getWebSockets().every((socket) => socket === ws)) {
       this.dropUpstreamRelay();
     }
+    await this.announce(this.census(ws));
+  }
+
+  /** 出错之后运行时不一定再补一次 close，人数在这里也得更新 */
+  async webSocketError(ws: WebSocket): Promise<void> {
+    await this.announce(this.census(ws));
   }
 }
 
@@ -382,7 +467,7 @@ const worker = {
     }
 
     if (url.pathname === "/count") {
-      return jsonResponse({ ok: true, connections: await getRoom(env).connectionCount() }, { headers: cors });
+      return jsonResponse({ ok: true, ...(await getRoom(env).audience()) }, { headers: cors });
     }
 
     if (url.pathname === "/") {
