@@ -14,7 +14,19 @@ Worker 是唯一数据后端。上报、状态 API、Apple / GitHub 获取和缓
 
 ## 长期归档（D1）
 
-- 归档库 `lyjwpage-history`，Worker 里的绑定叫 `HISTORY`，只有一张表 `pulse_samples(domain, t, level, hint, until_at)`，主键 `(domain, t)`。迁移 `0002_pulse_activity_intervals.sql` 增加 `until_at`（其他域为 NULL），发布带区间的 Worker 前先执行该 D1 迁移。StateHub 仍是唯一权威，这里只增不删：StateHub 每域只留 600 条 / 7 天，归档保留全部历史。
+D1 是整站的长期历史归档：DO 管实时状态与 7 天热数据，KV 管可滞后层的最新值，D1 管永久、按时间可查的历史，R2 管图片。原则是存事实不存展示结果、谁写入谁归档（收下这份数据的一方顺手追加，不设单独的搬运流程）、只追加并靠主键去重、高频读数只存汇总、只知道区间的事实如实存区间。
+
+| 表 | 内容 | 写入方 | 去重 |
+| --- | --- | --- | --- |
+| `workouts` | iPhone 上报的每次训练 | 上报入口 | `id` 覆盖成观测最晚的一份 |
+| `activity_days` | 每天活动圆环的终值（手表本地日） | 上报入口 | `date`，同一天取最晚一封 |
+| `limit_snapshots` | 各厂商限额每日快照（Asia/Shanghai 日） | 上报入口 | `(date, agent, limit_key)`，取当天最后一次读数 |
+| `server_hours` | 服务器按 UTC 整点汇总：样本数（即在线分钟）、CPU 与负载的和与峰值、内存、速率峰值、周期累计流量的末值、运行时长 | 上报入口 | `(host, hour_at)`；同一 `observedAt` 的重放不重复计数 |
+| `pulse_samples` | 9 月 17 日起的旧档位数据，保留原样，不迁移也不再扩展 | 状态核心 | `(domain, t)` |
+
+上报入口的四张表由 `shared/history-ingest.ts` 拼语句，在上报落库成功之后 `waitUntil` 整批提交；失败只记 `[history]` 日志，不让已收下的上报重发。迁移 `0005_history_ingest.sql` 建表，部署写这些表的版本之前先应用。
+
+- 旧表 `pulse_samples(domain, t, level, hint, until_at)`，主键 `(domain, t)`。迁移 `0002_pulse_activity_intervals.sql` 增加 `until_at`（其他域为 NULL），发布带区间的 Worker 前先执行该 D1 迁移。StateHub 仍是唯一权威，这里只增不删：StateHub 每域只留 600 条 / 7 天，归档保留全部历史。
 - cron 每分钟从 StateHub 一次取得六域有界快照与水位，普通 Worker 分批写 D1，再逐批向 StateHub 确认水位；上报不等待归档。每域水位存在 metadata 的 `pulse-archive:<domain>`，确认按 max 单调前进。只有 `INSERT OR IGNORE` 成功的批次会确认，失败留待下一分钟重放；每批最多 100 条，一域失败不阻塞其他域。
 - 本地和夹具环境不写归档：`historyArchiveEnabled` 和读模型用同一套闸门，配了 `DEV_OVERRIDES` 或 `UPSTREAM_API_URL` 就停用，没有 `HISTORY` 绑定也停用。
 - 归档暂时没有公开 HTTP 读路径，只作备份；公开的那份走 `GET /api/status/pulse`，从 StateHub 的 7 天序列里裁最近 24 小时，不读 D1。读归档的入口另开时再补这一节。

@@ -3,6 +3,7 @@ import { DurableObject } from "cloudflare:workers";
 
 import { INGEST_SOURCES, prepareIngestForCommit } from "./ingest-handlers";
 import { dispatchIngestEffects } from "./ingest-effects";
+import { archiveIngest } from "./ingest-archive";
 import { StateHub } from "./state-hub";
 import { authorize } from "./access-auth";
 import { handleAuthorize, handleExchange, PAIR_AUTHORIZE_PATH, PAIR_TOKEN_PATH } from "./pairing";
@@ -21,7 +22,7 @@ import { fetchPreviewUpstream, isPreviewProxyPath, previewWorkerEnabled } from "
 import { isPublicApiPath, pathForEventType } from "./public-api";
 import { executePublicRequest } from "./public-execution";
 import { isLookupPath, serveLookup } from "./lookup-routes";
-import { requestStore, type Env } from "./runtime";
+import { historyArchiveEnabled, requestStore, type Env } from "./runtime";
 import { site } from "@/lib/site";
 
 /** 接收所有上报，在 Worker 内写 Storage、广播 WebSocket，再通知 Vercel 缓存失效。 */
@@ -146,6 +147,8 @@ export async function commitIngest(env: Env, ctx: ExecutionContext, source: stri
       await dispatchIngestEffects(result.effects);
       if (!result.ready) return jsonResponse({ ok: false, error: "状态存储初始化中" }, { status: 503 });
       if (!result.ok) throw new Error(result.error);
+      // 收下了才归档；归档失败只记日志，不能让已落库的上报重发
+      if (historyArchiveEnabled(env)) ctx.waitUntil(archiveIngest(env.HISTORY!, command));
       return jsonResponse({ ok: true, data: JSON.parse(result.json) }, { status: 202 });
     }));
   } catch (error) {
