@@ -9,6 +9,7 @@ import { PulseArchive } from "./pulse-archive";
 import { PulseScorer } from "./pulse-score";
 import { ReadModelRenderer as ReadModelRendererBase } from "./read-model-renderer";
 import { PlaystationIngest as PlaystationIngestBase } from "./playstation-ingest";
+import { StateCore as StateCoreBase } from "./state-core";
 import { CRON_MONITOR_CONFIG, CRON_MONITOR_SLUG, heartbeatDue } from "./cron-heartbeat";
 import { sentryOptions } from "./sentry";
 
@@ -18,6 +19,8 @@ export const LivePushRoom = Sentry.instrumentDurableObjectWithSentry(sentryOptio
 export const StateHub = Sentry.instrumentDurableObjectWithSentry(sentryOptions, StateHubBase);
 export const ReadModelRenderer = Sentry.withSentry(sentryOptions, ReadModelRendererBase);
 export const PlaystationIngest = Sentry.withSentry(sentryOptions, PlaystationIngestBase);
+/** 上报入口与采集 Worker 经 Service Binding 调的状态核心 RPC，契约见 shared/state-core.ts */
+export const StateCore = Sentry.withSentry(sentryOptions, StateCoreBase);
 export type { Env } from "./runtime";
 
 const apiWorker = {

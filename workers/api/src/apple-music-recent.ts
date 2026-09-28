@@ -270,6 +270,30 @@ async function assemble(): Promise<ListeningItem[]> {
   return items;
 }
 
+/**
+ * 收下采集 Worker 拉回来的一份最近在听：差分、落库、推 `listening`、记听歌痕迹。
+ *
+ * 拉取本身（Apple 请求、封面与时长的缓存）在采集 Worker 里；这里只做依赖权威
+ * 旧值的那一半，经 StateCore RPC 进来。
+ */
+export async function commitRecentlyPlayed(items: ListeningItem[]): Promise<{ changed: boolean }> {
+  return withStorageScope(async () => {
+    const { changed, play, listening, commit } = await prepareRecentlyPlayed(items);
+    /**
+     * 列表变了就是「在什么设备上又放了点什么」，哪怕 Mac 睡着、HomePod 没动 ——
+     * 那时这是唯一留下的痕迹。它没有时刻，所以不进 pulse 序列、不画进图，只作为
+     * 证据交给评分器和正在播放的实测段一起打分，见 workers/api/src/pulse-score.ts。
+     */
+    // 完整数据可并行广播。首屏不失效：列表区定高、条目绝对定位，换歌只换内容，
+    // 交给定时重建（见 lib/home-layout）。
+    await fanout({
+      writes: play ? [commit(), recordListeningPlay(play)] : [commit()],
+      events: changed ? [{ type: "listening", payload: listening }] : [],
+    });
+    return { changed };
+  });
+}
+
 /** 进程内节流减少 Storage 往返，SET NX PX 保证多个实例同一窗口只拉一次。 */
 export function refreshRecentlyPlayed(): Promise<void> {
   const now = Date.now();
@@ -281,18 +305,7 @@ export function refreshRecentlyPlayed(): Promise<void> {
       if (!(await claim(REFRESH_KEY, RECENT_REFRESH_MS))) return;
 
       try {
-        const { changed, play, listening, commit } = await prepareRecentlyPlayed(await assemble());
-        /**
-         * 列表变了就是「在什么设备上又放了点什么」，哪怕 Mac 睡着、HomePod 没动 ——
-         * 那时这是唯一留下的痕迹。它没有时刻，所以不进 pulse 序列、不画进图，只作为
-         * 证据交给评分器和正在播放的实测段一起打分，见 workers/api/src/pulse-score.ts。
-         */
-        // 完整数据可并行广播。首屏不失效：列表区定高、条目绝对定位，换歌只换内容，
-        // 交给定时重建（见 lib/home-layout）。
-        await fanout({
-          writes: play ? [commit(), recordListeningPlay(play)] : [commit()],
-          events: changed ? [{ type: "listening", payload: listening }] : [],
-        });
+        await commitRecentlyPlayed(await assemble());
       } catch (error) {
         console.error("[apple-music]", error instanceof Error ? error.message : String(error));
       }
