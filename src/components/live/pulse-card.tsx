@@ -197,7 +197,8 @@ export function PulseCard({
     <Card label="Pulse" action="Last 24 hours" className={cn("h-full", className)}>
       <div className="flex flex-col gap-2 p-4 lg:p-5">
         {LANES.map(({ domain, label }) => {
-          const candidate = data?.domains[domain];
+          // 形状变了的 payload（换代部署那几分钟）没有 domains，当没数据画，不让整页抛错
+          const candidate = data?.domains?.[domain];
           const view = candidate && readable(candidate) ? candidate : undefined;
           const score = view?.score ?? null;
           const empty = !view || (view.kind === "score" ? view.assessments.startSec.length === 0 : view.segments.startSec.length === 0);
