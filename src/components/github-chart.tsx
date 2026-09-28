@@ -22,8 +22,11 @@ import { GITHUB_CHART_PATH } from "@/lib/paths";
 import type { GithubChartDay, GithubChartPayload, StatusResponse } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-/** 贡献日历按天变。长间隔兜底，切回焦点带游标只拉窗尾。 */
-const REFRESH_MS = 6 * 60 * 60_000;
+/**
+ * 贡献日历按天变，带游标只拉窗尾，一小时一轮很便宜。间隔要明显短于过期阈值
+ * （GITHUB_CHART_STALE_MS，6 小时），否则正常的页面也会在下一轮之前先翻成 Unavailable。
+ */
+const REFRESH_MS = 60 * 60_000;
 
 const fetchGithubChart = incrementalFetcher<GithubChartPayload>(
   githubChartCursor,

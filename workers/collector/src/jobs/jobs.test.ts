@@ -86,16 +86,20 @@ const repo = (commits: number | null, contributors = 2, fetchedAt = 1): GithubRe
 
 test("repo stats keep the good half of a partial round", () => {
   const previous = repo(400, 3, 1);
-  // 都取到了
-  assert.deepEqual(mergeRepoStats({ ok: true, data: repo(434, 2, 2) }, previous), repo(434, 2, 2));
-  // 只有总数没取到：名单新、总数沿用
+  // 都取到了：总数的时刻就是这一轮
+  assert.deepEqual(mergeRepoStats({ ok: true, data: repo(434, 2, 2) }, previous), { ...repo(434, 2, 2), totalsAt: 2 });
+  // 只有总数没取到：名单新、总数沿用，带着上一份总数的时刻
   const totalsMissing = mergeRepoStats({ ok: true, data: repo(null, 2, 2) }, previous);
   assert.deepEqual(totalsMissing?.totals, { commits: 400, additions: 4000, deletions: 400, contributors: 2 });
   assert.equal(totalsMissing?.contributors.length, 2);
-  // 只有名单没取到：名单沿用、总数新
-  const contributorsMissing = mergeRepoStats({ ok: false, totals: { commits: 434, additions: 4340, deletions: 434 } }, previous);
+  assert.equal(totalsMissing?.totalsAt, 1);
+  // 总数一直取不到：时刻不跟着名单往前走
+  assert.equal(mergeRepoStats({ ok: true, data: repo(null, 2, 3) }, totalsMissing)?.totalsAt, 1);
+  // 只有名单没取到：名单沿用（时刻不变）、总数新
+  const contributorsMissing = mergeRepoStats({ ok: false, totals: { commits: 434, additions: 4340, deletions: 434 } }, previous, 5);
   assert.deepEqual(contributorsMissing?.totals, { commits: 434, additions: 4340, deletions: 434, contributors: 3 });
   assert.equal(contributorsMissing?.fetchedAt, 1);
+  assert.equal(contributorsMissing?.totalsAt, 5);
   // 都没取到，或没有上一份可沿用：不写
   assert.equal(mergeRepoStats({ ok: false, totals: { commits: null, additions: null, deletions: null } }, previous), null);
   assert.equal(mergeRepoStats({ ok: false, totals: { commits: 434, additions: 1, deletions: 1 } }, null), null);

@@ -21,17 +21,27 @@ const FETCH_BUDGET_MS = 60_000;
 
 const hasTotals = (totals: RepoTotals) => totals.commits != null;
 
+/**
+ * 名单和总数各自降级：这一轮没取到的那一半沿用上一份。两半各带取到的时刻
+ * （名单 `fetchedAt`、总数 `totalsAt`），沿用的那一半留着原来的时刻，卡片分别判过期。
+ */
 export function mergeRepoStats(
   fresh: { ok: true; data: GithubRepoPayload } | { ok: false; totals: RepoTotals },
   previous: GithubRepoPayload | null,
+  now = Date.now(),
 ): GithubRepoPayload | null {
   if (fresh.ok) {
-    if (hasTotals(fresh.data.totals) || !previous || !hasTotals(previous.totals)) return fresh.data;
+    if (hasTotals(fresh.data.totals)) return { ...fresh.data, totalsAt: fresh.data.fetchedAt };
+    if (!previous || !hasTotals(previous.totals)) return fresh.data;
     const { commits, additions, deletions } = previous.totals;
-    return { ...fresh.data, totals: { ...fresh.data.totals, commits, additions, deletions } };
+    return {
+      ...fresh.data,
+      totals: { ...fresh.data.totals, commits, additions, deletions },
+      totalsAt: previous.totalsAt ?? previous.fetchedAt,
+    };
   }
   if (!previous || !hasTotals(fresh.totals)) return null;
-  return { ...previous, totals: { ...fresh.totals, contributors: previous.totals.contributors } };
+  return { ...previous, totals: { ...fresh.totals, contributors: previous.totals.contributors }, totalsAt: now };
 }
 
 export const githubRepoJob: Job = {
