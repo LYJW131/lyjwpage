@@ -144,6 +144,25 @@ test("a scheduled tick runs only due jobs and checks in only on check-in minutes
   assert.deepEqual(checkins.map((row) => row.slug), ["collector-github-chart"]);
 });
 
+test("a head-start job gets going before the rest, which wait for it or the head-start window", async () => {
+  const order: string[] = [];
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const first = fakeJob(async () => { order.push("ps:start"); await gate; order.push("ps:gate"); return { status: "ok" }; }, { name: "playstation", everyMinutes: 1, offset: 0, headStart: true });
+  const other = fakeJob(async () => { order.push("other"); return { status: "ok" }; }, { name: "provider-status", everyMinutes: 1, offset: 0 });
+
+  // 门先放行：别的任务紧跟着开跑
+  setTimeout(release, 5);
+  await runScheduled(env, at("2026-09-28T10:02:00Z"), { jobs: [other, first], headStartMs: 1_000 });
+  assert.deepEqual(order, ["ps:start", "ps:gate", "other"]);
+
+  // 抢先的任务迟迟不完：等满窗口就放别的走，不一直干等
+  order.length = 0;
+  const stuck = fakeJob(async () => { order.push("ps:start"); await new Promise((resolve) => setTimeout(resolve, 50)); order.push("ps:done"); return { status: "ok" }; }, { name: "playstation", everyMinutes: 1, offset: 0, headStart: true });
+  await runScheduled(env, at("2026-09-28T10:02:00Z"), { jobs: [other, stuck], headStartMs: 5 });
+  assert.deepEqual(order, ["ps:start", "other", "ps:done"]);
+});
+
 test("named runs report unknown jobs without throwing and dedupe names", async () => {
   const results = await runNamed(env, ["nope", "nope"]);
   assert.deepEqual(results, [{ job: "nope", status: "error", detail: "unknown job", ms: 0 }]);

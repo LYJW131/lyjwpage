@@ -29,6 +29,12 @@ export type Job = {
   offset: number;
   /** Sentry 监控认定超时的分钟数 */
   maxRuntimeMinutes: number;
+  /**
+   * cron 这一响里先起步、其余任务晚一点再开跑（见 registry 的 HEAD_START_MS）。
+   * 给入口处有短超时的任务用：一次调用同时只能有 6 个连接在等响应头，排在别人后面
+   * 会把超时预算耗在排队上
+   */
+  headStart?: boolean;
   run(ctx: JobContext): Promise<JobResult>;
 };
 

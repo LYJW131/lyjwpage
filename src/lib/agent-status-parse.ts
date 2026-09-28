@@ -701,6 +701,7 @@ function carried(previous: AgentStatusPayload | null, id: AgentStatusRow["id"], 
 
 async function load(
   previous: AgentStatusPayload | null,
+  failed: Set<AgentStatusRow["id"]>,
   id: AgentStatusRow["id"],
   run: () => Promise<AgentStatusRow>,
 ): Promise<AgentStatusRow> {
@@ -712,6 +713,7 @@ async function load(
       id,
       error instanceof Error ? error.message : String(error),
     );
+    failed.add(id);
     return carried(previous, id, "Status check failed.");
   }
 }
@@ -720,7 +722,7 @@ async function load(
  * 九行，卡片按每三行一列排成 3×3。第一列跟用量卡一致：Claude、ChatGPT、
  * Cursor；第二列 Grok、TypeSafe、Apple；基础设施三家（Vercel / GitHub /
  * Cloudflare）是最后一列。
- * 某一家失败就留着上一轮，不让整张卡空白。
+ * 某一家失败就留着上一轮，不让整张卡空白；九家全失败才整轮抛错。
  */
 export async function collectAgentStatus(
   previous: AgentStatusPayload | null,
@@ -728,8 +730,9 @@ export async function collectAgentStatus(
   now = Date.now(),
 ): Promise<AgentStatusPayload> {
   const text = async (url: string) => fetchText(url);
+  const failed = new Set<AgentStatusRow["id"]>();
   const [claude, codex, cursor, grok, typesafe, apple, vercel, github, cloudflare] = await Promise.all([
-    load(previous, "claude", async () =>
+    load(previous, failed, "claude", async () =>
       statuspageRow(
         "claude",
         "Claude",
@@ -739,7 +742,7 @@ export async function collectAgentStatus(
         false,
       ),
     ),
-    load(previous, "codex", async () =>
+    load(previous, failed, "codex", async () =>
       statuspageRow(
         "codex",
         "ChatGPT",
@@ -749,10 +752,10 @@ export async function collectAgentStatus(
         false,
       ),
     ),
-    load(previous, "cursor", async () =>
+    load(previous, failed, "cursor", async () =>
       statuspageRow("cursor", "Cursor", STATUS_PAGES.cursor, await text(AGENT_STATUS_URLS.cursor), () => true, true),
     ),
-    load(previous, "grok", async () => {
+    load(previous, failed, "grok", async () => {
       const [home, feed] = await Promise.all([
         text(AGENT_STATUS_URLS.xaiHome).then(
           (body) => ({ ok: true as const, body }),
@@ -766,9 +769,9 @@ export async function collectAgentStatus(
       if (!home.ok && !feed.ok) throw new Error("status.x.ai unreachable");
       return xaiRow(home.body, feed.body);
     }),
-    load(previous, "typesafe", async () => typesafeRow(await text(AGENT_STATUS_URLS.typesafe), now)),
-    load(previous, "apple", async () => appleRow(await text(AGENT_STATUS_URLS.apple))),
-    load(previous, "vercel", async () =>
+    load(previous, failed, "typesafe", async () => typesafeRow(await text(AGENT_STATUS_URLS.typesafe), now)),
+    load(previous, failed, "apple", async () => appleRow(await text(AGENT_STATUS_URLS.apple))),
+    load(previous, failed, "vercel", async () =>
       statuspageRow(
         "vercel",
         "Vercel",
@@ -778,7 +781,7 @@ export async function collectAgentStatus(
         true,
       ),
     ),
-    load(previous, "github", async () =>
+    load(previous, failed, "github", async () =>
       statuspageRow(
         "github",
         "GitHub",
@@ -788,7 +791,7 @@ export async function collectAgentStatus(
         true,
       ),
     ),
-    load(previous, "cloudflare", async () =>
+    load(previous, failed, "cloudflare", async () =>
       statuspageRow(
         "cloudflare",
         "Cloudflare",
@@ -799,6 +802,8 @@ export async function collectAgentStatus(
       ),
     ),
   ]);
+  // 九家一个都没取到，多半是这边出不去而不是九家同时挂了：整轮算失败，不拿沿用的旧行冒充新检查
+  if (failed.size === Object.keys(FALLBACK).length) throw new Error("status pages all unreachable");
   return {
     fetchedAt: now,
     agents: [claude, codex, cursor, grok, typesafe, apple, vercel, github, cloudflare],

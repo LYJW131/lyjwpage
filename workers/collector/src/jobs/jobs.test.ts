@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import { LAG_KEYS, readLag, writeLag } from "@shared/lag";
 import type { AgentStatusPayload, AgentStatusRow } from "@/lib/agent-status-types";
-import { mergeSentryStatus } from "@/lib/sentry-status";
+import { mergeSentryStatus, SENTRY_BLOCK_CARRY_MS } from "@/lib/sentry-status";
 import type { SentryStatusPayload } from "@/lib/sentry-status-types";
 import type { GithubRepoPayload } from "@/lib/types";
 import type { VercelMetricsPayload } from "@/lib/vercel-deployments-types";
@@ -26,36 +26,54 @@ test("provider status writes every round, revalidates only when the lights chang
   const revalidated: string[][] = [];
   const core = { revalidate: async (tags: string[]) => { revalidated.push(tags); } };
   const seen: (AgentStatusPayload | null)[] = [];
+  const memo = {};
   let indicator: AgentStatusRow["indicator"] = "operational";
   const collect = async (previous: AgentStatusPayload | null, now: number) => {
     seen.push(previous);
     return statusPayload(now, indicator);
   };
 
-  assert.deepEqual(await refreshProviderStatus({ lag, core, collect }, 1_000), { status: "ok", detail: "changed" });
+  assert.deepEqual(await refreshProviderStatus({ lag, core, collect, memo }, 1_000), { status: "ok", detail: "changed" });
   assert.deepEqual(revalidated, [["agent-status"]]);
   assert.equal(seen[0], null);
 
   // 只有检查时刻变了：照写，不失效
-  assert.deepEqual(await refreshProviderStatus({ lag, core, collect }, 61_000), { status: "ok" });
+  assert.deepEqual(await refreshProviderStatus({ lag, core, collect, memo }, 61_000), { status: "ok" });
   assert.equal(revalidated.length, 1);
   assert.equal(seen[1]?.fetchedAt, 1_000, "上一轮取自可滞后层");
   assert.equal((await readLag<AgentStatusPayload>(lag, LAG_KEYS.agentStatus))?.updatedAt, 61_000);
 
   indicator = "major_outage";
-  await refreshProviderStatus({ lag, core, collect }, 121_000);
+  await refreshProviderStatus({ lag, core, collect, memo }, 121_000);
   assert.equal(revalidated.length, 2);
+});
+
+test("provider status prefers its own newer write over a lagging KV read", async () => {
+  const lag = new MemoryKv();
+  const core = { revalidate: async () => {} };
+  const memo = {};
+  const seen: (AgentStatusPayload | null)[] = [];
+  const collect = async (previous: AgentStatusPayload | null, now: number) => {
+    seen.push(previous);
+    return statusPayload(now, "operational");
+  };
+  await refreshProviderStatus({ lag, core, collect, memo }, 1_000);
+  // 边缘缓存还是更早那份
+  await writeLag(lag, LAG_KEYS.agentStatus, statusPayload(500, "major_outage"), 500);
+  await refreshProviderStatus({ lag, core, collect, memo }, 61_000);
+  assert.equal(seen[1]?.fetchedAt, 1_000);
 });
 
 test("a failed revalidation does not fail the round; a failed collection does not overwrite", async (t) => {
   t.mock.method(console, "warn", () => {});
   const lag = new MemoryKv();
   const core = { revalidate: async () => { throw new Error("core down"); } };
-  const result = await refreshProviderStatus({ lag, core, collect: async (_, now) => statusPayload(now, "operational") }, 5_000);
+  const memo = {};
+  const result = await refreshProviderStatus({ lag, core, memo, collect: async (_, now) => statusPayload(now, "operational") }, 5_000);
   assert.equal(result.detail, "changed");
   assert.equal((await readLag<AgentStatusPayload>(lag, LAG_KEYS.agentStatus))?.updatedAt, 5_000);
 
-  await assert.rejects(refreshProviderStatus({ lag, core, collect: async () => { throw new Error("boom"); } }, 9_000));
+  await assert.rejects(refreshProviderStatus({ lag, core, memo, collect: async () => { throw new Error("boom"); } }, 9_000));
   assert.equal((await readLag<AgentStatusPayload>(lag, LAG_KEYS.agentStatus))?.updatedAt, 5_000);
 });
 
@@ -106,13 +124,20 @@ test("vercel metrics carry a failed group over with its own collected-at", async
   assert.equal((await readLag<VercelMetricsPayload>(lag, LAG_KEYS.vercelMetrics))?.updatedAt, 20);
 });
 
-test("sentry status keeps the previous copy of each failed block", async () => {
+test("sentry status carries a failed block with its own time, and only for a while", async () => {
   const lag = new MemoryKv();
   const errors = { site: { count12h: 1, count7d: 2, unresolved: 0 }, worker: { count12h: 3, count7d: 4, unresolved: 1 } };
   const previous: SentryStatusPayload = { fetchedAt: 1, uptime: null, heartbeat: null, errors, vitals: null };
   await writeLag(lag, LAG_KEYS.sentry, previous, 1);
   const vitals = { lcpP75Ms: 1800, inpP75Ms: null, clsP75: null, fcpP75Ms: null, ttfbP75Ms: null, samples: 3 };
   const merged = mergeSentryStatus({ fetchedAt: 2, uptime: null, heartbeat: null, errors: null, vitals }, previous);
-  assert.deepEqual(merged, { fetchedAt: 2, uptime: null, heartbeat: null, errors, vitals });
-  assert.equal(mergeSentryStatus(merged, null), merged);
+  assert.deepEqual(merged, { fetchedAt: 2, uptime: null, heartbeat: null, errors, vitals, blockAt: { errors: 1, vitals: 2 } });
+
+  // 错误数一直取不到：沿用时带着第一次取到的时刻，过了阈值就放掉
+  const later = mergeSentryStatus({ fetchedAt: SENTRY_BLOCK_CARRY_MS - 1, uptime: null, heartbeat: null, errors: null, vitals }, merged);
+  assert.equal(later.blockAt?.errors, 1);
+  assert.deepEqual(later.errors, errors);
+  const expired = mergeSentryStatus({ fetchedAt: SENTRY_BLOCK_CARRY_MS + 1, uptime: null, heartbeat: null, errors: null, vitals }, later);
+  assert.equal(expired.errors, null);
+  assert.equal(expired.blockAt?.errors, undefined);
 });

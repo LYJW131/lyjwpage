@@ -61,4 +61,11 @@ export type SentryStatusPayload = {
   errors: { site: SentryErrorSeries; worker: SentryErrorSeries } | null;
   /** 真实访客页面加载的 p75，最近 7 天 */
   vitals: SentryVitals | null;
+  /**
+   * 各块自己是哪一轮取到的。采集 Worker 块级沿用上一份时写上，`fetchedAt` 只说明
+   * 这一轮有块成功过；没写的块就是 `fetchedAt` 那一轮的
+   */
+  blockAt?: Partial<Record<SentryBlock, number>>;
 };
+
+export type SentryBlock = "uptime" | "heartbeat" | "errors" | "vitals";

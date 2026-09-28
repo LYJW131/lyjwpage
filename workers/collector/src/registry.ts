@@ -92,15 +92,38 @@ function outcome(job: Job, status: CollectorJobOutcome["status"], detail: string
 }
 
 /**
- * cron 这一响：到期的任务并行跑，互不等待、互不连累。给了 `monitor` 时，只在
- * 该报到的那几轮（见 schedule.ts）包上监控。
+ * 带 `headStart` 的任务先跑这么久（或先跑完），其余的再开跑。PS 的门要在 2.5 秒内
+ * 问回在线人数，和厂商状态页、CF 部署那十几个请求一起排队就可能被挤超时、把有人看
+ * 当成没人。
  */
-export async function runScheduled(env: Env, scheduledTime: number, options: { monitor?: MonitorRunner; jobs?: readonly Job[] } = {}): Promise<CollectorJobOutcome[]> {
-  const settled = await Promise.allSettled(dueJobs(scheduledTime, options.jobs).map((job) => runJob(job, env, {
+export const HEAD_START_MS = 3_000;
+
+/**
+ * cron 这一响：到期的任务并行跑，互不连累；带 `headStart` 的先起步。给了 `monitor`
+ * 时，只在该报到的那几轮（见 schedule.ts）包上监控。
+ */
+export async function runScheduled(
+  env: Env,
+  scheduledTime: number,
+  options: { monitor?: MonitorRunner; jobs?: readonly Job[]; headStartMs?: number } = {},
+): Promise<CollectorJobOutcome[]> {
+  const run = (job: Job) => runJob(job, env, {
     now: scheduledTime,
     scheduled: true,
     monitor: options.monitor && checkinDue(job, scheduledTime) ? options.monitor : undefined,
-  })));
+  });
+  const due = dueJobs(scheduledTime, options.jobs);
+  const first = due.filter((job) => job.headStart).map(run);
+  const rest = due.filter((job) => !job.headStart);
+  if (first.length && rest.length) {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    await Promise.race([
+      Promise.allSettled(first),
+      new Promise((resolve) => { timer = setTimeout(resolve, options.headStartMs ?? HEAD_START_MS); }),
+    ]);
+    clearTimeout(timer);
+  }
+  const settled = await Promise.allSettled([...first, ...rest.map(run)]);
   return settled.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []));
 }
 

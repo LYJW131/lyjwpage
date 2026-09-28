@@ -599,3 +599,12 @@ test("状态页不再列出盯着的组件时，不退回整页灯", async () =>
   assert.equal(codex.indicator, "unavailable");
   assert.match(codex.note ?? "", /no longer lists/);
 });
+
+test("九家全失败整轮抛错，不拿沿用的旧行冒充新检查", async (t) => {
+  t.mock.method(console, "warn", () => {});
+  const previous = await collectAgentStatus(null, pages(), 1_000);
+  await assert.rejects(collectAgentStatus(previous, async () => { throw new Error("offline"); }, 61_000));
+  // 只挂一家照常出结果
+  const partial = await collectAgentStatus(previous, pages({ [AGENT_STATUS_URLS.apple]: new Error("503") }), 61_000);
+  assert.equal(row(partial, "apple").stale, true);
+});

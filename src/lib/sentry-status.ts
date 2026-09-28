@@ -8,7 +8,7 @@ import {
   SENTRY_UPTIME_DETECTOR_ID,
   SENTRY_WORKER_PROJECT_ID,
 } from "@/lib/sentry";
-import type { HealthSeries, SentryErrorSeries, SentryStatusPayload, SentryUptime, SentryVitals, UptimeDay } from "@/lib/sentry-status-types";
+import type { HealthSeries, SentryBlock, SentryErrorSeries, SentryStatusPayload, SentryUptime, SentryVitals, UptimeDay } from "@/lib/sentry-status-types";
 
 /**
  * 站点卡片（LYJWPAGE）里在线率、api Worker 心跳、错误数和真实用户指标的数据：只在 API Worker 里跑，用 `SENTRY_API_TOKEN`（组织只读令牌，
@@ -233,18 +233,33 @@ export async function fetchSentryStatus(api: SentryGet, now = Date.now()): Promi
   };
 }
 
+/** 块级沿用最多撑这么久，和卡片判 Sentry 那一格过期的阈值一致；再旧就当这一块没有 */
+export const SENTRY_BLOCK_CARRY_MS = 30 * 60_000;
+
 /**
- * 这一轮没取到的块沿用上一份（带着上一份自己的数），取到的用新的。
- * 采集 Worker 写可滞后层时用：块级降级，而不是整张卡回到上一轮。
+ * 这一轮没取到的块沿用上一份（带着上一份自己的数和取到时刻），取到的用新的。
+ * 采集 Worker 写可滞后层时用：块级降级，而不是整张卡回到上一轮。沿用的块超过
+ * SENTRY_BLOCK_CARRY_MS 就不再沿用，那一格回到「没有」，不拿旧数冒充新的。
  */
 export function mergeSentryStatus(next: SentryStatusPayload, previous: SentryStatusPayload | null): SentryStatusPayload {
-  if (!previous) return next;
+  const blockAt: Partial<Record<SentryBlock, number>> = {};
+  const carry = <K extends SentryBlock>(block: K): SentryStatusPayload[K] => {
+    if (next[block] != null) {
+      blockAt[block] = next.fetchedAt;
+      return next[block];
+    }
+    const at = previous?.blockAt?.[block] ?? previous?.fetchedAt;
+    if (previous?.[block] == null || at == null || next.fetchedAt - at >= SENTRY_BLOCK_CARRY_MS) return null as SentryStatusPayload[K];
+    blockAt[block] = at;
+    return previous[block];
+  };
   return {
     fetchedAt: next.fetchedAt,
-    uptime: next.uptime ?? previous.uptime,
-    heartbeat: next.heartbeat ?? previous.heartbeat,
-    errors: next.errors ?? previous.errors,
-    vitals: next.vitals ?? previous.vitals,
+    uptime: carry("uptime"),
+    heartbeat: carry("heartbeat"),
+    errors: carry("errors"),
+    vitals: carry("vitals"),
+    blockAt,
   };
 }
 
