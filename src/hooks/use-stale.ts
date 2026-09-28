@@ -8,6 +8,7 @@ import {
   HEARTBEAT_WINDOW_MS,
   chargingFeedClockStale,
   clockAdvanceDelay,
+  clockReading,
   confirmStale,
   isStale,
   liveChargingFeed,
@@ -35,7 +36,7 @@ function deadlineOf(at: number | null | undefined, windowMs: number): number | n
 function useClock(servedAt: number | undefined, first: number | null, second: number | null = null): number {
   const mountedAt = useMountedAt();
   const [ticked, setTicked] = useState(0);
-  const now = ticked || mountedAt || servedAt || 0;
+  const now = clockReading(ticked, mountedAt, servedAt);
 
   useEffect(() => {
     const delay = clockAdvanceDelay(now, [first, second], Date.now());

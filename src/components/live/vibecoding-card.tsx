@@ -6,7 +6,7 @@ import CursorIcon from "@lobehub/icons/es/Cursor/components/Mono";
 import GrokIcon from "@lobehub/icons/es/Grok/components/Mono";
 import OpenAIIcon from "@lobehub/icons/es/OpenAI/components/Mono";
 import NumberFlow, { NumberFlowGroup } from "@number-flow/react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { ClaudeSpinner } from "@/components/live/claude-spinner";
 import { CodexActivityIndicator, CodexMark } from "@/components/live/codex-activity-indicator";
@@ -85,6 +85,17 @@ const REFRESH_MS = 2 * 60_000;
 const ACTIVE_WINDOW_MS = 5 * 60_000;
 
 /**
+ * 首帧的钟：用量和限额是两份首屏信封（各自的首屏缓存条目、各自的填充时刻），
+ * 各判各的就拿各自的 servedAt（见 hooks/use-stale）。挂载后都换浏览器的钟。
+ */
+type FirstFrameClocks = {
+  /** /api/status/vibecoding：活动灯、今日用量 */
+  usage?: number;
+  /** /api/status/limits：限额读数 */
+  limits?: number;
+};
+
+/**
  * 这盏灯亮不亮。
  *
  * Mac 报的几家带着现成的电平，但它是推来的、不会自己过期，所以要和「Mac 那边的话
@@ -97,14 +108,16 @@ const ACTIVE_WINDOW_MS = 5 * 60_000;
  * Claude 另有云端线程那条路（`cloudActivityAt`，OTLP 遥测），同样按时刻现算，
  * 和 Mac 那个电平取或：Mac 合盖了，云端在跑照样亮。
  */
-function useAgentActive(agent: VibeCodingAgent, activityUnknown: boolean) {
+function useAgentActive(agent: VibeCodingAgent, activityUnknown: boolean, clocks: FirstFrameClocks) {
   const at = agent.lastActivityAt ? Date.parse(agent.lastActivityAt) : null;
   const cloudAt = agent.cloudActivityAt ? Date.parse(agent.cloudActivityAt) : null;
-  const expired = useStale(at, ACTIVE_WINDOW_MS);
-  const cloudExpired = useStale(cloudAt, ACTIVE_WINDOW_MS);
+  const expired = useStale(at, ACTIVE_WINDOW_MS, clocks.usage);
+  const cloudExpired = useStale(cloudAt, ACTIVE_WINDOW_MS, clocks.usage);
   const mountedAt = useMountedAt();
-  if (agent.id === "cursor") return at != null && mountedAt > 0 && !expired;
-  const cloudActive = cloudAt != null && mountedAt > 0 && !cloudExpired;
+  // 首帧有 servedAt 当钟就照它判（首屏填缓存那一刻的结论）；连它也没有才等挂载
+  const clockKnown = mountedAt > 0 || clocks.usage != null;
+  if (agent.id === "cursor") return at != null && clockKnown && !expired;
+  const cloudActive = cloudAt != null && clockKnown && !cloudExpired;
   return (agent.active && !activityUnknown) || cloudActive;
 }
 
@@ -891,20 +904,23 @@ function AgentPanel({
   agent,
   /** 采集侧的话还算不算数，见 VibeCodingCard 里的 activityUnknown */
   activityUnknown,
+  clocks,
 }: {
   agent: VibeCodingAgent;
   activityUnknown: boolean;
+  clocks: FirstFrameClocks;
 }) {
   /**
    * 限额在可滞后层，是另一台机器（NAS 上的容器上报器）报的，每轮必发，所以
    * 「多久没来」就是「它还活着没有」。过了阈值就不再画那份读数：固定的三行照样
    * 占位，统一写 Unavailable，别让访客拿停住的数字当此刻的余量。
+   * 首帧拿限额那份首屏信封的 servedAt 当钟，放久了的 HTML 首帧就是 Unavailable。
    */
-  const limitsStale = useStale(agent.limitsAt, AGENT_LIMITS_STALE_MS);
+  const limitsStale = useStale(agent.limitsAt, AGENT_LIMITS_STALE_MS, clocks.limits);
   const today = agent.today;
   // error 也可能只是本轮成功采集后的缺项提示；是否为今日取决于日桶和成功时间。
   const dayStart = today ? Date.parse(`${today.date}T00:00:00+08:00`) : null;
-  const dayHasEnded = useStale(dayStart, 86_400_000);
+  const dayHasEnded = useStale(dayStart, 86_400_000, clocks.usage);
   const collectedAt = agent.usageStatus.collectedAt ? Date.parse(agent.usageStatus.collectedAt) : null;
   const isToday = dayStart != null && collectedAt != null
     && collectedAt >= dayStart && collectedAt < dayStart + 86_400_000 && !dayHasEnded;
@@ -922,7 +938,7 @@ function AgentPanel({
    * 一次推送的值上。所以点灯前要和「这句话现在还算不算数」取与 —— 否则 Mac 睡
    * 着时那盏灯会一直亮，直到它醒来才灭。
    */
-  const active = useAgentActive(agent, activityUnknown);
+  const active = useAgentActive(agent, activityUnknown, clocks);
   // 会话扫描会保留最近使用的模型，闲置后继续显示它。
   const displayModel = agent.currentModel ? displayModelName(agent.currentModel) : "No model";
   const rows = featuredLimitRows(limitsStale ? { ...agent, limits: [], limitsError: LIMITS_SILENT } : agent);
@@ -1016,13 +1032,15 @@ function AgentPanel({
 function CompactAgentRow({
   agent,
   activityUnknown,
+  clocks,
 }: {
   agent: VibeCodingAgent;
   /** 和全量面板同一个开关，见 VibeCodingCard 里的 activityUnknown */
   activityUnknown: boolean;
+  clocks: FirstFrameClocks;
 }) {
   // 和全量面板同一个判断：限额上报器过了阈值没来，这一行不再画读数
-  const limitsStale = useStale(agent.limitsAt, AGENT_LIMITS_STALE_MS);
+  const limitsStale = useStale(agent.limitsAt, AGENT_LIMITS_STALE_MS, clocks.limits);
   const mountedAt = useMountedAt();
   const [ticked, setTicked] = useState(0);
   const now = ticked || mountedAt;
@@ -1063,7 +1081,7 @@ function CompactAgentRow({
   const pace = limit ? limitPace(limit, now) : null;
   const overPace = pace != null && usedPercent != null && usedPercent / 100 > pace;
   // 和全量面板同一盏灯，只是不像全量面板那样换模型名
-  const active = useAgentActive(agent, activityUnknown);
+  const active = useAgentActive(agent, activityUnknown, clocks);
   const usageUrl = agentUsageUrl(agent.id);
 
   return (
@@ -1165,9 +1183,11 @@ function CompactAgentRow({
 function CompactAgents({
   agents,
   activityUnknown,
+  clocks,
 }: {
   agents: VibeCodingAgent[];
   activityUnknown: boolean;
+  clocks: FirstFrameClocks;
 }) {
   if (agents.length === 0) return null;
   // 排序不看过期（now 传 0）：这里只定行序，行内画什么由行自己判
@@ -1189,6 +1209,7 @@ function CompactAgents({
             key={agent.id}
             agent={agent}
             activityUnknown={activityUnknown}
+            clocks={clocks}
           />
         ))}
       </div>
@@ -1216,9 +1237,13 @@ export function VibeCodingCard({
     fetcher: fetchVibeCoding,
     seedFallback: seedVibeCoding,
   });
-  const { data: limits } = useStatus<AgentLimitsPayload>(LIMITS_PATH, REFRESH_MS, {
+  const { data: limits, servedAt: limitsServedAt } = useStatus<AgentLimitsPayload>(LIMITS_PATH, REFRESH_MS, {
     fallback: limitsFallback,
   });
+  const clocks = useMemo<FirstFrameClocks>(
+    () => ({ usage: servedAt, limits: limitsServedAt }),
+    [servedAt, limitsServedAt],
+  );
   // 只有限额的来源也要一行；用量那份还没到时，这张卡照样能先画出限额
   const agents = data || limits ? attachAgentLimits(data?.agents ?? [], limits ?? null) : null;
 
@@ -1266,12 +1291,14 @@ export function VibeCodingCard({
                 key={agent.id}
                 agent={agent}
                 activityUnknown={activityUnknown}
+                clocks={clocks}
               />
             ))}
           </div>
           <CompactAgents
             agents={compactAgents(agents)}
             activityUnknown={activityUnknown}
+            clocks={clocks}
           />
         </>
       ) : (

@@ -4,6 +4,7 @@ import {
   AGENT_LIMITS_STALE_MS,
   chargingFeedClockStale,
   clockAdvanceDelay,
+  clockReading,
   confirmStale,
   isStale,
   liveChargingFeed,
@@ -195,4 +196,23 @@ test("首帧拿首屏信封的 servedAt 当钟：填缓存那一刻已经断了�
   assert.equal(liveChargingFeed(stale, chargingFeedClockStale(stale, servedAt)).connected, false);
   // 填缓存时还新鲜的，首帧照常
   assert.equal(chargingFeedClockStale(stale, T + 1_000), false);
+});
+
+test("访客钟读数：首帧用首屏信封的 servedAt，挂载后换挂载时刻，推过钟后用推钟时刻", () => {
+  assert.equal(clockReading(0, 0, 5_000), 5_000);
+  assert.equal(clockReading(0, 9_000, 5_000), 9_000);
+  assert.equal(clockReading(12_000, 9_000, 5_000), 12_000);
+  // 首帧连 servedAt 都没有：0，isStale 什么都不判
+  assert.equal(clockReading(0, 0, undefined), 0);
+  assert.equal(isStale({ now: clockReading(0, 0, undefined), at: 1, windowMs: 1 }), false);
+});
+
+test("可滞后层首帧：首屏缓存填的那一刻已经过了阈值的，首帧就判过期", () => {
+  const fetchedAt = 1_000_000;
+  const windowMs = 10 * 60_000;
+  // 采集停了 20 分钟之后才填的首屏缓存
+  const servedAt = fetchedAt + 20 * 60_000;
+  assert.equal(isStale({ now: clockReading(0, 0, servedAt), at: fetchedAt, windowMs }), true);
+  // 填缓存时还新鲜：首帧照常，挂载后由浏览器的钟接着判
+  assert.equal(isStale({ now: clockReading(0, 0, fetchedAt + 60_000), at: fetchedAt, windowMs }), false);
 });
