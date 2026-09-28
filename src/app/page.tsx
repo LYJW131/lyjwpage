@@ -22,45 +22,72 @@ import { artworkPlaceholders } from "@/lib/artwork-placeholder";
 import { desktopIconDataUri } from "@/lib/desktop-icon-inline";
 import { githubAvatarDataUri } from "@/lib/github-avatar-icon";
 import { getRecentCommits } from "@/lib/github-recent-commits";
+import { firstScreen, firstScreenLyrics } from "@/lib/first-screen";
 import { liveTrack } from "@/lib/home-layout";
-import { cachedHomeSnapshot } from "@/lib/home-snapshot";
-import type { GithubRepoPayload, PulsePayload, StatusResponse } from "@/lib/types";
+import type { StatusResponse, TrophiesSummaryPayload } from "@/lib/types";
 
 export default async function Home() {
-  const [snapshot, avatarDataUri, recentCommits] = await Promise.all([
-    cachedHomeSnapshot(),
-    githubAvatarDataUri(),
-    getRecentCommits(),
-  ]);
   /**
-   * 仓库统计跟着快照走（Worker 取、Worker 缓存）。旧 Worker 还没带这个字段时
-   * 给一份降级信封：直接透传 undefined 会在 useStatus 读 fallback.ok 时整页
-   * 跌进 error 边界。
+   * 首屏按卡读取，各卡一条缓存（见 lib/first-screen）：实时卡的端点读状态核心，
+   * 可滞后卡的端点读 KV。并行发出，任何一张都不在请求路径上现拉外部 API。
    */
-  const githubRepo: StatusResponse<GithubRepoPayload> =
-    snapshot.githubRepo ?? { ok: false, error: "Status unavailable" };
-  /** 同理：Worker 还没带 pulse 字段时，卡片自己显示空态，不能让整页跌进错误边界 */
-  const pulse: StatusResponse<PulsePayload> =
-    snapshot.pulse ?? { ok: false, error: "Pulse unavailable" };
-  const {
+  const [
     desktop,
+    timezone,
+    workouts,
     activity,
     server,
     charger,
     powerBank,
     listening,
     nowListening,
-    timezone,
     vibeCoding,
+    agentStatus,
     vibeCodingYear,
     watching,
     nowWatching,
     playing,
     playingNow,
-    trophies,
+    trophiesEnvelope,
     githubChart,
-    lyrics,
-  } = snapshot;
+    githubRepo,
+    cloudflareWorkers,
+    vercelDeployments,
+    sentry,
+    reporters,
+    pulse,
+    avatarDataUri,
+    recentCommits,
+  ] = await Promise.all([
+    firstScreen("desktop"),
+    firstScreen("timezone"),
+    firstScreen("workouts"),
+    firstScreen("activity"),
+    firstScreen("server"),
+    firstScreen("charger"),
+    firstScreen("powerBank"),
+    firstScreen("listening"),
+    firstScreen("nowListening"),
+    firstScreen("vibeCoding"),
+    firstScreen("agentStatus"),
+    firstScreen("vibeCodingYear"),
+    firstScreen("watching"),
+    firstScreen("nowWatching"),
+    firstScreen("playing"),
+    firstScreen("playingNow"),
+    firstScreen("trophies"),
+    firstScreen("githubChart"),
+    firstScreen("githubRepo"),
+    firstScreen("cloudflareWorkers"),
+    firstScreen("vercelDeployments"),
+    firstScreen("sentry"),
+    firstScreen("reporters"),
+    firstScreen("pulse"),
+    githubAvatarDataUri(),
+    getRecentCommits(),
+  ]);
+  /** 无参的奖杯端点回的是摘要（带 `?titleids=` 才是目录），首屏这格就是那份摘要 */
+  const trophies = trophiesEnvelope as StatusResponse<TrophiesSummaryPayload>;
 
   const nowSongId =
     nowListening.ok && !nowListening.data.idle && nowListening.data.hasLyrics
@@ -77,14 +104,15 @@ export default async function Home() {
   const rowArtworks = liveHeroArtwork ? listeningArtworks : listeningArtworks.slice(1);
 
   /**
-   * 内联素材只能排在第二轮：要压哪几张写在信封里，进不了上面那批并行。
-   * 桌面图标按 objectKey 缓存（lib/desktop-icon-inline）、封面占位按 Apple
-   * 模板 URL 缓存（lib/artwork-placeholder）；歌词已在 `/api/home` 的 `lyrics`
-   * 字段里由 Worker 现解，跟着 snapshot 一起来。命中缓存后这里不产生额外往返。
+   * 内联素材与首屏歌词只能排在第二轮：要压哪几张、要哪首的歌词写在信封里，进不了
+   * 上面那批并行。桌面图标按 objectKey 缓存（lib/desktop-icon-inline）、封面占位按
+   * Apple 模板 URL 缓存（lib/artwork-placeholder）、歌词按曲目缓存（lib/first-screen）；
+   * 命中缓存后这里不产生额外往返。
    */
-  const [desktopIcon, artwork] = await Promise.all([
+  const [desktopIcon, artwork, lyrics] = await Promise.all([
     desktopIconDataUri(desktop.ok ? (desktop.data.desktop?.iconUrl ?? null) : null),
     artworkPlaceholders(rowArtworks, heroArtwork),
+    nowSongId ? firstScreenLyrics(nowSongId) : Promise.resolve(null),
   ]);
 
   return (
@@ -139,14 +167,14 @@ export default async function Home() {
                   fallback={activity}
                   className="defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_350px] md:[contain-intrinsic-size:auto_253px]"
                 >
-                  <WorkoutsStrip fallback={snapshot.workouts ?? { ok: false, error: "Awaiting workout report" }} />
+                  <WorkoutsStrip fallback={workouts} />
                 </ActivityCard>
                 <ServerCard
                   fallback={server}
                   className="defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_245px]"
                 />
                 <AgentStatusCard
-                  fallback={snapshot.agentStatus ?? { ok: false, error: "Status unavailable" }}
+                  fallback={agentStatus}
                   className="defer-offscreen-always [contain-intrinsic-size:auto_172px]"
                 />
                 <VibeCodingCard
@@ -168,11 +196,11 @@ export default async function Home() {
 
               <SiteStatusCard
                 githubFallback={githubRepo}
-                vercelFallback={snapshot.vercelDeployments ?? { ok: false, error: "Deployments unavailable" }}
-                cloudflareFallback={snapshot.cloudflareWorkers ?? { ok: false, error: "Stats unavailable" }}
-                sentryFallback={snapshot.sentry ?? { ok: false, error: "Reliability unavailable" }}
+                vercelFallback={vercelDeployments}
+                cloudflareFallback={cloudflareWorkers}
+                sentryFallback={sentry}
                 serverFallback={server}
-                reportersFallback={snapshot.reporters ?? { ok: false, error: "Reporters unavailable" }}
+                reportersFallback={reporters}
                 recentCommits={recentCommits}
                 className="mt-3 defer-offscreen-always [contain-intrinsic-size:auto_1440px]"
               />

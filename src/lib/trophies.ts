@@ -416,7 +416,3 @@ export function summarizeTrophies(payload: TrophiesPayload): TrophiesSummaryPayl
     titles,
   };
 }
-
-export async function getTrophiesSummary(): Promise<TrophiesSummaryPayload> {
-  return summarizeTrophies(await getTrophies());
-}

@@ -118,7 +118,7 @@
 
 ### 接口缓存与公开查询策略
 - `GET /api/lyrics?song=<ID>`：按曲目 ID 查询，`song` 必填，卡片 hero 与网页播放器都走这条；结果按 URL 进行 `public, s-maxage` 长效缓存（有词存 7 天，无词存 1 小时）。
-- 首屏那首的歌词在 `/api/home` 的 `lyrics` 字段里由 Worker 现解；`/api/lyrics` 与 `/api/motion-artwork` 只做按键查询，不回答「此刻」，所以不归 `/api/status/*`。
+- 首屏那首的歌词由站点在拿到「此刻在听」之后按曲目读 `/api/lyrics`；`/api/lyrics` 与 `/api/motion-artwork` 只做按键查询，不回答「此刻」，所以不归 `/api/status/*`。
 
 ---
 

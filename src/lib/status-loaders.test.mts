@@ -5,40 +5,36 @@ import { statusLoaders } from "./status-loaders.ts";
 import {
   STATUS_VIEWS,
   STATUS_VIEW_KEYS,
-  endpointViews,
+  layerOfPath,
+  pathByEvent,
   readModelPolicyOf,
   READ_MODEL_PATHS,
   type StatusView,
 } from "./status-views.ts";
 
-test("loaders 与登记表 key 对齐（除 lyrics）", () => {
-  assert.deepEqual(
-    Object.keys(statusLoaders).sort(),
-    STATUS_VIEW_KEYS.filter((key) => key !== "lyrics").sort(),
-  );
-});
-
-test("有端点且没有 home 覆盖的视图，首页字段与无参端点共用同一个 loader", () => {
-  const homeOverrides = new Set(["charger", "trophies"]);
-  for (const [key] of endpointViews()) {
-    const loader = statusLoaders[key];
-    assert.equal(typeof loader.endpoint, "function", key);
-    if (homeOverrides.has(key)) {
-      assert.ok("home" in loader && typeof loader.home === "function", `${key} 应有 home 覆盖`);
-    } else {
-      assert.equal("home" in loader, false, `${key} 不应有 home 覆盖`);
-    }
+test("loaders 与登记表 key 一一对应，每个视图一个端点", () => {
+  assert.deepEqual(Object.keys(statusLoaders).sort(), [...STATUS_VIEW_KEYS].sort());
+  for (const key of STATUS_VIEW_KEYS) {
+    assert.equal(typeof statusLoaders[key].endpoint, "function", key);
+    assert.ok(STATUS_VIEWS[key].path.startsWith("/api/status/"), key);
   }
-  assert.equal("endpoint" in statusLoaders.timezone, false);
-  assert.equal(typeof statusLoaders.timezone.home, "function");
 });
 
-test("readModel 视图都没有推送事件", () => {
+test("可滞后层不推送，推送事件只落在实时层的端点上", () => {
+  for (const key of STATUS_VIEW_KEYS) {
+    const view: StatusView = STATUS_VIEWS[key];
+    if (view.layer === "lag") assert.equal(view.event, undefined, key);
+    if (view.event) assert.equal(layerOfPath(pathByEvent(view.event)!), "realtime", key);
+  }
+  assert.equal(STATUS_VIEWS.agentStatus.layer, "lag");
+  assert.equal(layerOfPath("/api/lyrics"), "realtime");
+});
+
+test("readModel 只出现在可滞后层", () => {
   for (const key of STATUS_VIEW_KEYS) {
     const view: StatusView = STATUS_VIEWS[key];
     if (view.readModel) {
-      assert.equal(view.event, undefined, key);
-      assert.ok(view.path, key);
+      assert.equal(view.layer, "lag", key);
       assert.equal(readModelPolicyOf(view.path), "slow", key);
     }
   }

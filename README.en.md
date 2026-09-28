@@ -146,9 +146,9 @@ The system has three parts: **collectors adapt to each source, Cloudflare manage
 
 ### First-paint snapshots and live updates are handled separately
 
-The homepage fetches every module's snapshot in one aggregated read and caches it with Next.js `use cache`, so the first paint doesn't depend on the browser requesting each card.
+The homepage reads each module's endpoint in parallel, one Next.js `use cache` entry per card, so the first paint doesn't depend on the browser requesting each card. Realtime cards read the state core and lag-tolerant cards read KV; none of them calls an external API on the request path, so one slow card can't hold up the whole first paint.
 
-After load, the browser updates live data by talking to the Worker directly. The homepage cache is invalidated by tag and rebuilt in the background only when the layout changes (a card appears or disappears, changes form or changes row count; criteria in `src/lib/home-layout.ts`). Content changes such as readings, titles and progress are left to a scheduled rebuild every 10 minutes, and bare heartbeats never trigger one.
+After load, each realtime card re-validates once and then follows pushes and polling; lag-tolerant cards keep the first-paint copy and poll on their own cadence. The homepage cache is invalidated by tag and rebuilt in the background only when the layout changes (a card appears or disappears, changes form or changes row count; criteria in `src/lib/home-layout.ts`). Content changes such as readings, titles and progress are left to a scheduled rebuild every 10 minutes, and bare heartbeats never trigger one.
 
 So the cached page takes care of the first paint and the client catches up to the current state; the full HTML doesn't need refreshing on every device change.
 
@@ -206,7 +206,7 @@ Data in Sentry also comes back to the page: using a read-only token, the `api` W
 | If you want to know | Start here |
 | --- | --- |
 | How the homepage assembles its modules | [`src/app/page.tsx`](./src/app/page.tsx) · [`src/components/live/`](./src/components/live/) |
-| How the first paint reads and caches state | [`src/lib/home-snapshot.ts`](./src/lib/home-snapshot.ts) |
+| How the first paint reads and caches state per card | [`src/lib/first-screen.ts`](./src/lib/first-screen.ts) |
 | How status views are registered on both sides | [`src/lib/status-views.ts`](./src/lib/status-views.ts) · [`src/lib/status-loaders.ts`](./src/lib/status-loaders.ts) |
 | How push and polling update the same client state | [`src/hooks/use-live-events.ts`](./src/hooks/use-live-events.ts) · [`src/hooks/use-status.ts`](./src/hooks/use-status.ts) · [`src/lib/status-reads.ts`](./src/lib/status-reads.ts) |
 | How the web player and lyrics work | [`src/hooks/use-web-player.ts`](./src/hooks/use-web-player.ts) · [`src/hooks/use-lyrics.ts`](./src/hooks/use-lyrics.ts) |

@@ -1,5 +1,4 @@
 import { get as cacheGet, put as cachePut } from "@/lib/cache";
-import { publicHomeSnapshot } from "@/lib/public-home";
 import {
   sinceDateParam,
   sinceParam,
@@ -8,11 +7,7 @@ import {
   titleIdsParam,
 } from "@/lib/api";
 import { loadEndpoint, type StatusLoaderParams } from "@/lib/status-loaders";
-import {
-  endpointViews,
-  pathByEvent,
-  viewKeyByPath,
-} from "@/lib/status-views";
+import { pathByEvent, viewKeyByPath } from "@/lib/status-views";
 import {
   DEV_OVERRIDE_ENABLED_KEY,
   DEV_OVERRIDE_INDEX_KEY,
@@ -29,10 +24,8 @@ import { currentContext } from "./runtime";
  * `wrangler dev` 起来的 Worker 是一座空库：没有上报器往它推，除了自己去
  * GitHub 取的那几张卡，别的全是降级态，新加一张卡时页面上没东西可对照。
  * 在 .dev.vars 里配 `UPSTREAM_API_URL=https://api.homepage.lyjw.llc` 后，
- * 生产为主、本地补缺：
- * - `/api/home`：生产快照里 ok:true 的字段直接用生产的；生产没有的字段
- *   （新加的）或生产也 ok:false 的，才用本地的；
- * - 其余 `/api/*`：生产回 ok:true 就用生产的，否则用本地的。
+ * 生产为主、本地补缺：每条 `/api/status/*` 端点生产回 ok:true 就用生产的，
+ * 否则（新加的端点、生产也 ok:false）用本地的。
  * 不按「本地 ok:false 才兜底」来：空库上 desktop / nowWatching / timezone 这些
  * 会回 ok:true 的空态，那样一兜底就把生产正在放的东西盖没了。要测本地上报
  * 链路时把这个变量注释掉，本地就只看自己。只读，不碰上报。
@@ -67,17 +60,6 @@ async function fetchUpstreamJson(base: string, pathWithSearch: string): Promise<
   }
 }
 
-/** 快照逐字段：上游有且不是 ok:false 的字段用上游的，其余保留本地 */
-function overlaySnapshot<T extends object>(local: T, upstream: unknown): T {
-  if (typeof upstream !== "object" || upstream === null) return local;
-  const merged: Record<string, unknown> = { ...(local as Record<string, unknown>) };
-  for (const [key, theirs] of Object.entries(upstream as Record<string, unknown>)) {
-    const theirsUsable = theirs != null && !(isEnvelope(theirs) && !theirs.ok);
-    if (theirsUsable) merged[key] = theirs;
-  }
-  return merged as T;
-}
-
 /** 单条端点：上游回 ok:true 就用上游的，头（Cache-Control、X-Fetched-At）沿用本地的 */
 async function overlayResponse(local: Response, load: () => Promise<unknown>): Promise<Response> {
   const body: unknown = await local.clone().json().catch(() => null);
@@ -93,8 +75,7 @@ async function overlayResponse(local: Response, load: () => Promise<unknown>): P
  * 要看「正在播放」卡而此刻没在放、要看充电头满载而手边没插线 —— 生产兜底给不了
  * 这些。`.dev.vars` 里 `DEV_OVERRIDES=true` 后（生产不配）：
  * - `PUT /api/dev/override/api/status/watching/now`，body 是那条端点的信封
- *   （`{ok:true,data:…}`）或直接是 data，之后这条端点和 /api/home 里对应的字段
- *   都回这份，优先于本地和上游；
+ *   （`{ok:true,data:…}`）或直接是 data，之后这条端点回这份，优先于本地和上游；
  * - `DELETE` 同一路径清掉；`GET /api/dev/overrides` 列出当前注入了哪些。
  * 存在本地 SQLite 里（7 天），wrangler 热重载不会丢。现成夹具在 dev-fixtures/，
  * 用 `pnpm dev:override` 推。
@@ -103,7 +84,7 @@ const devOverridesEnabled = (): boolean => process.env.DEV_OVERRIDES?.trim() ===
 
 /** Reject known-missing API paths before paying for a StateHub visibility barrier. */
 export function isPublicApiPath(path: string): boolean {
-  if (path === "/api/home" || viewKeyByPath(path)) return true;
+  if (viewKeyByPath(path)) return true;
   return devOverridesEnabled() && (path === DEV_OVERRIDES_LIST_PATH || path.startsWith(`${DEV_OVERRIDE_PREFIX}/`));
 }
 
@@ -190,19 +171,6 @@ async function devOverrideResponse(request: Request, url: URL): Promise<Response
   return Response.json({ ok: true, path: target }, { headers: statusHeaders() });
 }
 
-async function applySnapshotOverrides<T extends object>(snapshot: T): Promise<T> {
-  if (!(await overridesSwitchedOn())) return snapshot;
-  const active = await listOverrides();
-  if (!active.length) return snapshot;
-  const merged: Record<string, unknown> = { ...(snapshot as Record<string, unknown>) };
-  for (const [key, view] of endpointViews()) {
-    if (!active.includes(view.path)) continue;
-    const override = await readOverride(view.path);
-    if (override) merged[key] = override;
-  }
-  return merged as T;
-}
-
 function loaderParams(request: Request): StatusLoaderParams {
   return {
     since: sinceParam(request),
@@ -227,17 +195,6 @@ export async function publicResponse(request: Request): Promise<Response> {
   }
   if (request.method !== "GET") return new Response("Method not allowed", { status: 405 });
   const upstream = upstreamBase();
-
-  if (url.pathname === "/api/home") {
-    // 两路互不依赖，并行取：Preview 的空库本地快照冷启动就要好几秒。
-    const [local, theirs] = await Promise.all([
-      publicHomeSnapshot(),
-      upstream ? fetchUpstreamJson(upstream, "/api/home") : null,
-    ]);
-    const overlaid = upstream ? overlaySnapshot(local, theirs) : local;
-    const snapshot = overrides ? await applySnapshotOverrides(overlaid) : overlaid;
-    return Response.json(snapshot, { headers: { "Cache-Control": "no-store" } });
-  }
 
   if (overrides && (await overridesSwitchedOn())) {
     const override = await readOverride(url.pathname);

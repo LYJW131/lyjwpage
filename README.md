@@ -146,9 +146,9 @@
 
 ### 首屏快照与实时更新分开处理
 
-首页通过一次聚合读取取得各模块快照，使用 Next.js `use cache` 缓存，让首次展示不依赖浏览器逐张卡片请求数据。
+首页生成时按卡并行读取各模块的端点，每张卡一条 Next.js `use cache` 缓存，让首次展示不依赖浏览器逐张卡片请求数据。实时卡读状态核心，可滞后卡读 KV，任何一张都不在请求路径上现拉外部 API，一张慢卡拖不住整个首屏。
 
-页面加载后，实时数据由浏览器直连 Worker 更新。首页缓存只在布局变化时（卡片出现或消失、换形态、行数变化，判据见 `src/lib/home-layout.ts`）触发标签失效并在后台重建；读数、标题、进度这类内容变化交给 10 分钟一次的定时重建，纯心跳不触发重建。
+页面加载后，实时卡各自回源校验一次、之后由推送与轮询更新；可滞后卡直接用首屏那份，按自己的节奏轮询。首页缓存只在布局变化时（卡片出现或消失、换形态、行数变化，判据见 `src/lib/home-layout.ts`）触发标签失效并在后台重建；读数、标题、进度这类内容变化交给 10 分钟一次的定时重建，纯心跳不触发重建。
 
 因此，缓存页面负责首次展示，客户端负责追上当前状态；不要求每次设备变化都同步刷新整页 HTML。
 
@@ -206,7 +206,7 @@ Sentry 里的数据也回到页面上：`api` Worker 用只读令牌取回两个
 | 想了解什么 | 阅读入口 |
 | --- | --- |
 | 首页如何组合各个模块 | [`src/app/page.tsx`](./src/app/page.tsx) · [`src/components/live/`](./src/components/live/) |
-| 首屏如何读取和缓存状态 | [`src/lib/home-snapshot.ts`](./src/lib/home-snapshot.ts) |
+| 首屏如何按卡读取和缓存状态 | [`src/lib/first-screen.ts`](./src/lib/first-screen.ts) |
 | 状态视图在两侧如何登记 | [`src/lib/status-views.ts`](./src/lib/status-views.ts) · [`src/lib/status-loaders.ts`](./src/lib/status-loaders.ts) |
 | 推送与轮询如何更新同一份客户端状态 | [`src/hooks/use-live-events.ts`](./src/hooks/use-live-events.ts) · [`src/hooks/use-status.ts`](./src/hooks/use-status.ts) · [`src/lib/status-reads.ts`](./src/lib/status-reads.ts) |
 | 网页播放器与歌词如何工作 | [`src/hooks/use-web-player.ts`](./src/hooks/use-web-player.ts) · [`src/hooks/use-lyrics.ts`](./src/hooks/use-lyrics.ts) |

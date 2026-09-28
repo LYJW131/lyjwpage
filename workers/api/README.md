@@ -13,8 +13,8 @@
 - `src/musickit-token.ts`：给「一起听」签 MusicKit developer token（ES256 JWT），按 origin 声明缓存、过半衰期重签。
 - `src/origins.ts`：`ALLOWED_ORIGINS` 的解析、通配匹配和 CORS 头，两条 WebSocket、公开 API 和令牌签发共用。
 - 根目录 `shared/`：读写共用的 SQLite 键、类型和状态计算；根目录 `src/lib/` 提供读取与通用工具。
-- 根目录 `src/lib/status-views.ts`：公开状态视图登记表（`path` / `tag` / `event` / `readModel`）。路径常量、Vercel 缓存标签、事件→路径、`/api/home` 字段、KV 策略全部由它派生；有 `event` 的视图不能进 KV，模块加载时断言。
-- 根目录 `src/lib/status-loaders.ts`：按同一组 key 登记 `endpoint(params)` 与可选 `home()`。`/api/home` 对表做 `Promise.all`；单端点由 `src/public-api.ts` 通用分发到同一个 loader。`trophies` 无参回摘要（与首屏、推送同形状），带 `?titleids=` 回那几款的完整目录；`charger` 首屏只带最近 20 分钟历史。
+- 根目录 `src/lib/status-views.ts`：公开状态视图登记表（`path` / `layer` / `tag` / `event`）。路径常量、数据层、Vercel 缓存标签、事件→路径全部由它派生；可滞后层（`layer: "lag"`）不能带推送事件，模块加载时断言。
+- 根目录 `src/lib/status-loaders.ts`：按同一组 key 登记 `endpoint(params)`，单端点由 `src/public-api.ts` 通用分发到对应 loader。`trophies` 无参回摘要（与首屏、推送同形状），带 `?titleids=` 回那几款的完整目录。
 - `src/public-api.ts`、`src/public-execution.ts`：普通 Worker 中的公开 API 入口。已知路由先匹配，再过 StateHub 初始化/提交可见性屏障；状态端点按 loader 表通用分发。屏障等待已经进入 `commitIngest()` 队列的提交，不等待仍在普通 Worker 做输入准备或 R2 HEAD 的请求；提交返回 202 后，经过 StateHub 的权威读取可见其持久化结果。命中 KV 的四条投影路径仍按下文的 revision、刷新间隔和最大年龄最终收敛。
 - `src/lookup-routes.ts`、`src/edge-cache.ts`：`/api/lyrics`、`/api/motion-artwork` 按参数查询，结果只由参数决定，不过公开读屏障。先查当前机房的 Cache API（`caches.default`），命中不进 StateHub；未命中回源，只有 200 写回，按响应的 `max-age` 过期。条目只在当前机房、跨部署保留、不合并并发未命中，键里带 SQLite 那层的版本段，响应外形变了升 `EDGE_CACHE_VERSION`。存的响应不含 CORS 头，`X-Edge-Cache: hit | miss | bypass` 标识命中。
 - `src/storage-driver.ts`：通过 alias 接入 StateHub 的 SQLite 存储驱动；同一公开请求、同一 microtask 的相邻只读批次合并成一次最多 128 条的 DO RPC，写批次保持原事务顺序。
@@ -149,7 +149,7 @@ ESA 首页不走数据上报通知。`lyjw131.com` 以 `lyjw.me` 为源站与回
 
 Vercel 仍采用后台重建，通知成功不代表新 HTML 已生成。ESA 后台回源可能取得 Vercel 仍在重建中的旧 HTML，下一轮刷新时收敛；这条链路不承诺两层缓存同步完成更新。首屏新鲜度不依赖这两层：浏览器挂载后直接向 Worker 取最新状态。
 
-公开 API 为 `/api/status/*`、`/api/home`、`/api/lyrics`、`/api/motion-artwork`。浏览器挂载后直接访问这里：第一轮从 `/api/home` 一次取齐，之后各端点按各自周期轮询；Vercel 只在首屏生成或重建时读取 `/api/home`。`/api/home` 每个字段和对应单端点无参响应同源同形。`/api/home` 不进 KV 读模型。服务端凭据不进入任何公开响应，没有通用 HTTP 数据库端点。跨域活动脉搏（pulse）的出口是 `GET /api/status/pulse`（也进 `/api/home` 的 `pulse` 字段），见下面一节。
+公开 API 为 `/api/status/*`、`/api/lyrics`、`/api/motion-artwork`，没有聚合端点。Vercel 生成或重建首页时按卡读各条端点（`src/lib/first-screen.ts`），浏览器挂载后实时卡各自回源一次、之后各端点按各自周期轮询。服务端凭据不进入任何公开响应，没有通用 HTTP 数据库端点。跨域活动脉搏（pulse）的出口是 `GET /api/status/pulse`，见下面一节。
 
 ## 跨域活动脉搏与活动分（Pulse）
 
@@ -341,7 +341,7 @@ pnpm dev:local                      # 站点指向本地 Worker
 配了 `UPSTREAM_API_URL` 后，本地的推送房间还会在有页面连着时自己去连生产的 `/ws`，把事件转发给本地页面（最后一个页面断开就跟着断，不多占生产那边的连接数），所以本地也能收到实时推送。事件对应的端点有生效的注入时，payload 换成注入的那份，假数据不会被生产一推就盖掉。
 
 `DEV_OVERRIDES=true` 时另开 `PUT` / `DELETE /api/dev/override/<端点路径>` 和 `GET /api/dev/overrides`，往本地 SQLite 里注入某条端点的信封，
-优先于上游和本地，`/api/home` 里对应字段一起生效；夹具放 `dev-fixtures/`，用根目录的 `pnpm dev:override` 推。`index.ts` 只在这个变量开着时放行非 GET。
+优先于上游和本地；夹具放 `dev-fixtures/`，用根目录的 `pnpm dev:override` 推。`index.ts` 只在这个变量开着时放行非 GET。
 夹具里的时间戳写成 `"$now"` / `"$now-90000"`（毫秒偏移），推送脚本在发出前换成当下 —— 注入绕过路由，没人替它续心跳，写死的 `pushedAt` 几分钟就会被判成过期。
 
 ## 验证
@@ -362,7 +362,7 @@ SQLite 初始化、迁移与权限见 [后端架构](../../docs/state-storage.md
 生产服务为 `api`，域名 `api.homepage.lyjw.llc`。`v1-transfer-from-ingest` 将旧 Worker 的三个 SQLite Durable Object 命名空间整体转移，保持 ID 与数据不变；后续部署保留这条迁移记录。不要对这些类另加创建或删除迁移。
 ## Workers 统计卡片
 
-`GET /api/status/cloudflare-workers` 与 `/api/home` 的 `cloudflareWorkers` 字段共用一份统计。
+`GET /api/status/cloudflare-workers` 给站点卡片的 Workers 统计。
 只查询本仓库的 `api`、`online-counter`、`playstation-reporter`，不公开账号内其他 Worker。
 API Worker 使用 `CLOUDFLARE_METRICS_TOKEN`（只读 Secret：账号分析、Workers 脚本与构建读取）和
 `wrangler.toml` `[vars]` 里的 `CLOUDFLARE_ACCOUNT_ID`；令牌本地放在忽略提交的 `.dev.vars`，
@@ -380,7 +380,7 @@ Cloudflare GraphQL `workersInvocationsAdaptive` 提供滚动 12 小时（窗口�
 
 ## Vercel 卡片
 
-`GET /api/status/vercel-deployments` 与 `/api/home` 的 `vercelDeployments` 字段共用数据。
+`GET /api/status/vercel-deployments` 给站点卡片的 Vercel 部署与指标。
 API Worker 使用一个 `VERCEL_TOKEN` Secret，以及 `wrangler.toml` `[vars]` 里的 `VERCEL_PROJECT_ID`、`VERCEL_TEAM_ID`。
 Token 只放本地 `.dev.vars` 或生产 Worker Secret，不配置到 Next.js。Vercel Token 不分读写权限，
 对整个团队都能写，是这个 Worker 里权限最大的凭据：创建时选团队范围并设到期时间；代码只查询指定项目，
@@ -471,7 +471,7 @@ misaka-jp 上的 server-reporter 与 agents-reporter 每封报文顶上带一个
 
 `POST /api/ingest/iphone` 的 v1 信封接受 `modules.workouts: { items: [...] }`，每次完整替换最近最多 10 条训练（空列表清空）。记录字段为 `id`（HealthKit UUID）、`activityType`（英文类型）、`startedAt` / `endedAt`（epoch 毫秒）、`secondsFromGMT`（训练当地 UTC 偏移秒）、`durationSeconds`（扣除暂停的活动秒数），以及可选的 `distanceMeters` / `activeEnergyKcal`、`averageHeartRateBpm` / `maximumHeartRateBpm`、`elevationAscendedMeters`、`indoor`（boolean）。缺失指标对外为 null，不能解释为零。
 
-`GET /api/status/workouts` 返回 `{ items, pushedAt }` 的标准状态信封，同时包含在 `/api/home.workouts`。快照保存在 `workouts:recent`，不按训练日期过期；超过 7 天未同步时卡片标明同步延迟。上报失效 `workouts` 首页缓存标签，浏览器每 5 分钟轮询，不新增推送事件。共享代码路径已包含在 Worker 原生构建监视范围内。
+`GET /api/status/workouts` 返回 `{ items, pushedAt }` 的标准状态信封。快照保存在 `workouts:recent`，不按训练日期过期；超过 7 天未同步时卡片标明同步延迟。上报失效 `workouts` 首页缓存标签，浏览器每 5 分钟轮询，不新增推送事件。共享代码路径已包含在 Worker 原生构建监视范围内。
 
 本地预览：`pnpm dev:override /api/status/workouts workouts.json`，夹具仅供开发环境，启用时页面显示 Fake data。真实记录需要安装 iOS 27 上报器并允许训练读取。
 

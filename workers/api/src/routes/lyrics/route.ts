@@ -2,8 +2,8 @@ import { lyricsCacheKey, resolveLyrics, type LyricsResult } from "@/lib/lyrics";
 import { withStorageScope } from "@/lib/storage";
 
 /**
- * 按目录曲目 ID 查同步歌词，`song` 必填。此刻那首的首屏歌词在 `/api/home` 的
- * `lyrics` 字段里；这里只做按键查询，结果不随状态变化，所以能长缓存。
+ * 按目录曲目 ID 查同步歌词，`song` 必填。首屏那首的歌词也由站点按卡读取时来这里取
+ * （src/lib/first-screen.ts）；结果只由曲目决定，不随状态变化，所以能长缓存。
  */
 export type LyricsResponse = LyricsResult & { songId: string | null };
 
