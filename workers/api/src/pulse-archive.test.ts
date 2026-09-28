@@ -6,7 +6,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { codingObservationsKey, codingTokenUsageKey, cursorObservationsKey } from "@/lib/coding-pulse";
-import { pulseListeningTracesKey } from "@/lib/pulse-keys";
+import { pulseChargingKey, pulseLaneOpenKey, pulseListeningTracesKey } from "@/lib/pulse-keys";
 import { installStorageForTests, key, resetStorageForTests } from "@/lib/storage";
 import type { HistoryDb } from "@shared/history-ingest";
 import { SqliteStore, type SqlDatabase } from "@shared/sqlite-store";
@@ -234,6 +234,53 @@ test("pulse archive: coding observations, active seconds, token buckets and dail
   const before = b.changes();
   await b.archive().run();
   assert.equal(b.changes(), before, "unchanged sources write nothing");
+});
+
+test("pulse archive: a later report's partial first window never overwrites a complete token bucket", async () => {
+  const b = setup();
+  const agent = (inputTokens: number) => ({ id: "claude", model: "claude-opus", inputTokens, outputTokens: inputTokens, cacheReadTokens: 0, cacheCreationTokens: 0, reasoningTokens: 0, eventCount: inputTokens });
+  const report = (from: number, collectedAt: number, windows: { from: number; count: number }[]) => JSON.stringify({
+    from, to: collectedAt, collectedAt, sources: [{ id: "codex", state: "ok" }, { id: "claude", state: "ok" }],
+    windows: windows.map((window) => ({ from: window.from, to: window.from + 5 * M, agents: [agent(window.count)] })),
+  });
+  await b.storage.set(codingTokenUsageKey(), report(T0, T0 + 10 * M, [{ from: T0, count: 30 }, { from: T0 + 5 * M, count: 12 }]));
+  await b.archive().run();
+  // 下一份报告的范围从 T0+2 分钟起：T0 那个桶只数了后三分钟
+  await b.storage.set(codingTokenUsageKey(), report(T0 + 2 * M, T0 + 12 * M, [{ from: T0, count: 4 }, { from: T0 + 5 * M, count: 20 }, { from: T0 + 10 * M, count: 1 }]));
+  await b.archive().run();
+  assert.deepEqual(b.all("SELECT bucket_at, input_tokens FROM coding_token_buckets ORDER BY bucket_at"), [
+    { bucket_at: T0, input_tokens: 30 },
+    { bucket_at: T0 + 5 * M, input_tokens: 20 },
+    { bucket_at: T0 + 10 * M, input_tokens: 1 },
+  ]);
+  assert.deepEqual(b.all("SELECT input_tokens FROM agent_usage_days WHERE model = 'claude-opus'"), [{ input_tokens: 51 }]);
+});
+
+test("pulse archive: a charging session longer than the lookback stays one row across runs", async () => {
+  const b = setup();
+  const start = T0 - 3 * 24 * 60 * M;
+  const rows = [JSON.stringify({ t: start - M, watts: 0 })];
+  for (let t = start; t <= T0; t += M) rows.push(JSON.stringify({ t, watts: 20 }));
+  await b.storage.batch().append(pulseChargingKey(), ...rows).execute();
+  for (let run = 0; run < 4; run++) {
+    const at = T0 + (run + 1) * M;
+    await b.storage.batch().append(pulseChargingKey(), JSON.stringify({ t: at, watts: 20 })).execute();
+    b.at(at);
+    await b.archive().run();
+  }
+  assert.deepEqual(b.all("SELECT started_at FROM charging_sessions"), [{ started_at: start }]);
+});
+
+test("pulse archive: watching idle after an explicit stop outlives the seven-day TTL", async () => {
+  const b = setup();
+  await b.write(() => recordStateObservation("watching", T0, { state: "idle", itemId: null, title: null, subtitle: null }));
+  b.at(T0 + 8 * 24 * 60 * M);
+  const raw = await b.storage.get(pulseLaneOpenKey("watching"));
+  assert.equal(JSON.parse(raw!).holdUntil, null);
+  await b.write(() => recordStateObservation("listening", T0, music("Helpless")));
+  b.at(T0 + 16 * 24 * 60 * M);
+  assert.equal(await b.storage.get(pulseLaneOpenKey("listening")), null, "a finite hold still expires with the TTL");
+  assert.ok(await b.storage.get(pulseLaneOpenKey("watching")));
 });
 
 test("pulse archive: active seconds split at the site midnight", () => {

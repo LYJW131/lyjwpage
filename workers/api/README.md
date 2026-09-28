@@ -204,11 +204,17 @@ Jev 的强度、模式。
 全部在 StateHub SQLite，TTL 7 天。
 
 - **状态区间**（listening / watching / gaming）：每条道一个开着的区间 `pulse:v2:<道>:open`
-  （`{from, seenAt, state, …原始字段}`）加一串已关闭区间 `pulse:v2:<道>`（`{from, to, state, …}`，
-  上限 3000 / 1000 / 1000 段）。同一状态、同一标题只续 `seenAt`，每条道每分钟最多写一次；状态或标题变了
-  在那一刻关上旧段、开新段；两次观测隔得比有效期久，旧段只认到最后一次确认的 `seenAt`，中间是未知。
-  有效期：Mac / HomePod 播放与 Emby 播放、暂停 10 分钟；PSN 没人看站点时 29.5 分钟才查一次，35 分钟；
-  Emby 明确停播之后一直是空闲，直到下一次开播。原始字段分开存：listening 是
+  （`{from, seenAt, holdUntil, endsBy, state, …原始字段}`）加一串已关闭区间 `pulse:v2:<道>`（`{from, to, state, …}`，
+  上限 3000 / 1000 / 1000 段）。同一状态、同一标题只续 `seenAt`、`holdUntil`、`endsBy`，每条道每分钟最多写一次
+  （有效期或结束时刻挪动超过一分钟也写）；状态或标题变了在那一刻关上旧段、开新段。
+  `holdUntil` 是每次观测带宽限的有效期，只决定这段还开不开着、在线时画到此刻：Mac 的播放、Emby 播放与暂停
+  10 分钟；HomePod 只在状态变化时由 HA 推一次，按那份快照的剩余时长加 5 分钟宽限（单曲循环 30 分钟，与首页
+  判 HomePod 是否还在放同一个口径）；PSN 没人看站点时 29.5 分钟才查一次，35 分钟；Emby 明确停播之后一直是
+  空闲、`holdUntil` 为 null，开着的那一段不设过期，七天没开播仍是观测到的空闲。
+  过了 `holdUntil` 来源就算断了，旧段只认到确实知道的那一刻 `max(seenAt, endsBy)`，宽限不算进事实，中间是未知：
+  定期确认的来源（Mac、Emby、PSN）`endsBy` 为 null，认到最后一次确认；HomePod 的 `endsBy` 是这首按剩余时长
+  该放完的那一刻（单曲循环、没有时长时为 null），一首长歌只有开头那一次推送也能整段留下到曲终。
+  过期还没被下一次观测关上的段在图上也只画到那一刻，关上之后画法不变。原始字段分开存：listening 是
   `source`（mac / homepod）、`title`、`artist`、`album`、`trackId`；watching 是 `itemId`、`title`、`subtitle`；
   gaming 是 `titleId`、`title`。标题只防病态长度（200 字），不再压成 48 字 hint。
   - listening 每封 Mac 信封（纯心跳也算）和每次 HomePod 事件都记一次，不查 Apple 目录：

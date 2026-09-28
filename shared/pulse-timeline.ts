@@ -9,8 +9,8 @@ import { PULSE_REPEAT_AFTER_MS, PULSE_SILENT_AFTER_MS } from "@/lib/limits";
  * 充电的精确瓦数）再也找不回来。现在分两种形状：
  *
  * - **状态区间**（listening / watching / gaming）：每条道一个「开着的区间」加一串
- *   已关闭的区间。同一状态只续 `seenAt`（每条道最多每分钟写一次）；状态或标题变了、
- *   或者两次观测之间隔得比这条道的有效期还久，才关上旧区间开新区间。
+ *   已关闭的区间。同一状态只续 `seenAt` 和有效期（每条道最多每分钟写一次）；状态或
+ *   标题变了、或者过了上一次观测的有效期才又看见，才关上旧区间开新区间。
  * - **数值样本**（charging 的实测瓦数、activity 的五分钟桶与训练区间）。
  *
  * Coding 不在这里：它的三色带在读时从 `pulse:coding-observations` 现算，见
@@ -59,8 +59,20 @@ export type GamingFacts = {
 };
 export type StateLaneFacts = { listening: ListeningFacts; watching: WatchingFacts; gaming: GamingFacts };
 
-/** 还没关上的区间：`seenAt` 是最近一次写下来的确认时刻 */
-export type OpenInterval<F> = F & { from: number; seenAt: number };
+/**
+ * 还没关上的区间。
+ *
+ * - `seenAt`：最近一次写下来的确认时刻。
+ * - `holdUntil`：那次观测带宽限的有效期，只用来判断这段还开不开着、在线时画到哪儿；
+ *   null 表示一直有效（只有 Emby 明确停播后的空闲是这样）。
+ * - `endsBy`：来源自己说得出的结束时刻（HomePod 这首曲子按剩余时长该放完的那一刻）；
+ *   null 表示没有这种说法，只认到 `seenAt`。过期关段时认到 `max(seenAt, endsBy)`，
+ *   不把宽限算进事实。
+ */
+export type OpenInterval<F> = F & { from: number; seenAt: number; holdUntil: number | null; endsBy: number | null };
+
+/** 一次观测的有效期：`until` 带宽限、决定还开不开着，`endsBy` 是来源说得出的结束时刻 */
+export type ObservationHold = { until: number | null; endsBy?: number | null };
 export type ClosedInterval<F> = F & { from: number; to: number };
 
 /**
@@ -87,6 +99,15 @@ export function stateHoldMs<L extends StateLane>(lane: L, facts: StateLaneFacts[
   if (lane === "gaming") return GAMING_HOLD_MS;
   if (lane === "watching" && facts.state === "idle") return Infinity;
   return PULSE_STATE_HOLD_MS;
+}
+
+/**
+ * 一次观测默认撑到哪一刻：按道和状态的固定有效期。来源自己知道得更准时（HomePod
+ * 按曲目剩余时长）由调用方传进 planStateObservation，见 shared/pulse-listening。
+ */
+export function defaultHoldUntil<L extends StateLane>(lane: L, facts: StateLaneFacts[L], t: number): number | null {
+  const hold = stateHoldMs(lane, facts);
+  return Number.isFinite(hold) ? t + hold : null;
 }
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -139,7 +160,8 @@ export function parseOpenInterval<L extends StateLane>(lane: L, raw: string | nu
     const facts = laneFacts(lane, row);
     const from = time(row?.from), seenAt = time(row?.seenAt);
     if (!facts || from == null || seenAt == null || seenAt < from) return null;
-    return { ...facts, from, seenAt };
+    const holdUntil = row?.holdUntil === null ? null : time(row?.holdUntil) ?? defaultHoldUntil(lane, facts, seenAt);
+    return { ...facts, from, seenAt, holdUntil, endsBy: time(row?.endsBy) };
   } catch {
     return null;
   }
@@ -164,41 +186,58 @@ export type StateObservationPlan<F> = {
   open: OpenInterval<F> | null;
 };
 
+/** 过期还没关上的段认到哪儿：最后一次确认，或来源说得出的结束时刻（取晚），不含宽限 */
+function knownEnd(open: { seenAt: number; endsBy: number | null }): number {
+  return Math.max(open.seenAt, open.endsBy ?? open.seenAt);
+}
+
 /**
  * 一次观测该怎么落。返回 null 表示什么都不用写。
  *
  * - `facts` 为 null：这一刻看不见这条道（Mac 离线又没有 HomePod、上报说自己下线）。
  *   开着的那段到此为止，之后是未知，不是空闲。
- * - 和开着那段相同：只续 `seenAt`，每 {@link PULSE_SEEN_WRITE_MS} 最多一次。
- * - 隔了比有效期还久才又看见：旧段只认到最后一次确认的 `seenAt`，中间是未知。
+ * - 和开着那段相同：只续 `seenAt` 与有效期，每 {@link PULSE_SEEN_WRITE_MS} 最多一次；
+ *   有效期或结束时刻挪动超过这么多（HomePod 换了一份快照）也写。
+ * - 过了开着那段的有效期（`holdUntil`）才又看见：来源断了。旧段只认到我们确实知道的
+ *   那一刻 —— 定期确认的来源（Mac、Emby、PSN）认到最后一次确认；HomePod 只在换曲时推，
+ *   认到这首按剩余时长该放完的那一刻。宽限只管「还开不开着」，不算进事实。中间是未知。
  * - 状态或标题变了：旧段关在这一刻，新段从这一刻开始。
  * - `t` 不前进：重复或乱序，丢掉。
+ *
+ * `hold` 缺省按道和状态的固定有效期（defaultHoldUntil），没有结束时刻。
  */
 export function planStateObservation<L extends StateLane>(
   lane: L,
   open: OpenInterval<StateLaneFacts[L]> | null,
   t: number,
   facts: StateLaneFacts[L] | null,
+  hold: ObservationHold = { until: facts ? defaultHoldUntil(lane, facts, t) : null },
 ): StateObservationPlan<StateLaneFacts[L]> | null {
   const next = facts ? pick(lane, facts) : null;
-  if (!open) return next ? { closed: [], open: { ...next, from: t, seenAt: t } } : null;
+  const holdUntil = hold.until === null ? null : Math.max(t, hold.until);
+  const endsBy = hold.endsBy ?? null;
+  if (!open) return next ? { closed: [], open: { ...next, from: t, seenAt: t, holdUntil, endsBy } } : null;
   if (t <= open.seenAt) return null;
-  const expired = t - open.seenAt > stateHoldMs(lane, open);
-  const end = expired ? open.seenAt : t;
+  const expired = open.holdUntil !== null && t > open.holdUntil;
+  const end = expired ? Math.min(t, knownEnd(open)) : t;
   const current = pick(lane, open);
   const closed = end > open.from ? [{ ...current, from: open.from, to: end }] : [];
   if (!next) return { closed, open: null };
   if (!expired && sameFacts(lane, current, next)) {
-    return t - open.seenAt >= PULSE_SEEN_WRITE_MS ? { closed: [], open: { ...open, seenAt: t } } : null;
+    const shifted = (a: number | null, b: number | null) => (a === null || b === null ? a !== b : Math.abs(a - b) >= PULSE_SEEN_WRITE_MS);
+    return t - open.seenAt >= PULSE_SEEN_WRITE_MS || shifted(holdUntil, open.holdUntil) || shifted(endsBy, open.endsBy)
+      ? { closed: [], open: { ...open, seenAt: t, holdUntil, endsBy } }
+      : null;
   }
-  return { closed, open: { ...next, from: t, seenAt: t } };
+  return { closed, open: { ...next, from: t, seenAt: t, holdUntil, endsBy } };
 }
 
 export type StateSegment<F> = F & { from: number; to: number };
 
 /**
- * 窗口内的状态段。开着的那段还在有效期内就画到此刻；过了有效期只画到最后一次确认，
- * 和它将来被关上时一致（见 planStateObservation 的过期规则），不会先长后缩。
+ * 窗口内的状态段。开着的那段还在有效期内就画到此刻；过了有效期只画到它将来被关上的
+ * 那一刻（最后一次确认或来源说得出的结束时刻，见 planStateObservation），关上之后
+ * 画法不变。
  */
 export function stateSegments<L extends StateLane>(
   lane: L,
@@ -208,8 +247,8 @@ export function stateSegments<L extends StateLane>(
 ): StateSegment<StateLaneFacts[L]>[] {
   const rows: StateSegment<StateLaneFacts[L]>[] = [...closed].sort((a, b) => a.from - b.from);
   if (open && open.from < window.to) {
-    const fresh = window.to - open.seenAt <= stateHoldMs(lane, open);
-    const to = fresh ? window.to : open.seenAt;
+    const live = open.holdUntil === null || window.to <= open.holdUntil;
+    const to = live ? window.to : Math.min(window.to, knownEnd(open));
     if (to > open.from) rows.push({ ...pick(lane, open), from: open.from, to });
   }
   const segments: StateSegment<StateLaneFacts[L]>[] = [];

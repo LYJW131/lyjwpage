@@ -22,6 +22,7 @@ import {
   type StateLaneFacts,
 } from "@shared/pulse-timeline";
 import { parseCodingTokenUsage } from "@shared/coding-token-usage";
+import { CHARGING_IDLE_MAX_W } from "@/lib/home-layout";
 import type { StorageCommand } from "@shared/storage-contract";
 
 /**
@@ -144,15 +145,17 @@ export class PulseArchiveState implements PulseArchiveCoordinator {
 
   private readStream(stream: ArchiveStream, watermark: number): Omit<PulseArchiveStreamSnapshot, "stream" | "revision" | "watermark"> {
     switch (stream) {
-      case "listening": case "gaming": case "watching": {
-        // 会话要从第一段算起：看剧、打游戏往回多读一点上下文
-        const since = stream === "listening" ? watermark : watermark - SESSION_CONTEXT_MS;
-        return { rows: this.readSince(pulseLaneKey(stream), since, "to") };
-      }
+      case "listening":
+        return { rows: this.readSince(pulseLaneKey(stream), watermark, "to") };
+      case "gaming": case "watching":
+        // 会话要从第一段算起：往回多读一点上下文，读到的第一段若还在会话里就接着往回读
+        return { rows: this.readSince(pulseLaneKey(stream), watermark - SESSION_CONTEXT_MS, "to",
+          (row) => (stream === "gaming" ? row.state === "in-game" : row.state !== "idle")) };
       case "listening-traces":
         return { rows: this.readSince(pulseListeningTracesKey(), watermark, "t") };
       case "charging":
-        return { rows: this.readSince(pulseChargingKey(), watermark - SESSION_CONTEXT_MS, "t") };
+        return { rows: this.readSince(pulseChargingKey(), watermark - SESSION_CONTEXT_MS, "t",
+          (row) => typeof row.watts === "number" && row.watts > CHARGING_IDLE_MAX_W) };
       case "coding": {
         // 当天的活跃秒数要从当天零点重算
         const since = siteDayStart(watermark);
@@ -187,14 +190,20 @@ export class PulseArchiveState implements PulseArchiveCoordinator {
   /**
    * 列表按时间追加：从尾巴往回读，读到第一行已经不晚于 `since` 或读完整串为止。
    * 平时只读水位之后那几十行，归档停过几天也能一次补齐。
+   *
+   * 推导会话的那几路另给 `inSession`：读到的第一行若还在一次会话中间（在充、在播、
+   * 在游戏里），就接着往回读到会话之外。否则一次比回看期还长的会话每一轮都从挪动的
+   * 截断处「开始」，按起点做键的 upsert 会一轮插一行重叠的会话。
    */
-  private readSince(listKey: string, since: number, field: "t" | "to"): string[] {
+  private readSince(listKey: string, since: number, field: "t" | "to", inSession?: (row: Record<string, unknown>) => boolean): string[] {
     for (let size = 256; ; size *= 4) {
       const rows = this.execute([{ op: "listRange", key: listKey, start: -size, stop: -1 }])[0] as string[];
       if (rows.length < size) return rows;
-      let first: unknown = null;
-      try { first = (JSON.parse(rows[0]) as Record<string, unknown>)[field]; } catch { return rows; }
-      if (typeof first !== "number" || first <= since) return rows;
+      let first: Record<string, unknown>;
+      try { first = JSON.parse(rows[0]) as Record<string, unknown>; } catch { return rows; }
+      const at = first[field];
+      if (typeof at === "number" && at > since) continue;
+      if (!inSession?.(first)) return rows;
     }
   }
 
@@ -523,7 +532,11 @@ export function archiveStatements(db: PulseArchiveDb, snapshot: PulseArchiveStre
     case "tokens": {
       const usage = snapshot.value ? parseCodingTokenUsage(JSON.parse(snapshot.value)) : null;
       if (!usage || usage.collectedAt <= watermark) return { statements: [], watermark };
-      const rows = usage.windows.flatMap((window) => window.agents.map((agent) => [
+      // 报告范围是滚动的，起点通常不落在五分钟边界上：最前面那个桶只数了范围内的一截，
+      // 拿它覆盖上一份报告里完整的同一个桶会少算。只写起点在范围内的桶；末尾那个还在
+      // 累积的桶照写，下一份报告会用更完整的数覆盖它（去重重扫也可能让数变小，所以不取 max）。
+      const complete = usage.windows.filter((window) => window.from >= usage.from);
+      const rows = complete.flatMap((window) => window.agents.map((agent) => [
         window.from, agent.id, agent.model ?? "", agent.inputTokens, agent.outputTokens, agent.cacheReadTokens,
         agent.cacheCreationTokens, agent.reasoningTokens, agent.eventCount,
       ]));
