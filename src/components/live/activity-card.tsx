@@ -11,16 +11,7 @@ import { ACTIVITY_PATH } from "@/lib/paths";
 import type { ActivityPayload, StatusResponse } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-/**
- * 5 分钟一轮，比全站任何一张卡都慢，而且是故意的。
- *
- * 上报侧的天花板在 HealthKit：后台投递按小时节流，App 不在前台时最快也就一小时
- * 一份。5 分钟已经是十几倍的过采样，调到 30 秒只是把请求翻十倍换同一份数据 ——
- * 「前端轮询多快，回源频率都不变」在这里反过来也成立：上报多慢，轮询快了也没用。
- *
- * 这条链路上没有实时推送，理由见 lib/activity 的模块注释。
- */
-const REFRESH_MS = 5 * 60_000;
+/** 取数节奏跟 iPhone 上报器走（登记在 lib/status-views 的 cadenceMs）；这条链路上没有实时推送，理由见 lib/activity 的模块注释。 */
 
 type RingId = "move" | "exercise" | "stand";
 
@@ -332,7 +323,7 @@ export function ActivityCard({
   children?: ReactNode;
   className?: string;
 }) {
-  const { data: latest, updatedAt, servedAt } = useStatus<ActivityPayload>(ACTIVITY_PATH, REFRESH_MS, {
+  const { data: latest, updatedAt, servedAt } = useStatus<ActivityPayload>(ACTIVITY_PATH, {
     fallback,
   });
   /**

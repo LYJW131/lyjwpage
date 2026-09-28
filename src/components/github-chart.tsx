@@ -23,12 +23,6 @@ import { GITHUB_CHART_PATH } from "@/lib/paths";
 import type { GithubChartDay, GithubChartPayload, StatusResponse } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-/**
- * 贡献日历按天变，带游标只拉窗尾，一小时一轮很便宜。间隔要明显短于过期阈值
- * （GITHUB_CHART_STALE_MS，6 小时），否则正常的页面也会在下一轮之前先翻成 Unavailable。
- */
-const REFRESH_MS = 60 * 60_000;
-
 const fetchGithubChart = incrementalFetcher<GithubChartPayload>(
   githubChartCursor,
   mergeGithubChart,
@@ -41,12 +35,12 @@ type HoveredCell = {
 };
 
 export function GithubChart({ fallback }: { fallback: StatusResponse<GithubChartPayload> }) {
-  const { data, updatedAt, servedAt } = useStatus<GithubChartPayload>(GITHUB_CHART_PATH, REFRESH_MS, {
+  const { data, updatedAt, servedAt } = useStatus<GithubChartPayload>(GITHUB_CHART_PATH, {
     fallback,
     fetcher: fetchGithubChart,
     seedFallback: seedGithubChart,
-    // 首屏已经烧进去：可滞后层的挂载策略只在首屏那份超过一个轮询间隔时才补取。
-    // 切回标签页时拉一次，长轮询仍作兜底。
+    // 首屏已经烧进去：可滞后层的挂载策略只在首屏那份过了下一次预期写入时才补取。
+    // 切回标签页时拉一次，之后按采集节奏（10 分钟）在下一次写入后取。
     revalidateOnFocus: true,
   });
   /**

@@ -10,19 +10,7 @@ import { SERVER_PATH } from "@/lib/paths";
 import type { ServerPayload, ServerTraffic, StatusResponse } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-/**
- * 上报器 30 秒一轮。卡片跟这个节奏走：推送这条路上没有，问得比上报还勤
- * 只是把请求翻倍换同一份数据。
- *
- * 从 15 秒放宽到 30 秒 —— 和充电头 / 充电宝一档，而状态端点是 no-store、每次都
- * 进函数，一个开着的标签页就是 2 次/分钟。
- *
- * 比上报器的快档（`LIVE_INTERVAL_MS`，60 秒）还勤，多出来那一趟拿到的是同一份
- * 数字 —— 有意留的：这是浏览器自己的节奏，不该跟着上报器的档位走，而且卡片上那
- * 几个「多久没刷新」的字样要按访客的钟现算。判活的窗口由上报器的**慢档**定，
- * 见 freshness 的 SERVER_STALE_MS。
- */
-const REFRESH_MS = 30_000;
+/** 取数节奏跟服务器上报器每分钟一推（登记在 lib/status-views 的 cadenceMs），和 LYJWPAGE 卡共用同一个 SWR 键。判活窗口见 freshness 的 SERVER_STALE_MS。 */
 
 const RATE_FORMAT_BYTES = { maximumFractionDigits: 0 } as const;
 const RATE_FORMAT_SCALED = { minimumFractionDigits: 1, maximumFractionDigits: 1 } as const;
@@ -228,7 +216,7 @@ export function ServerCard({
   fallback: StatusResponse<ServerPayload>;
   className?: string;
 }) {
-  const { data, updatedAt, error, servedAt } = useStatus<ServerPayload>(SERVER_PATH, REFRESH_MS, {
+  const { data, updatedAt, error, servedAt } = useStatus<ServerPayload>(SERVER_PATH, {
     fallback,
   });
   // 可滞后层：上报入口每封都重写 updatedAt，过了阈值就是上报器没在推。首帧拿 servedAt 当钟
