@@ -1,5 +1,5 @@
 /**
- * Cloudflare Access JWT 校验，api 与 playstation-reporter 两个 Worker 共用。
+ * Cloudflare Access JWT 校验，api 的上报入口用（ingest 域名后面那个 Access 应用）。
  *
  * Access 挡在边缘，放行的请求带着它签的 JWT 到 Worker。Worker 仍要自己验一遍：
  * 同一个 Worker 还能从 workers.dev 或别的域名进来，那条路不过 Access，只有这张

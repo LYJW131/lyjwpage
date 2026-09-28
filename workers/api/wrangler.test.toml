@@ -1,6 +1,7 @@
-# 独立迁移测试 Worker；小号 Vercel 已切换正式 api，此处不再绑定站点。
-# 命名空间与生产完全独立；没有生产域名或 cron。
-name = "ingest-do-test"
+# 本地开发用（根目录 `pnpm dev:worker` 以多配置方式和 dev-router、采集 Worker 一起起）。
+# 名字与生产相同，别的本地 Worker 的 service binding 才按生产名字找到它；
+# 状态全在本地的 --persist-to 目录里，与生产完全独立；没有生产域名或 cron。
+name = "api"
 main = "src/index.ts"
 compatibility_date = "2025-02-14"
 compatibility_flags = ["nodejs_compat", "nodejs_compat_populate_process_env"]
@@ -8,7 +9,7 @@ workers_dev = true
 
 [[services]]
 binding = "READ_MODEL_RENDERER"
-service = "ingest-do-test"
+service = "api"
 entrypoint = "ReadModelRenderer"
 
 [vars]

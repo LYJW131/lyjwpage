@@ -215,9 +215,9 @@ function isCodexComponent(name: string): boolean {
 
 /**
  * 站点实际跑在这些产品上，再加上域名能解析所靠的基础面。
- * Workers、Durable Objects、KV、R2、D1、WebSockets 是三个 Worker 的运行时；
+ * Workers、Durable Objects、KV、R2、D1、WebSockets 是这几个 Worker 的运行时；
  * Workers Builds 和 API 是发布与统计卡在用的控制面；
- * Authoritative DNS、DNS Updates 扛 api / online / playstation-reporter 的自定义域名。
+ * Authoritative DNS、DNS Updates 扛 api / ingest / online 的自定义域名。
  * 机房、WARP、Bot Management、CDN 不进这一行：主站不在 Cloudflare 的缓存上。
  * 用全名，避免 Workers 带上 Workers AI，API 带上 API Shield。
  */

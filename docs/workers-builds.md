@@ -1,6 +1,6 @@
 # Workers 原生 Git 部署
 
-仓库 `LYJW131/lyjwpage` 的三个 Worker 连接 Cloudflare Workers Builds，生产分支均为 `main`。
+仓库 `LYJW131/lyjwpage` 的三个 Worker（`api`、`online-counter`、`collector`）连接 Cloudflare Workers Builds，生产分支均为 `main`。
 GitHub Actions 负责 lint、类型检查、单测与 CodeQL；Worker 发布由 Cloudflare GitHub App 触发，
 构建状态通过 GitHub check run 回传。Vercel 和 GitHub Pages 保持各自原生集成与现有工作流。
 
@@ -10,11 +10,17 @@ GitHub Actions 负责 lint、类型检查、单测与 CodeQL；Worker 发布由 
 | --- | --- | --- | --- |
 | `api` | `/` | `pnpm --dir workers/api typecheck` | `pnpm --dir workers/api exec wrangler deploy` |
 | `online-counter` | `/` | `pnpm --dir workers/online-counter typecheck` | `pnpm --dir workers/online-counter exec wrangler deploy` |
-| `playstation-reporter` | `workers/playstation-reporter` | `npm run typecheck` | `npm run deploy` |
+| `collector` | `/` | `pnpm --dir workers/collector typecheck` | `pnpm --dir workers/collector exec wrangler deploy` |
 
-Workers Builds 在构建命令之前安装依赖。前两个使用根目录 `pnpm-lock.yaml` 与工作区；
-PlayStation 保留独立 `package-lock.json`。Wrangler 使用对应包锁定的版本。
-三个生产 Worker 均启用构建缓存。`api`、`online-counter`、`playstation-reporter` 的生产版本只从 `main` 用 `wrangler deploy` 发布。
+Workers Builds 在构建命令之前安装依赖。三个都使用根目录 `pnpm-lock.yaml` 与工作区，Wrangler 使用对应包锁定的版本。
+三个生产 Worker 均启用构建缓存，生产版本只从 `main` 用 `wrangler deploy` 发布。
+`collector` 的分支预览构建和非生产分支构建都关掉：它的 `CORE` Service Binding 指向生产 `api`，
+预览版一跑就会往生产状态里写；非生产分支的默认命令还会把版本传到生产脚本上。
+`collector` 由原 `playstation-reporter` 脚本改名而来（沿用它的 `PSN_NPSSO` secret 和 KV）；
+它原来的构建设置（根目录 `workers/playstation-reporter`、npm 命令、监视路径）要改成本文这一行，
+那个目录已经删除，npm 的 `package-lock.json` 也不再有。
+
+`workers/dev-router` 只给本地 `pnpm dev:worker` 用，没有 `package.json`，不连 Workers Builds。
 
 ## 分支预览
 
@@ -45,9 +51,11 @@ PR 关闭时 `.github/workflows/preview-api-worker.yml` 执行 `wrangler preview
 
 - `api`：`workers/api/*`、`src/lib/*`、`shared/*`、`tsconfig.json`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`。
 - `online-counter`：`workers/online-counter/*`、`workers/api/src/origins.ts`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`。
-- `playstation-reporter`：`workers/playstation-reporter/*`、`shared/access-jwt.ts`。
+- `collector`：`workers/collector/*`、`shared/*`、`src/lib/*`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`、`tsconfig.json`。
 
 API 的共享状态代码变化必须触发发布；来源白名单由 API 与在线人数共用，修改时必须同时发布两者。
+采集 Worker 直接打包 `src/lib` 的取数模块和 `shared/` 的契约（`state-core.ts`、`lag.ts`、`collector.ts`），
+这些变化同样要触发它的发布；D1 表结构归 `workers/api/migrations`，新表先在 api 那边 apply 再发布它。
 增加共享依赖或移动文件时，同步调整 Cloudflare 的监视路径与本文。
 
 ## 配置与验收

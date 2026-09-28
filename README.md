@@ -136,7 +136,7 @@
 
 [打开交互式架构图](https://lyjw131.github.io/lyjwpage/)
 
-**采集端**运行在数据产生的位置。Mac 采集本机应用、音乐、BLE 设备与编码用量，iPhone 读取运动活动，NAS 代理 Emby 播放状态，Linux 上报器提供服务器指标和 Agent 限额。Home Assistant 接入 HomePod 等家庭设备，独立 Worker 定时同步 PlayStation 数据。
+**采集端**运行在数据产生的位置。Mac 采集本机应用、音乐、BLE 设备与编码用量，iPhone 读取运动活动，NAS 代理 Emby 播放状态，Linux 上报器提供服务器指标和 Agent 限额。Home Assistant 接入 HomePod 等家庭设备；PlayStation、Apple Music 最近在听以及 GitHub、Vercel、Cloudflare、Sentry、PageSpeed 这些外部数据由采集 Worker 定时拉取。
 
 **状态中枢**由 Cloudflare Workers 承担，负责接收上报、整合外部服务数据、提供公开状态 API 和实时推送。Durable Objects SQLite 保存快照与历史，是唯一权威；几条慢端点的公开读模型发布到 KV，读路径先取 KV、缺失或过旧时回源 DO。R2 保存海报等图片资源，D1 归档 Pulse 的逐分钟历史；在线访客计数由独立 Worker 维护。
 
@@ -184,7 +184,7 @@
 
 ### 报错与性能交给 Sentry
 
-站点（浏览器与 Vercel 函数）和 `api` Worker（请求、分钟 cron、两个 Durable Object）各报到一个 Sentry 项目。浏览器端经同源的 `/relay` 转发，广告拦截和直连不上 sentry.io 的访客也报得上来；Session Replay 单独成块、页面空闲后才加载，只保留出错那一段。分钟 cron 每 5 分钟报一次心跳，`lyjw.me` 有每分钟的在线探测。采样按免费额度设，入口见 [`src/lib/sentry.ts`](./src/lib/sentry.ts) 与 [`workers/api/src/sentry.ts`](./workers/api/src/sentry.ts)；本地默认不上报，要试就在 `.env.local` 设 `NEXT_PUBLIC_SENTRY_DEV=true`。
+站点（浏览器与 Vercel 函数）、`api` Worker（请求、分钟 cron、两个 Durable Object）和采集 Worker（各定时任务，每个任务一条 cron 监控 `collector-<任务>`）各报到一个 Sentry 项目。浏览器端经同源的 `/relay` 转发，广告拦截和直连不上 sentry.io 的访客也报得上来；Session Replay 单独成块、页面空闲后才加载，只保留出错那一段。分钟 cron 每 5 分钟报一次心跳，`lyjw.me` 有每分钟的在线探测。采样按免费额度设，入口见 [`src/lib/sentry.ts`](./src/lib/sentry.ts)、[`workers/api/src/sentry.ts`](./workers/api/src/sentry.ts) 与 [`workers/collector/src/sentry.ts`](./workers/collector/src/sentry.ts)；本地默认不上报，要试就在 `.env.local` 设 `NEXT_PUBLIC_SENTRY_DEV=true`。
 
 Sentry 里的数据也回到页面上：`api` Worker 用只读令牌取回两个项目的报错数、真实访客的 Web Vitals、在线探测与 cron 心跳，经 KV 读模型给站点卡片（`/api/status/sentry`）。在线状态分两行：`lyjw.me` 那行探测的是 Vercel 上的静态路由，只说明前端还在出页面；`API` 那行看 cron 心跳，每一轮都要经过 Worker、Durable Object 与 KV，补上后端那一截。排查线上报错时 agent 先经 Sentry MCP 查证据再读代码，规矩写在 [`AGENTS.md`](./AGENTS.md)。
 
@@ -211,10 +211,12 @@ Sentry 里的数据也回到页面上：`api` Worker 用只读令牌取回两个
 | 推送与轮询如何更新同一份客户端状态 | [`src/hooks/use-live-events.ts`](./src/hooks/use-live-events.ts) · [`src/hooks/use-status.ts`](./src/hooks/use-status.ts) · [`src/lib/status-reads.ts`](./src/lib/status-reads.ts) |
 | 网页播放器与歌词如何工作 | [`src/hooks/use-web-player.ts`](./src/hooks/use-web-player.ts) · [`src/hooks/use-lyrics.ts`](./src/hooks/use-lyrics.ts) |
 | 上报、状态存储与公开 API 如何组织 | [`workers/api/`](./workers/api/) |
-| 各类设备与服务如何接入 | [`reporters/`](./reporters/) · [`workers/playstation-reporter/`](./workers/playstation-reporter/) |
+| 各类设备与服务如何接入 | [`reporters/`](./reporters/) · [`workers/collector/`](./workers/collector/) |
 | 在线访客如何统计 | [`workers/online-counter/`](./workers/online-counter/) · [`src/hooks/use-online-count.ts`](./src/hooks/use-online-count.ts) |
 
 Mac 端采集器 [MacTelemetryHub](https://github.com/LYJW131/MacTelemetryHub) 独立维护，通过 Git submodule 接入 `reporters/mac-telemetry-hub/`。
+
+本地开发时 `pnpm dev:worker` 用一个 `wrangler dev` 进程起三个 Worker：`workers/dev-router`（拿 8788 端口、按路径分发）、`api` 和采集 Worker `collector`，三者共用本地的状态目录与 KV；`/__dev/collector/run?job=<任务>` 立刻跑一个采集任务，`/cdn-cgi/local/scheduled` 让采集 Worker 跑这一分钟到期的任务。步骤见 [`workers/api/README.md`](./workers/api/README.md) 的「本地开发」与 [`workers/collector/README.md`](./workers/collector/README.md)。
 
 ## 进一步了解
 

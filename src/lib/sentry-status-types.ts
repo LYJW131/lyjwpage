@@ -57,7 +57,7 @@ export type SentryStatusPayload = {
    * Worker 运行时、Durable Object 与 KV 写入，按时报到就说明后端这条链是活的
    */
   heartbeat: HealthSeries | null;
-  /** 站点（浏览器 + Vercel 函数）与 api Worker 两个项目，只算 production 环境 */
+  /** 站点（浏览器 + Vercel 函数）一份；`worker` 是 api 与采集 Worker 两个项目合计。只算 production 环境 */
   errors: { site: SentryErrorSeries; worker: SentryErrorSeries } | null;
   /** 真实访客页面加载的 p75，最近 7 天 */
   vitals: SentryVitals | null;

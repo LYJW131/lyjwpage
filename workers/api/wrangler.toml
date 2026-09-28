@@ -13,7 +13,7 @@ routes = [
   { pattern = "ingest.homepage.lyjw.llc", custom_domain = true }
 ]
 
-# playstation-reporter 经 Service Binding 调 PlaystationIngest 上报（见 src/playstation-ingest.ts），
+# 采集 Worker 经 Service Binding 调 StateCore（见 src/state-core.ts；旧的 PlaystationIngest 留到原脚本退场），
 # 这里不用声明：entrypoint 由调用方的 binding 指定。
 # Loop back into this deployment's ordinary Worker isolate for public JSON rendering.
 # This avoids ctx.exports (which needs a newer compatibility flag) and keeps StateHub focused on coordination.

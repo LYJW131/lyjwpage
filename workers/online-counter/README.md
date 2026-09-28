@@ -11,8 +11,8 @@
 连接计数为瞬时状态，部署后浏览器重连重新计数，不迁移业务数据。
 
 站点配置 `NEXT_PUBLIC_ONLINE_COUNTER_URL=https://online.homepage.lyjw.llc`。
-server、PlayStation、agent limits 上报器配置 `ONLINE_COUNTER_URL` 为同一源；
-同时读取 API 的 `/count` 连接数，沿用可见、后台打开、无人三档。
+agent limits 上报器与采集 Worker 的 PlayStation 任务配置 `ONLINE_COUNTER_URL` 为同一源；
+同时读取 API 的连接数（上报器读 `/count`，采集 Worker 经 `StateCore.connections()`），沿用可见、后台打开、无人三档。
 
 ```sh
 pnpm --dir workers/online-counter types
