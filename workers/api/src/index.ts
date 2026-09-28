@@ -10,6 +10,7 @@ import { PulseScorer } from "./pulse-score";
 import { ReadModelRenderer as ReadModelRendererBase } from "./read-model-renderer";
 import { PlaystationIngest as PlaystationIngestBase } from "./playstation-ingest";
 import { StateCore as StateCoreBase } from "./state-core";
+import { SecretHandoff as SecretHandoffBase } from "./secret-handoff";
 import { migrateToKv } from "./kv-migration";
 import { CRON_MONITOR_CONFIG, CRON_MONITOR_SLUG, heartbeatDue } from "./cron-heartbeat";
 import { sentryOptions } from "./sentry";
@@ -22,6 +23,8 @@ export const ReadModelRenderer = Sentry.withSentry(sentryOptions, ReadModelRende
 export const PlaystationIngest = Sentry.withSentry(sentryOptions, PlaystationIngestBase);
 /** 上报入口与采集 Worker 经 Service Binding 调的状态核心 RPC，契约见 shared/state-core.ts */
 export const StateCore = Sentry.withSentry(sentryOptions, StateCoreBase);
+/** 临时：令牌交接给采集 Worker，交接完删除 */
+export const SecretHandoff = Sentry.withSentry(sentryOptions, SecretHandoffBase);
 export type { Env } from "./runtime";
 
 const apiWorker = {
