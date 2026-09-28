@@ -1,7 +1,7 @@
 import { withRequestState } from "@shared/request-state";
 import { DurableObject } from "cloudflare:workers";
 
-import { INGEST_SOURCES, prepareIngestForCommit } from "./ingest-handlers";
+import { INGEST_SOURCES, prepareIngestForCommit, type PreparedIngest } from "./ingest-handlers";
 import { dispatchIngestEffects } from "./ingest-effects";
 import { archiveIngest } from "./ingest-archive";
 import { commitLagIngest } from "./lag-ingest";
@@ -142,6 +142,8 @@ export async function commitIngest(env: Env, ctx: ExecutionContext, source: stri
       const command = await prepareIngestForCommit(source, body, () => hub.ready());
       if (!command) return jsonResponse({ ok: false, error: "状态存储初始化中" }, { status: 503 });
       let data: unknown;
+      /** 状态核心收下了前面的模块、后面的模块校验不过（见 partiallyAccepted）：写完已收下的那几份再回 400 */
+      let rejected: string | null = null;
       if (command.source === "server") {
         // 落地节点整封都在可滞后层，不经过状态核心
         data = { id: command.status.id };
@@ -149,16 +151,22 @@ export async function commitIngest(env: Env, ctx: ExecutionContext, source: stri
         const result = await hub.commitIngest(command);
         await dispatchIngestEffects(result.effects);
         if (!result.ready) return jsonResponse({ ok: false, error: "状态存储初始化中" }, { status: 503 });
-        if (!result.ok) throw new Error(result.error);
-        data = JSON.parse(result.json);
+        if (!result.ok) {
+          if (!partiallyAccepted(command)) throw new Error(result.error);
+          rejected = result.error;
+        } else {
+          data = JSON.parse(result.json);
+        }
       }
-      // 可滞后层的那一半：状态核心那一半成功之后直接写 KV，布局变了才失效首屏
+      // 归档排在可滞后层之前：KV 写失败回 400 时，已收下的数据照样进 D1（按 received_at 幂等，
+      // 上报器重发也不重复）。归档失败只记日志，不能让已落库的上报重发
+      if (historyArchiveEnabled(env)) ctx.waitUntil(archiveIngest(env.HISTORY!, command));
+      // 可滞后层的那一半：状态核心收下之后直接写 KV，只写 prepare 判为有效的模块，布局变了才失效首屏
       if (env.LAG) {
         const tags = await commitLagIngest(env.LAG, command);
         if (tags.length) ctx.waitUntil(expireStatusTags(tags));
       }
-      // 收下了才归档；归档失败只记日志，不能让已落库的上报重发
-      if (historyArchiveEnabled(env)) ctx.waitUntil(archiveIngest(env.HISTORY!, command));
+      if (rejected) throw new Error(rejected);
       // Apple Music user token 只在变了时才推，这一次写不进去就等下一次换令牌，所以等它写完再回 202
       if (command.source === "mac" && command.modules.appleMusicCredentials && env.CREDENTIALS) {
         await writeAppleMusicCredentials(env.CREDENTIALS, {
@@ -172,6 +180,15 @@ export async function commitIngest(env: Env, ctx: ExecutionContext, source: stri
     console.error("[ingest]", source, reason(error));
     return jsonResponse({ ok: false, error: "上报数据无效或处理失败" }, { status: 400 });
   }
+}
+
+/**
+ * 一封上报里前面的模块已经进了状态核心、后面的模块校验不过：眼下只有手机（训练收下、
+ * 圆环被拒，见 phone-telemetry 的 failure.stage）。这时可滞后层和归档照同样的口径写已收下
+ * 的模块，Pulse 里那份训练和公开的训练列表才不会各说各话；回执照样是 400，上报器整封重发。
+ */
+function partiallyAccepted(command: PreparedIngest): boolean {
+  return command.source === "iphone" && command.failure?.stage === "beforeActivity";
 }
 
 /** 限制实际读取字节数，不依赖可能缺失或伪造的 Content-Length。 */

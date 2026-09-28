@@ -143,3 +143,20 @@ test("iPhone：圆环读数写进可滞后层，只带历史桶的上报不碰�
   assert.equal((await readLag(kv, LAG_KEYS.activity))?.updatedAt, NOW, "updatedAt is the report that last carried the rings");
   assert.equal(kv.values.has(LAG_KEYS.workouts), false, "a report without workouts leaves the list alone");
 });
+
+test("iPhone：训练收下、圆环被拒的那封，可滞后层只写训练列表，和状态核心收下的口径一致", async () => {
+  const kv = new MemoryKv();
+  const workout = {
+    id: "11111111-1111-4111-8111-111111111111",
+    activityType: "Running",
+    startedAt: NOW - 3_600_000,
+    endedAt: NOW - 1_800_000,
+    durationSeconds: 1_500,
+    secondsFromGMT: 0,
+  };
+  const command = await prepareIngest("iphone", { version: 1, modules: { workouts: { items: [workout] }, activity: { date: "bad" } } }, NOW);
+  assert.equal(command.source === "iphone" && command.failure?.stage, "beforeActivity");
+  await commitLagIngest(kv, command);
+  assert.equal((await readLag<{ items: { activityType: string }[] }>(kv, LAG_KEYS.workouts))?.data.items[0]?.activityType, "Running");
+  assert.equal(kv.values.has(LAG_KEYS.activity), false, "被拒的圆环不进可滞后层");
+});

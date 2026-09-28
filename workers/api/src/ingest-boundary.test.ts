@@ -189,7 +189,7 @@ test("iPhone keeps the Pulse workout copy when the following activity module is 
     }, NOW));
     const result = await commit(testEnv(), command);
     assert.equal(result.ok, false);
-    // 已经发车的写不丢；训练列表那份展示快照在可滞后层，状态核心这一半失败时上报入口不写它
+    // 已经发车的写不丢；训练列表那份展示快照在可滞后层，上报入口照同样的口径写它（见 origin-worker 的 partiallyAccepted）
     assert.equal(JSON.parse((await storage.get(pulseWorkoutsKey()))!).items[0]?.activityType, workout.activityType);
   } finally { resetStorageForTests(); }
 });
