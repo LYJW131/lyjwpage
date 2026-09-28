@@ -6,7 +6,7 @@ import { REPORTER_BY_SOURCE, type ReporterBlock, type ReporterStat } from "@/lib
 import type { ActivityStatus, ServerPayload, TimezoneActivity, Workout } from "@/lib/types";
 import { agentLimitsLayoutKey, mergeAgentLimits, type AgentLimitsPayload } from "@/lib/vibecoding-limits";
 import { LAG_KEYS, readLag, writeLag, type LagStore } from "@shared/lag";
-import type { PreparedIngest } from "./ingest-handlers";
+import type { PreparedIngest } from "@shared/ingest/prepare";
 
 /**
  * 上报入口对可滞后层的那一半：一封上报里不需要「变了立刻推」、也不参与 pulse 的

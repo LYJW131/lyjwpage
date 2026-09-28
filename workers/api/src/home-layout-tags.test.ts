@@ -7,7 +7,9 @@ import { FakeStorage } from "@/lib/testing/fake-storage";
 import { withRequestState } from "@shared/request-state";
 
 import { collectIngestEffects, dispatchIngestEffects, type CollectedIngest } from "./ingest-effects";
-import { commitPreparedIngest, prepareIngest } from "./ingest-handlers";
+import { prepareIngest, type CoreCommand } from "@shared/ingest/prepare";
+
+import { commitPreparedIngest } from "./ingest-handlers";
 import { requestStore, type Env } from "./runtime";
 
 /**
@@ -19,7 +21,6 @@ const NOW = 1_800_000_000_000;
 
 function testEnv(overrides: Partial<Env> = {}): Env {
   return {
-    IMAGES: { head: async () => ({}) } as unknown as R2Bucket,
     LIVE_PUSH: {
       idFromName: () => null,
       get: () => ({ broadcast: async () => {} }),
@@ -41,7 +42,8 @@ async function inRequest<T>(env: Env, run: () => Promise<T>): Promise<T> {
 }
 
 async function land(env: Env, source: string, body: unknown, at: number): Promise<CollectedIngest<unknown>> {
-  const command = await inRequest(env, () => prepareIngest(source, body, at));
+  // 上报入口那一半（shared/ingest）照样先跑，图片 HEAD 一律当已到
+  const command = await prepareIngest(source, body, at, { head: async () => ({}) }) as CoreCommand;
   const result = await inRequest(env, () => collectIngestEffects(() => commitPreparedIngest(command)));
   assert.equal(result.ok, true, result.ok ? "" : result.error);
   return result;

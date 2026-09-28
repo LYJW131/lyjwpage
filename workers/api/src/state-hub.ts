@@ -3,7 +3,8 @@ import { DurableObject } from "cloudflare:workers";
 import { StorageClient } from "@shared/storage-client";
 import { SqliteStore, type StoredEntry } from "@shared/sqlite-store";
 import type { StorageCommand, StorageResult } from "@shared/storage-contract";
-import { commitPreparedIngest, type PreparedIngest } from "./ingest-handlers";
+import { commitPreparedIngest } from "./ingest-handlers";
+import type { CoreCommand } from "@shared/ingest/prepare";
 import { collectIngestEffects, type IngestEffect } from "./ingest-effects";
 import { historyArchiveEnabled, pulseScoringEnabled, requestStore, type Env } from "./runtime";
 import { PulseArchiveState, type ArchiveStream, type PulseArchiveSnapshot } from "./pulse-archive";
@@ -87,7 +88,7 @@ export class StateHub extends DurableObject<Env> {
     return result;
   }
 
-  commitIngest(command: PreparedIngest): Promise<CommitIngestWire> {
+  commitIngest(command: CoreCommand): Promise<CommitIngestWire> {
     if (!this.ready()) return Promise.resolve({ ready: false, ok: false, json: "null", error: null, effects: [] });
     const result = this.ingestTail.then(() => withRequestState(() => requestStore.run({
       env: this.env,

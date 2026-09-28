@@ -14,7 +14,8 @@ import { resetStorageForTests } from '@/lib/storage';
 import { installStorageForTests } from '../../../src/lib/storage-driver';
 import { withRequestState } from '@shared/request-state';
 import { requestStore, type Env } from './runtime';
-import { recordAgentLimits } from './stores/vibecoding';
+import { recordPreparedAgentLimits } from './stores/vibecoding';
+import { prepareAgentLimits } from '@shared/ingest/agents';
 const T = 1_800_000_000_000;
 function setup() {
   let now = T + PULSE_SCORE_WINDOW_MS + 120_000;
@@ -391,8 +392,8 @@ test("Mac-offline account evidence reaches scoring and the public chart, then di
   try {
     await requestStore.run({ env: { LIVE_PUSH: { idFromName: () => null, get: () => ({ broadcast: async () => {} }) } } as unknown as Env,
       ctx: { waitUntil: (promise: Promise<unknown>) => { pending.push(promise); } } }, () => withRequestState(async () => {
-      await recordAgentLimits({ cursorUsage: { collectedAt: new Date(T).toISOString(), state: 'ok', error: null,
-        warning: null, coverageStart: null, coverageEnd: null, precision: 'measured', costComplete: true, days: [] } }, T);
+      await recordPreparedAgentLimits(prepareAgentLimits({ cursorUsage: { collectedAt: new Date(T).toISOString(), state: 'ok', error: null,
+        warning: null, coverageStart: null, coverageEnd: null, precision: 'measured', costComplete: true, days: [] } }, T));
     }));
   } finally { await Promise.allSettled(pending); resetStorageForTests(); }
   await b.make().run();

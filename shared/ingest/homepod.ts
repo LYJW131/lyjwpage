@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { numberish, object, text } from "@/lib/json";
-import { type StoredHomePod, mirror } from "@shared/homepod-store";
+import type { StoredHomePod } from "@shared/homepod-store";
 
 /**
  * 观测时刻，epoch 毫秒。
@@ -138,6 +138,12 @@ export function normalizeHomePodEvent(
   };
 }
 
-export function writeHomePodEvent(stored: StoredHomePod): Promise<void> {
-  return mirror.put(stored);
+/**
+ * Home Assistant 推来的 HomePod 曲目和播放状态变化（`/api/ingest/homepod`）。
+ * 收敛在上报入口；落库、Pulse 与推送在状态核心（workers/api/src/homepod-ingest.ts）。
+ */
+export type PreparedHomePodEvent = { source: "homepod"; stored: StoredHomePod };
+
+export function prepareHomePodEvent(body: unknown, receivedAt = Date.now()): PreparedHomePodEvent {
+  return { source: "homepod", stored: normalizeHomePodEvent(body, receivedAt) };
 }

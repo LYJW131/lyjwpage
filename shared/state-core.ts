@@ -1,24 +1,46 @@
 /**
  * 状态核心（api Worker）对内公开的 RPC 契约。
  *
- * 上报入口与采集 Worker 都经 Service Binding 调它的具名 entrypoint `StateCore`，
- * Cloudflare 内部调用不再鉴权：只有声明了这个 binding 的 Worker 调得到，每个
+ * 上报入口（workers/ingress）与采集 Worker 都经 Service Binding 调它的具名 entrypoint
+ * `StateCore`，Cloudflare 内部调用不再鉴权：只有声明了这个 binding 的 Worker 调得到，每个
  * Worker 对内能做什么，就是下面这几个方法。只放类型，调用方和实现方各自 import。
  *
  * 方法只能加不能改：api 与调用方分开部署，新方法先随 api 上线，调用方后推。
  */
 
 import type { ListeningItem } from "@/lib/types";
+import type { CoreCommand } from "@shared/ingest/prepare";
 
-/** 和 HTTP 上报同一份回执：状态码 + JSON 正文，调用方原样转给上报器 */
-export type CoreReply = { status: number; body: unknown };
+/**
+ * 一封上报的实时那一半提交之后的回执。
+ *
+ * - `ready: false`：状态存储还没初始化，什么都没写（上报入口回 503）。
+ * - `ok: true`：整封收下，`data` 是各来源 commit 的回执（上报入口原样放进 202 的 `data`）。
+ * - `ok: false`：某个模块在状态核心里抛了错，`error` 是原因。排在它前面、已经承诺过的写
+ *   照样落库、照样推送（见 workers/api/src/ingest-effects.ts）。
+ */
+export type CommitReply =
+  | { ready: false; ok: false }
+  | { ready: true; ok: true; data: unknown }
+  | { ready: true; ok: false; error: string };
 
 /** PS5 电源开关（Home Assistant 报的那份）；从没报过为 null */
 export type CorePower = { on: boolean; observedAt: number } | null;
 
 export interface StateCoreRpc {
-  /** 一封已经过鉴权的上报。来源必须是 ingest 认得的那几个 */
-  ingest(source: string, raw: string): Promise<CoreReply>;
+  /**
+   * 状态存储是否已初始化。上报入口只在 prepare 校验不过时问一次：
+   * 未初始化回 503 的优先级高于报文 400，和从前同一个 Worker 里时一样。
+   */
+  ready(): Promise<boolean>;
+  /**
+   * 一封已经过鉴权、在调用方 prepare 好的上报（shared/ingest），只含状态核心那一半：
+   * StateHub 按到达顺序串行提交，推送与首屏失效在状态核心里派发（waitUntil），不经调用方。
+   * 可滞后层、归档和凭据由调用方自己写。命令必须能结构化复制。
+   */
+  commitIngest(command: CoreCommand): Promise<CommitReply>;
+  /** 站点新部署接管了生产域名：向推送房间广播不带数据的 `version` 事件，返回送达的连接数 */
+  broadcastVersion(): Promise<number>;
   /** 开着的页面数（推送房间的连接，含后台标签页），同 `/count` 的 connections */
   connections(): Promise<number>;
   playstationPower(): Promise<CorePower>;

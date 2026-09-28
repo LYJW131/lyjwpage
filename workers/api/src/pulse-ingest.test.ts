@@ -12,17 +12,27 @@ import {
   pulseListeningTracesKey,
   pulseWorkoutsKey,
 } from "@/lib/pulse-keys";
-import { recordAgentLimits } from "@api/stores/vibecoding";
+import { prepareVibeCodingNowPayload, recordPreparedAgentLimits } from "@api/stores/vibecoding";
 import { commitRecentlyPlayed } from "@api/apple-music-recent";
 import { installStorageForTests, resetStorageForTests } from "@/lib/storage";
 import { FakeStorage } from "@/lib/testing/fake-storage";
 import { withRequestState } from "@shared/request-state";
 import type { StateLane } from "@shared/pulse-timeline";
 import { requestStore, type Env } from "@api/runtime";
-import { recordEmbyReport } from "@api/stores/emby";
-import { recordPlaystationReport } from "@api/stores/playstation";
-import { recordTelemetryEnvelope } from "@api/stores/telemetry";
+import { commitPreparedEmbyReport } from "@api/stores/emby";
+import { commitPreparedPlaystationReport } from "@api/stores/playstation";
+import { commitPreparedTelemetryEnvelope } from "@api/stores/telemetry";
 import type { ListeningItem } from "@/lib/types";
+import { prepareAgentLimits } from "@shared/ingest/agents";
+import { prepareEmbyReport } from "@shared/ingest/emby";
+import { preparePlaystationReport } from "@shared/ingest/playstation";
+import { prepareTelemetryEnvelope } from "@shared/ingest/telemetry";
+
+/** 上报入口那一半（shared/ingest）接状态核心那一半，和线上两个 Worker 串起来的顺序一样 */
+const recordTelemetryEnvelope = (input: unknown, at: number) => commitPreparedTelemetryEnvelope(prepareTelemetryEnvelope(input, at));
+const recordEmbyReport = async (input: unknown, at: number) => commitPreparedEmbyReport(await prepareEmbyReport(input, at, { head: async () => null }));
+const recordPlaystationReport = (input: unknown, at: number) => commitPreparedPlaystationReport(preparePlaystationReport(input, at));
+const recordAgentLimits = (input: unknown, at: number) => recordPreparedAgentLimits(prepareAgentLimits(input, at));
 
 /**
  * Pulse 的挂钩点，按信封驱动：哪一封该落笔、落成什么样的区间或样本。
@@ -123,7 +133,8 @@ test("Mac 下线又没有 HomePod：开着的那段到此为止，之后是未�
 }));
 
 test("HomePod 只在换曲时推：Mac 离线时一首二十分钟的歌照样整段留下，断了也只认到曲终", withStorage(async (storage) => {
-  const { commitPreparedHomePodEvent, prepareHomePodEvent } = await import("@api/homepod-ingest");
+  const { commitPreparedHomePodEvent } = await import("@api/homepod-ingest");
+  const { prepareHomePodEvent } = await import("@shared/ingest/homepod");
   const push = (at: number, title: string) => inRequest(() => commitPreparedHomePodEvent(prepareHomePodEvent({
     state: "playing", title, artist: "Max Richter", album: "Sleep", positionMs: 0, durationMs: 20 * 60_000, entityId: "media_player.homepod",
   }, at)));
@@ -256,7 +267,9 @@ test("PSN 在线状态：进游戏、换游戏、下线各是一段", withStorag
 }));
 
 test("iPhone activity keeps raw five-minute buckets, rewrites only from the first change, and stores workout intervals", withStorage(async (storage) => {
-  const { recordPhoneEnvelope } = await import("@api/phone-telemetry");
+  const { commitPreparedPhoneEnvelope } = await import("@api/phone-telemetry");
+  const { preparePhoneEnvelope } = await import("@shared/ingest/phone");
+  const recordPhoneEnvelope = (input: unknown, at: number) => commitPreparedPhoneEnvelope(preparePhoneEnvelope(input, at));
   const start = Date.parse("2026-09-20T08:00:00Z");
   const historyOnly = (buckets: object[], to = start + 3_600_000) => ({ version: 1, modules: { activity: { history: { from: start, to, buckets } } } });
   const buckets = async () => (await storage.listRange(pulseActivityKey(), 0, -1)).map((raw) => JSON.parse(raw));
@@ -330,13 +343,13 @@ test("Cursor history success renews independent observations even without a chan
 }));
 
 test("Mac token windows are stored internally and never enter the public now patch", withStorage(async (storage) => {
-  const { prepareVibeCodingNow } = await import("./stores/vibecoding.ts");
+  const { normalizeVibeCodingNow } = await import("@/lib/vibecoding-parse");
   const { codingTokenUsageKey } = await import("@/lib/coding-pulse");
   const from = 1800000000000;
   const tokenUsage = { from, to: from + 300000, collectedAt: from + 420000, sources: [{ id: "codex", state: "ok" }, { id: "claude", state: "unavailable" }],
     windows: [{ from, to: from + 300000, agents: [{ id: "codex", model: "test", inputTokens: 10, outputTokens: 20, cacheReadTokens: 0, cacheCreationTokens: 0, reasoningTokens: 5, eventCount: 1 }] }] };
   await inRequest(async () => {
-    const prepared = prepareVibeCodingNow({ agents: [], tokenUsage }, from + 420000);
+    const prepared = prepareVibeCodingNowPayload(normalizeVibeCodingNow({ agents: [], tokenUsage })!, from + 420000);
     assert.equal("tokenUsage" in prepared.now, false);
     await prepared.commit();
   });

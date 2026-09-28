@@ -17,10 +17,11 @@ import { nowMirror } from "@shared/vibecoding";
 
 import { fanout } from "./fanout";
 import { collectIngestEffects, dispatchIngestEffects, type CollectedIngest } from "./ingest-effects";
-import { commitPreparedIngest, prepareIngest, prepareIngestForCommit, type PreparedIngest } from "./ingest-handlers";
-import type { PreparedTelemetryEnvelope } from "./stores/telemetry";
+import { prepareIngest as prepareShared, type CoreCommand } from "@shared/ingest/prepare";
+import { resetStoredImageCacheForTests, type ImageBucket } from "@shared/ingest/r2-assets";
+import type { PreparedTelemetryEnvelope } from "@shared/ingest/telemetry";
+import { commitPreparedIngest } from "./ingest-handlers";
 import { requestStore, type Env } from "./runtime";
-import { resetStoredImageCacheForTests } from "./r2-assets";
 
 const NOW = 1_800_000_000_000;
 const HASH_A = "a".repeat(64);
@@ -30,9 +31,16 @@ function envelope(modules: Record<string, unknown>, activeModules: string[] = []
   return { version: 4, presence: "online", heartbeatAt: NOW, activeModules, modules };
 }
 
-function testEnv(head: (key: string) => Promise<unknown | null> = async () => ({})): Env {
+/**
+ * 上报入口那一半（shared/ingest）。线上 ingress 把 `env.IMAGES` 交给 prepare；这里默认
+ * 给一个什么图都在的替身桶，Emby 的几条自己传。
+ */
+function prepareIngest(source: string, body: unknown, at: number, images: ImageBucket = { head: async () => ({}) }): Promise<CoreCommand> {
+  return prepareShared(source, body, at, images) as Promise<CoreCommand>;
+}
+
+function testEnv(): Env {
   return {
-    IMAGES: { head } as unknown as R2Bucket,
     LIVE_PUSH: {
       idFromName: () => null,
       get: () => ({ broadcast: async () => { throw new Error("DO commit must not broadcast"); } }),
@@ -52,35 +60,9 @@ async function inRequest<T>(env: Env, run: () => Promise<T>): Promise<T> {
   }
 }
 
-async function commit(env: Env, command: PreparedIngest): Promise<CollectedIngest<unknown>> {
+async function commit(env: Env, command: CoreCommand): Promise<CollectedIngest<unknown>> {
   return inRequest(env, () => collectIngestEffects(() => commitPreparedIngest(command)));
 }
-
-test("ingest preparation only checks readiness after invalid input", async () => {
-  let readyCalls = 0;
-  const valid = await prepareIngestForCommit("iphone", { version: 1 }, async () => {
-    readyCalls += 1;
-    return false;
-  });
-  assert.equal(valid?.source, "iphone");
-  assert.equal(readyCalls, 0, "valid reports must proceed directly to commitIngest");
-
-  const unavailable = await prepareIngestForCommit("iphone", {}, async () => {
-    readyCalls += 1;
-    return false;
-  });
-  assert.equal(unavailable, null);
-  assert.equal(readyCalls, 1);
-
-  await assert.rejects(
-    prepareIngestForCommit("iphone", {}, async () => {
-      readyCalls += 1;
-      return true;
-    }),
-    /version 必须为 1/,
-  );
-  assert.equal(readyCalls, 2);
-});
 
 test("Mac late validation keeps liveness but does not invent a charger heartbeat", async () => {
   const storage = new FakeStorage();
@@ -189,7 +171,7 @@ test("iPhone keeps the Pulse workout copy when the following activity module is 
     }, NOW));
     const result = await commit(testEnv(), command);
     assert.equal(result.ok, false);
-    // 已经发车的写不丢；训练列表那份展示快照在可滞后层，上报入口照同样的口径写它（见 origin-worker 的 partiallyAccepted）
+    // 已经发车的写不丢；训练列表那份展示快照在可滞后层，上报入口照同样的口径写它（见 workers/ingress 的 partiallyAccepted）
     assert.equal(JSON.parse((await storage.get(pulseWorkoutsKey()))!).items[0]?.activityType, workout.activityType);
   } finally { resetStorageForTests(); }
 });
@@ -226,32 +208,33 @@ test("one failed event does not turn a durable commit into failure or drop other
   }
 });
 
-test("Emby R2 HEAD runs during Worker preparation and does not block another source commit", async () => {
+test("Emby R2 HEAD runs during ingress preparation and does not block another source commit", async () => {
   const storage = new FakeStorage();
   installStorageForTests(storage);
   let release!: () => void;
   const blocked = new Promise<void>((resolve) => { release = resolve; });
   let heads = 0;
-  const env = testEnv(async () => { heads += 1; await blocked; return {}; });
+  const env = testEnv();
   try {
-    const emby = inRequest(env, () => prepareIngest("emby", {
+    const emby = prepareIngest("emby", {
       images: [{ imageKey: "item:poster", objectKey: `${HASH_A}.webp` }],
-    }, NOW));
+    }, NOW, { head: async () => { heads += 1; await blocked; return {}; } });
     await Promise.resolve();
     assert.equal(heads, 1);
 
-    const phone = await inRequest(env, () => prepareIngest("iphone", { version: 1 }, NOW));
+    // HEAD 挂着的时候，别的来源照样提交完：R2 不在状态核心的串行队列里
+    const phone = await prepareIngest("iphone", { version: 1 }, NOW);
     const phoneResult = await commit(env, phone);
     assert.equal(phoneResult.ok, true);
     release();
-    const preparedEmby = await emby;
+    const preparedEmby = await emby as Extract<CoreCommand, { source: "emby" }>;
+    assert.deepEqual(preparedEmby.images, [{ key: "item:poster", objectKey: `${HASH_A}.webp` }]);
 
+    // 提交只收确认过的键，状态核心没有 IMAGES 绑定，也不再 HEAD
     resetStoredImageCacheForTests();
-    let commitHeads = 0;
-    const noR2Env = testEnv(async () => { commitHeads += 1; return {}; });
-    const embyResult = await commit(noR2Env, preparedEmby);
+    const embyResult = await commit(env, preparedEmby);
     assert.equal(embyResult.ok, true);
-    assert.equal(commitHeads, 0);
+    assert.deepEqual(await getImageObjectKeys(), { "item:poster": `${HASH_A}.webp` });
   } finally { release(); resetStorageForTests(); }
 });
 
@@ -261,8 +244,8 @@ test("Emby image commits merge against the latest map without losing concurrent 
   const env = testEnv();
   try {
     const [first, second] = await Promise.all([
-      inRequest(env, () => prepareIngest("emby", { images: [{ imageKey: "a", objectKey: `${HASH_A}.webp` }] }, NOW)),
-      inRequest(env, () => prepareIngest("emby", { images: [{ imageKey: "b", objectKey: `${HASH_B}.webp` }] }, NOW + 1)),
+      prepareIngest("emby", { images: [{ imageKey: "a", objectKey: `${HASH_A}.webp` }] }, NOW),
+      prepareIngest("emby", { images: [{ imageKey: "b", objectKey: `${HASH_B}.webp` }] }, NOW + 1),
     ]);
     assert.equal((await commit(env, first)).ok, true);
     assert.equal((await commit(env, second)).ok, true);

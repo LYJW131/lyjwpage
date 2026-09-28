@@ -1,5 +1,9 @@
 #!/usr/bin/env node
-/** Isolated Worker → Durable Objects SQLite → Next cache + WebSocket verification. Pass --build to build Next against it. */
+/**
+ * Isolated ingress → Service Binding → api Worker (Durable Objects SQLite) → Next cache + WebSocket verification.
+ * One `wrangler dev` runs three configs like `pnpm dev:worker`: the dev-router (first, owns the port) sends
+ * `/api/ingest/*` and `/api/internal/site-deployed` to ingress and everything else to api. Pass --build to build Next against it.
+ */
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
@@ -65,18 +69,22 @@ try {
   // 一次性 P-256 钥匙对：私钥按 .p8 的样子喂给 Worker 签 MusicKit 令牌，公钥留在这里验签
   const musicKitKeys = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
   const musicKitPem = `-----BEGIN PRIVATE KEY-----\n${Buffer.from(await crypto.subtle.exportKey('pkcs8', musicKitKeys.privateKey)).toString('base64')}\n-----END PRIVATE KEY-----`;
-  const vars = {
-    NEXT_PUBLIC_BACKEND_URL: worker, STORAGE_PREFIX: 'isolated-verify', STATE_IMPORT_SECRET: `${secret}-import`, REVALIDATE_SECRET: `${secret}-revalidate`, ...access.vars,
-    SITE_URL: site, ALLOWED_ORIGINS: '',
-    DEV_OVERRIDES: 'true',
-    EMBY_PUBLIC_URL: '',
-    APPLE_MUSIC_PRIVATE_KEY: musicKitPem, APPLE_MUSIC_TEAM_ID: 'ISOLATEDTM', APPLE_MUSIC_KEY_ID: 'ISOLATEDKY',
-  };
-  // Config lives outside the checkout so Wrangler cannot load real .dev.vars or production bindings.
-  const config = {
-    name: 'isolated-ingest', main: join(root, 'workers/api/src/index.ts'),
+  // 可滞后层与凭据 KV：临时持久化目录里的本地命名空间，不碰真实 KV；两个 Worker 用同一组 id，
+  // 上报入口写的、状态核心的公开端点读得到
+  const kv = [
+    { binding: 'LAG', id: '00000000000000000000000000000001' },
+    { binding: 'CREDENTIALS', id: '00000000000000000000000000000002' },
+  ];
+  // Configs live outside the checkout so Wrangler cannot load real .dev.vars or production bindings.
+  const api = {
+    name: 'isolated-api', main: join(root, 'workers/api/src/index.ts'),
     compatibility_date: '2025-02-14', compatibility_flags: ['nodejs_compat', 'nodejs_compat_populate_process_env'],
-    vars,
+    vars: {
+      NEXT_PUBLIC_BACKEND_URL: worker, STORAGE_PREFIX: 'isolated-verify', STATE_IMPORT_SECRET: `${secret}-import`, REVALIDATE_SECRET: `${secret}-revalidate`,
+      SITE_URL: site, ALLOWED_ORIGINS: '',
+      DEV_OVERRIDES: 'true',
+      APPLE_MUSIC_PRIVATE_KEY: musicKitPem, APPLE_MUSIC_TEAM_ID: 'ISOLATEDTM', APPLE_MUSIC_KEY_ID: 'ISOLATEDKY',
+    },
     // 和 wrangler.toml 的 [alias] 同一组：Worker 侧实现替掉站点侧只会抛错的桩
     alias: Object.fromEntries(['storage-driver', 'apple-developer-token', 'apple-music-credentials', 'lag-store']
       .map(name => [`@/lib/${name}`, join(root, `workers/api/src/${name}.ts`)])),
@@ -84,21 +92,40 @@ try {
       { name: 'LIVE_PUSH', class_name: 'LivePushRoom' },
       { name: 'STATE', class_name: 'StateHub' },
     ] },
-    services: [{ binding: 'DEV_OVERRIDE_READER', service: 'isolated-ingest', entrypoint: 'DevOverrideReader' }],
+    services: [{ binding: 'DEV_OVERRIDE_READER', service: 'isolated-api', entrypoint: 'DevOverrideReader' }],
     migrations: [
       { tag: 'v1', new_sqlite_classes: ['LivePushRoom'] },
       { tag: 'v3', new_sqlite_classes: ['StateHub'] },
     ],
+    kv_namespaces: kv,
+  };
+  // 上报入口：Access 鉴权用这把一次性测试钥匙，实时那一半经 Service Binding 交给上面的 api；
+  // 不绑采集 Worker（部署通知只广播、不重拉）和 D1（归档跳过）
+  const ingress = {
+    name: 'isolated-ingress', main: join(root, 'workers/ingress/src/index.ts'),
+    compatibility_date: '2026-09-08', compatibility_flags: ['nodejs_compat', 'nodejs_compat_populate_process_env'],
+    vars: { ...access.vars, EMBY_PUBLIC_URL: '' },
+    services: [{ binding: 'CORE', service: 'isolated-api', entrypoint: 'StateCore' }],
     r2_buckets: [{ binding: 'IMAGES', bucket_name: 'isolated-images' }],
-    // 可滞后层与凭据 KV：临时持久化目录里的本地命名空间，不碰真实 KV
-    kv_namespaces: [
-      { binding: 'LAG', id: '00000000000000000000000000000001' },
-      { binding: 'CREDENTIALS', id: '00000000000000000000000000000002' },
+    kv_namespaces: kv,
+  };
+  // 和 pnpm dev:worker 同一个路由 Worker：只有第一个配置拿到端口
+  const router = {
+    name: 'isolated-router', main: join(root, 'workers/dev-router/src/index.ts'),
+    compatibility_date: '2026-09-08',
+    services: [
+      { binding: 'API', service: 'isolated-api' },
+      { binding: 'INGRESS', service: 'isolated-ingress' },
     ],
   };
-  const configPath = join(temporary, 'wrangler.json');
-  await writeFile(configPath, JSON.stringify(config));
-  const workerChild = start(process.execPath, [require.resolve('wrangler'), 'dev', '--config', configPath, '--port', String(workerPort), '--test-scheduled', '--persist-to', join(temporary, 'state')]);
+  const configPaths = [];
+  for (const [name, config] of Object.entries({ router, api, ingress })) {
+    const path = join(temporary, `${name}.wrangler.json`);
+    await writeFile(path, JSON.stringify(config));
+    configPaths.push(path);
+  }
+  const startWorkers = () => start(process.execPath, [require.resolve('wrangler'), 'dev', ...configPaths.flatMap(path => ['-c', path]), '--port', String(workerPort), '--persist-to', join(temporary, 'state')]);
+  const workerChild = startWorkers();
   const notices = [];
   const mockSite = httpServer((request, response) => {
     let body = ''; request.on('data', chunk => body += chunk);
@@ -107,6 +134,8 @@ try {
   mockSite.listen(sitePort, '127.0.0.1');
   children.push({ kill: () => mockSite.close(), exitCode: 0 });
   await eventually(async () => assert.equal((await fetch(`${worker}/count`)).status, 200));
+  // 路由 Worker 先起来时，后面两个可能还没注册好；等上报入口也答得上话
+  await eventually(async () => assert.deepEqual(await (await fetch(`${worker}/api/ingest/mac`)).json(), { ok: false, error: '只接受 POST' }));
   assert.deepEqual(await (await fetch(`${worker}/count`)).json(), { ok: true, connections: 0 });
   assert.equal((await otlp()).status, 503, 'OTLP must preserve the storage initialization barrier');
   assert.equal((await post(worker, '/api/ingest/homepod', {})).status, 503);
@@ -195,12 +224,18 @@ try {
     await eventually(async () => assert.ok(events.some(e => e.type === 'listening-now' && e.payload.music?.title === title)));
   }
   await eventually(async () => assert.ok(notices.some(n => n.tags?.includes('listening-now'))));
+  // 部署通知：上报入口验完 Access，请状态核心往推送房间广播不带数据的 version
+  const deployed = await post(worker, '/api/internal/site-deployed', {});
+  assert.equal(deployed.status, 200);
+  assert.deepEqual(await deployed.json(), { ok: true, delivered: 1 });
+  await eventually(async () => assert.ok(events.some(e => e.type === 'version' && e.payload === null)));
+  assert.equal((await fetch(`${worker}/api/internal/site-deployed`, { headers: await access.headers() })).status, 405);
   await sleep(200);
   const homePodNotices = notices.length;
   await post(worker, '/api/ingest/homepod', { entityId: 'media_player.isolated', state: 'playing', title: 'isolated-second', positionMs: 2000, durationMs: 3600000, observedAt: Date.now() });
   await sleep(200);
   assert.equal(notices.length, homePodNotices, 'HomePod position heartbeat must not invalidate page');
-  console.log('PASS: Worker write → Durable Object SQLite → /api/revalidate → direct Worker status; WebSocket receives both updates');
+  console.log('PASS: ingress → StateCore.commitIngest → Durable Object SQLite → /api/revalidate → direct Worker status; WebSocket receives both updates and the site-deployed version event');
   const beforeTimezone = notices.length;
   const response = await post(worker, '/api/ingest/mac', { version: 4, heartbeatAt: Date.now(), presence: 'online', activeModules: ['timezone'], modules: { timezone: { identifier: 'Asia/Singapore', secondsFromGMT: 28800 } } });
   assert.equal(response.status, 202);
@@ -290,7 +325,7 @@ try {
   const exited = once(workerChild, 'exit');
   workerChild.kill('SIGTERM');
   await exited;
-  start(process.execPath, [require.resolve('wrangler'), 'dev', '--config', configPath, '--port', String(workerPort), '--test-scheduled', '--persist-to', join(temporary, 'state')]);
+  startWorkers();
   await eventually(async () => assert.equal(await nowPlaying(), 'isolated-second'));
   assert.equal((await (await fetch(`${worker}/api/status/timezone`)).json()).ok, true);
   console.log('PASS: restart preserves initialized state and snapshots');

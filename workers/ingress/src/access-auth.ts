@@ -6,7 +6,7 @@
  * 放行时附上一张它签的 JWT（`Cf-Access-Jwt-Assertion`）。这里只信那张 JWT：验签、
  * 验受众和签发方、验时效，再拿 `common_name`（= client id）查 ACCESS_CLIENTS，
  * 看这把 token 许不许写这个来源。边缘那道门挡陌生人，这张表管「谁能写什么」，
- * 而且跟着 Git 走。绕过 Access 直接打 workers.dev 或 api 域名的请求拿不出合法 JWT。
+ * 而且跟着 Git 走。绕过 Access 直接打 workers.dev 的请求拿不出合法 JWT。
  *
  * 本地没有 Access：`ACCESS_TEAM_DOMAIN` 设成 DEV_ACCESS_ISSUER 时改用 `ACCESS_DEV_JWKS` 里的
  * 测试公钥，由 scripts/dev-access.mjs 生成、签 JWT。只认这个假域名，线上误配这个变量也不生效。
@@ -14,7 +14,7 @@
 
 import { verifyAccessJwt, type Jwk } from "@shared/access-jwt";
 
-import type { Env } from "./runtime";
+import type { Env } from "./env";
 
 /** 权限串：`ingest:<来源>` 写上报，`internal:site-deployed` 发部署通知。 */
 export type Permission = `ingest:${string}` | "internal:site-deployed";

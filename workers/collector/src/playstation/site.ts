@@ -1,3 +1,6 @@
+import { preparePlaystationReport } from "@shared/ingest/playstation";
+import type { CommitReply } from "@shared/state-core";
+
 import { isDryRun, type Env } from "./env";
 import type { PlayedGamesReport, PresenceReport } from "./psn";
 import type { TrophiesReport } from "./trophies";
@@ -11,16 +14,12 @@ export type PlaystationEnvelope = {
 
 export type Receipt = { changed: boolean };
 
-/** 状态核心的回执：和 HTTP 上报同一份，2xx 且 `ok: true` 才算收下 */
-function readReceipt(reply: { status: number; body: unknown }): Receipt {
-  const body = (reply.body && typeof reply.body === "object" ? reply.body : null) as
-    | { ok?: unknown; error?: unknown; data?: { changed?: unknown } }
-    | null;
-  if (reply.status < 200 || reply.status >= 300 || body?.ok !== true) {
-    const error = typeof body?.error === "string" ? body.error : "";
-    throw new Error(`站点返回 ${reply.status}${error ? `：${error}` : ""}`);
-  }
-  return { changed: body.data?.changed === true };
+/** 状态核心的回执：初始化好了、整封收下（`ok: true`）才算送到 */
+function readReceipt(reply: CommitReply): Receipt {
+  if (!reply.ready) throw new Error("状态核心还没初始化");
+  if (!reply.ok) throw new Error(`状态核心拒收：${reply.error}`);
+  const data = (reply.data && typeof reply.data === "object" ? reply.data : null) as { changed?: unknown } | null;
+  return { changed: data?.changed === true };
 }
 
 export async function deliver(env: Env, envelope: PlaystationEnvelope): Promise<Receipt> {
@@ -29,10 +28,12 @@ export async function deliver(env: Env, envelope: PlaystationEnvelope): Promise<
     return { changed: true };
   }
 
-  // 经 Service Binding 调状态核心的 StateCore.ingest：不走公网，不带凭据，
-  // 只有声明了这个 binding 的 Worker 调得到。奖杯那封大，超时给得宽一些
+  // 信封是自己组的，收敛（shared/ingest/playstation.ts）在这边做完，状态核心只收命令：
+  // 经 Service Binding 调 StateCore.commitIngest，不走公网、不带凭据，只有声明了这个
+  // binding 的 Worker 调得到。奖杯那封大，超时给得宽一些
+  const command = preparePlaystationReport(envelope);
   const reply = await withTimeout(
-    env.CORE.ingest("playstation", JSON.stringify(envelope)),
+    env.CORE.commitIngest(command),
     envelope.trophies ? 30_000 : 15_000,
   );
   return readReceipt(reply);

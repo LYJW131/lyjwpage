@@ -1,8 +1,9 @@
-import { applyOtlpUsage, claudeCloudNow, parseOtlpUsage, type OtlpUsagePoint } from "@/lib/claude-cloud-usage";
+import { applyOtlpUsage, claudeCloudNow } from "@/lib/claude-cloud-usage";
 import { VIBECODING_TAG, type LiveEvent } from "@/lib/live-events";
 import { fanout } from "@api/fanout";
 import { claudeCloudUsageMirror } from "@shared/claude-cloud-usage";
 import { nowMirror } from "@shared/vibecoding";
+import type { PreparedClaudeCloudUsage } from "@shared/ingest/claude-cloud";
 
 /**
  * 首屏快照最多这么久失效一次。云端线程干活时每分钟都有新用量，每封都失效会让
@@ -16,18 +17,7 @@ const TAG_INTERVAL_MS = 5 * 60_000;
  */
 const PUSH_STEP_MS = 45_000;
 
-export type PreparedClaudeCloudUsage = {
-  source: "agents-otlp";
-  receivedAt: number;
-  points: OtlpUsagePoint[];
-};
-
-/** 普通 Worker 阶段：只解析、丢掉账号字段，不碰状态。 */
-export function prepareClaudeCloudUsage(raw: unknown, receivedAt = Date.now()): PreparedClaudeCloudUsage {
-  return { source: "agents-otlp", receivedAt, points: parseOtlpUsage(raw, receivedAt) };
-}
-
-/** StateHub 阶段：累计值做差要拿权威的上一次值。 */
+/** StateHub 阶段：累计值做差要拿权威的上一次值。解析在上报入口，见 shared/ingest/claude-cloud.ts。 */
 export async function recordPreparedClaudeCloudUsage(prepared: PreparedClaudeCloudUsage) {
   const { points, receivedAt } = prepared;
   if (points.length === 0) return { accepted: 0 };
