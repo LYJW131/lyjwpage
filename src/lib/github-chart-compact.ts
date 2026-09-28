@@ -74,6 +74,23 @@ export function weekdayOf(date: string): number {
   return new Date(`${date}T00:00:00Z`).getUTCDay();
 }
 
+/** 两张年度图的列数：`through` 所在那一周是最后一列，往前一共 53 周 */
+export const HEATMAP_WEEKS = 53;
+
+/**
+ * 年度图的窗口，由「画到哪一天」一个日期决定：从 53 周前那个周日起，逐日到 `through`。
+ *
+ * 格子由这里画，数据只往里填数：窗口里没有数据的日子画成 0（刚过零点的今天、数据源
+ * 还没写到的那几天），窗口外的数据不画。两张图用同一个 `through` 就天然对齐。
+ */
+export function heatmapFrame(through: string): string[] {
+  const dates: string[] = [];
+  for (let date = addDays(sundayOf(through), -(HEATMAP_WEEKS - 1) * 7); date <= through; date = addDays(date, 1)) {
+    dates.push(date);
+  }
+  return dates;
+}
+
 export function groupWeeks(days: GithubChartDay[]): GithubChartDay[][] {
   const weeks: GithubChartDay[][] = [];
   let current: GithubChartDay[] = [];

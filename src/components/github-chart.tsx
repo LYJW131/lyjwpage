@@ -9,6 +9,7 @@ import {
   useHeatmapOpen,
   type CellAnchor,
 } from "@/components/live/heatmap-hover";
+import { useSiteDay } from "@/hooks/use-site-day";
 import { useStale } from "@/hooks/use-stale";
 import { incrementalFetcher, useStatus } from "@/hooks/use-status";
 import { GITHUB_CHART_STALE_MS } from "@/lib/freshness";
@@ -64,12 +65,14 @@ export function GithubChart({ fallback }: { fallback: StatusResponse<GithubChart
   const [lastDrawn, setLastDrawn] = useState(fallback.ok ? fallback.data : null);
   if (data?.counts.length && data !== lastDrawn) setLastDrawn(data);
   const snapshot = data?.counts.length ? data : lastDrawn;
+  // 格子画到浏览器的今天：跨过零点新的一格就出来，数就等采集 Worker 和下一次轮询填
+  const today = useSiteDay();
   const { svgRef, shown, hotDate, previewCell, clearPreview, togglePin } =
     useHeatmapOpen<HoveredCell>();
 
   const weeks = useMemo(
-    () => (snapshot?.counts.length ? githubChartWeeks(snapshot) : null),
-    [snapshot],
+    () => (snapshot?.counts.length ? githubChartWeeks(snapshot, today) : null),
+    [snapshot, today],
   );
 
   if (!weeks?.length) return null;

@@ -1,4 +1,4 @@
-import { expandGithubDays, groupWeeks } from "@/lib/github-chart-compact";
+import { expandGithubDays, formatContributionLabel, groupWeeks, heatmapFrame, weekdayOf } from "@/lib/github-chart-compact";
 import { heatmapRefreshFrom, mergeHeatmapSeries } from "@/lib/heatmap-window";
 import type { GithubChartDay, GithubChartPayload } from "@/lib/types";
 
@@ -53,6 +53,22 @@ export function mergeGithubChart(payload: GithubChartPayload): GithubChartPayloa
   return snapshot;
 }
 
-export function githubChartWeeks(payload: GithubChartPayload): GithubChartDay[][] {
-  return groupWeeks(expandGithubDays(payload.origin, payload.counts, payload.scores));
+/**
+ * 画到 `today` 与数据最后一天里较晚的那天（窗口见 heatmapFrame）。`today` 由浏览器按
+ * 站点时区算：跨过零点那一刻新的一格就出来，不等采集 Worker 和下一次轮询；首帧没有
+ * 钟时传 null，按数据画。
+ */
+export function githubChartWeeks(payload: GithubChartPayload, today: string | null = null): GithubChartDay[][] {
+  const days = expandGithubDays(payload.origin, payload.counts, payload.scores);
+  const last = days.at(-1)?.date;
+  const through = today && (!last || today > last) ? today : last;
+  if (!through) return [];
+  const byDate = new Map(days.map((day) => [day.date, day]));
+  return groupWeeks(heatmapFrame(through).map((date) => byDate.get(date) ?? {
+    date,
+    weekday: weekdayOf(date),
+    count: 0,
+    score: 0,
+    label: formatContributionLabel(date, 0),
+  }));
 }

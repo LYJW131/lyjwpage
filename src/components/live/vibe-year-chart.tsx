@@ -9,9 +9,9 @@ import {
   useHeatmapOpen,
   type CellAnchor,
 } from "@/components/live/heatmap-hover";
+import { useSiteDay } from "@/hooks/use-site-day";
 import { useStatus } from "@/hooks/use-status";
-import { groupWeeks } from "@/lib/github-chart-compact";
-import { isHeatmapFuture } from "@/lib/heatmap-window";
+import { groupWeeks, heatmapFrame, weekdayOf } from "@/lib/github-chart-compact";
 import { VIBECODING_YEAR_PATH } from "@/lib/paths";
 import type { GithubChartDay, StatusResponse, VibeCodingYearPayload } from "@/lib/types";
 import {
@@ -35,22 +35,18 @@ type HoveredCell = {
   anchor: CellAnchor;
 };
 
+/**
+ * 格子由窗口画（heatmapFrame，和 GitHub 那张同一个），数据按日期填进去：信封固定
+ * 53 周填到本周六，今天之后的不画；跨过零点、数据里还没有的今天画成 0。
+ */
 function toWeeks(origin: string, days: number[], through: string): GithubChartDay[][] {
   const scores = tokenScores(days);
-  const expanded = expandYearDays(origin, days);
+  const byDate = new Map(expandYearDays(origin, days).map((day, index) => [day.date, { tokens: day.tokens, score: scores[index] ?? 0 }]));
   return groupWeeks(
-    expanded.flatMap((day, index) => {
-      // 信封固定 53 周填到本周六；GitHub 图只画到今天，这边对齐，不给未来留空格。
-      if (isHeatmapFuture(day.date, through)) return [];
-      return [
-        {
-          date: day.date,
-          weekday: day.weekday,
-          count: day.tokens,
-          score: scores[index] ?? 0,
-          label: formatTokenLabel(day.date, day.tokens),
-        },
-      ];
+    heatmapFrame(through).map((date) => {
+      const day = byDate.get(date);
+      const tokens = day?.tokens ?? 0;
+      return { date, weekday: weekdayOf(date), count: tokens, score: day?.score ?? 0, label: formatTokenLabel(date, tokens) };
     }),
   );
 }
@@ -132,6 +128,8 @@ export function VibeYearChart({
   const [lastDrawn, setLastDrawn] = useState(fallback.ok ? fallback.data : null);
   if (data?.days.length && data !== lastDrawn) setLastDrawn(data);
   const snapshot = data?.days.length ? data : lastDrawn;
+  // 浏览器按站点时区算的今天，跨过零点就翻；首帧没有钟是 null，按源站那份的今天画
+  const today = useSiteDay();
   const { svgRef, shown, hotDate, previewCell, clearPreview, togglePin } =
     useHeatmapOpen<HoveredCell>();
 
@@ -142,8 +140,9 @@ export function VibeYearChart({
      * Mac 停一天，今天那格就跟着少一格，隔壁 GitHub 那张图却照常画到今天，
      * 两张图当场错开一列。见 VibeCodingYearPayload.todayAtSource。
      */
-    return toWeeks(snapshot.origin, snapshot.days, snapshot.todayAtSource);
-  }, [snapshot]);
+    const through = today && today > snapshot.todayAtSource ? today : snapshot.todayAtSource;
+    return toWeeks(snapshot.origin, snapshot.days, through);
+  }, [snapshot, today]);
 
   const modelsByDate = useMemo(() => {
     if (!snapshot) return new Map<string, YearModelShare[]>();
