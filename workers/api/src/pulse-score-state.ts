@@ -1,10 +1,6 @@
 import { codingObservationsKey, codingTokenUsageKey, cursorObservationsKey } from "@/lib/coding-pulse";
-import { listeningPlaysKey, listeningChecksKey } from "@/lib/listening-pulse";
-import { workoutsKey } from "@shared/workouts";
 import { pulseAssessmentsKey, pulseAssessmentAttemptKey } from "@/lib/pulse-assessments";
-import { pulseIntervalRevisionKey, pulseKey } from "@/lib/pulse";
 import { PULSE_TTL_MS } from "@/lib/limits";
-import { PULSE_DOMAINS, type PulseDomain } from "@/lib/types";
 import { CODING_WINDOW_MS } from "@shared/pulse-coding";
 import { latestPulseAssessments, parsePulseAssessment, type PulseAssessment } from "@shared/pulse-assessment";
 import type { StorageCommand } from "@shared/storage-contract";
@@ -15,16 +11,12 @@ export interface PulseStateSql {
   exec(query: string, ...bindings: SqlValue[]): { toArray(): Record<string, unknown>[] };
 }
 
+/** Jev 只给 Coding 打分，快照里只有 Coding 的三路原始证据和已有评估。 */
 export type PulseScoreInputs = {
   assessments: string[];
   codingObservations: string[];
   codingTokenUsage: string | null;
-  listeningPlays: string[];
   cursorObservations: string[];
-  listeningChecks: string[];
-  /** `workouts:recent` 的整份 JSON；没有上报时为 null。 */
-  workouts: string | null;
-  histories: Record<PulseDomain, string[]>;
 };
 
 export type PulseScoreClaim = {
@@ -48,7 +40,6 @@ type ActiveClaim = {
   generation: number;
   leaseUntil: number;
   activatedAt?: number;
-  activityRevision?: number;
 };
 
 type PersistentState = {
@@ -58,7 +49,8 @@ type PersistentState = {
 };
 
 const STATE_KEY = "pulse-score:state";
-const MAX_ASSESSMENTS = 2016 * PULSE_DOMAINS.length;
+/** 七天的十五分钟窗口是 672 行；留到从前五分钟窗口的量，旧行压缩前也放得下 */
+const MAX_ASSESSMENTS = 2016;
 /**
  * 评估平时只追加这一轮新评的几行；列表里被覆盖的旧行和过期行多过有效行的一半、或者总行数
  * 超过上限的一倍半，才整表压缩重写一次。从前每轮都整表重写：七天攒满一万两千行，每五分钟
@@ -119,42 +111,20 @@ export class PulseScoreState implements PulseScoreCoordinator {
     this.save({ ...state, generation, claim });
 
     try {
-      const commands: StorageCommand[] = [
+      const results = this.execute([
         { op: "listRange", key: pulseAssessmentsKey(), start: 0, stop: -1 },
         { op: "listRange", key: codingObservationsKey(), start: 0, stop: -1 },
         { op: "get", key: codingTokenUsageKey() },
-        { op: "listRange", key: listeningPlaysKey(), start: 0, stop: -1 },
-        { op: "get", key: workoutsKey() },
-        ...PULSE_DOMAINS.map((domain): StorageCommand => ({
-          op: "listRange",
-          key: pulseKey(domain),
-          start: 0,
-          stop: -1,
-        })),
         { op: "listRange", key: cursorObservationsKey(), start: 0, stop: -1 },
-        { op: "listRange", key: listeningChecksKey(), start: 0, stop: -1 },
-        { op: "get", key: pulseIntervalRevisionKey("activity") },
-      ];
-      const results = this.execute(commands);
-      const histories = Object.fromEntries(PULSE_DOMAINS.map((domain, index) => [
-        domain,
-        results[index + 5] as string[],
-      ])) as Record<PulseDomain, string[]>;
-      const activityRevision = Number(results[results.length - 1]);
-      const versionedClaim = { ...claim, activityRevision: Number.isSafeInteger(activityRevision) ? activityRevision : 0 };
-      this.save({ ...this.load(), claim: versionedClaim });
+      ]);
       return {
-        ...versionedClaim,
+        ...claim,
         now,
         inputs: {
           assessments: results[0] as string[],
           codingObservations: results[1] as string[],
           codingTokenUsage: results[2] as string | null,
-          listeningPlays: results[3] as string[],
-          cursorObservations: results[5 + PULSE_DOMAINS.length] as string[],
-          listeningChecks: results[6 + PULSE_DOMAINS.length] as string[],
-          workouts: results[4] as string | null,
-          histories,
+          cursorObservations: results[3] as string[],
         },
       };
     } catch (error) {
@@ -183,12 +153,8 @@ export class PulseScoreState implements PulseScoreCoordinator {
     if (records.length && state.claim.activatedAt === undefined) return false;
 
     if (records.length) {
-      let accepted = records.map((record) => parsePulseAssessment(JSON.stringify(record)));
+      const accepted = records.map((record) => parsePulseAssessment(JSON.stringify(record)));
       if (accepted.some((record) => record === null)) throw new Error("Invalid pulse assessment result");
-      const currentRevision = Number(this.execute([{ op: "get", key: pulseIntervalRevisionKey("activity") }])[0]);
-      if ((Number.isSafeInteger(currentRevision) ? currentRevision : 0) !== (state.claim.activityRevision ?? 0)) {
-        accepted = accepted.filter((record) => record?.domain !== "activity");
-      }
 
       const raw = this.execute([{
         op: "listRange",
@@ -200,7 +166,7 @@ export class PulseScoreState implements PulseScoreCoordinator {
       const merged = new Map(current.map((record) => [`${record.domain}:${record.from}`, record]));
       for (const record of accepted as PulseAssessment[]) merged.set(`${record.domain}:${record.from}`, record);
       const ordered = [...merged.values()]
-        .sort((a, b) => a.from - b.from || PULSE_DOMAINS.indexOf(a.domain) - PULSE_DOMAINS.indexOf(b.domain))
+        .sort((a, b) => a.from - b.from)
         .slice(-MAX_ASSESSMENTS);
       // 追加之后列表会有多少行、其中多少是被覆盖或过期的
       const rows = raw.length + accepted.length;

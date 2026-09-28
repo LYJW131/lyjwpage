@@ -124,6 +124,54 @@ export function codingWindowFeatures(observations: CodingObservation[], from: nu
   return result;
 }
 
+/** 0 两者都没有，1 只有前台 coding 应用，2 只有 agent 在跑，3 两者同时 */
+export type CodingBandValue = 0 | 1 | 2 | 3;
+export type CodingBandSegment = { from: number; to: number; value: CodingBandValue };
+
+/**
+ * Coding 的三色带，读时从原始观测现算。
+ *
+ * 切片规则和 {@link codingWindowFeatures} 一样：每条 Mac 观测撑到下一条或 3 分钟（取早），
+ * `available: false` 不算观测；Cursor 账号观测独立成一路，它的覆盖算「看得见」，
+ * 它的最近活动算 agent。两路都没覆盖的时刻是未知，不出段。
+ *
+ * 不读 `pulse:coding` 那条档位序列：它让 agent 压过前台应用，画不出「两者同时」。
+ */
+export function codingBand(observations: CodingObservation[], cursor: CursorObservation[], window: Coverage): CodingBandSegment[] {
+  type Slice = Coverage & { human: boolean; agent: boolean };
+  const mac: Slice[] = [];
+  const sorted = [...observations].sort((a, b) => a.t - b.t);
+  for (let i = 0; i < sorted.length; i++) {
+    const observation = sorted[i];
+    const from = Math.max(window.from, observation.t);
+    const to = Math.min(window.to, observation.t + CODING_OBSERVATION_HOLD_MS, sorted[i + 1]?.t ?? window.to);
+    if (to <= from || !observation.available) continue;
+    mac.push({ from, to, human: observation.desktop?.coding ?? false, agent: observation.agents?.some((agent) => agent.active) ?? false });
+  }
+  const account = cursorWindowFeatures([...cursor].sort((a, b) => a.t - b.t), window);
+  const edges = [...new Set([...mac, ...account.coverage, ...account.activeCoverage].flatMap((part) => [part.from, part.to]))].sort((a, b) => a - b);
+  // 三路各自有序且不重叠，扫一遍各带一个游标
+  const at = <T extends Coverage>(list: T[], cursorIndex: { i: number }, from: number, to: number): T | null => {
+    while (cursorIndex.i < list.length && list[cursorIndex.i].to <= from) cursorIndex.i++;
+    const part = list[cursorIndex.i];
+    return part && part.from <= from && part.to >= to ? part : null;
+  };
+  const macAt = { i: 0 }, coveredAt = { i: 0 }, activeAt = { i: 0 };
+  const segments: CodingBandSegment[] = [];
+  for (let i = 0; i + 1 < edges.length; i++) {
+    const from = edges[i], to = edges[i + 1];
+    const slice = at(mac, macAt, from, to);
+    const covered = at(account.coverage, coveredAt, from, to);
+    const cursorActive = at(account.activeCoverage, activeAt, from, to);
+    if (!slice && !covered) continue;
+    const value = ((slice?.human ? 1 : 0) + (slice?.agent || cursorActive ? 2 : 0)) as CodingBandValue;
+    const previous = segments.at(-1);
+    if (previous && previous.to === from && previous.value === value) previous.to = to;
+    else segments.push({ from, to, value });
+  }
+  return segments;
+}
+
 /** 每个描述独立成立；数字仅用于输出位置，不能当作真实生产力或精确工作量。 */
 export const CODING_INTENSITY = [
   "No evidence of coding activity in the observed portion; other apps and inactive agents.",

@@ -1,15 +1,1 @@
-{
-  "ok": true,
-  "data": {
-    "generatedAt": "$now",
-    "window": { "from": "$now-86400000", "to": "$now" },
-    "domains": {
-      "coding": { "kind": "score", "assessments": { "startSec": [], "endSec": [], "intensity": [], "confidence": [], "continuity": [], "mode": [] }, "score": null },
-      "listening": { "kind": "score", "assessments": { "startSec": [], "endSec": [], "intensity": [], "confidence": [], "continuity": [], "mode": [] }, "score": null },
-      "watching": { "kind": "binary", "segments": { "startSec": [], "endSec": [], "value": [] }, "activeSeconds": 0, "score": null },
-      "gaming": { "kind": "binary", "segments": { "startSec": [], "endSec": [], "value": [] }, "activeSeconds": 0, "score": null },
-      "charging": { "kind": "power", "segments": { "startSec": [], "endSec": [], "value": [] }, "currentPowerW": null, "score": null },
-      "activity": { "kind": "score", "assessments": { "startSec": [], "endSec": [], "intensity": [], "confidence": [], "continuity": [], "mode": [] }, "score": null }
-    }
-  }
-}
+{"ok":true,"data":{"generatedAt":"$now","window":{"from":"$now-86400000","to":"$now"},"lanes":{"coding":{"kind":"coding","segments":{"startSec":[],"endSec":[],"value":[]},"assessments":{"startSec":[],"endSec":[],"intensity":[],"confidence":[],"mode":[]},"summary":{"humanSeconds":0,"agentSeconds":0,"bothSeconds":0}},"listening":{"kind":"state","segments":{"startSec":[],"endSec":[],"state":[],"title":[],"subtitle":[]},"summary":{"activeSeconds":0,"titles":0},"uncertain":{"startSec":[],"endSec":[],"title":[],"subtitle":[]}},"watching":{"kind":"state","segments":{"startSec":[],"endSec":[],"state":[],"title":[],"subtitle":[]},"summary":{"activeSeconds":0,"titles":0}},"gaming":{"kind":"state","segments":{"startSec":[],"endSec":[],"state":[],"title":[],"subtitle":[]},"summary":{"activeSeconds":0,"titles":0}},"charging":{"kind":"power","segments":{"startSec":[],"endSec":[],"watts":[]},"currentPowerW":null,"summary":{"peakW":null,"energyWh":0}},"activity":{"kind":"steps","buckets":{"startSec":[],"endSec":[],"steps":[]},"workouts":{"startSec":[],"endSec":[],"activityType":[]},"summary":{"steps":0}}}}}

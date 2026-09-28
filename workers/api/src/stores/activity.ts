@@ -1,5 +1,4 @@
-import { activityHistoryPulseSample } from "@shared/pulse-activity";
-import { replacePulseIntervals } from "@api/stores/pulse";
+import { replacePulseActivity } from "@api/stores/pulse";
 import { number, object, text } from "@/lib/json";
 import { type ActivityHistory, type ActivityHistoryBucket, type ActivityReport, mirror } from "@shared/activity";
 
@@ -133,12 +132,8 @@ function normalizeHistory(input: unknown, receivedAt: number): ActivityHistory {
  */
 export async function writeActivity(report: ActivityReport): Promise<void> {
   const writes: Promise<unknown>[] = [];
-  if (report.history) {
-    const samples = report.history.buckets
-      .map(activityHistoryPulseSample)
-      .filter((sample): sample is NonNullable<typeof sample> => sample !== null);
-    writes.push(replacePulseIntervals("activity", report.history, samples));
-  }
+  // Pulse 留原始的五分钟桶（步数、活动千卡、锻炼分钟），不再换算成档位
+  if (report.history) writes.push(replacePulseActivity(report.history, report.history.buckets));
   if (report.current) writes.push(mirror.put(report.current));
   await Promise.all(writes);
 }

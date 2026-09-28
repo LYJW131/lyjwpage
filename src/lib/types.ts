@@ -932,8 +932,8 @@ export type PowerBankPayload = PowerBankStatus & {
 } & ReporterPresence;
 
 /**
- * 跨域活动脉搏（pulse）：coding / listening / watching / gaming / charging / activity 六条阶跃序列，
- * 首页 Pulse 卡片的底。存储形状在这里，对外那份在下面的 PulsePayload（不带 hint）。
+ * 跨域活动脉搏（pulse）：最近 24 小时「在做什么」的事实时间线，首页 Pulse 卡片的底。
+ * 存储形状在 shared/pulse-timeline，对外那份在下面的 PulsePayload。
  *
  * 不叫 activity：那个名字在本仓库已经是 Apple Watch 圆环
  * （`/api/status/activity`、`activity:today`、`ActivityStatus`）。
@@ -941,63 +941,17 @@ export type PowerBankPayload = PowerBankStatus & {
 export const PULSE_DOMAINS = ["coding", "listening", "watching", "gaming", "charging", "activity"] as const;
 export type PulseDomain = (typeof PULSE_DOMAINS)[number];
 
-/** 活动强度上限。0 空闲，1 低，2 中，3 高。 */
-export const PULSE_LEVEL_MAX = 3;
-export type PulseLevel = 0 | 1 | 2 | 3;
-
-/** 一条 pulse 采样。域在 list key 上，不进 JSON。 */
-export type PulseSample = {
-  /** 阶跃起点，epoch 毫秒；activity 为闭合 HealthKit 五分钟桶的起点 */
-  t: number;
-  /** 已知区间的终点（epoch 毫秒）；activity 为桶终点，必填，不向当前时刻延续 */
-  until?: number;
-  level: PulseLevel;
-  powerW?: number;
-  /** 紧凑标签，缺席或空串不入库 */
-  hint?: string;
-};
-
-export type PulseSeries = {
-  samples: PulseSample[];
-  /**
-   * samples 里只有游标之后新增的点，接到已有序列后面。
-   * false 表示这是完整快照 —— 没有游标，或游标落后太多、中间那段已被裁掉。
-   */
-  partial: boolean;
-};
-
-/** Worker 内部读形状；评分器和公开端点都从它出发，本身不是 HTTP 信封。 */
-export type PulseHistory = {
-  series: Record<PulseDomain, PulseSeries>;
-};
-
-/** Jev 给出的趋势三选一，语义见 pulse-window 里的题面。 */
-export const PULSE_TRENDS = ["rising", "steady", "falling", "unknown"] as const;
-export type PulseTrend = (typeof PULSE_TRENDS)[number];
-
-/**
- * 一个域的活动分。`value` 是 Jev 在四档标尺上插值出来的位置（0–3），
- * 和 PulseLevel 的 0–3 不是一回事：档位是确定性规则按此刻算的，
- * 这个分是五分钟模型评分按已观测时长加权得到的 24 小时摘要。
- */
-export type PulseScore = {
-  value: number;
-  /** 分段置信度按已观测时长加权，0–1。 */
-  confidence: number | null;
-  trend: PulseTrend;
-  scoredAt: number;
-};
-
 /**
  * 公开端点 `/api/status/pulse` 的形状。
  *
- * 实测媒体段可携带当时的 title；应用、模型、token 和会话信息仍不公开。
+ * 只给原始事实：状态、标题、瓦数、步数。档位、颜色、摘要文案都在卡片里现算，
+ * 以后换展示方式不用迁移数据。媒体与游戏标题可以公开；应用名、模型名、token
+ * 数不出这个端点（Coding 只给三色带和 Jev 的强度 / 模式）。
  */
 export type PulsePayload = {
   generatedAt: number;
   window: { from: number; to: number };
-  domains: Record<PulseDomain, PulseDomainView>;
-
+  lanes: PulseLanes;
 };
 
 /**
@@ -1175,59 +1129,62 @@ export type WorkoutsPayload = {
 /**
  * Pulse 公开出口的线上格式：**按列**，时刻是**相对 `window.from` 的整秒**。
  *
- * 24 小时三个评分域快八百条五分钟评分、再加上千段实测，从前一条一个对象，
- * 同一组字段名和嵌套在首屏 HTML 与 RSC 里各重复上千遍，比数据本身还大；毫秒戳
- * 也换成最多 5 位的相对秒（泳道和悬停只精确到分钟）。各列等长，第 i 行就是
- * 各列的第 i 个。卡片用 lib/pulse-columns 还原成下面的行对象再画。
+ * 24 小时几百段区间，从前一条一个对象，同一组字段名在首屏 HTML 与 RSC 里各重复
+ * 上千遍，比数据本身还大；毫秒戳也换成最多 5 位的相对秒（泳道和悬停只精确到分钟）。
+ * 各列等长，第 i 行就是各列的第 i 个。卡片用 lib/pulse-columns 还原成行对象再画。
  * 还原时刻：`window.from + startSec * 1000`。
+ *
+ * **没有段的时间就是未知**（没有观测），和观测到的空闲 / 离线（state 0、0 瓦）不同。
  */
-export type PulseSpan = { startSec: number; endSec: number };
+export type PulseSpanColumns = { startSec: number[]; endSec: number[] };
 
-/** 实测一段（行对象，只在内存里用） */
-export type PulseMeasuredSegment = PulseSpan & { value: number; title?: string };
+/** Coding 三色带：0 两者都没有，1 只有前台 coding 应用，2 只有 agent，3 两者同时 */
+export type PulseCodingLane = {
+  kind: "coding";
+  segments: PulseSpanColumns & { value: number[] };
+  /** Jev 的十五分钟评估：强度 0–4、置信度、模式；只在悬停里出现 */
+  assessments: PulseSpanColumns & { intensity: number[]; confidence: number[]; mode: (string | null)[] };
+  summary: { humanSeconds: number; agentSeconds: number; bothSeconds: number };
+};
 
 /**
- * 一条五分钟评分（行对象，只在内存里用）：只留卡片画线和悬停要用的。
- *
- * 库里那份（`PulseAssessment`）每条带三组概率分布、输入哈希、模型名和评分时刻，
- * 一条五百多字节，这些只服务于评分器自己（去重、修订、审计），页面一个都不读。
+ * 状态道。listening / watching：0 空闲，1 暂停，2 在放；gaming：0 离线，1 在线，2 在游戏里。
+ * `title` 是曲名 / 片名 / 游戏名，`subtitle` 是艺人 / 集数。
  */
-export type PulsePublicAssessment = PulseSpan & {
-  /** 实际观测到的区间；和整窗 `[startSec, endSec]` 一样时省略 */
-  coverage?: PulseSpan[];
-  intensity: { value: number; confidence: number };
-  continuity: { value: number };
-  mode: { value: string } | null;
-  /** listening：窗口里占时最长的那首 */
-  title?: string;
+export type PulseStateLane = {
+  kind: "state";
+  segments: PulseSpanColumns & { state: number[]; title: (string | null)[]; subtitle: (string | null)[] };
+  /**
+   * 只有 listening 有：「最近在听」列表变动，只知道落在 `(start, end]` 之间某处，
+   * 放的是 `title`（专辑 / 歌单）。如实画成不确定区间，不当成此刻在放。
+   */
+  uncertain?: PulseSpanColumns & { title: (string | null)[]; subtitle: (string | null)[] };
+  /** activeSeconds：state 2 的总时长；titles：state 2 里出现过几个不同的标题 */
+  summary: { activeSeconds: number; titles: number };
 };
 
-/** 评分的列 */
-export type PulseAssessmentColumns = {
-  startSec: number[];
-  endSec: number[];
-  intensity: number[];
-  confidence: number[];
-  continuity: number[];
-  mode: (string | null)[];
-  /** 只有带歌名的域才有这一列 */
-  title?: (string | null)[];
-  /** 实际观测和整窗不同的那几行，键是行号；大多数行没有，所以不开整列 */
-  coverage?: Record<string, PulseSpan[]>;
+/** 实测瓦数：每段一个读数，段之间的空当是断流（未知） */
+export type PulsePowerLane = {
+  kind: "power";
+  segments: PulseSpanColumns & { watts: number[] };
+  /** 此刻的读数；最后一笔已过有效期就是 null */
+  currentPowerW: number | null;
+  summary: { peakW: number | null; energyWh: number };
 };
 
-/** 实测段的列 */
-export type PulseSegmentColumns = {
-  startSec: number[];
-  endSec: number[];
-  value: number[];
-  /** 只有带标题的域才有这一列 */
-  title?: (string | null)[];
+/** HealthKit 五分钟桶里的步数，加上已完成训练的区间与项目名 */
+export type PulseStepsLane = {
+  kind: "steps";
+  buckets: PulseSpanColumns & { steps: number[] };
+  workouts: PulseSpanColumns & { activityType: string[] };
+  summary: { steps: number };
 };
 
-export type PulseChartView =
-  | { kind: "score"; assessments: PulseAssessmentColumns }
-  | { kind: "binary"; segments: PulseSegmentColumns; activeSeconds: number }
-  | { kind: "power"; segments: PulseSegmentColumns; currentPowerW: number | null };
-
-export type PulseDomainView = PulseChartView & { score: PulseScore | null };
+export type PulseLanes = {
+  coding: PulseCodingLane;
+  listening: PulseStateLane;
+  watching: PulseStateLane;
+  gaming: PulseStateLane;
+  charging: PulsePowerLane;
+  activity: PulseStepsLane;
+};

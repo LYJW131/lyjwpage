@@ -1,45 +1,29 @@
 import { CODING_MODES, CODING_WINDOW_MS, PULSE_SCORE_WINDOW_MS, type CodingAssessment } from './pulse-coding';
-import { LISTENING_MODES } from './pulse-listening';
-import type { PulseDomain, PulseScore } from '../src/lib/types';
 export { mergeCoverage } from './pulse-features';
+/** Jev 只给 Coding 打分；别的道画的是事实时间线，不再有模型分。 */
+export const SCORED_DOMAINS = ['coding'] as const;
+export type PulseScoredDomain = (typeof SCORED_DOMAINS)[number];
 /**
+ * 版本 5：Pulse 改成事实时间线，只剩 Coding 送 Jev；别的域的旧评估读时丢掉，
+ * 下一次压缩时清出列表。
  * 版本 4：Cursor 与最近播放列表独立观测；仅账号来源可用时保留不确定性。
  * 版本 3：activity 的五分钟事实加上已完成训练。项目名和落在窗口内的活动秒数
  * 跟圆环估算一起进判据，升版本让全部窗口重打分，不靠哈希碰巧变。
  * 版本 2 起五个实测域不再发原始区间和图例。
  */
-export const PULSE_ASSESSMENT_VERSION = 4;
-/** 每个域自己的模式集合；没有模式的域为 null。card 的标签表按 value 查。 */
-export const PULSE_MODES: Partial<Record<PulseDomain, readonly string[]>> = { coding: CODING_MODES, listening: LISTENING_MODES };
+export const PULSE_ASSESSMENT_VERSION = 5;
+/** 每个域自己的模式集合。card 的标签表按 value 查。 */
+export const PULSE_MODES: Record<PulseScoredDomain, readonly string[]> = { coding: CODING_MODES };
 export type PulseMode = { value: string; confidence: number; probabilities: Record<string, number> };
 export type PulseAssessment = Omit<CodingAssessment, 'mode'> & {
-  domain: PulseDomain;
+  domain: PulseScoredDomain;
   mode: PulseMode | null;
   inputHash: string;
 };
-/** Summary and graph use exactly the same scores. Unknown time is excluded, never zero-filled. */
-export function summarizeAssessments(rows: PulseAssessment[], from: number, to: number): PulseScore | null {
-  const mean = (start: number, end: number) => {
-    let weight = 0, value = 0, confidence = 0;
-    for (const row of rows) for (const part of row.coverage) {
-      const duration = Math.max(0, Math.min(part.to, end) - Math.max(part.from, start));
-      weight += duration; value += row.intensity.value / 4 * 3 * duration;
-      confidence += row.intensity.confidence * duration;
-    }
-    return weight ? { value: value / weight, confidence: confidence / weight } : null;
-  };
-  const total = mean(from, to);
-  if (!total) return null;
-  const recent = mean(Math.max(from, to - 3 * 3600_000), to);
-  const prior = mean(Math.max(from, to - 6 * 3600_000), to - 3 * 3600_000);
-  const delta = recent && prior ? recent.value - prior.value : null;
-  return { ...total, trend: delta == null ? 'unknown' : delta > 0.2 ? 'rising' : delta < -0.2 ? 'falling' : 'steady',
-    scoredAt: Math.max(...rows.map((r) => r.scoredAt)) };
-}
 export function parsePulseAssessment(raw: string): PulseAssessment | null {
   try {
     const row = JSON.parse(raw) as PulseAssessment;
-    if (!['coding','listening','watching','gaming','charging','activity'].includes(row.domain) || typeof row.inputHash !== 'string') return null;
+    if (!(SCORED_DOMAINS as readonly string[]).includes(row.domain) || typeof row.inputHash !== 'string') return null;
     if (!Number.isSafeInteger(row.from) || row.from < 0 || (row.to !== row.from + CODING_WINDOW_MS && row.to !== row.from + PULSE_SCORE_WINDOW_MS) || !Number.isFinite(row.scoredAt)) return null;
     if (!Array.isArray(row.coverage) || !row.coverage.length) return null;
     let end = row.from;

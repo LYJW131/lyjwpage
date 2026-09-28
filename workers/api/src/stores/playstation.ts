@@ -1,4 +1,3 @@
-import { gamingLevel } from "@shared/pulse-levels";
 import { object } from "@/lib/json";
 import { PLAYING_TAG, TROPHIES_TAG } from "@/lib/live-events";
 import { getPlaystationPlayedGames, getPlaystationPower, getPlaystationPresence, getPlaystationTrophies } from "@/lib/playstation-store";
@@ -7,7 +6,8 @@ import type {
   PlaystationPresencePayload
 } from "@/lib/types";
 import { fanout, type PendingEvent } from "@api/fanout";
-import { recordPulse } from "@api/stores/pulse";
+import { recordStateObservation } from "@api/stores/pulse";
+import { gamingFacts } from "@shared/pulse-timeline";
 import { setPlaystationPlayedGames, setPlaystationPower, setPlaystationPresence, setPlaystationTrophies } from "@api/stores/playstation-store";
 import { normalizePlaystationPlayedGames, normalizePlaystationPower, normalizePlaystationPresence } from "@shared/playstation";
 
@@ -114,8 +114,7 @@ export async function commitPreparedPlaystationReport(prepared: PreparedPlaystat
      * 浏览器挂载后直接问 Worker；端点读的是 SQLite，不经过首屏缓存。
      */
     writes.push(setPlaystationPresence(incomingPresence));
-    const gaming = gamingLevel(incomingPresence);
-    writes.push(recordPulse("gaming", { t: receivedAt, level: gaming.level, hint: gaming.hint }));
+    writes.push(recordStateObservation("gaming", receivedAt, gamingFacts(incomingPresence)));
     if (presenceChanged || !previousPresence) {
       events.push({ type: "playing-now", payload: { ...incomingPresence, power: powerForEvent } });
       sentPlayingNow = true;
