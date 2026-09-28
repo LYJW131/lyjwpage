@@ -46,7 +46,7 @@ PlayStation 上报器采用同款人数分档逻辑，限额使用自己的 5 / 
 | `ACCESS_CLIENT_SECRET` | ✅ | 同一把 token 的 secret，只在 Zero Trust 控制台创建或轮换时显示一次 |
 | `LIVE_INTERVAL_MS` | | 默认 `300000`（5 分钟），有可见页面；也是长档重查人数的间隔 |
 | `OPEN_INTERVAL_MS` | | 默认 `600000`（10 分钟），只有后台页面 |
-| `IDLE_INTERVAL_MS` | | 默认 `3600000`（60 分钟），无人打开；改长时同步放宽站点 `AGENT_LIMITS_STALE_MS` |
+| `IDLE_INTERVAL_MS` | | 默认 `3600000`（60 分钟），无人打开；改长时先放宽站点 `src/lib/freshness.ts` 的 `AGENT_LIMITS_STALE_MS` |
 | `COUNT_TIMEOUT_MS` | | 默认 `2500`，每个计数请求的超时 |
 | `CURSOR_NOW_FAST_INTERVAL_MS` | | 默认 `60000`，Cursor 在用时查最近用量事件的间隔；要小于站点灯的 5 分钟窗口 |
 | `CURSOR_NOW_MAX_INTERVAL_MS` | | 默认 `240000`，没新事件时间隔翻倍拉长的上限 |
@@ -175,9 +175,8 @@ cursor 是 `{ period, plan, hardLimit, sand }`：三份 DashboardService 响应�
 这台在日本，各家限额接口直连可达，**`.env` 里不再需要 `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY`**。
 ssh 直连在 kex 阶段会被对面关掉，一律走 dsm 跳板：`ssh -J dsm misaka-jp`。
 
-从固定间隔升级时，先将 API Worker 的新鲜度窗口更新为
-`AGENT_LIMITS_STALE_MS=11100000`（185 分钟，三轮闲档加缓存余量），删除旧的
-`AGENT_LIMITS_PUSH_INTERVAL_MS`。然后更新机器上的 `.env`：删除 `PUSH_INTERVAL_MS`、
+限额在站点的可滞后层，浏览器按 `src/lib/freshness.ts` 的 `AGENT_LIMITS_STALE_MS`（185 分钟，三轮闲档加余量）判断过没过时。
+从固定间隔升级时更新机器上的 `.env`：删除 `PUSH_INTERVAL_MS`、
 `LIVE_PUSH_URL`，并设置 `ONLINE_COUNTER_URL=https://online.homepage.lyjw.llc`；按需设置三档间隔，
 再重建容器。旧变量已移除。
 

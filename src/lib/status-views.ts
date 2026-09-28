@@ -55,6 +55,8 @@ export const STATUS_VIEWS = {
   listening: { path: "/api/status/listening", layer: "realtime", tag: "listening", event: "listening" },
   nowListening: { path: "/api/status/listening/now", layer: "realtime", tag: "listening-now", event: "listening-now" },
   vibeCoding: { path: "/api/status/vibecoding", layer: "realtime", tag: "vibecoding", event: "vibecoding-now" },
+  /** 各 agent 账号的套餐与限额窗口；浏览器按 id 贴回 vibecoding 的用量行 */
+  limits: { path: "/api/status/limits", layer: "lag", tag: "limits" },
   /** 厂商状态页。采集 Worker 每分钟拉官方 JSON / RSS 写 KV，不推送 */
   agentStatus: { path: "/api/status/agent-status", layer: "lag", tag: "agent-status" },
   vibeCodingYear: { path: "/api/status/vibecoding/year", layer: "lag", tag: "vibecoding-year", readModel: "slow" },

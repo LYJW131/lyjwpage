@@ -664,11 +664,7 @@ export async function commitPreparedTelemetryEnvelope(command: PreparedTelemetry
     }
 
     if ("timezone" in modules) {
-      telemetryState.timezone = modules.timezone ?? null;
-      telemetryState.timezoneReceivedAt = receivedAt;
-      patch.timezone = telemetryState.timezone;
-      // 没有推送事件（时区一年变两次），也不失效首屏：卡片定高，换时区只换内容，
-      // 定时重建会带上，浏览器挂载后也直接问 Worker
+      // 时区在可滞后层：整封收下之后由上报入口写 KV（lag-ingest），这里只计数
       accepted += 1;
     }
 

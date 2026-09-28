@@ -77,7 +77,9 @@ try {
     name: 'isolated-ingest', main: join(root, 'workers/api/src/index.ts'),
     compatibility_date: '2025-02-14', compatibility_flags: ['nodejs_compat', 'nodejs_compat_populate_process_env'],
     vars,
-    alias: Object.fromEntries(['storage-driver'].map(name => [`@/lib/${name}`, join(root, `workers/api/src/${name}.ts`)])),
+    // 和 wrangler.toml 的 [alias] 同一组：Worker 侧实现替掉站点侧只会抛错的桩
+    alias: Object.fromEntries(['storage-driver', 'apple-developer-token', 'apple-music-credentials', 'lag-store']
+      .map(name => [`@/lib/${name}`, join(root, `workers/api/src/${name}.ts`)])),
     durable_objects: { bindings: [
       { name: 'LIVE_PUSH', class_name: 'LivePushRoom' },
       { name: 'STATE', class_name: 'StateHub' },
@@ -88,6 +90,11 @@ try {
       { tag: 'v3', new_sqlite_classes: ['StateHub'] },
     ],
     r2_buckets: [{ binding: 'IMAGES', bucket_name: 'isolated-images' }],
+    // 可滞后层与凭据 KV：临时持久化目录里的本地命名空间，不碰真实 KV
+    kv_namespaces: [
+      { binding: 'LAG', id: '00000000000000000000000000000001' },
+      { binding: 'CREDENTIALS', id: '00000000000000000000000000000002' },
+    ],
   };
   const configPath = join(temporary, 'wrangler.json');
   await writeFile(configPath, JSON.stringify(config));

@@ -1,4 +1,5 @@
 import { AwaitingReport } from "@/lib/awaiting-report";
+import { LagResult } from "@/lib/lag-result";
 import { withStorageScope } from "@/lib/storage";
 import type { StatusResponse } from "@/lib/types";
 
@@ -57,11 +58,14 @@ export function titleIdsParam(request: Request): string[] | undefined {
  * 否则同一张卡在首屏和轮询之后会走不同的分支。
  */
 export async function statusEnvelope<T>(
-  loader: () => Promise<T>,
+  loader: () => Promise<T | LagResult<T>>,
 ): Promise<StatusResponse<T>> {
   return withStorageScope(async () => {
     try {
-      return { ok: true, data: await loader() };
+      const value = await loader();
+      // 可滞后层带上写入方的更新时刻，浏览器据此判断这份过没过时
+      if (value instanceof LagResult) return { ok: true, data: value.data as T, updatedAt: value.updatedAt };
+      return { ok: true, data: value };
     } catch (error) {
       const message = reason(error);
       if (error instanceof AwaitingReport) {

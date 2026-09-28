@@ -228,18 +228,18 @@ export function ServerCard({
   fallback: StatusResponse<ServerPayload>;
   className?: string;
 }) {
-  const { data, error } = useStatus<ServerPayload>(SERVER_PATH, REFRESH_MS, {
+  const { data, updatedAt, error } = useStatus<ServerPayload>(SERVER_PATH, REFRESH_MS, {
     fallback,
   });
-  const staleByClock = useStale(data?.pushedAt, data?.staleAfterMs ?? SERVER_STALE_MS);
-  const stale = Boolean(data?.staleAtSource) || staleByClock;
+  // 可滞后层：上报入口每封都重写 updatedAt，过了阈值就是上报器没在推
+  const stale = useStale(updatedAt ?? data?.pushedAt, SERVER_STALE_MS);
   const memoryPercent = data ? (data.memoryUsedBytes / data.memoryTotalBytes) * 100 : 0;
   const location = data ? formatLocation(data) : null;
   const isp = data ? formatIsp(data) : null;
 
   const action = (() => {
     if (error && !data) return "No data";
-    if (stale) return "Offline";
+    if (stale) return "Unavailable";
     return data?.id ? nodeId(data.id) : "—";
   })();
 

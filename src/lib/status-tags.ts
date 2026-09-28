@@ -6,6 +6,7 @@ export const TIMEZONE_TAG = STATUS_VIEWS.timezone.tag;
 export const CHARGER_TAG = STATUS_VIEWS.charger.tag;
 export const POWERBANK_TAG = STATUS_VIEWS.powerBank.tag;
 export const VIBECODING_TAG = STATUS_VIEWS.vibeCoding.tag;
+export const LIMITS_TAG = STATUS_VIEWS.limits.tag;
 export const VIBECODING_YEAR_TAG = STATUS_VIEWS.vibeCodingYear.tag;
 export const LISTENING_TAG = STATUS_VIEWS.listening.tag;
 export const NOW_LISTENING_TAG = STATUS_VIEWS.nowListening.tag;

@@ -50,6 +50,8 @@ export function incrementalFetcher<T>(
 
 export type StatusState<T> = {
   data: T | undefined;
+  /** 可滞后层写入方最后一次成功取到这份数据的时刻；实时层没有 */
+  updatedAt: number | undefined;
   /** 上游报错 —— 注意这与「还在加载」是两回事 */
   error: string | undefined;
   isLoading: boolean;
@@ -195,6 +197,7 @@ export function useStatus<T>(
 
   return {
     data: data?.ok ? data.data : undefined,
+    updatedAt: data?.ok ? data.updatedAt : undefined,
     error: data && !data.ok ? data.error : error ? String(error.message ?? error) : undefined,
     isLoading,
     isValidating,

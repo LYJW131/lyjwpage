@@ -5,8 +5,8 @@
  *
  * 次数由上报器自己数（两个上报器同一份 push-ledger.ts）：它知道哪一封被站点收下了，
  * 状态存在自己的卷上跨重启接着数。这里只校验、只存最新值，不在收件侧重算。
- * 这份文件只放纯计算，浏览器和 Worker 都能引；存取在 shared/reporters 与
- * workers/api/src/stores/reporter-ledger。
+ * 这份文件只放纯计算，浏览器和 Worker 都能引；账本由上报入口写进可滞后层
+ * （shared/lag.ts 的 reporterServer / reporterAgents），读取在 lib/reporters。
  */
 
 /** 上报来源 → 卡片上认的上报器名字。只收常驻在 misaka-jp 上的这两个 */

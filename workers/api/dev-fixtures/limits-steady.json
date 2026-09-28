@@ -1,0 +1,31 @@
+{
+  "ok": true,
+  "updatedAt": "$now-60000",
+  "data": {
+    "agents": {
+      "claude": {
+        "plan": { "tier": "max", "label": "Max 5x" },
+        "limits": [
+          { "key": "claude.primary", "label": null, "group": "session", "windowMinutes": 300, "usedPercent": 37, "resetsAt": null },
+          { "key": "weekly_all", "label": null, "group": "weekly", "windowMinutes": 10080, "usedPercent": 22, "resetsAt": null }
+        ],
+        "limitsError": null,
+        "updatedAt": "$now-60000"
+      },
+      "codex": {
+        "plan": { "tier": "prolite", "label": "Pro Lite" },
+        "limits": [
+          { "key": "codex.primary", "label": null, "group": "session", "windowMinutes": 300, "usedPercent": 64, "resetsAt": null }
+        ],
+        "limitsError": null,
+        "updatedAt": "$now-60000"
+      },
+      "cursor": {
+        "plan": { "tier": "ultra", "label": "Ultra" },
+        "limits": [],
+        "limitsError": "Usage API unavailable",
+        "updatedAt": "$now-60000"
+      }
+    }
+  }
+}

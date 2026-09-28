@@ -25,6 +25,9 @@
       "@/lib/apple-music-credentials": [
         "./src/apple-music-credentials.ts"
       ],
+      "@/lib/lag-store": [
+        "./src/lag-store.ts"
+      ],
       "@/*": [
         "../../src/*"
       ],

@@ -12,6 +12,17 @@ Worker 是唯一数据后端。上报、状态 API、Apple / GitHub 获取和缓
 - 跨域活动脉搏（pulse）键为 `pulse:<domain>`（`coding` / `listening` / `watching` / `gaming` / `charging` / `activity`）。每域最多 600 条，TTL 7 天；同水平非空闲最多每 5 分钟再确认一次，空闲只留一条。身体活动 `activity` 例外：每个有效上报区间留一条，含明确终点 `until`，不向未来延续。公开出口是 `GET /api/status/pulse`（裁最近 24 小时、剥掉 `hint`）；`hint` 只留在库里和送去打分的那份里。
 - API Worker 的 `LIVE_PUSH` 使用可休眠 WebSocket，`api.homepage.lyjw.llc/count` 返回 `connections`（包含后台页面）。独立 `online-counter` Worker 的 `ONLINE_COUNTER` 维护可见连接，按空闲超时清扫；`online.homepage.lyjw.llc/count` 返回 `online`。三个调频上报器并行读取两个计数口，各自失败时仅该端归零。
 
+## 可滞后层（KV）
+
+判断标准只有一条：这份数据是否需要「变了立刻推、读到必是最新」，或是否参与 pulse 计算。是则归实时层（状态核心 DO），否则归可滞后层，存在 KV 命名空间 `lyjwpage-lag`（binding `LAG`，键表与 `{ updatedAt, data }` 格式见 `shared/lag.ts`）。
+
+- 写入方直接写 KV、不推送：上报入口写落地节点、限额、时区、常驻上报器账本（`workers/api/src/lag-ingest.ts`，在这封上报的状态核心那一半成功之后）；采集 Worker 写外部拉取的结果。取数失败不写，KV 里的值本身就是上次成功值，不另存 last-good。
+- 状态核心的公开读取端点只读 KV（`src/lib/lag-result.ts` 经 `@/lib/lag-store` 别名读 `LAG`），信封里带上 `updatedAt`；服务端不下「过没过时」的结论。
+- 浏览器按各卡阈值判断：超过就显示 Unavailable（落地节点 `SERVER_STALE_MS` 10 分钟，限额 `AGENT_LIMITS_STALE_MS` 185 分钟，账本各格同上）。页面打开后可滞后卡直接用首屏那份，只有 `updatedAt` 已超过它的轮询间隔才补取一次。
+- 首屏缓存失效由写 KV 的一方发起，判据仍是布局变化（见 `src/lib/home-layout.ts`）：落地节点首报 / 断流回来 / 流量行出没，限额的来源集合变化。
+- Apple Music user token 在另一个命名空间 `lyjwpage-credentials`（binding `CREDENTIALS`，`shared/credentials.ts`）：公开读取的代码路径只碰 `LAG`，白名单写错也漏不出凭据。
+- 本地开发的 `wrangler.test.toml` 给这两个 binding 配了固定的本地 id，多个本地 Worker 用同一个 id 才读得到彼此写的值；分支 Preview 不绑 KV，读不到时由上游兜底补上。
+
 ## 长期归档（D1）
 
 D1 是整站的长期历史归档：DO 管实时状态与 7 天热数据，KV 管可滞后层的最新值，D1 管永久、按时间可查的历史，R2 管图片。原则是存事实不存展示结果、谁写入谁归档（收下这份数据的一方顺手追加，不设单独的搬运流程）、只追加并靠主键去重、高频读数只存汇总、只知道区间的事实如实存区间。

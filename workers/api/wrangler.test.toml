@@ -28,6 +28,7 @@ ACCESS_AUD = "local-dev"
 [alias]
 "@/lib/storage-driver" = "./src/storage-driver.ts"
 "@/lib/apple-music-credentials" = "./src/apple-music-credentials.ts"
+"@/lib/lag-store" = "./src/lag-store.ts"
 
 # 本地的凭据与可滞后层 KV，与生产不共用；多个本地 Worker 用同一个 id 才读得到彼此写的值
 [[kv_namespaces]]

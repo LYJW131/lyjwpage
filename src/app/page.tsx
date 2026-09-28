@@ -42,6 +42,7 @@ export default async function Home() {
     listening,
     nowListening,
     vibeCoding,
+    limits,
     agentStatus,
     vibeCodingYear,
     watching,
@@ -69,6 +70,7 @@ export default async function Home() {
     firstScreen("listening"),
     firstScreen("nowListening"),
     firstScreen("vibeCoding"),
+    firstScreen("limits"),
     firstScreen("agentStatus"),
     firstScreen("vibeCodingYear"),
     firstScreen("watching"),
@@ -179,6 +181,7 @@ export default async function Home() {
                 />
                 <VibeCodingCard
                   fallback={vibeCoding}
+                  limitsFallback={limits}
                   className="defer-offscreen [contain-intrinsic-size:auto_1372px]"
                 />
                 <PlaystationBlock

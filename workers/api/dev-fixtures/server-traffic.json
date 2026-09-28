@@ -1,5 +1,6 @@
 {
   "ok": true,
+  "updatedAt": "$now",
   "data": {
     "id": "misaka-jp",
     "hostname": "jp-nrt04-s3n-1c2g-1",
@@ -35,8 +36,6 @@
     },
     "uptimeSeconds": 262800,
     "observedAt": "$now-4000",
-    "pushedAt": "$now",
-    "staleAfterMs": 3000000,
-    "staleAtSource": false
+    "pushedAt": "$now"
   }
 }

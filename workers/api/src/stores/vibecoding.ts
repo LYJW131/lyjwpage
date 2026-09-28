@@ -9,9 +9,6 @@ import type {
   VibeCodingNowPayload
 } from "@/lib/types";
 import {
-  mergeAgentLimits
-} from "@/lib/vibecoding-limits";
-import {
   normalizeAgentLimits,
   normalizeCursorNow,
   normalizeVibeCodingNow,
@@ -22,7 +19,7 @@ import {
   type ParsedVibeCodingUsage,
 } from "@/lib/vibecoding-parse";
 import { fanout } from "@api/fanout";
-import { limitsMirror, nowMirror, usageMirror } from "@shared/vibecoding";
+import { nowMirror, usageMirror } from "@shared/vibecoding";
 
 /**
  * Mac 信封里的两个模块一律「先校验，后落库」，写留给 commit。
@@ -119,12 +116,7 @@ export async function recordPreparedAgentLimits(prepared: PreparedAgentLimits) {
   const writes: Promise<unknown>[] = [];
   const tags = new Set<string>();
   const events: LiveEvent[] = [];
-  if (parsed) {
-    const previous = await limitsMirror.get();
-    const next = mergeAgentLimits(previous, parsed, receivedAt);
-    if (displayChanged(previous, next)) tags.add(VIBECODING_TAG);
-    writes.push(limitsMirror.put(next));
-  }
+  // 限额在可滞后层，由上报入口直接写 KV（lag-ingest）；这里只剩 Cursor 的用量与此刻
   const previousCursor = cursorUsage || cursorNow ? await cursorNowMirror.get() : null;
   if (cursorUsage) {
     const previousUsage = await cursorUsageMirror.get();

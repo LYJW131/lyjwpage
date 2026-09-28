@@ -36,6 +36,15 @@ export const LAG_KEYS = {
   cloudflareMetrics: "cloudflare-metrics:v1",
   /** Sentry 在线状态、报错数、真实访客指标（采集 Worker） */
   sentry: "sentry:v1",
+  /** 落地节点的最新读数（上报入口，每封 server 上报） */
+  server: "server:v1",
+  /** 各 agent 账号的套餐与限额窗口，按 id 合并（上报入口，agents 上报） */
+  limits: "limits:v1",
+  /** Mac 此刻所在时区（上报入口，mac 上报的 timezone 模块） */
+  timezone: "timezone:v1",
+  /** 常驻上报器的推送账本，一个上报器一条，互不覆盖（上报入口） */
+  reporterServer: "reporter:server-reporter:v1",
+  reporterAgents: "reporter:agents-reporter:v1",
 } as const;
 
 export type LagKey = (typeof LAG_KEYS)[keyof typeof LAG_KEYS];

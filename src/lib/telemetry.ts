@@ -3,12 +3,16 @@ import {
 } from "@/lib/homepod-store";
 import { pickNowListening, type NowListeningSnapshot } from "@/lib/now-listening";
 import { readLiveness, type Liveness } from "@/lib/reporter-liveness";
+import { LagResult } from "@/lib/lag-result";
+import { readLagEntry } from "@/lib/lag-store";
 import type {
   DesktopPayload,
   NowListeningPayload,
+  TimezoneActivity,
   TimezonePayload
 } from "@/lib/types";
-import { desktopPayload, snapshotFrom, syncTelemetryState, telemetryState } from "@shared/telemetry";
+import { LAG_KEYS } from "@shared/lag";
+import { desktopPayload, snapshotFrom, syncTelemetryState } from "@shared/telemetry";
 
 /**
  * 取数路径上先把状态和存活各读一次。
@@ -26,13 +30,14 @@ export async function getDesktopPayload(): Promise<DesktopPayload> {
   return desktopPayload(await syncForRead());
 }
 
-export async function getTimezonePayload(): Promise<TimezonePayload> {
-  await syncTelemetryState();
-  return {
-    timezone: telemetryState.activeModules.has("timezone") ? telemetryState.timezone : null,
-    // 走 cachedTimezone 的 use cache，冻的是填充时刻，最多旧 10 分钟。
-    snapshotAt: Date.now(),
-  };
+/**
+ * Mac 此刻所在的时区，由上报入口写进可滞后层（模块关掉时写成 null）。
+ * `snapshotAt` 是这次读取的时刻：首屏 HTML 冻住的是生成那一刻，时间卡首帧拿它画钟。
+ */
+export async function getTimezonePayload(): Promise<TimezonePayload | LagResult<TimezonePayload>> {
+  const entry = await readLagEntry<{ timezone: TimezoneActivity | null }>(LAG_KEYS.timezone);
+  const payload = { timezone: entry?.data.timezone ?? null, snapshotAt: Date.now() };
+  return entry ? new LagResult(payload, entry.updatedAt) : payload;
 }
 
 export async function getNowListeningSnapshot(): Promise<NowListeningSnapshot> {

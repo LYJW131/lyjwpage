@@ -7,6 +7,7 @@
  * 用得上才读，缺席 = 整份。
  */
 
+import { getAgentLimits } from "@/lib/agent-limits";
 import { getAgentStatus } from "@/lib/agent-status";
 import { getWorkoutsSnapshot } from "@/lib/workouts";
 import { getActivitySnapshot } from "@/lib/activity";
@@ -23,6 +24,7 @@ import { getReportersStatus } from "@/lib/reporters";
 import { getSentryStatus } from "@/lib/sentry-status";
 import { getServerSnapshot } from "@/lib/server";
 import type { EndpointViewKey, StatusViewKey } from "@/lib/status-views";
+import type { LagResult } from "@/lib/lag-result";
 import { getDesktopPayload, getNowListening, getTimezonePayload } from "@/lib/telemetry";
 import { getTrophies, sliceTrophies, summarizeTrophies } from "@/lib/trophies";
 import { getVercelDeployments } from "@/lib/vercel-deployments";
@@ -59,6 +61,7 @@ export const statusLoaders = {
   listening: { endpoint: unparam(getRecentlyPlayed) },
   nowListening: { endpoint: unparam(getNowListening) },
   vibeCoding: { endpoint: unparam(getVibeCodingSnapshot) },
+  limits: { endpoint: unparam(getAgentLimits) },
   agentStatus: { endpoint: unparam(getAgentStatus) },
   vibeCodingYear: { endpoint: unparam(getVibeCodingYear) },
   watching: { endpoint: unparam(getWatching) },
@@ -90,7 +93,9 @@ export const statusLoaders = {
 export type StatusLoaders = typeof statusLoaders;
 export type StatusLoaderKey = keyof StatusLoaders;
 
-type EndpointValue<L> = L extends { endpoint: (params: StatusLoaderParams) => Promise<infer E> } ? E : never;
+type EndpointValue<L> = L extends { endpoint: (params: StatusLoaderParams) => Promise<infer E> }
+  ? E extends LagResult<infer D> ? D : E
+  : never;
 
 /**
  * 各端点无参时的裸 payload 类型（尚未包信封）。trophies 无参回摘要，这里按实现
