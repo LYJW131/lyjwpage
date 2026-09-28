@@ -22,6 +22,9 @@
       "@/lib/apple-developer-token": [
         "./src/apple-developer-token.ts"
       ],
+      "@/lib/apple-music-credentials": [
+        "./src/apple-music-credentials.ts"
+      ],
       "@/*": [
         "../../src/*"
       ],

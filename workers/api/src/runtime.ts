@@ -16,6 +16,10 @@ export interface Env extends MusicKitTokenEnv {
   READ_MODEL?: KVNamespace;
   /** Append-only long-term activity archive. Omit to disable archiving; nothing else reads it. */
   HISTORY?: D1Database;
+  /** 共享凭据（shared/credentials.ts）：Mac 推来的 Apple Music user token。公开读取不碰它 */
+  CREDENTIALS?: KVNamespace;
+  /** 可滞后层（shared/lag.ts）：公开读取端点只读 */
+  LAG?: KVNamespace;
   /** Access 的 team 域名（`https://<team>.cloudflareaccess.com`），也是 JWT 的签发方。 */
   ACCESS_TEAM_DOMAIN?: string;
   /** `lyjwpage ingest` 这个 Access 应用的 AUD 标签。 */

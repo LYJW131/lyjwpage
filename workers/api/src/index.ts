@@ -10,6 +10,7 @@ import { PulseScorer } from "./pulse-score";
 import { ReadModelRenderer as ReadModelRendererBase } from "./read-model-renderer";
 import { PlaystationIngest as PlaystationIngestBase } from "./playstation-ingest";
 import { StateCore as StateCoreBase } from "./state-core";
+import { migrateAppleMusicCredentials } from "./credentials-migration";
 import { CRON_MONITOR_CONFIG, CRON_MONITOR_SLUG, heartbeatDue } from "./cron-heartbeat";
 import { sentryOptions } from "./sentry";
 
@@ -54,6 +55,8 @@ async function runScheduled(event: ScheduledController, env: Env, ctx: Execution
   // to an already initialized StateHub. No visitor is needed to finish a retry.
   // Enqueue only after the origin cron (Apple recently played, PageSpeed, agent status) has written,
   // so the listening projection is rendered from the refreshed list, not the previous one.
+  await migrateAppleMusicCredentials(env, ctx)
+    .catch((error: unknown) => console.warn("[credentials]", error));
   await originWorker.scheduled(event, env, ctx);
   const hub = env.STATE.get(env.STATE.idFromName("global"));
   if (readModelEnabled(env)) await hub.queueReadModels();

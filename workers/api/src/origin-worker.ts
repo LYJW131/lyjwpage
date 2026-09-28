@@ -7,6 +7,7 @@ import { archiveIngest } from "./ingest-archive";
 import { StateHub } from "./state-hub";
 import { authorize } from "./access-auth";
 import { STORAGE_MAX_BYTES } from "@shared/storage-contract";
+import { writeAppleMusicCredentials } from "@shared/credentials";
 import type { StoredEntry } from "@shared/sqlite-store";
 
 import { refreshRecentlyPlayed } from "./apple-music-recent";
@@ -148,6 +149,13 @@ export async function commitIngest(env: Env, ctx: ExecutionContext, source: stri
       if (!result.ok) throw new Error(result.error);
       // 收下了才归档；归档失败只记日志，不能让已落库的上报重发
       if (historyArchiveEnabled(env)) ctx.waitUntil(archiveIngest(env.HISTORY!, command));
+      // Apple Music user token 只在变了时才推，这一次写不进去就等下一次换令牌，所以等它写完再回 202
+      if (command.source === "mac" && command.modules.appleMusicCredentials && env.CREDENTIALS) {
+        await writeAppleMusicCredentials(env.CREDENTIALS, {
+          musicUserToken: command.modules.appleMusicCredentials.musicUserToken,
+          receivedAt: command.receivedAt,
+        });
+      }
       return jsonResponse({ ok: true, data: JSON.parse(result.json) }, { status: 202 });
     }));
   } catch (error) {

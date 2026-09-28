@@ -43,7 +43,6 @@ import { fanout, type PendingEvent } from "@api/fanout";
 import type { ListeningEffect } from "@api/ingest-effects";
 import { recordPulse } from "@api/stores/pulse";
 import { parseAppleMusicCredentials } from "@api/apple-music-credentials-module";
-import { putAppleMusicCredentials } from "@api/stores/apple-music-credentials";
 import { prepareHeartbeat, prepareStatus } from "@api/stores/charger-store";
 import { writeSettlingAt } from "@api/stores/charging-settling";
 import { prepareStatus as preparePowerBankStatus } from "@api/stores/powerbank-store";
@@ -706,9 +705,8 @@ export async function commitPreparedTelemetryEnvelope(command: PreparedTelemetry
     }
 
     if ("appleMusicCredentials" in modules) {
-      // 只有 music user token 来自那台 Mac；developer token 由 Worker 自签，见 musickit-token.ts
-      const { musicUserToken } = modules.appleMusicCredentials!;
-      writes.push(putAppleMusicCredentials({ musicUserToken, receivedAt }));
+      // 只有 music user token 来自那台 Mac；developer token 由 Worker 自签，见 musickit-token.ts。
+      // 凭据不进 SQLite：整封收下之后由上报入口写凭据 KV（见 origin-worker 的 commitIngest）
       accepted += 1;
     }
 
