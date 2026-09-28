@@ -211,7 +211,7 @@ export async function fetchRepoStats(
 }
 
 /** 名单这一路没取到，但同一轮算出来的总数还在，交给 getGithubRepo 拼进 last-good。 */
-class ContributorsUnavailable extends Error {
+export class ContributorsUnavailable extends Error {
   // 构造参数属性在 node --experimental-strip-types 下会直接报语法错，写成普通字段
   totals: RepoTotals;
 

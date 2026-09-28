@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { SENTRY_COLLECTOR_PROJECT_ID, SENTRY_SITE_PROJECT_ID, SENTRY_WORKER_PROJECT_ID } from "./sentry.ts";
 import { availability, fetchSentryStatus, parseCronBuckets, parseCronStatus, parseUptimeBuckets, parseUptimeStatus } from "./sentry-status.ts";
 
 // 形状取自 2026-09-23 对 Sentry API 的真实响应，只删了用不到的字段
@@ -49,4 +50,15 @@ test("one failing block degrades to null without failing the round", async () =>
   assert.equal(payload.errors, null);
   assert.equal(payload.vitals?.lcpP75Ms, 1850);
   await assert.rejects(fetchSentryStatus(async () => { throw new Error("down"); }));
+});
+
+test("the API error row counts the api and collector Worker projects together", async () => {
+  const projects: unknown[] = [];
+  const payload = await fetchSentryStatus(async (path, params) => {
+    if ((path.endsWith("/events/") && params.dataset === "errors") || path.endsWith("/issues-count/")) projects.push(params.project);
+    return { data: [{ "count()": 2 }], "is:unresolved": 1 };
+  }, 1790132942041);
+  assert.deepEqual(payload.errors?.worker, { count12h: 2, count7d: 2, unresolved: 1 });
+  assert.deepEqual(projects.filter(Array.isArray), Array(3).fill([SENTRY_WORKER_PROJECT_ID, SENTRY_COLLECTOR_PROJECT_ID]));
+  assert.equal(projects.filter((project) => project === SENTRY_SITE_PROJECT_ID).length, 3);
 });

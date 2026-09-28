@@ -132,7 +132,7 @@ export function sliceGithubChart(
   };
 }
 
-async function fetchGithubChart(token: string): Promise<GithubChartPayload> {
+export async function fetchGithubChart(token: string): Promise<GithubChartPayload> {
   const response = await fetch(GITHUB_GRAPHQL, {
     method: "POST",
     headers: {

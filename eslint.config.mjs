@@ -8,11 +8,14 @@ const eslintConfig = defineConfig([
   {
     files: ["src/**/*.{ts,tsx}", "shared/**/*.ts"],
     rules: {
-      // 站点和共用读取模块不能重新引入 Worker 的写入与发布实现。
+      // 站点和共用读取模块不能重新引入 Worker 的写入、发布与采集实现。
       "no-restricted-imports": ["error", {
         patterns: [{
           group: ["@api/*", "**/workers/api/**"],
           message: "上报写入和实时发布只属于 Worker；共享类型、键和计算放在 shared。",
+        }, {
+          group: ["**/workers/collector/**"],
+          message: "定时采集只属于采集 Worker；共享类型、键和契约放在 shared（如 shared/collector.ts）。",
         }],
       }],
     },

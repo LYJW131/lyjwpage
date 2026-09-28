@@ -1,0 +1,15 @@
+# 采集 Worker 本地用的令牌：复制成 .dev.vars（不进版本库）。不填的任务直接跳过。
+# 本地的结果只写本地 KV（见 wrangler.test.toml），不碰生产。
+
+# classic PAT：贡献日历与仓库统计
+# GITHUB_TOKEN=
+# 团队范围：部署列表、函数与访问统计
+# VERCEL_TOKEN=
+# 账号分析、Workers 脚本与构建读取
+# CLOUDFLARE_METRICS_TOKEN=
+# Sentry 组织只读（org:read / project:read / event:read）
+# SENTRY_API_TOKEN=
+# Google PageSpeed Insights
+# PAGESPEED_API_KEY=
+# PSN 登录。本地会自己换一套 token；别和生产同时用同一串（重新生成会作废上一串）
+# PSN_NPSSO=

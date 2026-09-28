@@ -9,7 +9,7 @@
 | server | `ssh -J dsm misaka-jp`，容器 `server-reporter` | `/api/ingest/server` | 配置已更新、容器 Up；真实上报 202（2026-09-13 从 systemd 改成 Docker，见下） |
 | Emby | `ssh dsm`，容器 `homepage-reporter` | `/api/ingest/emby` | 容器已应用新配置；真实上报 202 |
 | agents | `ssh -J dsm misaka-jp`，容器 `agents-reporter` | `/api/ingest/agents` | 容器已应用新配置；真实上报 202（2026-09-13 从 dsm 迁到 misaka-jp，见下） |
-| PlayStation | Worker `playstation-reporter` | `/api/ingest/playstation` | `SITE_URL` 已更新并部署；真实上报 202 |
+| PlayStation | Worker `collector` 的 `playstation` 任务（2026-09-28 前是独立的 `playstation-reporter`） | `StateCore.ingest("playstation")`，不经 HTTP | 旧 Worker 真实上报 202；并入采集 Worker 后待部署核验，见下 |
 | PlayStation 电源 | `ssh n100`，Home Assistant 自动化 `lyjwpage_ps5_power` | `/api/ingest/playstation` | 2026-09-13 新增；`switch.ps5_210_power` 翻面即上报，真实上报已落地 |
 | HomePod | `ssh dsm`，Home Assistant `media_player.wo_shi` | `/api/ingest/homepod` | 配置检查通过；真实 rest_command 返回 202 |
 | HomePod | `ssh n100`，Home Assistant `media_player.zhu_wo_lyjw` | `/api/ingest/homepod` | 配置检查通过；真实 rest_command 返回 202 |
@@ -73,7 +73,7 @@ server 备份 `.env`（代码随镜像走，回退改 `sha-<短哈希>` 标签�
 | HomePod、PS5 电源 | `lyjwpage-home-assistant` | dsm 与 n100 的 Home Assistant `secrets.yaml`：`lyjwpage_access_client_id` / `lyjwpage_access_client_secret` |
 | mac、iphone | `lyjwpage-mac`、`lyjwpage-iphone` | App 设置里手填 Client ID / Client Secret，Secret 存钥匙串 |
 | 部署通知 | `lyjwpage-github-actions` | 仓库 secret `ACCESS_CLIENT_ID` / `ACCESS_CLIENT_SECRET` |
-| playstation | 无 | playstation-reporter 经 Service Binding 调 `PlaystationIngest` |
+| playstation | 无 | 采集 Worker 经 Service Binding 调 api 的 `StateCore.ingest("playstation", …)` |
 
 远端改动前的备份后缀为 `.before-access-<时间戳>`。token 有效期到 2027-09-25，续期或轮换在 Zero Trust 控制台做；
 mac / iphone 轮换时在 Zero Trust 里重新生成这把 service token 的 secret，再贴进 App 设置。
@@ -83,3 +83,15 @@ mac / iphone 轮换时在 Zero Trust 里重新生成这把 service token 的 sec
 `PlaystationIngest` Service Binding 已承接上报；连接数和电源读取也改为该入口的 `count()` / `playingNow()`，PS Worker 删除 `SITE_URL`。独立 online-counter 的可见人数查询仍走 `ONLINE_COUNTER_URL`。
 
 通过 ego lite 核对生产配置：PS Worker 只有 `PSN_NPSSO` secret，没有上报鉴权 secret；Zero Trust 的 7 把服务令牌及 reporters 策略均不含 PS Worker 专属凭据，无需删除。`lyjwpage-home-assistant` 仍供 HomePod 与 PS5 电源上报使用，`/tick` 的邮箱 Access 应用继续保留。
+
+## 2026-09-28 并入采集 Worker
+
+PSN 拉取并进 `workers/collector`（任务 `playstation`，见它的 README）。上报、推送连接数和电源改走 api 的
+`StateCore` entrypoint（`ingest("playstation", raw)`、`connections()`、`playstationPower()`），
+可见人数仍读 `ONLINE_COUNTER_URL/count`。KV 命名空间 `0f9b584f71634776ba3bc081a7aa4498` 原样沿用，
+`playstation-reporter` 脚本改名为 `collector`，`PSN_NPSSO` 随之保留，PSN 不用重新登录。
+
+`GET /tick` 连同它的 Access 应用「playstation-reporter tick」一起取消，自定义域
+`playstation-reporter.homepage.lyjw.llc` 不再使用；本地调试改走 `pnpm dev:worker` 的 `/__dev/collector/run?job=playstation`。
+待办：部署后在 Workers 日志确认 `playstation-tick` 的 `ok:true` 与 `/api/status/playing/now` 的新 `observedAt`，
+再删掉那个 Access 应用和自定义域；api 上的 `PlaystationIngest` 在旧脚本不再调用后删除。

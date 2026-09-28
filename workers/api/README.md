@@ -103,7 +103,8 @@ OTEL_METRIC_EXPORT_INTERVAL=60000
 出口一律带 `windowTitle`：没有标题是 `null`，不是缺字段，消费方只判空。站点界面此刻不展示它。
 
 `/api/ingest/playstation` 的信封是 `{ version: 1, presence?, playedGames?, trophies?, power? }`，
-每一项各自可省、缺席表示这次不谈这一项。前三项由 `workers/playstation-reporter` 每轮交付；
+每一项各自可省、缺席表示这次不谈这一项。前三项由采集 Worker（`workers/collector` 的 `playstation` 任务）
+每轮经 `StateCore.ingest("playstation", raw)` 交付，不走 HTTP；
 `power` 是**另一个生产者**——Home Assistant 上那台 PS5 的电源开关实体，翻面时发一封
 `{ version: 1, power: { on, observedAt?, entityId? } }`。两边互不覆盖：电源单独存一份，
 读的出口（`/api/status/playing/now`）才并进 presence，否则 PSN 上报器每轮整份覆盖
@@ -111,8 +112,8 @@ presence 时会把它冲掉。`on` 必须是布尔值（HA 实体的 `"on"` / `"
 模板里先翻译），`observedAt` 缺席按落地时刻算。
 
 电源翻面时 API Worker 立刻广播一条 `playing-now`，页面当场就能看到；PSN 那侧的
-`presence`（在玩什么）要等上报器下一轮，约 1～2 分钟。上报器自己也读这一份决定节奏，
-见 `workers/playstation-reporter/README.md`。
+`presence`（在玩什么）要等采集 Worker 下一轮，约 1～2 分钟。它自己也经 `StateCore.playstationPower()`
+读这一份决定节奏，见 `workers/collector/README.md`。
 
 奖杯内容变了（解锁、新 DLC、等级；不看 `observedAt` 和游玩时长）时广播一条 `trophies`，
 带的是摘要 —— 等级、合计、最近解锁、各款进度，和 `GET /api/status/trophies` 无参回的
@@ -313,8 +314,10 @@ Secrets 与专用 RAM 用户已无用，在 Cloudflare 控制台和阿里云 RAM
 
 站点配置 `NEXT_PUBLIC_BACKEND_URL=https://api.homepage.lyjw.llc` 与相同的
 `REVALIDATE_SECRET`；浏览器由这一个源拼 `/ws` 和 `/api/musickit/token`。所有上报器的目标为
-这个 Worker 在 ingest 域名上的 `/api/ingest/<来源>`，不经过站点；playstation-reporter 例外，经 Service Binding
-直接调 `PlaystationIngest` 这个 entrypoint（`src/playstation-ingest.ts`），只能写 `playstation`，并通过 `count()` / `playingNow()` 读取连接数与主机电源，不带凭据；按人数调频的（如 agents-reporter）同时读取此源 `/count` 的 `connections` 与 `ONLINE_COUNTER_URL/count` 的 `online`，server-reporter 固定每分钟推一次。实例清单见 [端点核验记录](../../docs/reporter-endpoints.md)。
+这个 Worker 在 ingest 域名上的 `/api/ingest/<来源>`，不经过站点；PlayStation 例外，由采集 Worker（`workers/collector`）
+经 Service Binding 调具名 entrypoint `StateCore`（`src/state-core.ts`，契约 `shared/state-core.ts`）的 `ingest("playstation", raw)`，
+并通过 `connections()` / `playstationPower()` 读取连接数与主机电源，不带凭据（`src/playstation-ingest.ts` 的旧入口只留到原
+playstation-reporter 脚本退场）；按人数调频的（如 agents-reporter）同时读取此源 `/count` 的 `connections` 与 `ONLINE_COUNTER_URL/count` 的 `online`，server-reporter 固定每分钟推一次。实例清单见 [端点核验记录](../../docs/reporter-endpoints.md)。
 
 提交并推送 main，由 Cloudflare Workers Builds 原生 Git 集成自动部署。
 `shared/`、共用 `src/lib/`、根依赖及路径配置变化也触发 api 部署。
@@ -328,8 +331,19 @@ pnpm dev:worker:init                # 只需一次，初始化空的 StateHub
 pnpm dev:local                      # 站点指向本地 Worker
 ```
 
+`pnpm dev:worker` 是一个 `wrangler dev` 进程、三份配置：`workers/dev-router/wrangler.toml`（第一个，拿端口）、
+本目录的 `wrangler.test.toml` 和 `workers/collector/wrangler.test.toml`。多配置下只有第一个 Worker 有端口，
+dev-router 按路径分发：`/__dev/collector/*` 给采集 Worker 的调试入口（见它的 README），
+`/api/ingest/*`、`/api/internal/*` 以及其余一切（含 `/ws`）给 api。三个 Worker 共用 `--persist-to`，
+`LAG`、`CREDENTIALS` 两个本地 KV 用同一个 id，一边写的另一边读得到；Service Binding 按生产名字
+（`api`、`collector`）互相找到，所以本地 api 的名字也是 `api`。
+`curl localhost:8788/cdn-cgi/local/scheduled` 触发的是 dev-router 的 `scheduled`，它让采集 Worker 跑这一分钟到期的任务；
+api 自己的分钟 cron 本地触发不到（Service Binding 调不了别的 Worker 的 `scheduled`），它本地要做的读模型发布、
+D1 归档、Jev 打分本来也被隔离开关关着。
+
 本地用 `wrangler.test.toml`：生产配置里的 `deleted_classes` 迁移在空环境下起不来，测试配置有从头开始的迁移链，且没有生产域名和 cron。
-状态持久化在 `.wrangler/dev-state`，重装或想清库就删它，再跑一次 init。
+状态持久化在 `.wrangler/dev-state`（`DEV_WORKER_STATE` 可以另指一个目录），重装或想清库就删它，再跑一次 init。
+本地 api 从 `ingest-do-test` 改名为 `api` 之后，Durable Object 的本地目录跟着换了名字，旧库不再被读到：再跑一次 init。
 
 本地是空库。`.dev.vars` 里的 `UPSTREAM_API_URL` 让 `publicResponse` 生产为主、本地补缺：生产 `ok:true` 的快照字段和端点用生产的，
 生产没有的（新加的端点、新字段）或生产也 `ok:false` 的才用本地的（只读、不上报）。生产的 wrangler.toml 不配它。
@@ -363,7 +377,8 @@ SQLite 初始化、迁移与权限见 [后端架构](../../docs/state-storage.md
 ## Workers 统计卡片
 
 `GET /api/status/cloudflare-workers` 给站点卡片的 Workers 统计。
-只查询本仓库的 `api`、`online-counter`、`playstation-reporter`，不公开账号内其他 Worker。
+只查询本仓库的 `api`、`ingress`、`collector`、`online-counter`（名单在 `src/lib/cloudflare-workers-types.ts`，
+GraphQL 的 `scriptName_in` 跟着它），不公开账号内其他 Worker；还没部署的脚本那一格为空。
 API Worker 使用 `CLOUDFLARE_METRICS_TOKEN`（只读 Secret：账号分析、Workers 脚本与构建读取）和
 `wrangler.toml` `[vars]` 里的 `CLOUDFLARE_ACCOUNT_ID`；令牌本地放在忽略提交的 `.dev.vars`，
 生产发布前为 `api` 配置同名 Secret。Vercel 不需要令牌。
@@ -453,7 +468,7 @@ Worker 侧 storage 写失败是冒泡的，先写 `:history` 再清 `:pending` �
 | --- | --- | --- |
 | `uptime` | 在线探测（每分钟 HEAD `https://lyjw.me/api/version`） | 此刻状态、24 小时与 30 天可用率、每天一格。探测缺席（Sentry 自己没跑成）不算宕机 |
 | `heartbeat` | 分钟 cron 的心跳监控 `api-minute-cron`，只算 production | 同上的形状。cron 每分钟跑，心跳只在整 5 分钟那一轮报到（`src/cron-heartbeat.ts`）；漏报、超时、报错都算失败 |
-| `errors` | 两个项目 production 环境的报错 | 12 小时与 7 天的事件数、未解决 issue 数 |
+| `errors` | production 环境的报错：`site` 是站点项目，`worker` 是 api 与采集 Worker（`collector-worker`）两个项目合计 | 12 小时与 7 天的事件数、未解决 issue 数 |
 | `vitals` | 站点项目 production 的 pageload / 交互 span | 7 天 p75 的 LCP、INP、CLS、FCP、TTFB 与样本数，站点按 Lighthouse 曲线算出 Users 那行的分 |
 
 只放计数、比率和时刻，不放 issue 标题、报错内容和调用栈。各块并行、各自降级，全挂才算这一轮失败；

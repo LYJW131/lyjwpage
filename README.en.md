@@ -211,7 +211,7 @@ Data in Sentry also comes back to the page: using a read-only token, the `api` W
 | How push and polling update the same client state | [`src/hooks/use-live-events.ts`](./src/hooks/use-live-events.ts) · [`src/hooks/use-status.ts`](./src/hooks/use-status.ts) · [`src/lib/status-reads.ts`](./src/lib/status-reads.ts) |
 | How the web player and lyrics work | [`src/hooks/use-web-player.ts`](./src/hooks/use-web-player.ts) · [`src/hooks/use-lyrics.ts`](./src/hooks/use-lyrics.ts) |
 | How ingest, state storage and the public API are organized | [`workers/api/`](./workers/api/) |
-| How each device and service is connected | [`reporters/`](./reporters/) · [`workers/playstation-reporter/`](./workers/playstation-reporter/) |
+| How each device and service is connected | [`reporters/`](./reporters/) · [`workers/collector/`](./workers/collector/) |
 | How online visitors are counted | [`workers/online-counter/`](./workers/online-counter/) · [`src/hooks/use-online-count.ts`](./src/hooks/use-online-count.ts) |
 
 The Mac collector [MacTelemetryHub](https://github.com/LYJW131/MacTelemetryHub) is maintained separately and included as a Git submodule at `reporters/mac-telemetry-hub/`.

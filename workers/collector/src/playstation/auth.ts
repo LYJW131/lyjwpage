@@ -7,6 +7,7 @@ import {
 
 import type { Env } from "./env";
 import { pastHalfLife, readAuth, writeAuth, type AuthState } from "./state";
+import { upstream } from "./util";
 
 export class NpssoMissing extends Error {}
 export class NpssoRejected extends Error {}
@@ -64,13 +65,17 @@ function announce(state: AuthState, how: string): void {
 export class AuthSession {
   private current: AuthState | null = null;
   private inflight: Promise<AuthState> | null = null;
+  // 构造参数属性在 node --experimental-strip-types 下是语法错，写成普通字段
+  private readonly env: Env;
 
-  constructor(private readonly env: Env) {}
+  constructor(env: Env) {
+    this.env = env;
+  }
 
   private async exchangeAccessCode(accessCode: string): Promise<AuthState> {
     const issuedAt = Date.now();
     try {
-      return toState(await exchangeAccessCodeForAuthTokens(accessCode), issuedAt);
+      return toState(await upstream("auth", () => exchangeAccessCodeForAuthTokens(accessCode)), issuedAt);
     } catch (error) {
       if (!(error instanceof IncompleteAuthTokens)) throw error;
       throw new NpssoRejected(`access code 换 token 失败：${error.message}\n  · ${NPSSO_ADVICE}`);
@@ -80,7 +85,7 @@ export class AuthSession {
   private async exchangeRefreshToken(refreshToken: string): Promise<AuthState> {
     const issuedAt = Date.now();
     try {
-      return toState(await exchangeRefreshTokenForAuthTokens(refreshToken), issuedAt);
+      return toState(await upstream("auth", () => exchangeRefreshTokenForAuthTokens(refreshToken)), issuedAt);
     } catch (error) {
       if (!(error instanceof IncompleteAuthTokens)) throw error;
       throw new RefreshRejected(`refresh token 被拒：${error.message}`);
@@ -97,7 +102,7 @@ export class AuthSession {
 
     let accessCode: string | null;
     try {
-      accessCode = await exchangeNpssoForAccessCode(npsso);
+      accessCode = await upstream("auth", () => exchangeNpssoForAccessCode(npsso));
     } catch (error) {
       // 只有 psn-api 固定的拒绝文案才退回凭据问题；网络错误原样抛出。
       if (
@@ -114,20 +119,20 @@ export class AuthSession {
 
     const state = await this.exchangeAccessCode(accessCode);
     this.current = state;
-    await writeAuth(this.env.STATE, state);
+    await writeAuth(this.env.COLLECTOR_KV, state);
     announce(state, "用 NPSSO 换到新 token");
     return state;
   }
 
   private async renew(): Promise<AuthState> {
-    this.current ??= await readAuth(this.env.STATE);
+    this.current ??= await readAuth(this.env.COLLECTOR_KV);
     if (this.current) {
       const now = Date.now();
       if (this.current.refreshTokenExpiresAt > now) {
         try {
           const state = await this.exchangeRefreshToken(this.current.refreshToken);
           this.current = state;
-          await writeAuth(this.env.STATE, state);
+          await writeAuth(this.env.COLLECTOR_KV, state);
           announce(state, "续到新 token");
           return state;
         } catch (error) {
@@ -147,7 +152,7 @@ export class AuthSession {
     // 初始必为 null —— 不先读 KV 就会一头扎进 renew()，把一串还很新鲜的
     // refresh token 白白轮换掉；每 15 分钟轮换一次，迟早撞上 KV 最终一致
     // 读到旧串的那一天，被拒后就跌回「要 NPSSO」。
-    if (!force) this.current ??= await readAuth(this.env.STATE);
+    if (!force) this.current ??= await readAuth(this.env.COLLECTOR_KV);
     if (
       !force &&
       this.current &&

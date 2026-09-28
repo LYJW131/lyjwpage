@@ -1,0 +1,49 @@
+# 本地开发用（根目录 `pnpm dev:worker` 以多配置方式和 api、dev-router 一起起）。
+# 名字与生产相同，service binding 才按生产名字互相找到。没有 cron、没有 D1（归档那一步自动跳过），
+# KV 全是本地的：LAG / CREDENTIALS 的 id 和 api 的 wrangler.test.toml 一致，两边读写同一份。
+name = "collector"
+main = "src/index.ts"
+compatibility_date = "2026-09-08"
+compatibility_flags = ["nodejs_compat", "nodejs_compat_populate_process_env"]
+workers_dev = false
+
+[vars]
+STORAGE_PREFIX = "lyjwpage-test"
+PSN_LANGUAGE = "zh-Hans"
+PSN_ACCOUNT_ID = "me"
+PLAYED_GAMES_LIMIT = "100"
+PLAYSTATION_HIDDEN_TITLE_IDS = "PPSA28884_00,PPSA18538_00"
+ONLINE_COUNTER_URL = "https://online.homepage.lyjw.llc"
+APPLE_MUSIC_STOREFRONT = "cn"
+CLOUDFLARE_ACCOUNT_ID = "209f2c881b1c494fec50851c067b3266"
+VERCEL_PROJECT_ID = "prj_r6sFPPmanb9zm3hzYAHAmp3KsIiC"
+VERCEL_TEAM_ID = "team_kfTnkK6X9bbqSbkgAhq7SxCd"
+# 只在本地打开 `POST /__dev/run?job=<名字>`；经 dev-router 的 `/__dev/collector/*` 进来
+DEV_TRIGGERS = "true"
+# 本地的 PS 信封只打进日志，不交给本地 api：要联调上报链路再删掉这一行
+PS_DRY_RUN = "true"
+
+[[services]]
+binding = "CORE"
+service = "api"
+entrypoint = "StateCore"
+
+[[kv_namespaces]]
+binding = "LAG"
+id = "00000000000000000000000000000001"
+
+[[kv_namespaces]]
+binding = "CREDENTIALS"
+id = "00000000000000000000000000000002"
+
+[[kv_namespaces]]
+binding = "COLLECTOR_KV"
+id = "00000000000000000000000000000003"
+
+[alias]
+"@/lib/storage-driver" = "./src/storage-driver.ts"
+"@/lib/apple-developer-token" = "./src/apple-developer-token.ts"
+"@/lib/apple-music-credentials" = "./src/apple-music-credentials.ts"
+
+[observability]
+enabled = true

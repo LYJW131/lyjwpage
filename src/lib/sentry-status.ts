@@ -1,6 +1,7 @@
 import { cached, get, put } from "@/lib/cache";
 import {
   SENTRY_API_ORIGIN,
+  SENTRY_COLLECTOR_PROJECT_ID,
   SENTRY_CRON_MONITOR_SLUG,
   SENTRY_ORG,
   SENTRY_SITE_PROJECT_ID,
@@ -170,7 +171,8 @@ async function fetchHeartbeat(api: SentryGet, now: number): Promise<HealthSeries
   };
 }
 
-async function fetchErrors(api: SentryGet, project: string): Promise<SentryErrorSeries> {
+/** 多个项目时 Sentry 按 `project` 重复参数合起来算，计数就是几个项目之和 */
+async function fetchErrors(api: SentryGet, project: string | string[]): Promise<SentryErrorSeries> {
   const env = { project, environment: "production" };
   const [recent, week, unresolved] = await Promise.all([
     api(`${ORG_PATH}/events/`, { ...env, dataset: "errors", field: "count()", statsPeriod: "12h" }),
@@ -217,7 +219,8 @@ export async function fetchSentryStatus(api: SentryGet, now = Date.now()): Promi
     settle(fetchUptime(api, now)),
     settle(fetchHeartbeat(api, now)),
     settle(fetchErrors(api, SENTRY_SITE_PROJECT_ID)),
-    settle(fetchErrors(api, SENTRY_WORKER_PROJECT_ID)),
+    // 「API」那一行是整个后端：api Worker 和采集 Worker 两个项目合计
+    settle(fetchErrors(api, [SENTRY_WORKER_PROJECT_ID, SENTRY_COLLECTOR_PROJECT_ID])),
     settle(fetchVitals(api)),
   ]);
   if (!uptime && !heartbeat && !site && !worker && !vitals) throw new Error("Sentry 全部查询失败");
@@ -227,6 +230,21 @@ export async function fetchSentryStatus(api: SentryGet, now = Date.now()): Promi
     heartbeat,
     errors: site && worker ? { site, worker } : null,
     vitals,
+  };
+}
+
+/**
+ * 这一轮没取到的块沿用上一份（带着上一份自己的数），取到的用新的。
+ * 采集 Worker 写可滞后层时用：块级降级，而不是整张卡回到上一轮。
+ */
+export function mergeSentryStatus(next: SentryStatusPayload, previous: SentryStatusPayload | null): SentryStatusPayload {
+  if (!previous) return next;
+  return {
+    fetchedAt: next.fetchedAt,
+    uptime: next.uptime ?? previous.uptime,
+    heartbeat: next.heartbeat ?? previous.heartbeat,
+    errors: next.errors ?? previous.errors,
+    vitals: next.vitals ?? previous.vitals,
   };
 }
 

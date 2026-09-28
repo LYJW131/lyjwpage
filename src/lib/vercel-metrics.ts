@@ -84,31 +84,34 @@ export async function fetchVercelFunctions(project: string, team: string, token:
   return parseVercelFunctions(await response.json());
 }
 
+/** 函数调用那一组：滚动 12 小时、按 15 分钟对齐的窗口，带自己的采集时刻 */
+export async function fetchVercelFunctionsGroup(project: string, team: string, token: string, now = Date.now()): Promise<NonNullable<VercelMetricsPayload["functions"]>> {
+  const end = Math.floor(now / FUNCTIONS_TTL_MS) * FUNCTIONS_TTL_MS, start = end - FUNCTIONS_WINDOW_MS;
+  return { ...await fetchVercelFunctions(project, team, token, start, end), fetchedAt: Date.now(), start, end };
+}
+
+/** 访问统计那一组：此前 7 个完整 UTC 日，带自己的采集时刻 */
+export async function fetchVercelAnalyticsGroup(project: string, team: string, token: string, now = Date.now()): Promise<NonNullable<VercelMetricsPayload["analytics"]>> {
+  const end = Math.floor(now / 86_400_000) * 86_400_000, start = end - 7 * 86_400_000;
+  const url = new URL("https://api.vercel.com/v1/query/web-analytics/visits/count");
+  url.search = new URLSearchParams({
+    teamId: team, projectId: project, since: new Date(start).toISOString(), until: new Date(end).toISOString(),
+  }).toString();
+  const response = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", "User-Agent": "lyjwpage-vercel-status" },
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!response.ok) throw new Error(`Vercel 指标查询失败 (${response.status})`);
+  return { ...parseVercelAnalytics(await response.json()), fetchedAt: Date.now() };
+}
+
 /** Worker 独立缓存各指标组；任何一组失效都不影响部署或其他指标。 */
 export async function getVercelMetrics(project: string, team: string, token: string): Promise<VercelMetricsPayload> {
   // v2：v1 时代把失败的 null 按整段 TTL 存过，升键把线上那份直接作废。
   const prefix = `vercel-metrics:v2:${team}:${project}`;
-  const request = async (path: string, params: Record<string, string> = {}, body?: unknown) => {
-    const url = new URL(path);
-    url.search = new URLSearchParams({ teamId: team, ...params }).toString();
-    const response = await fetch(url, { method: body ? "POST" : "GET", body: body ? JSON.stringify(body) : undefined,
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", "User-Agent": "lyjwpage-vercel-status" },
-      signal: AbortSignal.timeout(15_000) });
-    if (!response.ok) throw new Error(`Vercel 指标查询失败 (${response.status})`);
-    return response.json();
-  };
   const [functions, analytics] = await Promise.all([
-    section(`${prefix}:functions`, FUNCTIONS_TTL_MS, async () => {
-      const end = Math.floor(Date.now() / FUNCTIONS_TTL_MS) * FUNCTIONS_TTL_MS, start = end - FUNCTIONS_WINDOW_MS;
-      return { ...await fetchVercelFunctions(project, team, token, start, end), fetchedAt: Date.now(), start, end };
-    }),
-    section(`${prefix}:analytics`, 300_000, async () => {
-      const end = Math.floor(Date.now() / 86_400_000) * 86_400_000, start = end - 7 * 86_400_000;
-      const raw = await request("https://api.vercel.com/v1/query/web-analytics/visits/count", {
-        projectId: project, since: new Date(start).toISOString(), until: new Date(end).toISOString(),
-      });
-      return { ...parseVercelAnalytics(raw), fetchedAt: Date.now() };
-    }),
+    section(`${prefix}:functions`, FUNCTIONS_TTL_MS, () => fetchVercelFunctionsGroup(project, team, token)),
+    section(`${prefix}:analytics`, 300_000, () => fetchVercelAnalyticsGroup(project, team, token)),
   ]);
   return { functions, analytics };
 }

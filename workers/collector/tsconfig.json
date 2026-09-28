@@ -1,0 +1,39 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": [
+      "ESNext"
+    ],
+    "types": [
+      "@cloudflare/workers-types",
+      "node"
+    ],
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/lib/storage-driver": [
+        "./src/storage-driver.ts"
+      ],
+      "@/lib/apple-developer-token": [
+        "./src/apple-developer-token.ts"
+      ],
+      "@/lib/apple-music-credentials": [
+        "./src/apple-music-credentials.ts"
+      ],
+      "@/*": [
+        "../../src/*"
+      ],
+      "@shared/*": [
+        "../../shared/*"
+      ]
+    }
+  },
+  "include": [
+    "src/**/*.ts"
+  ]
+}

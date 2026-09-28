@@ -4,8 +4,6 @@ import type { TrophiesReport, TrophyIndexSnapshot } from "./trophies";
 export const AUTH_KEY = "auth";
 export const PLAYED_GAMES_FINGERPRINT_KEY = "fp:playedGames";
 export const TROPHIES_FINGERPRINT_KEY = "fp:trophies";
-/** 免费版分片游标的残留键。付费后一轮爬完，tick 开头删掉。 */
-export const TROPHY_SYNC_KEY = "trophySync";
 export const TROPHY_CATALOG_KEY = "trophies:last";
 export const PLAYED_GAMES_CACHE_KEY = "cache:playedGames";
 export const LIBRARY_CACHE_KEY = "cache:library";
@@ -19,6 +17,24 @@ export const TICK_META_KEY = "meta:lastTick";
  * 节奏跟着基线走，和从前的 15 分钟一轮一样。
  */
 export const FULL_TICK_KEY = "meta:lastFullTick";
+/**
+ * PSN 上游不可用（Akamai 拒绝页、网关 5xx）之后，到这个时刻之前不再开跑。
+ * 纯数字 epoch 毫秒，和 `meta:lastFullTick` 同一种写法；成功一轮就清成 0。
+ */
+export const BACKOFF_UNTIL_KEY = "meta:backoffUntil";
+/** 连着失败了几轮（不分原因）和最后一次更新的时刻；成功一轮归零 */
+export const FAILURE_STREAK_KEY = "meta:failureStreak";
+
+/** 第一次退避 5 分钟，之后每连败一轮翻倍，封顶 30 分钟（闲档那一轮本来就这么久） */
+export const BACKOFF_BASE_MS = 5 * 60_000;
+export const BACKOFF_MAX_MS = 30 * 60_000;
+
+export function backoffMs(streak: number): number {
+  const exponent = Math.max(0, Math.min(10, streak - 1));
+  return Math.min(BACKOFF_MAX_MS, BACKOFF_BASE_MS * 2 ** exponent);
+}
+
+export type FailureStreak = { streak: number; at: number };
 
 /** 没在玩时游玩列表最多这么旧才去翻。 */
 export const PLAYED_GAMES_IDLE_TTL_MS = 60 * 60_000;
@@ -220,6 +236,27 @@ export async function readFullTickStartedAt(state: KVNamespace): Promise<number>
 
 export async function writeFullTickStartedAt(state: KVNamespace, startedAt: number): Promise<void> {
   await state.put(FULL_TICK_KEY, String(startedAt));
+}
+
+export async function readBackoffUntil(state: KVNamespace): Promise<number> {
+  const value = Number(await state.get(BACKOFF_UNTIL_KEY));
+  return Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+export async function writeBackoffUntil(state: KVNamespace, until: number): Promise<void> {
+  await state.put(BACKOFF_UNTIL_KEY, String(until));
+}
+
+export async function readFailureStreak(state: KVNamespace): Promise<FailureStreak> {
+  const value = await state.get<unknown>(FAILURE_STREAK_KEY, "json").catch(() => null);
+  const row = value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+  const streak = Number(row?.streak);
+  const at = Number(row?.at);
+  return Number.isSafeInteger(streak) && streak >= 0 && Number.isFinite(at) ? { streak, at } : { streak: 0, at: 0 };
+}
+
+export async function writeFailureStreak(state: KVNamespace, value: FailureStreak): Promise<void> {
+  await state.put(FAILURE_STREAK_KEY, JSON.stringify(value));
 }
 
 export function pastHalfLife(issuedAt: number, expiresAt: number, now = Date.now()): boolean {

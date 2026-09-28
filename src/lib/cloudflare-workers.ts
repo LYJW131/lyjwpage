@@ -11,11 +11,12 @@ const WINDOW_MS = 12 * 3_600_000;
 const API = "https://api.cloudflare.com/client/v4";
 
 // 汇总不带 status / 时间维度：直接取整段窗口的 P50，不能平均各小时的 P50。
+// 名单和卡片共用 CLOUDFLARE_WORKERS，只在那一处改。
 export const WORKERS_METRICS_QUERY = `
 query WorkersMetrics($account: string, $start: Time, $end: Time) {
   viewer { accounts(filter: { accountTag: $account }) {
     summary: workersInvocationsAdaptive(limit: 10, filter: {
-      scriptName_in: ["api", "online-counter", "playstation-reporter"],
+      scriptName_in: ${JSON.stringify(CLOUDFLARE_WORKERS.map(({ name }) => name))},
       datetime_geq: $start, datetime_lt: $end
     }) {
       dimensions { scriptName }

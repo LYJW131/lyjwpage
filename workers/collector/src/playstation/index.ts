@@ -1,5 +1,5 @@
-import { verifyAccessJwt } from "../../../shared/access-jwt";
-
+import { archiveTrophies } from "../history";
+import { ok, skipMissing, type Job, type JobResult } from "../job";
 import { AuthSession } from "./auth";
 import {
   onlineCountUrl,
@@ -21,7 +21,7 @@ import {
   type PlayedGamesReport,
   type PresenceReport,
 } from "./psn";
-import { deliver, headCount, readPower, COUNT_TIMEOUT_MS } from "./site";
+import { deliver, headCount, readOnlineCount, readPower } from "./site";
 import {
   LIBRARY_CACHE_KEY,
   LIBRARY_TTL_MS,
@@ -32,16 +32,22 @@ import {
   TICK_META_KEY,
   TROPHIES_FINGERPRINT_KEY,
   TROPHY_CATALOG_KEY,
-  TROPHY_SYNC_KEY,
   asLibraryCache,
   asPlayedGamesCache,
   asTrophyCatalog,
+  backoffMs,
   profileIdentityFresh,
+  readAuth,
+  readBackoffUntil,
+  readFailureStreak,
   readFullTickStartedAt,
+  writeBackoffUntil,
+  writeFailureStreak,
   writeFullTickStartedAt,
   writeLibraryCache,
   writePlayedGamesCache,
   writeTrophyCatalog,
+  type FailureStreak,
   type TickMeta,
   type TrophyCatalog,
 } from "./state";
@@ -64,6 +70,7 @@ import {
   type TrophiesReport,
   type TrophySummary,
 } from "./trophies";
+import { PsnUpstreamUnavailable, isUpstreamUnavailable, upstream } from "./util";
 
 function playedGamesFingerprint(report: PlayedGamesReport): string {
   return JSON.stringify(report.items);
@@ -311,9 +318,9 @@ type Gate = {
  * PSN 持续故障时，重试会从三十分钟一次恶化成每分钟一次。
  */
 async function shouldTick(env: Env): Promise<Gate> {
-  const lastAt = Math.max(await readFullTickStartedAt(env.STATE), lastFullTickAt);
+  const lastAt = Math.max(await readFullTickStartedAt(env.COLLECTOR_KV), lastFullTickAt);
   const sinceMs = lastAt > 0 ? Date.now() - lastAt : Number.POSITIVE_INFINITY;
-  // 攒够闲档就必跑，不必再问人数：闲时节奏不该依赖 API Worker 可不可达
+  // 攒够闲档就必跑，不必再问人数：闲时节奏不该依赖状态核心可不可达
   if (sinceMs >= IDLE_TICK_INTERVAL_MS) {
     return { run: true, sinceMs, online: null, open: null, power: null };
   }
@@ -323,8 +330,8 @@ async function shouldTick(env: Env): Promise<Gate> {
 
   const onlineUrl = onlineCountUrl(env);
   const [online, open, power] = await Promise.all([
-    headCount(onlineUrl ? () => fetch(onlineUrl, { signal: AbortSignal.timeout(COUNT_TIMEOUT_MS) }) : undefined, "online"),
-    headCount(env.API ? () => env.API!.count() : undefined, "connections"),
+    headCount(onlineUrl ? () => readOnlineCount(onlineUrl) : undefined, "online"),
+    headCount(() => env.CORE.connections(), "connections"),
     readPower(env),
   ]);
   const on = power?.on ?? null;
@@ -352,7 +359,8 @@ async function shouldTick(env: Env): Promise<Gate> {
 let inflight: Promise<TickResult> | null = null;
 
 /**
- * 同一 isolate 里只跑一轮：cron 和手动 `/tick` 撞在一起时后来的搭前面那一轮的车。
+ * 同一 isolate 里只跑一轮：上一响的 tick 还没跑完（奖杯重爬能跑过一分钟）、这一响
+ * 又过了门时，后来的搭前面那一轮的车。
  * 收尾时**只有条目还是自己**才把锁放掉，前一轮的收尾不会把后一轮的锁顺手清了。
  */
 function tickOnce(env: Env): Promise<TickResult> {
@@ -385,15 +393,14 @@ async function tick(env: Env): Promise<TickResult> {
       storedPlayedGames,
       storedLibrary,
     ] = await Promise.all([
-      env.STATE.get(PLAYED_GAMES_FINGERPRINT_KEY),
-      env.STATE.get(TROPHIES_FINGERPRINT_KEY),
-      env.STATE.get(TROPHY_CATALOG_KEY, "json"),
-      env.STATE.get(PLAYED_GAMES_CACHE_KEY, "json"),
-      env.STATE.get(LIBRARY_CACHE_KEY, "json"),
-      env.STATE.delete(TROPHY_SYNC_KEY),
+      env.COLLECTOR_KV.get(PLAYED_GAMES_FINGERPRINT_KEY),
+      env.COLLECTOR_KV.get(TROPHIES_FINGERPRINT_KEY),
+      env.COLLECTOR_KV.get(TROPHY_CATALOG_KEY, "json"),
+      env.COLLECTOR_KV.get(PLAYED_GAMES_CACHE_KEY, "json"),
+      env.COLLECTOR_KV.get(LIBRARY_CACHE_KEY, "json"),
       // 门读的就是这一枚。写在打 PSN 之前，所以它记的是「这轮开始过」而不是
       // 「这轮成功过」—— 上游持续故障时的重试节奏才跟基线一致。
-      writeFullTickStartedAt(env.STATE, startedAt),
+      writeFullTickStartedAt(env.COLLECTOR_KV, startedAt),
     ]);
     const oldPlayedGamesFingerprint = storedPlayedGamesFingerprint;
     const oldTrophiesFingerprint = storedTrophiesFingerprint;
@@ -403,9 +410,10 @@ async function tick(env: Env): Promise<TickResult> {
 
     const hidden = hiddenTitleIds(env);
     const auth = new AuthSession(env);
+    // 这三路失败会让整轮失败，各贴一个名字：上游不可用时日志里看得出是哪一路先撞上的
     const [rawPresence, summary] = await Promise.all([
-      fetchPresence(env, auth),
-      fetchTrophySummary(env, auth),
+      upstream("presence", () => fetchPresence(env, auth)),
+      upstream("trophy-summary", () => fetchTrophySummary(env, auth)),
     ]);
     const presence =
       rawPresence.playing && hidden.has(rawPresence.playing.titleId)
@@ -436,12 +444,12 @@ async function tick(env: Env): Promise<TickResult> {
     if (refreshPlayed) {
       extras.push(
         (async () => {
-          const fetched = await fetchPlayedGames(env, auth, playedCap);
+          const fetched = await upstream("played-games", () => fetchPlayedGames(env, auth, playedCap));
           playedGames =
             Number.isFinite(playedCap) && playedCache
               ? mergePlayedGames(playedCache.report, fetched)
               : fetched;
-          await writePlayedGamesCache(env.STATE, { fetchedAt: Date.now(), report: playedGames });
+          await writePlayedGamesCache(env.COLLECTOR_KV, { fetchedAt: Date.now(), report: playedGames });
           console.log(
             JSON.stringify({
               event: "playstation-played-games",
@@ -467,7 +475,7 @@ async function tick(env: Env): Promise<TickResult> {
         (async () => {
           try {
             library = await fetchPurchasedLibrary(env, auth);
-            await writeLibraryCache(env.STATE, { fetchedAt: Date.now(), items: library });
+            await writeLibraryCache(env.COLLECTOR_KV, { fetchedAt: Date.now(), items: library });
             console.log(
               JSON.stringify({
                 event: "playstation-library",
@@ -477,9 +485,9 @@ async function tick(env: Env): Promise<TickResult> {
               }),
             );
           } catch (error) {
-            console.error(
-              JSON.stringify({ event: "playstation-library", error: explain(error) }),
-            );
+            // 购买库只是标预购 / Plus，失败沿用旧缓存；上游不可用单独记一类，别混进报错
+            if (isUpstreamUnavailable(error)) logUpstreamUnavailable("library", error);
+            else console.error(JSON.stringify({ event: "playstation-library", error: explain(error) }));
             if (!libraryCache) library = [];
           }
         })(),
@@ -520,7 +528,7 @@ async function tick(env: Env): Promise<TickResult> {
         ...(playedGamesChanged ? { playedGames: recentPlayedGames } : {}),
       });
       if (playedGamesChanged) {
-        await env.STATE.put(PLAYED_GAMES_FINGERPRINT_KEY, nextPlayedGamesFingerprint);
+        await env.COLLECTOR_KV.put(PLAYED_GAMES_FINGERPRINT_KEY, nextPlayedGamesFingerprint);
       }
     } catch (error) {
       failures.push(`presence 交付失败：${explain(error)}`);
@@ -544,8 +552,10 @@ async function tick(env: Env): Promise<TickResult> {
       if (trophiesChanged && trophies) {
         try {
           await deliver(env, { version: 1, trophies });
-          await env.STATE.put(TROPHIES_FINGERPRINT_KEY, synced.nextFingerprint);
-          if (synced.catalog) await writeTrophyCatalog(env.STATE, synced.catalog);
+          await env.COLLECTOR_KV.put(TROPHIES_FINGERPRINT_KEY, synced.nextFingerprint);
+          if (synced.catalog) await writeTrophyCatalog(env.COLLECTOR_KV, synced.catalog);
+          // 交付成功之后才归档：D1 里只有状态核心真正收下的那份（已去掉屏蔽的游戏），失败只记日志
+          if (env.HISTORY && !isDryRun(env)) await archiveTrophies(env.HISTORY, trophies);
         } catch (error) {
           failures.push(`trophies 交付失败：${explain(error)}`);
           console.error(
@@ -558,9 +568,8 @@ async function tick(env: Env): Promise<TickResult> {
         }
       }
     } catch (error) {
-      console.error(
-        JSON.stringify({ event: "playstation-trophies", error: explain(error) }),
-      );
+      if (isUpstreamUnavailable(error)) logUpstreamUnavailable("trophies", error);
+      else console.error(JSON.stringify({ event: "playstation-trophies", error: explain(error) }));
     }
 
     if (failures.length) throw new Error(failures.join("；"));
@@ -573,7 +582,8 @@ async function tick(env: Env): Promise<TickResult> {
       trophiesChanged,
       dryRun: isDryRun(env),
     };
-    await env.STATE.put(TICK_META_KEY, JSON.stringify(meta));
+    await env.COLLECTOR_KV.put(TICK_META_KEY, JSON.stringify(meta));
+    await recordTickOutcome(env, null);
     console.log(JSON.stringify({ event: "playstation-tick", ...meta }));
     return { meta, presence, playedGames: recentPlayedGames, trophies };
   } catch (error) {
@@ -586,81 +596,126 @@ async function tick(env: Env): Promise<TickResult> {
       dryRun: isDryRun(env),
       error: explain(error),
     };
-    await env.STATE.put(TICK_META_KEY, JSON.stringify(meta));
-    console.error(JSON.stringify({ event: "playstation-tick", ...meta }));
+    await env.COLLECTOR_KV.put(TICK_META_KEY, JSON.stringify(meta));
+    const backoff = await recordTickOutcome(env, error);
+    if (error instanceof PsnUpstreamUnavailable) {
+      logUpstreamUnavailable(error.call, error, backoff);
+    } else {
+      console.error(JSON.stringify({ event: "playstation-tick", ...meta }));
+    }
     throw error;
   }
 }
 
-export default {
-  /**
-   * cron 每分钟一响，真跑哪一响由 `shouldTick` 定：有人正看着 60 秒一轮，页面
-   * 只是开着 2 分钟一轮，一个页面都没开 30 分钟一轮。被挡下的那一响什么都不做。
-   */
-  async scheduled(_controller, env) {
-    const { run, sinceMs, online, open } = await shouldTick(env);
-    console.log(
-      JSON.stringify({
-        event: "playstation-tick-gate",
-        run,
-        online,
-        open,
-        sinceMs: Number.isFinite(sinceMs) ? sinceMs : null,
-      }),
-    );
-    if (!run) return;
-    await tickOnce(env);
-  },
+/**
+ * 连败次数与退避截止时刻，isolate 本地这一份。道理和 `lastFullTickAt` 一样：KV 的读
+ * 有最长 60 秒的边缘缓存，刚写下的退避下一分钟可能还读不到。两份各取较新的那一枚。
+ */
+let localStreak: FailureStreak = { streak: 0, at: 0 };
+let localBackoffUntil = 0;
 
-  /**
-   * 只剩一个手动入口 `GET /tick`：普通一轮，该走缓存走缓存、比指纹、变了才交付。
-   * 不走门，会刷新那枚开始时刻（手动跑完之后下一轮定时的跟着往后顺延）。
-   *
-   * 从前根路径是「全量刷新、忽略所有缓存」，每款奖杯 4 次出网、每款游戏一次对齐，
-   * 贵到必须在前面挡一道 Cloudflare Access —— 而本地 `wrangler dev` 时 Chrome
-   * 拿调试口探一下就能把它点着。2026-09-13 整个删掉：冷启动路径本来就等价，
-   * 真要重来一遍把 KV 清掉就是了。删掉之后这个 Worker 上不再有「贵」的入口。
-   *
-   * 鉴权交给 Cloudflare Access：这个域名的 `/tick` 挂在 Access 应用「playstation-reporter tick」
-   * 后面，浏览器打开会先要邮箱登录。Worker 还得自己验 Access 签的 JWT —— workers.dev
-   * 那条路不过 Access。没配 ACCESS_* 时一律 401，不退化成无鉴权。
-   */
-  async fetch(request, env) {
-    if (request.method !== "GET") {
-      return Response.json({ ok: false, error: "Method Not Allowed" }, { status: 405 });
-    }
-    const path = new URL(request.url).pathname;
-    if (path !== "/tick") {
-      return Response.json({ ok: false, error: "Not Found" }, { status: 404 });
-    }
-    const assertion = request.headers.get("Cf-Access-Jwt-Assertion");
-    const claims = assertion
-      ? await verifyAccessJwt(assertion, { teamDomain: env.ACCESS_TEAM_DOMAIN, audience: env.ACCESS_AUD })
-      : null;
-    if (!claims) {
-      return Response.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-    }
-    try {
-      const { meta, presence, playedGames, trophies } = await tickOnce(env);
-      return Response.json({
-        ...meta,
-        presence,
-        playedGames,
-        trophies: trophies
-          ? {
-              observedAt: trophies.observedAt,
-              level: trophies.profile.level,
-              earned: trophies.profile.earned,
-              titleCount: trophies.titles.length,
-            }
-          : null,
-      });
-    } catch (error) {
-      const meta = await env.STATE.get<TickMeta>(TICK_META_KEY, "json");
-      return Response.json(
-        { ok: false, error: explain(error), lastTick: meta },
-        { status: 502 },
-      );
-    }
-  },
-} satisfies ExportedHandler<Env>;
+async function currentStreak(env: Env): Promise<FailureStreak> {
+  const stored = await readFailureStreak(env.COLLECTOR_KV);
+  return stored.at >= localStreak.at ? stored : localStreak;
+}
+
+/**
+ * 一轮收尾时记账：成功清零连败和退避，失败连败加一；上游不可用再按连败次数退避
+ * （5 分钟起，每连败一轮翻倍，封顶 30 分钟）。只在值真的变了时写 KV。
+ * 返回这次定下的退避时长，没退避是 0。
+ */
+async function recordTickOutcome(env: Env, error: unknown): Promise<number> {
+  const now = Date.now();
+  const previous = await currentStreak(env);
+  if (error == null) {
+    localStreak = { streak: 0, at: now };
+    const stale = Math.max(localBackoffUntil, await readBackoffUntil(env.COLLECTOR_KV));
+    localBackoffUntil = 0;
+    await Promise.all([
+      previous.streak !== 0 ? writeFailureStreak(env.COLLECTOR_KV, localStreak) : null,
+      stale !== 0 ? writeBackoffUntil(env.COLLECTOR_KV, 0) : null,
+    ]);
+    return 0;
+  }
+  localStreak = { streak: previous.streak + 1, at: now };
+  let wait = 0;
+  if (error instanceof PsnUpstreamUnavailable) {
+    wait = backoffMs(localStreak.streak);
+    localBackoffUntil = now + wait;
+  }
+  await Promise.all([
+    writeFailureStreak(env.COLLECTOR_KV, localStreak),
+    wait ? writeBackoffUntil(env.COLLECTOR_KV, localBackoffUntil) : null,
+  ]);
+  return wait;
+}
+
+function logUpstreamUnavailable(call: string, error: unknown, backoffMs?: number): void {
+  console.warn(JSON.stringify({
+    event: "playstation-upstream-unavailable",
+    call,
+    error: explain(error).slice(0, 300),
+    ...(backoffMs ? { backoffMs } : {}),
+  }));
+}
+
+/**
+ * 跳过的这一响要不要让 Sentry 监控报 error：连着失败两轮以上才算。单次抖动之后的
+ * 等待（闲档半小时、退避几分钟）照常报 ok；持续断流时每次报到都是 error，
+ * 监控连续两次 error 开 issue。真跑了的那一响失败了就直接报 error。
+ */
+function failingSince(streak: FailureStreak): Pick<JobResult, "failing"> {
+  return streak.streak >= 2 ? { failing: `PSN 已连续 ${streak.streak} 轮失败` } : {};
+}
+
+/**
+ * cron 每分钟一响，真跑哪一响由退避和 `shouldTick` 定：有人正看着 60 秒一轮，
+ * 页面只是开着 2 分钟一轮，一个页面都没开 30 分钟一轮。被挡下的那一响什么都不做。
+ * 手动触发（RPC、本地调试）也走同一道门：PSN 的登录每续一次就轮换 refresh token，
+ * 不给任何入口开「不看门」的口子。
+ */
+export async function runPlaystation(env: Env): Promise<JobResult> {
+  // 没有 NPSSO，KV 里也没有登录：本地开发和从没登录过的环境，干净地跳过
+  if (!env.PSN_NPSSO?.trim() && !(await readAuth(env.COLLECTOR_KV))) {
+    return skipMissing("playstation", ["PSN_NPSSO"]);
+  }
+
+  const backoffUntil = Math.max(await readBackoffUntil(env.COLLECTOR_KV), localBackoffUntil);
+  if (Date.now() < backoffUntil) {
+    const until = new Date(backoffUntil).toISOString();
+    console.log(JSON.stringify({ event: "playstation-backoff", until }));
+    return { status: "skipped", detail: `backoff until ${until}`, ...failingSince(await currentStreak(env)) };
+  }
+
+  const { run, sinceMs, online, open } = await shouldTick(env);
+  console.log(
+    JSON.stringify({
+      event: "playstation-tick-gate",
+      run,
+      online,
+      open,
+      sinceMs: Number.isFinite(sinceMs) ? sinceMs : null,
+    }),
+  );
+  if (!run) return { status: "skipped", detail: "gate closed", ...failingSince(await currentStreak(env)) };
+
+  const { meta } = await tickOnce(env);
+  return ok(meta.playedGamesChanged || meta.trophiesChanged ? "changed" : undefined);
+}
+
+export const playstationJob: Job = {
+  name: "playstation",
+  everyMinutes: 1,
+  offset: 0,
+  // 奖杯整份重爬（清过 KV、换了账号）能跑好几分钟
+  maxRuntimeMinutes: 10,
+  run: ({ env }) => runPlaystation(env),
+};
+
+/** 测试之间把 isolate 本地的门、退避和连败清掉 */
+export function resetPlaystationForTests(): void {
+  lastFullTickAt = 0;
+  inflight = null;
+  localStreak = { streak: 0, at: 0 };
+  localBackoffUntil = 0;
+}
