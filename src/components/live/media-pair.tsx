@@ -9,6 +9,7 @@ import { ListeningCard } from "@/components/live/listening-card";
 import { PowerBankCard } from "@/components/live/powerbank-card";
 import type { LyricsFallback } from "@/hooks/use-lyrics";
 import type { ArtworkPlaceholders } from "@/lib/artwork-placeholder";
+import { liveChargingFeed } from "@/lib/freshness";
 import { chargerActive as chargerIsActive, powerBankActive as powerBankIsActive } from "@/lib/home-layout";
 import type {
   ChargerPayload,
@@ -78,11 +79,16 @@ export function LiveMediaPair({
   /** 首屏封面的低清占位表，见 lib/artwork-placeholder；只透传给 ListeningCard */
   artworkPlaceholders: ArtworkPlaceholders;
 }) {
+  /**
+   * 首帧的排版和卡片自己首帧的判断必须是同一个答案，否则挂载时卡片一回报就换一次格。
+   * 卡片过的是 useLiveChargingFeed；首帧没有访客钟，那道判定只剩亲口离线作数，
+   * 这里用同一个纯函数、按钟判的那一半传 false。
+   */
   const [chargerActive, setChargerActive] = useState(
-    chargerFallback.ok && chargerIsActive(chargerFallback.data),
+    chargerFallback.ok && chargerIsActive(liveChargingFeed(chargerFallback.data, false)),
   );
   const [powerBankActive, setPowerBankActive] = useState(
-    powerBankFallback.ok && powerBankIsActive(powerBankFallback.data),
+    powerBankFallback.ok && powerBankIsActive(liveChargingFeed(powerBankFallback.data, false)),
   );
   const [chargerOverride, setChargerOverride] = useState<boolean | null>(null);
   const [powerBankOverride, setPowerBankOverride] = useState<boolean | null>(null);

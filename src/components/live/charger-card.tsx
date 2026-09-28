@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/card";
 import { StatusDot, type DotTone } from "@/components/ui/status-dot";
 import { useLiveEvents } from "@/hooks/use-live-events";
 import { useLocalCharging } from "@/hooks/use-local-charging";
+import { useLiveChargingFeed } from "@/hooks/use-stale";
 import { incrementalFetcher, useStatus } from "@/hooks/use-status";
 import {
   historyCursor,
@@ -79,7 +80,7 @@ export function ChargerCard({
    */
   useLiveEvents();
   const local = useLocalCharging().charger;
-  const { data: remote, error, isLoading } = useStatus<ChargerPayload>(
+  const { data: remote, error, isLoading, isValidating } = useStatus<ChargerPayload>(
     CHARGER_PATH,
     local ? 0 : REFRESH_MS,
     {
@@ -89,7 +90,11 @@ export function ChargerCard({
       revalidateOnFocus: !local,
     },
   );
-  const data = local ?? remote;
+  /**
+   * 源站给的是原样的 connected；Mac 上报器掉线、或充电头太久没续上，由这里拿
+   * 访客钟盖回 connected（lib/freshness 的 liveChargingFeed），下面照旧只读它。
+   */
+  const data = useLiveChargingFeed(local ?? remote, local ? false : isValidating);
   const history = data?.history ?? [];
 
   const connected = Boolean(data?.connected);

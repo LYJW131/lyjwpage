@@ -14,7 +14,9 @@ import { TrophyMetal } from "@/components/trophies/trophy-metal";
 import { StatusDot } from "@/components/ui/status-dot";
 import { useLiveEvents } from "@/hooks/use-live-events";
 import { useMountedAt } from "@/hooks/use-mounted-at";
+import { useConfirmedStale, useStale } from "@/hooks/use-stale";
 import { useStatus } from "@/hooks/use-status";
+import { PLAYSTATION_STALE_MS } from "@/lib/freshness";
 import { stableKeys } from "@/lib/keys";
 import { foldService } from "@/lib/playstation-entitlements";
 import {
@@ -520,8 +522,19 @@ export function PlaystationRow({
   const presence = useStatus<PlaystationPresencePayload>(NOW_PLAYING_PATH, NOW_REFRESH_MS, {
     fallback: nowFallback,
   });
+  /**
+   * 源站原样交出最后那份 presence，断流由这里拿访客钟判，和头像那颗点
+   * （playstation-panel）同一扇窗口。断了就当手上没有 presence：最近在玩的瓷砖
+   * 照旧，只是不再有「正在游玩」那一格 —— 不知道，不是下线。
+   *
+   * 首帧没有钟，照着首屏那份画（和点不一样：点要等挂载，这一格挂载前后换会让整排
+   * 瓷砖重排）；挂载后的过期要等那次回源回来才认，见 useConfirmedStale。
+   */
+  const presenceByClock = useStale(presence.data?.observedAt, PLAYSTATION_STALE_MS);
+  const presenceStale = useConfirmedStale(presenceByClock, presence.isValidating);
+  const livePresence = presenceStale ? undefined : presence.data;
 
-  const tiles = fillLastColumn(buildTiles(list.data, presence.data, titles ?? []));
+  const tiles = fillLastColumn(buildTiles(list.data, livePresence, titles ?? []));
   const mountedAt = useMountedAt();
   const renderedTiles = mountedAt ? tiles : tiles.slice(0, INITIAL_TILE_COUNT);
   const reduced = useReducedMotion();

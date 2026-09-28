@@ -1,12 +1,7 @@
 import { AwaitingReport } from "@/lib/awaiting-report";
 import { CHARGER_STALE_MS, heartbeatWindowMs } from "@/lib/freshness";
 import { getStored, lastPushReceivedAt } from "@/lib/powerbank-store";
-import {
-  offlineByLiveness,
-  readLiveness,
-  withPresence,
-  type Liveness,
-} from "@/lib/reporter-liveness";
+import { readLiveness, withPresence, type Liveness } from "@/lib/reporter-liveness";
 import type { PowerBankPayload, PowerBankStatus } from "@/lib/types";
 
 /**
@@ -29,23 +24,13 @@ import type { PowerBankPayload, PowerBankStatus } from "@/lib/types";
  * 才被写（见 lib/powerbank-store 的 prepareStatus），activeModules 里也没有它。
  * 也就是说 BLE 短暂丢了、只开充电头模块的那些时段，续的人一个都没有。
  * 补一条充电宝心跳、还是明确决定「就按这个窗口判断断流」，是另一件事。
+ *
+ * 和充电头一样，源站只给原样的 connected 和时刻，断流由浏览器判
+ * （lib/freshness 的 liveChargingFeed）。
  */
 export function powerBankStaleAfterMs() {
   const interval = Number(process.env.CHARGER_PUSH_INTERVAL_MS) || 30_000;
   return Math.max(CHARGER_STALE_MS, interval * 3, heartbeatWindowMs());
-}
-
-/**
- * 和充电头同一套收卡口径：上报器离线，或者太久没推，就把 connected 打成 false。
- * 卡片只看这个字段，不在浏览器再算一遍过期。
- */
-export function withPowerBankFreshness(
-  payload: PowerBankPayload,
-  now = Date.now(),
-): PowerBankPayload {
-  const stale =
-    offlineByLiveness(payload, now) || now - payload.pushedAt > payload.staleAfterMs;
-  return { ...payload, connected: stale ? false : payload.connected };
 }
 
 /**
@@ -64,11 +49,9 @@ export function powerBankPushPayload({
   receivedAt: number;
   liveness: Liveness;
 }): PowerBankPayload {
-  return withPowerBankFreshness(
-    withPresence(
-      { ...status, pushedAt: receivedAt, staleAfterMs: powerBankStaleAfterMs() },
-      liveness,
-    ) as PowerBankPayload,
+  return withPresence(
+    { ...status, pushedAt: receivedAt, staleAfterMs: powerBankStaleAfterMs() },
+    liveness,
   );
 }
 
@@ -79,10 +62,5 @@ export async function getPowerBankSnapshot(): Promise<PowerBankPayload> {
 
   const [pushedAt, live] = await Promise.all([lastPushReceivedAt(), readLiveness()]);
 
-  return withPowerBankFreshness(
-    withPresence(
-      { ...stored.status, pushedAt, staleAfterMs: powerBankStaleAfterMs() } as PowerBankPayload,
-      live,
-    ),
-  );
+  return withPresence({ ...stored.status, pushedAt, staleAfterMs: powerBankStaleAfterMs() }, live);
 }

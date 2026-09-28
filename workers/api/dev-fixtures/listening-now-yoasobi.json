@@ -21,6 +21,10 @@
     "songId": "1490256995",
     "upcomingSongIds": [],
     "hasLyrics": true,
-    "expiresInMs": null
+    "expiresInMs": null,
+    "alternate": null,
+    "lastSeenAt": "$now",
+    "declaredOffline": false,
+    "heartbeatWindowMs": 3600000
   }
 }

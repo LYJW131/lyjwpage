@@ -2,12 +2,7 @@ import { AwaitingReport } from "@/lib/awaiting-report";
 import { getStored, lastPushReceivedAt } from "@/lib/charger-store";
 import { CHARGER_STALE_MS, heartbeatWindowMs } from "@/lib/freshness";
 import { publicAssetPath } from "@/lib/asset-url";
-import {
-  offlineByLiveness,
-  readLiveness,
-  withPresence,
-  type Liveness,
-} from "@/lib/reporter-liveness";
+import { readLiveness, withPresence, type Liveness } from "@/lib/reporter-liveness";
 import type { ChargerPayload, ChargerStatus } from "@/lib/types";
 
 /**
@@ -29,30 +24,14 @@ import type { ChargerPayload, ChargerStatus } from "@/lib/types";
  * 心跳从 30 秒放宽到 90 秒之前这一条不成立也无所谓 —— 30 秒续一次、窗口 90 秒，
  * `pushedAt` 这个判据在 Mac 活着时永远踩不到。放宽之后两者一样长，心跳但凡晚
  * 一点点就越界，卡片会在安静时段闪回「充电器未连接」。上报器整个死掉那种情况
- * 本来就由上面的 offlineByLiveness 管，不靠这一条。
+ * 本来就由 Mac 存活（lastSeenAt / heartbeatWindowMs）管，不靠这一条。
+ *
+ * 两扇窗口都由浏览器拿自己的钟判（lib/freshness 的 liveChargingFeed），源站只给
+ * 原样的 connected 和时刻，不在读取时把 connected 打成 false。
  */
 export function chargerStaleAfterMs() {
   const interval = Number(process.env.CHARGER_PUSH_INTERVAL_MS) || 30_000;
   return Math.max(CHARGER_STALE_MS, interval * 3, heartbeatWindowMs());
-}
-
-/**
- * 和 main 同一套收卡口径：上报器离线或充电头自己太久没推，就把 connected
- * 打成 false。卡片只看这个字段，不在浏览器再算一遍过期。
- *
- * 快照里留 SQLite 原样的 connected；过期是时间函数，在取数出口现盖
- * （getChargerSnapshot、推送），不要写进存储。
- */
-export function withChargerFreshness(
-  payload: ChargerPayload,
-  now = Date.now(),
-): ChargerPayload {
-  const stale =
-    offlineByLiveness(payload, now) || now - payload.pushedAt > payload.staleAfterMs;
-  return {
-    ...payload,
-    connected: stale ? false : payload.connected,
-  };
 }
 
 /** 对象键入库，同源路径到取数出口才拼。 */
@@ -70,7 +49,7 @@ function withCoverIconUrl<T extends { cover: ChargerStatus["cover"] }>(payload: 
  * 曲线有 400 个点、约 15KB，而前端 30 秒取一次、每次实际只多出一两个点 ——
  * 整份重传的话 99% 是重复数据。
  *
- * 取数出口现盖 connected：过期收卡见 withChargerFreshness。
+ * connected 是 SQLite 里原样的那份；过期收卡由浏览器判，见 chargerStaleAfterMs。
  */
 export async function getChargerSnapshot(): Promise<ChargerPayload> {
   const stored = await getStored();
@@ -79,17 +58,15 @@ export async function getChargerSnapshot(): Promise<ChargerPayload> {
 
   const [pushedAt, live] = await Promise.all([lastPushReceivedAt(), readLiveness()]);
 
-  return withChargerFreshness(
-    withPresence(
-      withCoverIconUrl({
-        ...stored.status,
-        history: stored.history,
-        historyPartial: false,
-        pushedAt,
-        staleAfterMs: chargerStaleAfterMs(),
-      }),
-      live,
-    ),
+  return withPresence(
+    withCoverIconUrl({
+      ...stored.status,
+      history: stored.history,
+      historyPartial: false,
+      pushedAt,
+      staleAfterMs: chargerStaleAfterMs(),
+    }),
+    live,
   );
 }
 
@@ -133,16 +110,14 @@ export function chargerPushPayload({
   historyCount: number;
   liveness: Liveness;
 }): ChargerPayload {
-  return withChargerFreshness(
-    withPresence(
-      withCoverIconUrl({
-        ...status,
-        history: [],
-        historyPartial: historyCount > 0,
-        pushedAt: receivedAt,
-        staleAfterMs: chargerStaleAfterMs(),
-      }),
-      liveness,
-    ),
+  return withPresence(
+    withCoverIconUrl({
+      ...status,
+      history: [],
+      historyPartial: historyCount > 0,
+      pushedAt: receivedAt,
+      staleAfterMs: chargerStaleAfterMs(),
+    }),
+    liveness,
   );
 }

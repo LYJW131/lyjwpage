@@ -15,6 +15,7 @@ import {
   CHARGER_PATH,
   DESKTOP_PATH,
   NOW_LISTENING_PATH,
+  POWERBANK_PATH,
   TROPHIES_PATH,
   VIBECODING_PATH,
 } from "@/lib/paths";
@@ -88,7 +89,9 @@ const FORWARDS: ReadonlyArray<{
 /**
  * 上报器上下线时要重取的键。
  *
- * 只有 Mac 上报器供数、并且还在轮询的那几张卡在列。时区只吃首屏，不在这里重取。Emby 正在看不在其中 —— 那条的数据来自 Emby 的 webhook
+ * 只有 Mac 上报器供数、并且还在轮询的那几张卡在列。充电头和充电宝的「还连着没有」
+ * 由浏览器拿各自 payload 里的 declaredOffline 判，所以两张都得换到新的那份。
+ * 时区只吃首屏，不在这里重取。Emby 正在看不在其中 —— 那条的数据来自 Emby 的 webhook
  * 和 NAS 上的推送代理，和 Mac 上报器无关，Mac 睡了不影响你在 Emby 上看什么，
  * 跟着重取纯属白跑一趟。
  *
@@ -101,6 +104,7 @@ const PRESENCE_PATHS = [
   DESKTOP_PATH,
   NOW_LISTENING_PATH,
   CHARGER_PATH,
+  POWERBANK_PATH,
   VIBECODING_PATH,
 ];
 

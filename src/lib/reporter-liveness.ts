@@ -30,10 +30,11 @@ export function nextLiveness(
 }
 
 /**
- * 拿在手上的那份存活算不算离线。取数路径上已经读过就用这个，别再问一次 SQLite。
+ * 拿在手上的那份存活算不算离线。只剩「正在听」选来源（pickNowListening，
+ * 取数、推送、pulse 共用）还要在源站判它；卡片上的在线状态一律由浏览器判。
  *
  * `now` 收调用方那把钟：同一次判定里往往还有别的按时间算的东西（暂停宽限、
- * HomePod 静默、充电头断流），它们都拿着同一个 `now`，这里再自己读一次
+ * HomePod 静默），它们都拿着同一个 `now`，这里再自己读一次
  * Date.now() 的话，同一个判定里就有了两把钟 —— 生产上差几微秒无所谓，
  * 但那些函数的 `now` 形参也就只是半真的，想给它们写单测立刻踩到。
  */
@@ -46,9 +47,8 @@ export function offlineByLiveness(liveness: Liveness, now = Date.now()) {
 /**
  * 把源站刚读到的存活盖进快照。
  *
- * 除了三个原始字段，还盖一次源站此刻的结论（offlineAtSource）—— 首帧浏览器
- * 没有钟，判不出来，理由见 ReporterPresence 的注释。因为是「现在几点」的函数，
- * 只能盖在取数出口（首页填缓存、API overlay），不能写进 SQLite 里那份快照。
+ * 只盖三个原始事实，不盖「此刻在不在线」的结论：那是时间的函数，盖进去就会跟着
+ * 首屏缓存冻住。浏览器拿这三项和自己的钟判，见 ReporterPresence 的注释。
  */
 export function withPresence<T extends object>(data: T, live: Liveness): T & ReporterPresence {
   return {
@@ -56,7 +56,6 @@ export function withPresence<T extends object>(data: T, live: Liveness): T & Rep
     lastSeenAt: live.lastSeenAt,
     declaredOffline: live.declaredOffline,
     heartbeatWindowMs: heartbeatWindowMs(),
-    offlineAtSource: offlineByLiveness(live),
   };
 }
 export { type Liveness } from "@shared/reporter-liveness";

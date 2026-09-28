@@ -1,3 +1,5 @@
+import type { NowListeningPayload } from "@/lib/types";
+
 /**
  * 状态新鲜度：源站只盖时间戳，stale 由浏览器用自己的钟现算。
  *
@@ -67,18 +69,13 @@ export const AGENT_LIMITS_STALE_MS = 185 * 60_000;
  * 旧一个刷新周期。3 × 30 = 90，留到 95。上报器那侧改**闲时**那档间隔
  * （`IDLE_TICK_INTERVAL_MS`）时这里要跟着改，改 cron 本身不用动这里。
  *
- * 服务端可用 PLAYSTATION_STALE_MS 改。这一路没有 declaredOffline 可用 ——
+ * 只有浏览器判它（源站原样交出最后那份 presence，见 lib/playstation），所以没有
+ * 服务端环境变量可调 —— 从前那个 PLAYSTATION_STALE_MS 变量只管源站那道判定，
+ * 浏览器本来就读不到。要改窗口就改这个常量。这一路没有 declaredOffline 可用 ——
  * Worker 悄悄死掉和主机关机长得一模一样，只能靠这个窗口分开，而分不开的那半
  * （到底在不在玩）就该老实说不知道，不是说不在线。
  */
 export const PLAYSTATION_STALE_MS = 95 * 60_000;
-
-export function playstationStaleMs() {
-  const configured = Number(process.env.PLAYSTATION_STALE_MS);
-  return Number.isFinite(configured) && configured > 0
-    ? configured
-    : PLAYSTATION_STALE_MS;
-}
 
 /**
  * 服务器上报器固定每分钟一推（`reporters/server-reporter` 的 `INTERVAL_MS`），
@@ -156,4 +153,72 @@ export function isStale({ now, at, windowMs, declaredOffline = false }: Freshnes
   if (at == null) return false;
   if (at <= 0) return true;
   return now - at > windowMs;
+}
+
+/**
+ * 充电头 / 充电宝那一路判活要用的字段：Mac 上报器的存活，加上这一路自己多久没续上。
+ *
+ * 类型只取 ReporterPresence 那三项，不 import 存活模块 —— 那边连着存储，客户端组件
+ * 引不得。
+ */
+export type ChargingFeed = {
+  connected: boolean;
+  /** 源站最近一次收到这一路（或替它续上的心跳）的时刻 */
+  pushedAt: number;
+  staleAfterMs: number;
+  lastSeenAt: number;
+  declaredOffline: boolean;
+  heartbeatWindowMs: number;
+};
+
+/**
+ * 按访客钟，这一路的读数是不是已经断了：Mac 上报器心跳窗口过了，或这一路自己
+ * 太久没续上。**不含亲口离线** —— 那不是时间函数，由 liveChargingFeed 直接认。
+ *
+ * 分开是因为两者能用的时机不同：按钟判出来的过期在挂载后那一次回源回来之前
+ * 不作数（首屏 HTML 可能冻了好几分钟），亲口离线首帧就作数。
+ */
+export function chargingFeedClockStale(feed: ChargingFeed, now: number): boolean {
+  return (
+    isStale({ now, at: feed.lastSeenAt, windowMs: feed.heartbeatWindowMs }) ||
+    isStale({ now, at: feed.pushedAt, windowMs: feed.staleAfterMs })
+  );
+}
+
+/**
+ * 把判活结果盖回 `connected`：上报器亲口离线、或按钟已经断流，就当没连着。
+ *
+ * 从前这一步在源站取数出口做，结论跟着首屏缓存冻住；现在源站只给原样的
+ * `connected` 和几个时刻，卡片和 media-pair 的排版都过这一道，谁也不各算各的。
+ * `clockStale` 由调用方给（hooks/use-stale 的 useLiveChargingFeed 按访客钟算、
+ * 并挡掉回源途中那段）；首帧没有钟，传 false。
+ */
+export function liveChargingFeed<T extends ChargingFeed>(feed: T, clockStale: boolean): T {
+  const connected = feed.connected && !feed.declaredOffline && !clockStale;
+  return connected === feed.connected ? feed : { ...feed, connected };
+}
+
+/**
+ * 「正在听」：选中的是 Mac 那首、而 Mac 已经掉线时，换成 `alternate`（HomePod 还在放
+ * 的那首），没有就当没在放。选中的是 HomePod 时原样返回 —— HomePod 不看 Mac 的存活。
+ *
+ * `macOffline` 由调用方按 payload 里的 Mac 存活判（hooks/use-stale 的
+ * useLiveNowListening）。源站选的那一次只在取数那一刻成立，见 pickNowListening。
+ */
+export function liveNowListening(payload: NowListeningPayload, macOffline: boolean): NowListeningPayload {
+  if (!macOffline || payload.music?.source !== "apple-music") return payload;
+  const next = payload.alternate;
+  return {
+    ...payload,
+    music: next?.music ?? null,
+    idle: !next,
+    id: next?.id ?? null,
+    link: next?.link ?? null,
+    songId: next?.songId ?? null,
+    upcomingSongIds: next?.upcomingSongIds ?? [],
+    hasLyrics: next?.hasLyrics ?? false,
+    // 到期的是 Mac 那首的暂停宽限；接班的只收在放的，没有宽限可等
+    expiresInMs: null,
+    alternate: null,
+  };
 }

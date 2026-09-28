@@ -18,7 +18,13 @@ import type { ChargerStatus, LocalNowPlaying, PowerBankStatus, VibeCodingPayload
  */
 export const CHARGING_IDLE_MAX_W = 1;
 
-/** 充电头这一格亮不亮（media-pair 按它排版） */
+/**
+ * 充电头这一格亮不亮（media-pair 按它排版）。
+ *
+ * 只看传进来的 connected：Worker 入库时拿原样的状态比布局有没有变；浏览器那侧
+ * 传进来的是先过了 liveChargingFeed（lib/freshness）的那份，掉线 / 断流已经盖成
+ * connected: false。
+ */
 export function chargerActive(status: Pick<ChargerStatus, "connected" | "totalPower"> | null | undefined): boolean {
   return Boolean(status?.connected && status.totalPower > CHARGING_IDLE_MAX_W);
 }
@@ -26,6 +32,7 @@ export function chargerActive(status: Pick<ChargerStatus, "connected" | "totalPo
 /**
  * 充电宝这一格亮不亮：在收或在放。大部分时间它插着但不收不放，那种状态不占格子。
  * 进电看固件的 `charging` 而不是输入功率 —— 涓流时功率压在阈值下，灯却是亮的。
+ * connected 的口径同上面的 chargerActive。
  */
 export function powerBankActive(
   status: Pick<PowerBankStatus, "connected" | "charging" | "outputPower"> | null | undefined,
