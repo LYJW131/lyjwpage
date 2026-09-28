@@ -844,9 +844,15 @@ export type GithubRepoPayload = {
  * `updatedAt` 不是那种时间戳：它只出现在可滞后层（见 lib/status-views 的 layer），
  * 是写入方最后一次成功取到这份数据的时刻，随写入方的节奏变，不随每次请求变。
  * 浏览器拿它按各卡的阈值判断这份是不是已经过时，以及首屏那份要不要挂载后补取。
+ *
+ * `servedAt` 是那种时间戳，但只为首帧：源站交出这份信封的时刻（epoch 毫秒，
+ * statusEnvelope 盖）。首屏按卡缓存时它跟着冻住，首帧没有访客钟，按时间判过期
+ * 的卡片拿它当钟 —— 服务端预渲染和 hydrate 读的是同一个值，判出来的就是填缓存
+ * 那一刻源站会下的结论。浏览器轮询取回的信封在进 SWR 之前摘掉它（lib/status-reads
+ * 的 withoutServedAt），上面那个重渲染的坑不会回来。
  */
 export type StatusResponse<T> =
-  | { ok: true; data: T; updatedAt?: number }
+  | { ok: true; data: T; updatedAt?: number; servedAt?: number }
   | { ok: false; error: string };
 
 /** 上报被拒。不带 data，且与 T 无关 —— 各 ingest 端点共用同一种失败形状 */

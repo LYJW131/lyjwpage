@@ -46,6 +46,14 @@ function isEnvelope(value: unknown): value is Envelope {
   return typeof value === "object" && value !== null && typeof (value as { ok?: unknown }).ok === "boolean";
 }
 
+/**
+ * 注入的夹具、上游兜底回来的旧版信封可能没有 servedAt：按此刻补一个，和本地
+ * statusEnvelope 出的信封一样带着首帧的钟（见 lib/types 的 StatusResponse）。
+ */
+function withServedAt(envelope: Envelope): Envelope {
+  return envelope.ok && typeof envelope.servedAt !== "number" ? { ...envelope, servedAt: Date.now() } : envelope;
+}
+
 async function fetchUpstreamJson(base: string, pathWithSearch: string): Promise<unknown> {
   try {
     const response = await fetch(`${base}${pathWithSearch}`, {
@@ -66,7 +74,7 @@ async function overlayResponse(local: Response, load: () => Promise<unknown>): P
   if (!isEnvelope(body)) return local;
   const theirs = await load();
   if (!isEnvelope(theirs) || !theirs.ok) return local;
-  return Response.json(theirs, { status: 200, headers: local.headers });
+  return Response.json(withServedAt(theirs), { status: 200, headers: local.headers });
 }
 
 /**
@@ -198,7 +206,7 @@ export async function publicResponse(request: Request): Promise<Response> {
 
   if (overrides && (await overridesSwitchedOn())) {
     const override = await readOverride(url.pathname);
-    if (override) return Response.json(override, { headers: statusHeaders() });
+    if (override) return Response.json(withServedAt(override), { headers: statusHeaders() });
   }
   const response = await serveStatus(request);
   if (!response) return new Response("Not found", { status: 404 });

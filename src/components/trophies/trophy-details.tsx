@@ -14,7 +14,7 @@ import useSWR, { preload, useSWRConfig } from "swr";
 
 import Image from "@/components/app-image";
 import { TrophyMetal } from "@/components/trophies/trophy-metal";
-import { backendUrl } from "@/lib/backend-url";
+import { fetchStatus } from "@/lib/status-reads";
 import { LIST_TRANSITION, STATIC_TRANSITION } from "@/lib/motion";
 import {
 } from "@/lib/playstation-image";
@@ -100,10 +100,9 @@ function formatEarnedRate(rate: number): string {
   return `${Number.isInteger(tenths) ? String(tenths) : tenths.toFixed(1)}%`;
 }
 
-async function fetchCatalog(path: string): Promise<StatusResponse<TrophiesPayload>> {
-  const response = await fetch(backendUrl(path), { cache: "no-store" });
-  if (!response.ok) throw new Error(`Request ${path} failed: ${response.status}`);
-  return response.json();
+/** 和各卡同一条取数：信封上的 servedAt 在进 SWR 之前摘掉，见 lib/status-reads */
+function fetchCatalog(path: string): Promise<StatusResponse<TrophiesPayload>> {
+  return fetchStatus<TrophiesPayload>(path);
 }
 
 /**

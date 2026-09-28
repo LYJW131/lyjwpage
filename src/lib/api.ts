@@ -63,9 +63,13 @@ export async function statusEnvelope<T>(
   return withStorageScope(async () => {
     try {
       const value = await loader();
+      // 出站时刻：首帧的钟（见 lib/types 的 StatusResponse）。取完数再盖，别早于数据
+      const servedAt = Date.now();
       // 可滞后层带上写入方的更新时刻，浏览器据此判断这份过没过时
-      if (value instanceof LagResult) return { ok: true, data: value.data as T, updatedAt: value.updatedAt };
-      return { ok: true, data: value };
+      if (value instanceof LagResult) {
+        return { ok: true, data: value.data as T, updatedAt: value.updatedAt, servedAt };
+      }
+      return { ok: true, data: value, servedAt };
     } catch (error) {
       const message = reason(error);
       if (error instanceof AwaitingReport) {
@@ -84,6 +88,7 @@ export async function statusEnvelope<T>(
 /**
  * 公开状态端点的 JSON 响应：信封进 body，时间戳放响应头。
  * 时间戳不进 body：进了就等于每次响应都不一样，前端再想判断「数据变没变」永远为假。
+ * 唯一的例外是信封上的 servedAt（首帧的钟），浏览器取回后先摘掉再进 SWR。
  */
 export function statusResponse<T>(envelope: StatusResponse<T>): Response {
   return Response.json(envelope, {

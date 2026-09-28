@@ -61,8 +61,19 @@ export function guardPolled<T>(path: string, envelope: StatusResponse<T>): Statu
   return envelope;
 }
 
+/**
+ * 摘掉信封上的 servedAt。它每次响应都不一样，留着的话 SWR 的深比较永远判「变了」，
+ * 数据一个字节没动也会让整张卡每轮轮询重渲染一遍（见 lib/types 的 StatusResponse）。
+ * 浏览器只在首帧用它（首屏那份 fallback 不经过这里），挂载后有自己的钟。
+ */
+export function withoutServedAt<T>(envelope: StatusResponse<T>): StatusResponse<T> {
+  if (!envelope.ok || envelope.servedAt === undefined) return envelope;
+  const { ok, data, updatedAt } = envelope;
+  return updatedAt === undefined ? { ok, data } : { ok, data, updatedAt };
+}
+
 export async function fetchStatus<T>(path: string): Promise<StatusResponse<T>> {
   const response = await fetch(backendUrl(path), { cache: "no-store" });
   if (!response.ok) throw new Error(`Request ${path} failed: ${response.status}`);
-  return response.json();
+  return withoutServedAt<T>(await response.json());
 }

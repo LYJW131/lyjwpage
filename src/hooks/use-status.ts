@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import useSWR, { useSWRConfig } from "swr";
 
-import { fetchStatus, guardPolled } from "@/lib/status-reads";
+import { fetchStatus, guardPolled, withoutServedAt } from "@/lib/status-reads";
 import { layerOfPath } from "@/lib/status-views";
 import type { StatusResponse } from "@/lib/types";
 
@@ -56,6 +56,13 @@ export type StatusState<T> = {
   error: string | undefined;
   isLoading: boolean;
   isValidating: boolean;
+  /**
+   * 首屏那份信封（fallback）的出站时刻：源站交出它的那一刻，跟着首屏缓存一起冻住。
+   * 首帧没有访客钟，按时间判过期的 hook 拿它当钟（见 hooks/use-stale），服务端
+   * 预渲染和 hydrate 读到的是同一个值。之后取回的信封不带它（lib/status-reads 的
+   * fetchStatus 会摘掉），挂载后一律用浏览器自己的钟。
+   */
+  servedAt: number | undefined;
 };
 
 export type StatusOptions<T> = {
@@ -153,9 +160,15 @@ export function useStatus<T>(
     [customFetcher],
   );
 
+  /**
+   * 首屏那份的 servedAt 只给首帧的钟用（返回值里单独给），不进 SWR：留着的话挂载
+   * 校验取回的那份永远和它深比较不等，每张实时卡挂载时都白白重渲染一次。
+   */
+  const fallbackData = useMemo(() => withoutServedAt(fallback), [fallback]);
+
   const lag = layerOfPath(path) === "lag";
   const { data, error, isLoading, isValidating, mutate } = useSWR<StatusResponse<T>>(path, guarded, {
-    fallbackData: fallback,
+    fallbackData,
     /**
      * SWR 的默认是「有 fallbackData 也照样在挂载时回源」—— revalidateIfStale
      * 默认 true，它判的是 `isUndefined(data) || revalidateIfStale`。要真省掉
@@ -201,6 +214,7 @@ export function useStatus<T>(
     error: data && !data.ok ? data.error : error ? String(error.message ?? error) : undefined,
     isLoading,
     isValidating,
+    servedAt: fallback.ok ? fallback.servedAt : undefined,
   };
 }
 

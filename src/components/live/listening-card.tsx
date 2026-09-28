@@ -691,7 +691,11 @@ export function ListeningCard({
   );
   useLiveEvents();
   const player = useWebPlayer();
-  const { data: nowListening, isValidating: nowValidating } = useStatus<NowListeningPayload>(
+  const {
+    data: nowListening,
+    isValidating: nowValidating,
+    servedAt: nowServedAt,
+  } = useStatus<NowListeningPayload>(
     NOW_LISTENING_PATH,
     MUSIC_REFRESH_MS,
     { fallback: nowFallback },
@@ -702,7 +706,10 @@ export function ListeningCard({
    * payload 里的 alternate（HomePod 还在放的那首），没有就当没在放。下面一律读
    * 换好的这份。
    */
-  const live = useLiveNowListening(nowListening, nowValidating);
+  const live = useLiveNowListening(nowListening, {
+    validating: nowValidating,
+    servedAt: nowServedAt,
+  });
   /**
    * 暂停宽限期到点时再问一次。
    *

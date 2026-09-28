@@ -1211,7 +1211,7 @@ export function VibeCodingCard({
   // 采集停了它们只是不再增长，不会变得不可信。限额在可滞后层，另一台机器报的，
   // 有自己的阈值（limitsAt），各行自己管。
   useLiveEvents();
-  const { data } = useStatus<VibeCodingPayload>(VIBECODING_PATH, REFRESH_MS, {
+  const { data, servedAt } = useStatus<VibeCodingPayload>(VIBECODING_PATH, REFRESH_MS, {
     fallback,
     fetcher: fetchVibeCoding,
     seedFallback: seedVibeCoding,
@@ -1240,8 +1240,8 @@ export function VibeCodingCard({
    * 两个 hook 都要无条件调用，别写成 `useReporterStale(...) || useStale(...)` ——
    * `||` 会短路掉后一个。
    */
-  const { offline: reporterOffline } = useReporterStale(data);
-  const collectorStale = useStale(data?.pushedAt, VIBECODING_STALE_MS);
+  const { offline: reporterOffline } = useReporterStale(data, servedAt);
+  const collectorStale = useStale(data?.pushedAt, VIBECODING_STALE_MS, servedAt);
   const activityUnknown = reporterOffline || collectorStale;
 
   return (
