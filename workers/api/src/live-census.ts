@@ -7,7 +7,7 @@
  * - `online`：此刻**可见**的页面。页面在握手 URL（`?visible=1`）和之后的
  *   `visible` / `hidden` 消息里报自己的可见性，记在连接的 attachment 上。静默三个
  *   心跳周期（90 秒）就不算：可见页面的定时器不被节流，一条僵尸多活 5 分钟就把
- *   三个调频上报器多钉在快档 5 分钟。
+ *   两处调频上报（采集 Worker 的 PlayStation、agents-reporter）多钉在快档 5 分钟。
  *
  * 纯函数，房间（origin-worker.ts 的 LivePushRoom）把运行时的东西喂进来。
  */

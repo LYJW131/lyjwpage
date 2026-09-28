@@ -94,7 +94,7 @@ export const STATUS_VIEWS = {
   /** 常驻上报器报来的账本：12 小时推成功几封、跑的哪个提交 */
   /** 账本随每封上报重写，最勤的是服务器上报器的每分钟一封 */
   reporters: { path: "/api/status/reporters", layer: "lag", cadenceMs: 60_000 },
-  /** 最近 24 小时的事实时间线；由状态核心从实时层算出，不推送、按分钟轮询 */
+  /** 最近 24 小时的事实时间线；由状态核心从实时层算出，不推送、每 5 分钟轮询 */
   pulse: { path: "/api/status/pulse", layer: "realtime" },
 } as const satisfies Record<string, StatusView>;
 

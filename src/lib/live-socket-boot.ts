@@ -36,8 +36,8 @@ declare global {
  *
  * 页面脚本整个崩掉时，这条连接会一直挂着 —— 它不发心跳，还带着「可见」的标记，
  * 房间要等 VISIBLE_STALE_MS（90 秒）加一轮清扫（30 秒）才不数它，人数虚高最长
- * 两分钟，而三个上报器正是按这个数定节奏的。hydration 超过 15 秒基本等于页面
- * 已经废了，这时宁可断开重来。
+ * 两分钟，而两处调频上报（采集 Worker 的 PlayStation、agents-reporter）正是按这个
+ * 数定节奏的。hydration 超过 15 秒基本等于页面已经废了，这时宁可断开重来。
  */
 export const EARLY_LIVE_SOCKET_WATCHDOG_MS = 15_000;
 

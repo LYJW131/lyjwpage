@@ -22,10 +22,10 @@ const IMAGE_REWRITE_SOURCE = `${IMAGE_PATH_PREFIX}/:objectKey([a-f0-9]{64}\\.(?:
 /**
  * 页脚那行构建信息。两个值都必须在**构建期**求值、以字面量内联进产物。
  *
- * 别改成在服务端组件里现算 —— 首页的静态壳不是构建期就冻住的：每次上报进来
- * 都会按 tag 失效，下一个请求在服务端重新生成一遍（见下面 cacheComponents
- * 那段）。在模块作用域写 `new Date()`，拿到的是「最后那台实例的冷启动时刻」，
- * 会跟着上报一整天悄悄往前漂，而且页面上看不出来它是错的。
+ * 别改成在服务端组件里现算 —— 首页的静态壳不是构建期就冻住的：上报改了布局
+ * 就按 tag 失效、另有定时重建，下一个请求在服务端重新生成一遍（见下面
+ * cacheComponents 那段）。在模块作用域写 `new Date()`，拿到的是「最后那台
+ * 实例的冷启动时刻」，会跟着上报一整天悄悄往前漂，而且页面上看不出来它是错的。
  *
  * 走 `env` 是因为它是 DefinePlugin 式的文本替换：值在构建时焊死，之后无论
  * 冷启动还是重新生成都不会再变。（这个字段的文档标了 legacy，指的是「读配置」
@@ -77,15 +77,14 @@ const nextConfig: NextConfig = {
    */
   distDir: process.env.NEXT_DIST_DIR || ".next",
   /**
-   * 首屏那八份数据走 `use cache` + `cacheTag`，上报进来时按 tag 失效。
+   * 首屏按卡取数，每张卡一条 `use cache` + `cacheTag`，上报改了布局时按 tag 失效。
    *
    * 开了它之后 `dynamic` / `revalidate` / `fetchCache` **以及 `runtime`** 这几个
    * 段配置一律不能再导出，写了就是构建期报错 —— 官方迁移文档只写了前三个和
    * `runtime = "edge"`，但 `runtime = "nodejs"`（默认值）照样被拒。全站的渲染
-   * 意图改由 `use cache` 和 `<Suspense>` 表达：取数缓存见 lib/home-snapshot，
-   * 失效点见 lib/live-events 的 expireStatus（只刷本实例）；八条状态路由也读
-   * lib/home-snapshot，但 STATUS_CACHE=false 的部署上它们改成每次直读 Redis，
-   * 见 lib/api。首屏那份不受那个开关管 —— 冻着才有这里说的预渲染。
+   * 意图改由 `use cache` 和 `<Suspense>` 表达：取数缓存见 lib/first-screen，
+   * 失效点是 api Worker 调的 app/api/revalidate（lib/status-revalidation 的
+   * expireStatusTags）。站点没有状态路由，浏览器挂载后直接问 Worker。
    */
   cacheComponents: true,
   async rewrites() {
