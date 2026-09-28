@@ -228,11 +228,11 @@ export function ServerCard({
   fallback: StatusResponse<ServerPayload>;
   className?: string;
 }) {
-  const { data, updatedAt, error } = useStatus<ServerPayload>(SERVER_PATH, REFRESH_MS, {
+  const { data, updatedAt, error, servedAt } = useStatus<ServerPayload>(SERVER_PATH, REFRESH_MS, {
     fallback,
   });
-  // 可滞后层：上报入口每封都重写 updatedAt，过了阈值就是上报器没在推
-  const stale = useStale(updatedAt ?? data?.pushedAt, SERVER_STALE_MS);
+  // 可滞后层：上报入口每封都重写 updatedAt，过了阈值就是上报器没在推。首帧拿 servedAt 当钟
+  const stale = useStale(updatedAt ?? data?.pushedAt, SERVER_STALE_MS, servedAt);
   const memoryPercent = data ? (data.memoryUsedBytes / data.memoryTotalBytes) * 100 : 0;
   const location = data ? formatLocation(data) : null;
   const isp = data ? formatIsp(data) : null;

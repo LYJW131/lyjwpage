@@ -238,12 +238,13 @@ export function AgentStatusCard({
   className?: string;
 }) {
   useLiveEvents();
-  const { data: fetched, error } = useStatus<AgentStatusPayload>(AGENT_STATUS_PATH, REFRESH_MS, { fallback });
+  const { data: fetched, error, servedAt } = useStatus<AgentStatusPayload>(AGENT_STATUS_PATH, REFRESH_MS, { fallback });
   /**
    * 采集 Worker 每分钟检查一轮；这份太久没更新（采集停了、出不去）就不再拿旧灯色冒充此刻：
    * 九行照排、行高不变，每行都换成 Unavailable，点过去是官方状态页。右上角仍是最后检查的时刻。
+   * 首帧拿首屏信封的 servedAt 当钟：放久了的 HTML 首帧就是 Unavailable，不等挂载再翻。
    */
-  const stale = useStale(fetched?.fetchedAt, AGENT_STATUS_STALE_MS);
+  const stale = useStale(fetched?.fetchedAt, AGENT_STATUS_STALE_MS, servedAt);
   const data = fetched && stale
     ? {
         ...fetched,

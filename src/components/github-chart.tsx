@@ -41,7 +41,7 @@ type HoveredCell = {
 };
 
 export function GithubChart({ fallback }: { fallback: StatusResponse<GithubChartPayload> }) {
-  const { data, updatedAt } = useStatus<GithubChartPayload>(GITHUB_CHART_PATH, REFRESH_MS, {
+  const { data, updatedAt, servedAt } = useStatus<GithubChartPayload>(GITHUB_CHART_PATH, REFRESH_MS, {
     fallback,
     fetcher: fetchGithubChart,
     seedFallback: seedGithubChart,
@@ -49,8 +49,15 @@ export function GithubChart({ fallback }: { fallback: StatusResponse<GithubChart
     // 切回标签页时拉一次，长轮询仍作兜底。
     revalidateOnFocus: true,
   });
-  /** 采集 Worker 每 10 分钟拉一次；超过阈值就把整张图压淡、标 Unavailable，不拿旧日历冒充今天 */
-  const stale = useStale(updatedAt ?? (fallback.ok ? fallback.updatedAt : undefined), GITHUB_CHART_STALE_MS);
+  /**
+   * 采集 Worker 每 10 分钟拉一次；超过阈值就把整张图压淡、标 Unavailable，不拿旧日历冒充今天。
+   * 首帧拿首屏信封的 servedAt 当钟，放久了的 HTML 首帧就是 Unavailable，不等挂载再翻。
+   */
+  const stale = useStale(
+    updatedAt ?? (fallback.ok ? fallback.updatedAt : undefined),
+    GITHUB_CHART_STALE_MS,
+    servedAt,
+  );
   /**
    * 留住上一份画得出来的日历，轮询在飞的时候别让图表闪空。
    *

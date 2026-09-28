@@ -159,6 +159,17 @@ export function isStale({ now, at, windowMs, declaredOffline = false }: Freshnes
 }
 
 /**
+ * 访客钟此刻的读数（hooks/use-stale 的 useClock）。
+ *
+ * 首帧（服务端预渲染和 hydrate，`mountedAt` 为 0）读首屏那份信封的 `servedAt`：
+ * 两边读到同一个值，判出来的是填缓存那一刻源站会下的结论。挂载后换成挂载那一刻，
+ * 推过钟之后是推钟的时刻。三样都没有是 0，isStale 把它当「没有钟」，什么都不判。
+ */
+export function clockReading(ticked: number, mountedAt: number, servedAt: number | undefined): number {
+  return ticked || mountedAt || servedAt || 0;
+}
+
+/**
  * 访客钟下一次该往前推是在多少毫秒之后；没有要等的 deadline 就是 null。
  *
  * `clock` 是手上那把钟此刻的读数（首帧是首屏信封的 servedAt，挂载后是挂载那一刻，

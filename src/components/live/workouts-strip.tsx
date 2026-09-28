@@ -35,7 +35,7 @@ function WorkoutTile({ workout }: { workout: Workout }) {
 }
 
 export function WorkoutsStrip({ fallback }: { fallback: StatusResponse<WorkoutsPayload> }) {
-  const { data, error } = useStatus<WorkoutsPayload>(STATUS_VIEWS.workouts.path, 300_000, { fallback });
+  const { data, error, servedAt } = useStatus<WorkoutsPayload>(STATUS_VIEWS.workouts.path, 300_000, { fallback });
   const listRef = useRef<HTMLUListElement>(null);
   const items = data?.items.slice(0, 10) ?? [];
   // Preserve the visible pair when the card width changes.
@@ -61,7 +61,8 @@ export function WorkoutsStrip({ fallback }: { fallback: StatusResponse<WorkoutsP
       list.removeEventListener("scroll", rememberPosition);
     };
   }, [items.length]);
-  const stale = useStale(data?.pushedAt, 7 * 86400_000);
+  // 首帧拿首屏信封的 servedAt 当钟（见 hooks/use-stale）
+  const stale = useStale(data?.pushedAt, 7 * 86400_000, servedAt);
   return (
     <section id="workouts" aria-label="Recent workouts" className="@container flex min-w-0 flex-col justify-center border-t border-line md:border-t-0 md:border-l">
       {!data ? (

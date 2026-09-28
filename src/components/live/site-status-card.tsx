@@ -111,10 +111,13 @@ function ErrorCount({ series, title }: { series: SentryErrorSeries | undefined; 
 const rtt = (ms: number | null | undefined) => ms == null ? "—" : ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`;
 
 /** 常驻上报器一格。名字链到仓库里它的目录；太久没收到就在名字旁标 offline */
-function ReporterTile({ name, stat, staleMs, title }: {
-  name: ReporterName; stat: ReporterStat | null | undefined; staleMs: number; title?: string;
+function ReporterTile({ name, stat, staleMs, servedAt, title }: {
+  name: ReporterName; stat: ReporterStat | null | undefined; staleMs: number;
+  /** 账本那份首屏信封的出站时刻，首帧的钟 */
+  servedAt: number | undefined;
+  title?: string;
 }) {
-  const stale = useStale(stat?.lastPushAt, staleMs);
+  const stale = useStale(stat?.lastPushAt, staleMs, servedAt);
   return <li className="bg-surface px-4 py-2.5" title={title}>
     <div className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4">
       <Container size={12} className="shrink-0" aria-hidden />
@@ -141,29 +144,31 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
   className?: string;
 }) {
   // 挂载时按可滞后层的策略：首屏那份超过一个轮询间隔才补取（旧 HTML、久藏的标签页）
-  const { data: github } = useStatus<GithubRepoPayload>(GITHUB_REPO_PATH, 30 * 60_000, { fallback: githubFallback });
-  const { data: vercel } = useStatus<VercelDeploymentsPayload>(VERCEL_DEPLOYMENTS_PATH, 60_000, { fallback: vercelFallback });
-  const { data: cloudflare } = useStatus<CloudflareWorkersPayload>(CLOUDFLARE_WORKERS_PATH, 300_000, { fallback: cloudflareFallback });
-  const { data: sentry } = useStatus<SentryStatusPayload>(SENTRY_PATH, 5 * 60_000, { fallback: sentryFallback });
+  const { data: github, servedAt: githubServedAt } = useStatus<GithubRepoPayload>(GITHUB_REPO_PATH, 30 * 60_000, { fallback: githubFallback });
+  const { data: vercel, servedAt: vercelServedAt } = useStatus<VercelDeploymentsPayload>(VERCEL_DEPLOYMENTS_PATH, 60_000, { fallback: vercelFallback });
+  const { data: cloudflare, servedAt: cloudflareServedAt } = useStatus<CloudflareWorkersPayload>(CLOUDFLARE_WORKERS_PATH, 300_000, { fallback: cloudflareFallback });
+  const { data: sentry, servedAt: sentryServedAt } = useStatus<SentryStatusPayload>(SENTRY_PATH, 5 * 60_000, { fallback: sentryFallback });
   /**
    * 这些都在可滞后层，由采集 Worker 各按各的节奏写，每块带着自己的采集时刻。
    * 过了阈值（lib/freshness）那一块就不再拿旧数冒充此刻：数字回到「—」、提交哈希不显示、
    * 在线条写 Unavailable；版面不动。部署过哪些提交是历史事实，不跟着过期。
+   * 首帧各块拿自己那份首屏信封的 servedAt 当钟：放久了的 HTML 首帧就是 Unavailable，
+   * 不等挂载再翻（见 hooks/use-stale）。
    */
   // 名单和总数各自沿用上一份，总数按自己取到的时刻判
-  const githubStale = useStale(github ? github.totalsAt ?? github.fetchedAt : undefined, GITHUB_REPO_STALE_MS);
-  const deploymentsStale = useStale(vercel?.fetchedAt, VERCEL_DEPLOYMENTS_STALE_MS);
-  const functionsStale = useStale(vercel?.metrics?.functions?.fetchedAt, VERCEL_METRICS_STALE_MS);
-  const analyticsStale = useStale(vercel?.metrics?.analytics?.fetchedAt, VERCEL_METRICS_STALE_MS);
-  const pagespeedStale = useStale(vercel?.pagespeed?.fetchedAt, PAGESPEED_STALE_MS);
-  const workerMetricsStale = useStale(cloudflare?.fetchedAt, CLOUDFLARE_METRICS_STALE_MS);
-  const workerDeploymentsStale = useStale(cloudflare?.deploymentsFetchedAt, CLOUDFLARE_DEPLOYMENTS_STALE_MS);
+  const githubStale = useStale(github ? github.totalsAt ?? github.fetchedAt : undefined, GITHUB_REPO_STALE_MS, githubServedAt);
+  const deploymentsStale = useStale(vercel?.fetchedAt, VERCEL_DEPLOYMENTS_STALE_MS, vercelServedAt);
+  const functionsStale = useStale(vercel?.metrics?.functions?.fetchedAt, VERCEL_METRICS_STALE_MS, vercelServedAt);
+  const analyticsStale = useStale(vercel?.metrics?.analytics?.fetchedAt, VERCEL_METRICS_STALE_MS, vercelServedAt);
+  const pagespeedStale = useStale(vercel?.pagespeed?.fetchedAt, PAGESPEED_STALE_MS, vercelServedAt);
+  const workerMetricsStale = useStale(cloudflare?.fetchedAt, CLOUDFLARE_METRICS_STALE_MS, cloudflareServedAt);
+  const workerDeploymentsStale = useStale(cloudflare?.deploymentsFetchedAt, CLOUDFLARE_DEPLOYMENTS_STALE_MS, cloudflareServedAt);
   // Sentry 各块可能沿用上一轮（最多 30 分钟），按各块自己取到的时刻算
   const sentryAt = (block: SentryBlock) => sentry ? sentry.blockAt?.[block] ?? sentry.fetchedAt : undefined;
-  const uptimeStale = useStale(sentryAt("uptime"), SENTRY_STALE_MS);
-  const heartbeatStale = useStale(sentryAt("heartbeat"), SENTRY_STALE_MS);
-  const errorsStale = useStale(sentryAt("errors"), SENTRY_STALE_MS);
-  const vitalsStale = useStale(sentryAt("vitals"), SENTRY_STALE_MS);
+  const uptimeStale = useStale(sentryAt("uptime"), SENTRY_STALE_MS, sentryServedAt);
+  const heartbeatStale = useStale(sentryAt("heartbeat"), SENTRY_STALE_MS, sentryServedAt);
+  const errorsStale = useStale(sentryAt("errors"), SENTRY_STALE_MS, sentryServedAt);
+  const vitalsStale = useStale(sentryAt("vitals"), SENTRY_STALE_MS, sentryServedAt);
   const functions = functionsStale ? null : vercel?.metrics?.functions;
   const analytics = analyticsStale ? null : vercel?.metrics?.analytics;
   const totals = githubStale ? null : github?.totals;
@@ -171,7 +176,7 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
   const siteErrors = errorsStale ? undefined : sentry?.errors?.site, apiErrors = errorsStale ? undefined : sentry?.errors?.worker;
   // 出口节点那张卡用的同一条键，SWR 只取一份
   const { data: server } = useStatus<ServerPayload>(SERVER_PATH, 60_000, { fallback: serverFallback });
-  const { data: reporters } = useStatus<ReportersPayload>(REPORTERS_PATH, 5 * 60_000, { fallback: reportersFallback });
+  const { data: reporters, servedAt: reportersServedAt } = useStatus<ReportersPayload>(REPORTERS_PATH, 5 * 60_000, { fallback: reportersFallback });
   // 主站量的是 lyjw.me；把域名写在表头，省得和访客当前所在的域名混起来。
   // 每一格是滚动窗口内各轮实测的中位数，轮数和窗口在表头的提示里。
   const measured = vercel?.pagespeed ? new URL(vercel.pagespeed.url).host : null;
@@ -293,8 +298,10 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
             misaka-jp 到 Worker 这条链路。次数、RTT 和提交都由上报器自己在报文里带来。
           */}
           <ReporterTile name="server-reporter" stat={reporters?.reporters["server-reporter"]} staleMs={SERVER_STALE_MS}
+            servedAt={reportersServedAt}
             title={server ? `Exit node ${server.id} · ${server.hostname} · up ${formatUptime(server.uptimeSeconds)} · load ${server.load1.toFixed(2)}` : undefined} />
           <ReporterTile name="agents-reporter" stat={reporters?.reporters["agents-reporter"]} staleMs={AGENT_LIMITS_STALE_MS}
+            servedAt={reportersServedAt}
             title="Coding agent plan limits and Cursor usage" />
         </ul>
       </section>
