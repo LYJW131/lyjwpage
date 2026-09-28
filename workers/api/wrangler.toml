@@ -76,6 +76,8 @@ binding = "CF_VERSION_METADATA"
 "@/lib/storage-driver" = "./src/storage-driver.ts"
 # developer token 只在这里签：站点侧同名模块是个只会抛错的桩
 "@/lib/apple-developer-token" = "./src/apple-developer-token.ts"
+# music user token 读凭据 KV：站点侧同名模块同样只会抛错
+"@/lib/apple-music-credentials" = "./src/apple-music-credentials.ts"
 
 # LIVE_PUSH 数开着的页面（/ws，事件也从它广播），/count 返回 connections。
 [[durable_objects.bindings]]
@@ -95,6 +97,17 @@ bucket_name = "lyjw-homepage"
 [[kv_namespaces]]
 binding = "READ_MODEL"
 id = "6d4a26ae1068417d8f9f7c200381826b"
+
+# 共享凭据（shared/credentials.ts）：Mac 推来的 Apple Music user token。和可滞后层分开，
+# 公开读取的代码路径只碰 LAG，白名单写错也漏不出这里的东西。
+[[kv_namespaces]]
+binding = "CREDENTIALS"
+id = "c24d1670d97b4649ab5aa4c0944dfbfc"
+
+# 可滞后层（shared/lag.ts）：采集 Worker 与上报入口直接写，这里的公开读取端点只读。
+[[kv_namespaces]]
+binding = "LAG"
+id = "e9c72a9517884aeb95db7386b630a691"
 
 # 长期活动历史归档（docs/state-storage.md）：StateHub 只留 7 天，这里只增不删。
 [[d1_databases]]
