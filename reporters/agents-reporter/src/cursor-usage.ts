@@ -239,9 +239,12 @@ function readEvent(value: unknown, lower: number, upper: number): UsageEvent {
 
 /** 拉历史用：整页严格，一条事件不合规整页判坏 */
 export function parseUsagePage(body: unknown, lower: number, upper: number): ParsedPage {
-  const root = body && typeof body === "object" ? (body as Record<string, unknown>) : null;
-  const rows = root?.usageEventsDisplay;
-  const total = integer(root?.totalUsageEventsCount);
+  const root = body && typeof body === "object" && !Array.isArray(body) ? (body as Record<string, unknown>) : null;
+  // Cursor 的零值响应会省略空事件数组和总数；只认空对象或显式空数组，不能把错误对象当成零用量。
+  const emptyResponse = root != null && Object.keys(root).every((key) => key === "usageEventsDisplay") &&
+    (root.usageEventsDisplay === undefined || (Array.isArray(root.usageEventsDisplay) && root.usageEventsDisplay.length === 0));
+  const total = emptyResponse ? 0 : integer(root?.totalUsageEventsCount);
+  const rows = root?.usageEventsDisplay === undefined && total != null ? [] : root?.usageEventsDisplay;
   if (!root || !Array.isArray(rows) || total == null) {
     throw new CursorUsageError("missing event array or total count");
   }

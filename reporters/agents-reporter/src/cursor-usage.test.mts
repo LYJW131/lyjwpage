@@ -11,6 +11,7 @@ import {
   cursorActivityReport,
   cursorBucketReport,
   failedUsage,
+  fetchCursorHistory,
   incrementalSince,
   latestOf,
   parseUsagePage,
@@ -32,6 +33,35 @@ function event(timestamp: string, model: string, input: number) {
     isTokenBasedCall: true,
   };
 }
+
+test("Cursor 零值响应省略字段时历史成功，错误对象和不完整分页仍拒绝", async () => {
+  for (const body of [{}, { totalUsageEventsCount: 0 }, { usageEventsDisplay: [] }]) {
+    assert.deepEqual(parseUsagePage(body, 0, 10_000), { total: 0, events: [] });
+    const events = await fetchCursorHistory("fixture", 10_000, async () => Response.json(body));
+    const result = aggregateEvents(events, 10_000);
+    assert.equal(result.days.length, 1);
+    assert.equal(result.days[0]?.totalTokens, 0);
+  }
+  for (const body of [null, [], { error: "expired" }, { totalUsageEventsCount: "bad" },
+    { usageEventsDisplay: null }, { usageEventsDisplay: [event("1000", "gpt-5", 1)] }]) {
+    assert.throws(() => parseUsagePage(body, 0, 10_000));
+  }
+  await assert.rejects(fetchCursorHistory("fixture", 10_000,
+    async () => Response.json({ totalUsageEventsCount: 1 })), /incomplete pagination/);
+});
+
+test("历史总数恰好一整页时，末页省略空数组仍完成对账", async () => {
+  let calls = 0;
+  const rows = Array.from({ length: 1_000 }, (_, i) => event(String(i + 1), "gpt-5", 1));
+  const events = await fetchCursorHistory("fixture", 10_000, async () => {
+    calls++;
+    return Response.json(calls === 1
+      ? { totalUsageEventsCount: 1_000, usageEventsDisplay: rows }
+      : { totalUsageEventsCount: 1_000 });
+  });
+  assert.equal(calls, 2);
+  assert.equal(events.length, 1_000);
+});
 
 test("sessionFromAccessToken 用 sub 里的 user id 拼 dashboard 的会话 cookie", () => {
   const token = jwt("auth0|user_fixture");

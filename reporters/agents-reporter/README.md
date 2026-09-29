@@ -117,6 +117,7 @@ Codex / Grok 的 token 由上报器自己刷新，写回各自凭据目录里的
 `https://cursor.com/api/dashboard/get-filtered-usage-events`，按 `Asia/Shanghai` 收成日行。平时只拉上海时间
 昨天 0 点以来的事件、整天替换这两天；每 `FULL_REFRESH_MS`（或换账号、账本还没全量过时）整段历史重拉一次核对，
 那一次的问题记进账本，增量轮次沿用。
+Cursor 的零事件响应会省略空数组和总数字段（`{}`）；历史解析按零事件处理，非空历史仍按服务端总数核对分页，错误对象不能覆盖账本。
 账本在数据卷的 `/data/cursor-usage.json`（只有聚合，没有 token）。每条请求按公开 API 价估一次费用：价目跟
 Mac 上的 ccusage 一样在线取 `https://models.dev/api.json`（只认官方厂商，`ONLINE_TTL_MS` 内复用），取不到沿用上一份，
 一份都没有时用编译进镜像的快照；Composer、Auto、Bugbot 这类没有公开价的记 0，并把当天的 `costComplete` 标成 false
