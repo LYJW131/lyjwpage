@@ -1051,15 +1051,16 @@ export type PowerBankPayload = PowerBankStatus & {
  * 不叫 activity：那个名字在本仓库已经是 Apple Watch 圆环
  * （`/api/status/activity`、`activity:today`、`ActivityStatus`）。
  */
-export const PULSE_DOMAINS = ["coding", "listening", "watching", "gaming", "charging", "activity"] as const;
+export const PULSE_DOMAINS = ["coding", "tokens", "listening", "watching", "gaming", "charging", "activity"] as const;
 export type PulseDomain = (typeof PULSE_DOMAINS)[number];
 
 /**
  * 公开端点 `/api/status/pulse` 的形状。
  *
  * 只给原始事实：状态、标题、瓦数、步数。档位、颜色、摘要文案都在卡片里现算，
- * 以后换展示方式不用迁移数据。媒体与游戏标题可以公开；应用名、模型名、token
- * 数不出这个端点（Coding 只给三色带和 Jev 的强度 / 模式）。
+ * 以后换展示方式不用迁移数据。媒体与游戏标题可以公开；应用名、模型名不出这个端点
+ * （Coding 只给三色带和 Jev 的强度 / 模式）。token 只以各来源、各 agent、各模型相加后的
+ * 五分钟桶出现（Tokens 道），不带模型名和来源。
  */
 export type PulsePayload = {
   generatedAt: number;
@@ -1317,6 +1318,7 @@ export type PulseTokensLane = {
 
 export type PulseLanes = {
   coding: PulseCodingLane;
+  tokens: PulseTokensLane;
   listening: PulseStateLane;
   watching: PulseStateLane;
   gaming: PulseStateLane;

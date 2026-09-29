@@ -10,10 +10,19 @@ import { HIDDEN_DESKTOP_BUNDLE_ID } from "@/lib/types";
 import { pulseWorkoutsKey } from "@/lib/pulse-keys";
 import { withRequestState } from "@shared/request-state";
 import { K_LAST_PUSH } from "@shared/charger-store";
-import { claudeCloudUsageMirror } from "@shared/claude-cloud-usage";
-import { cursorNowMirror } from "@shared/cursor-usage";
+import { parseStoredCodingBuckets } from "@shared/coding-buckets";
+import {
+  codingActivityKey,
+  codingBucketsKey,
+  codingOtlpKey,
+  codingUsageKey,
+  codingViewKey,
+  parseStoredActivity,
+  parseStoredUsageLedgers,
+  parseStoredView,
+} from "@shared/coding-store";
+import { key } from "@/lib/storage";
 import { mirror as telemetryMirror } from "@shared/telemetry";
-import { nowMirror } from "@shared/vibecoding";
 
 import { fanout } from "./fanout";
 import { collectIngestEffects, dispatchIngestEffects, type CollectedIngest } from "./ingest-effects";
@@ -107,34 +116,79 @@ test("Mac keeps an earlier charger write when desktop validation fails and does 
         { id: "charger", kind: "charger", connected: true, updatedAt: NOW, totalOutputW: 32 },
       ] },
       desktop: { bundleIdentifier: "missing.application.name" },
-      vibeCodingNow: { agents: [{ id: "codex", active: true }] },
-    }, ["charger", "desktop", "vibeCoding"]), NOW));
+      codingActivity: { collectedAt: NOW, agents: [{ id: "codex", lastActivityAt: NOW - 1_000, model: "gpt-6" }] },
+    }, ["charger", "desktop", "coding"]), NOW));
     const result = await commit(testEnv(), command);
     assert.equal(result.ok, false);
     assert.equal((await readChargerState()).previous?.status.totalPower, 32);
-    assert.equal(await nowMirror.get(), null);
+    assert.equal(await storage.get(codingActivityKey("mac")), null);
   } finally { resetStorageForTests(); }
 });
 
-test("Mac vibeCodingNow drops the cursor row so it cannot overwrite the container's activity", async () => {
+async function fieldsOf(storage: FakeStorage, name: string): Promise<Record<string, string>> {
+  return (await storage.batch().fields(name).execute())[0] as Record<string, string>;
+}
+
+function usageDay(date: string, totalTokens: number, model = "claude-opus-5") {
+  return {
+    date, inputTokens: totalTokens, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, reasoningTokens: 0,
+    totalTokens, apiEquivalentCostUSD: totalTokens / 1_000, costComplete: true, models: [{ model, tokens: totalTokens }],
+  };
+}
+
+test("a broken coding module is dropped at the ingress; desktop, liveness and the other coding modules still commit", async () => {
   const storage = new FakeStorage();
   installStorageForTests(storage);
   try {
     const command = await inRequest(testEnv(), () => prepareIngest("mac", envelope({
-      vibeCodingNow: { agents: [
-        { id: "claude", currentModel: "opus", active: true },
-        { id: "cursor", currentModel: null, lastActivityAt: null, active: false },
-      ] },
-    }, ["vibeCoding"]), NOW));
+      desktop: { applicationName: "Xcode", bundleIdentifier: "com.apple.dt.Xcode" },
+      codingUsage: { agents: [{ id: "claude", state: "ok", collectedAt: NOW, days: [{ ...usageDay("2026-09-29", 10), totalTokens: 1 }] }] },
+      codingActivity: { collectedAt: NOW, agents: [{ id: "claude", lastActivityAt: NOW - 30_000, model: "claude-opus-5" }] },
+    }, ["desktop", "coding"]), NOW)) as PreparedTelemetryEnvelope;
+    assert.deepEqual(command.rejected.map((entry) => entry.module), ["codingUsage"]);
     const result = await commit(testEnv(), command);
     assert.equal(result.ok, true);
-    assert.deepEqual((await nowMirror.get())?.payload.agents.map((agent) => agent.id), ["claude"]);
-    const pushed = result.effects.flatMap((effect) =>
-      effect.kind === "event" && effect.event.type === "vibecoding-now" ? effect.event.payload.agents : []);
-    assert.deepEqual(pushed.map((agent) => agent.id), ["claude"]);
+    assert.equal((await readLiveness()).lastSeenAt, NOW);
+    assert.equal((await telemetryMirror.get())?.desktop?.applicationName, "Xcode");
+    assert.equal(await storage.get(codingViewKey()), null, "the rejected usage never reached the state core");
+    const pushed = result.effects.flatMap((effect) => effect.kind === "event" && effect.event.type === "coding-now" ? [effect.event.payload] : []);
+    assert.deepEqual(pushed.map((payload) => payload.agents), [[
+      { id: "claude", activity: [{ source: "mac", lastActivityAt: NOW - 30_000, model: "claude-opus-5" }] },
+    ]]);
+    assert.equal(pushed[0]?.lastSeenAt, NOW, "the push carries the Mac liveness of this very envelope");
   } finally { resetStorageForTests(); }
 });
 
+test("Mac usage replaces its ledgers, recomputes the view and tags the first screen only when the skeleton changes", async () => {
+  const storage = new FakeStorage();
+  installStorageForTests(storage);
+  const env = testEnv();
+  const tags = (result: CollectedIngest<unknown>) => result.effects.flatMap((effect) => effect.kind === "tags" ? effect.tags : []);
+  const usage = (at: number, agents: unknown[]) => inRequest(env, () => prepareIngest("mac", envelope({ codingUsage: { agents } }, ["coding"]), at));
+  const claude = (tokens: number, at: number) => ({ id: "claude", state: "ok", collectedAt: at, sessionCount: 3, days: [usageDay("2026-09-29", tokens)] });
+  try {
+    const first = await commit(env, await usage(NOW, [claude(100, NOW)]));
+    assert.deepEqual(tags(first), ["coding"]);
+    assert.equal(parseStoredView(await storage.get(codingViewKey()))?.totals?.totalTokens, 100);
+
+    const content = await commit(env, await usage(NOW + 60_000, [claude(150, NOW + 60_000)]));
+    assert.deepEqual(tags(content), [], "numbers moved, the card kept its rows");
+    assert.equal(parseStoredView(await storage.get(codingViewKey()))?.totals?.totalTokens, 150);
+
+    // 采集失败的一轮只换状态：日子留着
+    const failed = await commit(env, await usage(NOW + 120_000, [
+      { id: "claude", state: "error", collectedAt: NOW + 60_000, error: "ccusage timed out" },
+      { id: "codex", state: "ok", collectedAt: NOW + 120_000, days: [usageDay("2026-09-29", 5, "gpt-6")] },
+    ]));
+    assert.deepEqual(tags(failed), ["coding"], "a new agent row is a skeleton change");
+    const ledgers = parseStoredUsageLedgers(await fieldsOf(storage, codingUsageKey("mac")));
+    assert.equal(ledgers.claude?.state, "error");
+    assert.equal(ledgers.claude?.days[0]?.totalTokens, 150);
+    const view = parseStoredView(await storage.get(codingViewKey()))!;
+    assert.equal(view.totals?.totalTokens, 155);
+    assert.deepEqual(view.agents.find((agent) => agent.id === "claude")?.status.map((row) => row.state), ["error"]);
+  } finally { resetStorageForTests(); }
+});
 test("a later Mac module failure does not notify an unpersisted telemetry patch", async () => {
   const storage = new FakeStorage();
   installStorageForTests(storage);
@@ -253,43 +307,66 @@ test("Emby image commits merge against the latest map without losing concurrent 
   } finally { resetStorageForTests(); }
 });
 
-test("cursorNow-only agents envelopes push the cursor activity", async () => {
+test("Cursor activity-only agents envelopes push the whole coding-now payload, and only when it moved", async () => {
   const storage = new FakeStorage();
   installStorageForTests(storage);
   const env = testEnv();
   try {
-    const limits = await inRequest(env, () => prepareIngest("agents", {
-      agents: [{ id: "cursor", plan: { tier: "Ultra" }, limits: [] }],
-      collectedAt: new Date(NOW).toISOString(),
-    }, NOW));
-    assert.equal((await commit(env, limits)).ok, true);
+    const mac = await inRequest(env, () => prepareIngest("mac", envelope({
+      codingActivity: { collectedAt: NOW, agents: [{ id: "claude", lastActivityAt: NOW - 10_000, model: "claude-opus-5" }] },
+    }, ["coding"]), NOW));
+    assert.equal((await commit(env, mac)).ok, true);
 
-    const lastActivityAt = new Date(NOW + 30_000).toISOString();
-    const activity = await inRequest(env, () => prepareIngest("agents", {
-      collectedAt: new Date(NOW + 60_000).toISOString(),
-      cursorNow: { lastActivityAt, currentModel: "grok-4.7-xhigh" },
-    }, NOW + 60_000));
-    const result = await commit(env, activity);
+    const activity = (at: number, lastActivityAt: number, model = "grok-4.7-xhigh") => inRequest(env, () => prepareIngest("agents", {
+      collectedAt: new Date(at).toISOString(),
+      codingActivity: { collectedAt: at, agents: [{ id: "cursor", lastActivityAt, model }] },
+    }, at));
+    const result = await commit(env, await activity(NOW + 60_000, NOW + 30_000));
     assert.equal(result.ok, true);
-    assert.deepEqual((await cursorNowMirror.get())?.now, { lastActivityAt, currentModel: "grok-4.7-xhigh" });
-    assert.deepEqual(result.effects.find((effect) => effect.kind === "event")?.event, {
-      type: "vibecoding-now",
-      payload: { agents: [{ id: "cursor", lastActivityAt, currentModel: "grok-4.7-xhigh", active: false }] },
-    });
+    assert.deepEqual(parseStoredActivity(await storage.get(codingActivityKey("agents")))?.agents, [{ id: "cursor", lastActivityAt: NOW + 30_000, model: "grok-4.7-xhigh" }]);
+    const pushed = result.effects.flatMap((effect) => effect.kind === "event" && effect.event.type === "coding-now" ? [effect.event.payload] : []);
+    assert.equal(pushed.length, 1);
+    assert.deepEqual(pushed[0]?.agents, [
+      { id: "claude", activity: [{ source: "mac", lastActivityAt: NOW - 10_000, model: "claude-opus-5" }] },
+      { id: "cursor", activity: [{ source: "agents", lastActivityAt: NOW + 30_000, model: "grok-4.7-xhigh" }] },
+    ], "the whole payload, not a patch of the one row that changed");
 
-    // 同一条事件再报一次不再推
-    const again = await inRequest(env, () => prepareIngest("agents", {
-      cursorNow: { lastActivityAt, currentModel: "grok-4.7-xhigh" },
-    }, NOW + 120_000));
-    const repeated = await commit(env, again);
-    assert.equal(repeated.effects.some((effect) => effect.kind === "event"), false);
+    // 同一条事件再报一次、或只往前挪了几秒：不推
+    const again = await commit(env, await activity(NOW + 120_000, NOW + 40_000));
+    assert.equal(again.effects.some((effect) => effect.kind === "event"), false);
+    // 换了模型就推
+    const switched = await commit(env, await activity(NOW + 180_000, NOW + 40_000, "composer-2"));
+    assert.equal(switched.effects.some((effect) => effect.kind === "event" && effect.event.type === "coding-now"), true);
 
     await assert.rejects(
       inRequest(env, () => prepareIngest("agents", { collectedAt: new Date(NOW).toISOString() }, NOW)),
     );
     await assert.rejects(
-      inRequest(env, () => prepareIngest("agents", { cursorNow: { currentModel: "x" } }, NOW)),
+      inRequest(env, () => prepareIngest("agents", { cursorNow: { lastActivityAt: new Date(NOW).toISOString(), currentModel: "x" } }, NOW)),
+      "the renamed cursorNow is no longer data",
     );
+  } finally { resetStorageForTests(); }
+});
+
+test("an errored Cursor history round (a strictly parsed page failed) keeps the stored days and only marks the agents source as error", async () => {
+  const storage = new FakeStorage();
+  installStorageForTests(storage);
+  const env = testEnv();
+  const agents = (at: number, row: Record<string, unknown>) => inRequest(env, () => prepareIngest("agents", {
+    collectedAt: new Date(at).toISOString(), codingUsage: { agents: [{ id: "cursor", sessionCount: null, ...row }] },
+  }, at));
+  try {
+    assert.equal((await commit(env, await agents(NOW, { state: "ok", collectedAt: NOW, days: [usageDay("2026-09-28", 500, "composer-2")] }))).ok, true);
+    const failed = await commit(env, await agents(NOW + 300_000, { state: "error", collectedAt: NOW, error: "cursor history: invalid usage event" }));
+    assert.equal(failed.ok, true);
+    const view = parseStoredView(await storage.get(codingViewKey()))!;
+    const cursor = view.agents.find((agent) => agent.id === "cursor")!;
+    assert.deepEqual(cursor.status.map((row) => [row.source, row.state, row.collectedAt, row.error]), [["agents", "error", NOW, "cursor history: invalid usage event"]]);
+    assert.equal(cursor.lastDay?.totalTokens, 500, "the history is not cleared");
+    assert.equal(view.totals?.totalTokens, 500);
+    // 失败那一轮的采集时刻停在上次成功：不算一次新的账号观测
+    const { cursorObservationsKey } = await import("@/lib/coding-pulse");
+    assert.equal((await storage.listRange(cursorObservationsKey(), 0, -1)).length, 1);
   } finally { resetStorageForTests(); }
 });
 
@@ -308,45 +385,82 @@ function otlpTokens(at: number, input: number) {
   };
 }
 
-test("agents-otlp commits cumulative deltas and throttles the vibecoding tag", async () => {
+test("agents-otlp turns cumulative deltas into day rows, token buckets and activity for claude", async () => {
   const storage = new FakeStorage();
   installStorageForTests(storage);
   const env = testEnv();
   const tagged = (result: CollectedIngest<unknown>) =>
-    result.effects.some((effect) => effect.kind === "tags" && effect.tags.includes("vibecoding"));
+    result.effects.some((effect) => effect.kind === "tags" && effect.tags.includes("coding"));
+  const pushed = (result: CollectedIngest<unknown>) => result.effects.find((effect) => effect.kind === "event")?.event;
   try {
     const first = await commit(env, await inRequest(env, () => prepareIngest("agents-otlp", otlpTokens(NOW, 100), NOW)));
     assert.equal(first.ok, true);
-    assert.equal(tagged(first), true);
+    assert.equal(tagged(first), true, "the first claude row is a skeleton change");
+    assert.deepEqual(pushed(first)?.type === "coding-now" ? pushed(first)?.payload : null, {
+      agents: [{ id: "claude", activity: [{ source: "agents-otlp", lastActivityAt: NOW, model: "claude-fable-5-1" }] }],
+      lastSeenAt: 0, declaredOffline: false, heartbeatWindowMs: (pushed(first) as { payload: { heartbeatWindowMs: number } }).payload.heartbeatWindowMs,
+    });
 
     const second = await commit(env, await inRequest(env, () => prepareIngest("agents-otlp", otlpTokens(NOW + 60_000, 250), NOW + 60_000)));
-    assert.equal(tagged(second), false, "五分钟内不再失效首屏");
-    const later = await commit(env, await inRequest(env, () => prepareIngest("agents-otlp", otlpTokens(NOW + 400_000, 300), NOW + 400_000)));
-    assert.equal(tagged(later), true);
-
-    const pushed = (result: CollectedIngest<unknown>) =>
-      result.effects.find((effect) => effect.kind === "event")?.event;
-    assert.deepEqual(pushed(first), {
-      type: "vibecoding-now",
-      payload: { agents: [{
-        id: "claude",
-        currentModel: "claude-fable-5-1",
-        lastActivityAt: null,
-        active: false,
-        cloudActivityAt: new Date(NOW).toISOString(),
-      }] },
-    });
-    assert.equal((pushed(second) as { payload: { agents: Array<{ cloudActivityAt?: string }> } })
-      .payload.agents[0]?.cloudActivityAt, new Date(NOW + 60_000).toISOString());
-    // 累计值没涨：时刻不动，不推
-    const idle = await commit(env, await inRequest(env, () => prepareIngest("agents-otlp", otlpTokens(NOW + 460_000, 300), NOW + 460_000)));
+    assert.equal(tagged(second), false, "more tokens on the same row are content, not layout");
+    assert.equal(pushed(second)?.type, "coding-now");
+    // 累计值没涨：时刻不动，不推、账本不变
+    const idle = await commit(env, await inRequest(env, () => prepareIngest("agents-otlp", otlpTokens(NOW + 120_000, 250), NOW + 120_000)));
     assert.equal(pushed(idle), undefined);
 
-    const stored = await claudeCloudUsageMirror.get();
-    assert.equal(stored?.usage.days.reduce((sum, day) => sum + day.inputTokens, 0), 300);
-    assert.ok(!JSON.stringify(stored).includes("someone@example.com"));
+    const ledger = parseStoredUsageLedgers(await fieldsOf(storage, codingUsageKey("agents-otlp"))).claude;
+    assert.equal(ledger?.days.reduce((sum, day) => sum + day.inputTokens, 0), 250);
+    assert.equal(ledger?.days[0]?.costComplete, true);
+    assert.equal(ledger?.sessionCount, 1);
+    const buckets = parseStoredCodingBuckets(await storage.get(codingBucketsKey("agents-otlp")));
+    assert.deepEqual(buckets?.coverage, [], "OTLP is positive evidence only");
+    assert.equal(buckets?.windows.flatMap((window) => window.agents).reduce((sum, row) => sum + row.inputTokens, 0), 250);
+    assert.equal(buckets?.windows[0]?.agents[0]?.eventCount, null);
+    const view = parseStoredView(await storage.get(codingViewKey()));
+    assert.deepEqual(view?.agents.map((agent) => [agent.id, agent.sources]), [["claude", ["agents-otlp"]]]);
+    assert.ok(!JSON.stringify([...Object.values(await fieldsOf(storage, codingUsageKey("agents-otlp"))), await storage.get(codingOtlpKey())]).includes("someone@example.com"));
 
     await assert.rejects(inRequest(env, () => prepareIngest("agents-otlp", { nope: true }, NOW)));
+  } finally { resetStorageForTests(); }
+});
+
+test("the one-time migration carries the cloud counters over, so the first OTLP after the switch adds only the delta", async () => {
+  const storage = new FakeStorage();
+  installStorageForTests(storage);
+  const env = testEnv();
+  try {
+    // 切换前的旧键：claude 云端已经累计到 300，同一条序列（同一进程、同一组属性）
+    const seeded = await commit(env, await inRequest(env, () => prepareIngest("agents-otlp", otlpTokens(NOW - 120_000, 300), NOW - 120_000)));
+    assert.equal(seeded.ok, true);
+    const counters = await storage.get(codingOtlpKey());
+    const ledgers = await fieldsOf(storage, codingUsageKey("agents-otlp"));
+    const legacyDays = parseStoredUsageLedgers(ledgers).claude!.days.map((day) => ({
+      date: day.date, inputTokens: day.inputTokens, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0,
+      totalTokens: day.totalTokens, apiEquivalentCostUSD: 0, models: day.models,
+    }));
+    const otlp = JSON.parse(counters!) as { series: unknown; sessions: unknown; sessionCount: number };
+    resetStorageForTests();
+    const fresh = new FakeStorage();
+    installStorageForTests(fresh);
+    await fresh.set(key("vibecoding", "claude-cloud-usage"), JSON.stringify({
+      pushedAt: NOW - 120_000, taggedAt: null,
+      usage: { days: legacyDays, series: otlp.series, sessions: otlp.sessions, sessionCount: otlp.sessionCount, lastPointAt: NOW - 120_000, lastModel: "claude-fable-5-1" },
+    }));
+    await fresh.set(key("vibecoding", "cursor-usage"), JSON.stringify({
+      pushedAt: NOW - 600_000,
+      report: { collectedAt: new Date(NOW - 600_000).toISOString(), state: "ok", error: null, warning: null, coverageStart: null, coverageEnd: null,
+        precision: "measured", costComplete: true, days: [{ ...usageDay("2026-09-28", 40, "composer-2"), costComplete: true }] },
+    }));
+
+    const next = await commit(env, await inRequest(env, () => prepareIngest("agents-otlp", otlpTokens(NOW, 350), NOW)));
+    assert.equal(next.ok, true);
+    const claude = parseStoredUsageLedgers(await fieldsOf(fresh, codingUsageKey("agents-otlp"))).claude;
+    assert.equal(claude?.days.reduce((sum, day) => sum + day.inputTokens, 0), 350, "300 carried over + a 50 delta, not 300 + 350");
+    const cursor = parseStoredUsageLedgers(await fieldsOf(fresh, codingUsageKey("agents"))).cursor;
+    assert.equal(cursor?.days[0]?.totalTokens, 40, "the Cursor ledger comes along");
+    const view = parseStoredView(await fresh.get(codingViewKey()));
+    assert.equal(view?.totals?.totalTokens, 390);
+    assert.ok(await fresh.get(key("coding", "legacy-migrated")));
   } finally { resetStorageForTests(); }
 });
 

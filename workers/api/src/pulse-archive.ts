@@ -1,4 +1,4 @@
-import { codingObservationsKey, codingTokenUsageKey, cursorObservationsKey } from "@/lib/coding-pulse";
+import { codingObservationsKey, cursorObservationsKey } from "@/lib/coding-pulse";
 import {
   pulseActivityKey,
   pulseActivityRangeKey,
@@ -7,7 +7,10 @@ import {
   pulseLaneKey,
   pulseListeningTracesKey,
 } from "@/lib/pulse-keys";
-import { key } from "@/lib/storage";
+import { coveringPart, parseStoredCodingBuckets, type StoredCodingBuckets } from "@shared/coding-buckets";
+import { codingBucketsKey, codingUsageKey, codingViewKey, parseStoredView } from "@shared/coding-store";
+import { CODING_USAGE_SOURCE_NAMES, isCodingUsageSource, type CodingUsageSource } from "@shared/coding-usage-sources";
+import type { StoredCodingUsageAgent } from "@shared/coding-usage-view";
 import type { HistoryDb, HistoryStatement } from "@shared/history-ingest";
 import { parseCodingObservation, CODING_OBSERVATION_HOLD_MS, type CodingObservation } from "@shared/pulse-coding";
 import { cursorWindowFeatures, parseCursorObservation } from "@shared/pulse-cursor";
@@ -21,12 +24,11 @@ import {
   type ClosedInterval,
   type StateLaneFacts,
 } from "@shared/pulse-timeline";
-import { parseCodingTokenUsage } from "@shared/coding-token-usage";
 import { CHARGING_IDLE_MAX_W } from "@/lib/home-layout";
 import type { StorageCommand } from "@shared/storage-contract";
 
 /**
- * Pulse 事实时间线的长期归档（D1 `lyjwpage-history`，表见 migrations/0007）。
+ * Pulse 事实时间线与 coding 用量的长期归档（D1 `lyjwpage-history`，表见 migrations/0007、0008）。
  *
  * 状态核心是唯一写入方：StateHub 每分钟给出一份有界快照（各路水位之后的新行，
  * 加上推导会话所需的一点上下文），普通 Worker 拼成幂等 upsert 写 D1，成功后
@@ -55,10 +57,8 @@ export const ARCHIVE_STREAMS = [
   "charging",
   "activity",
   "coding",
-  "tokens",
-  "usage-mac",
-  "usage-cursor",
-  "usage-claude-cloud",
+  "coding-usage",
+  "coding-buckets",
 ] as const;
 export type ArchiveStream = (typeof ARCHIVE_STREAMS)[number];
 
@@ -71,8 +71,13 @@ export type PulseArchiveStreamSnapshot = {
   rows: string[];
   /** coding 那一路附带的 Cursor 账号观测 */
   extra?: string[];
-  /** 单值键（token 报告、用量镜像）的整份 JSON */
+  /** 单值键的整份 JSON */
   value?: string | null;
+  /**
+   * coding 用量与 token 桶那两路：水位之后变过的那几份，`来源 → [JSON]`。用量是
+   * 各 agent 的账本（`coding:usage:<来源>` 的字段），桶是整份 `pulse:token-buckets:<来源>`。
+   */
+  coding?: Partial<Record<CodingUsageSource, string[]>>;
   replaceRange?: { from: number; to: number };
   /** 本次权威替换对应的 StateHub 版本；确认后同一份历史不再重复写 D1 */
   replaceToken?: string;
@@ -176,14 +181,31 @@ export class PulseArchiveState implements PulseArchiveCoordinator {
         const pending = replaceToken !== undefined && replaceToken !== this.metadata(ACTIVITY_REPLACED_KEY);
         return pending ? { rows, replaceRange, replaceToken } : { rows: [] };
       }
-      case "tokens":
-        return { rows: [], value: this.execute([{ op: "get", key: codingTokenUsageKey() }])[0] as string | null };
-      case "usage-mac":
-        return { rows: [], value: this.execute([{ op: "get", key: key("vibecoding", "usage") }])[0] as string | null };
-      case "usage-cursor":
-        return { rows: [], value: this.execute([{ op: "get", key: key("vibecoding", "cursor-usage") }])[0] as string | null };
-      case "usage-claude-cloud":
-        return { rows: [], value: this.execute([{ op: "get", key: key("vibecoding", "claude-cloud-usage") }])[0] as string | null };
+      case "coding-usage": {
+        // 视图只在账本变了时重算，它的 updatedAt 就是最近一次变化：没过水位就不用读那几份大账本
+        const [rawView] = this.execute([{ op: "get", key: codingViewKey() }]) as [string | null];
+        const updatedAt = parseStoredView(rawView)?.updatedAt ?? 0;
+        if (updatedAt <= watermark) return { rows: [] };
+        const hashes = this.execute(CODING_USAGE_SOURCE_NAMES.map((source): StorageCommand => ({ op: "fields", key: codingUsageKey(source) }))) as Record<string, string>[];
+        const coding: Partial<Record<CodingUsageSource, string[]>> = {};
+        CODING_USAGE_SOURCE_NAMES.forEach((source, index) => {
+          const changed = Object.values(hashes[index] ?? {}).filter((raw) => {
+            try { return (JSON.parse(raw) as { receivedAt?: unknown }).receivedAt as number > watermark; } catch { return false; }
+          });
+          if (changed.length) coding[source] = changed;
+        });
+        return { rows: [], coding };
+      }
+      case "coding-buckets": {
+        const values = this.execute(CODING_USAGE_SOURCE_NAMES.map((source): StorageCommand => ({ op: "get", key: codingBucketsKey(source) }))) as (string | null)[];
+        const coding: Partial<Record<CodingUsageSource, string[]>> = {};
+        CODING_USAGE_SOURCE_NAMES.forEach((source, index) => {
+          const raw = values[index];
+          const stored = parseStoredCodingBuckets(raw);
+          if (raw && stored && stored.receivedAt > watermark) coding[source] = [raw];
+        });
+        return { rows: [], coding };
+      }
     }
   }
 
@@ -290,51 +312,43 @@ const REPLACE_ACTIVITY = `INSERT INTO activity_buckets(started_at, ended_at, ste
     OR activity_buckets.move_kcal IS NOT excluded.move_kcal OR activity_buckets.exercise_minutes IS NOT excluded.exercise_minutes`;
 const INSERT_CODING_OBSERVATION = `INSERT OR IGNORE INTO coding_observations(t, available, application, coding, agents)
   VALUES (?, ?, ?, ?, ?)`;
-const UPSERT_ACTIVE_SECONDS = `INSERT INTO agent_usage_days(date, agent, model, active_seconds) VALUES (?, ?, ?, ?)
-  ON CONFLICT(date, agent, model) DO UPDATE SET active_seconds = MAX(COALESCE(agent_usage_days.active_seconds, 0), excluded.active_seconds)
-  WHERE agent_usage_days.active_seconds IS NULL OR excluded.active_seconds > agent_usage_days.active_seconds`;
-const UPSERT_TOKEN_BUCKETS = `INSERT INTO coding_token_buckets(bucket_at, agent, model, input_tokens, output_tokens, cache_read_tokens,
+const UPSERT_ACTIVE_SECONDS = `INSERT INTO coding_active_days(date, agent, model, active_seconds) VALUES (?, ?, ?, ?)
+  ON CONFLICT(date, agent, model) DO UPDATE SET active_seconds = excluded.active_seconds
+  WHERE excluded.active_seconds > coding_active_days.active_seconds`;
+/** 日事实：来源 × agent × 站点日，值变了才写 */
+const UPSERT_USAGE_DAYS = `INSERT INTO coding_usage_days(date, source, agent, input_tokens, output_tokens, cache_read_tokens,
+    cache_creation_tokens, reasoning_tokens, total_tokens, cost_usd, cost_complete)
+  SELECT json_extract(value, '$[0]'), json_extract(value, '$[1]'), json_extract(value, '$[2]'), json_extract(value, '$[3]'),
+    json_extract(value, '$[4]'), json_extract(value, '$[5]'), json_extract(value, '$[6]'), json_extract(value, '$[7]'),
+    json_extract(value, '$[8]'), json_extract(value, '$[9]'), json_extract(value, '$[10]') FROM json_each(?) WHERE true
+  ON CONFLICT(date, source, agent) DO UPDATE SET input_tokens = excluded.input_tokens, output_tokens = excluded.output_tokens,
+    cache_read_tokens = excluded.cache_read_tokens, cache_creation_tokens = excluded.cache_creation_tokens,
+    reasoning_tokens = excluded.reasoning_tokens, total_tokens = excluded.total_tokens, cost_usd = excluded.cost_usd,
+    cost_complete = excluded.cost_complete
+  WHERE coding_usage_days.input_tokens IS NOT excluded.input_tokens OR coding_usage_days.output_tokens IS NOT excluded.output_tokens
+    OR coding_usage_days.cache_read_tokens IS NOT excluded.cache_read_tokens OR coding_usage_days.cache_creation_tokens IS NOT excluded.cache_creation_tokens
+    OR coding_usage_days.reasoning_tokens IS NOT excluded.reasoning_tokens OR coding_usage_days.total_tokens IS NOT excluded.total_tokens
+    OR coding_usage_days.cost_usd IS NOT excluded.cost_usd OR coding_usage_days.cost_complete IS NOT excluded.cost_complete`;
+/** 同一天按来源的模型拆分；只增不删 */
+const UPSERT_USAGE_MODELS = `INSERT INTO coding_usage_models(date, source, agent, model, tokens)
+  SELECT json_extract(value, '$[0]'), json_extract(value, '$[1]'), json_extract(value, '$[2]'), json_extract(value, '$[3]'),
+    json_extract(value, '$[4]') FROM json_each(?) WHERE true
+  ON CONFLICT(date, source, agent, model) DO UPDATE SET tokens = excluded.tokens
+  WHERE coding_usage_models.tokens IS NOT excluded.tokens`;
+/** 5 分钟桶：各来源都进来；还在累积的末桶照写，下一次用更完整的数覆盖（去重重扫也可能让数变小，所以不取 max） */
+const UPSERT_USAGE_BUCKETS = `INSERT INTO coding_usage_buckets(bucket_at, source, agent, model, input_tokens, output_tokens, cache_read_tokens,
     cache_creation_tokens, reasoning_tokens, event_count)
   SELECT json_extract(value, '$[0]'), json_extract(value, '$[1]'), json_extract(value, '$[2]'), json_extract(value, '$[3]'),
     json_extract(value, '$[4]'), json_extract(value, '$[5]'), json_extract(value, '$[6]'), json_extract(value, '$[7]'),
-    json_extract(value, '$[8]') FROM json_each(?) WHERE true
-  ON CONFLICT(bucket_at, agent, model) DO UPDATE SET input_tokens = excluded.input_tokens, output_tokens = excluded.output_tokens,
+    json_extract(value, '$[8]'), json_extract(value, '$[9]') FROM json_each(?) WHERE true
+  ON CONFLICT(bucket_at, source, agent, model) DO UPDATE SET input_tokens = excluded.input_tokens, output_tokens = excluded.output_tokens,
     cache_read_tokens = excluded.cache_read_tokens, cache_creation_tokens = excluded.cache_creation_tokens,
     reasoning_tokens = excluded.reasoning_tokens, event_count = excluded.event_count
-  WHERE coding_token_buckets.input_tokens IS NOT excluded.input_tokens OR coding_token_buckets.output_tokens IS NOT excluded.output_tokens
-    OR coding_token_buckets.cache_read_tokens IS NOT excluded.cache_read_tokens OR coding_token_buckets.cache_creation_tokens IS NOT excluded.cache_creation_tokens
-    OR coding_token_buckets.reasoning_tokens IS NOT excluded.reasoning_tokens OR coding_token_buckets.event_count IS NOT excluded.event_count`;
-/** 五分钟桶按站点日（UTC+8）汇总成每天 × agent × 模型；只重算这次报告碰到的那几天 */
-const ROLLUP_TOKEN_DAYS = `INSERT INTO agent_usage_days(date, agent, model, input_tokens, output_tokens, cache_read_tokens,
-    cache_creation_tokens, reasoning_tokens, total_tokens, event_count)
-  SELECT date(bucket_at / 1000 + 28800, 'unixepoch'), agent, model, SUM(input_tokens), SUM(output_tokens), SUM(cache_read_tokens),
-    SUM(cache_creation_tokens), SUM(reasoning_tokens), SUM(input_tokens + output_tokens + cache_read_tokens + cache_creation_tokens), SUM(event_count)
-  FROM coding_token_buckets WHERE bucket_at >= ? AND bucket_at < ?
-  GROUP BY 1, 2, 3
-  ON CONFLICT(date, agent, model) DO UPDATE SET input_tokens = excluded.input_tokens, output_tokens = excluded.output_tokens,
-    cache_read_tokens = excluded.cache_read_tokens, cache_creation_tokens = excluded.cache_creation_tokens,
-    reasoning_tokens = excluded.reasoning_tokens, total_tokens = excluded.total_tokens, event_count = excluded.event_count
-  WHERE agent_usage_days.input_tokens IS NOT excluded.input_tokens OR agent_usage_days.output_tokens IS NOT excluded.output_tokens
-    OR agent_usage_days.cache_read_tokens IS NOT excluded.cache_read_tokens OR agent_usage_days.cache_creation_tokens IS NOT excluded.cache_creation_tokens
-    OR agent_usage_days.reasoning_tokens IS NOT excluded.reasoning_tokens OR agent_usage_days.event_count IS NOT excluded.event_count`;
-/** 每天每个 agent 的合计（model = '*'）：token 分类与 API 等值费用。费用只有这一级，没有按模型的 */
-const UPSERT_AGENT_DAYS = `INSERT INTO agent_usage_days(date, agent, model, input_tokens, output_tokens, cache_read_tokens,
-    cache_creation_tokens, total_tokens, cost_usd)
-  SELECT json_extract(value, '$[0]'), json_extract(value, '$[1]'), '*', json_extract(value, '$[2]'), json_extract(value, '$[3]'),
-    json_extract(value, '$[4]'), json_extract(value, '$[5]'), json_extract(value, '$[6]'), json_extract(value, '$[7]')
-  FROM json_each(?) WHERE true
-  ON CONFLICT(date, agent, model) DO UPDATE SET input_tokens = excluded.input_tokens, output_tokens = excluded.output_tokens,
-    cache_read_tokens = excluded.cache_read_tokens, cache_creation_tokens = excluded.cache_creation_tokens,
-    total_tokens = excluded.total_tokens, cost_usd = excluded.cost_usd
-  WHERE agent_usage_days.input_tokens IS NOT excluded.input_tokens OR agent_usage_days.output_tokens IS NOT excluded.output_tokens
-    OR agent_usage_days.cache_read_tokens IS NOT excluded.cache_read_tokens OR agent_usage_days.cache_creation_tokens IS NOT excluded.cache_creation_tokens
-    OR agent_usage_days.total_tokens IS NOT excluded.total_tokens OR agent_usage_days.cost_usd IS NOT excluded.cost_usd`;
-/** 云端日桶只给每个模型的总 token，没有分类 */
-const UPSERT_MODEL_TOTALS = `INSERT INTO agent_usage_days(date, agent, model, total_tokens)
-  SELECT json_extract(value, '$[0]'), json_extract(value, '$[1]'), json_extract(value, '$[2]'), json_extract(value, '$[3]')
-  FROM json_each(?) WHERE true
-  ON CONFLICT(date, agent, model) DO UPDATE SET total_tokens = excluded.total_tokens
-  WHERE agent_usage_days.total_tokens IS NOT excluded.total_tokens`;
+  WHERE coding_usage_buckets.input_tokens IS NOT excluded.input_tokens OR coding_usage_buckets.output_tokens IS NOT excluded.output_tokens
+    OR coding_usage_buckets.cache_read_tokens IS NOT excluded.cache_read_tokens OR coding_usage_buckets.cache_creation_tokens IS NOT excluded.cache_creation_tokens
+    OR coding_usage_buckets.reasoning_tokens IS NOT excluded.reasoning_tokens OR coding_usage_buckets.event_count IS NOT excluded.event_count`;
+/** json_each 一次绑定的行数上限：Cursor 一份账本几百天，拆开写，别撞 D1 的单条语句上限 */
+const JSON_ROWS_PER_STATEMENT = 500;
 
 type Statement = HistoryStatement;
 type Built = { statements: Statement[]; watermark: number; replaceToken?: string };
@@ -344,14 +358,6 @@ function parsedRows<T>(rows: string[], parse: (raw: string) => T | null): T[] {
     const row = parse(raw);
     return row ? [row] : [];
   });
-}
-
-function record(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
-}
-
-function finite(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 /**
@@ -417,30 +423,62 @@ export function activeSecondsByDay(observations: CodingObservation[], cursor: Re
   });
 }
 
-type UsageDay = { date: string; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheCreationTokens: number; totalTokens: number; apiEquivalentCostUSD: number; models?: { model: string; tokens: number }[] };
-
-function usageDay(value: unknown): UsageDay | null {
-  const row = record(value);
-  if (!row || typeof row.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(row.date)) return null;
-  const keys = ["inputTokens", "outputTokens", "cacheReadTokens", "cacheCreationTokens", "totalTokens", "apiEquivalentCostUSD"] as const;
-  if (!keys.every((k) => finite(row[k]) != null)) return null;
-  const models = Array.isArray(row.models)
-    ? row.models.flatMap((item) => {
-      const model = record(item);
-      return model && typeof model.model === "string" && finite(model.tokens) != null ? [{ model: model.model.slice(0, 80), tokens: model.tokens as number }] : [];
-    })
-    : undefined;
-  return { ...(Object.fromEntries(keys.map((k) => [k, row[k]])) as Omit<UsageDay, "date" | "models">), date: row.date, models };
+function chunked(db: PulseArchiveDb, query: string, rows: unknown[][]): Statement[] {
+  const statements: Statement[] = [];
+  for (let at = 0; at < rows.length; at += JSON_ROWS_PER_STATEMENT) {
+    statements.push(db.prepare(query).bind(JSON.stringify(rows.slice(at, at + JSON_ROWS_PER_STATEMENT))));
+  }
+  return statements;
 }
 
-function dayStatements(db: PulseArchiveDb, agent: string, days: UsageDay[]): Statement[] {
-  if (!days.length) return [];
-  const totals = days.map((day) => [day.date, agent, day.inputTokens, day.outputTokens, day.cacheReadTokens, day.cacheCreationTokens, day.totalTokens, day.apiEquivalentCostUSD]);
-  const models = days.flatMap((day) => (day.models ?? []).map((model) => [day.date, agent, model.model, model.tokens]));
-  return [
-    db.prepare(UPSERT_AGENT_DAYS).bind(JSON.stringify(totals)),
-    ...(models.length ? [db.prepare(UPSERT_MODEL_TOTALS).bind(JSON.stringify(models))] : []),
-  ];
+function parsedJson<T>(raw: string): T | null {
+  try { return JSON.parse(raw) as T; } catch { return null; }
+}
+
+/** 水位之后变过的 (来源, agent) 账本 → 它全部日子的 upsert（值没变的行 D1 不写） */
+function usageStatements(db: PulseArchiveDb, coding: PulseArchiveStreamSnapshot["coding"]): { statements: Statement[]; receivedAt: number[] } {
+  const days: unknown[][] = [];
+  const models: unknown[][] = [];
+  const receivedAt: number[] = [];
+  for (const [source, raws] of Object.entries(coding ?? {})) {
+    if (!isCodingUsageSource(source)) continue;
+    for (const raw of raws ?? []) {
+      const ledger = parsedJson<StoredCodingUsageAgent>(raw);
+      if (!ledger || typeof ledger.id !== "string" || !Array.isArray(ledger.days) || !Number.isFinite(ledger.receivedAt)) continue;
+      receivedAt.push(ledger.receivedAt);
+      for (const day of ledger.days) {
+        days.push([day.date, source, ledger.id, day.inputTokens, day.outputTokens, day.cacheReadTokens, day.cacheCreationTokens,
+          day.reasoningTokens, day.totalTokens, day.apiEquivalentCostUSD, day.costComplete ? 1 : 0]);
+        for (const row of day.models) models.push([day.date, source, ledger.id, row.model, row.tokens]);
+      }
+    }
+  }
+  return { statements: [...chunked(db, UPSERT_USAGE_DAYS, days), ...chunked(db, UPSERT_USAGE_MODELS, models)], receivedAt };
+}
+
+/**
+ * 各来源的 5 分钟桶 → upsert。Mac / agents 只写起点被报告范围盖住的桶：跨着范围起点的那一桶
+ * 只数了一截，拿它盖掉 D1 里数全了的同一个桶会少算。云端 OTLP 没有覆盖区间，照写。
+ */
+function bucketStatements(db: PulseArchiveDb, coding: PulseArchiveStreamSnapshot["coding"]): { statements: Statement[]; receivedAt: number[] } {
+  const rows: unknown[][] = [];
+  const receivedAt: number[] = [];
+  for (const [source, raws] of Object.entries(coding ?? {})) {
+    if (!isCodingUsageSource(source)) continue;
+    for (const raw of raws ?? []) {
+      const stored: StoredCodingBuckets | null = parseStoredCodingBuckets(raw);
+      if (!stored) continue;
+      receivedAt.push(stored.receivedAt);
+      for (const window of stored.windows) {
+        if (source !== "agents-otlp" && !coveringPart(stored.coverage, window.from)) continue;
+        for (const agent of window.agents) {
+          rows.push([window.from, source, agent.id, agent.model ?? "", agent.inputTokens, agent.outputTokens, agent.cacheReadTokens,
+            agent.cacheCreationTokens, agent.reasoningTokens, agent.eventCount]);
+        }
+      }
+    }
+  }
+  return { statements: chunked(db, UPSERT_USAGE_BUCKETS, rows), receivedAt };
 }
 
 /** 一路的快照 → D1 语句与确认用的新水位。纯函数，测试直接喂 node:sqlite。 */
@@ -529,46 +567,9 @@ export function archiveStatements(db: PulseArchiveDb, snapshot: PulseArchiveStre
         watermark: fresh.at(-1)!.t,
       };
     }
-    case "tokens": {
-      const usage = snapshot.value ? parseCodingTokenUsage(JSON.parse(snapshot.value)) : null;
-      if (!usage || usage.collectedAt <= watermark) return { statements: [], watermark };
-      // 报告范围是滚动的，起点通常不落在五分钟边界上：最前面那个桶只数了范围内的一截，
-      // 拿它覆盖上一份报告里完整的同一个桶会少算。只写起点在范围内的桶；末尾那个还在
-      // 累积的桶照写，下一份报告会用更完整的数覆盖它（去重重扫也可能让数变小，所以不取 max）。
-      const complete = usage.windows.filter((window) => window.from >= usage.from);
-      const rows = complete.flatMap((window) => window.agents.map((agent) => [
-        window.from, agent.id, agent.model ?? "", agent.inputTokens, agent.outputTokens, agent.cacheReadTokens,
-        agent.cacheCreationTokens, agent.reasoningTokens, agent.eventCount,
-      ]));
-      return {
-        statements: [
-          ...(rows.length ? [db.prepare(UPSERT_TOKEN_BUCKETS).bind(JSON.stringify(rows))] : []),
-          db.prepare(ROLLUP_TOKEN_DAYS).bind(siteDayStart(usage.from), siteDayStart(usage.to) + DAY_MS),
-        ],
-        watermark: usage.collectedAt,
-      };
-    }
-    case "usage-mac": case "usage-cursor": case "usage-claude-cloud": {
-      const root = snapshot.value ? record(JSON.parse(snapshot.value)) : null;
-      const pushedAt = finite(root?.pushedAt);
-      if (!root || pushedAt == null || pushedAt <= watermark) return { statements: [], watermark };
-      let statements: Statement[] = [];
-      if (snapshot.stream === "usage-mac") {
-        const agents = Array.isArray(record(root.payload)?.agents) ? record(root.payload)!.agents as unknown[] : [];
-        // Cursor 的日桶归容器那份（usage-cursor），Mac 那行只是旧版带出来的空壳
-        statements = agents.flatMap((value) => {
-          const agent = record(value);
-          const today = usageDay(agent?.today);
-          return agent && typeof agent.id === "string" && agent.id !== "cursor" && today ? dayStatements(db, agent.id.slice(0, 40), [today]) : [];
-        });
-      } else if (snapshot.stream === "usage-cursor") {
-        const report = record(root.report);
-        statements = dayStatements(db, "cursor", Array.isArray(report?.days) ? report.days.map(usageDay).filter((day) => day !== null) : []);
-      } else {
-        const usage = record(root.usage);
-        statements = dayStatements(db, "claude-cloud", Array.isArray(usage?.days) ? usage.days.map(usageDay).filter((day) => day !== null) : []);
-      }
-      return { statements, watermark: pushedAt };
+    case "coding-usage": case "coding-buckets": {
+      const built = snapshot.stream === "coding-usage" ? usageStatements(db, snapshot.coding) : bucketStatements(db, snapshot.coding);
+      return { statements: built.statements, watermark: Math.max(watermark, ...built.receivedAt) };
     }
   }
 }

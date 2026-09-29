@@ -5,9 +5,13 @@ import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { codingObservationsKey, codingTokenUsageKey, cursorObservationsKey } from "@/lib/coding-pulse";
+import { codingObservationsKey, cursorObservationsKey } from "@/lib/coding-pulse";
 import { pulseChargingKey, pulseLaneOpenKey, pulseListeningTracesKey } from "@/lib/pulse-keys";
-import { installStorageForTests, key, resetStorageForTests } from "@/lib/storage";
+import { installStorageForTests, resetStorageForTests } from "@/lib/storage";
+import { addBucketDeltas, mergeBucketReport } from "@shared/coding-buckets";
+import { codingBucketsKey, codingUsageKey, codingViewKey } from "@shared/coding-store";
+import type { CodingTokenBucketReport, CodingUsageDay } from "@shared/coding-usage";
+import { buildCodingUsageView, type StoredCodingUsageAgent } from "@shared/coding-usage-view";
 import type { HistoryDb } from "@shared/history-ingest";
 import { SqliteStore, type SqlDatabase } from "@shared/sqlite-store";
 import { StorageClient } from "@shared/storage-client";
@@ -192,7 +196,33 @@ test("pulse archive: an older activity snapshot finishing late cannot undo a new
   assert.deepEqual(b.all("SELECT started_at, steps FROM activity_buckets"), [{ started_at: T0, steps: 310 }]);
 });
 
-test("pulse archive: coding observations, active seconds, token buckets and daily usage per agent and model", async () => {
+function usageDay(date: string, totalTokens: number, models: Array<[string, number]>, extra: Partial<CodingUsageDay> = {}): CodingUsageDay {
+  return {
+    date, inputTokens: totalTokens, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, reasoningTokens: 0, totalTokens,
+    apiEquivalentCostUSD: totalTokens / 100, costComplete: true, models: models.map(([model, tokens]) => ({ model, tokens })), ...extra,
+  };
+}
+
+function ledger(id: string, days: CodingUsageDay[], receivedAt: number): StoredCodingUsageAgent {
+  return { id, state: "ok", collectedAt: receivedAt, error: null, warning: null, sessionCount: null, days, receivedAt };
+}
+
+function bucketReport(from: number, to: number, windows: Array<[number, number]>): CodingTokenBucketReport {
+  return {
+    from, to, collectedAt: to, agents: [{ id: "claude", state: "ok" }],
+    windows: windows.map(([start, input]) => ({ from: start, agents: [{ id: "claude", model: "claude-opus", inputTokens: input, outputTokens: input, cacheReadTokens: 0, cacheCreationTokens: 0, reasoningTokens: 0, eventCount: input }] })),
+  };
+}
+
+/** 把几份账本写进 StateHub，和状态核心提交时一样连带重算视图（归档按视图的 updatedAt 判断有没有新账本） */
+async function storeLedgers(storage: StorageClient, rows: Array<["mac" | "agents" | "agents-otlp", StoredCodingUsageAgent]>, at: number) {
+  const batch = storage.batch();
+  for (const [source, row] of rows) batch.patch(codingUsageKey(source), { [row.id]: JSON.stringify(row) });
+  const stored = Object.fromEntries(rows.map(([source, row]) => [source, { [row.id]: row }]));
+  await batch.set(codingViewKey(), JSON.stringify(buildCodingUsageView(stored, at).view)).execute();
+}
+
+test("pulse archive: coding observations and active seconds go to their own table; nothing rolls up into the old ones", async () => {
   const b = setup();
   const observation = (t: number, agents: { id: string; model: string | null; active: boolean }[]) =>
     JSON.stringify({ t, available: true, desktop: { application: "Zed", coding: true }, agents });
@@ -202,58 +232,100 @@ test("pulse archive: coding observations, active seconds, token buckets and dail
       observation(T0 + 2 * M, [{ id: "claude", model: "claude-opus", active: true }, { id: "codex", model: "gpt", active: true }]),
       observation(T0 + 4 * M, [{ id: "claude", model: "claude-opus", active: false }]))
     .append(cursorObservationsKey(), JSON.stringify({ t: T0, available: true, lastActivityAt: T0 }))
-    .set(codingTokenUsageKey(), JSON.stringify({
-      from: T0 - 5 * M, to: T0 + 5 * M, collectedAt: T0 + 6 * M,
-      sources: [{ id: "codex", state: "ok" }, { id: "claude", state: "ok" }],
-      windows: [{ from: T0, to: T0 + 5 * M, agents: [
-        { id: "claude", model: "claude-opus", inputTokens: 10, outputTokens: 20, cacheReadTokens: 30, cacheCreationTokens: 5, reasoningTokens: 0, eventCount: 2 },
-        { id: "codex", model: null, inputTokens: 1, outputTokens: 2, cacheReadTokens: 0, cacheCreationTokens: 0, reasoningTokens: 1, eventCount: 1 },
-      ] }],
-    }))
-    .set(key("vibecoding", "usage"), JSON.stringify({ pushedAt: T0 + 6 * M, payload: { agents: [
-      { id: "claude", today: { date: "2026-09-28", inputTokens: 100, outputTokens: 200, cacheReadTokens: 300, cacheCreationTokens: 50, totalTokens: 650, apiEquivalentCostUSD: 1.25 } },
-      { id: "cursor", today: { date: "2026-09-28", inputTokens: 9, outputTokens: 9, cacheReadTokens: 9, cacheCreationTokens: 9, totalTokens: 36, apiEquivalentCostUSD: 9 } },
-    ] } }))
-    .set(key("vibecoding", "cursor-usage"), JSON.stringify({ pushedAt: T0 + 6 * M, report: { days: [
-      { date: "2026-09-28", inputTokens: 5, outputTokens: 6, cacheReadTokens: 7, cacheCreationTokens: 0, totalTokens: 18, apiEquivalentCostUSD: 0.5, costComplete: true, models: [{ model: "composer-1", tokens: 18 }] },
-    ] } }))
     .execute();
   b.at(T0 + 7 * M);
   await b.archive().run();
   assert.deepEqual(b.logged, []);
   assert.equal(b.all("SELECT COUNT(*) AS n FROM coding_observations")[0].n, 3);
-  assert.deepEqual(b.all("SELECT agent, model, input_tokens, total_tokens, event_count, cost_usd, active_seconds FROM agent_usage_days ORDER BY agent, model"), [
-    { agent: "claude", model: "*", input_tokens: 100, total_tokens: 650, event_count: null, cost_usd: 1.25, active_seconds: 240 },
-    { agent: "claude", model: "claude-opus", input_tokens: 10, total_tokens: 65, event_count: 2, cost_usd: null, active_seconds: 240 },
-    { agent: "codex", model: "", input_tokens: 1, total_tokens: 3, event_count: 1, cost_usd: null, active_seconds: null },
-    { agent: "codex", model: "*", input_tokens: null, total_tokens: null, event_count: null, cost_usd: null, active_seconds: 120 },
-    { agent: "codex", model: "gpt", input_tokens: null, total_tokens: null, event_count: null, cost_usd: null, active_seconds: 120 },
-    { agent: "cursor", model: "*", input_tokens: 5, total_tokens: 18, event_count: null, cost_usd: 0.5, active_seconds: 300 },
-    { agent: "cursor", model: "composer-1", input_tokens: null, total_tokens: 18, event_count: null, cost_usd: null, active_seconds: null },
-  ], "the Mac's stale Cursor row is ignored; cost exists only per agent");
-  const before = b.changes();
-  await b.archive().run();
-  assert.equal(b.changes(), before, "unchanged sources write nothing");
+  assert.deepEqual(b.all("SELECT agent, model, active_seconds FROM coding_active_days ORDER BY agent, model"), [
+    { agent: "claude", model: "*", active_seconds: 240 },
+    { agent: "claude", model: "claude-opus", active_seconds: 240 },
+    { agent: "codex", model: "*", active_seconds: 120 },
+    { agent: "codex", model: "gpt", active_seconds: 120 },
+    { agent: "cursor", model: "*", active_seconds: 300 },
+  ]);
+  assert.equal(b.all("SELECT COUNT(*) AS n FROM agent_usage_days")[0].n, 0, "the old table is frozen");
 });
 
-test("pulse archive: a later report's partial first window never overwrites a complete token bucket", async () => {
+test("pulse archive: usage ledgers land per source, agent and day; only ledgers that changed since the watermark are rewritten", async () => {
   const b = setup();
-  const agent = (inputTokens: number) => ({ id: "claude", model: "claude-opus", inputTokens, outputTokens: inputTokens, cacheReadTokens: 0, cacheCreationTokens: 0, reasoningTokens: 0, eventCount: inputTokens });
-  const report = (from: number, collectedAt: number, windows: { from: number; count: number }[]) => JSON.stringify({
-    from, to: collectedAt, collectedAt, sources: [{ id: "codex", state: "ok" }, { id: "claude", state: "ok" }],
-    windows: windows.map((window) => ({ from: window.from, to: window.from + 5 * M, agents: [agent(window.count)] })),
-  });
-  await b.storage.set(codingTokenUsageKey(), report(T0, T0 + 10 * M, [{ from: T0, count: 30 }, { from: T0 + 5 * M, count: 12 }]));
+  await storeLedgers(b.storage, [
+    ["mac", ledger("claude", [usageDay("2026-09-27", 100, [["claude-opus", 60], ["claude-fable", 40]]), usageDay("2026-09-28", 0, [])], T0)],
+    ["mac", ledger("cursor", [usageDay("2026-09-28", 999, [["composer-1", 999]])], T0)],
+    ["agents", ledger("cursor", [usageDay("2026-09-28", 18, [["composer-2", 18]], { costComplete: false, reasoningTokens: 0 })], T0)],
+  ], T0);
+  b.at(T0 + M);
+  await b.archive().run();
+  assert.deepEqual(b.logged, []);
+  assert.deepEqual(b.all("SELECT date, source, agent, total_tokens, cost_usd, cost_complete FROM coding_usage_days ORDER BY source, agent, date"), [
+    { date: "2026-09-28", source: "agents", agent: "cursor", total_tokens: 18, cost_usd: 0.18, cost_complete: 0 },
+    { date: "2026-09-27", source: "mac", agent: "claude", total_tokens: 100, cost_usd: 1, cost_complete: 1 },
+    { date: "2026-09-28", source: "mac", agent: "claude", total_tokens: 0, cost_usd: 0, cost_complete: 1 },
+    // 被账号级来源覆盖的那一格照样归档：归档存事实，合并规则在视图里
+    { date: "2026-09-28", source: "mac", agent: "cursor", total_tokens: 999, cost_usd: 9.99, cost_complete: 1 },
+  ]);
+  assert.deepEqual(b.all("SELECT source, agent, model, tokens FROM coding_usage_models ORDER BY source, agent, model"), [
+    { source: "agents", agent: "cursor", model: "composer-2", tokens: 18 },
+    { source: "mac", agent: "claude", model: "claude-fable", tokens: 40 },
+    { source: "mac", agent: "claude", model: "claude-opus", tokens: 60 },
+    { source: "mac", agent: "cursor", model: "composer-1", tokens: 999 },
+  ]);
+  assert.equal(b.watermark("coding-usage"), String(T0));
+
+  const before = b.changes();
+  b.at(T0 + 2 * M);
+  await b.archive().run();
+  assert.equal(b.changes(), before, "no new ledger since the watermark: nothing read, nothing written");
+
+  // 只有 claude 那格变了：只重写它，值没变的那天不产生写入
+  await storeLedgers(b.storage, [
+    ["mac", ledger("claude", [usageDay("2026-09-27", 100, [["claude-opus", 60], ["claude-fable", 40]]), usageDay("2026-09-28", 30, [["claude-opus", 30]])], T0 + 3 * M)],
+  ], T0 + 3 * M);
+  b.at(T0 + 4 * M);
+  await b.archive().run();
+  assert.equal(b.changes() - before, 2, "one changed day row and one new model row");
+  assert.equal(b.all("SELECT total_tokens FROM coding_usage_days WHERE source = 'mac' AND agent = 'claude' AND date = '2026-09-28'")[0].total_tokens, 30);
+  assert.equal(b.watermark("coding-usage"), String(T0 + 3 * M));
+});
+
+test("pulse archive: token buckets from every source; a later report's partial first window never overwrites a complete bucket", async () => {
+  const b = setup();
+  const first = mergeBucketReport(null, bucketReport(T0, T0 + 10 * M, [[T0, 30], [T0 + 5 * M, 12]]), T0 + 10 * M)!;
+  await b.storage.set(codingBucketsKey("mac"), JSON.stringify(first));
+  await b.storage.set(codingBucketsKey("agents-otlp"), JSON.stringify(addBucketDeltas(null, [
+    { at: T0 + M, id: "claude", model: "claude-fable", inputTokens: 5, outputTokens: 1, cacheReadTokens: 0, cacheCreationTokens: 0 },
+  ], T0 + 2 * M)));
+  b.at(T0 + 10 * M);
   await b.archive().run();
   // 下一份报告的范围从 T0+2 分钟起：T0 那个桶只数了后三分钟
-  await b.storage.set(codingTokenUsageKey(), report(T0 + 2 * M, T0 + 12 * M, [{ from: T0, count: 4 }, { from: T0 + 5 * M, count: 20 }, { from: T0 + 10 * M, count: 1 }]));
+  const second = mergeBucketReport(first, bucketReport(T0 + 2 * M, T0 + 12 * M, [[T0, 4], [T0 + 5 * M, 20], [T0 + 10 * M, 1]]), T0 + 12 * M)!;
+  await b.storage.set(codingBucketsKey("mac"), JSON.stringify(second));
+  b.at(T0 + 12 * M);
   await b.archive().run();
-  assert.deepEqual(b.all("SELECT bucket_at, input_tokens FROM coding_token_buckets ORDER BY bucket_at"), [
-    { bucket_at: T0, input_tokens: 30 },
-    { bucket_at: T0 + 5 * M, input_tokens: 20 },
-    { bucket_at: T0 + 10 * M, input_tokens: 1 },
+  assert.deepEqual(b.logged, []);
+  assert.deepEqual(b.all("SELECT bucket_at, source, input_tokens, event_count FROM coding_usage_buckets ORDER BY source, bucket_at"), [
+    { bucket_at: T0, source: "agents-otlp", input_tokens: 5, event_count: null },
+    { bucket_at: T0, source: "mac", input_tokens: 30, event_count: 30 },
+    { bucket_at: T0 + 5 * M, source: "mac", input_tokens: 20, event_count: 20 },
+    { bucket_at: T0 + 10 * M, source: "mac", input_tokens: 1, event_count: 1 },
   ]);
-  assert.deepEqual(b.all("SELECT input_tokens FROM agent_usage_days WHERE model = 'claude-opus'"), [{ input_tokens: 51 }]);
+  assert.equal(b.all("SELECT COUNT(*) AS n FROM agent_usage_days")[0].n, 0, "buckets never roll up into days");
+});
+
+test("pulse archive: migration 0008 carries the frozen Mac buckets and active seconds over", () => {
+  const d1 = new DatabaseSync(":memory:");
+  const migrations = `${dirname(fileURLToPath(import.meta.url))}/../migrations/`;
+  const files = readdirSync(migrations).filter((name) => name.endsWith(".sql")).sort();
+  for (const file of files.filter((name) => name < "0008")) d1.exec(readFileSync(`${migrations}${file}`, "utf8"));
+  d1.exec(`INSERT INTO coding_token_buckets VALUES (${T0}, 'claude', 'claude-opus', 1, 2, 3, 4, 0, 5)`);
+  d1.exec("INSERT INTO agent_usage_days(date, agent, model, total_tokens, active_seconds) VALUES ('2026-09-28', 'claude', '*', 10, 120), ('2026-09-28', 'codex', '*', 5, NULL)");
+  for (const file of files.filter((name) => name >= "0008")) d1.exec(readFileSync(`${migrations}${file}`, "utf8"));
+  assert.deepEqual(d1.prepare("SELECT bucket_at, source, agent, input_tokens, event_count FROM coding_usage_buckets").all().map((row) => ({ ...row })), [
+    { bucket_at: T0, source: "mac", agent: "claude", input_tokens: 1, event_count: 5 },
+  ]);
+  assert.deepEqual(d1.prepare("SELECT date, agent, model, active_seconds FROM coding_active_days").all().map((row) => ({ ...row })), [
+    { date: "2026-09-28", agent: "claude", model: "*", active_seconds: 120 },
+  ]);
 });
 
 test("pulse archive: a charging session longer than the lookback stays one row across runs", async () => {

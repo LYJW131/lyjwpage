@@ -4,6 +4,8 @@ export { mergeCoverage } from './pulse-features';
 export const SCORED_DOMAINS = ['coding'] as const;
 export type PulseScoredDomain = (typeof SCORED_DOMAINS)[number];
 /**
+ * 版本 6：token 证据改成多来源（Mac 本机扫描、Cursor 账号、Claude Code 云端），每行带来源，
+ * 「确定为零」只认 Mac 的覆盖，事件数可能缺；说明句跟着改，最近 24 小时的窗口重新评一遍。
  * 版本 5：Pulse 改成事实时间线，只剩 Coding 送 Jev；别的域的旧评估读时丢掉，
  * 下一次压缩时清出列表。
  * 版本 4：Cursor 与最近播放列表独立观测；仅账号来源可用时保留不确定性。
@@ -11,7 +13,7 @@ export type PulseScoredDomain = (typeof SCORED_DOMAINS)[number];
  * 跟圆环估算一起进判据，升版本让全部窗口重打分，不靠哈希碰巧变。
  * 版本 2 起五个实测域不再发原始区间和图例。
  */
-export const PULSE_ASSESSMENT_VERSION = 5;
+export const PULSE_ASSESSMENT_VERSION = 6;
 /** 每个域自己的模式集合。card 的标签表按 value 查。 */
 export const PULSE_MODES: Record<PulseScoredDomain, readonly string[]> = { coding: CODING_MODES };
 export type PulseMode = { value: string; confidence: number; probabilities: Record<string, number> };

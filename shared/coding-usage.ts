@@ -100,6 +100,14 @@ export type CodingTokenBucketReport = {
 
 /** 桶长 */
 export const CODING_BUCKET_MS = 300_000;
+/** 最近一条用量事件在这么久之内，就算这个 agent 在跑（活动灯、Pulse 的 Coding 观测同一条线） */
+export const CODING_ACTIVE_MS = 5 * 60_000;
+/**
+ * 只管 Mac：它的活动报告内容不变也至少 5 分钟重发一次，采集时刻超过这么久没前进，Coding 观测里的
+ * agent 当未知。agents 来源（Cursor）的活动跟着限额轮按人数调频，闲着时一小时才一封，不用这条线：
+ * 它的新鲜度按账号观测自己的覆盖算（shared/pulse-cursor 的 CURSOR_OBSERVATION_HOLD_MS）。
+ */
+export const CODING_ACTIVITY_STALE_MS = 10 * 60_000;
 
 const AGENT_ID = /^[a-z0-9][a-z0-9._-]{0,39}$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;

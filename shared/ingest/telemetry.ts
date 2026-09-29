@@ -17,10 +17,8 @@ import type {
   ChargerStatus,
   LocalNowPlaying,
   PowerBankStatus,
-  StoredVibeCodingYear,
   TimezoneActivity,
 } from "@/lib/types";
-import type { ParsedVibeCodingNow, ParsedVibeCodingUsage } from "@/lib/vibecoding-parse";
 import type { StoredDesktopActivity } from "@shared/telemetry";
 
 import { CODING_MODULES, prepareCodingModules, type CodingModuleRejection, type CodingModules } from "./coding";
@@ -84,13 +82,6 @@ export type PreparedTelemetryEnvelope = {
     timezone?: TimezoneActivity | null;
     appleMusic?: { music: LocalNowPlaying | null; upcomingTracks: PlayingQueueTrack[] };
     appleMusicCredentials?: { musicUserToken: string };
-    /**
-     * 改名前的三份 coding 模块。入口不再收（旧名字进 `ignored`），这里只留类型，
-     * 让还在读它们的状态核心照常编译；状态核心换到上面三个新模块时一起删掉。
-     */
-    vibeCodingUsage?: ParsedVibeCodingUsage;
-    vibeCodingNow?: ParsedVibeCodingNow;
-    vibeCodingYear?: Omit<StoredVibeCodingYear, "pushedAt">;
   };
   /** 晚模块失败仍要让 DO 在原执行位置抛错，保留此前已承诺的写。 */
   failure?: {

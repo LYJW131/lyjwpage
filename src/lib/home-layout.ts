@@ -1,4 +1,4 @@
-import type { ChargerStatus, LocalNowPlaying, PowerBankStatus, VibeCodingPayload } from "@/lib/types";
+import type { ChargerStatus, CodingUsagePayload, LocalNowPlaying, PowerBankStatus, VibeCodingPayload } from "@/lib/types";
 
 /**
  * 首屏布局的判据，页面和 Worker 共用一份。
@@ -50,6 +50,20 @@ export function liveTrack<T extends Pick<LocalNowPlaying, "title" | "state">>(mu
  * 两块有无各占一段高度。用量数字、限额百分比、活动灯都不在里面。
  */
 export function vibeCodingLayoutKey(payload: Pick<VibeCodingPayload, "agents" | "totals" | "topModels"> | null): string {
+  if (!payload) return "unavailable";
+  return JSON.stringify({
+    agents: payload.agents.map((agent) => agent.id).sort(),
+    totals: payload.totals != null,
+    topModels: payload.topModels.length > 0,
+  });
+}
+
+/**
+ * coding 用量卡片的骨架：有哪些 agent 行、总量和常用模型两块有没有。用量数字、活动灯、
+ * 限额都不在里面。状态核心在同一次提交里拿新旧两份视图比（workers/api/src/stores/coding-usage）。
+ * 按站点登记表不单独占行的 agent 第一次出现也会多失效一次，无妨。
+ */
+export function codingLayoutKey(payload: Pick<CodingUsagePayload, "agents" | "totals" | "topModels"> | null): string {
   if (!payload) return "unavailable";
   return JSON.stringify({
     agents: payload.agents.map((agent) => agent.id).sort(),

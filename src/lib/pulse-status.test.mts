@@ -15,6 +15,9 @@ import {
 } from "@/lib/pulse-keys";
 import { installStorageForTests, resetStorageForTests } from "@/lib/storage";
 import { FakeStorage } from "@/lib/testing/fake-storage";
+import { addBucketDeltas, mergeBucketReport } from "@shared/coding-buckets";
+import { codingBucketsKey } from "@shared/coding-store";
+import type { CodingTokenBucketReport, CodingTokenBucketRow } from "@shared/coding-usage";
 import type { PulseAssessment } from "@shared/pulse-assessment";
 
 const NOW = 1_800_000_000_000;
@@ -36,6 +39,80 @@ test("empty storage is an all-unknown timeline, not an error", async () => {
     assert.deepEqual(payload.lanes.listening.uncertain, { startSec: [], endSec: [], title: [], subtitle: [] });
     assert.equal(payload.lanes.charging.currentPowerW, null);
     assert.deepEqual(payload.lanes.coding.summary, { humanSeconds: 0, agentSeconds: 0, bothSeconds: 0 });
+    assert.deepEqual(payload.lanes.tokens, {
+      kind: "tokens",
+      buckets: { startSec: [], endSec: [], fresh: [], output: [], cacheRead: [] },
+      summary: { peakPerMinute: null, currentPerMinute: null, freshTokens: 0 },
+    });
+  });
+});
+
+function tokens(id: string, model: string | null, input: number, output: number, cacheRead: number, cacheCreation: number): CodingTokenBucketRow {
+  return { id, model, inputTokens: input, outputTokens: output, cacheReadTokens: cacheRead, cacheCreationTokens: cacheCreation, reasoningTokens: 0, eventCount: 1 };
+}
+
+function report(from: number, to: number, agents: string[], windows: Array<[number, CodingTokenBucketRow[]]>): CodingTokenBucketReport {
+  return { from, to, collectedAt: to, agents: agents.map((id) => ({ id, state: "ok" as const })), windows: windows.map(([start, rows]) => ({ from: start, agents: rows })) };
+}
+
+test("tokens lane sums every source per bucket, drops the partial leading and window-cut buckets, clips the trailing one and hides names", async () => {
+  await withStorage(async (storage) => {
+    const mac = mergeBucketReport(null, report(NOW - 18 * M, NOW - 2 * M, ["codex", "claude"], [
+      [NOW - 20 * M, [tokens("codex", "secret-model", 100, 10, 1000, 0)]],
+      [NOW - 15 * M, [tokens("codex", "secret-model", 1000, 200, 5000, 30), tokens("claude", null, 2000, 300, 90000, 70)]],
+      [NOW - 10 * M, [tokens("claude", null, 0, 0, 0, 0)]],
+      [NOW - 5 * M, [tokens("claude", null, 600, 60, 0, 0)]],
+    ]), NOW - 2 * M);
+    const cursor = mergeBucketReport(null, report(NOW - 7 * M, NOW - M, ["cursor"], [[NOW - 5 * M, [tokens("cursor", "composer-2", 100, 10, 0, 0)]]]), NOW - M);
+    const cloud = addBucketDeltas(null, [
+      { at: NOW - 14 * M, id: "claude", model: "claude-fable-5", inputTokens: 400, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0 },
+      // 24 小时窗口左边切进去的那一桶不画
+      { at: FROM - 2 * M, id: "claude", model: "claude-fable-5", inputTokens: 9_999, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0 },
+    ], NOW - 3 * M);
+    await storage.batch()
+      .set(codingBucketsKey("mac"), JSON.stringify(mac))
+      .set(codingBucketsKey("agents"), JSON.stringify(cursor))
+      .set(codingBucketsKey("agents-otlp"), JSON.stringify(cloud))
+      .execute();
+    const lane = (await getPulseStatus(NOW)).lanes.tokens;
+    assert.deepEqual(columnRows(lane.buckets, ["fresh", "output", "cacheRead"]), [
+      { startSec: sec(NOW - 15 * M), endSec: sec(NOW - 10 * M), fresh: 4_000, output: 500, cacheRead: 95_000 },
+      // 末桶截到这一桶里有数的来源里最晚的覆盖终点（Cursor 的 NOW-1），速率按 4 分钟算
+      { startSec: sec(NOW - 5 * M), endSec: sec(NOW - M), fresh: 770, output: 70, cacheRead: 0 },
+    ]);
+    assert.deepEqual(lane.summary, { peakPerMinute: 800, currentPerMinute: 193, freshTokens: 4_770 });
+    const wire = JSON.stringify(lane);
+    for (const secret of ["secret-model", "composer-2", "claude", "codex", "cursor", "mac", "agents"]) assert.equal(wire.includes(secret), false, secret);
+  });
+});
+
+test("tokens lane: the current rate is the last bucket's, or 0 when a source still covers the last ten minutes, or unknown", async () => {
+  const current = async (to: number, extra: (storage: FakeStorage) => Promise<void> = async () => {}) => withStorage(async (storage) => {
+    const mac = mergeBucketReport(null, report(NOW - 60 * M, to, ["claude"], [[NOW - 50 * M, [tokens("claude", null, 500, 0, 0, 0)]]]), to);
+    await storage.set(codingBucketsKey("mac"), JSON.stringify(mac));
+    await extra(storage);
+    const { summary } = (await getPulseStatus(NOW)).lanes.tokens;
+    assert.equal(summary.peakPerMinute, 100);
+    assert.equal(summary.freshTokens, 500);
+    result = summary.currentPerMinute;
+  });
+  let result: number | null | undefined;
+  await current(NOW - M);
+  assert.equal(result, 0, "the Mac scan covers the last ten minutes and saw nothing");
+  await current(NOW - 30 * M);
+  assert.equal(result, null, "nothing covers the last ten minutes: unknown, not zero");
+  await current(NOW - 30 * M, async (storage) => {
+    await storage.set(codingBucketsKey("agents-otlp"), JSON.stringify(addBucketDeltas(null, [], NOW - 2 * M)));
+  });
+  assert.equal(result, 0, "a Claude Code cloud export in the last ten minutes counts as coverage");
+});
+
+test("tokens lane ignores a corrupt bucket store instead of failing the whole payload", async () => {
+  await withStorage(async (storage) => {
+    await storage.set(codingBucketsKey("mac"), "{not json");
+    const { tokens: lane, coding } = (await getPulseStatus(NOW)).lanes;
+    assert.deepEqual(lane.buckets.startSec, []);
+    assert.deepEqual(coding.summary, { humanSeconds: 0, agentSeconds: 0, bothSeconds: 0 });
   });
 });
 

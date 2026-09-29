@@ -45,6 +45,14 @@
 | 503 | `{ ok: false, error: "状态存储初始化中" }` | 状态核心还没初始化；报文是 JSON 但校验不过时也先回这个（不是 JSON 直接 400） |
 | 400 | `{ ok: false, error: "上报数据无效或处理失败" }` | 报文不是 JSON、校验不过、状态核心拒收或调不通、写 KV 失败 |
 
+`mac` 与 `agents` 的 202 `data` 另带入口自己判下的两件事，两个键总在，空数组就是没有：
+
+- `ignored`（只有 `mac`）：信封里不认识的模块名，含改名前的 `vibeCodingUsage` / `vibeCodingNow` / `vibeCodingYear`；不影响别的模块。
+- `rejected`：`[{ module, error }]`，三份 coding 数据（`codingUsage` / `codingActivity` / `codingTokenBuckets`，契约见
+  `shared/coding-usage.ts`）里校验不过的那几份。坏的只丢它自己，原因带路径（如 `agents[0].days[2].totalTokens 小于四列之和`），
+  别的模块、存活、限额照常收下，另记一行 `[ingest] rejected` 警告进 Sentry Logs。`agents` 那封里被拒的不算「带了」：
+  限额和 coding 数据一份可收的都没有时整封 400（原因只进日志）。
+
 大小按实际读到的字节限制（`STORAGE_MAX_BYTES`，4 MiB），不信 `Content-Length`；超过也回 400，没有 413。
 202 表示实时那一半已经在状态核心落库、可滞后层和凭据已经写完；推送与首屏失效由状态核心在自己的 `waitUntil` 里做，
 归档在这边的 `waitUntil` 里做，失败只记日志，不让上报器重发。

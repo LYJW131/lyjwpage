@@ -11,12 +11,13 @@ Worker 是唯一数据后端。上报、状态 API、Apple / GitHub 获取和缓
 - TTL 读取时检查，闹钟每小时分批回收过期项；导入保留原始绝对过期时间，重试不覆盖目标已有值。
 - `/api/status/*`、`/api/lyrics`、`/api/motion-artwork` 在普通 Worker 取数，只输出明确的公开模型。StateHub 先提供初始化屏障，并等待已经进入 `commitIngest()` 队列的提交，再按请求合并相邻只读批次；仍在上报入口准备输入的上报尚未进入该边界。未知路径无需进入 DO。没有 HTTP 通用数据库读写端点，服务端凭据不进入 Vercel、HTML 或状态响应。
 - `/api/ingest/*` 只在上报入口，使用 Cloudflare Access service token，每来源一把（见 `workers/ingress/src/access-auth.ts`）。临时 `/api/internal/storage/import` 使用独立 `STATE_IMPORT_SECRET`，不授予 Vercel，迁移后删除 Secret。
-- 跨域活动脉搏（pulse）是事实时间线，只存原始值，TTL 7 天：听、看、玩各一个开着的区间 `pulse:v2:<道>:open` 加一串已关闭区间 `pulse:v2:<道>`（同一状态每分钟最多续写一次，变了才换段）；「最近在听」列表变动记在 `pulse:v2:listening-traces`（只知道落在两次刷新之间的不确定区间）；充电瓦数 `pulse:v2:charging`（跨待机立刻、通电时 ≥ 30 秒且变化明显、最迟 5 分钟一笔，6000 条）；活动五分钟桶 `pulse:v2:activity`（权威范围替换，只从第一处变化往后重写，范围与版本在 `pulse:v2:activity:range` / `:revision`）；训练区间 `pulse:v2:workouts`。Coding 三色带读时从 `pulse:coding-observations` 与 `pulse:cursor-observations` 现算。公开出口是 `GET /api/status/pulse`（裁最近 24 小时，只给媒体与游戏标题，应用名、模型名、token、设备名不出门）。档位时代的 `pulse:<domain>` 已停写、随 TTL 过期。契约见 [跨域活动脉搏](../workers/api/README.md#跨域活动脉搏pulse)。
+- 跨域活动脉搏（pulse）是事实时间线，只存原始值，TTL 7 天：听、看、玩各一个开着的区间 `pulse:v2:<道>:open` 加一串已关闭区间 `pulse:v2:<道>`（同一状态每分钟最多续写一次，变了才换段）；「最近在听」列表变动记在 `pulse:v2:listening-traces`（只知道落在两次刷新之间的不确定区间）；充电瓦数 `pulse:v2:charging`（跨待机立刻、通电时 ≥ 30 秒且变化明显、最迟 5 分钟一笔，6000 条）；活动五分钟桶 `pulse:v2:activity`（权威范围替换，只从第一处变化往后重写，范围与版本在 `pulse:v2:activity:range` / `:revision`）；训练区间 `pulse:v2:workouts`。Coding 三色带读时从 `pulse:coding-observations` 与 `pulse:cursor-observations` 现算；Tokens 道读时把各来源的 5 分钟 token 桶 `pulse:token-buckets:<来源>`（TTL 2 天）相加。公开出口是 `GET /api/status/pulse`（裁最近 24 小时，只给媒体与游戏标题，应用名、模型名、设备名不出门，token 只以各来源各模型相加后的五分钟桶出现）。档位时代的 `pulse:<domain>` 已停写、随 TTL 过期。契约见 [跨域活动脉搏](../workers/api/README.md#跨域活动脉搏pulse)。
+- coding agent 的 token 用量不是时间线，是各来源的账本：`coding:usage:<来源>`（字段 = agent id，整份替换）、由它们在同一次提交里算好的视图 `coding:usage:view` 与年度视图 `coding:usage:year`、各来源最近事件 `coding:activity:<来源>`、云端 OTLP 做差用的计数器 `coding:otlp`。放在 DO 而不是 KV：云端那份只有 DO 串行做差才算得出，多来源合并要串行的读-改-写。契约见 [coding agent 的 token 用量](../workers/api/README.md#coding-agent-的-token-用量)。
 - API Worker 的 `LIVE_PUSH` 使用可休眠 WebSocket，一条连接数出两个口径（`workers/api/src/live-census.ts`）：`connections` 含后台页面，`online` 只数页面报了 `visible` 且 90 秒内有心跳的连接，可见人数一变就广播 `online` 事件，有人可见时挂 30 秒清扫闹钟。`api.homepage.lyjw.llc/count` 一次返回两个数，调频的上报器读它，采集 Worker 经 `StateCore.audience()` 读；读不到一律当 0。
 
 ## 可滞后层（KV）
 
-判断标准只有一条：这份数据是否需要「变了立刻推、读到必是最新」，或是否参与 pulse 计算。是则归实时层（状态核心 DO），否则归可滞后层，存在 KV 命名空间 `lyjwpage-lag`（binding `LAG`，键表与 `{ updatedAt, data }` 格式见 `shared/lag.ts`）。
+判断标准只有一条：这份数据是否需要「变了立刻推、读到必是最新」，或是否参与 pulse 计算（另有一类：必须由 DO 串行合并的账本，如 coding 用量）。是则归实时层（状态核心 DO），否则归可滞后层，存在 KV 命名空间 `lyjwpage-lag`（binding `LAG`，键表与 `{ updatedAt, data }` 格式见 `shared/lag.ts`）。
 
 - 写入方直接写 KV、不推送：上报入口写落地节点、限额、时区、常驻上报器账本、活动圆环读数与最近训练（`workers/ingress/src/lag-ingest.ts`，在这封上报的状态核心那一半成功之后）；采集 Worker 写外部拉取的结果。取数失败不写，KV 里的值本身就是上次成功值，不另存 last-good。iPhone 那一封里，状态核心只留 Pulse 的输入（五分钟统计桶、训练区间），圆环读数（`activity:v1`，只在这封带了当天圆环时写）和训练列表（`workouts:v1`，整份替换）在 KV，`updatedAt` 是最后一次带来它的那封上报的收到时刻。
 - 状态核心的公开读取端点只读 KV（`src/lib/lag-result.ts` 经 `@/lib/lag-store` 别名读 `LAG`），信封里带上 `updatedAt`；服务端不下「过没过时」的结论。
@@ -27,7 +28,7 @@ Worker 是唯一数据后端。上报、状态 API、Apple / GitHub 获取和缓
 
 ## 长期归档（D1）
 
-D1 是整站的长期历史归档：DO 管实时状态与 7 天热数据，KV 管可滞后层的最新值，D1 管永久、按时间可查的历史，R2 管图片。原则是存事实不存展示结果、谁写入谁归档（收下这份数据的一方顺手追加，不设单独的搬运流程）、只追加并靠主键去重、高频读数只存汇总、只知道区间的事实如实存区间。
+D1 是整站的长期历史归档：DO 管实时状态、7 天热数据与用量账本，KV 管可滞后层的最新值，D1 管永久、按时间可查的历史，R2 管图片。原则是存事实不存展示结果、谁写入谁归档（收下这份数据的一方顺手追加，不设单独的搬运流程）、只追加并靠主键去重、高频读数只存汇总、只知道区间的事实如实存区间。
 
 | 表 | 内容 | 写入方 | 去重 |
 | --- | --- | --- | --- |
@@ -42,13 +43,15 @@ D1 是整站的长期历史归档：DO 管实时状态与 7 天热数据，KV �
 | `charging_sessions` | 一次充电的起止、峰值、能量、设备 | 状态核心 | `started_at`，还在充时每分钟改写 |
 | `activity_buckets` | HealthKit 五分钟桶原值（步数、活动千卡、锻炼分钟） | 状态核心 | `started_at`，范围替换由版本挡旧快照 |
 | `coding_observations` | Coding 原始观测：前台应用、是否 coding 应用、各 agent 在不在跑 | 状态核心 | `t` |
-| `coding_token_buckets` | Mac 本机五分钟 token 桶，agent × 模型 | 状态核心 | `(bucket_at, agent, model)` |
-| `agent_usage_days` | 每天 × agent × 模型的 token、事件数、费用（只有 agent 合计 `model = '*'` 有）、活跃秒数 | 状态核心 | `(date, agent, model)` |
+| `coding_usage_days` / `coding_usage_models` | 来源 × agent × 站点日的 token 用量与 API 等值费用；当天按来源的模型拆分 | 状态核心 | `(date, source, agent)` / `(date, source, agent, model)` |
+| `coding_usage_buckets` | 各来源的五分钟 token 桶，agent × 模型 | 状态核心 | `(bucket_at, source, agent, model)` |
+| `coding_active_days` | agent 在跑的秒数（来自 Coding 观测） | 状态核心 | `(date, agent, model)` |
+| `coding_token_buckets` / `agent_usage_days` | 单来源（Mac）时代的桶与每日汇总，冻结不再写（`0008` 把桶和活跃秒数复制进新表） | — | — |
 | `pulse_samples` | 档位时代（Pulse 改成事实时间线之前）的旧数据，原样冻结，不迁移也不再写 | — | `(domain, t)` |
 
 上报入口的四张表由 `shared/history-ingest.ts` 拼语句，上报入口 Worker（`workers/ingress/src/ingest-archive.ts`）在状态核心那一半提交成功之后 `waitUntil` 整批提交；失败只记 `[history]` 日志，不让已收下的上报重发。迁移 `0005_history_ingest.sql` 建表，部署写这些表的版本之前先应用。
 
-- Pulse 事实表由状态核心写：cron 每分钟从 StateHub 取一份有界快照（各路水位之后的新行，外加推导会话所需的一点上下文），普通 Worker 拼成按自然键幂等的 upsert（`INSERT OR IGNORE` 或 `DO UPDATE … WHERE` 值变了才写）写 D1，全部成功后再向 StateHub 确认水位；上报不等待归档。水位存在 metadata 的 `pulse-archive:v2:<路>`，确认按 max 单调前进；失败留待下一分钟重放，一路失败不阻塞其他路。表与各来源的缺口见 [长期归档](../workers/api/README.md#长期归档d1)，迁移 `0007_history_pulse.sql`（`0006` 留给采集 Worker）。
+- Pulse 事实表由状态核心写：cron 每分钟从 StateHub 取一份有界快照（各路水位之后的新行，外加推导会话所需的一点上下文），普通 Worker 拼成按自然键幂等的 upsert（`INSERT OR IGNORE` 或 `DO UPDATE … WHERE` 值变了才写）写 D1，全部成功后再向 StateHub 确认水位；上报不等待归档。水位存在 metadata 的 `pulse-archive:v2:<路>`，确认按 max 单调前进；失败留待下一分钟重放，一路失败不阻塞其他路。表与各来源的缺口见 [长期归档](../workers/api/README.md#长期归档d1)，迁移 `0007_history_pulse.sql` 与 coding 用量的 `0008_coding_usage.sql`（`0006` 留给采集 Worker）。
 - 旧表 `pulse_samples(domain, t, level, hint, until_at, power_w)` 原样冻结。StateHub 仍是唯一权威，这里只增不删：StateHub 只留 7 天，归档保留全部历史。
 - 本地和夹具环境不写归档：`historyArchiveEnabled` 和 Jev 打分用同一套闸门，配了 `DEV_OVERRIDES` 或 `UPSTREAM_API_URL` 就停用，没有 `HISTORY` 绑定也停用。
 - 归档暂时没有公开 HTTP 读路径，只作备份；公开的那份走 `GET /api/status/pulse`，从 StateHub 的 7 天序列里裁最近 24 小时，不读 D1。读归档的入口另开时再补这一节。
@@ -57,9 +60,9 @@ D1 是整站的长期历史归档：DO 管实时状态与 7 天热数据，KV �
 
 ## Coding 评估（pulse:assessments）
 
-- Jev 只给 Coding 打分，其余道画的是事实本身。一个十五分钟评分调度器和 `pulse:assessments` 列表，保留七天；输入哈希相同不重复调用，晚到的 token 可修订相应窗口。输入哈希含 `PULSE_ASSESSMENT_VERSION`（现为 5）。StateHub metadata 持久化 claim token、generation、180 秒 lease 与最近尝试；普通 Worker 从固定快照提取特征和调用模型，提交时 StateHub 校验资格并与最新结果合并。
+- Jev 只给 Coding 打分，其余道画的是事实本身。一个十五分钟评分调度器和 `pulse:assessments` 列表，保留七天；输入哈希相同不重复调用，晚到的 token 可修订相应窗口。输入哈希含 `PULSE_ASSESSMENT_VERSION`（现为 6）。StateHub metadata 持久化 claim token、generation、180 秒 lease 与最近尝试；普通 Worker 从固定快照提取特征和调用模型，提交时 StateHub 校验资格并与最新结果合并。
 - 列表追加写：每轮只追加新评出来的几行，同一窗口以最后一行为准（读者一律走 `latestPulseAssessments`）。被覆盖的旧行和过期行多过有效行的一半、或总行数超过上限（2016）的 1.5 倍时才整表压缩重写。从前每轮整表重写，七天攒满后一天七百万行 SQLite 写入，远超 Workers Paid 每月五千万的包含量。别的域的旧评估读时丢掉，下次压缩时清出。
-- 评估只出现在 Coding 悬停里（强度、置信度、模式）。Coding 内部观测在 `pulse:coding-observations`，窗口 token 报告在 `pulse:coding-token-usage`；公开 API 不返回原始用量、应用名或模型名。契约与闸门见 [Coding 的 Jev 评估](../workers/api/README.md#coding-的-jev-评估)。
+- 评估只出现在 Coding 悬停里（强度、置信度、模式）。Coding 内部观测在 `pulse:coding-observations`，token 证据是三个来源的 `pulse:token-buckets:<来源>`（「确定为零」只认 Mac 本机扫描的覆盖，账号与云端的桶只作正证据）；公开 API 不返回原始用量、应用名或模型名。契约与闸门见 [Coding 的 Jev 评估](../workers/api/README.md#coding-的-jev-评估)。
 
 ## 首屏与浏览器
 

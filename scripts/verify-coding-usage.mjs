@@ -14,8 +14,8 @@ const { values } = parseArgs({ options: {
   help: { type: "boolean" },
 } });
 if (values.help) {
-  console.log("node scripts/verify-coding-usage.mjs --storage-prefix <isolated-dev-prefix> [--snapshot <Mac CLI JSON>] [--base http://localhost:3211] [--ingest http://127.0.0.1:8787]");
-  console.log("Requires dedicated local Next and Worker servers with the same empty isolated Durable Object, with the local Access test key (LOCAL_ACCESS_PRIVATE_JWK, see scripts/dev-access.mjs); production services must not be configured. Leaves the input snapshot (or synthetic baseline) installed and synthetic limits.");
+  console.log("node scripts/verify-coding-usage.mjs --storage-prefix <isolated-dev-prefix> [--snapshot <Hub codingUsage report JSON>] [--base http://localhost:3211] [--ingest http://127.0.0.1:8787]");
+  console.log("Requires dedicated local Next and Worker servers with the same empty isolated Durable Object, with the local Access test key (LOCAL_ACCESS_PRIVATE_JWK, see scripts/dev-access.mjs); production services must not be configured. Leaves the synthetic facts (and the optional Hub report) installed.");
   process.exit(0);
 }
 
@@ -38,47 +38,48 @@ assert.ok(prefix && /^[a-zA-Z0-9:_-]+$/.test(prefix) && /(?:^|[-_:])(test|dev|ve
 const access = await devAccessFromEnv();
 assert.ok(access, "LOCAL_ACCESS_PRIVATE_JWK is required: run through scripts/verify-api-worker.mjs, or export the key from scripts/dev-access.mjs");
 const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
-const date = (stamp) => new Date(stamp).toISOString().slice(0, 10);
+const MINUTE = 60_000;
+const BUCKET = 5 * MINUTE;
+/** Asia/Shanghai 站点日 */
+const siteDay = (stamp) => new Date(stamp + 8 * 3_600_000).toISOString().slice(0, 10);
 
-function fixture() {
-  const now = Date.now();
-  const collectedAt = new Date(now).toISOString();
-  const today = date(now + 8 * 3_600_000);
-  const midnight = Date.parse(`${today}T00:00:00Z`);
-  const origin = date(midnight - (new Date(midnight).getUTCDay() + 364) * 86_400_000);
-  const todayOffset = Math.round((midnight - Date.parse(`${origin}T00:00:00Z`)) / 86_400_000);
-  const day = (tokens) => ({ date: today, inputTokens: tokens, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, totalTokens: tokens, apiEquivalentCostUSD: tokens / 1_000 });
-  const status = { state: "ok", collectedAt, error: null, warning: null, coverageStart: origin, coverageEnd: today, precision: "measured", costComplete: true };
-  const agents = [
-    ["claude", "Claude Code", "anthropic"], ["codex", "Codex", "openai"],
-    ["cursor", "Cursor", "cursor"], ["grok", "Grok Build", "grok"],
-    ["antigravity", "Antigravity", "antigravity"],
-  ].map(([id, label, icon]) => ({ id, label, icon, models: [], currentModel: null, topModel: null, today: day(id === "claude" ? 2_000 : 0), usageStatus: { ...status } }));
-  agents[2].today = day(500);
-  agents[2].usageStatus = { ...status, state: "error", collectedAt: new Date(now - 3_600_000).toISOString(), error: "Verification: cloud temporarily unavailable", precision: "mixed", costComplete: false };
-  agents[3].today = null;
-  agents[3].usageStatus = { ...status, state: "unavailable", collectedAt: null, coverageStart: null, coverageEnd: null, costComplete: false };
-  const days = Array(371).fill(0);
-  days[5] = 1_000;
-  days[todayOffset] = 2_500;
+const now = Date.now();
+const today = siteDay(now);
+const yesterday = siteDay(now - 86_400_000);
+function day(date, tokens, model, extra = {}) {
   return {
-    usage: { agents, totals: { inputTokens: 3_500, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, reasoningTokens: 0, totalTokens: 3_500, apiEquivalentCostUSD: 3, costComplete: false, activeDays: 2, sessionCount: 4 }, topModels: [{ model: "fixture-model", tokens: 3_500 }], collectedAt },
-    now: { agents: agents.map(({ id }) => ({ id, currentModel: id === "claude" ? "fixture-live-model" : null, lastActivityAt: id === "claude" ? collectedAt : null, active: id === "claude" })) },
-    year: { origin, days, models: ["fixture-model"], mix: [[5, 0, 1_000], [todayOffset, 0, 2_500]] },
+    date, inputTokens: tokens, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, reasoningTokens: 0,
+    totalTokens: tokens, apiEquivalentCostUSD: tokens / 1_000, costComplete: true, models: model ? [{ model, tokens }] : [], ...extra,
   };
 }
-const baseline = fixture();
-const restore = values.snapshot ? JSON.parse(await readFile(values.snapshot, "utf8")) : baseline;
-assert.ok(restore.usage?.agents?.length && restore.now?.agents && restore.year?.days?.length === 371, "Snapshot must be the Mac CLI {usage, now, year} JSON");
+const macUsage = (at, claudeToday = 2_000) => ({ agents: [
+  { id: "claude", state: "ok", collectedAt: at, sessionCount: 4, days: [day(yesterday, 1_000, "claude-opus-5"), day(today, claudeToday, "claude-opus-5")] },
+  { id: "codex", state: "ok", collectedAt: at, sessionCount: 2, days: [day(today, 0, null)] },
+  { id: "grok", state: "error", collectedAt: null, error: "Verification: ccusage unavailable" },
+  // Mac 就算又报了 cursor，也被账号级来源盖住
+  { id: "cursor", state: "ok", collectedAt: at, days: [day(today, 99_999, "composer-1")] },
+] });
+const macActivity = (at) => ({ collectedAt: at, agents: [{ id: "claude", lastActivityAt: at - 20_000, model: "claude-opus-5" }, { id: "codex", lastActivityAt: null, model: null }] });
+const bucketFrom = Math.floor((now - 20 * MINUTE) / BUCKET) * BUCKET;
+const macBuckets = (at) => ({
+  from: bucketFrom, to: at, collectedAt: at, agents: [{ id: "claude", state: "ok" }, { id: "codex", state: "ok" }],
+  windows: [{ from: bucketFrom + BUCKET, agents: [{ id: "claude", model: "claude-opus-5", inputTokens: 6_000, outputTokens: 400, cacheReadTokens: 50_000, cacheCreationTokens: 100, reasoningTokens: 0, eventCount: 3 }] }],
+});
+const cursorUsage = (at) => ({ agents: [{ id: "cursor", state: "ok", collectedAt: at, sessionCount: null, days: [day(yesterday, 500, "composer-2")] }] });
 const limits = { agents: [
   { id: "claude", plan: { tier: "max", label: "Verification Max" }, limits: [{ key: "claude.primary", usedPercent: 20, windowMinutes: 300 }], limitsError: null },
-  { id: "grok", plan: null, limits: [{ key: "grok.primary", usedPercent: 75 }], limitsError: null },
   { id: "limits-only-demo", plan: null, limits: [], limitsError: "Verification: limits unavailable" },
 ] };
 
-function envelope(snapshot, parts = ["usage", "now", "year"]) {
-  const names = { usage: "vibeCodingUsage", now: "vibeCodingNow", year: "vibeCodingYear" };
-  return { version: 4, heartbeatAt: Date.now(), presence: "online", activeModules: ["vibeCoding"], modules: Object.fromEntries(parts.map((part) => [names[part], snapshot[part]])) };
+function envelope(modules, activeModules = ["coding"]) {
+  return { version: 4, heartbeatAt: Date.now(), presence: "online", activeModules, modules };
+}
+function otlp(at, value) {
+  const attributes = (type) => [["session.id", "verify-session"], ["model", "claude-fable-5"], ["type", type]]
+    .map(([key, stringValue]) => ({ key, value: { stringValue } }));
+  return { resourceMetrics: [{ scopeMetrics: [{ metrics: [{ name: "claude_code.token.usage", sum: { aggregationTemporality: 2, dataPoints: [
+    { attributes: attributes("input"), startTimeUnixNano: "1", timeUnixNano: `${BigInt(at) * 1_000_000n}`, asDouble: value },
+  ] } }] }] }] };
 }
 // authorization：默认带 Access JWT；null 不带任何凭据；字符串按旧式 Bearer 发（应当被拒）
 async function request(path, body, authorization = "access") {
@@ -95,7 +96,9 @@ async function request(path, body, authorization = "access") {
 async function post(path, body, status = 202, authorization = "access") {
   const result = await request(path, body, authorization);
   assert.equal(result.status, status, `${path}: ${JSON.stringify(result.body)}`);
-  assert.equal(result.body.ok, status === 202);
+  // OTLP exporter 的成功回执是空对象，没有 ok
+  if (path !== "/api/ingest/agents/otlp") assert.equal(result.body.ok, status === 202);
+  return result.body;
 }
 async function eventually(check, label) {
   const deadline = Date.now() + 30_000;
@@ -112,114 +115,106 @@ async function data(path) {
   assert.equal(result.body.ok, true, JSON.stringify(result.body));
   return result.body.data;
 }
-async function assertSnapshot(snapshot) {
-  return eventually(async () => {
-    const [usage, year] = await Promise.all([data("/api/status/vibecoding"), data("/api/status/vibecoding/year")]);
-    assert.deepEqual(usage.totals, snapshot.usage.totals);
-    assert.deepEqual(usage.topModels, snapshot.usage.topModels.slice(0, 3));
-    assert.equal(usage.collectedAt, snapshot.usage.collectedAt);
-    for (const row of snapshot.usage.agents) {
-      const actual = usage.agents.find(({ id }) => id === row.id);
-      assert.ok(actual, `Missing source ${row.id}`);
-      assert.deepEqual(actual.today, row.today);
-      assert.deepEqual(actual.usageStatus, row.usageStatus);
-      const live = snapshot.now.agents.find(({ id }) => id === row.id);
-      assert.equal(actual.active, live?.active ?? false);
-      assert.equal(actual.currentModel, live?.currentModel ?? row.currentModel);
-      assert.equal(actual.lastActivityAt, live?.lastActivityAt ?? null);
-    }
-    for (const field of ["origin", "days", "models", "mix"]) assert.deepEqual(year[field], snapshot.year[field]);
-    return { usage, year };
-  }, "Mac snapshot readback");
-}
+const agentOf = (usage, id) => usage.agents.find((agent) => agent.id === id);
 
 let passed = 0;
 function pass(label) { console.log(`PASS ${++passed}: ${label}`); }
-let mutated = false;
-try {
-  await post("/api/ingest/mac", envelope(baseline), 401, null);
-  await post("/api/ingest/agents", limits, 401, "wrong-verification-secret");
-  pass("Both ingest endpoints enforce authentication");
-  assert.equal((await request("/api/status/vibecoding")).body.ok, false, "Use a fresh isolated Worker; existing coding data must not be overwritten");
-  mutated = true;
-  await post("/api/ingest/agents", limits);
-  await eventually(async () => {
-    const stored = await data("/api/status/limits");
-    assert.deepEqual(Object.keys(stored.agents).sort(), limits.agents.map(({ id }) => id).sort());
-    assert.equal(stored.agents.claude.limits[0].usedPercent, 20);
-    assert.equal(stored.agents["limits-only-demo"].limitsError, "Verification: limits unavailable");
-    assert.equal((await request("/api/status/vibecoding")).body.ok, false, "Limits live in the lag layer, not in the usage view");
-  }, "limits-only state");
-  pass("Limits land in the lag layer; the usage view stays empty until usage arrives");
 
-  const old = structuredClone(baseline);
-  delete old.usage.agents[0].usageStatus;
-  delete old.usage.totals.costComplete;
-  await post("/api/ingest/mac", envelope(old, ["usage"]), 400);
-  const bad = structuredClone(baseline);
-  bad.usage.agents[0].usageStatus.state = "invalid";
-  await post("/api/ingest/mac", envelope(bad, ["usage"]), 400);
-  const missingToday = structuredClone(baseline);
-  delete missingToday.usage.agents[0].today;
-  await post("/api/ingest/mac", envelope(missingToday, ["usage"]), 400);
-  pass("Old schema, invalid source status and omitted today are rejected");
+await post("/api/ingest/mac", envelope({ codingUsage: macUsage(now) }), 401, null);
+await post("/api/ingest/agents", limits, 401, "wrong-verification-secret");
+pass("Both ingest endpoints enforce authentication");
+assert.equal((await request("/api/status/coding")).body.ok, false, "Use a fresh isolated Worker; existing coding data must not be overwritten");
 
-  await post("/api/ingest/mac", envelope(baseline));
-  const initial = await assertSnapshot(baseline);
-  assert.equal(initial.usage.agents.find(({ id }) => id === "codex").today.totalTokens, 0);
-  assert.equal(initial.usage.agents.find(({ id }) => id === "grok").today, null);
-  assert.ok((await data("/api/status/limits")).agents["limits-only-demo"], "The limits-only source stays in the lag layer for the card to merge");
-  pass("Mac usage/now/year survive ingest; zero, unknown and cached error rows remain distinct, limits-only rows stay in the lag layer");
+await post("/api/ingest/agents", limits);
+await eventually(async () => {
+  const stored = await data("/api/status/limits");
+  assert.deepEqual(Object.keys(stored.agents).sort(), limits.agents.map(({ id }) => id).sort());
+  assert.equal((await request("/api/status/coding")).body.ok, false, "Limits live in the lag layer, not in the usage view");
+}, "limits-only state");
+pass("Limits land in the lag layer; the usage view stays empty until usage arrives");
 
-  for (const since of [baseline.year.origin, "9999-12-31", "invalid"]) {
-    const year = await data(`/api/status/vibecoding/year?since=${since}`);
-    assert.equal(year.days.length, 371);
-    assert.deepEqual(year.days, baseline.year.days);
-    assert.equal("from" in year, false);
-    assert.equal("daysPartial" in year, false);
-  }
-  pass("Year always returns all 371 days and ignores every since value");
+const broken = macUsage(now);
+broken.agents[0].days[1].totalTokens = 1;
+const receipt = await post("/api/ingest/mac", envelope({ codingUsage: broken, codingActivity: macActivity(now), vibeCodingNow: { agents: [] } }));
+assert.deepEqual(receipt.data.ignored, ["vibeCodingNow"]);
+assert.deepEqual(receipt.data.rejected.map(({ module }) => module), ["codingUsage"]);
+assert.match(receipt.data.rejected[0].error, /agents\[0\]\.days\[1\]\.totalTokens/);
+await eventually(async () => {
+  const live = await data("/api/status/coding/now");
+  assert.deepEqual(live.agents, [{ id: "claude", activity: [{ source: "mac", lastActivityAt: now - 20_000, model: "claude-opus-5" }] }]);
+  assert.equal(live.declaredOffline, false);
+  assert.equal((await request("/api/status/coding")).body.ok, false, "the rejected usage never landed");
+}, "partial Mac envelope");
+pass("A broken coding module is dropped alone: the receipt names it, the renamed module is ignored, activity still lands");
 
-  await post("/api/ingest/mac", envelope(baseline));
-  await assertSnapshot(baseline);
-  pass("Repeated snapshots replace totals and history without accumulating twice");
+await post("/api/ingest/mac", envelope({ codingUsage: macUsage(now), codingTokenBuckets: macBuckets(now) }));
+await post("/api/ingest/agents", { collectedAt: new Date(now).toISOString(), codingUsage: cursorUsage(now) });
+const first = await eventually(async () => {
+  const usage = await data("/api/status/coding");
+  assert.equal(usage.totals.totalTokens, 3_500);
+  assert.equal(usage.totals.activeDays, 2);
+  assert.equal(usage.totals.sessionCount, 6);
+  assert.deepEqual(usage.topModels, [{ model: "claude-opus-5", tokens: 3_000 }, { model: "composer-2", tokens: 500 }]);
+  assert.deepEqual(agentOf(usage, "cursor").sources, ["agents"]);
+  assert.deepEqual(agentOf(usage, "cursor").status.map(({ source, state }) => [source, state]), [["mac", "superseded"], ["agents", "ok"]]);
+  assert.equal(agentOf(usage, "codex").lastDay.totalTokens, 0, "a confirmed zero today, not unknown");
+  assert.equal(agentOf(usage, "grok").lastDay, null);
+  assert.equal(agentOf(usage, "grok").status[0].state, "error");
+  return usage;
+}, "Mac and Cursor usage view");
+pass("Usage view: Mac ledgers plus the Cursor account ledger; the Mac's own cursor row is superseded, zero and unknown stay distinct");
 
-  const nowOnly = structuredClone(baseline);
-  nowOnly.now.agents[0].currentModel = "fixture-next-model";
-  nowOnly.now.agents[0].active = false;
-  await post("/api/ingest/mac", envelope(nowOnly, ["now"]));
-  await assertSnapshot(nowOnly);
-  pass("A now-only update preserves cumulative usage and annual history");
+await post("/api/ingest/agents/otlp", otlp(now, 300), 200);
+await post("/api/ingest/agents/otlp", otlp(now + 1_000, 450), 200);
+const cloud = await eventually(async () => {
+  const usage = await data("/api/status/coding");
+  assert.deepEqual(agentOf(usage, "claude").sources, ["mac", "agents-otlp"]);
+  assert.equal(usage.totals.totalTokens, 3_950, "cumulative 450 counted once");
+  assert.equal(agentOf(usage, "claude").lastDay.totalTokens, 2_450);
+  return usage;
+}, "cloud usage");
+assert.ok(cloud.updatedAt >= first.updatedAt);
+const live = await data("/api/status/coding/now");
+assert.deepEqual(live.agents.find(({ id }) => id === "claude").activity.map(({ source }) => source).sort(), ["agents-otlp", "mac"]);
+pass("Claude Code cloud telemetry adds only its deltas; claude sums the Mac and cloud sources, and now shows both");
 
-  const invalidYear = structuredClone(baseline);
-  invalidYear.usage.totals.totalTokens = 999_999;
-  invalidYear.year.days.pop();
-  await post("/api/ingest/mac", envelope(invalidYear), 400);
-  await sleep(300);
-  await assertSnapshot(nowOnly);
-  pass("An invalid later year module rejects the entire coding snapshot before writes");
+await post("/api/ingest/mac", envelope({ codingUsage: macUsage(now) }));
+await sleep(300);
+assert.equal((await data("/api/status/coding")).totals.totalTokens, 3_950);
+pass("Repeated ledgers replace instead of accumulating twice");
 
-  const backfill = structuredClone(baseline);
-  backfill.year.days[5] = 50;
-  backfill.year.days[7] = 700;
-  backfill.year.mix[0] = [5, 0, 50];
-  backfill.year.mix.splice(1, 0, [7, 0, 700]);
-  backfill.usage.totals.inputTokens = 3_250;
-  backfill.usage.totals.totalTokens = 3_250;
-  backfill.usage.totals.activeDays = 3;
-  backfill.usage.topModels[0].tokens = 3_250;
-  await post("/api/ingest/mac", envelope(backfill));
-  await assertSnapshot(backfill);
-  const refreshed = await data(`/api/status/vibecoding/year?since=${date(Date.parse(`${baseline.year.origin}T00:00:00Z`) + 300 * 86_400_000)}`);
-  assert.equal(refreshed.days[5], 50);
-  assert.equal(refreshed.days[7], 700);
-  assert.equal(refreshed.days.length, 371);
-  pass("Historical corrections can decrease a day and add an old active day through cached status routes");
-} finally {
-  if (mutated) {
-    await post("/api/ingest/mac", envelope(restore));
-    await assertSnapshot(restore);
-    console.log(`RESTORED ${values.snapshot ?? "synthetic baseline"}; the isolated test state remains available for inspection`);
-  }
+const year = await data("/api/status/coding/year");
+assert.equal(year.days.length, 371);
+assert.equal(year.todayAtSource, today);
+const offset = (date) => Math.round((Date.parse(`${date}T00:00:00Z`) - Date.parse(`${year.origin}T00:00:00Z`)) / 86_400_000);
+assert.equal(year.days[offset(today)], 2_450);
+assert.equal(year.days[offset(yesterday)], 1_500);
+assert.deepEqual(year.mix.find((row) => row[0] === offset(yesterday)).slice(1).map((value, index) => index % 2 ? value : year.models[value]), ["claude-opus-5", 1_000, "composer-2", 500]);
+pass("Year: 371 days from the Sunday 52 weeks back, exact per-day model split across sources");
+
+const pulse = await data("/api/status/pulse");
+const lane = pulse.lanes.tokens;
+assert.equal(lane.kind, "tokens");
+assert.ok(lane.buckets.fresh.some((value) => value >= 6_500), JSON.stringify(lane));
+assert.ok(lane.summary.freshTokens >= 6_500);
+assert.equal(JSON.stringify(lane).includes("claude"), false);
+pass("Pulse Tokens lane sums the token buckets without model or source names");
+
+const failed = macUsage(now + 1_000);
+failed.agents = [{ id: "claude", state: "error", collectedAt: now, error: "Verification: scan failed" }];
+await post("/api/ingest/mac", envelope({ codingUsage: failed }));
+await eventually(async () => {
+  const usage = await data("/api/status/coding");
+  assert.deepEqual(agentOf(usage, "claude").status.map(({ source, state }) => [source, state]), [["mac", "error"], ["agents-otlp", "ok"]]);
+  assert.equal(usage.totals.totalTokens, 3_950, "a failed round keeps the history");
+}, "error round");
+pass("A failed collection round only changes the status; the stored days stay");
+
+if (values.snapshot) {
+  const snapshot = JSON.parse(await readFile(values.snapshot, "utf8"));
+  const modules = snapshot.agents ? { codingUsage: snapshot } : snapshot;
+  const answer = await post("/api/ingest/mac", envelope(modules));
+  assert.deepEqual(answer.data.rejected, [], JSON.stringify(answer.data.rejected));
+  console.log(`INSTALLED ${values.snapshot}`);
 }
 console.log(`All ${passed} end-to-end checks passed at ${base.origin}, storage prefix ${prefix}.`);

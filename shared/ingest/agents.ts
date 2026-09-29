@@ -1,6 +1,5 @@
-import type { ParsedCursorUsage } from "@/lib/cursor-usage";
 import { object } from "@/lib/json";
-import { normalizeAgentLimits, type ParsedAgentLimits, type ParsedCursorNow } from "@/lib/vibecoding-parse";
+import { normalizeAgentLimits, type ParsedAgentLimits } from "@/lib/vibecoding-parse";
 
 import { describeRejections, prepareCodingModules, type CodingModuleRejection, type CodingModules } from "./coding";
 
@@ -24,12 +23,6 @@ export type PreparedAgentLimits = CodingModules & {
   limits: ParsedAgentLimits | null;
   /** 校验不过、只丢了自己的 coding 数据 */
   rejected: CodingModuleRejection[];
-  /**
-   * 改名前的 Cursor 用量与此刻。入口不再收，这里只留类型，让还在读它们的状态核心照常编译；
-   * 状态核心换到上面三份 coding 数据时一起删掉。
-   */
-  cursorUsage?: ParsedCursorUsage;
-  cursorNow?: ParsedCursorNow;
 };
 
 export function prepareAgentLimits(input: unknown, receivedAt = Date.now()): PreparedAgentLimits {

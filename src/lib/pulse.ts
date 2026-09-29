@@ -17,7 +17,12 @@ import type {
   PulsePowerLane,
   PulseStateLane,
   PulseStepsLane,
+  PulseTokensLane,
 } from "@/lib/types";
+import { coveringPart, parseStoredCodingBuckets, type StoredCodingBuckets } from "@shared/coding-buckets";
+import { codingBucketsKey } from "@shared/coding-store";
+import { CODING_BUCKET_MS } from "@shared/coding-usage";
+import { CODING_USAGE_SOURCE_NAMES, type CodingUsageSource } from "@shared/coding-usage-sources";
 import { latestPulseAssessments, type PulseAssessment } from "@shared/pulse-assessment";
 import { codingBand, parseCodingObservation, type CodingObservation } from "@shared/pulse-coding";
 import { parseCursorObservation, type CursorObservation } from "@shared/pulse-cursor";
@@ -153,6 +158,81 @@ export function codingLaneView(observations: CodingObservation[], cursor: Cursor
   };
 }
 
+/** 末尾那个还在累积的桶只有几十秒时，按时长折算的速率会被放大成尖峰，不画 */
+const TOKEN_MIN_SPAN_MS = 60_000;
+/** 「此刻」的速率只认最近这么久：最后一个桶在这之前就结束了，此刻就是 0 或未知 */
+const TOKEN_CURRENT_MS = 10 * 60_000;
+
+export type TokenBucketSources = Partial<Record<CodingUsageSource, StoredCodingBuckets | null>>;
+
+/** 一个来源的覆盖终点：Mac / agents 是报告范围的并集，云端 OTLP 没有范围、用最后一封的收到时刻 */
+function coverageEnd(source: CodingUsageSource, store: StoredCodingBuckets, at: number): number | null {
+  if (source === "agents-otlp") return store.receivedAt;
+  return coveringPart(store.coverage, at)?.to ?? null;
+}
+
+/**
+ * Tokens 道：各来源、各 agent、各模型相加后的五分钟桶，模型名和来源都不出门。
+ *
+ * - `fresh` = input + output + cache 写入，是新处理的 token；cache 读量级大一两个数量级，
+ *   只在悬停里单列，不进曲线；
+ * - Mac / agents 的桶只认起点在报告范围里的（跨着范围起点的那一桶只数了一截）；云端 OTLP
+ *   只有正差值、没有范围，照收；
+ * - 被 24 小时窗口截断的首桶不画；末桶截到这一桶里有数的来源里最晚的覆盖终点，不足 60 秒不画；
+ *   只出有用量的桶 —— 没有 token 的时间画不画都是空，空闲由 Coding 道说。
+ *
+ * `currentPerMinute`：最后一个桶在 10 分钟内结束就是它的速率；否则只要有来源的覆盖到了
+ * 10 分钟以内就是 0（看得见、没在用）；都没有是 null（未知）。
+ */
+export function tokensLaneView(stores: TokenBucketSources, window: PulseWindow): PulseTokensLane {
+  const sums = new Map<number, { fresh: number; output: number; cacheRead: number; end: number }>();
+  for (const source of CODING_USAGE_SOURCE_NAMES) {
+    const store = stores[source];
+    if (!store) continue;
+    for (const bucket of store.windows) {
+      if (bucket.from < window.from) continue;
+      const end = coverageEnd(source, store, bucket.from);
+      if (end == null) continue;
+      let fresh = 0, output = 0, cacheRead = 0;
+      for (const row of bucket.agents) {
+        fresh += row.inputTokens + row.outputTokens + row.cacheCreationTokens;
+        output += row.outputTokens;
+        cacheRead += row.cacheReadTokens;
+      }
+      if (fresh + cacheRead <= 0) continue;
+      const sum = sums.get(bucket.from) ?? { fresh: 0, output: 0, cacheRead: 0, end: bucket.from };
+      sum.fresh += fresh;
+      sum.output += output;
+      sum.cacheRead += cacheRead;
+      sum.end = Math.max(sum.end, end);
+      sums.set(bucket.from, sum);
+    }
+  }
+  const rows = [...sums]
+    .sort(([left], [right]) => left - right)
+    .flatMap(([from, sum]) => {
+      const to = Math.min(from + CODING_BUCKET_MS, sum.end, window.to);
+      if (to - from < TOKEN_MIN_SPAN_MS) return [];
+      return [{ ...span(window, from, to), to, perMinute: sum.fresh / ((to - from) / 60_000), fresh: sum.fresh, output: sum.output, cacheRead: sum.cacheRead }];
+    });
+  const last = rows.at(-1);
+  const seen = CODING_USAGE_SOURCE_NAMES.some((source) => {
+    const store = stores[source];
+    if (!store) return false;
+    const end = source === "agents-otlp" ? store.receivedAt : Math.max(0, ...store.coverage.map((part) => part.to));
+    return end >= window.to - TOKEN_CURRENT_MS;
+  });
+  return {
+    kind: "tokens",
+    buckets: toColumns(rows, ["fresh", "output", "cacheRead"] as const),
+    summary: {
+      peakPerMinute: rows.length ? Math.round(Math.max(...rows.map((row) => row.perMinute))) : null,
+      currentPerMinute: last && last.to >= window.to - TOKEN_CURRENT_MS ? Math.round(last.perMinute) : seen ? 0 : null,
+      freshTokens: rows.reduce((sum, row) => sum + row.fresh, 0),
+    },
+  };
+}
+
 export function chargingLaneView(samples: ChargingSample[], window: PulseWindow): PulsePowerLane {
   const segments = chargingSegments(samples, window);
   const rows = segments.flatMap((segment) => {
@@ -221,6 +301,9 @@ export async function getPulseStatus(now: number = Date.now()): Promise<PulsePay
     .listRange(codingObservationsKey(), -TAIL.coding, -1)
     .listRange(cursorObservationsKey(), -TAIL.cursor, -1)
     .listRange(pulseAssessmentsKey(), 0, -1)
+    .get(codingBucketsKey("mac"))
+    .get(codingBucketsKey("agents"))
+    .get(codingBucketsKey("agents-otlp"))
     .execute(), empty);
   const text = (index: number) => (typeof rows[index] === "string" ? rows[index] as string : null);
   const lane = <L extends StateLane>(name: L, index: number): StateLaneInput<L> => ({
@@ -228,11 +311,17 @@ export async function getPulseStatus(now: number = Date.now()): Promise<PulsePay
     open: parseOpenInterval(name, text(index + 1)),
   });
   const assessments = latestPulseAssessments(Array.isArray(rows[12]) ? rows[12] as string[] : []);
+  const tokenBuckets: TokenBucketSources = {
+    mac: parseStoredCodingBuckets(rows[13]),
+    agents: parseStoredCodingBuckets(rows[14]),
+    "agents-otlp": parseStoredCodingBuckets(rows[15]),
+  };
   return {
     generatedAt: now,
     window,
     lanes: {
       coding: codingLaneView(parsed(rows[10], parseCodingObservation), parsed(rows[11], parseCursorObservation), assessments, window),
+      tokens: tokensLaneView(tokenBuckets, window),
       listening: stateLaneView("listening", lane("listening", 0), window, parsed(rows[6], parseListeningTrace)),
       watching: stateLaneView("watching", lane("watching", 2), window),
       gaming: stateLaneView("gaming", lane("gaming", 4), window),

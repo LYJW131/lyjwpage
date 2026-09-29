@@ -10,17 +10,15 @@ import {
   type StoredHomePod,
 } from "@/lib/homepod-store";
 import { chargerActive, liveTrack, powerBankActive } from "@/lib/home-layout";
-import { CHARGER_TAG, DESKTOP_TAG, NOW_LISTENING_TAG, POWERBANK_TAG, VIBECODING_TAG } from "@/lib/live-events";
+import { CHARGER_TAG, DESKTOP_TAG, NOW_LISTENING_TAG, POWERBANK_TAG } from "@/lib/live-events";
 import type { PlayingQueueTrack } from "@/lib/playing-queue";
 import { powerBankPushPayload } from "@/lib/powerbank";
 import { readPowerBankState } from "@/lib/powerbank-store";
-import { VIBECODING_STALE_MS } from "@/lib/freshness";
 import { nextLiveness, readLiveness, type Liveness } from "@/lib/reporter-liveness";
 import type {
   ChargerStatus,
   LocalNowPlaying,
   TimezoneActivity,
-  VibeCodingNowPayload,
 } from "@/lib/types";
 import { fanout, type PendingEvent } from "@api/fanout";
 import type { ListeningEffect } from "@api/ingest-effects";
@@ -29,10 +27,13 @@ import { prepareHeartbeat, prepareStatus } from "@api/stores/charger-store";
 import { writeSettlingAt } from "@api/stores/charging-settling";
 import { prepareStatus as preparePowerBankStatus } from "@api/stores/powerbank-store";
 import { writeLiveness } from "@api/stores/reporter-liveness";
-import { prepareVibeCodingNowPayload, prepareVibeCodingUsagePayload } from "@api/stores/vibecoding";
-import { prepareVibeCodingYearPayload } from "@api/stores/vibecoding-year-store";
+import { prepareCodingActivity, readCodingActivities } from "@api/stores/coding-activity";
+import { prepareCodingBuckets } from "@api/stores/coding-buckets";
+import { prepareCodingUsage } from "@api/stores/coding-usage";
 import type { PreparedTelemetryEnvelope } from "@shared/ingest/telemetry";
-import { nowMirror } from "@shared/vibecoding";
+import type { StoredCodingActivity } from "@shared/coding-store";
+import { isVisibleCodingModel } from "@shared/coding-models";
+import { CODING_ACTIVE_MS, CODING_ACTIVITY_STALE_MS } from "@shared/coding-usage";
 import { activeDesktop, DESKTOP_ICON_CACHE_LIMIT, desktopPayload, mirror, type PersistedTelemetry, type StoredDesktopActivity, syncTelemetryState, telemetryState } from "@shared/telemetry";
 
 type TelemetryPatch = {
@@ -96,15 +97,6 @@ function rememberDesktopIcon(hash: string, objectKey: string) {
  */
 export async function commitPreparedTelemetryEnvelope(command: PreparedTelemetryEnvelope) {
   const { receivedAt, presence, activeModules: nextActiveModules, modules } = command;
-  const codingUsage = modules.vibeCodingUsage
-    ? prepareVibeCodingUsagePayload(modules.vibeCodingUsage, receivedAt)
-    : null;
-  const codingNow = modules.vibeCodingNow
-    ? prepareVibeCodingNowPayload(modules.vibeCodingNow, receivedAt)
-    : null;
-  const codingYear = modules.vibeCodingYear
-    ? prepareVibeCodingYearPayload(modules.vibeCodingYear, receivedAt)
-    : null;
 
   /**
    * 这封信封用得着的键，**全部在这里一起发车**。
@@ -134,7 +126,9 @@ export async function commitPreparedTelemetryEnvelope(command: PreparedTelemetry
    * agents。放在这里和存活、工作副本同一批发车，心跳不会因此多一个来回。
    */
   const homePod = getHomePodSnapshot();
-  const storedCodingNow = codingNow ? null : nowMirror.get();
+  const storedCodingActivity = modules.codingActivity
+    ? null
+    : readCodingActivities().then((activities) => activities.mac ?? null, () => null);
   const [, previousLiveness] = await Promise.all([syncTelemetryState(), readLiveness()]);
 
   // 落 activeModules 必须排在 syncTelemetryState 后面 —— 它会从库里那份覆盖回来
@@ -404,35 +398,30 @@ export async function commitPreparedTelemetryEnvelope(command: PreparedTelemetry
     }
 
     /**
-     * Vibe coding 两个模块各收各的，按「多久变一次」分：
-     * `vibeCodingUsage` 是十几分钟一份的累计量，`vibeCodingNow` 是 60 秒一轮的
-     * 此刻状态，只有后者值得推给浏览器。理由见 lib/vibecoding 的模块注释。
-     *
-     * 两份拼成同一张首屏卡片。只有累计量会增减行、换出总量和常用模型两块，
-     * 所以只有它报缓存 tag；真正发不发由出口按卡片骨架再筛一遍，见 live-platform。
-     * 三份 coding 模块已经在入口一起校验，这里只提交。
+     * coding 的三份事实各收各的（stores/coding-*）：用量账本换了才重算视图，骨架变了才失效首屏；
+     * 活动变了推整份 `coding-now`；token 桶只进 Pulse 与 Jev。三份在上报入口各自校验，
+     * 坏的那份在入口就丢了（回执里的 rejected），到这里的都是收下的。
      */
-    if (codingUsage) {
-      writes.push(codingUsage.commit());
-      tags.push(VIBECODING_TAG);
+    if (modules.codingUsage) {
+      const landing = await prepareCodingUsage("mac", modules.codingUsage, receivedAt);
+      writes.push(landing.commit());
+      tags.push(...landing.tags);
       accepted += 1;
     }
 
-    if (codingNow) {
-      const { now, commit } = codingNow;
-      writes.push(commit());
-      // 此刻只改已有那几行的灯和模型，行从用量和限额来：只推送，不失效首屏
-      events.push({ type: "vibecoding-now", payload: now });
+    let codingActivity: StoredCodingActivity | null = null;
+    if (modules.codingActivity) {
+      const landing = await prepareCodingActivity("mac", modules.codingActivity, receivedAt, liveness);
+      if (landing.accepted) writes.push(landing.commit());
+      // 采集时刻比存着的旧（重发、乱序）就不收，观测照旧按存着的那份算
+      codingActivity = landing.accepted ? { ...modules.codingActivity, receivedAt } : landing.previous;
+      if (landing.event) events.push(landing.event);
       accepted += 1;
     }
 
-    /**
-     * 年度热力图单独一块。不推送 —— 格子按天变，浏览器长间隔和切回焦点来问。
-     * 上报和 GET 都是整年 371 个数一次给齐，云端补回的旧日也会刷新。
-     * 也不失效首屏：格子颜色是内容，交给定时重建。
-     */
-    if (codingYear) {
-      writes.push(codingYear.commit());
+    if (modules.codingTokenBuckets) {
+      const landing = await prepareCodingBuckets("mac", modules.codingTokenBuckets, receivedAt);
+      if (landing.accepted) writes.push(landing.commit());
       accepted += 1;
     }
 
@@ -448,7 +437,7 @@ export async function commitPreparedTelemetryEnvelope(command: PreparedTelemetry
      * 两笔都自己吞异常，写坏了不影响 202。
      */
     writes.push(recordListeningPulse(receivedAt, liveness, homePod));
-    writes.push(recordCodingPulse(receivedAt, codingNow?.now.agents, storedCodingNow, presence === "online"));
+    writes.push(recordCodingPulse(receivedAt, codingActivity ?? storedCodingActivity, presence === "online"));
 
     // 整封都收下了才落状态。中途抛出去时这份不写 —— 从前也是这样，
     // persistTelemetryState 就排在所有模块之后。存活不同，见上面。
@@ -544,28 +533,31 @@ async function recordListeningPulse(
 
 async function recordCodingPulse(
   receivedAt: number,
-  incomingAgents: VibeCodingNowPayload["agents"] | undefined,
-  mirrored: ReturnType<typeof nowMirror.get> | null,
+  activity: StoredCodingActivity | null | Promise<StoredCodingActivity | null>,
   online: boolean,
 ): Promise<void> {
   try {
     /**
-     * 留着的 agents 也要过闸，和前台应用一样：vibeCoding 模块关掉之后 nowMirror 里
-     * 还是最后那份，采集器死了而 Mac 还在心跳时同样如此 —— 不挡的话最后一次
-     * `active: true` 会被每封心跳一直算成 agent 在跑。模块名按上报器的
-     * activeModules 来（`vibeCoding`），过期线沿用卡片那条 VIBECODING_STALE_MS。
+     * agent 在不在跑从 Mac 的活动报告现算：最近一条用量事件在 5 分钟内就算在跑。
+     *
+     * 这封没带就用存着的那份，但要过两道闸，和前台应用一样：coding 模块关掉之后存着的还是
+     * 最后那份；采集器死了而 Mac 还在心跳时也是 —— 活动报告内容不变也至少 5 分钟重发一次，
+     * 采集时刻 10 分钟没前进就当未知，不能把最后那份一直算下去。
      */
-    const kept = incomingAgents === undefined ? await mirrored : null;
-    const agents =
-      incomingAgents !== undefined
-        ? incomingAgents
-        : kept && telemetryState.activeModules.has("vibeCoding") && receivedAt - kept.pushedAt < VIBECODING_STALE_MS
-          ? kept.payload.agents
-          : null;
+    const report = await activity;
+    const usable = report !== null && telemetryState.activeModules.has("coding")
+      && receivedAt - report.collectedAt <= CODING_ACTIVITY_STALE_MS;
+    const agents = usable
+      ? report.agents.map((agent) => ({
+        id: agent.id,
+        model: isVisibleCodingModel(agent.model) ? agent.model.slice(0, 80) : null,
+        active: agent.lastActivityAt != null && agent.lastActivityAt <= receivedAt + 60_000 && receivedAt - agent.lastActivityAt <= CODING_ACTIVE_MS,
+      }))
+      : null;
     /**
      * 前台应用要过 activeModules 那道闸，和 desktopPayload 同一份判断。
      * 只看工作副本非空的话，desktop 模块关掉之后留着的那份还会被下一封
-     * vibeCodingNow 捡起来，把早就关掉的编辑器一直算成在写代码。
+     * 活动报告捡起来，把早就关掉的编辑器一直算成在写代码。
      */
     const desktop = activeDesktop();
     // 三色带与 Jev 都从这份原始观测现算；不再另写一条档位序列。
@@ -573,7 +565,7 @@ async function recordCodingPulse(
       t: receivedAt,
       available: online && (desktop !== null || agents !== null),
       desktop: desktop ? { application: desktop.applicationName.slice(0, 80), coding: isCodingApp(desktop.bundleIdentifier, desktop.applicationName) } : null,
-      agents: agents?.map((agent) => ({ id: agent.id, model: agent.currentModel?.slice(0, 80) ?? null, active: agent.active })) ?? null,
+      agents,
     });
   } catch (error) {
     console.error("[pulse]", error instanceof Error ? error.message : String(error));
