@@ -7,7 +7,6 @@ import { RotateCw } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
 import { useVersionStatus } from "@/hooks/use-app-version";
-import { useStaleAutoReload } from "@/hooks/use-stale-auto-reload";
 import { cn } from "@/lib/utils";
 
 /**
@@ -25,8 +24,9 @@ import { cn } from "@/lib/utils";
  * 1. 报 Sentry（app/error.tsx 也是这么做的；React 只把捕获到的错误打到 console，
  *    不会替我们上报），带 `card` 和「页面此刻旧不旧」两个标签，一眼分得出是形状
  *    错位还是真有 bug；
- * 2. 已经确知页面是旧的就直接刷新（hooks/use-stale-auto-reload），刷新就是修复。
- *    不是旧的就停在兜底上：错误态不自愈，刷新页面或下次客户端导航才会清掉。
+ * 2. 已经确知页面是旧的，兜底上直说「和站点对不上、刷新才能更新」。**不自动刷新**：
+ *    一张卡出错就把整页刷掉，会打断人在别的卡片上的操作。躺在后台的旧页面由
+ *    components/stale-tab-reload 刷新，前台只提示（这里加上顶部的版本提示卡）。
  */
 type CardBoundaryProps = {
   /** 兜底卡片的标注，也是 Sentry 的 `card` 标签；取这张卡自己的标注 */
@@ -49,13 +49,16 @@ function CardFault({ label, className, silent, error }: CardBoundaryProps & { er
     reported.current = true;
     Sentry.captureException(error, { tags: { boundary: "card", card: label, versionStatus: status } });
   }, [error, label, status]);
-  useStaleAutoReload("crash");
 
   if (silent) return null;
   return (
     <Card label={label} tone="off" action="Unavailable" className={cn("h-full", className)}>
       <div className="flex min-h-28 flex-1 flex-col items-center justify-center gap-3 p-4 text-center">
-        <p className="text-sm text-muted-foreground">This card hit an error and was paused.</p>
+        <p className="text-sm text-muted-foreground">
+          {status === "stale"
+            ? "This card is out of date with the site. Reload to update."
+            : "This card hit an error and was paused."}
+        </p>
         <button
           type="button"
           onClick={() => window.location.reload()}
