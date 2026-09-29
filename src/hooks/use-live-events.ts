@@ -25,9 +25,6 @@ import type { ChargerPayload, StatusResponse } from "@/lib/types";
 /**
  * 事件名 → 写哪个 SWR 缓存键，以及写进去之前要不要先过一道合并。
  *
- * 四条以前是四段几乎一样的绑定，只有键和「要不要合并」不同。
- * 表化之后加一种推送就是加一行。
- *
  * 全都 revalidate: false —— 推来的就是最新的，没必要再回源确认一次。
  */
 const FORWARDS: ReadonlyArray<{
@@ -41,10 +38,7 @@ const FORWARDS: ReadonlyArray<{
   // Emby 正在播放：webhook 和推送代理驱动，服务端手上已经是最新的
   { event: "watching-now" },
   /**
-   * 两张列表也直接带数据来。
-   *
-   * 从前它们只发失效通知、由这里 mutate 一次重取，理由是「整份太大」——
-   * 实测 4.4 KB 和 2.8 KB，而重取要付的是每个在线标签页各一次回源。
+   * 两张列表也直接带数据来：只发失效通知的话，每个在线标签页都要各回源一次。
    * 服务端那侧只在内容真的变了时才发，所以这两行不会退化成定时广播。
    */
   { event: "listening" },
@@ -60,17 +54,18 @@ const FORWARDS: ReadonlyArray<{
     refetch: (key) => key.startsWith(`${TROPHIES_PATH}?`),
   },
   /**
-   * 充电头只在插拔、换设备时来事件。曲线的合并走和轮询同一个累加器
-   * （lib/charger-history）：推来的那份不带历史点（空增量），所以合并只是把
-   * 已有曲线原样接上 —— 游标不会被扰动，下一轮轮询照常从正确的位置继续拉。
+   * 充电头在插拔、换设备，以及那之后的收敛窗口里来事件（判据见 lib/charging-settling）。
+   * 曲线的合并走和轮询同一个累加器（lib/charger-history）：推来的那份不带历史点
+   * （空增量），所以合并只是把已有曲线原样接上 —— 游标不会被扰动，下一轮轮询照常
+   * 从正确的位置继续拉。
    */
   {
     event: "charger",
     merge: (data) => mergeChargerHistory(data as ChargerPayload),
   },
   /**
-   * 充电宝：插拔、充放电切换、热控翻转、整数电量跳格时来事件。曲线整份发，
-   * 直接替换即可，不用像充电头那样合并增量。
+   * 充电宝的发送时机和充电头同一套（结构变化加收敛窗口）。它没有历史曲线，推来的
+   * 整份快照直接替换即可，不用像充电头那样合并增量。
    */
   { event: "powerbank" },
   /** coding agent 此刻：整份 `/api/status/coding/now`，直接换 */
@@ -89,7 +84,8 @@ const FORWARDS: ReadonlyArray<{
  * coding 只有此刻那份在列：用量、限额、年度都是累计的历史事实，Mac 掉线它们不会
  * 变得不可信，只是不再增长。要的只是活动灯里 mac 那一路 —— 靠 declaredOffline 才能
  * 在优雅离开时立刻灭；别的来源（账号、云端）的灯不受 Mac 存活影响。
- * 崩溃 / 断网那条不指望这里：mac 那一路的时刻不再前进，5 分钟窗口到点自己灭。
+ * 崩溃 / 断网那条不指望这里：mac 那一路的时刻不再前进，`CODING_ACTIVE_WINDOW_MS`
+ * （lib/coding-agents）到点自己灭。
  */
 const PRESENCE_PATHS = [
   DESKTOP_PATH,
@@ -142,7 +138,7 @@ function dispatch(mutate: ScopedMutator, message: Incoming): void {
 
   const forward = FORWARD_BY_EVENT.get(message.type);
   if (forward) {
-    // 推来的图片地址已经是 `/img/<键>` 同源路径，和轮询拿到的一样，不用换域
+    // 推来的图片地址已经是 `/img/<objectKey>` 同源路径，和轮询拿到的一样，原样写入
     const data = forward.merge ? forward.merge(message.payload) : message.payload;
     if (data == null) return;
     const envelope: StatusResponse<unknown> = { ok: true, data };
@@ -177,7 +173,7 @@ function receive(mutate: ScopedMutator, raw: unknown): void {
 /**
  * 整页共用一条连接。
  *
- * 现在有多个组件要读活动状态（Live Desk 的前台应用、Recently Played 的本机
+ * 有多个组件要读活动状态（Live Desk 的前台应用、Recently Played 的本机
  * 播放、页脚的在线人数），如果每个都自己建一条 WebSocket，一个页面就会占掉好几条
  * 长连接。所以连接做成模块级单例，按订阅者数量开关。
  */
@@ -191,8 +187,8 @@ let activeMutate: ScopedMutator | null = null;
 let reportedVisible: boolean | null = null;
 
 /**
- * 连接状态，给 useStatus 调轮询用：连着时推送覆盖整份的实时卡只留 5 分钟兜底，
- * 断开时回到卡片自己的快间隔（lib/poll-schedule）。
+ * 连接状态，给 useStatus 调轮询用：连着时推送覆盖整份的实时卡只留兜底轮询，
+ * 断开时回到卡片自己的快间隔（lib/poll-schedule 的 realtimeInterval）。
  */
 let connected = false;
 /** 这一页连上过没有：再连上（重连）时要补取断线期间漏掉的推送 */
@@ -219,8 +215,8 @@ export function useLiveSocketConnected(): boolean {
  * 心跳间隔。Worker 那侧用 setWebSocketAutoResponse 直接回 "pong"，不唤醒实例，
  * 所以这条保活对它是免费的；没有它中间的代理会把空转的连接掐掉。
  *
- * 房间判「可见的页面还在不在」的 90 秒线是从它推的（workers/api/src/live-census.ts
- * 的 HEARTBEAT_INTERVAL_MS 是手抄的副本），改这里必须同步改那边。
+ * 房间判「可见的页面还在不在」的线（workers/api/src/live-census.ts 的 VISIBLE_STALE_MS）
+ * 是从它推的，那边的 HEARTBEAT_INTERVAL_MS 是手抄的副本，改这里必须同步改那边。
  */
 const HEARTBEAT_MS = 30_000;
 const MAX_BACKOFF_MS = 30_000;
@@ -327,8 +323,8 @@ function open(mutate: ScopedMutator): void {
 
   /**
    * 连上之后要做的事。单独拎出来是因为**接手的那条多半已经 open 了** ——
-   * 内联脚本 30ms 起手、300ms 不到就连上，而这里是 hydration 之后才跑，
-   * `onopen` 早就过去了，只挂 handler 的话心跳和「已连接」永远不会被点亮。
+   * 内联脚本在 hydration 之前起手，而这里是 hydration 之后才跑，`onopen` 早就
+   * 过去了，只挂 handler 的话心跳和「已连接」永远不会被点亮。
    */
   const onReady = () => {
     retryAttempts = 0;
@@ -366,8 +362,8 @@ function open(mutate: ScopedMutator): void {
     setConnected(false);
     if (refCount <= 0) return;
     /**
-     * 退避重连。pusher-js 时代这是 SDK 自带的，裸 WebSocket 得自己来 ——
-     * 少了它，实时服务重启一次页面就再也不会被推着翻，直到下一次整页刷新。
+     * 退避重连：裸 WebSocket 没有自带重连。少了它，实时服务重启一次页面就再也不会
+     * 被推着翻，直到下一次整页刷新。
      */
     const delay = Math.min(1_000 * Math.pow(1.5, retryAttempts), MAX_BACKOFF_MS);
     retryAttempts += 1;
@@ -429,8 +425,8 @@ function handlePageShow(event: PageTransitionEvent): void {
  * 推来的活动状态直接写进 SWR 缓存，所以组件那边照旧用 useStatus 读，
  * 不用管数据是推来的还是轮询来的。
  *
- * 连接状态经 useLiveSocketConnected 暴露给 useStatus，方向和从前（断开时把轮询压到
- * 3 秒）相反：连着时让推送覆盖整份的卡退成 5 分钟兜底，断开时回到卡片原来的间隔。
+ * 连接状态经 useLiveSocketConnected 暴露给 useStatus：连着时让推送覆盖整份的卡
+ * 退成兜底轮询，断开时回到卡片自己的间隔（lib/poll-schedule 的 realtimeInterval）。
  * ONLINE_CONNECTED_KEY 只给页脚那个点用。
  */
 export function useLiveEvents() {

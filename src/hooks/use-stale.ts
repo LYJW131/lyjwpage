@@ -46,7 +46,7 @@ type Clock = {
  *
  * 首帧（服务端预渲染和 hydrate）是首屏那份信封的 `servedAt` —— 源站交出这份数据的
  * 时刻，两边读到的是同一个值，不会水合不一致；首屏 HTML 冻多久，这把钟就停在当时，
- * 判出来的正是填缓存那一刻源站会下的结论。没有 servedAt（信封降级、旧版本源站）
+ * 判出来的正是填缓存那一刻源站会下的结论。没有 servedAt（信封降级或没带）
  * 就是 0，什么都不判。挂载后换成挂载那一刻，之后每到一个 deadline 往前推一次；
  * 读数只进不退（见 lib/freshness 的 clockReading）。
  *
@@ -108,8 +108,8 @@ export function useStale(at: number | null | undefined, windowMs: number, served
  * （lib/freshness 的 resumeStep）。
  *
  * 首帧判出来的过期直接算确认过：那一帧的钟是首屏信封的 servedAt，判的就是源站
- * 交出这份数据时的结论（从前 offlineAtSource 那个字段的意思），不用等回源。
- * 首屏 HTML 冻着、而 Mac 已经回来了的话，挂载校验带回新数据，过期不成立就松开。
+ * 交出这份数据时的结论，不用等回源。首屏 HTML 冻着、而 Mac 已经回来了的话，
+ * 挂载校验带回新数据，过期不成立就松开。
  *
  * 只管按钟判的那部分。亲口离线不是时间函数，调用方直接认，别塞进来。
  */
@@ -203,8 +203,9 @@ export function useLiveChargingFeed<T extends ChargingFeed>(
  * 「正在听」：选中的是 Mac 那首而 Mac 已经掉线时，换成 payload 里的 alternate，
  * 返回换好的那份（判据见 lib/freshness 的 liveNowListening）。
  *
- * 按钟判的掉线同样要过 useConfirmedStale：首屏冻住的那份在挂载校验回来之前不认，
- * 否则 HTML 放了五分钟以上时，每次打开页面都会先把 Mac 那首撤掉、回源回来再放回去。
+ * 按钟判的掉线同样要过 useConfirmedStale：首帧按 servedAt 判出的结论直接算数；
+ * 挂载后按访客钟新判出的掉线要等挂载校验回来才认，否则 HTML 放过了心跳窗口时，
+ * 每次打开页面都会先把 Mac 那首撤掉、回源回来再放回去。
  */
 export function useLiveNowListening(
   payload: NowListeningPayload | undefined,
