@@ -12,7 +12,6 @@ import type { StorageBatch } from "@shared/storage-client";
 import { prepareCodingActivity, readCodingActivities } from "./coding-activity";
 import { prepareOtlpBuckets } from "./coding-buckets";
 import { prepareCodingUsage } from "./coding-usage";
-import { migrateLegacyCodingUsage } from "./coding-usage-migrate";
 
 /**
  * Claude Code 云端线程的 OTLP 指标，状态核心那一半。解析在上报入口（shared/ingest/claude-cloud.ts）。
@@ -83,8 +82,6 @@ function bucketDelta(at: number, model: string | null, type: OtlpTokenType, toke
 export async function recordPreparedClaudeCloudUsage(prepared: PreparedClaudeCloudUsage) {
   const { points, receivedAt } = prepared;
   if (points.length === 0) return { accepted: 0 };
-  // 旧键里的累计计数器要在第一次做差之前转过来，否则活着的进程会被整份重算一遍
-  const migrated = await migrateLegacyCodingUsage(receivedAt);
   const answered = await askStorage((storage) => storage.batch().get(codingOtlpKey()).fields(codingUsageKey("agents-otlp")).execute());
   if (!answered.reachable) throw new Error("云端用量计数器读不到");
   const counters = parseOtlpCounters(answered.value[0]);
@@ -154,7 +151,7 @@ export async function recordPreparedClaudeCloudUsage(prepared: PreparedClaudeClo
   const tags: string[] = [];
 
   // 日行或会话数变了才整理成账本；闲着的进程每分钟一封也不会让视图每分钟重算
-  if (changed || migrated || sessionCount !== (ledger?.sessionCount ?? 0)) {
+  if (changed || sessionCount !== (ledger?.sessionCount ?? 0)) {
     const agent: CodingUsageAgent = {
       id: "claude",
       state: "ok",
@@ -166,7 +163,7 @@ export async function recordPreparedClaudeCloudUsage(prepared: PreparedClaudeClo
         .map((day) => ({ ...day, models: day.models.sort((left, right) => right.tokens - left.tokens || left.model.localeCompare(right.model)) }))
         .sort((left, right) => left.date.localeCompare(right.date)),
     };
-    const usage = await prepareCodingUsage("agents-otlp", { agents: [agent] }, receivedAt, { recompute: migrated, derived: true });
+    const usage = await prepareCodingUsage("agents-otlp", { agents: [agent] }, receivedAt, { derived: true });
     staged.push(usage.stage);
     tags.push(...usage.tags);
   }

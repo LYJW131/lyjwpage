@@ -112,10 +112,6 @@ Mac 的 ccusage 只扫本机会话记录，看不到云端线程。云端环境�
 在同一个事务里落：中途哪一步失败就一条都不落，下一封从同一个前值再做差，差值不丢。入口的收到时刻和提交顺序可以
 相反，差值按提交顺序做，账本不按采集时刻淘汰，账本、活动、桶上的时刻都取和存着的较大者、不往回走。
 
-改契约时的一次性迁移在 `src/stores/coding-usage-migrate.ts`（第一封用量或 OTLP 提交时触发，幂等，确认转过之后删掉）：
-旧键里的累计计数器必须转成 `coding:otlp`，否则每个活着的云端进程会被整份重算一遍；云端日桶、最近时刻和
-Cursor 日桶顺带转过来；旧 `vibecoding:*`、`pulse:coding-token-usage`、`home-layout:vibecoding` 挂 14 天 TTL。
-
 `/api/ingest/mac` 的 `modules.desktop` 描述此刻的前台应用：`applicationName`（必填）、
 `bundleIdentifier`、`windowTitle`、`iconHash` 与 `iconObjectKey`（内容地址，见下文图标那段）、
 `observedAt`。这一段校验不过时响应 400，`desktop` 及其后的模块都不落地，排在它前面、已经承诺过
