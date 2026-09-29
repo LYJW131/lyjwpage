@@ -10,8 +10,9 @@ import type {
 } from "@/lib/types";
 
 /**
- * 浏览器侧读一份状态信封。唯一的规矩：有单调时间戳的 payload 按代数挡旧值，
- * 慢了一步的轮询不能把刚推来的新值盖回去。首屏按卡读取、没有聚合端点，
+ * 浏览器侧读一份状态信封。两条规矩：有单调时间戳的 payload 按代数挡旧值，
+ * 慢了一步的轮询不能把刚推来的新值盖回去；每个键另记一本写入代次（`writeGeneration`），
+ * 没有时间戳的键也能判「我取数的这段时间里，有没有别人写过」。首屏按卡读取、没有聚合端点，
  * 挂载时各卡直连自己的端点（可滞后卡首屏够新就不回源，见 hooks/use-status）。
  */
 
@@ -35,13 +36,29 @@ function stampOf(path: string, envelope: StatusResponse<unknown>): number | null
 
 const latest = new Map<string, { stamp: number; envelope: StatusResponse<unknown> }>();
 
+/**
+ * 每个键上「有新值落进缓存」的次数。只增不减，比较相等才有意义。
+ * 往状态键写缓存的路径必须经过 `acceptPush`（推送）或 `guardPolled`（取回的响应），
+ * 代次才准；新增写入路径要在这两处之一登记。
+ */
+const generations = new Map<string, number>();
+
+/** 调用方发起慢请求前记一次，回来时对比：变了，说明别人先写了更新的值，这份不该再盖上去 */
+export function writeGeneration(path: string): number {
+  return generations.get(path) ?? 0;
+}
+
+function advance(path: string): void {
+  generations.set(path, writeGeneration(path) + 1);
+}
+
 /** 挡乱序推送：比手上那一代还旧的推送丢掉 */
 export function acceptPush(path: string, envelope: StatusResponse<unknown>): boolean {
   const stamp = stampOf(path, envelope);
   const known = latest.get(path);
   if (stamp != null && known && known.stamp > stamp) return false;
-  if (stamp == null) return true;
-  latest.set(path, { stamp, envelope });
+  advance(path);
+  if (stamp != null) latest.set(path, { stamp, envelope });
   return true;
 }
 
@@ -50,6 +67,7 @@ export function acceptPush(path: string, envelope: StatusResponse<unknown>): boo
  * 错误必须可见，不以旧成功遮盖。
  */
 export function guardPolled<T>(path: string, envelope: StatusResponse<T>): StatusResponse<T> {
+  advance(path);
   const stamp = stampOf(path, envelope);
   if (stamp == null) {
     latest.delete(path);
