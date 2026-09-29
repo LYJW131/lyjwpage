@@ -37,13 +37,13 @@ function stampOf(path: string, envelope: StatusResponse<unknown>): number | null
 const latest = new Map<string, { stamp: number; envelope: StatusResponse<unknown> }>();
 
 /**
- * 每个键上「有新值落进缓存」的次数。只增不减，比较相等才有意义。
+ * 每个键上推送或轮询响应被处理的次数。只增不减，比较相等才有意义。
  * 往状态键写缓存的路径必须经过 `acceptPush`（推送）或 `guardPolled`（取回的响应），
- * 代次才准；新增写入路径要在这两处之一登记。
+ * 代次才准；新增写入路径要在这两处之一登记。轮询即使后来被 SWR 丢弃，也会先推进代次。
  */
 const generations = new Map<string, number>();
 
-/** 调用方发起慢请求前记一次，回来时对比：变了，说明别人先写了更新的值，这份不该再盖上去 */
+/** 调用方发起慢请求前记一次；变化表示期间有响应被处理，是否落缓存还需核对缓存本身。 */
 export function writeGeneration(path: string): number {
   return generations.get(path) ?? 0;
 }

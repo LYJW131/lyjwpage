@@ -78,7 +78,7 @@ function fakeGenerations() {
 }
 
 /** 没有任何更新、卡片一直挂着：不受这两项影响的用例用它 */
-const untouched = { generation: () => 0, cancelled: () => false };
+const untouched = { generation: () => 0, cacheData: () => undefined, cancelled: () => false };
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -202,6 +202,7 @@ test("取数途中这个键已经收到更新（推送、别的卡的轮询）�
     read: (path) => responses[path as typeof busy].promise,
     write: world.write,
     generation: generations.of,
+    cacheData: (path) => world.cache.get(path),
     cancelled: () => false,
   });
   // 取数途中，busy 这个键被推送写进了更新的值（推送路径同时推进它的代次）
@@ -225,6 +226,7 @@ test("取不到、要退回清缓存的键：取数途中已被写过更新的�
     read: () => response.promise,
     write: world.write,
     generation: generations.of,
+    cacheData: (path) => world.cache.get(path),
     cancelled: () => false,
   });
   const pushed: Envelope = { ok: true, data: "pushed, newer" };
@@ -246,6 +248,7 @@ test("代次按发起那一刻算：发起之前的更新不挡这次写入", as
     read: async () => ({ ok: true, data: "fresh" }),
     write: world.write,
     generation: generations.of,
+    cacheData: (path) => world.cache.get(path),
     cancelled: () => false,
   });
   assert.deepEqual(world.cache.get(path), { ok: true, data: "fresh" });
@@ -263,6 +266,7 @@ test("发起重试的卡片卸载之后什么都不写：回来的响应不写�
     read: (path) => (path.endsWith("arrives") ? arrives.promise : path.endsWith("fails") ? fails.promise : new Promise<Envelope>(() => {})),
     write: world.write,
     generation: () => 0,
+    cacheData: (path) => world.cache.get(path),
     cancelled: () => !mounted,
     timeoutMs: 30,
   });
@@ -289,6 +293,7 @@ test("两趟重试碰上同一个键：先落地的那份写了并推进代次�
         if (value) generations.bump(key);
       },
       generation: generations.of,
+      cacheData: (key) => world.cache.get(key),
       cancelled: () => false,
     });
   const runs = [start(first.promise), start(second.promise)];
@@ -309,9 +314,44 @@ function wired(world: Map<string, StatusResponse<unknown>>, read: () => Promise<
       else world.set(path, guardPolled(path, value));
     },
     generation: writeGeneration,
+    cacheData: (path: string) => world.get(path),
     cancelled,
   };
 }
+
+test("接线：SWR 丢弃旧轮询后缓存没变，Retry 仍写入新取回的信封", async () => {
+  const path = STATUS_VIEWS.server.path;
+  const poisoned: StatusResponse<unknown> = { ok: true, data: "poisoned first screen" };
+  const world = new Map<string, StatusResponse<unknown>>([[path, poisoned]]);
+  const slow = deferred<StatusResponse<unknown>>();
+  const running = primeCardCache([path], wired(world, () => slow.promise));
+  // useStatus 的 guardPolled 已执行，但 SWR 后续认定这次请求过期，未 setCache。
+  guardPolled(path, { ok: true, data: "discarded poll" });
+  slow.resolve({ ok: true, data: "fresh for retry" });
+  await running;
+  assert.deepEqual(world.get(path), { ok: true, data: "fresh for retry" });
+});
+
+test("接线：缓存仍为空时被丢弃的轮询不挡 Retry；内容相等的新缓存仍算已更新", async () => {
+  const path = STATUS_VIEWS.server.path;
+  const world = new Map<string, StatusResponse<unknown>>();
+  const first = deferred<StatusResponse<unknown>>();
+  const firstRun = primeCardCache([path], wired(world, () => first.promise));
+  guardPolled(path, { ok: true, data: "discarded" });
+  first.resolve({ ok: true, data: "fresh" });
+  await firstRun;
+  assert.deepEqual(world.get(path), { ok: true, data: "fresh" });
+
+  const second = deferred<StatusResponse<unknown>>();
+  const secondRun = primeCardCache([path], wired(world, () => second.promise));
+  const replacement: StatusResponse<unknown> = { ok: true, data: "fresh" };
+  assert.notEqual(replacement, world.get(path));
+  assert.equal(acceptPush(path, replacement), true);
+  world.set(path, replacement);
+  second.resolve({ ok: true, data: "must not overwrite" });
+  await secondRun;
+  assert.equal(world.get(path), replacement);
+});
 
 test("接线（真实的 status-reads）：没有时间戳的 watching/now，Retry 途中推来的值不被慢响应盖掉", async () => {
   const path = STATUS_VIEWS.nowWatching.path;
