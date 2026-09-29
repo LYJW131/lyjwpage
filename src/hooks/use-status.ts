@@ -5,7 +5,7 @@ import useSWR, { useSWRConfig } from "swr";
 
 import { fetchStatus, guardPolled, withoutServedAt } from "@/lib/status-reads";
 import { useLiveSocketConnected } from "@/hooks/use-live-events";
-import { lagOverdue, nextLagDelay, realtimeInterval } from "@/lib/poll-schedule";
+import { fallbackOutlived, lagOverdue, nextLagDelay, realtimeInterval } from "@/lib/poll-schedule";
 import { createMountRefetchGate, createRefetchLedger } from "@/lib/refetch-guard";
 import { cadenceOfPath, layerOfPath, pushCoversPath } from "@/lib/status-views";
 import type { StatusResponse } from "@/lib/types";
@@ -104,7 +104,9 @@ export type StatusOptions<T> = {
    *   回源，直接用它、到那一刻再取；HTML 放久了（没人访问时首页可能几个小时没重建）
    *   才在挂载后补取一次。
    *
-   * 显式传 false 的（贡献日历、年度热力图）永远不在挂载时回源。
+   * 显式传 false 的实时视图（年度热力图）不跟着挂载回源，只在首屏那份的出站时刻（`servedAt`）
+   * 比一个轮询间隔还早时补取一次（lib/poll-schedule 的 fallbackOutlived）：首屏 HTML 可以在
+   * 缓存里放好几个小时，这类视图又没有推送和失效来纠正它。
    */
   revalidateOnMount?: boolean;
   /**
@@ -273,7 +275,8 @@ export function useStatus<T>(
   if (lag && currentUpdatedAt !== undefined && currentUpdatedAt !== lagAnchor) setLagAnchor(currentUpdatedAt);
 
   /**
-   * 可滞后层首屏那份太旧时的补取。放在 effect 里：要拿此刻的钟去比 `updatedAt`，
+   * 首屏那份太旧时的补取：可滞后层比 `updatedAt` 与写入节奏，关了挂载回源的实时视图比
+   * `servedAt` 与轮询间隔（见上面 revalidateOnMount）。放在 effect 里：要拿此刻的钟去比，
    * 渲染期间不读钟。只看挂载那一刻的首屏信封，之后交给轮询。
    */
   const mountFallback = useRef(fallback);
@@ -283,10 +286,18 @@ export function useStatus<T>(
     // 开发模式的严格模式会把 effect 跑两遍，补取只该有一次
     if (mountChecked.current) return;
     mountChecked.current = true;
-    if (!lag || !cadenceMs || revalidateOnMount === false || !initial.ok) return;
-    if (!lagOverdue(initial.updatedAt, cadenceMs, Date.now())) return;
+    if (!initial.ok) return;
+    const now = Date.now();
+    if (lag) {
+      if (!cadenceMs || revalidateOnMount === false || !lagOverdue(initial.updatedAt, cadenceMs, now)) return;
+    } else {
+      // 没关挂载回源的实时视图由 SWR 自己在挂载时回源
+      const cardMs = refreshIntervalRef.current;
+      if (revalidateOnMount !== false || typeof cardMs !== "number" || cardMs <= 0) return;
+      if (!fallbackOutlived(initial.servedAt, cardMs, now)) return;
+    }
     // 同一个键的另一个消费者刚补取过：结果走共享缓存，这边不再发一条并发的
-    if (mountRefetchGate.claim(path, Date.now())) void mutate();
+    if (mountRefetchGate.claim(path, now)) void mutate();
   }, [lag, cadenceMs, revalidateOnMount, mutate, path]);
 
   return {

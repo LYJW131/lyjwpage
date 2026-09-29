@@ -1,5 +1,5 @@
 import { key } from "@/lib/storage";
-import type { CodingUsagePayload } from "@/lib/types";
+import type { CodingNowPayload, CodingUsagePayload } from "@/lib/types";
 
 import type { CodingActivityReport } from "./coding-usage";
 import type { CodingUsageSource } from "./coding-usage-sources";
@@ -15,6 +15,7 @@ import type { CodingUsageYearView, StoredCodingUsageAgent } from "./coding-usage
  * | `coding:usage:view` | `CodingUsagePayload`（和钟无关的全历史聚合） |
  * | `coding:usage:year` | `CodingUsageYearView`（最近 380 天，每天合计与模型前五） |
  * | `coding:activity:<来源>` | `StoredCodingActivity` |
+ * | `coding:now:pushed` | 上一次 `coding-now` 推出去的 agents（`CodingNowPayload["agents"]`），推送门槛拿它比 |
  * | `coding:otlp` | `StoredOtlpCounters`（云端 OTLP 累计值做差用的计数器） |
  * | `pulse:token-buckets:<来源>` | `StoredCodingBuckets`（shared/coding-buckets），TTL 2 天 |
  */
@@ -23,6 +24,7 @@ export const codingUsageKey = (source: CodingUsageSource) => key("coding", "usag
 export const codingViewKey = () => key("coding", "usage", "view");
 export const codingYearKey = () => key("coding", "usage", "year");
 export const codingActivityKey = (source: CodingUsageSource) => key("coding", "activity", source);
+export const codingPushedNowKey = () => key("coding", "now", "pushed");
 export const codingOtlpKey = () => key("coding", "otlp");
 export const codingBucketsKey = (source: CodingUsageSource) => key("pulse", "token-buckets", source);
 
@@ -65,6 +67,19 @@ export function parseStoredUsageLedgers(fields: unknown): Record<string, StoredC
 export function parseStoredActivity(raw: unknown): StoredCodingActivity | null {
   const row = json(raw);
   return row && typeof row.collectedAt === "number" && Array.isArray(row.agents) ? row as StoredCodingActivity : null;
+}
+
+/** 读回来的推送基准；没有（从没推过）或坏了都当空：下一封照推 */
+export function parseStoredPushedNow(raw: unknown): CodingNowPayload["agents"] {
+  if (typeof raw !== "string") return [];
+  try {
+    const value: unknown = JSON.parse(raw);
+    return Array.isArray(value) && value.every((agent) => agent && typeof agent.id === "string" && Array.isArray(agent.activity))
+      ? value as CodingNowPayload["agents"]
+      : [];
+  } catch {
+    return [];
+  }
 }
 
 export function parseStoredView(raw: unknown): CodingUsagePayload | null {

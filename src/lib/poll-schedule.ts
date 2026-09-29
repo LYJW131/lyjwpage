@@ -30,6 +30,15 @@ export function lagOverdue(updatedAt: number | undefined, cadenceMs: number, now
 }
 
 /**
+ * 关了挂载回源的实时视图（年度热力图），首屏那份是否已经放得比一个轮询间隔还久：首屏 HTML
+ * 可以在缓存里放好几个小时，不补这一次就要等满第一个间隔才换新。`servedAt` 是首屏信封的
+ * 出站时刻，缺省（旧版源站不带）当作太旧。
+ */
+export function fallbackOutlived(servedAt: number | undefined, intervalMs: number, now: number): boolean {
+  return servedAt == null || now - servedAt >= intervalMs;
+}
+
+/**
  * 距下一次取还要多少毫秒。`updatedAt` 缺省（信封不带、或降级信封）时按节奏本身取。
  */
 export function nextLagDelay(updatedAt: number | undefined, cadenceMs: number, now: number): number {

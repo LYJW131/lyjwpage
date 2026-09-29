@@ -5,6 +5,7 @@ import {
   LAG_GRACE_MS,
   LAG_MIN_RETRY_MS,
   PUSH_SAFETY_NET_MS,
+  fallbackOutlived,
   lagOverdue,
   nextLagDelay,
   realtimeInterval,
@@ -58,4 +59,13 @@ test("登记表：节奏按路径取，带心跳的实时卡不退成兜底", ()
   assert.equal(pushCoversPath(STATUS_VIEWS.charger.path), false);
   assert.equal(isRealtimeViewPath(`${STATUS_VIEWS.trophies.path}?titleids=a`), true);
   assert.equal(isRealtimeViewPath(STATUS_VIEWS.server.path), false);
+});
+
+test("关了挂载回源的实时视图：首屏那份放得比一个轮询间隔久才在挂载时补取", () => {
+  const servedAt = 1_000_000;
+  const interval = 30 * MIN;
+  assert.equal(fallbackOutlived(servedAt, interval, servedAt + 5 * MIN), false, "刚出站的首屏照旧等第一次轮询");
+  assert.equal(fallbackOutlived(servedAt, interval, servedAt + interval), true);
+  assert.equal(fallbackOutlived(servedAt, interval, servedAt + 6 * 60 * MIN), true, "缓存里放了几个小时的首屏");
+  assert.equal(fallbackOutlived(undefined, interval, servedAt), true, "不带出站时刻的信封当作太旧");
 });

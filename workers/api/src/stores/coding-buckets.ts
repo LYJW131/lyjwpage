@@ -10,15 +10,21 @@ import {
 import { codingBucketsKey } from "@shared/coding-store";
 import type { CodingTokenBucketReport } from "@shared/coding-usage";
 import type { CodingUsageSource } from "@shared/coding-usage-sources";
+import type { StorageBatch } from "@shared/storage-client";
 
 /**
  * 5 分钟 token 桶的状态核心那一半（`pulse:token-buckets:<来源>`，TTL 2 天）。合并规则在
  * shared/coding-buckets：Mac、agents 按报告范围替换，云端 OTLP 把正差值加进桶。
  * 只给 Pulse 的 Tokens 道、Jev 和 D1 归档读；不推送、不失效首屏。
  */
-export type CodingBucketsLanding = { commit: () => Promise<unknown>; accepted: boolean };
+export type CodingBucketsLanding = {
+  /** 把这封的写入排进调用方的那一批（云端 OTLP 那条路和计数器同一个事务） */
+  stage: (batch: StorageBatch) => void;
+  commit: () => Promise<unknown>;
+  accepted: boolean;
+};
 
-const IGNORED: CodingBucketsLanding = { commit: async () => {}, accepted: false };
+const IGNORED: CodingBucketsLanding = { stage: () => {}, commit: async () => {}, accepted: false };
 
 async function readBuckets(source: CodingUsageSource): Promise<StoredCodingBuckets | null> {
   const answered = await askStorage((storage) => storage.get(codingBucketsKey(source)));
@@ -27,8 +33,14 @@ async function readBuckets(source: CodingUsageSource): Promise<StoredCodingBucke
 }
 
 function write(source: CodingUsageSource, next: StoredCodingBuckets): CodingBucketsLanding {
+  const stage = (batch: StorageBatch) => { batch.set(codingBucketsKey(source), JSON.stringify(next), { ttlMs: CODING_BUCKET_TTL_MS }); };
   return {
-    commit: () => tellStorage((storage) => storage.set(codingBucketsKey(source), JSON.stringify(next), { ttlMs: CODING_BUCKET_TTL_MS })),
+    stage,
+    commit: () => tellStorage((storage) => {
+      const batch = storage.batch();
+      stage(batch);
+      return batch.execute();
+    }),
     accepted: true,
   };
 }
