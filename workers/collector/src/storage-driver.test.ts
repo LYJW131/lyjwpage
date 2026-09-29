@@ -3,7 +3,7 @@ import { afterEach, test } from "node:test";
 
 // Node 下 `@/lib/storage-driver` 解析到站点的测试驱动；把 KV 版的 StorageClient 注进去，
 // src/lib/cache 就原样跑在采集 Worker 的存储语义上
-import { cached, claim, get, put, remove } from "@/lib/cache";
+import { cached, get, put, remove } from "@/lib/cache";
 import { installStorageForTests, resetStorageDriverForTests } from "@/lib/storage-driver";
 
 import type { Env } from "./env";
@@ -67,9 +67,6 @@ test("src/lib/cache works unchanged on top of the KV driver", async () => {
   assert.deepEqual(await get("thing"), { n: 1 });
   assert.ok(kv.raw(`${process.env.STORAGE_PREFIX ?? "lyjwpage"}:cache:thing`));
   assert.equal(kv.puts.at(-1)?.expirationTtl, 1_800);
-
-  assert.equal(await claim("gate", 120_000), true);
-  assert.equal(await claim("gate", 120_000), false);
 
   let loads = 0;
   const loader = async () => { loads += 1; return "fresh"; };

@@ -7,9 +7,6 @@ function reason(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** 类本身在 lib/awaiting-report，这里只是再导出 */
-export { AwaitingReport };
-
 /**
  * 增量拉取的游标。
  *
