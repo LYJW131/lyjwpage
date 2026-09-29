@@ -1,6 +1,7 @@
 import type { NowWatchingPayload, WatchingPayload } from "@/lib/emby";
 import type {
   ChargerPayload,
+  CodingNowPayload,
   DesktopPayload,
   ListeningPayload,
   NowListeningPayload,
@@ -59,6 +60,11 @@ export type LiveEvent =
    */
   | { type: "vibecoding-now"; payload: VibeCodingNowPayload }
   /**
+   * coding agent 此刻：某个来源报来的最近用量事件变了。带整份 `/api/status/coding/now`，
+   * 直接写进那个 SWR 键，不再是要并进别的视图的补丁。用量、排名、年度不走这里。
+   */
+  | { type: "coding-now"; payload: CodingNowPayload }
+  /**
    * 上报器上下线。只发失效通知 —— 亲口离线是布尔值，得把新的
    * declaredOffline 取回来；超时那条浏览器拿手上的 lastSeenAt 自己就能翻。
    *
@@ -116,6 +122,9 @@ export type LiveEvent =
 export {
   ACTIVITY_TAG,
   CHARGER_TAG,
+  CODING_NOW_TAG,
+  CODING_TAG,
+  CODING_YEAR_TAG,
   DESKTOP_TAG,
   LIMITS_TAG,
   LISTENING_TAG,

@@ -213,7 +213,7 @@ test("receipts: 202 carries the state core's data; readiness and validation keep
   const w = world({ reply: () => ({ ready: true, ok: true, data: { accepted: 0, heartbeat: true } }) });
   const accepted = await w.send("/api/ingest/mac", post(mac({})));
   assert.equal(accepted.status, 202);
-  assert.deepEqual(await json(accepted), { ok: true, data: { accepted: 0, heartbeat: true } });
+  assert.deepEqual(await json(accepted), { ok: true, data: { accepted: 0, heartbeat: true, ignored: [], rejected: [] } });
   assert.equal(accepted.headers.get("content-type"), "application/json; charset=utf-8");
   assert.equal(accepted.headers.get("cache-control"), "no-store");
   assert.equal(w.calls.ready, 0, "a valid report goes straight to commitIngest, which owns readiness");
@@ -302,16 +302,91 @@ test("split: Mac credentials and timezone go to their KV namespaces only after t
   assert.deepEqual(w.calls.revalidated, [], "a timezone change is content, not layout");
 });
 
-test("split: agents limits land in the lag layer while the cursor half still reaches the state core", async () => {
+test("split: agents limits land in the lag layer while the coding half still reaches the state core", async () => {
   const w = world();
   const response = await w.send("/api/ingest/agents", post({
     agents: [{ id: "codex", plan: { tier: "pro" }, limits: [{ key: "codex.primary", usedPercent: 20, windowMinutes: 300 }], limitsError: null }],
     collectedAt: new Date().toISOString(),
+    codingActivity: { collectedAt: Date.now(), agents: [{ id: "cursor", lastActivityAt: Date.now() - 5_000, model: "composer-2" }] },
   }));
   assert.equal(response.status, 202);
-  assert.equal(w.calls.commits[0]?.source, "agents");
+  assert.deepEqual(await json(response), { ok: true, data: { accepted: 1, rejected: [] } });
+  const [command] = w.calls.commits;
+  assert.equal(command?.source === "agents" ? command.codingActivity?.agents[0]?.id : null, "cursor");
   assert.ok((await readLag<{ agents: Record<string, unknown> }>(w.lag, LAG_KEYS.limits))?.data.agents.codex);
   assert.equal(w.calls.archived.length, 1, "limit snapshots are archived");
+});
+
+function codingUsage(totalTokens: number) {
+  return {
+    agents: [{
+      id: "claude", state: "ok", collectedAt: Date.now(), sessionCount: 1,
+      days: [{
+        date: "2026-09-29", inputTokens: 1, outputTokens: 1, cacheReadTokens: 1, cacheCreationTokens: 1, reasoningTokens: 0,
+        totalTokens, apiEquivalentCostUSD: 0, costComplete: true, models: [],
+      }],
+    }],
+  };
+}
+
+test("receipts: a broken coding module is dropped alone — 202 names it, logs a warning, and the rest of the Mac envelope still commits", async (t) => {
+  const warned = t.mock.method(console, "warn", () => {});
+  const w = world({ reply: () => ({ ready: true, ok: true, data: { accepted: 2, heartbeat: true } }) });
+  const response = await w.send("/api/ingest/mac", post(mac({
+    desktop: { applicationName: "Xcode", bundleIdentifier: "com.apple.dt.Xcode", windowTitle: "App.swift" },
+    timezone: { identifier: "Asia/Tokyo", abbreviation: "JST", secondsFromGMT: 32400 },
+    codingUsage: codingUsage(3),
+  })));
+  assert.equal(response.status, 202);
+  const error = "agents[0].days[0].totalTokens 小于四列之和";
+  assert.deepEqual(await json(response), {
+    ok: true,
+    data: { accepted: 2, heartbeat: true, ignored: [], rejected: [{ module: "codingUsage", error }] },
+  });
+  const [command] = w.calls.commits;
+  assert.equal(command?.source === "mac" ? command.modules.desktop?.activity?.applicationName : null, "Xcode");
+  assert.equal(command?.source === "mac" && "codingUsage" in command.modules, false);
+  assert.equal((await readLag<{ timezone: { identifier: string } }>(w.lag, LAG_KEYS.timezone))?.data.timezone.identifier, "Asia/Tokyo");
+  assert.deepEqual(warned.mock.calls.map((call) => call.arguments), [["[ingest] rejected", "mac", `codingUsage：${error}`]]);
+});
+
+test("receipts: modules the ingress does not know (including the renamed vibeCoding*) are echoed back as ignored", async () => {
+  const w = world({ reply: () => ({ ready: true, ok: true, data: { accepted: 1, heartbeat: true } }) });
+  const response = await w.send("/api/ingest/mac", post(mac({
+    vibeCodingNow: { agents: [] },
+    codingUsage: codingUsage(10),
+  })));
+  assert.equal(response.status, 202);
+  assert.deepEqual(await json(response), {
+    ok: true,
+    data: { accepted: 1, heartbeat: true, ignored: ["vibeCodingNow"], rejected: [] },
+  });
+  const [command] = w.calls.commits;
+  assert.deepEqual(command?.source === "mac" ? Object.keys(command.modules) : null, ["codingUsage"]);
+});
+
+test("receipts: agents limits still land when only its coding data is broken; nothing usable left is a 400", async (t) => {
+  t.mock.method(console, "warn", () => {});
+  const errors = t.mock.method(console, "error", () => {});
+  const w = world();
+  const response = await w.send("/api/ingest/agents", post({
+    agents: [{ id: "cursor", plan: { tier: "ultra" }, limits: [] }],
+    collectedAt: new Date().toISOString(),
+    codingUsage: codingUsage(3),
+  }));
+  assert.equal(response.status, 202);
+  assert.deepEqual(await json(response), {
+    ok: true,
+    data: { accepted: 1, rejected: [{ module: "codingUsage", error: "agents[0].days[0].totalTokens 小于四列之和" }] },
+  });
+  assert.ok((await readLag<{ agents: Record<string, unknown> }>(w.lag, LAG_KEYS.limits))?.data.agents.cursor);
+
+  const empty = world();
+  const refused = await empty.send("/api/ingest/agents", post({ collectedAt: new Date().toISOString(), codingUsage: codingUsage(3) }));
+  assert.equal(refused.status, 400);
+  assert.deepEqual(await json(refused), { ok: false, error: "上报数据无效或处理失败" });
+  assert.equal(empty.calls.commits.length, 0);
+  assert.match(String(errors.mock.calls.at(-1)?.arguments[2]), /^agents 上报没有可收的数据：codingUsage：/);
 });
 
 test("prepare runs here: Emby confirms images against R2 before the command leaves", async () => {
@@ -332,6 +407,14 @@ test("every source prepares into a command that survives structured cloning", as
       chargingDevices: { devices: [{ id: "charger", kind: "charger", connected: true, updatedAt: Date.now(), totalOutputW: 30 }] },
       desktop: { applicationName: "Xcode", bundleIdentifier: "com.apple.dt.Xcode", windowTitle: "App.swift" },
       appleMusic: { state: "playing", title: "Song", queue: [{ title: "Next" }] },
+      codingUsage: codingUsage(10),
+      codingActivity: { collectedAt: Date.now(), agents: [{ id: "claude", lastActivityAt: Date.now() - 1_000, model: "claude-opus-5" }] },
+      codingTokenBuckets: {
+        from: Date.now() - 600_000, to: Date.now(), collectedAt: Date.now(), agents: [{ id: "claude", state: "ok" }],
+        windows: [{ from: Math.floor(Date.now() / 300_000) * 300_000 - 300_000, agents: [{
+          id: "claude", model: null, inputTokens: 1, outputTokens: 1, cacheReadTokens: 1, cacheCreationTokens: 1, reasoningTokens: 0, eventCount: null,
+        }] }],
+      },
       vibeCodingNow: { agents: [] },
     })],
     ["iphone", { version: 1, modules: { workouts: { items: [workout()] }, extra: {} } }],
@@ -339,7 +422,7 @@ test("every source prepares into a command that survives structured cloning", as
     ["emby", { playing: { itemId: "1", paused: false, media: { video: { codec: "hevc" } } }, resume: { items: [{ id: "1", name: "Pilot" }] } }],
     ["playstation", { version: 1, power: { on: true } }],
     ["server", server()],
-    ["agents", { cursorNow: { lastActivityAt: new Date().toISOString(), currentModel: "x" } }],
+    ["agents", { codingActivity: { collectedAt: Date.now(), agents: [{ id: "cursor", lastActivityAt: Date.now(), model: "x" }] }, codingUsage: { bad: true } }],
     ["agents-otlp", { resourceMetrics: [] }],
   ];
   for (const [source, body] of fixtures) {

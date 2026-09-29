@@ -8,6 +8,7 @@
  */
 
 import { getAgentLimits } from "@/lib/agent-limits";
+import { AwaitingReport } from "@/lib/awaiting-report";
 import { getAgentStatus } from "@/lib/agent-status";
 import { getWorkoutsSnapshot } from "@/lib/workouts";
 import { getActivitySnapshot } from "@/lib/activity";
@@ -47,6 +48,14 @@ function unparam<T>(load: () => Promise<T>): (params: StatusLoaderParams) => Pro
   return () => load();
 }
 
+/**
+ * coding 的三条新出口（用量视图、此刻、年度）登记了、读法还没接上：先按「还没有数据」回，
+ * 和空库时一样。接上读出口时换掉。
+ */
+async function codingViewPending(): Promise<never> {
+  throw new AwaitingReport("coding 用量视图尚未接上读出口");
+}
+
 export const statusLoaders = {
   desktop: { endpoint: unparam(getDesktopPayload) },
   timezone: { endpoint: unparam(getTimezonePayload) },
@@ -61,9 +70,12 @@ export const statusLoaders = {
   listening: { endpoint: unparam(getRecentlyPlayed) },
   nowListening: { endpoint: unparam(getNowListening) },
   vibeCoding: { endpoint: unparam(getVibeCodingSnapshot) },
+  coding: { endpoint: unparam(codingViewPending) },
+  codingNow: { endpoint: unparam(codingViewPending) },
   limits: { endpoint: unparam(getAgentLimits) },
   agentStatus: { endpoint: unparam(getAgentStatus) },
   vibeCodingYear: { endpoint: unparam(getVibeCodingYear) },
+  codingYear: { endpoint: unparam(codingViewPending) },
   watching: { endpoint: unparam(getWatching) },
   nowWatching: { endpoint: unparam(getNowWatching) },
   playing: { endpoint: unparam(getPlaying) },
