@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   estimateCursorCost,
+  modelName,
   parseModelsDev,
   refreshOnlinePrices,
   setOnlinePrices,
@@ -81,4 +82,15 @@ test("取失败或结构不对时沿用上一份，6 小时内不重复取", asy
   await refreshOnlinePrices(at + 8 * 3_600_000, async () => new Response("down", { status: 503 }));
   assert.equal(estimateCursorCost("brand-new-1.0", 100_000, 0, 0, 0, at), 0.2);
   setOnlinePrices(null);
+});
+
+test("模型名原样保留：只去首尾空白、按站点契约的上限截断，Antigravity 的占位符不再改写", () => {
+  assert.equal(modelName("  claude-4.5-sonnet-thinking \n"), "claude-4.5-sonnet-thinking");
+  assert.equal(modelName("   "), "");
+  // 契约里模型名最长 200 个字符，超了整份数据会被站点拒收
+  assert.equal(modelName("x".repeat(300)), "x".repeat(200));
+  // Cursor 事件里不会出现的占位符：原样交出去，估价也不再替它们找型号
+  assert.equal(modelName("m318"), "m318");
+  assert.equal(modelName("MODEL_PLACEHOLDER_M318"), "MODEL_PLACEHOLDER_M318");
+  assert.equal(estimateCursorCost("m318", 1_000, 1_000, 0, 0, at), null);
 });
