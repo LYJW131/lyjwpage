@@ -16,6 +16,7 @@ import type {
   PulsePowerLane,
   PulseStateLane,
   PulseStepsLane,
+  PulseTokensLane,
   StatusResponse,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -33,6 +34,7 @@ const REFRESH_MS = 5 * 60_000;
 
 const LANES: ReadonlyArray<{ domain: PulseDomain; label: string }> = [
   { domain: "coding", label: "Coding" },
+  { domain: "tokens", label: "Tokens" },
   { domain: "listening", label: "Listening" },
   { domain: "watching", label: "Watching" },
   { domain: "gaming", label: "Gaming" },
@@ -68,7 +70,7 @@ type LaneModel = {
    */
   under?: ReactNode;
   over?: ReactNode;
-  summary: { value: string; detail: ReactNode } | null;
+  summary: { value: ReactNode; detail: ReactNode } | null;
   aria: string;
 };
 
@@ -268,6 +270,65 @@ function powerModel(lane: PulsePowerLane, range: Range): LaneModel | null {
   };
 }
 
+/** 「842」「12.3K」「1.2M」 */
+function compactCount(value: number): string {
+  return new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: value < 1000 ? 0 : 1 }).format(value);
+}
+
+/**
+ * 速率刻度至少到这么多（tokens / min）：零星几次调用不该画成满格。按平方根画：
+ * 大批量的几分钟和平常的量差两三个数量级，线性刻度下平常的量全贴在底上。
+ */
+const TOKEN_SCALE_MIN = 10_000;
+
+function tokensModel(lane: PulseTokensLane, range: Range): LaneModel | null {
+  const buckets = columnRows(lane.buckets, ["fresh", "output", "cacheRead"]);
+  if (!buckets || !lane.summary) return null;
+  const rows = buckets.map((row) => {
+    const { from, to } = absolute(range, row);
+    const minutes = Math.max(1 / 60, (to - from) / 60_000);
+    return { from, to, rate: row.fresh / minutes, output: row.output / minutes, cacheRead: row.cacheRead / minutes };
+  });
+  const scale = Math.max(TOKEN_SCALE_MIN, ...rows.map((row) => row.rate));
+  const y = (rate: number) => LANE_HEIGHT - Math.max(1.5, Math.sqrt(rate / scale) * (LANE_HEIGHT - BAND_TOP));
+  // 首尾相接的桶画成一笔阶跃；中间没有用量的地方留白（那段是空闲还是未知由 Coding 道说）
+  const chains: (typeof rows)[] = [];
+  for (const row of rows) {
+    const chain = chains.at(-1);
+    if (chain && chain.at(-1)!.to === row.from) chain.push(row);
+    else chains.push([row]);
+  }
+  const fixed = (value: number) => value.toFixed(1);
+  const steps = (chain: typeof rows) => chain.map((row) => ` L${fixed(x(range, row.from))} ${fixed(y(row.rate))} L${fixed(x(range, row.to))} ${fixed(y(row.rate))}`).join("");
+  const area = chains.map((chain) => `M${fixed(x(range, chain[0].from))} ${LANE_HEIGHT}${steps(chain)} L${fixed(x(range, chain.at(-1)!.to))} ${LANE_HEIGHT} Z`).join(" ");
+  const line = chains.map((chain) => `M${fixed(x(range, chain[0].from))} ${fixed(y(chain[0].rate))}${steps(chain)}`).join(" ");
+  const { peakPerMinute, currentPerMinute, freshTokens } = lane.summary;
+  return {
+    items: rows.map((row, index) => ({
+      from: row.from, to: row.to, rank: 0,
+      content: (
+        <Tooltip key={index} from={row.from} to={row.to} head={`${compactCount(row.rate)} tokens/min`} lines={[
+          <span key="o" className="text-muted-foreground">Output {compactCount(row.output)}/min · Cache read {compactCount(row.cacheRead)}/min</span>,
+        ]} />
+      ),
+    })),
+    svg: (
+      <>
+        {chains.length > 0 && <path d={area} fill="var(--pulse-agent)" fillOpacity={0.3} />}
+        {chains.length > 0 && <path d={line} fill="none" stroke="var(--pulse-agent)" strokeWidth="1.25" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />}
+      </>
+    ),
+    summary: rows.length && peakPerMinute != null
+      ? {
+        // 手机上摘要列只有 6rem，「Peak」让给数字；和下一行的 now 并排，读得出这是峰值
+        value: <><span className="hidden sm:inline">Peak </span>{compactCount(peakPerMinute)}/min</>,
+        detail: currentPerMinute != null && currentPerMinute > 0 ? `now ${compactCount(currentPerMinute)}/min` : `${compactCount(freshTokens)} in 24h`,
+      }
+      : null,
+    aria: "new tokens per minute across coding agents, excluding cache reads",
+  };
+}
+
 /** 五分钟桶的步数刻度至少到这么多：零星几步不该画成满格 */
 const STEPS_SCALE_MIN = 400;
 
@@ -460,6 +521,7 @@ export function PulseCard({
     try {
       switch (domain) {
         case "coding": return lane.kind === "coding" ? codingModel(lane, range) : null;
+        case "tokens": return lane.kind === "tokens" ? tokensModel(lane, range) : null;
         case "listening": case "watching": case "gaming": return lane.kind === "state" ? stateModel(domain, lane, range, traceStyle) : null;
         case "charging": return lane.kind === "power" ? powerModel(lane, range) : null;
         case "activity": return lane.kind === "steps" ? stepsModel(lane, range, activityWidth) : null;
@@ -484,7 +546,9 @@ export function PulseCard({
             >
               <span
                 className="label-mono truncate text-muted-foreground"
-                title={domain === "activity" ? "Steps from closed HealthKit five-minute buckets; gaps are unknown, not still." : undefined}
+                title={domain === "activity"
+                  ? "Steps from closed HealthKit five-minute buckets; gaps are unknown, not still."
+                  : domain === "tokens" ? "New tokens per minute across all coding agents and sources, excluding cache reads." : undefined}
               >
                 {label}
               </span>
@@ -512,6 +576,7 @@ export function PulseCard({
           <span className="flex items-center gap-1"><span className="size-2 bg-(--pulse-human)" />Coding app</span>
           <span className="flex items-center gap-1"><span className="size-2 bg-(--pulse-agent)" />Agent</span>
           <span className="flex items-center gap-1"><span className="size-2 bg-(--pulse-both)" />Both</span>
+          <span className="flex items-center gap-1"><span className="h-2 w-3 border-t border-(--pulse-agent) bg-(--pulse-agent)/30" />Tokens/min (excl. cache reads)</span>
           <span className="flex items-center gap-1">
             <span className={cn("pulse-trace relative inline-block h-2 w-3", traceStyle === "hatched" ? "pulse-trace-hatched" : "pulse-trace-faint")} />
             Played elsewhere, time unknown

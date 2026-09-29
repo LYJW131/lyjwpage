@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
-import { codingObservationsKey, codingTokenUsageKey, cursorObservationsKey } from "@/lib/coding-pulse";
+import { codingObservationsKey, cursorObservationsKey } from "@/lib/coding-pulse";
+import { mergeBucketReport } from "@shared/coding-buckets";
+import { codingBucketsKey } from "@shared/coding-store";
+import type { CodingTokenBucketReport } from "@shared/coding-usage";
 import { CODING_OBSERVATION_HOLD_MS, CODING_WINDOW_MS, PULSE_SCORE_WINDOW_MS, parseCodingAssessment } from "@shared/pulse-coding";
 import { latestPulseAssessments, type PulseAssessment } from "@shared/pulse-assessment";
 import { SqliteStore, type SqlDatabase } from "@shared/sqlite-store";
@@ -14,9 +17,16 @@ import { resetStorageForTests } from '@/lib/storage';
 import { installStorageForTests } from '../../../src/lib/storage-driver';
 import { withRequestState } from '@shared/request-state';
 import { requestStore, type Env } from './runtime';
-import { recordPreparedAgentLimits } from './stores/vibecoding';
+import { commitPreparedAgentsReport } from './stores/agents';
 import { prepareAgentLimits } from '@shared/ingest/agents';
 const T = 1_800_000_000_000;
+type LegacyShape = { from: number; to: number; collectedAt: number; sources: { id: string; state: string }[]; windows: { from: number; to?: number; agents: unknown[] }[] };
+/** 一份按范围报的桶（Mac 本机扫描那种），存成 `pulse:token-buckets:<来源>` 的样子 */
+function storedBuckets(report: LegacyShape): string {
+  const shaped = { from: report.from, to: report.to, collectedAt: report.collectedAt, agents: report.sources,
+    windows: report.windows.map((window) => ({ from: window.from, agents: window.agents })) } as unknown as CodingTokenBucketReport;
+  return JSON.stringify(mergeBucketReport(null, shaped, report.collectedAt));
+}
 function setup() {
   let now = T + PULSE_SCORE_WINDOW_MS + 120_000;
   const db = new DatabaseSync(":memory:");
@@ -144,7 +154,7 @@ test("coding isolates windows, bounds concurrency and saves successes when anoth
 test('late token evidence re-scores only changed windows; identical evidence stays frozen', async () => {
   const b=setup(); await b.push(T); await b.make().run();
   const report={from:T-300000,to:T+300000,collectedAt:T+420000,sources:[{id:'codex',state:'ok'},{id:'claude',state:'unavailable'}],windows:[{from:T,to:T+300000,agents:[{id:'codex',model:'test',inputTokens:100,outputTokens:50,cacheReadTokens:20,cacheCreationTokens:0,reasoningTokens:10,eventCount:1}]}]};
-  await b.storage.set(codingTokenUsageKey(),JSON.stringify(report));b.advance(CODING_WINDOW_MS);await b.make().run();
+  await b.storage.set(codingBucketsKey("mac"),storedBuckets(report));b.advance(CODING_WINDOW_MS);await b.make().run();
   assert.equal(b.requests.length,2);
   const state=b.requests[1].state as {windows:{tokenUsage:typeof report}[]};
   assert.ok(JSON.stringify(state).includes('outputTokens'));
@@ -278,7 +288,7 @@ test('coding score aggregates sparse factual token buckets and keeps zero-event 
     {from:T,to:T+300_000,agents:[agent(20)]},
     {from:T+600_000,to:T+900_000,agents:[agent(30)]},
   ]};
-  await b.storage.set(codingTokenUsageKey(), JSON.stringify(usage));
+  await b.storage.set(codingBucketsKey("mac"), storedBuckets(usage));
   await b.make().run();
   const token = ((b.requests[0].state as {windows:{tokenUsage:{agents:{outputTokens:number}[];observedBucketCount:number;unknownBucketCount:number}}[]}).windows[0].tokenUsage);
   assert.equal(token.agents[0].outputTokens, 50);
@@ -291,7 +301,7 @@ test('coding score aggregates sparse factual token buckets and keeps zero-event 
 
 test('coding token usage keeps an empty reported interval as measured zero', async () => {
   const b = setup(); await b.push(T);
-  await b.storage.set(codingTokenUsageKey(), JSON.stringify({from:T,to:T+900_000,collectedAt:T+1_020_000,
+  await b.storage.set(codingBucketsKey("mac"), storedBuckets({from:T,to:T+900_000,collectedAt:T+1_020_000,
     sources:[{id:'codex',state:'ok'},{id:'claude',state:'ok'}],windows:[]}));
   await b.make().run();
   const token = ((b.requests[0].state as {windows:{tokenUsage:{agents:unknown[];observedBucketCount:number;unknownBucketCount:number}}[]}).windows[0].tokenUsage);
@@ -303,7 +313,7 @@ test('coding token usage keeps an empty reported interval as measured zero', asy
 test('coding token usage excludes partially reported boundary buckets', async () => {
   const b = setup(); await b.push(T);
   const agent = {id:'codex',model:'model',inputTokens:1,outputTokens:10,cacheReadTokens:0,cacheCreationTokens:0,reasoningTokens:0,eventCount:1};
-  await b.storage.set(codingTokenUsageKey(), JSON.stringify({from:T+150_000,to:T+750_000,collectedAt:T+1_020_000,
+  await b.storage.set(codingBucketsKey("mac"), storedBuckets({from:T+150_000,to:T+750_000,collectedAt:T+1_020_000,
     sources:[{id:'codex',state:'partial'},{id:'claude',state:'unavailable'}],windows:[
       {from:T,to:T+300_000,agents:[agent]}, {from:T+300_000,to:T+600_000,agents:[agent]},
       {from:T+600_000,to:T+900_000,agents:[agent]}]}));
@@ -327,7 +337,7 @@ async function quietCoding(b: ReturnType<typeof setup>, from: number) {
 test("fully observed zero windows skip Jev and store the lowest certain score", async () => {
   const b = setup();
   await quietCoding(b, T);
-  await b.storage.set(codingTokenUsageKey(), JSON.stringify({
+  await b.storage.set(codingBucketsKey("mac"), storedBuckets({
     from: T, to: T + PULSE_SCORE_WINDOW_MS, collectedAt: T + PULSE_SCORE_WINDOW_MS + 60_000,
     sources: [{ id: "codex", state: "ok" }, { id: "claude", state: "ok" }], windows: [],
   }));
@@ -370,7 +380,7 @@ test("a zero window is skipped while another coding window still calls Jev", asy
   await quietCoding(b, T);
   const next = T + PULSE_SCORE_WINDOW_MS;
   for (let index = 0; index < 5; index += 1) await b.push(next + index * CODING_OBSERVATION_HOLD_MS);
-  await b.storage.set(codingTokenUsageKey(), JSON.stringify({
+  await b.storage.set(codingBucketsKey("mac"), storedBuckets({
     from: T, to: next + PULSE_SCORE_WINDOW_MS, collectedAt: next + PULSE_SCORE_WINDOW_MS + 60_000,
     sources: [{ id: "codex", state: "ok" }, { id: "claude", state: "ok" }], windows: [],
   }));
@@ -392,8 +402,8 @@ test("Mac-offline account evidence reaches scoring and the public chart, then di
   try {
     await requestStore.run({ env: { LIVE_PUSH: { idFromName: () => null, get: () => ({ broadcast: async () => {} }) } } as unknown as Env,
       ctx: { waitUntil: (promise: Promise<unknown>) => { pending.push(promise); } } }, () => withRequestState(async () => {
-      await recordPreparedAgentLimits(prepareAgentLimits({ cursorUsage: { collectedAt: new Date(T).toISOString(), state: 'ok', error: null,
-        warning: null, coverageStart: null, coverageEnd: null, precision: 'measured', costComplete: true, days: [] } }, T));
+      await commitPreparedAgentsReport(prepareAgentLimits({ codingUsage: { agents: [{ id: 'cursor', state: 'ok', collectedAt: T, error: null,
+        warning: null, sessionCount: null, days: [] }] } }, T));
     }));
   } finally { await Promise.allSettled(pending); resetStorageForTests(); }
   await b.make().run();
@@ -427,7 +437,7 @@ test("independent source baseline never hides Cursor or token activity", async (
   assert.equal((cursor.requests[0].state as { windows: { cursorActiveSeconds: number }[] }).windows[0].cursorActiveSeconds, 300);
   const token = setup();
   await token.storage.append(cursorObservationsKey(), JSON.stringify({ t: T, available: true, lastActivityAt: null }));
-  await token.storage.set(codingTokenUsageKey(), JSON.stringify({ from: T, to: T + 300_000, collectedAt: T + 300_000,
+  await token.storage.set(codingBucketsKey("mac"), storedBuckets({ from: T, to: T + 300_000, collectedAt: T + 300_000,
     sources: [{ id: 'codex', state: 'ok' }, { id: 'claude', state: 'unavailable' }], windows: [{ from: T, to: T + 300_000, agents: [{ id: 'codex', model: null,
       inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheCreationTokens: 0, reasoningTokens: 0, eventCount: 1 }] }] }));
   await token.make().run();
@@ -441,8 +451,54 @@ test("Cursor coverage does not turn a missing Mac agent module into a certain ze
     await b.storage.append(codingObservationsKey(), JSON.stringify({ t, available: true, desktop: { application: 'Finder', coding: false }, agents: null }));
   }
   await b.storage.append(cursorObservationsKey(), JSON.stringify({ t: T, available: true, lastActivityAt: null }));
-  await b.storage.set(codingTokenUsageKey(), JSON.stringify({ from: T, to: T + PULSE_SCORE_WINDOW_MS, collectedAt: T + PULSE_SCORE_WINDOW_MS,
+  await b.storage.set(codingBucketsKey("mac"), storedBuckets({ from: T, to: T + PULSE_SCORE_WINDOW_MS, collectedAt: T + PULSE_SCORE_WINDOW_MS,
     sources: [{ id: 'codex', state: 'ok' }, { id: 'claude', state: 'ok' }], windows: [] }));
   await b.make().run();
   assert.equal(b.requests.length, 1);
+});
+
+
+test("token evidence from the Cursor account and Claude Code cloud counts only as positive evidence; certain zero needs the Mac range", async () => {
+  const row = (id: string, inputTokens: number, eventCount: number | null) => ({ id, model: null, inputTokens, outputTokens: 1, cacheReadTokens: 0, cacheCreationTokens: 0, reasoningTokens: 0, eventCount });
+  const extra = (source: "agents" | "agents-otlp", id: string, eventCount: number | null) => JSON.stringify({
+    coverage: [], agents: [{ id, state: "partial" }], windows: [{ from: T + 300_000, agents: [row(id, 7, eventCount)] }],
+    collectedAt: T + 900_000, receivedAt: T + 900_000,
+  });
+  // Mac 把整窗都报成 0，但云端那一路在第二个桶里有 token：不是确定的 0，照问 Jev
+  const b = setup();
+  await quietCoding(b, T);
+  await b.storage.set(codingBucketsKey("mac"), storedBuckets({ from: T, to: T + PULSE_SCORE_WINDOW_MS, collectedAt: T + PULSE_SCORE_WINDOW_MS,
+    sources: [{ id: "codex", state: "ok" }, { id: "claude", state: "ok" }], windows: [] }));
+  await b.storage.set(codingBucketsKey("agents-otlp"), extra("agents-otlp", "claude", null));
+  await b.make().run();
+  assert.equal(b.requests.length, 1);
+  const token = (b.requests[0].state as { windows: { tokenUsage: { observedBucketCount: number; sources: { source: string; id: string; state: string }[]; agents: { source: string; id: string; inputTokens: number; eventCount: number | null }[] } }[] }).windows[0].tokenUsage;
+  assert.equal(token.observedBucketCount, 3);
+  assert.deepEqual(token.sources.map((source) => [source.source, source.id, source.state]), [["mac", "codex", "ok"], ["mac", "claude", "ok"], ["agents-otlp", "claude", "partial"]]);
+  assert.deepEqual(token.agents.map((agent) => [agent.source, agent.id, agent.inputTokens, agent.eventCount]), [["agents-otlp", "claude", 7, null]]);
+
+  // 没有 Mac 的覆盖，只有 Cursor 账号的桶：证据照样送过去，未知的桶还是未知
+  const cursor = setup();
+  await cursor.push(T);
+  await cursor.storage.set(codingBucketsKey("agents"), extra("agents", "cursor", 3));
+  await cursor.make().run();
+  const cursorToken = (cursor.requests[0].state as { windows: { tokenUsage: { observedBucketCount: number; unknownBucketCount: number; agents: { source: string; eventCount: number | null }[] } }[] }).windows[0].tokenUsage;
+  assert.deepEqual([cursorToken.observedBucketCount, cursorToken.unknownBucketCount], [0, 3]);
+  assert.deepEqual(cursorToken.agents.map((agent) => [agent.source, agent.eventCount]), [["agents", 3]]);
+});
+
+test("a Cursor request billed without tokens (0 tokens, one event) is still activity evidence, not a certain zero", async () => {
+  const b = setup();
+  await quietCoding(b, T);
+  await b.storage.set(codingBucketsKey("mac"), storedBuckets({ from: T, to: T + PULSE_SCORE_WINDOW_MS, collectedAt: T + PULSE_SCORE_WINDOW_MS,
+    sources: [{ id: "codex", state: "ok" }, { id: "claude", state: "ok" }], windows: [] }));
+  await b.storage.set(codingBucketsKey("agents"), JSON.stringify({
+    coverage: [{ from: T - 600_000, to: T + PULSE_SCORE_WINDOW_MS }], agents: [{ id: "cursor", state: "partial" }],
+    windows: [{ from: T + 600_000, agents: [{ id: "cursor", model: "composer-2", inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, reasoningTokens: 0, eventCount: 1 }] }],
+    collectedAt: T + PULSE_SCORE_WINDOW_MS, receivedAt: T + PULSE_SCORE_WINDOW_MS,
+  }));
+  await b.make().run();
+  assert.equal(b.requests.length, 1, "Jev judges the window");
+  const rows = latestPulseAssessments(await b.storage.listRange(pulseAssessmentsKey(), 0, -1));
+  assert.equal(rows[0]?.model, "jev-1.13.0");
 });

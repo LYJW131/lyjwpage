@@ -1,6 +1,8 @@
-import { codingObservationsKey, codingTokenUsageKey, cursorObservationsKey } from "@/lib/coding-pulse";
+import { codingObservationsKey, cursorObservationsKey } from "@/lib/coding-pulse";
 import { pulseAssessmentsKey, pulseAssessmentAttemptKey } from "@/lib/pulse-assessments";
 import { PULSE_TTL_MS } from "@/lib/limits";
+import { codingBucketsKey } from "@shared/coding-store";
+import { CODING_USAGE_SOURCE_NAMES, type CodingUsageSource } from "@shared/coding-usage-sources";
 import { CODING_WINDOW_MS } from "@shared/pulse-coding";
 import { latestPulseAssessments, parsePulseAssessment, type PulseAssessment } from "@shared/pulse-assessment";
 import type { StorageCommand } from "@shared/storage-contract";
@@ -11,11 +13,12 @@ export interface PulseStateSql {
   exec(query: string, ...bindings: SqlValue[]): { toArray(): Record<string, unknown>[] };
 }
 
-/** Jev 只给 Coding 打分，快照里只有 Coding 的三路原始证据和已有评估。 */
+/** Jev 只给 Coding 打分，快照里只有 Coding 的原始证据和已有评估。 */
 export type PulseScoreInputs = {
   assessments: string[];
   codingObservations: string[];
-  codingTokenUsage: string | null;
+  /** 各来源的 5 分钟 token 桶（`pulse:token-buckets:<来源>`，shared/coding-buckets），没有是 null */
+  tokenBuckets: Record<CodingUsageSource, string | null>;
   cursorObservations: string[];
 };
 
@@ -114,8 +117,8 @@ export class PulseScoreState implements PulseScoreCoordinator {
       const results = this.execute([
         { op: "listRange", key: pulseAssessmentsKey(), start: 0, stop: -1 },
         { op: "listRange", key: codingObservationsKey(), start: 0, stop: -1 },
-        { op: "get", key: codingTokenUsageKey() },
         { op: "listRange", key: cursorObservationsKey(), start: 0, stop: -1 },
+        ...CODING_USAGE_SOURCE_NAMES.map((source): StorageCommand => ({ op: "get", key: codingBucketsKey(source) })),
       ]);
       return {
         ...claim,
@@ -123,8 +126,8 @@ export class PulseScoreState implements PulseScoreCoordinator {
         inputs: {
           assessments: results[0] as string[],
           codingObservations: results[1] as string[],
-          codingTokenUsage: results[2] as string | null,
-          cursorObservations: results[3] as string[],
+          cursorObservations: results[2] as string[],
+          tokenBuckets: Object.fromEntries(CODING_USAGE_SOURCE_NAMES.map((source, index) => [source, results[3 + index] as string | null])) as PulseScoreInputs["tokenBuckets"],
         },
       };
     } catch (error) {

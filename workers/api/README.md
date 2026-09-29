@@ -39,17 +39,45 @@
 上报端点（`/api/ingest/<来源>`、`/api/ingest/agents/otlp`、`/api/internal/site-deployed`）、鉴权和回执契约都在
 [上报入口](../ingress/README.md)，这里没有上报路由。下面几节讲的是各来源收下之后在状态核心里怎么存、怎么推。
 
-`/api/ingest/agents` 的主体仍是各家限额行，按 id 合并后写进可滞后层 KV（`limits:v1`），由 `GET /api/status/limits` 读出，浏览器按 id 贴回 vibecoding 的用量行；限额的来源集合变了才失效首屏标签 `limits`。可选的 `cursorUsage` 是 Cursor 云端用量日桶
-（`Asia/Shanghai`，字段与 Mac 的日用量相同，另加 `models`）。缺省表示这一轮没拉到，
-站点留着上一份。读 `/api/status/vibecoding` 和 `/api/status/vibecoding/year` 时并进 Mac 的合计：
-Mac 用量带 `omittedSources: ["cursor"]` 时整份另加；没有这个字段的旧 Mac 已经把 Cursor 算进合计，
-锚定日按字段做差，之后的日子整段补上。`cursorUsage` 形状不合法时整封 400，限额也不会落地。
+`/api/ingest/agents` 的主体仍是各家限额行，按 id 合并后写进可滞后层 KV（`limits:v1`），由 `GET /api/status/limits` 读出，
+浏览器按 id 贴回用量行；限额的来源集合变了才失效首屏标签 `limits`。同一封可以另带三份 coding 数据，见下一节。
 
-可选的 `cursorNow` 是 Cursor 账号最近一条用量事件：`lastActivityAt`（ISO 时刻，必填）和 `currentModel`。
-容器平时随限额那一轮带上，Cursor 在用时每分钟查一次、变了单独发一封，这种信封可以不带 `agents`；不带时完全不碰限额镜像，
-限额的心跳只看限额那一轮。存在 `vibecoding:cursor-now`，变了就推一条 `vibecoding-now`，
-里面 `active` 固定为 `false` —— Cursor 那盏灯由浏览器按 `lastActivityAt` 在 5 分钟内现算，
-事件停了灯自己灭。`agents`、`cursorUsage`、`cursorNow` 三者全缺时 400。
+### coding agent 的 token 用量
+
+三个来源只报自己观测到的原始事实，合并只在状态核心做一处（契约与校验在 `shared/coding-usage.ts`，来源登记与合并规则在
+`shared/coding-usage-sources.ts`）：
+
+| 来源（= 上报入口） | 范围 | 带来什么 |
+| --- | --- | --- |
+| `mac`（`modules.codingUsage` / `codingActivity` / `codingTokenBuckets`） | 设备：这台 Mac 本地日志里的会话 | 各 agent 的日行账本、最近事件、5 分钟桶 |
+| `agents`（顶层同名三键） | 账号：Cursor 账号侧的完整历史 | 同上，眼下只有 `cursor` |
+| `agents-otlp`（Claude Code 云端遥测） | 环境：那个托管环境里的会话 | 状态核心做差后整理成同形的三种事实，agent 恒为 `claude` |
+
+同一 agent 有账号级来源时只算它，别的来源的同 agent 行标 `superseded`、不相加（Mac 就算又报 `cursor` 也不会双算）；
+否则全部相加（claude 的本机与云端，假设彼此不重叠：云端遥测变量只配在云端）。
+
+- **日行**：`coding:usage:<来源>` 是字段哈希，字段是 agent id，值是这个 (来源, agent) 的完整账本
+  （`shared/coding-usage-view.ts` 的 `StoredCodingUsageAgent`）。一封里出现的 agent 整份替换；`state: "error"`
+  只换状态、日子沿用上一份（Cursor 历史里一条坏事件让一整轮失败时也是这样，不清空）。账本真的变了才在同一次
+  提交里重算视图 `coding:usage:view`（`CodingUsagePayload`：合计、全历史前三模型、各 agent 最近一个有行的日子、
+  各来源状态）与年度视图 `coding:usage:year`（最近 380 天每天的合计与精确前五模型），算法是纯函数
+  `buildCodingUsageView`。前三、每天前五都在完整数据上精确累加；`activeDays` 是全部历史、全部 agent 的站点日并集；
+  `costComplete` 看所有有 token 的日行，来源采集失败只体现在状态里。首屏标签 `coding` 只在新旧视图的骨架
+  （行、总量、常用模型的有无，`src/lib/home-layout.ts` 的 `codingLayoutKey`）不同时打。
+- **活动**：`coding:activity:<来源>` 整份替换（采集时刻比存着的旧就不收）。拼好整份 `/api/status/coding/now`
+  推 `coding-now`：多出一个 (agent, 来源)、换了模型、时刻往前走了 45 秒以上才推，保活不推。灯由浏览器按
+  「任一来源最近事件在 5 分钟内」现算；Mac 亲口离线时只作废 `mac` 那条。
+- **5 分钟桶**：`pulse:token-buckets:<来源>`，TTL 2 天，只给 Pulse 的 Tokens 道、Jev 与归档，不推送。Mac / agents 按报告
+  范围替换（`[from, to)` 内以新报告为准，缺席的桶是 0，范围外不动，报告范围并进覆盖）；跨着报告起点的那一桶只数了
+  一截，按 (agent, 模型) 取大的那行，不盖掉旧报告里数全了的桶。合并规则在 `shared/coding-buckets.ts`。
+- **Cursor 账号观测**：agents 来源的 cursor 行另记一笔 `pulse:cursor-observations`（Coding 三色带与 Jev 的独立来源）：
+  用量历史采集成功就是一次心跳（时刻取采集时刻），只有活动的那封时刻往前走了才记。
+
+读出口在 `src/lib/coding-usage.ts`：`/api/status/coding` 原样给视图，`/api/status/coding/now` 与推送用同一个
+`buildCodingNowAgents` 拼、外加 Mac 存活，`/api/status/coding/year` 按站点今天切出 53 周（371 天）并编码成
+`days/models/mix`。三条都归实时层，只有 `coding/now` 推送。
+
+入口对坏的 coding 模块只丢它自己、回执写 `rejected`（见[上报入口](../ingress/README.md)），不连累存活和别的模块。
 
 ### Claude Code 云端线程用量
 
@@ -60,17 +88,15 @@ Mac 的 ccusage 只扫本机会话记录，看不到云端线程。云端环境�
 只收 `claude_code.token.usage` 与 `claude_code.cost.usage`，其余指标收下后忽略（返回 200 `{}`，
 整封拒掉 exporter 不重试，这一轮的数就丢了）。数据点上的邮箱、账号 ID、组织 ID 在解析时丢掉，
 只存 session、model、token 类型、值和时刻。cumulative 时序下每条序列（指标、进程起点、全部属性，主会话和子代理的 `query_source` 不同就是两条）
-记上次的累计值（键和会话都只存摘要），只加差值：丢一轮下一轮补齐，重发、乱序不多算；线程恢复成新进程时起点变了，按新计数器计。
-差值按数据点时刻归到 `Asia/Shanghai` 日，存在 `vibecoding:claude-cloud-usage`，日桶留 400 天，进程计数器 30 天没见就清掉。
-读 `/api/status/vibecoding` 与 `/vibecoding/year` 时接在 Cursor 之后整份并进 Mac 的合计、`claude` 那一行的今天和年度图：
-两边会话不重叠，不做差。费用直接用 Claude Code 报的 `cost.usage`，和它自己 `/cost` 的口径一致。
-首屏标签最多 5 分钟失效一次，卡片挂载后自己定时来问。
+记上次的累计值（`coding:otlp`，键和会话都只存摘要），只加差值：丢一轮下一轮补齐，重发、乱序不多算；线程恢复成新进程时起点变了，按新计数器计。
+进程计数器 30 天没见就清掉。每个正差值同时落成三种事实（`agents-otlp` / `claude`）：按数据点时刻的站点日加进日行
+（费用直接用 Claude Code 报的 `cost.usage`，`costComplete` 恒真）；加进数据点时刻所在的 5 分钟桶（差值实际覆盖
+上一次导出到这次之间约一分钟，桶边界上最多错一分钟；没有覆盖区间、事件数为 null，只作正证据）；有 token 增量的
+最新时刻与模型作为活动。闲着的进程每分钟一封也不重算视图。
 
-同一份数据点亮 Claude 那盏灯：最近一次有 token 增量的时刻作为 `claude` 行的 `cloudActivityAt`，
-浏览器按 5 分钟窗口现算，和 Mac 报的 `active` 取或 —— Mac 合盖、上报器离线时云端在跑照样亮。
-云端比本机新时，此刻模型换成云端最近用的那个。时刻往前走了大半分钟或换了模型，就推一条
-`vibecoding-now`（整行，Mac 的 `active` / `lastActivityAt` 照抄权威值）；Mac 的推送不带这个字段，
-浏览器保留手上的。Claude 云端活动不进 Pulse；Cursor 账号观测独立参与 Pulse。
+改契约时的一次性迁移在 `src/stores/coding-usage-migrate.ts`（第一封用量或 OTLP 提交时触发，幂等，确认转过之后删掉）：
+旧键里的累计计数器必须转成 `coding:otlp`，否则每个活着的云端进程会被整份重算一遍；云端日桶、最近时刻和
+Cursor 日桶顺带转过来；旧 `vibecoding:*`、`pulse:coding-token-usage`、`home-layout:vibecoding` 挂 14 天 TTL。
 
 `/api/ingest/mac` 的 `modules.desktop` 描述此刻的前台应用：`applicationName`（必填）、
 `bundleIdentifier`、`windowTitle`、`iconHash` 与 `iconObjectKey`（内容地址，见下文图标那段）、
@@ -117,7 +143,7 @@ presence 时会把它冲掉。`on` 必须是布尔值（HA 实体的 `"on"` / `"
 `StateCore.commitIngest` 进这里：StateHub 按到达顺序串行提交，回 `{ ready, ok, data | error }`，未初始化时什么都不写；
 提交确认后，推送与首屏失效由这边的 `waitUntil` 执行。api Worker 上没有 `/api/ingest/*`，旧的 `/publish` 也不存在。
 
-Worker 在 SQLite 写入完成后，仅对首屏布局变化在 `waitUntil` 后台任务中通知 Vercel：POST `${SITE_URL}/api/revalidate`，Bearer 用只有 Worker 和 Vercel 两边有的 `REVALIDATE_SECRET`，只传 `{ tags }`。按白名单将 `page:<tag>` 标 stale，先返回已有 HTML，后台重建。首页整页只有一个缓存条目，任何标签失效都是整页重建，所以各上报在自己手里的新旧两份上判断布局有没有变：充电头 / 充电宝那一格亮灭、在听的 hero 出现或消失、「正在看」开播停播、续看和游玩列表空与非空、服务器首报 / 流量行 / 断流后回来、奖杯首次到达、训练那一块换占位（没收到过 / 一条都读不出 / 有训练）。判据与页面共用 `src/lib/home-layout.ts`。Vibe coding 的骨架由三路拼成，在出口按拼好的那份比对上一次通知时的骨架（`home-layout:vibecoding`），行数、总量与常用模型的有无变了才发。读数、标题、进度、灯色等内容变化不通知，由首屏快照 `revalidate: 600` 定时重建；浏览器挂载后直接问 Worker。通知 5 秒超时，失败只记日志，不能让已落库的上报重发。纯心跳和没有标签的广播不触发缓存通知。
+Worker 在 SQLite 写入完成后，仅对首屏布局变化在 `waitUntil` 后台任务中通知 Vercel：POST `${SITE_URL}/api/revalidate`，Bearer 用只有 Worker 和 Vercel 两边有的 `REVALIDATE_SECRET`，只传 `{ tags }`。按白名单将 `page:<tag>` 标 stale，先返回已有 HTML，后台重建。首页整页只有一个缓存条目，任何标签失效都是整页重建，所以各上报在自己手里的新旧两份上判断布局有没有变：充电头 / 充电宝那一格亮灭、在听的 hero 出现或消失、「正在看」开播停播、续看和游玩列表空与非空、服务器首报 / 流量行 / 断流后回来、奖杯首次到达、训练那一块换占位（没收到过 / 一条都读不出 / 有训练）。判据与页面共用 `src/lib/home-layout.ts`。coding 用量卡片的骨架在状态核心重算视图时比新旧两份，行、总量与常用模型的有无变了才发 `coding`。读数、标题、进度、灯色等内容变化不通知，由首屏快照 `revalidate: 600` 定时重建；浏览器挂载后直接问 Worker。通知 5 秒超时，失败只记日志，不能让已落库的上报重发。纯心跳和没有标签的广播不触发缓存通知。
 
 ESA 首页不走数据上报通知。`lyjw131.com` 以 `lyjw.me` 为源站与回源 Host，控制台缓存规则「首页遵循源站缓存」（主机名等于本站、URI 路径等于 `/`，排在 PWA 绕过规则之后）让边缘按源站 `Cache-Control: public, max-age=300, stale-while-revalidate=86400, stale-if-error=86400`（根目录 `next.config.ts`）自行缓存：5 分钟内命中，之后先回旧 HTML、后台回源取新。带内容哈希的静态 JS 按源站一年 immutable 缓存，不随上报清理。新版本部署上线时，由 GitHub Actions（`.github/workflows/purge-esa.yml`）在 Vercel 生产部署完成后自动调用 `PurgeCaches` 刷新一条首页 cachekey，随后主动发起请求预热边缘节点缓存；日常上报不触发刷新。同一工作流的第二步等 `lyjw.me` 与 `lyjw131.com` 的 `/api/version` 都答出这次部署的 sha，再用 `lyjwpage-github-actions` 那把 service token（仓库 secret `ACCESS_CLIENT_ID` / `ACCESS_CLIENT_SECRET`）调上报入口的 `POST https://ingest.homepage.lyjw.llc/api/internal/site-deployed`；上报入口验过之后调这里的 `StateCore.broadcastVersion()`，向所有连着的页面广播不带数据的 `version` 事件，页面重问 `/api/version` 并弹出更新提示（同时请采集 Worker 重拉部署列表，见上报入口 README）；站点自己的版本轮询因此只作半小时一次的兜底。
 
@@ -129,7 +155,7 @@ Vercel 仍采用后台重建，通知成功不代表新 HTML 已生成。ESA 后
 
 ## 跨域活动脉搏（Pulse）
 
-`GET /api/status/pulse` 是最近 24 小时「在做什么」的事实时间线，六条道：`coding` / `listening` /
+`GET /api/status/pulse` 是最近 24 小时「在做什么」的事实时间线，七条道：`coding` / `tokens` / `listening` /
 `watching` / `gaming` / `charging` / `activity`，归实时层（状态核心 DO 直读，不进 KV），首页那张
 Pulse 卡片首屏按卡读它（`src/lib/first-screen.ts`）、挂载后五分钟轮询一次。**只给原始事实**（状态、标题、瓦数、步数），档位、颜色、摘要文案都在卡片里现算，
 以后换展示方式不用迁移数据。信封形状：
@@ -145,6 +171,11 @@ Pulse 卡片首屏按卡读它（`src/lib/first-screen.ts`）、挂载后五分�
       // Jev 的十五分钟评估：强度 0–4、置信度、模式；只在悬停里出现
       "assessments": { "startSec": [0], "endSec": [900], "intensity": [3], "confidence": [0.88], "mode": ["mixed"] },
       "summary": { "humanSeconds": 3600, "agentSeconds": 0, "bothSeconds": 3600 } },
+    // 各来源、各 agent、各模型相加后的五分钟桶：fresh = input + output + cache 写入，cache 读单列
+    "tokens": { "kind": "tokens",
+      "buckets": { "startSec": [3600, 3900], "endSec": [3900, 4200], "fresh": [120000, 64000], "output": [9000, 5100], "cacheRead": [2400000, 1300000] },
+      // peak / current 是 fresh 的每分钟速率；current 为 0 是看得见、没在用，null 是未知
+      "summary": { "peakPerMinute": 24000, "currentPerMinute": null, "freshTokens": 184000 } },
     // listening / watching：0 空闲，1 暂停，2 在放；gaming：0 离线，1 在线，2 在游戏里
     "listening": { "kind": "state",
       "segments": { "startSec": [1800], "endSec": [2040], "state": [2], "title": ["群青"], "subtitle": ["YOASOBI"] },
@@ -169,8 +200,10 @@ Pulse 卡片首屏按卡读它（`src/lib/first-screen.ts`）、挂载后五分�
 **没有段的时间就是未知**（没有观测），和观测到的空闲、离线、0 瓦、0 步分开：卡片上空闲是一条贴底的
 细灰线，未知只剩虚线轨道。
 
-**只有媒体与游戏标题公开**；应用名、模型名、token 用量、充电设备名不出这个端点，Coding 只给三色带和
-Jev 的强度、模式。
+**只有媒体与游戏标题公开**；应用名、模型名、充电设备名不出这个端点，Coding 只给三色带和
+Jev 的强度、模式。token 只以各来源、各 agent、各模型相加后的五分钟桶出现（Tokens 道），不带模型名和来源：
+Mac / agents 的桶只认起点在报告范围里的（跨着范围起点的那一桶只数了一截），被 24 小时窗口截断的首桶不画，
+末桶截到这一桶里有数的来源里最晚的覆盖终点（云端 OTLP 用最后一封的收到时刻），不足 60 秒不画，只出有用量的桶。
 
 ### 存储：事实时间线
 
@@ -217,14 +250,14 @@ Jev 的强度、模式。
 档位时代的 `pulse:<domain>`、`pulse:listening-plays`、`pulse:listening-checks` 不再写，随 TTL 过期，不迁移。
 
 本地预览用夹具：`pnpm dev:override /api/status/pulse pulse-busy-day.json`（另有 `pulse-empty`、`pulse-zero-lanes`、
-`pulse-activity-boundary`）。卡片右下角开发开关「Traces」切换不确定区间的斜线 / 淡色画法，默认斜线。
+`pulse-activity-boundary`，以及 `pulse-tokens-idle`：Tokens 道白天有用量、此刻为 0）。卡片右下角开发开关「Traces」切换不确定区间的斜线 / 淡色画法，默认斜线。
 
 ### Coding 的 Jev 评估
 
 Jev 只给 Coding 打分：原始观测说得出「前台是不是 coding 应用、agent 在不在跑」，说不出「写得多投入」，
 强度和模式仍问 Jev，只在悬停里出现。别的道画的就是事实本身，不再有模型分、趋势和置信度。
 `PulseScorer` 和 `pulse:assessments` 只剩 `coding`；StateHub 的 metadata 保存评分 claim、generation、lease 和
-最近尝试时刻；普通 Worker 领取固定输入快照（评估、Coding 观测、token 报告、Cursor 观测）、执行模型请求，
+最近尝试时刻；普通 Worker 领取固定输入快照（评估、Coding 观测、三个来源的 token 桶、Cursor 观测）、执行模型请求，
 再用 token + generation 提交，过期任务不能覆盖新结果。公开的评估只有区间、强度、置信度与模式；
 概率分布、输入哈希、模型名和评分时刻只留在库里。
 
@@ -239,29 +272,29 @@ Jev 只给 Coding 打分：原始观测说得出「前台是不是 coding 应用
 `concurrentAgentSeconds`、`codingAppAndAgentSeconds`、切换次数、最长连续时长、观测覆盖和前几个应用 / agent，
 没有原始区间或时间戳；判据写在 `instructions` / `criteria` 里。
 
-`PULSE_ASSESSMENT_VERSION`（现为 5）进输入哈希，改问题时升版本让全部窗口重评，不靠哈希碰巧变。
+`PULSE_ASSESSMENT_VERSION`（现为 6）进输入哈希，改问题时升版本让全部窗口重评，不靠哈希碰巧变。
 改判据先跑 `node --experimental-strip-types --import ./src/lib/testing/register-alias.mjs scripts/jev-probe.mts`
 （key 读根目录 `.env.local` 的 `TYPESAFE_API_KEY`）：几个代表性的 Coding 窗口打真实 Jev，每条都写着期望答案，
 偏了先改措辞再上线——改判据上线会触发最近 24 小时重评。相同输入哈希不重复调用；晚到 token 改变窗口事实时
 只重评受影响窗口。失败保留旧成功记录，下一轮重试，存储读失败不会清空历史。评估列表追加写，同一窗口以
 最后一行为准，被覆盖的行多过有效行一半或总数超过上限（2016）的 1.5 倍才整表压缩。
 
-MacTelemetryHub 的 `modules.vibeCodingNow.tokenUsage` 携带最近 24 小时的用量桶。原始桶保持五分钟，不随 Jev 评分改动；评分时聚合窗口内三个桶，完整上报范围内缺失的桶视为零事件，范围外或来源 partial/unavailable 保留 unknown。字段为 `from/to/collectedAt`（epoch 毫秒）、`sources[{id,state}]`、
-`windows[{from,to,agents}]`。每行 agent 有 `id/model/inputTokens/outputTokens/
-cacheReadTokens/cacheCreationTokens/reasoningTokens/eventCount`；input 不含 cache read，
-reasoning 属于 output 子集，eventCount 是去重用量事件数，不宣称上游 HTTP 请求数。
-Codex 与 Claude 使用本地日志事件时间，sources 状态区分 ok、partial、unavailable；
-其他来源没有细粒度用量，不能由日总量拆分。该数据只入内部存储，不进入公开补丁。
+token 证据来自三个来源的 5 分钟桶（上一节）。原始桶保持五分钟，不随 Jev 评分改动；评分时聚合窗口内三个桶，
+按 (来源, agent, 模型) 相加，每行带 `source`。`observedBucketCount` 只数被 Mac 本机扫描的报告范围完整盖住的桶：
+范围内缺席的桶是零事件，范围外或 Mac 的来源 partial / unavailable 保留 unknown；「确定为零」只认 Mac 的覆盖。
+Cursor 账号与云端 OTLP 的桶只作正证据（没行不代表 0），不按 token 计费的请求记 0 token、1 次事件，照样算活动。
+每行有 `inputTokens/outputTokens/cacheReadTokens/cacheCreationTokens/reasoningTokens/eventCount`；input 不含 cache read，
+reasoning 属于 output 子集，eventCount 是去重用量事件数（数不出来的来源为 null），不宣称上游 HTTP 请求数。
 
 不上传提示词、回复正文、项目路径或 session ID。token 是工作活动的证据，不是生产力。
 Mac 同状态每分钟最多保存一次内部观测，变化立即记录；缺报三分钟后中断。
-Cursor 使用独立的 `pulse:cursor-observations`：`cursorNow` 或成功的 `cursorUsage` 检查都会记录，日桶内容没变化也更新观测。重复、乱序的采集时刻不延长有效期，error / warning 不当成零活动。闲时上报周期最长一小时，因此检查覆盖最多保持 65 分钟；最近事件只按 5 分钟活动窗口计入，之后仅表示 Cursor 来源可用。Mac 离线不会抹掉这份覆盖，Cursor 过期也不会抹掉 Mac 的覆盖；两者并集去重。仅 Cursor 可用且没有活动或正 token 证据时直接写 0，置信度为 0.5，内部模型标记为 `rules:limited-source`，不调用 Jev；这不等于确定全局没有 Coding。
+Cursor 使用独立的 `pulse:cursor-observations`：agents 来源的 cursor 活动往前走了、或成功的 cursor 用量采集都会记录，账本内容没变化也更新观测。重复、乱序的采集时刻不延长有效期，error / warning 不当成零活动。闲时上报周期最长一小时，因此检查覆盖最多保持 65 分钟；最近事件只按 5 分钟活动窗口计入，之后仅表示 Cursor 来源可用。Mac 离线不会抹掉这份覆盖，Cursor 过期也不会抹掉 Mac 的覆盖；两者并集去重。仅 Cursor 可用且没有活动或正 token 证据时直接写 0，置信度为 0.5，内部模型标记为 `rules:limited-source`，不调用 Jev；这不等于确定全局没有 Coding。
 
 ### 长期归档（D1）
 
 写入方是状态核心：cron 每分钟由 StateHub 按各路水位（metadata `pulse-archive:v2:<路>`）给出一份有界快照，
 普通 Worker 拼成按自然键幂等的 upsert 写 D1，全部成功后才确认水位；一路读坏、写坏不挡别的路。
-代码在 `src/pulse-archive.ts`，表在迁移 `0007_history_pulse.sql`：
+代码在 `src/pulse-archive.ts`，表在迁移 `0007_history_pulse.sql` 与 `0008_coding_usage.sql`：
 
 | 表 | 内容 | 自然键 |
 | --- | --- | --- |
@@ -271,16 +304,17 @@ Cursor 使用独立的 `pulse:cursor-observations`：`cursorNow` 或成功的 `c
 | `charging_samples` / `charging_sessions` | 过了闸门的瓦数；一次充电的起止、峰值、能量、设备 | `t` / `started_at` |
 | `activity_buckets` | HealthKit 五分钟桶原值；范围替换由 `pulse_archive_state` 里 `activity_buckets` 那行的版本挡住旧快照 | `started_at` |
 | `coding_observations` | Coding 原始观测（agents 为 JSON） | `t` |
-| `coding_token_buckets` | Mac 本机五分钟 token 桶，agent × 模型 | `(bucket_at, agent, model)` |
-| `agent_usage_days` | 每天（Asia/Shanghai）× agent × 模型，各来源只填真有的列 | `(date, agent, model)` |
+| `coding_usage_days` / `coding_usage_models` | 来源 × agent × 站点日的日行（token 分类、reasoning、合计、API 等值费用、费用是否估全）与当天按来源的模型拆分 | `(date, source, agent)` / `(date, source, agent, model)` |
+| `coding_usage_buckets` | 各来源的五分钟 token 桶，agent × 模型（云端 OTLP 的事件数为 NULL） | `(bucket_at, source, agent, model)` |
+| `coding_active_days` | agent 在跑的秒数（来自 Coding 观测），`model = '*'` 是当天合计 | `(date, agent, model)` |
 
-`agent_usage_days` 的来源与缺口：具体模型的行里，codex / claude 由 `coding_token_buckets` 汇总（token 分类、
-reasoning、事件数），cursor / claude-cloud 只有云端日桶给的每模型 `total_tokens`；`model = '*'` 是这个 agent 当天
-的合计，token 分类与 API 等值费用只在这一级（没有按模型的费用），codex / claude 取 Mac 用量摘要的 `today`
-（只归档到那天最后一次采集），cursor / claude-cloud 取各自日桶；`active_seconds` 来自 Coding 观测
-（agent 在跑的时长，3 分钟保持，按 max 只增不减），Cursor 只有账号级。`model = ''` 是没有模型名的 token 事件。
-token 报告范围本身不归档，所以归档里「没有行」分不清是零事件还是没报。
+日行按「水位之后变过的 (来源, agent) 账本」整份 upsert（值没变的行 D1 不写；视图的 `updatedAt` 没过水位就不读账本），
+存事实不存合并：被账号级来源覆盖的 Mac cursor 行照样归档，合并规则只在视图里。模型拆分只增不删，来源事后从某天
+拿掉的模型旧行还在。桶不汇成日：Mac / agents 只写起点被报告范围盖住的桶，还在累积的末桶照写、下一次用更完整的数覆盖；
+报告范围本身不归档，所以归档里「没有行」分不清是零事件还是没报。`coding_active_days` 按 max 只增不减，
+3 分钟保持，Cursor 只有账号级。`model = ''` 是没有模型名的 token 事件。
 
+旧表 `coding_token_buckets`、`agent_usage_days` 冻结：`0008` 把 Mac 的桶和活跃秒数复制进新表，日事实不回填（新契约第一封就带完整历史）。
 旧表 `pulse_samples` 原样冻结，不再写。首次部署带本版本的 Worker 之前先应用迁移
 （`pnpm --dir workers/api exec wrangler d1 migrations apply lyjwpage-history --remote`）。
 

@@ -12,7 +12,7 @@ import {
   pulseListeningTracesKey,
   pulseWorkoutsKey,
 } from "@/lib/pulse-keys";
-import { prepareVibeCodingNowPayload, recordPreparedAgentLimits } from "@api/stores/vibecoding";
+import { commitPreparedAgentsReport } from "@api/stores/agents";
 import { commitRecentlyPlayed } from "@api/apple-music-recent";
 import { installStorageForTests, resetStorageForTests } from "@/lib/storage";
 import { FakeStorage } from "@/lib/testing/fake-storage";
@@ -32,7 +32,7 @@ import { prepareTelemetryEnvelope } from "@shared/ingest/telemetry";
 const recordTelemetryEnvelope = (input: unknown, at: number) => commitPreparedTelemetryEnvelope(prepareTelemetryEnvelope(input, at));
 const recordEmbyReport = async (input: unknown, at: number) => commitPreparedEmbyReport(await prepareEmbyReport(input, at, { head: async () => null }));
 const recordPlaystationReport = (input: unknown, at: number) => commitPreparedPlaystationReport(preparePlaystationReport(input, at));
-const recordAgentLimits = (input: unknown, at: number) => recordPreparedAgentLimits(prepareAgentLimits(input, at));
+const recordAgentsReport = (input: unknown, at: number) => commitPreparedAgentsReport(prepareAgentLimits(input, at));
 
 /**
  * Pulse 的挂钩点，按信封驱动：哪一封该落笔、落成什么样的区间或样本。
@@ -167,40 +167,55 @@ test("desktop 模块关掉后，留着的前台应用不再被记成 coding", wi
     desktop: { applicationName: "Cursor", bundleIdentifier: "com.todesktop.230313mzl4w4u92" },
   }), T0));
   const off = T0 + 60_000;
-  await inRequest(() => recordTelemetryEnvelope(envelope(off, ["vibeCoding"], {
-    vibeCodingNow: { agents: [{ id: "claude", currentModel: "opus", active: false }] },
+  await inRequest(() => recordTelemetryEnvelope(envelope(off, ["coding"], {
+    codingActivity: { collectedAt: off, agents: [{ id: "claude", lastActivityAt: null, model: null }] },
   }), off));
   const rows = (await storage.listRange(codingObservationsKey(), 0, -1)).map((raw) => JSON.parse(raw));
   assert.deepEqual(rows.map((row) => row.desktop), [{ application: "Cursor", coding: true }, null]);
   assert.equal(await storage.get(pulseLaneOpenKey("listening")), null, "no appleMusic module means listening is not observed");
 }));
 
-test("vibeCoding 模块关掉或采集器过期后，留着的 agents 不再进观测", withStorage(async (storage) => {
-  await inRequest(() => recordTelemetryEnvelope(envelope(T0, ["vibeCoding"], {
-    vibeCodingNow: { agents: [{ id: "claude", currentModel: "opus", active: true }] },
-  }), T0));
-  const again = T0 + 6 * 60_000;
-  await inRequest(() => recordTelemetryEnvelope(envelope(again, ["vibeCoding"]), again));
-  const stale = T0 + 16 * 60_000;
-  await inRequest(() => recordTelemetryEnvelope(envelope(stale, ["vibeCoding"]), stale));
+function activity(at: number, lastActivityAt: number | null, id = "claude", model: string | null = "claude-opus-5") {
+  return { codingActivity: { collectedAt: at, agents: [{ id, lastActivityAt, model }] } };
+}
+
+test("agent 在不在跑按活动时刻现算：最近事件 5 分钟内算在跑，之后不算；保活续命，采集时刻 10 分钟不动才当未知", withStorage(async (storage) => {
+  await inRequest(() => recordTelemetryEnvelope(envelope(T0, ["coding"], activity(T0, T0 - 30_000)), T0));
+  // 这封没带活动：用存着的那份，按这一刻重新算 —— 事件已是 5 分钟之前，不再算在跑
+  const quiet = T0 + 6 * 60_000;
+  await inRequest(() => recordTelemetryEnvelope(envelope(quiet, ["coding"]), quiet));
+  // 内容不变的保活把采集时刻往前推
+  const kept = T0 + 9 * 60_000;
+  await inRequest(() => recordTelemetryEnvelope(envelope(kept, ["coding"], activity(kept, T0 - 30_000)), kept));
+  const stillKnown = T0 + 18 * 60_000;
+  await inRequest(() => recordTelemetryEnvelope(envelope(stillKnown, ["coding"]), stillKnown));
+  // 采集器停了：最后一封的采集时刻已经过去 10 分钟以上
+  const stale = T0 + 20 * 60_000;
+  await inRequest(() => recordTelemetryEnvelope(envelope(stale, ["coding"]), stale));
+  // coding 模块关掉之后存着的那份也不算
+  const off = T0 + 21 * 60_000;
+  await inRequest(() => recordTelemetryEnvelope(envelope(off, ["coding"], activity(off, off - 1_000)), off));
+  await inRequest(() => recordTelemetryEnvelope(envelope(off + 30_000, []), off + 30_000));
   const rows = (await storage.listRange(codingObservationsKey(), 0, -1)).map((raw) => JSON.parse(raw));
-  assert.deepEqual(rows.map((row) => row.agents?.[0]?.active ?? null), [true, true, null]);
-  assert.equal(rows[2].available, false);
+  assert.deepEqual(rows.map((row) => row.agents?.[0]?.active ?? null), [true, false, false, false, null, true, null]);
+  assert.deepEqual(rows[0].agents, [{ id: "claude", model: "claude-opus-5", active: true }]);
+  assert.equal(rows[4].available, false);
 }));
 
 test("Coding observations keep foreground changes and idle heartbeats, and stop on explicit offline", withStorage(async (storage) => {
-  await inRequest(() => recordTelemetryEnvelope(envelope(T0, ["desktop", "vibeCoding"], {
+  await inRequest(() => recordTelemetryEnvelope(envelope(T0, ["desktop", "coding"], {
     desktop: { applicationName: "Cursor", bundleIdentifier: "com.todesktop.230313mzl4w4u92" },
-    vibeCodingNow: { agents: [{ id: "codex", currentModel: "test-model", active: true }] },
+    ...activity(T0, T0 - 5_000, "codex", "<synthetic>"),
   }), T0));
-  await inRequest(() => recordTelemetryEnvelope(envelope(T0 + 20_000, ["desktop", "vibeCoding"], {
+  await inRequest(() => recordTelemetryEnvelope(envelope(T0 + 20_000, ["desktop", "coding"], {
     desktop: { applicationName: "Zed", bundleIdentifier: "dev.zed.Zed" },
   }), T0 + 20_000));
-  await inRequest(() => recordTelemetryEnvelope(envelope(T0 + 110_000, ["desktop", "vibeCoding"]), T0 + 110_000));
-  await inRequest(() => recordTelemetryEnvelope({ ...envelope(T0 + 120_000, ["desktop", "vibeCoding"]), presence: "offline" }, T0 + 120_000));
+  await inRequest(() => recordTelemetryEnvelope(envelope(T0 + 110_000, ["desktop", "coding"]), T0 + 110_000));
+  await inRequest(() => recordTelemetryEnvelope({ ...envelope(T0 + 120_000, ["desktop", "coding"]), presence: "offline" }, T0 + 120_000));
   const rows = (await storage.listRange(codingObservationsKey(), 0, -1)).map((raw) => JSON.parse(raw));
   assert.equal(rows.length, 4);
   assert.equal(rows[0].desktop.application, "Cursor");
+  assert.deepEqual(rows[0].agents, [{ id: "codex", model: null, active: true }], "placeholder model names never become a model");
   assert.equal(rows[1].desktop.application, "Zed");
   assert.equal(rows[2].agents[0].active, true);
   assert.equal(rows[3].available, false);
@@ -325,33 +340,43 @@ test("Recently played changes become uncertain listening traces; the first list 
   }
 }));
 
-test("Cursor history success renews independent observations even without a changed cursorNow", withStorage(async (storage) => {
+test("Cursor history success renews independent account observations even without newer activity", withStorage(async (storage) => {
   const at = Date.now();
-  const usage = (t: number) => ({ collectedAt: new Date(t).toISOString(), state: "ok", error: null, warning: null,
-    coverageStart: null, coverageEnd: null, precision: "measured", costComplete: true, days: [] });
+  const usage = (t: number, extra: Record<string, unknown> = {}) => ({
+    agents: [{ id: "cursor", state: "ok", collectedAt: t, error: null, warning: null, sessionCount: null, days: [], ...extra }],
+  });
+  const now = (t: number, lastActivityAt: number) => ({ collectedAt: t, agents: [{ id: "cursor", lastActivityAt, model: "cursor-model" }] });
   await inRequest(async () => {
-    await recordAgentLimits({ cursorNow: { lastActivityAt: new Date(at).toISOString(), currentModel: "cursor-model" } }, at);
-    await recordAgentLimits({ cursorNow: { lastActivityAt: new Date(at).toISOString(), currentModel: "cursor-model" } }, at + 30_000);
-    await recordAgentLimits({ cursorUsage: usage(at + 60_000) }, at + 60_000);
-    await recordAgentLimits({ cursorUsage: usage(at + 60_000) }, at + 120_000);
-    await recordAgentLimits({ cursorUsage: usage(at - 60_000) }, at + 180_000);
+    await recordAgentsReport({ codingActivity: now(at, at) }, at);
+    await recordAgentsReport({ codingActivity: now(at + 30_000, at) }, at + 30_000);
+    await recordAgentsReport({ codingUsage: usage(at + 60_000) }, at + 60_000);
+    await recordAgentsReport({ codingUsage: usage(at + 60_000) }, at + 120_000);
+    await recordAgentsReport({ codingUsage: usage(at - 60_000) }, at + 180_000);
     const rows = (await storage.listRange(cursorObservationsKey(), 0, -1)).map((raw) => JSON.parse(raw));
     assert.deepEqual(rows, [{ t: at, available: true, lastActivityAt: at }, { t: at + 60_000, available: true, lastActivityAt: at }]);
-    await recordAgentLimits({ cursorUsage: { ...usage(at + 240_000), warning: "incomplete history" } }, at + 240_000);
+    await recordAgentsReport({ codingUsage: usage(at + 240_000, { warning: "incomplete history" }) }, at + 240_000);
     assert.equal(JSON.parse((await storage.listRange(cursorObservationsKey(), -1, -1))[0]).available, false);
   });
 }));
 
-test("Mac token windows are stored internally and never enter the public now patch", withStorage(async (storage) => {
-  const { normalizeVibeCodingNow } = await import("@/lib/vibecoding-parse");
-  const { codingTokenUsageKey } = await import("@/lib/coding-pulse");
-  const from = 1800000000000;
-  const tokenUsage = { from, to: from + 300000, collectedAt: from + 420000, sources: [{ id: "codex", state: "ok" }, { id: "claude", state: "unavailable" }],
-    windows: [{ from, to: from + 300000, agents: [{ id: "codex", model: "test", inputTokens: 10, outputTokens: 20, cacheReadTokens: 0, cacheCreationTokens: 0, reasoningTokens: 5, eventCount: 1 }] }] };
+test("Mac token buckets are stored internally and never enter the coding-now push", withStorage(async (storage) => {
+  const { codingBucketsKey } = await import("@shared/coding-store");
+  const { parseStoredCodingBuckets } = await import("@shared/coding-buckets");
+  const from = 1_800_000_000_000;
+  const at = from + 420_000;
+  const codingTokenBuckets = { from, to: from + 300_000, collectedAt: at, agents: [{ id: "codex", state: "ok" }, { id: "claude", state: "unavailable" }],
+    windows: [{ from, agents: [{ id: "codex", model: "test", inputTokens: 10, outputTokens: 20, cacheReadTokens: 0, cacheCreationTokens: 0, reasoningTokens: 5, eventCount: 1 }] }] };
+  const pushed: string[] = [];
   await inRequest(async () => {
-    const prepared = prepareVibeCodingNowPayload(normalizeVibeCodingNow({ agents: [], tokenUsage })!, from + 420000);
-    assert.equal("tokenUsage" in prepared.now, false);
-    await prepared.commit();
+    const { collectIngestEffects } = await import("@api/ingest-effects");
+    const result = await collectIngestEffects(() => recordTelemetryEnvelope(envelope(at, ["coding"], {
+      codingTokenBuckets, codingActivity: { collectedAt: at, agents: [{ id: "codex", lastActivityAt: at - 1_000, model: "test" }] },
+    }), at));
+    for (const effect of result.effects) if (effect.kind === "event") pushed.push(JSON.stringify(effect.event));
   });
-  assert.deepEqual(JSON.parse((await storage.get(codingTokenUsageKey()))!), tokenUsage);
+  const stored = parseStoredCodingBuckets(await storage.get(codingBucketsKey("mac")));
+  assert.deepEqual(stored?.coverage, [{ from, to: from + 300_000 }]);
+  assert.equal(stored?.windows[0]?.agents[0]?.outputTokens, 20);
+  assert.equal(pushed.length, 1);
+  assert.equal(pushed.some((event) => event.includes("outputTokens")), false);
 }));

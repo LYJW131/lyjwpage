@@ -1,7 +1,9 @@
 import { PULSE_TTL_MS, PULSE_WINDOW_MS } from '@/lib/limits';
 import { CODING_WINDOW_MS, PULSE_SCORE_WINDOW_MS, codingQuestions, codingWindowFeatures, judgment, modeJudgment, parseCodingObservation } from '@shared/pulse-coding';
 import { parseCursorObservation } from '@shared/pulse-cursor';
-import { parseCodingTokenUsage } from '@shared/coding-token-usage';
+import { parseStoredCodingBuckets, type StoredCodingBuckets } from '@shared/coding-buckets';
+import type { CodingTokenBucketRow } from '@shared/coding-usage';
+import { CODING_USAGE_SOURCE_NAMES, type CodingUsageSource } from '@shared/coding-usage-sources';
 import { PULSE_ASSESSMENT_VERSION, latestPulseAssessments, type PulseAssessment, type PulseScoredDomain } from '@shared/pulse-assessment';
 import type { ChoiceQuestion, Coverage, PulseQuestion, ScoreQuestion } from '@shared/pulse-features';
 import type { PulseScoreCoordinator } from './pulse-score-state';
@@ -15,7 +17,7 @@ import type { PulseScoreCoordinator } from './pulse-score-state';
 type Built = { state: unknown; coverage: Coverage[]; questions: Record<string, PulseQuestion>; ids: { intensity: string; continuity: string; mode: string } };
 /** 没问 Jev 时记在已有 model 字段上。置信度仍用答案里的 confidence，不另加字段。 */
 const PULSE_RULE_MODEL = "rules";
-const TOKEN_COUNT_KEYS = ["inputTokens", "outputTokens", "cacheReadTokens", "cacheCreationTokens", "reasoningTokens", "eventCount"] as const;
+const TOKEN_COUNT_KEYS = ["inputTokens", "outputTokens", "cacheReadTokens", "cacheCreationTokens", "reasoningTokens"] as const;
 
 function record(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
@@ -23,6 +25,12 @@ function record(value: unknown): Record<string, unknown> | null {
 function num(row: Record<string, unknown>, key: string): number | null {
   const value = row[key];
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+/** 一行 token 证据是不是零：token 各列都是 0，事件数是 0 或数不出来 */
+function zeroTokens(value: unknown): boolean {
+  const counts = record(value);
+  if (!counts || !TOKEN_COUNT_KEYS.every((key) => num(counts, key) === 0)) return false;
+  return counts.eventCount === null || num(counts, "eventCount") === 0;
 }
 /** 覆盖区间首尾相接铺满整个评分窗。缺口不算 0。 */
 function covers(coverage: Coverage[], from: number, to: number): boolean {
@@ -45,11 +53,10 @@ function codingZero(state: unknown): boolean {
   const usage = record(facts.tokenUsage);
   const buckets = PULSE_SCORE_WINDOW_MS / CODING_WINDOW_MS;
   if (!usage || num(usage, "observedBucketCount") !== buckets || num(usage, "unknownBucketCount") !== 0) return false;
-  if (!Array.isArray(usage.sources) || usage.sources.length === 0 || !usage.sources.every((source) => record(source)?.state === "ok")) return false;
-  return Array.isArray(usage.agents) && usage.agents.every((agent) => {
-    const counts = record(agent);
-    return counts != null && TOKEN_COUNT_KEYS.every((key) => num(counts, key) === 0);
-  });
+  // 「确定为零」只认 Mac 本机扫描的完整覆盖；账号与云端的桶只作正证据
+  const mac = Array.isArray(usage.sources) ? usage.sources.filter((source) => record(source)?.source === "mac") : [];
+  if (mac.length === 0 || !mac.every((source) => record(source)?.state === "ok")) return false;
+  return Array.isArray(usage.agents) && usage.agents.every(zeroTokens);
 }
 /** 这一窗被观测到，而且证据就是零活动。缺报、未知、覆盖不全都不是 0。 */
 function definiteZero(state: unknown, coverage: Coverage[], from: number): boolean {
@@ -65,10 +72,7 @@ function quietIndependentSource(state: unknown): boolean {
   if (!facts || num(facts, "desktopObservedSeconds") !== 0 || num(facts, "macAgentObservedSeconds") !== 0
     || (num(facts, "cursorObservedSeconds") ?? 0) <= 0 || num(facts, "cursorActiveSeconds") !== 0) return false;
   const usage = record(facts.tokenUsage);
-  return !usage || (Array.isArray(usage.agents) && usage.agents.every((agent) => {
-    const counts = record(agent);
-    return counts != null && TOKEN_COUNT_KEYS.every((key) => num(counts, key) === 0);
-  }));
+  return !usage || (Array.isArray(usage.agents) && usage.agents.every(zeroTokens));
 }
 /** The baseline is conditional on the observed sources; confidence records completeness. */
 function baselineScore(question: ScoreQuestion, confidence: number) {
@@ -79,6 +83,50 @@ function baselineIdle(question: ChoiceQuestion, confidence: number) {
   if (!Object.hasOwn(question.criteria, "idle")) throw new Error("Missing idle choice");
   const probabilities = Object.fromEntries(Object.keys(question.criteria).map((key) => [key, key === "idle" ? 1 : 0]));
   return modeJudgment({ type: "choice", choice: "idle", confidence, probabilities }, true);
+}
+
+type TokenEvidence = CodingTokenBucketRow & { source: CodingUsageSource };
+
+/**
+ * 一个评分窗里各来源的 token 证据。
+ *
+ * Mac 本机扫描报的是一段范围里的全部桶：范围内缺席的桶是测到的 0，范围外是未知 ——
+ * `observedBucketCount` 只数被 Mac 覆盖完整的桶，Mac 的行也只取这些桶里的。Cursor 账号
+ * 历史与云端 OTLP 的桶只作正证据：有行就算，没行不代表 0。按 (来源, agent, 模型) 相加，
+ * 事件数数不出来（OTLP）的行不加进事件数，全都数不出来就是 null。
+ */
+function windowTokenUsage(buckets: Record<CodingUsageSource, StoredCodingBuckets | null>, from: number) {
+  const starts = Array.from({ length: PULSE_SCORE_WINDOW_MS / CODING_WINDOW_MS }, (_, i) => from + i * CODING_WINDOW_MS);
+  const mac = buckets.mac;
+  const covered = mac ? starts.filter((bucket) => mac.coverage.some((part) => part.from <= bucket && bucket + CODING_WINDOW_MS <= part.to)) : [];
+  const rows: TokenEvidence[] = [];
+  for (const source of CODING_USAGE_SOURCE_NAMES) {
+    for (const window of buckets[source]?.windows ?? []) {
+      if (!starts.includes(window.from) || (source === "mac" && !covered.includes(window.from))) continue;
+      rows.push(...window.agents.map((agent) => ({ source, ...agent })));
+    }
+  }
+  if (!covered.length && !rows.length) return null;
+  const summed = new Map<string, TokenEvidence>();
+  for (const row of rows) {
+    const key = JSON.stringify([row.source, row.id, row.model]);
+    const prior = summed.get(key);
+    summed.set(key, prior ? {
+      ...prior,
+      inputTokens: prior.inputTokens + row.inputTokens,
+      outputTokens: prior.outputTokens + row.outputTokens,
+      cacheReadTokens: prior.cacheReadTokens + row.cacheReadTokens,
+      cacheCreationTokens: prior.cacheCreationTokens + row.cacheCreationTokens,
+      reasoningTokens: prior.reasoningTokens + row.reasoningTokens,
+      eventCount: prior.eventCount == null ? row.eventCount : row.eventCount == null ? prior.eventCount : prior.eventCount + row.eventCount,
+    } : { ...row });
+  }
+  return {
+    sources: CODING_USAGE_SOURCE_NAMES.flatMap((source) => (buckets[source]?.agents ?? []).map((agent) => ({ source, id: agent.id, state: agent.state }))),
+    observedBucketCount: covered.length,
+    unknownBucketCount: starts.length - covered.length,
+    agents: [...summed.values()],
+  };
 }
 
 /** One scheduler, one set of assessments: summaries are derived, never a second model call. */
@@ -98,7 +146,7 @@ export class PulseScorer {
       const existing = latestPulseAssessments(inputs.assessments).filter((r)=>r.to>now-PULSE_TTL_MS);
       const completed = new Map(existing.map((r)=>[`${r.domain}:${r.from}`,r]));
       const seen = inputs.codingObservations.map(parseCodingObservation).filter((r)=>r!==null).sort((a,b)=>a.t-b.t);
-      const tokenUsage = inputs.codingTokenUsage ? parseCodingTokenUsage(JSON.parse(inputs.codingTokenUsage)) : null;
+      const buckets = Object.fromEntries(CODING_USAGE_SOURCE_NAMES.map((source) => [source, parseStoredCodingBuckets(inputs.tokenBuckets?.[source] ?? null)])) as Record<CodingUsageSource, StoredCodingBuckets | null>;
       const domain: PulseScoredDomain = 'coding';
       // Two-minute settling time allows the one-minute usage scan and transport to finish.
       const end = Math.floor((now-120_000)/PULSE_SCORE_WINDOW_MS)*PULSE_SCORE_WINDOW_MS;
@@ -106,24 +154,7 @@ export class PulseScorer {
       const ruled: PulseAssessment[] = [];
       for (let from=end-PULSE_SCORE_WINDOW_MS;from>=Math.ceil((now-PULSE_WINDOW_MS)/PULSE_SCORE_WINDOW_MS)*PULSE_SCORE_WINDOW_MS&&jobs.length<36;from-=PULSE_SCORE_WINDOW_MS) {
         const facts=codingWindowFeatures(seen,from,PULSE_SCORE_WINDOW_MS,cursor);
-        // The producer emits only buckets with events. An absent bucket inside its
-        // reported range is measured zero; outside that range it is unknown.
-        const coveredBuckets = tokenUsage ? Array.from({length: 3}, (_, i) => from + i * CODING_WINDOW_MS)
-          .filter((bucket) => bucket >= tokenUsage.from && bucket + CODING_WINDOW_MS <= tokenUsage.to) : [];
-        const usageWindows = tokenUsage?.windows.filter((w) => coveredBuckets.includes(w.from)) ?? [];
-        const tokens = tokenUsage && coveredBuckets.length ? {
-          sources: tokenUsage.sources,
-          observedBucketCount: coveredBuckets.length,
-          unknownBucketCount: 3 - coveredBuckets.length,
-          agents: Object.values(usageWindows.flatMap((w) => w.agents).reduce<Record<string, typeof usageWindows[number]['agents'][number]>>((all, agent) => {
-            const key = JSON.stringify([agent.id, agent.model]);
-            const prior = all[key];
-            all[key] = prior ? { ...agent, inputTokens: prior.inputTokens + agent.inputTokens, outputTokens: prior.outputTokens + agent.outputTokens,
-              cacheReadTokens: prior.cacheReadTokens + agent.cacheReadTokens, cacheCreationTokens: prior.cacheCreationTokens + agent.cacheCreationTokens,
-              reasoningTokens: prior.reasoningTokens + agent.reasoningTokens, eventCount: prior.eventCount + agent.eventCount } : { ...agent };
-            return all;
-          }, {})),
-        } : null;
+        const tokens = windowTokenUsage(buckets, from);
         const built: Built={state:{windows:[{...facts,tokenUsage:tokens}]},coverage:facts.coverage,questions:codingQuestions([facts]) as Record<string, PulseQuestion>,ids:{intensity:'w0Intensity',continuity:'w0Continuity',mode:'w0Mode'}};
         if (!built.coverage.length) continue;
         const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify({version:PULSE_ASSESSMENT_VERSION,state:built.state,questions:built.questions})));

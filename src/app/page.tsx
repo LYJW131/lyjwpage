@@ -72,7 +72,7 @@ const SLOT = {
   agentStatus: "defer-offscreen-always [contain-intrinsic-size:auto_172px]",
   vibeCoding: "defer-offscreen [contain-intrinsic-size:auto_1372px]",
   playstation: "defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_643px]",
-  pulse: "defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_240px]",
+  pulse: "defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_276px]",
   siteStatus: "mt-3 defer-offscreen-always [contain-intrinsic-size:auto_1440px]",
 } as const;
 

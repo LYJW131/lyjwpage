@@ -97,58 +97,24 @@ test("Emby：开播和停播失效首屏，进度更新不失效", withStorage(a
   assert.ok(tagsOf(await land(env, "emby", playing(null), NOW + 120_000)).includes(tag));
 }));
 
-function usageAgent(id: string, label: string, icon: string, tokens: number) {
+function usageAgent(id: string, tokens: number, at: number) {
   return {
     id,
-    label,
-    icon,
-    models: ["model"],
-    currentModel: null,
-    topModel: "model",
-    today: {
-      date: "2026-09-05",
-      inputTokens: tokens,
-      outputTokens: 0,
-      cacheReadTokens: 0,
-      cacheCreationTokens: 0,
-      totalTokens: tokens,
-      apiEquivalentCostUSD: tokens / 100,
-    },
-    usageStatus: {
-      state: "ok",
-      collectedAt: "2026-09-05T01:00:00.000Z",
-      error: null,
-      warning: null,
-      coverageStart: "2026-09-01",
-      coverageEnd: "2026-09-05",
-      precision: "measured",
-      costComplete: true,
-    },
+    state: "ok",
+    collectedAt: at,
+    sessionCount: 1,
+    days: [{
+      date: "2026-09-05", inputTokens: tokens, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, reasoningTokens: 0,
+      totalTokens: tokens, apiEquivalentCostUSD: tokens / 100, costComplete: true, models: [{ model: "model", tokens }],
+    }],
   };
 }
 
 function usage(agents: ReturnType<typeof usageAgent>[], at: number) {
-  const total = agents.reduce((sum, agent) => sum + agent.today.totalTokens, 0);
-  return {
-    version: 4,
-    presence: "online",
-    heartbeatAt: at,
-    activeModules: ["vibeCoding"],
-    modules: {
-      vibeCodingUsage: {
-        agents,
-        totals: {
-          inputTokens: total, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, reasoningTokens: 0,
-          totalTokens: total, apiEquivalentCostUSD: total / 100, costComplete: true, activeDays: 1, sessionCount: 1,
-        },
-        topModels: [{ model: "model", tokens: total }],
-        collectedAt: new Date(at).toISOString(),
-      },
-    },
-  };
+  return { version: 4, presence: "online", heartbeatAt: at, activeModules: ["coding"], modules: { codingUsage: { agents } } };
 }
 
-test("Vibe coding：出口按卡片骨架比对上一次通知，行数变了才通知", withStorage(async () => {
+test("Coding：视图在提交时重算，卡片骨架（行数、总量、常用模型）变了才失效首屏", withStorage(async () => {
   let revalidates = 0;
   const env = testEnv({ SITE_URL: "https://site.example", REVALIDATE_SECRET: "secret" } as Partial<Env>);
   const originalFetch = globalThis.fetch;
@@ -161,17 +127,21 @@ test("Vibe coding：出口按卡片骨架比对上一次通知，行数变了才
   }) as typeof fetch;
   try {
     const dispatch = async (result: CollectedIngest<unknown>) => {
-      assert.ok(tagsOf(result).includes(STATUS_VIEWS.vibeCoding.tag));
       await inRequest(env, () => dispatchIngestEffects(result.effects));
     };
-    const claude = (tokens: number) => usageAgent("claude", "Claude Code", "anthropic", tokens);
-    await dispatch(await land(env, "mac", usage([claude(100)], NOW), NOW));
+    const first = await land(env, "mac", usage([usageAgent("claude", 100, NOW)], NOW), NOW);
+    assert.ok(tagsOf(first).includes(STATUS_VIEWS.coding.tag));
+    await dispatch(first);
     assert.equal(revalidates, 1);
     // 读数变了，还是同一行：只刷内容，不失效首屏
-    await dispatch(await land(env, "mac", usage([claude(200)], NOW + 1), NOW + 1));
+    const content = await land(env, "mac", usage([usageAgent("claude", 200, NOW + 1)], NOW + 1), NOW + 1);
+    assert.deepEqual(tagsOf(content), []);
+    await dispatch(content);
     assert.equal(revalidates, 1);
     // 多出一行，卡片变高
-    await dispatch(await land(env, "mac", usage([claude(300), usageAgent("codex", "Codex", "openai", 5)], NOW + 2), NOW + 2));
+    const grown = await land(env, "mac", usage([usageAgent("claude", 300, NOW + 2), usageAgent("codex", 5, NOW + 2)], NOW + 2), NOW + 2);
+    assert.ok(tagsOf(grown).includes(STATUS_VIEWS.coding.tag));
+    await dispatch(grown);
     assert.equal(revalidates, 2);
   } finally {
     globalThis.fetch = originalFetch;

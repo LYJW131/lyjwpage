@@ -1,10 +1,10 @@
+import { commitPreparedAgentsReport } from "./stores/agents";
 import { recordPreparedClaudeCloudUsage } from "./stores/claude-cloud";
 import { commitPreparedHomePodEvent } from "./homepod-ingest";
 import { commitPreparedPhoneEnvelope } from "./phone-telemetry";
 import { commitPreparedEmbyReport } from "./stores/emby";
 import { commitPreparedPlaystationReport } from "./stores/playstation";
 import { commitPreparedTelemetryEnvelope } from "./stores/telemetry";
-import { recordPreparedAgentLimits } from "./stores/vibecoding";
 import type { CoreCommand } from "@shared/ingest/prepare";
 
 /**
@@ -21,7 +21,7 @@ export async function commitPreparedIngest(command: CoreCommand): Promise<unknow
     case "homepod": return commitPreparedHomePodEvent(command);
     case "emby": return commitPreparedEmbyReport(command);
     case "playstation": return commitPreparedPlaystationReport(command);
-    case "agents": return recordPreparedAgentLimits(command);
+    case "agents": return commitPreparedAgentsReport(command);
     case "agents-otlp": return recordPreparedClaudeCloudUsage(command);
     default: throw new Error(`状态核心不收这个来源：${(command as { source?: unknown }).source}`);
   }
