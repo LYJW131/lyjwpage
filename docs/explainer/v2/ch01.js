@@ -6,8 +6,8 @@
 //     4:0 切应用、4:1 又切一次重新计时、4:3 量满 400 ms 落定（防抖，ServiceController 的 desktopSettleDelay）
 //   M2 FIG. 1A / 1B（5–8）：窗口标题过 Jev，问题横条同时走、6:0 一起给出概率条（示意，不和出路对应）；
 //     应用图标压成哈希，7:0 落进 R2 的抽屉、7:1 关上，信封里只剩文件名
-//   F2–F6（8–14.5）：iPhone、家里（Home Assistant 那把钥匙开两扇门；n100 上的容器用 UDP 探测 PS5，10:0 开机后
-//     档位牌从闲档翻到快档）、NAS、东京的机柜、云端的一小段遥测
+//   F2–F6（8–14.5）：iPhone、家里（Home Assistant 的钥匙只开 /homepod；n100 上的容器用 UDP 探测 PS5，10:0 开机后
+//     档位牌从闲档翻到快档，当场拿本机的 PSN 登录态问一轮 Sony，再用自己的钥匙开 /playstation）、NAS、东京的机柜、云端的一小段遥测
 //   CU 编码用量（14.5–16）：三处原始数汇到站点这边合并，合并处伸出一段 Pulse，多一条 Tokens 道
 //   F7 表盘（16–19）：cron 每分钟一响（一拍当一分钟），每根指针一个采集任务，右边白卡是逐分钟的时序图
 //   19–20 甩回 Mac：换歌那封亮起，拖着发丝线往右飞出画面（屏幕 y 540）；第 02 章 0:0 的火花从左边同一高度进场
@@ -53,11 +53,13 @@
     "ch01.workouts": ["训练", "Workouts"],
     "ch01.steps": ["五分钟步数桶", "5-minute step buckets"],
     "ch01.f3": ["家里", "At home"],
-    "ch01.f3sub": ["HomePod 与电源经 Home Assistant，游戏另有容器上报", "HomePod and power via Home Assistant; games via a container"],
+    "ch01.f3sub": ["HomePod 经 Home Assistant，PlayStation 由容器上报", "HomePod via Home Assistant; PlayStation via a container"],
     "ch01.playing": ["在放什么", "what's playing"],
-    "ch01.power": ["电源开关", "power switch"],
-    "ch01.key2": ["这把钥匙开两扇门", "one key, two doors"],
-    "ch01.probe": ["探测主机状态，按档调整轮询频率", "probes the console, paces its polling"],
+    "ch01.haKey": ["Home Assistant 的钥匙", "Home Assistant's key"],
+    "ch01.psKey": ["容器自己的钥匙", "the container's own key"],
+    "ch01.psnLogin": ["PSN 登录态留在本机，只拿来问 Sony", "PSN login stays local, used only with Sony"],
+    "ch01.probe1": ["探测主机醒没醒，", "probes the console"],
+    "ch01.probe2": ["只定自己的节奏，不上报", "just to pace itself"],
     "ch01.tierRest": ["没醒 · 闲档", "resting · slow"],
     "ch01.tierAwake": ["醒着 · 快档", "awake · fast"],
     "ch01.f4sub": ["emby-reporter · NAS 上的容器", "emby-reporter · a container on the NAS"],
@@ -108,7 +110,7 @@
     jev: 5.25, judged: 6.0, cleared: 6.25, owner: 6.5,
     pixels: 6.5, hash: 6.75, drop: 7.0, shut: 7.25, objKey: 7.0,
     wake: 8.5, outs: [8.75, 9.0, 9.25],
-    homepod: 9.75, power: 10.0, probe: 10.25, awake: 10.375, doors: [10.5, 10.625],
+    homepod: 9.75, power: 10.0, probe: 10.25, awake: 10.375, psn: [10.4, 10.62], haDoor: 10.5, psDoor: 10.75,
     poster: 11.25, emby: 11.5,
     server: 12.25, agents: 12.75,
     otlp: [13.75, 14.0],
@@ -643,18 +645,23 @@
     text(x, "POST /api/ingest/iphone", OUT2[2][0] - 70, 812, { font: FONT.mono(28, 500), color: ash, alpha: a * prog(b, AT.outs[2], AT.outs[2] + 0.15) });
   }
 
-  // ========== F3 家里：HomePod、PS5 的电源经 Home Assistant；n100 上的 playstation-reporter 在局域网里探测 PS5 ==========
+  // ========== F3 家里：HomePod 经 Home Assistant；n100 上的 playstation-reporter 在局域网里探测 PS5 ==========
+  // 三样凭据分开画，不能混：Home Assistant 的钥匙只开 /homepod；容器自己的钥匙只开 /playstation；
+  // PSN 登录态不是钥匙，留在 n100 上，只拿来问 Sony，不进站点。容器的两条路也分开：往上问 Sony，往下寄到上报入口。
+  // PS5 和 Home Assistant 之间没有线：站点不显示 PS 电源，醒没醒只由容器用 UDP 探测、只定它自己的节奏（FACTS §1）
   const HP = { x: 7750, y: 336, w: 210, h: 276 };
-  const PS = { x: 8790, y: 286, w: 132, h: 370 };
-  const SWITCH = [8640, 470];
+  const PS = { x: 8700, y: 286, w: 132, h: 370 };
   const HA = { x: 8150, y: 440, w: 250, h: 104 };
   const KEYC = [8275, 664];
-  const DOORS = [[8494, 624, "/homepod"], [8494, 712, "/playstation"]];
+  const HA_DOOR = [8494, 664, "/homepod"];
   // n100 上的 playstation-reporter：容器坐在小机身上；UDP 探测线从机身左沿画到 PS5 右侧板
   const CT3 = { x: 9215, y: 380, w: 300, h: 66 };
   const N100 = { x: 9205, y: 462, w: 320, h: 120 };
   const PROBE_Y = 522, TIER_Y = PROBE_Y + 52;
   const PROBE = [[N100.x - 10, PROBE_Y], [PS.x + PS.w + 18, PROBE_Y]];
+  const PSNB = { x: 9275, y: 214, w: 230, h: 60 }; // Sony 那一头：只有名字，不画 logo
+  const PSN_X = PSNB.x + PSNB.w / 2, PSN_LINK = [[PSN_X, 336], [PSN_X, PSNB.y + PSNB.h + 6]];
+  const KEYP = [9228, 720], PS_DOOR = [9340, 720, "/playstation"];
   function stationF3(x, e, b) {
     const bone = css("bone"), ash = css("ash");
     const a = prog(b, 9.35, 9.55);
@@ -677,7 +684,7 @@
     }
     text(x, "HomePod", HP.x, HP.y + HP.h + 56, { font: FONT.mono(30, 600), color: bone, alpha: a });
     text(x, tr("ch01.playing"), HP.x, HP.y + HP.h + 96, { font: FONT.cjk(28, 600), color: ash, alpha: a });
-    // PS5：正视，中间一条机身，两侧弧形的侧板；电源一开，机身边上的灯条亮
+    // PS5：正视，中间一条机身，两侧弧形的侧板；10:0 主机开机，机身边上的灯条亮
     const pk = prog(b, 9.45, 9.85, E.io);
     const on = prog(b, AT.power, AT.power + 0.06);
     x.save(); x.globalAlpha = a * pk; x.lineWidth = 2.4; x.strokeStyle = bone; x.fillStyle = css("ink2");
@@ -690,34 +697,17 @@
     x.restore();
     if (on > 0) { line(x, cx0 + 3, PS.y + 30, cx0 + 3, PS.y + PS.h - 30, 3, css("signalD"), a * on); line(x, cx1 - 3, PS.y + 30, cx1 - 3, PS.y + PS.h - 30, 3, css("signalD"), a * on); glow(e, (cx0 + cx1) / 2, PS.y + PS.h / 2, 160, 0.45 * impact(b, AT.power, 0.2)); }
     text(x, "PS5", PS.x, PS.y + PS.h + 50, { font: FONT.mono(30, 600), color: bone, alpha: a });
-    text(x, "{version:1, power}", PS.x, PS.y + PS.h + 90, { font: FONT.mono(28, 500), color: ash, alpha: a });
-    // 电源开关：IEC 电源符号，10:0 翻面（关 → 开）
-    const fk = prog(b, AT.power - 0.05, AT.power + 0.05);
-    withSquash(x, SWITCH[1], squash(fk), () => {
-      const c = fk >= 0.5 ? css("signalD") : bone;
-      x.save(); x.globalAlpha = a * pk; x.strokeStyle = c; x.lineWidth = 3; x.lineCap = "round";
-      x.beginPath(); x.arc(SWITCH[0], SWITCH[1], 26, -Math.PI / 2 + 0.6, -Math.PI / 2 - 0.6 + TAU); x.stroke();
-      x.beginPath(); x.moveTo(SWITCH[0], SWITCH[1] - 34); x.lineTo(SWITCH[0], SWITCH[1] - 4); x.stroke(); x.restore();
-    });
-    text(x, tr("ch01.power"), SWITCH[0], SWITCH[1] + 66, { font: FONT.cjk(28, 600), color: ash, align: "center", alpha: a });
-    // Home Assistant：一个盒子，两路观测线；下面一把钥匙分出两扇门（第 02 章那把）
+    // Home Assistant：一个盒子，一路观测线（HomePod）；下面挂它的钥匙，只开 /homepod
     const hk = prog(b, 9.6, 9.9);
     box(x, HA.x, HA.y, HA.w, HA.h, a * hk, { r: 12, lw: 2.2 });
     text(x, "Home Assistant", HA.x + HA.w / 2, HA.y + HA.h / 2 + 10, { font: FONT.mono(28, 600), color: bone, align: "center", alpha: a * hk });
     dashPath(x, [[HP.x + HP.w + 70, HP.y + HP.h / 2], [HA.x, HA.y + HA.h / 2]], hk, 1.6, bone, a * 0.7);
-    dashPath(x, [[SWITCH[0] - 40, SWITCH[1]], [HA.x + HA.w, HA.y + HA.h / 2]], hk, 1.6, bone, a * 0.7);
     const kk = prog(b, 10.2, 10.4, E.out);
     if (kk > 0) {
       line(x, KEYC[0], HA.y + HA.h, KEYC[0], KEYC[1] - 31, 1.6, bone, a * kk);
-      const hot = b >= AT.doors[0] - 0.05 && b < 11.2;
-      keycard(x, KEYC[0], KEYC[1], a * kk, hot);
-      DOORS.forEach(([dx, dy, label], i) => {
-        const t = AT.doors[i], dk2 = prog(b, t - 0.12, t, E.out), lit = b >= t;
-        arrowPath(x, [[KEYC[0] + 75, KEYC[1]], [dx - 44, KEYC[1]], [dx - 44, dy], [dx - 8, dy]], dk2, lit ? css("signalD") : bone, a, 1.8);
-        text(x, label, dx + 4, dy + 10, { font: FONT.mono(28, 500), color: lit ? css("signalD") : bone, alpha: a * dk2 });
-        if (lit) glow(e, dx + 60, dy, 70, 0.5 * impact(b, t, 0.18));
-      });
-      text(x, tr("ch01.key2"), KEYC[0] - 75, KEYC[1] + 84, { font: FONT.cjk(28, 600), color: ash, alpha: a * kk });
+      keycard(x, KEYC[0], KEYC[1], a * kk, b >= AT.haDoor - 0.05 && b < 11.2);
+      door(x, e, b, KEYC, HA_DOOR, AT.haDoor, a);
+      text(x, tr("ch01.haKey"), KEYC[0] - 75, KEYC[1] + 84, { font: FONT.cjk(28, 600), color: ash, alpha: a * kk });
     }
     // n100 上的 playstation-reporter：跟 PS5 在同一个局域网里。每拍一个点从容器飞向 PS5（AT.probe 起），是 UDP 探测；
     // 线下的档位牌只有两档（醒着 / 没醒），10:0 开机后第一探读到醒着就翻面。间隔不出数（FACTS §1、§7）
@@ -748,11 +738,39 @@
         x.save(); x.globalAlpha = a * fade; x.fillStyle = css("signalD"); x.beginPath(); x.arc(px, PROBE_Y, 7, 0, TAU); x.fill(); x.restore();
         glow(e, px, PROBE_Y, 38, 0.5 * fade);
       }
-      const rx = N100.x + N100.w, ty = N100.y + N100.h;
-      text(x, tr("ch01.probe"), rx, ty + 52, { font: FONT.cjk(28, 600), color: bone, align: "right", alpha: a * prog(b, AT.probe, AT.probe + 0.1) });
-      // 醒着和没醒对调时立刻打一轮 PSN（cadence.ts#shouldRunTick），所以翻到快档紧跟着就寄出去
-      text(x, "POST /api/ingest/playstation", rx, ty + 98, { font: FONT.mono(28, 500), color: ash, align: "right", alpha: a * prog(b, AT.awake, AT.awake + 0.1) });
+      // 探测的结果不上报，只定容器自己的节奏：注写在探测线下面，不挨着往站点去的那条路
+      const pa = a * prog(b, AT.probe, AT.probe + 0.1);
+      text(x, tr("ch01.probe1"), mid, TIER_Y + 50, { font: FONT.cjk(28, 600), color: bone, align: "center", alpha: pa });
+      text(x, tr("ch01.probe2"), mid, TIER_Y + 88, { font: FONT.cjk(28, 600), color: bone, align: "center", alpha: pa });
+      // Sony 那一头：容器拿留在本机的 PSN 登录态去问。醒着和没醒对调时当场打一轮（cadence.ts#shouldRunTick），
+      // 所以翻到快档紧跟着问一轮 PSN，再用自己的钥匙寄到站点
+      const asking = b >= AT.psn[0] && b < AT.psn[1];
+      box(x, PSNB.x, PSNB.y, PSNB.w, PSNB.h, a * nk, { r: 8, lw: 2.2, color: asking ? css("signalD") : bone });
+      text(x, "PSN · Sony", PSN_X, PSNB.y + 40, { font: FONT.mono(28, 600), color: asking ? css("signalD") : bone, align: "center", alpha: a * nk });
+      text(x, tr("ch01.psnLogin"), PSNB.x - 18, PSNB.y + 40, { font: FONT.cjk(28, 600), color: ash, align: "right", alpha: a * nk });
+      dashPath(x, PSN_LINK, nk, 1.6, bone, a * 0.7);
+      if (asking) {
+        const q = prog(b, AT.psn[0], AT.psn[1]), k = q < 0.5 ? E.out(q * 2) : 1 - E.out(q * 2 - 1);
+        const py = lerp(PSN_LINK[0][1], PSN_LINK[1][1], k);
+        x.save(); x.globalAlpha = a; x.fillStyle = css("signalD"); x.beginPath(); x.arc(PSN_X, py, 7, 0, TAU); x.fill(); x.restore();
+        glow(e, PSN_X, py, 38, 0.5);
+      }
+      // 容器自己的钥匙挂在 n100 下面：只开 /playstation；和 Home Assistant 那把各挂各的
+      const pk2 = prog(b, 10.2, 10.4, E.out);
+      if (pk2 > 0) {
+        line(x, KEYP[0], N100.y + N100.h, KEYP[0], KEYP[1] - 31, 1.6, bone, a * pk2);
+        keycard(x, KEYP[0], KEYP[1], a * pk2, b >= AT.psDoor - 0.05 && b < 11.2);
+        door(x, e, b, KEYP, PS_DOOR, AT.psDoor, a);
+        text(x, tr("ch01.psKey"), KEYP[0] - 75, KEYP[1] + 84, { font: FONT.cjk(28, 600), color: ash, alpha: a * pk2 });
+      }
     }
+  }
+  // 钥匙 → 上报入口的一扇门（第 02 章那面墙上的门）：t 那一刻门亮
+  function door(x, e, b, key, [dx, dy, label], t, a) {
+    const dk = prog(b, t - 0.12, t, E.out), lit = b >= t, col = lit ? css("signalD") : css("bone");
+    arrowPath(x, [[key[0] + 75, key[1]], [dx - 44, key[1]], [dx - 44, dy], [dx - 8, dy]], dk, col, a, 1.8);
+    text(x, label, dx + 4, dy + 10, { font: FONT.mono(28, 500), color: col, alpha: a * dk });
+    if (lit) glow(e, dx + 60, dy, 70, 0.5 * impact(b, t, 0.18));
   }
 
   // ========== F4 NAS：emby-reporter，海报先传 R2 ==========

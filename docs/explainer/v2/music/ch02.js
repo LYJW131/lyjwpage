@@ -46,7 +46,7 @@
     story: [
       { bar: 2, beat: 0, kind: "key", pan: -0.2 }, // mac 那扇门开了
       { bar: 3, beat: 2, kind: "stamp", size: "mid" }, // 403：Emby 的钥匙开错了门
-      { bar: 4, beat: 0, kind: "key", pan: -0.2 }, { bar: 4, beat: 0.5, kind: "key", v: 0.85, pan: 0.3 }, // Home Assistant 的钥匙连开两扇
+      { bar: 4, beat: 0, kind: "key", pan: -0.2 }, { bar: 4, beat: 0.5, kind: "key", v: 0.85, pan: 0.3 }, // Home Assistant 的钥匙开 /homepod，playstation 的钥匙开 /playstation
       // 检查单六项，一项一声「叮」，音高顺着和弦往上爬（A C D E G A，D 多利亚的五声）
       ...[[5, 0, "A5"], [5, 2, "C6"], [6, 0, "D6"], [6, 2, "E6"], [7, 0, "G6"], [7, 2, "A6"]].map(([bar, beat, n], i) => ({ bar, beat, kind: "tick", m: midi(n), i })),
       { bar: 8, beat: 0, kind: "stamp", size: "big" }, // 400 大章
