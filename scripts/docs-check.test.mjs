@@ -44,6 +44,11 @@ test("标题锚点按 GitHub 规则：中文保留、全角标点去掉、空格
   assert.equal(githubSlug("`ACCESS_CLIENTS` 与 [链接](./x.md)"), "access_clients-与-链接");
 });
 
+test("标题锚点移除嵌套标签，不把拼接后形成的标签名留在锚点里", () => {
+  assert.equal(githubSlug("<b>Visible</b> heading"), "visible-heading");
+  assert.equal(githubSlug("<scrip<script>t>Visible</script> heading"), "visible-heading");
+});
+
 test("锚点集合：重名标题加序号，围栏里的标题不算，id 属性算", () => {
   const anchors = collectAnchors(["## 本地开发", "", "```sh", "# 不是标题", "```", "", "## 本地开发", "", '<a id="Custom-Anchor"></a>'].join("\n"));
   assert.deepEqual([...anchors].sort(), ["custom-anchor", "本地开发", "本地开发-1"]);
@@ -158,6 +163,14 @@ test("反引号路径与出处戳记：路径、符号、行号写法", () => {
   assert.match(issues[0].message, /GONE_SYMBOL/);
   assert.match(issues[1].message, /close/);
   assert.match(issues[2].message, /不是标识符/);
+});
+
+test("符号匹配把美元符号按字面量处理，并保持完整标识符边界", () => {
+  const ctx = ctxOf({ "src/a.ts": "const $value = 1; const suffix$ = 2; const longer$value = 3;", "docs/x.md": "" });
+  const issues = checkMarkdown(ctx, "docs/x.md", "`src/a.ts#$value` `src/a.ts#suffix$` `src/a.ts#value` `src/a.ts#suffix`");
+  assert.deepEqual(issues.map((issue) => issue.rule), ["symbol", "symbol"]);
+  assert.match(issues[0].message, /value/);
+  assert.match(issues[1].message, /suffix/);
 });
 
 test("allow 注释放行同一行，但必须写理由；next 自动块不查", () => {

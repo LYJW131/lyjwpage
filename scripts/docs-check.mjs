@@ -203,9 +203,13 @@ export function splitInlineCode(line) {
 
 /** GitHub 的标题锚点算法：小写，去掉字母数字下划线连字符空格以外的字符，空格换连字符。 */
 export function githubSlug(heading) {
-  return heading
-    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
-    .replace(/<[^>]+>/g, "")
+  let plain = heading.replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1");
+  let previous;
+  do {
+    previous = plain;
+    plain = plain.replace(/<[^<>]*>/g, "");
+  } while (plain !== previous);
+  return plain
     .replace(/[`*~]/g, "")
     .trim()
     .toLowerCase()
@@ -336,7 +340,7 @@ function symbolPresent(text, symbol) {
   return symbol
     .replace(/\(\)$/, "")
     .split(".")
-    .every((part) => new RegExp(`(?<![\\w$])${part.replace(/\$/g, "\\$")}(?![\\w$])`).test(text));
+    .every((part) => new RegExp(`(?<![\\w$])${part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\w$])`).test(text));
 }
 
 function anchorExists(anchors, fragment) {
