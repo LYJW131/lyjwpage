@@ -1,0 +1,24 @@
+{
+  "name": "@lyjwpage/playstation-reporter",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "在局域网里探测 PS5，按开机状态把 PSN 在线、游玩和奖杯推送到 lyjwpage",
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "tsc -p tsconfig.json && node --test --experimental-strip-types src/*.test.ts",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "psn-api": "2.18.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "typescript": "^5"
+  }
+}

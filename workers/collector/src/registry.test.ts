@@ -155,7 +155,7 @@ test("a head-start job gets going before the rest, which wait for it or the head
   const order: string[] = [];
   let release!: () => void;
   const gate = new Promise<void>((resolve) => { release = resolve; });
-  const first = fakeJob(async () => { order.push("ps:start"); await gate; order.push("ps:gate"); return { status: "ok" }; }, { name: "playstation", everyMinutes: 1, offset: 0, headStart: true });
+  const first = fakeJob(async () => { order.push("ps:start"); await gate; order.push("ps:gate"); return { status: "ok" }; }, { name: "pagespeed", everyMinutes: 1, offset: 0, headStart: true });
   const other = fakeJob(async () => { order.push("other"); return { status: "ok" }; }, { name: "provider-status", everyMinutes: 1, offset: 0 });
 
   // 门先放行：别的任务紧跟着开跑
@@ -165,7 +165,7 @@ test("a head-start job gets going before the rest, which wait for it or the head
 
   // 抢先的任务迟迟不完：等满窗口就放别的走，不一直干等
   order.length = 0;
-  const stuck = fakeJob(async () => { order.push("ps:start"); await new Promise((resolve) => setTimeout(resolve, 50)); order.push("ps:done"); return { status: "ok" }; }, { name: "playstation", everyMinutes: 1, offset: 0, headStart: true });
+  const stuck = fakeJob(async () => { order.push("ps:start"); await new Promise((resolve) => setTimeout(resolve, 50)); order.push("ps:done"); return { status: "ok" }; }, { name: "pagespeed", everyMinutes: 1, offset: 0, headStart: true });
   await runScheduled(env, at("2026-09-28T10:02:00Z"), { jobs: [other, stuck], headStartMs: 5 });
   assert.deepEqual(order, ["ps:start", "other", "ps:done"]);
 });

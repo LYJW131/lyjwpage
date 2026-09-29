@@ -1,22 +1,17 @@
-import type { StateCoreRpc } from "@shared/state-core";
+import type { StateStore } from "./store.js";
 
-/**
- * PlayStation 这条线用到的绑定与变量；采集 Worker 的 Env 是它的超集。
- * CORE 只挑这里用到的三个方法，测试替身照这个形状写就够。
- */
+/** 容器里的配置和本地状态。令牌与上报地址由环境变量给，状态在 `STATE`。 */
 export interface Env {
-  /** 采集 Worker 私有 KV：PSN 登录、指纹、目录与游玩列表缓存、门和退避的时间戳 */
-  COLLECTOR_KV: KVNamespace;
-  /** 状态核心：提交 prepare 好的信封、推送房间的人头数、主机电源 */
-  CORE: Pick<StateCoreRpc, "commitIngest" | "audience" | "playstationPower">;
-  /** 长期归档；不绑就不归档奖杯 */
-  HISTORY?: D1Database;
+  STATE: StateStore;
+  SITE_INGEST_URL: string;
+  ACCESS_CLIENT_ID: string;
+  ACCESS_CLIENT_SECRET: string;
   PSN_LANGUAGE?: string;
   PSN_ACCOUNT_ID?: string;
   PLAYED_GAMES_LIMIT?: string;
   /** 逗号或空白分隔的 titleId（PPSA… / CUSA…），不上报、不占最近窗口。 */
   PLAYSTATION_HIDDEN_TITLE_IDS?: string;
-  /** "true" 时信封只打进日志，不交给状态核心 */
+  /** "true" 时信封只打进日志，不 POST */
   PS_DRY_RUN?: string;
   PSN_NPSSO?: string;
 }

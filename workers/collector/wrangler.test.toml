@@ -9,18 +9,12 @@ workers_dev = false
 
 [vars]
 STORAGE_PREFIX = "lyjwpage-test"
-PSN_LANGUAGE = "zh-Hans"
-PSN_ACCOUNT_ID = "me"
-PLAYED_GAMES_LIMIT = "100"
-PLAYSTATION_HIDDEN_TITLE_IDS = "PPSA28884_00,PPSA18538_00"
 APPLE_MUSIC_STOREFRONT = "cn"
 CLOUDFLARE_ACCOUNT_ID = "209f2c881b1c494fec50851c067b3266"
 VERCEL_PROJECT_ID = "prj_r6sFPPmanb9zm3hzYAHAmp3KsIiC"
 VERCEL_TEAM_ID = "team_kfTnkK6X9bbqSbkgAhq7SxCd"
 # 只在本地打开 `POST /__dev/run?job=<名字>`；经 dev-router 的 `/__dev/collector/*` 进来
 DEV_TRIGGERS = "true"
-# 本地的 PS 信封只打进日志，不交给本地 api：要联调上报链路再删掉这一行
-PS_DRY_RUN = "true"
 
 [[services]]
 binding = "CORE"

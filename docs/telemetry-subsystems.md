@@ -19,7 +19,7 @@
 9. [本机活动与前台应用 — Mac Telemetry Hub](#9-本机活动与前台应用--mac-telemetry-hub)
 10. [HomePod mini 播放实况 — Home Assistant](#10-homepod-mini-播放实况--home-assistant)
 11. [活动圆环 — iPhone Telemetry Hub](#11-活动圆环--iphone-telemetry-hub)
-12. [落地节点监控与三档自适应调频](#12-落地节点监控与三档自适应调频)
+12. [落地节点监控与调频](#12-落地节点监控与调频)
 13. [PWA 与边缘缓存规则](#13-pwa-与边缘缓存规则)
 14. [跨域活动脉搏（Pulse）](#14-跨域活动脉搏pulse)
 
@@ -265,23 +265,25 @@ payload: >-
 
 ---
 
-## 12. 落地节点监控与三档自适应调频
+## 12. 落地节点监控与调频
 
 ### 节点监控
 - `reporters/server-reporter` 部署于云端 Linux 节点（TypeScript / Node，和 agents-reporter 同一套结构），采集 `/proc/stat` 与 `/proc/net/dev`，上报 CPU、内存及网络吞吐，节奏固定（`INTERVAL_MS`，见它的 README「节奏」）；前端在下一次预期上报后几秒去取。
 
-### 三档自适应调频算法
-为节省外部 API 配额，采集 Worker 的 PlayStation 任务（`workers/collector`）和 `agents-reporter` 遵循三档自适应调频（`server-reporter` 固定每分钟一推、不参与调频，理由见它的 README「节奏」）：
+### 按人数调频（agents-reporter）
+为节省外部 API 配额，`agents-reporter` 按在线人数分三档（`server-reporter` 固定每分钟一推、不参与调频，理由见它的 README「节奏」）：
 
-| 触发条件 | 说明 | PlayStation 间隔（`workers/collector/src/playstation/index.ts`） | agent limits 间隔（`reporters/agents-reporter/src/config.ts`） |
-| --- | --- | --- | --- |
-| `online > 0` | 存在处于**前台可见**状态的访问者页面 | `LIVE_TICK_INTERVAL_MS` | `LIVE_INTERVAL_MS` |
-| `connections > 0` | 无前台可见页面，但存在**后台打开**的标签页 | `OPEN_TICK_INTERVAL_MS` | `OPEN_INTERVAL_MS` |
-| 两个指标均为 0 | 全网无任何活跃页面连接（无人值守） | `IDLE_TICK_INTERVAL_MS` | `IDLE_INTERVAL_MS` |
+| 触发条件 | 说明 | 间隔（`reporters/agents-reporter/src/config.ts`） |
+| --- | --- | --- |
+| `online > 0` | 存在处于**前台可见**状态的访问者页面 | `LIVE_INTERVAL_MS` |
+| `connections > 0` | 无前台可见页面，但存在**后台打开**的标签页 | `OPEN_INTERVAL_MS` |
+| 两个指标均为 0 | 全网无任何活跃页面连接（无人值守） | `IDLE_INTERVAL_MS` |
 
 - **单向降级安全**：若查询在线人数接口超时或失败，默认计数降为 0，调频节奏仅会变慢而不会雪崩加速。
-- **分段休眠响应**：常驻上报器将长间隔休眠拆分为短周期轮询，一旦有新用户进入页面，能够迅速在下一个短周期内提升采样频率。PlayStation 那边是 cron 每分钟看一眼门，效果相同。
-- **PlayStation 另外两条**：主机电源（Home Assistant 上报）翻面时立刻跑一轮、关机时只走最慢一档；PSN 前面的 CDN 回拒绝页或网关错误时按连败次数退避（`workers/collector/src/playstation/state.ts#backoffMs`：起点翻倍、封顶），成功一轮清零。细节见 `workers/collector/README.md`。
+- **分段休眠响应**：常驻上报器将长间隔休眠拆分为短周期轮询，一旦有新用户进入页面，能够迅速在下一个短周期内提升采样频率。
+
+### PlayStation
+`reporters/playstation-reporter` 在 n100 上直接探测局域网里的 PS5（UDP 9302），不问在线人数，也不用 Home Assistant 的电源决定节奏。醒着按 `reporters/playstation-reporter/src/cadence.ts#AWAKE_TICK_INTERVAL_MS`，休息或连续探测不到按 `reporters/playstation-reporter/src/cadence.ts#IDLE_TICK_INTERVAL_MS`。醒着和没醒对调时立刻打一轮。PSN 前面的 CDN 回拒绝页或网关错误时按连败次数退避（`reporters/playstation-reporter/src/state.ts#backoffMs`），成功一轮清零。细节见它的 README。
 
 ---
 

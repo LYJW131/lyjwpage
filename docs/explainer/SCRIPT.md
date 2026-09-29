@@ -68,7 +68,7 @@
 | 12–13.5 | FIG. 5 东京的机柜，两台容器：server-reporter（服务器状态，固定每 60 秒）、agents-reporter（各家编码工具的限额、Cursor 账号的用量） | |
 | 13.5–14.5 | FIG. 6 云端的一小段遥测：Claude Code 云端自己发 OTLP，是第七个入口，不是我们写的上报器 | |
 | 14.5–16 | 编码用量：Mac 本机、Claude Code 云端、容器里的 Cursor 三处各报原始事实，三根线汇到站点那一侧才合并；合并处伸出一小段 Pulse，多一条 token 速率道（三处相加）。旁白 `n5` | |
-| 16–19 | FIG. 7 表盘：采集 Worker，每分钟一响；每根指针一个任务，各走各的节奏（PSN 在玩与奖杯、最近在听、GitHub、Vercel、Cloudflare、Sentry、PageSpeed、厂商状态；指针数按写章时的 `workers/collector/src/registry.ts#JOBS`）。旁白 `n6` | 钟摆每拍滴答 |
+| 16–19 | FIG. 7 表盘：采集 Worker，每分钟一响；每根指针一个任务，各走各的节奏（最近在听、GitHub、Vercel、Cloudflare、Sentry、PageSpeed、厂商状态；指针数按 `workers/collector/src/registry.ts#JOBS`）。PlayStation 不在这张表盘上。旁白 `n6` | 钟摆每拍滴答 |
 | 19–20 | 镜头甩回 Mac：那封换歌的信封亮起，拖着发丝线往右飞出画面 | 收住，给第 02 章 0:0 的主题让路 |
 
 | 键 | 小节 | 中文 | English |
@@ -112,7 +112,7 @@
 | 小节 | 画面 | 配乐 |
 |---|---|---|
 | 0–2 | 黑里先亮一盏桌灯（接第 02 章冲进去的那盏灯），平面图一笔一笔画出来：左边两路进口（上报入口、采集 Worker）汇成一条队，栏杆只围出一条；中间一间屋子（墙体剖切斜线、门洞、一张桌、一把椅子、一盏灯、一本摊开的账本），右墙一道缝；标题「03 一间屋子的账房」、`workers/api · StateCore → StateHub`；引线标注 `StateHub · idFromName("global")`「全站只有这一个实例」。旁白 `n1` | 0:0 落地一声低「咚」，FM 铃唱主题 |
-| 2–5 | 每拍一封进门落账，右栏「StateHub 账本」详图每拍写一行打勾（mac · desktop、homepod · nowPlaying、emby · watching……；playstation 那几封从采集 Worker 那一路来）；屋里标 `state-hub.ts · ingestTail`；主角 mac · appleMusic 带着橙色火花在队里等。旁白 `n2` | 底鼓每拍，十六分钟摆 |
+| 2–5 | 每拍一封进门落账，右栏「StateHub 账本」详图每拍写一行打勾（mac · desktop、homepod · nowPlaying、emby · watching……；playstation 那几封从上报入口那一路来，容器 POST 的原始信封）；屋里标 `state-hub.ts · ingestTail`；主角 mac · appleMusic 带着橙色火花在队里等。旁白 `n2` | 底鼓每拍，十六分钟摆 |
 | 5–6 | 5:0 主角落账；托盘上出一张小纸条，右栏「要做的事」固定三行 event / listening / tags：listening 写「广播 listening-now · 先查 Apple 目录补封面和链接」，tags 空着「换歌不失效；开始或停止放歌才有」，方框不勾。旁白 `n3` | |
 | 6–8 | 6:0 纸条从墙缝递出，镜头甩到门外岗亭 StateCore「照单去办」；6:2 盖 waitUntil 章、listening 打勾；同一拍两条虚线出发：去天线 LivePushRoom（另一个单例 DO），橙环荡开，所有开着的页面依次翻面、标 listening-now；回执 `ok · data` 飞回入口，标「回执 → 入口」「入口接着写 LAG 和凭据，都写完才盖 202」，两条路中间「‖ 并行 ‖」。旁白 `n4` | 6:0 纸滑出，6:2 广播 + 印章 |
 | 8–10.5 | 甩回屋里：又进两封（playstation、emby），9:0 一封纯心跳（信封上一颗心跟着底鼓跳）：账本记「♥ 存活 + pulse 观测」，「要做的事（空）」注「不推送」「不失效首屏」；Clawd 在桌角冒出来说一句。旁白 `n5` | 心跳段半速，底鼓变成扑通扑通 |
@@ -204,22 +204,22 @@
 
 ## 07 节拍器（12 小节）
 
-事实：FACTS §7。画面标题「节拍器 / Metronomes」。纸面上三台正视节拍器（梯形机身、摆杆绕支点转），摆速跟着配乐换档：PlayStation（采集 Worker 的任务）、编码账号限额（agents-reporter）、服务器（server-reporter）。旁边一个 `K.glyph` 小屋，里面是人数（Mono 数字）：PS 和限额两台从同一个推送房间读人数（PS 走 RPC `CORE.audience()`，限额走 `/count`），服务器那台不问。
+事实：FACTS §7。画面标题「节拍器 / Metronomes」。纸面上三台正视节拍器（梯形机身、摆杆绕支点转）：PlayStation（n100 上的容器，看局域网发现包）、编码账号限额（agents-reporter，看人数）、服务器（server-reporter，固定）。旁边一个 `K.glyph` 小屋，里面是人数（Mono 数字），只拨限额那一台（读 `/count`）。PS 那台看的是客厅主机醒着没有，不问人数。
 
 | 小节 | 画面 | 配乐 |
 |---|---|---|
 | 0–1 | 三台节拍器和小屋；标题 | |
-| 1–4 | 有人正看：PS 55 秒一响、限额 5 分钟、服务器 60 秒。旁白 `n1` | 全速 |
-| 4–6 | 页面都切到后台（开着，没人看）：PS 115 秒、限额 10 分钟，服务器不变 | 半速 |
-| 6–9 | 入夜访客走光，人数 0：PS 慢到 29.5 分钟，限额那台打 12 个 5 分钟的盹（摆杆停住、头顶一串 z），只有服务器那台照旧 60 秒一下（对照：闲时每分钟问一次人数，本身就不比直接推一次省）。旁白 `n2`。可选：Clawd 在限额那台旁边一起打盹 | 很慢，只剩一台的滴答 |
-| 9–11 | 电源门：客厅 PS5 的开关翻面（开机），PS 那台在下一响跳回快档；注「PS5 关机时，不管有没有人都停在 30 分钟档」「两轮之间至少 55 秒」。旁白 `n3` | 回到全速 |
-| 11–12 | 脚注式旁白 `n4`；服务器那台再敲一下 | 12:0 这一下变成第 08 章的心跳 |
+| 1–4 | 主机醒着、也有人在看：PS 按醒着那一档、限额 5 分钟、服务器 60 秒。旁白 `n1` | 全速 |
+| 4–6 | 页面都切到后台：只把限额拨到 10 分钟。PS 仍看主机，醒着就还是快档。服务器不变 | 半速 |
+| 6–9 | 入夜主机进休息、访客走光：PS 落到闲档，限额那台打 12 个 5 分钟的盹（摆杆停住、头顶一串 z），只有服务器那台照旧 60 秒一下（对照：闲时每分钟问一次人数，本身就不比直接推一次省）。旁白 `n2`。可选：Clawd 在限额那台旁边一起打盹 | 很慢，只剩一台的滴答 |
+| 9–11 | 发现包从休息变回醒着：PS 立刻打一轮，不等满闲档。注「休息和关机是同一档，来回切不额外打」「退避没到时不放行」。旁白 `n3` | 回到全速 |
+| 11–12 | 脚注式旁白 `n4`（只说限额那台的人数）；服务器那台再敲一下 | 12:0 这一下变成第 08 章的心跳 |
 
 | 键 | 小节 | 中文 | English |
 |---|---|---|---|
-| `ch07.n1a` / `n1b` | 1–4 | 有人在看，就勤快一点；／没人看，就慢下来。 | Someone watching? Tick faster; / nobody? Slow down. |
+| `ch07.n1a` / `n1b` | 1–4 | 主机醒着，就勤打 PSN；／限额看有没有人在看。 | Console awake, PSN ticks fast; / limits follow who's watching. |
 | `ch07.n2a` / `n2b` | 6.3–9 | 入夜人走光，只有服务器照旧：／问人数，并不比直接报省。 | At night only the server keeps time: / asking costs as much as reporting. |
-| `ch07.n3a` / `n3b` | 9–11 | PS5 一开机，／下一响就回到快档。 | Power the PS5 on / and the next tick is fast again. |
+| `ch07.n3a` / `n3b` | 9–11 | PS5 一开机，／马上回到快档。 | Power the PS5 on / and the fast tick starts now. |
 | `ch07.n4a` / `n4b` | 11–12 | 人数问不到就当 0：／只会变慢，不会变快。 | No head count? Call it zero: / slower, never faster. |
 
 ## 08 心电图与地层（12 小节）
