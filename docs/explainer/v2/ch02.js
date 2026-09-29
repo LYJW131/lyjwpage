@@ -11,7 +11,7 @@
     "ch02.title": ["门禁与分拣", "The gate and the sorting desk"],
     "ch02.host": ["ingest.homepage.lyjw.llc · workers/ingress", "ingest.homepage.lyjw.llc · workers/ingress"],
     "ch02.clawd": ["上报都从这面墙进来。", "Every report comes in\nthrough this wall."],
-    "ch02.n1a": ["每个来源一把钥匙，", "Each source gets one key;"],
+    "ch02.n1a": ["每个上报方一把钥匙，", "Each reporter gets one key;"],
     "ch02.n1b": ["只开权限表上写着的门。", "it opens only its own doors."],
     "ch02.ha": ["Home Assistant 的钥匙开两扇门", "The Home Assistant key opens two doors"],
     "ch02.key.mac": ["mac 的钥匙", "mac key"],
@@ -138,18 +138,21 @@
     text(x, label, cx - Math.max(210, tw + 110) / 2 + 64, cy + 10, { font: FONT.cjk(28, 600), color: hot ? css("signal") : css("pink"), alpha });
   }
 
-  // 权限表：每把钥匙能开哪几扇门（workers/ingress/wrangler.toml 的 ACCESS_CLIENTS，只写来源名）
-  const AC = [["mac", "/mac"], ["iphone", "/iphone"], ["home-assistant", "/homepod · /playstation"], ["emby", "/emby"], ["server", "/server"], ["agents", "/agents"], ["claude-cloud", "/agents/otlp"], ["github-actions", "/api/internal/site-deployed"]];
-  const AC_X = 150, AC_Y = 770, AC_LH = 34;
-  const acRow = (i) => [AC_X + 90, AC_Y + 36 + i * AC_LH];
+  // 权限表：每把钥匙能开哪几扇门（workers/ingress/wrangler.toml 的 ACCESS_CLIENTS，只写上报方名）。
+  // 钥匙按上报方发，不按来源：Home Assistant 一把开两扇，/playstation 又有 n100 容器自己那把
+  const AC = [["mac", "/mac"], ["iphone", "/iphone"], ["home-assistant", "/homepod · /playstation"], ["playstation", "/playstation"], ["emby", "/emby"], ["server", "/server"], ["agents", "/agents"], ["claude-cloud", "/agents/otlp"], ["github-actions", "/api/internal/site-deployed"]];
+  const AC_ROW = { mac: 0, ha: 2, emby: 4 }; // 钥匙从这几行滑出来
+  // 末行要留在机位 A 的画面里（贴着屏幕底边就被暗角吃掉）：表再加行先收行距
+  const AC_X = 150, AC_Y = 764, AC_LH = 32;
+  const acRow = (i) => [AC_X + 90, AC_Y + 32 + i * AC_LH];
   function accessTable(x, b) {
     const k = prog(b, 0.9, 1.5, E.out);
     if (k <= 0) return;
     text(x, "ACCESS_CLIENTS", AC_X, AC_Y, { font: FONT.mono(28, 600), color: css("graphite"), alpha: k });
     line(x, AC_X, AC_Y + 12, AC_X + 700 * k, AC_Y + 12, 1.2, css("pink"), 0.6);
-    const hot = b > 1.3 && b < 2.6 ? 0 : b > 2.8 && b < 4.1 ? 3 : b >= 4.1 && b < 4.9 ? 2 : -1;
+    const hot = b > 1.3 && b < 2.6 ? AC_ROW.mac : b > 2.8 && b < 4.1 ? AC_ROW.emby : b >= 4.1 && b < 4.9 ? AC_ROW.ha : -1;
     AC.forEach(([who, doors], i) => {
-      const y = AC_Y + 42 + i * AC_LH, a = prog(b, 1.0 + i * 0.05, 1.3 + i * 0.05);
+      const y = AC_Y + 38 + i * AC_LH, a = prog(b, 1.0 + i * 0.05, 1.3 + i * 0.05);
       const c = i === hot ? css("signal") : css("pink");
       text(x, who, AC_X, y, { font: FONT.mono(28, 500), color: c, alpha: a });
       text(x, "→ " + doors, AC_X + 260, y, { font: FONT.mono(28), color: i === hot ? c : css("graphite"), alpha: a });
@@ -176,13 +179,13 @@
     accessTable(x, b);
     // 钥匙从权限表里自己那一行滑出来：mac 的钥匙开 mac；emby 的钥匙去开 mac → 403；HA 的钥匙同时开两扇
     const [mx, my] = lockPos(0);
-    const macK = keys(b, [[1.3, acRow(0)], [2.0, [mx, my], E.outExpo], [2.35, [mx, my]], [2.7, [mx, my + 30], E.in]]);
+    const macK = keys(b, [[1.3, acRow(AC_ROW.mac)], [2.0, [mx, my], E.outExpo], [2.35, [mx, my]], [2.7, [mx, my + 30], E.in]]);
     keycard(x, tr("ch02.key.mac"), macK[0], macK[1], 0, prog(b, 1.3, 1.4) * (1 - prog(b, 2.35, 2.7)), b > 1.95 && b < 2.5);
-    const embyK = keys(b, [[2.9, acRow(3)], [3.5, [mx, my], E.outExpo], [3.75, [mx, my]], [4.3, [mx - 40, 1220], E.in]]);
+    const embyK = keys(b, [[2.9, acRow(AC_ROW.emby)], [3.5, [mx, my], E.outExpo], [3.75, [mx, my]], [4.3, [mx - 40, 1220], E.in]]);
     const shakeE = b > 3.5 && b < 3.75 ? Math.sin((b - 3.5) * 120) * 10 * (1 - prog(b, 3.5, 3.75)) : 0;
     keycard(x, tr("ch02.key.emby"), embyK[0] + shakeE, embyK[1], lerp(0, -0.5, prog(b, 3.75, 4.3, E.in)), prog(b, 2.9, 3.0) * (1 - prog(b, 4.0, 4.3)));
     const haX = (DX(2) + DX(3) + DW) / 2;
-    const haK = keys(b, [[3.45, acRow(2)], [4.0, [haX, my], E.outExpo], [4.5, [haX, my]], [4.85, [haX, my + 40], E.in]]);
+    const haK = keys(b, [[3.45, acRow(AC_ROW.ha)], [4.0, [haX, my], E.outExpo], [4.5, [haX, my]], [4.85, [haX, my + 40], E.in]]);
     keycard(x, tr("ch02.key.ha"), haK[0], haK[1], 0, prog(b, 3.45, 3.55) * (1 - prog(b, 4.5, 4.85)), b > 3.95 && b < 4.6);
     if (b > 4.0) {
       const hy = DTOP + DH + 50;
