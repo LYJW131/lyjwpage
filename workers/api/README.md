@@ -495,7 +495,7 @@ GraphQL 的 `scriptName_in` 跟着它），不公开账号内其他 Worker；还
 ### Sentry
 
 四块数据：`uptime`（对 `https://lyjw.me/api/version` 的在线探测，配置见 [仓库外事实](../../docs/ops-facts.md)）、`heartbeat`（本 Worker 分钟 cron 的
-心跳监控 `api-minute-cron`，只算 production，心跳只在每 `CRON_HEARTBEAT_EVERY_MINUTES` 分钟的那一轮报到，见 `src/cron-heartbeat.ts`）、
+心跳监控 `api-minute-cron`，只算 production，心跳只在每 `CRON_HEARTBEAT_EVERY_MINUTES`（`src/lib/sentry.ts`，站点卡片上的文案也读它）分钟的那一轮报到，判定见 `src/cron-heartbeat.ts`）、
 `errors`（production 报错：`site` 是站点项目，`worker` 是 api 与采集 Worker 两个项目合计）、
 `vitals`（站点 production 的 7 天 p75 与样本数，站点按 Lighthouse 曲线算出 Users 那行的分）。
 只放计数、比率和时刻，不放 issue 标题、报错内容和调用栈。
