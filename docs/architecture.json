@@ -23,7 +23,7 @@
           "playstation_reporter",
           "api"
         ],
-        "note": "七个数据来源各自 POST 到 API Worker 的 /api/ingest/<来源>，一台设备一个入口。"
+        "note": "各来源 POST 到 ingress Worker 的 /api/ingest/<来源>；实时状态经 Service Binding 交给 API Worker。"
       },
       {
         "id": "sites",
@@ -43,11 +43,10 @@
         "focus": [
           "agents_reporter",
           "server_reporter",
-          "playstation_reporter",
           "api",
           "visitors"
         ],
-        "note": "调频的上报器读 API 的 /count，一次拿到 online 与 connections：页面可见走快档，仅后台打开走中档，无人走闲档。读不到当 0。"
+        "note": "agents-reporter 读 API /count：页面可见走快档，仅后台打开走中档，无人或读取失败走闲档。server-reporter 节奏固定。PlayStation 按局域网发现包调频。"
       },
       {
         "id": "assets",
@@ -65,7 +64,7 @@
     ],
     "repository": {
       "url": "https://github.com/LYJW131/lyjwpage",
-      "revision": "ca5502089f0f69f04811183e643913180cb24767"
+      "revision": "8f2451ebaa8edf96f4c86a22b1eeb360be8e0dc4"
     }
   },
   "components": [
@@ -165,7 +164,7 @@
       ],
       "sources": [
         {
-          "path": "reporters/agent-limits-reporter/src/cadence.ts"
+          "path": "reporters/agents-reporter/src/cadence.ts"
         }
       ]
     },
@@ -173,7 +172,7 @@
       "id": "server_reporter",
       "type": "external",
       "label": "服务器上报器",
-      "sublabel": "misaka-jp 容器 · 1 / 2 / 15 分钟",
+      "sublabel": "misaka-jp 容器 · 固定间隔",
       "tag": "/api/ingest/server",
       "pos": [
         32,
@@ -185,7 +184,7 @@
       ],
       "sources": [
         {
-          "path": "reporters/server-reporter/reporter.py"
+          "path": "reporters/server-reporter/src/index.ts"
         }
       ]
     },
@@ -193,7 +192,7 @@
       "id": "playstation_reporter",
       "type": "external",
       "label": "PlayStation 上报器",
-      "sublabel": "Cloudflare Worker · 1 / 2 / 15 分钟",
+      "sublabel": "n100 容器 · 发现包调频",
       "tag": "/api/ingest/playstation",
       "pos": [
         32,
@@ -205,7 +204,7 @@
       ],
       "sources": [
         {
-          "path": "workers/playstation-reporter/src/index.ts"
+          "path": "reporters/playstation-reporter/src/cadence.ts"
         }
       ]
     },
@@ -232,8 +231,8 @@
     {
       "id": "api",
       "type": "messagebus",
-      "label": "API Worker",
-      "sublabel": "api.homepage.lyjw.llc",
+      "label": "Ingress + API Workers",
+      "sublabel": "Access 上报入口 · 状态核心",
       "tag": "接收 · 状态 API · 实时推送",
       "pos": [
         540,
@@ -249,6 +248,9 @@
         },
         {
           "path": "workers/api/wrangler.toml"
+        },
+        {
+          "path": "workers/ingress/src/worker.ts"
         }
       ]
     },
@@ -294,7 +296,7 @@
           "path": "src/app/page.tsx"
         },
         {
-          "path": "src/lib/public-home.ts"
+          "path": "src/lib/first-screen.ts"
         }
       ]
     },
@@ -405,7 +407,7 @@
       "id": "post_server",
       "from": "server_reporter",
       "to": "api",
-      "label": "POST · /count",
+      "label": "POST",
       "variant": "emphasis",
       "labelAt": [
         388,
@@ -416,7 +418,7 @@
       "id": "post_playstation",
       "from": "playstation_reporter",
       "to": "api",
-      "label": "POST · /count",
+      "label": "POST",
       "variant": "emphasis",
       "labelAt": [
         388,

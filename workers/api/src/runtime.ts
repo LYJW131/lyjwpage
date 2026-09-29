@@ -11,7 +11,7 @@ export interface Env extends MusicKitTokenEnv {
   STATE: DurableObjectNamespace<StateHub>;
   /** 只在本地：LivePushRoom 转发上游推送前查假数据注入，见 dev-override-reader.ts */
   DEV_OVERRIDE_READER?: Service<DevOverrideReader>;
-  /** 长期归档（pulse 事实表，按自然键 upsert，活动桶按权威范围替换）。不绑就不归档；别处不读它。 */
+  /** 长期归档：pulse 事实表，以及收下奖杯信封后的 trophies 表。不绑就不归档。 */
   HISTORY?: D1Database;
   /** 共享凭据（shared/credentials.ts）：上报入口写 Mac 推来的 Apple Music user token，这里只读（歌词、曲目查询） */
   CREDENTIALS?: KVNamespace;

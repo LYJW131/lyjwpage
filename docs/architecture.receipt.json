@@ -1,12 +1,12 @@
 {
   "type": "architecture",
   "specification": {
-    "sha256": "3292049c20cf1080c6c1d7249d35862015317564daf2b565ea42645b0ca66859",
-    "bytes": 11403
+    "sha256": "cd6985493ab235fa6c538ec501fe2baf3d55d636d4fb71f21a538e27a60f9d04",
+    "bytes": 11473
   },
   "artifact": {
-    "sha256": "030622e1fc5736f6161f29084851ec73c4d88a67b0cb744395ed46b3cf9fe7cf",
-    "bytes": 724588
+    "sha256": "0e56664b770e4f8927ba1ce325cf5154d81ee2431148028db4ffe880fcf727d8",
+    "bytes": 724748
   },
   "validation": {
     "checksPassed": 9,
@@ -19,13 +19,13 @@
   "evidence": {
     "verified": true,
     "repository": "https://github.com/LYJW131/lyjwpage",
-    "revision": "ca5502089f0f69f04811183e643913180cb24767",
-    "references": 18
+    "revision": "8f2451ebaa8edf96f4c86a22b1eeb360be8e0dc4",
+    "references": 19
   },
   "output": "architecture.html",
   "visual_review": "passed",
   "correction_rounds": 6,
-  "static_diagram_review": "passed: 在线人数 Worker 并回 API Worker 后重出，浏览器只剩一条 /ws，明暗快照重出并过目",
+  "static_diagram_review": "passed",
   "viewports": [
     {
       "width": 1440,
@@ -139,13 +139,13 @@
   "previews": {
     "architecture-light.png": {
       "kind": "svg-rasterization",
-      "sha256": "e0e0743ae4c9c14170360a799fd198b342460e034a8b79f52799a5a339883293",
-      "bytes": 461789
+      "sha256": "717ec7f2fba6ea28e4508c8db4b28de598b9e14f0312930e13ae7956036fe035",
+      "bytes": 461335
     },
     "architecture-dark.png": {
       "kind": "svg-rasterization",
-      "sha256": "64d970e49a433adc539b63faacd190690496beae6938b24554a185d52691719d",
-      "bytes": 470027
+      "sha256": "46005a69ed596889e610666fde45ef6f395614d5c4696430d1a222bf2bad7176",
+      "bytes": 469252
     }
   }
 }

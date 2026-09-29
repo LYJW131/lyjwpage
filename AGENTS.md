@@ -39,13 +39,13 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - 除非用户明确要求手工部署，不运行 `vercel deploy`、`vercel --prod`、`vercel promote` 等手工发布命令；自动部署失败时先检查并修复现有流程。
 - `workers/api`、`workers/ingress`、`workers/collector` 走 Cloudflare Workers Builds 原生 Git 集成，配置与监视路径见 `docs/workers-builds.md`。不在 GitHub Actions 里加 Worker 发布任务；修改共享依赖或移动文件时同步核对监视路径。Worker 之间的契约（`shared/state-core.ts`、`shared/collector.ts`）只加不改，被调用方先发布（Workers Builds 并行构建，保证顺序靠「禁区」里的手动部署例外）。
 - 推送成功不等于部署完成：检查该次提交在 Vercel 的部署状态，并从已绑定的生产域名验证本次受影响的行为或配置。
-- 上报器与其他独立部署单元按各自 README 发布：misaka-jp 上的 `server-reporter`、`agents-reporter` 合进 main 后由 `.github/workflows/build-reporters.yml` 自动换镜像，dsm 上的 `emby-reporter` 手动。若依赖站点的新契约或更长陈旧窗口，先确认 Vercel 站点及 Worker 契约已生效，再切换上报器，最后验证真实上报与站点读取。
+- 上报器与其他独立部署单元按各自 README 发布：misaka-jp 上的 `server-reporter`、`agents-reporter` 合进 main 后由 `.github/workflows/build-reporters.yml` 自动换镜像，dsm 上的 `emby-reporter`、n100 上的 `playstation-reporter` 手动。若依赖站点的新契约或更长陈旧窗口，先确认 Vercel 站点及 Worker 契约已生效，再切换上报器，最后验证真实上报与站点读取。
 - `reporters/mac-telemetry-hub` 是 git submodule，指向 `LYJW131/MacTelemetryHub`，不会自动跟随远端。Hub 仓库推送后，站点仓库的子模块指针要挪到同一提交，否则站点里的上报器源码停在旧版本；指针推到 main 即触发 Hub 的签名与公证 Release（`.github/workflows/release-mac-telemetry-hub.yml`）。跨两个仓库的同一件事（如新契约两边同时改）把指针挪动并进站点那次提交，一次提交说完整件事；站点本身没改动时才单独提 `chore(reporters): 更新 mac-telemetry-hub，<改了什么>`。Hub 本机安装走它自己的 `reporters/mac-telemetry-hub/build-release.sh`，与指针更新是两件事。
 
 # 排查线上错误
 
 - 线上报错、页面异常、Worker 或 cron 失败，先用 Sentry MCP 查证据，再读代码：用 `search_issues` / `search_events` 找报错和 warn / error 日志，用 `get_sentry_resource` 看调用栈、面包屑和出错录像，拿到 release 和堆栈再对源码定位。不凭猜测改代码，也不借浏览器登录态调 Sentry 接口；MCP 不可用时告诉用户，而不是绕开。
-- 组织 `yangjunwei-liang`，区域 `https://us.sentry.io`，排查线上问题默认只看环境 `production`（另有 `preview` / `development`）。项目 `lyjwpage` 收浏览器和 Vercel 函数，release 是提交 SHA；`api-worker` 收 api Worker（含 Durable Object 与分钟 cron）和上报入口 `ingress`（事件带 tag `worker:ingress`，查上报的鉴权、校验与拆分按它过滤）；`collector-worker` 收采集 Worker（全部定时拉取与 PSN，任务失败看 tag `collector.job`）；两个 Worker 项目的 release 是 Cloudflare 版本 ID。cron 监控与在线探测的配置见 `docs/ops-facts.md`。
+- 组织 `yangjunwei-liang`，区域 `https://us.sentry.io`，排查线上问题默认只看环境 `production`（另有 `preview` / `development`）。项目 `lyjwpage` 收浏览器和 Vercel 函数，release 是提交 SHA；`api-worker` 收 api Worker（含 Durable Object 与分钟 cron）和上报入口 `ingress`（事件带 tag `worker:ingress`，查上报的鉴权、校验与拆分按它过滤）；`collector-worker` 收采集 Worker（全部定时拉取，任务失败看 tag `collector.job`）；两个 Worker 项目的 release 是 Cloudflare 版本 ID。cron 监控与在线探测的配置见 `docs/ops-facts.md`。
 - `reporters/` 下的上报器没接 Sentry，查所在机器的容器日志。
 - Sentry 里只读不写是默认。把 issue 标为 resolved / ignored、改负责人这类写操作，在修复部署并从生产验证后再做，并在汇报里说明；删除数据、改告警规则、项目或集成设置，先问用户。
 

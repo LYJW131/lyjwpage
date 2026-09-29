@@ -11,5 +11,3 @@
 # SENTRY_API_TOKEN=
 # Google PageSpeed Insights
 # PAGESPEED_API_KEY=
-# PSN 登录。本地会自己换一套 token；别和生产同时用同一串（重新生成会作废上一串）
-# PSN_NPSSO=

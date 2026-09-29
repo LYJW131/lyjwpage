@@ -7,17 +7,11 @@ compatibility_flags = ["nodejs_compat", "nodejs_compat_populate_process_env"]
 workers_dev = false
 
 [triggers]
-# 每分钟一响，各个任务按自己的节奏（src/registry.ts 的登记表）决定这一响跑不跑；
-# PlayStation 另有一道看人头数的门，见 README。
+# 每分钟一响，各个任务按自己的节奏（src/registry.ts 的登记表）决定这一响跑不跑。
 crons = ["* * * * *"]
 
 [vars]
 STORAGE_PREFIX = "lyjwpage"
-PSN_LANGUAGE = "zh-Hans"
-PSN_ACCOUNT_ID = "me"
-PLAYED_GAMES_LIMIT = "100"
-# 三角洲行动、明日方舟：终末地
-PLAYSTATION_HIDDEN_TITLE_IDS = "PPSA28884_00,PPSA18538_00"
 APPLE_MUSIC_STOREFRONT = "cn"
 # 站点卡片只读查询的归属标识，都不是秘密；令牌走 secret（见文末）。
 CLOUDFLARE_ACCOUNT_ID = "209f2c881b1c494fec50851c067b3266"
@@ -27,14 +21,13 @@ VERCEL_TEAM_ID = "team_kfTnkK6X9bbqSbkgAhq7SxCd"
 SENTRY_DSN = "https://23b24c339292701f7b84adea24780773@o4511888459890688.ingest.us.sentry.io/4512164070948864"
 
 # 状态核心（api Worker）对内的 RPC，契约见 shared/state-core.ts：
-# PlayStation 上报、连接数、电源、Apple developer token、最近在听落库、首屏失效。
+# Apple developer token、最近在听落库、首屏失效（revalidate）。
 [[services]]
 binding = "CORE"
 service = "api"
 entrypoint = "StateCore"
 
-# 采集 Worker 自己的状态：PSN 登录（auth）、指纹、奖杯目录、游玩列表缓存、门和退避的时间戳，
-# 以及 src/lib/cache 的键（`lyjwpage:cache:*`）。
+# 采集 Worker 自己的状态：src/lib/cache 的键（`lyjwpage:cache:*`）。
 [[kv_namespaces]]
 binding = "COLLECTOR_KV"
 id = "0f9b584f71634776ba3bc081a7aa4498"
@@ -49,7 +42,7 @@ id = "e9c72a9517884aeb95db7386b630a691"
 binding = "CREDENTIALS"
 id = "c24d1670d97b4649ab5aa4c0944dfbfc"
 
-# 长期归档：奖杯（trophies）与站点部署（site_deploys）。表结构归 workers/api/migrations 管，
+# 长期归档：站点部署（site_deploys）。奖杯表由 api 写。表结构归 workers/api/migrations 管，
 # 这里不设 migrations_dir；新表先在 api 那边 `wrangler d1 migrations apply` 再发布本 Worker。
 [[d1_databases]]
 binding = "HISTORY"
@@ -70,6 +63,6 @@ binding = "CF_VERSION_METADATA"
 enabled = true
 
 # 秘密通过 wrangler secret put 配置，缺哪个就跳过哪个任务（每个 isolate 只警告一次）：
-# PSN_NPSSO（KV 里的 refresh token 过期时才用）、GITHUB_TOKEN（classic PAT）、
+# GITHUB_TOKEN（classic PAT）、
 # VERCEL_TOKEN（团队范围只读用）、CLOUDFLARE_METRICS_TOKEN（Workers 统计、部署与构建只读）、
 # SENTRY_API_TOKEN（org:read / project:read / event:read）、PAGESPEED_API_KEY。
