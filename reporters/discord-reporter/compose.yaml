@@ -1,0 +1,13 @@
+name: discord-reporter
+services:
+  discord-reporter:
+    image: ghcr.io/lyjw131/discord-reporter:latest
+    container_name: discord-reporter
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

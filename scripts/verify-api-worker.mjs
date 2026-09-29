@@ -29,10 +29,12 @@ const access = await createDevAccess();
 const cloudClient = 'cloud-only.access';
 const agentsClient = 'agents-only.access';
 const macClient = 'mac-only.access';
+const questClient = 'quest-only.access';
 Object.assign(access.vars.ACCESS_CLIENTS, {
   [cloudClient]: ['ingest:agents-otlp'],
   [agentsClient]: ['ingest:agents'],
   [macClient]: ['ingest:mac'],
+  [questClient]: ['ingest:quest'],
 });
 const verifyBuild = process.argv.includes('--build');
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -227,6 +229,36 @@ try {
   assert.equal((await post(worker, '/publish', { type: 'presence', payload: null })).status, 404);
   assert.equal((await post(worker, '/api/ingest/homepod', {}, 'wrong')).status, 401);
   assert.equal((await post(worker, '/api/ingest/constructor', {})).status, 404);
+  const questAt = Date.now();
+  const questReport = (at, playing) => ({ version: 1, presence: { observedAt: at, discordStatus: 'online', playing } });
+  const questGame = { name: 'Isolated Quest game', platform: 'meta_quest', applicationId: '123' };
+  const sendQuest = body => fetch(`${worker}/api/ingest/quest`, {
+    method: 'POST', headers: { ...questHeaders, 'content-type': 'application/json' }, body: JSON.stringify(body),
+  });
+  const questHeaders = await access.headers(questClient);
+  assert.equal((await fetch(`${worker}/api/ingest/quest`, {
+    method: 'POST', headers: { ...await access.headers(macClient), 'content-type': 'application/json' }, body: JSON.stringify(questReport(questAt, questGame)),
+  })).status, 403);
+  const questReceipt = await sendQuest(questReport(questAt, questGame));
+  assert.equal(questReceipt.status, 202);
+  assert.equal((await questReceipt.json()).data.changed, true);
+  await eventually(async () => assert.equal(events.filter(e => e.type === 'quest-now').length, 1));
+  const heartbeatReceipt = await sendQuest(questReport(questAt + 1000, questGame));
+  assert.equal((await heartbeatReceipt.json()).data.changed, false);
+  const oldReceipt = await sendQuest(questReport(questAt, null));
+  assert.equal((await oldReceipt.json()).data.changed, false);
+  const questState = (await (await fetch(`${worker}/api/status/quest/now`)).json()).data;
+  assert.equal(questState.available, true);
+  assert.equal(questState.playing.name, questGame.name);
+  assert.equal(questState.observedAt, questAt + 1000);
+  assert.equal((await sendQuest(questReport(questAt + 2000, { ...questGame, platform: 'ps5' }))).status, 400);
+  assert.equal((await sendQuest(questReport(questAt + 2000, null))).status, 202);
+  await eventually(async () => assert.equal(events.filter(e => e.type === 'quest-now').length, 2));
+  assert.equal((await (await fetch(`${worker}/api/status/quest/now`)).json()).data.playing, null);
+  for (const path of ['/api/ingest/mac', '/api/ingest/agents']) {
+    assert.equal((await fetch(`${worker}${path}`, { method: 'POST', headers: { ...questHeaders, 'content-type': 'application/json' }, body: '{}' })).status, 403);
+  }
+  console.log('PASS: Quest dedicated Access permission → DO state → current endpoint and change-only WebSocket events; heartbeats and old reports do not broadcast');
   const invalidEnvelope = await post(worker, '/api/ingest/mac', {});
   assert.equal(invalidEnvelope.status, 400);
   assert.deepEqual(await invalidEnvelope.json(), { ok: false, error: '上报数据无效或处理失败' });

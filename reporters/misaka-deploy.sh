@@ -16,7 +16,7 @@ set -eu
 
 service="${SSH_ORIGINAL_COMMAND:-}"
 case "$service" in
-  server-reporter | agents-reporter) ;;
+  server-reporter | agents-reporter | discord-reporter) ;;
   *)
     echo "refused: '$service' is not a deployable service" >&2
     exit 2
@@ -24,8 +24,11 @@ case "$service" in
 esac
 
 cd /opt/lyjwpage
+if [ "$service" = discord-reporter ]; then
+  cd discord-reporter
+fi
 
-# 两个服务同一个 compose project，两次部署别并发改它
+# 同机部署共用锁，避免并发拉镜像、重建与清理
 exec 9>/tmp/lyjwpage-deploy.lock
 flock 9
 

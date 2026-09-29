@@ -8,6 +8,7 @@ import { preparePhoneEnvelope, type PreparedPhoneEnvelope } from "./phone";
 import { preparePlaystationReport, type PreparedPlaystationReport } from "./playstation";
 import type { ImageBucket } from "./r2-assets";
 import { prepareServerReport, type PreparedServerReport } from "./server";
+import { prepareQuestReport, type PreparedQuestReport } from "./quest";
 import { prepareTelemetryEnvelope, type PreparedTelemetryEnvelope } from "./telemetry";
 
 /**
@@ -32,13 +33,14 @@ export type PreparedIngest = WithReporter<
   | PreparedServerReport
   | PreparedAgentLimits
   | PreparedClaudeCloudUsage
+  | PreparedQuestReport
 >;
 
 /** 交给状态核心提交的那几种：落地节点（server）整封在可滞后层，不经过状态核心 */
 export type CoreCommand = Exclude<PreparedIngest, { source: "server" }>;
 
 export const INGEST_SOURCES = new Set([
-  "mac", "iphone", "homepod", "emby", "playstation", "server", "agents",
+  "mac", "iphone", "homepod", "emby", "playstation", "server", "agents", "quest",
 ]);
 
 /** 没给桶就什么图都确认不了，和 R2 HEAD 失败时一样当「还没到」 */
@@ -60,6 +62,7 @@ export async function prepareIngest(
     case "homepod": return prepareHomePodEvent(raw, receivedAt);
     case "emby": return prepareEmbyReport(raw, receivedAt, images);
     case "playstation": return preparePlaystationReport(raw, receivedAt);
+    case "quest": return prepareQuestReport(raw, receivedAt);
     case "server": return { ...prepareServerReport(raw, receivedAt), reporter: reporterBlockOf(raw) };
     case "agents": return { ...prepareAgentLimits(raw, receivedAt), reporter: reporterBlockOf(raw) };
     // Claude Code 云端线程的 OTLP 指标，走 /api/ingest/agents/otlp 与独立的 Access 权限，不在 INGEST_SOURCES 里

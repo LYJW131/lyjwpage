@@ -1,4 +1,5 @@
 import type { NowWatchingPayload, WatchingPayload } from "@/lib/emby";
+import type { QuestNow } from "@shared/quest";
 import type {
   ChargerPayload,
   CodingNowPayload,
@@ -21,6 +22,7 @@ import type {
  * 事件这边写成 `X` 和 `X-now`。
  */
 export type LiveEvent =
+  | { type: "quest-now"; payload: QuestNow }
   | { type: "desktop"; payload: DesktopPayload }
   | { type: "listening-now"; payload: NowListeningPayload }
   /**

@@ -60,7 +60,7 @@
 ## 鉴权
 
 上报走 `https://ingest.homepage.lyjw.llc/api/ingest/<来源>`。这个域名整站挂在 Cloudflare Access 应用「lyjwpage ingest」后面，
-策略只放行登记过的 service token：每个上报方一把（token 清单见 [仓库外事实](../../docs/ops-facts.md)），同一上报方管多个来源时共用一把（比如 Home Assistant 同时报 HomePod 与 PS5 电源），
+策略只放行登记过的 service token：每个上报方一把（token 清单见 [仓库外事实](../../docs/ops-facts.md)），同一上报方管多个来源时共用一把，
 上报器带 `CF-Access-Client-Id` / `CF-Access-Client-Secret` 两个头。
 Access 在边缘核对，不对直接回 401；放行的请求带着 Access 签的 JWT（`Cf-Access-Jwt-Assertion`）到 Worker，
 `src/access-auth.ts` 再验一遍签名、受众（`ACCESS_AUD`）、签发方（`ACCESS_TEAM_DOMAIN`）和时效 —— workers.dev 那条路不过 Access，
@@ -179,3 +179,7 @@ node scripts/verify-api-worker.mjs
 单测覆盖鉴权与权限表、路由、回执契约、拆分（落地节点绕过状态核心、iPhone 部分收下）、OTLP gzip、部署通知的转发，
 以及各来源的命令都能结构化复制。集成脚本和 `pnpm dev:worker` 一样用 dev-router 把上报路由到这个 Worker，
 经 Service Binding 打隔离的 api，从上报一路验到公开读取、WebSocket 推送和首屏失效。
+
+## Quest 实时游戏状态
+
+Discord Gateway 上报器只交 `meta_quest` 的 Playing 快照，入口 `/api/ingest/quest`，权限 `ingest:quest`。信封为 `{ version: 1, presence: { observedAt, discordStatus, playing } }`，收敛与字段约束见 `shared/ingest/quest.ts#prepareQuestReport`。没有游戏用 `playing: null`，未知 Gateway 状态不上报；Discord 资料、关联账号不采集。实时命令交 StateCore，查询与推送见 [API Worker](../api/README.md)。

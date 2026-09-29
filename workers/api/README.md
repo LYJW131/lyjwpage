@@ -511,3 +511,7 @@ misaka-jp 上的 server-reporter 与 agents-reporter 每封报文顶上带一个
 `workouts.json` 是从真机读取的最近一批训练快照（剑术、骑行、滑冰），保留原日期与观测指标，UUID 替换为演示标识。信封的 `updatedAt` 与 `pushedAt` 注入时更新，但训练时间不变；圆环夹具 `activity-afternoon.json` 同样带信封级 `updatedAt`。剑术不把步行距离当成主要成绩；滑冰没有距离就不显示速度；网页每项最多两个指标：有距离时显示时长与距离，否则显示时长与活动消耗；不展示心率或均速。
 
 网页卡片按页横向吸附滚动（每页条数与页数由 `src/components/live/workouts-strip.tsx` 定），隐藏独立标题栏，通过触控板、触摸或键盘横向浏览；上报和存储仍保留最近 `WORKOUT_LIMIT` 条。训练记录合并在 Activity 卡片右侧（窄屏放底部），圆环区域保持原高度；出口节点卡全宽排列在其下。
+
+## Quest 实时游戏状态
+
+`/api/status/quest/now` 从 StateHub SQLite 读取最新 Quest 快照。`available` 区分可信空闲与断流，陈旧窗口由 `shared/quest.ts#QUEST_STALE_MS` 定义；过期保留观测时刻，`playing` 与 `discordStatus` 返回空值。内容变化或断流后的恢复发送 `quest-now`，普通心跳仅更新存储；按 `observedAt` 拒绝旧值与重复报告。该视图不进入首页首屏，也不触发首屏标签失效。上报入口与信封见 [Ingress](../ingress/README.md#quest-实时游戏状态)。

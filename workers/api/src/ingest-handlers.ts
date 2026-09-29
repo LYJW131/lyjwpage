@@ -6,6 +6,7 @@ import { commitPreparedEmbyReport } from "./stores/emby";
 import { commitPreparedPlaystationReport } from "./stores/playstation";
 import { commitPreparedTelemetryEnvelope } from "./stores/telemetry";
 import type { CoreCommand } from "@shared/ingest/prepare";
+import { commitPreparedQuestReport } from "./stores/quest";
 
 /**
  * StateHub 阶段：只做依赖权威最新状态的合并、差分与持久化。
@@ -21,6 +22,7 @@ export async function commitPreparedIngest(command: CoreCommand): Promise<unknow
     case "homepod": return commitPreparedHomePodEvent(command);
     case "emby": return commitPreparedEmbyReport(command);
     case "playstation": return commitPreparedPlaystationReport(command);
+    case "quest": return commitPreparedQuestReport(command);
     case "agents": return commitPreparedAgentsReport(command);
     case "agents-otlp": return recordPreparedClaudeCloudUsage(command);
     default: throw new Error(`状态核心不收这个来源：${(command as { source?: unknown }).source}`);
