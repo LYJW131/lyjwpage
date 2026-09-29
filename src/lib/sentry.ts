@@ -28,3 +28,8 @@ export const SENTRY_COLLECTOR_PROJECT_ID = "4512164070948864";
 /** lyjw.me 的每分钟在线探测（Sentry 里的 uptime detector，HEAD /api/version） */
 export const SENTRY_UPTIME_DETECTOR_ID = "10416301";
 export const SENTRY_CRON_MONITOR_SLUG = "api-minute-cron";
+/**
+ * api Worker 的 cron 每隔几分钟给上面那条监控报一次心跳。放在这里是因为 Worker 的 crontab
+ * 与站点卡片上的文案要读同一个值，改它两边一起变。
+ */
+export const CRON_HEARTBEAT_EVERY_MINUTES = 5;

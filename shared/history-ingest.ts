@@ -6,7 +6,7 @@
  * 收下这封上报之后把整批交给 `db.batch`，失败只记日志，不能让已收下的上报重发。
  *
  * 训练、每日圆环、限额快照按自然键 upsert：同一封重试两次、或者两封乱序到达，留下的都是
- * 收到时刻最晚的那份，不产生重复行。服务器小时汇总是累加，只靠最后观测时刻挡重放，
+ * 收到时刻最晚的那份，不产生重复行。服务器小时汇总是累加，靠观测时刻只进不退挡重放，
  * 口径见 `serverHourStatements`。
  */
 
@@ -134,21 +134,20 @@ const UPSERT_SERVER_HOUR = `INSERT INTO server_hours(host, hour_at, samples, cpu
     memory_total_bytes = excluded.memory_total_bytes,
     rx_bytes_per_sec_max = MAX(rx_bytes_per_sec_max, excluded.rx_bytes_per_sec_max),
     tx_bytes_per_sec_max = MAX(tx_bytes_per_sec_max, excluded.tx_bytes_per_sec_max),
-    traffic_cycle_start = CASE WHEN excluded.last_observed_at >= last_observed_at
-      THEN excluded.traffic_cycle_start ELSE traffic_cycle_start END,
-    traffic_rx_bytes = CASE WHEN excluded.last_observed_at >= last_observed_at
-      THEN excluded.traffic_rx_bytes ELSE traffic_rx_bytes END,
-    traffic_tx_bytes = CASE WHEN excluded.last_observed_at >= last_observed_at
-      THEN excluded.traffic_tx_bytes ELSE traffic_tx_bytes END,
-    uptime_seconds = CASE WHEN excluded.last_observed_at >= last_observed_at
-      THEN excluded.uptime_seconds ELSE uptime_seconds END,
-    last_observed_at = MAX(last_observed_at, excluded.last_observed_at)
-  WHERE excluded.last_observed_at <> server_hours.last_observed_at`;
+    traffic_cycle_start = excluded.traffic_cycle_start,
+    traffic_rx_bytes = excluded.traffic_rx_bytes,
+    traffic_tx_bytes = excluded.traffic_tx_bytes,
+    uptime_seconds = excluded.uptime_seconds,
+    last_observed_at = excluded.last_observed_at
+  WHERE excluded.last_observed_at > server_hours.last_observed_at`;
 
 /**
- * 按观测时刻所在的 UTC 整点累加。`WHERE` 只挡住与该小时 `last_observed_at` 相同的样本：
- * 上报器紧接着重试同一封时 `observedAt` 不变，第二次不再把样本数加一；中间夹了别的样本
- * 再重放（A→B→A）就挡不住，会把 A 再累加一次。
+ * 按观测时刻所在的 UTC 整点累加。`WHERE` 只放行观测时刻晚于该小时 `last_observed_at` 的样本：
+ * 上报器重试同一封、或别的样本夹在中间之后再重放（A→B→A），都不会把已累加的样本再加一次；
+ * 「末值」类的列（流量、运行时长）也因此总是取观测最晚的那份。
+ *
+ * 代价：乱序晚到的旧样本也被挡掉，因为它和重放分不开，分开就得逐条记账。上报器按分钟顺序推送，
+ * 丢一个样本会让在线分钟数少一，均值只根据已接受的样本计算。
  */
 export function serverHourStatements(db: HistoryDb, status: ServerStatus): HistoryStatement[] {
   const hourAt = Math.floor(status.observedAt / HOUR_MS) * HOUR_MS;

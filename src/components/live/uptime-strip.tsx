@@ -1,10 +1,15 @@
 "use client";
 
+import { CRON_HEARTBEAT_EVERY_MINUTES } from "@/lib/sentry";
 import type { HealthSeries, SentryUptime, UptimeDay } from "@/lib/sentry-status-types";
 import { cn } from "@/lib/utils";
 
 const day = new Intl.DateTimeFormat("en-US", { timeZone: "UTC", month: "short", day: "numeric" });
 const number = new Intl.NumberFormat("en-US");
+
+/** 1 分钟时写 every minute，不写 every 1 minutes */
+const every = (minutes: number) => (minutes === 1 ? "minute" : `${minutes} minutes`);
+const HEARTBEAT_EVERY = every(CRON_HEARTBEAT_EVERY_MINUTES);
 
 /**
  * 99.95% 这种要看到小数点后两位才有区别。截断不四舍五入：99.999% 不会写成 100%，
@@ -75,8 +80,8 @@ function HealthRow({ name, health, statusTitle, footTitle, unit, stale }: {
  * 站点卡片里的在线状态，状态页的写法，一个组件一块：
  * - lyjw.me：Sentry 定时 HEAD /api/version（间隔是数据里的 intervalSeconds）。那是构建期生成的
  *   静态路由，只能说明 Vercel 还在出页面
- * - API：api Worker cron 的 Sentry 心跳（节奏见 workers/api/src/cron-heartbeat.ts 的
- *   CRON_HEARTBEAT_EVERY_MINUTES）。每轮都要经过 Worker、Durable Object 和 KV，
+ * - API：api Worker cron 的 Sentry 心跳（节奏见 lib/sentry 的 CRON_HEARTBEAT_EVERY_MINUTES）。
+ *   每轮都要经过 Worker、Durable Object 和 KV，
  *   补上后端那一截；漏报、超时、报错都算失败
  * 数据来自 lib/sentry-status；两块都拿不到时整段不渲染，只缺一块就只画另一块。
  */
@@ -93,8 +98,8 @@ export function UptimeStrip({ site, api, siteStale = false, apiStale = false }: 
       )}
       {api && (
         <HealthRow name="API" health={api} unit="heartbeats" stale={apiStale}
-          statusTitle="Cron heartbeat of the api Worker every 5 minutes (Durable Objects and KV)"
-          footTitle="cron heartbeat every 5 minutes" />
+          statusTitle={`Cron heartbeat of the api Worker every ${HEARTBEAT_EVERY} (Durable Objects and KV)`}
+          footTitle={`cron heartbeat every ${HEARTBEAT_EVERY}`} />
       )}
     </div>
   );
