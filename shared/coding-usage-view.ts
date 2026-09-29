@@ -202,6 +202,35 @@ export function buildCodingUsageView(stored: StoredCodingUsage, updatedAt: numbe
   return { view, year };
 }
 
+/**
+ * 只有状态变了（采集时刻、`state`、`error`、`warning`；日子与会话数没动）：在存着的视图上换掉这个来源
+ * 这几格的状态，不重扫日行。参与合计的来源只由「有哪些来源」定，状态改不了它，所以 `superseded` /
+ * `conflict` 照旧。视图里找不到对应的那一格（视图和账本对不上）返回 null，调用方整份重算。
+ */
+export function applyCodingUsageStatus(
+  view: CodingUsagePayload,
+  source: CodingUsageSource,
+  ledgers: Readonly<Record<string, Omit<StoredCodingUsageAgent, "days">>>,
+): CodingUsagePayload | null {
+  const pending = new Set(Object.keys(ledgers));
+  const agents = view.agents.map((agent) => {
+    const ledger = ledgers[agent.id];
+    if (!ledger || !agent.status.some((row) => row.source === source)) return agent;
+    pending.delete(agent.id);
+    return {
+      ...agent,
+      status: agent.status.map((row): CodingUsageSourceStatus => row.source !== source ? row : {
+        source,
+        state: row.state === "superseded" || row.state === "conflict" ? row.state : ledger.state,
+        collectedAt: ledger.collectedAt,
+        error: ledger.error,
+        warning: ledger.warning,
+      }),
+    };
+  });
+  return pending.size ? null : { ...view, agents };
+}
+
 function codingTotals(totals: DayTotals, byDate: Map<string, DayTotals>, sessionCounts: number[]): CodingUsageTotals {
   return {
     inputTokens: totals.inputTokens,

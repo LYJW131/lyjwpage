@@ -3,6 +3,7 @@ import test from "node:test";
 
 import type { CodingUsageDay } from "@shared/coding-usage";
 import {
+  applyCodingUsageStatus,
   buildCodingNowAgents,
   buildCodingUsageView,
   CODING_YEAR_KEEP_DAYS,
@@ -173,4 +174,24 @@ test("此刻：各来源的最近事件按 agent 并起来、时刻降序；从�
     { id: "cursor", activity: [{ source: "agents", lastActivityAt: NOW - 1_000, model: "composer-2" }] },
   ]);
   assert.deepEqual(buildCodingNowAgents({ mac: null }), []);
+});
+
+test("只换状态：在存着的视图上改那几格，结果和整份重算一样；superseded 照旧，对不上就返回 null", () => {
+  const before: StoredCodingUsage = {
+    mac: {
+      claude: ledger("claude", [day("2026-09-28", 100, [["claude-opus-5", 100]])], { sessionCount: 2 }),
+      cursor: ledger("cursor", [day("2026-09-28", 5, [["composer-2", 5]])]),
+    },
+    agents: { cursor: ledger("cursor", [day("2026-09-28", 40, [["composer-2", 40]])]) },
+  };
+  const { view } = build(before);
+  const failed = { ...before.mac!.claude!, state: "error" as const, collectedAt: NOW - 30_000, error: "ccusage timed out" };
+  const cursorLater = { ...before.mac!.cursor!, collectedAt: NOW - 10_000 };
+  const patched = applyCodingUsageStatus(view, "mac", { claude: failed, cursor: cursorLater });
+  const rebuilt = build({ ...before, mac: { claude: failed, cursor: cursorLater } }).view;
+  assert.deepEqual(patched, rebuilt);
+  const cursorMac = patched?.agents.find((agent) => agent.id === "cursor")?.status.find((row) => row.source === "mac");
+  assert.equal(cursorMac?.state, "superseded", "the account source still wins");
+  assert.equal(cursorMac?.collectedAt, NOW - 10_000);
+  assert.equal(applyCodingUsageStatus(view, "agents-otlp", { claude: failed }), null, "no such row: the caller rebuilds");
 });
