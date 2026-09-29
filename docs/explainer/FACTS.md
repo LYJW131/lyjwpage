@@ -294,10 +294,14 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 | agents（限额） | 有人正看：5 分钟 | 只开在后台：10 分钟；没人：60 分钟 | `SITE_URL/count`，超时 2.5 秒 |
 | 服务器（对照） | 60 秒 | 60 秒 | 不问 |
 
+第 07 章用到的部分按 main 4cf46c4 逐条回代码复核过。 <!-- allow: 核对基线戳 -->
+
 - PlayStation 大约每 `reporters/playstation-reporter/src/cadence.ts#PROBE_INTERVAL_MS` 发一次发现包，只在该打的时候打 PSN。`HTTP/1.1 200` 是醒着，`620` 是休息，超时或别的回复先记一笔，连续 `reporters/playstation-reporter/src/cadence.ts#OFF_STREAK_TO_REST` 次才离开醒着。醒着和没醒对调立刻打一轮，休息和关机来回切不额外打。退避（`reporters/playstation-reporter/src/state.ts#backoffMs`）没到时这些都不放行。
-- agents 的时间取自 config.ts:62-64。闲档期间每 5 分钟醒来重查一次人数，60 分钟 ÷ 5 = 12 次小睡。
-- 服务器上报器固定每分钟推，不问人数：闲时每分钟问一次人数本身就不比直接推省（config.ts:65-69 的注释说「问两个 Worker 的 /count」，那是 online-counter 退役前的说法，2880 这个数已过时，片中不用）。夜里只有它的心形还在跳。
-- agents 的人数查询失败就当 0，所以只会变慢，不会变快。PlayStation 不问这个数。
+  - `AWAKE_TICK_INTERVAL_MS` 是醒着那一档的间隔，不是两轮之间的下限：对调那一轮不等它（`reporters/playstation-reporter/src/cadence.ts#shouldRunTick`）。门只在每次探测时判，醒着时要等到过线之后的那一探，实际约每分钟一轮。
+  - 下游的窗口都锚在闲档：站点判 PS 上报器断没断流用 `src/lib/freshness.ts#PLAYSTATION_STALE_MS`（闲档三轮多一点，只有浏览器判），Pulse 玩那条道一段最多撑 `shared/pulse-timeline.ts#GAMING_HOLD_MS`（盖过闲档再留投递抖动）。主机醒着时只会更快，判活的下限由闲档决定。第 08 章不画这两个窗口。
+- agents 的三档在 `reporters/agents-reporter/src/config.ts` 的 `cadence`。每跑完一轮才按当时的人数定下一次等多久；等的时候每 5 分钟醒来重查一次，人数多了立刻提前跑，人数少了不延后已定的那一次（`reporters/agents-reporter/src/cadence.ts#waitForNextRound`）。闲档 60 分钟 ÷ 5 = 12 次小睡。
+- 服务器上报器固定每分钟推，不问人数：闲时每分钟问一次人数本身就不比直接推省（`reporters/server-reporter/src/config.ts` 的 `intervalMs` 注释）。夜里只有它的心形还在跳。
+- agents 的人数查询失败就当 0，所以只会变慢，不会变快（`reporters/agents-reporter/src/cadence.ts#readAudience`）。PlayStation 不问这个数。
 
 ## 8 站点自检
 
@@ -321,13 +325,10 @@ Sentry 的结果由 **collector** 的 `sentry-status` 任务每 5 分钟用只�
 - `next.config.ts`：cacheComponents 那段注释还说「首屏那八份数据」，提到的 `lib/home-snapshot` 已不存在。
 - `src/lib/home-layout.ts:6-8`：还说「整页只有一个 'use cache' 条目」。
 - `src/lib/status-views.ts:97`：说 pulse「按分钟轮询」，实际是 5 分钟。
-- `src/lib/freshness.ts`：PLAYSTATION_STALE_MS 的注释还提到端点读 `'use cache'` 快照。
 - `workers/api/README.md:24`：说可滞后层端点「不过屏障」，实际所有公开读取都先等 `publicBarrier()`。
-- `workers/api/src/cron-heartbeat.ts:5`：还提到 Apple / PageSpeed 抖动，这两项已搬到 collector。
 - `reporters/agents-reporter/README.md:180`：还让人设 `ONLINE_COUNTER_URL`，与第 228 行矛盾。
 - `workers/ingress/README.md`：说「报文坏了也先回 503」，实际不是 JSON 直接回 400。
 - iPhone README：`KNOWN_MODULES` 的路径写成 `workers/api/src/phone-telemetry.ts`，实际在 `shared/ingest/phone.ts:27`。
-- `reporters/server-reporter/src/config.ts:65-69`：注释说「问两个 Worker 的 /count」，online-counter 已退役。
 - `workers/online-counter`、`workers/ingest`、`workers/playstation-reporter`：三个目录只剩未跟踪的 `node_modules`。<!-- allow: 快照里点名的已退役目录，不在仓库 -->
 - `workers/api/wrangler.toml:68`：注释说 D1「这里只增不删」，实际活动桶会按区间删掉重写（见 §3 D1 那节）。（34eb555 复核时发现）
 - `shared/ingest/prepare.ts` 文件头、`workers/ingress/README.md`、`docs/reporter-endpoints.md`：还说采集 Worker 自己组 PlayStation 信封、也过 prepare；PlayStation 已由 n100 容器直接 POST 到上报入口，采集 Worker 不碰 PSN。
