@@ -7,6 +7,7 @@ import { useVersionStatus } from "@/hooks/use-app-version";
 import {
   autoReloadDecision,
   parseAutoReloadLedger,
+  rebaseAutoReloadLedger,
   recordAutoReload,
   settleAutoReloadLedger,
   EMPTY_AUTO_RELOAD_LEDGER,
@@ -68,13 +69,16 @@ export function useStaleAutoReload(trigger: AutoReloadTrigger): void {
       window.clearTimeout(timer);
       const stored = readLedger();
       const now = Date.now();
+      // 系统时钟被拨回过时，冷却的起点落在「未来」：拉回现在并落盘（rebaseAutoReloadLedger 的说明）
+      const ledger = rebaseAutoReloadLedger(stored.ledger, now);
+      if (stored.usable && ledger !== stored.ledger) writeLedger(ledger);
       const decision = autoReloadDecision({
         status,
         latestCommit,
         trigger,
         hidden: document.visibilityState === "hidden",
         playerBusy,
-        ledger: stored.usable ? stored.ledger : null,
+        ledger: stored.usable ? ledger : null,
         now,
       });
       // 冷却里：到点再判一次（那时版本可能又变了，也可能人已经手动刷过）
@@ -83,7 +87,7 @@ export function useStaleAutoReload(trigger: AutoReloadTrigger): void {
         return;
       }
       // 账必须先落下再刷新，否则刷回来还是旧页面时会无限循环
-      if (decision.action === "reload" && writeLedger(recordAutoReload(stored.ledger, latestCommit, now))) {
+      if (decision.action === "reload" && writeLedger(recordAutoReload(ledger, latestCommit, now))) {
         window.location.reload();
       }
     };

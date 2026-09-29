@@ -7,10 +7,12 @@ import {
   EMPTY_AUTO_RELOAD_LEDGER,
   autoReloadDecision,
   parseAutoReloadLedger,
+  rebaseAutoReloadLedger,
   recordAutoReload,
   resolveVersionStatus,
   settleAutoReloadLedger,
   type AutoReloadInput,
+  type AutoReloadLedger,
 } from "./app-version.ts";
 
 test("两边 sha 一致就是最新", () => {
@@ -104,9 +106,36 @@ test("自动刷新：冷却里来了新版本先等，等满了再刷；版本�
   assert.equal(reloads, 0);
 });
 
-test("自动刷新：系统时钟被往回拨过，冷却最多等一个冷却期", () => {
-  const ledger = { shas: [A], at: NOW + 3_600_000 };
-  assert.deepEqual(autoReloadDecision({ ...base, ledger }), { action: "wait", ms: AUTO_RELOAD_COOLDOWN_MS });
+test("自动刷新：系统时钟被往回拨过，冷却从现在重新数一个冷却期，落盘后等满就刷", () => {
+  // 上一次刷新记的是 NOW + 1 小时，之后时钟被拨回到 NOW
+  const skewed: AutoReloadLedger = { shas: [A], at: NOW + 3_600_000 };
+  // 不落盘（hook 修之前的做法）：每次读出来的都是那个未来的时刻，判定永远只会说再等一个冷却期
+  let now = NOW;
+  for (let round = 0; round < 5; round += 1) {
+    const stuck = autoReloadDecision({ ...base, latestCommit: B, ledger: skewed, now });
+    assert.deepEqual(stuck, { action: "wait", ms: AUTO_RELOAD_COOLDOWN_MS });
+    now += AUTO_RELOAD_COOLDOWN_MS;
+  }
+  // 按 hook 的做法：判定前先拉回并落盘，之后时间照常往前走
+  let stored = skewed;
+  const attempt = (at: number) => {
+    stored = rebaseAutoReloadLedger(stored, at);
+    return autoReloadDecision({ ...base, latestCommit: B, ledger: stored, now: at });
+  };
+  assert.deepEqual(attempt(NOW), { action: "wait", ms: AUTO_RELOAD_COOLDOWN_MS });
+  assert.equal(stored.at, NOW, "冷却的起点被拉回到现在");
+  assert.deepEqual(attempt(NOW + 60_000), { action: "wait", ms: AUTO_RELOAD_COOLDOWN_MS - 60_000 });
+  assert.equal(attempt(NOW + AUTO_RELOAD_COOLDOWN_MS).action, "reload");
+});
+
+test("账本：只有冷却起点晚于现在才拉回，其余原样返回同一个对象", () => {
+  const ledger = recordAutoReload(EMPTY_AUTO_RELOAD_LEDGER, A, NOW);
+  assert.equal(rebaseAutoReloadLedger(ledger, NOW), ledger);
+  assert.equal(rebaseAutoReloadLedger(ledger, NOW + 1), ledger);
+  assert.equal(rebaseAutoReloadLedger(EMPTY_AUTO_RELOAD_LEDGER, NOW), EMPTY_AUTO_RELOAD_LEDGER);
+  const rebased = rebaseAutoReloadLedger(ledger, NOW - 1);
+  assert.deepEqual(rebased, { shas: [A], at: NOW - 1 });
+  assert.equal(rebaseAutoReloadLedger(rebased, NOW - 1), rebased, "拉回之后再判不再变，调用方不会反复写存储");
 });
 
 test("自动刷新：播放器在放或在同步就不刷，音乐比一张旧卡贵", () => {
