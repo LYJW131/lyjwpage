@@ -38,7 +38,7 @@ if [[ -z "$DEVICE" ]]; then
   exit 1
 fi
 
-# 图标是画出来的，不是存在库里的，每次重画一遍
+# 图标以 Tools/generate-icon.swift 为源，每次重画一遍（AppIcon.png 是它的产物）
 swift Tools/generate-icon.swift
 xcodegen generate
 
