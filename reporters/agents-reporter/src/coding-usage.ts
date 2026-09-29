@@ -25,7 +25,6 @@ export const MAX_WINDOW_ROWS = 64;
  */
 export const OVERFLOW_MODEL = "unknown";
 
-/** 时刻所在桶的起点 */
 export function bucketStart(ms: number): number {
   return Math.floor(ms / CODING_BUCKET_MS) * CODING_BUCKET_MS;
 }

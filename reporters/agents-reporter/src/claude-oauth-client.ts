@@ -37,7 +37,6 @@ async function resolveBinary(bin: string): Promise<string> {
       await access(candidate);
       return candidate;
     } catch {
-      // 继续找 PATH 中的下一项。
     }
   }
   throw new Error("找不到 Claude Code 安装程序，请检查 CLAUDE_BIN");
