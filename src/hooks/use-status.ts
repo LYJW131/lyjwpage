@@ -79,7 +79,8 @@ export type StatusState<T> = {
 export type StatusOptions<T> = {
   /**
    * 服务端渲染时取好的信封，当 SWR 的 fallbackData —— 首屏 HTML 自带数据，
-   * 没有骨架期。由 app/page.tsx 直接调 lib 里的取数函数拿到，见那边。
+   * 没有骨架期。由 app/page.tsx 经 lib/first-screen 的 firstScreen 拿到：那是一次
+   * HTTP 读，读的是 Worker 上这张卡自己的端点，不在站点进程里直接跑取数函数。
    */
   fallback: StatusResponse<T>;
   /**
@@ -132,8 +133,8 @@ export type RefreshInterval<T> = number | ((data: T | undefined) => number);
  * - 可滞后层：不传间隔，`useStatus(path, options)`。下一次取排在登记表
  *   （lib/status-views 的 `cadenceMs`）算出的下一次预期写入之后，改节奏只改登记表。
  * - 实时层：`useStatus(path, interval, options)`，间隔由调用方按当前状态给（有播放中 /
- *   正在充电的东西就调快）。推送连着且该视图 `pushCovers` 时退成 5 分钟兜底，断开时
- *   用这里给的间隔。
+ *   正在充电的东西就调快）。推送连着且该视图 `pushCovers` 时退成兜底轮询
+ *   （`PUSH_SAFETY_NET_MS`），断开时用这里给的间隔。
  */
 export function useStatus<T>(path: string, options: StatusOptions<T>): StatusState<T>;
 export function useStatus<T>(path: string, refreshInterval: RefreshInterval<T>, options: StatusOptions<T>): StatusState<T>;
@@ -313,8 +314,8 @@ export function useStatus<T>(
 /**
  * payload 自己说了「多久之后就不成立」时，把一次重取排在那一刻。
  *
- * 有些结论会光靠时间流逝失效 —— 当前只有播放来源的暂停宽限期（见
- * getNowListening 的 expiresInMs）。那个到期时刻不对应任何一次上报，
+ * 有些结论会光靠时间流逝失效 —— 比如播放来源的暂停宽限期（见
+ * pickNowListening 的 expiresInMs）。那个到期时刻不对应任何一次上报，
  * 服务端不会为它推送，也不该为它挂定时器：serverless 上响应一返回实例就冻结，
  * 挂了也不执行。
  *
@@ -330,7 +331,7 @@ export function useExpiryRefetch(path: string, expiresInMs: number | null | unde
     if (expiresInMs == null) return;
     const timer = setTimeout(
       () => void mutate(path),
-      // 多等 250ms：到期时刻在服务端是绝对的，早问一下只会拿回同一份还没过期的
+      // 多等一小会儿：到期时刻在服务端是绝对的，早问一下只会拿回同一份还没过期的
       Math.max(250, expiresInMs + 250),
     );
     return () => clearTimeout(timer);

@@ -86,7 +86,7 @@ export type WebPlayer = {
   closeDialog: () => void;
   /** 弹窗里的 Sign in：authorize；正在试听的话重装成完整曲目接着放 */
   signIn: () => void;
-  /** 队列没装时装队列开播，装了就是续播。未授权时放的是 30 秒试听 */
+  /** 队列没装时装队列开播，装了就是续播。未授权时放的是试听片段 */
   play: () => void;
   pause: () => void;
   toggle: () => void;
@@ -114,7 +114,6 @@ export type WebPlayer = {
   syncWaiting: boolean;
 };
 
-/** 错误转换为文案 */
 function describe(error: unknown): string {
   if (error instanceof Error) return error.message;
   return typeof error === "string" ? error : "Unknown error";
@@ -1057,7 +1056,7 @@ export function useWebPlayerState(): WebPlayer {
         setAuthorized(inst.isAuthorized);
         setStatus("ready");
         /*
-         * 登录前已经在试听：队列里装的是 30 秒预览，授权不会把它们换成整首。
+         * 登录前已经在试听：队列里装的是试听预览，授权不会把它们换成整首。
          * 停掉、按同一张专辑重装、再从头放，这次出来的才是完整曲目。
          */
         const activeCur = activeItemRef.current;
@@ -1078,7 +1077,7 @@ export function useWebPlayerState(): WebPlayer {
   }, [getOrReuseMusicKit, markActive, prepare, runExclusive]);
 
   /**
-   * 播放键：队列没装时装队列开播，装了就是续播。未授权时放的是 30 秒试听。
+   * 播放键：队列没装时装队列开播，装了就是续播。未授权时放的是试听片段。
    * 若查看的专辑与当前正在播放的不同，停旧播、装新队并开播。
    */
   const play = useCallback(() => {

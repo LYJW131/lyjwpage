@@ -15,7 +15,6 @@ function siteDayNow(): string {
   return zonedDay(Date.now() - ROLLOVER_GRACE_MS, site.timezone);
 }
 
-/** 排一个定时器到下一次换日（加上宽限），到点通知 React 重读，再排下一次 */
 function subscribe(onChange: () => void): () => void {
   let timer: ReturnType<typeof setTimeout>;
   const arm = () => {
