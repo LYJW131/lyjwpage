@@ -4,12 +4,12 @@
  * 写入 src/lib/ghostty-frames.json（页头前台应用是 Ghostty 时由
  * src/components/live/ghostty-mascot.tsx 播放）。
  *
- * 官网把 235 帧直接内联在首页的 RSC 载荷里（terminalData）：每帧 41 行 × 100 列
- * 终端字符，蓝色光环用 <span class="b"> 标出，每帧 31ms，rAF 循环播放。
- * 24px 的图标里看不清单个字符，这里只保留轮廓和明暗：
- *   1. 每 2 列 × 1 行并成一个单元（JetBrains Mono 的字符格约 6×13px，两列拼起来接近正方）；
- *   2. 按字形墨量把单元量化成本体 3 档 / 光环 3 档 / 空白，共 7 种符号；
- *   3. 裁掉四周空白（列 12–89、行 1–39 → 39×39），每 3 帧取 1 帧（93ms），逐行游程编码。
+ * 官网把全部帧直接内联在首页的 RSC 载荷里（terminalData）：每帧是一屏终端字符，
+ * 蓝色光环用 <span class="b"> 标出，帧间隔是 SOURCE_FRAME_MS，rAF 循环播放。
+ * 页头图标很小，看不清单个字符，这里只保留轮廓和明暗：
+ *   1. 每 COLUMNS_PER_CELL 列 × 1 行并成一个单元（CELL_ASPECT 补偿字符格的宽高比）；
+ *   2. 按字形墨量（INK）把单元量化成本体和光环各几档，加空白（LEVELS）；
+ *   3. 按 CROP 裁掉四周空白，每 STRIDE 帧取 1 帧，逐行游程编码。
  *
  * 用法：node scripts/ghostty-frames.mjs            # 抓线上首页
  *      node scripts/ghostty-frames.mjs --from a.html   # 用已下载的首页 HTML

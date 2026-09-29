@@ -4,19 +4,19 @@
 
 四段标识（Claude Code / Ghostty / Cursor / Antigravity）都从本地站点的页头真实截下来再拼成一条，
 四段都会动、都逐帧截图：
-  - Claude Code 是像素吉祥物的取物动画：装上 Playwright 的假时钟逐 25ms 推进，精灵 SVG 内容一变就
-    截一帧，抓到完整一轮 33 个姿势；帧时长不用实测值，直接取 src/lib/mascot-fetch.json 里每一步的
+  - Claude Code 是像素吉祥物的取物动画：装上 Playwright 的假时钟逐 STEP_MS 推进，精灵 SVG 内容一变就
+    截一帧，抓到完整一轮姿势；帧时长不用实测值，直接取 src/lib/mascot-fetch.json 里每一步的
     原始毫秒数。
   - Ghostty 是官网那只 ASCII 幽灵：同样在假时钟下按 SVG 的 data-frame 拨到第 0 帧起逐帧截满一轮，
     帧时长取 src/lib/ghostty-frames.json 的 frameMs。
   - Cursor 和 Antigravity 演示应用名下面那行窗口标题：各按 TITLE_SCRIPTS 的剧本让标题出现、变化、
     消失。这两段不用假时钟——标题的淡入淡出由 motion 交给 Web Animations API，那条时间线假时钟
     拨不动（钟拨快 5 秒，透明度动画就真的晚 5 秒才开始）。改成真实时间：注入新标题后借 SWR 的
-    revalidateOnFocus 让页面回源一次（注入不发推送事件），数据一到就连续截图 0.7 秒，画面一变
+    revalidateOnFocus 让页面回源一次（注入不发推送事件），数据一到就连续截图 SETTLE_S，画面一变
     留一帧，帧时刻按真实经过的毫秒记；两次变化之间等多久都不进时间线。
-GIF 一轮的长度等于 Ghostty 一轮（79 × 93ms ≈ 7.3 秒）：Claude Code 先跑完约 3.1 秒的取物，然后停在
-首姿势等 Ghostty 转完（站点上每轮结束停 5 秒，这里停到轮尾约 4.3 秒）；标题剧本首尾都没有标题，
-循环回到起点才接得上。四条时间线上任何一段换帧就出一张 GIF 帧，其余段保持上一帧。
+GIF 一轮的长度等于 Ghostty 一轮（CYCLE_MS = 帧数 × 帧时长）：Claude Code 先跑完取物（RUN_DURATIONS
+之和），然后停在首姿势等 Ghostty 转完；标题剧本首尾都没有标题，循环回到起点才接得上。
+四条时间线上任何一段换帧就出一张 GIF 帧，其余段保持上一帧。
 
 前置：
   1. pnpm dev:worker 与 pnpm dev:local 已在跑（workers/api/.dev.vars 里 DEV_OVERRIDES=true）

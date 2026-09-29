@@ -2,7 +2,7 @@
 /**
  * 改完 docs/architecture.json 后一条命令出齐所有产物：
  *   1. archify deliver：showcase 校验并渲染 docs/architecture.html
- *   2. 用查看器自带的 PNG 导出（svg-rasterization）重出 docs/architecture-{light,dark}.png，缩到 2x（2780×1780）
+ *   2. 用查看器自带的 PNG 导出（svg-rasterization）重出 docs/architecture-{light,dark}.png，缩到 viewBox 的 PREVIEW_SCALE 倍
  *   3. archify visual-check：四个桌面视口无溢出，随后清掉它写在 docs/ 里的截图与对照表
  *   4. 汇总成 docs/architecture.receipt.json
  *
@@ -65,7 +65,6 @@ function printDiagnostics(report) {
   }
 }
 
-// 1. 校验 / 交付
 const specArgs = ["architecture", SPEC, "--quality", "showcase", "--repo-root", ROOT];
 if (validateOnly) {
   const { report } = archify("validate", ...specArgs);
@@ -88,13 +87,11 @@ if (!Array.isArray(viewBox) || viewBox.length !== 2) fail("architecture.json 缺
 const previewSize = viewBox.map((edge) => Math.round(edge * PREVIEW_SCALE));
 console.log(`HTML 已渲染：${validation.checksPassed}/${validation.checkCount} 项检查通过，引用 ${evidence.references} 处源码。`);
 
-// 2. 明暗 PNG：驱动无头 Chrome 点查看器的「导出 PNG」，再缩到 2x
 const { findChrome } = await import(pathToFileURL(path.join(ARCHIFY_DIR, "bin/visual-check.mjs")).href);
 const chrome = findChrome();
 if (!chrome) fail("找不到 Chrome，无法导出 PNG（可设 ARCHIFY_CHROME 指定路径）。");
 await exportPreviews(chrome);
 
-// 3. 视口检查
 let viewports;
 if (skipVisual) {
   viewports = readJson(RECEIPT)?.viewports ?? [];
@@ -109,7 +106,6 @@ if (skipVisual) {
   console.log(`视口检查通过：${summary}。`);
 }
 
-// 4. receipt
 const previous = readJson(RECEIPT) ?? {};
 const previews = Object.fromEntries(
   THEMES.map((theme) => {
