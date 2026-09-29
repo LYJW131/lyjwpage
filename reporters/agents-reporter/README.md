@@ -2,21 +2,24 @@
 
 把各 coding agent 的**账号限额**和 **Cursor 的云端用量**推给 lyjwpage 的小代理，跑在日本的 misaka-jp 上。
 
-限额（套餐 + 用量窗口）从前和 token 用量一起由 MacTelemetryHub 从本机 TokenTracker
-取来、塞进 `/api/ingest/mac` 的 `vibeCodingUsage`。Mac 合盖 / 睡眠 / 离线时限额就冻住。
-限额是厂商账号侧的事实，跟哪台 Mac 无关，所以拆到这个容器里 24 小时跑。
+限额（套餐 + 用量窗口）是厂商账号侧的事实，跟哪台 Mac 无关，所以由这个容器 24 小时跑，
+Mac 合盖 / 睡眠 / 离线不影响它。
 
-Claude、Codex、Grok、Antigravity 的用量仍由 Mac 从本机日志上报。Cursor 的用量历史在云端，Mac 合盖时云端线程还在跑，所以这份历史跟限额一起由这个容器拉，用的是同一份 `accessToken`。
+Claude、Codex、Grok、Antigravity 的 token 用量由 Mac 从本机日志上报（`/api/ingest/mac` 的 `codingUsage`）。
+Cursor 的用量历史在云端，Mac 合盖时云端线程还在跑，所以这份历史跟限额一起由这个容器拉，用的是同一份
+`accessToken`，作为账号级来源 `agents` 上报。
 
-站点入口是 `POST /api/ingest/agents`（按数据是谁产生的命名，不是上报程序的名字）。
-每轮都 POST，内容没变也发 —— 那一封就是心跳，站点靠它刷新 `limitsAt`。
+站点入口是 `POST /api/ingest/agents`（按数据是谁产生的命名，不是上报程序的名字）。信封顶层是
+`{ collectedAt, agents?, codingUsage?, codingActivity?, codingTokenBuckets?, reporter }`：`agents` 是各家限额行，
+后三个是 Cursor 的 coding 数据（下面 cursor 一节）。每轮都 POST，内容没变也发 —— 那一封就是心跳，
+站点靠它刷新 `limitsAt`。
 
 ## 它做什么
 
 启动立即采集一轮，之后按页面人数选档：可见 5 分钟、仅后台开着 10 分钟、无人打开 60 分钟。每轮：
 
 1. 需要的话刷新 Claude 的 OAuth
-2. 五家自己打各家限额接口（参考了 TokenTracker 的读取逻辑，没有依赖它）
+2. 五家自己打各家限额接口（参考了 TokenTracker 的读取逻辑，没有依赖它）；同时并行拉 Cursor 的用量事件，产出 `codingUsage` / `codingActivity` / `codingTokenBuckets`
 3. 按 MacTelemetryHub `AgentLimitsCollector` 的规则翻译成站点请求体
 4. POST 到站点
 
@@ -111,24 +114,44 @@ Codex / Grok 的 token 由上报器自己刷新，写回各自凭据目录里的
 `tertiary` 其他厂商模型、`quaternary` Grok Bot 周额度。Grok Bot 只有网页接口
 `https://cursor.com/api/dashboard/get-sand-usage-status`，凭据是下面那份会话 cookie；它拿不到只少这一扇。
 用量历史用同一份 JWT 拼 `WorkosCursorSessionToken`，分页打
-`https://cursor.com/api/dashboard/get-filtered-usage-events`，按 `Asia/Shanghai` 收成日桶。平时只拉上海时间
-昨天 0 点以来的事件、整天替换这两天；每 6 小时（或换账号、账本还没全量过时）整段历史重拉一次核对，
-那一次的问题和费用完整性记进账本，增量轮次沿用。
+`https://cursor.com/api/dashboard/get-filtered-usage-events`，按 `Asia/Shanghai` 收成日行。平时只拉上海时间
+昨天 0 点以来的事件、整天替换这两天；每 `FULL_REFRESH_MS`（或换账号、账本还没全量过时）整段历史重拉一次核对，
+那一次的问题记进账本，增量轮次沿用。
 账本在数据卷的 `/data/cursor-usage.json`（只有聚合，没有 token）。每条请求按公开 API 价估一次费用：价目跟
-Mac 上的 ccusage 一样在线取 `https://models.dev/api.json`（只认官方厂商，6 小时内复用），取不到沿用上一份，
-一份都没有时用编译进镜像的快照；Composer、Auto、Bugbot 这类没有公开价的记 0 并把当天标成不完整。拉失败不挡限额心跳，这一轮不带
-`cursorUsage`，站点留着上一份。上报器不刷新这份 token，401 / 403 时限额那一行带
+Mac 上的 ccusage 一样在线取 `https://models.dev/api.json`（只认官方厂商，`ONLINE_TTL_MS` 内复用），取不到沿用上一份，
+一份都没有时用编译进镜像的快照；Composer、Auto、Bugbot 这类没有公开价的记 0，并把当天的 `costComplete` 标成 false
+（费用完不完整按天记，不牵连别的日子）。上报器不刷新这份 token，401 / 403 时限额那一行带
 `Cursor session expired — run \`agent login\` to re-authenticate.`。
 
-Cursor 那盏「在用」的灯（`src/cursor-now.ts`）取最新一条用量事件的时刻和模型，变了才带 `cursorNow`。
-IDE、CLI、云端 agent、Bugbot / Grok Bot 都会出现在这里，不管在哪台机器上跑。闲着时不单独查，限额那一轮
-拉用量时顺手看；看到 5 分钟内有事件才起快循环：有新事件就每分钟查一次最近 10 分钟，没有就 1 → 2 → 4 分钟
-拉长，超过 5 分钟没新事件或没人开着页面就停，交回限额那一轮。快循环那几封只带 `cursorNow`，不带限额。
+**Cursor 发给站点的三份事实**（类型在 `src/coding-usage.ts`，与站点的 `shared/coding-usage.ts` 同构）都是 Cursor
+自己观测到的原始数据：合计、排名、「今天」不在这里算，站点合并各来源之后一处算。时刻一律 epoch 毫秒。
 
-站点读出口才把这份日桶并进 Mac 的合计和年度图。旧 Mac 的合计里已经有 Cursor，锚定日按字段做差，
-之后的日子整段补上；新 Mac 在用量信封里带 `omittedSources: ["cursor"]`，整份日桶另加。
-所以先更新 Worker 和这个容器，再装新的 Mac 上报器。顺序反了的话，新 Mac 不再把 Cursor 算进合计，
-而旧 Worker 还不认识这份日桶，Cursor 会从总数里消失，直到 Worker 更新。
+- `codingUsage`：`agents: [{ id: "cursor", state, collectedAt, error, warning, sessionCount, days }]`。`days` 是账本
+  全部日子，整份替换站点里 Cursor 那份；当天没有事件也补一行全 0（有行全 0 = 确认那天没用，没有行才是未知）。
+  日行的 `reasoningTokens` 恒为 0（Cursor 事件不分 reasoning），`sessionCount` 为 null（没有会话概念）。拉到了但有缺口
+  （部分请求没有 token 数、云端历史变短）仍是 `ok`，缺口写进 `warning`。拉失败（登录过期、分页对不上、接口报错）不挡
+  限额心跳，这一轮只带 `state: "error"` 和原因，`collectedAt` 是账本里上一次成功的时刻，没有 `days`，站点只更新状态、
+  不动历史；活动和桶这一轮都不带（没采到，不能当成「确认没用」）。没登录 Cursor 就三份都不带。
+- `codingActivity`：Cursor 最近一条用量事件的时刻和模型。IDE、CLI、云端 agent、Bugbot / Grok Bot 都会出现在这里，
+  不管在哪台机器上跑。
+- `codingTokenBuckets`：同一批事件按事件时刻落 `CODING_BUCKET_MS` 的桶，每桶按模型分行，`eventCount` 是事件数
+  （不按 token 计费的请求也算一条，token 记 0）。范围内以这封为准，缺席的桶 = 0，范围外站点不动。范围起点向下对齐到
+  桶边界，首桶因此是完整的。限额那一轮的范围是 `[max(since, bucketStart(now - BUCKET_SPAN_MS)), now)`，事件是这一轮拉
+  历史时顺手落的桶。
+
+在用时的快循环（`src/cursor-now.ts`）每次取最近 `RECENT_MS` 内的全部事件（分页与对账同拉历史那条路，通常一页），
+同时产出 `codingActivity` 和范围 `[now - RECENT_MS 向下对齐到桶边界, now)` 的 `codingTokenBuckets`，Pulse 才看得到
+Cursor 的此刻速率。闲着时不单独查，限额那一轮拉用量时顺手看；看到 `ACTIVE_WINDOW_MS` 内有事件才起快循环：有新事件就每
+`CURSOR_NOW_FAST_INTERVAL_MS` 查一次，没有就翻倍拉长、封顶 `CURSOR_NOW_MAX_INTERVAL_MS`，超过 `ACTIVE_WINDOW_MS`
+没新事件或没人开着页面就停，交回限额那一轮。快循环那几封只带 `codingActivity` 和 `codingTokenBuckets`，不带限额；
+每次查完都发，内容没变也发：活动的 `collectedAt` 前进就是采集器还活着，桶范围里没有事件也是一句有用的话（那一段确认没用）。
+
+快循环宽松解析：一条缺 token 分列的怪事件只丢它自己，桶报告里 Cursor 标 `partial`，活动和别的事件照出。拉历史那条路
+仍然整页严格：坏一条，整份账本不收，这一轮按拉失败处理。
+
+站点对坏的 coding 数据只丢它自己、整封仍回 202，原因在回执的 `data.rejected`；上报器把它写进日志（`site-rejected`）。
+这个容器依赖站点入口认识 `codingUsage` / `codingActivity` / `codingTokenBuckets`：入口不认识它们时，快循环那封只带
+活动与桶的小信封会被当成没有可收的数据拒收，所以发布时入口先于容器。
 
 **antigravity。** 登录态在 `/data/.gemini/antigravity-cli/antigravity-oauth-token`。上报器打
 `daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary`（Antigravity 实际使用的后端端点）。到期前 5 分钟或接口回 401 时向
@@ -145,7 +168,8 @@ Dockerfile 按 `linux_<arch>` 的清单自己下载、校验 sha512。装不上�
 
 ## DRY_RUN
 
-不 POST，把即将发给站点的请求体打到 stdout，对照现在 `/api/status/vibecoding` 里的 limits。
+不 POST，把即将发给站点的请求体打到 stdout：限额行对照 `/api/status/limits`，`codingUsage` / `codingActivity` /
+`codingTokenBuckets` 对照站点的 `shared/coding-usage.ts`。
 
 用一份假的各家 HTTP 响应（不碰本机凭据）：
 
@@ -156,7 +180,10 @@ DRY_RUN=1 LIMITS_FIXTURE=./fixture.json HOME=/tmp/empty \
 
 `LIMITS_FIXTURE` 的形状是 `{ "<id>": <该家原始 HTTP 响应体> }`：claude 是 `/api/oauth/usage`，
 codex 是 `wham/usage`，grok 是 `/v1/billing`，antigravity 是 `retrieveUserQuotaSummary`，
-cursor 是 `{ period, plan, hardLimit, sand }`：三份 DashboardService 响应加 Grok Bot 那份（可省）。有它就不出网、不读凭据。
+cursor 是 `{ period, plan, hardLimit, sand }`：三份 DashboardService 响应加 Grok Bot 那份（可省）。有它就不出网、不读凭据，
+所以这种模式下也不带 Cursor 的 coding 数据（那三份要真凭据去拉用量事件）。没有凭据时看 `src/*.test.mts` 里喂录制页的用例：
+`coding-contract.test.mts` 把上报器各条路径产出的载荷，交给站点真正的校验（`shared/coding-usage.ts` 与 `shared/ingest/agents.ts`）
+过一遍，要在整个仓库里跑，不进镜像。
 
 ## 在 misaka-jp 上跑
 

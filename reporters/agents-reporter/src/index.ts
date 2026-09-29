@@ -1,8 +1,8 @@
 import { config } from "./config.js";
 import { waitForNextRound } from "./cadence.js";
 import { refreshClaudeIfDue } from "./claude-oauth.js";
-import { markCursorNowSent, observeCursorActivity, runCursorNowLoop } from "./cursor-now.js";
-import { collectCursorUsage } from "./cursor-usage.js";
+import { observeCursorActivity, runCursorNowLoop } from "./cursor-now.js";
+import { collectCursorUsage, cursorUsageFailure } from "./cursor-usage.js";
 import { collectAgents } from "./limits.js";
 import { failure, info, recovered } from "./log.js";
 import { push, type PushPayload } from "./site.js";
@@ -10,9 +10,10 @@ import { push, type PushPayload } from "./site.js";
 /**
  * 各 agent 账号限额 → lyjwpage `/api/ingest/agents`。
  *
- * 限额是厂商账号侧的事实，跟哪台 Mac 无关，所以从 Mac 上报器拆出来，
- * 在容器里 24 小时跑。Cursor 的用量历史也是账号侧的云端事实，用同一份
- * 登录态拉，跟限额一起 POST。其余来源的用量仍由 Mac 报。
+ * 限额是厂商账号侧的事实，跟哪台 Mac 无关，所以在容器里 24 小时跑。Cursor 的用量
+ * 历史也是账号侧的云端事实，用同一份登录态拉，跟限额一起 POST：日行账本
+ * （codingUsage）、最近活动（codingActivity）、5 分钟 token 桶（codingTokenBuckets）。
+ * 其余来源的用量由 Mac 报。
  *
  * 每轮都 POST，内容没变也发 —— 那一封就是心跳。
  * 五家自己打各家限额接口。Claude 401 时 refreshClaudeOauth 再试一次；
@@ -28,11 +29,34 @@ function sleep(ms: number) {
   });
 }
 
+type CursorFacts = Pick<PushPayload, "codingUsage" | "codingActivity" | "codingTokenBuckets">;
+
+/**
+ * Cursor 这一轮的三份事实。没登录 Cursor 什么都不带；拉失败只带一行 error 状态（站点不动历史），
+ * 不带活动和桶：那一段是「没采到」，不能当成「确认没用」。
+ */
+async function collectCursor(): Promise<CursorFacts> {
+  try {
+    const collected = await collectCursorUsage();
+    if (!collected) return {};
+    recovered("cursor-usage");
+    observeCursorActivity(collected.latestAt);
+    return {
+      codingUsage: { agents: [collected.usage] },
+      codingActivity: collected.activity,
+      codingTokenBuckets: collected.buckets,
+    };
+  } catch (error) {
+    failure("cursor-usage", error);
+    return { codingUsage: { agents: [await cursorUsageFailure(error)] } };
+  }
+}
+
 async function collectPayload(): Promise<PushPayload> {
   /**
    * Claude 刷新失败不能连累整轮：这一封是心跳，不发出去站点会把各家都判成陈旧。
    * 刷不到时 claude 那一行带着 limitsError 照发。
-   * Cursor 历史拉失败同样不能挡住限额心跳，这一轮就不带 cursorUsage。
+   * Cursor 历史拉失败同样不能挡住限额心跳，见 collectCursor。
    */
   const [agents, cursor] = await Promise.all([
     (async () => {
@@ -43,17 +67,12 @@ async function collectPayload(): Promise<PushPayload> {
       }
       return collectAgents();
     })(),
-    collectCursorUsage().catch((error: unknown) => {
-      failure("cursor-usage", error);
-      return null;
-    }),
+    collectCursor(),
   ]);
-  const cursorNow = observeCursorActivity(cursor?.latest ?? null);
   return {
     collectedAt: new Date().toISOString(),
     agents,
-    ...(cursor ? { cursorUsage: cursor.push } : {}),
-    ...(cursorNow ? { cursorNow } : {}),
+    ...cursor,
   };
 }
 
@@ -78,7 +97,6 @@ async function round(): Promise<void> {
     return;
   }
   await push(payload);
-  if (payload.cursorNow) markCursorNowSent(payload.cursorNow);
   recovered("collect");
   recovered("push");
 }

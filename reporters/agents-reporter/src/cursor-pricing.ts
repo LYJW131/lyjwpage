@@ -9,8 +9,7 @@ import { failure, recovered } from "./log.js";
  *
  * 快照是 ccusage 的 models.dev 数据（catalogVersion
  * `models.dev-6e5efcd056370b0853db07ce9b4e02391c8a2d55`），之后补了 grok-4-7、
- * muse-spark-1-3、kimi-k3。MacTelemetryHub 的 app 已经不自己算 Cursor
- * （includeCursor: false），它那份只剩诊断工具在用，这里不再跟它对齐。
+ * muse-spark-1-3、kimi-k3。Cursor 的费用只在这里估，MacTelemetryHub 不采 Cursor。
  *
  * 快照改编自 ccusage 的 models.dev 数据，MIT。
  * Copyright (c) 2025 ryoppippi / models.dev
@@ -37,23 +36,6 @@ function rates(
 ): Rates {
   return { input, output, cacheRead, cacheCreation };
 }
-
-/** Antigravity 占位符。账本里的模型名走这一步，和 Mac 的年度拆分对得上。 */
-const IDENTITY: Record<string, string> = {
-  m318: "gemini-3.8-flash-high",
-  m319: "gemini-3.8-flash-medium",
-  m320: "gemini-3.8-flash-low",
-  m322: "gemini-3.8-flash",
-  m298: "gemini-3.7-flash-high",
-  m299: "gemini-3.7-flash-medium",
-  m300: "gemini-3.7-flash-low",
-  m71: "gemini-3.6-flash-high",
-  m72: "gemini-3.6-flash-medium",
-  m73: "gemini-3.6-flash-low",
-  m264: "gemini-3.6-flash-high",
-  m265: "gemini-3.6-flash-medium",
-  m266: "gemini-3.6-flash-low",
-};
 
 const ALIASES: Record<string, string> = {
   "claude-3-5-sonnet": "claude-3-5-sonnet-v2",
@@ -248,20 +230,19 @@ const CATALOG: Record<string, Price> = {
   "o4-mini": price(rates(1.1, 4.4, 0.275, null)),
 };
 
+/** 站点契约里模型名最长这么多个字符，超了整份数据会被站点拒收 */
+const MAX_MODEL_NAME = 200;
+
+/**
+ * 账本、桶和活动里用的模型名：Cursor 事件里的名字原样，去掉首尾空白。
+ * 不做跨来源别名（站点按来源自己的模型 id 分组），别名只用在下面估价查表。
+ */
 export function modelName(raw: string): string {
-  const trimmed = raw.trim();
-  if (!trimmed) return trimmed;
-  const key = trimmed.toLowerCase();
-  const marker = key.includes("model_placeholder_")
-    ? key.slice(key.indexOf("model_placeholder_") + "model_placeholder_".length)
-    : key.includes("model-placeholder-")
-      ? key.slice(key.indexOf("model-placeholder-") + "model-placeholder-".length)
-      : key;
-  return IDENTITY[marker] ?? trimmed;
+  return raw.trim().slice(0, MAX_MODEL_NAME);
 }
 
 function canonicalKey(model: string): string {
-  let key = modelName(model).trim().toLowerCase();
+  let key = model.trim().toLowerCase();
   for (const prefix of ["anthropic/", "openai/", "google/", "x-ai/", "xai/", "deepseek/"]) {
     if (key.startsWith(prefix)) {
       key = key.slice(prefix.length);

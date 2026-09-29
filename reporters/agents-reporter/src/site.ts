@@ -1,7 +1,6 @@
-import type { CursorNow } from "./cursor-now.js";
-import type { CursorUsagePush } from "./cursor-usage.js";
+import type { CodingActivityReport, CodingTokenBucketReport, CodingUsageReport } from "./coding-usage.js";
 import { config } from "./config.js";
-import { failure } from "./log.js";
+import { failure, recovered } from "./log.js";
 import { createPushLedger } from "./push-ledger.js";
 
 const ledger = createPushLedger(config.pushLedgerPath, config.reporterCommit, (error) => failure("push-ledger", error));
@@ -24,12 +23,14 @@ export type AgentRow = {
 
 export type PushPayload = {
   collectedAt: string;
-  /** 限额那一轮必带；Cursor 活动那条小信封不带，站点就不碰限额镜像 */
+  /** 限额那一轮必带；Cursor 快循环那条小信封不带，站点就不碰限额镜像 */
   agents?: AgentRow[];
-  /** 这一轮 Cursor 云端历史拉成了才带。失败或没登录就省掉，站点留着上一份。 */
-  cursorUsage?: CursorUsagePush;
+  /** Cursor 的日行账本（整份历史）。没登录 Cursor 就省掉，拉失败时只带 error 状态，站点不动历史 */
+  codingUsage?: CodingUsageReport;
   /** Cursor 最近一条用量事件，见 cursor-now.ts */
-  cursorNow?: CursorNow;
+  codingActivity?: CodingActivityReport;
+  /** Cursor 的 5 分钟 token 桶：限额那一轮报滚动一天，快循环报最近一段 */
+  codingTokenBuckets?: CodingTokenBucketReport;
 };
 
 type SiteEnvelope<T> = { ok?: boolean; error?: string; data?: T };
@@ -55,6 +56,21 @@ async function readEnvelope<T>(response: Response): Promise<T | undefined> {
   return body.data;
 }
 
+/**
+ * 回执里被拒的 coding 数据。站点对坏的 coding 数据只丢它自己、整封仍回 202（`data.rejected`），
+ * 上报器不看回执就没人知道数据没进去。返回一行说明，没有被拒的为 null。
+ */
+export function rejectedNote(data: unknown): string | null {
+  const rejected = data && typeof data === "object" ? (data as { rejected?: unknown }).rejected : null;
+  if (!Array.isArray(rejected) || rejected.length === 0) return null;
+  return rejected
+    .map((entry) => {
+      const row = entry && typeof entry === "object" ? (entry as { module?: unknown; error?: unknown }) : {};
+      return `${String(row.module)}：${String(row.error)}`;
+    })
+    .join("；");
+}
+
 export async function push(payload: PushPayload): Promise<void> {
   const at = Date.now();
   const response = await fetch(config.site.ingestUrl, {
@@ -65,7 +81,10 @@ export async function push(payload: PushPayload): Promise<void> {
     body: JSON.stringify({ ...payload, reporter: await ledger.block(at) }),
     signal: AbortSignal.timeout(config.pushTimeoutMs),
   });
-  await readEnvelope(response);
+  const receipt = await readEnvelope(response);
   // 站点收下了才记账；往返从发出请求算到读完回执
   await ledger.succeeded(at, Date.now() - at);
+  const rejected = rejectedNote(receipt);
+  if (rejected) failure("site-rejected", new Error(`站点拒收了这封里的数据：${rejected}`));
+  else recovered("site-rejected");
 }
