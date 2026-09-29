@@ -55,12 +55,12 @@ export const config = {
    */
   webhookToken: process.env.WEBHOOK_TOKEN?.trim() ?? "",
 
-  /** 续播列表拉取节奏。它变得慢，60 秒足够，且只在有变化时才真的推 */
+  /** 续播列表拉取节奏。它变得慢，不用拉得太密，且只在有变化时才真的推 */
   resumeIntervalMs: ms("RESUME_INTERVAL_MS", 60_000),
   resumeLimit: Math.max(1, Math.min(24, Number(process.env.RESUME_LIMIT) || 8)),
 
   /**
-   * 会话轮询：在播时 2 秒一轮，空闲时基本不轮。
+   * 会话轮询：在播时按活跃档密集轮询，空闲时基本不轮。
    *
    * 开播由 Emby 的 webhook 叫醒，停止时停下，所以空闲那一档不是用来发现播放的，
    * 只是漏收 webhook 时的兜底 —— 定成分钟级，别在没人看片时空转。

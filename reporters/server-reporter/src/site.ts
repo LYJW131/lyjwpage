@@ -31,7 +31,7 @@ export async function push(payload: Record<string, unknown>): Promise<void> {
       "User-Agent": "lyjwpage-server-reporter/2.0",
       ...authHeaders(),
     },
-    // 每一封带上自己的推送账本：镜像提交 + 过去 12 小时推成功几封（含这一封）与往返中位数
+    // 每一封带上自己的推送账本：镜像提交 + 窗口内推成功几封（含这一封）与往返中位数
     body: JSON.stringify({ ...payload, reporter: await ledger.block(at) }),
     signal: AbortSignal.timeout(config.pushTimeoutMs),
   });

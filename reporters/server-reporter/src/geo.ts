@@ -1,6 +1,6 @@
 /**
- * 公网 IP 的 Location / ISP / ASN。先问 ip.sb，失败退 ip-api；结果按 IP 缓存 6 小时，
- * 地址没变就不打上游。查的是网卡上的地址，不是「访问某个 what-is-my-ip 看到的出口」。
+ * 公网 IP 的 Location / ISP / ASN。先问 ip.sb，失败退 ip-api；结果按 IP 缓存
+ * （GEO_TTL_MS），地址没变就不打上游。查的是网卡上的地址，不是「访问某个 what-is-my-ip 看到的出口」。
  */
 import { config } from "./config.js";
 import { failure, recovered } from "./log.js";
