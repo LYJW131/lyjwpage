@@ -24,13 +24,13 @@
 
 | 来源 | 程序 / 在哪跑 | 入口 · token | 报什么 |
 |---|---|---|---|
-| Mac | Mac Telemetry Hub，菜单栏 App | `/api/ingest/mac` · `lyjwpage-mac` | 前台应用、窗口标题、Apple Music、充电设备、编码用量、时区、Apple Music user token |
+| Mac | Mac Telemetry Hub，菜单栏 App | `/api/ingest/mac` · `lyjwpage-mac` | 前台应用、窗口标题、Apple Music、充电设备、编码用量（本机的日行、最近一次用量事件、5 分钟 token 桶）、时区、Apple Music user token |
 | iPhone | iPhone Telemetry Hub，HealthKit 唤醒（圆环申请 `.hourly`，训练申请 `.immediate`，但会被系统钳到每小时；ActivityModule.swift:122 / WorkoutsModule.swift:45，iPhone README:121） | `/api/ingest/iphone` · `lyjwpage-iphone` | 活动圆环、训练、五分钟步数桶 |
 | Home Assistant | 家里 | `/api/ingest/homepod` 和 `/api/ingest/playstation` · `lyjwpage-home-assistant` | HomePod 正在播放；PS5 电源 `{version:1, power}` |
 | Emby | emby-reporter，NAS 上的容器 | `/api/ingest/emby` · `lyjwpage-emby` | 在看什么；海报先传 R2 |
 | 服务器 | server-reporter，东京 misaka-jp 容器 | `/api/ingest/server` · `lyjwpage-server` | 服务器状态，固定每 60 秒一次（config.ts:71） |
-| 编码账号 | agents-reporter，misaka-jp 容器 | `/api/ingest/agents` · `lyjwpage-agents` | 各家编码工具限额、Cursor 用量与此刻 |
-| Claude Code 云端 | OTLP JSON（可 gzip） | `/api/ingest/agents/otlp` · `lyjwpage-claude-cloud` | 云端用量 |
+| 编码账号 | agents-reporter，misaka-jp 容器 | `/api/ingest/agents` · `lyjwpage-agents` | 各家编码工具限额；Cursor 账号的用量日行、最近一次用量事件、5 分钟 token 桶 |
+| Claude Code 云端 | OTLP JSON（可 gzip） | `/api/ingest/agents/otlp` · `lyjwpage-claude-cloud` | 云端 token 与费用的累计值；状态核心做差后落成和另两个来源同形的日行、桶、最近事件，三处用量在状态核心合并（shared/coding-usage-sources.ts） |
 | collector Worker | Cloudflare，cron 每分钟一响，11 个任务各按自己的节奏 | 不走 ingress | 见下文 |
 
 PlayStation 上报器 Worker 已删除，并进 collector 的 `playstation` 任务。

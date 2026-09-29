@@ -61,7 +61,7 @@ API 的共享状态代码变化必须触发发布。
 `import type` 这里的命令类型（`eslint.config.mjs` 按规则挡住值导入），所以 `api` 排除这个目录，改校验不重新发布带
 Durable Object 的 `api`、不断开页面的 WebSocket。命令的形状变了（新字段、新模块）要同时改 `workers/api/src/stores/` 的
 commit 那一半，`api` 照样会因为自己的目录变化而发布；上线顺序是 `api` 先、`ingress` 后，契约只能加不能改，见 `shared/state-core.ts`。
-上报入口还打包 `src/lib` 的收敛工具（`json`、`vibecoding-parse`、`trophies` 等）和 `shared/` 的契约（`state-core.ts`、`lag.ts`、
+上报入口还打包 `src/lib` 的收敛工具（`json`、`agent-limits-parse`、`trophies` 等）和 `shared/` 的契约（`state-core.ts`、`lag.ts`、
 `credentials.ts`、`history-ingest.ts`），这些变化要触发它的发布。
 采集 Worker 直接打包 `src/lib` 的取数模块和 `shared/` 的契约（`state-core.ts`、`lag.ts`、`collector.ts`），
 这些变化同样要触发它的发布；D1 表结构归 `workers/api/migrations`，新表先在 api 那边 apply 再发布它。

@@ -8,7 +8,6 @@ import type {
   PlaystationPlayingPayload,
   PlaystationPresencePayload,
   TrophiesSummaryPayload,
-  VibeCodingNowPayload,
   PowerBankPayload,
 } from "@/lib/types";
 
@@ -54,14 +53,8 @@ export type LiveEvent =
   /** 充电宝：插拔、充放电切换、热控翻转、整数电量跳格时推一条 */
   | { type: "powerbank"; payload: PowerBankPayload }
   /**
-   * 此刻在不在写代码变了。只带那三个字段，客户端并进手上已有的整份卡片。
-   * 用量、限额、曲线不走这里 —— 那是十几分钟才动一次的累计量，推它们等于
-   * 把推送当轮询用。
-   */
-  | { type: "vibecoding-now"; payload: VibeCodingNowPayload }
-  /**
    * coding agent 此刻：某个来源报来的最近用量事件变了。带整份 `/api/status/coding/now`，
-   * 直接写进那个 SWR 键，不再是要并进别的视图的补丁。用量、排名、年度不走这里。
+   * 直接写进那个 SWR 键。用量、排名、年度不走这里：那些是累计量，推它们等于把推送当轮询用。
    */
   | { type: "coding-now"; payload: CodingNowPayload }
   /**
@@ -73,10 +66,9 @@ export type LiveEvent =
    *
    * 唯一的发出点是 workers/api/src/stores/telemetry 的 commitPreparedTelemetryEnvelope（存活只在那里翻转），
    * 走 fanout 的 `notify` 那半 —— 它不带数据，浏览器收到就回源，所以必须排在写
-   * 后面，理由见下面 fanout 的规则 2。浏览器那侧重取的是 PRESENCE_PATHS 那三份
-   * （desktop / listening-now / charger）：时区不看存活；vibe coding 那张刻意不订阅，
-   * token 用量是累计的历史事实，Mac 掉线它不会变得不可信，只是不再增长，
-   * 那张卡的陈旧判定另有自己的口径。
+   * 后面，理由见下面 fanout 的规则 2。浏览器那侧重取哪几份见 hooks/use-live-events 的
+   * PRESENCE_PATHS：coding 只重取此刻那份（活动灯里 mac 那一路靠它在优雅离开时立刻熄），
+   * 用量是累计的历史事实，Mac 掉线不会让它变假。
    */
   | { type: "presence"; payload: null }
   /**
@@ -137,7 +129,5 @@ export {
   STATUS_TAGS,
   TIMEZONE_TAG,
   TROPHIES_TAG,
-  VIBECODING_TAG,
-  VIBECODING_YEAR_TAG,
   WATCHING_TAG,
 } from "@/lib/status-tags";

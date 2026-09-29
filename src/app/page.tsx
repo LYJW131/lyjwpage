@@ -32,6 +32,9 @@ import {
   AGENT_STATUS_PATH,
   CHARGER_PATH,
   CLOUDFLARE_WORKERS_PATH,
+  CODING_NOW_PATH,
+  CODING_PATH,
+  CODING_YEAR_PATH,
   GITHUB_CHART_PATH,
   GITHUB_REPO_PATH,
   LIMITS_PATH,
@@ -47,8 +50,6 @@ import {
   SERVER_PATH,
   TROPHIES_PATH,
   VERCEL_DEPLOYMENTS_PATH,
-  VIBECODING_PATH,
-  VIBECODING_YEAR_PATH,
   WATCHING_PATH,
 } from "@/lib/paths";
 import { STATUS_VIEWS } from "@/lib/status-views";
@@ -81,13 +82,13 @@ const SLOT = {
  * 卡片改了读什么，这里跟着改；漏了只是那张卡重试时没清那个键，不会崩。
  */
 const READS = {
-  contact: [GITHUB_CHART_PATH, VIBECODING_YEAR_PATH],
+  contact: [GITHUB_CHART_PATH, CODING_YEAR_PATH],
   nowWatching: [NOW_WATCHING_PATH],
   media: [CHARGER_PATH, POWERBANK_PATH, LISTENING_PATH, NOW_LISTENING_PATH],
   activity: [ACTIVITY_PATH, STATUS_VIEWS.workouts.path],
   server: [SERVER_PATH],
   agentStatus: [AGENT_STATUS_PATH],
-  vibeCoding: [VIBECODING_PATH, LIMITS_PATH],
+  vibeCoding: [CODING_PATH, CODING_NOW_PATH, LIMITS_PATH],
   playstation: [NOW_PLAYING_PATH, PLAYING_PATH, TROPHIES_PATH],
   pulse: [PULSE_PATH],
   siteStatus: [GITHUB_REPO_PATH, VERCEL_DEPLOYMENTS_PATH, CLOUDFLARE_WORKERS_PATH, SENTRY_PATH, SERVER_PATH, REPORTERS_PATH],
@@ -109,10 +110,11 @@ export default async function Home() {
     powerBank,
     listening,
     nowListening,
-    vibeCoding,
+    coding,
+    codingNow,
     limits,
     agentStatus,
-    vibeCodingYear,
+    codingYear,
     watching,
     nowWatching,
     playing,
@@ -137,10 +139,11 @@ export default async function Home() {
     firstScreen("powerBank"),
     firstScreen("listening"),
     firstScreen("nowListening"),
-    firstScreen("vibeCoding"),
+    firstScreen("coding"),
+    firstScreen("codingNow"),
     firstScreen("limits"),
     firstScreen("agentStatus"),
-    firstScreen("vibeCodingYear"),
+    firstScreen("codingYear"),
     firstScreen("watching"),
     firstScreen("nowWatching"),
     firstScreen("playing"),
@@ -205,7 +208,7 @@ export default async function Home() {
                   <ContactCard
                     avatarDataUri={avatarDataUri}
                     chartFallback={githubChart}
-                    yearFallback={vibeCodingYear}
+                    yearFallback={codingYear}
                   />
                 </CardBoundary>
                 <CardBoundary label="Timezone">
@@ -249,7 +252,12 @@ export default async function Home() {
                   <AgentStatusCard fallback={agentStatus} className={SLOT.agentStatus} />
                 </CardBoundary>
                 <CardBoundary label="Vibe Coding" className={SLOT.vibeCoding} paths={READS.vibeCoding}>
-                  <VibeCodingCard fallback={vibeCoding} limitsFallback={limits} className={SLOT.vibeCoding} />
+                  <VibeCodingCard
+                    fallback={coding}
+                    nowFallback={codingNow}
+                    limitsFallback={limits}
+                    className={SLOT.vibeCoding}
+                  />
                 </CardBoundary>
                 <CardBoundary label="PlayStation" className={SLOT.playstation} paths={READS.playstation}>
                   <PlaystationBlock

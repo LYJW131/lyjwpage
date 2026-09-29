@@ -10,7 +10,7 @@
  */
 
 import type { ActivityReport } from "@shared/activity";
-import type { ParsedAgentLimits } from "@/lib/vibecoding-parse";
+import type { ParsedAgentLimits } from "@/lib/agent-limits-parse";
 import type { ServerStatus, WorkoutsPayload } from "@/lib/types";
 
 /** D1 的最小子集；测试用 node:sqlite 包一层同形的替身 */

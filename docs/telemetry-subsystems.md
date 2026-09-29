@@ -14,7 +14,7 @@
 4. [歌词与动态封面 — amp-api](#4-歌词与动态封面--amp-api)
 5. [Web 播放器与「一起听」 — MusicKit](#5-web-播放器与一起听--musickit)
 6. [充电设备 — Anker Prime 160W 与 A110G](#6-充电设备--anker-prime-160w-与-a110g)
-7. [Vibe Coding — 日志采集与年度热力图](#7-vibe-coding--日志采集与年度热力图)
+7. [AI Coding — 多来源 token 用量与年度热力图](#7-ai-coding--多来源-token-用量与年度热力图)
 8. [AI Coding Agent 账号限额](#8-ai-coding-agent-账号限额)
 9. [本机活动与前台应用 — Mac Telemetry Hub](#9-本机活动与前台应用--mac-telemetry-hub)
 10. [HomePod mini 播放实况 — Home Assistant](#10-homepod-mini-播放实况--home-assistant)
@@ -51,9 +51,9 @@
 - **资源利用**：客户端连接走 `ctx.acceptWebSocket()`，心跳由运行时 `setWebSocketAutoResponse` 自动回复。无事件时实例完全休眠，支持挂载大量并发而不耗费运行时间。
 - **事件划分**：
   - **状态翻面即时推**：前台应用切换、切歌、插拔充电头、上报器上下线、列表变动等事件通过 WebSocket 广播。
-  - **连续滚动指标不推送**：功率曲线采样、token 用量滚动等保持 30 秒轮询，避免推送沦为无谓的频繁轮询。
+  - **连续滚动指标不推送**：功率曲线采样、token 用量这类累计读数由卡片按自己的间隔轮询，避免推送沦为无谓的频繁轮询。
   - **事件负载设计**：
-    - `desktop`、`listening-now`、`watching-now`、`playing-now`、`charger`、`listening`、`watching`、`playing`：**一律携带最新数据**，浏览器收到后直接更新 SWR 缓存，避免回源请求打满并发。
+    - 带数据的事件（登记表 `src/lib/status-views.ts` 里带 `event` 的视图）：**一律携带那条端点的整份数据**（充电头不带历史点，由浏览器接上已有曲线），浏览器收到后直接更新 SWR 缓存，避免回源请求打满并发。
     - `presence`：**仅发送失效通知**（payload 为 `null`），浏览器根据本地保存的 `lastSeenAt` 和 `heartbeatWindowMs` 自行判定是否真正超时断流。
 - **5 分钟兜底轮询**：推送覆盖整份的实时视图（登记表 `pushCovers`）在 WebSocket 连着时只保留 5 分钟轮询兜底；断开时回到卡片自己的快间隔，重连后立即回源一次补上漏掉的推送。带心跳判活（`lastSeenAt`）或滚动读数的卡不退，照常轮询。
 
@@ -162,30 +162,50 @@ Anker 硬件 (BLE) ──> a2687-telemetry ──> Mac Telemetry Hub ──> POS
 
 ---
 
-## 7. Vibe Coding — 日志采集与年度热力图
+## 7. AI Coding — 多来源 token 用量与年度热力图
 
-### 数据源与模块拆解
-Mac Telemetry Hub 采集三大模块并通过 `/api/ingest/mac` 上报：
-1. `vibeCodingNow`（60 秒）：当前是否处于活跃编码状态、正在使用的模型、最近活动时间戳。Codex、Claude 由每分钟的增量日志扫描判断；其余来源要跑 `ccusage session`（每次重读全部历史），最多 5 分钟一次。
-2. `vibeCodingUsage`（10 分钟）：各来源（Claude Code、Codex、Grok 等）今日 Token 用量、缓存命中率、会话数及 API 等值费用。Cursor 的云端历史不在这封里。
-3. `vibeCodingYear`（1 小时）：过去 53 周（371 天）日总量及每日 Top 5 模型分布，不含 Cursor。Cursor 的日子由读出口并上容器上报的日桶。
+### 来源与事实
+coding agent 的 token 用量有三个来源。来源只报自己观测到的原始事实，合计、排名、「今天」、年度格子都在状态核心一处算；事实类型与校验在 `shared/coding-usage.ts`，来源登记与合并规则在 `shared/coding-usage-sources.ts`。
+
+| 来源 | 入口里的位置 | 看得到什么 |
+| --- | --- | --- |
+| `mac` | `/api/ingest/mac` 的 `modules.codingUsage` / `codingActivity` / `codingTokenBuckets` | 这台 Mac 本地日志里的会话 |
+| `agents` | `/api/ingest/agents` 顶层同名三键 | 账号侧的完整历史（Cursor） |
+| `agents-otlp` | `/api/ingest/agents/otlp`（Claude Code 内置遥测） | 云端环境里的会话；状态核心把累计值做差后整理成同形的三种事实 |
+
+三种事实：`(来源, agent, 站点日)` 的日行（token 分列、API 等值费用、当天按模型拆分）、`(来源, agent, 模型)` 的 5 分钟 token 桶、`(来源, agent)` 的最近一条用量事件。坏的 coding 模块只丢它自己，回执写 `rejected`（见 [上报入口](../workers/ingress/README.md)）。各来源的采集节奏见各自上报器的 README。
+
+### 合并规则与出口
+- 同一 agent 有账号级来源时只算它，其余来源的同 agent 账本标 `superseded`、不相加；只有设备级 / 环境级来源时相加（claude 的本机与云端，前提是云端遥测变量只配在云端）。规则在 `shared/coding-usage-sources.ts#resolveCodingUsageSources`。
+- 日行真的变了才重算视图（`shared/coding-usage-view.ts#buildCodingUsageView`）：合计、全部历史的前三模型、各 agent 最近一个有行的站点日、各来源状态，以及年度视图每天的合计与前几名模型。存储键与归档见 [coding agent 的 token 用量](../workers/api/README.md#coding-agent-的-token-用量)。
+- 三条读出口都在实时层（`src/lib/coding-usage.ts`）：
+  - `/api/status/coding`：视图原样给，不推送，卡片自己轮询。
+  - `/api/status/coding/now`：各 agent 各来源最近一条事件，带 Mac 的存活；变了推 `coding-now`，带整份。
+  - `/api/status/coding/year`：按站点今天切出 53 周（`src/lib/coding-year.ts#encodeCodingYear`），任一来源有日行就出图；不推送，年度图自己长间隔轮询、切回标签页时再取。
+
+### 卡片怎么判
+- 展示名、品牌图标、占哪种行（全量面板、紧凑行、只进合计与年度不单独占行）只在站点登记表 `src/lib/coding-agents.ts#CODING_AGENTS`；来源只报 agent id，登记表里没有的 id 用 id 当名字、占一行紧凑行。
+- 「今天」：视图给的是各 agent 最近一个有行的站点日，浏览器按自己的站点日判是不是今天，不是今天就写明是哪一天。来源在当天有采集就有行（没用是一行 0），所以最近一天停在昨天表示今天还没报到。
+- 活动灯：任一来源的最近事件在 `src/lib/coding-agents.ts#CODING_ACTIVE_WINDOW_MS` 内就亮；Mac 亲口离线时只作废来自 `mac` 的时刻（`liveCodingActivity`），账号与云端的灯不受 Mac 存活影响。
+- 来源状态：参与合计的来源这一轮采集失败（`error`）时，读数旁标 Partial（有读数）或 Unavailable（没有读数），悬停写出每个来源的状况（含被账号级来源覆盖的 `superseded`）；没有行的地方一律画「—」，不当成 0。
+- 限额另走可滞后层（见下一节），按 id 贴到同一行上。
 
 ### 数据契约与分桶规范
-- **日期分桶**：全量历史数据严格按 `Asia/Shanghai` 时区划分自然日。
-- **`activeDays` 判定**：所有来源中存在非零 Token 用量日期的**并集**，而非各来源天数简单相加。
-- **费用估算**：按公开 API 定价折算等值费用，仅作为 token 量级参考，不代表实际账单。
-- **年度图全量刷新**：`/api/status/vibecoding/year` 每次请求返回 371 天完整窗口，客户端收到后全量覆盖，方便云端对旧日数据的修正确保落盘。
+- **日期分桶**：日行按 `Asia/Shanghai` 站点日划分；时刻一律 epoch 毫秒。
+- **`activeDays` 判定**：全部历史、全部 agent 里当天合计大于 0 的站点日**并集**，而非各来源天数相加。
+- **费用估算**：来源侧按公开 API 定价折算（云端用 Claude Code 自报的费用），站点只相加；`costComplete` 按天判，来源采集失败只体现在来源状态里。仅作为 token 量级参考，不代表实际账单。
+- **模型名**：按来源给的字符串原样分组，不做跨来源别名合并；占位名（`shared/coding-models.ts#HIDDEN_CODING_MODELS`）不进排名、不当模型名展示。
 
 ### 本地测试与校验脚本
-- 执行 `node scripts/verify-api-worker.mjs`：启动内存隔离的 SQLite Worker，验证协议校验、并发合并与持久化。
-- 执行 `node scripts/verify-coding-usage.mjs`：需指定本机测试实例与专用测试前缀（脚本自带防误操作检查，拒绝生产环境写入）。
+- 执行 `node scripts/verify-api-worker.mjs`：启动内存隔离的 SQLite Worker，验证协议校验、并发合并与持久化，其中 `scripts/verify-coding-usage.mjs` 往三个入口推事实、断言三条出口。
+- 浏览器里看此刻没发生的状态：`workers/api/dev-fixtures/` 下的 `coding-*.json` 夹具，注入方法见 [本地开发](../workers/api/README.md#本地开发)。
 
 ---
 
 ## 8. AI Coding Agent 账号限额
 
 ### 容器化上报架构
-- **独立容器运行**：`reporters/agents-reporter` 运行在独立 Linux 容器中，每轮通过 `POST /api/ingest/agents` 统一上报限额。同一封里的 `cursorUsage` 是 Cursor 云端用量日桶；Mac 不在线时站点用它继续更新 Cursor 的合计和年度图。同一封还带 `cursorNow`（最近一条用量事件）；Cursor 在用时容器改为每分钟查一次、变了单独发，停用后间隔逐步拉长再交回限额那一轮。卡片上 Cursor 的活动灯按它在 5 分钟内现算。Cursor 历史平时只增量拉最近两天，每 6 小时整段重拉核对。
+- **独立容器运行**：`reporters/agents-reporter` 运行在独立 Linux 容器中，每轮通过 `POST /api/ingest/agents` 统一上报限额。同一封可以另带 Cursor 账号的三种 coding 事实（`codingUsage` / `codingActivity` / `codingTokenBuckets`，见上一节），Mac 不在线时 Cursor 的用量与活动灯照样更新。
 - **凭据完全隔离**：容器内部独立维护各家 CLI（Claude Code、Codex 等）登录 Session，严禁复制宿主机凭据，防止 refresh token 竞态失效。
 - **心跳与超时**：
   - 即使数据无变化，每轮上报依然执行（作为存活心跳）。
@@ -296,5 +316,7 @@ payload: >-
 - Coding 的三色带（前台 coding 应用 / agent / 两者同时）读时从原始观测
   （`pulse:coding-observations` 与 Cursor 账号观测）现算。Jev 只给 Coding 打十五分钟强度与模式，
   只在悬停里出现；别的道不再有模型分。
+- Tokens 道画三个来源的 5 分钟 token 桶相加后的速率（不含 cache read），不带模型名和来源；
+  取桶规则见 `src/lib/pulse.ts#tokensLaneView`。
 - 充电存实测瓦数，身体活动存 HealthKit 五分钟桶的原始计数与已完成训练的区间。
 - 这些事实由状态核心按水位每分钟归档到 D1 的事实表（迁移 `0007_history_pulse.sql`）。

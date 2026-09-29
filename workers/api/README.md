@@ -40,7 +40,7 @@
 [上报入口](../ingress/README.md)，这里没有上报路由。下面几节讲的是各来源收下之后在状态核心里怎么存、怎么推。
 
 `/api/ingest/agents` 的主体仍是各家限额行，按 id 合并后写进可滞后层 KV（`limits:v1`），由 `GET /api/status/limits` 读出，
-浏览器按 id 贴回用量行；限额的来源集合变了才失效首屏标签 `limits`。同一封可以另带三份 coding 数据，见下一节。
+浏览器按 id 贴到 coding 卡片的 agent 行上（`src/lib/coding-agents.ts` 的 `codingAgentRows`）；限额的来源集合变了才失效首屏标签 `limits`。同一封可以另带三份 coding 数据，见下一节。
 
 ### coding agent 的 token 用量
 
@@ -66,7 +66,7 @@
   （行、总量、常用模型的有无，`src/lib/home-layout.ts` 的 `codingLayoutKey`）不同时打。
 - **活动**：`coding:activity:<来源>` 整份替换（采集时刻比存着的旧就不收）。拼好整份 `/api/status/coding/now`
   推 `coding-now`：多出一个 (agent, 来源)、换了模型、时刻往前走了 45 秒以上才推，保活不推。灯由浏览器按
-  「任一来源最近事件在 5 分钟内」现算；Mac 亲口离线时只作废 `mac` 那条。
+  「任一来源最近事件在 `CODING_ACTIVE_WINDOW_MS` 内」现算；Mac 亲口离线时只作废 `mac` 那条（`src/lib/coding-agents.ts`）。
 - **5 分钟桶**：`pulse:token-buckets:<来源>`，TTL 2 天，只给 Pulse 的 Tokens 道、Jev 与归档，不推送。Mac / agents 按报告
   范围替换（`[from, to)` 内以新报告为准，缺席的桶是 0，范围外不动，报告范围并进覆盖）；跨着报告起点的那一桶只数了
   一截，按 (agent, 模型) 取大的那行，不盖掉旧报告里数全了的桶。合并规则在 `shared/coding-buckets.ts`。
@@ -75,7 +75,14 @@
 
 读出口在 `src/lib/coding-usage.ts`：`/api/status/coding` 原样给视图，`/api/status/coding/now` 与推送用同一个
 `buildCodingNowAgents` 拼、外加 Mac 存活，`/api/status/coding/year` 按站点今天切出 53 周（371 天）并编码成
-`days/models/mix`。三条都归实时层，只有 `coding/now` 推送。
+`days/models/mix`（`src/lib/coding-year.ts` 的 `encodeCodingYear`）。三条都归实时层，只有 `coding/now` 推送。
+展示名、图标、哪几个 agent 画全量面板由站点登记表 `src/lib/coding-agents.ts` 定，来源只报 id。
+
+本地预览用夹具（`dev-fixtures/coding-*.json`）：`/api/status/coding` 有 `coding-multi-source`（三个来源都在）、
+`coding-mac-only`、`coding-no-mac`（只有 Cursor 账号与云端）、`coding-claude-cloud-today`（Mac 一整天没报、Claude 今天只有云端）、
+`coding-source-error`（来源采集失败），`coding-unavailable` 是还没有任何用量时 `/coding` 与 `/coding/year` 的信封；
+`/api/status/coding/now` 有 `coding-now-active`、`coding-now-mac-offline`（Mac 亲口离线：mac 那一路作废、云端与账号照亮）、
+`coding-now-idle`；`/api/status/coding/year` 用 `coding-year`。日期写成 `$today` 令牌（见[本地开发](#本地开发)）。
 
 入口对坏的 coding 模块只丢它自己、回执写 `rejected`（见[上报入口](../ingress/README.md)），不连累存活和别的模块。
 
@@ -420,6 +427,7 @@ D1 归档、Jev 打分本来也被隔离开关关着。
 `DEV_OVERRIDES=true` 时另开 `PUT` / `DELETE /api/dev/override/<端点路径>` 和 `GET /api/dev/overrides`，往本地 SQLite 里注入某条端点的信封，
 优先于上游和本地；夹具放 `dev-fixtures/`，用根目录的 `pnpm dev:override` 推。`index.ts` 只在这个变量开着时放行非 GET。
 夹具里的时间戳写成 `"$now"` / `"$now-90000"`（毫秒偏移），推送脚本在发出前换成当下 —— 注入绕过路由，没人替它续心跳，写死的 `pushedAt` 几分钟就会被判成过期。
+按站点日判的日期串写成 `"$today"` / `"$today-1"`（按日历加减天数，站点时区），「最近一天是不是今天」这类夹具靠它。
 
 ## 验证
 

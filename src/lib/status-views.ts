@@ -11,8 +11,7 @@
  * `src/lib/status-loaders.ts`，两张表由 `satisfies Record<StatusViewKey, …>` 强制对齐。
  *
  * 命名规则（见 AGENTS.md「API 命名与跨端契约」）：`X` 是列表 / 历史，`X/now` 是此刻；
- * 事件名跟随路径、`/` 换成 `-`。`vibecoding-now` 是唯一的例外：它只推「此刻」那几个
- * 字段、并进 `/api/status/vibecoding` 整份里，没有独立端点。
+ * 事件名跟随路径、`/` 换成 `-`。
  */
 
 /**
@@ -63,7 +62,6 @@ export const STATUS_VIEWS = {
   powerBank: { path: "/api/status/powerbank", layer: "realtime", tag: "powerbank", event: "powerbank" },
   listening: { path: "/api/status/listening", layer: "realtime", tag: "listening", event: "listening", pushCovers: true },
   nowListening: { path: "/api/status/listening/now", layer: "realtime", tag: "listening-now", event: "listening-now" },
-  vibeCoding: { path: "/api/status/vibecoding", layer: "realtime", tag: "vibecoding", event: "vibecoding-now" },
   /**
    * coding agent token 用量：多来源合并后的合计、排名、各 agent 最近一个有用量的日子
    * （CodingUsagePayload）。不推送，卡片自己轮询；首屏标签只在骨架变了才失效。
@@ -71,12 +69,10 @@ export const STATUS_VIEWS = {
   coding: { path: "/api/status/coding", layer: "realtime", tag: "coding" },
   /** 此刻：各 agent 各来源最近一条用量事件，带 Mac 的存活（CodingNowPayload）；推整份 */
   codingNow: { path: "/api/status/coding/now", layer: "realtime", tag: "coding-now", event: "coding-now" },
-  /** 各 agent 账号的套餐与限额窗口；浏览器按 id 贴回 vibecoding 的用量行 */
+  /** 各 agent 账号的套餐与限额窗口；浏览器按 id 贴回 coding 卡片的 agent 行 */
   limits: { path: "/api/status/limits", layer: "lag", tag: "limits", cadenceMs: 5 * 60_000 },
   /** 厂商状态页。采集 Worker 每分钟拉官方 JSON / RSS 写 KV，不推送 */
   agentStatus: { path: "/api/status/agent-status", layer: "lag", tag: "agent-status", cadenceMs: 60_000 },
-  /** Mac 上报器随用量推；信封不带 updatedAt，按这个间隔取（云端可能回填旧日） */
-  vibeCodingYear: { path: "/api/status/vibecoding/year", layer: "lag", tag: "vibecoding-year", cadenceMs: 6 * 3_600_000 },
   /** 年度格子（CodingYearPayload）。数据在状态核心，和 pulse 一样不推送，年度图自己长间隔轮询 */
   codingYear: { path: "/api/status/coding/year", layer: "realtime", tag: "coding-year" },
   watching: { path: "/api/status/watching", layer: "realtime", tag: "watching", event: "watching", pushCovers: true },

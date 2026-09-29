@@ -47,7 +47,7 @@
 
 `mac` 与 `agents` 的 202 `data` 另带入口自己判下的两件事，两个键总在，空数组就是没有：
 
-- `ignored`（只有 `mac`）：信封里不认识的模块名，含改名前的 `vibeCodingUsage` / `vibeCodingNow` / `vibeCodingYear`；不影响别的模块。
+- `ignored`（只有 `mac`）：信封里站点不认识的模块名（包括站点不收的旧模块名），原样回给上报器；不影响别的模块。
 - `rejected`：`[{ module, error }]`，三份 coding 数据（`codingUsage` / `codingActivity` / `codingTokenBuckets`，契约见
   `shared/coding-usage.ts`）里校验不过的那几份。坏的只丢它自己，原因带路径（如 `agents[0].days[2].totalTokens 小于四列之和`），
   别的模块、存活、限额照常收下，另记一行 `[ingest] rejected` 警告进 Sentry Logs。`agents` 那封里被拒的不算「带了」：

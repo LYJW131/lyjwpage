@@ -6,7 +6,6 @@ import { useSWRConfig } from "swr";
 import type { ScopedMutator } from "swr";
 
 import { mergeChargerHistory } from "@/lib/charger-history";
-import { applyVibeCodingNow } from "@/lib/vibecoding-activity";
 import type { LiveEvent } from "@/lib/live-events";
 import { acceptPush } from "@/lib/status-reads";
 import { liveSocketUrl } from "@/lib/live-socket";
@@ -14,18 +13,14 @@ import { EARLY_LIVE_SOCKET_KEY, type EarlyLiveSocket } from "@/lib/live-socket-b
 import { APP_VERSION_PATH } from "@/lib/app-version";
 import {
   CHARGER_PATH,
+  CODING_NOW_PATH,
   DESKTOP_PATH,
   NOW_LISTENING_PATH,
   POWERBANK_PATH,
   TROPHIES_PATH,
-  VIBECODING_PATH,
 } from "@/lib/paths";
 import { isRealtimeViewPath, pathByEvent } from "@/lib/status-views";
-import type {
-  ChargerPayload,
-  StatusResponse,
-  VibeCodingNowPayload,
-} from "@/lib/types";
+import type { ChargerPayload, StatusResponse } from "@/lib/types";
 
 /**
  * 事件名 → 写哪个 SWR 缓存键，以及写进去之前要不要先过一道合并。
@@ -78,13 +73,8 @@ const FORWARDS: ReadonlyArray<{
    * 直接替换即可，不用像充电头那样合并增量。
    */
   { event: "powerbank" },
-  /**
-   * 只带「此刻」那三个字段。并进手上已有的整份；还没有整份就丢掉，等轮询。
-   */
-  {
-    event: "vibecoding-now",
-    merge: (data) => applyVibeCodingNow(data as VibeCodingNowPayload),
-  },
+  /** coding agent 此刻：整份 `/api/status/coding/now`，直接换 */
+  { event: "coding-now" },
 ];
 
 /**
@@ -96,17 +86,17 @@ const FORWARDS: ReadonlyArray<{
  * 和 NAS 上的推送代理，和 Mac 上报器无关，Mac 睡了不影响你在 Emby 上看什么，
  * 跟着重取纯属白跑一趟。
  *
- * vibe coding 在列，但不是为了整张卡：用量、限额、曲线都是累计的历史事实，
- * Mac 掉线它们不会变得不可信，只是不再增长。要的只是那两盏活动灯 —— 全卡唯一
- * 一处说「此刻」的东西，靠 declaredOffline 才能在优雅离开时立刻灭。
- * 崩溃 / 断网那条不指望这里：浏览器拿 lastSeenAt 现算，到点自己翻。
+ * coding 只有此刻那份在列：用量、限额、年度都是累计的历史事实，Mac 掉线它们不会
+ * 变得不可信，只是不再增长。要的只是活动灯里 mac 那一路 —— 靠 declaredOffline 才能
+ * 在优雅离开时立刻灭；别的来源（账号、云端）的灯不受 Mac 存活影响。
+ * 崩溃 / 断网那条不指望这里：mac 那一路的时刻不再前进，5 分钟窗口到点自己灭。
  */
 const PRESENCE_PATHS = [
   DESKTOP_PATH,
   NOW_LISTENING_PATH,
   CHARGER_PATH,
   POWERBANK_PATH,
-  VIBECODING_PATH,
+  CODING_NOW_PATH,
 ];
 
 /**

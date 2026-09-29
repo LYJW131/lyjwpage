@@ -11,11 +11,11 @@ Web Animations API，假时钟拨不动它（见 desktop-marks-gif.py）。
   - activity       活动数据从上午换到下午：三环转到新读数、数字滚动
   - charger        充电头换一档功率：端口读数滚动、曲线末尾接上新点
   - server         落地节点换一档读数：速率、CPU、内存滚动
-  - vibecoding     AI Coding 涨一档用量：Token、成本、限额百分比滚动
+  - vibecoding     AI Coding 涨一档用量：合计与今日的 Token、成本滚动
 后四个靠换夹具驱动：注入不发推送事件，借 SWR 的 revalidateOnFocus 让卡片回源一次（对 focus 节流
 5 秒，真实时间）。换夹具的等待不进时间线，GIF 里只有变化前后各留一小段。充电头的历史点在派生
 变体时冻成绝对时间：`$now-…` 令牌每次注入都按新的当下重算，曲线会整条平移、和已有点对不上。
-AI Coding 没有夹具，基线直接取本地 Worker 此刻的响应（生产数据经上游补缺）。
+AI Coding 的基线直接取本地 Worker 此刻的 /api/status/coding（生产数据经上游补缺；也可以先注入 coding-multi-source.json）。
 
 前置：本地 Worker 与 pnpm dev:local 在跑、总开关已开，并且这些夹具已注入（脚本不替你注入基线）：
   listening/now  listening-now-yoasobi.json     /api/lyrics       生产站响应包一层 ok（见 docs/screenshots.md）
@@ -385,20 +385,23 @@ def edit_server(cpu: float, rx: int, tx: int, mem: int):
 
 
 def edit_vibecoding(steps: int):
-    """用量涨 steps 档：今日与总计的 Token、成本，会话数，以及第一条限额窗口的百分比"""
+    """用量涨 steps 档：合计与第一个有最近一天的 agent（登记表里 Claude 在前）的 Token、成本，会话数"""
 
     def edit(d: dict) -> None:
         tokens, cost = 1_284_913 * steps, 1.27 * steps
         d["totals"]["totalTokens"] += tokens
         d["totals"]["outputTokens"] += tokens // 6
         d["totals"]["apiEquivalentCostUSD"] += cost
-        d["totals"]["sessionCount"] += steps
-        agent = d["agents"][0]
-        agent["today"]["totalTokens"] += tokens
-        agent["today"]["outputTokens"] += tokens // 6
-        agent["today"]["apiEquivalentCostUSD"] += cost
-        if agent.get("limits"):
-            agent["limits"][0]["usedPercent"] = min(100, agent["limits"][0]["usedPercent"] + 2 * steps)
+        if d["totals"].get("sessionCount") is not None:
+            d["totals"]["sessionCount"] += steps
+        agent = next(
+            (row for row in sorted(d["agents"], key=lambda row: row["id"] != "claude") if row.get("lastDay")),
+            None,
+        )
+        if agent:
+            agent["lastDay"]["totalTokens"] += tokens
+            agent["lastDay"]["outputTokens"] += tokens // 6
+            agent["lastDay"]["apiEquivalentCostUSD"] += cost
 
     return edit
 
@@ -424,8 +427,8 @@ SCENES = {
     ),
     "vibecoding": scene_swap(
         "#vibe-coding",
-        "/api/status/vibecoding",
-        lambda tmp: live_base("/api/status/vibecoding", tmp),
+        "/api/status/coding",
+        lambda tmp: live_base("/api/status/coding", tmp),
         [lambda d: None, edit_vibecoding(1), edit_vibecoding(2)],
     ),
 }

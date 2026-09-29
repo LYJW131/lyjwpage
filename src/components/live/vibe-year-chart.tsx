@@ -12,8 +12,6 @@ import {
 import { useSiteDay } from "@/hooks/use-site-day";
 import { useStatus } from "@/hooks/use-status";
 import { groupWeeks, heatmapFrame, weekdayOf } from "@/lib/github-chart-compact";
-import { VIBECODING_YEAR_PATH } from "@/lib/paths";
-import type { GithubChartDay, StatusResponse, VibeCodingYearPayload } from "@/lib/types";
 import {
   YEAR_MIX_SHOW,
   compactTokens,
@@ -22,9 +20,16 @@ import {
   indexYearMix,
   tokenScores,
   type YearModelShare,
-} from "@/lib/vibecoding-year";
+} from "@/lib/coding-year";
+import { CODING_YEAR_PATH } from "@/lib/paths";
+import type { CodingYearPayload, GithubChartDay, StatusResponse } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
+/**
+ * 年度格子是日粒度的累计量，不推送。数据在状态核心（实时层），但一天里没什么可看的变化：
+ * 自己按长间隔轮询，切回标签页时再取一次。
+ */
+const YEAR_REFRESH_MS = 30 * 60_000;
 
 type HoveredCell = {
   date: string;
@@ -114,12 +119,12 @@ export function VibeYearChart({
   fallback,
   className,
 }: {
-  fallback: StatusResponse<VibeCodingYearPayload>;
+  fallback: StatusResponse<CodingYearPayload>;
   className?: string;
 }) {
-  const { data } = useStatus<VibeCodingYearPayload>(VIBECODING_YEAR_PATH, {
+  const { data } = useStatus<CodingYearPayload>(CODING_YEAR_PATH, YEAR_REFRESH_MS, {
     fallback,
-    // 首屏已经烧进去，挂载不再回源。切回标签页时拉一次，之后按登记表的 6 小时节奏取。
+    // 首屏已经烧进去，挂载不再回源
     revalidateOnMount: false,
     revalidateOnFocus: true,
   });
@@ -134,9 +139,9 @@ export function VibeYearChart({
   const weeks = useMemo(() => {
     if (!snapshot) return null;
     /**
-     * 窗尾切到源站的今天，**不是切到 `pushedAt`**：那是上报器最后一次推送，
-     * Mac 停一天，今天那格就跟着少一格，隔壁 GitHub 那张图却照常画到今天，
-     * 两张图当场错开一列。见 VibeCodingYearPayload.todayAtSource。
+     * 窗尾切到源站的今天，**不是切到 `updatedAt`**：那是年度视图最后一次重算，
+     * 用量停一天，今天那格就跟着少一格，隔壁 GitHub 那张图却照常画到今天，
+     * 两张图当场错开一列。见 CodingYearPayload.todayAtSource。
      */
     const through = today && today > snapshot.todayAtSource ? today : snapshot.todayAtSource;
     return toWeeks(snapshot.origin, snapshot.days, through);

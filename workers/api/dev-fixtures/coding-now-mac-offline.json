@@ -1,0 +1,45 @@
+{
+  "ok": true,
+  "data": {
+    "agents": [
+      {
+        "id": "claude",
+        "activity": [
+          {
+            "source": "mac",
+            "lastActivityAt": "$now-30000",
+            "model": "claude-opus-5-5"
+          },
+          {
+            "source": "agents-otlp",
+            "lastActivityAt": "$now-60000",
+            "model": "claude-sonnet-5-5"
+          }
+        ]
+      },
+      {
+        "id": "codex",
+        "activity": [
+          {
+            "source": "mac",
+            "lastActivityAt": "$now-30000",
+            "model": "gpt-6-astra"
+          }
+        ]
+      },
+      {
+        "id": "cursor",
+        "activity": [
+          {
+            "source": "agents",
+            "lastActivityAt": "$now-90000",
+            "model": "cursor-grok-4.6-xhigh-fast"
+          }
+        ]
+      }
+    ],
+    "lastSeenAt": "$now-20000",
+    "declaredOffline": true,
+    "heartbeatWindowMs": 300000
+  }
+}

@@ -29,8 +29,6 @@ import type { LagResult } from "@/lib/lag-result";
 import { getDesktopPayload, getNowListening, getTimezonePayload } from "@/lib/telemetry";
 import { getTrophies, sliceTrophies, summarizeTrophies } from "@/lib/trophies";
 import { getVercelDeployments } from "@/lib/vercel-deployments";
-import { getVibeCodingSnapshot } from "@/lib/vibecoding";
-import { getVibeCodingYear } from "@/lib/vibecoding-year-store";
 
 /** 单端点查询参数。缺席 = 整份；`titleIds` 空数组 = 空集。 */
 export type StatusLoaderParams = {
@@ -61,12 +59,10 @@ export const statusLoaders = {
   powerBank: { endpoint: unparam(getPowerBankSnapshot) },
   listening: { endpoint: unparam(getRecentlyPlayed) },
   nowListening: { endpoint: unparam(getNowListening) },
-  vibeCoding: { endpoint: unparam(getVibeCodingSnapshot) },
   coding: { endpoint: unparam(getCodingUsage) },
   codingNow: { endpoint: unparam(getCodingNow) },
   limits: { endpoint: unparam(getAgentLimits) },
   agentStatus: { endpoint: unparam(getAgentStatus) },
-  vibeCodingYear: { endpoint: unparam(getVibeCodingYear) },
   codingYear: { endpoint: unparam(getCodingYear) },
   watching: { endpoint: unparam(getWatching) },
   nowWatching: { endpoint: unparam(getNowWatching) },

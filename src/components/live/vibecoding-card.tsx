@@ -14,49 +14,33 @@ import { Card } from "@/components/ui/card";
 import { FlowDash } from "@/components/ui/flow-dash";
 import { useLiveEvents } from "@/hooks/use-live-events";
 import { useMountedAt } from "@/hooks/use-mounted-at";
-import { useConfirmedClockStale, useConfirmedStale, useReporterStale, useStale } from "@/hooks/use-stale";
+import { useSiteDay } from "@/hooks/use-site-day";
+import { useConfirmedClockStale, useStale } from "@/hooks/use-stale";
 import { useStatus } from "@/hooks/use-status";
 import { agentUsageLabel, agentUsageUrl } from "@/lib/agent-usage-url";
-import { AGENT_LIMITS_STALE_MS, VIBECODING_STALE_MS } from "@/lib/freshness";
-import { LIMITS_PATH, VIBECODING_PATH } from "@/lib/paths";
-import { fetchVibeCoding, seedVibeCoding } from "@/lib/vibecoding-activity";
-import { attachAgentLimits, type AgentLimitsPayload } from "@/lib/vibecoding-limits";
+import {
+  CODING_ACTIVE_WINDOW_MS,
+  codingAgentRows,
+  codingDisplayModel,
+  codingSourceHealth,
+  describeCodingSources,
+  liveCodingActivity,
+  type CodingAgentRow,
+  type CodingSourceNote,
+} from "@/lib/coding-agents";
+import { AGENT_LIMITS_STALE_MS } from "@/lib/freshness";
+import { zonedDay } from "@/lib/heatmap-window";
+import { CODING_NOW_PATH, CODING_PATH, LIMITS_PATH } from "@/lib/paths";
+import { site } from "@/lib/site";
 import type {
+  CodingNowPayload,
+  CodingUsagePayload,
+  CodingUsageTotals,
   StatusResponse,
-  VibeCodingAgent,
   VibeCodingLimit,
-  VibeCodingPayload,
-  VibeCodingTotals,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
-
-/**
- * 信封里各个来源同一形状。首页只给这两个全量面板：限额结构是按它们各自的
- * 窗口写的（见 FEATURED_LIMITS）。其余同一份数据，只取最紧的那一行。
- *
- * 选谁进全量面板看限额有几条：Codex 只剩一条周额度，挤在三行的面板里两行空着；
- * Cursor 正好有自家模型、其他模型、Grok Bot 三条。
- */
-const FEATURED_AGENT_IDS = ["claude", "cursor"] as const;
-type FeaturedAgentId = (typeof FEATURED_AGENT_IDS)[number];
-const HIDDEN_AGENT_IDS = new Set(["opencode", "pi"]);
-
-function agentDisplayName(agent: VibeCodingAgent) {
-  return agent.id === "grok" ? "Grok Build" : agent.label;
-}
-
-function featuredAgents(agents: VibeCodingAgent[]) {
-  const byId = new Map(agents.map((agent) => [agent.id, agent]));
-  return FEATURED_AGENT_IDS.flatMap((id) => {
-    const agent = byId.get(id);
-    return agent ? [agent] : [];
-  });
-}
-
-function compactAgents(agents: VibeCodingAgent[]) {
-  const featured = new Set<string>(FEATURED_AGENT_IDS);
-  return agents.filter((agent) => !featured.has(agent.id) && !HIDDEN_AGENT_IDS.has(agent.id));
-}
+import type { AgentLimitsPayload } from "@/lib/vibecoding-limits";
 
 /**
  * 默认那一扇窗口：几条里取用量最高的，并列时留先出现的。
@@ -74,57 +58,43 @@ function busiestLimit(limits: VibeCodingLimit[], now: number) {
   return candidates.reduce((best, row) => (effective(row) > effective(best) ? row : best));
 }
 
+/** 用量视图与此刻两份的轮询间隔；此刻那份变了另有推送（`coding-now`，整份） */
 const REFRESH_MS = 2 * 60_000;
 
 /**
- * 只给时刻的那几盏灯（Cursor、Claude 云端线程）最近一次活动过去多久还算「在用」，
- * 跟 MacTelemetryHub 判 active 的 300 秒一致。两边在用时都每分钟来一次新时刻
- * （Cursor 见 agents-reporter 的 cursor-now.ts，云端是遥测导出间隔），窗口比间隔宽，
- * 连续在用时灯不会闪。
- */
-const ACTIVE_WINDOW_MS = 5 * 60_000;
-
-/**
- * 首帧的钟：用量和限额是两份首屏信封（各自的首屏缓存条目、各自的填充时刻），
+ * 首帧的钟：用量、此刻、限额是三份首屏信封（各自的首屏缓存条目、各自的填充时刻），
  * 各判各的就拿各自的 servedAt（见 hooks/use-stale）。挂载后都换浏览器的钟。
  */
 type FirstFrameClocks = {
-  /** /api/status/vibecoding：活动灯、今日用量 */
+  /** /api/status/coding：今天是哪一天 */
   usage?: number;
+  /** /api/status/coding/now：活动灯 */
+  now?: number;
   /**
-   * 用量那份 SWR 键在不在回源。活动灯按钟判的熄灭要过 useConfirmedStale：放了五分钟
+   * 此刻那份 SWR 键在不在回源。活动灯按钟判的熄灭要过 useConfirmedStale：放了五分钟
    * 以上的首屏 HTML 挂载时按访客钟全都「过了五分钟」，不挡的话灯先灭、回源回来再亮。
    */
-  usageValidating: boolean;
+  nowValidating: boolean;
   /** /api/status/limits：限额读数 */
   limits?: number;
 };
 
 /**
- * 这盏灯亮不亮。
- *
- * Mac 报的几家带着现成的电平，但它是推来的、不会自己过期，所以要和「Mac 那边的话
- * 还算不算数」取与（见 VibeCodingCard 里的 activityUnknown）。
- *
- * Cursor 的活动来自容器查的用量事件，跟 Mac 在不在线无关，站点只给时刻不给电平：
- * 最近一次在 5 分钟内就亮，过了由 useStale 的定时器自己熄。容器停了时刻不再前进，
- * 灯一样会灭，不需要另一个开关。
- *
- * Claude 另有云端线程那条路（`cloudActivityAt`，OTLP 遥测），同样按时刻现算，
- * 和 Mac 那个电平取或：Mac 合盖了，云端在跑照样亮。
+ * 这盏灯亮不亮：各来源最近一条用量事件里有效的最新那条（lib/coding-agents 的
+ * liveCodingActivity：Mac 亲口离线时 mac 那一路作废）离此刻不超过 CODING_ACTIVE_WINDOW_MS。
+ * 只看时刻、没有要和存活取与的电平：采集停了时刻就不前进，窗口到点自己灭。
  */
-function useAgentActive(agent: VibeCodingAgent, activityUnknown: boolean, clocks: FirstFrameClocks) {
-  const at = agent.lastActivityAt ? Date.parse(agent.lastActivityAt) : null;
-  const cloudAt = agent.cloudActivityAt ? Date.parse(agent.cloudActivityAt) : null;
-  const timing = { validating: clocks.usageValidating, servedAt: clocks.usage };
-  const expired = useConfirmedClockStale(at, ACTIVE_WINDOW_MS, timing);
-  const cloudExpired = useConfirmedClockStale(cloudAt, ACTIVE_WINDOW_MS, timing);
+function useAgentActive(row: CodingAgentRow, macDeclaredOffline: boolean, clocks: FirstFrameClocks) {
+  const live = liveCodingActivity(row.activity, macDeclaredOffline);
+  const expired = useConfirmedClockStale(live?.lastActivityAt, CODING_ACTIVE_WINDOW_MS, {
+    validating: clocks.nowValidating,
+    servedAt: clocks.now,
+  });
   const mountedAt = useMountedAt();
   // 首帧有 servedAt 当钟就照它判（首屏填缓存那一刻的结论）；连它也没有才等挂载
-  const clockKnown = mountedAt > 0 || clocks.usage != null;
-  if (agent.id === "cursor") return at != null && clockKnown && !expired;
-  const cloudActive = cloudAt != null && clockKnown && !cloudExpired;
-  return (agent.active && !activityUnknown) || cloudActive;
+  const clockKnown = mountedAt > 0 || clocks.now != null;
+  const active = live != null && clockKnown && !expired;
+  return { active, model: codingDisplayModel(row, live, active) };
 }
 
 /**
@@ -190,10 +160,10 @@ const TOKEN_SEGMENTS = [
 ] as const;
 
 /**
- * 紧凑行的品牌图标，按上报器给的 `icon` 键取 —— 不是按 `id`：id 是
- * 用量的来源名，这个是牌子，两者不一定一致。
+ * 品牌图标，按站点登记表（lib/coding-agents）给的 `icon` 键取 —— 不是按 `id`：id 是
+ * agent 的名字，这个是牌子，两者不一定一致。
  *
- * 认不出来的键退回首字母。上报器新配一个来源时页面上立刻就该有一行，
+ * 认不出来的键退回首字母。上报器新配一个 agent 时页面上立刻就该有一行，
  * 图标是后补的事，不该因为少一个矢量就让那行的限额也跟着看不见。
  */
 function BrandMark({
@@ -306,12 +276,31 @@ function formatModelName(model: string) {
   return model.split("-").map(capitalize).join(" ");
 }
 
+/**
+ * 有来源采集失败时标在用量读数旁边：数字只含其余来源和它失败前的旧账，别当完整值读。
+ * 有读数时说 Partial，一个读数都没有（全靠失败的那个来源）时说 Unavailable。
+ */
+function SourceIssue({ failing, hasValue }: { failing: CodingSourceNote[]; hasValue: boolean }) {
+  if (failing.length === 0) return null;
+  return (
+    <span className="text-live-idle">
+      <span aria-hidden className="mx-1.5">
+        ·
+      </span>
+      {hasValue ? "Partial" : "Unavailable"}
+    </span>
+  );
+}
+
 function TotalUsage({
   totals,
   topModels,
+  failing,
 }: {
-  totals: VibeCodingTotals;
-  topModels: VibeCodingPayload["topModels"];
+  totals: CodingUsageTotals;
+  topModels: CodingUsagePayload["topModels"];
+  /** 各 agent 里采集失败的来源，见 SourceIssue */
+  failing: CodingSourceNote[];
 }) {
   const values = {
     inputTokens: totals.inputTokens,
@@ -330,7 +319,10 @@ function TotalUsage({
     >
       <div className="grid grid-cols-2 gap-5 md:grid-cols-4">
         <div>
-          <div className="label-mono text-muted-foreground">Tokens</div>
+          <div className="label-mono text-muted-foreground" title={describeCodingSources(failing) || undefined}>
+            Tokens
+            <SourceIssue failing={failing} hasValue />
+          </div>
           <div className="mt-2 text-3xl font-medium tracking-tight md:text-4xl">
             <NumberFlow
               value={totals.totalTokens}
@@ -365,7 +357,8 @@ function TotalUsage({
         <div>
           <div className="label-mono text-muted-foreground">Sessions</div>
           <div className="mt-2 text-3xl font-medium tracking-tight md:text-4xl">
-            <NumberFlow value={totals.sessionCount} locales="en-US" />
+            {/* 没有一个来源数得出会话（只有 Cursor 账号那种）时是 null，不是 0 */}
+            {totals.sessionCount != null ? <NumberFlow value={totals.sessionCount} locales="en-US" /> : <FlowDash />}
           </div>
         </div>
       </div>
@@ -443,6 +436,9 @@ function TotalUsage({
 const SESSION_WINDOW_MAX_MINUTES = 1440;
 
 /**
+ * 全量面板固定画的几条限额窗口，按 agent id。站点登记表（lib/coding-agents 的 CODING_AGENTS）
+ * 里 `row: "featured"` 的 agent 要在这里有一项，否则面板的限额区是空的。
+ *
  * Claude 的窗口按时长和名字认；Cursor 按上报器的键直接认。
  *
  * Cursor 三行对它网页 dashboard 的三根条：自家模型、其他模型两个月度池子，加 Grok Bot
@@ -451,7 +447,7 @@ const SESSION_WINDOW_MAX_MINUTES = 1440;
  * 窗口剔掉 —— 那恰好常是最紧的一条。口径见 agents-reporter 的 providers/cursor.ts。
  */
 const FEATURED_LIMITS: Record<
-  FeaturedAgentId,
+  string,
   ReadonlyArray<{ slot: FeaturedLimitSlot; title: string }>
 > = {
   claude: [
@@ -518,8 +514,8 @@ function pickSlotLimit(limits: VibeCodingLimit[], slot: FeaturedLimitSlot) {
 }
 
 /** 紧凑行只显示最紧的主额度窗口。 */
-function compactLimit(agent: VibeCodingAgent, now: number) {
-  return busiestLimit(agent.limits, now);
+function compactLimit(row: Pick<CodingAgentRow, "limits">, now: number) {
+  return busiestLimit(row.limits, now);
 }
 
 type FeaturedLimitRow =
@@ -527,14 +523,14 @@ type FeaturedLimitRow =
   | { kind: "unavailable"; key: string; title: string; reason: string };
 
 /** 固定三行，取不到的那行留着占位写 Unavailable，不让面板高度跟着变。 */
-function featuredLimitRows(agent: VibeCodingAgent): FeaturedLimitRow[] {
-  const slots = FEATURED_LIMITS[agent.id as FeaturedAgentId] ?? [];
+function featuredLimitRows(row: Pick<CodingAgentRow, "id" | "limits" | "limitsError">): FeaturedLimitRow[] {
+  const slots = Object.hasOwn(FEATURED_LIMITS, row.id) ? FEATURED_LIMITS[row.id]! : [];
   return slots.map(({ slot, title }) => {
-    const limit = pickSlotLimit(agent.limits, slot);
+    const limit = pickSlotLimit(row.limits, slot);
     if (limit) return { kind: "limit" as const, key: slot, title, limit };
     return {
       kind: "unavailable" as const, key: slot, title,
-      reason: agent.limitsError ?? "No limit reported for this window",
+      reason: row.limitsError ?? "No limit reported for this window",
     };
   });
 }
@@ -890,15 +886,15 @@ function LimitUnavailable({
 }
 
 /**
- * Cursor 自己没有终端里那种活动动画，在用时借 Codex 的 Braille 转圈，闲着显示原本的标。
- * 在不在用见 useAgentActive。
+ * 全量面板的标。Claude 有自己的转圈；别家没有终端里那种活动动画，在用时借 Codex 的
+ * Braille 转圈，闲着显示自己的牌子。在不在用见 useAgentActive。
  */
-function FeaturedMark({ id, active }: { id: string; active: boolean }) {
-  if (id === "claude") return <ClaudeSpinner active={active} />;
+function FeaturedMark({ row, active }: { row: Pick<CodingAgentRow, "id" | "icon" | "label">; active: boolean }) {
+  if (row.id === "claude") return <ClaudeSpinner active={active} />;
   if (active) return <CodexActivityIndicator active />;
   return (
     <span className="flex size-5 shrink-0 items-center justify-center" aria-hidden>
-      <CursorIcon size={18} />
+      {row.icon === "cursor" ? <CursorIcon size={18} /> : <BrandMark icon={row.icon} label={row.label} className="size-5" />}
     </span>
   );
 }
@@ -906,15 +902,23 @@ function FeaturedMark({ id, active }: { id: string; active: boolean }) {
 /** 限额上报器多久没来就不再展示那份读数，统一说取不到 */
 const LIMITS_SILENT = "Limits reporter is silent";
 
+/** 站点日（YYYY-MM-DD）写成 `Sep 28`。日期串本身就是站点日，按 UTC 读写，服务端和浏览器给同一个字 */
+function formatSiteDay(date: string) {
+  return new Date(`${date}T00:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+}
+
 function AgentPanel({
-  agent,
-  /** 采集侧的话还算不算数，见 VibeCodingCard 里的 activityUnknown */
-  activityUnknown,
+  row,
+  macDeclaredOffline,
   clocks,
+  today,
 }: {
-  agent: VibeCodingAgent;
-  activityUnknown: boolean;
+  row: CodingAgentRow;
+  /** Mac 亲口离线：活动灯里 mac 那一路作废，见 useAgentActive */
+  macDeclaredOffline: boolean;
   clocks: FirstFrameClocks;
+  /** 站点今天（YYYY-MM-DD）；首帧没有钟又没有 servedAt 时为 null，那时不认任何一天是今天 */
+  today: string | null;
 }) {
   /**
    * 限额在可滞后层，是另一台机器（NAS 上的容器上报器）报的，每轮必发，所以
@@ -922,39 +926,34 @@ function AgentPanel({
    * 占位，统一写 Unavailable，别让访客拿停住的数字当此刻的余量。
    * 首帧拿限额那份首屏信封的 servedAt 当钟，放久了的 HTML 首帧就是 Unavailable。
    */
-  const limitsStale = useStale(agent.limitsAt, AGENT_LIMITS_STALE_MS, clocks.limits);
-  const today = agent.today;
-  // error 也可能只是本轮成功采集后的缺项提示；是否为今日取决于日桶和成功时间。
-  const dayStart = today ? Date.parse(`${today.date}T00:00:00+08:00`) : null;
-  const dayHasEnded = useStale(dayStart, 86_400_000, clocks.usage);
-  const collectedAt = agent.usageStatus.collectedAt ? Date.parse(agent.usageStatus.collectedAt) : null;
-  const isToday = dayStart != null && collectedAt != null
-    && collectedAt >= dayStart && collectedAt < dayStart + 86_400_000 && !dayHasEnded;
+  const limitsStale = useStale(row.limitsAt, AGENT_LIMITS_STALE_MS, clocks.limits);
+  /**
+   * 用量视图给的是这个 agent 最近一个有行的站点日，是不是今天在这里判：不是今天就写明
+   * 是哪一天，不把昨天的数当今天的。来源保证当天有行（没用就是一行 0），所以最近一天
+   * 停在昨天说明今天还没报到，不是今天没用。
+   */
+  const lastDay = row.usage?.lastDay ?? null;
+  const isToday = lastDay != null && today != null && lastDay.date === today;
+  const { failing, notes } = codingSourceHealth(row.usage);
   const promptTokens =
-    (today?.inputTokens ?? 0) +
-    (today?.cacheCreationTokens ?? 0) +
-    (today?.cacheReadTokens ?? 0);
+    (lastDay?.inputTokens ?? 0) +
+    (lastDay?.cacheCreationTokens ?? 0) +
+    (lastDay?.cacheReadTokens ?? 0);
   // 命中只认 cache read；cache creation 是新写入，不能算作命中。
   // output 与 prompt cache 无关，也不应该进入分母。
   const cacheHitRate = promptTokens
-    ? ((today?.cacheReadTokens ?? 0) / promptTokens) * 100
+    ? ((lastDay?.cacheReadTokens ?? 0) / promptTokens) * 100
     : 0;
-  /**
-   * `agent.active` 是推来的电平，不是会自己过期的时间戳：采集侧一停就冻在最后
-   * 一次推送的值上。所以点灯前要和「这句话现在还算不算数」取与 —— 否则 Mac 睡
-   * 着时那盏灯会一直亮，直到它醒来才灭。
-   */
-  const active = useAgentActive(agent, activityUnknown, clocks);
-  // 会话扫描会保留最近使用的模型，闲置后继续显示它。
-  const displayModel = agent.currentModel ? displayModelName(agent.currentModel) : "No model";
-  const rows = featuredLimitRows(limitsStale ? { ...agent, limits: [], limitsError: LIMITS_SILENT } : agent);
-  const usageUrl = agentUsageUrl(agent.id);
+  const { active, model } = useAgentActive(row, macDeclaredOffline, clocks);
+  const displayModel = model ? displayModelName(model) : "No model";
+  const rows = featuredLimitRows(limitsStale ? { ...row, limits: [], limitsError: LIMITS_SILENT } : row);
+  const usageUrl = agentUsageUrl(row.id);
   return (
     <div className="flex min-w-0 flex-col px-4 py-4 md:px-5">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <FeaturedMark id={agent.id} active={active} />
-          <span className="text-sm font-medium">{agentDisplayName(agent)}</span>
+          <FeaturedMark row={row} active={active} />
+          <span className="text-sm font-medium">{row.label}</span>
           {active && <span className="label-mono text-live">Active</span>}
         </div>
         <span
@@ -962,7 +961,7 @@ function AgentPanel({
             "label-mono truncate",
             active ? "text-live" : "text-muted-foreground",
           )}
-          title={agent.models.join(" · ")}
+          title={row.usage?.models.join(" · ") || undefined}
         >
           {displayModel}
         </span>
@@ -970,13 +969,14 @@ function AgentPanel({
 
       <div className="mt-5 grid grid-cols-[minmax(0,1fr)_auto] items-end gap-5">
         <div className="min-w-0">
-          <div className="label-mono text-muted-foreground">
-            {today && !isToday ? `Tokens · ${today.date}` : "Today Tokens"}
+          <div className="label-mono text-muted-foreground" title={describeCodingSources(notes) || undefined}>
+            {lastDay && !isToday ? `Tokens · ${formatSiteDay(lastDay.date)}` : "Today Tokens"}
+            <SourceIssue failing={failing} hasValue={lastDay != null} />
           </div>
           <div className="mt-1 text-3xl font-medium tracking-tight tabular-nums md:text-5xl">
-            {today ? (
+            {lastDay ? (
               <NumberFlow
-                value={today.totalTokens}
+                value={lastDay.totalTokens}
                 locales="en-US"
                 format={{ notation: "compact", maximumFractionDigits: 1 }}
               />
@@ -987,14 +987,14 @@ function AgentPanel({
           <div title="At public API prices">
             <div className="label-mono text-muted-foreground">Cost</div>
             <div className="mt-1 font-mono text-sm">
-              {today && (agent.usageStatus.costComplete || today.apiEquivalentCostUSD > 0)
-                ? `$${today.apiEquivalentCostUSD.toFixed(2)}`
+              {lastDay && (lastDay.costComplete || lastDay.apiEquivalentCostUSD > 0)
+                ? `$${lastDay.apiEquivalentCostUSD.toFixed(2)}`
                 : "—"}
             </div>
           </div>
           <div>
             <div className="label-mono text-muted-foreground">Hit</div>
-            <div className="mt-1 font-mono text-sm">{today ? `${cacheHitRate.toFixed(1)}%` : "—"}</div>
+            <div className="mt-1 font-mono text-sm">{lastDay ? `${cacheHitRate.toFixed(1)}%` : "—"}</div>
           </div>
         </div>
       </div>
@@ -1002,31 +1002,31 @@ function AgentPanel({
       <div className="mt-5 grid gap-3 border-t border-line pt-4">
         <div className="label-mono text-muted-foreground">
           Limits
-          {agent.plan && (
-            <span title={`Plan ${agent.plan.tier}`}>
+          {row.plan && (
+            <span title={`Plan ${row.plan.tier}`}>
               <span aria-hidden className="mx-1.5">
                 ·
               </span>
-              <span className="font-sans normal-case">{agent.plan.label}</span>
+              <span className="font-sans normal-case">{row.plan.label}</span>
             </span>
           )}
         </div>
-        {rows.map((row) =>
-          row.kind === "limit" ? (
+        {rows.map((limitRow) =>
+          limitRow.kind === "limit" ? (
             <LimitMeter
-              key={row.key}
-              limit={row.limit}
-              title={row.title}
+              key={limitRow.key}
+              limit={limitRow.limit}
+              title={limitRow.title}
               href={usageUrl}
-              label={agentUsageLabel(agentDisplayName(agent), row.title)}
+              label={agentUsageLabel(row.label, limitRow.title)}
             />
           ) : (
             <LimitUnavailable
-              key={row.key}
-              title={row.title}
-              reason={row.reason}
+              key={limitRow.key}
+              title={limitRow.title}
+              reason={limitRow.reason}
               href={usageUrl}
-              label={agentUsageLabel(agentDisplayName(agent), row.title)}
+              label={agentUsageLabel(row.label, limitRow.title)}
             />
           ),
         )}
@@ -1036,21 +1036,21 @@ function AgentPanel({
 }
 
 function CompactAgentRow({
-  agent,
-  activityUnknown,
+  row,
+  macDeclaredOffline,
   clocks,
 }: {
-  agent: VibeCodingAgent;
-  /** 和全量面板同一个开关，见 VibeCodingCard 里的 activityUnknown */
-  activityUnknown: boolean;
+  row: CodingAgentRow;
+  /** 和全量面板同一个开关，见 useAgentActive */
+  macDeclaredOffline: boolean;
   clocks: FirstFrameClocks;
 }) {
   // 和全量面板同一个判断：限额上报器过了阈值没来，这一行不再画读数
-  const limitsStale = useStale(agent.limitsAt, AGENT_LIMITS_STALE_MS, clocks.limits);
+  const limitsStale = useStale(row.limitsAt, AGENT_LIMITS_STALE_MS, clocks.limits);
   const mountedAt = useMountedAt();
   const [ticked, setTicked] = useState(0);
   const now = ticked || mountedAt;
-  const limit = limitsStale ? null : compactLimit(agent, now);
+  const limit = limitsStale ? null : compactLimit(row, now);
   const usedPercentValue = limit?.usedPercent ?? null;
   const resetsAt = limit?.resetsAt ?? null;
   useEffect(() => {
@@ -1087,25 +1087,25 @@ function CompactAgentRow({
   const pace = limit ? limitPace(limit, now) : null;
   const overPace = pace != null && usedPercent != null && usedPercent / 100 > pace;
   // 和全量面板同一盏灯，只是不像全量面板那样换模型名
-  const active = useAgentActive(agent, activityUnknown, clocks);
-  const usageUrl = agentUsageUrl(agent.id);
+  const { active } = useAgentActive(row, macDeclaredOffline, clocks);
+  const usageUrl = agentUsageUrl(row.id);
 
   return (
     <div
       className="min-w-0 py-3"
-      title={limitsStale ? LIMITS_SILENT : (agent.limitsError ?? undefined)}
+      title={limitsStale ? LIMITS_SILENT : (row.limitsError ?? undefined)}
     >
       <div className="flex flex-col gap-1 md:h-5 md:flex-row md:items-center md:justify-between md:gap-2">
         <div className="flex h-5 min-w-0 items-center gap-2">
           <span className="flex size-5 shrink-0 items-center justify-center" aria-hidden>
             {/* Codex 从全量面板挪下来，终端里那个 spinner 跟着它走 */}
-            {agent.id === "codex" ? (
+            {row.id === "codex" ? (
               <CodexActivityIndicator active={active} />
             ) : (
-              <BrandMark icon={agent.icon} label={agent.label} className="size-5" />
+              <BrandMark icon={row.icon} label={row.label} className="size-5" />
             )}
           </span>
-          <span className="truncate text-sm font-medium">{agentDisplayName(agent)}</span>
+          <span className="truncate text-sm font-medium">{row.label}</span>
           {active && <span className="label-mono shrink-0 text-live">Active</span>}
         </div>
         {/*
@@ -1114,12 +1114,12 @@ function CompactAgentRow({
           行高钉在 h-5，倒计时一换行就压到条上：倒计时不换行，放不下时截套餐名。
         */}
         <span className="flex h-5 min-w-0 items-baseline gap-2 text-xs text-muted-foreground md:shrink-0">
-          {agent.plan && (
-            <span className="truncate" title={`Plan ${agent.plan.tier}`}>
-              {agent.plan.label}
+          {row.plan && (
+            <span className="truncate" title={`Plan ${row.plan.tier}`}>
+              {row.plan.label}
             </span>
           )}
-          {agent.plan && reset && (
+          {row.plan && reset && (
             <span aria-hidden className="mx-1.5">
               /
             </span>
@@ -1173,7 +1173,7 @@ function CompactAgentRow({
           )}
         </span>
       </div>
-      <UsageMeter href={usageUrl} label={agentUsageLabel(agentDisplayName(agent))}>
+      <UsageMeter href={usageUrl} label={agentUsageLabel(row.label)}>
         {usedPercent != null && (
           <div
             className="h-full transition-[width] duration-700"
@@ -1187,17 +1187,17 @@ function CompactAgentRow({
 }
 
 function CompactAgents({
-  agents,
-  activityUnknown,
+  rows,
+  macDeclaredOffline,
   clocks,
 }: {
-  agents: VibeCodingAgent[];
-  activityUnknown: boolean;
+  rows: CodingAgentRow[];
+  macDeclaredOffline: boolean;
   clocks: FirstFrameClocks;
 }) {
-  if (agents.length === 0) return null;
+  if (rows.length === 0) return null;
   // 排序不看过期（now 传 0）：这里只定行序，行内画什么由行自己判
-  const sortedAgents = [...agents].sort((left, right) => {
+  const sortedRows = [...rows].sort((left, right) => {
     const leftUsed = compactLimit(left, 0)?.usedPercent ?? -1;
     const rightUsed = compactLimit(right, 0)?.usedPercent ?? -1;
     return rightUsed - leftUsed;
@@ -1210,11 +1210,11 @@ function CompactAgents({
   return (
     <div className="border-t border-line px-4 md:px-5">
       <div className="grid divide-y divide-line">
-        {sortedAgents.map((agent) => (
+        {sortedRows.map((row) => (
           <CompactAgentRow
-            key={agent.id}
-            agent={agent}
-            activityUnknown={activityUnknown}
+            key={row.id}
+            row={row}
+            macDeclaredOffline={macDeclaredOffline}
             clocks={clocks}
           />
         ))}
@@ -1225,89 +1225,85 @@ function CompactAgents({
 
 export function VibeCodingCard({
   fallback,
+  nowFallback,
   limitsFallback,
   className,
 }: {
-  fallback: StatusResponse<VibeCodingPayload>;
-  /** 可滞后层那份限额（/api/status/limits），按 id 贴回用量行 */
+  /** /api/status/coding：多来源合并后的合计、排名、各 agent 最近一个有行的日子 */
+  fallback: StatusResponse<CodingUsagePayload>;
+  /** /api/status/coding/now：各 agent 各来源最近一条用量事件，带 Mac 存活 */
+  nowFallback: StatusResponse<CodingNowPayload>;
+  /** 可滞后层那份限额（/api/status/limits），按 id 贴到行上 */
   limitsFallback: StatusResponse<AgentLimitsPayload>;
   className?: string;
 }) {
-  // 会话状态（正在用 / 换模型）走推送；token 用量靠轮询。
-  // 这张卡整体不当实时源：不因 Mac 掉线变灰 —— 用量、曲线都是累计事实，
-  // 采集停了它们只是不再增长，不会变得不可信。限额在可滞后层，另一台机器报的，
-  // 有自己的阈值（limitsAt），各行自己管。
+  /**
+   * 此刻那份走推送（`coding-now` 带整份，直接写键）；用量靠轮询。这张卡整体不当实时源、
+   * 不因 Mac 掉线变灰：用量、排名都是累计事实，采集停了只是不再增长，不会变得不可信。
+   * 限额在可滞后层，另一台机器报的，有自己的阈值（limitsAt），各行自己管。
+   */
   useLiveEvents();
-  const { data, servedAt, isValidating } = useStatus<VibeCodingPayload>(VIBECODING_PATH, REFRESH_MS, {
-    fallback,
-    fetcher: fetchVibeCoding,
-    seedFallback: seedVibeCoding,
-  });
+  const { data: usage, servedAt: usageServedAt } = useStatus<CodingUsagePayload>(CODING_PATH, REFRESH_MS, { fallback });
+  const {
+    data: now,
+    servedAt: nowServedAt,
+    isValidating: nowValidating,
+  } = useStatus<CodingNowPayload>(CODING_NOW_PATH, REFRESH_MS, { fallback: nowFallback });
   const { data: limits, servedAt: limitsServedAt } = useStatus<AgentLimitsPayload>(LIMITS_PATH, {
     fallback: limitsFallback,
   });
   const clocks = useMemo<FirstFrameClocks>(
-    () => ({ usage: servedAt, usageValidating: isValidating, limits: limitsServedAt }),
-    [servedAt, isValidating, limitsServedAt],
+    () => ({ usage: usageServedAt, now: nowServedAt, nowValidating, limits: limitsServedAt }),
+    [usageServedAt, nowServedAt, nowValidating, limitsServedAt],
   );
-  // 只有限额的来源也要一行；用量那份还没到时，这张卡照样能先画出限额
-  const agents = data || limits ? attachAgentLimits(data?.agents ?? [], limits ?? null) : null;
-
   /**
-   * 例外只有一处：各 agent 的活动灯。整张卡就这一处说的是「此刻」，
-   * 而它偏偏是全卡最不该冻住的东西 —— 剩下的冻住只是停在昨天，它冻住是在说谎。
-   *
-   * 两个判据取或，规矩见 lib/reporter-liveness 的模块注释：
-   *
-   * - **Mac 不在线**：整条上报链路断了，最后那个 active 再没人来改。
-   * - **采集侧自己卡住**：Mac 在线，但用量那份十几分钟没推新的（健康时每个
-   *   采集间隔必发一次），说明采集侧不转了 —— 此刻那份也就跟着不可信。
-   *   `pushedAt` 盯的正是用量那份，见 VibeCodingPayload。
-   *
-   * 按钟判的两条都和 live-desk-card 一样过 useConfirmedStale：放久了的首屏 HTML
-   * 挂载时按访客钟两条都成立，不挡的话每次打开页面灯都先灭、挂载校验回来再亮。
-   * 亲口离线不是时间函数，直接认。
-   *
-   * 这几个 hook 都要无条件调用，别写成 `useReporterStale(...) || useStale(...)` ——
-   * `||` 会短路掉后一个。
+   * 站点今天：挂载后按浏览器的钟、跨零点自己翻；首帧（服务端预渲染和水合）没有钟，拿用量那份
+   * 首屏信封的出站时刻算，两边读到的是同一个值，也不会每次打开先画成「某月某日」再跳成今天。
    */
-  const reporter = useReporterStale(data, servedAt);
-  const reporterClockOffline = useConfirmedStale(reporter.byClock, isValidating, reporter.settled);
-  const collectorStale = useConfirmedClockStale(data?.pushedAt, VIBECODING_STALE_MS, {
-    validating: isValidating,
-    servedAt,
-  });
-  const activityUnknown = reporter.declared || reporterClockOffline || collectorStale;
+  const siteDay = useSiteDay();
+  const today = siteDay ?? (usageServedAt != null ? zonedDay(usageServedAt, site.timezone) : null);
+  /**
+   * Mac 的存活只认亲口离线这一条：优雅离开时 mac 那一路的灯立刻灭。崩溃、断网不用心跳窗口去判 ——
+   * mac 的时刻不再前进，灯的 5 分钟窗口到点自己灭；别的来源的灯和 Mac 在不在线无关。
+   */
+  const macDeclaredOffline = Boolean(now?.declaredOffline);
+  // 只有限额、只有此刻的 agent 也要一行；用量那份还没到时，这张卡照样能先画出限额和灯
+  const rows = usage || now || limits ? codingAgentRows(usage ?? null, now ?? null, limits ?? null) : null;
+  // 合计含全部 agent（包括不单独占行的）：它们谁的来源采集失败，合计就只是部分
+  const totalFailing = (rows ?? []).flatMap((row) =>
+    codingSourceHealth(row.usage).failing.map((note) => ({ ...note, label: `${row.label} · ${note.label}` })),
+  );
 
   return (
     <Card
       id="vibe-coding"
       label="Vibe Coding"
-      action="MacBook Pro"
+      action="All sources"
       className={cn("md:col-span-2", className)}
     >
-      {agents ? (
+      {rows ? (
         <>
-          {data?.totals ? (
-            <TotalUsage totals={data.totals} topModels={data.topModels} />
+          {usage?.totals ? (
+            <TotalUsage totals={usage.totals} topModels={usage.topModels} failing={totalFailing} />
           ) : (
             <div className="border-b border-line px-4 py-5 text-sm text-muted-foreground md:px-5">
               Waiting for usage reports
             </div>
           )}
           <div className="grid grid-cols-1 divide-y divide-line md:grid-cols-2 md:divide-x md:divide-y-0">
-            {featuredAgents(agents).map((agent) => (
+            {rows.filter((row) => row.row === "featured").map((row) => (
               <AgentPanel
-                key={agent.id}
-                agent={agent}
-                activityUnknown={activityUnknown}
+                key={row.id}
+                row={row}
+                macDeclaredOffline={macDeclaredOffline}
                 clocks={clocks}
+                today={today}
               />
             ))}
           </div>
           <CompactAgents
-            agents={compactAgents(agents)}
-            activityUnknown={activityUnknown}
+            rows={rows.filter((row) => row.row === "compact")}
+            macDeclaredOffline={macDeclaredOffline}
             clocks={clocks}
           />
         </>

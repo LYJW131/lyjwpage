@@ -9,10 +9,9 @@
 /**
  * 不进排名、不当模型名展示的占位名。
  *
- * - `""`、`unknown`、`codex-auto-review`：从 Hub 账本的 `visibleModel` 搬来；
+ * - `""`、`unknown`：来源没拿到模型名；`codex-auto-review`：Codex 日志里不是真模型的内部名；
  * - `<synthetic>`：Claude Code 自己合成的消息（接口报错、中断之类）在日志里用的模型名。
- *   2026-09-29 查本机日志：151 条全是零用量，也没有进 Hub 账本，但活动里「最近一条事件的模型」
- *   可能正是它，不能拿去当模型名。
+ *   这些消息是零用量、不进账本，但活动里「最近一条事件的模型」可能正是它，不能拿去当模型名。
  */
 export const HIDDEN_CODING_MODELS: ReadonlySet<string> = new Set(["", "unknown", "codex-auto-review", "<synthetic>"]);
 
