@@ -316,36 +316,31 @@ const UPSERT_ACTIVE_SECONDS = `INSERT INTO coding_active_days(date, agent, model
   WHERE excluded.active_seconds > coding_active_days.active_seconds`;
 /** 日事实：来源 × agent × 站点日，值变了才写 */
 const UPSERT_USAGE_DAYS = `INSERT INTO coding_usage_days(date, source, agent, input_tokens, output_tokens, cache_read_tokens,
-    cache_creation_tokens, reasoning_tokens, total_tokens, cost_usd, cost_complete)
+    cache_creation_tokens, reasoning_tokens, total_tokens, cost_usd, cost_complete, revision)
   SELECT json_extract(value, '$[0]'), json_extract(value, '$[1]'), json_extract(value, '$[2]'), json_extract(value, '$[3]'),
     json_extract(value, '$[4]'), json_extract(value, '$[5]'), json_extract(value, '$[6]'), json_extract(value, '$[7]'),
-    json_extract(value, '$[8]'), json_extract(value, '$[9]'), json_extract(value, '$[10]') FROM json_each(?) WHERE true
+    json_extract(value, '$[8]'), json_extract(value, '$[9]'), json_extract(value, '$[10]'), json_extract(value, '$[11]') FROM json_each(?) WHERE true
   ON CONFLICT(date, source, agent) DO UPDATE SET input_tokens = excluded.input_tokens, output_tokens = excluded.output_tokens,
     cache_read_tokens = excluded.cache_read_tokens, cache_creation_tokens = excluded.cache_creation_tokens,
     reasoning_tokens = excluded.reasoning_tokens, total_tokens = excluded.total_tokens, cost_usd = excluded.cost_usd,
-    cost_complete = excluded.cost_complete
-  WHERE coding_usage_days.input_tokens IS NOT excluded.input_tokens OR coding_usage_days.output_tokens IS NOT excluded.output_tokens
-    OR coding_usage_days.cache_read_tokens IS NOT excluded.cache_read_tokens OR coding_usage_days.cache_creation_tokens IS NOT excluded.cache_creation_tokens
-    OR coding_usage_days.reasoning_tokens IS NOT excluded.reasoning_tokens OR coding_usage_days.total_tokens IS NOT excluded.total_tokens
-    OR coding_usage_days.cost_usd IS NOT excluded.cost_usd OR coding_usage_days.cost_complete IS NOT excluded.cost_complete`;
+    cost_complete = excluded.cost_complete, revision = excluded.revision
+  WHERE excluded.revision > coding_usage_days.revision`;
 /** 同一天按来源的模型拆分；只增不删 */
-const UPSERT_USAGE_MODELS = `INSERT INTO coding_usage_models(date, source, agent, model, tokens)
+const UPSERT_USAGE_MODELS = `INSERT INTO coding_usage_models(date, source, agent, model, tokens, revision)
   SELECT json_extract(value, '$[0]'), json_extract(value, '$[1]'), json_extract(value, '$[2]'), json_extract(value, '$[3]'),
-    json_extract(value, '$[4]') FROM json_each(?) WHERE true
-  ON CONFLICT(date, source, agent, model) DO UPDATE SET tokens = excluded.tokens
-  WHERE coding_usage_models.tokens IS NOT excluded.tokens`;
+    json_extract(value, '$[4]'), json_extract(value, '$[5]') FROM json_each(?) WHERE true
+  ON CONFLICT(date, source, agent, model) DO UPDATE SET tokens = excluded.tokens, revision = excluded.revision
+  WHERE excluded.revision > coding_usage_models.revision`;
 /** 5 分钟桶：各来源都进来；还在累积的末桶照写，下一次用更完整的数覆盖（去重重扫也可能让数变小，所以不取 max） */
 const UPSERT_USAGE_BUCKETS = `INSERT INTO coding_usage_buckets(bucket_at, source, agent, model, input_tokens, output_tokens, cache_read_tokens,
-    cache_creation_tokens, reasoning_tokens, event_count)
+    cache_creation_tokens, reasoning_tokens, event_count, revision)
   SELECT json_extract(value, '$[0]'), json_extract(value, '$[1]'), json_extract(value, '$[2]'), json_extract(value, '$[3]'),
     json_extract(value, '$[4]'), json_extract(value, '$[5]'), json_extract(value, '$[6]'), json_extract(value, '$[7]'),
-    json_extract(value, '$[8]'), json_extract(value, '$[9]') FROM json_each(?) WHERE true
+    json_extract(value, '$[8]'), json_extract(value, '$[9]'), json_extract(value, '$[10]') FROM json_each(?) WHERE true
   ON CONFLICT(bucket_at, source, agent, model) DO UPDATE SET input_tokens = excluded.input_tokens, output_tokens = excluded.output_tokens,
     cache_read_tokens = excluded.cache_read_tokens, cache_creation_tokens = excluded.cache_creation_tokens,
-    reasoning_tokens = excluded.reasoning_tokens, event_count = excluded.event_count
-  WHERE coding_usage_buckets.input_tokens IS NOT excluded.input_tokens OR coding_usage_buckets.output_tokens IS NOT excluded.output_tokens
-    OR coding_usage_buckets.cache_read_tokens IS NOT excluded.cache_read_tokens OR coding_usage_buckets.cache_creation_tokens IS NOT excluded.cache_creation_tokens
-    OR coding_usage_buckets.reasoning_tokens IS NOT excluded.reasoning_tokens OR coding_usage_buckets.event_count IS NOT excluded.event_count`;
+    reasoning_tokens = excluded.reasoning_tokens, event_count = excluded.event_count, revision = excluded.revision
+  WHERE excluded.revision > coding_usage_buckets.revision`;
 /** json_each 一次绑定的行数上限：Cursor 一份账本几百天，拆开写，别撞 D1 的单条语句上限 */
 const JSON_ROWS_PER_STATEMENT = 500;
 
@@ -439,7 +434,10 @@ function revisionOf(value: { revision?: unknown } | null): number {
   return value && Number.isSafeInteger(value.revision) ? value.revision as number : 0;
 }
 
-/** 修订号过了水位的 (来源, agent) 账本 → 它全部日子的 upsert（值没变的行 D1 不写） */
+/**
+ * 修订号过了水位的 (来源, agent) 账本 → 它全部日子的 upsert。每行带着账本的修订号，D1 只在新来的修订号更大时
+ * 才改这一行（值没变也改，修订号要跟上）：两轮归档重叠、旧快照晚写时挡住回退。
+ */
 function usageStatements(db: PulseArchiveDb, coding: PulseArchiveStreamSnapshot["coding"]): { statements: Statement[]; revisions: number[] } {
   const days: unknown[][] = [];
   const models: unknown[][] = [];
@@ -449,11 +447,12 @@ function usageStatements(db: PulseArchiveDb, coding: PulseArchiveStreamSnapshot[
     for (const raw of raws ?? []) {
       const ledger = parsedJson<StoredCodingUsageAgent>(raw);
       if (!ledger || typeof ledger.id !== "string" || !Array.isArray(ledger.days)) continue;
-      revisions.push(revisionOf(ledger));
+      const revision = revisionOf(ledger);
+      revisions.push(revision);
       for (const day of ledger.days) {
         days.push([day.date, source, ledger.id, day.inputTokens, day.outputTokens, day.cacheReadTokens, day.cacheCreationTokens,
-          day.reasoningTokens, day.totalTokens, day.apiEquivalentCostUSD, day.costComplete ? 1 : 0]);
-        for (const row of day.models) models.push([day.date, source, ledger.id, row.model, row.tokens]);
+          day.reasoningTokens, day.totalTokens, day.apiEquivalentCostUSD, day.costComplete ? 1 : 0, revision]);
+        for (const row of day.models) models.push([day.date, source, ledger.id, row.model, row.tokens, revision]);
       }
     }
   }
@@ -472,12 +471,13 @@ function bucketStatements(db: PulseArchiveDb, coding: PulseArchiveStreamSnapshot
     for (const raw of raws ?? []) {
       const stored: StoredCodingBuckets | null = parseStoredCodingBuckets(raw);
       if (!stored) continue;
-      revisions.push(revisionOf(stored));
+      const revision = revisionOf(stored);
+      revisions.push(revision);
       for (const window of stored.windows) {
         if (source !== "agents-otlp" && !coveringPart(stored.coverage, window.from)) continue;
         for (const agent of window.agents) {
           rows.push([window.from, source, agent.id, agent.model ?? "", agent.inputTokens, agent.outputTokens, agent.cacheReadTokens,
-            agent.cacheCreationTokens, agent.reasoningTokens, agent.eventCount]);
+            agent.cacheCreationTokens, agent.reasoningTokens, agent.eventCount, revision]);
         }
       }
     }

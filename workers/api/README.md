@@ -326,7 +326,7 @@ Cursor 使用独立的 `pulse:cursor-observations`：agents 来源的 cursor 活
 | `coding_usage_buckets` | 各来源的五分钟 token 桶，agent × 模型（云端 OTLP 的事件数为 NULL） | `(bucket_at, source, agent, model)` |
 | `coding_active_days` | agent 在跑的秒数（来自 Coding 观测），`model = '*'` 是当天合计 | `(date, agent, model)` |
 
-日行按「修订号过了水位的 (来源, agent) 账本」整份 upsert（值没变的行 D1 不写；`coding:usage:revision` 没过水位就不读账本；
+日行按「修订号过了水位的 (来源, agent) 账本」整份 upsert（每行存着写下它的修订号，只在新来的修订号更大时才改：两轮归档重叠、旧快照晚写时不回退；`coding:usage:revision` 没过水位就不读账本；
 桶那一路同样按 `pulse:token-buckets:revision`，这两路的水位是修订号、不是时刻），
 存事实不存合并：被账号级来源覆盖的 Mac cursor 行照样归档，合并规则只在视图里。模型拆分只增不删，来源事后从某天
 拿掉的模型旧行还在。桶不汇成日：Mac / agents 只写起点被报告范围盖住的桶，还在累积的末桶照写、下一次用更完整的数覆盖；
