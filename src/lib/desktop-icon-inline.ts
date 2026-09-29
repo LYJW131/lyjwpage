@@ -7,8 +7,8 @@ import { r2OriginUrl } from "@/lib/r2-assets";
 /**
  * 桌面卡图标的展示尺寸 ×2。
  *
- * live-desk-card 里那格最大是 `size-7`（28px），2× 屏要 56 物理像素；带窗口标题
- * 时那格缩到 20px，用的还是这一份，缩小不吃亏。改组件尺寸上限时这个数要跟着改。
+ * live-desk-card 里那格最大的尺寸（`size-7`）在 2× 屏上的物理像素数；带窗口标题
+ * 时那格缩小，用的还是这一份，缩小不吃亏。改组件尺寸上限时这个数要跟着改。
  */
 const ICON_PX = 56;
 
@@ -21,12 +21,12 @@ const ICON_PX = 56;
  * 换部署会重压一次，这是它的机制，不是这里的意图。）
  *
  * 不直接 fetch 传进来的那个 URL，而是拿校验过的 objectKey 重新拼：`iconUrl`
- * 是 SQLite 里的 objectKey 在读取时经 `publicAssetPath` 拼出来的同源路径
+ * 是存储里的 objectKey 在读取时经 `publicAssetPath` 拼出来的同源路径
  * （见 telemetry），页面上由边缘代理到 R2；服务端在函数里没有「同源」可言，
  * 这里拿 objectKey 直接拼 R2 原件地址（`r2OriginUrl`），不绕自己的边缘，也
  * 不会因为上游存了个意外的字符串就把服务端 fetch 带去别处。
  *
- * 失败一律返回 null，让调用方回退到远端 `<Image>`，最坏等于内联之前的行为。
+ * 失败一律返回 null，让调用方回退到远端 `<Image>`，最坏等于没做内联时的行为。
  * null 同样会被缓存住：这是有意的 —— 改成抛出去、在缓存外面接，等于每次页面
  * 重新生成都再赌一次超时。
  */
@@ -49,7 +49,7 @@ async function inlineDesktopIcon(objectKey: string): Promise<string | null> {
       /**
        * `contain` + 全透明底，对齐组件上那个 `object-contain`：非正方的图标
        * 补的是透明边不是黑边（sharp 的 background 默认不透明，必须写 alpha:0），
-       * 补完仍是正方形，占位和现在逐像素一致。
+       * 补完仍是正方形，占位和真正渲染的图逐像素一致。
        */
       .resize(ICON_PX, ICON_PX, {
         fit: "contain",
@@ -75,8 +75,8 @@ async function inlineDesktopIcon(objectKey: string): Promise<string | null> {
  * 内联掉首屏这一跳；**运行时不变** —— 挂载之后换应用、推送进来的新图标，浏览器
  * 照旧走 `/img/` 同源路径由边缘取 R2 原件，不进站点的函数。
  *
- * 这层壳子不带 `use cache`：它只做一次正则校验（`objectKeyFromAssetUrl` 认
- * 64 位十六进制 + 后缀），把可缓存的那半交给 `inlineDesktopIcon`，缓存键因此
+ * 这层壳子不带 `use cache`：它只做一次正则校验（`objectKeyFromAssetUrl` 只认
+ * 内容键的格式），把可缓存的那半交给 `inlineDesktopIcon`，缓存键因此
  * 是干净的 objectKey，而不是带交付域的整条 URL。
  */
 export async function desktopIconDataUri(iconUrl: string | null): Promise<string | null> {

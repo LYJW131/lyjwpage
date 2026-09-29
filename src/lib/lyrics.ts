@@ -31,13 +31,13 @@ export const NO_LYRICS: LyricsResult = { lines: [] };
 /** 一首歌的歌词不会变，和曲目链接那条缓存同一个尺度 */
 const LYRICS_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 /**
- * 「没有歌词」只缓存一小时。
+ * 「没有歌词」只缓存很短的一段。
  *
  * 404 有两种含义：这首歌确实没有同步歌词，或者 Media-User-Token 那一刻不在
- * （SQLite 抖一下、上报器重新授权中）。两者在响应上分不开，按一周缓存的话后一种
- * 会把一首明明有词的歌锁死一星期。目录查询那侧的 `hasLyrics` 已经把「确实没有」
- * 的大头挡在了请求之前（见 lib/apple-music 和 hooks/use-lyrics），走到这里的
- * 404 更可能是后者，所以留短。
+ * （存储抖一下、上报器重新授权中）。两者在响应上分不开，按 LYRICS_TTL_MS 那么久
+ * 缓存的话，后一种会把一首明明有词的歌锁死很久。目录查询那侧的 `hasLyrics` 已经把
+ * 「确实没有」的大头挡在了请求之前（见 lib/apple-music 和 hooks/use-lyrics），走到
+ * 这里的 404 更可能是后者，所以留短。
  */
 const NO_LYRICS_TTL_MS = 60 * 60 * 1000;
 /** 上游报错后，多久之内不再重试 */
@@ -50,8 +50,8 @@ function storefront(): string {
 }
 
 /**
- * 一首歌的歌词在 SQLite 里的键。API Worker 的边缘缓存也拿它拼键：结果形状变了
- * 在这里升版本，两层一起作废。v4：多了 songwriters 字段
+ * 一首歌的歌词在存储里的键。API Worker 的边缘缓存也拿它拼键：结果形状变了
+ * 在这里升版本，两层一起作废。
  */
 export function lyricsCacheKey(songId: string): string {
   return `lyrics:v4:${storefront()}:${songId}`;
@@ -61,8 +61,8 @@ export function lyricsCacheKey(songId: string): string {
  * 取一首歌的歌词。上游异常往上抛，由路由决定响应形状 —— 抛和「上游明确说没有」
  * 不能混成同一个空数组。
  *
- * 没走 lib/cache 的 `cached()`：TTL 要按结论分档（有 7 天 / 没有 1 小时），
- * 而它一个键只吃一个 TTL。in-flight 去重和 5 秒负缓存照动态封面那套。
+ * 没走 lib/cache 的 `cached()`：TTL 要按结论分档（有 / 没有），
+ * 而它一个键只吃一个 TTL。in-flight 去重和负缓存照动态封面那套。
  */
 export async function resolveLyrics(songId: string): Promise<LyricsResult> {
   // 目录 ID 只会是一串数字；路由那边对请求参数查过一道，这里防御性再查一道

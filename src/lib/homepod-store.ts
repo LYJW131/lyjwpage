@@ -25,7 +25,7 @@ const REPEAT_SILENCE_GRACE_MS = 30 * 60 * 1000;
  * 停了或没标题的那份不参与选择。
  *
  * 单独拎出来是因为上报那条路上快照就在手上（刚规范化好的那份），不必等它落库
- * 再从 SQLite 读回来，但过滤口径必须和读取那条路一模一样。
+ * 再从存储读回来，但过滤口径必须和读取那条路一模一样。
  */
 export function playableHomePod(stored: StoredHomePod | null): StoredHomePod | null {
   if (!stored || stored.music.state === "stopped" || !stored.music.title) return null;
@@ -36,7 +36,7 @@ export function playableHomePod(stored: StoredHomePod | null): StoredHomePod | n
  * HomePod 上一份还在放的快照。
  *
  * 静默、放完由调用方按 receivedAt 现算（homePodVisibleAt），这里不按墙上的钟
- * 过滤 —— 过滤了就没法把 SQLite 那份冻进缓存。
+ * 过滤 —— 过滤了就没法把存储里那份冻进缓存。
  */
 export async function getHomePodSnapshot() {
   return playableHomePod(await mirror.get());
@@ -56,10 +56,6 @@ export function homePodVisibleAt(
 }
 
 /**
- * 这份快照最晚撑到哪一刻（含）。HA 只在状态变化时推，一首长歌、单曲循环、长时间
- * 暂停都可能很久只有这一份；Pulse 听歌道拿它当这次观测的有效期，见 shared/pulse-listening。
- */
-/**
  * 这份快照里的曲子按剩余时长该放完的那一刻。单曲循环、没有时长时说不出，返回 null。
  * Pulse 在 HA 再也没推来时，只把这一段认到这里，不把等待宽限算进去。
  */
@@ -69,6 +65,11 @@ export function homePodTrackEnd(stored: { music: LocalNowPlaying; receivedAt: nu
   return receivedAt + Math.max(0, music.durationMs - music.positionMs);
 }
 
+/**
+ * 这份快照最晚撑到哪一刻（含）：曲子该放完的那一刻再加上等待宽限。HA 只在状态变化时推，
+ * 一首长歌、单曲循环、长时间暂停都可能很久只有这一份；Pulse 听歌道拿它当这次观测的
+ * 有效期，见 shared/pulse-listening。
+ */
 export function homePodVisibleUntil(stored: { music: LocalNowPlaying; receivedAt: number }): number {
   const { music, receivedAt } = stored;
   if (music.repeatOne) return receivedAt + REPEAT_SILENCE_GRACE_MS;

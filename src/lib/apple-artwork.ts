@@ -5,7 +5,7 @@
  * `.../{w}x{h}{c}.{f}`，另一部分直接把输出格式写成
  * `.../{w}x{h}bb.jpg` / `cc.jpg`。真正的尺寸和格式都由取图的人填。
  * 所以服务端**原样透传**，不在那边定死一个尺寸 —— 它不知道每个位置要多大，
- * 从前统一填 600，结果 36px 的列表缩略图也在下 600px 的图。
+ * 统一填一个尺寸会让小缩略图也去下大图。
  *
  * 不带占位的 URL 原样返回：本机上报的封面、走图片代理的自建歌单封面都是
  * 具体地址，调用方不必先判断这是哪一种。
@@ -28,7 +28,7 @@ export function appleArtwork(url: string | null | undefined, size: number): stri
 
 /**
  * Apple CDN 直链按 3 倍取：手机常见 3× DPR，2 倍图会被浏览器再放大一截而发虚。
- * 最大那张 hero 也只有 80px，取 240px 仍然足够小；不带尺寸模板的封面不受影响。
+ * 封面的展示尺寸都很小，取 3 倍仍然足够小；不带尺寸模板的封面不受影响。
  */
 export const ARTWORK_SCALE = 3;
 
@@ -45,9 +45,9 @@ const SIGNED_IMAGE_OPTIMIZATION_ENABLED =
 /**
  * 这张图要不要过 Next 的图片优化。
  *
- * 全站只有自建歌单封面需要：Apple 给的是 blobstore 上的**原图**地址
- * （实测 274KB PNG），既没有 `{w}x{h}` 占位可填，也没法要小图，只能由站点
- * 这侧缩一道。放行的来源见 next.config.ts 的 remotePatterns。
+ * 全站只有自建歌单封面需要：Apple 给的是 blobstore 上的**原图**地址，
+ * 既没有 `{w}x{h}` 占位可填，也没法要小图，只能由站点这侧缩一道。放行的来源见
+ * next.config.ts 的 remotePatterns。
  *
  * 其余一律不优化 —— 目录封面自带尺寸模板、R2 上的是上报器压好的最终尺寸且
  * 带 immutable，再送进优化器只是多一次转码、多一份配额，还把本来直连 CDN 的

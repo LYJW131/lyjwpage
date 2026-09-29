@@ -1,8 +1,8 @@
 /**
- * 把各家状态页收成同一张卡能画的九行。
+ * 把各家状态页收成同一张卡能画的行，每家一行。
  *
  * Claude / OpenAI / Cursor / Vercel / GitHub / Cloudflare 是 Statuspage，
- * `/api/v2/summary.json` 就是当前组件和未解决事件，边缘缓存大约 10 秒。xAI
+ * `/api/v2/summary.json` 就是当前组件和未解决事件。xAI
  * 没有这份 JSON：官方机器可读源是 `/feed.xml`，此刻亮哪盏灯写在首页 HTML 里。
  * TypeSafe 是 Better Stack 的 `/index.json`。Apple 开发者状态是 apple.com 上的
  * 一段 JSONP，只看我们用到的几项服务，灯按它们有没有未结束事件推。
@@ -577,7 +577,7 @@ type AppleEvent = {
  * Apple Music API 是站点 MusicKit 的数据源；Developer ID Notary Service 给
  * Hub 的 Release 公证；Certificates, Identifiers & Profiles 管签名证书；
  * Provisioning Profile Service 和 Xcode Automatic Configuration 是 iPhone Hub
- * 装机时 `-allowProvisioningUpdates` 走的自动签名。其余四十多项不进这一行。
+ * 装机时 `-allowProvisioningUpdates` 走的自动签名。其余服务不进这一行。
  */
 const APPLE_WATCHED_SERVICES: Record<string, true> = {
   "apple music api": true,
@@ -719,10 +719,10 @@ async function load(
 }
 
 /**
- * 九行，卡片按每三行一列排成 3×3。第一列跟用量卡一致：Claude、ChatGPT、
+ * 每家一行，卡片按每三行一列排版。第一列跟用量卡一致：Claude、ChatGPT、
  * Cursor；第二列 Grok、TypeSafe、Apple；基础设施三家（Vercel / GitHub /
  * Cloudflare）是最后一列。
- * 某一家失败就留着上一轮，不让整张卡空白；九家全失败才整轮抛错。
+ * 某一家失败就留着上一轮，不让整张卡空白；各家全失败才整轮抛错。
  */
 export async function collectAgentStatus(
   previous: AgentStatusPayload | null,
@@ -802,7 +802,7 @@ export async function collectAgentStatus(
       ),
     ),
   ]);
-  // 九家一个都没取到，多半是这边出不去而不是九家同时挂了：整轮算失败，不拿沿用的旧行冒充新检查
+  // 各家一个都没取到，多半是这边出不去而不是各家同时挂了：整轮算失败，不拿沿用的旧行冒充新检查
   if (failed.size === Object.keys(FALLBACK).length) throw new Error("status pages all unreachable");
   return {
     fetchedAt: now,

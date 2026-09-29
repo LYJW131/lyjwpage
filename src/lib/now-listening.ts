@@ -3,7 +3,7 @@ import { offlineByLiveness, withPresence, type Liveness } from "@/lib/reporter-l
 import type { LocalNowPlaying, NowListeningAlternate, NowListeningPayload } from "@/lib/types";
 
 /**
- * 暂停超过 10 秒就不再占用音乐 Hero，让下一个实时来源接管。
+ * 暂停超过这个宽限期就不再占用音乐 Hero，让下一个实时来源接管。
  *
  * 差值必须用源站的钟减设备 observedAt：浏览器再拿自己的钟去减会跨两个时钟，
  * 偏差超过宽限期就热轮询。见 pickNowListening 的 expiresInMs。
@@ -46,7 +46,8 @@ function alternateOf(candidate: NowListeningCandidate): NowListeningAlternate {
 /**
  * 从缓存里的候选现选 Hero。存活和墙上的钟都不能冻进快照。
  *
- * 顺序：Mac 在播 → Mac 暂停未满 10 秒 → HomePod 在播 → HomePod 暂停未满 10 秒。
+ * 顺序：Mac 在播 → Mac 暂停未满宽限期 → HomePod 在播 → HomePod 暂停未满宽限期
+ * （宽限期即 `MUSIC_PAUSE_GRACE_MS`）。
  *
  * 选择仍在源站做（取数、推送、pulse 共用这一份）：暂停宽限、HomePod 静默都要拿
  * 源站的钟减设备 observedAt，浏览器算不得。但「Mac 此刻在不在线」这一条不能只靠

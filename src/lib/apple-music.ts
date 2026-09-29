@@ -13,27 +13,20 @@ import { cached } from "@/lib/cache";
  *
  * 两个调用方，共用下面这把凭据和 `appleFetchRaw`：
  *
- * 1. **给此刻在播的那首曲子找一个可跳转的地址**（就在这个文件里）。本机
- *    Music.app 和 HomePod 都给不出可分享的链接，只能拿曲名 + 艺人去目录里搜，
- *    而这件事跟着当前播放的曲子走，读取时才知道要搜什么。真要把它搬走，该搬去
- *    Mac 上报器 —— 它有 MusicKit，换歌的那一刻就能把链接一起算好塞进信封，
- *    这里连缓存都不用留。
- * 2. **「最近在听」那份列表**（见 lib/apple-music-recent）。它从前由 NAS 上一个
- *    常驻的上报器拉好推来，现在收编进站点：访客的轮询驱动刷新，闲时不出网。
+ * 1. **给此刻在播的那首曲子找一个可跳转的地址**（`resolveTrackLookup`，就在这个
+ *    文件里）。本机 Music.app 和 HomePod 都给不出可分享的链接，只能拿曲名 + 艺人
+ *    去目录里搜，结果按曲目缓存。
+ * 2. **「最近在听」那份列表**：由采集 Worker 的 `appleRecentJob`
+ *    （workers/collector/src/jobs/apple-recent.ts）定时拉取。
  *
- * 加上动态封面和歌词（lib/motion-artwork 和 lib/lyrics —— 那两条打的是 amp-api、
- * 用的是扒来的 web token，歌词再多带一个这里同一份凭据里的 music user token），
- * 站点会打 Apple 的就这四处。四处都命中缓存，前端轮询多快，回源频率都不变。
+ * 另外两条打的是 amp-api：动态封面（lib/motion-artwork）和歌词（lib/lyrics），用的是
+ * 扒来的 web token，歌词再多带一个这里同一份凭据里的 music user token。这些请求都命中
+ * 缓存，前端轮询多快，回源频率都不变。
  *
  * 两样凭据来路不同。developer token 由 api Worker 用自己那把 .p8 现签（同一把钥匙
  * 也给「一起听」签发），过半衰期自动换新，不存在过期这回事。music user token 只能
  * 来自那台 Mac：它是用户在 MusicKit 里授权的产物，上报器推上来存着，这边只管收。
- * 从前 developer token 也由 Mac 用 MusicKit 现签后推来，代价是它会过期而上报器只在
- * 变化时才发 —— 实测过期两天 Worker 还拿着旧的挨 401，所以收回这里自签。
- *
- * 这份凭据也不再从任何 HTTP 端点发出去。从前 `/api/ingest/apple-music` 的 GET
- * 把它转交给上报器，代价是当时共用的上报密钥从此和收听记录同等敏感；
- * 拉列表的活收回站点之后，那条路连同那个代价一起没了。
+ * 私人凭据只在 Worker 内部读取，不经任何 HTTP 端点发出。
  */
 
 export type Credentials = {
@@ -49,7 +42,7 @@ export function appleStorefront(): string {
 export async function resolveCredentials(): Promise<Credentials> {
   const result = await readAppleMusicCredentials();
   if (!result.ok) {
-    // 两种没有，修法相反：一个去看 SQLite，一个去点授权按钮
+    // 两种没有，修法相反：一个去看存储，一个去点授权按钮
     throw new Error(
       result.reason === "storage-unreachable"
         ? "读不到 Apple Music 凭据 —— Storage 连不上，凭据本身可能还在"
@@ -65,8 +58,8 @@ export async function resolveCredentials(): Promise<Credentials> {
 /**
  * 上游卡住时别把这次请求一起拖死。
  *
- * 两条调用路径都需要它：查链接压在「此刻在听」的推送链路上，拉列表压在一次
- * 状态轮询的响应之后 —— 两处都不该为一个不回话的上游一直挂着。
+ * 两条调用路径都需要它：查链接压在「此刻在听」的推送链路上，采集任务拉列表也不该
+ * 为一个不回话的上游一直挂着。
  */
 const UPSTREAM_TIMEOUT_MS = 10_000;
 
@@ -107,9 +100,8 @@ const SEARCH_LIMIT = 25;
 /**
  * 一次目录查询同时解出链接和封面。
  *
- * 封面顺带取回来是有实际意义的：以前封面是采集端把二进制压进上报载荷送上来的，
- * 而这次查询本来就要做、结果本来就带 artwork 模板 URL，等于白拿。
- * link 为空串表示「搜过了但没匹配上」，和「还没搜过」区分开。
+ * 封面随这次查询顺带取回：查询本来就要做，结果本来就带 artwork 模板 URL，不需要
+ * 采集端再上传封面。link 为空串表示「搜过了但没匹配上」，和「还没搜过」区分开。
  */
 export type TrackLookup = {
   link: string;
@@ -151,14 +143,10 @@ export async function resolveTrackLookup(track: {
 
   // 专辑名必须进 key：同名同艺人但不同专辑是完全不同的链接
   /**
-   * 键里带上格式版本。
-   *
-   * 这个缓存的值从「一个链接字符串」改成了 `{ link, artwork }` 对象，键不跟着
-   * 换的话旧条目会被当成新格式读：字符串上取 `.link` 拿到的是
-   * `String.prototype.link` 那个上古方法，它是真值，于是链接字段被塞进一个函数，
-   * JSON 序列化时又被悄悄丢掉 —— 表现是链接和封面同时消失，很难往缓存上想。
-   * 以后再改这个值的形状，记得一起改版本号。搜索策略变了也要改：旧键里缓存的
-   * 「搜过了但没匹配上」会把新策略挡在门外整整一周。
+   * 键里带上格式版本：缓存值的形状或搜索策略变了，就要一起换版本号。键不换的话，
+   * 旧条目会被当成新格式读（旧值若是字符串，取 `.link` 拿到的是
+   * `String.prototype.link` 这个方法，链接和封面会一起悄悄消失，很难往缓存上想）；
+   * 旧键里缓存的「搜过了但没匹配上」也会把新策略挡在门外，直到 TRACK_LINK_TTL_MS 过去。
    */
   const cacheKey =
     "apple-music:track-lookup:v10:" +

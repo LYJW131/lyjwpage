@@ -1,7 +1,6 @@
 /**
- * Apple Music 链接解析。纯函数，不碰网络 —— 和 apple-music-lookup 一样单拆
- * 一个文件，`node --test` 直接吃（测试跑在裸 node 下，解析不了 `@/` 别名，
- * 连着 lib/cache 那串依赖的模块进不了测试）。
+ * Apple Music 链接解析。纯函数，不碰网络，便于独立测试 —— 和 apple-music-lookup
+ * 一样单拆一个文件。
  */
 
 export interface AppleMusicParsed {

@@ -43,7 +43,7 @@ test("只取性能类别与裁剪过的字段，密钥只出现在查询串里",
     assert.equal(url.searchParams.get("strategy"), "mobile");
     assert.equal(url.searchParams.get("category"), "performance");
     assert.equal(url.searchParams.get("key"), "test-key");
-    // 整份响应带截图有 800 KB，裁掉后才是 Worker 真正要解的那点
+    // 整份响应带截图，体积很大，裁掉后才是 Worker 真正要解的那点
     assert.match(url.searchParams.get("fields") ?? "", /^captchaResult,lighthouseResult\(/);
     return new Response(JSON.stringify(response()), { headers: { "Content-Type": "application/json" } });
   });

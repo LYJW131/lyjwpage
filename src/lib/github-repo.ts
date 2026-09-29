@@ -8,13 +8,12 @@ import { LAG_KEYS } from "@shared/lag";
  * 本仓库的贡献统计。名单走 GitHub REST `/stats/contributors`，顶部那三个总数
  * 另走 GraphQL —— 这两件事在 GitHub 那边不是一回事，见下面 fetchRepoTotals。
  *
- * 和贡献日历同一条流程：采集 Worker 每 30 分钟取一轮写进可滞后层（名单和总数各自
- * 降级，见 workers/collector 的 github-repo），`/api/status/github-repo` 只读那一份，
- * 浏览器按长间隔轮询；没有推送。
+ * 和贡献日历同一条流程：采集 Worker（`githubRepoJob`）取一轮写进可滞后层（名单和总数
+ * 各自降级），`/api/status/github-repo` 只读那一份，浏览器按长间隔轮询；没有推送。
  *
  * token 是采集 Worker 上的 GITHUB_TOKEN（和贡献日历同一把）：名单那半公开仓不带
- * token 也能读，只是匿名限额低（每 IP 60 次/小时）；总数那半是 GraphQL，没有
- * token 就取不到，三个数字显示「—」。
+ * token 也能读，只是匿名限额低；总数那半是 GraphQL，没有 token 就取不到，三个数字
+ * 显示「—」。
  */
 
 /**
@@ -36,7 +35,7 @@ const RETRY_INTERVAL_MS = 3_000;
 
 const GITHUB_GRAPHQL = "https://api.github.com/graphql";
 
-/** 一页翻多少条提交，GraphQL `history` 的上限就是 100。 */
+/** 一页翻多少条提交，取 GraphQL `history` 每页的上限。 */
 const HISTORY_PAGE = 100;
 
 type ContributorWeek = {
@@ -83,7 +82,7 @@ const numberOrZero = (value: unknown): number =>
  * 把 `/stats/contributors` 的原始返回汇总成名单。纯函数，不碰网络，方便单测。
  *
  * `totals` 单独传进来，**不是**把名单加起来 —— 见 fetchRepoTotals 的注释：
- * 这个仓 434 条提交里有 403 条带 `Co-authored-by`，加起来会得到 811。
+ * 协作者会被重复计入贡献统计，加起来会比真值大。
  */
 export function summarizeRepoStats(
   raw: ContributorStat[],
@@ -179,9 +178,9 @@ export class ContributorsUnavailable extends Error {
 }
 
 /**
- * 名单那半：`/stats/contributors`，GitHub 现算时回 202，就每 3 秒再问一次。
- * 预算内等不到、或响应不对，都抛出去 —— 没有 commits 列表那种退路：
- * 它拼不出增删行，「+0 / −0」会在缓存里挂半小时。
+ * 名单那半：`/stats/contributors`，GitHub 现算时回 202，就每隔 `RETRY_INTERVAL_MS`
+ * 再问一次。预算内等不到、或响应不对，都抛出去 —— 没有 commits 列表那种退路：
+ * 它拼不出增删行，「+0 / −0」会在缓存里挂到下一轮采集。
  */
 async function fetchContributorStats(
   headers: Record<string, string>,
@@ -285,15 +284,13 @@ const HISTORY_QUERY = `query ($owner: String!, $name: String!, $cursor: String) 
  *
  * **不能把名单加起来。** `/stats/contributors` 是「贡献」而不是「提交归属」：
  * 一条带 `Co-authored-by` 的提交会整条记在作者名下，也整条记在每位协作者名下，
- * 增删行同样各记一遍。这个仓 434 条提交里 403 条是「我 + agent」的形式，于是
- * 加总得到 811 次提交、+239386/−96550 行，都是真实值的两倍左右
- * （真值 434 / +121476 / −44421，与 `git rev-list --count`、`git log --numstat` 一致）。
+ * 增删行同样各记一遍，加总会重复计入。
  *
  * 提交数用 GraphQL 的 `history.totalCount`，一次请求就精确。增删行没有现成的
- * 全仓字段：`/stats/code_frequency` 本来正合适，但这个仓上它长期只回 202
- * （带令牌试了二十来次都没算出来），所以只能自己把 history 翻一遍求和 ——
- * 代价是每 100 条提交一次请求，所以结果锚在 HEAD 上存起来，之后每轮只补新增
- * 的那几条。锚还在、HEAD 没动，就一次请求都不用翻。
+ * 全仓字段：`/stats/code_frequency` 本来正合适，但它在这个仓上长期只回 202、
+ * 算不出来，所以只能自己把 history 翻一遍、按提交累计求和 —— 代价是每一页
+ * 一次请求，所以结果锚在 HEAD 上存起来，之后每轮只补新增的那几条。锚还在、
+ * HEAD 没动，就一次请求都不用翻。
  *
  * 预算内翻不完：提交数照样返回（它只要一次请求），增删行退回锚上那份 ——
  * 顶多旧几条提交，下一轮继续往前推；连锚都没有就是 null，显示「—」。

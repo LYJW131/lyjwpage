@@ -1,6 +1,6 @@
 import type { VercelMetricsPayload } from "@/lib/vercel-deployments-types";
 
-/** 函数统计窗口按 15 分钟对齐，和采集节奏一致 */
+/** 函数统计窗口的对齐粒度，和采集节奏（`vercelMetricsJob`）一致 */
 const FUNCTIONS_ALIGN_MS = 900_000;
 const FUNCTIONS_WINDOW_MS = 12 * 3_600_000;
 
@@ -61,13 +61,13 @@ export async function fetchVercelFunctions(project: string, team: string, token:
   return parseVercelFunctions(await response.json());
 }
 
-/** 函数调用那一组：滚动 12 小时、按 15 分钟对齐的窗口，带自己的采集时刻 */
+/** 函数调用那一组：滚动窗口、按 `FUNCTIONS_ALIGN_MS` 对齐，带自己的采集时刻 */
 export async function fetchVercelFunctionsGroup(project: string, team: string, token: string, now = Date.now()): Promise<NonNullable<VercelMetricsPayload["functions"]>> {
   const end = Math.floor(now / FUNCTIONS_ALIGN_MS) * FUNCTIONS_ALIGN_MS, start = end - FUNCTIONS_WINDOW_MS;
   return { ...await fetchVercelFunctions(project, team, token, start, end), fetchedAt: Date.now(), start, end };
 }
 
-/** 访问统计那一组：此前 7 个完整 UTC 日，带自己的采集时刻 */
+/** 访问统计那一组：此前若干个完整 UTC 日，带自己的采集时刻 */
 export async function fetchVercelAnalyticsGroup(project: string, team: string, token: string, now = Date.now()): Promise<NonNullable<VercelMetricsPayload["analytics"]>> {
   const end = Math.floor(now / 86_400_000) * 86_400_000, start = end - 7 * 86_400_000;
   const url = new URL("https://api.vercel.com/v1/query/web-analytics/visits/count");

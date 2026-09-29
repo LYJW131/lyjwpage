@@ -7,7 +7,7 @@ import { LAG_KEYS } from "@shared/lag";
 const GITHUB_GRAPHQL = "https://api.github.com/graphql";
 
 /**
- * 贡献日历。拉取在采集 Worker（`github-chart`，每 10 分钟），整年一份写进可滞后层；
+ * 贡献日历。拉取在采集 Worker（`githubChartJob`），整年一份写进可滞后层；
  * 公开端点只读那一份，`?since=` 的切片在读取这一侧做。令牌只在采集 Worker 上。
  *
  * 信封是 origin + 日序列，和年度 token 同一形状。逐日的 date / weekday / label

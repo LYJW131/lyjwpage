@@ -11,24 +11,24 @@ import { get, put, remove } from "@/lib/cache";
  * MusicKit 凭据（lib/apple-music-credentials），那条只能由 mac 那把上报凭据写入，
  * 别混用。
  *
- * 从动态封面（lib/motion-artwork）里抽出来的：歌词也要走同一份 token、同一套
- * 401 作废逻辑，两处各扒一遍就是两份缓存、两个刷新点，401 时还得各清各的。
+ * 动态封面（lib/motion-artwork）和歌词共用这份 token 和同一套 401 作废逻辑：各扒
+ * 各的就是两份缓存、两个刷新点，401 时还得各清各的。
  *
- * 三层缓存：模块全局（serverless 上即每实例一份）→ SQLite（全站共享）→ 真扒。
+ * 三层缓存：模块全局（每个 isolate 一份）→ Storage（全站共享）→ 真扒。
  * 扒取是这条链路最脆的一环 —— 从数据中心 IP 反复抓 music.apple.com 的页面和
- * JS bundle，Apple 哪天上验证页或改打包产物路径就断。共享进 SQLite 后，全站扒取
- * 频率从「每个冷实例一次」降到「每个半衰期一次」。
+ * JS bundle，Apple 哪天上验证页或改打包产物路径就断。共享进 Storage，全站扒取
+ * 频率才是「每个半衰期一次」，而不是「每个冷实例一次」。
  */
 
 let cachedToken: string | null = null;
 let tokenExpiresAt = 0;
 /**
  * 正在取 token 的那一次。in-flight 去重是进程内的：它挡的是冷启动后的一批并发
- * 请求各自把整个 JS bundle（几百 KB）扒一遍。
+ * 请求各自把整个 JS bundle 扒一遍。
  */
 const tokenRequest = () => requestState("web-token", () => ({ inflight: null as Promise<string> | null }));
 
-/** Storage 里那份共享 web token 的键。两份生产各自的 Storage 各存一份 */
+/** Storage 里那份共享 web token 的键 */
 const TOKEN_CACHE_KEY = "apple-web-token";
 
 type StoredToken = { token: string; expiresAt: number };
@@ -51,7 +51,7 @@ export class AppleUpstreamError extends Error {
 }
 
 export async function getWebToken(): Promise<string> {
-  // 刷新时刻已经定在半衰期（见 tokenRefreshAt），不再需要「提前 5 分钟」的边距
+  // 刷新时刻已经定在半衰期（见 tokenRefreshAt），不必再留提前量
   if (cachedToken && Date.now() < tokenExpiresAt) {
     return cachedToken;
   }
@@ -63,10 +63,8 @@ export async function getWebToken(): Promise<string> {
 }
 
 /**
- * 先问 SQLite，没有才真扒。
- *
- * SQLite 不可达时 get 返回 undefined，静默落回本实例自己扒 —— token 读取失败
- * 不能把整个解析拖死，代价只是回到从前的每实例一扒。
+ * 先问 Storage，未命中才真扒。读取失败（Worker 驱动下 get 会抛）向上传播，不静默
+ * 落回自行抓取。
  */
 async function loadWebToken(): Promise<string> {
   const stored = await get<StoredToken>(TOKEN_CACHE_KEY);
@@ -114,13 +112,13 @@ async function scrapeWebToken(): Promise<string> {
 
 /**
  * 刷新时刻定在 JWT 的半衰期：寿命过半就换新，永远不贴着过期线跑。
- * 解不出 exp 时 parseJwtExp 兜底 +24h，半衰期即 +12h。下限一小时 ——
+ * 解不出 exp 时 parseJwtExp 兜底一个固定寿命，半衰期取它的一半。半衰期有个下限 ——
  * 万一扒来的 token 的 exp 已在过去，别让它当场失效，否则每个请求都会
  * 重扒一遍同样的坏 token。
  */
 function tokenRefreshAt(expMs: number): number {
   const now = Date.now();
-  // 取整：/2 有一半概率除出 x.5，而这个值既存进 SQLite 也当 TTL 用
+  // 取整：/2 有一半概率除出 x.5，而这个值既存进 Storage 也当 TTL 用
   return now + Math.max(Math.ceil((expMs - now) / 2), 60 * 60 * 1000);
 }
 
@@ -145,12 +143,11 @@ function parseJwtExp(jwt: string): number {
  * `headers` 给需要多带一个头的调用方 —— 歌词要 `Media-User-Token`（amp-api 认的
  * 是这个名字，和 api.music.apple.com 的 `Music-User-Token` 不是一回事，别去统一）。
  *
- * **401 清 token，但只清「挨了这记 401 的那份」。** 清本身是老教训：从前只有
- * `/album/` 那条路清，`/song/` 那条静默返回 null，token 一失效那条路会一直
- * 失败到 tokenExpiresAt 自然到期。带条件比对是 SQLite 共享后补的：翻新窗口里
- * 拿旧 token 的请求还在天上飞，它们的迟到 401 若无条件清，会把别的实例刚扒好
- * 写进 SQLite 的新 token（或本实例已翻新的全局）一并作废，害下一个冷实例白扒
- * 一遍。GET 和 DEL 之间残留毫秒级窗口，撞上的代价也只是多扒一次，不上锁。
+ * **401 清 token，但只清「挨了这记 401 的那份」。** 任何一条路挨 401 都要清，否则
+ * token 一失效那条路会一直失败到 tokenExpiresAt 自然到期。清的时候带条件比对：
+ * 翻新窗口里拿旧 token 的请求还在天上飞，它们的迟到 401 若无条件清，会把别的实例
+ * 刚扒好写进 Storage 的新 token（或本实例已翻新的全局）一并作废，害下一个冷实例
+ * 白扒一遍。读和删之间残留毫秒级窗口，撞上的代价也只是多扒一次，不上锁。
  */
 export async function ampFetch<T>(
   endpoint: string,
@@ -171,9 +168,9 @@ export async function ampFetch<T>(
   if (!resp.ok) {
     if (resp.status === 401) {
       /*
-       * 全局那份放到最后清。反过来（先清全局再 await SQLite）的话，等待的
-       * 那个来回里，同实例的并发请求会从还没删掉的 SQLite 把这个已判死的
-       * token 重新装回全局 —— 随后 SQLite 被删空、快路径却一直用死 token。
+       * 全局那份放到最后清。反过来（先清全局再 await Storage）的话，等待的
+       * 那个来回里，同实例的并发请求会从还没删掉的 Storage 把这个已判死的
+       * token 重新装回全局 —— 随后 Storage 被删空、快路径却一直用死 token。
        * 挪到 await 之后重读现值，复活了也当场抓回来。
        */
       const stored = await get<StoredToken>(TOKEN_CACHE_KEY);

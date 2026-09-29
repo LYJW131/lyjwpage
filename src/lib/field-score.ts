@@ -9,7 +9,8 @@ import type { SentryVitals } from "@/lib/sentry-status-types";
  * 一项都没有是 null。
  *
  * 和 Sentry 页面上那个分不完全一样：Sentry 是逐次页面加载算分再平均，这里拿的是
- * 七天的 p75 算一次。p75 就是 Web Vitals 判定「达标」用的那个分位，读起来更保守。
+ * 整段取数窗口（见 lib/sentry-status）的 p75 算一次。p75 就是 Web Vitals 判定「达标」
+ * 用的那个分位，读起来更保守。
  */
 
 type Curve = { key: keyof SentryVitals; weight: number; p10: number; median: number };

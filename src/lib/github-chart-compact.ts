@@ -1,10 +1,10 @@
 /**
- * 贡献日历的几何。格子 10px、间距 2px、起点 (27, 20)，53 周时画布 663×104，
- * 和从前 ghchart 那份对上，卡片宽度才不用改。
+ * 贡献日历的几何：格子、步长、起点见 CELL / STEP / LEFT / TOP，画布尺寸由 `chartSize`
+ * 按周数算出。卡片宽度按它的宽高比定，改几何要连卡片一起看。
  *
- * SVG 用 geometricPrecision：卡片把 663 宽的 viewBox 拉到非整倍数时，
- * 格子按比例缩放，而不是各自对齐到像素把 2px 缝挤得忽宽忽窄。
- * （逐格 hover 之后一天就是一个 <rect>，不再按档位合并 path。）
+ * SVG 用 geometricPrecision：卡片把 viewBox 拉到非整倍数时，格子按比例缩放，
+ * 而不是各自对齐到像素把格间缝挤得忽宽忽窄。逐格 hover 要求一天一个 <rect>，
+ * 所以不按档位合并 path。
  *
  * 空格子颜色交给 globals.css 的 `[data-score="0"] { fill: var(--muted) }`。
  */
@@ -15,7 +15,7 @@ export const CELL = 10;
 export const STEP = 12;
 export const LEFT = 27;
 export const TOP = 20;
-/** 0 档的 #EEEEEE 会被 CSS 盖掉；其余四档保持原来的蓝。 */
+/** 0 档的 #EEEEEE 会被 CSS 盖掉；其余四档是蓝色系。 */
 export const FILLS = ["#EEEEEE", "#72b0ff", "#5896ff", "#2563eb", "#1e4fbc"] as const;
 export const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 export const DAY_LABEL_Y = [28, 40, 52, 64, 77, 89, 101] as const;
