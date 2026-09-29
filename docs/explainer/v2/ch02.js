@@ -5,30 +5,11 @@
 // 时间一律写章节内的小节（bar），b = 5.5 即第 5 小节第 2 拍。
 (() => {
   const { css, Pass, Layer } = G;
-  const { E, prog, keys, clamp, lerp, text, FONT, line, polyline, rect, fillRect, dashed, envelope, stamp, clawd, bubble, spark, hash, roundRect } = K;
+  const { E, prog, keys, clamp, lerp, text, FONT, line, polyline, rect, fillRect, dashed, envelope, stamp, clawd, bubble, spark, hash, roundRect, glyph } = K;
   const tr = (k) => I18N.tr(k);
   let paper, ink, stampL, emit, top;
-
-  const PAPER = `
-uniform float uGridA;
-void main(){
-  vec2 w = worldPos();
-  vec3 col = C_PAPER;
-  float n = fbm(w * 0.011);
-  float fib = vnoise(w * vec2(0.55, 0.045));
-  col *= 0.968 + 0.046 * n + 0.014 * fib;
-  float speck = hash12(floor(w * 0.8));
-  col = mix(col, C_PINK, speck > 0.9988 ? 0.22 : 0.0);
-  // 图纸网格：40 一小格、200 一大格，只铺在图版范围内
-  float inside = step(0.0, w.x) * step(w.x, 3840.0) * step(0.0, w.y) * step(w.y, 2160.0);
-  vec2 gm = abs(fract(w / 40.0 + 0.5) - 0.5) * 40.0;
-  vec2 gM = abs(fract(w / 200.0 + 0.5) - 0.5) * 200.0;
-  float z = uCam.z;
-  float minor = pxLine(min(gm.x, gm.y) * z, 1.0) * 0.045 * sat(z * 1.4 - 0.2);
-  float major = pxLine(min(gM.x, gM.y) * z, 1.2) * 0.085;
-  col = mix(col, C_PINK, (minor + major) * uGridA * inside);
-  fragColor = vec4(col, 1.0);
-}`;
+  // 图版底用共用的纸面着色器（kit.js 的 K.PLATE.paper）：纸纹、纤维、图纸网格只铺在这张 3840×2160 的图纸上
+  const PLATE_RECT = [0, 0, 3840, 2160];
 
   // ---------- 布局常量（世界坐标） ----------
   const LAMP_Y_ = 1560;
@@ -86,16 +67,16 @@ void main(){
     polyline(x, frame, drawK, 3, ink);
     if (drawK < 1) return;
     if (open > 0) fillRect(x, dx + 2, top + 2, w - 4, h - 2, ink, 0.9 * clamp(open * 3));
-    // 门扇：以左边为轴向外转，外沿按透视变高变窄
+    // 门扇：以左边为轴向外转。全片只有 2D，所以不做透视：门扇只是平着变窄，上下沿始终水平
     const o = E.out(clamp(open));
-    const ex = dx + w * (1 - 0.8 * o), sk = h * 0.07 * o;
+    const ex = dx + w * (1 - 0.8 * o);
     x.save();
     x.fillStyle = css("paper");
     x.strokeStyle = ink; x.lineWidth = 2.2;
-    x.beginPath(); x.moveTo(dx + 1, top + 1); x.lineTo(ex, top + 1 - sk); x.lineTo(ex, top + h + sk); x.lineTo(dx + 1, top + h); x.closePath();
+    x.beginPath(); x.moveTo(dx + 1, top + 1); x.lineTo(ex, top + 1); x.lineTo(ex, top + h); x.lineTo(dx + 1, top + h); x.closePath();
     x.fill(); x.stroke();
     // 门板上的内框和锁
-    const inset = (px, py) => [lerp(dx + 1, ex, px), lerp(top + 1, top + h, py) + lerp(0, sk, px) * (py < 0.5 ? -1 : 1) * Math.abs(py - 0.5) * 2];
+    const inset = (px, py) => [lerp(dx + 1, ex, px), lerp(top + 1, top + h, py)];
     const pts = [inset(0.14, 0.08), inset(0.86, 0.08), inset(0.86, 0.46), inset(0.14, 0.46), inset(0.14, 0.08)];
     polyline(x, pts, 1, 1.2, ink, 0.55);
     const [lx, ly] = inset(0.8, 0.6);
@@ -265,22 +246,7 @@ void main(){
     }
   }
 
-  // ---------- C 分拣台 ----------
-  function glyph(x, kind, cx, cy, color) {
-    x.save(); x.strokeStyle = color; x.lineWidth = 2.2;
-    if (kind === "cred") { // 带锁的小抽屉
-      x.strokeRect(cx - 60, cy - 30, 120, 60); line(x, cx - 22, cy - 2, cx + 22, cy - 2, 3, color);
-      x.beginPath(); x.arc(cx, cy + 14, 7, 0, Math.PI * 2); x.stroke();
-    } else if (kind === "d1") { // 望不到头的档案架
-      for (let j = 0; j < 4; j++) { const w = 130 - j * 26, y = cy - 30 + j * 20; line(x, cx - w / 2, y, cx + w / 2, y, 2.2 - j * 0.4, color, 1 - j * 0.18); }
-      line(x, cx - 65, cy - 30, cx - 26, cy + 30, 1.2, color, 0.5); line(x, cx + 65, cy - 30, cx + 26, cy + 30, 1.2, color, 0.5);
-    } else if (kind === "lag") { // 一墙带时间签的格子
-      for (let r = 0; r < 3; r++) for (let c = 0; c < 4; c++) { x.strokeRect(cx - 64 + c * 32, cy - 36 + r * 24, 28, 20); }
-    } else { // 一间屋子
-      x.beginPath(); x.moveTo(cx - 50, cy + 30); x.lineTo(cx - 50, cy - 10); x.lineTo(cx, cy - 44); x.lineTo(cx + 50, cy - 10); x.lineTo(cx + 50, cy + 30); x.closePath(); x.stroke();
-    }
-    x.restore();
-  }
+  // ---------- C 分拣台（管子底下四个库的符号是共用的 K.glyph） ----------
   function tube(x, pts, color, k, lw = 2.2) {
     // 双线管子：沿中线左右各偏 24
     const off = (d) => pts.map((p, i) => {
@@ -442,7 +408,7 @@ void main(){
     const hitS = Math.max(impact(b, 3.5), impact(b, 8.0), impact(b, 15.0, 0.14));
     const cam = { x: c[0], y: c[1], zoom: c[2] * (1 + 0.025 * hitS), rot: c[3] };
     G.setCam(cam);
-    G.fill(paper, { uGridA: 1 });
+    G.fill(paper, { uGridA: 1, uPlate: PLATE_RECT });
 
     const x = ink.begin(); ink.cam(cam);
     const s = stampL.begin(); stampL.cam(cam);
@@ -489,7 +455,7 @@ void main(){
 
   window.CHAPTERS.push({
     id: "ch02", title: "ch.02", bars: 16,
-    init() { paper = new Pass(PAPER); ink = new Layer(); stampL = new Layer(); top = new Layer(); emit = new Layer(0.5); },
+    init() { paper = G.pass(K.PLATE.paper); ink = G.layer("ink"); stampL = G.layer("stamp"); top = G.layer("top"); emit = G.layer("emit", 0.5); },
     render,
   });
 })();

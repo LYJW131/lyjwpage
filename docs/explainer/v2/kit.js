@@ -1,4 +1,5 @@
-// 画面工具：缓动、时间段、2D 绘图（发丝线、文字、信封、印章、Clawd、信封火花）。
+// 画面工具：缓动、时间段、2D 绘图（发丝线、文字、信封、印章、Clawd、信封火花），
+// 以及各章共用的件：图版底着色器（纸面 / 暗底）、四个库的符号、白卡、打勾方框、引线标注、折线路径、2D 镜头。
 // 所有函数只依赖传入的时间，不读时钟、不用 Math.random。
 (() => {
   const { css } = G;
@@ -263,5 +264,131 @@
     emit.beginPath(); emit.arc(head[0], head[1], r, 0, Math.PI * 2); emit.fill(); emit.restore();
   }
 
-  window.K = { clamp, lerp, E, prog, keys, mulberry32, hash, FONT, text, measure, line, polyline, rect, fillRect, dashed, envelope, stamp, roundRect, clawd, bubble, spark };
+  // ---------- 图版底：按 worldPos() 画的全屏 2D 着色器，各章 new G.Pass(K.PLATE.paper / K.PLATE.ink) ----------
+  // uPlate = 图版范围（世界坐标 x0, y0, x1, y1），网格只铺在里面；uGridA = 网格浓度（0 关掉）
+  const PLATE = {
+    // 纸面：纸纹、纤维、零星墨点、图纸网格（40 一小格、200 一大格）
+    paper: `
+uniform float uGridA;
+uniform vec4 uPlate;
+void main(){
+  vec2 w = worldPos();
+  vec3 col = C_PAPER;
+  float n = fbm(w * 0.011);
+  float fib = vnoise(w * vec2(0.55, 0.045));
+  col *= 0.968 + 0.046 * n + 0.014 * fib;
+  float speck = hash12(floor(w * 0.8));
+  col = mix(col, C_PINK, speck > 0.9988 ? 0.22 : 0.0);
+  float inside = step(uPlate.x, w.x) * step(w.x, uPlate.z) * step(uPlate.y, w.y) * step(w.y, uPlate.w);
+  vec2 gm = abs(fract(w / 40.0 + 0.5) - 0.5) * 40.0;
+  vec2 gM = abs(fract(w / 200.0 + 0.5) - 0.5) * 200.0;
+  float z = uCam.z;
+  float minor = pxLine(min(gm.x, gm.y) * z, 1.0) * 0.045 * sat(z * 1.4 - 0.2);
+  float major = pxLine(min(gM.x, gM.y) * z, 1.2) * 0.085;
+  col = mix(col, C_PINK, (minor + major) * uGridA * inside);
+  fragColor = vec4(col, 1.0);
+}`,
+    // 暗底：墨色底上一层很淡的云纹和纤维，骨白的图纸网格（比纸面更淡，只当纹理）
+    ink: `
+uniform float uGridA;
+uniform vec4 uPlate;
+void main(){
+  vec2 w = worldPos();
+  vec3 col = C_INK;
+  float n = fbm(w * 0.004);
+  float fib = vnoise(w * vec2(0.35, 0.03));
+  col *= 0.88 + 0.22 * n + 0.05 * fib;
+  float speck = hash12(floor(w * 0.7));
+  col = mix(col, C_BONE, speck > 0.9994 ? 0.08 : 0.0);
+  float inside = step(uPlate.x, w.x) * step(w.x, uPlate.z) * step(uPlate.y, w.y) * step(w.y, uPlate.w);
+  vec2 gm = abs(fract(w / 40.0 + 0.5) - 0.5) * 40.0;
+  vec2 gM = abs(fract(w / 200.0 + 0.5) - 0.5) * 200.0;
+  float z = uCam.z;
+  float minor = pxLine(min(gm.x, gm.y) * z, 1.0) * 0.022 * sat(z * 1.4 - 0.2);
+  float major = pxLine(min(gM.x, gM.y) * z, 1.2) * 0.045;
+  col = mix(col, C_BONE, (minor + major) * uGridA * inside);
+  fragColor = vec4(col, 1.0);
+}`,
+  };
+
+  // ---------- 四个库的符号（母题 #2，全片一致；第 02 章的管子底下、第 03 章的对照表都用它） ----------
+  // 实时 = 一间屋子；可滞后 = 一墙格子；历史 = 望不到头的档案架；凭据 = 带锁的小抽屉。s 为缩放
+  function glyph(x, kind, cx, cy, color, s = 1) {
+    x.save(); x.strokeStyle = color; x.lineWidth = 2.2;
+    if (s !== 1) { x.translate(cx, cy); x.scale(s, s); x.translate(-cx, -cy); }
+    if (kind === "cred") { // 带锁的小抽屉
+      x.strokeRect(cx - 60, cy - 30, 120, 60); line(x, cx - 22, cy - 2, cx + 22, cy - 2, 3, color);
+      x.beginPath(); x.arc(cx, cy + 14, 7, 0, Math.PI * 2); x.stroke();
+    } else if (kind === "d1") { // 望不到头的档案架
+      for (let j = 0; j < 4; j++) { const w = 130 - j * 26, y = cy - 30 + j * 20; line(x, cx - w / 2, y, cx + w / 2, y, 2.2 - j * 0.4, color, 1 - j * 0.18); }
+      line(x, cx - 65, cy - 30, cx - 26, cy + 30, 1.2, color, 0.5); line(x, cx + 65, cy - 30, cx + 26, cy + 30, 1.2, color, 0.5);
+    } else if (kind === "lag") { // 一墙带时间签的格子
+      for (let r = 0; r < 3; r++) for (let c = 0; c < 4; c++) { x.strokeRect(cx - 64 + c * 32, cy - 36 + r * 24, 28, 20); }
+    } else { // 一间屋子
+      x.beginPath(); x.moveTo(cx - 50, cy + 30); x.lineTo(cx - 50, cy - 10); x.lineTo(cx, cy - 44); x.lineTo(cx + 50, cy - 10); x.lineTo(cx + 50, cy + 30); x.closePath(); x.stroke();
+    }
+    x.restore();
+  }
+
+  // ---------- 暗底图版上的白卡（详图、清单、对照表）：纸色底 + 细边 + 落影；配合 G.MODE.paper 合成 ----------
+  function sheet(x, px, py, w, h, o = {}) {
+    const a = o.alpha ?? 1;
+    if (a <= 0) return;
+    x.save(); x.globalAlpha = a; x.translate(px, py); x.rotate(o.rot || 0);
+    x.shadowColor = "rgba(0,0,0,0.5)"; x.shadowBlur = o.shadow ?? 28; x.shadowOffsetY = (o.shadow ?? 28) * 0.35;
+    x.fillStyle = css("paper"); x.fillRect(0, 0, w, h);
+    x.shadowColor = "transparent";
+    x.strokeStyle = css("pink"); x.lineWidth = 2; x.strokeRect(1, 1, w - 2, h - 2);
+    x.restore();
+  }
+
+  // 打勾的方框：k 为勾画出来的进度
+  function checkbox(x, bx, by, k, o = {}) {
+    const { size = 36, color = css("pink"), tick = css("signal"), alpha = 1 } = o;
+    rect(x, bx, by, size, size, 2, color, alpha);
+    const s = size / 40;
+    polyline(x, [[bx + 7 * s, by + 20 * s], [bx + 17 * s, by + 31 * s], [bx + 36 * s, by + 5 * s]], k, 5 * s, tick, alpha);
+  }
+
+  // 引线标注：锚点一个实心点 → 引线 → 字压在一条底线上；贴边时换到另一侧
+  function leader(x, ax, ay, str, dx, dy, o = {}) {
+    const a = o.alpha ?? 1;
+    if (a <= 0) return;
+    const col = o.color || css("bone");
+    const f = o.font || FONT.cjk(30, 600);
+    const w = measure(x, str, f);
+    const px = parseFloat(/([\d.]+)px/.exec(f)[1]);
+    const right = dx < 0; // 字在锚点左边时右对齐
+    const tx = ax + dx, ty = ay + dy;
+    x.save(); x.globalAlpha = a; x.fillStyle = col; x.beginPath(); x.arc(ax, ay, o.dot ?? 5, 0, Math.PI * 2); x.fill(); x.restore();
+    line(x, ax, ay, tx, ty, 1.4, col, 0.85 * a);
+    line(x, tx, ty, tx + (right ? -w - 24 : w + 24), ty, 1.6, col, a);
+    text(x, str, right ? tx - 12 : tx + 12, ty - px * 0.32, { font: f, color: col, align: right ? "right" : "left", alpha: a });
+    return w;
+  }
+
+  // ---------- 折线路径：按弧长取点、总长、身后一段拖尾 ----------
+  function pathAt(pts, d) {
+    for (let i = 1; i < pts.length; i++) {
+      const L = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+      if (d <= L) { const k = L > 0 ? d / L : 0; return [lerp(pts[i - 1][0], pts[i][0], k), lerp(pts[i - 1][1], pts[i][1], k)]; }
+      d -= L;
+    }
+    return pts[pts.length - 1].slice();
+  }
+  const pathLen = (pts) => pts.slice(1).reduce((s, p, i) => s + Math.hypot(p[0] - pts[i][0], p[1] - pts[i][1]), 0);
+  const trailOn = (pts, d, len = 240, n = 14) => { const out = []; for (let i = n; i >= 1; i--) out.push(pathAt(pts, Math.max(0, d - (len * i) / n))); return out; };
+
+  // ---------- 2D 镜头：关键帧 [小节, [x, y, zoom, rot], 缓动] → 这一帧的镜头，外加后期要的运动模糊 ----------
+  // 运动模糊用 1/60 秒前的镜头推出这一帧画面在屏幕上移动了多少（逻辑像素）
+  function camera(CAM, b, BAR) {
+    const c = keys(b, CAM), c0 = keys(b - 1 / 60 / BAR, CAM);
+    return {
+      cam: { x: c[0], y: c[1], zoom: c[2], rot: c[3] || 0 },
+      blur: [(c0[0] - c[0]) * c[2], (c0[1] - c[1]) * c[2]],
+      zoomBlur: clamp(Math.log(c[2] / c0[2]), -0.2, 0.2),
+    };
+  }
+
+  window.K = { clamp, lerp, E, prog, keys, mulberry32, hash, FONT, text, measure, line, polyline, rect, fillRect, dashed, envelope, stamp, roundRect, clawd, bubble, spark, PLATE, glyph, sheet, checkbox, leader, pathAt, pathLen, trailOn, camera };
 })();
