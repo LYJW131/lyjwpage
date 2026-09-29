@@ -73,7 +73,7 @@ function CardFault({
   reset,
 }: CardBoundaryProps & { error: unknown; reset: () => void }) {
   const { status } = useVersionStatus();
-  const { mutate } = useSWRConfig();
+  const { mutate, cache } = useSWRConfig();
   const stale = status === "stale";
   const [retrying, setRetrying] = useState(false);
   const recovering = useRef(false);
@@ -100,6 +100,7 @@ function CardFault({
         write: (path, value) =>
           mutate(path, value === undefined ? undefined : guardPolled(path, value), { revalidate: value === undefined }),
         generation: writeGeneration,
+        cacheData: (path) => cache.get(path)?.data,
         cancelled: () => !mounted.current,
       });
     } finally {
