@@ -287,13 +287,14 @@ test("pulse archive: usage ledgers land per source, agent and day; only ledgers 
   await b.archive().run();
   assert.equal(b.changes(), before, "no new ledger since the watermark: nothing read, nothing written");
 
-  // 只有 claude 那格变了：只重写它，值没变的那天不产生写入
+  // 只有 claude 那格变了：只重写它。它的每一行都换上新修订号（值没变的那天和两行模型也写，修订号要跟上，
+  // 旧快照晚写时才挡得住），别的账本一行不动
   await storeLedgers(b, "mac", [
     ledger("claude", [usageDay("2026-09-27", 100, [["claude-opus", 60], ["claude-fable", 40]]), usageDay("2026-09-28", 30, [["claude-opus", 30]])], T0 + 3 * M),
   ], T0 + 3 * M);
   b.at(T0 + 4 * M);
   await b.archive().run();
-  assert.equal(b.changes() - before, 2, "one changed day row and one new model row");
+  assert.equal(b.changes() - before, 5, "claude's two day rows and three model rows, nothing else");
   assert.equal(b.all("SELECT total_tokens FROM coding_usage_days WHERE source = 'mac' AND agent = 'claude' AND date = '2026-09-28'")[0].total_tokens, 30);
   assert.equal(b.watermark("coding-usage"), "3");
 });
@@ -341,6 +342,40 @@ test("pulse archive: a cloud commit received earlier but committed after the arc
   assert.deepEqual(b.logged, []);
   assert.deepEqual(b.all("SELECT total_tokens FROM coding_usage_days WHERE source = 'agents-otlp'"), [{ total_tokens: 150 }]);
   assert.deepEqual(b.all("SELECT input_tokens FROM coding_usage_buckets WHERE source = 'agents-otlp'"), [{ input_tokens: 150 }]);
+  assert.equal(b.watermark("coding-usage"), "2");
+  assert.equal(b.watermark("coding-buckets"), "2");
+});
+
+test("pulse archive: two overlapping runs where the older snapshot writes last never roll D1 back", async () => {
+  const b = setup();
+  const claude = (tokens: number, collectedAt: number): CodingUsageAgent => ({
+    id: "claude", state: "ok", collectedAt, error: null, warning: null, sessionCount: 1,
+    days: [usageDay("2026-09-28", tokens, [["claude-fable", tokens]])],
+  });
+  const delta = (tokens: number): CodingBucketDelta => ({ at: T0, id: "claude", model: "claude-fable", inputTokens: tokens, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0 });
+  const coding = (snapshot: Awaited<ReturnType<typeof b.state.readPulseArchive>>) =>
+    snapshot.streams.filter((stream) => stream.stream === "coding-usage" || stream.stream === "coding-buckets");
+  const apply = async (snapshot: Awaited<ReturnType<typeof b.state.readPulseArchive>>) => {
+    for (const stream of coding(snapshot)) {
+      const built = archiveStatements(b.db, stream, snapshot.now);
+      await b.db.batch(built.statements);
+      await b.state.confirmPulseArchive(stream.stream, built.watermark);
+    }
+  };
+  await storeLedgers(b, "agents-otlp", [claude(50, T0)], T0, { derived: true });
+  await storeOtlpBuckets(b, [delta(50)], T0);
+  b.at(T0 + M);
+  const older = await b.state.readPulseArchive();
+  await storeLedgers(b, "agents-otlp", [claude(150, T0 + M)], T0 + M, { derived: true });
+  await storeOtlpBuckets(b, [delta(100)], T0 + M);
+  b.at(T0 + 2 * M);
+  const newer = await b.state.readPulseArchive();
+  // 两轮重叠：读得晚的那轮先写完、先确认，读得早的那轮后写
+  await apply(newer);
+  await apply(older);
+  assert.deepEqual(b.all("SELECT total_tokens, revision FROM coding_usage_days WHERE source = 'agents-otlp'"), [{ total_tokens: 150, revision: 2 }]);
+  assert.deepEqual(b.all("SELECT tokens, revision FROM coding_usage_models WHERE source = 'agents-otlp'"), [{ tokens: 150, revision: 2 }]);
+  assert.deepEqual(b.all("SELECT input_tokens, revision FROM coding_usage_buckets WHERE source = 'agents-otlp'"), [{ input_tokens: 150, revision: 2 }]);
   assert.equal(b.watermark("coding-usage"), "2");
   assert.equal(b.watermark("coding-buckets"), "2");
 });
