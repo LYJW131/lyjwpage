@@ -175,12 +175,17 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 - 写 D1 的有三方：上报入口（训练、圆环日读数、限额快照、服务器小时汇总）、采集 Worker（站点部署记录，`workers/collector/src/history.ts#archiveSiteDeploys`）、api（分钟 cron 的 pulse 事实表，以及收下奖杯信封后的 `workers/api/src/stores/trophy-history.ts#archiveTrophies`）。
 - 活动历史桶在入口量化（eb429ed），防止 HealthKit 的浮点抖动让 D1 每次重写整个 24 小时窗口。
 
-### api 的分钟 cron（index.ts:31-51）
+### api 的分钟 cron（`workers/api/src/index.ts#runScheduled`）
+
+这一节和下面的「Pulse 事实时间线」是第 08 章用的，按 main 4cf46c4 逐条回代码复核过。 <!-- allow: 核对基线戳 -->
 
 - 每轮只做两件事：
-  1. 把 pulse 归档到 D1：StateHub 给出一份有界快照 → 写事实表 → 回头确认水位。
-  2. PulseScorer 调 Jev（`jev-1.13.0`），**只给 Coding 打分**：15 分钟一窗；全零的窗不问 Jev，直接记最低档。每轮最多 36 个窗，并发 3，超时 10 秒。
-- 整 5 分钟那一轮包在 `Sentry.withMonitor` 里，向 `api-minute-cron` 报到（cron-heartbeat.ts:10-23）。
+  1. 把 pulse 归档到 D1：StateHub 给出一份有界快照 → 写事实表 → 回头确认水位。各路独立，一路坏了不挡别的路（`workers/api/src/pulse-archive.ts#ARCHIVE_STREAMS`：三条状态道、在听的曲目痕迹、充电、活动桶、Coding 观测，加上编码用量的账本和 5 分钟 token 桶）。
+  2. PulseScorer 调 Jev（`jev-1.13.0`），**只给 Coding 打分**，一窗是 `shared/pulse-coding.ts#PULSE_SCORE_WINDOW_MS`（三个 5 分钟桶，15 分钟），窗结束两分钟后才打（`workers/api/src/pulse-score.ts#PulseScorer`）：
+     - 交给 Jev 的是这一窗的特征：Mac 的前台应用与 agent 观测、容器里 Cursor 账号的活动，外加三个来源的 5 分钟 token 桶（Mac 本机扫描、Cursor 账号历史、Claude Code 云端遥测），按来源、agent、模型相加（同文件 `windowTokenUsage`）。Mac 扫描范围里缺的桶是测到的 0；另两个来源只作正证据，没有行不等于 0。
+     - 全零的窗不问 Jev，直接记最低档：整窗都看得见、Mac 本机扫描盖满三个桶、没有任何活动和 token（同文件 `definiteZero`）。Mac 不在、只有 Cursor 看得见且没有活动时也不问，按半置信记最低档（`quietIndependentSource`）。一点观测都没有的窗不打分。
+     - 每轮最多 36 个窗，并发 3，超时 10 秒。
+- 整 5 分钟那一轮（按 UTC 分钟）包在 `Sentry.withMonitor` 里，向 `api-minute-cron` 报到（`workers/api/src/cron-heartbeat.ts#heartbeatDue`）；其余几轮照跑、不报到。
 - 两件事都 `.catch` 吞错，所以心跳**只证明 cron 跑完了**，不证明归档或打分成功。
 - 旧说法「叫 StateHub 重建读模型、KV 由 DO 定时任务写」已删除。
 
@@ -191,8 +196,10 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 ### Pulse 事实时间线
 
-- 三条状态道：听、看、玩。
-- 另有充电瓦数和五分钟步数桶。
+- 时间线只存原始值，档位、颜色、摘要都在展示时现算（`shared/pulse-timeline.ts`）：三条状态道（听、看、玩）是状态区间；充电是实测瓦数样本；活动是 HealthKit 的五分钟步数桶加训练区间。
+- Coding 不进这条时间线：它的三色带（前台是 coding 应用 / 有 agent 在跑 / 两者同时）读的时候从 Mac 的观测和 Cursor 账号的观测现算（`shared/pulse-coding.ts#codingBand`）；Jev 的打分只出现在悬停提示里。
+- Tokens 道：三个来源的 5 分钟 token 桶读的时候相加，画每分钟新处理的 token（输入 + 输出 + 缓存写入，不含缓存读；`src/lib/pulse.ts#tokensLaneView`）。
+- Pulse 卡的道按 `src/components/live/pulse-card.tsx#LANES`，写章时从上到下是 Coding、Tokens、Listening、Watching、Gaming、Charging、Activity（第 08 章的地层照这个顺序一层一层画，旁白不说几条）；卡上画最近 24 小时（`src/lib/limits.ts#PULSE_WINDOW_MS`），屋里留 7 天（`PULSE_TTL_MS`），D1 长期保存。
 
 ## 4 首屏（Vercel 上的 Next.js）
 
@@ -310,7 +317,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 - **Sentry 每分钟来敲门**：在线探测 HEAD `/api/version`，只说明 Vercel 还在出页面。这项配在 Sentry 侧，依据 AGENTS.md。
 - **Worker 每 5 分钟去报到**：api 分钟 cron 的整 5 分钟那一轮。
 
-Sentry 的结果由 **collector** 的 `sentry-status` 任务每 5 分钟用只读令牌取回，写进 `LAG` 的 `sentry:v1` 键，经 `/api/status/sentry` 上 LYJWPAGE 卡：30 天一天一格（sentry-status.ts:26）。
+Sentry 的结果由 **collector** 的 `sentry-status` 任务每 5 分钟用只读令牌取回（`workers/collector/src/jobs/sentry-status.ts#sentryStatusJob`），写进 `LAG` 的 `sentry:v1` 键，经 `/api/status/sentry` 上 LYJWPAGE 卡：两行，lyjw.me 是每分钟那次敲门、API 是 cron 的报到，各 30 天一天一格（`src/components/live/uptime-strip.tsx#UptimeStrip`、`src/lib/sentry-status.ts#UPTIME_DAYS`）。站点按每天的成功率给格子上色；片中只点亮今天那一格，不出可用率。
 
 ## 片中不用或待定
 
