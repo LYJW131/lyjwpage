@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as Sentry from "@sentry/nextjs";
 import { catchError, type ErrorInfo } from "next/error";
 import { RefreshCw, RotateCw } from "lucide-react";
@@ -8,7 +8,9 @@ import { useSWRConfig } from "swr";
 
 import { Card } from "@/components/ui/card";
 import { useVersionStatus } from "@/hooks/use-app-version";
-import { createFaultLedger, describeFault, type FaultRecord } from "@/lib/card-recovery";
+import { createFaultLedger, describeFault, primeCardCache, type FaultRecord } from "@/lib/card-recovery";
+import { fetchStatus, guardPolled } from "@/lib/status-reads";
+import { viewKeyByPath } from "@/lib/status-views";
 import { cn } from "@/lib/utils";
 
 /**
@@ -35,9 +37,11 @@ import { cn } from "@/lib/utils";
  *
  * 恢复不是把 reset 一按就完：卡片一崩，整棵子树卸载，它的数据 hook 不再轮询；而让它崩的那份
  * 数据还躺在 SWR 缓存里，直接重新挂载会在渲染那一步又抛一次，连挂载时的回源（effect）
- * 都跑不到。所以重试前先把这张卡读的键（`paths`）从缓存里清掉：重新挂载时从首屏那份
- * 起步、再回源，新数据回来才有机会渲染成功。别的卡也在读的键，清掉时它们的 hook 正挂着，
- * 会立刻回源，用 keepPreviousData 撑着，读数不闪。
+ * 都跑不到。所以重试前先处理这张卡读的键（`paths`）：状态端点主动取一份此刻的数据写进缓存
+ * （lib/card-recovery 的 `primeCardCache`），重新挂载读到的就是它。只清缓存不够——让卡崩的
+ * 若是首屏那份（SWR 的 fallbackData，缓存一清就回到它），重新挂载还是从它起步、再崩一次。
+ * 取不到的键退回清掉缓存，从首屏那份起步、再回源。别的卡也在读的键，缓存一变它们的 hook
+ * 正挂着，用 keepPreviousData 撑着，读数不闪。
  */
 type CardBoundaryProps = {
   /** 兜底卡片的标注，也是 Sentry 的 `card` 标签；取这张卡自己的标注，页面上要唯一 */
@@ -67,10 +71,26 @@ function CardFault({
   const { status } = useVersionStatus();
   const { mutate } = useSWRConfig();
   const stale = status === "stale";
+  const [retrying, setRetrying] = useState(false);
+  const recovering = useRef(false);
 
-  const recover = () => {
-    for (const path of paths ?? []) void mutate(path, undefined, { revalidate: true });
-    reset();
+  const recover = async () => {
+    // 点得快、或自动重试的定时器与按钮撞上：一次只跑一趟
+    if (recovering.current) return;
+    recovering.current = true;
+    setRetrying(true);
+    try {
+      await primeCardCache(paths ?? [], {
+        isStatusPath: (path) => viewKeyByPath(path) !== undefined,
+        read: async (path) => guardPolled(path, await fetchStatus(path)),
+        // 写进去的就是最新，不必再回源；清掉时回源，别的卡正挂着这个键的话由它们的 hook 去取
+        write: (path, value) => mutate(path, value, { revalidate: value === undefined }),
+      });
+    } finally {
+      recovering.current = false;
+      setRetrying(false);
+      reset();
+    }
   };
   // 定时器和事件里要拿到最新的 recover，又不想因为它每次渲染都变引用而重排定时器
   const recoverRef = useRef(recover);
@@ -100,7 +120,7 @@ function CardFault({
       // 页面在后台就等回到前台再试：那时数据多半已经换过一轮
       if (!due || document.visibilityState === "hidden") return;
       due = false;
-      recoverRef.current();
+      void recoverRef.current();
     };
     const timer = window.setTimeout(() => {
       due = true;
@@ -126,8 +146,14 @@ function CardFault({
         </p>
         <div className="flex items-center gap-2">
           {!stale && (
-            <button type="button" onClick={recover} className={button}>
-              <RotateCw className="size-3" aria-hidden />
+            <button
+              type="button"
+              onClick={() => void recover()}
+              disabled={retrying}
+              aria-busy={retrying}
+              className={cn(button, "disabled:cursor-progress disabled:opacity-60")}
+            >
+              <RotateCw className={cn("size-3", retrying && "motion-safe:animate-spin")} aria-hidden />
               <span>Retry</span>
             </button>
           )}

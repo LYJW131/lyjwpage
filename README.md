@@ -168,7 +168,7 @@
 
 ### 站点与 Worker 分头部署，旧页面遇到新数据只降级一张卡
 
-Worker 和站点各自部署，浏览器里又可能放着几小时甚至几天前的旧标签页：旧脚本会读到新形状的数据。每张卡外面各有一层错误边界（`src/components/card-boundary.tsx`，用 Next 的 `catchError`），一张卡渲染抛错只有那一格退成 Unavailable，并带着卡片名报 Sentry（同一张卡同样的错一轮只报一次），别的卡和整页照常。兜底卡片上有 Retry，页面没过期时还会自动重试几次（间隔见 `src/lib/card-recovery.ts` 的 `RECOVERY_DELAYS_MS`，页面在后台就等回到前台）；重试前先清掉这张卡读的 SWR 缓存，否则重新挂载会拿着让它崩的那份数据在渲染阶段再抛一次，连回源都跑不到。页面已经知道自己旧了（`/api/version`，以及新版本部署完成后的 `version` 推送）时，躺在后台的旧标签页会自己刷新成新版；前台只提示（顶部的版本提示卡，兜底卡片上的说明），不自动刷，免得一张卡出错就打断人在别处的操作，只有整页被错误页顶替时才前台刷新。每个目标版本一轮最多试 `AUTO_RELOAD_MAX_TRIES` 次，账按目标分别记而不是只记最后一个（`lyjw131.com` 的首页 HTML 由 ESA 缓存，刷回来可能还是旧的，版本接口在两个版本间来回也刷不成环）；试满的目标要等 `AUTO_RELOAD_RETRY_AFTER_MS` 才清零重来，边缘缓存恢复后还能刷到它；同一个标签页两次自动刷新至少隔 `AUTO_RELOAD_COOLDOWN_MS`（以上常量都在 `src/lib/app-version.ts`，系统时钟被拨回过时冷却从现在重新数），播放器在放音乐时不刷。判定逻辑见 `src/lib/app-version.ts` 的 `autoReloadDecision`。
+Worker 和站点各自部署，浏览器里又可能放着几小时甚至几天前的旧标签页：旧脚本会读到新形状的数据。每张卡外面各有一层错误边界（`src/components/card-boundary.tsx`，用 Next 的 `catchError`），一张卡渲染抛错只有那一格退成 Unavailable，并带着卡片名报 Sentry（同一张卡同样的错一轮只报一次），别的卡和整页照常。兜底卡片上有 Retry，页面没过期时还会自动重试几次（间隔见 `src/lib/card-recovery.ts` 的 `RECOVERY_DELAYS_MS`，页面在后台就等回到前台）；重试前先主动取一份此刻的数据写进这张卡读的 SWR 缓存（取不到的键退回清掉缓存），否则重新挂载会拿着让它崩的那份数据（连首屏那份也算）在渲染阶段再抛一次，连回源都跑不到。页面已经知道自己旧了（`/api/version`，以及新版本部署完成后的 `version` 推送）时，躺在后台的旧标签页会自己刷新成新版；前台只提示（顶部的版本提示卡，兜底卡片上的说明），不自动刷，免得一张卡出错就打断人在别处的操作，只有整页被错误页顶替时才前台刷新。每个目标版本一轮最多试 `AUTO_RELOAD_MAX_TRIES` 次，账按目标分别记而不是只记最后一个（`lyjw131.com` 的首页 HTML 由 ESA 缓存，刷回来可能还是旧的，版本接口在两个版本间来回也刷不成环）；试满的目标要等 `AUTO_RELOAD_RETRY_AFTER_MS` 才清零重来，边缘缓存恢复后还能刷到它；同一个标签页两次自动刷新至少隔 `AUTO_RELOAD_COOLDOWN_MS`（以上常量都在 `src/lib/app-version.ts`，系统时钟被拨回过时冷却从现在重新数），播放器在放音乐时不刷。判定逻辑见 `src/lib/app-version.ts` 的 `autoReloadDecision`。
 
 ### 窗口标题在上报之前先过一道判断
 
