@@ -10,8 +10,6 @@ import { SERVER_PATH } from "@/lib/paths";
 import type { ServerPayload, ServerTraffic, StatusResponse } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-/** 取数节奏跟服务器上报器每分钟一推（登记在 lib/status-views 的 cadenceMs），和 LYJWPAGE 卡共用同一个 SWR 键。判活窗口见 freshness 的 SERVER_STALE_MS。 */
-
 const RATE_FORMAT_BYTES = { maximumFractionDigits: 0 } as const;
 const RATE_FORMAT_SCALED = { minimumFractionDigits: 1, maximumFractionDigits: 1 } as const;
 
@@ -75,14 +73,10 @@ function formatSize(tiers: readonly Tier[], bytes: number, tier?: Tier): string 
 }
 
 /**
- * `用量 / 总量`，单位跟着**分母**选。
- *
- * 分母才是那个说法本身 —— 套餐卖的是「2T」，就该写成 `2.00 TB`，不是
- * `2000.0 GB`；内存是 2G，就该写成 `2.0 GB`。跟着分子选的话，用量爬过 1 TB 那
- * 一刻整行会换一次单位，同一个配额前后两副样子。
- *
- * 代价是月初那几天只剩两位有效数字（`0.09 / 2.00 TB`）—— 那几天本来也没什么可
- * 看的，真要细看，悬停有按各自单位写的上下行明细。
+ * `用量 / 总量`，单位跟着**分母**选：分母才是那个说法本身（套餐卖的是「2T」就
+ * 写成 `2.00 TB`，不是 `2000.0 GB`），跟着分子选的话，用量爬过一个档位那一刻整行
+ * 会换一次单位。代价是月初那几天只剩两位有效数字，细值看悬停里按各自单位写的
+ * 上下行明细。
  */
 function formatFraction(tiers: readonly Tier[], used: number, total: number): string {
   const tier = tierAt(tiers, tierIndex(tiers, total));
@@ -216,10 +210,11 @@ export function ServerCard({
   fallback: StatusResponse<ServerPayload>;
   className?: string;
 }) {
+  // 取数节奏跟服务器上报器走（STATUS_VIEWS.server.cadenceMs），和 LYJWPAGE 卡共用同一个 SWR 键
   const { data, updatedAt, error, servedAt } = useStatus<ServerPayload>(SERVER_PATH, {
     fallback,
   });
-  // 可滞后层：上报入口每封都重写 updatedAt，过了阈值就是上报器没在推。首帧拿 servedAt 当钟
+  // 可滞后层：上报入口每封都重写 updatedAt，过了 SERVER_STALE_MS 就是上报器没在推。首帧拿 servedAt 当钟
   const stale = useStale(updatedAt ?? data?.pushedAt, SERVER_STALE_MS, servedAt);
   const memoryPercent = data ? (data.memoryUsedBytes / data.memoryTotalBytes) * 100 : 0;
   const location = data ? formatLocation(data) : null;
@@ -234,7 +229,7 @@ export function ServerCard({
   return (
     <Card
       // 「落地节点」按通行说法叫 exit node（Tailscale / Tor 都是这个词），
-      // 不叫 proxy —— 那个词只说了「有个中转」，说不出这是一台在东京的机器，
+      // 不叫 proxy —— 那个词只说了「有个中转」，说不出这是一台具体的机器，
       // 而这张卡整屏讲的就是那台机器本身：它在哪、归谁、还活着没有。
       id="exit-node"
       label="Exit Node"

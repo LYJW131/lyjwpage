@@ -163,7 +163,7 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
   const pagespeedStale = useStale(vercel?.pagespeed?.fetchedAt, PAGESPEED_STALE_MS, vercelServedAt);
   const workerMetricsStale = useStale(cloudflare?.fetchedAt, CLOUDFLARE_METRICS_STALE_MS, cloudflareServedAt);
   const workerDeploymentsStale = useStale(cloudflare?.deploymentsFetchedAt, CLOUDFLARE_DEPLOYMENTS_STALE_MS, cloudflareServedAt);
-  // Sentry 各块可能沿用上一轮（最多 30 分钟），按各块自己取到的时刻算
+  // Sentry 各块可能沿用上一轮（沿用上限 SENTRY_BLOCK_CARRY_MS 和展示过期 SENTRY_STALE_MS 各判各的），按各块自己取到的时刻算
   const sentryAt = (block: SentryBlock) => sentry ? sentry.blockAt?.[block] ?? sentry.fetchedAt : undefined;
   const uptimeStale = useStale(sentryAt("uptime"), SENTRY_STALE_MS, sentryServedAt);
   const heartbeatStale = useStale(sentryAt("heartbeat"), SENTRY_STALE_MS, sentryServedAt);
@@ -196,8 +196,8 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
    * 只用来分占比条的宽度，不是全仓提交数。
    *
    * 一条「我 + agent」的提交在 GitHub 的贡献口径里作者和协作者各记一次，所以
-   * 这个和会明显大于 totals.commits（这个仓大约是两倍）。占比条要的正是这个
-   * 口径 —— 谁参与了多少 —— 顶部那个 COMMITS 才是去重后的真数。
+   * 这个和会明显大于 totals.commits。占比条要的正是这个口径 —— 谁参与了多少 ——
+   * 顶部那个 COMMITS 才是去重后的真数。
    */
   const contributionShare = contributors.reduce((sum, person) => sum + person.commits, 0);
   return <Card id="site-status" label="LYJWPAGE" className={cn("scroll-mt-28", className)} action={
@@ -226,8 +226,8 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
     <RepoContributions data={github} recentCommits={recentCommits} deploymentsBySha={deploymentsBySha} />
     {sentry && <UptimeStrip site={sentry.uptime} api={sentry.heartbeat ?? null} siteStale={uptimeStale} apiStale={heartbeatStale} />}
     {/*
-      性能表和服务格到 lg 才并排：768–1023 之间并排的话每格只剩 150–200px，
-      「Req · CPU · Last 12h」一行放不下会折行，所以这一段和手机一样上下叠。
+      性能表和服务格到 lg 才并排：更窄时并排每格太窄，「Req · CPU · Last 12h」
+      一行放不下会折行，所以这一段和手机一样上下叠。
     */}
     <div className="grid border-t border-line lg:grid-cols-2">
       <section className="min-w-0 border-b border-line lg:border-b-0" aria-label="Performance">
@@ -260,7 +260,7 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
         </div>
       </section>
       <section id="cloudflare-workers" className="min-w-0 scroll-mt-28 lg:border-l lg:border-line" aria-label="Services">
-        {/* 窄屏两列只剩 150px 左右，名字截断、数字拆行；单列到 sm 再回两列 */}
+        {/* 窄屏两列每格太窄，名字截断、数字拆行；单列到 sm 再回两列 */}
         <ul className="grid h-full auto-rows-fr grid-cols-1 gap-px bg-line sm:grid-cols-2">
           <li className="bg-surface px-4 py-2.5">
             <div className="flex items-center gap-1.5 text-[11px] leading-4">
@@ -292,10 +292,10 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
             </li>;
           })}
           {/*
-            misaka-jp 上两个常驻上报器，和上面几格同一种写法：名字一行带镜像的提交，
-            小字一行是 12 小时窗口。Push 是这段时间它推成功几封（不叫 Req：上面那几格
-            是收到的请求，这里是往外发的）；RTT 是这些封从发出到读完回执的中位数，看
-            misaka-jp 到 Worker 这条链路。次数、RTT 和提交都由上报器自己在报文里带来。
+            常驻上报器，和上面几格同一种写法：名字一行带镜像的提交，小字一行是
+            统计窗口。Push 是这段时间它推成功几封（不叫 Req：上面那几格是收到的
+            请求，这里是往外发的）；RTT 是这些封从发出到读完回执的中位数，看它到
+            Worker 这条链路。次数、RTT 和提交都由上报器自己在报文里带来。
           */}
           <ReporterTile name="server-reporter" stat={reporters?.reporters["server-reporter"]} staleMs={SERVER_STALE_MS}
             servedAt={reportersServedAt}

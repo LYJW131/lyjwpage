@@ -11,12 +11,10 @@ import { ACTIVITY_PATH } from "@/lib/paths";
 import type { ActivityPayload, StatusResponse } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-/** 取数节奏跟 iPhone 上报器走（登记在 lib/status-views 的 cadenceMs）；这条链路上没有实时推送，理由见 lib/activity 的模块注释。 */
-
 type RingId = "move" | "exercise" | "stand";
 
 /**
- * 三环。半径从外到内，笔宽 11、环间留 1.5 —— 最外圈的外沿正好落在 viewBox 边上。
+ * 三环。半径从外到内，笔宽都是 STROKE —— 最外圈的外沿正好落在 viewBox 边上。
  *
  * 顺序不能改：Apple 那套从外到内就是活动 / 锻炼 / 站立，换了顺序的话，一眼认圈
  * 的人全会读错。
@@ -37,8 +35,8 @@ const RINGS: ReadonlyArray<{
  * 笔宽和三条中线半径**是从 Apple 健身 App 的截图上量出来的**，不是估的。
  *
  * 量法：以圆心为原点，沿 3 点方向扫亮像素得到每条环带的内外半径（12 点方向不行，
- * 那里压着字形），再用 12 点/3 点两个方向交叉校正圆心 —— 圆心先按「最宽的那一行」
- * 定位过一次，被环带外的微弱发光带偏了 18px，三条带宽因此全错。
+ * 那里压着字形），再用 12 点/3 点两个方向交叉校正圆心 —— 只按「最宽的那一行」
+ * 定圆心会被环带外的微弱发光带带偏，三条带宽因此全错。
  *
  * 原图：外半径 406.5px、带宽 87px、中线 363 / 266 / 167、环间距 ~10.5px。
  * 除以 406.5/50 换算到这个 viewBox：
@@ -58,8 +56,9 @@ type RingValue = { id: RingId; label: string; unit: string; radius: number; valu
  * 它不跟着日子重置，人也不会天天改。
  *
  * 代价说清楚：这等于在下一封上报到达之前，替手表断言「今天还是 0」。零点刚过时这
- * 是对的；上报器每小时来一封，所以偏差窗口就是那一小时。真要更严谨得让上报器在
- * 跨天时立刻推一封，但那是拿一次唤醒换一小时的精度，不值。
+ * 是对的；上报器的节奏见 STATUS_VIEWS.activity.cadenceMs，偏差窗口就是那一封的
+ * 间隔。真要更严谨得让上报器在跨天时立刻推一封，但那是拿一次唤醒换一个间隔的
+ * 精度，不值。
  */
 function ringValues(data: ActivityPayload | undefined, current: boolean): RingValue[] {
   return RINGS.map((ring) => ({
@@ -88,8 +87,8 @@ function ratio(ring: RingValue) {
 /**
  * 第二圈圆头前方那道影子的**衰减曲线**，从截图上量的。
  *
- * `[距圆头边缘多少个单位, 压暗多少]`：紧贴着是压到四成，然后沿弧渐渐回到原色，
- * 跨度约 4 个单位。三条环带都是这个形状。
+ * `[距圆头边缘多少个单位, 压暗多少]`：紧贴着压得最重，然后沿弧渐渐回到原色，
+ * 跨度是下面的 CAP_SHADOW_REACH。三条环带都是这个形状。
  *
  * 为什么不用 `feDropShadow`：高斯模糊在圆头边缘只剩半个不透明度，`floodOpacity`
  * 拉满也到不了这里第一档的 0.6，而且它的衰减是高斯的、和实测这条对不上。
@@ -183,7 +182,7 @@ function Rings({ rings, className }: { rings: RingValue[]; className?: string })
               12 点那个圆头**恒亮**，不跟着读数走。
 
               Apple 就是这么画的：读数为 0 时那三圈也各留一个圆头，字形正压在上面。
-              上一版把 0 的那条整段不画，字形就悬在暗轨道上，看着像块脏东西。
+              整段不画的话，字形就悬在暗轨道上，看着像块脏东西。
               半径正好是笔宽的一半 —— 它本来就是那条弧的圆头。
             */}
             <circle cx="50" cy={50 - ring.radius} r={STROKE / 2} fill="currentColor" />
@@ -192,8 +191,8 @@ function Rings({ rings, className }: { rings: RingValue[]; className?: string })
 
               元素常驻，`stroke-dashoffset` 才有得过渡 —— 条件渲染的话，从 0 涨到第一个
               非零值那一次是新建元素，没有起始状态，会硬跳过去；之后每次才滑。
-              早先在 0 时不画，是为了躲圆头笔在零长度上点出来的那个点；现在 12 点那个
-              圆头本来就恒亮画着，那个点正好落在它下面，看不出来。
+              圆头笔在零长度上会点出一个点，它正好落在 12 点那个恒亮的圆头下面，
+              看不出来。
             */}
             <circle
               cx="50"
@@ -209,8 +208,8 @@ function Rings({ rings, className }: { rings: RingValue[]; className?: string })
 
                 改 SVG 的表现属性（`stroke-dashoffset="…"`）不会触发 CSS 过渡，浏览器
                 直接跳到新值 —— 属性挂着 transition 也没用。实测过：读数从 0 跳到满环，
-                每 100ms 采一次 `stroke-dashoffset`，拿到的是 281 → 0，中间一帧都没有。
-                写进 `style` 之后才是真的在插值。
+                按 100ms 采样 `stroke-dashoffset`，只有起点和终点两个值，中间一帧都
+                没有。写进 `style` 之后才是真的在插值。
               */
               style={{ strokeDashoffset: circumference * (1 - filled) }}
               transform="rotate(-90 50 50)"
@@ -222,14 +221,14 @@ function Rings({ rings, className }: { rings: RingValue[]; className?: string })
                   **影子只在末端那个头下面，起点没有。**
 
                   先在弧的末端画一个带投影的圆头，再把整段弧盖上去 —— 弧自己遮住那个
-                  圆头，只剩溢出到身下环带上的那一圈影子。上一版把 filter 挂在整段弧上，
-                  于是 12 点那个起点也投了影：那里本来就和底下那圈严丝合缝，凭空多出
+                  圆头，只剩溢出到身下环带上的那一圈影子。若把投影挂在整段弧上，
+                  12 点那个起点也会投影：那里本来就和底下那圈严丝合缝，凭空多出
                   一道黑边。对着原图看，Apple 只有末端有。
                 */}
                 {/*
                   影子：一个以圆头为心的径向渐变，铺在圆头**前方**的环带上。
 
-                  渐变的内圈半径正好是圆头本身（笔宽的一半），所以第一档 0.6 就落在
+                  渐变的内圈半径正好是圆头本身（笔宽的一半），所以第一档就落在
                   圆头边缘那一圈上；往外按实测的表衰减到 0。四周一圈匀 —— 带方向的话
                   弧的一侧重一侧轻，一眼假。整块罩在环带的遮罩里，溢不出轨道。
                 */}
@@ -282,12 +281,13 @@ function Rings({ rings, className }: { rings: RingValue[]; className?: string })
         环头那三个字形。**钉在 12 点，不跟着弧头走** —— Apple 那三个也是固定的：
         它们说的是「这一圈是哪一项」，不是「进度到哪儿了」。画在所有弧之后，压在最上面。
 
-        坐标是从截图上量的（字形 5.29×6.15 / 6.89×5.41 / 6.15×6.15 单位，笔画 0.74）。
+        坐标是从截图上量的（笔画见 GLYPH_STROKE）。
         形状也是量出来才看清的：活动是**一根杆 + 一个人字**，锻炼是**一根杆 + 两个人字**
         （不是两个人字并排），站立是活动那个转 90°。人字一律 45°。
 
-        描的是卡片底色，看着像从环上挖掉的 —— Apple 描的是纯黑，因为它那个 App 永远是
-        深色底；这里深浅两套都要成立，所以跟着底色走。
+        描的是 --activity-ink（两套主题同一个深墨色，见 globals.css）：字形压在亮色环带上，
+        看着像从环上挖掉的 —— Apple 描的是纯黑，因为它那个 App 永远是深色底；这里浅色
+        主题下环带同样是亮的，所以不跟卡片底色走。
       */}
       {rings.map((ring) => (
         <g
@@ -323,6 +323,7 @@ export function ActivityCard({
   children?: ReactNode;
   className?: string;
 }) {
+  // 可滞后层：取数节奏跟 iPhone 上报器走（STATUS_VIEWS.activity.cadenceMs），没有实时推送
   const { data: latest, updatedAt, servedAt } = useStatus<ActivityPayload>(ACTIVITY_PATH, {
     fallback,
   });
@@ -343,8 +344,9 @@ export function ActivityCard({
    * 拿它比日期的话，开着不动的标签页永远停在挂载那一天，跨夜之后新到的**今天**那份
    * 反而会被判成「昨天的记录」，正好把这个判定用反。
    *
-   * 代价是手表那边跨过午夜后最多晚 5 分钟才翻（下一轮轮询会带回新的判定，
-   * 端点每次请求现算）；首屏那份还可能再旧几分钟，挂载时的那次回源会纠正它。
+   * 代价是手表那边跨过午夜后，要等下一次取数才翻：取数按可滞后层的排期走
+   * （STATUS_VIEWS.activity.cadenceMs，见 lib/poll-schedule），端点每次请求现算这个
+   * 判定；首屏那份放久了，挂载后的补取会纠正它。
    */
   const current = Boolean(data?.currentAtSource);
 
@@ -378,24 +380,24 @@ export function ActivityCard({
 
   return (
     /*
-      卡头是后加的，内容和时间卡那套几何仍然对齐：环的外径和时间卡那个钟相等
-      （144px），内容区 min-h-44 = 176px。卡头 36px 算在这张卡自己和右边服务器
-      卡上，不挤进内容区 —— 两张并排时卡头对卡头、内容对内容。
+      卡头不算进内容区，内容和时间卡那套几何对齐：环的外径和时间卡那个钟相等，
+      内容区 min-h-44。卡头算在这张卡自己和右边服务器卡上，不挤进内容区 ——
+      两张并排时卡头对卡头、内容对内容。
     */
     <Card label="Activity" action={stale ? "Unavailable" : "Apple Watch"} className={cn("h-full", className)}>
       <div className="grid min-w-0 md:grid-cols-2">
       {/*
         环靠左、读数靠右，两边各留一个 padding —— 所以「环的左边到左沿」和「读数的
         右边到右沿」相等，而且都只有 padding 那么宽。整组居中也能让两侧相等，但那样
-        会在卡片两边各空出一大块（实测 76px），中间反而挤在一起。
+        会在卡片两边各空出一大块，中间反而挤在一起。
       */}
       {/*
         两列数据：三环读数 + 步数/距离/爬楼。手机上后一列不画 —— 窄屏上它会把
         「活动 123 / 400 千卡」挤到截断，把空间留给三环更值。md 这张卡虽已整宽，
-        环这半边只有 ~370px，三列照样截断（768 上 11 / 270 kcal 就放不下），lg 起才恢复三列。
+        环这半边仍放不下三列，照样截断，lg 起才恢复三列。
 
-        环那列走 `auto` 而不是等分的三分之一 —— 它的直径必须和时间卡那个钟相等
-        （md 断点上 144px），而三分之一在那个断点只有 110px，等分会把环挤扁。
+        环那列走 `auto` 而不是等分的三分之一 —— 它的直径必须和时间卡那个钟相等，
+        而三分之一在 md 断点上比钟窄，等分会把环挤扁。
         两列数据各占一半、各自居中，行数也对齐（见下面 extras 的注释）。
       */}
       <div className="grid min-h-44 md:h-[207px] lg:h-[215px] grid-cols-[auto_1fr] items-center justify-items-center gap-3 p-4 lg:grid-cols-[auto_1fr_1fr] lg:gap-4 lg:p-5">
@@ -404,8 +406,8 @@ export function ActivityCard({
 
         <div className="min-w-0">
           {/*
-            右栏必须**不高于环**（144px），否则它会把卡片撑得比时间卡高 —— 那两张卡
-            要一样高。3×39 + 2×6 = 129，留着余量；改字号或者加行之前先算这笔账。
+            右栏必须**不高于环**，否则它会把卡片撑得比时间卡高 —— 那两张卡要一样高。
+            三行读数加行距现在留着余量；改字号或者加行之前先算这笔账。
           */}
           <div className="grid gap-1.5">
             {rings.map((ring) => (

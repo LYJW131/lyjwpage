@@ -29,7 +29,7 @@ export function CodexMark({ className }: { className?: string }) {
 
 /**
  * Codex CLI 终端标题使用的官方 Braille spinner，每 100ms 切换一帧。
- * 不活跃时退回静态状态点，避免闲置状态仍然看起来像在工作。
+ * 不活跃时显示静态的 CodexMark，避免闲置状态仍然看起来像在工作。
  */
 export function CodexActivityIndicator({
   active,

@@ -239,8 +239,10 @@ export function AgentStatusCard({
   useLiveEvents();
   const { data: fetched, error, servedAt } = useStatus<AgentStatusPayload>(AGENT_STATUS_PATH, { fallback });
   /**
-   * 采集 Worker 每分钟检查一轮；这份太久没更新（采集停了、出不去）就不再拿旧灯色冒充此刻：
-   * 九行照排、行高不变，每行都换成 Unavailable，点过去是官方状态页。右上角仍是最后检查的时刻。
+   * 采集 Worker 定时检查一轮（STATUS_VIEWS.agentStatus.cadenceMs）；这份超过
+   * AGENT_STATUS_STALE_MS 没更新（采集停了、出不去）就不再拿旧灯色冒充此刻：
+   * 各行照排、行高不变，每行都换成 Unavailable，点过去是官方状态页。右上角仍是
+   * 最后检查的时刻。
    * 首帧拿首屏信封的 servedAt 当钟：放久了的 HTML 首帧就是 Unavailable，不等挂载再翻。
    */
   const stale = useStale(fetched?.fetchedAt, AGENT_STATUS_STALE_MS, servedAt);
@@ -293,8 +295,8 @@ export function AgentStatusCard({
   }, [hasColumns]);
   /**
    * 三列各三行，按卡片自己的宽度一次露出 3 / 2 / 1 列，放不下的靠 scroll-snap
-   * 左右滑。一列至少约 287px（2 列从卡片宽 36rem 起、3 列从 54rem 起）：
-   * 最长的一行是 Cloudflare 加 Partial outage，约 284px。
+   * 左右滑。一列至少要放得下最长的一行（Cloudflare 加 Partial outage）：
+   * 2 列从卡片宽 36rem 起、3 列从 54rem 起（下面的 `@[…]` 断点）。
    * 列间竖线是每列左侧 1px 间隙里的伪元素，跟着内容一起滑，滑到哪一列边上都不会
    * 贴着卡片边框；容器本身不上底色，iOS 横向回弹拉出来的只是卡片本色。
    * 纯 CSS 滑动，不引轮播库。

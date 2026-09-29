@@ -29,7 +29,7 @@ const RECENT_PX = 28;
 const AVATAR_PX = 40;
 
 function formatUnlock(ms: number): string {
-  // 「Jun 22」而不是「6/22」—— 斜杠版和旁边的 442 / 1466 长得太像分数
+  // 「Jun 22」而不是「6/22」—— 斜杠版和旁边那种「点数 / 点数」长得太像分数
   return new Date(ms).toLocaleString("en-US", {
     timeZone: site.timezone,
     month: "short",
@@ -62,7 +62,7 @@ export function TrophyTeaser({
   onRecentClick,
 }: {
   fallback: StatusResponse<TrophiesSummaryPayload>;
-  /** 嵌在 PlayStation 整块里：不再自己套一张纸卡片，也不重复「陈列室」。 */
+  /** 嵌在 PlayStation 整块里：不自己套一张纸卡片。 */
   embedded?: boolean;
   /**
    * PlayStation 此刻：在线绿、忙碌黄、离线灰。
@@ -165,7 +165,7 @@ export function TrophyTeaser({
       </div>
 
       {/*
-       * 四色计数按内容宽，不再 flex-1 摊满：摊满时四个两位数被推得老远，
+       * 四色计数按内容宽，不用 flex-1 摊满：摊满时四个两位数被推得老远，
        * 中间全是空的。左右两块可伸缩，让它们去吃剩下的空间。
        */}
       <div className="grid grid-cols-4 gap-2 border-t border-line pt-3 md:ml-auto md:shrink-0 md:gap-5 md:border-t-0 md:pt-0 lg:ml-0">
@@ -175,7 +175,7 @@ export function TrophyTeaser({
       </div>
 
       {/*
-        中间那块不再撑开，靠 ml-auto 把这块推回右边缘。三块排一行要 ~840px，
+        中间那块不撑开，靠 ml-auto 把这块推回右边缘。三块排一行要不少宽度，
         md 那一段放不下：这块折到第二行，头像和计数留在第一行；lg 才并回一行。
       */}
       {recent ? (
@@ -201,7 +201,7 @@ export function TrophyTeaser({
             <div className="mt-1.5 flex items-center gap-2 lg:justify-end">
               {recent.iconUrl ? (
                 <Image
-                  // 尺寸在 PSN 那边就选好，不进图片管道；理由见 playstation-image
+                  // 直接用原图、不进图片管道，也不走 PSN 的现缩参数；理由见 playstation-image
                   src={recent.iconUrl}
                   alt=""
                   width={RECENT_PX}

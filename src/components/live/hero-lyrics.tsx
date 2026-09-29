@@ -11,11 +11,11 @@ import type { LocalNowPlaying } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /**
- * 同步歌词的几个展示件，从 listening-card 里拆出来：网页播放器的弹窗也要显示
- * 访客正在放那首的歌词，而它不能反过来 import listening-card（那边 import 了
- * 播放器的 Provider，会绕成一个圈）。三处读的都是 lib/track-position 那份
- * 算法：传进来的 track 是一个锚点（state / observedAt / positionMs），位置由
- * 各自的计时器往前推，字亮到哪儿、句换到哪儿和进度条永远对得上。
+ * 同步歌词的几个展示件，独立成文件：网页播放器的弹窗也要显示访客正在放那首的
+ * 歌词，而它不能去 import listening-card（那边 import 了播放器的 Provider，会
+ * 绕成一个圈）。读的都是 lib/track-position 那份算法：传进来的 track 是一个
+ * 锚点（state / observedAt / positionMs），位置由各自的计时器往前推，字亮到哪儿、
+ * 句换到哪儿和进度条永远对得上。
  */
 
 /**
@@ -124,9 +124,8 @@ export function LyricWords({ words, track }: { words: LyricWord[]; track: LocalN
 /**
  * 宽屏状态下右侧的纵向滚动同步歌词。
  *
- * 钉在 h-20（80px）高度内，每行高度 26px。
- * 当前唱到的那句始终在中心（y=27px），前一句在上方，后一句在下方。
- * 上下边缘施加渐变遮罩，使歌词平滑淡入和淡出。
+ * 钉在 h-20 高度内，每行高 LINE_HEIGHT，露出三行：当前唱到的那句始终在中间行，
+ * 前一句在上方，后一句在下方。上下边缘施加渐变遮罩，使歌词平滑淡入和淡出。
  * 有逐字时间轴时，当前那句按字从左到右点亮（LyricWords）。
  */
 export function HeroLyrics({

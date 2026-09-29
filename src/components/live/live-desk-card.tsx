@@ -207,20 +207,20 @@ export function HeaderDesktop({
   /**
    * 离线 / 锁屏 > 应用替换 > 源图标，图标和文字必须是同一个优先级。
    *
-   * 从前只有图标这么排，文字那边只看有没有 renderText —— 于是 Mac 掉线时图标
-   * 翻成了笔记本、文字还挂着上一个应用的矢量字标（`applicationName` 早就算好
-   * 是「已离线」了，只是根本没轮到它）。只有 Claude Code / Cursor 这类替换过
-   * 文案的应用看得出来：其余应用走的就是 applicationName 那条路。
+   * 文字若只看有没有 renderText，Mac 掉线时图标翻成了笔记本，文字还会挂着上一个
+   * 应用的矢量字标（`applicationName` 早就算好是 Offline，只是没轮到它）。只有
+   * Claude Code / Cursor 这类替换过文案的应用看得出来：其余应用走的就是
+   * applicationName 那条路。
    *
-   * 锁屏当下侥幸没出错 —— `com.apple.loginwindow` 谁都匹配不上，override 为空。
-   * 但那是巧合不是设计：哪天有个应用的 match 宽到把它兜进去就一起坏。
+   * 锁屏也要显式排除，不能靠 `com.apple.loginwindow` 恰好谁都匹配不上、override
+   * 为空：那是巧合不是设计，哪天有个应用的 match 宽到把它兜进去就会一起坏。
    */
   const overrideText = offline || locked ? undefined : activeOverride?.renderText;
   /**
    * 窗口标题直接取 incoming，不进 displayedDesktop：那条交接为了图标预加载会在
    * 同一应用内早退，标题跟着进去就会冻在第一份上；而标题换得比应用勤得多
    * （切个文件就换），也不该每次都重跑预加载。只在 incoming 和正画着的是同一个
-   * 应用时才拼上去，否则交接那 300ms 里新应用的标题会挂在旧应用的图标旁边。
+   * 应用时才拼上去，否则交接那段时间里新应用的标题会挂在旧应用的图标旁边。
    * 离线时 desktop 还留着最后那份，标题必须一起收掉。
    */
   const windowTitle =
@@ -234,10 +234,10 @@ export function HeaderDesktop({
   /**
    * 标题退场期间还占着位置的那份缓存，按应用记。
    *
-   * 换了应用就不接力：新面板的尺寸只看它自己有没有标题。从前缓存不分应用，
-   * 从带标题的 Ghostty 切到没标题的 Claude Code 时，新面板先按「有标题」的
-   * 小号进场，等旧面板里那条标题收完（约 0.28 秒）才弹回大号 —— 字标和
-   * 吉祥物在滑入尾声硬跳一号。离线和锁屏各自是一个 key，自然也会清掉。
+   * 换了应用就不接力：新面板的尺寸只看它自己有没有标题。缓存要是不分应用，
+   * 从带标题的 Ghostty 切到没标题的 Claude Code 时，新面板会先按「有标题」的
+   * 小号进场，等旧面板里那条标题收完才弹回大号 —— 字标和吉祥物在滑入尾声
+   * 硬跳一号。离线和锁屏各自是一个 key，自然也会清掉。
    */
   const [titleCache, setTitleCache] = useState({
     key: applicationKey,
@@ -264,7 +264,7 @@ export function HeaderDesktop({
    *
    * 这里刻意只比 URL、不碰上面那套 sameApplication / 预加载：内联是「首屏这一帧
    * 少一次往返」，不是新的一条数据通路。挂载后切了应用，iconUrl 就对不上，
-   * 自然落回 `<Image>` 的远端路径，过渡逻辑一个字节都没被动过。
+   * 自然落回 `<Image>` 的远端路径，过渡逻辑不受影响。
    *
    * 换回同一个应用时又会对上、又用内联那份，这是白赚的：内容寻址，同一个
    * objectKey 就是同一张图。
@@ -272,16 +272,15 @@ export function HeaderDesktop({
   const ssrIconUrl = fallback.ok ? (fallback.data.desktop?.iconUrl ?? null) : null;
 
   /**
-   * 有窗口标题才把图标缩一号，没标题就还是原来的 28px。
+   * 有窗口标题才把图标缩一号，没标题就用大号。
    *
    * 判据用 `measuredTitle` 而不是 `windowTitle`：标题正在淡出的那一帧还占着
    * 高度，图标这时候弹回大号会和标题的收起动画对着干。
    *
-   * 尺寸、间距和字标高度都交给 motion，和标题共用同一份 transition。从前它们
-   * 走 CSS transition（200ms ease-out），和标题的 280ms 曲线各走各的钟，两条
-   * 曲线一起挪同一个垂直居中，看着就是一顿一顿的。量宽那行也要一起动：
-   * 容器宽度跟着它，它要是瞬间变窄，正在缩的那一行会被 overflow-hidden 切掉
-   * 两侧各 5px。
+   * 尺寸、间距和字标高度都交给 motion，和标题共用同一份 transition：走 CSS
+   * transition 的话，它和标题的曲线各走各的钟，两条曲线一起挪同一个垂直居中，
+   * 看着就是一顿一顿的。量宽那行也要一起动：容器宽度跟着它，它要是瞬间变窄，
+   * 正在缩的那一行会被 overflow-hidden 切掉两侧。
    */
   const compact = Boolean(measuredTitle);
   const slotSize = compact ? 20 : 28;
@@ -443,10 +442,10 @@ export function HeaderDesktop({
                   exit="exit"
                   transition={reduced ? STATIC_TRANSITION : TITLE_SWITCH_TRANSITION}
                   /*
-                   * shrink-0 是必须的：容器定高 36px，标题进场那一刻图标还是 28px，
-                   * 28 + 2 + 13.75 装不下，flex 会把标题这个 overflow:hidden 的项压到
-                   * 8px —— motion 量 `auto` 高度量到的就是这个被压过的数，动画朝 8px
-                   * 走，结束一放开又跳回 13.75px，肉眼就是一顿。
+                   * shrink-0 是必须的：容器高度是定死的，标题进场那一刻图标还是大号，
+                   * 装不下时 flex 会把标题这个 overflow:hidden 的项压扁 —— motion 量
+                   * `auto` 高度量到的就是被压过的数，动画朝那个数走，结束一放开又
+                   * 跳回原高，肉眼就是一顿。
                    */
                   className="block max-w-full shrink-0 overflow-hidden truncate text-[11px] leading-tight text-muted-foreground"
                   aria-hidden
