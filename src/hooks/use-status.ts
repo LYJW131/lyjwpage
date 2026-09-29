@@ -6,7 +6,7 @@ import useSWR, { useSWRConfig } from "swr";
 import { fetchStatus, guardPolled, withoutServedAt } from "@/lib/status-reads";
 import { useLiveSocketConnected } from "@/hooks/use-live-events";
 import { lagOverdue, nextLagDelay, realtimeInterval } from "@/lib/poll-schedule";
-import { createInflightLedger, createMountRefetchGate, shouldReaskAfterDiscard } from "@/lib/refetch-guard";
+import { createMountRefetchGate, createRefetchLedger } from "@/lib/refetch-guard";
 import { cadenceOfPath, layerOfPath, pushCoversPath } from "@/lib/status-views";
 import type { StatusResponse } from "@/lib/types";
 
@@ -29,11 +29,11 @@ export const statusFetcher = fetchStatus;
 const fetcher = statusFetcher;
 
 /**
- * 同一个键有多个消费者时，回源别互相顶掉、再各自重问成无限循环。为什么、怎么防，
- * 见 lib/refetch-guard。两本账都是整页共享的（模块级）：浏览器里一个页面一份，
- * 服务端渲染不会碰到（回源与挂载补取都只在浏览器里发生）。
+ * 同一个键有多个消费者时，回源别互相顶掉、再各自重问成无限循环，也别漏掉该补的那一次。
+ * 为什么、怎么防，见 lib/refetch-guard。两本账都是整页共享的（模块级）：浏览器里一个页面
+ * 一份，服务端渲染不会碰到（回源与挂载补取都只在浏览器里发生）。
  */
-const inflight = createInflightLedger();
+const refetchLedger = createRefetchLedger();
 const mountRefetchGate = createMountRefetchGate();
 
 /**
@@ -198,23 +198,31 @@ export function useStatus<T>(
     if (fallback.ok) seedFallback?.(fallback.data);
   }, [fallback, seedFallback]);
 
+  const { mutate: revalidateKey } = useSWRConfig();
+
   /**
    * 取回来的这份要是比推来的旧，就换回推来的那份。
    *
    * 包在最外面而不是塞进 fetcher 里：增量拉取那条的请求地址带着 `?since=`，
    * 和 SWR 的键不是一个字符串，而这里认的是键。为什么要挡见 lib/status-reads。
+   *
+   * 同时给这个键上的回源记账（lib/refetch-guard）：结束时先出账、再排一个宏任务看有没有
+   * 欠着的补取。结果处理（被接受还是被丢弃）是 SWR 在紧接着的微任务里做完的，宏任务排在
+   * 它后面，所以看到的是判完之后的账。失败、页面已卸载才回来的请求也走这里，账都会结清。
    */
   const guarded = useCallback(
     async (key: string) => {
-      inflight.begin(key);
+      const seq = refetchLedger.begin(key);
       try {
         return guardPolled(key, await (customFetcher ?? fetcher<T>)(key));
       } finally {
-        // 在结果交给 SWR 判「是否被丢弃」之前出账，onDiscarded 看到的就是「别的还有几条在路上」
-        inflight.end(key);
+        refetchLedger.end(key, seq);
+        setTimeout(() => {
+          if (refetchLedger.settle(key)) void revalidateKey(key);
+        }, 0);
       }
     },
-    [customFetcher],
+    [customFetcher, revalidateKey],
   );
 
   /**
@@ -230,16 +238,15 @@ export function useStatus<T>(
    * 会被当成「回源回来了还是过期」确认掉。被丢了就再问一次。
    *
    * 但「被丢」还有另一种：被同一个键上另一条更晚发出的回源顶掉。那一条还在路上、
-   * 结果照样会落地，这时再问不但多余，还会把那一条顶成被丢弃、让它也再问 ——
-   * 两个消费者共用一个键时就是无限接力（lib/refetch-guard）。别处还有回源在路上就不问。
+   * 结果照样会落地，这时立刻再问不但多余，还会把那一条顶成被丢弃、让它也再问 ——
+   * 两个消费者共用一个键时就是无限接力。所以这里只记账（欠一次补取），等这个键上所有
+   * 回源都结束之后统一补一次：更晚的那条落地了就免了，它失败了才补（lib/refetch-guard）。
    */
-  const { mutate: revalidateKey } = useSWRConfig();
-  const onDiscarded = useCallback((key: string) => {
-    if (!shouldReaskAfterDiscard(inflight.pending(key))) return;
-    void revalidateKey(key);
-  }, [revalidateKey]);
+  const onDiscarded = useCallback((key: string) => refetchLedger.discarded(key), []);
+  const onSuccess = useCallback((_data: unknown, key: string) => refetchLedger.accepted(key), []);
   const { data, error, isLoading, isValidating, mutate } = useSWR<StatusResponse<T>>(path, guarded, {
     onDiscarded,
+    onSuccess,
     fallbackData,
     /**
      * SWR 的默认是「有 fallbackData 也照样在挂载时回源」—— revalidateIfStale
