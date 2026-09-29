@@ -8,8 +8,8 @@ import { failure, info } from "./log.js";
  * 接 Emby 的播放通知。
  *
  * Emby 后台那个 webhook 配置项加不了自定义请求头，直发站点就只能开一个不鉴权
- * 的入口 —— 站点将来在公网上，这不行。所以让它发到局域网里的这个端口，由代理
- * 带上密钥转发。别把这个端口映射到公网。
+ * 的入口，而站点在公网上，这不行。所以让它发到局域网里的这个端口，由代理
+ * 自己带着密钥上报。别把这个端口映射到公网。
  *
  * **局域网内也不是零风险**：不配 WEBHOOK_TOKEN 的话，同网段任意一台机器发一条
  * 伪造的 playback.stop 就能抹掉站点上「正在观看」的卡片。「加不了自定义请求头」
@@ -84,9 +84,10 @@ async function readBody(
 }
 
 /**
- * 事件只当触发器用，不当数据源：收到之后立刻去查一次会话，位置、暂停状态、
- * 设备名一律以 /Sessions 为准。webhook 各版本的字段位置本来就不一致，
- * 用它带的值等于把版本差异一路带到站点里去。
+ * 事件只当触发器用，不当数据源：除「停止」外，收到之后立刻去查一次会话，位置、
+ * 暂停状态、设备名一律以 /Sessions 为准。webhook 各版本的字段位置本来就不一致，
+ * 用它带的值等于把版本差异一路带到站点里去。「停止」不查会话，
+ * index.ts 的 main 直接给站点清掉播放状态。
  */
 export function startWebhookServer(onEvent: (event: PlaybackEvent) => void) {
   const server = createServer((request, response) => {

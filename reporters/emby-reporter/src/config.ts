@@ -79,7 +79,7 @@ export const config = {
    * 位置只在偏离站点的推算值这么多时才推。
    *
    * 站点是按「上次锚点 + 真实流逝时间」自己推进度条的，正常播放它算得准，
-   * 每 2 秒推一次纯属浪费（站点将来在 Vercel 上，那是按调用计费的函数）。
+   * 每轮都推纯属浪费（白白消耗上报请求）。
    * 只有拖了进度条才会偏出去，这个阈值就是「拖动」的判据。
    */
   seekToleranceMs: ms("SEEK_TOLERANCE_MS", 1_500),
@@ -89,19 +89,21 @@ export const config = {
   /**
    * 即使什么都没变，也隔一阵整份重推一次。
    *
-   * 站点那边的状态存在 Redis 里，可能被清空、也可能因为部署换了库。只靠
-   * 「有变化才推」的话，一段时间没看片就会空在那儿等一个永远不来的变化。
+   * 站点那边的状态可能丢失（存储被清空或重建）。只靠「有变化才推」的话，一段时间
+   * 没看片就会空在那儿等一个永远不来的变化；周期性整推用来补回缺失的状态。
    * 站点收到后会自己比对内容，没变就不会往浏览器推，所以这条不会变成定时广播。
    */
   fullPushIntervalMs: ms("FULL_PUSH_INTERVAL_MS", 10 * 60_000),
 
-  /** 一次推送最多带几张图。整份列表的图一起塞会让 body 上兆 */
+  /**
+   * 一次推送前最多取、压缩并直传几张图，限制这一批的工作量；
+   * 剩下的隔一小会儿接着送（见 index.ts 的 scheduleImageFlush）
+   */
   imagesPerPush: Math.max(1, Number(process.env.IMAGES_PER_PUSH) || 4),
   /** 取图时给 Emby 的 maxHeight，和站点展示位对齐 */
   posterHeight: 600,
   backdropHeight: 400,
 
   requestTimeoutMs: ms("REQUEST_TIMEOUT_MS", 10_000),
-  /** 带图的推送会大很多，给宽一点 */
   pushTimeoutMs: ms("PUSH_TIMEOUT_MS", 30_000),
 } as const;
