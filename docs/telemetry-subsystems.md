@@ -36,7 +36,7 @@
 
 | 方法 | 路径 | 鉴权 | 作用 |
 | --- | --- | --- | --- |
-| `POST` | `ingest.homepage.lyjw.llc/api/ingest/<来源>` | Cloudflare Access service token（每来源一把，上报入口 Worker 再验 JWT 并按来源限权） | 上报入口校验、拆分；状态核心落库、触发广播与首页缓存失效 |
+| `POST` | `ingest.homepage.lyjw.llc/api/ingest/<来源>` | Cloudflare Access service token（每个上报方一把、可授权多个来源，上报入口 Worker 再验 JWT 并按来源限权） | 上报入口校验、拆分；状态核心落库、触发广播与首页缓存失效 |
 | `GET` | `/ws?visible=1\|0` | 来源校验（`ALLOWED_ORIGINS`） | 浏览器直连的实时事件推送长连接，也是在线人数的来源：页面切到后台不断开，只发 `visible` / `hidden` |
 | `GET` | `/count` | 公开 | `{ connections, online }`：开着的页面（含后台）与此刻可见的页面 |
 | `GET` | `/api/status/<模块>` | 公开 | 状态列表或历史数据查询 |
@@ -47,7 +47,7 @@
 - 上游故障或源离线时返回 200 HTTP 状态码并在信封内标记 `{ ok: false }`，避免 5xx 错误导致前端 SWR 全局打崩。
 
 ### 推送通信机制（Cloudflare WebSocket Hibernation）
-- **选型演进**：放弃第三方托管推送（如 Pusher）与自建常驻服务器，采用 Cloudflare Durable Object 的 WebSocket Hibernation（休眠）API。
+- **选型**：不用第三方托管推送，也不自建常驻服务器，采用 Cloudflare Durable Object 的 WebSocket Hibernation（休眠）API。
 - **资源利用**：客户端连接走 `ctx.acceptWebSocket()`，心跳由运行时 `setWebSocketAutoResponse` 自动回复。无事件时实例完全休眠，支持挂载大量并发而不耗费运行时间。
 - **事件划分**：
   - **状态翻面即时推**：前台应用切换、切歌、插拔充电头、上报器上下线、列表变动等事件通过 WebSocket 广播。
@@ -55,7 +55,7 @@
   - **事件负载设计**：
     - 带数据的事件（登记表 `src/lib/status-views.ts` 里带 `event` 的视图）：**一律携带那条端点的整份数据**（充电头不带历史点，由浏览器接上已有曲线），浏览器收到后直接更新 SWR 缓存，避免回源请求打满并发。
     - `presence`：**仅发送失效通知**（payload 为 `null`），浏览器根据本地保存的 `lastSeenAt` 和 `heartbeatWindowMs` 自行判定是否真正超时断流。
-- **5 分钟兜底轮询**：推送覆盖整份的实时视图（登记表 `pushCovers`）在 WebSocket 连着时只保留 5 分钟轮询兜底；断开时回到卡片自己的快间隔，重连后立即回源一次补上漏掉的推送。带心跳判活（`lastSeenAt`）或滚动读数的卡不退，照常轮询。
+- **兜底轮询**：推送覆盖整份的实时视图（登记表 `pushCovers`）在 WebSocket 连着时只保留兜底轮询（`src/lib/poll-schedule.ts#PUSH_SAFETY_NET_MS`）；断开时回到卡片自己的快间隔，重连后立即回源一次补上漏掉的推送。带心跳判活（`lastSeenAt`）或滚动读数的卡不退，照常轮询。
 
 ---
 
@@ -66,37 +66,32 @@
 - **NAS 推送代理**：由 NAS 上的 `reporters/emby-reporter` 负责观测 Emby，并通过 `POST /api/ingest/emby` 将规范化数据推送到 Worker。
 
 ### 数据流与触发条件
-1. **播放通知转发**：Emby 原生 Webhook 缺乏自定义 Header 支持，由 NAS 代理接收 Webhook，带上 Emby 那把 Access service token 后转发。
+1. **播放通知只当触发器**：Emby 原生 Webhook 缺乏自定义 Header 支持，由 NAS 代理接收。除「停止」外，代理收到后立刻查一次 `/Sessions`，位置、暂停状态、设备名以会话为准；「停止」直接给站点清掉播放状态。上报用代理自己的 Access service token。
 2. **播放位置与偏离推算**：
-   - 代理仅在播放状态切换（开始/暂停/继续/停止）及用户**拖动进度条**时推送事件。
-   - Emby 不对进度拖动发 Webhook，因此 NAS 代理在播放时每 2 秒轮询一次 `/Sessions`；但仅在真实进度与站点推算值偏差超过 1.5 秒时才触发网络推送。
+   - 代理在播放状态切换（开始/暂停/继续/停止）、换片、播放环境（设备、播放方式、规格）变化、位置偏离站点推算值，以及每隔 `reanchorMs` 重新落锚时推送（判据见 `reporters/emby-reporter/src/index.ts#sessionTick`）。
+   - Emby 不对进度拖动发 Webhook，因此 NAS 代理在播放时按 `sessionActiveIntervalMs` 轮询 `/Sessions`；但只有真实进度与站点推算值偏差超过 `seekToleranceMs` 时才因位置触发网络推送。
    - 浏览器端利用播放锚点（`positionMs`、`durationMs`、`observedAt`）在未暂停时由本地时间自动推算进度条，无需轮询。
 3. **媒体元数据提取**：
-   - 代理从 `/Sessions` 提取原始音视频信息，将动态范围标准化为 `hdr10` / `hdr10plus` / `dolby-vision` / `hlg` / `sdr`。
-   - 浏览器端纯函数组装规格标签（如 `1080p · H.264 · DD+ 5.1`），过滤服务端复杂的本地化显示名及 NAS 内网 SMB 路径。
+   - 代理按会话选中的音轨与字幕，从会话或条目的媒体源里取规格（`reporters/emby-reporter/src/playback.ts#pickMedia`），只挑必要字段、不转发整份流列表，并将动态范围标准化为 `hdr10` / `hdr10plus` / `dolby-vision` / `hlg` / `sdr`。
+   - 浏览器端纯函数组装规格标签（如 `1080p · H.264 · DD+ 5.1`）；服务端复杂的本地化显示名与 NAS 内网 SMB 路径不外传。
 
 ### 图片处理与 R2 缓存
 - **剧照 vs 海报**：剧集本身的 Primary 图通常是剧照，竖版海报由代理优先提取剧集的 `SeriesPrimaryImageTag` 并用 sharp 压缩为 `<sha256>.webp` 直传 Cloudflare R2。
-- **`missingImages` 补传机制**：条目中仅存 `imageKey`（`itemId:kind:tag:height`），读取时映射为对象键并拼成 `/img/<对象键>` 同源路径，由访客域名的边缘（Vercel rewrite / ESA）回源 R2。若 Worker 发现缺少对应对象，会在上报回执中返回 `missingImages`，代理据此异步补传。
-- **HEAD 缓存 5 分钟**：Worker 对 R2 对象的 HEAD 校验缓存 5 分钟，以便桶清空或对象重建后能自动重新请求补传。
+- **`missingImages` 补传机制**：条目中仅存 `imageKey`（`itemId:kind:tag:height`），读取时映射为对象键并拼成 `/img/<对象键>` 同源路径，由访客域名的边缘（Vercel rewrite / ESA）回源 R2。若引用的图片键在状态核心里还没有对象键映射（上报入口没确认到对象，或映射被淘汰），上报回执会返回 `missingImages`，代理据此异步补传。
+- **HEAD 正缓存很短**：上报入口对 R2 对象的 HEAD 校验只记一小会儿（`shared/ingest/r2-assets.ts#CONFIRMED_TTL_MS`），以便桶清空或对象重建后能自动重新请求补传。
 
 ---
 
 ## 3. 最近在听 — Apple Music 深度集成
 
-### 数据抓取与无常驻架构
-- **API Worker 驱动**：弃用常驻进程，由 API Worker 直接请求 Apple 接口 `/v1/me/recent/played?limit=10`，写入 SQLite 并广播。
-- **触发与闸门**：
-  - WebSocket 建立时检查，Cron 每分钟在存在活跃连接时巡检。
-  - 全站 2 分钟 TTL 防穿透，上游报错时同样写入负缓存，防止雪崩。
-  - 无访客连接时完全停止向 Apple 请求。
-- **容器与单曲解算**：Apple 返回的是容器（专辑/歌单/电台），时长通过容器的 `href` 深入查询曲目累计（缓存 24 小时），自建歌单封面缓存 12 小时。
+### 数据抓取
+- **采集 Worker 驱动**：`workers/collector` 的 `apple-recent` 任务按自己的节奏请求 Apple 接口 `/v1/me/recent/played`，不看有没有访客在线；拉回的列表经 `StateCore.commitRecentlyPlayed` 交给状态核心差分、落库、推送 `listening` 并记听歌痕迹（见 `workers/api/src/apple-music-recent.ts`）。api 自己不拉，WebSocket 连上也不触发。
+- **容器与单曲解算**：Apple 返回的是容器（专辑/歌单/电台），时长通过容器的 `href` 深入查询曲目累计，自建歌单封面单独查；这两类缓存在采集 Worker 的 `COLLECTOR_KV`（期限见 `workers/collector/src/jobs/apple-recent.ts` 的 `DURATION_TTL_MS`、`LIBRARY_ARTWORK_TTL_MS`）。
 
 ### 凭据与安全模型
-- **私钥不落服务端**：Apple Music 开发者私钥（`.p8`）保存在主人的本地 Mac 钥匙串中，服务端与代码库不包含任何私钥或离线签名代码。
-- **Mac Telemetry Hub 动态签发**：Mac 端利用本机 MusicKit 实时签发一对 `Developer Token` 和 `Music-User-Token`，通过 `/api/ingest/mac` 上报。
-- **半衰期自动续期**：Developer Token 有效期约 30 天，Mac 端在上报时刻超过有效区间中点（半衰期）时自动重签并上报。
-- **凭据隔离**：收到的 Token 仅存入 Worker 的独立 SQLite 凭据表，严格与公开遥测数据隔离，且不提供任何外部 GET 端点。
+- **私钥只在 api Worker**：Apple Music 开发者私钥（`.p8`）是 api Worker 的 secret `APPLE_MUSIC_PRIVATE_KEY`，Mac、站点与代码库都不持有。服务端调 Apple API 用的 Developer Token 由 api 自己签发（`workers/api/src/musickit-token.ts#issueApiDeveloperToken`，过了签发到期的中点重签），采集 Worker 经 `StateCore.appleDeveloperToken()` 取。
+- **Mac 只上报 user token**：Mac Telemetry Hub 通过 `/api/ingest/mac` 的 `appleMusicCredentials` 模块只上报 `Music-User-Token`；带 `developerToken` / `expiresAt` 的旧合同会被上报入口拒收。
+- **凭据隔离**：收到的 user token 由上报入口写进独立的凭据 KV（`shared/credentials.ts`），与可滞后层的展示数据分命名空间，不提供任何外部 GET 端点。
 
 ---
 
@@ -118,7 +113,7 @@
   - 换句动作由边界精确定时器驱动，与当前音轨算法一致。
 
 ### 接口缓存与公开查询策略
-- `GET /api/lyrics?song=<ID>`：按曲目 ID 查询，`song` 必填，卡片 hero 与网页播放器都走这条；结果按 URL 进行 `public, s-maxage` 长效缓存（有词存 7 天，无词存 1 小时）。
+- `GET /api/lyrics?song=<ID>`：按曲目 ID 查询，`song` 必填，卡片 hero 与网页播放器都走这条；结果按 URL 进行 `public, s-maxage` 长效缓存（有词与无词的缓存期不同，见 `workers/api/src/routes/lyrics/route.ts`）。
 - 首屏那首的歌词由站点在拿到「此刻在听」之后按曲目读 `/api/lyrics`；`/api/lyrics` 与 `/api/motion-artwork` 只做按键查询，不回答「此刻」，所以不归 `/api/status/*`。
 
 ---
@@ -129,14 +124,14 @@
 - **架构隔离**：访客在前端播放器使用自己的 Apple Music 订阅。站点不中转音频，播放发生在访客浏览器与 Apple CDN 之间。
 - **独立访客 Token 签发**：
   - 由 API Worker 的 `GET /api/musickit/token` 动态生成访客 Developer Token。
-  - 有效期设为 7 天（默认），超过半衰期（3.5 天）自动换新。
+  - 有效期默认 `DEFAULT_TTL_SECONDS`（`workers/api/src/musickit-token.ts`），过了「签发 → 到期」的中点自动换新。
 - **双重域名安全闸**：
   1. 第一道：Worker 检查请求 `Origin` 是否在 `ALLOWED_ORIGINS` 白名单中。
   2. 第二道：签发 JWT 时将当前具体 Origin 写入 Token 的 `origin` 声明中，由 Apple 端负责最终校验，防止 Token 被盗用至非授权站点。
 
 ### 同步与防抖算法
 - **四项跟随驱动**：切歌重排队列并按当前偏移起播；主机暂停则跟随暂停；主机续播则对齐播放；主机拖拽进度即刻对齐。
-- **5 秒防抖窗口**：常规播放中运行 20 秒周期性慢巡检；若访客播放进度与主机偏差在 5 秒以内，不执行 `seek`（避免反复触发音频缓冲造成断续体验）。
+- **防抖窗口**：常规播放中运行周期性慢巡检；若访客播放进度与主机偏差在 `SYNC_RESYNC_THRESHOLD_MS`（`src/lib/web-player-sync.ts`）以内，不执行 `seek`（避免反复触发音频缓冲造成断续体验）。
 
 ---
 
@@ -144,7 +139,7 @@
 
 ### 数据链路
 ```text
-Anker 硬件 (BLE) ──> a2687-telemetry ──> Mac Telemetry Hub ──> POST /api/ingest/mac ──> Worker SQLite
+Anker 硬件 (BLE) ──> Mac Telemetry Hub ──> POST /api/ingest/mac ──> 上报入口 ──> 状态核心 SQLite
 ```
 
 ### 本地高速 SSE 切换
@@ -152,9 +147,9 @@ Anker 硬件 (BLE) ──> a2687-telemetry ──> Mac Telemetry Hub ──> POS
 - 此时页面跳过远端 Worker，直接连接本机 `http://127.0.0.1:8787/sse/charger` 和 `/sse/powerbank`，享受约 1 Hz 的秒级高刷功率流。连接断开则平滑降级回远端推送。
 
 ### 功率曲线与历史回放
-- **服务端 400 点环形缓冲**：Worker SQLite 为充电头保留最近 400 个采样点（最小间隔 5 秒，覆盖约 20 分钟历史），新进网页可直接绘制完整历史曲线。
+- **服务端环形缓冲**：StateHub 的 SQLite 为充电头保留最近 `CHARGER_HISTORY_LIMIT`（`src/lib/limits.ts`）个采样点（最小间隔 `MIN_SAMPLE_GAP_MS`，见 `workers/api/src/stores/charger-store.ts`），新进网页可直接绘制完整历史曲线。
 - **真实时间映射**：图表横坐标必须按时间戳间距绘制，禁止按采样序号等宽平铺，以真实还原丢包或断流空档。
-- **断流检测**：超过 3 倍推送间隔且至少 90 秒（同时不小于心跳窗口 300 秒）未收到新读数，状态判定为断流，卡片置灰。
+- **断流检测**：超过 `chargerStaleAfterMs()`（`src/lib/anker.ts`：`CHARGER_STALE_MS`、推送间隔的三倍、心跳窗口三者取大）未收到新读数，状态判定为断流，卡片置灰。
 
 ### A110G 充电宝差异
 - 充电宝电量变化缓慢，因此服务端**不记录历史曲线**，仅保存当前快照。
@@ -219,11 +214,11 @@ coding agent 的 token 用量有三个来源。来源只报自己观测到的原
 - 采用规范化的 `version: 4` 信封，顶层字段包含 `heartbeatAt`、`presence`（`online` / `offline`）与 `activeModules`。
 - **模块静默机制**：
   - 仅携带内容发生变更的模块。
-  - 若所有模块指纹均无变化，发送空 `modules` 的**纯心跳信封**（至少每 30~90 秒一条），仅用于维持存活时间戳，不写入历史数据表。
-- **优雅离线**：Mac 休眠或关机时主动发送 `presence: "offline"`；崩溃或断网由服务端根据 `HEARTBEAT_WINDOW_MS`（默认 5 分钟超时）自动兜底判定。
+  - 若所有模块指纹均无变化，发送空 `modules` 的**纯心跳信封**（节奏由上报器定），仅用于维持存活时间戳，不写入历史数据表。
+- **优雅离线**：Mac 休眠或关机时主动发送 `presence: "offline"`；崩溃或断网由服务端根据 `HEARTBEAT_WINDOW_MS`（默认值见 `src/lib/freshness.ts`）自动兜底判定。
 
 ### 前台应用图标直传 R2
-- **系统原生编码**：Mac 端使用 macOS 原生接口将前台应用图标缩放为 96px PNG 并计算 SHA-256，直传 R2。
+- **系统原生编码**：Mac 端使用 macOS 原生接口把前台应用图标缩成小图并计算 SHA-256，直传 R2。
 - **只收对象键**：上报信封仅包含 `<sha256>.png` 对象键，服务端杜绝接收 Base64 或图片二进制文件，避免增加 Worker 内存开销。
 
 ---
@@ -253,9 +248,9 @@ payload: >-
 ```
 > **注意**：必须在 Jinja 内部构造完整字典后经 `| to_json` 输出，禁止手动拼接 JSON 字符串，以防歌曲名中的特殊字符引发解析异常。
 
-### 设备优先级抢占与 10 秒宽限期
+### 设备优先级抢占与暂停宽限期
 - `/api/status/listening/now` 动态裁决优先级：
-  `MacBook 正在播放` > `MacBook 暂停未满 10 秒` > `HomePod 正在播放` > `HomePod 暂停未满 10 秒`。
+  `MacBook 正在播放` > `MacBook 暂停未过宽限期` > `HomePod 正在播放` > `HomePod 暂停未过宽限期`（宽限期 `src/lib/now-listening.ts#MUSIC_PAUSE_GRACE_MS`）。
 - 服务端通过 `observedAt` 动态计算 `expiresInMs` 下发给客户端，由浏览器精确调度下一次查询时间，避免在服务端无状态实例上挂载定时器。
 
 ---
@@ -265,28 +260,28 @@ payload: >-
 ### 数据采集特性
 - **原生读取真实目标**：通过原生 Swift 代码从 `HKActivitySummary` 读取用户当天的真实目标卡路里、锻炼时长与站立次数（非预设常量）。
 - **设备时区为准**：上报日期取 Apple Watch 当地自然日（`YYYY-MM-DD`）与 `secondsFromGMT`。跨时区旅行过日界线时，按手表本地日推进，服务端不做时区矫正。
-- **iOS 后台节流容忍**：iOS 系统对 HealthKit 数据的后台推送存在约每小时一次的系统级节流，因此该模块不建立 WebSocket 推送，前端按上报节奏（每小时）在下一次预期上报后取，逾期后退避到最多 5 分钟一次。
-- **读数与训练在可滞后层**：圆环读数（KV `activity:v1`）与最近训练（KV `workouts:v1`）由上报入口在状态核心那一半成功之后写入，状态核心只留 Pulse 用的五分钟统计桶和训练区间。圆环超过 12 小时（一夜加余量）没有新读数时卡片写 Unavailable；训练是历史事实，不设过期。
+- **iOS 后台节流容忍**：iOS 系统对 HealthKit 数据的后台推送存在约每小时一次的系统级节流，因此该模块不建立 WebSocket 推送，前端按 `STATUS_VIEWS.activity.cadenceMs` 排期在下一次预期上报后取，逾期后按 `nextLagDelay` 退避重试。
+- **读数与训练在可滞后层**：圆环读数（KV `activity:v1`）与最近训练（KV `workouts:v1`）由上报入口在状态核心那一半成功之后写入，状态核心只留 Pulse 用的五分钟统计桶和训练区间。圆环超过 `ACTIVITY_STALE_MS` 没有新读数时卡片写 Unavailable；训练是历史事实，不设过期。
 
 ---
 
 ## 12. 落地节点监控与三档自适应调频
 
 ### 节点监控
-- `reporters/server-reporter` 部署于云端 Linux 节点（TypeScript / Node，和 agents-reporter 同一套结构），采集 `/proc/stat` 与 `/proc/net/dev`，上报 CPU、内存及网络吞吐，每分钟一推；前端在下一次预期上报后几秒去取。
+- `reporters/server-reporter` 部署于云端 Linux 节点（TypeScript / Node，和 agents-reporter 同一套结构），采集 `/proc/stat` 与 `/proc/net/dev`，上报 CPU、内存及网络吞吐，节奏固定（`INTERVAL_MS`，见它的 README「节奏」）；前端在下一次预期上报后几秒去取。
 
 ### 三档自适应调频算法
 为节省外部 API 配额，采集 Worker 的 PlayStation 任务（`workers/collector`）和 `agents-reporter` 遵循三档自适应调频（`server-reporter` 固定每分钟一推、不参与调频，理由见它的 README「节奏」）：
 
-| 触发条件 | 说明 | PlayStation 间隔 | agent limits 间隔 |
+| 触发条件 | 说明 | PlayStation 间隔（`workers/collector/src/playstation/index.ts`） | agent limits 间隔（`reporters/agents-reporter/src/config.ts`） |
 | --- | --- | --- | --- |
-| `online > 0` | 存在处于**前台可见**状态的访问者页面 | 60 秒 | 5 分钟 |
-| `connections > 0` | 无前台可见页面，但存在**后台打开**的标签页 | 2 分钟 | 10 分钟 |
-| 两个指标均为 0 | 全网无任何活跃页面连接（无人值守） | 30 分钟 | 60 分钟 |
+| `online > 0` | 存在处于**前台可见**状态的访问者页面 | `LIVE_TICK_INTERVAL_MS` | `LIVE_INTERVAL_MS` |
+| `connections > 0` | 无前台可见页面，但存在**后台打开**的标签页 | `OPEN_TICK_INTERVAL_MS` | `OPEN_INTERVAL_MS` |
+| 两个指标均为 0 | 全网无任何活跃页面连接（无人值守） | `IDLE_TICK_INTERVAL_MS` | `IDLE_INTERVAL_MS` |
 
 - **单向降级安全**：若查询在线人数接口超时或失败，默认计数降为 0，调频节奏仅会变慢而不会雪崩加速。
 - **分段休眠响应**：常驻上报器将长间隔休眠拆分为短周期轮询，一旦有新用户进入页面，能够迅速在下一个短周期内提升采样频率。PlayStation 那边是 cron 每分钟看一眼门，效果相同。
-- **PlayStation 另外两条**：主机电源（Home Assistant 上报）翻面时立刻跑一轮、关机时只走最慢一档；PSN 前面的 CDN 回拒绝页或网关错误时按 5 → 10 → 20 → 30 分钟退避，成功一轮清零。细节见 `workers/collector/README.md`。
+- **PlayStation 另外两条**：主机电源（Home Assistant 上报）翻面时立刻跑一轮、关机时只走最慢一档；PSN 前面的 CDN 回拒绝页或网关错误时按连败次数退避（`workers/collector/src/playstation/state.ts#backoffMs`：起点翻倍、封顶），成功一轮清零。细节见 `workers/collector/README.md`。
 
 ---
 
@@ -296,10 +291,8 @@ payload: >-
 - 生产环境注册 `/sw.js`，仅持久化缓存离线提示页 `/offline.html`。
 - 首页 HTML、RSC 数据、状态 API 及媒体资源均不写入 Service Worker 离线缓存，保证用户时刻获取最新实时流。
 
-### 阿里云 ESA 规则前置
-- 针对 `lyjw131.com` 的 ESA 缓存控制台，必须在首位配置「**PWA 核心文件绕过缓存**」规则：
-  - 匹配路径：`/sw.js`、`/offline.html`、`/manifest.webmanifest`、`/pwa/icon-192.png`、`/pwa/icon-512.png`。
-  - 该规则必须优先于整站长效缓存规则执行，避免客户端安装入口和离线更新被 CDN 强缓存拦截。
+### 边缘缓存规则
+- `lyjw131.com` 的阿里云 ESA 缓存规则（含必须置首的「PWA 核心文件绕过缓存」，否则客户端安装入口和离线更新会被 CDN 强缓存拦截）在控制台里，逐条事实见 [仓库外事实](./ops-facts.md)。
 
 ---
 
@@ -310,7 +303,7 @@ payload: >-
 
 - 听、看、玩是状态区间：每条道一个开着的区间加一串已关闭区间（`pulse:v2:<道>`），同一状态只续
   最后确认时刻、每分钟最多写一次，状态或标题变了才换段；超过有效期没有观测就是未知，不是空闲。
-  曲名、艺人、专辑、片名、集数、游戏名分字段存，不再压成 48 字 hint。
+  曲名、艺人、专辑、片名、集数、游戏名分字段存。
 - 「最近在听」列表的变动没有时刻，只知道落在两次刷新之间，存成不确定区间
   （`pulse:v2:listening-traces`），图上用斜线画出来，不当成此刻在放。
 - Coding 的三色带（前台 coding 应用 / agent / 两者同时）读时从原始观测
