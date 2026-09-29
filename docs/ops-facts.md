@@ -11,9 +11,9 @@
 | 事实 | 核对 |
 | --- | --- |
 | 应用「lyjwpage ingest」挂在 `ingest.homepage.lyjw.llc` 整站之前，策略只放行登记过的 service token；Worker 再验 JWT 并按 client id 限定可写来源，登记表是 `workers/ingress/wrangler.toml#ACCESS_CLIENTS`（以它为准） | 核对于 未记录，方式：迁自 `workers/ingress/README.md` |
-| 每个上报方一把 token：`lyjwpage-mac`、`-iphone`、`-emby`、`-server`、`-agents`、`-home-assistant`（HomePod 与 PS5 电源共用）、`-claude-cloud`、`-github-actions`；`playstation` 来源没有 token，采集 Worker 经 Service Binding 交数据 | 核对于 2026-09-25，方式：迁自 [核验记录](./reporter-endpoints.md) 的鉴权迁移一节 |
+| 每个上报方一把 token：`lyjwpage-mac`、`-iphone`、`-emby`、`-server`、`-agents`、`-home-assistant`（HomePod 与 PS5 电源共用）、`-claude-cloud`、`-github-actions`、`-playstation`；PlayStation 容器独立凭据只授予 `ingest:playstation` | 核对于 2026-09-29，方式：Access API 读取 service token / 应用策略，并验证容器真实上报 |
 | 新增或轮换 token 在控制台做：新 token 先加进策略，再把 client id 登记进 `ACCESS_CLIENTS`；mac、iphone 轮换时在控制台重新生成 secret，再贴进 App 设置 | 核对于 2026-09-25，方式：迁自 [核验记录](./reporter-endpoints.md) |
-| token 有效期到 2027-09-25，到期前在控制台续期 <!-- allow: 凭据到期日，是续期待办的锚点 --> | 核对于 2026-09-25，方式：迁自 [核验记录](./reporter-endpoints.md) |
+| 原有 token 有效期到 2027-09-25，到期前在控制台续期；`lyjwpage-playstation` 配置为不自动到期 <!-- allow: 凭据到期日，是续期待办的锚点 --> | 核对于 2026-09-29，方式：原有 token 沿用 [核验记录](./reporter-endpoints.md)，PlayStation token 经 Access API 创建并核对 |
 | 凭据放的位置（不记值）：server、agents 在 misaka-jp 的 `/opt/lyjwpage/<服务>/.env`（`ACCESS_CLIENT_ID` / `ACCESS_CLIENT_SECRET`）；emby 在 `dsm:/volume3/docker/emby-proxy/.env`（权限 600）；home-assistant 在 dsm 与 n100 的 Home Assistant secrets 文件（键 `lyjwpage_access_client_id` / `lyjwpage_access_client_secret`）；mac、iphone 在 App 设置里（secret 存钥匙串）；github-actions 在仓库 secret `ACCESS_CLIENT_ID` / `ACCESS_CLIENT_SECRET`；claude-cloud 只在云端环境设置里 | 核对于 2026-09-25，方式：迁自 [核验记录](./reporter-endpoints.md) 与 `workers/ingress/README.md` |
 
 ## 阿里云 ESA（`lyjw131.com`）
@@ -40,7 +40,7 @@
 | Workers：`api`（`api.homepage.lyjw.llc`）、`ingress`（`ingest.homepage.lyjw.llc`，域名写在 `workers/ingress/wrangler.toml`，一个域名只写在一份 `wrangler.toml`）、`collector`（无路由、无域名）。构建配置与监视路径见 [Workers 原生 Git 部署](./workers-builds.md) | 核对于 未记录，方式：迁自 `workers/ingress/README.md` 与 `workers/collector/README.md` |
 | Durable Object 命名空间（api）：`StateHub` `08a6c22e048d4a9b915ba869ad40ffee`、`LivePushRoom` `7d366bc728244a71b06ce6cbd8267539`。它们经 transfer migration 保持 ID 与数据不变，不要对这些类另加创建或删除迁移 | 核对于 2026-09-07，方式：迁自 [核验记录](./reporter-endpoints.md) 与 `workers/api/README.md` |
 | KV：`lyjwpage-lag`（binding `LAG`，可滞后层）、`lyjwpage-credentials`（`CREDENTIALS`，Apple Music user token） | 核对于 未记录，方式：迁自 `docs/state-storage.md` |
-| 采集 Worker 自己的 KV `COLLECTOR_KV`，命名空间 ID 是 `0f9b584f71634776ba3bc081a7aa4498`，PSN 登录态在里面 | 核对于 2026-09-28，方式：迁自 [核验记录](./reporter-endpoints.md) |
+| 采集 Worker 自己的 KV `COLLECTOR_KV`，命名空间 ID 是 `0f9b584f71634776ba3bc081a7aa4498`，不保存 PSN 登录态；collector 没有 `PSN_NPSSO` secret | 核对于 2026-09-29，方式：Cloudflare API 核对 KV 中无 `auth` 键、Worker secret 列表无 PSN 项 |
 | D1 `lyjwpage-history`（binding `HISTORY`）：Workers Builds 不跑迁移，部署带这个绑定的版本之前要先手动 apply，命令见 `workers/api/README.md` | 核对于 未记录，方式：迁自 `docs/state-storage.md` |
 | R2 图片桶：上报器用只写该桶的访问密钥直传，上报入口以 `IMAGES` 绑定只做 HEAD；对外只以 `/img/<objectKey>` 同源路径出现 | 核对于 未记录，方式：迁自 `reporters/emby-reporter/README.md` 与 `workers/ingress/README.md` |
 
@@ -59,7 +59,8 @@
 | dsm（群晖）：emby-reporter 在 compose 项目 `dsm:/volume3/docker/emby-proxy/`（`docker-compose.yml`），服务名 `emby-reporter`、容器名 `homepage-reporter`，`.env` 在项目根、权限 600；docker 不在群晖非交互 PATH，要写 `/usr/local/bin/docker`；Actions 够不着，只手动拉镜像或现场 build。GHCR 镜像已由 Actions 推送，但 dsm 的服务定义是否已从现场 build（`./homepage-reporter`）切到 `image:` 未重核，部署前先到机器上确认 | 核对于 2026-09-11，方式：到机器上部署时现场查看（切 GHCR 的部分未核）<!-- allow: 核对戳 --> |
 | Home Assistant：dsm 上 `dsm:/volume3/docker/homeassistant/homeassistant/`（HomePod 实体 `media_player.wo_shi`），n100 上 `n100:/volume1/docker/homeassistant/homeassistant/`（HomePod 实体 `media_player.zhu_wo_lyjw`，自动化 `lyjwpage_ps5_power` 在 `switch.ps5_210_power` 翻面时上报 PS5 电源）；改配置后用 `rest_command.reload` / `automation.reload` 或重启 `homeassistant` 容器 | 核对于 2026-09-13，方式：迁自 [核验记录](./reporter-endpoints.md) |
 | n100 的 HomePod 自动化 `homepod_now_playing_heartbeat` 每分钟检查 `media_player.zhu_wo_lyjw`，仅在 `playing` 时调用 `rest_command.push_homepod_now_playing`；配置在 `n100:/volume1/docker/homeassistant/homeassistant/automations.yaml`。原 `homepod_now_playing_webhook` 继续处理曲名、循环模式与播放状态变化。同曲重复播放可能上报 `repeat: all`，不能只靠换歌事件维持快照有效期 | 核对于 2026-09-29，方式：读取自动化配置、通过管理界面执行 `automation.reload`，核对定时触发与生产 `/api/status/listening/now` |
-| 上报来源与生产实例的对应：mac 是本机 Mac Telemetry Hub，iphone 是 iPhone 17 Pro 上的遥测中心，server 与 agents 在 misaka-jp，emby 在 dsm，homepod 与 playstation 电源在两台 Home Assistant，playstation 的游戏数据是采集 Worker 的 `playstation` 任务 | 核对于 2026-09-28，方式：迁自 [核验记录](./reporter-endpoints.md)（真实上报 202） |
+| 上报来源与生产实例的对应：mac 是本机 Mac Telemetry Hub，iphone 是 iPhone 17 Pro 上的遥测中心，server 与 agents 在 misaka-jp，emby 在 dsm，homepod 与 playstation 电源在两台 Home Assistant，playstation 的游戏数据由 n100 的 `playstation-reporter` 容器上报 | 核对于 2026-09-29，方式：Docker 日志首轮成功、生产 playing / trophies 时间戳与 D1 奖杯归档核对 |
+| n100 的 `playstation-reporter` 独立 compose 项目在 `n100:/volume1/docker/playstation-reporter/`，运行 GHCR 镜像、host 网络、UID/GID `1026:101`；PS5 地址 `192.168.100.193`，发现包回复休息状态。Access 凭据在该目录 `.env`，PSN 登录态在 `data/auth`，两者权限 600；首次从旧 KV 迁入登录态，运行时只在本地续期，不配云端 NPSSO | 核对于 2026-09-29，方式：SSH 核对 compose、文件权限、容器状态与真实 UDP 探测 |
 
 ## 待手工清理
 
