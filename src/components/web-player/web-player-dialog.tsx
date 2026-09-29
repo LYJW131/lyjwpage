@@ -53,7 +53,7 @@ const SUSPEND_AFTER_CHANGE_MS = 400;
 
 /**
  * 保证歌单列表停在整行上：参考 PlayStation 奖杯明细的停滚吸附实现，
- * 不用 CSS scroll-snap（防止打断手势和滚轮自然动量），只在用户停滚 110ms 后平滑对齐到最近整行。
+ * 不用 CSS scroll-snap（防止打断手势和滚轮自然动量），只在用户停滚 SETTLE_DELAY_MS 后平滑对齐到最近整行。
  */
 function usePlaylistSnap(albumId: string | null | undefined) {
   const node = useRef<HTMLDivElement | null>(null);
@@ -292,9 +292,7 @@ export function WebPlayerDialog({ player }: { player: WebPlayer }) {
                   isItemActive ? "cursor-pointer" : "cursor-default opacity-50",
                 )}
               >
-                {/* 轨道底槽 */}
                 <div className="relative h-1 w-full overflow-hidden rounded-full bg-muted transition-[height] duration-150 group-hover:h-1.5">
-                  {/* 已播放彩色填充 */}
                   <div
                     className={cn(
                       "h-full rounded-full transition-all",
@@ -490,7 +488,7 @@ export function WebPlayerDialog({ player }: { player: WebPlayer }) {
           </>
         ) : null}
 
-        {/* 跳 Apple Music 的入口在这里，列表和 hero 上不再直接外跳 */}
+        {/* 跳 Apple Music 的入口放在弹窗里；列表和 hero 优先打开播放器，只在播放器不可用时才直接外跳 */}
         {item?.link ? (
           <>
             {playable ? <div className="w-px self-stretch bg-line" aria-hidden /> : null}
