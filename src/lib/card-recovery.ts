@@ -85,7 +85,8 @@ export type PrimeCardCacheIo<E extends { ok: boolean }> = {
  *
  * 只清缓存救不回所有情况：让卡崩的若是首屏那份（SWR 的 fallbackData），缓存一清，重新挂载
  * 又从它起步，渲染时再抛一次，连挂载时的回源都跑不到。取不到（网络、超时、上游降级信封）
- * 就退回清掉这个键，和只清缓存一样。各个键并行，最长等 `timeoutMs`。
+ * 就退回清掉这个键，和只清缓存一样。各个键并行，取数最长等 `timeoutMs`；
+ * 清缓存触发的 SWR 重新取数在后台继续，不让它把 Retry 卡住。
  *
  * 取数是异步的，途中同一个键可能被推送、或别的卡的轮询写进更新的值（很多键没有时间戳可比，
  * 只能按代次判）；卡片也可能已经卸载。这两种情况都不写，包括退回的清缓存：慢回来的这份
@@ -106,7 +107,12 @@ export async function primeCardCache<E extends { ok: boolean }>(paths: readonly 
       }
       if (io.cancelled() || io.generation(path) !== issuedAt) return;
       try {
-        await io.write(path, fresh);
+        const write = Promise.resolve(io.write(path, fresh));
+        if (fresh === undefined) {
+          void write.catch(() => {});
+          return;
+        }
+        await write;
       } catch {
         // 清缓存后的 SWR 回源也可能失败；仍让其他键完成并结束这一趟 Retry。
       }

@@ -177,6 +177,19 @@ test("清缓存后的回源失败不打断其他键，也不会让 Retry 的异�
   assert.deepEqual(writes, ["/api/status/fails", "/api/status/fine"]);
 });
 
+test("清缓存后的回源一直挂起时，本轮 Retry 仍及时结束", async () => {
+  const pending = new Promise<void>(() => {});
+  await Promise.race([
+    primeCardCache(["/api/status/hangs"], {
+      isStatusPath: () => false,
+      read: async () => { throw new Error("should not read"); },
+      write: () => pending,
+      ...untouched,
+    }),
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Retry stayed busy")), 100)),
+  ]);
+});
+
 test("取数途中这个键已经收到更新（推送、别的卡的轮询）：慢响应不再盖上去，别的键照常写", async () => {
   const busy = "/api/status/watching/now";
   const calm = "/api/status/server";
