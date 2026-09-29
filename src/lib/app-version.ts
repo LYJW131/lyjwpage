@@ -97,6 +97,18 @@ export function settleAutoReloadLedger(ledger: AutoReloadLedger, pageCommit: str
   return { ...ledger, shas: ledger.shas.filter((sha) => sha !== pageCommit) };
 }
 
+/**
+ * 系统时钟被往回拨过：冷却的起点比现在还晚就不可信，当成刚发生，从现在重新数一个冷却期，
+ * 不会照着一个未来的时刻干等。没有变化时原样返回同一个对象，调用方靠引用判要不要写回。
+ *
+ * 改完必须由调用方写回存储：只在判定时临时拉回，下一次读出来的还是那个未来的时刻，
+ * 每次都从「现在」重新数起，永远等不到。
+ */
+export function rebaseAutoReloadLedger(ledger: AutoReloadLedger, now: number): AutoReloadLedger {
+  if (ledger.at === null || ledger.at <= now) return ledger;
+  return { ...ledger, at: now };
+}
+
 export type AutoReloadInput = {
   status: AppVersionStatus;
   latestCommit: string | null;
@@ -123,20 +135,21 @@ export type AutoReloadDecision = { action: "reload" } | { action: "wait"; ms: nu
  *    页面刷回来已经是那个版本时才划掉（`settleAutoReloadLedger`）。
  * 2. **冷却**：距上一次自动刷新不到 AUTO_RELOAD_COOLDOWN_MS 就不刷，返回还要等多久。
  *    集合拦的是「同一个版本」，冷却拦的是「版本一直在变」，给重复刷新和重复上报 Sentry 封顶。
+ *    冷却的起点晚于现在（系统时钟被拨回过）按刚发生算，见 `rebaseAutoReloadLedger`。
  * 3. **播放器在放就不刷。** 刷新的代价是一段音乐，比一张卡暂时旧着贵得多。
  * 4. **存储不可用就不刷。** 记不住账就没法保证不循环。
  */
 export function autoReloadDecision(input: AutoReloadInput): AutoReloadDecision {
-  const { ledger, latestCommit } = input;
+  const { latestCommit } = input;
   if (input.status !== "stale" || !latestCommit) return { action: "skip" };
-  if (!ledger) return { action: "skip" };
+  if (!input.ledger) return { action: "skip" };
+  const ledger = rebaseAutoReloadLedger(input.ledger, input.now);
   if (ledger.shas.includes(latestCommit)) return { action: "skip" };
   if (input.playerBusy) return { action: "skip" };
   if (input.trigger === "background" && !input.hidden) return { action: "skip" };
   if (ledger.at !== null) {
     const elapsed = input.now - ledger.at;
-    // 系统时钟被往回拨过（elapsed 为负）也只等一个冷却期，不会等出一个天文数字
-    if (elapsed < AUTO_RELOAD_COOLDOWN_MS) return { action: "wait", ms: Math.min(AUTO_RELOAD_COOLDOWN_MS, AUTO_RELOAD_COOLDOWN_MS - elapsed) };
+    if (elapsed < AUTO_RELOAD_COOLDOWN_MS) return { action: "wait", ms: AUTO_RELOAD_COOLDOWN_MS - elapsed };
   }
   return { action: "reload" };
 }
