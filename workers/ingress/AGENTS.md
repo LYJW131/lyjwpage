@@ -5,7 +5,7 @@
 ## 不变量
 
 - 回执是对上报器的契约：状态码、正文和检查顺序逐字保持（表见 `README.md#回执`）。改回执要同步所有上报器对状态码的处理（`reporters/`、Mac Hub、iPhone Hub、Home Assistant）。
-- 校验与收敛（prepare）只在 `shared/ingest/`，本 Worker 与采集 Worker 打包它；`workers/api` 只 `import type`。命令形状变了要同时改 `workers/api/src/stores/`，上线顺序是 `workers/api` 先、这里后；`StateCore` 契约只加不改（`shared/state-core.ts`）。
+- 校验与收敛（prepare）只在 `shared/ingest/`，仅本 Worker 打包其实现；`workers/api` 只 `import type`。命令形状变了要同时改 `workers/api/src/stores/`，上线顺序是 `workers/api` 先、这里后；`StateCore` 契约只加不改（`shared/state-core.ts`）。
 - 一封上报按数据层拆开的顺序：状态核心（实时）→ D1 归档 → KV 可滞后层 → 凭据 KV。状态核心拒收时后三步都不做、回 400；唯一例外是 iPhone 训练收下、圆环被拒（见 `README.md#拆分`）。归档排在可滞后层之前，按自然键幂等，失败只记日志、不让上报器重发。
 - 校验不过才问 `ready()`：未初始化的 503 优先于校验的 400；请求体不是 JSON 直接回 400、不问 `ready()`。大小按实际读到的字节限制（`shared/storage-contract.ts#STORAGE_MAX_BYTES`），不信 `Content-Length`，超限也是 400。
 - 鉴权两层：Access 在边缘核对 service token，`src/access-auth.ts` 再验 JWT 的签名、受众、签发方与时效；只许写 `workers/ingress/wrangler.toml#ACCESS_CLIENTS` 里登记的来源，越权 403。不接受 Bearer 密钥。本地测试钥匙只在签发方是 `src/access-auth.ts#DEV_ACCESS_ISSUER` 时才被认。

@@ -12,7 +12,7 @@
 - `src/index.ts`：入口，`Sentry.withSentry` 包一层；`src/worker.ts` 是全部路由、回执与拆分。
 - `src/access-auth.ts`：验 Access 签的 JWT，按 `[vars.ACCESS_CLIENTS]` 查这把 service token 许不许做这件事。
 - 根目录 `shared/ingest/`：各来源的 prepare（收敛、逐字段校验、Emby 的 R2 HEAD），产出能结构化复制的命令。
-  状态核心只 `import type` 这里的命令类型；采集 Worker 自己组的 PlayStation 信封也过这一份。
+  状态核心只 `import type` 这里的命令类型；PlayStation 上报器通过 `/api/ingest/playstation` 交入原始信封，由本入口 prepare。
 - `src/lag-ingest.ts`：可滞后层那一半（KV `LAG`，格式见 `shared/lag.ts`），布局变了才请状态核心失效首屏。
 - `src/ingest-archive.ts`：长期归档那一半（D1 `HISTORY`），训练、圆环日读数、落地节点小时汇总、限额快照。
 - `src/env.ts`：绑定与变量；`src/sentry.ts`：Sentry 配置。
