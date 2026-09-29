@@ -9,7 +9,7 @@ import { useSWRConfig } from "swr";
 import { Card } from "@/components/ui/card";
 import { useVersionStatus } from "@/hooks/use-app-version";
 import { createFaultLedger, describeFault, primeCardCache, type FaultRecord } from "@/lib/card-recovery";
-import { fetchStatus, guardPolled } from "@/lib/status-reads";
+import { fetchStatus, guardPolled, writeGeneration } from "@/lib/status-reads";
 import { viewKeyByPath } from "@/lib/status-views";
 import { cn } from "@/lib/utils";
 
@@ -42,6 +42,10 @@ import { cn } from "@/lib/utils";
  * 若是首屏那份（SWR 的 fallbackData，缓存一清就回到它），重新挂载还是从它起步、再崩一次。
  * 取不到的键退回清掉缓存，从首屏那份起步、再回源。别的卡也在读的键，缓存一变它们的 hook
  * 正挂着，用 keepPreviousData 撑着，读数不闪。
+ *
+ * 取数是异步的，途中同一个键可能被推送、或同键别的卡的轮询写进更新的值；慢回来的这份不能
+ * 盖掉它们。很多键没有时间戳可比，所以按 lib/status-reads 的写入代次判：发起时记下，回来时
+ * 变了就不写（退回的清缓存也不做）。卡片在取数途中卸载了（导航、边界被重置）同样什么都不写。
  */
 type CardBoundaryProps = {
   /** 兜底卡片的标注，也是 Sentry 的 `card` 标签；取这张卡自己的标注，页面上要唯一 */
@@ -53,7 +57,7 @@ type CardBoundaryProps = {
   className?: string;
   /** 不是一张卡（页头徽章、「正在播放」、更新提示）：出错只上报、原位什么都不画，也会自动重试 */
   silent?: boolean;
-  /** 这张卡读的 SWR 键（状态端点路径）。重试前清掉，见上面的说明；没有就只重新渲染 */
+  /** 这张卡读的 SWR 键（状态端点路径）。重试前先处理这些键，见上面的说明；没有就只重新渲染 */
   paths?: readonly string[];
 };
 
@@ -73,6 +77,14 @@ function CardFault({
   const stale = status === "stale";
   const [retrying, setRetrying] = useState(false);
   const recovering = useRef(false);
+  // 取数是异步的，回来时卡片可能已经不在了：写缓存、reset 之前先看这个
+  const mounted = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   const recover = async () => {
     // 点得快、或自动重试的定时器与按钮撞上：一次只跑一趟
@@ -82,14 +94,21 @@ function CardFault({
     try {
       await primeCardCache(paths ?? [], {
         isStatusPath: (path) => viewKeyByPath(path) !== undefined,
-        read: async (path) => guardPolled(path, await fetchStatus(path)),
-        // 写进去的就是最新，不必再回源；清掉时回源，别的卡正挂着这个键的话由它们的 hook 去取
-        write: (path, value) => mutate(path, value, { revalidate: value === undefined }),
+        read: (path) => fetchStatus(path),
+        // 写进去的就是最新，不必再回源；清掉时回源，别的卡正挂着这个键的话由它们的 hook 去取。
+        // 过 guardPolled 是为了登记这一代、推进这个键的写入代次（期间有没有别人写过，primeCardCache 已判过）
+        write: (path, value) =>
+          mutate(path, value === undefined ? undefined : guardPolled(path, value), { revalidate: value === undefined }),
+        generation: writeGeneration,
+        cancelled: () => !mounted.current,
       });
     } finally {
       recovering.current = false;
-      setRetrying(false);
-      reset();
+      // 卸载之后不再碰它的状态，也不替已经换掉的边界 reset
+      if (mounted.current) {
+        setRetrying(false);
+        reset();
+      }
     }
   };
   // 定时器和事件里要拿到最新的 recover，又不想因为它每次渲染都变引用而重排定时器

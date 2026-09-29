@@ -78,8 +78,8 @@ const SLOT = {
 } as const;
 
 /**
- * 每张卡读的 SWR 键，给各自的错误边界用：重试前把这些键从缓存里清掉，见 components/card-boundary。
- * 卡片改了读什么，这里跟着改；漏了只是那张卡重试时没清那个键，不会崩。
+ * 每张卡读的 SWR 键，给各自的错误边界用：重试前先给这些键备好缓存，见 components/card-boundary。
+ * 卡片改了读什么，这里跟着改；漏了只是那张卡重试时没处理那个键，不会崩。
  */
 const READS = {
   contact: [GITHUB_CHART_PATH, CODING_YEAR_PATH],

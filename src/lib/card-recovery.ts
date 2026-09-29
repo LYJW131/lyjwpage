@@ -69,6 +69,13 @@ export type PrimeCardCacheIo<E extends { ok: boolean }> = {
   read: (path: string) => Promise<E>;
   /** 写进 SWR 缓存；`undefined` 是清掉这个键 */
   write: (path: string, value: E | undefined) => unknown;
+  /**
+   * 这个键上「有新值落进缓存」的代次（lib/status-reads 的 `writeGeneration`：推送和轮询的响应都会推进它）。
+   * 每个键发起取数时记一次，写之前再比：变了就是别人先写了更新的值，这次的结果（清缓存也一样）不落地。
+   */
+  generation: (path: string) => number;
+  /** 发起这趟重试的卡片已经卸载：什么都不写 */
+  cancelled: () => boolean;
   timeoutMs?: number;
 };
 
@@ -79,10 +86,15 @@ export type PrimeCardCacheIo<E extends { ok: boolean }> = {
  * 只清缓存救不回所有情况：让卡崩的若是首屏那份（SWR 的 fallbackData），缓存一清，重新挂载
  * 又从它起步，渲染时再抛一次，连挂载时的回源都跑不到。取不到（网络、超时、上游降级信封）
  * 就退回清掉这个键，和只清缓存一样。各个键并行，最长等 `timeoutMs`。
+ *
+ * 取数是异步的，途中同一个键可能被推送、或别的卡的轮询写进更新的值（很多键没有时间戳可比，
+ * 只能按代次判）；卡片也可能已经卸载。这两种情况都不写，包括退回的清缓存：慢回来的这份
+ * 不能盖掉更新的值，也不能替一张已经不在的卡改缓存。
  */
 export async function primeCardCache<E extends { ok: boolean }>(paths: readonly string[], io: PrimeCardCacheIo<E>): Promise<void> {
   await Promise.all(
     paths.map(async (path) => {
+      const issuedAt = io.generation(path);
       let fresh: E | undefined;
       if (io.isStatusPath(path)) {
         try {
@@ -92,6 +104,7 @@ export async function primeCardCache<E extends { ok: boolean }>(paths: readonly 
           // 取不到：退回清缓存
         }
       }
+      if (io.cancelled() || io.generation(path) !== issuedAt) return;
       await io.write(path, fresh);
     }),
   );
