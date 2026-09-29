@@ -24,6 +24,8 @@
 
 片中开场按「**七个外部上报器 + 一个采集 Worker**」画。其中 n100 上的 playstation-reporter，把 presence、游玩列表和奖杯 POST 到同一个 `/api/ingest/playstation`。入口来源是 `shared/ingest/prepare.ts#INGEST_SOURCES` 那一份（playstation 是其中之一），外加 Claude Code 云端遥测（OTLP）。Home Assistant 的 token 开 homepod 和 playstation 两扇门。容器自己的 Access service token 是 `lyjwpage-playstation`，登记在 `workers/ingress/wrangler.toml#ACCESS_CLIENTS`，权限只有 `ingest:playstation`。
 
+第 01 章用到的部分（编码用量、collector 的任务与节奏、Mac 信封的 90 秒和 400 ms）按 main 0a0a842 逐条回代码复核过。 <!-- allow: 核对基线戳 -->
+
 | 来源 | 程序 / 在哪跑 | 入口 · token | 报什么 |
 |---|---|---|---|
 | Mac | Mac Telemetry Hub，菜单栏 App | `/api/ingest/mac` · `lyjwpage-mac` | 前台应用、窗口标题、Apple Music、充电设备、编码用量（本机的日行、最近一次用量事件、5 分钟 token 桶）、时区、Apple Music user token |
@@ -33,16 +35,16 @@
 | Emby | emby-reporter，NAS 上的容器 | `/api/ingest/emby` · `lyjwpage-emby` | 在看什么；海报先传 R2 |
 | 服务器 | server-reporter，东京 misaka-jp 容器 | `/api/ingest/server` · `lyjwpage-server` | 服务器状态，固定每 60 秒一次（config.ts:71） |
 | 编码账号 | agents-reporter，misaka-jp 容器 | `/api/ingest/agents` · `lyjwpage-agents` | 各家编码工具限额；Cursor 账号的用量日行、最近一次用量事件、5 分钟 token 桶 |
-| Claude Code 云端 | OTLP JSON（可 gzip） | `/api/ingest/agents/otlp` · `lyjwpage-claude-cloud` | 云端 token 与费用的累计值；状态核心做差后落成和另两个来源同形的日行、桶、最近事件，三处用量在状态核心合并（shared/coding-usage-sources.ts） |
-| collector Worker | Cloudflare，cron 每分钟一响，任务表 `workers/collector/src/registry.ts#JOBS` | 不走 ingress | 见下文 |
+| Claude Code 云端 | OTLP JSON（可 gzip），Claude Code 自己发，不是我们写的上报器 | `/api/ingest/agents/otlp` · `lyjwpage-claude-cloud` | 云端 token 与费用的累计值（只收 cumulative）；状态核心按序列做差，落成和另两个来源同形的日行、5 分钟桶、最近一次用量事件（`workers/api/src/stores/claude-cloud.ts`）。三处怎么合并见下文「编码用量」 |
+| collector Worker | Cloudflare，cron 每分钟一响，任务表 `workers/collector/src/registry.ts#JOBS` 里的任务各按自己的节奏 | 不走 ingress | 见下文 |
 
 PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-reporter` POST 原始信封。采集 Worker 不拉 PSN。电源由 Home Assistant 上报。
 
 ### Mac 信封
 
 - 结构是 `{version:4, presence, heartbeatAt, activeModules, modules:{…}}`，只带变了的模块（TelemetryEnvelope.swift:46-60，shared/ingest/telemetry.ts:269-280）。
-- 没变化时每 **90 秒**发一个空信封报平安（ReportDecision.swift:155）。
-- 切应用先等 **400 ms** 落定（ServiceController.swift:110）。
+- 没变化时每 **90 秒**发一个空信封报平安（ReportDecision.swift 的 `heartbeatInterval`）。
+- 切应用先等 **400 ms** 落定，是防抖：落定前再切一次就重新等（ServiceController.swift 的 `desktopSettleDelay`）。
 - 窗口标题上报前先过隐私判断，Jev 参与；只有放行的进信封（WindowTitleJudge.swift）。判据不写。
 
 ### 图片
@@ -52,10 +54,18 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
   - Mac 应用图标：96×96 PNG（TelemetryModules.swift:436）
   - Emby 海报：WebP q88
   - Mac 充电头封面：JPG（ServiceController.swift:1088）
-- 信封里只带 `objectKey`。入口按正则 `^[a-f0-9]{64}\.(png|webp|jpe?g)$` 校验（asset-url.ts:2）。
+- 信封里只带 `objectKey`。入口按正则 `^[a-f0-9]{64}\.(png|webp|jpe?g)$` 校验（asset-url.ts:2）。Mac 的应用图标在 `desktop` 模块里是 `iconHash` 加 `iconObjectKey`（`shared/ingest/telemetry.ts`）。
+
+### 编码用量（三个来源）
+
+- 三个来源只报自己观测到的原始事实，三种形状一样：日行（来源 × agent × 站点日）、5 分钟 token 桶、最近一次用量事件（契约 `shared/coding-usage.ts`）。来源登记在 `shared/coding-usage-sources.ts#CODING_USAGE_SOURCES`：Mac 本机的会话记录、agents-reporter 里 Cursor 账号的完整历史、Claude Code 云端的 OTLP（状态核心做差后才成形，见上表）。
+- 合计、排名、去重、年度格子都不归来源，在状态核心一处算（`shared/coding-usage-view.ts#buildCodingUsageView`）：同一个 agent 有账号级来源（Cursor 账号）就只用它，本机和云端相加（`shared/coding-usage-sources.ts#resolveCodingUsageSources`）。读出口是 `/api/status/coding`、`/api/status/coding/now`、`/api/status/coding/year`（`src/lib/status-views.ts#STATUS_VIEWS`）。
+- Pulse 多一条 Tokens 道：三个来源的 5 分钟桶全部相加，画每分钟新处理的 token 数，不含缓存读（`src/lib/pulse.ts#tokensLaneView`）。
+- 片中只讲到「三处各报原始数，站点这边合并，Pulse 上多一条 token 速率」，不点存储键和模块名。
 
 ### collector 的任务
 
+- 节奏：每个任务登记「每 N 分钟、第 offset 分钟」（各任务的 `everyMinutes` / `offset`），cron 每分钟一响时挑出到期的一起跑（`workers/collector/src/schedule.ts#isDue`）。第 01 章表盘的时序图按这张表从整点起画 12 分钟。
 - 最近在听：每 2 分钟调 `CORE.commitRecentlyPlayed`。用的 user token 是 Mac 推进 `CREDENTIALS` 的那一份，形成一次凭据接力。
 - GitHub、Vercel、Cloudflare、Sentry、PageSpeed、厂商状态：直接写 `LAG`。
 - PlayStation 不在这张表里。
