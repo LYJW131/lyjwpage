@@ -16,7 +16,10 @@
  * 那一轮的增量整段算进新周期 —— 边界上最多差一个上报间隔。
  *
  * 攒得住才报：状态文件一次都没写成功过就报 null，卡片上少一块，好过默默显示一个
- * 只从本次进程算起的小数。文件格式和从前 Python 版一致，换实现不丢这个周期的累计。
+ * 只从本次进程算起的小数。
+ *
+ * 状态文件是跨重启的持久化格式：改字段要同时改 `TRAFFIC_STATE_VERSION`，版本对不上的
+ * 文件会整份丢掉、这个周期从零重新数。
  */
 import { mkdir, open, readFile, rename } from "node:fs/promises";
 import { dirname } from "node:path";
@@ -155,7 +158,6 @@ export async function traffic(
   bootMs: number,
 ): Promise<TrafficReport | null> {
   if (!store.loaded) await loadState();
-  // 从前带过 12 小时 CPU 窗口，accumulate 只挑自己的字段，旧文件里那一块下次写回就没了
   const state = accumulate(store.state, iface, rx, tx, nowMs, config.cycleDay, bootMs);
   store.state = state;
   if (await saveState(state)) store.durable = true;

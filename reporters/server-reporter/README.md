@@ -2,7 +2,7 @@
 
 把日本落地节点的 CPU、内存、磁盘、网速、周期流量推给 lyjwpage 的小进程，跑在节点自己上面。
 
-站点够不着这台机器的 `/proc`（将来还要部署到 Vercel），所以该给的东西由这边送过去。
+站点在公网上，够不着这台机器的 `/proc`，所以该给的东西由这边送过去。
 TypeScript / Node，和 [agents-reporter](../agents-reporter) 同一套结构（`config` / `log` /
 `site` / `push-ledger` 各一份；它按人数调频的那份这里不用，见下面「节奏」）。没有运行时依赖，跑在容器里，机器上不用装 Node。
 
@@ -11,9 +11,9 @@ TypeScript / Node，和 [agents-reporter](../agents-reporter) 同一套结构（
 | 内容 | 节奏 | 什么时候真的推 |
 | --- | --- | --- |
 | CPU / 负载 / 内存 / 磁盘 / 网速 / 运行时间 | 固定每分钟一轮（`INTERVAL_MS`） | **每轮都推**。这份快照本身就是心跳，站点拿 `pushedAt` 判断上报器还活着没有 |
-| 公网 IP 的 Location / ISP / ASN | 地址变了才查，否则缓存 6 小时 | 跟着上面那份一起推。查的是网卡上的地址，不是「我访问某个 what-is-my-ip 看到的出口」 |
+| 公网 IP 的 Location / ISP / ASN | 地址变了才查，否则按 `src/geo.ts#GEO_TTL_MS` 缓存 | 跟着上面那份一起推。查的是网卡上的地址，不是「我访问某个 what-is-my-ip 看到的出口」 |
 | 计费周期内的累计流量 | 每轮把这一段的增量并进去 | 跟着一起推。攒不住（状态文件写不进）时报 `null`，卡片上那一栏整行不出现 |
-| 推送账本（`reporter` 块） | 站点回 ok 才记一笔，十分钟一格存在 `PUSH_LEDGER_PATH` | 每封都带：镜像提交（Actions 以 `GIT_SHA` 烧进 `REPORTER_COMMIT`）、过去 12 小时推成功几封（含这一封）、这些封往返的中位数（`rttMs`，从发出到读完回执，不含这一封）、窗口起止。站点卡片服务区据此显示 Push、RTT 和线上跑的哪一版。和 agents-reporter 同一份 `push-ledger.ts` |
+| 推送账本（`reporter` 块） | 站点回 ok 才记一笔，按 `BUCKET_MS` 分格存在 `PUSH_LEDGER_PATH` | 每封都带：镜像提交（Actions 以 `GIT_SHA` 烧进 `REPORTER_COMMIT`）、窗口（`WINDOW_MS`）内推成功几封（含这一封）、这些封往返的中位数（`rttMs`，从发出到读完回执，不含这一封）、窗口起止。站点卡片服务区据此显示 Push、RTT 和线上跑的哪一版。和 agents-reporter 同一份 `push-ledger.ts`，常量见 `src/push-ledger.ts#WINDOW_MS`、`src/push-ledger.ts#BUCKET_MS` |
 
 CPU 占用和网卡速率都是这一段间隔的平均，不是「这一瞬间的尖峰」：上一轮 `/proc` 的读数留着，这一轮做差。第一封在启动后约 1 秒就发出去，卡片不必干等一个完整间隔。
 
@@ -39,20 +39,20 @@ CPU 占用和网卡速率都是这一段间隔的平均，不是「这一瞬间�
 哪个月对配额没有影响，换取的是「不管容器时区怎么设，两次读到的是同一个周期」。
 
 配额 `TRAFFIC_QUOTA_BYTES` 是可选的，配了卡片才画进度条，**按上下行之和**算用量。
-套餐若只计出站，别配这个变量 —— 那条进度条会比实际宽松。
+套餐若只计出站，别配这个变量 —— 上下行之和会高估用量，那条进度条会比实际偏满。
 
 单位是**十进制**：套餐说的「2T」按 2×10¹² 填（`TRAFFIC_QUOTA_BYTES=2000000000000`），
 卡片上那一栏也按 1000 换算。网络那一侧一向如此，卡片上的速率（MB/s = 10⁶ B/s）本来
 就是这个口径；按 1024 算的话 2T 会显示成「1.82 TB」，和账单对不上。内存和磁盘不受
 影响，它们仍按 1024 —— 那是系统自己报数的方式。
 
-周期边界、增量累加、12 小时窗口、推送账本这几个纯函数有单测：
+周期边界、增量累加、推送账本、CPU 占用和 AS 行解析这几个纯函数有单测：
 
 ```bash
 pnpm --filter @lyjwpage/server-reporter test
 ```
 
-站点那侧**没有实时推送**。这些数字每个间隔都在变，广播就是拿推送当轮询用；卡片 30 秒自己来问。
+站点那侧**没有实时推送**（可滞后层）。这些数字每个间隔都在变，广播就是拿推送当轮询用；卡片按写入节奏自己来问（`src/lib/status-views.ts#STATUS_VIEWS` 里 `server` 的 `cadenceMs`，排期见 `src/lib/poll-schedule.ts#nextLagDelay`）。
 
 ### 节奏
 
@@ -60,7 +60,7 @@ pnpm --filter @lyjwpage/server-reporter test
 
 不按人数调频：上报不经过 Vercel，没有函数调用量要省；闲着时每分钟问一遍 `/count`，问询本身就不比直接推一次省。agents-reporter 和采集 Worker 的 PlayStation 任务按人数调频：它们控制的是打厂商 / PSN 接口的频率，调频省的是外部配额。
 
-断流窗口是站点 `lib/freshness` 的 `SERVER_STALE_MS`（10 分钟，十轮）：读数在站点的可滞后层，浏览器拿每封刷新的 `updatedAt` 和它比，过了显示 Unavailable。要降频时**先放宽站点窗口、部署完，这边再降频**，反过来做中间那段时间卡片会断续显示不可用。
+断流窗口是站点 `src/lib/freshness.ts#SERVER_STALE_MS`：读数在站点的可滞后层，浏览器拿每封刷新的 `updatedAt` 和它比，过了显示 Unavailable。要降频时**先放宽站点窗口、部署完，这边再降频**，反过来做中间那段时间卡片会断续显示不可用。
 
 ## 配置
 

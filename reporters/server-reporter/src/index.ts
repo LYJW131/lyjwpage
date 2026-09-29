@@ -16,9 +16,6 @@ import { traffic as trafficReport } from "./traffic.js";
  * 采集窗口就是上报间隔本身：上一轮 /proc 的读数留着，这一轮做差，得到的是这段时间的
  * 平均占用和平均速率，不是「这一瞬间的尖峰」。同一份差值还累加成计费周期的流量
  * （见 traffic.ts）。固定每分钟推一次，这份快照本身就是心跳。
- *
- * 2026-09 前是 Python 标准库写的，为了和 agents-reporter 同一套结构改写成 TypeScript；
- * 报文字段和状态文件格式都没变。
  */
 
 type Cursor = { cpu: CpuTimes; net: [number, number]; at: number };
