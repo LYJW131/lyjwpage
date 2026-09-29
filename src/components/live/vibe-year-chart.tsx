@@ -26,8 +26,9 @@ import type { CodingYearPayload, GithubChartDay, StatusResponse } from "@/lib/ty
 import { cn } from "@/lib/utils";
 
 /**
- * 年度格子是日粒度的累计量，不推送。数据在状态核心（实时层），但一天里没什么可看的变化：
- * 自己按长间隔轮询，切回标签页时再取一次。
+ * 年度格子是日粒度的累计量，不推送、也没有首屏失效。数据在状态核心（实时层），但一天里
+ * 没什么可看的变化：自己按长间隔轮询，切回标签页时再取一次；首屏那份放得比这个间隔还久
+ * 才在挂载时补取（hooks/use-status 的 revalidateOnMount）。
  */
 const YEAR_REFRESH_MS = 30 * 60_000;
 
@@ -124,7 +125,7 @@ export function VibeYearChart({
 }) {
   const { data } = useStatus<CodingYearPayload>(CODING_YEAR_PATH, YEAR_REFRESH_MS, {
     fallback,
-    // 首屏已经烧进去，挂载不再回源
+    // 首屏已经烧进去，挂载不回源；首屏放久了由 useStatus 按 servedAt 补一次
     revalidateOnMount: false,
     revalidateOnFocus: true,
   });

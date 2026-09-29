@@ -7,6 +7,7 @@ import type { CodingBucketDelta } from "@shared/coding-buckets";
 import { codingOtlpKey, codingUsageKey, parseOtlpCounters, parseStoredUsageLedgers, type StoredOtlpCounters } from "@shared/coding-store";
 import type { CodingUsageAgent, CodingUsageDay } from "@shared/coding-usage";
 import type { OtlpTokenType, PreparedClaudeCloudUsage } from "@shared/ingest/claude-cloud";
+import type { StorageBatch } from "@shared/storage-client";
 
 import { prepareCodingActivity, readCodingActivities } from "./coding-activity";
 import { prepareOtlpBuckets } from "./coding-buckets";
@@ -29,6 +30,11 @@ import { migrateLegacyCodingUsage } from "./coding-usage-migrate";
  * - 活动：有 token 正差值的最新数据点时刻与模型。
  *
  * 云端会话和 Mac 本机的会话记录不重叠：来源规则里两者都是非账号级，相加（shared/coding-usage-sources）。
+ *
+ * 计数器和它做出来的差值必须一起落：先读完全部（计数器、三个来源的账本与视图、活动、桶），
+ * 再把计数器、账本连同视图与年度、活动、桶排进同一批，一个 SQLite 事务写下。中途哪一步失败就
+ * 一条都不落，计数器停在前值，累计序列的下一封（或重发）照旧从这个前值做差，差值不丢；计数器
+ * 先落、账本后落的话，中间失败一次，这段差值就永远补不回来了。
  */
 
 const TOKEN_FIELD: Record<OtlpTokenType, "inputTokens" | "outputTokens" | "cacheReadTokens" | "cacheCreationTokens"> = {
@@ -133,7 +139,7 @@ export async function recordPreparedClaudeCloudUsage(prepared: PreparedClaudeClo
     sessions: newest(Object.entries(sessions), (value) => value, cutoff, MAX_SERIES),
     sessionCount,
   };
-  const writes: Promise<unknown>[] = [tellStorage((storage) => storage.set(codingOtlpKey(), JSON.stringify(nextCounters)))];
+  const staged: Array<(batch: StorageBatch) => void> = [];
   const events: LiveEvent[] = [];
   const tags: string[] = [];
 
@@ -151,7 +157,7 @@ export async function recordPreparedClaudeCloudUsage(prepared: PreparedClaudeClo
         .sort((left, right) => left.date.localeCompare(right.date)),
     };
     const usage = await prepareCodingUsage("agents-otlp", { agents: [agent] }, receivedAt, { recompute: migrated });
-    writes.push(usage.commit());
+    staged.push(usage.stage);
     tags.push(...usage.tags);
   }
 
@@ -164,13 +170,18 @@ export async function recordPreparedClaudeCloudUsage(prepared: PreparedClaudeClo
       collectedAt: receivedAt,
       agents: [{ id: "claude", lastActivityAt: newer.at, model: newer.model }],
     }, receivedAt);
-    writes.push(activity.commit());
+    staged.push(activity.stage);
     if (activity.event) events.push(activity.event);
   }
 
   const buckets = await prepareOtlpBuckets(deltas, receivedAt);
-  if (buckets.accepted) writes.push(buckets.commit());
+  staged.push(buckets.stage);
 
-  await fanout({ writes, events, tags });
+  const write = tellStorage((storage) => {
+    const batch = storage.batch().set(codingOtlpKey(), JSON.stringify(nextCounters));
+    for (const stage of staged) stage(batch);
+    return batch.execute();
+  });
+  await fanout({ writes: [write], events, tags });
   return { accepted: points.length };
 }

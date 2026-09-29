@@ -58,14 +58,17 @@
 
 - **日行**：`coding:usage:<来源>` 是字段哈希，字段是 agent id，值是这个 (来源, agent) 的完整账本
   （`shared/coding-usage-view.ts` 的 `StoredCodingUsageAgent`）。一封里出现的 agent 整份替换；`state: "error"`
-  只换状态、日子沿用上一份（Cursor 历史里一条坏事件让一整轮失败时也是这样，不清空）。账本真的变了才在同一次
-  提交里重算视图 `coding:usage:view`（`CodingUsagePayload`：合计、全历史前三模型、各 agent 最近一个有行的日子、
+  只换状态、日子沿用上一份（Cursor 历史里一条坏事件让一整轮失败时也是这样，不清空）。采集时刻比存着的旧（重发、
+  乱序晚到）的那一格不收；error 那一轮的采集时刻停在上次成功，所以同一时刻上 error 比 ok 新。日子或会话数变了才在
+  同一次提交里重算视图 `coding:usage:view`（`CodingUsagePayload`：合计、全历史前三模型、各 agent 最近一个有行的日子、
   各来源状态）与年度视图 `coding:usage:year`（最近 380 天每天的合计与精确前五模型），算法是纯函数
-  `buildCodingUsageView`。前三、每天前五都在完整数据上精确累加；`activeDays` 是全部历史、全部 agent 的站点日并集；
+  `buildCodingUsageView`；只有状态变了（采集时刻前进、出错 / 恢复）只换账本和视图里的状态，年度不写，视图的
+  `updatedAt` 与账本的 `receivedAt` 不动（D1 归档按这两个时刻挑要重写的账本，Mac 每一轮采集都会带来新的采集时刻）。前三、每天前五都在完整数据上精确累加；`activeDays` 是全部历史、全部 agent 的站点日并集；
   `costComplete` 看所有有 token 的日行，来源采集失败只体现在状态里。首屏标签 `coding` 只在新旧视图的骨架
   （行、总量、常用模型的有无，`src/lib/home-layout.ts` 的 `codingLayoutKey`）不同时打。
 - **活动**：`coding:activity:<来源>` 整份替换（采集时刻比存着的旧就不收）。拼好整份 `/api/status/coding/now`
-  推 `coding-now`：多出一个 (agent, 来源)、换了模型、时刻往前走了 45 秒以上才推，保活不推。灯由浏览器按
+  推 `coding-now`：和上一次推出去的那份（`coding:now:pushed`）比，多出一个 (agent, 来源)、换了模型、时刻往前走了
+  `src/stores/coding-activity.ts#PUSH_STEP_MS` 以上才推，保活不推。灯由浏览器按
   「任一来源最近事件在 `CODING_ACTIVE_WINDOW_MS` 内」现算；Mac 亲口离线时只作废 `mac` 那条（`src/lib/coding-agents.ts`）。
 - **5 分钟桶**：`pulse:token-buckets:<来源>`，TTL 2 天，只给 Pulse 的 Tokens 道、Jev 与归档，不推送。Mac / agents 按报告
   范围替换（`[from, to)` 内以新报告为准，缺席的桶是 0，范围外不动，报告范围并进覆盖）；跨着报告起点的那一桶只数了
@@ -99,7 +102,8 @@ Mac 的 ccusage 只扫本机会话记录，看不到云端线程。云端环境�
 进程计数器 30 天没见就清掉。每个正差值同时落成三种事实（`agents-otlp` / `claude`）：按数据点时刻的站点日加进日行
 （费用直接用 Claude Code 报的 `cost.usage`，`costComplete` 恒真）；加进数据点时刻所在的 5 分钟桶（差值实际覆盖
 上一次导出到这次之间约一分钟，桶边界上最多错一分钟；没有覆盖区间、事件数为 null，只作正证据）；有 token 增量的
-最新时刻与模型作为活动。闲着的进程每分钟一封也不重算视图。
+最新时刻与模型作为活动。闲着的进程每分钟一封也不重算视图。计数器与它做出来的账本（连同视图、年度）、活动、桶
+在同一个事务里落：中途哪一步失败就一条都不落，下一封从同一个前值再做差，差值不丢。
 
 改契约时的一次性迁移在 `src/stores/coding-usage-migrate.ts`（第一封用量或 OTLP 提交时触发，幂等，确认转过之后删掉）：
 旧键里的累计计数器必须转成 `coding:otlp`，否则每个活着的云端进程会被整份重算一遍；云端日桶、最近时刻和

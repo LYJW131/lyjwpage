@@ -17,6 +17,7 @@ import {
   codingOtlpKey,
   codingUsageKey,
   codingViewKey,
+  codingYearKey,
   parseStoredActivity,
   parseStoredUsageLedgers,
   parseStoredView,
@@ -461,6 +462,125 @@ test("the one-time migration carries the cloud counters over, so the first OTLP 
     const view = parseStoredView(await fresh.get(codingViewKey()));
     assert.equal(view?.totals?.totalTokens, 390);
     assert.ok(await fresh.get(key("coding", "legacy-migrated")));
+  } finally { resetStorageForTests(); }
+});
+
+test("an OTLP commit that fails after the delta is computed writes nothing, so the next export still lands the whole delta", async () => {
+  const storage = new FakeStorage();
+  installStorageForTests(storage);
+  const env = testEnv();
+  const otlp = (at: number, input: number) => inRequest(env, () => prepareIngest("agents-otlp", otlpTokens(at, input), at));
+  const cloudInput = async () => parseStoredUsageLedgers(await fieldsOf(storage, codingUsageKey("agents-otlp"))).claude?.days
+    .reduce((sum, day) => sum + day.inputTokens, 0);
+  const bucketInput = async () => parseStoredCodingBuckets(await storage.get(codingBucketsKey("agents-otlp")))?.windows
+    .flatMap((window) => window.agents).reduce((sum, row) => sum + row.inputTokens, 0);
+  try {
+    // 做完差之后，读三个来源账本的那一批失败
+    storage.failWhen((commands) => commands.some((command) => command.op === "fields" && command.key === codingUsageKey("mac")));
+    assert.equal((await commit(env, await otlp(NOW, 100))).ok, false);
+    assert.equal(await storage.get(codingOtlpKey()), null, "the counter must not move ahead of its ledger");
+    assert.deepEqual(await fieldsOf(storage, codingUsageKey("agents-otlp")), {});
+    assert.equal(await storage.get(codingBucketsKey("agents-otlp")), null);
+
+    storage.failWhen(null);
+    assert.equal((await commit(env, await otlp(NOW + 60_000, 100))).ok, true);
+    assert.equal(await cloudInput(), 100, "the delta that failed once is not lost");
+    assert.equal(await bucketInput(), 100);
+
+    // 写的那一批失败（整批回滚）：同样一条都不落。Worker 驱动里写失败会冒泡成入口回错；
+    // 这里的 Node 驱动吞掉写失败只回 false，所以只看落没落
+    const counters = await storage.get(codingOtlpKey());
+    storage.failWhen((commands) => commands.some((command) => command.op === "set" && command.key === codingOtlpKey()));
+    await commit(env, await otlp(NOW + 120_000, 180));
+    storage.failWhen(null);
+    assert.equal(await storage.get(codingOtlpKey()), counters);
+    assert.equal(await cloudInput(), 100);
+    assert.equal(await bucketInput(), 100);
+    assert.equal((await commit(env, await otlp(NOW + 180_000, 180))).ok, true);
+    assert.equal(await cloudInput(), 180);
+    assert.equal(await bucketInput(), 180);
+  } finally { storage.failWhen(null); resetStorageForTests(); }
+});
+
+test("a late, older usage snapshot never replaces a newer one, ok or error", async () => {
+  const storage = new FakeStorage();
+  installStorageForTests(storage);
+  const env = testEnv();
+  const agents = (at: number, row: Record<string, unknown>) => inRequest(env, () => prepareIngest("agents", {
+    collectedAt: new Date(at).toISOString(), codingUsage: { agents: [{ id: "cursor", sessionCount: null, ...row }] },
+  }, at));
+  const cursor = async () => parseStoredUsageLedgers(await fieldsOf(storage, codingUsageKey("agents"))).cursor;
+  const total = async () => parseStoredView(await storage.get(codingViewKey()))?.totals?.totalTokens;
+  const earlier = NOW;
+  const later = NOW + 600_000;
+  const twoDays = (last: number) => [usageDay("2026-09-28", 500, "composer-2"), usageDay("2026-09-29", last, "composer-2")];
+  try {
+    assert.equal((await commit(env, await agents(later, { state: "ok", collectedAt: later, days: twoDays(80) }))).ok, true);
+    // 上一轮的重试晚到：整份替换会让 29 号那天消失
+    assert.equal((await commit(env, await agents(later + 1_000, { state: "ok", collectedAt: earlier, days: [usageDay("2026-09-28", 500, "composer-2")] }))).ok, true);
+    assert.deepEqual((await cursor())?.days.map((day) => day.date), ["2026-09-28", "2026-09-29"]);
+    assert.equal(await total(), 580);
+    // error 的 collectedAt 停在上次成功：比存着的旧，就是更早那次失败晚到了
+    await commit(env, await agents(later + 2_000, { state: "error", collectedAt: earlier, error: "an old failure" }));
+    assert.equal((await cursor())?.state, "ok");
+    // 这次成功之后的失败（同一个时刻）照收，日子留着
+    await commit(env, await agents(later + 3_000, { state: "error", collectedAt: later, error: "cursor history: 500" }));
+    assert.equal((await cursor())?.state, "error");
+    assert.equal(await total(), 580);
+    // 失败之前那封成功的重发（同一个时刻的 ok）不把状态改回去
+    await commit(env, await agents(later + 4_000, { state: "ok", collectedAt: later, days: twoDays(80) }));
+    assert.equal((await cursor())?.state, "error");
+    // 真的又成功了一次
+    await commit(env, await agents(later + 600_000, { state: "ok", collectedAt: later + 600_000, days: twoDays(90) }));
+    assert.equal((await cursor())?.state, "ok");
+    assert.equal(await total(), 590);
+  } finally { resetStorageForTests(); }
+});
+
+test("a usage round that only advances collectedAt updates the status without rewriting the year or moving the archive marks", async () => {
+  const storage = new FakeStorage();
+  installStorageForTests(storage);
+  const env = testEnv();
+  const usage = (at: number, agents: unknown[]) => inRequest(env, () => prepareIngest("mac", envelope({ codingUsage: { agents } }, ["coding"]), at));
+  const claude = (at: number, tokens = 100) => ({ id: "claude", state: "ok", collectedAt: at, sessionCount: 3, days: [usageDay("2026-09-29", tokens)] });
+  const ledger = async () => parseStoredUsageLedgers(await fieldsOf(storage, codingUsageKey("mac"))).claude!;
+  try {
+    assert.equal((await commit(env, await usage(NOW, [claude(NOW)]))).ok, true);
+    const year = await storage.get(codingYearKey());
+    assert.ok(year);
+
+    // Mac 每一轮都带着新的采集时刻整份发来，日子没变
+    assert.equal((await commit(env, await usage(NOW + 600_000, [claude(NOW + 600_000)]))).ok, true);
+    const view = parseStoredView(await storage.get(codingViewKey()))!;
+    assert.equal(view.agents[0]?.status[0]?.collectedAt, NOW + 600_000, "the status follows the round");
+    assert.equal(view.updatedAt, NOW, "the view's updatedAt (the archive's gate) stays where the days last changed");
+    assert.equal((await ledger()).collectedAt, NOW + 600_000);
+    assert.equal((await ledger()).receivedAt, NOW, "so does the ledger's archive mark");
+    assert.equal(await storage.get(codingYearKey()), year, "the year is not rewritten");
+
+    // 日子真的变了：两个时刻都前进，年度重写
+    await commit(env, await usage(NOW + 1_200_000, [claude(NOW + 1_200_000, 140)]));
+    assert.equal(parseStoredView(await storage.get(codingViewKey()))?.updatedAt, NOW + 1_200_000);
+    assert.equal((await ledger()).receivedAt, NOW + 1_200_000);
+    assert.notEqual(await storage.get(codingYearKey()), year);
+  } finally { resetStorageForTests(); }
+});
+
+test("coding-now pushes are gated against the last pushed payload, so a steady 30-second cadence still pushes about once a minute", async () => {
+  const storage = new FakeStorage();
+  installStorageForTests(storage);
+  const env = testEnv();
+  const activity = (at: number) => inRequest(env, () => prepareIngest("agents", {
+    collectedAt: new Date(at).toISOString(),
+    codingActivity: { collectedAt: at, agents: [{ id: "cursor", lastActivityAt: at - 5_000, model: "composer-2" }] },
+  }, at));
+  const pushed = (result: CollectedIngest<unknown>) =>
+    result.effects.some((effect) => effect.kind === "event" && effect.event.type === "coding-now");
+  try {
+    const step = async (index: number) => pushed(await commit(env, await activity(NOW + index * 30_000)));
+    const steps = [await step(0), await step(1), await step(2), await step(3), await step(4)];
+    // 和上一封存下的比，每步都只走 30 秒，第一封之后就再也不推了
+    assert.deepEqual(steps, [true, false, true, false, true]);
   } finally { resetStorageForTests(); }
 });
 
