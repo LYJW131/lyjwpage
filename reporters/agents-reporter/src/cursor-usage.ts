@@ -20,7 +20,7 @@ import { readCursorAccessToken } from "./providers/cursor.js";
 
 /**
  * Cursor 云端用量历史。凭据就是限额那条路已经有的 accessToken。
- * Mac 不在线时云端线程仍在烧 token，所以这份历史改由常驻容器拉。
+ * 常驻容器采集云端历史，不依赖 Mac 在线。
  *
  * 拉到的事件产出三份事实，都是 Cursor 这个 agent 自己观测到的原始数据（契约见 coding-usage.ts）：
  * 日行账本（codingUsage，整份历史）、最近一条事件（codingActivity）、5 分钟 token 桶
@@ -39,7 +39,6 @@ const MAX_PAGE_BYTES = 32 * 1024 * 1024;
 const TOKEN_CHARS = /^[A-Za-z0-9._-]+$/;
 const IDENTITY_CHARS = /^[A-Za-z0-9_|.-]+$/;
 
-/** 这个来源里 Cursor 的 agent id */
 export const CURSOR_AGENT_ID = "cursor";
 
 /** 限额那一轮的桶报告回溯多久：滚动一天（契约上限 25 小时） */
@@ -84,7 +83,7 @@ type Ledger = {
    * 上一次全量拉取的时刻和结论。增量那几轮只拉最近两天，判不出「云端还返回哪些旧日」
    * 「历史里有多少请求没 token 数」这类整段历史才有的事，沿用这次的结论。旧账本没有
    * 这几个字段，读到时按「从没全量过」处理，下一轮就会全量拉一次。
-   * 费用是否完整按天记在 days 里，不再有整份的结论。
+   * 费用完整性按日存于 `days.costComplete`。
    */
   fullAt?: string;
   fullProblems?: string[];
@@ -199,7 +198,7 @@ export function sessionFromAccessToken(token: string): { accountHash: string; co
   };
 }
 
-/** 一条事件的严格解析：时刻或模型不对、token 分列缺项或不合规都抛 */
+/** 时刻或模型不对、分列不是合法计数则拒收。分列缺省按零；缺 tokenUsage 且未声明非 token 计费才拒收。 */
 function readEvent(value: unknown, lower: number, upper: number): UsageEvent {
   const row = value && typeof value === "object" ? (value as Record<string, unknown>) : null;
   const timestamp = row ? integer(row.timestamp) : null;
@@ -798,8 +797,8 @@ export type CursorCollected = {
 /**
  * 拉 Cursor 用量、并进本地账本。没配凭据返回 null。失败不改账本。
  *
- * 平时只拉上海时间昨天 0 点以来的事件，账本里其余日子原样留着；6 小时、换账号、或账本
- * 还没全量过时整段历史重拉一次核对。同一批事件顺手落 5 分钟桶（范围是滚动一天，起点对齐到桶边界）
+ * 平时只拉上海时间昨天 0 点以来的事件，账本里其余日子原样留着；`FULL_REFRESH_MS`、换账号、或账本
+ * 还没全量过时整段历史重拉一次核对。同一批事件顺手落 `CODING_BUCKET_MS` 的桶（范围是 `BUCKET_SPAN_MS`，起点对齐到桶边界）
  * 并取最新一条给活动灯用。
  */
 export async function collectCursorUsage(now = Date.now()): Promise<CursorCollected | null> {

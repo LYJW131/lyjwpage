@@ -28,8 +28,8 @@ import { push, type PushPayload } from "./site.js";
  *
  * 节奏是动态的：
  * - 闲着时不单独查。限额那一轮本来就要拉用量，顺手看最新一条（observeCursorActivity）。
- * - 看到 5 分钟内有事件才起快循环：有新事件就 1 分钟查一次；没有就 1 → 2 → 4 分钟拉长，
- *   超过 5 分钟没新事件（灯已经灭了）、或者没人开着页面，就停，交回限额那一轮。
+ * - 看到 `ACTIVE_WINDOW_MS` 内有事件才起快循环：间隔由 `nextActivityInterval` 按 `config.cursorNow` 决定，
+ *   超过 `ACTIVE_WINDOW_MS` 没新事件、或者没人开着页面，就停，交回限额那一轮。
  * 循环里每次查完都发，内容没变也发：活动的 collectedAt 前进就是「采集器还活着」，
  * 桶范围里没有事件也是一句有用的话（那一段确认没用）。
  *
@@ -136,7 +136,7 @@ async function track(): Promise<string> {
 
 /**
  * track() 返回到下一次挂上 wake 之间有一瞬 wake 是 null，这时限额那一轮叫不醒它。
- * 漏了也只是等下一轮限额（最多几分钟）再叫，不值得为它加锁。
+ * 漏了也只是等下一轮限额，间隔由 `config.cadence` 决定，不值得为它加锁。
  */
 export async function runCursorNowLoop(): Promise<never> {
   for (;;) {

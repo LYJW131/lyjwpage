@@ -83,7 +83,7 @@ async function collectLive(id: AgentId): Promise<AgentRow | null> {
 /**
  * 对 config.agentIds 里每家并发取。一家抛错只变成那一行的 limitsError。
  * LIMITS_FIXTURE：claude / codex / grok / antigravity 是原始 HTTP 响应体；
- * cursor 是 `{ period, plan, hardLimit }` 三份。
+ * cursor 为 `{ period, plan, hardLimit, sand? }`。
  */
 export async function collectAgents(): Promise<AgentRow[]> {
   const fixture = config.limitsFixture ? await loadFixture(config.limitsFixture) : null;
