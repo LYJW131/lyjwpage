@@ -20,11 +20,7 @@ export const presenceMirror = mirrorKey<PlaystationPresencePayload>(
   { ttlMs: TTL_MS },
 );
 
-/**
- * 电源状态只在 HA 那个开关翻面时上报，翻一次可能隔好几天，所以**不设 TTL** ——
- * 过期会让判定退回「不知道」，而不知道的默认是按开机处理，等于白白多跑一整天的
- * 快档。presence 那份 TTL 在这里不适用：它每个 tick 都刷新，这一份不会。
- */
+/** 内部 `StateCore.playstationPower()` RPC 保留的只读镜像，不删除已存数据。 */
 export const powerMirror = mirrorKey<PlaystationPowerPayload>(
   ["playstation", "power"],
   (state) => state.observedAt,

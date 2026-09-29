@@ -30,7 +30,7 @@ export type CommitReply =
  */
 export type CoreAudience = { connections: number; online: number };
 
-/** PS5 电源开关（Home Assistant 报的那份）；从没报过为 null */
+/** PS5 电源镜像的只读 RPC 结果；无存储值时为 null。 */
 export type CorePower = { on: boolean; observedAt: number } | null;
 
 export interface StateCoreRpc {
@@ -49,6 +49,7 @@ export interface StateCoreRpc {
   broadcastVersion(): Promise<number>;
   /** 推送房间的两个人头数，同 `/count`（口径见 workers/api/src/live-census.ts） */
   audience(): Promise<CoreAudience>;
+  /** 保留内部 RPC 契约；当前无调用者，也无新电源数据写入。 */
   playstationPower(): Promise<CorePower>;
   /** Apple Music API 的 developer token；私钥只在 api 上，调用方按到期时刻自己缓存 */
   appleDeveloperToken(): Promise<{ token: string; expiresAt: number }>;

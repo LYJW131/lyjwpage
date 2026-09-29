@@ -1,13 +1,10 @@
 import { object } from "@/lib/json";
 import { normalizeTrophies } from "@/lib/trophies";
-import { normalizePlaystationPlayedGames, normalizePlaystationPower, normalizePlaystationPresence } from "@shared/playstation";
+import { normalizePlaystationPlayedGames, normalizePlaystationPresence } from "@shared/playstation";
 
 /**
- * PlayStation 信封 `{ version: 1, presence?, playedGames?, trophies?, power? }` 的收敛。
- *
- * 两个生产者，都走 `/api/ingest/playstation`，在上报入口 prepare：n100 上的
- * playstation-reporter（presence / playedGames / trophies）和 Home Assistant 的电源开关
- * （`power`）。缺席表示这次不谈这一项。
+ * PlayStation 信封 `{ version: 1, presence?, playedGames?, trophies? }` 的收敛。
+ * 缺席表示这次不谈这一项。
  */
 export type PreparedPlaystationReport = {
   source: "playstation";
@@ -15,7 +12,6 @@ export type PreparedPlaystationReport = {
   presence: ReturnType<typeof normalizePlaystationPresence> | null;
   playedGames: ReturnType<typeof normalizePlaystationPlayedGames> | null;
   trophies: ReturnType<typeof normalizeTrophies> | null;
-  power: ReturnType<typeof normalizePlaystationPower> | null;
 };
 
 export function preparePlaystationReport(input: unknown, receivedAt = Date.now()): PreparedPlaystationReport {
@@ -23,6 +19,7 @@ export function preparePlaystationReport(input: unknown, receivedAt = Date.now()
   if (!envelope || envelope.version !== 1) {
     throw new Error("PlayStation 遥测协议 version 必须为 1");
   }
+  if ("power" in envelope) throw new Error("PlayStation power 字段不再接受");
   return {
     source: "playstation",
     receivedAt,
@@ -31,6 +28,5 @@ export function preparePlaystationReport(input: unknown, receivedAt = Date.now()
       ? normalizePlaystationPlayedGames(envelope.playedGames)
       : null,
     trophies: "trophies" in envelope ? normalizeTrophies(envelope.trophies) : null,
-    power: "power" in envelope ? normalizePlaystationPower(envelope.power) : null,
   };
 }

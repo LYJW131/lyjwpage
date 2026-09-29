@@ -1,5 +1,5 @@
 import { PLAYING_TAG, TROPHIES_TAG } from "@/lib/live-events";
-import { getPlaystationPlayedGames, getPlaystationPower, getPlaystationPresence, getPlaystationTrophies } from "@/lib/playstation-store";
+import { getPlaystationPlayedGames, getPlaystationPresence, getPlaystationTrophies } from "@/lib/playstation-store";
 import { summarizeTrophies, trophiesContent } from "@/lib/trophies";
 import type {
   PlaystationPresencePayload
@@ -9,7 +9,7 @@ import { historyArchiveEnabled, requestStore } from "@api/runtime";
 import { recordStateObservation } from "@api/stores/pulse";
 import { archiveTrophies } from "@api/stores/trophy-history";
 import { gamingFacts } from "@shared/pulse-timeline";
-import { setPlaystationPlayedGames, setPlaystationPower, setPlaystationPresence, setPlaystationTrophies } from "@api/stores/playstation-store";
+import { setPlaystationPlayedGames, setPlaystationPresence, setPlaystationTrophies } from "@api/stores/playstation-store";
 import type { PreparedPlaystationReport } from "@shared/ingest/playstation";
 
 /** observedAt 是采集时刻，不参与“内容有没有变化”的判断。 */
@@ -35,17 +35,14 @@ export async function commitPreparedPlaystationReport(prepared: PreparedPlaystat
     presence: incomingPresence,
     playedGames: incomingPlayedGames,
     trophies: incomingTrophies,
-    power: incomingPower,
     receivedAt,
   } = prepared;
 
-  const [previousPresence, previousPlayedGames, previousTrophies, previousPower] =
+  const [previousPresence, previousPlayedGames, previousTrophies] =
     await Promise.all([
       incomingPresence ? getPlaystationPresence() : null,
       incomingPlayedGames ? getPlaystationPlayedGames() : null,
       incomingTrophies ? getPlaystationTrophies() : null,
-      // presence 这一封也要读：推送里的 presence 得带上电源，形状和读端点对齐
-      incomingPresence || incomingPower ? getPlaystationPower() : null,
     ]);
 
   const presenceChanged =
@@ -61,17 +58,9 @@ export async function commitPreparedPlaystationReport(prepared: PreparedPlaystat
     incomingTrophies != null &&
     JSON.stringify(previousTrophies ? trophiesContent(previousTrophies) : null) !==
     JSON.stringify(trophiesContent(incomingTrophies));
-  /** 只看开关翻没翻面：HA 那条自动化只在 state 变化时触发，重复上报当没变 */
-  const powerChanged =
-    incomingPower != null && (!previousPower || previousPower.on !== incomingPower.on);
-
   const writes: Promise<unknown>[] = [];
   const events: PendingEvent[] = [];
   const tags: string[] = [];
-  /** 推送里的 presence 要和读端点给的形状一致 —— 那边会把电源并进来，见 lib/playstation */
-  const powerForEvent = incomingPower ?? previousPower;
-  /** presence 那一封发没发过 playing-now；PendingEvent 可能是 promise，回头翻不出来 */
-  let sentPlayingNow = false;
 
   if (incomingPresence) {
     /**
@@ -88,29 +77,7 @@ export async function commitPreparedPlaystationReport(prepared: PreparedPlaystat
     writes.push(setPlaystationPresence(incomingPresence));
     writes.push(recordStateObservation("gaming", receivedAt, gamingFacts(incomingPresence)));
     if (presenceChanged || !previousPresence) {
-      events.push({ type: "playing-now", payload: { ...incomingPresence, power: powerForEvent } });
-      sentPlayingNow = true;
-    }
-  }
-  if (incomingPower) {
-    /**
-     * 电源状态不参与心跳：HA 只在开关翻面时发一封，没翻面就不必重写
-     * observedAt —— 这份的新鲜度不代表任何上报器的死活，PSN 那一封的心跳
-     * 仍然只看 presence。
-     */
-    if (powerChanged || !previousPower) {
-      writes.push(setPlaystationPower(incomingPower));
-      /**
-       * 立刻广播一次：presence 要等容器下一个成功的 tick 才更新（节奏由主机醒着与否
-       * 和退避决定），而关机这件事局域网里当场就知道。presence 那一封已经发过事件时不再补，
-       * 否则页面收到两条内容一样的。
-       */
-      if (!sentPlayingNow) {
-        const presence = incomingPresence ?? (await getPlaystationPresence());
-        if (presence) {
-          events.push({ type: "playing-now", payload: { ...presence, power: incomingPower } });
-        }
-      }
+      events.push({ type: "playing-now", payload: incomingPresence });
     }
   }
   if (incomingPlayedGames && (playedGamesChanged || !previousPlayedGames)) {
@@ -138,5 +105,5 @@ export async function commitPreparedPlaystationReport(prepared: PreparedPlaystat
   if (incomingTrophies && history && scope && historyArchiveEnabled(scope.env)) {
     scope.ctx.waitUntil(archiveTrophies(history, incomingTrophies));
   }
-  return { changed: presenceChanged || playedGamesChanged || trophiesChanged || powerChanged };
+  return { changed: presenceChanged || playedGamesChanged || trophiesChanged };
 }

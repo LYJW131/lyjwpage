@@ -127,18 +127,10 @@ Mac 的 ccusage 只扫本机会话记录，看不到云端线程。云端环境�
 
 出口一律带 `windowTitle`：没有标题是 `null`，不是缺字段，消费方只判空。页头（`src/components/live/live-desk-card.tsx`）展示它，应用被隐藏、离线或锁屏时不展示。
 
-`/api/ingest/playstation` 的信封是 `{ version: 1, presence?, playedGames?, trophies?, power? }`，
-每一项各自可省、缺席表示这次不谈这一项。前三项由 n100 上的 `reporters/playstation-reporter`
-POST 原始信封，上报入口 prepare（`shared/ingest/playstation.ts`）后经 `StateCore.commitIngest` 交付；
-`power` 是**另一个生产者**——Home Assistant 上那台 PS5 的电源开关实体，翻面时发一封
-`{ version: 1, power: { on, observedAt?, entityId? } }`。两边互不覆盖：电源单独存一份，
-读的出口（`/api/status/playing/now`）才并进 presence，否则 PSN 那一封每轮整份覆盖
-presence 时会把它冲掉。`on` 必须是布尔值（HA 实体的 `"on"` / `"off"` 字符串要在自动化
-模板里先翻译），`observedAt` 缺席按落地时刻算。
-
-电源翻面时，只要状态核心已经存着一份 presence，就立刻用它和新电源广播一条 `playing-now`，页面当场就能看到；PSN 那侧的
-`presence`（在玩什么）要等容器下一个成功的 tick（节奏由主机醒着没有，加上退避）。容器不读
-`StateCore.playstationPower()`，见 `reporters/playstation-reporter/README.md`。奖杯信封收下之后，
+`/api/ingest/playstation` 的信封是 `{ version: 1, presence?, playedGames?, trophies? }`，
+每一项各自可省、缺席表示这次不谈这一项。上报入口 prepare（`shared/ingest/playstation.ts`）
+后经 `StateCore.commitIngest` 交付。`StateCore.playstationPower()` 保留在内部 RPC 契约中，
+当前没有调用者；PlayStation 上报和公开状态都不使用它。奖杯信封收下之后，
 这里把已获得的奖杯 upsert 进 D1 `trophies`（`src/stores/trophy-history.ts` 的 `archiveTrophies`，失败只记日志）。
 
 奖杯内容变了（解锁、新 DLC、等级；不看 `observedAt` 和游玩时长）时广播一条 `trophies`，
@@ -519,4 +511,3 @@ misaka-jp 上的 server-reporter 与 agents-reporter 每封报文顶上带一个
 `workouts.json` 是从真机读取的最近一批训练快照（剑术、骑行、滑冰），保留原日期与观测指标，UUID 替换为演示标识。信封的 `updatedAt` 与 `pushedAt` 注入时更新，但训练时间不变；圆环夹具 `activity-afternoon.json` 同样带信封级 `updatedAt`。剑术不把步行距离当成主要成绩；滑冰没有距离就不显示速度；网页每项最多两个指标：有距离时显示时长与距离，否则显示时长与活动消耗；不展示心率或均速。
 
 网页卡片按页横向吸附滚动（每页条数与页数由 `src/components/live/workouts-strip.tsx` 定），隐藏独立标题栏，通过触控板、触摸或键盘横向浏览；上报和存储仍保留最近 `WORKOUT_LIMIT` 条。训练记录合并在 Activity 卡片右侧（窄屏放底部），圆环区域保持原高度；出口节点卡全宽排列在其下。
-
