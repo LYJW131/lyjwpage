@@ -69,28 +69,16 @@ webhook 各版本的字段位置本来就不一致，用它带的值等于把版
 镜像由 [`build-reporters.yml`](../../.github/workflows/build-reporters.yml) 在 GitHub Actions 上构建
 （只出 `linux/amd64`），这个目录有改动合进 main 就推 `ghcr.io/lyjw131/emby-reporter:latest` 和
 `sha-<短哈希>`。机器上只拉镜像，不放源码、不 build。
-线上那份并在 dsm 的 `/volume3/docker/emby-proxy/docker-compose.yml` 里（服务名 `emby-reporter`），
-那边的服务定义要跟这份一样写 `image:`、不写 `build:`。
+线上跑在 dsm 的 compose 项目 `dsm:/volume3/docker/emby-proxy`（`dsm:/volume3/docker/emby-proxy/docker-compose.yml`，服务名 `emby-reporter`，
+容器名 `homepage-reporter`，`.env` 在项目根）。那边的服务定义应与这份一样写 `image:`、不写 `build:`；
+机器上是否已从现场 build 切到拉镜像，以 [docs/ops-facts.md](../../docs/ops-facts.md) 为准，操作前先到机器上确认。
 
-容器里的端口固定 8787，宿主端口由 `.env` 的 `WEBHOOK_HOST_PORT` 决定：
-nas-host 上 8787 已经归 `homepage-reporter`，那台填 8788。
+容器里的端口固定 8787，宿主端口由 `.env` 的 `WEBHOOK_HOST_PORT` 决定。
 
-送 compose 文件（nas-host 的 sftp 子系统是关的，`scp` 用不了，走 ssh 管道）：
-
-```bash
-ssh nas-host 'mkdir -p /srv/lyjwpage/emby-reporter && cat > /srv/lyjwpage/emby-reporter/compose.yaml' < reporters/emby-reporter/compose.yaml
-```
-
-`.env` 单独送：
+只动这一个服务，别整项目 `up`（同一项目里还有别的容器）；之后每次 Actions 推了新镜像也是这一句：
 
 ```bash
-ssh nas-host 'cat > /srv/lyjwpage/emby-reporter/.env && chmod 600 /srv/lyjwpage/emby-reporter/.env' < 本机那份.env
-```
-
-起；之后每次 Actions 推了新镜像也是这一句：
-
-```bash
-ssh nas-host '/usr/local/bin/docker compose -f /srv/lyjwpage/emby-reporter/compose.yaml pull && /usr/local/bin/docker compose -f /srv/lyjwpage/emby-reporter/compose.yaml up -d'
+ssh dsm '/usr/local/bin/docker compose -f /volume3/docker/emby-proxy/docker-compose.yml pull emby-reporter && /usr/local/bin/docker compose -f /volume3/docker/emby-proxy/docker-compose.yml up -d --no-deps emby-reporter'
 ```
 
 群晖的 Docker 要能连上 `ghcr.io`（和拉 Docker Hub 基础镜像一样，按需给 daemon 配代理）。
