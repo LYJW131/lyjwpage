@@ -2,7 +2,7 @@
 
 > 类型：reference
 
-按 main **eb429ed**（2026-09-29）的代码核对，文档和代码不一致时以代码为准。动画里出现的每一个端点、数字、谁做什么，都要能在这里找到出处；main 有架构改动时先改这份，再改分镜。 <!-- allow: 核对基线戳 -->
+按这份仓库里的代码核对，文档和代码不一致时以代码为准。动画里出现的每一个端点、数字、谁做什么，都要能在这里找到出处；架构改动时先改这份，再改分镜。
 
 第 3 节（第 03 章用到的部分）和第 2 节的 202 时机，又在 **34eb555** 上逐条回代码复核过：eb429ed..34eb555 之间 `workers/`、`shared/`、`src/` 只有 7d88247 的注释改动，下面引的行号没有偏移。这次复核改了几处口径（纯心跳写几样、切应用和换歌各交回什么、LivePushRoom 的出处），并补了出处。
 
@@ -22,20 +22,21 @@
 
 ### 来源
 
-片中统一口径是「**六个外部上报器 + 一个采集 Worker**」。另外还有第七个入口：Claude Code 云端遥测（OTLP）。入口来源共 7 个，service token 共 8 把。
+片中开场按「**六个外部上报器 + 一个采集 Worker**」画。仓库里还有 n100 上的 playstation-reporter，把 presence、游玩列表和奖杯 POST 到同一个 `/api/ingest/playstation`。入口来源是 `shared/ingest/prepare.ts#INGEST_SOURCES` 那一份（playstation 是其中之一），外加 Claude Code 云端遥测（OTLP）。Home Assistant 的 token 开 homepod 和 playstation 两扇门。容器自己的 Access service token 在切换时新建，登记进 `workers/ingress/wrangler.toml#ACCESS_CLIENTS`，权限只有 `ingest:playstation`。
 
 | 来源 | 程序 / 在哪跑 | 入口 · token | 报什么 |
 |---|---|---|---|
 | Mac | Mac Telemetry Hub，菜单栏 App | `/api/ingest/mac` · `lyjwpage-mac` | 前台应用、窗口标题、Apple Music、充电设备、编码用量（本机的日行、最近一次用量事件、5 分钟 token 桶）、时区、Apple Music user token |
 | iPhone | iPhone Telemetry Hub，HealthKit 唤醒（圆环申请 `.hourly`，训练申请 `.immediate`，但会被系统钳到每小时；ActivityModule.swift:122 / WorkoutsModule.swift:45，iPhone README:121） | `/api/ingest/iphone` · `lyjwpage-iphone` | 活动圆环、训练、五分钟步数桶 |
 | Home Assistant | 家里 | `/api/ingest/homepod` 和 `/api/ingest/playstation` · `lyjwpage-home-assistant` | HomePod 正在播放；PS5 电源 `{version:1, power}` |
+| PlayStation | playstation-reporter，n100 上的容器 | `/api/ingest/playstation` · 切换时新建的 service token | presence、游玩列表、奖杯。不发 `power` |
 | Emby | emby-reporter，NAS 上的容器 | `/api/ingest/emby` · `lyjwpage-emby` | 在看什么；海报先传 R2 |
 | 服务器 | server-reporter，东京 misaka-jp 容器 | `/api/ingest/server` · `lyjwpage-server` | 服务器状态，固定每 60 秒一次（config.ts:71） |
 | 编码账号 | agents-reporter，misaka-jp 容器 | `/api/ingest/agents` · `lyjwpage-agents` | 各家编码工具限额；Cursor 账号的用量日行、最近一次用量事件、5 分钟 token 桶 |
 | Claude Code 云端 | OTLP JSON（可 gzip） | `/api/ingest/agents/otlp` · `lyjwpage-claude-cloud` | 云端 token 与费用的累计值；状态核心做差后落成和另两个来源同形的日行、桶、最近事件，三处用量在状态核心合并（shared/coding-usage-sources.ts） |
-| collector Worker | Cloudflare，cron 每分钟一响，11 个任务各按自己的节奏 | 不走 ingress | 见下文 |
+| collector Worker | Cloudflare，cron 每分钟一响，任务表 `workers/collector/src/registry.ts#JOBS` | 不走 ingress | 见下文 |
 
-PlayStation 上报器 Worker 已删除，并进 collector 的 `playstation` 任务。
+PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-reporter` POST 原始信封。采集 Worker 不拉 PSN。电源由 Home Assistant 上报。
 
 ### Mac 信封
 
@@ -55,10 +56,9 @@ PlayStation 上报器 Worker 已删除，并进 collector 的 `playstation` 任�
 
 ### collector 的任务
 
-- PSN 在玩什么和奖杯：先在本地 prepare，再调 `CORE.commitIngest`；奖杯进 D1。
 - 最近在听：每 2 分钟调 `CORE.commitRecentlyPlayed`。用的 user token 是 Mac 推进 `CREDENTIALS` 的那一份，形成一次凭据接力。
 - GitHub、Vercel、Cloudflare、Sentry、PageSpeed、厂商状态：直接写 `LAG`。
-- PS 任务「先起步 3 秒」：同一次调用最多 6 个连接在等响应头，不让 PS 被别的任务挤超时。
+- PlayStation 不在这张表里。
 
 ## 2 上报入口（workers/ingress，`ingest.homepage.lyjw.llc`）
 
@@ -118,7 +118,7 @@ PlayStation 上报器 Worker 已删除，并进 collector 的 `playstation` 任�
 
 - `StateCore` 是 WorkerEntrypoint，ingress 和 collector 经 Service Binding `CORE` 调它。这条路不鉴权，因为边界鉴权只在 ingress 做一次（state-core.ts:15-37）。
 - `StateHub` 是 DO（binding `STATE`，`idFromName("global")`），**唯一的状态 DO，全站只有一个实例**（state-core.ts:72-74）。推送房间 `LivePushRoom` 是另一个单例 DO（房间名 `global`，live-platform.ts:98；binding 在 workers/api/wrangler.toml:52-55）。它的命名空间是从旧 ingest Worker 整体迁来的 SQLite 类（wrangler.toml:91-111），但代码不读写 SQL：每条连接的可见性记在各自的 attachment 上（origin-worker.ts:161-172）。
-- 提交走 `ingestTail`，**排成一条队列逐个提交**（state-hub.ts:91-110）。进这条队的是上报入口（ingress worker.ts:134）和采集 Worker 的 PSN 任务（collector playstation/site.ts:32-36），都经 `CORE.commitIngest`。
+- 提交走 `ingestTail`，**排成一条队列逐个提交**（state-hub.ts:91-110）。进这条队的上报都经上报入口的 `CORE.commitIngest`（ingress worker.ts:134），PlayStation 那几封也走这条 HTTP 路。
 - 四张表：`entries` / `fields` / `samples` / `metadata`（shared/sqlite-store.ts:17-23；state-hub.ts:29）。
 - pulse 事实时间线也写在同一个库里，TTL 7 天（`PULSE_TTL_MS`，src/lib/limits.ts:32）。
 
@@ -158,7 +158,7 @@ PlayStation 上报器 Worker 已删除，并进 collector 的 `playstation` 任�
 ### D1 长期历史 `lyjwpage-history`
 
 - 共 17 张表（workers/api/migrations/0001–0007 的 `CREATE TABLE`，含已不再写的 `pulse_samples` 和记归档水位的 `pulse_archive_state`），长期保存、不按时间清理。写入按自然键 upsert，活动桶会按区间删掉重写（pulse-archive.ts:262-336、280；shared/history-ingest.ts:41-127），所以不能说「只增不删」。DO 里的 pulse 时间线只留 7 天。
-- 写 D1 的有三方：上报入口（训练、圆环日读数、限额快照、服务器小时汇总）、采集 Worker（奖杯、站点部署记录，collector/src/history.ts:24、66）、api 的分钟 cron（pulse 事实表）。
+- 写 D1 的有三方：上报入口（训练、圆环日读数、限额快照、服务器小时汇总）、采集 Worker（站点部署记录，`workers/collector/src/history.ts#archiveSiteDeploys`）、api（分钟 cron 的 pulse 事实表，以及收下奖杯信封后的 `workers/api/src/stores/trophy-history.ts#archiveTrophies`）。
 - 活动历史桶在入口量化（eb429ed），防止 HealthKit 的浮点抖动让 D1 每次重写整个 24 小时窗口。
 
 ### api 的分钟 cron（index.ts:31-51）
@@ -265,18 +265,16 @@ PlayStation 上报器 Worker 已删除，并进 collector 的 `playstation` 任�
 
 ## 7 自适应调频
 
-| 上报器 | 有人正看 | 只开在后台 | 没人 | 怎么问人数 |
-|---|---|---|---|---|
-| PlayStation（collector 任务） | 55 秒 | 115 秒 | 29.5 分钟 | RPC `CORE.audience()` |
-| agents（限额） | 5 分钟 | 10 分钟 | 60 分钟 | `SITE_URL/count`，超时 2.5 秒 |
-| 服务器（对照） | 60 秒 | 60 秒 | 60 秒 | 不问 |
+| 上报器 | 快 | 慢 | 怎么定 |
+|---|---|---|---|
+| PlayStation（n100 容器） | 主机醒着：`reporters/playstation-reporter/src/cadence.ts#AWAKE_TICK_INTERVAL_MS` | 休息或确认关机：`reporters/playstation-reporter/src/cadence.ts#IDLE_TICK_INTERVAL_MS` | 局域网发现包 UDP 9302，不问人数 |
+| agents（限额） | 有人正看：5 分钟 | 只开在后台：10 分钟；没人：60 分钟 | `SITE_URL/count`，超时 2.5 秒 |
+| 服务器（对照） | 60 秒 | 60 秒 | 不问 |
 
-- PlayStation 的时间取自 playstation/index.ts:271-288。
-  - 攒够 29.5 分钟就直接放行，不问人数；所以没人看时也是约 30 分钟一轮。
-  - **电源门**：HA 在局域网里当场知道开关机，电源一翻面，下一次 cron 就跑（前提是离上一轮不少于 55 秒，这道门槛排在电源检查之前）。PS 关机时不管有没有人都只走 30 分钟档（index.ts:324-356）。
+- PlayStation 大约每 `reporters/playstation-reporter/src/cadence.ts#PROBE_INTERVAL_MS` 发一次发现包，只在该打的时候打 PSN。`HTTP/1.1 200` 是醒着，`620` 是休息，超时或别的回复先记一笔，连续 `reporters/playstation-reporter/src/cadence.ts#OFF_STREAK_TO_REST` 次才离开醒着。醒着和没醒对调立刻打一轮，休息和关机来回切不额外打。退避（`reporters/playstation-reporter/src/state.ts#backoffMs`）没到时这些都不放行。
 - agents 的时间取自 config.ts:62-64。闲档期间每 5 分钟醒来重查一次人数，60 分钟 ÷ 5 = 12 次小睡。
 - 服务器上报器固定每分钟推，不问人数：闲时每分钟问一次人数本身就不比直接推省（config.ts:65-69 的注释说「问两个 Worker 的 /count」，那是 online-counter 退役前的说法，2880 这个数已过时，片中不用）。夜里只有它的心形还在跳。
-- 人数查询失败就当 0，所以只会变慢，不会变快。
+- agents 的人数查询失败就当 0，所以只会变慢，不会变快。PlayStation 不问这个数。
 
 ## 8 站点自检
 
@@ -290,7 +288,7 @@ Sentry 的结果由 **collector** 的 `sentry-status` 任务每 5 分钟用只�
 ## 片中不用或待定
 
 - **实测延迟**：上一版的「320–490 ms（8 月实测）」作废，因为中间多了一跳 Service Binding。上画面前要重测；没重测就不出数字。
-- **live-census.ts 和 live-socket-boot.ts:39 的注释说「三个调频上报器」**：代码只核到 PS 和 agents 两个，片中不说「三」。
+- **按人数调频的只剩 agents-reporter**。PlayStation 按局域网发现包调频，片中不说「三」。
 - **Mac `postInterval`**：默认 10 秒，注释写的是「本机 30 秒」，未确认，片中不用。
 - **HA 的配置**：不在仓库里。片中只讲它报什么，不讲怎么配。
 
@@ -306,7 +304,6 @@ Sentry 的结果由 **collector** 的 `sentry-status` 任务每 5 分钟用只�
 - `reporters/agents-reporter/README.md:180`：还让人设 `ONLINE_COUNTER_URL`，与第 228 行矛盾。
 - `workers/ingress/README.md`：说「报文坏了也先回 503」，实际不是 JSON 直接回 400。
 - iPhone README：`KNOWN_MODULES` 的路径写成 `workers/api/src/phone-telemetry.ts`，实际在 `shared/ingest/phone.ts:27`。
-- `src/lib/live-socket-boot.ts:39`、`workers/api/src/live-census.ts`：注释说「三个上报器」按人数调频，实际两个。
 - `reporters/server-reporter/src/config.ts:65-69`：注释说「问两个 Worker 的 /count」，online-counter 已退役。
 - `workers/online-counter`、`workers/ingest`、`workers/playstation-reporter`：三个目录只剩未跟踪的 `node_modules`。<!-- allow: 快照里点名的已退役目录，不在仓库 -->
 - `workers/api/wrangler.toml:68`：注释说 D1「这里只增不删」，实际活动桶会按区间删掉重写（见 §3 D1 那节）。（34eb555 复核时发现）

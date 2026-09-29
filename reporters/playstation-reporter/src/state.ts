@@ -1,5 +1,7 @@
-import type { LibraryTitle, PlayedGame, PlayedGamesReport } from "./psn";
-import type { TrophiesReport, TrophyIndexSnapshot } from "./trophies";
+import type { PowerClass } from "./cadence.js";
+import type { LibraryTitle, PlayedGame, PlayedGamesReport } from "./psn.js";
+import type { StateStore } from "./store.js";
+import type { TrophiesReport, TrophyIndexSnapshot } from "./trophies.js";
 
 export const AUTH_KEY = "auth";
 export const PLAYED_GAMES_FINGERPRINT_KEY = "fp:playedGames";
@@ -11,10 +13,9 @@ export const TICK_META_KEY = "meta:lastTick";
 /**
  * 上一轮完整 tick 的**开始**时刻，门用它算间隔。
  *
- * 和 `meta:lastTick` 分开是因为那份只在 tick 收尾时写：tick 被 CPU 超时之类
- * 硬杀掉就永远不会落地，门读到的还是上上轮，于是每分钟重试一次。这个键在跑
- * PSN 之前就写，所以记的是「尝试过」而不是「成功过」—— 上游持续故障时的重试
- * 节奏跟着基线走。
+ * 和 `meta:lastTick` 分开是因为那份只在 tick 收尾时写：进程在中途被杀掉就不会落地，
+ * 门读到的还是上上轮。这个键在打 PSN 之前就写，所以记的是「尝试过」而不是「成功过」
+ * —— 上游持续故障时的重试节奏跟着基线走。进程里另有一份，盖住「写了还没读回来」。
  */
 export const FULL_TICK_KEY = "meta:lastFullTick";
 /**
@@ -24,6 +25,8 @@ export const FULL_TICK_KEY = "meta:lastFullTick";
 export const BACKOFF_UNTIL_KEY = "meta:backoffUntil";
 /** 连着失败了几轮（不分原因）和最后一次更新的时刻；成功一轮归零 */
 export const FAILURE_STREAK_KEY = "meta:failureStreak";
+/** 上一轮 tick 开始时的调频档：`awake` 或 `resting`。用来发现醒着和没醒对调。 */
+export const POWER_CLASS_KEY = "meta:lastPower";
 
 /** 退避从 `BACKOFF_BASE_MS` 起，每连败一轮翻倍，封顶 `BACKOFF_MAX_MS`（量级和闲档那一轮相当） */
 export const BACKOFF_BASE_MS = 5 * 60_000;
@@ -39,7 +42,7 @@ export type FailureStreak = { streak: number; at: number };
 /** 没在玩时游玩列表最多这么旧才去翻。 */
 export const PLAYED_GAMES_IDLE_TTL_MS = 60 * 60_000;
 /**
- * 在玩时的游玩列表 TTL，对应闲档的完整 tick 节奏（index.ts 的 `IDLE_TICK_INTERVAL_MS`）。
+ * 在玩时的游玩列表 TTL，对应闲档的完整 tick 节奏（cadence.ts 的 `IDLE_TICK_INTERVAL_MS`）。
  *
  * 列表刷新和 tick 分开排：快档下「在玩就每轮刷」会变成每分钟翻一遍分页列表，
  * 而时长和游玩次数没有分钟级精度可言。
@@ -59,7 +62,7 @@ export const LIBRARY_TTL_MS = 6 * 60 * 60_000;
  * 本轮 summary 盖），dirty 重爬时也不再重打；过期了 quiet 也要重拉，否则站点上的头像
  * 会一直停在第一次 dirty 时那张。
  *
- * KV 里缺 fetchedAt 的当过期，下一轮重拉。
+ * 缺 fetchedAt 的当过期，下一轮重拉。
  */
 export const PROFILE_TTL_MS = 24 * 60 * 60_000;
 
@@ -72,7 +75,7 @@ export function profileIdentityFresh(
   return typeof fetchedAt === "number" && Number.isFinite(fetchedAt) && now - fetchedAt < PROFILE_TTL_MS;
 }
 
-/** KV `AUTH_KEY` 里存的登录状态，读写见 `readAuth` / `writeAuth`。 */
+/** `AUTH_KEY` 里存的登录状态，读写见 `readAuth` / `writeAuth`。 */
 export type AuthState = {
   accessToken: string;
   refreshToken: string;
@@ -203,57 +206,66 @@ export function asLibraryCache(value: unknown): LibraryCache | null {
   return { fetchedAt: row.fetchedAt, items: row.items };
 }
 
-export async function readAuth(state: KVNamespace): Promise<AuthState | null> {
-  const value = await state.get<unknown>(AUTH_KEY, "json");
+export async function readAuth(state: StateStore): Promise<AuthState | null> {
+  const value = await state.get(AUTH_KEY, "json");
   return isAuthState(value) ? value : null;
 }
 
-export async function writeAuth(state: KVNamespace, auth: AuthState): Promise<void> {
+export async function writeAuth(state: StateStore, auth: AuthState): Promise<void> {
   await state.put(AUTH_KEY, JSON.stringify(auth));
 }
 
-export async function writeTrophyCatalog(state: KVNamespace, catalog: TrophyCatalog): Promise<void> {
+export async function writeTrophyCatalog(state: StateStore, catalog: TrophyCatalog): Promise<void> {
   await state.put(TROPHY_CATALOG_KEY, JSON.stringify(catalog));
 }
 
-export async function writePlayedGamesCache(state: KVNamespace, cache: PlayedGamesCache): Promise<void> {
+export async function writePlayedGamesCache(state: StateStore, cache: PlayedGamesCache): Promise<void> {
   await state.put(PLAYED_GAMES_CACHE_KEY, JSON.stringify(cache));
 }
 
-export async function writeLibraryCache(state: KVNamespace, cache: LibraryCache): Promise<void> {
+export async function writeLibraryCache(state: StateStore, cache: LibraryCache): Promise<void> {
   await state.put(LIBRARY_CACHE_KEY, JSON.stringify(cache));
 }
 
 /** 读不到、读到脏值都当 0：门会认为「从没跑过」，于是立刻放行一轮完整 tick。 */
-export async function readFullTickStartedAt(state: KVNamespace): Promise<number> {
+export async function readFullTickStartedAt(state: StateStore): Promise<number> {
   const raw = await state.get(FULL_TICK_KEY);
   const value = Number(raw);
   return Number.isFinite(value) && value > 0 ? value : 0;
 }
 
-export async function writeFullTickStartedAt(state: KVNamespace, startedAt: number): Promise<void> {
+export async function writeFullTickStartedAt(state: StateStore, startedAt: number): Promise<void> {
   await state.put(FULL_TICK_KEY, String(startedAt));
 }
 
-export async function readBackoffUntil(state: KVNamespace): Promise<number> {
+export async function readBackoffUntil(state: StateStore): Promise<number> {
   const value = Number(await state.get(BACKOFF_UNTIL_KEY));
   return Number.isFinite(value) && value > 0 ? value : 0;
 }
 
-export async function writeBackoffUntil(state: KVNamespace, until: number): Promise<void> {
+export async function writeBackoffUntil(state: StateStore, until: number): Promise<void> {
   await state.put(BACKOFF_UNTIL_KEY, String(until));
 }
 
-export async function readFailureStreak(state: KVNamespace): Promise<FailureStreak> {
-  const value = await state.get<unknown>(FAILURE_STREAK_KEY, "json").catch(() => null);
+export async function readFailureStreak(state: StateStore): Promise<FailureStreak> {
+  const value = await state.get(FAILURE_STREAK_KEY, "json").catch(() => null);
   const row = value && typeof value === "object" ? (value as Record<string, unknown>) : null;
   const streak = Number(row?.streak);
   const at = Number(row?.at);
   return Number.isSafeInteger(streak) && streak >= 0 && Number.isFinite(at) ? { streak, at } : { streak: 0, at: 0 };
 }
 
-export async function writeFailureStreak(state: KVNamespace, value: FailureStreak): Promise<void> {
+export async function writeFailureStreak(state: StateStore, value: FailureStreak): Promise<void> {
   await state.put(FAILURE_STREAK_KEY, JSON.stringify(value));
+}
+
+export async function readPowerClass(state: StateStore): Promise<PowerClass | null> {
+  const raw = await state.get(POWER_CLASS_KEY);
+  return raw === "awake" || raw === "resting" ? raw : null;
+}
+
+export async function writePowerClass(state: StateStore, value: PowerClass): Promise<void> {
+  await state.put(POWER_CLASS_KEY, value);
 }
 
 export function pastHalfLife(issuedAt: number, expiresAt: number, now = Date.now()): boolean {

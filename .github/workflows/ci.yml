@@ -55,7 +55,7 @@ jobs:
       - run: pnpm --filter @lyjwpage/collector test
 
       # 上报器跑在别的机器上，它们的单测只有这里会跑
-      - run: pnpm --filter @lyjwpage/agents-reporter --filter @lyjwpage/server-reporter --filter @lyjwpage/emby-reporter test
+      - run: pnpm --filter @lyjwpage/agents-reporter --filter @lyjwpage/server-reporter --filter @lyjwpage/emby-reporter --filter @lyjwpage/playstation-reporter test
 
       - run: node --test scripts/*.test.mjs
 

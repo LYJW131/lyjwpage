@@ -21,9 +21,9 @@ import {
   type UserTrophyProfileSummaryResponse,
 } from "psn-api";
 
-import { AuthSession } from "./auth";
-import { type Env } from "./env";
-import { type PlayedGame, type PlayedGamesReport } from "./psn";
+import { AuthSession } from "./auth.js";
+import { type Env } from "./env.js";
+import { type PlayedGame, type PlayedGamesReport } from "./psn.js";
 import {
   assertNoPsnError,
   epochMs,
@@ -35,7 +35,7 @@ import {
   trimmed,
   withToken,
   type Loose,
-} from "./util";
+} from "./util.js";
 
 export type TrophyType = "platinum" | "gold" | "silver" | "bronze";
 
@@ -169,7 +169,7 @@ function titleOptions(env: Env, platform: string | undefined) {
 type TitleOptions = ReturnType<typeof titleOptions>;
 
 const TITLE_ID_BATCH = 5;
-/** 每款 2–4 路并行，Worker 同时出站上限 6，两款一起跑。 */
+/** 每款 2–4 路并行，一次爬两款，免得把奖杯接口打得太密。 */
 const TITLE_CRAWL_CONCURRENCY = 2;
 const PAGE_LIMIT = 100;
 /** 兜底：nextOffset 一直不为空也不能无限打上游。`MAX_PAGES` × `PAGE_LIMIT` 远超单个奖杯组。 */
@@ -297,7 +297,7 @@ export function playLinkGames(played: PlayedGamesReport): PlayedGame[] {
 
 /**
  * 官方把奖杯组 NPWR… 接到游玩列表的 PPSA… / CUSA…。一次最多 5 个 titleId
- * （上游限制，不是 Worker 预算）；没同步过奖杯或媒体应用会整批失败，再拆成单条重试。
+ * （上游限制）；没同步过奖杯或媒体应用会整批失败，再拆成单条重试。
  */
 export async function mapPlayByTrophy(
   env: Env,

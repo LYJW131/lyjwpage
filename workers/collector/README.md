@@ -8,7 +8,7 @@
 - **只展示、不参与计算的**直接写可滞后层 KV（`LAG`，键表见 `shared/lag.ts`），每条带
   `updatedAt`。**成功才写**：KV 里的值本身就是上次成功值，失败时旧值原样留着，
   不另存 last-good；过没过时由浏览器按各卡片的阈值判断。
-- **状态核心要拿来算的**（PlayStation、最近在听）经 Service Binding RPC 交给 api Worker
+- **状态核心要拿来算的**（最近在听）经 Service Binding RPC 交给 api Worker
   的具名 entrypoint `StateCore`（binding `CORE`，契约见 `shared/state-core.ts`）：
   差分、推送、pulse 证据都在那边做。
 
@@ -20,11 +20,10 @@
 ## 任务
 
 节奏在各任务 `Job` 的 `everyMinutes`（周期，整除 60）与 `offset`（周期里的第几分钟）：「第几分钟」按 UTC 时钟算，
-`everyMinutes: 10, offset: 1` 就是 :01、:11、:21……任务全集是 `src/registry.ts` 的 `JOBS`，去向与需要的令牌如下：
+`everyMinutes: 10, offset: 1` 就是 :01、:11、:21……任务全集是 `src/registry.ts` 的 `JOBS`，去向与需要的令牌如下。PlayStation 的拉取不在这张表里，在 `reporters/playstation-reporter`。
 
 | 任务 | 去向 | 需要 |
 | --- | --- | --- |
-| `playstation` | 本地 prepare 后 `CORE.commitIngest(command)`；奖杯另归档 D1 `trophies`；另有人头数门与退避，见下 | `PSN_NPSSO` 或 KV 里的登录 |
 | `apple-recent` | `CORE.commitRecentlyPlayed(items)` | 凭据 KV 里的 user token；developer token 经 `CORE` 取 |
 | `provider-status` | `LAG agent-status:v1`；灯色变了才 `CORE.revalidate(["agent-status"])` | 无 |
 | `pagespeed` | `LAG pagespeed:v1`（滚动中位数） | `PAGESPEED_API_KEY` |
@@ -50,9 +49,8 @@
 - **厂商状态**已登记的各家（`src/lib/agent-status-parse.ts` 的 `FALLBACK`）各自降级：某一家失败沿用上一轮那一行并标 `stale`；
   全部失败是这边出不去，整轮抛错、不写，监控报 error。上一轮是 KV 里那份，同一 isolate 里自己上一轮写的更新时用它
   （KV 读可能落后一分钟）。
-- **同一响里 PS 先起步**：一次调用同时只能有 6 个连接在等响应头，同一分钟到期的任务一起开跑时，
-  PS 门那个人头数请求（`COUNT_TIMEOUT_MS`）会排在状态页、CF 部署那一堆请求后面被挤超时。所以带 `headStart`
-  的 PS 先跑一阵（`HEAD_START_MS`，或先跑完），其余任务再开跑（`registry.ts`）。
+- **同一响里的出站**：一次调用同时只能有 6 个连接在等响应头。带 `headStart` 的任务先跑一阵
+  （`src/registry.ts` 的 `HEAD_START_MS`，或先跑完），其余再开跑。目前没有任务设置它。
 - **PageSpeed** 桌面、移动并行测，单端通常二三十秒，偶尔长尾到一分钟以上，所以单端等到 `PAGESPEED_TIMEOUT_MS`
   才放弃，合成一个样本并进滚动窗口（窗口与样本上限见 `src/lib/pagespeed.ts` 的 `WINDOW_MS`、`MAX_SAMPLES`），样本窗口存在 `COLLECTOR_KV`。
   密钥只进查询参数，日志里只有状态码。任一端失败这一轮就空过，可滞后层沿用上一份。
@@ -71,115 +69,17 @@
 
 **名额**：组织的 cron 监控名额只有一个（见 [仓库外事实](../../docs/ops-facts.md)），给了 api 的 `api-minute-cron`；这些 `collector-<任务>` 监控是报到时自动建出来的，
 超出名额所以都是停用状态，报到被 Sentry 丢弃。加了名额之后在 Sentry 的 Crons 页启用即可，代码不用动。
-另一路：任务真失败（已知的外部故障除外，PS 连着失败到监控要报 error 的那几轮也算）会直接开一个 Sentry issue，
+另一路：任务真失败（已知的外部故障除外）会直接开一个 Sentry issue，
 按任务分组（fingerprint `collector-job` + 任务名，tag `collector.job`），同一任务在一个 isolate 里最多隔 `REPORT_EVERY_MS` 报一次
 （`src/sentry.ts` 的 `reportJobFailure`）。
-
-## PlayStation
-
-cron 每分钟响一次，**不等于每分钟跑一轮**：先看退避，再过一道门，门开了才是一轮完整 tick。
-
-### 门
-
-- 读 `COLLECTOR_KV` 的 `meta:lastFullTick`（上一轮完整 tick 的**开始**时刻），和 isolate 本地那份
-  取较晚的一枚（KV 的读有最长 60 秒边缘缓存，正好压在快档阈值的量级上）；
-- 攒够 `IDLE_TICK_INTERVAL_MS`（闲档）就直接放行，连人头数都不问 —— 闲时节奏不该依赖状态核心可不可达；
-- 不到 `LIVE_TICK_INTERVAL_MS`（快档）直接挡回去；
-- 中间那段并行读两样（各自超时 `COUNT_TIMEOUT_MS`）：`CORE.audience()`（推送房间的 `online` 可见页面与 `connections`
-  开着的页面，含后台标签页）、`CORE.playstationPower()`（主机电源）。
-  电源在上一轮之后翻过面就立刻放行；关着就只走闲档；否则 `online > 0` 放行，
-  攒够 `OPEN_TICK_INTERVAL_MS` 且 `connections > 0` 也放行。三个间隔常量都在 `src/playstation/index.ts`。
-
-两个人头数读不到一律当 0（只会变慢）；电源读不到当「不知道」、按开机走（反过来会把卡片冻在闲档）。
-于是有人正看着时按快档一轮，页面只是开着按中档一轮，一个页面都没开按闲档一轮。
-站点的断流窗口（`src/lib/freshness.ts` 的 `PLAYSTATION_STALE_MS`，三轮闲档加余量）锚的是闲档，
-改闲档间隔要同步改那边。
-
-电源由 Home Assistant 上报（`switch.ps5_210_power` 翻面时 POST `/api/ingest/playstation`
-的 `{version:1, power}`），状态核心把它并进 `/api/status/playing/now`；门经 `CORE` 读同一份。
-
-间隔算的是上一轮**开始**的时刻：这枚时间戳在打 PSN 之前就写下，PSN 持续故障时重试节奏
-和平时一样，tick 被硬杀掉也不会让门以为「还没开始过」。
-
-### 一轮做什么
-
-1. presence 和奖杯总览并行；
-2. 游玩列表走 KV 缓存：在玩、闲着各有过期期限（`src/playstation/state.ts` 的 `PLAYED_GAMES_PLAYING_TTL_MS`、
-   `PLAYED_GAMES_IDLE_TTL_MS`），过期才拉；奖杯没变时只翻最近窗口（`PLAYED_GAMES_LIMIT`）盖进缓存。带 `Accept-Language`；
-3. 购买库（PS4 / PS5）隔 `LIBRARY_TTL_MS` 才翻一遍，标预购与 Plus，失败沿用旧缓存；
-4. 奖杯：总览的等级 / 总杯数 / 屏蔽名单没变就收工；个人资料（onlineId / 头像 / Plus）按 `PROFILE_TTL_MS`
-   单独判断。变了才翻目录，跟 `trophies:last` 比，只重爬对不上的那几款（两款并行），
-   定义没变只打「获得情况」两个接口。然后做 `titleId` 对齐，只补还没映射的；
-5. 按 `PLAYSTATION_HIDDEN_TITLE_IDS` 去掉屏蔽的游戏，再按 `PLAYED_GAMES_LIMIT` 切开，
-   接上没开过档的预购；
-6. 交付两封 v1 信封：第一封必带 presence（状态核心靠它的 `observedAt` 判死活），playedGames
-   变了才一起带；奖杯只在整份目录拼齐后另发一封。两封各自成功才写各自的指纹。
-   奖杯那封交付成功后，把其中每个已获得的奖杯 upsert 进 D1 `trophies`（没变的行不写，
-   每批条数 `src/history.ts` 的 `HISTORY_BATCH_SIZE`，失败只记日志；dry-run 与没绑 D1 时跳过）。
-
-交付前在这边过一遍和上报入口同一份 prepare（`shared/ingest/playstation.ts` 的 `preparePlaystationReport`），
-再调 `CORE.commitIngest(command)`：回执 `ready` 且 `ok` 才算收下（`ready: false` 是状态核心还没初始化，
-`ok: false` 带着拒收原因）；自己组坏的信封在这边就被拒，不去状态核心。
-`PS_DRY_RUN=true` 时信封只打进日志（本地默认如此）。
-
-会越界的值在 Worker 里钳好（百分比 0–100、id 非负整数、空串回落）：状态核心的校验是信封级
-全有全无。psn-api（版本以 package.json 锁定的为准）有一半取数函数遇 429 / 401 既不抛也不看状态码，原样把 `{error:{…}}`
-交回来，所以这边自己断言一遍；分页端点另外拿 `totalItemCount` 对条数。
-
-### 上游不可用与退避
-
-psn-api 的取数外壳不看 HTTP 状态码、直接 `.json()`，于是 PSN 前面那层 CDN（Akamai）的拒绝页
-变成 `Unexpected token '<', "<HTML><HEA"... is not valid JSON`，纯文本网关错误变成
-`Unexpected token 'e', "error code: 504"...`；游玩列表那一路自己 fetch，报成
-`PSN 返回 403：<HTML>…Access Denied…`。这几种归为 `PsnUpstreamUnavailable`（`src/playstation/util.ts`），
-贴上先撞上的那一路（`presence` / `trophy-summary` / `played-games` / `auth` …），
-以 `{"event":"playstation-upstream-unavailable","call":…}` 记 warn，不混进报错。
-
-整轮因为它失败时退避：`meta:backoffUntil` = 现在 + `backoffMs(连败次数)`（`src/playstation/state.ts`：
-`BACKOFF_BASE_MS` 起、每连败一轮翻倍、封顶 `BACKOFF_MAX_MS`），成功一轮清零；退避期间每一响都不碰 PSN（isolate 本地另存一份，理由同门）。
-连败次数（不分原因）记在 `meta:failureStreak`。
-
-监控 `collector-playstation` 的判定：真跑了的那一轮失败就报 error；没跑的那一响（门没开、退避中）
-在**连败两轮以上**时报 error，否则报 ok。所以单次抖动之后的等待（闲档、退避）不吵人，
-持续断流时每次报到都是 error，连续两次就开 issue —— 这一条是有意偏离「失败的那一轮才报 error」的
-字面做法：失败那一轮多半落不在报到的那一分钟上，不这样长时间断流永远报不出来。
-
-### 鉴权
-
-整条链由 `psn-api` 的三个 exchange 函数负责：
-
-```text
-NPSSO → access code → access token + refresh token → refresh 续期
-```
-
-access token 过「签发 → 到期」的中点就续；业务请求遇到 401 会强制续一次并重试一次。refresh 被
-上游拒绝时才退回 NPSSO，网络错误原样抛出。refresh token 实测约 10 天，期限以上游响应为准。
-**每次续期都会轮换 refresh token**，所以同一个账号不能有两处同时在跑（手动触发也走同一道门）。
-
-NPSSO 是 secret `PSN_NPSSO`，可以缺席：KV 的 `auth` 里还有有效 refresh token 时不需要它；两样都没有
-时这个任务干净地跳过。重新生成 NPSSO 会立即作废上一串；也不要从 PlayStation 网站登出。
-
-### 语言与规范化
-
-`PSN_LANGUAGE` 默认 `zh-Hans`，presence 和奖杯接口经 psn-api 的 `headerOverrides` 发
-`Accept-Language`。psn-api 的 `getUserPlayedGames` 不接 `headerOverrides`，所以游玩列表直接请求
-同一个 `…/users/:accountId/titles` 端点。时间戳转 epoch 毫秒、ISO-8601 时长转毫秒、平台名大写。
-`category`、`service` 是上游枚举，原样透传，校验只当文本（`shared/playstation.ts`）。
 
 ## COLLECTOR_KV 的键
 
 命名空间由 `wrangler.toml` 的 `COLLECTOR_KV` 绑定（ID 也记在 [仓库外事实](../../docs/ops-facts.md)）。
+里面是 `src/lib/cache` 的键。
 
 | 键 | 内容 |
 | --- | --- |
-| `auth` | PSN token 状态：`accessToken`、`refreshToken` 与四个 epoch 毫秒时刻 |
-| `fp:playedGames` / `fp:trophies` | 上次交付成功的游玩列表 / 奖杯目录指纹 |
-| `trophies:last` | 上次成功交付的整份奖杯目录 + 索引快照，增量重爬的对照面；`profile.fetchedAt` 是资料上次拉取时刻 |
-| `cache:playedGames` / `cache:library` | 游玩列表、购买库缓存 |
-| `meta:lastTick` | 最近一轮的时间、成败、有没有变、dry-run，收尾时写 |
-| `meta:lastFullTick` | 上一轮完整 tick 的开始时刻（纯数字），门用，开跑前写 |
-| `meta:backoffUntil` | 上游不可用的退避截止时刻（纯数字），0 表示没在退避 |
-| `meta:failureStreak` | `{streak, at}`：连着失败了几轮 |
 | `lyjwpage:cache:*` | `src/lib/cache` 的键：Apple 封面 `apple-music:library-art:v1:*`、时长 `apple-music:duration:v1:*`、GitHub 增删行的锚 `github-repo:churn`、PageSpeed 样本窗口 `pagespeed:history:v1:*` |
 
 `src/lib/cache` 在这里背后是 KV（`src/storage-driver.ts`）：TTL 最短 60 秒（5 秒的负缓存会活满一分钟），
@@ -192,7 +92,6 @@ NPSSO 是 secret `PSN_NPSSO`，可以缺席：KV 的 `auth` 里还有有效 refr
 
 | Secret | 用途 |
 | --- | --- |
-| `PSN_NPSSO` | KV 里的 refresh token 过期时重新登录 PSN |
 | `GITHUB_TOKEN` | classic PAT：贡献日历（GraphQL）、仓库统计 |
 | `VERCEL_TOKEN` | 团队范围：部署列表、函数与访问统计（只读用） |
 | `CLOUDFLARE_METRICS_TOKEN` | 账号分析、Workers 脚本与构建读取 |
@@ -218,7 +117,7 @@ Sentry 项目 `collector-worker`，DSN 写在 `[vars]`，release 取 `CF_VERSION
 
 根目录 `pnpm dev:worker` 以多配置方式起四个 Worker（配置清单见根 `package.json` 的 `dev:worker`）：`workers/dev-router`（拿端口，按路径分发）、
 api、上报入口，和这里的 `wrangler.test.toml`。本地没有 cron、没有 D1（归档那一步跳过），
-三个 KV 都是本地的（`LAG`、`CREDENTIALS` 和 api 共用同一个本地 id），`PS_DRY_RUN=true`。
+三个 KV 都是本地的（`LAG`、`CREDENTIALS` 和 api 共用同一个本地 id）。
 令牌照需要放 `workers/collector/.dev.vars`（照 `.dev.vars.example`），不放的任务直接跳过。
 
 ```sh
@@ -236,6 +135,5 @@ pnpm --dir workers/collector typecheck
 pnpm --dir workers/collector test
 ```
 
-单测覆盖节奏与报到、KV 存储驱动（含 `src/lib/cache` 跑在它上面）、PS 交付适配、上游不可用的
-分类与退避、D1 `trophies` / `site_deploys` 的 upsert（真实 SQLite 跑 api 的全部迁移）、
-厂商状态变了才失效首屏，以及几处部分成功的合并口径。
+单测覆盖节奏与报到、KV 存储驱动（含 `src/lib/cache` 跑在它上面）、D1 `site_deploys` 的 upsert
+（真实 SQLite 跑 api 的全部迁移）、厂商状态变了才失效首屏，以及几处部分成功的合并口径。

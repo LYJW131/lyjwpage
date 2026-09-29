@@ -11,7 +11,6 @@ import { pagespeedJob } from "./jobs/pagespeed";
 import { providerStatusJob } from "./jobs/provider-status";
 import { sentryStatusJob } from "./jobs/sentry-status";
 import { vercelDeploymentsJob, vercelMetricsJob } from "./jobs/vercel";
-import { playstationJob } from "./playstation/index";
 import { checkinDue, isDue, monitorConfig, monitorSlug } from "./schedule";
 
 /**
@@ -19,7 +18,6 @@ import { checkinDue, isDue, monitorConfig, monitorSlug } from "./schedule";
  * 错开 offset 是为了别让几个慢任务挤在同一分钟。去向与监控名见 README 的任务表。
  */
 export const JOBS: readonly Job[] = [
-  playstationJob,
   appleRecentJob,
   providerStatusJob,
   pagespeedJob,
@@ -84,13 +82,13 @@ export async function runJob(
       : await execute();
     return outcome(job, result.status, result.detail ?? result.failing, started);
   } catch (error) {
-    // 连着失败了好几轮（PS 的退避期）：这一轮只是跳过，但该让人知道了
+    // 连着失败了好几轮：这一轮只是跳过，但该让人知道了
     if (error instanceof MonitorFailure) {
       options.report?.(job.name, new Error(error.message));
       return outcome(job, error.result.status, error.message, started);
     }
     const failed = outcome(job, "error", explain(error), started);
-    // 已知的外部故障（比如 PSN 前面的 CDN 挡人）任务自己记过 warn 了，这里也只记 warn、不开 issue；监控照样报 error
+    // 已知的外部故障（error.outage）任务自己记过 warn 了，这里也只记 warn、不开 issue；监控照样报 error
     const outage = (error as { outage?: unknown } | null)?.outage === true;
     (outage ? console.warn : console.error)(JSON.stringify({ event: "collector-job", ...failed }));
     if (!outage) options.report?.(job.name, error instanceof Error ? error : new Error(explain(error)));
@@ -103,9 +101,8 @@ function outcome(job: Job, status: CollectorJobOutcome["status"], detail: string
 }
 
 /**
- * 带 `headStart` 的任务先跑这么久（或先跑完），其余的再开跑。PS 的门要在 2.5 秒内
- * 问回在线人数，和厂商状态页、CF 部署那十几个请求一起排队就可能被挤超时、把有人看
- * 当成没人。
+ * 带 `headStart` 的任务先跑这么久（或先跑完），其余的再开跑。入口处有短超时的请求
+ * 和同一分钟里的大批出站挤在一起时，会把超时预算耗在排队上。目前没有任务设置它。
  */
 export const HEAD_START_MS = 3_000;
 

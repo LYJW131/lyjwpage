@@ -23,7 +23,7 @@ export const PULSE_TITLE_MAX = 200;
 export const PULSE_SEEN_WRITE_MS = 60_000;
 /** Mac 的播放、Emby 的播放 / 暂停的有效期：上报最迟这么久再确认一次。HomePod 按曲目剩余时长另算（见 shared/pulse-listening） */
 export const PULSE_STATE_HOLD_MS = PULSE_SILENT_AFTER_MS;
-/** PSN 没人看站点时按闲档（collector 的 `IDLE_TICK_INTERVAL_MS`）才查一次在线状态；有效期要盖过它，再留出投递抖动 */
+/** 主机没醒时按闲档（`reporters/playstation-reporter/src/cadence.ts` 的 `IDLE_TICK_INTERVAL_MS`）才查一次在线状态；有效期要盖过它，再留出投递抖动 */
 export const GAMING_HOLD_MS = 35 * 60_000;
 
 export const STATE_LANES = ["listening", "watching", "gaming"] as const;

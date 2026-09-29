@@ -5,16 +5,16 @@ import {
   type AuthTokensResponse,
 } from "psn-api";
 
-import type { Env } from "./env";
-import { pastHalfLife, readAuth, writeAuth, type AuthState } from "./state";
-import { upstream } from "./util";
+import type { Env } from "./env.js";
+import { pastHalfLife, readAuth, writeAuth, type AuthState } from "./state.js";
+import { upstream } from "./util.js";
 
 export class NpssoMissing extends Error {}
 export class NpssoRejected extends Error {}
 export class RefreshRejected extends Error {}
 
 export const NPSSO_ADVICE = [
-  "去 https://ca.account.sony.com/api/v1/ssocookie 取一串 NPSSO（要先在 playstation.com 登录），写入 Worker secret PSN_NPSSO",
+  "去 https://ca.account.sony.com/api/v1/ssocookie 取一串 NPSSO（要先在 playstation.com 登录），写入环境变量 PSN_NPSSO",
   "别从 PlayStation 网站登出 —— 登出会让已经发出去的 token 在七天内软失效",
   "重新生成 NPSSO 会立刻作废上一串，所以别在两处同时用同一个账号换码",
 ].join("\n  · ");
@@ -59,8 +59,8 @@ function announce(state: AuthState, how: string): void {
 }
 
 /**
- * 每次 scheduled invocation 建一份会话：presence 和 played games 顺序共用 current，
- * single-flight 也只覆盖这一轮，不把请求态留在 Worker 全局。
+ * 每一轮 tick 建一份会话：presence 和 played games 顺序共用 current，
+ * single-flight 也只覆盖这一轮。
  */
 export class AuthSession {
   private current: AuthState | null = null;
@@ -96,7 +96,7 @@ export class AuthSession {
     const npsso = this.env.PSN_NPSSO?.trim();
     if (!npsso) {
       throw new NpssoMissing(
-        `${reason}，而且没有可用的 NPSSO。请写入 Worker secret PSN_NPSSO。\n  · ${NPSSO_ADVICE}`,
+        `${reason}，而且没有可用的 NPSSO。请写入环境变量 PSN_NPSSO。\n  · ${NPSSO_ADVICE}`,
       );
     }
 
@@ -119,20 +119,20 @@ export class AuthSession {
 
     const state = await this.exchangeAccessCode(accessCode);
     this.current = state;
-    await writeAuth(this.env.COLLECTOR_KV, state);
+    await writeAuth(this.env.STATE, state);
     announce(state, "用 NPSSO 换到新 token");
     return state;
   }
 
   private async renew(): Promise<AuthState> {
-    this.current ??= await readAuth(this.env.COLLECTOR_KV);
+    this.current ??= await readAuth(this.env.STATE);
     if (this.current) {
       const now = Date.now();
       if (this.current.refreshTokenExpiresAt > now) {
         try {
           const state = await this.exchangeRefreshToken(this.current.refreshToken);
           this.current = state;
-          await writeAuth(this.env.COLLECTOR_KV, state);
+          await writeAuth(this.env.STATE, state);
           announce(state, "续到新 token");
           return state;
         } catch (error) {
@@ -141,18 +141,16 @@ export class AuthSession {
         }
       }
       return this.fromNpsso(
-        `KV 里的 refresh token 已在 ${stamp(this.current.refreshTokenExpiresAt)} 过期`,
+        `本地的 refresh token 已在 ${stamp(this.current.refreshTokenExpiresAt)} 过期`,
       );
     }
-    return this.fromNpsso("KV 里没有可用的 refresh token");
+    return this.fromNpsso("本地没有可用的 refresh token");
   }
 
   async accessToken(force = false): Promise<string> {
-    // 先把 KV 里的状态认下来再判断半衰期。每轮 invocation 都是新会话，current
-    // 初始必为 null —— 不先读 KV 就会一头扎进 renew()，把一串还很新鲜的
-    // refresh token 白白轮换掉；每一轮都轮换一次，迟早撞上 KV 最终一致
-    // 读到旧串的那一天，被拒后就跌回「要 NPSSO」。
-    if (!force) this.current ??= await readAuth(this.env.COLLECTOR_KV);
+    // 先把磁盘上的状态认下来再判断半衰期。每一轮都是新会话，current 初始必为
+    // null —— 不先读就会一头扎进 renew()，把一串还很新鲜的 refresh token 白白轮换掉。
+    if (!force) this.current ??= await readAuth(this.env.STATE);
     if (
       !force &&
       this.current &&

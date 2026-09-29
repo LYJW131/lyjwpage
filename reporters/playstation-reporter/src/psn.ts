@@ -6,8 +6,8 @@ import {
   type UserPlayedGamesResponse,
 } from "psn-api";
 
-import { AuthSession } from "./auth";
-import { accountId, type Env } from "./env";
+import { AuthSession } from "./auth.js";
+import { accountId, type Env } from "./env.js";
 import {
   epochMs,
   languageHeader,
@@ -16,7 +16,7 @@ import {
   trimmed,
   withToken,
   type Loose,
-} from "./util";
+} from "./util.js";
 
 export type NowPlaying = {
   titleId: string;

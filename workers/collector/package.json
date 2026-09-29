@@ -3,16 +3,15 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Scheduled external pulls (PlayStation, Apple Music, provider status, GitHub, Vercel, Cloudflare, Sentry, PageSpeed) on a Cloudflare Worker",
+  "description": "Scheduled external pulls (Apple Music, provider status, GitHub, Vercel, Cloudflare, Sentry, PageSpeed) on a Cloudflare Worker",
   "main": "src/index.ts",
   "scripts": {
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit",
-    "test": "node --test --experimental-strip-types --import ../../src/lib/testing/register-alias.mjs src/*.test.ts src/jobs/*.test.ts src/playstation/*.test.ts"
+    "test": "node --test --experimental-strip-types --import ../../src/lib/testing/register-alias.mjs src/*.test.ts src/jobs/*.test.ts"
   },
   "dependencies": {
-    "@sentry/cloudflare": "10.75.2",
-    "psn-api": "2.18.1"
+    "@sentry/cloudflare": "10.75.2"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "4.20260702.1",

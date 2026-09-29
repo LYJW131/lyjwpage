@@ -1,0 +1,37 @@
+# 部署单元。n100 上只放这份 compose.yaml 和旁边一份 .env（含密钥，别进仓库），
+# 以及 data/（登录态和指纹，属主 1026:101）。镜像由
+# .github/workflows/build-reporters.yml 构建并推到 GHCR；Actions 够不着 n100，
+# 按 README 手动拉。镜像还没进 GHCR 时，在 n100 上 build 这一份小镜像即可。
+#
+# 自成一个 compose project（项目名取自目录名），不要并进别的 compose 文件。
+# network_mode: host：发现包是发到局域网 PS5 的 UDP，桥接网络到不了那台主机。
+
+services:
+  playstation-reporter:
+    image: ghcr.io/lyjw131/playstation-reporter:latest
+    container_name: playstation-reporter
+    restart: unless-stopped
+    network_mode: host
+    init: true
+    user: "1026:101"
+    environment:
+      SITE_INGEST_URL: ${SITE_INGEST_URL}
+      ACCESS_CLIENT_ID: ${ACCESS_CLIENT_ID}
+      ACCESS_CLIENT_SECRET: ${ACCESS_CLIENT_SECRET}
+      # 数据卷里已有 refresh token 时可以空着。空着且没有登录态就只探测、不打 PSN。
+      PSN_NPSSO: ${PSN_NPSSO:-}
+      PS5_HOST: ${PS5_HOST}
+      DATA_DIR: /data
+      PSN_LANGUAGE: ${PSN_LANGUAGE:-zh-Hans}
+      PSN_ACCOUNT_ID: ${PSN_ACCOUNT_ID:-me}
+      PLAYED_GAMES_LIMIT: ${PLAYED_GAMES_LIMIT:-100}
+      # 三角洲行动、明日方舟：终末地。
+      PLAYSTATION_HIDDEN_TITLE_IDS: ${PLAYSTATION_HIDDEN_TITLE_IDS:-PPSA28884_00,PPSA18538_00}
+      PS_DRY_RUN: ${PS_DRY_RUN:-}
+    volumes:
+      - ./data:/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

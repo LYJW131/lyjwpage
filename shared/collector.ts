@@ -8,7 +8,6 @@
 
 /** 登记在采集 Worker 里的全部任务，节奏与去向见 workers/collector/README.md */
 export const COLLECTOR_JOBS = [
-  "playstation",
   "apple-recent",
   "provider-status",
   "pagespeed",
