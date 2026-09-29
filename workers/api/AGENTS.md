@@ -14,7 +14,7 @@ StateHub 的 SQLite 是实时状态的唯一权威。人读的说明在 `README.
 
 ## 迁移与部署
 
-- Durable Object 迁移只追加新 tag、不改旧的；`v1-transfer-from-ingest` 把旧 Worker 的三个 SQLite 命名空间整体转移，不要对这些类另加创建或删除迁移。
+- Durable Object 迁移只追加新 tag、不改旧的；`v1-transfer-from-ingest` 把旧 Worker 的 SQLite 命名空间整体转移（ID 与数据不变），不要对这些类另加创建或删除迁移。
 - D1 表结构只在 `migrations/` 里建。Workers Builds 不跑迁移：部署带 `HISTORY` 绑定的版本之前，先 `pnpm --dir workers/api exec wrangler d1 migrations apply lyjwpage-history --remote`；采集 Worker、上报入口要写的新表也先在这里 apply。
 - 生产的 `wrangler.toml` 不配 `UPSTREAM_API_URL`（只在本地 `.dev.vars` 与 `[previews.vars]` 里出现）。本地用 `wrangler.test.toml`：生产配置里的 `deleted_classes` 迁移在空环境起不来，测试配置有从头开始的迁移链。
 - 监视路径不放宽，否则无关的 `main` 提交也会重新发布生产版本；`dev-fixtures/` 在监视路径里，改夹具会触发一次同码重建。
