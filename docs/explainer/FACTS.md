@@ -22,9 +22,9 @@
 
 ### 来源
 
-片中开场按「**七个外部上报器 + 一个采集 Worker**」画。其中 n100 上的 playstation-reporter，把 presence、游玩列表和奖杯 POST 到同一个 `/api/ingest/playstation`。入口来源是 `shared/ingest/prepare.ts#INGEST_SOURCES` 那一份（playstation 是其中之一），外加 Claude Code 云端遥测（OTLP）。Home Assistant 的 token 开 homepod 和 playstation 两扇门。容器自己的 Access service token 是 `lyjwpage-playstation`，登记在 `workers/ingress/wrangler.toml#ACCESS_CLIENTS`，权限只有 `ingest:playstation`。
+片中开场按「**七个外部上报器 + 一个采集 Worker**」画（下表前七行就是这七个上报器）；Claude Code 云端遥测（OTLP）不是我们写的上报器，另算一个入口。上报器和采集任务有几个，只按代码画，旁白和标注里不说。其中 n100 上的 playstation-reporter，把 presence、游玩列表和奖杯 POST 到同一个 `/api/ingest/playstation`。入口来源是 `shared/ingest/prepare.ts#INGEST_SOURCES` 那一份（playstation 是其中之一）；OTLP 走 `/api/ingest/agents/otlp`，不在这份清单里。Home Assistant 的 token 开 homepod 和 playstation 两扇门。容器自己的 Access service token 是 `lyjwpage-playstation`，登记在 `workers/ingress/wrangler.toml#ACCESS_CLIENTS`，权限只有 `ingest:playstation`。
 
-第 01 章用到的部分（编码用量、collector 的任务与节奏、Mac 信封的 90 秒和 400 ms）按 main 0a0a842 逐条回代码复核过。 <!-- allow: 核对基线戳 -->
+第 01 章用到的部分（编码用量、collector 的任务与节奏、PlayStation 上报器、Mac 信封的 90 秒和 400 ms）按 main 4cf46c4 逐条回代码复核过。 <!-- allow: 核对基线戳 -->
 
 | 来源 | 程序 / 在哪跑 | 入口 · token | 报什么 |
 |---|---|---|---|
@@ -39,6 +39,8 @@
 | collector Worker | Cloudflare，cron 每分钟一响，任务表 `workers/collector/src/registry.ts#JOBS` 里的任务各按自己的节奏 | 不走 ingress | 见下文 |
 
 PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-reporter` POST 原始信封。采集 Worker 不拉 PSN。电源由 Home Assistant 上报。
+
+第 01 章 FIG. 3 画它：容器跟 PS5 在同一个局域网里，用 UDP 发现包探测主机状态（`reporters/playstation-reporter/src/probe.ts#probeOnce`），按醒着、没醒两档调整打 PSN 的频率（`reporters/playstation-reporter/src/cadence.ts#shouldRunTick`，展开见 §7）。两档对调时立刻打一轮，所以开机后第一探读到醒着，紧跟着就寄一封。片中不出间隔的数。
 
 ### Mac 信封
 

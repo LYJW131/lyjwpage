@@ -63,6 +63,7 @@
       ...[[8, 0, "A5"], [9, 2, "C6"], [11, 0, "D6"], [12, 0, "E6"], [13, 2, "G6"], [16, 0, "A6"]].map(([bar, beat, n], i) => ({ bar, beat, kind: "tick", m: midi(n), i: i % 5 })),
       { bar: 8, beat: 2, kind: "lamp", m: midi("A5"), i: 0, late: true }, // HealthKit 把手机叫醒
       { bar: 10, beat: 0, kind: "accent", what: "flip" }, // PS5 的电源翻面
+      { bar: 10, beat: 1, kind: "lamp", m: midi("G5"), i: 2, late: true }, // n100 上的容器放出第一个 UDP 探测点：远处一声；半拍后档位牌翻到快档，不另配声（这一小节已有翻面和两声钥匙）
       { bar: 10, beat: 2, kind: "key", pan: -0.2 }, { bar: 10, beat: 2.5, kind: "key", v: 0.85, pan: 0.3 }, // Home Assistant 那把钥匙连开两扇门
       { bar: 11, beat: 1, kind: "whoosh", tube: 2 }, // 海报先传 R2
       { bar: 11, beat: 2, kind: "accent", what: "slip" }, // 在看什么，信封寄出去
