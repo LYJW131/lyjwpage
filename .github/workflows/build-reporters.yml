@@ -1,10 +1,8 @@
-# 容器上报器的镜像在这里构建，推到 GHCR；机器上只 `docker compose pull`，不再现场 build。
-# 从前是把源码 tar 到机器上就地 build：agents-reporter 装五个 CLI，
-# misaka-jp 那台 1C2G 冷 build 约 10 分钟。
+# 容器上报器的镜像在这里构建，推到 GHCR；机器上只 `docker compose pull`，不现场 build。
 #
 # 只构建改了的那几个：一个目录（或这个文件）有变化才进 matrix。
 # PR 只 build 不推，验证 Dockerfile 还能跑通；合进 main 才推 `latest` 和 `sha-<短哈希>`。
-# 手动触发（workflow_dispatch）三个全推，用来刷新基础镜像或 CLI 版本。
+# 手动触发（workflow_dispatch）全部镜像都推，用来刷新基础镜像或 CLI 版本。
 #
 # misaka-jp 上的两个（server-reporter、agents-reporter）推完镜像接着自动换：
 # deploy 这一步用一把只能跑 /opt/lyjwpage/deploy.sh 的密钥 ssh 过去，脚本点名
@@ -44,7 +42,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      # 改了 workflow 本身三个都重跑一遍，确认改动对每个镜像都成立
+      # 改了 workflow 本身所有镜像都重跑一遍，确认改动对每个镜像都成立
       - uses: dorny/paths-filter@v4
         id: filter
         if: github.event_name != 'workflow_dispatch'
