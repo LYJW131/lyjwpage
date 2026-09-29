@@ -147,7 +147,7 @@ const UPSERT_SERVER_HOUR = `INSERT INTO server_hours(host, hour_at, samples, cpu
  * 「末值」类的列（流量、运行时长）也因此总是取观测最晚的那份。
  *
  * 代价：乱序晚到的旧样本也被挡掉，因为它和重放分不开，分开就得逐条记账。上报器按分钟顺序推送，
- * 丢一个样本只让在线分钟数少一，均值（和 / 样本数）不受影响。
+ * 丢一个样本会让在线分钟数少一，均值只根据已接受的样本计算。
  */
 export function serverHourStatements(db: HistoryDb, status: ServerStatus): HistoryStatement[] {
   const hourAt = Math.floor(status.observedAt / HOUR_MS) * HOUR_MS;
