@@ -150,8 +150,7 @@ const KEY_STEP: Record<string, number> = {
 /**
  * 两张热力图（GitHub 贡献、年度 token）共用的 SVG 骨架。
  *
- * 从前这段在两个组件里逐字重复，键盘可达性得改两遍才生效 —— 抽到这里之后
- * 格子的 role / aria-label / 方向键漫游只有一份实现。
+ * 格子的 role / aria-label / 方向键漫游只有这一份实现，键盘可达性改一处就够。
  *
  * 焦点用 roving tabindex：整年 365 个格子若各占一个 Tab 站，键盘用户要按
  * 三百多下才能走出图表。只有「当前格」进 Tab 序列，格子之间用方向键移动
@@ -181,7 +180,7 @@ export function HeatmapGrid({
     [weeks],
   );
   const [activeDate, setActiveDate] = useState<string | null>(null);
-  // 数据每 6 小时换一份，记住的那天可能已经滚出窗口 —— 落回最后一天（今天）
+  // 数据窗口一换，记住的那天可能已经滚出窗口 —— 落回最后一天（今天）
   const marked = activeDate ? cells.findIndex((cell) => cell.day.date === activeDate) : -1;
   const activeIndex = marked >= 0 ? marked : cells.length - 1;
   const { width, height } = chartSize(weeks.length);

@@ -73,8 +73,10 @@ function HealthRow({ name, health, statusTitle, footTitle, unit, stale }: {
 
 /**
  * 站点卡片里的在线状态，状态页的写法，一个组件一块：
- * - lyjw.me：Sentry 每分钟 HEAD /api/version。那是构建期生成的静态路由，只能说明 Vercel 还在出页面
- * - API：api Worker 分钟 cron 的 Sentry 心跳。每轮都要经过 Worker、Durable Object 和 KV，
+ * - lyjw.me：Sentry 定时 HEAD /api/version（间隔是数据里的 intervalSeconds）。那是构建期生成的
+ *   静态路由，只能说明 Vercel 还在出页面
+ * - API：api Worker cron 的 Sentry 心跳（节奏见 workers/api/src/cron-heartbeat.ts 的
+ *   CRON_HEARTBEAT_EVERY_MINUTES）。每轮都要经过 Worker、Durable Object 和 KV，
  *   补上后端那一截；漏报、超时、报错都算失败
  * 数据来自 lib/sentry-status；两块都拿不到时整段不渲染，只缺一块就只画另一块。
  */

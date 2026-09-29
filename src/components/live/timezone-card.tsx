@@ -88,7 +88,7 @@ function handAngles(hour: number, minute: number, second: number) {
 
 /**
  * 首帧角度写在渲染里，和 RSC 快照同一时刻，针一开始就在。
- * 挂载后再 rAF 改 --angle，不要卸掉重挂（LiveClock 第一帧是 0°）。
+ * 挂载后再 rAF 改 --angle，不要卸掉重挂（重挂的第一帧角度是 0°）。
  */
 function AnalogClock({
   timezone,
@@ -111,9 +111,8 @@ function AnalogClock({
   const angles = handAngles(hour, minute, second + (now % 1000) / 1000);
   /*
    * 用 useReducedMotion 而不是自己 matchMedia 取一次值：会话中途打开系统的
-   * 「减弱动态效果」也要停掉扫秒。全站其它组件（listening-card、watching-card、
-   * media-pair、live-desk-card）用的都是这个。SSR 下它返回 null，首帧不动针由
-   * live 门控保证，不引入水合差异。
+   * 「减弱动态效果」也要停掉扫秒。全站其它组件用的都是这个。SSR 下它返回 null，
+   * 首帧不动针由 live 门控保证，不引入水合差异。
    */
   const reduced = useReducedMotion();
 
@@ -185,7 +184,7 @@ function AnalogClock({
 /**
  * 宽高写死。Safari 对 stretch + aspect-ratio / h-full 会把方盘按剩余行宽放大，
  * 圆心被挤出卡片，只剩左侧一条边。
- * size-36 (144px) / sm:size-40 (160px) 对齐这张卡扣掉 padding 后的正方形内容盒。
+ * 尺寸类对齐这张卡扣掉 padding 后的正方形内容盒，activity-card 的环用同一组尺寸类。
  */
 function ClockShell({
   live = false,
@@ -266,7 +265,6 @@ export function TimezoneCard({
             {usingMac ? "Mac Time" : "Server Time"}
           </div>
 
-          {/* 大时钟数字 */}
           <div className="flex items-baseline overflow-x-visible overflow-y-clip">
             {clock ? (
               <NumberFlowGroup>
@@ -305,12 +303,10 @@ export function TimezoneCard({
             )}
           </div>
 
-          {/* 日期与星期 */}
           <div className="text-sm font-medium text-muted-foreground">
             {clock ? `${clock.date} ${clock.weekday}` : "--"}
           </div>
 
-          {/* 时区标识与 UTC 偏移 */}
           <div
             className="whitespace-nowrap font-mono text-xs text-muted-foreground"
             title={timezone}

@@ -12,7 +12,7 @@ import type { GithubRepoContributor, GithubRepoPayload } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import type { DeploymentState, VercelDeployment } from "@/lib/vercel-deployments-types";
 
-/** 头像展示 28px，取 56 那档原图，unoptimized 直连不进优化器。 */
+/** 头像展示尺寸；按它的 2 倍取图（avatarSrc），unoptimized 直连不进优化器。 */
 const AVATAR_PX = 28;
 
 /** 名单只列前几位，不滚动；其余只进总数。和右边的提交列表一样长。 */
@@ -106,9 +106,9 @@ function ContributorRow({
         </span>
       </a>
       {/*
-        窄屏上两段读数就占掉 180px，名字只剩三个字母：读数折到第二行，缩进到
-        名字底下。名字 20 + 读数 16 = 36px 的字块比头像高 8px，头像下移 4px
-        居中其中，读数上提贴回名字底，头像上下各留 8px。sm 起并回一行。
+        窄屏上两段读数占掉大半行，名字被挤得只剩几个字母：读数折到第二行，缩进到
+        名字底下。名字加读数两行的字块比头像高，头像下移居中其中，读数上提贴回
+        名字底。sm 起并回一行。
       */}
       <span className="flex shrink-0 gap-2 font-mono text-[11px] leading-4 tabular-nums max-sm:-mt-3 max-sm:basis-full max-sm:pl-9">
         <span className="text-muted-foreground">{person.commits.toLocaleString("en-US")} commits</span>
@@ -124,7 +124,7 @@ function ContributorRow({
 
 const stateLabels: Record<DeploymentState, string> = { READY: "Deployed", BUILDING: "Building", QUEUED: "Queued", INITIALIZING: "Initializing", ERROR: "Failed", CANCELED: "Canceled", UNKNOWN: "—" };
 
-/** 署名行的头像 16px；GitHub 头像取 32 那档，unoptimized 直连。 */
+/** 署名行的头像展示尺寸；同样按 2 倍取图，unoptimized 直连。 */
 const AUTHOR_PX = 16;
 
 function AuthorAvatar({ author }: { author: CommitAuthor }) {
@@ -188,7 +188,7 @@ function CommitVerifiedIcon({ className }: { className?: string }) {
   );
 }
 
-/** 一条提交的加高卡：标题 + 署名 + 部署状态，96px 正好占左边两行加一条缝。 */
+/** 一条提交的加高卡：标题 + 署名 + 部署状态，高度正好占左边两行加一条缝。 */
 function CommitCard({ commit, deploy }: {
   commit: GithubRecentCommit;
   deploy: { deployment: VercelDeployment; production: boolean } | undefined;

@@ -58,8 +58,9 @@ const poses: SpriteRun[][] = mascotFetchData.poses.map((rows) =>
 /**
  * Claude Code's fetch mascot, adapted from LYJW131/mascot-fetch-loop.
  *
- * The source's measured step timings are preserved. One 4.1 s run is followed
- * by a 5 s pause on its first pose before the next run begins.
+ * The source's measured step timings (`mascotFetchData.sequence`) are preserved.
+ * Each run is followed by a `LOOP_PAUSE_MS` pause on its first pose before the
+ * next run begins.
  */
 export function ClaudeCodeMascot({
   className,

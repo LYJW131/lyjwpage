@@ -59,23 +59,21 @@ import { cn } from "@/lib/utils";
 
 /**
  * 列表变了会把完整数据推过来，轮询只兜「推送整体停用」这一种情况，所以给得很松。
- * 从前是 30 秒，那时列表要靠轮询才会翻 —— 服务端还得现打 Apple 的目录接口。
  */
 const REFRESH_MS = 10 * 60_000;
 const EMPTY_UPCOMING: string[] = [];
 /**
  * 手上一份都没有时的那一档。
  *
- * 空着的时候松不得。这份列表现在由**访客自己的请求**触发去拉（见
- * lib/apple-music-recent），所以冷启动那一下 —— 新部署、SQLite 被清空 —— 第一个
- * 访客的首屏必然是空的，数据要等他这次请求在响应之后刷完才落库，落完靠推送送达。
- * 而推送没配（`NEXT_PUBLIC_BACKEND_URL` 是可以不填的，那时「页面只靠轮询更新」）
- * 或 WebSocket 恰好还没连上时，就只剩轮询这一条路 —— 上面那档意味着卡片顶着一句
- * 「Apple Music 未连接」站十分钟，而实际上数据一秒后就在库里了。
+ * 空着的时候松不得。这份列表由采集 Worker 定时去拉，和有没有访客无关（见
+ * workers/collector/src/jobs/apple-recent.ts），冷启动那一下 —— 新部署、状态存储
+ * 被清空 —— 第一轮还没落库，首屏必然是空的，落完靠推送送达。推送的 WebSocket
+ * 恰好还没连上（或整体不可用）时，就只剩轮询这一条路 —— 上面那档（REFRESH_MS）
+ * 意味着卡片顶着一句「Apple Music 未连接」站那么久，而实际上数据一会儿就落库了。
  *
- * 代价说清楚：凭据压根没配的部署上这一档会一直开着，每个标签页每小时多打几十次
- * 状态端点（读的是缓存快照，不会传导到 Apple —— 回源频率由那边的 TTL 管）。
- * 那是「没配好」这件事本身的动静，不该由把它藏起来的方式解决。
+ * 代价说清楚：凭据压根没配的部署上这一档会一直开着，每个标签页都多打状态端点
+ * （只读 Worker 里的快照，不会传导到 Apple）。那是「没配好」这件事本身的动静，
+ * 不该由把它藏起来的方式解决。
  */
 const EMPTY_REFRESH_MS = 60_000;
 /** 实时播放由推送送来，轮询只是兜底 */
@@ -86,8 +84,10 @@ const MUSIC_REFRESH_MS = 60_000;
  * （grid-auto-rows: calc(100% / N)），所以永远是整数行、底部也不会留空。
  * 这件事 CSS 自己就能算，不需要 JS 去量。
  *
- * 窄屏和桌面半宽都横滑两页，每页就是这么多行，一共 8 条。上游最多 10 条，
- * hero 还可能并掉一条，8 刚好两页。第九条起不展示。
+ * 窄屏和桌面半宽都横滑两页，每页就是这么多行。上游给的条数比两页多
+ * （RECENT_LIMIT，见 workers/collector/src/jobs/apple-recent.ts），hero 还可能并掉
+ * 一条；多出的由 globals.css 的 `.recent-tracks-track > :nth-child(n + 9)` 藏掉，
+ * 那个 9 = VISIBLE_ROWS × 2 + 1，改这里要同步改它。
  */
 const VISIBLE_ROWS = 4;
 /** 单行的最小高度：44px 封面 + 上下留白，比这个再矮就挤了 */
@@ -159,8 +159,8 @@ function PaletteBar({
    * CSS 那条通用彩虹就会露出来，再花 700ms 淡成灰 —— 看起来像跳成另一种彩条。
    *
    * callback ref 在 commit 阶段才写 DOM：有新颜色就替换，motion 清空时什么都
-   * 不做，让节点保留上一套背景并同时把 opacity 切到 0。这样行为和原来一致，
-   * 又不会在并发渲染期间读写 ref。
+   * 不做，让节点保留上一套背景并同时把 opacity 切到 0。这样也不会在并发渲染
+   * 期间读写 ref。
    */
   const rememberMotionGradient = useCallback(
     (node: HTMLDivElement | null) => {
@@ -192,8 +192,8 @@ function PaletteBar({
  * 三根竖条。设备说在播时跳动，否则静止成一个普通的音乐小图标。
  *
  * 动画相位挂在墙上时钟，不挂在挂载时刻。换歌时整个 hero 会重新挂载，CSS 动画
- * 默认从头开始，三根条齐刷刷跳回起点 —— 从前 mode="wait" 中间空一拍把这一下
- * 盖住了，改成交叉淡入后新旧同时可见，顿挫就露出来了。
+ * 默认从头开始，三根条齐刷刷跳回起点；hero 换歌是新旧交叉淡入、同时可见，
+ * 这一下顿挫会露出来。
  *
  * 负的 animation-delay 表示「已经播过这么久」：取 now % period，任何时刻新挂载
  * 的实例都落在和旧实例相同的相位上，接得上。重渲染时重算也是幂等的 —— 算出来
@@ -209,9 +209,8 @@ const BAR_PERIODS = [0.9, 1.15, 1.4];
  *
  * - playing 在跳
  * - paused  就地冻住。keyframes 动的是 transform: scaleY，所以只要保住 h-full
- *   这个基准盒、把 animation-play-state 切成 paused，浏览器就停在当前那一帧上。
- *   从前这一档和 idle 合并了，一按暂停三根条会弹回固定形状 —— 明明只是暂停，
- *   看起来却像换了个东西。
+ *   这个基准盒、把 animation-play-state 切成 paused，浏览器就停在当前那一帧上，
+ *   不会弹回固定形状（明明只是暂停，看起来却像换了个东西）。
  * - idle    历史条目，从来没跳过，没有「当前姿态」可冻，用固定形状
  */
 type BarsState = "playing" | "paused" | "idle";
@@ -236,7 +235,7 @@ function Bars({ state }: { state: BarsState }) {
       const seconds = Date.now() / 1000;
       [...node.children].forEach((child, i) => {
         const period = BAR_PERIODS[i];
-        // 错开的起点保留原来的观感；周期本来就各不相同，跳起来不会齐步走
+        // 各条起点再错开一档；周期本来就各不相同，跳起来不会齐步走
         (child as HTMLElement).style.animationDelay =
           `${(-((seconds % period) + i * 0.15)).toFixed(3)}s`;
       });
@@ -300,16 +299,15 @@ function Clock({ milliseconds }: { milliseconds: number }) {
 /**
  * 本机曲目的副标题行 + 进度条。
  *
- * 挤进 hero 而不撑高它：hero 的高度由 80px 封面定死，文字列实测只用掉 67px，
- * 剩 13px。时间放进副标题行右侧（那一行本来就存在，label-mono 是 11px/行高 1，
- * 比 text-sm 的 20px 行盒矮，只占宽度不占高度），进度条另起一行占 3+6=9px，
- * 合计 76px，仍在 80px 之内。
+ * 挤进 hero 而不撑高它：hero 的高度由封面定死，文字列加进度条只剩几个像素的
+ * 余量（改字号、行高或间距之前先量一遍）。时间放进副标题行右侧 —— 那一行本来
+ * 就存在，label-mono 的行盒比 text-sm 的矮，只占宽度不占高度；进度条另起一行。
  *
  * 秒级计时器留在这个组件里，不放到 ListeningCard —— 否则下面那个带布局动画的
  * 列表会跟着每秒重渲染一次。
  *
  * 有同步歌词时副标题那一行跟着进度走：唱到哪句就换成哪句，前奏、间奏和没有
- * 歌词时是艺人名。位置不另起一行 —— hero 的 80px 已经用掉 76px，多一行就得撑高，
+ * 歌词时是艺人名。位置不另起一行 —— 余量放不下第三行，多一行就得撑高，
  * 而两版 hero 的高度必须一致（见下面渲染处的注释）。哪句该亮由 lib/lyrics-cue
  * 按同一个 position 算，所以它和进度条、和「一起听」读的是同一个时刻。
  */
@@ -465,7 +463,7 @@ function TrackRow({
          * 水合期背景解码会滑过首帧一两拍，露出底下的 bg-muted 灰闪一下 ——
          * 行的真图是 lazy，到得比 hero 更晚，那一下更藏不住。data URI + sync
          * 解码由浏览器保证与首帧原子绘制，真图排在它后面，加载完自然盖住。
-         * 九张小图同步解码合计约 1~2ms，换掉首帧那一闪值得。
+         * 这些小图同步解码合计只有毫秒级，换掉首帧那一闪值得。
          */}
         {placeholder && (
           <Image
@@ -670,13 +668,14 @@ export function ListeningCard({
   fallback: StatusResponse<ListeningPayload>;
   nowFallback: StatusResponse<NowListeningPayload>;
   /**
-   * 首屏当前曲目的同步歌词数据，由服务端在直读 SQLite 缓存后冻进首屏 HTML。
+   * 首屏当前曲目的同步歌词数据，由服务端经 lib/first-screen 的 firstScreenLyrics
+   * 向 Worker 取来，冻进首屏 HTML。
    */
   lyricsFallback?: LyricsFallback | null;
   /**
    * 首屏那批封面的低清占位（模板 URL → data URI），见 lib/artwork-placeholder。
-   * 只喂给 `next/image` 的 `placeholder`，`src` 仍是 Apple CDN 直连；挂载后
-   * 换进来的新歌不在表里，那一格就没有占位 —— 和内联之前一样，属预期。
+   * 作为独立图片垫在真图下面（见 TrackRow、HeroMotionArtwork），`src` 仍是 Apple
+   * CDN 直连；挂载后换进来的新歌不在表里，那一格就没有占位，属预期。
    */
   artworkPlaceholders: ArtworkPlaceholders;
   className?: string;
@@ -714,9 +713,8 @@ export function ListeningCard({
    * 暂停宽限期到点时再问一次。
    *
    * 那一刻服务端会把来源让给下一个实时源，但它不对应任何一次上报，没有推送
-   * 会到 —— 从前是服务端挂 setTimeout 补一条，serverless 上不成立。剩多少毫秒
-   * 由服务端算好放在 expiresInMs 里，这边只管排队，不重算规则、也不拿本机时钟
-   * 去减设备时钟。
+   * 会到，所以由这边排队再问一次。剩多少毫秒由服务端算好放在 expiresInMs 里，
+   * 这边只管排队，不重算规则、也不拿本机时钟去减设备时钟。
    */
   useExpiryRefetch(NOW_LISTENING_PATH, live?.expiresInMs);
 
@@ -860,8 +858,8 @@ export function ListeningCard({
           title: latest.title,
           subtitle: latest.artist,
           link: latest.link,
-          // 没有实况就只说「听过」。Apple 不给可查的当前播放，站点也不再拿列表
-          // 的变化去猜它，理由见 lib/apple-music-recent
+          // 没有实况就只说「听过」：Apple 不给可查的当前播放，最近播放列表说明不了
+          // 此刻在不在放（列表由 workers/collector/src/jobs/apple-recent.ts 拉取）
           label: "Last Played",
           playing: false,
           palette: latest.palette,
@@ -1137,15 +1135,15 @@ export function ListeningCard({
         </AnimatePresence>
 
         {/*
-          再往前的几项。上游最多给 10 条。窄屏和桌面半宽横滑两页、宽态 4×2，
-          都只展示 8 条。
+          再往前的几项。窄屏和桌面半宽横滑两页、宽态 4×2，展示的条数上限
+          见 VISIBLE_ROWS 的说明。
 
           视口必须始终挂着：列表为空时 isLoading 也是 false、rest 也是空的 ——
-          以前用 (isLoading || rest.length) 包一层，那种情况下首屏 HTML 就把
-          这块省掉了，客户端补上数据再插进来，整行一起被撑高。
+          若按 (isLoading || rest.length) 条件渲染，那种情况下首屏 HTML 就没有
+          这块，客户端补上数据再插进来，整行一起被撑高。
 
-          高度用 minHeight 而不是写死：充电头那边 sparkline 钉在 h-32，
-          整行由它定高；这边列表吃掉剩余，行高由 grid-auto-rows 平摊。
+          高度用 minHeight 而不是写死：桌面上整行的高度由 LiveMediaPair 的
+          SLOT_PX 定，这边列表吃掉剩余，行高由 grid-auto-rows 平摊。
         */}
         {/* 边框和内边距放在外层，滚动容器本身不带 padding ——
             否则吸附位会被 padding 顶偏，还得再补 scroll-padding
@@ -1153,8 +1151,8 @@ export function ListeningCard({
         <div className="mt-3 flex min-h-0 flex-1 flex-col border-t border-line pt-2">
           {/*
             滚动容器绝对定位，是为了让它对「这张卡有多高」完全没有发言权。
-            grid 行按 max-content 定高：让它参与的话，10 条 × 行高会被当成
-            卡片的固有高度，整个「此刻」区块被撑到近两倍（实测 364 → 588）。
+            grid 行按 max-content 定高：让它参与的话，整份列表 × 行高会被当成
+            卡片的固有高度，整个「此刻」区块被撑到近两倍。
             绝对定位的子元素不参与固有尺寸计算；min-height 是这块唯一的话语权。
           */}
           <div

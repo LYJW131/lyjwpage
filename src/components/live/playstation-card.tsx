@@ -46,7 +46,7 @@ import type {
 import { TROPHY_TYPES } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-/** 列表跟「最近在看」一样十分钟兜底；此刻是否在玩按一分钟问，和 watching/now 对齐。 */
+/** 列表跟「最近在看」用同一档兜底间隔；此刻是否在玩的间隔和 watching/now 对齐。 */
 const LIST_REFRESH_MS = 10 * 60_000;
 const NOW_REFRESH_MS = 60_000;
 
@@ -701,7 +701,7 @@ export function PlaystationRow({
               >
                 <GameTile
                   tile={tile}
-                  // 横向一屏三块。首屏期间只让这三张去拉，其余先标 lazy，
+                  // 首屏期间只让第一列（TILE_ROWS 张）去拉，其余先标 lazy，
                   // 避免和封面抢带宽。首屏 load 之后 AppImage 会把剩下的改成
                   // eager，不再等横滑到跟前。
                   eager={index < 3}

@@ -11,10 +11,10 @@ import { cn } from "@/lib/utils";
 /**
  * 在母播放列表里挑「够用的最小档」，返回 hls.js 的档位下标。
  *
- * 不挑的话 ABR 只看带宽：实测给这张 80px 的封面选了 960×960 / 3.8Mbps 那档，
- * 再由 GPU 双线性压到 ~160 设备像素。六倍下采样每个目标像素只取 4 个源像素，
- * 动画线稿的锯齿就是这么来的 —— 流量还白花十几倍。Apple 这支母列表有 29 个
- * 档位，最小的 360×360 只要 261kbps。
+ * 不挑的话 ABR 只看带宽：会给这张小封面选最高的一档（近千像素、几 Mbps），
+ * 再由 GPU 双线性压到一两百设备像素。下采样倍数太大，每个目标像素只取几个源
+ * 像素，动画线稿的锯齿就是这么来的 —— 流量还白花十几倍。Apple 这支母列表档位
+ * 很多，最小的一档只要几百 kbps。
  *
  * 同一尺寸有多个码率时取最低的：像素数已经够了，多出来的比特只是更大的文件。
  */
@@ -50,8 +50,9 @@ export function HeroMotionArtwork({
   placeholder?: ArtworkDataUri;
   reduced?: boolean;
   /**
-   * 边长。卡片 hero 是 80；网页播放器弹窗用 96 —— 那边预载的封面就是按 96 取的
-   * （见 web-player/player-artwork），这里的 `<Image>` 必须按同一尺寸拼地址才能命中。
+   * 边长。卡片 hero 用默认值；网页播放器弹窗传 DIALOG_ARTWORK_PX —— 那边预载的
+   * 封面就是按它取的（见 web-player/player-artwork），这里的 `<Image>` 必须按同一
+   * 尺寸拼地址才能命中。
    */
   sizePx?: number;
 }) {
@@ -87,7 +88,7 @@ export function HeroMotionArtwork({
       video.removeAttribute("src");
       video.load();
 
-      // 等挑完档位再放码流，免得 ABR 先按带宽抓一片 3.8Mbps 的回来
+      // 等挑完档位再放码流，免得 ABR 先按带宽抓一片最高档的回来
       const instance = new Hls({
         autoStartLoad: false,
         maxBufferLength: 10,
@@ -172,10 +173,10 @@ export function HeroMotionArtwork({
     awaitFirstFrame();
 
     /*
-     * 先按原生 HLS 播。这里不能用 canPlayType 分流：Chromium 对
+     * 先按原生 HLS 播，报错后再交给 hls.js。这里不能用 canPlayType 分流：Chromium 对
      * application/vnd.apple.mpegurl 一律回 "maybe"，实际拿到 .m3u8 直接
-     * MEDIA_ERR_SRC_NOT_SUPPORTED —— 之前就是被这句谎话骗进原生分支，
-     * hls.js 一次都没跑过。改成让它自己撞墙，撞了再换。
+     * MEDIA_ERR_SRC_NOT_SUPPORTED —— 按它分流会被这句谎话骗进原生分支，
+     * hls.js 一次都不会跑。所以让原生播放自己撞墙，撞了再换。
      */
     video.src = videoUrl;
     video.play().catch(() => {});
@@ -198,10 +199,10 @@ export function HeroMotionArtwork({
       className="relative aspect-square shrink-0 overflow-hidden rounded-md border border-line bg-muted"
       style={{ width: sizePx }}
       /*
-       * 不垫主色纯色块 —— 上过一次线又撤下来的教训：占位解码滑档那一两帧会
-       * 闪出一整块显眼色块，比 bg-muted 的灰底更扎眼，等于把加载过程演出来。
-       * 现在两处（这里和 listening-card 的行）都改成同步解码的垫底图，占位
-       * 和首帧原子地一起画，压根没有「滑档露底」这一帧，主色层因此退役。
+       * 不垫主色纯色块：占位解码滑档那一两帧会闪出一整块显眼色块，比 bg-muted
+       * 的灰底更扎眼，等于把加载过程演出来。这里和 listening-card 的行都用
+       * 同步解码的垫底图（见下面），占位和首帧原子地一起画，没有「滑档露底」
+       * 这一帧。
        */
       onMouseEnter={() => {
         // 自动播放被拒（比如 Safari 低电量模式）不会报 error，留个手动入口
@@ -241,7 +242,7 @@ export function HeroMotionArtwork({
             /*
              * 这张是全站 LCP 元素。光给 eager + high 还不够：它埋在客户端组件
              * 的标记里，预加载扫描器要等文档解到这儿才看见 —— 实测（PageSpeed
-             * 移动端）LCP 里有 908ms 花在「发现这张图」上。priority 会在 <head>
+             * 移动端）LCP 有相当一部分时间花在「发现这张图」上。priority 会在 <head>
              * 里补一条 rel=preload，连接一开始就去拉。
              *
              * next/image 对 fill + srcSet 的图不落 fetchpriority 属性，显式传也一样；
