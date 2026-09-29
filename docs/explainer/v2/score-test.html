@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Score v2 test</title>
+<style>
+  :root { --bg: #f4efe6; --ink: #2a2622; --dim: #8a8177; --grid: #d9d0c3; --orange: #d97757; --blue: #4f6d8f; --green: #5d8a5a; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #1d1b19; --ink: #ece6dc; --dim: #8f877d; --grid: #3a3531; } }
+  body { margin: 0; padding: 16px; background: var(--bg); color: var(--ink); font: 14px/1.4 ui-sans-serif, system-ui, sans-serif; }
+  header { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+  h1 { font-size: 18px; margin: 0 12px 0 0; }
+  button { font: inherit; padding: 6px 12px; border: 1px solid var(--ink); background: transparent; color: var(--ink); border-radius: 4px; cursor: pointer; }
+  button:disabled { opacity: 0.4; cursor: default; }
+  #status { color: var(--dim); }
+  canvas { width: 100%; display: block; }
+  pre { color: var(--dim); font-size: 12px; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Score v2</h1>
+  <button id="render">Render</button>
+  <button id="play" disabled>Play</button>
+  <button id="wav" disabled>Download WAV</button>
+  <span id="status">Not rendered</span>
+</header>
+<canvas id="tl" height="560"></canvas>
+<pre id="info"></pre>
+<script src="score.js"></script>
+<script>
+// 乐谱测试页：画出小节网格、段落、和弦、各类事件和包络；Render 离线合成，Play 从头播（点时间轴跳到那里）。
+// 无头测试用：window.__render() / __wav() / __hash(opts) / __rms(opts)
+(() => {
+  const S = window.Score, cv = document.getElementById("tl"), cx = cv.getContext("2d");
+  const status = (s) => (document.getElementById("status").textContent = s);
+  const TOTAL = S.duration + S.tail, ROWS = ["kick", "snare", "hat", "clock", "tick", "stamp", "whoosh", "lamp", "key", "bell", "accent"];
+  const ENVS = [["energy", "--green"], ["pad", "--blue"], ["bass", "--orange"], ["duck", "--dim"], ["kick", "--ink"]];
+  let buf = null, ac = null, src = null, startAt = 0, offset = 0;
+  const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+  const L = 70, R = 10, X = (t, w) => L + (t / TOTAL) * (w - L - R);
+
+  function draw() {
+    const dpr = window.devicePixelRatio || 1, w = cv.clientWidth, h = 560;
+    cv.width = w * dpr; cv.height = h * dpr; cx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    cx.clearRect(0, 0, w, h);
+    cx.font = "11px ui-monospace, monospace"; cx.textBaseline = "middle";
+    // 小节网格
+    for (let b = 0; b <= S.bars; b++) {
+      const x = X(S.at(b), w);
+      cx.strokeStyle = css("--grid"); cx.lineWidth = b % 4 ? 0.5 : 1.2; cx.beginPath(); cx.moveTo(x, 0); cx.lineTo(x, h); cx.stroke();
+      if (b < S.bars) { cx.fillStyle = css("--dim"); cx.fillText(String(b), x + 2, 8); }
+    }
+    // 段落和和弦
+    for (const s of S.sections) {
+      const x0 = X(s.t0, w), x1 = X(s.t1, w);
+      cx.fillStyle = s.chapter === 2 ? "rgba(217,119,87,0.12)" : "rgba(79,109,143,0.16)"; cx.fillRect(x0, 16, x1 - x0, 16);
+      cx.fillStyle = css("--ink"); cx.save(); cx.beginPath(); cx.rect(x0, 16, x1 - x0, 16); cx.clip(); cx.fillText(s.id, x0 + 3, 24); cx.restore();
+    }
+    for (const c of S.chords) { cx.fillStyle = css("--dim"); cx.fillText(c.name, X(c.t, w) + 2, 42); }
+    // 事件
+    ROWS.forEach((k, i) => {
+      const y = 62 + i * 20;
+      cx.fillStyle = css("--dim"); cx.fillText(k, 4, y);
+      cx.strokeStyle = k === "bell" || k === "stamp" ? css("--orange") : css("--ink"); cx.lineWidth = 1;
+      for (const t of S.events[k] || []) { const x = X(t, w); cx.beginPath(); cx.moveTo(x, y - 7); cx.lineTo(x, y + 7); cx.stroke(); }
+    });
+    // 包络
+    ENVS.forEach(([k, col], i) => {
+      const y0 = 300 + i * 50;
+      cx.fillStyle = css("--dim"); cx.fillText(k, 4, y0 + 20);
+      cx.strokeStyle = css(col); cx.lineWidth = 1; cx.beginPath();
+      for (let px = L; px < w - R; px++) { const t = ((px - L) / (w - L - R)) * TOTAL, v = S.env(k, t), y = y0 + 40 - v * 38; px === L ? cx.moveTo(px, y) : cx.lineTo(px, y); }
+      cx.stroke();
+    });
+    // 播放头
+    const t = now();
+    if (t != null) { const x = X(t, w); cx.strokeStyle = css("--orange"); cx.lineWidth = 2; cx.beginPath(); cx.moveTo(x, 0); cx.lineTo(x, h); cx.stroke(); }
+  }
+  const now = () => (src && ac ? ac.currentTime - startAt + offset : offset || null);
+
+  async function doRender() {
+    status("Rendering…");
+    const t0 = performance.now();
+    buf = await S.render();
+    const ms = performance.now() - t0;
+    let pk = 0;
+    for (let c = 0; c < buf.numberOfChannels; c++) { const d = buf.getChannelData(c); for (let i = 0; i < d.length; i++) pk = Math.max(pk, Math.abs(d[i])); }
+    status(`Rendered ${(buf.length / buf.sampleRate).toFixed(2)} s in ${(ms / 1000).toFixed(1)} s · peak ${(20 * Math.log10(pk)).toFixed(2)} dBFS · ${S.loudness(buf.getChannelData(0), buf.getChannelData(1), buf.sampleRate).toFixed(1)} LUFS`);
+    document.getElementById("play").disabled = false; document.getElementById("wav").disabled = false;
+    return { ms, pk };
+  }
+  function stop() { if (src) { try { src.stop(); } catch {} src = null; } document.getElementById("play").textContent = "Play"; }
+  function play(from = 0) {
+    stop();
+    ac = ac || new AudioContext({ sampleRate: buf.sampleRate });
+    ac.resume();
+    src = ac.createBufferSource(); src.buffer = buf; src.connect(ac.destination);
+    offset = from; startAt = ac.currentTime + 0.05; src.start(startAt, from);
+    src.onended = () => { if (src) { offset = 0; stop(); } };
+    document.getElementById("play").textContent = "Stop";
+    const tick = () => { draw(); if (src) requestAnimationFrame(tick); };
+    tick();
+  }
+  function wavBytes(b) {
+    const ch = b.numberOfChannels, len = b.length, sr = b.sampleRate, dv = new DataView(new ArrayBuffer(44 + len * ch * 2));
+    const w = (o, s) => { for (let i = 0; i < s.length; i++) dv.setUint8(o + i, s.charCodeAt(i)); };
+    w(0, "RIFF"); dv.setUint32(4, 36 + len * ch * 2, true); w(8, "WAVE"); w(12, "fmt ");
+    dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, ch, true); dv.setUint32(24, sr, true);
+    dv.setUint32(28, sr * ch * 2, true); dv.setUint16(32, ch * 2, true); dv.setUint16(34, 16, true); w(36, "data"); dv.setUint32(40, len * ch * 2, true);
+    const cs = [...Array(ch)].map((_, c) => b.getChannelData(c));
+    let o = 44;
+    for (let i = 0; i < len; i++) for (let c = 0; c < ch; c++) { const v = Math.max(-1, Math.min(1, cs[c][i])); dv.setInt16(o, Math.round(v < 0 ? v * 0x8000 : v * 0x7fff), true); o += 2; }
+    return new Uint8Array(dv.buffer);
+  }
+  function b64(bytes) { let s = ""; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000)); return btoa(s); }
+  function hash(b) { let h = 0x811c9dc5; for (let c = 0; c < b.numberOfChannels; c++) { const d = b.getChannelData(c), u = new Uint32Array(d.buffer, d.byteOffset, d.length); for (let i = 0; i < u.length; i++) h = Math.imul(h ^ u[i], 16777619) >>> 0; } return h.toString(16); }
+  const rms = (b) => { let e = 0, n = 0; for (let c = 0; c < b.numberOfChannels; c++) { const d = b.getChannelData(c); for (let i = 0; i < d.length; i++) e += d[i] * d[i]; n += d.length; } return 10 * Math.log10(e / n + 1e-20); };
+
+  document.getElementById("render").onclick = doRender;
+  document.getElementById("play").onclick = () => (src ? stop() : play(0));
+  document.getElementById("wav").onclick = () => {
+    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([wavBytes(buf)], { type: "audio/wav" })); a.download = "score-v2.wav"; a.click();
+  };
+  cv.onclick = (e) => { if (!buf) return; const r = cv.getBoundingClientRect(), t = ((e.clientX - r.left - L) / (r.width - L - R)) * TOTAL; if (t >= 0) play(Math.min(t, TOTAL - 0.1)); };
+  window.addEventListener("resize", draw);
+  document.getElementById("info").textContent = Object.entries(S.events).map(([k, v]) => `${k.padEnd(7)} ${v.length}`).join("\n");
+  draw();
+
+  window.__render = async () => { const r = await doRender(); return { ms: r.ms, peak: r.pk, sr: buf.sampleRate, len: buf.length, ch: buf.numberOfChannels, hash: hash(buf) }; };
+  window.__wav = () => b64(wavBytes(buf));
+  window.__hash = async (opts) => hash(await S.render(opts));
+  window.__rms = async (opts) => { const b = await S.render(opts); let pk = 0; for (let c = 0; c < 2; c++) { const d = b.getChannelData(c); for (let i = 0; i < d.length; i++) pk = Math.max(pk, Math.abs(d[i])); } return { rms: rms(b), peak: 20 * Math.log10(pk + 1e-20), lufs: S.loudness(b.getChannelData(0), b.getChannelData(1), b.sampleRate) }; };
+  // 再渲一遍和上一次比：Chrome 给同一母线上重叠的声源求和的顺序不固定，末位浮点会差一点，这里量差多少
+  window.__diff = async (opts) => { const b = await S.render(opts); let m = 0; for (let c = 0; c < 2; c++) { const x = buf.getChannelData(c), y = b.getChannelData(c); for (let i = 0; i < x.length; i++) m = Math.max(m, Math.abs(x[i] - y[i])); } return 20 * Math.log10(m + 1e-30); };
+})();
+</script>
+</body>
+</html>
