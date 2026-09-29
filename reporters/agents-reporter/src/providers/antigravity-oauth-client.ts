@@ -11,7 +11,7 @@ import { info } from "../log.js";
  *
  * 二进制里各有两个候选（IDE 一套、CLI 一套），Go 打包的字符串没有分隔符，光看
  * 位置分不清谁配谁 —— 所以这里只出候选，配对由刷新时逐对试出来（错的那对 Google
- * 回 401 invalid_client），见 antigravity.ts 的 pickWorkingClient。
+ * 回 401 invalid_client），见 `antigravity.ts#refreshAntigravityToken`。
  *
  * 环境变量 ANTIGRAVITY_OAUTH_CLIENT_ID / SECRET 配了就直接用，不扫。
  */
@@ -19,7 +19,7 @@ export type OAuthClient = { clientId: string; clientSecret: string };
 
 const ID_PATTERN = /\d{10,14}-[a-z0-9]{32}\.apps\.googleusercontent\.com/g;
 const SECRET_PATTERN = /GOCSPX-[A-Za-z0-9_-]{28}/g;
-/** 4 MiB 一块、块间留 256 字节重叠，常量不会被切在边界上 */
+/** 按 CHUNK 分块，保留 OVERLAP 防止客户端常量跨边界截断 */
 const CHUNK = 4 * 1024 * 1024;
 const OVERLAP = 256;
 
@@ -39,7 +39,6 @@ async function resolveBinary(bin: string): Promise<string | null> {
       await access(candidate);
       return candidate;
     } catch {
-      // 下一个
     }
   }
   return null;

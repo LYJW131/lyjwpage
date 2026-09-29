@@ -54,8 +54,8 @@ async function collectCursor(): Promise<CursorFacts> {
 
 async function collectPayload(): Promise<PushPayload> {
   /**
-   * Claude 刷新失败不能连累整轮：这一封是心跳，不发出去站点会把各家都判成陈旧。
-   * 刷不到时 claude 那一行带着 limitsError 照发。
+   * Claude 预刷新失败不能连累整轮：这一封是心跳，不发出去站点会把各家都判成陈旧。
+   * 预刷新失败后仍尝试采集，错误行由限额采集结果决定（`limits.ts#collectClaudeLive`）。
    * Cursor 历史拉失败同样不能挡住限额心跳，见 collectCursor。
    */
   const [agents, cursor] = await Promise.all([
@@ -107,7 +107,7 @@ async function main() {
       ? "DRY_RUN：打印请求体然后退出"
       : `agents-reporter 启动，三档 ${config.cadence.liveIntervalMs} / ${config.cadence.openIntervalMs} / ${config.cadence.idleIntervalMs}ms`,
   );
-  // Cursor 活动的快循环平时睡着，等限额那一轮看到 5 分钟内的事件才醒。试跑和夹具模式不起它。
+  // 限额轮发现 `cursor-now.ts#ACTIVE_WINDOW_MS` 内事件时唤醒。试跑和夹具模式不起它。
   if (!config.dryRun && !config.limitsFixture && config.site.ingestUrl) void runCursorNowLoop();
   let backoff = RETRY_MS;
   for (;;) {

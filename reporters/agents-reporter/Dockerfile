@@ -25,7 +25,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/node_modules ./node_modules
 COPY package.json ./
-# 五个 CLI 只为在容器里登录一次。限额运行时直打各家接口，不再调 CLI。
+# CLI 提供登录及 OAuth 配置扫描所需安装包。限额运行时直打各家接口。
 # 凭据运行时落 /data，不拷 Mac 上那份。
 # cursor-agent / agy 装不上**不挡镜像**
 # （`|| true`），只是那两家登录不了，登录时看 `docker compose run` 的报错。
