@@ -18,8 +18,8 @@ const ITEM_FIELDS = [
 /**
  * 只给「正在播放的那一项」多要媒体源和流列表 —— 站点要显示的规格从这里挑。
  *
- * **别加进 ITEM_FIELDS**：续播列表 60 秒一轮，而一个条目动辄二十几条字幕流，
- * 列表那条路上带着它们只是让 Emby 每分钟多吐几十 KB 没人看的东西。
+ * **别加进 ITEM_FIELDS**：续播列表每轮都要拉，而一个条目动辄二十几条字幕流，
+ * 列表那条路上带着它们只是让 Emby 每轮多吐几十 KB 没人看的东西。
  */
 const PLAYING_FIELDS = `${ITEM_FIELDS},MediaSources,MediaStreams`;
 
