@@ -5,7 +5,7 @@
 //   M1 FIG. 1 Mac（1.5–5）：2:0 换歌，白卡逐字敲出信封、modules 只亮 appleMusic；3:1 空信封的呼吸（90 s）；
 //     4:0 切应用、4:1 又切一次重新计时、4:3 量满 400 ms 落定（防抖，ServiceController 的 desktopSettleDelay）
 //   M2 FIG. 1A / 1B（5–8）：窗口标题过 Jev，问题横条同时走、6:0 一起给出概率条（示意，不和出路对应）；
-//     应用图标压成哈希，7:2 落进 R2 的抽屉，信封里只剩文件名
+//     应用图标压成哈希，7:0 落进 R2 的抽屉、7:1 关上，信封里只剩文件名
 //   F2–F6（8–14.5）：iPhone、家里（Home Assistant 那把钥匙开两扇门；n100 上的容器用 UDP 探测 PS5，10:0 开机后
 //     档位牌从闲档翻到快档）、NAS、东京的机柜、云端的一小段遥测
 //   CU 编码用量（14.5–16）：三处原始数汇到站点这边合并，合并处伸出一段 Pulse，多一条 Tokens 道
@@ -564,7 +564,7 @@
       text(x, KEY_SHORT, 0, 0, { font: FONT.mono(34, 600), color: bone, alpha: a * (1 - prog(fall, 0.85, 1)), reveal: hk, perChar: hk < 1 });
       x.restore();
     }
-    // R2：抽屉 6.9 起拉开，7:2 关上
+    // R2：抽屉 6:3 起拉开，7:1 关上
     const openK = keys(b, [[AT.hash, 0], [AT.hash + 0.12, 1, E.out], [AT.shut - 0.04, 1], [AT.shut + 0.02, 0, E.in]]);
     cabinet(x, CAB.x, CAB.y, CAB.w, CAB.h, CAB.cols, CAB.rows, a, { ...SLOT, k: openK, hot: true });
     text(x, "R2", CAB.x, CAB.y - 22, { font: FONT.mono(44, 600), color: bone, alpha: a });

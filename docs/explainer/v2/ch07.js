@@ -17,7 +17,7 @@
   // ---------- 这一章的文字：[中文, English]，场景代码里只写键 ----------
   I18N.add({
     "ch07.title": ["节拍器", "Metronomes"],
-    "ch07.sub": ["三种节奏：固定、看人数、看主机", "Fixed, by audience, by console"],
+    "ch07.sub": ["固定、看人数、看主机", "Fixed, by audience, by console"],
     "ch07.legend": ["一拍 = 一分钟", "1 beat = 1 minute"],
     "ch07.sA": ["有人在看 · 主机醒着", "Watched · console awake"],
     "ch07.sB": ["页面都在后台", "Every page in the background"],

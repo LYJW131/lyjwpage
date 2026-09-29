@@ -24,16 +24,16 @@
 
 片中开场按「**七个外部上报器 + 一个采集 Worker**」画（下表前七行就是这七个上报器）；Claude Code 云端遥测（OTLP）不是我们写的上报器，另算一个入口。上报器和采集任务有几个，只按代码画，旁白和标注里不说。其中 n100 上的 playstation-reporter，把 presence、游玩列表和奖杯 POST 到同一个 `/api/ingest/playstation`。入口来源是 `shared/ingest/prepare.ts#INGEST_SOURCES` 那一份（playstation 是其中之一）；OTLP 走 `/api/ingest/agents/otlp`，不在这份清单里。Home Assistant 的 token 开 homepod 和 playstation 两扇门。容器自己的 Access service token 是 `lyjwpage-playstation`，登记在 `workers/ingress/wrangler.toml#ACCESS_CLIENTS`，权限只有 `ingest:playstation`。
 
-第 01 章用到的部分（编码用量、collector 的任务与节奏、PlayStation 上报器、Mac 信封的 90 秒和 400 ms）按 main 4cf46c4 逐条回代码复核过。 <!-- allow: 核对基线戳 -->
+第 01 章用到的部分（编码用量、collector 的任务与节奏、PlayStation 上报器、Mac 信封的 90 秒和 400 ms）按 main 2489e10 逐条回代码复核过。 <!-- allow: 核对基线戳 -->
 
 | 来源 | 程序 / 在哪跑 | 入口 · token | 报什么 |
 |---|---|---|---|
 | Mac | Mac Telemetry Hub，菜单栏 App | `/api/ingest/mac` · `lyjwpage-mac` | 前台应用、窗口标题、Apple Music、充电设备、编码用量（本机的日行、最近一次用量事件、5 分钟 token 桶）、时区、Apple Music user token |
-| iPhone | iPhone Telemetry Hub，HealthKit 唤醒（圆环申请 `.hourly`，训练申请 `.immediate`，但会被系统钳到每小时；ActivityModule.swift:122 / WorkoutsModule.swift:45，iPhone README:121） | `/api/ingest/iphone` · `lyjwpage-iphone` | 活动圆环、训练、五分钟步数桶 |
+| iPhone | iPhone Telemetry Hub，HealthKit 唤醒：圆环按小时（`.hourly`；README 说这一条传 `.immediate` 也会被系统钳到 `.hourly`），训练申请 `.immediate`（`reporters/iphone-telemetry-hub/App/iPhoneTelemetryHub/Modules/ActivityModule.swift#observe`、`reporters/iphone-telemetry-hub/App/iPhoneTelemetryHub/Modules/WorkoutsModule.swift#startObserving`、`reporters/iphone-telemetry-hub/README.md` 的「什么时候会上报」） | `/api/ingest/iphone` · `lyjwpage-iphone` | 活动圆环、训练、五分钟步数桶 |
 | Home Assistant | 家里 | `/api/ingest/homepod` 和 `/api/ingest/playstation` · `lyjwpage-home-assistant` | HomePod 正在播放；PS5 电源 `{version:1, power}` |
 | PlayStation | playstation-reporter，n100 上的容器 | `/api/ingest/playstation` · `lyjwpage-playstation` | presence、游玩列表、奖杯。不发 `power` |
 | Emby | emby-reporter，NAS 上的容器 | `/api/ingest/emby` · `lyjwpage-emby` | 在看什么；海报先传 R2 |
-| 服务器 | server-reporter，东京 misaka-jp 容器 | `/api/ingest/server` · `lyjwpage-server` | 服务器状态，固定每 60 秒一次（config.ts:71） |
+| 服务器 | server-reporter，东京 misaka-jp 容器 | `/api/ingest/server` · `lyjwpage-server` | 服务器状态，固定每 60 秒一次（`reporters/server-reporter/src/config.ts#intervalMs` 的默认值，容器 `.env` 可覆盖） |
 | 编码账号 | agents-reporter，misaka-jp 容器 | `/api/ingest/agents` · `lyjwpage-agents` | 各家编码工具限额；Cursor 账号的用量日行、最近一次用量事件、5 分钟 token 桶 |
 | Claude Code 云端 | OTLP JSON（可 gzip），Claude Code 自己发，不是我们写的上报器 | `/api/ingest/agents/otlp` · `lyjwpage-claude-cloud` | 云端 token 与费用的累计值（只收 cumulative）；状态核心按序列做差，落成和另两个来源同形的日行、5 分钟桶、最近一次用量事件（`workers/api/src/stores/claude-cloud.ts`）。三处怎么合并见下文「编码用量」 |
 | collector Worker | Cloudflare，cron 每分钟一响，任务表 `workers/collector/src/registry.ts#JOBS` 里的任务各按自己的节奏 | 不走 ingress | 见下文 |
@@ -44,19 +44,19 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 ### Mac 信封
 
-- 结构是 `{version:4, presence, heartbeatAt, activeModules, modules:{…}}`，只带变了的模块（TelemetryEnvelope.swift:46-60，shared/ingest/telemetry.ts:269-280）。
-- 没变化时每 **90 秒**发一个空信封报平安（ReportDecision.swift 的 `heartbeatInterval`）。
-- 切应用先等 **400 ms** 落定，是防抖：落定前再切一次就重新等（ServiceController.swift 的 `desktopSettleDelay`）。
-- 窗口标题上报前先过隐私判断，Jev 参与；只有放行的进信封（WindowTitleJudge.swift）。判据不写。
+- 结构是 `{version:4, presence, heartbeatAt, activeModules, modules:{…}}`，`heartbeatAt` 是 epoch 毫秒；只带变了的模块（`reporters/mac-telemetry-hub/Sources/TelemetryCore/TelemetryEnvelope.swift#TelemetryEnvelope`、`reporters/mac-telemetry-hub/Sources/TelemetryCore/ReportDecision.swift#ReportDecision`、`shared/ingest/telemetry.ts#prepareTelemetryEnvelope`）。
+- 没变化时每 **90 秒**发一个空信封报平安（`reporters/mac-telemetry-hub/Sources/TelemetryCore/ReportDecision.swift#heartbeatInterval`）。
+- 切应用先等 **400 ms** 落定，是防抖：落定前再切一次就重新等（`reporters/mac-telemetry-hub/App/MacTelemetryHub/ServiceController.swift#desktopSettleDelay`）。
+- 窗口标题上报前先过隐私判断，Jev 参与；只有放行的进信封（`reporters/mac-telemetry-hub/App/MacTelemetryHub/WindowTitleJudge.swift#WindowTitleJudge`）。判据不写；第 01 章问题横条的条数是示意，不对应判断的题数。
 
 ### 图片
 
-- 在源头压一次，文件名是 `sha256(内容).扩展名`，直传 R2，带 `Cache-Control: public, max-age=31536000, immutable`（emby r2.ts:33-38、80；R2IconUploader.swift:85、101）。
+- 字节在源头定好，文件名是 `sha256(内容).扩展名`，直传 R2，带 `Cache-Control: public, max-age=31536000, immutable`（`reporters/emby-reporter/src/r2.ts#uploadImage`；`reporters/mac-telemetry-hub/Sources/TelemetryCore/R2IconUploader.swift#upload`、`reporters/mac-telemetry-hub/Sources/TelemetryCore/R2IconUploader.swift#objectKey`）。
 - 三种图：
-  - Mac 应用图标：96×96 PNG（TelemetryModules.swift:436）
-  - Emby 海报：WebP q88
-  - Mac 充电头封面：JPG（ServiceController.swift:1088）
-- 信封里只带 `objectKey`。入口按正则 `^[a-f0-9]{64}\.(png|webp|jpe?g)$` 校验（asset-url.ts:2）。Mac 的应用图标在 `desktop` 模块里是 `iconHash` 加 `iconObjectKey`（`shared/ingest/telemetry.ts`）。
+  - Mac 应用图标：重画成 96×96 PNG（`reporters/mac-telemetry-hub/App/MacTelemetryHub/TelemetryModules.swift#pngData`）
+  - Emby 海报：转成 WebP q88（`reporters/emby-reporter/src/r2.ts#uploadImage`）
+  - Mac 充电头封面：Anker 的源 JPEG 原样上传，扩展名 jpg（`reporters/mac-telemetry-hub/App/MacTelemetryHub/ServiceController.swift#confirmedCoverIconObjectKey`）
+- 信封里只带 `objectKey`。入口按 `src/lib/asset-url.ts#IMAGE_OBJECT_KEY` 的正则校验（64 位十六进制加 png / webp / jpg）。Mac 的应用图标在 `desktop` 模块里是 `iconHash` 加 `iconObjectKey`（`shared/ingest/telemetry.ts#PreparedDesktop`）。
 
 ### 编码用量（三个来源）
 
@@ -69,7 +69,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 - 节奏：每个任务登记「每 N 分钟、第 offset 分钟」（各任务的 `everyMinutes` / `offset`），cron 每分钟一响时挑出到期的一起跑（`workers/collector/src/schedule.ts#isDue`）。第 01 章表盘的时序图按这张表从整点起画 12 分钟。
 - 最近在听：每 2 分钟调 `CORE.commitRecentlyPlayed`。用的 user token 是 Mac 推进 `CREDENTIALS` 的那一份，形成一次凭据接力。
-- GitHub、Vercel、Cloudflare、Sentry、PageSpeed、厂商状态：直接写 `LAG`。
+- GitHub、Vercel、Cloudflare、Sentry、PageSpeed、厂商状态：直接写 `LAG`；Vercel 部署列表那一轮另把站点部署记录写进 D1（`workers/collector/src/jobs/vercel.ts#vercelDeploymentsJob`、`workers/collector/src/history.ts#archiveSiteDeploys`）。第 01 章表盘的注只说「直接交给状态核心，或写 LAG」，不画 D1。
 - PlayStation 不在这张表里。
 
 ## 2 上报入口（workers/ingress，`ingest.homepage.lyjw.llc`）
@@ -171,23 +171,23 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 ### D1 长期历史 `lyjwpage-history`
 
-- 共 17 张表（workers/api/migrations/0001–0007 的 `CREATE TABLE`，含已不再写的 `pulse_samples` 和记归档水位的 `pulse_archive_state`），长期保存、不按时间清理。写入按自然键 upsert，活动桶会按区间删掉重写（pulse-archive.ts:262-336、280；shared/history-ingest.ts:41-127），所以不能说「只增不删」。DO 里的 pulse 时间线只留 7 天。
-- 写 D1 的有三方：上报入口（训练、圆环日读数、限额快照、服务器小时汇总）、采集 Worker（站点部署记录，`workers/collector/src/history.ts#archiveSiteDeploys`）、api（分钟 cron 的 pulse 事实表，以及收下奖杯信封后的 `workers/api/src/stores/trophy-history.ts#archiveTrophies`）。
+- 表见 `workers/api/migrations/` 的 `CREATE TABLE`（片中不说几张），其中记归档水位的是 `pulse_archive_state`，冻结不再写、原样保留的旧表是 `pulse_samples`、`coding_token_buckets`、`agent_usage_days`（`workers/api/README.md`）。长期保存、不按时间清理。写入按自然键 upsert（`shared/history-ingest.ts` 的各 `…Statements`），活动桶会按区间删掉重写（`workers/api/src/pulse-archive.ts#DELETE_ACTIVITY_RANGE`），所以不能说「只增不删」。DO 里的 pulse 时间线只留 7 天。
+- 写 D1 的有三方：上报入口（训练、圆环日读数、限额快照、服务器小时汇总）、采集 Worker（站点部署记录，`workers/collector/src/history.ts#archiveSiteDeploys`）、api（分钟 cron 的 pulse 归档，含编码用量的账本和 5 分钟桶；以及收下奖杯信封后的 `workers/api/src/stores/trophy-history.ts#archiveTrophies`）。
 - 活动历史桶在入口量化（eb429ed），防止 HealthKit 的浮点抖动让 D1 每次重写整个 24 小时窗口。
 
 ### api 的分钟 cron（`workers/api/src/index.ts#runScheduled`）
 
-这一节和下面的「Pulse 事实时间线」是第 08 章用的，按 main 4cf46c4 逐条回代码复核过。 <!-- allow: 核对基线戳 -->
+这一节和下面的「Pulse 事实时间线」是第 08 章用的，按 main 2489e10 逐条回代码复核过。 <!-- allow: 核对基线戳 -->
 
 - 每轮只做两件事：
   1. 把 pulse 归档到 D1：StateHub 给出一份有界快照 → 写事实表 → 回头确认水位。各路独立，一路坏了不挡别的路（`workers/api/src/pulse-archive.ts#ARCHIVE_STREAMS`：三条状态道、在听的曲目痕迹、充电、活动桶、Coding 观测，加上编码用量的账本和 5 分钟 token 桶）。
   2. PulseScorer 调 Jev（`jev-1.13.0`），**只给 Coding 打分**，一窗是 `shared/pulse-coding.ts#PULSE_SCORE_WINDOW_MS`（三个 5 分钟桶，15 分钟），窗结束两分钟后才打（`workers/api/src/pulse-score.ts#PulseScorer`）：
      - 交给 Jev 的是这一窗的特征：Mac 的前台应用与 agent 观测、容器里 Cursor 账号的活动，外加三个来源的 5 分钟 token 桶（Mac 本机扫描、Cursor 账号历史、Claude Code 云端遥测），按来源、agent、模型相加（同文件 `windowTokenUsage`）。Mac 扫描范围里缺的桶是测到的 0；另两个来源只作正证据，没有行不等于 0。
      - 全零的窗不问 Jev，直接记最低档：整窗都看得见、Mac 本机扫描盖满三个桶、没有任何活动和 token（同文件 `definiteZero`）。Mac 不在、只有 Cursor 看得见且没有活动时也不问，按半置信记最低档（`quietIndependentSource`）。一点观测都没有的窗不打分。
-     - 每轮最多 36 个窗，并发 3，超时 10 秒。
-- 整 5 分钟那一轮（按 UTC 分钟）包在 `Sentry.withMonitor` 里，向 `api-minute-cron` 报到（`workers/api/src/cron-heartbeat.ts#heartbeatDue`）；其余几轮照跑、不报到。
-- 两件事都 `.catch` 吞错，所以心跳**只证明 cron 跑完了**，不证明归档或打分成功。
-- 旧说法「叫 StateHub 重建读模型、KV 由 DO 定时任务写」已删除。
+     - 每轮最多 36 个窗，从新到旧，每批并发 3，超时 10 秒。
+     - 打分写回 StateHub 的评估列表，和 pulse 时间线一样只留 `src/lib/limits.ts#PULSE_TTL_MS`（`workers/api/src/pulse-score-state.ts#finishPulseScore`）；归档的各路（`ARCHIVE_STREAMS`）里没有它，**不进 D1**。第 08 章在 Jev 那一格上方注「打分只在屋里放 7 天，不进 D1」。
+- 整 5 分钟那一轮（按 UTC 分钟）包在 `Sentry.withMonitor` 里，向 `api-minute-cron` 报到（`workers/api/src/cron-heartbeat.ts#heartbeatDue`、`src/lib/sentry.ts#CRON_HEARTBEAT_EVERY_MINUTES`）；其余几轮照跑、不报到。
+- 两件事都 `.catch` 吞错，所以心跳**只证明 cron 跑完了**，不证明归档或打分成功（`workers/api/src/index.ts#runScheduled`）。
 
 ### 闹钟
 
@@ -301,28 +301,32 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 | agents（限额） | 有人正看：5 分钟 | 只开在后台：10 分钟；没人：60 分钟 | `SITE_URL/count`，超时 2.5 秒 |
 | 服务器（对照） | 60 秒 | 60 秒 | 不问 |
 
-第 07 章用到的部分按 main 4cf46c4 逐条回代码复核过。 <!-- allow: 核对基线戳 -->
+第 07 章用到的部分按 main 2489e10 逐条回代码复核过。 <!-- allow: 核对基线戳 -->
 
 - PlayStation 大约每 `reporters/playstation-reporter/src/cadence.ts#PROBE_INTERVAL_MS` 发一次发现包，只在该打的时候打 PSN。`HTTP/1.1 200` 是醒着，`620` 是休息，超时或别的回复先记一笔，连续 `reporters/playstation-reporter/src/cadence.ts#OFF_STREAK_TO_REST` 次才离开醒着。醒着和没醒对调立刻打一轮，休息和关机来回切不额外打。退避（`reporters/playstation-reporter/src/state.ts#backoffMs`）没到时这些都不放行。
   - `AWAKE_TICK_INTERVAL_MS` 是醒着那一档的间隔，不是两轮之间的下限：对调那一轮不等它（`reporters/playstation-reporter/src/cadence.ts#shouldRunTick`）。门只在每次探测时判，醒着时要等到过线之后的那一探，实际约每分钟一轮。
-  - 下游的窗口都锚在闲档：站点判 PS 上报器断没断流用 `src/lib/freshness.ts#PLAYSTATION_STALE_MS`（闲档三轮多一点，只有浏览器判），Pulse 玩那条道一段最多撑 `shared/pulse-timeline.ts#GAMING_HOLD_MS`（盖过闲档再留投递抖动）。主机醒着时只会更快，判活的下限由闲档决定。第 08 章不画这两个窗口。
-- agents 的三档在 `reporters/agents-reporter/src/config.ts` 的 `cadence`。每跑完一轮才按当时的人数定下一次等多久；等的时候每 5 分钟醒来重查一次，人数多了立刻提前跑，人数少了不延后已定的那一次（`reporters/agents-reporter/src/cadence.ts#waitForNextRound`）。闲档 60 分钟 ÷ 5 = 12 次小睡。
+  - 下游的窗口都锚在闲档：站点判 PS 上报器断没断流用 `src/lib/freshness.ts#PLAYSTATION_STALE_MS`（闲档三轮多一点，只有浏览器判）。Pulse 玩那条道每次观测的有效期是 `shared/pulse-timeline.ts#GAMING_HOLD_MS`（盖过闲档再留投递抖动，`shared/pulse-timeline.ts#stateHoldMs`）：有效期内来了新观测，这一段就接着开，过期还没等到才在最后一次确认处收尾（`shared/pulse-timeline.ts#planStateObservation`）；容器每个完整 tick 都发 presence（`reporters/playstation-reporter/src/tick.ts#tick`），闲档一轮一封就接得上。主机醒着时只会更快，判活的下限由闲档决定。第 08 章不画这两个窗口。
+- agents 的三档是 `reporters/agents-reporter/src/config.ts` 里 `cadence` 的默认值（容器 `.env` 可覆盖，线上值没记进 `docs/ops-facts.md`）。每跑完一轮才按当时的人数定下一次等多久；等的时候每 5 分钟醒来重查一次，人数多了立刻提前跑，人数少了不延后已定的那一次（`reporters/agents-reporter/src/cadence.ts#waitForNextRound`）。闲档 60 分钟 ÷ 5 = 12 次小睡。
 - 服务器上报器固定每分钟推，不问人数：闲时每分钟问一次人数本身就不比直接推省（`reporters/server-reporter/src/config.ts` 的 `intervalMs` 注释）。夜里只有它的心形还在跳。
 - agents 的人数查询失败就当 0，所以只会变慢，不会变快（`reporters/agents-reporter/src/cadence.ts#readAudience`）。PlayStation 不问这个数。
 
 ## 8 站点自检
 
+第 08 章用到的部分按 main 2489e10 逐条回代码复核过。 <!-- allow: 核对基线戳 -->
+
 两个方向相反的信号：
 
-- **Sentry 每分钟来敲门**：在线探测 HEAD `/api/version`，只说明 Vercel 还在出页面。这项配在 Sentry 侧，依据 AGENTS.md。
-- **Worker 每 5 分钟去报到**：api 分钟 cron 的整 5 分钟那一轮。
+- **Sentry 每分钟来敲门**：在线探测 HEAD `/api/version`，只说明 Vercel 还在出页面（`src/components/live/uptime-strip.tsx#UptimeStrip` 的注释）。探测配在 Sentry 侧，记在 `docs/ops-facts.md` 的「Sentry」一节，那一条标的是「核对于 未记录」。
+- **Worker 每 5 分钟去报到**：api 分钟 cron 的整 5 分钟那一轮（见 §3「api 的分钟 cron」）。
 
-Sentry 的结果由 **collector** 的 `sentry-status` 任务每 5 分钟用只读令牌取回（`workers/collector/src/jobs/sentry-status.ts#sentryStatusJob`），写进 `LAG` 的 `sentry:v1` 键，经 `/api/status/sentry` 上 LYJWPAGE 卡：两行，lyjw.me 是每分钟那次敲门、API 是 cron 的报到，各 30 天一天一格（`src/components/live/uptime-strip.tsx#UptimeStrip`、`src/lib/sentry-status.ts#UPTIME_DAYS`）。站点按每天的成功率给格子上色；片中只点亮今天那一格，不出可用率。
+Sentry 的结果由 **collector** 的 `sentry-status` 任务每 5 分钟取回（`workers/collector/src/jobs/sentry-status.ts#sentryStatusJob`），写进 `LAG` 的 `sentry:v1` 键，经 `/api/status/sentry` 上 LYJWPAGE 卡：两行，lyjw.me 是每分钟那次敲门、API 是 cron 的报到，各 30 天一天一格（`src/components/live/uptime-strip.tsx#UptimeStrip`、`src/lib/sentry-status.ts#UPTIME_DAYS`）。站点按每天的成功率给格子上色；片中只点亮今天那一格，不出可用率。
+
+取数带的是 `SENTRY_API_TOKEN`，代码只拿它发 GET 查询（`src/lib/sentry-status.ts#sentryClient`）。令牌的权限范围是 Sentry 侧的配置：`workers/collector/README.md` 写的是组织只读（org:read / project:read / event:read），`docs/ops-facts.md` 没有这一条，**未核**。片中令牌只画成一张卡、标 `GET`，不说「只读」。
 
 ## 片中不用或待定
 
 - **实测延迟**：上一版的「320–490 ms（8 月实测）」作废，因为中间多了一跳 Service Binding。上画面前要重测；没重测就不出数字。
-- **按人数调频的只剩 agents-reporter**。PlayStation 按局域网发现包调频，片中不说「三」。
+- **按人数调频的只剩 agents-reporter**。PlayStation 按局域网发现包调频；片中不说几个上报器按人数调频，也不说节奏有几种。
 - **Mac `postInterval`**：默认 10 秒，注释写的是「本机 30 秒」，未确认，片中不用。
 - **HA 的配置**：不在仓库里。片中只讲它报什么，不讲怎么配。
 
@@ -338,4 +342,4 @@ Sentry 的结果由 **collector** 的 `sentry-status` 任务每 5 分钟用只�
 - iPhone README：`KNOWN_MODULES` 的路径写成 `workers/api/src/phone-telemetry.ts`，实际在 `shared/ingest/phone.ts:27`。
 - `workers/online-counter`、`workers/ingest`、`workers/playstation-reporter`：三个目录只剩未跟踪的 `node_modules`。<!-- allow: 快照里点名的已退役目录，不在仓库 -->
 - `workers/api/wrangler.toml:68`：注释说 D1「这里只增不删」，实际活动桶会按区间删掉重写（见 §3 D1 那节）。（34eb555 复核时发现）
-- `shared/ingest/prepare.ts` 文件头、`workers/ingress/README.md`、`docs/reporter-endpoints.md`：还说采集 Worker 自己组 PlayStation 信封、也过 prepare；PlayStation 已由 n100 容器直接 POST 到上报入口，采集 Worker 不碰 PSN。
+- `reporters/agents-reporter/src/config.ts` 的 `cadence` 注释还说「与 PlayStation 共用人数分档逻辑」；PlayStation 看的是局域网发现包，不读人数（`reporters/playstation-reporter/src/cadence.ts#shouldRunTick`）。
