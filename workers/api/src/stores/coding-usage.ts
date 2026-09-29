@@ -15,7 +15,6 @@ import { CODING_USAGE_SOURCE_NAMES, type CodingUsageSource } from "@shared/codin
 import { applyCodingUsageStatus, buildCodingUsageView, type StoredCodingUsage, type StoredCodingUsageAgent } from "@shared/coding-usage-view";
 import type { StorageBatch } from "@shared/storage-client";
 
-import { migrateLegacyCodingUsage } from "./coding-usage-migrate";
 
 /**
  * 用量事实（日行）的状态核心那一半：Mac 的 `codingUsage`、agents 的 `codingUsage`，以及云端 OTLP
@@ -87,8 +86,6 @@ function sameStatus(left: StoredCodingUsageAgent, right: StoredCodingUsageAgent)
 }
 
 /**
- * `recompute`：账本没变也重算一次视图 —— 调用方先跑过一次性迁移、转出了新账本时用
- * （云端 OTLP 那条路要在做差之前迁移，迁移的结果轮不到这里的那次调用看见）。
  * `derived`：这份账本是状态核心自己按提交顺序攒出来的（云端 OTLP），不是来源报来的快照，
  * 不按采集时刻淘汰 —— 入口先收到的那封可能后提交，它做出来的差值照样要进账本。
  */
@@ -96,9 +93,8 @@ export async function prepareCodingUsage(
   source: CodingUsageSource,
   report: CodingUsageReport,
   receivedAt: number,
-  { recompute = false, derived = false }: { recompute?: boolean; derived?: boolean } = {},
+  { derived = false }: { derived?: boolean } = {},
 ): Promise<CodingUsageLanding> {
-  const migrated = (await migrateLegacyCodingUsage(receivedAt)) || recompute;
   const answered = await askStorage(async (storage) => {
     const batch = storage.batch();
     for (const name of CODING_USAGE_SOURCE_NAMES) batch.fields(codingUsageKey(name));
@@ -132,9 +128,9 @@ export async function prepareCodingUsage(
     fields[agent.id] = JSON.stringify(own[agent.id]);
   }
   const changed = Object.keys(fields).length > 0;
-  if (!changed && !migrated) return NOTHING;
+  if (!changed) return NOTHING;
 
-  const patched = !usageChanged && !migrated && previousView ? applyCodingUsageStatus(previousView, source, statusOnly) : null;
+  const patched = !usageChanged && previousView ? applyCodingUsageStatus(previousView, source, statusOnly) : null;
   if (patched) {
     return landing((batch) => {
       batch.patch(codingUsageKey(source), fields).set(codingViewKey(), JSON.stringify(patched));

@@ -16,14 +16,12 @@ import {
   codingBucketsKey,
   codingOtlpKey,
   codingUsageKey,
-  codingUsageRevisionKey,
   codingViewKey,
   codingYearKey,
   parseStoredActivity,
   parseStoredUsageLedgers,
   parseStoredView,
 } from "@shared/coding-store";
-import { key } from "@/lib/storage";
 import { mirror as telemetryMirror } from "@shared/telemetry";
 
 import { fanout } from "./fanout";
@@ -424,50 +422,6 @@ test("agents-otlp turns cumulative deltas into day rows, token buckets and activ
     assert.ok(!JSON.stringify([...Object.values(await fieldsOf(storage, codingUsageKey("agents-otlp"))), await storage.get(codingOtlpKey())]).includes("someone@example.com"));
 
     await assert.rejects(inRequest(env, () => prepareIngest("agents-otlp", { nope: true }, NOW)));
-  } finally { resetStorageForTests(); }
-});
-
-test("the one-time migration carries the cloud counters over, so the first OTLP after the switch adds only the delta", async () => {
-  const storage = new FakeStorage();
-  installStorageForTests(storage);
-  const env = testEnv();
-  try {
-    // 切换前的旧键：claude 云端已经累计到 300，同一条序列（同一进程、同一组属性）
-    const seeded = await commit(env, await inRequest(env, () => prepareIngest("agents-otlp", otlpTokens(NOW - 120_000, 300), NOW - 120_000)));
-    assert.equal(seeded.ok, true);
-    const counters = await storage.get(codingOtlpKey());
-    const ledgers = await fieldsOf(storage, codingUsageKey("agents-otlp"));
-    const legacyDays = parseStoredUsageLedgers(ledgers).claude!.days.map((day) => ({
-      date: day.date, inputTokens: day.inputTokens, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0,
-      totalTokens: day.totalTokens, apiEquivalentCostUSD: 0, models: day.models,
-    }));
-    const otlp = JSON.parse(counters!) as { series: unknown; sessions: unknown; sessionCount: number };
-    resetStorageForTests();
-    const fresh = new FakeStorage();
-    installStorageForTests(fresh);
-    await fresh.set(key("vibecoding", "claude-cloud-usage"), JSON.stringify({
-      pushedAt: NOW - 120_000, taggedAt: null,
-      usage: { days: legacyDays, series: otlp.series, sessions: otlp.sessions, sessionCount: otlp.sessionCount, lastPointAt: NOW - 120_000, lastModel: "claude-fable-5-1" },
-    }));
-    await fresh.set(key("vibecoding", "cursor-usage"), JSON.stringify({
-      pushedAt: NOW - 600_000,
-      report: { collectedAt: new Date(NOW - 600_000).toISOString(), state: "ok", error: null, warning: null, coverageStart: null, coverageEnd: null,
-        precision: "measured", costComplete: true, days: [{ ...usageDay("2026-09-28", 40, "composer-2"), costComplete: true }] },
-    }));
-
-    const next = await commit(env, await inRequest(env, () => prepareIngest("agents-otlp", otlpTokens(NOW, 350), NOW)));
-    assert.equal(next.ok, true);
-    const claude = parseStoredUsageLedgers(await fieldsOf(fresh, codingUsageKey("agents-otlp"))).claude;
-    assert.equal(claude?.days.reduce((sum, day) => sum + day.inputTokens, 0), 350, "300 carried over + a 50 delta, not 300 + 350");
-    const cursor = parseStoredUsageLedgers(await fieldsOf(fresh, codingUsageKey("agents"))).cursor;
-    assert.equal(cursor?.days[0]?.totalTokens, 40, "the Cursor ledger comes along");
-    const view = parseStoredView(await fresh.get(codingViewKey()));
-    assert.equal(view?.totals?.totalTokens, 390);
-    assert.ok(await fresh.get(key("coding", "legacy-migrated")));
-    // 迁出来的账本带修订号（D1 归档按它取增量，没有就永远轮不到它们），云端那格随后又因差值前进了一版
-    assert.equal(cursor?.revision, 1);
-    assert.equal(claude?.revision, 2);
-    assert.equal(await fresh.get(codingUsageRevisionKey()), "2");
   } finally { resetStorageForTests(); }
 });
 
