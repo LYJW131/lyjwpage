@@ -11,6 +11,20 @@
 /** 桶长；桶起点是它的整数倍 */
 export const CODING_BUCKET_MS = 300_000;
 
+/**
+ * 站点对一个日行的模型行数、一个桶窗口的行数各有上限，超了那个模块整份被拒收。
+ * 源：shared/coding-usage.ts#MAX_DAY_MODELS、shared/coding-usage.ts#MAX_WINDOW_ROWS
+ * （`coding-contract.test.mts` 用站点真正的校验核对：收得下这么多，多一行就拒）
+ */
+export const MAX_DAY_MODELS = 64;
+export const MAX_WINDOW_ROWS = 64;
+
+/**
+ * 超出上限的模型行并成的那一行的名字。取站点隐藏名单里的占位名：视图不当模型名展示、不进排名，
+ * 合计照算。源：shared/coding-models.ts#HIDDEN_CODING_MODELS（同一份契约测试核对它确实被隐藏）
+ */
+export const OVERFLOW_MODEL = "unknown";
+
 /** 时刻所在桶的起点 */
 export function bucketStart(ms: number): number {
   return Math.floor(ms / CODING_BUCKET_MS) * CODING_BUCKET_MS;

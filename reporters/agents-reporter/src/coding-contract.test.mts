@@ -11,9 +11,10 @@ import test from "node:test";
  */
 await import("../../../src/lib/testing/register-alias.mjs");
 const contract = await import("../../../shared/coding-usage.ts");
+const codingModels = await import("../../../shared/coding-models.ts");
 const ingest = await import("../../../shared/ingest/agents.ts");
 
-const { bucketStart } = await import("../dist/coding-usage.js");
+const { bucketStart, MAX_DAY_MODELS, MAX_WINDOW_ROWS, OVERFLOW_MODEL } = await import("../dist/coding-usage.js");
 const { recentPayload, recentReports } = await import("../dist/cursor-now.js");
 const {
   aggregateEvents,
@@ -179,4 +180,99 @@ test("校验确实在跑：少一列、桶起点没对齐、用量行带了 erro
   const buckets = wire(cursorBucketReport(events, { from: bucketStart(NOW - 24 * 3_600_000), to: NOW }, NOW));
   buckets.windows[0]!.from += 1;
   assert.throws(() => contract.normalizeCodingTokenBucketReport(buckets, NOW), /对齐 5 分钟/);
+});
+
+/**
+ * 造 count 个不同模型、各一条事件，用量各不相同（第 0 个最多）。事件都早于 NOW，落在同一个站点日、
+ * 同一个 5 分钟桶里，所以一天的模型行数、一个窗口的行数都等于 count。
+ */
+function crowdedEvents(count: number) {
+  const start = bucketStart(NOW - 3_600_000);
+  const crowded = Array.from({ length: count }, (_, index) =>
+    eventRow(start + index * 1_000 - NOW, `model-${String(index).padStart(3, "0")}`, 10_000 - index * 10),
+  );
+  return parseUsagePage({ totalUsageEventsCount: count, usageEventsDisplay: crowded }, 0, NOW).events;
+}
+
+const sumOf = <Item,>(items: Item[], pick: (item: Item) => number) => items.reduce((sum, item) => sum + pick(item), 0);
+const RANGE = { from: bucketStart(NOW - 24 * 3_600_000), to: NOW };
+
+test("codingUsage：一天 41 个、恰好上限、超过上限的模型，站点都全收，模型合计仍等于总量", () => {
+  for (const count of [41, MAX_DAY_MODELS, MAX_DAY_MODELS + 6]) {
+    const aggregated = aggregateEvents(crowdedEvents(count), NOW);
+    const { usage } = applyLedger(null, "account", aggregated.days, new Date(NOW).toISOString(), aggregated.unmeasured);
+    const sent = wire({ agents: [usage] });
+    assert.deepEqual(contract.normalizeCodingUsageReport(sent, NOW), sent, `${count} 个模型`);
+    const day = sent.agents[0]?.days?.find((row) => row.totalTokens > 0);
+    assert.equal(day?.models.length, Math.min(count, MAX_DAY_MODELS), `${count} 个模型`);
+    assert.equal(sumOf(day?.models ?? [], (row) => row.tokens), day?.totalTokens, `${count} 个模型`);
+  }
+});
+
+test("codingTokenBuckets：一个窗口恰好上限、比上限多一个模型，站点都全收，各列与事件数守恒", () => {
+  for (const count of [MAX_WINDOW_ROWS, MAX_WINDOW_ROWS + 1]) {
+    const crowded = crowdedEvents(count);
+    const sent = wire(cursorBucketReport(crowded, RANGE, NOW));
+    assert.deepEqual(contract.normalizeCodingTokenBucketReport(sent, NOW), sent, `${count} 个模型`);
+    assert.equal(sent.windows.length, 1);
+    const rows = sent.windows[0]?.agents ?? [];
+    assert.equal(rows.length, MAX_WINDOW_ROWS, `${count} 个模型`);
+    for (const column of ["inputTokens", "outputTokens", "cacheReadTokens", "cacheCreationTokens"] as const) {
+      assert.equal(sumOf(rows, (row) => row[column]), sumOf(crowded, (item: Record<string, number>) => item[column] ?? 0), `${count} 个模型 ${column}`);
+    }
+    assert.equal(sumOf(rows, (row) => row.eventCount ?? 0), count, `${count} 个模型 eventCount`);
+  }
+});
+
+test("整封 /api/ingest/agents：日行和窗口的模型都超过站点上限，并成一行后整封全收、没有拒收", () => {
+  const crowded = crowdedEvents(Math.max(MAX_DAY_MODELS, MAX_WINDOW_ROWS) + 6);
+  const aggregated = aggregateEvents(crowded, NOW);
+  const { usage } = applyLedger(null, "account", aggregated.days, new Date(NOW).toISOString(), aggregated.unmeasured);
+  const envelope = wire({
+    collectedAt: new Date(NOW).toISOString(),
+    agents: [{ id: "cursor", plan: null, limits: [], limitsError: null }],
+    codingUsage: { agents: [usage] },
+    codingActivity: cursorActivityReport(NOW, latestOf(crowded.map((item: { timestampMs: number; model: string }) => ({ at: item.timestampMs, model: item.model })))),
+    codingTokenBuckets: cursorBucketReport(crowded, RANGE, NOW),
+    reporter: { commit: null, pushes: 1, rttMs: null, start: NOW - 60_000, end: NOW },
+  });
+  const prepared = ingest.prepareAgentLimits(envelope, NOW);
+  assert.deepEqual(prepared.rejected, []);
+  assert.ok(prepared.codingUsage?.agents[0]?.days?.some((day: { models: { model: string }[] }) => day.models.some((row) => row.model === OVERFLOW_MODEL)));
+  assert.ok(prepared.codingTokenBuckets?.windows.some((window: { agents: { model: string | null }[] }) => window.agents.some((row) => row.model === OVERFLOW_MODEL)));
+});
+
+test("上限确实是站点卡着的：MAX_DAY_MODELS 与 MAX_WINDOW_ROWS 和站点一致（收得下这么多，多一行就拒）", () => {
+  const aggregated = aggregateEvents(events, NOW);
+  const { usage } = applyLedger(null, "account", aggregated.days, new Date(NOW).toISOString(), aggregated.unmeasured);
+  const usageWith = (count: number) => {
+    const sent = wire({ agents: [usage] });
+    const day = sent.agents[0]!.days![0]!;
+    day.models = Array.from({ length: count }, (_, index) => ({ model: `model-${index}`, tokens: 1 }));
+    day.totalTokens += count;
+    return sent;
+  };
+  assert.doesNotThrow(() => contract.normalizeCodingUsageReport(usageWith(MAX_DAY_MODELS), NOW));
+  assert.throws(() => contract.normalizeCodingUsageReport(usageWith(MAX_DAY_MODELS + 1), NOW), /models 最多 \d+ 条/);
+
+  const bucketsWith = (count: number) => {
+    const sent = wire(cursorBucketReport(events, RANGE, NOW));
+    sent.windows[0]!.agents = Array.from({ length: count }, (_, index) => ({
+      id: "cursor",
+      model: `model-${index}`,
+      inputTokens: 1,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheCreationTokens: 0,
+      reasoningTokens: 0,
+      eventCount: 1,
+    }));
+    return sent;
+  };
+  assert.doesNotThrow(() => contract.normalizeCodingTokenBucketReport(bucketsWith(MAX_WINDOW_ROWS), NOW));
+  assert.throws(() => contract.normalizeCodingTokenBucketReport(bucketsWith(MAX_WINDOW_ROWS + 1), NOW), /windows\[0\]\.agents 最多 \d+ 条/);
+});
+
+test("并出来的占位行名是站点隐藏名单里的名字：视图不当模型名展示、不进排名", () => {
+  assert.equal(codingModels.isVisibleCodingModel(OVERFLOW_MODEL), false);
 });
