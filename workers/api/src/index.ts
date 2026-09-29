@@ -35,7 +35,7 @@ const apiWorker = {
 };
 
 /**
- * 分钟 cron 只剩 pulse 的两件事，外部拉取都在采集 Worker。归档只往 D1 追加，
+ * 分钟 cron 做 pulse 的两件事，外部拉取都在采集 Worker。归档写 D1，
  * 评分才调外部模型；两件各自兜底，一件失败不拖累另一件，也不让这一轮心跳报错。
  */
 async function runScheduled(env: Env): Promise<void> {

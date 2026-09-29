@@ -31,7 +31,7 @@ function toState(raw: AuthTokensResponse, issuedAt: number): AuthState {
     throw new IncompleteAuthTokens("PSN 没给全 access / refresh token");
   }
   const accessSeconds = Number(raw.expiresIn) || 3600;
-  // 今晚真实凭据观察到 refresh token 约 10 天；上游若给出期限，始终以它为准。
+  // 上游给出期限就始终以它为准；缺省的兜底值只是估计。
   const refreshSeconds = Number(raw.refreshTokenExpiresIn) || 10 * 24 * 3600;
   return {
     accessToken: raw.accessToken,
@@ -150,7 +150,7 @@ export class AuthSession {
   async accessToken(force = false): Promise<string> {
     // 先把 KV 里的状态认下来再判断半衰期。每轮 invocation 都是新会话，current
     // 初始必为 null —— 不先读 KV 就会一头扎进 renew()，把一串还很新鲜的
-    // refresh token 白白轮换掉；每 15 分钟轮换一次，迟早撞上 KV 最终一致
+    // refresh token 白白轮换掉；每一轮都轮换一次，迟早撞上 KV 最终一致
     // 读到旧串的那一天，被拒后就跌回「要 NPSSO」。
     if (!force) this.current ??= await readAuth(this.env.COLLECTOR_KV);
     if (

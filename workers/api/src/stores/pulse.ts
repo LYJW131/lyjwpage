@@ -91,7 +91,7 @@ export async function recordChargingSample(t: number, watts: number, device: str
  * ingest 串行化，这里的读、合并、改写不会和另一封 iPhone 上报交错。
  *
  * 只从第一处不同的桶往后重写：每次推送通常只动最后一两个桶，整串 remove + append
- * 会让每封 iPhone 上报写两千行（见 docs/state-storage 里 Workers Paid 用量那条）。
+ * 会让每封 iPhone 上报把整串桶（最多 `ACTIVITY_BUCKET_CAP` 行）重写一遍，DO 的写入行数按套餐计量。
  */
 export async function replacePulseActivity(range: { from: number; to: number }, buckets: ActivityBucket[]): Promise<void> {
   const k = pulseActivityKey();

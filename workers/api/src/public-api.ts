@@ -21,8 +21,8 @@ import { currentContext } from "./runtime";
 /**
  * 本地开发的上游兜底。
  *
- * `wrangler dev` 起来的 Worker 是一座空库：没有上报器往它推，除了自己去
- * GitHub 取的那几张卡，别的全是降级态，新加一张卡时页面上没东西可对照。
+ * `wrangler dev` 起来的 Worker 是一座空库：没有上报器往它推，外部数据的拉取又在
+ * 采集 Worker 里（本地不自动跑），所以基本全是降级态，新加一张卡时页面上没东西可对照。
  * 在 .dev.vars 里配 `UPSTREAM_API_URL=https://api.homepage.lyjw.llc` 后，
  * 生产为主、本地补缺：每条 `/api/status/*` 端点生产回 ok:true 就用生产的，
  * 否则（新加的端点、生产也 ok:false）用本地的。
@@ -31,7 +31,7 @@ import { currentContext } from "./runtime";
  * 链路时把这个变量注释掉，本地就只看自己。只读，不碰上报。
  *
  * 生产版本不配这个变量。分支 Preview 的 [previews.vars] 会配，
- * 读取和本地一样；Preview 另外拒绝上报和导入。
+ * 读取和本地一样；Preview 另外拒绝存储导入（上报不经过 api）。
  */
 const UPSTREAM_TIMEOUT_MS = 10_000;
 
@@ -47,7 +47,7 @@ function isEnvelope(value: unknown): value is Envelope {
 }
 
 /**
- * 注入的夹具、上游兜底回来的旧版信封可能没有 servedAt：按此刻补一个，和本地
+ * 注入的夹具、上游兜底回来的信封可能没有 servedAt：按此刻补一个，和本地
  * statusEnvelope 出的信封一样带着首帧的钟（见 lib/types 的 StatusResponse）。
  */
 function withServedAt(envelope: Envelope): Envelope {
@@ -85,7 +85,7 @@ async function overlayResponse(local: Response, load: () => Promise<unknown>): P
  * - `PUT /api/dev/override/api/status/watching/now`，body 是那条端点的信封
  *   （`{ok:true,data:…}`）或直接是 data，之后这条端点回这份，优先于本地和上游；
  * - `DELETE` 同一路径清掉；`GET /api/dev/overrides` 列出当前注入了哪些。
- * 存在本地 SQLite 里（7 天），wrangler 热重载不会丢。现成夹具在 dev-fixtures/，
+ * 存在本地 SQLite 里（保存期限 `DEV_OVERRIDE_TTL_MS`），wrangler 热重载不会丢。现成夹具在 dev-fixtures/，
  * 用 `pnpm dev:override` 推。
  */
 const devOverridesEnabled = (): boolean => process.env.DEV_OVERRIDES?.trim() === "true";
@@ -163,7 +163,7 @@ async function devOverrideResponse(request: Request, url: URL): Promise<Response
     return Response.json({ ok: true, cleared: target }, { headers: statusHeaders() });
   }
   if (request.method === "GET") {
-    // 单条注入现在生效的那份；总开关关着或没注入就 404。推送中继靠它判断要不要换 payload
+    // 单条注入此刻生效的那份；总开关关着或没注入就 404。推送中继靠它判断要不要换 payload
     const override = (await overridesSwitchedOn()) ? await readOverride(target) : undefined;
     if (!override) return Response.json({ ok: false, error: "这条端点没有生效的注入" }, { status: 404 });
     return Response.json(override, { headers: statusHeaders() });
@@ -173,7 +173,6 @@ async function devOverrideResponse(request: Request, url: URL): Promise<Response
   }
   const body: unknown = await request.json().catch(() => undefined);
   if (body === undefined) return Response.json({ ok: false, error: "body 不是 JSON" }, { status: 400 });
-  // 给的是信封就原样存，给的是 data 就包成 ok:true
   const envelope: Envelope = isEnvelope(body) ? body : { ok: true, data: body };
   await writeOverride(target, envelope);
   return Response.json({ ok: true, path: target }, { headers: statusHeaders() });

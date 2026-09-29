@@ -38,8 +38,8 @@ export { StateHub };
 const WS_PATH = "/ws";
 
 /**
- * 「一起听」要的 MusicKit developer token。从前是单独的 musickit-token Worker，
- * 现在和公开 API 同源；站点从 NEXT_PUBLIC_BACKEND_URL 拼这条路径。
+ * 「一起听」要的 MusicKit developer token。和公开 API 同源；站点从
+ * NEXT_PUBLIC_BACKEND_URL 拼这条路径。
  */
 const MUSICKIT_TOKEN_PATH = "/api/musickit/token";
 
@@ -127,7 +127,7 @@ async function handleImport(request: Request, env: Env): Promise<Response> {
 }
 
 /**
- * 签一份给访客的 MusicKit developer token。来源闸门和 CORS 与两条 WebSocket
+ * 签一份给访客的 MusicKit developer token。来源闸门和 CORS 与 `/ws`
  * 共用 ALLOWED_ORIGINS；签进 JWT 的 origin 声明由 Apple 校验，见 musickit-token.ts。
  */
 async function handleMusicKitToken(request: Request, env: Env, cors: Headers): Promise<Response> {
@@ -156,7 +156,7 @@ async function handleMusicKitToken(request: Request, env: Env, cors: Headers): P
   }
 }
 
-/** 清扫节奏。一条消失的可见连接最坏在人数里多留 VISIBLE_STALE_MS + 这个值（当前 120 秒） */
+/** 清扫节奏。一条消失的可见连接最坏在人数里多留 VISIBLE_STALE_MS + 这个值 */
 const SWEEP_INTERVAL_MS = HEARTBEAT_INTERVAL_MS;
 
 /**
@@ -224,7 +224,7 @@ export class LivePushRoom extends DurableObject<Env> {
       }
       socket.accept();
       this.upstream = socket;
-      // 生产那边 30 分钟没 ping 会把连接当僵尸关掉，和浏览器一样每 30 秒报个到
+      // 生产那边静默过久（CONNECTION_CLOSE_MS）会把连接当僵尸关掉，和浏览器一样定时 ping 报个到
       this.upstreamPing = setInterval(() => {
         try {
           socket.send("ping");
@@ -306,8 +306,8 @@ export class LivePushRoom extends DurableObject<Env> {
   }
 
   /**
-   * 两个人头数，一趟遍历数完（口径见 live-census.ts）。静默超过 30 分钟的顺路关掉，
-   * 不额外挂闹钟。
+   * 两个人头数，一趟遍历数完（口径见 live-census.ts）。静默超过 `CONNECTION_CLOSE_MS` 的
+   * 顺路关掉，不额外挂闹钟。
    *
    * `leaving`：正在 webSocketClose / webSocketError 里的那条。回调跑的时候它还在
    * `getWebSockets()` 里，数的时候得自己剔掉。

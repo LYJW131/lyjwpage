@@ -15,8 +15,8 @@ type Memo = { last?: AgentStatusPayload };
 const isolateMemo: Memo = {};
 
 /**
- * 厂商状态页，每分钟一轮（九家，各家失败沿用上一轮那一行并标 stale；九家全失败
- * 整轮抛错、不写，监控报错）。
+ * 厂商状态页（已登记的厂商，见 lib/agent-status-parse 的 `FALLBACK`；各家失败沿用上一轮
+ * 那一行并标 stale；全部失败整轮抛错、不写，监控报错）。
  *
  * 上一轮是可滞后层里那份；KV 读可能来自边缘缓存、落后一分钟，所以同一 isolate 里
  * 自己上一轮写的那份更新时用它。结果整份写回去；灯色、事件或失败标记变了（指纹

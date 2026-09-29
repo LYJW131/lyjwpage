@@ -33,9 +33,8 @@ binding = "CORE"
 service = "api"
 entrypoint = "StateCore"
 
-# 采集 Worker 自己的状态：PSN 登录（auth，refresh token 约 10 天）、指纹、奖杯目录、
-# 游玩列表缓存，以及 src/lib/cache 的键（`lyjwpage:cache:*`）。沿用原 playstation-reporter
-# 的命名空间，不迁数据、不用重新登录 PSN。
+# 采集 Worker 自己的状态：PSN 登录（auth）、指纹、奖杯目录、游玩列表缓存、门和退避的时间戳，
+# 以及 src/lib/cache 的键（`lyjwpage:cache:*`）。
 [[kv_namespaces]]
 binding = "COLLECTOR_KV"
 id = "0f9b584f71634776ba3bc081a7aa4498"

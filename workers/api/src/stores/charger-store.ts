@@ -6,18 +6,17 @@ import { type ChargerLanding, type ChargerState, DISCONNECTED_HISTORY_AFTER_MS, 
 /**
  * 充电头状态与总功率历史。
  *
- * 数据是「推」进来的：那台机器周期性把 a2687 的 /status 原样 POST 过来。
+ * 数据是「推」进来的：Mac 上报器周期性把充电头的读数放进 `chargingDevices` 模块推来。
  * 间隔以秒计，光靠客户端自己累积的话页面一刷新曲线就没了、还要攒很久
  * 才有形状 —— 所以历史必须存在服务端。
  *
- * 存 SQLite：进程重启后历史还在。没配 SQLite 就退回进程内存。
+ * 存 StateHub 的 SQLite：重启后历史还在。持久化失败会冒泡、让上报器重试，不退回进程内存。
  */
 
 /**
  * 两个采样点之间的最小间隔，用来控制曲线的时间跨度。
  *
- * 采集端本身是 1 Hz，但上报按上报器的节流窗口走（代码默认 10 秒，本机配的是
- * 30 秒），所以到这里的间隔由
+ * 采集端本身是 1 Hz，但上报按上报器的节流窗口走，所以到这里的间隔由
  * 上报间隔决定、通常已经大于这个阈值 —— 它真正拦的是即时上报：插拔、播放
  * 变化会把充电器快照顺带捎出去，那些不该在曲线上挤成一团。
  * 要拉长曲线跨度就调大它，或者调 CHARGER_HISTORY_LIMIT。
@@ -77,7 +76,7 @@ function planHistory(
   if (resetAfterDisconnect && !status.connected) return nothing;
   const history = resetAfterDisconnect ? [] : stored;
 
-  // 同一帧被推两次时不重复记。采集端现在是 1 Hz 推流，每帧都会换 updated_at，
+  // 同一帧被推两次时不重复记。采集端 1 Hz 出帧，每帧都会换 updated_at，
   // 所以这道判断只在重试或重复投递时才拦得住东西 —— 留着是因为那才是它的本意。
   if (previous && status.updatedAt != null && previous.status.updatedAt === status.updatedAt) {
     return nothing;
@@ -102,11 +101,8 @@ function planHistory(
 }
 
 /**
- * 收一条快照：读已经在外面做完了，这里只算，写留给 commit。
- *
- * 从前这是一个 recordStatus，里面读一次写一次读一次写一次，四个来回全压在推送
- * 前面。现在两次读由调用方在信封解析完时和别的键一起发车（readChargerState），
- * 两次写并成一条 pipeline，而且和推送一起发车。
+ * 收一条快照：读已经在外面做完了（调用方在信封解析完时发起 readChargerState），
+ * 这里只算，写留给 commit —— 两次写并成一批，交给 fanout 的 `writes`。
  */
 export function prepareStatus(
   status: ChargerStatus,
@@ -173,9 +169,8 @@ export function prepareStatus(
 /**
  * 没带充电头快照的那种信封（纯心跳）：只续上「最近一次收到推送」的时刻。
  *
- * 断联后即使状态不再变化，心跳仍会走到这里；所以断联满半小时把曲线清空这件事
- * 也挂在它身上，不依赖新的快照。读同样在外面做完了 —— 从前它自己去读一次快照
- * 再读一次曲线，每 30 秒一封的心跳白白多两个来回。
+ * 断联后即使状态不再变化，心跳仍会走到这里；所以断联满这么久把曲线清空这件事
+ * 也挂在它身上，不依赖新的快照。读同样在外面做完了。
  */
 export function prepareHeartbeat(
   receivedAt: number,

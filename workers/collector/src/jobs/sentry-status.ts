@@ -5,9 +5,9 @@ import type { SentryStatusPayload } from "@/lib/sentry-status-types";
 import { ok, skipMissing, type Job } from "../job";
 
 /**
- * 站点卡片上的 Sentry 数据（在线探测、api cron 心跳、错误数、真实访客 Vitals），
- * 每 5 分钟一轮。五块各自降级：这轮没取到的块沿用可滞后层里上一份的那一块；
- * 五块全失败才算这一轮失败、不写。
+ * 站点卡片上的 Sentry 数据（在线探测、api cron 心跳、错误数、真实访客 Vitals）。
+ * 五路查询合成四块（`errors` 要站点、后端两路都取到才更新）：这轮没取到的块沿用可滞后层里
+ * 上一份的那一块（沿用期限 `SENTRY_BLOCK_CARRY_MS`）；五路全失败才算这一轮失败、不写。
  */
 export const sentryStatusJob: Job = {
   name: "sentry-status",

@@ -9,13 +9,13 @@ import { archiveIngest } from "./ingest-archive";
 import { commitLagIngest } from "./lag-ingest";
 
 /**
- * 上报入口的全部路由。只有三条路径，其余一律 404：
+ * 上报入口的全部路由：三条上报 / 通知路径，加一个根路径的存活响应，其余一律 404。
  *
- * - `POST /api/ingest/<来源>`：七个来源（shared/ingest/prepare.ts 的 INGEST_SOURCES），Access 权限 `ingest:<来源>`；
+ * - `POST /api/ingest/<来源>`：来源见 shared/ingest/prepare.ts 的 INGEST_SOURCES，Access 权限 `ingest:<来源>`；
  * - `POST /api/ingest/agents/otlp`：Claude Code 云端遥测（OTLP/HTTP JSON，可 gzip），权限 `ingest:agents-otlp`；
  * - `POST /api/internal/site-deployed`：GitHub Actions 的部署通知，权限 `internal:site-deployed`。
  *
- * 回执是对上报器的契约，状态码和正文与这条路还在 api Worker 里时逐字一致：
+ * 回执是对上报器的契约：
  * 202 `{ ok: true, data }`，OTLP 成功回 200 `{}`；失败 400 / 401 / 403 / 404 / 405 / 415 / 503
  * 各自的 `{ ok: false, error }`。mac 与 agents 的 202 `data` 另带入口自己判下的两件事
  * （见 receiptData）：`ignored` 不认识的模块名、`rejected` 校验不过只丢了自己的 coding 模块。
@@ -33,7 +33,7 @@ export async function handleRequest(request: Request, env: Env, ctx: ExecutionCo
   const url = new URL(request.url);
 
   if (url.pathname === SITE_DEPLOYED_PATH) {
-    // 预览版的推送房间连的是预览页，生产部署跟它无关
+    // 预览版不继承 CORE 等绑定，也不该接管生产的部署通知
     if (previewWorkerEnabled()) return new Response("Not found", { status: 404 });
     return handleSiteDeployed(request, env, ctx);
   }
@@ -119,7 +119,8 @@ async function handleIngest(
  * 3. 可滞后层直接写 KV，布局变了才请状态核心失效首屏；
  * 4. Mac 带来的 Apple Music user token 写凭据 KV。
  *
- * 任何一步抛错都回 400，上报器整封重发；各写入按自然键 / 整份覆盖，重发不重复。
+ * 同步等待的那几步（状态核心、可滞后层、凭据）抛错都回 400，上报器整封重发；归档与首屏失效
+ * 在 waitUntil 里，失败只记日志。各写入按自然键 / 整份覆盖，重发不重复。
  */
 async function commitIngest(env: Env, ctx: ExecutionContext, source: string, raw: string): Promise<Response> {
   try {

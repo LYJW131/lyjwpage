@@ -24,7 +24,7 @@ import type { StoredDesktopActivity } from "@shared/telemetry";
 import { CODING_MODULES, prepareCodingModules, type CodingModuleRejection, type CodingModules } from "./coding";
 
 /**
- * Mac 上报器 v4 信封（`/api/ingest/mac`）的收敛，上报入口那一半。
+ * Mac 上报器信封（`/api/ingest/mac`）的收敛，上报入口那一半。
  *
  * 一个 envelope 可以只更新一个模块，未出现的模块保持原快照；modules 整个省略
  * （或给个空对象）就是一次纯心跳 —— 靠 presence 和 heartbeatAt 起作用。
@@ -36,7 +36,7 @@ import { CODING_MODULES, prepareCodingModules, type CodingModuleRejection, type 
  *
  * 三份 coding 模块（codingUsage / codingActivity / codingTokenBuckets）例外：坏了只丢它自己，
  * 原因进 `rejected`，别的模块照常提交（见 ./coding）。不认识的模块名进 `ignored`，同样原样
- * 回给上报器、不影响别的模块 —— 上报器比站点新、或还在发改名前的旧模块时，两边都看得见。
+ * 回给上报器、不影响别的模块 —— 上报器比站点新、或发的是站点已不认的模块名时，两边都看得见。
  */
 
 type TelemetryEnvelope = {
@@ -113,15 +113,15 @@ function normalizeDesktop(
     throw new Error("desktop.iconHash 必须是 SHA-256 十六进制字符串");
   }
   /**
-   * 两个哈希各司其职，不是同一个东西，别再把它们对等起来。
+   * 两个哈希各司其职，不是同一个东西，不能对等起来。
    *
    * - `iconHash` 是**这个应用的图标**的身份：应用有图标它就非空，哪怕编码失败、
    *   还没传上去。站点靠它当 desktopIconAssets 的键。
    * - `iconObjectKey` 是**已经躺在 R2 里的那份字节**的内容地址，直传成功才有。
    *
-   * 从前两者都取自压缩后的字节，于是「这个应用没有图标」和「图标没准备好」
-   * 都表现为 iconHash 为空 —— 下面的 iconAvailable 把后者也当成了「一切正常」，
-   * 上报器再也收不到补传信号。实测因此静默丢了整整一批图标。
+   * `iconHash` 有值而对象键缺失就是「有图标、还没传上去」，站点据此回补传信号
+   * （`desktopIconAvailable`）。两者若取自同一份字节，「这个应用没有图标」和
+   * 「图标没准备好」都表现为 iconHash 为空，补传信号就发不出去。
    */
   const iconObjectKey = text(row.iconObjectKey);
   if (iconObjectKey != null && !IMAGE_OBJECT_KEY.test(iconObjectKey)) {
@@ -214,8 +214,8 @@ function normalizeMusic(
     artist: text(row.artist),
     album: text(row.album),
     trackId,
-    // 采集端不再上传封面二进制：读取时会查一次 Apple Music 目录拿曲目链接，
-    // 那次查询的结果自带封面 URL，见 getNowListening
+    // 采集端不上传封面二进制：读取时会查一次 Apple Music 目录拿曲目链接，
+    // 那次查询的结果自带封面 URL，见 shared/telemetry.ts 的 decorateCandidate
     artworkUrl: null,
     positionMs: Math.max(0, number(row.positionMs) ?? 0),
     durationMs: Math.max(0, number(row.durationMs) ?? 0),
@@ -229,10 +229,10 @@ function normalizeMusic(
 /**
  * 信封里 `appleMusicCredentials` 模块的校验。
  *
- * 只认 `musicUserToken`。`developerToken` / `expiresAt` 从前也走这条，2026-09-11 起
- * developer token 由状态核心自签（见 workers/api/src/musickit-token.ts 的 issueApiDeveloperToken），
- * 这两个键再出现就是旧版上报器 —— 直接拒掉而不是静默忽略，和当年停用 `iconData`
- * 是同一种处理：把「你在跑旧合同」说出来，比收下一半让人误以为一切正常要好。
+ * 只认 `musicUserToken`：developer token 由状态核心自签（见 workers/api/src/musickit-token.ts
+ * 的 issueApiDeveloperToken），`developerToken` / `expiresAt` 再出现就说明上报器在跑旧合同 ——
+ * 直接拒掉而不是静默忽略，和 `desktop.iconData` 是同一种处理：把「你在跑旧合同」说出来，
+ * 比收下一半让人误以为一切正常要好。
  */
 export function parseAppleMusicCredentials(value: unknown): { musicUserToken: string } {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -341,7 +341,7 @@ export function prepareTelemetryEnvelope(input: unknown, receivedAt = Date.now()
   }
   /**
    * coding 模块排在最后：前面哪一段失败时状态核心在那里就抛，这几份本来也轮不到提交，
-   * 和从前一样不挂上去（上报器整封重发时再收）。
+   * 所以不挂上去（上报器整封重发时再收）。
    */
   Object.assign(modules, coding.modules);
 

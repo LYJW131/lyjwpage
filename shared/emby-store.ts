@@ -1,22 +1,22 @@
 import { mirrorKey } from "@/lib/storage";
 import type { WatchingItem, WatchingMedia, WatchingPlayMethod } from "@/lib/types";
 
-/** 事件之间可能隔很久（一部电影两小时只有首尾两条），保留时间要足够宽 */
+/** 播放状态的保留时间：要远大于上报器两次推送的最长间隔（暂停时是空闲档轮询），断供一阵也不该让页面立刻空掉 */
 export const TTL_MS = 6 * 60 * 60 * 1000;
 
 /**
  * 续播列表和图片映射留得久一些。
  *
- * 它们只在代理有变化时才推，一部剧看完到下一次开播中间可能好几天都没有新推送；
- * 按会话那档 6 小时算的话，页面会在没人看片的日子里空掉。
+ * 它们不跟播放事件走：上报器只在列表变化或到了整推间隔（`fullPushIntervalMs`）时才推。
+ * 按会话那档（`TTL_MS`）算的话，上报器停机一阵页面就会在没人看片的日子里空掉。
  */
 export const LIBRARY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 /**
  * 播放中的位置状态。
  *
- * 代理有两个触发源：Emby 转发过来的播放事件（开始/暂停/继续/停止），以及它自己
- * 每 2 秒查一次会话 —— 拖动进度条 Emby 不发任何通知，只能查出来。
+ * 代理有两个触发源：Emby 发来的播放事件（开始/暂停/继续/停止），以及它自己
+ * 轮询会话 —— 拖动进度条 Emby 不发任何通知，只能查出来。
  */
 export type EmbyNowPlaying = {
   itemId: string;
@@ -27,8 +27,7 @@ export type EmbyNowPlaying = {
   runTimeTicks: number;
   /**
    * 在哪放：客户端名（Infuse-Direct / Emby for iOS）和设备名（iPad / Apple TV）。
-   * 两个都是 Emby 会话原样给的，拼法留给页面；从前合成一个 device 字符串，
-   * 结果是存了却没地方显示。
+   * 两个都是 Emby 会话原样给的，拼法留给页面。
    */
   client: string | null;
   deviceName: string | null;
@@ -40,7 +39,7 @@ export type EmbyNowPlaying = {
   at: number;
 };
 
-/** Storage 为主、进程内存为辅，规则见 lib/storage 的 mirrorKey */
+/** 读写规则见 lib/storage 的 mirrorKey */
 export const mirror = mirrorKey<EmbyNowPlaying>(["emby", "nowPlaying"], (state) => state.at, {
   ttlMs: TTL_MS,
 });

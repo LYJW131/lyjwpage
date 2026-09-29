@@ -1,4 +1,4 @@
-/** Worker 与 Vercel 共用的存储协议；没有 SQL 或任意远程命令入口。 */
+/** 存储命令的协议：StorageClient 发出、各驱动执行；没有 SQL 或任意远程命令入口。 */
 export type WriteOptions = { ttlMs?: number; ifAbsent?: boolean };
 export type StorageCommand =
   | { op: "get" | "remove" | "fields"; key: string }

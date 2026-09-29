@@ -1,6 +1,6 @@
 -- 整站长期历史归档：上报入口收下一封就顺手追加（docs/state-storage.md「长期归档」）。
 -- 存事实、不存展示结果；只追加，靠主键去重，重试不产生重复行。
--- pulse_samples 是 9 月 17 日起的旧档位数据，保留原样，不迁移也不再写。
+-- pulse_samples 是旧档位数据的表，保留原样，不迁移也不再写。
 
 -- iPhone 上报的训练。HealthKit 会事后修订同一条（补心率、改类型），按 id 覆盖成最新一份。
 CREATE TABLE IF NOT EXISTS workouts (

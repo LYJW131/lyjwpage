@@ -13,8 +13,8 @@ const EDGE_CACHE_VERSION = "v2";
 const EDGE_CACHE_PATH = "/__edge-cache";
 
 /**
- * 写入时另存的原始 Cache-Control。命中时 Cloudflare 会按区域的浏览器缓存 TTL（4 小时）
- * 把更短的 max-age 改写掉，「确认没有」那 1 小时就成了 4 小时；读出来时照这份恢复。
+ * 写入时另存的原始 Cache-Control。命中时 Cloudflare 会按区域的浏览器缓存 TTL
+ * 把更短的 max-age 改写掉（「确认没有」那份被抬长）；读出来时照这份恢复。
  */
 const ORIGIN_CACHE_CONTROL = "X-Origin-Cache-Control";
 

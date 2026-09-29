@@ -14,7 +14,7 @@ export const TICK_META_KEY = "meta:lastTick";
  * 和 `meta:lastTick` 分开是因为那份只在 tick 收尾时写：tick 被 CPU 超时之类
  * 硬杀掉就永远不会落地，门读到的还是上上轮，于是每分钟重试一次。这个键在跑
  * PSN 之前就写，所以记的是「尝试过」而不是「成功过」—— 上游持续故障时的重试
- * 节奏跟着基线走，和从前的 15 分钟一轮一样。
+ * 节奏跟着基线走。
  */
 export const FULL_TICK_KEY = "meta:lastFullTick";
 /**
@@ -25,7 +25,7 @@ export const BACKOFF_UNTIL_KEY = "meta:backoffUntil";
 /** 连着失败了几轮（不分原因）和最后一次更新的时刻；成功一轮归零 */
 export const FAILURE_STREAK_KEY = "meta:failureStreak";
 
-/** 第一次退避 5 分钟，之后每连败一轮翻倍，封顶 30 分钟（闲档那一轮本来就这么久） */
+/** 退避从 `BACKOFF_BASE_MS` 起，每连败一轮翻倍，封顶 `BACKOFF_MAX_MS`（量级和闲档那一轮相当） */
 export const BACKOFF_BASE_MS = 5 * 60_000;
 export const BACKOFF_MAX_MS = 30 * 60_000;
 
@@ -39,30 +39,27 @@ export type FailureStreak = { streak: number; at: number };
 /** 没在玩时游玩列表最多这么旧才去翻。 */
 export const PLAYED_GAMES_IDLE_TTL_MS = 60 * 60_000;
 /**
- * 在玩时的游玩列表 TTL，对应闲时那档 30 分钟的完整 tick 节奏。
+ * 在玩时的游玩列表 TTL，对应闲档的完整 tick 节奏（index.ts 的 `IDLE_TICK_INTERVAL_MS`）。
  *
- * 从前是「在玩就每轮刷」，那时一轮就是 30 分钟，两者等价。cron 提到每分钟、
- * 有人看站点时 60 秒一轮之后，「每轮刷」会变成每分钟翻一遍分页列表 ——
- * 时长和游玩次数没有分钟级精度可言。
+ * 列表刷新和 tick 分开排：快档下「在玩就每轮刷」会变成每分钟翻一遍分页列表，
+ * 而时长和游玩次数没有分钟级精度可言。
  *
- * 写 29.5 而不是 30，和门的阈值是同一个取整余量，但成因不同：`fetchedAt` 盖的是
+ * 取值比闲档间隔略短，和门的阈值是同一个取整余量，但成因不同：`fetchedAt` 盖的是
  * 列表**拉完**的时刻，门锚的却是 tick **开始**的时刻，所以下一轮查新鲜度时算出来的
- * 年龄是「30 分钟 − 上一轮翻列表花的时间」，卡 30 整会稳定地差一点点、把刷新推到
- * 再下一轮去（在玩且没人看时就成了 60 分钟一刷）。让一档 30 秒的余量把它兜住：
- * 快慢两种节奏下第一个够格的都正好是第 30 分钟那一轮。
+ * 年龄是「闲档间隔 − 上一轮翻列表花的时间」，卡整数会稳定地差一点点、把刷新推到
+ * 再下一轮去。留一点余量把它兜住：快慢两种节奏下第一个够格的都正好是闲档那一轮。
  */
 export const PLAYED_GAMES_PLAYING_TTL_MS = 29.5 * 60_000;
-/** 购买库几乎不动，六小时够标一次预购 / Plus。 */
+/** 购买库几乎不动，隔这么久标一次预购 / Plus 就够。 */
 export const LIBRARY_TTL_MS = 6 * 60 * 60_000;
 /**
- * 头像 / 网名 / Plus 几乎不怎么变，一天拉一次够了。
+ * 头像 / 网名 / Plus 几乎不怎么变，隔这么久拉一次就够。
  *
- * 奖杯 quiet 时原先完全不打资料接口，头像换了要等下一次 dirty 才看得到；
- * dirty 重爬又反过来每轮都打。资料和奖杯目录解耦：还新鲜就沿用
- * onlineId / avatarUrl / plus（等级 / 总杯数仍用本轮 summary 盖），过期了
- * quiet 也要重拉，否则站点上的头像会一直停在第一次 dirty 时那张。
+ * 资料和奖杯目录解耦：还新鲜就沿用 onlineId / avatarUrl / plus（等级 / 总杯数仍用
+ * 本轮 summary 盖），dirty 重爬时也不再重打；过期了 quiet 也要重拉，否则站点上的头像
+ * 会一直停在第一次 dirty 时那张。
  *
- * 旧 KV 没有 fetchedAt，当过期，下一轮重拉。
+ * KV 里缺 fetchedAt 的当过期，下一轮重拉。
  */
 export const PROFILE_TTL_MS = 24 * 60 * 60_000;
 
@@ -75,7 +72,7 @@ export function profileIdentityFresh(
   return typeof fetchedAt === "number" && Number.isFinite(fetchedAt) && now - fetchedAt < PROFILE_TTL_MS;
 }
 
-/** KV `auth` 的形状与原 `state/auth.json` 完全一致，便于直接迁移现有状态。 */
+/** KV `AUTH_KEY` 里存的登录状态，读写见 `readAuth` / `writeAuth`。 */
 export type AuthState = {
   accessToken: string;
   refreshToken: string;
@@ -107,7 +104,7 @@ export type LibraryCache = {
   items: LibraryTitle[];
 };
 
-/** presence 每轮必发，没有「变没变」可言，所以只记另外两部分。 */
+/** presence 每个完整 tick 必发，没有「变没变」可言，所以只记另外两部分。 */
 export type TickMeta = {
   startedAt: number;
   completedAt: number;

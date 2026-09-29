@@ -30,7 +30,7 @@ APPLE_MUSIC_KEY_ID = "88KBJL3CKU"
 # 图片地址是 `/img/<对象键>` 同源路径（见 src/lib/asset-url.ts），Worker 不配交付域；
 # 回源 R2 的地址只配在站点（Vercel 的 R2_PUBLIC_BASE_URL）和 ESA 上。
 STORAGE_PREFIX = "lyjwpage"
-# 处理完一次上报后回敲这份站点的 /api/revalidate
+# 首屏布局变了时回敲这份站点的 /api/revalidate
 SITE_URL = "https://lyjw.me"
 # lyjw131.com 经 ESA 回源 lyjw.me，首页按源站 SWR 头缓存，不走刷新 API。
 APPLE_MUSIC_STOREFRONT = "cn"
@@ -65,8 +65,8 @@ id = "c24d1670d97b4649ab5aa4c0944dfbfc"
 binding = "LAG"
 id = "e9c72a9517884aeb95db7386b630a691"
 
-# 长期活动历史归档（docs/state-storage.md）：StateHub 只留 7 天，这里只增不删。
-# 这里只写 pulse 的事实表（cron）；上报的那几张表由上报入口写。
+# 长期活动历史归档（docs/state-storage.md）：StateHub 只留 `PULSE_TTL_MS` 那么久，这里长期保留
+# （活动桶按权威范围替换，除此之外不删）。这里只写 pulse 的事实表（cron）；上报的那几张表由上报入口写。
 [[d1_databases]]
 binding = "HISTORY"
 database_name = "lyjwpage-history"

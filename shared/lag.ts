@@ -18,7 +18,7 @@ export type LagEntry<T> = {
 
 /** 全部键集中登记在这里，写入方与读取方按名字取 */
 export const LAG_KEYS = {
-  /** 厂商状态页（采集 Worker 每分钟） */
+  /** 厂商状态页（采集 Worker） */
   agentStatus: "agent-status:v1",
   /** GitHub 贡献日历（采集 Worker） */
   githubChart: "github-chart:v1",
@@ -44,7 +44,7 @@ export const LAG_KEYS = {
   timezone: "timezone:v1",
   /** Apple Watch 活动圆环的读数（上报入口，iphone 上报的 activity 模块带了当天圆环时） */
   activity: "activity:v1",
-  /** 最近十次训练，整份替换（上报入口，iphone 上报的 workouts 模块） */
+  /** 最近的训练列表，整份替换，条数上限见 `WORKOUT_LIMIT`（上报入口，iphone 上报的 workouts 模块） */
   workouts: "workouts:v1",
   /** 常驻上报器的推送账本，一个上报器一条，互不覆盖（上报入口） */
   reporterServer: "reporter:server-reporter:v1",

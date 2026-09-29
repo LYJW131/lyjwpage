@@ -13,7 +13,7 @@ export interface ImageBucket {
   head(objectKey: string): Promise<unknown>;
 }
 
-/** HEAD 结果只记 5 分钟：桶被清空后要能重新发现对象没了，否则会一直发指向已删对象的地址 */
+/** HEAD 的正缓存要短：桶被清空后要能重新发现对象没了，否则会一直发指向已删对象的地址 */
 const CONFIRMED_TTL_MS = 5 * 60_000;
 const confirmed = new Map<string, number>();
 

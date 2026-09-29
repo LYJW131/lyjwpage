@@ -6,16 +6,16 @@ import type { GithubRepoPayload } from "@/lib/types";
 import { ok, skipMissing, type Job } from "../job";
 
 /**
- * 本仓库统计（贡献者名单 + 提交数与增删行），每 30 分钟一轮。
+ * 本仓库统计（贡献者名单 + 提交数与增删行）。
  *
- * 名单和总数是两个接口、两种失败方式，和从前 last-good 的合并口径一样：
+ * 名单和总数是两个接口、两种失败方式，各自降级：
  * - 都取到了：整份写入；
  * - 只有总数没取到：名单用新的，总数沿用上一份（不拿「—」盖掉好的数字）；
  * - 只有名单没取到（GitHub 在 push 后重算，一直回 202）：名单沿用上一份，总数用新的；
  * - 都没取到：不写，上一份原样留着。
  *
- * 增删行的累计锚经 src/lib/cache 存在 COLLECTOR_KV（30 天）。没有谁在等这一轮，
- * 预算从读路径时代的 12 秒放宽到 60 秒，多等几轮 202。
+ * 增删行的累计锚经 src/lib/cache 存在 COLLECTOR_KV。没有谁在等这一轮，所以预算宽
+ * （`FETCH_BUDGET_MS`），多等几轮 202。
  */
 const FETCH_BUDGET_MS = 60_000;
 

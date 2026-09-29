@@ -4,7 +4,7 @@ import type { VercelDeployment } from "@/lib/vercel-deployments-types";
 import type { TrophiesReport } from "./playstation/trophies";
 
 /**
- * 采集 Worker 往 D1 `lyjwpage-history` 追加的两张表（workers/api/migrations/0006）。
+ * 采集 Worker 往 D1 `lyjwpage-history` 写的两张表（workers/api/migrations/0006）。
  *
  * 和上报侧的归档同一套写法：只拼语句、幂等 upsert，调用方在数据已经交出去之后
  * 顺手追加，失败只记日志。两张表都是「整份反复出现」的数据 —— 每封奖杯信都是整份
@@ -12,7 +12,7 @@ import type { TrophiesReport } from "./playstation/trophies";
  * 不产生 D1 写入。
  */
 
-/** D1 一次 batch 的语句数上限取 100，大目录分几批提交 */
+/** 一次 batch 提交的语句数，大目录分几批提交 */
 export const HISTORY_BATCH_SIZE = 100;
 
 export async function runBatched(db: HistoryDb, statements: HistoryStatement[], size = HISTORY_BATCH_SIZE): Promise<void> {

@@ -23,9 +23,9 @@ export async function commitPreparedPhoneEnvelope(prepared: PreparedPhoneEnvelop
   /**
    * 模块处理包起来，是为了保证「已经发车的写」一定被交给 fanout。
    *
-   * 眼下只有一个模块，这个 try 看着是多余的 —— 但它守的是加第二个模块那一天：
-   * 那时一个模块校验失败中途抛出去，另一个已经发车的写就没人接管了，serverless
-   * 上响应一返回随手就被掐掉。Mac 那侧踩过这个坑，见 lib/telemetry 里同样的形状。
+   * 训练与圆环两个模块各自起写：后面的模块校验失败中途抛出去时，前面已经发车的写就
+   * 没人接管，所以 finally 里的 fanout 仍要等它们落库。Mac 那侧同样的形状见
+   * stores/telemetry.ts。
    */
   try {
     if (prepared.failure?.stage === "beforeWorkouts") throw new Error(prepared.failure.message);

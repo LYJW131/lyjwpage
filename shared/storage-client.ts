@@ -2,7 +2,10 @@ import type { StorageCommand, WriteOptions } from "@shared/storage-contract";
 
 export type StorageExecutor = (commands: StorageCommand[]) => Promise<unknown[]>;
 
-/** 一批命令在一个 SQLite 事务内完成；任何一条失败时整批回滚。 */
+/**
+ * 一批命令交给 `StorageExecutor` 一次执行，事务性由执行器决定：StateHub 的 SQLite 整批在
+ * 一个事务里、任何一条失败时整批回滚；采集 Worker 的 KV 适配器逐条顺序执行、没有回滚。
+ */
 export class StorageBatch {
   private commands: StorageCommand[] = [];
   private run: StorageExecutor;

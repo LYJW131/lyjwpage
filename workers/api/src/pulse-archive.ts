@@ -31,8 +31,8 @@ import type { StorageCommand } from "@shared/storage-contract";
  * Pulse 事实时间线与 coding 用量的长期归档（D1 `lyjwpage-history`，表见 migrations/0007、0008）。
  *
  * 状态核心是唯一写入方：StateHub 每分钟给出一份有界快照（各路水位之后的新行，
- * 加上推导会话所需的一点上下文），普通 Worker 拼成幂等 upsert 写 D1，成功后
- * 再向 StateHub 确认水位。每一路独立：一路读坏、写坏不挡别的路。
+ * 加上推导会话所需的一点上下文），普通 Worker 按自然键拼成 upsert 写 D1（活动桶另有
+ * 受版本保护的范围删除），成功后再向 StateHub 确认水位。每一路独立：一路读坏、写坏不挡别的路。
  *
  * 旧的档位表 `pulse_samples` 不再写，原样保留。
  */
@@ -579,10 +579,10 @@ export function archiveStatements(db: PulseArchiveDb, snapshot: PulseArchiveStre
 }
 
 /**
- * Ordinary Worker half of Pulse archiving. Every statement is an idempotent upsert
- * (natural keys, INSERT OR IGNORE or DO UPDATE … WHERE changed), so concurrent runs
- * may safely replay a stream. A stream's watermark advances only after all of its
- * statements succeeded.
+ * Ordinary Worker half of Pulse archiving. Statements are natural-key upserts
+ * (INSERT OR IGNORE or DO UPDATE … WHERE changed) plus the version-guarded range delete
+ * for activity buckets (DELETE_ACTIVITY_RANGE), so concurrent runs may safely replay a
+ * stream. A stream's watermark advances only after all of its statements succeeded.
  */
 export class PulseArchive {
   private coordinator: PulseArchiveCoordinator;

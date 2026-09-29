@@ -16,7 +16,7 @@ import { prepareTelemetryEnvelope, type PreparedTelemetryEnvelope } from "./tele
  * 跑在上报入口（workers/ingress）；采集 Worker 自己组的 PlayStation 信封也在它那边
  * 过这一道。产物是一份可以结构化复制的命令：实时那一半经 Service Binding 交给状态核心的
  * `StateCore.commitIngest`（workers/api，契约见 shared/state-core.ts），可滞后层、归档和
- * 凭据那几份由上报入口自己写。这里不碰任何存储、不读请求作用域，状态核心也不再 import
+ * 凭据那几份由上报入口自己写。这里不碰任何存储、不读请求作用域，状态核心也不 import
  * 这里的实现，只 import 类型 —— 改校验只需要发布上报入口，不动 Durable Object 那个 Worker。
  */
 
