@@ -3,7 +3,7 @@
  *
  * **不主动连。** 打开 `/local/charging` 才往 localStorage 写一条记录，卡片
  * 看到这条记录才去挂 `http://127.0.0.1:8787/sse/{charger,powerbank}`。连上
- * 说明浏览的就是这台 Mac，卡片改用这条 1 Hz 推流，不再用远端那份。连不上
+ * 说明浏览的就是这台 Mac，卡片改用这条本机推流，不再用远端那份。连不上
  * （别人的电脑、浏览器拦了混合内容）立刻关掉，不重试，远端照旧。
  *
  * EventSource 默认失败会无限重连 —— 访客机器上没有这个端口，必须在第一次
@@ -35,11 +35,14 @@ import type {
   ReporterPresence,
 } from "./types.ts";
 
-/** 只攒 sparkline 会画的那一窗（1 Hz × 2 分钟），多攒的每帧都白复制一遍。 */
+/** 只攒 sparkline 会画的那一窗（`LIVE_WINDOW_MS` 除以帧间隔），多攒的每帧都白复制一遍。 */
 const LOCAL_HISTORY_LIMIT = Math.round(LIVE_WINDOW_MS / LIVE_INTERVAL_MS);
 
 const LOCAL_ORIGIN = "http://127.0.0.1:8787";
-/** SSE 约 1 Hz。十几秒没帧才算这条流死了，别跟远端 90 秒窗口混。 */
+/**
+ * 本机流按 `LIVE_INTERVAL_MS` 出帧。超过这个时限没帧才算这条流死了，别跟远端的
+ * 断流窗口（`CHARGER_STALE_MS`）混。
+ */
 const LOCAL_STALE_MS = 15_000;
 
 export type LocalCharging = {

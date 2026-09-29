@@ -6,7 +6,7 @@
  * 绕回自己的边缘再出去，等于多一跳白跑。
  *
  * `R2_PUBLIC_BASE_URL` 因此是站点独有的配置：next.config 用它当 rewrite 的目的地，
- * 这里用它做服务端抓图。Worker 不再需要它，页面和状态 API 里的图片地址见
+ * 这里用它做服务端抓图。Worker 用不着它，页面和状态 API 里的图片地址见
  * `@/lib/asset-url`。
  */
 export function r2OriginUrl(objectKey: string): string | null {

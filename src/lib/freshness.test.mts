@@ -157,9 +157,9 @@ test("正在听：选中的是 HomePod 时不看 Mac 的存活", () => {
 test("访客钟：deadline 已过真实时间、但晚于手上那把钟时也要推（不然永远判不出过期）", () => {
   const clock = 1_000; // 冻住的钟：挂载那一刻，或上一次推钟
   const realNow = 50_000; // 后台回来、轮询刚把 lastSeenAt 换成更旧一代之后的真实时间
-  // 新数据的 deadline 在钟和此刻之间：马上推，不再等 250ms
+  // 新数据的 deadline 在钟和此刻之间：马上推，不再多等
   assert.deepEqual(clockAdvance(clock, [20_000], realNow), { kind: "now", to: 20_000 });
-  // 未来的：到点（加 250ms）再推
+  // 未来的：到点（外加一小段余量）再推
   assert.deepEqual(clockAdvance(clock, [60_000], realNow), { kind: "later", delayMs: 10_250, to: 60_000 });
   // 两扇窗口里有一个已经过了：马上推，推完再排另一个
   assert.deepEqual(clockAdvance(clock, [60_000, 20_000], realNow), { kind: "now", to: 20_000 });

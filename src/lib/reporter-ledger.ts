@@ -1,5 +1,5 @@
 /**
- * 常驻上报器的账本：每封报文顶上带一个 `reporter` 块 —— 镜像提交、过去 12 小时推成功
+ * 常驻上报器的账本：每封报文顶上带一个 `reporter` 块 —— 镜像提交、窗口内推成功
  * 几封（含这一封）、往返中位数、窗口起止 —— Worker 收下时存最新那份，站点卡片服务区据此
  * 显示 Push 次数、RTT 和线上跑的是哪一版。
  *
@@ -9,7 +9,7 @@
  * （shared/lag.ts 的 reporterServer / reporterAgents），读取在 lib/reporters。
  */
 
-/** 上报来源 → 卡片上认的上报器名字。只收常驻在 misaka-jp 上的这两个 */
+/** 上报来源 → 卡片上认的上报器名字。只收这几个常驻上报器 */
 export const REPORTER_BY_SOURCE = {
   server: "server-reporter",
   agents: "agents-reporter",
@@ -25,7 +25,7 @@ export type ReporterBlock = {
   pushes: number;
   /** 窗口内推成功那些封从发出到读完回执的中位数，毫秒，不含这一封；还没有样本时为 null */
   rttMs: number | null;
-  /** 窗口起止，epoch 毫秒。上报器刚开始记时起点晚于 12 小时前 */
+  /** 窗口起止，epoch 毫秒。上报器刚开始记时，起点会晚于完整窗口的起点 */
   start: number;
   end: number;
 };
@@ -42,7 +42,7 @@ function nonNegativeInteger(value: unknown): value is number {
 }
 
 /**
- * 报文里的 `reporter` 块。不合规（旧版上报器没带、字段写坏）一律当没有 ——
+ * 报文里的 `reporter` 块。不合规（没带、字段写坏）一律当没有 ——
  * 这是附带的账本，不因为它拒掉整封上报。
  */
 export function reporterBlockOf(raw: unknown): ReporterBlock | null {

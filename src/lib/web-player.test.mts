@@ -91,12 +91,12 @@ test("computePlaylistHeight: 曲目高度按每行 32px 加上内边距与边框
   assert.equal(PLAYLIST_EXTRA_HEIGHT_PX, PLAYLIST_PADDING_Y_PX + 1);
   assert.equal(computePlaylistHeight(0), 0);
   assert.equal(computePlaylistHeight(-5), 0);
-  assert.equal(computePlaylistHeight(1), 1 * PLAYLIST_ROW_HEIGHT_PX + PLAYLIST_EXTRA_HEIGHT_PX); // 45
-  assert.equal(computePlaylistHeight(3), 3 * PLAYLIST_ROW_HEIGHT_PX + PLAYLIST_EXTRA_HEIGHT_PX); // 109
-  assert.equal(computePlaylistHeight(6), 6 * PLAYLIST_ROW_HEIGHT_PX + PLAYLIST_EXTRA_HEIGHT_PX); // 205
-  assert.equal(computePlaylistHeight(7), PLAYLIST_MAX_HEIGHT_PX); // 237
-  assert.equal(computePlaylistHeight(15), PLAYLIST_MAX_HEIGHT_PX); // 237
-  assert.equal(computePlaylistHeight(30), PLAYLIST_MAX_HEIGHT_PX); // 237
+  assert.equal(computePlaylistHeight(1), 1 * PLAYLIST_ROW_HEIGHT_PX + PLAYLIST_EXTRA_HEIGHT_PX);
+  assert.equal(computePlaylistHeight(3), 3 * PLAYLIST_ROW_HEIGHT_PX + PLAYLIST_EXTRA_HEIGHT_PX);
+  assert.equal(computePlaylistHeight(6), 6 * PLAYLIST_ROW_HEIGHT_PX + PLAYLIST_EXTRA_HEIGHT_PX);
+  assert.equal(computePlaylistHeight(7), PLAYLIST_MAX_HEIGHT_PX);
+  assert.equal(computePlaylistHeight(15), PLAYLIST_MAX_HEIGHT_PX);
+  assert.equal(computePlaylistHeight(30), PLAYLIST_MAX_HEIGHT_PX);
 });
 
 test("snapPlaylistScrollTop: 停滚时吸附到最近的 32px 整行并限制在合法滚动区间内", () => {

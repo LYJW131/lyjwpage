@@ -2,7 +2,7 @@
  * 充电设备负载的类型收敛。纯函数，客户端和 ingest 共用。
  *
  * 上报器 `chargingDevices.devices[]` 和本机 SSE 的 `device` 是同一形状：
- * 公共字段在顶层，设备特有的收在子对象。这里不碰 SQLite。
+ * 公共字段在顶层，设备特有的收在子对象。这里不碰存储。
  */
 
 import { IMAGE_OBJECT_KEY } from "./asset-url.ts";
@@ -64,7 +64,7 @@ export type RawChargingDevices = {
 
 export type RawPowerBank = RawChargingDevice;
 
-/** 空串和纯空白都当没有。上报器那边取不到值时给的就是 null，不再有 "N/A" 占位符 */
+/** 空串和纯空白都当没有。上报器那边取不到值时给的是 null，不带 "N/A" 之类的占位符 */
 function displayText(value: string | null | undefined): string | null {
   if (value == null) return null;
   const text = String(value).trim();

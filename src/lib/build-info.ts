@@ -12,8 +12,8 @@ const RAW_COMMIT = process.env.COMMIT_SHA ?? "";
 const RAW_BUILD_TIME = process.env.BUILD_TIME ?? "";
 
 /**
- * 完整 sha，客户端拿它和 Commit 栏同步的线上部署 sha 比对、判断手上这份 HTML 是不是最新
- * （见 hooks/use-app-version）。服务端和客户端从同一份构建内联，值一致。
+ * 完整 sha，客户端拿它和同源 `/api/version` 报出的 commit 比对、判断手上这份 HTML 是不是
+ * 最新（见 lib/app-version 的 resolveVersionStatus）。服务端和客户端从同一份构建内联，值一致。
  * 拿不到就是 null，对应「没法比」，不是「旧」。
  */
 export const commitSha = RAW_COMMIT || null;

@@ -81,7 +81,7 @@ export type NaturalNextSyncInput = {
   localSongId: string | null;
   hostPositionMs: number;
   hostDurationMs: number;
-  /** 默认 7 秒；小于该窗口表示 host 锚点仍可能是切歌前残影。 */
+  /** 默认 `SYNC_TAIL_ECHO_MS`；小于该窗口表示 host 锚点仍可能是切歌前残影。 */
   tailMs?: number;
 };
 

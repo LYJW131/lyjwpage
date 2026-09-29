@@ -16,7 +16,7 @@ export async function readLiveness(): Promise<Liveness> {
  *
  * 纯计算，读在调用方、写在 writeLiveness。拆成三段是为了让写能和推送同时进行 ——
  * 推给浏览器的那几份状态都带着存活，而存活的新值这里就算得出来，用不着等它落库
- * 再从 SQLite 读回来。读-改-写因此仍然不是原子的，但写它的只有唯一的上报入口，
+ * 再从存储读回来。读-改-写因此不是原子的，但写它的只有唯一的上报入口，
  * 且同一台 Mac 的信封本来就是串行发的，不存在两个写者互相盖。
  */
 export function nextLiveness(

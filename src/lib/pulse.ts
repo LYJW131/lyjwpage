@@ -57,9 +57,8 @@ export function pulseWindowAt(now: number): PulseWindow {
 }
 
 /**
- * 每个键读多长的尾巴。列表按时间追加，24 小时只落在最后一截；整串读七天
- * （Coding 观测一万条、瓦数六千条）每次请求都白解析。尾巴按最密的上报节奏估，
- * 留一倍余量。
+ * 每个键读多长的尾巴。列表按时间追加，窗口只落在最后一截；整串读（保留期长、
+ * 条数上万）每次请求都白解析。尾巴按最密的上报节奏估，留一倍余量。
  */
 const TAIL = {
   listening: 1500,
@@ -178,11 +177,11 @@ function coverageEnd(source: CodingUsageSource, store: StoredCodingBuckets, at: 
  *   只在悬停里单列，不进曲线；
  * - Mac / agents 的桶只认起点在报告范围里的（跨着范围起点的那一桶只数了一截）；云端 OTLP
  *   只有正差值、没有范围，照收；
- * - 被 24 小时窗口截断的首桶不画；末桶截到这一桶里有数的来源里最晚的覆盖终点，不足 60 秒不画；
+ * - 被窗口截断的首桶不画；末桶截到这一桶里有数的来源里最晚的覆盖终点，不足 `TOKEN_MIN_SPAN_MS` 不画；
  *   只出有用量的桶 —— 没有 token 的时间画不画都是空，空闲由 Coding 道说。
  *
- * `currentPerMinute`：最后一个桶在 10 分钟内结束就是它的速率；否则只要有来源的覆盖到了
- * 10 分钟以内就是 0（看得见、没在用）；都没有是 null（未知）。
+ * `currentPerMinute`：最后一个桶在 `TOKEN_CURRENT_MS` 内结束就是它的速率；否则只要有
+ * 来源的覆盖到了这个时限以内就是 0（看得见、没在用）；都没有是 null（未知）。
  */
 export function tokensLaneView(stores: TokenBucketSources, window: PulseWindow): PulseTokensLane {
   const sums = new Map<number, { fresh: number; output: number; cacheRead: number; end: number }>();

@@ -5,9 +5,9 @@ import type { ChargerStatus, CodingUsagePayload, LocalNowPlaying, PowerBankStatu
  *
  * 首页每张卡一个 `'use cache'` 条目，tag 失效时那张卡回源、整页在后台重建（见
  * lib/first-screen）。上报侧只在**布局**变了时发 tag：卡片出现 / 消失、换形态、
- * 行数变了。数字、标题、进度这类内容变化交给 `revalidate: 600` 的定时重建 ——
- * 浏览器挂载后本来就会直接问 Worker 取最新，首屏 HTML 旧几分钟只影响第一帧里
- * 的数字。
+ * 行数变了。数字、标题、进度这类内容变化交给 `cacheLife` 的定时重建（见
+ * lib/first-screen）—— 浏览器挂载后本来就会直接问 Worker 取最新，首屏 HTML 旧
+ * 一阵只影响第一帧里的数字。
  *
  * 判据写在这里而不是各自抄一份：组件改了阈值，Worker 这侧跟着变。
  */

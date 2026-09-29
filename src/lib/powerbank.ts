@@ -13,16 +13,16 @@ import type { PowerBankPayload, PowerBankStatus } from "@/lib/types";
  */
 
 /**
- * 默认 90 秒；上报间隔配得更长时按 3 倍加长，不能短于默认。
+ * 充电宝这一路多久没续上就算断流：默认 `CHARGER_STALE_MS`；上报间隔
+ * （`CHARGER_PUSH_INTERVAL_MS`）配得更长时按 3 倍加长，不能短于默认。
  *
- * **也不能短于心跳窗口**，和 anker 的 chargerStaleAfterMs 逐字对齐 —— 那边的注释
- * 记着这个坑：安静时段没有新读数可发，窗口比心跳间隔短的话，心跳但凡晚一点点就
- * 越界，卡片会闪回「未连接」。心跳窗口默认 300 秒，而这里从前的下限是 90 秒。
+ * **也不能短于心跳窗口**，和 lib/anker 的 chargerStaleAfterMs 同一条理由：安静时段
+ * 没有新读数可发，窗口比心跳间隔短的话，心跳但凡晚一点点就越界，卡片会闪回「未连接」。
  *
  * ⚠️ 这一半只是止血。充电宝**没有**和充电头 prepareHeartbeat 对称的续期路径：
  * `powerbank:lastPush` 只在 chargingDevices 里真带了 `kind:"powerBank"` 那一项时
- * 才被写（见 lib/powerbank-store 的 prepareStatus），activeModules 里也没有它。
- * 也就是说 BLE 短暂丢了、只开充电头模块的那些时段，续的人一个都没有。
+ * 才被写（见 workers/api/src/stores/powerbank-store 的 prepareStatus），activeModules
+ * 里也没有它。也就是说 BLE 短暂丢了、只开充电头模块的那些时段，续的人一个都没有。
  * 补一条充电宝心跳、还是明确决定「就按这个窗口判断断流」，是另一件事。
  *
  * 和充电头一样，源站只给原样的 connected 和时刻，断流由浏览器判
@@ -34,11 +34,10 @@ export function powerBankStaleAfterMs() {
 }
 
 /**
- * 推给浏览器的那一份，全部拿手上现成的东西拼，一次 SQLite 都不读。
+ * 推给浏览器的那一份，全部拿手上现成的东西拼，不读存储。
  *
- * 和充电头的 chargerPushPayload 同一个理由：从前这里是 getPowerBankSnapshot()，
- * 它读的正是这次上报刚写下去的那个键 —— 既白等一个来回，又逼得推送只能排在
- * 写库后面。状态是刚收到的，pushedAt 就是收到的时刻，存活也是刚算出来的。
+ * 和充电头的 chargerPushPayload 同一个理由：读的话既白等一个来回，又逼得推送只能
+ * 排在写库后面。状态是刚收到的，pushedAt 就是收到的时刻，存活也是刚算出来的。
  */
 export function powerBankPushPayload({
   status,
