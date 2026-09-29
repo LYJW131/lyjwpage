@@ -4,7 +4,7 @@
 # PR 只 build 不推，验证 Dockerfile 还能跑通；合进 main 才推 `latest` 和 `sha-<短哈希>`。
 # 手动触发（workflow_dispatch）全部镜像都推，用来刷新基础镜像或 CLI 版本。
 #
-# misaka-jp 上的两个（server-reporter、agents-reporter）推完镜像接着自动换：
+# misaka-jp 上的服务（server-reporter、agents-reporter、discord-reporter）推完镜像接着自动换：
 # deploy 这一步用一把只能跑 /opt/lyjwpage/deploy.sh 的密钥 ssh 过去，脚本点名
 # pull、重建那一个、清悬空镜像（见 reporters/misaka-deploy.sh）。密钥、主机指纹和
 # 地址在 `misaka-jp` 这个 environment 里，只有 main 能用。
@@ -20,6 +20,7 @@ on:
       - reporters/server-reporter/**
       - reporters/emby-reporter/**
       - reporters/playstation-reporter/**
+      - reporters/discord-reporter/**
       - .github/workflows/build-reporters.yml
   pull_request:
     paths:
@@ -27,6 +28,7 @@ on:
       - reporters/server-reporter/**
       - reporters/emby-reporter/**
       - reporters/playstation-reporter/**
+      - reporters/discord-reporter/**
       - .github/workflows/build-reporters.yml
   workflow_dispatch:
 
@@ -60,6 +62,9 @@ jobs:
             emby-reporter:
               - reporters/emby-reporter/**
               - .github/workflows/build-reporters.yml
+            discord-reporter:
+              - reporters/discord-reporter/**
+              - .github/workflows/build-reporters.yml
             playstation-reporter:
               - reporters/playstation-reporter/**
               - .github/workflows/build-reporters.yml
@@ -69,11 +74,11 @@ jobs:
           CHANGED: ${{ steps.filter.outputs.changes }}
         run: |
           if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
-            CHANGED='["agents-reporter","server-reporter","emby-reporter","playstation-reporter"]'
+            CHANGED='["agents-reporter","server-reporter","emby-reporter","playstation-reporter","discord-reporter"]'
           fi
           echo "images=${CHANGED:-[]}" >> "$GITHUB_OUTPUT"
           # 其中跑在 misaka-jp 上、推完要自动换的那几个
-          echo "misaka=$(echo "${CHANGED:-[]}" | jq -c '[.[] | select(. == "server-reporter" or . == "agents-reporter")]')" >> "$GITHUB_OUTPUT"
+          echo "misaka=$(echo "${CHANGED:-[]}" | jq -c '[.[] | select(. == "server-reporter" or . == "agents-reporter" or . == "discord-reporter")]')" >> "$GITHUB_OUTPUT"
 
   build:
     needs: changes
@@ -134,7 +139,7 @@ jobs:
     environment: misaka-jp
     permissions:
       contents: read
-    # 同一台机器、同一个 compose project：一个一个来，也不和下一次推送的部署抢
+    # 同一台机器的部署逐个执行，也不和下一次推送抢
     concurrency:
       group: deploy-misaka-jp
       cancel-in-progress: false

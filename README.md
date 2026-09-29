@@ -230,3 +230,5 @@ Mac 端采集器 [MacTelemetryHub](https://github.com/LYJW131/MacTelemetryHub) �
 [Worker 数据后端与首屏缓存](./docs/state-storage.md) 说明状态持久化、实时层与可滞后层的划分、公开数据边界、缓存失效与页面更新之间的关系。
 
 iPhone 端采集器 [iPhone Telemetry Hub](./reporters/iphone-telemetry-hub/README.md)（iOS 27 原生 SwiftUI）上报活动圆环与最近的训练，协议和部署顺序见其 README 与 [API Worker](./workers/api/README.md#最近训练)。
+
+Quest 游戏实时数据由 [Discord Gateway 上报器](./reporters/discord-reporter/README.md) 采集，经专用 Access 权限交入 Ingress 与 StateHub；查询 `/api/status/quest/now`，变化推送 `quest-now`，首页不展示。协议见 [API Worker](./workers/api/README.md#quest-实时游戏状态)。

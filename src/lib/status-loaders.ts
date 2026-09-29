@@ -19,6 +19,7 @@ import { getNowWatching, getWatching } from "@/lib/emby";
 import { getGithubChart, sliceGithubChart } from "@/lib/github-chart";
 import { getGithubRepo } from "@/lib/github-repo";
 import { getPlaying, getPlayingNow } from "@/lib/playstation";
+import { getQuestNow } from "@/lib/quest";
 import { getPowerBankSnapshot } from "@/lib/powerbank";
 import { getPulseStatus } from "@/lib/pulse";
 import { getReportersStatus } from "@/lib/reporters";
@@ -68,6 +69,7 @@ export const statusLoaders = {
   nowWatching: { endpoint: unparam(getNowWatching) },
   playing: { endpoint: unparam(getPlaying) },
   playingNow: { endpoint: unparam(getPlayingNow) },
+  questNow: { endpoint: unparam(getQuestNow) },
   /**
    * 无参是摘要（和首屏字段、`trophies` 推送同一个形状），带 `?titleids=` 是那几款的
    * 完整目录切片。整份目录体积大，没有谁需要一次拿全，所以没有「裸读整份」这一档。

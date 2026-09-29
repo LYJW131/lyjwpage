@@ -28,6 +28,7 @@ ACCESS_AUD = "a1557bcf1114491b462c7ee722ae97032405c43fa831812c8403e6d7366fba01"
 # 新增 token 在 Zero Trust 控制台建好、加进策略，再把 client id 登记到这里。
 # 云端 Claude 遥测使用独立 token，仅授予 ingest:agents-otlp。
 [vars.ACCESS_CLIENTS]
+"259e8eb2abeb45b1d0033c69e0989fb5.access" = ["ingest:quest"]                          # lyjwpage-quest
 "f9ace27b1709a23e651094cca5d41013.access" = ["ingest:playstation"]                     # lyjwpage-playstation
 "267c1f87539a30657986e9d719663dcd.access" = ["ingest:agents-otlp"]                    # lyjwpage-claude-cloud
 "4ec7a9e98b7d3bc641c5eb97fddcb4f7.access" = ["ingest:mac"]                             # lyjwpage-mac

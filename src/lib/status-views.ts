@@ -84,6 +84,7 @@ export const STATUS_VIEWS = {
   playing: { path: "/api/status/playing", layer: "realtime", tag: "playing", event: "playing", pushCovers: true },
   /** 在线判定按 observedAt 与 PLAYSTATION_STALE_MS 窗口，兜底轮询足够 */
   playingNow: { path: "/api/status/playing/now", layer: "realtime", tag: "playing-now", event: "playing-now", pushCovers: true },
+  questNow: { path: "/api/status/quest/now", layer: "realtime", event: "quest-now" },
   /**
    * 无参端点、首屏、推送三者同是摘要（TrophiesSummaryPayload）；
    * 带 `?titleids=` 才是那几款的完整目录（TrophiesPayload），展开瓷砖时取。

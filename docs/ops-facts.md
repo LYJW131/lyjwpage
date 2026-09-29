@@ -11,9 +11,9 @@
 | 事实 | 核对 |
 | --- | --- |
 | 应用「lyjwpage ingest」挂在 `ingest.homepage.lyjw.llc` 整站之前，策略只放行登记过的 service token；Worker 再验 JWT 并按 client id 限定可写来源，登记表是 `workers/ingress/wrangler.toml#ACCESS_CLIENTS`（以它为准） | 核对于 未记录，方式：迁自 `workers/ingress/README.md` |
-| 每个上报方一把 token：`lyjwpage-mac`、`-iphone`、`-emby`、`-server`、`-agents`、`-home-assistant`（仅 HomePod）、`-claude-cloud`、`-github-actions`、`-playstation`；PlayStation 容器独立凭据只授予 `ingest:playstation` | 核对于 2026-09-30，方式：Access API 核对身份策略，Worker 来源权限按 `workers/ingress/wrangler.toml#ACCESS_CLIENTS`；PlayStation 容器上报沿用迁移核验 |
+| 每个上报方一把 token：`lyjwpage-mac`、`-iphone`、`-emby`、`-server`、`-agents`、`-home-assistant`（仅 HomePod）、`-claude-cloud`、`-github-actions`、`-playstation`、`-quest`；PlayStation 容器独立凭据只授予 `ingest:playstation`，Quest Discord 上报器独立凭据只授予 `ingest:quest` | 核对于 2026-09-30，方式：Access API 核对身份策略，Worker 来源权限按 `workers/ingress/wrangler.toml#ACCESS_CLIENTS`；PlayStation 容器上报沿用迁移核验 |
 | 新增或轮换 token 在控制台做：新 token 先加进策略，再把 client id 登记进 `ACCESS_CLIENTS`；mac、iphone 轮换时在控制台重新生成 secret，再贴进 App 设置 | 核对于 2026-09-25，方式：迁自 [核验记录](./reporter-endpoints.md) |
-| 原有 token 有效期到 2027-09-25，到期前在控制台续期；`lyjwpage-playstation` 配置为不自动到期 <!-- allow: 凭据到期日，是续期待办的锚点 --> | 核对于 2026-09-29，方式：原有 token 沿用 [核验记录](./reporter-endpoints.md)，PlayStation token 经 Access API 创建并核对 |
+| 原有 token 有效期到 2027-09-25，到期前在控制台续期；`lyjwpage-playstation` 与 `lyjwpage-quest` 配置为不自动到期 <!-- allow: 凭据到期日，是续期待办的锚点 --> | 核对于 2026-09-30，方式：原有 token 沿用 [核验记录](./reporter-endpoints.md)，PlayStation 与 Quest token 经 Access API 创建并核对 |
 | 凭据放的位置（不记值）：server、agents 在 misaka-jp 的 `/opt/lyjwpage/<服务>/.env`（`ACCESS_CLIENT_ID` / `ACCESS_CLIENT_SECRET`）；emby 在 `dsm:/volume3/docker/emby-proxy/.env`（权限 600）；home-assistant 在 dsm 与 n100 的 Home Assistant secrets 文件（键 `lyjwpage_access_client_id` / `lyjwpage_access_client_secret`）；mac、iphone 在 App 设置里（secret 存钥匙串）；github-actions 在仓库 secret `ACCESS_CLIENT_ID` / `ACCESS_CLIENT_SECRET`；claude-cloud 只在云端环境设置里 | 核对于 2026-09-25，方式：迁自 [核验记录](./reporter-endpoints.md) 与 `workers/ingress/README.md` |
 
 ## 阿里云 ESA（`lyjw131.com`）
@@ -62,6 +62,7 @@
 | n100 的 HomePod 自动化 `homepod_now_playing_heartbeat` 每分钟检查 `media_player.zhu_wo_lyjw`，仅在 `playing` 时调用 `rest_command.push_homepod_now_playing`；配置在 `n100:/volume1/docker/homeassistant/homeassistant/automations.yaml`。原 `homepod_now_playing_webhook` 继续处理曲名、循环模式与播放状态变化。同曲重复播放可能上报 `repeat: all`，不能只靠换歌事件维持快照有效期 | 核对于 2026-09-29，方式：读取自动化配置、通过管理界面执行 `automation.reload`，核对定时触发与生产 `/api/status/listening/now` |
 | 上报来源与生产实例的对应：mac 是本机 Mac Telemetry Hub，iphone 是 iPhone 17 Pro 上的遥测中心，server 与 agents 在 misaka-jp，emby 在 dsm，homepod 在两台 Home Assistant，playstation 的游戏数据由 n100 的 `playstation-reporter` 容器上报 | 核对于 2026-09-29，方式：Docker 日志首轮成功、生产 playing / trophies 时间戳与 D1 奖杯归档核对 |
 | n100 的 `playstation-reporter` 独立 compose 项目在 `n100:/volume1/docker/playstation-reporter/`，运行 GHCR 镜像、host 网络、UID/GID `1026:101`；PS5 地址 `192.168.100.193`，发现包回复休息状态。Access 凭据在该目录 `.env`，PSN 登录态在 `data/auth`，两者权限 600；首次从旧 KV 迁入登录态，运行时只在本地续期，不配云端 NPSSO | 核对于 2026-09-29，方式：SSH 核对 compose、文件权限、容器状态与真实 UDP 探测 |
+| misaka-jp 的 Discord Gateway 上报器使用独立 compose 项目 `misaka-jp:/opt/lyjwpage/discord-reporter/`，服务名 `discord-reporter`；Bot 与 Access 凭据只存该目录 `.env`（0600），只接 Quest Playing，不读取 Discord 资料或关联账号。备份在 `misaka-jp:/opt/lyjwpage/backups/quest-restore-20260929T210550Z/` | 核对于 2026-09-30，方式：SSH 核对旧容器与配置目录，环境原子更新并验证权限；上报器配置为 dry-run，待镜像发布后验收 |
 
 ## 待手工清理
 

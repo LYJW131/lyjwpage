@@ -45,6 +45,7 @@ const FORWARDS: ReadonlyArray<{
   { event: "listening" },
   { event: "watching" },
   { event: "playing-now" },
+  { event: "quest-now" },
   { event: "playing" },
   /**
    * 奖杯只推摘要：提要、瓷砖上的杯数直接换。展开着的那块瓷砖明细在

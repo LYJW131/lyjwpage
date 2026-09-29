@@ -1,5 +1,6 @@
 import { backendUrl } from "@/lib/backend-url";
 import { STATUS_VIEWS } from "@/lib/status-views";
+import type { QuestNow } from "@shared/quest";
 import type {
   DesktopPayload,
   ListeningPayload,
@@ -21,6 +22,7 @@ import type {
  * Emby / PlayStation 列表没有可比时刻，不在这里比大小。
  */
 const STAMPS: Record<string, (data: never) => number | null> = {
+  [STATUS_VIEWS.questNow.path]: (data: QuestNow) => data.observedAt,
   [STATUS_VIEWS.desktop.path]: (data: DesktopPayload) => data.receivedAt,
   [STATUS_VIEWS.listening.path]: (data: ListeningPayload) => data.fetchedAt,
   [STATUS_VIEWS.nowListening.path]: (data: NowListeningPayload) => data.receivedAt,
