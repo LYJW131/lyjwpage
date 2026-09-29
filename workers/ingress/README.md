@@ -21,7 +21,7 @@
 
 | 方法 | 路径 | Access 权限 | 用途 |
 | --- | --- | --- | --- |
-| POST | `/api/ingest/<来源>` | `ingest:<来源>` | `mac`、`iphone`、`homepod`、`emby`、`playstation`、`server`、`agents` |
+| POST | `/api/ingest/<来源>` | `ingest:<来源>` | 来源清单是 `shared/ingest/prepare.ts#INGEST_SOURCES` |
 | POST | `/api/ingest/agents/otlp` | `ingest:agents-otlp` | Claude Code 云端线程的内置遥测（OTLP/HTTP JSON 指标，可 gzip） |
 | POST | `/api/internal/site-deployed` | `internal:site-deployed` | 站点新部署接管了生产域名，见下文「部署通知」 |
 | GET | `/` | 无（Access 在前面挡着） | `{ ok, service: "ingest" }`，只报存活 |
@@ -30,7 +30,7 @@
 
 ### 回执
 
-回执是对上报器的契约，和这条路还在 api Worker 里时逐字一致，检查顺序也一样：
+回执是对上报器的契约，检查顺序就是下表从上到下：
 
 | 状态 | 正文 | 什么时候 |
 | --- | --- | --- |
@@ -41,7 +41,7 @@
 | 404 | `{ ok: false, error: "没有这个上报来源：<来源>" }` | 来源不认识，在鉴权之前判 |
 | 401 / 403 / 503 | `{ ok: false, error }` | 没有合法的 Access JWT / 这把凭据不能写这个来源 / 暂时验不了 JWT |
 | 415 | `{ ok: false, error: "不支持的压缩：<编码>" }` | 只在 OTLP 路由：`Content-Encoding` 不是 `identity` / `gzip` |
-| 400 | `{ ok: false, error: "无法读取上报数据" }` | 读不出请求体（含解压失败、解压后超过 4 MiB） |
+| 400 | `{ ok: false, error: "无法读取上报数据" }` | 读不出请求体（含解压失败、解压后超过 `STORAGE_MAX_BYTES`） |
 | 503 | `{ ok: false, error: "状态存储初始化中" }` | 状态核心还没初始化；报文是 JSON 但校验不过时也先回这个（不是 JSON 直接 400） |
 | 400 | `{ ok: false, error: "上报数据无效或处理失败" }` | 报文不是 JSON、校验不过、状态核心拒收或调不通、写 KV 失败 |
 
@@ -53,15 +53,15 @@
   别的模块、存活、限额照常收下，另记一行 `[ingest] rejected` 警告进 Sentry Logs。`agents` 那封里被拒的不算「带了」：
   限额和 coding 数据一份可收的都没有时整封 400（原因只进日志）。
 
-大小按实际读到的字节限制（`STORAGE_MAX_BYTES`，4 MiB），不信 `Content-Length`；超过也回 400，没有 413。
+大小按实际读到的字节限制（`STORAGE_MAX_BYTES`），不信 `Content-Length`；超过也回 400，没有 413。
 202 表示实时那一半已经在状态核心落库、可滞后层和凭据已经写完；推送与首屏失效由状态核心在自己的 `waitUntil` 里做，
 归档在这边的 `waitUntil` 里做，失败只记日志，不让上报器重发。
 
 ## 鉴权
 
 上报走 `https://ingest.homepage.lyjw.llc/api/ingest/<来源>`。这个域名整站挂在 Cloudflare Access 应用「lyjwpage ingest」后面，
-策略只放行登记过的 service token：每个来源一把（`lyjwpage-mac`、`-iphone`、`-emby`、`-server`、`-agents`、
-`-home-assistant`、`-claude-cloud`、`-github-actions`），上报器带 `CF-Access-Client-Id` / `CF-Access-Client-Secret` 两个头。
+策略只放行登记过的 service token：每个上报方一把（token 清单见 [仓库外事实](../../docs/ops-facts.md)），同一上报方管多个来源时共用一把（比如 Home Assistant 同时报 HomePod 与 PS5 电源），
+上报器带 `CF-Access-Client-Id` / `CF-Access-Client-Secret` 两个头。
 Access 在边缘核对，不对直接回 401；放行的请求带着 Access 签的 JWT（`Cf-Access-Jwt-Assertion`）到 Worker，
 `src/access-auth.ts` 再验一遍签名、受众（`ACCESS_AUD`）、签发方（`ACCESS_TEAM_DOMAIN`）和时效 —— workers.dev 那条路不过 Access，
 拿不出合法 JWT。验过之后按 JWT 里的 `common_name`（client id）查 `wrangler.toml` 的 `[vars.ACCESS_CLIENTS]`，只许写登记的来源，
@@ -82,7 +82,7 @@ prepare 之后，一封上报按数据层拆开（`src/worker.ts` 的 `commitIng
 状态核心拒收时后三步都不做，回 400。唯一的例外是 iPhone：训练收下、圆环被拒（prepare 记下 `failure.stage = beforeActivity`，
 状态核心已经落了训练区间）时，可滞后层和归档照同样的口径写训练列表，再回 400，上报器整封重发。
 
-校验不过时才问一次状态核心 `ready()`：未初始化回 503 的优先级高于校验 400，和从前同一个 Worker 里时一样；
+校验不过时才问一次状态核心 `ready()`：未初始化回 503 的优先级高于校验 400；
 请求体不是 JSON 在这之前就回 400，不问 `ready()`；好报文直接提交，由 `commitIngest` 自己判初始化。
 
 ### Claude Code 云端线程用量
@@ -121,7 +121,7 @@ OTEL_METRIC_EXPORT_INTERVAL=60000
 1. 请状态核心 `StateCore.broadcastVersion()` 向所有连着的页面广播不带数据的 `version` 事件，页面重问 `/api/version`
    并弹出更新提示；回执 `{ ok: true, delivered }` 里是送达的连接数。
 2. 在 `waitUntil` 里请采集 Worker `Collector.refresh(["vercel-deployments", "cloudflare-deployments"])` 立刻重拉部署列表
-   （契约 `shared/collector.ts`），不等下一次 cron；失败只记日志，不拖慢回执（工作流的 curl 只等 15 秒）。
+   （契约 `shared/collector.ts`），不等下一次 cron；失败只记日志，不拖慢回执（工作流的 curl 只等有限时间，见 `.github/workflows/purge-esa.yml`）。
 
 ## 配置
 
@@ -144,7 +144,7 @@ Sentry 沿用 `api-worker` 项目（同一个 DSN），每个事件带 `worker: 
 
 ### 上线与域名
 
-自定义域名 `ingest.homepage.lyjw.llc` 写在本目录的 `wrangler.toml`，api 那份不再列它。Workers Builds 不是交互终端，
+自定义域名 `ingest.homepage.lyjw.llc` 写在本目录的 `wrangler.toml`，api 那份不列它。Workers Builds 不是交互终端，
 `wrangler deploy` 遇到挂在别的 Worker 上的自定义域名会直接接管（`override_existing_origin`），所以域名跟着这份配置走，
 api 以后怎么重建都不会把它要回去。Access 应用按主机名挂，跟着域名走。
 
@@ -166,7 +166,7 @@ curl -X POST http://localhost:8788/api/ingest/homepod -H "$(node scripts/dev-acc
   -H 'content-type: application/json' -d '{"entityId":"media_player.local","state":"playing","title":"test"}'
 ```
 
-本地测试钥匙只在 `ACCESS_TEAM_DOMAIN` 是 `https://access.local.invalid` 时才被认，线上误配也不生效。
+本地测试钥匙只在 `ACCESS_TEAM_DOMAIN` 等于 `src/access-auth.ts` 的 `DEV_ACCESS_ISSUER`（一个 `.invalid` 假地址）时才被认，线上误配也不生效。
 
 ## 验证
 

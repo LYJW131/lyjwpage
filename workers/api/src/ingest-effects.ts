@@ -102,7 +102,7 @@ export async function dispatchIngestEffect(effect: IngestEffect): Promise<void> 
   await publish(event);
 }
 
-/** 提交完成后由普通 Worker 调用；网络请求不再占 StateHub 的执行时间。 */
+/** 提交完成后由普通 Worker 调用；网络请求不占 StateHub 的执行时间。 */
 export async function dispatchIngestEffects(effects: readonly IngestEffect[]): Promise<void> {
   if (!effects.length) return;
   await afterResponse(async () => {
