@@ -23,7 +23,7 @@
 | **本机与充电设备** | Mac 前台应用（几款常用工具换成品牌标识和动画），以及通过隐私判断放行的窗口标题；Anker 充电器、充电宝的端口状态、电压、电流和功率变化。 |
 | **影视** | Emby 正在播放与最近观看，呈现播放进度、剧集信息、画面与音轨规格。 |
 | **音乐** | Apple Music 与 HomePod 播放状态、最近收听、逐字歌词和动态封面；访客可通过自己的 Apple Music 账号与订阅使用网页播放器和「一起听」。 |
-| **运动活动** | 通过 iPhone 的 HealthKit 数据展示 Apple Watch 活动、锻炼与站立三环，以及最近 10 次训练的时长、能量和心率。 |
+| **运动活动** | 通过 iPhone 的 HealthKit 数据展示 Apple Watch 活动、锻炼与站立三环，以及最近训练的时长、能量和心率。 |
 | **服务器** | 落地节点的运行时间、CPU、内存、网络吞吐，以及按计费周期累计的流量。 |
 | **AI Coding** | 编码工具的 Token 用量（Mac 本机日志、Cursor 账号历史与 Claude Code 云端遥测合并）、API 等值成本估算、此刻在用的 agent、年度热力图与账号限额窗口。 |
 | **游戏** | PlayStation 在线状态、游戏记录与奖杯进度，展开游戏卡片查看成就明细。 |
@@ -41,7 +41,7 @@
   <img src="docs/screenshots/overview-light.webp" alt="首页总览：正在看、充电头与充电宝、正在听、活动圆环与最近训练、落地节点同时点亮" width="100%">
 </picture>
 
-**页头的前台应用**：页头中央显示 Mac 此刻的前台应用，图标和名字由 Mac 上报器上报。几款常用工具换成了品牌标识：Claude Code 是像素吉祥物的取物动画，来自 [mascot-fetch-loop](https://github.com/LYJW131/mascot-fetch-loop)（从屏幕录像逐帧复原的 19 个姿势，站点内联其精灵数据自行播放，[在线预览](https://lyjw131.github.io/mascot-fetch-loop/)）；Ghostty 是[官网首页](https://ghostty.org/)那只 ASCII 幽灵，`scripts/ghostty-frames.mjs` 从首页载荷里取出 235 帧 100×41 的字符画，每两列并成一个单元、按字形墨量分成本体三档和光环三档、每三帧取一帧，压成 79 帧 39×39 的粗网格（`src/lib/ghostty-frames.json`，57 KB），站内按 93 ms 一帧用 SVG 路径循环播放，本体跟随页面文字色、光环保持官网的蓝；Cursor 与 Antigravity 用 [LobeHub 图标集](https://github.com/lobehub/lobe-icons)的字标。
+**页头的前台应用**：页头中央显示 Mac 此刻的前台应用，图标和名字由 Mac 上报器上报。几款常用工具换成了品牌标识：Claude Code 是像素吉祥物的取物动画，来自 [mascot-fetch-loop](https://github.com/LYJW131/mascot-fetch-loop)（从屏幕录像逐帧复原的 19 个姿势，站点内联其精灵数据自行播放，[在线预览](https://lyjw131.github.io/mascot-fetch-loop/)）；Ghostty 是[官网首页](https://ghostty.org/)那只 ASCII 幽灵，`scripts/ghostty-frames.mjs` 从首页载荷里取出字符画帧，按字形墨量把单元分成本体和光环各几档，抽帧压成粗网格（`src/lib/ghostty-frames.json`，参数见脚本头），站内用 SVG 路径循环播放，本体跟随页面文字色、光环保持官网的蓝；Cursor 与 Antigravity 用 [LobeHub 图标集](https://github.com/lobehub/lobe-icons)的字标。
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/desktop-marks-dark.gif">
@@ -83,7 +83,7 @@
   <img src="docs/screenshots/now-listening-light.gif" alt="Apple Music 正在播放：逐字高亮的歌词一句扫过、换到下一句，下方是最近收听" width="100%">
 </picture>
 
-**活动与训练**：Apple Watch 的活动、锻炼、站立三环与步数、距离、爬楼，右侧是最近训练，每页两条横向翻页。
+**活动与训练**：Apple Watch 的活动、锻炼、站立三环与步数、距离、爬楼，右侧是最近训练，横向翻页。
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/activity-dark.gif">
@@ -118,7 +118,7 @@
   <img src="docs/screenshots/pulse-detail-light.webp" alt="Pulse 卡片：六条事实时间线与右侧摘要，悬停听歌道的一段显示时间范围、状态与当时的曲目" width="100%">
 </picture>
 
-**站点自身（LYJWPAGE）**：仓库统计、贡献者与最近提交；下面是状态页式的两行在线状态——`lyjw.me` 看 Sentry 的每分钟探测，`API` 看 api Worker 分钟 cron 每 5 分钟报一次的心跳，各带 30 天每天一格和可用率；再往下是 PageSpeed 实验室分与真实访客的 Users 分，以及各服务 12 小时的请求、CPU、报错数，落地节点上两个常驻上报器的推送次数、往返延迟与线上版本。
+**站点自身（LYJWPAGE）**：仓库统计、贡献者与最近提交；下面是状态页式的两行在线状态——`lyjw.me` 看 Sentry 的在线探测，`API` 看 api Worker 分钟 cron 的心跳，各带 30 天每天一格和可用率；再往下是 PageSpeed 实验室分与真实访客的 Users 分，以及各服务 12 小时的请求、CPU、报错数，落地节点上两个常驻上报器的推送次数、往返延迟与线上版本。
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/site-status-dark.webp">
@@ -148,7 +148,7 @@
 
 首页生成时按卡并行读取各模块的端点，每张卡一条 Next.js `use cache` 缓存，让首次展示不依赖浏览器逐张卡片请求数据。实时卡读状态核心，可滞后卡读 KV，任何一张都不在请求路径上现拉外部 API，一张慢卡拖不住整个首屏。
 
-页面加载后，实时卡各自回源校验一次、之后由推送与轮询更新；可滞后卡直接用首屏那份，之后在写入方的下一次预期写入之后几秒去取（节奏登记在 `src/lib/status-views.ts` 的 `cadenceMs`，排期见 `src/lib/poll-schedule.ts`）。首页缓存只在布局变化时（卡片出现或消失、换形态、行数变化，判据见 `src/lib/home-layout.ts`）触发标签失效并在后台重建；读数、标题、进度这类内容变化交给 10 分钟一次的定时重建，纯心跳不触发重建。
+页面加载后，实时卡各自回源校验一次、之后由推送与轮询更新；可滞后卡直接用首屏那份，之后在写入方的下一次预期写入之后几秒去取（节奏登记在 `src/lib/status-views.ts` 的 `cadenceMs`，排期见 `src/lib/poll-schedule.ts`）。首页缓存只在布局变化时（卡片出现或消失、换形态、行数变化，判据见 `src/lib/home-layout.ts`）触发标签失效并在后台重建；读数、标题、进度这类内容变化交给首屏缓存（`src/lib/first-screen.ts` 的 `cacheLife`）的定时重建，纯心跳不触发重建。
 
 因此，缓存页面负责首次展示，客户端负责追上当前状态；不要求每次设备变化都同步刷新整页 HTML。
 
@@ -156,7 +156,7 @@
 
 切歌、前台应用切换、设备插拔等事件通过 WebSocket 推送。多数事件直接携带新数据并写入 SWR 缓存，避免每个访客收到通知后再发起一次相同查询。
 
-功率曲线、累计用量等连续指标按需轮询，播放进度则根据时间锚点在浏览器本地推算。推送连接正常时，推送覆盖整份的实时卡只保留 5 分钟兜底轮询，断开时回到卡片自己的快间隔，重连后立即回源一次；客户端的新鲜度检查防止较旧的轮询结果覆盖已收到的新状态。
+功率曲线、累计用量等连续指标按需轮询，播放进度则根据时间锚点在浏览器本地推算。推送连接正常时，推送覆盖整份的实时卡只保留兜底轮询（`src/lib/poll-schedule.ts` 的 `PUSH_SAFETY_NET_MS`），断开时回到卡片自己的快间隔，重连后立即回源一次；客户端的新鲜度检查防止较旧的轮询结果覆盖已收到的新状态。
 
 ### 不同来源共享状态与故障边界
 
@@ -168,7 +168,7 @@
 
 ### 站点与 Worker 分头部署，旧页面遇到新数据只降级一张卡
 
-Worker 和站点各自部署，浏览器里又可能放着几小时甚至几天前的旧标签页：旧脚本会读到新形状的数据。每张卡外面各有一层错误边界（`src/components/card-boundary.tsx`，用 Next 的 `catchError`），一张卡渲染抛错只有那一格退成 Unavailable，并带着卡片名报 Sentry（同一张卡同样的错一轮只报一次），别的卡和整页照常。兜底卡片上有 Retry，页面没过期时还会自动重试几次（20 秒、1 分钟、3 分钟，页面在后台就等回到前台）；重试前先清掉这张卡读的 SWR 缓存，否则重新挂载会拿着让它崩的那份数据在渲染阶段再抛一次，连回源都跑不到。页面已经知道自己旧了（`/api/version`，以及新版本部署完成后的 `version` 推送）时，躺在后台的旧标签页会自己刷新成新版；前台只提示（顶部的版本提示卡，兜底卡片上的说明），不自动刷，免得一张卡出错就打断人在别处的操作，只有整页被错误页顶替时才前台刷新。每个目标版本最多试一次，记的是试过的全部版本而不是最后一个（`lyjw131.com` 的首页 HTML 由 ESA 缓存，刷回来可能还是旧的，版本接口在两个版本间来回也刷不成环），同一个标签页两次自动刷新至少隔 5 分钟，播放器在放音乐时不刷。判定逻辑见 `src/lib/app-version.ts` 的 `autoReloadDecision`。
+Worker 和站点各自部署，浏览器里又可能放着几小时甚至几天前的旧标签页：旧脚本会读到新形状的数据。每张卡外面各有一层错误边界（`src/components/card-boundary.tsx`，用 Next 的 `catchError`），一张卡渲染抛错只有那一格退成 Unavailable，并带着卡片名报 Sentry（同一张卡同样的错一轮只报一次），别的卡和整页照常。兜底卡片上有 Retry，页面没过期时还会自动重试几次（间隔见 `src/lib/card-recovery.ts` 的 `RECOVERY_DELAYS_MS`，页面在后台就等回到前台）；重试前先清掉这张卡读的 SWR 缓存，否则重新挂载会拿着让它崩的那份数据在渲染阶段再抛一次，连回源都跑不到。页面已经知道自己旧了（`/api/version`，以及新版本部署完成后的 `version` 推送）时，躺在后台的旧标签页会自己刷新成新版；前台只提示（顶部的版本提示卡，兜底卡片上的说明），不自动刷，免得一张卡出错就打断人在别处的操作，只有整页被错误页顶替时才前台刷新。每个目标版本最多试一次，记的是试过的全部版本而不是最后一个（`lyjw131.com` 的首页 HTML 由 ESA 缓存，刷回来可能还是旧的，版本接口在两个版本间来回也刷不成环），同一个标签页两次自动刷新至少隔 `AUTO_RELOAD_COOLDOWN_MS`（`src/lib/app-version.ts`），播放器在放音乐时不刷。判定逻辑见 `src/lib/app-version.ts` 的 `autoReloadDecision`。
 
 ### 窗口标题在上报之前先过一道判断
 
@@ -188,9 +188,9 @@ Worker 和站点各自部署，浏览器里又可能放着几小时甚至几天�
 
 ### 报错与性能交给 Sentry
 
-站点（浏览器与 Vercel 函数）、`api` Worker（请求、分钟 cron、两个 Durable Object）和采集 Worker（各定时任务，每个任务一条 cron 监控 `collector-<任务>`）各报到一个 Sentry 项目；上报入口 Worker 和 `api` 同报一个项目，事件带 `worker: ingress` 标签。浏览器端经同源的 `/relay` 转发，广告拦截和直连不上 sentry.io 的访客也报得上来；Session Replay 单独成块、页面空闲后才加载，只保留出错那一段。分钟 cron 每 5 分钟报一次心跳，`lyjw.me` 有每分钟的在线探测。采样按免费额度设，入口见 [`src/lib/sentry.ts`](./src/lib/sentry.ts)、[`workers/api/src/sentry.ts`](./workers/api/src/sentry.ts)、[`workers/ingress/src/sentry.ts`](./workers/ingress/src/sentry.ts) 与 [`workers/collector/src/sentry.ts`](./workers/collector/src/sentry.ts)；本地默认不上报，要试就在 `.env.local` 设 `NEXT_PUBLIC_SENTRY_DEV=true`。
+站点（浏览器与 Vercel 函数）、`api` Worker（请求、分钟 cron、两个 Durable Object）和采集 Worker（各定时任务，每个任务一条 cron 监控 `collector-<任务>`）各报到一个 Sentry 项目；上报入口 Worker 和 `api` 同报一个项目，事件带 `worker: ingress` 标签。浏览器端经同源的 `/relay` 转发，广告拦截和直连不上 sentry.io 的访客也报得上来；Session Replay 单独成块、页面空闲后才加载，只保留出错那一段。分钟 cron 定时报心跳，`lyjw.me` 有在线探测。采样按免费额度设，入口见 [`src/lib/sentry.ts`](./src/lib/sentry.ts)、[`workers/api/src/sentry.ts`](./workers/api/src/sentry.ts)、[`workers/ingress/src/sentry.ts`](./workers/ingress/src/sentry.ts) 与 [`workers/collector/src/sentry.ts`](./workers/collector/src/sentry.ts)；本地默认不上报，要试就在 `.env.local` 设 `NEXT_PUBLIC_SENTRY_DEV=true`。
 
-Sentry 里的数据也回到页面上：采集 Worker 用只读令牌每 5 分钟取回两个项目的报错数、真实访客的 Web Vitals、在线探测与 cron 心跳，写进可滞后层给站点卡片（`/api/status/sentry`）。在线状态分两行：`lyjw.me` 那行探测的是 Vercel 上的静态路由，只说明前端还在出页面；`API` 那行看 api Worker 的 cron 心跳，每一轮都要经过 Worker 和 Durable Object，补上后端那一截。排查线上报错时 agent 先经 Sentry MCP 查证据再读代码，规矩写在 [`AGENTS.md`](./AGENTS.md)。
+Sentry 里的数据也回到页面上：采集 Worker 用只读令牌定时取回站点与后端（api、采集两个 Worker 项目合计）的报错数、真实访客的 Web Vitals、在线探测与 cron 心跳，写进可滞后层给站点卡片（`/api/status/sentry`）。在线状态分两行：`lyjw.me` 那行探测的是 Vercel 上的静态路由，只说明前端还在出页面；`API` 那行看 api Worker 的 cron 心跳，每一轮都要经过 Worker 和 Durable Object，补上后端那一截。排查线上报错时 agent 先经 Sentry MCP 查证据再读代码，规矩写在 [`AGENTS.md`](./AGENTS.md)。
 
 ## 技术组成
 
@@ -229,4 +229,4 @@ Mac 端采集器 [MacTelemetryHub](https://github.com/LYJW131/MacTelemetryHub) �
 
 [Worker 数据后端与首屏缓存](./docs/state-storage.md) 说明状态持久化、实时层与可滞后层的划分、公开数据边界、缓存失效与页面更新之间的关系。
 
-iPhone 端采集器 [iPhone Telemetry Hub](./reporters/iphone-telemetry-hub/README.md)（iOS 27 原生 SwiftUI）上报活动圆环与最近 10 次训练，协议和部署顺序见其 README 与 [API Worker](./workers/api/README.md#最近训练)。
+iPhone 端采集器 [iPhone Telemetry Hub](./reporters/iphone-telemetry-hub/README.md)（iOS 27 原生 SwiftUI）上报活动圆环与最近的训练，协议和部署顺序见其 README 与 [API Worker](./workers/api/README.md#最近训练)。
