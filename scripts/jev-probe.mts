@@ -3,7 +3,7 @@
  * 用法：node --experimental-strip-types --import ./src/lib/testing/register-alias.mjs scripts/jev-probe.mts
  * key 读 .env.local 的 TYPESAFE_API_KEY。只打印答案，不打印 key。
  *
- * Pulse 别的道画的是事实时间线，不再送 Jev；这里只剩 Coding。
+ * Pulse 只有 Coding 一条道送 Jev，别的道画的是事实时间线。
  */
 import { readFileSync } from "node:fs";
 import { codingQuestions, codingWindowFeatures, type CodingObservation } from "@shared/pulse-coding";

@@ -21,7 +21,7 @@
 | 事实 | 核对 |
 | --- | --- |
 | 回源 `lyjw.me`，回源 Host 同为 `lyjw.me`；缓存首页 HTML 与带内容哈希的静态 JS | 核对于 未记录，方式：迁自 `docs/state-storage.md` |
-| 缓存规则顺序敏感：①「PWA 核心文件绕过缓存」置首，匹配 `/sw.js`、`/offline.html`、`/manifest.webmanifest`、`/pwa/icon-192.png`、`/pwa/icon-512.png`，必须先于整站长效缓存规则；②「首页遵循源站缓存」（主机名等于本站、URI 路径等于 `/`）排在①之后，边缘按源站 `Cache-Control` 的 SWR 自行过期与后台取新（值在 `next.config.ts` 的 headers）；没有②，`/` 因没有文件后缀被判 DYNAMIC、每次回源 | 核对于 未记录，方式：迁自 `docs/telemetry-subsystems.md` 第 13 节与 `workers/api/README.md` |
+| 缓存规则顺序敏感：①「PWA 核心文件绕过缓存」置首，匹配 `/sw.js`、`/offline.html`、`/manifest.webmanifest`、`/pwa/icon-192.png`、`/pwa/icon-512.png`，必须先于整站长效缓存规则；②「首页遵循源站缓存」（主机名等于本站、URI 路径等于 `/`）排在①之后，边缘按源站 `Cache-Control` 的 SWR 自行过期与后台取新（值在 `next.config.ts` 的 headers）；没有②，`/` 因没有文件后缀被判 DYNAMIC、每次回源 | 核对于 未记录，方式：迁自 `docs/telemetry-subsystems.md` 的「PWA 与边缘缓存规则」一节与 `workers/api/README.md` |
 | 图片路径 `/img/*` 由 ESA 按静态后缀缓存，回源 `lyjw.me`（那边再 rewrite 到 R2 公开源）；对象带一年不可变缓存，地址即内容指纹，所以不需要主动刷新 | 核对于 未记录，方式：迁自根 `README.md` 的「图片」一节 |
 | 新版本上线时 `.github/workflows/purge-esa.yml` 调 `PurgeCaches` 刷新首页 cachekey 并预热；站点 ID 与刷新 URL 见 `.github/workflows/purge-esa.yml#ESA_SITE_ID`，凭据是仓库 secret `ALIYUN_ACCESS_KEY_ID` / `ALIYUN_ACCESS_KEY_SECRET`；日常上报不触发刷新 | 核对于 未记录，方式：迁自 `workers/api/README.md` |
 
