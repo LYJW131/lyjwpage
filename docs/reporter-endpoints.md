@@ -5,7 +5,7 @@
 2026-09-07（UTC+8）核验。统一源为 `https://api.homepage.lyjw.llc`，生产 Worker 名为 `api`。
 所有七个来源均在新 Worker 日志中确认真实 POST 返回 202；HomePod 的两个实例还分别检查了 Home Assistant 动作回执。
 
-| 来源 | 当前实例 | 路径 | 结果 |
+| 来源 | 核验时实例 | 路径 | 结果 |
 | --- | --- | --- | --- |
 | Mac | 本机 Mac Telemetry Hub | `/api/ingest/mac` | 设置已保存；连续真实上报 202 |
 | server | `ssh -J dsm misaka-jp`，容器 `server-reporter` | `/api/ingest/server` | 配置已更新、容器 Up；真实上报 202（2026-09-13 从 systemd 改成 Docker，见下） |
@@ -89,6 +89,8 @@ mac / iphone 轮换时在 Zero Trust 里重新生成这把 service token 的 sec
 
 ## 2026-09-28 并入采集 Worker
 
+> 本节与下节的 PlayStation 内部调用描述只适用于迁移时快照。现行上报链路见 [PlayStation 上报器](../reporters/playstation-reporter/README.md)，生产实例与核对证据见 [仓库外事实](./ops-facts.md)。
+
 PSN 拉取并进 `workers/collector`（任务 `playstation`，见它的 README）。上报、推送连接数和电源改走 api 的
 `StateCore` entrypoint（`ingest("playstation", raw)`、`connections()`、`playstationPower()`），
 可见人数仍读 `ONLINE_COUNTER_URL/count`。KV 命名空间 `0f9b584f71634776ba3bc081a7aa4498` 原样沿用，
@@ -108,8 +110,8 @@ PSN 拉取并进 `workers/collector`（任务 `playstation`，见它的 README�
 
 上报入口验完 Access、prepare 好之后，实时那一半经 Service Binding 调 api 的 `StateCore.commitIngest(command)`，
 可滞后层、D1 归档和 Apple Music 凭据自己写；部署通知改由它调 `StateCore.broadcastVersion()`，并请采集 Worker
-`Collector.refresh(["vercel-deployments", "cloudflare-deployments"])`。采集 Worker 的 PlayStation 信封在它那边 prepare，
-改调 `StateCore.commitIngest`，`StateCore.ingest` 删除。
+`Collector.refresh(["vercel-deployments", "cloudflare-deployments"])`。这次迁移中的 PlayStation 内部调用也改成
+prepare 后交给 `StateCore.commitIngest`，`StateCore.ingest` 删除；此处是历史记录，现行链路见上方指针。
 
 自定义域名 `ingest.homepage.lyjw.llc` 写在 `workers/ingress/wrangler.toml`，由 ingress 的部署从 `api` 接管（Access 应用跟着
 主机名走）。切换时按 api → ingress → collector 手动部署一遍，再推 main。待部署核验：七个来源与 OTLP 的真实上报 202、
