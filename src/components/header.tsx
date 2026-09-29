@@ -3,6 +3,7 @@ import { HeaderDesktop } from "@/components/live/live-desk-card";
 import { HomeLink } from "@/components/home-link";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { MiniPlayer } from "@/components/web-player/mini-player";
+import { DESKTOP_PATH } from "@/lib/paths";
 import type { DesktopPayload, StatusResponse } from "@/lib/types";
 
 export function Header({
@@ -31,7 +32,7 @@ export function Header({
             <ThemeToggle />
           </div>
           {/* 页头这枚徽章不是一张卡：出错只上报，原位不画东西，别顶着「Unavailable」占页头 */}
-          <CardBoundary label="Header Desktop" silent>
+          <CardBoundary label="Header Desktop" silent paths={[DESKTOP_PATH]}>
             <HeaderDesktop
               fallback={desktop}
               iconDataUri={desktopIconDataUri}
