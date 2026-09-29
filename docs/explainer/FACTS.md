@@ -199,39 +199,44 @@ PlayStation 上报器 Worker 已删除，并进 collector 的 `playstation` 任�
 
 ## 5 浏览器
 
+第 05 章用到的部分按 main 5939ef8 逐条回代码复核过。 <!-- allow: 核对基线戳 -->
+
 ### 早开连接
 
-- head 里的内联脚本在解析时就 `new WebSocket("wss://…/ws?visible=1")` 起手，把收到的消息攒下来（最多 50 条，看门狗 15 秒）。
-- 这样**不用等整棵树 hydrate 完**才发起连接。hydrate 后由 `useLiveEvents` 接管这条连接，按顺序重放（live-socket-boot.ts）。
-- 数字只在代码注释里有一次未注日期的「线上实测」（live-socket-boot.ts:4-10）：JS 347 ms 到齐，第一个 effect 878 ms 才发请求，中间 530 ms 是 hydration；连接本身约 250 ms；早开脚本 30 ms 起手。**片中不标这些数字**，时间轴只画示意；要标得先重测。
-- 重连退避从 1 秒起、每次 ×1.5，封顶 30 秒。重连后所有实时视图立刻补取一次（use-live-events.ts:353）。
+- head 里的内联脚本解析到它时就 `new WebSocket("wss://…/ws?visible=1")` 起手，把收到的消息原样攒下：最多 `EARLY_LIVE_SOCKET_QUEUE_LIMIT` 条（50），没人接手就在 `EARLY_LIVE_SOCKET_WATCHDOG_MS`（15 秒）后自己关（`src/lib/live-socket-boot.ts#earlyLiveSocketScript`）。
+- 这样**不用等整棵树 hydrate 完**才发起连接。hydrate 后由 `useLiveEvents` 接管这条连接，攒下的按到达顺序重放（`src/hooks/use-live-events.ts#adoptEarlySocket`）。房间在连上的那一刻就发一条 `online` 人数，所以托盘里通常至少有这一封。
+- 代码里不记实测延迟，注释只讲为什么要早开。**片中不标毫秒**，时间轴只画先后；要标得先重测。
+- 重连退避从 1 秒起、每次 ×1.5，封顶 30 秒。重连后所有实时视图立刻补取一次（同文件 `open` 里的 `onReady`）。
 
 ### 推送进卡片
 
-- 带数据的推送直接 `mutate(path, data, {revalidate:false})` 写进 SWR，卡片当场更新。
-- 时间戳挡旧：推送和轮询都按单调戳比较，慢回来的旧数据盖不掉新的（`acceptPush` / `guardPolled`，status-reads.ts:22-62）。
+- 带数据的事件按 `src/hooks/use-live-events.ts#FORWARDS` 直接 `mutate(path, data, {revalidate:false})` 写进对应的 SWR 键，卡片当场更新：desktop、listening-now、listening、watching-now、watching、playing-now、playing、trophies、charger、powerbank、coding-now。事件名到端点的对应登记在 `src/lib/status-views.ts#STATUS_VIEWS`。
+- `online` 只写页脚的人数；`presence`、`version` 不带数据，只让几张卡重取（同文件的 `INVALIDATIONS`；presence 重取的是 Mac 供数的几张，含 coding-now）。
+- 时间戳挡旧：推送先经 `acceptPush` 登记这一代，轮询回来经 `guardPolled` 比，慢回来的旧数据盖不掉新的（`src/lib/status-reads.ts#guardPolled`）。带单调戳的只有 desktop、listening、listening-now、powerbank、trophies（同文件的 `STAMPS`），listening-now 比的是 `receivedAt`。
 
-### 取数节奏（poll-schedule.ts，d38f2cd）
+### 取数节奏（`src/lib/poll-schedule.ts`）
 
-- 实时卡用自己的间隔：
-  - 充电：30 秒
+- 实时卡的间隔由卡片组件自己给（各组件里 `REFRESH_MS` 一类常量）：
+  - 充电头、充电宝：30 秒
   - desktop：60 秒
-  - 编码：2 分钟
+  - 编码（coding、coding-now）：2 分钟
   - pulse：5 分钟
   - 在听 / 在看 / 在玩「此刻」：60 秒
-  - 列表类：10 分钟
-- 推送连着、且视图标了 `pushCovers` 时，才退成 **5 分钟兜底**：listening、watching(-now)、playing(-now)、trophies。desktop、充电、listening-now、编码不退（poll-schedule.ts:46-48）。
-- 可滞后卡不再固定轮询，而是在 `updatedAt + 节奏 + 15 秒` 时去取，也就是「下一次预期写入」。逾期后从 15 秒起退避，最长取 min(节奏, 5 分钟)。
+  - 列表类和奖杯：10 分钟（在听列表空着时 60 秒）
+- 推送连着、且视图登记了 `pushCovers`（listening、watching、watching-now、playing、playing-now、trophies）时，间隔取 `max(cardMs, PUSH_SAFETY_NET_MS)`，也就是不快于 5 分钟的兜底（`src/lib/poll-schedule.ts#realtimeInterval`）：真被放宽的只有 60 秒的「此刻」卡（watching-now、playing-now）和空着的在听列表，10 分钟的列表和奖杯不变。desktop、充电头、充电宝、listening-now、编码没登记 `pushCovers`，照旧按自己的间隔。
+- 可滞后卡不固定轮询，在 `due = updatedAt + cadenceMs + LAG_GRACE_MS`（15 秒）时去取，也就是「下一次预期写入」之后一点；过了 due 还没取到更新的，从 `LAG_MIN_RETRY_MS`（15 秒）起退避，封顶 min(节奏, `LAG_MAX_RETRY_MS`)（`src/lib/poll-schedule.ts#nextLagDelay`）。
+- 节奏登记在 `src/lib/status-views.ts#STATUS_VIEWS` 的 `cadenceMs`。片中到货表举的三行：server 60 秒、github-chart 10 分钟、activity 1 小时；表里的 updatedAt 时刻是示意。
 - 标签页隐藏就暂停。
 
 ### 在线判断全在浏览器（8a7e63e）
 
-- 源站只给时间戳、窗口和「亲口离线」。
-- 首帧拿首屏信封的 `servedAt` 当钟；挂载后换成访客自己的钟，到点自己翻。
+- 源站只给原始事实：`lastSeenAt`、`heartbeatWindowMs`、`declaredOffline`（`src/lib/reporter-liveness.ts#withPresence`），不给「此刻在不在线」的结论。
+- 首帧拿首屏信封的 `servedAt` 当钟；挂载后换成访客自己的钟，只进不退（`src/lib/freshness.ts#clockReading`）。
+- 到了 `lastSeenAt + heartbeatWindowMs` 这个截止时刻，浏览器自己的定时器把钟推过去，卡片当场翻成离线，不再去问源站（`src/hooks/use-stale.ts#useReporterStale`）；刚切回前台、回源还没回来的那一拍不算（`src/lib/freshness.ts#confirmStale`）。
 
 ### 播放进度
 
-- 位置 + (现在 − 观测时间)，单曲循环（repeatOne）时取模（track-position.ts:29-35）。
+- 位置 + (现在 − 观测时间)，即 `positionMs + (now − observedAt)`，只在 `state === "playing"` 时往前推；单曲循环（repeatOne）时取模（`src/lib/track-position.ts#trackPositionMs`）。`now` 是浏览器的钟，`observedAt` 是设备（Mac / HomePod）的钟。
 - 歌词逐字高亮。
 
 ### 年度图
