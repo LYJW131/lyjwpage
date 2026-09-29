@@ -13,6 +13,14 @@ const FIELDS = "captchaResult,lighthouseResult(categories/performance/score,audi
 const WINDOW_MS = 6 * 3_600_000;
 /** 窗口内万一跑得比预期密（比如改了 cron），也不把无上限的历史塞进一条记录。 */
 const MAX_SAMPLES = 12;
+/**
+ * 单端等多久。PSI 通常二十多秒，但 Google 那边的跑测机偶尔卡住：2026-09-28 有两轮
+ * （17:08、22:08 UTC）在 60 秒处被自己掐断，两次都恰好 60000 ms，其余轮次正常。
+ * 放宽到 120 秒：桌面、移动并行，一轮最坏也是这个数，仍在采集任务的时限之内
+ * （workers/collector/src/jobs/pagespeed.ts 的 maxRuntimeMinutes，有测试盯着）。
+ * 卡住的那次要落进自己的 catch 里（有日志），别拖到被平台掐断 —— 那种死法不留任何痕迹。
+ */
+export const PAGESPEED_TIMEOUT_MS = 120_000;
 function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("PageSpeed 结果格式无效");
   return value as Record<string, unknown>;
@@ -57,9 +65,7 @@ export function parsePageSpeed(raw: unknown): LighthouseVitals {
 export async function fetchPageSpeed(url: string, strategy: "desktop" | "mobile", key: string): Promise<LighthouseVitals> {
   const endpoint = new URL(ENDPOINT);
   endpoint.search = new URLSearchParams({ url, strategy, category: "performance", fields: FIELDS, key }).toString();
-  // 单端实测二十多秒。留 60 秒的余量，卡住的那次要落进自己的 catch 里（有日志），
-  // 别拖到被平台掐断 —— 那种死法不留任何痕迹
-  const response = await fetch(endpoint, { headers: { "User-Agent": "lyjwpage-pagespeed" }, signal: AbortSignal.timeout(60_000) });
+  const response = await fetch(endpoint, { headers: { "User-Agent": "lyjwpage-pagespeed" }, signal: AbortSignal.timeout(PAGESPEED_TIMEOUT_MS) });
   if (!response.ok) throw new Error(`PageSpeed 查询失败 (${response.status})`);
   return parsePageSpeed(await response.json());
 }
