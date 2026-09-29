@@ -161,7 +161,7 @@ NPSSO 是 secret `PSN_NPSSO`，可以缺席：KV 的 `auth` 里还有有效 refr
 `PSN_LANGUAGE` 默认 `zh-Hans`，presence 和奖杯接口经 psn-api 的 `headerOverrides` 发
 `Accept-Language`。psn-api 的 `getUserPlayedGames` 不接 `headerOverrides`，所以游玩列表直接请求
 同一个 `…/users/:accountId/titles` 端点。时间戳转 epoch 毫秒、ISO-8601 时长转毫秒、平台名大写。
-`category`、`service` 是上游枚举，已见值和信封样例见 git 历史里的 `workers/playstation-reporter/README.md`。
+`category`、`service` 是上游枚举，原样透传，校验只当文本（`shared/playstation.ts`）。
 
 ## COLLECTOR_KV 的键
 

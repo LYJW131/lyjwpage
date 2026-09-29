@@ -80,8 +80,8 @@ prepare 之后，一封上报按数据层拆开（`src/worker.ts` 的 `commitIng
 ### Claude Code 云端线程用量
 
 Mac 的 ccusage 只扫本机会话记录，看不到云端线程。云端环境打开 Claude Code 内置遥测，
-每分钟把指标推到 `/api/ingest/agents/otlp`。这组变量**只配在云端环境设置里**，不进仓库的
-`.claude/settings.json`，也不配在本机：本机会话已经由 ccusage 统计，再走遥测会重复计数。
+每分钟把指标推到 `/api/ingest/agents/otlp`。这组变量**只配在云端环境设置里**，不进仓库里 Claude Code 的
+项目级 settings 文件，也不配在本机：本机会话已经由 ccusage 统计，再走遥测会重复计数。
 
 ```sh
 CLAUDE_CODE_ENABLE_TELEMETRY=1
@@ -138,9 +138,8 @@ Sentry 沿用 `api-worker` 项目（同一个 DSN），每个事件带 `worker: 
 `wrangler deploy` 遇到挂在别的 Worker 上的自定义域名会直接接管（`override_existing_origin`），所以域名跟着这份配置走，
 api 以后怎么重建都不会把它要回去。Access 应用按主机名挂，跟着域名走。
 
-状态核心的 RPC（`ready`、`commitIngest`、`broadcastVersion`）要先于这个 Worker 接流量上线。2026-09-29 切换时按
-api → ingress → collector 的顺序手动 `wrangler deploy` 了一遍（空窗约一分钟，上报器自己重试），再推 main 让 Workers Builds
-用同一份代码重建。以后改动契约照「只加不改」：先加 RPC、上线，再让调用方用。
+状态核心的 RPC（`ready`、`commitIngest`、`broadcastVersion`）要先于这个 Worker 接流量上线。改动契约照「只加不改」：
+先加 RPC、上线，再让调用方用。
 
 ## 本地开发
 

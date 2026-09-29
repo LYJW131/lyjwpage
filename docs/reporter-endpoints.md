@@ -1,5 +1,7 @@
 # 生产上报端点核验
 
+> 类型：record。按 f323611 2026-09-07 核对，快照不维护，不当现状引用；文末各节是之后追加的迁移记录，各带日期。仍然成立的仓库外事实已汇总到 [仓库外事实](./ops-facts.md)，要现状请看那里。
+
 2026-09-07（UTC+8）核验。统一源为 `https://api.homepage.lyjw.llc`，生产 Worker 名为 `api`。
 所有七个来源均在新 Worker 日志中确认真实 POST 返回 202；HomePod 的两个实例还分别检查了 Home Assistant 动作回执。
 
@@ -58,7 +60,7 @@ server、PlayStation 和 agent limits 新增 `ONLINE_COUNTER_URL`，并行读取
 单端失败仅将该端计数降为零。三档间隔不变。
 
 远端本次备份后缀为 `.before-online-20260909`：
-NAS 备份 `src/cadence.ts`、`src/config.ts`、`compose.yaml`、`.env`；
+NAS 备份 `src/cadence.ts`、`src/config.ts`、`compose.yaml`、`.env`；<!-- allow: 快照里的 NAS 远端文件，不在仓库 -->
 server 备份 `.env`（代码随镜像走，回退改 `sha-<短哈希>` 标签）。回滚须与 API 旧计数契约整体恢复，不能只撤掉在线域名配置。
 
 ## 2026-09-25 上报鉴权迁到 Cloudflare Access
@@ -70,8 +72,8 @@ server 备份 `.env`（代码随镜像走，回退改 `sha-<短哈希>` 标签�
 | 来源 | 凭据 | 放在哪 |
 | --- | --- | --- |
 | server、agents | `lyjwpage-server`、`lyjwpage-agents` | misaka-jp `/opt/lyjwpage/<服务>/.env` 的 `SITE_INGEST_URL` / `ACCESS_CLIENT_ID` / `ACCESS_CLIENT_SECRET` |
-| emby | `lyjwpage-emby` | dsm `/volume3/docker/emby-proxy/.env`（600），`docker-compose.yml` 里 emby-reporter 引用这三个变量 |
-| HomePod、PS5 电源 | `lyjwpage-home-assistant` | dsm 与 n100 的 Home Assistant `secrets.yaml`：`lyjwpage_access_client_id` / `lyjwpage_access_client_secret` |
+| emby | `lyjwpage-emby` | dsm `/volume3/docker/emby-proxy/.env`（600），`docker-compose.yml` 里 emby-reporter 引用这三个变量 <!-- allow: 快照里的 dsm 远端文件，不在仓库 --> |
+| HomePod、PS5 电源 | `lyjwpage-home-assistant` | dsm 与 n100 的 Home Assistant `secrets.yaml`：`lyjwpage_access_client_id` / `lyjwpage_access_client_secret` <!-- allow: 快照里的 Home Assistant 远端文件，不在仓库 --> |
 | mac、iphone | `lyjwpage-mac`、`lyjwpage-iphone` | App 设置里手填 Client ID / Client Secret，Secret 存钥匙串 |
 | 部署通知 | `lyjwpage-github-actions` | 仓库 secret `ACCESS_CLIENT_ID` / `ACCESS_CLIENT_SECRET` |
 | playstation | 无 | 采集 Worker 经 Service Binding 调 api 的 `StateCore.commitIngest(command)`（2026-09-29 前是 `ingest("playstation", …)`） |

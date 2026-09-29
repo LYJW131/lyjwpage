@@ -1,5 +1,7 @@
 # DO 优化线上效果核验
 
+> 类型：record。按 04edf60 2026-09-22 核对，快照不维护，不当现状引用。
+
 核验时间：2026-09-22，UTC+8。结论：`04edf60` 已有效降低 StateHub 的 CPU 与活跃时长，原有执行边界调整应保留。它增加了 RPC 往返，部分计算转移到了普通 Worker；现有证据不足以称为整体计算成本下降或所有接口全面提速。
 
 ## 生产版本与观察窗口
@@ -129,7 +131,7 @@ node scripts/benchmark-do-storage.mjs --ref 04edf6087dc9fb7b93d58109d9070882fcb7
 - 独立范围矩阵 **48,074** 组、裁剪矩阵 **19,220** 组通过，覆盖正负索引、越界、极值、序号断档、空 entry 删除、TTL 保持和其他 key 隔离。
 - Worker 类型检查、**87 / 87** Worker 测试、**316 / 316** 主站与共享库测试通过。
 - 修改文件的 ESLint、基准脚本语法检查和 `git diff --check` 通过。
-- `verify-api-worker.mjs` 隔离链路通过；`verify-kv-read-model.mjs` 确认上报、DO Alarm、内部 renderer、KV、边缘命中及故障回退正常。
+- `verify-api-worker.mjs` 隔离链路通过；`verify-kv-read-model.mjs` 确认上报、DO Alarm、内部 renderer、KV、边缘命中及故障回退正常。<!-- allow: 快照引用当时的脚本，已随读模型一起删除 -->
 
 本地版本在当前规模下已达到合理的性能与代码质量平衡：高频末条读取只扫描结果及 entry，完整列表去掉重复扫描，采样存储循环降低约三分之二扫描量。保留的 `append COUNT` 负责准确返回长度，尾部裁剪仍需扫描到保留边界。继续消除这些成本需要新增派生状态或改变契约，目前没有相称的收益证据，停止继续扩大实现。
 

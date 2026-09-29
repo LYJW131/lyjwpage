@@ -1,5 +1,7 @@
 # 遥测与实时状态子系统架构指南
 
+> 类型：reference
+
 本文档汇集 `lyjwpage` 全站各实时状态模块的接入架构、数据流向、硬件/第三方 API 适配细节、协议决策与运维备忘。供开发者与 Agent 深入维护、排错与扩展时参考。
 
 ---
@@ -187,7 +189,7 @@ Mac Telemetry Hub 采集三大模块并通过 `/api/ingest/mac` 上报：
 - **凭据完全隔离**：容器内部独立维护各家 CLI（Claude Code、Codex 等）登录 Session，严禁复制宿主机凭据，防止 refresh token 竞态失效。
 - **心跳与超时**：
   - 即使数据无变化，每轮上报依然执行（作为存活心跳）。
-  - 站点在响应中附带 `limitsStaleAfterMs`（默认 185 分钟），由前端计算是否呈现 Stale 虚化状态。
+  - 限额在可滞后层，过没过时由浏览器按 `AGENT_LIMITS_STALE_MS` 判断，超过就呈现 Unavailable（源：`src/lib/freshness.ts#AGENT_LIMITS_STALE_MS`）。
 
 ---
 
@@ -254,7 +256,7 @@ payload: >-
 - `reporters/server-reporter` 部署于云端 Linux 节点（TypeScript / Node，和 agents-reporter 同一套结构），采集 `/proc/stat` 与 `/proc/net/dev`，上报 CPU、内存及网络吞吐，每分钟一推；前端在下一次预期上报后几秒去取。
 
 ### 三档自适应调频算法
-为节省外部 API 配额，采集 Worker 的 PlayStation 任务（`workers/collector`，2026-09-28 前是独立的 `playstation-reporter`）和 `agents-reporter` 遵循三档自适应调频（`server-reporter` 2026-09 起固定每分钟一推：当初调频是为了给 Vercel 函数减负，上报改进 api Worker 后不再需要，见它的 README「节奏」）：
+为节省外部 API 配额，采集 Worker 的 PlayStation 任务（`workers/collector`）和 `agents-reporter` 遵循三档自适应调频（`server-reporter` 固定每分钟一推、不参与调频，理由见它的 README「节奏」）：
 
 | 触发条件 | 说明 | PlayStation 间隔 | agent limits 间隔 |
 | --- | --- | --- | --- |

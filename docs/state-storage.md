@@ -1,5 +1,7 @@
 # Worker 数据后端与首屏缓存
 
+> 类型：reference
+
 Worker 是唯一数据后端。上报、状态 API、Apple / GitHub 获取和缓存、WebSocket、在线人数均在 Cloudflare：上报先到无状态的上报入口 Worker（`workers/ingress`），状态核心（`workers/api`，持有 Durable Object）只收它 prepare 好的命令。Vercel 只在生成或后台重建首页时按卡 GET 各条 `/api/status/*`；浏览器挂载后直接请求 Worker，不存在 Vercel 状态代理，也没有聚合端点。`lyjw131.com` 经 ESA 回源 `lyjw.me`（回源 Host 同为 `lyjw.me`），ESA 缓存首页 HTML 与静态 JS。
 
 ## 数据及权限
@@ -18,7 +20,7 @@ Worker 是唯一数据后端。上报、状态 API、Apple / GitHub 获取和缓
 
 - 写入方直接写 KV、不推送：上报入口写落地节点、限额、时区、常驻上报器账本、活动圆环读数与最近训练（`workers/ingress/src/lag-ingest.ts`，在这封上报的状态核心那一半成功之后）；采集 Worker 写外部拉取的结果。取数失败不写，KV 里的值本身就是上次成功值，不另存 last-good。iPhone 那一封里，状态核心只留 Pulse 的输入（五分钟统计桶、训练区间），圆环读数（`activity:v1`，只在这封带了当天圆环时写）和训练列表（`workouts:v1`，整份替换）在 KV，`updatedAt` 是最后一次带来它的那封上报的收到时刻。
 - 状态核心的公开读取端点只读 KV（`src/lib/lag-result.ts` 经 `@/lib/lag-store` 别名读 `LAG`），信封里带上 `updatedAt`；服务端不下「过没过时」的结论。
-- 浏览器按各卡阈值判断：超过就显示 Unavailable（落地节点 `SERVER_STALE_MS` 10 分钟，限额 `AGENT_LIMITS_STALE_MS` 185 分钟，账本各格同上，活动圆环 `ACTIVITY_STALE_MS` 12 小时 —— iPhone 只在 HealthKit 有新样本时被唤起，睡一夜一封都没有是正常的，理由见 `src/lib/freshness.ts`）。训练列表不设阈值：完成过的训练是历史事实，手机多久没报也不会变假。页面打开后可滞后卡直接用首屏那份，只有 `updatedAt` 已超过它的轮询间隔才补取一次。
+- 浏览器按各卡阈值判断：超过就显示 Unavailable（落地节点 `SERVER_STALE_MS`，限额 `AGENT_LIMITS_STALE_MS`，账本各格同限额，活动圆环 `ACTIVITY_STALE_MS`：iPhone 只在 HealthKit 有新样本时被唤起，睡一夜一封都没有是正常的，所以它的窗口要跨过整夜；取值与理由见 `src/lib/freshness.ts`，源：`src/lib/freshness.ts#AGENT_LIMITS_STALE_MS`）。训练列表不设阈值：完成过的训练是历史事实，手机多久没报也不会变假。页面打开后可滞后卡直接用首屏那份，只有 `updatedAt` 已超过它的轮询间隔才补取一次。
 - 首屏缓存失效由写 KV 的一方发起，判据仍是布局变化（见 `src/lib/home-layout.ts`）：落地节点首报 / 断流回来 / 流量行出没，限额的来源集合变化，训练那一块在「没收到过 / 一条都读不出 / 有训练」三种占位之间换。圆环读数的变化只是内容，不失效首屏。
 - Apple Music user token 在另一个命名空间 `lyjwpage-credentials`（binding `CREDENTIALS`，`shared/credentials.ts`）：公开读取的代码路径只碰 `LAG`，白名单写错也漏不出凭据。
 - 本地开发的 `wrangler.test.toml` 给这两个 binding 配了固定的本地 id，多个本地 Worker 用同一个 id 才读得到彼此写的值；分支 Preview 不绑 KV，读不到时由上游兜底补上。
@@ -42,7 +44,7 @@ D1 是整站的长期历史归档：DO 管实时状态与 7 天热数据，KV �
 | `coding_observations` | Coding 原始观测：前台应用、是否 coding 应用、各 agent 在不在跑 | 状态核心 | `t` |
 | `coding_token_buckets` | Mac 本机五分钟 token 桶，agent × 模型 | 状态核心 | `(bucket_at, agent, model)` |
 | `agent_usage_days` | 每天 × agent × 模型的 token、事件数、费用（只有 agent 合计 `model = '*'` 有）、活跃秒数 | 状态核心 | `(date, agent, model)` |
-| `pulse_samples` | 9 月 17 日至 Pulse 改成事实时间线之间的旧档位数据，原样冻结，不迁移也不再写 | — | `(domain, t)` |
+| `pulse_samples` | 档位时代（Pulse 改成事实时间线之前）的旧数据，原样冻结，不迁移也不再写 | — | `(domain, t)` |
 
 上报入口的四张表由 `shared/history-ingest.ts` 拼语句，上报入口 Worker（`workers/ingress/src/ingest-archive.ts`）在状态核心那一半提交成功之后 `waitUntil` 整批提交；失败只记 `[history]` 日志，不让已收下的上报重发。迁移 `0005_history_ingest.sql` 建表，部署写这些表的版本之前先应用。
 
@@ -73,7 +75,7 @@ Worker 写入完成后，只有首屏布局变化才 POST `/api/revalidate`（�
 
 ## 配置
 
-Vercel 参照根 `.env.example`，仅公开后端源、缓存通知鉴权和 R2 公开源（`/img/*` rewrite 的目的地与首屏图标内联的来源；Worker 不配交付域）。Worker 参照 `workers/api/.dev.vars.example` 与 wrangler.toml；状态数据用的 GitHub Token 使用 Worker Secret，Apple Music 凭据来自 Mac 上报。`UPSTREAM_API_URL` 出现在本地 `.dev.vars` 和 `wrangler.toml` 的 `[previews.vars]`：以生产为主、本地或 Preview 补缺，生产 `ok:true` 的快照字段和端点用生产的，生产没有的才用这边的（只读），生产版本不设它。`NEXT_PUBLIC_BACKEND_URL` 构建期写入前端，状态、推送与在线人数同源（独立在线人数 Worker 2026-09-29 已并回推送房间）。Vercel 预览构建会把后端源改成该分支的影子 Worker，生产构建仍用面板里的值。改值需要重新部署。
+Vercel 参照根 `.env.example`，仅公开后端源、缓存通知鉴权和 R2 公开源（`/img/*` rewrite 的目的地与首屏图标内联的来源；Worker 不配交付域）。Worker 参照 `workers/api/.dev.vars.example` 与 wrangler.toml；状态数据用的 GitHub Token 使用 Worker Secret，Apple Music 凭据来自 Mac 上报。`UPSTREAM_API_URL` 出现在本地 `.dev.vars` 和 `wrangler.toml` 的 `[previews.vars]`：以生产为主、本地或 Preview 补缺，生产 `ok:true` 的快照字段和端点用生产的，生产没有的才用这边的（只读），生产版本不设它。`NEXT_PUBLIC_BACKEND_URL` 构建期写入前端，状态、推送与在线人数同源。Vercel 预览构建会把后端源改成该分支的影子 Worker，生产构建仍用面板里的值。改值需要重新部署。
 
 Vercel 可选配一份 `GITHUB_TOKEN`，只给构建期读公开仓的首页「最近提交」列表用（`use cache` + `cacheLife("max")`，随每次部署取一次）。不配也能匿名读，配上只是避开匿名限额；它不参与状态端点，浏览器和 HTML 拿不到。「本仓库」卡的贡献统计和贡献日历一样由采集 Worker 取数、写进可滞后层，经 `/api/status/github-repo` 提供。贡献者名单走 REST `/stats/contributors`（匿名也能读），顶部 COMMITS / ADDITIONS / DELETIONS 三个总数走 GraphQL，必须有采集 Worker 上的 `GITHUB_TOKEN`，没有就显示「—」；这三个数不能由名单加总得出，因为 `Co-authored-by` 的提交在贡献口径下会按人各记一遍。增删行要翻整条提交历史，结果以 `github-repo:churn` 锚在当前 HEAD 上存 30 天，之后每轮只补新增的那几条。
 

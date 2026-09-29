@@ -1,7 +1,6 @@
 # agents-reporter
 
 把各 coding agent 的**账号限额**和 **Cursor 的云端用量**推给 lyjwpage 的小代理，跑在日本的 misaka-jp 上。
-（2026-09-24 前叫 agent-limits-reporter；后来不止报限额，按入口 `/api/ingest/agents` 改名。）
 
 限额（套餐 + 用量窗口）从前和 token 用量一起由 MacTelemetryHub 从本机 TokenTracker
 取来、塞进 `/api/ingest/mac` 的 `vibeCodingUsage`。Mac 合盖 / 睡眠 / 离线时限额就冻住。
@@ -90,7 +89,7 @@ docker compose run --rm agents-reporter agent login   # cursor-agent，见下面
 
 Grok 的包是 `@xai-official/grok`，命令是 `grok`，无浏览器的环境用 `--device-auth`（`--device-code` 是别名）。
 
-`codex login` 一启动就把旧的 `auth.json` 删掉，中途取消或设备码过期等于把 codex 这份登录态弄没了，只能重登；
+`codex login` 一启动就把旧的 `/data/.codex/auth.json` 删掉，中途取消或设备码过期等于把 codex 这份登录态弄没了，只能重登；
 其余四家不受影响。设备码 15 分钟有效。
 
 Claude 在 Linux 上把 OAuth 写到 `/data/.claude/.credentials.json`。登录后，上报器在到期前 5 分钟内的采集轮次（或 usage 接口回 401 时）自动续期并原子写回。默认从镜像中 Claude Code 的生产配置对象读取 token 端点和 client ID，不需要手抄环境变量；扫描规则按 Claude Code 2.1.261 的原生安装包验证，只接受唯一的生产配置，无法识别会明确报错。
@@ -99,7 +98,7 @@ Claude 在 Linux 上把 OAuth 写到 `/data/.claude/.credentials.json`。登录�
 
 CLI 升级改变配置结构时，可更新扫描规则，或成对填写 `CLAUDE_OAUTH_TOKEN_URL` / `CLAUDE_OAUTH_CLIENT_ID` 暂时覆盖。日志不会输出令牌；撤销登录或 refresh token 本身失效仍需重新登录。
 
-Codex / Grok 的 token 由上报器自己刷新写回（`auth.json`）。
+Codex / Grok 的 token 由上报器自己刷新，写回各自凭据目录里的 `/data/.codex/auth.json`、`/data/.grok/auth.json`。
 
 ## cursor / antigravity
 
@@ -115,7 +114,7 @@ Codex / Grok 的 token 由上报器自己刷新写回（`auth.json`）。
 `https://cursor.com/api/dashboard/get-filtered-usage-events`，按 `Asia/Shanghai` 收成日桶。平时只拉上海时间
 昨天 0 点以来的事件、整天替换这两天；每 6 小时（或换账号、账本还没全量过时）整段历史重拉一次核对，
 那一次的问题和费用完整性记进账本，增量轮次沿用。
-账本在数据卷的 `cursor-usage.json`（只有聚合，没有 token）。每条请求按公开 API 价估一次费用：价目跟
+账本在数据卷的 `/data/cursor-usage.json`（只有聚合，没有 token）。每条请求按公开 API 价估一次费用：价目跟
 Mac 上的 ccusage 一样在线取 `https://models.dev/api.json`（只认官方厂商，6 小时内复用），取不到沿用上一份，
 一份都没有时用编译进镜像的快照；Composer、Auto、Bugbot 这类没有公开价的记 0 并把当天标成不完整。拉失败不挡限额心跳，这一轮不带
 `cursorUsage`，站点留着上一份。上报器不刷新这份 token，401 / 403 时限额那一行带
@@ -171,11 +170,11 @@ cursor 是 `{ period, plan, hardLimit, sand }`：三份 DashboardService 响应�
 一个 project 里两个服务，所以**不点名服务的命令会同时动两个容器**。只动限额这个就写服务名：
 `docker compose pull agents-reporter && docker compose up -d --no-deps agents-reporter`。
 
-2026-09-13 从群晖（dsm `/volume3/docker`）搬到 misaka-jp `/opt/lyjwpage`，和 `server-reporter` 同一台。
+跑在 misaka-jp 的 `/opt/lyjwpage`，和 `server-reporter` 同一台。
 这台在日本，各家限额接口直连可达，**`.env` 里不再需要 `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY`**。
 ssh 直连在 kex 阶段会被对面关掉，一律走 dsm 跳板：`ssh -J dsm misaka-jp`。
 
-限额在站点的可滞后层，浏览器按 `src/lib/freshness.ts` 的 `AGENT_LIMITS_STALE_MS`（185 分钟，三轮闲档加余量）判断过没过时。
+限额在站点的可滞后层，浏览器按 `src/lib/freshness.ts` 的 `AGENT_LIMITS_STALE_MS`（三轮闲档加余量）判断过没过时。
 从固定间隔升级时更新机器上的 `.env`：删除 `PUSH_INTERVAL_MS`、
 `LIVE_PUSH_URL`、`ONLINE_COUNTER_URL`；按需设置三档间隔，
 再重建容器。旧变量已移除。
@@ -225,5 +224,4 @@ ssh -J dsm misaka-jp 'cd /opt/lyjwpage && docker compose pull agents-reporter &&
 - 某个 agent「没配」（`configured: false`）这一行不发，站点按 id 留着上一次的值。
 - 「配了但取不到」发空 `limits` 加非空 `limitsError`。不要把上一次的好值再发一遍。
 
-2026-09-29 起在线人数并回 api 的推送房间，`SITE_URL/count` 一次回 `online`（判快档）与 `connections`（判中档），
-`ONLINE_COUNTER_URL` 不再读取，机器上的 `.env` 里留着也无害。
+`SITE_URL/count` 一次回 `online`（判快档）与 `connections`（判中档）；`ONLINE_COUNTER_URL` 不读取，机器上的 `.env` 里有也无害。

@@ -4,8 +4,7 @@
 
 站点够不着这台机器的 `/proc`（将来还要部署到 Vercel），所以该给的东西由这边送过去。
 TypeScript / Node，和 [agents-reporter](../agents-reporter) 同一套结构（`config` / `log` /
-`site` / `push-ledger` 各一份；它按人数调频的那份这里不用，见下面「节奏」）。没有运行时依赖，跑在容器里，机器上不用装 Node。2026-09 前是 Python
-标准库写的，改写时报文字段和状态文件格式都没变。
+`site` / `push-ledger` 各一份；它按人数调频的那份这里不用，见下面「节奏」）。没有运行时依赖，跑在容器里，机器上不用装 Node。
 
 ## 它做什么
 
@@ -59,7 +58,7 @@ pnpm --filter @lyjwpage/server-reporter test
 
 固定每分钟推一次，按轮的起点对齐（采集和推送花掉的时间从这一分钟里扣）。
 
-从前按有没有人在看分三档（可见 60 秒、只是开着 2 分钟、都没有 15 分钟），为的是给 Vercel 函数减负：上报曾经经过 Vercel，30 秒一轮时这条是全站函数调用量最大的路径（实测 12 小时 1.5K 次）。上报改进 api Worker 之后那个理由没了，三档反而更费 —— 闲着时每分钟要问一遍 `/count`（当时在线人数另在 online-counter 上，两个 Worker 各问一次），一天约 2880 次，比固定每分钟推一次（1440 次）还多。2026-09 起去掉。agents-reporter 和采集 Worker 的 PlayStation 任务还在按人数调频：它们控制的是打厂商 / PSN 接口的频率，那个理由还在。
+不按人数调频：上报不经过 Vercel，没有函数调用量要省；闲着时每分钟问一遍 `/count`，问询本身就不比直接推一次省。agents-reporter 和采集 Worker 的 PlayStation 任务按人数调频：它们控制的是打厂商 / PSN 接口的频率，调频省的是外部配额。
 
 断流窗口是站点 `lib/freshness` 的 `SERVER_STALE_MS`（10 分钟，十轮）：读数在站点的可滞后层，浏览器拿每封刷新的 `updatedAt` 和它比，过了显示 Unavailable。要降频时**先放宽站点窗口、部署完，这边再降频**，反过来做中间那段时间卡片会断续显示不可用。
 
@@ -85,9 +84,8 @@ pnpm --filter @lyjwpage/server-reporter test
 
 ## 在 VPS 上跑
 
-2026-09-13 起部署单元是 Docker，和 `agents-reporter` 合在
-[`reporters/compose.yaml`](../compose.yaml) 一个 project 里，misaka-jp 上一条命令起两个。
-从前这里是 systemd（`server-reporter.service`，`DynamicUser=yes`），已经删掉，不要再装。
+部署单元是 Docker，和 `agents-reporter` 合在
+[`reporters/compose.yaml`](../compose.yaml) 一个 project 里，misaka-jp 上一条命令起两个。不用 systemd 装它。
 
 ssh 直连在 kex 阶段会被对面关掉，一律走 dsm 跳板：`ssh -J dsm misaka-jp`。
 

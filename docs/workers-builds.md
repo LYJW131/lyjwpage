@@ -1,5 +1,7 @@
 # Workers 原生 Git 部署
 
+> 类型：reference
+
 仓库 `LYJW131/lyjwpage` 的三个 Worker（`api`、`ingress`、`collector`）连接 Cloudflare Workers Builds，生产分支均为 `main`。
 GitHub Actions 负责 lint、类型检查、单测与 CodeQL；Worker 发布由 Cloudflare GitHub App 触发，
 构建状态通过 GitHub check run 回传。Vercel 和 GitHub Pages 保持各自原生集成与现有工作流。
@@ -12,17 +14,14 @@ GitHub Actions 负责 lint、类型检查、单测与 CodeQL；Worker 发布由 
 | `ingress` | `/` | `pnpm --dir workers/ingress typecheck` | `pnpm --dir workers/ingress exec wrangler deploy` |
 | `collector` | `/` | `pnpm --dir workers/collector typecheck` | `pnpm --dir workers/collector exec wrangler deploy` |
 
-Workers Builds 在构建命令之前安装依赖。四个都使用根目录 `pnpm-lock.yaml` 与工作区，Wrangler 使用对应包锁定的版本。
-四个生产 Worker 均启用构建缓存，生产版本只从 `main` 用 `wrangler deploy` 发布。
+Workers Builds 在构建命令之前安装依赖。三个都使用根目录 `pnpm-lock.yaml` 与工作区，Wrangler 使用对应包锁定的版本。
+三个生产 Worker 均启用构建缓存，生产版本只从 `main` 用 `wrangler deploy` 发布。
 `collector` 的分支预览构建和非生产分支构建都关掉：它的 `CORE` Service Binding 指向生产 `api`，
 预览版一跑就会往生产状态里写；非生产分支的默认命令还会把版本传到生产脚本上。
 `ingress` 同理，两项都关：它的 `CORE` 指向生产 `api`，预览版收下的上报会直接写进生产状态；
 `wrangler.toml` 的 `[previews.vars]` 另设了 `PREVIEW_WORKER`，万一有预览版本跑起来也只会拒收（上报 403、部署通知 404）。
 `ingress` 没有 secret，公开变量与绑定全在它的 `wrangler.toml`，自定义域名 `ingest.homepage.lyjw.llc` 也写在那里：
 Workers Builds 里 `wrangler deploy` 会直接接管挂在别的 Worker 上的自定义域名，见 [上报入口 README](../workers/ingress/README.md)「上线与域名」。
-`collector` 由原 `playstation-reporter` 脚本改名而来（沿用它的 `PSN_NPSSO` secret 和 KV）；
-它原来的构建设置（根目录 `workers/playstation-reporter`、npm 命令、监视路径）要改成本文这一行，
-那个目录已经删除，npm 的 `package-lock.json` 也不再有。
 
 `workers/dev-router` 只给本地 `pnpm dev:worker` 用，没有 `package.json`，不连 Workers Builds。
 
@@ -32,7 +31,7 @@ Workers Builds 里 `wrangler deploy` 会直接接管挂在别的 Worker 上的�
 
 分支名里的 `/` 会收成短横线后再传给 `--name`，这样地址和 Vercel 预览写进页面的一致。文档允许自定义预览命令，只要实际执行的是 `wrangler preview`。
 
-预览命令不直接读 `wrangler.toml`，而是按它生成一份临时的 `wrangler.preview.json`，交给 `wrangler preview --config`，跑完即删。与生产只差两处：
+预览命令不直接读 `wrangler.toml`，而是按它生成一份临时的 `workers/api/wrangler.preview.json`，交给 `wrangler preview --config`，跑完即删。与生产只差两处：
 
 - 迁移：每个 Preview 的 Durable Object 是空库，wrangler 会把全部迁移从头上传。v1、v2 是从旧 `ingest` 搬数据的历史步骤，v1 里 `OnlineCounterRoom` 既是新建目标又是转移目标，从头执行会被拒（10021）。Preview 把这两步折成一步，直接新建 `LivePushRoom`、`StateHub`，标签仍用 `v2-split-online-counter`，之后新增的迁移原样追加。
 - 兼容开关：多加 `global_fetch_strictly_public`。同账号 zone 上的域名默认绕过其上的 Worker 直连源站，`api.homepage.lyjw.llc` 是自定义域、没有源站，不加这个开关，`UPSTREAM_API_URL` 的请求一律 522，Preview 取不到生产数据。
@@ -57,7 +56,7 @@ PR 关闭时 `.github/workflows/preview-api-worker.yml` 执行 `wrangler preview
 - `ingress`：`workers/ingress/*`、`shared/*`、`src/lib/*`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`、`tsconfig.json`。
 - `collector`：`workers/collector/*`、`shared/*`、`src/lib/*`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`、`tsconfig.json`。
 
-API 的共享状态代码变化必须触发发布。在线人数 Worker `online-counter` 2026-09-29 并回 api 的推送房间，仓库里已删；它的构建项目待在控制台手工删除，删之前每次推送都会留一条失败的构建。
+API 的共享状态代码变化必须触发发布。
 上报的校验与收敛（`shared/ingest/`）只打包进 `ingress` 和 `collector`（后者只用 PlayStation 那一份）：`api` 的运行时只
 `import type` 这里的命令类型（`eslint.config.mjs` 按规则挡住值导入），所以 `api` 排除这个目录，改校验不重新发布带
 Durable Object 的 `api`、不断开页面的 WebSocket。命令的形状变了（新字段、新模块）要同时改 `workers/api/src/stores/` 的
