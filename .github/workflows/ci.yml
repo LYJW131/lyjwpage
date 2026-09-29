@@ -1,8 +1,9 @@
 # Vercel 每次推送都会跑一遍 `next build`，站点能不能构建、类型过不过，那边已经管了。
-# 这里只跑 Vercel 覆盖不到的三件事：
+# 这里只跑 Vercel 覆盖不到的四件事：
 #   1. eslint —— Next 16 的 build 不再顺带 lint
 #   2. reporters/ 和 workers/ 的类型 —— 它们不进站点构建，跑在 NAS 和 Cloudflare 上
 #   3. src/lib、api、上报入口与采集 Worker、上报器的单测
+#   4. 文档与注释的漂移（pnpm docs:check）—— 引用还在不在、体积、类型标注，规范见根 AGENTS.md
 # 所以这里不跑 `next build`：多花几分钟，换不到新信号。
 name: CI
 
@@ -57,3 +58,6 @@ jobs:
       - run: pnpm --filter @lyjwpage/agents-reporter --filter @lyjwpage/server-reporter --filter @lyjwpage/emby-reporter test
 
       - run: node --test scripts/*.test.mjs
+
+      # 只读 git 里的文件清单，浅克隆、没拉子模块也一致
+      - run: pnpm docs:check
