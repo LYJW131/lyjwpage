@@ -17,10 +17,12 @@ import { migrateLegacyCodingUsage } from "./coding-usage-migrate";
 /**
  * Claude Code 云端线程的 OTLP 指标，状态核心那一半。解析在上报入口（shared/ingest/claude-cloud.ts）。
  *
- * 云端要求 cumulative 时序：同一进程内起点不变、值只增不减，每轮全量重发。每条序列
+ * 只收 cumulative 时序：同一进程内起点不变、值只增不减，每轮全量重发。每条序列
  * （指标、进程起点、全部属性，含 query_source：主会话和子代理是两条）记上次的值，这次只加差值 ——
- * 丢一轮下一轮自己补齐，重发和乱序都不会多算。delta 时序的点直接相加，只是兜底。做差要拿
- * 权威的上一次累计值，所以只能在这里做。
+ * 丢一轮下一轮自己补齐，重发和乱序都不会多算。做差要拿权威的上一次累计值，所以只能在这里做。
+ * delta 时序的点不收、记一行 warn：它没法去重，提交成功而回执丢了时导出端重发就会重复计数；
+ * 云端环境按 workers/ingress/README.md 配了 cumulative（Claude Code 的默认是 delta），见到 warn
+ * 就是那组变量掉了。
  *
  * 每个正差值同时落成和另外两个来源同形的三种事实（来源 `agents-otlp`，agent `claude`）：
  * - 日行：按数据点时刻的站点日，`type` 加进四列、`model` 加进模型拆分；`cost` 点加进费用，
@@ -35,6 +37,10 @@ import { migrateLegacyCodingUsage } from "./coding-usage-migrate";
  * 再把计数器、账本连同视图与年度、活动、桶排进同一批，一个 SQLite 事务写下。中途哪一步失败就
  * 一条都不落，计数器停在前值，累计序列的下一封（或重发）照旧从这个前值做差，差值不丢；计数器
  * 先落、账本后落的话，中间失败一次，这段差值就永远补不回来了。
+ *
+ * 入口的收到时刻和这里的提交顺序可以相反（两封几乎同时到、各走各的入口实例）。差值按提交顺序做，
+ * 账本不走快照淘汰（prepareCodingUsage 的 `derived`），账本、活动、桶上的时刻都取和存着的较大者、
+ * 不往回走 —— 否则后提交的那封会被当成旧快照丢掉账本，计数器和桶却照样前进。
  */
 
 const TOKEN_FIELD: Record<OtlpTokenType, "inputTokens" | "outputTokens" | "cacheReadTokens" | "cacheCreationTokens"> = {
@@ -93,18 +99,20 @@ export async function recordPreparedClaudeCloudUsage(prepared: PreparedClaudeClo
   let latestAt: number | null = null;
   let latestModel: string | null = null;
   let changed = false;
+  let deltaPoints = 0;
 
   for (const point of points) {
-    if (!(point.session in sessions)) sessionCount += 1;
-    sessions[point.session] = receivedAt;
-
-    let delta = point.value;
-    if (point.cumulative) {
-      const before = series[point.series];
-      // 乱序到达的旧点比记下的小：不回退，也不加
-      delta = before ? Math.max(0, point.value - before.value) : point.value;
-      series[point.series] = { value: Math.max(point.value, before?.value ?? 0), seenAt: receivedAt };
+    if (!point.cumulative) {
+      deltaPoints += 1;
+      continue;
     }
+    if (!(point.session in sessions)) sessionCount += 1;
+    sessions[point.session] = Math.max(receivedAt, sessions[point.session] ?? 0);
+
+    const before = series[point.series];
+    // 乱序到达的旧点比记下的小：不回退，也不加
+    const delta = before ? Math.max(0, point.value - before.value) : point.value;
+    series[point.series] = { value: Math.max(point.value, before?.value ?? 0), seenAt: Math.max(receivedAt, before?.seenAt ?? 0) };
     if (delta <= 0) continue;
 
     const date = zonedDay(point.timeMs, site.timezone);
@@ -133,6 +141,8 @@ export async function recordPreparedClaudeCloudUsage(prepared: PreparedClaudeClo
     changed = true;
   }
 
+  if (deltaPoints) console.warn("[otlp] delta temporality points skipped; set OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=cumulative", deltaPoints);
+
   const cutoff = receivedAt - SERIES_TTL_MS;
   const nextCounters: StoredOtlpCounters = {
     series: newest(Object.entries(series), (value) => value.seenAt, cutoff, MAX_SERIES),
@@ -148,7 +158,7 @@ export async function recordPreparedClaudeCloudUsage(prepared: PreparedClaudeClo
     const agent: CodingUsageAgent = {
       id: "claude",
       state: "ok",
-      collectedAt: changed || !ledger ? receivedAt : ledger.collectedAt,
+      collectedAt: changed || !ledger ? Math.max(receivedAt, ledger?.collectedAt ?? 0) : ledger.collectedAt,
       error: null,
       warning: null,
       sessionCount,
@@ -156,18 +166,19 @@ export async function recordPreparedClaudeCloudUsage(prepared: PreparedClaudeClo
         .map((day) => ({ ...day, models: day.models.sort((left, right) => right.tokens - left.tokens || left.model.localeCompare(right.model)) }))
         .sort((left, right) => left.date.localeCompare(right.date)),
     };
-    const usage = await prepareCodingUsage("agents-otlp", { agents: [agent] }, receivedAt, { recompute: migrated });
+    const usage = await prepareCodingUsage("agents-otlp", { agents: [agent] }, receivedAt, { recompute: migrated, derived: true });
     staged.push(usage.stage);
     tags.push(...usage.tags);
   }
 
   if (latestAt != null) {
-    const previous = (await readCodingActivities())["agents-otlp"]?.agents.find((agent) => agent.id === "claude");
+    const stored = (await readCodingActivities())["agents-otlp"];
+    const previous = stored?.agents.find((agent) => agent.id === "claude");
     const newer = previous?.lastActivityAt != null && previous.lastActivityAt > latestAt
       ? { at: previous.lastActivityAt, model: previous.model }
       : { at: latestAt, model: latestModel };
     const activity = await prepareCodingActivity("agents-otlp", {
-      collectedAt: receivedAt,
+      collectedAt: Math.max(receivedAt, stored?.collectedAt ?? 0),
       agents: [{ id: "claude", lastActivityAt: newer.at, model: newer.model }],
     }, receivedAt);
     staged.push(activity.stage);
@@ -183,5 +194,5 @@ export async function recordPreparedClaudeCloudUsage(prepared: PreparedClaudeClo
     return batch.execute();
   });
   await fanout({ writes: [write], events, tags });
-  return { accepted: points.length };
+  return { accepted: points.length - deltaPoints };
 }

@@ -102,6 +102,8 @@ OTEL_EXPORTER_OTLP_HEADERS="CF-Access-Client-Id=<ACCESS_CLIENT_ID>,CF-Access-Cli
 OTEL_METRIC_EXPORT_INTERVAL=60000
 ```
 
+`OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=cumulative` 不能省：Claude Code 默认发 delta，状态核心不收 delta 的点
+（没法去重，重发会重复计数），只记一行 `[otlp] delta temporality points skipped` 的 warn。
 端点要用 `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`（原样使用）；通用的 `OTEL_EXPORTER_OTLP_ENDPOINT` 会被自动拼上 `/v1/metrics`。
 只认 JSON（可 gzip），不认 protobuf；只在这条路由解压，按解压后的字节数限制大小。
 鉴权要求专属 `ingest:agents-otlp` 权限，`ingest:agents` 不能写此端点，云端凭据也不能写限额或设备上报。

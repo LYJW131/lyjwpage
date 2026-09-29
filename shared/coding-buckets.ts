@@ -102,12 +102,17 @@ export function mergeBucketReport(
   };
 }
 
-/** 云端 OTLP 的正差值加进各自的桶。没有覆盖区间，事件数数不出来（null） */
+/**
+ * 云端 OTLP 的正差值加进各自的桶。没有覆盖区间，事件数数不出来（null）。
+ * 收到时刻取和存着的较大者：状态核心按提交顺序做差，入口先收到的那封可能后提交，
+ * Pulse 拿这个时刻当云端覆盖的终点，不能往回走。
+ */
 export function addBucketDeltas(
   previous: StoredCodingBuckets | null,
   deltas: readonly CodingBucketDelta[],
-  receivedAt: number,
+  committedAt: number,
 ): StoredCodingBuckets {
+  const receivedAt = Math.max(committedAt, previous?.receivedAt ?? 0);
   const windows = new Map((previous?.windows ?? []).map((window) => [window.from, window.agents.map((row) => ({ ...row }))]));
   const ids = new Set((previous?.agents ?? []).map((agent) => agent.id));
   for (const delta of deltas) {

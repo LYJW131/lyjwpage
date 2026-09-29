@@ -177,7 +177,7 @@ coding agent 的 token 用量有三个来源。来源只报自己观测到的原
 
 ### 合并规则与出口
 - 同一 agent 有账号级来源时只算它，其余来源的同 agent 账本标 `superseded`、不相加；只有设备级 / 环境级来源时相加（claude 的本机与云端，前提是云端遥测变量只配在云端）。规则在 `shared/coding-usage-sources.ts#resolveCodingUsageSources`。
-- 日子或会话数变了才重算视图与年度（`shared/coding-usage-view.ts#buildCodingUsageView`）：合计、全部历史的前三模型、各 agent 最近一个有行的站点日、各来源状态，以及年度视图每天的合计与前几名模型；只有状态变了只换状态。采集时刻比存着的旧的账本不收。存储键与归档见 [coding agent 的 token 用量](../workers/api/README.md#coding-agent-的-token-用量)。
+- 日子或会话数变了才重算视图与年度（`shared/coding-usage-view.ts#buildCodingUsageView`）：合计、全部历史的前三模型、各 agent 最近一个有行的站点日、各来源状态，以及年度视图每天的合计与前几名模型；只有状态变了就在存着的视图上换状态，不重扫日行。Mac、agents 采集时刻比存着的旧的账本不收；云端 OTLP 的账本由状态核心按提交顺序做差攒出，不走这道淘汰，也只收 cumulative 时序。存储键与归档见 [coding agent 的 token 用量](../workers/api/README.md#coding-agent-的-token-用量)。
 - 三条读出口都在实时层（`src/lib/coding-usage.ts`）：
   - `/api/status/coding`：视图原样给，不推送，卡片自己轮询。
   - `/api/status/coding/now`：各 agent 各来源最近一条事件，带 Mac 的存活；变了推 `coding-now`，带整份。

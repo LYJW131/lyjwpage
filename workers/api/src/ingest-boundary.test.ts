@@ -371,16 +371,17 @@ test("an errored Cursor history round (a strictly parsed page failed) keeps the 
   } finally { resetStorageForTests(); }
 });
 
-function otlpTokens(at: number, input: number) {
+/** 一个 token 点。`temporality` 2 是 cumulative（云端配的），1 是 delta（Claude Code 的默认） */
+function otlpTokens(at: number, value: number, type = "input", temporality = 2) {
   const time = `${BigInt(at) * BigInt(1_000_000)}`;
-  const attributes = (type: string) => [
+  const attributes = [
     ["session.id", "session-a"], ["user.email", "someone@example.com"], ["model", "claude-fable-5-1"], ["type", type],
-  ].map(([key, value]) => ({ key, value: { stringValue: value } }));
+  ].map(([key, entry]) => ({ key, value: { stringValue: entry } }));
   return {
     resourceMetrics: [{ scopeMetrics: [{ metrics: [
       { name: "claude_code.active_time.total", sum: { aggregationTemporality: 2, dataPoints: [] } },
-      { name: "claude_code.token.usage", sum: { aggregationTemporality: 2, dataPoints: [
-        { attributes: attributes("input"), startTimeUnixNano: "1", timeUnixNano: time, asDouble: input },
+      { name: "claude_code.token.usage", sum: { aggregationTemporality: temporality, dataPoints: [
+        { attributes, startTimeUnixNano: "1", timeUnixNano: time, asDouble: value },
       ] } },
     ] }] }],
   };
@@ -500,6 +501,78 @@ test("an OTLP commit that fails after the delta is computed writes nothing, so t
     assert.equal(await cloudInput(), 180);
     assert.equal(await bucketInput(), 180);
   } finally { storage.failWhen(null); resetStorageForTests(); }
+});
+
+test("OTLP envelopes that commit in the opposite order of their receipt keep every delta in the ledger", async () => {
+  const storage = new FakeStorage();
+  installStorageForTests(storage);
+  const env = testEnv();
+  const ledger = async () => parseStoredUsageLedgers(await fieldsOf(storage, codingUsageKey("agents-otlp"))).claude!;
+  const bucketTotal = async () => parseStoredCodingBuckets(await storage.get(codingBucketsKey("agents-otlp")))?.windows
+    .flatMap((window) => window.agents).reduce((sum, row) => sum + row.inputTokens + row.outputTokens, 0);
+  try {
+    // 两封几乎同时到、各走各的入口实例：A 先被收下，B 后收下，两条不同的序列
+    const a = await inRequest(env, () => prepareIngest("agents-otlp", otlpTokens(NOW, 100, "input"), NOW));
+    const b = await inRequest(env, () => prepareIngest("agents-otlp", otlpTokens(NOW + 1_000, 50, "output"), NOW + 1_000));
+    // 到状态核心的顺序反过来：B 先提交
+    assert.equal((await commit(env, b)).ok, true);
+    assert.equal((await commit(env, a)).ok, true);
+    assert.equal((await ledger()).days.reduce((sum, day) => sum + day.totalTokens, 0), 150, "A's delta is not dropped as a stale snapshot");
+    assert.equal(await bucketTotal(), 150, "the ledger and the buckets agree");
+    assert.equal((await ledger()).collectedAt, NOW + 1_000, "the collection time does not move back");
+    // A 重发：计数器已经记着 100，不再加
+    assert.equal((await commit(env, a)).ok, true);
+    assert.equal((await ledger()).days.reduce((sum, day) => sum + day.totalTokens, 0), 150);
+    assert.equal(await bucketTotal(), 150);
+  } finally { resetStorageForTests(); }
+});
+
+test("delta-temporality OTLP points are not counted, so a retry after a lost receipt cannot double count", async () => {
+  const storage = new FakeStorage();
+  installStorageForTests(storage);
+  const env = testEnv();
+  const warnings: unknown[][] = [];
+  const previous = console.warn;
+  console.warn = (...args: unknown[]) => { warnings.push(args); };
+  try {
+    const delta = await inRequest(env, () => prepareIngest("agents-otlp", otlpTokens(NOW, 100, "input", 1), NOW));
+    // 提交成功、回执丢了，导出端原样重发同一封
+    assert.equal((await commit(env, delta)).ok, true);
+    assert.equal((await commit(env, delta)).ok, true);
+    const tokens = parseStoredUsageLedgers(await fieldsOf(storage, codingUsageKey("agents-otlp"))).claude?.days
+      .reduce((sum, day) => sum + day.totalTokens, 0) ?? 0;
+    assert.equal(tokens, 0, "delta points cannot be deduplicated, so none are counted (not 200)");
+    assert.equal(await storage.get(codingBucketsKey("agents-otlp")), null);
+    assert.ok(warnings.some((args) => String(args[0]).includes("delta temporality")), "a missing cumulative setting shows up as a warning");
+    // cumulative 的点照常记
+    assert.equal((await commit(env, await inRequest(env, () => prepareIngest("agents-otlp", otlpTokens(NOW + 60_000, 70), NOW + 60_000)))).ok, true);
+    assert.equal(parseStoredUsageLedgers(await fieldsOf(storage, codingUsageKey("agents-otlp"))).claude?.days
+      .reduce((sum, day) => sum + day.totalTokens, 0), 70);
+  } finally { console.warn = previous; resetStorageForTests(); }
+});
+
+test("a status-only round patches the stored view instead of rescanning every day row", async () => {
+  const storage = new FakeStorage();
+  installStorageForTests(storage);
+  const env = testEnv();
+  const usage = (at: number, tokens: number) => inRequest(env, () => prepareIngest("mac", envelope({ codingUsage: { agents: [
+    { id: "claude", state: "ok", collectedAt: at, sessionCount: 3, days: [usageDay("2026-09-29", tokens)] },
+  ] } }, ["coding"]), at));
+  const view = async () => parseStoredView(await storage.get(codingViewKey()))!;
+  try {
+    assert.equal((await commit(env, await usage(NOW, 100))).ok, true);
+    // 存着的合计改成日行算不出来的数：只有重扫全部日行才会把它改回 100
+    const stored = await view();
+    await storage.set(codingViewKey(), JSON.stringify({ ...stored, totals: { ...stored.totals!, totalTokens: 999_999 } }));
+
+    assert.equal((await commit(env, await usage(NOW + 600_000, 100))).ok, true);
+    assert.equal((await view()).totals?.totalTokens, 999_999, "the day rows were not rescanned");
+    assert.equal((await view()).agents[0]?.status[0]?.collectedAt, NOW + 600_000, "only the status moved");
+
+    // 日子真的变了才重扫
+    assert.equal((await commit(env, await usage(NOW + 1_200_000, 140))).ok, true);
+    assert.equal((await view()).totals?.totalTokens, 140);
+  } finally { resetStorageForTests(); }
 });
 
 test("a late, older usage snapshot never replaces a newer one, ok or error", async () => {

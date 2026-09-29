@@ -58,12 +58,14 @@
 
 - **日行**：`coding:usage:<来源>` 是字段哈希，字段是 agent id，值是这个 (来源, agent) 的完整账本
   （`shared/coding-usage-view.ts` 的 `StoredCodingUsageAgent`）。一封里出现的 agent 整份替换；`state: "error"`
-  只换状态、日子沿用上一份（Cursor 历史里一条坏事件让一整轮失败时也是这样，不清空）。采集时刻比存着的旧（重发、
-  乱序晚到）的那一格不收；error 那一轮的采集时刻停在上次成功，所以同一时刻上 error 比 ok 新。日子或会话数变了才在
+  只换状态、日子沿用上一份（Cursor 历史里一条坏事件让一整轮失败时也是这样，不清空）。Mac、agents 报来的是整份快照，
+  采集时刻比存着的旧（重发、乱序晚到）的那一格不收；error 那一轮的采集时刻停在上次成功，所以同一时刻上 error 比 ok 新。
+  云端 OTLP 的账本是状态核心按提交顺序做差攒出来的，不走这道淘汰（见下面云端那节）。日子或会话数变了才在
   同一次提交里重算视图 `coding:usage:view`（`CodingUsagePayload`：合计、全历史前三模型、各 agent 最近一个有行的日子、
   各来源状态）与年度视图 `coding:usage:year`（最近 380 天每天的合计与精确前五模型），算法是纯函数
-  `buildCodingUsageView`；只有状态变了（采集时刻前进、出错 / 恢复）只换账本和视图里的状态，年度不写，视图的
-  `updatedAt` 与账本的 `receivedAt` 不动（D1 归档按这两个时刻挑要重写的账本，Mac 每一轮采集都会带来新的采集时刻）。前三、每天前五都在完整数据上精确累加；`activeDays` 是全部历史、全部 agent 的站点日并集；
+  `buildCodingUsageView`；只有状态变了（采集时刻前进、出错 / 恢复）就在存着的视图上换掉那几格状态
+  （`applyCodingUsageStatus`），不重扫日行、年度不写，视图的 `updatedAt` 与账本的 `receivedAt` 不动（D1 归档按这两个
+  时刻挑要重写的账本，Mac 每一轮采集都会带来新的采集时刻）；这两个时刻也不往回走。前三、每天前五都在完整数据上精确累加；`activeDays` 是全部历史、全部 agent 的站点日并集；
   `costComplete` 看所有有 token 的日行，来源采集失败只体现在状态里。首屏标签 `coding` 只在新旧视图的骨架
   （行、总量、常用模型的有无，`src/lib/home-layout.ts` 的 `codingLayoutKey`）不同时打。
 - **活动**：`coding:activity:<来源>` 整份替换（采集时刻比存着的旧就不收）。拼好整份 `/api/status/coding/now`
@@ -97,13 +99,16 @@ Mac 的 ccusage 只扫本机会话记录，看不到云端线程。云端环境�
 
 只收 `claude_code.token.usage` 与 `claude_code.cost.usage`，其余指标收下后忽略（返回 200 `{}`，
 整封拒掉 exporter 不重试，这一轮的数就丢了）。数据点上的邮箱、账号 ID、组织 ID 在解析时丢掉，
-只存 session、model、token 类型、值和时刻。cumulative 时序下每条序列（指标、进程起点、全部属性，主会话和子代理的 `query_source` 不同就是两条）
+只存 session、model、token 类型、值和时刻。只收 cumulative 时序：delta 时序的点没法去重（提交成功而回执丢了时导出端重发就会重复计数），
+一律不收、记一行 `[otlp] delta temporality points skipped` 的 warn —— 云端环境要配 `OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=cumulative`
+（Claude Code 的默认是 delta），见到这行 warn 就是那组变量掉了。每条序列（指标、进程起点、全部属性，主会话和子代理的 `query_source` 不同就是两条）
 记上次的累计值（`coding:otlp`，键和会话都只存摘要），只加差值：丢一轮下一轮补齐，重发、乱序不多算；线程恢复成新进程时起点变了，按新计数器计。
 进程计数器 30 天没见就清掉。每个正差值同时落成三种事实（`agents-otlp` / `claude`）：按数据点时刻的站点日加进日行
 （费用直接用 Claude Code 报的 `cost.usage`，`costComplete` 恒真）；加进数据点时刻所在的 5 分钟桶（差值实际覆盖
 上一次导出到这次之间约一分钟，桶边界上最多错一分钟；没有覆盖区间、事件数为 null，只作正证据）；有 token 增量的
 最新时刻与模型作为活动。闲着的进程每分钟一封也不重算视图。计数器与它做出来的账本（连同视图、年度）、活动、桶
-在同一个事务里落：中途哪一步失败就一条都不落，下一封从同一个前值再做差，差值不丢。
+在同一个事务里落：中途哪一步失败就一条都不落，下一封从同一个前值再做差，差值不丢。入口的收到时刻和提交顺序可以
+相反，差值按提交顺序做，账本不按采集时刻淘汰，账本、活动、桶上的时刻都取和存着的较大者、不往回走。
 
 改契约时的一次性迁移在 `src/stores/coding-usage-migrate.ts`（第一封用量或 OTLP 提交时触发，幂等，确认转过之后删掉）：
 旧键里的累计计数器必须转成 `coding:otlp`，否则每个活着的云端进程会被整份重算一遍；云端日桶、最近时刻和
