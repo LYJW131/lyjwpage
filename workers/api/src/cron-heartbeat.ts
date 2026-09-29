@@ -1,4 +1,4 @@
-import { SENTRY_CRON_MONITOR_SLUG } from "@/lib/sentry";
+import { CRON_HEARTBEAT_EVERY_MINUTES, SENTRY_CRON_MONITOR_SLUG } from "@/lib/sentry";
 
 /**
  * 分钟 cron 的心跳（组织的 cron 监控名额只有一个，给它，见 docs/ops-facts.md）。cron 每分钟跑，
@@ -9,7 +9,6 @@ import { SENTRY_CRON_MONITOR_SLUG } from "@/lib/sentry";
  * 每次报到同步到 Sentry，改这里就改了那边。站点卡片 API 那一行按它的报到记录画。
  */
 export const CRON_MONITOR_SLUG = SENTRY_CRON_MONITOR_SLUG;
-export const CRON_HEARTBEAT_EVERY_MINUTES = 5;
 export const CRON_MONITOR_CONFIG = {
   schedule: { type: "crontab", value: `*/${CRON_HEARTBEAT_EVERY_MINUTES} * * * *` },
   checkinMargin: 2,
