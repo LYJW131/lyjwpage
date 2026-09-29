@@ -57,7 +57,7 @@ PR 关闭时 `.github/workflows/preview-api-worker.yml` 经 `workers/api/scripts
 - `collector`：`workers/collector/*`、`shared/*`、`src/lib/*`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`、`tsconfig.json`。
 
 API 的共享状态代码变化必须触发发布。
-上报的校验与收敛（`shared/ingest/`）只打包进 `ingress` 和 `collector`（后者只用 PlayStation 那一份）：`api` 的运行时只
+上报的校验与收敛（`shared/ingest/`）只打包进 `ingress`：`api` 的运行时只
 `import type` 这里的命令类型（`eslint.config.mjs` 按规则挡住值导入），所以 `api` 排除这个目录，改校验不重新发布带
 Durable Object 的 `api`、不断开页面的 WebSocket。命令的形状变了（新字段、新模块）要同时改 `workers/api/src/stores/` 的
 commit 那一半，`api` 照样会因为自己的目录变化而发布；上线顺序是 `api` 先、`ingress` 后，契约只能加不能改，见 `shared/state-core.ts`。
