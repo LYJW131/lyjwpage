@@ -213,6 +213,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 - **每张卡一条 `'use cache'`**，cacheLife 为 stale 300 / revalidate 600 / expire 7 天（`src/lib/first-screen.ts#firstScreen`）。歌词另是 300 / 3600 / 86400（`src/lib/first-screen.ts#firstScreenLyrics`）。
 - 标签：按 7fcfacb 现数 19 个视图挂 `page:` 标签；另有 7 个视图不带标签（GitHub 两份、Vercel、Cloudflare、Sentry、上报器账本、pulse），只靠 600 秒定时重建（`src/lib/status-views.ts#STATUS_VIEWS`）。
 - 一个标签失效，只让那张卡回源；整页在后台重建，旧页照给（`revalidateTag(…, "max")`，status-revalidation.ts:5）。
+- 第 00 章把首屏画成浏览器窗口里的线框：卡片框按 `src/app/page.tsx` 的版面、尺寸取第 04 章 P 表的实测比例；画的那一刻没在充电，充电那一格收起、「最近播放」占满一行（`src/components/live/media-pair.tsx#LiveMediaPair`）。卡上的标注照站点原文（`src/components/live/listening-card.tsx` 的 Recently Played、Now Playing，界面上是大写）。
 
 ### 来源出问题时
 
