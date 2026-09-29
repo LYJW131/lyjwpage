@@ -72,7 +72,7 @@ export function PlayerArtworkPreload({ artworks }: { artworks: string[] }) {
   /**
    * 等第一次交互再开拉。
    *
-   * 这几十张离屏封面各自已经是 fetchPriority=low，但低优先级只排队、不免票：
+   * 这批离屏封面各自已经是 fetchPriority=low，但低优先级只排队、不免票：
    * 挂在首屏里它们照样占着连接、照样要解码。而播放器那个弹窗要点一下才开 ——
    * 没动过手的访客一张都用不上，却要全额付这份带宽。放到 useFirstInteraction
    * 后面，用户真去点的时候封面早就在缓存里，没交互的人一个字节都不花。

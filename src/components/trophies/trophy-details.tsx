@@ -25,7 +25,7 @@ import { cn } from "@/lib/utils";
 
 const CATALOG_REFRESH_MS = 10 * 60_000;
 
-/** 和 Recently Played 那列同一套：五行填满、停滚后吸到整行。 */
+/** 视口里显示几行：整数行填满视口，停滚后吸到整行。 */
 const VISIBLE_ROWS = 5;
 const MIN_ROW_HEIGHT_PX = 56;
 const SETTLE_DELAY_MS = 110;
@@ -108,7 +108,7 @@ function fetchCatalog(path: string): Promise<StatusResponse<TrophiesPayload>> {
 /**
  * 悬停 / 聚焦就先把这块瓷砖的目录取回来，别等点击。
  *
- * 面板展开动画本身就有 LIST_DURATION（320ms），而这一份切片一般几百毫秒内
+ * 面板展开动画本身就有 LIST_DURATION 那么长，而这一份切片一般几百毫秒内
  * 就回来了 —— 提前这一步，展开时数据多半已经在缓存里，面板一开就是奖杯，
  * 连骨架都不必露面。缓存命中过的瓷砖不重复取：`preload`
  * 的那份预取记录会在 `useSWR` 消费掉之后清空，不拦一下的话，鼠标扫过一排
@@ -134,8 +134,8 @@ export function useTrophyPrefetch() {
  *
  * `null` 表示当前没有展开的瓷砖，不取数。
  *
- * 从前整份目录只有一个键，可以开 keepPreviousData；现在键跟着展开的瓷砖走，
- * 开着就是在 B 的面板里摆着 A 的奖杯，直到 B 那次请求回来 —— 宁可显示加载态。
+ * 键跟着展开的瓷砖走，所以不开 keepPreviousData：开着就是在 B 的面板里摆着
+ * A 的奖杯，直到 B 那次请求回来 —— 宁可显示加载态。
  */
 export function useTrophyCatalog(titleIds: string[] | null) {
   const key = titleIds ? trophiesTilePath(titleIds) : null;
@@ -147,8 +147,8 @@ export function useTrophyCatalog(titleIds: string[] | null) {
       shouldRetryOnError: false,
       /*
        * 开合一次就重问一遍太吵：目录只在解锁新杯子时才变，而面板开着的时候
-       * 上面那条 10 分钟轮询已经在盯了。一分钟内的反复开合去重掉，比这更久
-       * 的再问一次 —— 关着的时候没有轮询，那段时间的解锁得靠这一次带回来。
+       * 上面那条轮询（CATALOG_REFRESH_MS）已经在盯了。短时间内的反复开合去重掉，
+       * 比这更久的再问一次 —— 关着的时候没有轮询，那段时间的解锁得靠这一次带回来。
        * 留在轮询间隔之内，两者不会互相吃掉。
        */
       dedupingInterval: 60_000,
@@ -162,8 +162,8 @@ export function useTrophyCatalog(titleIds: string[] | null) {
 }
 
 /**
- * 保证列表永远停在整行上。理由和实现照搬 Recently Played：不用 CSS
- * scroll-snap，只在用户停滚之后对齐到最近的整行。
+ * 保证列表永远停在整行上：不用 CSS scroll-snap，只在用户停滚之后用脚本对齐到
+ * 最近的整行。
  */
 function useRowSnap(topKey: string | undefined) {
   const node = useRef<HTMLDivElement | null>(null);
@@ -209,8 +209,9 @@ function useRowSnap(topKey: string | undefined) {
 }
 
 /**
- * 奖杯图那两格的边长：明细里是 size-11（44px），组条那格宽 w-10 但高度跟着
- * 行走、也在 44 上下。两处同一个数，取图时按它乘 3 倍。
+ * 奖杯图那两格的边长参考：明细里是 size-11（44px），组条那格宽 w-10 但高度跟着
+ * 行走、也在 44 上下。图本身不按它缩：奖杯图标直接用原图 URL，理由见
+ * lib/playstation-image。
  */
 const ICON_PX = 44;
 
@@ -245,7 +246,7 @@ function TrophyRow({ trophy }: { trophy: Trophy }) {
         >
           {trophy.iconUrl && !hidden ? (
             <Image
-              // 尺寸在 PSN 那边就选好，不进图片管道；理由见 playstation-image
+              // 直接用原图、不进图片管道，也不走 PSN 的现缩参数；理由见 playstation-image
               src={trophy.iconUrl}
               alt=""
               fill
@@ -312,8 +313,7 @@ function GroupSlot({
    * 组条才不会在收起过程中先闪成空白。
    *
    * 渲染期比较、渲染期更新（React 认可的 previous-value 写法）：条件为真时
-   * setState 让这次渲染当场重来一遍，产出的还是同一棵树，提交出去的和从前
-   * 用 ref 记那版逐字一致。
+   * setState 让这次渲染当场重来一遍，产出的还是同一棵树。
    */
   const [shown, setShown] = useState(groups);
   if (open && shown !== groups) setShown(groups);
@@ -377,8 +377,8 @@ function GroupStrip({
               {group.iconUrl ? (
                 <div className="relative w-10 shrink-0 self-stretch overflow-hidden border-r border-line bg-muted">
                   <Image
-                    // 组条那格 w-10 但高度跟着行走（约 44px），object-cover
-                    // 以高的那边为准，所以按 ICON_PX 取，不按 40 取
+                    // 组条那格 w-10 但高度跟着行走，object-cover 以高的那边为准；
+                    // 直接用原图，浏览器一次降采样到位，见 playstation-image
                     src={group.iconUrl}
                     alt=""
                     fill
@@ -467,7 +467,7 @@ export function TrophyExpand({
   /** 摘要里那款的杯数，只用来决定加载态铺几行；不知道就按满屏铺 */
   rows?: number;
   /**
-   * 摘要**收到了**、里面这张卡就没有奖杯组，于是不必先铺 5 行再收。
+   * 摘要**收到了**、里面这张卡就没有奖杯组，于是不必先铺满屏再收。
    * 摘要本身没来（信封 !ok）时必须是 false —— 那是「不知道」，不是「没有」。
    */
   knownEmpty?: boolean;
@@ -518,8 +518,8 @@ export function TrophyExpand({
      * 只滚这个容器自己。对行 scrollIntoView 会把所有能滚的祖先一起带走，
      * 整页的落点是外面那层定的，这里再滚一次就打架了。
      *
-     * 落点是可视区正中那一行（五行里的第三行）：行心对容器心，也就是往上让出
-     * 两行。前两行和后两行会被 clamp 顶到两端，那种情况不强求居中。
+     * 落点是可视区正中那一行：行心对容器心，也就是往上让出半个视口。头尾
+     * 几行会被 clamp 顶到两端，那种情况不强求居中。
      * 减出来的仍是行高的整数倍，和 useRowSnap 的吸附网格天然对齐 ——
      * 停滚后那一下是空操作，不会把落点再拽走。
      */
@@ -531,7 +531,7 @@ export function TrophyExpand({
      * 快到了就闪：一起手就闪的话，行还在半路、滑到中间时动画早放完了；
      * 可等完全停稳又迟钝 —— smooth 的尾段 ease-out 最后几十像素拖得最久。
      * 所以差不到一行就算到，闪起来的同时让它滑完最后那一点。
-     * 停滚 110ms 的落定口径留作兜底（clamp 顶到两端、或已在目标位时
+     * 停滚 SETTLE_DELAY_MS 的落定口径留作兜底（clamp 顶到两端、或已在目标位时
      * smooth 一个事件都不发，起手那个定时器就是这种情况的到达信号）。
      * onFocused 也等到这一刻：提前调它会让父层清掉 focusKey、效果重跑，
      * 把还在等待的监听拆掉。

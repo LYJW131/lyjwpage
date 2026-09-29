@@ -16,7 +16,7 @@ import type { LocalNowPlaying } from "@/lib/types";
  * 歌词按队列条目的目录 ID 去问 `/api/lyrics?song=`（卡片 hero 问的是主人那首，
  * 这里问的是访客自己放的那首，服务端猜不到，所以由浏览器传）。目录说没词的
  * （`hasLyrics` 为 false）不问；MusicKit 没给这个字段就当有，问一次最多换来一个
- * 「没有」，浏览器那侧只记一小时。
+ * 「没有」，浏览器那侧只记 EMPTY_TTL_MS（见 hooks/use-lyrics）。
  *
  * HeroLyrics 要的是一个锚点（state / observedAt / positionMs），位置由它自己的
  * 计时器按 lib/track-position 往前推。歌词时间轴独立运行，绝不频繁绑定高频音频时间戳，
