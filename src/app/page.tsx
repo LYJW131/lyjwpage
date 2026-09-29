@@ -25,7 +25,33 @@ import { desktopIconDataUri } from "@/lib/desktop-icon-inline";
 import { githubAvatarDataUri } from "@/lib/github-avatar-icon";
 import { getRecentCommits } from "@/lib/github-recent-commits";
 import { firstScreen, firstScreenLyrics } from "@/lib/first-screen";
+import { APP_VERSION_PATH } from "@/lib/app-version";
 import { liveTrack } from "@/lib/home-layout";
+import {
+  ACTIVITY_PATH,
+  AGENT_STATUS_PATH,
+  CHARGER_PATH,
+  CLOUDFLARE_WORKERS_PATH,
+  GITHUB_CHART_PATH,
+  GITHUB_REPO_PATH,
+  LIMITS_PATH,
+  LISTENING_PATH,
+  NOW_LISTENING_PATH,
+  NOW_PLAYING_PATH,
+  NOW_WATCHING_PATH,
+  PLAYING_PATH,
+  POWERBANK_PATH,
+  PULSE_PATH,
+  REPORTERS_PATH,
+  SENTRY_PATH,
+  SERVER_PATH,
+  TROPHIES_PATH,
+  VERCEL_DEPLOYMENTS_PATH,
+  VIBECODING_PATH,
+  VIBECODING_YEAR_PATH,
+  WATCHING_PATH,
+} from "@/lib/paths";
+import { STATUS_VIEWS } from "@/lib/status-views";
 import type { StatusResponse, TrophiesSummaryPayload } from "@/lib/types";
 
 /**
@@ -48,6 +74,24 @@ const SLOT = {
   playstation: "defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_643px]",
   pulse: "defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_240px]",
   siteStatus: "mt-3 defer-offscreen-always [contain-intrinsic-size:auto_1440px]",
+} as const;
+
+/**
+ * 每张卡读的 SWR 键，给各自的错误边界用：重试前把这些键从缓存里清掉，见 components/card-boundary。
+ * 卡片改了读什么，这里跟着改；漏了只是那张卡重试时没清那个键，不会崩。
+ */
+const READS = {
+  contact: [GITHUB_CHART_PATH, VIBECODING_YEAR_PATH],
+  nowWatching: [NOW_WATCHING_PATH],
+  media: [CHARGER_PATH, POWERBANK_PATH, LISTENING_PATH, NOW_LISTENING_PATH],
+  activity: [ACTIVITY_PATH, STATUS_VIEWS.workouts.path],
+  server: [SERVER_PATH],
+  agentStatus: [AGENT_STATUS_PATH],
+  vibeCoding: [VIBECODING_PATH, LIMITS_PATH],
+  playstation: [NOW_PLAYING_PATH, PLAYING_PATH, TROPHIES_PATH],
+  pulse: [PULSE_PATH],
+  siteStatus: [GITHUB_REPO_PATH, VERCEL_DEPLOYMENTS_PATH, CLOUDFLARE_WORKERS_PATH, SENTRY_PATH, SERVER_PATH, REPORTERS_PATH],
+  emby: [WATCHING_PATH, NOW_WATCHING_PATH],
 } as const;
 
 export default async function Home() {
@@ -149,7 +193,7 @@ export default async function Home() {
         <main className="flex-1">
           <div className="mx-auto my-3.5 w-[calc(100%-2rem)] max-w-5xl sm:my-4">
             <Section id="live" className="p-0 sm:p-0">
-              <CardBoundary label="Update" silent>
+              <CardBoundary label="Update" silent paths={[APP_VERSION_PATH]}>
                 <AppVersionCard />
               </CardBoundary>
               <CardBoundary label="Stale Reload" silent>
@@ -157,7 +201,7 @@ export default async function Home() {
               </CardBoundary>
 
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                <CardBoundary label="Contact">
+                <CardBoundary label="Contact" paths={READS.contact}>
                   <ContactCard
                     avatarDataUri={avatarDataUri}
                     chartFallback={githubChart}
@@ -174,12 +218,12 @@ export default async function Home() {
                 网格那 12px 的 gap 却要等它卸载才消失，动画末尾会跳一下。它自己的
                 上边距跟着高度一起动画，见 now-watching-card。没在播时整个不渲染。
               */}
-              <CardBoundary label="Now Watching" silent>
+              <CardBoundary label="Now Watching" silent paths={READS.nowWatching}>
                 <NowWatchingCard nowFallback={nowWatching} />
               </CardBoundary>
 
               <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
-                <CardBoundary label="Media" className="md:col-span-2">
+                <CardBoundary label="Media" className="md:col-span-2" paths={READS.media}>
                   <LiveMediaPair
                     chargerFallback={charger}
                     powerBankFallback={powerBank}
@@ -193,21 +237,21 @@ export default async function Home() {
                     artworkPlaceholders={artwork}
                   />
                 </CardBoundary>
-                <CardBoundary label="Activity" className={SLOT.activity}>
+                <CardBoundary label="Activity" className={SLOT.activity} paths={READS.activity}>
                   <ActivityCard fallback={activity} className={SLOT.activity}>
                     <WorkoutsStrip fallback={workouts} />
                   </ActivityCard>
                 </CardBoundary>
-                <CardBoundary label="Exit Node" className={SLOT.server}>
+                <CardBoundary label="Exit Node" className={SLOT.server} paths={READS.server}>
                   <ServerCard fallback={server} className={SLOT.server} />
                 </CardBoundary>
-                <CardBoundary label="Provider Status" className={SLOT.agentStatus}>
+                <CardBoundary label="Provider Status" className={SLOT.agentStatus} paths={READS.agentStatus}>
                   <AgentStatusCard fallback={agentStatus} className={SLOT.agentStatus} />
                 </CardBoundary>
-                <CardBoundary label="Vibe Coding" className={SLOT.vibeCoding}>
+                <CardBoundary label="Vibe Coding" className={SLOT.vibeCoding} paths={READS.vibeCoding}>
                   <VibeCodingCard fallback={vibeCoding} limitsFallback={limits} className={SLOT.vibeCoding} />
                 </CardBoundary>
-                <CardBoundary label="PlayStation" className={SLOT.playstation}>
+                <CardBoundary label="PlayStation" className={SLOT.playstation} paths={READS.playstation}>
                   <PlaystationBlock
                     trophies={trophies}
                     playing={playing}
@@ -216,12 +260,12 @@ export default async function Home() {
                   />
                 </CardBoundary>
                 {/* Pulse 夹在 PlayStation 与 Emby Recently Watched 中间 */}
-                <CardBoundary label="Pulse" className={SLOT.pulse}>
+                <CardBoundary label="Pulse" className={SLOT.pulse} paths={READS.pulse}>
                   <PulseCard fallback={pulse} className={SLOT.pulse} />
                 </CardBoundary>
               </div>
 
-              <CardBoundary label="LYJWPAGE" className={SLOT.siteStatus}>
+              <CardBoundary label="LYJWPAGE" className={SLOT.siteStatus} paths={READS.siteStatus}>
                 <SiteStatusCard
                   githubFallback={githubRepo}
                   vercelFallback={vercelDeployments}
@@ -242,7 +286,7 @@ export default async function Home() {
                   <h3 className="text-sm font-medium">Recently Watched</h3>
                   <span className="label-mono text-muted-foreground">Emby</span>
                 </div>
-                <CardBoundary label="Emby">
+                <CardBoundary label="Emby" paths={READS.emby}>
                   <WatchingRow fallback={watching} nowFallback={nowWatching} />
                 </CardBoundary>
               </div>

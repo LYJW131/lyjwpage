@@ -11,6 +11,7 @@ import { PowerBankCard } from "@/components/live/powerbank-card";
 import type { LyricsFallback } from "@/hooks/use-lyrics";
 import type { ArtworkPlaceholders } from "@/lib/artwork-placeholder";
 import { chargingFeedClockStale, liveChargingFeed } from "@/lib/freshness";
+import { CHARGER_PATH, LISTENING_PATH, NOW_LISTENING_PATH, POWERBANK_PATH } from "@/lib/paths";
 import { chargerActive as chargerIsActive, powerBankActive as powerBankIsActive } from "@/lib/home-layout";
 import type {
   ChargerPayload,
@@ -42,6 +43,11 @@ const SLOT_PX = 396;
 /** 平分时两张卡之间的缝，和页面网格的 gap-3 一致 */
 const STACK_GAP_PX = 12;
 const HALF_PX = (SLOT_PX - STACK_GAP_PX) / 2;
+
+/** 各卡读的 SWR 键，给它们外面的错误边界用（重试前清缓存），见 components/card-boundary */
+const CHARGER_READS = [CHARGER_PATH];
+const POWERBANK_READS = [POWERBANK_PATH];
+const LISTENING_READS = [LISTENING_PATH, NOW_LISTENING_PATH];
 
 const CHARGER_TRANSITION = {
   duration: 0.36,
@@ -194,7 +200,7 @@ export function LiveMediaPair({
                 )}
                 aria-hidden={!showing("charger")}
               >
-                <CardBoundary label="Charger">
+                <CardBoundary label="Charger" paths={CHARGER_READS}>
                   <ChargerCard
                     fallback={chargerFallback}
                     className="h-full"
@@ -218,7 +224,7 @@ export function LiveMediaPair({
                 )}
                 aria-hidden={!showing("powerBank")}
               >
-                <CardBoundary label="Power Bank">
+                <CardBoundary label="Power Bank" paths={POWERBANK_READS}>
                   <PowerBankCard
                     fallback={powerBankFallback}
                     className="h-full"
@@ -232,7 +238,7 @@ export function LiveMediaPair({
         </motion.div>
 
         <div className="listening-shell min-w-0">
-          <CardBoundary label="Recently Played">
+          <CardBoundary label="Recently Played" paths={LISTENING_READS}>
             <ListeningCard
               fallback={listeningFallback}
               nowFallback={nowListeningFallback}
