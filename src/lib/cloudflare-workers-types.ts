@@ -17,7 +17,10 @@ export type WorkerMetrics = {
 export type WorkerDeployment = {
   deployedAt: number;
   versions: { id: string; percentage: number }[];
-  /** 流量最大版本的构建提交；手动上传等无构建记录时为空。 */
+  /**
+   * 流量最大版本的构建提交；该版本没有构建记录（改密钥、控制台上传）时顺着版本号
+   * 回查更早的构建，都没有才为空。
+   */
   commit: { sha: string; branch: string | null; message: string | null } | null;
 };
 
@@ -27,7 +30,7 @@ export type CloudflareDeploymentsPayload = {
   workers: { name: CloudflareWorkerName; deployment: WorkerDeployment | null }[];
 };
 
-/** 可滞后层里的统计那一份：滚动 12 小时窗口，按名字带着每个 Worker 的汇总 */
+/** 可滞后层里的统计那一份：滚动窗口，按名字带着每个 Worker 的汇总 */
 export type CloudflareMetricsPayload = {
   fetchedAt: number;
   windowStart: number;

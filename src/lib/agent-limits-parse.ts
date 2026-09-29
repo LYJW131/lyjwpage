@@ -35,8 +35,8 @@ function normalizePlan(value: unknown): VibeCodingPlan | null {
 }
 
 /**
- * 窗口的个数和时长完全由上游决定（Codex 眼下只有周窗口，5 小时窗口以后可能回来），
- * 所以这里只逐条做类型收敛，不校验数量、不认识任何具体窗口。
+ * 窗口的个数和时长完全由上游决定，所以这里只逐条做类型收敛，不校验数量、
+ * 不认识任何具体窗口。
  */
 function normalizeLimits(value: unknown): VibeCodingLimit[] {
   if (!Array.isArray(value)) return [];

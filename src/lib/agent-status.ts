@@ -1,10 +1,10 @@
 /**
  * 厂商状态页的取数与读取。
  *
- * 拉取在采集 Worker（`provider-status`，每分钟一轮，结果写进可滞后层）；公开端点
- * 只读那一份，不推送，过没过时由卡片按 AGENT_STATUS_STALE_MS 判断。公开 webhook
- * 只有 Claude 和 Cursor 开着，要人工订阅，回执也不签名，不能当事实来源。邮件比这
- * 一分钟更慢，正文没有稳定字段，所以不走 Email Routing。
+ * 拉取在采集 Worker（`providerStatusJob`，结果写进可滞后层）；公开端点只读那一份，
+ * 不推送，过没过时由卡片按 AGENT_STATUS_STALE_MS 判断。公开 webhook 只有少数几家
+ * 提供，要人工订阅，回执也不签名，不能当事实来源。邮件比轮询更慢，正文没有稳定
+ * 字段，所以不走 Email Routing。
  */
 
 import type { AgentStatusPayload } from "@/lib/agent-status-types";

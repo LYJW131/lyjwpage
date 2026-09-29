@@ -126,7 +126,7 @@ function apiRequest(account: string, token: string) {
   };
 }
 
-/** 只在 API Worker 执行。起止由调用方给定，便于测试固定窗口。 */
+/** 由采集 Worker 的 `cloudflareMetricsJob` 调用。起止由调用方给定，便于测试固定窗口。 */
 export async function fetchWorkersMetrics(account: string, token: string, windowStart: number, windowEnd: number): Promise<CloudflareMetricsPayload> {
   const raw = await apiRequest(account, token)("/graphql", {
     query: WORKERS_METRICS_QUERY,
@@ -175,7 +175,8 @@ export async function fetchWorkerDeployments(account: string, token: string): Pr
     ...versions.flat().map((version) => version.id),
   ])];
   if (!versionIds.length) return deployments;
-  // 构建接口一次最多查 20 个版本号（超出 400），分批；查不到（权限收紧）只空着提交，不连累部署时间与版本。
+  // 构建接口一次能查的版本号有上限（超出返回 400），按 BUILDS_BATCH 分批；
+  // 查不到（权限收紧）只空着提交，不连累部署时间与版本。
   const commits = new Map<string, NonNullable<WorkerDeployment["commit"]>>();
   await Promise.all(Array.from({ length: Math.ceil(versionIds.length / BUILDS_BATCH) }, (_, i) =>
     request(`/accounts/${encodeURIComponent(account)}/builds/builds?version_ids=${
@@ -197,9 +198,9 @@ export async function fetchWorkerDeployments(account: string, token: string): Pr
 }
 
 /**
- * 公开端点：统计（每 15 分钟）和部署（每 2 分钟）是采集 Worker 各自写的两条键，按名字
- * 拼成卡片要的一份。两半各带采集时刻；信封的 `updatedAt` 取两半里较新的那个。
- * 两条都还没写过才是等采集。
+ * 公开端点：统计（`cloudflareMetricsJob`）和部署（`cloudflareDeploymentsJob`）是采集
+ * Worker 各自写的两条键，按名字拼成卡片要的一份。两半各带采集时刻；信封的
+ * `updatedAt` 取两半里较新的那个。两条都还没写过才是等采集。
  */
 export async function getCloudflareWorkers(): Promise<LagResult<CloudflareWorkersPayload>> {
   const [metrics, deployments] = await Promise.all([

@@ -3,7 +3,7 @@ import sharp from "sharp";
 
 import { site } from "@/lib/site";
 
-/** 先拿够大的源图，各尺寸再往下缩，避免直接向 GitHub 要 32px 那档。 */
+/** 先拿够大的源图，各尺寸再往下缩，避免直接向 GitHub 要小尺寸那档。 */
 const SOURCE_PX = 512;
 
 /**
@@ -27,7 +27,7 @@ async function fetchAvatar(url: URL): Promise<Uint8Array | null> {
 
 /**
  * 拉不到返回 null，**不在这里抛**：`use cache` 函数在构建期预渲染里抛错会让
- * `next build` 直接失败，调用方 catch 也救不了（2026-09-17 生产部署就是这么挂的）。
+ * `next build` 直接失败，调用方 catch 也救不了。
  * 成功按 `max` 冻到下次部署；失败只按 `minutes` 缓存，让下一轮重渲染再试。
  *
  * 先按数字 ID 取（不经登录名→ID 的跳转，CDN 那一跳偶发 503），再回退登录名。
@@ -60,8 +60,8 @@ async function githubAvatarSource(buildId: string): Promise<Uint8Array | null> {
 /**
  * 卡片上那张头像的展示尺寸 ×2。
  *
- * contact-card 的容器是 `size-14` / `lg:size-16`，`sizes` 也只声明到 64px，
- * 2× 就是 128 —— 比源图的 512 小，缩得动。改组件尺寸时这个数要跟着改。
+ * contact-card 里头像容器的最大尺寸（含 `sizes` 声明）的 2×，比源图 `SOURCE_PX` 小，
+ * 缩得动。改组件尺寸时这个数要跟着改。
  */
 const CARD_PX = 128;
 
@@ -78,9 +78,9 @@ const CARD_PX = 128;
  *
  * 拉不到就返回 null，**不能**学 `githubAvatarPng` 回退成深色方块 —— 那是页面
  * 顶部可见的一张脸，糊成色块比慢一点糟得多。调用方拿到 null 回退到远端 URL，
- * 最坏情况等于内联之前的行为。
+ * 最坏情况等于没做内联时的行为。
  *
- * null 仍然缓存（不抛出去在外面接 —— 那等于每轮重新生成都再赌一次 8 秒超时），
+ * null 仍然缓存（不抛出去在外面接 —— 那等于每轮重新生成都再赌一次超时），
  * 但只按 `minutes` 缓存、不跟着成功那份冻到下次部署：这一路和最近提交同一个
  * 形状，按 tag 失效重渲染时在本区域是冷的，撞上 GitHub 限流就会拿到 null，
  * 按 `max` 缓存等于让一次瞬时故障管到下次部署。

@@ -1,9 +1,4 @@
-/**
- * 站点配置。
- *
- * 个人信息展示（hero / 关于 / 项目 / 时间线）暂时从页面上撤掉了，
- * 撤掉的组件和数据在 git 里（见 README「回滚」）。
- */
+/** 站点配置。 */
 
 export const site = {
   /** 用于 header 和 <head> metadata */
@@ -25,7 +20,7 @@ export const site = {
   githubId: 153256373,
   github: "https://github.com/LYJW131",
   /**
-   * 只剩回退用途：卡片上那张头像正常走构建期内联的 data URI（见
+   * 回退用途：卡片上那张头像正常走构建期内联的 data URI（见
    * lib/github-avatar-icon 的 githubAvatarDataUri），拉不到才用这个 URL
    * 过 next/image 优化器回源。页签图标又是另一份，见 icon.tsx。
    */

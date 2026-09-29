@@ -9,7 +9,7 @@ import { workerUrl } from "@/lib/worker-url";
  * developer token 由 api Worker 现签（workers/api/src/musickit-token.ts），站点
  * 自己不碰 .p8 —— 和 Mac 上报的那份凭据一样，私钥不进站点的运行时。区别是那份是
  * Mac 上报器推来的**私人凭据**（带 music user token，能读我的收听记录，只留在
- * Worker 的 SQLite 里），这条是发给**任意访客**的公开令牌，访客拿它去换自己那份
+ * Worker 的凭据 KV 里），这条是发给**任意访客**的公开令牌，访客拿它去换自己那份
  * 用户令牌。两者敏感度差一个量级，所以不共用一条路径。
  */
 
@@ -154,9 +154,9 @@ declare global {
 /**
  * 脚本只插一次，结果记在模块作用域里。
  *
- * 手动插而不用 next/script：它那四种 strategy 说的都是「什么时候自动加载」，
- * 没有「点了才加载」这一档。而 MusicKit JS 是个几百 KB 的第三方包，绝大多数
- * 访客根本不会点这个按钮，连 lazyOnload 那种空闲期预载都是白花的流量。
+ * 手动插而不用 next/script：它的 strategy 说的都是「什么时候自动加载」，
+ * 没有「点了才加载」这一档。而 MusicKit JS 是个不小的第三方包，绝大多数
+ * 访客根本不会点这个按钮，连空闲期预载都是白花的流量。
  *
  * 存的是 Promise 而不是加载完的标志位：两张卡片（或 React 严格模式下的两次
  * effect）同时要它时，第二个等的是同一次加载，而不是再插一个 script 标签。
@@ -226,7 +226,7 @@ function pastHalfLife(token: DeveloperToken, now: number): boolean {
   return now >= token.issuedAt + (token.expiresAt - token.issuedAt) / 2;
 }
 
-/** 令牌上的两个时刻都是 Unix 秒，比之前先换算过来 */
+/** 令牌上的两个时刻都是 Unix 秒，比较前先把此刻换算成秒 */
 function nowSeconds(): number {
   return Math.floor(Date.now() / 1000);
 }

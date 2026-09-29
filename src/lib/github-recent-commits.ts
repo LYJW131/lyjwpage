@@ -23,7 +23,7 @@ export type GithubRecentCommit = {
   verified: boolean;
 };
 
-/** 卡片右栏固定 3 张提交卡、不滚动，所以只拉 3 条。 */
+/** 卡片右栏固定放这么多张提交卡、不滚动，所以只拉这么多条。 */
 const RECENT_LIMIT = 3;
 
 type CommitListItem = {
@@ -76,9 +76,9 @@ function firstLine(message: string): string {
  *
  * `cacheLife` 分支写：**拿到了**才冻到下次部署，空手而归只缓存几分钟。
  * 首页不是纯静态 —— 每次 ingest 按 tag 失效后会在某个区域重新渲染，那一次
- * 在本区域是冷的、要真打一次 GitHub。未鉴权配额是每小时 60 次/IP，撞上 403
+ * 在本区域是冷的、要真打一次 GitHub。未鉴权配额很低（按 IP 计），撞上 403
  * 就会渲染出一份没有提交栏的 HTML；要是这份也按 `max` 缓存，等于一次瞬时
- * 限流把这一栏冻到下次部署为止（2026-09-13 就这么丢过一次，见 README）。
+ * 限流把这一栏冻到下次部署为止。
  */
 export async function getRecentCommits(): Promise<GithubRecentCommit[]> {
   "use cache";
@@ -87,7 +87,7 @@ export async function getRecentCommits(): Promise<GithubRecentCommit[]> {
   const { owner, name } = repoIdFromUrl(site.repo);
   const url = new URL(`https://api.github.com/repos/${owner}/${name}/commits`);
   url.searchParams.set("per_page", String(RECENT_LIMIT));
-  // 只为我们自己的缓存键服务，GitHub 会忽略未知查询参数以外的行为不变。
+  // 只为我们自己的缓存键服务：GitHub 忽略未知的查询参数，行为不变。
   if (buildId) url.searchParams.set("b", buildId);
 
   const headers: Record<string, string> = {

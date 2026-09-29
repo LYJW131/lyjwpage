@@ -13,10 +13,10 @@ import { LAG_KEYS } from "@shared/lag";
 
 /**
  * 站点卡片（LYJWPAGE）里在线率、api Worker 心跳、错误数和真实用户指标的数据。取数在
- * 采集 Worker（`sentry-status`，每 5 分钟），用 `SENTRY_API_TOKEN`（组织只读令牌，
+ * 采集 Worker（`sentryStatusJob`），用 `SENTRY_API_TOKEN`（组织只读令牌，
  * org:read / project:read / event:read）调 Sentry API，写进可滞后层；公开端点只读那一份。
  *
- * 一轮十来个请求，分块各自降级：某一块失败沿用上一份的那一块（带着原来的时刻，见
+ * 一轮多个请求，分块各自降级：某一块失败沿用上一份的那一块（带着原来的时刻，见
  * mergeSentryStatus），不拖垮整张卡。访客的请求不直接打 Sentry。
  *
  * 心跳、错误、Vitals 都只算 production 环境：本地与分支预览的测试数据不进卡片。
@@ -233,7 +233,7 @@ export async function fetchSentryStatus(api: SentryGet, now = Date.now()): Promi
 }
 
 /**
- * 块级沿用最多撑这么久，再旧就当这一块没有。比卡片的过期阈值（SENTRY_STALE_MS，30 分钟）
+ * 块级沿用最多撑这么久，再旧就当这一块没有。比卡片的过期阈值（SENTRY_STALE_MS）
  * 长得多：过没过期由卡片按 `blockAt` 判，那一格先显示「—」/ Unavailable、行留着；
  * 这里只防一块几天前的旧数一直留在可滞后层里
  */

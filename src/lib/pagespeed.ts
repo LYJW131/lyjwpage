@@ -2,10 +2,10 @@ import { site } from "@/lib/site";
 import type { LighthouseVitals, PageSpeedPayload, PageSpeedSample } from "@/lib/vercel-deployments-types";
 
 const ENDPOINT = "https://pagespeedonline.googleapis.com/pagespeedonline/v5/runPagespeed";
-/** 整份响应带着截图有 800 KB；只要评分和这几条审计，Worker 不必解一遍图。 */
+/** 整份响应带着截图，体积很大；只要评分和这几条审计，Worker 不必解一遍图。 */
 const FIELDS = "captchaResult,lighthouseResult(categories/performance/score,audits)";
 /**
- * 参与中位数的滚动窗口：只算这段时间里跑过的轮次，按小时一轮大约六个样本。
+ * 参与中位数的滚动窗口：只算这段时间里跑过的轮次。
  *
  * 窗口用时间而不是条数定 —— Worker 停过一段时间之后，剩下的样本该是真的近期
  * 实测，不是几天前那几轮凑数。窗口里只剩一轮时中位数就是那一轮。
@@ -14,9 +14,8 @@ const WINDOW_MS = 6 * 3_600_000;
 /** 窗口内万一跑得比预期密（比如改了 cron），也不把无上限的历史塞进一条记录。 */
 const MAX_SAMPLES = 12;
 /**
- * 单端等多久。PSI 通常二十多秒，但 Google 那边的跑测机偶尔卡住：2026-09-28 有两轮
- * （17:08、22:08 UTC）在 60 秒处被自己掐断，两次都恰好 60000 ms，其余轮次正常。
- * 放宽到 120 秒：桌面、移动并行，一轮最坏也是这个数，仍在采集任务的时限之内
+ * 单端等多久。PSI 通常用不了多久，但 Google 那边的跑测机偶尔卡住，所以上限放得宽：
+ * 桌面、移动并行，一轮最坏也是这个数，仍在采集任务的时限之内
  * （workers/collector/src/jobs/pagespeed.ts 的 maxRuntimeMinutes，有测试盯着）。
  * 卡住的那次要落进自己的 catch 里（有日志），别拖到被平台掐断 —— 那种死法不留任何痕迹。
  */

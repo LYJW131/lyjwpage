@@ -95,9 +95,6 @@ export const DESKTOP_APP_OVERRIDES: readonly DesktopAppOverride[] = [
   },
 ];
 
-/**
- * 根据 bundleIdentifier 查找适用的特化展示规则。
- */
 export function findDesktopOverride(
   bundleIdentifier?: string | null,
 ): DesktopAppOverride | null {

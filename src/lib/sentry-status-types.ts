@@ -1,5 +1,7 @@
 /**
- * `/api/status/sentry` 的公开形状：站点在线探测与 api Worker cron 心跳两条健康记录、站点与 api Worker 的错误量、真实用户的 Web Vitals。全部来自 Sentry，由 API Worker 用只读令牌取、缓存。
+ * `/api/status/sentry` 的公开形状：站点在线探测与 api Worker cron 心跳两条健康记录、
+ * 站点与 api Worker 的错误量、真实用户的 Web Vitals。全部来自 Sentry，由采集 Worker 用
+ * 只读令牌取、写进可滞后层，API Worker 只读那一份。
  *
  * 只放计数、比率和时刻，不放 issue 标题、报错内容和调用栈：那些可能带内部地址
  * 或访客浏览器里的东西，和 `app/error.tsx` 不把 error.message 端给访客是同一条线。
@@ -22,7 +24,10 @@ export type HealthSeries = {
   /** 成功 / (成功 + 失败)，没有样本是 null */
   availability24h: number | null;
   availability30d: number | null;
-  /** 最近 30 天，旧的在前；开通前的日子 success/failure 都是 0 */
+  /**
+   * 最近一段时间逐日一格（天数见 sentry-status 的 UPTIME_DAYS），旧的在前；
+   * 开通前的日子 success/failure 都是 0
+   */
   days: UptimeDay[];
 };
 
@@ -32,7 +37,7 @@ export type SentryUptime = HealthSeries & {
   intervalSeconds: number;
 };
 
-/** 12 小时和站点卡片服务格里 Vercel / Workers 的 Req、CPU 同一个窗口 */
+/** 和站点卡片服务格里 Vercel / Workers 的 Req、CPU 同一个窗口 */
 export type SentryErrorSeries = {
   count12h: number;
   count7d: number;
@@ -59,7 +64,7 @@ export type SentryStatusPayload = {
   heartbeat: HealthSeries | null;
   /** 站点（浏览器 + Vercel 函数）一份；`worker` 是 api 与采集 Worker 两个项目合计。只算 production 环境 */
   errors: { site: SentryErrorSeries; worker: SentryErrorSeries } | null;
-  /** 真实访客页面加载的 p75，最近 7 天 */
+  /** 真实访客页面加载的 p75，取近期的一段窗口 */
   vitals: SentryVitals | null;
   /**
    * 各块自己是哪一轮取到的。采集 Worker 块级沿用上一份时写上，`fetchedAt` 只说明

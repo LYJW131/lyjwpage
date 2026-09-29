@@ -4,7 +4,7 @@ import test from "node:test";
 import { SENTRY_COLLECTOR_PROJECT_ID, SENTRY_SITE_PROJECT_ID, SENTRY_WORKER_PROJECT_ID } from "./sentry.ts";
 import { availability, fetchSentryStatus, parseCronBuckets, parseCronStatus, parseUptimeBuckets, parseUptimeStatus } from "./sentry-status.ts";
 
-// 形状取自 2026-09-23 对 Sentry API 的真实响应，只删了用不到的字段
+// 形状取自对 Sentry API 的真实响应，只删了用不到的字段
 
 test("uptime buckets count incident failures as downtime and ignore missed windows", () => {
   const days = parseUptimeBuckets({

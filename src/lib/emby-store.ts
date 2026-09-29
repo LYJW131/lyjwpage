@@ -3,8 +3,7 @@ import type { WatchingMedia, WatchingPlayMethod } from "@/lib/types";
 
 /**
  * Emby 的全部状态，一律由 NAS 上的推送代理送进来（reporters/emby-reporter）。
- * 本站一个 Emby 请求都不发 —— 站点将来要跑在 Vercel 上，
- * 那时根本够不着内网里的 Emby。
+ * 本站一个 Emby 请求都不发 —— Emby 在内网里，站点够不着。
  */
 
 /** Emby 的 tick 是 100 纳秒，1 毫秒 = 10000 tick */
@@ -46,7 +45,7 @@ export async function getNowPlaying(): Promise<ResolvedNowPlaying | null> {
 /**
  * 推算部分单拎出来，不带取数。
  *
- * 上报那条路上刚写下去的那份就在手上，用不着等它落库再从 SQLite 读回来 ——
+ * 上报那条路上刚写下去的那份就在手上，用不着等它落库再从存储读回来 ——
  * 读回来的还可能是写之前的那份。
  */
 export function resolveNowPlaying(state: EmbyNowPlaying | null): ResolvedNowPlaying | null {
