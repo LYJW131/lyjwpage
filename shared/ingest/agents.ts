@@ -1,5 +1,5 @@
 import { object } from "@/lib/json";
-import { normalizeAgentLimits, type ParsedAgentLimits } from "@/lib/vibecoding-parse";
+import { normalizeAgentLimits, type ParsedAgentLimits } from "@/lib/agent-limits-parse";
 
 import { describeRejections, prepareCodingModules, type CodingModuleRejection, type CodingModules } from "./coding";
 

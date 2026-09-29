@@ -1,0 +1,97 @@
+{
+  "ok": true,
+  "data": {
+    "updatedAt": "$now-60000",
+    "totals": {
+      "inputTokens": 31086186,
+      "outputTokens": 4900662,
+      "cacheReadTokens": 669197344,
+      "cacheCreationTokens": 14883357,
+      "reasoningTokens": 61721,
+      "totalTokens": 720067549,
+      "apiEquivalentCostUSD": 638.67,
+      "costComplete": false,
+      "activeDays": 131,
+      "sessionCount": 214
+    },
+    "topModels": [
+      {
+        "model": "claude-opus-5-5",
+        "tokens": 291884509
+      },
+      {
+        "model": "cursor-grok-4.6-xhigh-fast",
+        "tokens": 204118722
+      },
+      {
+        "model": "default",
+        "tokens": 110244090
+      }
+    ],
+    "agents": [
+      {
+        "id": "claude",
+        "sources": [
+          "agents-otlp"
+        ],
+        "models": [
+          "claude-opus-5-5",
+          "claude-sonnet-5-5"
+        ],
+        "latestModel": "claude-opus-5-5",
+        "lastDay": {
+          "date": "$today",
+          "inputTokens": 1845661,
+          "outputTokens": 561520,
+          "cacheReadTokens": 158241279,
+          "cacheCreationTokens": 2802816,
+          "totalTokens": 163451276,
+          "apiEquivalentCostUSD": 76.43,
+          "costComplete": true
+        },
+        "status": [
+          {
+            "source": "agents-otlp",
+            "state": "ok",
+            "collectedAt": "$now-60000",
+            "error": null,
+            "warning": null
+          }
+        ]
+      },
+      {
+        "id": "cursor",
+        "sources": [
+          "agents"
+        ],
+        "models": [
+          "default",
+          "cursor-grok-4.6-xhigh-fast",
+          "grok-bot-default",
+          "muse-spark-1.3-max",
+          "claude-4.5-sonnet-thinking"
+        ],
+        "latestModel": "cursor-grok-4.6-xhigh-fast",
+        "lastDay": {
+          "date": "$today",
+          "inputTokens": 1203344,
+          "outputTokens": 88210,
+          "cacheReadTokens": 20114876,
+          "cacheCreationTokens": 0,
+          "totalTokens": 21406430,
+          "apiEquivalentCostUSD": 9.84,
+          "costComplete": false
+        },
+        "status": [
+          {
+            "source": "agents",
+            "state": "ok",
+            "collectedAt": "$now-300000",
+            "error": null,
+            "warning": null
+          }
+        ]
+      }
+    ]
+  }
+}

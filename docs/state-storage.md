@@ -60,7 +60,7 @@ D1 是整站的长期历史归档：DO 管实时状态、7 天热数据与用量
 
 ## Coding 评估（pulse:assessments）
 
-- Jev 只给 Coding 打分，其余道画的是事实本身。一个十五分钟评分调度器和 `pulse:assessments` 列表，保留七天；输入哈希相同不重复调用，晚到的 token 可修订相应窗口。输入哈希含 `PULSE_ASSESSMENT_VERSION`（现为 6）。StateHub metadata 持久化 claim token、generation、180 秒 lease 与最近尝试；普通 Worker 从固定快照提取特征和调用模型，提交时 StateHub 校验资格并与最新结果合并。
+- Jev 只给 Coding 打分，其余道画的是事实本身。一个十五分钟评分调度器和 `pulse:assessments` 列表，保留七天；输入哈希相同不重复调用，晚到的 token 可修订相应窗口。输入哈希含 `PULSE_ASSESSMENT_VERSION`（源：`shared/pulse-assessment.ts#PULSE_ASSESSMENT_VERSION`）。StateHub metadata 持久化 claim token、generation、180 秒 lease 与最近尝试；普通 Worker 从固定快照提取特征和调用模型，提交时 StateHub 校验资格并与最新结果合并。
 - 列表追加写：每轮只追加新评出来的几行，同一窗口以最后一行为准（读者一律走 `latestPulseAssessments`）。被覆盖的旧行和过期行多过有效行的一半、或总行数超过上限（2016）的 1.5 倍时才整表压缩重写。从前每轮整表重写，七天攒满后一天七百万行 SQLite 写入，远超 Workers Paid 每月五千万的包含量。别的域的旧评估读时丢掉，下次压缩时清出。
 - 评估只出现在 Coding 悬停里（强度、置信度、模式）。Coding 内部观测在 `pulse:coding-observations`，token 证据是三个来源的 `pulse:token-buckets:<来源>`（「确定为零」只认 Mac 本机扫描的覆盖，账号与云端的桶只作正证据）；公开 API 不返回原始用量、应用名或模型名。契约与闸门见 [Coding 的 Jev 评估](../workers/api/README.md#coding-的-jev-评估)。
 

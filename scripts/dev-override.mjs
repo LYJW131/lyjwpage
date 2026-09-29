@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 
+import { site } from "../src/lib/site.ts";
+
 /**
  * 往本地 Worker 注入 / 清除假数据（需要 .dev.vars 里 DEV_OVERRIDES=true）。
  *
@@ -17,6 +19,8 @@ import path from "node:path";
  * 时间戳令牌：夹具里的字符串 `"$now"`、`"$now-90000"`、`"$now+3600000"` 在推送
  * 那一刻换成 Date.now() 加偏移（毫秒）。带 pushedAt / lastSeenAt / observedAt 的
  * 夹具靠它保持新鲜 —— 注入绕过了路由，没人替它续心跳，写死的时间戳几分钟就过期。
+ * 日期令牌：`"$today"`、`"$today-1"`、`"$today-370"` 换成站点时区（`src/lib/site.ts`）
+ * 的日期串 YYYY-MM-DD 加减天数，给「最近一天是不是今天」这类按站点日判的夹具用。
  */
 
 const BASE = (process.env.DEV_WORKER_URL ?? "http://localhost:8788").replace(/\/+$/, "");
@@ -25,12 +29,26 @@ const FIXTURES_DIR = path.join(process.cwd(), "workers", "api", "dev-fixtures");
 const [first, second] = process.argv.slice(2);
 
 const NOW_TOKEN = /^\$now([+-]\d+)?$/;
+const TODAY_TOKEN = /^\$today([+-]\d+)?$/;
 
-/** 递归把 "$now" / "$now-90000" 这类字符串换成 Date.now() 加偏移；同一次推送里所有令牌共用一个 now */
+/** 站点今天往后挪 offsetDays 天的日期串：按日历挪，不按 24 小时 */
+function siteDay(now, offsetDays) {
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: site.timezone }).format(now);
+  const date = new Date(`${today}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + offsetDays);
+  return date.toISOString().slice(0, 10);
+}
+
+/**
+ * 递归把 "$now" / "$now-90000" 换成 Date.now() 加偏移、"$today" / "$today-1" 换成站点日期串；
+ * 同一次推送里所有令牌共用一个 now
+ */
 function stampNow(value, now = Date.now()) {
   if (typeof value === "string") {
     const match = NOW_TOKEN.exec(value);
-    return match ? now + Number(match[1] ?? 0) : value;
+    if (match) return now + Number(match[1] ?? 0);
+    const day = TODAY_TOKEN.exec(value);
+    return day ? siteDay(now, Number(day[1] ?? 0)) : value;
   }
   if (Array.isArray(value)) return value.map((item) => stampNow(item, now));
   if (value && typeof value === "object") {
@@ -82,7 +100,7 @@ if (first === "--list") {
   console.log(await call(`/api/dev/override${first}`, { method: "DELETE" }));
 } else if (second) {
   const file = second.includes("/") || second.includes("\\") ? second : path.join(FIXTURES_DIR, second);
-  // 先在本地把 JSON 错误报出来，别让 Worker 回 400 才知道；顺手把 $now 令牌换成此刻
+  // 先在本地把 JSON 错误报出来，别让 Worker 回 400 才知道；顺手把 $now / $today 令牌换成此刻
   const body = JSON.stringify(stampNow(JSON.parse(fs.readFileSync(file, "utf8"))));
   console.log(
     await call(`/api/dev/override${first}`, {

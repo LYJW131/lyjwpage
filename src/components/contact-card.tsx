@@ -13,9 +13,9 @@ import {
 } from "@/lib/heatmap-preference";
 import { site } from "@/lib/site";
 import type {
+  CodingYearPayload,
   GithubChartPayload,
   StatusResponse,
-  VibeCodingYearPayload,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -27,7 +27,7 @@ export function ContactCard({
   /** 构建期内联好的头像，见 lib/github-avatar-icon；拉不到是 null，回退远端 URL */
   avatarDataUri: string | null;
   chartFallback: StatusResponse<GithubChartPayload>;
-  yearFallback: StatusResponse<VibeCodingYearPayload>;
+  yearFallback: StatusResponse<CodingYearPayload>;
 }) {
   const mode = useSyncExternalStore(subscribeHeatmap, readHeatmapMode, () => "tokens");
 

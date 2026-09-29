@@ -1,0 +1,9 @@
+{
+  "ok": true,
+  "data": {
+    "agents": [],
+    "lastSeenAt": "$now-20000",
+    "declaredOffline": false,
+    "heartbeatWindowMs": 300000
+  }
+}

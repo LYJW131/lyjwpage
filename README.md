@@ -25,9 +25,9 @@
 | **音乐** | Apple Music 与 HomePod 播放状态、最近收听、逐字歌词和动态封面；访客可通过自己的 Apple Music 账号与订阅使用网页播放器和「一起听」。 |
 | **运动活动** | 通过 iPhone 的 HealthKit 数据展示 Apple Watch 活动、锻炼与站立三环，以及最近 10 次训练的时长、能量和心率。 |
 | **服务器** | 落地节点的运行时间、CPU、内存、网络吞吐，以及按计费周期累计的流量。 |
-| **AI Coding** | 编码工具的 Token 用量、API 等值成本估算、年度热力图与账号限额窗口。 |
+| **AI Coding** | 编码工具的 Token 用量（Mac 本机日志、Cursor 账号历史与 Claude Code 云端遥测合并）、API 等值成本估算、此刻在用的 agent、年度热力图与账号限额窗口。 |
 | **游戏** | PlayStation 在线状态、游戏记录与奖杯进度，展开游戏卡片查看成就明细。 |
-| **Pulse** | 编码、听、看、玩、充电、身体活动最近 24 小时的事实时间线：编码分前台应用 / agent / 两者同时，听看玩按在放、暂停、空闲画出并带曲目与片名，充电画瓦数，活动画步数与训练；悬停任一时段可看当时的状态与标题。 |
+| **Pulse** | 编码、听、看、玩、充电、身体活动最近 24 小时的事实时间线：编码分前台应用 / agent / 两者同时，另有一条 token 速率，听看玩按在放、暂停、空闲画出并带曲目与片名，充电画瓦数，活动画步数与训练；悬停任一时段可看当时的状态与标题。 |
 | **站点自身** | 网站版本、GitHub 仓库统计与最近提交（含签名状态）；站点与 API 两行 30 天在线状态，PageSpeed 实验室指标的滚动中位数与真实访客的性能分；Vercel 部署、Cloudflare Workers 的调用统计与 12 小时报错数，以及落地节点上两个常驻上报器的推送次数、往返延迟和线上版本。 |
 
 界面以灰阶、细线边界和卡片布局为基础，用等宽数字稳定动态指标的排版。颜色与动效主要服务于媒体内容、状态变化和交互反馈。
@@ -97,7 +97,7 @@
   <img src="docs/screenshots/server-light.gif" alt="落地节点卡片：上下行速率、CPU 与内存换档时读数滚动" width="100%">
 </picture>
 
-**AI Coding**：各编码工具的 Token 用量、成本估算、今日用量与账号限额窗口。
+**AI Coding**：各编码工具的 Token 用量、成本估算、今日用量与账号限额窗口。用量有三处来源：Mac 本机日志、Cursor 账号侧的历史、Claude Code 云端的遥测，来源只报原始事实，合计、排名、今日和年度格子在状态核心一处算（同一 agent 有账号级历史时只算它，否则相加）。哪个 agent 此刻在用看它最近一次用量事件，Mac 合盖时云端和 Cursor 的灯照样亮；某个来源采集失败时，读数旁标出 Partial，不把缺的那部分当成 0。
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/vibecoding-dark.gif">
@@ -111,7 +111,7 @@
   <img src="docs/screenshots/playstation-trophies-light.webp" alt="PlayStation 卡片：在线、正在游玩与展开的奖杯明细" width="100%">
 </picture>
 
-**Pulse**：最近 24 小时「在做什么」的事实时间线，六条道。编码是三色带：前台开着编码应用、只有 agent 在跑、两者同时；听、看、玩按状态画出在放 / 暂停 / 空闲（在游戏里 / 在线 / 离线），并带上当时的曲目、影视或游戏名；充电画实测瓦数；身体活动画 HealthKit 闭合五分钟桶的步数，训练叠成带项目名的区间。没有观测的时段留空，和观测到的空闲分开。iPhone 等设备上的播放只在「最近在听」列表里留下痕迹、不知道确切时刻，画成一段斜线的不确定区间。右侧是这一天的事实摘要（编码时长与其中 agent 的时长、在放时长与曲目数、充电峰值与电量、步数）。只存原始值，档位与颜色在展示时现算；Jev 只给编码的十五分钟窗口打强度与模式，出现在悬停里。事实每分钟归档到 D1。悬停、点击或用方向键走到某一段，会显示这一段的时间范围和当时的状态与标题。
+**Pulse**：最近 24 小时「在做什么」的事实时间线。编码是三色带：前台开着编码应用、只有 agent 在跑、两者同时，下面的 Tokens 道画三处来源相加后的每分钟新 token（不含 cache read）；听、看、玩按状态画出在放 / 暂停 / 空闲（在游戏里 / 在线 / 离线），并带上当时的曲目、影视或游戏名；充电画实测瓦数；身体活动画 HealthKit 闭合五分钟桶的步数，训练叠成带项目名的区间。没有观测的时段留空，和观测到的空闲分开。iPhone 等设备上的播放只在「最近在听」列表里留下痕迹、不知道确切时刻，画成一段斜线的不确定区间。右侧是这一天的事实摘要（编码时长与其中 agent 的时长、在放时长与曲目数、充电峰值与电量、步数）。只存原始值，档位与颜色在展示时现算；Jev 只给编码的十五分钟窗口打强度与模式，出现在悬停里。事实每分钟归档到 D1。悬停、点击或用方向键走到某一段，会显示这一段的时间范围和当时的状态与标题。
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/pulse-detail-dark.webp">
@@ -136,9 +136,9 @@
 
 [打开交互式架构图](https://lyjw131.github.io/lyjwpage/)
 
-**采集端**运行在数据产生的位置。Mac 采集本机应用、音乐、BLE 设备与编码用量，iPhone 读取运动活动，NAS 代理 Emby 播放状态，Linux 上报器提供服务器指标和 Agent 限额。Home Assistant 接入 HomePod 等家庭设备；PlayStation、Apple Music 最近在听以及 GitHub、Vercel、Cloudflare、Sentry、PageSpeed 这些外部数据由采集 Worker 定时拉取。
+**采集端**运行在数据产生的位置。Mac 采集本机应用、音乐、BLE 设备与编码用量，iPhone 读取运动活动，NAS 代理 Emby 播放状态，Linux 上报器提供服务器指标、Agent 限额与 Cursor 用量，Claude Code 云端环境用内置遥测直接上报。Home Assistant 接入 HomePod 等家庭设备；PlayStation、Apple Music 最近在听以及 GitHub、Vercel、Cloudflare、Sentry、PageSpeed 这些外部数据由采集 Worker 定时拉取。
 
-**状态中枢**由 Cloudflare Workers 承担，负责接收上报、整合外部服务数据、提供公开状态 API 和实时推送。上报先到无状态的上报入口 Worker：它在 Cloudflare Access 之后验明每个上报器的身份，校验、收敛报文，再按数据层拆开——实时那一半经 Service Binding 交给持有 Durable Objects 的状态核心（api Worker），可滞后层、归档与凭据自己写。改校验只重新发布上报入口，状态核心不重启、页面的推送连接不断。Durable Objects SQLite 保存实时层的快照与历史，是唯一权威；只展示、可以晚几分钟的数据（外部服务的统计、落地节点、限额等）由写入方直接写进 KV 可滞后层，每条带更新时刻，过没过时由浏览器按各卡阈值判断。R2 保存海报等图片资源，D1 归档训练、圆环、限额、服务器小时汇总与 Pulse 的事实时间线；在线访客由推送那条 WebSocket 顺带计数。
+**状态中枢**由 Cloudflare Workers 承担，负责接收上报、整合外部服务数据、提供公开状态 API 和实时推送。上报先到无状态的上报入口 Worker：它在 Cloudflare Access 之后验明每个上报器的身份，校验、收敛报文，再按数据层拆开——实时那一半经 Service Binding 交给持有 Durable Objects 的状态核心（api Worker），可滞后层、归档与凭据自己写。改校验只重新发布上报入口，状态核心不重启、页面的推送连接不断。Durable Objects SQLite 保存实时层的快照与历史，是唯一权威；只展示、可以晚几分钟的数据（外部服务的统计、落地节点、限额等）由写入方直接写进 KV 可滞后层，每条带更新时刻，过没过时由浏览器按各卡阈值判断。R2 保存海报等图片资源，D1 归档训练、圆环、限额、服务器小时汇总、coding 用量与 Pulse 的事实时间线；在线访客由推送那条 WebSocket 顺带计数。
 
 **展示端**运行在 Vercel。Next.js 生成首页时按卡读取 Worker 的各状态端点，浏览器挂载后直接连接 Worker 获取最新状态，不再经由 Vercel 转发状态请求。中国大陆访问入口通过阿里云 ESA 加速页面与静态资源。
 

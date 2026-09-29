@@ -1,0 +1,226 @@
+{
+  "ok": true,
+  "data": {
+    "updatedAt": "$now-420000",
+    "totals": {
+      "inputTokens": 640118200,
+      "outputTokens": 110402114,
+      "cacheReadTokens": 28912004411,
+      "cacheCreationTokens": 381220874,
+      "reasoningTokens": 7950221,
+      "totalTokens": 30043745599,
+      "apiEquivalentCostUSD": 23102.61,
+      "costComplete": false,
+      "activeDays": 219,
+      "sessionCount": 1204
+    },
+    "topModels": [
+      {
+        "model": "claude-opus-5",
+        "tokens": 10881224016
+      },
+      {
+        "model": "claude-opus-5-5",
+        "tokens": 4410229871
+      },
+      {
+        "model": "gpt-5.6-sol",
+        "tokens": 2950402993
+      }
+    ],
+    "agents": [
+      {
+        "id": "antigravity",
+        "sources": [
+          "mac"
+        ],
+        "models": [
+          "gemini-3.8-flash-high",
+          "gemini-3.7-flash",
+          "gemini-3.6-flash-high",
+          "claude-sonnet-4-6"
+        ],
+        "latestModel": "gemini-3.8-flash-high",
+        "lastDay": {
+          "date": "$today",
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "totalTokens": 0,
+          "apiEquivalentCostUSD": 0,
+          "costComplete": true
+        },
+        "status": [
+          {
+            "source": "mac",
+            "state": "ok",
+            "collectedAt": "$now-420000",
+            "error": null,
+            "warning": null
+          }
+        ]
+      },
+      {
+        "id": "claude",
+        "sources": [
+          "mac"
+        ],
+        "models": [
+          "claude-opus-5",
+          "claude-opus-5-5",
+          "claude-sonnet-5-5",
+          "claude-fable-5",
+          "claude-opus-4-8",
+          "claude-haiku-4-5-20251001"
+        ],
+        "latestModel": "claude-opus-5-5",
+        "lastDay": {
+          "date": "$today",
+          "inputTokens": 15200113,
+          "outputTokens": 5102447,
+          "cacheReadTokens": 1310044128,
+          "cacheCreationTokens": 24110236,
+          "totalTokens": 1354456924,
+          "apiEquivalentCostUSD": 648.35,
+          "costComplete": true
+        },
+        "status": [
+          {
+            "source": "mac",
+            "state": "ok",
+            "collectedAt": "$now-420000",
+            "error": null,
+            "warning": null
+          }
+        ]
+      },
+      {
+        "id": "codex",
+        "sources": [
+          "mac"
+        ],
+        "models": [
+          "gpt-5.6-sol",
+          "gpt-6-astra",
+          "gpt-5.6-terra",
+          "gpt-6-luna",
+          "gpt-5.5"
+        ],
+        "latestModel": "gpt-6-astra",
+        "lastDay": {
+          "date": "$today",
+          "inputTokens": 2927681,
+          "outputTokens": 115585,
+          "cacheReadTokens": 32687616,
+          "cacheCreationTokens": 0,
+          "totalTokens": 35730882,
+          "apiEquivalentCostUSD": 58.07,
+          "costComplete": true
+        },
+        "status": [
+          {
+            "source": "mac",
+            "state": "ok",
+            "collectedAt": "$now-420000",
+            "error": null,
+            "warning": null
+          }
+        ]
+      },
+      {
+        "id": "grok",
+        "sources": [
+          "mac"
+        ],
+        "models": [
+          "grok-4.7-build-fast",
+          "grok-4.7-build",
+          "grok-4.6-build"
+        ],
+        "latestModel": "grok-4.7-build-fast",
+        "lastDay": {
+          "date": "$today",
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "totalTokens": 0,
+          "apiEquivalentCostUSD": 0,
+          "costComplete": true
+        },
+        "status": [
+          {
+            "source": "mac",
+            "state": "ok",
+            "collectedAt": "$now-420000",
+            "error": null,
+            "warning": null
+          }
+        ]
+      },
+      {
+        "id": "opencode",
+        "sources": [
+          "mac"
+        ],
+        "models": [
+          "kimi-k3",
+          "mimo-v2.5",
+          "gemini-3-flash-preview"
+        ],
+        "latestModel": "kimi-k3",
+        "lastDay": {
+          "date": "$today",
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "totalTokens": 0,
+          "apiEquivalentCostUSD": 0,
+          "costComplete": true
+        },
+        "status": [
+          {
+            "source": "mac",
+            "state": "ok",
+            "collectedAt": "$now-420000",
+            "error": null,
+            "warning": null
+          }
+        ]
+      },
+      {
+        "id": "pi",
+        "sources": [
+          "mac"
+        ],
+        "models": [
+          "[pi] grok-4.7",
+          "[pi] gpt-6-astra",
+          "[pi] kimi-k3"
+        ],
+        "latestModel": "[pi] grok-4.7",
+        "lastDay": {
+          "date": "$today",
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "totalTokens": 0,
+          "apiEquivalentCostUSD": 0,
+          "costComplete": true
+        },
+        "status": [
+          {
+            "source": "mac",
+            "state": "ok",
+            "collectedAt": "$now-420000",
+            "error": null,
+            "warning": null
+          }
+        ]
+      }
+    ]
+  }
+}

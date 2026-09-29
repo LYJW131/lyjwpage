@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { agentLimitsLayoutKey, attachAgentLimits, mergeAgentLimits } from "./vibecoding-limits.ts";
+import { agentLimitsLayoutKey, agentLimitsOf, mergeAgentLimits } from "./vibecoding-limits.ts";
 
 const window = {
   key: "claude.primary",
@@ -48,44 +48,23 @@ test("一封只带来的行整行替换，没出现的 id 留着上一次的", (
   assert.equal(first.agents.claude?.limits.length, 1);
 });
 
-test("按 id 合并用量和限额，缺用量的来源仍显示但不伪造零用量", () => {
-  const usage = [
-    { id: "claude", label: "Claude Code" },
-    { id: "cursor", label: "Cursor" },
-  ];
-  const attached = attachAgentLimits(usage as never, {
+test("按 id 取限额：取到的带上收到时刻，没上报过或这份还没到按「没配」", () => {
+  const stored = {
     agents: {
       claude: { plan: { tier: "max", label: "Max 5x" }, limits: [window], limitsError: null, updatedAt: 4_000 },
-      grok: { plan: null, limits: [window], limitsError: null, updatedAt: 5_000 },
     },
+  };
+  assert.deepEqual(agentLimitsOf(stored, "claude"), {
+    plan: { tier: "max", label: "Max 5x" },
+    limits: [window],
+    limitsError: null,
+    limitsAt: 4_000,
   });
-  assert.deepEqual(attached.map((row) => row.id), ["claude", "cursor", "grok"]);
-  assert.equal(attached[0]?.limitsAt, 4_000);
-  assert.equal(attached[0]?.limits.length, 1);
-  assert.deepEqual(
-    { plan: attached[1]?.plan, limits: attached[1]?.limits, limitsError: attached[1]?.limitsError, limitsAt: attached[1]?.limitsAt },
-    { plan: null, limits: [], limitsError: null, limitsAt: null },
-  );
-  // 镜像还没有时也一样
-  assert.equal(attachAgentLimits(usage as never, null)[0]?.limitsAt, null);
-  assert.equal(attached[2]?.label, "Grok Build");
-  assert.equal(attached[2]?.today, null);
-  assert.equal(attached[2]?.usageStatus.state, "unavailable");
-  assert.equal(attached[2]?.limitsAt, 5_000);
-});
-
-test("限额先到也能生成来源行，未知来源保留 id 而不丢弃", () => {
-  const attached = attachAgentLimits([], {
-    agents: {
-      cursor: { plan: null, limits: [window], limitsError: null, updatedAt: 5_000 },
-      other: { plan: null, limits: [], limitsError: "Unavailable", updatedAt: 5_000 },
-    },
-  });
-  assert.deepEqual(attached.map((row) => row.label), ["Cursor", "other"]);
-  assert.ok(attached.every((row) => row.today === null));
-  assert.ok(attached.every((row) => row.usageStatus.collectedAt === null));
-  assert.equal(attached[1]?.limitsError, "Unavailable");
-  assert.deepEqual(attachAgentLimits([], null), []);
+  const none = { plan: null, limits: [], limitsError: null, limitsAt: null };
+  assert.deepEqual(agentLimitsOf(stored, "cursor"), none);
+  assert.deepEqual(agentLimitsOf(null, "claude"), none);
+  // 原型链上的名字不是 agent
+  assert.deepEqual(agentLimitsOf(stored, "constructor"), none);
 });
 
 test("布局键只看来源集合，读数变了不算布局变化", () => {

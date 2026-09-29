@@ -543,45 +543,6 @@ export type ChargerPayload = ChargerStatus & {
   staleAfterMs: number;
 } & ReporterPresence;
 
-/**
- * 用量采集来源键，如 "claude" / "codex" / "cursor"。
- *
- * 信封不写死名单：上报器发几个 agent 就收几个，站点按 id 决定展示形态。
- */
-export type VibeCodingAgentId = string;
-
-export type VibeCodingDay = {
-  /** 按站点统计时区 Asia/Shanghai 生成的 YYYY-MM-DD */
-  date: string;
-  inputTokens: number;
-  outputTokens: number;
-  cacheReadTokens: number;
-  cacheCreationTokens: number;
-  totalTokens: number;
-  /** 按公开 API 价格估算，不是订阅账单 */
-  apiEquivalentCostUSD: number;
-};
-
-/** 每个来源最近一次成功取得的用量及本轮同步状态；错误不会清空已保存历史。 */
-export type VibeCodingUsageStatus = {
-  state: "ok" | "error" | "unavailable";
-  /** 最近成功采集时刻，尚未成功过为 null；失败时保留旧时刻。 */
-  collectedAt: string | null;
-  /** 这一轮什么都没采到的原因（state 为 error），数据停在 collectedAt。 */
-  error: string | null;
-  /**
-   * 采到了但有缺口：token 未分列、历史变短而保留了旧日子、会话元数据失败等。state 仍为 ok；
-   * 有缺口时 costComplete 一定是 false。旧版采集侧不带这个键，按 null 收。
-   */
-  warning: string | null;
-  /** 已保存历史实际覆盖的首尾日期，YYYY-MM-DD；未知为 null。 */
-  coverageStart: string | null;
-  coverageEnd: string | null;
-  precision: "measured" | "estimated" | "mixed";
-  /** false 表示 API 等值费用只包含能估价的部分，不能当完整费用。 */
-  costComplete: boolean;
-};
-
 /** 订阅套餐等级。tier 是上游原始枚举值，label 是给人看的展示名。 */
 export type VibeCodingPlan = {
   /** 如 "prolite" / "max"，用来加 title 提示，页面主体不直接显示 */
@@ -614,157 +575,6 @@ export type VibeCodingLimit = {
   /** Unix 秒（不是毫秒），上游没给就是 null */
   resetsAt: number | null;
 };
-
-export type VibeCodingAgent = {
-  id: VibeCodingAgentId;
-  /** 上报器给的展示名，如 "Claude Code" / "Cursor" */
-  label: string;
-  /**
-   * 品牌图标键，如 "cursor" / "grok"。和 id 不是一回事：id 是用量
-   * 的来源名，这个是牌子。站点认不出来的键退回首字母，不是整行不渲染。
-   *
-   * 全量面板不用它（Claude / Codex 各有自己的活动灯），只给按需取用的
-   * 那几行限额条当标记。
-   */
-  icon: string;
-  models: string[];
-  /** 最近使用的会话模型；会话数据缺失时回退到最近一个有用量日的主力模型。 */
-  currentModel: string | null;
-  /** 最近一次 session 活动；不含 session ID 或项目路径。 */
-  lastActivityAt: string | null;
-  /**
-   * 上报器按最近五分钟是否有 session 活动计算。
-   *
-   * 是个电平，不是会自己过期的时间戳 —— 采集侧一停就冻在最后一次推送的值上，
-   * 站点这边没有任何东西会去翻它。所以展示前必须和「这句话现在还算不算数」
-   * 取与，见 vibecoding-card 的 activityUnknown。
-   */
-  active: boolean;
-  /**
-   * Claude Code 云端线程最近一次有 token 增量的时刻（OTLP 遥测，见 lib/claude-cloud-usage）。
-   * 只有 claude 那一行有。和 Mac 在不在线无关，浏览器按时刻现算：5 分钟内就亮，
-   * 不和 activityUnknown 取与。缺省同 null。
-   */
-  cloudActivityAt?: string | null;
-  /** 整份历史里 token 占比最大的模型。 */
-  topModel: string | null;
-  /** null 表示未取得用量，和已成功采集的零用量不同。 */
-  today: VibeCodingDay | null;
-  usageStatus: VibeCodingUsageStatus;
-  /**
-   * 下面四个字段来自另一条路：`/api/ingest/agents`，喂它的是 NAS 上的容器上报器
-   * （`reporters/agents-reporter`），存在可滞后层（`/api/status/limits`）。浏览器
-   * 按 id 把它们贴到对应来源行上（lib/vibecoding-limits 的 attachAgentLimits）；
-   * 只有限额的来源也展示，用量为 null。
-   *
-   * 套餐取不到、或这个 agent 从没上报过限额时是 null —— 不渲染，不占位
-   */
-  plan: VibeCodingPlan | null;
-  /** 没登录、凭据失效、从没上报过都会是空数组，UI 要能整块不渲染 */
-  limits: VibeCodingLimit[];
-  /**
-   * 限额取失败的原因。空 limits 有两种含义 —— 这个 agent 没配（该整块不渲染），
-   * 或者配了但取不到（该渲染并说明取不到）。靠它区分，null 表示前者。
-   */
-  limitsError: string | null;
-  /**
-   * 上报入口收到这个 agent 限额的时刻（epoch 毫秒），从没收到过是 null。
-   * 过没过时由浏览器拿它和 `AGENT_LIMITS_STALE_MS` 现算，过了显示 Unavailable。
-   */
-  limitsAt: number | null;
-};
-
-/** `/api/status/vibecoding` 的一行：用量与此刻，不带限额（限额在可滞后层，浏览器贴回） */
-export type VibeCodingUsageAgent = Omit<VibeCodingAgent, "plan" | "limits" | "limitsError" | "limitsAt">;
-
-export type VibeCodingTotals = {
-  inputTokens: number;
-  outputTokens: number;
-  cacheReadTokens: number;
-  cacheCreationTokens: number;
-  /** Codex 的 reasoning 是 output 的子集，画堆叠条时要从普通 output 中扣掉 */
-  reasoningTokens: number;
-  totalTokens: number;
-  apiEquivalentCostUSD: number;
-  /** API 等值费用是否覆盖全部 token；false 时数值只包含已知价格的部分。 */
-  costComplete: boolean;
-  activeDays: number;
-  /** 所有来源的历史 session 数合计；不包含 session ID。 */
-  sessionCount: number;
-};
-
-/**
- * `vibeCodingNow` 推给浏览器的那一小份：此刻在不在用、用的是哪个模型。
- *
- * 整张卡只有这三个字段说的是「此刻」，也只有它们值得走 60 秒那一轮。别往
- * 这里加累计量 —— 累计的东西一律归 `vibeCodingUsage`，那是十几分钟才动一次
- * 的事，混进来等于拿推送当轮询用。会话总数就是这么挪走的。
- */
-export type VibeCodingNowPayload = {
-  agents: Array<{
-    id: VibeCodingAgentId;
-    currentModel: string | null;
-    lastActivityAt: string | null;
-    active: boolean;
-    /** 只有云端遥测那条推送带；Mac 的推送不带，浏览器保留手上的值 */
-    cloudActivityAt?: string | null;
-  }>;
-};
-
-export type VibeCodingPayload = {
-  /**
-   * 同一形状的来源列表。上报器发几个就有几个；首页按 id 取用，并与
-   * `/api/status/limits` 按 id 合并：`claude` / `cursor` 画全量面板，其余只取限额那一行。
-   */
-  agents: VibeCodingUsageAgent[];
-  /** 限额可独立展示，尚未收到用量摘要时为 null。 */
-  totals: VibeCodingTotals | null;
-  /** 所有来源合并后的历史累计 token 前三名。 */
-  topModels: Array<{ model: string; tokens: number }>;
-  /** 摘要生成时间；来源成功时间分别记录在 usageStatus，尚无摘要时为 null。 */
-  collectedAt: string | null;
-  source: "local" | "push";
-  /** 源站收到用量摘要的时刻；尚未收到时为 null。来源新鲜度看各自 usageStatus。 */
-  pushedAt: number | null;
-} & ReporterPresence;
-
-/**
- * 过去 53 周的日合计 token。
- *
- * `days[i]` 是 origin 起第 i 天的合计。档位和文案浏览器现算，不进信封。
- * `mix` 是每天前五模型的稀疏编码，下标指 `models`。
- *
- * 每次刷新完整窗口，云端补回的旧日和模型拆分也会一起更新。
- */
-export type VibeCodingYearPayload = {
-  /** 53 周窗口的第一个周日，YYYY-MM-DD */
-  origin: string;
-  days: number[];
-  /** 这一年里出现在每日前五里的模型名，mix 里的下标指这里。 */
-  models: string[];
-  /**
-   * 稀疏的每日前五。一行是 `[offset, idx, tokens, idx, tokens, …]`，
-   * offset 是 origin 起第几天，idx 是 models[] 下标。空日子不出现。
-   */
-  mix: number[][];
-  pushedAt: number;
-  /**
-   * 源站在取数出口按自己的钟算的「今天是哪一天」（站点时区，YYYY-MM-DD）。
-   * 热力图拿它切掉窗尾那截未来格子。
-   *
-   * **这件事整个由源站算**，理由同 `ActivityPayload.currentAtSource`：浏览器
-   * 手上没有一个会走的钟。也不能用窗口自己的 `pushedAt` 顶替 —— 那是「上报器最后
-   * 一次推送」，Mac 停一天，今天那格就跟着少一格，而隔壁 GitHub 那张图照常画到
-   * 今天，两张图当场错开一列。
-   *
-   * 落进 SQLite 的那份没有它（`StoredVibeCodingYear`）：它是「现在几点」的函数，
-   * 只能在取数出口现盖，见 lib/vibecoding-year 的 withYearFreshness。
-   */
-  todayAtSource: string;
-};
-
-/** 落库的那份：上报器给的窗口 + 源站盖的到达时刻，不含取数出口现算的那个今天。 */
-export type StoredVibeCodingYear = Omit<VibeCodingYearPayload, "todayAtSource">;
 
 /**
  * coding agent token 用量的观测来源，名字 = 上报入口的来源名。
@@ -863,19 +673,25 @@ export type CodingNowPayload = {
 } & ReporterPresence;
 
 /**
- * `/api/status/coding/year`：过去 53 周的日合计与每天前五模型，编码同 `VibeCodingYearPayload`
- * （`days[i]` 是 origin 起第 i 天；`mix` 一行 `[offset, idx, tokens, …]`，idx 指 `models`）。
- * 任一来源有日行就出图。
+ * `/api/status/coding/year`：过去 53 周的日合计 token，外加每天前几名模型的拆分。任一来源有日行就出图。
+ * 档位和文案浏览器现算，不进信封；编码见 lib/coding-year 的 encodeCodingYear。
  */
 export type CodingYearPayload = {
   /** 53 周窗口的第一个周日，YYYY-MM-DD */
   origin: string;
+  /** `days[i]` 是 origin 起第 i 天的合计 */
   days: number[];
+  /** 出现在每天拆分里的模型名，`mix` 里的下标指这里 */
   models: string[];
+  /** 稀疏的每天拆分，一行 `[offset, idx, tokens, idx, tokens, …]`，offset 是 origin 起第几天；空日子不出现 */
   mix: number[][];
   /** 年度视图最后一次重算的时刻 */
   updatedAt: number;
-  /** 源站取数时按自己的钟算的站点今天（YYYY-MM-DD），理由同 `VibeCodingYearPayload.todayAtSource` */
+  /**
+   * 源站在取数出口按自己的钟算的「今天是哪一天」（站点时区，YYYY-MM-DD），热力图拿它切掉窗尾那截
+   * 未来格子。整个由源站算：首帧时浏览器手上没有一个会走的钟；也不能拿 `updatedAt` 顶替 —— 用量
+   * 停一天，今天那格就跟着少一格，和隔壁 GitHub 那张图错开一列。
+   */
   todayAtSource: string;
 };
 

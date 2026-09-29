@@ -99,8 +99,8 @@ export function isPublicApiPath(path: string): boolean {
 /**
  * 推送事件名 → 端点路径，给上游推送中继替换 payload 用。
  *
- * 登记表里 `vibecoding-now` 的事件名不等于路径派生名（它只推部分字段，端点是
- * 整份 `/api/status/vibecoding`）：中继拿整份注入去盖部分推送会对不上，所以排除。
+ * 只认事件名等于路径派生名（`/` 换成 `-`）的：这类事件和端点说的是同一份数据，拿那条
+ * 端点的注入去换 payload 才对得上。命名规则见 lib/status-views 的文件头。
  */
 export function pathForEventType(type: string): string | null {
   const path = pathByEvent(type);

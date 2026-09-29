@@ -1,4 +1,4 @@
-import type { ChargerStatus, CodingUsagePayload, LocalNowPlaying, PowerBankStatus, VibeCodingPayload } from "@/lib/types";
+import type { ChargerStatus, CodingUsagePayload, LocalNowPlaying, PowerBankStatus } from "@/lib/types";
 
 /**
  * 首屏布局的判据，页面和 Worker 共用一份。
@@ -43,19 +43,6 @@ export function powerBankActive(
 /** 这份播放状态能不能顶上正在听的 hero；不能时退回最近播放 */
 export function liveTrack<T extends Pick<LocalNowPlaying, "title" | "state">>(music: T | null | undefined): T | null {
   return music?.title && music.state !== "stopped" ? music : null;
-}
-
-/**
- * Vibe coding 卡片的骨架：精简列表按 agent 逐行排、没有上限，总量和常用模型
- * 两块有无各占一段高度。用量数字、限额百分比、活动灯都不在里面。
- */
-export function vibeCodingLayoutKey(payload: Pick<VibeCodingPayload, "agents" | "totals" | "topModels"> | null): string {
-  if (!payload) return "unavailable";
-  return JSON.stringify({
-    agents: payload.agents.map((agent) => agent.id).sort(),
-    totals: payload.totals != null,
-    topModels: payload.topModels.length > 0,
-  });
 }
 
 /**
