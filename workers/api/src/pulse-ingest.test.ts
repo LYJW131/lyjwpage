@@ -270,7 +270,7 @@ test("PSN 在线状态：进游戏、换游戏、下线各是一段", withStorag
   await inRequest(() => recordPlaystationReport(presence(T0, true, null), T0));
   const game = T0 + 20 * 60_000;
   await inRequest(() => recordPlaystationReport(presence(game, true, { titleId: "PPSA01", title: "Pragmata" }), game));
-  // PSN 没人看时半小时才查一次：34 分钟后的同一状态仍是同一段
+  // 两次确认隔了 34 分钟、状态没变，仍是同一段
   await inRequest(() => recordPlaystationReport(presence(game + 34 * 60_000, true, { titleId: "PPSA01", title: "Pragmata" }), game + 34 * 60_000));
   const off = game + 50 * 60_000;
   await inRequest(() => recordPlaystationReport(presence(off, false, null), off));

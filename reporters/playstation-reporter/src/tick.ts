@@ -1,6 +1,5 @@
-import { archiveTrophies } from "../history";
-import { ok, skipMissing, type Job, type JobResult } from "../job";
-import { AuthSession } from "./auth";
+import { AuthSession } from "./auth.js";
+import { powerClass, shouldRunTick, type ConsolePower } from "./cadence.js";
 import {
   hiddenTitleIds,
   isDryRun,
@@ -8,7 +7,7 @@ import {
   titleIdsHidden,
   withoutHiddenTitleIds,
   type Env,
-} from "./env";
+} from "./env.js";
 import {
   fetchPlayedGames,
   fetchPresence,
@@ -19,8 +18,8 @@ import {
   type LibraryTitle,
   type PlayedGamesReport,
   type PresenceReport,
-} from "./psn";
-import { deliver, readAudience, readPower } from "./site";
+} from "./psn.js";
+import { deliver } from "./site.js";
 import {
   LIBRARY_CACHE_KEY,
   LIBRARY_TTL_MS,
@@ -40,16 +39,18 @@ import {
   readBackoffUntil,
   readFailureStreak,
   readFullTickStartedAt,
+  readPowerClass,
   writeBackoffUntil,
   writeFailureStreak,
   writeFullTickStartedAt,
+  writePowerClass,
   writeLibraryCache,
   writePlayedGamesCache,
   writeTrophyCatalog,
   type FailureStreak,
   type TickMeta,
   type TrophyCatalog,
-} from "./state";
+} from "./state.js";
 import {
   buildTrophiesReport,
   dirtyIndexRows,
@@ -68,8 +69,8 @@ import {
   trophySummarySignature,
   type TrophiesReport,
   type TrophySummary,
-} from "./trophies";
-import { PsnUpstreamUnavailable, isUpstreamUnavailable, upstream } from "./util";
+} from "./trophies.js";
+import { PsnUpstreamUnavailable, isUpstreamUnavailable, upstream } from "./util.js";
 
 function playedGamesFingerprint(report: PlayedGamesReport): string {
   return JSON.stringify(report.items);
@@ -178,7 +179,7 @@ async function syncTrophies(
 
   const titles = await fetchTrophyTitles(env, auth);
   const nextFingerprint = trophiesFingerprintOf(hidden, indexFingerprint(titles, summary));
-  // 目录必须和指纹同一代：KV 先写 fp:trophies 再写 trophies:last，错代时
+  // 目录必须和指纹同一代：先写 fp:trophies 再写 trophies:last，错代时
   // last.titles 是旧的，交上去会把站点刚收下的解锁整份盖掉。
   if (
     nextFingerprint === oldTrophiesFingerprint &&
@@ -264,102 +265,45 @@ type TickResult = {
 };
 
 /**
- * 有人**正看着**站点时的完整 tick 间隔。cron 每分钟一响，卡 60 秒整的话早响半秒
- * 的那一轮会被门挡掉、实际退化成两分钟一轮，所以留 5 秒余量。
- */
-const LIVE_TICK_INTERVAL_MS = 55_000;
-/**
- * 页面**开着但都在后台**时的 tick 间隔（切走的标签页、锁了屏的手机）。同样留
- * 5 秒取整余量：2 分钟一轮。
+ * 上一轮完整 tick 的开始时刻，进程内这一份。
  *
- * 这一档是为「切走了但还会切回来」留的 —— 那些页面在 `online` 那个数里算 0
- * （站点侧切到后台时向推送房间报 `hidden`），但连接不断，它们还在 `connections` 里。
- */
-const OPEN_TICK_INTERVAL_MS = 115_000;
-/**
- * 一个页面都没开时的完整 tick 间隔。同样留取整余量：每分钟的 cron 把它凑成整数分钟的一轮。
- *
- * 站点 `src/lib/freshness.ts` 的 `PLAYSTATION_STALE_MS`（三轮加余量）锚的就是这个数。
- * 要动它，先去改那边。
- */
-const IDLE_TICK_INTERVAL_MS = 29.5 * 60_000;
-/**
- * 上一轮完整 tick 的开始时刻，isolate 本地这一份。
- *
- * KV 的读有最长 60 秒的边缘缓存，而门的阈值正好在这个量级上：相邻两响里后一响
- * 可能还拿着写入之前的旧值，把同一轮放行两次。cron 每分钟一响，相邻两响多半落在
- * 同一个 isolate 上，所以和 KV 那份取较晚的一枚就能挡掉这种重复。两份记的都是
- * 真实发生过的开始时刻，取晚的不会误挡；isolate 冷起时它是 0，退回纯 KV 判断。
+ * 和磁盘上那份取较晚的一枚：这一轮刚写下、读还没回来时，下一次探测不会把同一轮再放行。
+ * 进程冷起时它是 0，退回磁盘上的记录。
  */
 let lastFullTickAt = 0;
+/** 上一轮 tick 开始时的调频档。磁盘写入还没回来时用这份。 */
+let localPowerClass: ReturnType<typeof powerClass> | null = null;
 
 type Gate = {
   run: boolean;
   sinceMs: number;
-  /** 这一响真去问了的那些数；没问到那一步的留 null */
-  online: number | null;
-  open: number | null;
-  /** 主机电源：true 开、false 关、null 没问到或问不出来 */
-  power: boolean | null;
+  power: ConsolePower;
 };
 
 /**
- * cron 每分钟一响，这道门决定这一响要不要真跑一轮。
- *
- * 三档，由两个人头数分出来：有页面**可见**按 `LIVE_TICK_INTERVAL_MS`，只是**开着**（后台标签
- * 页、锁了屏的手机）按 `OPEN_TICK_INTERVAL_MS`，一个都没有按 `IDLE_TICK_INTERVAL_MS`。
- *
- * 门里只有两个读操作（KV 一枚时间戳 + 并行经 CORE 读人头数与电源），都排在任何贵操作之前：被挡
- * 下的那一轮完全不碰 PSN、不碰站点。而且是层层短路的 —— 攒够闲档就不问人数，
- * 没攒够快档阈值也不问。间隔算的是**上一轮开始**的时刻而不是成功的时刻 —— 否则
- * PSN 持续故障时，重试会从闲档一次恶化成每分钟一次。
+ * 发现循环每次进来问一次。被挡下的那一次完全不碰 PSN、不碰站点。
+ * 间隔算的是上一轮**开始**的时刻而不是成功的时刻 —— 否则 PSN 持续故障时，
+ * 重试会从闲档一次恶化成每次探测一次。档位规则在 `cadence.ts`。
  */
-async function shouldTick(env: Env): Promise<Gate> {
-  const lastAt = Math.max(await readFullTickStartedAt(env.COLLECTOR_KV), lastFullTickAt);
+async function shouldTick(env: Env, power: ConsolePower): Promise<Gate> {
+  const lastAt = Math.max(await readFullTickStartedAt(env.STATE), lastFullTickAt);
   const sinceMs = lastAt > 0 ? Date.now() - lastAt : Number.POSITIVE_INFINITY;
-  // 攒够闲档就必跑，不必再问人数：闲时节奏不该依赖状态核心可不可达
-  if (sinceMs >= IDLE_TICK_INTERVAL_MS) {
-    return { run: true, sinceMs, online: null, open: null, power: null };
-  }
-  if (sinceMs < LIVE_TICK_INTERVAL_MS) {
-    return { run: false, sinceMs, online: null, open: null, power: null };
-  }
-
-  const [{ online, open }, power] = await Promise.all([readAudience(env), readPower(env)]);
-  const on = power?.on ?? null;
-
-  /**
-   * 开关在上一轮之后翻过面：立刻跑一轮，不问人数。开机要尽快把「正在游玩」
-   * 接上，关机要尽快把它撤掉 —— 这两下 PSN 自己要分钟级才反应过来，而 HA
-   * 在局域网里当场就知道。翻面时刻早于上一轮就说明那一轮已经带上了，不重跑。
-   */
-  if (power && power.observedAt > lastAt) {
-    return { run: true, sinceMs, online, open, power: on };
-  }
-  /**
-   * 主机关着：presence 不会再变，只留最慢那一档。上面 `sinceMs >= IDLE` 已经
-   * 放行过闲档，走到这里就是还没攒够，直接挡回去 —— 于是关机期间恒定 30 分钟
-   * 一轮，有没有人看着都一样。读不到电源（null）时不改变原来的行为。
-   */
-  if (on === false) return { run: false, sinceMs, online, open, power: on };
-
-  if (online > 0) return { run: true, sinceMs, online, open, power: on };
-  if (sinceMs < OPEN_TICK_INTERVAL_MS) return { run: false, sinceMs, online, open, power: on };
-  return { run: open > 0, sinceMs, online, open, power: on };
+  const powerAtLastTick = localPowerClass ?? await readPowerClass(env.STATE);
+  return { run: shouldRunTick({ sinceMs, power, powerAtLastTick }), sinceMs, power };
 }
 
 let inflight: Promise<TickResult> | null = null;
 
 /**
- * 同一 isolate 里只跑一轮：上一响的 tick 还没跑完（奖杯重爬能跑过一分钟）、这一响
+ * 同一进程里只跑一轮：上一响的 tick 还没跑完（奖杯重爬能跑过一分钟）、这一响
  * 又过了门时，后来的搭前面那一轮的车。
  * 收尾时**只有条目还是自己**才把锁放掉，前一轮的收尾不会把后一轮的锁顺手清了。
  */
-function tickOnce(env: Env): Promise<TickResult> {
+function tickOnce(env: Env, power: ConsolePower): Promise<TickResult> {
   const current = inflight;
   if (current) return current;
 
-  const promise = tick(env);
+  const promise = tick(env, power);
   inflight = promise;
   const release = () => {
     if (inflight === promise) inflight = null;
@@ -369,10 +313,11 @@ function tickOnce(env: Env): Promise<TickResult> {
   return promise;
 }
 
-async function tick(env: Env): Promise<TickResult> {
+async function tick(env: Env, power: ConsolePower): Promise<TickResult> {
   const startedAt = Date.now();
-  // 同步落一份给门，别等下面那个 await —— 它要挡的就是「KV 还没读到新值」那一响
+  // 同步落一份给门，别等下面那个 await —— 它要挡的就是「磁盘还没读到新值」那一次
   lastFullTickAt = startedAt;
+  localPowerClass = powerClass(power);
   let playedGamesChanged = false;
   let trophiesChanged = false;
   let trophies: TrophiesReport | null = null;
@@ -385,14 +330,15 @@ async function tick(env: Env): Promise<TickResult> {
       storedPlayedGames,
       storedLibrary,
     ] = await Promise.all([
-      env.COLLECTOR_KV.get(PLAYED_GAMES_FINGERPRINT_KEY),
-      env.COLLECTOR_KV.get(TROPHIES_FINGERPRINT_KEY),
-      env.COLLECTOR_KV.get(TROPHY_CATALOG_KEY, "json"),
-      env.COLLECTOR_KV.get(PLAYED_GAMES_CACHE_KEY, "json"),
-      env.COLLECTOR_KV.get(LIBRARY_CACHE_KEY, "json"),
+      env.STATE.get(PLAYED_GAMES_FINGERPRINT_KEY),
+      env.STATE.get(TROPHIES_FINGERPRINT_KEY),
+      env.STATE.get(TROPHY_CATALOG_KEY, "json"),
+      env.STATE.get(PLAYED_GAMES_CACHE_KEY, "json"),
+      env.STATE.get(LIBRARY_CACHE_KEY, "json"),
       // 门读的就是这一枚。写在打 PSN 之前，所以它记的是「这轮开始过」而不是
       // 「这轮成功过」—— 上游持续故障时的重试节奏才跟基线一致。
-      writeFullTickStartedAt(env.COLLECTOR_KV, startedAt),
+      writeFullTickStartedAt(env.STATE, startedAt),
+      writePowerClass(env.STATE, powerClass(power)),
     ]);
     const oldPlayedGamesFingerprint = storedPlayedGamesFingerprint;
     const oldTrophiesFingerprint = storedTrophiesFingerprint;
@@ -440,7 +386,7 @@ async function tick(env: Env): Promise<TickResult> {
             Number.isFinite(playedCap) && playedCache
               ? mergePlayedGames(playedCache.report, fetched)
               : fetched;
-          await writePlayedGamesCache(env.COLLECTOR_KV, { fetchedAt: Date.now(), report: playedGames });
+          await writePlayedGamesCache(env.STATE, { fetchedAt: Date.now(), report: playedGames });
           console.log(
             JSON.stringify({
               event: "playstation-played-games",
@@ -466,7 +412,7 @@ async function tick(env: Env): Promise<TickResult> {
         (async () => {
           try {
             library = await fetchPurchasedLibrary(env, auth);
-            await writeLibraryCache(env.COLLECTOR_KV, { fetchedAt: Date.now(), items: library });
+            await writeLibraryCache(env.STATE, { fetchedAt: Date.now(), items: library });
             console.log(
               JSON.stringify({
                 event: "playstation-library",
@@ -519,7 +465,7 @@ async function tick(env: Env): Promise<TickResult> {
         ...(playedGamesChanged ? { playedGames: recentPlayedGames } : {}),
       });
       if (playedGamesChanged) {
-        await env.COLLECTOR_KV.put(PLAYED_GAMES_FINGERPRINT_KEY, nextPlayedGamesFingerprint);
+        await env.STATE.put(PLAYED_GAMES_FINGERPRINT_KEY, nextPlayedGamesFingerprint);
       }
     } catch (error) {
       failures.push(`presence 交付失败：${explain(error)}`);
@@ -543,10 +489,8 @@ async function tick(env: Env): Promise<TickResult> {
       if (trophiesChanged && trophies) {
         try {
           await deliver(env, { version: 1, trophies });
-          await env.COLLECTOR_KV.put(TROPHIES_FINGERPRINT_KEY, synced.nextFingerprint);
-          if (synced.catalog) await writeTrophyCatalog(env.COLLECTOR_KV, synced.catalog);
-          // 交付成功之后才归档：D1 里只有状态核心真正收下的那份（已去掉屏蔽的游戏），失败只记日志
-          if (env.HISTORY && !isDryRun(env)) await archiveTrophies(env.HISTORY, trophies);
+          await env.STATE.put(TROPHIES_FINGERPRINT_KEY, synced.nextFingerprint);
+          if (synced.catalog) await writeTrophyCatalog(env.STATE, synced.catalog);
         } catch (error) {
           failures.push(`trophies 交付失败：${explain(error)}`);
           console.error(
@@ -573,7 +517,7 @@ async function tick(env: Env): Promise<TickResult> {
       trophiesChanged,
       dryRun: isDryRun(env),
     };
-    await env.COLLECTOR_KV.put(TICK_META_KEY, JSON.stringify(meta));
+    await env.STATE.put(TICK_META_KEY, JSON.stringify(meta));
     await recordTickOutcome(env, null);
     console.log(JSON.stringify({ event: "playstation-tick", ...meta }));
     return { meta, presence, playedGames: recentPlayedGames, trophies };
@@ -587,7 +531,7 @@ async function tick(env: Env): Promise<TickResult> {
       dryRun: isDryRun(env),
       error: explain(error),
     };
-    await env.COLLECTOR_KV.put(TICK_META_KEY, JSON.stringify(meta));
+    await env.STATE.put(TICK_META_KEY, JSON.stringify(meta));
     const backoff = await recordTickOutcome(env, error);
     if (error instanceof PsnUpstreamUnavailable) {
       logUpstreamUnavailable(error.call, error, backoff);
@@ -599,20 +543,20 @@ async function tick(env: Env): Promise<TickResult> {
 }
 
 /**
- * 连败次数与退避截止时刻，isolate 本地这一份。道理和 `lastFullTickAt` 一样：KV 的读
- * 有最长 60 秒的边缘缓存，刚写下的退避下一分钟可能还读不到。两份各取较新的那一枚。
+ * 连败次数与退避截止时刻，进程里这一份。道理和 `lastFullTickAt` 一样：磁盘写入
+ * 还没回来时，下一次探测可能读到旧值。两份各取较新的那一枚。
  */
 let localStreak: FailureStreak = { streak: 0, at: 0 };
 let localBackoffUntil = 0;
 
 async function currentStreak(env: Env): Promise<FailureStreak> {
-  const stored = await readFailureStreak(env.COLLECTOR_KV);
+  const stored = await readFailureStreak(env.STATE);
   return stored.at >= localStreak.at ? stored : localStreak;
 }
 
 /**
  * 一轮收尾时记账：成功清零连败和退避，失败连败加一；上游不可用再按连败次数退避
- * （时长见 state.ts 的 `backoffMs`）。只在值真的变了时写 KV。
+ * （时长见 state.ts 的 `backoffMs`）。只在值真的变了时才落盘。
  * 返回这次定下的退避时长，没退避是 0。
  */
 async function recordTickOutcome(env: Env, error: unknown): Promise<number> {
@@ -620,11 +564,11 @@ async function recordTickOutcome(env: Env, error: unknown): Promise<number> {
   const previous = await currentStreak(env);
   if (error == null) {
     localStreak = { streak: 0, at: now };
-    const stale = Math.max(localBackoffUntil, await readBackoffUntil(env.COLLECTOR_KV));
+    const stale = Math.max(localBackoffUntil, await readBackoffUntil(env.STATE));
     localBackoffUntil = 0;
     await Promise.all([
-      previous.streak !== 0 ? writeFailureStreak(env.COLLECTOR_KV, localStreak) : null,
-      stale !== 0 ? writeBackoffUntil(env.COLLECTOR_KV, 0) : null,
+      previous.streak !== 0 ? writeFailureStreak(env.STATE, localStreak) : null,
+      stale !== 0 ? writeBackoffUntil(env.STATE, 0) : null,
     ]);
     return 0;
   }
@@ -635,8 +579,8 @@ async function recordTickOutcome(env: Env, error: unknown): Promise<number> {
     localBackoffUntil = now + wait;
   }
   await Promise.all([
-    writeFailureStreak(env.COLLECTOR_KV, localStreak),
-    wait ? writeBackoffUntil(env.COLLECTOR_KV, localBackoffUntil) : null,
+    writeFailureStreak(env.STATE, localStreak),
+    wait ? writeBackoffUntil(env.STATE, localBackoffUntil) : null,
   ]);
   return wait;
 }
@@ -650,65 +594,67 @@ function logUpstreamUnavailable(call: string, error: unknown, backoffMs?: number
   }));
 }
 
-/**
- * 跳过的这一响要不要让 Sentry 监控报 error：连着失败两轮以上才算。单次抖动之后的
- * 等待（闲档、退避）照常报 ok；持续断流时每次报到都是 error，
- * 监控连续两次 error 开 issue。真跑了的那一响失败了就直接报 error。
- */
-function failingSince(streak: FailureStreak): Pick<JobResult, "failing"> {
+export type TickOutcome = {
+  status: "ok" | "skipped";
+  detail?: string;
+  /** 连着失败两轮以上。容器没有 Sentry cron，日志里留着这句。 */
+  failing?: string;
+};
+
+function ok(detail?: string): TickOutcome {
+  return detail ? { status: "ok", detail } : { status: "ok" };
+}
+
+let warnedMissing = false;
+
+function skipMissing(): TickOutcome {
+  if (!warnedMissing) {
+    warnedMissing = true;
+    console.warn(JSON.stringify({ event: "playstation-skip", missing: ["PSN_NPSSO"] }));
+  }
+  return { status: "skipped", detail: "missing PSN_NPSSO" };
+}
+
+/** 连着失败两轮以上才标出来。单次抖动之后的等待（闲档、退避）不标。 */
+function failingSince(streak: FailureStreak): Pick<TickOutcome, "failing"> {
   return streak.streak >= 2 ? { failing: `PSN 已连续 ${streak.streak} 轮失败` } : {};
 }
 
 /**
- * cron 每分钟一响，真跑哪一响由退避和 `shouldTick` 定（按人头数分三档）。
- * 被挡下的那一响什么都不做。
- * 手动触发（RPC、本地调试）也走同一道门：PSN 的登录每续一次就轮换 refresh token，
- * 不给任何入口开「不看门」的口子。
+ * 发现循环每次调用。退避和 `shouldTick` 挡下的那一次什么都不做。
+ * PSN 的登录每续一次就轮换 refresh token，不给任何入口开「不看门」的口子。
  */
-export async function runPlaystation(env: Env): Promise<JobResult> {
-  // 没有 NPSSO，KV 里也没有登录：本地开发和从没登录过的环境，干净地跳过
-  if (!env.PSN_NPSSO?.trim() && !(await readAuth(env.COLLECTOR_KV))) {
-    return skipMissing("playstation", ["PSN_NPSSO"]);
-  }
+export async function runPlaystation(env: Env, power: ConsolePower = "awake"): Promise<TickOutcome> {
+  if (!env.PSN_NPSSO?.trim() && !(await readAuth(env.STATE))) return skipMissing();
 
-  const backoffUntil = Math.max(await readBackoffUntil(env.COLLECTOR_KV), localBackoffUntil);
+  const backoffUntil = Math.max(await readBackoffUntil(env.STATE), localBackoffUntil);
   if (Date.now() < backoffUntil) {
     const until = new Date(backoffUntil).toISOString();
     console.log(JSON.stringify({ event: "playstation-backoff", until }));
     return { status: "skipped", detail: `backoff until ${until}`, ...failingSince(await currentStreak(env)) };
   }
 
-  const { run, sinceMs, online, open } = await shouldTick(env);
+  const { run, sinceMs, power: gatePower } = await shouldTick(env, power);
   console.log(
     JSON.stringify({
       event: "playstation-tick-gate",
       run,
-      online,
-      open,
+      power: gatePower,
       sinceMs: Number.isFinite(sinceMs) ? sinceMs : null,
     }),
   );
   if (!run) return { status: "skipped", detail: "gate closed", ...failingSince(await currentStreak(env)) };
 
-  const { meta } = await tickOnce(env);
+  const { meta } = await tickOnce(env, power);
   return ok(meta.playedGamesChanged || meta.trophiesChanged ? "changed" : undefined);
 }
 
-export const playstationJob: Job = {
-  name: "playstation",
-  everyMinutes: 1,
-  offset: 0,
-  // 奖杯整份重爬（清过 KV、换了账号）能跑好几分钟
-  maxRuntimeMinutes: 10,
-  // 门里的在线人数只给 `COUNT_TIMEOUT_MS`，别和同一响里别的任务抢连接
-  headStart: true,
-  run: ({ env }) => runPlaystation(env),
-};
-
-/** 测试之间把 isolate 本地的门、退避和连败清掉 */
+/** 测试之间把进程内的门、退避和连败清掉 */
 export function resetPlaystationForTests(): void {
   lastFullTickAt = 0;
+  localPowerClass = null;
   inflight = null;
   localStreak = { streak: 0, at: 0 };
   localBackoffUntil = 0;
+  warnedMissing = false;
 }

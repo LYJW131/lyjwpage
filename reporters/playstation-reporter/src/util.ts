@@ -1,5 +1,5 @@
-import type { AuthSession } from "./auth";
-import { language, type Env } from "./env";
+import type { AuthSession } from "./auth.js";
+import { language, type Env } from "./env.js";
 
 /** psn-api 的响应类型描述的是「一切正常」那条路；上游少给字段不算异常，逐层放松。 */
 export type Loose<T> =

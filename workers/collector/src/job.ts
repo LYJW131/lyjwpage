@@ -12,8 +12,8 @@ export type JobContext = {
 /**
  * 任务正常结束的两种结果。抛错才是失败。
  *
- * `failing` 只给 PlayStation 用：这一响没跑（门或退避挡掉了），但上游已经连着坏了
- * 好几轮 —— 监控这一次要报 error，长时间断流才会开 issue。见 playstation/index.ts。
+ * `failing`：这一响的结果仍是跳过，但监控报到要记 error。连着失败了好几轮、
+ * 长时间断流才该开 issue 时用。
  */
 export type JobResult = {
   status: "ok" | "skipped";

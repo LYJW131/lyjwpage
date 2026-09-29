@@ -113,6 +113,19 @@ importers:
         specifier: ^5
         version: 5.9.3
 
+  reporters/playstation-reporter:
+    dependencies:
+      psn-api:
+        specifier: 2.18.1
+        version: 2.18.1
+    devDependencies:
+      '@types/node':
+        specifier: ^20
+        version: 20.19.43
+      typescript:
+        specifier: ^5
+        version: 5.9.3
+
   reporters/server-reporter:
     devDependencies:
       '@types/node':
@@ -146,9 +159,6 @@ importers:
       '@sentry/cloudflare':
         specifier: 10.75.2
         version: 10.75.2(@cloudflare/workers-types@4.20260702.1)(wrangler@4.136.2(@cloudflare/workers-types@4.20260702.1)(@types/node@24.13.3))
-      psn-api:
-        specifier: 2.18.1
-        version: 2.18.1
     devDependencies:
       '@cloudflare/workers-types':
         specifier: 4.20260702.1

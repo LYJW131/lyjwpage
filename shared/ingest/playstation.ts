@@ -5,9 +5,9 @@ import { normalizePlaystationPlayedGames, normalizePlaystationPower, normalizePl
 /**
  * PlayStation 信封 `{ version: 1, presence?, playedGames?, trophies?, power? }` 的收敛。
  *
- * 两个生产者：采集 Worker（presence / playedGames / trophies，在它自己那边 prepare 完
- * 经 `StateCore.commitIngest` 交给状态核心）和 Home Assistant 的电源开关（`power`，
- * 走 `/api/ingest/playstation`，在上报入口 prepare）。缺席表示这次不谈这一项。
+ * 两个生产者，都走 `/api/ingest/playstation`，在上报入口 prepare：n100 上的
+ * playstation-reporter（presence / playedGames / trophies）和 Home Assistant 的电源开关
+ * （`power`）。缺席表示这次不谈这一项。
  */
 export type PreparedPlaystationReport = {
   source: "playstation";

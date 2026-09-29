@@ -43,11 +43,10 @@
         "focus": [
           "agents_reporter",
           "server_reporter",
-          "playstation_reporter",
           "api",
           "visitors"
         ],
-        "note": "调频的上报器读 API 的 /count，一次拿到 online 与 connections：页面可见走快档，仅后台打开走中档，无人走闲档。读不到当 0。"
+        "note": "按人数调频的是 agents-reporter：读 API 的 /count，一次拿到 online 与 connections。页面可见走快档，仅后台打开走中档，无人走闲档。读不到当 0。server-reporter 节奏固定。PlayStation 在局域网里按发现包调频，不在这张图里。"
       },
       {
         "id": "assets",
@@ -193,7 +192,7 @@
       "id": "playstation_reporter",
       "type": "external",
       "label": "PlayStation 上报器",
-      "sublabel": "Cloudflare Worker · 1 / 2 / 15 分钟",
+      "sublabel": "n100 容器 · 发现包调频",
       "tag": "/api/ingest/playstation",
       "pos": [
         32,
@@ -205,7 +204,7 @@
       ],
       "sources": [
         {
-          "path": "workers/playstation-reporter/src/index.ts"
+          "path": "reporters/playstation-reporter/src/cadence.ts"
         }
       ]
     },
@@ -416,7 +415,7 @@
       "id": "post_playstation",
       "from": "playstation_reporter",
       "to": "api",
-      "label": "POST · /count",
+      "label": "POST",
       "variant": "emphasis",
       "labelAt": [
         388,

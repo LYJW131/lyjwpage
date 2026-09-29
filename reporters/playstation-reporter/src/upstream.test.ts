@@ -1,17 +1,17 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 
-import { MemoryKv } from "../testing/memory-kv";
-import type { Env } from "./env";
-import { resetPlaystationForTests, runPlaystation } from "./index";
+import type { Env } from "../dist/env.js";
 import {
   AUTH_KEY,
   BACKOFF_UNTIL_KEY,
   FAILURE_STREAK_KEY,
   FULL_TICK_KEY,
   backoffMs,
-} from "./state";
-import { PsnUpstreamUnavailable, isUpstreamUnavailable, upstream } from "./util";
+} from "../dist/state.js";
+import { MemoryStore } from "../dist/store.js";
+import { resetPlaystationForTests, runPlaystation } from "../dist/tick.js";
+import { PsnUpstreamUnavailable, isUpstreamUnavailable, upstream } from "../dist/util.js";
 
 afterEach(() => resetPlaystationForTests());
 
@@ -56,21 +56,19 @@ test("backoff starts at five minutes, doubles per consecutive failure and caps a
   assert.deepEqual([1, 2, 3, 4, 5, 20].map(backoffMs), [5, 10, 20, 30, 30, 30].map((minutes) => minutes * 60_000));
 });
 
-function environment(kv: MemoryKv, vars: Partial<Env> = {}): Env {
+function environment(state: MemoryStore, vars: Partial<Env> = {}): Env {
   return {
-    COLLECTOR_KV: kv.asKv(),
-    CORE: {
-      commitIngest: async () => { throw new Error("must not deliver during an outage"); },
-      audience: async () => ({ connections: 0, online: 0 }),
-      playstationPower: async () => null,
-    },
+    STATE: state,
+    SITE_INGEST_URL: "https://ingest.example/api/ingest/playstation",
+    ACCESS_CLIENT_ID: "client",
+    ACCESS_CLIENT_SECRET: "secret",
     ...vars,
   };
 }
 
-async function seedFreshAuth(kv: MemoryKv): Promise<void> {
+async function seedFreshAuth(state: MemoryStore): Promise<void> {
   const now = Date.now();
-  await kv.put(AUTH_KEY, JSON.stringify({
+  await state.put(AUTH_KEY, JSON.stringify({
     accessToken: "test-access",
     refreshToken: "test-refresh",
     accessTokenIssuedAt: now,
@@ -83,20 +81,20 @@ async function seedFreshAuth(kv: MemoryKv): Promise<void> {
 test("no NPSSO and no stored login skips cleanly without touching PSN", async (t) => {
   t.mock.method(console, "warn", () => {});
   const fetched = t.mock.method(globalThis, "fetch", async () => { throw new Error("no network in this test"); });
-  const result = await runPlaystation(environment(new MemoryKv()));
+  const result = await runPlaystation(environment(new MemoryStore()));
   assert.equal(result.status, "skipped");
   assert.equal(fetched.mock.callCount(), 0);
 });
 
-test("an upstream outage backs off, doubles, and marks the monitor failing after two failed ticks", async (t) => {
+test("an upstream outage backs off, doubles, and marks the log failing after two failed ticks", async (t) => {
   const warned = t.mock.method(console, "warn", () => {});
   t.mock.method(console, "log", () => {});
   t.mock.method(console, "error", () => {});
   // 所有 PSN 请求都吃 Akamai 的拒绝页
   t.mock.method(globalThis, "fetch", async () => new Response("<HTML><HEAD><TITLE>Access Denied</TITLE></HEAD></HTML>", { status: 403, headers: { "content-type": "text/html" } }));
-  const kv = new MemoryKv();
-  await seedFreshAuth(kv);
-  const env = environment(kv);
+  const state = new MemoryStore();
+  await seedFreshAuth(state);
+  const env = environment(state);
 
   const started = Date.now();
   await assert.rejects(runPlaystation(env), (error: unknown) => {
@@ -104,27 +102,27 @@ test("an upstream outage backs off, doubles, and marks the monitor failing after
     assert.ok(["presence", "trophy-summary"].includes(error.call), error.call);
     return true;
   });
-  const until = Number(kv.raw(BACKOFF_UNTIL_KEY));
+  const until = Number(state.raw(BACKOFF_UNTIL_KEY));
   assert.ok(until >= started + backoffMs(1) && until <= Date.now() + backoffMs(1));
-  assert.deepEqual(JSON.parse(kv.raw(FAILURE_STREAK_KEY)!).streak, 1);
+  assert.deepEqual(JSON.parse(state.raw(FAILURE_STREAK_KEY)!).streak, 1);
   const event = warned.mock.calls.map((call) => JSON.parse(String(call.arguments[0]))).find((row) => row.event === "playstation-upstream-unavailable");
   assert.ok(event && event.backoffMs === backoffMs(1), JSON.stringify(event));
 
-  // 退避期间不碰 PSN；只失败过一轮，监控照常报 ok
+  // 退避期间不碰 PSN；只失败过一轮，日志不标 failing
   const skipped = await runPlaystation(env);
   assert.equal(skipped.status, "skipped");
   assert.match(skipped.detail ?? "", /backoff/);
   assert.equal(skipped.failing, undefined);
 
-  // 退避过去、门也放行（换一个 isolate：本地那份清掉，KV 里的开始时刻也清掉）后又失败一轮
+  // 退避过去、门也放行（进程内那份清掉，磁盘上的开始时刻也清掉）后又失败一轮
   resetPlaystationForTests();
-  await kv.put(BACKOFF_UNTIL_KEY, "0");
-  await kv.delete(FULL_TICK_KEY);
+  await state.put(BACKOFF_UNTIL_KEY, "0");
+  await state.delete(FULL_TICK_KEY);
   await assert.rejects(runPlaystation(env), PsnUpstreamUnavailable);
-  assert.deepEqual(JSON.parse(kv.raw(FAILURE_STREAK_KEY)!).streak, 2);
-  assert.ok(Number(kv.raw(BACKOFF_UNTIL_KEY)) >= Date.now() + backoffMs(2) - 5_000);
+  assert.deepEqual(JSON.parse(state.raw(FAILURE_STREAK_KEY)!).streak, 2);
+  assert.ok(Number(state.raw(BACKOFF_UNTIL_KEY)) >= Date.now() + backoffMs(2) - 5_000);
 
-  // 连败两轮之后，退避中的每一响都让监控报 error
+  // 连败两轮之后，退避中的每一响都标出来
   const failing = await runPlaystation(env);
   assert.equal(failing.status, "skipped");
   assert.match(failing.failing ?? "", /连续 2 轮/);

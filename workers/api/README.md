@@ -128,17 +128,18 @@ Mac 的 ccusage 只扫本机会话记录，看不到云端线程。云端环境�
 出口一律带 `windowTitle`：没有标题是 `null`，不是缺字段，消费方只判空。页头（`src/components/live/live-desk-card.tsx`）展示它，应用被隐藏、离线或锁屏时不展示。
 
 `/api/ingest/playstation` 的信封是 `{ version: 1, presence?, playedGames?, trophies?, power? }`，
-每一项各自可省、缺席表示这次不谈这一项。前三项由采集 Worker（`workers/collector` 的 `playstation` 任务）
-每轮在它那边 prepare 好（`shared/ingest/playstation.ts`）、经 `StateCore.commitIngest` 交付，不走 HTTP；
+每一项各自可省、缺席表示这次不谈这一项。前三项由 n100 上的 `reporters/playstation-reporter`
+POST 原始信封，上报入口 prepare（`shared/ingest/playstation.ts`）后经 `StateCore.commitIngest` 交付；
 `power` 是**另一个生产者**——Home Assistant 上那台 PS5 的电源开关实体，翻面时发一封
 `{ version: 1, power: { on, observedAt?, entityId? } }`。两边互不覆盖：电源单独存一份，
-读的出口（`/api/status/playing/now`）才并进 presence，否则 PSN 上报器每轮整份覆盖
+读的出口（`/api/status/playing/now`）才并进 presence，否则 PSN 那一封每轮整份覆盖
 presence 时会把它冲掉。`on` 必须是布尔值（HA 实体的 `"on"` / `"off"` 字符串要在自动化
 模板里先翻译），`observedAt` 缺席按落地时刻算。
 
 电源翻面时，只要状态核心已经存着一份 presence，就立刻用它和新电源广播一条 `playing-now`，页面当场就能看到；PSN 那侧的
-`presence`（在玩什么）要等采集 Worker 下一个成功的 tick（节奏由人头数与退避定）。采集 Worker 自己也经 `StateCore.playstationPower()`
-读这一份决定节奏，见 `workers/collector/README.md`。
+`presence`（在玩什么）要等容器下一个成功的 tick（节奏由主机醒着没有，加上退避）。容器不读
+`StateCore.playstationPower()`，见 `reporters/playstation-reporter/README.md`。奖杯信封收下之后，
+这里把已获得的奖杯 upsert 进 D1 `trophies`（`src/stores/trophy-history.ts` 的 `archiveTrophies`，失败只记日志）。
 
 奖杯内容变了（解锁、新 DLC、等级；不看 `observedAt` 和游玩时长）时广播一条 `trophies`，
 带的是摘要 —— 等级、合计、最近解锁、各款进度，和 `GET /api/status/trophies` 无参回的
@@ -147,7 +148,7 @@ presence 时会把它冲掉。`on` 必须是布尔值（HA 实体的 `"on"` / `"
 
 两个数出自同一个房间、同一条连接（`src/live-census.ts`）。`connections` 静默 `CONNECTION_STALE_MS` 不计数、
 `CONNECTION_CLOSE_MS` 才关，因为后台标签页的定时器会被浏览器节流；`online` 只数握手带 `visible=1` 或之后报了 `visible` 的连接，
-静默 `VISIBLE_STALE_MS`（三个心跳周期）就不算，因为可见页面不会被节流，一条僵尸按 `connections` 的口径多活，就会把调频上报器
+静默 `VISIBLE_STALE_MS`（三个心跳周期）就不算，因为可见页面不会被节流，一条僵尸按 `connections` 的口径多活，就会把按人数调频的上报器（agents-reporter）
 多钉在快档那么久。可见人数变了才广播 `{ type: "online", payload: { online } }`，新连接接上时单独收到一条当前值；有人可见时
 挂清扫闹钟（间隔 `src/origin-worker.ts` 的 `SWEEP_INTERVAL_MS`），没人可见就停。心跳 ping 仍由运行时自动回、不唤醒房间，只有接入、
 断开、切可见性和闹钟会唤醒。心跳间隔定义在站点 `src/hooks/use-live-events.ts` 的 `HEARTBEAT_MS`，`live-census.ts` 的
@@ -229,7 +230,7 @@ Mac / agents 的桶只认起点在报告范围里的（跨着范围起点的那�
   （有效期或结束时刻挪动超过一分钟也写）；状态或标题变了在那一刻关上旧段、开新段。
   `holdUntil` 是每次观测带宽限的有效期，只决定这段还开不开着、在线时画到此刻：Mac 的播放、Emby 播放与暂停
   用 `PULSE_STATE_HOLD_MS`；HomePod 只在状态变化时由 HA 推一次，按那份快照的可见期限（`src/lib/homepod-store.ts`
-  的 `homePodVisibleUntil`：剩余时长加宽限，单曲循环另算，与首页判 HomePod 是否还在放同一个口径）；PSN 没人看站点时
+  的 `homePodVisibleUntil`：剩余时长加宽限，单曲循环另算，与首页判 HomePod 是否还在放同一个口径）；主机没醒时
   只按闲档查一次，用 `GAMING_HOLD_MS`；Emby 明确停播之后一直是空闲、`holdUntil` 为 null，开着的那一段不设过期，
   七天没开播仍是观测到的空闲。
   过了 `holdUntil` 来源就算断了，旧段只认到确实知道的那一刻 `max(seenAt, endsBy)`，宽限不算进事实，中间是未知：
@@ -306,6 +307,7 @@ Cursor 使用独立的 `pulse:cursor-observations`：agents 来源的 cursor 活
 
 写入方是状态核心：cron 每分钟由 StateHub 按各路水位（metadata `pulse-archive:v2:<路>`）给出一份有界快照，
 普通 Worker 按自然键拼成 upsert（活动桶另有受版本保护的范围删除）写 D1，全部成功后才确认水位；一路读坏、写坏不挡别的路。
+奖杯目录是另一张表 `trophies`，在收下奖杯信封后写（`src/stores/trophy-history.ts#archiveTrophies`），不走这张水位。
 代码在 `src/pulse-archive.ts`，表在迁移 `0007_history_pulse.sql` 与 `0008_coding_usage.sql`：
 
 | 表 | 内容 | 自然键 |
@@ -371,7 +373,7 @@ Mac 上报的 Apple Music 凭据在凭据 KV（`shared/credentials.ts`），不�
 `APPLE_MUSIC_STOREFRONT`、`ALLOWED_ORIGINS`、`APPLE_MUSIC_TEAM_ID`、
 `APPLE_MUSIC_KEY_ID`（响应里的图片地址是 `/img/<对象键>` 同源路径，Worker 不配交付域，
 回源 R2 由站点的 rewrite 和 ESA 负责，见根 README「图片」；上报器直传图片那个桶的 HEAD 在上报入口），
-以及 `LIVE_PUSH` 与 `STATE` 两个 Durable Object 绑定（迁移只追加新 tag，不改旧的）。`LAG`、`CREDENTIALS` 两个 KV 绑定见 `shared/lag.ts`、`shared/credentials.ts`，这里只读；`HISTORY` 是长期归档用的 D1 库 `lyjwpage-history`（这里写 Pulse 事实表，上报的那几张表由上报入口写，见上文「长期归档（D1）」），
+以及 `LIVE_PUSH` 与 `STATE` 两个 Durable Object 绑定（迁移只追加新 tag，不改旧的）。`LAG`、`CREDENTIALS` 两个 KV 绑定见 `shared/lag.ts`、`shared/credentials.ts`，这里只读；`HISTORY` 是长期归档用的 D1 库 `lyjwpage-history`（这里写 Pulse 事实表，收下奖杯信封后写 `trophies`；上报的那几张表由上报入口写，站点部署由采集 Worker 写，见上文「长期归档（D1）」），
 几乎只增不删（活动桶按权威范围替换）、无公开读路径，建表只在 `migrations/` 里，部署带这个绑定的版本**之前**先手动应用一次
 （`pnpm --dir workers/api exec wrangler d1 migrations apply lyjwpage-history --remote`，Workers Builds 不跑迁移），
 边界与回滚见 [Worker 数据后端与首屏缓存](../../docs/state-storage.md)。
@@ -383,13 +385,11 @@ pnpm --dir workers/api exec wrangler secret put APPLE_MUSIC_PRIVATE_KEY < AuthKe
 pnpm --dir workers/api exec wrangler secret put TYPESAFE_API_KEY
 ```
 
-外部数据的令牌（GitHub、Vercel、Cloudflare、Sentry、PageSpeed、PSN）在采集 Worker 上，见 [采集 Worker README](../collector/README.md)。
+外部数据的令牌（GitHub、Vercel、Cloudflare、Sentry、PageSpeed）在采集 Worker 上，见 [采集 Worker README](../collector/README.md)。PSN 登录在 `reporters/playstation-reporter` 的数据卷里。
 
 站点配置 `NEXT_PUBLIC_BACKEND_URL=https://api.homepage.lyjw.llc` 与相同的
 `REVALIDATE_SECRET`；浏览器由这一个源拼 `/ws` 和 `/api/musickit/token`。所有上报器的目标为
-上报入口 Worker（`workers/ingress`）在 ingest 域名上的 `/api/ingest/<来源>`，不经过站点；PlayStation 的游戏数据例外，由采集 Worker（`workers/collector`）
-自己 prepare 好信封，经 Service Binding 调具名 entrypoint `StateCore`（`src/state-core.ts`，契约 `shared/state-core.ts`）的 `commitIngest(command)`，
-并通过 `audience()` / `playstationPower()` 读取人头数与主机电源，不带凭据；按人数调频的（如 agents-reporter）读此源 `/count` 的 `connections` 与 `online`，server-reporter 节奏固定、不读它。实例清单见 [端点核验记录](../../docs/reporter-endpoints.md)。
+上报入口 Worker（`workers/ingress`）在 ingest 域名上的 `/api/ingest/<来源>`，不经过站点。PlayStation 的游戏数据也走这一条：`reporters/playstation-reporter` POST 原始信封。按人数调频的是 agents-reporter，读此源 `/count` 的 `connections` 与 `online`；server-reporter 节奏固定，PlayStation 按局域网发现包调频，都不读它。实例清单见 [端点核验记录](../../docs/reporter-endpoints.md)。
 
 提交并推送 main，由 Cloudflare Workers Builds 原生 Git 集成自动部署。
 `shared/`（`shared/ingest/` 除外，校验改了只发布上报入口）、共用 `src/lib/`、根依赖及路径配置变化也触发 api 部署，见 [原生部署配置](../../docs/workers-builds.md)。

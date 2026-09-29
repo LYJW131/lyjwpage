@@ -34,8 +34,8 @@ declare global {
  *
  * 页面脚本整个崩掉时，这条连接会一直挂着 —— 它不发心跳，还带着「可见」的标记，
  * 房间要等 VISIBLE_STALE_MS（workers/api/src/live-census.ts）加一轮清扫才不数它，
- * 人数会虚高一阵，而两处调频上报（采集 Worker 的 PlayStation、agents-reporter）正是
- * 按这个数定节奏的。hydration 拖到这个时限基本等于页面已经废了，这时宁可断开重来。
+ * 人数会虚高一阵，而按人数调频的上报器（agents-reporter）正是按这个数定节奏的。
+ * hydration 拖到这个时限基本等于页面已经废了，这时宁可断开重来。
  */
 export const EARLY_LIVE_SOCKET_WATCHDOG_MS = 15_000;
 

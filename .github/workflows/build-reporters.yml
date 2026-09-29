@@ -8,7 +8,8 @@
 # deploy 这一步用一把只能跑 /opt/lyjwpage/deploy.sh 的密钥 ssh 过去，脚本点名
 # pull、重建那一个、清悬空镜像（见 reporters/misaka-deploy.sh）。密钥、主机指纹和
 # 地址在 `misaka-jp` 这个 environment 里，只有 main 能用。
-# emby-reporter 在内网的 dsm 上，Actions 够不着，仍按它的 README 手动拉。
+# emby-reporter 在内网的 dsm 上，playstation-reporter 在内网的 n100 上，
+# Actions 够不着，按各自 README 手动拉。
 name: Build reporters
 
 on:
@@ -18,12 +19,14 @@ on:
       - reporters/agents-reporter/**
       - reporters/server-reporter/**
       - reporters/emby-reporter/**
+      - reporters/playstation-reporter/**
       - .github/workflows/build-reporters.yml
   pull_request:
     paths:
       - reporters/agents-reporter/**
       - reporters/server-reporter/**
       - reporters/emby-reporter/**
+      - reporters/playstation-reporter/**
       - .github/workflows/build-reporters.yml
   workflow_dispatch:
 
@@ -57,13 +60,16 @@ jobs:
             emby-reporter:
               - reporters/emby-reporter/**
               - .github/workflows/build-reporters.yml
+            playstation-reporter:
+              - reporters/playstation-reporter/**
+              - .github/workflows/build-reporters.yml
 
       - id: pick
         env:
           CHANGED: ${{ steps.filter.outputs.changes }}
         run: |
           if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
-            CHANGED='["agents-reporter","server-reporter","emby-reporter"]'
+            CHANGED='["agents-reporter","server-reporter","emby-reporter","playstation-reporter"]'
           fi
           echo "images=${CHANGED:-[]}" >> "$GITHUB_OUTPUT"
           # 其中跑在 misaka-jp 上、推完要自动换的那几个
@@ -106,7 +112,7 @@ jobs:
             type=sha,prefix=sha-
             type=ref,event=pr
 
-      # 只出 amd64：misaka-jp 和 dsm 都是 x86_64，没有 arm64 的消费者。
+      # 只出 amd64：misaka-jp、dsm 和 n100 都是 x86_64，没有 arm64 的消费者。
       # 缓存用 mode=min：agents-reporter 那层有几个 GB，mode=max 会很快挤满仓库的 Actions 缓存额度。
       - uses: docker/build-push-action@v7
         with:
