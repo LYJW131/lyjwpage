@@ -1,7 +1,8 @@
-// 引擎：WebGL2 渲染核心。画面是时间 t 的纯函数：同一个 t 永远出同一帧。
+// 引擎：WebGL2 当 2D 合成器用。画面是时间 t 的纯函数：同一个 t 永远出同一帧。
+// 全片只有 2D：镜头是平移、缩放、旋转四个数（uCam），没有透视矩阵、没有光线步进。
 // 场景在 1920×1080 的逻辑像素里排版；画布按屏幕实际像素渲染，逻辑 → 物理的倍数是 G.S。
-// 一帧的流程：场景往 HDR 目标（线性、半浮点）上画背景着色器和 Canvas2D 图层 → 后期（泛光、光晕、
-// 色散、暗角、颗粒、色调映射）→ 屏幕。
+// 一帧的流程：场景往 HDR 目标（线性、半浮点）上画图版底（按 worldPos() 画的全屏 2D 着色器）和 Canvas2D 图层
+// → 后期（泛光、光晕、色散、暗角、颗粒、色调映射、按镜头速度算的运动模糊）→ 屏幕。
 (() => {
   const W = 1920, H = 1080;
 
@@ -206,7 +207,8 @@ void main(){ vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2)
   }
 
   // ---------- 合成：把图层叠到 HDR 目标上 ----------
-  // mode 0 普通（alpha 叠加）；1 相加（发光，gain 可超过 1）；2 纸上的墨（纤维吃墨、边缘微洇）；3 橡皮章（墨不匀、有空隙）
+  // mode 0 普通（alpha 叠加）；1 相加（发光，gain 可超过 1）；2 纸上的墨（纤维吃墨、边缘微洇）；3 橡皮章（墨不匀、有空隙）；
+  // 4 纸片（alpha 照旧，颜色乘上和纸面图版同一套纸纹：暗底图版上的白卡用它，看起来和第 02 章的纸是同一张纸）
   const compositePass = new Pass(`
 uniform sampler2D uTex; uniform float uMode; uniform float uOpacity; uniform float uGain; uniform float uSeed;
 void main(){
@@ -214,7 +216,11 @@ void main(){
   vec3 lin = toLinear(c.rgb);
   float a = c.a * uOpacity;
   vec2 w = worldPos();
-  if (abs(uMode - 2.0) < 0.5) {
+  if (abs(uMode - 4.0) < 0.5) {
+    float n = fbm(w * 0.011);
+    float fib = vnoise(w * vec2(0.55, 0.045));
+    lin *= 0.968 + 0.046 * n + 0.014 * fib;
+  } else if (abs(uMode - 2.0) < 0.5) {
     float n = fbm(w * 0.07 + uSeed);
     float fiber = vnoise(w * vec2(0.9, 0.12) + uSeed * 3.0);
     float bleed = textureLod(uTex, vUv, 1.6).a;
@@ -237,7 +243,7 @@ void main(){
     compositePass.draw(target, { uTex: layer, uMode: mode, uOpacity: opacity, uGain: gain, uSeed: seed });
     gl.disable(gl.BLEND);
   }
-  const MODE = { normal: 0, add: 1, ink: 2, stamp: 3 };
+  const MODE = { normal: 0, add: 1, ink: 2, stamp: 3, paper: 4 };
 
   // ---------- 后期 ----------
   const brightPass = new Pass(`
@@ -306,10 +312,25 @@ void main(){
 
   const POST_DEFAULT = { bloom: 0.9, threshold: 0.95, halation: 0.35, ca: 0.6, vignette: 0.35, grain: 0.05, exposure: 1, flash: 0, flashCol: [1, 1, 1], fade: 0, shake: [0, 0], blur: [0, 0], zoomBlur: 0 };
 
+  // ---------- 共用的图层和着色器 ----------
+  // 同一时刻只画一章，所以各章共用同一组图层（每层满分辨率一张画布，4K 下一张约 33 MB，不能每章各建一套）。
+  // 各章在 init 里按名字取：G.layer("ink") / "paper" / "stamp" / "top"（满分辨率）、G.layer("emit", 0.5)（半分辨率发光）。
+  // 取到的图层每帧先 begin() 清空，上一章画的东西不会留下来。着色器按源码缓存，同一段 GLSL 只编译一次。
+  const layerPool = new Map(), passPool = new Map();
+  const layer = (name, scale = 1) => {
+    const k = `${name}@${scale}`;
+    if (!layerPool.has(k)) layerPool.set(k, new Layer(scale));
+    return layerPool.get(k);
+  };
+  const pass = (src) => {
+    if (!passPool.has(src)) passPool.set(src, new Pass(src));
+    return passPool.get(src);
+  };
+
   // ---------- 全局状态 ----------
   const G = {
     W, H, S: 1, PW: W, PH: H, t: 0, frame: 0,
-    LIN, css, oklch, Pass, Layer, makeRT, MODE, gl, canvas,
+    LIN, css, oklch, Pass, Layer, layer, pass, makeRT, MODE, gl, canvas,
     cam: { x: W / 2, y: H / 2, zoom: 1, rot: 0 },
     camVec: [W / 2, H / 2, 1, 0],
     scene: null, bloomRT: [],

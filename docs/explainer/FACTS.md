@@ -4,6 +4,8 @@
 
 按 main **eb429ed**（2026-09-29）的代码核对，文档和代码不一致时以代码为准。动画里出现的每一个端点、数字、谁做什么，都要能在这里找到出处；main 有架构改动时先改这份，再改分镜。 <!-- allow: 核对基线戳 -->
 
+第 3 节（第 03 章用到的部分）和第 2 节的 202 时机，又在 **34eb555** 上逐条回代码复核过：eb429ed..34eb555 之间 `workers/`、`shared/`、`src/` 只有 7d88247 的注释改动，下面引的行号没有偏移。这次复核改了几处口径（纯心跳写几样、切应用和换歌各交回什么、LivePushRoom 的出处），并补了出处。
+
 上一版分镜（SCRIPT.md）按 bf6c14b 写成，之后约 50 个提交重构了中枢：上报入口拆成无状态 Worker、可滞后层、采集 Worker、D1 历史、首屏按卡读取、在线判断交给浏览器、在线人数并回推送房间。
 
 ## 一句话总览
@@ -100,7 +102,7 @@ PlayStation 上报器 Worker 已删除，并进 collector 的 `playstation` 任�
 
 ### 202 的时机
 
-**202 要等三样**：StateCore 返回、`LAG` 写完、凭据写完。D1 归档放进 waitUntil，不等（worker.ts:134-160）。
+**202 要等三样**，而且是依次等：StateCore 回执 → `LAG` 写完 → 凭据写完 → 回 202。D1 归档在拿到回执后放进 waitUntil，不等（worker.ts:134-160）。
 
 可滞后层的写入方（ingress、collector）没有 Vercel 密钥。写入时发现布局变了，就调 `CORE.revalidate(tags)` 请状态核心代发（worker.ts:147-151）。
 
@@ -115,10 +117,10 @@ PlayStation 上报器 Worker 已删除，并进 collector 的 `playstation` 任�
 ### StateCore 与 StateHub
 
 - `StateCore` 是 WorkerEntrypoint，ingress 和 collector 经 Service Binding `CORE` 调它。这条路不鉴权，因为边界鉴权只在 ingress 做一次（state-core.ts:15-37）。
-- `StateHub` 是 DO（binding `STATE`，`idFromName("global")`），**唯一的状态 DO，全站只有一个实例**（state-core.ts:72-74）。推送房间 `LivePushRoom` 是另一个单例 DO，也用 SQLite（wrangler.toml:91）。
-- 提交走 `ingestTail`，**排成一条队列逐个提交**（state-hub.ts:91-110）。
-- 四张表：`entries` / `fields` / `samples` / `metadata`（sqlite-store.ts:17-23；state-hub.ts:29）。
-- pulse 事实时间线也写在同一个库里，TTL 7 天。
+- `StateHub` 是 DO（binding `STATE`，`idFromName("global")`），**唯一的状态 DO，全站只有一个实例**（state-core.ts:72-74）。推送房间 `LivePushRoom` 是另一个单例 DO（房间名 `global`，live-platform.ts:98；binding 在 workers/api/wrangler.toml:52-55）。它的命名空间是从旧 ingest Worker 整体迁来的 SQLite 类（wrangler.toml:91-111），但代码不读写 SQL：每条连接的可见性记在各自的 attachment 上（origin-worker.ts:161-172）。
+- 提交走 `ingestTail`，**排成一条队列逐个提交**（state-hub.ts:91-110）。进这条队的是上报入口（ingress worker.ts:134）和采集 Worker 的 PSN 任务（collector playstation/site.ts:32-36），都经 `CORE.commitIngest`。
+- 四张表：`entries` / `fields` / `samples` / `metadata`（shared/sqlite-store.ts:17-23；state-hub.ts:29）。
+- pulse 事实时间线也写在同一个库里，TTL 7 天（`PULSE_TTL_MS`，src/lib/limits.ts:32）。
 
 ### 效果清单
 
@@ -128,10 +130,15 @@ PlayStation 上报器 Worker 已删除，并进 collector 的 `playstation` 任�
   2. 再把布局标签一次性发给 `POST {SITE}/api/revalidate`，5 秒超时（ingest-effects.ts:106-120；live-platform.ts:19、66-95）。
 - 所以**广播和 202 是并行的**，不是 202 之后才广播。
 - 换歌推送前，先查 Apple 目录补封面、链接、songId、有没有歌词（shared/telemetry.ts:176-201）。
+- 各模块交回什么（workers/api/src/stores/telemetry.ts）：
+  - **切应用**只交回一条 `desktop` 事件，不失效首屏：页头那一格定宽，换应用只换内容（354-355）。所以片中「切应用」不配「通知 Vercel」。
+  - **换歌**交回 `listening`：StateCore 先查 Apple 目录，再广播 `listening-now`（ingest-effects.ts:76-103）。只有开始或停止放歌才另失效在听那张卡的标签 `NOW_LISTENING_TAG`（telemetry.ts:392-393），换一首不失效。
+  - iPhone 那一半只进 Pulse（五分钟桶和训练区间），不推送、不失效（phone-telemetry.ts:7-9、42-44）。
+  - 清单里的通知（`event`、`listening`）先并行发完，再把所有标签合成一次失效（ingest-effects.ts:106-120）。
 
 ### 心跳不是什么都不做
 
-纯心跳也会写三样：存活时间、在听的 pulse 观测、coding 的 pulse 观测（workers/api/src/stores/telemetry.ts:186、450-451）。它**不推送、也不失效首屏**。唯一的例外是在线 / 离线翻转：这时推 `presence`，并失效 3 个标签（同文件 199-202）。
+纯心跳也会写：存活时间（workers/api/src/stores/telemetry.ts:186）、在听和 coding 各一笔 pulse 观测（450-451），外加遥测状态里的 `telemetryReceivedAt` 和 `activeModules`（456，字段见 46-73）；充电头模块开着时，还续一次充电头心跳和一笔充电采样（318-326）。片中只说「存活 + pulse 观测」，不说「三样」。它**不推送、也不失效首屏**。唯一的例外是在线 / 离线翻转：这时推 `presence`，并失效 3 个标签：页头、在听、充电头三张卡的 `DESKTOP_TAG` / `NOW_LISTENING_TAG` / `CHARGER_TAG`（同文件 199-202；src/lib/status-tags.ts:4-12）。
 
 ### 推送房间 `LivePushRoom`
 
@@ -150,7 +157,8 @@ PlayStation 上报器 Worker 已删除，并进 collector 的 `playstation` 任�
 
 ### D1 长期历史 `lyjwpage-history`
 
-- 共 17 张表，长期保存、不按时间清理（旧的 `pulse_samples` 已不再写）。写入按自然键 upsert，活动桶会按区间删掉重写（pulse-archive.ts:262-336、280；shared/history-ingest.ts:41-127），所以不能说「只增不删」。DO 里的 pulse 时间线只留 7 天。
+- 共 17 张表（workers/api/migrations/0001–0007 的 `CREATE TABLE`，含已不再写的 `pulse_samples` 和记归档水位的 `pulse_archive_state`），长期保存、不按时间清理。写入按自然键 upsert，活动桶会按区间删掉重写（pulse-archive.ts:262-336、280；shared/history-ingest.ts:41-127），所以不能说「只增不删」。DO 里的 pulse 时间线只留 7 天。
+- 写 D1 的有三方：上报入口（训练、圆环日读数、限额快照、服务器小时汇总）、采集 Worker（奖杯、站点部署记录，collector/src/history.ts:24、66）、api 的分钟 cron（pulse 事实表）。
 - 活动历史桶在入口量化（eb429ed），防止 HealthKit 的浮点抖动让 D1 每次重写整个 24 小时窗口。
 
 ### api 的分钟 cron（index.ts:31-51）
@@ -301,3 +309,4 @@ Sentry 的结果由 **collector** 的 `sentry-status` 任务每 5 分钟用只�
 - `src/lib/live-socket-boot.ts:39`、`workers/api/src/live-census.ts`：注释说「三个上报器」按人数调频，实际两个。
 - `reporters/server-reporter/src/config.ts:65-69`：注释说「问两个 Worker 的 /count」，online-counter 已退役。
 - `workers/online-counter`、`workers/ingest`、`workers/playstation-reporter`：三个目录只剩未跟踪的 `node_modules`。<!-- allow: 快照里点名的已退役目录，不在仓库 -->
+- `workers/api/wrangler.toml:68`：注释说 D1「这里只增不删」，实际活动桶会按区间删掉重写（见 §3 D1 那节）。（34eb555 复核时发现）
