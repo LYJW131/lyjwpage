@@ -24,7 +24,7 @@
 2. `docs/explainer/SCRIPT.md`：开头几条、章节表、你这一章的全部内容，以及前后两章在章节表里的「交给下一章」那一格。
 3. `docs/explainer/TREATMENT.md`：「调色板」「字体」「语气与禁区」「2D 画法总则」和你这一章那一节。
 4. `docs/explainer/FACTS.md`：SCRIPT 在你这一章开头写的那几节。画面和旁白里的每个端点、数字、谁做什么都要在这里找得到。
-5. 样板代码：纸面章读 `v2/ch02.js` + `v2/music/ch02.js`，暗底章读 `v2/ch03.js` + `v2/music/ch03.js`。`kit.js`、`engine.js`、`film.js`、`score.js` 需要时查，不改。
+5. 样板代码：纸面章读 `docs/explainer/v2/ch02.js` + `docs/explainer/v2/music/ch02.js`，暗底章读 `docs/explainer/v2/ch03.js` + `docs/explainer/v2/music/ch03.js`。`kit.js`、`engine.js`、`film.js`、`score.js` 需要时查，不改。
 6. 根目录 `AGENTS.md` 的「文档与注释」：注释只写为什么、约束、坑，不写历史，不复述代码。
 
 ## 本章要点

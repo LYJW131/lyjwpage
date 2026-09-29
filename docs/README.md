@@ -16,7 +16,9 @@
 | [讲解动画](./explainer/README.md) | runbook | `/explainer` 页面源、预览、渲染配乐与发布 |
 | [讲解动画 · 事实基线](./explainer/FACTS.md) | reference | 动画里每个端点、数字的出处；架构变了先改这份 |
 | [讲解动画 · 画面升级本子](./explainer/TREATMENT.md) | reference | 下一版讲解动画的概念、风格、分镜结构与技术路线 |
-| [讲解动画 · 分镜与旁白](./explainer/SCRIPT.md) | record | 上一版的分镜与旁白，按 bf6c14b 核对 |
+| [讲解动画 · 分镜与旁白](./explainer/SCRIPT.md) | reference | v2 新片的章节表、每小节画面要点与中英旁白 |
+| [讲解动画 · 写章约定](./explainer/v2/CONVENTIONS.md) | reference | v2 章节作者的契约：章节接口、组件、字号、镜头、自检 |
+| [讲解动画 · 写章任务书](./explainer/v2/CHAPTER-BRIEF.md) | runbook | 并行写章时派单的模板 |
 | [生产上报端点核验记录](./reporter-endpoints.md) | record | 各上报实例的端点核验与迁移记录 |
 | [DO 执行边界审计](./do-execution-audit.md) | record | 哪些工作进 Durable Object、哪些留在普通 Worker 的审计 |
 | [DO 优化线上效果核验](./do-performance-audit.md) | record | 执行边界调整上线前后的线上指标与本地存储基准 |
