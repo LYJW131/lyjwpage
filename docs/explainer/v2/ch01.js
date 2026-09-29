@@ -1,11 +1,13 @@
-// 第 01 章 · 野外观测站（采集端：六个上报器 + 采集 Worker，FACTS §1）。20 小节，暗底专利图，全是 2D。
+// 第 01 章 · 野外观测站（采集端：外部上报器 + 采集 Worker，Claude Code 云端的 OTLP 另算一个入口，FACTS §1）。20 小节，暗底专利图，全是 2D。
 // 一长条暗底图纸，镜头只做横移：每件仪器一个机位，甩 0.22 小节、落在拍上，停住时慢推。
-//   S0 标题与图纸索引（0–1.5）：七个图号，六个上报器加一只表盘
+// 上报器有几个、采集任务有几个只画不说：旁白和标注里不出这两个数（CONVENTIONS「事实」）。
+//   S0 标题与图纸索引（0–1.5）：七个图号，前五个是外部上报器，第 6 号是云端那一小段遥测，第 7 号是表盘
 //   M1 FIG. 1 Mac（1.5–5）：2:0 换歌，白卡逐字敲出信封、modules 只亮 appleMusic；3:1 空信封的呼吸（90 s）；
 //     4:0 切应用、4:1 又切一次重新计时、4:3 量满 400 ms 落定（防抖，ServiceController 的 desktopSettleDelay）
 //   M2 FIG. 1A / 1B（5–8）：窗口标题过 Jev，问题横条同时走、6:0 一起给出概率条（示意，不和出路对应）；
 //     应用图标压成哈希，7:2 落进 R2 的抽屉，信封里只剩文件名
-//   F2–F6（8–14.5）：iPhone、客厅（Home Assistant 那把钥匙开两扇门）、NAS、东京的机柜、云端的一小段遥测
+//   F2–F6（8–14.5）：iPhone、家里（Home Assistant 那把钥匙开两扇门；n100 上的容器用 UDP 探测 PS5，10:0 开机后
+//     档位牌从闲档翻到快档）、NAS、东京的机柜、云端的一小段遥测
 //   CU 编码用量（14.5–16）：三处原始数汇到站点这边合并，合并处伸出一段 Pulse，多一条 Tokens 道
 //   F7 表盘（16–19）：cron 每分钟一响（一拍当一分钟），每根指针一个采集任务，右边白卡是逐分钟的时序图
 //   19–20 甩回 Mac：换歌那封亮起，拖着发丝线往右飞出画面（屏幕 y 540）；第 02 章 0:0 的火花从左边同一高度进场
@@ -18,9 +20,9 @@
   // ---------- 这一章的文字：[中文, English]，场景代码里只写键 ----------
   I18N.add({
     "ch01.title": ["野外观测站", "Field stations"],
-    "ch01.n1a": ["六个上报器守在数据的源头，", "Six reporters sit at the source,"],
+    "ch01.n1a": ["上报器守在数据的源头，", "Reporters sit at the source,"],
     "ch01.n1b": ["外加每分钟一响的采集 Worker。", "plus a minute-by-minute collector."],
-    "ch01.six": ["六个上报器", "Six reporters"],
+    "ch01.reporters": ["上报器", "Reporters"],
     "ch01.col": ["采集 Worker", "Collector"],
     // FIG. 1 Mac
     "ch01.f1": ["Mac Telemetry Hub · 菜单栏 App", "Mac Telemetry Hub · a menu bar app"],
@@ -50,11 +52,14 @@
     "ch01.rings": ["活动圆环", "Activity rings"],
     "ch01.workouts": ["训练", "Workouts"],
     "ch01.steps": ["五分钟步数桶", "5-minute step buckets"],
-    "ch01.f3": ["客厅", "The living room"],
-    "ch01.f3sub": ["两样都经 Home Assistant", "both reported via Home Assistant"],
+    "ch01.f3": ["家里", "At home"],
+    "ch01.f3sub": ["HomePod 与电源经 Home Assistant，游戏另有容器上报", "HomePod and power via Home Assistant; games via a container"],
     "ch01.playing": ["在放什么", "what's playing"],
     "ch01.power": ["电源开关", "power switch"],
     "ch01.key2": ["这把钥匙开两扇门", "one key, two doors"],
+    "ch01.probe": ["探测主机状态，按档调整轮询频率", "probes the console, paces its polling"],
+    "ch01.tierRest": ["没醒 · 闲档", "resting · slow"],
+    "ch01.tierAwake": ["醒着 · 快档", "awake · fast"],
     "ch01.f4sub": ["emby-reporter · NAS 上的容器", "emby-reporter · a container on the NAS"],
     "ch01.poster": ["① 海报先传 R2", "① the poster goes to R2 first"],
     "ch01.watching": ["② 在看什么", "② what's being watched"],
@@ -65,7 +70,7 @@
     "ch01.f6": ["云端的一小段遥测", "A stretch of cloud telemetry"],
     "ch01.cc": ["Claude Code 云端", "Claude Code in the cloud"],
     "ch01.self": ["Claude Code 自己发，不是我们写的上报器", "Claude Code sends it; not a reporter of ours"],
-    "ch01.seventh": ["第七个入口", "the seventh entry"],
+    "ch01.extra": ["另算一个入口", "an entry of its own"],
     // 编码用量
     "ch01.cu": ["编码用量", "Coding usage"],
     "ch01.srcMac": ["Mac 本机", "the Mac itself"],
@@ -103,7 +108,7 @@
     jev: 5.25, judged: 6.0, cleared: 6.25, owner: 6.5,
     pixels: 6.5, hash: 6.75, drop: 7.0, shut: 7.25, objKey: 7.0,
     wake: 8.5, outs: [8.75, 9.0, 9.25],
-    homepod: 9.75, power: 10.0, doors: [10.5, 10.625],
+    homepod: 9.75, power: 10.0, probe: 10.25, awake: 10.375, doors: [10.5, 10.625],
     poster: 11.25, emby: 11.5,
     server: 12.25, agents: 12.75,
     otlp: [13.75, 14.0],
@@ -231,7 +236,8 @@
   }
 
   // ========== S0 标题与图纸索引 ==========
-  // 七个图号的小样：六个上报器（第 5 号是一台机器上的两台容器）、云端那一小段遥测（虚线，不是我们写的）、采集 Worker 的表盘
+  // 七个图号的小样：前五个是外部上报器（第 3 号是 Home Assistant 加 n100 上的一台容器，第 5 号是一台机器上的两台容器），
+  // 第 6 号是云端那一小段遥测（虚线：不是我们写的，另算一个入口），第 7 号是采集 Worker 的表盘
   const MAP = { x0: 980, dx: 126, y: 560, s: 1.45 };
   function pict(x, i, cx, cy, a) {
     x.save(); x.globalAlpha = a; x.translate(cx, cy); x.scale(MAP.s, MAP.s);
@@ -240,7 +246,7 @@
     const L = (pts) => { x.beginPath(); pts.forEach(([u, v], j) => (j ? x.lineTo(u, v) : x.moveTo(u, v))); x.stroke(); };
     if (i === 0) { R(-26, -24, 52, 34); L([[-34, 14], [34, 14]]); }
     else if (i === 1) R(-14, -27, 28, 54, 7);
-    else if (i === 2) { R(-26, -16, 52, 32, 6); x.beginPath(); x.arc(0, 0, 6, 0, TAU); x.stroke(); }
+    else if (i === 2) { R(-36, -16, 34, 32, 6); x.beginPath(); x.arc(-19, 0, 5, 0, TAU); x.stroke(); R(6, -12, 30, 24); for (let j = 0; j < 3; j++) L([[13 + j * 8, -5], [13 + j * 8, 5]]); }
     else if (i === 3) { R(-22, -27, 44, 54); for (let j = 0; j < 3; j++) L([[-12 + j * 12, -18], [-12 + j * 12, 12]]); }
     else if (i === 4) { R(-30, -12, 26, 24); R(4, -12, 26, 24); }
     else if (i === 5) { x.setLineDash([5, 4]); x.beginPath(); x.rect(-26, -20, 52, 40); x.stroke(); x.setLineDash([]); L([[-14, 0], [-6, -8], [2, 6], [10, -4]]); }
@@ -268,8 +274,10 @@
     if (brA > 0) {
       const bx0 = xs(0) - 52, bx1 = xs(4) + 52, by = y - 78;
       polyline(x, [[bx0, by + 14], [bx0, by], [bx1, by], [bx1, by + 14]], 1, 1.4, bone, 0.7 * brA);
-      text(x, tr("ch01.six"), (bx0 + bx1) / 2, by - 20, { font: FONT.cjk(32, 600), color: bone, align: "center", alpha: brA });
+      text(x, tr("ch01.reporters"), (bx0 + bx1) / 2, by - 20, { font: FONT.cjk(32, 600), color: bone, align: "center", alpha: brA });
       text(x, tr("ch01.col"), xs(6), by - 20, { font: FONT.cjk(32, 600), color: bone, align: "center", alpha: brA });
+      // 第 6 号的注排在图号下面：上面那一排括线标注的位置被「采集 Worker」占了
+      text(x, tr("ch01.extra"), xs(5), y + 134, { font: FONT.cjk(28, 600), color: ash, align: "center", alpha: brA });
     }
     nar(x, "ch01.n1a", 110, 944, prog(b, 0.3, 0.85), win(b, 0.25, 0.35, 1.3, 1.45));
     nar(x, "ch01.n1b", 110, 1024, prog(b, 0.85, 1.4), win(b, 0.25, 0.35, 1.3, 1.45));
@@ -635,18 +643,23 @@
     text(x, "POST /api/ingest/iphone", OUT2[2][0] - 70, 812, { font: FONT.mono(28, 500), color: ash, alpha: a * prog(b, AT.outs[2], AT.outs[2] + 0.15) });
   }
 
-  // ========== F3 客厅：HomePod、PS5 的电源，都经 Home Assistant ==========
-  const HP = { x: 7940, y: 336, w: 210, h: 276 };
-  const PS = { x: 9120, y: 286, w: 132, h: 370 };
-  const SWITCH = [8980, 470];
-  const HA = { x: 8416, y: 440, w: 250, h: 104 };
-  const KEYC = [8541, 664];
-  const DOORS = [[8760, 624, "/homepod"], [8760, 712, "/playstation"]];
+  // ========== F3 家里：HomePod、PS5 的电源经 Home Assistant；n100 上的 playstation-reporter 在局域网里探测 PS5 ==========
+  const HP = { x: 7750, y: 336, w: 210, h: 276 };
+  const PS = { x: 8790, y: 286, w: 132, h: 370 };
+  const SWITCH = [8640, 470];
+  const HA = { x: 8150, y: 440, w: 250, h: 104 };
+  const KEYC = [8275, 664];
+  const DOORS = [[8494, 624, "/homepod"], [8494, 712, "/playstation"]];
+  // n100 上的 playstation-reporter：容器坐在小机身上；UDP 探测线从机身左沿画到 PS5 右侧板
+  const CT3 = { x: 9215, y: 380, w: 300, h: 66 };
+  const N100 = { x: 9205, y: 462, w: 320, h: 120 };
+  const PROBE_Y = 522, TIER_Y = PROBE_Y + 52;
+  const PROBE = [[N100.x - 10, PROBE_Y], [PS.x + PS.w + 18, PROBE_Y]];
   function stationF3(x, e, b) {
     const bone = css("bone"), ash = css("ash");
     const a = prog(b, 9.35, 9.55);
     if (a <= 0) return;
-    figHead(x, 7750, 3, tr("ch01.f3"), tr("ch01.f3sub"), a);
+    figHead(x, 7750, 3, tr("ch01.f3"), tr("ch01.f3sub"), a, { rule: 920 });
     // HomePod：正视，网罩一道道横线，顶上一块小屏
     const dk = prog(b, 9.4, 9.8, E.io);
     box(x, HP.x, HP.y, HP.w, HP.h, a * dk, { r: 84, lw: 2.6 });
@@ -705,6 +718,40 @@
         if (lit) glow(e, dx + 60, dy, 70, 0.5 * impact(b, t, 0.18));
       });
       text(x, tr("ch01.key2"), KEYC[0] - 75, KEYC[1] + 84, { font: FONT.cjk(28, 600), color: ash, alpha: a * kk });
+    }
+    // n100 上的 playstation-reporter：跟 PS5 在同一个局域网里。每拍一个点从容器飞向 PS5（AT.probe 起），是 UDP 探测；
+    // 线下的档位牌只有两档（醒着 / 没醒），10:0 开机后第一探读到醒着就翻面。间隔不出数（FACTS §1、§7）
+    const nk = prog(b, 9.6, 9.95, E.io);
+    if (nk > 0) {
+      const hot = b >= AT.probe - 0.02 ? 1 : 0;
+      box(x, N100.x, N100.y, N100.w, N100.h, a * nk, { lw: 2.6 });
+      hatch(x, N100.x + 16, N100.y + N100.h - 36, N100.w - 32, 22, a * nk * 0.5, 9);
+      text(x, "n100", N100.x + 24, N100.y + 58, { font: FONT.mono(30, 600), color: bone, alpha: a * nk });
+      x.save(); x.globalAlpha = a * nk; x.fillStyle = hot ? css("signalD") : css("ash"); x.beginPath(); x.arc(N100.x + N100.w - 28, N100.y + 28, 5, 0, TAU); x.fill(); x.restore();
+      container(x, CT3.x, CT3.y, CT3.w, CT3.h, a * nk, hot);
+      text(x, "playstation-reporter", CT3.x + CT3.w / 2, CT3.y - 16, { font: FONT.mono(28, 600), color: bone, align: "center", alpha: a * nk });
+      if (hot) glow(e, CT3.x + CT3.w / 2, CT3.y + CT3.h / 2, 110, 0.5 * impact(b, AT.probe, 0.2));
+      const uk = prog(b, 9.95, 10.2, E.out);
+      const mid = (PROBE[0][0] + PROBE[1][0]) / 2;
+      if (uk > 0) {
+        arrowPath(x, PROBE, uk, bone, a * 0.8, 1.6, true);
+        text(x, "UDP", mid, PROBE_Y - 22, { font: FONT.mono(28, 500), color: ash, align: "center", alpha: a * uk });
+        // 档位牌：压扁再弹开（和电源开关同一种翻面），翻过去就是快档
+        const tk = prog(b, AT.awake - 0.05, AT.awake + 0.05), up = tk >= 0.5;
+        withSquash(x, TIER_Y - 10, squash(tk), () => {
+          text(x, tr(up ? "ch01.tierAwake" : "ch01.tierRest"), mid, TIER_Y, { font: FONT.cjk(28, 600), color: up ? css("signalD") : ash, align: "center", alpha: a * uk });
+        });
+        if (up) glow(e, mid, TIER_Y - 10, 80, 0.5 * impact(b, AT.awake, 0.2));
+      }
+      if (b >= AT.probe) {
+        const p = ((b - AT.probe) * 4) % 1, px = lerp(PROBE[0][0], PROBE[1][0], E.out(p)), fade = 1 - prog(p, 0.7, 1);
+        x.save(); x.globalAlpha = a * fade; x.fillStyle = css("signalD"); x.beginPath(); x.arc(px, PROBE_Y, 7, 0, TAU); x.fill(); x.restore();
+        glow(e, px, PROBE_Y, 38, 0.5 * fade);
+      }
+      const rx = N100.x + N100.w, ty = N100.y + N100.h;
+      text(x, tr("ch01.probe"), rx, ty + 52, { font: FONT.cjk(28, 600), color: bone, align: "right", alpha: a * prog(b, AT.probe, AT.probe + 0.1) });
+      // 醒着和没醒对调时立刻打一轮 PSN（cadence.ts#shouldRunTick），所以翻到快档紧跟着就寄出去
+      text(x, "POST /api/ingest/playstation", rx, ty + 98, { font: FONT.mono(28, 500), color: ash, align: "right", alpha: a * prog(b, AT.awake, AT.awake + 0.1) });
     }
   }
 
@@ -834,7 +881,7 @@
     const ea = a * prog(b, 13.8, 13.95);
     arrowHead(x, WIRE6[1][0], WIRE6[1][1], 0, bone, ea);
     text(x, "POST /api/ingest/agents/otlp", 14680, 496, { font: FONT.mono(28, 600), color: bone, alpha: ea });
-    text(x, tr("ch01.seventh"), 14680, 440, { font: FONT.cjk(34, 600), color: css("signalD"), alpha: a * prog(b, 14.0, 14.1) });
+    text(x, tr("ch01.extra"), 14680, 440, { font: FONT.cjk(34, 600), color: css("signalD"), alpha: a * prog(b, 14.0, 14.1) });
     text(x, tr("ch01.self"), CE.x + CE.w + 40, CE.y + CE.h - 10, { font: FONT.cjk(30, 600), color: ash, alpha: a * prog(b, 13.9, 14.05) });
   }
 
@@ -911,14 +958,14 @@
   // 源：workers/collector/src/registry.ts#JOBS 与各任务的 everyMinutes / offset（分钟 % every === offset 时跑，schedule.ts#isDue）。
   // 表盘从整点起走 12 分钟；任务增减或改节奏时照着改这张表
   const JOBS = [
-    ["playstation", 1, 0], ["apple-recent", 2, 0], ["provider-status", 1, 0], ["pagespeed", 60, 7],
+    ["apple-recent", 2, 0], ["provider-status", 1, 0], ["pagespeed", 60, 7],
     ["github-chart", 10, 1], ["github-repo", 30, 2], ["vercel-deployments", 1, 0], ["vercel-metrics", 15, 3],
     ["cloudflare-deployments", 2, 0], ["cloudflare-metrics", 15, 4], ["sentry-status", 5, 0],
   ];
   const MINUTES = 12;
   const due = (j, m) => m % JOBS[j][1] === JOBS[j][2];
   const DC = [17870, 500], DR = 262;
-  const TC = { x: 18236, y: 150, w: 880, h: 700 };
+  const TC = { x: 18236, y: 174, w: 880, h: 652 };
   const minuteAt = (b) => Math.floor((b - AT.dial) * 4 + 1e-9);
   // 第 j 根指针此刻转了几格（含正在弹的那一格）
   function handSteps(j, b) {
