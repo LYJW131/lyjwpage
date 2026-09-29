@@ -45,8 +45,8 @@ export function ContactCard({
               {/*
                 内联和回退共用一个 <Image>，呈现逐像素一致。
                 next/image 看到 `data:` 开头的 src 会自动按 unoptimized 处理、
-                并且不挂 lazy（见 shared/lib/get-img-props），AGENTS.md 要的
-                「静态图标不进管道」由此满足。
+                并且不挂 lazy（见 next 的 shared/lib/get-img-props），AGENTS.md
+                「图标与图片」要求的静态图标 unoptimized 由此满足。
                 别再补一个写死的 `unoptimized`：那个 prop 管的是整个 <Image>，
                 会把回退那条远端 URL 也踢出管道，变成直接吐 192px 整图 JPEG。
                 回退要过管道，所以 next.config 的 avatars 那条不能删。

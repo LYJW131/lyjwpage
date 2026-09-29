@@ -26,7 +26,7 @@ export function Section({
   return (
     <section
       id={id}
-      // 吸顶导航连边框 57px，锚点跳转时留出这段还留点余量，否则标题会贴着挡板
+      // 锚点跳转时要让开吸顶导航（连边框的高度），再留点余量，否则标题会贴着挡板
       className={cn("scroll-mt-28 px-4 py-8 sm:px-6 sm:py-10", className)}
     >
       {(label || title) && (

@@ -13,7 +13,7 @@ import { site } from "@/lib/site";
 
 /**
  * 首页段的错误边界。错误边界必须是客户端组件，导不出 metadata，标题用
- * React 的 <title> 元素自己拼。error.message 不端给访客：里面可能带 SQLite
+ * React 的 <title> 元素自己拼。error.message 不端给访客：里面可能带后端
  * 地址、上游响应之类的内部信息，只进 console 和 Sentry。
  *
  * 首页各卡有自己的错误边界（components/card-boundary），一张卡出错不会走到这里；

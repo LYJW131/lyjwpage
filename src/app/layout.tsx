@@ -44,7 +44,7 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
-  // 没配 api Worker 时 workerUrl 返回 null，那段内联脚本整个不渲染
+  // 没配 api Worker 时 liveSocketUrl 返回 null，那段内联脚本整个不渲染
   const earlyLiveSocket = liveSocketUrl();
 
   return (
@@ -61,7 +61,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           }}
         />
         {/*
-          推送那条 WebSocket（也带着在线人数）在这儿就起手，不等 hydration —— 整整早 850ms，
+          推送那条 WebSocket（也带着在线人数）在这儿就起手，不等 hydration ——
           理由和交接方式见 lib/live-socket-boot 与 hooks/use-live-events。
         */}
         {earlyLiveSocket ? (

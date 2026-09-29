@@ -8,9 +8,8 @@ import { StatusDot } from "@/components/ui/status-dot";
 /**
  * 开发环境右下角那排调试胶囊。
  *
- * 各处的开关（充电卡 / 充电宝可见性、假数据总开关）散在不同组件里，但要排成
- * 同一列：页面挂一个 Dock，各组件用 Slot 把自己的胶囊传送进去。生产构建
- * NODE_ENV 不是 development，Dock 和 Slot 都不渲染。
+ * 各处的开关散在不同组件里，但要排成同一列：页面挂一个 Dock，各组件用 Slot
+ * 把自己的胶囊传送进去。生产构建 NODE_ENV 不是 development，Dock 和 Slot 都不渲染。
  */
 const DOCK_ID = "dev-toggles";
 

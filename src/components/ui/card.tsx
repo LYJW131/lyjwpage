@@ -4,7 +4,7 @@ import { StatusDot, type DotTone } from "@/components/ui/status-dot";
 import { cn } from "@/lib/utils";
 
 /**
- * bento 网格里的卡片。层次靠 1px 边框 + 表面色阶，不用阴影和磨砂。
+ * bento 网格里的卡片。层次靠 1px 边框、表面色阶和 `paper-card` 的硬阴影（globals.css），不用磨砂。
  */
 export function Card({
   id,
