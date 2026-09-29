@@ -25,6 +25,8 @@ export type StoredCodingBuckets = {
   /** 最近一封被采纳的报告的采集时刻；OTLP 是收到时刻 */
   collectedAt: number;
   receivedAt: number;
+  /** 这一份最近一次写入时的 `pulse:token-buckets:revision`（状态核心写入时打上）。D1 归档按它取增量，没有按 0 */
+  revision?: number;
 };
 
 /** OTLP 一个正差值落进的桶：差值实际覆盖上一次导出到这次之间（约一分钟），桶边界上最多错一分钟 */

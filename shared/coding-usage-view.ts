@@ -31,8 +31,10 @@ import {
  */
 export type StoredCodingUsageAgent = Omit<CodingUsageAgent, "days"> & {
   days: CodingUsageDay[];
-  /** 状态核心收到这份账本的时刻 */
+  /** 状态核心收到这份日子的时刻；只换状态不动它 */
   receivedAt: number;
+  /** 日子（或会话数）最近一次变化时的 `coding:usage:revision`；只换状态不动它。D1 归档按它取增量，没有按 0 */
+  revision?: number;
 };
 
 /** 全部来源的账本：来源 → agent id → 账本 */

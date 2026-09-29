@@ -8,7 +8,7 @@ import {
   pulseListeningTracesKey,
 } from "@/lib/pulse-keys";
 import { coveringPart, parseStoredCodingBuckets, type StoredCodingBuckets } from "@shared/coding-buckets";
-import { codingBucketsKey, codingUsageKey, codingViewKey, parseStoredView } from "@shared/coding-store";
+import { codingBucketsKey, codingUsageKey, codingUsageRevisionKey, parseRevision } from "@shared/coding-store";
 import { CODING_USAGE_SOURCE_NAMES, isCodingUsageSource, type CodingUsageSource } from "@shared/coding-usage-sources";
 import type { StoredCodingUsageAgent } from "@shared/coding-usage-view";
 import type { HistoryDb, HistoryStatement } from "@shared/history-ingest";
@@ -47,7 +47,9 @@ export type PulseArchiveDb = HistoryDb;
 
 /**
  * 归档的每一路，水位都存在 StateHub metadata 的 `pulse-archive:v2:<stream>`：
- * 区间按关闭时刻、样本按时刻、整份替换的报告按采集时刻，确认时只按 max 前进。
+ * 区间按关闭时刻、样本按时刻、整份替换的报告按采集时刻，coding 用量与桶两路按修订号
+ * （`coding:usage:revision`、`pulse:token-buckets:revision`，严格递增，和数据同一个事务写），
+ * 确认时只按 max 前进。
  */
 export const ARCHIVE_STREAMS = [
   "listening",
@@ -74,7 +76,7 @@ export type PulseArchiveStreamSnapshot = {
   /** 单值键的整份 JSON */
   value?: string | null;
   /**
-   * coding 用量与 token 桶那两路：水位之后变过的那几份，`来源 → [JSON]`。用量是
+   * coding 用量与 token 桶那两路：修订号过了水位的那几份，`来源 → [JSON]`。用量是
    * 各 agent 的账本（`coding:usage:<来源>` 的字段），桶是整份 `pulse:token-buckets:<来源>`。
    */
   coding?: Partial<Record<CodingUsageSource, string[]>>;
@@ -182,16 +184,13 @@ export class PulseArchiveState implements PulseArchiveCoordinator {
         return pending ? { rows, replaceRange, replaceToken } : { rows: [] };
       }
       case "coding-usage": {
-        // 视图只在账本变了时重算，它的 updatedAt 就是最近一次变化：没过水位就不用读那几份大账本
-        const [rawView] = this.execute([{ op: "get", key: codingViewKey() }]) as [string | null];
-        const updatedAt = parseStoredView(rawView)?.updatedAt ?? 0;
-        if (updatedAt <= watermark) return { rows: [] };
+        // 修订号没过水位就是没有新日子，不用读那几份大账本
+        const [rawRevision] = this.execute([{ op: "get", key: codingUsageRevisionKey() }]) as [string | null];
+        if (parseRevision(rawRevision) <= watermark) return { rows: [] };
         const hashes = this.execute(CODING_USAGE_SOURCE_NAMES.map((source): StorageCommand => ({ op: "fields", key: codingUsageKey(source) }))) as Record<string, string>[];
         const coding: Partial<Record<CodingUsageSource, string[]>> = {};
         CODING_USAGE_SOURCE_NAMES.forEach((source, index) => {
-          const changed = Object.values(hashes[index] ?? {}).filter((raw) => {
-            try { return (JSON.parse(raw) as { receivedAt?: unknown }).receivedAt as number > watermark; } catch { return false; }
-          });
+          const changed = Object.values(hashes[index] ?? {}).filter((raw) => revisionOf(parsedJson<{ revision?: unknown }>(raw)) > watermark);
           if (changed.length) coding[source] = changed;
         });
         return { rows: [], coding };
@@ -202,7 +201,7 @@ export class PulseArchiveState implements PulseArchiveCoordinator {
         CODING_USAGE_SOURCE_NAMES.forEach((source, index) => {
           const raw = values[index];
           const stored = parseStoredCodingBuckets(raw);
-          if (raw && stored && stored.receivedAt > watermark) coding[source] = [raw];
+          if (raw && stored && revisionOf(stored) > watermark) coding[source] = [raw];
         });
         return { rows: [], coding };
       }
@@ -435,17 +434,22 @@ function parsedJson<T>(raw: string): T | null {
   try { return JSON.parse(raw) as T; } catch { return null; }
 }
 
-/** 水位之后变过的 (来源, agent) 账本 → 它全部日子的 upsert（值没变的行 D1 不写） */
-function usageStatements(db: PulseArchiveDb, coding: PulseArchiveStreamSnapshot["coding"]): { statements: Statement[]; receivedAt: number[] } {
+/** 账本或桶上记的修订号；旧数据没有按 0 */
+function revisionOf(value: { revision?: unknown } | null): number {
+  return value && Number.isSafeInteger(value.revision) ? value.revision as number : 0;
+}
+
+/** 修订号过了水位的 (来源, agent) 账本 → 它全部日子的 upsert（值没变的行 D1 不写） */
+function usageStatements(db: PulseArchiveDb, coding: PulseArchiveStreamSnapshot["coding"]): { statements: Statement[]; revisions: number[] } {
   const days: unknown[][] = [];
   const models: unknown[][] = [];
-  const receivedAt: number[] = [];
+  const revisions: number[] = [];
   for (const [source, raws] of Object.entries(coding ?? {})) {
     if (!isCodingUsageSource(source)) continue;
     for (const raw of raws ?? []) {
       const ledger = parsedJson<StoredCodingUsageAgent>(raw);
-      if (!ledger || typeof ledger.id !== "string" || !Array.isArray(ledger.days) || !Number.isFinite(ledger.receivedAt)) continue;
-      receivedAt.push(ledger.receivedAt);
+      if (!ledger || typeof ledger.id !== "string" || !Array.isArray(ledger.days)) continue;
+      revisions.push(revisionOf(ledger));
       for (const day of ledger.days) {
         days.push([day.date, source, ledger.id, day.inputTokens, day.outputTokens, day.cacheReadTokens, day.cacheCreationTokens,
           day.reasoningTokens, day.totalTokens, day.apiEquivalentCostUSD, day.costComplete ? 1 : 0]);
@@ -453,22 +457,22 @@ function usageStatements(db: PulseArchiveDb, coding: PulseArchiveStreamSnapshot[
       }
     }
   }
-  return { statements: [...chunked(db, UPSERT_USAGE_DAYS, days), ...chunked(db, UPSERT_USAGE_MODELS, models)], receivedAt };
+  return { statements: [...chunked(db, UPSERT_USAGE_DAYS, days), ...chunked(db, UPSERT_USAGE_MODELS, models)], revisions };
 }
 
 /**
  * 各来源的 5 分钟桶 → upsert。Mac / agents 只写起点被报告范围盖住的桶：跨着范围起点的那一桶
  * 只数了一截，拿它盖掉 D1 里数全了的同一个桶会少算。云端 OTLP 没有覆盖区间，照写。
  */
-function bucketStatements(db: PulseArchiveDb, coding: PulseArchiveStreamSnapshot["coding"]): { statements: Statement[]; receivedAt: number[] } {
+function bucketStatements(db: PulseArchiveDb, coding: PulseArchiveStreamSnapshot["coding"]): { statements: Statement[]; revisions: number[] } {
   const rows: unknown[][] = [];
-  const receivedAt: number[] = [];
+  const revisions: number[] = [];
   for (const [source, raws] of Object.entries(coding ?? {})) {
     if (!isCodingUsageSource(source)) continue;
     for (const raw of raws ?? []) {
       const stored: StoredCodingBuckets | null = parseStoredCodingBuckets(raw);
       if (!stored) continue;
-      receivedAt.push(stored.receivedAt);
+      revisions.push(revisionOf(stored));
       for (const window of stored.windows) {
         if (source !== "agents-otlp" && !coveringPart(stored.coverage, window.from)) continue;
         for (const agent of window.agents) {
@@ -478,7 +482,7 @@ function bucketStatements(db: PulseArchiveDb, coding: PulseArchiveStreamSnapshot
       }
     }
   }
-  return { statements: chunked(db, UPSERT_USAGE_BUCKETS, rows), receivedAt };
+  return { statements: chunked(db, UPSERT_USAGE_BUCKETS, rows), revisions };
 }
 
 /** 一路的快照 → D1 语句与确认用的新水位。纯函数，测试直接喂 node:sqlite。 */
@@ -569,7 +573,7 @@ export function archiveStatements(db: PulseArchiveDb, snapshot: PulseArchiveStre
     }
     case "coding-usage": case "coding-buckets": {
       const built = snapshot.stream === "coding-usage" ? usageStatements(db, snapshot.coding) : bucketStatements(db, snapshot.coding);
-      return { statements: built.statements, watermark: Math.max(watermark, ...built.receivedAt) };
+      return { statements: built.statements, watermark: Math.max(watermark, ...built.revisions) };
     }
   }
 }

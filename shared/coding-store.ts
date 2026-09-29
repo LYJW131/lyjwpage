@@ -12,12 +12,14 @@ import type { CodingUsageYearView, StoredCodingUsageAgent } from "./coding-usage
  * | 键 | 形状 |
  * | --- | --- |
  * | `coding:usage:<来源>` | 字段哈希，字段 = agent id，值 = `StoredCodingUsageAgent` |
+ * | `coding:usage:revision` | 账本修订号：哪一次提交改了日子就加一，改到的账本记下这个值（D1 归档按它取增量） |
  * | `coding:usage:view` | `CodingUsagePayload`（和钟无关的全历史聚合） |
  * | `coding:usage:year` | `CodingUsageYearView`（最近 380 天，每天合计与模型前五） |
  * | `coding:activity:<来源>` | `StoredCodingActivity` |
  * | `coding:now:pushed` | 上一次 `coding-now` 推出去的 agents（`CodingNowPayload["agents"]`），推送门槛拿它比 |
  * | `coding:otlp` | `StoredOtlpCounters`（云端 OTLP 累计值做差用的计数器） |
  * | `pulse:token-buckets:<来源>` | `StoredCodingBuckets`（shared/coding-buckets），TTL 2 天 |
+ * | `pulse:token-buckets:revision` | 桶修订号：哪一次提交改了桶就加一，那一份桶记下这个值 |
  */
 
 export const codingUsageKey = (source: CodingUsageSource) => key("coding", "usage", source);
@@ -27,6 +29,18 @@ export const codingActivityKey = (source: CodingUsageSource) => key("coding", "a
 export const codingPushedNowKey = () => key("coding", "now", "pushed");
 export const codingOtlpKey = () => key("coding", "otlp");
 export const codingBucketsKey = (source: CodingUsageSource) => key("pulse", "token-buckets", source);
+/**
+ * 修订号：严格递增，和它改到的账本或桶在同一个事务里写。D1 归档的水位用它不用时刻 —— 时刻只能取
+ * 「和存着的较大者」，入口顺序与提交顺序相反时会等于水位，按 `> 水位` 挑增量就漏了。
+ */
+export const codingUsageRevisionKey = () => key("coding", "usage", "revision");
+export const codingBucketsRevisionKey = () => key("pulse", "token-buckets", "revision");
+
+/** 读回的修订号；没有（从没写过）或坏了是 0 */
+export function parseRevision(raw: unknown): number {
+  const value = typeof raw === "string" ? Number(raw) : Number.NaN;
+  return Number.isSafeInteger(value) && value > 0 ? value : 0;
+}
 
 /** 一个来源最近一封活动报告，外加状态核心收到它的时刻 */
 export type StoredCodingActivity = CodingActivityReport & { receivedAt: number };

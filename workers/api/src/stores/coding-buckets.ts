@@ -7,7 +7,7 @@ import {
   type CodingBucketDelta,
   type StoredCodingBuckets,
 } from "@shared/coding-buckets";
-import { codingBucketsKey } from "@shared/coding-store";
+import { codingBucketsKey, codingBucketsRevisionKey, parseRevision } from "@shared/coding-store";
 import type { CodingTokenBucketReport } from "@shared/coding-usage";
 import type { CodingUsageSource } from "@shared/coding-usage-sources";
 import type { StorageBatch } from "@shared/storage-client";
@@ -16,6 +16,9 @@ import type { StorageBatch } from "@shared/storage-client";
  * 5 分钟 token 桶的状态核心那一半（`pulse:token-buckets:<来源>`，TTL 2 天）。合并规则在
  * shared/coding-buckets：Mac、agents 按报告范围替换，云端 OTLP 把正差值加进桶。
  * 只给 Pulse 的 Tokens 道、Jev 和 D1 归档读；不推送、不失效首屏。
+ *
+ * 每写一份，桶修订号 `pulse:token-buckets:revision` 加一、这一份记下它，两者同一个事务：D1 归档按
+ * 修订号挑要重写的那几份（不按收到时刻，理由见 shared/coding-store 的 codingUsageRevisionKey）。
  */
 export type CodingBucketsLanding = {
   /** 把这封的写入排进调用方的那一批（云端 OTLP 那条路和计数器同一个事务） */
@@ -26,14 +29,18 @@ export type CodingBucketsLanding = {
 
 const IGNORED: CodingBucketsLanding = { stage: () => {}, commit: async () => {}, accepted: false };
 
-async function readBuckets(source: CodingUsageSource): Promise<StoredCodingBuckets | null> {
-  const answered = await askStorage((storage) => storage.get(codingBucketsKey(source)));
+async function readBuckets(source: CodingUsageSource): Promise<{ stored: StoredCodingBuckets | null; revision: number }> {
+  const answered = await askStorage((storage) => storage.batch().get(codingBucketsKey(source)).get(codingBucketsRevisionKey()).execute());
   if (!answered.reachable) throw new Error("coding token 桶读不到");
-  return parseStoredCodingBuckets(answered.value);
+  return { stored: parseStoredCodingBuckets(answered.value[0]), revision: parseRevision(answered.value[1]) + 1 };
 }
 
-function write(source: CodingUsageSource, next: StoredCodingBuckets): CodingBucketsLanding {
-  const stage = (batch: StorageBatch) => { batch.set(codingBucketsKey(source), JSON.stringify(next), { ttlMs: CODING_BUCKET_TTL_MS }); };
+function write(source: CodingUsageSource, next: StoredCodingBuckets, revision: number): CodingBucketsLanding {
+  const stage = (batch: StorageBatch) => {
+    batch
+      .set(codingBucketsKey(source), JSON.stringify({ ...next, revision }), { ttlMs: CODING_BUCKET_TTL_MS })
+      .set(codingBucketsRevisionKey(), String(revision));
+  };
   return {
     stage,
     commit: () => tellStorage((storage) => {
@@ -51,12 +58,14 @@ export async function prepareCodingBuckets(
   report: CodingTokenBucketReport,
   receivedAt: number,
 ): Promise<CodingBucketsLanding> {
-  const next = mergeBucketReport(await readBuckets(source), report, receivedAt);
-  return next ? write(source, next) : IGNORED;
+  const { stored, revision } = await readBuckets(source);
+  const next = mergeBucketReport(stored, report, receivedAt);
+  return next ? write(source, next, revision) : IGNORED;
 }
 
 /** 云端 OTLP 这一封的正差值 */
 export async function prepareOtlpBuckets(deltas: readonly CodingBucketDelta[], receivedAt: number): Promise<CodingBucketsLanding> {
   if (!deltas.length) return IGNORED;
-  return write("agents-otlp", addBucketDeltas(await readBuckets("agents-otlp"), deltas, receivedAt));
+  const { stored, revision } = await readBuckets("agents-otlp");
+  return write("agents-otlp", addBucketDeltas(stored, deltas, receivedAt), revision);
 }
