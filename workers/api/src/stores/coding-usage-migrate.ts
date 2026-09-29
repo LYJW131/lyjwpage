@@ -3,6 +3,8 @@ import {
   codingActivityKey,
   codingOtlpKey,
   codingUsageKey,
+  codingUsageRevisionKey,
+  parseRevision,
   type StoredCodingActivity,
   type StoredOtlpCounters,
 } from "@shared/coding-store";
@@ -23,7 +25,8 @@ import type { StoredCodingUsageAgent } from "@shared/coding-usage-view";
  * 3. 旧键一律挂 14 天 TTL，闹钟自己回收；14 天内回滚旧版本还读得到旧值。
  *
  * 新键已经有值（新契约先收到了数据）的那一项不转，绝不盖掉新数据。转出来的账本照样过
- * 新契约的校验，旧数据不合规就跳过那一项、记一行日志。
+ * 新契约的校验，旧数据不合规就跳过那一项、记一行日志；转出了账本就把 `coding:usage:revision`
+ * 加一、账本记下它（同一个事务），D1 归档才看得见这几份。
  */
 
 const MARKER_KEY = () => key("coding", "legacy-migrated");
@@ -96,10 +99,10 @@ function convertDay(day: LegacyDay, costComplete: boolean): CodingUsageDay {
 }
 
 /** 转出来的账本照新契约校验；不合规返回 null */
-function validLedger(agent: CodingUsageAgent, receivedAt: number, now: number): StoredCodingUsageAgent | null {
+function validLedger(agent: CodingUsageAgent, receivedAt: number, now: number, revision: number): StoredCodingUsageAgent | null {
   try {
     const [checked] = normalizeCodingUsageReport({ agents: [agent] }, now).agents;
-    return { ...checked, days: checked.days ?? [], receivedAt };
+    return { ...checked, days: checked.days ?? [], receivedAt, revision };
   } catch (error) {
     console.warn("[migrate] coding usage legacy ledger skipped", agent.id, error instanceof Error ? error.message : String(error));
     return null;
@@ -116,12 +119,14 @@ export async function migrateLegacyCodingUsage(now: number): Promise<boolean> {
     .get(codingActivityKey("agents-otlp"))
     .fields(codingUsageKey("agents-otlp"))
     .fields(codingUsageKey("agents"))
+    .get(codingUsageRevisionKey())
     .execute());
   if (!answered.reachable) return false;
-  const [marker, cloudRaw, cursorRaw, otlpRaw, cloudActivityRaw, cloudLedgers, accountLedgers] = answered.value as [
-    string | null, string | null, string | null, string | null, string | null, Record<string, string>, Record<string, string>,
+  const [marker, cloudRaw, cursorRaw, otlpRaw, cloudActivityRaw, cloudLedgers, accountLedgers, revisionRaw] = answered.value as [
+    string | null, string | null, string | null, string | null, string | null, Record<string, string>, Record<string, string>, string | null,
   ];
   if (marker) return false;
+  const revision = parseRevision(revisionRaw) + 1;
 
   const converted: string[] = [];
   let ledgers = false;
@@ -148,7 +153,7 @@ export async function migrateLegacyCodingUsage(now: number): Promise<boolean> {
         warning: null,
         sessionCount: usage.sessionCount ?? null,
         days: usage.days.map((day) => convertDay(day, true)),
-      }, pushedAt, now);
+      }, pushedAt, now, revision);
       if (ledger) {
         batch.patch(codingUsageKey("agents-otlp"), { claude: JSON.stringify(ledger) });
         converted.push("otlp-days");
@@ -178,7 +183,7 @@ export async function migrateLegacyCodingUsage(now: number): Promise<boolean> {
         warning: report.state === "ok" ? report.warning ?? null : report.error ?? report.warning ?? null,
         sessionCount: null,
         days: report.days.map((day) => convertDay(day, report.costComplete ?? false)),
-      }, cursorAt, now);
+      }, cursorAt, now, revision);
       if (ledger) {
         batch.patch(codingUsageKey("agents"), { cursor: JSON.stringify(ledger) });
         converted.push("cursor-days");
@@ -186,6 +191,7 @@ export async function migrateLegacyCodingUsage(now: number): Promise<boolean> {
       }
     }
 
+    if (ledgers) batch.set(codingUsageRevisionKey(), String(revision));
     for (const legacy of LEGACY_KEYS()) batch.expire(legacy, LEGACY_TTL_MS);
     batch.set(MARKER_KEY(), String(now), { ttlMs: LEGACY_TTL_MS });
     return batch.execute();

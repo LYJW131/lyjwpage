@@ -16,6 +16,7 @@ import {
   codingBucketsKey,
   codingOtlpKey,
   codingUsageKey,
+  codingUsageRevisionKey,
   codingViewKey,
   codingYearKey,
   parseStoredActivity,
@@ -463,6 +464,10 @@ test("the one-time migration carries the cloud counters over, so the first OTLP 
     const view = parseStoredView(await fresh.get(codingViewKey()));
     assert.equal(view?.totals?.totalTokens, 390);
     assert.ok(await fresh.get(key("coding", "legacy-migrated")));
+    // 迁出来的账本带修订号（D1 归档按它取增量，没有就永远轮不到它们），云端那格随后又因差值前进了一版
+    assert.equal(cursor?.revision, 1);
+    assert.equal(claude?.revision, 2);
+    assert.equal(await fresh.get(codingUsageRevisionKey()), "2");
   } finally { resetStorageForTests(); }
 });
 

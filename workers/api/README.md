@@ -64,8 +64,10 @@
   同一次提交里重算视图 `coding:usage:view`（`CodingUsagePayload`：合计、全历史前三模型、各 agent 最近一个有行的日子、
   各来源状态）与年度视图 `coding:usage:year`（最近 380 天每天的合计与精确前五模型），算法是纯函数
   `buildCodingUsageView`；只有状态变了（采集时刻前进、出错 / 恢复）就在存着的视图上换掉那几格状态
-  （`applyCodingUsageStatus`），不重扫日行、年度不写，视图的 `updatedAt` 与账本的 `receivedAt` 不动（D1 归档按这两个
-  时刻挑要重写的账本，Mac 每一轮采集都会带来新的采集时刻）；这两个时刻也不往回走。前三、每天前五都在完整数据上精确累加；`activeDays` 是全部历史、全部 agent 的站点日并集；
+  （`applyCodingUsageStatus`），不重扫日行、年度不写。日子变了的那次提交把账本修订号 `coding:usage:revision` 加一、
+  改到的账本记下它（同一个事务）；只换状态不动它 —— Mac 每一轮采集都会带来新的采集时刻，D1 归档按修订号挑要重写的
+  账本，不按时刻（时刻只取和存着的较大者，入口顺序与提交顺序相反时会停在水位上）。桶同理，每写一份
+  `pulse:token-buckets:revision` 加一。前三、每天前五都在完整数据上精确累加；`activeDays` 是全部历史、全部 agent 的站点日并集；
   `costComplete` 看所有有 token 的日行，来源采集失败只体现在状态里。首屏标签 `coding` 只在新旧视图的骨架
   （行、总量、常用模型的有无，`src/lib/home-layout.ts` 的 `codingLayoutKey`）不同时打。
 - **活动**：`coding:activity:<来源>` 整份替换（采集时刻比存着的旧就不收）。拼好整份 `/api/status/coding/now`
@@ -324,7 +326,8 @@ Cursor 使用独立的 `pulse:cursor-observations`：agents 来源的 cursor 活
 | `coding_usage_buckets` | 各来源的五分钟 token 桶，agent × 模型（云端 OTLP 的事件数为 NULL） | `(bucket_at, source, agent, model)` |
 | `coding_active_days` | agent 在跑的秒数（来自 Coding 观测），`model = '*'` 是当天合计 | `(date, agent, model)` |
 
-日行按「水位之后变过的 (来源, agent) 账本」整份 upsert（值没变的行 D1 不写；视图的 `updatedAt` 没过水位就不读账本），
+日行按「修订号过了水位的 (来源, agent) 账本」整份 upsert（值没变的行 D1 不写；`coding:usage:revision` 没过水位就不读账本；
+桶那一路同样按 `pulse:token-buckets:revision`，这两路的水位是修订号、不是时刻），
 存事实不存合并：被账号级来源覆盖的 Mac cursor 行照样归档，合并规则只在视图里。模型拆分只增不删，来源事后从某天
 拿掉的模型旧行还在。桶不汇成日：Mac / agents 只写起点被报告范围盖住的桶，还在累积的末桶照写、下一次用更完整的数覆盖；
 报告范围本身不归档，所以归档里「没有行」分不清是零事件还是没报。`coding_active_days` 按 max 只增不减，

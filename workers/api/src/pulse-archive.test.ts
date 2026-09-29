@@ -8,13 +8,14 @@ import { fileURLToPath } from "node:url";
 import { codingObservationsKey, cursorObservationsKey } from "@/lib/coding-pulse";
 import { pulseChargingKey, pulseLaneOpenKey, pulseListeningTracesKey } from "@/lib/pulse-keys";
 import { installStorageForTests, resetStorageForTests } from "@/lib/storage";
-import { addBucketDeltas, mergeBucketReport } from "@shared/coding-buckets";
-import { codingBucketsKey, codingUsageKey, codingViewKey } from "@shared/coding-store";
-import type { CodingTokenBucketReport, CodingUsageDay } from "@shared/coding-usage";
-import { buildCodingUsageView, type StoredCodingUsageAgent } from "@shared/coding-usage-view";
+import type { CodingBucketDelta } from "@shared/coding-buckets";
+import type { CodingTokenBucketReport, CodingUsageAgent, CodingUsageDay } from "@shared/coding-usage";
+import type { CodingUsageSource } from "@shared/coding-usage-sources";
 import type { HistoryDb } from "@shared/history-ingest";
 import { SqliteStore, type SqlDatabase } from "@shared/sqlite-store";
 import { StorageClient } from "@shared/storage-client";
+import { prepareCodingBuckets, prepareOtlpBuckets } from "./stores/coding-buckets.ts";
+import { prepareCodingUsage } from "./stores/coding-usage.ts";
 import { recordChargingSample, recordStateObservation, replacePulseActivity } from "./stores/pulse.ts";
 import { PulseArchive, PulseArchiveState, activeSecondsByDay, archiveStatements, siteDate, type ArchiveStream } from "./pulse-archive.ts";
 
@@ -203,8 +204,8 @@ function usageDay(date: string, totalTokens: number, models: Array<[string, numb
   };
 }
 
-function ledger(id: string, days: CodingUsageDay[], receivedAt: number): StoredCodingUsageAgent {
-  return { id, state: "ok", collectedAt: receivedAt, error: null, warning: null, sessionCount: null, days, receivedAt };
+function ledger(id: string, days: CodingUsageDay[], collectedAt: number): CodingUsageAgent {
+  return { id, state: "ok", collectedAt, error: null, warning: null, sessionCount: null, days };
 }
 
 function bucketReport(from: number, to: number, windows: Array<[number, number]>): CodingTokenBucketReport {
@@ -214,12 +215,19 @@ function bucketReport(from: number, to: number, windows: Array<[number, number]>
   };
 }
 
-/** 把几份账本写进 StateHub，和状态核心提交时一样连带重算视图（归档按视图的 updatedAt 判断有没有新账本） */
-async function storeLedgers(storage: StorageClient, rows: Array<["mac" | "agents" | "agents-otlp", StoredCodingUsageAgent]>, at: number) {
-  const batch = storage.batch();
-  for (const [source, row] of rows) batch.patch(codingUsageKey(source), { [row.id]: JSON.stringify(row) });
-  const stored = Object.fromEntries(rows.map(([source, row]) => [source, { [row.id]: row }]));
-  await batch.set(codingViewKey(), JSON.stringify(buildCodingUsageView(stored, at).view)).execute();
+type Harness = ReturnType<typeof setup>;
+
+/** 走状态核心提交的那条路写账本（prepareCodingUsage：账本、修订号、视图、年度同一个事务） */
+async function storeLedgers(b: Harness, source: CodingUsageSource, agents: CodingUsageAgent[], at: number, options: { derived?: boolean } = {}) {
+  await b.write(async () => (await prepareCodingUsage(source, { agents }, at, options)).commit());
+}
+
+async function storeBuckets(b: Harness, source: "mac" | "agents", report: CodingTokenBucketReport, at: number) {
+  await b.write(async () => (await prepareCodingBuckets(source, report, at)).commit());
+}
+
+async function storeOtlpBuckets(b: Harness, deltas: CodingBucketDelta[], at: number) {
+  await b.write(async () => (await prepareOtlpBuckets(deltas, at)).commit());
 }
 
 test("pulse archive: coding observations and active seconds go to their own table; nothing rolls up into the old ones", async () => {
@@ -249,10 +257,12 @@ test("pulse archive: coding observations and active seconds go to their own tabl
 
 test("pulse archive: usage ledgers land per source, agent and day; only ledgers that changed since the watermark are rewritten", async () => {
   const b = setup();
-  await storeLedgers(b.storage, [
-    ["mac", ledger("claude", [usageDay("2026-09-27", 100, [["claude-opus", 60], ["claude-fable", 40]]), usageDay("2026-09-28", 0, [])], T0)],
-    ["mac", ledger("cursor", [usageDay("2026-09-28", 999, [["composer-1", 999]])], T0)],
-    ["agents", ledger("cursor", [usageDay("2026-09-28", 18, [["composer-2", 18]], { costComplete: false, reasoningTokens: 0 })], T0)],
+  await storeLedgers(b, "mac", [
+    ledger("claude", [usageDay("2026-09-27", 100, [["claude-opus", 60], ["claude-fable", 40]]), usageDay("2026-09-28", 0, [])], T0),
+    ledger("cursor", [usageDay("2026-09-28", 999, [["composer-1", 999]])], T0),
+  ], T0);
+  await storeLedgers(b, "agents", [
+    ledger("cursor", [usageDay("2026-09-28", 18, [["composer-2", 18]], { costComplete: false, reasoningTokens: 0 })], T0),
   ], T0);
   b.at(T0 + M);
   await b.archive().run();
@@ -270,7 +280,7 @@ test("pulse archive: usage ledgers land per source, agent and day; only ledgers 
     { source: "mac", agent: "claude", model: "claude-opus", tokens: 60 },
     { source: "mac", agent: "cursor", model: "composer-1", tokens: 999 },
   ]);
-  assert.equal(b.watermark("coding-usage"), String(T0));
+  assert.equal(b.watermark("coding-usage"), "2", "the watermark is the ledger revision, not a time");
 
   const before = b.changes();
   b.at(T0 + 2 * M);
@@ -278,28 +288,26 @@ test("pulse archive: usage ledgers land per source, agent and day; only ledgers 
   assert.equal(b.changes(), before, "no new ledger since the watermark: nothing read, nothing written");
 
   // 只有 claude 那格变了：只重写它，值没变的那天不产生写入
-  await storeLedgers(b.storage, [
-    ["mac", ledger("claude", [usageDay("2026-09-27", 100, [["claude-opus", 60], ["claude-fable", 40]]), usageDay("2026-09-28", 30, [["claude-opus", 30]])], T0 + 3 * M)],
+  await storeLedgers(b, "mac", [
+    ledger("claude", [usageDay("2026-09-27", 100, [["claude-opus", 60], ["claude-fable", 40]]), usageDay("2026-09-28", 30, [["claude-opus", 30]])], T0 + 3 * M),
   ], T0 + 3 * M);
   b.at(T0 + 4 * M);
   await b.archive().run();
   assert.equal(b.changes() - before, 2, "one changed day row and one new model row");
   assert.equal(b.all("SELECT total_tokens FROM coding_usage_days WHERE source = 'mac' AND agent = 'claude' AND date = '2026-09-28'")[0].total_tokens, 30);
-  assert.equal(b.watermark("coding-usage"), String(T0 + 3 * M));
+  assert.equal(b.watermark("coding-usage"), "3");
 });
 
 test("pulse archive: token buckets from every source; a later report's partial first window never overwrites a complete bucket", async () => {
   const b = setup();
-  const first = mergeBucketReport(null, bucketReport(T0, T0 + 10 * M, [[T0, 30], [T0 + 5 * M, 12]]), T0 + 10 * M)!;
-  await b.storage.set(codingBucketsKey("mac"), JSON.stringify(first));
-  await b.storage.set(codingBucketsKey("agents-otlp"), JSON.stringify(addBucketDeltas(null, [
+  await storeBuckets(b, "mac", bucketReport(T0, T0 + 10 * M, [[T0, 30], [T0 + 5 * M, 12]]), T0 + 10 * M);
+  await storeOtlpBuckets(b, [
     { at: T0 + M, id: "claude", model: "claude-fable", inputTokens: 5, outputTokens: 1, cacheReadTokens: 0, cacheCreationTokens: 0 },
-  ], T0 + 2 * M)));
+  ], T0 + 2 * M);
   b.at(T0 + 10 * M);
   await b.archive().run();
   // 下一份报告的范围从 T0+2 分钟起：T0 那个桶只数了后三分钟
-  const second = mergeBucketReport(first, bucketReport(T0 + 2 * M, T0 + 12 * M, [[T0, 4], [T0 + 5 * M, 20], [T0 + 10 * M, 1]]), T0 + 12 * M)!;
-  await b.storage.set(codingBucketsKey("mac"), JSON.stringify(second));
+  await storeBuckets(b, "mac", bucketReport(T0 + 2 * M, T0 + 12 * M, [[T0, 4], [T0 + 5 * M, 20], [T0 + 10 * M, 1]]), T0 + 12 * M);
   b.at(T0 + 12 * M);
   await b.archive().run();
   assert.deepEqual(b.logged, []);
@@ -310,6 +318,31 @@ test("pulse archive: token buckets from every source; a later report's partial f
     { bucket_at: T0 + 10 * M, source: "mac", input_tokens: 1, event_count: 1 },
   ]);
   assert.equal(b.all("SELECT COUNT(*) AS n FROM agent_usage_days")[0].n, 0, "buckets never roll up into days");
+});
+
+test("pulse archive: a cloud commit received earlier but committed after the archive ran is still archived", async () => {
+  const b = setup();
+  const claude = (tokens: number, collectedAt: number): CodingUsageAgent => ({
+    id: "claude", state: "ok", collectedAt, error: null, warning: null, sessionCount: 1,
+    days: [usageDay("2026-09-28", tokens, [["claude-fable", tokens]])],
+  });
+  const delta = (tokens: number): CodingBucketDelta => ({ at: T0, id: "claude", model: "claude-fable", inputTokens: tokens, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0 });
+  // B：入口后收到（T0+1s）却先提交，归档把它写进 D1
+  await storeLedgers(b, "agents-otlp", [claude(50, T0 + 1_000)], T0 + 1_000, { derived: true });
+  await storeOtlpBuckets(b, [delta(50)], T0 + 1_000);
+  b.at(T0 + M);
+  await b.archive().run();
+  // A：入口先收到（T0）、归档之后才提交，带着有效差值。时刻只取「和存着的较大者」，仍是 T0+1s，
+  // 按时刻当水位就落在水位上被漏掉；按修订号它是新的一版
+  await storeLedgers(b, "agents-otlp", [claude(150, T0 + 1_000)], T0, { derived: true });
+  await storeOtlpBuckets(b, [delta(100)], T0);
+  b.at(T0 + 2 * M);
+  await b.archive().run();
+  assert.deepEqual(b.logged, []);
+  assert.deepEqual(b.all("SELECT total_tokens FROM coding_usage_days WHERE source = 'agents-otlp'"), [{ total_tokens: 150 }]);
+  assert.deepEqual(b.all("SELECT input_tokens FROM coding_usage_buckets WHERE source = 'agents-otlp'"), [{ input_tokens: 150 }]);
+  assert.equal(b.watermark("coding-usage"), "2");
+  assert.equal(b.watermark("coding-buckets"), "2");
 });
 
 test("pulse archive: migration 0008 carries the frozen Mac buckets and active seconds over", () => {
