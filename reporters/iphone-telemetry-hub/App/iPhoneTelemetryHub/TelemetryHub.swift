@@ -12,8 +12,11 @@ enum HubUserAgent {
  收集各模块 → 拼信封 → POST。整个 App 只有这一条上报链路。
 
  **节奏由系统定，不由我们定。** 唯一的后台唤醒源是各模块自己的（活动圆环那个是
- HealthKit 的观测，按小时节流），所以别指望分钟级 —— 站点那边的卡片因此按 5 分钟
- 轮询，也因此不把「很久没收到」当成掉线。真要更快只有一条路：把 App 切到前台。
+ HealthKit 的观测，按小时节流），所以别指望分钟级 —— 站点那边的圆环卡因此按写入
+ 节奏取数（`src/lib/status-views.ts` 的 `STATUS_VIEWS.activity`，排期见
+ `src/lib/poll-schedule.ts` 的 `nextLagDelay`），也因此不把「很久没收到」当成掉线
+ （窗口 `ACTIVITY_STALE_MS`，见 `src/lib/freshness.ts`）。真要更快只有一条路：把 App
+ 切到前台。
 
  **失败了不补发。** 站点那侧是「后到的就是对的」、整份替换，没有顺序闸；这里要是加了
  后台重试队列（`URLSession` 的 background 那套），一封迟到的旧报文就会把已经涨上去的
@@ -61,11 +64,13 @@ actor TelemetryHub {
     /**
      多个模块的唤醒几乎同时响，这个窗口把它们并成一封。
 
-     活动圆环一个模块就观测着四个 HealthKit 类型，少了它一次数据变化会连打四次站点。
+     活动圆环一个模块就观测着好几个 HealthKit 类型（见 `ActivityModule.observedTypes`），
+     少了它一次数据变化会连打好几次站点。
      */
     private static let coalesce: TimeInterval = 60
 
-    /// 内容没变也隔这么久重发一次，好让站点那份 7 天 TTL 的快照不会过期消失
+    /// 内容没变也隔这么久重发一次，续上站点圆环读数的 `updatedAt`；必须小于站点的
+    /// `ACTIVITY_STALE_MS`（`src/lib/freshness.ts`），否则圈没变的一整夜之后卡片会显示 Unavailable
     private static let refresh: TimeInterval = 6 * 60 * 60
 
     init(modules: [any TelemetryModule]) {
@@ -164,7 +169,6 @@ actor TelemetryHub {
 
         do {
             try await push(TelemetryEnvelope(modules: payloads), to: destination)
-            // 只更新真的发出去了的那几个模块
             for id in payloads.keys { lastSent[id] = encoded[id] }
             HubSettings.record(error: issues.isEmpty ? nil : issues.joined(separator: "；"))
             return .pushed(payloads.count)

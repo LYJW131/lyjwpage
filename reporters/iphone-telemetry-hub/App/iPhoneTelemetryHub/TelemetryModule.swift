@@ -1,16 +1,11 @@
 import Foundation
 
 /**
- 一个上报模块。
+ 一个上报模块：交出快照、注册自己的唤醒源（HealthKit 的观测之类）。
 
- 加一个模块 = 写一个实现 + 在 `Modules.all` 里加一行，**hub 不用改**。这一点和
- Mac 那边不一样：那边的信封是个具体结构体，每个模块占一个可选字段。手机上模块
- 各自带着自己的**唤醒源**（活动圆环是 HealthKit 的观测，以后的位置、电量各有各的
- 通知），hub 必须能在不认识任何一个模块的前提下说「都去注册自己的唤醒源」——
- 这个协议是为这件事存在的，不是为了架构好看。
-
- 界面那层反过来，是具体的：`DashboardView` 直接认识 `ActivityModule` 并画它的圈。
- 让协议再背一个 `dashboardView()` 就过线了 —— 每个模块的展示形态本来就千差万别。
+ 在 `Modules.all` 登记即可，`TelemetryHub` 不认识任何具体模块 —— 这个协议为此存在。
+ 界面那层反过来是具体的：`DashboardView` 直接认识各个模块并画它们，让协议再背一个
+ `dashboardView()` 就过线了，每个模块的展示形态本来就千差万别。
  */
 protocol TelemetryModule: Sendable {
     /// 信封里 `modules` 的键。和站点 `/api/status/*` 的主题同名：activity ↔ /api/status/activity
@@ -18,7 +13,8 @@ protocol TelemetryModule: Sendable {
     /// 界面上给人看的名字
     var title: String { get }
 
-    /// 这个模块要的系统授权拿到了没有
+    /// 是否无需再次请求授权。不代表读权限已批准：HealthKit 不透露读权限的结果，
+    /// 拿不拿得到数据要看 `snapshot()`
     func isAuthorized() async -> Bool
     /// 只能由前台发起 —— 系统的授权表单需要一个正在前台的 App
     func requestAuthorization() async throws
@@ -38,7 +34,7 @@ protocol TelemetryModule: Sendable {
  类型擦除的 `Encodable`，好让一个信封装下形状各异的模块。
 
  没有它就只能像 Mac 那样写一个「每个模块一个可选字段」的具体结构体，那样 hub 会
- 认识每一个模块的类型 —— 加一个模块要改三个地方。
+ 认识每一个模块的类型，加一个模块就得改 hub。
  */
 struct AnyEncodable: Encodable, Sendable {
     private let write: @Sendable (Encoder) throws -> Void
@@ -53,7 +49,7 @@ struct AnyEncodable: Encodable, Sendable {
 }
 
 /**
- 发往站点的唯一信封，对着 `src/lib/phone-telemetry.ts`。
+ 发往站点的唯一信封，对着 `shared/ingest/phone.ts` 的 `preparePhoneEnvelope`。
 
  只带这一轮真的变了的模块 —— 内容没变的那些不进 `modules`，站点那边看到什么就
  更新什么。
@@ -69,7 +65,7 @@ struct TelemetryEnvelope: Encodable, Sendable {
     let modules: [String: AnyEncodable]
 }
 
-/// 眼下有哪些模块。加模块只动这里和它自己那个文件
+/// 全部模块的登记处。加模块只动这里和它自己那个文件
 enum Modules {
     static let activity = ActivityModule()
 

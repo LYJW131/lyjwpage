@@ -17,7 +17,7 @@ final class ActivityModule: TelemetryModule {
     private let store = HKHealthStore()
 
     /**
-     观测这四个类型。
+     观测这几个类型。
 
      三环各自的驱动样本 + 步数。`HKActivitySummaryType` 本身**不能观测**（它不是
      `HKSampleType`），所以观的是喂它的那几个样本类型，响了再回头查一次整份 summary。
