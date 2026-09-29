@@ -15,50 +15,57 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - 在遵守系统、开发者指令和工具权限的前提下，用户明确要求优先于本文件和技能中的默认建议。技能若导致暂停或要求确认，指出实际读取的文件、具体条款和适用原因，不把自己的推断当成硬性要求。
 - 默认用简洁中文沟通，先说结果，再说明关键原因、验证和剩余问题。只报告实际完成的工作；区分本地修改、测试通过和已部署。
 
+# 禁区
+
+- 不手跑 `wrangler deploy`：非交互部署会直接接管挂在别的 Worker 上的自定义域名；Worker 只走 Workers Builds（见「部署流程」）。
+- 不提交 `.env.local`、`.dev.vars` 这类本地凭据文件。
+- 不删除、不手改本文件顶部 `next dev` 托管的自动块（`BEGIN:nextjs-agent-rules` 到 `END:nextjs-agent-rules`）。
+
 # 项目入口与验证
 
-- 使用 `pnpm`；命令以各目录的 `package.json` 为准。主站开发入口是 `pnpm dev`，地址为 `http://localhost:3211`，连的是生产 Worker。改后端、新增状态端点或新卡片时用 `pnpm dev:worker`（本地 api Worker，首次后跑一次 `pnpm dev:worker:init`）加 `pnpm dev:local`；本地 Worker 配了 `.dev.vars` 的 `UPSTREAM_API_URL` 后生产为主、本地补缺，新端点和新字段看本地；要看此刻没发生的状态用 `pnpm dev:override <端点> <夹具>` 注入假数据（夹具在 `workers/api/dev-fixtures/`），见 README。
-- 主站页面与路由在 `src/app/`，组件在 `src/components/`，数据与共享逻辑在 `src/lib/`；上报器在 `reporters/`，Cloudflare Workers 在 `workers/`。架构与部署背景查 `README.md`，子项目操作查各自的 README。
-- 修改 Next.js 代码前，按上方要求读取本地版本中与改动相关的文档。按需检索，不为小改动遍历整个文档或技能目录。
-- 验证覆盖受影响的行为和契约。纯文档改动检查 diff、路径与命令即可；逻辑修复优先跑相关测试；类型或接口改动运行 `pnpm typecheck`；代码规范检查运行 `pnpm exec eslint <改动文件>`；涉及构建、路由或缓存行为时运行 `pnpm build`。站点 UI 改动按下一条走浏览器端到端测试。
+- 使用 `pnpm`；命令以各目录的 `package.json` 为准。源码入口查根 `README.md` 的「从哪里读源码」，子项目查各自的 `README.md` 与 `AGENTS.md`（嵌套的 `CLAUDE.md` 在进入该目录时才载入）。
+- 主站开发入口是 `pnpm dev`，地址 `http://localhost:3211`，连的是生产 Worker。改后端、新增状态端点或新卡片时用 `pnpm dev:worker`（本地起整套 Worker 栈，首次后跑一次 `pnpm dev:worker:init`）加 `pnpm dev:local`；本地配了 `.dev.vars` 的 `UPSTREAM_API_URL` 后生产为主、本地补缺，新端点和新字段看本地。要看此刻没发生的状态用 `pnpm dev:override <端点> <夹具>` 注入假数据（夹具在 `workers/api/dev-fixtures/`；前提是 `.dev.vars` 里 `DEV_OVERRIDES=true`，收尾用 `--clear` / `--off`；用法见 `scripts/dev-override.mjs` 文件头与 `workers/api/README.md`「本地开发」）。
+- 修改 Next.js 代码前，读 `node_modules/next/dist/docs/` 里与改动相关的文档（见上方自动块）。按需检索，不为小改动遍历整个文档或技能目录。
+- 验证覆盖受影响的行为和契约。纯文档改动跑 `pnpm docs:check` 并检查 diff 与命令；逻辑修复优先跑相关测试；类型或接口改动运行 `pnpm typecheck`；代码规范检查运行 `pnpm exec eslint <改动文件>`；涉及构建、路由或缓存行为时运行 `pnpm build`。站点 UI 改动按下一条走浏览器端到端测试。
 - 站点 UI 改动以浏览器端到端测试为准，单元测试不是必需：起开发服务器，在浏览器里实际打开受影响页面，覆盖相关宽度（至少桌面与 375px 手机）、交互和不同数据状态（此刻没发生的状态用 `pnpm dev:override` 注入夹具），并查看控制台错误。同一项 UI 改动只在首次交付时附效果图（浏览器面板截不出图时改用无头 Chrome 截图）；之后用户提出的修改请求若没有另行要求，视为用户正看着开发服务器，改完照常自测，但不再单独截图。开发服务器保持运行并给出地址，让用户能亲自测试；这轮修改提交推送并确认部署后，由 agent 自行清掉注入、停掉开发服务器。
-- 主站完整单测为 `pnpm test`；单文件可用 `node --test --experimental-strip-types --import ./src/lib/testing/register-alias.mjs src/lib/<名称>.test.mts`。上报器和 Worker 使用各自的验证方式。
+- 主站完整单测为 `pnpm test`；单文件可用 `node --test --experimental-strip-types --import ./src/lib/testing/register-alias.mjs src/lib/<名称>.test.mts`。Worker 与上报器用各自目录里 `AGENTS.md` / `README.md` 写的验证命令。
 - 有回归风险时补行为测试；低影响改动不添加仅重复实现的测试。相关检查通过后，只有新改动、失败或未解疑点才扩大或重复验证。环境限制导致无法验证时说明具体缺口。
+- CI 的门禁清单以 `.github/workflows/ci.yml` 为准（含 `pnpm docs:check`）。本地不必全跑，但改动波及处对应的那几项必须通过。
 
 # 部署流程
 
-- 站点生产部署默认走 Git：完成必要验证后提交改动，执行 `git push origin main`，由已有集成自动部署 Vercel。`lyjw.me` 使用 Vercel；`lyjw131.com` 经阿里云 ESA 回源 `lyjw.me`，回源 Host 跟随源站，缓存首页 HTML 与静态 JS。API Worker 对展示变化只通知 Vercel 标签失效；ESA 首页由控制台缓存规则按源站 SWR 头自行更新，新版本部署成功时由 GitHub Actions（`.github/workflows/purge-esa.yml`）自动刷新首页 cachekey 并主动预热缓存，确认两个域名都换上新版后再经上报入口 Worker 请状态核心推 `version` 事件让开着的页面立刻弹更新提示，契约见 `workers/ingress/README.md`。用户要求部署站点时，包含完成这次提交与推送，无需再逐步确认。
+- 站点生产部署默认走 Git：完成必要验证后提交改动，执行 `git push origin main`，由已有集成自动部署 Vercel。用户要求部署站点时，包含完成这次提交与推送，无需再逐步确认。
+- 域名与缓存链路（`lyjw.me` 在 Vercel，`lyjw131.com` 经阿里云 ESA 回源）见 `docs/ops-facts.md`。API Worker 对展示变化只通知 Vercel 标签失效，ESA 首页按源站的 SWR 头自行更新；新版本部署成功后的 ESA 首页刷新与 `version` 事件通知由 `.github/workflows/purge-esa.yml` 负责，契约见 `workers/ingress/README.md`。
 - 除非用户明确要求手工部署，不运行 `vercel deploy`、`vercel --prod`、`vercel promote` 等手工发布命令；自动部署失败时先检查并修复现有流程。
-- `workers/api`、`workers/ingress`、`workers/collector` 使用 Cloudflare Workers Builds 原生 Git 集成，配置与监视路径见 `docs/workers-builds.md`。GitHub Actions 只做检查，不添加 Worker 发布任务。修改共享依赖时同步核对原生构建的触发路径。
+- `workers/api`、`workers/ingress`、`workers/collector` 走 Cloudflare Workers Builds 原生 Git 集成，配置与监视路径见 `docs/workers-builds.md`。不在 GitHub Actions 里加 Worker 发布任务；修改共享依赖或移动文件时同步核对监视路径。Worker 之间的契约（`shared/state-core.ts`、`shared/collector.ts`）只加不改，被调用方先发布。
 - 推送成功不等于部署完成：检查该次提交在 Vercel 的部署状态，并从已绑定的生产域名验证本次受影响的行为或配置。
-- NAS 上报器与其他独立部署单元按各自 README 发布。若依赖站点的新契约或更长陈旧窗口，先确认 Vercel 站点及 Worker 契约已生效，再切换上报器，最后验证真实上报与站点读取。
-- `reporters/mac-telemetry-hub` 是 git submodule，指向 `LYJW131/MacTelemetryHub`，不会自动跟随远端。Hub 仓库推送后，站点仓库的子模块指针要挪到同一提交，否则站点里的上报器源码停在旧版本。跨两个仓库的同一件事（如新契约两边同时改）把指针挪动并进站点那次提交，一次提交说完整件事；站点本身没改动时才单独提 `chore(reporters): 更新 mac-telemetry-hub，<改了什么>`。Hub 本机安装走它自己的 `build-release.sh`，与指针更新是两件事。
+- 上报器与其他独立部署单元按各自 README 发布：misaka-jp 上的 `server-reporter`、`agents-reporter` 合进 main 后由 `.github/workflows/build-reporters.yml` 自动换镜像，dsm 上的 `emby-reporter` 手动。若依赖站点的新契约或更长陈旧窗口，先确认 Vercel 站点及 Worker 契约已生效，再切换上报器，最后验证真实上报与站点读取。
+- `reporters/mac-telemetry-hub` 是 git submodule，指向 `LYJW131/MacTelemetryHub`，不会自动跟随远端。Hub 仓库推送后，站点仓库的子模块指针要挪到同一提交，否则站点里的上报器源码停在旧版本；指针推到 main 即触发 Hub 的签名与公证 Release（`.github/workflows/release-mac-telemetry-hub.yml`）。跨两个仓库的同一件事（如新契约两边同时改）把指针挪动并进站点那次提交，一次提交说完整件事；站点本身没改动时才单独提 `chore(reporters): 更新 mac-telemetry-hub，<改了什么>`。Hub 本机安装走它自己的 `reporters/mac-telemetry-hub/build-release.sh`，与指针更新是两件事。
 
 # 排查线上错误
 
 - 线上报错、页面异常、Worker 或 cron 失败，先用 Sentry MCP 查证据，再读代码：用 `search_issues` / `search_events` 找报错和 warn / error 日志，用 `get_sentry_resource` 看调用栈、面包屑和出错录像，拿到 release 和堆栈再对源码定位。不凭猜测改代码，也不借浏览器登录态调 Sentry 接口；MCP 不可用时告诉用户，而不是绕开。
-- 组织 `yangjunwei-liang`，区域 `https://us.sentry.io`。项目 `lyjwpage` 收浏览器和 Vercel 函数，release 是提交 SHA；项目 `api-worker` 收 api Worker（含 Durable Object 与分钟 cron）和上报入口 Worker `ingress`（事件带 tag `worker:ingress`，查上报的鉴权、校验与拆分按它过滤），项目 `collector-worker` 收采集 Worker（全部定时拉取与 PSN），两者 release 都是 Cloudflare 版本 ID。环境分 `production` / `preview` / `development`，排查线上问题默认只看 `production`。cron 心跳监控是 `api-minute-cron`；采集 Worker 每个任务一条 `collector-<任务>`，但监控名额只有一个，这些是停用状态，任务失败看 `collector-worker` 里 tag `collector.job` 的 issue；在线探测每分钟 HEAD `https://lyjw.me/api/version`。
+- 组织 `yangjunwei-liang`，区域 `https://us.sentry.io`，排查线上问题默认只看环境 `production`（另有 `preview` / `development`）。项目 `lyjwpage` 收浏览器和 Vercel 函数，release 是提交 SHA；`api-worker` 收 api Worker（含 Durable Object 与分钟 cron）和上报入口 `ingress`（事件带 tag `worker:ingress`，查上报的鉴权、校验与拆分按它过滤）；`collector-worker` 收采集 Worker（全部定时拉取与 PSN，任务失败看 tag `collector.job`）；两个 Worker 项目的 release 是 Cloudflare 版本 ID。cron 监控与在线探测的配置见 `docs/ops-facts.md`。
 - `reporters/` 下的上报器没接 Sentry，查所在机器的容器日志。
 - Sentry 里只读不写是默认。把 issue 标为 resolved / ignored、改负责人这类写操作，在修复部署并从生产验证后再做，并在汇报里说明；删除数据、改告警规则、项目或集成设置，先问用户。
 
 # API 命名与跨端契约
 
-这些约定由主站、`reporters/` 下的相关上报器、MacTelemetryHub 和 Home Assistant 共用。
-新增或修改端点、字段前，先定位对应的数据生产者、接收端、消费者和推送事件。
-
-## 入口与字段
+这些约定由主站、`reporters/` 下的相关上报器、MacTelemetryHub 和 Home Assistant 共用。新增或修改端点、字段前，先定位对应的数据生产者、接收端、消费者和推送事件。
 
 | 对象 | 约定 | 示例 / 边界 |
 | --- | --- | --- |
-| 上报入口 | `/api/ingest/<来源>`，来源按数据归属命名，不使用上报程序名；仅由 `workers/ingress` 接收（校验在 `shared/ingest/`，实时那一半经 Service Binding 交给 `workers/api` 的 `StateCore.commitIngest`），站点不提供上报路由、rewrite 或转发 | 当前来源：`mac`、`iphone`、`homepod`、`emby`、`playstation`、`server`、`agents` |
+| 上报入口 | `/api/ingest/<来源>`，来源按数据归属命名，不使用上报程序名；仅由 `workers/ingress` 接收，站点不提供上报路由、rewrite 或转发 | 来源清单是 `shared/ingest/prepare.ts#INGEST_SOURCES`（另有 `/api/ingest/agents/otlp`）；校验在 `shared/ingest/`，实时那一半经 Service Binding 交给 `workers/api` 的 `StateCore.commitIngest` |
 | 设备遥测 | 一台设备一个入口、一个信封、一个 `modules` 字典 | 充电头归观测它的 `mac`；活动圆环归搬运和观测它的 `iphone`，不按品牌或模块另开入口 |
 | 账号限额 | coding agent 的账号套餐和限额统一归 `agents` | 厂商账号事实不归某台 Mac，也不按采集容器命名 |
-| 上报鉴权 | 走 `ingest.homepage.lyjw.llc`，每个来源一把 Cloudflare Access service token，上报入口按 `workers/ingress/wrangler.toml` 的 `[vars.ACCESS_CLIENTS]` 限定可写来源 | 新来源要新建 token、加进 Access 策略并登记 client id；不再让一把凭据通吃所有来源 |
+| 上报鉴权 | 走 `ingest.homepage.lyjw.llc`，每个上报方一把 Cloudflare Access service token（同一上报方管多个来源时共用一把），上报入口按 `workers/ingress/wrangler.toml#ACCESS_CLIENTS` 限定可写来源 | 新上报方要新建 token、加进 Access 策略并登记 client id；改这张表必须同步 Access 策略；不再让一把凭据通吃所有来源 |
 | 状态查询 | `/api/status/X` 表示列表 / 历史，`/api/status/X/now` 表示此刻 | `listening` + `listening/now`，`watching` + `watching/now`；两者同时存在时成对命名 |
-| 推送事件 | 跟随状态 URL，`/` 替换为 `-` | 列表为 `X`，此刻为 `X-now`；事件和端点含义一致 |
-| 大小写 | URL 段全小写，JSON 字段 camelCase | `/api/status/vibecoding` 与模块 `vibeCoding` 各守其约定 |
-| 跨来源字段 | 同一概念必须同名、同单位 | Mac / HomePod 的 `LocalNowPlaying` 共用 `positionMs`、`durationMs`、`repeatOne`、`observedAt`；`observedAt` 为 epoch 毫秒，秒转毫秒在上报侧完成 |
-| 图片键 | R2 内容地址使用 `objectKey`，来源侧键用明确名称 | `imageKey`、`iconHash`，避免含义不明的 `key` |
+| 推送事件 | 跟随状态 URL，`/` 替换为 `-` | 列表为 `X`，此刻为 `X-now`；事件和端点含义一致；唯一例外登记在 `src/lib/status-views.ts` |
+| 大小写 | URL 段全小写，JSON 字段 camelCase | `/api/status/powerbank` 与视图键 `powerBank` 各守其约定 |
+| 跨来源字段 | 同一概念必须同名、同单位，单位写进字段名 | Mac / HomePod 的 `LocalNowPlaying` 共用 `positionMs`、`durationMs`、`repeatOne`、`observedAt`；`observedAt` 为 epoch 毫秒，秒转毫秒在上报侧完成 |
+| 图片键 | R2 内容地址使用 `objectKey`，来源侧键用明确名称 | `posterKey`、`backdropKey`、`iconHash`，避免含义不明的 `key` |
+
+设计契约：同一类数据可以有多个来源。来源只上报自己观测到的原始事实；合并、去重、排名等派生量在站点侧一处计算。消费者不关心数据来自哪个上报器，新增来源只加生产者和入口校验，不改消费者。例：coding agent 的 token 用量来自 Mac、Claude Code 云端和容器里的 Cursor；gaming 泳道将来会同时有 PlayStation 与 Quest。
 
 ## 变更完成条件
 
@@ -68,21 +75,30 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 # 图标与图片
 
-## 选型
-
 - 新增品牌 / 产品图标先查 [LobeHub 图标集](https://lobehub.com/icons)。项目已装 `@lobehub/icons`，按深路径导入 React 组件：单色 `@lobehub/icons/es/<名字>/components/Mono`（继承文字色）、彩色 `.../Color`、带字 `.../Text`；示例见 `src/components/live/vibecoding-card.tsx`。
 - LobeHub 没有的品牌再找官方 SVG：含 `fill="currentColor"` 的要内联为组件，通过 `<img>` 或 `next/image` 加载时无法继承页面文字色；示例见 `src/components/live/agent-status-card.tsx` 的 `TypesafeIcon`。只有位图时，先压到展示所需尺寸再入库。
-
-## 加载与缓存
-
-- 静态图标使用 `next/image` 时一律设 `unoptimized`，直接加载最终资源。
-- 图片优化器仅用于远端原图比展示尺寸大、且源站无法提供合适尺寸的情况；现有允许列表与原因见 `next.config.ts` 的 `images.remotePatterns`。
-- 不在每个请求中重复压图。允许按不可变内容地址压缩一次并缓存：`src/lib/desktop-icon-inline.ts` 按 `objectKey` 压缩 R2 原件、内联首屏，并用 `cacheLife("max")` 缓存。
-- R2 图片在页面、状态 API 和推送里一律是 `/img/<objectKey>` 同源路径（`src/lib/asset-url.ts`），不烧交付域；`lyjw.me` 由 `next.config.ts` 的边缘 rewrite 代理到 `R2_PUBLIC_BASE_URL`（只配在 Vercel），`lyjw131.com` 由 ESA 缓存并回源。图片字节不进 Next 函数；改前缀要同步改 rewrite 和 ESA 规则。
-- GitHub 头像由 `src/lib/github-avatar-icon.ts` 在构建期缩小并内联为 data URI；图片优化器中的 GitHub 域名仅供源图获取失败时回退。
+- 静态图标使用 `next/image` 时一律设 `unoptimized`，直接加载最终资源。图片优化器仅用于远端原图比展示尺寸大、且源站无法提供合适尺寸的情况，允许列表与原因见 `next.config.ts#remotePatterns`。
+- 不在每个请求中重复压图。允许按不可变内容地址压缩一次并缓存：`src/lib/desktop-icon-inline.ts` 按 `objectKey` 压缩 R2 原件、内联首屏，并用 `cacheLife("max")` 缓存；GitHub 头像同理，由 `src/lib/github-avatar-icon.ts` 在构建期缩小并内联为 data URI（图片优化器里的 GitHub 域名仅供源图获取失败时回退）。
+- R2 图片在页面、状态 API 和推送里一律是 `/img/<objectKey>` 同源路径（`src/lib/asset-url.ts`），不烧交付域，图片字节不进 Next 函数：`lyjw.me` 由 `next.config.ts` 的边缘 rewrite 代理到 `R2_PUBLIC_BASE_URL`（生产只配在 Vercel），`lyjw131.com` 由 ESA 缓存并回源（规则见 `docs/ops-facts.md`）。改前缀要同步改 rewrite 和 ESA 规则。
 
 # 界面与交互
 
 - 站内滚动条默认隐藏：可滚动区域一律加 `scrollbar-none [&::-webkit-scrollbar]:hidden`（前者管 Firefox 的 `scrollbar-width`，后者管 Chromium 系，两句缺一不可）。现有示例：播放器队列。
 - 界面文案一律英文：标注、正文、状态、按钮、提示、无障碍文案、错误页和元数据都用英文，`<html lang>` 为 `en`；日期用 en-US（`Jun 22`、`Mon 11:00 AM`），数字用 en-US 分组。来自数据源的内容（歌名、游戏名、剧名、歌词、提交信息）照原样，不翻译。仅开发环境可见的调试开关提示可以用中文。
 - 条目式滚动要吸附：容器加 `snap-y snap-mandatory`（横向用 `snap-x`，见奖杯组、在看瓷砖），子项加 `snap-start`，滚动停稳后永远是整行对齐；多栏并排时各行等高（如 44px），吸住后两边才对得齐。
+
+# 文档与注释
+
+面向 agent 的写法：文档和注释会整段进上下文，错的比缺的更糟。每条陈述要么由代码保证，要么一眼能核实。
+
+- 注释默认不写；只在「删了会让人改坏」时写：为什么、约束、不变量、坑、取舍、单位。不复述代码在做什么，不写调用方清单。
+- 不写历史与时间线（「之前」「已改为」「MM-DD 起」「本次」）；历史在 `git log`，旧做法不留注释。文档只写现状。
+- 不抄易变的值：写常量或符号名（如 `AGENT_LIMITS_STALE_MS`），不抄「185 分钟」；数量、版本、日期同理。引用写路径加符号，不写行号。
+- 一个事实一个出处，其他地方放指针；非抄不可时标 `源：path#symbol`（`pnpm docs:check` 会核对符号还在）。
+- 导出类型与契约字段的语义和单位可以写，那是契约，不是复述代码。
+- 「须与 X 同步」优先改成测试或共享常量；做不到才写，并在两侧都写。
+- 仓库外的事实（控制台配置、Access 策略、机器路径）只写在 `docs/ops-facts.md`，逐条带「核对于 <日期>，方式：…」；正文里远端路径写成 `主机:/绝对路径`。
+- `docs/` 每篇文首一行标类型：`reference`（现状事实）、`runbook`（操作步骤）、`decision`（已定取舍，写完不改）、`record`（某时点的审计、核验、基准，另写「按 <sha> <日期> 核对，快照不维护，不当现状引用」）。新增文档在 `docs/README.md` 登记。
+- 根 `AGENTS.md` ≤ 150 行（不计 next 自动块），只写硬规则与禁区、完成条件、权威事实源的指针，不写目录或文件清单、来源枚举、数量版本日期、部署拓扑、迁移步骤。子目录 `AGENTS.md` ≤ 60 行，同目录放一行 `@AGENTS.md` 的 `CLAUDE.md`，只写不变量、坑、本地验证命令、须成对修改的文件；人读的说明留在 `README.md`。
+- 改代码的同一提交里更新受影响的文档与注释。发现文档与代码冲突，以代码为准，当轮改掉，或在汇报里点名。
+- 确需保留时间线写法（如核对戳）时，在同一行末尾加 `<!-- allow: 理由 -->`。
