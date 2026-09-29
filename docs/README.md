@@ -14,8 +14,8 @@
 | [仓库外事实](./ops-facts.md) | reference | 控制台、Access、ESA、机器路径等不在仓库里的配置，逐条带核对时间与方式 |
 | [页面效果图、GIF 与架构图产物](./screenshots.md) | runbook | 根 README 效果图与 GIF 的录制流程，架构图重生成 |
 | [讲解动画](./explainer/README.md) | runbook | `/explainer` 页面源、预览、渲染配乐与发布 |
-| [讲解动画 · 事实基线](./explainer/FACTS.md) | record | 动画里每个端点、数字的出处，按 eb429ed 核对 |
-| [讲解动画 · 画面升级本子](./explainer/TREATMENT.md) | decision | 下一版讲解动画的概念、风格、分镜结构与技术路线 |
+| [讲解动画 · 事实基线](./explainer/FACTS.md) | reference | 动画里每个端点、数字的出处；架构变了先改这份 |
+| [讲解动画 · 画面升级本子](./explainer/TREATMENT.md) | reference | 下一版讲解动画的概念、风格、分镜结构与技术路线 |
 | [讲解动画 · 分镜与旁白](./explainer/SCRIPT.md) | record | 上一版的分镜与旁白，按 bf6c14b 核对 |
 | [生产上报端点核验记录](./reporter-endpoints.md) | record | 各上报实例的端点核验与迁移记录 |
 | [DO 执行边界审计](./do-execution-audit.md) | record | 哪些工作进 Durable Object、哪些留在普通 Worker 的审计 |
