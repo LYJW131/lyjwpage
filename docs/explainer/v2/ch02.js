@@ -6,6 +6,46 @@
 (() => {
   const { css, Pass, Layer } = G;
   const { E, prog, keys, clamp, lerp, text, FONT, line, polyline, rect, fillRect, dashed, envelope, stamp, clawd, bubble, spark, hash, roundRect, glyph } = K;
+  // ---------- 这一章的文字：[中文, English]，场景代码里只写键 ----------
+  I18N.add({
+    "ch02.title": ["门禁与分拣", "The gate and the sorting desk"],
+    "ch02.host": ["ingest.homepage.lyjw.llc · workers/ingress", "ingest.homepage.lyjw.llc · workers/ingress"],
+    "ch02.clawd": ["上报都从这面墙进来。", "Every report comes in\nthrough this wall."],
+    "ch02.n1a": ["每个来源一把钥匙，", "Each source gets one key;"],
+    "ch02.n1b": ["只开权限表上写着的门。", "it opens only its own doors."],
+    "ch02.ha": ["Home Assistant 的钥匙开两扇门", "The Home Assistant key opens two doors"],
+    "ch02.key.mac": ["mac 的钥匙", "mac key"],
+    "ch02.key.emby": ["emby 的钥匙", "emby key"],
+    "ch02.key.ha": ["Home Assistant 的钥匙", "Home Assistant key"],
+    "ch02.form": ["入口检查单", "Ingress checklist"],
+    "ch02.reject": ["拒收", "Reject"],
+    "ch02.r1": ["方法是 POST", "Method is POST"],
+    "ch02.r2": ["认识这个来源", "Known source"],
+    "ch02.r3": ["Access 凭证", "Access credential"],
+    "ch02.r4": ["不超过 4 MiB", "At most 4 MiB"],
+    "ch02.r4s": ["按实际读到的字节", "bytes actually read"],
+    "ch02.r5": ["是 JSON", "Is JSON"],
+    "ch02.r6": ["prepare：整理成命令", "prepare: turn it into commands"],
+    "ch02.n2a": ["进了门，", "Once through the door,"],
+    "ch02.n2b": ["按这张单子逐项检查。", "checked item by item."],
+    "ch02.notJson": ["不是 JSON", "not JSON"],
+    "ch02.n3a": ["查完拆开，", "Then it is opened"],
+    "ch02.n3b": ["按数据层分进四根管子。", "and sorted into four tubes."],
+    "ch02.tube.rt": ["实时", "Realtime"],
+    "ch02.tube.lag": ["可滞后", "Lag-tolerant"],
+    "ch02.tube.d1": ["归档", "Archive"],
+    "ch02.tube.cred": ["凭据", "Credentials"],
+    "ch02.server": ["服务器那封整封不进状态核心：只进可滞后和归档。", "The server envelope skips the state core: lag layer and archive only."],
+    "ch02.fork": ["训练：可滞后、归档各一份", "workouts: one copy each to lag and archive"],
+    "ch02.lamp.do": ["状态核心已提交", "State core committed"],
+    "ch02.lamp.lag": ["LAG 已写", "LAG written"],
+    "ch02.lamp.cred": ["凭据已写", "Credentials written"],
+    "ch02.lamp.d1": ["D1 归档", "D1 archive"],
+    "ch02.lamp.d1s": ["后台 · 不等", "background · not awaited"],
+    "ch02.n4a": ["三盏灯都亮了，", "Only when three lamps are lit"],
+    "ch02.n4b": ["才盖 202。", "does it stamp 202."],
+    "ch02.foot": ["改这张单子只需重新发布入口：状态核心不重启，连接不断。", "Changing this checklist redeploys only the ingress: the state core keeps running and no connection drops."],
+  });
   const tr = (k) => I18N.tr(k);
   let paper, ink, stampL, emit, top;
   // 图版底用共用的纸面着色器（kit.js 的 K.PLATE.paper）：纸纹、纤维、图纸网格只铺在这张 3840×2160 的图纸上
@@ -82,11 +122,11 @@
     const [lx, ly] = inset(0.8, 0.6);
     x.lineWidth = 2; x.beginPath(); x.arc(lx, ly, 9 * (1 - o * 0.5), 0, Math.PI * 2); x.stroke();
     x.restore();
-    text(x, "/" + DOORS[i], dx, top - 20, { font: FONT.mono(24, 500), color: css("pink"), alpha: clamp(drawK * 2 - 1) });
+    text(x, "/" + DOORS[i], dx + w / 2, top - 20, { font: FONT.mono(28, 500), color: css("pink"), align: "center", alpha: clamp(drawK * 2 - 1) });
   }
   function keycard(x, label, cx, cy, rot = 0, alpha = 1, hot = false) {
     if (alpha <= 0) return;
-    const tw = K.measure(x, label, FONT.cjk(26, 600));
+    const tw = K.measure(x, label, FONT.cjk(28, 600));
     x.save(); x.translate(cx, cy); x.rotate(rot); x.globalAlpha = alpha;
     const w = Math.max(210, tw + 110), h = 86;
     x.fillStyle = css("paper"); x.strokeStyle = hot ? css("signal") : css("pink"); x.lineWidth = 3;
@@ -95,24 +135,24 @@
     x.lineWidth = 1.5; x.strokeRect(-w / 2 + 16, -14, 30, 24);
     line(x, -w / 2 + 16, -2, -w / 2 + 46, -2, 1, x.strokeStyle);
     x.restore();
-    text(x, label, cx - Math.max(210, tw + 110) / 2 + 64, cy + 10, { font: FONT.cjk(26, 600), color: hot ? css("signal") : css("pink"), alpha });
+    text(x, label, cx - Math.max(210, tw + 110) / 2 + 64, cy + 10, { font: FONT.cjk(28, 600), color: hot ? css("signal") : css("pink"), alpha });
   }
 
   // 权限表：每把钥匙能开哪几扇门（workers/ingress/wrangler.toml 的 ACCESS_CLIENTS，只写来源名）
   const AC = [["mac", "/mac"], ["iphone", "/iphone"], ["home-assistant", "/homepod · /playstation"], ["emby", "/emby"], ["server", "/server"], ["agents", "/agents"], ["claude-cloud", "/agents/otlp"], ["github-actions", "/api/internal/site-deployed"]];
-  const AC_X = 150, AC_Y = 800, AC_LH = 31;
+  const AC_X = 150, AC_Y = 770, AC_LH = 34;
   const acRow = (i) => [AC_X + 90, AC_Y + 36 + i * AC_LH];
   function accessTable(x, b) {
     const k = prog(b, 0.9, 1.5, E.out);
     if (k <= 0) return;
-    text(x, "ACCESS_CLIENTS", AC_X, AC_Y, { font: FONT.mono(20, 600), color: css("graphite"), alpha: k });
+    text(x, "ACCESS_CLIENTS", AC_X, AC_Y, { font: FONT.mono(28, 600), color: css("graphite"), alpha: k });
     line(x, AC_X, AC_Y + 12, AC_X + 700 * k, AC_Y + 12, 1.2, css("pink"), 0.6);
     const hot = b > 1.3 && b < 2.6 ? 0 : b > 2.8 && b < 4.1 ? 3 : b >= 4.1 && b < 4.9 ? 2 : -1;
     AC.forEach(([who, doors], i) => {
       const y = AC_Y + 42 + i * AC_LH, a = prog(b, 1.0 + i * 0.05, 1.3 + i * 0.05);
       const c = i === hot ? css("signal") : css("pink");
-      text(x, who, AC_X, y, { font: FONT.mono(23, 500), color: c, alpha: a });
-      text(x, "→ " + doors, AC_X + 260, y, { font: FONT.mono(23), color: i === hot ? c : css("graphite"), alpha: a });
+      text(x, who, AC_X, y, { font: FONT.mono(28, 500), color: c, alpha: a });
+      text(x, "→ " + doors, AC_X + 260, y, { font: FONT.mono(28), color: i === hot ? c : css("graphite"), alpha: a });
     });
   }
 
@@ -120,9 +160,9 @@
     const k0 = prog(b, 0.15, 1.0, E.out);
     text(x, "02", 120, 196, { font: FONT.pixel(112), color: css("signal"), alpha: k0 });
     text(x, tr("ch02.title"), 300, 176, { font: FONT.cjk(58, 600), reveal: prog(b, 0.3, 1.0), fadeIn: true });
-    text(x, tr("ch02.host"), 302, 222, { font: FONT.mono(22), color: css("graphite"), reveal: prog(b, 0.5, 1.3) });
+    text(x, tr("ch02.host"), 302, 224, { font: FONT.mono(28), color: css("graphite"), reveal: prog(b, 0.5, 1.3) });
     line(x, 120, 262, 120 + 1680 * prog(b, 0.2, 1.3, E.outExpo), 262, 1.4, css("pink"));
-    text(x, "POST /api/ingest/…", 1800, 300, { font: FONT.mono(20), color: css("graphite"), align: "right", alpha: prog(b, 0.7, 1.2) });
+    text(x, "POST /api/ingest/…", 1800, 300, { font: FONT.mono(28), color: css("graphite"), align: "right", alpha: prog(b, 0.7, 1.2) });
     line(x, 150, DTOP + DH, 150 + 1620 * prog(b, 0.3, 1.2, E.outExpo), DTOP + DH, 2, css("pink"));
 
     // 门的开合：mac 2:0 开、2:3 关；homepod / playstation 4:0 同时开
@@ -149,14 +189,14 @@
       line(x, DX(2) + DW / 2, DTOP + DH + 14, DX(2) + DW / 2, hy - 22, 1.2, css("signal"), prog(b, 4.0, 4.2));
       line(x, DX(3) + DW / 2, DTOP + DH + 14, DX(3) + DW / 2, hy - 22, 1.2, css("signal"), prog(b, 4.0, 4.2));
       line(x, DX(2) + DW / 2, hy - 22, DX(3) + DW / 2, hy - 22, 1.2, css("signal"), prog(b, 4.05, 4.25));
-      text(x, tr("ch02.ha"), DX(3) + DW / 2 + 24, hy - 12, { maxW: 700, font: FONT.cjk(26, 600), color: css("signal"), reveal: prog(b, 4.1, 4.6) });
+      text(x, tr("ch02.ha"), DX(3) + DW / 2 + 24, hy - 12, { maxW: 700, font: FONT.cjk(28, 600), color: css("signal"), reveal: prog(b, 4.1, 4.6) });
     }
     // 403：盖在 mac 那扇门上
     stamp(s, "403", DX(0) + DW / 2 + 6, DTOP + DH * 0.24, { k: prog(b, 3.5, 3.62), px: 64, rot: -0.2, alpha: 1 - prog(b, 4.6, 4.9) });
 
     // 旁白
-    text(x, tr("ch02.n1a"), 1000, 900, { maxW: 800, font: FONT.cjk(64, 600), reveal: prog(b, 1.4, 2.2), dim: 0.12, perChar: true });
-    text(x, tr("ch02.n1b"), 1000, 985, { maxW: 800, font: FONT.cjk(64, 600), reveal: prog(b, 2.2, 3.2), dim: 0.12, perChar: true });
+    K.narration(x, tr("ch02.n1a"), 1000, 900, { px: 64, maxW: 800, reveal: prog(b, 1.4, 2.2), dim: 0.12 });
+    K.narration(x, tr("ch02.n1b"), 1000, 985, { px: 64, maxW: 800, reveal: prog(b, 2.2, 3.2), dim: 0.12 });
   }
 
   // ---------- B 检查单 ----------
@@ -175,18 +215,18 @@
     polyline(x, [[X, Y], [X + FW, Y], [X + FW, Y + FH], [X, Y + FH], [X, Y]], fk, 2.4, css("pink"));
     if (fk <= 0) return;
     text(x, tr("ch02.form"), X + 48, Y + 84, { font: FONT.cjk(46, 600), alpha: fk });
-    text(x, "workers/ingress · worker.ts", X + FW - 40, Y + 80, { font: FONT.mono(20), color: css("graphite"), align: "right", alpha: fk });
+    text(x, "workers/ingress · worker.ts", X + FW - 40, Y + 80, { font: FONT.mono(28), color: css("graphite"), align: "right", alpha: fk });
     line(x, X + 40, Y + 116, X + FW - 40, Y + 116, 1.4, css("pink"), fk);
-    text(x, tr("ch02.reject"), X + FW - 40, Y + 166, { font: FONT.cjk(22, 600), color: css("graphite"), align: "right", alpha: fk });
+    text(x, tr("ch02.reject"), X + FW - 40, Y + 166, { font: FONT.cjk(28, 600), color: css("graphite"), align: "right", alpha: fk });
     ROWS.forEach(([lab, sub, code], i) => {
       const y = Y + 232 + i * 108;
       const tk = TICKS[i];
       const done = prog(b, tk, tk + 0.1);
       const a = fk * lerp(0.42, 1, done);
-      text(x, String(i + 1).padStart(2, "0"), X + 44, y, { font: FONT.mono(26, 500), color: css("graphite"), alpha: fk });
+      text(x, String(i + 1).padStart(2, "0"), X + 44, y, { font: FONT.mono(28, 500), color: css("graphite"), alpha: fk });
       text(x, tr(lab), X + 110, y, { font: FONT.cjk(38, 600), alpha: a });
-      text(x, sub.startsWith("ch02.") ? tr(sub) : sub, X + 112, y + 36, { font: FONT.mono(20), color: css("graphite"), alpha: a });
-      text(x, code, X + FW - 40, y, { font: FONT.mono(26, 500), color: css("graphite"), align: "right", alpha: fk });
+      text(x, sub.startsWith("ch02.") ? tr(sub) : sub, X + 112, y + 40, { font: sub.startsWith("ch02.") ? FONT.cjk(28, 600) : FONT.mono(28), color: css("graphite"), alpha: a });
+      text(x, code, X + FW - 40, y, { font: FONT.mono(28, 500), color: css("graphite"), align: "right", alpha: fk });
       const bx = X + FW - 370, by = y - 34;
       rect(x, bx, by, 40, 40, 2, css("pink"), fk);
       polyline(x, [[bx + 7, by + 20], [bx + 17, by + 31], [bx + 36, by + 5]], done, 5, css("signal"));
@@ -197,21 +237,21 @@
     });
 
     // 右侧：这一封上报本身
-    text(x, tr("ch02.n2a"), 3150, 200, { maxW: 650, font: FONT.cjk(60, 600), reveal: prog(b, 4.9, 5.4), dim: 0.12, perChar: true });
-    text(x, tr("ch02.n2b"), 3150, 282, { maxW: 650, font: FONT.cjk(60, 600), reveal: prog(b, 5.4, 6.4), dim: 0.12, perChar: true });
+    K.narration(x, tr("ch02.n2a"), 3150, 200, { px: 60, maxW: 650, reveal: prog(b, 4.9, 5.4), dim: 0.12 });
+    K.narration(x, tr("ch02.n2b"), 3150, 282, { px: 60, maxW: 650, reveal: prog(b, 5.4, 6.4), dim: 0.12 });
     const ex = 3440;
     const ey = keys(b, [[4.7, 470], [6.5, 470], [6.72, 742, E.spring]]);
     const eIn = prog(b, 4.6, 4.95, E.outExpo);
     const envX = lerp(3180, ex, eIn);
     // 1 POST · 2 路径
     text(x, "POST", ex, 356, { font: FONT.mono(34, 600), color: b < 5.25 ? css("signal") : css("pink"), align: "center", alpha: prog(b, 5.0, 5.08) * (1 - prog(b, 6.35, 6.5)) });
-    text(x, "/api/ingest/mac", ex, 396, { font: FONT.mono(24), color: css("graphite"), align: "center", alpha: prog(b, 5.5, 5.58) * (1 - prog(b, 6.35, 6.5)) });
+    text(x, "/api/ingest/mac", ex, 398, { font: FONT.mono(28), color: css("graphite"), align: "center", alpha: prog(b, 5.5, 5.58) * (1 - prog(b, 6.35, 6.5)) });
     // 3 Access 凭证：三段式 JWT
     const jk = prog(b, 6.0, 6.2, E.out);
     if (jk > 0 && b < 6.55) {
       const segs = [[3290, 70], [3366, 150], [3522, 70]];
       segs.forEach(([sx, sw], j) => fillRect(x, sx, 600, sw * clamp(jk * 3 - j), 12, j === 2 ? css("signal") : css("pink"), 0.85 * (1 - prog(b, 6.35, 6.5))));
-      text(x, "Cf-Access-Jwt-Assertion", ex, 650, { font: FONT.mono(22), color: css("graphite"), align: "center", alpha: jk * (1 - prog(b, 6.35, 6.5)) });
+      text(x, "Cf-Access-Jwt-Assertion", ex, 652, { font: FONT.mono(28), color: css("graphite"), align: "center", alpha: jk * (1 - prog(b, 6.35, 6.5)) });
     }
     // 4 秤：信封落到秤盘上，指针晃一晃停在很靠左的地方；右端红线是 4 MiB
     const sk = prog(b, 6.2, 6.5, E.out);
@@ -222,7 +262,7 @@
       x.save(); x.globalAlpha = sk; x.strokeStyle = css("pink"); x.lineWidth = 2.5; x.beginPath(); x.arc(cx, cy, R, Math.PI * 0.85, Math.PI * 2.15); x.stroke();
       for (let j = 0; j <= 10; j++) { const a = Math.PI * (0.85 + 1.3 * j / 10); line(x, cx + Math.cos(a) * (R - 12), cy + Math.sin(a) * (R - 12), cx + Math.cos(a) * R, cy + Math.sin(a) * R, j === 10 ? 4 : 1.5, j === 10 ? css("signal") : css("pink")); }
       x.restore();
-      text(x, "4 MiB", cx + R + 16, cy - 30, { font: FONT.mono(20, 600), color: css("signal"), alpha: sk });
+      text(x, "4 MiB", cx + R + 16, cy - 30, { font: FONT.mono(28, 600), color: css("signal"), alpha: sk });
       const wob = b < 6.5 ? 0 : Math.exp(-(b - 6.5) * 9) * Math.sin((b - 6.5) * 60) * 0.5;
       const na = Math.PI * 0.85 + (b < 6.5 ? 0 : 0.1 + wob);
       line(x, cx, cy, cx + Math.cos(na) * (R - 16), cy + Math.sin(na) * (R - 16), 3, css("signal"), sk);
@@ -241,8 +281,8 @@
     if (rk > 0) {
       const rx = lerp(3960, 3640, rk), ry = 440;
       envelope(x, rx, ry, 150, css("graphite"), { lw: 2.5, fill: css("paper"), rot: 0.08 });
-      text(x, "<html>", rx, ry + 80, { font: FONT.mono(22), color: css("graphite"), align: "center" });
-      stamp(s, "400", rx + 60, ry + 200, { k: prog(b, 8.0, 8.12), px: 56, rot: -0.14, sub: tr("ch02.notJson") });
+      text(x, "<html>", rx, ry + 82, { font: FONT.mono(28), color: css("graphite"), align: "center" });
+      stamp(s, "400", rx + 60, ry + 206, { k: prog(b, 8.0, 8.12), px: 56, rot: -0.14, sub: tr("ch02.notJson"), subPx: 28 });
     }
   }
 
@@ -267,23 +307,23 @@
   function chip(x, label, cx, cy, hot, alpha, scale = 1) {
     if (alpha <= 0) return;
     x.save(); x.translate(cx, cy); x.scale(scale, scale); x.globalAlpha = alpha;
-    x.font = FONT.mono(24, 500);
-    const w = x.measureText(label).width + 36, h = 46;
+    x.font = FONT.mono(28, 500);
+    const w = x.measureText(label).width + 40, h = 52;
     x.fillStyle = css("paper"); x.strokeStyle = hot ? css("signal") : css("pink"); x.lineWidth = 2;
-    roundRect(x, -w / 2, -h / 2, w, h, 23); x.fill(); x.stroke();
+    roundRect(x, -w / 2, -h / 2, w, h, 26); x.fill(); x.stroke();
     x.fillStyle = hot ? css("signal") : css("pink"); x.textAlign = "center"; x.textBaseline = "middle"; x.fillText(label, 0, 1);
     x.restore();
   }
   function panelC(x, s, b) {
-    text(x, tr("ch02.n3a"), 120, 1235, { maxW: 820, font: FONT.cjk(62, 600), reveal: prog(b, 8.95, 9.4), dim: 0.12, perChar: true });
-    text(x, tr("ch02.n3b"), 120, 1318, { maxW: 820, font: FONT.cjk(62, 600), reveal: prog(b, 9.4, 10.4), dim: 0.12, perChar: true });
+    K.narration(x, tr("ch02.n3a"), 120, 1235, { px: 62, maxW: 820, reveal: prog(b, 8.95, 9.4), dim: 0.12 });
+    K.narration(x, tr("ch02.n3b"), 120, 1318, { px: 62, maxW: 820, reveal: prog(b, 9.4, 10.4), dim: 0.12 });
     const tk = prog(b, 8.85, 9.35, E.io);
     const names = { rt: "ch02.tube.rt", lag: "ch02.tube.lag", d1: "ch02.tube.d1", cred: "ch02.tube.cred" };
     const subs = { rt: "CORE.commitIngest", lag: "KV LAG", d1: "D1 HISTORY", cred: "KV CREDENTIALS" };
     for (const key of ["cred", "d1", "lag", "rt"]) {
       const tx = TUBE_X[key], hot = key === "rt", col = hot ? css("signal") : css("pink");
       text(x, tr(names[key]), tx, 1612, { font: FONT.cjk(38, 600), color: col, align: "center", alpha: tk });
-      text(x, subs[key], tx, 1650, { font: FONT.mono(22), color: css("graphite"), align: "center", alpha: tk });
+      text(x, subs[key], tx, 1654, { font: FONT.mono(28), color: css("graphite"), align: "center", alpha: tk });
       // 管口：漏斗
       polyline(x, [[tx - 84, 1690], [tx - 26, 1750]], tk, 2.4, col);
       polyline(x, [[tx + 84, 1690], [tx + 26, 1750]], tk, 2.4, col);
@@ -300,8 +340,8 @@
     const ek = prog(b, 8.7, 9.0, E.outExpo);
     envelope(x, ENV_C[1][0], ENV_C[1][1], 170, css("pink"), { lw: 2.5, open: 1, fill: css("paper"), alpha: ek, rot: 0.06 });
     envelope(x, ENV_C[0][0], ENV_C[0][1], 220, css("pink"), { lw: 3, open: 1, fill: css("paper"), alpha: ek, rot: -0.03 });
-    text(x, "mac", ENV_C[0][0], ENV_C[0][1] + 108, { font: FONT.mono(20), color: css("graphite"), align: "center", alpha: ek });
-    text(x, "iphone", ENV_C[1][0], ENV_C[1][1] + 88, { font: FONT.mono(20), color: css("graphite"), align: "center", alpha: ek });
+    text(x, "mac", ENV_C[0][0], ENV_C[0][1] + 112, { font: FONT.mono(28), color: css("graphite"), align: "center", alpha: ek });
+    text(x, "iphone", ENV_C[1][0], ENV_C[1][1] + 92, { font: FONT.mono(28), color: css("graphite"), align: "center", alpha: ek });
     // 模块逐个飞进各自的管子
     CHIPS.forEach(([label, key, at, from], j) => {
       const k = prog(b, at - 0.42, at, E.io);
@@ -312,10 +352,10 @@
       chip(x, label, cx, cy, key === "rt", 1 - prog(k, 0.85, 1), lerp(1, 0.6, prog(k, 0.7, 1)));
     });
     text(x, tr("ch02.fork"), 120, 1440, { maxW: 1700, font: FONT.cjk(28, 600), color: css("graphite"), reveal: prog(b, 10.0, 10.5) });
-    // 服务器那封：整封一分为二，进可滞后和归档
+    // 服务器那封：整封一分为二，进可滞后和归档（停在 mac 那封的标注左边，别压住它）
     const sIn = prog(b, 10.35, 10.72, E.outExpo);
     if (sIn > 0) {
-      const sx = lerp(-160, 1000, sIn), sy = 1440;
+      const sx = lerp(-160, 870, sIn), sy = 1440;
       const split = prog(b, 10.75, 11.0, E.io);
       if (split <= 0) envelope(x, sx, sy, 180, css("pink"), { lw: 2.6, fill: css("paper") });
       else if (split < 1) {
@@ -324,15 +364,15 @@
           envelope(x, cx, cy, lerp(180, 90, split), css("pink"), { lw: 2.4, fill: css("paper"), alpha: 1 - prog(split, 0.85, 1) });
         }
       }
-      text(x, "server", sx, sy + 92, { font: FONT.mono(20), color: css("graphite"), align: "center", alpha: 1 - split });
+      text(x, "server", sx, sy + 96, { font: FONT.mono(28), color: css("graphite"), align: "center", alpha: 1 - split });
       text(x, tr("ch02.server"), 120, 1490, { maxW: 1700, font: FONT.cjk(28, 600), color: css("graphite"), reveal: prog(b, 11.0, 11.6) });
     }
   }
 
   // ---------- D 三盏灯与 202 ----------
   function panelD(x, s, e, b) {
-    text(x, tr("ch02.n4a"), 2040, 1235, { maxW: 1100, font: FONT.cjk(62, 600), reveal: prog(b, 12.95, 13.45), dim: 0.12, perChar: true });
-    text(x, tr("ch02.n4b"), 2040, 1318, { maxW: 1100, font: FONT.cjk(62, 600), reveal: prog(b, 14.3, 15.0), dim: 0.12, perChar: true });
+    K.narration(x, tr("ch02.n4a"), 2040, 1235, { px: 62, maxW: 1100, reveal: prog(b, 12.95, 13.45), dim: 0.12 });
+    K.narration(x, tr("ch02.n4b"), 2040, 1318, { px: 62, maxW: 1100, reveal: prog(b, 14.3, 15.0), dim: 0.12 });
     const bus = 1430;
     const lit = (L) => prog(b, L.t, L.t + 0.08);
     // 汇流线：前三盏接到 202，D1 那根线故意不接上
@@ -341,7 +381,7 @@
       const on = lit(L), lx = L.x, ly = LAMP_Y;
       if (L.soft) {
         dashed(x, lx, ly - 46, lx, bus + 40, 2, css("pink"), [7, 7]);
-        text(x, "×", lx, bus + 22, { font: FONT.mono(26, 600), color: css("graphite"), align: "center" });
+        text(x, "×", lx, bus + 22, { font: FONT.mono(28, 600), color: css("graphite"), align: "center" });
       } else {
         line(x, lx, ly - 46, lx, bus, 2.2, css("pink"));
         if (on > 0) line(x, lx, ly - 46, lx, lerp(ly - 46, bus, on), 3.4, css("signal"));
@@ -354,7 +394,7 @@
         glow(e, lx, ly, 95, on * (L.soft ? 0.25 : 0.55));
       }
       text(x, tr(`ch02.lamp.${L.key}`), lx, ly + 90, { font: FONT.cjk(28, 600), align: "center", alpha: L.soft ? 0.6 : 1 });
-      if (L.soft) text(x, tr("ch02.lamp.d1s"), lx, ly + 130, { font: FONT.cjk(26, 600), color: css("graphite"), align: "center" });
+      if (L.soft) text(x, tr("ch02.lamp.d1s"), lx, ly + 132, { font: FONT.cjk(28, 600), color: css("graphite"), align: "center" });
     });
     // 汇流线上的橙色：亮一盏走一段
     const fill = keys(b, [[13.0, 2300], [13.5, 2560, E.out], [14.0, 2820, E.out], [14.9, 3300, E.io]]);
@@ -376,7 +416,8 @@
     rect(x, 40, 40, 3760, 2080, 3, css("pink"), k);
     line(x, 1920, 60, 1920, 2100, 1, css("pink"), 0.25 * k);
     line(x, 60, 1080, 3780, 1080, 1, css("pink"), 0.25 * k);
-    text(x, "PLATE 02 · INGRESS", 70, 2100, { font: FONT.mono(34, 600), alpha: k });
+    // 拉远时缩放 0.5：56 px 才折成屏幕上的 28；放右下角，左下角是凭据管子的符号
+    text(x, "PLATE 02 · INGRESS", 3770, 2096, { font: FONT.mono(56, 600), align: "right", alpha: k });
   }
 
   // ---------- 信封火花：A 格走进 mac 那扇门；C 格起沿着「实时」管一路走到状态核心那盏灯 ----------

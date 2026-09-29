@@ -1,4 +1,6 @@
-// 把 score.js 渲成 score.mp3（播放器优先读它，省掉浏览器里十几秒的现合成）：node score-mp3.mjs
+// 把整片配乐（plan.js 的章节表 + music/chNN.js）渲成 score.mp3：node score-mp3.mjs
+// 播放器优先读它，省掉浏览器里十几秒的现合成；长度和章节表对不上时播放器会忽略它、改成现合成。
+// 开发期不进仓库（.gitignore），发布前再生成。
 import { chromium } from "../../render/node_modules/playwright-core/index.mjs";
 import fs from "node:fs";
 import path from "node:path";

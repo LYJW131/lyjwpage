@@ -1,0 +1,3 @@
+# 预渲的配乐：发布前用 tools/score-mp3.mjs 生成，开发期不进仓库（章节表一改就和时间轴对不上）
+score.mp3
+.score.wav

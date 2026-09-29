@@ -50,6 +50,22 @@
     pixel: (px) => `${px}px "Geist Pixel", "Geist Mono", monospace`,
   };
 
+  // 自检（?check）：记下每一处字在屏幕上的实际字号（字号 × 镜头缩放），tools/check.mjs 据此报「最大都不够大的字」。
+  // 只记落在画面里的字：拉远、冲进去时画在画面外的字再大也不算数。
+  // o.texture = true 的字只当纹理（章节号背景、时间签之类），不查；旁白用 K.narration 画，按 ≥ 56 查
+  function checkSize(x, str, px, py, o) {
+    const C = window.__CHECK;
+    if (!C || o.texture || !str.trim() || (o.alpha ?? 1) < 0.2 || ((o.reveal ?? 1) <= 0 && !o.dim)) return;
+    const m = x.getTransform(), cw = x.canvas.width, chh = x.canvas.height;
+    const f = parseFloat(/([\d.]+)px/.exec(x.font)[1]), w = x.measureText(str).width;
+    const x0 = o.align === "center" ? px - w / 2 : o.align === "right" ? px - w : px;
+    const xs = [], ys = [];
+    for (const [u, v] of [[x0, py - f], [x0 + w, py - f], [x0, py + f * 0.3], [x0 + w, py + f * 0.3]]) { xs.push(m.a * u + m.c * v + m.e); ys.push(m.b * u + m.d * v + m.f); }
+    if (Math.max(...xs) < 0 || Math.min(...xs) > cw || Math.max(...ys) < 0 || Math.min(...ys) > chh) return;
+    const s = Math.hypot(m.a, m.b) / (cw / G.W); // 图层画布可能是半分辨率，按画布宽折回逻辑像素
+    C.all.push({ ch: C.ch, t: +G.t.toFixed(3), str: str.slice(0, 48), px: +(f * s).toFixed(1), narr: !!o.narration });
+  }
+
   // 文字。reveal 为 0..1 时逐字显现：已出现的字用 color，还没到的用 dim（默认不画）
   function text(x, str, px, py, o = {}) {
     const { font = FONT.sans(40), color = css("pink"), align = "left", base = "alphabetic", tracking = 0, reveal = 1, dim = 0, alpha = 1 } = o;
@@ -57,6 +73,7 @@
     x.font = font;
     // maxW：超宽时按比例缩小字号（英文往往比中文长）
     if (o.maxW) { const w0 = x.measureText(str).width; if (w0 > o.maxW) x.font = font.replace(/([\d.]+)px/, (_, n) => `${(+n * o.maxW / w0).toFixed(1)}px`); }
+    checkSize(x, str, px, py, o);
     x.textAlign = "left";
     x.textBaseline = base;
     if ("letterSpacing" in x) x.letterSpacing = `${tracking}px`;
@@ -90,6 +107,12 @@
     return wAll;
   }
   function measure(x, str, font) { x.save(); x.font = font; const w = x.measureText(str).width; x.restore(); return w; }
+
+  // 旁白：大字（默认 60 px，屏幕上不小于 56），逐字亮起，还没亮的字留一层很淡的底。排在图版里，不是字幕
+  function narration(x, str, px, py, o = {}) {
+    const size = o.px ?? 60;
+    return text(x, str, px, py, { font: FONT.cjk(size, 600), color: o.color || css("pink"), reveal: o.reveal ?? 1, dim: o.dim ?? 0.14, perChar: true, alpha: o.alpha ?? 1, maxW: o.maxW, align: o.align, narration: true });
+  }
 
   function line(x, x1, y1, x2, y2, w = 1, color = css("pink"), alpha = 1) {
     x.save(); x.globalAlpha = alpha; x.strokeStyle = color; x.lineWidth = w; x.lineCap = "round";
@@ -150,10 +173,12 @@
     x.restore();
   }
 
-  // 橡皮章：双线框 + 字。k 为落章进度（0 未落，1 已落定）；落下时从大缩到 1
+  // 橡皮章：双线框 + 字。k 为落章进度（0 未落，1 已落定）；落下时从大缩到 1。
+  // sub 是章下面一行小字，默认字号 px × 0.3（只当纹理）；要读的小字给 subPx（≥ 28），框会跟着变高变宽
   function stamp(x, str, cx, cy, o = {}) {
     const { k = 1, px = 88, rot = -0.08, color = css("signal"), sub } = o;
     if (k <= 0) return;
+    const subPx = o.subPx ?? px * 0.3;
     const s = lerp(2.4, 1, E.outExpo(clamp(k * 1.25)));
     const a = clamp(k * 3);
     x.save();
@@ -161,18 +186,20 @@
     x.rotate(rot);
     x.scale(s, s);
     x.globalAlpha = a * (o.alpha ?? 1);
+    x.font = FONT.cjk(subPx, 600);
+    const sw = sub ? x.measureText(sub).width : 0;
     x.font = FONT.mono(px, 700);
     const tw = x.measureText(str).width;
     const padX = px * 0.42, padY = px * 0.3;
-    const bw = tw + padX * 2, bh = px * (sub ? 1.5 : 1.05) + padY * 2;
+    const bw = Math.max(tw, sw) + padX * 2, bh = px * 1.05 + (sub ? 1.5 * subPx : 0) + padY * 2;
     x.strokeStyle = color; x.fillStyle = color;
     x.lineWidth = px * 0.075;
     roundRect(x, -bw / 2, -bh / 2, bw, bh, px * 0.12); x.stroke();
     x.lineWidth = px * 0.03;
     roundRect(x, -bw / 2 + px * 0.13, -bh / 2 + px * 0.13, bw - px * 0.26, bh - px * 0.26, px * 0.07); x.stroke();
     x.textAlign = "center"; x.textBaseline = "middle";
-    x.fillText(str, 0, sub ? -px * 0.2 : px * 0.04);
-    if (sub) { x.font = FONT.cjk(px * 0.3, 600); x.fillText(sub, 0, px * 0.55); }
+    x.fillText(str, 0, sub ? -subPx * (2 / 3) : px * 0.04);
+    if (sub) { x.font = FONT.cjk(subPx, 600); x.fillText(sub, 0, px * 0.4 + subPx * 0.5); }
     x.restore();
   }
   function roundRect(x, rx, ry, rw, rh, r) {
@@ -390,5 +417,5 @@ void main(){
     };
   }
 
-  window.K = { clamp, lerp, E, prog, keys, mulberry32, hash, FONT, text, measure, line, polyline, rect, fillRect, dashed, envelope, stamp, roundRect, clawd, bubble, spark, PLATE, glyph, sheet, checkbox, leader, pathAt, pathLen, trailOn, camera };
+  window.K = { clamp, lerp, E, prog, keys, mulberry32, hash, FONT, text, narration, measure, line, polyline, rect, fillRect, dashed, envelope, stamp, roundRect, clawd, bubble, spark, PLATE, glyph, sheet, checkbox, leader, pathAt, pathLen, trailOn, camera };
 })();

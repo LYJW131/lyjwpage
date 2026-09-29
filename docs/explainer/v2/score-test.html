@@ -27,12 +27,25 @@
 </header>
 <canvas id="tl" height="560"></canvas>
 <pre id="info"></pre>
+<script src="plan.js"></script>
 <script src="score.js"></script>
+<script src="music/ch00.js" onerror="0"></script>
+<script src="music/ch01.js" onerror="0"></script>
+<script src="music/ch02.js" onerror="0"></script>
+<script src="music/ch03.js" onerror="0"></script>
+<script src="music/ch04.js" onerror="0"></script>
+<script src="music/ch05.js" onerror="0"></script>
+<script src="music/ch06.js" onerror="0"></script>
+<script src="music/ch07.js" onerror="0"></script>
+<script src="music/ch08.js" onerror="0"></script>
+<script src="music/ch09.js" onerror="0"></script>
 <script>
 // 乐谱测试页：画出小节网格、段落、和弦、各类事件和包络；Render 离线合成，Play 从头播（点时间轴跳到那里）。
+// 默认拼整片（plan.js）；?only=ch02,ch03 只拼这几章，试听自己那一章的配乐用这个。
 // 无头测试用：window.__render() / __wav() / __hash(opts) / __rms(opts)
 (() => {
-  const S = window.Score, cv = document.getElementById("tl"), cx = cv.getContext("2d");
+  const only = new URLSearchParams(location.search).get("only");
+  const S = window.Score.build(only ? window.PLAN.filter((p) => only.split(",").includes(p.id)) : window.PLAN), cv = document.getElementById("tl"), cx = cv.getContext("2d");
   const status = (s) => (document.getElementById("status").textContent = s);
   const TOTAL = S.duration + S.tail, ROWS = ["kick", "snare", "hat", "clock", "tick", "stamp", "whoosh", "lamp", "key", "bell", "accent"];
   const ENVS = [["energy", "--green"], ["pad", "--blue"], ["bass", "--orange"], ["duck", "--dim"], ["kick", "--ink"]];
@@ -54,7 +67,7 @@
     // 段落和和弦
     for (const s of S.sections) {
       const x0 = X(s.t0, w), x1 = X(s.t1, w);
-      cx.fillStyle = s.chapter === 2 ? "rgba(217,119,87,0.12)" : "rgba(79,109,143,0.16)"; cx.fillRect(x0, 16, x1 - x0, 16);
+      cx.fillStyle = S.chapters.findIndex((c) => c.id === s.chapter) % 2 ? "rgba(79,109,143,0.16)" : "rgba(217,119,87,0.12)"; cx.fillRect(x0, 16, x1 - x0, 16);
       cx.fillStyle = css("--ink"); cx.save(); cx.beginPath(); cx.rect(x0, 16, x1 - x0, 16); cx.clip(); cx.fillText(s.id, x0 + 3, 24); cx.restore();
     }
     for (const c of S.chords) { cx.fillStyle = css("--dim"); cx.fillText(c.name, X(c.t, w) + 2, 42); }
