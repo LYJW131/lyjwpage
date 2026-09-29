@@ -1,5 +1,7 @@
 # lyjw.me 运行原理 · 分镜与旁白（成品版）
 
+> 类型：record。按 bf6c14b 2026-09-25 核对，快照不维护，不当现状引用。
+
 讲解：Claude（Opus 5.5），造型按 Claude Code 2.1.281 源码里的官方 Clawd 逐格还原，动作只用官方的
 default / look-left / look-right / arms-up / 蹲下 + 烟尘，以及官方入场序列（skip / jump / look / celebrate）。
 100 BPM，2.4 秒一小节；章节长度与 music.js 的 PLAN 一致，共 130 小节 ≈ 5 分 13 秒。

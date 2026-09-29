@@ -18,7 +18,7 @@ Web Animations API，假时钟拨不动它（见 desktop-marks-gif.py）。
 AI Coding 没有夹具，基线直接取本地 Worker 此刻的响应（生产数据经上游补缺）。
 
 前置：本地 Worker 与 pnpm dev:local 在跑、总开关已开，并且这些夹具已注入（脚本不替你注入基线）：
-  listening/now  listening-now-yoasobi.json     /api/lyrics       生产站响应包一层 ok（见 docs/README.md）
+  listening/now  listening-now-yoasobi.json     /api/lyrics       生产站响应包一层 ok（见 docs/screenshots.md）
   charger        charger-macbook-iphone.json    powerbank         powerbank-charging.json
   activity       activity-afternoon.json        workouts          workouts.json
   server         server-traffic.json

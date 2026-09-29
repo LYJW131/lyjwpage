@@ -1,5 +1,7 @@
 # lyjw.me 运行原理 · 画面升级本子（草案 v1）
 
+> 类型：decision
+
 这份本子定下一版讲解动画的概念、风格、分镜结构和技术路线，先审本子再写代码。事实一律出自 [FACTS.md](FACTS.md)（按 main eb429ed 核对），本子里提到的机制都能在那里找到出处。旁白逐句写在本子通过之后的 SCRIPT.md 里。
 
 参考：[mexicat/pdoom-video](https://github.com/mexicat/pdoom-video)。借它的方法：

@@ -1,5 +1,7 @@
 # 讲解动画 · 事实基线
 
+> 类型：record。按 eb429ed 2026-09-29 核对，快照不维护，不当现状引用。
+
 按 main **eb429ed**（2026-09-29）的代码核对，文档和代码不一致时以代码为准。动画里出现的每一个端点、数字、谁做什么，都要能在这里找到出处；main 有架构改动时先改这份，再改分镜。
 
 上一版分镜（SCRIPT.md）按 bf6c14b 写成，之后约 50 个提交重构了中枢：上报入口拆成无状态 Worker、可滞后层、采集 Worker、D1 历史、首屏按卡读取、在线判断交给浏览器、在线人数并回推送房间。
@@ -298,4 +300,4 @@ Sentry 的结果由 **collector** 的 `sentry-status` 任务每 5 分钟用只�
 - iPhone README：`KNOWN_MODULES` 的路径写成 `workers/api/src/phone-telemetry.ts`，实际在 `shared/ingest/phone.ts:27`。
 - `src/lib/live-socket-boot.ts:39`、`workers/api/src/live-census.ts`：注释说「三个上报器」按人数调频，实际两个。
 - `reporters/server-reporter/src/config.ts:65-69`：注释说「问两个 Worker 的 /count」，online-counter 已退役。
-- `workers/online-counter`、`workers/ingest`、`workers/playstation-reporter`：三个目录只剩未跟踪的 `node_modules`。
+- `workers/online-counter`、`workers/ingest`、`workers/playstation-reporter`：三个目录只剩未跟踪的 `node_modules`。<!-- allow: 快照里点名的已退役目录，不在仓库 -->

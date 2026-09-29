@@ -1,5 +1,7 @@
 # lyjw.me 运行原理 · 讲解动画
 
+> 类型：runbook
+
 线上地址 `https://lyjw.me/explainer`。Claude Code 的像素螃蟹 Clawd 讲解这个站点怎么运转：10 章、130 小节（100 BPM，约 5 分 13 秒）。画面、配乐和音效都在浏览器里按同一条时间轴确定地生成，同一个时刻总是同一帧。分镜与旁白见 [SCRIPT.md](SCRIPT.md)。
 
 页面源就在这个目录。站点版由 `scripts/build-explainer.mjs` 在 `pnpm build` 时生成到 `public/explainer/`（不进仓库）：入口 `index.html` 保持原名，`next.config.ts` 把 `/explainer` rewrite 到它；脚本、字体、配乐按内容哈希改名放进 `a/`，缓存一年。页面里的脚本和配乐经注入的 `window.__assets` 查哈希名，没有这张表（本地、渲染工具、Artifact）时用原名。本地 `pnpm dev` 要看 `/explainer`，先跑一次 `node scripts/build-explainer.mjs`。
@@ -84,7 +86,7 @@ python3 $R/build-artifact.py docs/explainer/index.html docs/explainer/artifact.h
 
 ## 口径
 
-- 事实以仓库代码为准，2026-09-25 按 `bf6c14b` 核过。站点架构有变动时，先对照之后的提交重核。
+- 事实以仓库代码为准，核对基线与出处见 [FACTS.md](FACTS.md)。站点架构有变动时，先重核它。
 - 延迟只说「8 月实测 0.32–0.49 s」。
 - 窗口标题的隐私判断只说到这一层：Jev 参与判断，拿不准的交给站长，只有放行的标题才进信封。不写判据；Jev 面板上的概率条是示意值。
 - Sentry 相关画面不出现组织名、监控 ID、真实报错和可用率数字。

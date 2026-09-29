@@ -85,9 +85,8 @@ security cms -D -i ~/Library/Developer/Xcode/UserData/Provisioning\ Profiles/*.m
 codesign -dvvv "${TMPDIR:-/tmp}/iphone-telemetry-hub-xcode/Build/Products/Release-iphoneos/iPhoneTelemetryHub.app"
 ```
 
-2026-08-25 那次装的实测：描述文件到 2027-08-24（一年，付费个人账号的正常时长），
-而签名证书只到 2026-10-05 —— **六周，短的是证书**。描述文件里塞着好几张证书，Xcode
-挑哪张是它自己的事，那次挑的恰好是最早过期的一张。
+描述文件的有效期是一年（付费个人账号的正常时长），而签名证书可能短得多 —— **短的是证书**。
+描述文件里塞着好几张证书，Xcode 挑哪张是它自己的事，可能恰好挑到最早过期的一张。
 
 到期了**重跑一次 `build-install.sh`** 就行：它会重新挑一张还有效的证书、必要时刷新描述
 文件。钥匙串里的密钥和健康授权都留着，不用重新配。
