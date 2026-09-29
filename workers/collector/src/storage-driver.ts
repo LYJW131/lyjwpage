@@ -16,9 +16,9 @@ export type StorageAnswer<T> = { reachable: true; value: T } | { reachable: fals
  * 直接抛错，谁误用谁当场知道。
  *
  * 两处和 DO SQLite 不一样，调用方要心里有数：
- * - KV 的 TTL 最短 60 秒，更短的按 60 秒记（cache.ts 的 5 秒负缓存会活满一分钟）；
- * - `ifAbsent` 是先读后写，不是原子的。采集任务由 cron 串行触发、每个任务同一时刻
- *   只有一份在跑，这就够了；别拿它当跨实例的锁。KV 的读还有最长 60 秒的边缘缓存，
+ * - KV 的 TTL 最短 60 秒，更短的按 60 秒记（cache.ts 里更短的负缓存会活满一分钟）；
+ * - `ifAbsent` 是先读后写，不是原子的，也不是锁：同一个任务可能被 cron 与
+ *   `Collector.refresh` 同时触发，别拿它当互斥。KV 的读还有最长 60 秒的边缘缓存，
  *   所以两分钟以内要读回的值不走这里。
  *
  * 失败一律冒泡（和 api Worker 的驱动同一个口径）：KV 就是权威，不退回进程内存。

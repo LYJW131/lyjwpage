@@ -2,7 +2,7 @@
  * 状态核心（api Worker）对内公开的 RPC 契约。
  *
  * 上报入口（workers/ingress）与采集 Worker 都经 Service Binding 调它的具名 entrypoint
- * `StateCore`，Cloudflare 内部调用不再鉴权：只有声明了这个 binding 的 Worker 调得到，每个
+ * `StateCore`，Cloudflare 内部调用不做二次鉴权：只有声明了这个 binding 的 Worker 调得到，每个
  * Worker 对内能做什么，就是下面这几个方法。只放类型，调用方和实现方各自 import。
  *
  * 方法只能加不能改：api 与调用方分开部署，新方法先随 api 上线，调用方后推。

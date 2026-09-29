@@ -6,7 +6,7 @@
 
 - 只展示的结果直接写可滞后层 KV，**成功才写**：KV 里的值本身就是上次成功值，不另存 last-good；失败时旧值原样留着，过没过时由浏览器按各卡阈值判断。状态核心要拿来算的（PlayStation、最近在听）经 `CORE`（`api` 的 `StateCore`）交付。
 - 缺令牌的任务干净地跳过，不算故障（监控照常报 ok）；没配是配置状态，不是失败。
-- 一次调用同时只能有 6 个连接在等响应头：同一分钟到期的任务一起开跑，会把 PlayStation 门那 2.5 秒的人头数请求挤超时，所以带 `headStart` 的 PlayStation 先跑（`src/registry.ts#HEAD_START_MS`）。新增任务时想想会不会在同一分钟大量并发出网。
+- 一次调用同时只能有 6 个连接在等响应头：同一分钟到期的任务一起开跑，会把 PlayStation 门那个人头数请求（`src/playstation/site.ts#COUNT_TIMEOUT_MS`）挤超时，所以带 `headStart` 的 PlayStation 先跑（`src/registry.ts#HEAD_START_MS`）。新增任务时想想会不会在同一分钟大量并发出网。
 - 预览与非生产分支构建关闭：`CORE` 指向生产 `api`，预览版一跑就会往生产状态里写。
 - 新增 `StateCore` 方法先发布 `workers/api`，再发布本 Worker；契约只加不改（`shared/state-core.ts`、`shared/collector.ts`）。
 - D1 表结构归 `workers/api/migrations`：新表先在 api 那边 `pnpm --dir workers/api exec wrangler d1 migrations apply lyjwpage-history --remote`，再发布本 Worker。
