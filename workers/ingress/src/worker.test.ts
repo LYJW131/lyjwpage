@@ -420,7 +420,9 @@ test("every source prepares into a command that survives structured cloning", as
     ["iphone", { version: 1, modules: { workouts: { items: [workout()] }, extra: {} } }],
     ["homepod", { state: "playing", title: "Song", artist: "Artist", entityId: "media_player.homepod" }],
     ["emby", { playing: { itemId: "1", paused: false, media: { video: { codec: "hevc" } } }, resume: { items: [{ id: "1", name: "Pilot" }] } }],
-    ["playstation", { version: 1, power: { on: true } }],
+    ["playstation", { version: 1, presence: {
+      observedAt: Date.now(), online: false, availability: null, platform: null, lastOnlineAt: null, playing: null,
+    } }],
     ["server", server()],
     ["agents", { codingActivity: { collectedAt: Date.now(), agents: [{ id: "cursor", lastActivityAt: Date.now(), model: "x" }] }, codingUsage: { bad: true } }],
     ["agents-otlp", { resourceMetrics: [] }],
@@ -429,6 +431,13 @@ test("every source prepares into a command that survives structured cloning", as
     const command = await prepareIngest(source, body, Date.now(), images);
     assert.deepEqual(structuredClone(command), command, source);
   }
+});
+
+test("PlayStation power 字段直接拒收", async () => {
+  await assert.rejects(
+    () => prepareIngest("playstation", { version: 1, power: { on: true } }, Date.now()),
+    /power 字段不再接受/,
+  );
 });
 
 test("readiness is only probed after invalid input", async () => {

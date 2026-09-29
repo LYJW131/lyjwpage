@@ -21,6 +21,8 @@ import type { StateLane } from "@shared/pulse-timeline";
 import { requestStore, type Env } from "@api/runtime";
 import { commitPreparedEmbyReport } from "@api/stores/emby";
 import { commitPreparedPlaystationReport } from "@api/stores/playstation";
+import { getPlayingNow } from "@/lib/playstation";
+import { powerMirror } from "@shared/playstation-store";
 import { commitPreparedTelemetryEnvelope } from "@api/stores/telemetry";
 import type { ListeningItem } from "@/lib/types";
 import { prepareAgentLimits } from "@shared/ingest/agents";
@@ -268,6 +270,8 @@ test("PSN 在线状态：进游戏、换游戏、下线各是一段", withStorag
     ({ version: 1, presence: { observedAt: at, online, availability: null, platform: "PS5", lastOnlineAt: null,
       playing: playing && { ...playing, format: null, launchPlatform: null, iconUrl: null } } });
   await inRequest(() => recordPlaystationReport(presence(T0, true, null), T0));
+  await powerMirror.put({ on: true, observedAt: T0, entityId: "switch.ps5_210_power" });
+  assert.equal("power" in await getPlayingNow(), false, "保留的内部镜像不进入公开 presence");
   const game = T0 + 20 * 60_000;
   await inRequest(() => recordPlaystationReport(presence(game, true, { titleId: "PPSA01", title: "Pragmata" }), game));
   // 两次确认隔了 34 分钟、状态没变，仍是同一段

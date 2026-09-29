@@ -20,7 +20,7 @@ const publicJwk = { ...(await crypto.subtle.exportKey("jwk", pair.publicKey) as 
 const env: AccessEnv = {
   ACCESS_TEAM_DOMAIN: `${ISSUER}/`,
   ACCESS_AUD: AUD,
-  ACCESS_CLIENTS: { [MAC]: ["ingest:mac"], [HA]: ["ingest:homepod", "ingest:playstation"] },
+  ACCESS_CLIENTS: { [MAC]: ["ingest:mac"], [HA]: ["ingest:homepod"] },
 };
 
 function b64url(data: Uint8Array | string): string {
@@ -59,7 +59,10 @@ test("a valid Access JWT authorizes only the permissions listed for its client i
   assert.equal(!other.ok && other.status, 403);
 
   const ha = await sign(claims({ common_name: HA }));
-  assert.equal((await authorize(request({ "Cf-Access-Jwt-Assertion": ha }), env, "ingest:playstation")).ok, true);
+  assert.equal((await authorize(request({ "Cf-Access-Jwt-Assertion": ha }), env, "ingest:homepod")).ok, true);
+  const denied = await authorize(request({ "Cf-Access-Jwt-Assertion": ha }), env, "ingest:playstation");
+  assert.equal(denied.ok, false);
+  assert.equal(!denied.ok && denied.status, 403);
 });
 
 test("JWTs with the wrong audience, issuer, expiry, algorithm or signature are rejected", async () => {
