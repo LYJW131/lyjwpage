@@ -21,7 +21,7 @@ StateHub 的 SQLite 是实时状态的唯一权威。人读的说明在 `README.
 
 ## 须成对修改
 
-- 心跳间隔：`workers/api/src/live-census.ts#HEARTBEAT_INTERVAL_MS` 是站点 `src/hooks/use-live-events.ts#HEARTBEAT_MS` 的手抄副本，改一边必须改另一边。
+- 浏览器与 Worker 共用 `shared/live-heartbeat.ts#LIVE_HEARTBEAT_MS`；可见连接失活窗口从这个间隔推导。
 - 改 Coding 评估的判据要升 `shared/pulse-assessment.ts#PULSE_ASSESSMENT_VERSION`（升版本会让最近 24 小时全部重评），先用 `scripts/jev-probe.mts` 试。
 - 状态端点新增或改形：登记表 `src/lib/status-views.ts`、loader 表 `src/lib/status-loaders.ts`、站点读取侧 `src/lib/status-reads.ts`、首屏 `src/lib/first-screen.ts` 一起看，推送事件和端点含义保持一致。
 

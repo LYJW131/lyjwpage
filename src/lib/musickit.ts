@@ -1,6 +1,7 @@
 import { commit } from "@/lib/build-info";
 import { site } from "@/lib/site";
 import { workerUrl } from "@/lib/worker-url";
+import { pastHalfLife } from "@shared/token-lifetime";
 
 /**
  * MusicKit JS 这一侧的全部脏活：把 Apple 那份脚本弄进页面、拿到 developer
@@ -215,17 +216,6 @@ export type DeveloperToken = {
   expiresAt: number;
 };
 
-/**
- * 过了「签发时刻 → 到期时刻」的中点就该换一份新的。
- *
- * 和 Worker 那侧逐字同一条规则（workers/api/src/musickit-token.ts 里也叫
- * pastHalfLife），改一处记得对齐。用 issuedAt 而不是「我什么时候收到的」当起点：
- * Worker 自己也缓存，拿到手的可能已经是一份用掉一半的令牌。
- */
-function pastHalfLife(token: DeveloperToken, now: number): boolean {
-  return now >= token.issuedAt + (token.expiresAt - token.issuedAt) / 2;
-}
-
 /** 令牌上的两个时刻都是 Unix 秒，比较前先把此刻换算成秒 */
 function nowSeconds(): number {
   return Math.floor(Date.now() / 1000);
@@ -235,7 +225,7 @@ function nowSeconds(): number {
  * 令牌在内存里留一份，过了半衰期再去要。
  *
  * Worker 那侧也缓存，但那是**每个 isolate** 各存各的；这里省的是每次开始跟听都
- * 打一次网络。
+ * 打一次网络。半寿命从令牌的 issuedAt 算，Worker 给的令牌可能已经用掉一段时间。
  */
 let cachedToken: DeveloperToken | null = null;
 

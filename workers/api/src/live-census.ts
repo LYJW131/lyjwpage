@@ -13,12 +13,10 @@
  * 纯函数，房间（origin-worker.ts 的 LivePushRoom）把运行时的东西喂进来。
  */
 
-/**
- * 浏览器定时发 "ping"（间隔是 src/hooks/use-live-events.ts 的 HEARTBEAT_MS），运行时
- * 用 setWebSocketAutoResponse 直接回、不唤醒房间。下面两条线从它推，改站点那侧的
- * 间隔就得回来改这个常数。
- */
-export const HEARTBEAT_INTERVAL_MS = 30_000;
+import { LIVE_HEARTBEAT_MS } from "@shared/live-heartbeat";
+
+/** 浏览器 ping 由运行时自动回复，不唤醒房间；与浏览器共享间隔。 */
+export { LIVE_HEARTBEAT_MS as HEARTBEAT_INTERVAL_MS } from "@shared/live-heartbeat";
 
 /** 静默这么久就不算「开着」 */
 export const CONNECTION_STALE_MS = 5 * 60_000;
@@ -28,7 +26,7 @@ export const CONNECTION_CLOSE_MS = 30 * 60_000;
  * 静默这么久就不算「可见」。三个心跳周期：连丢两次 ping 还算，第三次也没到才不算 ——
  * 贴着心跳间隔画线，网络抖一下活人就会在人数里闪没。
  */
-export const VISIBLE_STALE_MS = HEARTBEAT_INTERVAL_MS * 3;
+export const VISIBLE_STALE_MS = LIVE_HEARTBEAT_MS * 3;
 
 /** 连接上的 attachment。`serializeAttachment` 整份替换，改一个字段也要带上其余的 */
 export type SocketMark = {
