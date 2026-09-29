@@ -105,7 +105,11 @@ export async function primeCardCache<E extends { ok: boolean }>(paths: readonly 
         }
       }
       if (io.cancelled() || io.generation(path) !== issuedAt) return;
-      await io.write(path, fresh);
+      try {
+        await io.write(path, fresh);
+      } catch {
+        // 清缓存后的 SWR 回源也可能失败；仍让其他键完成并结束这一趟 Retry。
+      }
     }),
   );
 }

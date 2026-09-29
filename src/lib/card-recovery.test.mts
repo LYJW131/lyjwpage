@@ -163,6 +163,20 @@ test("没有要读的键（Timezone 这类卡）什么都不做", async () => {
   assert.equal(world.cache.size, 0);
 });
 
+test("清缓存后的回源失败不打断其他键，也不会让 Retry 的异步任务拒绝", async () => {
+  const writes: string[] = [];
+  await primeCardCache(["/api/status/fails", "/api/status/fine"], {
+    isStatusPath: () => false,
+    read: async () => { throw new Error("should not read"); },
+    write: async (path) => {
+      writes.push(path);
+      if (path.endsWith("fails")) throw new Error("revalidation failed");
+    },
+    ...untouched,
+  });
+  assert.deepEqual(writes, ["/api/status/fails", "/api/status/fine"]);
+});
+
 test("取数途中这个键已经收到更新（推送、别的卡的轮询）：慢响应不再盖上去，别的键照常写", async () => {
   const busy = "/api/status/watching/now";
   const calm = "/api/status/server";
