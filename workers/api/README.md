@@ -151,8 +151,7 @@ presence 时会把它冲掉。`on` 必须是布尔值（HA 实体的 `"on"` / `"
 静默 `VISIBLE_STALE_MS`（三个心跳周期）就不算，因为可见页面不会被节流，一条僵尸按 `connections` 的口径多活，就会把按人数调频的上报器（agents-reporter）
 多钉在快档那么久。可见人数变了才广播 `{ type: "online", payload: { online } }`，新连接接上时单独收到一条当前值；有人可见时
 挂清扫闹钟（间隔 `src/origin-worker.ts` 的 `SWEEP_INTERVAL_MS`），没人可见就停。心跳 ping 仍由运行时自动回、不唤醒房间，只有接入、
-断开、切可见性和闹钟会唤醒。心跳间隔定义在站点 `src/hooks/use-live-events.ts` 的 `HEARTBEAT_MS`，`live-census.ts` 的
-`HEARTBEAT_INTERVAL_MS` 是手抄的副本，改一边必须改另一边。
+断开、切可见性和闹钟会唤醒。浏览器与 Worker 的心跳间隔共用 `shared/live-heartbeat.ts#LIVE_HEARTBEAT_MS`。
 
 上报走 `https://ingest.homepage.lyjw.llc/api/ingest/<来源>`，由上报入口 Worker 接收：Cloudflare Access 与 service token、
 `[vars.ACCESS_CLIENTS]` 权限表、回执状态码都在 [上报入口 README](../ingress/README.md)。它收下的实时那一半经
