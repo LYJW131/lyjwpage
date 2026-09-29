@@ -3,6 +3,7 @@
 import { motion, useReducedMotion } from "motion/react";
 import { useCallback, useState } from "react";
 
+import { CardBoundary } from "@/components/card-boundary";
 import { DevToggle, DevToggleSlot, isDev } from "@/components/dev-toggles";
 import { ChargerCard } from "@/components/live/charger-card";
 import { ListeningCard } from "@/components/live/listening-card";
@@ -193,12 +194,14 @@ export function LiveMediaPair({
                 )}
                 aria-hidden={!showing("charger")}
               >
-                <ChargerCard
-                  fallback={chargerFallback}
-                  className="h-full"
-                  onActiveChange={handleChargerActive}
-                  compact={both}
-                />
+                <CardBoundary label="Charger">
+                  <ChargerCard
+                    fallback={chargerFallback}
+                    className="h-full"
+                    onActiveChange={handleChargerActive}
+                    compact={both}
+                  />
+                </CardBoundary>
               </motion.div>
               <motion.div
                 initial={false}
@@ -215,26 +218,30 @@ export function LiveMediaPair({
                 )}
                 aria-hidden={!showing("powerBank")}
               >
-                <PowerBankCard
-                  fallback={powerBankFallback}
-                  className="h-full"
-                  onActiveChange={handlePowerBankActive}
-                  compact={both}
-                />
+                <CardBoundary label="Power Bank">
+                  <PowerBankCard
+                    fallback={powerBankFallback}
+                    className="h-full"
+                    onActiveChange={handlePowerBankActive}
+                    compact={both}
+                  />
+                </CardBoundary>
               </motion.div>
             </div>
           </div>
         </motion.div>
 
         <div className="listening-shell min-w-0">
-          <ListeningCard
-            fallback={listeningFallback}
-            nowFallback={nowListeningFallback}
-            lyricsFallback={lyricsFallback}
-            artworkPlaceholders={artworkPlaceholders}
-            className="h-full"
-            wide={!isVisible}
-          />
+          <CardBoundary label="Recently Played">
+            <ListeningCard
+              fallback={listeningFallback}
+              nowFallback={nowListeningFallback}
+              lyricsFallback={lyricsFallback}
+              artworkPlaceholders={artworkPlaceholders}
+              className="h-full"
+              wide={!isVisible}
+            />
+          </CardBoundary>
         </div>
       </div>
 

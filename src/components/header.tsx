@@ -1,3 +1,4 @@
+import { CardBoundary } from "@/components/card-boundary";
 import { HeaderDesktop } from "@/components/live/live-desk-card";
 import { HomeLink } from "@/components/home-link";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -29,11 +30,14 @@ export function Header({
             <MiniPlayer />
             <ThemeToggle />
           </div>
-          <HeaderDesktop
-            fallback={desktop}
-            iconDataUri={desktopIconDataUri}
-            className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
-          />
+          {/* 页头这枚徽章不是一张卡：出错只上报，原位不画东西，别顶着「Unavailable」占页头 */}
+          <CardBoundary label="Header Desktop" silent>
+            <HeaderDesktop
+              fallback={desktop}
+              iconDataUri={desktopIconDataUri}
+              className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
+            />
+          </CardBoundary>
         </div>
       </div>
     </header>
