@@ -166,6 +166,10 @@ State read-modify-writes are merged serially and persisted inside the Durable Ob
 
 Writing reports requires authentication, public queries return only explicit display models, and server credentials are kept apart from public state.
 
+### The site and the Workers deploy separately, so a stale tab degrades one card at a time
+
+Workers and the site deploy independently, and a browser tab can sit open for hours or days, so old scripts sometimes read data in a new shape. Every card sits inside its own error boundary (`src/components/card-boundary.tsx`, built on Next's `catchError`): when one card throws while rendering, only that slot falls back to "Unavailable" and reports to Sentry tagged with the card, while the rest of the page carries on. When the page knows it is stale (`/api/version`, plus the `version` push once a new deployment lands), a background tab reloads itself onto the new build, and so does a page whose card just crashed. Each target version triggers at most one automatic reload (the home HTML on `lyjw131.com` is cached by ESA and may still be old after a reload), and the page never reloads while the player is playing music. The decision lives in `shouldAutoReload` in `src/lib/app-version.ts`.
+
 ### Window titles pass a check before they are reported
 
 The window title is the only piece of window content on the page, and the only one that can't be covered by exhaustive rules: there are only so many app names, but a title is whatever file, web page or chat is open right now. So before it leaves the Mac it goes through a privacy check. [TypeSafe](https://www.typesafe.ai/)'s Jev takes part in deciding whether it can be public, and cases it isn't sure about are left for me to decide on the Mac; only titles that are let through make it into the report envelope. The site side doesn't judge anything; it only looks at whether the envelope carries a title.

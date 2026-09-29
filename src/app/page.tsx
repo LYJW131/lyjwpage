@@ -2,6 +2,8 @@ import { Footer } from "@/components/footer";
 import { Header } from "@/components/header";
 import { WebPlayerProvider } from "@/components/web-player/web-player-provider";
 import { AppVersionCard } from "@/components/app-version-card";
+import { CardBoundary } from "@/components/card-boundary";
+import { StaleTabReload } from "@/components/stale-tab-reload";
 import { ContactCard } from "@/components/contact-card";
 import { DevFakeDataToggle } from "@/components/dev-fake-data-toggle";
 import { DevToggleDock } from "@/components/dev-toggles";
@@ -25,6 +27,28 @@ import { getRecentCommits } from "@/lib/github-recent-commits";
 import { firstScreen, firstScreenLyrics } from "@/lib/first-screen";
 import { liveTrack } from "@/lib/home-layout";
 import type { StatusResponse, TrophiesSummaryPayload } from "@/lib/types";
+
+/**
+ * 这几格的版面类：既给卡片，也给它外面的错误边界（兜底占同一格，网格才不塌、
+ * 锚点跳转的估高才不失准），所以只写一份。
+ *
+ * 首屏之外的大块先不排版，见 globals.css 的 defer-offscreen。
+ * 估高按 375px 上实测的高度写，锚点跳过去才落得准；`auto` 让它
+ * 渲染过一次之后改按真高度算，所以桌面端那份估偏也只差第一帧。
+ *
+ * 这三张是两列网格里的格子，只在窄屏（单列）开；整宽的那几块
+ * 用 defer-offscreen-always，宽窄都开。首屏 load 之后整页揭开，
+ * 不再等滚到跟前。
+ */
+const SLOT = {
+  activity: "defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_350px] md:[contain-intrinsic-size:auto_253px]",
+  server: "defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_245px]",
+  agentStatus: "defer-offscreen-always [contain-intrinsic-size:auto_172px]",
+  vibeCoding: "defer-offscreen [contain-intrinsic-size:auto_1372px]",
+  playstation: "defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_643px]",
+  pulse: "defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_240px]",
+  siteStatus: "mt-3 defer-offscreen-always [contain-intrinsic-size:auto_1440px]",
+} as const;
 
 export default async function Home() {
   /**
@@ -125,15 +149,24 @@ export default async function Home() {
         <main className="flex-1">
           <div className="mx-auto my-3.5 w-[calc(100%-2rem)] max-w-5xl sm:my-4">
             <Section id="live" className="p-0 sm:p-0">
-              <AppVersionCard />
+              <CardBoundary label="Update" silent>
+                <AppVersionCard />
+              </CardBoundary>
+              <CardBoundary label="Stale Reload" silent>
+                <StaleTabReload />
+              </CardBoundary>
 
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                <ContactCard
-                  avatarDataUri={avatarDataUri}
-                  chartFallback={githubChart}
-                  yearFallback={vibeCodingYear}
-                />
-                <TimezoneCard fallback={timezone} />
+                <CardBoundary label="Contact">
+                  <ContactCard
+                    avatarDataUri={avatarDataUri}
+                    chartFallback={githubChart}
+                    yearFallback={vibeCodingYear}
+                  />
+                </CardBoundary>
+                <CardBoundary label="Timezone">
+                  <TimezoneCard fallback={timezone} />
+                </CardBoundary>
               </div>
 
               {/*
@@ -141,72 +174,65 @@ export default async function Home() {
                 网格那 12px 的 gap 却要等它卸载才消失，动画末尾会跳一下。它自己的
                 上边距跟着高度一起动画，见 now-watching-card。没在播时整个不渲染。
               */}
-              <NowWatchingCard nowFallback={nowWatching} />
+              <CardBoundary label="Now Watching" silent>
+                <NowWatchingCard nowFallback={nowWatching} />
+              </CardBoundary>
 
               <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
-                <LiveMediaPair
-                  chargerFallback={charger}
-                  powerBankFallback={powerBank}
-                  listeningFallback={listening}
-                  nowListeningFallback={nowListening}
-                  lyricsFallback={
-                    nowSongId && lyrics && lyrics.lines.length
-                      ? { songId: nowSongId, lines: lyrics.lines, songwriters: lyrics.songwriters }
-                      : null
-                  }
-                  artworkPlaceholders={artwork}
-                />
-                {/*
-                  首屏之外的大块先不排版，见 globals.css 的 defer-offscreen。
-                  估高按 375px 上实测的高度写，锚点跳过去才落得准；`auto` 让它
-                  渲染过一次之后改按真高度算，所以桌面端那份估偏也只差第一帧。
-
-                  这三张是两列网格里的格子，只在窄屏（单列）开；整宽的那几块
-                  用 defer-offscreen-always，宽窄都开。首屏 load 之后整页揭开，
-                  不再等滚到跟前。
-                */}
-                <ActivityCard
-                  fallback={activity}
-                  className="defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_350px] md:[contain-intrinsic-size:auto_253px]"
-                >
-                  <WorkoutsStrip fallback={workouts} />
-                </ActivityCard>
-                <ServerCard
-                  fallback={server}
-                  className="defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_245px]"
-                />
-                <AgentStatusCard
-                  fallback={agentStatus}
-                  className="defer-offscreen-always [contain-intrinsic-size:auto_172px]"
-                />
-                <VibeCodingCard
-                  fallback={vibeCoding}
-                  limitsFallback={limits}
-                  className="defer-offscreen [contain-intrinsic-size:auto_1372px]"
-                />
-                <PlaystationBlock
-                  trophies={trophies}
-                  playing={playing}
-                  playingNow={playingNow}
-                  className="defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_643px]"
-                />
+                <CardBoundary label="Media" className="md:col-span-2">
+                  <LiveMediaPair
+                    chargerFallback={charger}
+                    powerBankFallback={powerBank}
+                    listeningFallback={listening}
+                    nowListeningFallback={nowListening}
+                    lyricsFallback={
+                      nowSongId && lyrics && lyrics.lines.length
+                        ? { songId: nowSongId, lines: lyrics.lines, songwriters: lyrics.songwriters }
+                        : null
+                    }
+                    artworkPlaceholders={artwork}
+                  />
+                </CardBoundary>
+                <CardBoundary label="Activity" className={SLOT.activity}>
+                  <ActivityCard fallback={activity} className={SLOT.activity}>
+                    <WorkoutsStrip fallback={workouts} />
+                  </ActivityCard>
+                </CardBoundary>
+                <CardBoundary label="Exit Node" className={SLOT.server}>
+                  <ServerCard fallback={server} className={SLOT.server} />
+                </CardBoundary>
+                <CardBoundary label="Provider Status" className={SLOT.agentStatus}>
+                  <AgentStatusCard fallback={agentStatus} className={SLOT.agentStatus} />
+                </CardBoundary>
+                <CardBoundary label="Vibe Coding" className={SLOT.vibeCoding}>
+                  <VibeCodingCard fallback={vibeCoding} limitsFallback={limits} className={SLOT.vibeCoding} />
+                </CardBoundary>
+                <CardBoundary label="PlayStation" className={SLOT.playstation}>
+                  <PlaystationBlock
+                    trophies={trophies}
+                    playing={playing}
+                    playingNow={playingNow}
+                    className={SLOT.playstation}
+                  />
+                </CardBoundary>
                 {/* Pulse 夹在 PlayStation 与 Emby Recently Watched 中间 */}
-                <PulseCard
-                  fallback={pulse}
-                  className="defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_240px]"
-                />
+                <CardBoundary label="Pulse" className={SLOT.pulse}>
+                  <PulseCard fallback={pulse} className={SLOT.pulse} />
+                </CardBoundary>
               </div>
 
-              <SiteStatusCard
-                githubFallback={githubRepo}
-                vercelFallback={vercelDeployments}
-                cloudflareFallback={cloudflareWorkers}
-                sentryFallback={sentry}
-                serverFallback={server}
-                reportersFallback={reporters}
-                recentCommits={recentCommits}
-                className="mt-3 defer-offscreen-always [contain-intrinsic-size:auto_1440px]"
-              />
+              <CardBoundary label="LYJWPAGE" className={SLOT.siteStatus}>
+                <SiteStatusCard
+                  githubFallback={githubRepo}
+                  vercelFallback={vercelDeployments}
+                  cloudflareFallback={cloudflareWorkers}
+                  sentryFallback={sentry}
+                  serverFallback={server}
+                  reportersFallback={reporters}
+                  recentCommits={recentCommits}
+                  className={SLOT.siteStatus}
+                />
+              </CardBoundary>
 
               <div
                 id="watching"
@@ -216,7 +242,9 @@ export default async function Home() {
                   <h3 className="text-sm font-medium">Recently Watched</h3>
                   <span className="label-mono text-muted-foreground">Emby</span>
                 </div>
-                <WatchingRow fallback={watching} nowFallback={nowWatching} />
+                <CardBoundary label="Emby">
+                  <WatchingRow fallback={watching} nowFallback={nowWatching} />
+                </CardBoundary>
               </div>
             </Section>
           </div>
