@@ -89,7 +89,7 @@
 | 小节 | 画面 | 配乐 |
 |---|---|---|
 | 0–1.6 | 标题「02 门禁与分拣」、`ingest.homepage.lyjw.llc · workers/ingress`、`POST /api/ingest/…`；一墙八扇门画出来；Clawd 跳上标题线说一句；信封火花从左边走向 /mac | 0:0 拨弦唱主题，前奏只有 pad 和零星打字声 |
-| 1–3 | 权限表 ACCESS_CLIENTS 八行（mac … github-actions）；mac 的钥匙从自己那行滑到 /mac，2:0 转开门、2:3 关上。旁白 `n1` | 2:0 钥匙 |
+| 1–3 | 权限表 ACCESS_CLIENTS 逐行列出（mac … github-actions，按 `workers/ingress/wrangler.toml#ACCESS_CLIENTS`）：钥匙按上报方发，home-assistant 那行开 /homepod、/playstation 两扇，playstation 那行是 n100 容器自己的钥匙；mac 的钥匙从自己那行滑到 /mac，2:0 转开门、2:3 关上。旁白 `n1` | 2:0 钥匙 |
 | 3–5 | emby 的钥匙去开 /mac，3:2 盖 403；4:0 Home Assistant 的钥匙同时开 /homepod、/playstation，标「Home Assistant 的钥匙开两扇门」 | 3:2 印章，4:0 两把钥匙 |
 | 5–8 | 甩到检查单：六项在 5:0、5:2、6:0、6:2、7:0、7:2 逐项打勾（方法是 POST · 认识这个来源 · Access 凭证 RS256 / aud / iss / exp · 不超过 4 MiB，按实际读到的字节 · 是 JSON · prepare），右栏拒收码 405 / 404 / 401·403·503 / 400 / 400 / 400·503；右边那封信跟着亮出 POST、路径、JWT、称重、花括号，7:2 拆开。旁白 `n2` | 每项一声「叮」，音高 A C D E G A |
 | 7.6–8.3 | 反例：一封 `<html>` 飞进来，8:0 盖「400 不是 JSON」 | 8:0 大章，全场一顿 |
@@ -100,7 +100,7 @@
 | 键 | 小节 | 中文 | English |
 |---|---|---|---|
 | `ch02.clawd`（气泡） | 0.95–2.45 | 上报都从这面墙进来。 | Every report comes in / through this wall. |
-| `ch02.n1a` / `n1b` | 1.4–3.2 | 每个来源一把钥匙，／只开权限表上写着的门。 | Each source gets one key; / it opens only its own doors. |
+| `ch02.n1a` / `n1b` | 1.4–3.2 | 每个上报方一把钥匙，／只开权限表上写着的门。 | Each reporter gets one key; / it opens only its own doors. |
 | `ch02.n2a` / `n2b` | 4.9–6.4 | 进了门，／按这张单子逐项检查。 | Once through the door, / checked item by item. |
 | `ch02.n3a` / `n3b` | 8.95–10.4 | 查完拆开，／按数据层分进四根管子。 | Then it is opened / and sorted into four tubes. |
 | `ch02.n4a` / `n4b` | 12.95–15 | 三盏灯都亮了，／才盖 202。 | Only when three lamps are lit / does it stamp 202. |
@@ -111,8 +111,8 @@
 
 | 小节 | 画面 | 配乐 |
 |---|---|---|
-| 0–2 | 黑里先亮一盏桌灯（接第 02 章冲进去的那盏灯），平面图一笔一笔画出来：左边两路进口（上报入口、采集 Worker）汇成一条队，栏杆只围出一条；中间一间屋子（墙体剖切斜线、门洞、一张桌、一把椅子、一盏灯、一本摊开的账本），右墙一道缝；标题「03 一间屋子的账房」、`workers/api · StateCore → StateHub`；引线标注 `StateHub · idFromName("global")`「全站只有这一个实例」。旁白 `n1` | 0:0 落地一声低「咚」，FM 铃唱主题 |
-| 2–5 | 每拍一封进门落账，右栏「StateHub 账本」详图每拍写一行打勾（mac · desktop、homepod · nowPlaying、emby · watching……；playstation 那几封从上报入口那一路来，容器 POST 的原始信封）；屋里标 `state-hub.ts · ingestTail`；主角 mac · appleMusic 带着橙色火花在队里等。旁白 `n2` | 底鼓每拍，十六分钟摆 |
+| 0–2 | 黑里先亮一盏桌灯（接第 02 章冲进去的那盏灯），平面图一笔一笔画出来：左边一路进口（上报入口）排成一条队，栏杆只围出一条（采集 Worker 写实时层不排这条队，这里不画）；中间一间屋子（墙体剖切斜线、门洞、一张桌、一把椅子、一盏灯、一本摊开的账本），右墙一道缝；标题「03 一间屋子的账房」、`workers/api · StateCore → StateHub`；引线标注 `StateHub · idFromName("global")`「全站只有这一个实例」。旁白 `n1` | 0:0 落地一声低「咚」，FM 铃唱主题 |
+| 2–5 | 每拍一封进门落账，右栏「StateHub 账本」详图每拍写一行打勾（mac · desktop、homepod · nowPlaying、emby · watching……；playstation 那几封是 n100 容器 POST 的原始信封，和别的一样从上报入口来）；屋里标 `state-hub.ts · ingestTail`；主角 mac · appleMusic 带着橙色火花在队里等。旁白 `n2` | 底鼓每拍，十六分钟摆 |
 | 5–6 | 5:0 主角落账；托盘上出一张小纸条，右栏「要做的事」固定三行 event / listening / tags：listening 写「广播 listening-now · 先查 Apple 目录补封面和链接」，tags 空着「换歌不失效；开始或停止放歌才有」，方框不勾。旁白 `n3` | |
 | 6–8 | 6:0 纸条从墙缝递出，镜头甩到门外岗亭 StateCore「照单去办」；6:2 盖 waitUntil 章、listening 打勾；同一拍两条虚线出发：去天线 LivePushRoom（另一个单例 DO），橙环荡开，所有开着的页面依次翻面、标 listening-now；回执 `ok · data` 飞回入口，标「回执 → 入口」「入口接着写 LAG 和凭据，都写完才盖 202」，两条路中间「‖ 并行 ‖」。旁白 `n4` | 6:0 纸滑出，6:2 广播 + 印章 |
 | 8–10.5 | 甩回屋里：又进两封（playstation、emby），9:0 一封纯心跳（信封上一颗心跟着底鼓跳）：账本记「♥ 存活 + pulse 观测」，「要做的事（空）」注「不推送」「不失效首屏」；Clawd 在桌角冒出来说一句。旁白 `n5` | 心跳段半速，底鼓变成扑通扑通 |
@@ -123,7 +123,7 @@
 | 键 | 小节 | 中文 | English |
 |---|---|---|---|
 | `ch03.n1a` / `n1b` | 0.6–2.15 | 全站只有这一间屋子，／唯一的状态 DO。 | The whole site has one room like this: / the one and only state DO. |
-| `ch03.n2a` / `n2b` | 2.2–5 | 实时数据排成一队，／一次只记一封。 | Realtime data waits in one line / and is written one at a time. |
+| `ch03.n2a` / `n2b` | 2.2–5 | 实时上报排成一队，／一次只记一封。 | Realtime reports wait in one line / and are written one at a time. |
 | `ch03.n3a` / `n3b` | 5–6.04 | 屋子自己不发请求，／只写一张「要做的事」。 | The room never makes a request; / it writes a to-do slip. |
 | `ch03.n4a` / `n4b` | 6.3–8 | 门外照单去办：／广播和回执同时出发。 | Outside, the slip is carried out: / push and receipt leave together. |
 | `ch03.n5a` / `n5b` | 9–10.5 | 纯心跳也记一行，／但不推送、不失效。 | A bare heartbeat still gets a line, / but pushes and invalidates nothing. |

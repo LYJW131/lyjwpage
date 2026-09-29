@@ -1,6 +1,6 @@
 // 第 03 章 · 一间屋子的账房（状态核心 StateCore + StateHub，FACTS §3）。16 小节，暗底平面图 + 白卡详图，全是 2D。
 // 一张暗底图纸，三个机位，镜头只在强拍上甩（第 02 章的做法）：
-//   A 屋里（0–6、8.2–11.75）：左边两路汇成一队，中间一间屋子的平面图（门洞、一张桌、一把椅子、一盏灯、右墙一道缝），
+//   A 屋里（0–6、8.2–11.75）：左边一路进口排成一队，中间一间屋子的平面图（门洞、一张桌、一把椅子、一盏灯、右墙一道缝），
 //     右栏两张白卡详图：账本（一封一行）和「要做的事」（event / listening / tags 三行：DO 只交回这三种，ingest-effects.ts:25-28）
 //   B 门外（6–8）：纸条从墙缝递到 StateCore 岗亭；6:2 盖「waitUntil」章，同一拍天线荡开橙色环、回执飞回入口
 //   C 拉远（12–16）：可滞后墙、凭据抽屉、D1 档案架从地平线升起，右边「四个库」对照表；
@@ -19,9 +19,8 @@
     "ch03.n1a": ["全站只有这一间屋子，", "The whole site has one room like this:"],
     "ch03.n1b": ["唯一的状态 DO。", "the one and only state DO."],
     "ch03.feed.ingress": ["上报入口", "Ingress"],
-    "ch03.feed.collector": ["采集 Worker", "Collector"],
-    "ch03.n2a": ["实时数据排成一队，", "Realtime data waits in one line"],
-    "ch03.n2b": ["一次只记一封。", "and is written one at a time."],
+    "ch03.n2a": ["实时上报排成一队，", "Realtime reports wait in one line"],
+    "ch03.n2b": ["一次只记一封。", "and are written one at a time."],
     "ch03.ledger": ["StateHub 账本", "StateHub ledger"],
     "ch03.hbTag": ["mac · 心跳", "mac · heartbeat"],
     "ch03.hbRow": ["存活 + pulse 观测", "liveness + pulse"],
@@ -101,15 +100,12 @@
   const SLOT = { y0: 566, y1: 594 }; // 右墙墙缝：「要做的事」从这里递出去
   const DESK = { x: 700, y: 480, w: 260, h: 120 };
   const BOOK = [830, 540], LAMP = [930, 506], TRAY = [930, 570];
+  // 只有上报入口这一路进队：采集 Worker 写实时层（最近在听）走 StateCore → StateHub.execute，不排 ingestTail
   const LANE_Y = 590, MERGE = [250, LANE_Y], FRONT = [490, LANE_Y];
-  const FEED = { ingress: [[-900, 400], [110, 400], MERGE], collector: [[-900, 780], [110, 780], MERGE] };
-  const PATHS = {}, FRONT_D = {}, BOOK_D = {};
-  for (const via in FEED) {
-    const pre = [...FEED[via], FRONT];
-    PATHS[via] = [...pre, [R.x0 + R.t + 40, LANE_Y], [BOOK[0] - 90, BOOK[1] + 20], BOOK];
-    FRONT_D[via] = pathLen(pre);
-    BOOK_D[via] = pathLen(PATHS[via]);
-  }
+  const FEED = [[-900, 400], [110, 400], MERGE];
+  const PRE = [...FEED, FRONT];
+  const PATH = [...PRE, [R.x0 + R.t + 40, LANE_Y], [BOOK[0] - 90, BOOK[1] + 20], BOOK];
+  const FRONT_D = pathLen(PRE), BOOK_D = pathLen(PATH);
   const GAP = 78; // 队里相邻两封的间距
   const LED = { x: 1180, y: 70, w: 690, h: 400, rows: 5, lh: 48 }; // 右栏：账本详图
   const SLP = { x: 1180, y: 500, w: 690, h: 360 }; // 右栏：「要做的事」详图
@@ -123,7 +119,7 @@
   const GROUND = 1290;
   const TABLE = { x: 2012, y: 224, w: 970, h: 1166 };
 
-  // ---------- 进屋的顺序：t = 落账的小节；采集 Worker 那一路只送 PlayStation（PSN），其余走上报入口 ----------
+  // ---------- 进屋的顺序：t = 落账的小节；PlayStation 那几封是 n100 容器 POST 的原始信封，和别的一样从上报入口来 ----------
   // coding 只写类别不写模块名：编码用量的模块名跟着上报契约走，片子里不点名（SCRIPT.md 第 01 章同一口径）
   const Q = [
     ["mac", "desktop"], ["homepod", "nowPlaying"], ["emby", "watching"], ["mac", "chargingDevices"],
@@ -135,16 +131,14 @@
   Q.push({ t: 9.0, src: "mac", whatKey: "ch03.hbRow", heart: true, dim: true }); // 纯心跳
   Q.push({ t: 10.5, src: "mac", whatKey: "ch03.flipRow", flip: true }); // 在线 → 离线
   for (const [src, what] of [["homepod", "nowPlaying"], ["mac", "desktop"], ["agents", "coding"], ["playstation", "playing"], ["mac", "chargingDevices"], ["iphone", "activity"], ["emby", "watching"], ["mac", "desktop"]]) Q.push({ t: Infinity, src, what });
-  Q.forEach((q) => (q.via = q.src === "playstation" ? "collector" : "ingress"));
   const HERO = Q.findIndex((q) => q.hero), HB = Q.findIndex((q) => q.heart), FLIP = Q.findIndex((q) => q.flip);
 
   // 队伍往前挪了几格（每封落账前 0.2 小节开始挪）；开场时整队从左边走进画面
   const moved = (b) => Q.reduce((s, q) => s + E.io(prog(b, q.t - 0.2, q.t)), 0);
   const arrive = (b) => (1 - E.out(prog(b, 0.15, 1.9))) * 11;
-  function queuePos(i, q) {
-    const via = Q[i].via, pts = PATHS[via];
-    if (q >= 0) return pathAt(pts, FRONT_D[via] - q * GAP);
-    return pathAt(pts, FRONT_D[via] + -q * (BOOK_D[via] - FRONT_D[via]));
+  function queuePos(q) {
+    if (q >= 0) return pathAt(PATH, FRONT_D - q * GAP);
+    return pathAt(PATH, FRONT_D + -q * (BOOK_D - FRONT_D));
   }
 
   // ---------- 画：屋子的平面图 ----------
@@ -205,20 +199,17 @@
     }
   }
 
-  // 两路进口和一段排队栏杆
+  // 进口和一段排队栏杆
   function lanes(x, k, b) {
     const bone = css("bone"), ash = css("ash");
     const a = prog(k, 0, 0.4);
-    for (const via of ["ingress", "collector"]) {
-      const [, p1, p2] = FEED[via];
-      polyline(x, [[-40, p1[1]], p1, p2, FRONT], k, 1.4, bone, 0.55);
-      // 箭头：在斜线中段
-      const mx = lerp(p1[0], p2[0], 0.55), my = lerp(p1[1], p2[1], 0.55), d = Math.sign(p2[1] - p1[1]);
-      if (k >= 1) polyline(x, [[mx - 14, my - 2 * d], [mx + 2, my + 12 * d - 2 * d], [mx + 12, my - 8 * d]], 1, 1.6, bone, 0.7);
-    }
-    const la = a * (1 - prog(b, 11.6, 11.85)); // 拉远时这两个字会被画面左边切掉，先收起来
+    const [, p1, p2] = FEED;
+    polyline(x, [[-40, p1[1]], p1, p2, FRONT], k, 1.4, bone, 0.55);
+    // 箭头：在斜线中段
+    const mx = lerp(p1[0], p2[0], 0.55), my = lerp(p1[1], p2[1], 0.55), d = Math.sign(p2[1] - p1[1]);
+    if (k >= 1) polyline(x, [[mx - 14, my - 2 * d], [mx + 2, my + 12 * d - 2 * d], [mx + 12, my - 8 * d]], 1, 1.6, bone, 0.7);
+    const la = a * (1 - prog(b, 11.6, 11.85)); // 拉远时这几个字会被画面左边切掉，先收起来
     text(x, tr("ch03.feed.ingress"), 44, 356, { font: FONT.cjk(30, 600), color: ash, alpha: la });
-    text(x, tr("ch03.feed.collector"), 44, 836, { font: FONT.cjk(30, 600), color: ash, alpha: la });
     // 栏杆：两排立柱拉绳，只有一条队
     const posts = [280, 360, 440, 510];
     for (const y of [546, 634]) {
@@ -244,7 +235,7 @@
       const qq = Q[i];
       const q = i - mv + arr;
       if (q <= -1 || b >= qq.t) continue;
-      const [px, py] = queuePos(i, q);
+      const [px, py] = queuePos(q);
       if (px < -80) continue;
       // 翻转那封排队时和别的信封一样，轮到它的前半小节才亮
       const near = b > qq.t - 0.5;

@@ -74,13 +74,15 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 ## 2 上报入口（workers/ingress，`ingest.homepage.lyjw.llc`）
 
+第 02 章用到的部分按 main 7fcfacb 逐条回代码复核过。 <!-- allow: 核对基线戳 -->
+
 ### 鉴权
 
-- 走 Cloudflare Access service token，**每把钥匙只开权限表上写着的门**（Home Assistant 那一把开 homepod 和 playstation 两扇，ingress wrangler.toml:37）：
+- 走 Cloudflare Access service token，**每个上报方一把钥匙，只开权限表上写着的门**（`workers/ingress/wrangler.toml#ACCESS_CLIENTS`）。钥匙按上报方发、不按来源：Home Assistant 那一把开 homepod 和 playstation 两扇；`/playstation` 这扇门另有 n100 上 playstation-reporter 容器自己的一把。两家往同一个来源写不同的字段：Home Assistant 只报 `power`，容器报 presence、游玩列表和奖杯（`shared/ingest/playstation.ts#preparePlaystationReport`）。验钥匙分三步：
   1. Access 在边缘先挡一道。
-  2. Worker 再验 `Cf-Access-Jwt-Assertion`（RS256，校验 aud / iss / exp）。
+  2. Worker 再验 `Cf-Access-Jwt-Assertion`（RS256，校验 aud / iss / exp；`shared/access-jwt.ts#verifyAccessJwt`）。
   3. 用 `common_name` 查 `ACCESS_CLIENTS` 权限表。
-- 结果码：无 JWT 回 401，越权（例如拿 Emby 的钥匙写 mac）回 403，验不了回 503（access-auth.ts:43-61）。
+- 结果码：无 JWT 回 401，越权（例如拿 Emby 的钥匙写 mac）回 403，验不了回 503（`workers/ingress/src/access-auth.ts#authorize`）。
 - 共用 Bearer 密钥已退役（d7f9811）。
 
 ### 判定顺序（worker.ts）
@@ -109,14 +111,14 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 | 归档 | D1 `HISTORY` | 训练、圆环日读数、限额快照、服务器小时汇总 |
 | 凭据 | KV `CREDENTIALS` | Mac 推来的 Apple Music user token |
 
-- `server` 整封**不经过状态核心**：写 `LAG` 和上报器账本，另把小时汇总归档进 D1（prepare.ts:38；worker.ts:130-133；ingest-archive.ts:25-26）。
+- `server` 整封**不经过状态核心**：写 `LAG` 和上报器账本，另把小时汇总归档进 D1（`shared/ingest/prepare.ts#CoreCommand`；`workers/ingress/src/worker.ts#commitIngest`；`workers/ingress/src/ingest-archive.ts#ingestHistoryStatements`）。
 - 四路都按自然键幂等，重发不会重复写。
 
 ### 202 的时机
 
-**202 要等三样**，而且是依次等：StateCore 回执 → `LAG` 写完 → 凭据写完 → 回 202。D1 归档在拿到回执后放进 waitUntil，不等（worker.ts:134-160）。
+**202 要等三样**，而且是依次等：StateCore 回执 → `LAG` 写完 → 凭据写完 → 回 202。D1 归档在拿到回执后放进 waitUntil，不等（`workers/ingress/src/worker.ts#commitIngest`）。
 
-可滞后层的写入方（ingress、collector）没有 Vercel 密钥。写入时发现布局变了，就调 `CORE.revalidate(tags)` 请状态核心代发（worker.ts:147-151）。
+可滞后层的写入方（ingress、collector）没有 Vercel 密钥。写入时发现布局变了，就调 `CORE.revalidate(tags)` 请状态核心代发（同一函数）。
 
 特例：iPhone 的训练收下了、圆环被拒时，已收下的那份照写，然后回 400。
 
@@ -194,24 +196,26 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 ## 4 首屏（Vercel 上的 Next.js）
 
+第 04 章用到的部分按 main 7fcfacb 逐条回代码复核过。 <!-- allow: 核对基线戳 -->
+
 ### 按卡缓存
 
-- `/api/home` 已删除（8977457）。首屏按视图并行调 `firstScreen(key)`，一个视图一次（按 5939ef8 现数 **26 次**），外加头像和最近提交；第二轮再取图标内联、封面占位和歌词（page.tsx:132-161、185-189）。一张卡读几个视图就有几条缓存，卡与视图的对应见 `src/app/page.tsx#READS`。
-- 每张卡读自己的 `/api/status/*`：实时卡读 DO，可滞后卡读 `LAG`（first-screen.ts:9-18）。
-- 所有公开读取都先过 `publicBarrier()`（public-execution.ts:13-19）。
-- **每张卡一条 `'use cache'`**，cacheLife 为 stale 300 / revalidate 600 / expire 7 天（first-screen.ts:27）。歌词另是 300 / 3600 / 86400。
-- 标签：按 5939ef8 现数 19 个视图挂 `page:` 标签；另有 7 个视图不带标签（GitHub 两份、Vercel、Cloudflare、Sentry、上报器账本、pulse），只靠 600 秒定时重建（`src/lib/status-views.ts#STATUS_VIEWS`）。
+- `/api/home` 已删除（8977457）。首屏按视图并行调 `firstScreen(key)`，一个视图一次（按 7fcfacb 现数 **26 次**），外加头像和最近提交；第二轮再取图标内联、封面占位和歌词（`src/app/page.tsx#Home`）。一张卡读几个视图就有几条缓存，卡与视图的对应见 `src/app/page.tsx#READS`。
+- 每张卡读自己的 `/api/status/*`：实时卡读 DO，可滞后卡读 `LAG`（`src/lib/first-screen.ts#firstScreen`）。
+- 所有公开读取都先过 `publicBarrier()`（`workers/api/src/public-execution.ts#executePublicRequest`）。
+- **每张卡一条 `'use cache'`**，cacheLife 为 stale 300 / revalidate 600 / expire 7 天（`src/lib/first-screen.ts#firstScreen`）。歌词另是 300 / 3600 / 86400（`src/lib/first-screen.ts#firstScreenLyrics`）。
+- 标签：按 7fcfacb 现数 19 个视图挂 `page:` 标签；另有 7 个视图不带标签（GitHub 两份、Vercel、Cloudflare、Sentry、上报器账本、pulse），只靠 600 秒定时重建（`src/lib/status-views.ts#STATUS_VIEWS`）。
 - 一个标签失效，只让那张卡回源；整页在后台重建，旧页照给（`revalidateTag(…, "max")`，status-revalidation.ts:5）。
 
 ### 来源出问题时
 
 - Worker 降级：回 `ok:false` 加 HTTP 200。
 - 404：显示 "Status unavailable"。
-- 5xx 或网络错误：抛出，Next **继续用上一份缓存**（first-screen.ts:15-18、34-35）。
+- 5xx 或网络错误：抛出，Next **继续用上一份缓存**（`src/lib/first-screen.ts#firstScreen`）。
 
 ## 5 浏览器
 
-第 05 章用到的部分按 main 5939ef8 逐条回代码复核过。 <!-- allow: 核对基线戳 -->
+第 05 章用到的部分按 main 7fcfacb 逐条回代码复核过。 <!-- allow: 核对基线戳 -->
 
 ### 早开连接
 
@@ -257,9 +261,11 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 ## 6 交付：图片、大陆访问、发版
 
+第 06 章用到的部分按 main 7fcfacb 逐条回代码复核过。 <!-- allow: 核对基线戳 -->
+
 ### 图片
 
-- 页面、状态 API 和推送里的图片一律写同源 `/img/<objectKey>`（asset-url.ts:16-21）。
+- 页面、状态 API 和推送里的图片一律写同源 `/img/<objectKey>`（`src/lib/asset-url.ts#publicAssetPath`）。
 - lyjw.me：由 `next.config.ts` 的边缘 rewrite 代理到 R2（只放行 64 位十六进制加 png / webp / jpg），带 rewrite 缓存。
 - lyjw131.com：由 ESA 缓存同一路径。
 - 图片是 immutable，内容变了名字就变，永远不需要刷新。
@@ -275,10 +281,10 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 2. GitHub Actions 调 ESA 刷新首页并预热。
 3. 等两个域名的 `/api/version` 都答出新版：每个域名最多 30 次 × 10 秒。
 4. 带 Access token 调 **ingress** 的 `POST /api/internal/site-deployed`。
-5. ingress 经 RPC 调 `StateCore.broadcastVersion()`，进推送房间，不经 StateHub。同时让 collector 立刻重拉部署列表（purge-esa.yml:68-78；ingress worker.ts:203-210；state-core.ts:44-46）。
+5. ingress 经 RPC 调 `StateCore.broadcastVersion()`，进推送房间，不经 StateHub。同时让 collector 立刻重拉部署列表（`.github/workflows/purge-esa.yml#notify`；`workers/ingress/src/worker.ts#handleSiteDeployed`；`workers/api/src/state-core.ts#broadcastVersion`）。
 6. 页面重问自己域名的 `/api/version`（`max-age=0, must-revalidate`），顶上弹出 UPDATE 卡。
 
-页面另有兜底：每 30 分钟问一次，切回焦点也问一次。
+页面另有兜底：每 30 分钟问一次，切回焦点也问一次（`src/hooks/use-app-version.ts#REFRESH_MS`）。
 
 ## 7 自适应调频
 
@@ -324,3 +330,4 @@ Sentry 的结果由 **collector** 的 `sentry-status` 任务每 5 分钟用只�
 - `reporters/server-reporter/src/config.ts:65-69`：注释说「问两个 Worker 的 /count」，online-counter 已退役。
 - `workers/online-counter`、`workers/ingest`、`workers/playstation-reporter`：三个目录只剩未跟踪的 `node_modules`。<!-- allow: 快照里点名的已退役目录，不在仓库 -->
 - `workers/api/wrangler.toml:68`：注释说 D1「这里只增不删」，实际活动桶会按区间删掉重写（见 §3 D1 那节）。（34eb555 复核时发现）
+- `shared/ingest/prepare.ts` 文件头、`workers/ingress/README.md`、`docs/reporter-endpoints.md`：还说采集 Worker 自己组 PlayStation 信封、也过 prepare；PlayStation 已由 n100 容器直接 POST 到上报入口，采集 Worker 不碰 PSN。
