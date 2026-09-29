@@ -1,7 +1,7 @@
 // 第 08 章「心电图与地层」的配乐，12 小节，章内小节。写法见 ../CONVENTIONS.md「配乐」。
 // 底鼓就是心跳（lub-dub）。心电图上两种信号各一个声音：Sentry 敲门 = 钟摆那一声「嗒」，落在每拍的后半拍，高；
 // Worker 报到 = 低音的玻璃灯，每 5 拍一次，落在拍上，沉到地下时变远。拍位就是 ../ch08.js 的 KNOCKS / CHECKS，时点是它的 AT。
-// 4–6 结果取回来：5:0 只读令牌转一下，5:2 今天那一格亮（高音灯）。
+// 4–6 结果取回来：5:0 令牌出门（钥匙声），5:2 今天那一格亮（高音灯）。
 // 6–10 沉到地面以下：低通收窄、敲门声变闷，每拍压进一片（翻纸声）；7:0 在听那一层里这首歌亮一下，低八度的铃唱信封主题；
 // 8–10 Coding 一窗一窗交给 Jev：8:1 全零的窗一声闷拨弦（不问 Jev），8:2 起每打一窗一声小铃。
 // 10–12 Clawd 冒出来，升回地面，心跳回到全速；收在 A7sus4，交给第 09 章。
@@ -29,7 +29,7 @@
         { from: 0, to: 3, id: "ecg-line", name: "心电图：心跳每拍一下，敲门在后半拍，报到每 5 拍一声低灯", energy: 0.55,
           kick: "Xx..Xx..Xx..Xx..", kickKind: "heart", duck: 0.4, clock: "..x...x...x...x.", clockVol: 1,
           bass: "light", pad: 0.8, lp: 2200, padVerb: 0.32 },
-        { from: 4, to: 5, id: "ecg-results", name: "结果取回来：5:0 只读令牌，5:2 今天那一格亮", energy: 0.5,
+        { from: 4, to: 5, id: "ecg-results", name: "结果取回来：5:0 令牌出门，5:2 今天那一格亮", energy: 0.5,
           kick: "Xx......Xx......", kickKind: "heart", duck: 0.35, clock: "..x...x...x...x.", clockVol: 0.8,
           bass: "half", arp: { p: "sparse", lo: 69, inst: "bell2", v: 0.28 }, pad: 0.85, lp: 2600, padVerb: 0.34 },
         { from: 6, to: 7, id: "strata-sink", name: "沉进地层：敲门变闷，每拍压进一片；7:0 这首歌亮一下，低八度的铃唱主题", energy: 0.32,
@@ -53,7 +53,7 @@
       ],
       story: [
         ...checks,
-        { bar: 5, beat: 0, kind: "key", v: 0.7, pan: 0.3 }, // 只读令牌
+        { bar: 5, beat: 0, kind: "key", v: 0.7, pan: 0.3 }, // 令牌出门
         { bar: 5, beat: 2, kind: "lamp", m: midi("A5"), i: 2 }, // 今天那一格亮
         // Jev 一窗一窗打分（../ch08.js 的 ORDER，从 AT.sweep0 起每半拍一窗），音高顺着和弦往上走
         ...["G5", "A5", "Bb5", "D6", "E6", "G6"].map((n, i) => ({ bar: 8 + Math.floor((2 + i * 0.5) / 4), beat: (2 + i * 0.5) % 4, kind: "tick", m: midi(n), i: i % 3 })),

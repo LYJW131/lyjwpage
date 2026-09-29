@@ -6,9 +6,11 @@
 // 机位（章内小节）：
 //   0–1 接第 07 章：首帧是报到尖峰的尖，在屏幕 (1100, 300)，它左边那条斜边和第 07 章服务器那台的摆杆同一个角度；往后拉出整条心电图
 //   1–4 心电图：两种方向相反的信号；2.5 起冷面脚注「报到只证明 cron 跑完了」
-//   4–6 往右：采集 Worker 5:0 拿只读令牌去 Sentry 取结果，LYJWPAGE 卡两行各 30 天一格，5:2 今天那一格亮（live 绿，全片第二次也是最后一次）
+//   4–6 往右：采集 Worker 5:0 拿令牌去 Sentry 查，LYJWPAGE 卡两行各 30 天一格，5:2 今天那一格亮（live 绿，全片第二次也是最后一次）。
+//     令牌上只标 GET：代码只证得了「只发 GET」，权限范围未核，不写「只读」（FACTS §8）
 //   6–8 下沉进地层：一层一层是 Pulse 卡上那几条道，分钟 cron 每拍往地层右沿压进一薄片；7:0 在听那一层里，这首歌亮一下
-//   8–10 推近 Coding 那一层：一窗一窗交给 Jev（强度条是示意），全零的窗不问 Jev、直接落最低档；Tokens 那层是三个来源的 5 分钟桶
+//   8–10 推近 Coding 那一层：一窗一窗交给 Jev（强度条是示意），全零的窗不问 Jev、直接落最低档；Tokens 那层是三个来源的 5 分钟桶。
+//     打分只留在 StateHub、不归档，画在地层里会被看成进了 D1，所以 Jev 那一格上方注「不进 D1」（FACTS §3「api 的分钟 cron」）
 //   10–12 Clawd 在地层边冒出来说收尾那句；镜头升回地面，最后一帧只剩心电图，交给第 09 章
 // 配乐锚点在 AT（章内小节），music/ch08.js 按同一组小节落拍；报到、敲门的拍位是 CHECKS / KNOCKS。改时间先对这两处和 SCRIPT.md。
 // 画面只从这里取时间，不读配乐的音符表（score.js 加载失败时这一章照样画得出来）。
@@ -29,7 +31,6 @@
     "ch08.foot": ["报到只证明 cron 跑完了。", "A check-in only proves the cron ran."],
     "ch08.collector": ["采集 Worker", "Collector"],
     "ch08.every5": ["每 5 分钟", "every 5 minutes"],
-    "ch08.readOnly": ["只读", "read-only"],
     "ch08.n2a": ["结果取回来，", "Results come back,"],
     "ch08.n2b": ["今天那一格亮一下。", "and today's cell lights up."],
     "ch08.archive": ["每分钟压进一薄片", "a thin slice every minute"],
@@ -39,6 +40,7 @@
     "ch08.n3a": ["往下是地层：pulse 每分钟进 D1，", "Below lie the strata: pulse goes"],
     "ch08.n3b": ["长期保存。", "to D1 every minute, kept long-term."],
     "ch08.jevNote": ["打分（示意）", "scores (illustrative)"],
+    "ch08.jevKeep": ["打分只在屋里放 7 天，不进 D1", "scores stay 7 days in the room, not in D1"],
     "ch08.window": ["一窗 = 三个 5 分钟桶", "one window = three 5-min buckets"],
     "ch08.skip": ["不问 Jev，直接最低档", "no Jev: lowest level"],
     "ch08.open": ["还没满", "not closed yet"],
@@ -147,7 +149,7 @@
     line(x, cx, cy, cx + Math.cos(an) * r * 0.74, cy + Math.sin(an) * r * 0.74, 3.2, hot > 0.05 ? css("signalD") : bone, a);
     x.save(); x.globalAlpha = a; x.fillStyle = bone; x.beginPath(); x.arc(cx, cy, 5, 0, TAU); x.fill(); x.restore();
   }
-  // 只读令牌：一张小卡片（和第 01、02 章的钥匙卡一个样子），旁边写「只读」
+  // 令牌：一张小卡片（和第 01、02 章的钥匙卡一个样子），上面标 GET
   function keycard(x, cx, cy, a) {
     if (a <= 0) return;
     const w = 96, h = 44, col = css("signalD");
@@ -284,13 +286,13 @@
     dashPath(x, toSentry, 0.4 * a);
     dashPath(x, [[COL[0], COL[1] + COL_R + 96], [LAGG[0], LAGG[1] - 36]], 0.4 * a);
     dashPath(x, toCard, 0.4 * a);
-    // 5:0 只读令牌出门到 Sentry，5:1 结果回来，写进可滞后层，5:2 卡上今天那一格亮
+    // 5:0 令牌出门到 Sentry，5:1 结果回来，写进可滞后层，5:2 卡上今天那一格亮
     const kGo = prog(b, AT.fetch, AT.fetch + 0.22, E.io), kBack = prog(b, AT.back, AT.back + 0.25, E.io);
     if (b >= AT.fetch && b < AT.back + 0.3) {
       const k = b < AT.back ? kGo : 1 - kBack;
       const px = lerp(toSentry[0][0] - 60, toSentry[1][0] + 60, k);
       keycard(x, px, COL[1], a);
-      text(x, tr("ch08.readOnly"), px, COL[1] - 36, { font: FONT.cjk(28, 600), color: css("signalD"), align: "center", alpha: a });
+      text(x, "GET", px, COL[1] - 36, { font: FONT.mono(28, 600), color: css("signalD"), align: "center", alpha: a });
     }
     const dk = prog(b, AT.back + 0.25, AT.lit, E.io);
     if (dk > 0 && dk < 1) dot(x, e, [[COL[0], COL[1] + COL_R + 96], [LAGG[0], LAGG[1] - 36], [LAGG[0] + 70, LAGG[1]], [CARD.x - 10, LAGG[1]]], dk, a, 7);
@@ -458,6 +460,8 @@
     box(x, JEV.x, JEV.y, JEV.w, JEV.h, a);
     text(x, "Jev", JEV.x + 16, JEV.y + 38, { font: FONT.mono(28, 600), color: bone, alpha: a });
     text(x, tr("ch08.jevNote"), JEV.x + 70, JEV.y + 36, { font: FONT.cjk(21, 600), color: ash, alpha: a, maxW: JEV.w - 80 });
+    // 右边到画面边只剩约 560 世界 px（机位 D）；英文按这个宽度排
+    text(x, tr("ch08.jevKeep"), JEV.x, JEV.y - 16, { font: FONT.cjk(21, 600), color: ash, alpha: a, maxW: 540 });
     for (const w of CODING) {
       const x0 = tx(phi, w.from), x1 = tx(phi, w.from + 15);
       if (x1 < 200 || x0 > NOW_X) continue;
