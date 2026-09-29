@@ -25,4 +25,4 @@
 ## 验证
 
 - `pnpm --filter @lyjwpage/agents-reporter typecheck`；`pnpm --filter @lyjwpage/agents-reporter test`（先 `tsc` 再 `node --test`）。
-- 不出网、不读凭据的干跑：`DRY_RUN=1 LIMITS_FIXTURE=<夹具> HOME=/tmp/empty node dist/index.js`（先 `npm run build`），夹具形状见 `README.md`「DRY_RUN」。
+- 夹具干跑：`DRY_RUN=1 LIMITS_FIXTURE=<夹具> HOME=/tmp/empty node dist/index.js`（先构建），夹具形状见 `README.md`「DRY_RUN」。Claude 到期检查仍会读取 `HOME` 下的凭据，并可能发起刷新请求。

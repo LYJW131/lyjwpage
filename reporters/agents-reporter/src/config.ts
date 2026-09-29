@@ -46,7 +46,7 @@ export const config = {
 
   /** 镜像构建时烧进来的提交（build-reporters.yml 传 GIT_SHA），站点卡片据此显示线上跑的是哪一版 */
   reporterCommit: process.env.REPORTER_COMMIT?.trim() || null,
-  /** 推送账本（过去 12 小时推成功几封），和凭据同在挂进来的 /data 卷上；留空 = 只记在内存里 */
+  /** 推送账本（过去 `push-ledger.ts#WINDOW_MS` 内推成功几封），和凭据同在挂进来的 /data 卷上；留空 = 只记在内存里 */
   pushLedgerPath: process.env.PUSH_LEDGER_PATH === undefined ? "/data/pushes.json" : process.env.PUSH_LEDGER_PATH.trim(),
 
   site: {
@@ -57,7 +57,7 @@ export const config = {
     accessClientSecret: process.env.ACCESS_CLIENT_SECRET?.trim() ?? "",
   },
 
-  /** 与 PlayStation 共用人数分档逻辑，控制打各家限额接口的频率；限额使用 5 / 10 / 60 分钟。 */
+  /** 与 PlayStation 共用人数分档逻辑，控制打各家限额接口的频率。 */
   cadence: {
     liveIntervalMs: ms("LIVE_INTERVAL_MS", 300_000),
     openIntervalMs: ms("OPEN_INTERVAL_MS", 600_000),
@@ -70,8 +70,8 @@ export const config = {
 
   /**
    * Cursor 活动那条快循环。平时不单独查，跟着限额那一轮拉用量时顺手看最新事件；
-   * 看到 5 分钟内有事件才起快循环：有新事件就按 fast 间隔查，没有就翻倍拉长到 max，
-   * 超过 5 分钟没新事件、或者没人开着页面就停，交回限额那一轮。
+   * 看到 `cursor-now.ts#ACTIVE_WINDOW_MS` 内有事件才起快循环：有新事件就按 fast 间隔查，没有就翻倍拉长到 max，
+   * 超过该窗口没新事件、或者没人开着页面就停，交回限额那一轮。
    */
   cursorNow: {
     fastIntervalMs: ms("CURSOR_NOW_FAST_INTERVAL_MS", 60_000),
@@ -96,7 +96,6 @@ export const config = {
   /** Antigravity 的订阅名（如 "Google AI Pro"）。配额接口不带它，只能人工指定；空 = 不渲染套餐 */
   antigravityPlanLabel: process.env.ANTIGRAVITY_PLAN_LABEL?.trim() ?? "",
 
-  /** Antigravity 配额端点；默认打 daily-cloudcode-pa */
   antigravityQuotaUrl:
     process.env.ANTIGRAVITY_QUOTA_URL?.trim() ||
     "https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary",
@@ -120,7 +119,7 @@ export const config = {
   home: process.env.HOME?.trim() || "/data",
 
   /**
-   * `{ "<id>": <该家原始 HTTP 响应体> }`。有这份就不出网、不读凭据，走各家规整函数。
+   * `{ "<id>": <该家原始 HTTP 响应体> }`。限额使用夹具，Cursor 用量跳过；Claude 到期检查仍执行。
    */
   limitsFixture: process.env.LIMITS_FIXTURE?.trim() ?? "",
 } as const;

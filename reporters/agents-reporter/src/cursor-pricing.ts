@@ -3,13 +3,13 @@ import { failure, recovered } from "./log.js";
 /**
  * Cursor 事件的公开 API 等值估价。不使用 Cursor 返回的 chargedCents / totalCents。
  *
- * 价目跟 Mac 上的 ccusage 同一个做法：每轮在线取 models.dev（6 小时内复用上一份），
+ * 价目跟 Mac 上的 ccusage 同一个做法：每轮在线取 models.dev（`ONLINE_TTL_MS` 内复用上一份），
  * 取不到就沿用上一份，一份都没有时退回下面编译进来的快照。新模型上线后不用发版就有价。
  * 在线那份只认官方厂商（OFFICIAL_PROVIDERS），不认聚合商 —— 同一个模型各家转售价不一样。
  *
  * 快照是 ccusage 的 models.dev 数据（catalogVersion
- * `models.dev-6e5efcd056370b0853db07ce9b4e02391c8a2d55`），之后补了 grok-4-7、
- * muse-spark-1-3、kimi-k3。Cursor 的费用只在这里估，MacTelemetryHub 不采 Cursor。
+ * `models.dev-6e5efcd056370b0853db07ce9b4e02391c8a2d55`）。当前型号见 `CATALOG`。
+ * Cursor 的费用只在这里估，MacTelemetryHub 不采 Cursor。
  *
  * 快照改编自 ccusage 的 models.dev 数据，MIT。
  * Copyright (c) 2025 ryoppippi / models.dev

@@ -16,7 +16,7 @@ Cursor 的用量历史在云端，Mac 合盖时云端线程还在跑，所以这
 
 ## 它做什么
 
-启动立即采集一轮，之后按页面人数选档：可见 5 分钟、仅后台开着 10 分钟、无人打开 60 分钟。每轮：
+启动立即采集一轮，之后按页面人数选档：有页面可见走快档，仅后台开着走中档，无人打开走闲档。三档间隔见 `src/config.ts#config.cadence`。每轮：
 
 1. 需要的话刷新 Claude 的 OAuth
 2. 五家自己打各家限额接口（参考了 TokenTracker 的读取逻辑，没有依赖它）；同时并行拉 Cursor 的用量事件，产出 `codingUsage` / `codingActivity` / `codingTokenBuckets`
@@ -25,16 +25,15 @@ Cursor 的用量历史在云端，Mac 合盖时云端线程还在跑，所以这
 
 每轮收尾读 `SITE_URL/count`：`online`（有页面**可见**）大于 0 走快档；否则
 `connections`（有页面**开着**，含后台标签页）大于 0 走中档，否则走闲档。与
-PlayStation 上报器采用同款人数分档逻辑，限额使用自己的 5 / 10 / 60 分钟。调频在这里控制的是打各家
-限额接口的频率（server-reporter 已改成固定每分钟，它当初调频只为给 Vercel 减负）。
+PlayStation 上报器采用同款人数分档，分档见 `src/cadence.ts#nextDelay`，调的是打各家限额接口的频率。
 计数超时、非成功响应、格式错误一律当 0（某个字段不合法只降它自己），不触发上报失败重试。
-不配 `SITE_URL` 时读不到人头数，固定走 60 分钟。
+未配 `SITE_URL` 时使用 `src/config.ts#config.cadence.idleIntervalMs`。
 
-长档每 5 分钟重查人数，发现更快档立即采集；人数减少不延后已经定好的下一轮。
+长档按 `src/config.ts#config.cadence.liveIntervalMs` 重查人数（`src/cadence.ts#waitForNextRound`），发现更快档立即采集；人数减少不延后已经定好的下一轮。
 只查公开计数口，不带 ingest 密钥，也不在这些检查里访问厂商限额接口。
 `SITE_URL` 使用统一 API Worker，所有连接该 Worker 的页面都计入人数。
 
-默认发 `claude` / `codex` / `grok` / `cursor` / `antigravity`。一家失败只影响那一行。
+默认清单见 `src/config.ts#agentIds`。一家失败只影响那一行。
 
 ## 配置
 
@@ -46,18 +45,18 @@ PlayStation 上报器采用同款人数分档逻辑，限额使用自己的 5 / 
 | `SITE_INGEST_URL` | ✅ | 上报端点 `https://ingest.homepage.lyjw.llc/api/ingest/agents` |
 | `ACCESS_CLIENT_ID` | ✅ | Cloudflare Access service token `lyjwpage-agents` 的 client id |
 | `ACCESS_CLIENT_SECRET` | ✅ | 同一把 token 的 secret，只在 Zero Trust 控制台创建或轮换时显示一次 |
-| `LIVE_INTERVAL_MS` | | 默认 `300000`（5 分钟），有可见页面；也是长档重查人数的间隔 |
-| `OPEN_INTERVAL_MS` | | 默认 `600000`（10 分钟），只有后台页面 |
-| `IDLE_INTERVAL_MS` | | 默认 `3600000`（60 分钟），无人打开；改长时先放宽站点 `src/lib/freshness.ts` 的 `AGENT_LIMITS_STALE_MS` |
-| `COUNT_TIMEOUT_MS` | | 默认 `2500`，每个计数请求的超时 |
-| `CURSOR_NOW_FAST_INTERVAL_MS` | | 默认 `60000`，Cursor 在用时查最近用量事件的间隔；要小于站点灯的 5 分钟窗口 |
-| `CURSOR_NOW_MAX_INTERVAL_MS` | | 默认 `240000`，没新事件时间隔翻倍拉长的上限 |
-| `PUSH_TIMEOUT_MS` | | 默认 `30000` |
+| `LIVE_INTERVAL_MS` | | 有可见页面时的间隔，也是长档重查人数的间隔。默认见 `src/config.ts#config.cadence` |
+| `OPEN_INTERVAL_MS` | | 只有后台页面时的间隔。默认见 `src/config.ts#config.cadence` |
+| `IDLE_INTERVAL_MS` | | 无人打开时的间隔。默认见 `src/config.ts#config.cadence`。改长时先放宽站点 `src/lib/freshness.ts#AGENT_LIMITS_STALE_MS` |
+| `COUNT_TIMEOUT_MS` | | 每个计数请求的超时。默认见 `src/config.ts#config.cadence` |
+| `CURSOR_NOW_FAST_INTERVAL_MS` | | Cursor 在用时查最近用量事件的间隔，要小于活动窗口 `src/cursor-now.ts#ACTIVE_WINDOW_MS`。默认见 `src/config.ts#config.cursorNow` |
+| `CURSOR_NOW_MAX_INTERVAL_MS` | | 没新事件时间隔翻倍拉长的上限。默认见 `src/config.ts#config.cursorNow` |
+| `PUSH_TIMEOUT_MS` | | 上报超时。默认见 `src/config.ts#config` |
 | `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` | | 宿主机出海要走代理时填（如 `http://user:pass@192.168.3.2:7893`）。**跑在 misaka-jp 上不用填**，那台本身就在日本。上报器自己的 fetch 靠镜像里的 `NODE_USE_ENV_PROXY=1` 认它，五个 CLI 各自也认。在墙内本地 build 时另外用 `--build-arg HTTPS_PROXY=…` |
 | `CLAUDE_OAUTH_TOKEN_URL` | | 可选覆盖。默认从镜像里的 Claude Code 自动读取生产 OAuth 配置；覆盖时必须和 client ID 一起填 |
 | `CLAUDE_OAUTH_CLIENT_ID` | | 同上。无需手抄；客户端常量不写进仓库 |
 | `CLAUDE_BIN` | `claude` | 用来读取 OAuth 配置的 Claude Code 安装程序，可设绝对路径 |
-| `AGENT_IDS` | | 逗号分隔。默认 `claude,codex,grok,cursor,antigravity` |
+| `AGENT_IDS` | | 逗号分隔，默认集合见 `src/config.ts#agentIds` |
 | `GROK_HOME` | | Grok 凭据目录，默认 `$HOME/.grok` |
 | `CODEX_HOME` | | Codex 凭据目录，默认 `$HOME/.codex` |
 | `CURSOR_AUTH_TOKEN` | | 直接注入 Cursor JWT。没有就读 `$XDG_CONFIG_HOME/cursor/auth.json`（默认 `/data/.config/cursor/auth.json`） |
@@ -67,7 +66,7 @@ PlayStation 上报器采用同款人数分档逻辑，限额使用自己的 5 / 
 | `ANTIGRAVITY_OAUTH_CLIENT_SECRET` | | 同上 |
 | `AGY_BIN` | | 扫 OAuth 常量用的 `agy` 路径，默认 `agy`（镜像里在 `/usr/local/bin`） |
 | `DRY_RUN` | | `1` 时不 POST，把请求体 JSON 打到 stdout 然后退出 |
-| `LIMITS_FIXTURE` | | `{ "<id>": <该家原始 HTTP 响应体> }`。有它就不出网、不读凭据 |
+| `LIMITS_FIXTURE` | | `{ "<id>": <该家原始 HTTP 响应体> }`。仅替换限额取数并跳过 Cursor 用量 |
 
 ## 登录
 
@@ -95,7 +94,7 @@ Grok 的包是 `@xai-official/grok`，命令是 `grok`，无浏览器的环境�
 `codex login` 一启动就把旧的 `/data/.codex/auth.json` 删掉，中途取消或设备码过期等于把 codex 这份登录态弄没了，只能重登；
 其余四家不受影响。设备码 15 分钟有效。
 
-Claude 在 Linux 上把 OAuth 写到 `/data/.claude/.credentials.json`。登录后，上报器在到期前 5 分钟内的采集轮次（或 usage 接口回 401 时）自动续期并原子写回。默认从镜像中 Claude Code 的生产配置对象读取 token 端点和 client ID，不需要手抄环境变量；扫描规则按 Claude Code 2.1.261 的原生安装包验证，只接受唯一的生产配置，无法识别会明确报错。
+Claude 在 Linux 上把 OAuth 写到 `/data/.claude/.credentials.json`。登录后，上报器在到期前 `src/claude-oauth.ts#SKEW_MS` 内的采集轮次（或 usage 接口回 401 时）自动续期并原子写回。默认从镜像中 Claude Code 的生产配置对象读取 token 端点和 client ID，不需要手抄环境变量；扫描规则按 Claude Code 2.1.261 的原生安装包验证，只接受唯一的生产配置，无法识别会明确报错。
 
 刷新与该版本 CLI 一样使用 JSON 的 `grant_type=refresh_token`，带上凭据已有的 scopes，不请求额外权限；返回的新 access token、轮换 refresh token 和有效期会保存到原文件，保留套餐及其它顶层字段，文件权限为 `0600`。同进程的并发刷新共用一个请求。不要在上报器续期时同时运行交互式 Claude Code 登录或另一个共享同一凭据卷的实例，以免各自轮换凭据。
 
@@ -105,7 +104,7 @@ Codex / Grok 的 token 由上报器自己刷新，写回各自凭据目录里的
 
 ## cursor / antigravity
 
-五个 CLI 仍装进镜像，**只为登录一次**。限额运行时直打接口，不再调 `/usage`。
+五个 CLI 装进镜像：用于登录，Claude 与 `agy` 安装包还提供 OAuth 配置。限额运行时直打接口。
 
 **cursor。** Linux 上 `agent login` 把 JWT 写到 `/data/.config/cursor/auth.json` 的 `accessToken`（也可
 用 `CURSOR_AUTH_TOKEN` 直接注入）。限额打 `api2.cursor.sh` 的
@@ -161,7 +160,7 @@ Cursor 的此刻速率。闲着时不单独查，限额那一轮拉用量时顺�
 活动与桶的小信封会被当成没有可收的数据拒收，所以发布时入口先于容器。
 
 **antigravity。** 登录态在 `/data/.gemini/antigravity-cli/antigravity-oauth-token`。上报器打
-`daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary`（Antigravity 实际使用的后端端点）。到期前 5 分钟或接口回 401 时向
+`daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary`（Antigravity 实际使用的后端端点）。到期前 `src/providers/antigravity.ts#SKEW_MS` 或接口回 401 时向
 `oauth2.googleapis.com/token` 刷新并原子写回。刷新要的 client_id / client_secret 是 `agy` 二进制里的常量，
 token 文件里没有，而且 `agy` 自己每次跑都只在内存里刷、不写回文件 —— 所以光读文件永远是过期的。
 镜像里本来就装着 `agy`，上报器启动时把它扫一遍捞出候选（各两个，IDE 一套 CLI 一套，分不清谁配谁），
@@ -187,8 +186,8 @@ DRY_RUN=1 LIMITS_FIXTURE=./fixture.json HOME=/tmp/empty \
 
 `LIMITS_FIXTURE` 的形状是 `{ "<id>": <该家原始 HTTP 响应体> }`：claude 是 `/api/oauth/usage`，
 codex 是 `wham/usage`，grok 是 `/v1/billing`，antigravity 是 `retrieveUserQuotaSummary`，
-cursor 是 `{ period, plan, hardLimit, sand }`：三份 DashboardService 响应加 Grok Bot 那份（可省）。有它就不出网、不读凭据，
-所以这种模式下也不带 Cursor 的 coding 数据（那三份要真凭据去拉用量事件）。没有凭据时看 `src/*.test.mts` 里喂录制页的用例：
+cursor 是 `{ period, plan, hardLimit, sand }`：三份 DashboardService 响应加 Grok Bot 那份（可省）。Claude 到期检查仍会读取凭据并可能刷新（`src/claude-oauth.ts#refreshClaudeIfDue`）。
+这种模式下跳过 Cursor 用量，不带 coding 数据。没有凭据时看 `src/*.test.mts` 里喂录制页的用例：
 `coding-contract.test.mts` 把上报器各条路径产出的载荷，交给站点真正的校验（`shared/coding-usage.ts` 与 `shared/ingest/agents.ts`）
 过一遍，要在整个仓库里跑，不进镜像。
 
@@ -199,19 +198,16 @@ cursor 是 `{ period, plan, hardLimit, sand }`：三份 DashboardService 响应�
 镜像由 [`build-reporters.yml`](../../.github/workflows/build-reporters.yml) 在 GitHub Actions 上构建
 （只出 `linux/amd64`），这个目录有改动合进 main 就推 `ghcr.io/lyjw131/agents-reporter:latest` 和
 `sha-<短哈希>`。机器上只拉镜像，不放源码、不 build。
-从前在 misaka-jp（1C2G）上现场 build 这个装了五个 CLI 的镜像，冷 build 约 10 分钟。
 
 一个 project 里两个服务，所以**不点名服务的命令会同时动两个容器**。只动限额这个就写服务名：
 `docker compose pull agents-reporter && docker compose up -d --no-deps agents-reporter`。
 
 跑在 misaka-jp 的 `/opt/lyjwpage`，和 `server-reporter` 同一台。
-这台在日本，各家限额接口直连可达，**`.env` 里不再需要 `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY`**。
+机器与网络见 `docs/ops-facts.md`。代理开关见 `Dockerfile#NODE_USE_ENV_PROXY`。
 ssh 直连在 kex 阶段会被对面关掉，一律走 dsm 跳板：`ssh -J dsm misaka-jp`。
 
 限额在站点的可滞后层，浏览器按 `src/lib/freshness.ts` 的 `AGENT_LIMITS_STALE_MS`（三轮闲档加余量）判断过没过时。
-从固定间隔升级时更新机器上的 `.env`：删除 `PUSH_INTERVAL_MS`、
-`LIVE_PUSH_URL`、`ONLINE_COUNTER_URL`；按需设置三档间隔，
-再重建容器。旧变量已移除。
+间隔见 `src/config.ts#config.cadence`。
 
 `compose.yaml` 改了才需要送（跳板后面 sftp 用不了，`scp` 别想，走 ssh 管道）：
 
@@ -248,14 +244,14 @@ ssh -J dsm misaka-jp 'cd /opt/lyjwpage && docker compose pull agents-reporter &&
 
 参考了 TokenTracker 的读取逻辑（Claude `/api/oauth/usage`、Codex `wham/usage`、Grok billing、
 以及各家 token 刷新写回），**没有把 TokenTracker 装进容器**，也没有任何 git 依赖。
-限额路径只用 Node 22 自带的 `fetch`。
+限额请求使用 Node 内置 `fetch`，镜像版本见 `Dockerfile`。
 
 ## 容错
 
-- 站点或限额接口连不上都只是这一轮作废，进程不退；下一轮照常重试。
+- 单家失败发错误行；整轮采集或上报失败才退避，进程不退。
 - 同一个环节连续报错只在第一次和恢复时各写一句日志，中间每满 10 次再报一次。
-- 整轮采集 / 上报失败时，下一次重试是 2 秒后，连着错才逐次翻倍退到 5 分钟（跑通一次就复位）；退避期间不查人数。单家失败仍照发错误行，成功上报后按三档等下一轮。
+- 整轮采集 / 上报失败时，从 `src/index.ts#RETRY_MS` 翻倍至 `src/index.ts#MAX_RETRY_MS`，成功复位；退避期间不查人数。单家失败仍照发错误行，成功上报后按三档等下一轮。
 - 某个 agent「没配」（`configured: false`）这一行不发，站点按 id 留着上一次的值。
 - 「配了但取不到」发空 `limits` 加非空 `limitsError`。不要把上一次的好值再发一遍。
 
-`SITE_URL/count` 一次回 `online`（判快档）与 `connections`（判中档）；`ONLINE_COUNTER_URL` 不读取，机器上的 `.env` 里有也无害。
+`SITE_URL/count` 一次回 `online`（判快档）与 `connections`（判中档）。计数 URL 由 `src/config.ts#config.cadence.countUrl` 生成。

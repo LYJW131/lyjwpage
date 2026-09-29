@@ -40,14 +40,7 @@ function authHeaders(): Record<string, string> {
   return { "CF-Access-Client-Id": config.site.accessClientId, "CF-Access-Client-Secret": config.site.accessClientSecret };
 }
 
-/**
- * 「站点回了 `ok !== true` 就算失败」这条约定是**协议**的一部分，不是这个函数的
- * 内部实现 —— 站点的 ingestRoute 会用 200 之外的状态码和一个 `ok: false` 的信封
- * 表示软失败，认错了就会把它当成上报成功，而没有任何测试或类型会拦住。
- *
- * 将来再添上报器仍然是各自抄一份、各自是独立部署单元（理由见 log.ts），
- * 抄的时候连这条约定一起抄走。
- */
+/** HTTP 成功且 body.ok === true 才算成功，避免软失败被记入推送账本。 */
 async function readEnvelope<T>(response: Response): Promise<T | undefined> {
   const body = (await response.json().catch(() => null)) as SiteEnvelope<T> | null;
   if (!response.ok || body?.ok !== true) {
@@ -76,7 +69,7 @@ export async function push(payload: PushPayload): Promise<void> {
   const response = await fetch(config.site.ingestUrl, {
     method: "POST",
     headers: { ...authHeaders(), "Content-Type": "application/json" },
-    // 每一封带上自己的推送账本：镜像提交 + 过去 12 小时推成功几封（含这一封）与往返中位数。
+    // 每一封带上自己的推送账本：镜像提交 + 过去 `push-ledger.ts#WINDOW_MS` 内推成功几封（含这一封）与往返中位数。
     // 限额那轮和 Cursor 小信封都算这个上报器的一次推送
     body: JSON.stringify({ ...payload, reporter: await ledger.block(at) }),
     signal: AbortSignal.timeout(config.pushTimeoutMs),
