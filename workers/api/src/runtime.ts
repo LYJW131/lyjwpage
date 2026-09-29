@@ -19,7 +19,6 @@ export interface Env extends MusicKitTokenEnv {
   LAG?: KVNamespace;
   /** Worker 调站点 /api/revalidate 用的密钥，只有 Worker 和 Vercel 两边有。 */
   REVALIDATE_SECRET?: string;
-  CLOUDFLARE_ACCOUNT_ID?: string;
   /** TypeSafe AI 的 API 密钥，给 pulse 活动分用（Jev 评估模型）。不配就不打分。 */
   TYPESAFE_API_KEY?: string;
   /** 存储导入（`/api/internal/storage/import`）的鉴权密钥：初始化空的 StateHub、导入数据用（scripts/migrate-state-storage.mjs），不授予站点。 */
@@ -31,8 +30,6 @@ export interface Env extends MusicKitTokenEnv {
   SENTRY_DSN?: string;
   /** 不配时按生产 / Preview 自动判断；本地试 Sentry 时设 development。 */
   SENTRY_ENVIRONMENT?: string;
-  /** 这里不读：Sentry 卡片的取数令牌在采集 Worker 上，api 只读 LAG */
-  SENTRY_API_TOKEN?: string;
   /** Sentry SDK 从这里取 release（版本 ID），不在代码里读。 */
   CF_VERSION_METADATA?: WorkerVersionMetadata;
 }

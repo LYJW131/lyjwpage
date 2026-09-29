@@ -187,7 +187,7 @@ test("ingest archive: limit snapshots keep the last reading per site day and ski
   );
 });
 
-test("ingest archive: server readings aggregate per UTC hour and a replay does not double count", async () => {
+test("ingest archive: server readings aggregate per UTC hour; retries and late older readings are not added", async () => {
   const world = historyDb();
   const send = (status: ServerStatus) =>
     archiveIngest(world.db, { source: "server", receivedAt: status.observedAt + 500, status } as PreparedIngest);
@@ -196,16 +196,31 @@ test("ingest archive: server readings aggregate per UTC hour and a replay does n
   await send(server(T0 + 180_000, { cpuUsagePercent: 30, load1: 3, traffic: { cycleStart: T0 - 86_400_000, cycleEnd: T0 + 86_400_000, rxBytes: 3_000, txBytes: 900, quotaBytes: null } }));
   // 上报器重试同一封：observedAt 不变，样本数不加
   await send(server(T0 + 180_000, { cpuUsagePercent: 30, load1: 3 }));
-  // 乱序到达的早一分钟那封：计入均值，但不覆盖更晚的流量读数
+  // 乱序晚到的早一分钟那封：和重放分不开，不计入，也不覆盖更晚的流量读数
   await send(server(T0 + 120_000, { cpuUsagePercent: 20, load1: 2 }));
   await send(server(T0 + 3_600_000, { cpuUsagePercent: 50 }));
 
   const rows = world.all(`SELECT hour_at, samples, cpu_percent_sum, cpu_percent_max, load1_max, traffic_rx_bytes,
     last_observed_at FROM server_hours ORDER BY hour_at`).map((row) => ({ ...row }));
   assert.deepEqual(rows, [
-    { hour_at: T0, samples: 3, cpu_percent_sum: 60, cpu_percent_max: 30, load1_max: 3, traffic_rx_bytes: 3_000, last_observed_at: T0 + 180_000 },
+    { hour_at: T0, samples: 2, cpu_percent_sum: 40, cpu_percent_max: 30, load1_max: 3, traffic_rx_bytes: 3_000, last_observed_at: T0 + 180_000 },
     { hour_at: T0 + 3_600_000, samples: 1, cpu_percent_sum: 50, cpu_percent_max: 50, load1_max: 0.5, traffic_rx_bytes: 1_000, last_observed_at: T0 + 3_600_000 },
   ]);
+});
+
+test("ingest archive: replaying an older server reading after a newer one (A, B, A) does not add it again", async () => {
+  const world = historyDb();
+  const send = (status: ServerStatus) =>
+    archiveIngest(world.db, { source: "server", receivedAt: status.observedAt + 500, status } as PreparedIngest);
+  const a = server(T0 + 60_000, { cpuUsagePercent: 10, load1: 1 });
+  const b = server(T0 + 120_000, { cpuUsagePercent: 30, load1: 3 });
+
+  await send(a);
+  await send(b);
+  await send(a);
+
+  const rows = world.all("SELECT samples, cpu_percent_sum, load1_sum, last_observed_at FROM server_hours").map((row) => ({ ...row }));
+  assert.deepEqual(rows, [{ samples: 2, cpu_percent_sum: 40, load1_sum: 4, last_observed_at: T0 + 120_000 }]);
 });
 
 test("ingest archive: sources without long-term facts do not touch D1", async () => {

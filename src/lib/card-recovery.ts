@@ -1,5 +1,5 @@
 /**
- * 卡片崩溃之后的恢复节奏与上报去重（components/card-boundary 用）。纯逻辑，好测。
+ * 卡片崩溃之后的恢复节奏、上报去重与重试前的缓存准备（components/card-boundary 用）。纯逻辑，好测。
  *
  * 错误边界一旦兜住，整棵子树就卸载了：这张卡的数据 hook 不再轮询，也不会自己回来。
  * 所以恢复要有人主动做（点 Retry），也要有一点自动的 —— 服务端一次性的坏响应、
@@ -50,4 +50,72 @@ export function createFaultLedger() {
       return { report, retryInMs, attempt };
     },
   };
+}
+
+/** 取不到就别干等：超过这么久按取失败处理，Retry 不能一直转圈 */
+export const PRIME_TIMEOUT_MS = 8_000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`timed out after ${ms}ms`)), ms);
+    promise.then(resolve, reject).finally(() => clearTimeout(timer));
+  });
+}
+
+export type PrimeCardCacheIo<E extends { ok: boolean }> = {
+  /** 能用状态信封读的键。别的键（版本接口）没有首屏那份，清掉缓存就够了 */
+  isStatusPath: (path: string) => boolean;
+  /** 读一份此刻的信封；网络错误、非 2xx 抛出 */
+  read: (path: string) => Promise<E>;
+  /** 写进 SWR 缓存；`undefined` 是清掉这个键 */
+  write: (path: string, value: E | undefined) => unknown;
+  /**
+   * 这个键上「有新值落进缓存」的代次（lib/status-reads 的 `writeGeneration`：推送和轮询的响应都会推进它）。
+   * 每个键发起取数时记一次，写之前再比：变了就是别人先写了更新的值，这次的结果（清缓存也一样）不落地。
+   */
+  generation: (path: string) => number;
+  /** 发起这趟重试的卡片已经卸载：什么都不写 */
+  cancelled: () => boolean;
+  timeoutMs?: number;
+};
+
+/**
+ * 重试前给这张卡读的每个键备好缓存：状态端点主动取一份此刻的有效信封写进去，
+ * 重新挂载读到的就是它。
+ *
+ * 只清缓存救不回所有情况：让卡崩的若是首屏那份（SWR 的 fallbackData），缓存一清，重新挂载
+ * 又从它起步，渲染时再抛一次，连挂载时的回源都跑不到。取不到（网络、超时、上游降级信封）
+ * 就退回清掉这个键，和只清缓存一样。各个键并行，取数最长等 `timeoutMs`；
+ * 清缓存触发的 SWR 重新取数在后台继续，不让它把 Retry 卡住。
+ *
+ * 取数是异步的，途中同一个键可能被推送、或别的卡的轮询写进更新的值（很多键没有时间戳可比，
+ * 只能按代次判）；卡片也可能已经卸载。这两种情况都不写，包括退回的清缓存：慢回来的这份
+ * 不能盖掉更新的值，也不能替一张已经不在的卡改缓存。
+ */
+export async function primeCardCache<E extends { ok: boolean }>(paths: readonly string[], io: PrimeCardCacheIo<E>): Promise<void> {
+  await Promise.all(
+    paths.map(async (path) => {
+      const issuedAt = io.generation(path);
+      let fresh: E | undefined;
+      if (io.isStatusPath(path)) {
+        try {
+          const envelope = await withTimeout(io.read(path), io.timeoutMs ?? PRIME_TIMEOUT_MS);
+          if (envelope.ok) fresh = envelope;
+        } catch {
+          // 取不到：退回清缓存
+        }
+      }
+      if (io.cancelled() || io.generation(path) !== issuedAt) return;
+      try {
+        const write = Promise.resolve(io.write(path, fresh));
+        if (fresh === undefined) {
+          void write.catch(() => {});
+          return;
+        }
+        await write;
+      } catch {
+        // 清缓存后的 SWR 回源也可能失败；仍让其他键完成并结束这一趟 Retry。
+      }
+    }),
+  );
 }

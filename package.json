@@ -11,6 +11,7 @@
     "dev:override": "node scripts/dev-override.mjs",
     "docs:architecture": "node scripts/architecture-diagram.mjs",
     "docs:check": "node scripts/docs-check.mjs",
+    "docs:comment-only": "node scripts/comment-only-check.mjs",
     "build": "node scripts/build.mjs",
     "start": "next start",
     "test": "node --test --experimental-strip-types --import ./src/lib/testing/register-alias.mjs src/lib/*.test.mts src/lib/*.test.mjs",

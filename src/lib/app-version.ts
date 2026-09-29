@@ -50,51 +50,106 @@ export type AutoReloadTrigger = "background" | "page-crash";
  */
 export const AUTO_RELOAD_COOLDOWN_MS = 5 * 60_000;
 
-/** 记住最近试过几个目标版本；再多的说明版本在来回抖，冷却在兜底 */
+/** 最多记住几个目标版本的账；再多的说明版本在来回抖，冷却在兜底 */
 export const AUTO_RELOAD_MEMORY = 8;
 
 /**
- * 这个标签页自动刷新的账：试过哪些目标 sha、最近一次刷新是什么时候。
+ * 同一个目标版本一轮里最多自动刷几次。
+ *
+ * 刷回来还是旧页面，多半是 ESA 边缘上的 HTML 还没换：隔一个冷却再试一次就够了，
+ * 试满还没换说明边缘缓存卡住了，再刷也没用。
+ */
+export const AUTO_RELOAD_MAX_TRIES = 2;
+
+/**
+ * 一轮多长：距某个目标上一次试起过了这么久，它试过的次数清零。
+ * 目的是边缘缓存恢复之后还能刷到它，而不是试满就永远不再试。
+ */
+export const AUTO_RELOAD_RETRY_AFTER_MS = 30 * 60_000;
+
+/** 一个目标版本这一轮试过几次；`at` 是最近一次的时刻，一轮从它起算 */
+export type AutoReloadTry = { sha: string; count: number; at: number };
+
+/**
+ * 这个标签页自动刷新的账：各个目标 sha 试了几次，以及最近一次刷新是什么时候。
  * 存在 sessionStorage 里（跨刷新保留、跨标签页隔离），所以要能从任意字符串里安全地读回来。
+ * `at` 单独存而不是从 `tries` 里取最大：目标试成功后它那一条会被划掉，冷却的起点还得留着。
  */
 export type AutoReloadLedger = {
-  shas: string[];
+  tries: AutoReloadTry[];
   at: number | null;
 };
 
-export const EMPTY_AUTO_RELOAD_LEDGER: AutoReloadLedger = { shas: [], at: null };
+export const EMPTY_AUTO_RELOAD_LEDGER: AutoReloadLedger = { tries: [], at: null };
 
 export function parseAutoReloadLedger(raw: string | null): AutoReloadLedger {
   if (!raw) return EMPTY_AUTO_RELOAD_LEDGER;
   try {
     const value: unknown = JSON.parse(raw);
     if (!value || typeof value !== "object") return EMPTY_AUTO_RELOAD_LEDGER;
-    const row = value as { shas?: unknown; at?: unknown };
-    const shas = Array.isArray(row.shas)
-      ? row.shas.filter((sha): sha is string => typeof sha === "string" && sha.length > 0).slice(-AUTO_RELOAD_MEMORY)
-      : [];
+    const row = value as { tries?: unknown; at?: unknown };
+    // 同一个 sha 重复出现时后面的当最新
+    const bySha = new Map<string, AutoReloadTry>();
+    for (const item of Array.isArray(row.tries) ? row.tries : []) {
+      const entry = item as Partial<Record<keyof AutoReloadTry, unknown>> | null;
+      if (
+        typeof entry?.sha !== "string" ||
+        entry.sha.length === 0 ||
+        !Number.isSafeInteger(entry.count) ||
+        (entry.count as number) < 1 ||
+        typeof entry.at !== "number" ||
+        !Number.isFinite(entry.at)
+      ) {
+        continue;
+      }
+      bySha.delete(entry.sha);
+      bySha.set(entry.sha, { sha: entry.sha, count: entry.count as number, at: entry.at });
+    }
     const at = typeof row.at === "number" && Number.isFinite(row.at) ? row.at : null;
-    return { shas, at };
+    return { tries: [...bySha.values()].slice(-AUTO_RELOAD_MEMORY), at };
   } catch {
     return EMPTY_AUTO_RELOAD_LEDGER;
   }
 }
 
-/** 刷新前记一笔：这个目标试过了，时刻是现在。同一个 sha 只留一份，最多记 AUTO_RELOAD_MEMORY 个 */
+/** 这个目标这一轮的账；上一次试距今已过一轮就当没有 */
+function currentRound(ledger: AutoReloadLedger, sha: string, now: number): AutoReloadTry | null {
+  const entry = ledger.tries.find((known) => known.sha === sha);
+  return entry && now - entry.at < AUTO_RELOAD_RETRY_AFTER_MS ? entry : null;
+}
+
+/** 刷新前记一笔：这个目标又试了一次，时刻是现在。每个 sha 只留一条，最多记 AUTO_RELOAD_MEMORY 条 */
 export function recordAutoReload(ledger: AutoReloadLedger, sha: string, now: number): AutoReloadLedger {
-  return { shas: [...ledger.shas.filter((known) => known !== sha), sha].slice(-AUTO_RELOAD_MEMORY), at: now };
+  const count = (currentRound(ledger, sha, now)?.count ?? 0) + 1;
+  return { tries: [...ledger.tries.filter((known) => known.sha !== sha), { sha, count, at: now }].slice(-AUTO_RELOAD_MEMORY), at: now };
 }
 
 /**
- * 刷回来的页面已经就是那个版本：那次尝试成功了，从「试过」里划掉。
+ * 刷回来的页面已经就是那个版本：那次尝试成功了，从账里划掉。
  *
- * 「试过」拦的是「试了、页面还是旧的」（ESA 边缘上的 HTML 还没换）。试成功的版本不该一直
+ * 账拦的是「试了、页面还是旧的」（ESA 边缘上的 HTML 还没换）。试成功的版本不该一直
  * 拦着，否则以后部署回滚到它（页面在别的版本上、`/api/version` 答回它）就再也刷不了。
  * 没有变化时原样返回同一个对象，调用方靠引用判要不要写回。
  */
 export function settleAutoReloadLedger(ledger: AutoReloadLedger, pageCommit: string | null | undefined): AutoReloadLedger {
-  if (!pageCommit || !ledger.shas.includes(pageCommit)) return ledger;
-  return { ...ledger, shas: ledger.shas.filter((sha) => sha !== pageCommit) };
+  if (!pageCommit || !ledger.tries.some((known) => known.sha === pageCommit)) return ledger;
+  return { ...ledger, tries: ledger.tries.filter((known) => known.sha !== pageCommit) };
+}
+
+/**
+ * 系统时钟被往回拨过：账里比现在还晚的时刻不可信，一律当成刚发生，冷却和「一轮」都从现在
+ * 重新数，不会照着一个未来的时刻干等。没有变化时原样返回同一个对象，调用方靠引用判要不要写回。
+ *
+ * 改完必须由调用方写回存储：只在判定时临时拉回，下一次读出来的还是那个未来的时刻，
+ * 每次都从「现在」重新数起，永远等不到。
+ */
+export function rebaseAutoReloadLedger(ledger: AutoReloadLedger, now: number): AutoReloadLedger {
+  const future = (at: number | null): at is number => at !== null && at > now;
+  if (!future(ledger.at) && !ledger.tries.some((known) => future(known.at))) return ledger;
+  return {
+    tries: ledger.tries.map((known) => (future(known.at) ? { ...known, at: now } : known)),
+    at: future(ledger.at) ? now : ledger.at,
+  };
 }
 
 export type AutoReloadInput = {
@@ -110,33 +165,34 @@ export type AutoReloadInput = {
   now: number;
 };
 
-/** `wait`：现在不行、过 `ms` 毫秒再判（冷却）；`skip`：这次不刷，靠事件（可见性、版本变化）再触发 */
+/** `wait`：现在不行、过 `ms` 毫秒再判（冷却，或这个目标这一轮试满了）；`skip`：这次不刷，靠事件（可见性、版本变化）再触发 */
 export type AutoReloadDecision = { action: "reload" } | { action: "wait"; ms: number } | { action: "skip" };
 
 /**
  * 只在确知旧页面（`stale`，不是 `unknown`）时才动手，并且有这几道闸：
  *
- * 1. **每个目标 sha 最多试一次，而且是一个集合，不是「最后一个」。** `lyjw131.com` 的首页
- *    HTML 由 ESA 缓存，新部署后有一段「`/api/version` 已经是新的、边缘上的 HTML 还是旧的」
- *    的窗口，刷回来还是旧页面就再判旧、再刷。版本接口在两个 sha 间来回（部署回滚往返）时，
- *    只记最后一个的话标记会被交替覆盖、每次都放行，所以记试过的全部（有上限），
- *    页面刷回来已经是那个版本时才划掉（`settleAutoReloadLedger`）。
+ * 1. **每个目标 sha 一轮最多试 AUTO_RELOAD_MAX_TRIES 次，账按目标分别记，不是只记「最后一个」。**
+ *    `lyjw131.com` 的首页 HTML 由 ESA 缓存，新部署后有一段「`/api/version` 已经是新的、
+ *    边缘上的 HTML 还是旧的」的窗口，刷回来还是旧页面就再判旧、再刷。版本接口在两个 sha 间
+ *    来回（部署回滚往返）时，只记最后一个的话标记会被交替覆盖、每次都放行。试满的目标要等
+ *    AUTO_RELOAD_RETRY_AFTER_MS（从它最近一次试起算）才清零重来，边缘缓存恢复后还刷得到它；
+ *    页面刷回来已经是那个版本时直接划掉（`settleAutoReloadLedger`）。
  * 2. **冷却**：距上一次自动刷新不到 AUTO_RELOAD_COOLDOWN_MS 就不刷，返回还要等多久。
- *    集合拦的是「同一个版本」，冷却拦的是「版本一直在变」，给重复刷新和重复上报 Sentry 封顶。
+ *    第一道拦的是「同一个版本」，冷却拦的是「版本一直在变」，给重复刷新和重复上报 Sentry 封顶。
+ *    账里的时刻晚于现在（系统时钟被拨回过）按刚发生算，见 `rebaseAutoReloadLedger`。
  * 3. **播放器在放就不刷。** 刷新的代价是一段音乐，比一张卡暂时旧着贵得多。
  * 4. **存储不可用就不刷。** 记不住账就没法保证不循环。
  */
 export function autoReloadDecision(input: AutoReloadInput): AutoReloadDecision {
-  const { ledger, latestCommit } = input;
+  const { latestCommit, now } = input;
   if (input.status !== "stale" || !latestCommit) return { action: "skip" };
-  if (!ledger) return { action: "skip" };
-  if (ledger.shas.includes(latestCommit)) return { action: "skip" };
+  if (!input.ledger) return { action: "skip" };
   if (input.playerBusy) return { action: "skip" };
   if (input.trigger === "background" && !input.hidden) return { action: "skip" };
-  if (ledger.at !== null) {
-    const elapsed = input.now - ledger.at;
-    // 系统时钟被往回拨过（elapsed 为负）也只等一个冷却期，不会等出一个天文数字
-    if (elapsed < AUTO_RELOAD_COOLDOWN_MS) return { action: "wait", ms: Math.min(AUTO_RELOAD_COOLDOWN_MS, AUTO_RELOAD_COOLDOWN_MS - elapsed) };
-  }
-  return { action: "reload" };
+  const ledger = rebaseAutoReloadLedger(input.ledger, now);
+  const round = currentRound(ledger, latestCommit, now);
+  const untilRetry = round && round.count >= AUTO_RELOAD_MAX_TRIES ? round.at + AUTO_RELOAD_RETRY_AFTER_MS - now : 0;
+  const untilCooldown = ledger.at === null ? 0 : ledger.at + AUTO_RELOAD_COOLDOWN_MS - now;
+  const ms = Math.max(untilRetry, untilCooldown);
+  return ms > 0 ? { action: "wait", ms } : { action: "reload" };
 }
