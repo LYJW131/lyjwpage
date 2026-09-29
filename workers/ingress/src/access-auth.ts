@@ -1,7 +1,7 @@
 /**
  * 上报与内部通知的鉴权。
  *
- * 新路：Cloudflare Access。上报器带着自己的 service token（`CF-Access-Client-Id` /
+ * Cloudflare Access：上报器带着自己的 service token（`CF-Access-Client-Id` /
  * `CF-Access-Client-Secret`）打 `ingest.homepage.lyjw.llc`，Access 在边缘核对 token，
  * 放行时附上一张它签的 JWT（`Cf-Access-Jwt-Assertion`）。这里只信那张 JWT：验签、
  * 验受众和签发方、验时效，再拿 `common_name`（= client id）查 ACCESS_CLIENTS，

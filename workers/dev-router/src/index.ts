@@ -12,7 +12,7 @@
  * `scheduled()`：`curl localhost:8788/cdn-cgi/local/scheduled` 只会触发第一个 Worker，
  * 也就是这里，它再让采集 Worker 按这一刻跑一遍到期的任务。api 的分钟 cron 从这里
  * 触发不到（Service Binding 调不了别的 Worker 的 scheduled），本地它要做的事
- * （读模型、D1 归档、Jev 打分）也都被本地的隔离开关关着。
+ * （D1 归档、Jev 打分）也都被本地的隔离开关关着。
  *
  * 没有 tsconfig，也不在任何 typecheck 里：只用最基本的类型，保持几十行。
  */

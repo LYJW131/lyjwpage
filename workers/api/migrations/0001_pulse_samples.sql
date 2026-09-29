@@ -1,4 +1,4 @@
--- 长期活动历史归档：StateHub 的 pulse 序列只留 600 条 / 7 天，这里只增不删。
+-- 档位时代的活动历史归档（已冻结，不再写）。
 -- 主键 (domain, t) 让每分钟的重放用 INSERT OR IGNORE 天然幂等。
 CREATE TABLE IF NOT EXISTS pulse_samples (
   domain TEXT NOT NULL,

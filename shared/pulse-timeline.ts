@@ -2,11 +2,9 @@ import { CHARGING_IDLE_MAX_W } from "@/lib/home-layout";
 import { PULSE_REPEAT_AFTER_MS, PULSE_SILENT_AFTER_MS } from "@/lib/limits";
 
 /**
- * Pulse 的事实时间线：只存原始值，档位、颜色、摘要一律在展示时现算。
- *
- * 从前在入库时就把每条上报压成 0–3 档加一段 48 字的 hint，展示方式一改就只剩
- * 迁移数据一条路，而且被压掉的那部分（活动的步数、Coding 的「两者同时」、
- * 充电的精确瓦数）再也找不回来。现在分两种形状：
+ * Pulse 的事实时间线：只存原始值，档位、颜色、摘要一律在展示时现算 —— 入库前压成档位的话，
+ * 被压掉的部分（活动的步数、Coding 的「两者同时」、充电的精确瓦数）再也找不回来，
+ * 展示方式一改就得迁移数据。分两种形状：
  *
  * - **状态区间**（listening / watching / gaming）：每条道一个「开着的区间」加一串
  *   已关闭的区间。同一状态只续 `seenAt` 和有效期（每条道最多每分钟写一次）；状态或
@@ -19,13 +17,13 @@ import { PULSE_REPEAT_AFTER_MS, PULSE_SILENT_AFTER_MS } from "@/lib/limits";
  * 纯函数，不碰存储、不看时钟；`now` 一律由调用方传进来。
  */
 
-/** 标题只防病态长度，不再截成紧凑 hint */
+/** 标题只防病态长度，不截成摘要 */
 export const PULSE_TITLE_MAX = 200;
 /** 同一状态续 `seenAt` 的最短间隔：每条道每分钟最多一次写入 */
 export const PULSE_SEEN_WRITE_MS = 60_000;
-/** Mac 与 HomePod 的播放、Emby 的播放 / 暂停：上报最迟 10 分钟再确认一次 */
+/** Mac 的播放、Emby 的播放 / 暂停的有效期：上报最迟这么久再确认一次。HomePod 按曲目剩余时长另算（见 shared/pulse-listening） */
 export const PULSE_STATE_HOLD_MS = PULSE_SILENT_AFTER_MS;
-/** PSN 没人看站点时 29.5 分钟才查一次在线状态，再给五分钟投递抖动 */
+/** PSN 没人看站点时按闲档（collector 的 `IDLE_TICK_INTERVAL_MS`）才查一次在线状态；有效期要盖过它，再留出投递抖动 */
 export const GAMING_HOLD_MS = 35 * 60_000;
 
 export const STATE_LANES = ["listening", "watching", "gaming"] as const;
@@ -320,12 +318,12 @@ export function parseChargingSample(raw: string): ChargingSample | null {
 }
 
 /**
- * 这一笔瓦数该不该写。沿用档位时代的闸门，只是不再换算成档：
+ * 这一笔瓦数该不该写：
  *
  * - 跨过待机门槛（{@link CHARGING_IDLE_MAX_W}）立刻写；门槛以下的抖动不写。
- * - 都在通电时，至少隔 30 秒、而且变得够明显（≥ 2 W 且 ≥ 10%）才写。
+ * - 都在通电时，隔够久、变得够明显才写。
  * - 换了设备立刻写。
- * - 其余最多 5 分钟再确认一次，带上此刻的读数：断流才会在图上露出缺口。
+ * - 其余最多隔 {@link PULSE_REPEAT_AFTER_MS} 再确认一次，带上此刻的读数：断流才会在图上露出缺口。
  */
 export function planChargingSample(last: ChargingSample | null, next: { t: number; watts: number; device?: string | null }): ChargingSample | null {
   const device = pulseText(next.device, 80);
@@ -429,8 +427,8 @@ export function parseActivityBucket(raw: string): ActivityBucket | null {
 }
 
 /**
- * 用一次权威查询替换范围内的桶。范围外的原样保留；从前的累计估算若从范围外起步
- * 却穿进范围内，也一并丢掉，不能盖住权威查询里的未知空缺。
+ * 用一次权威查询替换范围内的桶。范围外的原样保留；和范围有交叠的旧桶（哪怕只穿进
+ * 一截）一并丢掉，不能盖住权威查询里的未知空缺。
  *
  * 返回替换后的整串，以及第一处不同的下标：写入侧只需从那里往后重写，
  * 通常每次推送只动最后一两个桶，不用整串 remove + append。

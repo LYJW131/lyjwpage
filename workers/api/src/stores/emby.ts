@@ -32,7 +32,7 @@ async function mergePreparedImages(
   };
 }
 
-/** 引用了却还没有图的键。回给代理，让它下一次把这些补上 */
+/** 引用了却还没有图的键，只按本状态核心里的映射算。回给代理，让它下一次把这些补上 */
 function missingKeys(items: StoredWatchingItem[], objectKeys: Record<string, string>): string[] {
   const missing = new Set<string>();
   for (const item of items) {
@@ -46,8 +46,8 @@ function missingKeys(items: StoredWatchingItem[], objectKeys: Record<string, str
 /**
  * 收下推送代理的一次上报。
  *
- * 三个部分都可省略，各推各的：续播列表 60 秒一轮且只在有变化时推，播放位置
- * 只在拖动进度条偏离推算值时推，图片则只在没推过或 ImageTag 变了时才带。
+ * 续播列表、播放状态、图片三个部分都可省略，缺席表示这次不谈那一项，各推各的；
+ * 什么时候推由上报器定（reporters/emby-reporter/src/index.ts）。
  */
 export async function commitPreparedEmbyReport(prepared: PreparedEmbyReport) {
   const { receivedAt } = prepared;
@@ -57,9 +57,9 @@ export async function commitPreparedEmbyReport(prepared: PreparedEmbyReport) {
   const tags: string[] = [];
 
   /**
-   * 这次用得着的三个键一起读取。
+   * 这次用得着的键一起读取。
    *
-   * 三份都来自同一个 StateHub 本地 SQLite，但依然并行组织：图片映射两份 payload 都要用，续播列表既要 diff
+   * 都来自同一个 StateHub 本地 SQLite，但依然并行组织：图片映射两份 payload 都要用，续播列表既要 diff
    * 又是 missingImages 的底，播放中那一项在代理只推了个位置更新时要拿来配详情。
    */
   const [images, previousResume, storedCurrent, previousNowPlaying] = await Promise.all([
@@ -73,8 +73,8 @@ export async function commitPreparedEmbyReport(prepared: PreparedEmbyReport) {
 
   let list: StoredWatchingItem[] | null = null;
   /**
-   * 列表内容变没变。代理只在有变化时推列表，但每 10 分钟还会兜底整推一次，
-   * 收到就发失效通知的话推送会退化成定时广播，所以这里自己比一遍。
+   * 列表内容变没变。代理除了列表变化时推，到了整推间隔（`fullPushIntervalMs`）还会兜底整推一次；
+   * 收到就推给浏览器的话推送会退化成定时广播，所以这里自己比一遍。
    */
   let resumeChanged = false;
   if (prepared.resume) {
@@ -129,35 +129,21 @@ export async function commitPreparedEmbyReport(prepared: PreparedEmbyReport) {
   );
 
   /**
-   * 列表也带整份数据推（2.8 KB），理由见 lib/live-events 的事件定义。
+   * 列表也带整份数据推，理由见 lib/live-events 的事件定义。
    *
    * 新落地的图片也要发。列表里存的是图片键、地址在读取时才拼，所以图片单独补推
    * 的那一次 resume 根本没变，但 /api/status/watching 的输出确实变了（裂图变成
-   * 封面）—— 不发的话得等下一轮轮询，而列表的轮询现在是 5 分钟一次。
+   * 封面）—— 不发的话得等下一轮轮询，推送连着时那只是兜底轮询。
    */
   if ((resumeChanged || stored > 0) && referenced) {
     events.push({ type: "watching", payload: watchingPayload(referenced, objectKeys) });
   }
 
-  // 落库和推送同时发车，失效等它们完成，见 lib/live-events 的 fanout
+  // 先确认落库，再派发推送和首屏失效，见 workers/api/src/fanout.ts
   await fanout({ writes, events, tags });
 
   return { items: list?.length ?? null, playing: played?.outcome ?? null, images: stored, missingImages: missing };
 }
-
-/**
- * `missingImages` 回的是**本部署**引用了却没有的键，不再并对端那份。
- *
- * 从前取并集：两份部署各有各的 `imageKey → objectKey` 映射，「引用了但没有」是
- * 各算各的。代价是每一条上报都要等一次跨海往返，而两边只在**转发丢了**的时候才
- * 会不一样 —— 正常情况下对端算的是同一份请求体，答案必然一致。转发现在不等了
- * （见 lib/api 的 ingestRoute），这份并也就无从谈起。
- *
- * 放弃的是「转发丢了之后把对端那张裂图修回来」：代理把没被抱怨的键当成已经收下
- * （见 reporters/emby-reporter 的 deliver），所以没人提就不会重传。注意 COS 回源
- * 救不了这一种 —— 回源救的是「有 URL 但桶里没字节」，而对端缺的是映射本身，
- * 它根本拼不出 URL。但转发丢了的话对端缺的是那次上报的全部内容，不止图。
- */
 
 async function commitPlaying(playing: PreparedEmbyPlaying): Promise<void> {
   if (!playing.state) {

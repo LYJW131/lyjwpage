@@ -18,11 +18,10 @@ const REVALIDATE_TIMEOUT_MS = 5_000;
  * 首屏布局变了才通知 Vercel 标签失效，已有 HTML 先返回、后台重建。
  *
  * 发不发由各个上报在自己手里的新旧两份上判断（见 lib/home-layout）；内容变化
- * 不来这里，交给首屏快照 `revalidate: 600` 的定时重建。coding 用量卡片的骨架
+ * 不来这里，交给首屏快照（src/lib/first-screen.ts 的 `cacheLife`）的定时重建。coding 用量卡片的骨架
  * 也一样在提交时比：视图由状态核心一处算好，新旧两份都在手上（stores/coding-usage）。
  *
- * ESA 首页不走通知：控制台缓存规则「首页遵循源站缓存」让边缘按源站 SWR 头
- * 自行过期与后台取新（见根目录 next.config.ts），需要立即生效时去控制台手动刷新。
+ * ESA 首页不走通知：边缘按源站 SWR 头自行过期与后台取新（规则见 docs/ops-facts.md）。
  */
 export async function expireStatusTags(
   tags: readonly string[],

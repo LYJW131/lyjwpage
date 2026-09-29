@@ -126,7 +126,7 @@ export async function fetchPresence(env: Env, auth: AuthSession): Promise<Presen
 }
 
 /**
- * psn-api 2.18.1 的 getUserPlayedGames 不接 headerOverrides，实现也不发语言头，
+ * psn-api（版本以 package.json 锁定的为准）的 getUserPlayedGames 不接 headerOverrides，实现也不发语言头，
  * 因而这一个请求继续直打与它相同的端点，保住官方中文游戏名。
  *
  * 默认证件拉全份，给奖杯 titleId 对齐用；只刷新瓷砖时可以 `cap` 在最近窗口。
@@ -311,7 +311,7 @@ export async function fetchPlayedGames(
   return { observedAt: Date.now(), items };
 }
 
-/** 最近窗口的一页盖进全份缓存：正在玩时不必为了时长把三百款都翻一遍。 */
+/** 最近窗口的一页盖进全份缓存：正在玩时不必为了时长把整份列表都翻一遍。 */
 export function mergePlayedGames(
   prior: PlayedGamesReport | null,
   next: PlayedGamesReport,

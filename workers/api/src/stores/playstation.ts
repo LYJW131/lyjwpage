@@ -22,10 +22,10 @@ function presenceContent(payload: PlaystationPresencePayload) {
 }
 
 /**
- * 三部分各自可省；缺席表示这次不谈这一项。站点再比一次内容，避免重试或手工
- * 兜底上报退化成广播。写、带数据推送与 tag 失效统一交给 fanout 排序。
+ * 各部分各自可省（见 PreparedPlaystationReport）；缺席表示这次不谈这一项。站点再比一次内容，
+ * 避免重试或手工兜底上报退化成广播。写、带数据推送与 tag 失效统一交给 fanout 排序。
  *
- * 奖杯目录只失效、不推：整份几百 KB，解锁又不是按秒翻的事。
+ * 奖杯内容变了推摘要，不推整份目录（整份很大，解锁又不是按秒翻的事）；首屏只在首次收到时失效。
  * 收敛在 prepare 那一侧（shared/ingest/playstation.ts），这里只收已经收敛过的那份。
  */
 export async function commitPreparedPlaystationReport(prepared: PreparedPlaystationReport) {
@@ -73,8 +73,8 @@ export async function commitPreparedPlaystationReport(prepared: PreparedPlaystat
 
   if (incomingPresence) {
     /**
-     * 内容没变也要落库：presence 是心跳（Worker 每轮 cron 都发一封），
-     * observedAt 就是心跳本身，不刷新它的话浏览器永远判不出 Worker 是什么时候
+     * 内容没变也要落库：presence 是心跳（采集 Worker 每个完整 tick 都发一封），
+     * observedAt 就是心跳本身，不刷新它的话浏览器永远判不出采集 Worker 是什么时候
      * 死的，卡片上的断流判定（按 observedAt 和 PLAYSTATION_STALE_MS）等于白写。
      *
      * 但没变就不广播 —— 推一条一模一样的事件是拿推送当轮询用。
@@ -93,14 +93,14 @@ export async function commitPreparedPlaystationReport(prepared: PreparedPlaystat
   if (incomingPower) {
     /**
      * 电源状态不参与心跳：HA 只在开关翻面时发一封，没翻面就不必重写
-     * observedAt —— 这份的新鲜度不代表任何上报器的死活，PSN 上报器的心跳
+     * observedAt —— 这份的新鲜度不代表任何上报器的死活，PSN 采集的心跳
      * 仍然只看 presence。
      */
     if (powerChanged || !previousPower) {
       writes.push(setPlaystationPower(incomingPower));
       /**
-       * 立刻广播一次：presence 要等 PSN 上报器下一轮（最慢一分多钟）才更新，
-       * 而关机这件事局域网里当场就知道。presence 那一封已经发过事件时不再补，
+       * 立刻广播一次：presence 要等采集 Worker 下一个成功的 tick 才更新（节奏由人头数
+       * 和退避决定），而关机这件事局域网里当场就知道。presence 那一封已经发过事件时不再补，
        * 否则页面收到两条内容一样的。
        */
       if (!sentPlayingNow) {

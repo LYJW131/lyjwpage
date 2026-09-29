@@ -11,7 +11,7 @@ export interface Env extends MusicKitTokenEnv {
   STATE: DurableObjectNamespace<StateHub>;
   /** 只在本地：LivePushRoom 转发上游推送前查假数据注入，见 dev-override-reader.ts */
   DEV_OVERRIDE_READER?: Service<DevOverrideReader>;
-  /** Append-only long-term activity archive（pulse 事实表）. Omit to disable archiving; nothing else reads it. */
+  /** 长期归档（pulse 事实表，按自然键 upsert，活动桶按权威范围替换）。不绑就不归档；别处不读它。 */
   HISTORY?: D1Database;
   /** 共享凭据（shared/credentials.ts）：上报入口写 Mac 推来的 Apple Music user token，这里只读（歌词、曲目查询） */
   CREDENTIALS?: KVNamespace;
@@ -22,7 +22,7 @@ export interface Env extends MusicKitTokenEnv {
   CLOUDFLARE_ACCOUNT_ID?: string;
   /** TypeSafe AI 的 API 密钥，给 pulse 活动分用（Jev 评估模型）。不配就不打分。 */
   TYPESAFE_API_KEY?: string;
-  /** 一次性迁移使用，迁移完成后移除，不授予站点。 */
+  /** 存储导入（`/api/internal/storage/import`）的鉴权密钥：初始化空的 StateHub、导入数据用（scripts/migrate-state-storage.mjs），不授予站点。 */
   STATE_IMPORT_SECRET?: string;
   STORAGE_PREFIX?: string;
   SITE_URL?: string;
@@ -31,7 +31,7 @@ export interface Env extends MusicKitTokenEnv {
   SENTRY_DSN?: string;
   /** 不配时按生产 / Preview 自动判断；本地试 Sentry 时设 development。 */
   SENTRY_ENVIRONMENT?: string;
-  /** Sentry 组织只读令牌，给 `/api/status/sentry` 取数；不配这张卡就显示暂无数据 */
+  /** 这里不读：Sentry 卡片的取数令牌在采集 Worker 上，api 只读 LAG */
   SENTRY_API_TOKEN?: string;
   /** Sentry SDK 从这里取 release（版本 ID），不在代码里读。 */
   CF_VERSION_METADATA?: WorkerVersionMetadata;

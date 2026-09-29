@@ -1,5 +1,5 @@
 /**
- * Cloudflare Access JWT 校验，api 的上报入口用（ingest 域名后面那个 Access 应用）。
+ * Cloudflare Access JWT 校验：上报入口 Worker 用，验的是 ingest 域名后面那个 Access 应用签的 JWT。
  *
  * Access 挡在边缘，放行的请求带着它签的 JWT 到 Worker。Worker 仍要自己验一遍：
  * 同一个 Worker 还能从 workers.dev 或别的域名进来，那条路不过 Access，只有这张
@@ -69,8 +69,8 @@ async function importKeys(jwks: Jwk[]): Promise<Map<string, CryptoKey>> {
 }
 
 /**
- * 按 kid 取公钥；缓存一小时。遇到没见过的 kid（Access 轮换了签名钥匙）重拉一次，
- * 但一分钟内最多一次 —— 否则谁都能拿随便编的 kid 让 Worker 每个请求都出网一趟。
+ * 按 kid 取公钥，缓存 `JWKS_TTL_MS`。遇到没见过的 kid（Access 轮换了签名钥匙）重拉一次，
+ * 但两次拉取至少隔 `JWKS_REFETCH_COOLDOWN_MS` —— 否则谁都能拿随便编的 kid 让 Worker 每个请求都出网一趟。
  */
 async function keyFor(issuer: string, kid: string, now: number): Promise<CryptoKey | null> {
   const cached = jwksCache && jwksCache.issuer === issuer ? jwksCache : null;

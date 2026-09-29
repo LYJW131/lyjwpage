@@ -18,7 +18,7 @@ export function isRateLimited(error: unknown): boolean {
   return /\b429\b|too many requests|rate.?limit/i.test(text);
 }
 
-/** 429 退避重试。礼让性 sleep 拿掉之后，上游限流靠这里接住。 */
+/** 429 退避重试：上游限流靠这里接住。 */
 export async function retryRateLimit<T>(load: () => Promise<T>): Promise<T> {
   let last: unknown;
   for (let attempt = 0; attempt < 4; attempt += 1) {
@@ -39,7 +39,7 @@ export async function retryRateLimit<T>(load: () => Promise<T>): Promise<T> {
  * PSN 前面那层 CDN（Akamai）挡人、或者网关超时：不是凭据问题，也不是我们的数据问题，
  * 等一会儿就好。单独成一类，tick 按它退避，日志里也能一眼和别的失败分开。
  *
- * 为什么要自己认：psn-api 2.18.1 的取数外壳不看 HTTP 状态码，直接 `.json()`，
+ * 为什么要自己认：psn-api（版本以 package.json 锁定的为准）的取数外壳不看 HTTP 状态码，直接 `.json()`，
  * 于是 Akamai 的 HTML 拒绝页变成 `Unexpected token '<', "<HTML><HEA"... is not valid JSON`，
  * 纯文本的 `error code: 504` 变成 `Unexpected token 'e', "error code: 504"...`；
  * 游玩列表那一路是自己 fetch 的，看得到状态码，报成 `PSN 返回 403：<HTML>…Access Denied…`。
@@ -47,7 +47,7 @@ export async function retryRateLimit<T>(load: () => Promise<T>): Promise<T> {
 export class PsnUpstreamUnavailable extends Error {
   /** 哪一路调用先撞上的：presence / trophy-summary / played-games / auth … */
   call: string;
-  /** 已知的外部故障：任务外层按 warn 记，不再当成报错打一遍（见 registry.ts 的 runJob） */
+  /** 已知的外部故障：任务外层按 warn 记，不当成报错再打一遍（见 registry.ts 的 runJob） */
   readonly outage = true;
   constructor(call: string, detail: string) {
     super(`PSN 上游不可用（${call}）：${detail}`);

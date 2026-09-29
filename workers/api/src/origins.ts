@@ -1,7 +1,6 @@
 /**
- * 来源白名单：`ALLOWED_ORIGINS` 名单，WebSocket、CORS 和 MusicKit
- * 令牌签发都比它。从前 musickit-token 单独一个 Worker 时这几个函数抄了两份，
- * 复用这一份纯函数；独立在线人数 Worker 也导入它。
+ * 来源白名单：`ALLOWED_ORIGINS` 名单，`/ws`、公开 API 的 CORS 和 MusicKit
+ * 令牌签发都比它。纯函数，只看请求的 Origin 与名单。
  */
 
 export type OriginEnv = { ALLOWED_ORIGINS?: string };

@@ -8,11 +8,10 @@ import { hasStoredImage, type ImageBucket } from "./r2-assets";
 /**
  * Emby「最近在看」。
  *
- * 本站不发任何 Emby 请求 —— 站点将来跑在 Vercel 上，内网里的 Emby 那时根本
- * 够不着。续播列表、播放位置、海报全部由 NAS 上的推送代理送进来
- * （reporters/emby-reporter → api/ingest/emby）。Emby 自己的播放
- * webhook 也先发给那个代理，再由它带着密钥转发过来 —— Emby 的 webhook 配置项
- * 加不了自定义请求头，直发站点就只能开一个不鉴权的入口。
+ * 本站不发任何 Emby 请求 —— Emby 在内网里，云端够不着。续播列表、播放位置、
+ * 海报全部由 NAS 上的推送代理送进来（reporters/emby-reporter → /api/ingest/emby）。
+ * Emby 自己的播放 webhook 也先发给那个代理，由它去查会话再上报 —— Emby 的 webhook
+ * 配置项加不了自定义请求头，直发站点就只能开一个不鉴权的入口。
  *
  * 这个文件是上报入口（workers/ingress）那一半：把推来的东西逐字段收敛、确认图片
  * 已经落进 R2。落库、差分和推送在状态核心（workers/api/src/stores/emby.ts）。
@@ -136,17 +135,14 @@ function normalize(item: ReportItem): StoredWatchingItem {
 }
 
 /**
- * 接收上报器已经写入 R2 的对象键；站点不再接触图片字节。
+ * 接收上报器已经写入 R2 的对象键；站点不接触图片字节。
  *
- * 上报入口先并发确认 R2 对象；状态核心的 StateHub 提交时再读取最新映射并逐键合并。
- * 没有新落地的图时返回的就是最新对象；有的话返回的是**落库后的那一份**
- * （setImageObjectKeys 会按 IMAGE_LIMIT 裁），不是就地改过的那个：超限时被淘汰
- * 掉的键必须在这次的回执和推送里就体现出来，否则推给浏览器的那份会引用刚被丢掉
- * 的键，代理也不会从 missingImages 里知道要补，下一轮又变回裂图。
+ * 只并发确认候选键对应的 R2 对象还在，返回确认过的 `{ key, objectKey }`。映射的合并与
+ * 按 `IMAGE_LIMIT` 裁剪在状态核心提交时做（workers/api/src/stores/emby.ts 的 mergePreparedImages），
+ * 那边才读得到最新映射。
  *
- * 确认走并发：`hasStoredImage` 未命中 5 分钟正缓存时要跨网发一次 R2 HEAD。
- * 一次补图可以带一整批（IMAGE_LIMIT = 96）；HEAD 之间互不相干，也不进入
- * StateHub 的串行提交队列。
+ * 确认走并发：`hasStoredImage` 未命中正缓存（期限见 r2-assets 的 `CONFIRMED_TTL_MS`）时要跨网发一次
+ * R2 HEAD。一次补图可以带一整批；HEAD 之间互不相干，也不进入 StateHub 的串行提交队列。
  */
 async function prepareImages(value: unknown, bucket: ImageBucket): Promise<Array<{ key: string; objectKey: string }>> {
   if (!Array.isArray(value) || !value.length) return [];
@@ -240,7 +236,7 @@ function playMethod(value: unknown): WatchingPlayMethod | null {
 
 /**
  * 上报器已经按会话选好了音轨和字幕，这里只按契约逐字段收敛，不猜、不补。
- * 整块不是对象就当没带 —— 旧版上报器不发这个字段，位置更新照收。
+ * 整块不是对象就当没带，位置更新照收。
  */
 function playbackMedia(value: unknown): WatchingMedia | null {
   const raw = object(value);

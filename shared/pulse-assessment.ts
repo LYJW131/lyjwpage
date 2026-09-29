@@ -4,14 +4,8 @@ export { mergeCoverage } from './pulse-features';
 export const SCORED_DOMAINS = ['coding'] as const;
 export type PulseScoredDomain = (typeof SCORED_DOMAINS)[number];
 /**
- * 版本 6：token 证据改成多来源（Mac 本机扫描、Cursor 账号、Claude Code 云端），每行带来源，
- * 「确定为零」只认 Mac 的覆盖，事件数可能缺；说明句跟着改，最近 24 小时的窗口重新评一遍。
- * 版本 5：Pulse 改成事实时间线，只剩 Coding 送 Jev；别的域的旧评估读时丢掉，
- * 下一次压缩时清出列表。
- * 版本 4：Cursor 与最近播放列表独立观测；仅账号来源可用时保留不确定性。
- * 版本 3：activity 的五分钟事实加上已完成训练。项目名和落在窗口内的活动秒数
- * 跟圆环估算一起进判据，升版本让全部窗口重打分，不靠哈希碰巧变。
- * 版本 2 起五个实测域不再发原始区间和图例。
+ * 判据变了（送给 Jev 的事实、问题、说明句）必须升版本：它进输入哈希，升版本让全部窗口重评，
+ * 不靠哈希碰巧变。
  */
 export const PULSE_ASSESSMENT_VERSION = 6;
 /** 每个域自己的模式集合。card 的标签表按 value 查。 */
@@ -61,7 +55,7 @@ export function parsePulseAssessment(raw: string): PulseAssessment | null {
 }
 
 /**
- * 评估列表是追加写的（整表重写一轮要写一万多行，见 pulse-score-state）：
+ * 评估列表是追加写的（不每轮整表重写，见 pulse-score-state）：
  * 同一窗口可能有好几行，后评的排在后面。所有读评估的地方都走这里，按 `${domain}:${from}:${to}`
  * 只留最后一行 —— 汇总按行累加覆盖时长，重复行会把权重算两遍。坏行跳过，不顶掉之前的好行。
  */

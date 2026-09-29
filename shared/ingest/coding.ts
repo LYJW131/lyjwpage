@@ -11,8 +11,8 @@ import {
  * Mac 信封与 `/api/ingest/agents` 共用的三份 coding 模块（契约见 shared/coding-usage）。
  *
  * 坏了**只丢这一个模块**，原因进回执的 `rejected`（上报入口并进 202 的 `data`，并记 warn）。
- * 从前任一 coding 模块坏了整封 400，连正在播放、前台应用、存活一起卡死，直到上报器换版；
- * coding 模块是从文件解析出的大块派生数据，最容易撞校验，不能让它连坐。拒绝仍然是明说的。
+ * coding 模块是从文件解析出的大块派生数据，最容易撞校验：任一模块坏了就整封 400 的话，
+ * 连正在播放、前台应用、存活都会一起卡死，直到上报器换版，不能让它连坐。拒绝仍然是明说的。
  */
 
 export const CODING_MODULES = ["codingUsage", "codingActivity", "codingTokenBuckets"] as const;

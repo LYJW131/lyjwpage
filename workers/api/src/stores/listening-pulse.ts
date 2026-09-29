@@ -13,7 +13,7 @@ export async function recordListeningTrace(trace: ListeningTrace): Promise<void>
     const answer = await askStorage((storage) => storage.listRange(k, -1, -1));
     if (!answer.reachable) return;
     const last = answer.value[0] ? parseListeningTrace(answer.value[0]) : null;
-    // 闸门保证同一窗口只有一个实例在拉，`t` 不前进就是重放或乱序。
+    // `t` 不前进就是重放或乱序，丢掉；采集没有互斥，不指望上游只送来一份。
     if (last && trace.t <= last.t) return;
     await tellStorage((storage) =>
       storage.batch().append(k, JSON.stringify(trace)).trim(k, -LISTENING_TRACE_CAP, -1).expire(k, PULSE_TTL_MS).execute(),

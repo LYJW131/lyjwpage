@@ -6,8 +6,6 @@
  * Worker 对内能做什么，就是下面这几个方法。只放类型，调用方和实现方各自 import。
  *
  * 方法只能加不能改：api 与调用方分开部署，新方法先随 api 上线，调用方后推。
- * 例外：2026-09-29 `connections()` 与调用方同一次提交换成 `audience()`，两边部署的空档里
- * 采集 Worker 读人头数失败按 0 算，只慢一轮，不值得留一个兼容方法。
  */
 
 import type { ListeningItem } from "@/lib/types";
@@ -38,7 +36,7 @@ export type CorePower = { on: boolean; observedAt: number } | null;
 export interface StateCoreRpc {
   /**
    * 状态存储是否已初始化。上报入口只在 prepare 校验不过时问一次：
-   * 未初始化回 503 的优先级高于报文 400，和从前同一个 Worker 里时一样。
+   * 未初始化回 503 的优先级高于报文 400。
    */
   ready(): Promise<boolean>;
   /**

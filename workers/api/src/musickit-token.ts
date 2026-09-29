@@ -9,13 +9,13 @@ import { getAllowedOrigins, type OriginEnv } from "@api/origins";
  * 在 Vercel，函数实例、构建日志、预览环境都能碰到那份环境变量；放在 Worker 上
  * 只有一个出口、只吐一份有期限的令牌。
  *
- * 也不能拿 Redis 里那份 Mac 上报的凭据来发 —— 那是带 music user token 的
- * **私人凭据**，拿到就能读收听记录，只在 apple-music-recent.ts 里服务端用。
- * 这里发的是给**任何一个访客**的公开令牌，访客再拿它去换自己的用户令牌。
- * 两者敏感度差一个量级，不共用一条路径。
+ * 也不能拿凭据 KV 里那份 Mac 上报的凭据来发 —— 那是带 music user token 的
+ * **私人凭据**，拿到就能读收听记录，只在服务端用（采集拉最近在听、歌词与曲目查询，
+ * 见 shared/credentials.ts）。这里发的是给**任何一个访客**的公开令牌，访客再拿它去换
+ * 自己的用户令牌。两者敏感度差一个量级，不共用一条路径。
  *
- * 从前是单独的 musickit-token Worker，09-07 并进 ingest：路径 /musickit/token，
- * 来源白名单和 CORS 与两条 WebSocket 共用同一份 ALLOWED_ORIGINS。
+ * 路径是 `/api/musickit/token`（origin-worker.ts 的 MUSICKIT_TOKEN_PATH），来源白名单
+ * 和 CORS 与 `/ws` 共用同一份 ALLOWED_ORIGINS。
  */
 
 export interface MusicKitTokenEnv extends OriginEnv {
@@ -156,7 +156,7 @@ export function resolveTtlSeconds(env: MusicKitTokenEnv): number {
  * 对一小时的令牌，提前一天等于每次都续。
  *
  * 站点那侧判是不是该重新要一份用的是同一条规则（见 src/lib/musickit.ts 的
- * pastHalfLife），Mac 上报器续它自己那份 developer token 也是。改一处记得对齐。
+ * pastHalfLife），改一处记得对齐。
  */
 export function pastHalfLife(token: IssuedToken, now: number): boolean {
   return now >= token.issuedAt + (token.expiresAt - token.issuedAt) / 2;
@@ -213,9 +213,8 @@ const apiTokenCache: { current: IssuedToken | null } = { current: null };
  * 和给访客的那份分开签：不带 origin 声明 —— 那条是 MusicKit JS 在浏览器里校验
  * 用的，服务端直接打 api.music.apple.com 不需要，也不该把访客域名签进自己的令牌。
  *
- * 从前这份 token 由 Mac 上报器用 MusicKit 现签后推上来。代价是它会过期，而上报器
- * 只在 token 变化时才发，MusicKit 的缓存又不自己轮换 —— 实测过期两天后 Worker
- * 还拿着旧的挨 401。私钥既然已经在这里（给「一起听」签发），就不该再绕那台 Mac。
+ * 私钥就在这里（给「一起听」签发），所以服务端用的 developer token 由 api 自己按到期时刻签发，
+ * 不依赖 Mac：Mac 只上报 music user token（见 shared/credentials.ts）。
  */
 export async function issueApiDeveloperToken(
   env: MusicKitTokenEnv,

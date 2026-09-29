@@ -4,7 +4,7 @@ import { fetchGithubChart } from "@/lib/github-chart";
 import { ok, skipMissing, type Job } from "../job";
 
 /**
- * GitHub 贡献日历（GraphQL，一年的日序列），每 10 分钟一轮。取不到就不写，
+ * GitHub 贡献日历（GraphQL，一年的日序列）。取不到就不写，
  * 可滞后层里上一份原样留着；`?since=` 的切片由读取端在这份整年数据上做。
  */
 export const githubChartJob: Job = {

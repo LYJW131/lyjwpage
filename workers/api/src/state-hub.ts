@@ -28,7 +28,7 @@ export class StateHub extends DurableObject<Env> {
     this.database = new SqliteStore(ctx.storage.sql, (work) => ctx.storage.transactionSync(work));
     ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
     ctx.storage.sql.exec("DROP TABLE IF EXISTS esa_purge");
-    // 公开读取的 KV 投影已删，它的发布队列表跟着清掉
+    // 遗留的发布队列表（公开读取的 KV 投影用过），存在就清掉
     ctx.storage.sql.exec("DROP TABLE IF EXISTS public_read_model_jobs");
     this.pulseArchiveState = new PulseArchiveState({
       sql: ctx.storage.sql,

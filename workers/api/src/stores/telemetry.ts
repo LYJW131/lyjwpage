@@ -91,39 +91,34 @@ function rememberDesktopIcon(hash: string, objectKey: string) {
  * 一个 envelope 可以只更新一个模块，未出现的模块保持原快照；modules 整个省略
  * （或给个空对象）就是一次纯心跳 —— 靠 presence 和 heartbeatAt 起作用。
  *
- * 从前心跳和优雅下线走另一个 presence 端点，于是「上报器还活着」这一件事有
- * 两份实现，连记账顺序都是各排各的（一个先 declare 后 mark，一个反过来）。
- * 现在只有这一条路：每条信封都刷新存活，声明翻转时发一次 presence 事件。
+ * 每条信封都刷新存活，声明翻转时发一次 presence 事件。
  */
 export async function commitPreparedTelemetryEnvelope(command: PreparedTelemetryEnvelope) {
   const { receivedAt, presence, activeModules: nextActiveModules, modules } = command;
 
   /**
-   * 这封信封用得着的键，**全部在这里一起发车**。
+   * 先集中读取这封信封用得着的 SQLite 状态，**全部在这里发起**（commitIngest 注入的是
+   * StateHub 本地的 StorageClient，读是本地调用）。「决定读什么」必须早于「分发模块」，
+   * 也必须早于这封信封自己的任何写：读到的要是提交前的上一份，diff 和收敛窗口才有意义。
    *
-   * 同一条 HTTP 存储客户端 连接上并发发出的命令在网络上是重叠的，所以这几条加起来
-   * 只花一个来回 —— 不用真去组 pipeline。关键是「决定读什么」必须早于
-   * 「分发模块」：从前充电头那两条读是分支里现读的，于是它排在状态和存活
-   * 后面，一封带充电头的信封要三个背靠背的来回才轮到推送。
-   *
-   * 只读这封用得上的：`charger:history` 是 400 个采样点、十几 KB，无条件读回来
-   * 再丢掉，比多一个来回还亏。
+   * 只读这封用得上的：`charger:history` 最多 `CHARGER_HISTORY_LIMIT` 个采样点，无条件读回来
+   * 再丢掉不划算。
    */
   const hasChargingDevices = "chargingDevices" in modules;
   const wantsCharger = hasChargingDevices || nextActiveModules.includes("charger");
   const charger = wantsCharger ? readChargerState() : null;
   /**
    * 两台设备各自的「上一次结构变化在什么时候」，收敛窗口要用（lib/charging-settling）。
-   * 结构真变了的话这两条是白读的，但它们和上面几条在同一批里，不多花来回。
+   * 结构真变了的话这两条是白读的（那种情况不看窗口），代价只是两次本地读。
    */
   const settling = hasChargingDevices
     ? { charger: askSettlingAt("charger"), powerbank: askSettlingAt("powerbank") }
     : null;
   const powerBank = hasChargingDevices ? readPowerBankState() : null;
   /**
-   * 这两条每封都要，包括纯心跳：在听和 coding 的档位每封重算一次（见下面那段
+   * 这两条每封都要，包括纯心跳：在听和 coding 的观测每封都记一次（见下面那段
    * pulse 的注释），而仲裁「谁在放」要 HomePod 那份快照，算 coding 要此刻的
-   * agents。放在这里和存活、工作副本同一批发车，心跳不会因此多一个来回。
+   * agents。
    */
   const homePod = getHomePodSnapshot();
   const storedCodingActivity = modules.codingActivity
@@ -148,11 +143,8 @@ export async function commitPreparedTelemetryEnvelope(command: PreparedTelemetry
   });
 
   /**
-   * 这一轮要做的三件事，收集起来一起交给 fanout：写和推同时发车，缓存失效排在
-   * 它们之后。先后为什么必须是这样，见 lib/live-events 的 fanout。
-   *
-   * 从前是逐个 await：每一次推送前面都压着一串 SQLite 往返，而推送本身要的东西
-   * 这时早就在手上了。
+   * 这一轮要做的写、推送与首屏失效，收集起来一起交给 fanout：先等写落库，再派发推送
+   * 和失效。先后为什么必须是这样，见 workers/api/src/fanout.ts。
    */
   const writes: Promise<unknown>[] = [];
   const events: PendingEvent[] = [];
@@ -174,16 +166,15 @@ export async function commitPreparedTelemetryEnvelope(command: PreparedTelemetry
    *
    * 「任何一条信封本身都算一次在线心跳」—— 哪怕其中一个模块写坏了。放进下面
    * 那个 try 里的话，上报器一旦带出个格式错误，每封都 400、每封都不记心跳，
-   * 90 秒后整台 Mac 的卡全变灰，而它其实活得好好的、别的模块也还在正常落库。
-   * 从前 recordReporterBeat 就排在模块前面，这里保持不变。
+   * 过了心跳窗口整台 Mac 的卡全变灰，而它其实活得好好的、别的模块也还在正常落库。
    */
   writes.push(writeLiveness(liveness));
 
   /**
    * 在离线翻转本身就是状态变化，值得推 —— 这正是「关键事件」，不是定时广播。
    *
-   * 这一条不带数据，浏览器收到后要回源重取三份（PRESENCE_PATHS：desktop /
-   * listening-now / charger），所以它得排在写后面，交给 fanout 的 `notify`。
+   * 这一条不带数据，浏览器收到后要回源重取一批端点（浏览器侧的 `PRESENCE_PATHS`，
+   * 见 src/hooks/use-live-events.ts），所以它得排在写后面，交给 fanout 的 `notify`。
    * 时区不看存活，上下线不用刷它的首屏缓存。
    *
    * 这几行排在模块处理**外面**，和上面那次心跳同一个理由：翻转是这封信封确实
@@ -200,13 +191,11 @@ export async function commitPreparedTelemetryEnvelope(command: PreparedTelemetry
    * 模块处理整个包起来，是为了保证「已经发车的写」一定被交给 fanout。
    *
    * 下面的写是 push 进 writes 就开跑的，而后面的模块还可能校验失败抛出去 ——
-   * 中途 return 的话，那几个已经发车的写就没人接管了，serverless 上响应一返回
-   * 随手就被掐掉，表现是「上报器报了个格式错误，顺带丢了同一封里已经收下的
-   * 另外几份数据」。错误照样往上抛，只是先把该落的交出去。
-   *
-   * 注意等它们的不再是这一层：fanout 走 after()，写和推送都在响应之后跑
-   * （见 lib/live-events 的 afterResponse），保住它们的是平台的 waitUntil。
-  */
+   * 中途 return 的话，那几个已经发车的写就没人接管，表现是「上报器报了个格式错误，
+   * 顺带丢了同一封里已经收下的另外几份数据」。错误照样往上抛，只是先把该落的交出去：
+   * `finally` 里的 fanout 先等 writes 落库，推送与首屏失效收成效果，随提交结果返回
+   * （见 ingest-effects 的 collectIngestEffects），由普通 Worker 的 waitUntil 派发。
+   */
   try {
     if (command.failure?.stage === "beforeCharging") {
       throw new Error(command.failure.message);
@@ -214,12 +203,12 @@ export async function commitPreparedTelemetryEnvelope(command: PreparedTelemetry
     /**
      * 充电设备。
      *
-     * 上报器 v5 起送的是 `chargingDevices`：一个设备列表，充电头和充电宝在同一个
-     * 数组里，靠 `kind` 区分。两台各自落库、各自推送 —— 一台没在列表里不影响另
-     * 一台，那正是「只开了其中一个模块」的正常情况。
+     * `chargingDevices` 是一个设备列表：充电头和充电宝在同一个数组里，靠 `kind` 区分。
+     * 两台各自落库、各自推送 —— 一台没在列表里不影响另一台，那正是「只开了其中一个模块」
+     * 的正常情况。
      *
-     * 旧的 `charger` 键已经停发。这里不做兼容：留一条读不到新字段的旧路径，只会
-     * 在上报器回滚时安静地写进半截数据。
+     * 不认旧的 `charger` 键：留一条读不到新字段的旧路径，只会在上报器回滚时安静地写进
+     * 半截数据。
      */
     let chargerWritten = false;
     if ("chargingDevices" in modules) {
@@ -306,8 +295,7 @@ export async function commitPreparedTelemetryEnvelope(command: PreparedTelemetry
     /**
      * 充电头按「多久没收到推送」判断断流，纯心跳也得给它续上。
      *
-     * 上面真收下快照时不用再来一次：prepareStatus 那条 pipeline 里已经把这个心跳
-     * 一起落了。从前两条都发，于是每个带充电头的信封都白跑一次写加两次读。
+     * 上面真收下快照时不用再来一次：prepareStatus 那一批写里已经把这个心跳一起落了。
      */
     if (!chargerWritten && charger && nextActiveModules.includes("charger")) {
       const state = await charger;
@@ -429,7 +417,7 @@ export async function commitPreparedTelemetryEnvelope(command: PreparedTelemetry
      * 在听和 coding 每封都记一次观测，纯心跳也算。
      *
      * 采集端只在内容变化时才带上对应模块，所以「这封没带 appleMusic / desktop」
-     * 说的是「没变」，不是「没在听、没在写」。从前这两笔挂在模块出现上，于是一首
+     * 说的是「没变」，不是「没在听、没在写」。这两笔不能挂在模块出现上：否则一首
      * 长歌、一段稳定的 coding 整段不落笔，时间线中间看起来像上报器死了。
      * 同一状态续区间最多每分钟写一次，见 shared/pulse-timeline。
      *
@@ -439,24 +427,23 @@ export async function commitPreparedTelemetryEnvelope(command: PreparedTelemetry
     writes.push(recordListeningPulse(receivedAt, liveness, homePod));
     writes.push(recordCodingPulse(receivedAt, codingActivity ?? storedCodingActivity, presence === "online"));
 
-    // 整封都收下了才落状态。中途抛出去时这份不写 —— 从前也是这样，
-    // persistTelemetryState 就排在所有模块之后。存活不同，见上面。
-    // 只 HSET 这封碰过的字段：心跳和换歌并发时，整包 SET 会把 SQLite 里的新歌盖回上一首。
+    // 整封都收下了才落状态：中途抛出去时这份不写（persistTelemetryState 排在所有模块之后）。
+    // 存活不同，见上面。只 patch 这封碰过的字段：心跳和换歌并发时，整包 SET 会把 SQLite 里的新歌盖回上一首。
     writes.push(persistTelemetryState(receivedAt, patch, nextActiveModules));
     events.push(...telemetryEvents);
     listening.push(...telemetryListening);
     tags.push(...telemetryTags);
   } finally {
     /**
-     * 只在模块真的来了才推。
+     * 推送只在模块真的来了才发。
      *
      * 采集端本来就只在内容变化时才带上对应模块，所以「模块出现在 envelope 里」
-     * 就是变化信号本身。从前这里是无条件推 —— 连不带任何模块的纯心跳包也推，
-     * 为的是把「上报器离线」翻回在线。但过期是时间的函数，两张卡一直在轮询，
-     * 那件事轮询本来就在做；为它每 30 秒广播一份没变化的状态，等于把推送当轮询用。
+     * 就是变化信号本身。不带任何模块的纯心跳包不推：过期是时间的函数，卡片的轮询本来
+     * 就在判它，每次心跳都广播一份没变化的状态，等于把推送当轮询用。
      *
-     * 代价是上报器从离线恢复时，「在线」最迟等下一轮轮询（30 秒）才显示，不再是
-     * 收到心跳的那一刻。换来的是推送通道上只跑真正的状态变化。
+     * 声明离线、翻回在线的翻转是例外，上面已经单独发了 `presence`；只靠心跳窗口从超时
+     * 恢复（没有声明翻转）时，「在线」要等卡片下一轮轮询才显示。换来的是推送通道上只跑
+     * 真正的状态变化。
      */
     await fanout({ writes, events, notify, listening, tags });
   }
@@ -465,14 +452,10 @@ export async function commitPreparedTelemetryEnvelope(command: PreparedTelemetry
 }
 
 /**
- * 推送当前播放。
+ * 推送当前播放的描述符。
  *
- * 暂停宽限期结束时不由这里补一条 —— 从前是挂一个 setTimeout 到点重推，
- * 那要求进程在响应发出之后还活着。serverless 上响应一返回实例就被冻结，
- * 那个定时器根本不会执行，表现是暂停后 hero 一直挂到下一次轮询才翻。
- *
- * 现在改成 payload 自带 expiresInMs，由浏览器把下一次取数排在那一刻，
- * 服务端只对「收到上报」这一件事做出反应，不欠任何未来的动作。
+ * 暂停宽限期结束时不由这里补一条：payload 自带 `expiresInMs`，由浏览器把下一次取数
+ * 排在那一刻，服务端只对「收到上报」这一件事做出反应，不欠任何未来的动作。
  *
  * 描述符只带这次提交已经捕获的 Mac、HomePod 与存活快照。普通 Worker 收到提交
  * 结果后再查 Apple 目录，不能在后台重读“当前曲目”，否则慢查询会串到下一封上报。

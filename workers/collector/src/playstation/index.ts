@@ -277,11 +277,10 @@ const LIVE_TICK_INTERVAL_MS = 55_000;
  */
 const OPEN_TICK_INTERVAL_MS = 115_000;
 /**
- * 一个页面都没开时的完整 tick 间隔。同样留取整余量：每分钟的 cron 把它凑成
- * 30 分钟整一轮。
+ * 一个页面都没开时的完整 tick 间隔。同样留取整余量：每分钟的 cron 把它凑成整数分钟的一轮。
  *
- * 站点 `src/lib/freshness.ts` 的 `PLAYSTATION_STALE_MS`（95 分钟 = 三轮 + 余量）
- * 锚的就是这个数。要动它，先去改那边。
+ * 站点 `src/lib/freshness.ts` 的 `PLAYSTATION_STALE_MS`（三轮加余量）锚的就是这个数。
+ * 要动它，先去改那边。
  */
 const IDLE_TICK_INTERVAL_MS = 29.5 * 60_000;
 /**
@@ -307,13 +306,13 @@ type Gate = {
 /**
  * cron 每分钟一响，这道门决定这一响要不要真跑一轮。
  *
- * 三档，由两个人头数分出来：有页面**可见**就 55 秒一轮，只是**开着**（后台标签
- * 页、锁了屏的手机）就 115 秒，一个都没有就 30 分钟。
+ * 三档，由两个人头数分出来：有页面**可见**按 `LIVE_TICK_INTERVAL_MS`，只是**开着**（后台标签
+ * 页、锁了屏的手机）按 `OPEN_TICK_INTERVAL_MS`，一个都没有按 `IDLE_TICK_INTERVAL_MS`。
  *
  * 门里只有两个读操作（KV 一枚时间戳 + 并行经 CORE 读人头数与电源），都排在任何贵操作之前：被挡
  * 下的那一轮完全不碰 PSN、不碰站点。而且是层层短路的 —— 攒够闲档就不问人数，
  * 没攒够快档阈值也不问。间隔算的是**上一轮开始**的时刻而不是成功的时刻 —— 否则
- * PSN 持续故障时，重试会从三十分钟一次恶化成每分钟一次。
+ * PSN 持续故障时，重试会从闲档一次恶化成每分钟一次。
  */
 async function shouldTick(env: Env): Promise<Gate> {
   const lastAt = Math.max(await readFullTickStartedAt(env.COLLECTOR_KV), lastFullTickAt);
@@ -414,8 +413,7 @@ async function tick(env: Env): Promise<TickResult> {
         : rawPresence;
 
     const playing = presence.playing != null;
-    // 在玩时的 TTL 对着闲时那档完整 tick 节奏：从前「在玩每轮刷」那会儿一轮正好
-    // 30 分钟，这里维持同一个节奏，快节奏下也不会每分钟去翻一遍分页列表。
+    // 在玩时的 TTL 对着闲档的完整 tick 节奏：快档下也不会每轮都去翻一遍分页列表。
     const playedTtlMs = playing ? PLAYED_GAMES_PLAYING_TTL_MS : PLAYED_GAMES_IDLE_TTL_MS;
     const playedFresh =
       playedCache != null && Date.now() - playedCache.fetchedAt < playedTtlMs;
@@ -512,7 +510,7 @@ async function tick(env: Env): Promise<TickResult> {
     // 两封信各交各的：一封被站点 400，不该把另一封的指纹也扣住不写。
     const failures: string[] = [];
 
-    // presence 每轮必发：站点靠这枚 observedAt 判 worker 死活，内容没变它自己压掉广播。
+    // presence 每个完整 tick 必发：站点靠这枚 observedAt 判 worker 死活，内容没变它自己压掉广播。
     // 排在奖杯前面：心跳便宜且关键，奖杯那半失败不该挡住这一封。
     try {
       await deliver(env, {
@@ -614,7 +612,7 @@ async function currentStreak(env: Env): Promise<FailureStreak> {
 
 /**
  * 一轮收尾时记账：成功清零连败和退避，失败连败加一；上游不可用再按连败次数退避
- * （5 分钟起，每连败一轮翻倍，封顶 30 分钟）。只在值真的变了时写 KV。
+ * （时长见 state.ts 的 `backoffMs`）。只在值真的变了时写 KV。
  * 返回这次定下的退避时长，没退避是 0。
  */
 async function recordTickOutcome(env: Env, error: unknown): Promise<number> {
@@ -654,7 +652,7 @@ function logUpstreamUnavailable(call: string, error: unknown, backoffMs?: number
 
 /**
  * 跳过的这一响要不要让 Sentry 监控报 error：连着失败两轮以上才算。单次抖动之后的
- * 等待（闲档半小时、退避几分钟）照常报 ok；持续断流时每次报到都是 error，
+ * 等待（闲档、退避）照常报 ok；持续断流时每次报到都是 error，
  * 监控连续两次 error 开 issue。真跑了的那一响失败了就直接报 error。
  */
 function failingSince(streak: FailureStreak): Pick<JobResult, "failing"> {
@@ -662,8 +660,8 @@ function failingSince(streak: FailureStreak): Pick<JobResult, "failing"> {
 }
 
 /**
- * cron 每分钟一响，真跑哪一响由退避和 `shouldTick` 定：有人正看着 60 秒一轮，
- * 页面只是开着 2 分钟一轮，一个页面都没开 30 分钟一轮。被挡下的那一响什么都不做。
+ * cron 每分钟一响，真跑哪一响由退避和 `shouldTick` 定（按人头数分三档）。
+ * 被挡下的那一响什么都不做。
  * 手动触发（RPC、本地调试）也走同一道门：PSN 的登录每续一次就轮换 refresh token，
  * 不给任何入口开「不看门」的口子。
  */
@@ -702,7 +700,7 @@ export const playstationJob: Job = {
   offset: 0,
   // 奖杯整份重爬（清过 KV、换了账号）能跑好几分钟
   maxRuntimeMinutes: 10,
-  // 门里的在线人数只给 2.5 秒，别和同一响里别的任务抢连接
+  // 门里的在线人数只给 `COUNT_TIMEOUT_MS`，别和同一响里别的任务抢连接
   headStart: true,
   run: ({ env }) => runPlaystation(env),
 };

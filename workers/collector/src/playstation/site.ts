@@ -81,8 +81,8 @@ type Power = { on: boolean; observedAt: number } | null;
  * 主机通没通电。Home Assistant 那个开关翻面时上报给状态核心，这里经 CORE 读回来。
  *
  * **兜底方向和人头数相反**：人头数读不到当 0、只会变慢；这一份读不到当
- * 「不知道」、按开机走原来的三档。反过来把故障当关机会把卡片冻在闲档，
- * 机器明明开着却半小时才更新一次。
+ * 「不知道」、按开机走三档。反过来把故障当关机会把卡片冻在闲档，
+ * 机器明明开着却只按闲档更新。
  */
 export async function readPower(env: Pick<Env, "CORE">): Promise<Power> {
   try {

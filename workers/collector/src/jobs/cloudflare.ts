@@ -11,8 +11,7 @@ const WINDOW_ALIGN_MS = 15 * 60_000;
 const WINDOW_MS = 12 * 3_600_000;
 
 /**
- * 本仓库各 Worker 当前部署的版本与提交，每 2 分钟一轮（站点部署后上报入口还会点名
- * 让它立刻重拉）。单个 Worker 查不到（还没部署过的脚本、权限收紧）只让那一格为空；
+ * 本仓库各 Worker 当前部署的版本与提交（站点部署后上报入口还会点名让它立刻重拉）。单个 Worker 查不到（还没部署过的脚本、权限收紧）只让那一格为空；
  * 全都查不到才算失败、不写。结果按名字存，名单再变也不会和旧数据错位。
  */
 export const cloudflareDeploymentsJob: Job = {
@@ -38,7 +37,7 @@ export const cloudflareDeploymentsJob: Job = {
   },
 };
 
-/** 各 Worker 12 小时的调用、错误与 CPU，每 15 分钟一轮，和窗口对齐的节奏一致 */
+/** 各 Worker 一个滚动窗口（`WINDOW_MS`）的调用、错误与 CPU，节奏和窗口对齐粒度（`WINDOW_ALIGN_MS`）一致 */
 export const cloudflareMetricsJob: Job = {
   name: "cloudflare-metrics",
   everyMinutes: 15,

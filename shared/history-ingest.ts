@@ -2,11 +2,12 @@
  * 上报侧的长期归档（D1 `lyjwpage-history`，表见 workers/api/migrations/0005）。
  *
  * 谁写入谁归档：训练、每日圆环、限额快照、服务器小时汇总都由收下这封上报的一方
- * 顺手追加，不另设搬运流程。这里只拼语句，不碰 SQLite、不碰 fetch：调用方在
- * 上报落库成功之后把整批交给 `db.batch`，失败只记日志，不能让已收下的上报重发。
+ * 顺手写入，不另设搬运流程。这里只拼语句，不碰 SQLite、不碰 fetch：调用方在
+ * 收下这封上报之后把整批交给 `db.batch`，失败只记日志，不能让已收下的上报重发。
  *
- * 每条语句都是幂等的 upsert：同一封重试两次、或者两封乱序到达，留下的都是
- * 观测最晚的那份，不产生重复行。
+ * 训练、每日圆环、限额快照按自然键 upsert：同一封重试两次、或者两封乱序到达，留下的都是
+ * 收到时刻最晚的那份，不产生重复行。服务器小时汇总是累加，只靠最后观测时刻挡重放，
+ * 口径见 `serverHourStatements`。
  */
 
 import type { ActivityReport } from "@shared/activity";
@@ -45,7 +46,7 @@ const UPSERT_WORKOUT = `INSERT INTO workouts(id, activity_type, started_at, ende
     received_at = excluded.received_at
   WHERE excluded.received_at >= workouts.received_at`;
 
-/** 最近 10 条每封都整份重发；没变的行不改写，所以只有新增或修订的训练产生 D1 写入 */
+/** 最近的训练（条数上限 `WORKOUT_LIMIT`）每封都整份重发；没变的行不改写，所以只有新增或修订的训练产生 D1 写入 */
 export function workoutStatements(db: HistoryDb, payload: WorkoutsPayload): HistoryStatement[] {
   return payload.items.map((item) => db.prepare(UPSERT_WORKOUT).bind(
     item.id,
@@ -145,8 +146,9 @@ const UPSERT_SERVER_HOUR = `INSERT INTO server_hours(host, hour_at, samples, cpu
   WHERE excluded.last_observed_at <> server_hours.last_observed_at`;
 
 /**
- * 按观测时刻所在的 UTC 整点累加。`WHERE` 挡住同一封的重放：上报器重试时
- * `observedAt` 不变，第二次不再把样本数加一。
+ * 按观测时刻所在的 UTC 整点累加。`WHERE` 只挡住与该小时 `last_observed_at` 相同的样本：
+ * 上报器紧接着重试同一封时 `observedAt` 不变，第二次不再把样本数加一；中间夹了别的样本
+ * 再重放（A→B→A）就挡不住，会把 A 再累加一次。
  */
 export function serverHourStatements(db: HistoryDb, status: ServerStatus): HistoryStatement[] {
   const hourAt = Math.floor(status.observedAt / HOUR_MS) * HOUR_MS;
@@ -169,7 +171,6 @@ export function serverHourStatements(db: HistoryDb, status: ServerStatus): Histo
   )];
 }
 
-/** 一整批一次提交；空批不碰 D1 */
 export async function runHistory(db: HistoryDb, statements: HistoryStatement[]): Promise<void> {
   if (!statements.length) return;
   await db.batch(statements);

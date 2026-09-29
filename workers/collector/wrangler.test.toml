@@ -1,4 +1,4 @@
-# 本地开发用（根目录 `pnpm dev:worker` 以多配置方式和 api、dev-router 一起起）。
+# 本地开发用（根目录 `pnpm dev:worker` 以多配置方式和 dev-router、api、上报入口一起起）。
 # 名字与生产相同，service binding 才按生产名字互相找到。没有 cron、没有 D1（归档那一步自动跳过），
 # KV 全是本地的：LAG / CREDENTIALS 的 id 和 api 的 wrangler.test.toml 一致，两边读写同一份。
 name = "collector"

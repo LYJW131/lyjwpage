@@ -18,8 +18,8 @@ export async function commitRecentlyPlayed(items: ListeningItem[]): Promise<{ ch
      * 那时这是唯一留下的痕迹。它没有时刻，只知道落在上一轮刷新和这一轮之间，
      * 所以 Pulse 把它画成一段不确定区间，不当成此刻在放，见 shared/pulse-listening。
      */
-    // 完整数据可并行广播。首屏不失效：列表区定高、条目绝对定位，换歌只换内容，
-    // 交给定时重建（见 lib/home-layout）。
+    // 推送带完整数据、和落库同源；fanout 先等写落库再推。首屏不失效：列表区定高、
+    // 条目绝对定位，换歌只换内容，交给定时重建（见 lib/home-layout）。
     await fanout({
       writes: trace ? [commit(), recordListeningTrace(trace)] : [commit()],
       events: changed ? [{ type: "listening", payload: listening }] : [],

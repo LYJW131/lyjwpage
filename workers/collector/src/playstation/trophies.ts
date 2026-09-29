@@ -113,7 +113,7 @@ export type TrophyIndexSnapshot = {
 
 export type TrophyTitleReport = TrophiesReport["titles"][number];
 
-/** 上游还给三个点数字段，psn-api 2.18.1 的响应类型里没有；缺席就当 0。 */
+/** 上游还给三个点数字段，psn-api（版本以 package.json 锁定的为准）的响应类型里没有；缺席就当 0。 */
 export type TrophySummary = Loose<
   UserTrophyProfileSummaryResponse & {
     trophyPoint: number;
@@ -172,7 +172,7 @@ const TITLE_ID_BATCH = 5;
 /** 每款 2–4 路并行，Worker 同时出站上限 6，两款一起跑。 */
 const TITLE_CRAWL_CONCURRENCY = 2;
 const PAGE_LIMIT = 100;
-/** 兜底：nextOffset 一直不为空也不能无限打上游。100 页 × 100 条远超单个奖杯组。 */
+/** 兜底：nextOffset 一直不为空也不能无限打上游。`MAX_PAGES` × `PAGE_LIMIT` 远超单个奖杯组。 */
 const MAX_PAGES = 100;
 
 type PsnPage<Row> = {

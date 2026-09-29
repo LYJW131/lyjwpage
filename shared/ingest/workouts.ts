@@ -2,7 +2,7 @@ import { object } from "@/lib/json";
 import type { Workout, WorkoutsPayload } from "@/lib/types";
 import { WORKOUT_LIMIT } from "@shared/workouts";
 
-/** iPhone 信封 `modules.workouts` 的收敛：每次完整替换最近最多 10 条训练。 */
+/** iPhone 信封 `modules.workouts` 的收敛：每次完整替换最近的训练，最多 `WORKOUT_LIMIT` 条。 */
 
 function amount(value: unknown, field: string): number {
   if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {

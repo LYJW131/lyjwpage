@@ -1,7 +1,8 @@
 /**
  * 共享凭据：KV 命名空间 `lyjwpage-credentials`（binding `CREDENTIALS`）。
  *
- * 和可滞后层分开一个命名空间：公开读取端点只绑 `LAG`，白名单写错也漏不出这里的东西。
+ * 和可滞后层分开一个命名空间：公开状态端点的读路径（api 的 `src/lag-store.ts`）只碰 `LAG`，
+ * 键表写错也漏不出这里的东西。api 同时绑着两个 KV，隔离靠代码路径，不靠绑定。
  * 写入方是上报入口（Mac 推来的 Apple Music user token），读取方是采集 Worker
  * （拉最近在听）和状态核心的歌词、曲目查询。
  */

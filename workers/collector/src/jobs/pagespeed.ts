@@ -7,12 +7,13 @@ import type { PageSpeedSample } from "@/lib/vercel-deployments-types";
 import { ok, skipMissing, type Job } from "../job";
 
 /**
- * PageSpeed Insights 实验室分，每小时第 7 分钟一轮：桌面、移动并行测（单端通常二三十秒，
- * 偶尔长尾到一分钟以上，单端等到 120 秒才放弃，见 lib/pagespeed 的 PAGESPEED_TIMEOUT_MS；
- * cron 的墙钟上限是 15 分钟，放得下），合成一个样本并进 6 小时滚动窗口，逐格取中位数写可滞后层。
+ * PageSpeed Insights 实验室分：桌面、移动并行测（单端通常二三十秒，偶尔长尾到一分钟以上，
+ * 单端等到 `PAGESPEED_TIMEOUT_MS` 才放弃，见 lib/pagespeed；任务的 `maxRuntimeMinutes` 放得下），
+ * 合成一个样本并进滚动窗口（窗口与样本上限见 lib/pagespeed 的 `WINDOW_MS`、`MAX_SAMPLES`），
+ * 逐格取中位数写可滞后层。
  *
  * 窗口样本存在 COLLECTOR_KV（经 src/lib/cache）。任一端失败这一轮就不写，窗口和
- * 可滞后层都保持上一轮的样子；下一小时再来。密钥只进查询参数，日志里只有状态码。
+ * 可滞后层都保持上一轮的样子；下一轮再来。密钥只进查询参数，日志里只有状态码。
  */
 const HISTORY_KEY = `pagespeed:history:v1:${site.url}`;
 const HISTORY_TTL_MS = 24 * 3_600_000;

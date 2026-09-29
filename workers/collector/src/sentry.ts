@@ -29,7 +29,7 @@ const reportedAt = new Map<string, number>();
  * 任务真失败时开 Sentry issue，按任务分组（fingerprint `collector-job` + 任务名）。
  *
  * 每个任务本来有一条 cron 监控（`collector-<任务>`），但组织的监控名额只有一个，已经给了
- * `api-minute-cron`，多出来的监控建出来就是停用状态。issue 不占名额：失败照样看得见、能配告警。
+ * `api-minute-cron`（见 docs/ops-facts.md），多出来的监控建出来就是停用状态。issue 不占名额：失败照样看得见、能配告警。
  * 监控那边的报到照常发，名额加上之后在 Sentry 里启用即可，不用改代码。
  */
 export function reportJobFailure(job: string, error: Error): void {

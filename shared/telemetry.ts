@@ -47,15 +47,9 @@ export const telemetryState = new Proxy({} as TelemetryState, {
 });
 
 /**
- * 遥测状态的持久化。
+ * 遥测状态的持久化：落 SQLite，各模块按字段 patch，心跳不会把整包盖回去。规则见 lib/storage 的 fieldMirror。
  *
- * 从前写的是临时文件（$TMPDIR/lyjwpage-telemetry-v2/activity.json），全站只有
- * 这一处这么干 —— 于是清空 SQLite 对它毫无作用，连重启 dev server 都清不掉，
- * 排查冷启动时会以为清干净了其实没有。现在和别的 store 一样落 SQLite，
- * 正在播等模块按字段 HSET，心跳不会把整包盖回去。规则见 lib/storage 的 fieldMirror。
- *
- * 存活不在这份里：它自己占一个 key，见 lib/reporter-liveness。从前它搭这趟车
- * 持久化，于是同一件事有两个写入点，还得靠 restoreLiveness 把进程内存灌回去。
+ * 存活不在这份里：它自己占一个 key，见 lib/reporter-liveness。
  */
 export type PersistedTelemetry = {
   desktop: StoredDesktopActivity | null;
@@ -79,9 +73,8 @@ export const mirror = fieldMirror<PersistedTelemetry>(
 /**
  * 从持久层同步一次工作副本。每个入口都先调它。
  *
- * 不是「只在启动时 hydrate 一次」—— 那正是这轮要消灭的东西：读一次就再也不问，
- * 等于让进程内存变成第二份真相，清空 SQLite 也翻不动它。fieldMirror 自己会处理
- * 「SQLite 不可达就用内存副本」，所以每次问的代价只是一次 pipeline。
+ * 不是「只在启动时 hydrate 一次」：读一次就再也不问，等于让进程内存变成第二份真相，
+ * 清空 SQLite 也翻不动它。每次问的代价只是一次 SQLite 批量读。
  */
 export async function syncTelemetryState() {
   const stored = await mirror.get();
@@ -203,12 +196,9 @@ export async function decorateCandidate(
 }
 
 /**
- * 两个候选从 SQLite 读出并查好目录链接。不选 Hero、不看存活。
- *
- * 换歌 / HA 推送才变，所以能进 `'use cache'`。暂停宽限期和 HomePod 静默在
- * pickNowListening 里现算。
+ * 工作副本 + 一份 HomePod 快照 → 两个查好目录链接的候选，谁都不再回 Storage 取。
+ * 不选 Hero、不看存活：暂停宽限期和 HomePod 静默在 pickNowListening 里现算。
  */
-/** 工作副本 + 一份 HomePod 快照 → 两个查好链接的候选。谁都不再回 Storage 取 */
 export async function snapshotFrom(
   homePodStored: StoredHomePod | null,
   mac?: {
