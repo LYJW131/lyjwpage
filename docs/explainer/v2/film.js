@@ -1,16 +1,57 @@
-// 时间轴与播放器：章节按小节排队，时钟跟配乐走；导出接口 window.__ready / __seek 供无头抽帧。
+// 时间轴与播放器：章节按 plan.js 排队，时钟跟配乐走；导出接口 window.__ready / __seek 供无头抽帧。
+// 地址参数：?export 无头抽帧（不放声）· ?lang=en 英文 · ?t=秒 从这里开始 · ?only=ch02,ch03 只排这几章（预览、试听自己那章）
+//          · ?check 自检模式（kit 记下每一处字的屏幕字号，tools/check.mjs 用）
 (() => {
   const Sc = window.Score;
   const BPM = Sc ? Sc.BPM : 108, BEAT = 60 / BPM, BAR = BEAT * 4;
   const params = new URLSearchParams(location.search);
   const EXPORT = params.has("export");
   if (EXPORT) document.body.classList.add("export");
+  if (params.has("check")) window.__CHECK = { all: [] };
 
-  // 章节：各自登记到 window.CHAPTERS，这里按顺序排好起点
-  const chapters = (window.CHAPTERS || []).slice();
+  // ---------- 章节：plan.js 定顺序和小节数；没写的章用占位 ----------
+  const only = params.get("only") ? params.get("only").split(",") : null;
+  const PLAN = (window.PLAN || []).filter((p) => !only || only.includes(p.id));
+  const registered = new Map();
+  for (const c of window.CHAPTERS || []) {
+    if (registered.has(c.id)) console.error(`章节 ${c.id} 登记了两次，用后一次`);
+    registered.set(c.id, c);
+  }
+  for (const id of registered.keys()) if (!(window.PLAN || []).some((p) => p.id === id)) console.error(`章节 ${id} 不在 plan.js 里，不会播放`);
+  const chapters = PLAN.map((p) => {
+    const c = registered.get(p.id);
+    if (!c) return placeholder(p);
+    if (c.bars !== p.bars) console.error(`章节 ${p.id}：自己写的 bars=${c.bars}，plan.js 是 ${p.bars}，以 plan.js 为准`);
+    return Object.assign(c, { bars: p.bars });
+  });
   let bar0 = 0;
   for (const c of chapters) { c.bar0 = bar0; c.t0 = bar0 * BAR; c.t1 = (bar0 + c.bars) * BAR; bar0 += c.bars; }
   const totalBars = bar0, DURATION = totalBars * BAR;
+  if (Sc && Sc.build) Sc.build(PLAN);
+
+  // 还没写的章：暗底上写章号、章名和小节:拍，拍子上闪一下，整片照样能从头放到尾
+  function placeholder(p) {
+    const nn = p.id.slice(2);
+    let plate, x;
+    return {
+      id: p.id, title: `ch.${nn}`, bars: p.bars, placeholder: true,
+      init() { plate = G.pass(K.PLATE.ink); x = G.layer("top"); },
+      render(f) {
+        const cam = { x: G.W / 2, y: G.H / 2, zoom: 1, rot: 0 };
+        G.setCam(cam);
+        G.fill(plate, { uGridA: 1, uPlate: [0, 0, G.W, G.H] });
+        const c = x.begin(); x.cam(cam);
+        const beat = Math.floor(f.beat % 4);
+        K.text(c, nn, 120, 330, { font: K.FONT.pixel(180), color: G.css("signalD") });
+        K.text(c, f.tr(`ch.${nn}`), 120, 450, { font: K.FONT.cjk(64, 600), color: G.css("bone") });
+        K.text(c, f.tr("ph.todo"), 120, 530, { font: K.FONT.cjk(40, 600), color: G.css("ash") });
+        K.text(c, `${Math.floor(f.bar)} : ${beat}  /  ${p.bars}`, 120, 880, { font: K.FONT.mono(56, 600), color: G.css("bone") });
+        for (let i = 0; i < 4; i++) K.fillRect(c, 120 + i * 64, 930, 44, 44, i === beat ? G.css("signalD") : G.css("ash"), i === beat ? 1 : 0.3);
+        G.composite(x.upload(), { mode: G.MODE.normal });
+        f.post = { bloom: 0.3, halation: 0.1, grain: 0.04, vignette: 0.4, ca: 0.2 };
+      },
+    };
+  }
 
   const EV = (Sc && Sc.events) || {};
   function lastBefore(arr, t) {
@@ -60,6 +101,7 @@
     G.frame = Math.floor(t * 60 + 1e-6);
     G.setCam({ x: G.W / 2, y: G.H / 2, zoom: 1, rot: 0 });
     const f = frameFor(t);
+    if (window.__CHECK) window.__CHECK.ch = f.ch.id;
     f.ch.render(f);
     G.post(f.post);
   }
@@ -163,15 +205,17 @@
     ui();
     if (!EXPORT) {
       requestAnimationFrame(loop);
-      // 配乐：优先读预先渲好的 score.mp3；没有就在浏览器里现合成（约十几秒）
+      // 配乐：优先读预先渲好的 score.mp3（v2/tools/score-mp3.mjs 生成，不进仓库）；长度和现在的章节表对不上、或者没有，就在浏览器里现合成
       let got = null;
       try {
         const r = await fetch("score.mp3");
-        if (!r.ok) throw new Error(r.status);
-        got = await new OfflineAudioContext(2, 48000, 48000).decodeAudioData(await r.arrayBuffer());
-      } catch {
-        if (Sc && Sc.render) { try { got = await Sc.render(); } catch (e) { console.error("配乐合成失败", e); } }
-      }
+        if (r.ok) {
+          const buf = await new OfflineAudioContext(2, 48000, 48000).decodeAudioData(await r.arrayBuffer());
+          if (!Sc || Math.abs(buf.duration - (Sc.duration + Sc.tail)) < 0.5) got = buf;
+          else console.warn("score.mp3 的长度和现在的章节表对不上，改成现合成");
+        }
+      } catch {}
+      if (!got && Sc && Sc.render) { try { got = await Sc.render(); } catch (e) { console.error("配乐合成失败", e); } }
       document.getElementById("load").style.display = "none";
       // 配乐到之前已经按了播放（静音计时）：记下当前位置，换成有声的时钟接着放
       const wasPlaying = playing, t = now();
@@ -185,6 +229,6 @@
   // 导出：同步画出 t 时刻的一帧
   window.__seek = (t) => { T = t; render(t); G.gl.finish(); return true; };
   window.__duration = DURATION;
-  window.__chapters = chapters.map((c) => ({ id: c.id, t0: c.t0, t1: c.t1, bars: c.bars }));
+  window.__chapters = chapters.map((c) => ({ id: c.id, t0: c.t0, t1: c.t1, bars: c.bars, placeholder: !!c.placeholder }));
   window.__BAR = BAR;
 })();

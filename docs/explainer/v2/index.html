@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>lyjw.me 运行原理 · 样章</title>
+<title>lyjw.me 运行原理 · v2</title>
 <style>
 @font-face{font-family:"Geist Mono";src:url(../fonts/GeistMono-Regular.woff2) format("woff2");font-weight:400}
 @font-face{font-family:"Geist Mono";src:url(../fonts/GeistMono-Medium.woff2) format("woff2");font-weight:500}
@@ -43,13 +43,34 @@ body.export #wrap{inset:0}
   <button id="lang" type="button">English</button>
 </div>
 <div id="load">正在合成配乐…</div>
+<!-- 顺序：章节表 → 配乐引擎和各章配乐 → 文字、引擎、组件 → 各章画面 → 时间轴。
+     十章的文件都已列好：还没写的会加载失败（onerror 吞掉），film.js 用占位顶上。章节作者不用改这个文件。 -->
+<script src="plan.js"></script>
 <script src="../clawd.js"></script>
 <script src="score.js" onerror="window.Score=null"></script>
+<script src="music/ch00.js" onerror="0"></script>
+<script src="music/ch01.js" onerror="0"></script>
+<script src="music/ch02.js" onerror="0"></script>
+<script src="music/ch03.js" onerror="0"></script>
+<script src="music/ch04.js" onerror="0"></script>
+<script src="music/ch05.js" onerror="0"></script>
+<script src="music/ch06.js" onerror="0"></script>
+<script src="music/ch07.js" onerror="0"></script>
+<script src="music/ch08.js" onerror="0"></script>
+<script src="music/ch09.js" onerror="0"></script>
 <script src="i18n.js"></script>
 <script src="engine.js"></script>
 <script src="kit.js"></script>
-<script src="ch02.js"></script>
+<script src="ch00.js" onerror="0"></script>
+<script src="ch01.js" onerror="0"></script>
+<script src="ch02.js" onerror="0"></script>
 <script src="ch03.js" onerror="0"></script>
+<script src="ch04.js" onerror="0"></script>
+<script src="ch05.js" onerror="0"></script>
+<script src="ch06.js" onerror="0"></script>
+<script src="ch07.js" onerror="0"></script>
+<script src="ch08.js" onerror="0"></script>
+<script src="ch09.js" onerror="0"></script>
 <script src="film.js"></script>
 </body>
 </html>

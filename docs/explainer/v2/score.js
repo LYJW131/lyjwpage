@@ -1,17 +1,16 @@
-// 配乐 v2（样章）：108 BPM，4/4，正好 32 小节 = 第 02 章「门禁与分拣」16 小节 + 第 03 章「一间屋子的账房」16 小节。
+// 配乐 v2：108 BPM，4/4，全片只有一首。按章拼装：每章一份乐谱写在 music/chNN.js（章内小节，写法见 CONVENTIONS.md「配乐」），
+// Score.build(plan) 按 plan.js 的章节顺序和小节数把各章接成一张平铺的音符表 NOTES；还没写谱的章用一段轻 pad + 每拍一声滴答占位。
 // 一种风格：温暖的极简电子。侧链呼吸的 pad、FM 铃和拨弦、圆润的次低音、干净的鼓组、一点磁带饱和、
-// 种子噪声现生成冲激响应的短混响。全部在浏览器里合成：没有采样文件、不联网，噪声一律来自种子 PRNG，同一份乐谱每次渲染逐位相同。
+// 种子噪声现生成冲激响应的短混响。全部在浏览器里合成：没有采样文件、不联网，噪声一律来自种子 PRNG；同一份乐谱两次渲染只差在浮点末位（远低于 16 位量化噪声）。
 //
-// 乐谱是数据：和弦表（HARM）+ 段落表（SECTIONS：鼓型、贝斯型、琶音型、混音参数）+ 旋律（MELODY）+ 剧情落点（STORY）。
-// expand() 把它们展开成一张平铺的音符表 NOTES；同一张表既排进 OfflineAudioContext 出声，也导出 Score.events / Score.env
-// 给画面用，所以声音和画面不可能对不上。
-//
-// 调性：D 多利亚 / D 小调（第 02 章用多利亚的 G6 和 C6/9，第 03 章换成小调的 B♭ 和 Gm9，更暗）。
+// 同一张 NOTES 既排进 OfflineAudioContext 出声，也导出 Score.events / Score.env 给画面用，所以声音和画面不可能对不上。
+// 各章共用的词汇都在这个文件：和弦表 CHORD、鼓型记法、贝斯型 BASS、琶音型 ARP、信封主题 THEME、剧情音（各章 story 的 kind）。
+// 章节要的新和弦写在自己乐谱的 chords 里，build() 并进 CHORD；新音色、新剧情音只能改这个文件。
 // 信封主题（全片母题）：A4 D5 F5 E5——三步跳上去、再落一步回来；节奏是 3+3+2 个十六分，E5 落在第三拍、延长两拍。
 (function () {
   "use strict";
-  const BPM = 108, BEAT = 60 / BPM, BAR = BEAT * 4, BARS = 32;
-  const DURATION = BARS * BAR, TAIL = 2, SAMPLE_RATE = 48000;
+  const BPM = 108, BEAT = 60 / BPM, BAR = BEAT * 4;
+  const TAIL = 2, SAMPLE_RATE = 48000;
   // 母带：峰值拉到 -1 dBFS（这份配乐的峰值响度比约 13 dB，整体响度落在 -14 LUFS 左右）。
   // 想按响度走就把 TARGET_LUFS 设成数字（比如 -16），峰值会落在 -3 dBFS 上下，限幅器兜底
   const CEIL_DB = -1, TARGET_LUFS = null;
@@ -26,7 +25,7 @@
   }
 
   // =====================================================================
-  // 乐谱（数据）
+  // 共享词汇（各章乐谱里按名字引用）
   // =====================================================================
 
   // 和弦：pad 的排法（中音区、开放排列，第一个音是根音）；次低音取根音，折到 G1–F#2
@@ -45,39 +44,17 @@
   };
   const rootOf = (name) => { let m = 24 + (midi(CHORD[name][0]) % 12); while (m < 31) m += 12; return m; };
 
-  // 每小节的和弦；数组表示小节内换和弦：[和弦, 起拍]
-  const HARM = [
-    // 02 门禁与分拣：i – IV – i – III – VII（多利亚），400 那一下借 ♭VI，最后落在属音上被吸进 03
-    "Dm9", "G6", "Dm9", "Fmaj7", "C69", "Dm9", "Fmaj7", "C69",
-    "Bbmaj7", "Dm9", "G6", "Bbmaj7", "C69", "Dm9", "Fmaj7", [["A7sus4", 0], ["A7", 2]],
-    // 03 一间屋子的账房：i – ♭VI – iv – V，更暗；心跳段转一下 ii°7 – V，出屋时完整回到 i
-    "Dmadd9", "Bbmaj7s11", "Dm9", "Bbmaj7", "Gm9", [["A7sus4", 0], ["A7", 2]], "Dm9", "Bbmaj7",
-    "Gm9", "Dmadd9", "Bbmaj7s11", [["Em7b5", 0], ["A7", 2]], "Dm9", "Bbmaj7", [["Gm9", 0], ["A7sus4", 2]], "Dm9",
-  ];
-  function chordAt(bar, beat) {
-    const h = HARM[clamp(bar, 0, BARS - 1)];
-    if (typeof h === "string") return h;
-    let c = h[0][0];
-    for (const [n, b] of h) if (beat >= b - 1e-9) c = n;
-    return c;
-  }
-  // 和弦段：pad 按段发声，末段一直响到第 32 小节结束（再在尾巴里放掉）
-  const SEGMENTS = [];
-  HARM.forEach((h, bar) => (typeof h === "string" ? [[h, 0]] : h).forEach(([chord, beat]) => SEGMENTS.push({ bar, beat, t: at(bar, beat), chord })));
-  SEGMENTS.forEach((s, i) => (s.end = i + 1 < SEGMENTS.length ? SEGMENTS[i + 1].t : DURATION));
-
   // 鼓型：16 格一小节（一格一个十六分），X 重、x 中、o 轻、. 空；数组表示段落里逐小节轮换，null 表示这一小节不打
   const VEL = { X: 1, x: 0.75, o: 0.45 };
-  // 贝斯型：[拍位, 时值(拍), 离根音的半音, 力度]
+  // 贝斯型：[拍位, 时值(拍), 离根音的半音, 力度]；"hold" 是每个和弦段一个长音（按和弦切）
   const BASS = {
     light: [[0, 1.75, 0, 0.8], [2.5, 1.25, 0, 0.7]],
     groove: [[0, 1.25, 0, 1], [1.5, 0.5, 0, 0.7], [2.25, 0.5, 12, 0.55], [3, 0.75, 7, 0.8]],
-    slam: [[2, 0.75, 0, 0.9], [3, 0.75, 7, 0.8]], // 400 大章：前两拍全场收住
-    half: [[0, 2, 0, 0.9]], // 202 之后让出来给下坠
+    slam: [[2, 0.75, 0, 0.9], [3, 0.75, 7, 0.8]], // 大章：前两拍全场收住
+    half: [[0, 2, 0, 0.9]], // 让出后两拍给下坠
     offbeat: [[0.5, 0.4, 0, 0.95], [1.5, 0.4, 0, 0.8], [2.5, 0.4, 0, 0.95], [3.5, 0.4, 12, 0.6]], // 反拍贝斯，配每拍一下的底鼓
     reveal: [[0, 0.4, 0, 1], [0.5, 0.4, 0, 0.85], [1.5, 0.4, 0, 0.85], [2.5, 0.4, 0, 0.95], [3, 0.25, 12, 0.5], [3.5, 0.4, 7, 0.75]],
     end: [[0, 4, 0, 0.7]],
-    // hold：每个和弦段一个长音（expand 里按和弦切）
   };
   // 琶音型：[拍位, 取和弦音的序号]；332 就是主题的 3+3+2 节奏
   const ARP = {
@@ -85,111 +62,32 @@
     332: [[0, 0], [0.75, 1], [1.5, 2], [2, 3], [2.75, 2], [3.5, 1]],
     queue: [[0, 0], [0.75, 2], [1.5, 1], [2.5, 3], [3.25, 2]],
   };
-
-  // 段落：鼓型、贝斯、琶音、pad 电平与亮度、侧链深度、画面用的「能量」
-  const SECTIONS = [
-    // —— 02 门禁与分拣：纸面、公文。打字机当踩镲，印章当军鼓，气动管和指示灯是剧情音 ——
-    { from: 0, to: 1, ch: 2, id: "gate-intro", name: "门前：pad 和零星的打字声，拨弦唱出信封主题", energy: 0.2,
-      hat: ["..o...o...o...o.", "..o...o...o.oooo"], hatKind: "type", hatVol: 0.7, ghost: [1, 0.2, 0.16],
-      pad: 0.9, lp: 2400, padVerb: 0.3 },
-    { from: 2, to: 4, ch: 2, id: "gate-doors", name: "钥匙与门：轻底鼓进来", energy: 0.4,
-      kick: "X.......x.......", kickKind: "light", duck: 0.4,
-      hat: "o.x.o.x.o.x.o.x.", hatKind: "type", hatVol: 0.8,
-      bass: "light", arp: { p: "sparse", lo: 69, inst: "pluck", v: 0.5 }, pad: 0.8, lp: 2600, padVerb: 0.28 },
-    { from: 5, to: 7, ch: 2, id: "gate-checklist", name: "检查单：六声打勾，律动搭起来", energy: 0.6,
-      kick: "X.......X.x.....", duck: 0.5, snare: "....x.......x...", snareKind: "thud",
-      hat: "o.x.oox.o.x.oox.", hatKind: "type",
-      bass: "groove", arp: { p: "332", lo: 69, inst: "pluck", v: 0.4 }, pad: 0.75, lp: 2800, padVerb: 0.25 },
-    { from: 8, to: 8, ch: 2, id: "gate-400", name: "400 大章：全场一顿，第三拍再接上", energy: 0.55,
-      kick: "........X.x.....", duck: 0.5, snare: "............x...", snareKind: "thud",
-      hat: "........o.x.oox.", hatKind: "type", bass: "slam", pad: 0.75, lp: 2400, padVerb: 0.3 },
-    { from: 9, to: 12, ch: 2, id: "gate-sorting", name: "分拣台：四根气动管，律动全开", energy: 0.85,
-      kick: ["X.......X.x.....", "X.......X.x.....", "X.......X.x.....", "X.......X.x...x."], duck: 0.5,
-      snare: ["....X.......X...", "....X.......X...", "....X.......X...", "....X.......X.ox"], snareKind: "thud",
-      hat: "ooxoooxoooxoooxo", hatKind: "type",
-      bass: "groove", arp: { p: "332", lo: 69, inst: "pluck", v: 0.55 }, pad: 0.7, lp: 3200, padVerb: 0.22 },
-    { from: 13, to: 14, ch: 2, id: "gate-lamps", name: "三盏灯：鼓让开，灯音拼出主题", energy: 0.6,
-      kick: "X.......X.......", duck: 0.4, snare: "............x...", snareKind: "thud",
-      hat: "..x...x...x...x.", hatKind: "type", hatVol: 0.8, bass: "light", pad: 0.85, lp: 2800, padVerb: 0.3 },
-    { from: 15, to: 15, ch: 2, id: "gate-202", name: "202 大章，然后被吸进实时那根管子", energy: 0.5,
-      bass: "half", pad: 0.85, lp: 2600, padVerb: 0.35 },
-    // —— 03 一间屋子的账房：暗、深、有点神秘但暖。十六分的钟摆就是那条队列 ——
-    { from: 16, to: 17, ch: 3, id: "room-dark", name: "黑暗里飞向唯一的一间屋子：只有 pad、次低音和 FM 铃", energy: 0.25,
-      ghost: [2, 0.15, 0.3], bass: "hold", pad: 1, lp: 800, padVerb: 0.45 },
-    { from: 18, to: 21, ch: 3, id: "room-queue", name: "屋里只有一条队：每拍一个信封往前挪", energy: 0.6,
-      kick: "X...X...X...X...", duck: 0.55, snare: [null, null, "....o.......o...", "....o.......o..."], snareKind: "rim",
-      hat: "..x...x...x...x.", hatKind: "flip", clock: "xoooxoooxoooxooo",
-      bass: "offbeat", bassVol: 1.25, arp: { p: "queue", lo: 57, inst: "pluckDark", v: 0.5 }, pad: 0.75, lp: 1000, padVerb: 0.35 },
-    { from: 22, to: 24, ch: 3, id: "room-slip", name: "递出清单：广播和 202 同时发生", energy: 0.7,
-      kick: "X...X...X...X...", duck: 0.55, snare: "....x.......x...", snareKind: "rim",
-      hat: "..x...x...x...x.", hatKind: "flip", clock: "xoooxoooxoooxooo",
-      bass: "offbeat", bassVol: 1.25, arp: { p: "queue", lo: 57, inst: "pluckDark", v: 0.55 }, pad: 0.75, lp: 1100, padVerb: 0.35 },
-    { from: 25, to: 27, ch: 3, id: "room-heartbeat", name: "心跳信封：半速，底鼓变成扑通扑通，记一笔、谁也不惊动", energy: 0.35,
-      kick: "X.o.....X.o.....", kickKind: "heart", duck: 0.4,
-      hat: "..............o.", hatKind: "flip", clock: ["o.o.o.o.o.o.o.o.", "o.o.o.o.o.o.o.o.", "o.o.o.o.o.o.oooo"], clockVol: 0.7,
-      bass: "hold", pad: 0.85, lp: 850, padVerb: 0.4 },
-    { from: 28, to: 30, ch: 3, id: "room-reveal", name: "镜头退出屋子：律动全开，主题带和声完整唱一遍", energy: 1,
-      kick: "X...X...X...X...", duck: 0.5, snare: ["....X.......X...", "....X.......X...", "....X.......X.oo"], snareKind: "thud",
-      hat: "..x...x...x...x.", hatKind: "flip", clock: "xoooxoooxoooxooo",
-      bass: "reveal", bassVol: 1.2, arp: { p: "queue", lo: 57, inst: "pluckDark", v: 0.35 }, pad: 0.8, lp: 2200, padVerb: 0.35 },
-    { from: 31, to: 31, ch: 3, id: "room-end", name: "落在 Dm9 上，一直响进尾巴", energy: 0.6,
-      kick: "X...............", duck: 0.5, bass: "end", pad: 1, lp: 1400, padVerb: 0.45 },
-  ];
-  const SEC_OF_BAR = [];
-  SECTIONS.forEach((s) => { for (let b = s.from; b <= s.to; b++) SEC_OF_BAR[b] = s; });
-  const sectionOf = (bar) => SEC_OF_BAR[clamp(bar, 0, BARS - 1)];
-
   // 信封主题：[拍位, 时值, 音]
   const THEME = [[0, 0.75, "A4"], [0.75, 0.75, "D5"], [1.5, 0.5, "F5"], [2, 2, "E5"]];
   const withNotes = (names) => THEME.map(([b, d], i) => [b, d, names[i]]);
   // 旋律条目：[小节, 拍位, 时值(拍), 音, 乐器, 力度, 是否主题]
   const phrase = (bar, notes, inst, v, theme = false) => notes.map(([b, d, n]) => [bar, b, d, n, inst, v, theme]);
-  const MELODY = [
-    ...phrase(0, THEME, "pluck", 1.3, true), // 0:0 拨弦唱主题，前奏只有 pad 垫着
-    ...phrase(1, withNotes(["D5", "B4", "A4", "G4"]), "pluck", 0.55), // 同一节奏往下答一句（G6 上的 B 还原）
-    ...phrase(16, THEME, "bell", 1.2, true), // 03 开场：FM 铃唱主题
-    ...phrase(17, withNotes(["F5", "E5", "D5", "A4"]), "bell", 0.6), // 反着答：E5 在 B♭ 上是 #11
-    // 心跳段：闷音拨弦偷偷走几步
-    ...[[25, 0.5, "D4"], [25, 1.5, "F4"], [25, 2.75, "E4"], [25, 3.5, "C4"],
-      [26, 0.5, "D4"], [26, 1.5, "F4"], [26, 2.75, "E4"], [26, 3.5, "A3"],
-      [27, 1, "E4"], [27, 1.5, "G4"], [27, 2.5, "C#5"], [27, 3, "E5"], [27, 3.5, "G5"]].map(([bar, b, n]) => [bar, b, 0.25, n, "pluckMute", 0.5, false]),
-    // 出屋：主题完整三句（原位、上三度模进、再上一句落到属音），铃唱旋律、第二支铃唱三度 / 六度和声、拨弦低八度跟着
-    ...phrase(28, THEME, "bell", 1.15, true), ...phrase(28, withNotes(["F4", "A4", "D5", "C5"]), "bell2", 0.5), ...phrase(28, withNotes(["A3", "D4", "F4", "E4"]), "pluck", 0.4),
-    ...phrase(29, withNotes(["C5", "F5", "A5", "G5"]), "bell", 1.1, true), ...phrase(29, withNotes(["A4", "D5", "F5", "D5"]), "bell2", 0.5), ...phrase(29, withNotes(["C4", "F4", "A4", "G4"]), "pluck", 0.4),
-    ...phrase(30, withNotes(["D5", "G5", "Bb5", "A5"]), "bell", 1.1, true), ...phrase(30, withNotes(["Bb4", "D5", "G5", "E5"]), "bell2", 0.5), ...phrase(30, withNotes(["D4", "G4", "Bb4", "A4"]), "pluck", 0.4),
-    // 31:0 终和弦：铃敲 D5 / A5 / E6，和 pad 的 Dm9 一起响进尾巴
-    [31, 0, 4, "D5", "bell", 0.9, true], [31, 0, 4, "A5", "bell2", 0.55, false], [31, 0, 4, "E6", "bell2", 0.35, false],
-  ];
-
-  // 剧情落点：画面里每一个「此刻发生」的动作，拍位就是 brief 给的格子
-  const STORY = [
-    { bar: 2, beat: 0, kind: "key" }, // mac 那扇门开了
-    { bar: 3, beat: 2, kind: "stamp", size: "mid" }, // 403：Emby 的钥匙开错了门
-    { bar: 4, beat: 0, kind: "key" }, { bar: 4, beat: 0.5, kind: "key", v: 0.85 }, // Home Assistant 的钥匙连开两扇
-    // 检查单六项，一项一声「叮」，音高顺着和弦往上爬（A C D E G A，D 多利亚的五声）
-    ...[[5, 0, "A5"], [5, 2, "C6"], [6, 0, "D6"], [6, 2, "E6"], [7, 0, "G6"], [7, 2, "A6"]].map(([bar, beat, n], i) => ({ bar, beat, kind: "tick", m: midi(n), i })),
-    { bar: 8, beat: 0, kind: "stamp", size: "big" }, // 400 大章
-    // 四根气动管：实时、可滞后、归档、凭据
-    { bar: 9, beat: 0, kind: "whoosh", tube: 0 }, { bar: 9, beat: 2, kind: "whoosh", tube: 1 },
-    { bar: 10, beat: 0, kind: "whoosh", tube: 2 }, { bar: 10, beat: 2, kind: "whoosh", tube: 3 },
-    { bar: 11, beat: 0, kind: "whoosh", tube: "fork" }, // 服务器的信封一分为二
-    // 202 等三盏灯：灯音就是主题的前三个音；D1 那盏晚半拍、在远处，唱主题的最后一个音
-    { bar: 13, beat: 0, kind: "lamp", m: midi("A5"), i: 0 }, { bar: 13, beat: 2, kind: "lamp", m: midi("D6"), i: 1 }, { bar: 14, beat: 0, kind: "lamp", m: midi("F6"), i: 2 },
-    { bar: 14, beat: 3, kind: "lamp", m: midi("E6"), i: 3, late: true },
-    { bar: 15, beat: 0, kind: "stamp", size: "big" }, // 202 大章
-    { bar: 15, beat: 2, kind: "whoosh", tube: "down" }, // 被吸进实时那根管子，落点在 16:0
-    { bar: 16, beat: 0, kind: "accent", what: "arrive" }, // 落进黑暗：一声很低的「咚」
-    { bar: 22, beat: 0, kind: "accent", what: "slip" }, // 窗口递出一张清单
-    { bar: 22, beat: 2, kind: "accent", what: "broadcast" }, { bar: 22, beat: 2, kind: "stamp", size: "mid" }, // 广播和 202 并行：同一刻
-    { bar: 27, beat: 0, kind: "accent", what: "flip" }, // 在线 / 离线翻转
-    { bar: 27, beat: 3, kind: "swell" }, // 出屋前吸一口气（只是质感，不进事件表）
-    { bar: 31, beat: 0, kind: "boom" }, // 终和弦底下垫一声低的
-  ];
   const KEY_PRE = 0.06; // 钥匙：插进去的沙沙声在拍前，转动那一下「咔」落在拍上
   const WHOOSH_LEN = { tube: 0.95, fork: 1.25, down: 2 * BEAT };
+  // 交给各章 score() 的工具
+  const HELP = { THEME, withNotes, phrase, midi, CHORD, BASS, ARP, BAR, BEAT };
+
+  // 还没写谱的章：一个 Dmadd9 的轻 pad，每拍一声钟摆滴答（小节头重一点），章作者对拍用
+  function placeholderPart(p) {
+    return {
+      id: p.id, placeholder: true, seed: 1,
+      score: () => ({
+        harm: Array(p.bars).fill("Dmadd9"),
+        sections: [{ from: 0, to: p.bars - 1, id: `${p.id}-todo`, name: "占位：这一章还没写谱", energy: 0.2,
+          clock: "x...o...o...o...", clockVol: 0.9, ghost: [4, 0.1, 0.3], pad: 0.35, lp: 1200, padVerb: 0.3 }],
+      }),
+    };
+  }
+  // 章 id 当默认种子（章作者不用管；想换一种随机就在乐谱里写 seed）
+  const seedOf = (id) => { let h = 2166136261; for (const ch of id) h = Math.imul(h ^ ch.charCodeAt(0), 16777619); return h | 0; };
 
   // =====================================================================
-  // 展开：乐谱 → 平铺的音符表（出声和事件共用）
+  // 拼装：plan（章节顺序和小节数）+ 各章乐谱 → 平铺的音符表（出声和事件共用）
   // =====================================================================
   function steps(p, i) {
     const s = Array.isArray(p) ? p[i % p.length] : p, out = [];
@@ -203,53 +101,143 @@
     for (let m = lo; m <= lo + span; m++) if (pcs.has(m % 12)) out.push(m);
     return out;
   }
-  function expand() {
-    const N = [], rnd = mulberry32(108);
+
+  let B = null; // build() 的结果：全片的音符表、段落、事件……
+  function build(plan) {
+    const reg = new Map();
+    for (const p of window.SCORE_PARTS || []) {
+      if (reg.has(p.id)) console.error(`配乐：${p.id} 注册了两次，用后一次`);
+      reg.set(p.id, p);
+    }
+    // 只查整张章节表：?only= 只拼几章时，其余章的乐谱本来就不拼
+    for (const id of reg.keys()) if (!(window.PLAN || plan).some((p) => p.id === id)) console.warn(`配乐：${id} 不在 plan.js 里，不会拼进去`);
+    // 章节自带的和弦（part.chords，写法同 CHORD）并进和弦表：章节作者加和弦不用改这个文件。名字全片唯一，同名不同音报错、用先登记的
+    for (const p of reg.values()) for (const [name, notes] of Object.entries(p.chords || {})) {
+      if (!CHORD[name]) CHORD[name] = notes;
+      else if (JSON.stringify(CHORD[name]) !== JSON.stringify(notes)) console.error(`配乐 ${p.id}：和弦 ${name} 已经有了、音不一样，换个名字`);
+    }
+    // 各章的乐谱展开成绝对小节
+    const chapters = [];
+    let bar0 = 0;
+    for (const pl of plan) {
+      const part = reg.get(pl.id) || placeholderPart(pl);
+      const d = part.score(HELP);
+      const tone = { bell: "bright", pluckPan: 0, snareVerb: 0.12, ...(part.tone || {}) };
+      if (d.harm.length !== pl.bars) console.error(`配乐 ${pl.id}：harm 写了 ${d.harm.length} 小节，plan.js 是 ${pl.bars}`);
+      const secs = (d.sections || []).map((s) => ({ ...s, from: bar0 + s.from, to: bar0 + s.to, tone }));
+      // 段落要盖满这一章的每一小节；漏掉的小节补一段安静的，免得 pad 找不到段落
+      for (let b = 0; b < pl.bars; b++) if (!secs.some((s) => bar0 + b >= s.from && bar0 + b <= s.to)) {
+        console.error(`配乐 ${pl.id}：第 ${b} 小节没有段落，先补一段安静的`);
+        secs.push({ id: `${pl.id}-gap-${b}`, name: "补的空段", from: bar0 + b, to: bar0 + b, energy: 0.2, pad: 0.4, lp: 1200, padVerb: 0.3, tone });
+      }
+      chapters.push({ id: pl.id, bars: pl.bars, bar0, part, d, tone, secs, placeholder: !!part.placeholder });
+      bar0 += pl.bars;
+    }
+    const BARS = bar0, DURATION = BARS * BAR;
+    const HARM = chapters.flatMap((c) => c.d.harm.slice(0, c.bars).concat(Array(Math.max(0, c.bars - c.d.harm.length)).fill(c.d.harm[c.d.harm.length - 1] || "Dmadd9")));
+    const chordAt = (bar, beat) => {
+      const h = HARM[clamp(bar, 0, BARS - 1)];
+      if (typeof h === "string") return h;
+      let c = h[0][0];
+      for (const [n, b] of h) if (beat >= b - 1e-9) c = n;
+      return c;
+    };
+    // 和弦段：pad 按段发声，末段一直响到片尾（再在尾巴里放掉）
+    const SEGMENTS = [];
+    HARM.forEach((h, bar) => (typeof h === "string" ? [[h, 0]] : h).forEach(([chord, beat]) => SEGMENTS.push({ bar, beat, t: at(bar, beat), chord })));
+    SEGMENTS.forEach((s, i) => (s.end = i + 1 < SEGMENTS.length ? SEGMENTS[i + 1].t : DURATION));
+    const SECTIONS = chapters.flatMap((c) => c.secs);
+    const SEC_OF_BAR = [];
+    SECTIONS.forEach((s) => { for (let b = s.from; b <= s.to; b++) SEC_OF_BAR[b] = s; });
+    const sectionOf = (bar) => SEC_OF_BAR[clamp(bar, 0, BARS - 1)];
+
+    // 展开。推入顺序（pad → 各章段落 → 各章旋律 → 各章剧情）和拆分前一样，排序后同一时刻的先后也就一样
+    const N = [];
     for (const s of SEGMENTS) { const sec = sectionOf(s.bar); N.push({ kind: "pad", t: s.t, end: s.end, chord: s.chord, level: sec.pad, lp: sec.lp, verb: sec.padVerb, last: s.end >= DURATION - 1e-9 }); }
-    for (const sec of SECTIONS) for (let bar = sec.from; bar <= sec.to; bar++) {
-      const i = bar - sec.from, ch = sec.ch;
-      for (const [b, v] of steps(sec.kick, i)) {
-        const type = sec.kickKind === "heart" ? (v === 1 ? "lub" : "dub") : sec.kickKind || "tight";
-        N.push({ kind: "kick", t: at(bar, b), v: sec.kickKind === "heart" ? (v === 1 ? 1 : 0.65) : v, type, duck: sec.duck });
-      }
-      for (const [b, v] of steps(sec.snare, i)) N.push({ kind: "snare", t: at(bar, b), v, type: sec.snareKind, ch });
-      for (const [b, v] of steps(sec.hat, i)) N.push({ kind: "hat", t: at(bar, b), v: v * (0.88 + 0.24 * rnd()), type: sec.hatKind, variant: Math.floor(rnd() * 4), vol: sec.hatVol ?? 1 });
-      for (const [b, v, k] of steps(sec.clock, i)) N.push({ kind: "clock", t: at(bar, b), v, type: k % 2 ? "tock" : "tick", vol: sec.clockVol ?? 1 });
-      if (sec.ghost) for (let b = 0; b < 4; b += sec.ghost[0]) N.push({ kind: "ghost", t: at(bar, b), depth: sec.ghost[1], tau: sec.ghost[2] });
-      if (sec.bass) {
-        const pat = sec.bass === "hold" ? SEGMENTS.filter((s) => s.bar === bar).map((s) => [s.beat, (s.end - s.t) / BEAT, 0, 0.6]) : BASS[sec.bass];
-        for (const [b, len, iv, v] of pat) N.push({ kind: "bass", t: at(bar, b), dur: len * BEAT, m: rootOf(chordAt(bar, b)) + iv, v: v * (sec.bassVol ?? 1), att: sec.bass === "hold" ? 0.03 : 0.007, rel: sec.bass === "end" ? 1.6 : 0.05 });
-      }
-      if (sec.arp) for (const [b, idx] of ARP[sec.arp.p]) {
-        const T = arpTones(chordAt(bar, b), sec.arp.lo);
-        N.push({ kind: "mel", t: at(bar, b), dur: 0.5 * BEAT, m: T[idx % T.length], inst: sec.arp.inst, v: sec.arp.v * (0.9 + 0.2 * rnd()), pan: Math.round(b * 4) % 2 ? 0.3 : -0.3, arp: true });
+    const inPost = (c, t) => !!c.part.postBars && t >= at(c.bar0 + c.part.postBars[0]) - 1e-9 && t < at(c.bar0 + c.part.postBars[1]) - 1e-9;
+    for (const c of chapters) {
+      const rnd = mulberry32(c.part.seed ?? seedOf(c.id));
+      for (const sec of c.secs) for (let bar = sec.from; bar <= sec.to; bar++) {
+        const i = bar - sec.from;
+        for (const [b, v] of steps(sec.kick, i)) {
+          const type = sec.kickKind === "heart" ? (v === 1 ? "lub" : "dub") : sec.kickKind || "tight";
+          N.push({ kind: "kick", t: at(bar, b), v: sec.kickKind === "heart" ? (v === 1 ? 1 : 0.65) : v, type, duck: sec.duck });
+        }
+        for (const [b, v] of steps(sec.snare, i)) N.push({ kind: "snare", t: at(bar, b), v, type: sec.snareKind, verb: c.tone.snareVerb });
+        for (const [b, v] of steps(sec.hat, i)) N.push({ kind: "hat", t: at(bar, b), v: v * (0.88 + 0.24 * rnd()), type: sec.hatKind, variant: Math.floor(rnd() * 4), vol: sec.hatVol ?? 1 });
+        for (const [b, v, k] of steps(sec.clock, i)) N.push({ kind: "clock", t: at(bar, b), v, type: k % 2 ? "tock" : "tick", vol: sec.clockVol ?? 1 });
+        if (sec.ghost) for (let b = 0; b < 4; b += sec.ghost[0]) N.push({ kind: "ghost", t: at(bar, b), depth: sec.ghost[1], tau: sec.ghost[2] });
+        if (sec.bass) {
+          const pat = sec.bass === "hold" ? SEGMENTS.filter((s) => s.bar === bar).map((s) => [s.beat, (s.end - s.t) / BEAT, 0, 0.6]) : BASS[sec.bass];
+          for (const [b, len, iv, v] of pat) N.push({ kind: "bass", t: at(bar, b), dur: len * BEAT, m: rootOf(chordAt(bar, b)) + iv, v: v * (sec.bassVol ?? 1), att: sec.bass === "hold" ? 0.03 : 0.007, rel: sec.bass === "end" ? 1.6 : 0.05 });
+        }
+        if (sec.arp) for (const [b, idx] of ARP[sec.arp.p]) {
+          const T = arpTones(chordAt(bar, b), sec.arp.lo), t = at(bar, b);
+          N.push({ kind: "mel", t, dur: 0.5 * BEAT, m: T[idx % T.length], inst: sec.arp.inst, v: sec.arp.v * (0.9 + 0.2 * rnd()), pan: Math.round(b * 4) % 2 ? 0.3 : -0.3, arp: true, tone: c.tone.bell, post: inPost(c, t) });
+        }
       }
     }
-    for (const [bar, b, d, n, inst, v, theme] of MELODY) N.push({ kind: "mel", t: at(bar, b), dur: d * BEAT, m: midi(n), inst, v, theme, bar });
-    for (const s of STORY) N.push({ ...s, t: at(s.bar, s.beat) });
-    return N.sort((a, b) => a.t - b.t);
+    for (const c of chapters) for (const [bar, b, d, n, inst, v, theme] of c.d.melody || []) {
+      const t = at(c.bar0 + bar, b);
+      N.push({ kind: "mel", t, dur: d * BEAT, m: midi(n), inst, v, theme, bar: c.bar0 + bar, tone: c.tone.bell, pan: inst === "pluck" ? c.tone.pluckPan : 0, post: inPost(c, t) });
+    }
+    for (const c of chapters) for (const s of c.d.story || []) N.push({ ...s, bar: c.bar0 + s.bar, t: at(c.bar0 + s.bar, s.beat) });
+    N.sort((a, b) => a.t - b.t);
+    // 母线低通扫频（章节交接的下坠）：[开始关, 关到最低, 打开]，章内小节可以写到下一章去
+    const SWEEPS = [];
+    for (const c of chapters) for (const s of c.d.sweeps || []) SWEEPS.push({ t0: at(c.bar0 + s.at[0], s.at[1] || 0), t1: at(c.bar0 + s.down[0], s.down[1] || 0), t2: at(c.bar0 + s.up[0], s.up[1] || 0), f: s.f });
+
+    // 侧链：每个底鼓、每记印章把 pad / 贝斯压下去再放回来，没有鼓的地方用看不见的「幽灵底鼓」让 pad 自己呼吸
+    const DIPS = [];
+    for (const n of N) {
+      if (n.kind === "kick") DIPS.push({ t: n.t, depth: n.duck * n.v, tau: n.type === "lub" ? 0.2 : 0.12 });
+      else if (n.kind === "ghost") DIPS.push({ t: n.t, depth: n.depth, tau: n.tau });
+      else if (n.kind === "stamp") DIPS.push({ t: n.t, depth: n.size === "big" ? 0.8 : 0.45, tau: n.size === "big" ? 0.35 : 0.2 });
+      else if (n.kind === "boom" || (n.kind === "accent" && n.what === "arrive")) DIPS.push({ t: n.t, depth: 0.45, tau: 0.45 });
+    }
+    DIPS.sort((a, b) => a.t - b.t);
+    const HITS = Object.fromEntries(EVENT_KEYS.map((k) => [k, []]));
+    for (const n of N) {
+      const k = n.kind;
+      if (k === "mel") { if (n.theme) HITS.bell.push({ t: n.t, v: n.v }); }
+      else if (k === "stamp") HITS.stamp.push({ t: n.t, v: n.size === "big" ? 1 : 0.7 });
+      else if (k === "lamp") HITS.lamp.push({ t: n.t, v: n.late ? 0.45 : 1 });
+      else if (k === "accent") HITS.accent.push({ t: n.t, v: { arrive: 0.7, slip: 0.6, broadcast: 1, flip: 1 }[n.what] ?? 0.8 });
+      else if (k === "whoosh") HITS.whoosh.push({ t: n.t, v: 1, type: typeof n.tube === "number" ? "tube" : n.tube });
+      else if (HITS[k]) HITS[k].push({ t: n.t, v: clamp(n.v ?? 1, 0, 1) });
+    }
+    for (const k of EVENT_KEYS) {
+      // 同一刻的重复（和声里同时落下的几个音）只留力度最大的那个
+      const L = HITS[k].sort((a, b) => a.t - b.t), out = [];
+      for (const h of L) { const p = out[out.length - 1]; if (p && Math.abs(p.t - h.t) < 1e-9) { if (h.v > p.v) out[out.length - 1] = h; } else out.push(h); }
+      HITS[k] = out;
+    }
+    const events = Object.fromEntries(EVENT_KEYS.map((k) => [k, HITS[k].map((h) => h.t)]));
+    B = {
+      BARS, DURATION, NOTES: N, DIPS, HITS, events, SECTIONS, SEGMENTS, sectionOf, SWEEPS,
+      PADS: N.filter((n) => n.kind === "pad"), BASSES: N.filter((n) => n.kind === "bass"),
+      RISERS: N.filter((n) => (n.kind === "whoosh" && n.tube === "down") || n.kind === "swell").map((n) => ({ t: n.t, len: n.kind === "swell" ? BEAT : WHOOSH_LEN.down })),
+    };
+    Object.assign(window.Score, {
+      bars: BARS, duration: DURATION, events, notes: N,
+      sections: SECTIONS.map((s) => ({ id: s.id, name: s.name, chapter: chapters.find((c) => s.from >= c.bar0 && s.from < c.bar0 + c.bars).id, from: s.from, to: s.to, t0: at(s.from), t1: at(s.to + 1), energy: s.energy })),
+      chords: SEGMENTS.map((s) => ({ t: s.t, end: s.end, name: s.chord })),
+      chapters: chapters.map((c) => ({ id: c.id, bar0: c.bar0, bars: c.bars, t0: at(c.bar0), placeholder: c.placeholder })),
+    });
+    return window.Score;
   }
-  const NOTES = expand();
 
   // =====================================================================
   // 事件表与包络（画面用；和出声用的是同一张 NOTES）
   // =====================================================================
-  // 侧链：每个底鼓、每记印章把 pad / 贝斯压下去再放回来，前奏和黑屋子里没有鼓，就用看不见的「幽灵底鼓」让 pad 自己呼吸
-  const DIPS = [];
-  for (const n of NOTES) {
-    if (n.kind === "kick") DIPS.push({ t: n.t, depth: n.duck * n.v, tau: n.type === "lub" ? 0.2 : 0.12 });
-    else if (n.kind === "ghost") DIPS.push({ t: n.t, depth: n.depth, tau: n.tau });
-    else if (n.kind === "stamp") DIPS.push({ t: n.t, depth: n.size === "big" ? 0.8 : 0.45, tau: n.size === "big" ? 0.35 : 0.2 });
-    else if (n.kind === "boom" || (n.kind === "accent" && n.what === "arrive")) DIPS.push({ t: n.t, depth: 0.45, tau: 0.45 });
-  }
-  DIPS.sort((a, b) => a.t - b.t);
+  const EVENT_KEYS = ["kick", "snare", "hat", "tick", "stamp", "whoosh", "lamp", "key", "bell", "accent", "clock"];
   const DIP_ATT = 0.008;
   function lastIdx(list, t, key = "t") { let lo = 0, hi = list.length - 1, r = -1; while (lo <= hi) { const m = (lo + hi) >> 1; if (list[m][key] <= t + 1e-9) { r = m; lo = m + 1; } else hi = m - 1; } return r; }
   // 1 = 全开，越小压得越深
   function duck(t) {
     let g = 1;
-    for (let i = lastIdx(DIPS, t); i >= 0; i--) {
-      const d = DIPS[i], x = t - d.t;
+    for (let i = lastIdx(B.DIPS, t); i >= 0; i--) {
+      const d = B.DIPS[i], x = t - d.t;
       if (x > 2) break;
       const s = x < DIP_ATT ? x / DIP_ATT : Math.exp(-(x - DIP_ATT) / d.tau);
       g *= 1 - d.depth * s;
@@ -258,56 +246,37 @@
   }
   const bassDuck = (t) => 1 - 0.65 * (1 - duck(t));
 
-  const EVENT_KEYS = ["kick", "snare", "hat", "tick", "stamp", "whoosh", "lamp", "key", "bell", "accent", "clock"];
-  const HITS = Object.fromEntries(EVENT_KEYS.map((k) => [k, []]));
-  for (const n of NOTES) {
-    const k = n.kind;
-    if (k === "mel") { if (n.theme) HITS.bell.push({ t: n.t, v: n.v }); }
-    else if (k === "stamp") HITS.stamp.push({ t: n.t, v: n.size === "big" ? 1 : 0.7 });
-    else if (k === "lamp") HITS.lamp.push({ t: n.t, v: n.late ? 0.45 : 1 });
-    else if (k === "accent") HITS.accent.push({ t: n.t, v: { arrive: 0.7, slip: 0.6, broadcast: 1, flip: 1 }[n.what] });
-    else if (k === "whoosh") HITS.whoosh.push({ t: n.t, v: 1, type: typeof n.tube === "number" ? "tube" : n.tube });
-    else if (HITS[k]) HITS[k].push({ t: n.t, v: clamp(n.v ?? 1, 0, 1) });
-  }
-  for (const k of EVENT_KEYS) {
-    // 同一刻的重复（和声里同时落下的几个音）只留力度最大的那个
-    const L = HITS[k].sort((a, b) => a.t - b.t), out = [];
-    for (const h of L) { const p = out[out.length - 1]; if (p && Math.abs(p.t - h.t) < 1e-9) { if (h.v > p.v) out[out.length - 1] = h; } else out.push(h); }
-    HITS[k] = out;
-  }
-  const events = Object.fromEntries(EVENT_KEYS.map((k) => [k, HITS[k].map((h) => h.t)]));
-
   // 各类打击的衰减时间常数（秒）
   const DECAY = { kick: 0.12, snare: 0.14, hat: 0.05, clock: 0.035, tick: 0.22, stamp: 0.3, lamp: 0.45, key: 0.12, bell: 0.6, accent: 0.5 };
-  const PADS = NOTES.filter((n) => n.kind === "pad"), BASSES = NOTES.filter((n) => n.kind === "bass");
-  const RISERS = NOTES.filter((n) => (n.kind === "whoosh" && n.tube === "down") || n.kind === "swell").map((n) => ({ t: n.t, len: n.kind === "swell" ? BEAT : WHOOSH_LEN.down }));
   function padLevel(t) {
-    const i = lastIdx(PADS, t);
+    const P = B.PADS, i = lastIdx(P, t);
     if (i < 0) return 0;
-    const p = PADS[i], x = t - p.t, a = Math.min(1, x / 0.28);
+    const p = P[i], x = t - p.t, a = Math.min(1, x / 0.28);
     // 和上一段交叉淡化；最后一段在尾巴里放掉
-    const prev = i > 0 ? PADS[i - 1].level * Math.exp(-x / 0.11) : 0;
-    const tail = t > DURATION ? Math.exp(-(t - DURATION) / 0.42) : 1;
+    const prev = i > 0 ? P[i - 1].level * Math.exp(-x / 0.11) : 0;
+    const tail = t > B.DURATION ? Math.exp(-(t - B.DURATION) / 0.42) : 1;
     return clamp(Math.max(p.level * a, prev) * tail, 0, 1);
   }
   function env(name, t) {
+    if (!B) return 0;
     if (DECAY[name]) {
-      const L = HITS[name], i = lastIdx(L, t);
+      const L = B.HITS[name], i = lastIdx(L, t);
       return i < 0 ? 0 : clamp(L[i].v * Math.exp(-(t - L[i].t) / DECAY[name]), 0, 1);
     }
+    const DURATION = B.DURATION;
     switch (name) {
       case "duck": return duck(t); // 侧链本身：1 全开，越小压得越深
       case "pad": return padLevel(t) * duck(t);
       case "bass": {
-        const i = lastIdx(BASSES, t);
+        const i = lastIdx(B.BASSES, t);
         if (i < 0) return 0;
-        const b = BASSES[i], x = t - b.t, rel = b.rel / 3;
+        const b = B.BASSES[i], x = t - b.t, rel = b.rel / 3;
         const e = x < b.att ? x / b.att : x < b.dur ? 1 : Math.exp(-(x - b.dur) / rel);
         return clamp(b.v * e * bassDuck(t), 0, 1);
       }
       case "whoosh": {
         let m = 0;
-        for (const w of HITS.whoosh) {
+        for (const w of B.HITS.whoosh) {
           const len = WHOOSH_LEN[w.type], x = t - w.t;
           if (x < 0 || x > len) continue;
           const e = w.type === "down" ? Math.pow(x / len, 2.2) : x < 0.07 ? x / 0.07 : Math.exp(-(x - 0.07) / (w.type === "fork" ? 0.4 : 0.26));
@@ -315,10 +284,10 @@
         }
         return m;
       }
-      case "riser": { for (const r of RISERS) if (t >= r.t && t < r.t + r.len) return (t - r.t) / r.len; return 0; }
+      case "riser": { for (const r of B.RISERS) if (t >= r.t && t < r.t + r.len) return (t - r.t) / r.len; return 0; }
       case "energy": {
-        const bar = Math.floor(clamp(t, 0, DURATION - 1e-6) / BAR), s = sectionOf(bar), x = t - at(s.from);
-        if (s.from > 0 && x < 0.4) { const p = sectionOf(s.from - 1).energy; return p + (s.energy - p) * (x / 0.4); }
+        const bar = Math.floor(clamp(t, 0, DURATION - 1e-6) / BAR), s = B.sectionOf(bar), x = t - at(s.from);
+        if (s.from > 0 && x < 0.4) { const p = B.sectionOf(s.from - 1).energy; return p + (s.energy - p) * (x / 0.4); }
         return t > DURATION ? s.energy * Math.exp(-(t - DURATION) / 0.6) : s.energy;
       }
       case "beat": { if (t < 0 || t >= DURATION) return 0; const x = (t / BEAT) % 1; return Math.exp(-(x * BEAT) / 0.15); }
@@ -326,7 +295,6 @@
     }
     return 0;
   }
-
   // =====================================================================
   // 音色：在 JS 里把每种打击、每个音高的波形算出来（按采样率缓存），再按乐谱摆放
   // =====================================================================
@@ -644,11 +612,11 @@
   }
 
   // =====================================================================
-  // 排程：NOTES → OfflineAudioContext
+  // 排程：build() 拼好的音符表 B.NOTES → OfflineAudioContext
   // =====================================================================
   const CAT = { pad: "pad", bass: "bass", kick: "drums", snare: "drums", hat: "drums", clock: "drums", mel: "mel" }; // 其余剧情音都算 fx
   function schedule(ctx, opts) {
-    const END = DURATION + TAIL, S = samplesFor(ctx.sampleRate);
+    const END = B.DURATION + TAIL, S = samplesFor(ctx.sampleRate);
     const solo = opts.solo ? new Set([].concat(opts.solo)) : null;
     const on = (n) => !solo || solo.has(CAT[n.kind] || "fx");
     const gain = (v = 1) => { const g = ctx.createGain(); g.gain.value = v; return g; };
@@ -658,9 +626,11 @@
     // 不用 DynamicsCompressor：它的起控 / 释放是按阈值切换的分支，末位浮点的差别会被放大，两次渲染对不齐 ——
     const mix = gain(), sweep = filt("lowpass", 20000, 0.9), post = gain(0.4); // post 的 0.4 是进磁带前的电平
     sweep.frequency.setValueAtTime(20000, 0);
-    sweep.frequency.setValueAtTime(20000, at(15, 2));
-    sweep.frequency.exponentialRampToValueAtTime(380, at(16));
-    sweep.frequency.exponentialRampToValueAtTime(20000, at(16, 1));
+    for (const s of B.SWEEPS) { // 章节交接的下坠（各章乐谱的 sweeps）
+      sweep.frequency.setValueAtTime(20000, s.t0);
+      sweep.frequency.exponentialRampToValueAtTime(s.f, s.t1);
+      sweep.frequency.exponentialRampToValueAtTime(20000, s.t2);
+    }
     mix.connect(sweep); sweep.connect(post);
     if (opts.stage === "pre") post.connect(ctx.destination); // 调试：看进磁带之前的电平
     else {
@@ -670,7 +640,7 @@
     }
     const bus = { drums: gain(), fx: gain(), mel: gain(), fxPost: gain(), melPost: gain() };
     for (const k of ["drums", "fx", "mel"]) bus[k].connect(mix);
-    bus.fxPost.connect(post); bus.melPost.connect(post); // 不过下坠扫频的：下坠本身、16:0 的落地和铃
+    bus.fxPost.connect(post); bus.melPost.connect(post); // 不过母线扫频的：下坠本身、落地那一声、postBars 里的旋律
     // 侧链：用和 env('duck') 同一个函数算出来的曲线直接画在 pad / 贝斯的母线增益上
     const RATE = 1000, cn = Math.ceil(END * RATE) + 1, cPad = new Float32Array(cn), cBass = new Float32Array(cn);
     for (let i = 0; i < cn; i++) { const t = i / RATE; cPad[i] = duck(t); cBass[i] = bassDuck(t); }
@@ -725,28 +695,28 @@
     const LAMP_PAN = [-0.4, 0, 0.4];
     const TUBE_PAN = [-0.7, -0.25, 0.25, 0.7];
 
-    for (const n of NOTES) {
+    for (const n of B.NOTES) {
       if (!on(n)) continue;
       const t = n.t;
       switch (n.kind) {
         case "pad": pad(n); break;
         case "bass": bass(n); break;
         case "kick": play(S.kick(n.type), t, { g: KICK_G[n.type] * n.v, to: bus.drums }); break;
-        case "snare": play(S.snare(n.type), t, { g: (n.type === "thud" ? 0.34 : 0.3) * n.v, pan: 0.05, to: bus.drums, verbAmt: n.ch === 3 ? 0.22 : 0.12 }); break;
+        case "snare": play(S.snare(n.type), t, { g: (n.type === "thud" ? 0.34 : 0.3) * n.v, pan: 0.05, to: bus.drums, verbAmt: n.verb ?? 0.12 }); break;
         case "hat":
           if (n.type === "type") play(S.type(n.variant), t, { g: 0.26 * n.v * n.vol, pan: 0.12 + 0.08 * n.variant, to: bus.drums, verbAmt: 0.05 });
           else play(S.flip(n.variant % 3), t, { g: 0.24 * n.v * n.vol, pan: -0.25, to: bus.drums, verbAmt: 0.15 });
           break;
         case "clock": play(S.clock(n.type), t, { g: 0.11 * n.v * n.vol, pan: n.type === "tick" ? 0.35 : -0.35, to: bus.drums, verbAmt: 0.08 }); break;
         case "mel": {
-          const ch3 = t >= at(16) - 1e-9, to = t >= at(16) - 1e-9 && t < at(17) - 1e-9 ? bus.melPost : bus.mel;
+          const to = n.post ? bus.melPost : bus.mel;
           if (n.inst === "bell" || n.inst === "bell2")
-            play(S.bell(n.m, ch3 ? "warm" : "bright"), t, { g: 0.36 * n.v, pan: n.inst === "bell" ? 0.1 : -0.25, to, verbAmt: 0.4, delayAmt: n.inst === "bell" ? 0.26 : 0.15 });
+            play(S.bell(n.m, n.tone || "bright"), t, { g: 0.36 * n.v, pan: n.inst === "bell" ? 0.1 : -0.25, to, verbAmt: 0.4, delayAmt: n.inst === "bell" ? 0.26 : 0.15 });
           else
-            play(S.pluck(n.m, n.inst), t, { g: (n.theme ? 0.34 : 0.3) * n.v, pan: n.pan ?? (n.inst === "pluck" && ch3 ? 0.25 : 0), to, verbAmt: n.inst === "pluck" ? 0.22 : 0.28, delayAmt: n.theme ? 0.32 : n.inst === "pluckMute" ? 0.3 : 0.18 });
+            play(S.pluck(n.m, n.inst), t, { g: (n.theme ? 0.34 : 0.3) * n.v, pan: n.pan ?? 0, to, verbAmt: n.inst === "pluck" ? 0.22 : 0.28, delayAmt: n.theme ? 0.32 : n.inst === "pluckMute" ? 0.3 : 0.18 });
           break;
         }
-        case "key": play(S.key(), t, { g: 0.85 * (n.v ?? 1), pan: t > at(4) ? 0.3 : -0.2, verbAmt: 0.15, pre: KEY_PRE }); break;
+        case "key": play(S.key(), t, { g: 0.85 * (n.v ?? 1), pan: n.pan ?? 0, verbAmt: 0.15, pre: KEY_PRE }); break;
         case "stamp": play(S.stamp(n.size), t, { g: n.size === "big" ? 1.35 : 0.72, verbAmt: n.size === "big" ? 0.3 : 0.2 }); break;
         case "tick": play(S.ding(n.m), t, { g: 0.62, pan: -0.35 + 0.14 * n.i, verbAmt: 0.2, delayAmt: 0.12 }); break;
         case "lamp": play(S.lamp(n.m, n.late), t, { g: n.late ? 0.17 : 0.65, pan: n.late ? 0.55 : LAMP_PAN[n.i], verbAmt: n.late ? 0.6 : 0.35, delayAmt: 0.2 }); break;
@@ -843,23 +813,21 @@
     return buf;
   }
 
-  // 渲染整段混音（含尾巴）。opts.sampleRate；调试用：opts.solo = ["pad"|"bass"|"drums"|"mel"|"fx"] 只出这几组，
+  // 渲染整段混音（含尾巴）。先 Score.build(plan)。opts.sampleRate；调试用：opts.solo = ["pad"|"bass"|"drums"|"mel"|"fx"] 只出这几组，
   // opts.raw 跳过母带处理，opts.stage = "pre" 在磁带之前取出来
   async function render(opts = {}) {
+    if (!B) throw new Error("先调 Score.build(plan)");
     const sr = opts.sampleRate || SAMPLE_RATE;
-    const ctx = new OfflineAudioContext(2, Math.ceil((DURATION + TAIL) * sr), sr);
+    const ctx = new OfflineAudioContext(2, Math.ceil((B.DURATION + TAIL) * sr), sr);
     schedule(ctx, opts);
     const buf = await ctx.startRendering();
     return opts.raw || opts.solo || opts.stage ? buf : master(buf);
   }
 
+  // build(plan) 之后才有：bars、duration、events、notes、sections、chords、chapters
   window.Score = {
-    BPM, BAR, BEAT, bars: BARS, duration: DURATION, tail: TAIL, sampleRate: SAMPLE_RATE,
-    render, events, env, at,
-    // 以下是额外提供的乐谱信息，画面可以不用
-    sections: SECTIONS.map((s) => ({ id: s.id, name: s.name, chapter: s.ch, from: s.from, to: s.to, t0: at(s.from), t1: at(s.to + 1), energy: s.energy })),
-    chords: SEGMENTS.map((s) => ({ t: s.t, end: s.end, name: s.chord })),
+    BPM, BAR, BEAT, tail: TAIL, sampleRate: SAMPLE_RATE,
+    build, render, env, at, loudness,
     theme: THEME.map(([beat, dur, note]) => ({ beat, dur, note })),
-    loudness,
   };
 })();

@@ -2,7 +2,7 @@
 
 > 类型：runbook
 
-线上地址 `https://lyjw.me/explainer`。Claude Code 的像素螃蟹 Clawd 讲解这个站点怎么运转：10 章、130 小节（100 BPM，约 5 分 13 秒）。画面、配乐和音效都在浏览器里按同一条时间轴确定地生成，同一个时刻总是同一帧。分镜与旁白见 [SCRIPT.md](SCRIPT.md)。
+线上地址 `https://lyjw.me/explainer`。Claude Code 的像素螃蟹 Clawd 讲解这个站点怎么运转：10 章、130 小节（100 BPM，约 5 分 13 秒）。画面、配乐和音效都在浏览器里按同一条时间轴确定地生成，同一个时刻总是同一帧。本文说的都是线上这一版；替换它的新版在 `v2/` 开发，分镜与旁白见 [SCRIPT.md](SCRIPT.md)，写章约定见 [v2/CONVENTIONS.md](v2/CONVENTIONS.md)。
 
 页面源就在这个目录。站点版由 `scripts/build-explainer.mjs` 在 `pnpm build` 时生成到 `public/explainer/`（不进仓库）：入口 `index.html` 保持原名，`next.config.ts` 把 `/explainer` rewrite 到它；脚本、字体、配乐按内容哈希改名放进 `a/`，缓存一年。页面里的脚本和配乐经注入的 `window.__assets` 查哈希名，没有这张表（本地、渲染工具、Artifact）时用原名。本地 `pnpm dev` 要看 `/explainer`，先跑一次 `node scripts/build-explainer.mjs`。
 

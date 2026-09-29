@@ -3,14 +3,73 @@
 //   A 屋里（0–6、8.2–11.75）：左边两路汇成一队，中间一间屋子的平面图（门洞、一张桌、一把椅子、一盏灯、右墙一道缝），
 //     右栏两张白卡详图：账本（一封一行）和「要做的事」（event / listening / tags 三行：DO 只交回这三种，ingest-effects.ts:25-28）
 //   B 门外（6–8）：纸条从墙缝递到 StateCore 岗亭；6:2 盖「waitUntil」章，同一拍天线荡开橙色环、回执飞回入口
-//   C 拉远（12–16）：可滞后墙、凭据抽屉、D1 档案架从地平线升起，右边「四个库」对照表
-// 配乐锚点（score.js，章内 小节:拍）：0:0 落地、2–5 每拍一封、6:0 递出、6:2 广播 + 印章、9–11 心跳半速、
-// 11:0 在线翻转、11:3 吸气、12:0 拉远、15:0 终和弦。改时间先对这张表，score.js 不用动。
+//   C 拉远（12–16）：可滞后墙、凭据抽屉、D1 档案架从地平线升起，右边「四个库」对照表；
+//     最后半小节镜头冲进对照表白卡下方的空白处，满屏是纸，交给第 04 章（纸面）从这张纸往后拉
+// 配乐锚点（music/ch03.js，章内 小节:拍）：0:0 落地、2–5 每拍一封、6:0 递出、6:2 广播 + 印章、9–11 心跳半速、
+// 11:0 在线翻转、11:3 吸气、12:0 拉远、15:0 终和弦、15:2 冲进白卡。改时间先对这张表和 SCRIPT.md。
 // 时间一律写章节内的小节（b），5.5 即第 5 小节第 2 拍。坐标是世界坐标（机位 A 时和屏幕一一对应）。
 (() => {
   const { css } = G;
   const { E, prog, keys, clamp, lerp, text, FONT, line, polyline, rect, fillRect, envelope, stamp, clawd, bubble, spark,
     roundRect, glyph, sheet, checkbox, leader, pathAt, pathLen, mulberry32 } = K;
+  // ---------- 这一章的文字：[中文, English]，场景代码里只写键 ----------
+  I18N.add({
+    "ch03.title": ["一间屋子的账房", "A one-room ledger office"],
+    "ch03.idNote": ["全站只有这一个实例", "one instance for the whole site"],
+    "ch03.n1a": ["全站只有这一间屋子，", "The whole site has one room like this:"],
+    "ch03.n1b": ["唯一的状态 DO。", "the one and only state DO."],
+    "ch03.feed.ingress": ["上报入口", "Ingress"],
+    "ch03.feed.collector": ["采集 Worker", "Collector"],
+    "ch03.n2a": ["实时数据排成一队，", "Realtime data waits in one line"],
+    "ch03.n2b": ["一次只记一封。", "and is written one at a time."],
+    "ch03.ledger": ["StateHub 账本", "StateHub ledger"],
+    "ch03.hbTag": ["mac · 心跳", "mac · heartbeat"],
+    "ch03.hbRow": ["存活 + pulse 观测", "liveness + pulse"],
+    "ch03.flipRow": ["在线 → 离线", "online → offline"],
+    "ch03.n3a": ["屋子自己不发请求，", "The room never makes a request;"],
+    "ch03.n3b": ["只写一张「要做的事」。", "it writes a to-do slip."],
+    "ch03.slip": ["要做的事", "To do"],
+    "ch03.fx.empty": ["（空）", "(empty)"],
+    "ch03.fx.listen": ["广播 listening-now", "push listening-now"],
+    "ch03.fx.listenSub": ["先查 Apple 目录补封面和链接", "after an Apple catalog lookup"],
+    "ch03.fx.noTags": ["换歌不失效；开始或停止放歌才有", "none: only start or stop invalidates"],
+    "ch03.fx.noPush": ["不推送", "no push"],
+    "ch03.fx.noTags2": ["不失效首屏", "no invalidation"],
+    "ch03.fx.presence": ["广播 presence", "push presence"],
+    "ch03.fx.tags3": ["失效 3 个标签", "invalidate 3 tags"],
+    "ch03.fx.tags3Sub": ["→ Vercel，5 秒超时", "→ Vercel, 5 s timeout"],
+    "ch03.coreNote": ["照单去办", "carries out the slip"],
+    "ch03.pushNote": ["另一个单例 DO", "another single-instance DO"],
+    "ch03.pages": ["所有开着的页面", "Every open page"],
+    "ch03.back": ["回执 → 入口", "Receipt → ingress"],
+    "ch03.backNote1": ["入口接着写 LAG 和凭据，", "Ingress then writes LAG and credentials,"],
+    "ch03.backNote2": ["都写完才盖 202", "and only then stamps 202"],
+    "ch03.parallel": ["并行", "parallel"],
+    "ch03.n4a": ["门外照单去办：", "Outside, the slip is carried out:"],
+    "ch03.n4b": ["广播和回执同时出发。", "push and receipt leave together."],
+    "ch03.n5a": ["纯心跳也记一行，", "A bare heartbeat still gets a line,"],
+    "ch03.n5b": ["但不推送、不失效。", "but pushes and invalidates nothing."],
+    "ch03.clawd": ["记一笔就好，\n别吵醒大家。", "Just jot it down,\ndon't wake anyone."],
+    "ch03.n6a": ["只有在线状态翻转，", "Only an online/offline flip"],
+    "ch03.n6b": ["才广播 presence、失效 3 个标签。", "pushes presence, invalidates 3 tags."],
+    "ch03.n7a": ["实时在屋里，可滞后在墙上，", "Realtime lives in the room, lag on the wall,"],
+    "ch03.n7b": ["历史在架上，凭据在抽屉里。", "history on the shelves, credentials in the drawer."],
+    "ch03.legend": ["四个库", "Four stores"],
+    "ch03.lg.rt": ["实时", "Realtime"],
+    "ch03.lg.rtP": ["会推送", "pushes"],
+    "ch03.lg.rtW": ["StateHub（DO，SQLite）", "StateHub (DO, SQLite)"],
+    "ch03.lg.lag": ["可滞后", "Lag-tolerant"],
+    "ch03.lg.lagP": ["不推送", "no push"],
+    "ch03.lg.lagW": ["KV LAG · 带 updatedAt", "KV LAG · with updatedAt"],
+    "ch03.lg.d1": ["历史", "History"],
+    "ch03.lg.d1P": ["长期保存", "kept long-term"],
+    "ch03.lg.d1W": ["D1 · lyjwpage-history", "D1 · lyjwpage-history"],
+    "ch03.lg.cred": ["凭据", "Credentials"],
+    "ch03.lg.credP": ["不公开", "never public"],
+    "ch03.lg.credW": ["KV CREDENTIALS", "KV CREDENTIALS"],
+    "ch03.pulse7a": ["pulse 时间线在屋里只放 7 天，", "The pulse timeline stays 7 days in the room,"],
+    "ch03.pulse7b": ["每分钟归档进 D1", "archived to D1 every minute"],
+  });
   const tr = (k) => I18N.tr(k);
   let plate, plan, emit, docs, stampL, top;
   let BARs = (60 / 108) * 4;
@@ -28,7 +87,11 @@
     [8.2, A, E.io],
     [11.74, [958, 542, 1.016, 0], E.lin],
     [12.02, C, E.io],
-    [16.0, [1630, 958, 0.676, 0], E.lin],
+    [15.5, [1628.5, 957.1, 0.674, 0], E.lin],
+    // 交接（和第 02 章结尾同一种做法）：先对准对照表白卡下方的空白（白卡 y 1260–1390 这一段没有字），
+    // 再冲进去，落在满屏的纸上；第 04 章从这张纸往后拉
+    [15.72, [2497, 1325, 1.1, 0], E.io],
+    [16.0, [2497, 1325, 12, 0], E.inExpo],
   ];
   const PLATE_RECT = [-800, -400, 3400, 2000];
 
@@ -52,7 +115,7 @@
   const SLP = { x: 1180, y: 500, w: 690, h: 360 }; // 右栏：「要做的事」详图
   const BOOTH = { x: 1150, y: 500, w: 160, h: 160 }; // 门外 StateCore 岗亭
   const MAST = [1740, 780]; // LivePushRoom 的天线
-  const PAGES = [330, 470, 610, 750].map((y) => [2560, y]); // 所有开着的页面
+  const PAGES = [300, 450, 600, 750].map((y) => [2560, y]); // 所有开着的页面
   const SLIPB = { x: 1560, y: 80, w: 720, h: 360 }; // 门外那张「要做的事」详图
   const RECEIPT = [[1150, 520], [1110, 300], [-500, 300]];
   // C：另外三个库和对照表
@@ -61,16 +124,17 @@
   const TABLE = { x: 2012, y: 224, w: 970, h: 1166 };
 
   // ---------- 进屋的顺序：t = 落账的小节；采集 Worker 那一路只送 PlayStation（PSN），其余走上报入口 ----------
+  // coding 只写类别不写模块名：编码用量的模块名跟着上报契约走，片子里不点名（SCRIPT.md 第 01 章同一口径）
   const Q = [
     ["mac", "desktop"], ["homepod", "nowPlaying"], ["emby", "watching"], ["mac", "chargingDevices"],
-    ["playstation", "playing"], ["mac", "vibeCodingNow"], ["agents", "cursor"], ["iphone", "activity"],
+    ["playstation", "playing"], ["mac", "coding"], ["agents", "coding"], ["iphone", "activity"],
     ["mac", "desktop"], ["homepod", "nowPlaying"], ["mac", "chargingDevices"], ["emby", "watching"],
   ].map(([src, what], i) => ({ t: 2 + i * 0.25, src, what }));
   Q.push({ t: 5.0, src: "mac", what: "appleMusic", hero: true }); // 这一封就是片子跟着的那封：换歌
   Q.push({ t: 8.25, src: "playstation", what: "playing" }, { t: 8.5, src: "emby", what: "watching" });
   Q.push({ t: 9.0, src: "mac", whatKey: "ch03.hbRow", heart: true, dim: true }); // 纯心跳
   Q.push({ t: 10.5, src: "mac", whatKey: "ch03.flipRow", flip: true }); // 在线 → 离线
-  for (const [src, what] of [["homepod", "nowPlaying"], ["mac", "desktop"], ["agents", "cursor"], ["playstation", "playing"], ["mac", "chargingDevices"], ["iphone", "activity"], ["emby", "watching"], ["mac", "desktop"]]) Q.push({ t: Infinity, src, what });
+  for (const [src, what] of [["homepod", "nowPlaying"], ["mac", "desktop"], ["agents", "coding"], ["playstation", "playing"], ["mac", "chargingDevices"], ["iphone", "activity"], ["emby", "watching"], ["mac", "desktop"]]) Q.push({ t: Infinity, src, what });
   Q.forEach((q) => (q.via = q.src === "playstation" ? "collector" : "ingress"));
   const HERO = Q.findIndex((q) => q.hero), HB = Q.findIndex((q) => q.heart), FLIP = Q.findIndex((q) => q.flip);
 
@@ -217,7 +281,7 @@
       const y = py + 174 + slot * lh;
       const k = clamp((b - c.t) / 0.1);
       const col = c.hero || c.flip ? css("signal") : c.dim ? css("graphite") : css("pink");
-      text(x, String(i + 1).padStart(2, "0"), px + 32, y, { font: FONT.mono(26), color: css("graphite"), alpha: a * k });
+      text(x, String(i + 1).padStart(2, "0"), px + 32, y, { font: FONT.mono(28), color: css("graphite"), alpha: a * k });
       text(x, c.src, px + 92, y, { font: FONT.mono(30, 500), color: col, alpha: a * k });
       const what = c.whatKey ? tr(c.whatKey) : c.what;
       if (c.heart) heart(x, px + 328, y - 10, 12, css("signal"), a * k);
@@ -319,7 +383,7 @@
     if (lit >= 0.5) { x.fillStyle = css("signalD"); x.globalAlpha = a * 0.9; x.fillRect(-48, -10, 70, 6); x.fillRect(-48, 4, 44, 6); }
     else { x.fillStyle = css("bone"); x.globalAlpha = a * 0.45; x.fillRect(-48, -10, 60, 6); x.fillRect(-48, 4, 36, 6); }
     x.restore();
-    if (lit >= 0.5) text(x, "listening-now", px + 85, py + 124, { font: FONT.mono(22, 500), color: css("signalD"), align: "center", alpha: a * prog(lit, 0.5, 0.8) });
+    if (lit >= 0.5) text(x, "listening-now", px + 85, py + 128, { font: FONT.mono(28, 500), color: css("signalD"), align: "center", alpha: a * prog(lit, 0.5, 0.8) });
   }
   function rings(e, x, t0, now, maxR = 1500) {
     const s = (now - t0) * BARs;
@@ -366,7 +430,7 @@
       x.lineWidth = 1.4; x.strokeRect(cx + 8, cy + 8, cw - 16, ch - 16);
       // 时间签
       x.fillStyle = css("ink2"); x.fillRect(cx + 14, cy + 14, 52, 18); x.strokeRect(cx + 14, cy + 14, 52, 18);
-      text(x, `${String(Math.floor(r() * 24)).padStart(2, "0")}:${String(Math.floor(r() * 60)).padStart(2, "0")}`, cx + 18, cy + 29, { font: FONT.mono(14, 500), color: css("ash") });
+      text(x, `${String(Math.floor(r() * 24)).padStart(2, "0")}:${String(Math.floor(r() * 60)).padStart(2, "0")}`, cx + 18, cy + 29, { font: FONT.mono(14, 500), color: css("ash"), texture: true });
     }
     x.restore();
   }
@@ -426,10 +490,10 @@
     e.save(); e.fillStyle = g; e.beginPath(); e.arc(cx, cy, r, 0, Math.PI * 2); e.fill(); e.restore();
   }
 
-  // 旁白：大字，逐字亮起；排在画面里，不是字幕
+  // 旁白：大字，逐字亮起；排在画面里，不是字幕（K.narration，自检按 56 查）
   function nar(x, key, px, py, r, a = 1, size = 60, maxW = 1040) {
     if (a <= 0) return;
-    text(x, tr(key), px, py, { maxW, font: FONT.cjk(size, 600), color: css("bone"), reveal: r, dim: 0.14, perChar: true, alpha: a });
+    K.narration(x, tr(key), px, py, { px: size, maxW, color: css("bone"), reveal: r, alpha: a });
   }
 
   function render(f) {
@@ -616,7 +680,7 @@
       }
       tableCard(d, b, prog(b, 13.5, 13.75, E.out));
       // 15:0 图版外框：贴着画面四边（按屏幕坐标画，镜头还在慢慢推也不会切掉）
-      const pk = prog(b, 15.0, 15.3, E.out);
+      const pk = prog(b, 15.0, 15.3, E.out) * (1 - prog(b, 15.45, 15.6));
       if (pk > 0) {
         x.save(); x.setTransform(G.S, 0, 0, G.S, 0, 0);
         rect(x, 24, 24, G.W - 48, G.H - 48, 2.4, bone, 0.8 * pk);
@@ -636,7 +700,7 @@
     f.post = {
       bloom: 0.7, threshold: 0.9, halation: 0.28, grain: 0.05, vignette: 0.42, ca: 0.4,
       shake: [Math.sin(f.frame * 1.7) * sh, Math.cos(f.frame * 2.3) * sh],
-      fade: Math.max(1 - prog(b, 0, 0.25), prog(b, 15.88, 16.0)),
+      fade: 1 - prog(b, 0, 0.25),
       flash: impact(b, 6.5, 0.1) * 0.05 + impact(b, 11.0, 0.1) * 0.05, flashCol: [1, 0.8, 0.6],
       blur, zoomBlur,
     };
