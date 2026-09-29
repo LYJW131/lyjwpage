@@ -62,22 +62,21 @@ export const config = {
   hostRoot: (process.env.HOST_ROOT?.trim() ?? "").replace(/\/+$/, ""),
 
   /**
-   * 固定每分钟推一次。这份快照本身就是心跳，站点拿 pushedAt 判断上报器还活着没有。
+   * 固定节奏，不按人数调频。这份快照本身就是心跳，站点拿 pushedAt 判断上报器还活着没有。
    *
-   * 从前按有没有人在看分 60 秒 / 2 分钟 / 15 分钟三档，为的是给 Vercel 函数减负
-   * （上报曾经经过 Vercel，这条是全站调用量最大的路径）。上报改进 api Worker 之后
-   * 那个理由没了，三档反而更费：闲着时每分钟问两个 Worker 的 /count（当时在线人数另在
-   * online-counter 上，2026-09-29 已并回 api，只剩一个），比直接推一次还多。
+   * 上报不经过 Vercel，没有函数调用量要省；调频得先问一次在线人数，闲着时那一问
+   * 比直接推一次还费。改间隔要同步放宽站点的 SERVER_STALE_MS（src/lib/freshness.ts），
+   * 顺序见 README「节奏」。
    */
   intervalMs: ms("INTERVAL_MS", 60_000),
   pushTimeoutMs: ms("PUSH_TIMEOUT_MS", 10_000),
 
-  /** 流量累计与 12 小时 CPU 窗口的状态文件；留空 = 不攒，报文里这两块为 null */
+  /** 流量累计的状态文件；留空 = 不攒，报文里 `traffic` 为 null */
   trafficStatePath: pathOr("TRAFFIC_STATE_PATH", "/data/traffic.json"),
   cycleDay: cycleDay(),
   quotaBytes: quotaBytes(),
 
-  /** 推送账本（过去 12 小时推成功几封）；留空 = 只记在内存里 */
+  /** 推送账本（窗口与分格见 push-ledger.ts）；留空 = 只记在内存里 */
   pushLedgerPath: pathOr("PUSH_LEDGER_PATH", "/data/pushes.json"),
   /** 镜像构建时烧进来的提交（build-reporters.yml 传 GIT_SHA），本地直接跑时没有 */
   reporterCommit: process.env.REPORTER_COMMIT?.trim() || null,

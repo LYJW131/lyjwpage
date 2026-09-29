@@ -11,16 +11,16 @@ export function reporterBlock(): Promise<ReporterBlock> {
 
 type SiteEnvelope = { ok?: boolean; error?: string };
 
-/**
- * 「站点回了 `ok !== true` 就算失败」这条约定是**协议**的一部分：站点的 ingestRoute
- * 会用 200 之外的状态码和一个 `ok: false` 的信封表示软失败，认错了就会把它当成
- * 上报成功。和 agents-reporter 的 site.ts 同一条，抄的时候一起抄走。
- */
 /** 这个来源专用的 Access service token：Access 在边缘核对，放行后 Worker 验 JWT */
 function authHeaders(): Record<string, string> {
   return { "CF-Access-Client-Id": config.site.accessClientId, "CF-Access-Client-Secret": config.site.accessClientSecret };
 }
 
+/**
+ * 成功 = HTTP 2xx 且信封 `ok === true`，两个条件都要判。上报入口成功回 202
+ * `{ ok: true, data }`，失败回 4xx / 5xx `{ ok: false, error }`
+ * （workers/ingress/src/worker.ts 的 handleIngest）。
+ */
 export async function push(payload: Record<string, unknown>): Promise<void> {
   const at = Date.now();
   const response = await fetch(config.site.ingestUrl, {

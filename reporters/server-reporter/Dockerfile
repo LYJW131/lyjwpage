@@ -16,7 +16,7 @@ COPY package.json ./
 # 构建这份镜像的提交，每封上报都带上（见 src/push-ledger.ts）
 ARG GIT_SHA=""
 ENV REPORTER_COMMIT=$GIT_SHA
-# /proc 和挂进来的宿主机 /etc 都是全局可读，不需要 root。状态卷 data/ 在机器上是
-# nobody（65534）的，沿用从前 Python 镜像的这个用户，换镜像不用再 chown。
+# /proc 和挂进来的宿主机 /etc 都是全局可读，不需要 root。状态卷 data/ 要允许
+# nobody（65534）写入，见 README「在 VPS 上跑」。
 USER nobody
 CMD ["node", "dist/index.js"]
