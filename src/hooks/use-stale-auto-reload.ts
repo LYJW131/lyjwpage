@@ -17,7 +17,7 @@ import {
 
 /**
  * 旧页面自己刷成新版：版本提示卡「告诉人」，这里在合适的时候「替人做」。
- * 什么场合能做、有哪几道闸（试过的版本集合 / 冷却 / 播放器在放不刷 / 存储不可用不刷）见
+ * 什么场合能做、有哪几道闸（每个目标版本一轮最多试几次 / 冷却 / 播放器在放不刷 / 存储不可用不刷）见
  * lib/app-version 的 autoReloadDecision，这里只管把浏览器里的事实喂给它。
  *
  * - `background`：页面躺在后台时刷。`version` 推送在后台标签页里照样收得到（WebSocket
@@ -25,8 +25,8 @@ import {
  * - `page-crash`：整页已经被错误页顶替（app/error.tsx），可见也刷。
  */
 
-/** 这个标签页自动刷新的账，跨刷新保留、跨标签页隔离 */
-const LEDGER_KEY = "lyjw:auto-reload:v2";
+/** 这个标签页自动刷新的账，跨刷新保留、跨标签页隔离。账的形状变了就升版本号，旧存档不会被当成新的读 */
+const LEDGER_KEY = "lyjw:auto-reload:v3";
 
 function readLedger(): { usable: boolean; ledger: AutoReloadLedger } {
   try {
