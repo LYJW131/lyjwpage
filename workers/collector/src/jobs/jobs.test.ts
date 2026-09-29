@@ -3,6 +3,7 @@ import { test } from "node:test";
 
 import { LAG_KEYS, readLag, writeLag } from "@shared/lag";
 import type { AgentStatusPayload, AgentStatusRow } from "@/lib/agent-status-types";
+import { PAGESPEED_TIMEOUT_MS } from "@/lib/pagespeed";
 import { mergeSentryStatus, SENTRY_BLOCK_CARRY_MS } from "@/lib/sentry-status";
 import type { SentryStatusPayload } from "@/lib/sentry-status-types";
 import type { GithubRepoPayload } from "@/lib/types";
@@ -10,6 +11,7 @@ import type { VercelMetricsPayload } from "@/lib/vercel-deployments-types";
 
 import { MemoryKv } from "../testing/memory-kv";
 import { mergeRepoStats } from "./github-repo";
+import { pagespeedJob } from "./pagespeed";
 import { refreshProviderStatus } from "./provider-status";
 import { refreshVercelMetrics } from "./vercel";
 
@@ -144,4 +146,9 @@ test("sentry status carries a failed block with its own time, and only for a whi
   const expired = mergeSentryStatus({ fetchedAt: SENTRY_BLOCK_CARRY_MS + 1, uptime: null, heartbeat: null, errors: null, vitals }, later);
   assert.equal(expired.errors, null);
   assert.equal(expired.blockAt?.errors, undefined);
+});
+
+test("pagespeed waits per request for less than the job's runtime budget", () => {
+  // 桌面、移动并行，一轮最坏就是单端超时；超过 Sentry 监控认定的时限就会被记成漏报
+  assert.ok(PAGESPEED_TIMEOUT_MS < pagespeedJob.maxRuntimeMinutes * 60_000);
 });
