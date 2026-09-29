@@ -13,10 +13,11 @@
     "ch02.clawd": ["上报都从这面墙进来。", "Every report comes in\nthrough this wall."],
     "ch02.n1a": ["每个上报方一把钥匙，", "Each reporter gets one key;"],
     "ch02.n1b": ["只开权限表上写着的门。", "it opens only its own doors."],
-    "ch02.ha": ["Home Assistant 的钥匙开两扇门", "The Home Assistant key opens two doors"],
+    "ch02.two": ["两把钥匙，各开一扇", "Two keys, one door each"],
     "ch02.key.mac": ["mac 的钥匙", "mac key"],
     "ch02.key.emby": ["emby 的钥匙", "emby key"],
     "ch02.key.ha": ["Home Assistant 的钥匙", "Home Assistant key"],
+    "ch02.key.ps": ["playstation 的钥匙", "playstation key"],
     "ch02.form": ["入口检查单", "Ingress checklist"],
     "ch02.reject": ["拒收", "Reject"],
     "ch02.r1": ["方法是 POST", "Method is POST"],
@@ -139,9 +140,9 @@
   }
 
   // 权限表：每把钥匙能开哪几扇门（workers/ingress/wrangler.toml 的 ACCESS_CLIENTS，只写上报方名）。
-  // 钥匙按上报方发，不按来源：Home Assistant 一把开两扇，/playstation 又有 n100 容器自己那把
-  const AC = [["mac", "/mac"], ["iphone", "/iphone"], ["home-assistant", "/homepod · /playstation"], ["playstation", "/playstation"], ["emby", "/emby"], ["server", "/server"], ["agents", "/agents"], ["claude-cloud", "/agents/otlp"], ["github-actions", "/api/internal/site-deployed"]];
-  const AC_ROW = { mac: 0, ha: 2, emby: 4 }; // 钥匙从这几行滑出来
+  // 钥匙按上报方发：home-assistant 只开 /homepod，/playstation 只认 n100 上那台容器自己的钥匙（FACTS §2「鉴权」）
+  const AC = [["mac", "/mac"], ["iphone", "/iphone"], ["home-assistant", "/homepod"], ["playstation", "/playstation"], ["emby", "/emby"], ["server", "/server"], ["agents", "/agents"], ["claude-cloud", "/agents/otlp"], ["github-actions", "/api/internal/site-deployed"]];
+  const AC_ROW = { mac: 0, ha: 2, ps: 3, emby: 4 }; // 钥匙从这几行滑出来
   // 末行要留在机位 A 的画面里（贴着屏幕底边就被暗角吃掉）：表再加行先收行距
   const AC_X = 150, AC_Y = 764, AC_LH = 32;
   const acRow = (i) => [AC_X + 90, AC_Y + 32 + i * AC_LH];
@@ -150,12 +151,12 @@
     if (k <= 0) return;
     text(x, "ACCESS_CLIENTS", AC_X, AC_Y, { font: FONT.mono(28, 600), color: css("graphite"), alpha: k });
     line(x, AC_X, AC_Y + 12, AC_X + 700 * k, AC_Y + 12, 1.2, css("pink"), 0.6);
-    const hot = b > 1.3 && b < 2.6 ? AC_ROW.mac : b > 2.8 && b < 4.1 ? AC_ROW.emby : b >= 4.1 && b < 4.9 ? AC_ROW.ha : -1;
+    const hot = b > 1.3 && b < 2.6 ? [AC_ROW.mac] : b > 2.8 && b < 4.1 ? [AC_ROW.emby] : b >= 4.1 && b < 4.9 ? [AC_ROW.ha, AC_ROW.ps] : [];
     AC.forEach(([who, doors], i) => {
       const y = AC_Y + 38 + i * AC_LH, a = prog(b, 1.0 + i * 0.05, 1.3 + i * 0.05);
-      const c = i === hot ? css("signal") : css("pink");
+      const on = hot.includes(i), c = on ? css("signal") : css("pink");
       text(x, who, AC_X, y, { font: FONT.mono(28, 500), color: c, alpha: a });
-      text(x, "→ " + doors, AC_X + 260, y, { font: FONT.mono(28), color: i === hot ? c : css("graphite"), alpha: a });
+      text(x, "→ " + doors, AC_X + 260, y, { font: FONT.mono(28), color: on ? c : css("graphite"), alpha: a });
     });
   }
 
@@ -168,31 +169,36 @@
     text(x, "POST /api/ingest/…", 1800, 300, { font: FONT.mono(28), color: css("graphite"), align: "right", alpha: prog(b, 0.7, 1.2) });
     line(x, 150, DTOP + DH, 150 + 1620 * prog(b, 0.3, 1.2, E.outExpo), DTOP + DH, 2, css("pink"));
 
-    // 门的开合：mac 2:0 开、2:3 关；homepod / playstation 4:0 同时开
+    // 门的开合：mac 2:0 开、2:3 关；homepod 4:0、playstation 4:0.5 各被自己的钥匙打开
+    const OPEN_HP = 4.0, OPEN_PS = 4.125;
     const openMac = keys(b, [[2.0, 0], [2.4, 1, E.outExpo], [2.72, 1], [3.0, 0, E.in]]);
-    const openHA = keys(b, [[4.0, 0], [4.4, 1, E.outExpo]]);
+    const openHP = keys(b, [[OPEN_HP, 0], [OPEN_HP + 0.4, 1, E.outExpo]]);
+    const openPS = keys(b, [[OPEN_PS, 0], [OPEN_PS + 0.4, 1, E.outExpo]]);
     DOORS.forEach((_, i) => {
       const dk = prog(b, 0.35 + i * 0.07, 0.95 + i * 0.07, E.io);
-      door(x, i, i === 0 ? openMac : i === 2 || i === 3 ? openHA : 0, dk);
+      door(x, i, i === 0 ? openMac : i === 2 ? openHP : i === 3 ? openPS : 0, dk);
     });
 
     accessTable(x, b);
-    // 钥匙从权限表里自己那一行滑出来：mac 的钥匙开 mac；emby 的钥匙去开 mac → 403；HA 的钥匙同时开两扇
+    // 钥匙从权限表里自己那一行滑出来：mac 的钥匙开 mac；emby 的钥匙去开 mac → 403；
+    // Home Assistant 和 playstation 两把各开各的门：两张卡各贴着自己那扇门往外伸，不能有一张同时压着两扇
     const [mx, my] = lockPos(0);
     const macK = keys(b, [[1.3, acRow(AC_ROW.mac)], [2.0, [mx, my], E.outExpo], [2.35, [mx, my]], [2.7, [mx, my + 30], E.in]]);
     keycard(x, tr("ch02.key.mac"), macK[0], macK[1], 0, prog(b, 1.3, 1.4) * (1 - prog(b, 2.35, 2.7)), b > 1.95 && b < 2.5);
     const embyK = keys(b, [[2.9, acRow(AC_ROW.emby)], [3.5, [mx, my], E.outExpo], [3.75, [mx, my]], [4.3, [mx - 40, 1220], E.in]]);
     const shakeE = b > 3.5 && b < 3.75 ? Math.sin((b - 3.5) * 120) * 10 * (1 - prog(b, 3.5, 3.75)) : 0;
     keycard(x, tr("ch02.key.emby"), embyK[0] + shakeE, embyK[1], lerp(0, -0.5, prog(b, 3.75, 4.3, E.in)), prog(b, 2.9, 3.0) * (1 - prog(b, 4.0, 4.3)));
-    const haX = (DX(2) + DX(3) + DW) / 2;
-    const haK = keys(b, [[3.45, acRow(AC_ROW.ha)], [4.0, [haX, my], E.outExpo], [4.5, [haX, my]], [4.85, [haX, my + 40], E.in]]);
-    keycard(x, tr("ch02.key.ha"), haK[0], haK[1], 0, prog(b, 3.45, 3.55) * (1 - prog(b, 4.5, 4.85)), b > 3.95 && b < 4.6);
-    if (b > 4.0) {
-      const hy = DTOP + DH + 50;
-      line(x, DX(2) + DW / 2, DTOP + DH + 14, DX(2) + DW / 2, hy - 22, 1.2, css("signal"), prog(b, 4.0, 4.2));
-      line(x, DX(3) + DW / 2, DTOP + DH + 14, DX(3) + DW / 2, hy - 22, 1.2, css("signal"), prog(b, 4.0, 4.2));
-      line(x, DX(2) + DW / 2, hy - 22, DX(3) + DW / 2, hy - 22, 1.2, css("signal"), prog(b, 4.05, 4.25));
-      text(x, tr("ch02.ha"), DX(3) + DW / 2 + 24, hy - 12, { maxW: 700, font: FONT.cjk(28, 600), color: css("signal"), reveal: prog(b, 4.1, 4.6) });
+    const cardW = (label) => Math.max(210, K.measure(x, label, FONT.cjk(28, 600)) + 110); // 和 keycard 里的宽度一样算
+    const hpX = DX(2) + DW - 8 - cardW(tr("ch02.key.ha")) / 2, psX = DX(3) + 8 + cardW(tr("ch02.key.ps")) / 2;
+    const haK = keys(b, [[3.45, acRow(AC_ROW.ha)], [OPEN_HP, [hpX, my], E.outExpo], [4.5, [hpX, my]], [4.85, [hpX, my + 40], E.in]]);
+    keycard(x, tr("ch02.key.ha"), haK[0], haK[1], 0, prog(b, 3.45, 3.55) * (1 - prog(b, 4.5, 4.85)), b > OPEN_HP - 0.05 && b < 4.6);
+    const psK = keys(b, [[3.55, acRow(AC_ROW.ps)], [OPEN_PS, [psX, my], E.outExpo], [4.6, [psX, my]], [4.9, [psX, my + 40], E.in]]);
+    keycard(x, tr("ch02.key.ps"), psK[0], psK[1], 0, prog(b, 3.55, 3.65) * (1 - prog(b, 4.6, 4.9)), b > OPEN_PS - 0.05 && b < 4.7);
+    if (b > OPEN_HP) {
+      const hy = DTOP + DH + 28;
+      line(x, DX(2) + 14, hy, DX(2) + DW - 14, hy, 2, css("signal"), prog(b, OPEN_HP, OPEN_HP + 0.2));
+      line(x, DX(3) + 14, hy, DX(3) + DW - 14, hy, 2, css("signal"), prog(b, OPEN_PS, OPEN_PS + 0.2));
+      text(x, tr("ch02.two"), DX(3) + DW + 24, hy + 10, { maxW: 700, font: FONT.cjk(28, 600), color: css("signal"), reveal: prog(b, OPEN_PS, OPEN_PS + 0.3) });
     }
     // 403：盖在 mac 那扇门上
     stamp(s, "403", DX(0) + DW / 2 + 6, DTOP + DH * 0.24, { k: prog(b, 3.5, 3.62), px: 64, rot: -0.2, alpha: 1 - prog(b, 4.6, 4.9) });

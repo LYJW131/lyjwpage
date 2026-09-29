@@ -22,7 +22,7 @@
 
 ### 来源
 
-片中开场按「**七个外部上报器 + 一个采集 Worker**」画（下表前七行就是这七个上报器）；Claude Code 云端遥测（OTLP）不是我们写的上报器，另算一个入口。上报器和采集任务有几个，只按代码画，旁白和标注里不说。其中 n100 上的 playstation-reporter，把 presence、游玩列表和奖杯 POST 到同一个 `/api/ingest/playstation`。入口来源是 `shared/ingest/prepare.ts#INGEST_SOURCES` 那一份（playstation 是其中之一）；OTLP 走 `/api/ingest/agents/otlp`，不在这份清单里。Home Assistant 的 token 开 homepod 和 playstation 两扇门。容器自己的 Access service token 是 `lyjwpage-playstation`，登记在 `workers/ingress/wrangler.toml#ACCESS_CLIENTS`，权限只有 `ingest:playstation`。
+片中开场按「**七个外部上报器 + 一个采集 Worker**」画（下表前七行就是这七个上报器）；Claude Code 云端遥测（OTLP）不是我们写的上报器，另算一个入口。上报器和采集任务有几个，只按代码画，旁白和标注里不说。其中 n100 上的 playstation-reporter，把 presence、游玩列表和奖杯 POST 到同一个 `/api/ingest/playstation`。入口来源是 `shared/ingest/prepare.ts#INGEST_SOURCES` 那一份（playstation 是其中之一）；OTLP 走 `/api/ingest/agents/otlp`，不在这份清单里。Home Assistant 的 token 只开 homepod（`lyjwpage-home-assistant` 只有 `ingest:homepod`）。容器自己的 Access service token 是 `lyjwpage-playstation`，登记在 `workers/ingress/wrangler.toml#ACCESS_CLIENTS`，权限只有 `ingest:playstation`；`/playstation` 只认这一把。
 
 第 01 章用到的部分（编码用量、collector 的任务与节奏、PlayStation 上报器、Mac 信封的 90 秒和 400 ms）按 main 2489e10 逐条回代码复核过。 <!-- allow: 核对基线戳 -->
 
@@ -30,17 +30,23 @@
 |---|---|---|---|
 | Mac | Mac Telemetry Hub，菜单栏 App | `/api/ingest/mac` · `lyjwpage-mac` | 前台应用、窗口标题、Apple Music、充电设备、编码用量（本机的日行、最近一次用量事件、5 分钟 token 桶）、时区、Apple Music user token |
 | iPhone | iPhone Telemetry Hub，HealthKit 唤醒：圆环按小时（`.hourly`；README 说这一条传 `.immediate` 也会被系统钳到 `.hourly`），训练申请 `.immediate`（`reporters/iphone-telemetry-hub/App/iPhoneTelemetryHub/Modules/ActivityModule.swift#observe`、`reporters/iphone-telemetry-hub/App/iPhoneTelemetryHub/Modules/WorkoutsModule.swift#startObserving`、`reporters/iphone-telemetry-hub/README.md` 的「什么时候会上报」） | `/api/ingest/iphone` · `lyjwpage-iphone` | 活动圆环、训练、五分钟步数桶 |
-| Home Assistant | 家里 | `/api/ingest/homepod` 和 `/api/ingest/playstation` · `lyjwpage-home-assistant` | HomePod 正在播放；PS5 电源 `{version:1, power}` |
-| PlayStation | playstation-reporter，n100 上的容器 | `/api/ingest/playstation` · `lyjwpage-playstation` | presence、游玩列表、奖杯。不发 `power` |
+| Home Assistant | 家里 | `/api/ingest/homepod` · `lyjwpage-home-assistant` | HomePod 正在播放。不报 PS5 电源 |
+| PlayStation | playstation-reporter，n100 上的容器 | `/api/ingest/playstation` · `lyjwpage-playstation` | presence、游玩列表、奖杯：拿本机的 PSN 登录态问 Sony 取来，用自己的 Access token 寄到站点。不发 `power` |
 | Emby | emby-reporter，NAS 上的容器 | `/api/ingest/emby` · `lyjwpage-emby` | 在看什么；海报先传 R2 |
 | 服务器 | server-reporter，东京 misaka-jp 容器 | `/api/ingest/server` · `lyjwpage-server` | 服务器状态，固定每 60 秒一次（`reporters/server-reporter/src/config.ts#intervalMs` 的默认值，容器 `.env` 可覆盖） |
 | 编码账号 | agents-reporter，misaka-jp 容器 | `/api/ingest/agents` · `lyjwpage-agents` | 各家编码工具限额；Cursor 账号的用量日行、最近一次用量事件、5 分钟 token 桶 |
 | Claude Code 云端 | OTLP JSON（可 gzip），Claude Code 自己发，不是我们写的上报器 | `/api/ingest/agents/otlp` · `lyjwpage-claude-cloud` | 云端 token 与费用的累计值（只收 cumulative）；状态核心按序列做差，落成和另两个来源同形的日行、5 分钟桶、最近一次用量事件（`workers/api/src/stores/claude-cloud.ts`）。三处怎么合并见下文「编码用量」 |
 | collector Worker | Cloudflare，cron 每分钟一响，任务表 `workers/collector/src/registry.ts#JOBS` 里的任务各按自己的节奏 | 不走 ingress | 见下文 |
 
-PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-reporter` POST 原始信封。采集 Worker 不拉 PSN。电源由 Home Assistant 上报。
+PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-reporter` POST 原始信封。采集 Worker 不拉 PSN，也不持有 PSN 凭据（`docs/ops-facts.md` 里采集 Worker 那一条）。PS5 电源没有来源上报，站点也不显示：PlayStation 信封带 `power` 字段会被入口拒收（`shared/ingest/playstation.ts#preparePlaystationReport`）。状态核心还留着一个没人调用、也没有新数据写入的只读接口 `playstationPower`（契约只加不改，`shared/state-core.ts#StateCoreRpc`），片中不画成活动的链路。
 
-第 01 章 FIG. 3 画它：容器跟 PS5 在同一个局域网里，用 UDP 发现包探测主机状态（`reporters/playstation-reporter/src/probe.ts#probeOnce`），按醒着、没醒两档调整打 PSN 的频率（`reporters/playstation-reporter/src/cadence.ts#shouldRunTick`，展开见 §7）。两档对调时立刻打一轮，所以开机后第一探读到醒着，紧跟着就寄一封。片中不出间隔的数。
+第 01 章 FIG. 3 画它：容器跟 PS5 在同一个局域网里，用 UDP 发现包探测主机状态（`reporters/playstation-reporter/src/probe.ts#probeOnce`），按醒着、没醒两档调整打 PSN 的频率（`reporters/playstation-reporter/src/cadence.ts#shouldRunTick`，展开见 §7）。两档对调时立刻打一轮，所以开机后第一探读到醒着，紧跟着问一轮 PSN、寄一封。主机醒没醒只由容器自己探测，只用来定它自己的节奏，不进信封（信封只有 presence、游玩列表、奖杯：`reporters/playstation-reporter/src/site.ts#PlaystationEnvelope`），也不画成 Home Assistant 给的。片中不出间隔的数。
+
+三样凭据各管各的，片中分开画，不能混：
+
+- **PSN 登录态**：存在容器的状态目录里（`reporters/playstation-reporter/src/state.ts#AUTH_KEY`，一个键一个文件，`reporters/playstation-reporter/src/store.ts#FileStore`），只在本机续期，只拿来调 Sony 的 PSN 接口（`reporters/playstation-reporter/src/auth.ts#AuthSession`、`reporters/playstation-reporter/src/psn.ts`）。不送到站点，站点也不用它鉴权。它在机器上的位置见 `docs/ops-facts.md`。
+- **容器的 Access service token** `lyjwpage-playstation`：寄信封时放在 `CF-Access-Client-Id` / `CF-Access-Client-Secret` 两个头里（`reporters/playstation-reporter/src/site.ts#deliver`），只开 `/playstation`。
+- **Home Assistant 的 token** `lyjwpage-home-assistant`：只开 `/homepod`（`workers/ingress/wrangler.toml#ACCESS_CLIENTS`），和 PlayStation 没有关系。
 
 ### Mac 信封
 
@@ -78,7 +84,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 ### 鉴权
 
-- 走 Cloudflare Access service token，**每个上报方一把钥匙，只开权限表上写着的门**（`workers/ingress/wrangler.toml#ACCESS_CLIENTS`）。钥匙按上报方发、不按来源：Home Assistant 那一把开 homepod 和 playstation 两扇；`/playstation` 这扇门另有 n100 上 playstation-reporter 容器自己的一把。两家往同一个来源写不同的字段：Home Assistant 只报 `power`，容器报 presence、游玩列表和奖杯（`shared/ingest/playstation.ts#preparePlaystationReport`）。验钥匙分三步：
+- 走 Cloudflare Access service token，**每个上报方一把钥匙，只开权限表上写着的门**（`workers/ingress/wrangler.toml#ACCESS_CLIENTS`）。钥匙按上报方发：Home Assistant 那一把只开 homepod；`/playstation` 只有 n100 上 playstation-reporter 容器自己的一把，报 presence、游玩列表和奖杯，带 `power` 字段的信封拒收（`shared/ingest/playstation.ts#preparePlaystationReport`）。验钥匙分三步：
   1. Access 在边缘先挡一道。
   2. Worker 再验 `Cf-Access-Jwt-Assertion`（RS256，校验 aud / iss / exp；`shared/access-jwt.ts#verifyAccessJwt`）。
   3. 用 `common_name` 查 `ACCESS_CLIENTS` 权限表。

@@ -64,7 +64,7 @@
 | 5–6.5 | FIG. 1A 窗口标题（画成几块遮住的字）过 Jev：几道问题的横条同时走，6:0 同一刻一起给出概率条（示意值，不标数，不和出路对应）；两条出路，6:1 这一次的标题走放行那条进信封，6:2 拿不准那条弹给主人。旁白 `n3` | 十六分的钟摆（问题在走），6:0 翻转一记，6:1 纸滑进信封，6:2「叮」 |
 | 6.5–8 | FIG. 1B 图片：6:2 起应用图标的像素压成一串哈希 `sha256….png`，7:0 落进 R2 的抽屉、同一刻信封卡上写出 `iconObjectKey`，7:1 抽屉关上。旁白 `n4` | 打字机敲哈希，7:1 抽屉锁舌 |
 | 8–9.5 | FIG. 2 手机（iPhone Telemetry Hub）：8:2 HealthKit 把它唤醒，8:3 起依次报活动圆环、训练、五分钟步数桶 | 每到一个图号一声「叮」（8:0、9:2、11:0、12:0、13:2、16:0，A C D E G A 往上爬）；8:2 远处一声 |
-| 9.5–11 | FIG. 3 家里：HomePod 在放什么、PS5 的电源开关（10:0 翻面），都经 Home Assistant；它那把钥匙 10:2 连开 /homepod、/playstation（第 02 章开的就是这两扇门）。右边 n100 上的 playstation-reporter 容器，跟 PS5 在同一个局域网里：机身和容器随其它仪器亮起，一条虚线随后画向 PS5、标 UDP，线下一块档位牌「没醒 · 闲档」；10:1 起每拍一个探测点从容器飞向 PS5，10:1.5 第一探读到开了机，档位牌压扁弹开翻成「醒着 · 快档」，紧跟着出 `POST /api/ingest/playstation`；注「探测主机状态，按档调整轮询频率」。容器不发电源，那一份归 Home Assistant；间隔不出数 | 10:0 翻转一记，10:1 远处一声（第一个探测点；档位牌翻面不另配声），10:2 两声钥匙 |
+| 9.5–11 | FIG. 3 家里：HomePod 在放什么经 Home Assistant，它的钥匙 10:2 只开 /homepod（注「Home Assistant 的钥匙」）。PS5 和 Home Assistant 之间没有线；10:0 主机开机，机身灯条亮。右边 n100 上的 playstation-reporter 容器，跟 PS5 在同一个局域网里：机身和容器随其它仪器亮起，一条虚线随后画向 PS5、标 UDP，线下一块档位牌「没醒 · 闲档」；10:1 起每拍一个探测点从容器飞向 PS5，10:1.5 第一探读到开了机，档位牌压扁弹开翻成「醒着 · 快档」，当场问一轮 Sony：容器上方「PSN · Sony」框，一个点沿虚线上去再回来，注「PSN 登录态留在本机，只拿来问 Sony」；10:3 容器自己的钥匙开 /playstation（注「容器自己的钥匙」）；探测线下注「探测主机醒没醒，只定自己的节奏，不上报」。容器的两条路分开画：往上问 Sony 用 PSN 登录态（不是钥匙，不进站点），往下寄到上报入口用自己的钥匙（从 n100 下面挂出来）；和 Home Assistant 的钥匙是三样凭据。站点不显示 PS 电源，片中不画也不说（FACTS §1）；间隔不出数 | 10:0 翻转一记（主机开机），10:1 远处一声（第一个探测点；档位牌翻面、问 PSN 都不另配声），10:2 Home Assistant 的钥匙，10:3 容器的钥匙 |
 | 11–12 | FIG. 4 NAS 机箱：emby-reporter 容器，11:1 ① 海报先传 R2，11:2 ② 报在看什么的信封寄出去 | 11:1 气动管，11:2 纸滑 |
 | 12–13.5 | FIG. 5 东京的机柜，两台容器：server-reporter（服务器状态，固定每 60 秒）、agents-reporter（各家编码工具的限额、Cursor 账号的用量） | |
 | 13.5–14.5 | FIG. 6 云端的一小段遥测（虚线框，不画云朵）：Claude Code 云端自己发 OTLP，顺着线走到 `/api/ingest/agents/otlp`，标「另算一个入口」「不是我们写的上报器」 | |
@@ -90,8 +90,8 @@
 | 小节 | 画面 | 配乐 |
 |---|---|---|
 | 0–1.6 | 标题「02 门禁与分拣」、`ingest.homepage.lyjw.llc · workers/ingress`、`POST /api/ingest/…`；一墙八扇门画出来；Clawd 跳上标题线说一句；信封火花从左边走向 /mac | 0:0 拨弦唱主题，前奏只有 pad 和零星打字声 |
-| 1–3 | 权限表 ACCESS_CLIENTS 逐行列出（mac … github-actions，按 `workers/ingress/wrangler.toml#ACCESS_CLIENTS`）：钥匙按上报方发，home-assistant 那行开 /homepod、/playstation 两扇，playstation 那行是 n100 容器自己的钥匙；mac 的钥匙从自己那行滑到 /mac，2:0 转开门、2:3 关上。旁白 `n1` | 2:0 钥匙 |
-| 3–5 | emby 的钥匙去开 /mac，3:2 盖 403；4:0 Home Assistant 的钥匙同时开 /homepod、/playstation，标「Home Assistant 的钥匙开两扇门」 | 3:2 印章，4:0 两把钥匙 |
+| 1–3 | 权限表 ACCESS_CLIENTS 逐行列出（mac … github-actions，按 `workers/ingress/wrangler.toml#ACCESS_CLIENTS`）：钥匙按上报方发，home-assistant 那行只开 /homepod，/playstation 只有 playstation 那行（n100 容器自己的钥匙）；mac 的钥匙从自己那行滑到 /mac，2:0 转开门、2:3 关上。旁白 `n1` | 2:0 钥匙 |
+| 3–5 | emby 的钥匙去开 /mac，3:2 盖 403；4:0 Home Assistant 的钥匙开 /homepod、4:0.5 playstation 的钥匙开 /playstation，两张卡各贴着自己那扇门往外伸，标「两把钥匙，各开一扇」 | 3:2 印章，4:0、4:0.5 两把钥匙 |
 | 5–8 | 甩到检查单：六项在 5:0、5:2、6:0、6:2、7:0、7:2 逐项打勾（方法是 POST · 认识这个来源 · Access 凭证 RS256 / aud / iss / exp · 不超过 4 MiB，按实际读到的字节 · 是 JSON · prepare），右栏拒收码 405 / 404 / 401·403·503 / 400 / 400 / 400·503；右边那封信跟着亮出 POST、路径、JWT、称重、花括号，7:2 拆开。旁白 `n2` | 每项一声「叮」，音高 A C D E G A |
 | 7.6–8.3 | 反例：一封 `<html>` 飞进来，8:0 盖「400 不是 JSON」 | 8:0 大章，全场一顿 |
 | 8.8–11.6 | 甩到分拣台：四根管子（凭据 KV CREDENTIALS · 归档 D1 HISTORY · 可滞后 KV LAG · 实时 CORE.commitIngest），管底是四个库的符号；9:0 mac 的 desktop / appleMusic / chargingDevices 进实时，9:2 timezone 进可滞后，10:0 iphone 的 workouts 可滞后、归档各一份，10:2 musicUserToken 进凭据；服务器那封整封一分为二，11:0 进可滞后和归档。旁白 `n3` | 9:0、9:2、10:0、10:2 气动管，11:0 分叉 |
