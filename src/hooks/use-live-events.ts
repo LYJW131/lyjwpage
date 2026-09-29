@@ -21,6 +21,7 @@ import {
 } from "@/lib/paths";
 import { isRealtimeViewPath, pathByEvent } from "@/lib/status-views";
 import type { ChargerPayload, StatusResponse } from "@/lib/types";
+import { LIVE_HEARTBEAT_MS } from "@shared/live-heartbeat";
 
 /**
  * 事件名 → 写哪个 SWR 缓存键，以及写进去之前要不要先过一道合并。
@@ -216,9 +217,8 @@ export function useLiveSocketConnected(): boolean {
  * 所以这条保活对它是免费的；没有它中间的代理会把空转的连接掐掉。
  *
  * 房间判「可见的页面还在不在」的线（workers/api/src/live-census.ts 的 VISIBLE_STALE_MS）
- * 是从它推的，那边的 HEARTBEAT_INTERVAL_MS 是手抄的副本，改这里必须同步改那边。
+ * 从共享的心跳间隔推导。
  */
-const HEARTBEAT_MS = 30_000;
 const MAX_BACKOFF_MS = 30_000;
 
 function pageVisible(): boolean {
@@ -345,7 +345,7 @@ function open(mutate: ScopedMutator): void {
           ws.send("ping");
         } catch {}
       }
-    }, HEARTBEAT_MS);
+    }, LIVE_HEARTBEAT_MS);
   };
 
   ws.onmessage = (event) => receive(mutate, event.data);

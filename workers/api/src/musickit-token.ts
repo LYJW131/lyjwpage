@@ -1,5 +1,8 @@
 // 走别名不走相对路径：node --test 认不出没有扩展名的相对导入，register-alias 只接管别名
 import { getAllowedOrigins, type OriginEnv } from "@api/origins";
+import { pastHalfLife } from "@shared/token-lifetime";
+
+export { pastHalfLife } from "@shared/token-lifetime";
 
 /**
  * 用 Apple 的 `.p8` 私钥现签 MusicKit developer token。
@@ -146,20 +149,6 @@ export function resolveTtlSeconds(env: MusicKitTokenEnv): number {
   const raw = Number(env.MUSICKIT_TOKEN_TTL_SECONDS);
   if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_TTL_SECONDS;
   return Math.min(Math.floor(raw), MAX_TTL_SECONDS);
-}
-
-/**
- * 过了「签发时刻 → 到期时刻」的中点就该换一份新的。
- *
- * 取相对中点而不是写死提前量：改了 MUSICKIT_TOKEN_TTL_SECONDS 不用跟着调第二个数，
- * 而写死的那个在两个方向上都可能错 —— 对七天的令牌，提前五分钟等于几乎不续；
- * 对一小时的令牌，提前一天等于每次都续。
- *
- * 站点那侧判是不是该重新要一份用的是同一条规则（见 src/lib/musickit.ts 的
- * pastHalfLife），改一处记得对齐。
- */
-export function pastHalfLife(token: IssuedToken, now: number): boolean {
-  return now >= token.issuedAt + (token.expiresAt - token.issuedAt) / 2;
 }
 
 /**
