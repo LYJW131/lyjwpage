@@ -1,9 +1,8 @@
 #!/usr/bin/env node
-/** One-time, operator-run migration. Redis is a development dependency only. Never prints values. */
+/** Initialize local state storage or run an operator-controlled export/import. Never prints values. */
 import assert from "node:assert/strict";
 import { readFile, writeFile } from "node:fs/promises";
 import { parseArgs } from "node:util";
-import Redis from "ioredis";
 
 const { values } = parseArgs({ options: {
   export: { type: "string" }, import: { type: "string" }, initialize: { type: "boolean" },
@@ -12,6 +11,7 @@ const prefix = process.env.STORAGE_PREFIX ?? process.env.REDIS_PREFIX ?? "lyjwpa
 assert.ok(/^[a-zA-Z0-9:_-]+$/.test(prefix), "Invalid prefix");
 if (values.export) {
   assert.ok(process.env.REDIS_URL, "REDIS_URL is required for export");
+  const { default: Redis } = await import("ioredis");
   const redis = new Redis(process.env.REDIS_URL, { lazyConnect: true, retryStrategy: null, connectTimeout: 5000, commandTimeout: 10000, maxRetriesPerRequest: 0 });
   redis.on("error", () => {});
   try {

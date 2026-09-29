@@ -10,7 +10,7 @@ export type StorageAnswer<T> = { reachable: true; value: T } | { reachable: fals
 /**
  * `@/lib/storage-driver` 在采集 Worker 里的实现：背后是 `COLLECTOR_KV`。
  *
- * 只为让 src/lib/cache（`get` / `put` / `cached` / `claim` / `remove`）原样可用：
+ * 只为让 src/lib/cache（`get` / `put` / `cached` / `remove`）原样可用：
  * Apple 封面与时长缓存、GitHub 增删行的锚、PageSpeed 的样本窗口。所以只接
  * `get`、`set`（含 TTL 和 ifAbsent）和 `remove`；列表、哈希那几种操作 KV 没有对应，
  * 直接抛错，谁误用谁当场知道。

@@ -103,30 +103,6 @@ export async function put<T>(k: string, value: T, ttlMs: number) {
 }
 
 /**
- * 抢下接下来这段时间的独占：抢到 true，这段时间里别人一律 false（`ifAbsent` 写）。
- *
- * 这正是 `cached()` 给不了的那半：它的值要等 loader 回来才写，于是**取数的那一两秒里
- * 闸门还是空的**，别的实例照样穿过去（它的 in-flight 去重挡不住跨实例）。给「按节奏
- * 去拉一次上游」这种事用：先抢，抢到才拉，TTL 到了才轮到下一个。
- *
- * 原子性取决于驱动：api Worker 的 DO SQLite 是原子的；采集 Worker 的 KV 是先读后写，
- * 不能当跨实例的锁。Worker 驱动下存储故障会抛出；只有不可达的 Node 驱动才返回
- * true —— 没有共享闸门可用时，宁可让每个实例各自按自己的节奏去拉（调用方那道进程内
- * 的时刻仍然管着频率），也好过一次都不拉。
- *
- * 抢到之后失败了不回滚，那一段就是空过：这是有意的，上游正病着的时候不该由
- * 下一个请求立刻再试一次。
- */
-export async function claim(k: string, ttlMs: number): Promise<boolean> {
-  // TTL 必须是正整数，理由同上面 put 里那段
-  const ttl = Math.max(1_000, Math.ceil(ttlMs));
-  return withStorage(
-    async (storage) => (await storage.set(key("cache", k), "1", { ttlMs: ttl, ifAbsent: true })) === true,
-    true,
-  );
-}
-
-/**
  * 主动作废一条：内存和存储两层一起删。
  *
  * 给「缓存的值被上游判了死刑」的场景用 —— TTL 还没到、但值已经确认失效

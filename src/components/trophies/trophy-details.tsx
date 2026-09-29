@@ -208,13 +208,6 @@ function useRowSnap(topKey: string | undefined) {
   }, []);
 }
 
-/**
- * 奖杯图那两格的边长参考：明细里是 size-11（44px），组条那格宽 w-10 但高度跟着
- * 行走、也在 44 上下。图本身不按它缩：奖杯图标直接用原图 URL，理由见
- * lib/playstation-image。
- */
-const ICON_PX = 44;
-
 function TrophyRow({ trophy }: { trophy: Trophy }) {
   const hidden = trophy.hidden && !trophy.earned;
   const locked = !trophy.earned;

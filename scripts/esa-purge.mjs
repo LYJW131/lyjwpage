@@ -222,7 +222,8 @@ async function requestPurge(config) {
 
 /**
  * 调用 ESA PurgeCaches 刷新首页 cachekey，不影响带哈希的一年静态资源。
- * 只对瞬时网络错误和 408 / 429 / 5xx 重试，最多 3 次，间隔 1s、2s。
+ * 只对瞬时网络错误和 408 / 429 / 5xx 重试；默认次数及退避见
+ * `PURGE_ATTEMPTS`、`PURGE_BACKOFF_MS`。
  * @param {{
  *   siteId?: string,
  *   cacheUrl?: string,
@@ -315,4 +316,3 @@ export async function warmupEsaCache(url, options = {}) {
     };
   }
 }
-
