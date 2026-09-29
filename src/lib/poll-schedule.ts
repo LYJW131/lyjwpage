@@ -3,20 +3,20 @@
  *
  * 可滞后层：写入方按固定节奏写 KV（登记在 lib/status-views 的 `cadenceMs`），
  * 固定间隔轮询要么比写入快（白取同一份），要么慢（数据在 KV 里放着没人取）。
- * 所以下一次取排在「下一次预期写入」之后十几秒：`updatedAt + cadenceMs + 宽限`。
- * 那一刻已经过了（写入方漏了一轮、或者上报器本来就不规律）就按退避重试，直到
- * 取回更新的 `updatedAt`：先 15 秒，随逾期时长的一半增长，封顶 min(节奏, 5 分钟)。
- * 这样每分钟写一次的视图漏一轮最多 1 分钟一取，按小时报的圆环一夜没报也只是
- * 5 分钟一取（和从前固定轮询一样），不会狂刷。
+ * 所以下一次取排在「下一次预期写入」之后一小段：`updatedAt + cadenceMs + 宽限`
+ * （LAG_GRACE_MS）。那一刻已经过了（写入方漏了一轮、或者上报器本来就不规律）就按
+ * 退避重试，直到取回更新的 `updatedAt`：从 LAG_MIN_RETRY_MS 起，随逾期时长的一半
+ * 增长，封顶 min(节奏, LAG_MAX_RETRY_MS)。这样节奏快的视图漏一轮只是按节奏一取，
+ * 按小时报的圆环一夜没报也只是封顶间隔一取，不会狂刷。
  *
- * 实时层：推送连着时轮询只做兜底（5 分钟，但不比卡片自己的间隔更快），断开时
- * 回到卡片给的快间隔。能不能退成兜底由视图登记的 `pushCovers` 定。
+ * 实时层：推送连着时轮询只做兜底（PUSH_SAFETY_NET_MS，但不比卡片自己的间隔更快），
+ * 断开时回到卡片给的快间隔。能不能退成兜底由视图登记的 `pushCovers` 定。
  */
 
 /**
- * 写入方写完到 KV 读得到之间的余量，也吸收采集任务自身几秒的耗时。实测（2026-09）
- * 每分钟一写的 vercel-deployments 新值在写入后 10–30 秒才从边缘读到，取 15 秒：
- * 多数时候一次取到，赶早了就按下面的 15 秒重试再取一次。
+ * 写入方写完到 KV 读得到之间的余量，也吸收采集任务自身几秒的耗时。KV 的新值在写入后
+ * 要过一阵才能从边缘读到：这个余量让多数时候一次取到，赶早了就按 LAG_MIN_RETRY_MS
+ * 重试再取一次。
  */
 export const LAG_GRACE_MS = 15_000;
 export const LAG_MIN_RETRY_MS = 15_000;
@@ -32,7 +32,7 @@ export function lagOverdue(updatedAt: number | undefined, cadenceMs: number, now
 /**
  * 关了挂载回源的实时视图（年度热力图），首屏那份是否已经放得比一个轮询间隔还久：首屏 HTML
  * 可以在缓存里放好几个小时，不补这一次就要等满第一个间隔才换新。`servedAt` 是首屏信封的
- * 出站时刻，缺省（旧版源站不带）当作太旧。
+ * 出站时刻，缺省（信封没带）当作太旧。
  */
 export function fallbackOutlived(servedAt: number | undefined, intervalMs: number, now: number): boolean {
   return servedAt == null || now - servedAt >= intervalMs;

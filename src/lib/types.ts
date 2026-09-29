@@ -1,4 +1,4 @@
-/** 三个状态源统一的对外数据契约 —— 前端只认这里的类型。 */
+/** 各状态源统一的对外数据契约 —— 前端只认这里的类型。 */
 
 export type WatchingItem = {
   id: string;
@@ -302,12 +302,11 @@ export type ListeningItem = {
 
 /**
  * Mac 上报器的存活。源站只盖这三个事实，「此刻在不在线」由浏览器拿自己的钟算
- * （hooks/use-stale 的 useReporterStale），源站不在读取时下结论。
+ * （hooks/use-stale 的 useReporterStale），源站不在读取时下结论：结论会跟着首屏缓存
+ * 冻住，看到时多半已经不对了。
  *
- * 从前还盖过一个 offlineAtSource（取数那一刻源站判的在不在线），为的是首帧。
- * 但首屏按卡缓存最长十分钟，那个结论冻在 HTML 里，看到时多半已经不对了；
- * 实时卡挂载后本来就回源校验一次，首帧（访客钟为 0）不判过期是可以接受的代价。
- * 亲口离线不是时间函数，首帧就作数。
+ * 首帧的钟是首屏信封的 `servedAt`（见 StatusResponse），判出的是源站交出这份数据时
+ * 的结论；只有连 servedAt 也没有时才不判过期。亲口离线不是时间函数，首帧就作数。
  *
  * lastSeenAt 是 ingest 收到时的源站钟，不是设备 observedAt。
  * 心跳窗口跟 payload 走，别在浏览器再读一份常量 —— 和充电头的 staleAfterMs 一样。
@@ -316,7 +315,10 @@ export type ReporterPresence = {
   lastSeenAt: number;
   /** 上报器亲口声明的离线，只在优雅离开（退出 / 睡眠）时为真 */
   declaredOffline: boolean;
-  /** 超过这么久没心跳就算掉线。源站按 HEARTBEAT_WINDOW_MS 现算，默认 5 分钟。 */
+  /**
+   * 超过这么久没心跳就算掉线。源站按 `heartbeatWindowMs()` 现算
+   * （默认值 `HEARTBEAT_WINDOW_MS`，见 lib/freshness）。
+   */
   heartbeatWindowMs: number;
 };
 
@@ -325,8 +327,8 @@ export type ListeningPayload = {
   /**
    * 源站上一次从 Apple 拉到这份列表的时刻。
    *
-   * **不是新鲜度指标，是代数**：这份数据由 Worker 的 cron 每分钟刷（两分钟闸门），
-   * 一份两分钟前的「最近在听」本身没有错，不该照搬别的卡那套变灰处理。它的用处是
+   * **不是新鲜度指标，是代数**：这份数据由采集 Worker 的 `appleRecentJob` 定时刷，
+   * 一份几分钟前的「最近在听」本身没有错，不该照搬别的卡那套变灰处理。它的用处是
    * 挡住晚到的旧数据，见 lib/status-reads。
    */
   fetchedAt: number;
@@ -336,7 +338,7 @@ export type ListeningPayload = {
  * 遥测应用主动隐藏前台应用时上报的占位 bundle id。
  *
  * 由 Mac 端产生、Worker 入库时据此强制清掉窗口标题、站点据此画「Hidden」。
- * 三处都要认同一个字面量，所以它和 `DesktopActivity` 放在一起 —— 这个文件
+ * 几处都要认同一个字面量，所以它和 `DesktopActivity` 放在一起 —— 这个文件
  * 没有任何 import，Worker 和浏览器包都能拿，不会把存储层拖进客户端。
  */
 export const HIDDEN_DESKTOP_BUNDLE_ID =
@@ -432,8 +434,8 @@ export type NowListeningPayload = ReporterPresence & {
   /** 与 /api/status/listening 的 items[].id 对应的 Apple Music 资源 ID。 */
   id: string | null;
   /**
-   * 那首曲目在 Apple Music 上的地址，读取时现查的，不进设备上报的快照。
-   * 目录里能精确匹配上就是直链，匹配不上退回搜索页。
+   * 那首曲目在 Apple Music 上的地址，由目录查询得到（`resolveTrackLookup`，按曲目缓存），
+   * 不进设备上报的快照。目录里能精确匹配上就是直链，匹配不上退回搜索页。
    */
   link: string | null;
   /**
@@ -516,7 +518,7 @@ export type ChargerStatus = {
   };
   /**
    * 充电头当前封面。上报器把 Anker 源 JPEG 原样直传到 R2 后带 iconObjectKey。
-   * iconUrl 是读取时按当前部署的交付域现拼的，不入库。
+   * iconUrl 是读取时由 iconObjectKey 拼成的同源路径 `/img/<objectKey>`（publicAssetPath），不入库。
    */
   cover: {
     name: string;
@@ -539,7 +541,7 @@ export type ChargerPayload = ChargerStatus & {
   historyPartial: boolean;
   /** 源站最近一次收到充电头模块或给它续上的心跳 */
   pushedAt: number;
-  /** 这份数据自己的过期窗口；默认 90 秒，服务端可按上报间隔加长 */
+  /** 这份数据自己的过期窗口，由服务端的 chargerStaleAfterMs() 定（不短于心跳窗口，可按上报间隔加长） */
   staleAfterMs: number;
 } & ReporterPresence;
 
@@ -555,8 +557,8 @@ export type VibeCodingPlan = {
  * 一个限额桶在一个时间窗口内的用量。
  *
  * 刻意做成数组而不是 `fiveHour` / `weekly` 这种固定字段：窗口的个数和时长是
- * 上游随时会调的（OpenAI 眼下就临时撤掉了 5 小时窗口，以后可能加回来），
- * 写死字段名的话每次变动都要改契约、改渲染、还得处理旧数据。
+ * 上游随时会调的（厂商会撤掉或加回某个窗口），写死字段名的话每次变动都要改契约、
+ * 改渲染。
  */
 export type VibeCodingLimit = {
   /** 桶 + 窗口的稳定标识，如 "codex.primary"，只用来当 React key */
@@ -634,7 +636,7 @@ export type CodingUsageAgentView = {
   id: string;
   /** 参与合计的来源 */
   sources: CodingUsageSource[];
-  /** 全部历史按 token 降序，最多 20 个 */
+  /** 全部历史按 token 降序，最多 `CODING_AGENT_MODELS`（shared/coding-usage-view）个 */
   models: string[];
   /** 最近一个有模型用量的日子里 token 最多的模型；闲置时拿它当模型名 */
   latestModel: string | null;
@@ -661,8 +663,9 @@ export type CodingUsagePayload = {
 /**
  * `/api/status/coding/now`（推送事件 `coding-now` 带整份）：各 agent 各来源最近一条用量事件。
  *
- * 灯由浏览器按时刻现算：任一有效来源的时刻在 5 分钟内就亮。带着 Mac 的存活：Mac 亲口
- * 离线时，只来自 `mac` 的时刻立即作废（优雅离开立刻灭灯），别的来源不受影响。
+ * 灯由浏览器按时刻现算：任一有效来源的时刻在 `CODING_ACTIVE_WINDOW_MS`
+ * （lib/coding-agents）内就亮。带着 Mac 的存活：Mac 亲口离线时，只来自 `mac` 的时刻
+ * 立即作废（优雅离开立刻灭灯），别的来源不受影响。
  */
 export type CodingNowPayload = {
   agents: Array<{
@@ -742,7 +745,7 @@ export type GithubRepoPayload = {
   fetchedAt: number;
   /**
    * 顶部三个总数取到的时刻。名单和总数是两个接口、各自沿用上一份（见采集 Worker 的
-   * github-repo），卡片按它判总数过没过期；没写时就是 fetchedAt
+   * `githubRepoJob`），卡片按它判总数过没过期；没写时就是 fetchedAt
    */
   totalsAt?: number;
   /**
@@ -763,22 +766,21 @@ export type GithubRepoPayload = {
 /**
  * 所有 /api/status/* 的统一信封。
  *
- * 刻意不带时间戳。从前每个响应都盖一个 fetchedAt，结果是**任何两次响应在字节
+ * 信封不带逐次变化的时间戳：每个响应都盖一个 fetchedAt 的话，**任何两次响应在字节
  * 层面都不同** —— 而 SWR 靠深比较决定要不要更新缓存，于是数据一个字节没变，
- * 每轮轮询也会让所有卡片重渲染一遍（充电头那条 400 点曲线、最近在听那个带布局
- * 动画的列表，全都白跑）。
+ * 每轮轮询也会让所有卡片重渲染一遍（充电头曲线、最近在听那个带布局动画的列表，
+ * 全都白跑）。真要知道服务端什么时候算的，看响应头 X-Fetched-At。
  *
- * 而且全站没有任何组件读它。真要知道服务端什么时候算的，看响应头 X-Fetched-At。
+ * 信封里的时间字段各有分工：
  *
- * `updatedAt` 不是那种时间戳：它只出现在可滞后层（见 lib/status-views 的 layer），
- * 是写入方最后一次成功取到这份数据的时刻，随写入方的节奏变，不随每次请求变。
- * 浏览器拿它按各卡的阈值判断这份是不是已经过时，以及首屏那份要不要挂载后补取。
- *
- * `servedAt` 是那种时间戳，但只为首帧：源站交出这份信封的时刻（epoch 毫秒，
- * statusEnvelope 盖）。首屏按卡缓存时它跟着冻住，首帧没有访客钟，按时间判过期
- * 的卡片拿它当钟 —— 服务端预渲染和 hydrate 读的是同一个值，判出来的就是填缓存
- * 那一刻源站会下的结论。浏览器轮询取回的信封在进 SWR 之前摘掉它（lib/status-reads
- * 的 withoutServedAt），上面那个重渲染的坑不会回来。
+ * - `updatedAt` 只出现在可滞后层（见 lib/status-views 的 layer），是写入方最后一次
+ *   成功取到这份数据的时刻，随写入方的节奏变，不随每次请求变。浏览器拿它按各卡的
+ *   阈值判断这份是不是已经过时，以及首屏那份要不要挂载后补取。
+ * - `servedAt` 是源站交出这份信封的时刻（epoch 毫秒，statusEnvelope 盖），只为首帧：
+ *   首屏按卡缓存时它跟着冻住，首帧没有访客钟，按时间判过期的卡片拿它当钟 ——
+ *   服务端预渲染和 hydrate 读的是同一个值，判出来的就是填缓存那一刻源站会下的结论。
+ *   浏览器轮询取回的信封在进 SWR 之前摘掉它（lib/status-reads 的 withoutServedAt），
+ *   上面那个重渲染的坑不会回来。
  */
 export type StatusResponse<T> =
   | { ok: true; data: T; updatedAt?: number; servedAt?: number }
@@ -856,12 +858,12 @@ export type PowerBankStatus = {
 export type PowerBankPayload = PowerBankStatus & {
   /** 源站最近一次收到充电宝模块的时刻 */
   pushedAt: number;
-  /** 这份数据自己的过期窗口；默认 90 秒，服务端可按上报间隔加长 */
+  /** 这份数据自己的过期窗口，由服务端的 powerBankStaleAfterMs() 定（不短于心跳窗口，可按上报间隔加长） */
   staleAfterMs: number;
 } & ReporterPresence;
 
 /**
- * 跨域活动脉搏（pulse）：最近 24 小时「在做什么」的事实时间线，首页 Pulse 卡片的底。
+ * 跨域活动脉搏（pulse）：最近一个窗口（PULSE_WINDOW_MS）「在做什么」的事实时间线，首页 Pulse 卡片的底。
  * 存储形状在 shared/pulse-timeline，对外那份在下面的 PulsePayload。
  *
  * 不叫 activity：那个名字在本仓库已经是 Apple Watch 圆环
@@ -891,8 +893,9 @@ export type PulsePayload = {
  * （`HKActivitySummary`），而且是人随时会调的；写死在站点里的话，改一次目标
  * 就要发一次版，还得两份部署一起改。
  *
- * 单位进字段名（AGENTS.md 第 4 条）：三环在 Apple 那边分别按千卡、分钟、小时
- * 计，三种单位摆在一起时，光看 `move` / `moveGoal` 认不出该配哪个。
+ * 单位进字段名（AGENTS.md「API 命名与跨端契约」的跨来源字段一行）：三环在 Apple
+ * 那边分别按千卡、分钟、小时计，三种单位摆在一起时，光看 `move` / `moveGoal` 认不出
+ * 该配哪个。
  */
 export type ActivityRings = {
   /** 活动：当天已消耗的活动能量，千卡 */
@@ -911,9 +914,10 @@ export type ActivityRings = {
  * 这里的「活动」是 Apple 的健身记录（Activity / 活动圆环）。
  *
  * `date` 是**手表本地的那一天**，站点绝不自己算：圆环在手表所在时区的午夜归零，
- * 而源站的钟在美国、访客的钟在任何地方，两边都答不出「手表那边今天是几号」。
- * `secondsFromGMT` 和 Mac 时区模块同名同单位（AGENTS.md 第 4 条），卡片拿它现算
- * 「手表那边现在是不是还是这一天」—— 跨过午夜之后，这份满环说的就是昨天了。
+ * 而源站和访客的钟都不在手表所在的时区，两边都答不出「手表那边今天是几号」。
+ * `secondsFromGMT` 和 Mac 时区模块同名同单位（AGENTS.md「API 命名与跨端契约」的
+ * 跨来源字段一行），据此现算「手表那边现在是不是还是这一天」—— 跨过午夜之后，这份
+ * 满环说的就是昨天了。
  */
 export type ActivityStatus = ActivityRings & {
   /** 手表本地日，YYYY-MM-DD */
@@ -949,16 +953,16 @@ export type ActivityPayload = ActivityStatus & {
    * 停在挂载那一天，跨夜之后新到的**今天**那份反而会被判成「昨天的记录」。
    *
    * 它是数据字段，服务端预渲染和 hydrate 读到的是同一个值，不会水合不一致。
-   * 端点每次请求现算，所以卡片那 5 分钟一轮的轮询就是它的刷新节奏；冻住的首屏
-   * 那份跟着首屏缓存（stale 300 / revalidate 600 / expire 7 天，见 lib/first-screen），
-   * 挂载时的那次回源会纠正它。
+   * 端点每次请求现算，卡片按 `STATUS_VIEWS.activity.cadenceMs` 排期取数（首屏逾期才在
+   * 挂载后补取，见 hooks/use-status），取回来的那份就带着最新的它；冻住的首屏那份
+   * 跟着首屏缓存（`cacheLife` 见 lib/first-screen）。
    */
   currentAtSource: boolean;
 };
 
 /**
- * 落地节点此刻的读数。单位进字段名（AGENTS.md 第 4 条）：字节、秒、百分比
- * 三种摆在一起，光看 `memory` / `uptime` 认不出该配哪个。
+ * 落地节点此刻的读数。单位进字段名（AGENTS.md「API 命名与跨端契约」的跨来源字段
+ * 一行）：字节、秒、百分比三种摆在一起，光看 `memory` / `uptime` 认不出该配哪个。
  *
  * `id` 是 SSH 配置里的那一个（`misaka-jp`），`hostname` 是机器自己报的
  * `uname`。两份都留：卡片上认的是人起的名字，出了问题对照机器要用另一份。
@@ -1060,8 +1064,8 @@ export type WorkoutsPayload = {
 /**
  * Pulse 公开出口的线上格式：**按列**，时刻是**相对 `window.from` 的整秒**。
  *
- * 24 小时几百段区间，从前一条一个对象，同一组字段名在首屏 HTML 与 RSC 里各重复
- * 上千遍，比数据本身还大；毫秒戳也换成最多 5 位的相对秒（泳道和悬停只精确到分钟）。
+ * 窗口内区间很多，按对象逐条发的话，同一组字段名在首屏 HTML 与 RSC 里要重复上千遍，
+ * 比数据本身还大；毫秒戳也换成短得多的相对秒（泳道和悬停只精确到分钟）。
  * 各列等长，第 i 行就是各列的第 i 个。卡片用 lib/pulse-columns 还原成行对象再画。
  * 还原时刻：`window.from + startSec * 1000`。
  *
@@ -1073,7 +1077,7 @@ export type PulseSpanColumns = { startSec: number[]; endSec: number[] };
 export type PulseCodingLane = {
   kind: "coding";
   segments: PulseSpanColumns & { value: number[] };
-  /** Jev 的十五分钟评估：强度 0–4、置信度、模式；只在悬停里出现 */
+  /** Jev 的窗口评估：强度 0–4、置信度、模式；只在悬停里出现 */
   assessments: PulseSpanColumns & { intensity: number[]; confidence: number[]; mode: (string | null)[] };
   summary: { humanSeconds: number; agentSeconds: number; bothSeconds: number };
 };
@@ -1114,7 +1118,8 @@ export type PulseStepsLane = {
 /**
  * coding agent 的 token 速率：各来源、各 agent、各模型相加后的五分钟桶，不带模型名和来源。
  * `fresh` = input + output + cache 写入（新处理的 token）；cache 读量级大一两个数量级，单列只进悬停。
- * 只出有用量的桶；首桶被窗口截断就丢，末桶截到有数来源里最晚的覆盖终点，不足 60 秒不画。
+ * 只出有用量的桶；首桶被窗口截断就丢，末桶截到有数来源里最晚的覆盖终点，太短不画
+ * （`TOKEN_MIN_SPAN_MS`，lib/pulse）。
  */
 export type PulseTokensLane = {
   kind: "tokens";
@@ -1123,8 +1128,8 @@ export type PulseTokensLane = {
     /** 画出来的桶里最大的 fresh 速率（tokens/min，桶长按截断后的实长算） */
     peakPerMinute: number | null;
     /**
-     * 最后一个桶在 generatedAt 前 10 分钟内结束时它的速率；否则任一来源的覆盖到了
-     * generatedAt − 10 分钟就是 0；都没有是 null（未知）
+     * 最后一个桶在 generatedAt 前 `TOKEN_CURRENT_MS`（lib/pulse）内结束时它的速率；否则
+     * 任一来源的覆盖到了 generatedAt − `TOKEN_CURRENT_MS` 就是 0；都没有是 null（未知）
      */
     currentPerMinute: number | null;
     /** 窗口内 fresh 合计 */

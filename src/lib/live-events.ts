@@ -18,39 +18,33 @@ import type {
  * 和「Mac 正在使用的应用」无关。
  *
  * 事件名和 /api/status/* 的路径一一对应：**`X` 是列表，`X/now` 是此刻**，
- * 事件这边写成 `X` 和 `X-now`。从前此刻那两条就叫 `listening` / `watching`，
- * 而同名的端点指的是列表，加上列表事件之后两套名字会正好错位。
+ * 事件这边写成 `X` 和 `X-now`。
  */
 export type LiveEvent =
   | { type: "desktop"; payload: DesktopPayload }
   | { type: "listening-now"; payload: NowListeningPayload }
   /**
-   * 「最近在听」列表变了，带整份数据。
-   *
-   * 这里曾经只发失效通知、让浏览器自己回来取，理由是「整份十几 KB，浏览器手上
-   * 多半只差一两项」—— 两句都不对。实测 4.4 KB；而且发通知之后浏览器照样把整份
-   * 取回来，字节一点没省，反倒多出一次请求头、一次往返、一个函数调用和一次
-   * SQLite 读，**并且是按在线人头乘的**。带数据推是严格更省的。
+   * 「最近在听」列表变了，带整份数据：只发失效通知的话，浏览器照样要把整份取回来，
+   * 反倒多出一次往返，**并且是按在线人头乘的**。带数据推是严格更省的。
    *
    * 充电头那条不带历史点是另一回事：那是增量同步，服务端不知道各客户端的游标。
-   * 列表是整份替换，没有游标这回事，不适用。
-   *
-   * 天花板从前是 Pusher 单条事件的 10 KB（4.4 KB 只有两倍余量）。换成自己的
-   * Worker 之后是 Cloudflare 的单条 WebSocket 消息上限 1 MiB，这条约束不再逼近。
+   * 列表是整份替换，没有游标这回事，不适用。单条消息受 Cloudflare WebSocket
+   * 消息上限约束，列表整份要保持在其内。
    */
   | { type: "listening"; payload: ListeningPayload }
   /**
-   * 只在插拔、换设备这类结构性变化时发，不跟功率/电压/电流的滚动走 ——
-   * 那些量充电时每个上报周期都在变，推它们等于把推送当轮询用。
-   * 滚动读数仍由卡片自己的 SWR 轮询负责。
+   * 在插拔、换设备这类结构性变化时发，以及那之后的收敛窗口里（判据见
+   * lib/charging-settling）：采集端在那段时间会追发，功率还在往稳定值收敛。
+   * 平时不跟功率/电压/电流的滚动走 —— 那些量充电时每个上报周期都在变，推它们
+   * 等于把推送当轮询用，滚动读数仍由卡片自己的 SWR 轮询负责。
    *
    * 带完整状态但**不带历史点**：推送是广播，服务端不知道每个客户端的曲线
-   * 游标，只能要么整份重发（400 个点约 15KB）要么不发。所以按「空增量」发 ——
+   * 游标，只能要么整份重发要么不发。所以按「空增量」发 ——
    * `historyPartial: true` + 空数组，客户端沿用自己已有的曲线，端口和功率
    * 立刻更新。合并逻辑在 lib/charger-history，和轮询那条共用。
    */
   | { type: "charger"; payload: ChargerPayload }
-  /** 充电宝：插拔、充放电切换、热控翻转、整数电量跳格时推一条 */
+  /** 充电宝：发送时机同充电头（结构性变化及其后的收敛窗口）；整份快照，没有历史曲线 */
   | { type: "powerbank"; payload: PowerBankPayload }
   /**
    * coding agent 此刻：某个来源报来的最近用量事件变了。带整份 `/api/status/coding/now`，
@@ -64,11 +58,11 @@ export type LiveEvent =
    * 单独成一种事件，而不是借 desktop / listening 推：前端要能分清「上报器
    * 离线了」和「前台应用变了」，而且需要知道离线的不止那两张卡。
    *
-   * 唯一的发出点是 workers/api/src/stores/telemetry 的 commitPreparedTelemetryEnvelope（存活只在那里翻转），
-   * 走 fanout 的 `notify` 那半 —— 它不带数据，浏览器收到就回源，所以必须排在写
-   * 后面，理由见下面 fanout 的规则 2。浏览器那侧重取哪几份见 hooks/use-live-events 的
-   * PRESENCE_PATHS：coding 只重取此刻那份（活动灯里 mac 那一路靠它在优雅离开时立刻熄），
-   * 用量是累计的历史事实，Mac 掉线不会让它变假。
+   * 唯一的发出点是 workers/api/src/stores/telemetry 的 commitPreparedTelemetryEnvelope
+   * （存活只在那里翻转），走 fanout 的 `notify` 那半 —— 它不带数据，浏览器收到就回源，
+   * 所以必须排在写后面（workers/api/src/fanout.ts 先等 writes 落库再发布）。浏览器那侧
+   * 重取哪几份见 hooks/use-live-events 的 PRESENCE_PATHS：coding 只重取此刻那份（活动灯里
+   * mac 那一路靠它在优雅离开时立刻熄），用量是累计的历史事实，Mac 掉线不会让它变假。
    */
   | { type: "presence"; payload: null }
   /**
@@ -76,8 +70,8 @@ export type LiveEvent =
    * 重问同源的 `/api/version`（不是 `/api/status/*`，事件名按同一规则取 `version`）。
    * 不带 sha —— 回滚、别名切换时只有域名上那次部署自己答得准。
    *
-   * 唯一的发出点是 Worker 的 `/api/internal/site-deployed`，由 GitHub Actions
-   * （.github/workflows/purge-esa.yml）在确认两个域名都答新 sha 之后调用。
+   * 唯一的发出点是上报入口 Worker 的 `/api/internal/site-deployed`（转给状态核心广播），
+   * 由 GitHub Actions（.github/workflows/purge-esa.yml）在确认两个域名都答新 sha 之后调用。
    */
   | { type: "version"; payload: null }
   /**
@@ -93,7 +87,7 @@ export type LiveEvent =
    * 所以直接带数据。
    */
   | { type: "watching-now"; payload: NowWatchingPayload }
-  /** 「最近在看」列表变了。和上面那条 listening 同一个形状、同一个理由。实测 2.8 KB */
+  /** 「最近在看」列表变了。和上面那条 listening 同一个形状、同一个理由。 */
   | { type: "watching"; payload: WatchingPayload }
   /** PlayStation 此刻在线 / 在玩状态。 */
   | { type: "playing-now"; payload: PlaystationPresencePayload }
@@ -101,8 +95,8 @@ export type LiveEvent =
   | { type: "playing"; payload: PlaystationPlayingPayload }
   /**
    * PlayStation 奖杯变了（解锁、新 DLC、等级）。带的是摘要 —— 等级、合计、最近
-   * 解锁、各款进度，和 `/api/status/trophies` 无参回的同一份，实测 8 KB 级。
-   * 整份目录每个奖杯都带说明和图标，几百 KB 还要乘在线人头，不推；展开着的
+   * 解锁、各款进度，和 `/api/status/trophies` 无参回的同一份。
+   * 整份目录每个奖杯都带说明和图标，体积大还要乘在线人头，不推；展开着的
    * 瓷砖收到这条自己去重取那一两款的切片。
    */
   | { type: "trophies"; payload: TrophiesSummaryPayload };

@@ -1,7 +1,7 @@
 /**
  * 服务器上报报文的类型收敛。
  *
- * 这份文件不碰 SQLite：校验是纯函数，测试和入库走同一条。
+ * 这份文件不碰存储：校验是纯函数，测试和入库走同一条。
  */
 
 import { number, object, text } from "./json.ts";
@@ -95,7 +95,7 @@ function requiredIp(row: Record<string, unknown>): string {
 /**
  * 把上报器的报文收敛成对外契约。
  *
- * 字节、秒、百分比都进字段名（AGENTS.md 第 4 条）。站点不替上报器做单位换算：
+ * 字节、秒、百分比都进字段名（AGENTS.md「API 命名与跨端契约」的跨来源字段一行）。站点不替上报器做单位换算：
  * `/proc` 读出来是什么，上报器转完再发。
  */
 export function normalizeServer(input: unknown): ServerStatus {

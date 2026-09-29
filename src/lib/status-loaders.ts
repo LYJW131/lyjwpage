@@ -70,7 +70,7 @@ export const statusLoaders = {
   playingNow: { endpoint: unparam(getPlayingNow) },
   /**
    * 无参是摘要（和首屏字段、`trophies` 推送同一个形状），带 `?titleids=` 是那几款的
-   * 完整目录切片。整份目录几百 KB，没有谁需要一次拿全，所以不再有「裸读整份」这一档。
+   * 完整目录切片。整份目录体积大，没有谁需要一次拿全，所以没有「裸读整份」这一档。
    */
   trophies: {
     endpoint: async ({ titleIds }: StatusLoaderParams) => {
@@ -103,7 +103,7 @@ type EndpointValue<L> = L extends { endpoint: (params: StatusLoaderParams) => Pr
  */
 export type EndpointPayloadOf<K extends StatusLoaderKey> = EndpointValue<StatusLoaders[K]>;
 
-/** 按登记表的 path 取数。返回 unknown：各端点 payload 形状不同，信封层再包。 */
+/** 按 `EndpointViewKey` 取数（`statusLoaders[key]`）。返回 unknown：各端点 payload 形状不同，信封层再包。 */
 export function loadEndpoint(key: EndpointViewKey, params: StatusLoaderParams = {}): Promise<unknown> {
   const endpoint: (args: StatusLoaderParams) => Promise<unknown> = statusLoaders[key].endpoint;
   return endpoint(params);

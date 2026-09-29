@@ -2,16 +2,15 @@ import { requestState } from "@shared/request-state";
 import { askStorage, key, tellStorage, withStorage } from "@/lib/storage";
 
 /**
- * 通用 TTL 缓存 + in-flight 去重 + 负缓存。
- *
- * 给还需要本站主动去拉的上游用（Apple Music 目录、GitHub 贡献日历；
- * 其余状态源都是推进来的）：
+ * 通用 TTL 缓存 + in-flight 去重 + 负缓存，给需要本站主动去拉的上游用：
  * - 同一个 key 并发进来时只会真正打一次上游，其余人等同一个 Promise
  * - 上游报错时短暂缓存错误，避免上游挂掉后被前端轮询打爆
  *
- * 值存在 SQLite 里，进程重启和多实例都能共享。没配 SQLite 就退回进程内存。
- * in-flight 去重始终是进程内的 —— 它要挡的是同一进程内的并发穿透，
- * 这件事 SQLite 代劳不了。
+ * 值存在 `lib/storage-driver` 背后的驱动里（api Worker 是 DO SQLite，采集 Worker 是
+ * KV），重启和多实例都能共享。Worker 驱动下存储故障直接抛出，不退回内存；进程内存
+ * 那份只在存储不可达时兜底（Node 驱动）。in-flight 去重不落存储，按 requestState 的
+ * 作用域走（没有作用域时是进程全局那一份）—— 它要挡的是同一作用域内的并发穿透，
+ * 这件事存储代劳不了。
  */
 
 type Entry = {
@@ -28,9 +27,9 @@ const inflightMap = () => requestState("cache-inflight", () => new Map<string, P
  * 进程内那份副本的条数上限。
  *
  * 过期项只在被命中时才顺手删，没有周期清扫 —— 键是「歌名+歌手+专辑」这种一首歌
- * 一条、TTL 七天的东西，serverless 上有实例寿命兜着，`next start` 那种长驻进程上
- * 却是只增不减。Map 的插入顺序顺便充当 LRU，和 telemetry 的 rememberDesktopIcon
- * 同一套写法。它只是 SQLite 不可达时的备份，几百条足够。
+ * 一条、TTL 很长的东西，短命的实例有寿命兜着，长驻进程上却是只增不减。Map 的
+ * 插入顺序顺便充当 LRU，和 telemetry 的 rememberDesktopIcon 同一套写法。它只是
+ * 存储不可达时的备份，几百条足够。
  */
 const MEMORY_LIMIT = 500;
 
@@ -64,18 +63,16 @@ function memorySet(k: string, value: unknown, ttlMs: number, persisted: boolean)
 }
 
 /**
- * SQLite 答得上话就以它为准，**它说没有就是没有**；只有不可达才退回进程内存。
+ * 存储答得上话就以它为准，**它说没有就是没有**；只有不可达才退回进程内存。
  *
- * 从前是 `withStorage(get, null)`，「SQLite 说 null」和「SQLite 连不上」在外面长得
- * 一模一样，都会落到内存副本 —— 于是清空 SQLite、或者另一个实例 `remove()` 掉的
- * 值，在本进程里还按原 TTL 活着（Apple 链接那份是 7 天）。mirrorKey 早就为同一
- * 个坑改用 askSQLite 了，这里对齐。
+ * 「存储说 null」和「存储连不上」必须分开（`askStorage` 就是为此把两者拆成
+ * `reachable`）：混了的话，清空存储、或者另一个实例 `remove()` 掉的值，在本进程里
+ * 还会按原 TTL 活着。和 lib/storage 的 mirrorKey 同一条规则。
  *
- * 唯一的例外是**上次写没落进去**的那条（`persisted` 为假）：SET 被拒（OOM、
- * WRONGTYPE）不触发 error 事件，SQLite 仍算可达，那份值却只在本进程内存里。
- * 这时 SQLite 说 null 不是「被人删了」而是「从没写进去」，得继续用内存那份 ——
- * 不然 cached() 每次都重跑 loader，5 秒负缓存也一起失灵，恰好在 SQLite 不对劲
- * 的时候把上游打得最狠。和 mirrorKey 的 persisted 是同一条规则。
+ * 唯一的例外是**上次写没落进去**的那条（`persisted` 为假）：当时存储不可达，之后
+ * 恢复了，那份值却只在本进程内存里。这时存储说 null 不是「被人删了」而是「从没写进
+ * 去」，得继续用内存那份 —— 不然 cached() 每次都重跑 loader，负缓存也一起失灵，
+ * 恰好在存储不对劲的时候把上游打得最狠。和 mirrorKey 的 persisted 是同一条规则。
  */
 export async function get<T>(k: string): Promise<T | undefined> {
   const answer = await askStorage((storage) => storage.get(key("cache", k)));
@@ -93,11 +90,11 @@ export async function get<T>(k: string): Promise<T | undefined> {
 }
 
 export async function put<T>(k: string, value: T, ttlMs: number) {
-  // PX 只吃整数：带小数的 TTL（比如按半衰期除出来的 x.5 毫秒）会让 SQLite 拒掉
-  // 整条 SET，错误再被 withSQLite 静默吞掉 —— 值就只活在本进程内存里，
-  // 表现成「共享缓存时灵时不灵」。约束在这层收口，不指望每个调用方自己取整。
+  // 存储契约要求 TTL 是正整数（shared/storage-contract 的 validTtl）：带小数的 TTL
+  // （比如按半衰期除出来的 x.5 毫秒）整条 set 都会被拒。约束在这层收口（向上取整，
+  // 再设个下限），不指望每个调用方自己取整。
   const ttl = Math.max(1_000, Math.ceil(ttlMs));
-  // 先按「没落进去」写内存：SQLite 那一步在飞时并发的 get 也能拿到这份
+  // 先按「没落进去」写内存：存储那一步在飞时并发的 get 也能拿到这份
   memorySet(k, value, ttl, false);
   const persisted = await tellStorage((storage) =>
     storage.set(key("cache", k), JSON.stringify(value), { ttlMs: ttl }),
@@ -106,22 +103,22 @@ export async function put<T>(k: string, value: T, ttlMs: number) {
 }
 
 /**
- * 抢下接下来这段时间的独占：抢到 true，这段时间里别人一律 false。
+ * 抢下接下来这段时间的独占：抢到 true，这段时间里别人一律 false（`ifAbsent` 写）。
  *
- * `SET NX PX` 是原子的 —— 这正是 `cached()` 给不了的那半。它的值要等 loader
- * 回来才写，于是**取数的那一两秒里闸门还是空的**，别的实例照样穿过去（它的
- * in-flight 去重只在进程内，挡不住跨实例）。给「按节奏去拉一次上游」这种事
- * 用：先抢，抢到才拉，TTL 到了才轮到下一个。
+ * 这正是 `cached()` 给不了的那半：它的值要等 loader 回来才写，于是**取数的那一两秒里
+ * 闸门还是空的**，别的实例照样穿过去（它的 in-flight 去重挡不住跨实例）。给「按节奏
+ * 去拉一次上游」这种事用：先抢，抢到才拉，TTL 到了才轮到下一个。
  *
- * SQLite 不可达时返回 true：没有共享闸门可用时，宁可让每个实例各自按自己的节奏
- * 去拉（调用方那道进程内的时刻仍然管着频率），也好过一次都不拉 —— 本地开发
- * 不配 SQLite 就是这种情况。
+ * 原子性取决于驱动：api Worker 的 DO SQLite 是原子的；采集 Worker 的 KV 是先读后写，
+ * 不能当跨实例的锁。Worker 驱动下存储故障会抛出；只有不可达的 Node 驱动才返回
+ * true —— 没有共享闸门可用时，宁可让每个实例各自按自己的节奏去拉（调用方那道进程内
+ * 的时刻仍然管着频率），也好过一次都不拉。
  *
  * 抢到之后失败了不回滚，那一段就是空过：这是有意的，上游正病着的时候不该由
  * 下一个请求立刻再试一次。
  */
 export async function claim(k: string, ttlMs: number): Promise<boolean> {
-  // PX 只吃整数，理由同上面 put 里那段
+  // TTL 必须是正整数，理由同上面 put 里那段
   const ttl = Math.max(1_000, Math.ceil(ttlMs));
   return withStorage(
     async (storage) => (await storage.set(key("cache", k), "1", { ttlMs: ttl, ifAbsent: true })) === true,
@@ -130,7 +127,7 @@ export async function claim(k: string, ttlMs: number): Promise<boolean> {
 }
 
 /**
- * 主动作废一条：内存和 SQLite 两层一起删。
+ * 主动作废一条：内存和存储两层一起删。
  *
  * 给「缓存的值被上游判了死刑」的场景用 —— TTL 还没到、但值已经确认失效
  * （比如动态封面那份扒来的 web token 吃了 401），等它自然过期只会让失效
@@ -149,9 +146,8 @@ export async function cached<T>(
   /**
    * 值和负缓存一起问，不串着问。
    *
-   * 命中时那条负缓存的 GET 是白问的 —— 但它和值那条在同一条连接上并发发出、
-   * 在网络上重叠，多花的是 SQLite 的一点点力气，不是一个来回。没命中时省下的
-   * 才是实打实的一个来回，而那正是要紧的时候：换歌那一刻要现查目录，
+   * 命中时那条负缓存的读是白问的 —— 但两条读并发发出、往返重叠，不多花一个来回。
+   * 没命中时省下的才是实打实的一个来回，而那正是要紧的时候：换歌那一刻要现查目录，
    * 「此刻在听」的推送就压在这条链路上。
    */
   const [hit, failure] = await Promise.all([

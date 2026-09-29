@@ -7,12 +7,12 @@ import {
 import type { ListeningItem } from "@/lib/types";
 
 export const PLAYLIST_ROW_HEIGHT_PX = 32;
-export const PLAYLIST_PADDING_Y_PX = 12; // py-1.5 (上下各 6px 内边距)
-export const PLAYLIST_BORDER_TOP_PX = 1; // border-t (1px 上边框)
-export const PLAYLIST_EXTRA_HEIGHT_PX = PLAYLIST_PADDING_Y_PX + PLAYLIST_BORDER_TOP_PX; // 13px
+export const PLAYLIST_PADDING_Y_PX = 12; // 对应 py-1.5（上下内边距）
+export const PLAYLIST_BORDER_TOP_PX = 1; // 对应 border-t（上边框）
+export const PLAYLIST_EXTRA_HEIGHT_PX = PLAYLIST_PADDING_Y_PX + PLAYLIST_BORDER_TOP_PX;
 export const PLAYLIST_MAX_VISIBLE_ROWS = 7;
 export const PLAYLIST_MAX_HEIGHT_PX =
-  PLAYLIST_MAX_VISIBLE_ROWS * PLAYLIST_ROW_HEIGHT_PX + PLAYLIST_EXTRA_HEIGHT_PX; // 237px (14.8125rem)
+  PLAYLIST_MAX_VISIBLE_ROWS * PLAYLIST_ROW_HEIGHT_PX + PLAYLIST_EXTRA_HEIGHT_PX;
 
 /**
  * 会话期间的歌单缓存：key 为专辑/歌单 ID，value 为曲目列表。
@@ -46,7 +46,7 @@ export function computePlaylistHeight(itemCount: number): number {
 }
 
 /**
- * 将歌单滚动距离吸附到最近的曲目整行（32px 的整数倍），保证停滚时曲目始终与上下边框对齐。
+ * 将歌单滚动距离吸附到最近的曲目整行（`PLAYLIST_ROW_HEIGHT_PX` 的整数倍），保证停滚时曲目始终与上下边框对齐。
  */
 export function snapPlaylistScrollTop(scrollTop: number, maxScroll: number): number {
   if (maxScroll <= 0) return 0;
@@ -103,9 +103,6 @@ export function getMusicAuthServerSnapshot(): boolean {
   return false;
 }
 
-/**
- * 更新授权状态快照并通知订阅者（如 UI 组件与 hook）。
- */
 export function setMusicAuthSnapshot(authorized: boolean): void {
   if (authSnapshot === authorized) return;
   authSnapshot = authorized;

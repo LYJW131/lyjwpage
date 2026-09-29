@@ -3,8 +3,8 @@
  * 内联脚本写到 `html[data-heatmap]`，首帧就能对上，不必等 React 水合。
  *
  * 两个取值就叫 "tokens" / "commit"：localStorage 值、`data-heatmap`、面板和
- * 页签的 data-* 属性、React 状态全线同一套词 —— 从前 React 侧另叫
- * "coding" / "github"，每过一层翻一次，对着 DOM 调试时对不上号。
+ * 页签的 data-* 属性、React 状态全线同一套词，层与层之间不翻译，对着 DOM
+ * 调试时才对得上号。
  */
 
 export const HEATMAP_STORAGE_KEY = "heatmap";

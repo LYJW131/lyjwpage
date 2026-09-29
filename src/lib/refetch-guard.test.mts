@@ -49,7 +49,7 @@ test("账本：更晚发出的落地了，之前的丢弃不欠；先落地的�
  * 就被丢弃（被更晚的顶掉），是当前但和一次推送重叠也被丢弃，否则被接受；失败既不接受
  * 也不丢弃。结果在交给 SWR 之前先出账，宏任务里再看欠不欠补取。数出整个时间窗里发了几条。
  *
- * `policy: "always"` 是改之前的做法：被丢弃就立刻再问。
+ * `policy: "always"` 是被丢弃就立刻再问的做法，用来复现无限接力。
  */
 function simulate(options: {
   initial: number;
@@ -90,7 +90,7 @@ function simulate(options: {
 }
 
 test("两个消费者同时补取：从前「被丢就再问」无限接力，记账之后到此为止", () => {
-  // 2026-09 生产事故的形状：一个键两个消费者，挂载补取两条并发，往返 450 ms，观察 30 秒
+  // 事故的形状：一个键两个消费者，挂载补取两条并发，往返 450 ms，观察 30 秒
   const before = simulate({ initial: 2, latencyMs: 450, horizonMs: 30_000, policy: "always" });
   const after = simulate({ initial: 2, latencyMs: 450, horizonMs: 30_000, policy: "ledger" });
   assert.ok(before > 100, `从前应当停不下来，实际只发了 ${before} 条`);

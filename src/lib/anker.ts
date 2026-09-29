@@ -14,17 +14,15 @@ import type { ChargerPayload, ChargerStatus } from "@/lib/types";
  */
 
 /**
- * 默认 90 秒；上报间隔配得更长时按 3 倍加长，不能短于默认。
+ * 充电头这一路多久没续上就算断流：默认 `CHARGER_STALE_MS`；上报间隔
+ * （`CHARGER_PUSH_INTERVAL_MS`）配得更长时按 3 倍加长，不能短于默认。
  *
  * **也不能短于心跳窗口。** 续 `pushedAt` 的不只是充电头快照 —— 任何一封把
- * charger 列进 activeModules 的信封都会续（纯心跳走 charger-store 的
- * prepareHeartbeat）。所以「多久没续上」的下限不是充电头的上报间隔，而是心跳
- * 间隔：安静时段没有新读数可发，唯一在续它的就是那条空心跳。
- *
- * 心跳从 30 秒放宽到 90 秒之前这一条不成立也无所谓 —— 30 秒续一次、窗口 90 秒，
- * `pushedAt` 这个判据在 Mac 活着时永远踩不到。放宽之后两者一样长，心跳但凡晚
- * 一点点就越界，卡片会在安静时段闪回「充电器未连接」。上报器整个死掉那种情况
- * 本来就由 Mac 存活（lastSeenAt / heartbeatWindowMs）管，不靠这一条。
+ * charger 列进 activeModules 的信封都会续（纯心跳走 workers/api/src/stores/charger-store
+ * 的 prepareHeartbeat）。所以「多久没续上」的下限不是充电头的上报间隔，而是心跳
+ * 间隔：安静时段没有新读数可发，唯一在续它的就是那条空心跳。窗口若比心跳间隔短，
+ * 心跳但凡晚一点点就越界，卡片会在安静时段闪回「充电器未连接」。上报器整个死掉
+ * 那种情况由 Mac 存活（lastSeenAt / heartbeatWindowMs）管，不靠这一条。
  *
  * 两扇窗口都由浏览器拿自己的钟判（lib/freshness 的 liveChargingFeed），源站只给
  * 原样的 connected 和时刻，不在读取时把 connected 打成 false。
@@ -44,12 +42,10 @@ function withCoverIconUrl<T extends { cover: ChargerStatus["cover"] }>(payload: 
 }
 
 /**
- * `since` 是客户端已有的最新采样点时刻，只回传比它更新的部分。
+ * 完整快照：带整条历史曲线（`CHARGER_HISTORY_LIMIT` 个点）。增量由调用方再过
+ * sliceChargerHistory：客户端每次取只多出一两个点，整份重传的话绝大部分是重复数据。
  *
- * 曲线有 400 个点、约 15KB，而前端 30 秒取一次、每次实际只多出一两个点 ——
- * 整份重传的话 99% 是重复数据。
- *
- * connected 是 SQLite 里原样的那份；过期收卡由浏览器判，见 chargerStaleAfterMs。
+ * connected 是存储里原样的那份；过期收卡由浏览器判，见 chargerStaleAfterMs。
  */
 export async function getChargerSnapshot(): Promise<ChargerPayload> {
   const stored = await getStored();
@@ -70,7 +66,10 @@ export async function getChargerSnapshot(): Promise<ChargerPayload> {
   );
 }
 
-/** 按客户端游标切历史。不重读 Storage，给缓存命中之后的增量路径用。 */
+/**
+ * 按客户端游标切历史。`since` 是客户端已有的最新采样点时刻，只回传比它更新的部分。
+ * 不重读 Storage，给缓存命中之后的增量路径用。
+ */
 export function sliceChargerHistory(payload: ChargerPayload, since?: number): ChargerPayload {
   const all = payload.history;
   const oldest = all[0]?.t;
@@ -88,13 +87,9 @@ export function sliceChargerHistory(payload: ChargerPayload, since?: number): Ch
 }
 
 /**
- * 插拔时推给浏览器的那一份，全部拿手上现成的东西拼，一次 SQLite 都不读。
- *
- * 从前这里是 `getChargerPayload({ since: Date.now() })`：为了得到一份「不带历史
- * 点的增量」，先要把整条 400 点曲线读回来，再让 sliceChargerHistory 原样丢掉 ——
- * 三次往返换一个空数组。更要命的是它读的是这次上报刚写的那个键，于是推送只能
- * 排在写库后面。而这三样其实都在手上：状态是刚收到的，pushedAt 就是收到的时刻，
- * 曲线只需要知道服务端那边还有没有点。
+ * 推给浏览器的那一份，全部拿手上现成的东西拼，不读存储：状态是刚收到的，pushedAt
+ * 就是收到的时刻，曲线只需要知道服务端那边还有没有点。这样推送不必排在写库后面，
+ * 也不必为一个「不带历史点的增量」把整条曲线读回来再丢掉。
  *
  * `historyCount` 为 0 时发的是整份（空的）快照，让客户端把自己那条也清掉 ——
  * 服务端手上什么都没有时，客户端不该继续画一条谁也对不上的曲线。

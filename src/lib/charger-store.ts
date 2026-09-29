@@ -14,7 +14,7 @@ function fromMemory(): Stored | null {
 
 async function readLatest(): Promise<Stored | null> {
   const answered = await askStorage((storage) => storage.get(K_LATEST));
-  // SQLite 答不上话，只能信内存
+  // 存储答不上话，只能信内存
   if (!answered.reachable) return fromMemory();
 
   if (answered.value) {
@@ -25,7 +25,7 @@ async function readLatest(): Promise<Stored | null> {
       // 脏数据按「答不上来」算，不按「没有」—— 否则会连累好好的内存副本
       return fromMemory();
     }
-    // 写失败过时内存这份更新，别被 SQLite 里故障前的旧值盖回去
+    // 写失败过时内存这份更新，别被存储里故障前的旧值盖回去
     if (!fallback.persisted && fallback.latest && fallback.receivedAt > stored.receivedAt) {
       return fromMemory();
     }
@@ -39,7 +39,7 @@ async function readLatest(): Promise<Stored | null> {
     return { ...stored, disconnectedAt: disconnectedAt || null };
   }
 
-  // SQLite 说没有：写进去过就是真被删了
+  // 存储说没有：写进去过就是真被删了
   if (fallback.persisted) {
     fallback.latest = null;
     fallback.receivedAt = 0;
@@ -51,7 +51,7 @@ async function readLatest(): Promise<Stored | null> {
 }
 
 /**
- * 曲线不比时间戳，比 latest 那份就够 —— 两者同一次写入、同生共死。SQLite 故障
+ * 曲线不比时间戳，比 latest 那份就够 —— 两者同一次写入、同生共死。存储故障
  * 窗里漏掉几个功率点在图上看不出来，为它单独记一套新旧不值当。
  *
  * 裁决和取数分开：两条命令要能和快照那条同时发车（见 readChargerState），
@@ -90,11 +90,9 @@ async function readHistory(): Promise<ChargerSample[]> {
 }
 
 /**
- * 这次上报要用到的两份，同时发车。
- *
- * 两条命令写进同一条连接，在网络上是重叠的 —— 一个来回拿回两份，不用真去组
- * pipeline。调用方在信封解析完的那一刻就该调它，然后揣着这个 promise 往下走，
- * 到充电头分支再 await：那样它和状态、存活那两条读也是重叠的。
+ * 这次上报要用到的两份：并行取得快照与历史，再统一裁决。调用方在信封解析完的
+ * 那一刻就该调它，然后揣着这个 promise 往下走，到充电头分支再 await：那样它和
+ * 状态、存活那两条读也是重叠的。
  */
 export async function readChargerState(): Promise<ChargerState> {
   const [previous, history] = await Promise.all([readLatest(), askHistory()]);

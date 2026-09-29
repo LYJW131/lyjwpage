@@ -7,7 +7,7 @@ function reason(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** 读路径的调用方仍从这里拿；类本身在 lib/awaiting-report，理由见那边 */
+/** 类本身在 lib/awaiting-report，这里只是再导出 */
 export { AwaitingReport };
 
 /**
@@ -38,7 +38,7 @@ export function sinceDateParam(request: Request): string | undefined {
  *
  * 和上面几个游标不同，这条要分清**缺席**和**空**：缺席是「要整份」，空是「一款
  * 都不要」。客户端的键是按打开的那块瓷砖拼出来的，拼出空集时它要的就是空 ——
- * 那时退回整份等于把几百 KB 发给一个什么都不显示的面板。
+ * 那时退回整份等于把整份目录发给一个什么都不显示的面板。
  */
 export function titleIdsParam(request: Request): string[] | undefined {
   const raw = new URL(request.url).searchParams.get("titleids");

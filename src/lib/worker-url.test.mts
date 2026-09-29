@@ -29,6 +29,6 @@ test("没配就是 null —— 对应「这个功能整体停用」，不是抛�
 test("配坏了也返回 null，不把不合法的地址传给 fetch / WebSocket", () => {
   assert.equal(workerUrl("live.example.com", "/ws"), null, "缺协议");
   assert.equal(workerUrl("不是地址", "/ws"), null, "根本不是 URL");
-  // 已经写成 wss:// 的旧写法要被挡下来：推导规则要求填 http(s) 源
+  // 已经写成 wss:// 的要被挡下来：推导规则要求填 http(s) 源
   assert.equal(workerUrl("wss://live.example.com/ws", "/ws", { websocket: true }), null);
 });

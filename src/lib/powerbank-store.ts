@@ -9,7 +9,7 @@ function fromMemory(): Stored | null {
 
 async function readLatest(): Promise<Stored | null> {
   const answered = await askStorage((storage) => storage.get(K_LATEST));
-  // SQLite 答不上话，只能信内存
+  // 存储答不上话，只能信内存
   if (!answered.reachable) return fromMemory();
 
   if (answered.value) {
@@ -20,7 +20,7 @@ async function readLatest(): Promise<Stored | null> {
       // 脏数据按「答不上来」算，不按「没有」—— 否则会连累好好的内存副本
       return fromMemory();
     }
-    // 写失败过时内存这份更新，别被 SQLite 里故障前的旧值盖回去
+    // 写失败过时内存这份更新，别被存储里故障前的旧值盖回去
     if (!fallback.persisted && fallback.latest && fallback.receivedAt > stored.receivedAt) {
       return fromMemory();
     }
@@ -30,7 +30,7 @@ async function readLatest(): Promise<Stored | null> {
     return stored;
   }
 
-  // SQLite 明确说没有：内存那份没落库过才还算数，落过库说明是真被清了
+  // 存储明确说没有：内存那份没落库过才还算数，落过库说明是真被清了
   return fallback.persisted ? null : fromMemory();
 }
 

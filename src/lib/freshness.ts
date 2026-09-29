@@ -8,23 +8,22 @@ import type { NowListeningPayload } from "@/lib/types";
  */
 
 /**
- * 上报器每 90 秒心跳一次。窗口默认三倍多一点：漏一条或 ingest 冷启动慢一点
- * 都不该翻掉线，连续三次没到才算崩溃 / 断网。优雅离开走 declaredOffline，
+ * Mac 上报器的心跳窗口：取上报器心跳间隔的三倍多一点。漏一条或 ingest 冷启动慢
+ * 一点都不该翻掉线，连续三次没到才算崩溃 / 断网。优雅离开走 declaredOffline，
  * 不等这个窗口。
  *
- * 从 30 秒 / 90 秒放宽到 90 秒 / 300 秒。纯心跳是 /api/ingest/mac 的主要流量
- * —— 实测 12 小时 1.9K 次调用里约三分之二是它，而它是全站函数用量最大的一条
- * 路径。这段间隔唯一换掉的是「崩溃 / 断网 / 强制关机」的判定延迟：关盖、睡眠、
- * 退出都走 declaredOffline，仍然是收到那一条就瞬时翻转，日常体验不变。
+ * 纯心跳是 /api/ingest/mac 的主要流量，窗口放宽是为了让上报器能降低心跳频率。
+ * 这段窗口唯一换掉的是「崩溃 / 断网 / 强制关机」的判定延迟：关盖、睡眠、退出都走
+ * declaredOffline，仍然是收到那一条就瞬时翻转，日常体验不变。
  *
- * ⚠️ 顺序不能反：**窗口先放宽，上报器再降频**。反过来做的话，中间那段时间
- * 上报器 90 秒才来一条、而站点还按 90 秒判，每一轮都踩在窗口边上，全站会
- * 断续显示离线。上报器那侧的间隔在 MacTelemetryHub 的 ServiceController
- * 主循环里（心跳补发的那个下限），两边都改完才算改完。
+ * ⚠️ 顺序不能反：**窗口先放宽，上报器再降频**。反过来做的话，中间那段时间上报器
+ * 的间隔已经拉长、而站点还按旧窗口判，每一轮都踩在窗口边上，全站会断续显示离线。
+ * 上报器那侧的间隔在 MacTelemetryHub 的 ServiceController 主循环里（心跳补发的
+ * 那个下限），两边都改完才算改完。
  *
- * 服务端可用 HEARTBEAT_WINDOW_MS 改 —— 注意生产环境里这个变量是显式配着的，
- * 改这里的默认值不会自动生效，数据后端的有效配置也要同步核对。
- * 浏览器用 payload 里盖上的那份，和充电头的 staleAfterMs 同一套。
+ * 服务端可用环境变量 HEARTBEAT_WINDOW_MS 覆盖 —— 已显式配置的环境不会随这里的
+ * 默认值变化，数据后端的有效配置也要同步核对。浏览器用 payload 里盖上的那份，
+ * 和充电头的 staleAfterMs 同一套。
  */
 export const HEARTBEAT_WINDOW_MS = 300_000;
 
@@ -36,8 +35,9 @@ export function heartbeatWindowMs() {
 /**
  * 各 agent 的限额由 NAS 上的容器上报器走 `/api/ingest/agents` 推，**每轮必发**
  * （内容没变也发，那一封就是心跳），所以「多久没刷新」等价于「上报器还活着没有」。
- * 限额使用三档：可见 5 分钟、仅开着 10 分钟、无人 60 分钟。
- * 窗口锚最慢档，三轮 60 分钟加 5 分钟缓存余量，默认 185 分钟。
+ * 上报器按页面人数分三档调频（`reporters/agents-reporter` 的 `LIVE_INTERVAL_MS` /
+ * `OPEN_INTERVAL_MS` / `IDLE_INTERVAL_MS`）。窗口锚最慢的 idle 档：覆盖它的三轮，
+ * 再加一段缓存余量。
  *
  * 上报器 `IDLE_INTERVAL_MS` 改长时，站点 `AGENT_LIMITS_STALE_MS` 必须跟着放宽。
  * 顺序同上面几条：**窗口先放宽，站点部署完，上报器再降频**。限额在可滞后层
@@ -51,32 +51,30 @@ export const AGENT_LIMITS_STALE_MS = 185 * 60_000;
  * 取三轮多一点：漏一两轮不该让卡片翻脸，连着三轮没到才算 Worker 死了、或者 PSN
  * 把它的令牌拒了。
  *
- * 一轮多久要看有没有人在看这个站点：Worker 的 cron 每分钟响一次，但门分三档 ——
- * 有页面可见放行到 60 秒一轮，只是开着 2 分钟一轮，一个页面都没开压回 30 分钟
- * 一轮。所以这个窗口锚的是**闲时**那档 —— 有人看时只会更快，判活的下限始终由
- * 30 分钟那档决定。
+ * 一轮多久要看有没有人在看这个站点：Worker 的 cron 每分钟响一次，但门按页面人数
+ * 分三档（`workers/collector/src/playstation/index.ts` 的 `LIVE_TICK_INTERVAL_MS` /
+ * `OPEN_TICK_INTERVAL_MS` / `IDLE_TICK_INTERVAL_MS`）。所以这个窗口锚的是**闲时**
+ * 那档 —— 有人看时只会更快，判活的下限始终由闲时那档决定。
  *
- * 90 分钟之外还要再宽一截：内容没变的心跳只落库、不广播，也不失效首屏，浏览器
- * 手里的 observedAt 要等下一次兜底轮询（推送连着时 5 分钟，见 lib/status-views）
- * 才刷新，可能比 SQLite 里那份旧一个轮询周期。3 × 30 = 90，留到 95。上报侧改
- * **闲时**那档间隔（`workers/collector` 的 `IDLE_TICK_INTERVAL_MS`）时这里要跟着
- * 改，改 cron 本身不用动这里。
+ * 三个闲时间隔之外还要再宽一截：内容没变的心跳只落库、不广播，也不失效首屏，浏览器
+ * 手里的 observedAt 要等下一次兜底轮询（推送连着时是 lib/poll-schedule 的
+ * `PUSH_SAFETY_NET_MS`）才刷新，可能比存储里那份旧一个轮询周期。上报侧改**闲时**
+ * 那档间隔（`IDLE_TICK_INTERVAL_MS`）时这里要跟着改，改 cron 本身不用动这里。
  *
  * 只有浏览器判它（源站原样交出最后那份 presence，见 lib/playstation），所以没有
- * 服务端环境变量可调 —— 从前那个 PLAYSTATION_STALE_MS 变量只管源站那道判定，
- * 浏览器本来就读不到。要改窗口就改这个常量。这一路没有 declaredOffline 可用 ——
+ * 服务端环境变量可调，要改窗口就改这个常量。这一路没有 declaredOffline 可用 ——
  * Worker 悄悄死掉和主机关机长得一模一样，只能靠这个窗口分开，而分不开的那半
  * （到底在不在玩）就该老实说不知道，不是说不在线。
  */
 export const PLAYSTATION_STALE_MS = 95 * 60_000;
 
 /**
- * 服务器上报器固定每分钟一推（`reporters/server-reporter` 的 `INTERVAL_MS`），
+ * 服务器上报器按固定间隔推（`reporters/server-reporter` 的 `INTERVAL_MS`），
  * 每轮必发，所以「多久没刷新」等价于「上报器还活着没有」。
  *
  * 这份数据在可滞后层（KV，见 shared/lag.ts）：上报入口每封都重写、带上
  * `updatedAt`，浏览器拿它和这个阈值比，过了就显示 Unavailable，服务端不下结论。
- * 取十轮：漏几封不该翻脸，KV 跨机房的一分钟左右可见延迟也包在里面。
+ * 取十轮：漏几封不该翻脸，KV 跨机房的可见延迟也包在里面。
  * 上报器降频时**先放宽这里、站点部署完，再降频**。
  */
 export const SERVER_STALE_MS = 10 * 60_000;
@@ -86,38 +84,39 @@ export const SERVER_STALE_MS = 10 * 60_000;
  *
  * 每块带着自己的采集时刻（`fetchedAt` 或信封的 `updatedAt`），浏览器拿它和这里比，
  * 过了就不再拿旧数冒充此刻：卡片那一格回到「—」或 Unavailable。阈值取几轮采集的余量，
- * 漏一两轮、KV 跨机房一分钟左右的可见延迟都不翻脸；采集 Worker 停了、令牌失效时
- * 一两个阈值之内卡片就说实话。采集降频时**先放宽这里、站点部署完，再改采集节奏**。
+ * 漏一两轮、KV 跨机房的可见延迟都不翻脸；采集 Worker 停了、令牌失效时一两个阈值之内
+ * 卡片就说实话。采集降频时**先放宽这里、站点部署完，再改采集节奏**。各块的节奏是
+ * 对应 Job 的 `everyMinutes`（`workers/collector/src/jobs/`）。
  */
-/** 厂商状态页，每分钟一轮 */
+/** 厂商状态页（`providerStatusJob`） */
 export const AGENT_STATUS_STALE_MS = 10 * 60_000;
-/** GitHub 贡献日历，每 10 分钟一轮；日历按天变，放得最宽 */
+/** GitHub 贡献日历（`githubChartJob`）；日历按天变，放得最宽 */
 export const GITHUB_CHART_STALE_MS = 6 * 3_600_000;
-/** 本仓库统计，每 30 分钟一轮（push 后 GitHub 现算统计时会连着几轮 202） */
+/** 本仓库统计（`githubRepoJob`）；push 后 GitHub 现算统计时会连着几轮 202 */
 export const GITHUB_REPO_STALE_MS = 3 * 3_600_000;
-/** Vercel 生产版本与最近部署，每分钟一轮 */
+/** Vercel 生产版本与最近部署（`vercelDeploymentsJob`） */
 export const VERCEL_DEPLOYMENTS_STALE_MS = 10 * 60_000;
-/** Vercel 函数与访问统计，每 15 分钟一轮，两组各带采集时刻 */
+/** Vercel 函数与访问统计（`vercelMetricsJob`），两组各带采集时刻 */
 export const VERCEL_METRICS_STALE_MS = 3_600_000;
-/** PageSpeed 实验室分，每小时一轮；按最近一轮实测的时刻算 */
+/** PageSpeed 实验室分（`pagespeedJob`）；按最近一轮实测的时刻算 */
 export const PAGESPEED_STALE_MS = 3 * 3_600_000;
-/** 各 Worker 部署的版本与提交，每 2 分钟一轮 */
+/** 各 Worker 部署的版本与提交（`cloudflareDeploymentsJob`） */
 export const CLOUDFLARE_DEPLOYMENTS_STALE_MS = 15 * 60_000;
-/** 各 Worker 12 小时调用统计，每 15 分钟一轮 */
+/** 各 Worker 的调用统计（`cloudflareMetricsJob`） */
 export const CLOUDFLARE_METRICS_STALE_MS = 3_600_000;
-/** Sentry 在线探测、心跳、错误数、真实访客指标，每 5 分钟一轮；各块按自己取到的时刻算 */
+/** Sentry 在线探测、心跳、错误数、真实访客指标（`sentryStatusJob`）；各块按自己取到的时刻算 */
 export const SENTRY_STALE_MS = 30 * 60_000;
 
 /**
  * 活动圆环读数（可滞后层，iPhone 上报入口写）多久没刷新就不再当此刻展示。
  *
  * iPhone 上报器不常驻，只有 HealthKit 有新样本才把它唤起（`reporters/iphone-telemetry-hub`
- * 的 README「什么时候会上报」）：戴着表活动时圆环这条后台投递被系统钳到每小时一封；内容
- * 没变就不发，隔满 6 小时的那次唤醒才整份重发。睡觉、表在充电时没有新样本，一整夜一封
- * 都没有 —— 那时圈冻在睡前那一份是对的（跨过午夜那一下由 currentAtSource 判成「昨天」）。
- * 所以正常的最长空档就是一夜，阈值取 12 小时：一夜加余量不误报；过了还没有新的，就是手机
- * 那头没在报（没电、关机、权限被收），卡片那一格写 Unavailable、读数回到「—」，不拿一份
- * 停住的圈冒充此刻。
+ * 的 README「什么时候会上报」）：戴着表活动时圆环这条后台投递被系统按小时节流；内容
+ * 没变就不发，隔满 `TelemetryHub.refresh` 的那次唤醒才整份重发。睡觉、表在充电时没有
+ * 新样本，一整夜一封都没有 —— 那时圈冻在睡前那一份是对的（跨过午夜那一下由
+ * currentAtSource 判成「昨天」）。所以正常的最长空档就是一夜，阈值取一夜加余量不误报；
+ * 过了还没有新的，就是手机那头没在报（没电、关机、权限被收），卡片那一格写 Unavailable、
+ * 读数回到「—」，不拿一份停住的圈冒充此刻。
  *
  * 训练列表**不设**这样的阈值：完成过的训练是历史事实，手机多久没报它们也不会变假，
  * 顶多是缺了之后的新训练（那是不完整，不是错）。所以训练条目一直照画。
@@ -127,17 +126,14 @@ export const ACTIVITY_STALE_MS = 12 * 3_600_000;
 /**
  * `at` 这一刻，UTC 偏移为 `secondsFromGMT` 的地方是哪一天（YYYY-MM-DD）。
  *
- * 摆在这个文件里是因为它前后端各算一遍：服务端在取数出口盖 `currentAtSource`
- * 供首帧用，浏览器挂载后拿自己的钟再算一次。两处必须是同一段代码 —— 各写一遍
- * 的话，跨夜那一下两边会各给各的答案。
- *
- * 也放在这里而不是 lib/activity：那个文件连着 SQLite，客户端组件 import 不得。
+ * 服务端在取数出口据此盖 `currentAtSource`（lib/activity 的 withActivityFreshness），
+ * 卡片直接读那个字段，浏览器不用再算一遍。
  */
 export function localDate(at: number, secondsFromGMT: number): string {
   return new Date(at + secondsFromGMT * 1000).toISOString().slice(0, 10);
 }
 
-/** 充电头默认上报 30 秒，3 倍没消息就算这份数据断了。服务端可用环境变量加长。 */
+/** 充电头 / 充电宝这一路的断流窗口默认值：上报间隔的三倍没消息就算断了。服务端可用环境变量加长。 */
 export const CHARGER_STALE_MS = 90_000;
 
 export type FreshnessInput = {
@@ -205,9 +201,9 @@ export function hasPendingDeadline(clock: number, deadlines: readonly (number | 
  * 早已悄悄断了、轮询在 deadline 和定时器之间换了 lastSeenAt），不管它的话钟就停在
  * 原地，这份数据永远判不出过期。
  *
- * 已经过了的立刻推（下一个任务就推，不再等 250ms）；在推上去之前，这把钟对这份
+ * 已经过了的立刻推（下一个任务就推，不再多等）；在推上去之前，这把钟对这份
  * 数据不作准（useClock 的 settled 为假），按住的过期不因为钟慢而松开 —— 否则会先
- * 按新鲜画一帧，看上去离线 → 在线 → 离线闪一下。还没到的排定时器，多等 250ms 免得
+ * 按新鲜画一帧，看上去离线 → 在线 → 离线闪一下。还没到的排定时器，多等一小会儿免得
  * 早醒一点白跑。
  *
  * 推到哪：此刻与那个 deadline（`to`）里较晚的那个。只读 Date.now() 的话，系统时钟往回
@@ -338,10 +334,10 @@ export function chargingFeedClockStale(feed: ChargingFeed, now: number): boolean
 /**
  * 把判活结果盖回 `connected`：上报器亲口离线、或按钟已经断流，就当没连着。
  *
- * 从前这一步在源站取数出口做，结论跟着首屏缓存冻住；现在源站只给原样的
- * `connected` 和几个时刻，卡片和 media-pair 的排版都过这一道，谁也不各算各的。
- * `clockStale` 由调用方给（hooks/use-stale 的 useLiveChargingFeed 按访客钟算、
- * 并挡掉回源途中那段）；首帧拿首屏信封的 servedAt 当钟，用 chargingFeedClockStale 算。
+ * 源站只给原样的 `connected` 和几个时刻，判活在浏览器，卡片和 media-pair 的排版
+ * 都过这一道，谁也不各算各的。`clockStale` 由调用方给（hooks/use-stale 的
+ * useLiveChargingFeed 按访客钟算、并挡掉回源途中那段）；首帧拿首屏信封的 servedAt
+ * 当钟，用 chargingFeedClockStale 算。
  */
 export function liveChargingFeed<T extends ChargingFeed>(feed: T, clockStale: boolean): T {
   const connected = feed.connected && !feed.declaredOffline && !clockStale;
