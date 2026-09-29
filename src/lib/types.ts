@@ -766,6 +766,119 @@ export type VibeCodingYearPayload = {
 /** 落库的那份：上报器给的窗口 + 源站盖的到达时刻，不含取数出口现算的那个今天。 */
 export type StoredVibeCodingYear = Omit<VibeCodingYearPayload, "todayAtSource">;
 
+/**
+ * coding agent token 用量的观测来源，名字 = 上报入口的来源名。
+ *
+ * 登记表（各来源看得到什么、谁覆盖谁）在 shared/coding-usage-sources，那边 `satisfies` 这个
+ * 联合类型；放在这里是因为公开 payload 要用它，而这个文件不 import 任何东西。
+ */
+export type CodingUsageSource = "mac" | "agents" | "agents-otlp";
+
+/** 全部 agent、全部历史的合计。按来源登记的规则去重后相加（shared/coding-usage-sources） */
+export type CodingUsageTotals = {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheCreationTokens: number;
+  /** outputTokens 的子集 */
+  reasoningTokens: number;
+  /** ≥ 四列之和，多出的是来源没分列的量 */
+  totalTokens: number;
+  /** 按公开 API 价格估算，不是订阅账单 */
+  apiEquivalentCostUSD: number;
+  /** 每个有 token 的日子都估全了价；来源采集失败只体现在各行的 status，不拉低这里 */
+  costComplete: boolean;
+  /** 全部历史、全部 agent 里有用量的站点日个数 */
+  activeDays: number;
+  /** 各来源会话数（非 null 的）相加；没有一个来源数得出会话时为 null */
+  sessionCount: number | null;
+};
+
+/** 一个 agent 在某个站点日的用量：参与合计的各来源在这一天的行相加 */
+export type CodingUsageDayTotals = {
+  /** Asia/Shanghai 站点日，YYYY-MM-DD */
+  date: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheCreationTokens: number;
+  totalTokens: number;
+  apiEquivalentCostUSD: number;
+  costComplete: boolean;
+};
+
+/**
+ * 一个来源对这个 agent 的状态。`superseded`：有账号级来源覆盖它，它的行不参与合计；
+ * `conflict`：同一 agent 有两个账号级来源（配置错误），登记在后的这个不参与合计。
+ */
+export type CodingUsageSourceStatus = {
+  source: CodingUsageSource;
+  state: "ok" | "error" | "superseded" | "conflict";
+  /** 这个来源最近一次成功采集的时刻（epoch 毫秒）；从没成功过为 null */
+  collectedAt: number | null;
+  error: string | null;
+  warning: string | null;
+};
+
+export type CodingUsageAgentView = {
+  id: string;
+  /** 参与合计的来源 */
+  sources: CodingUsageSource[];
+  /** 全部历史按 token 降序，最多 20 个 */
+  models: string[];
+  /** 最近一个有模型用量的日子里 token 最多的模型；闲置时拿它当模型名 */
+  latestModel: string | null;
+  /** 最近一个有行的站点日。是不是今天由浏览器按自己的站点日判 */
+  lastDay: CodingUsageDayTotals | null;
+  status: CodingUsageSourceStatus[];
+};
+
+/**
+ * `/api/status/coding`：多来源合并后的用量视图。状态核心在用量事实变了时算好存一份，
+ * 读出口原样给；和钟有关的结论（lastDay 是不是今天）留给浏览器。不推送，卡片自己轮询。
+ *
+ * 展示名、图标、行的排布不在这里，见站点的 agent 登记表。
+ */
+export type CodingUsagePayload = {
+  /** 视图最后一次重算的时刻 = 最近一封改变了日行的用量事实的收到时刻；还没有任何事实时为 null */
+  updatedAt: number | null;
+  totals: CodingUsageTotals | null;
+  /** 全部历史的前三模型（隐藏名单之外） */
+  topModels: Array<{ model: string; tokens: number }>;
+  agents: CodingUsageAgentView[];
+};
+
+/**
+ * `/api/status/coding/now`（推送事件 `coding-now` 带整份）：各 agent 各来源最近一条用量事件。
+ *
+ * 灯由浏览器按时刻现算：任一有效来源的时刻在 5 分钟内就亮。带着 Mac 的存活：Mac 亲口
+ * 离线时，只来自 `mac` 的时刻立即作废（优雅离开立刻灭灯），别的来源不受影响。
+ */
+export type CodingNowPayload = {
+  agents: Array<{
+    id: string;
+    /** 各来源最近一条事件，时刻降序；浏览器取第一个有效的 */
+    activity: Array<{ source: CodingUsageSource; lastActivityAt: number; model: string | null }>;
+  }>;
+} & ReporterPresence;
+
+/**
+ * `/api/status/coding/year`：过去 53 周的日合计与每天前五模型，编码同 `VibeCodingYearPayload`
+ * （`days[i]` 是 origin 起第 i 天；`mix` 一行 `[offset, idx, tokens, …]`，idx 指 `models`）。
+ * 任一来源有日行就出图。
+ */
+export type CodingYearPayload = {
+  /** 53 周窗口的第一个周日，YYYY-MM-DD */
+  origin: string;
+  days: number[];
+  models: string[];
+  mix: number[][];
+  /** 年度视图最后一次重算的时刻 */
+  updatedAt: number;
+  /** 源站取数时按自己的钟算的站点今天（YYYY-MM-DD），理由同 `VibeCodingYearPayload.todayAtSource` */
+  todayAtSource: string;
+};
+
 /** 贡献热力图的一天。label 跟资料页 hover 同一句，浏览器现算，不进信封 */
 export type GithubChartDay = {
   date: string;
@@ -1179,6 +1292,27 @@ export type PulseStepsLane = {
   buckets: PulseSpanColumns & { steps: number[] };
   workouts: PulseSpanColumns & { activityType: string[] };
   summary: { steps: number };
+};
+
+/**
+ * coding agent 的 token 速率：各来源、各 agent、各模型相加后的五分钟桶，不带模型名和来源。
+ * `fresh` = input + output + cache 写入（新处理的 token）；cache 读量级大一两个数量级，单列只进悬停。
+ * 只出有用量的桶；首桶被窗口截断就丢，末桶截到有数来源里最晚的覆盖终点，不足 60 秒不画。
+ */
+export type PulseTokensLane = {
+  kind: "tokens";
+  buckets: PulseSpanColumns & { fresh: number[]; output: number[]; cacheRead: number[] };
+  summary: {
+    /** 画出来的桶里最大的 fresh 速率（tokens/min，桶长按截断后的实长算） */
+    peakPerMinute: number | null;
+    /**
+     * 最后一个桶在 generatedAt 前 10 分钟内结束时它的速率；否则任一来源的覆盖到了
+     * generatedAt − 10 分钟就是 0；都没有是 null（未知）
+     */
+    currentPerMinute: number | null;
+    /** 窗口内 fresh 合计 */
+    freshTokens: number;
+  };
 };
 
 export type PulseLanes = {

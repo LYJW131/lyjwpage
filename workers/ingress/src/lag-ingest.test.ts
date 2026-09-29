@@ -94,13 +94,13 @@ test("限额按 id 合并写回；只有来源集合变了才失效首屏", asyn
   assert.equal(stored?.updatedAt, NOW + 2);
 });
 
-test("只带 cursorNow 的 agents 信封不碰限额", async () => {
+test("只带 coding 活动的 agents 信封不碰限额", async () => {
   const kv = new MemoryKv();
   await land(kv, "agents", limits([{ id: "cursor", tier: "Ultra" }], NOW), NOW);
   const before = kv.values.get(LAG_KEYS.limits);
   await land(kv, "agents", {
     collectedAt: new Date(NOW + 60_000).toISOString(),
-    cursorNow: { lastActivityAt: new Date(NOW + 30_000).toISOString(), currentModel: "grok" },
+    codingActivity: { collectedAt: NOW + 60_000, agents: [{ id: "cursor", lastActivityAt: NOW + 30_000, model: "grok" }] },
   }, NOW + 60_000);
   assert.equal(kv.values.get(LAG_KEYS.limits), before);
 });

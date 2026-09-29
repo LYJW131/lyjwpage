@@ -1,4 +1,5 @@
 import { writeAppleMusicCredentials } from "@shared/credentials";
+import { describeRejections } from "@shared/ingest/coding";
 import { INGEST_SOURCES, prepareIngestForCommit, type PreparedIngest } from "@shared/ingest/prepare";
 import { STORAGE_MAX_BYTES } from "@shared/storage-contract";
 
@@ -16,7 +17,8 @@ import { commitLagIngest } from "./lag-ingest";
  *
  * 回执是对上报器的契约，状态码和正文与这条路还在 api Worker 里时逐字一致：
  * 202 `{ ok: true, data }`，OTLP 成功回 200 `{}`；失败 400 / 401 / 403 / 404 / 405 / 415 / 503
- * 各自的 `{ ok: false, error }`。
+ * 各自的 `{ ok: false, error }`。mac 与 agents 的 202 `data` 另带入口自己判下的两件事
+ * （见 receiptData）：`ignored` 不认识的模块名、`rejected` 校验不过只丢了自己的 coding 模块。
  */
 
 const INGEST_PREFIX = "/api/ingest/";
@@ -124,9 +126,13 @@ async function commitIngest(env: Env, ctx: ExecutionContext, source: string, raw
     const body = parseBody(raw);
     const command = await prepareIngestForCommit(source, body, () => env.CORE.ready(), env.IMAGES);
     if (!command) return jsonResponse({ ok: false, error: "状态存储初始化中" }, { status: 503 });
+    // 只丢了自己的 coding 模块：这封照常提交，拒收的原因进 Sentry Logs，也原样回给上报器
+    if ((command.source === "mac" || command.source === "agents") && command.rejected.length) {
+      console.warn("[ingest] rejected", source, describeRejections(command.rejected));
+    }
     let data: unknown;
     /** 状态核心收下了前面的模块、后面的模块校验不过（见 partiallyAccepted）：写完已收下的那几份再回 400 */
-    let rejected: string | null = null;
+    let coreError: string | null = null;
     if (command.source === "server") {
       // 落地节点整封都在可滞后层，不经过状态核心
       data = { id: command.status.id };
@@ -135,9 +141,9 @@ async function commitIngest(env: Env, ctx: ExecutionContext, source: string, raw
       if (!reply.ready) return jsonResponse({ ok: false, error: "状态存储初始化中" }, { status: 503 });
       if (!reply.ok) {
         if (!partiallyAccepted(command)) throw new Error(reply.error);
-        rejected = reply.error;
+        coreError = reply.error;
       } else {
-        data = reply.data;
+        data = receiptData(command, reply.data);
       }
     }
     // 归档排在可滞后层之前：KV 写失败回 400 时，已收下的数据照样进 D1（按 received_at 幂等，
@@ -149,7 +155,7 @@ async function commitIngest(env: Env, ctx: ExecutionContext, source: string, raw
       // 失效通知要 REVALIDATE_SECRET，只在状态核心上：请它代发
       if (tags.length) ctx.waitUntil(env.CORE.revalidate(tags).catch((error: unknown) => console.error("[revalidate]", reason(error))));
     }
-    if (rejected) throw new Error(rejected);
+    if (coreError) throw new Error(coreError);
     // Apple Music user token 只在变了时才推，这一次写不进去就等下一次换令牌，所以等它写完再回 202
     if (command.source === "mac" && command.modules.appleMusicCredentials && env.CREDENTIALS) {
       await writeAppleMusicCredentials(env.CREDENTIALS, {
@@ -162,6 +168,19 @@ async function commitIngest(env: Env, ctx: ExecutionContext, source: string, raw
     console.error("[ingest]", source, reason(error));
     return jsonResponse({ ok: false, error: "上报数据无效或处理失败" }, { status: 400 });
   }
+}
+
+/**
+ * 入口自己判下的两件事并进状态核心的回执：mac 带 `ignored`（信封里不认识的模块名）与
+ * `rejected`，agents 带 `rejected`（校验不过、只丢了自己的 coding 数据，`[{ module, error }]`）。
+ * 两个键总在，空数组就是没有。状态核心的回执不需要知道它们；iPhone 的 `ignored` 由状态核心自己回。
+ */
+function receiptData(command: PreparedIngest, data: unknown): unknown {
+  if (command.source !== "mac" && command.source !== "agents") return data;
+  const base = data && typeof data === "object" && !Array.isArray(data) ? data : {};
+  return command.source === "mac"
+    ? { ...base, ignored: command.ignored, rejected: command.rejected }
+    : { ...base, rejected: command.rejected };
 }
 
 /**

@@ -20,14 +20,10 @@ import type {
   StoredVibeCodingYear,
   TimezoneActivity,
 } from "@/lib/types";
-import {
-  normalizeVibeCodingNow,
-  normalizeVibeCodingUsage,
-  type ParsedVibeCodingNow,
-  type ParsedVibeCodingUsage,
-} from "@/lib/vibecoding-parse";
-import { normalizeVibeCodingYear } from "@/lib/vibecoding-year";
+import type { ParsedVibeCodingNow, ParsedVibeCodingUsage } from "@/lib/vibecoding-parse";
 import type { StoredDesktopActivity } from "@shared/telemetry";
+
+import { CODING_MODULES, prepareCodingModules, type CodingModuleRejection, type CodingModules } from "./coding";
 
 /**
  * Mac 上报器 v4 信封（`/api/ingest/mac`）的收敛，上报入口那一半。
@@ -39,6 +35,10 @@ import type { StoredDesktopActivity } from "@shared/telemetry";
  *
  * 较晚的模块校验不过时不在这里抛：把失败点记进 `failure`，状态核心在原执行位置
  * 抛错，排在它前面、已经承诺过的写（存活、充电头……）照样保留。
+ *
+ * 三份 coding 模块（codingUsage / codingActivity / codingTokenBuckets）例外：坏了只丢它自己，
+ * 原因进 `rejected`，别的模块照常提交（见 ./coding）。不认识的模块名进 `ignored`，同样原样
+ * 回给上报器、不影响别的模块 —— 上报器比站点新、或还在发改名前的旧模块时，两边都看得见。
  */
 
 type TelemetryEnvelope = {
@@ -55,12 +55,26 @@ type PreparedDesktop = {
   iconObjectKey: string | null;
 };
 
+/** 站点认得的模块名；其余一律进 `ignored` */
+const KNOWN_MODULES = new Set<string>([
+  "chargingDevices",
+  "desktop",
+  "timezone",
+  "appleMusic",
+  "appleMusicCredentials",
+  ...CODING_MODULES,
+]);
+
 export type PreparedTelemetryEnvelope = {
   source: "mac";
   receivedAt: number;
   presence: "online" | "offline";
   activeModules: string[];
-  modules: {
+  /** 信封里不认识的模块名，原样回给上报器 */
+  ignored: string[];
+  /** 校验不过、只丢了自己的 coding 模块 */
+  rejected: CodingModuleRejection[];
+  modules: CodingModules & {
     chargingDevices?: {
       charger: ChargerStatus | null;
       powerBank: PowerBankStatus | null;
@@ -70,6 +84,10 @@ export type PreparedTelemetryEnvelope = {
     timezone?: TimezoneActivity | null;
     appleMusic?: { music: LocalNowPlaying | null; upcomingTracks: PlayingQueueTrack[] };
     appleMusicCredentials?: { musicUserToken: string };
+    /**
+     * 改名前的三份 coding 模块。入口不再收（旧名字进 `ignored`），这里只留类型，
+     * 让还在读它们的状态核心照常编译；状态核心换到上面三个新模块时一起删掉。
+     */
     vibeCodingUsage?: ParsedVibeCodingUsage;
     vibeCodingNow?: ParsedVibeCodingNow;
     vibeCodingYear?: Omit<StoredVibeCodingYear, "pushedAt">;
@@ -218,32 +236,6 @@ function normalizeMusic(
 
 
 /**
- * 三份 coding 模块一律「先校验，后落库」：这里全部校验，任一坏掉整封在入口就拒，
- * 连 liveness 都不落；状态核心只把收敛好的那份包成写（stores/vibecoding）。
- */
-function parseVibeCodingUsage(report: unknown): ParsedVibeCodingUsage {
-  const payload = normalizeVibeCodingUsage(report);
-  if (!payload) throw new Error("vibeCodingUsage 必须是 Mac Telemetry Hub 的用量摘要");
-  return payload;
-}
-
-function parseVibeCodingNow(report: unknown): ParsedVibeCodingNow {
-  const parsed = normalizeVibeCodingNow(report);
-  if (!parsed) throw new Error("vibeCodingNow 必须带 agents 数组");
-  /**
-   * Cursor 的此刻归容器（`cursorNow`），Mac 那份即使带着 cursor 也丢掉：Hub 的会话扫描
-   * 不看 Cursor，那一行永远是空时刻、不在用，推给浏览器会把容器报的活动盖掉。
-   */
-  return { ...parsed, agents: parsed.agents.filter((agent) => agent.id !== "cursor") };
-}
-
-function parseVibeCodingYear(report: unknown): Omit<StoredVibeCodingYear, "pushedAt"> {
-  const payload = normalizeVibeCodingYear(report);
-  if (!payload) throw new Error("vibeCodingYear 必须是从周日切起的 53 周日合计，并带每天前五的模型表");
-  return payload;
-}
-
-/**
  * 信封里 `appleMusicCredentials` 模块的校验。
  *
  * 只认 `musicUserToken`。`developerToken` / `expiresAt` 从前也走这条，2026-09-11 起
@@ -284,17 +276,10 @@ export function prepareTelemetryEnvelope(input: unknown, receivedAt = Date.now()
     throw new Error("遥测请求的 modules 必须是对象");
   }
   const raw = object(envelope.modules) ?? {};
-
-  // 这三份原本就先全校验；任一坏掉时连 liveness 都不落，保持既有契约。
-  const codingUsage = "vibeCodingUsage" in raw
-    ? parseVibeCodingUsage(raw.vibeCodingUsage)
-    : undefined;
-  const codingNow = "vibeCodingNow" in raw
-    ? parseVibeCodingNow(raw.vibeCodingNow)
-    : undefined;
-  const codingYear = "vibeCodingYear" in raw
-    ? parseVibeCodingYear(raw.vibeCodingYear)
-    : undefined;
+  const ignored = Object.keys(raw).filter((name) => !KNOWN_MODULES.has(name));
+  // coding 模块各自收敛，坏了只进 rejected；收下的那几份排在分段失败之后才挂上（见文件末尾）
+  const coding = prepareCodingModules(raw, receivedAt);
+  const rejected = coding.rejected;
 
   const modules: PreparedTelemetryEnvelope["modules"] = {};
   const fail = (
@@ -305,6 +290,8 @@ export function prepareTelemetryEnvelope(input: unknown, receivedAt = Date.now()
     receivedAt,
     presence: normalizedPresence,
     activeModules,
+    ignored,
+    rejected,
     modules,
     failure: { stage, message: error instanceof Error ? error.message : String(error) },
   });
@@ -328,7 +315,7 @@ export function prepareTelemetryEnvelope(input: unknown, receivedAt = Date.now()
       } catch (error) {
         modules.chargingDevices.failureAfterCharger =
           error instanceof Error ? error.message : String(error);
-        return { source: "mac", receivedAt, presence: normalizedPresence, activeModules, modules };
+        return { source: "mac", receivedAt, presence: normalizedPresence, activeModules, ignored, rejected, modules };
       }
     } catch (error) {
       return fail("beforeCharging", error);
@@ -361,11 +348,13 @@ export function prepareTelemetryEnvelope(input: unknown, receivedAt = Date.now()
       return fail("beforeAppleMusicCredentials", error);
     }
   }
-  if (codingUsage) modules.vibeCodingUsage = codingUsage;
-  if (codingNow) modules.vibeCodingNow = codingNow;
-  if (codingYear) modules.vibeCodingYear = codingYear;
+  /**
+   * coding 模块排在最后：前面哪一段失败时状态核心在那里就抛，这几份本来也轮不到提交，
+   * 和从前一样不挂上去（上报器整封重发时再收）。
+   */
+  Object.assign(modules, coding.modules);
 
-  return { source: "mac", receivedAt, presence: normalizedPresence, activeModules, modules };
+  return { source: "mac", receivedAt, presence: normalizedPresence, activeModules, ignored, rejected, modules };
 }
 
 function upcomingFromMusicRow(row: Record<string, unknown>, title: string | null) {

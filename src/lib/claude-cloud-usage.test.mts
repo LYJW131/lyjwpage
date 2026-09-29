@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { applyOtlpUsage, claudeCloudNow, mergeClaudeCloudUsage, parseOtlpUsage, type ClaudeCloudUsage } from "./claude-cloud-usage.ts";
+import { parseOtlpUsage } from "@shared/ingest/claude-cloud";
+
+import { applyOtlpUsage, claudeCloudNow, mergeClaudeCloudUsage, type ClaudeCloudUsage } from "./claude-cloud-usage.ts";
 import { sundayOf } from "./github-chart-compact.ts";
 import { diffDays } from "./heatmap-window.ts";
 import type { ParsedVibeCodingUsage } from "./vibecoding-parse.ts";
