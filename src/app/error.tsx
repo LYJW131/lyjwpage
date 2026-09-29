@@ -17,7 +17,8 @@ import { site } from "@/lib/site";
  * 地址、上游响应之类的内部信息，只进 console 和 Sentry。
  *
  * 首页各卡有自己的错误边界（components/card-boundary），一张卡出错不会走到这里；
- * 走到这里说明是边界之外的地方抛的。页面若已确知是旧的，直接刷新就是修复。
+ * 走到这里说明是边界之外的地方抛的，整页已经被这个错误页顶替，没有什么交互可打断。
+ * 页面若已确知是旧的，直接刷新就是修复（可见也刷，闸门见 lib/app-version）。
  */
 export default function Error({
   error,
@@ -30,7 +31,7 @@ export default function Error({
     console.error(error);
     Sentry.captureException(error);
   }, [error]);
-  useStaleAutoReload("crash");
+  useStaleAutoReload("page-crash");
 
   return (
     <>
