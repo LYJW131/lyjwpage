@@ -6,6 +6,7 @@ import useSWR, { useSWRConfig } from "swr";
 import { fetchStatus, guardPolled, withoutServedAt } from "@/lib/status-reads";
 import { useLiveSocketConnected } from "@/hooks/use-live-events";
 import { lagOverdue, nextLagDelay, realtimeInterval } from "@/lib/poll-schedule";
+import { createInflightLedger, createMountRefetchGate, shouldReaskAfterDiscard } from "@/lib/refetch-guard";
 import { cadenceOfPath, layerOfPath, pushCoversPath } from "@/lib/status-views";
 import type { StatusResponse } from "@/lib/types";
 
@@ -26,6 +27,14 @@ export function usePageActive() {
 /** 各卡直连自己的端点，见 lib/status-reads */
 export const statusFetcher = fetchStatus;
 const fetcher = statusFetcher;
+
+/**
+ * 同一个键有多个消费者时，回源别互相顶掉、再各自重问成无限循环。为什么、怎么防，
+ * 见 lib/refetch-guard。两本账都是整页共享的（模块级）：浏览器里一个页面一份，
+ * 服务端渲染不会碰到（回源与挂载补取都只在浏览器里发生）。
+ */
+const inflight = createInflightLedger();
+const mountRefetchGate = createMountRefetchGate();
 
 /**
  * 增量拉取的取数壳子。
@@ -196,7 +205,15 @@ export function useStatus<T>(
    * 和 SWR 的键不是一个字符串，而这里认的是键。为什么要挡见 lib/status-reads。
    */
   const guarded = useCallback(
-    async (key: string) => guardPolled(key, await (customFetcher ?? fetcher<T>)(key)),
+    async (key: string) => {
+      inflight.begin(key);
+      try {
+        return guardPolled(key, await (customFetcher ?? fetcher<T>)(key));
+      } finally {
+        // 在结果交给 SWR 判「是否被丢弃」之前出账，onDiscarded 看到的就是「别的还有几条在路上」
+        inflight.end(key);
+      }
+    },
     [customFetcher],
   );
 
@@ -211,9 +228,14 @@ export function useStatus<T>(
    * 比请求新），isValidating 照样落下。推来的若是整份，丢了无妨；若只是局部补丁
    * （vibecoding-now 只改几个字段），缓存里的时间戳就还是回源之前那份，按钟判出的过期
    * 会被当成「回源回来了还是过期」确认掉。被丢了就再问一次。
+   *
+   * 但「被丢」还有另一种：被同一个键上另一条更晚发出的回源顶掉。那一条还在路上、
+   * 结果照样会落地，这时再问不但多余，还会把那一条顶成被丢弃、让它也再问 ——
+   * 两个消费者共用一个键时就是无限接力（lib/refetch-guard）。别处还有回源在路上就不问。
    */
   const { mutate: revalidateKey } = useSWRConfig();
   const onDiscarded = useCallback((key: string) => {
+    if (!shouldReaskAfterDiscard(inflight.pending(key))) return;
     void revalidateKey(key);
   }, [revalidateKey]);
   const { data, error, isLoading, isValidating, mutate } = useSWR<StatusResponse<T>>(path, guarded, {
@@ -255,8 +277,10 @@ export function useStatus<T>(
     if (mountChecked.current) return;
     mountChecked.current = true;
     if (!lag || !cadenceMs || revalidateOnMount === false || !initial.ok) return;
-    if (lagOverdue(initial.updatedAt, cadenceMs, Date.now())) void mutate();
-  }, [lag, cadenceMs, revalidateOnMount, mutate]);
+    if (!lagOverdue(initial.updatedAt, cadenceMs, Date.now())) return;
+    // 同一个键的另一个消费者刚补取过：结果走共享缓存，这边不再发一条并发的
+    if (mountRefetchGate.claim(path, Date.now())) void mutate();
+  }, [lag, cadenceMs, revalidateOnMount, mutate, path]);
 
   return {
     data: data?.ok ? data.data : undefined,
