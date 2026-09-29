@@ -40,11 +40,11 @@ export function GithubChart({ fallback }: { fallback: StatusResponse<GithubChart
     fetcher: fetchGithubChart,
     seedFallback: seedGithubChart,
     // 首屏已经烧进去：可滞后层的挂载策略只在首屏那份过了下一次预期写入时才补取。
-    // 切回标签页时拉一次，之后按采集节奏（10 分钟）在下一次写入后取。
+    // 切回标签页时拉一次，之后按采集节奏（STATUS_VIEWS.githubChart.cadenceMs）在下一次写入后取。
     revalidateOnFocus: true,
   });
   /**
-   * 采集 Worker 每 10 分钟拉一次；超过阈值就把整张图压淡、标 Unavailable，不拿旧日历冒充今天。
+   * 超过 GITHUB_CHART_STALE_MS 就把整张图压淡、标 Unavailable，不拿旧日历冒充今天。
    * 首帧拿首屏信封的 servedAt 当钟，放久了的 HTML 首帧就是 Unavailable，不等挂载再翻。
    */
   const stale = useStale(

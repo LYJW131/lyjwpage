@@ -35,9 +35,8 @@ export const contentType = "image/png";
  *
  * 读只能发生在函数里，**不能提到模块作用域**：渲染 `/` 时 Next 会 import 这个
  * 模块拿 alt / size / contentType 三个导出去拼 `<meta>`，模块作用域的 await 会
- * 跟着跑一遍，读不到字体就是整个首页渲染失败。2026-08-29 那次就是这么冻住的：
- * ISR 每次重新生成都抛 ENOENT，CDN 只能一直发最后那份成功的 HTML，首屏停在 30
- * 小时前的状态，而所有状态端点都是新的。
+ * 跟着跑一遍，读不到字体就是整个首页渲染失败：ISR 每次重新生成都抛 ENOENT，
+ * CDN 只能一直发最后那份成功的 HTML，首屏停在旧状态，而所有状态端点都是新的。
  */
 function monoFonts() {
   return Promise.all([

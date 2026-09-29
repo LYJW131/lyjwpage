@@ -12,7 +12,7 @@ import type { AppVersionPayload } from "@/lib/app-version";
  * Handler 默认如此），随部署分发，不算函数调用。值全是构建期常量。
  *
  * ⚠️ 开了 Vercel Skew Protection 的话，旧页面发出的请求会被钉在旧部署上，永远答
- * 旧 sha——到时要给这条请求显式绕开。Hobby 没有这个功能。
+ * 旧 sha——到时要给这条请求显式绕开。
  */
 export function GET() {
   const payload: AppVersionPayload = {

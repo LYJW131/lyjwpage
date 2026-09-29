@@ -40,7 +40,7 @@ export function DevFakeDataToggle() {
   const toggle = useCallback(async () => {
     if (!state) return;
     const enabled = !state.enabled;
-    // POST 而不是 PUT：Worker 的 CORS 只放行 GET / POST，两种 public-api 都收
+    // POST 而不是 PUT：Worker 的 CORS 只放行 GET / POST（端点两种方法都收）
     const response = await fetch(backendUrl(OVERRIDES_PATH), {
       method: "POST",
       headers: { "Content-Type": "application/json" },

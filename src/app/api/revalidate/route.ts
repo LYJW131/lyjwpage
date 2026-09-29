@@ -18,9 +18,9 @@ function authorized(request: Request, expected: string) {
 /**
  * Worker 处理完一次上报之后，让这份部署的 `'use cache'` 过期。
  *
- * 写入已经不在这个进程里发生了（落库、推送都在 workers/api），但 `revalidateTag`
- * 只能在 Next 进程内调 —— 所以要留这一个口子。它只传 tag 名，不传数据：数据早就
- * 在 SQLite 里了，下一次读自己会去拿。请求体的形状和校验见 lib/revalidate-request。
+ * 写入发生在 Worker 一侧（上报入口与状态核心），不在这个进程里，但 `revalidateTag`
+ * 只能在 Next 进程内调 —— 所以要留这一个口子。它只传 tag 名，不传数据：数据已经
+ * 落在 Worker 上，下一次读各状态端点自己会去拿。请求体的形状和校验见 lib/revalidate-request。
  *
  * 鉴权用 REVALIDATE_SECRET，只有这里和 api Worker 两边有。
  * **没配密钥就一律 503**：这一个端点公网可达、专供 Worker，没有「本地开发不配密钥」的场景。
