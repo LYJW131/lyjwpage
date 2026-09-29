@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { estimateCursorCost } from "../dist/cursor-pricing.js";
-import { bucketStart, CODING_BUCKET_MS } from "../dist/coding-usage.js";
+import { bucketStart, CODING_BUCKET_MS, MAX_DAY_MODELS, MAX_WINDOW_ROWS, OVERFLOW_MODEL } from "../dist/coding-usage.js";
 import {
   aggregateBuckets,
   aggregateEvents,
@@ -472,4 +472,124 @@ test("活动取最新一条：时刻相同先到的赢，没有事件就是 null
   });
   assert.deepEqual(cursorActivityReport(T0, null).agents, [{ id: "cursor", lastActivityAt: null, model: null }]);
   assert.equal(cursorActivityReport(T0, { at: T0 + 200_000, model: null }).agents[0]?.lastActivityAt, T0);
+});
+
+/**
+ * 造 count 个不同模型、各一条事件，用量各不相同（第 0 个最多、往后递减，排名才确定）。
+ * 事件都落在同一个站点日、同一个 5 分钟桶（T0 起每秒一条）。
+ */
+function crowdedEvents(count: number, nameOf = (index: number) => `model-${String(index).padStart(3, "0")}`) {
+  return parsedEvents(
+    Array.from({ length: count }, (_, index) =>
+      eventRow(T0 + index * 1_000, nameOf(index), { input: 10_000 - index * 10, output: 2, cacheRead: 30, cacheWrite: 4 }),
+    ),
+  );
+}
+
+const tokensOf = (item: { inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheCreationTokens: number }) =>
+  item.inputTokens + item.outputTokens + item.cacheReadTokens + item.cacheCreationTokens;
+const sumOf = <Item,>(items: Item[], pick: (item: Item) => number) => items.reduce((sum, item) => sum + pick(item), 0);
+
+test("一天 41 个模型：全部留名，模型合计等于总量（曾经在 40 个上截断，被截的量悄悄从排名里少掉）", () => {
+  const events = crowdedEvents(41);
+  const day = aggregateEvents(events, T0).days.find((row) => row.totalTokens > 0);
+  assert.equal(day?.models.length, 41);
+  assert.ok(day?.models.some((row) => row.model === "model-040"));
+  assert.equal(sumOf(day?.models ?? [], (row) => row.tokens), day?.totalTokens);
+  assert.equal(sumOf(events, tokensOf), day?.totalTokens);
+});
+
+test("一天恰好 MAX_DAY_MODELS 个模型：原样留名，不并", () => {
+  const day = aggregateEvents(crowdedEvents(MAX_DAY_MODELS), T0).days.find((row) => row.totalTokens > 0);
+  assert.equal(day?.models.length, MAX_DAY_MODELS);
+  assert.ok(day?.models.every((row) => row.model !== OVERFLOW_MODEL));
+  assert.equal(sumOf(day?.models ?? [], (row) => row.tokens), day?.totalTokens);
+});
+
+test("一天模型超过 MAX_DAY_MODELS：用量大的 MAX_DAY_MODELS - 1 个留名，其余并成 OVERFLOW_MODEL 一行，合计不变", () => {
+  const events = crowdedEvents(MAX_DAY_MODELS + 6);
+  const day = aggregateEvents(events, T0).days.find((row) => row.totalTokens > 0);
+  const ranked = events.map((item) => [item.model, tokensOf(item)] as const).sort((left, right) => right[1] - left[1]);
+  assert.equal(day?.models.length, MAX_DAY_MODELS);
+  assert.deepEqual(
+    day?.models.filter((row) => row.model !== OVERFLOW_MODEL).map((row) => [row.model, row.tokens]),
+    ranked.slice(0, MAX_DAY_MODELS - 1),
+  );
+  assert.deepEqual(day?.models.find((row) => row.model === OVERFLOW_MODEL), {
+    model: OVERFLOW_MODEL,
+    tokens: sumOf(ranked.slice(MAX_DAY_MODELS - 1), ([, tokens]) => tokens),
+  });
+  assert.equal(sumOf(day?.models ?? [], (row) => row.tokens), day?.totalTokens);
+  // 并出来的一行是好几个小行之和，可能比留名的大：折完要重排，仍是用量降序、同量按名字
+  assert.deepEqual(
+    day?.models,
+    [...(day?.models ?? [])].sort((left, right) => right.tokens - left.tokens || (left.model < right.model ? -1 : 1)),
+  );
+});
+
+test("真有模型叫 OVERFLOW_MODEL：并进那一行，同一天的行名不重复", () => {
+  // 0 = 用量最大的就叫这个名字（留名的那一行接住其余）；最后一个 = 用量最小的（落在被并的那一段里）
+  for (const at of [0, MAX_DAY_MODELS + 5]) {
+    const events = crowdedEvents(MAX_DAY_MODELS + 6, (index) => (index === at ? OVERFLOW_MODEL : `model-${index}`));
+    const day = aggregateEvents(events, T0).days.find((row) => row.totalTokens > 0);
+    const names = day?.models.map((row) => row.model) ?? [];
+    assert.equal(new Set(names).size, names.length, `第 ${at} 个模型叫 ${OVERFLOW_MODEL}`);
+    assert.equal(sumOf(day?.models ?? [], (row) => row.tokens), day?.totalTokens, `第 ${at} 个模型叫 ${OVERFLOW_MODEL}`);
+  }
+});
+
+test("一个窗口恰好 MAX_WINDOW_ROWS 个模型：原样留名，不并", () => {
+  const [window] = aggregateBuckets(crowdedEvents(MAX_WINDOW_ROWS), T0, T0 + CODING_BUCKET_MS);
+  assert.equal(window?.agents.length, MAX_WINDOW_ROWS);
+  assert.ok(window?.agents.every((row) => row.model !== OVERFLOW_MODEL));
+});
+
+test("一个窗口模型超过 MAX_WINDOW_ROWS：用量大的留名，其余并成 OVERFLOW_MODEL 一行，各列和事件数都不变，别的窗口不动", () => {
+  const events = [
+    ...crowdedEvents(MAX_WINDOW_ROWS + 1),
+    ...parsedEvents([
+      eventRow(T0 + CODING_BUCKET_MS + 1_000, "gpt-5", { input: 5 }),
+      eventRow(T0 + CODING_BUCKET_MS + 2_000, "composer-2", null),
+    ]),
+  ];
+  const windows = aggregateBuckets(events, T0, T0 + 2 * CODING_BUCKET_MS);
+  assert.equal(windows.length, 2);
+
+  const [crowded, quiet] = windows;
+  const inCrowded = events.filter((item) => item.timestampMs < T0 + CODING_BUCKET_MS);
+  assert.equal(crowded?.agents.length, MAX_WINDOW_ROWS);
+  for (const column of ["inputTokens", "outputTokens", "cacheReadTokens", "cacheCreationTokens"] as const) {
+    assert.equal(
+      sumOf(crowded?.agents ?? [], (row) => row[column]),
+      sumOf(inCrowded, (item) => item[column]),
+      column,
+    );
+  }
+  assert.equal(sumOf(crowded?.agents ?? [], (row) => row.eventCount), inCrowded.length);
+
+  // 留名的是 token 最多的 MAX_WINDOW_ROWS - 1 个（最小的两个并进 OVERFLOW_MODEL），行仍按模型名排
+  const named = crowded?.agents.filter((row) => row.model !== OVERFLOW_MODEL) ?? [];
+  assert.deepEqual(
+    named.map((row) => row.model),
+    Array.from({ length: MAX_WINDOW_ROWS - 1 }, (_, index) => `model-${String(index).padStart(3, "0")}`),
+  );
+  const overflow = crowded?.agents.find((row) => row.model === OVERFLOW_MODEL);
+  assert.equal(overflow?.eventCount, 2);
+  assert.equal(overflow?.inputTokens, 10_000 - (MAX_WINDOW_ROWS - 1) * 10 + (10_000 - MAX_WINDOW_ROWS * 10));
+  assert.deepEqual(
+    crowded?.agents.map((row) => row.model),
+    [...(crowded?.agents ?? [])].map((row) => row.model).sort(),
+  );
+
+  assert.deepEqual(quiet?.agents.map((row) => [row.model, row.eventCount]), [["composer-2", 1], ["gpt-5", 1]]);
+});
+
+test("窗口里真有模型叫 OVERFLOW_MODEL：并进那一行，同一窗口的行名不重复", () => {
+  for (const at of [0, MAX_WINDOW_ROWS]) {
+    const events = crowdedEvents(MAX_WINDOW_ROWS + 1, (index) => (index === at ? OVERFLOW_MODEL : `model-${index}`));
+    const [window] = aggregateBuckets(events, T0, T0 + CODING_BUCKET_MS);
+    const names = window?.agents.map((row) => row.model) ?? [];
+    assert.equal(new Set(names).size, names.length, `第 ${at} 个模型叫 ${OVERFLOW_MODEL}`);
+    assert.equal(sumOf(window?.agents ?? [], (row) => row.eventCount), events.length, `第 ${at} 个模型叫 ${OVERFLOW_MODEL}`);
+  }
 });

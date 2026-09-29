@@ -139,6 +139,12 @@ Mac 上的 ccusage 一样在线取 `https://models.dev/api.json`（只认官方�
   桶边界，首桶因此是完整的。限额那一轮的范围是 `[max(since, bucketStart(now - BUCKET_SPAN_MS)), now)`，事件是这一轮拉
   历史时顺手落的桶。
 
+日行的模型行数和桶窗口的行数受站点上限约束（`shared/coding-usage.ts#MAX_DAY_MODELS`、
+`shared/coding-usage.ts#MAX_WINDOW_ROWS`），超了那个模块整份被站点拒收。所以超限时用量最大的行各自留名，其余并成一行
+`OVERFLOW_MODEL`（`src/coding-usage.ts`）：各列和事件数相加，日行的模型合计仍等于 `totalTokens`，不会有量被截掉。
+这个占位名取自站点的隐藏名单（`shared/coding-models.ts#HIDDEN_CODING_MODELS`），视图不当模型名展示、不进排名，
+换名字时新名字也得在那份名单里。上限和占位名在上报器里各抄了一份，`coding-contract.test.mts` 用站点真正的校验核对。
+
 在用时的快循环（`src/cursor-now.ts`）每次取最近 `RECENT_MS` 内的全部事件（分页与对账同拉历史那条路，通常一页），
 同时产出 `codingActivity` 和范围 `[now - RECENT_MS 向下对齐到桶边界, now)` 的 `codingTokenBuckets`，Pulse 才看得到
 Cursor 的此刻速率。闲着时不单独查，限额那一轮拉用量时顺手看；看到 `ACTIVE_WINDOW_MS` 内有事件才起快循环：有新事件就每

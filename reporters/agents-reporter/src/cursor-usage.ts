@@ -10,6 +10,9 @@ import {
   type CodingTokenBucketWindow,
   type CodingUsageAgent,
   type CodingUsageDay,
+  MAX_DAY_MODELS,
+  MAX_WINDOW_ROWS,
+  OVERFLOW_MODEL,
 } from "./coding-usage.js";
 import { config } from "./config.js";
 import { estimateCursorCost, modelName, refreshOnlinePrices } from "./cursor-pricing.js";
@@ -141,6 +144,31 @@ function add(left: number, right: number): number {
     throw new CursorUsageError("token overflow");
   }
   return sum;
+}
+
+/**
+ * 站点对一个日行的模型行数、一个桶窗口的行数有上限（MAX_DAY_MODELS、MAX_WINDOW_ROWS），超了整个模块被拒收。
+ * 超过 `max` 行时，`strongestFirst` 排在前面的 max - 1 行留名，其余并成一行 OVERFLOW_MODEL：各列相加，量不丢。
+ * 不能直接截断：站点只要求模型合计不超过总量，截掉的量会悄悄从排名里消失。已经有一行叫 OVERFLOW_MODEL
+ * （真有模型取这个名）就并进它，站点拒收重名。没超限原样返回；返回的顺序不保证，由调用方排。
+ */
+function foldOverflow<T extends { model: string | null }>(
+  rows: T[],
+  max: number,
+  strongestFirst: (left: T, right: T) => number,
+  blank: (model: string) => T,
+  absorb: (into: T, row: T) => void,
+): T[] {
+  if (rows.length <= max) return rows;
+  const ordered = [...rows].sort(strongestFirst);
+  const kept = ordered.slice(0, max - 1);
+  let overflow = kept.find((row) => row.model === OVERFLOW_MODEL);
+  if (!overflow) {
+    overflow = blank(OVERFLOW_MODEL);
+    kept.push(overflow);
+  }
+  for (const row of ordered.slice(max - 1)) absorb(overflow, row);
+  return kept;
 }
 
 /** 从 Cursor JWT 拼出 dashboard 的会话 cookie。不校验签名，只认 sub。 */
@@ -294,7 +322,17 @@ function emptyDay(date: string): CursorUsageDay {
   };
 }
 
-/** 事件按站点日收成账本的日行；费用是否完整按天记（`costComplete`），当天没有事件也补一行空的 */
+type DayModel = CursorUsageDay["models"][number];
+
+/** 日行里模型的顺序：用量降序，同量按名字 */
+function byTokens(left: DayModel, right: DayModel): number {
+  return right.tokens - left.tokens || (left.model < right.model ? -1 : 1);
+}
+
+/**
+ * 事件按站点日收成账本的日行；费用是否完整按天记（`costComplete`），当天没有事件也补一行空的。
+ * 模型行超过 MAX_DAY_MODELS 时量小的并成一行 OVERFLOW_MODEL，模型合计始终等于 `totalTokens`。
+ */
 export function aggregateEvents(events: UsageEvent[], collectedAtMs: number): {
   days: CursorUsageDay[];
   unmeasured: number;
@@ -340,12 +378,18 @@ export function aggregateEvents(events: UsageEvent[], collectedAtMs: number): {
   const today = shanghaiDay(collectedAtMs);
   if (!days.has(today)) days.set(today, emptyDay(today));
   for (const [date, row] of days) {
-    const models = modelTokens.get(date);
-    row.models = [...(models ?? new Map<string, number>())]
+    const models = [...(modelTokens.get(date) ?? new Map<string, number>())]
       .filter(([, tokens]) => tokens > 0)
-      .map(([model, tokens]) => ({ model, tokens }))
-      .sort((left, right) => right.tokens - left.tokens || (left.model < right.model ? -1 : 1))
-      .slice(0, 40);
+      .map(([model, tokens]): DayModel => ({ model, tokens }));
+    row.models = foldOverflow(
+      models,
+      MAX_DAY_MODELS,
+      byTokens,
+      (model) => ({ model, tokens: 0 }),
+      (into, from) => {
+        into.tokens = add(into.tokens, from.tokens);
+      },
+    ).sort(byTokens);
   }
   return {
     days: [...days.values()].sort((left, right) => (left.date < right.date ? -1 : 1)),
@@ -536,30 +580,57 @@ export function cursorActivityReport(collectedAt: number, latest: LatestEvent | 
   };
 }
 
+type BucketRow = CodingTokenBucketRow & { eventCount: number };
+
+function blankBucketRow(model: string): BucketRow {
+  return {
+    id: CURSOR_AGENT_ID,
+    model,
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheCreationTokens: 0,
+    reasoningTokens: 0,
+    eventCount: 0,
+  };
+}
+
+function absorbBucketRow(into: BucketRow, row: BucketRow): void {
+  into.inputTokens = add(into.inputTokens, row.inputTokens);
+  into.outputTokens = add(into.outputTokens, row.outputTokens);
+  into.cacheReadTokens = add(into.cacheReadTokens, row.cacheReadTokens);
+  into.cacheCreationTokens = add(into.cacheCreationTokens, row.cacheCreationTokens);
+  into.reasoningTokens = add(into.reasoningTokens, row.reasoningTokens);
+  into.eventCount = add(into.eventCount, row.eventCount);
+}
+
+function bucketTokens(row: BucketRow): number {
+  return row.inputTokens + row.outputTokens + row.cacheReadTokens + row.cacheCreationTokens;
+}
+
+/** 窗口超限时谁留名：token 多的先，同量事件多的先，再按名字 */
+function heaviestBucketRow(left: BucketRow, right: BucketRow): number {
+  return bucketTokens(right) - bucketTokens(left) || right.eventCount - left.eventCount || byModelName(left, right);
+}
+
+function byModelName(left: BucketRow, right: BucketRow): number {
+  return (left.model ?? "") < (right.model ?? "") ? -1 : 1;
+}
+
 /**
  * 事件按 `timestampMs` 落 5 分钟桶（CODING_BUCKET_MS），只收 [from, to) 内的。同一桶里按模型分行，
  * `eventCount` 是这一行的事件数：没有 token 分列的事件（不按 token 计费的请求）也算一条，token 记 0。
+ * 一个窗口的模型行超过 MAX_WINDOW_ROWS 时量小的并成一行 OVERFLOW_MODEL，token 与事件数都相加。
  * 按桶起点升序，桶内按模型名；空桶不出。
  */
 export function aggregateBuckets(events: UsageEvent[], from: number, to: number): CodingTokenBucketWindow[] {
-  const windows = new Map<number, Map<string, CodingTokenBucketRow & { eventCount: number }>>();
+  const windows = new Map<number, Map<string, BucketRow>>();
   for (const event of events) {
     if (event.timestampMs < from || event.timestampMs >= to) continue;
     const start = bucketStart(event.timestampMs);
     const model = modelName(event.model);
-    const rows = windows.get(start) ?? new Map();
-    const row =
-      rows.get(model) ??
-      {
-        id: CURSOR_AGENT_ID,
-        model,
-        inputTokens: 0,
-        outputTokens: 0,
-        cacheReadTokens: 0,
-        cacheCreationTokens: 0,
-        reasoningTokens: 0,
-        eventCount: 0,
-      };
+    const rows = windows.get(start) ?? new Map<string, BucketRow>();
+    const row = rows.get(model) ?? blankBucketRow(model);
     row.inputTokens = add(row.inputTokens, event.inputTokens);
     row.outputTokens = add(row.outputTokens, event.outputTokens);
     row.cacheReadTokens = add(row.cacheReadTokens, event.cacheReadTokens);
@@ -572,7 +643,7 @@ export function aggregateBuckets(events: UsageEvent[], from: number, to: number)
     .sort(([left], [right]) => left - right)
     .map(([start, rows]) => ({
       from: start,
-      agents: [...rows.values()].sort((left, right) => ((left.model ?? "") < (right.model ?? "") ? -1 : 1)),
+      agents: foldOverflow([...rows.values()], MAX_WINDOW_ROWS, heaviestBucketRow, blankBucketRow, absorbBucketRow).sort(byModelName),
     }));
 }
 
