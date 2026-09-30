@@ -26,7 +26,7 @@ import { CODING_USAGE_SOURCE_NAMES, type CodingUsageSource } from "@shared/codin
 import { latestPulseAssessments, type PulseAssessment } from "@shared/pulse-assessment";
 import { codingBand, parseCodingObservation, type CodingObservation } from "@shared/pulse-coding";
 import { parseCursorObservation, type CursorObservation } from "@shared/pulse-cursor";
-import { parseListeningTrace, type ListeningTrace } from "@shared/pulse-listening";
+import { LISTENING_TRACE_MATCH_SLACK_MS, parseListeningTrace, type ListeningTrace } from "@shared/pulse-listening";
 import {
   activeState,
   chargingSegments,
@@ -123,9 +123,11 @@ export function stateLaneView<L extends StateLane>(lane: L, input: StateLaneInpu
     const uncertain = traces.flatMap((trace) => {
       const from = Math.max(window.from, trace.since), to = Math.min(window.to, trace.t);
       if (to <= from) return [];
-      // Mac / HomePod 那一路正放着同一张专辑：痕迹已经被实测解释了，不再另画一段
+      // Mac / HomePod 那一路刚放过同一首歌：痕迹已经被实测解释了，不再另画一段
       const named = trace.title?.toLowerCase();
-      if (named && music.some((segment) => segment.state !== "idle" && segment.to > trace.since && segment.from < trace.t && segment.album?.toLowerCase() === named)) return [];
+      const explained = (segment: (typeof music)[number]) => segment.state !== "idle" && segment.title?.toLowerCase() === named
+        && segment.from < trace.t && segment.to > trace.since - LISTENING_TRACE_MATCH_SLACK_MS;
+      if (named && music.some(explained)) return [];
       const at = span(window, from, to);
       return at.endSec > at.startSec ? [{ ...at, title: trace.title, subtitle: trace.artist }] : [];
     });

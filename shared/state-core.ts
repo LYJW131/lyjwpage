@@ -8,7 +8,7 @@
  * 方法只能加不能改：api 与调用方分开部署，新方法先随 api 上线，调用方后推。
  */
 
-import type { ListeningItem } from "@/lib/types";
+import type { ListeningItem, RecentTrack } from "@/lib/types";
 import type { CoreCommand } from "@shared/ingest/prepare";
 
 /**
@@ -53,8 +53,10 @@ export interface StateCoreRpc {
   playstationPower(): Promise<CorePower>;
   /** Apple Music API 的 developer token；私钥只在 api 上，调用方按到期时刻自己缓存 */
   appleDeveloperToken(): Promise<{ token: string; expiresAt: number }>;
-  /** 采集 Worker 拉到的最近在听：差分、推送 `listening`、记听歌痕迹都在状态核心里做 */
+  /** 采集 Worker 拉到的最近在听（专辑 / 歌单 / 电台）：差分、落库、推送 `listening` */
   commitRecentlyPlayed(items: ListeningItem[]): Promise<{ changed: boolean }>;
+  /** 采集 Worker 拉到的最近播放单曲：与上一轮比较，变了就记一条 Pulse 听歌痕迹，不推送 */
+  commitRecentTracks(tracks: RecentTrack[]): Promise<{ traced: boolean }>;
   /** 首屏缓存失效。写入方发起，密钥只在状态核心上 */
   revalidate(tags: string[]): Promise<void>;
 }

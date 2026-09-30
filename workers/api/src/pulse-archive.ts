@@ -500,8 +500,7 @@ export function archiveStatements(db: PulseArchiveDb, snapshot: PulseArchiveStre
     case "listening-traces": {
       const rows = parsedRows(snapshot.rows, parseListeningTrace).filter((row) => row.t > watermark);
       return {
-        // 专辑 / 歌单名放 album：列表条目不是单曲，没有曲名
-        statements: rows.map((row) => db.prepare(INSERT_LISTENING_PLAY).bind("recent", row.since, row.t, 0, null, row.artist, row.title, null, row.itemId)),
+        statements: rows.map((row) => db.prepare(INSERT_LISTENING_PLAY).bind("recent", row.since, row.t, 0, row.title, row.artist, row.album, null, row.itemId)),
         watermark: Math.max(watermark, ...rows.map((row) => row.t)),
       };
     }

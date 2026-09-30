@@ -19,7 +19,7 @@ import {
   watchingFacts,
   type ListeningFacts,
 } from "@shared/pulse-timeline";
-import type { ListeningItem, LocalNowPlaying } from "@/lib/types";
+import type { LocalNowPlaying, RecentTrack } from "@/lib/types";
 
 const T = 1_800_000_000_000;
 const M = 60_000;
@@ -185,14 +185,14 @@ test("listening observation: an offline Mac without a live HomePod is unknown, n
   assert.equal(listeningObservation({ mac: null, macObserved: false, homePod }, offline, T)?.facts.source, "homepod");
 });
 
-const item = (id: string, title = id): ListeningItem => ({ id, title, artist: "YOASOBI" } as ListeningItem);
+const track = (id: string, title = id): RecentTrack => ({ id, title, artist: "YOASOBI", album: "THE BOOK 3" });
 
-test("recently played traces: need a baseline, ignore cover-only changes, name the newly added item", () => {
-  assert.equal(listeningTrace(null, { items: [item("a")], fetchedAt: T }), null);
-  assert.equal(listeningTrace({ items: [item("a")], fetchedAt: T }, { items: [{ ...item("a"), artwork: "new" } as ListeningItem], fetchedAt: T + M }), null);
-  assert.deepEqual(listeningTrace({ items: [item("a")], fetchedAt: T }, { items: [item("b", "THE BOOK 3"), item("a")], fetchedAt: T + 2 * M }),
-    { since: T, t: T + 2 * M, title: "THE BOOK 3", artist: "YOASOBI", itemId: "b" });
-  assert.equal(listeningTrace({ items: [item("a"), item("b")], fetchedAt: T }, { items: [item("b"), item("a")], fetchedAt: T + M })?.itemId, "b", "a replayed album moves to the front");
+test("recently played traces: need a baseline, compare ids and order only, name the newly added song", () => {
+  assert.equal(listeningTrace(null, { tracks: [track("a")], fetchedAt: T }), null);
+  assert.equal(listeningTrace({ tracks: [track("a")], fetchedAt: T }, { tracks: [{ ...track("a"), album: "renamed" }], fetchedAt: T + M }), null);
+  assert.deepEqual(listeningTrace({ tracks: [track("a")], fetchedAt: T }, { tracks: [track("b", "Yoru ni Kakeru"), track("a")], fetchedAt: T + 2 * M }),
+    { since: T, t: T + 2 * M, title: "Yoru ni Kakeru", artist: "YOASOBI", album: "THE BOOK 3", itemId: "b" });
+  assert.equal(listeningTrace({ tracks: [track("a"), track("b")], fetchedAt: T }, { tracks: [track("b"), track("a")], fetchedAt: T + M })?.itemId, "b", "a replayed song moves to the front");
   assert.equal(parseListeningTrace(JSON.stringify({ since: T, t: T })), null);
   assert.equal(parseListeningTrace("{"), null);
 });
