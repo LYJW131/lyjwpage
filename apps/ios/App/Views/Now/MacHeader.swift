@@ -1,11 +1,5 @@
 import SwiftUI
 
-/**
- 页头：Mac 此刻的前台应用，对应站点页头中间那一块。
-
- 图标和名字由 Mac 上报器上报；窗口标题只有通过隐私判断的才会带过来，没有就不写。
- 站点对几款常用工具换成了品牌动画，App 这边用上报的原图标，不另做。
- */
 struct MacHeader: View {
     @Environment(LiveStore.self) private var store
     let now: Date
@@ -86,7 +80,6 @@ struct MacHeader: View {
     }
 }
 
-/// Mac 所在时区的时钟：人在哪儿，站点就按哪儿的时间说话。没取到就用站点默认时区
 private struct LocalClock: View {
     let timezone: TimezoneActivity?
 

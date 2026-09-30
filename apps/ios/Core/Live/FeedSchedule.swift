@@ -1,21 +1,15 @@
 import Foundation
 
-/**
- App 读的每一路站点数据，以及它在前台时多久取一次。
-
- 节奏照站点浏览器端那一套（`src/lib/status-views.ts#STATUS_VIEWS` 的 `cadenceMs` / `pushCovers`、
- 各卡片自己的轮询间隔、`src/lib/poll-schedule.ts`），这样 App 打在 Worker 上的量和多开一个
- 浏览器标签页一样，不会因为是原生就更密。App 在后台时一律不取，见 `LiveStore.deactivate`。
- */
+// 节奏照搬浏览器端（`src/lib/status-views.ts#STATUS_VIEWS`、`src/lib/poll-schedule.ts`），App 打在 Worker 上的量才不超过多开一个标签页。
 enum FeedKey: String, CaseIterable, Sendable {
     case desktop, timezone, activity, workouts, server, charger, powerBank, listening, nowListening
     case coding, codingNow, codingYear, limits, agentStatus, watching, nowWatching, playing, playingNow
     case trophies, githubRepo, vercelDeployments, cloudflareWorkers, sentry, reporters, pulse, version
 
     enum Policy {
-        /// 实时层：`interval` 是卡片自己的轮询间隔；`pushCovers` 为真时推送连着就退成兜底
+        // pushCovers 为真时，推送连着就只按兜底间隔取。
         case realtime(interval: TimeInterval, pushCovers: Bool)
-        /// 可滞后层：写入方的标称节奏，按 `updatedAt + cadence + 宽限` 去取
+        // cadence 是写入方的标称节奏，不是本端轮询间隔。
         case lag(cadence: TimeInterval)
     }
 
@@ -40,27 +34,25 @@ enum FeedKey: String, CaseIterable, Sendable {
         }
     }
 
-    /// 推送重连后要立刻回源补一次的那些：断开期间漏掉的推送只能靠它补
     var isRealtime: Bool {
         if case .realtime = policy { return true }
         return false
     }
 
-    /// `presence` 事件只是失效通知，收到后重取这几路（它们都靠 Mac 的心跳判活）
+    // presence 只是失效通知；靠 Mac 心跳判活的路都必须列在这里，否则收到后不会重取。
     static let presenceDependents: [FeedKey] = [.desktop, .nowListening, .charger, .powerBank, .codingNow]
 }
 
 enum FeedSchedule {
-    /// 源：src/lib/poll-schedule.ts#PUSH_SAFETY_NET_MS
+    // 源：src/lib/poll-schedule.ts#PUSH_SAFETY_NET_MS
     static let pushSafetyNet: TimeInterval = 5 * 60
-    /// 源：src/lib/poll-schedule.ts#LAG_GRACE_MS
+    // 源：src/lib/poll-schedule.ts#LAG_GRACE_MS
     static let lagGrace: TimeInterval = 15
-    /// 源：src/lib/poll-schedule.ts#LAG_MIN_RETRY_MS
+    // 源：src/lib/poll-schedule.ts#LAG_MIN_RETRY_MS
     static let lagMinRetry: TimeInterval = 15
-    /// 源：src/lib/poll-schedule.ts#LAG_MAX_RETRY_MS
+    // 源：src/lib/poll-schedule.ts#LAG_MAX_RETRY_MS
     static let lagMaxRetry: TimeInterval = 5 * 60
 
-    /// 下一次该取的时刻。`updatedAt` 是信封里写入方最后一次成功的时刻（epoch 毫秒）
     static func nextDue(for key: FeedKey, updatedAt: Double?, socketLive: Bool, now: Date) -> Date {
         switch key.policy {
         case let .realtime(interval, pushCovers):
@@ -71,7 +63,7 @@ enum FeedSchedule {
         }
     }
 
-    /// 源：src/lib/poll-schedule.ts#nextLagDelay
+    // 源：src/lib/poll-schedule.ts#nextLagDelay
     static func lagDelay(updatedAt: Double?, cadence: TimeInterval, now: Date) -> TimeInterval {
         guard let updatedAt else { return cadence }
         let due = Date(epochMilliseconds: updatedAt).addingTimeInterval(cadence + lagGrace)

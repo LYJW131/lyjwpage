@@ -1,17 +1,10 @@
 import SwiftUI
 
-/**
- 内容层的卡片。
-
- 液态玻璃只给控件和导航那一层（Tab 栏、工具栏、浮在媒体上的按钮），内容层用系统的分组背景：
- HIG「Materials」明确说别把玻璃铺进内容层。卡片之间的层次靠 grouped 背景的明暗差，和
- 系统「健康」「设置」一个做法。
- */
+// 液态玻璃只给控件和导航层，卡片用系统分组背景：HIG「Materials」明确说别把玻璃铺进内容层
 struct Card<Content: View>: View {
     var title: String
     var systemImage: String
     var status: CardStatus?
-    /// 媒体卡用专辑配色从顶上晕一层：颜色服务于内容，其余卡保持灰阶
     var tint: Color? = nil
     @ViewBuilder var content: Content
 
@@ -41,7 +34,6 @@ struct Card<Content: View>: View {
     }
 }
 
-/// 卡片右上角那个状态：和站点卡片一样只分这几种，文案也一样
 enum CardStatus: Equatable {
     case live
     case idle
@@ -78,7 +70,6 @@ struct StatusPill: View {
     }
 }
 
-/// 站点的 `--live` 绿点：这一路此刻是活的
 struct LiveDot: View {
     var size: CGFloat = 7
 
@@ -93,10 +84,7 @@ struct LiveDot: View {
     }
 }
 
-/**
- 远程图片。用 iOS 27 的 `AsyncImage(request:)`：请求带 `returnCacheDataElseLoad`，配合根视图
- 挂的 `asyncImageURLSession` 走磁盘缓存 —— 这些图都是内容地址或带尺寸的 CDN 地址，不会原地变。
- */
+// returnCacheDataElseLoad 不回源校验：只对内容地址或带尺寸的 CDN 图成立，会原地变的图不能走这里
 struct RemoteImage: View {
     let url: URL?
     var contentMode: ContentMode = .fill
@@ -112,7 +100,6 @@ struct RemoteImage: View {
     }
 }
 
-/// 一格读数：大号数字 + 小号单位 + 说明
 struct Metric: View {
     let value: String
     var unit: String?
@@ -136,7 +123,6 @@ struct Metric: View {
     }
 }
 
-/// 卡片里「这一路还没数据 / 取不到」的占位
 struct CardPlaceholder: View {
     let text: String
 
@@ -149,7 +135,6 @@ struct CardPlaceholder: View {
 }
 
 extension Color {
-    /// `#rrggbb`，站点给专辑配色用的格式
     init?(hex: String) {
         let digits = hex.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
         guard digits.count == 6, let value = UInt32(digits, radix: 16) else { return nil }
@@ -162,7 +147,6 @@ extension Color {
 }
 
 extension View {
-    /// 页面底色：分组背景，卡片浮在上面
     func pageBackground() -> some View {
         background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
     }

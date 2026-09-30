@@ -8,7 +8,7 @@ struct CodingUsageTotals: Decodable, Sendable, Equatable {
     let reasoningTokens: Double
     let totalTokens: Double
     let apiEquivalentCostUSD: Double
-    /// false：有模型没有价目，成本是下限
+    // false 表示有模型没有价目，成本只是下限。
     let costComplete: Bool
     let activeDays: Int
     let sessionCount: Int?
@@ -22,9 +22,7 @@ struct CodingUsageDayTotals: Decodable, Sendable, Equatable {
 }
 
 struct CodingUsageSourceStatus: Decodable, Sendable, Equatable {
-    /// mac / agents / agents-otlp
     let source: String
-    /// ok / error / superseded / conflict
     let state: String
     let collectedAt: Double?
     let error: String?
@@ -39,7 +37,7 @@ struct CodingUsageAgentView: Decodable, Sendable, Equatable, Identifiable {
     let lastDay: CodingUsageDayTotals?
     let status: [CodingUsageSourceStatus]
 
-    /// 有来源采集失败时，读数旁标 Partial，不把缺的那部分当成 0
+    // 有来源采集失败时标 Partial，不能把缺的那部分当成 0。
     var isPartial: Bool { status.contains { $0.state == "error" } }
 }
 
@@ -75,17 +73,13 @@ struct CodingNowPayload: Decodable, Sendable, Equatable, ReporterPresence {
     let heartbeatWindowMs: Double
 }
 
-/**
- 年度热力图。`days[i]` 是 `origin` 往后第 i 天的 token 数；`mix` 每行是
- `[天偏移, 模型下标, token, 模型下标, token, …]`，App 只用 `days`。
- */
+// days[i] 是 origin 往后第 i 天的 token 数。
 struct CodingYearPayload: Decodable, Sendable, Equatable {
-    /// YYYY-MM-DD
     let origin: String
     let days: [Double]
     let models: [String]
     let updatedAt: Double
-    /// 来源侧的「今天」，YYYY-MM-DD
+    // 来源侧的「今天」，不是手机的。
     let todayAtSource: String
 }
 
@@ -100,7 +94,7 @@ struct VibeCodingLimit: Decodable, Sendable, Equatable, Identifiable {
     let group: String?
     let windowMinutes: Double?
     let usedPercent: Double
-    /// **Unix 秒**，不是毫秒
+    // Unix 秒，不是毫秒。
     let resetsAt: Double?
 
     var id: String { key }

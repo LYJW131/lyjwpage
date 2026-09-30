@@ -53,25 +53,16 @@ final class HubModel {
         case let .failed(reason):
             note = reason
         case .coalesced:
-            // 上一句留着，见 TelemetryHub.Outcome.coalesced
             break
         }
         await refresh()
     }
 }
 
-/**
- 这台 iPhone 作为上报器的样子：本机 HealthKit 读到的圈和训练、最近一次上报、授权。
-
- 这一页读的是**本机**（HealthKit），「Now」那页读的是**站点**；两边对得上，就说明上报链路是通的。
- 界面这层故意是具体的 —— 每个模块的展示形态天差地别，让 TelemetryModule 协议再背一个
- `dashboardView()` 就过线了。
- */
 struct DeviceView: View {
     @State private var model = HubModel()
     @Environment(\.scenePhase) private var scenePhase
     @State private var showingSettings = false
-    /// 开关放设置里，这里只读，回前台时重新取一次
     @State private var activityEnabled = HubSettings.isEnabled(Modules.activity.id)
     @State private var workoutsEnabled = HubSettings.isEnabled(Modules.workouts.id)
 
@@ -84,7 +75,6 @@ struct DeviceView: View {
                             .foregroundStyle(.secondary)
                     }
                     LabeledContent("Result") {
-                        // 一次都没报过时不写成功 —— 那是在替一件没发生的事下结论
                         Text(model.lastPush.at == nil ? "—" : (model.lastPush.error ?? "Delivered"))
                             .foregroundStyle(model.lastPush.error == nil ? Color.secondary : Color.red)
                             .multilineTextAlignment(.trailing)
@@ -120,7 +110,6 @@ struct DeviceView: View {
                             .font(.footnote.monospacedDigit())
                             .foregroundStyle(.secondary)
                     } else {
-                        // 没授权、或者手表当天还没同步过来，都是这一句
                         Text("No activity summary for today yet").foregroundStyle(.secondary)
                     }
                 }
@@ -156,7 +145,6 @@ struct DeviceView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Settings", systemImage: "gearshape") { showingSettings = true }
                 }
-                // 这一页唯一的主操作，钉在右上角，窗口再窄也不进溢出菜单
                 ToolbarItem(placement: .topBarPinnedTrailing) {
                     Button {
                         Task { await model.report(force: true) }
@@ -189,7 +177,6 @@ struct DeviceView: View {
             Task { await model.refresh() }
         }
         .onChange(of: showingSettings) { _, showing in
-            // 从设置退回来：开关可能变了，读数和下一次上报都要跟着走
             guard !showing else { return }
             activityEnabled = HubSettings.isEnabled(Modules.activity.id)
             workoutsEnabled = HubSettings.isEnabled(Modules.workouts.id)

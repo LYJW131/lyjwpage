@@ -1,17 +1,11 @@
 import AppIntents
 import Foundation
 
-/**
- 「立刻上报」：Siri、快捷指令、操作按钮都能触发，不用打开 App。
-
- HealthKit 的后台投递按小时节流，想让站点上的圈立刻跟上只能手动报一次；以前只能打开 App 点按钮，
- 现在在后台就能跑。`allowedExecutionTargets` 限定只在主 App 进程里执行 —— 上报器、HealthKit
- 授权、钥匙串里的凭据都只在这个进程里。
- */
 struct ReportTelemetryIntent: AppIntent {
     static let title: LocalizedStringResource = "Report Telemetry"
     static let description = IntentDescription("Sends this iPhone's activity rings and recent workouts to lyjw.me right now.")
     static let supportedModes: IntentModes = .background
+    // 只在主 App 进程执行：上报器、HealthKit 授权和钥匙串凭据都只在这个进程里
     static var allowedExecutionTargets: IntentExecutionTargets { .main }
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
@@ -20,7 +14,6 @@ struct ReportTelemetryIntent: AppIntent {
     }
 }
 
-/// 「站点上此刻在放什么」：读的是站点公开的那一份，和访客看到的一致
 struct NowListeningIntent: AppIntent {
     static let title: LocalizedStringResource = "What's Playing on lyjw.me"
     static let description = IntentDescription("Tells you what's playing on the Mac or HomePod right now.")

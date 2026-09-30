@@ -3,17 +3,8 @@ import Foundation
 import FoundationNetworking
 #endif
 
-/**
- 站点的推送长连接，和浏览器连的是同一条：`wss://…/ws?visible=1`，消息见 `LiveEvent`。
-
- 握手必须带白名单里的 `Origin`（api Worker 对 `/ws` 缺来源一律 403），所以这里自报站点域名，
- 和仓库里本地开发的上游中继是同一个做法。连着就会算进站点页脚的「Online now」，所以只在
- App 前台时连，退到后台由 `LiveStore.deactivate` 关掉 —— 那正是访客关掉标签页的语义。
-
- 心跳和重连照浏览器端：每 `heartbeatInterval` 发一次 `"ping"`（服务端自动回 `"pong"`，
- 超过 30 分钟没动静的连接会被它关掉）；断了按 1.5 倍退避重连，封顶 30 秒。源：
- shared/live-heartbeat.ts#LIVE_HEARTBEAT_MS、src/hooks/use-live-events.ts
- */
+// 握手必须带白名单里的 Origin（api Worker 对 /ws 缺来源一律 403），所以自报站点域名。
+// 连着就算进站点「Online now」，只能在前台连。心跳与退避照浏览器端，源：shared/live-heartbeat.ts#LIVE_HEARTBEAT_MS、src/hooks/use-live-events.ts
 @MainActor
 final class LiveSocket {
     enum State: Equatable, Sendable {
@@ -24,7 +15,7 @@ final class LiveSocket {
 
     private(set) var state: State = .closed
     var onEvent: ((LiveEvent) -> Void)?
-    /// 连上了。`reconnected` 为真表示之前连上过、中间断过，断开期间的推送都漏了
+    // reconnected 为真表示中间断过，断开期间的推送已漏掉。
     var onOpen: ((_ reconnected: Bool) -> Void)?
     var onStateChange: ((State) -> Void)?
 
@@ -37,7 +28,7 @@ final class LiveSocket {
     private var everOpened = false
     private var wanted = false
 
-    /// 回前台时立刻连，不等退避计时：那一刻最需要看到最新状态
+    // 不等退避计时：回前台那一刻最需要最新状态。
     func connect() {
         wanted = true
         retry?.cancel()

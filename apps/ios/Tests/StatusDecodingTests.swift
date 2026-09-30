@@ -5,16 +5,8 @@ import Testing
 @testable import LyjwpageCore
 #endif
 
-/**
- 共享层对着站点真实载荷的解码测试。
-
- 两份样本：`Fixtures/` 是某一刻从生产 api Worker 抓的快照（形状以此为准，数值不维护）；
- `workers/api/dev-fixtures/` 是站点本地开发注入用的夹具，覆盖此刻没发生的状态（在放、在充电、
- 泳道畸形），直接读仓库里那一份，契约变了两边一起红。
- */
+// dev-fixtures 直接读仓库那份而不是拷贝：契约一变，站点和 App 两边一起红
 @Suite struct StatusDecodingTests {
-    // MARK: 生产快照
-
     @Test func productionSnapshotsDecode() throws {
         try expectData(Status.desktop, "desktop")
         try expectData(Status.timezone, "timezone")
@@ -64,8 +56,6 @@ import Testing
         #expect(pulse.window.to - pulse.window.from == 86_400_000)
     }
 
-    // MARK: 站点开发夹具
-
     @Test(arguments: [
         "listening-now-yoasobi", "charger-macbook-iphone", "charger-idle", "powerbank-charging",
         "watching-now", "watching-now-paused", "playing-now-pragmata", "desktop-claude-code",
@@ -111,8 +101,6 @@ import Testing
         #expect(music.source == .appleMusic)
     }
 
-    // MARK: 推送
-
     @Test func liveEventsDecode() throws {
         let online = try StatusClient.decoder.decode(LiveEvent.self, from: Data(#"{"type":"online","payload":{"online":3}}"#.utf8))
         guard case .online(3) = online else { Issue.record("online 解错了：\(online)"); return }
@@ -123,7 +111,6 @@ import Testing
         let future = try StatusClient.decoder.decode(LiveEvent.self, from: Data(#"{"type":"quest-now","payload":{"x":1}}"#.utf8))
         guard case .unknown("quest-now") = future else { Issue.record("没登记的事件应落到 unknown"); return }
 
-        // 带数据的事件携带的就是端点 data 那一份
         let desktop = try JSONSerialization.jsonObject(with: fixture("desktop")) as? [String: Any]
         let message = try JSONSerialization.data(withJSONObject: ["type": "desktop", "payload": desktop?["data"] as Any])
         guard case let .desktop(payload) = try StatusClient.decoder.decode(LiveEvent.self, from: message) else {
@@ -131,8 +118,6 @@ import Testing
         }
         #expect(payload.desktop?.applicationName.isEmpty == false)
     }
-
-    // MARK: 规则
 
     @Test func unknownEnumValueDoesNotFailPayload() throws {
         let json = #"{"source":"vision-pro","state":"buffering","title":"x","artist":null,"album":null,"trackId":null,"artworkUrl":null,"positionMs":0,"durationMs":0,"repeatOne":false,"observedAt":1}"#
@@ -201,8 +186,6 @@ import Testing
         #expect(pulse.lanes.charging?.segments.first?.value == 20)
     }
 
-    // MARK: 取样本
-
     private func decode<P>(_ endpoint: StatusEndpoint<P>, _ data: Data) throws -> StatusEnvelope<P> {
         try StatusClient.decoder.decode(StatusEnvelope<P>.self, from: data)
     }
@@ -222,7 +205,7 @@ import Testing
         try Data(contentsOf: Self.here.appending(path: "Fixtures/\(name).json"))
     }
 
-    /// 站点开发夹具里的 `"$now-60000"` / `"$today"` 令牌按站点脚本的规则换成此刻。源：scripts/dev-override.mjs#NOW_TOKEN
+    // 站点开发夹具里的 `"$now-60000"` / `"$today"` 令牌按站点脚本的规则换成此刻。源：scripts/dev-override.mjs#NOW_TOKEN
     private func devFixture(_ name: String) throws -> Data {
         let url = Self.here.appending(path: "../../../workers/api/dev-fixtures/\(name).json").standardizedFileURL
         var text = try String(contentsOf: url, encoding: .utf8)

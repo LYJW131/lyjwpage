@@ -1,6 +1,6 @@
 import Foundation
 
-/// 站点新增取值时不至于让整份载荷解码失败的字符串枚举
+// 站点新增取值时不能让整份载荷解码失败。
 protocol LenientStringEnum: RawRepresentable, Decodable, Sendable where RawValue == String {
     static var unknownCase: Self { get }
 }
@@ -32,7 +32,7 @@ enum MusicSource: String, LenientStringEnum, Equatable {
     }
 }
 
-/// Mac 与 HomePod 共用的正在播放。`positionMs` 是 `observedAt` 那一刻的进度
+// positionMs 是 observedAt 那一刻的进度。
 struct LocalNowPlaying: Decodable, Sendable, Equatable {
     let source: MusicSource
     let state: PlaybackState
@@ -46,7 +46,7 @@ struct LocalNowPlaying: Decodable, Sendable, Equatable {
     let repeatOne: Bool
     let observedAt: Double
 
-    /// 对着站点的 `src/lib/track-position.ts#trackPositionMs`：在放就按经过的时间往前推
+    // 须与站点 `src/lib/track-position.ts#trackPositionMs` 同一推算。
     func positionMs(at now: Date) -> Double {
         let drift = state == .playing ? max(0, now.epochMilliseconds - observedAt) : 0
         let elapsed = positionMs + drift
@@ -54,7 +54,7 @@ struct LocalNowPlaying: Decodable, Sendable, Equatable {
         return repeatOne ? elapsed.truncatingRemainder(dividingBy: durationMs) : min(durationMs, elapsed)
     }
 
-    /// 对着 `src/lib/home-layout.ts#liveTrack`：有歌名且没停才算「正在听」
+    // 须与站点 `src/lib/home-layout.ts#liveTrack` 同一判断。
     var isLive: Bool { title?.isEmpty == false && state != .stopped }
 }
 
@@ -71,24 +71,20 @@ struct NowListeningPayload: Decodable, Sendable, Equatable, ReporterPresence {
     let music: LocalNowPlaying?
     let receivedAt: Double?
     let idle: Bool
-    /// 专辑 / 歌单 id，与 `ListeningItem.id` 同一套
+    // 与 ListeningItem.id 同一套 id。
     let id: String?
     let link: String?
-    /// Apple Music 曲库 id，取歌词用
     let songId: String?
     let upcomingSongIds: [String]
     let hasLyrics: Bool
-    /// 暂停宽限期，到点应重取一次
+    // 暂停宽限期，到点应重取一次。
     let expiresInMs: Double?
     let alternate: NowListeningAlternate?
     let lastSeenAt: Double
     let declaredOffline: Bool
     let heartbeatWindowMs: Double
 
-    /**
-     对着站点的 `src/lib/freshness.ts#liveNowListening`：Mac 掉线时它报的那首已不可信，
-     换成接班的那一路（HomePod），没有就当空闲。
-     */
+    // Mac 掉线时它报的那首已不可信，换成 HomePod，没有就当空闲。须与站点 `src/lib/freshness.ts#liveNowListening` 一致。
     func live(macOffline: Bool) -> NowListeningPayload {
         guard macOffline, music?.source == .appleMusic else { return self }
         return NowListeningPayload(
@@ -105,17 +101,17 @@ struct ListeningItem: Decodable, Sendable, Equatable, Identifiable {
     let id: String
     let title: String
     let artist: String
-    /// Apple 的封面模板，带 `{w}x{h}` 占位，用 `AssetURL.appleArtwork` 展开
+    // 带 {w}x{h} 占位的模板，要先展开。
     let artwork: String?
     let link: String?
-    /// `#rrggbb`：背景色 + 四档文字色
+    // #rrggbb：背景色 + 四档文字色。
     let palette: [String]
     let durationMs: Double?
 }
 
 struct ListeningPayload: Decodable, Sendable, Equatable {
     let items: [ListeningItem]
-    /// 代际标记，不是新鲜度信号
+    // 代际标记，不是新鲜度信号。
     let fetchedAt: Double
 }
 
@@ -140,15 +136,13 @@ struct WatchingItem: Decodable, Sendable, Equatable, Identifiable {
     let id: String
     let title: String
     let subtitle: String
-    /// 0–100
+    // 0–100
     let progress: Double
-    /// `/img/<objectKey>` 同源路径
     let poster: String?
     let backdrop: String?
     let type: WatchingType
     let year: Int?
     let link: String?
-    /// ISO 8601
     let playedAt: String?
 }
 
@@ -156,7 +150,6 @@ struct WatchingVideo: Decodable, Sendable, Equatable {
     let codec: String?
     let width: Int?
     let height: Int?
-    /// sdr / hdr / hdr10 / hdr10plus / dolby-vision / hlg
     let range: String?
     let bitDepth: Int?
 }
@@ -171,7 +164,7 @@ struct WatchingAudio: Decodable, Sendable, Equatable {
 
 struct WatchingMedia: Decodable, Sendable, Equatable {
     let container: String?
-    /// bit/s
+    // bit/s
     let bitrate: Double?
     let video: WatchingVideo?
     let audio: WatchingAudio?
@@ -180,11 +173,10 @@ struct WatchingMedia: Decodable, Sendable, Equatable {
 struct ResolvedNowPlaying: Decodable, Sendable, Equatable {
     let itemId: String
     let paused: Bool
-    /// 0–100，已按站点出响应的时刻推算过
+    // 0–100，已推算到站点出响应的时刻。
     let progress: Double?
     let client: String?
     let deviceName: String?
-    /// directplay / directstream / transcode
     let playMethod: String?
     let media: WatchingMedia?
     let positionMs: Double?

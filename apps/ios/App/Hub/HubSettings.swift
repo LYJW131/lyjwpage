@@ -1,29 +1,17 @@
 import Foundation
 import Security
 
-/// 上报目的地。地址和 client id 存 UserDefaults，密钥存钥匙串
 struct Destination: Sendable {
     var url: URL
-    /// Cloudflare Access service token 的 client id（不是秘密），`secret` 是它的 client secret
     var clientID: String
     var secret: String
 }
 
-/// 上一次上报的结果，给界面显示用
 struct PushRecord: Sendable {
     var at: Date?
-    /// nil 表示成功
     var error: String?
 }
 
-/**
- 配置和上次结果的存放处。密钥进钥匙串、其余进 UserDefaults，和 MacTelemetryHub
- 那边一套写法。
-
- 上次结果也存下来，是因为**大部分上报发生在后台**（系统把 App 拉起来、推完就又
- 睡了），那时没有界面可以更新。存一份，回前台时照着显示，才看得出「昨晚到底有没有
- 在报」。
- */
 enum HubSettings {
     private static let service = "com.liangyangjunwei.iPhoneTelemetryHub"
     private static let secretAccount = "telemetry-ingest-secret"
@@ -58,14 +46,12 @@ enum HubSettings {
         set { keychainWrite(newValue.trimmingCharacters(in: .whitespacesAndNewlines)) }
     }
 
-    /// 地址和 Access 凭据都填全了才算配好。没配好时上报直接跳过，不去打一个注定被拒的请求
     static func destination() -> Destination? {
         guard let url = URL(string: endpoint), url.scheme == "https", let host = url.host, !host.isEmpty else { return nil }
         guard !clientID.isEmpty, !secret.isEmpty else { return nil }
         return Destination(url: url, clientID: clientID, secret: secret)
     }
 
-    /// 模块开关，**默认开** —— 装上就该开始报，不该等人再去打开一次
     static func isEnabled(_ moduleID: String) -> Bool {
         UserDefaults.standard.object(forKey: moduleKey(moduleID)) as? Bool ?? true
     }
@@ -76,7 +62,6 @@ enum HubSettings {
 
     static func record(error: String?) {
         let defaults = UserDefaults.standard
-        // 失败也记时刻：界面要能说「10 分钟前试过、被拒了」，而不是停在上次成功那一刻
         defaults.set(Date().timeIntervalSince1970, forKey: lastPushAtKey)
         defaults.set(error, forKey: lastErrorKey)
     }
@@ -89,8 +74,6 @@ enum HubSettings {
             error: defaults.string(forKey: lastErrorKey)
         )
     }
-
-    // MARK: - 钥匙串
 
     private static func keychainRead() -> String? {
         let query: [String: Any] = [
@@ -117,13 +100,7 @@ enum HubSettings {
 
         var item = base
         item[kSecValueData as String] = data
-        /**
-         解锁后可读，且**允许后台访问**。
-
-         默认的 `WhenUnlocked` 在这里不够：系统会在手机锁着的时候把 App 拉起来
-         上报，那时读不到密钥就只能带着空凭据去打站点、被 401 拒掉。
-         `AfterFirstUnlock` 是「开机后解锁过一次就能读」，正好覆盖这种场景。
-         */
+        // 后台唤醒时手机可能仍锁着；WhenUnlocked 会让上报读不到密钥。
         item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
         SecItemAdd(item as CFDictionary, nil)
     }

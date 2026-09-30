@@ -1,21 +1,11 @@
 import Foundation
 import Observation
 
-/**
- App 手上的那一份站点状态：各路数据的最新值、推送连接、前台时的取数排期。
-
- **只在前台工作。** 回到前台 `activate()`：先回源补一轮到期的，再连推送；退到后台
- `deactivate()`：断推送、停排期。后台不取任何状态 —— 这个 App 在后台唯一该做的是上报
- （`TelemetryHub`），不是看。
-
- **后到的不一定是新的。** 推送和轮询会交错，几路带「代际戳」的数据按戳比较、旧的直接丢，
- 规则对着站点的 `src/lib/status-reads.ts#STAMPS`。
- */
+// 只在前台工作：后台唯一该做的是上报（TelemetryHub），不取任何状态。
+// 推送和轮询会交错，带代际戳的几路按戳比较、旧的丢掉，规则对着 `src/lib/status-reads.ts#STAMPS`。
 @MainActor
 @Observable
 final class LiveStore {
-    // MARK: 数据
-
     var desktop: DesktopPayload?
     var timezone: TimezonePayload?
     var activity: ActivityPayload?
@@ -32,7 +22,7 @@ final class LiveStore {
     var agentStatus: AgentStatusPayload?
     var watching: WatchingPayload?
     var nowWatching: NowWatchingPayload?
-    /// `nowWatching.nowPlaying.progress` 推算到的那一刻（站点出响应的时刻；推送来的按收到的时刻），epoch 毫秒
+    // progress 推算到的时刻（站点出响应时；推送按收到时），epoch 毫秒。
     var nowWatchingAt: Double?
     var playing: PlaystationPlayingPayload?
     var playingNow: PlaystationPresencePayload?
@@ -45,13 +35,9 @@ final class LiveStore {
     var pulse: PulsePayload?
     var siteVersion: AppVersionPayload?
 
-    /// 站点页脚那个「Online now」，推送连上时服务端会先发一次
     var online: Int?
     var socketState: LiveSocket.State = .closed
-    /// 某一路最近一次取数失败的原因（`ok: false` 的 error 或网络错误）；取到了就清掉
     private(set) var failures: [FeedKey: String] = [:]
-
-    // MARK: 排期
 
     @ObservationIgnored private let client: StatusClient
     @ObservationIgnored private let cache: SnapshotCache
@@ -62,7 +48,7 @@ final class LiveStore {
     @ObservationIgnored private var loop: Task<Void, Never>?
     @ObservationIgnored private var restored = false
 
-    /// 排期多久看一眼。各路自己的间隔都比它长，它只决定「到期后最多晚多少秒取」
+    // 必须短于各路自己的间隔；它只决定到期后最多晚多少秒取。
     private static let tick: Duration = .seconds(5)
 
     init(client: StatusClient = .shared, cache: SnapshotCache = SnapshotCache()) {
@@ -99,7 +85,6 @@ final class LiveStore {
         socket.disconnect()
     }
 
-    /// 下拉刷新：不管排期，全部重取一次
     func refreshAll() async {
         await withTaskGroup(of: Void.self) { group in
             for key in FeedKey.allCases {
@@ -125,8 +110,6 @@ final class LiveStore {
         await refresh(due)
     }
 
-    // MARK: 取数
-
     private func load(_ key: FeedKey) async {
         guard !inFlight.contains(key) else { return }
         inFlight.insert(key)
@@ -147,7 +130,6 @@ final class LiveStore {
         )
     }
 
-    /// 冷启动先把上次落盘的那份摆上来，之后照常回源；过期判断照样按各自的规则走
     private func restoreSnapshots() {
         for key in FeedKey.allCases {
             guard let data = cache.load(key) else { continue }
@@ -155,7 +137,6 @@ final class LiveStore {
         }
     }
 
-    /// 解一份响应体、交给对应的那一路。返回信封里的 `updatedAt`（只有可滞后层有）
     @discardableResult
     private func ingest(_ key: FeedKey, _ data: Data) throws -> Double? {
         switch key {
@@ -201,8 +182,6 @@ final class LiveStore {
         return envelope.updatedAt
     }
 
-    // MARK: 推送
-
     private func receive(_ event: LiveEvent) {
         switch event {
         case let .desktop(payload): accept(desktop: payload)
@@ -232,8 +211,6 @@ final class LiveStore {
         nowWatchingAt = servedAt ?? Date().epochMilliseconds
     }
 
-    // MARK: 顺序闸
-
     private func accept(desktop next: DesktopPayload) {
         guard (next.receivedAt ?? 0) >= (desktop?.receivedAt ?? 0) else { return }
         desktop = next
@@ -259,7 +236,7 @@ final class LiveStore {
         trophies = next
     }
 
-    /// 推送里的充电头不带历史：接在手上那条曲线后面，只留最近 `chargerHistoryWindow`
+    // 推送里的充电头 history 永远为空，只能接在已有曲线后面。
     private func accept(pushedCharger next: ChargerPayload) {
         guard next.pushedAt >= (charger?.pushedAt ?? 0) else { return }
         var history = charger?.history ?? []
@@ -310,11 +287,7 @@ extension FeedKey {
     }
 }
 
-/**
- 各路最近一次成功取到的原始响应体，落在 Caches 里。
-
- 只为冷启动那一两秒不空着：系统可以随时清 Caches，清了就是第一次打开的样子，不影响正确性。
- */
+// 只为冷启动不空着；系统随时可清 Caches，清了等同首次打开，不影响正确性。
 final class SnapshotCache: Sendable {
     private let directory: URL
 

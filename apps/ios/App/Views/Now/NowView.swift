@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// 首页的卡片。顺序和显隐可以在「Arrange」里改，默认照站点首页
 enum HomeCard: String, CaseIterable, Identifiable, Sendable {
     case watching, charging, listening, activity, coding, server, playstation, providers, site
 
@@ -34,14 +33,12 @@ enum HomeCard: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    /// 只在对应的事发生时出现的卡，和站点首页一致；「Arrange」里照样能排它们的位置
     var appearsOnlyWhenActive: Bool { self == .watching || self == .charging }
 
     static let defaultOrder: [HomeCard] = allCases
 
     static func decode(_ stored: String) -> [HomeCard] {
         let parsed = stored.split(separator: ",").compactMap { HomeCard(rawValue: String($0)) }
-        // 新加的卡补在末尾，删掉的卡自然消失
         return parsed + allCases.filter { !parsed.contains($0) }
     }
 
@@ -59,7 +56,7 @@ struct NowView: View {
 
     var body: some View {
         NavigationStack {
-            // 过期、「Live」灯、相对时间都靠这个时钟翻过来；推送来的新数据会立刻重画，不必等它
+            // 过期、Live 灯、相对时间都靠这个时钟翻过来；推送来的新数据立刻重画，不等它
             TimelineView(.periodic(from: .now, by: 15)) { context in
                 ScrollView {
                     VStack(spacing: 14) {
@@ -111,8 +108,6 @@ struct NowView: View {
             }
         }
     }
-
-    // MARK: 卡片
 
     private var order: [HomeCard] { HomeCard.decode(storedOrder) }
     private var hidden: Set<String> { Set(storedHidden.split(separator: ",").map(String.init)) }
@@ -179,7 +174,6 @@ enum NowRoute: Hashable {
     case coding, playstation
 }
 
-/// 左上角：推送连着没有。连着就是实时的，断了卡片退回按间隔轮询
 private struct ConnectionBadge: View {
     @Environment(LiveStore.self) private var store
 
@@ -201,10 +195,6 @@ private struct ConnectionBadge: View {
     }
 }
 
-/**
- 卡片排序与显隐。拖动排序用 iOS 27 的 `reorderable()` / `reorderContainer`，顺序存在
- `@AppStorage` 里，只在这台手机上生效。
- */
 private struct ArrangeCardsView: View {
     @Environment(\.dismiss) private var dismiss
     @Binding var storedOrder: String
