@@ -109,7 +109,7 @@ export const SENTRY_STALE_MS = 30 * 60_000;
 /**
  * 活动圆环读数（可滞后层，iPhone 上报入口写）多久没刷新就不再当此刻展示。
  *
- * iPhone 上报器不常驻，只有 HealthKit 有新样本才把它唤起（`reporters/iphone-telemetry-hub`
+ * iPhone 上报器不常驻，只有 HealthKit 有新样本才把它唤起（`apps/ios`
  * 的 README「什么时候会上报」）：戴着表活动时圆环这条后台投递被系统按小时节流；内容
  * 没变就不发，隔满 `TelemetryHub.refresh` 的那次唤醒才整份重发。睡觉、表在充电时没有
  * 新样本，一整夜一封都没有 —— 那时圈冻在睡前那一份是对的（跨过午夜那一下由

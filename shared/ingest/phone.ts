@@ -6,11 +6,11 @@ import { normalizeActivity } from "./activity";
 import { normalizeWorkouts } from "./workouts";
 
 /**
- * iPhone 遥测中心的信封。
+ * iPhone 上报器（lyjwpage iOS App）的信封。
  *
  * 和 Mac 那套（lib/telemetry 的 v4 信封）是同一个骨架：一个入口、一个版本号、
  * 一个 `modules` 字典，只带这次真的变了的模块。上报器那侧见
- * `reporters/iphone-telemetry-hub`。
+ * `apps/ios`。
  *
  * **骨架照抄，字段不照抄。** Mac 那份还带 `heartbeatAt` / `presence` /
  * `activeModules`，这里一个都没有 —— 它们在那边成立是因为 Mac 上跑的是个常驻

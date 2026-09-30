@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDisplayName</key>
+    <string>lyjwpage</string>
+    <key>CFBundleExecutable</key>
+    <string>$(EXECUTABLE_NAME)</string>
+    <key>CFBundleIdentifier</key>
+    <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>$(PRODUCT_NAME)</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>$(MARKETING_VERSION)</string>
+    <key>CFBundleVersion</key>
+    <string>$(CURRENT_PROJECT_VERSION)</string>
+    <!-- 活动圆环与训练模块要的。少了这一条不是「被拒绝」，是**直接崩** -->
+    <key>NSHealthShareUsageDescription</key>
+    <string>Reads your activity rings (move, exercise, stand), today's steps and your recent workouts (type, time, duration, distance, active energy) and reports them to the personal homepage you configure. Data is only sent to that endpoint.</string>
+    <!-- 本机开发时上报地址是 http://192.168.x.x:3211，明文会被 ATS 挡下。
+         只开局域网这一个口子，公网仍然强制 HTTPS —— 线上那些地址本来就是 https。 -->
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
+    </dict>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>Reports telemetry to a development server on your local network (only when the endpoint is set to a local address).</string>
+    <!-- iOS 27 起用最新 SDK 编的 App 必须走 scene 生命周期；SwiftUI 的 App 本来就是，这里显式声明单窗口 -->
+    <key>UIApplicationSceneManifest</key>
+    <dict>
+        <key>UIApplicationSupportsMultipleScenes</key>
+        <false/>
+    </dict>
+    <key>UILaunchScreen</key>
+    <dict/>
+    <!-- 不再锁竖屏：iOS 27 的 iPhone App 可调尺寸（iPhone Duo、iPad 上运行、镜像），布局按尺寸类自适应 -->
+    <key>UISupportedInterfaceOrientations</key>
+    <array>
+        <string>UIInterfaceOrientationPortrait</string>
+        <string>UIInterfaceOrientationLandscapeLeft</string>
+        <string>UIInterfaceOrientationLandscapeRight</string>
+    </array>
+</dict>
+</plist>

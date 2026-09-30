@@ -1,0 +1,197 @@
+import Foundation
+
+extension Date {
+    init(epochMilliseconds: Double) {
+        self.init(timeIntervalSince1970: epochMilliseconds / 1000)
+    }
+
+    var epochMilliseconds: Double { timeIntervalSince1970 * 1000 }
+}
+
+/// 站点载荷里的 ISO 8601 时刻，有的带毫秒、有的不带
+enum ISO8601Parsing {
+    static func date(_ text: String?) -> Date? {
+        guard let text else { return nil }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = formatter.date(from: text) { return date }
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.date(from: text)
+    }
+}
+
+/// 站点载荷里的图片地址。R2 图片是 `/img/<objectKey>` 同源路径，要补上站点域名
+enum AssetURL {
+    static func resolve(_ path: String?) -> URL? {
+        guard let path, !path.isEmpty else { return nil }
+        if path.hasPrefix("/") { return URL(string: path, relativeTo: SiteHosts.site)?.absoluteURL }
+        return URL(string: path)
+    }
+
+    /**
+     展开 Apple 的封面模板（`{w}x{h}`、`{f}`、`{c}`）。对着站点的 `src/lib/apple-artwork.ts#appleArtwork`：
+     jpg 换成 webp、裁切方式 `sr`。`points` 是展示尺寸，这里按屏幕倍数放大。
+     */
+    static func appleArtwork(_ template: String?, points: Double, scale: Double = 3) -> URL? {
+        guard let template, !template.isEmpty else { return nil }
+        let size = String(max(1, Int((points * scale).rounded())))
+        var url = template
+        if let range = url.range(of: #"(/\{w\}x\{h\}[^/?]*\.)jpe?g(?=[?#]|$)"#, options: [.regularExpression, .caseInsensitive]) {
+            let matched = String(url[range])
+            url.replaceSubrange(range, with: matched.replacingOccurrences(
+                of: #"jpe?g$"#, with: "webp", options: [.regularExpression, .caseInsensitive]
+            ))
+        }
+        url = url
+            .replacingOccurrences(of: "{w}", with: size)
+            .replacingOccurrences(of: "{h}", with: size)
+            .replacingOccurrences(of: "{f}", with: "webp")
+            .replacingOccurrences(of: "{c}", with: "sr")
+        return URL(string: url)
+    }
+}
+
+/// 读数格式。数字一律 en-US 分组（界面文案规范见根 AGENTS.md「界面与交互」）
+enum Format {
+    static let locale = Locale(identifier: "en_US")
+
+    /// 1.2K / 34.5M / 1.26B
+    static func compact(_ value: Double) -> String {
+        let magnitude = abs(value)
+        let (divisor, suffix): (Double, String) = switch magnitude {
+        case 1e12...: (1e12, "T")
+        case 1e9...: (1e9, "B")
+        case 1e6...: (1e6, "M")
+        case 1e3...: (1e3, "K")
+        default: (1, "")
+        }
+        let scaled = value / divisor
+        if suffix.isEmpty { return integer(value) }
+        let digits = abs(scaled) >= 100 ? 0 : (abs(scaled) >= 10 ? 1 : 2)
+        return scaled.formatted(.number.precision(.fractionLength(0...digits)).locale(locale)) + suffix
+    }
+
+    static func integer(_ value: Double) -> String {
+        value.formatted(.number.precision(.fractionLength(0)).locale(locale))
+    }
+
+    static func decimal(_ value: Double, digits: Int = 1) -> String {
+        value.formatted(.number.precision(.fractionLength(0...digits)).locale(locale))
+    }
+
+    static func usd(_ value: Double) -> String {
+        value.formatted(.currency(code: "USD").precision(.fractionLength(value >= 1000 ? 0 : 2)).locale(locale))
+    }
+
+    static func percent(_ value: Double, digits: Int = 0) -> String {
+        (value / 100).formatted(.percent.precision(.fractionLength(0...digits)).locale(locale))
+    }
+
+    static func bytes(_ value: Double) -> String {
+        ByteCountFormatter.string(fromByteCount: Int64(value), countStyle: .binary)
+    }
+
+    static func bytesPerSecond(_ value: Double) -> String {
+        bytes(value) + "/s"
+    }
+
+    static func watts(_ value: Double) -> String {
+        decimal(value, digits: value < 10 ? 1 : 0) + " W"
+    }
+
+    /// 1:05:09 / 3:07，给进度条两端用
+    static func clock(milliseconds: Double) -> String {
+        let total = max(0, Int(milliseconds / 1000))
+        let hours = total / 3600, minutes = (total % 3600) / 60, seconds = total % 60
+        return hours > 0
+            ? String(format: "%d:%02d:%02d", hours, minutes, seconds)
+            : String(format: "%d:%02d", minutes, seconds)
+    }
+
+    /// 2h 5m / 45m / 30s
+    static func duration(seconds: Double) -> String {
+        let total = max(0, Int(seconds.rounded()))
+        let days = total / 86_400, hours = (total % 86_400) / 3600, minutes = (total % 3600) / 60
+        if days > 0 { return hours > 0 ? "\(days)d \(hours)h" : "\(days)d" }
+        if hours > 0 { return minutes > 0 ? "\(hours)h \(minutes)m" : "\(hours)h" }
+        if minutes > 0 { return "\(minutes)m" }
+        return "\(total)s"
+    }
+
+    static func distance(meters: Double) -> String {
+        meters >= 1000 ? decimal(meters / 1000, digits: 2) + " km" : integer(meters) + " m"
+    }
+
+    /// 相对此刻：just now / 5 min ago / 3 hr ago / Jun 22
+    static func relative(_ date: Date, now: Date = Date()) -> String {
+        let seconds = now.timeIntervalSince(date)
+        if seconds < 45 { return "just now" }
+        if seconds < 7 * 86_400 {
+            return date.formatted(.relative(presentation: .named, unitsStyle: .abbreviated).locale(locale))
+        }
+        return date.formatted(.dateTime.month(.abbreviated).day().locale(locale))
+    }
+
+    /// Jun 22, 9:41 AM
+    static func stamp(_ date: Date) -> String {
+        date.formatted(.dateTime.month(.abbreviated).day().hour().minute().locale(locale))
+    }
+
+    /// 按事发地的时区写时刻（训练、手表那一天），不按手机此刻所在的时区
+    static func stamp(_ date: Date, secondsFromGMT: Int) -> String {
+        var style = Date.FormatStyle.dateTime.month(.abbreviated).day().hour().minute().locale(locale)
+        style.timeZone = TimeZone(secondsFromGMT: secondsFromGMT) ?? .current
+        return date.formatted(style)
+    }
+
+    static func shortSHA(_ sha: String?) -> String {
+        guard let sha else { return "—" }
+        return String(sha.prefix(7))
+    }
+}
+
+/// 站点说「今天」时用的日历：按站点的默认时区，不按手机此刻所在的时区
+enum SiteDay {
+    /// 源：src/lib/site.ts#site（`timezone` 字段）
+    static let timeZone = TimeZone(identifier: "Asia/Shanghai")!
+
+    /// YYYY-MM-DD
+    static func string(_ date: Date) -> String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        let parts = calendar.dateComponents([.year, .month, .day], from: date)
+        return String(format: "%04d-%02d-%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
+    }
+}
+
+/// 站点展示用的名字，对着站点的 `src/lib/coding-agents.ts#CODING_AGENTS`
+enum CodingAgentNames {
+    static func label(_ id: String) -> String {
+        switch id {
+        case "claude": "Claude Code"
+        case "cursor": "Cursor"
+        case "codex": "Codex"
+        case "grok": "Grok Build"
+        case "antigravity": "Antigravity"
+        case "opencode": "OpenCode"
+        case "pi": "Pi"
+        default: id.prefix(1).uppercased() + id.dropFirst()
+        }
+    }
+
+    /// 站点把这两个放在主行，其余缩在紧凑行；标为 hidden 的不单列
+    static func isHidden(_ id: String) -> Bool { id == "opencode" || id == "pi" }
+}
+
+/// 额度窗口的叫法：5h / Weekly / Monthly
+enum LimitWindow {
+    static func label(minutes: Double?) -> String {
+        guard let minutes else { return "Window" }
+        switch minutes {
+        case ..<(24 * 60): return Format.decimal(minutes / 60, digits: 0) + "h"
+        case (24 * 60)..<(7 * 24 * 60): return Format.decimal(minutes / 1440, digits: 0) + "d"
+        case (7 * 24 * 60)..<(28 * 24 * 60): return "Weekly"
+        default: return "Monthly"
+        }
+    }
+}

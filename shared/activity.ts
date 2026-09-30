@@ -3,7 +3,7 @@ import type { ActivityStatus } from "@/lib/types";
 /**
  * Apple Watch 的活动圆环 + 当天步数，以及 Pulse 用的五分钟统计桶。
  *
- * 喂它的是 iPhone 上那个自己写的上报器（`reporters/iphone-telemetry-hub`）：从
+ * 喂它的是 iPhone 上那个自己写的上报器（`apps/ios`）：从
  * HealthKit 读 `HKActivitySummary`，一次把三环的**已完成和目标**都拿到 —— 目标只有
  * 原生 App 读得到，所以它不在站点这侧配，跟着报文走。
  *

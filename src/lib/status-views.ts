@@ -53,7 +53,7 @@ export const STATUS_VIEWS = {
   desktop: { path: "/api/status/desktop", layer: "realtime", tag: "desktop", event: "desktop" },
   /** Mac 时区模块；没有推送，首屏那份之后不再轮询 */
   timezone: { path: "/api/status/timezone", layer: "lag", tag: "timezone" },
-  /** iPhone 上报器：HealthKit 后台投递被系统按小时节流（reporters/iphone-telemetry-hub README） */
+  /** iPhone 上报器：HealthKit 后台投递被系统按小时节流（apps/ios README） */
   workouts: { path: "/api/status/workouts", layer: "lag", tag: "workouts", cadenceMs: 3_600_000 },
   /** 圆环读数；五分钟统计桶另走 pulse，归实时层 */
   activity: { path: "/api/status/activity", layer: "lag", tag: "activity", cadenceMs: 3_600_000 },

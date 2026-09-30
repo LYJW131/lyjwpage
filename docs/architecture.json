@@ -91,7 +91,7 @@
     {
       "id": "iphone_hub",
       "type": "external",
-      "label": "iPhone Telemetry Hub",
+      "label": "lyjwpage iOS App",
       "sublabel": "iPhone 17 Pro · 活动与训练",
       "tag": "/api/ingest/iphone",
       "pos": [
@@ -104,7 +104,7 @@
       ],
       "sources": [
         {
-          "path": "reporters/iphone-telemetry-hub/README.md"
+          "path": "apps/ios/README.md"
         }
       ]
     },

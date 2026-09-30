@@ -1,4 +1,4 @@
-# 只扫 JS/TS 和 Actions，不扫 reporters/iphone-telemetry-hub 里的 Swift：
+# 只扫 JS/TS 和 Actions，不扫 apps/ios 里的 Swift：
 # 扫 Swift 要在 macOS job 里自己 xcodegen 再对着模拟器编（默认 autobuild 找不到
 # 故意不入库的 .xcodeproj），那个 job 很慢，会把整条 CodeQL 拖着不出结果。
 # 要加回来，记得 brew 必须在 init 之前（init 注入 DYLD_INSERT_LIBRARIES，brew 会拒装），

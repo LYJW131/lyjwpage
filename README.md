@@ -217,6 +217,7 @@ Sentry 里的数据也回到页面上：采集 Worker 用只读令牌定时取�
 | 上报如何鉴权、校验与按数据层拆分 | [`workers/ingress/`](./workers/ingress/) |
 | 状态存储、实时推送与公开 API 如何组织 | [`workers/api/`](./workers/api/) |
 | 各类设备与服务如何接入 | [`reporters/`](./reporters/) · [`workers/collector/`](./workers/collector/) |
+| 原生 iOS App 如何读站点、如何上报 | [`apps/ios/`](./apps/ios/) |
 | 在线访客如何统计 | [`workers/api/src/live-census.ts`](./workers/api/src/live-census.ts) · [`src/hooks/use-live-events.ts`](./src/hooks/use-live-events.ts) |
 
 Mac 端采集器 [MacTelemetryHub](https://github.com/LYJW131/MacTelemetryHub) 独立维护，通过 Git submodule 接入 `reporters/mac-telemetry-hub/`。
@@ -229,6 +230,6 @@ Mac 端采集器 [MacTelemetryHub](https://github.com/LYJW131/MacTelemetryHub) �
 
 [Worker 数据后端与首屏缓存](./docs/state-storage.md) 说明状态持久化、实时层与可滞后层的划分、公开数据边界、缓存失效与页面更新之间的关系。
 
-iPhone 端采集器 [iPhone Telemetry Hub](./reporters/iphone-telemetry-hub/README.md)（iOS 27 原生 SwiftUI）上报活动圆环与最近的训练，协议和部署顺序见其 README 与 [API Worker](./workers/api/README.md#最近训练)。
+[lyjwpage iOS App](./apps/ios/README.md)（iOS 27 原生 SwiftUI）是站点的原生客户端：读同一套公开状态 API 与推送，把首页各卡、Pulse 时间线和最近记录用原生界面呈现，带桌面与锁屏小组件；它同时是 iPhone 端上报器，上报活动圆环与最近的训练，协议和部署顺序见其 README 与 [API Worker](./workers/api/README.md#最近训练)。
 
 Quest 游戏实时数据由 [Discord Gateway 上报器](./reporters/discord-reporter/README.md) 采集，经专用 Access 权限交入 Ingress 与 StateHub；查询 `/api/status/quest/now`，变化推送 `quest-now`，首页不展示。协议见 [API Worker](./workers/api/README.md#quest-实时游戏状态)。

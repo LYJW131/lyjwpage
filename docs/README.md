@@ -13,6 +13,7 @@
 | [Workers 原生 Git 部署](./workers-builds.md) | reference | 三个 Worker 的 Workers Builds 构建配置、监视路径与分支预览 |
 | [仓库外事实](./ops-facts.md) | reference | 控制台、Access、ESA、机器路径等不在仓库里的配置，逐条带核对时间与方式 |
 | [页面效果图、GIF 与架构图产物](./screenshots.md) | runbook | 根 README 效果图与 GIF 的录制流程，架构图重生成 |
+| [iOS App 上机验证](./ios-app-handoff.md) | runbook | `apps/ios` 第一次在 Mac 上编译、测试、装机的步骤，待验证清单与装机后要回填的事实 |
 | [讲解动画](./explainer/README.md) | runbook | `/explainer` 页面源、预览、渲染配乐与发布 |
 | [讲解动画 · 事实基线](./explainer/FACTS.md) | reference | 动画里每个端点、数字的出处；架构变了先改这份 |
 | [讲解动画 · 画面升级本子](./explainer/TREATMENT.md) | reference | 下一版讲解动画的概念、风格、分镜结构与技术路线 |

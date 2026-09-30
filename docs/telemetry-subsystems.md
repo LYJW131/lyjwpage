@@ -18,7 +18,7 @@
 8. [AI Coding Agent 账号限额](#8-ai-coding-agent-账号限额)
 9. [本机活动与前台应用 — Mac Telemetry Hub](#9-本机活动与前台应用--mac-telemetry-hub)
 10. [HomePod mini 播放实况 — Home Assistant](#10-homepod-mini-播放实况--home-assistant)
-11. [活动圆环 — iPhone Telemetry Hub](#11-活动圆环--iphone-telemetry-hub)
+11. [活动圆环 — lyjwpage iOS App](#11-活动圆环--lyjwpage-ios-app)
 12. [落地节点监控与调频](#12-落地节点监控与调频)
 13. [PWA 与边缘缓存规则](#13-pwa-与边缘缓存规则)
 14. [跨域活动脉搏（Pulse）](#14-跨域活动脉搏pulse)
@@ -31,6 +31,7 @@
 - **唯一数据后端**：Cloudflare Workers 承担接收上报、持久化（Durable Objects SQLite）、提供状态 API、缓存外部数据、WebSocket 广播以及在线人数统计。上报由无状态的上报入口 Worker（`workers/ingress`）鉴权、校验并按数据层拆开，实时那一半经 Service Binding 交给持有 Durable Object 的状态核心（`workers/api`）。
 - **无状态渲染**：Vercel 仅负责首屏 HTML 生成、Next.js 页面缓存、静态资源分发和图片优化。Vercel 内部没有状态 API 代理或数据库直连端点。
 - **客户端直连**：浏览器端配置 `NEXT_PUBLIC_BACKEND_URL` 直接与 Worker 通信，SWR 统一管理数据缓存与实时更新。
+- **原生客户端**：[`apps/ios`](../apps/ios/README.md) 读同一个 api Worker：状态 GET 不带 `Origin`（api Worker 只拦带了且不在白名单的来源），推送长连接自报站点域名作 `Origin`（`/ws` 缺来源一律 403），所以改 `ALLOWED_ORIGINS` 时要保留站点域名。取数节奏照浏览器端的登记表，只在前台连推送、退后台即断，在线人数的语义和关掉标签页一致。
 
 ### 通信端点规范
 
@@ -257,7 +258,7 @@ payload: >-
 
 ---
 
-## 11. 活动圆环 — iPhone Telemetry Hub
+## 11. 活动圆环 — lyjwpage iOS App
 
 ### 数据采集特性
 - **原生读取真实目标**：通过原生 Swift 代码从 `HKActivitySummary` 读取用户当天的真实目标卡路里、锻炼时长与站立次数（非预设常量）。
