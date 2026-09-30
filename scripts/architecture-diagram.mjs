@@ -12,7 +12,9 @@ const DOCS = path.join(ROOT, "docs");
 const SPEC = path.join(DOCS, "architecture.json");
 const HTML = path.join(DOCS, "architecture.html");
 const RECEIPT = path.join(DOCS, "architecture.receipt.json");
-const ARCHIFY_DIR = process.env.ARCHIFY_DIR ?? path.join(os.homedir(), ".claude/skills/archify");
+const LOCK = readJson(path.join(ROOT, "scripts/archify.lock.json"));
+const TOOLCHAIN = path.join(ROOT, ".archify", "toolchain", LOCK.commit);
+const ARCHIFY_DIR = path.resolve(process.env.ARCHIFY_DIR ?? path.join(TOOLCHAIN, "archify"));
 const ARCHIFY = path.join(ARCHIFY_DIR, "bin/archify.mjs");
 const PREVIEW_SCALE = 2;
 const THEMES = ["light", "dark"];
@@ -21,8 +23,38 @@ const args = new Set(process.argv.slice(2));
 const validateOnly = args.has("--validate");
 const skipVisual = args.has("--skip-visual");
 
-if (!fs.existsSync(ARCHIFY)) {
-  fail(`找不到 archify：${ARCHIFY}\n把技能装到 ~/.claude/skills/archify，或用 ARCHIFY_DIR 指向它。`);
+if (args.has("--setup")) {
+  if (process.env.ARCHIFY_DIR) fail("--setup 不修改 ARCHIFY_DIR；取消该变量以安装仓库隔离工具链。");
+  if (!fs.existsSync(TOOLCHAIN)) {
+    fs.mkdirSync(path.dirname(TOOLCHAIN), { recursive: true });
+    const staging = fs.mkdtempSync(path.join(path.dirname(TOOLCHAIN), "install-"));
+    try {
+      git(["clone", "--no-checkout", "--filter=blob:none", LOCK.repository, staging]);
+      git(["-C", staging, "checkout", "--detach", LOCK.commit]);
+      fs.renameSync(staging, TOOLCHAIN);
+    } finally {
+      fs.rmSync(staging, { recursive: true, force: true });
+    }
+  }
+}
+if (!fs.existsSync(ARCHIFY)) fail(`找不到 archify：${ARCHIFY}\n先运行 pnpm docs:architecture -- --setup，或设置 ARCHIFY_DIR。`);
+const version = readJson(path.join(ARCHIFY_DIR, "package.json"))?.version;
+if (version !== LOCK.version) fail(`Archify 版本不匹配：要求 ${LOCK.version}，实际 ${version ?? "unknown"}。`);
+if (!process.env.ARCHIFY_DIR) {
+  if (git(["-C", TOOLCHAIN, "rev-parse", "HEAD"]).trim() !== LOCK.commit
+      || git(["-C", TOOLCHAIN, "status", "--porcelain", "--untracked-files=all"]).trim()) {
+    fail("隔离 Archify 工具链与锁定提交不符，或存在本地修改。");
+  }
+}
+if (args.has("--setup")) {
+  console.log(`Archify ${version} 已就绪：${ARCHIFY_DIR}`);
+  process.exit(0);
+}
+
+function git(args) {
+  const result = spawnSync("git", args, { encoding: "utf8" });
+  if (result.status !== 0) fail(`git ${args[0]} 失败：${result.stderr}`);
+  return result.stdout;
 }
 
 function fail(message) {
@@ -54,8 +86,8 @@ function printDiagnostics(report) {
 
 const specArgs = ["architecture", SPEC, "--quality", "showcase", "--repo-root", ROOT];
 if (validateOnly) {
-  const { report } = archify("validate", ...specArgs);
-  if (!report.ok) {
+  const { report, status } = archify("validate", ...specArgs);
+  if (status !== 0 || !report.ok) {
     printDiagnostics(report);
     fail("校验未通过。");
   }
@@ -63,65 +95,63 @@ if (validateOnly) {
   process.exit(0);
 }
 
-const delivered = archify("deliver", ...specArgs.slice(0, 2), HTML, ...specArgs.slice(2));
-if (!delivered.report.ok) {
-  printDiagnostics(delivered.report);
-  fail("deliver 失败，HTML 未更新。");
+const evidenceRoot = path.join(ROOT, ".archify", "evidence");
+fs.mkdirSync(evidenceRoot, { recursive: true });
+const evidenceDirectory = fs.mkdtempSync(path.join(evidenceRoot, "architecture-"));
+const finalized = archify("finalize", ...specArgs.slice(0, 2), HTML, ...specArgs.slice(2), "--out-dir", evidenceDirectory);
+if (finalized.status !== 0 || !finalized.report.ok) {
+  printDiagnostics(finalized.report);
+  fail(`finalize 未通过，证据保留在 ${evidenceDirectory}。`);
 }
-const { specification, artifact, validation, evidence } = delivered.report;
-const viewBox = readJson(SPEC)?.meta?.viewBox;
-if (!Array.isArray(viewBox) || viewBox.length !== 2) fail("architecture.json 缺少 meta.viewBox，无法确定快照尺寸。");
-const previewSize = viewBox.map((edge) => Math.round(edge * PREVIEW_SCALE));
-console.log(`HTML 已渲染：${validation.checksPassed}/${validation.checkCount} 项检查通过，引用 ${evidence.references} 处源码。`);
+const full = readJson(finalized.report.evidence.receipt);
+const delivered = full.stages.deliver.receipt;
+const browser = full.stages["browser-check"].receipt;
+const { specification, artifact, validation, evidence } = delivered;
+console.log(`finalize 已通过：${validation.checksPassed}/${validation.checkCount} 项检查，浏览器证据 ${browser.status}。`);
 
 const { findChrome } = await import(pathToFileURL(path.join(ARCHIFY_DIR, "bin/visual-check.mjs")).href);
 const chrome = findChrome();
 if (!chrome) fail("找不到 Chrome，无法导出 PNG（可设 ARCHIFY_CHROME 指定路径）。");
-await exportPreviews(chrome);
+const previewSize = await exportPreviews(chrome);
 
-let viewports;
-if (skipVisual) {
-  viewports = readJson(RECEIPT)?.viewports ?? [];
-  console.log("跳过 visual-check，receipt 里的视口数据沿用上一份。");
-} else {
-  const visual = archify("visual-check", HTML);
-  const sidecars = fs.readdirSync(DOCS).filter((name) => name.startsWith("architecture.visual-check."));
-  for (const name of sidecars) fs.rmSync(path.join(DOCS, name), { force: true });
-  viewports = visual.report.containment?.viewports ?? [];
-  const summary = viewports.map((v) => `${v.width}×${v.height}${v.ok ? "" : ` 溢出 ${v.scrollWidth}×${v.scrollHeight}`}`).join("，");
-  if (visual.report.status !== "pass") fail(`visual-check 未通过（${visual.report.status}）：${summary}`);
-  console.log(`视口检查通过：${summary}。`);
+let capture = null;
+if (!skipVisual) {
+  const visual = archify("visual-check", HTML, "--require-provenance", "--out-dir", evidenceDirectory);
+  if (visual.status !== 0 || visual.report.status !== "pass") {
+    printDiagnostics(visual.report);
+    fail(`visual-check 未通过，证据保留在 ${evidenceDirectory}。`);
+  }
+  capture = visual.report;
 }
-
-const previous = readJson(RECEIPT) ?? {};
-const previews = Object.fromEntries(
-  THEMES.map((theme) => {
-    const file = `architecture-${theme}.png`;
-    const buffer = fs.readFileSync(path.join(DOCS, file));
-    return [file, { kind: "svg-rasterization", sha256: sha256(buffer), bytes: buffer.length }];
-  }),
-);
-fs.writeFileSync(
-  RECEIPT,
-  JSON.stringify(
-    {
-      type: "architecture",
-      specification,
-      artifact,
-      validation,
-      evidence,
-      output: "architecture.html",
-      visual_review: skipVisual ? (previous.visual_review ?? "pending") : "pending: 截图已重出，待人工过目",
-      correction_rounds: previous.correction_rounds ?? 0,
-      static_diagram_review: "pending: 打开 docs/architecture-light.png 确认后改成 passed",
-      viewports,
-      previews,
-    },
-    null,
-    2,
-  ) + "\n",
-);
-console.log(`receipt 已写入。看一眼 docs/architecture-light.png，没问题就把 receipt 里两处 pending 改成 passed。`);
+if (sha256(fs.readFileSync(SPEC)) !== specification.sha256 || sha256(fs.readFileSync(HTML)) !== artifact.sha256) {
+  fail("生成期间规格或 HTML 被修改；当前预览与回执不可交付，请完整重跑。");
+}
+const previews = Object.fromEntries(THEMES.map((theme) => {
+  const file = `architecture-${theme}.png`;
+  const buffer = fs.readFileSync(path.join(DOCS, file));
+  return [file, { kind: "viewer-png-export", theme, width: previewSize[0], height: previewSize[1], artifactSha256: artifact.sha256, sha256: sha256(buffer), bytes: buffer.length }];
+}));
+fs.writeFileSync(RECEIPT, JSON.stringify({
+  type: "architecture",
+  generator: { ...LOCK, source: process.env.ARCHIFY_DIR ? "ARCHIFY_DIR (version verified)" : "isolated pinned checkout" },
+  specification,
+  artifact,
+  validation,
+  evidence,
+  output: "architecture.html",
+  gates: finalized.report.gates,
+  browser_evidence: browser.status === "pass" ? "passed" : browser.status,
+  browser_check: browser,
+  update: finalized.report.update,
+  visualReviewRecommendation: finalized.report.visualReviewRecommendation,
+  visual_review: "pending: inspect current HTML and both exported PNGs",
+  correction_rounds: 0,
+  static_diagram_review: "pending: inspect both current exported PNGs",
+  capture: capture ? { status: capture.status, artifact: capture.artifact, evidenceDirectory: path.relative(ROOT, evidenceDirectory) } : { status: "not-requested" },
+  viewports: browser.containment.viewports,
+  previews,
+}, null, 2) + "\n");
+console.log(`receipt 已写入；人工检查当前 HTML 和明暗 PNG 后记录实际审阅结果。证据：${evidenceDirectory}`);
 
 function readJson(file) {
   try {
@@ -142,6 +172,7 @@ async function exportPreviews(chromePath) {
     chromePath,
     [
       "--headless=new",
+      ...((process.getuid?.() === 0 || process.env.ARCHIFY_CHROME_NO_SANDBOX === "1") ? ["--no-sandbox"] : []),
       "--remote-debugging-port=0",
       `--user-data-dir=${profile}`,
       "--disable-gpu",
@@ -164,13 +195,23 @@ async function exportPreviews(chromePath) {
   try {
     const wsUrl = await new Promise((resolve, reject) => {
       let stderr = "";
+      const timer = setTimeout(() => reject(new Error(`等 Chrome DevTools 端口超时\n${stderr}`)), 15_000);
       child.stderr.on("data", (chunk) => {
         stderr += chunk;
         const match = stderr.match(/DevTools listening on (ws:\/\/\S+)/);
-        if (match) resolve(match[1]);
+        if (match) {
+          clearTimeout(timer);
+          resolve(match[1]);
+        }
       });
-      child.on("exit", (code) => reject(new Error(`Chrome 退出（${code}）\n${stderr}`)));
-      setTimeout(() => reject(new Error(`等 Chrome DevTools 端口超时\n${stderr}`)), 15_000);
+      child.on("exit", (code) => {
+        clearTimeout(timer);
+        reject(new Error(`Chrome 退出（${code}）\n${stderr}`));
+      });
+      child.on("error", (error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
     });
 
     const cdp = await connectCdp(wsUrl);
@@ -189,7 +230,12 @@ async function exportPreviews(chromePath) {
     const loaded = cdp.waitFor((msg) => msg.method === "Page.loadEventFired" && msg.sessionId === sessionId);
     await cdp.send("Page.navigate", { url: pathToFileURL(HTML).href }, sessionId);
     await loaded;
-    await evaluate("new Promise((r) => setTimeout(r, 800))");
+    await evaluate("document.fonts.ready");
+    const previewSize = await evaluate(`(() => {
+      const box = document.querySelector('.diagram-container svg')?.viewBox.baseVal;
+      if (!box || box.width <= 0 || box.height <= 0) throw new Error("查看器 SVG 缺少有效 viewBox");
+      return [Math.round(box.width * ${PREVIEW_SCALE}), Math.round(box.height * ${PREVIEW_SCALE})];
+    })()`);
 
     for (const theme of THEMES) {
       await evaluate(
@@ -217,6 +263,7 @@ async function exportPreviews(chromePath) {
       console.log(`PNG 已导出：${path.relative(ROOT, target)}（${previewSize.join("×")}，${(buffer.length / 1024).toFixed(0)} KB）`);
     }
     cdp.close();
+    return previewSize;
   } finally {
     await cleanup();
   }
