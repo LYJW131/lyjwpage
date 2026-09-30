@@ -2,12 +2,12 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "主页上报与 Vercel 读取架构",
+    "title": "主页上报、状态中枢与站点读取架构",
     "locale": "zh-CN",
     "quality_profile": "showcase",
     "viewBox": [
-      1390,
-      730
+      1380,
+      780
     ],
     "views": [
       {
@@ -18,35 +18,35 @@
           "iphone_hub",
           "home_assistant",
           "emby_reporter",
-          "agents_reporter",
-          "server_reporter",
+          "misaka_reporters",
           "playstation_reporter",
-          "api"
+          "claude_cloud",
+          "ingress"
         ],
-        "note": "各来源 POST 到 ingress Worker 的 /api/ingest/<来源>；实时状态经 Service Binding 交给 API Worker。"
+        "note": "每个上报方凭自己的 Access service token POST 到 ingress 的 /api/ingest/<来源>，ACCESS_CLIENTS 限定能写哪个来源。"
+      },
+      {
+        "id": "layers",
+        "label": "实时层与可滞后层",
+        "focus": [
+          "ingress",
+          "api",
+          "state_hub",
+          "collector",
+          "lag_store"
+        ],
+        "note": "ingress 校验、收敛后拆开：实时那一半经 Service Binding 交给 StateCore 写 Durable Object，可滞后层、D1 归档与凭据自己写。采集 Worker 每分钟拉外部服务，同样分两路写。"
       },
       {
         "id": "sites",
-        "label": "站点与数据后端",
+        "label": "站点与读取",
         "focus": [
           "api",
-          "state_hub",
           "sites",
           "visitors",
           "esa"
         ],
-        "note": "Vercel 提供首屏；lyjw131.com 经 ESA 回源 lyjw.me，首页按源站 SWR 头先回旧 HTML、后台取新，静态 JS 长期缓存。API 只通知 Vercel 标签失效。"
-      },
-      {
-        "id": "cadence",
-        "label": "在线人数与调频",
-        "focus": [
-          "agents_reporter",
-          "server_reporter",
-          "api",
-          "visitors"
-        ],
-        "note": "agents-reporter 读 API /count：页面可见走快档，仅后台打开走中档，无人或读取失败走闲档。server-reporter 节奏固定。PlayStation 按局域网发现包调频。"
+        "note": "Vercel 首屏按卡读 /api/status/*；浏览器挂载后直连 api Worker 与 /ws。lyjw131.com 经 ESA 回源 lyjw.me。API 只在布局变化时通知 Vercel 标签失效。"
       },
       {
         "id": "assets",
@@ -59,12 +59,12 @@
           "esa",
           "visitors"
         ],
-        "note": "上报器直传 R2，页面里的图片是 /img/ 同源路径：lyjw.me 由 Vercel 边缘 rewrite 回源 R2 并按 immutable 缓存，lyjw131.com 由 ESA 缓存同一路径并回源 lyjw.me。"
+        "note": "上报器直传 R2，页面里的图片是 /img/ 同源路径：lyjw.me 由 Vercel 边缘 rewrite 回源 R2，lyjw131.com 由 ESA 缓存同一路径并回源 lyjw.me。"
       }
     ],
     "repository": {
       "url": "https://github.com/LYJW131/lyjwpage",
-      "revision": "8f2451ebaa8edf96f4c86a22b1eeb360be8e0dc4"
+      "revision": "3719cb1c94666a89620326b817705e032e8f2b23"
     }
   },
   "components": [
@@ -72,19 +72,19 @@
       "id": "mac_hub",
       "type": "external",
       "label": "Mac Telemetry Hub",
-      "sublabel": "MacBook Pro · 本机遥测与图片",
+      "sublabel": "应用 · 音乐 · BLE · 编码 · 图片",
       "tag": "/api/ingest/mac",
       "pos": [
         32,
-        40
+        43
       ],
       "size": [
-        306,
+        270,
         72
       ],
       "sources": [
         {
-          "path": "docs/reporter-endpoints.md"
+          "path": "docs/ops-facts.md"
         }
       ]
     },
@@ -92,14 +92,14 @@
       "id": "iphone_hub",
       "type": "external",
       "label": "iPhone Telemetry Hub",
-      "sublabel": "iPhone 17 Pro · 活动圆环",
+      "sublabel": "iPhone 17 Pro · 活动与训练",
       "tag": "/api/ingest/iphone",
       "pos": [
         32,
-        130
+        135
       ],
       "size": [
-        306,
+        270,
         72
       ],
       "sources": [
@@ -112,19 +112,19 @@
       "id": "home_assistant",
       "type": "external",
       "label": "Home Assistant",
-      "sublabel": "DSM 卧室 · N100 主卧 · HomePod",
+      "sublabel": "dsm · n100 · HomePod 在放",
       "tag": "/api/ingest/homepod",
       "pos": [
         32,
-        220
+        227
       ],
       "size": [
-        306,
+        270,
         72
       ],
       "sources": [
         {
-          "path": "docs/reporter-endpoints.md"
+          "path": "docs/ops-facts.md"
         }
       ]
     },
@@ -132,14 +132,14 @@
       "id": "emby_reporter",
       "type": "external",
       "label": "Emby 上报器",
-      "sublabel": "DSM 容器 homepage-reporter",
+      "sublabel": "dsm 容器 · 在看与海报",
       "tag": "/api/ingest/emby",
       "pos": [
         32,
-        310
+        319
       ],
       "size": [
-        306,
+        270,
         72
       ],
       "sources": [
@@ -149,42 +149,28 @@
       ]
     },
     {
-      "id": "agents_reporter",
+      "id": "misaka_reporters",
       "type": "external",
-      "label": "限额上报器",
-      "sublabel": "misaka-jp 容器 · 5 / 10 / 60 分钟",
-      "tag": "/api/ingest/agents",
+      "label": "misaka-jp 容器",
+      "sublabel": "限额 + Cursor · 服务器 · Quest Discord",
+      "tag": "/api/ingest/agents · server · quest",
       "pos": [
         32,
-        400
+        411
       ],
       "size": [
-        306,
+        270,
         72
       ],
       "sources": [
         {
-          "path": "reporters/agents-reporter/src/cadence.ts"
-        }
-      ]
-    },
-    {
-      "id": "server_reporter",
-      "type": "external",
-      "label": "服务器上报器",
-      "sublabel": "misaka-jp 容器 · 固定间隔",
-      "tag": "/api/ingest/server",
-      "pos": [
-        32,
-        490
-      ],
-      "size": [
-        306,
-        72
-      ],
-      "sources": [
+          "path": "reporters/agents-reporter/README.md"
+        },
         {
           "path": "reporters/server-reporter/src/index.ts"
+        },
+        {
+          "path": "reporters/discord-reporter/README.md"
         }
       ]
     },
@@ -192,14 +178,14 @@
       "id": "playstation_reporter",
       "type": "external",
       "label": "PlayStation 上报器",
-      "sublabel": "n100 容器 · 发现包调频",
+      "sublabel": "n100 容器 · 局域网发现调频",
       "tag": "/api/ingest/playstation",
       "pos": [
         32,
-        580
+        503
       ],
       "size": [
-        306,
+        270,
         72
       ],
       "sources": [
@@ -209,17 +195,86 @@
       ]
     },
     {
+      "id": "claude_cloud",
+      "type": "external",
+      "label": "Claude Code 云端",
+      "sublabel": "内置 OTLP 遥测 · token 用量",
+      "tag": "/api/ingest/agents/otlp",
+      "pos": [
+        32,
+        595
+      ],
+      "size": [
+        270,
+        72
+      ],
+      "sources": [
+        {
+          "path": "shared/ingest/claude-cloud.ts"
+        }
+      ]
+    },
+    {
+      "id": "ingress",
+      "type": "security",
+      "label": "Ingress Worker",
+      "sublabel": "Cloudflare Access · 按来源鉴权",
+      "tag": "校验 · 收敛 · 按数据层拆开",
+      "pos": [
+        392,
+        290
+      ],
+      "size": [
+        230,
+        130
+      ],
+      "sources": [
+        {
+          "path": "workers/ingress/src/worker.ts"
+        },
+        {
+          "path": "workers/ingress/src/access-auth.ts"
+        },
+        {
+          "path": "workers/ingress/wrangler.toml"
+        }
+      ]
+    },
+    {
+      "id": "collector",
+      "type": "backend",
+      "label": "Collector Worker",
+      "sublabel": "每分钟 cron · 外部服务",
+      "tag": "GitHub · Vercel · CF · Sentry · PSI · Apple",
+      "pos": [
+        712,
+        620
+      ],
+      "size": [
+        250,
+        110
+      ],
+      "sources": [
+        {
+          "path": "workers/collector/src/registry.ts"
+        },
+        {
+          "path": "workers/collector/wrangler.toml"
+        }
+      ]
+    },
+    {
       "id": "state_hub",
       "type": "database",
       "label": "SQLite Durable Object",
-      "sublabel": "StateHub · 状态与历史",
-      "tag": "Worker 独占读写",
+      "sublabel": "StateHub · 实时快照与历史",
+      "tag": "唯一权威 · 串行读改写",
       "pos": [
-        540,
+        712,
         40
       ],
       "size": [
-        292,
+        250,
         100
       ],
       "sources": [
@@ -231,26 +286,49 @@
     {
       "id": "api",
       "type": "messagebus",
-      "label": "Ingress + API Workers",
-      "sublabel": "Access 上报入口 · 状态核心",
-      "tag": "接收 · 状态 API · 实时推送",
+      "label": "API Worker",
+      "sublabel": "StateCore · 状态 API",
+      "tag": "/api/status/* · /ws 推送与人数",
       "pos": [
-        540,
-        300
+        712,
+        290
       ],
       "size": [
-        292,
-        126
+        250,
+        130
       ],
       "sources": [
         {
           "path": "workers/api/src/index.ts"
         },
         {
-          "path": "workers/api/wrangler.toml"
+          "path": "workers/api/src/state-core.ts"
         },
         {
-          "path": "workers/ingress/src/worker.ts"
+          "path": "workers/api/wrangler.toml"
+        }
+      ]
+    },
+    {
+      "id": "lag_store",
+      "type": "database",
+      "label": "KV 可滞后层 · D1 归档",
+      "sublabel": "每条带更新时刻 · 长期历史",
+      "tag": "写入方直写 · api 只读",
+      "pos": [
+        392,
+        620
+      ],
+      "size": [
+        230,
+        110
+      ],
+      "sources": [
+        {
+          "path": "shared/lag.ts"
+        },
+        {
+          "path": "docs/state-storage.md"
         }
       ]
     },
@@ -258,14 +336,14 @@
       "id": "images",
       "type": "cloud",
       "label": "R2 图片",
-      "sublabel": "Mac 与 Emby 上报器直接上传",
-      "tag": "内容地址 · 页面走 /img/ 同源路径",
+      "sublabel": "上报器直传 · ingress HEAD 确认",
+      "tag": "内容地址 · /img/ 同源路径",
       "pos": [
-        960,
+        1082,
         40
       ],
       "size": [
-        278,
+        240,
         100
       ],
       "sources": [
@@ -282,14 +360,14 @@
       "type": "backend",
       "label": "Next.js · Vercel",
       "sublabel": "lyjw.me · Git 自动部署",
-      "tag": "首屏 HTML · 后台重建",
+      "tag": "按卡 use cache · 后台重建",
       "pos": [
-        960,
-        300
+        1082,
+        290
       ],
       "size": [
-        278,
-        126
+        240,
+        130
       ],
       "sources": [
         {
@@ -304,15 +382,15 @@
       "id": "visitors",
       "type": "frontend",
       "label": "浏览器",
-      "sublabel": "首屏 · SWR · WebSocket",
-      "tag": "状态与人数同一条 /ws",
+      "sublabel": "SWR · /ws",
+      "tag": "直连 api Worker",
       "pos": [
-        960,
-        560
+        1082,
+        620
       ],
       "size": [
-        160,
-        100
+        125,
+        110
       ],
       "sources": [
         {
@@ -327,22 +405,19 @@
       "id": "esa",
       "type": "cloud",
       "label": "阿里云 ESA",
-      "sublabel": "lyjw131.com → lyjw.me",
+      "sublabel": "lyjw131.com",
       "tag": "缓存 HTML · JS · /img/*",
       "pos": [
-        1200,
-        560
+        1237,
+        620
       ],
       "size": [
-        158,
-        100
+        115,
+        110
       ],
       "sources": [
         {
-          "path": "next.config.ts"
-        },
-        {
-          "path": "workers/api/README.md"
+          "path": "docs/ops-facts.md"
         }
       ]
     }
@@ -351,108 +426,121 @@
     {
       "id": "post_mac",
       "from": "mac_hub",
-      "to": "api",
+      "to": "ingress",
       "label": "POST",
       "variant": "emphasis",
       "labelAt": [
-        388,
-        76
+        325,
+        79
       ]
     },
     {
       "id": "post_iphone",
       "from": "iphone_hub",
-      "to": "api",
+      "to": "ingress",
       "label": "POST",
       "variant": "emphasis",
       "labelAt": [
-        388,
-        166
+        325,
+        171
       ]
     },
     {
       "id": "post_homepod",
       "from": "home_assistant",
-      "to": "api",
+      "to": "ingress",
       "label": "POST",
       "variant": "emphasis",
       "labelAt": [
-        388,
-        256
+        325,
+        263
       ]
     },
     {
       "id": "post_emby",
       "from": "emby_reporter",
-      "to": "api",
+      "to": "ingress",
       "label": "POST",
       "variant": "emphasis",
       "labelAt": [
-        388,
-        346
+        325,
+        355
       ]
     },
     {
-      "id": "post_agents",
-      "from": "agents_reporter",
-      "to": "api",
-      "label": "POST · /count",
-      "variant": "emphasis",
-      "labelAt": [
-        388,
-        436
-      ]
-    },
-    {
-      "id": "post_server",
-      "from": "server_reporter",
-      "to": "api",
+      "id": "post_misaka",
+      "from": "misaka_reporters",
+      "to": "ingress",
       "label": "POST",
       "variant": "emphasis",
       "labelAt": [
-        388,
-        526
+        325,
+        447
       ]
     },
     {
       "id": "post_playstation",
       "from": "playstation_reporter",
-      "to": "api",
+      "to": "ingress",
       "label": "POST",
       "variant": "emphasis",
       "labelAt": [
-        388,
-        616
+        325,
+        539
       ]
+    },
+    {
+      "id": "post_otlp",
+      "from": "claude_cloud",
+      "to": "ingress",
+      "label": "OTLP",
+      "variant": "emphasis",
+      "labelAt": [
+        325,
+        631
+      ]
+    },
+    {
+      "id": "commit",
+      "from": "ingress",
+      "to": "api",
+      "label": "Service Binding",
+      "variant": "emphasis"
+    },
+    {
+      "id": "lag_write",
+      "from": "ingress",
+      "to": "lag_store",
+      "label": "可滞后层 · 归档",
+      "labelAt": [
+        507,
+        520
+      ]
+    },
+    {
+      "id": "collect_commit",
+      "from": "collector",
+      "to": "api",
+      "label": "实时部分"
+    },
+    {
+      "id": "collect_lag",
+      "from": "collector",
+      "to": "lag_store",
+      "label": "外部统计"
     },
     {
       "id": "store",
       "from": "api",
       "to": "state_hub",
       "label": "读写状态",
-      "variant": "emphasis",
-      "labelAt": [
-        686,
-        200
-      ]
+      "variant": "emphasis"
     },
     {
-      "id": "head",
-      "from": "api",
-      "to": "images",
-      "label": "HEAD 确认对象",
-      "fromSide": "top",
-      "toSide": "left",
-      "labelAt": [
-        791,
-        276
-      ]
-    },
-    {
-      "id": "home_snapshot",
+      "id": "status_read",
       "from": "sites",
       "to": "api",
-      "label": "GET /api/home",
+      "label": "/api/status/*",
       "labelDy": 13
     },
     {
@@ -467,7 +555,7 @@
       "id": "push",
       "from": "api",
       "to": "visitors",
-      "label": "状态 API · 推送与人数 /ws",
+      "label": "状态 API · /ws",
       "variant": "emphasis",
       "fromSide": "bottom",
       "toSide": "left"
@@ -476,72 +564,46 @@
       "id": "image_rewrite",
       "from": "images",
       "to": "sites",
-      "label": "边缘 rewrite /img/* · immutable 缓存",
+      "label": "边缘 rewrite /img/*",
       "labelAt": [
-        1099,
-        220
+        1202,
+        215
       ]
     },
     {
       "id": "page",
       "from": "sites",
       "to": "visitors",
-      "label": "lyjw.me 直连 · HTML · /img/*",
       "fromSide": "bottom",
-      "toSide": "top",
-      "via": [
-        [
-          1099,
-          493
-        ],
-        [
-          1040,
-          493
-        ]
-      ],
-      "labelAt": [
-        1099,
-        460
-      ]
+      "toSide": "top"
     },
     {
       "id": "esa_origin",
       "from": "sites",
       "to": "esa",
-      "label": "回源 HTML · JS · /img/*",
-      "fromSide": "right",
-      "toSide": "top",
-      "via": [
-        [
-          1279,
-          363
-        ]
-      ],
-      "labelAt": [
-        1279,
-        470
-      ]
+      "label": "回源",
+      "fromSide": "bottom",
+      "toSide": "top"
     },
     {
       "id": "esa_page",
       "from": "esa",
-      "to": "visitors",
-      "label": "lyjw131.com"
+      "to": "visitors"
     }
   ],
   "cards": [
     {
       "dot": "cyan",
-      "title": "一条 /ws 数两个口径",
+      "title": "上报入口与状态核心分开",
       "items": [
-        "页面切后台只报 hidden、不断开；online 只计可见页面，connections 包含后台页面。"
+        "改校验只重新发布 ingress；状态核心不重启，页面的 /ws 连接不断。"
       ]
     },
     {
       "dot": "emerald",
-      "title": "三档调频 · 一个计数口",
+      "title": "两层存储",
       "items": [
-        "限额、PlayStation 按 /count 的 online 与 connections 决定档位。"
+        "实时层只在 Durable Object；可以晚几分钟的数据由写入方直写 KV，过没过时由浏览器按卡判断。"
       ]
     },
     {

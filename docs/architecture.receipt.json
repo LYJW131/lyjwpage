@@ -1,12 +1,12 @@
 {
   "type": "architecture",
   "specification": {
-    "sha256": "cd6985493ab235fa6c538ec501fe2baf3d55d636d4fb71f21a538e27a60f9d04",
-    "bytes": 11473
+    "sha256": "e9589d05c5d10414439e49705417467b473d74a2b84cd37c5f01d7729f10e8cf",
+    "bytes": 12944
   },
   "artifact": {
-    "sha256": "0e56664b770e4f8927ba1ce325cf5154d81ee2431148028db4ffe880fcf727d8",
-    "bytes": 724748
+    "sha256": "58e3d818190635092cf3652d8f84433c5affbe4747a71dbf9b9e372302fadaa5",
+    "bytes": 728825
   },
   "validation": {
     "checksPassed": 9,
@@ -19,8 +19,8 @@
   "evidence": {
     "verified": true,
     "repository": "https://github.com/LYJW131/lyjwpage",
-    "revision": "8f2451ebaa8edf96f4c86a22b1eeb360be8e0dc4",
-    "references": 19
+    "revision": "3719cb1c94666a89620326b817705e032e8f2b23",
+    "references": 27
   },
   "output": "architecture.html",
   "visual_review": "passed",
@@ -38,15 +38,15 @@
       "overflowX": false,
       "overflowY": false,
       "ok": true,
-      "readerWidth": 1146,
-      "diagramWidth": 1116,
-      "viewBoxWidth": 1390,
-      "minimumProjectedNodeTextPx": 7.225899280575539,
-      "minimumProjectedNodeText": "MacBook Pro · 本机遥测与图片",
+      "readerWidth": 1067,
+      "diagramWidth": 1037,
+      "viewBoxWidth": 1380,
+      "minimumProjectedNodeTextPx": 6.76304347826087,
+      "minimumProjectedNodeText": "应用 · 音乐 · BLE · 编码 · 图片",
       "minimumProjectedNodeTextDetail": "context",
       "minimumRequiredNodeTextPx": 6,
       "readabilityOk": true,
-      "hasLegend": true,
+      "hasLegend": false,
       "hasNavigationDock": true,
       "legendDockIntersectionArea": 0,
       "viewerChromeReserve": 0,
@@ -65,15 +65,15 @@
       "overflowX": false,
       "overflowY": false,
       "ok": true,
-      "readerWidth": 1279,
-      "diagramWidth": 1249,
-      "viewBoxWidth": 1390,
-      "minimumProjectedNodeTextPx": 8.08705035971223,
-      "minimumProjectedNodeText": "MacBook Pro · 本机遥测与图片",
+      "readerWidth": 1191,
+      "diagramWidth": 1161,
+      "viewBoxWidth": 1380,
+      "minimumProjectedNodeTextPx": 7.571739130434783,
+      "minimumProjectedNodeText": "应用 · 音乐 · BLE · 编码 · 图片",
       "minimumProjectedNodeTextDetail": "context",
       "minimumRequiredNodeTextPx": 6,
       "readabilityOk": true,
-      "hasLegend": true,
+      "hasLegend": false,
       "hasNavigationDock": true,
       "legendDockIntersectionArea": 0,
       "viewerChromeReserve": 0,
@@ -92,15 +92,15 @@
       "overflowX": false,
       "overflowY": false,
       "ok": true,
-      "readerWidth": 1432,
-      "diagramWidth": 1402,
-      "viewBoxWidth": 1390,
-      "minimumProjectedNodeTextPx": 9,
-      "minimumProjectedNodeText": "MacBook Pro · 本机遥测与图片",
+      "readerWidth": 1332,
+      "diagramWidth": 1302,
+      "viewBoxWidth": 1380,
+      "minimumProjectedNodeTextPx": 8.491304347826087,
+      "minimumProjectedNodeText": "应用 · 音乐 · BLE · 编码 · 图片",
       "minimumProjectedNodeTextDetail": "context",
       "minimumRequiredNodeTextPx": 6,
       "readabilityOk": true,
-      "hasLegend": true,
+      "hasLegend": false,
       "hasNavigationDock": true,
       "legendDockIntersectionArea": 0,
       "viewerChromeReserve": 0,
@@ -119,15 +119,15 @@
       "overflowX": false,
       "overflowY": false,
       "ok": true,
-      "readerWidth": 1842,
-      "diagramWidth": 1792,
-      "viewBoxWidth": 1390,
+      "readerWidth": 1685,
+      "diagramWidth": 1635,
+      "viewBoxWidth": 1380,
       "minimumProjectedNodeTextPx": 9,
-      "minimumProjectedNodeText": "MacBook Pro · 本机遥测与图片",
+      "minimumProjectedNodeText": "应用 · 音乐 · BLE · 编码 · 图片",
       "minimumProjectedNodeTextDetail": "context",
       "minimumRequiredNodeTextPx": 6,
       "readabilityOk": true,
-      "hasLegend": true,
+      "hasLegend": false,
       "hasNavigationDock": true,
       "legendDockIntersectionArea": 0,
       "viewerChromeReserve": 0,
@@ -139,13 +139,13 @@
   "previews": {
     "architecture-light.png": {
       "kind": "svg-rasterization",
-      "sha256": "717ec7f2fba6ea28e4508c8db4b28de598b9e14f0312930e13ae7956036fe035",
-      "bytes": 461335
+      "sha256": "77a8d7282a9281352ae55647b21b341e0b7d89f51c629cea8ee0317bf4ba27d3",
+      "bytes": 508114
     },
     "architecture-dark.png": {
       "kind": "svg-rasterization",
-      "sha256": "46005a69ed596889e610666fde45ef6f395614d5c4696430d1a222bf2bad7176",
-      "bytes": 469252
+      "sha256": "05a61612783cd3563c9417a17f52526a1776cf4dd7099ae32e145a987c51b7d2",
+      "bytes": 513992
     }
   }
 }
