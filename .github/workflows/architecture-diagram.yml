@@ -41,6 +41,14 @@ jobs:
       - name: Install locked Archify toolchain
         run: pnpm docs:architecture -- --setup
 
+      - name: Install and verify CJK fonts
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends --yes fonts-noto-cjk
+          fc-cache -f
+          fc-match --format='%{family}\n' 'Noto Sans CJK SC:charset=4e2d' | grep -F 'Noto Sans CJK SC'
+          fc-match --format='%{family}\n' 'Noto Sans Mono CJK SC:charset=4e2d' | grep -F 'Noto Sans Mono CJK SC'
+
       - name: Locate Chrome
         run: |
           chrome="$(command -v google-chrome || command -v chromium)"

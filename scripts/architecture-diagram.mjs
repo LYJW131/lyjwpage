@@ -112,7 +112,7 @@ console.log(`finalize 已通过：${validation.checksPassed}/${validation.checkC
 const { findChrome } = await import(pathToFileURL(path.join(ARCHIFY_DIR, "bin/visual-check.mjs")).href);
 const chrome = findChrome();
 if (!chrome) fail("找不到 Chrome，无法导出 PNG（可设 ARCHIFY_CHROME 指定路径）。");
-const previewSize = await exportPreviews(chrome);
+const previewSizes = await exportPreviews(chrome);
 
 let capture = null;
 if (!skipVisual) {
@@ -129,7 +129,7 @@ if (sha256(fs.readFileSync(SPEC)) !== specification.sha256 || sha256(fs.readFile
 const previews = Object.fromEntries(THEMES.map((theme) => {
   const file = `architecture-${theme}.png`;
   const buffer = fs.readFileSync(path.join(DOCS, file));
-  return [file, { kind: "viewer-png-export", theme, width: previewSize[0], height: previewSize[1], artifactSha256: artifact.sha256, sha256: sha256(buffer), bytes: buffer.length }];
+  return [file, { kind: "viewer-png-export", theme, ...previewSizes[theme], artifactSha256: artifact.sha256, sha256: sha256(buffer), bytes: buffer.length }];
 }));
 fs.writeFileSync(RECEIPT, JSON.stringify({
   type: "architecture",
@@ -231,12 +231,13 @@ async function exportPreviews(chromePath) {
     await cdp.send("Page.navigate", { url: pathToFileURL(HTML).href }, sessionId);
     await loaded;
     await evaluate("document.fonts.ready");
-    const previewSize = await evaluate(`(() => {
+    const previewWidth = await evaluate(`(() => {
       const box = document.querySelector('.diagram-container svg')?.viewBox.baseVal;
       if (!box || box.width <= 0 || box.height <= 0) throw new Error("查看器 SVG 缺少有效 viewBox");
-      return [Math.round(box.width * ${PREVIEW_SCALE}), Math.round(box.height * ${PREVIEW_SCALE})];
+      return Math.round(box.width * ${PREVIEW_SCALE});
     })()`);
 
+    const previewSizes = {};
     for (const theme of THEMES) {
       await evaluate(
         `document.documentElement.setAttribute("data-theme", ${JSON.stringify(theme)}); new Promise((r) => requestAnimationFrame(() => setTimeout(r, 300)))`,
@@ -257,13 +258,15 @@ async function exportPreviews(chromePath) {
       if (!latest) throw new Error("没等到下载完成的 PNG。");
 
       const target = path.join(DOCS, `architecture-${theme}.png`);
-      const buffer = await sharp(latest).resize(previewSize[0], previewSize[1], { kernel: "lanczos3" }).png({ compressionLevel: 9 }).toBuffer();
+      // Viewer PNGs include a title and frame outside the SVG; fixed-height resizing crops them.
+      const { data: buffer, info } = await sharp(latest).resize({ width: previewWidth, kernel: "lanczos3" }).png({ compressionLevel: 9 }).toBuffer({ resolveWithObject: true });
+      previewSizes[theme] = { width: info.width, height: info.height };
       fs.writeFileSync(target, buffer);
       fs.rmSync(latest, { force: true });
-      console.log(`PNG 已导出：${path.relative(ROOT, target)}（${previewSize.join("×")}，${(buffer.length / 1024).toFixed(0)} KB）`);
+      console.log(`PNG 已导出：${path.relative(ROOT, target)}（${info.width}×${info.height}，${(buffer.length / 1024).toFixed(0)} KB）`);
     }
     cdp.close();
-    return previewSize;
+    return previewSizes;
   } finally {
     await cleanup();
   }
