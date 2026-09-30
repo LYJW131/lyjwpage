@@ -6,11 +6,13 @@ import CursorIcon from "@lobehub/icons/es/Cursor/components/Mono";
 import GrokIcon from "@lobehub/icons/es/Grok/components/Mono";
 import OpenAIIcon from "@lobehub/icons/es/OpenAI/components/Mono";
 import NumberFlow, { NumberFlowGroup } from "@number-flow/react";
+import { Cloud } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { ClaudeSpinner } from "@/components/live/claude-spinner";
 import { CodexActivityIndicator, CodexMark } from "@/components/live/codex-activity-indicator";
 import { Card } from "@/components/ui/card";
+import { MacBookProIcon } from "@/components/ui/device-icons";
 import { FlowDash } from "@/components/ui/flow-dash";
 import { useLiveEvents } from "@/hooks/use-live-events";
 import { useMountedAt } from "@/hooks/use-mounted-at";
@@ -20,11 +22,13 @@ import { useStatus } from "@/hooks/use-status";
 import { agentUsageLabel, agentUsageUrl } from "@/lib/agent-usage-url";
 import {
   CODING_ACTIVE_WINDOW_MS,
+  CODING_SOURCE_LABELS,
   codingAgentRows,
   codingDisplayModel,
   codingSourceHealth,
   describeCodingSources,
   liveCodingActivity,
+  type CodingActivityEntry,
   type CodingAgentRow,
   type CodingSourceNote,
 } from "@/lib/coding-agents";
@@ -94,7 +98,22 @@ function useAgentActive(row: CodingAgentRow, macDeclaredOffline: boolean, clocks
   // 首帧有 servedAt 当钟就照它判（首屏填缓存那一刻的结论）；连它也没有才等挂载
   const clockKnown = mountedAt > 0 || clocks.now != null;
   const active = live != null && clockKnown && !expired;
-  return { active, model: codingDisplayModel(row, live, active) };
+  return { active, source: active ? live.source : null, model: codingDisplayModel(row, live, active) };
+}
+
+/** 亮着那条来自哪：本机扫描是 Mac，其余（账号、云端遥测）都在云上 */
+function ActiveBadge({ source }: { source: CodingActivityEntry["source"] | null }) {
+  const label = source ? (CODING_SOURCE_LABELS[source] ?? source) : undefined;
+  return (
+    <span className="flex shrink-0 items-center gap-1 text-live" title={label ? `Active on ${label}` : undefined}>
+      <span className="label-mono">Active</span>
+      {source === "mac" ? (
+        <MacBookProIcon className="size-3.5" aria-label={label} />
+      ) : source ? (
+        <Cloud className="size-3.5" aria-label={label} />
+      ) : null}
+    </span>
+  );
 }
 
 /**
@@ -944,7 +963,7 @@ function AgentPanel({
   const cacheHitRate = promptTokens
     ? ((lastDay?.cacheReadTokens ?? 0) / promptTokens) * 100
     : 0;
-  const { active, model } = useAgentActive(row, macDeclaredOffline, clocks);
+  const { active, source, model } = useAgentActive(row, macDeclaredOffline, clocks);
   const displayModel = model ? displayModelName(model) : "No model";
   const rows = featuredLimitRows(limitsStale ? { ...row, limits: [], limitsError: LIMITS_SILENT } : row);
   const usageUrl = agentUsageUrl(row.id);
@@ -954,7 +973,7 @@ function AgentPanel({
         <div className="flex items-center gap-2">
           <FeaturedMark row={row} active={active} />
           <span className="text-sm font-medium">{row.label}</span>
-          {active && <span className="label-mono text-live">Active</span>}
+          {active && <ActiveBadge source={source} />}
         </div>
         <span
           className={cn(
@@ -1087,7 +1106,7 @@ function CompactAgentRow({
   const pace = limit ? limitPace(limit, now) : null;
   const overPace = pace != null && usedPercent != null && usedPercent / 100 > pace;
   // 和全量面板同一盏灯，只是不像全量面板那样换模型名
-  const { active } = useAgentActive(row, macDeclaredOffline, clocks);
+  const { active, source } = useAgentActive(row, macDeclaredOffline, clocks);
   const usageUrl = agentUsageUrl(row.id);
 
   return (
@@ -1106,7 +1125,7 @@ function CompactAgentRow({
             )}
           </span>
           <span className="truncate text-sm font-medium">{row.label}</span>
-          {active && <span className="label-mono shrink-0 text-live">Active</span>}
+          {active && <ActiveBadge source={source} />}
         </div>
         {/*
           读数和全量面板的 LimitMeter 一样放在条的上方、这一行的右端，条下面不再挂
