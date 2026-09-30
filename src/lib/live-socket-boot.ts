@@ -1,25 +1,9 @@
-/**
- * 推送那条 WebSocket 的早开通道。
- *
- * 不早开的话，它要等整棵树 hydrate 完才由 `useLiveEvents` 的 effect 发起，连接本身
- * 还要再花一次完整的握手（WebSocket 不复用已有的 HTTP 连接），页脚的在线人数就会比
- * 所有卡片的数据都晚到。
- *
- * 所以把 `new WebSocket()` 挪到 `<head>` 的内联脚本里提前起手，等 hydration 结束时
- * 连接早就开好，`useLiveEvents` 直接接手（adoptEarlySocket）。内联脚本只负责
- * 「开一条、把收到的消息原样攒下」，心跳、重连、可见性全部归 hook，两边靠
- * window 上这一个字段交接。攒下的消息交接时按顺序重放：人数（房间在连上的瞬间
- * 就发一条）和 hydration 期间推来的卡片事件都不丢。
- */
 
-/** 内联脚本把连接挂在 window 的这个字段上，hook 从同一个字段取走。 */
 export const EARLY_LIVE_SOCKET_KEY = "__lyjwLiveSocket" as const;
 
 export type EarlyLiveSocket = {
   socket: WebSocket;
-  /** 交接前收到的原始消息，按到达顺序 */
   queue: string[];
-  /** 没人接手时自毁的定时器，hook 接手后清掉 */
   watchdog?: number;
 };
 
@@ -29,30 +13,12 @@ declare global {
   }
 }
 
-/**
- * 没人来接手就自己关掉的时限。
- *
- * 页面脚本整个崩掉时，这条连接会一直挂着 —— 它不发心跳，还带着「可见」的标记，
- * 房间要等 VISIBLE_STALE_MS（workers/api/src/live-census.ts）加一轮清扫才不数它，
- * 人数会虚高一阵，而按人数调频的上报器（agents-reporter）正是按这个数定节奏的。
- * hydration 拖到这个时限基本等于页面已经废了，这时宁可断开重来。
- */
+// 未水合的早开连接不会续心跳却仍被计为可见，必须自行超时关闭。
 export const EARLY_LIVE_SOCKET_WATCHDOG_MS = 15_000;
 
-/** 攒消息的上限：hydration 期间正常只有一两条，防的是页面卡死时无限增长 */
 export const EARLY_LIVE_SOCKET_QUEUE_LIMIT = 50;
 
-/**
- * 生成 `<head>` 里那段内联脚本。`url` 是不带参数的 `/ws`，可见性参数在这里拼 ——
- * 脚本只在页面可见时起手，所以永远是 `visible=1`。
- *
- * 写成 ES5 的样子（var / function / try-catch），和同在 head 里的主题脚本一致：
- * 这段在任何 polyfill 之前跑，语法层面越保守越好。
- *
- * `url` 已经由 workerUrl 校验过协议和形状，这里只做 JSON 转义，外加把 `<` 转成
- * 字面量 `\u003c` —— 走的是 dangerouslySetInnerHTML，得保证字符串里不可能冒出
- * `</script>`。
- */
+// 内联脚本须转义小于号，防止 URL 中的结束标签逃逸出 script 元素。
 export function earlyLiveSocketScript(url: string): string {
   const target = JSON.stringify(`${url}?visible=1`).replace(/</g, "\\u003c");
   const key = EARLY_LIVE_SOCKET_KEY;

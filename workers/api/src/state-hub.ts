@@ -17,7 +17,6 @@ type CommitIngestWire =
   | { ready: true; ok: true; json: string; error: null; effects: IngestEffect[] }
   | { ready: true; ok: false; json: "null"; error: string; effects: IngestEffect[] };
 
-/** Authoritative realtime state and ingest coordination. The lag layer lives in KV (shared/lag.ts), not here. */
 export class StateHub extends DurableObject<Env> {
   private database: SqliteStore;
   private ingestTail: Promise<unknown> = Promise.resolve();
@@ -28,7 +27,6 @@ export class StateHub extends DurableObject<Env> {
     this.database = new SqliteStore(ctx.storage.sql, (work) => ctx.storage.transactionSync(work));
     ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
     ctx.storage.sql.exec("DROP TABLE IF EXISTS esa_purge");
-    // 遗留的发布队列表（公开读取的 KV 投影用过），存在就清掉
     ctx.storage.sql.exec("DROP TABLE IF EXISTS public_read_model_jobs");
     this.pulseArchiveState = new PulseArchiveState({
       sql: ctx.storage.sql,
@@ -53,7 +51,6 @@ export class StateHub extends DurableObject<Env> {
     return this.ready();
   }
 
-  /** One strongly-consistent read batch; callers establish request visibility via publicBarrier first. */
   publicRead(commands: StorageCommand[]): StorageResult[] {
     if (!this.ready()) throw new Error("State storage is not initialized");
     if (commands.some((command) => command.op !== "get" && command.op !== "fields" && command.op !== "listRange")) {
@@ -62,7 +59,6 @@ export class StateHub extends DurableObject<Env> {
     return this.database.execute(commands) as StorageResult[];
   }
 
-  /** Atomically mutate one fixture and its index; concurrent local PUT/DELETE cannot lose paths. */
   async updateDevOverride(path: string, envelopeJson: string | null): Promise<string[]> {
     if (!this.ready()) throw new Error("State storage is not initialized");
     if (!path.startsWith("/api/") || path.length > 1024) throw new Error("Invalid override path");
@@ -150,7 +146,6 @@ export class StateHub extends DurableObject<Env> {
       if (current === null || current > at) await txn.setAlarm(at);
     });
   }
-  /** 闹钟只用来清过期键：每小时一次，一轮删满 1000 条说明还有，一秒后接着删 */
   private ensureAlarm(): Promise<void> {
     return this.scheduleAlarm(Date.now() + 60 * 60_000);
   }

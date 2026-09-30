@@ -1,16 +1,4 @@
 #!/usr/bin/env node
-/**
- * 本地没有 Cloudflare Access，上报要带的 `Cf-Access-Jwt-Assertion` 由这里用一把测试钥匙自己签。
- * 本地上报入口 Worker 在 `ACCESS_TEAM_DOMAIN` 为 DEV_ISSUER 时认 `ACCESS_DEV_JWKS` 里的公钥
- * （见 workers/ingress/src/access-auth.ts）；线上的 team 域名是真的，这把钥匙在那边一文不值。
- *
- * 命令行：
- *   node scripts/dev-access.mjs init    生成钥匙（workers/ingress/.dev.vars.access-key.json，已被 gitignore），
- *                                       打印要加进 workers/ingress/.dev.vars 的 ACCESS_DEV_JWKS 那一行
- *   node scripts/dev-access.mjs header  打印一个 10 分钟有效的请求头，curl -H 直接用
- *
- * 隔离验证脚本直接 import createDevAccess()：每次现生成一对钥匙，vars 交给 Worker，headers() 签请求。
- */
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
@@ -30,9 +18,8 @@ async function fromPrivateJwk(privateJwk) {
   const jwks = JSON.stringify({ keys: [{ kty, n, e, kid: 'local-dev' }] });
   return {
     privateJwk,
-    /** 交给本地 Worker 的变量；ACCESS_CLIENTS 是对象，只能放进 wrangler 配置，不能进 .dev.vars。 */
+    // ACCESS_CLIENTS 是对象，只能放进 Wrangler 配置，不能写入 .dev.vars。
     vars: { ACCESS_TEAM_DOMAIN: DEV_ISSUER, ACCESS_AUD: DEV_AUD, ACCESS_CLIENTS: { [DEV_CLIENT_ID]: DEV_PERMISSIONS }, ACCESS_DEV_JWKS: jwks },
-    /** 签一张和 Access 放行时同形的 JWT；clientId 不在 ACCESS_CLIENTS 里就会被当成越权。 */
     async headers(clientId = DEV_CLIENT_ID) {
       const now = Math.floor(Date.now() / 1000);
       const head = `${b64url(JSON.stringify({ alg: 'RS256', kid: 'local-dev' }))}.${b64url(JSON.stringify({
@@ -49,7 +36,6 @@ export async function createDevAccess() {
   return fromPrivateJwk(await crypto.subtle.exportKey('jwk', pair.privateKey));
 }
 
-/** 子进程里复用父进程那把钥匙：父进程把 privateJwk 经环境变量 LOCAL_ACCESS_PRIVATE_JWK 传下来。 */
 export async function devAccessFromEnv() {
   const raw = process.env.LOCAL_ACCESS_PRIVATE_JWK;
   return raw ? fromPrivateJwk(JSON.parse(raw)) : null;

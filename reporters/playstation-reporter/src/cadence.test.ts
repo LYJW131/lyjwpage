@@ -22,7 +22,6 @@ test("waking or sleeping runs a tick immediately, and the first tick always runs
   assert.equal(shouldRunTick({ sinceMs: 1_000, power: "standby", powerAtLastTick: "awake" }), true);
   assert.equal(shouldRunTick({ sinceMs: 1_000, power: "off", powerAtLastTick: "awake" }), true);
   assert.equal(shouldRunTick({ sinceMs: Number.POSITIVE_INFINITY, power: "off", powerAtLastTick: null }), true);
-  // 休息和关机是同一档，来回切不额外打 PSN
   assert.equal(shouldRunTick({ sinceMs: 1_000, power: "off", powerAtLastTick: "resting" }), false);
 });
 

@@ -11,25 +11,18 @@ export function Header({
   desktopIconDataUri,
 }: {
   desktop: StatusResponse<DesktopPayload>;
-  /** 首屏那枚图标的内联副本，见 lib/desktop-icon-inline；压不出来是 null */
   desktopIconDataUri: string | null;
 }) {
   return (
     <header className="sticky top-0 z-50 bg-background/95 backdrop-blur-sm">
       <div className="mx-auto w-[calc(100%-2rem)] max-w-5xl py-3 sm:py-4">
-        {/*
-          中间那枚「正在使用」的徽章脱离文档流、绝对居中：它多宽都不推动两侧。
-          若占 grid 的 auto 列，应用一换（文字名换成字标、或者换个名字更长的
-          应用）这一列就跟着变宽，两边 1fr 的列一起挪，桌面端会记一笔 CLS。
-          自身的 max-w 已经给两侧留了 9rem，压不到左右两组。
-        */}
+        {/* 徽章脱离文档流，避免应用名宽度变化推动两侧并产生 CLS。 */}
         <div className="relative grid min-h-10 grid-cols-2 items-center gap-3">
           <HomeLink />
           <div className="flex items-center gap-2 justify-self-end">
             <MiniPlayer />
             <ThemeToggle />
           </div>
-          {/* 页头这枚徽章不是一张卡：出错只上报，原位不画东西，别顶着「Unavailable」占页头 */}
           <CardBoundary label="Header Desktop" silent paths={[DESKTOP_PATH]}>
             <HeaderDesktop
               fallback={desktop}

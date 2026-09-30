@@ -11,7 +11,6 @@ test("三个 Worker 变量只填源，路径由调用点拼上去", () => {
 
 test("浏览器要连的 wss 从 https 推出来，端口跟着源走", () => {
   assert.equal(workerUrl("https://live.example.com", "/ws", { websocket: true }), "wss://live.example.com/ws");
-  // 本地 wrangler dev 是明文，得推成 ws:// 而不是 wss://
   assert.equal(workerUrl("http://127.0.0.1:8787", "/ws", { websocket: true }), "ws://127.0.0.1:8787/ws");
   assert.equal(workerUrl("https://live.example.com:8443", "/ws", { websocket: true }), "wss://live.example.com:8443/ws");
 });
@@ -29,6 +28,5 @@ test("没配就是 null —— 对应「这个功能整体停用」，不是抛�
 test("配坏了也返回 null，不把不合法的地址传给 fetch / WebSocket", () => {
   assert.equal(workerUrl("live.example.com", "/ws"), null, "缺协议");
   assert.equal(workerUrl("不是地址", "/ws"), null, "根本不是 URL");
-  // 已经写成 wss:// 的要被挡下来：推导规则要求填 http(s) 源
   assert.equal(workerUrl("wss://live.example.com/ws", "/ws", { websocket: true }), null);
 });

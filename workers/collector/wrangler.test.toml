@@ -1,6 +1,5 @@
-# 本地开发用（根目录 `pnpm dev:worker` 以多配置方式和 dev-router、api、上报入口一起起）。
-# 名字与生产相同，service binding 才按生产名字互相找到。没有 cron、没有 D1（归档那一步自动跳过），
-# KV 全是本地的：LAG / CREDENTIALS 的 id 和 api 的 wrangler.test.toml 一致，两边读写同一份。
+# 本地名字须与 Service Binding 的生产名字一致。
+# 共享 KV 的 id 必须与 api 的本地配置一致。
 name = "collector"
 main = "src/index.ts"
 compatibility_date = "2026-09-08"
@@ -13,7 +12,6 @@ APPLE_MUSIC_STOREFRONT = "cn"
 CLOUDFLARE_ACCOUNT_ID = "209f2c881b1c494fec50851c067b3266"
 VERCEL_PROJECT_ID = "prj_r6sFPPmanb9zm3hzYAHAmp3KsIiC"
 VERCEL_TEAM_ID = "team_kfTnkK6X9bbqSbkgAhq7SxCd"
-# 只在本地打开 `POST /__dev/run?job=<名字>`；经 dev-router 的 `/__dev/collector/*` 进来
 DEV_TRIGGERS = "true"
 
 [[services]]

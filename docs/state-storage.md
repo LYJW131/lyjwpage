@@ -95,4 +95,4 @@ Vercel 可选配一份 `GITHUB_TOKEN`，只给构建期读公开仓的首页「�
 
 ## 初始化与导入
 
-新 StateHub 未初始化时拒绝上报和查询（503），避免空库被当成有效状态。标记初始化、搬运状态用 `scripts/migrate-state-storage.mjs`：`--initialize` 初始化空库（本地 `pnpm dev:worker:init` 用它），`--export` / `--import` 是把别处的状态搬进来的一次性运维工具（用法见脚本头）。导出文件含凭据，权限为 0600，不提交、不输出值；导入走 `/api/internal/storage/import`，用独立的 `STATE_IMPORT_SECRET`，分批幂等导入、最后标记初始化完成，验证历史、新上报、实时响应和 HTML 后移除导入密钥并清理临时文件。
+新 StateHub 未初始化时拒绝上报和查询（503），避免空库被当成有效状态。标记初始化、搬运状态用 `scripts/migrate-state-storage.mjs`：`--initialize` 初始化空库（本地 `pnpm dev:worker:init` 用它），`--export` / `--import` 是把别处的状态搬进来的一次性运维工具（无参数运行脚本可查看用法）。导出文件含凭据，权限为 0600，不提交、不输出值；导入走 `/api/internal/storage/import`，用独立的 `STATE_IMPORT_SECRET`，分批幂等导入、最后标记初始化完成，验证历史、新上报、实时响应和 HTML 后移除导入密钥并清理临时文件。

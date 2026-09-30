@@ -1,16 +1,6 @@
 import { failure, recovered } from "./log.js";
 
-/**
- * Cursor 事件的公开 API 等值估价。不使用 Cursor 返回的 chargedCents / totalCents。
- *
- * 价目跟 Mac 上的 ccusage 同一个做法：每轮在线取 models.dev（`ONLINE_TTL_MS` 内复用上一份），
- * 取不到就沿用上一份，一份都没有时退回下面编译进来的快照。新模型上线后不用发版就有价。
- * 在线那份只认官方厂商（OFFICIAL_PROVIDERS），不认聚合商 —— 同一个模型各家转售价不一样。
- *
- * 快照是 ccusage 的 models.dev 数据（catalogVersion
- * `models.dev-6e5efcd056370b0853db07ce9b4e02391c8a2d55`）。当前型号见 `CATALOG`。
- * Cursor 的费用只在这里估，MacTelemetryHub 不采 Cursor。
- *
+/*
  * 快照改编自 ccusage 的 models.dev 数据，MIT。
  * Copyright (c) 2025 ryoppippi / models.dev
  */
@@ -230,13 +220,9 @@ const CATALOG: Record<string, Price> = {
   "o4-mini": price(rates(1.1, 4.4, 0.275, null)),
 };
 
-/** 站点契约里模型名最长这么多个字符，超了整份数据会被站点拒收 */
 const MAX_MODEL_NAME = 200;
 
-/**
- * 账本、桶和活动里用的模型名：Cursor 事件里的名字原样，去掉首尾空白。
- * 不做跨来源别名（站点按来源自己的模型 id 分组），别名只用在下面估价查表。
- */
+// 模型身份保留来源原名；估价别名不能改写账本和活动里的模型名。
 export function modelName(raw: string): string {
   return raw.trim().slice(0, MAX_MODEL_NAME);
 }
@@ -257,7 +243,6 @@ const MODELS_DEV_URL = "https://models.dev/api.json";
 const ONLINE_TTL_MS = 6 * 3_600_000;
 const ONLINE_TIMEOUT_MS = 20_000;
 const ONLINE_MAX_BYTES = 32 * 1024 * 1024;
-/** 同名时排在前面的赢。键跟 canonicalKey 一样把点换成连字符。 */
 const OFFICIAL_PROVIDERS = [
   "anthropic",
   "openai",
@@ -283,10 +268,6 @@ function ratesFrom(node: Record<string, unknown>): Rates {
   return rates(rate(node.input), rate(node.output), rate(node.cache_read), rate(node.cache_write));
 }
 
-/**
- * models.dev 的一条 cost 收成 Price。长上下文取 tiers 里最小的 context 门槛；
- * 只有 context_over_200k 没有 tiers 的按 20 万。输入或输出没价的整条不收。
- */
 function priceFrom(cost: unknown): Price | null {
   const node = cost && typeof cost === "object" ? (cost as Record<string, unknown>) : null;
   if (!node) return null;
@@ -313,7 +294,6 @@ function priceFrom(cost: unknown): Price | null {
   return threshold == null ? price(base) : price(base, threshold, longContext);
 }
 
-/** models.dev 的 api.json → 按 canonicalKey 同一口径建表。纯函数，单测直接喂。 */
 export function parseModelsDev(body: unknown): Record<string, Price> {
   const root = body && typeof body === "object" ? (body as Record<string, unknown>) : null;
   const prices: Record<string, Price> = {};
@@ -332,10 +312,6 @@ export function parseModelsDev(body: unknown): Record<string, Price> {
   return prices;
 }
 
-/**
- * 到期才去取，失败不抛：这一轮用上一份或快照照样算，下一轮再试。
- * 给单测留了 fetcher 和 now 两个口子。
- */
 export async function refreshOnlinePrices(now = Date.now(), fetcher: typeof fetch = fetch): Promise<void> {
   if (online && now - online.fetchedAt < ONLINE_TTL_MS) return;
   try {
@@ -347,7 +323,6 @@ export async function refreshOnlinePrices(now = Date.now(), fetcher: typeof fetc
     const text = await response.text();
     if (text.length > ONLINE_MAX_BYTES) throw new Error("models.dev response too large");
     const prices = parseModelsDev(JSON.parse(text));
-    // 官方几家加起来少说几十个型号，少得离谱多半是结构变了，宁可继续用旧的
     if (Object.keys(prices).length < 20) throw new Error("models.dev returned too few official prices");
     online = { prices, fetchedAt: now };
     recovered("models-dev");
@@ -356,7 +331,6 @@ export async function refreshOnlinePrices(now = Date.now(), fetcher: typeof fetc
   }
 }
 
-/** 单测用：换一份在线价目，传 null 回到只有快照 */
 export function setOnlinePrices(prices: Record<string, Price> | null, fetchedAt = Date.now()): void {
   online = prices ? { prices, fetchedAt } : null;
 }
@@ -379,7 +353,6 @@ function scheduledPrice(model: string, atMs: number): Price | null {
   );
 }
 
-/** 一条请求的四列 token。估不出来返回 null，调用方把这一天的费用标成不完整。 */
 export function estimateCursorCost(
   model: string,
   inputTokens: number,

@@ -11,7 +11,6 @@ test("Node 冷启动的实验特性提示是噪声（生产上的原文，尾巴
   assert.equal(isKnownLogNoise(`${WARNING}\n${HINT}`), true);
   assert.equal(isKnownLogNoise(`${WARNING}\n${HINT}\n`), true);
   assert.equal(isKnownLogNoise(WARNING), true);
-  // 进程号不固定
   assert.equal(isKnownLogNoise(WARNING.replace("node:4", "node:31")), true);
 });
 

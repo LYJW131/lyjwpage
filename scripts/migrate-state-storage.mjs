@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-/** Initialize local state storage or run an operator-controlled export/import. Never prints values. */
 import assert from "node:assert/strict";
 import { readFile, writeFile } from "node:fs/promises";
 import { parseArgs } from "node:util";
@@ -25,7 +24,6 @@ if (values.export) {
     } while (cursor !== "0");
     const entries = [];
     const names = [...keys];
-    // 按小批次流水读取，切换期间无需逐键等待数百次网络往返。
     for (let offset = 0; offset < names.length; offset += 50) {
       const batch = names.slice(offset, offset + 50);
       const types = await redis.pipeline(batch.map(key => ["type", key])).exec();
@@ -52,7 +50,6 @@ if (values.export) {
         if (ttl !== -2) entries.push({ key, kind, value: result[index * 2 + 1][1], expiresAt: ttl < 0 ? null : observedAt + ttl });
       });
     }
-    // The new module store has one field table, without the old redundant JSON blob.
     const blobKey = `${prefix}:telemetry:state`;
     const fieldsKey = `${prefix}:telemetry:fields`;
     const blob = entries.find(entry => entry.key === blobKey);

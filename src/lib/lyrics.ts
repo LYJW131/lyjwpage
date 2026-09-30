@@ -3,44 +3,18 @@ import { ampFetch, AppleUpstreamError, getWebToken } from "@/lib/apple-web-token
 import { get, put } from "@/lib/cache";
 import { parseLyricsTtml, type LyricLine } from "@/lib/lyrics-ttml";
 
-/**
- * 此刻在播那首的同步歌词。
- *
- * Apple 的公开目录 API（api.music.apple.com）不给歌词；歌词只在 amp-api ——
- * 网页播放器自己用的那套内部端点 —— 的 `songs/{id}/lyrics` 上有，而且要**两把
- * 钥匙一起**：扒来的 web token 走 `Authorization`（和动态封面同一份，见
- * lib/apple-web-token），订阅身份走 `Media-User-Token`（Mac 上报器推来的那份
- * MusicKit 凭据里的 music user token）。缺后者时 amp-api 回的不是 401 / 403，
- * 而是和「这首歌没有歌词」**一模一样**的 404 `No related resources`，所以这条
- * 路上的 404 不能直接当成「没有」长期缓存，见下面 NO_LYRICS_TTL_MS。
- *
- * 先要字级（`/syllable-lyrics`），没有再退回行级（`/lyrics`）：字级那份每句带
- * 逐字计时，hero 上那一句按字点亮；不是每首都有，404 就退。解析在 lib/lyrics-ttml。
- */
 
 export type LyricsResult = {
-  /** 按 startMs 升序。没有同步歌词（纯文本、或根本没有）时为空数组 */
   lines: LyricLine[];
-  /** 词曲作者 / 创作者名单 */
   songwriters?: string[];
   error?: string;
 };
 
 export const NO_LYRICS: LyricsResult = { lines: [] };
 
-/** 一首歌的歌词不会变，和曲目链接那条缓存同一个尺度 */
 const LYRICS_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-/**
- * 「没有歌词」只缓存很短的一段。
- *
- * 404 有两种含义：这首歌确实没有同步歌词，或者 Media-User-Token 那一刻不在
- * （存储抖一下、上报器重新授权中）。两者在响应上分不开，按 LYRICS_TTL_MS 那么久
- * 缓存的话，后一种会把一首明明有词的歌锁死很久。目录查询那侧的 `hasLyrics` 已经把
- * 「确实没有」的大头挡在了请求之前（见 lib/apple-music 和 hooks/use-lyrics），走到
- * 这里的 404 更可能是后者，所以留短。
- */
+// amp-api 的 404 无法区分无歌词与订阅身份暂不可用，负缓存不能按成功结果长期保存。
 const NO_LYRICS_TTL_MS = 60 * 60 * 1000;
-/** 上游报错后，多久之内不再重试 */
 const NEGATIVE_TTL_MS = 5_000;
 
 const inflight = new Map<string, Promise<LyricsResult>>();
@@ -49,23 +23,11 @@ function storefront(): string {
   return (process.env.APPLE_MUSIC_STOREFRONT?.trim() || "cn").toLowerCase();
 }
 
-/**
- * 一首歌的歌词在存储里的键。API Worker 的边缘缓存也拿它拼键：结果形状变了
- * 在这里升版本，两层一起作废。
- */
 export function lyricsCacheKey(songId: string): string {
   return `lyrics:v4:${storefront()}:${songId}`;
 }
 
-/**
- * 取一首歌的歌词。上游异常往上抛，由路由决定响应形状 —— 抛和「上游明确说没有」
- * 不能混成同一个空数组。
- *
- * 没走 lib/cache 的 `cached()`：TTL 要按结论分档（有 / 没有），
- * 而它一个键只吃一个 TTL。in-flight 去重和负缓存照动态封面那套。
- */
 export async function resolveLyrics(songId: string): Promise<LyricsResult> {
-  // 目录 ID 只会是一串数字；路由那边对请求参数查过一道，这里防御性再查一道
   if (!/^\d{1,20}$/.test(songId)) throw new AppleUpstreamError("songId 不是目录 ID");
   const id = songId;
   const cacheKey = lyricsCacheKey(id);
@@ -111,7 +73,6 @@ async function loadLyrics(songId: string): Promise<LyricsResult> {
   const token = await getWebToken();
   const headers = { "Media-User-Token": credentials.credentials.musicUserToken };
 
-  // 先字级再行级：一首歌两种都有时字级那份带逐字计时；只有行级的歌字级那条 404
   for (const kind of ["syllable-lyrics", "lyrics"] as const) {
     let json: { data?: Array<{ attributes?: { ttml?: string } }> };
     try {
@@ -121,7 +82,6 @@ async function loadLyrics(songId: string): Promise<LyricsResult> {
         headers,
       );
     } catch (error) {
-      // 404 是 amp-api 说「没有」的方式（或者订阅身份没被认，见文件头）
       if (error instanceof AppleUpstreamError && error.status === 404) continue;
       throw error;
     }

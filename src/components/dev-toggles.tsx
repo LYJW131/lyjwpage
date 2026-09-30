@@ -5,12 +5,6 @@ import { createPortal } from "react-dom";
 
 import { StatusDot } from "@/components/ui/status-dot";
 
-/**
- * 开发环境右下角那排调试胶囊。
- *
- * 各处的开关散在不同组件里，但要排成同一列：页面挂一个 Dock，各组件用 Slot
- * 把自己的胶囊传送进去。生产构建 NODE_ENV 不是 development，Dock 和 Slot 都不渲染。
- */
 const DOCK_ID = "dev-toggles";
 
 export const isDev = process.env.NODE_ENV === "development";
@@ -23,8 +17,6 @@ export function DevToggleDock() {
 const subscribeNoop = () => () => {};
 
 export function DevToggleSlot({ children }: { children: ReactNode }) {
-  // 服务端和 hydrate 那一遍都当「还没挂载」，之后才去找 Dock：传送门没有服务端 HTML，
-  // hydrate 时就渲染会对不上。useSyncExternalStore 的两份快照正是为这种「客户端才有」准备的。
   const mounted = useSyncExternalStore(subscribeNoop, () => true, () => false);
   if (!isDev || !mounted) return null;
   const dock = document.getElementById(DOCK_ID);
@@ -32,7 +24,6 @@ export function DevToggleSlot({ children }: { children: ReactNode }) {
   return createPortal(children, dock);
 }
 
-/** 一粒胶囊：一盏灯 + 「名字: 状态」 */
 export function DevToggle({
   label,
   on,
@@ -43,7 +34,6 @@ export function DevToggle({
   label: string;
   on: boolean;
   onClick: () => void;
-  /** 亮 / 灭时各写什么 */
   states?: [string, string];
   title?: string;
 }) {

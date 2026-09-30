@@ -1,12 +1,6 @@
-// 引擎：WebGL2 当 2D 合成器用。画面是时间 t 的纯函数：同一个 t 永远出同一帧。
-// 全片只有 2D：镜头是平移、缩放、旋转四个数（uCam），没有透视矩阵、没有光线步进。
-// 场景在 1920×1080 的逻辑像素里排版；画布按屏幕实际像素渲染，逻辑 → 物理的倍数是 G.S。
-// 一帧的流程：场景往 HDR 目标（线性、半浮点）上画图版底（按 worldPos() 画的全屏 2D 着色器）和 Canvas2D 图层
-// → 后期（泛光、光晕、色散、暗角、颗粒、色调映射、按镜头速度算的运动模糊）→ 屏幕。
 (() => {
   const W = 1920, H = 1080;
 
-  // ---------- 颜色：站点 token 用 oklch 写，这里换成线性 sRGB（GL）和 sRGB 字符串（Canvas2D） ----------
   function oklch(L, C, h) {
     const a = C * Math.cos((h * Math.PI) / 180), b = C * Math.sin((h * Math.PI) / 180);
     const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3;
@@ -19,17 +13,16 @@
     ].map((v) => Math.max(0, v));
   }
   const enc = (v) => (v <= 0.0031308 ? 12.92 * v : 1.055 * Math.pow(v, 1 / 2.4) - 0.055);
-  // 调色板：取自 src/app/globals.css
   const LIN = {
-    ink: oklch(0.15, 0.008, 85), // 暗图版底色（暗色 --background）
-    ink2: oklch(0.185, 0.008, 85), // 面板（暗色 --surface）
-    paper: oklch(0.94, 0.007, 92), // 纸面底色（亮色 --background）
-    pink: oklch(0.19, 0.006, 80), // 纸上的墨（亮色 --foreground）
-    bone: oklch(0.93, 0.012, 90), // 暗底上的字与线（暗色 --foreground）
+    ink: oklch(0.15, 0.008, 85),
+    ink2: oklch(0.185, 0.008, 85),
+    paper: oklch(0.94, 0.007, 92),
+    pink: oklch(0.19, 0.006, 80),
+    bone: oklch(0.93, 0.012, 90),
     graphite: oklch(0.48, 0.008, 80),
     ash: oklch(0.66, 0.012, 90),
-    signal: oklch(0.672, 0.131, 38.8), // --claude（纸面）
-    signalD: oklch(0.74, 0.115, 39), // --claude（暗底）
+    signal: oklch(0.672, 0.131, 38.8),
+    signalD: oklch(0.74, 0.115, 39),
     ember: oklch(0.86, 0.1, 55),
     live: oklch(0.76, 0.16, 148),
     liveL: oklch(0.65, 0.17, 145),
@@ -41,7 +34,6 @@
     return a >= 1 ? `rgb(${c[0]},${c[1]},${c[2]})` : `rgba(${c[0]},${c[1]},${c[2]},${a})`;
   };
 
-  // ---------- GL ----------
   const canvas = document.getElementById("gl");
   const gl = canvas.getContext("webgl2", { antialias: false, alpha: false, premultipliedAlpha: false, preserveDrawingBuffer: true });
   if (!gl) throw new Error("需要 WebGL2");
@@ -54,11 +46,11 @@
 precision highp float;
 in vec2 vUv;
 out vec4 fragColor;
-uniform vec2 uRes;      // 物理像素
-uniform float uS;       // 逻辑 → 物理
-uniform float uT;       // 秒
-uniform float uFrame;   // 60fps 帧号（逐帧闪烁用它，不用连续时间）
-uniform vec4 uCam;      // 当前 2D 镜头：世界坐标中心 x,y、缩放、旋转
+uniform vec2 uRes;
+uniform float uS;
+uniform float uT;
+uniform float uFrame;   // 固定帧号保证重复 seek 渲染一致。
+uniform vec4 uCam;
 const vec2 LOG = vec2(${W}.0, ${H}.0);
 const vec3 C_INK = ${vec3(LIN.ink)};
 const vec3 C_INK2 = ${vec3(LIN.ink2)};
@@ -78,12 +70,12 @@ float vnoise(vec2 p){ vec2 i = floor(p), f = fract(p); vec2 u = f * f * (3.0 - 2
 float fbm(vec2 p){ float s = 0.0, a = 0.5; for (int i = 0; i < 5; i++) { s += a * vnoise(p); p = p * 2.03 + 17.1; a *= 0.5; } return s; }
 vec3 toLinear(vec3 c){ return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c)); }
 vec3 toSRGB(vec3 c){ c = max(c, 0.0); return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c)); }
-// 片元的逻辑屏幕坐标（y 向下）
+
 vec2 screenPos(){ return vec2(gl_FragCoord.x, uRes.y - gl_FragCoord.y) / uS; }
-// 片元的世界坐标：按 uCam 反推
+
 vec2 worldPos(){ vec2 d = (screenPos() - LOG * 0.5) / uCam.z; float c = cos(uCam.w), s = sin(uCam.w);
   return uCam.xy + vec2(c * d.x + s * d.y, -s * d.x + c * d.y); }
-// 发丝线：d 为到线的距离（逻辑像素），w 为线宽（逻辑像素）；按物理像素做抗锯齿
+
 float pxLine(float d, float w){ float dp = d * uS, wp = max(w * uS, 1.0); return (1.0 - smoothstep(wp * 0.5 - 0.6, wp * 0.5 + 0.6, dp)) * min(1.0, w * uS); }
 `;
 
@@ -105,7 +97,6 @@ void main(){ vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2)
   }
   const vs = compile(gl.VERTEX_SHADER, VERT);
 
-  // 全屏着色器通道。uniforms 按值推断类型；{ tex } 视为采样器
   class Pass {
     constructor(frag) {
       this.prog = gl.createProgram();
@@ -159,11 +150,10 @@ void main(){ vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2)
   }
   const freeRT = (rt) => { if (rt) { gl.deleteTexture(rt.tex); gl.deleteFramebuffer(rt.fb); } };
 
-  // Canvas2D 图层：按物理分辨率建画布，上下文预先缩放到逻辑像素
   const layers = [];
   class Layer {
     constructor(scale = 1) {
-      this.scale = scale; // 1 = 满分辨率；0.5 = 半分辨率（柔光之类）
+      this.scale = scale;
       this.c = document.createElement("canvas");
       this.tex = gl.createTexture();
       layers.push(this);
@@ -184,7 +174,6 @@ void main(){ vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2)
       x.globalCompositeOperation = "source-over";
       return x;
     }
-    // 把 2D 世界坐标经镜头映射到屏幕：screen = R(rot)·(world − c)·zoom + 中心
     cam(cam) {
       const k = G.S * this.scale, z = cam.zoom, c = Math.cos(cam.rot || 0), s = Math.sin(cam.rot || 0);
       const sx = (cam.sx ?? 0), sy = (cam.sy ?? 0);
@@ -206,9 +195,6 @@ void main(){ vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2)
     }
   }
 
-  // ---------- 合成：把图层叠到 HDR 目标上 ----------
-  // mode 0 普通（alpha 叠加）；1 相加（发光，gain 可超过 1）；2 纸上的墨（纤维吃墨、边缘微洇）；3 橡皮章（墨不匀、有空隙）；
-  // 4 纸片（alpha 照旧，颜色乘上和纸面图版同一套纸纹：暗底图版上的白卡用它，看起来和第 02 章的纸是同一张纸）
   const compositePass = new Pass(`
 uniform sampler2D uTex; uniform float uMode; uniform float uOpacity; uniform float uGain; uniform float uSeed;
 void main(){
@@ -245,7 +231,6 @@ void main(){
   }
   const MODE = { normal: 0, add: 1, ink: 2, stamp: 3, paper: 4 };
 
-  // ---------- 后期 ----------
   const brightPass = new Pass(`
 uniform sampler2D uSrc; uniform float uThr;
 void main(){ vec3 c = texture(uSrc, vUv).rgb; float m = max(c.r, max(c.g, c.b));
@@ -268,10 +253,10 @@ void main(){ vec2 o = uTexel;
 uniform sampler2D uScene; uniform sampler2D uBloom; uniform sampler2D uWide;
 uniform float uBloomAmt, uHalation, uCA, uVignette, uGrain, uExposure, uFlash, uFade;
 uniform vec2 uShake; uniform vec3 uFlashCol;
-uniform vec2 uBlur;      // 镜头甩动的运动模糊：这一帧里画面移动的逻辑像素
-uniform float uZoomBlur; // 冲进去 / 拉出来时的径向模糊（这一帧的缩放比例变化）
+uniform vec2 uBlur;
+uniform float uZoomBlur;
 vec3 sceneCA(vec2 uv, vec2 off){ return vec3(texture(uScene, uv - off).r, texture(uScene, uv).g, texture(uScene, uv + off).b); }
-vec3 shoulder(vec3 x){ // 0.8 以下原样，以上柔和压缩：纸面的白保持准确，只有发光的高光被压
+vec3 shoulder(vec3 x){
   vec3 k = max(x - 0.8, 0.0); return min(x, 0.8) + 0.2 * (1.0 - exp(-k / 0.2)) * 1.4; }
 void main(){
   vec2 uv = vUv + uShake / LOG;
@@ -281,7 +266,7 @@ void main(){
   vec3 col = vec3(0.0);
   float bl = length(uBlur) + abs(uZoomBlur) * 900.0;
   if (bl > 0.75) {
-    // 沿这一帧的运动方向取 24 个样，快门约半帧
+
     vec2 v = uBlur / LOG * 0.5;
     for (int i = 0; i < 32; i++) {
       float k = (float(i) + 0.5) / 32.0 - 0.5;
@@ -294,14 +279,14 @@ void main(){
   vec3 bloom = texture(uBloom, uv).rgb;
   vec3 wide = texture(uWide, uv).rgb;
   col += bloom * uBloomAmt;
-  col += wide * vec3(1.0, 0.42, 0.22) * uHalation; // 光晕：偏暖的大范围散射
+  col += wide * vec3(1.0, 0.42, 0.22) * uHalation;
   col *= uExposure;
   col = mix(col, uFlashCol, uFlash);
   col *= mix(1.0, 1.0 - smoothstep(0.15, 0.85, r2 * 2.2), uVignette);
   col = shoulder(col);
   col *= 1.0 - uFade;
   vec3 s = toSRGB(col);
-  // 颗粒：按帧号取随机，亮部弱暗部强；再加抖动去色带
+
   vec2 gp = floor(gl_FragCoord.xy / max(1.0, uS * 0.9));
   float g = hash12(gp + vec2(uFrame * 17.0, uFrame * 31.0)) - 0.5;
   float lum = dot(s, vec3(0.299, 0.587, 0.114));
@@ -312,10 +297,7 @@ void main(){
 
   const POST_DEFAULT = { bloom: 0.9, threshold: 0.95, halation: 0.35, ca: 0.6, vignette: 0.35, grain: 0.05, exposure: 1, flash: 0, flashCol: [1, 1, 1], fade: 0, shake: [0, 0], blur: [0, 0], zoomBlur: 0 };
 
-  // ---------- 共用的图层和着色器 ----------
-  // 同一时刻只画一章，所以各章共用同一组图层（每层满分辨率一张画布，4K 下一张约 33 MB，不能每章各建一套）。
-  // 各章在 init 里按名字取：G.layer("ink") / "paper" / "stamp" / "top"（满分辨率）、G.layer("emit", 0.5)（半分辨率发光）。
-  // 取到的图层每帧先 begin() 清空，上一章画的东西不会留下来。着色器按源码缓存，同一段 GLSL 只编译一次。
+  // 同时只画一章，图层必须共用；4K 画布逐章分配会耗尽显存。
   const layerPool = new Map(), passPool = new Map();
   const layer = (name, scale = 1) => {
     const k = `${name}@${scale}`;
@@ -327,7 +309,6 @@ void main(){
     return passPool.get(src);
   };
 
-  // ---------- 全局状态 ----------
   const G = {
     W, H, S: 1, PW: W, PH: H, t: 0, frame: 0,
     LIN, css, oklch, Pass, Layer, layer, pass, makeRT, MODE, gl, canvas,
@@ -336,7 +317,6 @@ void main(){
     scene: null, bloomRT: [],
     setCam(c) { this.cam = c; this.camVec = [c.x, c.y, c.zoom, c.rot || 0]; },
     composite(layer, opts) { composite(layer, this.scene, opts); },
-    // 画一个全屏着色器到场景目标（覆盖）
     fill(pass, uniforms) { pass.draw(this.scene, uniforms); },
     clear(rgb) {
       gl.bindFramebuffer(gl.FRAMEBUFFER, this.scene.fb);

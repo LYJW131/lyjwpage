@@ -1,18 +1,4 @@
-/**
- * 本机 Mac Telemetry Hub 的充电设备 SSE。
- *
- * **不主动连。** 打开 `/local/charging` 才往 localStorage 写一条记录，卡片
- * 看到这条记录才去挂 `http://127.0.0.1:8787/sse/{charger,powerbank}`。连上
- * 说明浏览的就是这台 Mac，卡片改用这条本机推流，不再用远端那份。连不上
- * （别人的电脑、浏览器拦了混合内容）立刻关掉，不重试，远端照旧。
- *
- * EventSource 默认失败会无限重连 —— 访客机器上没有这个端口，必须在第一次
- * error 且从未 open 时 close，否则控制台会一直刷。出过声的流断掉（上报器
- * 退出）也一样：靠看门狗关掉并清空本机快照，卡片自动落回远端轮询，而不是
- * 顶着断流前的最后一帧一直装连着。恢复直连刷新即可（localStorage 还在）；
- * 从没开过就要再打开一次 `/local/charging`。不自动重连，理由同上，本机
- * 端口没起来时重连就是刷屏。
- */
+// EventSource 默认无限重连；未提供本机服务的访客必须在失败时关闭连接。
 
 import { publicAssetPath } from "./asset-url.ts";
 import {
@@ -35,14 +21,9 @@ import type {
   ReporterPresence,
 } from "./types.ts";
 
-/** 只攒 sparkline 会画的那一窗（`LIVE_WINDOW_MS` 除以帧间隔），多攒的每帧都白复制一遍。 */
 const LOCAL_HISTORY_LIMIT = Math.round(LIVE_WINDOW_MS / LIVE_INTERVAL_MS);
 
 const LOCAL_ORIGIN = "http://127.0.0.1:8787";
-/**
- * 本机流按 `LIVE_INTERVAL_MS` 出帧。超过这个时限没帧才算这条流死了，别跟远端的
- * 断流窗口（`CHARGER_STALE_MS`）混。
- */
 const LOCAL_STALE_MS = 15_000;
 
 export type LocalCharging = {
@@ -142,10 +123,7 @@ function connect(
     onClosed();
   };
 
-  /**
-   * 断流看门狗。后台标签页的定时器会被推迟，到点先核对真实间隔：
-   * 没超说明只是醒得晚，接着睡剩下的，别把刚恢复的流误杀。
-   */
+  // 后台定时器会被延迟，关闭流之前重新核对真实间隔，避免误杀已恢复的流。
   const check = () => {
     const idleMs = Date.now() - lastFrameAt;
     if (idleMs < LOCAL_STALE_MS) {
@@ -155,13 +133,7 @@ function connect(
     close();
   };
 
-  /**
-   * 连上就布防，不等第一帧。
-   *
-   * 「连上了但一帧都没发」那条路上，opened 已经是 true，后续的 onerror 就不再
-   * close()，EventSource 按默认行为无限重连 —— 正是文件头注释要防的刷屏。
-   * 看门狗到点会 close()，那条路因此也有了出口。
-   */
+  // 连上却不出首帧也必须触发看门狗，否则会绕过首次失败关闭逻辑。
   source.onopen = () => {
     opened = true;
     lastFrameAt = Date.now();
@@ -175,7 +147,6 @@ function connect(
       const row = object(JSON.parse(message.data) as unknown);
       if (row) onEvent(row);
     } catch {
-      // 坏帧丢掉，等下一帧
     }
   };
   source.onerror = () => {
@@ -201,7 +172,6 @@ function start() {
     (event) => emit({ ...snapshot, charger: chargerFromEvent(event) }),
     () => {
       chargerSource = null;
-      // 清掉本机那半，charger-card 的 local 变 null，远端轮询自己就复活了
       if (snapshot.charger) emit({ ...snapshot, charger: null });
     },
   );
@@ -229,7 +199,6 @@ export function subscribeLocalCharging(onStoreChange: () => void) {
   listeners.add(onStoreChange);
   start();
   if (listeners.size === 1) {
-    // 别的标签页打开过 `/local/charging`：storage 事件会到；同标签回来再靠 focus
     window.addEventListener("storage", onStorage);
     window.addEventListener("focus", start);
     document.addEventListener("visibilitychange", start);

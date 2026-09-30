@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-/** Local, isolated end-to-end verification. Never reads .env or ambient production credentials. */
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { parseArgs } from "node:util";
@@ -34,13 +33,11 @@ assert.equal(ingest.pathname, "/");
 const prefix = values["storage-prefix"];
 assert.ok(prefix && /^[a-zA-Z0-9:_-]+$/.test(prefix) && /(?:^|[-_:])(test|dev|verify)(?:[-_:]|$)/.test(prefix), "Supply an explicit test/dev/verify storage prefix; production prefixes are forbidden");
 
-// 父进程（verify-api-worker.mjs）把它那把测试钥匙经 LOCAL_ACCESS_PRIVATE_JWK 传下来
 const access = await devAccessFromEnv();
 assert.ok(access, "LOCAL_ACCESS_PRIVATE_JWK is required: run through scripts/verify-api-worker.mjs, or export the key from scripts/dev-access.mjs");
 const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 const MINUTE = 60_000;
 const BUCKET = 5 * MINUTE;
-/** Asia/Shanghai 站点日 */
 const siteDay = (stamp) => new Date(stamp + 8 * 3_600_000).toISOString().slice(0, 10);
 
 const now = Date.now();
@@ -56,7 +53,6 @@ const macUsage = (at, claudeToday = 2_000) => ({ agents: [
   { id: "claude", state: "ok", collectedAt: at, sessionCount: 4, days: [day(yesterday, 1_000, "claude-opus-5"), day(today, claudeToday, "claude-opus-5")] },
   { id: "codex", state: "ok", collectedAt: at, sessionCount: 2, days: [day(today, 0, null)] },
   { id: "grok", state: "error", collectedAt: null, error: "Verification: ccusage unavailable" },
-  // Mac 就算又报了 cursor，也被账号级来源盖住
   { id: "cursor", state: "ok", collectedAt: at, days: [day(today, 99_999, "composer-1")] },
 ] });
 const macActivity = (at) => ({ collectedAt: at, agents: [{ id: "claude", lastActivityAt: at - 20_000, model: "claude-opus-5" }, { id: "codex", lastActivityAt: null, model: null }] });
@@ -81,7 +77,6 @@ function otlp(at, value) {
     { attributes: attributes("input"), startTimeUnixNano: "1", timeUnixNano: `${BigInt(at) * 1_000_000n}`, asDouble: value },
   ] } }] }] }] };
 }
-// authorization：默认带 Access JWT；null 不带任何凭据；字符串按旧式 Bearer 发（应当被拒）
 async function request(path, body, authorization = "access") {
   const auth = authorization === "access" ? await access.headers() : authorization ? { authorization: `Bearer ${authorization}` } : {};
   const response = await fetch(new URL(path, ingest), {
@@ -96,7 +91,6 @@ async function request(path, body, authorization = "access") {
 async function post(path, body, status = 202, authorization = "access") {
   const result = await request(path, body, authorization);
   assert.equal(result.status, status, `${path}: ${JSON.stringify(result.body)}`);
-  // OTLP exporter 的成功回执是空对象，没有 ok
   if (path !== "/api/ingest/agents/otlp") assert.equal(result.body.ok, status === 202);
   return result.body;
 }

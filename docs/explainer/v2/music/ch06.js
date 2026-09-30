@@ -1,8 +1,3 @@
-// 第 06 章「两条线路」的配乐，9 小节，章内小节。写法见 ../CONVENTIONS.md「配乐」。
-// 硬切到纸面地铁图的同时转调：从 D 小调升一个全音到 E 多利亚（C# 还原），声场铺开（pad 混响更大、拨弦左右分得更开）。
-// ESA 的钟每拍一下；借书卡那段打字机敲索书号；7–9 两条线往右延伸、镜头横移，拨弦往下答一句（本章不唱信封主题）。
-// 收在 A7sus4（A D E G 在 E 多利亚里都有，又是 D 小调的属和弦），第 07 章回到 D 从这里接。
-// 本章的和弦（名字全片唯一）：Em9 A6 Gmaj7 D69 Bm7 是 E 多利亚的 i IV ♭III ♭VII v。
 (window.SCORE_PARTS = window.SCORE_PARTS || []).push({
   id: "ch06",
   tone: { bell: "bright", pluckPan: 0.35, snareVerb: 0.2 },
@@ -32,17 +27,16 @@
         kick: ["X.......X.......", "X..............."], duck: 0.45, bass: "hold",
         arp: { p: "sparse", lo: 64, inst: "bell", v: 0.3 }, pad: 0.9, lp: 2400, padVerb: 0.45 },
     ],
-    // 旋律：[小节, 拍位, 时值(拍), 音, 乐器, 力度, 是否主题]
     melody: [
-      [0, 0, 4, "E5", "bell", 0.7, false], [0, 0, 4, "B5", "bell2", 0.45, false], // 转调落地：空五度铺开
-      ...phrase(7, withNotes(["F#5", "E5", "D5", "B4"]), "pluck", 0.4), // 两条线往右延伸，往下答一句
+      [0, 0, 4, "E5", "bell", 0.7, false], [0, 0, 4, "B5", "bell2", 0.45, false],
+      ...phrase(7, withNotes(["F#5", "E5", "D5", "B4"]), "pluck", 0.4),
     ],
     story: [
-      { bar: 0, beat: 0, kind: "boom" }, // 硬切到纸面，低低一声落地
-      { bar: 2, beat: 2, kind: "tick", m: midi("E6"), i: 2 }, // ESA 的钟走完 300 秒
-      { bar: 3, beat: 2, kind: "accent", what: "slip" }, // 新的一份页回到 ESA
-      { bar: 4, beat: 3, kind: "whoosh", tube: 0 }, { bar: 4, beat: 3.5, kind: "whoosh", tube: 3 }, // 同一个图片路径在两条线上路
-      { bar: 6, beat: 0, kind: "stamp", size: "mid" }, // immutable · 不用刷新
+      { bar: 0, beat: 0, kind: "boom" },
+      { bar: 2, beat: 2, kind: "tick", m: midi("E6"), i: 2 },
+      { bar: 3, beat: 2, kind: "accent", what: "slip" },
+      { bar: 4, beat: 3, kind: "whoosh", tube: 0 }, { bar: 4, beat: 3.5, kind: "whoosh", tube: 3 },
+      { bar: 6, beat: 0, kind: "stamp", size: "mid" },
     ],
   }),
 });

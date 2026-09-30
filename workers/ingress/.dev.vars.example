@@ -1,4 +1,1 @@
-# 本地复制为 .dev.vars（已被 gitignore）。上报入口没有 secret，本地只要这一行：
-# 线上走 Cloudflare Access，本地没有 —— `node scripts/dev-access.mjs init` 生成测试钥匙，
-# 把它打印的这一行填进来；往本地推时带 `node scripts/dev-access.mjs header` 打出的请求头。
 ACCESS_DEV_JWKS=

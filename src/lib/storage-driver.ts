@@ -6,7 +6,6 @@ export type StorageAnswer<T> = { reachable: true; value: T } | { reachable: fals
 
 let injected: StorageClient | null | undefined;
 
-/** 持久层只由 Worker 的 alias 驱动提供；Node 驱动仅用于单元测试。 */
 export function getStorage(): StorageClient | null { return injected ?? null; }
 
 export function withStorageScope<T>(run: () => Promise<T>): Promise<T> { return run(); }

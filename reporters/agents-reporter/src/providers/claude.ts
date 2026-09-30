@@ -178,7 +178,6 @@ function extractClaudeScopedWeekly(body: Record<string, unknown>): unknown {
   return out.length > 0 ? out : null;
 }
 
-/** 把 usage 接口的响应体规整成 claudeWindows 吃的形状。纯函数。 */
 export function normalizeClaudeUsage(body: unknown): Record<string, unknown> {
   const rec = asRecord(body);
   if (!rec) throw new Error("Claude usage 响应不是对象");

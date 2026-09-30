@@ -14,7 +14,6 @@ export function resetStorageForTests(): void {
   for (const value of cells().values()) { value.memory = null; value.persisted = false; }
 }
 
-/** 存储不可达（Node 驱动）时可用已有内存副本；Worker 驱动严格抛错，不接受只写到内存的上报。 */
 function remember<T>(state: Cell<T>, stored: T | null, stampOf: (value: T) => number): T | null {
   if (stored !== null) {
     if (!state.persisted && state.memory && stampOf(state.memory) > stampOf(stored)) return state.memory;
@@ -50,7 +49,6 @@ export function mirrorKey<T>(parts: string[], stampOf: (value: T) => number, { t
   };
 }
 
-/** 每个模块一个字段；只合并此次上报的字段，不另存一份整包快照。 */
 export function fieldMirror<T extends object>(parts: string[], stampOf: (value: T) => number) {
   const k = key(...parts);
   const state = () => cell<T>(k);

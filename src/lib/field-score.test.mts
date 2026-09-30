@@ -15,7 +15,6 @@ test("weights renormalize over the vitals that are present", () => {
   const empty = { lcpP75Ms: null, inpP75Ms: null, clsP75: null, fcpP75Ms: null, ttfbP75Ms: null, samples: 0 };
   assert.equal(fieldPerformanceScore(null), null);
   assert.equal(fieldPerformanceScore(empty), null);
-  // 只有 LCP 且正好在中位点：分数就是这一项的 50
   assert.equal(fieldPerformanceScore({ ...empty, lcpP75Ms: 4000 }), 50);
   const fast = fieldPerformanceScore({ lcpP75Ms: 1850, inpP75Ms: 96, clsP75: 0.021, fcpP75Ms: 1120, ttfbP75Ms: 184, samples: 312 });
   assert.ok(fast != null && fast >= 95, String(fast));

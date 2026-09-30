@@ -1,8 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-// config 在第一次 import 时读环境变量：先塞一份假的 Cursor 凭据，再动态 import，
-// fetchCursorRecent 才走得通（页面由测试自己给的 fetch 返回，不出网）。
 const token = `aaa.${Buffer.from(JSON.stringify({ sub: "auth0|user_fixture" })).toString("base64url")}.bbb`;
 process.env.CURSOR_AUTH_TOKEN = token;
 
@@ -22,7 +20,6 @@ function row(offsetMs: number, model: string, tokens = 1) {
   };
 }
 
-/** Bugbot 那类事件：有时刻有模型，没有 token 分列（也没声明不按 token 计费） */
 const oddRow = (offsetMs: number, model = "github_bugbot") => ({ timestamp: String(NOW + offsetMs), model });
 
 function recent(rows: unknown[], total = rows.length) {
@@ -55,7 +52,6 @@ test("宽松解析逐行判：token 分列缺项的事件只丢它自己，时�
       [null, "bad-time", false],
       [null, "too-early", false],
       [-20_000, "bad-count", false],
-      // 没有模型：时刻认得，能算活动，但进不了桶
       [-10_000, null, false],
     ],
   );
@@ -79,13 +75,11 @@ test("快循环载荷：页里混一条缺 token 分列的事件，活动和桶�
     oddRow(-40_000),
     row(-150_000, "composer-2", 5),
   ]);
-  // 活动认那条怪事件：它是最新的一条，Bugbot 也算在用
   assert.equal(latestAt, NOW - 40_000);
   assert.deepEqual(activity, {
     collectedAt: NOW,
     agents: [{ id: "cursor", lastActivityAt: NOW - 40_000, model: "github_bugbot" }],
   });
-  // 桶只收 token 分列齐全的三条，怪事件没进去；两个桶各按自己的起点
   assert.deepEqual(buckets.agents, [{ id: "cursor", state: "partial" }]);
   assert.deepEqual(
     buckets.windows.map((window) => [
@@ -112,10 +106,8 @@ test("桶范围是 [向下对齐到桶边界的 now - 15 分钟, now)：首桶�
   assert.equal(buckets.to, NOW);
   assert.equal(buckets.collectedAt, NOW);
   assert.equal(buckets.from <= NOW - 15 * 60_000 && NOW - 15 * 60_000 - buckets.from < CODING_BUCKET_MS, true);
-  // 来自钟差的「未来」事件不进这一封的桶，也不算丢了事件
   assert.equal(buckets.windows.reduce((sum, window) => sum + window.agents.reduce((n, entry) => n + (entry.eventCount ?? 0), 0), 0), 1);
   assert.deepEqual(buckets.agents, [{ id: "cursor", state: "ok" }]);
-  // 活动时刻不晚于采集时刻
   assert.equal(activity.agents[0]?.lastActivityAt, NOW);
 });
 

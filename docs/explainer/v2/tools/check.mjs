@@ -1,11 +1,3 @@
-// 自检：node check.mjs [章 id…] [--step 0.125]
-// 中英各把指定的章（默认所有已写的章）按 step 小节逐帧画一遍，报四样：
-//   1. 太小的字：一句字在它出现的整段时间里，屏幕字号（字号 × 镜头缩放）最大都不到 28（旁白不到 56）。
-//      拉远、甩镜头时临时变小不算，只要停住时够大；标了 texture 的字不查
-//   2. 缺文字键（I18N.tr 查不到）
-//   3. 画面报错、控制台 error（包括章节 bars 和 plan.js 不一致、配乐 harm 小节数不对）
-//   4. 占位章（还没写的章）列一下
-// 有问题时退出码 1。依赖 docs/explainer/render/node_modules 里的 playwright-core（工作树里先建软链，见 CONVENTIONS.md）。
 import { chromium } from "../../render/node_modules/playwright-core/index.mjs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -14,7 +6,6 @@ let step = 0.125;
 const want = [];
 for (let i = 0; i < args.length; i++) { if (args[i] === "--step") step = +args[++i]; else want.push(args[i].replace(/^(\d\d)$/, "ch$1")); }
 const page = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../index.html");
-// 还没写的章加载失败是预期的，不算错
 const expectedMissing = (m) => /Failed to load resource|ERR_FILE_NOT_FOUND/.test(m.text()) && /\/(music\/)?ch\d\d\.js$/.test(m.location()?.url || "");
 const b = await chromium.launch({ channel: "chrome", headless: true, args: ["--use-angle=metal", "--enable-gpu", "--ignore-gpu-blocklist"] });
 let bad = 0;
@@ -38,7 +29,6 @@ for (const lang of ["zh", "en"]) {
     }, { c, step, BAR: await p.evaluate(() => window.__BAR) });
   }
   const C = await p.evaluate(() => window.__CHECK);
-  // 同一句字只算一次：取它出现过的最大字号，最大都不够才报
   const fold = (list, min) => {
     const m = new Map();
     for (const e of list) { const k = `${e.ch}|${e.str}`; const o = m.get(k); if (!o || e.px > o.px) m.set(k, e); }

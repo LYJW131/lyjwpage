@@ -37,7 +37,6 @@ export function WorkoutsStrip({ fallback }: { fallback: StatusResponse<WorkoutsP
   const { data, error } = useStatus<WorkoutsPayload>(STATUS_VIEWS.workouts.path, { fallback });
   const listRef = useRef<HTMLUListElement>(null);
   const items = data?.items.slice(0, 10) ?? [];
-  // Preserve the visible pair when the card width changes.
   useEffect(() => {
     const list = listRef.current;
     if (!list) return;
@@ -60,8 +59,6 @@ export function WorkoutsStrip({ fallback }: { fallback: StatusResponse<WorkoutsP
       list.removeEventListener("scroll", rememberPosition);
     };
   }, [items.length]);
-  // 训练是历史事实，手机多久没报也不会变假，所以这里没有过期阈值（见 freshness 的 ACTIVITY_STALE_MS）；
-  // 只在这一轮取数失败、手上是旧的那份时注一行
   return (
     <section id="workouts" aria-label="Recent workouts" className="@container flex min-w-0 flex-col justify-center border-t border-line md:border-t-0 md:border-l">
       {!data ? (

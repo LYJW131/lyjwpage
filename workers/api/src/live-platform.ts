@@ -3,7 +3,6 @@ import type { LiveEvent } from "@/lib/live-events";
 import { currentContext, requestStore } from "@api/runtime";
 import type { Env } from "./runtime";
 
-/** Worker 后台任务、缓存失效通知和房间广播。 */
 
 export function afterResponse(work: () => Promise<void>): Promise<void> {
   const store = requestStore.getStore();
@@ -14,21 +13,11 @@ export function afterResponse(work: () => Promise<void>): Promise<void> {
 
 const REVALIDATE_TIMEOUT_MS = 5_000;
 
-/**
- * 首屏布局变了才通知 Vercel 标签失效，已有 HTML 先返回、后台重建。
- *
- * 发不发由各个上报在自己手里的新旧两份上判断（见 lib/home-layout）；内容变化
- * 不来这里，交给首屏快照（src/lib/first-screen.ts 的 `cacheLife`）的定时重建。coding 用量卡片的骨架
- * 也一样在提交时比：视图由状态核心一处算好，新旧两份都在手上（stores/coding-usage）。
- *
- * ESA 首页不走通知：边缘按源站 SWR 头自行过期与后台取新（规则见 docs/ops-facts.md）。
- */
 export async function expireStatusTags(
   tags: readonly string[],
 ): Promise<void> {
   if (!tags.length) return;
   const delivered = await revalidateVercel(currentContext().env, tags);
-  // 留一行好按 tag 分组数：首屏每小时重建多少次、是哪几张卡在触发，全看这里
   if (delivered) console.log("[revalidate]", tags.join(","));
 }
 
@@ -51,7 +40,6 @@ async function revalidateVercel(env: Env, tags: readonly string[]): Promise<bool
       signal: AbortSignal.timeout(REVALIDATE_TIMEOUT_MS),
     });
     if (!response.ok) {
-      // 带上站点给的原因：401 是密钥没对齐、400 是 tag 名单对不上，光看状态码要猜
       const envelope = (await response.json().catch(() => null)) as { error?: string } | null;
       console.error("[revalidate]", site, response.status, envelope?.error ?? "");
       return false;
@@ -63,7 +51,6 @@ async function revalidateVercel(env: Env, tags: readonly string[]): Promise<bool
   }
 }
 
-/** 全站一个房间，和 index.ts 里 /ws 接入的是同一个 */
 export const ROOM_ID = "global";
 
 export async function publish(event: LiveEvent): Promise<void> {

@@ -1,10 +1,3 @@
-/**
- * coding 年度热力图：`/api/status/coding/year` 的编码（读出口）与展开（浏览器）。
- *
- * 状态核心存的是按日期索引的年度视图（shared/coding-usage-view 的 `CodingUsageYearView`），
- * 读出口按站点今天切出 53 周、编成 `days` 加每天前几名模型的稀疏 `mix`；档位、文案和
- * mix 展开都在浏览器现算。
- */
 
 import { addDays, formatDayHeading, sundayOf, weekdayOf } from "./github-chart-compact.ts";
 import { zonedDay } from "./heatmap-window.ts";
@@ -13,24 +6,14 @@ import type { CodingYearPayload } from "./types.ts";
 
 export const YEAR_WEEKS = 53;
 export const YEAR_DAYS = YEAR_WEEKS * 7;
-/** 格子浮层只画前三，信封里每天最多带年度视图留的那几名 */
 export const YEAR_MIX_SHOW = 3;
 
 export type YearModelShare = { model: string; tokens: number };
 
-/** 年度视图里一天：合计与按 tokens 降序的前几名模型 */
 export type CodingYearDay = { tokens: number; models: ReadonlyArray<readonly [model: string, tokens: number]> };
 
 export { addDays };
 
-/**
- * 把按日期索引的年度视图编成 53 周的公开信封。
- *
- * 窗口从站点今天所在那一周往回 52 周的周日起，371 天；`mix` 一行是
- * `[offset, idx, tokens, idx, tokens, …]`，offset 是 origin 起第几天，idx 指 `models`，
- * 没有用量的日子不出现。「今天」是时间的函数，不进存储，取数出口每次按 `now` 现算
- * （`todayAtSource`）：上报停了一天，窗尾照样画到今天，和隔壁 GitHub 那张图对齐。
- */
 export function encodeCodingYear(
   year: { updatedAt: number; days: Readonly<Record<string, CodingYearDay>> },
   now: number,
@@ -95,7 +78,6 @@ export function compactTokens(tokens: number): string {
   return `${value >= 10 ? value.toFixed(0) : value.toFixed(1).replace(/\.0$/, "")}M`;
 }
 
-/** 非零天的四分位，空格子永远是 0 档。 */
 export function tokenScores(counts: number[]): Array<0 | 1 | 2 | 3 | 4> {
   const positive = counts.filter((value) => value > 0).sort((left, right) => left - right);
   if (positive.length === 0) return counts.map(() => 0);

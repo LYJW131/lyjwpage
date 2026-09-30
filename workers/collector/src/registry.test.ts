@@ -28,7 +28,6 @@ test("the registry covers every shared job name once, with periods that divide a
     assert.ok(job.offset >= 0 && job.offset < job.everyMinutes, job.name);
     assert.ok(job.maxRuntimeMinutes > 0, job.name);
   }
-  // 一小时里每个任务跑的次数正好是 60 / 周期
   const hour = at("2026-09-28T10:00:00Z");
   for (const job of JOBS) {
     const runs = Array.from({ length: 60 }, (_, m) => hour + m * 60_000).filter((time) => dueJobs(time).includes(job)).length;
@@ -74,7 +73,6 @@ function fakeJob(run: Job["run"], overrides: Partial<Job> = {}): Job {
   return { name: "github-chart", everyMinutes: 10, offset: 1, maxRuntimeMinutes: 2, run, ...overrides };
 }
 
-/** 记下每次报到和它的结局，行为照 Sentry.withMonitor：抛了就是 error、原样再抛 */
 function recordingMonitor() {
   const checkins: { slug: string; status: "ok" | "error"; schedule: string }[] = [];
   const monitor: MonitorRunner = async (slug, run, config) => {
@@ -125,7 +123,6 @@ test("a skip that asks the monitor to fail stays a skip in the outcome but check
   assert.deepEqual(reported, ["PSN 已连续 3 轮失败"], "连着失败好几轮才开 issue");
   assert.deepEqual({ ...outcome, ms: 0 }, { job: "github-chart", status: "skipped", detail: "PSN 已连续 3 轮失败", ms: 0 });
   assert.deepEqual(checkins.map((row) => row.status), ["error"]);
-  // 手动触发不报到，也就不必把跳过翻成失败
   assert.equal((await runJob(failing, env)).detail, "backoff");
 });
 
@@ -136,7 +133,6 @@ test("a scheduled tick runs only due jobs and checks in only on check-in minutes
   const jobs = [job("provider-status", 1, 0), job("apple-recent", 2, 0), job("github-chart", 10, 1)];
 
   const { monitor, checkins } = recordingMonitor();
-  // 10:02：每分钟和每两分钟的都跑；分钟任务要等 10:05 才报到，两分钟那个要等 10:10
   await runScheduled(env, at("2026-09-28T10:02:00Z"), { monitor, jobs });
   assert.deepEqual(ran.sort(), ["apple-recent", "provider-status"]);
   assert.equal(checkins.length, 0);
@@ -158,12 +154,10 @@ test("a head-start job gets going before the rest, which wait for it or the head
   const first = fakeJob(async () => { order.push("ps:start"); await gate; order.push("ps:gate"); return { status: "ok" }; }, { name: "pagespeed", everyMinutes: 1, offset: 0, headStart: true });
   const other = fakeJob(async () => { order.push("other"); return { status: "ok" }; }, { name: "provider-status", everyMinutes: 1, offset: 0 });
 
-  // 门先放行：别的任务紧跟着开跑
   setTimeout(release, 5);
   await runScheduled(env, at("2026-09-28T10:02:00Z"), { jobs: [other, first], headStartMs: 1_000 });
   assert.deepEqual(order, ["ps:start", "ps:gate", "other"]);
 
-  // 抢先的任务迟迟不完：等满窗口就放别的走，不一直干等
   order.length = 0;
   const stuck = fakeJob(async () => { order.push("ps:start"); await new Promise((resolve) => setTimeout(resolve, 50)); order.push("ps:done"); return { status: "ok" }; }, { name: "pagespeed", everyMinutes: 1, offset: 0, headStart: true });
   await runScheduled(env, at("2026-09-28T10:02:00Z"), { jobs: [other, stuck], headStartMs: 5 });

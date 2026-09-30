@@ -20,29 +20,15 @@ import type {
   TrophiesSummaryPayload,
 } from "@/lib/types";
 
-/** 和瓷砖行问 playing/now 同一个间隔，SWR 会去重。 */
 const NOW_REFRESH_MS = 60_000;
-/**
- * 奖杯摘要靠推送换（解锁那一轮上报就到），这条轮询只是推送断了时的兜底，
- * 和展开明细那条同一个间隔。
- */
 const TROPHIES_REFRESH_MS = 10 * 60_000;
 
-/**
- * 提要和瓷砖行之间那点联动状态就住在这里。
- *
- * 只为一件事存在：点提要里的「最近解锁」要展开下面对应的那块瓷砖，而函数 prop
- * 过不了服务端边界 —— 递 onRecentClick 的那一层必须是客户端组件。数据仍旧由外面
- * 的服务端组件取好往下传；这里只跟 playing/now 再订一次，把头像那颗状态点
- * 接上同一份 SWR 缓存（和下面瓷砖行去重）。
- */
 export function PlaystationPanel({
   anchorId,
   trophies,
   playing,
   playingNow,
 }: {
-  /** 外面那张卡的锚点 id，跳转时页面滚到它（它带着 scroll-mt-28 让开吸顶头） */
   anchorId: string;
   trophies: StatusResponse<TrophiesSummaryPayload>;
   playing: StatusResponse<PlaystationPlayingPayload>;
@@ -54,11 +40,6 @@ export function PlaystationPanel({
   const presence = useStatus<PlaystationPresencePayload>(NOW_PLAYING_PATH, NOW_REFRESH_MS, {
     fallback: playingNow,
   });
-  /**
-   * 首屏那份摘要只是种子：挂载时回源校验一次（首屏 HTML 可能冻了几分钟），
-   * 之后解锁由 `trophies` 推送直接写进这个键，提要和瓷砖杯数一起换。
-   * 取不到时退回服务端那份信封，别让一次失败的重取把提要整块撤掉。
-   */
   const summary = useStatus<TrophiesSummaryPayload>(TROPHIES_PATH, TROPHIES_REFRESH_MS, {
     fallback: trophies,
   });
@@ -66,12 +47,6 @@ export function PlaystationPanel({
     ? { ok: true, data: summary.data }
     : trophies;
   const mountedAt = useMountedAt();
-  /**
-   * 源站不判断流，原样交出最后那份 presence。判法和瓷砖行（playstation-card）完全
-   * 一样：同一扇窗口，首帧拿首屏信封的 servedAt 当钟，挂载后按浏览器的钟、过期要等
-   * 回源回来才认。首帧连 servedAt 都没有（旧版源站）时不能拿冻着的那份当真，等挂载。
-   * 断流是不知道，不画点；离线是 availability: unavailable，画灰点。
-   */
   const presenceStale = useConfirmedClockStale(presence.data?.observedAt, PLAYSTATION_STALE_MS, {
     validating: presence.isValidating,
     servedAt: presence.servedAt,
@@ -92,24 +67,13 @@ export function PlaystationPanel({
             npCommunicationId: unlock.npCommunicationId,
             trophyKey: trophyRowKey(unlock.npCommunicationId, unlock.groupId, unlock.id),
           });
-          /*
-           * 页面这一下点了就滚，不等瓷砖认出来：要看的东西本来就是这张卡。
-           * 但面板的高度是分几段长的 —— 展开动画一段、奖杯目录从网络回来再一段。
-           * 文档每长一次，先前那次滚动就可能又差一截；视口高的机器上更会被
-           * 「文档还不够长」直接钳住，残差留给下一次点击就是「再点又挪一小段」。
-           *
-           * 所以不做一次性校正，而是在一个短窗口里盯着对齐：页面没在动而锚点
-           * 还停在目标下方，就再滚一次；对齐够久或超时就收手。用户一有自己的
-           * 滚动输入（滚轮 / 触摸 / 键盘）立刻整个放弃 —— 方向盘永远是他的。
-           */
+          /* 展开和目录返回会两次改变文档高度；短期持续校正，用户滚动立即放弃。 */
           const anchor = document.getElementById(anchorId);
           if (!anchor) return;
           const behavior = reduced ? ("auto" as const) : ("smooth" as const);
           const offset = () =>
             anchor.getBoundingClientRect().top -
             (parseFloat(getComputedStyle(anchor).scrollMarginTop) || 0);
-          // 已经对齐就一帧都别滚：smooth 差 1px 也会动画几帧，重复点击时
-          // 滚动条肉眼可见地抖一下
           if (Math.abs(offset()) > 4) anchor.scrollIntoView({ behavior, block: "start" });
           const startedAt = Date.now();
           let lastY = -1;
@@ -138,7 +102,6 @@ export function PlaystationPanel({
         <PlaystationRow
           fallback={playing}
           nowFallback={playingNow}
-          // 摘要取不到就传 null：那是「不知道」，传空数组会被读成「每款都没奖杯」
           titles={liveTrophies.ok ? (liveTrophies.data.titles ?? []) : null}
           jumpRequest={jump}
           onJumpDone={clearJump}

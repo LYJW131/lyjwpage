@@ -1,12 +1,4 @@
-# 只扫 JS/TS 和 Actions，不扫 reporters/iphone-telemetry-hub 里的 Swift：
-# 扫 Swift 要在 macOS job 里自己 xcodegen 再对着模拟器编（默认 autobuild 找不到
-# 故意不入库的 .xcodeproj），那个 job 很慢，会把整条 CodeQL 拖着不出结果。
-# 要加回来，记得 brew 必须在 init 之前（init 注入 DYLD_INSERT_LIBRARIES，brew 会拒装），
-# 编译必须在 init 之后（靠 tracing 编译器抽 Swift）。
-#
-# 用 advanced setup，和 GitHub 的 CodeQL default setup 不能同时开：
-# advanced 交上去的 SARIF 会被拒（"cannot be processed when the default
-# setup is enabled"），所以仓库设置里 default setup 要保持关闭。
+# advanced setup 与 default setup 不能同时开启，否则 GitHub 拒收 SARIF。
 name: CodeQL
 
 on:
@@ -14,7 +6,6 @@ on:
     branches: [main, dev]
   pull_request:
   schedule:
-    # 跟默认配置一样每周跑一次，免得某次推送没扫到
     - cron: "27 4 * * 1"
 
 permissions:

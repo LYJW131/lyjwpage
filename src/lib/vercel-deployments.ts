@@ -20,7 +20,6 @@ function timestamp(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null;
 }
 
-/** 明确投影公开字段，绝不透传 env、creator、meta 或平台错误详情。 */
 export function parseVercelDeployment(raw: unknown): VercelDeployment {
   const row = record(raw);
   const createdAt = timestamp(row.createdAt ?? row.created);
@@ -46,7 +45,6 @@ export function parseVercelDeployment(raw: unknown): VercelDeployment {
   };
 }
 
-/** 采集 Worker 调；当前生产版本以项目 targets.production 为准，支持回滚。 */
 export async function fetchVercelDeployments(project: string, team: string, token: string): Promise<VercelDeploymentsPayload> {
   const signal = AbortSignal.timeout(8_000);
   const request = async (path: string, params: Record<string, string> = {}) => {
@@ -72,12 +70,6 @@ export async function fetchVercelDeployments(project: string, team: string, toke
   };
 }
 
-/**
- * 公开端点：部署、指标、PageSpeed 是可滞后层里三条各自写的键（采集节奏不同），
- * 这里拼成卡片要的一份。各部分带自己的采集时刻（部署 `fetchedAt`、指标每组
- * `fetchedAt`、PageSpeed 最近一轮的 `fetchedAt`），卡片分别判过期；信封的
- * `updatedAt` 跟最常刷新的部署那条。部署那条还没写过就是等采集。
- */
 export async function getVercelDeployments(): Promise<LagResult<VercelDeploymentsPayload>> {
   const [deployments, metrics, pagespeed] = await Promise.all([
     readLagEntry<VercelDeploymentsPayload>(LAG_KEYS.vercelDeployments),

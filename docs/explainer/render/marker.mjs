@@ -1,4 +1,3 @@
-// 章节首拍的「提示音」有多突出：章节首拍前后 0.6 s 的高频（>2.5 kHz）能量，对比上一小节首拍
 import { spawnSync } from "node:child_process";
 const [wav] = process.argv.slice(2);
 const T = [28.8, 72.0, 120.0, 153.6, 192.0, 211.2, 230.4, 254.4];

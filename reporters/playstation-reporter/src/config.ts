@@ -14,7 +14,6 @@ function optional(name: string): string | undefined {
 
 export const config = {
   dataDir: optional("DATA_DIR") ?? "/data",
-  /** 缺了就抛。放在读取时而不是模块加载时，好让 `index.ts` 的启动 catch 接住。 */
   get ps5Host(): string {
     return required("PS5_HOST");
   },

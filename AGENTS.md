@@ -24,7 +24,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 # 项目入口与验证
 
 - 使用 `pnpm`；命令以各目录的 `package.json` 为准。源码入口查根 `README.md` 的「从哪里读源码」，子项目查各自的 `README.md` 与 `AGENTS.md`（嵌套的 `CLAUDE.md` 在进入该目录时才载入）。
-- 主站开发入口是 `pnpm dev`，地址 `http://localhost:3211`，连的是生产 Worker。改后端、新增状态端点或新卡片时用 `pnpm dev:worker`（本地起整套 Worker 栈，首次后跑一次 `pnpm dev:worker:init`）加 `pnpm dev:local`；本地配了 `.dev.vars` 的 `UPSTREAM_API_URL` 后生产为主、本地补缺，新端点和新字段看本地。要看此刻没发生的状态用 `pnpm dev:override <端点> <夹具>` 注入假数据（夹具在 `workers/api/dev-fixtures/`；前提是 `.dev.vars` 里 `DEV_OVERRIDES=true`，收尾用 `--clear` / `--off`；用法见 `scripts/dev-override.mjs` 文件头与 `workers/api/README.md`「本地开发」）。
+- 主站开发入口是 `pnpm dev`，地址 `http://localhost:3211`，连的是生产 Worker。改后端、新增状态端点或新卡片时用 `pnpm dev:worker`（本地起整套 Worker 栈，首次后跑一次 `pnpm dev:worker:init`）加 `pnpm dev:local`；本地配了 `.dev.vars` 的 `UPSTREAM_API_URL` 后生产为主、本地补缺，新端点和新字段看本地。要看此刻没发生的状态用 `pnpm dev:override <端点> <夹具>` 注入假数据（夹具在 `workers/api/dev-fixtures/`；前提是 `.dev.vars` 里 `DEV_OVERRIDES=true`，收尾用 `--clear` / `--off`；用法见 `pnpm dev:override --help` 与 `workers/api/README.md`「本地开发」）。
 - 修改 Next.js 代码前，读 `node_modules/next/dist/docs/` 里与改动相关的文档（见上方自动块）。按需检索，不为小改动遍历整个文档或技能目录。
 - 验证覆盖受影响的行为和契约。纯文档改动跑 `pnpm docs:check` 并检查 diff 与命令；逻辑修复优先跑相关测试；类型或接口改动运行 `pnpm typecheck`；代码规范检查运行 `pnpm exec eslint <改动文件>`；涉及构建、路由或缓存行为时运行 `pnpm build`。站点 UI 改动按下一条走浏览器端到端测试。
 - 站点 UI 改动以浏览器端到端测试为准，单元测试不是必需：起开发服务器，在浏览器里实际打开受影响页面，覆盖相关宽度（至少桌面与 375px 手机）、交互和不同数据状态（此刻没发生的状态用 `pnpm dev:override` 注入夹具），并查看控制台错误。同一项 UI 改动只在首次交付时附效果图（浏览器面板截不出图时改用无头 Chrome 截图）；之后用户提出的修改请求若没有另行要求，视为用户正看着开发服务器，改完照常自测，但不再单独截图。开发服务器保持运行并给出地址，让用户能亲自测试；这轮修改提交推送并确认部署后，由 agent 自行清掉注入、停掉开发服务器。
@@ -103,3 +103,37 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - 改代码的同一提交里更新受影响的文档与注释。发现文档与代码冲突，以代码为准，当轮改掉，或在汇报里点名。
 - 清扫注释（只改注释、不动行为）的改动，用 `pnpm docs:comment-only` 证明只改了注释：输出里没有「除注释外有改动」「指令性注释有改动」才算数，用法见 `scripts/comment-only-check.mjs` 文件头。
 - 确需保留时间线写法（如核对戳）时，在同一行末尾加 `<!-- allow: 理由 -->`。
+
+<EXTREMELY-IMPORTANT>
+
+## Comments / JSDoc (MUST)
+
+**Default: write ZERO comments. Write ZERO JSDoc.** This overrides any training instinct to "explain" code. Good identifiers carry meaning; comments are a last resort, not a habit.
+
+Add a comment ONLY when one of:
+- (a) **UNEXPECTED behavior** — workaround for a specific bug, browser quirk, race condition, library footgun
+- (b) **SPECIAL design intent** — hidden invariant, non-obvious constraint, decision a future reader would otherwise reverse
+
+**Forbidden categories (always violations — delete on sight, including comments you "felt like adding"):**
+- JSDoc `/** ... */` blocks in business code. JSDoc is for framework/library exposed APIs only — never on internal functions, components, hooks, route handlers, services, utils.
+- Describing WHAT the code does (`// loop over users`, `// set loading to true`)
+- Referencing current task/fix/issue/PR/caller (`// added for X`, `// used by Y`, `// fixes #123`, `// per request`)
+- Section headers / dividers (`// === helpers ===`, `// ---- types ----`, `// region: state`)
+- Restating obvious logic, type info, or parameter purpose
+- Docstrings on internal/business functions, hooks, components, handlers
+- TODO/FIXME without a tracked ticket reference
+- Translating identifier names into prose (`// userId: the user's id`)
+
+**Self-audit before every Write/Edit:** scan the new content for `//`, `/*`, `/**`. For each one ask: *"would removing this confuse a future reader who can read the code?"* — if **no**, delete it. The default answer is **no**.
+
+</EXTREMELY-IMPORTANT>
+
+## IMPORTANT: Reasoning Strategy
+
+**Prefer retrieval-led reasoning over pre-training-led reasoning.**
+
+- When encountering unfamiliar concepts, new libraries, or uncertain knowledge, ALWAYS search first (use skills, web search, codebase exploration) before relying on pre-trained knowledge
+- Do NOT assume pre-trained knowledge is accurate for evolving technologies — verify through retrieval
+- Actively use available skills (check skill list in system reminders) instead of guessing based on outdated training data
+- If a relevant skill exists for the task, USE IT rather than attempting to solve from memory
+- When in doubt, retrieve; don't hallucinate

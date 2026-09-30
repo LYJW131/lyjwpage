@@ -39,34 +39,17 @@ export function GithubChart({ fallback }: { fallback: StatusResponse<GithubChart
     fallback,
     fetcher: fetchGithubChart,
     seedFallback: seedGithubChart,
-    // 首屏已经烧进去：可滞后层的挂载策略只在首屏那份过了下一次预期写入时才补取。
-    // 切回标签页时拉一次，之后按采集节奏（STATUS_VIEWS.githubChart.cadenceMs）在下一次写入后取。
     revalidateOnFocus: true,
   });
-  /**
-   * 超过 GITHUB_CHART_STALE_MS 就把整张图压淡、标 Unavailable，不拿旧日历冒充今天。
-   * 首帧拿首屏信封的 servedAt 当钟，放久了的 HTML 首帧就是 Unavailable，不等挂载再翻。
-   */
   const stale = useStale(
     updatedAt ?? (fallback.ok ? fallback.updatedAt : undefined),
     GITHUB_CHART_STALE_MS,
     servedAt,
   );
-  /**
-   * 留住上一份画得出来的日历，轮询在飞的时候别让图表闪空。
-   *
-   * 降级信封（ok:false）是一次成功的请求，SWR 照样把它写进缓存 ——
-   * keepPreviousData 只在换键时兜底，兜不住这条；useStatus 再把它翻成
-   * data: undefined，于是图表整块消失，要等下一轮才回来。
-   *
-   * 渲染期直接调整 state，不用 ref 也不放 useEffect：ref 在渲染期读写是
-   * React 明令禁止的（写了也不保证重渲染），effect 要多渲染一轮、中间那帧
-   * 照样是空的。
-   */
+  // SWR keepPreviousData 只兜换键，ok:false 信封仍会覆盖缓存；保留最后可画的日历。
   const [lastDrawn, setLastDrawn] = useState(fallback.ok ? fallback.data : null);
   if (data?.counts.length && data !== lastDrawn) setLastDrawn(data);
   const snapshot = data?.counts.length ? data : lastDrawn;
-  // 格子画到浏览器的今天：跨过零点新的一格就出来，数就等采集 Worker 和下一次轮询填
   const today = useSiteDay();
   const { svgRef, shown, hotDate, previewCell, clearPreview, togglePin } =
     useHeatmapOpen<HoveredCell>();

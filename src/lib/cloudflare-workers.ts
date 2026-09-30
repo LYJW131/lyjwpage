@@ -13,7 +13,6 @@ import { LAG_KEYS } from "@shared/lag";
 const API = "https://api.cloudflare.com/client/v4";
 
 // 汇总不带 status / 时间维度：直接取整段窗口的 P50，不能平均各小时的 P50。
-// 名单和卡片共用 CLOUDFLARE_WORKERS，只在那一处改。
 export const WORKERS_METRICS_QUERY = `
 query WorkersMetrics($account: string, $start: Time, $end: Time) {
   viewer { accounts(filter: { accountTag: $account }) {
@@ -93,7 +92,6 @@ export function parseWorkerDeployment(raw: unknown): WorkerDeployment | null {
   return versions.length ? { deployedAt, versions, commit: null } : null;
 }
 
-/** 部署接口只给版本号：用版本号批量查构建历史，把提交拼回去。 */
 export function parseBuildsByVersion(raw: unknown): Map<string, NonNullable<WorkerDeployment["commit"]>> {
   const body = record(raw);
   if (body.success !== true) throw new Error("Cloudflare 构建查询失败");
@@ -126,7 +124,6 @@ function apiRequest(account: string, token: string) {
   };
 }
 
-/** 由采集 Worker 的 `cloudflareMetricsJob` 调用。起止由调用方给定，便于测试固定窗口。 */
 export async function fetchWorkersMetrics(account: string, token: string, windowStart: number, windowEnd: number): Promise<CloudflareMetricsPayload> {
   const raw = await apiRequest(account, token)("/graphql", {
     query: WORKERS_METRICS_QUERY,
@@ -135,7 +132,6 @@ export async function fetchWorkersMetrics(account: string, token: string, window
   return parseWorkersMetrics(raw, windowStart, windowEnd);
 }
 
-/** 版本列表，按版本号新到旧。 */
 export function parseVersionList(raw: unknown): { id: string; number: number }[] {
   const body = record(raw);
   if (body.success !== true) throw new Error("Cloudflare 版本查询失败");
@@ -148,7 +144,6 @@ export function parseVersionList(raw: unknown): { id: string; number: number }[]
   }).sort((a, b) => b.number - a.number);
 }
 
-/** 往前翻多少个版本找构建记录；连续改几次密钥也能翻到那次 Git 部署。 */
 const VERSION_LOOKBACK = 8;
 const BUILDS_BATCH = 10;
 
@@ -157,7 +152,6 @@ export async function fetchWorkerDeployments(account: string, token: string): Pr
   const scripts = `/accounts/${encodeURIComponent(account)}/workers/scripts`;
   const [deployments, versions] = await Promise.all([
     Promise.all(CLOUDFLARE_WORKERS.map(async ({ name }) => {
-      // 部署权限不足不吞掉可用指标，卡片明确显示版本暂不可用。
       try {
         return parseWorkerDeployment(await request(`${scripts}/${name}/deployments`));
       } catch { return null; }
@@ -197,11 +191,6 @@ export async function fetchWorkerDeployments(account: string, token: string): Pr
   });
 }
 
-/**
- * 公开端点：统计（`cloudflareMetricsJob`）和部署（`cloudflareDeploymentsJob`）是采集
- * Worker 各自写的两条键，按名字拼成卡片要的一份。两半各带采集时刻；信封的
- * `updatedAt` 取两半里较新的那个。两条都还没写过才是等采集。
- */
 export async function getCloudflareWorkers(): Promise<LagResult<CloudflareWorkersPayload>> {
   const [metrics, deployments] = await Promise.all([
     readLagEntry<CloudflareMetricsPayload>(LAG_KEYS.cloudflareMetrics),

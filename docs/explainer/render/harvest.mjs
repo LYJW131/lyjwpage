@@ -1,4 +1,3 @@
-// 收集英文模式下还没有译文的中文片段：node harvest.mjs <index.html 绝对路径> <out.json> [步长秒=0.1]
 import { chromium } from "playwright-core";
 import fs from "node:fs";
 const [html, out, stepArg = "0.1"] = process.argv.slice(2);

@@ -19,7 +19,6 @@ test("get：Storage 可达且说没有时，不退回进程内存副本", async 
   await put("k", { n: 1 }, 60_000);
   assert.deepEqual(await get("k"), { n: 1 });
 
-  // 另一个实例清掉了存储里那份（或者整个库被清空）
   await storage.remove(key("cache", "k"));
   assert.equal(await get("k"), undefined);
 });

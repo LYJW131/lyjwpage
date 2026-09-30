@@ -5,26 +5,10 @@ import type { GithubRepoPayload } from "@/lib/types";
 
 import { ok, skipMissing, type Job } from "../job";
 
-/**
- * 本仓库统计（贡献者名单 + 提交数与增删行）。
- *
- * 名单和总数是两个接口、两种失败方式，各自降级：
- * - 都取到了：整份写入；
- * - 只有总数没取到：名单用新的，总数沿用上一份（不拿「—」盖掉好的数字）；
- * - 只有名单没取到（GitHub 在 push 后重算，一直回 202）：名单沿用上一份，总数用新的；
- * - 都没取到：不写，上一份原样留着。
- *
- * 增删行的累计锚经 src/lib/cache 存在 COLLECTOR_KV。没有谁在等这一轮，所以预算宽
- * （`FETCH_BUDGET_MS`），多等几轮 202。
- */
 const FETCH_BUDGET_MS = 60_000;
 
 const hasTotals = (totals: RepoTotals) => totals.commits != null;
 
-/**
- * 名单和总数各自降级：这一轮没取到的那一半沿用上一份。两半各带取到的时刻
- * （名单 `fetchedAt`、总数 `totalsAt`），沿用的那一半留着原来的时刻，卡片分别判过期。
- */
 export function mergeRepoStats(
   fresh: { ok: true; data: GithubRepoPayload } | { ok: false; totals: RepoTotals },
   previous: GithubRepoPayload | null,
@@ -50,7 +34,7 @@ export const githubRepoJob: Job = {
   offset: 2,
   maxRuntimeMinutes: 3,
   async run({ env }) {
-    // 名单那半匿名也能读，但限额按 IP 算、Workers 出口共享；总数那半没有令牌根本取不到
+    // Workers 出口共享匿名限额；总数接口也要求令牌，不能仅凭名单可匿名读就省略它。
     const token = env.GITHUB_TOKEN?.trim();
     if (!token) return skipMissing("github-repo", ["GITHUB_TOKEN"]);
     const { owner, name } = repoIdFromUrl(site.repo);

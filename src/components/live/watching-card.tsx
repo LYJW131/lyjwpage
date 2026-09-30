@@ -20,31 +20,12 @@ import {
 import type { StatusResponse, WatchingItem } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-/**
- * 「正在看」的轮询，不分在播还是空闲。
- *
- * 开始/暂停/继续/停止由 Emby webhook 推来，拖进度条由 NAS 上的代理补推，
- * 这条只兜漏发。进度条是 CSS 动画从锚点自己跑的，跟这个间隔无关，所以在播时
- * 也没有调密的理由。
- */
 const NOW_REFRESH_MS = 60_000;
 
-/**
- * 列表变了（包括晚到的海报落地）会把完整数据推过来，轮询只兜「推送整体停用」
- * 这一种情况，所以给得很松。
- */
 const LIST_REFRESH_MS = 10 * 60_000;
 
-/**
- * 增删卡片后要等多久才把滚动吸附装回去。
- * 比动画本身多留一点，计时是动画开跑之后才起的。
- */
 const UNSNAP_MS = LIST_DURATION * 1000 + 80;
 
-/**
- * 卡片宽度按容器等分，保证视口里永远是整数张、不会被切一半。
- * 分母是列数，减掉的是列间的 gap-3（0.75rem）总宽：(列数 - 1) × 0.75rem。
- */
 const TILE_WIDTH = cn(
   "basis-[calc((100%-0.75rem)/2)]",
   "md:basis-[calc((100%-1.5rem)/3)]",
@@ -55,7 +36,6 @@ type NowPlaying = {
   itemId: string;
   paused: boolean;
   progress: number | null;
-  /** 设备与规格也在这份数据里，但只有「正在播放」那张卡画它们，见 now-watching-card */
   positionMs: number | null;
   durationMs: number | null;
 };
@@ -66,7 +46,6 @@ type WatchingPayload = {
 
 type NowWatchingPayload = {
   nowPlaying: NowPlaying | null;
-  /** 播放中那一项的详情，不一定在 items 里 —— 刚开播或已看完就会掉出 Resume */
   current: WatchingItem | null;
 };
 
@@ -89,17 +68,9 @@ function Tile({
 }) {
   const progress = live && liveProgress != null ? liveProgress : item.progress;
 
-  /**
-   * 播放中时，进度条交给 CSS 动画逐帧走，不用 JS 计时器：
-   * 动画本身是 0 → 100%、时长等于片长，再用负的 animation-delay
-   * 把它定位到当前播放点。播放途中 Emby 不发事件、服务端也没有新数据可给，
-   * 光靠拉取的话进度条会以轮询周期为步长一跳一跳。
-   */
   const runStyle =
     live && positionMs != null && durationMs
       ? {
-          // width 是动画没跑起来时的兜底：父级 layout 重排会把 CSS 动画拽回
-          // delay 起点，没有 width 就会闪成 0。有它至少停在这一拍的进度上。
           width: `${Math.round(progress)}%`,
           animationName: "progress-run",
           animationDuration: `${durationMs}ms`,
@@ -116,7 +87,6 @@ function Tile({
       target="_blank"
       rel="noreferrer noopener"
       className={cn(
-        // 宽度和吸附交给外层的 motion 包装
         "paper-card group relative flex h-full w-full flex-col overflow-hidden rounded-md",
         "border border-line-strong bg-surface",
         live && "border-live/40",
@@ -135,7 +105,6 @@ function Tile({
           />
         ) : null}
 
-        {/* 压在封面右上角。海报底色不可控，所以垫一层模糊底片保证读得出来 */}
         {live && (
           <span className="absolute right-2 top-2 flex items-center gap-1.5 border border-line bg-background/85 px-2 py-1 backdrop-blur-sm">
             <StatusDot tone={paused ? "idle" : "live"} />
@@ -145,14 +114,10 @@ function Tile({
           </span>
         )}
 
-        {/* 进度条压在图片底边，海报有深有浅，黑白都会糊掉：用 --live 这支绿，
-            它两套主题下各有一个值，压在海报上都读得出来。
-            播放中时让它呼吸，暂停/没在播的就是静止的一条。 */}
         <div className="absolute inset-x-0 bottom-0 h-1">
           <div
             className={cn(
               "h-full bg-live",
-              // 没在播时才用过渡，播放中由动画接管，两者叠加会打架
               !live && "transition-[width] duration-700",
             )}
             style={runStyle}
@@ -205,11 +170,6 @@ export function WatchingRow({
   nowFallback: StatusResponse<NowWatchingPayload>;
 }) {
   useLiveEvents();
-  /**
-   * 两个来源分开取，因为节奏差得远：列表是后端定时轮询 Emby 拿的，慢；
-   * 正在播放由 webhook 推，快。合在一个端点时，慢的那半只能跟着快的那半
-   * 一起被重取。
-   */
   const { data: list, error, isLoading } = useStatus<WatchingPayload>(
     WATCHING_PATH,
     LIST_REFRESH_MS,
@@ -221,13 +181,7 @@ export function WatchingRow({
     fallback: nowFallback,
   });
 
-  /**
-   * 播放中那一项置顶并去重。列表和实况是两个端点、各自刷新，服务端手上没有
-   * 另一半；这本来也是展示逻辑，所以放在这里。
-   *
-   * 不能只按 Id：Emby 同一集的 BD / WEB 是两个条目，续播给合并项、正在播放
-   * 给实际文件，Id 对不上就会并排两张一模一样的卡。
-   */
+  // Emby 同一集的合并项和实际文件 ID 不同，不能仅按 ID 去重。
   const liveCurrent = live?.current ?? null;
   const data = (() => {
     if (!list) return undefined;
@@ -244,23 +198,11 @@ export function WatchingRow({
     data?.items[0] && isNowWatching(data.items[0], nowPlayingId, liveCurrent),
   );
 
-  /**
-   * 增删卡片的这一段时间里先把滚动吸附摘掉。
-   *
-   * 这一行是 scroll-snap 容器，往头部插卡片时浏览器会把「原本吸附住的那张」
-   * 钉在原地不动：滚动位置一口气跳掉整整一格，新卡被顶到视口外，然后才被
-   * 下面那个 scrollTo 平滑滚回来。于是进场是浏览器的滚动动画、离场是 motion
-   * 的位移动画，快慢和曲线都对不上，离场收尾还要再被吸附纠正一次。
-   * 动画期间没有吸附，两边就都只剩 motion 那一套。
-   *
-   * 代价是动画期间手动滑动不吸附 —— 要正好在 Emby 推事件的同一瞬间滑，
-   * 撞上了也只是松手时不停在整卡边界，不值得为它再加一层状态。
-   */
+  // 插卡时浏览器会钉住原吸附卡；动画期间关闭 scroll-snap，避免与 motion 位移竞争。
   const ids = (data?.items ?? []).map(watchingIdentity).join("\n");
   const [snappedIds, setSnappedIds] = useState(ids);
   const [reflowing, setReflowing] = useState(false);
-  // 在 render 里改状态，这样摘掉吸附和插入卡片是同一次提交 ——
-  // 放进 effect 就晚了一帧，浏览器已经先把滚动位置拽走了
+  // 必须与插卡同次提交关闭吸附，effect 会晚一帧。
   if (snappedIds !== ids) {
     setSnappedIds(ids);
     setReflowing(true);
@@ -280,8 +222,6 @@ export function WatchingRow({
     });
   }, [firstIsLive, firstItemId, nowPlayingId, reduced]);
 
-  // 对重排稳定的 key。用「同一部」而不是 Emby Id，不然 BD / WEB 切换会被
-  // 当成一张退场、一张进场。
   const keys = stableKeys((data?.items ?? []).map(watchingIdentity));
 
   if (isLoading && !data) return <Skeleton />;
@@ -295,19 +235,12 @@ export function WatchingRow({
   }
 
   return (
-    // 吸附到卡片起始边，手动滑动也只会停在整卡边界上。
-    // overscroll-x-contain 很关键：不然横滑到头会把滚动链给外层，
-    // 触发触控板的「滑动返回上一页」，那下手感是最生硬的。
     <div
       ref={scrollerRef}
-      // 独立滚动区：给它名字和角色，键盘也能直接聚上来用方向键横滚
-      // （Firefox / 部分 Safari 不会让没有 tabindex 的滚动容器获得焦点）
       tabIndex={0}
       role="region"
       aria-label="Recently watched"
       className={cn(
-        // paper-card 硬阴影是 3px 右下。卡片仍按栏宽等分（和上面几张卡右缘
-        // 对齐），滚动盒向右多出 3px 让阴影落在盒内，不要用 padding 把卡片挤窄。
         "scroll-smooth overflow-x-auto overscroll-x-contain",
         "-mr-[3px] w-[calc(100%+3px)] pb-[3px]",
         "scrollbar-none [&::-webkit-scrollbar]:hidden",
@@ -315,8 +248,6 @@ export function WatchingRow({
       )}
     >
       <div className="relative flex w-[calc(100%-3px)] gap-3">
-        {/* popLayout 会把离场卡片临时绝对定位；relative 保证它留在滚动轨道内，
-            后面的卡片才能一边补位、一边看着它平滑退场。 */}
         <AnimatePresence initial={false} mode="popLayout">
           {data.items.map((item, index) => {
             const live = isNowWatching(item, data.nowPlaying?.itemId, liveCurrent);
@@ -329,8 +260,6 @@ export function WatchingRow({
                 animate="animate"
                 exit="exit"
                 transition={reduced ? STATIC_TRANSITION : LIST_TRANSITION}
-                // min-w-0 不能少：flex 子项的 min-width: auto 会取内容最小宽度，
-                // 卡片里那行 nowrap 的长副标题会把 basis 顶开、宽度变得参差不齐
                 className={cn("min-w-0 shrink-0 snap-start", TILE_WIDTH)}
               >
                 <Tile
@@ -340,7 +269,6 @@ export function WatchingRow({
                   liveProgress={live ? (data.nowPlaying?.progress ?? null) : null}
                   positionMs={live ? (data.nowPlaying?.positionMs ?? null) : null}
                   durationMs={live ? (data.nowPlaying?.durationMs ?? null) : null}
-                  // 一屏大约四张。其余首屏期间 lazy，load 之后由 AppImage 改成 eager。
                   eager={index < 4}
                 />
               </motion.div>

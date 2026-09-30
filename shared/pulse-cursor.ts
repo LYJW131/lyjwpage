@@ -1,6 +1,5 @@
 import { mergeCoverage, type Coverage } from './pulse-features';
 
-/** The account reporter checks at most hourly when no visitors are present. */
 export const CURSOR_OBSERVATION_HOLD_MS = 65 * 60_000;
 export const CURSOR_ACTIVITY_HOLD_MS = 5 * 60_000;
 export type CursorObservation = { t: number; available: boolean; lastActivityAt: number | null };
@@ -14,7 +13,6 @@ export function parseCursorObservation(raw: string): CursorObservation | null {
   } catch { return null; }
 }
 
-/** Independent account observation: never overwrite or extend a Mac sample. */
 export function cursorWindowFeatures(rows: CursorObservation[], window: Coverage) {
   const coverage: Coverage[] = [], active: Coverage[] = [];
   for (let i = 0; i < rows.length; i++) {

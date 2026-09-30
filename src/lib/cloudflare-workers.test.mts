@@ -70,7 +70,6 @@ test("deployment permission failure preserves metrics and sends credentials only
   });
   const metrics = await fetchWorkersMetrics("test-account", "test-secret", start, end);
   const deployments = await fetchWorkerDeployments("test-account", "test-secret");
-  // GraphQL 一次、部署三次、版本列表三次；没有任何版本号就不查构建
   assert.equal(calls.length, 7);
   assert.equal(metrics.workers[0].metrics?.requests, 20);
   assert.deepEqual(deployments, [null, null, null]);
@@ -97,7 +96,6 @@ test("deployments join the commit of the highest-traffic version in one batched 
     return Response.json({ success: false }, { status: 403 });
   });
   const deployments = await fetchWorkerDeployments("test-account", "test-secret");
-  // 部署三次、版本列表三次（全 403）、构建一次
   assert.equal(calls.length, 7);
   assert.deepEqual(deployments[0]?.commit, { sha, branch: "main", message: "feat: x" });
   assert.deepEqual(deployments.slice(1), [null, null]);
@@ -135,7 +133,6 @@ test("a deployed version without a build record borrows the commit of the previo
 test("the public payload joins metrics and deployments by name, each half with its own time", async (t) => {
   const metrics = { ...parseWorkersMetrics(analytics(), start, end), fetchedAt: end + 5 };
   const deployment = { deployedAt: 1, versions: [{ id: "v1", percentage: 100 }], commit: null };
-  // 部署那一份的名单顺序和统计不同，也缺一个：按名字拼，不按下标
   const deployments = { fetchedAt: end + 60, workers: [{ name: "collector", deployment }, { name: "api", deployment: null }] };
   const store = new Map<string, LagEntry<unknown>>([
     [LAG_KEYS.cloudflareMetrics, { updatedAt: end + 5, data: metrics }],
@@ -152,7 +149,6 @@ test("the public payload joins metrics and deployments by name, each half with i
     ["api", 20, null], ["ingress", null, null], ["collector", null, "v1"],
   ]);
 
-  // 统计还没写过：那一半为空，部署照样出
   store.delete(LAG_KEYS.cloudflareMetrics);
   const partial = await getCloudflareWorkers();
   assert.equal(partial.data.fetchedAt, null);

@@ -10,11 +10,6 @@ type LookupRoute = {
   edgeCacheKey(request: Request): string | null;
 };
 
-/**
- * 按键查询的公开路由：结果只由参数决定，没有 `{ok}` 信封，也不是状态视图。
- * 和上报的提交顺序无关，所以不过 StateHub 的公开读屏障；未初始化时 `publicRead`
- * 仍会拒绝，由路由自己的 catch 回 500。
- */
 const LOOKUP_ROUTES: Record<string, LookupRoute> = {
   "/api/lyrics": lyrics,
   "/api/motion-artwork": motionArtwork,

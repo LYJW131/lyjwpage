@@ -1,4 +1,3 @@
-// 抽帧检查：node frames.mjs <index.html> <输出目录> t1 t2 ...   （打印排版自检警告）
 import { chromium } from "playwright-core";
 import fs from "node:fs";
 const [html, outDir, ...times] = process.argv.slice(2);

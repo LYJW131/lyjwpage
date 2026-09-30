@@ -30,7 +30,6 @@ test("登记表：展示名、图标、行的种类；没登记的 id 用 id 当
   assert.deepEqual(codingAgentBrand("grok"), { label: "Grok Build", icon: "grok", row: "compact" });
   assert.equal(codingAgentBrand("opencode").row, "hidden");
   assert.deepEqual(codingAgentBrand("newagent"), { label: "newagent", icon: "newagent", row: "compact" });
-  // 原型链上的名字不是登记过的 agent
   assert.equal(codingAgentBrand("constructor").label, "constructor");
 });
 
@@ -45,11 +44,9 @@ test("行：三份按 id 并起来，只在一份里出现的也有一行，缺�
   assert.equal(claude?.limitsAt, 6_000);
   assert.equal(claude?.usage?.id, "claude");
   assert.deepEqual(claude?.activity, []);
-  // 只有此刻：没有用量是 null（未知），不是一行零
   assert.equal(cursor?.usage, null);
   assert.equal(cursor?.limitsAt, null);
   assert.equal(cursor?.row, "featured");
-  // 只有限额：展示名走登记表
   assert.equal(grok?.label, "Grok Build");
   assert.equal(grok?.usage, null);
   assert.deepEqual(codingAgentRows(null, null, null), []);

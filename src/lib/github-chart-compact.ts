@@ -1,13 +1,3 @@
-/**
- * 贡献日历的几何：格子、步长、起点见 CELL / STEP / LEFT / TOP，画布尺寸由 `chartSize`
- * 按周数算出。卡片宽度按它的宽高比定，改几何要连卡片一起看。
- *
- * SVG 用 geometricPrecision：卡片把 viewBox 拉到非整倍数时，格子按比例缩放，
- * 而不是各自对齐到像素把格间缝挤得忽宽忽窄。逐格 hover 要求一天一个 <rect>，
- * 所以不按档位合并 path。
- *
- * 空格子颜色交给 globals.css 的 `[data-score="0"] { fill: var(--muted) }`。
- */
 
 import type { GithubChartDay } from "./types";
 
@@ -15,7 +5,6 @@ export const CELL = 10;
 export const STEP = 12;
 export const LEFT = 27;
 export const TOP = 20;
-/** 0 档的 #EEEEEE 会被 CSS 盖掉；其余四档是蓝色系。 */
 export const FILLS = ["#EEEEEE", "#72b0ff", "#5896ff", "#2563eb", "#1e4fbc"] as const;
 export const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 export const DAY_LABEL_Y = [28, 40, 52, 64, 77, 89, 101] as const;
@@ -74,15 +63,8 @@ export function weekdayOf(date: string): number {
   return new Date(`${date}T00:00:00Z`).getUTCDay();
 }
 
-/** 两张年度图的列数：`through` 所在那一周是最后一列，往前一共 53 周 */
 export const HEATMAP_WEEKS = 53;
 
-/**
- * 年度图的窗口，由「画到哪一天」一个日期决定：从 53 周前那个周日起，逐日到 `through`。
- *
- * 格子由这里画，数据只往里填数：窗口里没有数据的日子画成 0（刚过零点的今天、数据源
- * 还没写到的那几天），窗口外的数据不画。两张图用同一个 `through` 就天然对齐。
- */
 export function heatmapFrame(through: string): string[] {
   const dates: string[] = [];
   for (let date = addDays(sundayOf(through), -(HEATMAP_WEEKS - 1) * 7); date <= through; date = addDays(date, 1)) {
@@ -118,10 +100,6 @@ export function dayLabels(): ChartLabel[] {
   }));
 }
 
-/**
- * 月份标在「这个月第一个周日」那一列。周中才换月的那一周仍算上个月，
- * 和 GitHub 资料页 thead 的 colspan 一致。
- */
 export function monthLabels(weeks: GithubChartDay[][]): ChartLabel[] {
   const labels: ChartLabel[] = [];
   let lastMonth: string | null = null;
@@ -141,7 +119,6 @@ export function monthLabels(weeks: GithubChartDay[][]): ChartLabel[] {
       text: name,
     });
   });
-  // 三字母标题需要两列宽度；窗口两端不足两列的月份不显示标题，避免重叠或越界。
   const right = chartSize(weeks.length).width;
   return labels.map((label, index) => ({
     ...label,
@@ -174,7 +151,6 @@ export function formatDayHeading(date: string): string {
   return `${MONTH_NAMES[month - 1] ?? date.slice(5, 7)} ${ordinal(day)}`;
 }
 
-/** 和资料页格子 hover 同一句：`64 contributions on August 8th.` */
 export function formatContributionLabel(date: string, count: number): string {
   const when = formatDayHeading(date);
   if (count <= 0) return `No contributions on ${when}.`;
@@ -182,10 +158,6 @@ export function formatContributionLabel(date: string, count: number): string {
   return `${count} contributions on ${when}.`;
 }
 
-/**
- * 把紧凑信封展开成格子要用的逐日对象。date / weekday / label 都是 origin
- * 和 count 的函数，不进 JSON。
- */
 export function expandGithubDays(
   origin: string,
   counts: readonly number[],

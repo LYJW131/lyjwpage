@@ -1,4 +1,3 @@
-// 按时间顺序拼联系表：node sheet.mjs <帧目录> <输出.png> [列数=4] [宽=480]
 import fs from "node:fs";
 import { execFileSync } from "node:child_process";
 const [dir, out, colsArg = "4", wArg = "480"] = process.argv.slice(2);

@@ -1,19 +1,4 @@
 #!/usr/bin/env node
-/**
- * 讲解动画的站点版：docs/explainer/v2 的页面源 → public/explainer。
- *
- * 入口 `index.html` 保持原名（`/explainer` 由 next.config 的 rewrite 指到它）；脚本、字体、配乐一律
- * 按内容哈希改名放进 `a/`，地址即版本，next.config 给这个目录一年的 immutable 缓存，
- * ESA 按后缀缓存也不会拿到旧文件。键是页面里写的源相对路径（`music/ch02.js`、`../clawd.js`），
- * 目录并进文件名（`a/music-ch02.<hash>.js`）。页面里的引用：
- * - 脚本按 index.html 的 `LOAD` 表经 `window.__assets`（源相对路径 → 哈希路径）查表，这里读同一张表，
- *   把查表注入到 index.html 头部。还没写的章（`chNN.js`、`music/chNN.js`）缺了不发布、页面也不载入；其余缺了直接失败；
- * - 配乐 `score.mp3` 由 film.js 经同一张表取。缺了直接失败，线上不退回浏览器里现合成；渲法见 docs/explainer/README.md「站点版」；
- * - 内联样式里的相对 `url(…)`（字体在上一级的 `fonts/`）直接替换。
- * 源文件保持原名，本地预览和写章工具都用 docs/explainer/v2 那份。
- *
- * `pnpm build`（scripts/build.mjs）会先跑它；本地 `pnpm dev` 要看 /explainer 时手动跑一次。
- */
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -54,7 +39,6 @@ for (const rel of new Set([...scripts, ...styled, SCORE])) {
 }
 
 let page = html.replace(CSS_URL, (whole, _quote, rel) => (assets[rel] ? `url(${assets[rel]})` : whole));
-// 内联脚本之外还有相对的 src / href，说明页面新加了这里不认识的资源，站点上会 404
 const stray = /\s(?:src|href)="(?![a-z]+:|\/|#)([^"]*)"/i.exec(page.replace(/<script>[\s\S]*?<\/script>/g, ""));
 if (stray) throw new Error(`index.html 引用的 ${stray[1]} 没有发布到 ${ASSETS}/`);
 const charset = '<meta charset="utf-8">\n';

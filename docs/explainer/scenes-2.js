@@ -1,29 +1,23 @@
-// 03 首屏缓存 · 04 实时推送
 (() => {
   const { E, clamp, seg, lerp, L, icon, place, show, setHTML, setText, svgEl, chapter, scene, say, at, act, hold, look, sfx, duck, emote, burst, camera, shake } = Engine;
   const { css, card, popAt, wireLayer, link, relink, drawWire, along, packets, stamp, penCircle, penLine, ring, siteMock } = Kit;
   const LEFT = [250, 975], RIGHT = [1670, 975];
   const pt = (p, f) => { const q = along(p, f); return { x: q.x, y: q.y }; };
   const mono = (s, sz = 19) => `<span class="mono" style="font-size:${sz}px">${s}</span>`;
-  // 描边高亮（卡片、主页复刻里的小卡）
   const hot = (el, on, rgb = "46,158,79", w = 4, off = 3) => {
     el.style.outline = on ? `${w}px solid rgba(${rgb},.85)` : "";
     el.style.outlineOffset = on ? off + "px" : "";
   };
-  // 主页复刻去掉浏览器栏：当作「存在服务器上的一份 HTML」
   function chromeless(H) {
     H.el.style.boxShadow = "none";
     H.el.querySelector(".win-bar").style.display = "none";
     H.el.children[1].style.top = "0px";
     H.el.style.height = H.H - 46 + "px";
   }
-  // 主页复刻里那张取数失败的小卡：变灰、变淡
   function gray(el, on) { el.style.filter = on ? "grayscale(1)" : ""; if (on) el.style.opacity = (+el.style.opacity * 0.5).toFixed(3); }
-  // 淡化聚焦：非重点整体压暗
   const dim = (el, k) => { if (el.style.visibility !== "hidden") el.style.opacity = (+(el.style.opacity || 1) * k).toFixed(3); };
   // drawWire 在 k=0 时圆头线帽会留一个点：没画出来就整体透明
   const dw = (p, k, o = 1) => drawWire(p, k, o * clamp(k * 25));
-  // 圈注、下划线：压在卡片上面，放进零尺寸的 div（它们是笔迹，不是连线）
   function penLayer(root) {
     const d = L("", root);
     const sv = svgEl("svg", { width: 1920, height: 1080, class: "L" }, d);
@@ -32,7 +26,6 @@
     show(d, 0);
     return sv;
   }
-  // 笔迹层整体可见度：只在有笔迹的时段打开（渐变，不突跳）
   const penOn = (sv, o) => show(sv.__box, clamp(o));
   const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 
@@ -56,26 +49,19 @@
     .b-prow .v{margin-left:auto;font-family:var(--mono);font-size:23px}
   `);
 
-  // =====================================================================
-  // 03 首屏缓存
-  // =====================================================================
   const c3 = chapter("首屏缓存", "Vercel 上的 Next.js", 14);
-  // 本章打击点（章节内时间，都在拍上；12.0 / 28.8 是小节头）。印章从 H−0.18 开始砸，H 那一刻落到纸面（引擎在落纸时配音）
   const IX0 = 110, IY0 = 650;
   const H3 = { fail: 5.4, hit: 12.0, page: 12.6, stale: 18.0, old: 19.2, done: 21.0, plug: 26.4, expire: 28.8, no: 31.2 };
 
-  // --- 首屏怎么来的：一次 /api/home、24 个读取、缓存命中 ---
   scene(c3, 1.8, 15.6, (root) => {
     const T0 = 1.8, OUT = 15.0;
     const wl = wireLayer(root);
-    // 上排是服务端（Vercel ⇄ Worker），左下是访客的浏览器
     const VX = 520, VY = 140, VW = 500, VH = 500;
     const vercel = card(root, { x: VX, y: VY, w: VW, h: VH, tint: "green", icon: "globe", title: "Vercel · Next.js" });
     const cap = L("lbl", vercel, "首屏 HTML");
     const uc = L("tg", vercel, `${icon("lock", 14, 2.4)}use cache`);
     const VP = siteMock(vercel, { scale: 0.4, viewH: 900 });
     chromeless(VP);
-    // 首屏以下的卡在这份 HTML 里用不到
     VP.cards.activity.style.visibility = "hidden"; VP.cards.server.style.visibility = "hidden";
     const PGX = (VW - 5 - VP.W) / 2, PGY = 110;
     place(VP.el, PGX, PGY, 1);
@@ -95,7 +81,6 @@
     const W = {
       api: link(wl, vercel, "r", worker, "l", { ka: 0.3, kb: 0.25 }),
       back: link(wl, worker, "l", vercel, "r", { ka: 0.7, kb: 0.66 }),
-      // 两条弧线套在一起不交叉：请求走里圈，HTML 走外圈
       req: link(wl, VIS.el, "t", vercel, "l", { ka: 0.6, kb: 0.84 }),
       res: link(wl, vercel, "l", VIS.el, "t", { ka: 0.66, kb: 0.26 }),
     };
@@ -121,19 +106,16 @@
       dw(W.api, seg(t, 2.95, 3.3), Math.min(ov, ow, wf));
       dw(W.back, seg(t, 2.95, 3.3), Math.min(ov, ow, wf));
       place(cap, PGX, 78, 1);
-      // use cache：快照渲染完、存进缓存那一刻变绿
       const kc = seg(t, 9.6, 9.85);
       uc.className = "L tg" + (t >= 9.6 ? " g" : "");
       uc.style.transformOrigin = "100% 50%";
       place(uc, VW - 5 - PGX - m.uc, 74, 1, `scale(${(1 + 0.18 * Math.sin(Math.PI * kc)).toFixed(3)})`);
-      // Vercel 里的首屏：快照回来才一张张渲染出来；watching 那张取数失败
       const cin = { activity: 0, server: 0 };
       KEYS.forEach((k, i) => (cin[k] = seg(t, 7.45 + i * 0.1, 7.75 + i * 0.1)));
       VP.update({ t, cardsIn: cin });
       gray(VP.cards.watching, t > 7.4);
       place(na, wr.x + wr.w / 2 - VX - 2.5 - m.na / 2, wr.y + wr.h / 2 - VY - 2.5 - 15, clamp(seg(t, 7.9, 8.1) * 5) * (1 - seg(t, 11.0, 11.3)),
         `scale(${lerp(0.6, 1, E.back(seg(t, 7.9, 8.15))).toFixed(3)})`);
-      // Worker 里 24 个读取：斜向波浪亮起，一格挂住、变红
       cells.forEach((c, i) => {
         const d = H3.fail - 0.6 + 0.07 * (c.__c + c.__r), k = seg(t, d, d + 0.18);
         const fail = i === FAIL, on = t >= d;
@@ -149,7 +131,6 @@
       penOn(pl, Math.min(seg(t, 8.15, 8.3), 1 - seg(t, 11.0, 11.3)));
       dw(penCard, seg(t, 8.2, 8.7), 1 - seg(t, 11.0, 11.3));
       dw(penCell, seg(t, 8.3, 8.8), 1 - seg(t, 11.0, 11.3));
-      // 访客：打开 lyjw.me，Vercel 直接把这份给他
       const oi = popAt(VIS.el, t, 10.2, OUT, { dy: 30, x: IX, y: IY });
       const vin = {};
       KEYS.forEach((k) => (vin[k] = seg(t, H3.page, H3.page + 0.12)));
@@ -181,7 +162,6 @@
   say(c3, 7.4, 11.4, "读取各跑各的：\n挂了一个，只空出那一张。", "left");
   say(c3, 11.8, 15.1, "访客来了直接拿这份，\n不用现等 Worker。", "left");
 
-  // --- 缓存时间轴：10 分钟后先给旧页，后台同时重建 ---
   scene(c3, 15.6, 24.4, (root) => {
     const T0 = 15.6, OUT = 24.0, RESET = H3.done + 0.8;
     const X0 = 150, X10 = 830, XB = 1180, X7 = 1560, XE = 1780, Y = 370, XP = 1040;
@@ -192,7 +172,6 @@
     code.__x = 150; code.__y = 130;
     const hs = ["s", "r", "e"].map((k) => code.querySelector(`[data-k="${k}"]`));
     const note = L("lbl", root, "浏览器侧 5 分钟");
-    // 时间轴整体放进一个盒子（下边缘 = 缓存条下沿，分叉线从这里出发）
     const TX = X0 - 60, TY = Y - 74;
     const tl = L("", root);
     tl.style.cssText += `;width:${XE - X0 + 120}px;height:82px`;
@@ -209,7 +188,6 @@
     zone7.style.cssText += ";color:var(--red);font-size:19px;font-weight:700";
     const ptr = L("", tl, `<div class="b-tally">${icon("clock", 17, 2.4)}<span>+00:00</span></div><div class="b-tri"></div>`);
     const ptrV = ptr.querySelector("span");
-    // 两条泳道同时出现：访客立刻拿到旧页；重建在后台慢慢跑
     const VW2 = 340, RW = 420;
     const vis = card(root, { x: 680, y: 484, w: VW2, icon: "user", title: "下一位访客" });
     const reb = card(root, { x: 1060, y: 484, w: RW, h: 150, tint: "green", icon: "refresh-cw", title: "后台重建", sub: "再取一次 /api/home" });
@@ -238,7 +216,6 @@
       marks.forEach((mk) => (mk.style.transform += " translateX(-50%)"));
       place(brk, ox(XB) - 15, oy(Y) - 20, seg(t, 16.4, 16.6));
       place(zone7, ox((X7 + XE) / 2) - m.z7 / 2, oy(Y - 46), seg(t, 16.8, 17.1));
-      // 「现在」指针：快进到 10 分钟 → 缓存变旧 → 重建完回到 0
       const ff = E.io(seg(t, 16.4, H3.stale));
       const back = E.io(seg(t, RESET, RESET + 0.5));
       const creep = 18 * Math.max(0, t - (RESET + 0.5));
@@ -251,7 +228,6 @@
       bar.classList.toggle("b-stripe", t >= H3.stale && t < RESET + 0.5);
       const kst = seg(t, H3.stale, H3.stale + 0.25);
       place(bar, ox(X0), oy(Y - 8), 1, `scaleY(${(1 + 0.5 * Math.sin(Math.PI * kst)).toFixed(3)})`);
-      // 泳道
       const kv = popAt(vis, t, 18.6, OUT), kr = popAt(reb, t, 18.6, OUT);
       fk.forEach((w, i) => dw(w, seg(t, 18.6, 18.9), Math.min(i ? kr : kv, 1 - seg(t, RESET, RESET + 0.1))));
       rIcon.style.transformOrigin = "50% 50%";
@@ -271,7 +247,6 @@
   });
   say(c3, 16.2, 20.6, "缓存到点就算旧了，\n可下一位照样秒开。", "left");
 
-  // --- 布局变了才通知：插上充电头 → Worker → POST /api/revalidate ---
   scene(c3, 24.2, 33.4, (root) => {
     const T0 = 24.2, OUT = 32.9;
     const wl = wireLayer(root);
@@ -309,12 +284,11 @@
       const oc = popAt(chg, t, 24.4, OUT, { dx: -30 });
       const ow = popAt(wk, t, 24.8, OUT);
       const ov = popAt(vc, t, 25.2, OUT);
-      const os = popAt(song, t, 30.2, OUT, { dx: -30 }); // 等镜头回到全景再出场
+      const os = popAt(song, t, 30.2, OUT, { dx: -30 });
       const wf = 1 - seg(t, OUT - 0.2, OUT + 0.05);
       dw(W.ai, seg(t, 25.0, 25.4), Math.min(oc, ow, wf));
       dw(W.ao, seg(t, 25.4, 25.8), Math.min(ow, ov, wf));
       dw(W.bi, seg(t, 30.4, 30.7), Math.min(os, ow, wf));
-      // 插头滑进充电头：咔哒一声，指示灯亮
       const kp = E.in(seg(t, H3.plug - 0.5, H3.plug));
       plug.setAttribute("transform", `translate(${(-44 * (1 - kp)).toFixed(1)} 0)`);
       led.setAttribute("fill", t >= H3.plug ? "#2E9E4F" : "#B3AC9F");
@@ -324,7 +298,6 @@
       rowA.style.background = onA ? "var(--green-t)" : ""; rowA.style.borderColor = onA ? "var(--green)" : "";
       rowB.style.background = onB ? "var(--red-t)" : ""; rowB.style.borderColor = onB ? "var(--red)" : "";
       rowA.style.opacity = onB ? "0.55" : "1";
-      // Vercel：标记过期，旧页照给，后台提前重建
       place(strip, 20, 228, 1);
       const bad = t >= H3.expire && t < 30.8;
       strip.classList.toggle("b-stripe", bad);
@@ -352,18 +325,12 @@
   say(c3, 25.8, 29.8, "多了一张卡，旧 HTML 里没有，\n等不了 10 分钟。", "left");
   say(c3, 30.2, 33.2, "这种小变化不惊动 Vercel，\n交给浏览器自己追。", "left");
 
-  // =====================================================================
-  // 04 实时推送
-  // =====================================================================
   const c4 = chapter("实时推送", "浏览器直连 Worker", 16);
-  // merge：第一张卡要数据，/api/home 当场发出；back：快照回来，所有挂着的卡一起拿到
   const H4 = { merge: 6.0, back: 8.4, push: 14.4, pause: 24.0, resume: 25.8, fresh: 27.8, old: 28.8 };
 
-  // --- 首次读取合并、WebSocket 常驻、推送当场换歌名 ---
   scene(c4, 1.8, 20.9, (root) => {
     const T0 = 1.8, OUT = 20.2;
     const wl = wireLayer(root);
-    // 流动虚线另放：不是 root 下直接的 svg，也不带 wire 类
     const flowBox = L("", root);
     const fsvg = svgEl("svg", { width: 1920, height: 1080, class: "L" }, flowBox);
     fsvg.style.overflow = "visible";
@@ -394,7 +361,6 @@
       core: link(wl, H.el, "r", worker, "l", { ka: 0.844, kb: 0.9, width: 17, color: "#E3F3E7", opacity: 1 }),
     };
     const wsLbl = L("lbl b", root, "WebSocket");
-    // 圈注压在页面上：单独一层，建在卡片之后
     const pl = penLayer(root);
     const lr = H.rect("listening", PX, PY);
     const penSong = penCircle(pl, lr.x + 311 * SC, lr.y + 103 * SC, 122, 42, { seed: 8 });
@@ -415,7 +381,6 @@
       place(H.el, PX - 40 * (1 - E.out(ka)), PY, oH);
       const flip = seg(t, H4.push, H4.push + 0.5);
       H.update({ t: t + 20, song: t >= H4.push ? "アイドル" : "夜に駆ける", prevSong: "夜に駆ける", flip: t >= H4.push ? flip : 1, songFlash: t > H4.push && t < H4.push + 1.1 });
-      // 挂载后各卡要数据：描边一闪
       ASK.forEach((k, i) => {
         const a0 = 5.7 + i * 0.35;
         hot(H.cards[k], (t > a0 && t < a0 + 0.35) || (t > H4.back + 0.5 && t < H4.back + 0.95), "46,158,79", 6, 2);
@@ -426,11 +391,10 @@
       dw(W.v2, seg(t, 3.35, 3.6), Math.min(ox, ov, wf));
       const ow = popAt(worker, t, 3.6, OUT);
       const ob = popAt(box, t, 5.2, 10.2);
-      rg.set(seg(t, 5.7, 20.7)); place(rg, 12, 12, 1); // 15 秒窗口：从第一张卡要数据开始算
+      rg.set(seg(t, 5.7, 20.7)); place(rg, 12, 12, 1);
       place(bt, 58, 20, 1); place(bf, 14, 220, 1);
       dw(W.api, seg(t, 5.3, 5.7), Math.min(ob, ow));
       dw(W.back, seg(t, 5.3, 5.7), Math.min(ob, ow));
-      // 第一张卡的 GET 一进来，/api/home 当场发出；后面几张在 15 秒窗口里挂上同一个请求，等快照回来
       const cl = [];
       ASK.forEach((k, i) => {
         const a0 = 5.7 + i * 0.35, y = SLOT(i);
@@ -445,7 +409,6 @@
         }
       });
       chips(cl);
-      // WebSocket：粗管道 + 一直往页面流的虚线
       const kw = seg(t, 10.8, 11.6);
       dw(W.wall, kw, Math.min(oH, ow, wf)); dw(W.core, kw, Math.min(oH, ow, wf));
       const of = seg(t, 11.5, 11.9) * Math.min(oH, ow, wf);
@@ -455,7 +418,6 @@
       place(wsLbl, m.lp.x - m.ws / 2, m.lp.y - 42 - 24, Math.min(seg(t, 11.4, 11.7), 1 - seg(t, OUT, OUT + 0.3)));
       penOn(pl, Math.min(seg(t, H4.push + 0.2, H4.push + 0.35), 1 - seg(t, 16.4, 16.7)));
       dw(penSong, seg(t, H4.push + 0.25, H4.push + 0.65), 1 - seg(t, 16.4, 16.7));
-      // SWR 缓存：推送写进来，那一行高亮扫过
       popAt(swr, t, 12.6, OUT);
       const ks = seg(t, H4.push + 0.3, H4.push + 0.9);
       setText(swrV, t >= H4.push + 0.55 ? "アイドル" : "夜に駆ける");
@@ -480,10 +442,8 @@
   say(c4, 12.2, 16.4, "之后一直连着，有变化\n就带着数据推过来。", "left");
   say(c4, 16.8, 20.6, "收到就写进缓存，\n卡片当场换，不用再问。", "left");
 
-  // --- 轮询节奏、后台暂停、时间戳挡旧、本地推算进度（三栏依次聚焦，其余压暗） ---
   scene(c4, 20.8, 38.2, (root) => {
     const T0 = 20.8, OUT = 37.6;
-    // 左栏：带标签页的小窗口，四行轮询各有一个倒计时环
     const PWX = 80, PWY = 160, PWW = 520, PWH = 470;
     const pw = L("win", root);
     pw.style.cssText += `;width:${PWW}px;height:${PWH}px`;
@@ -492,7 +452,6 @@
     const tabA = pw.querySelector('[data-k="a"]'), tabB = pw.querySelector('[data-k="b"]');
     const body = L("", pw); body.style.cssText += `;width:${PWW - 5}px;height:${PWH - 57}px`;
     const head = L("", body, `<div style="font-family:var(--sans);font-weight:700;font-size:28px;display:flex;align-items:center;gap:10px;white-space:nowrap">${icon("timer", 28, 2.2)}按节奏轮询</div>`);
-    // 周期按真实比例缩放（30 秒 : 60 秒 : 2 分钟 : 5 分钟 = 1 : 2 : 4 : 10）；相位错开，满圈落在拍上
     const ROWS = [["充电 · 服务器", "30 秒", 1.2, 0.6], ["正在听", "60 秒", 2.4, 1.2], ["编码用量", "2 分钟", 4.8, 1.0], ["活动", "5 分钟", 12.0, 3.0]];
     const rows = ROWS.map(([a, b]) => {
       const r = L("b-prow", body, `<span style="width:40px;height:40px;display:inline-block;flex:none;position:relative"></span><span>${a}</span><span class="v">${b}</span>`);
@@ -503,7 +462,6 @@
     });
     const moon = L("", tabA, icon("moon", 16, 2.4));
     const pause = stamp(pw, "暂停", "k");
-    // 中栏：时间戳挡旧
     const GW = 580;
     const gd = card(root, { x: 680, y: 160, w: GW, h: 400, icon: "shield-check", title: "时间戳挡旧", sub: `只留 ${mono("receivedAt", 20)} 更新的那份` });
     const SX = 322, SY = 150, SW = 232, SH = 170;
@@ -516,7 +474,6 @@
     const oldSt = stamp(gd, "旧");
     const cmp = L("lbl", gd, "19 &lt; 21");
     cmp.style.cssText += ";color:var(--red);font-weight:700;font-size:22px";
-    // 右栏：进度在浏览器里按时间往前推
     const PCX = 1320, PCY = 160, PCW = 540;
     const pc = card(root, { x: PCX, y: PCY, w: PCW, h: 440, icon: "music", title: "播放进度" });
     const fm = L("", pc, `<div class="mono" style="font-size:20px;white-space:nowrap">位置 = <b style="color:var(--purple)">positionMs</b> + (现在 − <b style="color:var(--orange-d)">observedAt</b>)</div>
@@ -543,7 +500,6 @@
         netLine.setAttribute("d", `M${nx - 14} ${ny} Q${nx + netN.offsetWidth / 2} ${ny + 6} ${nx + netN.offsetWidth + 14} ${ny}`);
         netLine.__len = null;
       }
-      // 左栏
       popAt(pw, t, 21.2, OUT, { dx: -30 });
       dim(pw, 1 - 0.62 * seg(t, 26.4, 26.8));
       const paused = t >= H4.pause && t < H4.resume;
@@ -562,7 +518,6 @@
       });
       place(moon, 132, 12, paused ? 1 : 0);
       pause(PWW / 2, 52 + 210, seg(t, H4.pause - 0.18, H4.pause), 1 - seg(t, H4.resume, H4.resume + 0.3), -6);
-      // 中栏
       popAt(gd, t, 26.4, OUT);
       dim(gd, 1 - 0.62 * seg(t, 31.2, 31.6));
       const got = t >= H4.fresh;
@@ -585,7 +540,6 @@
       gpk(glist);
       oldSt(150, LANE, seg(t, H4.old - 0.18, H4.old), 1 - seg(t, OUT - 0.1, OUT + 0.2), -8);
       place(cmp, 150 - m.cmp / 2, LANE + 66, seg(t, 29.1, 29.3));
-      // 右栏
       popAt(pc, t, 31.2, OUT);
       const d = Math.max(0, t - 31.4);
       setText(fd, d.toFixed(1) + " s");
@@ -609,8 +563,6 @@
   say(c4, 26.6, 31.0, "每份数据都带着时间戳，\n慢回来的旧结果进不来。", "left");
   say(c4, 31.6, 36.6, "换歌、暂停、拖动时才发锚点，\n中间的进度照着时间推。", "left");
 
-  // ---------- 语义音效（弹出、数据包、连线、印章这类由引擎按画面自动生成） ----------
-  // 首屏缓存
   sfx(c3, H3.fail - 0.6, "hash", { x: 1600 });
   sfx(c3, H3.fail, "err", { x: 1630 });
   sfx(c3, 9.6, "click", { x: 1000 });
@@ -625,7 +577,6 @@
   sfx(c3, H3.plug + 0.05, "zap", { x: 300 });
   sfx(c3, 27.6, "riser", { dur: 1.2 });
   duck(c3, H3.expire);
-  // 实时推送
   sfx(c4, H4.back + 0.6, "ok", { x: 400 });
   sfx(c4, 10.8, "whoosh", { x: 1000 });
   sfx(c4, H4.push + 0.35, "sparkle", { x: 380 });

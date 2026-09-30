@@ -3,9 +3,6 @@ import type { ReactNode } from "react";
 import { StatusDot, type DotTone } from "@/components/ui/status-dot";
 import { cn } from "@/lib/utils";
 
-/**
- * bento 网格里的卡片。层次靠 1px 边框、表面色阶和 `paper-card` 的硬阴影（globals.css），不用磨砂。
- */
 export function Card({
   id,
   label,
@@ -15,11 +12,8 @@ export function Card({
   className,
 }: {
   id?: string;
-  /** 左上角等宽小字，如 CHARGER / NOW PLAYING */
   label?: string;
-  /** 有 tone 就在标注左侧点一盏灯 */
   tone?: DotTone;
-  /** 右上角补充信息 */
   action?: ReactNode;
   children: ReactNode;
   className?: string;

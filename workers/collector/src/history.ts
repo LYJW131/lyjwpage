@@ -1,15 +1,7 @@
 import type { HistoryDb, HistoryStatement } from "@shared/history-ingest";
 import type { VercelDeployment } from "@/lib/vercel-deployments-types";
 
-/**
- * 采集 Worker 往 D1 `lyjwpage-history` 写的站点部署表（workers/api/migrations/0006）。
- *
- * 奖杯表由 api 在收下奖杯信封后写（`workers/api/src/stores/trophy-history.ts`）。
- * 这里只拼语句、幂等 upsert，调用方在数据已经交出去之后顺手追加，失败只记日志。
- * 每分钟的部署列表都是同几条，所以 `WHERE` 只放行真的变了的行。
- */
 
-/** 一次 batch 提交的语句数 */
 export const HISTORY_BATCH_SIZE = 100;
 
 export async function runBatched(db: HistoryDb, statements: HistoryStatement[], size = HISTORY_BATCH_SIZE): Promise<void> {
@@ -30,7 +22,6 @@ const UPSERT_SITE_DEPLOY = `INSERT INTO site_deploys(id, created_at, build_durat
     OR site_deploys.commit_branch IS NOT excluded.commit_branch
     OR site_deploys.commit_message IS NOT excluded.commit_message`;
 
-/** 当前生产版本和最近几次部署，按 id 去重；构建中 → 就绪这类状态变化会改写同一行 */
 export function siteDeployStatements(db: HistoryDb, deployments: readonly (VercelDeployment | null)[], observedAt: number): HistoryStatement[] {
   const byId = new Map<string, VercelDeployment>();
   for (const deployment of deployments) if (deployment) byId.set(deployment.id, deployment);

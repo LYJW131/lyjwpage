@@ -1,19 +1,3 @@
-# misaka-jp 上两个常驻上报器的部署单元。机器上只放这份 compose.yaml，
-# 两个子目录各放一份自己的 .env 和状态卷 data/，镜像从 GHCR 拉，不在机器上 build。
-# 镜像由 .github/workflows/build-reporters.yml 在 GitHub 上构建，合进 main 推 `latest`。
-# 完整步骤见各自的 README。
-#
-# 合进 main 后由 build-reporters.yml 的 deploy 自动换（ssh 进来只能跑 /opt/lyjwpage/deploy.sh，
-# 即仓库里的 reporters/misaka-deploy.sh）。
-#
-# 两个服务共用一个 compose project，所以**不带服务名的命令会同时动两个容器**。
-# 手动只换一个就点名换那个：
-#   docker compose pull server-reporter && docker compose up -d --no-deps server-reporter
-#   docker compose pull agents-reporter && docker compose up -d --no-deps agents-reporter
-# 要回退就把 `latest` 临时改成 Actions 推的 `sha-<短哈希>`。
-#
-# 各自的 .env 留在各自的子目录里：两边都有 SITE_INGEST_URL / ACCESS_CLIENT_ID / ACCESS_CLIENT_SECRET /
-# 其余配置，节奏各管各的（限额按人数 5/10/60 分钟，server 固定每分钟），合成一份反而串味。
 name: lyjwpage-reporters
 
 services:
@@ -35,25 +19,16 @@ services:
     image: ghcr.io/lyjw131/server-reporter:latest
     container_name: server-reporter
     restart: unless-stopped
-    # 网卡名、网卡上的公网 IP、收发字节都读自网络命名空间（/proc/net/*、SIOCGIFADDR），
-    # 容器自己那套是 eth0 + 172.x，所以必须共用宿主机的。CPU / 内存 / 负载 / 运行时间
-    # 读 /proc 本来就是宿主机的数，不用额外挂。
+    # 网卡与流量必须来自宿主机网络命名空间，容器桥接网络会报出自己的接口。
     network_mode: host
     env_file:
       - ./server-reporter/.env
     environment:
       HOST_ROOT: /host
     volumes:
-      # 主机名读 /host/etc/hostname；根分区容量对 /host/etc 做 statvfs ——
-      # 容器里量 "/" 量到的是 overlay，不是真正的根分区。一个只读挂载办两件事。
       - /etc:/host/etc:ro
-      # os-release 单独再挂一次：Ubuntu 上 /etc/os-release 是指向 ../usr/lib/os-release
-      # 的软链，跟着 /etc 整个挂进来那条链在容器里是断的（/host/usr 不存在）。
-      # 单独 bind 这个路径，Docker 在宿主机侧解完软链再挂，容器里拿到的是真文件。
+      # /etc/os-release 可能指向 /usr/lib；单挂 /etc 会断链，单独 bind 让宿主机先解链接。
       - /etc/os-release:/host/etc/os-release:ro
-      # 流量累计的状态文件（/data/traffic.json）。网卡计数器一重启就归零，
-      # 「这个周期用了多少」只能自己攒，攒的东西得活过容器重建。
-      # 目录要先 `chown 65534:65534`（镜像里是 nobody），见 README。
       - ./server-reporter/data:/data
     logging:
       driver: json-file

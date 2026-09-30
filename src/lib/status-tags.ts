@@ -1,6 +1,5 @@
 import { STATUS_VIEWS } from "@/lib/status-views";
 
-/** 展示变化主题；Vercel 只使用 page:<tag> 缓存标签。值来自登记表。 */
 export const DESKTOP_TAG = STATUS_VIEWS.desktop.tag;
 export const TIMEZONE_TAG = STATUS_VIEWS.timezone.tag;
 export const CHARGER_TAG = STATUS_VIEWS.charger.tag;

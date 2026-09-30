@@ -5,7 +5,6 @@ import { ListMusic, LoaderCircle, Radio } from "lucide-react";
 import type { WebPlayer } from "@/hooks/use-web-player";
 import { cn } from "@/lib/utils";
 
-/** 一起听只切换同步模式，授权、队列和播放均由 Web Player 管理。 */
 export function SyncPlaybackButton({ player }: { player: WebPlayer }) {
   const connecting = player.syncing && player.status === "starting";
   const Icon = connecting ? LoaderCircle : player.syncing ? Radio : ListMusic;

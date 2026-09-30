@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <script>
-  // 站点上的地址是 /explainer（没有结尾斜杠，由 next.config 的 rewrite 指到这份文件），
-  // 相对路径会按根目录算；补一个 base，让脚本、字体、配乐都从 /explainer/ 下取
+  // 无尾斜杠的 rewrite URL 会把相对资源解析到根目录，必须补 base。
+
   if (/^https?:$/.test(location.protocol) && !/\/$|\.html$/.test(location.pathname)) document.write('<base href="' + location.pathname + '/">');
 </script>
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -30,8 +30,7 @@
   --sans:"Geist","PingFang SC","Hiragino Sans GB",sans-serif;
 }
 html,body{margin:0;height:100%;background:#16150F;overflow:hidden}
-/* 外框固定铺满、溢出裁掉：舞台本身 1920 宽，不能撑宽手机上的页面 */
-#frame{position:fixed;inset:0;overflow:hidden}
+/* 固定舞台不能撑宽手机页面，外框必须裁掉溢出。 */#frame{position:fixed;inset:0;overflow:hidden}
 #stage{position:absolute;left:0;top:0;width:1920px;height:1080px;overflow:hidden;background:var(--paper);
   transform-origin:0 0;font-family:var(--cjk);color:var(--ink);-webkit-font-smoothing:antialiased}
 #stage *{box-sizing:border-box}
@@ -40,7 +39,6 @@ html,body{margin:0;height:100%;background:#16150F;overflow:hidden}
 #dots{left:-1024px;top:-608px;width:3968px;height:2304px;
   background-image:radial-gradient(circle,#D4CFC3 1.6px,transparent 1.9px);background-size:32px 32px}
 
-/* 顶栏与进度 */
 .hdr-logo{font-family:"Geist Pixel";font-size:40px;line-height:1;white-space:nowrap}
 .hdr-sub{font-size:25px;color:var(--muted);font-weight:500;white-space:nowrap}
 .prog{left:237px !important;top:1018px !important;width:1446px;height:48px}
@@ -48,13 +46,11 @@ html,body{margin:0;height:100%;background:#16150F;overflow:hidden}
 .pseg i{position:absolute;left:0;top:0;height:100%;background:var(--orange)}
 .plab{position:absolute;top:2px;font-size:15px;color:var(--faint);white-space:nowrap}
 
-/* 章节标题卡 */
 .ch-title{width:1920px;text-align:center}
 .ch-num{display:inline-block;font-family:var(--mono);font-weight:700;font-size:34px;color:#fff;background:var(--ink);padding:4px 16px;letter-spacing:2px}
 .ch-name{font-size:104px;font-weight:700;letter-spacing:6px;margin-top:18px;line-height:1.15}
 .ch-sub{font-size:34px;color:var(--muted);margin-top:14px}
 
-/* 旁白气泡 */
 .pix{clip-path:polygon(8px 0,calc(100% - 8px) 0,calc(100% - 8px) 8px,100% 8px,100% calc(100% - 8px),calc(100% - 8px) calc(100% - 8px),calc(100% - 8px) 100%,8px 100%,8px calc(100% - 8px),0 calc(100% - 8px),0 8px,8px 8px)}
 #bShadow{background:rgba(31,30,27,.13)}
 #bOuter{background:var(--ink);padding:6px}
@@ -66,7 +62,6 @@ html,body{margin:0;height:100%;background:#16150F;overflow:hidden}
 #bMeasure{visibility:hidden}
 #bTyped{position:absolute;left:0;top:0}
 
-/* 通用卡片 */
 .card{background:var(--card);border:2.5px solid var(--ink);box-shadow:6px 6px 0 rgba(31,30,27,.12)}
 .card.orange{background:var(--orange-t)} .card.purple{background:var(--purple-t)} .card.green{background:var(--green-t)}
 .card.blue{background:var(--blue-t)} .card.amber{background:var(--amber-t)} .card.gray{background:#EFEDE7} .card.red{background:var(--red-t)}
@@ -87,7 +82,6 @@ html,body{margin:0;height:100%;background:#16150F;overflow:hidden}
 .lbl.b{color:var(--ink);font-weight:600}
 .big-lbl{font-size:28px;font-weight:600;white-space:nowrap}
 
-/* 终端窗口 */
 .term{background:#1F1E1B;border:2.5px solid var(--ink);box-shadow:10px 10px 0 rgba(31,30,27,.16);color:#E8E4DA;font-family:var(--mono)}
 .term .bar{height:44px;border-bottom:2px solid #3A3833;display:flex;align-items:center;gap:9px;padding:0 16px}
 .term .bar i{width:13px;height:13px;border-radius:50%;background:#55524B}
@@ -100,7 +94,6 @@ html,body{margin:0;height:100%;background:#16150F;overflow:hidden}
 .welcome .t{font-size:26px;line-height:1.5}
 .welcome .t b{color:#fff}
 
-/* 主页窗口 */
 .win{background:var(--card);border:2.5px solid var(--ink);box-shadow:10px 10px 0 rgba(31,30,27,.12)}
 .win-bar{height:56px;border-bottom:2.5px solid var(--ink);display:flex;align-items:center;padding:0 18px;gap:10px;background:#FBFAF7}
 .win-bar .sq{width:14px;height:14px;border:2px solid var(--ink)}
@@ -135,7 +128,6 @@ html,body{margin:0;height:100%;background:#16150F;overflow:hidden}
 .unplug{position:absolute;inset:40px 0 0 0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:var(--faint);font-family:var(--mono);font-size:16px;letter-spacing:1px}
 
 
-/* 站点首屏复刻（照 globals.css：直角、1px 墨线、3px 硬阴影、11px 等宽大写标注） */
 .site{width:1104px;height:1500px;background-color:#EDEBE5;background-image:linear-gradient(rgba(31,30,27,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(31,30,27,.045) 1px,transparent 1px);background-size:24px 24px;font-family:var(--mono);color:#1F1E1B}
 .s-hdr{position:absolute;left:0;top:0;width:1104px;height:76px;display:flex;align-items:center;justify-content:space-between;padding:0 40px}
 .s-brand{font:700 17px var(--mono)}
@@ -200,7 +192,6 @@ html,body{margin:0;height:100%;background:#16150F;overflow:hidden}
 .s-mid{font:500 26px var(--mono);margin-top:4px} .s-mid small{font-size:11px;color:#6F6B64;margin-left:4px}
 
 
-/* 充电卡完整态（单独占 396px 槽）：大数字 + 功率柱 + 三格端口 */
 .s-lbl2.up{text-transform:uppercase;letter-spacing:.08em;font-size:11px}
 .s-bars{position:absolute;display:flex;align-items:flex-end;gap:2px}
 .s-bars i{flex:1;background:linear-gradient(#3DA05A,rgba(61,160,90,.32));display:block}
@@ -212,7 +203,6 @@ html,body{margin:0;height:100%;background:#16150F;overflow:hidden}
 .s-ports b{display:block;font:500 14px var(--mono);margin-top:6px}
 .s-ports b.idle{color:#6F6B64;font-weight:400}
 .s-ports span{display:block;font:11px var(--mono);color:#6F6B64;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-/* 最近播放：半宽 / 整行两套排版叠放，交叉淡入 */
 .lay{position:absolute;left:0;top:0;bottom:0;right:0}
 .lay[data-k="lf"]{right:auto}
 .s-list2{position:absolute;display:grid;grid-template-columns:1fr 1fr;gap:0 24px}
@@ -225,39 +215,31 @@ html,body{margin:0;height:100%;background:#16150F;overflow:hidden}
 .s-art.a6{background:linear-gradient(160deg,#0e1a44,#27408f 60%,#9fb4e8)}
 .s-art.a7{background:linear-gradient(150deg,#0f3b5a,#2f7fb0 60%,#d7eef7)}
 .s-art.a8{background:linear-gradient(150deg,#f3c0c8,#e0567a 55%,#3a2d6b)}
-/* EXIT NODE 底栏细条 */
 .s-meter2{position:absolute;height:4px;background:#E6E3DC}
 .s-meter2 i{position:absolute;left:0;top:0;bottom:0;background:#3DA05A}
 .s-meter2 i.lt{background:#A9D9B2}
 
-/* 印章 */
 .stampx{font-family:var(--mono);font-weight:700;font-size:58px;line-height:1;padding:10px 22px 12px;border:6px solid currentColor;color:var(--red);background:rgba(255,255,255,.9);letter-spacing:2px;white-space:nowrap;box-shadow:6px 6px 0 rgba(31,30,27,.12)}
 .stampx.g{color:var(--green)} .stampx.o{color:var(--orange-d)} .stampx.k{color:var(--ink)}
 .stampx small{font-size:.42em;letter-spacing:1px;margin-left:10px;vertical-align:.35em}
-/* 头顶表情 */
 .emote svg{position:absolute;left:0;top:0}
 
 .stag{background:var(--orange-t);border:2px solid var(--orange);color:var(--orange-d);font-size:17px;font-weight:600;padding:3px 10px 3px 8px;display:flex;align-items:center;gap:6px;white-space:nowrap}
-/* 数据包 */
 .pkt{font-family:var(--mono);font-weight:700;font-size:16px;color:#fff;background:var(--orange);border:2px solid var(--ink);padding:3px 10px;white-space:nowrap}
 .pkt.big{font-size:19px;padding:5px 12px}
 .pkt.purple{background:var(--purple)} .pkt.green{background:var(--green)} .pkt.ink{background:var(--ink)} .pkt.blue{background:var(--blue)}
 .pkt.gray{background:#8F8A80} .pkt.red{background:var(--red)}
 
-/* 代码信封 */
 .code{font-family:var(--mono);font-size:23px;line-height:1.55;white-space:pre;padding:18px 24px;color:var(--ink)}
 .code .k{color:var(--orange-d)} .code .s{color:var(--green)} .code .n{color:var(--purple)} .code .p{color:var(--muted)} .code .c{color:var(--faint)}
 .code .hl{background:rgba(217,119,87,.16);outline:2px solid rgba(217,119,87,.55)}
 
-/* 片尾 */
 .end-t{width:1920px;text-align:center;font-size:112px;font-weight:700;letter-spacing:10px}
 .end-t span{display:inline-block}
 .end-s{width:1920px;text-align:center;font-size:34px;color:var(--muted)}
 
-/* 播放控制（导出时隐藏） */
 #ui{position:fixed;left:0;right:0;bottom:0;display:flex;align-items:center;gap:12px;padding:12px 18px calc(12px + env(safe-area-inset-bottom, 0px));
   background:linear-gradient(transparent,rgba(0,0,0,.6));font:14px Menlo,monospace;color:#fff;opacity:0;pointer-events:none;transition:opacity .25s;flex-wrap:wrap}
-/* 隐藏时不接点击（触屏上不会误触看不见的按钮）；鼠标悬停、点一下画面、键盘 Tab 进来时出现 */
 #ui.show{opacity:1;pointer-events:auto}
 #ui:has(:focus-visible){opacity:1;pointer-events:auto}
 @media (hover:hover){body:hover #ui{opacity:1;pointer-events:auto}}
@@ -300,8 +282,8 @@ body.export #ui,body.export #start{display:none}
 <div id="ui" inert><button id="pp" type="button">暂停</button><span id="tc">0:00</span><input id="scrub" type="range" min="0" max="300" step="0.01" value="0" aria-label="进度"><div id="sty" role="group" aria-label="配乐"><button type="button" data-style="chip">芯片</button><button type="button" data-style="piano">钢琴</button><button type="button" data-style="lofi">Lo-fi</button><button type="button" data-style="pluck">拨弦</button></div><button type="button" data-lang-switch>English</button><button id="fs" type="button">全屏</button></div>
 <audio id="music" preload="none"></audio>
 <script>
-  // 用 document.write 按顺序载入：顶上补的 base 生效之后才解析这些相对路径（直接写 <script src>，预加载扫描器会先按根目录去取）。
-  // 站点上的版本由 scripts/build-explainer.mjs 注入 window.__assets，文件名换成按内容哈希的那份；本地和 Artifact 里没有它，用原名
+  // 等 base 生效后再解析资源，避免 HTML 预加载器提前从根目录取脚本。
+
   for (const f of ["i18n-en", "i18n", "icons", "clawd", "music", "engine", "kit", "scenes-0", "scenes-1", "scenes-2", "scenes-3", "scenes-4", "film"]) document.write('<script src="' + ((window.__assets || {})[f + ".js"] || f + ".js") + '"><\/script>');
 </script>
 </body>

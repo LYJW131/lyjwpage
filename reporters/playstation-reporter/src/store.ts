@@ -1,10 +1,6 @@
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-/**
- * 登录、指纹、目录缓存和门的时间戳。一个键一个文件。
- * 写是先写临时文件再改名，读到的要么是上一份完整内容，要么是新的。
- */
 export interface StateStore {
   get(key: string): Promise<string | null>;
   get(key: string, type: "json"): Promise<unknown>;
@@ -44,7 +40,6 @@ export class FileStore implements StateStore {
   }
 }
 
-/** 测试里的内存版，签名和 FileStore 一样。 */
 export class MemoryStore implements StateStore {
   private readonly rows = new Map<string, string>();
 

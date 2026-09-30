@@ -10,10 +10,6 @@ function sleep(ms: number): Promise<void> {
   });
 }
 
-/**
- * 一直探局域网里的那台 PS5，按它醒着还是没醒来决定要不要打一轮 PSN。
- * 发现包便宜，隔 `PROBE_INTERVAL_MS` 一次；PSN 那一轮由 `runPlaystation` 的门决定。
- */
 async function main(): Promise<void> {
   const env = config.env(new FileStore(config.dataDir));
   let power: ConsolePower = "off";

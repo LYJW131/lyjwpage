@@ -1,4 +1,4 @@
-/** Simple Icons 的 Sentry 标（CC0）；LobeHub 没有收这一家，单色随文字色 */
+/* Sentry icon from Simple Icons (CC0). */
 export function SentryMark({ size = 15 }: { size?: number }) {
   return (
     <svg viewBox="0 0 24 24" width={size} height={size} fill="currentColor" aria-hidden>

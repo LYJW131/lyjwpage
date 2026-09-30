@@ -7,7 +7,6 @@ export type QuestPlaying = {
   platform: "meta_quest";
   details: string | null;
   state: string | null;
-  /** Epoch milliseconds reported by Discord; null when absent. */
   startedAt: number | null;
   applicationId: string | null;
   parentApplicationId: string | null;

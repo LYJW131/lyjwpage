@@ -23,21 +23,6 @@ import type { StoredDesktopActivity } from "@shared/telemetry";
 
 import { CODING_MODULES, prepareCodingModules, type CodingModuleRejection, type CodingModules } from "./coding";
 
-/**
- * Mac 上报器信封（`/api/ingest/mac`）的收敛，上报入口那一半。
- *
- * 一个 envelope 可以只更新一个模块，未出现的模块保持原快照；modules 整个省略
- * （或给个空对象）就是一次纯心跳 —— 靠 presence 和 heartbeatAt 起作用。
- * 存活、合并、推送都在状态核心（workers/api/src/stores/telemetry.ts）；这里只校验、
- * 收敛，产出一份可以跨 RPC 结构化复制的命令。
- *
- * 较晚的模块校验不过时不在这里抛：把失败点记进 `failure`，状态核心在原执行位置
- * 抛错，排在它前面、已经承诺过的写（存活、充电头……）照样保留。
- *
- * 三份 coding 模块（codingUsage / codingActivity / codingTokenBuckets）例外：坏了只丢它自己，
- * 原因进 `rejected`，别的模块照常提交（见 ./coding）。不认识的模块名进 `ignored`，同样原样
- * 回给上报器、不影响别的模块 —— 上报器比站点新、或发的是站点已不认的模块名时，两边都看得见。
- */
 
 type TelemetryEnvelope = {
   presence?: unknown;
@@ -53,7 +38,6 @@ type PreparedDesktop = {
   iconObjectKey: string | null;
 };
 
-/** 站点认得的模块名；其余一律进 `ignored` */
 const KNOWN_MODULES = new Set<string>([
   "chargingDevices",
   "desktop",
@@ -68,9 +52,7 @@ export type PreparedTelemetryEnvelope = {
   receivedAt: number;
   presence: "online" | "offline";
   activeModules: string[];
-  /** 信封里不认识的模块名，原样回给上报器 */
   ignored: string[];
-  /** 校验不过、只丢了自己的 coding 模块 */
   rejected: CodingModuleRejection[];
   modules: CodingModules & {
     chargingDevices?: {
@@ -83,7 +65,7 @@ export type PreparedTelemetryEnvelope = {
     appleMusic?: { music: LocalNowPlaying | null; upcomingTracks: PlayingQueueTrack[] };
     appleMusicCredentials?: { musicUserToken: string };
   };
-  /** 晚模块失败仍要让 DO 在原执行位置抛错，保留此前已承诺的写。 */
+  // 失败须留到对应提交阶段再抛，不能撤销更早模块已承诺的写入。
   failure?: {
     stage: "beforeCharging" | "beforeDesktop" | "beforeTimezone" | "beforeAppleMusic" | "beforeAppleMusicCredentials";
     message: string;
@@ -112,17 +94,7 @@ function normalizeDesktop(
   if (iconHash != null && !/^[a-f0-9]{64}$/.test(iconHash)) {
     throw new Error("desktop.iconHash 必须是 SHA-256 十六进制字符串");
   }
-  /**
-   * 两个哈希各司其职，不是同一个东西，不能对等起来。
-   *
-   * - `iconHash` 是**这个应用的图标**的身份：应用有图标它就非空，哪怕编码失败、
-   *   还没传上去。站点靠它当 desktopIconAssets 的键。
-   * - `iconObjectKey` 是**已经躺在 R2 里的那份字节**的内容地址，直传成功才有。
-   *
-   * `iconHash` 有值而对象键缺失就是「有图标、还没传上去」，站点据此回补传信号
-   * （`desktopIconAvailable`）。两者若取自同一份字节，「这个应用没有图标」和
-   * 「图标没准备好」都表现为 iconHash 为空，补传信号就发不出去。
-   */
+  // iconHash 标识应用图标，iconObjectKey 标识已上传字节；合并会混淆无图标与待补传。
   const iconObjectKey = text(row.iconObjectKey);
   if (iconObjectKey != null && !IMAGE_OBJECT_KEY.test(iconObjectKey)) {
     throw new Error("desktop.iconObjectKey 必须是 <sha256>.png 或 <sha256>.webp");
@@ -133,13 +105,7 @@ function normalizeDesktop(
 
   if (row.iconData != null) throw new Error("desktop.iconData 已停用，请由上报器直传 R2");
 
-  // 上报器一次性编好小图并直传 R2，只把对象键发回来。对象键落 SQLite，读取 /
-  // 推送时才拼成 `/img/<键>` 这条同源路径，交付域由访客域名的边缘决定，
-  // 见 lib/asset-url。
-  //
-  // 站点不在名称上报的热路径里 HEAD：上报器在后台 resolver 里先查后写，
-  // 并按五分钟窗口复验，桶被清空时由它原地补回同一个内容地址。这里信任它
-  // 已确认的对象键，避免图片存储的一次慢响应拖住整次前台切换。
+  // 不在前台切换热路径做 R2 HEAD，避免图片存储慢响应拖住整封上报。
   return {
     activity: {
       applicationName,
@@ -153,22 +119,9 @@ function normalizeDesktop(
   };
 }
 
-/** 窗口标题的长度上限，按码点算。够放完整的文件路径或网页标题，又不至于当作日志用。 */
 const WINDOW_TITLE_MAX = 200;
 
-/**
- * 当前窗口标题。缺席、null、空白都归 null —— 「没有标题」只有这一种表示。
- *
- * 类型不对要炸：标题是上报侧直接透传的系统值，收到数字或对象说明那边的取值
- * 路径错了，静默收敛成 null 只会让它一直错下去。超长则截断不报错，标题长短
- * 由用户此刻打开的文件决定，不是上报器的毛病。
- *
- * 按码点截：CJK 和 emoji 的标题很常见，按 UTF-16 码元切会把代理对劈成两半，
- * 留下一个永远画不出来的半字符。
- *
- * 前台应用被隐藏时强制清空：占位 bundle id 的意思就是「这一刻不许对外说我在干
- * 什么」，应用名已经是占位符，标题不跟着清等于从后门把它漏出去。
- */
+// 隐藏应用时必须同时清空窗口标题，避免从标题泄露被隐藏的活动。
 function normalizeWindowTitle(value: unknown, bundleIdentifier: string | null) {
   if (value != null && typeof value !== "string") {
     throw new Error("desktop.windowTitle 必须是字符串或 null");
@@ -214,26 +167,15 @@ function normalizeMusic(
     artist: text(row.artist),
     album: text(row.album),
     trackId,
-    // 采集端不上传封面二进制：读取时会查一次 Apple Music 目录拿曲目链接，
-    // 那次查询的结果自带封面 URL，见 shared/telemetry.ts 的 decorateCandidate
     artworkUrl: null,
     positionMs: Math.max(0, number(row.positionMs) ?? 0),
     durationMs: Math.max(0, number(row.durationMs) ?? 0),
-    // 上报器发的是布尔值，字符串那支是给旧版采集器留的；缺字段按「不循环」处理
     repeatOne: text(row.repeatOne) === "true" || row.repeatOne === true,
     observedAt: milliseconds(row.observedAt, receivedAt),
   };
 }
 
 
-/**
- * 信封里 `appleMusicCredentials` 模块的校验。
- *
- * 只认 `musicUserToken`：developer token 由状态核心自签（见 workers/api/src/musickit-token.ts
- * 的 issueApiDeveloperToken），`developerToken` / `expiresAt` 再出现就说明上报器在跑旧合同 ——
- * 直接拒掉而不是静默忽略，和 `desktop.iconData` 是同一种处理：把「你在跑旧合同」说出来，
- * 比收下一半让人误以为一切正常要好。
- */
 export function parseAppleMusicCredentials(value: unknown): { musicUserToken: string } {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new Error("appleMusicCredentials 必须是对象");
@@ -268,7 +210,6 @@ export function prepareTelemetryEnvelope(input: unknown, receivedAt = Date.now()
   }
   const raw = object(envelope.modules) ?? {};
   const ignored = Object.keys(raw).filter((name) => !KNOWN_MODULES.has(name));
-  // coding 模块各自收敛，坏了只进 rejected；收下的那几份排在分段失败之后才挂上（见文件末尾）
   const coding = prepareCodingModules(raw, receivedAt);
   const rejected = coding.rejected;
 
@@ -339,10 +280,6 @@ export function prepareTelemetryEnvelope(input: unknown, receivedAt = Date.now()
       return fail("beforeAppleMusicCredentials", error);
     }
   }
-  /**
-   * coding 模块排在最后：前面哪一段失败时状态核心在那里就抛，这几份本来也轮不到提交，
-   * 所以不挂上去（上报器整封重发时再收）。
-   */
   Object.assign(modules, coding.modules);
 
   return { source: "mac", receivedAt, presence: normalizedPresence, activeModules, ignored, rejected, modules };

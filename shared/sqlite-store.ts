@@ -7,7 +7,6 @@ export interface SqlDatabase {
 }
 export type StoredEntry = { key: string; kind: "string" | "hash" | "list"; value: string | Record<string, string> | string[]; expiresAt: number | null };
 
-/** SQL 引擎不依赖 Worker，生产使用 DO SQLite，行为测试使用真实 Node SQLite。 */
 export class SqliteStore {
   private sql: SqlDatabase;
   private transaction: <T>(work: () => T) => T;
@@ -144,7 +143,6 @@ export class SqliteStore {
     });
   }
 
-  /** Atomically keep one string value and its membership in a JSON string index in sync. */
   updateIndexedString(indexKey: string, member: string, valueKey: string, value: string | null, ttlMs: number): string[] {
     return this.transaction(() => {
       const raw = this.command({ op: "get", key: indexKey });
@@ -166,7 +164,6 @@ export class SqliteStore {
     });
   }
 
-  /** 迁移只写空键，绝不覆盖已经收到的新上报；过期时间沿用来源的绝对时间。 */
   importMissing(entries: StoredEntry[]): number {
     return this.transaction(() => {
       let imported = 0;

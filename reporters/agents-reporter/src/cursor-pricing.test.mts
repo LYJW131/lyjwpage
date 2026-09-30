@@ -11,7 +11,6 @@ import {
 
 const at = Date.parse("2026-09-23T12:00:00Z");
 
-/** 凑够 20 个官方型号，过「少得离谱就不收」那道闸 */
 function filler(): Record<string, unknown> {
   const models: Record<string, unknown> = {};
   for (let index = 0; index < 20; index += 1) {
@@ -21,7 +20,6 @@ function filler(): Record<string, unknown> {
 }
 
 const body = {
-  // 聚合商排在前面也不认
   openrouter: { models: { "brand-new-1.0": { cost: { input: 99, output: 99 } } } },
   xai: {
     models: {
@@ -46,10 +44,8 @@ const body = {
 test("parseModelsDev 只认官方厂商，同名先到先得，键把点换成连字符", () => {
   const prices = parseModelsDev(body);
   assert.deepEqual(prices["brand-new-1-0"]?.base, { input: 2, output: 6, cacheRead: 0.5, cacheCreation: null });
-  // 多档取最小门槛
   assert.equal(prices["brand-new-1-0"]?.threshold, 200_000);
   assert.equal(prices["brand-new-1-0"]?.longContext?.input, 4);
-  // 只有 context_over_200k 的按 20 万
   assert.equal(prices["only-over-1"]?.threshold, 200_000);
   assert.equal(prices["only-over-1"]?.longContext?.output, 4);
   assert.equal(prices["no-price"], undefined);
@@ -61,7 +57,6 @@ test("在线价目优先于快照，没有的型号退回快照", async () => {
   await refreshOnlinePrices(at, async () => new Response(JSON.stringify(body)));
   assert.equal(estimateCursorCost("brand-new-1.0", 100_000, 0, 0, 0, at), 0.2);
   assert.equal(estimateCursorCost("brand-new-1.0", 250_000, 0, 0, 0, at), 1);
-  // 快照里有、在线那份没有的照样有价
   assert.notEqual(estimateCursorCost("claude-sonnet-4-5", 1_000, 1_000, 0, 0, at), null);
   setOnlinePrices(null);
 });
@@ -87,9 +82,7 @@ test("取失败或结构不对时沿用上一份，6 小时内不重复取", asy
 test("模型名原样保留：只去首尾空白、按站点契约的上限截断，Antigravity 的占位符不再改写", () => {
   assert.equal(modelName("  claude-4.5-sonnet-thinking \n"), "claude-4.5-sonnet-thinking");
   assert.equal(modelName("   "), "");
-  // 契约里模型名最长 200 个字符，超了整份数据会被站点拒收
   assert.equal(modelName("x".repeat(300)), "x".repeat(200));
-  // Cursor 事件里不会出现的占位符：原样交出去，估价也不再替它们找型号
   assert.equal(modelName("m318"), "m318");
   assert.equal(modelName("MODEL_PLACEHOLDER_M318"), "MODEL_PLACEHOLDER_M318");
   assert.equal(estimateCursorCost("m318", 1_000, 1_000, 0, 0, at), null);

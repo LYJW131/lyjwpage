@@ -1,9 +1,7 @@
 import { cursorWindowFeatures, type CursorObservation } from './pulse-cursor';
 import { mergeCoverage, type Coverage } from './pulse-features';
 
-/** Coding 的观测、五分钟输入和 Jev 输出。应用名、模型名只在内部观测里。 */
 export const CODING_WINDOW_MS = 5 * 60_000;
-/** Jev cadence is independent of the five-minute observation and token buckets. */
 export const PULSE_SCORE_WINDOW_MS = 3 * CODING_WINDOW_MS;
 export const CODING_OBSERVATION_HOLD_MS = 3 * 60_000;
 export const CODING_MODES = ["idle", "brief", "interactive", "agent", "mixed"] as const;
@@ -18,7 +16,6 @@ export type CodingJudgment = { value: number; confidence: number; probabilities:
 export type CodingAssessment = {
   from: number;
   to: number;
-  /** 仅这些已观测区间能绘图；不把部分覆盖扩展成整个五分钟。 */
   coverage: { from: number; to: number }[];
   intensity: CodingJudgment;
   continuity: CodingJudgment;
@@ -95,8 +92,7 @@ export function codingWindowFeatures(observations: CodingObservation[], from: nu
     }
   }
   const account = cursorWindowFeatures(cursor, { from, to });
-  // Union independent sources before calculating totals. Cursor and Mac activity
-  // can overlap; summing their durations would manufacture extra observed time.
+  // 独立来源可能重叠，先取覆盖并集，避免把同一段时间累计两次。
   const union = (parts: Coverage[]) => mergeCoverage(parts.map((part) => ({ ...part })));
   const seconds = (parts: Coverage[]) => parts.reduce((sum, part) => sum + (part.to - part.from) / 1000, 0);
   const overlap = (left: Coverage[], right: Coverage[]) => left.flatMap((a) => right.flatMap((b) => {
@@ -124,19 +120,9 @@ export function codingWindowFeatures(observations: CodingObservation[], from: nu
   return result;
 }
 
-/** 0 两者都没有，1 只有前台 coding 应用，2 只有 agent 在跑，3 两者同时 */
 export type CodingBandValue = 0 | 1 | 2 | 3;
 export type CodingBandSegment = { from: number; to: number; value: CodingBandValue };
 
-/**
- * Coding 的三色带，读时从原始观测现算。
- *
- * 切片规则和 {@link codingWindowFeatures} 一样：每条 Mac 观测撑到下一条或 3 分钟（取早），
- * `available: false` 不算观测；Cursor 账号观测独立成一路，它的覆盖算「看得见」，
- * 它的最近活动算 agent。两路都没覆盖的时刻是未知，不出段。
- *
- * 不读 `pulse:coding` 那条档位序列：它让 agent 压过前台应用，画不出「两者同时」。
- */
 export function codingBand(observations: CodingObservation[], cursor: CursorObservation[], window: Coverage): CodingBandSegment[] {
   type Slice = Coverage & { human: boolean; agent: boolean };
   const mac: Slice[] = [];
@@ -150,7 +136,6 @@ export function codingBand(observations: CodingObservation[], cursor: CursorObse
   }
   const account = cursorWindowFeatures([...cursor].sort((a, b) => a.t - b.t), window);
   const edges = [...new Set([...mac, ...account.coverage, ...account.activeCoverage].flatMap((part) => [part.from, part.to]))].sort((a, b) => a - b);
-  // 三路各自有序且不重叠，扫一遍各带一个游标
   const at = <T extends Coverage>(list: T[], cursorIndex: { i: number }, from: number, to: number): T | null => {
     while (cursorIndex.i < list.length && list[cursorIndex.i].to <= from) cursorIndex.i++;
     const part = list[cursorIndex.i];
@@ -172,7 +157,6 @@ export function codingBand(observations: CodingObservation[], cursor: CursorObse
   return segments;
 }
 
-/** 每个描述独立成立；数字仅用于输出位置，不能当作真实生产力或精确工作量。 */
 export const CODING_INTENSITY = [
   "No evidence of coding activity in the observed portion; other apps and inactive agents.",
   "Brief coding-related presence with little sustained activity in the observed portion.",

@@ -177,7 +177,6 @@ function sumProductUsagePercent(productUsage: unknown): number | null {
   return sawAny ? clampPercent(sum) : null;
 }
 
-/** 把 billing 响应体规整成 genericWindows("grok") 吃的形状。纯函数。 */
 export function normalizeGrokBillingResponse(body: unknown): Record<string, unknown> {
   const rec = asRecord(body);
   const cfg = asRecord(rec?.config);

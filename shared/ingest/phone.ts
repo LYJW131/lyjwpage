@@ -5,25 +5,8 @@ import type { ActivityReport } from "@shared/activity";
 import { normalizeActivity } from "./activity";
 import { normalizeWorkouts } from "./workouts";
 
-/**
- * iPhone 遥测中心的信封。
- *
- * 和 Mac 那套（lib/telemetry 的 v4 信封）是同一个骨架：一个入口、一个版本号、
- * 一个 `modules` 字典，只带这次真的变了的模块。上报器那侧见
- * `reporters/iphone-telemetry-hub`。
- *
- * **骨架照抄，字段不照抄。** Mac 那份还带 `heartbeatAt` / `presence` /
- * `activeModules`，这里一个都没有 —— 它们在那边成立是因为 Mac 上跑的是个常驻
- * 进程：心跳能证明它还活着，activeModules 能让充电头在没有新读数时继续续命。
- * iPhone 上这个 App 平时**根本不在运行**，是 HealthKit 有新数据时才把它拉起来
- * （而且按小时节流）。照搬那三个字段只会让站点以为自己能判断手机在不在线 ——
- * 判不了。所以这条链路上没有存活、没有心跳，卡片的新鲜度只看「最近更新过没有」。
- *
- * 版本号从 1 起，不是接着 Mac 的 4：两套协议各活各的，共用一个号只会让人以为
- * 改一边要跟着改另一边。
- */
+// iPhone App 由 HealthKit 唤醒，不常驻；不能照搬 Mac 心跳来推断手机在线状态。
 
-/** 站点认得的模块名。和 `/api/status/*` 的主题同名：`activity` ↔ /api/status/activity */
 const KNOWN_MODULES = new Set(["activity", "workouts"]);
 
 type PhoneEnvelope = {

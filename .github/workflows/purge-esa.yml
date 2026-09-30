@@ -13,7 +13,6 @@ permissions:
 
 jobs:
   purge:
-    # 仅在生产环境（Production）部署成功时触发，或者手动 workflow_dispatch 触发
     if: >
       github.event_name == 'workflow_dispatch' ||
       (github.event.deployment_status.state == 'success' &&
@@ -38,9 +37,7 @@ jobs:
           ALIYUN_ACCESS_KEY_SECRET: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
         run: node scripts/run-esa-purge.mjs
 
-  # ESA 首页刷完之后才通知：先通知的话，lyjw131.com 上的访客点刷新拿回的还是旧 HTML。
-  # 再等两个域名的 /api/version 都答出这次的 sha（部署成功到别名切换可能差几秒），
-  # 然后让 Worker 广播 `version`，开着的页面当场重问、弹更新提示。
+  # 必须先刷 ESA 再通知页面，并等待域名切换到新版本，否则刷新仍会拿到旧 HTML。
   notify:
     needs: purge
     runs-on: ubuntu-latest
@@ -48,7 +45,6 @@ jobs:
     steps:
       - name: Wait for production domains to serve the new build
         env:
-          # 手动触发没有部署 sha，跳过等待直接通知
           EXPECTED_SHA: ${{ github.event.deployment.sha }}
         run: |
           [ -n "$EXPECTED_SHA" ] || { echo "没有部署 sha，跳过等待"; exit 0; }
@@ -59,15 +55,12 @@ jobs:
               echo "$origin 仍是 ${commit:-未知}，第 $attempt 次，10 秒后重试"
               sleep 10
             done
-            # 等不到也照常通知：页面重问的是域名上那一版，最坏只是不弹提示
             echo "::warning::$origin 5 分钟内没有答出 $EXPECTED_SHA"
           done
 
-      # 同一次推送也改了 api Worker 时，Workers Builds 往往比 Vercel 晚几分钟上线，
-      # 旧 Worker 答 404/405。重试十分钟等它追上。
+      # Vercel 与 Workers Builds 并行上线；接收端尚未换版时会短暂返回 404/405，需重试。
       - name: Notify open pages
         env:
-          # Cloudflare Access 里 lyjwpage-github-actions 那把 service token，只能调这一个内部接口
           ACCESS_CLIENT_ID: ${{ secrets.ACCESS_CLIENT_ID }}
           ACCESS_CLIENT_SECRET: ${{ secrets.ACCESS_CLIENT_SECRET }}
         run: |

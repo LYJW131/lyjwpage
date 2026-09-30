@@ -3,14 +3,12 @@ import type { StorageCommand } from "@shared/storage-contract";
 
 type Entry = { kind: "string" | "hash" | "list"; value: string | Record<string, string> | string[]; expiresAt?: number };
 
-/** 单元测试替身；SQLite 的事务、TTL、裁剪另由真实 SQLite 行为测试验证。 */
 export class FakeStorage extends StorageClient {
   private unreachable = false;
   private failing: ((commands: readonly StorageCommand[]) => boolean) | null = null;
   private entries = new Map<string, Entry>();
   constructor() { super(async (commands) => this.executeCommands(commands)); }
   setUnreachable(value = true): void { this.unreachable = value; }
-  /** 故障注入：命中的那一批整批抛错、一条都不落（测「读到一半失败」）；传 null 撤掉 */
   failWhen(predicate: ((commands: readonly StorageCommand[]) => boolean) | null): void { this.failing = predicate; }
   async append(key: string, ...values: string[]): Promise<number> { return this.executeCommands([{ op: "append", key, values }])[0] as number; }
   private executeCommands(commands: StorageCommand[]): unknown[] {

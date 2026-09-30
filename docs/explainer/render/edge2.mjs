@@ -1,4 +1,3 @@
-// 播放器边界（走本地 http 预览服务，方便拦截请求）：node edge2.mjs http://localhost:4817/
 import { tmpdir } from "node:os";
 import { chromium } from "playwright-core";
 const [base] = process.argv.slice(2);
@@ -18,7 +17,6 @@ async function page(opts = {}) {
 const wait = (p, ms) => p.waitForTimeout(ms);
 const errs = [];
 
-// 1. 切到拿不到的配乐：退回原来那首，接着放
 {
   const p = await page({ route: (p) => p.route("**/music-lofi.mp3", (r) => r.abort()) });
   await p.click('#start button[data-style="piano"]'); await wait(p, 2000);
@@ -29,7 +27,6 @@ const errs = [];
   ok("新配乐加载失败 → 退回钢琴并接着放", c.src === "music-piano.mp3" && !c.paused && c.t >= a.t && c.on === "piano" && c.pressed === "piano" && c.pp === "暂停", { a, c });
   errs.push(...p.__errs); await p.context().close();
 }
-// 2. 两首都拿不到：停下，按钮变「重试」；恢复网络后点重试能放
 {
   let block = true;
   const p = await page({ route: (p) => p.route(/music-(piano|lofi)\.mp3/, (r) => (block ? r.abort() : r.continue())) });
@@ -51,7 +48,6 @@ const errs = [];
   ok("恢复后点重试 → 接着放", !e.paused && e.pp === "暂停" && e.tc !== "加载失败" && e.t >= d.t, { e });
   errs.push(...p.__errs); await p.context().close();
 }
-// 3. 放完后切风格再按播放：一次就从头放
 {
   const p = await page();
   await p.click('#start button[data-style="chip"]'); await wait(p, 1200);
@@ -63,22 +59,19 @@ const errs = [];
   await p.click("#pp"); await wait(p, 1500);
   const c = await st(p);
   ok("放完 → 切风格 → 按一次播放就从头放", a.paused && !c.paused && c.t > 0.2 && c.t < 3, { a, c });
-  // 4. 按住空格只切一次
   const before = (await st(p)).paused;
   await p.keyboard.down("Space"); await wait(p, 900); await p.keyboard.up("Space"); await wait(p, 200);
   const x = await st(p);
   ok("按住空格只切换一次", x.paused !== before, { before, after: x.paused });
-  // 9. 进度条方向键 ±5 s
   await p.focus("#scrub"); const t0 = (await st(p)).shown;
   await p.keyboard.press("ArrowRight"); await wait(p, 300);
   const t1 = (await st(p)).shown;
   ok("进度条按右键前进约 5 s", t1 - t0 > 4.5 && t1 - t0 < 5.8, { t0, t1 });
   errs.push(...p.__errs); await p.context().close();
 }
-// 5. 鼠标点过按钮再移出：底栏收起；键盘 Tab：底栏出现
 {
   const p = await page();
-  await p.click('#start button[data-style="chip"]'); await wait(p, 3400); // 开场 flash 3 s 过后
+  await p.click('#start button[data-style="chip"]'); await wait(p, 3400);
   await p.mouse.move(640, 700); await wait(p, 400);
   const hov = await p.evaluate(() => +getComputedStyle(document.getElementById("ui")).opacity);
   await p.click('#sty button[data-style="lofi"]'); await wait(p, 3400);
@@ -96,7 +89,6 @@ const errs = [];
   ok("键盘 Tab 进底栏时可见", kb.fv && kb.op > 0.95, kb);
   errs.push(...p.__errs); await p.context().close();
 }
-// 6. 触屏：点一下画面底栏出现，3 s 后收起；隐藏时点底栏位置不会误触按钮
 {
   const p = await page({ vp: { width: 390, height: 844 }, ctx: { isMobile: true, hasTouch: true, deviceScaleFactor: 2 } });
   await p.tap('#start button[data-style="chip"]'); await wait(p, 3500);
@@ -113,7 +105,6 @@ const errs = [];
   ok("触屏按钮高度 ≥ 44", btn.every((h) => h >= 44), btn);
   errs.push(...p.__errs); await p.context().close();
 }
-// 横屏手机按钮
 {
   const p = await page({ vp: { width: 844, height: 390 }, ctx: { isMobile: true, hasTouch: true, deviceScaleFactor: 2 } });
   await p.tap('#start button[data-style="chip"]'); await wait(p, 500);
@@ -121,7 +112,6 @@ const errs = [];
   ok("横屏手机按钮高度 ≥ 44", btn.every((h) => h >= 44), btn);
   errs.push(...p.__errs); await p.context().close();
 }
-// 7. 封面：卡片挡住 Clawd 时藏起来；手机竖屏照常露出
 for (const [w, h, mob] of [[1280, 720], [1280, 760], [1440, 900], [1920, 1080], [375, 812, true]]) {
   const p = await page({ vp: { width: w, height: h }, ctx: mob ? { isMobile: true, hasTouch: true } : {} });
   const r = await p.evaluate(() => {
@@ -132,7 +122,6 @@ for (const [w, h, mob] of [[1280, 720], [1280, 760], [1440, 900], [1920, 1080], 
   await p.screenshot({ path: `${process.env.OUT || tmpdir()}/cover-${w}x${h}.png` });
   errs.push(...p.__errs); await p.context().close();
 }
-// 8. 慢网：点开始后到出声前停在封面，显示「加载中…」
 {
   const p = await page({ route: (p) => p.route("**/music-piano.mp3", async (r) => { await new Promise((z) => setTimeout(z, 1500)); await r.continue(); }) });
   await p.click('#start button[data-style="piano"]'); await wait(p, 600);

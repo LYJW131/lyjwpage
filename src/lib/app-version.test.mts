@@ -69,7 +69,6 @@ test("自动刷新：不是确知的旧页面（最新 / unknown）一律不刷"
 });
 
 test("自动刷新：同一个目标一轮最多试 AUTO_RELOAD_MAX_TRIES 次，试满就等到这一轮过去，之后缓存恢复了还刷得到", () => {
-  // ESA 边缘一直吐旧 HTML：页面 sha 不变，版本接口一直答 B
   let ledger = EMPTY_AUTO_RELOAD_LEDGER;
   let now = NOW;
   const decide = (patch: Partial<AutoReloadInput> = {}) => autoReloadDecision({ ...base, latestCommit: B, ledger, now, ...patch });
@@ -84,7 +83,6 @@ test("自动刷新：同一个目标一轮最多试 AUTO_RELOAD_MAX_TRIES 次，
     now += AUTO_RELOAD_COOLDOWN_MS;
     reload();
   }
-  // 每次都等满了冷却，这时拦住它的只会是「试满了」
   now += AUTO_RELOAD_COOLDOWN_MS;
   const lastTryAt = now - AUTO_RELOAD_COOLDOWN_MS;
   const untilNextRound = lastTryAt + AUTO_RELOAD_RETRY_AFTER_MS - now;
@@ -92,7 +90,6 @@ test("自动刷新：同一个目标一轮最多试 AUTO_RELOAD_MAX_TRIES 次，
   assert.deepEqual(decide({ trigger: "page-crash", hidden: false }), { action: "wait", ms: untilNextRound }, "错误页也一样");
   now += untilNextRound - 1;
   assert.deepEqual(decide(), { action: "wait", ms: 1 });
-  // 这一轮过去了，缓存若已恢复，页面就刷到新版；没恢复就再试一轮，次数从头数
   now += 1;
   reload();
   assert.equal(ledger.tries.find((entry) => entry.sha === B)?.count, 1);
@@ -102,8 +99,6 @@ test("自动刷新：版本接口在两个 sha 间来回，每个目标各试 AU
   let ledger = EMPTY_AUTO_RELOAD_LEDGER;
   let now = NOW;
   let reloads = 0;
-  // ESA 一直吐旧 HTML（页面 sha 不变），版本接口 B、A、B、A…… 来回，每次间隔都超过冷却，
-  // 总时长不到一轮，挡住后面几次的只有「试满了」
   const steps = 2 * AUTO_RELOAD_MAX_TRIES + 1;
   assert.ok(steps * (AUTO_RELOAD_COOLDOWN_MS + 1_000) < AUTO_RELOAD_RETRY_AFTER_MS, "调过常量：这里的总时长要仍小于一轮");
   for (let step = 0; step < steps; step += 1) {
@@ -122,7 +117,6 @@ test("自动刷新：冷却里来了新版本先等，等满了再刷；版本�
   const early = autoReloadDecision({ ...base, latestCommit: B, ledger });
   assert.deepEqual(early, { action: "wait", ms: AUTO_RELOAD_COOLDOWN_MS - 60_000 });
   assert.equal(autoReloadDecision({ ...base, latestCommit: B, ledger, now: NOW + (AUTO_RELOAD_COOLDOWN_MS - 60_000) }).action, "reload");
-  // 一连串新版本：只要每次都在冷却里，就一次也不刷
   let current = ledger;
   let reloads = 0;
   for (let step = 0; step < 6; step += 1) {
@@ -137,16 +131,13 @@ test("自动刷新：冷却里来了新版本先等，等满了再刷；版本�
 });
 
 test("自动刷新：系统时钟被往回拨过，冷却从现在重新数一个冷却期，落盘后等满就刷", () => {
-  // 上一次刷新记的是 NOW + 1 小时，之后时钟被拨回到 NOW
   const skewed = recordAutoReload(EMPTY_AUTO_RELOAD_LEDGER, A, NOW + 3_600_000);
-  // 不落盘（hook 修之前的做法）：每次读出来的都是那个未来的时刻，判定永远只会说再等一个冷却期
   let now = NOW;
   for (let round = 0; round < 5; round += 1) {
     const stuck = autoReloadDecision({ ...base, latestCommit: B, ledger: skewed, now });
     assert.deepEqual(stuck, { action: "wait", ms: AUTO_RELOAD_COOLDOWN_MS });
     now += AUTO_RELOAD_COOLDOWN_MS;
   }
-  // 按 hook 的做法：判定前先拉回并落盘，之后时间照常往前走
   let stored = skewed;
   const attempt = (at: number) => {
     stored = rebaseAutoReloadLedger(stored, at);
@@ -157,7 +148,6 @@ test("自动刷新：系统时钟被往回拨过，冷却从现在重新数一�
   assert.deepEqual(attempt(NOW + 60_000), { action: "wait", ms: AUTO_RELOAD_COOLDOWN_MS - 60_000 });
   assert.equal(attempt(NOW + AUTO_RELOAD_COOLDOWN_MS).action, "reload");
 
-  // 试满的目标：「一轮」也从现在重新数，最多等一轮，不会照着未来的时刻等
   let exhausted: AutoReloadLedger = EMPTY_AUTO_RELOAD_LEDGER;
   for (let count = 1; count <= AUTO_RELOAD_MAX_TRIES; count += 1) exhausted = recordAutoReload(exhausted, B, NOW + 3_600_000 + count);
   assert.deepEqual(
@@ -174,7 +164,6 @@ test("账本：只有时刻晚于现在才拉回，其余原样返回同一个�
   const rebased = rebaseAutoReloadLedger(ledger, NOW - 1);
   assert.deepEqual(rebased, { tries: [{ sha: A, count: 1, at: NOW - 1 }], at: NOW - 1 });
   assert.equal(rebaseAutoReloadLedger(rebased, NOW - 1), rebased, "拉回之后再判不再变，调用方不会反复写存储");
-  // 冷却的起点已经落在过去、但某个目标的时刻在未来（settle 划掉别的条目后剩下的）：只改那一条
   const mixed: AutoReloadLedger = { tries: [{ sha: A, count: 1, at: NOW - 10 }, { sha: B, count: 2, at: NOW + 10 }], at: NOW - 10 };
   assert.deepEqual(rebaseAutoReloadLedger(mixed, NOW), { tries: [{ sha: A, count: 1, at: NOW - 10 }, { sha: B, count: 2, at: NOW }], at: NOW - 10 });
 });
@@ -209,7 +198,6 @@ test("账本：读不懂的存档一律当空，能读的部分保留并按上�
     tries: [{ sha: A, count: 1, at: 5 }, { sha: B, count: 2, at: 6 }],
     at: 123,
   });
-  // 同一个 sha 重复时后面的当最新，并排到末尾
   const repeated = [{ sha: A, count: 1, at: 1 }, { sha: B, count: 1, at: 2 }, { sha: A, count: 2, at: 3 }];
   assert.deepEqual(parseAutoReloadLedger(JSON.stringify({ tries: repeated, at: 3 })).tries, [{ sha: B, count: 1, at: 2 }, { sha: A, count: 2, at: 3 }]);
   const many = Array.from({ length: AUTO_RELOAD_MEMORY + 5 }, (_, index) => ({ sha: `sha${index}`, count: 1, at: index }));
@@ -223,7 +211,6 @@ test("账本：记一笔会去重、放到最新、按上限丢最老的；一�
   ledger = recordAutoReload(ledger, B, 2);
   ledger = recordAutoReload(ledger, A, 3);
   assert.deepEqual(ledger, { tries: [{ sha: B, count: 1, at: 2 }, { sha: A, count: 2, at: 3 }], at: 3 });
-  // 距 A 上一次试已经过了一轮：次数从头数
   ledger = recordAutoReload(ledger, A, 3 + AUTO_RELOAD_RETRY_AFTER_MS);
   assert.deepEqual(ledger.tries.at(-1), { sha: A, count: 1, at: 3 + AUTO_RELOAD_RETRY_AFTER_MS });
   for (let index = 0; index < AUTO_RELOAD_MEMORY + 3; index += 1) ledger = recordAutoReload(ledger, `sha${index}`, 10 + index);
@@ -233,16 +220,12 @@ test("账本：记一笔会去重、放到最新、按上限丢最老的；一�
 
 test("账本：刷回来的页面已经是那个版本就划掉它（试满的也一样），之后部署回滚到它还能再刷；没试过的原样不动", () => {
   const ledger = recordAutoReload(recordAutoReload(EMPTY_AUTO_RELOAD_LEDGER, A, 1), B, 2);
-  // 页面现在就是 B：B 那次成功了
   const settled = settleAutoReloadLedger(ledger, B);
   assert.deepEqual(settled.tries.map((entry) => entry.sha), [A]);
   assert.equal(settled.at, 2, "冷却的起点不变");
-  // 没有变化时是同一个对象，调用方靠引用判要不要写回
   assert.equal(settleAutoReloadLedger(ledger, C), ledger);
   assert.equal(settleAutoReloadLedger(ledger, null), ledger);
-  // 页面在 C 上、版本接口答回 B（回滚）：B 不在账里了，可以再刷
   assert.equal(autoReloadDecision({ ...base, latestCommit: B, ledger: settled, now: NOW + AUTO_RELOAD_COOLDOWN_MS * 2 }).action, "reload");
-  // B 之前试满过：划掉之后同样不再拦着
   let exhausted = EMPTY_AUTO_RELOAD_LEDGER;
   for (let count = 1; count <= AUTO_RELOAD_MAX_TRIES; count += 1) exhausted = recordAutoReload(exhausted, B, NOW - 1_000 + count);
   const afterSettle = settleAutoReloadLedger(exhausted, B);

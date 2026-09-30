@@ -1,8 +1,3 @@
-/**
- * 服务器上报报文的类型收敛。
- *
- * 这份文件不碰存储：校验是纯函数，测试和入库走同一条。
- */
 
 import { number, object, text } from "./json.ts";
 import type { ServerStatus, ServerTraffic } from "./types.ts";
@@ -26,13 +21,11 @@ function requiredPositive(row: Record<string, unknown>, field: string): number {
   return value;
 }
 
-/** 0–100。浮点噪声先收成一位小数再夹紧，100.04 那种不该把整封打回去 */
 function requiredPercent(row: Record<string, unknown>, field: string): number {
   const value = requiredNumber(row, field);
   return Math.min(100, Math.round(value * 10) / 10);
 }
 
-/** 键必须在，值可以是 null。查 IP 失败时上报器仍要交这几个字段 */
 function nullableText(row: Record<string, unknown>, field: string): string | null {
   if (!(field in row)) throw new Error(`服务器上报缺少 ${field}`);
   if (row[field] == null) return null;
@@ -49,11 +42,6 @@ function nullableAsn(row: Record<string, unknown>): number | null {
   return value;
 }
 
-/**
- * 计费周期内的累计流量。整块可以没有 —— 那是上报器攒不住时的明确答复（状态文件
- * 写不进、或这台节点没开），不是「字段忘了带」：一台报不出流量的节点不该连 CPU
- * 一起被打回。给了就得是完整的一份，缺一半不收。
- */
 function nullableTraffic(row: Record<string, unknown>): ServerTraffic | null {
   if (row.traffic == null) return null;
   const traffic = object(row.traffic);
@@ -92,12 +80,6 @@ function requiredIp(row: Record<string, unknown>): string {
   return value;
 }
 
-/**
- * 把上报器的报文收敛成对外契约。
- *
- * 字节、秒、百分比都进字段名（AGENTS.md「API 命名与跨端契约」的跨来源字段一行）。站点不替上报器做单位换算：
- * `/proc` 读出来是什么，上报器转完再发。
- */
 export function normalizeServer(input: unknown): ServerStatus {
   const row = object(input);
   if (!row) throw new Error("服务器上报必须是 JSON 对象");

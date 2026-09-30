@@ -31,7 +31,6 @@ function toState(raw: AuthTokensResponse, issuedAt: number): AuthState {
     throw new IncompleteAuthTokens("PSN 没给全 access / refresh token");
   }
   const accessSeconds = Number(raw.expiresIn) || 3600;
-  // 上游给出期限就始终以它为准；缺省的兜底值只是估计。
   const refreshSeconds = Number(raw.refreshTokenExpiresIn) || 10 * 24 * 3600;
   return {
     accessToken: raw.accessToken,
@@ -58,10 +57,6 @@ function announce(state: AuthState, how: string): void {
   );
 }
 
-/**
- * 每一轮 tick 建一份会话：presence 和 played games 顺序共用 current，
- * single-flight 也只覆盖这一轮。
- */
 export class AuthSession {
   private current: AuthState | null = null;
   private inflight: Promise<AuthState> | null = null;
@@ -104,7 +99,6 @@ export class AuthSession {
     try {
       accessCode = await upstream("auth", () => exchangeNpssoForAccessCode(npsso));
     } catch (error) {
-      // 只有 psn-api 固定的拒绝文案才退回凭据问题；网络错误原样抛出。
       if (
         !(error instanceof Error) ||
         !error.message.includes("problem retrieving your PSN access code")
@@ -148,8 +142,7 @@ export class AuthSession {
   }
 
   async accessToken(force = false): Promise<string> {
-    // 先把磁盘上的状态认下来再判断半衰期。每一轮都是新会话，current 初始必为
-    // null —— 不先读就会一头扎进 renew()，把一串还很新鲜的 refresh token 白白轮换掉。
+    // 每轮新会话的 current 为空；先读持久状态，否则会无谓轮换仍有效的 refresh token。
     if (!force) this.current ??= await readAuth(this.env.STATE);
     if (
       !force &&

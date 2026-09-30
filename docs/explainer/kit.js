@@ -1,12 +1,8 @@
-// 组件库：卡片、连线、数据包、印章、手绘圈注、代码信封、终端、主页窗口。只负责造 DOM 和按进度摆位，时间编排在 scenes-*.js。
 (() => {
   const { E, clamp, seg, lerp, mk, L, svgEl, icon, esc, place, show, setHTML, setText, rng } = Engine;
 
-  // 场景自带的样式（各章可以各自加，不用改 index.html）
   function css(text) { const s = document.createElement("style"); s.textContent = text; document.head.appendChild(s); }
 
-  // ---------- 卡片 ----------
-  // opts: x y w h tint icon title sub lines[] tags[] mono
   function card(parent, o) {
     const el = L(`card ${o.tint || ""} ${o.cls || ""}`, parent);
     el.style.width = o.w + "px";
@@ -21,7 +17,6 @@
     el.__x = o.x; el.__y = o.y;
     return el;
   }
-  // 弹出：t0 出现，t1 消失（场景内时间）。返回当前可见度（0..1），连线用它一起淡出
   function popAt(el, lt, t0, t1 = 1e9, { d = 0.35, from = 0.86, dx = 0, dy = 0, x = el.__x, y = el.__y } = {}) {
     const k = seg(lt, t0, t0 + d), q = seg(lt, t1, t1 + 0.3);
     const s = lerp(from, 1, E.back(k));
@@ -29,7 +24,6 @@
     place(el, x + dx * (1 - E.out(k)), y + dy * (1 - E.out(k)) - 10 * q, Math.min(k, 1 - q), `scale(${s.toFixed(4)})`);
     return Math.min(k, 1 - q);
   }
-  // 卡片「落地」：从上方掉下来，落地压扁再弹回（强调用）
   function dropAt(el, lt, t0, t1 = 1e9, { d = 0.45, h = 60, x = el.__x, y = el.__y } = {}) {
     const k = seg(lt, t0, t0 + d), q = seg(lt, t1, t1 + 0.3);
     const fall = seg(k, 0, 0.55), squash = seg(k, 0.55, 1);
@@ -40,7 +34,6 @@
     return Math.min(k, 1 - q);
   }
 
-  // ---------- 连线 ----------
   function wireLayer(parent) {
     const s = svgEl("svg", { width: 1920, height: 1080, class: "L" });
     s.style.overflow = "visible";
@@ -54,7 +47,6 @@
     p.__len = null;
     return p;
   }
-  // k：画出来的比例；o：整体透明度（传卡片的可见度，线就跟着卡片一起淡出）
   function drawWire(p, k, o = 1) {
     if (p.__dash) { const v = clamp(k) * clamp(o); p.style.opacity = v.toFixed(3); return; }
     p.setAttribute("stroke-dashoffset", (1 - clamp(k)).toFixed(4));
@@ -73,9 +65,6 @@
     return svgEl("path", { d, fill: "none", stroke: color, "stroke-width": 3, "stroke-linejoin": "miter" }, svg);
   }
 
-  // ---------- 数据包 ----------
-  // 列表项：{ text, cls, o, s } 加 { x, y }，或 { path, f }（沿线走：自动避开两端卡片，首尾 12% 淡入淡出）
-  // trail: true 时身后拖三道速度线
   function packets(parent, n = 24) {
     const tsvg = svgEl("svg", { width: 1920, height: 1080, class: "L" }, parent);
     tsvg.style.overflow = "visible";
@@ -94,7 +83,7 @@
         const key = a.text + "|" + cls;
         let w = widths.get(key);
         if (w == null) { w = el.offsetWidth; widths.set(key, w); }
-        let room = 1e9; // 速度线最多能拖多长：不能拖回出发的卡片里
+        let room = 1e9;
         if (a.path) {
           const len = a.path.__len ?? (a.path.__len = a.path.getTotalLength());
           const f0 = Math.min(0.45, (w / 2 + 10) / len);
@@ -126,8 +115,6 @@
     };
   }
 
-  // ---------- 印章：大字从 2.4 倍砸下来，微微歪着 ----------
-  // 返回 set(x, y, k, o, rot)：k 为砸下进度（0..1），o 为之后的整体透明度
   function stamp(parent, html, cls = "") {
     const el = L("stampx " + cls, parent, html);
     return (x, y, k, o = 1, rot = -7) => {
@@ -137,7 +124,6 @@
     };
   }
 
-  // ---------- 手绘圈注：老师在白板上圈重点 ----------
   function penCircle(svg, cx, cy, rx, ry, { color = "#B5532F", width = 4.5, seed = 1, turns = 1.14 } = {}) {
     const r = rng(seed * 131 + 7), N = 56, ph0 = -2.3 + r() * 0.5;
     const pts = [];
@@ -155,13 +141,11 @@
     p.classList.add("pen");
     return p;
   }
-  // 尺寸标注：两端竖杠 + 横线，标签由场景放
   function dimLine(svg, x1, x2, y, { color = "#1F1E1B", width = 2.5, h = 14 } = {}) {
     const p = wire(svg, `M${x1} ${y - h} L${x1} ${y + h} M${x1} ${y} L${x2} ${y} M${x2} ${y - h} L${x2} ${y + h}`, { color, width, opacity: 0.7 });
     p.classList.add("pen");
     return p;
   }
-  // Catmull-Rom → 贝塞尔，让手绘线顺一点
   function smooth(p) {
     let d = `M${p[0][0].toFixed(1)} ${p[0][1].toFixed(1)}`;
     for (let i = 0; i < p.length - 1; i++) {
@@ -171,7 +155,6 @@
     return d;
   }
 
-  // ---------- 倒计时环 ----------
   function ring(parent, { r = 34, w = 9, color = "var(--orange)", track = "#E6E3DC" } = {}) {
     const s = r * 2 + w + 2;
     const el = L("", parent);
@@ -181,7 +164,6 @@
     el.set = (k) => arc.setAttribute("stroke-dasharray", `${(clamp(k) * 100).toFixed(2)} 100`);
     return el;
   }
-  // 乱码揭晓：从左到右一位位定格（哈希、密钥这类）
   function scramble(final, k, seed = 7, pool = "0123456789abcdef") {
     const n = final.length, done = Math.floor(clamp(k) * n), tick = Math.floor(k * 40);
     let s = "";
@@ -194,7 +176,6 @@
     return s;
   }
 
-  // ---------- 代码信封 ----------
   const J = {
     k: (s) => `<span class="k">"${s}"</span>`,
     s: (s) => `<span class="s">"${esc(s)}"</span>`,
@@ -208,13 +189,11 @@
     const ls = lines.map((h) => mk("div", "", el, h || " "));
     return { el, ls };
   }
-  // 逐行出现：k ∈ [0,1]
   function revealLines(block, k) {
     const n = Math.floor(k * block.ls.length + 1e-6);
     block.ls.forEach((l, i) => { l.style.visibility = i < n ? "visible" : "hidden"; });
   }
 
-  // ---------- 终端 ----------
   function terminal(parent, { w = 1000, h = 520, title = "zsh — lyjwpage" } = {}) {
     const el = L("term", parent);
     el.style.width = w + "px"; el.style.height = h + "px";
@@ -223,10 +202,8 @@
     return { el, body };
   }
 
-  // ---------- 主页：按站点真实首屏复刻（max-w-5xl 两列 bento，直角 1px 边框 + 3px 硬阴影） ----------
-  // 页面按真实尺寸（内容宽 1024px）搭，再整体缩放放进浏览器窗口。
   const PAGE_W = 1104, PAD = 40, GAP = 12, COL = (1024 - GAP) / 2;
-  const R = { // 各卡片在页面里的矩形（未缩放）
+  const R = {
     contact: [PAD, 88, COL, 202], clock: [PAD + COL + GAP, 88, COL, 202],
     watching: [PAD, 302, 1024, 178],
     charger: [PAD, 492, COL, 396], listening: [PAD + COL + GAP, 492, COL, 396],
@@ -381,9 +358,7 @@
     q("clawd").appendChild(mini.el);
     q("clawd").style.cssText = `display:inline-block;position:relative;width:${18 * 2}px;height:${5 * 4}px`;
     const mmss = (x) => `${Math.floor(x / 60)}:${String(Math.floor(x % 60)).padStart(2, "0")}`;
-    // 功率柱：前半段低一点，后面插上第二台设备后抬高（和真实截图一致），每秒往左滚一格
     const barH = (i) => { const v = i < 32 ? 0.74 + 0.05 * Math.sin(i * 0.9) - i * 0.002 : 0.95 + 0.02 * Math.sin(i * 1.7); return v; };
-    // st: { t, scroll, cardsIn{}, chargerOn 0..1, rings 0..1, song, prevSong, flip 0..1, songFlash }
     function update(st) {
       const s = scale;
       page.style.transform = `scale(${s}) translateY(${(-(st.scroll || 0)).toFixed(1)}px)`;
@@ -396,7 +371,6 @@
       const wpos = 517 + st.t, lpos = st.lpos ?? 7 + st.t;
       K.wp.style.width = ((wpos / 1421) * 100).toFixed(2) + "%"; setText(K.wt, `${mmss(wpos)} / 23:41`);
       for (const [p, tm] of [[K.lp, K.lt], [K.lp2, K.lt2]]) { p.style.width = ((lpos / 261) * 100).toFixed(2) + "%"; setText(tm, `${mmss(lpos)} / 4:21`); }
-      // 换歌：翻牌（前半程旧名翻下去，后半程新名翻上来）
       const fk = st.flip ?? 1, name = fk < 0.5 && st.prevSong ? st.prevSong : st.song || "夜に駆ける";
       const ang = fk < 1 && st.prevSong ? (fk < 0.5 ? fk * 180 : (fk - 1) * 180) : 0;
       for (const el of [K.song, K.song2]) {
@@ -411,7 +385,6 @@
       barEls.forEach((b, i) => { b.style.height = (barH(i + sh - Math.min(sh, 26)) * 100).toFixed(1) + "%"; });
       const rk = st.rings ?? 1;
       [143, 113, 90].forEach((p, i) => K["r" + i].setAttribute("stroke-dasharray", `${(Math.min(p, 100) * rk).toFixed(2)} 100`));
-      // 充电格亮灭：充电卡淡出左移，最近播放铺满整行并换成整行排版（站点里是 FLIP + 交叉淡入）
       const on = st.chargerOn ?? 1, e = E.io(on);
       const li = cards.listening;
       const cin = st.cardsIn || {};
@@ -427,7 +400,6 @@
       K.lf.style.opacity = clamp((0.65 - e) / 0.5).toFixed(3);
       mini.update({ pose: Math.floor(st.t / 1.6) % 3 === 2 ? "look-right" : "default", offset: 0 });
     }
-    // 卡片在舞台上的中心点 / 矩形（给连线、数据包、标签用）
     function center(k, x0, y0, scroll = 0) {
       const [x, y, w, h] = R[k];
       return { x: x0 + (x + w / 2) * scale, y: y0 + 46 + (y - scroll + h / 2) * scale };
@@ -439,8 +411,6 @@
     return { el: win, page, cards, update, center, rect, W: W + 5, H: 46 + H + 5, viewTop: 46, viewH: H };
   }
 
-  // ---------- 贴边连线：按元素实际尺寸算端点 ----------
-  // side: r l t b；首帧渲染时量尺寸（字体已就绪），之后不再变
   function box(el) {
     const x = el.__x ?? 0, y = el.__y ?? 0;
     return { x, y, w: el.offsetWidth, h: el.offsetHeight };
@@ -452,7 +422,6 @@
     if (side === "t") return [b.x + b.w * k, b.y];
     return [b.x + b.w * k, b.y + b.h];
   }
-  // 端点的控制柄沿各自那条边的法线方向伸出去：从下边出发先往下，进左边时从左边水平进，不会钩回来
   const NORMAL = { r: [1, 0], l: [-1, 0], t: [0, -1], b: [0, 1] };
   function link(svg, a, sa, b, sb, opts = {}) {
     const p = wire(svg, "M0 0", opts);
@@ -475,14 +444,12 @@
     };
     return p;
   }
-  // 每个场景第一次渲染时调用：把所有 link 的端点量出来
   function relink(svg) {
     if (svg.__linked) return;
     svg.__linked = true;
     for (const p of svg.querySelectorAll("path")) if (p.__link) p.__link();
   }
 
-  // 小地球 / 设备等图标块
   function iconBox(parent, name, { size = 64, tint = "#fff", stroke = 2 } = {}) {
     const el = L("", parent);
     el.style.cssText += `;width:${size}px;height:${size}px;border:2.5px solid var(--ink);background:${tint};display:flex;align-items:center;justify-content:center;box-shadow:4px 4px 0 rgba(31,30,27,.12)`;

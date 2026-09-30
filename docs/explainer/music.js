@@ -1,5 +1,3 @@
-// 配乐：100 BPM，四种风格（芯片 / 钢琴 / Lo-fi / 拨弦）共用同一份乐谱和和弦，全部用 Web Audio 合成，
-// 离线渲染成 WAV 再混音。编曲按章节登记（window.PLAN），换章的第一拍落一记镲，和像素转场对齐。
 (function () {
   const BPM = 100, BEAT = 60 / BPM, BAR = BEAT * 4;
   const NOTE = { C: 0, "C#": 1, D: 2, "D#": 3, E: 4, F: 5, "F#": 6, G: 7, "G#": 8, A: 9, "A#": 10, B: 11 };
@@ -14,7 +12,6 @@
   };
   const ROOT = { Fmaj7: "F2", G6: "G2", Em7: "E2", Am7: "A2", Dm7: "D2", G7sus4: "G2", G7: "G2", Cmaj7: "C2", G: "G2", A7: "A2", Cmaj9: "C2" };
 
-  // 四小节乐句：[和弦, 旋律]；旋律条目 [拍位, 时值, 音]
   const P = {
     A1: [["Fmaj7", [[0, 1, "E5"], [1, 1, "G5"], [2, 1, "A5"], [3, .5, "G5"], [3.5, .5, "E5"]]],
       ["G6", [[0, 2, "D5"], [2, .5, "B4"], [2.5, .5, "C5"], [3, 1, "D5"]]],
@@ -38,18 +35,15 @@
       ["Fmaj7", [[0, 2, "C6"], [2, 1, "A5"], [3, 1, "G5"]]],
       ["Cmaj7", [[0, 1, "E5"], [1, .5, "D5"], [1.5, .5, "E5"], [2, 1, "G5"], [3, 1, "B5"]]],
       ["G", [[0, 3, "D6"], [3.5, .5, "B5"]]]],
-    // 律动段：不放主旋律，只留铃声对位，给信息量大的画面让位
     D1: [["Dm7", [[0, 2, "F5"], [2, 2, "A5"]]], ["G7", [[0, 2, "G5"], [2, 2, "F5"]]],
       ["Cmaj7", [[0, 4, "E5"]]], ["A7", [[0, 2, "E5"], [2, 2, "C#5"]]]],
     OUT: [["Cmaj9", [[0, 1, "E5"], [1, 1, "G5"], [2, 1, "B5"], [3, 1, "D6"]]], ["Cmaj9", [[0, 4, "C6"]]]],
     INTRO: [["Fmaj7", []], ["G6", []]],
   };
 
-  // 乐句 + 编配 → 逐小节描述
   function ph(name, o = {}) {
     return P[name].map(([chord, mel], i) => ({ chord, mel, name, i, last: i === P[name].length - 1, ...o }));
   }
-  // 章节编曲表：和 scenes.js 里的章节一一对应（小节数必须一致）
   const PLAN = [
     { name: "序章", bars: [...ph("INTRO", { drums: "none", arp: "8", lead: "off", fadeArp: true }), ...ph("A1", { drums: "light" }), ...ph("A2", { drums: "mid" }), ...ph("B2", { drums: "full", fill: true })] },
     { name: "采集端", bars: [...ph("A1", { drums: "light", lead: "soft" }), ...ph("C1", { drums: "mid" }), ...ph("A2", { drums: "mid" }), ...ph("B1", { drums: "full" }), ...ph("B2", { drums: "half", lead: "soft" }), ...ph("B2", { drums: "full", fill: true })] },
@@ -87,7 +81,6 @@
     return buf;
   }
 
-  // from/to：只排这段时间里的音符（页面内播放时分段调度，导出时一次排完）
   function build(ctx, dest, t0, from = 0, to = Infinity) {
     const at = (bar, beat = 0) => t0 + bar * BAR + beat * BEAT;
     const inWin = (bar) => { const s = bar * BAR; return s + BAR > from - 2 && s < to; };
@@ -177,13 +170,11 @@
       const chordAt = (beat) => CH[beat < 2 ? c1 : c2];
       const lastBar = bar === BARS.length - 1;
 
-      // 铺底
       const halves = split ? [[c1, 0, 2], [c2, 2, 2]] : [[c1, 0, lastBar ? 5.5 : 4]];
       for (const [name, b0, len] of halves) for (const n of CH[name]) for (const dt of [-7, 7]) {
         voice({ wave: "sawtooth", freq: hz(midi(n) + k), start: at(bar, b0), dur: len * BEAT - 0.05, vol: B.drums === "none" && !B.outro ? 0.018 : 0.022,
           attack: 0.35, release: 0.7, lp: B.outro ? 1400 : 1000, pan: dt < 0 ? -0.3 : 0.3, sendVerb: 0.6, detune: dt });
       }
-      // 琶音
       const arp = B.arp || "8";
       if (arp !== "off" && !(B.outro && B.last)) {
         const step = arp === "16" ? 0.25 : 0.5;
@@ -197,13 +188,11 @@
             vol: (arp === "16" ? 0.024 : 0.03) * fadeIn, attack: 0.004, release: 0.1, lp: 2300, pan: i % 2 ? 0.35 : -0.35, sendDelay: 0.45, sendVerb: 0.2 });
         }
       }
-      // 贝斯
       if (B.drums !== "none" || B.outro) {
         const root = midi(ROOT[c2 === c1 ? c1 : "G7"]) + k;
         const pat = B.outro ? (B.last ? [] : [[0, 3.8, 0]]) : B.drums === "half" ? [[0, 2.4, 0], [2.5, 1.2, 7]] : [[0, 1.4, 0], [1.5, 0.45, 0], [2.5, 0.9, 7], [3.5, 0.45, 12]];
         for (const [b, len, iv] of pat) voice({ wave: "triangle", freq: hz(root + iv), start: at(bar, b), dur: len * BEAT, vol: 0.15, attack: 0.006, release: 0.06, lp: 900 });
       }
-      // 鼓
       const d = B.drums;
       if (B.chapterStart) crash(at(bar, 0));
       if (d === "light" || d === "mid" || d === "full") {
@@ -221,7 +210,6 @@
       if (B.fill && B.last) { snare(at(bar, 3.5), 0.14); snare(at(bar, 3.75), 0.17); }
       if (B.outro && B.i === 0) kick(at(bar, 0), 0.45);
 
-      // 主旋律
       const lead = B.lead || "pulse";
       if (lead !== "off") for (const [b, len, n] of B.mel) {
         const f = hz(midi(n) + k);
@@ -236,13 +224,8 @@
     });
   }
 
-  // =====================================================================
-  // 其他配乐风格：钢琴 / Lo-fi / 拨弦。和声、旋律、段落跟芯片版完全一样，只换编配和音色。
-  // 音色不在渲染时用振荡器现拼：先用 JS 把每个音高的波形算好（采样），再按乐谱摆放——更像，也更快。
-  // =====================================================================
   const TAU = Math.PI * 2;
   const clamp1 = (x, a, b) => Math.min(b, Math.max(a, x));
-  // 一个衰减的正弦泛音叠加进 d：两段指数衰减（先快后慢），正弦用递推算
   function partial(d, sr, f, amp, tA, tB, mixB, ph0) {
     if (f >= sr * 0.45) return;
     const w = TAU * f / sr, c = 2 * Math.cos(w);
@@ -270,7 +253,6 @@
     chs.forEach((d, i) => b.copyToChannel(d, i));
     return b;
   }
-  // 双二阶滤波（RBJ），给噪声类采样塑形
   function biquad(d, sr, type, f, q = 0.707) {
     const w = TAU * f / sr, cs = Math.cos(w), al = Math.sin(w) / (2 * q);
     let b0, b1, b2;
@@ -288,7 +270,6 @@
   const VL = [0.35, 0.55, 0.78];
   const vlOf = (v) => (v < 0.45 ? 0 : v < 0.66 ? 1 : 2);
 
-  // 钢琴：弦的非谐和泛音、击弦点造成的缺失泛音、先快后慢两段衰减、两根弦的微差拍、一点锤击声
   function pianoSample(sr, m, vl) {
     return sample(`pno:${m}:${vl}`, () => {
       const f0 = hz(m), vel = VL[vl];
@@ -314,7 +295,6 @@
       return toBuffer(sr, [L, R]);
     });
   }
-  // 电钢琴（Rhodes 味）：FM，调制深度随时间收，起音带一点金属的「叮」
   function rhodesSample(sr, m, vl) {
     return sample(`rh:${m}:${vl}`, () => {
       const f = hz(m), vel = VL[vl];
@@ -330,7 +310,6 @@
       return toBuffer(sr, [d]);
     });
   }
-  // 拨弦：拨弦位置决定泛音分布，高次泛音衰减得更快（尤克里里 / 拨奏低音）
   function pluckSample(sr, m, vl, kind = "uke") {
     return sample(`pl:${kind}:${m}:${vl}`, () => {
       const f0 = hz(m), vel = VL[vl], bass = kind === "bass";
@@ -351,7 +330,6 @@
       return toBuffer(sr, [d]);
     });
   }
-  // 钟琴：自由振动的金属条，泛音不成整数倍
   function glockSample(sr, m) {
     return sample(`gl:${m}`, () => {
       const f0 = hz(m), s = Math.pow(1047 / f0, 0.25), d = new Float32Array(Math.floor(sr * 2.4));
@@ -361,7 +339,6 @@
       return toBuffer(sr, [d]);
     });
   }
-  // Lo-fi 贝斯：正弦加一点二次谐波，轻微饱和
   function subBassSample(sr, m) {
     return sample(`sb:${m}`, () => {
       const f = hz(m), d = new Float32Array(Math.floor(sr * 1.6));
@@ -370,7 +347,6 @@
       return toBuffer(sr, [d]);
     });
   }
-  // 打击乐和底噪
   function drumSample(sr, kind) {
     return sample(`dr:${kind}`, () => {
       const rnd = mulberry32(kind.length * 7919 + kind.charCodeAt(0) * 31);
@@ -405,7 +381,7 @@
         d = mk(2.2);
         for (let i = 0; i < d.length; i++) d[i] = (rnd() * 2 - 1) * Math.exp(-i / (0.7 * sr));
         biquad(d, sr, "hp", 3800, 0.6); biquad(d, sr, "lp", 9000, 0.6);
-      } else { // crackle：黑胶底噪，稀疏的爆点加很轻的沙沙声，5 秒一循环
+      } else {
         d = mk(5);
         for (let i = 0; i < d.length; i++) d[i] = (rnd() * 2 - 1) * 0.05;
         biquad(d, sr, "bp", 3000, 0.4);
@@ -416,7 +392,6 @@
     });
   }
 
-  // 公共：总线（整体淡入淡出 → 可选饱和 / 低通 → 高通 → 压缩）和「放一个采样」
   function masterChain(ctx, dest, t0, { sat = 0, lp = 0, thr = -16, ratio = 2.5, level = 0.9 } = {}) {
     const m = ctx.createGain();
     m.gain.setValueAtTime(0.0001, t0); m.gain.exponentialRampToValueAtTime(level, t0 + 0.4);
@@ -454,7 +429,6 @@
   const rootOf = (name, k) => midi(ROOT[name]) + k;
   const beatOf = (b0, b, halves) => halves[halves.length > 1 && b >= 2 ? 1 : 0][0];
 
-  // ---------- 钢琴：左手分解和弦、右手旋律，换和弦时换踏板 ----------
   function buildPiano(ctx, dest, t0) {
     const sr = ctx.sampleRate;
     const master = masterChain(ctx, dest, t0, { thr: -18, ratio: 2.2 });
@@ -466,7 +440,7 @@
       const { halves } = barInfo(B);
       for (const [name, b0, len] of halves) {
         const T = tonesOf(name, k), r = rootOf(name, k);
-        const stop = lastBar ? null : at(b0 + len) + 0.06; // 换和弦时换一下踏板
+        const stop = lastBar ? null : at(b0 + len) + 0.06;
         const third = T[1] < r + 12 ? T[1] + 12 : T[1];
         if (B.chapterStart && b0 === 0) P(r - 12, at(0), 0.5, { stopAt: stop, send: 0.3 });
         if (d === "none" || B.outro) {
@@ -496,7 +470,6 @@
     });
   }
 
-  // ---------- Lo-fi：电钢琴和弦、下沉贝斯、慵懒的鼓（八分反拍往后拖），全程黑胶底噪 ----------
   function buildLofi(ctx, dest, t0) {
     const sr = ctx.sampleRate;
     const master = masterChain(ctx, dest, t0, { sat: 1.6, lp: 5200, thr: -17, ratio: 3, level: 0.42 });
@@ -545,7 +518,6 @@
     });
   }
 
-  // ---------- 拨弦：尤克里里扫弦、拨奏低音、钟琴唱旋律，沙锤和木鱼打拍 ----------
   function buildPluck(ctx, dest, t0) {
     const sr = ctx.sampleRate;
     const master = masterChain(ctx, dest, t0, { thr: -17, ratio: 2.5, level: 0.6 });
@@ -622,14 +594,12 @@
     return btoa(bin);
   }
 
-  // ---------- 音效：跟着画面时间轴落点，音高取当下和弦里的音 ----------
   function chordAt(t) {
     const bar = Math.max(0, Math.min(BARS.length - 1, Math.floor(t / BAR)));
     const B = BARS[bar], beat = (t - bar * BAR) / BEAT;
     const [c1, c2] = B.chord.includes("/") ? B.chord.split("/") : [B.chord, B.chord];
     return CH[beat < 2 ? c1 : c2].map((n) => midi(n) + B.key);
   }
-  // 取和弦里第 i 个音，抬到 lo..lo+12 这个八度区间
   function chordTone(t, i, lo = 72) {
     const tones = chordAt(t);
     let n = tones[((i % tones.length) + tones.length) % tones.length];
@@ -638,7 +608,6 @@
     return n;
   }
 
-  // palette：chip 用方波脉冲波，soft 换成三角波（配钢琴、Lo-fi、拨弦时不刺耳）
   function buildSfx(ctx, dest, cues, palette = "chip") {
     const out = ctx.createGain(); out.gain.value = 1; out.connect(dest);
     const verb = ctx.createConvolver(); verb.buffer = impulse(ctx, 1.4, 3.5, 11);
@@ -650,8 +619,6 @@
     const pulse25 = pulseWave(ctx, 0.25);
     const rnd = mulberry32(2026);
 
-    // 各类音效的响度档位（按 levels.mjs 实测「音效峰值 − 让位后配乐 RMS」调出来的倍数）：
-    // 重音比配乐高约 10 dB，常规动作高 4–7 dB，细碎的（打字、蹦跳、笔迹）和配乐齐平
     const GAIN = {
       talk: 4.3, hop: 4.8, step: 6, draw: 3.3, mark: 3.3, pop: 3.8, tag: 2.3, tick: 2.4, send: 3.3, arrive: 3.8, bubble: 3.4, poof: 2.3,
       swoosh: 2.5, whoosh: 3.5, wipe: 4, riser: 2.5, clock: 3.5, leap: 4.5, land: 1.3, key: 1, station: 1.5, coin: 2.8, sparkle: 3,
@@ -686,7 +653,7 @@
       g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + a); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
       const p = ctx.createStereoPanner(); p.pan.value = Math.max(-1, Math.min(1, pan));
       let src = fl;
-      if (am) { // 颤音：笔尖刮纸、闹铃那种一抖一抖
+      if (am) {
         const lfo = ctx.createOscillator(); lfo.frequency.value = am; const lg = ctx.createGain(); lg.gain.value = 0.5;
         const vca = ctx.createGain(); vca.gain.value = 0.5; lfo.connect(lg); lg.connect(vca.gain); fl.connect(vca); src = vca;
         lfo.start(t); lfo.stop(t + dur + 0.02);
@@ -705,7 +672,7 @@
       const pan = c.x != null ? Math.max(-0.75, Math.min(0.75, (c.x - 960) / 960 * 0.75)) : 0;
       const n = c.n || 0;
       switch (c.type) {
-        case "talk": // Clawd 的「对白」：短促的方波，取和弦音
+        case "talk":
           tone(t, T(Math.floor(rnd() * 4), 76), 0.04, { wave: pulse25, vol: 0.02, lp: 2400, pan: (rnd() - 0.5) * 0.2, send: 0.04 }); break;
         case "bubble":
           tone(t, T(0, 72), 0.07, { vol: 0.05, to: T(2, 72), send: 0.12 }); break;
@@ -721,14 +688,13 @@
           hiss(t, 0.07, { vol: 0.04, f: 1600, q: 1.2 }); break;
         case "wipe":
           hiss(t, 0.84, { vol: 0.08, f: 400, f2: 5200, q: 1.1, a: 0.35, send: 0.2 }); break;
-        // ---- 画面事件（自动分析得来）----
-        case "pop": // 卡片弹出：和弦音往上走
+        case "pop":
           tone(t, T(n, 72), 0.06, { vol: 0.05, to: T(n + 1, 72) * 1.01, send: 0.12, pan }); break;
         case "tag":
           tone(t, T(n + 2, 79), 0.035, { vol: 0.03, send: 0.08, pan }); break;
-        case "tick": // 主页里的小卡片依次亮起
+        case "tick":
           hiss(t, 0.02, { vol: 0.04, type: "highpass", f: 4500, pan }); tone(t, T(n, 84), 0.02, { vol: 0.012, pan, send: 0.05 }); break;
-        case "draw": case "mark": // 笔尖划过
+        case "draw": case "mark":
           hiss(t, 0.22, { vol: 0.022, f: 3200, q: 2.5, pan, am: 38 }); break;
         case "key":
           hiss(t, 0.018, { vol: 0.06, type: "highpass", f: 3200 }); tone(t, 1900 + rnd() * 300, 0.008, { wave: "square", vol: 0.014, lp: 6000, send: 0 }); break;
@@ -736,7 +702,7 @@
           tone(t, T(0, 79), 0.06, { wave: pulse25, vol: 0.026, to: T(1, 79), lp: 3000, echoSend: 0.4, pan }); hiss(t, 0.16, { vol: 0.02, f: 900, f2: 2600, pan }); break;
         case "arrive":
           tone(t, T(2, 79), 0.05, { vol: 0.035, to: T(0, 79), send: 0.1, pan }); break;
-        case "stamp": // 印章：闷响 + 纸面一拍
+        case "stamp":
           thump(t, 0.42, 110, 42, 0.18); hiss(t, 0.09, { vol: 0.16, f: 1300, q: 0.9, pan }); hiss(t + 0.02, 0.05, { vol: 0.05, type: "highpass", f: 5000, pan }); break;
         case "ok":
           tone(t, T(0, 79), 0.08, { vol: 0.05, send: 0.2 }); tone(t + 0.09, T(1, 79), 0.16, { vol: 0.05, send: 0.25, echoSend: 0.3 }); break;
@@ -748,11 +714,11 @@
           hiss(t, 0.32, { vol: 0.05, f: 700, f2: 2600, q: 1.0, a: 0.12 }); break;
         case "whoosh":
           hiss(t, 0.55, { vol: 0.07, f: 350, f2: 3200, q: 0.9, a: 0.2, send: 0.15, pan }); break;
-        case "riser": // 起势：c.dur 秒内从低往高扫，落点在 t + dur
+        case "riser":
           hiss(t, c.dur || 1.2, { vol: 0.07, f: 300, f2: 6000, q: 1.4, a: (c.dur || 1.2) * 0.9, send: 0.25 }); break;
         case "thump":
           thump(t, 0.2, 80, 55, 0.09); thump(t + 0.16, 0.14, 72, 50, 0.09); break;
-        case "heartbeat": // 心跳：扑通扑通
+        case "heartbeat":
           thump(t, 0.22, 90, 50, 0.08); thump(t + 0.17, 0.15, 80, 48, 0.08); break;
         case "zap":
           tone(t, 300, 0.12, { wave: pulse25, vol: 0.025, to: 2200, lp: 3000, echoSend: 0.3 }); break;
@@ -764,7 +730,7 @@
           tone(t, T(n, 76), 0.12, { vol: 0.055, send: 0.2, echoSend: 0.25, pan }); tone(t, T(n, 76) * 2, 0.05, { wave: "sine", vol: 0.018, pan }); break;
         case "chime":
           tone(t, T(0, 84), 0.3, { wave: "sine", vol: 0.06, send: 0.35 }); tone(t + 0.08, T(2, 84), 0.4, { wave: "sine", vol: 0.05, send: 0.4, echoSend: 0.3 }); break;
-        case "coin": // 成功：两个音一跳
+        case "coin":
           tone(t, T(1, 84), 0.07, { wave: pulse25, vol: 0.035, lp: 4000, send: 0.1 }); tone(t + 0.07, T(1, 84) * 1.335, 0.28, { wave: pulse25, vol: 0.035, lp: 4000, send: 0.25, echoSend: 0.2 }); break;
         case "fanfare":
           for (let k = 0; k < 4; k++) tone(t + k * 0.09, T(k, 72), 0.12, { wave: pulse25, vol: 0.035, lp: 3200, send: 0.2 });
@@ -772,17 +738,16 @@
           break;
         case "clock":
           hiss(t, 0.012, { vol: 0.025, type: "highpass", f: 6000 }); break;
-        case "alarm": // 闹钟：两个高音快速交替，一抖一抖
+        case "alarm":
           for (let k = 0; k < 8; k++) tone(t + k * 0.07, k % 2 ? 1760 : 2093, 0.05, { wave: "square", vol: 0.012, lp: 5000, send: 0.05 }); break;
-        case "click": // 小锁扣上
+        case "click":
           hiss(t, 0.012, { vol: 0.08, type: "highpass", f: 3000 }); hiss(t + 0.045, 0.02, { vol: 0.06, type: "bandpass", f: 1800, q: 3 }); break;
-        case "scan": // 扫描光条
+        case "scan":
           tone(t, 500, c.dur || 0.8, { wave: "sine", vol: 0.025, to: 1400, send: 0.2, echoSend: 0.2 }); hiss(t, c.dur || 0.8, { vol: 0.015, f: 2400, q: 6, am: 14 }); break;
-        case "flip": // 翻牌
+        case "flip":
           for (let k = 0; k < 6; k++) hiss(t + k * 0.045, 0.018, { vol: 0.05 - k * 0.005, type: "bandpass", f: 2600, q: 2 }); break;
-        case "hash": // 乱码滚动
+        case "hash":
           for (let k = 0; k < 10; k++) tone(t + k * 0.05, 1200 + rnd() * 1400, 0.012, { wave: "square", vol: 0.008, lp: 6000, send: 0 }); break;
-        // ---- 表情 ----
         case "emote-!":
           tone(t, T(0, 79), 0.05, { wave: "square", vol: 0.03, lp: 3000, to: T(2, 79) * 2, send: 0.12 }); break;
         case "emote-?":
@@ -793,25 +758,24 @@
           tone(t, T(n, 79), 0.12, { wave: "sine", vol: 0.035, send: 0.25, echoSend: 0.3 }); break;
         case "emote-drop":
           tone(t, 1100, 0.12, { wave: "sine", vol: 0.035, to: 380, send: 0.1 }); break;
-        case "emote-z": // 打呼：低通噪声一吸一呼
+        case "emote-z":
           hiss(t, 0.5, { vol: 0.02, type: "lowpass", f: 500, f2: 900, a: 0.3 }); break;
         case "emote-ok":
           tone(t, T(0, 79), 0.07, { vol: 0.045, send: 0.2 }); tone(t + 0.08, T(2, 79), 0.14, { vol: 0.045, send: 0.25 }); break;
         case "emote-no":
           tone(t, 220, 0.09, { wave: "square", vol: 0.03, lp: 1400 }); break;
-        // ---- 粒子 ----
-        case "fx-confetti": // 礼花：一声啪 + 一串亮晶晶
+        case "fx-confetti":
           hiss(t, 0.09, { vol: 0.2, f: 1500, q: 0.7, pan }); thump(t, 0.16, 160, 60, 0.06);
           for (let k = 0; k < 12; k++) tone(t + 0.05 + k * 0.045 + rnd() * 0.02, T(Math.floor(rnd() * 4), 84 + (k % 2) * 12), 0.035, { wave: "sine", vol: 0.018, send: 0.35, pan: (rnd() - 0.5) * 1.2 });
           break;
         case "fx-dust":
           hiss(t, 0.14, { vol: 0.08, type: "lowpass", f: 700, pan }); break;
-        case "fx-spark": // 碰撞：一声脆响（低频闷响交给印章，两个不叠）
+        case "fx-spark":
           tone(t, 2637, 0.25, { wave: "sine", vol: 0.03, send: 0.3, pan }); tone(t, 3520 * 1.01, 0.18, { wave: "sine", vol: 0.02, send: 0.3, pan });
           hiss(t, 0.05, { vol: 0.1, type: "highpass", f: 3500, pan }); break;
         case "fx-stars":
           for (let k = 0; k < 4; k++) tone(t + 0.05 + k * 0.08, T(k, 91), 0.05, { wave: "sine", vol: 0.02, send: 0.35, echoSend: 0.3, pan }); break;
-        case "fx-rings": // 广播：一圈圈往外
+        case "fx-rings":
           for (let k = 0; k < 3; k++) tone(t + k * 0.2, T(k, 76), 0.18, { wave: "sine", vol: 0.04 - k * 0.008, send: 0.35, echoSend: 0.25, pan }); break;
       }
     }
@@ -821,7 +785,6 @@
     buildSfx(ctx, ctx.destination, cues, palette);
     return ctx.startRendering();
   }
-  // 配乐增益曲线：旁白期间压低一点；dips 是「重音前收住」——t 之前 pre 秒压到 depth，t 时回来
   function duckBuffer(bubbles, dips = [], sampleRate = 44100, depth = 0.72, ramp = 0.25) {
     const len = Math.ceil(DURATION * sampleRate);
     const ctx = new OfflineAudioContext(2, len, sampleRate);

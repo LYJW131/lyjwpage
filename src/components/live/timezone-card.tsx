@@ -86,10 +86,6 @@ function handAngles(hour: number, minute: number, second: number) {
   };
 }
 
-/**
- * 首帧角度写在渲染里，和 RSC 快照同一时刻，针一开始就在。
- * 挂载后再 rAF 改 --angle，不要卸掉重挂（重挂的第一帧角度是 0°）。
- */
 function AnalogClock({
   timezone,
   hour,
@@ -109,11 +105,6 @@ function AnalogClock({
   const minuteRef = useRef<HTMLDivElement>(null);
   const secondRef = useRef<HTMLDivElement>(null);
   const angles = handAngles(hour, minute, second + (now % 1000) / 1000);
-  /*
-   * 用 useReducedMotion 而不是自己 matchMedia 取一次值：会话中途打开系统的
-   * 「减弱动态效果」也要停掉扫秒。全站其它组件用的都是这个。SSR 下它返回 null，
-   * 首帧不动针由 live 门控保证，不引入水合差异。
-   */
   const reduced = useReducedMotion();
 
   useEffect(() => {
@@ -181,11 +172,7 @@ function AnalogClock({
   );
 }
 
-/**
- * 宽高写死。Safari 对 stretch + aspect-ratio / h-full 会把方盘按剩余行宽放大，
- * 圆心被挤出卡片，只剩左侧一条边。
- * 尺寸类对齐这张卡扣掉 padding 后的正方形内容盒，activity-card 的环用同一组尺寸类。
- */
+// Safari 的 stretch 配合 aspect-ratio/h-full 会错误放大方盘，必须显式宽高。
 function ClockShell({
   live = false,
   children,
@@ -216,18 +203,12 @@ export function TimezoneCard({
   fallback: StatusResponse<TimezonePayload>;
   className?: string;
 }) {
-  /**
-   * 首帧用缓存里的 snapshotAt，不能在页面里 Date.now()（挡预渲染），
-   * 也不能用 0（1970）。服务端和 hydrate 同一份数，针和数字一开始就在。
-   * 挂载后再用 useMountedAt / 计时器接到真钟。
-   */
   const mountedAt = useMountedAt();
   const [ticked, setTicked] = useState(0);
   const snapshotAt = fallback.ok ? fallback.data.snapshotAt : 0;
   const now = ticked || mountedAt || snapshotAt;
 
   useEffect(() => {
-    // 对齐整秒再开始跑，避免从挂载时刻起每次都在半秒处翻数字。
     let interval: number | undefined;
     const timeout = window.setTimeout(() => {
       setTicked(Date.now());
@@ -240,7 +221,6 @@ export function TimezoneCard({
     };
   }, []);
 
-  // 有合法 Mac IANA 就用，没有才回退 site.timezone。不看上报器在不在线。
   const {
     identifier: timezone,
     offsetSeconds,

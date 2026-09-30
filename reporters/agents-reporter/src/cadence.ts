@@ -11,10 +11,6 @@ function count(body: Record<string, unknown>, field: keyof Audience): number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : 0;
 }
 
-/**
- * api Worker 的 `GET /count` 一次回两个数：`online`（可见页面）与 `connections`（开着的页面）。
- * 读不到、超时、格式不对一律当没人，只会让节奏变慢；某一个字段不合法只降它自己。
- */
 async function readAudience(url: string, timeoutMs: number, request: typeof fetch): Promise<Audience> {
   if (!url) return { online: 0, connections: 0 };
   const scope = "head-count";
@@ -42,7 +38,6 @@ export async function nextDelay(
   return cadence.idleIntervalMs;
 }
 
-/** 长档每个快档重查一次，发现更快档立即采集；人数减少不延后已定的心跳。 */
 export async function waitForNextRound(
   liveIntervalMs = config.cadence.liveIntervalMs,
   runtime = {

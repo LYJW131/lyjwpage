@@ -5,30 +5,10 @@ import type { WatchingItem, WatchingMedia, WatchingPlayMethod } from "@/lib/type
 
 import { hasStoredImage, type ImageBucket } from "./r2-assets";
 
-/**
- * Emby「最近在看」。
- *
- * 本站不发任何 Emby 请求 —— Emby 在内网里，云端够不着。续播列表、播放位置、
- * 海报全部由 NAS 上的推送代理送进来（reporters/emby-reporter → /api/ingest/emby）。
- * Emby 自己的播放 webhook 也先发给那个代理，由它去查会话再上报 —— Emby 的 webhook
- * 配置项加不了自定义请求头，直发站点就只能开一个不鉴权的入口。
- *
- * 这个文件是上报入口（workers/ingress）那一半：把推来的东西逐字段收敛、确认图片
- * 已经落进 R2。落库、差分和推送在状态核心（workers/api/src/stores/emby.ts）。
- */
 
-/** 图片键由代理拼（itemId:kind:tag:height），这里只挡住不像键的东西 */
 const IMAGE_KEY = /^[A-Za-z0-9:_.-]{1,160}$/;
 
-/* ── 以下是推送代理那一侧的入口 ──────────────────────────────── */
 
-/**
- * 代理推来的一项。
- *
- * 只带 Emby 说了什么，不带怎么显示：标题拼法和「在 Emby 里打开」的链接都在
- * 这一侧做 —— 前者是展示逻辑，后者要用 EMBY_PUBLIC_URL，那是浏览器侧的地址，
- * 代理不该知道。
- */
 type ReportItem = {
   id: string;
   name: string;
@@ -44,15 +24,7 @@ type ReportItem = {
   backdropKey: string | null;
 };
 
-/**
- * 三个会撞上 Object.prototype 的名字。
- *
- * 映射是个普通对象，`objectKeys["__proto__"] = "…"` 那一下被 setter 吃掉、什么也
- * 没存（值是字符串，构不成原型污染），但**读**的那一下拿回来的是 Object.prototype
- * 本身 —— 真值，于是 publicAssetPath 把它拼成 "[object Object]"，产出一个坏路径。
- * 挡在入口最省事：挡住了 posterKey / backdropKey 就永远不会是这三个词，读取侧
- * 也就不会去查它们。
- */
+// 普通对象读取这些键会命中原型，可能把 Object.prototype 当作图片地址。
 const RESERVED_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 
 function imageKey(value: unknown): string | null {
@@ -87,15 +59,9 @@ function normalizeType(type: string | null): WatchingItem["type"] {
   return "Other";
 }
 
-/**
- * 跳转链接指向 EMBY_PUBLIC_URL，那是浏览器能访问到的地址。
- * 没配就不给链接 —— 这里再没有内网地址可退，退了也是个点不开的链接。
- */
 function link(item: ReportItem): string | null {
   const base = (process.env.EMBY_PUBLIC_URL ?? "").replace(/\/+$/, "");
   if (!base || !item.id) return null;
-  // 两个 id 都是代理原样转来的任意字符串，不编码的话带 # / & / 空格的那些会把
-  // 后面的查询串截断，拼出一个点不开的链接
   const id = encodeURIComponent(item.id);
   const server = item.serverId ? `&serverId=${encodeURIComponent(item.serverId)}` : "";
   return `${base}/web/index.html#!/item?id=${id}${server}`;
@@ -106,7 +72,6 @@ function normalize(item: ReportItem): StoredWatchingItem {
   let subtitle: string;
 
   if (item.type === "Episode") {
-    // 剧集展示剧名当标题，「S1:E5 - 集标题」当副标题
     title = item.seriesName || item.name;
     const label =
       item.season != null && item.episode != null
@@ -134,24 +99,12 @@ function normalize(item: ReportItem): StoredWatchingItem {
   };
 }
 
-/**
- * 接收上报器已经写入 R2 的对象键；站点不接触图片字节。
- *
- * 只并发确认候选键对应的 R2 对象还在，返回确认过的 `{ key, objectKey }`。映射的合并与
- * 按 `IMAGE_LIMIT` 裁剪在状态核心提交时做（workers/api/src/stores/emby.ts 的 mergePreparedImages），
- * 那边才读得到最新映射。
- *
- * 确认走并发：`hasStoredImage` 未命中正缓存（期限见 r2-assets 的 `CONFIRMED_TTL_MS`）时要跨网发一次
- * R2 HEAD。一次补图可以带一整批；HEAD 之间互不相干，也不进入 StateHub 的串行提交队列。
- */
 async function prepareImages(value: unknown, bucket: ImageBucket): Promise<Array<{ key: string; objectKey: string }>> {
   if (!Array.isArray(value) || !value.length) return [];
 
   const candidates: { key: string; objectKey: string }[] = [];
   for (const entry of value) {
     const raw = object(entry);
-    // imageKey 是 Emby 侧的键（itemId:kind:tag:height），objectKey 是 R2 上那份
-    // 字节的内容地址。两个键挨在一起，名字必须各自说清是谁的键。
     const key = imageKey(raw?.imageKey);
     if (!key || !raw) continue;
 
@@ -176,10 +129,6 @@ export type PreparedEmbyReport = {
   images: Array<{ key: string; objectKey: string }>;
 };
 
-/**
- * 纯字段收敛和 R2 HEAD 都在上报入口完成，不进入 StateHub 的提交队列。
- * `images` 是上报器直传的那个桶（上报入口的 `env.IMAGES`），只 HEAD。
- */
 export async function prepareEmbyReport(
   body: unknown,
   receivedAt: number,
@@ -201,10 +150,6 @@ export async function prepareEmbyReport(
 }
 
 
-/**
- * 规格里的字符串都是编码名、语言代码这类短标识。挡个长度，别让一条上报把任意
- * 长的文本存进 SQLite 再广播给每个在线的浏览器。
- */
 const LABEL_LIMIT = 64;
 
 function label(value: unknown): string | null {
@@ -212,7 +157,6 @@ function label(value: unknown): string | null {
   return raw ? raw.slice(0, LABEL_LIMIT) : null;
 }
 
-/** 非负整数才收：宽高、声道数、位深、码率没有小数和负数 */
 function count(value: unknown): number | null {
   const raw = number(value);
   return raw != null && raw >= 0 ? Math.round(raw) : null;
@@ -234,10 +178,6 @@ function playMethod(value: unknown): WatchingPlayMethod | null {
   return raw && PLAY_METHODS.has(raw as WatchingPlayMethod) ? (raw as WatchingPlayMethod) : null;
 }
 
-/**
- * 上报器已经按会话选好了音轨和字幕，这里只按契约逐字段收敛，不猜、不补。
- * 整块不是对象就当没带，位置更新照收。
- */
 function playbackMedia(value: unknown): WatchingMedia | null {
   const raw = object(value);
   if (!raw) return null;
@@ -279,7 +219,6 @@ function playbackMedia(value: unknown): WatchingMedia | null {
   };
 }
 
-/** 收下一次播放状态：先算，写留给 commit。`state` 为 null 表示没有会话在播了 */
 export type PreparedEmbyPlaying = {
   outcome: "updated" | "cleared";
   state: EmbyNowPlaying | null;
@@ -295,10 +234,7 @@ function preparePlaying(value: unknown, receivedAt: number): PreparedEmbyPlaying
 
   const reported = reportItem(raw.item);
   const item = reported ? normalize(reported) : null;
-  /**
-   * 时间戳取本站收到的时刻，不用代理给的。
-   * 进度是从这个锚点按真实时间往前推算的，两台机器的时钟差多少，推算就偏多少。
-   */
+  // 进度用本站接收时刻作锚，避免上报器时钟偏差被算进播放进度。
   const state: EmbyNowPlaying = {
     itemId,
     paused: raw.paused === true,

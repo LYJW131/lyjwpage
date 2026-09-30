@@ -1,4 +1,4 @@
-/* Only cache the offline document. Live HTML, RSC, API and media stay on the network. */
+/* Live HTML, RSC, API and media must remain network-only to avoid stale application state. */
 const OFFLINE_CACHE = "lyjw-offline-v1";
 const OFFLINE_URL = "/offline.html";
 

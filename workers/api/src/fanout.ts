@@ -19,7 +19,6 @@ async function publishPending(pending: PendingEvent): Promise<void> {
   try { const event = await pending; if (event) await publish(event); }
   catch (error) { console.error("[live]", error); }
 }
-/** 确认落库后才响应成功；广播与首屏 stale 通知在后台完成。 */
 export async function fanout({ writes = [], events = [], notify = [], listening = [], tags = [] }: Fanout): Promise<void> {
   await Promise.all(writes);
   if (activeIngestEffectCollector()) {

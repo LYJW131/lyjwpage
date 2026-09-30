@@ -9,7 +9,6 @@ function fromMemory(): Stored | null {
 
 async function readLatest(): Promise<Stored | null> {
   const answered = await askStorage((storage) => storage.get(K_LATEST));
-  // 存储答不上话，只能信内存
   if (!answered.reachable) return fromMemory();
 
   if (answered.value) {
@@ -34,10 +33,6 @@ async function readLatest(): Promise<Stored | null> {
   return fallback.persisted ? null : fromMemory();
 }
 
-/**
- * 上一份快照。和充电头那边的 readChargerState 同一个用法：调用方在信封解析完
- * 就发车，和这封的其它读重叠，到充电宝分支再接住。
- */
 export function readPowerBankState(): Promise<Stored | null> {
   return readLatest();
 }
@@ -47,7 +42,6 @@ export async function getStored() {
   return latest ? { status: latest.status, receivedAt: latest.receivedAt } : null;
 }
 
-/** 最近一次推送的到达时刻，0 表示从没收到过 */
 export async function lastPushReceivedAt() {
   const raw = await withStorage(async (storage) => storage.get(K_LAST_PUSH), null);
   const fromStorage = raw ? Number(raw) : 0;

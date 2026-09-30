@@ -1,6 +1,5 @@
 import type { StateStore } from "./store.js";
 
-/** 容器里的配置和本地状态。令牌与上报地址由环境变量给，状态在 `STATE`。 */
 export interface Env {
   STATE: StateStore;
   SITE_INGEST_URL: string;
@@ -9,9 +8,7 @@ export interface Env {
   PSN_LANGUAGE?: string;
   PSN_ACCOUNT_ID?: string;
   PLAYED_GAMES_LIMIT?: string;
-  /** 逗号或空白分隔的 titleId（PPSA… / CUSA…），不上报、不占最近窗口。 */
   PLAYSTATION_HIDDEN_TITLE_IDS?: string;
-  /** "true" 时信封只打进日志，不 POST */
   PS_DRY_RUN?: string;
   PSN_NPSSO?: string;
 }

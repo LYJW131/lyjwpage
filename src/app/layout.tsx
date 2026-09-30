@@ -1,5 +1,4 @@
 import type { Metadata, Viewport } from "next";
-// 用本地字体包而不是 next/font/google：构建时不依赖网络
 import { GeistMono } from "geist/font/mono";
 
 import { PwaRegistration } from "@/components/pwa-registration";
@@ -26,7 +25,6 @@ export const metadata: Metadata = {
     description: site.description,
     url: site.url,
     siteName: site.name,
-    // OG 不跟着 <html lang> 走，得自己报一次
     locale: "en_US",
     type: "website",
   },
@@ -44,13 +42,12 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
-  // 没配 api Worker 时 liveSocketUrl 返回 null，那段内联脚本整个不渲染
   const earlyLiveSocket = liveSocketUrl();
 
   return (
     <html
       lang="en"
-      // next-themes 会往这里塞 class，交给它管，避免 hydration 报错
+      // next-themes 在水合前改写 class。
       suppressHydrationWarning
       className={`${GeistMono.variable} h-full`}
     >
@@ -60,10 +57,6 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             __html: `try{var t=localStorage.getItem("theme")||"system";document.documentElement.dataset.themeChoice=t;var h=localStorage.getItem(${JSON.stringify(HEATMAP_STORAGE_KEY)});document.documentElement.dataset.heatmap=h==="commit"?"commit":"tokens"}catch(e){}`,
           }}
         />
-        {/*
-          推送那条 WebSocket（也带着在线人数）在这儿就起手，不等 hydration ——
-          理由和交接方式见 lib/live-socket-boot 与 hooks/use-live-events。
-        */}
         {earlyLiveSocket ? (
           <script dangerouslySetInnerHTML={{ __html: earlyLiveSocketScript(earlyLiveSocket) }} />
         ) : null}
@@ -75,10 +68,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       </head>
       <body className="flex min-h-full flex-col">
         <PsPlusSprite />
-        {/* 封面图（LCP）的域名，由 React 提升进 head。
-            不能加 crossOrigin：那是普通 <img> 的 no-cors 请求，
-            带 crossorigin 的连接它复用不上，等于白连一次。
-            海报和图标不用预连：它们走同源 `/img/`，复用页面这条连接 */}
+        {/* 普通图片使用 no-cors；带 crossOrigin 的预连接无法被它复用。 */}
         <link rel="preconnect" href="https://is1-ssl.mzstatic.com" />
         <ThemeProvider>{children}</ThemeProvider>
         <PwaRegistration />

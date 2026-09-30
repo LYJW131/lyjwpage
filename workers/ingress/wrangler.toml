@@ -1,88 +1,63 @@
 name = "ingress"
 main = "src/index.ts"
 compatibility_date = "2026-09-08"
-# node:crypto（HomePod 曲目身份的哈希）要 nodejs_compat；Emby 链接的 EMBY_PUBLIC_URL 和
-# 预览开关 PREVIEW_WORKER 从 process.env 读，所以两个开关都要
 compatibility_flags = ["nodejs_compat", "nodejs_compat_populate_process_env"]
 workers_dev = true
 
-# 上报器打的是 `https://ingest.homepage.lyjw.llc`，前面挡着 Cloudflare Access（应用「lyjwpage ingest」）：
-# 上报器凭各自的 service token 进来，这里再验 Access 签的 JWT，见 src/access-auth.ts。
-# Access 应用按主机名挂，跟着域名走。
 routes = [
   { pattern = "ingest.homepage.lyjw.llc", custom_domain = true }
 ]
 
 [vars]
-# Emby 条目「在 Emby 里打开」的链接前缀，prepare 时拼进条目（浏览器侧地址）
 EMBY_PUBLIC_URL = "https://emby.lyjw131.com"
-# Sentry：沿用 api-worker 项目的写入地址（DSN 公开，不是秘密），事件带 worker: ingress 标签区分。
-# 本地 wrangler.test.toml 不配，本地就不上报。
 SENTRY_DSN = "https://13ba806bda9ae5a9086576b2e3d23cfb@o4511888459890688.ingest.us.sentry.io/4512132602855424"
-# Cloudflare Access：team 域名即 JWT 签发方，AUD 是「lyjwpage ingest」应用的受众标签。都不是秘密。
 ACCESS_TEAM_DOMAIN = "https://lyjw2007.cloudflareaccess.com"
 ACCESS_AUD = "a1557bcf1114491b462c7ee722ae97032405c43fa831812c8403e6d7366fba01"
 
-# 每把 service token（client id）能做什么。Access 策略只管「是不是这几把之一」，
-# 写哪个来源由这张表定：拿 Emby 的 token 写 mac 会被拒成 403。client id 不是秘密；
-# 新增 token 在 Zero Trust 控制台建好、加进策略，再把 client id 登记到这里。
-# 云端 Claude 遥测使用独立 token，仅授予 ingest:agents-otlp。
 [vars.ACCESS_CLIENTS]
-"259e8eb2abeb45b1d0033c69e0989fb5.access" = ["ingest:quest"]                          # lyjwpage-quest
-"f9ace27b1709a23e651094cca5d41013.access" = ["ingest:playstation"]                     # lyjwpage-playstation
-"267c1f87539a30657986e9d719663dcd.access" = ["ingest:agents-otlp"]                    # lyjwpage-claude-cloud
-"4ec7a9e98b7d3bc641c5eb97fddcb4f7.access" = ["ingest:mac"]                             # lyjwpage-mac
-"8dfbbba29d501f75ff7763a598d6ada0.access" = ["ingest:iphone"]                          # lyjwpage-iphone
-"01031f46aaeb93099ea40287f2c85f61.access" = ["ingest:emby"]                            # lyjwpage-emby
-"fd30812b4dfd526c6ffd7801f07a6563.access" = ["ingest:server"]                          # lyjwpage-server
-"ef47dda27da6a8428cee4cdebbf2951b.access" = ["ingest:agents"]                          # lyjwpage-agents
-"04fb01940873a28a7ef42f9b5bfbad9d.access" = ["ingest:homepod"]                         # lyjwpage-home-assistant（HomePod）
-"c9437b45b762a36199e243df0df35ec4.access" = ["internal:site-deployed"]                 # lyjwpage-github-actions
+"259e8eb2abeb45b1d0033c69e0989fb5.access" = ["ingest:quest"]
+"f9ace27b1709a23e651094cca5d41013.access" = ["ingest:playstation"]
+"267c1f87539a30657986e9d719663dcd.access" = ["ingest:agents-otlp"]
+"4ec7a9e98b7d3bc641c5eb97fddcb4f7.access" = ["ingest:mac"]
+"8dfbbba29d501f75ff7763a598d6ada0.access" = ["ingest:iphone"]
+"01031f46aaeb93099ea40287f2c85f61.access" = ["ingest:emby"]
+"fd30812b4dfd526c6ffd7801f07a6563.access" = ["ingest:server"]
+"ef47dda27da6a8428cee4cdebbf2951b.access" = ["ingest:agents"]
+"04fb01940873a28a7ef42f9b5bfbad9d.access" = ["ingest:homepod"]
+"c9437b45b762a36199e243df0df35ec4.access" = ["internal:site-deployed"]
 
-# 状态核心（api Worker）对内的 RPC，契约见 shared/state-core.ts：
-# 实时那一半的提交、初始化检查、version 广播、首屏失效。
 [[services]]
 binding = "CORE"
 service = "api"
 entrypoint = "StateCore"
 
-# 采集 Worker 的 RPC（shared/collector.ts）：站点部署通知进来后立刻重拉部署列表
 [[services]]
 binding = "COLLECTOR"
 service = "collector"
 entrypoint = "Collector"
 
-# 上报器直传图片的那个桶。这里只 HEAD，回执告诉上报器哪些图还没到（Emby）
 [[r2_buckets]]
 binding = "IMAGES"
 bucket_name = "lyjw-homepage"
 
-# 可滞后层（shared/lag.ts）：落地节点、限额、账本、时区、圆环读数、训练列表由这里直接写
 [[kv_namespaces]]
 binding = "LAG"
 id = "e9c72a9517884aeb95db7386b630a691"
 
-# 共享凭据（shared/credentials.ts）：Mac 推来的 Apple Music user token 由这里写
 [[kv_namespaces]]
 binding = "CREDENTIALS"
 id = "c24d1670d97b4649ab5aa4c0944dfbfc"
 
-# 长期归档：上报的那几张表（训练、圆环日读数、落地节点小时、限额快照，见 src/ingest-archive.ts）。
-# 表结构归 workers/api/migrations 管，这里不设 migrations_dir；新表先在 api 那边 apply 再发布本 Worker。
 [[d1_databases]]
 binding = "HISTORY"
 database_name = "lyjwpage-history"
 database_id = "bf3a227f-d12e-428a-8f4e-0f56b97464df"
 
-# Sentry 从这里取 release（Worker 版本 ID）
 [version_metadata]
 binding = "CF_VERSION_METADATA"
 
 [observability]
 enabled = true
 
-# 没有 secret。分支预览：CORE 指向生产状态核心，预览版一收就写进生产，Workers Builds 里关掉
-# 预览与非生产分支构建（见 docs/workers-builds.md）。万一有预览版本跑起来，它不继承上面的绑定，
-# 这个开关让它拒收一切：上报 403、部署通知 404。
 [previews.vars]
 PREVIEW_WORKER = "true"

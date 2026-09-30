@@ -1,29 +1,20 @@
-# 只在本地用的路由 Worker：`pnpm dev:worker` 以多配置方式起它（第一个 -c，拿端口）、
-# api（workers/api/wrangler.test.toml）、上报入口（workers/ingress/wrangler.test.toml）
-# 和采集 Worker（workers/collector/wrangler.test.toml）。
-# 它把本地的一个端口按路径分给后面几个 Worker，模拟生产上各自的域名。
-# 没有 package.json：不是工作区包，也没有 Workers Builds 连接，永远不会部署。
 name = "dev-router"
 main = "src/index.ts"
 compatibility_date = "2026-09-08"
 workers_dev = false
 
-# 公开读取、推送房间、存储导入、假数据注入……除下面几条以外的全部路径
 [[services]]
 binding = "API"
 service = "api"
 
-# `/api/ingest/*` 与 `/api/internal/site-deployed`：生产上 ingest 域名的那几条
 [[services]]
 binding = "INGRESS"
 service = "ingress"
 
-# 采集 Worker 的本地调试入口（`/__dev/collector/*` → 它的 `/__dev/*`）
 [[services]]
 binding = "COLLECTOR"
 service = "collector"
 
-# 采集 Worker 的具名 RPC entrypoint，`/__dev/collector/refresh?jobs=a,b` 走这条，和上报入口调它的方式一样
 [[services]]
 binding = "COLLECTOR_RPC"
 service = "collector"

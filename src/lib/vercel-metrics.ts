@@ -1,6 +1,5 @@
 import type { VercelMetricsPayload } from "@/lib/vercel-deployments-types";
 
-/** 函数统计窗口的对齐粒度，和采集节奏（`vercelMetricsJob`）一致 */
 const FUNCTIONS_ALIGN_MS = 900_000;
 const FUNCTIONS_WINDOW_MS = 12 * 3_600_000;
 
@@ -17,7 +16,6 @@ function count(raw: unknown): number {
   return result;
 }
 
-/** 只取整段窗口的 summary；窗口内没有调用时 summary 为空数组，视为 0。 */
 export function parseVercelFunctions(raw: unknown) {
   const response = record(raw);
   if (!Array.isArray(response.summary) || response.summary.length > 1) throw new Error("Vercel 调用统计缺失");
@@ -36,7 +34,6 @@ export function parseVercelAnalytics(raw: unknown) {
   return { start, end, pageviews: count(data.pageviews), visitors: count(data.visitors) };
 }
 
-/** 采集 Worker 调。起止由调用方给定，便于测试固定窗口；只要 summary，不要分桶序列。 */
 export async function fetchVercelFunctions(project: string, team: string, token: string, start: number, end: number) {
   const url = new URL("https://vercel.com/api/observability/metrics");
   url.search = new URLSearchParams({ teamId: team }).toString();
@@ -61,13 +58,11 @@ export async function fetchVercelFunctions(project: string, team: string, token:
   return parseVercelFunctions(await response.json());
 }
 
-/** 函数调用那一组：滚动窗口、按 `FUNCTIONS_ALIGN_MS` 对齐，带自己的采集时刻 */
 export async function fetchVercelFunctionsGroup(project: string, team: string, token: string, now = Date.now()): Promise<NonNullable<VercelMetricsPayload["functions"]>> {
   const end = Math.floor(now / FUNCTIONS_ALIGN_MS) * FUNCTIONS_ALIGN_MS, start = end - FUNCTIONS_WINDOW_MS;
   return { ...await fetchVercelFunctions(project, team, token, start, end), fetchedAt: Date.now(), start, end };
 }
 
-/** 访问统计那一组：此前若干个完整 UTC 日，带自己的采集时刻 */
 export async function fetchVercelAnalyticsGroup(project: string, team: string, token: string, now = Date.now()): Promise<NonNullable<VercelMetricsPayload["analytics"]>> {
   const end = Math.floor(now / 86_400_000) * 86_400_000, start = end - 7 * 86_400_000;
   const url = new URL("https://api.vercel.com/v1/query/web-analytics/visits/count");

@@ -6,13 +6,8 @@ import { HomeLink } from "@/components/home-link";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Card } from "@/components/ui/card";
 
-// 走 layout 的 title 模板，拼出「404 — 站名」
 export const metadata: Metadata = { title: "404" };
 
-/**
- * 静态 404：不取任何状态数据。首页那个 Header 中间要塞桌面遥测，这里没有
- * 数据可喂，所以只留两端 —— 站名和主题开关。
- */
 export default function NotFound() {
   return (
     <>

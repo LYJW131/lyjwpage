@@ -8,32 +8,17 @@ import { previewWorkerEnabled, type Env } from "./env";
 import { archiveIngest } from "./ingest-archive";
 import { commitLagIngest } from "./lag-ingest";
 
-/**
- * 上报入口的全部路由：三条上报 / 通知路径，加一个根路径的存活响应，其余一律 404。
- *
- * - `POST /api/ingest/<来源>`：来源见 shared/ingest/prepare.ts 的 INGEST_SOURCES，Access 权限 `ingest:<来源>`；
- * - `POST /api/ingest/agents/otlp`：Claude Code 云端遥测（OTLP/HTTP JSON，可 gzip），权限 `ingest:agents-otlp`；
- * - `POST /api/internal/site-deployed`：GitHub Actions 的部署通知，权限 `internal:site-deployed`。
- *
- * 回执是对上报器的契约：
- * 202 `{ ok: true, data }`，OTLP 成功回 200 `{}`；失败 400 / 401 / 403 / 404 / 405 / 415 / 503
- * 各自的 `{ ok: false, error }`。mac 与 agents 的 202 `data` 另带入口自己判下的两件事
- * （见 receiptData）：`ignored` 不认识的模块名、`rejected` 校验不过只丢了自己的 coding 模块。
- */
 
 const INGEST_PREFIX = "/api/ingest/";
-/** 云端遥测独享 ingest:agents-otlp 权限，不复用限额上报器的 ingest:agents。 */
 const OTLP_INGEST_PATH = "/api/ingest/agents/otlp";
 const SITE_DEPLOYED_PATH = "/api/internal/site-deployed";
 
-/** 站点部署完成后让采集 Worker 立刻重拉的任务（不等下一次 cron），名单见 shared/collector.ts */
 export const DEPLOYMENT_JOBS = ["vercel-deployments", "cloudflare-deployments"];
 
 export async function handleRequest(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const url = new URL(request.url);
 
   if (url.pathname === SITE_DEPLOYED_PATH) {
-    // 预览版不继承 CORE 等绑定，也不该接管生产的部署通知
     if (previewWorkerEnabled()) return new Response("Not found", { status: 404 });
     return handleSiteDeployed(request, env, ctx);
   }
@@ -47,7 +32,6 @@ export async function handleRequest(request: Request, env: Env, ctx: ExecutionCo
   }
 
   if (url.pathname === "/") {
-    // 只报存活，不碰状态核心
     return jsonResponse({ ok: true, service: "ingest" });
   }
 
@@ -65,7 +49,6 @@ function reason(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** 统一 JSON 错误文案。 */
 function parseBody(raw: string): unknown {
   try {
     return JSON.parse(raw) as unknown;
@@ -74,7 +57,6 @@ function parseBody(raw: string): unknown {
   }
 }
 
-/** 鉴权、解析与持久化在 202 应答前完成；状态核心那边的广播和首屏通知由它自己的 waitUntil 执行。 */
 async function handleIngest(
   request: Request,
   env: Env,
@@ -93,7 +75,6 @@ async function handleIngest(
 
   let raw: string;
   try {
-    // 只在 OTLP 路由解压；按解压后的实际字节数限制大小。
     const encoding = otlp ? request.headers.get("Content-Encoding")?.trim().toLowerCase() : undefined;
     if (encoding && encoding !== "identity" && encoding !== "gzip") {
       return jsonResponse({ ok: false, error: `不支持的压缩：${encoding}` }, { status: 415 });
@@ -107,35 +88,21 @@ async function handleIngest(
     return jsonResponse({ ok: false, error: "无法读取上报数据" }, { status: 400 });
   }
   const response = await commitIngest(env, ctx, source, raw);
-  // OTLP exporter 需要 ExportMetricsServiceResponse；只转换成功响应，保留失败状态。
+  // OTLP exporter 要求 ExportMetricsServiceResponse，不能直接返回普通上报回执。
   return otlp && response.status === 202 ? jsonResponse({}) : response;
 }
 
-/**
- * prepare 之后按数据层拆开写：
- *
- * 1. 实时那一半经 `StateCore.commitIngest` 交给状态核心（落地节点整封在可滞后层，不去）；
- * 2. 长期归档进 D1（waitUntil，失败只记日志）；
- * 3. 可滞后层直接写 KV，布局变了才请状态核心失效首屏；
- * 4. Mac 带来的 Apple Music user token 写凭据 KV。
- *
- * 同步等待的那几步（状态核心、可滞后层、凭据）抛错都回 400，上报器整封重发；归档与首屏失效
- * 在 waitUntil 里，失败只记日志。各写入按自然键 / 整份覆盖，重发不重复。
- */
 async function commitIngest(env: Env, ctx: ExecutionContext, source: string, raw: string): Promise<Response> {
   try {
     const body = parseBody(raw);
     const command = await prepareIngestForCommit(source, body, () => env.CORE.ready(), env.IMAGES);
     if (!command) return jsonResponse({ ok: false, error: "状态存储初始化中" }, { status: 503 });
-    // 只丢了自己的 coding 模块：这封照常提交，拒收的原因进 Sentry Logs，也原样回给上报器
     if ((command.source === "mac" || command.source === "agents") && command.rejected.length) {
       console.warn("[ingest] rejected", source, describeRejections(command.rejected));
     }
     let data: unknown;
-    /** 状态核心收下了前面的模块、后面的模块校验不过（见 partiallyAccepted）：写完已收下的那几份再回 400 */
     let coreError: string | null = null;
     if (command.source === "server") {
-      // 落地节点整封都在可滞后层，不经过状态核心
       data = { id: command.status.id };
     } else {
       const reply = await env.CORE.commitIngest(command);
@@ -147,17 +114,14 @@ async function commitIngest(env: Env, ctx: ExecutionContext, source: string, raw
         data = receiptData(command, reply.data);
       }
     }
-    // 归档排在可滞后层之前：KV 写失败回 400 时，已收下的数据照样进 D1（按 received_at 幂等，
-    // 上报器重发也不重复）。归档失败只记日志，不能让已落库的上报重发
+    // 归档须先于 KV 写入启动，避免 KV 失败使状态核心已接受的数据漏归档。
     if (env.HISTORY) ctx.waitUntil(archiveIngest(env.HISTORY, command));
-    // 可滞后层的那一半：状态核心收下之后直接写 KV，只写 prepare 判为有效的模块，布局变了才失效首屏
     if (env.LAG) {
       const tags = await commitLagIngest(env.LAG, command);
-      // 失效通知要 REVALIDATE_SECRET，只在状态核心上：请它代发
       if (tags.length) ctx.waitUntil(env.CORE.revalidate(tags).catch((error: unknown) => console.error("[revalidate]", reason(error))));
     }
     if (coreError) throw new Error(coreError);
-    // Apple Music user token 只在变了时才推，这一次写不进去就等下一次换令牌，所以等它写完再回 202
+    // user token 仅变化时上报，必须等凭据落库才回 202，否则失败后可能长期不再补传。
     if (command.source === "mac" && command.modules.appleMusicCredentials && env.CREDENTIALS) {
       await writeAppleMusicCredentials(env.CREDENTIALS, {
         musicUserToken: command.modules.appleMusicCredentials.musicUserToken,
@@ -171,11 +135,6 @@ async function commitIngest(env: Env, ctx: ExecutionContext, source: string, raw
   }
 }
 
-/**
- * 入口自己判下的两件事并进状态核心的回执：mac 带 `ignored`（信封里不认识的模块名）与
- * `rejected`，agents 带 `rejected`（校验不过、只丢了自己的 coding 数据，`[{ module, error }]`）。
- * 两个键总在，空数组就是没有。状态核心的回执不需要知道它们；iPhone 的 `ignored` 由状态核心自己回。
- */
 function receiptData(command: PreparedIngest, data: unknown): unknown {
   if (command.source !== "mac" && command.source !== "agents") return data;
   const base = data && typeof data === "object" && !Array.isArray(data) ? data : {};
@@ -184,16 +143,11 @@ function receiptData(command: PreparedIngest, data: unknown): unknown {
     : { ...base, rejected: command.rejected };
 }
 
-/**
- * 一封上报里前面的模块已经进了状态核心、后面的模块校验不过：眼下只有手机（训练收下、
- * 圆环被拒，见 shared/ingest/phone.ts 的 failure.stage）。这时可滞后层和归档照同样的口径写已收下
- * 的模块，Pulse 里那份训练和公开的训练列表才不会各说各话；回执照样是 400，上报器整封重发。
- */
+// 部分接受时仍须归档并公开已收下的训练，避免实时事实与展示列表分歧。
 export function partiallyAccepted(command: PreparedIngest): boolean {
   return command.source === "iphone" && command.failure?.stage === "beforeActivity";
 }
 
-/** 限制实际读取字节数，不依赖可能缺失或伪造的 Content-Length。超限按读不出来处理（400）。 */
 async function readBoundedBody(stream: ReadableStream<Uint8Array> | null): Promise<string> {
   if (!stream) return "";
   const reader = stream.getReader();
@@ -212,14 +166,6 @@ async function readBoundedBody(stream: ReadableStream<Uint8Array> | null): Promi
   } finally { reader.releaseLock(); }
 }
 
-/**
- * 站点新部署接管了生产域名。只有 GitHub Actions（.github/workflows/purge-esa.yml）调用，
- * 用它自己那把 Access service token；请求体不读 —— 推什么版本由域名上那次部署自己回答。
- *
- * 1. 请状态核心向所有连着的页面广播不带数据的 `version`（页面重问 /api/version），
- *    回执里的 `delivered` 是送达的连接数；
- * 2. 请采集 Worker 立刻重拉部署列表（waitUntil，不拖慢回执、失败只记日志）。
- */
 async function handleSiteDeployed(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   if (request.method !== "POST") return jsonResponse({ ok: false, error: "只接受 POST" }, { status: 405 });
   const auth = await authorize(request, env, "internal:site-deployed");

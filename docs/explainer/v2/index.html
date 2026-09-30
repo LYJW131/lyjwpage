@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <script>
-  // 站点上的地址是 /explainer（没有结尾斜杠，由 next.config 的 rewrite 指到构建出的这份页面），相对路径会按根目录算；
-  // 补一个 base，让脚本、字体、配乐都从 /explainer/ 下取。file:// 和本地预览的 /v2/ 不补
+  // 无尾斜杠的 rewrite URL 会把相对资源解析到根目录，必须补 base。
+
   if (/^https?:$/.test(location.protocol) && !/\/$|\.html$/.test(location.pathname)) document.write('<base href="' + location.pathname + '/">');
 </script>
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -48,12 +48,11 @@ body.export #wrap{inset:0}
   <button id="lang" type="button">English</button>
 </div>
 <div id="load">正在合成配乐…</div>
-<!-- 顺序：章节表 → 配乐引擎和各章配乐 → 文字、引擎、组件 → 各章画面 → 时间轴。
-     十一章的文件都已列好：还没写的会加载失败（onerror 吞掉），film.js 用占位顶上。章节作者不用改这个文件。 -->
+
 <script>
-  // 每项 [源相对路径, onerror]。用 document.write 按顺序载入：顶上补的 base 生效之后才解析这些相对路径（直接写 <script src>，预加载扫描器会先按根目录去取）。
-  // 站点版由 scripts/build-explainer.mjs 读这张表（保持 JSON 写法），按内容哈希发布并注入 window.__assets（源相对路径 → 哈希路径）；
-  // 还没写的章不发布，这里见 __assets 里没有就不载入。本地和渲染工具没有 __assets，用原名
+  // 等 base 生效后再解析资源，避免 HTML 预加载器提前从根目录取脚本。
+  // LOAD 必须是 JSON：构建脚本直接解析它生成哈希资源表。
+
   (() => {
     const LOAD = [
       ["plan.js"], ["../clawd.js"], ["score.js", "window.Score=null"],

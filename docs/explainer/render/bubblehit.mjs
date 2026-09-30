@@ -1,5 +1,3 @@
-// 气泡压到画面元素：每句气泡中段，量气泡和可见卡片 / 标签 / 窗口的重叠面积；只列英文比中文多出来的。
-// node bubblehit.mjs <index.html 绝对路径>
 import { chromium } from "playwright-core";
 const [html] = process.argv.slice(2);
 const b = await chromium.launch({ channel: "chrome", headless: true });

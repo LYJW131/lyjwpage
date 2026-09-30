@@ -1,23 +1,7 @@
-// 第 08 章 · 心电图与地层（站点自检、pulse 归档与 Coding 打分，FACTS §3「api 的分钟 cron」「Pulse 事实时间线」、§8）。12 小节，暗底 + 白卡，全是 2D。
-// 一拍 = 一分钟（接第 07 章）。一张暗底图纸：地面是一条心电图横线，线上是外面（Sentry），线下是站点（lyjw.me、workers/api），再往下是地层（D1）。
-// 心电图是往左卷的监护仪：笔尖固定在 NOW_X，右边还没发生。尖峰朝信号走的方向：
-//   Sentry 每分钟来敲门（HEAD /api/version，从上往下进来，尖朝下，落在每拍的后半拍）；
-//   Worker 每 5 分钟去报到（分钟 cron 整 5 分钟那一轮，从下往上出去，尖朝上，落在拍上）。
-// 机位（章内小节）：
-//   0–1 接第 07 章：首帧是报到尖峰的尖，在屏幕 (1100, 300)，它左边那条斜边和第 07 章服务器那台的摆杆同一个角度；往后拉出整条心电图
-//   1–4 心电图：两种方向相反的信号；2.5 起冷面脚注「报到只证明 cron 跑完了」
-//   4–6 往右：采集 Worker 5:0 拿令牌去 Sentry 查，LYJWPAGE 卡两行各 30 天一格，5:2 今天那一格亮（live 绿，全片第二次也是最后一次）。
-//     令牌上只标 GET：代码只证得了「只发 GET」，权限范围未核，不写「只读」（FACTS §8）
-//   6–8 下沉进地层：一层一层是 Pulse 卡上那几条道，分钟 cron 每拍往地层右沿压进一薄片；7:0 在听那一层里，这首歌亮一下
-//   8–10 推近 Coding 那一层：一窗一窗交给 Jev（强度条是示意），全零的窗不问 Jev、直接落最低档；Tokens 那层是三个来源的 5 分钟桶。
-//     打分只留在 StateHub、不归档，画在地层里会被看成进了 D1，所以 Jev 那一格上方注「不进 D1」（FACTS §3「api 的分钟 cron」）
-//   10–12 Clawd 在地层边冒出来说收尾那句；镜头升回地面，最后一帧只剩心电图，交给第 09 章
-// 配乐锚点在 AT（章内小节），music/ch08.js 按同一组小节落拍；报到、敲门的拍位是 CHECKS / KNOCKS。改时间先对这两处和 SCRIPT.md。
 // 画面只从这里取时间，不读配乐的音符表（score.js 加载失败时这一章照样画得出来）。
 (() => {
   const { css } = G;
   const { E, prog, keys, clamp, lerp, text, FONT, line, polyline, fillRect, rect, clawd, bubble, roundRect, glyph, sheet, pathAt, pathLen, mulberry32 } = K;
-  // ---------- 这一章的文字：[中文, English]，场景代码里只写键 ----------
   I18N.add({
     "ch08.title": ["心电图与地层", "Heartbeat and strata"],
     "ch08.knock": ["敲门", "knock"],
@@ -53,43 +37,34 @@
   let plate, ink, emit, paper, top;
   let BARs = (60 / 108) * 4;
   const impact = (b, at, hl = 0.09) => (b < at ? 0 : Math.exp((-((b - at) * BARs) / hl) * Math.LN2));
-  const win = (b, a0, a1, b0, b1) => prog(b, a0, a1) * (1 - prog(b, b0, b1)); // 淡入、停住、淡出
+  const win = (b, a0, a1, b0, b1) => prog(b, a0, a1) * (1 - prog(b, b0, b1));
 
-  // ---------- 时间表（章内小节）：画面和 music/ch08.js 共用 ----------
   const AT = { fetch: 5.0, back: 5.25, lit: 5.5, sink: 6.0, hero: 7.0, coding: 8.0, zero: 8.25, sweep0: 8.5, sweepStep: 0.125, clawd: 10.25, rise: 11.0 };
-  // 拍位（一拍 = 一分钟）：报到在整 5 分钟那一拍上，敲门在每拍的后半拍（Sentry 的探测和 cron 不对齐）
   const CHECKS = [], KNOCKS = [];
   for (let k = 0; k <= 50; k += 5) CHECKS.push(k);
   for (let k = 0; k <= 50; k++) KNOCKS.push(k + 0.5);
 
-  // ---------- 布局（世界坐标；机位 A 时和屏幕一一对应） ----------
-  // 心电图这组几何（Y0、NOW_X、V、UP、DOWN、CHECKS / KNOCKS 的拍位）另有两处跟着它：ch09.js 的 HEAD、COMMITS 落在本章最后一帧的笔尖
-  // 和敲门尖峰的横坐标上（第 09 章 0:0 要和本章最后一帧对上）；ch10.js 第 08 格照抄了一份（回顾时画同一条心电图）。改这里要同步改那两边
-  const Y0 = 540; // 心电图基线 = 地面
-  const NOW_X = 1350; // 笔尖（此刻）；心电图和地层都是往左越早
-  const V = 200; // 心电图：一拍走多少世界 px
-  // 报到尖峰：左边那条斜边和第 07 章摆杆一样斜（摆幅 0.42 弧度，tan ≈ 0.446）
+  // ch09 的提交落点和 ch10 的回顾几何须与此处一致，章节接缝才能对齐。
+  const Y0 = 540;
+  const NOW_X = 1350;
+  const V = 200;
   const UP = [[-98, 0], [0, -220], [34, 46], [62, 0]];
   const DOWN = [[-16, 0], [0, 104], [14, -22], [30, 0]];
   const SENTRY = { x: 1210, y: 120, w: 280, h: 170 };
-  const SITE = { x: 1110, y: 700, w: 200, h: 110 }; // lyjw.me（Vercel）
-  const API = { x: 1400, y: 700, w: 250, h: 110 }; // workers/api 的分钟 cron
+  const SITE = { x: 1110, y: 700, w: 200, h: 110 };
+  const API = { x: 1400, y: 700, w: 250, h: 110 };
   const KNOCK_PATH = [[NOW_X, SENTRY.y + SENTRY.h], [NOW_X, Y0], [SITE.x + SITE.w / 2, SITE.y]];
   const CHECK_PATH = [[API.x + 60, API.y], [NOW_X, Y0], [NOW_X, SENTRY.y + SENTRY.h]];
-  // B：采集 Worker、可滞后层、LYJWPAGE 卡
   const COL = [1830, 250], COL_R = 62;
   const LAGG = [1840, 470];
   const CARD = { x: 2080, y: 150, w: 780, h: 400 };
-  const UPTIME_CELLS = 30; // 和站点 src/lib/sentry-status.ts 的 UPTIME_DAYS 一样，画的是写章时的值
-  // 地层：Pulse 卡的七条道（src/components/live/pulse-card.tsx 的 LANES，顺序照抄）；时间往左，一分钟 SC 世界 px
+  const UPTIME_CELLS = 30;
   const LANES = ["Coding", "Tokens", "Listening", "Watching", "Gaming", "Charging", "Activity"];
   const ST_TOP = 900, LANE_H = 72, ST_X0 = -2200, SC = 10;
   const laneY = (i) => ST_TOP + i * LANE_H;
   const ST_BOT = laneY(LANES.length);
   const JEV = { x: 1000, y: 812, w: 300, h: 56 };
 
-  // ---------- 机位：[小节, [x, y, zoom, rot], 进入这一段的缓动] ----------
-  // 首帧：报到尖峰的尖（NOW_X, Y0 − 220）落在屏幕 (1100, 300)，缩放和第 07 章最后一帧一样
   const Z0 = 2.4;
   const FIRST = [NOW_X + (960 - 1100) / Z0, Y0 - 220 + (540 - 300) / Z0, Z0, 0];
   const A = [960, 540, 1, 0], B = [1960, 480, 1, 0], C = [700, 1180, 0.85, 0], D = [900, 1000, 1.45, 0], CL = [880, 790, 1.1, 0];
@@ -109,7 +84,6 @@
   ];
   const PLATE_RECT = [-2400, -300, 3400, 1900];
 
-  // ---------- 小件 ----------
   function glow(e, cx, cy, r, a) {
     if (a <= 0) return;
     const g = e.createRadialGradient(cx, cy, 0, cx, cy, r);
@@ -126,7 +100,6 @@
     x.save(); x.globalAlpha = a; x.strokeStyle = color; x.lineWidth = w; x.setLineDash(dash); x.lineJoin = "round";
     x.beginPath(); pts.forEach(([u, v], i) => (i ? x.lineTo(u, v) : x.moveTo(u, v))); x.stroke(); x.restore();
   }
-  // 沿路走的一个小点：k 0..1
   function dot(x, e, pts, k, a, r = 6) {
     if (k <= 0 || k >= 1 || a <= 0) return;
     const [px, py] = pathAt(pts, k * pathLen(pts));
@@ -137,7 +110,6 @@
     if (a <= 0) return;
     K.narration(x, tr(key), px, py, { px: size, maxW, color: css("bone"), reveal: r, alpha: a });
   }
-  // 一个小钟面：12 格（每格 5 分钟），指针一拍走一格的五分之一
   function dial(x, cx, cy, r, minute, a, hot = 0) {
     if (a <= 0) return;
     const bone = css("bone");
@@ -151,7 +123,6 @@
     line(x, cx, cy, cx + Math.cos(an) * r * 0.74, cy + Math.sin(an) * r * 0.74, 3.2, hot > 0.05 ? css("signalD") : bone, a);
     x.save(); x.globalAlpha = a; x.fillStyle = bone; x.beginPath(); x.arc(cx, cy, 5, 0, TAU); x.fill(); x.restore();
   }
-  // 令牌：一张小卡片（和第 01、02 章的钥匙卡一个样子），上面标 GET
   function keycard(x, cx, cy, a) {
     if (a <= 0) return;
     const w = 96, h = 44, col = css("signalD");
@@ -162,7 +133,6 @@
     x.restore();
   }
 
-  // ---------- 心电图 ----------
   function shapeY(shape, dx) {
     if (dx <= shape[0][0] || dx >= shape[shape.length - 1][0]) return 0;
     for (let i = 1; i < shape.length; i++) if (dx <= shape[i][0]) {
@@ -171,7 +141,6 @@
     }
     return 0;
   }
-  // 此刻（phi 拍）屏幕上的迹线：只画已经开始的尖峰；章首之前是一条平线
   function events(phi) {
     const ev = [];
     for (const t of CHECKS) ev.push({ t, x: NOW_X - (phi - t) * V, s: UP, up: true });
@@ -196,7 +165,6 @@
     const { ev, pts } = tracePts(phi, left);
     const lw = Math.max(2.4, 1.6 / cam.zoom);
     strokePts(x, pts, lw, css("bone"), 0.9 * dimK);
-    // 笔尖身后一小段是刚写上的：橙色，往左褪（监护仪的余辉）
     const tail = pts.filter(([u]) => u > NOW_X - 150);
     for (let i = 1; i < tail.length; i++) {
       const k = (tail[i][0] - (NOW_X - 150)) / 150;
@@ -204,16 +172,13 @@
     }
     strokePts(e, tail, lw * 3, "rgb(240,150,105)", 0.35 * dimK);
     const py = traceY(ev, NOW_X);
-    // 光晕按镜头缩放收一点：首帧放大 2.4 倍时别糊成一大团
     const gz = 1 / Math.sqrt(Math.max(1, cam.zoom));
     glow(e, NOW_X, py, 38 * gz, 0.95 * dimK);
     x.save(); x.fillStyle = css("ember"); x.beginPath(); x.arc(NOW_X, py, 5, 0, TAU); x.fill(); x.restore();
-    // 到笔尖那一下亮一下
     for (const v of ev) if (phi >= v.t && phi - v.t < 1.2) {
       const k = Math.exp(-(phi - v.t) * 3.2);
       glow(e, v.x, Y0 + (v.up ? -220 : 104) * 0.9, (v.up ? 110 : 60) * gz, (v.up ? 0.8 : 0.45) * k * dimK);
     }
-    // 报到的尖上挂一个小标签（跟着尖峰往左走），头两次才挂
     for (const v of ev) if (v.up && v.t > 0 && v.t <= 15 && phi >= v.t) {
       const a = labA * prog(NOW_X - v.x, 120, 200) * (v.x > 90 ? 1 : 0);
       text(x, tr("ch08.checkin"), v.x, Y0 - 236, { font: FONT.cjk(30, 600), color: css("bone"), align: "center", alpha: a });
@@ -221,13 +186,11 @@
     return py;
   }
 
-  // ---------- A：线上是 Sentry，线下是 lyjw.me 和 workers/api ----------
   function sentryBox(x, phi, a) {
     if (a <= 0) return;
     const { x: bx, y: by, w, h } = SENTRY;
     box(x, bx, by, w, h, a);
     text(x, "Sentry", bx + 22, by + 44, { font: FONT.mono(34, 600), color: css("bone"), alpha: a });
-    // 两行记录：lyjw.me 记敲门，API 记报到；新的一格从右边进来
     [["lyjw.me", KNOCKS], ["API", CHECKS]].forEach(([name, list], r) => {
       const y = by + 92 + r * 46;
       text(x, name, bx + 22, y + 9, { font: FONT.mono(28, 500), color: css("ash"), alpha: a });
@@ -249,7 +212,6 @@
     box(x, API.x, API.y, API.w, API.h, a);
     text(x, "workers/api", API.x + 20, API.y + 46, { font: FONT.mono(32, 600), color: css("bone"), alpha: a });
     text(x, tr("ch08.cron"), API.x + 20, API.y + 88, { font: FONT.cjk(28, 600), color: css("ash"), alpha: a });
-    // cron 每分钟跑一轮：小钟一拍走一格
     dial(x, API.x + API.w - 40, API.y + 70, 22, phi % 60, a, 0);
   }
   function signalLabels(x, a, footA) {
@@ -267,12 +229,10 @@
     if (a <= 0) return;
     dashPath(x, KNOCK_PATH, 0.35 * a);
     dashPath(x, [CHECK_PATH[0], CHECK_PATH[1]], 0.35 * a);
-    // 敲门：从 Sentry 下来，过笔尖（尖朝下），进 lyjw.me；报到：从 cron 上去，过笔尖（尖朝上），到 Sentry
     for (const t of KNOCKS) if (phi > t - 0.3 && phi < t + 0.3) dot(x, e, KNOCK_PATH, (phi - (t - 0.3)) / 0.6, a, 5);
     for (const t of CHECKS) if (phi > t - 0.35 && phi < t + 0.35) dot(x, e, CHECK_PATH, (phi - (t - 0.35)) / 0.7, a, 7);
   }
 
-  // ---------- B：采集 Worker 取回结果，LYJWPAGE 卡 ----------
   const lagPath = [[COL[0], COL[1] + COL_R], [LAGG[0], LAGG[1] - 40]];
   const toCard = [[LAGG[0] + 70, LAGG[1]], [CARD.x - 10, LAGG[1]]];
   const toSentry = [[COL[0] - COL_R, COL[1]], [SENTRY.x + SENTRY.w + 8, COL[1]]];
@@ -288,7 +248,6 @@
     dashPath(x, toSentry, 0.4 * a);
     dashPath(x, [[COL[0], COL[1] + COL_R + 96], [LAGG[0], LAGG[1] - 36]], 0.4 * a);
     dashPath(x, toCard, 0.4 * a);
-    // 5:0 令牌出门到 Sentry，5:1 结果回来，写进可滞后层，5:2 卡上今天那一格亮
     const kGo = prog(b, AT.fetch, AT.fetch + 0.22, E.io), kBack = prog(b, AT.back, AT.back + 0.25, E.io);
     if (b >= AT.fetch && b < AT.back + 0.3) {
       const k = b < AT.back ? kGo : 1 - kBack;
@@ -315,7 +274,7 @@
       for (let i = 0; i < UPTIME_CELLS; i++) {
         const x0 = cx + 36 + i * (cw + 4), y0 = top + 18;
         const today = i === UPTIME_CELLS - 1;
-        const rk = prog(b, 4.1 + i * 0.012 + r * 0.05, 4.25 + i * 0.012 + r * 0.05); // 格子一格一格排出来
+        const rk = prog(b, 4.1 + i * 0.012 + r * 0.05, 4.25 + i * 0.012 + r * 0.05);
         if (!today) { fillRect(d, x0, y0, cw, 40, css("pink"), 0.26 * a * rk); continue; }
         rect(d, x0, y0, cw, 40, 1.6, css("pink"), a * rk);
         if (lit > 0) {
@@ -331,11 +290,9 @@
     });
   }
 
-  // ---------- 地层 ----------
-  // 示意的原始事实，按分钟（t = 章内拍；负数是章首之前）排；同一个种子，每帧都一样
   const R = mulberry32(8080);
-  const WIN0 = 1; // Coding 窗的相位：窗从 t = 15k + WIN0 开始
-  const CODING = []; // [{ from, level, band: [[from, to, v]], zero }]
+  const WIN0 = 1;
+  const CODING = [];
   for (let k = -16; k <= 3; k++) {
     const from = 15 * k + WIN0;
     const zero = k === -5 || k === -1 || k === -9 || k === -12;
@@ -344,12 +301,12 @@
     if (!zero) for (let m = 0; m < 15;) { const len = 2 + Math.floor(R() * 5), v = R() < 0.25 ? 0 : 1 + Math.floor(R() * 3); band.push([from + m, from + Math.min(15, m + len), v]); m += len; }
     CODING.push({ from, level, band, zero, prob: 0.35 + 0.55 * R() });
   }
-  const TOKENS = []; // 5 分钟桶：[from, [mac, cloud, cursor]]
+  const TOKENS = [];
   for (const w of CODING) for (let j = 0; j < 3; j++) TOKENS.push([w.from + j * 5, w.zero ? [0, 0, 0] : [R() * 0.6, R() * 0.35, R() * 0.25]]);
-  const LISTEN = []; // [from, to, hero]
+  const LISTEN = [];
   for (let t = -240; t < -130;) { const len = 3 + R() * 1.5; LISTEN.push([t, t + len, false]); t += len + 0.3; }
   for (let t = -6; t < 22;) { const len = 3 + R() * 1.4; LISTEN.push([t, t + len, false]); t += len + 0.3; }
-  LISTEN.push([22, 60, true]); // 在放的这一首：开着的区间，一直画到此刻
+  LISTEN.push([22, 60, true]);
   const WATCH = [[-128, -84]];
   const GAME = [[-78, -40, 1], [-40, -32, 0.5]];
   const WORKOUT = [-62, -44];
@@ -362,14 +319,12 @@
     if (a <= 0) return;
     const phi = b * 4;
     const bone = css("bone"), ash = css("ash");
-    // 七层底色：墨色深浅交替
     LANES.forEach((name, i) => {
       const y = laneY(i);
       x.save(); x.globalAlpha = a * (i % 2 ? 0.55 : 0.85); x.fillStyle = css("ink2"); x.fillRect(ST_X0, y, NOW_X - ST_X0, LANE_H); x.restore();
       line(x, ST_X0, y, NOW_X, y, 1.2, bone, 0.28 * a);
     });
     line(x, ST_X0, ST_BOT, NOW_X, ST_BOT, 1.2, bone, 0.28 * a);
-    // 各层的原始事实（示意）
     const clipL = ST_X0, clipR = NOW_X;
     const seg = (i, t0, t1, h, alpha, color = bone) => {
       const x0 = Math.max(clipL, tx(phi, t0)), x1 = Math.min(clipR, tx(phi, t1));
@@ -377,9 +332,7 @@
       fillRect(x, x0, laneY(i) + LANE_H - 12 - h, x1 - x0, h, color, alpha);
     };
     const dimOf = (i) => a * (i <= 1 ? 1 : 1 - focus);
-    // Coding：三色带画成三档浓淡（前台 coding 应用 / agent 在跑 / 两者同时），不照搬站点的颜色
     for (const w of CODING) for (const [t0, t1, v] of w.band) if (v && t1 <= phi) seg(0, t0, Math.min(t1, phi), 12, dimOf(0) * [0, 0.3, 0.55, 0.85][v]);
-    // Tokens：三个来源的桶叠起来（Mac、云端、Cursor 三档浓淡），只在桶关上之后画
     for (const [t0, [m, c, u]] of TOKENS) {
       if (t0 + 5 > phi) continue;
       const x0 = tx(phi, t0) + 3, x1 = tx(phi, t0 + 5) - 3;
@@ -387,7 +340,6 @@
       let y = laneY(1) + LANE_H - 8;
       [[m, 0.85], [c, 0.55], [u, 0.3]].forEach(([v, al]) => { const hh = v * 52; fillRect(x, x0, y - hh, x1 - x0, hh, bone, dimOf(1) * al); y -= hh; });
     }
-    // Listening：一首一首的区间；在放的那一首是开着的区间，7:0 亮一下
     for (const [t0, t1, hero] of LISTEN) {
       if (t0 > phi) continue;
       if (hero) {
@@ -398,7 +350,6 @@
     }
     for (const [t0, t1] of WATCH) seg(3, t0, t1, 22, dimOf(3) * 0.6);
     for (const [t0, t1, v] of GAME) seg(4, t0, t1, v > 0.9 ? 22 : 10, dimOf(4) * 0.6);
-    // Charging：实测瓦数，一条折线
     {
       const pts = [];
       for (let t = -300; t <= phi; t += 2) {
@@ -407,13 +358,11 @@
       }
       strokePts(x, pts.filter(([u]) => u >= clipL && u <= clipR), 2.4, bone, dimOf(5) * 0.8);
     }
-    // Activity：五分钟步数桶 + 一段训练
     for (const [t0, v] of STEPS) if (v > 0 && t0 + 5 <= phi) seg(6, t0 + 0.4, t0 + 4.6, v * 44, dimOf(6) * 0.6);
     {
       const x0 = tx(phi, WORKOUT[0]), x1 = tx(phi, WORKOUT[1]);
       if (x1 > clipL && x0 < clipR) { line(x, x0, laneY(6) + 10, x1, laneY(6) + 10, 2, bone, dimOf(6) * 0.8); line(x, x0, laneY(6) + 4, x0, laneY(6) + 16, 2, bone, dimOf(6) * 0.8); line(x, x1, laneY(6) + 4, x1, laneY(6) + 16, 2, bone, dimOf(6) * 0.8); }
     }
-    // 右沿：此刻。分钟 cron 每拍压进一薄片（从 workers/api 掉下来，压进各层）
     line(x, NOW_X, ST_TOP, NOW_X, ST_BOT, 2, bone, 0.6 * a);
     const lastBeat = Math.floor(phi), fk = phi - lastBeat;
     const flash = Math.exp(-fk * 6);
@@ -425,7 +374,6 @@
     const dk = (phi + 0.55) % 1;
     if (dk < 0.55) dot(x, e, drop, dk / 0.55, da, 5);
   }
-  // 道名一栏贴着画面左边（跟着镜头算，屏幕上一直是 32 px），底下垫一块墨色挡住地层
   function laneLabels(x, cam, a, focus) {
     if (a <= 0) return;
     const z = cam.zoom, wx = (sx) => cam.x + (sx - 960) / z;
@@ -437,7 +385,6 @@
       text(x, name, wx(40), laneY(i) + LANE_H / 2 + 11 / z, { font: FONT.mono(32 / z, 500), color: i <= 1 && focus > 0.5 ? css("bone") : css("ash"), alpha: a * hot });
     });
   }
-  // 右边的注：D1 档案架、每分钟一片、长期保存
   function strataNotes(x, b, a) {
     if (a <= 0) return;
     const bone = css("bone"), ash = css("ash");
@@ -445,35 +392,28 @@
     text(x, "D1", NOW_X + 90, 1150, { font: FONT.mono(38, 600), color: bone, alpha: a });
     text(x, "lyjwpage-history", NOW_X + 90, 1196, { font: FONT.mono(34, 500), color: ash, alpha: a });
     text(x, tr("ch08.keep"), NOW_X + 90, 1250, { font: FONT.cjk(38, 600), color: css("signalD"), alpha: a });
-    // 放在右沿左边、地层顶上：右边那一截要留给 D1 的注，画面右边也放不下英文
     text(x, tr("ch08.archive"), NOW_X - 50, ST_TOP - 32, { font: FONT.cjk(34, 600), color: bone, align: "right", alpha: a, maxW: 640 });
     text(x, "← " + tr("ch08.older"), 20, ST_BOT + 64, { font: FONT.cjk(36, 600), color: ash, alpha: a, maxW: 1000 });
   }
 
-  // ---------- 8–10 Coding 那一层交给 Jev ----------
-  // 一窗一窗地打（按时间往右扫）；全零的窗 8:1 先落到最低档，不问 Jev
   function coding(x, e, d, b, a, cam) {
     if (a <= 0) return;
     const phi = b * 4;
     const bone = css("bone"), ash = css("ash");
     const y0 = laneY(0), y1 = laneY(1);
     const done = CODING.filter((w) => w.from + 15 + 2 <= phi && tx(phi, w.from + 15) > 250);
-    // Jev 那一格
     box(x, JEV.x, JEV.y, JEV.w, JEV.h, a);
     text(x, "Jev", JEV.x + 16, JEV.y + 38, { font: FONT.mono(28, 600), color: bone, alpha: a });
     text(x, tr("ch08.jevNote"), JEV.x + 70, JEV.y + 36, { font: FONT.cjk(21, 600), color: ash, alpha: a, maxW: JEV.w - 80 });
-    // 右边到画面边只剩约 560 世界 px（机位 D）；英文按这个宽度排
     text(x, tr("ch08.jevKeep"), JEV.x, JEV.y - 16, { font: FONT.cjk(21, 600), color: ash, alpha: a, maxW: 540 });
     for (const w of CODING) {
       const x0 = tx(phi, w.from), x1 = tx(phi, w.from + 15);
       if (x1 < 200 || x0 > NOW_X) continue;
       const closed = w.from + 15 + 2 <= phi;
-      // 窗格：整窗一格，里面两道细刻线分出三个 5 分钟桶
       x.save(); x.globalAlpha = a; x.strokeStyle = bone; x.lineWidth = 1.6; if (!closed) x.setLineDash([6, 6]);
       x.strokeRect(x0 + 2, y0 + 3, Math.min(x1, NOW_X) - x0 - 4, LANE_H - 6); x.restore();
       for (let j = 1; j < 3; j++) { const u = tx(phi, w.from + j * 5); if (u < NOW_X) line(x, u, y0 + LANE_H - 16, u, y0 + LANE_H - 4, 1.2, bone, 0.6 * a); }
       if (!closed) { text(x, tr("ch08.open"), (x0 + NOW_X) / 2, y0 + 40, { font: FONT.cjk(21, 600), color: ash, align: "center", alpha: a * (x0 < NOW_X - 90 ? 1 : 0), maxW: Math.max(60, NOW_X - x0 - 10) }); continue; }
-      // 结果：打出来的档位画成窗里的一根横条（高低是强度，示意）
       let k = 0;
       if (w.zero) k = prog(b, AT.zero, AT.zero + 0.1);
       else {
@@ -496,17 +436,14 @@
       if (fresh > 0.05) glow(e, (x0 + x1) / 2, yb - hh * k, 50, 0.5 * fresh * a);
       if (w.zero) text(x, "0", (x0 + x1) / 2, y0 + 34, { font: FONT.mono(24, 600), color: ash, align: "center", alpha: a * k });
     }
-    // 「不问 Jev」：指着最右边那个全零的窗
     const zw = done.filter((w) => w.zero).pop();
     if (zw) {
       const za = prog(b, AT.zero, AT.zero + 0.15) * a;
       const cx = (tx(phi, zw.from) + tx(phi, zw.from + 15)) / 2;
       K.leader(x, cx, y0 + 4, tr("ch08.skip"), -30, -56, { font: FONT.cjk(22, 600), color: bone, alpha: za, dot: 4 });
     }
-    // 两条注贴着道名那一栏：Tokens 是三个来源的桶；一窗是三个 5 分钟桶
     const lx = cam.x + (310 - 960) / cam.zoom;
     text(x, tr("ch08.sources"), lx, laneY(2) + 30, { font: FONT.cjk(21, 600), color: bone, alpha: a });
-    // Jev 给左边几窗打分时，虚线会穿过这行注：字底下垫一块墨色，线从字后面过
     const wn = tr("ch08.window"), wf = FONT.cjk(21, 600);
     fillRect(x, lx - 8, ST_TOP - 42, K.measure(x, wn, wf) + 16, 34, css("ink"), a);
     text(x, wn, lx, ST_TOP - 16, { font: wf, color: ash, alpha: a });
@@ -536,7 +473,6 @@
     const d = paper.begin(); paper.cam(cam);
     const tp = top.begin(); top.cam(cam);
 
-    // 首帧只有那一根尖峰；往后拉开时其余的东西才淡进来。升回地面时收掉，最后一帧只剩心电图
     const outA = 1 - prog(b, 11.35, 11.85);
     const labA = prog(b, 0.55, 0.95) * outA * (1 - win(b, 7.85, 8.05, 9.9, 10.1));
     title(x, b);
@@ -545,21 +481,17 @@
     siteBoxes(x, phi, labA);
     signalPaths(x, e, phi, labA);
     signalLabels(x, win(b, 0.6, 0.95, 3.85, 4.0), win(b, 2.5, 2.7, 3.85, 4.0));
-    // B：4–6，采集 Worker、可滞后层和白卡；离开时收起来
     const bA = win(b, 3.85, 4.1, 5.95, 6.2);
     collector(x, e, b, bA);
     card(d, b, bA);
-    // 地层：往下沉时出现，升回地面时退掉
     const sA = prog(b, 5.9, 6.2) * (1 - prog(b, 11.2, 11.7));
     const focus = win(b, 7.9, 8.1, 9.9, 10.1);
     strata(x, e, d, b, sA, focus);
     strataNotes(x, b, win(b, 6.1, 6.4, 7.85, 8.0));
     coding(x, e, d, b, win(b, 7.95, 8.15, 9.9, 10.05), cam);
     laneLabels(x, cam, sA * (1 - prog(b, 9.95, 10.15)), focus);
-    // 旁白
     nar(x, "ch08.n1a", 110, 944, prog(b, 1.0, 1.6), win(b, 1.0, 1.1, 3.8, 3.95));
     nar(x, "ch08.n1b", 110, 1024, prog(b, 1.6, 2.4), win(b, 1.0, 1.1, 3.8, 3.95));
-    // B 机位的左下角：世界坐标跟着镜头算
     const at = (sx, sy, c) => [c[0] + (sx - 960) / c[2], c[1] + (sy - 540) / c[2]];
     { const [nx, ny] = at(110, 944, B), [, ny2] = at(110, 1024, B);
       nar(x, "ch08.n2a", nx, ny, prog(b, 4.1, 4.6), win(b, 4.05, 4.15, 5.85, 5.98));
@@ -570,7 +502,6 @@
     { const s = 1 / D[2], [nx, ny] = at(110, 944, D), [, ny2] = at(110, 1024, D);
       nar(x, "ch08.n4a", nx, ny, prog(b, 8.1, 8.6), win(b, 8.05, 8.15, 9.85, 9.98), 60 * s, 1040 * s);
       nar(x, "ch08.n4b", nx, ny2, prog(b, 8.6, 9.2), win(b, 8.05, 8.15, 9.85, 9.98), 60 * s, 1040 * s); }
-    // Clawd：在地层边（右沿上面）冒出来，说完缩回去；镜头往上升
     const cIn = prog(b, AT.clawd - 0.2, AT.clawd), cOut = prog(b, 11.45, 11.7);
     if (cIn > 0 && cOut < 1) {
       const rise = E.outBack(cIn) * (1 - E.in(cOut));

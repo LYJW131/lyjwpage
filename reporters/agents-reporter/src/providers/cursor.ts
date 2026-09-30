@@ -9,7 +9,6 @@ import { genericWindows, object, rowFromWindows, text } from "../windows.js";
 
 const CURSOR_SESSION_EXPIRED = "Cursor session expired — run `agent login` to re-authenticate.";
 const CURSOR_RPC = "https://api2.cursor.sh/aiserver.v1.DashboardService";
-/** 网页 dashboard 的 Grok Bot 周额度。只有网页接口，凭据走和用量历史同一份会话 cookie。 */
 const CURSOR_GROK_BOT_URL = "https://cursor.com/api/dashboard/get-sand-usage-status";
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -50,10 +49,6 @@ function usageWindow(
   return node;
 }
 
-/**
- * Grok Bot 是独立的周额度，不在套餐那份用量里。没开（额度为 0）就不报这扇窗口。
- * usagePercent 已经是 0~100，不用再乘。
- */
 function grokBotWindow(sand: unknown): Record<string, unknown> | null {
   const rec = asRecord(sand);
   if (!rec || rec.hasNonZeroIncludedLimit !== true) return null;
@@ -67,13 +62,6 @@ function grokBotWindow(sand: unknown): Record<string, unknown> | null {
   );
 }
 
-/**
- * 把 DashboardService 的响应和网页的 Grok Bot 额度规整成 genericWindows("cursor")
- * 吃的形状。纯函数。
- *
- * 四扇窗口对网页 dashboard 的 Included in Ultra 与 Grok Bot 两块：总额、Cursor 自家
- * 模型（Auto / Composer / Cursor Grok）、其他厂商模型、Grok Bot 周额度。
- */
 export function normalizeCursorUsage(
   period: unknown,
   plan: unknown,
@@ -135,10 +123,7 @@ async function cursorRpc(accessToken: string, method: string): Promise<{ status:
   return { status: res.status, body };
 }
 
-/**
- * Grok Bot 那扇拿不到只少一行，不拖累另外三扇：返回 null，站点那行写 Unavailable。
- * 不跟随跳转 —— cookie 里是登录凭据，不能被带去别处。
- */
+// Cookie 带登录凭据，禁止跟随重定向将它送往其它地址。
 async function fetchGrokBot(accessToken: string): Promise<unknown> {
   try {
     const res = await fetch(CURSOR_GROK_BOT_URL, {

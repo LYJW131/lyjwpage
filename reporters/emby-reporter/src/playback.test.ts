@@ -3,7 +3,6 @@ import test from "node:test";
 
 import { pickMedia, playMethod, type EmbyItemMedia, type EmbyMediaStream } from "./playback.ts";
 
-/** 实机上一条 1080p H264 的流列表：一条视频、两条音轨、内封字幕若干、一条外挂简中 */
 const streams: EmbyMediaStream[] = [
   { Type: "Video", Codec: "h264", Width: 1920, Height: 1080, BitDepth: 8, VideoRange: "SDR", ExtendedVideoType: "None", Index: 0, Profile: "High" },
   { Type: "Audio", Codec: "eac3", Language: "jpn", Channels: 6, ChannelLayout: "5.1", IsDefault: true, Index: 1 },

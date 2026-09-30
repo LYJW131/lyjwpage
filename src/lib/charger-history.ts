@@ -1,38 +1,18 @@
 import { CHARGER_HISTORY_LIMIT } from "@/lib/limits";
 import type { ChargerPayload, ChargerSample } from "@/lib/types";
 
-/**
- * 充电头功率曲线的客户端累加器。
- *
- * 曲线是增量拉的：每次只问服务端要 `?since=` 之后的新点，本地拼成完整序列。
- * 这份状态放在模块级而不是组件的 ref 里，是为了让实时推送也能用同一套合并逻辑 ——
- * 转发那段在模块单例里，够不着组件内部的 ref。整个页面只有一张充电头卡，单例不会串。
- */
 
 let history: ChargerSample[] = [];
 
-/** 已有序列里最新一点的时刻，作为下次增量拉取的游标；空序列返回 null 表示要整份 */
 export function historyCursor(): number | null {
   return history.length ? history[history.length - 1].t : null;
 }
 
-/**
- * 用首屏 SSR 的完整快照初始化累加器，让挂载后的第一次请求直接带游标。
- *
- * 只在空累加器上接一次：React 严格模式会重放 effect，客户端路由返回首页时模块
- * 状态也可能仍在；两种情况都不该拿一份可能更旧的 fallback 覆盖现有序列。
- */
 export function seedChargerHistory(payload: ChargerPayload): void {
   if (history.length || payload.historyPartial) return;
   history = payload.history.slice(-CHARGER_HISTORY_LIMIT);
 }
 
-/**
- * 把一份响应并进本地序列，返回带完整曲线的那份。
- *
- * `historyPartial` 为假就是整份快照（首次请求，或落后太多、服务端已经把中间
- * 那段裁掉了），直接替换；为真才是增量，接在后面。
- */
 export function mergeChargerHistory(payload: ChargerPayload): ChargerPayload {
   const merged = payload.historyPartial ? [...history, ...payload.history] : payload.history;
   history = merged.slice(-CHARGER_HISTORY_LIMIT);

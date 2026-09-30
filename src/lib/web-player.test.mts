@@ -73,17 +73,13 @@ test("formatClock: 包含零、负数以及时分秒各档位", () => {
 
 test("resolveVisibleQueue: 仅当已装载专辑与当前专辑 ID 一致时保留列表", () => {
   const songs = [{ id: "song-1" }, { id: "song-2" }];
-  // ID 匹配：返回原列表
   assert.deepEqual(resolveVisibleQueue("album-1", "album-1", songs), songs);
 
-  // 切换专辑：返回空列表，防止旧专辑数据泄漏
   assert.deepEqual(resolveVisibleQueue("album-1", "album-2", songs), []);
 
-  // 正在装载（loadedId 为空）：返回空列表
   assert.deepEqual(resolveVisibleQueue(null, "album-1", songs), []);
   assert.deepEqual(resolveVisibleQueue(undefined, "album-1", songs), []);
 
-  // 无当前专辑：返回空列表
   assert.deepEqual(resolveVisibleQueue("album-1", null, songs), []);
 });
 
@@ -121,7 +117,6 @@ test("playlistCache: 设置与获取缓存，清空后恢复未命中", () => {
   setCachedPlaylist("album-x", mockQueue);
   assert.deepEqual(getCachedPlaylist("album-x"), mockQueue);
 
-  // 空项或空 ID 不写入
   setCachedPlaylist("", mockQueue);
   assert.equal(getCachedPlaylist(""), undefined);
   setCachedPlaylist("album-y", []);
@@ -177,10 +172,8 @@ test("catalogTracksPathFor: 专辑与歌单链接解析正确，电台与未知�
 });
 
 test("hasPersistedMusicUserToken: 检查 localStorage 中是否存在 MusicKit 用户令牌", () => {
-  // 1. 无 window 环境
   assert.equal(hasPersistedMusicUserToken(), false);
 
-  // 2. 模拟 window.localStorage
   const store = new Map<string, string>();
   const mockStorage = {
     get length() {
@@ -204,28 +197,22 @@ test("hasPersistedMusicUserToken: 检查 localStorage 中是否存在 MusicKit �
   globalThis.window = { localStorage: mockStorage };
 
   try {
-    // 空存储
     assert.equal(hasPersistedMusicUserToken(), false);
 
-    // 只有其他应用的 key
     mockStorage.setItem("theme", "dark");
     mockStorage.setItem("local-charging-armed", "1");
     assert.equal(hasPersistedMusicUserToken(), false);
 
-    // 只有 music 简短配置项，不是用户令牌
     mockStorage.setItem("music.s", "cn");
     mockStorage.setItem("music.c", "true");
     assert.equal(hasPersistedMusicUserToken(), false);
 
-    // 包含 MusicKit 用户令牌（通常为长字符串）
     mockStorage.setItem("music.u", "r.AwAAtestLongMusicUserToken1234567890abcdef");
     assert.equal(hasPersistedMusicUserToken(), true);
 
-    // 清除后恢复 false
     mockStorage.clear();
     assert.equal(hasPersistedMusicUserToken(), false);
 
-    // 包含带 developerToken 的 key 形态
     mockStorage.setItem(
       "music.eyJhbGci.musicUserToken",
       "r.AwAAtestLongMusicUserToken1234567890abcdef",
@@ -241,10 +228,8 @@ test("getMusicAuthSnapshot & setMusicAuthSnapshot: 快照获取、覆盖更新�
   resetMusicAuthStateForTesting();
   assert.equal(getMusicAuthServerSnapshot(), false);
 
-  // 无 window 时默认 false
   assert.equal(getMusicAuthSnapshot(), false);
 
-  // 显式更新快照
   let notifiedCount = 0;
   const unsubscribe = subscribeMusicAuth(() => {
     notifiedCount++;
@@ -254,7 +239,6 @@ test("getMusicAuthSnapshot & setMusicAuthSnapshot: 快照获取、覆盖更新�
   assert.equal(getMusicAuthSnapshot(), true);
   assert.equal(notifiedCount, 1);
 
-  // 相同值不重复派发
   setMusicAuthSnapshot(true);
   assert.equal(notifiedCount, 1);
 
@@ -270,7 +254,6 @@ test("getMusicAuthSnapshot & setMusicAuthSnapshot: 快照获取、覆盖更新�
 });
 
 test("filterUserQueueItems: 过滤 MusicKit 实例中的 Autoplay 自动推荐曲目，只保留用户专辑真实曲目", () => {
-  // 空实例或空队列
   assert.deepEqual(filterUserQueueItems(null), []);
   assert.deepEqual(filterUserQueueItems(undefined), []);
   assert.deepEqual(filterUserQueueItems({} as never), []);
@@ -288,7 +271,6 @@ test("filterUserQueueItems: 过滤 MusicKit 实例中的 Autoplay 自动推荐�
     isAutoplay: true,
   };
 
-  // 1. 如果提供了 userAddedItems，直接返回该列表
   const instWithUserAdded = {
     queue: {
       userAddedItems: [albumSong],
@@ -297,7 +279,6 @@ test("filterUserQueueItems: 过滤 MusicKit 实例中的 Autoplay 自动推荐�
   } as never;
   assert.deepEqual(filterUserQueueItems(instWithUserAdded), [albumSong]);
 
-  // 2. 如果只有 items，通过 isAutoplay 属性过滤
   const instWithMixedItems = {
     queue: {
       items: [albumSong, autoplaySong1, autoplaySong2],
@@ -305,7 +286,6 @@ test("filterUserQueueItems: 过滤 MusicKit 实例中的 Autoplay 自动推荐�
   } as never;
   assert.deepEqual(filterUserQueueItems(instWithMixedItems), [albumSong]);
 
-  // 3. 全是 Autoplay 曲目时返回空数组
   const instWithAllAutoplay = {
     queue: {
       items: [autoplaySong1, autoplaySong2],

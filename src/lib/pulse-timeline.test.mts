@@ -54,7 +54,6 @@ test("state observation: a dead periodic source ends at its last confirmation; u
 
 test("state observation: a HomePod track with no further push ends when it should have finished, not after the grace", () => {
   const homePod = { ...playing, source: "homepod" as const };
-  // 二十分钟的曲子：HA 只在开头推了一次。宽限到第 25 分钟，曲子第 20 分钟放完
   const first = planStateObservation("listening", null, T, homePod, { until: T + 25 * M, endsBy: T + 20 * M })!.open!;
   assert.deepEqual([first.holdUntil, first.endsBy], [T + 25 * M, T + 20 * M]);
   assert.deepEqual(stateSegments("listening", [], first, { from: T - M, to: T + 15 * M }).map((row) => [row.from - T, row.to - T]), [[0, 15 * M]],

@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-/** Compare SqliteStore query costs in an isolated local SQLite Durable Object. */
 import assert from "node:assert/strict";
 import { spawn, execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";

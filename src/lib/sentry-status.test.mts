@@ -4,7 +4,6 @@ import test from "node:test";
 import { SENTRY_COLLECTOR_PROJECT_ID, SENTRY_SITE_PROJECT_ID, SENTRY_WORKER_PROJECT_ID } from "./sentry.ts";
 import { availability, fetchSentryStatus, parseCronBuckets, parseCronStatus, parseUptimeBuckets, parseUptimeStatus } from "./sentry-status.ts";
 
-// 形状取自对 Sentry API 的真实响应，只删了用不到的字段
 
 test("uptime buckets count incident failures as downtime and ignore missed windows", () => {
   const days = parseUptimeBuckets({
@@ -40,7 +39,6 @@ test("uptime status", () => {
 });
 
 test("one failing block degrades to null without failing the round", async () => {
-  // 在线率和错误那几块挂了、Vitals 那块成了：前者为 null，Vitals 照常
   const payload = await fetchSentryStatus(async (path, params) => {
     if (params.dataset === "spans") return { data: [{ "p75(measurements.lcp)": 1850, "count()": 3 }] };
     throw new Error(`503 ${path}`);

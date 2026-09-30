@@ -8,9 +8,6 @@ const TONE_CLASS: Record<DotTone, string> = {
   off: "bg-live-off",
 };
 
-/**
- * 数据新鲜度指示灯。只有 live 会呼吸 —— 离线状态不该有动效来吸引注意力。
- */
 export function StatusDot({
   tone = "off",
   className,

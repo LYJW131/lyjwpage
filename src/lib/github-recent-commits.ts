@@ -4,26 +4,17 @@ import { type CommitAuthor, authorFromTrailer, mergeAuthors, parseCoAuthors } fr
 import { repoIdFromUrl } from "@/lib/github-repo";
 import { site } from "@/lib/site";
 
-/**
- * 首页「最近提交」列表。构建期焊进 HTML，不走 /api/status、也不轮询。
- *
- * 和头像内联同一套：`cacheLife("max")` + `BUILD_TIME` 进缓存键，每次部署换一份；
- * 部署之间页面按 tag 失效重建时也不会反复打 GitHub。公开仓不配令牌也能读，
- * 有 GITHUB_TOKEN 就带上，配额更宽。
- */
 
 export type GithubRecentCommit = {
   sha: string;
   shortSha: string;
   title: string;
   url: string;
-  /** 作者在前，`Co-authored-by` 的协作者接上，见 commit-authors */
   authors: CommitAuthor[];
   committedAt: string | null;
   verified: boolean;
 };
 
-/** 卡片右栏固定放这么多张提交卡、不滚动，所以只拉这么多条。 */
 const RECENT_LIMIT = 3;
 
 type CommitListItem = {
@@ -40,12 +31,10 @@ type CommitListItem = {
   author?: { login?: string; avatar_url?: string } | null;
 };
 
-/** 提交的作者：对上了 GitHub 账号就用登录名和头像，否则解析 agent 或 git 里的名字。 */
 function primaryAuthor(item: CommitListItem): CommitAuthor | null {
   const login = item.author?.login?.trim();
   const avatarUrl = item.author?.avatar_url?.trim() || null;
 
-  // 1. GitHub 官方已经关联到账号，直接信任 GitHub 数据
   if (login) {
     return {
       name: login,
@@ -55,7 +44,6 @@ function primaryAuthor(item: CommitListItem): CommitAuthor | null {
     };
   }
 
-  // 2. 没关联上账号时，尝试从 git author email 解析（如 agent 固定邮箱或 noreply 邮箱）
   const email = item.commit?.author?.email?.trim() || "";
   const name = item.commit?.author?.name?.trim() || "";
   if (email) {
@@ -71,15 +59,6 @@ function firstLine(message: string): string {
   return line || "(untitled)";
 }
 
-/**
- * 拉本仓库最近若干条提交标题。失败返回空数组，卡片少这一栏，不拖垮首页。
- *
- * `cacheLife` 分支写：**拿到了**才冻到下次部署，空手而归只缓存几分钟。
- * 首页不是纯静态 —— 每次 ingest 按 tag 失效后会在某个区域重新渲染，那一次
- * 在本区域是冷的、要真打一次 GitHub。未鉴权配额很低（按 IP 计），撞上 403
- * 就会渲染出一份没有提交栏的 HTML；要是这份也按 `max` 缓存，等于一次瞬时
- * 限流把这一栏冻到下次部署为止。
- */
 export async function getRecentCommits(): Promise<GithubRecentCommit[]> {
   "use cache";
 
@@ -149,7 +128,6 @@ export async function getRecentCommits(): Promise<GithubRecentCommit[]> {
       ];
     });
     if (commits.length === 0) {
-      // 响应是 200 但一条都没解析出来，同样按「没拿到」处理，别冻住。
       cacheLife("minutes");
       return commits;
     }

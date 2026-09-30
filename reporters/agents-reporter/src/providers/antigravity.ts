@@ -38,7 +38,6 @@ function windowLabel(window: string | null): string {
   return window ?? "";
 }
 
-/** 把 retrieveUserQuotaSummary 响应规整成 genericWindows("antigravity") 吃的形状。纯函数。 */
 export function normalizeAntigravityQuota(body: unknown): Record<string, unknown> {
   const rec = asRecord(body);
   const groups = Array.isArray(rec?.groups) ? rec.groups : [];
@@ -72,12 +71,7 @@ export function normalizeAntigravityQuota(body: unknown): Record<string, unknown
   return node;
 }
 
-/**
- * 套餐：配额接口不带订阅。IDE 里那句「Google AI Pro」来自 Windsurf 那套 language server
- * 问 aicode.googleapis.com 的 gRPC，CLI 自己从不显示；`loadCodeAssist` 回的是 Code Assist
- * 档位（free-tier），不是订阅，拿来当套餐会显示错。所以由环境变量 ANTIGRAVITY_PLAN_LABEL
- * 指定，没配就 null（不渲染套餐标签）。
- */
+// loadCodeAssist 的档位不是付费订阅；不能拿它替代显式配置的套餐标签。
 export function rowFromAntigravityQuota(body: unknown, planLabel = config.antigravityPlanLabel): AgentRow {
   const node = normalizeAntigravityQuota(body);
   if (planLabel) node.plan_label = planLabel;
@@ -115,10 +109,6 @@ function accessExpired(expiry: unknown, now = Date.now()): boolean {
   return now + SKEW_MS >= ms;
 }
 
-/**
- * 能用的 OAuth 客户端。环境变量配了就是它；没配就从 `agy` 二进制扫候选（只扫一次），
- * 刷新时逐对试，试对的记下来，之后不再试。
- */
 let candidates: Promise<OAuthClient[]> | null = null;
 let working: OAuthClient | null = null;
 
@@ -175,10 +165,6 @@ async function refreshAntigravityToken(file: TokenFile, home = config.home): Pro
   const refreshToken = text(file.token?.refresh_token);
   if (!refreshToken) throw new Error("Antigravity 凭据里没有 refresh_token");
 
-  /**
-   * 先用上次试对的那对；没有就按候选顺序试。配错的那对 Google 回 401 invalid_client，
-   * 换下一对；refresh_token 本身坏了（invalid_grant）换谁都没用，直接报出去。
-   */
   const order = working ? [working] : await oauthClientCandidates();
   if (order.length === 0) throw new Error("没有可用的 Antigravity OAuth 客户端（环境变量没配，agy 二进制也扫不出）");
   let accessToken: string | null = null;

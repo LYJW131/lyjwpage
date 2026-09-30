@@ -1,6 +1,3 @@
-// 导出：node render.mjs audio <index.html> <out.wav> [风格 chip|piano|lofi|pluck] [只渲前几秒]
-//       node render.mjs sfx <index.html> <输出目录> [音色 chip|soft]   （音效轨 sfx.wav + 配乐增益曲线 duck.wav + cues.json）
-//       node render.mjs video <index.html> <music.wav> <out.mp4> [fps] [from] [to]
 import { chromium } from "playwright-core";
 import { spawn } from "node:child_process";
 import fs from "node:fs";

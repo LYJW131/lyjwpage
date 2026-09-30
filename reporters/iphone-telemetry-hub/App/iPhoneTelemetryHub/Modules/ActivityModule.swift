@@ -1,30 +1,13 @@
 import Foundation
 import HealthKit
 
-/**
- 活动圆环模块：当天的三环（活动 / 锻炼 / 站立）加步数、距离、爬楼层数。
-
- 三环的**目标值**是这个模块存在的理由 —— 它们只在 `HKActivitySummary` 里，只有原生
- App 读得到。第三方导出工具（Health Auto Export 之类）导的是 HealthKit 的样本，
- 导不出目标，于是目标只能配成站点那侧的常量，手表上调一次就要改两份生产的配置。
-
- 站点那边的契约见 `src/lib/types.ts` 的 `ActivityStatus`，字段名逐字对齐。
- */
 final class ActivityModule: TelemetryModule {
     let id = "activity"
     let title = "活动圆环"
 
     private let store = HKHealthStore()
 
-    /**
-     观测这几个类型。
-
-     三环各自的驱动样本 + 步数。`HKActivitySummaryType` 本身**不能观测**（它不是
-     `HKSampleType`），所以观的是喂它的那几个样本类型，响了再回头查一次整份 summary。
-
-     距离和爬楼不在其中：它们只是附加数字，跟着上面几个的节奏一起发就够了，
-     单独观测只会多出几次唤醒。
-     */
+    // HKActivitySummaryType 不是 HKSampleType，不能直接观测；必须观测驱动圆环的样本。
     private static let observedTypes: [HKSampleType] = [
         HKQuantityType(.activeEnergyBurned),
         HKQuantityType(.appleExerciseTime),
@@ -42,13 +25,7 @@ final class ActivityModule: TelemetryModule {
         HKQuantityType(.flightsClimbed),
     ]
 
-    /**
-     只答得出「问没问过」，答不出「给没给」。
-
-     HealthKit 故意不透露读权限的授权结果 —— 否则「这个 App 读不到你的心率数据」
-     本身就是一条健康信息。所以真正的信号是 `snapshot()` 到底拿不拿得到东西，
-     这个方法只用来决定界面上要不要再弹一次授权表单。
-     */
+    // HealthKit 不透露读权限结果；unnecessary 只表示无需再次请求，不表示已获准读取。
     func isAuthorized() async -> Bool {
         guard HKHealthStore.isHealthDataAvailable() else { return false }
         let status = try? await store.statusForAuthorizationRequest(toShare: [], read: Self.readTypes)
@@ -67,30 +44,18 @@ final class ActivityModule: TelemetryModule {
     func snapshot() async throws -> AnyEncodable? {
         guard HKHealthStore.isHealthDataAvailable() else { return nil }
         let history = try await recentHistory()
-        /**
-         手表当天还没有 summary（刚过午夜、手表还没同步）时只发历史。
-
-         站点校验目标值必须为正，硬发一份零目标只会换回一个 400。
-         */
         guard let reading = try? await todayRings(), reading.isUsable else {
-            // 圆环尚未同步也要把已经闭合的历史桶补上；接收端不会据此改写当前圆环。
             return AnyEncodable(ActivityHistoryOnlyPayload(history: history))
         }
         return AnyEncodable(reading.payload(extras: await extraCounts(for: reading), history: history))
     }
 
-    /// 界面上那一份读数，不上报，只显示
     func currentReading() async -> RingReading? {
         (try? await todayRings()) ?? nil
     }
 
-    // MARK: - 观测
 
-    /**
-     **必须是 nonisolated 的**：`HKObserverQuery` 的 updateHandler 在 SDK 里标着
-     `NS_SWIFT_SENDABLE`，而闭包如果是在隔离上下文里写的，它就带着那份隔离，
-     Swift 6 会当场拒绝（"passing closure as a 'sending' parameter"）。
-     */
+    // HKObserverQuery 的回调是 NS_SWIFT_SENDABLE；隔离上下文会让闭包继承隔离，触发 Swift 并发检查。
     private nonisolated static func observe(
         store: HKHealthStore,
         onChange: @escaping @Sendable () async -> Void
@@ -100,19 +65,13 @@ final class ActivityModule: TelemetryModule {
                 let box = CompletionBox(call: completion)
                 if let error {
                     NSLog("[activity] 观测出错 %@", error.localizedDescription)
-                    // 出错也要交差，否则 HealthKit 会认为这次没送达
+                    // 出错也必须确认投递，否则 HealthKit 会退避后续唤醒。
                     box.call()
                     return
                 }
                 Task {
                     await onChange()
-                    /**
-                     **必须等上报真的结束再交差。**
-
-                     早调的话，系统认为这次投递处理完了、随时可以把实例挂起，上报就被
-                     掐在半路；一次都不调的话更糟 —— HealthKit 退避几次之后就不再为
-                     这个 App 唤醒了，表现是「装上那天好好的，过几天再也不更新」。
-                     */
+                    // 提前确认会允许系统挂起并截断上报；漏确认则会让 HealthKit 退避后续唤醒。
                     box.call()
                 }
             }
@@ -121,20 +80,13 @@ final class ActivityModule: TelemetryModule {
             do {
                 try await store.enableBackgroundDelivery(for: type, frequency: .hourly)
             } catch {
-                // 打不开只是「后台不再自动上报」，前台那条路照常，不该让 App 起不来
                 NSLog("[activity] 后台投递没打开 %@", error.localizedDescription)
             }
         }
     }
 
-    // MARK: - 取数
 
-    /**
-     今天那份 summary。
-
-     查询回调里就把值抽成一个 `Sendable` 的结构再跨回来 —— `HKActivitySummary`
-     是个类，直接从 continuation 里传出来在 Swift 6 下过不了并发检查。
-     */
+    // HKActivitySummary 不能跨隔离域传递，必须在查询回调内抽成 Sendable 值。
     private func todayRings() async throws -> RingReading? {
         let calendar = Calendar.current
         var components = calendar.dateComponents([.year, .month, .day], from: Date())
@@ -157,7 +109,6 @@ final class ActivityModule: TelemetryModule {
         }
     }
 
-    /// 步数、距离、爬楼。取不到就是 nil，不是 0 —— 见 ActivityPayload 的注释
     private func extraCounts(for reading: RingReading) async -> ExtraCounts {
         let start = reading.dayStart
         let end = min(Date(), start.addingTimeInterval(24 * 60 * 60))
@@ -182,21 +133,13 @@ final class ActivityModule: TelemetryModule {
                 quantitySamplePredicate: predicate,
                 options: .cumulativeSum
             ) { _, statistics, _ in
-                // 出错和「今天一个样本都没有」都落到 nil。读授权被拒时 HealthKit 也是
-                // 这个表现（不报错，只是查不到），分不出来，所以一律当成「没有这项」
+                // HealthKit 拒绝读权限时同样只返回空结果，不能把读不到当作零。
                 continuation.resume(returning: statistics?.sumQuantity()?.doubleValue(for: unit))
             }
             store.execute(query)
         }
     }
 
-    /**
-     最近 24 小时已经结束的 UTC 五分钟统计桶。
-
-     每次上报都带完整查询范围，接收端据此权威替换：HealthKit 后续修订或删除样本时，
-     旧桶也能被删掉。某个 statistics 为 nil 代表没有可读事实，保持 nil；三个都 nil 的
-     桶不发送，站点会把那五分钟留成未知而不是静止。
-     */
     private func recentHistory(now: Date = Date()) async throws -> ActivityHistoryPayload {
         let bucketSeconds: TimeInterval = 5 * 60
         let to = Date(timeIntervalSince1970: floor(now.timeIntervalSince1970 / bucketSeconds) * bucketSeconds)
@@ -251,31 +194,13 @@ private func epochMilliseconds(_ date: Date) -> Int64 {
     Int64((date.timeIntervalSince1970 * 1_000).rounded())
 }
 
-/**
- HealthKit 那个交差回调的盒子。
-
- `HKObserverQueryCompletionHandler` 在头文件里是个光秃秃的 `void(^)(void)`，**没有**
- 标 Sendable，所以把它捎进 `Task` 里等上报跑完再调，Swift 6 会拦。可它本来就是给别的
- 队列回调用的，这里显式跨过去 —— 换成「先交差再上报」倒是能编译，但那正是要避免的事。
- */
+// SDK 的 completion 未标 Sendable，但必须跨队列等上报结束才能确认投递。
 private struct CompletionBox: @unchecked Sendable {
     let call: HKObserverQueryCompletionHandler
 }
 
-/**
- 发给站点的那一份，字段名和 `src/lib/types.ts` 的 `ActivityStatus` 逐字对齐。
-
- 三环一律取整：手表上显示的就是整数，多带的小数只会让每次上报的字节都不一样，
- 而站点那边 SWR 靠深比较决定要不要重渲染。
-
- 三个选填项用 `Optional`：合成的 `Codable` 对可选属性走 `encodeIfPresent`，
- 所以取不到时**整个字段不出现**，而不是发一个 0 —— 站点据此把「没有这项」
- （那一格不渲染）和「今天是 0」分开。
- */
 struct ActivityPayload: Codable, Sendable, Equatable {
-    /// 手表本地的那一天，YYYY-MM-DD。取自 summary 自己的 dateComponents
     let date: String
-    /// 当前时区的 UTC 偏移，秒。和 Mac 上报器的时区模块同名同单位
     let secondsFromGMT: Int
 
     let moveKcal: Int
@@ -315,12 +240,7 @@ struct ExtraCounts: Sendable {
     var flightsClimbed: Double?
 }
 
-/**
- 从 `HKActivitySummary` 抽出来的那一份，`Sendable`。
-
- 日期直接从 summary 自己的 `dateComponents` 拼，**不另拿 `Date()` 算**：午夜前后
- 两者会差一天，而这份数据说的是哪一天正是站点唯一较真的东西。
- */
+// 日期必须取 summary 自身；午夜前后另取 Date() 可能把读数归到错误的一天。
 struct RingReading: Sendable {
     let date: String
     let secondsFromGMT: Int
@@ -349,7 +269,6 @@ struct RingReading: Sendable {
         standGoalHours = summary.appleStandHoursGoal.doubleValue(for: .count())
     }
 
-    /// 三个目标都得是正数，否则那不是一份能用的记录（站点也会这么判）
     var isUsable: Bool {
         moveGoalKcal > 0 && exerciseGoalMinutes > 0 && standGoalHours > 0
     }

@@ -47,7 +47,7 @@ from pathlib import Path
 try:
     from PIL import Image
     from playwright.sync_api import TimeoutError as PlaywrightTimeoutError, sync_playwright
-except ImportError as error:  # 给个能照着做的提示，别只抛 traceback
+except ImportError as error:
     sys.exit(f"缺少依赖 {error.name}：pip install playwright pillow && playwright install chromium")
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -56,7 +56,6 @@ SITE_URL = os.environ.get("SITE_URL", "http://localhost:3211/")
 WORKER_URL = os.environ.get("DEV_WORKER_URL", "http://localhost:8788").rstrip("/")
 BROWSER_CHANNEL = os.environ.get("PLAYWRIGHT_CHANNEL") or None
 
-# 四段标识：key、夹具文件、页头 aria-label 里的规范名（见 src/lib/desktop-app-overrides.tsx）
 MARKS = [
     ("claude-code", "desktop-claude-code.json", "Claude Code"),
     ("ghostty", "desktop-ghostty.json", "Ghostty"),
@@ -64,7 +63,6 @@ MARKS = [
     ("antigravity", "desktop-antigravity.json", "Google Antigravity"),
 ]
 DESKTOP_PATH = "/api/status/desktop"
-# 窗口标题剧本：(毫秒, 标题)，None 是没有标题。首尾都没有标题，循环才接得上；两段错开，不在同一刻动。
 TITLE_SCRIPTS: dict[str, list[tuple[int, str | None]]] = {
     "cursor": [
         (1100, "telemetry.ts — lyjwpage"),
@@ -76,14 +74,13 @@ TITLE_SCRIPTS: dict[str, list[tuple[int, str | None]]] = {
         (4800, None),
     ],
 }
-PAD_X, PAD_Y = 24, 16  # 标识四周留白（CSS px），吉祥物取物时会探出左边界，左侧要够
-GAP = 32  # 各段之间的间距（设备像素，2x）
-STEP_MS = 25  # 吉祥物用的假时钟步长；源序列最短一步 50ms，25ms 不会漏帧
-SETTLE_S = 0.7  # 每次换标题后连续截图这么久（真实秒）：标题的淡入淡出和图标缩放都是 280ms
-FOCUS_THROTTLE_S = 5.1  # SWR 对 focus 触发的回源节流 5 秒（真实时间），两次触发之间至少等这么久
+PAD_X, PAD_Y = 24, 16  # 吉祥物取物会探出左边界，裁剪不能只按静态标识宽度。
+GAP = 32
+STEP_MS = 25  # 假时钟步长不能超过姿势序列最短帧，否则会漏帧。
+SETTLE_S = 0.7
+FOCUS_THROTTLE_S = 5.1
 
 sequence = json.loads((ROOT / "src/lib/mascot-fetch.json").read_text())["sequence"]
-# 第 1..33 步是取物过程；第 34 步和第 0 步都是姿势 0，合成轮尾的停顿
 RUN_DURATIONS = [step["ms"] for step in sequence[1:-1]]
 
 ghostty_frames = json.loads((ROOT / "src/lib/ghostty-frames.json").read_text())
@@ -94,7 +91,6 @@ CYCLE_MS = GHOSTTY_FRAME_MS * GHOSTTY_FRAME_COUNT
 
 @dataclass
 class Timeline:
-    """一段动画在一轮 GIF 里的帧序列：starts[i] 是第 i 帧开始的毫秒，之后保持到下一帧。"""
 
     starts: list[int]
     paths: list[Path]
@@ -140,7 +136,7 @@ def new_page(browser, theme: str, *, clock: bool):
     if clock:
         page.clock.install()
     page.goto(SITE_URL, wait_until="load", timeout=120_000)
-    # 页面上总有轮询和长连接在跑，networkidle 等不到就算了；各段自己等标识出现、动画停稳
+    # 轮询与长连接可能让 networkidle 永不满足。
     try:
         page.wait_for_load_state("networkidle", timeout=10_000)
     except PlaywrightTimeoutError:
@@ -151,7 +147,6 @@ def new_page(browser, theme: str, *, clock: bool):
 
 
 def freeze_at_mark(page, sel: str, name: str):
-    """假时钟不会自己走：边拨边等标识出现，等入场动画停稳后冻结时间，返回元素。"""
     for _ in range(400):
         if page.query_selector(sel):
             break
@@ -161,24 +156,21 @@ def freeze_at_mark(page, sel: str, name: str):
         raise SystemExit(f"假时钟下没等到 {name} 标识，检查夹具是否注入、总开关是否打开")
     element = page.query_selector(sel)
     page.clock.run_for(1500)
-    # 冻结：之后时间只随 run_for 走，截图花的真实时间不会混进测得的时长。
-    # Python 绑定把数字当秒处理，这里必须传 datetime。读 Date.now() 到真正暂停之间
-    # 钟还在按真实时间走，pause_at 不能落在过去，往前多给 1 秒（入场动画早已停稳）。
+    # Python 绑定把数字当秒；须传 datetime 并留余量，避免 pause_at 落在过去。
     now_ms = page.evaluate("Date.now()")
     page.clock.pause_at(datetime.fromtimestamp((now_ms + 1000) / 1000, tz=timezone.utc))
     return element
 
 
 def capture_mascot(page, sel: str, frames_dir: Path, theme: str) -> Timeline:
-    """一轮取物的 34 帧：33 个过程姿势 + 末尾的姿势 0，姿势 0 一直停到 GIF 轮尾。"""
     element = freeze_at_mark(page, sel, "Claude Code")
     clip = clip_of(element)
 
     svg = page.locator(f'{sel} svg[shape-rendering="crispEdges"]').first
     read = lambda: svg.evaluate("n => n.innerHTML")  # noqa: E731
 
-    # 到达时动画可能正在中途，先录 ~16 秒的姿势变化，再按「停得最久的那一帧是姿势 0」切出一轮
-    timeline: list[list] = []  # [content, path, duration_ms]
+    # 初始姿势可能在半轮中间，长停顿才是完整循环的边界。
+    timeline: list[list] = []
     current = read()
     path = frames_dir / f"claude-{theme}-000.png"
     page.screenshot(path=str(path), clip=clip, scale="device")
@@ -208,7 +200,6 @@ def capture_mascot(page, sel: str, frames_dir: Path, theme: str) -> Timeline:
 
 
 def capture_ghostty(page, sel: str, frames_dir: Path, theme: str) -> Timeline:
-    """从第 0 帧起逐帧截满一轮；帧号读 SVG 的 data-frame，不靠比对内容。"""
     element = freeze_at_mark(page, sel, "Ghostty")
     clip = clip_of(element)
     svg = page.locator(f"{sel} svg").first
@@ -239,7 +230,6 @@ def capture_ghostty(page, sel: str, frames_dir: Path, theme: str) -> Timeline:
 
 
 def titled_fixture(base: str, title: str | None, path: Path) -> Path:
-    """从 dev-fixtures 里的 desktop 夹具派生一份只改 windowTitle 的临时夹具（dev-override 认任意路径）。"""
     fixture = json.loads((ROOT / "workers/api/dev-fixtures" / base).read_text())
     fixture["data"]["desktop"]["windowTitle"] = title
     path.write_text(json.dumps(fixture, ensure_ascii=False))
@@ -247,7 +237,6 @@ def titled_fixture(base: str, title: str | None, path: Path) -> Path:
 
 
 def capture_titles(browser, key: str, fixture: str, name: str, frames_dir: Path, theme: str) -> Timeline:
-    """按剧本让标题出现 / 变化 / 消失，每次变化后在真实时间里连续截图，画面一变就留一帧。"""
     sel = f'[aria-label="Using {name}"]'
     script = TITLE_SCRIPTS[key]
     variants = {
@@ -255,7 +244,7 @@ def capture_titles(browser, key: str, fixture: str, name: str, frames_dir: Path,
         for index, title in enumerate(dict.fromkeys([None, *(title for _, title in script)]))
     }
 
-    # 徽章在页头居中，带标题时两边一起变宽：先量出每种状态的框，取并集当这一段所有帧的裁剪框
+    # 居中徽章带标题时向两侧扩张，裁剪框必须覆盖所有状态。
     x0 = y0 = float("inf")
     x1 = y1 = float("-inf")
     for title, path in variants.items():
@@ -272,7 +261,7 @@ def capture_titles(browser, key: str, fixture: str, name: str, frames_dir: Path,
     override(DESKTOP_PATH, str(variants[None]))
     page = new_page(browser, theme, clock=False)
     page.wait_for_selector(sel, timeout=30_000)
-    page.wait_for_timeout(1500)  # 等应用切换的入场动画停稳
+    page.wait_for_timeout(1500)
     shot = page.screenshot(clip=clip, scale="device")
     path = frames_dir / f"{key}-{theme}-000.png"
     path.write_bytes(shot)
@@ -282,11 +271,11 @@ def capture_titles(browser, key: str, fixture: str, name: str, frames_dir: Path,
         if at_ms <= starts[-1]:
             raise SystemExit(f"{key} 剧本 {at_ms}ms 那步来得太早，上一步的过渡 {starts[-1]}ms 才收完")
         override(DESKTOP_PATH, str(variants[title]))
-        # 注入不发推送事件，借 SWR 的 revalidateOnFocus 回源一次；它对 focus 节流 5 秒，不够就等够
+        # 注入不发推送，须通过 focus 回源，并等待 SWR 的真实时间节流。
         page.wait_for_timeout(max(0.0, FOCUS_THROTTLE_S - (time.perf_counter() - last_focus)) * 1000)
         page.evaluate("window.dispatchEvent(new Event('focus'))")
         last_focus = time.perf_counter()
-        hover = f"{name} · {title}" if title else name  # 数据一到，容器的 title（hoverText）同步换掉
+        hover = f"{name} · {title}" if title else name
         for _ in range(150):
             if page.get_attribute(sel, "title") == hover:
                 break
@@ -320,7 +309,6 @@ def capture(theme: str, frames_dir: Path) -> dict[str, Timeline]:
             if key in TITLE_SCRIPTS:
                 captured[key] = capture_titles(browser, key, fixture, name, frames_dir, theme)
                 continue
-            # 这两段只看标识本身：夹具里带的窗口标题去掉
             override(DESKTOP_PATH, str(titled_fixture(fixture, None, frames_dir / f"{key}-untitled.json")))
             page = new_page(browser, theme, clock=True)
             sel = f'[aria-label="Using {name}"]'
@@ -336,9 +324,7 @@ def capture(theme: str, frames_dir: Path) -> dict[str, Timeline]:
 def compose(theme: str, captured: dict[str, Timeline]) -> Path:
     background = Image.open(captured["cursor"].paths[0]).convert("RGB").getpixel((0, 0))
 
-    # 任一段换帧的时刻都出一张 GIF 帧，其余段保持上一帧。GIF 的延时以 10ms 计，浏览器又把
-    # ≤10ms 当 100ms 播，所以相距不到 20ms 的换帧并成一张（画面取靠后那一刻的状态），
-    # 帧时长按 10ms 网格累计取整，一轮总长不漂。
+    # 浏览器把 GIF 的短延时钳制为更长间隔，相邻帧必须至少留 20ms。
     events = sorted({0} | {ms for item in captured.values() for ms in item.starts if ms < CYCLE_MS})
     clusters: list[list[int]] = []
     for ms in events:
@@ -365,7 +351,7 @@ def compose(theme: str, captured: dict[str, Timeline]) -> Path:
         durations.append(grid(next_ms) - grid(cluster[0]))
     assert min(durations) >= 20, durations
 
-    # 全帧共用一个调色板，没在动的那几段才不会在帧间抖色
+    # 每帧独立量化会让静止区域抖色，必须共用调色板。
     sheet = Image.new("RGB", (frames[0].width, frames[0].height * len(frames)))
     for i, frame in enumerate(frames):
         sheet.paste(frame, (0, i * frame.height))

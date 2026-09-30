@@ -1,6 +1,3 @@
-// Reviewer-only geometry analysis (does not modify the explainer).
-// node analyze.mjs <index.html> <out.json> [step=0.25] [popStep=0.05] [from=0] [to=end]
-// 输出 JSON：geo（重叠/贴边/悬空连线/数据包压字等问题，按时刻）、pops（一帧内突然出现或消失、位置跳变）
 import { chromium } from "playwright-core";
 import fs from "node:fs";
 const [html, outPath, stepArg, popArg, fromArg, toArg] = process.argv.slice(2);
@@ -47,7 +44,6 @@ await p.evaluate(() => {
   };
   const crabRect = () => {
     const paths = [...document.querySelectorAll("svg path")].filter((x) => x.getAttribute("fill") === "#D77757");
-    // the stage crab is the one whose svg is 288 wide
     const main = paths.find((x) => x.ownerSVGElement && +x.ownerSVGElement.getAttribute("width") === 288);
     if (!main) return null;
     const wrap = main.ownerSVGElement.parentElement.parentElement;
@@ -68,7 +64,6 @@ await p.evaluate(() => {
   };
   const cardCache = new WeakMap();
   function cardMargins(card) {
-    // min distance from text/inline content to the card's border box (only at scale 1)
     if (cardCache.has(card)) return cardCache.get(card);
     const cr = card.getBoundingClientRect();
     if (Math.abs(cr.width - card.offsetWidth) > 0.6) return null;
@@ -80,7 +75,6 @@ await p.evaluate(() => {
       if (!n.textContent.trim()) continue;
       const pe = n.parentElement;
       if (!vis(pe) || eff(pe) < 0.05) continue;
-      // skip nested cards/packets (checked on their own)
       const nested = pe.closest(".card,.pkt,.tg");
       if (nested && nested !== card && card.contains(nested) && nested.classList.contains("card")) continue;
       rng.selectNodeContents(n);
@@ -90,7 +84,6 @@ await p.evaluate(() => {
         for (const k of ["l", "r", "t", "b"]) if (d[k] < m[k]) { m[k] = +d[k].toFixed(1); if (k === "r" || k === "b") m["w" + k] = n.textContent.trim().slice(0, 24); }
       }
     }
-    // also tags / inline boxes
     for (const e of card.querySelectorAll(".tg,.ic,svg,.tagrow")) {
       if (!vis(e)) continue;
       const nested = e.closest(".card");
@@ -135,7 +128,6 @@ await p.evaluate(() => {
     const crab = crabRect();
     const hud = hudRects();
 
-    // 1. bubble overlaps
     if (bub) {
       const br = bub.r;
       for (const tp of tops) { const x = inter(br, tp.r); if (x && x[0] * x[1] > 40) add("bubble×content", bub.text + " ⟂ " + tp.d, { a: Math.round(x[0] * x[1]), w: Math.round(x[0]), h: Math.round(x[1]) }); }
@@ -145,14 +137,12 @@ await p.evaluate(() => {
       if (br.left < 40 || br.right > 1880 || br.top < 100 || br.bottom > 1000) add("bubble-edge", bub.text, { r: RR(br) });
       for (const pk of pkts) { const x = inter(br, pk.r); if (x) add("bubble×packet", bub.text + " ⟂ " + pk.d, {}); }
     }
-    // 2. content vs content
     for (let i = 0; i < tops.length; i++) for (let j = i + 1; j < tops.length; j++) {
       const A = tops[i], B = tops[j];
       if (A.el.classList.contains("pkt") || B.el.classList.contains("pkt")) continue;
       const x = inter(A.r, B.r);
       if (x && x[0] * x[1] > 30) add("content×content", A.d + " ⟂ " + B.d, { w: Math.round(x[0]), h: Math.round(x[1]) });
     }
-    // gaps between content (cramped): pairs closer than 14px but not overlapping
     for (let i = 0; i < tops.length; i++) for (let j = i + 1; j < tops.length; j++) {
       const A = tops[i], B = tops[j];
       if (A.el.classList.contains("pkt") || B.el.classList.contains("pkt")) continue;
@@ -162,7 +152,6 @@ await p.evaluate(() => {
       const gap = Math.max(dx, dy);
       if (gap >= 0 && gap < 16) add("content-gap<16", A.d + " ⟂ " + B.d, { gap: Math.round(gap) });
     }
-    // 3. edges & HUD
     for (const tp of tops) {
       const r = tp.r;
       if (tp.o < 0.5) continue;
@@ -171,14 +160,11 @@ await p.evaluate(() => {
       if (crab) { const x = inter(r, crab); if (x && x[0] * x[1] > 60) add("crab×content", tp.d, { w: Math.round(x[0]), h: Math.round(x[1]) }); }
     }
     if (crab) for (const h of hud) { const x = inter(crab, h.r); if (x) add("crab×hud", h.k, {}); }
-    // 4. packets over text/cards
     for (const pk of pkts) {
       for (const c of cards) { if (c.el.contains(pk.el)) continue; const r = c.el.getBoundingClientRect(); const x = inter(pk.r, r); if (x && x[0] * x[1] > 60) add("packet×card", pk.d + " ⟂ " + desc(c.el), { w: Math.round(x[0]), h: Math.round(x[1]) }); }
       for (const tp of tops) { if (tp.el === pk.el || tp.el.contains(pk.el) || tp.el.classList.contains("card") || tp.el.classList.contains("pkt")) continue; const x = inter(pk.r, tp.r); if (x && x[0] * x[1] > 60) add("packet×label", pk.d + " ⟂ " + tp.d, {}); }
     }
-    // 5. card margins (text cramped / overflow)
     for (const c of cards) { const m = cardMargins(c.el); if (m && (m.l < 10 || m.r < 10 || m.t < 6 || m.b < 6)) add("card-margin", m.desc, { m: { l: m.l, r: m.r, t: m.t, b: m.b, wr: m.wr, wb: m.wb } }); }
-    // 6. wires: attachment & crossing
     const obstacles = tops.filter((x) => !x.el.classList.contains("pkt"));
     for (const w of wires) {
       const L = w.pth.getTotalLength();
@@ -193,7 +179,7 @@ await p.evaluate(() => {
           const dxo = Math.max(r.left - q.x, 0, q.x - r.right), dyo = Math.max(r.top - q.y, 0, q.y - r.bottom);
           const outside = Math.hypot(dxo, dyo);
           const inside = Math.min(q.x - r.left, r.right - q.x, q.y - r.top, r.bottom - q.y);
-          const dist = outside > 0 ? outside : -inside; // >0 gap, <=0 inside depth
+          const dist = outside > 0 ? outside : -inside;
           if (!best || Math.abs(dist) < Math.abs(best.dist)) best = { dist, ob };
         }
         if (w.pth.classList.contains("pen")) {}
@@ -204,7 +190,6 @@ await p.evaluate(() => {
           if (best.ob.o < 0.6 && w.o * w.frac > 0.6) add("wire-outlives-card", id, { el: best.ob.d, o: +best.ob.o.toFixed(2) });
         }
       });
-      // crossing
       const hits = new Map();
       const N = Math.max(20, Math.round(L / 12));
       for (let k = 1; k < N; k++) {
@@ -247,7 +232,6 @@ for (let t = FROM; t <= TO + 1e-6; t += STEP) {
   const iss = await p.evaluate((x) => window.__geo(x), tt);
   for (const i of iss) geo.push({ t: tt, ...i });
 }
-// pops
 const pops = [];
 let prev = null;
 const wipeNear = (t) => meta.chapters.some((c) => c.n > 0 && Math.abs(t - c.t0) < 0.45);

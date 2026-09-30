@@ -1,19 +1,9 @@
-// 第 10 章「一首歌的旅程」的配乐，14 小节，章内小节。写法见 ../CONVENTIONS.md「配乐」。
-// 0:0 接第 09 章的 A9sus4 落回 Dm9：信封主题全体一起唱一遍（铃、第二支铃唱三度和声、拨弦低八度）。
-// 之后信封经过哪一格，就用那一章的配器点一下：01 读数灯和翻图纸、02 钥匙、打勾、气动管和打字机、03 十六分的钟摆和暖铃、
-// 三盏灯 A5 D6 F6 和 202 大章、05 电键一样的闷音拨弦唱主题；10:0 卡片翻面时拨弦唱回第 00 章第一次出场的那个样子。
-// 10:2 切回终端：终和弦 Dmadd9（主题的四个音都在里面）；Clawd 庆祝时每次举手一声小「啾」，13:0 清屏一声轻擦，之后只剩 pad 慢慢放掉——
-// 第 00 章从同一个 Dmadd9 起，循环接得上。
-// 本章铃的音色选 warm（第 03 章那支），全片的收尾暖一点。
-// 剧情落点和 ../ch10.js 顶部的时间表 AT 是同一组小节：改一边先对另一边，再对 SCRIPT.md。
 (window.SCORE_PARTS = window.SCORE_PARTS || []).push({
   id: "ch10",
   tone: { bell: "warm", pluckPan: 0, snareVerb: 0.16 },
   score: ({ THEME, withNotes, phrase, midi, BEAT }) => {
-    // Clawd 庆祝时每次举手（celebrate 里 arms-up 那一段的第一帧）跳一下；帧长和帧序出自 ../../clawd.js，按帧换成拍
     const C = window.Clawd, seq = C.SEQ.celebrate;
     const hops = seq.flatMap((fr, i) => (fr.pose === "arms-up" && (i === 0 || seq[i - 1].pose !== "arms-up") ? [(i * C.FRAME_MS) / 1000 / BEAT] : []));
-    // 第 05 章那种电键：主题前三个音照旧，E5 长音拆成三下点
     const TAP = [[0, 0.75, "A4"], [0.75, 0.75, "D5"], [1.5, 0.5, "F5"], [2, 0.4, "E5"], [2.5, 0.4, "E5"], [3, 0.4, "E5"]];
     return {
       harm: [
@@ -51,41 +41,35 @@
         { from: 13, to: 13, id: "recap-tail", name: "拉回终端、清屏，尾音淡出；第 00 章从同一个和弦接着起", energy: 0.1,
           pad: 0.45, lp: 900, padVerb: 0.55 },
       ],
-      // 旋律：[小节, 拍位, 时值(拍), 音, 乐器, 力度, 是否主题]
       melody: [
-        [1, 1, 1.5, "A5", "glass", 1, false], // 01：换歌，读数灯一声（第 01 章唱主题的那件玻璃读数灯）
-        // 0:0 全体：铃唱主题，第二支铃唱三度，拨弦低八度
+        [1, 1, 1.5, "A5", "glass", 1, false],
         ...phrase(0, THEME, "bell", 1.15, true), ...phrase(0, withNotes(["F4", "A4", "D5", "C5"]), "bell2", 0.5), ...phrase(0, withNotes(["A3", "D4", "F4", "E4"]), "pluck", 0.42),
-        ...phrase(2, withNotes(["D5", "B4", "A4", "G4"]), "pluck", 0.5), // 02：拨弦往下答一句（G6 上的 B 还原）
-        ...phrase(4, THEME, "bell", 0.85, true), // 03：暖铃唱一遍
-        ...phrase(8, TAP, "pluckMute", 1.3, true), // 05：电键一样的闷音拨弦
-        // 10:0 翻面：拨弦唱回第 00 章第一次出场的那个样子，铃高八度叠一层
+        ...phrase(2, withNotes(["D5", "B4", "A4", "G4"]), "pluck", 0.5),
+        ...phrase(4, THEME, "bell", 0.85, true),
+        ...phrase(8, TAP, "pluckMute", 1.3, true),
         ...phrase(10, withNotes(["A4", "D5", "F5", "E5"]).slice(0, 3), "pluck", 1.2, true), ...phrase(10, withNotes(["A5", "D6", "F6", "E6"]).slice(0, 3), "bell", 0.4),
-        // 10:2 终和弦：铃敲 D5 / A5 / E6（E 是主题最后那个音），和 pad 的 Dmadd9 一起响
         [10, 2, 8, "E5", "pluck", 1.1, true], [10, 2, 8, "D5", "bell", 0.8, false], [10, 2, 8, "A5", "bell2", 0.5, false], [10, 2, 8, "E6", "bell2", 0.32, false],
       ],
       story: [
-        { bar: 0, beat: 0, kind: "accent", what: "arrive" }, // 接第 09 章：硬切暗底，落地一声低「咚」
-        { bar: 0, beat: 1, kind: "whoosh", tube: 1 }, // 往后拉出长图版
-        { bar: 0, beat: 3, kind: "swell" }, // 冲进第 01 格
-        { bar: 1, beat: 2, kind: "accent", what: "slip" }, // 信封从 Hub 出来
-        { bar: 1, beat: 3, kind: "whoosh", tube: 0 }, // 飞出这一格
-        { bar: 2, beat: 0, kind: "key", pan: -0.2 }, // 02：mac 的钥匙开门
-        { bar: 2, beat: 2, kind: "tick", m: midi("A5"), i: 0 }, // 过秤
-        { bar: 3, beat: 2, kind: "whoosh", tube: 0 }, // 进实时那根管子
-        { bar: 5, beat: 2, kind: "accent", what: "slip" }, // 03：纸条从墙缝递出去
-        { bar: 6, beat: 0, kind: "accent", what: "broadcast" }, { bar: 6, beat: 0, kind: "stamp", size: "mid" }, // 门外照单去办：广播和回执同一拍
-        // 回执回到入口，三盏灯（主题的前三个音），7:1 盖 202
+        { bar: 0, beat: 0, kind: "accent", what: "arrive" },
+        { bar: 0, beat: 1, kind: "whoosh", tube: 1 },
+        { bar: 0, beat: 3, kind: "swell" },
+        { bar: 1, beat: 2, kind: "accent", what: "slip" },
+        { bar: 1, beat: 3, kind: "whoosh", tube: 0 },
+        { bar: 2, beat: 0, kind: "key", pan: -0.2 },
+        { bar: 2, beat: 2, kind: "tick", m: midi("A5"), i: 0 },
+        { bar: 3, beat: 2, kind: "whoosh", tube: 0 },
+        { bar: 5, beat: 2, kind: "accent", what: "slip" },
+        { bar: 6, beat: 0, kind: "accent", what: "broadcast" }, { bar: 6, beat: 0, kind: "stamp", size: "mid" },
         { bar: 6, beat: 2, kind: "lamp", m: midi("A5"), i: 0 }, { bar: 6, beat: 3, kind: "lamp", m: midi("D6"), i: 1 }, { bar: 7, beat: 0, kind: "lamp", m: midi("F6"), i: 2 },
         { bar: 7, beat: 1, kind: "stamp", size: "big" },
-        { bar: 8, beat: 0, kind: "morse", m: midi("E5"), v: 0.6, pan: 0.2 }, // 05：脉冲到站，第 05 章的电键
-        { bar: 8, beat: 2, kind: "tick", m: midi("C6"), i: 2 }, // 写进浏览器缓存
-        { bar: 9, beat: 3, kind: "swell" }, // 奔向页面
-        { bar: 10, beat: 0, kind: "accent", what: "flip" }, // 卡片翻面
-        { bar: 10, beat: 2, kind: "boom" }, // 终和弦底下垫一声低的
-        // 片尾 Clawd 庆祝两次（../ch10.js 的 AT.celebrate：10:3、11:3），每次跳两下，一下一声，顺着 Dmadd9 往上
+        { bar: 8, beat: 0, kind: "morse", m: midi("E5"), v: 0.6, pan: 0.2 },
+        { bar: 8, beat: 2, kind: "tick", m: midi("C6"), i: 2 },
+        { bar: 9, beat: 3, kind: "swell" },
+        { bar: 10, beat: 0, kind: "accent", what: "flip" },
+        { bar: 10, beat: 2, kind: "boom" },
         ...[[10, "A5"], [10, "D6"], [11, "E6"], [11, "A6"]].map(([bar, n], i) => ({ bar, beat: 3 + hops[i % 2], kind: "hop", m: midi(n), pan: i % 2 ? 0.15 : -0.15 })),
-        { bar: 13, beat: 0, kind: "clear" }, // 终端自下往上清屏（AT.clear）
+        { bar: 13, beat: 0, kind: "clear" },
       ],
     };
   },

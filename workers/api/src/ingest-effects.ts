@@ -38,10 +38,7 @@ export function activeIngestEffectCollector(): EffectCollector | null {
   return collectors.getStore() ?? null;
 }
 
-/**
- * StateHub 用这层收集提交结果。handler 即使在较晚模块抛错，已经确认落库的写及
- * 它们对应的通知也会跟错误一起返回普通 Worker。
- */
+// 晚模块失败不能丢掉此前已落库写入的通知，效果必须随失败结果一起返回。
 export async function collectIngestEffects<T>(run: () => Promise<T>): Promise<CollectedIngest<T>> {
   const collector: EffectCollector = { effects: [] };
   return collectors.run(collector, async () => {
@@ -102,7 +99,6 @@ export async function dispatchIngestEffect(effect: IngestEffect): Promise<void> 
   await publish(event);
 }
 
-/** 提交完成后由普通 Worker 调用；网络请求不占 StateHub 的执行时间。 */
 export async function dispatchIngestEffects(effects: readonly IngestEffect[]): Promise<void> {
   if (!effects.length) return;
   await afterResponse(async () => {

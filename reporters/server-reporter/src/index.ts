@@ -10,13 +10,6 @@ import {
 } from "./system.js";
 import { traffic as trafficReport } from "./traffic.js";
 
-/**
- * 这台机器的 CPU / 内存 / 磁盘 / 网速 → lyjwpage `/api/ingest/server`。
- *
- * 采集窗口就是上报间隔本身：上一轮 /proc 的读数留着，这一轮做差，得到的是这段时间的
- * 平均占用和平均速率，不是「这一瞬间的尖峰」。同一份差值还累加成计费周期的流量
- * （见 traffic.ts）。固定每分钟推一次，这份快照本身就是心跳。
- */
 
 type Cursor = { cpu: CpuTimes; net: [number, number]; at: number };
 
@@ -96,7 +89,6 @@ async function main() {
   );
 
   let cursor: Cursor = { cpu: cpuTimes(), net: netBytes(iface), at: Date.now() };
-  // 先采 1 秒做出第一份，卡片不必干等到一个完整间隔
   await sleep(1_000);
 
   let backoff = intervalMs;
@@ -111,11 +103,9 @@ async function main() {
       recovered("push");
       cursor = round.cursor;
       backoff = intervalMs;
-      // 按轮的起点对齐：采集和推送花掉的时间从这一分钟里扣，不往后攒
       await sleep(Math.max(0, intervalMs - (Date.now() - round.cursor.at)));
     } catch (error) {
       if (config.dryRun) throw error;
-      // 这一轮作废，进程不退：按退避表等，连错一次翻倍、5 分钟封顶
       failure("push", error);
       await sleep(backoff);
       backoff = Math.min(backoff * 2, 5 * 60_000);
@@ -123,7 +113,7 @@ async function main() {
   }
 }
 
-// 容器里是 PID 1，Node 不给 PID 1 装默认的信号处理，不接的话 docker stop 要干等 10 秒
+// 容器 PID 1 不能依赖默认信号行为；显式处理退出，避免 docker stop 等到强杀。
 for (const signal of ["SIGTERM", "SIGINT"] as const) {
   process.on(signal, () => {
     info(`收到 ${signal}，退出`);

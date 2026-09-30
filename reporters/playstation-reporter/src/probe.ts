@@ -5,7 +5,6 @@ import type { ConsolePower } from "./cadence.js";
 const DISCOVERY_PORT = 9302;
 const PACKET = Buffer.from("SRCH * HTTP/1.1\ndevice-discovery-protocol-version:00030010\n");
 
-/** 发现回复的状态行：200 醒着，620 休息，其余当没醒。 */
 export function parseDiscoveryResponse(packet: Buffer): ConsolePower {
   const line = packet.toString("utf8").split(/\r?\n/, 1)[0] ?? "";
   const code = Number(/^HTTP\/1\.[01] (\d+)/.exec(line)?.[1]);
@@ -22,7 +21,6 @@ function closeQuietly(socket: Socket): void {
   }
 }
 
-/** 向一台 PS5 发一次发现包。超时或发不出去都是 `off`。 */
 export function probeOnce(host: string, timeoutMs: number): Promise<ConsolePower> {
   return new Promise((resolve) => {
     const socket = createSocket("udp4");

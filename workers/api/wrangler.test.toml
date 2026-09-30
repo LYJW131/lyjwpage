@@ -1,13 +1,10 @@
-# 本地开发用（根目录 `pnpm dev:worker` 以多配置方式和 dev-router、上报入口、采集 Worker 一起起）。
-# 名字与生产相同，别的本地 Worker 的 service binding 才按生产名字找到它；
-# 状态全在本地的 --persist-to 目录里，与生产完全独立；没有生产域名或 cron。
+# 本地名字须与 Service Binding 的生产名字一致，其他 Worker 才能找到它。
 name = "api"
 main = "src/index.ts"
 compatibility_date = "2025-02-14"
 compatibility_flags = ["nodejs_compat", "nodejs_compat_populate_process_env"]
 workers_dev = true
 
-# LivePushRoom 转发生产推送前查本地假数据注入（src/dev-override-reader.ts），只在本地绑
 [[services]]
 binding = "DEV_OVERRIDE_READER"
 service = "api"
@@ -24,7 +21,7 @@ APPLE_MUSIC_STOREFRONT = "cn"
 "@/lib/apple-music-credentials" = "./src/apple-music-credentials.ts"
 "@/lib/lag-store" = "./src/lag-store.ts"
 
-# 本地的凭据与可滞后层 KV，与生产不共用；多个本地 Worker 用同一个 id 才读得到彼此写的值
+# 跨本地 Worker 共享 KV 必须使用同一个 id。
 [[kv_namespaces]]
 binding = "CREDENTIALS"
 id = "00000000000000000000000000000002"

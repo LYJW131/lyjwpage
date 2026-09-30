@@ -5,17 +5,8 @@ import { config } from "./config.js";
 import { getClaudeOAuthClient } from "./claude-oauth-client.js";
 import { info } from "./log.js";
 
-/**
- * Linux 上 Claude Code 把 OAuth 写在 `~/.claude/.credentials.json`。
- * 字段名以 TokenTracker `subscriptions.js` 和公开的 Claude Code 凭据形状为准。
- *
- * 已确认：`claudeAiOauth.accessToken` / `refreshToken` / `expiresAt`（epoch 毫秒）
- * / `subscriptionType` / `rateLimitTier`。
- * 未确认：`scopes` 是否总会出现；顶层其它键（`mcpOAuth` 等）一律原样保留。
- */
 
 const CREDENTIALS_FILE = ".credentials.json";
-/** 到期前这么久就刷，避免和限额请求抢在过期边上 */
 const SKEW_MS = 5 * 60_000;
 
 type OauthBlob = {
@@ -41,7 +32,6 @@ function asString(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
-/** expiresAt 公开形状是毫秒；小于 1e12 按秒处理（未确认 Claude Code 会不会写成秒） */
 function expiryMs(value: unknown): number | null {
   if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return null;
   return value < 1e12 ? value * 1000 : value;
@@ -87,11 +77,6 @@ type TokenResponse = {
   scope?: unknown;
 };
 
-/**
- * 与 Claude Code 2.1.261 一致：JSON 请求，携带已有 scopes。
- * 端点和 client_id 默认从安装包读取；收到轮换 token 后原子写回。
- * 写回时保留文件里其它字段，先写临时文件再 rename。
- */
 async function refreshClaudeOauthOnce(home: string): Promise<boolean> {
   const dest = credentialsPath(home);
   let parsed: CredentialsFile;
@@ -145,7 +130,7 @@ async function refreshClaudeOauthOnce(home: string): Promise<boolean> {
   return true;
 }
 
-/** 同一进程中的到期检查和 401 重试共用一次刷新，避免重复轮换 refresh token。 */
+// 并发刷新会重复轮换 refresh token；到期检查和 401 重试必须共用同一次刷新。
 const refreshing = new Map<string, Promise<boolean>>();
 
 export function refreshClaudeOauth(home = config.home): Promise<boolean> {
@@ -157,7 +142,6 @@ export function refreshClaudeOauth(home = config.home): Promise<boolean> {
   return request;
 }
 
-/** 到期前刷一次。凭据文件不存在也不报错。 */
 export async function refreshClaudeIfDue(home = config.home): Promise<void> {
   const oauth = await readClaudeOauth(home);
   if (!oauth) return;

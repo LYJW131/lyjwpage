@@ -30,30 +30,17 @@ import { prepareEmbyReport } from "@shared/ingest/emby";
 import { preparePlaystationReport } from "@shared/ingest/playstation";
 import { prepareTelemetryEnvelope } from "@shared/ingest/telemetry";
 
-/** 上报入口那一半（shared/ingest）接状态核心那一半，和线上两个 Worker 串起来的顺序一样 */
 const recordTelemetryEnvelope = (input: unknown, at: number) => commitPreparedTelemetryEnvelope(prepareTelemetryEnvelope(input, at));
 const recordEmbyReport = async (input: unknown, at: number) => commitPreparedEmbyReport(await prepareEmbyReport(input, at, { head: async () => null }));
 const recordPlaystationReport = (input: unknown, at: number) => commitPreparedPlaystationReport(preparePlaystationReport(input, at));
 const recordAgentsReport = (input: unknown, at: number) => commitPreparedAgentsReport(prepareAgentLimits(input, at));
 
-/**
- * Pulse 的挂钩点，按信封驱动：哪一封该落笔、落成什么样的区间或样本。
- * 区间规则本身由 src/lib/pulse-timeline.test.mts 的纯函数测试守着。
- */
 
 const T0 = 1_760_000_000_000;
 
-/**
- * 一次上报的作用域。
- *
- * `requestStore` 是必需的：fanout 的失效通知会问 `currentContext()`，没有作用域时
- * 它抛出去的错会盖住真正要看的断言。`waitUntil` 收下的后台任务在这里等干净，
- * 免得跨测试互相干扰。
- */
 async function inRequest<T>(run: () => Promise<T>): Promise<T> {
   const pending: Promise<unknown>[] = [];
   const context = {
-    // 广播那一路不是这几个测试要看的东西，给个不出声的房间，免得日志里全是 [live]
     env: {
       LIVE_PUSH: {
         idFromName: () => null,
@@ -103,7 +90,6 @@ test("Mac 心跳续同一段在听，每分钟最多写一次；换曲关上旧�
   await inRequest(() => recordTelemetryEnvelope(envelope(T0, ["appleMusic"], { appleMusic: music("playing", T0) }), T0));
   assert.deepEqual(await open(storage, "listening"), { state: "playing", ...helpless, from: T0, seenAt: T0, holdUntil: T0 + 10 * 60_000, endsBy: null });
 
-  // 心跳不带任何模块 —— 采集端只在内容变化时才带，这一封说的是「还在放同一首」
   await inRequest(() => recordTelemetryEnvelope(envelope(T0 + 30_000, ["appleMusic"]), T0 + 30_000));
   assert.equal((await open(storage, "listening")).seenAt, T0, "less than a minute: no write");
   await inRequest(() => recordTelemetryEnvelope(envelope(T0 + 60_000, ["appleMusic"]), T0 + 60_000));
@@ -144,7 +130,6 @@ test("HomePod 只在换曲时推：Mac 离线时一首二十分钟的歌照样�
   const first = await open(storage, "listening");
   assert.deepEqual([first.holdUntil, first.endsBy], [T0 + 25 * 60_000, T0 + 20 * 60_000], "open until the grace, known until the track end");
   await push(T0 + 20 * 60_000, "Path 6");
-  // 这一首之后 HA 再没推来：四十分钟后的下一次推送只把它认到曲终，不含那五分钟宽限
   await push(T0 + 80 * 60_000, "Path 7");
   assert.deepEqual((await closed(storage, "listening")).map((row) => [row.source, row.title, row.from, row.to]), [
     ["homepod", "Path 5", T0, T0 + 20 * 60_000],
@@ -156,7 +141,6 @@ test("Mac 死了：在听的那一段只认到最后一次心跳", withStorage(a
   await inRequest(() => recordTelemetryEnvelope(envelope(T0, ["appleMusic"], { appleMusic: music("playing", T0) }), T0));
   await inRequest(() => recordTelemetryEnvelope(envelope(T0 + 60_000, ["appleMusic"]), T0 + 60_000));
   await inRequest(() => recordTelemetryEnvelope(envelope(T0 + 90_000, ["appleMusic"]), T0 + 90_000));
-  // 之后半小时没有任何信封；Mac 回来时还是同一首
   const back = T0 + 30 * 60_000;
   await inRequest(() => recordTelemetryEnvelope(envelope(back, ["appleMusic"]), back));
   assert.deepEqual((await closed(storage, "listening")).map((row) => [row.state, row.from, row.to]), [["playing", T0, T0 + 60_000]],
@@ -183,18 +167,14 @@ function activity(at: number, lastActivityAt: number | null, id = "claude", mode
 
 test("agent 在不在跑按活动时刻现算：最近事件 5 分钟内算在跑，之后不算；保活续命，采集时刻 10 分钟不动才当未知", withStorage(async (storage) => {
   await inRequest(() => recordTelemetryEnvelope(envelope(T0, ["coding"], activity(T0, T0 - 30_000)), T0));
-  // 这封没带活动：用存着的那份，按这一刻重新算 —— 事件已是 5 分钟之前，不再算在跑
   const quiet = T0 + 6 * 60_000;
   await inRequest(() => recordTelemetryEnvelope(envelope(quiet, ["coding"]), quiet));
-  // 内容不变的保活把采集时刻往前推
   const kept = T0 + 9 * 60_000;
   await inRequest(() => recordTelemetryEnvelope(envelope(kept, ["coding"], activity(kept, T0 - 30_000)), kept));
   const stillKnown = T0 + 18 * 60_000;
   await inRequest(() => recordTelemetryEnvelope(envelope(stillKnown, ["coding"]), stillKnown));
-  // 采集器停了：最后一封的采集时刻已经过去 10 分钟以上
   const stale = T0 + 20 * 60_000;
   await inRequest(() => recordTelemetryEnvelope(envelope(stale, ["coding"]), stale));
-  // coding 模块关掉之后存着的那份也不算
   const off = T0 + 21 * 60_000;
   await inRequest(() => recordTelemetryEnvelope(envelope(off, ["coding"], activity(off, off - 1_000)), off));
   await inRequest(() => recordTelemetryEnvelope(envelope(off + 30_000, []), off + 30_000));
@@ -233,10 +213,8 @@ test("充电头只发心跳的那几分钟，瓦数照样 5 分钟再确认一�
   await inRequest(() => recordTelemetryEnvelope(charger(T0, 45.04), T0));
   const samples = async () => (await storage.listRange(pulseChargingKey(), 0, -1)).map((raw) => JSON.parse(raw));
   assert.deepEqual(await samples(), [{ t: T0, watts: 45, device: "MacBook Pro" }]);
-  // 30 秒内的小幅波动不写
   await inRequest(() => recordTelemetryEnvelope(charger(T0 + 20_000, 46), T0 + 20_000));
   assert.equal((await samples()).length, 1);
-  // 这一封没带 chargingDevices，只把 charger 列在 activeModules 里（走 prepareHeartbeat）
   const reconfirm = T0 + PULSE_REPEAT_AFTER_MS;
   await inRequest(() => recordTelemetryEnvelope(envelope(reconfirm, ["charger"]), reconfirm));
   assert.deepEqual((await samples()).map((row) => row.t), [T0, reconfirm]);
@@ -259,7 +237,6 @@ test("Emby：位置更新沿用存着的标题，itemId 对不上不借标题，
   const stop = other + 60_000;
   await inRequest(() => recordEmbyReport({ playing: null }, stop));
   assert.equal((await open(storage, "watching")).state, "idle");
-  // 空闲没有有效期：几个小时后再开播，中间整段都是观测到的空闲
   const resume = stop + 5 * 3_600_000;
   await inRequest(() => recordEmbyReport({ playing: { itemId: "42", paused: false, positionTicks: 2, runTimeTicks: 36_000_000_000 } }, resume));
   assert.deepEqual((await closed(storage, "watching")).at(-1), { state: "idle", itemId: null, title: null, subtitle: null, from: stop, to: resume });
@@ -274,7 +251,6 @@ test("PSN 在线状态：进游戏、换游戏、下线各是一段", withStorag
   assert.equal("power" in await getPlayingNow(), false, "保留的内部镜像不进入公开 presence");
   const game = T0 + 20 * 60_000;
   await inRequest(() => recordPlaystationReport(presence(game, true, { titleId: "PPSA01", title: "Pragmata" }), game));
-  // 两次确认隔了 34 分钟、状态没变，仍是同一段
   await inRequest(() => recordPlaystationReport(presence(game + 34 * 60_000, true, { titleId: "PPSA01", title: "Pragmata" }), game + 34 * 60_000));
   const off = game + 50 * 60_000;
   await inRequest(() => recordPlaystationReport(presence(off, false, null), off));
@@ -302,14 +278,12 @@ test("iPhone activity keeps raw five-minute buckets, rewrites only from the firs
   ]);
   assert.equal(await storage.get(pulseActivityRevisionKey()), "1");
 
-  // 同一份重放：不改写、不升版本
   await inRequest(() => recordPhoneEnvelope(historyOnly([
     { from: start, to: start + 300_000, steps: 300, moveKcal: 12.5, exerciseMinutes: 1 },
     { from: start + 600_000, to: start + 900_000, moveKcal: 1 },
   ]), start + 3_600_000));
   assert.equal(await storage.get(pulseActivityRevisionKey()), "1");
 
-  // HealthKit 修订第二个桶、删掉未知：只有范围内的变化
   await inRequest(() => recordPhoneEnvelope(historyOnly([
     { from: start, to: start + 300_000, steps: 300, moveKcal: 12.5, exerciseMinutes: 1 },
     { from: start + 900_000, to: start + 1_200_000, steps: 40 },

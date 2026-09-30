@@ -7,14 +7,6 @@ import { prepareCodingActivity, readCodingActivities } from "./coding-activity";
 import { prepareCodingBuckets } from "./coding-buckets";
 import { prepareCodingUsage } from "./coding-usage";
 
-/**
- * `/api/ingest/agents` 的状态核心那一半：三份 coding 数据（眼下只有 Cursor）。限额在可滞后层，
- * 由上报入口直接写 KV（workers/ingress 的 lag-ingest），不进这里；收敛见 shared/ingest/agents.ts。
- *
- * 另外给 Pulse 记一笔 Cursor 账号观测（`pulse:cursor-observations`，Coding 三色带与 Jev 的独立来源）：
- * 用量历史采集成功就是一次心跳（时刻取采集时刻，重放旧报告救不活覆盖）；只有活动的那封，
- * 时刻往前走了才记。
- */
 export async function commitPreparedAgentsReport(prepared: PreparedAgentLimits) {
   const { limits, receivedAt, codingUsage, codingActivity, codingTokenBuckets } = prepared;
   const writes: Promise<unknown>[] = [];

@@ -1,8 +1,3 @@
-/**
- * 来源白名单：`ALLOWED_ORIGINS` 名单，`/ws`、公开 API 的 CORS 和 MusicKit
- * 令牌签发都比它。纯函数，只看请求的 Origin 与名单。
- */
-
 export type OriginEnv = { ALLOWED_ORIGINS?: string };
 
 const LOCAL_ORIGIN_RE = /^https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/;
@@ -14,15 +9,6 @@ export function getAllowedOrigins(env: OriginEnv): string[] {
     .filter(Boolean);
 }
 
-/**
- * 允许 `https://*.vercel.app` 这样的后缀通配。
- *
- * Vercel 的预览域名每次部署都换一个（`lyjwpage-<hash>-....vercel.app`），
- * 只做全等匹配的话，预览环境永远连不上。
- *
- * 按 hostname 的后缀比，不是按字符串包含 —— 后者会把
- * `https://vercel.app.evil.com` 也放进来。
- */
 export function originMatches(origin: string, pattern: string): boolean {
   if (origin === pattern) return true;
   if (!pattern.includes("*")) return false;
@@ -39,21 +25,11 @@ export function originMatches(origin: string, pattern: string): boolean {
   }
 }
 
-/** localhost 始终放行，不用写进名单 */
 export function isAllowedOriginValue(origin: string, allowed: string[]): boolean {
   if (LOCAL_ORIGIN_RE.test(origin)) return true;
   return allowed.some((pattern) => originMatches(origin, pattern));
 }
 
-/**
- * 没配 ALLOWED_ORIGINS 就不限制 —— `wrangler dev` 不配也要能跑，而 localhost
- * 本来就始终放行。**配了之后，不带 Origin 头一律拒绝**：浏览器发 WebSocket
- * 握手和 fetch 时一定带这个头，所以卡死它对真实访客零代价，却堵上了「curl 不带头
- * 就绕过白名单」这个口子。
- *
- * 但别把这道闸当成全部的防护：Origin 头是请求方自己写的，非浏览器伪造一个就能
- * 过。对 MusicKit 令牌来说真正兜底的是签进 JWT 的 origin 声明，见 musickit-token.ts。
- */
 export function isAllowedOrigin(request: Request, env: OriginEnv): boolean {
   const allowed = getAllowedOrigins(env);
   if (allowed.length === 0) return true;

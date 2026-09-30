@@ -1,19 +1,4 @@
 #!/usr/bin/env node
-/**
- * 从 ghostty.org 首页抓那只 ASCII 幽灵的动画，压成页头图标用的粗网格，
- * 写入 src/lib/ghostty-frames.json（页头前台应用是 Ghostty 时由
- * src/components/live/ghostty-mascot.tsx 播放）。
- *
- * 官网把全部帧直接内联在首页的 RSC 载荷里（terminalData）：每帧是一屏终端字符，
- * 蓝色光环用 <span class="b"> 标出，帧间隔是 SOURCE_FRAME_MS，rAF 循环播放。
- * 页头图标很小，看不清单个字符，这里只保留轮廓和明暗：
- *   1. 每 COLUMNS_PER_CELL 列 × 1 行并成一个单元（CELL_ASPECT 补偿字符格的宽高比）；
- *   2. 按字形墨量（INK）把单元量化成本体和光环各几档，加空白（LEVELS）；
- *   3. 按 CROP 裁掉四周空白，每 STRIDE 帧取 1 帧，逐行游程编码。
- *
- * 用法：node scripts/ghostty-frames.mjs            # 抓线上首页
- *      node scripts/ghostty-frames.mjs --from a.html   # 用已下载的首页 HTML
- */
 
 import fs from "node:fs";
 import path from "node:path";
@@ -26,12 +11,9 @@ const SOURCE_URL = "https://ghostty.org/";
 const SOURCE_FRAME_MS = 31;
 const STRIDE = 3;
 const COLUMNS_PER_CELL = 2;
-/** 单元宽高比：两列字符（2 × 0.6em）对一行（JetBrains Mono 默认行高约 1.32em） */
 const CELL_ASPECT = 0.91;
-/** 裁剪范围（源网格坐标，右 / 下为开区间），生成时会校验没有字符落在框外 */
 const CROP = { left: 12, right: 90, top: 1, bottom: 40 };
 
-/** 各字形的墨量估计（0–1），只用来分档，不追求精确 */
 const INK = { " ": 0, "·": 0.08, "~": 0.18, "=": 0.22, "+": 0.28, x: 0.32, o: 0.38, "*": 0.42, "%": 0.6, "@": 0.75, $: 0.9 };
 const LEVELS = {
   "#": { fill: "body", opacity: 1 },
@@ -60,7 +42,6 @@ async function loadHtml() {
   return response.text();
 }
 
-/** 首页 HTML 里 self.__next_f.push([1,"…"]) 的字符串拼起来就是 RSC flight 载荷 */
 function extractTerminalData(html) {
   const pushes = html.matchAll(/self\.__next_f\.push\(\[1,("(?:[^"\\]|\\.)*")\]\)/g);
   const flight = Array.from(pushes, (match) => JSON.parse(match[1])).join("");
@@ -84,7 +65,6 @@ function extractTerminalData(html) {
   return data;
 }
 
-/** 一行 HTML → [{ ch, glow }]，只认 <span class="b"> 和少数实体 */
 function parseLine(line) {
   const ENTITIES = { "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&#39;": "'" };
   const cells = [];
@@ -130,7 +110,6 @@ function quantize(frame) {
   return rows;
 }
 
-/** 逐行游程编码：`3#` 表示连续 3 个 `#`，单个不写计数；行之间用 `/` 分隔 */
 function encode(rows) {
   return rows
     .map((row) => {

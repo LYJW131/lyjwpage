@@ -1,14 +1,3 @@
-/**
- * 把各家状态页收成同一张卡能画的行，每家一行。
- *
- * Claude / OpenAI / Cursor / Vercel / GitHub / Cloudflare 是 Statuspage，
- * `/api/v2/summary.json` 就是当前组件和未解决事件。xAI
- * 没有这份 JSON：官方机器可读源是 `/feed.xml`，此刻亮哪盏灯写在首页 HTML 里。
- * TypeSafe 是 Better Stack 的 `/index.json`。Apple 开发者状态是 apple.com 上的
- * 一段 JSONP，只看我们用到的几项服务，灯按它们有没有未结束事件推。
- *
- * 不在这里发请求。调用方把正文传进来，单测才能不打网。
- */
 
 import type {
   AgentIncident,
@@ -105,7 +94,6 @@ function componentIndicator(status: string): AgentIndicator | null {
   }
 }
 
-/** Statuspage 的页面灯和事件 impact 共用这组词。 */
 function rollupIndicator(value: string | null): AgentIndicator | null {
   switch (value) {
     case "none":
@@ -195,11 +183,6 @@ function isClaudeComponent(name: string): boolean {
   return normalized === "claude code" || normalized.startsWith("claude api");
 }
 
-/**
- * Codex 自己的三块，加上 CLI 和 VS Code extension。
- * 后两个在状态页上不带 Codex 前缀，但是 Codex 的入口，不是 ChatGPT。
- * Sora、Ads、语音这些同页组件不进这一行。
- */
 function isCodexComponent(name: string): boolean {
   switch (name.trim().toLowerCase()) {
     case "codex web":
@@ -213,14 +196,6 @@ function isCodexComponent(name: string): boolean {
   }
 }
 
-/**
- * 站点实际跑在这些产品上，再加上域名能解析所靠的基础面。
- * Workers、Durable Objects、KV、R2、D1、WebSockets 是这几个 Worker 的运行时；
- * Workers Builds 和 API 是发布与统计卡在用的控制面；
- * Authoritative DNS、DNS Updates 扛 api / ingest / online 的自定义域名。
- * 机房、WARP、Bot Management、CDN 不进这一行：主站不在 Cloudflare 的缓存上。
- * 用全名，避免 Workers 带上 Workers AI，API 带上 API Shield。
- */
 const CLOUDFLARE_SITE_COMPONENTS: Record<string, true> = {
   api: true,
   "authoritative dns": true,
@@ -325,10 +300,7 @@ function statuspageRow(
   const scheduled = parsed.maintenances.filter(
     (incident) => touches(incident) && incident.status.toLowerCase() === "scheduled",
   );
-  /**
-   * 整页行的灯跟页面灯和事件走，不跟组件走。页面上几个组件异常是常态，
-   * 不该把整行点得比页面自己的灯更红。页面灯缺失（词没对上）时才退回组件。
-   */
+  // 页面总灯优先于单个组件；否则常驻的组件故障会把整行误判得更严重。
   const incidentIndicators: AgentIndicator[] = [];
   for (const incident of active) {
     const impact = rollupIndicator(incident.impact);
@@ -355,7 +327,6 @@ function statuspageRow(
   };
 }
 
-/** 首页每个服务是一个 `<a href="/grok-build">`，灯的词在 `text-text-*` 那个 div 里。 */
 export function parseXaiServiceBadges(html: string): { href: string; name: string; badge: string }[] {
   const rows: { href: string; name: string; badge: string }[] = [];
   for (const chunk of html.split(/<a\b/i).slice(1)) {
@@ -473,7 +444,6 @@ function xaiRow(html: string | null, feed: string | null): AgentStatusRow {
   };
 }
 
-/** Better Stack 的资源灯、报告状态和页面总灯共用这组词。 */
 function betterStackIndicator(state: string | null): AgentIndicator | null {
   switch (state) {
     case "operational":
@@ -489,11 +459,7 @@ function betterStackIndicator(state: string | null): AgentIndicator | null {
   }
 }
 
-/**
- * Better Stack 的 `/index.json` 是 JSON:API：页面总灯在 `data.attributes`，
- * 资源（组件）、报告（事件）和报告下的更新都平铺在 `included` 里，靠 id 互指。
- * 报告的 `ends_at` 常年是 null，结束与否只看 `aggregate_state === "resolved"`。
- */
+// Better Stack 的 ends_at 可能始终为空；结束状态以 aggregate_state 为准。
 function typesafeRow(body: string, now: number): AgentStatusRow {
   const root = asRecord(JSON.parse(body));
   const page = asRecord(asRecord(root?.data)?.attributes);
@@ -546,7 +512,6 @@ function typesafeRow(body: string, now: number): AgentStatusRow {
   const pageIndicator = betterStackIndicator(text(page.aggregate_state));
   const indicators = [
     ...(pageIndicator ? [pageIndicator] : components.map((component) => component.indicator)),
-    // 报告还开着但词没对上时至少算降级，不让一个未结束的事件显示成正常。
     ...active.map((item) => item.indicator ?? "degraded"),
   ];
   return {
@@ -572,13 +537,6 @@ type AppleEvent = {
   message: string;
 };
 
-/**
- * 我们实际依赖的 Apple 开发者服务。
- * Apple Music API 是站点 MusicKit 的数据源；Developer ID Notary Service 给
- * Hub 的 Release 公证；Certificates, Identifiers & Profiles 管签名证书；
- * Provisioning Profile Service 和 Xcode Automatic Configuration 是 iPhone Hub
- * 装机时 `-allowProvisioningUpdates` 走的自动签名。其余服务不进这一行。
- */
 const APPLE_WATCHED_SERVICES: Record<string, true> = {
   "apple music api": true,
   "certificates, identifiers & profiles": true,
@@ -587,11 +545,6 @@ const APPLE_WATCHED_SERVICES: Record<string, true> = {
   "xcode automatic configuration": true,
 };
 
-/**
- * Apple 的开发者状态是一段 `jsonCallback({...})`。每个服务都列着，只在近几天
- * 出过事时才带 events；没有单条事件的链接，只有服务自己的 redirectUrl（有的
- * 带前后空格）。时间写成 `09/15/2026 17:28 PDT`，V8 的 Date.parse 认得。
- */
 export function parseAppleStatus(body: string): { services: string[]; events: AppleEvent[] } {
   const open = body.indexOf("{");
   const close = body.lastIndexOf("}");
@@ -623,7 +576,6 @@ export function parseAppleStatus(body: string): { services: string[]; events: Ap
   return { services: names, events };
 }
 
-/** Outage 按受影响范围分轻重：写明所有用户才算完全中断。Issue、Performance 归降级。 */
 function appleSeverity(event: AppleEvent): Exclude<AgentIndicator, "unavailable" | "unmonitored"> {
   if (event.statusType === "maintenance") return "maintenance";
   if (event.statusType === "outage") return /\ball users\b/i.test(event.usersAffected) ? "major_outage" : "partial_outage";
@@ -645,7 +597,6 @@ function appleRow(body: string): AgentStatusRow {
     status: upcoming(event) ? "Scheduled" : displayStatus(event.eventStatus || "ongoing"),
     url: event.url,
     updatedAt: iso(event.startDate),
-    // usersAffected 是一句不带句号的「Some users are affected」，拼成两句话。
     body: clip(
       [event.message, event.usersAffected]
         .map((part) => part.replace(/\.\s*$/, ""))
@@ -718,12 +669,6 @@ async function load(
   }
 }
 
-/**
- * 每家一行，卡片按每三行一列排版。第一列跟用量卡一致：Claude、ChatGPT、
- * Cursor；第二列 Grok、TypeSafe、Apple；基础设施三家（Vercel / GitHub /
- * Cloudflare）是最后一列。
- * 某一家失败就留着上一轮，不让整张卡空白；各家全失败才整轮抛错。
- */
 export async function collectAgentStatus(
   previous: AgentStatusPayload | null,
   fetchText: FetchText,
@@ -802,7 +747,6 @@ export async function collectAgentStatus(
       ),
     ),
   ]);
-  // 各家一个都没取到，多半是这边出不去而不是各家同时挂了：整轮算失败，不拿沿用的旧行冒充新检查
   if (failed.size === Object.keys(FALLBACK).length) throw new Error("status pages all unreachable");
   return {
     fetchedAt: now,
@@ -810,7 +754,6 @@ export async function collectAgentStatus(
   };
 }
 
-/** 灯、事件或失败标记变了才算变了（采集 Worker 据此失效首屏）。检查时刻每分钟都变，不拿它做比较。 */
 export function agentStatusFingerprint(payload: AgentStatusPayload | null): string {
   if (!payload) return "";
   return JSON.stringify(payload.agents);

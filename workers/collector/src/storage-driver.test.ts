@@ -1,8 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 
-// Node 下 `@/lib/storage-driver` 解析到站点的测试驱动；把 KV 版的 StorageClient 注进去，
-// src/lib/cache 就原样跑在采集 Worker 的存储语义上
 import { cached, get, put, remove } from "@/lib/cache";
 import { installStorageForTests, resetStorageDriverForTests } from "@/lib/storage-driver";
 
@@ -26,7 +24,6 @@ test("get, set with TTL, ifAbsent and remove map onto KV", async () => {
   assert.equal(await storage.get("a"), "1");
   assert.equal(kv.puts.at(-1)?.expirationTtl, undefined);
 
-  // 已有值时 ifAbsent 不写，返回 false；没有时写入
   assert.equal(await storage.set("a", "2", { ifAbsent: true }), false);
   assert.equal(await storage.get("a"), "1");
   assert.equal(await storage.set("b", "x", { ifAbsent: true, ttlMs: 120_500 }), true);

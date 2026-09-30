@@ -22,14 +22,11 @@ const PRESENCE_DOT: Record<PlaystationPresenceKind, { className: string; label: 
 
 const TYPES: TrophyType[] = ["platinum", "gold", "silver", "bronze"];
 
-/** 「最近解锁」那格奖杯图的边长，和它 className 上的 h-7 w-7 是同一个数。 */
 const RECENT_PX = 28;
 
-/** 头像那格的边长，和它 className 上的 h-10 w-10 是同一个数。 */
 const AVATAR_PX = 40;
 
 function formatUnlock(ms: number): string {
-  // 「Jun 22」而不是「6/22」—— 斜杠版和旁边那种「点数 / 点数」长得太像分数
   return new Date(ms).toLocaleString("en-US", {
     timeZone: site.timezone,
     month: "short",
@@ -39,8 +36,6 @@ function formatUnlock(ms: number): string {
 
 function Count({ type, value }: { type: TrophyType; value: number }) {
   return (
-    // 四格平分窄屏那一行时，杯子 + 「PLATINUM」比一格宽，会顶到下一格的杯子：
-    // 窄屏标签独占第一行，杯子和数字并排在第二行；sm 起杯子回到左侧跨两行。
     <div className="grid grid-cols-[auto_1fr] items-center gap-x-1.5 gap-y-1 leading-tight sm:gap-y-0">
       <TrophyMetal kind={type} size="sm" className="max-sm:row-start-2 sm:row-span-2" />
       <div className="label-mono text-muted-foreground max-sm:col-span-2 max-sm:row-start-1">
@@ -51,10 +46,6 @@ function Count({ type, value }: { type: TrophyType; value: number }) {
   );
 }
 
-/**
- * 首屏提要。只管画：摘要由外层（playstation-panel）订阅 /api/status/trophies
- * 并跟着 `trophies` 推送换新，这里拿到的就是最新那份。
- */
 export function TrophyTeaser({
   fallback,
   embedded = false,
@@ -62,17 +53,8 @@ export function TrophyTeaser({
   onRecentClick,
 }: {
   fallback: StatusResponse<TrophiesSummaryPayload>;
-  /** 嵌在 PlayStation 整块里：不自己套一张纸卡片。 */
   embedded?: boolean;
-  /**
-   * PlayStation 此刻：在线绿、忙碌黄、离线灰。
-   * `null` 是遥测断流 —— 不知道，不是离线，所以不画。
-   */
   presence?: PlaystationPresenceKind | null;
-  /**
-   * 点「最近解锁」。函数 prop 过不了服务端边界，所以给它的那层必须是
-   * 客户端组件（playstation-panel）。
-   */
   onRecentClick: (unlock: TrophyUnlock) => void;
 }) {
   if (!fallback.ok) return null;
@@ -89,10 +71,6 @@ export function TrophyTeaser({
       )}
     >
       <div className="flex min-w-0 items-center gap-3">
-        {/*
-         * 环画的是当前等级内的进度，具体点数没地方摆 —— 挂 title 让它至少悬停可见。
-         * title 放在外层 div 上而不是 svg 上：svg 有 aria-hidden，读屏和悬停走同一个盒子更稳。
-         */}
         <div
           className="relative grid h-14 w-14 shrink-0 place-items-center"
           title={`${data.profile.trophyPoint.toLocaleString("en-US")} / ${data.profile.levelNextPoint.toLocaleString("en-US")} pts`}
@@ -117,20 +95,7 @@ export function TrophyTeaser({
               <Image
                 src={data.profile.avatarUrl}
                 alt={data.profile.onlineId}
-                /*
-                 * 头像那个 psn-rsc 不认 `?w=&h=`，只有 _s(50) / _m(160) / _l(240) /
-                 * _xl(440) 这一档路径后缀，够 3× 用的最小一档是 160px 的 PNG（52KB），
-                 * 直连比过优化器（约 4KB）贵十倍 —— 所以这一路仍旧走图片管道。
-                 *
-                 * width 报的是 3 倍目标的一半，展示尺寸交给 className：next/image
-                 * 的候选表只出 1x / 2x 两档（它有意不出 3x），报一半，2x 那档才正好
-                 * 落在 40×3 = 120 要够的那一格上 —— 候选表是 w=64（1x）/ w=128（2x），
-                 * 视网膜屏一律拿 128。
-                 *
-                 * 别改回 `sizes="40px"`：按 DPR 选是选对了，可候选表会摊成 deviceSizes
-                 * 全家桶，而 src 兜底取的是最大那档 —— HTML 里就坐着一条 w=3840，
-                 * 谁不认 srcset 谁就去拉那张。
-                 */
+                /* next/image 只生成 1x/2x 档，申报半个 3x 目标以覆盖高 DPR；sizes 会引入过大的 src 回退。 */
                 width={(AVATAR_PX * PLAYSTATION_IMAGE_SCALE) / 2}
                 height={(AVATAR_PX * PLAYSTATION_IMAGE_SCALE) / 2}
                 className="h-10 w-10 rounded-full object-cover"
@@ -153,9 +118,7 @@ export function TrophyTeaser({
         </div>
         <div className="min-w-0 leading-tight">
           <div className="flex items-center gap-1.5">
-            {/* PSN ID 大小写有意义，不能走会转大写的 label-mono */}
             <span className="truncate text-sm font-medium">{data.profile.onlineId}</span>
-            {/* 图标不带字：位置贴着 ID 已经说明是会员标，语义留给 aria-label */}
             {data.profile.plus ? <PsPlusMark className="h-3.5 w-3.5" /> : null}
           </div>
           <div className="label-mono mt-1.5 text-muted-foreground">
@@ -164,44 +127,26 @@ export function TrophyTeaser({
         </div>
       </div>
 
-      {/*
-       * 四色计数按内容宽，不用 flex-1 摊满：摊满时四个两位数被推得老远，
-       * 中间全是空的。左右两块可伸缩，让它们去吃剩下的空间。
-       */}
       <div className="grid grid-cols-4 gap-2 border-t border-line pt-3 md:ml-auto md:shrink-0 md:gap-5 md:border-t-0 md:pt-0 lg:ml-0">
         {TYPES.map((type) => (
           <Count key={type} type={type} value={data.earned[type]} />
         ))}
       </div>
 
-      {/*
-        中间那块不撑开，靠 ml-auto 把这块推回右边缘。三块排一行要不少宽度，
-        md 那一段放不下：这块折到第二行，头像和计数留在第一行；lg 才并回一行。
-      */}
       {recent ? (
         <div className="min-w-0 border-t border-line pt-3 md:basis-full lg:ml-auto lg:max-w-64 lg:basis-auto lg:border-t-0 lg:pt-0 lg:text-right">
-          {/*
-           * 整块可点：它就是「展开下面那款游戏的奖杯」的按钮。
-           * 负外边距配等量内边距，悬停的底色比文字宽一圈，文字本身仍旧
-           * 和上面那组计数对齐（block 的 width: auto 会把负外边距吃回来，
-           * 所以不能再写 w-full）。
-           */}
           <button
             type="button"
             onClick={() => onRecentClick(recent)}
-            // 游戏名自带书名号的时候多，别再套一层
             aria-label={`Open ${recent.titleName} trophies at “${recent.trophyName}”`}
             className="-mx-2 block cursor-pointer rounded-md px-2 py-1 text-left transition-colors hover:bg-surface-hover lg:text-right"
           >
-            {/* 和四色计数同构：标签在上、内容在下 —— 裸内容一眼认不出是什么。
-                日期跟着标签走，别插在图标和奖杯名中间把名字拆开 */}
             <div className="label-mono text-muted-foreground">
               Latest · {formatUnlock(recent.earnedAt)}
             </div>
             <div className="mt-1.5 flex items-center gap-2 lg:justify-end">
               {recent.iconUrl ? (
                 <Image
-                  // 直接用原图、不进图片管道，也不走 PSN 的现缩参数；理由见 playstation-image
                   src={recent.iconUrl}
                   alt=""
                   width={RECENT_PX}

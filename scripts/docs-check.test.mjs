@@ -20,7 +20,6 @@ import {
   splitInlineCode,
 } from "./docs-check.mjs";
 
-/** 用内存里的文件表造一个检查上下文：键是仓库相对路径，值是文本。 */
 function ctxOf(files, { submodules = [], ignored = [], shallow = false, commits = null } = {}) {
   const texts = new Map(Object.entries(files));
   const ignoredSet = new Set(ignored);
@@ -240,7 +239,7 @@ test("结构：docs 每篇要有类型，record 要有核对句，索引要登�
   }, { commits: ["abc1234"] });
   const issues = checkStructure(ctx, [...ctx.files].filter((file) => file.endsWith(".md")).sort());
   assert.deepEqual(issues.map((issue) => `${issue.file}:${issue.rule}`).sort(), [
-    "docs/README.md:index", // rec.md 的索引行写的是 reference，文首是 record
+    "docs/README.md:index",
     "docs/bad.md:index",
     "docs/bad.md:type",
     "docs/none.md:index",

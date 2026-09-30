@@ -18,21 +18,7 @@ import {
 } from "./dev-overrides";
 import { currentContext } from "./runtime";
 
-/**
- * 本地开发的上游兜底。
- *
- * `wrangler dev` 起来的 Worker 是一座空库：没有上报器往它推，外部数据的拉取又在
- * 采集 Worker 里（本地不自动跑），所以基本全是降级态，新加一张卡时页面上没东西可对照。
- * 在 .dev.vars 里配 `UPSTREAM_API_URL=https://api.homepage.lyjw.llc` 后，
- * 生产为主、本地补缺：每条 `/api/status/*` 端点生产回 ok:true 就用生产的，
- * 否则（新加的端点、生产也 ok:false）用本地的。
- * 不按「本地 ok:false 才兜底」来：空库上 desktop / nowWatching / timezone 这些
- * 会回 ok:true 的空态，那样一兜底就把生产正在放的东西盖没了。要测本地上报
- * 链路时把这个变量注释掉，本地就只看自己。只读，不碰上报。
- *
- * 生产版本不配这个变量。分支 Preview 的 [previews.vars] 会配，
- * 读取和本地一样；Preview 另外拒绝存储导入（上报不经过 api）。
- */
+// 本地空库也可能返回 ok:true 空态，必须上游优先，否则空态会遮住生产数据。
 const UPSTREAM_TIMEOUT_MS = 10_000;
 
 function upstreamBase(): string | null {
@@ -46,10 +32,6 @@ function isEnvelope(value: unknown): value is Envelope {
   return typeof value === "object" && value !== null && typeof (value as { ok?: unknown }).ok === "boolean";
 }
 
-/**
- * 注入的夹具、上游兜底回来的信封可能没有 servedAt：按此刻补一个，和本地
- * statusEnvelope 出的信封一样带着首帧的钟（见 lib/types 的 StatusResponse）。
- */
 function withServedAt(envelope: Envelope): Envelope {
   return envelope.ok && typeof envelope.servedAt !== "number" ? { ...envelope, servedAt: Date.now() } : envelope;
 }
@@ -68,7 +50,6 @@ async function fetchUpstreamJson(base: string, pathWithSearch: string): Promise<
   }
 }
 
-/** 单条端点：上游回 ok:true 就用上游的，头（Cache-Control、X-Fetched-At）沿用本地的 */
 async function overlayResponse(local: Response, load: () => Promise<unknown>): Promise<Response> {
   const body: unknown = await local.clone().json().catch(() => null);
   if (!isEnvelope(body)) return local;
@@ -77,31 +58,13 @@ async function overlayResponse(local: Response, load: () => Promise<unknown>): P
   return Response.json(withServedAt(theirs), { status: 200, headers: local.headers });
 }
 
-/**
- * 本地开发的假数据注入。
- *
- * 要看「正在播放」卡而此刻没在放、要看充电头满载而手边没插线 —— 生产兜底给不了
- * 这些。`.dev.vars` 里 `DEV_OVERRIDES=true` 后（生产不配）：
- * - `PUT /api/dev/override/api/status/watching/now`，body 是那条端点的信封
- *   （`{ok:true,data:…}`）或直接是 data，之后这条端点回这份，优先于本地和上游；
- * - `DELETE` 同一路径清掉；`GET /api/dev/overrides` 列出当前注入了哪些。
- * 存在本地 SQLite 里（保存期限 `DEV_OVERRIDE_TTL_MS`），wrangler 热重载不会丢。现成夹具在 dev-fixtures/，
- * 用 `pnpm dev:override` 推。
- */
 const devOverridesEnabled = (): boolean => process.env.DEV_OVERRIDES?.trim() === "true";
 
-/** Reject known-missing API paths before paying for a StateHub visibility barrier. */
 export function isPublicApiPath(path: string): boolean {
   if (viewKeyByPath(path)) return true;
   return devOverridesEnabled() && (path === DEV_OVERRIDES_LIST_PATH || path.startsWith(`${DEV_OVERRIDE_PREFIX}/`));
 }
 
-/**
- * 推送事件名 → 端点路径，给上游推送中继替换 payload 用。
- *
- * 只认事件名等于路径派生名（`/` 换成 `-`）的：这类事件和端点说的是同一份数据，拿那条
- * 端点的注入去换 payload 才对得上。命名规则见 lib/status-views 的文件头。
- */
 export function pathForEventType(type: string): string | null {
   const path = pathByEvent(type);
   if (!path) return null;
@@ -117,7 +80,6 @@ async function listOverrides(): Promise<string[]> {
   return (await cacheGet<string[]>(DEV_OVERRIDE_INDEX_KEY)) ?? [];
 }
 
-/** 没拨过就是开 */
 async function overridesSwitchedOn(): Promise<boolean> {
   return (await cacheGet<boolean>(DEV_OVERRIDE_ENABLED_KEY)) !== false;
 }
@@ -163,7 +125,6 @@ async function devOverrideResponse(request: Request, url: URL): Promise<Response
     return Response.json({ ok: true, cleared: target }, { headers: statusHeaders() });
   }
   if (request.method === "GET") {
-    // 单条注入此刻生效的那份；总开关关着或没注入就 404。推送中继靠它判断要不要换 payload
     const override = (await overridesSwitchedOn()) ? await readOverride(target) : undefined;
     if (!override) return Response.json({ ok: false, error: "这条端点没有生效的注入" }, { status: 404 });
     return Response.json(override, { headers: statusHeaders() });

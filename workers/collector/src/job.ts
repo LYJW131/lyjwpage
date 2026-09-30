@@ -2,19 +2,12 @@ import type { CollectorJobName } from "@shared/collector";
 
 import type { Env } from "./env";
 
-/** 一次运行的上下文。`scheduled` 为假时是 RPC 或本地调试手动触发的 */
 export type JobContext = {
   env: Env;
   now: number;
   scheduled: boolean;
 };
 
-/**
- * 任务正常结束的两种结果。抛错才是失败。
- *
- * `failing`：这一响的结果仍是跳过，但监控报到要记 error。连着失败了好几轮、
- * 长时间断流才该开 issue 时用。
- */
 export type JobResult = {
   status: "ok" | "skipped";
   detail?: string;
@@ -23,17 +16,10 @@ export type JobResult = {
 
 export type Job = {
   name: CollectorJobName;
-  /** 每隔几分钟跑一次；必须整除 60，Sentry 监控的 crontab 才对得上 */
   everyMinutes: number;
-  /** 在周期里的第几分钟跑，0 ≤ offset < everyMinutes */
   offset: number;
-  /** Sentry 监控认定超时的分钟数 */
   maxRuntimeMinutes: number;
-  /**
-   * cron 这一响里先起步、其余任务晚一点再开跑（见 registry 的 HEAD_START_MS）。
-   * 给入口处有短超时的任务用：一次调用同时只能有 6 个连接在等响应头，排在别人后面
-   * 会把超时预算耗在排队上
-   */
+  // Worker 同时等待响应头的连接数有限，短超时任务需先启动，避免预算耗在排队上。
   headStart?: boolean;
   run(ctx: JobContext): Promise<JobResult>;
 };
@@ -42,10 +28,6 @@ export const ok = (detail?: string): JobResult => (detail ? { status: "ok", deta
 
 const warnedMissing = new Set<string>();
 
-/**
- * 缺令牌就干净地跳过：每个 isolate 每个任务只警告一次，监控照样报 ok ——
- * 没配令牌是配置状态，不是故障。
- */
 export function skipMissing(job: CollectorJobName, missing: string[]): JobResult {
   if (!warnedMissing.has(job)) {
     warnedMissing.add(job);
@@ -58,13 +40,11 @@ export function resetSkipWarningsForTests(): void {
   warnedMissing.clear();
 }
 
-/** 取一个字符串变量或 secret；空白当没有 */
 export function setting(env: Env, name: keyof Env): string | undefined {
   const value = env[name];
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
-/** 一组必需的设置，缺哪个列哪个 */
 export function settings<const K extends keyof Env>(env: Env, names: readonly K[]): { values: Record<K, string> } | { missing: K[] } {
   const values = {} as Record<K, string>;
   const missing: K[] = [];

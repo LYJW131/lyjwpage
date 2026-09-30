@@ -1,14 +1,9 @@
 import { CODING_MODES, CODING_WINDOW_MS, PULSE_SCORE_WINDOW_MS, type CodingAssessment } from './pulse-coding';
 export { mergeCoverage } from './pulse-features';
-/** Jev 只给 Coding 打分；别的道画的是事实时间线，不再有模型分。 */
 export const SCORED_DOMAINS = ['coding'] as const;
 export type PulseScoredDomain = (typeof SCORED_DOMAINS)[number];
-/**
- * 判据变了（送给 Jev 的事实、问题、说明句）必须升版本：它进输入哈希，升版本让全部窗口重评，
- * 不靠哈希碰巧变。
- */
+// 判据变更必须升版本，确保输入哈希使所有窗口重新评估。
 export const PULSE_ASSESSMENT_VERSION = 6;
-/** 每个域自己的模式集合。card 的标签表按 value 查。 */
 export const PULSE_MODES: Record<PulseScoredDomain, readonly string[]> = { coding: CODING_MODES };
 export type PulseMode = { value: string; confidence: number; probabilities: Record<string, number> };
 export type PulseAssessment = Omit<CodingAssessment, 'mode'> & {
@@ -36,7 +31,6 @@ export function parsePulseAssessment(raw: string): PulseAssessment | null {
       return { value: j.value, confidence: j.confidence, probabilities };
     };
     if (typeof row.model !== 'string' || !row.model) return null;
-    // mode 是给 tooltip 的补充；它坏了只丢 mode，不把整条评估（曲线要用的强度）一起丢掉。
     const modes = PULSE_MODES[row.domain];
     let mode: PulseMode | null = null;
     if (modes && row.mode) try {
@@ -54,11 +48,6 @@ export function parsePulseAssessment(raw: string): PulseAssessment | null {
   } catch { return null; }
 }
 
-/**
- * 评估列表是追加写的（不每轮整表重写，见 pulse-score-state）：
- * 同一窗口可能有好几行，后评的排在后面。所有读评估的地方都走这里，按 `${domain}:${from}:${to}`
- * 只留最后一行 —— 汇总按行累加覆盖时长，重复行会把权重算两遍。坏行跳过，不顶掉之前的好行。
- */
 export function latestPulseAssessments(rows: readonly string[]): PulseAssessment[] {
   const latest = new Map<string, PulseAssessment>();
   for (const raw of rows) {
@@ -68,8 +57,6 @@ export function latestPulseAssessments(rows: readonly string[]): PulseAssessment
     latest.delete(key);
     latest.set(key, row);
   }
-  // A new 15-minute assessment replaces its three legacy five-minute rows.
-  // Until that score exists, old rows remain readable in history and summaries.
   const current = [...latest.values()];
   const wide = new Set(current.filter((row) => row.to - row.from === PULSE_SCORE_WINDOW_MS).map((row) => `${row.domain}:${row.from}`));
   return current.filter((row) => row.to - row.from === PULSE_SCORE_WINDOW_MS || !wide.has(`${row.domain}:${Math.floor(row.from / PULSE_SCORE_WINDOW_MS) * PULSE_SCORE_WINDOW_MS}`))

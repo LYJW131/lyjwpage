@@ -604,7 +604,6 @@ test("九家全失败整轮抛错，不拿沿用的旧行冒充新检查", async
   t.mock.method(console, "warn", () => {});
   const previous = await collectAgentStatus(null, pages(), 1_000);
   await assert.rejects(collectAgentStatus(previous, async () => { throw new Error("offline"); }, 61_000));
-  // 只挂一家照常出结果
   const partial = await collectAgentStatus(previous, pages({ [AGENT_STATUS_URLS.apple]: new Error("503") }), 61_000);
   assert.equal(row(partial, "apple").stale, true);
 });

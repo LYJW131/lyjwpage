@@ -10,10 +10,6 @@ const LABELS: Record<TrophyType | "level", string> = {
   level: "Trophy level",
 };
 
-/**
- * PS5 系统那套四色杯子和等级徽章。官方公开渠道没有对应 SVG，
- * 是按展示尺寸压过的 PNG，走 unoptimized。
- */
 export function TrophyMetal({
   kind,
   size = "md",

@@ -1,16 +1,7 @@
-// 第 00 章 · 这张卡片从哪来（开场，FACTS「一句话总览」）。10 小节，暗底终端 → 纸面主页线框 → 总览图，全是 2D。
-//   0–2 暗底终端：`$ claude` 按十六分一格一个字敲出，回车后欢迎框里 Clawd 按官方入场（skip → jump → look → celebrate），气泡一句。
-//     第 0 帧也是全片最后一帧：第 10 章收尾调这里的 termFrame、传 termState(0)，画出同一帧（只差后期颗粒，颗粒按帧号取随机）
-//   2–7.5 2:0 硬切纸面：浏览器窗口里的主页线框（卡片框取第 04 章 P 表的实测比例，没在充电时「最近播放」占满那一行），
-//     镜头推到「正在听」那张卡；4:0 火花顺着那根线落到卡上，歌名压扁再弹开；大字问题，6:0 收小到左上成页眉，旁白 n1
-//   7.5–10 顺着那根线往回拉，拉出总览图：采集端（上报器和云端遥测）→ 中枢（入口 · 状态核心 · 采集 Worker，下面挂四个库）→ 展示；
-//     9:2 起冲进采集端里 Mac 那一格，10:0 硬切第 01 章的暗底
-// 第 10 章复用这里的终端和「正在听」那一段：画法挂在本章登记对象的 share 上（见文件末尾），第 10 章按名字取。
-// 配乐锚点在 AT，music/ch00.js 按同一组小节落拍；画面只从 AT 取时间，不读 f.hit / f.env（第 10 章借用时拍子不一样）。
+// 画面不读配乐事件表，独立预览和换拍复用时仍须正常渲染。
 (() => {
   const { css } = G;
   const { E, prog, keys, lerp, text, FONT, line, polyline, fillRect, roundRect, clawd, bubble, spark, glyph, pathAt, trailOn, measure } = K;
-  // ---------- 这一章的文字：[中文, English]，场景代码里只写键 ----------
   I18N.add({
     "ch00.title": ["这张卡片从哪来", "Where does this card come from?"],
     "ch00.clawd": ["带你拆开 lyjw.me 看看。", "Let me open up\nlyjw.me for you."],
@@ -30,40 +21,36 @@
     "ch00.home": ["家里", "Home"],
     "ch00.tokyo": ["东京", "Tokyo"],
     "ch00.cloud": ["云端", "Cloud"],
-    // 站点卡片上的原文（中英一样）
     "ch00.recent": ["RECENTLY PLAYED", "RECENTLY PLAYED"],
     "ch00.apple": ["APPLE MUSIC", "APPLE MUSIC"],
     "ch00.np": ["NOW PLAYING", "NOW PLAYING"],
   });
   const tr = (k) => I18N.tr(k);
   const TAU = Math.PI * 2;
-  const BARS = (60 / 108) * 4; // 一小节的秒数（108 BPM）
+  const BARS = (60 / 108) * 4;
   const impact = (b, at, hl = 0.09) => (b < at ? 0 : Math.exp((-((b - at) * BARS) / hl) * Math.LN2));
-  const win = (b, a0, a1, b0, b1) => prog(b, a0, a1) * (1 - prog(b, b0, b1)); // 淡入、停住、淡出
-  // 图层和着色器每次按名字取（共用池）：第 10 章借用这里的画法时，本章的 init 在 ?only= 下不一定跑过
+  const win = (b, a0, a1, b0, b1) => prog(b, a0, a1) * (1 - prog(b, b0, b1));
+  // 共享画法可能在本章 init 未运行时使用，图层必须按名称从共用池获取。
   const lay = () => ({ x: G.layer("ink"), e: G.layer("emit", 0.5), d: G.layer("paper"), s: G.layer("stamp"), tp: G.layer("top") });
 
-  // ---------- 时间表（章内小节）：画面和 music/ch00.js 共用 ----------
   const AT = {
-    type0: 0.125, enter: 0.5, // `claude` 六个字从 0:0.5 起一格十六分一个，0:2 回车
-    skip: 0.5, jump: 0.875, look: 1.1875, celebrate: 1.5, // Clawd 官方入场，每段从拍上起，一帧 60 ms
+    type0: 0.125, enter: 0.5,
+    skip: 0.5, jump: 0.875, look: 1.1875, celebrate: 1.5,
     say: 0.95, cut: 2.0,
     push: 3.0, dot: 3.55, flip: 4.0, q: 4.25, shrink: 6.0,
     pull: 7.5, pulled: 8.3, pops: [8.5, 8.75, 9.0], rush: 9.5,
   };
 
-  // ========== 终端（屏幕坐标，镜头 [960, 540, 1]）==========
   const TW = { x: 250, y: 120, w: 1420, h: 840, bar: 60 };
-  const TX = TW.x + 52, L1 = TW.y + TW.bar + 80; // 第一行的基线
-  const BOX = { x: TW.x + 52, y: L1 + 44, w: 1120, h: 330 }; // Claude Code 的欢迎框
+  const TX = TW.x + 52, L1 = TW.y + TW.bar + 80;
+  const BOX = { x: TW.x + 52, y: L1 + 44, w: 1120, h: 330 };
   const CLAWD_Q = 11, CLAWD_X = BOX.x + 190, CLAWD_BASE = BOX.y + BOX.h - 32;
-  const L2 = BOX.y + BOX.h + 96; // 欢迎框下面那一行（Claude Code 的输入行；第 10 章在这里写片尾字卡）
+  const L2 = BOX.y + BOX.h + 96;
   const CMD = "claude";
   const POST_TERM = { bloom: 0.7, threshold: 0.9, halation: 0.28, grain: 0.05, vignette: 0.42, ca: 0.4 };
   const SEED_TERM = 2.3, GRID_TERM = 0.55;
   const CAM_TERM = { x: 960, y: 540, zoom: 1, rot: 0 };
 
-  // Clawd 的官方序列（../clawd.js 的 SEQ，一帧 FRAME_MS）：按 AT 里各段的起点接起来
   function clawdFrame(b) {
     const C = window.Clawd, fr = C.FRAME_MS / 1000 / BARS;
     const segs = [["celebrate", AT.celebrate], ["look", AT.look], ["jump", AT.jump], ["skip", AT.skip]];
@@ -75,11 +62,9 @@
     }
     return b >= AT.skip ? { pose: "default", offset: 0, x: 0 } : null;
   }
-  // 终端此刻的样子（纯数据）；第 0 小节这一份也是全片最后一帧
   function termState(b) {
     const typed = b < AT.type0 ? 0 : Math.min(CMD.length, Math.floor((b - AT.type0) * 16 + 1e-6) + 1);
     const entered = b >= AT.enter;
-    // 光标：打字和回车那一段常亮，之后按拍闪（前半拍亮）；首尾各有一段常亮，循环接缝处不闪
     const on = b < 0.625 || (b * 4) % 1 < 0.5;
     return {
       typed, welcome: prog(b, AT.enter, AT.enter + 0.06), clawd: clawdFrame(b),
@@ -88,8 +73,6 @@
       endcard: null, clear: 0,
     };
   }
-  // 画终端。st.endcard = { a, reveal, l1, l2 }：欢迎框下面写两行片尾字卡（第 10 章传进来的字）；
-  // st.clear 0..1：从最底下一行往上一行行清掉（第 10 章收尾用），清完只剩第一行的提示符
   function terminal(L, st) {
     const { x, e, tp } = L;
     const bone = css("bone"), ash = css("ash");
@@ -98,14 +81,11 @@
     line(x, TW.x, TW.y + TW.bar, TW.x + TW.w, TW.y + TW.bar, 1.4, bone, 0.45);
     for (let i = 0; i < 3; i++) { x.save(); x.strokeStyle = ash; x.lineWidth = 1.8; x.beginPath(); x.arc(TW.x + 30 + i * 28, TW.y + TW.bar / 2, 8, 0, TAU); x.stroke(); x.restore(); }
     text(x, "zsh — ~/Developer/lyjwpage", TW.x + TW.w / 2, TW.y + TW.bar / 2 + 10, { font: FONT.mono(30, 500), color: ash, align: "center" });
-    // 清屏：内容区自下往上一段段抹掉（纯 2D：一块墨色盖上去）
     const keep = (y) => st.clear <= 0 || y < lerp(TW.y + TW.h, L1 + 24, E.io(st.clear));
-    // 第一行：$ claude
     const pw = measure(x, "$ ", FONT.pixel(50));
     text(x, "$", TX, L1, { font: FONT.pixel(50), color: css("signalD") });
     const typed = st.clear > 0.98 ? "" : CMD.slice(0, st.typed);
     if (typed) text(x, typed, TX + pw, L1, { font: FONT.pixel(50), color: bone });
-    // 欢迎框：橙色边框（Claude Code 的样子），左边 Clawd，右边三行
     if (st.welcome > 0 && keep(BOX.y + BOX.h)) {
       const a = st.welcome;
       K.rect(x, BOX.x, BOX.y, BOX.w, BOX.h, 2.6, css("signalD"), a);
@@ -116,35 +96,31 @@
       const cf = st.clawd;
       if (cf) {
         const cx = CLAWD_X + (cf.x || 0) * 2 * CLAWD_Q;
-        // skip 从框外走进来：框的左沿把 Clawd 裁住
         tp.save(); tp.beginPath(); tp.rect(BOX.x + 3, BOX.y + 3, BOX.w - 6, BOX.h - 6); tp.clip();
         clawd(tp, cx, CLAWD_BASE, CLAWD_Q, { pose: cf.pose, crouch: cf.offset || 0, alpha: a });
         tp.restore();
-        // 官方的烟尘：蹲下那两帧在脚两边各一个「·」「~」
         if (cf.poof) for (const s of [-1, 1]) text(tp, cf.poof === "dot" ? "·" : "~", cx + s * 8 * CLAWD_Q, CLAWD_BASE - CLAWD_Q * 0.6, { font: FONT.mono(CLAWD_Q * 2.6, 600), color: ash, align: "center", texture: true, alpha: a });
       }
       if (st.say > 0) bubble(tp, tr("ch00.clawd"), CLAWD_X - 64, CLAWD_BASE - 146, { px: 36, k: st.say, reveal: st.sayReveal });
     }
-    // 欢迎框下面：Claude Code 的输入行，或第 10 章的片尾字卡
     const ec = st.endcard;
     if (ec && ec.a > 0 && keep(L2 + 160)) {
       K.narration(x, ec.l1, TX, L2 + 50, { px: 110, color: bone, reveal: ec.reveal, alpha: ec.a, maxW: TW.w - 104 });
       text(x, ec.l2, TX + 4, L2 + 140, { font: FONT.cjk(46, 600), color: ash, alpha: ec.a * prog(ec.reveal, 0.5, 1), maxW: TW.w - 108 });
     } else if (st.cursor.line === 2 && st.welcome > 0 && keep(L2)) text(x, ">", TX, L2, { font: FONT.pixel(50), color: ash });
-    // 光标：一块实心的方块（画在墨层上，别走火花的逐帧闪烁）
     if (st.cursor.on) {
       const onL2 = st.cursor.line === 2 && st.clear <= 0;
       const cx = onL2 ? TX + measure(x, "> ", FONT.pixel(50)) : TX + pw + measure(x, typed, FONT.pixel(50)) + 4;
       const cy = onL2 ? L2 : L1;
       fillRect(x, cx, cy - 42, 27, 50, css("signalD"));
     }
-    if (st.clear > 0 && st.clear < 1) { // 抹掉的那道边：一条细线扫上去
+    if (st.clear > 0 && st.clear < 1) {
       const y = lerp(TW.y + TW.h, L1 + 24, E.io(st.clear));
       x.save(); x.fillStyle = css("ink2"); x.fillRect(TW.x + 2, y, TW.w - 4, TW.y + TW.h - y - 2); x.restore();
       line(x, TW.x + 2, y, TW.x + TW.w - 2, y, 1.6, css("signalD"), 0.8);
     }
   }
-  // 终端一整帧：图版、图层、合成、后期。第 10 章收尾用同一个函数、同一组 seed 和后期参数，首尾两帧才一样
+  // 首尾共用渲染函数、seed 和后期参数，才能逐帧无缝循环。
   function termFrame(f, st, cam = CAM_TERM, extra = null) {
     const { x: X, e: Em, d: D, tp: T } = lay();
     G.setCam(cam);
@@ -162,13 +138,11 @@
     f.post = { ...POST_TERM, shake: [0, 0], flash: 0, fade: 0, blur: [0, 0], zoomBlur: 0 };
   }
 
-  // ========== 纸面：主页线框（页面单位 = 第 04 章 P 表的单位，站点 CSS px × 0.6）==========
-  const PSC = 1.5; // 页面单位 → 世界坐标
+  const PSC = 1.5;
   const WIN = { x: 2700, y: 814.5, w: 961, bar: 60 };
-  const VIEW = 540; // 窗口里露出页面的前 540 个单位，下面的卡片在折线以下
+  const VIEW = 540;
   WIN.h = WIN.bar + VIEW * PSC;
   const PX = (u) => WIN.x + 20 + u * PSC, PY = (v) => WIN.y + WIN.bar + v * PSC;
-  // 首屏的卡片框（page.tsx 的版面；尺寸取第 04 章 P 表的实测值）。这一刻没在充电：充电那一格收起，「最近播放」占满一行
   const CARDS = [
     { id: "contact", r: [0, 64, 304, 121] },
     { id: "timezone", r: [310, 64, 304, 121] },
@@ -176,12 +150,11 @@
     { id: "activity", r: [0, 437, 614, 152] },
   ];
   const LC = CARDS[2].r;
-  const COVER = [LC[0] + 14, LC[1] + 31, 48]; // 正在听的封面（页面单位：x, y, 边长）
+  const COVER = [LC[0] + 14, LC[1] + 31, 48];
   const COVER_C = [PX(COVER[0] + COVER[2] / 2), PY(COVER[1] + COVER[2] / 2)];
-  const ML = COVER_C[1]; // 总览图的主线：从 Mac 一路水平走到这张封面
-  const OLD = "夜に駆ける", NEW = "アイドル", ARTIST = "YOASOBI"; // 数据源的原文：主角这次换歌（全片同一首）
+  const ML = COVER_C[1];
+  const OLD = "夜に駆ける", NEW = "アイドル", ARTIST = "YOASOBI";
 
-  // 页面单位的圆角框，带站点那种 3 px 的硬阴影（画成错开的一道淡墨）
   function card(x, r, k, a, hot = 0) {
     if (a <= 0 || k <= 0) return;
     const [u, v, w, h] = r, px = PX(u), py = PY(v), W = w * PSC, H = h * PSC;
@@ -191,7 +164,6 @@
     polyline(x, pts, k, hot > 0.5 ? 3 : 2, hot > 0.5 ? css("signal") : css("pink"), a);
   }
   const bar = (x, u, v, w, h, a, c = css("pink")) => fillRect(x, PX(u), PY(v), w * PSC, h * PSC, c, a);
-  // 这张卡的歌名、封面、艺人、进度：翻面时一起纵向压扁（2D）
   function heroRow(x, flipK, a, hot) {
     const [cu, cv, cs] = COVER;
     const cy = PY(cv + cs / 2), s = flipK > 0 && flipK < 1 ? Math.max(0.03, Math.abs(Math.cos(flipK * Math.PI))) : 1;
@@ -206,19 +178,16 @@
     text(x, title, tx, PY(cv + 32), { font: FONT.cjk(34, 600), color: hot ? css("signal") : css("pink"), alpha: a });
     text(x, ARTIST, tx, PY(cv + 46), { font: FONT.sans(22, 500), color: css("graphite"), alpha: a });
     x.restore();
-    // 进度条：换歌后从头走
     const y = PY(cv + cs + 10), x0 = PX(cu), x1 = PX(LC[2] - 14);
     line(x, x0, y, x1, y, 4, css("pink"), 0.18 * a);
     line(x, x0, y, lerp(x0, x1, flipK >= 0.5 ? 0.03 : 0.78), y, 4, css("signal"), a);
   }
-  // 主页线框。o.k 画出来的进度（0..1），o.flip 歌名翻面的进度，o.hot 这张卡描成橙色
   function home(L, o) {
     const { x } = L;
     const k = o.k ?? 1;
-    const dim = 1 - 0.78 * (o.focus || 0); // 大字问题和旁白出来时，别的卡退到很淡，只留这张卡
+    const dim = 1 - 0.78 * (o.focus || 0);
     const wk = prog(k, 0, 0.18, E.out);
     const { x: wx, y: wy, w: ww, h: wh } = WIN;
-    // 浏览器窗口：标题栏、三个圆点、地址栏
     x.save(); x.globalAlpha = prog(k, 0.05, 0.3); x.fillStyle = css("paper"); x.fillRect(wx, wy, ww, wh); x.restore();
     polyline(x, [[wx, wy + wh], [wx, wy], [wx + ww, wy], [wx + ww, wy + wh]], wk, 2.6, css("pink"), dim);
     const ha = prog(k, 0.1, 0.3) * dim;
@@ -226,20 +195,18 @@
     for (let i = 0; i < 3; i++) { x.save(); x.globalAlpha = ha; x.strokeStyle = css("pink"); x.lineWidth = 1.8; x.beginPath(); x.arc(wx + 26 + i * 22, wy + 30, 7, 0, TAU); x.stroke(); x.restore(); }
     x.save(); x.globalAlpha = ha; x.strokeStyle = css("pink"); x.lineWidth = 1.4; roundRect(x, wx + 330, wy + 12, 300, 36, 18); x.stroke(); x.restore();
     text(x, "lyjw.me", wx + 480, wy + 41, { font: FONT.mono(32, 500), color: css("graphite"), align: "center", alpha: ha });
-    // 页头：站名、正在用的应用那枚徽章（绝对居中）、右边两个按钮
     const hk = prog(k, 0.2, 0.4) * dim;
     bar(x, 0, 18, 70, 9, 0.75 * hk);
     x.save(); x.globalAlpha = hk; x.strokeStyle = css("pink"); x.lineWidth = 1.6; roundRect(x, PX(190), PY(8), 234 * PSC, 40 * PSC, 30); x.stroke(); x.restore();
     fillRect(x, PX(204), PY(17), 22 * PSC, 22 * PSC, css("pink"), 0.55 * hk);
     bar(x, 236, 24, 110, 8, 0.4 * hk);
     for (let i = 0; i < 2; i++) { x.save(); x.globalAlpha = hk; x.strokeStyle = css("pink"); x.lineWidth = 1.6; roundRect(x, PX(560 + i * 30 - 30), PY(14), 24 * PSC, 24 * PSC, 5); x.stroke(); x.restore(); }
-    // 卡片：一张张画出来
     CARDS.forEach((c, i) => {
       const ck = prog(k, 0.3 + i * 0.1, 0.58 + i * 0.1, E.io);
       if (ck <= 0) return;
       const hero = c.id === "listening";
       const hot = hero ? o.hot || 0 : 0;
-      const clip = c.id === "activity"; // 这一张被窗口下沿截住
+      const clip = c.id === "activity";
       if (clip) { x.save(); x.beginPath(); x.rect(wx, wy, ww, wh - 2); x.clip(); }
       card(x, c.r, ck, hero ? 1 : dim, hot);
       const ia = prog(ck, 0.6, 1) * (hero ? 1 : dim);
@@ -269,7 +236,6 @@
     });
   }
 
-  // ========== 总览图（世界坐标；拉远后镜头 [1920, 1080, 0.5]，世界坐标 = 屏幕坐标 × 2）==========
   const OVER = [1920, 1080, 0.5, 0];
   const COLS = [
     { key: "ch00.src", sub: "ch00.srcSub", x0: 140, x1: 1180 },
@@ -277,7 +243,6 @@
     { key: "ch00.scr", sub: "ch00.scrSub", x0: 2660, x1: 3700 },
   ];
   const COL_Y0 = 580, COL_Y1 = 1740;
-  // 采集端：上报器和云端遥测（第 01 章索引的前六个小样；第七个是表盘，归中枢里的采集 Worker）
   const PICS = [
     { i: 1, name: "iPhone", y: ML - 290 }, { i: 2, key: "ch00.home", y: ML - 145 }, { i: 0, name: "Mac", y: ML },
     { i: 3, name: "NAS", y: ML + 145 }, { i: 4, key: "ch00.tokyo", y: ML + 290 }, { i: 5, key: "ch00.cloud", y: ML + 435 },
@@ -290,7 +255,6 @@
     collector: { x: 2000, y: ML - 330, w: 420, h: 140, key: "ch00.collector", mono: "collector" },
   };
   const RAIL_Y = ML + 200, GLY = [["room", 1560], ["lag", 1800], ["d1", 2040], ["cred", 2280]], GLY_Y = ML + 330;
-  // 那根线：Mac → 入口 → 状态核心 → 这张卡的封面，一路水平
   const ROUTE = [[PIC_X + 240, ML], COVER_C];
 
   function pict(x, i, cx, cy, s, a, col) {
@@ -303,7 +267,7 @@
     else if (i === 1) R(-14, -27, 28, 54, 7);
     else if (i === 2) { R(-36, -16, 34, 32, 6); x.beginPath(); x.arc(-19, 0, 5, 0, TAU); x.stroke(); R(6, -12, 30, 24); for (let j = 0; j < 3; j++) Ln([[13 + j * 8, -5], [13 + j * 8, 5]]); }
     else if (i === 3) { R(-22, -27, 44, 54); for (let j = 0; j < 3; j++) Ln([[-12 + j * 12, -18], [-12 + j * 12, 12]]); }
-    else if (i === 4) { R(-37, -12, 22, 24); R(-11, -12, 22, 24); R(15, -12, 22, 24); } // 东京那台主机上的上报器容器，一个一格，和第 01 章 FIG. 5 对应
+    else if (i === 4) { R(-37, -12, 22, 24); R(-11, -12, 22, 24); R(15, -12, 22, 24); }
     else { x.setLineDash([5, 4]); x.beginPath(); x.rect(-26, -20, 52, 40); x.stroke(); x.setLineDash([]); Ln([[-14, 0], [-6, -8], [2, 6], [10, -4]]); }
     x.restore();
   }
@@ -321,7 +285,6 @@
     text(x, tr(B.key), B.x + dx, B.y + 62, { font: FONT.cjk(60, 600), color: hot ? css("signal") : css("pink"), alpha: a, maxW: B.w - dx - 20 });
     text(x, B.mono, B.x + dx, B.y + 120, { font: FONT.mono(56, 500), color: css("graphite"), alpha: a });
   }
-  // o.k 画出来的进度（拉远那一段），o.pop[i] 三栏在拍上各亮一下
   function overview(L, b, o) {
     const { x, e } = L;
     const k = o.k;
@@ -338,7 +301,6 @@
       else text(x, c.mono, c.x0 + 46, COL_Y0 + 168, { font: FONT.mono(56, 500), color: css("graphite"), alpha: ta, maxW: c.x1 - c.x0 - 90 });
       if (pop > 0.02) glow(e, c.x0 + 180, COL_Y0 + 76, 260, 0.45 * pop);
     });
-    // 采集端：六个小样，各一根线收进漏斗口，汇到入口
     PICS.forEach((p, j) => {
       const pa = prog(k, 0.15 + j * 0.05, 0.3 + j * 0.05);
       if (pa <= 0) return;
@@ -347,7 +309,6 @@
       text(x, p.key ? tr(p.key) : p.name, PIC_X + 110, p.y + 20, { font: p.key ? FONT.cjk(56, 600) : FONT.mono(56, 500), color: mac ? css("signal") : css("pink"), alpha: pa });
       if (!mac) polyline(x, [[PIC_X + 330, p.y], FUNNEL], prog(k, 0.35 + j * 0.04, 0.6 + j * 0.04, E.io), 2, css("pink"), 0.5);
     });
-    // 中枢：三块，下面一根横梁挂四个库的符号
     const ba = (t) => prog(k, t, t + 0.2, E.out);
     block(x, BLK.collector, ba(0.4), false);
     polyline(x, [[BLK.collector.x + 210, BLK.collector.y + BLK.collector.h], [BLK.core.x + 210, BLK.core.y]], prog(k, 0.5, 0.65), 2, css("pink"), 0.7);
@@ -370,7 +331,6 @@
     g.addColorStop(0, `rgba(255,200,150,${a})`); g.addColorStop(0.35, `rgba(235,130,85,${0.45 * a})`); g.addColorStop(1, "rgba(230,110,70,0)");
     e.save(); e.fillStyle = g; e.beginPath(); e.arc(cx, cy, r, 0, TAU); e.fill(); e.restore();
   }
-  // 那根线和火花：3.55 起火花顺着线从画面左边进来，4:0 落到封面上；身后的线一直画着，拉远时整根露出来
   function route(L, b) {
     const { x, e } = L;
     if (b < AT.dot) return;
@@ -385,14 +345,12 @@
     if (b >= AT.flip) glow(e, head[0], head[1], 150, 0.45 * impact(b, AT.flip, 0.25));
   }
 
-  // ========== 纸面的镜头 ==========
   const WINV = [3180, 1249, 0.9, 0];
   const CARD_C = [PX(LC[0] + LC[2] / 2), PY(LC[1] + LC[3] / 2)];
-  const ZC = 1.45, P_CARD = [1100, 610]; // 推近时这张卡中心在屏幕上的位置
+  const ZC = 1.45, P_CARD = [1100, 610];
   const CARDV = [CARD_C[0] - (P_CARD[0] - 960) / ZC, CARD_C[1] - (P_CARD[1] - 540) / ZC, ZC, 0];
   const CAM_A = [[AT.cut, WINV], [AT.push, [3180, 1249, 0.93, 0], E.lin], [3.5, CARDV, E.io], [AT.pull, [CARDV[0], CARDV[1], ZC * 1.02, 0], E.lin]];
   const toScreen = (w, c) => [(w[0] - c[0]) * c[2] + 960, (w[1] - c[1]) * c[2] + 540];
-  // 以某个世界点为锚拉远 / 冲进：锚点在屏幕上的位置从 p0 走到 p1，缩放按对数插值
   function anchored(k, W, p0, p1, z0, z1) {
     const z = Math.exp(lerp(Math.log(z0), Math.log(z1), k));
     const p = [lerp(p0[0], p1[0], k), lerp(p0[1], p1[1], k)];
@@ -409,7 +367,6 @@
     return anchored(E.inExpo(prog(b, AT.rush, 10)), MAC, toScreen(MAC, RUSH0), [960, 540], RUSH0[2], 7);
   }
 
-  // 页眉（屏幕坐标，拉远时不跟着缩）：问题 6:0 收小成标题，7:5 起翻成本章的标题
   function hud(x, b) {
     const qa = prog(b, AT.q, AT.q + 0.06) * (1 - prog(b, 9.35, 9.5));
     if (qa <= 0) return;
@@ -427,7 +384,6 @@
       text(x, "lyjw.me · /api/status/listening/now", 292, 226, { font: FONT.mono(28), color: css("graphite"), alpha: ha * prog(b, 6.15, 6.4) });
       line(x, 110, 262, 110 + 990 * prog(b, 6.1, 6.6, E.outExpo), 262, 1.4, css("pink"), ha);
     }
-    // 旁白
     K.narration(x, tr("ch00.n1a"), 110, 944, { reveal: prog(b, 6.1, 6.45), alpha: win(b, 6.05, 6.15, 7.35, 7.5), maxW: 1040 });
     K.narration(x, tr("ch00.n1b"), 110, 1024, { reveal: prog(b, 6.45, 6.95), alpha: win(b, 6.05, 6.15, 7.35, 7.5), maxW: 1040 });
     K.narration(x, tr("ch00.n2a"), 110, 944, { reveal: prog(b, 8.1, 8.4), alpha: win(b, 8.05, 8.15, 9.35, 9.5), maxW: 1040 });
@@ -437,8 +393,6 @@
     x.restore();
   }
 
-  // 「正在听」那一段的一整帧（纸面）。第 10 章 10:0 前后借它画同一个画面：o.hud = false 不画页眉和旁白，
-  // o.focus 别的卡退淡的程度，o.b0 运动模糊从哪一小节起算（切进来那一帧不算甩镜头），o.extra 在合成前多画一点
   const POST_PAPER = { bloom: 0.55, threshold: 0.95, halation: 0.18, grain: 0.042, vignette: 0.26, ca: 0.35 };
   const SEED_PAPER = 7.1;
   function paperFrame(f, b, o = {}) {
@@ -457,7 +411,6 @@
     overview(Lr, b, { k: ov, pop: AT.pops.map((t) => impact(b, t, 0.3)) });
     const focus = o.focus ?? (o.hud === false ? 0 : win(b, AT.q - 0.1, AT.q + 0.2, AT.pull, AT.pull + 0.4));
     home(Lr, { k: prog(b, AT.cut - 0.03, 2.75), flip: prog(b, AT.flip - 0.08, AT.flip + 0.08), hot: win(b, AT.flip, AT.flip + 0.05, 5.6, 6.0), focus });
-    // 主线压在页面上、一直走到封面；入口和状态核心两块画在线上面（纸色盖住块里那一段），看着是穿过去
     route(Lr, b);
     if (ov > 0) { block(x, BLK.ingress, prog(ov, 0.3, 0.5, E.out), true); block(x, BLK.core, prog(ov, 0.35, 0.55, E.out), true); }
     if (o.hud !== false) hud(x, b);
@@ -485,7 +438,6 @@
     id: "ch00", title: "ch.00", bars: 10,
     init() { G.pass(K.PLATE.ink); G.pass(K.PLATE.paper); lay(); },
     render,
-    // 第 10 章借用：终端一整帧、第 0 小节的终端状态、「正在听」那一段的一整帧，以及它们的时间表
     share: { termFrame, termState, terminal, paperFrame, AT, TW, L2 },
   });
 })();

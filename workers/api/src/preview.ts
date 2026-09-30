@@ -1,8 +1,3 @@
-/**
- * 分支 Worker Preview。wrangler.toml 的 [previews.vars] 才把 PREVIEW_WORKER 设成 true。
- * 生产版本不设它，下面这些分支在线上走不到。
- */
-
 const PROXY_PATHS = new Set([
   "/api/musickit/token",
   "/api/lyrics",
@@ -16,10 +11,6 @@ export function previewWorkerEnabled(): boolean {
   return process.env.PREVIEW_WORKER?.trim() === "true";
 }
 
-/**
- * 这三条浏览器会直接打到后端，响应又不是 `{ok}` 信封，上游兜底不会替换。
- * 影子库是空的，也没有 Apple 私钥，原样转给生产。
- */
 export function isPreviewProxyPath(pathname: string): boolean {
   return PROXY_PATHS.has(pathname);
 }
@@ -29,7 +20,6 @@ type PreviewState = {
   finishImport: () => Promise<void>;
 };
 
-/** 空库第一次公开读取前标成已初始化，公开路径才不会一直 503。不导入任何条目。 */
 export async function ensurePreviewState(hub: PreviewState): Promise<void> {
   if (!previewWorkerEnabled()) return;
   if (await hub.ready()) return;
@@ -64,7 +54,6 @@ async function readBounded(response: Response, maxBytes: number): Promise<Uint8A
   return body;
 }
 
-/** 只转发 GET 的路径和来源，不跟随重定向，避免变成通向生产的开放代理。 */
 export async function fetchPreviewUpstream(request: Request): Promise<Response> {
   const base = process.env.UPSTREAM_API_URL?.trim().replace(/\/+$/, "");
   if (!base) {

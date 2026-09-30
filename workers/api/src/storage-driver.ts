@@ -14,10 +14,7 @@ export function getStorage(): StorageClient {
   return new StorageClient((commands) => retryRead(commands, () => hub.execute(commands), () => { hub = stub(); }));
 }
 
-/**
- * DO 部署或迁移时会重置实例，正在飞的调用抛 retryable 错误。只读命令没有副作用，
- * 换一个新 stub 重试一次；写操作可能已提交，照旧冒泡交给上报器重试。
- */
+// DO 重置会抛 retryable；只重试读取，写入可能已提交，不能在这里重放。
 export async function retryRead<T>(commands: readonly StorageCommand[], run: () => Promise<T>, renew?: () => void): Promise<T> {
   try {
     return await run();
@@ -40,12 +37,7 @@ function readOnly(commands: readonly StorageCommand[]): boolean {
   return commands.every((command) => command.op === "get" || command.op === "fields" || command.op === "listRange");
 }
 
-/**
- * Coalesce only independent reads started in the same request turn. Each flush is
- * one StateHub transaction and its result slices retain the callers' ordering.
- * Writes keep their original RPC/transaction boundary so failures cannot spread
- * into an adjacent operation.
- */
+// 只合并独立读取；合并写事务会让一个操作的失败回滚相邻操作。
 type PublicStorageHub = {
   publicRead(commands: StorageCommand[]): Promise<StorageResult[]>;
   execute(commands: StorageCommand[]): Promise<unknown[]>;
@@ -115,12 +107,11 @@ export function createPublicStorage(hub: PublicStorageHub, renewHub?: () => Publ
 }
 export function key(...parts: string[]): string { return [process.env.STORAGE_PREFIX ?? "lyjwpage", ...parts].join(":"); }
 export function withStorageScope<T>(run: () => Promise<T>): Promise<T> { return run(); }
-/** Worker 持久化失败必须冒泡，让上报器重试，不能成功应答后只留进程内存。 */
+// Worker 写失败必须冒泡，成功应答后仅留进程内存会丢失上报。
 export function withStorage<T>(run: (storage: StorageClient) => Promise<T>, fallback: T): Promise<T> { void fallback; return run(getStorage()); }
 export async function askStorage<T>(load: (storage: StorageClient) => Promise<T>): Promise<StorageAnswer<T>> { return { reachable: true, value: await load(getStorage()) }; }
 export async function tellStorage(run: (storage: StorageClient) => Promise<unknown>): Promise<boolean> { await run(getStorage()); return true; }
 export function resetStorageDriverForTests(): void {}
-/** 签名和 Node 驱动对齐，好让同一份测试在两套 tsconfig 下都成立；Worker 里注入没有意义。 */
 export function installStorageForTests(client: StorageClient | null): never {
   void client;
   throw new Error("Use the Node test driver");

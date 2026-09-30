@@ -1,7 +1,3 @@
-// 第 04 章「活字印版」的配乐，12 小节，章内小节。写法见 ../CONVENTIONS.md「配乐」。
-// 印刷机的重拍：底鼓一、三拍重压，钟摆声当机器的咔嗒，翻纸声当出纸；三块重印各落一个重拍（印章），
-// 计时环一个一声「叮」，回源碰壁那一下全场一顿（大章），最后闷拨弦唱信封主题、吸一口气交给第 05 章。
-// 调性：接第 03 章的 D 小调（i – ♭VI – VII），重印那几小节走 i – ♭VI – iv – V，收在 A7sus4 上。
 (window.SCORE_PARTS = window.SCORE_PARTS || []).push({
   id: "ch04",
   tone: { bell: "bright", pluckPan: -0.2, snareVerb: 0.1 },
@@ -36,23 +32,21 @@
       { from: 11, to: 11, id: "press-song", name: "换歌不重印：闷拨弦唱信封主题，吸一口气交给第 05 章", energy: 0.45,
         kick: "X...............", duck: 0.45, bass: "hold", pad: 0.9, lp: 1700, padVerb: 0.38 },
     ],
-    // 旋律：[小节, 拍位, 时值(拍), 音, 乐器, 力度, 是否主题]
     melody: [
-      ...phrase(1, withNotes(["D5", "C5", "A4", "F4"]), "pluck", 0.42), // 出纸口：一句往下走的应答（不是主题）
-      ...phrase(11, THEME, "pluckDark", 1.35, true), // 11:0 火花落到「在听」那块上：闷拨弦唱主题
-      ...phrase(11, withNotes(["D4", "F4", "A4", "A4"]), "pluck", 0.35), // 低八度跟一层
+      ...phrase(1, withNotes(["D5", "C5", "A4", "F4"]), "pluck", 0.42),
+      ...phrase(11, THEME, "pluckDark", 1.35, true),
+      ...phrase(11, withNotes(["D4", "F4", "A4", "A4"]), "pluck", 0.35),
     ],
     story: [
-      { bar: 2, beat: 0, kind: "accent", what: "slip" }, // 一张印好的页递给访客
-      { bar: 5, beat: 0, kind: "accent", what: "flip" }, // 接第 03 章那次在线 → 离线：三个标签飞进来
-      { bar: 5, beat: 2, kind: "accent", what: "slip" }, // 旧页照发
-      { bar: 6, beat: 0, kind: "stamp", size: "mid" }, { bar: 6, beat: 2, kind: "stamp", size: "mid" }, { bar: 7, beat: 0, kind: "stamp", size: "mid" }, // 三块重印
-      { bar: 7, beat: 2, kind: "accent", what: "slip" }, // 新页印完、换上去
-      // 计时环：一个一声「叮」，顺着 D 小调五声往上走
+      { bar: 2, beat: 0, kind: "accent", what: "slip" },
+      { bar: 5, beat: 0, kind: "accent", what: "flip" },
+      { bar: 5, beat: 2, kind: "accent", what: "slip" },
+      { bar: 6, beat: 0, kind: "stamp", size: "mid" }, { bar: 6, beat: 2, kind: "stamp", size: "mid" }, { bar: 7, beat: 0, kind: "stamp", size: "mid" },
+      { bar: 7, beat: 2, kind: "accent", what: "slip" },
       ...["A5", "C6", "D6", "E6", "G6", "A6", "C7"].map((n, i) => ({ bar: 8, beat: i * 0.5, kind: "tick", m: midi(n), i })),
-      { bar: 9, beat: 2, kind: "whoosh", tube: 2 }, // pulse 那块回源：顺着轨往下
-      { bar: 10, beat: 0, kind: "stamp", size: "big" }, // 503 · 沿用上一份
-      { bar: 11, beat: 3, kind: "swell" }, // 推进「在听」那块，吸一口气
+      { bar: 9, beat: 2, kind: "whoosh", tube: 2 },
+      { bar: 10, beat: 0, kind: "stamp", size: "big" },
+      { bar: 11, beat: 3, kind: "swell" },
     ],
   }),
 });

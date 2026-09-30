@@ -29,7 +29,6 @@ test("画格子只到 through，不含窗尾未来空格", () => {
 });
 
 test("年度编码：从今天所在周往回 52 周的周日起共 371 天，没用量的日子是 0、不进 mix，窗口外的日子丢掉", () => {
-  // 2026-08-31 是周一，所在周的周日是 08-30
   const now = Date.parse("2026-08-31T09:00:00+08:00");
   const payload = encodeCodingYear({
     updatedAt: 1_000,
@@ -46,7 +45,6 @@ test("年度编码：从今天所在周往回 52 周的周日起共 371 天，�
   assert.equal(payload.days[365], 30);
   assert.equal(payload.days.reduce((sum, value) => sum + value, 0), 40);
   assert.deepEqual(payload.models, ["claude-opus-5"]);
-  // 今天有合计、没有可展示的模型：只进 days，不进 mix
   assert.deepEqual(payload.mix, [[0, 0, 10]]);
   assert.equal(payload.updatedAt, 1_000);
 });
@@ -73,9 +71,7 @@ test("年度编码：每天的前几名按模型表加稀疏 offset 对编码，
 
 test("年度编码：今天由出口按钟现算，用量停了也不跟着少一格；按站点时区不按 UTC", () => {
   const stopped = { updatedAt: Date.parse("2026-08-30T04:15:00+08:00"), days: {} };
-  // 用量停在昨天凌晨，今天仍是今天 —— 切窗要是拿 updatedAt 当钟，今天那格会被切掉
   assert.equal(encodeCodingYear(stopped, Date.parse("2026-08-31T09:00:00+08:00")).todayAtSource, "2026-08-31");
-  // 东八区 00:30 拿 UTC 切会退回昨天，和 GitHub 那张图错开一列
   assert.equal(encodeCodingYear(stopped, Date.parse("2026-08-31T00:30:00+08:00")).todayAtSource, "2026-08-31");
 });
 

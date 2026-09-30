@@ -1,4 +1,3 @@
-/** 存储命令的协议：StorageClient 发出、各驱动执行；没有 SQL 或任意远程命令入口。 */
 export type WriteOptions = { ttlMs?: number; ifAbsent?: boolean };
 export type StorageCommand =
   | { op: "get" | "remove" | "fields"; key: string }
@@ -8,7 +7,6 @@ export type StorageCommand =
   | { op: "expire"; key: string; ttlMs: number }
   | { op: "patch"; key: string; fields: Record<string, string> };
 
-/** Structured-clone-safe values returned by every storage command. */
 export type StorageResult = string | boolean | number | null | string[] | Record<string, string>;
 
 export const STORAGE_MAX_BYTES = 4 * 1024 * 1024;

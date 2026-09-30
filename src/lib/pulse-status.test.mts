@@ -66,7 +66,6 @@ test("tokens lane sums every source per bucket, drops the partial leading and wi
     const cursor = mergeBucketReport(null, report(NOW - 7 * M, NOW - M, ["cursor"], [[NOW - 5 * M, [tokens("cursor", "composer-2", 100, 10, 0, 0)]]]), NOW - M);
     const cloud = addBucketDeltas(null, [
       { at: NOW - 14 * M, id: "claude", model: "claude-fable-5", inputTokens: 400, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0 },
-      // 24 小时窗口左边切进去的那一桶不画
       { at: FROM - 2 * M, id: "claude", model: "claude-fable-5", inputTokens: 9_999, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0 },
     ], NOW - 3 * M);
     await storage.batch()
@@ -77,7 +76,6 @@ test("tokens lane sums every source per bucket, drops the partial leading and wi
     const lane = (await getPulseStatus(NOW)).lanes.tokens;
     assert.deepEqual(columnRows(lane.buckets, ["fresh", "output", "cacheRead"]), [
       { startSec: sec(NOW - 15 * M), endSec: sec(NOW - 10 * M), fresh: 4_000, output: 500, cacheRead: 95_000 },
-      // 末桶截到这一桶里有数的来源里最晚的覆盖终点（Cursor 的 NOW-1），速率按 4 分钟算
       { startSec: sec(NOW - 5 * M), endSec: sec(NOW - M), fresh: 770, output: 70, cacheRead: 0 },
     ]);
     assert.deepEqual(lane.summary, { peakPerMinute: 800, currentPerMinute: 193, freshTokens: 4_770 });
@@ -124,7 +122,6 @@ test("coding band shows human, agent and both from raw observations; app and mod
     await storage.append(codingObservationsKey(),
       obs(NOW - 60 * M, true, false), obs(NOW - 58 * M, true, true), obs(NOW - 56 * M, false, true),
       JSON.stringify({ t: NOW - 54 * M, available: false, desktop: null, agents: null }));
-    // Mac 离线后 Cursor 账号那一路仍看得见，最近的活动算 agent
     await storage.append(cursorObservationsKey(), JSON.stringify({ t: NOW - 30 * M, available: true, lastActivityAt: NOW - 30 * M }));
     const scored: PulseAssessment = { domain: "coding", from: NOW - 60 * M, to: NOW - 45 * M, coverage: [{ from: NOW - 60 * M, to: NOW - 54 * M }],
       intensity: { value: 3, confidence: 0.876, probabilities: { 0: 0, 1: 0, 2: 0, 3: 1, 4: 0 } },

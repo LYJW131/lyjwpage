@@ -11,15 +11,6 @@ import { Card } from "@/components/ui/card";
 import { useStaleAutoReload } from "@/hooks/use-stale-auto-reload";
 import { site } from "@/lib/site";
 
-/**
- * 首页段的错误边界。错误边界必须是客户端组件，导不出 metadata，标题用
- * React 的 <title> 元素自己拼。error.message 不端给访客：里面可能带后端
- * 地址、上游响应之类的内部信息，只进 console 和 Sentry。
- *
- * 首页各卡有自己的错误边界（components/card-boundary），一张卡出错不会走到这里；
- * 走到这里说明是边界之外的地方抛的，整页已经被这个错误页顶替，没有什么交互可打断。
- * 页面若已确知是旧的，直接刷新就是修复（可见也刷，闸门见 lib/app-version）。
- */
 export default function Error({
   error,
   reset,

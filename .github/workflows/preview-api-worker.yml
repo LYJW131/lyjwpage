@@ -1,4 +1,3 @@
-# PR 关闭后删掉该分支的影子 api Worker。没配 CLOUDFLARE_API_TOKEN 就跳过。
 name: Delete preview API worker
 
 on:

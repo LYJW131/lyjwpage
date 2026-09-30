@@ -1,15 +1,6 @@
-// 第 02 章 · 门禁与分拣（上报入口 ingress Worker，FACTS §2）。20 小节。
-// 纸面图版：一张 3840×3240 的大图纸，两列三行，镜头在强拍上甩到下一格：
-//   A 门墙（钥匙与门、权限表）          · B 检查单（按判定顺序逐项打勾）
-//   C 分拣台（prepare 出的命令拆成四路）  · D 跨 Worker 的一跳（Service Binding → StateCore → StateHub，回执回来）
-//   F 图签（只在拉远时看得到）           · E 回 202 之前依次等的三盏灯，D1 不等；失败时怎么退
-// 结尾拉远看整张图纸，再冲进「状态核心已提交」那盏灯，接第 03 章。
-// 这一章讲到「经 Service Binding 交给 StateCore.commitIngest，回执回来」为止：屋里排队、唯一的 DO、「要做的事」是第 03 章的。
-// 时间一律写章节内的小节（bar），b = 5.5 即第 5 小节第 2 拍。
 (() => {
   const { css } = G;
   const { E, prog, keys, clamp, lerp, text, FONT, line, polyline, rect, fillRect, dashed, envelope, stamp, clawd, bubble, spark, roundRect, glyph, pathAt, pathLen, trailOn } = K;
-  // ---------- 这一章的文字：[中文, English]，场景代码里只写键 ----------
   I18N.add({
     "ch02.title": ["门禁与分拣", "The gate and the sorting desk"],
     "ch02.host": ["ingest.homepage.lyjw.llc · ingress Worker", "ingest.homepage.lyjw.llc · ingress Worker"],
@@ -33,7 +24,6 @@
     "ch02.n2a": ["按判定顺序逐项校验，", "Checks run in order;"],
     "ch02.n2b": ["一项不过，当场拒收。", "any miss is rejected."],
     "ch02.notJson": ["不是 JSON", "not JSON"],
-    // C 分拣台
     "ch02.n3a": ["prepare 把信封整理成命令，", "prepare turns it into a command,"],
     "ch02.n3b": ["按数据层拆成四路。", "split four ways by data layer."],
     "ch02.tube.rt": ["实时", "Realtime"],
@@ -44,7 +34,6 @@
     "ch02.byGate": ["入口直接写", "ingress writes it"],
     "ch02.fork": ["训练：可滞后、归档各一份", "workouts: one copy to lag, one to archive"],
     "ch02.server": ["服务器那封整封不进状态核心：只进可滞后和归档。", "The server report skips the state core: lag and archive only."],
-    // D 跨 Worker 的一跳
     "ch02.gateSide": ["无状态，只在边界鉴权", "stateless; auth at the edge"],
     "ch02.coreSide": ["状态核心", "the state core"],
     "ch02.rpc": ["RPC 入口", "RPC entrypoint"],
@@ -56,7 +45,6 @@
     "ch02.n5b": ["这一跳只认绑定，不再验钥匙。", "this hop trusts the binding alone."],
     "ch02.foot1": ["改校验只需重新发布入口：", "Changing validation redeploys only the ingress:"],
     "ch02.foot2": ["api Worker 只引用类型，Durable Object 不重启，连接不断。", "the api Worker imports types only; the DO keeps running."],
-    // E 回 202 之前
     "ch02.waits": ["回 202 之前，入口依次等：", "Before 202, the ingress awaits:"],
     "ch02.lamp.do": ["状态核心已提交", "State core committed"],
     "ch02.lamp.lag": ["LAG 已写", "LAG written"],
@@ -74,10 +62,8 @@
   const tr = (k) => I18N.tr(k);
   const TAU = Math.PI * 2;
   let paper, ink, stampL, emit, top;
-  // 图版底用共用的纸面着色器（kit.js 的 K.PLATE.paper）：纸纹、纤维、图纸网格只铺在这张 3840×3240 的图纸上
   const PLATE_RECT = [0, 0, 3840, 3240];
 
-  // ---------- 时间表（章内小节）：画面和 music/ch02.js 的 story 共用这一组 ----------
   const AT = {
     macOpen: 2.0, e403: 3.5, haOpen: 4.0, psOpen: 4.125,
     ticks: [5.0, 5.5, 6.0, 6.5, 7.0, 7.5], s400: 8.0,
@@ -87,17 +73,12 @@
     out: 19.25, dive: 20.0,
   };
 
-  // ---------- 布局常量（世界坐标） ----------
-  // A：来源按 shared/ingest/prepare.ts#INGEST_SOURCES，最后一扇是 OTLP 那一路
   const DOORS = ["mac", "iphone", "homepod", "playstation", "emby", "server", "agents", "quest", "agents/otlp"];
   const DX = (i) => 170 + i * 178, DW = 138, DTOP = 340, DH = 300;
   const lockPos = (i) => [DX(i) + DW / 2, DTOP + DH * 0.6];
-  // C
   const TUBE_X = { cred: 300, d1: 700, lag: 1100, rt: 1500 };
-  // D：两个 Worker 之间一堵墙，墙上开一个口，管子从口里穿过去
   const WALL_X = 2600, PIPE_Y = 1720, CORE_BOX = { x: 2980, y: 1640, w: 300, h: 160 }, HUB = [3560, 1720];
-  const DROP_X = 2556; // 回执从这里落到 E 的第一盏灯
-  // E
+  const DROP_X = 2556;
   const LAMP_Y = 2620, BUS_Y = 2500;
   const LAMPS = [
     { key: "do", x: DROP_X, t: AT.lamp1 },
@@ -106,11 +87,9 @@
   ];
   const D1L = { x: DROP_X + 165, y: 2860 };
   const STAMP202 = [3600, 2500];
-  // 实时那根管子：C 的管口 → C 的底 → 进 D → 穿墙 → StateCore → StateHub 的门
   const RT_FULL = [[1500, 1690], [1500, 1930], [2000, 1930], [2000, PIPE_Y], [CORE_BOX.x, PIPE_Y], [CORE_BOX.x + CORE_BOX.w / 2, PIPE_Y], [HUB[0] - 60, PIPE_Y]];
   const RT_TUBE = RT_FULL.slice(0, 5);
 
-  // 镜头：[小节, [x, y, zoom, rot], 进入这一段的缓动]
   const CAM = [
     [0, [640, 660, 1.4, -0.025]],
     [1.6, [960, 580, 1.0, 0], E.io],
@@ -125,10 +104,9 @@
     [19.25, [2895, 2690, 1.03, 0], E.lin],
     [19.55, [1920, 1620, 1 / 3, 0], E.io],
     [19.74, [DROP_X, LAMP_Y, 1.1, 0], E.io],
-    [19.97, [DROP_X, LAMP_Y, 60, 0], E.inExpo], // 冲进去要在落满黑之前做完：20:0 那一帧归第 03 章
+    [19.97, [DROP_X, LAMP_Y, 60, 0], E.inExpo],
   ];
 
-  // 落点的冲击：事件发生后迅速衰减（小节 → 秒按 BAR 换算）
   let BARs = 60 / 108 * 4;
   const impact = (b, at, hl = 0.09) => (b < at ? 0 : Math.exp(-((b - at) * BARs) / hl * Math.LN2));
   const win = (b, a0, a1, b0, b1) => prog(b, a0, a1) * (1 - prog(b, b0, b1));
@@ -138,7 +116,6 @@
     g.addColorStop(0, `rgba(255,200,150,${a})`); g.addColorStop(0.35, `rgba(235,130,85,${0.45 * a})`); g.addColorStop(1, "rgba(230,110,70,0)");
     e.save(); e.fillStyle = g; e.beginPath(); e.arc(cx, cy, r, 0, TAU); e.fill(); e.restore();
   }
-  // 纸面上的信封火花：emit 层的亮核在亮纸上相加会发白，墨层再点一颗 signal 色的芯，读起来仍是橙色
   function sparkP(e, x, head, trail, o) {
     spark(e, x, head, trail, o);
     x.save(); x.fillStyle = css("signal"); x.beginPath(); x.arc(head[0], head[1], 5.5 * (o.size ?? 1), 0, TAU); x.fill(); x.restore();
@@ -156,7 +133,6 @@
     x.fill(); x.restore();
   }
 
-  // ---------- A 门墙 ----------
   function door(x, i, open, drawK) {
     const dx = DX(i), top = DTOP, w = DW, h = DH;
     const ink = css("pink");
@@ -164,7 +140,6 @@
     polyline(x, frame, drawK, 3, ink);
     if (drawK < 1) return;
     if (open > 0) fillRect(x, dx + 2, top + 2, w - 4, h - 2, ink, 0.9 * clamp(open * 3));
-    // 门扇：以左边为轴向外转。全片只有 2D，所以不做透视：门扇只是平着变窄，上下沿始终水平
     const o = E.out(clamp(open));
     const ex = dx + w * (1 - 0.8 * o);
     x.save();
@@ -172,7 +147,6 @@
     x.strokeStyle = ink; x.lineWidth = 2.2;
     x.beginPath(); x.moveTo(dx + 1, top + 1); x.lineTo(ex, top + 1); x.lineTo(ex, top + h); x.lineTo(dx + 1, top + h); x.closePath();
     x.fill(); x.stroke();
-    // 门板上的内框和锁
     const inset = (px, py) => [lerp(dx + 1, ex, px), lerp(top + 1, top + h, py)];
     const pts = [inset(0.14, 0.08), inset(0.86, 0.08), inset(0.86, 0.46), inset(0.14, 0.46), inset(0.14, 0.08)];
     polyline(x, pts, 1, 1.2, ink, 0.55);
@@ -188,19 +162,15 @@
     const w = Math.max(210, tw + 110), h = 86;
     x.fillStyle = css("paper"); x.strokeStyle = hot ? css("signal") : css("pink"); x.lineWidth = 3;
     roundRect(x, -w / 2, -h / 2, w, h, 10); x.fill(); x.stroke();
-    // 芯片
     x.lineWidth = 1.5; x.strokeRect(-w / 2 + 16, -14, 30, 24);
     line(x, -w / 2 + 16, -2, -w / 2 + 46, -2, 1, x.strokeStyle);
     x.restore();
     text(x, label, cx - Math.max(210, tw + 110) / 2 + 64, cy + 10, { font: FONT.cjk(28, 600), color: hot ? css("signal") : css("pink"), alpha });
   }
 
-  // 权限表：每把钥匙能开哪几扇门（workers/ingress/wrangler.toml 的 ACCESS_CLIENTS，只写上报方名，不写 client id）。
-  // 钥匙按上报方发：home-assistant 只开 /homepod，/playstation 只认 n100 上那台容器自己的钥匙（FACTS §2「鉴权」）。
-  // 两列排：一列太长，末行会压到画面下沿
   const AC = [["mac", "/mac"], ["iphone", "/iphone"], ["home-assistant", "/homepod"], ["playstation", "/playstation"], ["quest", "/quest"],
     ["emby", "/emby"], ["server", "/server"], ["agents", "/agents"], ["claude-cloud", "/agents/otlp"], ["github-actions", "/api/internal/site-deployed"]];
-  const AC_ROW = { mac: 0, ha: 2, ps: 3, emby: 5 }; // 钥匙从这几行滑出来
+  const AC_ROW = { mac: 0, ha: 2, ps: 3, emby: 5 };
   const AC_X = [150, 1000], AC_Y = 700, AC_LH = 36;
   const acPos = (i) => [AC_X[Math.floor(i / 5)], AC_Y + 40 + (i % 5) * AC_LH];
   const acRow = (i) => { const [x0, y] = acPos(i); return [x0 + 90, y - 8]; };
@@ -224,11 +194,9 @@
     text(x, tr("ch02.title"), 300, 176, { font: FONT.cjk(58, 600), reveal: prog(b, 0.3, 1.0), fadeIn: true });
     text(x, tr("ch02.host"), 302, 224, { font: FONT.mono(28), color: css("graphite"), reveal: prog(b, 0.5, 1.3) });
     line(x, 120, 262, 120 + 1680 * prog(b, 0.2, 1.3, E.outExpo), 262, 1.4, css("pink"));
-    // 硬切进来的第一帧就有墨：墙线从 0:0 起画
     line(x, 150, DTOP + DH, 150 + 1620 * (0.12 + 0.88 * prog(b, 0, 0.9, E.outExpo)), DTOP + DH, 2, css("pink"));
     text(x, "POST /api/ingest/…", 1770, DTOP + DH + 44, { font: FONT.mono(28), color: css("graphite"), align: "right", alpha: prog(b, 0.7, 1.2) });
 
-    // 门的开合：mac 2:0 开、2:3 关；homepod 4:0、playstation 4:0.5 各被自己的钥匙打开
     const openMac = keys(b, [[AT.macOpen, 0], [AT.macOpen + 0.4, 1, E.outExpo], [2.72, 1], [3.0, 0, E.in]]);
     const openHP = keys(b, [[AT.haOpen, 0], [AT.haOpen + 0.4, 1, E.outExpo]]);
     const openPS = keys(b, [[AT.psOpen, 0], [AT.psOpen + 0.4, 1, E.outExpo]]);
@@ -238,15 +206,13 @@
     });
 
     accessTable(x, b);
-    // 钥匙从权限表里自己那一行滑出来：mac 的钥匙开 mac；emby 的钥匙去开 mac → 403，退下时在表头之前就淡掉；
-    // Home Assistant 和 playstation 两把各开各的门：两张卡各贴着自己那扇门往外伸，不能有一张同时压着两扇
     const [mx, my] = lockPos(0);
     const macK = keys(b, [[1.3, acRow(AC_ROW.mac)], [2.0, [mx, my], E.outExpo], [2.35, [mx, my]], [2.7, [mx, my + 30], E.in]]);
     keycard(x, tr("ch02.key.mac"), macK[0], macK[1], 0, prog(b, 1.3, 1.4) * (1 - prog(b, 2.35, 2.7)), b > 1.95 && b < 2.5);
     const embyK = keys(b, [[2.9, acRow(AC_ROW.emby)], [3.5, [mx, my], E.outExpo], [3.75, [mx, my]], [4.15, [mx - 30, my + 110], E.in]]);
     const shakeE = b > 3.5 && b < 3.75 ? Math.sin((b - 3.5) * 120) * 10 * (1 - prog(b, 3.5, 3.75)) : 0;
     keycard(x, tr("ch02.key.emby"), embyK[0] + shakeE, embyK[1], lerp(0, -0.4, prog(b, 3.75, 4.15, E.in)), prog(b, 2.9, 3.0) * (1 - prog(b, 3.85, 4.1)));
-    const cardW = (label) => Math.max(210, K.measure(x, label, FONT.cjk(28, 600)) + 110); // 和 keycard 里的宽度一样算
+    const cardW = (label) => Math.max(210, K.measure(x, label, FONT.cjk(28, 600)) + 110);
     const hpX = DX(2) + DW - 8 - cardW(tr("ch02.key.ha")) / 2, psX = DX(3) + 8 + cardW(tr("ch02.key.ps")) / 2;
     const haK = keys(b, [[3.45, acRow(AC_ROW.ha)], [AT.haOpen, [hpX, my], E.outExpo], [4.5, [hpX, my]], [4.85, [hpX, my + 40], E.in]]);
     keycard(x, tr("ch02.key.ha"), haK[0], haK[1], 0, prog(b, 3.45, 3.55) * (1 - prog(b, 4.5, 4.85)), b > AT.haOpen - 0.05 && b < 4.6);
@@ -258,16 +224,13 @@
       line(x, DX(3) + 14, hy, DX(3) + DW - 14, hy, 2, css("signal"), prog(b, AT.psOpen, AT.psOpen + 0.2));
       text(x, tr("ch02.two"), DX(3) + DW + 24, hy + 10, { maxW: 700, font: FONT.cjk(28, 600), color: css("signal"), reveal: prog(b, AT.psOpen, AT.psOpen + 0.3) });
     }
-    // 403：盖在 mac 那扇门上
     stamp(s, "403", DX(0) + DW / 2 + 6, DTOP + DH * 0.24, { k: prog(b, AT.e403, AT.e403 + 0.12), px: 64, rot: -0.2, alpha: 1 - prog(b, 4.6, 4.9) });
 
-    // 旁白：等 1.6 机位落定才出底字（硬切进来的那几帧镜头推得很近，底字会被右缘切掉）
     const na = prog(b, 1.3, 1.6);
     nar(x, "ch02.n1a", 150, 975, prog(b, 1.4, 2.2), na, { px: 64, maxW: 1500 });
     nar(x, "ch02.n1b", 150, 1055, prog(b, 2.2, 3.2), na, { px: 64, maxW: 1500 });
   }
 
-  // ---------- B 检查单（判定顺序按 workers/ingress 的 handleIngest） ----------
   const ROWS = [
     ["ch02.r1", "method", "405"],
     ["ch02.r2", "source", "404"],
@@ -298,29 +261,24 @@
       rect(x, bx, by, 40, 40, 2, css("pink"), fk);
       polyline(x, [[bx + 7, by + 20], [bx + 17, by + 31], [bx + 36, by + 5]], done, 5, css("signal"));
       line(x, X + 40, y + 66, X + 40 + (FW - 80) * prog(b, 4.8 + i * 0.05, 5.2 + i * 0.05, E.out), y + 66, 1, css("pink"), 0.3);
-      // 勾上的那一刻，这一行下面扫过一道橙线
       const sw = prog(b, tk, tk + 0.12, E.outExpo);
       if (sw > 0 && b < tk + 0.45) line(x, X + 40, y + 66, X + 40 + (FW - 80) * sw, y + 66, 2.2, css("signal"), 1 - prog(b, tk + 0.2, tk + 0.45));
     });
 
-    // 右侧：这一封上报本身
     nar(x, "ch02.n2a", 3150, 200, prog(b, 4.9, 5.4), 1, { px: 60, maxW: 650 });
     nar(x, "ch02.n2b", 3150, 282, prog(b, 5.4, 6.4), 1, { px: 60, maxW: 650 });
     const ex = 3440;
     const ey = keys(b, [[4.7, 470], [6.5, 470], [6.72, 742, E.spring]]);
     const eIn = prog(b, 4.6, 4.95, E.outExpo);
     const envX = lerp(3180, ex, eIn);
-    // 1 POST · 2 路径：路径离信封上沿留一行空，不压信封的边
     text(x, "POST", ex, 340, { font: FONT.mono(34, 600), color: b < 5.25 ? css("signal") : css("pink"), align: "center", alpha: prog(b, 5.0, 5.08) * (1 - prog(b, 6.35, 6.5)) });
     text(x, "/api/ingest/mac", ex, 382, { font: FONT.mono(28), color: css("graphite"), align: "center", alpha: prog(b, 5.5, 5.58) * (1 - prog(b, 6.35, 6.5)) });
-    // 3 Access 凭证：三段式 JWT
     const jk = prog(b, 6.0, 6.2, E.out);
     if (jk > 0 && b < 6.55) {
       const segs = [[3290, 70], [3366, 150], [3522, 70]];
       segs.forEach(([sx, sw], j) => fillRect(x, sx, 600, sw * clamp(jk * 3 - j), 12, j === 2 ? css("signal") : css("pink"), 0.85 * (1 - prog(b, 6.35, 6.5))));
       text(x, "Cf-Access-Jwt-Assertion", ex, 652, { font: FONT.mono(28), color: css("graphite"), align: "center", alpha: jk * (1 - prog(b, 6.35, 6.5)) });
     }
-    // 4 秤：信封落到秤盘上，指针晃一晃停在很靠左的地方；右端红线是 4 MiB
     const sk = prog(b, 6.2, 6.5, E.out);
     if (sk > 0) {
       const py = 790, cx = ex, cy = 905, R = 70;
@@ -334,16 +292,13 @@
       const na = Math.PI * 0.85 + (b < 6.5 ? 0 : 0.1 + wob);
       line(x, cx, cy, cx + Math.cos(na) * (R - 16), cy + Math.sin(na) * (R - 16), 3, css("signal"), sk);
     }
-    // 5 JSON：信封两边浮出花括号
     const jb = prog(b, 7.0, 7.12, E.outBack);
     if (jb > 0) {
       text(x, "{", ex - 170 - (1 - jb) * 30, ey + 26, { font: FONT.mono(80, 500), color: css("graphite"), align: "center", alpha: jb });
       text(x, "}", ex + 170 + (1 - jb) * 30, ey + 26, { font: FONT.mono(80, 500), color: css("graphite"), align: "center", alpha: jb });
     }
-    // 6 prepare：信封打开
     const open = prog(b, 7.5, 7.75, E.io);
     envelope(x, envX, ey, 230, css("pink"), { lw: 3, open, fill: css("paper"), alpha: eIn });
-    // 反例：一封不是 JSON 的，8:0 盖 400
     const rk = prog(b, 7.62, 7.95, E.outExpo);
     if (rk > 0) {
       const rx = lerp(3960, 3640, rk), ry = 440;
@@ -353,9 +308,7 @@
     }
   }
 
-  // ---------- C 分拣台（管子底下四个库的符号是共用的 K.glyph） ----------
   function tube(x, pts, color, k, lw = 2.2) {
-    // 双线管子：沿中线左右各偏 24
     const off = (d) => pts.map((p, i) => {
       const a = pts[Math.max(0, i - 1)], c = pts[Math.min(pts.length - 1, i + 1)];
       const dx = c[0] - a[0], dy = c[1] - a[1], L = Math.hypot(dx, dy) || 1;
@@ -370,8 +323,8 @@
     ["iphone · workouts", "lag", 10.0, 1], ["iphone · workouts", "d1", 10.0, 1],
     ["mac · musicUserToken", "cred", 10.5, 0],
   ];
-  const ENV_C = [[1160, 1330], [1420, 1372]]; // 分拣台上：mac 那封、iphone 那封
-  const SERVER_AT = [1780, 1420]; // 服务器那封落在右上角：左边两行注记要留给英文，下面是实时那根管子的标注
+  const ENV_C = [[1160, 1330], [1420, 1372]];
+  const SERVER_AT = [1780, 1420];
   function chip(x, label, cx, cy, hot, alpha, scale = 1) {
     if (alpha <= 0) return;
     x.save(); x.translate(cx, cy); x.scale(scale, scale); x.globalAlpha = alpha;
@@ -393,28 +346,23 @@
       const tx = TUBE_X[key], hot = key === "rt", col = hot ? css("signal") : css("pink");
       text(x, tr(names[key]), tx, 1580, { font: FONT.cjk(38, 600), color: col, align: "center", alpha: tk });
       text(x, subs[key], tx, 1620, { font: FONT.mono(28), color: css("graphite"), align: "center", alpha: tk });
-      // 谁来写：三层入口自己写，只有实时那一半交出去
       text(x, tr(hot ? "ch02.byCore" : "ch02.byGate"), tx, 1656, { font: FONT.cjk(28, 600), color: hot ? css("signal") : css("graphite"), align: "center", alpha: tk * prog(b, 9.2, 9.4) });
-      // 管口：漏斗
       polyline(x, [[tx - 84, 1690], [tx - 26, 1750]], tk, 2.4, col);
       polyline(x, [[tx + 84, 1690], [tx + 26, 1750]], tk, 2.4, col);
       if (hot) tube(x, [[tx, 1750], ...RT_TUBE.slice(1)], col, tk);
       else { tube(x, [[tx, 1750], [tx, 1990]], col, tk); glyph(x, key, tx, 2046, col); }
-      // 收到东西时管口亮一下
       const arrive = CHIPS.filter((c) => c[1] === key).map((c) => c[2]);
       if (key === "lag" || key === "d1") arrive.push(AT.fork);
       const p = Math.max(0, ...arrive.map((a) => impact(b, a, 0.12)));
       if (p > 0.02) polyline(x, [[tx - 84, 1690], [tx + 84, 1690]], 1, 4, css("signal"), p);
     }
 
-    // 两封上报在台上，已经拆开；台面上方注明这是 prepare 的产物
     const ek = prog(b, 8.7, 9.0, E.outExpo);
     text(x, "prepare → PreparedIngest", 1880, 1215, { font: FONT.mono(28), color: css("graphite"), align: "right", alpha: ek });
     envelope(x, ENV_C[1][0], ENV_C[1][1], 170, css("pink"), { lw: 2.5, open: 1, fill: css("paper"), alpha: ek, rot: 0.06 });
     envelope(x, ENV_C[0][0], ENV_C[0][1], 220, css("pink"), { lw: 3, open: 1, fill: css("paper"), alpha: ek, rot: -0.03 });
     text(x, "mac", ENV_C[0][0], ENV_C[0][1] + 112, { font: FONT.mono(28), color: css("graphite"), align: "center", alpha: ek });
     text(x, "iphone", ENV_C[1][0], ENV_C[1][1] + 92, { font: FONT.mono(28), color: css("graphite"), align: "center", alpha: ek });
-    // 模块逐个飞进各自的管子
     CHIPS.forEach(([label, key, at, from]) => {
       const k = prog(b, at - 0.42, at, E.io);
       if (k <= 0 || k >= 1) return;
@@ -424,7 +372,6 @@
       chip(x, label, cx, cy, key === "rt", 1 - prog(k, 0.85, 1), lerp(1, 0.6, prog(k, 0.7, 1)));
     });
     text(x, tr("ch02.fork"), 120, 1440, { maxW: 900, font: FONT.cjk(28, 600), color: css("graphite"), reveal: prog(b, 10.0, 10.5) });
-    // 服务器那封：整封一分为二，进可滞后和归档
     const sIn = prog(b, AT.server, AT.server + 0.37, E.outExpo);
     if (sIn > 0) {
       const sx = lerp(2060, SERVER_AT[0], sIn), sy = SERVER_AT[1];
@@ -441,8 +388,6 @@
     }
   }
 
-  // ---------- D 跨 Worker 的一跳：Service Binding → StateCore（RPC 入口）→ StateHub（DO），回执原路回来 ----------
-  // 墙体：平面图的剖切墙，斜线填充；中间开口让管子和它的标注穿过去
   function wall(x, y0, y1, a) {
     if (a <= 0 || y1 <= y0) return;
     const w = 26, x0 = WALL_X - w / 2;
@@ -461,18 +406,15 @@
     const pink = css("pink"), graphite = css("graphite");
     const dk = prog(b, 11.85, 12.25, E.io);
     if (dk <= 0) return;
-    // 两边各是哪个 Worker
     wall(x, 1400, lerp(1400, 1630, dk), 1);
     wall(x, 1790, lerp(1790, 2080, dk), 1);
     text(x, "ingress Worker", WALL_X - 40, 1440, { font: FONT.mono(32, 600), color: pink, align: "right", alpha: dk });
     text(x, tr("ch02.gateSide"), WALL_X - 40, 1482, { font: FONT.cjk(28, 600), color: graphite, align: "right", alpha: dk });
     text(x, "api Worker", WALL_X + 40, 1440, { font: FONT.mono(32, 600), color: pink, alpha: dk });
     text(x, tr("ch02.coreSide"), WALL_X + 40, 1482, { font: FONT.cjk(28, 600), color: graphite, alpha: dk });
-    // 管子穿墙：墙上的口画成一对法兰，口上标 binding 名
     fillRect(x, WALL_X - 20, PIPE_Y - 34, 40, 68, css("paper"), dk);
     rect(x, WALL_X - 20, PIPE_Y - 34, 40, 68, 2.2, pink, dk);
     text(x, "Service Binding · CORE", WALL_X, PIPE_Y - 48, { font: FONT.mono(28, 600), color: css("signal"), align: "center", alpha: prog(b, 12.1, 12.3) });
-    // StateCore：RPC 入口；StateHub：唯一的状态 DO，画成四个库里「实时」那间屋子
     const cb = CORE_BOX, coreHot = b >= AT.core - 0.02 && b < AT.reply[0] + 0.1;
     x.save(); x.globalAlpha = dk; x.fillStyle = css("paper"); x.strokeStyle = coreHot ? css("signal") : pink; x.lineWidth = 2.6;
     roundRect(x, cb.x, cb.y, cb.w, cb.h, 12); x.fill(); x.stroke(); x.restore();
@@ -489,17 +431,14 @@
     if (lit > 0) glow(e, HUB[0], HUB[1] + 14, 90, 0.55 * impact(b, AT.commit, 0.25) + 0.2);
     text(x, "StateHub", HUB[0], 1830, { font: FONT.mono(34, 600), color: pink, align: "center", alpha: hk });
     text(x, "Durable Object", HUB[0], 1870, { font: FONT.mono(28), color: graphite, align: "center", alpha: hk });
-    // 入口这一侧：等的是哪一个调用，回来的是什么
     text(x, "await CORE.commitIngest(cmd)", WALL_X - 60, 1792, { font: FONT.mono(28), color: pink, align: "right", alpha: prog(b, 12.2, 12.4) });
     const rp = prog(b, AT.reply[0], AT.reply[1], E.io);
     text(x, "{ ready: true, ok: true, data }", WALL_X - 60, 1834, { font: FONT.mono(28, 600), color: css("signal"), align: "right", alpha: prog(b, AT.reply[1], AT.reply[1] + 0.1) });
-    // 墙那一侧的两条注，和一行脚注
     const nk = prog(b, 13.9, 14.1);
     text(x, tr("ch02.noNet"), WALL_X + 40, 1920, { font: FONT.cjk(28, 600), color: graphite, alpha: nk });
     text(x, tr("ch02.bound"), WALL_X + 40, 1960, { font: FONT.cjk(28, 600), color: graphite, alpha: nk });
     text(x, tr("ch02.foot1"), WALL_X + 40, 2024, { font: FONT.cjk(28, 600), color: graphite, reveal: prog(b, 14.6, 14.9), maxW: 1150 });
     text(x, tr("ch02.foot2"), WALL_X + 40, 2064, { font: FONT.cjk(28, 600), color: graphite, reveal: prog(b, 14.9, 15.3), maxW: 1150 });
-    // 回执：从 StateCore 顺着同一根管子回到入口这一侧，停在墙边；16:0 前落到 E 的第一盏灯
     if (b >= AT.reply[0] && b < AT.drop[1]) {
       const dropK = prog(b, AT.drop[0], AT.drop[1], E.in);
       const rx = lerp(cb.x + 30, DROP_X, rp), ry = dropK > 0 ? lerp(PIPE_Y + 8, LAMP_Y - 60, dropK) : PIPE_Y + 8;
@@ -507,7 +446,6 @@
       receipt(x, e, rx, ry, 1);
     }
     if (b >= AT.drop[1]) line(x, DROP_X, PIPE_Y + 24, DROP_X, LAMP_Y - 46, 2.4, css("signal"), 0.9);
-    // 旁白
     const a4 = win(b, 12.0, 12.1, 13.72, 13.82), a5 = win(b, 13.82, 13.92, 15.62, 15.74);
     nar(x, "ch02.n4a", 2000, 1235, prog(b, 12.05, 12.5), a4);
     nar(x, "ch02.n4b", 2000, 1318, prog(b, 12.5, 13.1), a4);
@@ -515,14 +453,12 @@
     nar(x, "ch02.n5b", 2000, 1318, prog(b, 14.3, 14.95), a5);
   }
 
-  // ---------- E 回 202 之前依次等的三盏灯（workers/ingress 的 commitIngest：状态核心回执 → LAG → 凭据 → 202；D1 在 waitUntil 里） ----------
   function panelE(x, s, e, b) {
     const pink = css("pink"), graphite = css("graphite");
     const k = prog(b, 15.8, 16.1, E.out);
     if (k <= 0) return;
     text(x, tr("ch02.waits"), 2000, 2440, { font: FONT.cjk(34, 600), color: graphite, alpha: k });
     const lit = (L) => prog(b, L.t, L.t + 0.08);
-    // 汇流线：三盏灯依次接上，D1 那一路从汇流线上分出去、虚线、不接回来
     line(x, LAMPS[0].x, BUS_Y, 3400, BUS_Y, 2.2, pink, k);
     LAMPS.forEach((L) => {
       const on = lit(L), lx = L.x, ly = LAMP_Y;
@@ -536,7 +472,6 @@
       text(x, tr(`ch02.lamp.${L.key}`), lx, ly + 90, { font: FONT.cjk(28, 600), align: "center", alpha: k });
       text(x, "await", lx, ly + 130, { font: FONT.mono(28), color: graphite, align: "center", alpha: k });
     });
-    // D1：回执回来之后就交给 waitUntil，不等；它哪一刻写完和 202 没有先后
     const dk = prog(b, AT.d1Start, AT.d1Start + 0.25, E.out);
     if (dk > 0) {
       x.save(); x.setLineDash([8, 7]); polyline(x, [[D1L.x, BUS_Y], [D1L.x, D1L.y - 46]], dk, 2, pink); x.restore();
@@ -549,11 +484,9 @@
       text(x, tr("ch02.lamp.d1"), D1L.x, D1L.y + 90, { font: FONT.cjk(28, 600), align: "center", alpha: dk * 0.75 });
       text(x, tr("ch02.lamp.d1s"), D1L.x, D1L.y + 130, { font: FONT.cjk(28, 600), color: graphite, align: "center", alpha: dk });
     }
-    // 汇流线上的橙色：亮一盏走一段
     const fill = keys(b, [[AT.lamp1, LAMPS[0].x], [AT.lamp2, LAMPS[1].x, E.out], [AT.lamp3, LAMPS[2].x, E.out], [AT.s202 - 0.05, 3400, E.io]]);
     if (b > AT.lamp1) line(x, LAMPS[0].x, BUS_Y, fill, BUS_Y, 3.4, css("signal"));
     stamp(s, "202", STAMP202[0], STAMP202[1], { k: prog(b, AT.s202, AT.s202 + 0.16), px: 150, rot: -0.09, sub: "Accepted" });
-    // 失败时：状态核心没准备好回 503；同步那几步任何一步抛错回 400，上报器整封重发
     const fk = prog(b, AT.fail, AT.fail + 0.15);
     if (fk > 0) {
       text(x, tr("ch02.onFail"), 3300, 2790, { font: FONT.cjk(30, 600), color: pink, alpha: fk });
@@ -569,7 +502,6 @@
     nar(x, "ch02.n7b", 2000, 3170, prog(b, 18.25, 18.8), a7, { maxW: 1150 });
   }
 
-  // ---------- 图版外框与图签（拉远时才看得到；缩放 1/3，字写到 84 px 以上折到屏幕才有 28） ----------
   function plateFrame(x, b) {
     const k = prog(b, AT.out - 0.1, AT.out + 0.2, E.out);
     if (k <= 0) return;
@@ -577,14 +509,10 @@
     line(x, 1920, 60, 1920, 3180, 1, css("pink"), 0.25 * k);
     line(x, 60, 1080, 3780, 1080, 1, css("pink"), 0.25 * k);
     line(x, 60, 2160, 3780, 2160, 1, css("pink"), 0.25 * k);
-    // 图签占左下那一格的正中
     text(x, tr("ch02.title"), 960, 2640, { font: FONT.cjk(90, 600), align: "center", alpha: k });
     text(x, "PLATE 02 · INGRESS", 960, 2790, { font: FONT.mono(96, 600), align: "center", alpha: k });
   }
 
-  // ---------- 信封火花：A 格从左缘走进 mac 那扇门；B 格附在那封信上；C 格起沿着实时那根管子穿墙，进 StateHub 那间屋子 ----------
-  // A_PATH 起点在画面外：0:0 那一帧火花头就贴着左缘，接第 01 章右缘出去的那一下。首帧镜头带 -0.025 的旋转，
-  // 世界 y 要比 660 高约 16 屏幕上才落在 540
   const A_PATH = [[-420, 652], [120, 640], [DX(0) + DW / 2, 600]];
   const A_LEN = pathLen(A_PATH);
   function sparkAll(x, e, b) {
@@ -593,7 +521,6 @@
       const head = pathAt(A_PATH, d);
       sparkP(e, x, head, trailOn(A_PATH, d, 320), { t: G.t, size: lerp(1.1, 0.4, prog(b, 2.0, 2.4)), lw: 2.2 });
     } else if (b >= 4.7 && b < 8.9) {
-      // 附在检查单右边那封信的封舌上
       const ey = keys(b, [[4.7, 470], [6.5, 470], [6.72, 742, E.spring]]);
       const ex = lerp(3180, 3440, prog(b, 4.6, 4.95, E.outExpo));
       sparkP(e, x, [ex, ey - 20], null, { t: G.t, size: 0.8 });
@@ -608,7 +535,6 @@
     BARs = f.BAR;
     const b = f.bar;
     const { cam, blur, zoomBlur } = K.camera(CAM, b, f.BAR);
-    // 盖章那一下往前顶一点
     const hitS = Math.max(impact(b, AT.e403), impact(b, AT.s400), impact(b, AT.s202, 0.14));
     cam.zoom *= 1 + 0.025 * hitS;
     G.setCam(cam);
@@ -619,7 +545,7 @@
     const e = emit.begin(); emit.cam(cam);
     const tp = top.begin(); top.cam(cam);
 
-    const wide = b > AT.out; // 拉远之后整张图纸都在画面里
+    const wide = b > AT.out;
     if (b < 5.2 || wide) panelA(x, s, b);
     if ((b > 4.4 && b < 9.3) || wide) panelB(x, s, b);
     if (b > 8.5) panelC(x, s, b);
@@ -628,7 +554,6 @@
     plateFrame(x, b);
     sparkAll(x, e, b);
 
-    // Clawd：只在开场出来一次，站在标题线右端
     const cIn = prog(b, 0.45, 0.8, E.lin), cOut = prog(b, 2.45, 2.8, E.lin);
     if (cIn > 0 && cOut < 1) {
       const baseY = 262;
@@ -648,8 +573,7 @@
     f.post = {
       bloom: 0.55, threshold: 0.95, halation: 0.18, grain: 0.042, vignette: 0.26, ca: 0.35,
       shake: [Math.sin(f.frame * 1.7) * sh, Math.cos(f.frame * 2.3) * sh],
-      // 冲进灯里：先整屏化成橙色，再干净地落黑。黑要在 N − 0.03 前落满：N:0 那一帧归第 03 章（从黑里起），
-      // 本章最后一帧也得是全黑，两边才对得上
+      // N:0 已属于下一章，全黑交接必须在 N − 0.03 前完成。
       flash: Math.max(impact(b, AT.s202, 0.1) * 0.18, prog(b, AT.dive - 0.23, AT.dive - 0.11)), flashCol: b > AT.dive - 0.5 ? [0.85, 0.36, 0.2] : [1.0, 0.72, 0.55],
       fade: prog(b, AT.dive - 0.1, AT.dive - 0.03),
       blur, zoomBlur,

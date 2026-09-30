@@ -41,7 +41,6 @@ test("每一帧都同时画出幽灵本体和蓝色光环", () => {
 });
 
 test("帧号永远落在数组里：rAF 时间戳早于基准也不会算出负数", () => {
-  // 同一帧里 effect 先跑、rAF 回调后跑时，now - startedAt 会是负的
   assert.equal(ghosttyFrameIndex(-3, data.frameMs, data.frames.length), 0);
   assert.equal(ghosttyFrameIndex(0, data.frameMs, data.frames.length), 0);
   assert.equal(ghosttyFrameIndex(data.frameMs * 2.5, data.frameMs, data.frames.length), 2);

@@ -37,7 +37,6 @@ test("agents 入口：按 id 收行，plan 缺了是 null，坏窗口丢掉、�
   ]);
   assert.equal(parsed.agents[1]?.limitsError, "Codex：token expired");
   assert.deepEqual(parsed.agents[1]?.limits, []);
-  // tier 空等于没有套餐信息，不要留一个空标签
   assert.equal(parsed.agents[2]?.plan, null);
   assert.equal(parsed.agents[2]?.limitsError, null);
 });

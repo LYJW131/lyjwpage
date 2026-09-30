@@ -1,27 +1,20 @@
-// 第 05 章「电报线」的配乐，18 小节，章内小节。写法见 ../CONVENTIONS.md「配乐」。
-// 暗底示波器：踩镲用打字机的「嗒」，轻重排成摩尔斯电码（o 是点、X 是划）；电报到站是电键的「嘟」（剧情音 morse）；线上没有消息的那几小节（9–12）踩镲停下，只剩浏览器自己的钟在走。
-// 主题换成闷音拨弦（像电键），最后那个长音拆成三下短点。调性：D 多利亚 / D 小调，收在 A7sus4 上交给第 06 章转调。
-// 剧情落点和 ../ch05.js 顶部的时间表 AT 是同一组小节：改一边先对另一边，再对 SCRIPT.md。
 (window.SCORE_PARTS = window.SCORE_PARTS || []).push({
   id: "ch05",
   tone: { bell: "bright", pluckPan: -0.15, snareVerb: 0.14 },
   score: ({ THEME, withNotes, phrase, midi }) => {
-    // 摩尔斯：一格一个十六分，字母内隔一格、字母间隔三格左右
     const M = {
-      CQ: "X.o.X.o..X.X.o.X", // 呼叫：开场扫线
+      CQ: "X.o.X.o..X.X.o.X",
       WS: "o.X.X...o.o.o...",
       LI: "o.X.o.o...o.o...",
       VE: "o.o.o.X...o.....",
-      OK: "X.X.X...X.o.X...", // 主角到站
-      NO: "X.o...X.X.X.....", // 旧轮询被挡回
-      ON: "X.X.X...X.o.....", // 在线人数
-      ETA: "o...X...o.X.....", // 预期到货
-      SK: "o.o.o.X.o.X.....", // 收报
+      OK: "X.X.X...X.o.X...",
+      NO: "X.o...X.X.X.....",
+      ON: "X.X.X...X.o.....",
+      ETA: "o...X...o.X.....",
+      SK: "o.o.o.X.o.X.....",
     };
-    // 主题：前三个音照旧，E5 那个长音拆成三下点（电键）
     const TAP = [[0, 0.75, "A4"], [0.75, 0.75, "D5"], [1.5, 0.5, "F5"], [2, 0.4, "E5"], [2.5, 0.4, "E5"], [3, 0.4, "E5"]];
     const up8 = TAP.map(([b, d, n]) => [b, d, n.replace(/\d$/, (o) => String(+o + 1))]);
-    // 歌词占位逐字亮的节奏（和 ../ch05.js 的 LYR 一致）：两行各六块
     const LYR = [0, 0.5, 1, 1.5, 2, 3];
     return {
       harm: [
@@ -62,34 +55,29 @@
           hat: M.SK, hatKind: "type", hatVol: 0.75, bass: "hold", pad: 1, lp: 1800, padVerb: 0.4 },
       ],
       melody: [
-        // 5:0 主角到站：闷音拨弦唱主题，高八度轻轻叠一层
         ...phrase(5, TAP, "pluckMute", 1.35, true),
         ...phrase(5, up8, "pluckMute", 0.45),
-        // 6：FM 铃往下答一句（B♭ 上的 E 是 #11）
         ...phrase(6, withNotes(["D5", "F5", "E5", "C5"]), "bell", 0.5),
-        // 9–10：歌词占位逐块亮，铃跟着轻轻唱（Dmadd9 → B♭maj7#11）
         ...LYR.map((b, i) => [9, b, 0.5, ["A4", "C5", "D5", "E5", "D5", "A4"][i], "bell", 0.34, false]),
         ...LYR.map((b, i) => [10, b, 0.5, ["F4", "A4", "D5", "E5", "D5", "C5"][i], "bell", 0.34, false]),
       ],
       story: [
-        { bar: 0, beat: 0, kind: "accent", what: "arrive" }, // 硬切进暗底：一声低「咚」
-        { bar: 2, beat: 0, kind: "lamp", m: midi("A5"), i: 1 }, // head 里的小脚本接上电报线
-        { bar: 2, beat: 1, kind: "morse", m: midi("E5"), v: 0.7, pan: -0.3 }, // 三封电报进托盘：online、desktop、playing-now，各一声电键
+        { bar: 0, beat: 0, kind: "accent", what: "arrive" },
+        { bar: 2, beat: 0, kind: "lamp", m: midi("A5"), i: 1 },
+        { bar: 2, beat: 1, kind: "morse", m: midi("E5"), v: 0.7, pan: -0.3 },
         { bar: 2, beat: 3, kind: "morse", m: midi("E5"), v: 0.7, pan: 0 },
         { bar: 3, beat: 1, kind: "morse", m: midi("E5"), v: 0.7, pan: 0.3 },
-        { bar: 3, beat: 1, kind: "swell" }, // 吸一口气，3:2 hydrate
-        { bar: 3, beat: 2, kind: "accent", what: "slip" }, // useLiveEvents 接过这根线
-        // 托盘里的按顺序重放：一封一声「叮」，往上爬
+        { bar: 3, beat: 1, kind: "swell" },
+        { bar: 3, beat: 2, kind: "accent", what: "slip" },
         ...[[3, 3, "A5"], [4, 0, "C6"], [4, 1, "D6"]].map(([bar, beat, n], i) => ({ bar, beat, kind: "tick", m: midi(n), i })),
-        { bar: 5, beat: 2, kind: "accent", what: "flip" }, // 「正在听」翻面
-        { bar: 8, beat: 0, kind: "gate" }, // 旧轮询撞上时间戳闸门、被弹开
-        { bar: 12, beat: 0, kind: "off", m: midi("D5") }, // 在线点到点自己熄灭：一声往下滑的轻音
-        { bar: 13, beat: 2, kind: "morse", m: midi("A5"), len: 0.25, v: 0.8, pan: 0.2 }, // 标签页切到后台，只发一声 hidden：往外发，比进来的电报高、短
-        { bar: 14, beat: 0, kind: "tick", m: midi("E6"), i: 3 }, // 在线人数少一个
-        // 预期到货表：三行、公式
+        { bar: 5, beat: 2, kind: "accent", what: "flip" },
+        { bar: 8, beat: 0, kind: "gate" },
+        { bar: 12, beat: 0, kind: "off", m: midi("D5") },
+        { bar: 13, beat: 2, kind: "morse", m: midi("A5"), len: 0.25, v: 0.8, pan: 0.2 },
+        { bar: 14, beat: 0, kind: "tick", m: midi("E6"), i: 3 },
         ...[[15, 1, "A5"], [15, 2, "C6"], [15, 3, "D6"], [16, 0, "F6"]].map(([bar, beat, n], i) => ({ bar, beat, kind: "tick", m: midi(n), i })),
-        { bar: 16, beat: 2, kind: "stamp", size: "mid" }, // 「5 min」兜底章
-        { bar: 17, beat: 3, kind: "swell" }, // 交给第 06 章
+        { bar: 16, beat: 2, kind: "stamp", size: "mid" },
+        { bar: 17, beat: 3, kind: "swell" },
       ],
     };
   },

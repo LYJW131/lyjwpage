@@ -11,22 +11,13 @@ import { GhosttyMascot } from "@/components/live/ghostty-mascot";
 import { HIDDEN_DESKTOP_BUNDLE_ID } from "@/lib/types";
 
 export interface DesktopAppOverride {
-  /** 唯一标识，用于动画与缓存 key */
   key: string;
-  /** 规范文本名称（用于无障碍 a11y label 与 title 悬停提示） */
   displayName: string;
-  /** 匹配 bundleIdentifier 的规则 */
   match: (bundleIdentifier: string) => boolean;
-  /** 自定义图标组件（替换左侧图标） */
   renderIcon: (props: { size?: number; className?: string }) => ReactNode;
-  /** 自定义文案矢量组件（替换右侧文本，如 @lobehub/icons 的 Text 组件） */
   renderText?: (props: { size?: number; className?: string }) => ReactNode;
 }
 
-/**
- * 前台应用特化展示注册表（左侧图标与右侧文案均支持 @lobehub/icons 组件化替换）。
- * 新增或修改特定应用的展示规则，只需在此配置即可。
- */
 export const DESKTOP_APP_OVERRIDES: readonly DesktopAppOverride[] = [
   {
     key: "hidden",

@@ -12,7 +12,6 @@ import { archiveTrophies, runBatched, trophyStatements } from "./stores/trophy-h
 
 type Statement = { query: string; values: unknown[] };
 
-/** 真实 SQLite 跑 api 的全部迁移：upsert 的冲突与「没变不写」要在引擎里验，不在替身里推断 */
 function historyDb() {
   const sqlite = new DatabaseSync(":memory:");
   const migrations = `${dirname(fileURLToPath(import.meta.url))}/../migrations/`;

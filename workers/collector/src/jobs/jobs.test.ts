@@ -39,7 +39,6 @@ test("provider status writes every round, revalidates only when the lights chang
   assert.deepEqual(revalidated, [["agent-status"]]);
   assert.equal(seen[0], null);
 
-  // 只有检查时刻变了：照写，不失效
   assert.deepEqual(await refreshProviderStatus({ lag, core, collect, memo }, 61_000), { status: "ok" });
   assert.equal(revalidated.length, 1);
   assert.equal(seen[1]?.fetchedAt, 1_000, "上一轮取自可滞后层");
@@ -60,7 +59,6 @@ test("provider status prefers its own newer write over a lagging KV read", async
     return statusPayload(now, "operational");
   };
   await refreshProviderStatus({ lag, core, collect, memo }, 1_000);
-  // 边缘缓存还是更早那份
   await writeLag(lag, LAG_KEYS.agentStatus, statusPayload(500, "major_outage"), 500);
   await refreshProviderStatus({ lag, core, collect, memo }, 61_000);
   assert.equal(seen[1]?.fetchedAt, 1_000);
@@ -88,21 +86,16 @@ const repo = (commits: number | null, contributors = 2, fetchedAt = 1): GithubRe
 
 test("repo stats keep the good half of a partial round", () => {
   const previous = repo(400, 3, 1);
-  // 都取到了：总数的时刻就是这一轮
   assert.deepEqual(mergeRepoStats({ ok: true, data: repo(434, 2, 2) }, previous), { ...repo(434, 2, 2), totalsAt: 2 });
-  // 只有总数没取到：名单新、总数沿用，带着上一份总数的时刻
   const totalsMissing = mergeRepoStats({ ok: true, data: repo(null, 2, 2) }, previous);
   assert.deepEqual(totalsMissing?.totals, { commits: 400, additions: 4000, deletions: 400, contributors: 2 });
   assert.equal(totalsMissing?.contributors.length, 2);
   assert.equal(totalsMissing?.totalsAt, 1);
-  // 总数一直取不到：时刻不跟着名单往前走
   assert.equal(mergeRepoStats({ ok: true, data: repo(null, 2, 3) }, totalsMissing)?.totalsAt, 1);
-  // 只有名单没取到：名单沿用（时刻不变）、总数新
   const contributorsMissing = mergeRepoStats({ ok: false, totals: { commits: 434, additions: 4340, deletions: 434 } }, previous, 5);
   assert.deepEqual(contributorsMissing?.totals, { commits: 434, additions: 4340, deletions: 434, contributors: 3 });
   assert.equal(contributorsMissing?.fetchedAt, 1);
   assert.equal(contributorsMissing?.totalsAt, 5);
-  // 都没取到，或没有上一份可沿用：不写
   assert.equal(mergeRepoStats({ ok: false, totals: { commits: null, additions: null, deletions: null } }, previous), null);
   assert.equal(mergeRepoStats({ ok: false, totals: { commits: 434, additions: 1, deletions: 1 } }, null), null);
 });
@@ -139,7 +132,6 @@ test("sentry status carries a failed block with its own time, and only for a whi
   const merged = mergeSentryStatus({ fetchedAt: 2, uptime: null, heartbeat: null, errors: null, vitals }, previous);
   assert.deepEqual(merged, { fetchedAt: 2, uptime: null, heartbeat: null, errors, vitals, blockAt: { errors: 1, vitals: 2 } });
 
-  // 错误数一直取不到：沿用时带着第一次取到的时刻，过了阈值就放掉
   const later = mergeSentryStatus({ fetchedAt: SENTRY_BLOCK_CARRY_MS - 1, uptime: null, heartbeat: null, errors: null, vitals }, merged);
   assert.equal(later.blockAt?.errors, 1);
   assert.deepEqual(later.errors, errors);
@@ -149,6 +141,5 @@ test("sentry status carries a failed block with its own time, and only for a whi
 });
 
 test("pagespeed waits per request for less than the job's runtime budget", () => {
-  // 桌面、移动并行，一轮最坏就是单端超时；超过 Sentry 监控认定的时限就会被记成漏报
   assert.ok(PAGESPEED_TIMEOUT_MS < pagespeedJob.maxRuntimeMinutes * 60_000);
 });

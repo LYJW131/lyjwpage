@@ -1,10 +1,4 @@
-/**
- * Cloudflare Access JWT 校验：上报入口 Worker 用，验的是 ingest 域名后面那个 Access 应用签的 JWT。
- *
- * Access 挡在边缘，放行的请求带着它签的 JWT 到 Worker。Worker 仍要自己验一遍：
- * 同一个 Worker 还能从 workers.dev 或别的域名进来，那条路不过 Access，只有这张
- * 签名验得过的 JWT 才说明请求真的过了门。只用 WebCrypto，不依赖 Node 兼容层。
- */
+// Worker 域名也能绕过 Access 边缘入口，必须独立验证 JWT。
 
 export type Jwk = JsonWebKey & { kid?: string };
 type JwtHeader = { alg?: string; kid?: string };
@@ -21,7 +15,6 @@ const JWKS_TTL_MS = 60 * 60_000;
 const JWKS_REFETCH_COOLDOWN_MS = 60_000;
 let jwksCache: { issuer: string; at: number; keys: Map<string, CryptoKey> } | null = null;
 
-/** 测试注入：替换公钥来源，不去网络拉 JWKS。 */
 let jwksFetcher: (issuer: string) => Promise<Jwk[]> = async (issuer) => {
   const response = await fetch(`${issuer}/cdn-cgi/access/certs`, { signal: AbortSignal.timeout(5_000) });
   if (!response.ok) throw new Error(`拉 Access 公钥失败：${response.status}`);
@@ -68,10 +61,7 @@ async function importKeys(jwks: Jwk[]): Promise<Map<string, CryptoKey>> {
   return keys;
 }
 
-/**
- * 按 kid 取公钥，缓存 `JWKS_TTL_MS`。遇到没见过的 kid（Access 轮换了签名钥匙）重拉一次，
- * 但两次拉取至少隔 `JWKS_REFETCH_COOLDOWN_MS` —— 否则谁都能拿随便编的 kid 让 Worker 每个请求都出网一趟。
- */
+// 限制未知 kid 的重拉频率，避免伪造 kid 让每个请求都触发出网。
 async function keyFor(issuer: string, kid: string, now: number): Promise<CryptoKey | null> {
   const cached = jwksCache && jwksCache.issuer === issuer ? jwksCache : null;
   if (cached && now - cached.at < JWKS_TTL_MS) {
@@ -85,11 +75,6 @@ async function keyFor(issuer: string, kid: string, now: number): Promise<CryptoK
 
 export type AccessJwtClaims = { commonName: string | null; email: string | null };
 
-/**
- * 验 Cloudflare Access 签的 JWT（`Cf-Access-Jwt-Assertion`）：RS256 验签、受众、签发方、时效。
- * 通过返回里面的身份 —— service token 是 `common_name`（= client id），人登录是 `email`；
- * 任何一项不对都返回 null。`teamDomain` 形如 `https://<team>.cloudflareaccess.com`。
- */
 export async function verifyAccessJwt(
   token: string,
   options: { teamDomain?: string; audience?: string; jwks?: Jwk[] },
@@ -112,7 +97,6 @@ export async function verifyAccessJwt(
   }
   if (header.alg !== "RS256" || !header.kid) return null;
 
-  // 本地开发与隔离验证传进来一份测试公钥，不出网；线上一律从 team 域名拉
   const key = options.jwks ? (await importKeys(options.jwks)).get(header.kid) ?? null : await keyFor(issuer, header.kid, now);
   if (!key) return null;
   const valid = await crypto.subtle.verify(

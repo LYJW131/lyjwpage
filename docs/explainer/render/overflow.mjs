@@ -1,4 +1,3 @@
-// 文字溢出自检：卡片里的文字超出卡片边框、底部章节标签互相压住。node overflow.mjs <index.html 绝对路径> <zh|en> [步长=0.5]
 import { chromium } from "playwright-core";
 const [html, lang = "en", stepArg = "0.5"] = process.argv.slice(2);
 const b = await chromium.launch({ channel: "chrome", headless: true });

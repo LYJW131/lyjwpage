@@ -2,20 +2,13 @@ import { motionArtworkCacheKey, NO_MOTION, resolveMotionArtwork, type MotionResu
 import { parseAppleMusicUrl } from "@/lib/motion-artwork-url";
 import { withStorageScope } from "@/lib/storage";
 
-/**
- * 按 Apple Music 链接查动态封面，`url` 必填。只做按键查询，结果不随状态变化，
- * 所以能长缓存。
- */
 export type MotionResponse = MotionResult & { link: string | null };
 
 function requestedLink(request: Request): string {
   return new URL(request.url).searchParams.get("url")?.trim() ?? "";
 }
 
-/**
- * 边缘缓存的键：参数不合法时为 null，那种 400 不进缓存。响应原样回显 `link`，
- * 所以键里除了解析后的身份还要带上原始链接，不能让两条链接共用一份响应。
- */
+// 响应回显原始 link，缓存键必须包含原链接，不能只按解析后的身份合并。
 export function edgeCacheKey(request: Request): string | null {
   const requested = requestedLink(request);
   const parsed = requested ? parseAppleMusicUrl(requested) : null;
@@ -33,10 +26,8 @@ export async function GET(request: Request) {
   }
   try {
     const result = await withStorageScope(() => resolveMotionArtwork(parsed));
-    // 「有」和「确认没有」两档缓存期，和 lib/motion-artwork 里 SQLite 那两档同一个尺度
     return jsonResponse({ link: requested, ...result }, 200, result.hasMotion ? 86400 : 3600);
   } catch (error) {
-    // 响应体保持通用形状，错误原文只进日志不外带
     console.error("[motion-artwork]", error);
     return jsonResponse({ link: requested, ...NO_MOTION }, 500);
   }

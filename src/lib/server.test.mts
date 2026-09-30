@@ -114,7 +114,6 @@ test("攒不出流量的节点报 null / 不报，其余字段照收", () => {
   delete missing.traffic;
   const status = normalizeServer(missing);
   assert.equal(status.traffic, null);
-  // 少这一块不该连 CPU 一起打回
   assert.equal(status.cpuUsagePercent, 12.3);
 });
 

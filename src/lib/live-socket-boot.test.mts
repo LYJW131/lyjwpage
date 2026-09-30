@@ -20,14 +20,12 @@ test("生成的内联脚本是合法 JS —— 它走 dangerouslySetInnerHTML，
 });
 
 test("脚本里不可能出现 </script>", () => {
-  // 正常情况下 workerUrl 已经把地址限死成 wss://host/path，但转义是这里的责任
   const script = earlyLiveSocketScript("wss://evil.example/</script><script>alert(1)</script>");
   assert.ok(!script.toLowerCase().includes("</script"), "`<` 必须转成 \\u003c");
   assert.doesNotThrow(() => new Function(script));
 });
 
 test("脚本真的会开连接、攒消息，并在没人接手时自毁", async () => {
-  // 用一对最小替身跑一遍脚本本体，验证行为而不是字符串长相
   const timers: { fn: () => void; ms: number }[] = [];
   const sockets: FakeSocket[] = [];
 
@@ -68,7 +66,6 @@ test("脚本真的会开连接、攒消息，并在没人接手时自毁", async
   assert.equal(early.socket.url, OPENED);
   assert.deepEqual(early.queue, []);
 
-  // 人数和卡片事件都原样按顺序攒下，交接时由 hook 重放；解析归 hook
   const online = JSON.stringify({ type: "online", payload: { online: 3 } });
   const desktop = JSON.stringify({ type: "desktop", payload: {} });
   early.socket.onmessage?.({ data: online });
@@ -77,7 +74,6 @@ test("脚本真的会开连接、攒消息，并在没人接手时自毁", async
   for (let i = 0; i < EARLY_LIVE_SOCKET_QUEUE_LIMIT; i++) early.socket.onmessage?.({ data: "x" });
   assert.equal(early.queue.length, EARLY_LIVE_SOCKET_QUEUE_LIMIT, "页面卡死时不无限攒");
 
-  // 没人接手：到点自己关掉并摘掉字段，免得人数虚高到房间清扫为止
   assert.equal(timers[0]?.ms, EARLY_LIVE_SOCKET_WATCHDOG_MS);
   timers[0]?.fn();
   assert.equal(early.socket.closed, true);

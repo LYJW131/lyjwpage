@@ -1,57 +1,28 @@
 import { mirrorKey } from "@/lib/storage";
 import type { WatchingItem, WatchingMedia, WatchingPlayMethod } from "@/lib/types";
 
-/** 播放状态的保留时间：要远大于上报器两次推送的最长间隔（暂停时是空闲档轮询），断供一阵也不该让页面立刻空掉 */
 export const TTL_MS = 6 * 60 * 60 * 1000;
 
-/**
- * 续播列表和图片映射留得久一些。
- *
- * 它们不跟播放事件走：上报器只在列表变化或到了整推间隔（`fullPushIntervalMs`）时才推。
- * 按会话那档（`TTL_MS`）算的话，上报器停机一阵页面就会在没人看片的日子里空掉。
- */
+// 列表不随播放事件重推；不能套用会话 TTL，否则长期无播放会清空列表。
 export const LIBRARY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
-/**
- * 播放中的位置状态。
- *
- * 代理有两个触发源：Emby 发来的播放事件（开始/暂停/继续/停止），以及它自己
- * 轮询会话 —— 拖动进度条 Emby 不发任何通知，只能查出来。
- */
 export type EmbyNowPlaying = {
   itemId: string;
   paused: boolean;
-  /** 事件发生时的播放位置 */
   positionTicks: number;
-  /** 该条目总时长，0 表示未知 */
   runTimeTicks: number;
-  /**
-   * 在哪放：客户端名（Infuse-Direct / Emby for iOS）和设备名（iPad / Apple TV）。
-   * 两个都是 Emby 会话原样给的，拼法留给页面。
-   */
   client: string | null;
   deviceName: string | null;
-  /** Emby 的播放方式；会话上没有 NowPlayingItem 时那个字段是残留，上报器不带 */
   playMethod: WatchingPlayMethod | null;
-  /** 正在放的这一路的规格，上报器按会话选中的音轨 / 字幕挑好 */
   media: WatchingMedia | null;
-  /** 事件到达时刻，毫秒 */
   at: number;
 };
 
-/** 读写规则见 lib/storage 的 mirrorKey */
 export const mirror = mirrorKey<EmbyNowPlaying>(["emby", "nowPlaying"], (state) => state.at, {
   ttlMs: TTL_MS,
 });
 
-/**
- * 存下来的一项，图片位上放的是「图片键」而不是地址。
- *
- * 键到地址的映射单独存（见下面的 images 镜像），落地时不把地址烧进条目里 ——
- * 图片和列表是分两次推来的：列表先到、图片可能还在路上，或者 SQLite 被清空后
- * 只需补推图片。地址在读取时才解析，晚到的那批图能把已经存着的列表一起点亮，
- * 不用把整个列表重推一遍。
- */
+// 图片可能晚于列表到达；持久化图片键才能让补图生效，无需重推列表。
 export type StoredWatchingItem = Omit<WatchingItem, "poster" | "backdrop"> & {
   posterKey: string | null;
   backdropKey: string | null;
@@ -63,12 +34,7 @@ export const resumeMirror = mirrorKey<{ items: StoredWatchingItem[]; at: number 
   { ttlMs: LIBRARY_TTL_MS },
 );
 
-/**
- * 播放中那一项的详情，和 nowPlaying 分开存。
- *
- * 合在一起的话，Emby 的 webhook（它只知道 id、位置和设备）每来一条暂停/继续
- * 就会把代理推来的详情覆盖掉。两份各写各的，读的时候按 itemId 对上即可。
- */
+// webhook 只有播放状态，必须分开存详情，避免暂停或续播覆盖完整条目。
 export const currentMirror = mirrorKey<{ item: StoredWatchingItem; at: number }>(
   ["emby", "current"],
   (state) => state.at,

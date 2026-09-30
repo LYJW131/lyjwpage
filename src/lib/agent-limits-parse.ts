@@ -1,14 +1,7 @@
-/**
- * `/api/ingest/agents` 顶层 `agents`（容器上报器报来的各 agent 账号套餐与限额窗口）的类型收敛。
- *
- * 一行一个 agent，按 id 贴到卡片的对应行上（lib/vibecoding-limits）；token 用量另走
- * `codingUsage` 那三键（shared/coding-usage），不在这里。校验是纯函数，测试和入口走同一条。
- */
 
 import { object, text } from "./json.ts";
 import type { VibeCodingLimit, VibeCodingPlan } from "./types.ts";
 
-/** `/api/ingest/agents` 一封里的一行：某个 agent 此刻的套餐与限额窗口。 */
 export type ParsedAgentLimitsRow = {
   id: string;
   plan: VibeCodingPlan | null;
@@ -30,14 +23,9 @@ function normalizePlan(value: unknown): VibeCodingPlan | null {
   if (!row) return null;
   const tier = text(row.tier);
   if (!tier) return null;
-  // 展示名缺了就退回原始枚举值：难看总好过整块套餐信息消失
   return { tier, label: text(row.label) ?? tier };
 }
 
-/**
- * 窗口的个数和时长完全由上游决定，所以这里只逐条做类型收敛，不校验数量、
- * 不认识任何具体窗口。
- */
 function normalizeLimits(value: unknown): VibeCodingLimit[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((entry): VibeCodingLimit[] => {
@@ -51,21 +39,12 @@ function normalizeLimits(value: unknown): VibeCodingLimit[] {
       label: text(row.label),
       group: text(row.group),
       windowMinutes: positiveOrNull(row.windowMinutes),
-      // 夹到 0–100：进度条宽度直接用它，上游给出界的值会把整块布局撑坏
       usedPercent: Math.min(100, Math.max(0, row.usedPercent)),
       resetsAt: positiveOrNull(row.resetsAt),
     }];
   });
 }
 
-/**
- * 容器上报器这一轮取到的各 agent 套餐与限额窗口。
- *
- * 只带这次采集到的 agent，没出现的 id 站点不动（合并在 lib/vibecoding-limits）。
- * 一行要有 id；`plan` 缺了是 null；`limits` 逐条收敛、坏行丢掉；`limits` 空且
- * `limitsError` 非空才是「配了但取不到」。
- * 一封里 id 重复或一行都没有：整封不收 —— 上报器发空封没有意义，多半是它那边坏了。
- */
 export function normalizeAgentLimits(input: unknown): ParsedAgentLimits | null {
   const root = object(input);
   if (!root || !Array.isArray(root.agents)) return null;

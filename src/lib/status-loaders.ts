@@ -1,11 +1,3 @@
-/**
- * 公开状态视图的服务端取数表。
- *
- * 和 `status-views.ts` 同一组 key，每个视图一个 `endpoint(params)`。登记表只放
- * 元数据；这里才 import 各 loader。浏览器不能引这个文件（首屏按卡读取走的是
- * HTTP 端点，只引这里的类型）。params 里 `since` / `sinceDate` / `titleIds` 各自
- * 用得上才读，缺席 = 整份。
- */
 
 import { getAgentLimits } from "@/lib/agent-limits";
 import { getAgentStatus } from "@/lib/agent-status";
@@ -31,7 +23,6 @@ import { getDesktopPayload, getNowListening, getTimezonePayload } from "@/lib/te
 import { getTrophies, sliceTrophies, summarizeTrophies } from "@/lib/trophies";
 import { getVercelDeployments } from "@/lib/vercel-deployments";
 
-/** 单端点查询参数。缺席 = 整份；`titleIds` 空数组 = 空集。 */
 export type StatusLoaderParams = {
   since?: number;
   sinceDate?: string;
@@ -42,7 +33,6 @@ type EndpointLoader = {
   endpoint: (params: StatusLoaderParams) => Promise<unknown>;
 };
 
-/** 不读 params 的端点：包一层让签名与 StatusLoaderParams 对齐。 */
 function unparam<T>(load: () => Promise<T>): (params: StatusLoaderParams) => Promise<T> {
   return () => load();
 }
@@ -70,10 +60,6 @@ export const statusLoaders = {
   playing: { endpoint: unparam(getPlaying) },
   playingNow: { endpoint: unparam(getPlayingNow) },
   questNow: { endpoint: unparam(getQuestNow) },
-  /**
-   * 无参是摘要（和首屏字段、`trophies` 推送同一个形状），带 `?titleids=` 是那几款的
-   * 完整目录切片。整份目录体积大，没有谁需要一次拿全，所以没有「裸读整份」这一档。
-   */
   trophies: {
     endpoint: async ({ titleIds }: StatusLoaderParams) => {
       const data = await getTrophies();
@@ -99,13 +85,8 @@ type EndpointValue<L> = L extends { endpoint: (params: StatusLoaderParams) => Pr
   ? E extends LagResult<infer D> ? D : E
   : never;
 
-/**
- * 各端点无参时的裸 payload 类型（尚未包信封）。trophies 无参回摘要，这里按实现
- * 推断成摘要与目录的并集，首屏那格由调用方收窄。
- */
 export type EndpointPayloadOf<K extends StatusLoaderKey> = EndpointValue<StatusLoaders[K]>;
 
-/** 按 `EndpointViewKey` 取数（`statusLoaders[key]`）。返回 unknown：各端点 payload 形状不同，信封层再包。 */
 export function loadEndpoint(key: EndpointViewKey, params: StatusLoaderParams = {}): Promise<unknown> {
   const endpoint: (args: StatusLoaderParams) => Promise<unknown> = statusLoaders[key].endpoint;
   return endpoint(params);

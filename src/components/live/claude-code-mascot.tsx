@@ -8,8 +8,6 @@ import mascotFetchData from "@/lib/mascot-fetch.json";
 const LOOP_PAUSE_MS = 5_000;
 const FIRST_POSE = 0;
 
-// The source animation uses a 34 × 23 half-cell grid. This transform makes
-// pose 0 occupy the same 24 × 15 visual bounds as the existing 24 px icon.
 const GRID_LEFT = 10;
 const GRID_TOP = 7;
 const TARGET_TOP = 5;
@@ -55,13 +53,6 @@ const poses: SpriteRun[][] = mascotFetchData.poses.map((rows) =>
   }),
 );
 
-/**
- * Claude Code's fetch mascot, adapted from LYJW131/mascot-fetch-loop.
- *
- * The source's measured step timings (`mascotFetchData.sequence`) are preserved.
- * Each run is followed by a `LOOP_PAUSE_MS` pause on its first pose before the
- * next run begins.
- */
 export function ClaudeCodeMascot({
   className,
   size = 24,

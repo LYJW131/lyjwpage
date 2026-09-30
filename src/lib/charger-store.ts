@@ -14,7 +14,6 @@ function fromMemory(): Stored | null {
 
 async function readLatest(): Promise<Stored | null> {
   const answered = await askStorage((storage) => storage.get(K_LATEST));
-  // 存储答不上话，只能信内存
   if (!answered.reachable) return fromMemory();
 
   if (answered.value) {
@@ -39,7 +38,6 @@ async function readLatest(): Promise<Stored | null> {
     return { ...stored, disconnectedAt: disconnectedAt || null };
   }
 
-  // 存储说没有：写进去过就是真被删了
   if (fallback.persisted) {
     fallback.latest = null;
     fallback.receivedAt = 0;
@@ -50,14 +48,6 @@ async function readLatest(): Promise<Stored | null> {
   return fromMemory();
 }
 
-/**
- * 曲线不比时间戳，比 latest 那份就够 —— 两者同一次写入、同生共死。存储故障
- * 窗里漏掉几个功率点在图上看不出来，为它单独记一套新旧不值当。
- *
- * 裁决和取数分开：两条命令要能和快照那条同时发车（见 readChargerState），
- * 而裁决里要看 `fallback.persisted`，那是快照那条读完才定的 —— 顺序不能靠
- * 「谁先 await」碰运气，只能等两条都回来了再算。
- */
 function acceptHistory(answered: StorageAnswer<string[]>): ChargerSample[] {
   if (!answered.reachable) return [...fallback.history];
 
@@ -67,7 +57,6 @@ function acceptHistory(answered: StorageAnswer<string[]>): ChargerSample[] {
       try {
         parsed.push(JSON.parse(item) as ChargerSample);
       } catch {
-        // 跳过坏点，不因为一条脏数据丢掉整条曲线
       }
     }
     fallback.history = [...parsed];
@@ -89,11 +78,6 @@ async function readHistory(): Promise<ChargerSample[]> {
   return acceptHistory(await askHistory());
 }
 
-/**
- * 这次上报要用到的两份：并行取得快照与历史，再统一裁决。调用方在信封解析完的
- * 那一刻就该调它，然后揣着这个 promise 往下走，到充电头分支再 await：那样它和
- * 状态、存活那两条读也是重叠的。
- */
 export async function readChargerState(): Promise<ChargerState> {
   const [previous, history] = await Promise.all([readLatest(), askHistory()]);
   return { previous, history: acceptHistory(history) };
@@ -113,7 +97,6 @@ export async function getStored() {
   };
 }
 
-/** 最近一次推送的到达时刻，0 表示从没收到过推送 */
 export async function lastPushReceivedAt() {
   const raw = await withStorage(async (storage) => storage.get(K_LAST_PUSH), null);
   const fromStorage = raw ? Number(raw) : 0;

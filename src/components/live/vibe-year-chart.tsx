@@ -25,11 +25,6 @@ import { CODING_YEAR_PATH } from "@/lib/paths";
 import type { CodingYearPayload, GithubChartDay, StatusResponse } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-/**
- * 年度格子是日粒度的累计量，不推送、也没有首屏失效。数据在状态核心（实时层），但一天里
- * 没什么可看的变化：自己按长间隔轮询，切回标签页时再取一次；首屏那份放得比这个间隔还久
- * 才在挂载时补取（hooks/use-status 的 revalidateOnMount）。
- */
 const YEAR_REFRESH_MS = 30 * 60_000;
 
 type HoveredCell = {
@@ -39,10 +34,6 @@ type HoveredCell = {
   anchor: CellAnchor;
 };
 
-/**
- * 格子由窗口画（heatmapFrame，和 GitHub 那张同一个），数据按日期填进去：信封固定
- * 53 周填到本周六，今天之后的不画；跨过零点、数据里还没有的今天画成 0。
- */
 function toWeeks(origin: string, days: number[], through: string): GithubChartDay[][] {
   const scores = tokenScores(days);
   const byDate = new Map(expandYearDays(origin, days).map((day, index) => [day.date, { tokens: day.tokens, score: scores[index] ?? 0 }]));
@@ -125,25 +116,19 @@ export function VibeYearChart({
 }) {
   const { data } = useStatus<CodingYearPayload>(CODING_YEAR_PATH, YEAR_REFRESH_MS, {
     fallback,
-    // 首屏已经烧进去，挂载不回源；首屏放久了由 useStatus 按 servedAt 补一次
     revalidateOnMount: false,
     revalidateOnFocus: true,
   });
   const [lastDrawn, setLastDrawn] = useState(fallback.ok ? fallback.data : null);
   if (data?.days.length && data !== lastDrawn) setLastDrawn(data);
   const snapshot = data?.days.length ? data : lastDrawn;
-  // 浏览器按站点时区算的今天，跨过零点就翻；首帧没有钟是 null，按源站那份的今天画
   const today = useSiteDay();
   const { svgRef, shown, hotDate, previewCell, clearPreview, togglePin } =
     useHeatmapOpen<HoveredCell>();
 
   const weeks = useMemo(() => {
     if (!snapshot) return null;
-    /**
-     * 窗尾切到源站的今天，**不是切到 `updatedAt`**：那是年度视图最后一次重算，
-     * 用量停一天，今天那格就跟着少一格，隔壁 GitHub 那张图却照常画到今天，
-     * 两张图当场错开一列。见 CodingYearPayload.todayAtSource。
-     */
+    // updatedAt 是最后重算时间；用它截窗会在无用量日丢掉今天并与贡献图错列。
     const through = today && today > snapshot.todayAtSource ? today : snapshot.todayAtSource;
     return toWeeks(snapshot.origin, snapshot.days, through);
   }, [snapshot, today]);

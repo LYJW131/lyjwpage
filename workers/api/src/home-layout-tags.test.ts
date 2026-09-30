@@ -12,10 +12,6 @@ import { prepareIngest, type CoreCommand } from "@shared/ingest/prepare";
 import { commitPreparedIngest } from "./ingest-handlers";
 import { requestStore, type Env } from "./runtime";
 
-/**
- * 首屏只在布局变了时失效（见 lib/home-layout）。每条都走完整的上报提交，
- * 看的是它交出来的 tags 效果，不看内部函数。
- */
 
 const NOW = 1_800_000_000_000;
 
@@ -42,7 +38,6 @@ async function inRequest<T>(env: Env, run: () => Promise<T>): Promise<T> {
 }
 
 async function land(env: Env, source: string, body: unknown, at: number): Promise<CollectedIngest<unknown>> {
-  // 上报入口那一半（shared/ingest）照样先跑，图片 HEAD 一律当已到
   const command = await prepareIngest(source, body, at, { head: async () => ({}) }) as CoreCommand;
   const result = await inRequest(env, () => collectIngestEffects(() => commitPreparedIngest(command)));
   assert.equal(result.ok, true, result.ok ? "" : result.error);
@@ -133,12 +128,10 @@ test("Coding：视图在提交时重算，卡片骨架（行数、总量、常�
     assert.ok(tagsOf(first).includes(STATUS_VIEWS.coding.tag));
     await dispatch(first);
     assert.equal(revalidates, 1);
-    // 读数变了，还是同一行：只刷内容，不失效首屏
     const content = await land(env, "mac", usage([usageAgent("claude", 200, NOW + 1)], NOW + 1), NOW + 1);
     assert.deepEqual(tagsOf(content), []);
     await dispatch(content);
     assert.equal(revalidates, 1);
-    // 多出一行，卡片变高
     const grown = await land(env, "mac", usage([usageAgent("claude", 300, NOW + 2), usageAgent("codex", 5, NOW + 2)], NOW + 2), NOW + 2);
     assert.ok(tagsOf(grown).includes(STATUS_VIEWS.coding.tag));
     await dispatch(grown);

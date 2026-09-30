@@ -1,7 +1,4 @@
 #!/usr/bin/env node
-/**
- * PR 关闭时删掉对应 Worker Preview。没有令牌或 Preview 本来就不存在时成功退出。
- */
 import { spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
