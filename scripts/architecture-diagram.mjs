@@ -17,6 +17,7 @@ const TOOLCHAIN = path.join(ROOT, ".archify", "toolchain", LOCK.commit);
 const ARCHIFY_DIR = path.resolve(process.env.ARCHIFY_DIR ?? path.join(TOOLCHAIN, "archify"));
 const ARCHIFY = path.join(ARCHIFY_DIR, "bin/archify.mjs");
 const PREVIEW_SCALE = 2;
+const PREVIEW_PNG = { palette: true, quality: 90, colours: 256, dither: 0, effort: 10, compressionLevel: 9 };
 const THEMES = ["light", "dark"];
 
 const args = new Set(process.argv.slice(2));
@@ -112,7 +113,7 @@ console.log(`finalize 已通过：${validation.checksPassed}/${validation.checkC
 const { findChrome } = await import(pathToFileURL(path.join(ARCHIFY_DIR, "bin/visual-check.mjs")).href);
 const chrome = findChrome();
 if (!chrome) fail("找不到 Chrome，无法导出 PNG（可设 ARCHIFY_CHROME 指定路径）。");
-const previewSizes = await exportPreviews(chrome);
+const previewSizes = await exportPreviews(chrome, evidenceDirectory);
 
 let capture = null;
 if (!skipVisual) {
@@ -129,7 +130,7 @@ if (sha256(fs.readFileSync(SPEC)) !== specification.sha256 || sha256(fs.readFile
 const previews = Object.fromEntries(THEMES.map((theme) => {
   const file = `architecture-${theme}.png`;
   const buffer = fs.readFileSync(path.join(DOCS, file));
-  return [file, { kind: "viewer-png-export", theme, ...previewSizes[theme], artifactSha256: artifact.sha256, sha256: sha256(buffer), bytes: buffer.length }];
+  return [file, { kind: "viewer-png-export", theme, encoding: { format: "png", ...PREVIEW_PNG }, ...previewSizes[theme], artifactSha256: artifact.sha256, sha256: sha256(buffer), bytes: buffer.length }];
 }));
 fs.writeFileSync(RECEIPT, JSON.stringify({
   type: "architecture",
@@ -165,7 +166,7 @@ function sha256(buffer) {
   return createHash("sha256").update(buffer).digest("hex");
 }
 
-async function exportPreviews(chromePath) {
+async function exportPreviews(chromePath, evidenceDirectory) {
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), "archify-profile-"));
   const downloads = fs.mkdtempSync(path.join(os.tmpdir(), "archify-downloads-"));
   const child = spawn(
@@ -257,10 +258,24 @@ async function exportPreviews(chromePath) {
         .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
       if (!latest) throw new Error("没等到下载完成的 PNG。");
 
+      const originalPath = path.join(evidenceDirectory, `architecture-${theme}.viewer-original.png`);
+      fs.copyFileSync(latest, originalPath, fs.constants.COPYFILE_EXCL);
+      const originalBuffer = fs.readFileSync(originalPath);
+      const originalInfo = await sharp(originalBuffer).metadata();
       const target = path.join(DOCS, `architecture-${theme}.png`);
       // Viewer PNGs include a title and frame outside the SVG; fixed-height resizing crops them.
-      const { data: buffer, info } = await sharp(latest).resize({ width: previewWidth, kernel: "lanczos3" }).png({ compressionLevel: 9 }).toBuffer({ resolveWithObject: true });
-      previewSizes[theme] = { width: info.width, height: info.height };
+      const { data: buffer, info } = await sharp(latest).resize({ width: previewWidth, kernel: "lanczos3" }).png(PREVIEW_PNG).toBuffer({ resolveWithObject: true });
+      previewSizes[theme] = {
+        width: info.width,
+        height: info.height,
+        original: {
+          path: path.relative(ROOT, originalPath),
+          sha256: sha256(originalBuffer),
+          bytes: originalBuffer.length,
+          width: originalInfo.width,
+          height: originalInfo.height,
+        },
+      };
       fs.writeFileSync(target, buffer);
       fs.rmSync(latest, { force: true });
       console.log(`PNG 已导出：${path.relative(ROOT, target)}（${info.width}×${info.height}，${(buffer.length / 1024).toFixed(0)} KB）`);

@@ -1001,7 +1001,7 @@
   },
   "visual_review": "passed: CI desktop screenshot and both native PNG exports inspected",
   "correction_rounds": 2,
-  "static_diagram_review": "passed: CJK text and full title/frame verified in both native PNG exports",
+  "static_diagram_review": "passed: both indexed PNGs and original-resolution text crops inspected; original truecolor exports retained in CI artifact",
   "capture": {
     "status": "pass",
     "artifact": {
@@ -1228,8 +1228,14 @@
       "width": 2980,
       "height": 1948,
       "artifactSha256": "4a08a5eb21a3573214dac06527f0598730aec71f14fa6f7fe8eca4a179e5cc79",
-      "sha256": "d7e6a7f53bd2685141b59010819dcf86fe4313f775645c62b1c6677e05831868",
-      "bytes": 716490
+      "sha256": "4ee1bc79265981a7520ec8f4cec63bba790ef101ec99c687b0a36d7e3aef3bd0",
+      "bytes": 206886,
+      "encoding": {
+        "palette": true,
+        "quality": 90,
+        "colours": 256,
+        "dither": 0
+      }
     },
     "architecture-dark.png": {
       "kind": "viewer-png-export",
@@ -1237,8 +1243,14 @@
       "width": 2980,
       "height": 1948,
       "artifactSha256": "4a08a5eb21a3573214dac06527f0598730aec71f14fa6f7fe8eca4a179e5cc79",
-      "sha256": "de42e395ebfe225b68df85029017c8b5e0ee4aed73b802afbc02d8b7f5de35ba",
-      "bytes": 767458
+      "sha256": "6c0f195b8119f82fcf1ad4006435d96de5f120755bd3b5ebcdd7689128cba342",
+      "bytes": 198619,
+      "encoding": {
+        "palette": true,
+        "quality": 90,
+        "colours": 256,
+        "dither": 0
+      }
     }
   },
   "verification_run": "https://github.com/LYJW131/lyjwpage/actions/runs/36703876992"
