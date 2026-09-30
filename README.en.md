@@ -217,6 +217,7 @@ Data in Sentry also comes back to the page: using a read-only token, the collect
 | How reports are authenticated, validated and split by data layer | [`workers/ingress/`](./workers/ingress/) |
 | How state storage, live push and the public API are organized | [`workers/api/`](./workers/api/) |
 | How each device and service is connected | [`reporters/`](./reporters/) · [`workers/collector/`](./workers/collector/) |
+| How the native iOS app reads the site and reports | [`apps/ios/`](./apps/ios/) |
 | How online visitors are counted | [`workers/api/src/live-census.ts`](./workers/api/src/live-census.ts) · [`src/hooks/use-live-events.ts`](./src/hooks/use-live-events.ts) |
 
 The Mac collector [MacTelemetryHub](https://github.com/LYJW131/MacTelemetryHub) is maintained separately and included as a Git submodule at `reporters/mac-telemetry-hub/`.
@@ -229,4 +230,4 @@ The following documents are in Chinese.
 
 [Worker data backend and first-paint cache](./docs/state-storage.md) explains how state persistence, the realtime and lag layers, public data boundaries, cache invalidation and page updates relate.
 
-The iPhone collector [iPhone Telemetry Hub](./reporters/iphone-telemetry-hub/README.md) (native SwiftUI on iOS 27) reports activity rings and recent workouts; for the protocol and rollout order, see its README and the [API Worker](./workers/api/README.md#最近训练) docs.
+The [lyjwpage iOS app](./apps/ios/README.md) (native SwiftUI on iOS 27) is the site's native client: it reads the same public status API and push channel, renders the homepage cards, the Pulse timeline and recent history natively, and ships Home Screen and Lock Screen widgets. It is also the iPhone reporter for activity rings and recent workouts; for the protocol and rollout order, see its README and the [API Worker](./workers/api/README.md#最近训练) docs.
