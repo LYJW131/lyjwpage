@@ -327,6 +327,7 @@ export type VibeCodingLimit = {
   group: string | null;
   windowMinutes: number | null;
   usedPercent: number;
+  // Unix 秒，不是毫秒；同文件其他时间戳多为毫秒
   resetsAt: number | null;
 };
 
