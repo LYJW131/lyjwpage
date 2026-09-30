@@ -286,6 +286,19 @@ export type ListeningItem = {
 };
 
 /**
+ * 最近播放的一首歌，来自 /v1/me/recent/played/tracks。只用作 Pulse 听歌痕迹的证据，
+ * 不上卡片。Apple 按最后播放时间倒序给，不给播放时刻；一首歌只占一条，重放只是挪到
+ * 最前，所以单曲循环、重放最前那首都不会让列表变。
+ */
+export type RecentTrack = {
+  /** 目录曲目 id，资料库里的歌是 `i.` 开头的资料库 id */
+  id: string;
+  title: string;
+  artist: string;
+  album: string | null;
+};
+
+/**
  * Mac 上报器的存活。源站只盖这三个事实，「此刻在不在线」由浏览器拿自己的钟算
  * （hooks/use-stale 的 useReporterStale），源站不在读取时下结论：结论会跟着首屏缓存
  * 冻住，看到时多半已经不对了。

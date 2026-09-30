@@ -83,6 +83,7 @@ function world(setup: Setup = {}) {
     playstationPower: async () => null,
     appleDeveloperToken: async () => { throw new Error("not used"); },
     commitRecentlyPlayed: async () => { throw new Error("not used"); },
+    commitRecentTracks: async () => { throw new Error("not used"); },
   };
   const collector: CollectorRpc = {
     refresh: setup.refresh ?? (async (jobs) => {
