@@ -1,12 +1,18 @@
 {
   "type": "architecture",
+  "generator": {
+    "repository": "https://github.com/tt-a1i/archify.git",
+    "version": "3.0.1",
+    "commit": "2ab3cae7ac2c2a55d7386ca789d03c4fcd31816c",
+    "source": "isolated pinned checkout"
+  },
   "specification": {
-    "sha256": "e9589d05c5d10414439e49705417467b473d74a2b84cd37c5f01d7729f10e8cf",
-    "bytes": 12944
+    "sha256": "dd93ca5049f7853345ead5927d0024b4b425eaee706e59e5f06a2d390a9382e9",
+    "bytes": 11490
   },
   "artifact": {
-    "sha256": "58e3d818190635092cf3652d8f84433c5affbe4747a71dbf9b9e372302fadaa5",
-    "bytes": 728825
+    "sha256": "4a08a5eb21a3573214dac06527f0598730aec71f14fa6f7fe8eca4a179e5cc79",
+    "bytes": 792061
   },
   "validation": {
     "checksPassed": 9,
@@ -19,13 +25,992 @@
   "evidence": {
     "verified": true,
     "repository": "https://github.com/LYJW131/lyjwpage",
-    "revision": "3719cb1c94666a89620326b817705e032e8f2b23",
-    "references": 27
+    "revision": "43ef5895bf8e65ac20f11d5b0516587d7fa7f7a1",
+    "references": 35
   },
   "output": "architecture.html",
-  "visual_review": "passed",
-  "correction_rounds": 6,
-  "static_diagram_review": "passed",
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "pass"
+  },
+  "browser_evidence": "passed",
+  "browser_check": {
+    "schemaVersion": 1,
+    "ok": true,
+    "command": "browser-check",
+    "evidenceKind": "automated-browser",
+    "status": "pass",
+    "visualReview": "not-requested",
+    "provenance": "current",
+    "deliveryReceiptId": "b9ff8767-3650-44c4-9415-45fd643ebb34",
+    "artifact": {
+      "path": "/home/runner/work/lyjwpage/lyjwpage/docs/architecture.html",
+      "sha256": "4a08a5eb21a3573214dac06527f0598730aec71f14fa6f7fe8eca4a179e5cc79",
+      "bytes": 792061
+    },
+    "state": {
+      "detail": "read",
+      "motion": "still"
+    },
+    "chrome": {
+      "status": "available",
+      "executable": "/usr/bin/google-chrome"
+    },
+    "diagnostics": [],
+    "containment": {
+      "status": "pass",
+      "policy": "fit-or-reader-declared-readable-vertical-scroll",
+      "viewports": [
+        {
+          "width": 1440,
+          "height": 900,
+          "theme": "light",
+          "innerWidth": 1440,
+          "innerHeight": 900,
+          "scrollWidth": 1440,
+          "scrollHeight": 945,
+          "overflowX": false,
+          "overflowY": true,
+          "verticalScrollAccepted": true,
+          "overflowDisposition": "readable-vertical-scroll",
+          "readerLayout": "adaptive",
+          "readerOverflow": "authored",
+          "readerFit": "intrinsic-height",
+          "ok": true,
+          "readerWidth": 1376,
+          "diagramWidth": 1346,
+          "pageComposition": {
+            "bodyPaddingPx": 12,
+            "headerPx": 52,
+            "diagramChromePx": 78,
+            "svgPx": 802,
+            "cardsPx": 0,
+            "viewBoxHeight": 888
+          },
+          "viewBoxWidth": 1490,
+          "minimumProjectedNodeTextPx": 7.226845637583892,
+          "minimumProjectedNonEdgeTextPx": 8.130201342281879,
+          "minimumProjectedEdgeTextPx": 7.226845637583892,
+          "minimumProjectedNodeText": "鉴权上报",
+          "minimumProjectedNodeTextDetail": "edge",
+          "minimumProjectedNodeTextOwner": {
+            "kind": "edge",
+            "id": "ingest",
+            "from": "reporters",
+            "to": "ingress"
+          },
+          "minimumRequiredNodeTextPx": 6,
+          "readabilityOk": true,
+          "hasLegend": true,
+          "hasNavigationDock": true,
+          "legendDockIntersectionArea": 0,
+          "dockStageIntersectionArea": 0,
+          "dockStageGap": 10,
+          "requiredDockStageGap": 10,
+          "viewerChromeStageOk": true,
+          "viewerChromeReserve": 54,
+          "viewerChromeActive": true,
+          "viewerChromeOk": true,
+          "resolvedTheme": "light"
+        },
+        {
+          "width": 1600,
+          "height": 1000,
+          "theme": "light",
+          "innerWidth": 1600,
+          "innerHeight": 1000,
+          "scrollWidth": 1600,
+          "scrollHeight": 1041,
+          "overflowX": false,
+          "overflowY": true,
+          "verticalScrollAccepted": true,
+          "overflowDisposition": "readable-vertical-scroll",
+          "readerLayout": "adaptive",
+          "readerOverflow": "authored",
+          "readerFit": "intrinsic-height",
+          "ok": true,
+          "readerWidth": 1427,
+          "diagramWidth": 1397,
+          "pageComposition": {
+            "bodyPaddingPx": 64,
+            "headerPx": 60,
+            "diagramChromePx": 84,
+            "svgPx": 833,
+            "cardsPx": 0,
+            "viewBoxHeight": 888
+          },
+          "viewBoxWidth": 1490,
+          "minimumProjectedNodeTextPx": 7.500671140939597,
+          "minimumProjectedNonEdgeTextPx": 8.438255033557047,
+          "minimumProjectedEdgeTextPx": 7.500671140939597,
+          "minimumProjectedNodeText": "鉴权上报",
+          "minimumProjectedNodeTextDetail": "edge",
+          "minimumProjectedNodeTextOwner": {
+            "kind": "edge",
+            "id": "ingest",
+            "from": "reporters",
+            "to": "ingress"
+          },
+          "minimumRequiredNodeTextPx": 6,
+          "readabilityOk": true,
+          "hasLegend": true,
+          "hasNavigationDock": true,
+          "legendDockIntersectionArea": 0,
+          "dockStageIntersectionArea": 0,
+          "dockStageGap": 10,
+          "requiredDockStageGap": 10,
+          "viewerChromeStageOk": true,
+          "viewerChromeReserve": 54,
+          "viewerChromeActive": true,
+          "viewerChromeOk": true,
+          "resolvedTheme": "light"
+        },
+        {
+          "width": 1920,
+          "height": 1080,
+          "theme": "light",
+          "innerWidth": 1920,
+          "innerHeight": 1080,
+          "scrollWidth": 1920,
+          "scrollHeight": 1080,
+          "overflowX": false,
+          "overflowY": false,
+          "verticalScrollAccepted": false,
+          "overflowDisposition": "contained",
+          "readerLayout": "adaptive",
+          "readerOverflow": null,
+          "readerFit": "intrinsic-height",
+          "ok": true,
+          "readerWidth": 1473,
+          "diagramWidth": 1443,
+          "pageComposition": {
+            "bodyPaddingPx": 64,
+            "headerPx": 60,
+            "diagramChromePx": 84,
+            "svgPx": 860,
+            "cardsPx": 0,
+            "viewBoxHeight": 888
+          },
+          "viewBoxWidth": 1490,
+          "minimumProjectedNodeTextPx": 7.7476510067114095,
+          "minimumProjectedNonEdgeTextPx": 8.716107382550335,
+          "minimumProjectedEdgeTextPx": 7.7476510067114095,
+          "minimumProjectedNodeText": "鉴权上报",
+          "minimumProjectedNodeTextDetail": "edge",
+          "minimumProjectedNodeTextOwner": {
+            "kind": "edge",
+            "id": "ingest",
+            "from": "reporters",
+            "to": "ingress"
+          },
+          "minimumRequiredNodeTextPx": 6,
+          "readabilityOk": true,
+          "hasLegend": true,
+          "hasNavigationDock": true,
+          "legendDockIntersectionArea": 0,
+          "dockStageIntersectionArea": 0,
+          "dockStageGap": 10,
+          "requiredDockStageGap": 10,
+          "viewerChromeStageOk": true,
+          "viewerChromeReserve": 54,
+          "viewerChromeActive": true,
+          "viewerChromeOk": true,
+          "resolvedTheme": "light"
+        },
+        {
+          "width": 2048,
+          "height": 1320,
+          "theme": "light",
+          "innerWidth": 2048,
+          "innerHeight": 1320,
+          "scrollWidth": 2048,
+          "scrollHeight": 1320,
+          "overflowX": false,
+          "overflowY": false,
+          "verticalScrollAccepted": false,
+          "overflowDisposition": "contained",
+          "readerLayout": "adaptive",
+          "readerOverflow": null,
+          "readerFit": "intrinsic-height",
+          "ok": true,
+          "readerWidth": 1866,
+          "diagramWidth": 1816,
+          "pageComposition": {
+            "bodyPaddingPx": 64,
+            "headerPx": 68,
+            "diagramChromePx": 94,
+            "svgPx": 1082,
+            "cardsPx": 0,
+            "viewBoxHeight": 888
+          },
+          "viewBoxWidth": 1490,
+          "minimumProjectedNodeTextPx": 8,
+          "minimumProjectedNonEdgeTextPx": 9,
+          "minimumProjectedEdgeTextPx": 8,
+          "minimumProjectedNodeText": "鉴权上报",
+          "minimumProjectedNodeTextDetail": "edge",
+          "minimumProjectedNodeTextOwner": {
+            "kind": "edge",
+            "id": "ingest",
+            "from": "reporters",
+            "to": "ingress"
+          },
+          "minimumRequiredNodeTextPx": 6,
+          "readabilityOk": true,
+          "hasLegend": true,
+          "hasNavigationDock": true,
+          "legendDockIntersectionArea": 0,
+          "dockStageIntersectionArea": 0,
+          "dockStageGap": 10,
+          "requiredDockStageGap": 10,
+          "viewerChromeStageOk": true,
+          "viewerChromeReserve": 44,
+          "viewerChromeActive": true,
+          "viewerChromeOk": true,
+          "resolvedTheme": "light"
+        }
+      ]
+    },
+    "themeStates": {
+      "status": "pass",
+      "viewports": [
+        {
+          "width": 1440,
+          "height": 900,
+          "requestedTheme": "light",
+          "resolvedTheme": "light",
+          "ok": true
+        },
+        {
+          "width": 1600,
+          "height": 1000,
+          "requestedTheme": "light",
+          "resolvedTheme": "light",
+          "ok": true
+        },
+        {
+          "width": 1920,
+          "height": 1080,
+          "requestedTheme": "light",
+          "resolvedTheme": "light",
+          "ok": true
+        },
+        {
+          "width": 2048,
+          "height": 1320,
+          "requestedTheme": "light",
+          "resolvedTheme": "light",
+          "ok": true
+        },
+        {
+          "width": 1440,
+          "height": 900,
+          "requestedTheme": "dark",
+          "resolvedTheme": "dark",
+          "ok": true
+        },
+        {
+          "width": 2048,
+          "height": 1320,
+          "requestedTheme": "dark",
+          "resolvedTheme": "dark",
+          "ok": true
+        }
+      ]
+    },
+    "readability": {
+      "status": "pass",
+      "minimumProjectedNodeTextPx": 6,
+      "viewports": [
+        {
+          "width": 1440,
+          "height": 900,
+          "theme": "light",
+          "innerWidth": 1440,
+          "innerHeight": 900,
+          "scrollWidth": 1440,
+          "scrollHeight": 945,
+          "overflowX": false,
+          "overflowY": true,
+          "verticalScrollAccepted": true,
+          "overflowDisposition": "readable-vertical-scroll",
+          "readerLayout": "adaptive",
+          "readerOverflow": "authored",
+          "readerFit": "intrinsic-height",
+          "ok": true,
+          "readerWidth": 1376,
+          "diagramWidth": 1346,
+          "pageComposition": {
+            "bodyPaddingPx": 12,
+            "headerPx": 52,
+            "diagramChromePx": 78,
+            "svgPx": 802,
+            "cardsPx": 0,
+            "viewBoxHeight": 888
+          },
+          "viewBoxWidth": 1490,
+          "minimumProjectedNodeTextPx": 7.226845637583892,
+          "minimumProjectedNonEdgeTextPx": 8.130201342281879,
+          "minimumProjectedEdgeTextPx": 7.226845637583892,
+          "minimumProjectedNodeText": "鉴权上报",
+          "minimumProjectedNodeTextDetail": "edge",
+          "minimumProjectedNodeTextOwner": {
+            "kind": "edge",
+            "id": "ingest",
+            "from": "reporters",
+            "to": "ingress"
+          },
+          "minimumRequiredNodeTextPx": 6,
+          "readabilityOk": true,
+          "hasLegend": true,
+          "hasNavigationDock": true,
+          "legendDockIntersectionArea": 0,
+          "dockStageIntersectionArea": 0,
+          "dockStageGap": 10,
+          "requiredDockStageGap": 10,
+          "viewerChromeStageOk": true,
+          "viewerChromeReserve": 54,
+          "viewerChromeActive": true,
+          "viewerChromeOk": true,
+          "resolvedTheme": "light"
+        },
+        {
+          "width": 1600,
+          "height": 1000,
+          "theme": "light",
+          "innerWidth": 1600,
+          "innerHeight": 1000,
+          "scrollWidth": 1600,
+          "scrollHeight": 1041,
+          "overflowX": false,
+          "overflowY": true,
+          "verticalScrollAccepted": true,
+          "overflowDisposition": "readable-vertical-scroll",
+          "readerLayout": "adaptive",
+          "readerOverflow": "authored",
+          "readerFit": "intrinsic-height",
+          "ok": true,
+          "readerWidth": 1427,
+          "diagramWidth": 1397,
+          "pageComposition": {
+            "bodyPaddingPx": 64,
+            "headerPx": 60,
+            "diagramChromePx": 84,
+            "svgPx": 833,
+            "cardsPx": 0,
+            "viewBoxHeight": 888
+          },
+          "viewBoxWidth": 1490,
+          "minimumProjectedNodeTextPx": 7.500671140939597,
+          "minimumProjectedNonEdgeTextPx": 8.438255033557047,
+          "minimumProjectedEdgeTextPx": 7.500671140939597,
+          "minimumProjectedNodeText": "鉴权上报",
+          "minimumProjectedNodeTextDetail": "edge",
+          "minimumProjectedNodeTextOwner": {
+            "kind": "edge",
+            "id": "ingest",
+            "from": "reporters",
+            "to": "ingress"
+          },
+          "minimumRequiredNodeTextPx": 6,
+          "readabilityOk": true,
+          "hasLegend": true,
+          "hasNavigationDock": true,
+          "legendDockIntersectionArea": 0,
+          "dockStageIntersectionArea": 0,
+          "dockStageGap": 10,
+          "requiredDockStageGap": 10,
+          "viewerChromeStageOk": true,
+          "viewerChromeReserve": 54,
+          "viewerChromeActive": true,
+          "viewerChromeOk": true,
+          "resolvedTheme": "light"
+        },
+        {
+          "width": 1920,
+          "height": 1080,
+          "theme": "light",
+          "innerWidth": 1920,
+          "innerHeight": 1080,
+          "scrollWidth": 1920,
+          "scrollHeight": 1080,
+          "overflowX": false,
+          "overflowY": false,
+          "verticalScrollAccepted": false,
+          "overflowDisposition": "contained",
+          "readerLayout": "adaptive",
+          "readerOverflow": null,
+          "readerFit": "intrinsic-height",
+          "ok": true,
+          "readerWidth": 1473,
+          "diagramWidth": 1443,
+          "pageComposition": {
+            "bodyPaddingPx": 64,
+            "headerPx": 60,
+            "diagramChromePx": 84,
+            "svgPx": 860,
+            "cardsPx": 0,
+            "viewBoxHeight": 888
+          },
+          "viewBoxWidth": 1490,
+          "minimumProjectedNodeTextPx": 7.7476510067114095,
+          "minimumProjectedNonEdgeTextPx": 8.716107382550335,
+          "minimumProjectedEdgeTextPx": 7.7476510067114095,
+          "minimumProjectedNodeText": "鉴权上报",
+          "minimumProjectedNodeTextDetail": "edge",
+          "minimumProjectedNodeTextOwner": {
+            "kind": "edge",
+            "id": "ingest",
+            "from": "reporters",
+            "to": "ingress"
+          },
+          "minimumRequiredNodeTextPx": 6,
+          "readabilityOk": true,
+          "hasLegend": true,
+          "hasNavigationDock": true,
+          "legendDockIntersectionArea": 0,
+          "dockStageIntersectionArea": 0,
+          "dockStageGap": 10,
+          "requiredDockStageGap": 10,
+          "viewerChromeStageOk": true,
+          "viewerChromeReserve": 54,
+          "viewerChromeActive": true,
+          "viewerChromeOk": true,
+          "resolvedTheme": "light"
+        },
+        {
+          "width": 2048,
+          "height": 1320,
+          "theme": "light",
+          "innerWidth": 2048,
+          "innerHeight": 1320,
+          "scrollWidth": 2048,
+          "scrollHeight": 1320,
+          "overflowX": false,
+          "overflowY": false,
+          "verticalScrollAccepted": false,
+          "overflowDisposition": "contained",
+          "readerLayout": "adaptive",
+          "readerOverflow": null,
+          "readerFit": "intrinsic-height",
+          "ok": true,
+          "readerWidth": 1866,
+          "diagramWidth": 1816,
+          "pageComposition": {
+            "bodyPaddingPx": 64,
+            "headerPx": 68,
+            "diagramChromePx": 94,
+            "svgPx": 1082,
+            "cardsPx": 0,
+            "viewBoxHeight": 888
+          },
+          "viewBoxWidth": 1490,
+          "minimumProjectedNodeTextPx": 8,
+          "minimumProjectedNonEdgeTextPx": 9,
+          "minimumProjectedEdgeTextPx": 8,
+          "minimumProjectedNodeText": "鉴权上报",
+          "minimumProjectedNodeTextDetail": "edge",
+          "minimumProjectedNodeTextOwner": {
+            "kind": "edge",
+            "id": "ingest",
+            "from": "reporters",
+            "to": "ingress"
+          },
+          "minimumRequiredNodeTextPx": 6,
+          "readabilityOk": true,
+          "hasLegend": true,
+          "hasNavigationDock": true,
+          "legendDockIntersectionArea": 0,
+          "dockStageIntersectionArea": 0,
+          "dockStageGap": 10,
+          "requiredDockStageGap": 10,
+          "viewerChromeStageOk": true,
+          "viewerChromeReserve": 44,
+          "viewerChromeActive": true,
+          "viewerChromeOk": true,
+          "resolvedTheme": "light"
+        }
+      ]
+    },
+    "viewerChrome": {
+      "status": "pass",
+      "viewports": [
+        {
+          "width": 1440,
+          "height": 900,
+          "theme": "light",
+          "innerWidth": 1440,
+          "innerHeight": 900,
+          "scrollWidth": 1440,
+          "scrollHeight": 945,
+          "overflowX": false,
+          "overflowY": true,
+          "verticalScrollAccepted": true,
+          "overflowDisposition": "readable-vertical-scroll",
+          "readerLayout": "adaptive",
+          "readerOverflow": "authored",
+          "readerFit": "intrinsic-height",
+          "ok": true,
+          "readerWidth": 1376,
+          "diagramWidth": 1346,
+          "pageComposition": {
+            "bodyPaddingPx": 12,
+            "headerPx": 52,
+            "diagramChromePx": 78,
+            "svgPx": 802,
+            "cardsPx": 0,
+            "viewBoxHeight": 888
+          },
+          "viewBoxWidth": 1490,
+          "minimumProjectedNodeTextPx": 7.226845637583892,
+          "minimumProjectedNonEdgeTextPx": 8.130201342281879,
+          "minimumProjectedEdgeTextPx": 7.226845637583892,
+          "minimumProjectedNodeText": "鉴权上报",
+          "minimumProjectedNodeTextDetail": "edge",
+          "minimumProjectedNodeTextOwner": {
+            "kind": "edge",
+            "id": "ingest",
+            "from": "reporters",
+            "to": "ingress"
+          },
+          "minimumRequiredNodeTextPx": 6,
+          "readabilityOk": true,
+          "hasLegend": true,
+          "hasNavigationDock": true,
+          "legendDockIntersectionArea": 0,
+          "dockStageIntersectionArea": 0,
+          "dockStageGap": 10,
+          "requiredDockStageGap": 10,
+          "viewerChromeStageOk": true,
+          "viewerChromeReserve": 54,
+          "viewerChromeActive": true,
+          "viewerChromeOk": true,
+          "resolvedTheme": "light"
+        },
+        {
+          "width": 1600,
+          "height": 1000,
+          "theme": "light",
+          "innerWidth": 1600,
+          "innerHeight": 1000,
+          "scrollWidth": 1600,
+          "scrollHeight": 1041,
+          "overflowX": false,
+          "overflowY": true,
+          "verticalScrollAccepted": true,
+          "overflowDisposition": "readable-vertical-scroll",
+          "readerLayout": "adaptive",
+          "readerOverflow": "authored",
+          "readerFit": "intrinsic-height",
+          "ok": true,
+          "readerWidth": 1427,
+          "diagramWidth": 1397,
+          "pageComposition": {
+            "bodyPaddingPx": 64,
+            "headerPx": 60,
+            "diagramChromePx": 84,
+            "svgPx": 833,
+            "cardsPx": 0,
+            "viewBoxHeight": 888
+          },
+          "viewBoxWidth": 1490,
+          "minimumProjectedNodeTextPx": 7.500671140939597,
+          "minimumProjectedNonEdgeTextPx": 8.438255033557047,
+          "minimumProjectedEdgeTextPx": 7.500671140939597,
+          "minimumProjectedNodeText": "鉴权上报",
+          "minimumProjectedNodeTextDetail": "edge",
+          "minimumProjectedNodeTextOwner": {
+            "kind": "edge",
+            "id": "ingest",
+            "from": "reporters",
+            "to": "ingress"
+          },
+          "minimumRequiredNodeTextPx": 6,
+          "readabilityOk": true,
+          "hasLegend": true,
+          "hasNavigationDock": true,
+          "legendDockIntersectionArea": 0,
+          "dockStageIntersectionArea": 0,
+          "dockStageGap": 10,
+          "requiredDockStageGap": 10,
+          "viewerChromeStageOk": true,
+          "viewerChromeReserve": 54,
+          "viewerChromeActive": true,
+          "viewerChromeOk": true,
+          "resolvedTheme": "light"
+        },
+        {
+          "width": 1920,
+          "height": 1080,
+          "theme": "light",
+          "innerWidth": 1920,
+          "innerHeight": 1080,
+          "scrollWidth": 1920,
+          "scrollHeight": 1080,
+          "overflowX": false,
+          "overflowY": false,
+          "verticalScrollAccepted": false,
+          "overflowDisposition": "contained",
+          "readerLayout": "adaptive",
+          "readerOverflow": null,
+          "readerFit": "intrinsic-height",
+          "ok": true,
+          "readerWidth": 1473,
+          "diagramWidth": 1443,
+          "pageComposition": {
+            "bodyPaddingPx": 64,
+            "headerPx": 60,
+            "diagramChromePx": 84,
+            "svgPx": 860,
+            "cardsPx": 0,
+            "viewBoxHeight": 888
+          },
+          "viewBoxWidth": 1490,
+          "minimumProjectedNodeTextPx": 7.7476510067114095,
+          "minimumProjectedNonEdgeTextPx": 8.716107382550335,
+          "minimumProjectedEdgeTextPx": 7.7476510067114095,
+          "minimumProjectedNodeText": "鉴权上报",
+          "minimumProjectedNodeTextDetail": "edge",
+          "minimumProjectedNodeTextOwner": {
+            "kind": "edge",
+            "id": "ingest",
+            "from": "reporters",
+            "to": "ingress"
+          },
+          "minimumRequiredNodeTextPx": 6,
+          "readabilityOk": true,
+          "hasLegend": true,
+          "hasNavigationDock": true,
+          "legendDockIntersectionArea": 0,
+          "dockStageIntersectionArea": 0,
+          "dockStageGap": 10,
+          "requiredDockStageGap": 10,
+          "viewerChromeStageOk": true,
+          "viewerChromeReserve": 54,
+          "viewerChromeActive": true,
+          "viewerChromeOk": true,
+          "resolvedTheme": "light"
+        },
+        {
+          "width": 2048,
+          "height": 1320,
+          "theme": "light",
+          "innerWidth": 2048,
+          "innerHeight": 1320,
+          "scrollWidth": 2048,
+          "scrollHeight": 1320,
+          "overflowX": false,
+          "overflowY": false,
+          "verticalScrollAccepted": false,
+          "overflowDisposition": "contained",
+          "readerLayout": "adaptive",
+          "readerOverflow": null,
+          "readerFit": "intrinsic-height",
+          "ok": true,
+          "readerWidth": 1866,
+          "diagramWidth": 1816,
+          "pageComposition": {
+            "bodyPaddingPx": 64,
+            "headerPx": 68,
+            "diagramChromePx": 94,
+            "svgPx": 1082,
+            "cardsPx": 0,
+            "viewBoxHeight": 888
+          },
+          "viewBoxWidth": 1490,
+          "minimumProjectedNodeTextPx": 8,
+          "minimumProjectedNonEdgeTextPx": 9,
+          "minimumProjectedEdgeTextPx": 8,
+          "minimumProjectedNodeText": "鉴权上报",
+          "minimumProjectedNodeTextDetail": "edge",
+          "minimumProjectedNodeTextOwner": {
+            "kind": "edge",
+            "id": "ingest",
+            "from": "reporters",
+            "to": "ingress"
+          },
+          "minimumRequiredNodeTextPx": 6,
+          "readabilityOk": true,
+          "hasLegend": true,
+          "hasNavigationDock": true,
+          "legendDockIntersectionArea": 0,
+          "dockStageIntersectionArea": 0,
+          "dockStageGap": 10,
+          "requiredDockStageGap": 10,
+          "viewerChromeStageOk": true,
+          "viewerChromeReserve": 44,
+          "viewerChromeActive": true,
+          "viewerChromeOk": true,
+          "resolvedTheme": "light"
+        }
+      ]
+    },
+    "captures": {
+      "status": "not-requested",
+      "screenshots": [],
+      "contactSheet": null
+    },
+    "sidecars": {
+      "directory": "/home/runner/work/lyjwpage/lyjwpage/.archify/evidence/architecture-s7exXk",
+      "receipt": "architecture.browser-check.json",
+      "files": []
+    }
+  },
+  "update": {
+    "status": "current",
+    "installedVersion": "3.0.1",
+    "availableVersion": "3.0.1",
+    "releaseNotes": null,
+    "checkedAt": "2026-09-30T10:41:50.837Z",
+    "source": "network",
+    "noticeRequired": false,
+    "noticeText": null
+  },
+  "visualReviewRecommendation": {
+    "action": "inspect-route-readability",
+    "signals": {
+      "resolvedCrossovers": 6,
+      "routesOverSuggestedBends": 5
+    },
+    "reason": "Automated gates passed, but crossings or detours still need perceptual review before claiming visual quality.",
+    "affectedRoutes": {
+      "crossings": [
+        {
+          "left": {
+            "id": "lag_read",
+            "from": "api",
+            "to": "lag",
+            "label": "读取 KV",
+            "collectionIndex": 4,
+            "artifactIndex": 5
+          },
+          "right": {
+            "id": "ingress_archive",
+            "from": "ingress",
+            "to": "history",
+            "label": "异步归档",
+            "collectionIndex": 8,
+            "artifactIndex": 9
+          },
+          "point": [
+            714,
+            487
+          ]
+        },
+        {
+          "left": {
+            "id": "collect_realtime",
+            "from": "collector",
+            "to": "api",
+            "label": "最近播放 · RPC",
+            "collectionIndex": 7,
+            "artifactIndex": 8
+          },
+          "right": {
+            "id": "ingress_archive",
+            "from": "ingress",
+            "to": "history",
+            "label": "异步归档",
+            "collectionIndex": 8,
+            "artifactIndex": 9
+          },
+          "point": [
+            789.1999999999999,
+            632
+          ]
+        },
+        {
+          "left": {
+            "id": "api_archive",
+            "from": "api",
+            "to": "history",
+            "label": "Cron 归档",
+            "collectionIndex": 9,
+            "artifactIndex": 10
+          },
+          "right": {
+            "id": "broadcast",
+            "from": "api",
+            "to": "live",
+            "label": "提交后广播",
+            "collectionIndex": 11,
+            "artifactIndex": 12
+          },
+          "point": [
+            965.05,
+            404
+          ],
+          "sharedNode": "api"
+        },
+        {
+          "left": {
+            "id": "api_archive",
+            "from": "api",
+            "to": "history",
+            "label": "Cron 归档",
+            "collectionIndex": 9,
+            "artifactIndex": 10
+          },
+          "right": {
+            "id": "ws",
+            "from": "live",
+            "to": "browser",
+            "label": "/ws · 事件",
+            "collectionIndex": 12,
+            "artifactIndex": 13
+          },
+          "point": [
+            1094,
+            548.05
+          ]
+        },
+        {
+          "left": {
+            "id": "ws",
+            "from": "live",
+            "to": "browser",
+            "label": "/ws · 事件",
+            "collectionIndex": 12,
+            "artifactIndex": 13
+          },
+          "right": {
+            "id": "esa_origin",
+            "from": "esa",
+            "to": "site",
+            "label": "缓存回源",
+            "collectionIndex": 19,
+            "artifactIndex": 20
+          },
+          "point": [
+            1186,
+            548.05
+          ]
+        },
+        {
+          "left": {
+            "id": "direct_read",
+            "from": "browser",
+            "to": "api",
+            "label": "状态 API",
+            "collectionIndex": 13,
+            "artifactIndex": 14
+          },
+          "right": {
+            "id": "esa_origin",
+            "from": "esa",
+            "to": "site",
+            "label": "缓存回源",
+            "collectionIndex": 19,
+            "artifactIndex": 20
+          },
+          "point": [
+            1186,
+            533
+          ]
+        }
+      ],
+      "detours": [
+        {
+          "relationship": {
+            "id": "collect_realtime",
+            "from": "collector",
+            "to": "api",
+            "label": "最近播放 · RPC",
+            "collectionIndex": 7,
+            "artifactIndex": 8
+          },
+          "bends": 3,
+          "stretch": 1
+        },
+        {
+          "relationship": {
+            "id": "ingress_archive",
+            "from": "ingress",
+            "to": "history",
+            "label": "异步归档",
+            "collectionIndex": 8,
+            "artifactIndex": 9
+          },
+          "bends": 4,
+          "stretch": 1
+        },
+        {
+          "relationship": {
+            "id": "api_archive",
+            "from": "api",
+            "to": "history",
+            "label": "Cron 归档",
+            "collectionIndex": 9,
+            "artifactIndex": 10
+          },
+          "bends": 3,
+          "stretch": 1.098,
+          "directCorridorBlockers": [
+            {
+              "id": "live",
+              "label": "LivePushRoom · DO",
+              "box": [
+                830,
+                490,
+                240,
+                100
+              ]
+            }
+          ]
+        },
+        {
+          "relationship": {
+            "id": "first_screen",
+            "from": "site",
+            "to": "api",
+            "label": "逐卡状态 API",
+            "collectionIndex": 14,
+            "artifactIndex": 15
+          },
+          "bends": 4,
+          "stretch": 1.218
+        },
+        {
+          "relationship": {
+            "id": "image_upload",
+            "from": "reporters",
+            "to": "images",
+            "label": "Mac / Emby 直传",
+            "collectionIndex": 17,
+            "artifactIndex": 18
+          },
+          "bends": 3,
+          "stretch": 1.038
+        }
+      ],
+      "truncated": false
+    },
+    "hints": [
+      "api → lag crosses ingress → history: move the node of whichever is a branch, return, or second entrance to the other side of the main path, so that relationship runs through an empty corridor.",
+      "collector → api crosses ingress → history: move the node of whichever is a branch, return, or second entrance to the other side of the main path, so that relationship runs through an empty corridor.",
+      "api → history and api → live cross next to api: move node history or live so the two reach api from different sides (for example one level with it, one directly above or below it).",
+      "api → history crosses live → browser: move the node of whichever is a branch, return, or second entrance to the other side of the main path, so that relationship runs through an empty corridor.",
+      "live → browser crosses esa → site: move the node of whichever is a branch, return, or second entrance to the other side of the main path, so that relationship runs through an empty corridor.",
+      "browser → api crosses esa → site: move the node of whichever is a branch, return, or second entrance to the other side of the main path, so that relationship runs through an empty corridor.",
+      "collector → api needs 3 bends: move node collector or api so they share a row or column with matching centers, or sit diagonally with a clear corner.",
+      "ingress → history needs 4 bends: move node ingress or history so they share a row or column with matching centers, or sit diagonally with a clear corner."
+    ],
+    "repair": "Trace these relationships at the desktop viewport. For Architecture, use references/architecture-layout-repair.md: reflow a blocked main path or tangled connected scene, and repair an isolated defect locally only when the surrounding composition is accepted. Preserve all semantic content and user-fixed geometry. Rerun finalize once after the edit."
+  },
+  "visual_review": "passed: CI desktop screenshot and both native PNG exports inspected",
+  "correction_rounds": 2,
+  "static_diagram_review": "passed: CJK text and full title/frame verified in both native PNG exports",
+  "capture": {
+    "status": "pass",
+    "artifact": {
+      "path": "/home/runner/work/lyjwpage/lyjwpage/docs/architecture.html",
+      "sha256": "4a08a5eb21a3573214dac06527f0598730aec71f14fa6f7fe8eca4a179e5cc79",
+      "bytes": 792061
+    },
+    "evidenceDirectory": ".archify/evidence/architecture-s7exXk"
+  },
   "viewports": [
     {
       "width": 1440,
@@ -34,23 +1019,48 @@
       "innerWidth": 1440,
       "innerHeight": 900,
       "scrollWidth": 1440,
-      "scrollHeight": 900,
+      "scrollHeight": 945,
       "overflowX": false,
-      "overflowY": false,
+      "overflowY": true,
+      "verticalScrollAccepted": true,
+      "overflowDisposition": "readable-vertical-scroll",
+      "readerLayout": "adaptive",
+      "readerOverflow": "authored",
+      "readerFit": "intrinsic-height",
       "ok": true,
-      "readerWidth": 1067,
-      "diagramWidth": 1037,
-      "viewBoxWidth": 1380,
-      "minimumProjectedNodeTextPx": 6.76304347826087,
-      "minimumProjectedNodeText": "应用 · 音乐 · BLE · 编码 · 图片",
-      "minimumProjectedNodeTextDetail": "context",
+      "readerWidth": 1376,
+      "diagramWidth": 1346,
+      "pageComposition": {
+        "bodyPaddingPx": 12,
+        "headerPx": 52,
+        "diagramChromePx": 78,
+        "svgPx": 802,
+        "cardsPx": 0,
+        "viewBoxHeight": 888
+      },
+      "viewBoxWidth": 1490,
+      "minimumProjectedNodeTextPx": 7.226845637583892,
+      "minimumProjectedNonEdgeTextPx": 8.130201342281879,
+      "minimumProjectedEdgeTextPx": 7.226845637583892,
+      "minimumProjectedNodeText": "鉴权上报",
+      "minimumProjectedNodeTextDetail": "edge",
+      "minimumProjectedNodeTextOwner": {
+        "kind": "edge",
+        "id": "ingest",
+        "from": "reporters",
+        "to": "ingress"
+      },
       "minimumRequiredNodeTextPx": 6,
       "readabilityOk": true,
-      "hasLegend": false,
+      "hasLegend": true,
       "hasNavigationDock": true,
       "legendDockIntersectionArea": 0,
-      "viewerChromeReserve": 0,
-      "viewerChromeActive": false,
+      "dockStageIntersectionArea": 0,
+      "dockStageGap": 10,
+      "requiredDockStageGap": 10,
+      "viewerChromeStageOk": true,
+      "viewerChromeReserve": 54,
+      "viewerChromeActive": true,
       "viewerChromeOk": true,
       "resolvedTheme": "light"
     },
@@ -61,23 +1071,48 @@
       "innerWidth": 1600,
       "innerHeight": 1000,
       "scrollWidth": 1600,
-      "scrollHeight": 1000,
+      "scrollHeight": 1041,
       "overflowX": false,
-      "overflowY": false,
+      "overflowY": true,
+      "verticalScrollAccepted": true,
+      "overflowDisposition": "readable-vertical-scroll",
+      "readerLayout": "adaptive",
+      "readerOverflow": "authored",
+      "readerFit": "intrinsic-height",
       "ok": true,
-      "readerWidth": 1191,
-      "diagramWidth": 1161,
-      "viewBoxWidth": 1380,
-      "minimumProjectedNodeTextPx": 7.571739130434783,
-      "minimumProjectedNodeText": "应用 · 音乐 · BLE · 编码 · 图片",
-      "minimumProjectedNodeTextDetail": "context",
+      "readerWidth": 1427,
+      "diagramWidth": 1397,
+      "pageComposition": {
+        "bodyPaddingPx": 64,
+        "headerPx": 60,
+        "diagramChromePx": 84,
+        "svgPx": 833,
+        "cardsPx": 0,
+        "viewBoxHeight": 888
+      },
+      "viewBoxWidth": 1490,
+      "minimumProjectedNodeTextPx": 7.500671140939597,
+      "minimumProjectedNonEdgeTextPx": 8.438255033557047,
+      "minimumProjectedEdgeTextPx": 7.500671140939597,
+      "minimumProjectedNodeText": "鉴权上报",
+      "minimumProjectedNodeTextDetail": "edge",
+      "minimumProjectedNodeTextOwner": {
+        "kind": "edge",
+        "id": "ingest",
+        "from": "reporters",
+        "to": "ingress"
+      },
       "minimumRequiredNodeTextPx": 6,
       "readabilityOk": true,
-      "hasLegend": false,
+      "hasLegend": true,
       "hasNavigationDock": true,
       "legendDockIntersectionArea": 0,
-      "viewerChromeReserve": 0,
-      "viewerChromeActive": false,
+      "dockStageIntersectionArea": 0,
+      "dockStageGap": 10,
+      "requiredDockStageGap": 10,
+      "viewerChromeStageOk": true,
+      "viewerChromeReserve": 54,
+      "viewerChromeActive": true,
       "viewerChromeOk": true,
       "resolvedTheme": "light"
     },
@@ -91,20 +1126,45 @@
       "scrollHeight": 1080,
       "overflowX": false,
       "overflowY": false,
+      "verticalScrollAccepted": false,
+      "overflowDisposition": "contained",
+      "readerLayout": "adaptive",
+      "readerOverflow": null,
+      "readerFit": "intrinsic-height",
       "ok": true,
-      "readerWidth": 1332,
-      "diagramWidth": 1302,
-      "viewBoxWidth": 1380,
-      "minimumProjectedNodeTextPx": 8.491304347826087,
-      "minimumProjectedNodeText": "应用 · 音乐 · BLE · 编码 · 图片",
-      "minimumProjectedNodeTextDetail": "context",
+      "readerWidth": 1473,
+      "diagramWidth": 1443,
+      "pageComposition": {
+        "bodyPaddingPx": 64,
+        "headerPx": 60,
+        "diagramChromePx": 84,
+        "svgPx": 860,
+        "cardsPx": 0,
+        "viewBoxHeight": 888
+      },
+      "viewBoxWidth": 1490,
+      "minimumProjectedNodeTextPx": 7.7476510067114095,
+      "minimumProjectedNonEdgeTextPx": 8.716107382550335,
+      "minimumProjectedEdgeTextPx": 7.7476510067114095,
+      "minimumProjectedNodeText": "鉴权上报",
+      "minimumProjectedNodeTextDetail": "edge",
+      "minimumProjectedNodeTextOwner": {
+        "kind": "edge",
+        "id": "ingest",
+        "from": "reporters",
+        "to": "ingress"
+      },
       "minimumRequiredNodeTextPx": 6,
       "readabilityOk": true,
-      "hasLegend": false,
+      "hasLegend": true,
       "hasNavigationDock": true,
       "legendDockIntersectionArea": 0,
-      "viewerChromeReserve": 0,
-      "viewerChromeActive": false,
+      "dockStageIntersectionArea": 0,
+      "dockStageGap": 10,
+      "requiredDockStageGap": 10,
+      "viewerChromeStageOk": true,
+      "viewerChromeReserve": 54,
+      "viewerChromeActive": true,
       "viewerChromeOk": true,
       "resolvedTheme": "light"
     },
@@ -118,34 +1178,68 @@
       "scrollHeight": 1320,
       "overflowX": false,
       "overflowY": false,
+      "verticalScrollAccepted": false,
+      "overflowDisposition": "contained",
+      "readerLayout": "adaptive",
+      "readerOverflow": null,
+      "readerFit": "intrinsic-height",
       "ok": true,
-      "readerWidth": 1685,
-      "diagramWidth": 1635,
-      "viewBoxWidth": 1380,
-      "minimumProjectedNodeTextPx": 9,
-      "minimumProjectedNodeText": "应用 · 音乐 · BLE · 编码 · 图片",
-      "minimumProjectedNodeTextDetail": "context",
+      "readerWidth": 1866,
+      "diagramWidth": 1816,
+      "pageComposition": {
+        "bodyPaddingPx": 64,
+        "headerPx": 68,
+        "diagramChromePx": 94,
+        "svgPx": 1082,
+        "cardsPx": 0,
+        "viewBoxHeight": 888
+      },
+      "viewBoxWidth": 1490,
+      "minimumProjectedNodeTextPx": 8,
+      "minimumProjectedNonEdgeTextPx": 9,
+      "minimumProjectedEdgeTextPx": 8,
+      "minimumProjectedNodeText": "鉴权上报",
+      "minimumProjectedNodeTextDetail": "edge",
+      "minimumProjectedNodeTextOwner": {
+        "kind": "edge",
+        "id": "ingest",
+        "from": "reporters",
+        "to": "ingress"
+      },
       "minimumRequiredNodeTextPx": 6,
       "readabilityOk": true,
-      "hasLegend": false,
+      "hasLegend": true,
       "hasNavigationDock": true,
       "legendDockIntersectionArea": 0,
-      "viewerChromeReserve": 0,
-      "viewerChromeActive": false,
+      "dockStageIntersectionArea": 0,
+      "dockStageGap": 10,
+      "requiredDockStageGap": 10,
+      "viewerChromeStageOk": true,
+      "viewerChromeReserve": 44,
+      "viewerChromeActive": true,
       "viewerChromeOk": true,
       "resolvedTheme": "light"
     }
   ],
   "previews": {
     "architecture-light.png": {
-      "kind": "svg-rasterization",
-      "sha256": "77a8d7282a9281352ae55647b21b341e0b7d89f51c629cea8ee0317bf4ba27d3",
-      "bytes": 508114
+      "kind": "viewer-png-export",
+      "theme": "light",
+      "width": 2980,
+      "height": 1948,
+      "artifactSha256": "4a08a5eb21a3573214dac06527f0598730aec71f14fa6f7fe8eca4a179e5cc79",
+      "sha256": "d7e6a7f53bd2685141b59010819dcf86fe4313f775645c62b1c6677e05831868",
+      "bytes": 716490
     },
     "architecture-dark.png": {
-      "kind": "svg-rasterization",
-      "sha256": "05a61612783cd3563c9417a17f52526a1776cf4dd7099ae32e145a987c51b7d2",
-      "bytes": 513992
+      "kind": "viewer-png-export",
+      "theme": "dark",
+      "width": 2980,
+      "height": 1948,
+      "artifactSha256": "4a08a5eb21a3573214dac06527f0598730aec71f14fa6f7fe8eca4a179e5cc79",
+      "sha256": "de42e395ebfe225b68df85029017c8b5e0ee4aed73b802afbc02d8b7f5de35ba",
+      "bytes": 767458
     }
-  }
+  },
+  "verification_run": "https://github.com/LYJW131/lyjwpage/actions/runs/36703876992"
 }
