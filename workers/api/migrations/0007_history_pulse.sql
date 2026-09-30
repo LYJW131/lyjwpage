@@ -4,8 +4,9 @@
 -- 0006 留给采集 Worker 那一步，这里不占。
 
 -- 听歌。certain = 1：Mac / HomePod 实测在放的一段（每次暂停、换曲都是新的一行）；
--- certain = 0：「最近在听」列表变动，只知道落在 (started_at, ended_at] 之间某处，
--- source = 'recent'，album 是列表条目（专辑 / 歌单）的名字、item_id 是它的目录 id，没有曲名。
+-- certain = 0：Apple「最近播放的歌」列表变动，只知道落在 (started_at, ended_at] 之间某处，
+-- source = 'recent'，曲名 / 艺人 / 专辑照列，item_id 是曲目 id；title 为空的行是专辑粒度的
+-- 痕迹，album 是列表条目（专辑 / 歌单）的名字、item_id 是它的目录 id。
 CREATE TABLE IF NOT EXISTS listening_plays (
   source TEXT NOT NULL,
   started_at INTEGER NOT NULL,

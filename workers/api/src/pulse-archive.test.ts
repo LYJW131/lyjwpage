@@ -97,13 +97,13 @@ test("pulse archive: closed playing intervals and recent-list traces become list
     await recordStateObservation("listening", T0 + 3 * M, music("Helpless", "paused"));
     await recordStateObservation("listening", T0 + 5 * M, music("Satisfied"));
     await recordStateObservation("listening", T0 + 9 * M, { ...music("x", "idle"), artist: null, album: null });
-    await b.storage.batch().append(pulseListeningTracesKey(), JSON.stringify({ since: T0 - 4 * M, t: T0 - 2 * M, title: "THE BOOK 3", artist: "YOASOBI", itemId: "1" })).execute();
+    await b.storage.batch().append(pulseListeningTracesKey(), JSON.stringify({ since: T0 - 4 * M, t: T0 - 2 * M, title: "Yoru ni Kakeru", artist: "YOASOBI", album: "THE BOOK", itemId: "1" })).execute();
   });
   b.at(T0 + 10 * M);
   await b.archive().run();
   assert.deepEqual(b.logged, []);
   assert.deepEqual(b.all("SELECT source, started_at, ended_at, certain, title, album, item_id FROM listening_plays ORDER BY started_at"), [
-    { source: "recent", started_at: T0 - 4 * M, ended_at: T0 - 2 * M, certain: 0, title: null, album: "THE BOOK 3", item_id: "1" },
+    { source: "recent", started_at: T0 - 4 * M, ended_at: T0 - 2 * M, certain: 0, title: "Yoru ni Kakeru", album: "THE BOOK", item_id: "1" },
     { source: "mac", started_at: T0, ended_at: T0 + 3 * M, certain: 1, title: "Helpless", album: "Hamilton", item_id: null },
     { source: "mac", started_at: T0 + 5 * M, ended_at: T0 + 9 * M, certain: 1, title: "Satisfied", album: "Hamilton", item_id: null },
   ], "paused and idle spans are not plays");

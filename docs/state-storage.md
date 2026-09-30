@@ -36,7 +36,7 @@ D1 是整站的长期历史归档：DO 管实时状态、热数据（`PULSE_TTL_
 | `activity_days` | 每天活动圆环的终值（手表本地日） | 上报入口 | `date`，同一天取最晚一封 |
 | `limit_snapshots` | 各厂商限额每日快照（Asia/Shanghai 日） | 上报入口 | `(date, agent, limit_key)`，取当天最后一次读数 |
 | `server_hours` | 服务器按 UTC 整点汇总：样本数（即在线分钟）、CPU 与负载的和与峰值、内存、速率峰值、周期累计流量的末值、运行时长 | 上报入口 | `(host, hour_at)`；只收观测时刻晚于该小时最后观测时刻的样本，重放和乱序晚到的旧样本都不累加 |
-| `listening_plays` | 实测在放的每一段（mac / homepod）与「最近在听」的不确定区间（`certain = 0`） | 状态核心 | `(source, started_at)` |
+| `listening_plays` | 实测在放的每一段（mac / homepod）与「最近播放的歌」列表变动的不确定区间（`certain = 0`） | 状态核心 | `(source, started_at)` |
 | `watching_sessions` | 同一条目首尾相接的播放 + 暂停，含实际在播秒数 | 状态核心 | `(item_id, started_at)`，延续时改写同一行 |
 | `game_sessions` | 在游戏里的时段 | 状态核心 | `(title_id, started_at)` |
 | `charging_samples` | 过了写入闸门的实测瓦数 | 状态核心 | `t` |

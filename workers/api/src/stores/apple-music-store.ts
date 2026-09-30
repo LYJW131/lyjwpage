@@ -1,6 +1,5 @@
 import type { ListeningItem, ListeningPayload } from "@/lib/types";
 import { mirror } from "@shared/apple-music-store";
-import { listeningTrace, type ListeningTrace } from "@shared/pulse-listening";
 
 /** 只比内容，不比拉取时刻 —— 每轮刷新都会重写 fetchedAt，那不该算变化 */
 function sameContent(a: ListeningItem[], b: ListeningItem[]) {
@@ -16,16 +15,13 @@ function sameContent(a: ListeningItem[], b: ListeningItem[]) {
  * `listening` 就是要推的那整份，和落库那份同源，推送直接用它，不必再读回来；
  * 落库确认之后才派发，见 workers/api/src/fanout.ts。
  *
- * `trace` 是另一个口径：`changed` 管「要不要推」，封面地址换了也算；它只管「有没有
- * 又放了什么」，只比 id 和顺序。两者不能合并 —— 拿 `changed` 当播放痕迹的话，每 12
- * 小时换一次的自建歌单封面地址就会凭空变出一次播放。见 shared/pulse-listening。
+ * 这份专辑粒度的列表不当 Pulse 的播放痕迹用，痕迹看单曲列表，见 stores/listening-pulse。
  */
 export async function prepareRecentlyPlayed(
   items: ListeningItem[],
   fetchedAt = Date.now(),
 ): Promise<{
   changed: boolean;
-  trace: ListeningTrace | null;
   listening: ListeningPayload;
   commit: () => Promise<void>;
 }> {
@@ -34,7 +30,6 @@ export async function prepareRecentlyPlayed(
 
   return {
     changed,
-    trace: listeningTrace(previous, { items, fetchedAt }),
     listening: { items, fetchedAt },
     commit: async () => {
       await mirror.put({ items, fetchedAt });

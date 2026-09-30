@@ -24,7 +24,7 @@
 
 | 任务 | 去向 | 需要 |
 | --- | --- | --- |
-| `apple-recent` | `CORE.commitRecentlyPlayed(items)` | 凭据 KV 里的 user token；developer token 经 `CORE` 取 |
+| `apple-recent` | `CORE.commitRecentlyPlayed(items)`；`CORE.commitRecentTracks(tracks)` | 凭据 KV 里的 user token；developer token 经 `CORE` 取 |
 | `provider-status` | `LAG agent-status:v1`；灯色变了才 `CORE.revalidate(["agent-status"])` | 无 |
 | `pagespeed` | `LAG pagespeed:v1`（滚动中位数） | `PAGESPEED_API_KEY` |
 | `github-chart` | `LAG github-chart:v1` | `GITHUB_TOKEN` |
@@ -56,7 +56,7 @@
   密钥只进查询参数，日志里只有状态码。任一端失败这一轮就空过，可滞后层沿用上一份。
 - **最近在听**：user token 只能来自 Mac 上报器，凭据 KV 里还没有就跳过；developer token 由
   状态核心签（私钥只在 api 上），本 isolate 缓存到离到期 `RENEW_BEFORE_MS`。封面、时长的缓存经 `src/lib/cache`
-  存在 `COLLECTOR_KV`（期限见 `apple-recent.ts` 的 `LIBRARY_ARTWORK_TTL_MS`、`DURATION_TTL_MS`），稳定状态下一轮只有拉列表那一次出网。
+  存在 `COLLECTOR_KV`（期限见 `apple-recent.ts` 的 `LIBRARY_ARTWORK_TTL_MS`、`DURATION_TTL_MS`），稳定状态下一轮只有拉两份列表出网。
 
 ### Sentry 监控
 

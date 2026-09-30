@@ -303,7 +303,7 @@ Cursor 使用独立的 `pulse:cursor-observations`：agents 来源的 cursor 活
 
 | 表 | 内容 | 自然键 |
 | --- | --- | --- |
-| `listening_plays` | 每段实测在放（`certain = 1`，来源 mac / homepod，曲名 / 艺人 / 专辑 / 曲目 id）与不确定区间（`certain = 0`，`source = 'recent'`，专辑 / 歌单名在 `album`、目录 id 在 `item_id`） | `(source, started_at)` |
+| `listening_plays` | 每段实测在放（`certain = 1`，来源 mac / homepod，曲名 / 艺人 / 专辑 / 曲目 id）与不确定区间（`certain = 0`，`source = 'recent'`，曲名 / 艺人 / 专辑照列、曲目 id 在 `item_id`；`title` 为空的是专辑粒度的痕迹，专辑 / 歌单名在 `album`） | `(source, started_at)` |
 | `watching_sessions` | 同一条目首尾相接的播放 + 暂停，`playing_seconds` 只算在播 | `(item_id, started_at)` |
 | `game_sessions` | 在游戏里的时段 | `(title_id, started_at)` |
 | `charging_samples` / `charging_sessions` | 过了闸门的瓦数；一次充电的起止、峰值、能量、设备 | `t` / `started_at` |
@@ -326,8 +326,8 @@ Cursor 使用独立的 `pulse:cursor-observations`：agents 来源的 cursor 活
 ## 最近在听
 
 拉取在采集 Worker（`workers/collector` 的 `apple-recent`，节奏见该任务，不看有没有人在看），
-拉回来的列表经 `StateCore.commitRecentlyPlayed` 交给这里差分、落库、推 `listening`，列表变动记成 Pulse
-听歌道上的不确定区间（`pulse:v2:listening-traces`）。api 自己不拉，WebSocket 连上也不触发。
+拉回来的专辑粒度列表经 `StateCore.commitRecentlyPlayed` 交给这里差分、落库、推 `listening`；同一轮拉的单曲列表
+经 `StateCore.commitRecentTracks` 与上一轮比较，变动记成 Pulse 听歌道上的不确定区间（`pulse:v2:listening-traces`）。api 自己不拉，WebSocket 连上也不触发。
 Mac 上报的 Apple Music 凭据在凭据 KV（`shared/credentials.ts`），不向外提供凭据端点；状态读取不触发拉取或广播。
 
 ## MusicKit 令牌

@@ -1,6 +1,6 @@
 import { homePodTrackEnd, homePodVisibleAt, homePodVisibleUntil } from "@/lib/homepod-store";
 import { offlineByLiveness, type Liveness } from "@/lib/reporter-liveness";
-import type { ListeningItem, LocalNowPlaying } from "@/lib/types";
+import type { LocalNowPlaying, RecentTrack } from "@/lib/types";
 import { PULSE_STATE_HOLD_MS, pulseText, type ListeningFacts, type ObservationHold } from "@shared/pulse-timeline";
 
 /**
@@ -57,33 +57,36 @@ function playingFacts(music: LocalNowPlaying): ListeningFacts {
 }
 
 /**
- * 一次「最近在听」列表变动：没有时刻的播放痕迹。
+ * 一次「最近播放的歌」列表变动：没有时刻的播放痕迹。
  *
- * Apple 这份列表按最后播放时间倒序，却不给时刻，所以能断言的只有区间：播放发生在
- * 上一轮成功刷新 `since` 和看见变化的这一刻 `t` 之间，`(since, t]`。时间线如实画成
- * 一段「不确定」的区间，不当成此刻在放。条目是专辑 / 歌单 / 电台，不是单曲。
+ * Apple 这份列表（/v1/me/recent/played/tracks）按播放时间倒序，却不给时刻，所以能断言的
+ * 只有区间：播放发生在上一轮成功刷新 `since` 和看见变化的这一刻 `t` 之间，`(since, t]`。
+ * 时间线如实画成一段「不确定」的区间，不当成此刻在放。条目是单曲。
  */
 export type ListeningTrace = {
   since: number;
   t: number;
-  /** 新排到前面的那一项：专辑 / 歌单名 */
+  /** 新排到前面的那首歌的曲名 */
   title: string | null;
-  /** 专辑取艺人，歌单取策展人 */
   artist: string | null;
-  /** Apple Music 目录里那一项的 id */
+  album: string | null;
+  /** Apple Music 的曲目 id（资料库里的歌是资料库 id） */
   itemId: string | null;
 };
 export const LISTENING_TRACE_CAP = 2000;
 
 /**
- * 只比 id 和顺序。
- *
- * 不能拿整份 JSON 比（那是 prepareRecentlyPlayed 里 `changed` 的口径，它要管的是
- * 推不推给浏览器）：自建歌单封面是 12 小时一换的预签名地址，时长又只算第一项，
- * 两者都会变，而两者都不是「又放了什么」。
+ * 实测播放段结束后多久内，同名痕迹仍算被它解释了。Apple 何时把一次播放记进列表（开播、
+ * 放完，还是再晚一轮同步）没有文档保证；列表变动若在那首歌放完之后才被看见，严格按
+ * `(since, t]` 相交会把 Mac / HomePod 上刚放过的歌再画成一段「别处播放」。
  */
-export function playbackSignature(items: ListeningItem[]): string {
-  return items.map((item) => item.id).join("\n");
+export const LISTENING_TRACE_MATCH_SLACK_MS = 5 * 60 * 1000;
+
+/**
+ * 只比 id 和顺序。刷新时刻每轮都变，不是「又放了什么」。
+ */
+export function playbackSignature(tracks: RecentTrack[]): string {
+  return tracks.map((track) => track.id).join("\n");
 }
 
 /**
@@ -93,19 +96,20 @@ export function playbackSignature(items: ListeningItem[]): string {
  * 要等下一份列表与这份基线比较，才能判断两轮之间的变化。
  */
 export function listeningTrace(
-  previous: { items: ListeningItem[]; fetchedAt: number } | null,
-  next: { items: ListeningItem[]; fetchedAt: number },
+  previous: { tracks: RecentTrack[]; fetchedAt: number } | null,
+  next: { tracks: RecentTrack[]; fetchedAt: number },
 ): ListeningTrace | null {
   if (!previous || next.fetchedAt <= previous.fetchedAt) return null;
-  if (playbackSignature(previous.items) === playbackSignature(next.items)) return null;
-  const known = new Set(previous.items.map((item) => item.id));
-  // 没有新条目就是老专辑被重放顶到了前面，那时最前面那项就是它。
-  const named = next.items.find((item) => !known.has(item.id)) ?? next.items[0] ?? null;
+  if (playbackSignature(previous.tracks) === playbackSignature(next.tracks)) return null;
+  const known = new Set(previous.tracks.map((track) => track.id));
+  // 没有新条目就是老歌被重放顶到了前面，那时最前面那首就是它。
+  const named = next.tracks.find((track) => !known.has(track.id)) ?? next.tracks[0] ?? null;
   return {
     since: previous.fetchedAt,
     t: next.fetchedAt,
     title: pulseText(named?.title),
     artist: pulseText(named?.artist),
+    album: pulseText(named?.album),
     itemId: pulseText(named?.id, 80),
   };
 }
@@ -117,7 +121,7 @@ export function parseListeningTrace(raw: string): ListeningTrace | null {
     if (!row || typeof row !== "object") return null;
     const { t, since } = row;
     if (typeof t !== "number" || !Number.isSafeInteger(t) || typeof since !== "number" || !Number.isSafeInteger(since) || since >= t) return null;
-    return { since, t, title: pulseText(row.title), artist: pulseText(row.artist), itemId: pulseText(row.itemId, 80) };
+    return { since, t, title: pulseText(row.title), artist: pulseText(row.artist), album: pulseText(row.album), itemId: pulseText(row.itemId, 80) };
   } catch {
     return null;
   }

@@ -156,8 +156,10 @@ test("state lanes keep unknown apart from idle, expose titles only while active,
       JSON.stringify({ ...music("idle", null, null), from: NOW - 90 * M, to: NOW - 80 * M }));
     await storage.set(pulseLaneOpenKey("listening"), JSON.stringify({ ...music("playing", "Satisfied", "Hamilton"), from: NOW - 20 * M, seenAt: NOW - M }));
     await storage.append(pulseListeningTracesKey(),
-      JSON.stringify({ since: NOW - 115 * M, t: NOW - 113 * M, title: "Hamilton", artist: "Lin-Manuel Miranda", itemId: "1" }),
-      JSON.stringify({ since: NOW - 60 * M, t: NOW - 58 * M, title: "THE BOOK 3", artist: "YOASOBI", itemId: "2" }));
+      JSON.stringify({ since: NOW - 115 * M, t: NOW - 113 * M, title: "Helpless", artist: "Hamilton", album: "Hamilton", itemId: "1" }),
+      JSON.stringify({ since: NOW - 88 * M, t: NOW - 86 * M, title: "Helpless", artist: "Hamilton", album: "Hamilton", itemId: "1" }),
+      JSON.stringify({ since: NOW - 60 * M, t: NOW - 58 * M, title: "Satisfied", artist: "Hamilton", album: "Hamilton", itemId: "3" }),
+      JSON.stringify({ since: NOW - 50 * M, t: NOW - 48 * M, title: "Yoru ni Kakeru", artist: "YOASOBI", album: "THE BOOK", itemId: "2" }));
     const { listening } = (await getPulseStatus(NOW)).lanes;
     assert.deepEqual(columnRows(listening.segments, ["state", "title", "subtitle"]), [
       { startSec: sec(NOW - 120 * M), endSec: sec(NOW - 100 * M), state: 2, title: "Helpless", subtitle: "Hamilton" },
@@ -166,8 +168,9 @@ test("state lanes keep unknown apart from idle, expose titles only while active,
       { startSec: sec(NOW - 20 * M), endSec: sec(NOW), state: 2, title: "Satisfied", subtitle: "Hamilton" },
     ], "80–20 minutes ago has no segment: unknown");
     assert.deepEqual(columnRows(listening.uncertain!, ["title", "subtitle"]), [
-      { startSec: sec(NOW - 60 * M), endSec: sec(NOW - 58 * M), title: "THE BOOK 3", subtitle: "YOASOBI" },
-    ], "a trace already explained by the Mac playing that album is not drawn twice");
+      { startSec: sec(NOW - 60 * M), endSec: sec(NOW - 58 * M), title: "Satisfied", subtitle: "Hamilton" },
+      { startSec: sec(NOW - 50 * M), endSec: sec(NOW - 48 * M), title: "Yoru ni Kakeru", subtitle: "YOASOBI" },
+    ], "a song the Mac played during, or just before, the trace is not drawn twice; the same song outside that reach is");
     assert.deepEqual(listening.summary, { activeSeconds: 40 * 60, titles: 2 });
 
     await storage.set(pulseLaneOpenKey("gaming"), JSON.stringify({ state: "online", titleId: null, title: null, from: NOW - 50 * M, seenAt: NOW - 30 * M }));

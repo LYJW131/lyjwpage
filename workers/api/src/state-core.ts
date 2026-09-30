@@ -4,9 +4,9 @@ import type { CoreCommand } from "@shared/ingest/prepare";
 import type { CommitReply, CoreAudience, CorePower, StateCoreRpc } from "@shared/state-core";
 import type { LiveEvent } from "@/lib/live-events";
 import { getPlaystationPower } from "@/lib/playstation-store";
-import type { ListeningItem } from "@/lib/types";
+import type { ListeningItem, RecentTrack } from "@/lib/types";
 
-import { commitRecentlyPlayed } from "./apple-music-recent";
+import { commitRecentlyPlayed, commitRecentTracks } from "./apple-music-recent";
 import { dispatchIngestEffects } from "./ingest-effects";
 import { expireStatusTags, ROOM_ID } from "./live-platform";
 import { issueApiDeveloperToken } from "./musickit-token";
@@ -63,6 +63,10 @@ export class StateCore extends WorkerEntrypoint<Env> implements StateCoreRpc {
 
   async commitRecentlyPlayed(items: ListeningItem[]): Promise<{ changed: boolean }> {
     return this.scoped(() => commitRecentlyPlayed(items));
+  }
+
+  async commitRecentTracks(tracks: RecentTrack[]): Promise<{ traced: boolean }> {
+    return this.scoped(() => commitRecentTracks(tracks));
   }
 
   async revalidate(tags: string[]): Promise<void> {

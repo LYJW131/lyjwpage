@@ -13,7 +13,7 @@ import {
   pulseWorkoutsKey,
 } from "@/lib/pulse-keys";
 import { commitPreparedAgentsReport } from "@api/stores/agents";
-import { commitRecentlyPlayed } from "@api/apple-music-recent";
+import { commitRecentlyPlayed, commitRecentTracks } from "@api/apple-music-recent";
 import { installStorageForTests, resetStorageForTests } from "@/lib/storage";
 import { FakeStorage } from "@/lib/testing/fake-storage";
 import { withRequestState } from "@shared/request-state";
@@ -24,7 +24,7 @@ import { commitPreparedPlaystationReport } from "@api/stores/playstation";
 import { getPlayingNow } from "@/lib/playstation";
 import { powerMirror } from "@shared/playstation-store";
 import { commitPreparedTelemetryEnvelope } from "@api/stores/telemetry";
-import type { ListeningItem } from "@/lib/types";
+import type { ListeningItem, RecentTrack } from "@/lib/types";
 import { prepareAgentLimits } from "@shared/ingest/agents";
 import { prepareEmbyReport } from "@shared/ingest/emby";
 import { preparePlaystationReport } from "@shared/ingest/playstation";
@@ -324,20 +324,24 @@ test("iPhone activity keeps raw five-minute buckets, rewrites only from the firs
   assert.deepEqual(JSON.parse((await storage.get(pulseWorkoutsKey()))!), { items: [{ startedAt: start, endedAt: start + 1_800_000, activityType: "Fencing" }] });
 }));
 
-test("Recently played changes become uncertain listening traces; the first list and unchanged polls do not", withStorage(async (storage) => {
-  const item = (id: string, title: string): ListeningItem => ({ id, title, artist: "YOASOBI", artwork: null, link: null, palette: [], durationMs: null } as unknown as ListeningItem);
+test("Recently played song changes become uncertain listening traces; the first list, unchanged polls and the album list do not", withStorage(async (storage) => {
+  const track = (id: string, title: string): RecentTrack => ({ id, title, artist: "YOASOBI", album: "THE BOOK 3" });
+  const album = (id: string, title: string) => ({ id, title, artist: "YOASOBI", artwork: null, link: null, palette: [], durationMs: null } as ListeningItem);
   const realNow = Date.now;
   let clock = T0;
   Date.now = () => clock;
   try {
-    await inRequest(() => commitRecentlyPlayed([item("a", "THE BOOK")]));
+    assert.deepEqual(await inRequest(() => commitRecentTracks([track("a", "Idol")])), { traced: false });
     clock = T0 + 120_000;
-    await inRequest(() => commitRecentlyPlayed([item("a", "THE BOOK")]));
+    await inRequest(() => commitRecentTracks([track("a", "Idol")]));
+    await inRequest(() => commitRecentlyPlayed([album("x", "THE BOOK 3")]));
+    clock = T0 + 180_000;
+    await inRequest(() => commitRecentlyPlayed([album("y", "THE BOOK 2"), album("x", "THE BOOK 3")]));
     assert.deepEqual(await storage.listRange(pulseListeningTracesKey(), 0, -1), []);
     clock = T0 + 240_000;
-    await inRequest(() => commitRecentlyPlayed([item("b", "THE BOOK 3"), item("a", "THE BOOK")]));
+    assert.deepEqual(await inRequest(() => commitRecentTracks([track("b", "Yoru ni Kakeru"), track("a", "Idol")])), { traced: true });
     assert.deepEqual((await storage.listRange(pulseListeningTracesKey(), 0, -1)).map((raw) => JSON.parse(raw)), [
-      { since: T0 + 120_000, t: T0 + 240_000, title: "THE BOOK 3", artist: "YOASOBI", itemId: "b" },
+      { since: T0 + 120_000, t: T0 + 240_000, title: "Yoru ni Kakeru", artist: "YOASOBI", album: "THE BOOK 3", itemId: "b" },
     ]);
   } finally {
     Date.now = realNow;

@@ -6,24 +6,36 @@ import {
 } from "@/lib/apple-music";
 import { readAppleMusicCredentials } from "@/lib/apple-music-credentials";
 import { cached } from "@/lib/cache";
-import type { ListeningItem } from "@/lib/types";
+import type { ListeningItem, RecentTrack } from "@/lib/types";
 
 import { ok, skipMissing, type Job } from "../job";
 
 /**
- * 「最近在听」的拉取那一半：打 Apple Music API，拼出列表，交给状态核心的
- * `commitRecentlyPlayed`（差分、落库、推 `listening`、记听歌痕迹都在那边）。
+ * 「最近在听」的拉取那一半：打 Apple Music API，拼出两份列表交给状态核心。
  *
- * 节奏见 `appleRecentJob`，不看有没有人在看：列表变动是 Pulse 听歌道上不确定区间的证据，
- * 只在有访客时刷会漏掉没人看站点时在 iPhone 上听的那些。间隔要落在一首歌之内 —— hero 的
- * 取色带是拿 `live.id` 来这份列表里借的，刚开播的专辑进了列表才有颜色可借。
+ * - `/v1/me/recent/played`（专辑 / 歌单 / 电台）→ `commitRecentlyPlayed`：卡片的列表，
+ *   差分、落库、推 `listening` 在那边。
+ * - `/v1/me/recent/played/tracks`（单曲）→ `commitRecentTracks`：Pulse 听歌道的痕迹，
+ *   和上一轮比较、记不确定区间在那边。
+ *
+ * 节奏见 `appleRecentJob`，不看有没有人在看：单曲列表的变动是 Pulse 听歌道上不确定区间的
+ * 证据，只在有访客时刷会漏掉没人看站点时在 iPhone 上听的那些。间隔要落在一首歌之内 ——
+ * 痕迹的区间就是两轮之间；hero 的取色带是拿 `live.id` 来专辑列表里借的，刚开播的专辑
+ * 进了列表才有颜色可借。
  *
  * 封面、时长各有缓存期（`LIBRARY_ARTWORK_TTL_MS`、`DURATION_TTL_MS`），走 src/lib/cache
- * （这里背后是 COLLECTOR_KV），稳定状态下一轮只有拉列表那一次真的出网。
+ * （这里背后是 COLLECTOR_KV），稳定状态下一轮只有拉两份列表真的出网。
  */
 
 /** 上游端点的硬限制就是 10，传更大直接 400 */
 const RECENT_LIMIT = 10;
+/**
+ * 单曲列表只用来看最前面变没变、新排上来的是哪首。两轮之间放不了几首歌，
+ * 十首足够认出新条目（上游上限是 30）。
+ */
+const RECENT_TRACKS_LIMIT = 10;
+/** 只要歌：MV 不算听歌 */
+const RECENT_TRACK_TYPES = "songs,library-songs";
 /** 专辑/歌单的曲目时长是不会变的，缓存久一点 */
 const DURATION_TTL_MS = 24 * 60 * 60 * 1000;
 /** 歌单曲目会分页，最多翻这么多页，够长的歌单也不至于打太多次 */
@@ -66,6 +78,11 @@ type AppleResource = {
     artwork?: AppleArtwork;
     playParams?: { id?: string };
   };
+};
+
+type AppleTrack = {
+  id?: string;
+  attributes?: { name?: string; artistName?: string; albumName?: string };
 };
 
 type TrackRelationship = {
@@ -197,8 +214,7 @@ async function normalize(
   };
 }
 
-export async function assemble(): Promise<ListeningItem[]> {
-  const credentials = await resolveCredentials();
+export async function assemble(credentials: Credentials): Promise<ListeningItem[]> {
   const resources = await appleFetchList<AppleResource>(
     `https://api.music.apple.com/v1/me/recent/played?limit=${RECENT_LIMIT}`,
     credentials,
@@ -225,6 +241,20 @@ export async function assemble(): Promise<ListeningItem[]> {
   return items;
 }
 
+/** 最近播放的单曲，保持 Apple 给的顺序（按播放时间倒序）；没有 id 的条目认不出来，丢掉 */
+export async function assembleRecentTracks(credentials: Credentials): Promise<RecentTrack[]> {
+  const tracks = await appleFetchList<AppleTrack>(
+    `https://api.music.apple.com/v1/me/recent/played/tracks?types=${RECENT_TRACK_TYPES}&limit=${RECENT_TRACKS_LIMIT}`,
+    credentials,
+  );
+  return tracks.slice(0, RECENT_TRACKS_LIMIT).flatMap((track) => track.id ? [{
+    id: String(track.id),
+    title: track.attributes?.name ?? "",
+    artist: track.attributes?.artistName ?? "",
+    album: track.attributes?.albumName ?? null,
+  }] : []);
+}
+
 export const appleRecentJob: Job = {
   name: "apple-recent",
   everyMinutes: 2,
@@ -237,7 +267,13 @@ export const appleRecentJob: Job = {
     if (!credentials.ok && credentials.reason === "never-pushed") {
       return skipMissing("apple-recent", ["CREDENTIALS apple-music:v1"]);
     }
-    const { changed } = await env.CORE.commitRecentlyPlayed(await assemble());
-    return ok(changed ? "changed" : undefined);
+    const resolved = await resolveCredentials();
+    const [items, tracks] = await Promise.allSettled([assemble(resolved), assembleRecentTracks(resolved)]);
+    if (items.status === "rejected") throw items.reason;
+    const { changed } = await env.CORE.commitRecentlyPlayed(items.value);
+    // 单曲那一路失败不连累卡片：卡片的列表已经交出去了，这里再抛，让监控看见
+    if (tracks.status === "rejected") throw tracks.reason;
+    const { traced } = await env.CORE.commitRecentTracks(tracks.value);
+    return ok([changed && "changed", traced && "traced"].filter(Boolean).join(",") || undefined);
   },
 };
