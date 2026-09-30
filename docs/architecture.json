@@ -2,215 +2,39 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "主页上报、状态中枢与站点读取架构",
+    "title": "LYJW · 从生活遥测到实时主页",
     "locale": "zh-CN",
+    "output": "docs/architecture.html",
     "quality_profile": "showcase",
-    "viewBox": [
-      1380,
-      780
-    ],
-    "views": [
-      {
-        "id": "reporting",
-        "label": "全部上报器",
-        "focus": [
-          "mac_hub",
-          "iphone_hub",
-          "home_assistant",
-          "emby_reporter",
-          "misaka_reporters",
-          "playstation_reporter",
-          "claude_cloud",
-          "ingress"
-        ],
-        "note": "每个上报方凭自己的 Access service token POST 到 ingress 的 /api/ingest/<来源>，ACCESS_CLIENTS 限定能写哪个来源。"
-      },
-      {
-        "id": "layers",
-        "label": "实时层与可滞后层",
-        "focus": [
-          "ingress",
-          "api",
-          "state_hub",
-          "collector",
-          "lag_store"
-        ],
-        "note": "ingress 校验、收敛后拆开：实时那一半经 Service Binding 交给 StateCore 写 Durable Object，可滞后层、D1 归档与凭据自己写。采集 Worker 每分钟拉外部服务，同样分两路写。"
-      },
-      {
-        "id": "sites",
-        "label": "站点与读取",
-        "focus": [
-          "api",
-          "sites",
-          "visitors",
-          "esa"
-        ],
-        "note": "Vercel 首屏按卡读 /api/status/*；浏览器挂载后直连 api Worker 与 /ws。lyjw131.com 经 ESA 回源 lyjw.me。API 只在布局变化时通知 Vercel 标签失效。"
-      },
-      {
-        "id": "assets",
-        "label": "图片链路",
-        "focus": [
-          "mac_hub",
-          "emby_reporter",
-          "images",
-          "sites",
-          "esa",
-          "visitors"
-        ],
-        "note": "上报器直传 R2，页面里的图片是 /img/ 同源路径：lyjw.me 由 Vercel 边缘 rewrite 回源 R2，lyjw131.com 由 ESA 缓存同一路径并回源 lyjw.me。"
-      }
-    ],
     "repository": {
-      "url": "https://github.com/LYJW131/lyjwpage",
-      "revision": "3719cb1c94666a89620326b817705e032e8f2b23"
+      "url": "https://github.com/LYJW131/lyjwpage.git",
+      "revision": "43ef5895bf8e65ac20f11d5b0516587d7fa7f7a1"
     }
   },
   "components": [
     {
-      "id": "mac_hub",
+      "id": "reporters",
       "type": "external",
-      "label": "Mac Telemetry Hub",
-      "sublabel": "应用 · 音乐 · BLE · 编码 · 图片",
-      "tag": "/api/ingest/mac",
+      "label": "设备与云端上报",
+      "sublabel": "Mac · iPhone · 家庭媒体 · 云端",
+      "tag": "Access token · POST /api/ingest/*",
       "pos": [
-        32,
-        43
+        40,
+        260
       ],
       "size": [
         270,
-        72
+        120
       ],
       "sources": [
         {
           "path": "docs/ops-facts.md"
-        }
-      ]
-    },
-    {
-      "id": "iphone_hub",
-      "type": "external",
-      "label": "iPhone Telemetry Hub",
-      "sublabel": "iPhone 17 Pro · 活动与训练",
-      "tag": "/api/ingest/iphone",
-      "pos": [
-        32,
-        135
-      ],
-      "size": [
-        270,
-        72
-      ],
-      "sources": [
-        {
-          "path": "reporters/iphone-telemetry-hub/README.md"
-        }
-      ]
-    },
-    {
-      "id": "home_assistant",
-      "type": "external",
-      "label": "Home Assistant",
-      "sublabel": "dsm · n100 · HomePod 在放",
-      "tag": "/api/ingest/homepod",
-      "pos": [
-        32,
-        227
-      ],
-      "size": [
-        270,
-        72
-      ],
-      "sources": [
-        {
-          "path": "docs/ops-facts.md"
-        }
-      ]
-    },
-    {
-      "id": "emby_reporter",
-      "type": "external",
-      "label": "Emby 上报器",
-      "sublabel": "dsm 容器 · 在看与海报",
-      "tag": "/api/ingest/emby",
-      "pos": [
-        32,
-        319
-      ],
-      "size": [
-        270,
-        72
-      ],
-      "sources": [
-        {
-          "path": "reporters/emby-reporter/README.md"
-        }
-      ]
-    },
-    {
-      "id": "misaka_reporters",
-      "type": "external",
-      "label": "misaka-jp 容器",
-      "sublabel": "限额 + Cursor · 服务器 · Quest Discord",
-      "tag": "/api/ingest/agents · server · quest",
-      "pos": [
-        32,
-        411
-      ],
-      "size": [
-        270,
-        72
-      ],
-      "sources": [
-        {
-          "path": "reporters/agents-reporter/README.md"
         },
         {
-          "path": "reporters/server-reporter/src/index.ts"
+          "path": "workers/ingress/src/access-auth.ts"
         },
         {
-          "path": "reporters/discord-reporter/README.md"
-        }
-      ]
-    },
-    {
-      "id": "playstation_reporter",
-      "type": "external",
-      "label": "PlayStation 上报器",
-      "sublabel": "n100 容器 · 局域网发现调频",
-      "tag": "/api/ingest/playstation",
-      "pos": [
-        32,
-        503
-      ],
-      "size": [
-        270,
-        72
-      ],
-      "sources": [
-        {
-          "path": "reporters/playstation-reporter/src/cadence.ts"
-        }
-      ]
-    },
-    {
-      "id": "claude_cloud",
-      "type": "external",
-      "label": "Claude Code 云端",
-      "sublabel": "内置 OTLP 遥测 · token 用量",
-      "tag": "/api/ingest/agents/otlp",
-      "pos": [
-        32,
-        595
-      ],
-      "size": [
-        270,
-        72
-      ],
-      "sources": [
-        {
-          "path": "shared/ingest/claude-cloud.ts"
+          "path": "shared/ingest/prepare.ts"
         }
       ]
     },
@@ -218,15 +42,15 @@
       "id": "ingress",
       "type": "security",
       "label": "Ingress Worker",
-      "sublabel": "Cloudflare Access · 按来源鉴权",
-      "tag": "校验 · 收敛 · 按数据层拆开",
+      "sublabel": "按来源鉴权 · 校验与归一化",
+      "tag": "无状态入口 · R2 HEAD 确认",
       "pos": [
-        392,
-        290
+        450,
+        260
       ],
       "size": [
-        230,
-        130
+        240,
+        120
       ],
       "sources": [
         {
@@ -236,7 +60,108 @@
           "path": "workers/ingress/src/access-auth.ts"
         },
         {
-          "path": "workers/ingress/wrangler.toml"
+          "path": "shared/ingest/prepare.ts"
+        }
+      ]
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "API Worker · StateCore",
+      "sublabel": "提交实时状态 · 提供公开模型",
+      "tag": "/api/status/* · 布局变化才失效缓存",
+      "pos": [
+        830,
+        260
+      ],
+      "size": [
+        240,
+        120
+      ],
+      "sources": [
+        {
+          "path": "workers/api/src/state-core.ts"
+        },
+        {
+          "path": "workers/api/src/public-api.ts"
+        },
+        {
+          "path": "workers/api/src/live-platform.ts"
+        }
+      ]
+    },
+    {
+      "id": "state",
+      "type": "database",
+      "label": "StateHub · SQLite DO",
+      "sublabel": "实时快照 · Pulse · 用量账本",
+      "tag": "串行提交 · 实时层唯一权威",
+      "pos": [
+        830,
+        50
+      ],
+      "size": [
+        240,
+        100
+      ],
+      "sources": [
+        {
+          "path": "workers/api/src/state-hub.ts"
+        },
+        {
+          "path": "workers/api/src/storage-driver.ts"
+        }
+      ]
+    },
+    {
+      "id": "lag",
+      "type": "database",
+      "label": "KV · 可滞后快照",
+      "sublabel": "限额 · 活动 · 外部服务统计",
+      "tag": "写入方直写 · API 只读此层",
+      "pos": [
+        450,
+        490
+      ],
+      "size": [
+        240,
+        100
+      ],
+      "sources": [
+        {
+          "path": "shared/lag.ts"
+        },
+        {
+          "path": "workers/ingress/src/lag-ingest.ts"
+        },
+        {
+          "path": "workers/api/src/lag-store.ts"
+        }
+      ]
+    },
+    {
+      "id": "live",
+      "type": "messagebus",
+      "label": "LivePushRoom · DO",
+      "sublabel": "事件广播 · 可见人数",
+      "tag": "可休眠 WebSocket",
+      "pos": [
+        830,
+        490
+      ],
+      "size": [
+        240,
+        100
+      ],
+      "sources": [
+        {
+          "path": "workers/api/src/live-platform.ts"
+        },
+        {
+          "path": "workers/api/src/origin-worker.ts"
+        },
+        {
+          "path": "workers/api/src/live-census.ts"
         }
       ]
     },
@@ -244,19 +169,22 @@
       "id": "collector",
       "type": "backend",
       "label": "Collector Worker",
-      "sublabel": "每分钟 cron · 外部服务",
-      "tag": "GitHub · Vercel · CF · Sentry · PSI · Apple",
+      "sublabel": "Cron 调度 · 按任务节奏拉取",
+      "tag": "Apple 最近播放写实时层",
       "pos": [
-        712,
-        620
+        450,
+        700
       ],
       "size": [
-        250,
-        110
+        240,
+        100
       ],
       "sources": [
         {
           "path": "workers/collector/src/registry.ts"
+        },
+        {
+          "path": "workers/collector/src/jobs/apple-recent.ts"
         },
         {
           "path": "workers/collector/wrangler.toml"
@@ -264,83 +192,34 @@
       ]
     },
     {
-      "id": "state_hub",
-      "type": "database",
-      "label": "SQLite Durable Object",
-      "sublabel": "StateHub · 实时快照与历史",
-      "tag": "唯一权威 · 串行读改写",
+      "id": "external",
+      "type": "external",
+      "label": "外部服务",
+      "sublabel": "Apple · GitHub · Vercel",
+      "tag": "Cloudflare · Sentry · PSI · 厂商状态",
       "pos": [
-        712,
-        40
+        40,
+        700
       ],
       "size": [
-        250,
+        270,
         100
       ],
       "sources": [
         {
-          "path": "workers/api/src/state-hub.ts"
+          "path": "workers/collector/src/registry.ts"
         }
       ]
     },
     {
-      "id": "api",
-      "type": "messagebus",
-      "label": "API Worker",
-      "sublabel": "StateCore · 状态 API",
-      "tag": "/api/status/* · /ws 推送与人数",
-      "pos": [
-        712,
-        290
-      ],
-      "size": [
-        250,
-        130
-      ],
-      "sources": [
-        {
-          "path": "workers/api/src/index.ts"
-        },
-        {
-          "path": "workers/api/src/state-core.ts"
-        },
-        {
-          "path": "workers/api/wrangler.toml"
-        }
-      ]
-    },
-    {
-      "id": "lag_store",
+      "id": "history",
       "type": "database",
-      "label": "KV 可滞后层 · D1 归档",
-      "sublabel": "每条带更新时刻 · 长期历史",
-      "tag": "写入方直写 · api 只读",
+      "label": "D1 · 长期归档",
+      "sublabel": "上报事实 · Pulse · 服务统计",
+      "tag": "无公开读路径",
       "pos": [
-        392,
-        620
-      ],
-      "size": [
-        230,
-        110
-      ],
-      "sources": [
-        {
-          "path": "shared/lag.ts"
-        },
-        {
-          "path": "docs/state-storage.md"
-        }
-      ]
-    },
-    {
-      "id": "images",
-      "type": "cloud",
-      "label": "R2 图片",
-      "sublabel": "上报器直传 · ingress HEAD 确认",
-      "tag": "内容地址 · /img/ 同源路径",
-      "pos": [
-        1082,
-        40
+        830,
+        700
       ],
       "size": [
         240,
@@ -348,7 +227,36 @@
       ],
       "sources": [
         {
-          "path": "src/lib/asset-url.ts"
+          "path": "workers/ingress/src/ingest-archive.ts"
+        },
+        {
+          "path": "workers/api/src/index.ts"
+        },
+        {
+          "path": "workers/collector/src/history.ts"
+        }
+      ]
+    },
+    {
+      "id": "images",
+      "type": "cloud",
+      "label": "R2 · 内容寻址图片",
+      "sublabel": "Mac / Emby 直传",
+      "tag": "图片不经过 Next.js 函数",
+      "pos": [
+        1210,
+        50
+      ],
+      "size": [
+        240,
+        100
+      ],
+      "sources": [
+        {
+          "path": "reporters/emby-reporter/src/r2.ts"
+        },
+        {
+          "path": "docs/ops-facts.md"
         },
         {
           "path": "next.config.ts"
@@ -356,48 +264,54 @@
       ]
     },
     {
-      "id": "sites",
+      "id": "site",
       "type": "backend",
       "label": "Next.js · Vercel",
-      "sublabel": "lyjw.me · Git 自动部署",
-      "tag": "按卡 use cache · 后台重建",
+      "sublabel": "lyjw.me · 按卡 use cache",
+      "tag": "首屏快照 · 后台重建",
       "pos": [
-        1082,
-        290
+        1210,
+        260
       ],
       "size": [
         240,
-        130
+        120
       ],
       "sources": [
+        {
+          "path": "src/lib/first-screen.ts"
+        },
         {
           "path": "src/app/page.tsx"
         },
         {
-          "path": "src/lib/first-screen.ts"
+          "path": "next.config.ts"
         }
       ]
     },
     {
-      "id": "visitors",
+      "id": "browser",
       "type": "frontend",
-      "label": "浏览器",
-      "sublabel": "SWR · /ws",
-      "tag": "直连 api Worker",
+      "label": "访客浏览器",
+      "sublabel": "SWR · 逐卡新鲜度",
+      "tag": "挂载后直连 API 与 /ws",
       "pos": [
-        1082,
-        620
+        1210,
+        490
       ],
       "size": [
-        125,
-        110
+        240,
+        100
       ],
       "sources": [
+        {
+          "path": "src/hooks/use-status.ts"
+        },
         {
           "path": "src/lib/live-socket.ts"
         },
         {
-          "path": "src/hooks/use-live-events.ts"
+          "path": "src/lib/freshness.ts"
         }
       ]
     },
@@ -405,100 +319,49 @@
       "id": "esa",
       "type": "cloud",
       "label": "阿里云 ESA",
-      "sublabel": "lyjw131.com",
-      "tag": "缓存 HTML · JS · /img/*",
+      "sublabel": "lyjw131.com · 回源 lyjw.me",
+      "tag": "HTML · JS · /img/* 缓存",
       "pos": [
-        1237,
-        620
+        1210,
+        700
       ],
       "size": [
-        115,
-        110
+        240,
+        100
       ],
       "sources": [
         {
           "path": "docs/ops-facts.md"
+        },
+        {
+          "path": "next.config.ts"
         }
       ]
     }
   ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Cloudflare · 上报、状态与持久化",
+      "wraps": [
+        "ingress",
+        "api",
+        "state",
+        "lag",
+        "live",
+        "collector",
+        "history"
+      ],
+      "pad": 28
+    }
+  ],
   "connections": [
     {
-      "id": "post_mac",
-      "from": "mac_hub",
+      "id": "ingest",
+      "from": "reporters",
       "to": "ingress",
-      "label": "POST",
-      "variant": "emphasis",
-      "labelAt": [
-        325,
-        79
-      ]
-    },
-    {
-      "id": "post_iphone",
-      "from": "iphone_hub",
-      "to": "ingress",
-      "label": "POST",
-      "variant": "emphasis",
-      "labelAt": [
-        325,
-        171
-      ]
-    },
-    {
-      "id": "post_homepod",
-      "from": "home_assistant",
-      "to": "ingress",
-      "label": "POST",
-      "variant": "emphasis",
-      "labelAt": [
-        325,
-        263
-      ]
-    },
-    {
-      "id": "post_emby",
-      "from": "emby_reporter",
-      "to": "ingress",
-      "label": "POST",
-      "variant": "emphasis",
-      "labelAt": [
-        325,
-        355
-      ]
-    },
-    {
-      "id": "post_misaka",
-      "from": "misaka_reporters",
-      "to": "ingress",
-      "label": "POST",
-      "variant": "emphasis",
-      "labelAt": [
-        325,
-        447
-      ]
-    },
-    {
-      "id": "post_playstation",
-      "from": "playstation_reporter",
-      "to": "ingress",
-      "label": "POST",
-      "variant": "emphasis",
-      "labelAt": [
-        325,
-        539
-      ]
-    },
-    {
-      "id": "post_otlp",
-      "from": "claude_cloud",
-      "to": "ingress",
-      "label": "OTLP",
-      "variant": "emphasis",
-      "labelAt": [
-        325,
-        631
-      ]
+      "label": "鉴权上报",
+      "variant": "emphasis"
     },
     {
       "id": "commit",
@@ -508,109 +371,162 @@
       "variant": "emphasis"
     },
     {
-      "id": "lag_write",
-      "from": "ingress",
-      "to": "lag_store",
-      "label": "可滞后层 · 归档",
-      "labelAt": [
-        507,
-        520
-      ]
+      "id": "state_io",
+      "from": "api",
+      "to": "state",
+      "label": "读写实时状态",
+      "variant": "emphasis"
     },
     {
-      "id": "collect_commit",
+      "id": "lag_write",
+      "from": "ingress",
+      "to": "lag",
+      "label": "写展示快照",
+      "variant": "default"
+    },
+    {
+      "id": "lag_read",
+      "from": "api",
+      "to": "lag",
+      "label": "读取 KV",
+      "variant": "default"
+    },
+    {
+      "id": "poll_external",
       "from": "collector",
-      "to": "api",
-      "label": "实时部分"
+      "to": "external",
+      "label": "拉取",
+      "variant": "default"
     },
     {
       "id": "collect_lag",
       "from": "collector",
-      "to": "lag_store",
-      "label": "外部统计"
+      "to": "lag",
+      "label": "写外部统计",
+      "variant": "default"
     },
     {
-      "id": "store",
+      "id": "collect_realtime",
+      "from": "collector",
+      "to": "api",
+      "label": "最近播放 · RPC",
+      "variant": "default"
+    },
+    {
+      "id": "ingress_archive",
+      "from": "ingress",
+      "to": "history",
+      "label": "异步归档",
+      "variant": "dashed"
+    },
+    {
+      "id": "api_archive",
       "from": "api",
-      "to": "state_hub",
-      "label": "读写状态",
+      "to": "history",
+      "label": "Cron 归档",
+      "variant": "dashed"
+    },
+    {
+      "id": "collector_archive",
+      "from": "collector",
+      "to": "history",
+      "label": "归档统计",
+      "variant": "dashed"
+    },
+    {
+      "id": "broadcast",
+      "from": "api",
+      "to": "live",
+      "label": "提交后广播",
       "variant": "emphasis"
     },
     {
-      "id": "status_read",
-      "from": "sites",
+      "id": "ws",
+      "from": "live",
+      "to": "browser",
+      "label": "/ws · 事件",
+      "variant": "emphasis"
+    },
+    {
+      "id": "direct_read",
+      "from": "browser",
       "to": "api",
-      "label": "/api/status/*",
-      "labelDy": 13
+      "label": "状态 API",
+      "variant": "default"
+    },
+    {
+      "id": "first_screen",
+      "from": "site",
+      "to": "api",
+      "label": "逐卡状态 API",
+      "variant": "default"
     },
     {
       "id": "revalidate",
       "from": "api",
-      "to": "sites",
-      "label": "/api/revalidate",
-      "variant": "dashed",
-      "labelDy": 13
+      "to": "site",
+      "label": "布局变化通知",
+      "variant": "dashed"
     },
     {
-      "id": "push",
-      "from": "api",
-      "to": "visitors",
-      "label": "状态 API · /ws",
-      "variant": "emphasis",
-      "fromSide": "bottom",
-      "toSide": "left"
+      "id": "html",
+      "from": "site",
+      "to": "browser",
+      "label": "首屏 HTML",
+      "variant": "default"
     },
     {
-      "id": "image_rewrite",
-      "from": "images",
-      "to": "sites",
-      "label": "边缘 rewrite /img/*",
-      "labelAt": [
-        1202,
-        215
-      ]
+      "id": "image_upload",
+      "from": "reporters",
+      "to": "images",
+      "label": "Mac / Emby 直传",
+      "variant": "dashed"
     },
     {
-      "id": "page",
-      "from": "sites",
-      "to": "visitors",
-      "fromSide": "bottom",
-      "toSide": "top"
+      "id": "image_origin",
+      "from": "site",
+      "to": "images",
+      "label": "/img/* 边缘回源",
+      "variant": "default"
     },
     {
       "id": "esa_origin",
-      "from": "sites",
-      "to": "esa",
-      "label": "回源",
-      "fromSide": "bottom",
-      "toSide": "top"
+      "from": "esa",
+      "to": "site",
+      "label": "缓存回源",
+      "variant": "default"
     },
     {
-      "id": "esa_page",
+      "id": "esa_html",
       "from": "esa",
-      "to": "visitors"
+      "to": "browser",
+      "label": "大陆入口",
+      "variant": "default"
     }
   ],
   "cards": [
     {
       "dot": "cyan",
-      "title": "上报入口与状态核心分开",
+      "title": "输入按信任边界收敛",
       "items": [
-        "改校验只重新发布 ingress；状态核心不重启，页面的 /ws 连接不断。"
-      ]
-    },
-    {
-      "dot": "emerald",
-      "title": "两层存储",
-      "items": [
-        "实时层只在 Durable Object；可以晚几分钟的数据由写入方直写 KV，过没过时由浏览器按卡判断。"
+        "Mac / iPhone、Home Assistant、Emby、PlayStation、misaka-jp 上报器与 Claude Code OTLP 各用自己的 Access token。",
+        "Ingress 限定每个来源的权限，准备数据后才通过内部 Service Binding 提交；图片由 Mac / Emby 直传 R2。"
       ]
     },
     {
       "dot": "violet",
-      "title": "Vercel 与 ESA",
+      "title": "四种持久化，各有职责",
       "items": [
-        "API 只通知 Vercel 标签失效；ESA 首页按 SWR 自更新，新构建由 CI 刷新预热。"
+        "StateHub 是实时状态与账本的唯一权威；KV 保存可滞后快照，客户端按 updatedAt 判新鲜度。",
+        "D1 只留长期历史，没有公开读入口；R2 只存图片。Apple 凭据使用隔离的 CREDENTIALS KV，不进入公开状态模型。"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "首屏快，状态也要新",
+      "items": [
+        "Vercel 生成首屏时按卡读 API；浏览器挂载后直连 Worker，实时变化走 WebSocket，可滞后卡按各自节奏轮询。",
+        "只有布局变化触发 Vercel 标签失效。ESA 按 SWR 独立更新；图片走同源 /img/*，在边缘回源。"
       ]
     }
   ]
