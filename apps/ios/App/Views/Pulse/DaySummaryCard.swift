@@ -3,12 +3,6 @@ import SwiftUI
 import FoundationModels
 #endif
 
-/**
- 「今天过得怎么样」：把 Pulse 的各项汇总交给设备端的 Apple 基础模型写两句回顾。
-
- 只在这台设备支持 Apple Intelligence 且模型可用时出现。数据不出设备 —— 喂给模型的就是
- 这一页已经显示出来的汇总，模型跑在本机，不走任何云端接口。
- */
 struct DaySummaryCard: View {
     let pulse: PulsePayload
     @State private var summary: String?
@@ -70,7 +64,6 @@ struct DaySummaryCard: View {
     }
     #endif
 
-    /// 喂给模型的事实：只用这一页已经显示的汇总，外加听看玩里出现最多的几个标题
     static func facts(_ pulse: PulsePayload) -> String {
         var lines: [String] = []
         if let coding = pulse.lanes.coding {

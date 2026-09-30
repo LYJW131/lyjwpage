@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// 落地节点：位置、上下行、本计费周期流量、CPU 与内存。超过 `serverStaleMs` 没报写 Unavailable
 struct ServerCard: View {
     @Environment(LiveStore.self) private var store
     let now: Date
@@ -67,10 +66,6 @@ private struct TrafficBar: View {
     }
 }
 
-/**
- PlayStation：在线状态、正在玩的游戏、奖杯总数。点进去是游戏记录和最近奖杯。
- 在线状态超过 `playstationStaleMs` 没更新时不当作此刻。
- */
 struct PlayStationCard: View {
     @Environment(LiveStore.self) private var store
     let now: Date
@@ -183,7 +178,7 @@ struct PlayStationDetailView: View {
             }
         }
         .navigationTitle("PlayStation")
-        // 从收起工具栏的 Now 推入 List 时，保持导航栏稳定，避免转场中的安全区布局循环。
+        // 从收起工具栏的 Now 推入 List 时保持导航栏稳定，否则转场中安全区布局会循环
         .navigationBarTitleDisplayMode(.inline)
         .toolbarMinimizationBehavior(.never, for: .navigationBar)
         .refreshable { await store.refresh([.playing, .playingNow, .trophies]) }
@@ -216,7 +211,6 @@ struct GameRow: View {
     }
 }
 
-/// 服务商状态：编码 agent 与站点依赖的几家的状态页汇总，有事故时列出来
 struct ProviderStatusCard: View {
     @Environment(LiveStore.self) private var store
     let now: Date
@@ -280,10 +274,6 @@ private struct ProviderIncident: Identifiable {
     var id: String { "\(provider)-\(incident.id)" }
 }
 
-/**
- 站点自己：线上构建、仓库统计、部署、错误与在线率、两个常驻上报器。对应站点首页底部的
- 「LYJWPAGE」一栏，只挑在手机上值得看的几项。
- */
 struct SiteCard: View {
     @Environment(LiveStore.self) private var store
     let now: Date

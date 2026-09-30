@@ -1,13 +1,6 @@
 import SwiftUI
 import WidgetKit
 
-/**
- 桌面与锁屏小组件。各自从站点公开的状态 API 取数，不和 App 共享存储：App 平时不在运行，
- 小组件要的恰好就是「访客此刻看到的那一份」，直接读站点最省事也最准。
-
- 刷新节奏由系统定（小组件有每日预算），这里给的只是「下次最好什么时候来」：正在听那张
- 按歌的剩余时长给，圆环按上报器的小时节奏给。
- */
 @main
 struct LyjwpageWidgets: WidgetBundle {
     var body: some Widget {
@@ -16,15 +9,13 @@ struct LyjwpageWidgets: WidgetBundle {
     }
 }
 
-// MARK: 正在听
-
 struct ListeningEntry: TimelineEntry {
     let date: Date
     let title: String?
     let artist: String?
     let source: MusicSource?
     let playing: Bool
-    /// 小组件里不能用 AsyncImage，封面要在时间线里先下载好
+    // 小组件里不能用 AsyncImage，封面要在时间线里先下载好
     let artwork: Data?
     let tint: String?
 }
@@ -41,7 +32,6 @@ struct ListeningProvider: TimelineProvider {
     func getTimeline(in context: Context, completion: @escaping @Sendable (Timeline<ListeningEntry>) -> Void) {
         Task {
             let entry = await Self.load()
-            // 在放就在这首大概放完时再来；没在放就半小时后看看
             let next = entry.playing ? Date.now.addingTimeInterval(5 * 60) : Date.now.addingTimeInterval(30 * 60)
             completion(Timeline(entries: [entry], policy: .after(next)))
         }
@@ -165,8 +155,6 @@ struct ListeningWidgetView: View {
         }
     }
 }
-
-// MARK: 活动圆环
 
 struct RingsEntry: TimelineEntry {
     let date: Date

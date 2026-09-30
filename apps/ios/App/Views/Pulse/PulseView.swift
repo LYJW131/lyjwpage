@@ -1,13 +1,7 @@
 import Charts
 import SwiftUI
 
-/**
- 最近 24 小时的跨域时间线，对应站点的 Pulse 卡。
-
- 状态泳道（编码、听、看、玩）画成 Swift Charts 的区间条，读数泳道（token 速率、充电功率、步数）
- 各画一张小图。在图上按住拖动选一个时刻（`chartXSelection`），下面列出那一刻每条泳道的状态，
- 等于站点上的悬停。段与段之间的空隙是「不知道」，不画成空闲。
- */
+// 段与段之间的空隙是「不知道」，不画成空闲
 struct PulseView: View {
     @Environment(LiveStore.self) private var store
     @State private var selection: Date?
@@ -46,8 +40,6 @@ struct PulseView: View {
     }
 }
 
-// MARK: 泳道
-
 enum PulseLaneKind: String, CaseIterable, Identifiable {
     case coding = "Coding", listening = "Listening", watching = "Watching", gaming = "Gaming"
 
@@ -63,7 +55,6 @@ enum PulseLaneKind: String, CaseIterable, Identifiable {
     }
 }
 
-/// 一段画在图上的区间。`strength` 决定深浅：编码 3 档，听看玩 2 档
 private struct LaneBar: Identifiable {
     let id: Int
     let lane: PulseLaneKind
@@ -208,7 +199,6 @@ private struct ReadingsCard: View {
     }
 }
 
-/// 选中那一刻每条泳道在干什么
 private struct MomentCard: View {
     let pulse: PulsePayload
     let at: Date

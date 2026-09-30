@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// Tab 栏底部附件里的迷你播放器。Tab 栏收起时附件并进同一行，这时只留封面和歌名
 struct MiniPlayer: View {
     @Environment(LiveStore.self) private var store
     @Environment(\.tabViewBottomAccessoryPlacement) private var placement

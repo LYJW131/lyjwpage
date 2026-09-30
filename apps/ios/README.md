@@ -57,7 +57,7 @@ Listen Along 用 `SystemMusic.swift#SystemMusic.listenAlong` 调用系统音乐 
 
 ## 目录与验证
 
-`project.yml` 开头写了哪个目录进哪个目标：`App/` 只进主 App，`Widgets/` 只进小组件，`Core/`（站点模型、取数、推送）主 App 全要、小组件不要 `Live/`，`SharedUI/` 两边都要，`Tests/` 只进单测。
+目录进哪个目标由 `project.yml` 各目标的 `sources` 决定：`App/` 只进主 App，`Widgets/` 只进小组件，`Core/`（站点模型、取数、推送）主 App 全要、小组件不要 `Live/`，`SharedUI/` 两边都要，`Tests/` 只进单测。
 
 `Core/` 不碰任何 UI 框架，`Package.swift` 把它和 `Tests/` 拼成一个 SwiftPM 包，Linux 工具链上也能跑：
 

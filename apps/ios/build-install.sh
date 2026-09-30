@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# 生成工程 → 编译 Release（App + 小组件）→ 装到 iPhone 上。照着 MacTelemetryHub 的 build-release.sh 写的。
 set -euo pipefail
 
 cd "$(dirname "$0")"
@@ -8,9 +7,6 @@ DERIVED_DATA="${TMPDIR:-/tmp}/lyjwpage-ios-xcode"
 TEAM="${LYJWPAGE_IOS_TEAM:-2VTXNMR2GL}"
 DEVICE="${LYJWPAGE_IOS_DEVICE:-}"
 
-# 没指定就自己挑：配对过、且这会儿不是 unavailable 的那台 iPhone 真机。
-# devicectl 也会列出模拟器（reality 是 simulated），它们装不了开发签名的真机包，要排除。
-# 挑出好几台时不猜，让人自己填 —— 装错手机比装不上更烦
 if [[ -z "$DEVICE" ]]; then
   DEVICE="$(xcrun devicectl list devices --json-output - 2>/dev/null | python3 -c '
 import json, sys
@@ -33,22 +29,14 @@ else:
 fi
 
 if [[ -z "$DEVICE" ]]; then
-  # 上面那段已经把「一台都没有」和「好几台」分开说了，这里只补怎么手动指定
   echo "指定一台：LYJWPAGE_IOS_DEVICE=<identifier> $0" >&2
   exit 1
 fi
 
-# 图标以 Tools/generate-icon.swift 为源，每次重画一遍（AppIcon.png 是它的产物）
 swift Tools/generate-icon.swift
 xcodegen generate
 
-# **必须对着具体设备编**，手机得解锁、和这台 Mac 在同一个网络里。
-#
-# 试过 `generic/platform=iOS`（那样编译就不需要手机在场了），不行：自动签名那时
-# 挑的是通配的那份「iOS Team Provisioning Profile: *」，而通配文件里没有 HealthKit
-# 能力，直接报「doesn't include the HealthKit capability」。带特殊能力的包只有对着
-# 一台具体设备才会去申请 / 更新出带那项能力的描述文件。小组件扩展的描述文件也在这一步
-# 顺带申请（它的 bundle id 是主 App 的后缀）。
+# generic/platform=iOS 可能选择不含 HealthKit 的通配描述文件，必须对具体设备自动签名。
 xcodebuild \
   -project Lyjwpage.xcodeproj \
   -scheme Lyjwpage \

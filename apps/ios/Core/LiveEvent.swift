@@ -1,12 +1,7 @@
 import Foundation
 
-/**
- 推送长连接上的一条消息：`{ type, payload }`，对着站点的 `src/lib/live-events.ts#LiveEvent`。
-
- 带数据的事件携带那条端点 `data` 的整份，收到直接替换；`charger` 例外，`history` 是空的，
- 要接在已有曲线上。`presence` / `version` 只是失效通知，收到后回源重取。
- 认不出的类型落到 `.unknown`，不让站点先加事件、App 后发版时整条连接报错。
- */
+// 对着站点 `src/lib/live-events.ts#LiveEvent`。
+// 认不出的类型落到 .unknown：站点先加事件、App 后发版时不能让整条连接报错。
 enum LiveEvent: Sendable {
     case desktop(DesktopPayload)
     case nowListening(NowListeningPayload)

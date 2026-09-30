@@ -15,12 +15,11 @@ enum LibrarySection: String, CaseIterable, Identifiable {
     }
 }
 
-/// 分区选择器放在 Tab 栏的底部附件里（照片 App「年 / 月 / 全部」的位置），标签栏收起时并进同一行；
-/// 所以选中的分区由 `RootView` 持有
+// 分区选择器在 Tab 栏底部附件里（照片 App 的位置），所以选中的分区由 `RootView` 持有
 struct LibraryView: View {
     @Environment(LiveStore.self) private var store
     @Binding var section: LibrarySection
-    /// 推进详情页时 `RootView` 收起分区选择器，免得在详情里切走底下的列表
+    // 推进详情页时 `RootView` 收起分区选择器，免得在详情里切走底下的列表
     @Binding var path: NavigationPath
 
     var body: some View {
@@ -50,8 +49,6 @@ struct LibraryView: View {
             }
         }
     }
-
-    // MARK: 分区
 
     @ViewBuilder
     private var music: some View {
@@ -174,10 +171,6 @@ private struct WatchingRow: View {
     }
 }
 
-/**
- 一集 / 一部的详情。顶部的剧照贴着屏幕上沿，用 `backgroundExtensionEffect` 把它镜像、模糊着
- 延伸到状态栏和导航栏底下，而不是在那里留一条空白。
- */
 private struct WatchingDetailView: View {
     let item: WatchingItem
 

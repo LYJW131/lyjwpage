@@ -35,7 +35,6 @@ struct ServerPayload: Decodable, Sendable, Equatable {
 struct AppVersionPayload: Decodable, Sendable, Equatable {
     let commit: String?
     let message: String?
-    /// ISO 8601
     let builtAt: String?
 }
 
@@ -69,7 +68,6 @@ struct DeploymentCommit: Decodable, Sendable, Equatable {
 
 struct VercelDeployment: Decodable, Sendable, Equatable, Identifiable {
     let id: String
-    /// READY / BUILDING / ERROR / QUEUED / CANCELED
     let state: String
     let createdAt: Double
     let buildDurationMs: Double?
@@ -121,9 +119,8 @@ struct CloudflareWorkersPayload: Decodable, Sendable, Equatable {
 }
 
 struct SentryUptime: Decodable, Sendable, Equatable {
-    /// up / down / …
     let status: String?
-    /// 0–1
+    // 0–1，不是百分比。
     let availability30d: Double?
 }
 

@@ -1,10 +1,5 @@
 import SwiftUI
 
-/**
- Emby 正在播放，对应站点的 NowWatchingCard：只在真在播时出现。
-
- 进度用站点出响应那一刻推算好的百分比；没暂停时再按经过的时间往前推，和站点一样不等下一次推送。
- */
 struct NowWatchingCard: View {
     @Environment(LiveStore.self) private var store
     let now: Date
@@ -46,7 +41,6 @@ struct NowWatchingCard: View {
     }
 }
 
-/// 画面、音轨、码率、播放方式，一行一个小标签
 struct WatchingSpecs: View {
     let playing: ResolvedNowPlaying
 
@@ -101,10 +95,6 @@ struct WatchingSpecs: View {
     }
 }
 
-/**
- 充电头与充电宝，对应站点媒体区左边那一格：只在有实际输出时出现，两个都在就上下排。
- 充电头的功率曲线来自它自己的历史点，推送来的新读数接在曲线末尾。
- */
 struct ChargingCard: View {
     @Environment(LiveStore.self) private var store
     let now: Date

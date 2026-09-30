@@ -1,13 +1,7 @@
 import Foundation
 
-/**
- 最近 24 小时的跨域时间线，`src/lib/types.ts#PulsePayload`。
-
- 载荷是列式的：每条泳道是几列等长数组，时间是相对 `window.from` 的**秒**。这里在解码时
- 就展开成一行一段，界面不用再对齐下标。段与段之间的空隙是「不知道」，不是「空闲」。
-
- 每条泳道各自宽松解码：站点那侧的卡片也是丢掉畸形的那条、其余照画。
- */
+// 时间是相对 window.from 的秒；段与段之间的空隙是「不知道」，不是「空闲」。
+// 每条泳道各自宽松解码：与站点一致，丢掉畸形的那条、其余照画。
 struct PulsePayload: Decodable, Sendable, Equatable {
     let generatedAt: Double
     let window: PulseWindow
@@ -51,14 +45,14 @@ struct PulseLanes: Decodable, Sendable, Equatable {
     }
 }
 
-/// 一段区间，秒，相对 `window.from`
+// 秒，相对 window.from。
 struct PulseSpan<Value: Sendable & Equatable>: Sendable, Equatable {
     let startSec: Double
     let endSec: Double
     let value: Value
 }
 
-/// 列不等长就是畸形，整条泳道作废
+// 列不等长就是畸形，整条泳道作废。
 struct PulseColumnMismatch: Error {}
 
 private func zipColumns<Value>(
@@ -70,7 +64,7 @@ private func zipColumns<Value>(
     return values.indices.map { PulseSpan(startSec: start[$0], endSec: end[$0], value: values[$0]) }
 }
 
-/// 编码泳道的取值：0 都没有，1 只有前台应用，2 只有 agent，3 两者同时
+// 取值：0 都没有，1 只有前台应用，2 只有 agent，3 两者同时。
 struct PulseCodingLane: Decodable, Sendable, Equatable {
     let segments: [PulseSpan<Int>]
     let humanSeconds: Double
@@ -91,7 +85,7 @@ struct PulseCodingLane: Decodable, Sendable, Equatable {
 }
 
 struct PulseStateValue: Sendable, Equatable {
-    /// 听 / 看：0 空闲、1 暂停、2 在放；玩：0 离线、1 在线、2 在游戏里
+    // 听 / 看：0 空闲、1 暂停、2 在放；玩：0 离线、1 在线、2 在游戏里。
     let state: Int
     let title: String?
     let subtitle: String?
@@ -125,7 +119,7 @@ struct PulseStateLane: Decodable, Sendable, Equatable {
 }
 
 struct PulsePowerLane: Decodable, Sendable, Equatable {
-    /// 瓦
+    // 瓦。
     let segments: [PulseSpan<Double>]
     let currentPowerW: Double?
     let peakW: Double?

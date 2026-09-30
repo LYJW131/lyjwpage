@@ -1,11 +1,6 @@
 import SwiftUI
 
-/**
- Vibe Coding 卡：今天的 token、此刻在用的 agent、累计用量。点进去是年度热力图和账号限额。
-
- 「今天」按站点时区的日历算，某个 agent 最近一天不是今天就不计进今天 —— 不把昨天的数当今天的。
- 某一路来源采集失败时标 Partial，不把缺的那部分当成 0。
- */
+// 「今天」按站点时区算，agent 最近一天不是今天就不计入；某路来源失败标 Partial，不把缺的当成 0
 struct CodingCard: View {
     @Environment(LiveStore.self) private var store
     let now: Date
@@ -132,7 +127,6 @@ private struct AgentUsageRow: View {
                 Text(agent.latestModel ?? "No model")
                 Spacer()
                 if let day = agent.lastDay {
-                    // 最近一天不是今天就写明是哪天
                     Text(day.date == today ? "Today" : day.date)
                 }
             }
@@ -187,10 +181,7 @@ private struct LimitsRow: View {
     }
 }
 
-/**
- 年度 token 热力图：一列一周、一行一天，颜色按当天用量在全年里的分位分五档（和站点的格子一个意思）。
- 用 Canvas 画，365 格不值得各起一个视图。
- */
+// 用 Canvas 画：365 格不值得各起一个视图
 private struct TokenHeatmap: View {
     let year: CodingYearPayload
 
@@ -213,7 +204,6 @@ private struct TokenHeatmap: View {
         .defaultScrollAnchor(.trailing)
     }
 
-    /// 周 → [(星期几 0–6, token)]，第 0 列从 origin 那天所在的周开始
     private func cellsByWeek() -> [[(Int, Double)]] {
         guard let origin = Self.parse(year.origin) else { return [] }
         var calendar = Calendar(identifier: .gregorian)

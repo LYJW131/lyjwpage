@@ -29,7 +29,6 @@ struct PlaystationNowPlaying: Decodable, Sendable, Equatable {
 struct PlaystationPresencePayload: Decodable, Sendable, Equatable {
     let observedAt: Double
     let online: Bool
-    /// availableToPlay / doNotDisturb / unavailable
     let availability: String?
     let platform: String?
     let lastOnlineAt: Double?
@@ -50,7 +49,7 @@ struct TrophyProfile: Decodable, Sendable, Equatable {
     let avatarUrl: String?
     let plus: Bool
     let level: Int
-    /// 0–100，距下一级的进度
+    // 0–100，距下一级的进度。
     let levelProgress: Double
 }
 
@@ -68,7 +67,7 @@ struct TrophyUnlock: Decodable, Sendable, Equatable {
     let iconUrl: String?
     let earnedAt: Double
 
-    /// `id` 只在同一个奖杯表里唯一
+    // id 只在同一个奖杯表里唯一。
     var uniqueID: String { "\(npCommunicationId)-\(id)" }
 }
 
@@ -77,7 +76,7 @@ struct TrophyTitleDigest: Decodable, Sendable, Equatable, Identifiable {
     let name: String
     let localizedName: String?
     let titleIds: [String]
-    /// 0–100
+    // 0–100
     let progress: Double
     let defined: TrophyCounts
     let earned: TrophyCounts
@@ -88,7 +87,7 @@ struct TrophyTitleDigest: Decodable, Sendable, Equatable, Identifiable {
 struct TrophiesSummaryPayload: Decodable, Sendable, Equatable {
     let observedAt: Double
     let profile: TrophyProfile
-    /// 总数用这份，不用 `profile` 里那份（两边的统计时刻不同）
+    // 总数用这份，不用 profile 里那份：两边统计时刻不同。
     let earned: TrophyCounts
     let recent: [TrophyUnlock]
     let titles: [TrophyTitleDigest]

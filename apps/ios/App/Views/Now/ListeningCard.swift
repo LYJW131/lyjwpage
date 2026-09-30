@@ -1,11 +1,5 @@
 import SwiftUI
 
-/**
- 正在听 / 最近听，对应站点的 ListeningCard。
-
- 主位放此刻在放的那一首（Mac 的 Apple Music 或 HomePod）；没在放就放最近听的第一张。
- 下面几行是最近听，点开进 Apple Music。完整的正在播放（进度、歌词）在底部附件里点开。
- */
 struct ListeningCard: View {
     @Environment(LiveStore.self) private var store
     let now: Date
@@ -78,7 +72,6 @@ private struct LiveTrackRow: View {
     }
 }
 
-/// 进度按上报那一刻的位置往前推，每秒走一格；暂停时停住
 struct PlaybackProgress: View {
     let track: LocalNowPlaying
 

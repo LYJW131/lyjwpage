@@ -1,13 +1,7 @@
 import Charts
 import SwiftUI
 
-/**
- 活动圆环与最近训练，对应站点的 Activity 卡。
-
- 读的是站点那份（这台 iPhone 自己报上去的），不是本机 HealthKit：App 里看到的应当就是访客
- 看到的。超过 `Freshness.activityStaleMs` 没有新读数写 Unavailable；手表那边已经过了这一天
- （`currentAtSource == false`）时写明是哪天的圈。
- */
+// 读站点那份而不是本机 HealthKit：App 里看到的应当就是访客看到的
 struct ActivityCard: View {
     @Environment(LiveStore.self) private var store
     let now: Date
@@ -62,7 +56,7 @@ struct ActivityCard: View {
 
     private struct Extra { let value: String; let unit: String?; let caption: String }
 
-    /// 选填的三项取不到就不画那一格，不当成 0
+    // 选填的三项取不到就不画那一格，不当成 0
     private func extraMetrics(_ activity: ActivityPayload) -> [Extra] {
         var extras: [Extra] = []
         if let steps = activity.steps { extras.append(Extra(value: Format.integer(steps), unit: nil, caption: "Steps")) }
@@ -94,7 +88,6 @@ private struct RingLine: View {
     }
 }
 
-/// 最近训练横向一排，停稳后整格对齐（站点「条目式滚动要吸附」的原生版）
 struct WorkoutsStrip: View {
     let workouts: [Workout]
 
@@ -144,7 +137,7 @@ struct WorkoutTile: View {
     }
 }
 
-/// 训练类型名 → SF Symbol。名字是 `WorkoutsModule` 上报的那套英文名
+// 键是 `WorkoutsModule` 上报的那套英文训练类型名
 enum WorkoutSymbols {
     static func symbol(for type: String) -> String {
         switch type {
@@ -177,7 +170,6 @@ enum WorkoutSymbols {
     }
 }
 
-/// 充电头最近一段的功率，Swift Charts 画一条面积线
 struct PowerSparkline: View {
     let samples: [ChargerSample]
 
