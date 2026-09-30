@@ -1,0 +1,79 @@
+name: Architecture diagram
+
+on:
+  pull_request:
+    paths:
+      - docs/architecture.*
+      - docs/architecture-*.png
+      - scripts/architecture-diagram.mjs
+      - scripts/architecture-diagram.test.mjs
+      - scripts/archify.lock.json
+      - .github/workflows/architecture-diagram.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: architecture-diagram-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: node --test scripts/architecture-diagram.test.mjs
+
+      - name: Install locked Archify toolchain
+        run: pnpm docs:architecture -- --setup
+
+      - name: Install and verify CJK fonts
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends --yes fonts-noto-cjk
+          fc-cache -f
+          fc-match --format='%{family}\n' 'Noto Sans CJK SC:charset=4e2d' | grep -F 'Noto Sans CJK SC'
+          fc-match --format='%{family}\n' 'Noto Sans Mono CJK SC:charset=4e2d' | grep -F 'Noto Sans Mono CJK SC'
+
+      - name: Locate Chrome
+        run: |
+          chrome="$(command -v google-chrome || command -v chromium)"
+          test -x "$chrome"
+          echo "ARCHIFY_CHROME=$chrome" >> "$GITHUB_ENV"
+
+      - name: Finalize and export diagram
+        shell: bash
+        run: |
+          mkdir -p .archify/evidence
+          pnpm docs:architecture 2>&1 | tee .archify/evidence/generation.log
+
+      - name: Upload diagram and verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: architecture-diagram-${{ github.sha }}
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            docs/architecture.json
+            docs/architecture.html
+            docs/architecture-light.png
+            docs/architecture-dark.png
+            docs/architecture.receipt.json
+            docs/architecture.delivery.json
+            .archify/evidence/

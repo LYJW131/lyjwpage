@@ -43,4 +43,19 @@ python3 scripts/desktop-marks-gif.py --theme dark
 - 原始架构定义：[`architecture.json`](./architecture.json) 与 [`architecture.receipt.json`](./architecture.receipt.json)
 - 离线渲染快照：[`architecture-dark.png`](./architecture-dark.png) / [`architecture-light.png`](./architecture-light.png)
 
-改图只改 `architecture.json`，其余产物由 [`scripts/architecture-diagram.mjs`](../scripts/architecture-diagram.mjs) 一次出齐：`pnpm docs:architecture -- --validate` 反复校验布局（showcase 九项检查），通过后 `pnpm docs:architecture` 渲染 HTML、驱动无头 Chrome 用查看器自带的 PNG 导出重出明暗快照并缩到 2x、跑四个桌面视口的溢出检查、写 `architecture.receipt.json`。依赖本机的 archify 技能（默认 `~/.claude/skills/archify`，可用 `ARCHIFY_DIR` 覆盖）和 Chrome；跑完看一眼 PNG，把 receipt 里两处 `pending` 改成 `passed`。
+改图只改 `architecture.json`，其余产物由 [`scripts/architecture-diagram.mjs`](../scripts/architecture-diagram.mjs) 生成。工具版本与官方提交锁定在 [`scripts/archify.lock.json`](../scripts/archify.lock.json)，不依赖或升级全局技能：
+
+```sh
+pnpm docs:architecture -- --setup       # 安装到仓库内忽略的 .archify/toolchain
+pnpm docs:architecture                  # 完整生成与检查
+pnpm docs:architecture -- --validate    # 仅作布局失败的定向诊断
+pnpm docs:architecture -- --skip-visual # 省略额外截图，仍运行 browser-check 和明暗 PNG 导出
+```
+
+也可用 `ARCHIFY_DIR` 指向已有安装的 `archify/` 包目录；脚本强制核对锁文件中的版本，完整源码提交与干净工作树核对只适用于隔离安装。需要本机 Chrome / Chromium，可用 `ARCHIFY_CHROME` 指定可执行文件。浏览器默认保留沙箱；只有 root 或显式 `ARCHIFY_CHROME_NO_SANDBOX=1` 才禁用，后者仅用于可信、隔离且无法提供浏览器沙箱的执行环境。
+
+完整生成先运行 `finalize`，依次完成 showcase 校验、交付、严格溯源检查和真实浏览器检查，任一退出非零就停止。再由查看器自带 PNG 导出生成明暗快照，用渲染后的 SVG `viewBox` 确定 2x 尺寸，不要求候选 JSON 固定画布。默认额外运行严格溯源的 `visual-check` 并保留截图；每次的原始检查回执与截图使用独立 `.archify/evidence/` 目录，不删除旧证据。HTML 旁的 `architecture.delivery.json` 是严格溯源所需交付元数据。
+
+`architecture.receipt.json` 记录当前规格、HTML、PNG 的哈希及完整浏览器检查回执。`--skip-visual` 只把额外截图标为未请求，不复用上一份视口或人工审阅结论。自动检查通过不等于视觉审阅通过：打开当前 HTML 和明暗 PNG，检查节点、线路、标签与导出边界后，再按实际结果更新 `visual_review`、`static_diagram_review` 和 `correction_rounds`；若改了候选，完整重跑。仅在确实检查后填写 `passed`。
+
+架构输入、生成脚本或锁文件变更的 PR 会触发 [Architecture diagram 检查](../.github/workflows/architecture-diagram.yml)：在 CI 安装隔离工具链、完整生成并上传 HTML、明暗 PNG 与原始证据。任务失败也上传已有文件和日志，必须结合任务退出状态、当前规格与产物哈希判断，不把旧产物当作新生成结果。工作流只读仓库，不提交或部署。
