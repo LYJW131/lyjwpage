@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 import Observation
 
@@ -178,6 +179,9 @@ struct DeviceView: View {
         }
         // 回前台的那次上报在 App 层（`HubForeground`），这里只负责把结果读回来
         .task { await model.refresh() }
+        .onReceive(NotificationCenter.default.publisher(for: .hubDidReport).receive(on: DispatchQueue.main)) { _ in
+            Task { await model.refresh() }
+        }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
             activityEnabled = HubSettings.isEnabled(Modules.activity.id)

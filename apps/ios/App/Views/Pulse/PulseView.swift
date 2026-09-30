@@ -18,10 +18,11 @@ struct PulseView: View {
                 VStack(spacing: 14) {
                     if let pulse = store.pulse {
                         StateLanesCard(pulse: pulse, selection: $selection)
+                        ReadingsCard(pulse: pulse, selection: $selection)
+                        // 放在两张图下面：拖动时插进来的明细不会把手指下的图顶走
                         if let selection {
                             MomentCard(pulse: pulse, at: selection)
                         }
-                        ReadingsCard(pulse: pulse, selection: $selection)
                         SummaryCard(pulse: pulse)
                         DaySummaryCard(pulse: pulse)
                     } else {

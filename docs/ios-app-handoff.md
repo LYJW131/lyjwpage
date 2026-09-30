@@ -11,6 +11,8 @@
 - `Core/`（站点模型、取数排期、推送连接、过期规则，纯 Foundation）在 Swift 6 语言模式、严格并发检查下编译通过；`Tests/` 全部通过，其中包括对着生产 api Worker 抓的每个端点快照解码、对着 `workers/api/dev-fixtures/` 的站点开发夹具解码。
 - 所有 Swift 文件（含 `App/`、`Widgets/`、`SharedUI/`）在 Swift 6 模式下语法解析通过。
 - 用到的 iOS 26 / 27 API 的名字与签名逐个对过 Apple 文档（`developer.apple.com/tutorials/data/documentation/<路径>.json`）。
+- `apps/ios/project.yml` 用在 Linux 上编出来的 XcodeGen 生成过一次工程：三个目标的源文件归属（小组件不含 `Core/Live/`）、小组件扩展嵌入主 App、带测试目标的 scheme 都对。
+- 界面层做过一轮对着 Core 声明与 SDK 文档的人工审查，查出并修掉了一处同模块重名（上报器与站点读侧都叫 `ActivityPayload`）。
 
 **没验证的**：`App/`、`Widgets/`、`SharedUI/` 从没被真正编译过（SwiftUI、UIKit、HealthKit、WidgetKit、AppIntents、Charts、FoundationModels 在 Linux 上都没有），小组件扩展和快捷指令没跑过，真机和后台唤醒没测过。第一次编译出现一批编译错误是预期的。
 

@@ -15,7 +15,12 @@ struct ListeningCard: View {
         let track = store.liveTrack(now: now)
         let item = store.listeningItem(for: live) ?? (track == nil ? store.listening?.items.first : nil)
 
-        Card(title: "Listening", systemImage: "music.note", status: track == nil ? .idle : .live) {
+        Card(
+            title: "Listening",
+            systemImage: "music.note",
+            status: track == nil ? .idle : .live,
+            tint: item?.palette.first.flatMap { Color(hex: $0) }
+        ) {
             if let track {
                 LiveTrackRow(track: track, item: item, now: now)
             } else if let item {
@@ -35,17 +40,6 @@ struct ListeningCard: View {
                     }
                 }
             }
-        }
-        .background(alignment: .top) { paletteGlow(item) }
-    }
-
-    /// 站点用专辑配色给媒体卡上色：颜色服务于内容，其余界面保持灰阶
-    @ViewBuilder
-    private func paletteGlow(_ item: ListeningItem?) -> some View {
-        if let hex = item?.palette.first, let color = Color(hex: hex) {
-            LinearGradient(colors: [color.opacity(0.28), .clear], startPoint: .top, endPoint: .center)
-                .clipShape(.rect(cornerRadius: 26, style: .continuous))
-                .allowsHitTesting(false)
         }
     }
 }

@@ -112,6 +112,17 @@ extension LiveStore {
         Freshness.isStale(now: now, at: row.updatedAt, windowMs: Freshness.agentLimitsStaleMs)
     }
 
+    /**
+     Emby 此刻的进度（0–100）。站点给的百分比已推算到它出响应的那一刻；没暂停时再按经过的时间
+     往前推，和站点一样不等下一次推送。
+     */
+    func nowWatchingProgress(now: Date) -> Double? {
+        guard let playing = nowWatching?.nowPlaying, let base = playing.progress else { return nil }
+        guard !playing.paused, let duration = playing.durationMs, duration > 0, let at = nowWatchingAt else { return base }
+        let advanced = base + max(0, now.epochMilliseconds - at) / duration * 100
+        return min(max(advanced, 0), 100)
+    }
+
     /// 站点上线的构建里，这一刻在 Emby 上播的那一集
     var nowWatchingItem: (playing: ResolvedNowPlaying, item: WatchingItem?)? {
         guard let playing = nowWatching?.nowPlaying else { return nil }

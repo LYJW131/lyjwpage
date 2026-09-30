@@ -32,6 +32,8 @@ final class LiveStore {
     var agentStatus: AgentStatusPayload?
     var watching: WatchingPayload?
     var nowWatching: NowWatchingPayload?
+    /// `nowWatching.nowPlaying.progress` 推算到的那一刻（站点出响应的时刻；推送来的按收到的时刻），epoch 毫秒
+    var nowWatchingAt: Double?
     var playing: PlaystationPlayingPayload?
     var playingNow: PlaystationPresencePayload?
     var trophies: TrophiesSummaryPayload?
@@ -172,7 +174,11 @@ final class LiveStore {
         case .limits: return try apply(data, Status.limits) { self.limits = $0 }
         case .agentStatus: return try apply(data, Status.agentStatus) { self.agentStatus = $0 }
         case .watching: return try apply(data, Status.watching) { self.watching = $0 }
-        case .nowWatching: return try apply(data, Status.nowWatching) { self.nowWatching = $0 }
+        case .nowWatching:
+            let envelope = try StatusClient.decoder.decode(StatusEnvelope<NowWatchingPayload>.self, from: data)
+            guard let value = envelope.data else { throw FeedUnavailable(reason: envelope.error ?? "Unavailable") }
+            setNowWatching(value, at: envelope.servedAt)
+            return envelope.updatedAt
         case .playing: return try apply(data, Status.playing) { self.playing = $0 }
         case .playingNow: return try apply(data, Status.playingNow) { self.playingNow = $0 }
         case .trophies: return try apply(data, Status.trophies) { self.accept(trophies: $0) }
@@ -205,7 +211,7 @@ final class LiveStore {
         case let .charger(payload): accept(pushedCharger: payload)
         case let .powerBank(payload): accept(powerBank: payload)
         case let .codingNow(payload): codingNow = payload
-        case let .nowWatching(payload): nowWatching = payload
+        case let .nowWatching(payload): setNowWatching(payload, at: nil)
         case let .watching(payload): watching = payload
         case let .playingNow(payload): playingNow = payload
         case let .playing(payload): playing = payload
@@ -219,6 +225,11 @@ final class LiveStore {
         case .unknown:
             break
         }
+    }
+
+    private func setNowWatching(_ payload: NowWatchingPayload, at servedAt: Double?) {
+        nowWatching = payload
+        nowWatchingAt = servedAt ?? Date().epochMilliseconds
     }
 
     // MARK: 顺序闸

@@ -34,7 +34,7 @@ struct NowWatchingCard: View {
                     }
                     .clipShape(.rect(cornerRadius: 16, style: .continuous))
 
-                    if let progress = playing.progress {
+                    if let progress = store.nowWatchingProgress(now: now) {
                         ProgressView(value: min(max(progress, 0), 100), total: 100)
                             .tint(.primary)
                     }

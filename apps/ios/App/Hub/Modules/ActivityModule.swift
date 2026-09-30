@@ -157,7 +157,7 @@ final class ActivityModule: TelemetryModule {
         }
     }
 
-    /// 步数、距离、爬楼。取不到就是 nil，不是 0 —— 见 ActivityPayload 的注释
+    /// 步数、距离、爬楼。取不到就是 nil，不是 0 —— 见 ActivityReport 的注释
     private func extraCounts(for reading: RingReading) async -> ExtraCounts {
         let start = reading.dayStart
         let end = min(Date(), start.addingTimeInterval(24 * 60 * 60))
@@ -272,7 +272,7 @@ private struct CompletionBox: @unchecked Sendable {
  所以取不到时**整个字段不出现**，而不是发一个 0 —— 站点据此把「没有这项」
  （那一格不渲染）和「今天是 0」分开。
  */
-struct ActivityPayload: Codable, Sendable, Equatable {
+struct ActivityReport: Codable, Sendable, Equatable {
     /// 手表本地的那一天，YYYY-MM-DD。取自 summary 自己的 dateComponents
     let date: String
     /// 当前时区的 UTC 偏移，秒。和 Mac 上报器的时区模块同名同单位
@@ -354,8 +354,8 @@ struct RingReading: Sendable {
         moveGoalKcal > 0 && exerciseGoalMinutes > 0 && standGoalHours > 0
     }
 
-    func payload(extras: ExtraCounts, history: ActivityHistoryPayload) -> ActivityPayload {
-        ActivityPayload(
+    func payload(extras: ExtraCounts, history: ActivityHistoryPayload) -> ActivityReport {
+        ActivityReport(
             date: date,
             secondsFromGMT: secondsFromGMT,
             moveKcal: Int(moveKcal.rounded()),

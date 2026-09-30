@@ -4,7 +4,7 @@ import Foundation
  一个上报模块：交出快照、注册自己的唤醒源（HealthKit 的观测之类）。
 
  在 `Modules.all` 登记即可，`TelemetryHub` 不认识任何具体模块 —— 这个协议为此存在。
- 界面那层反过来是具体的：`DashboardView` 直接认识各个模块并画它们，让协议再背一个
+ 界面那层反过来是具体的：`DeviceView` 直接认识各个模块并画它们，让协议再背一个
  `dashboardView()` 就过线了，每个模块的展示形态本来就千差万别。
  */
 protocol TelemetryModule: Sendable {

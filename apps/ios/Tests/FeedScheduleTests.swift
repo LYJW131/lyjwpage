@@ -39,3 +39,30 @@ import Testing
         }
     }
 }
+
+/// 派生判断对着站点首页的规则
+@MainActor
+@Suite struct DerivedStateTests {
+    private func watching(paused: Bool) throws -> NowWatchingPayload {
+        let json = """
+        {"nowPlaying":{"itemId":"1","paused":\(paused),"progress":50,"client":null,"deviceName":null,"playMethod":null,"media":null,"positionMs":600000,"durationMs":1200000},"current":null}
+        """
+        return try StatusClient.decoder.decode(NowWatchingPayload.self, from: Data(json.utf8))
+    }
+
+    @Test func watchingProgressAdvancesWhilePlaying() throws {
+        let store = LiveStore()
+        store.nowWatching = try watching(paused: false)
+        store.nowWatchingAt = 1_000_000
+        // 12 万毫秒是 2 分钟，占 20 分钟片长的 10%
+        #expect(store.nowWatchingProgress(now: Date(epochMilliseconds: 1_120_000)) == 60)
+        #expect(store.nowWatchingProgress(now: Date(epochMilliseconds: 99_000_000)) == 100)
+    }
+
+    @Test func pausedWatchingProgressStaysPut() throws {
+        let store = LiveStore()
+        store.nowWatching = try watching(paused: true)
+        store.nowWatchingAt = 1_000_000
+        #expect(store.nowWatchingProgress(now: Date(epochMilliseconds: 1_120_000)) == 50)
+    }
+}

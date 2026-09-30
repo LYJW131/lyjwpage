@@ -27,6 +27,7 @@ Swift 里抄过来的常量逐个标了 `源：path#symbol`。站点重命名字
 
 ## 坑
 
+- 主 App 目标把 `App/`、`Core/`、`SharedUI/` 编进同一个模块：三处的类型名不能重复（上报器的载荷叫 `ActivityReport`，站点读回来的叫 `ActivityPayload`），`swift test` 只编 `Core/` 查不出来。
 - 块注释 `/** … */` 里别写 `/*`（比如路径通配 `/api/status/*`）：Swift 的块注释可嵌套，会把后面整个文件吞掉。
 - 站点状态端点失败时照样回 200、信封里 `ok: false`；解码信封时 `data` 只在 `ok` 为真时存在。
 - 推送 `/ws` 握手必须带白名单里的 `Origin`；状态 GET 反过来别带。

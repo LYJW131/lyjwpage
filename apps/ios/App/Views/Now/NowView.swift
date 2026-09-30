@@ -162,7 +162,7 @@ struct NowView: View {
 
     private var footer: some View {
         HStack(spacing: 6) {
-            if let online = store.online {
+            if store.socketState == .open, let online = store.online {
                 LiveDot(size: 6)
                 Text("\(online) online now")
             } else {
@@ -275,8 +275,6 @@ private struct ArrangeCardsView: View {
             let index = remaining.firstIndex { $0.id == id } ?? remaining.endIndex
             remaining.insert(contentsOf: moving, at: index)
         case .end:
-            remaining.append(contentsOf: moving)
-        @unknown default:
             remaining.append(contentsOf: moving)
         }
         return remaining

@@ -122,7 +122,7 @@ struct ListeningWidgetView: View {
             if let hex = entry.tint, let color = Color(widgetHex: hex) {
                 LinearGradient(colors: [color.opacity(0.45), color.opacity(0.15)], startPoint: .top, endPoint: .bottom)
             } else {
-                Color.clear
+                Rectangle().fill(.fill.tertiary)
             }
         }
     }
@@ -254,7 +254,7 @@ struct RingsWidgetView: View {
                 .foregroundStyle(.secondary)
             }
         }
-        .containerBackground(for: .widget) { Color.clear }
+        .containerBackground(.fill.tertiary, for: .widget)
     }
 
     private func rings(_ activity: ActivityPayload, lineWidth: CGFloat, spacing: CGFloat) -> some View {

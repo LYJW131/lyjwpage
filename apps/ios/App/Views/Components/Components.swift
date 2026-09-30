@@ -11,6 +11,8 @@ struct Card<Content: View>: View {
     var title: String
     var systemImage: String
     var status: CardStatus?
+    /// 媒体卡用专辑配色从顶上晕一层：颜色服务于内容，其余卡保持灰阶
+    var tint: Color? = nil
     @ViewBuilder var content: Content
 
     var body: some View {
@@ -27,7 +29,15 @@ struct Card<Content: View>: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(uiColor: .secondarySystemGroupedBackground), in: .rect(cornerRadius: 26, style: .continuous))
+        .background {
+            let shape = RoundedRectangle(cornerRadius: 26, style: .continuous)
+            ZStack {
+                shape.fill(Color(uiColor: .secondarySystemGroupedBackground))
+                if let tint {
+                    shape.fill(LinearGradient(colors: [tint.opacity(0.28), .clear], startPoint: .top, endPoint: .center))
+                }
+            }
+        }
     }
 }
 

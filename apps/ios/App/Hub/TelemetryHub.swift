@@ -105,6 +105,8 @@ actor TelemetryHub {
         inFlight = task
         let outcome = await task.value
         inFlight = nil
+        // 回前台那次上报和「iPhone」页各跑各的，结果靠这条通知让页面重读；发在主线程，订阅方直接改界面
+        await MainActor.run { NotificationCenter.default.post(name: .hubDidReport, object: nil) }
         return outcome
     }
 
@@ -225,4 +227,9 @@ enum HubError: Error, CustomStringConvertible {
         }
         return error
     }
+}
+
+extension Notification.Name {
+    /// 一次上报有了结论（发了、没变、跳过、失败）之后发
+    static let hubDidReport = Notification.Name("lyjwpage.hubDidReport")
 }
