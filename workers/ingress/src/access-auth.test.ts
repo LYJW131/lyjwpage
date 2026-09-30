@@ -100,7 +100,6 @@ test("a local test key set is honoured only under the dev issuer", async () => {
   setJwksFetcherForTests(async () => { throw new Error("dev keys must not hit the network"); });
   const token = await sign(claims({ iss: DEV_ACCESS_ISSUER }));
   assert.equal((await authorize(request({ "Cf-Access-Jwt-Assertion": token }), dev, "ingest:mac")).ok, true);
-  // 真实 team 域名下误配了 ACCESS_DEV_JWKS：照样去拉线上公钥，不认测试钥匙
   const prod: AccessEnv = { ...env, ACCESS_DEV_JWKS: jwks };
   setJwksFetcherForTests(async () => []);
   assert.equal((await authorize(request({ "Cf-Access-Jwt-Assertion": await sign(claims()) }), prod, "ingest:mac")).ok, false);
@@ -115,11 +114,9 @@ test("an unknown kid refetches the key set, at most once a minute", async () => 
   assert.equal((await verify(await jwt(), t0))?.commonName, MAC);
   assert.equal((await verify(await jwt(), t0 + 1000))?.commonName, MAC);
   assert.equal(fetches, 1);
-  // 编造的 kid：冷却期内不出网
   assert.equal(await verify(await jwt({}, "forged"), t0 + 2000), null);
   assert.equal(await verify(await jwt({}, "forged"), t0 + 3000), null);
   assert.equal(fetches, 1);
-  // 冷却过了才重拉
   assert.equal(await verify(await jwt({ exp: Math.floor(t0 / 1000) + 3600 }, "forged"), t0 + 61_000), null);
   assert.equal(fetches, 2);
 });

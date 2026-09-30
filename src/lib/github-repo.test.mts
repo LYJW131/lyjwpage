@@ -7,9 +7,8 @@ import {
   type ContributorStat,
 } from "./github-repo.ts";
 
-const W1 = 175_599_3600; // 2025-08-24 周日 0 点 UTC（秒）
+const W1 = 175_599_3600;
 const W2 = W1 + 604_800;
-/** 落在 W2 那周的周三中午。 */
 const NOW = (W2 + 3 * 86_400 + 43_200) * 1000;
 
 function fixture(): ContributorStat[] {
@@ -43,11 +42,6 @@ test("贡献者按 commit 倒序并加总每人的增删行", () => {
 });
 
 test("全仓总数只认传进来的那份，不把名单加起来", () => {
-  /**
-   * 这条盯的就是线上那个错：`/stats/contributors` 是「贡献」口径，一条
-   * `Co-authored-by` 的提交在作者和协作者名下各记一次，加起来是真实值的两倍左右。
-   * 名单里 10 + 3 = 13，真值只有 9。
-   */
   const payload = summarizeRepoStats(fixture(), "LYJW131", "lyjwpage", NOW, {
     commits: 9,
     additions: 157,

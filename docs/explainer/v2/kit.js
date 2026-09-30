@@ -1,5 +1,3 @@
-// 画面工具：缓动、时间段、2D 绘图（发丝线、文字、信封、印章、Clawd、信封火花），
-// 以及各章共用的件：图版底着色器（纸面 / 暗底）、四个库的符号、白卡、打勾方框、引线标注、折线路径、2D 镜头。
 // 所有函数只依赖传入的时间，不读时钟、不用 Math.random。
 (() => {
   const { css } = G;
@@ -14,12 +12,9 @@
     inExpo: (x) => (x <= 0 ? 0 : Math.pow(2, 10 * x - 10)),
     ioExpo: (x) => (x <= 0 ? 0 : x >= 1 ? 1 : x < 0.5 ? Math.pow(2, 20 * x - 10) / 2 : (2 - Math.pow(2, -20 * x + 10)) / 2),
     outBack: (x) => { const c1 = 1.9, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); },
-    // 带阻尼的弹簧落定：盖章、落卡
     spring: (x) => (x >= 1 ? 1 : 1 - Math.exp(-6.5 * x) * Math.cos(11 * x)),
   };
-  // t 在 [a,b] 内的进度，套缓动
   const prog = (t, a, b, e = E.lin) => e(clamp((t - a) / (b - a || 1e-9)));
-  // 关键帧：[[t, v, ease], ...]，ease 作用于进入该帧的那一段
   function keys(t, ks) {
     if (t <= ks[0][0]) return ks[0][1];
     for (let i = 1; i < ks.length; i++) {
@@ -41,7 +36,6 @@
   }
   const hash = (n) => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
 
-  // ---------- 字体 ----------
   const FONT = {
     sans: (px, w = 600) => `${w} ${px}px Geist, "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", sans-serif`,
     // 中文界面 PingFang 排第一（中文标点宽度对）；英文界面 Geist 排第一，拉丁字母才是 Geist
@@ -50,9 +44,6 @@
     pixel: (px) => `${px}px "Geist Pixel", "Geist Mono", monospace`,
   };
 
-  // 自检（?check）：记下每一处字在屏幕上的实际字号（字号 × 镜头缩放），tools/check.mjs 据此报「最大都不够大的字」。
-  // 只记落在画面里的字：拉远、冲进去时画在画面外的字再大也不算数。
-  // o.texture = true 的字只当纹理（章节号背景、时间签之类），不查；旁白用 K.narration 画，按 ≥ 56 查
   function checkSize(x, str, px, py, o) {
     const C = window.__CHECK;
     if (!C || o.texture || !str.trim() || (o.alpha ?? 1) < 0.2 || ((o.reveal ?? 1) <= 0 && !o.dim)) return;
@@ -66,12 +57,10 @@
     C.all.push({ ch: C.ch, t: +G.t.toFixed(3), str: str.slice(0, 48), px: +(f * s).toFixed(1), narr: !!o.narration });
   }
 
-  // 文字。reveal 为 0..1 时逐字显现：已出现的字用 color，还没到的用 dim（默认不画）
   function text(x, str, px, py, o = {}) {
     const { font = FONT.sans(40), color = css("pink"), align = "left", base = "alphabetic", tracking = 0, reveal = 1, dim = 0, alpha = 1 } = o;
     x.save();
     x.font = font;
-    // maxW：超宽时按比例缩小字号（英文往往比中文长）
     if (o.maxW) { const w0 = x.measureText(str).width; if (w0 > o.maxW) x.font = font.replace(/([\d.]+)px/, (_, n) => `${(+n * o.maxW / w0).toFixed(1)}px`); }
     checkSize(x, str, px, py, o);
     x.textAlign = "left";
@@ -88,7 +77,7 @@
       const n = chars.length, shown = reveal * n;
       let acc = "";
       for (let i = 0; i < n; i++) {
-        const k = clamp(shown - i); // 这个字出现的进度
+        const k = clamp(shown - i);
         const cx = sx + x.measureText(acc).width;
         acc += chars[i];
         if (k > 0) {
@@ -108,7 +97,6 @@
   }
   function measure(x, str, font) { x.save(); x.font = font; const w = x.measureText(str).width; x.restore(); return w; }
 
-  // 旁白：大字（默认 60 px，屏幕上不小于 56），逐字亮起，还没亮的字留一层很淡的底。排在图版里，不是字幕
   function narration(x, str, px, py, o = {}) {
     const size = o.px ?? 60;
     return text(x, str, px, py, { font: FONT.cjk(size, 600), color: o.color || css("pink"), reveal: o.reveal ?? 1, dim: o.dim ?? 0.14, perChar: true, alpha: o.alpha ?? 1, maxW: o.maxW, align: o.align, narration: true });
@@ -118,7 +106,6 @@
     x.save(); x.globalAlpha = alpha; x.strokeStyle = color; x.lineWidth = w; x.lineCap = "round";
     x.beginPath(); x.moveTo(x1, y1); x.lineTo(x2, y2); x.stroke(); x.restore();
   }
-  // 画到一定比例的折线（用于「笔画出来」）
   function polyline(x, pts, k = 1, w = 1, color = css("pink"), alpha = 1) {
     if (k <= 0 || pts.length < 2) return null;
     let total = 0; const seg = [];
@@ -142,13 +129,11 @@
   function fillRect(x, rx, ry, rw, rh, color, alpha = 1) {
     x.save(); x.globalAlpha = alpha; x.fillStyle = color; x.fillRect(rx, ry, rw, rh); x.restore();
   }
-  // 虚线
   function dashed(x, x1, y1, x2, y2, w = 1, color = css("pink"), dash = [6, 6], alpha = 1, offset = 0) {
     x.save(); x.globalAlpha = alpha; x.strokeStyle = color; x.lineWidth = w; x.setLineDash(dash); x.lineDashOffset = offset;
     x.beginPath(); x.moveTo(x1, y1); x.lineTo(x2, y2); x.stroke(); x.restore();
   }
 
-  // 信封：矩形 + V 形封舌。open 0..1 时封舌翻开
   function envelope(x, cx, cy, w, color = css("pink"), o = {}) {
     const h = w * 0.64, lw = o.lw ?? Math.max(1, w * 0.045), open = o.open ?? 0, fill = o.fill;
     x.save();
@@ -158,8 +143,8 @@
     x.lineJoin = "round";
     if (fill) { x.fillStyle = fill; x.fillRect(-w / 2, -h / 2, w, h); }
     x.strokeStyle = color; x.lineWidth = lw;
-    const fy = lerp(h * 0.08, -h * 0.95, E.io(open)); // 封舌尖的高度：合上时在中间偏上，打开时翻到顶上
-    if (open > 0.3) { // 打开后：封舌翻到后面，信纸从口里探出来
+    const fy = lerp(h * 0.08, -h * 0.95, E.io(open));
+    if (open > 0.3) {
       x.save(); x.globalAlpha *= 0.55; x.beginPath(); x.moveTo(-w / 2, -h / 2); x.lineTo(0, fy); x.lineTo(w / 2, -h / 2); x.stroke(); x.restore();
       const sh = h * 0.55 * E.out(clamp((open - 0.3) / 0.7));
       if (fill) { x.fillStyle = fill; x.fillRect(-w * 0.38, -h / 2 - sh, w * 0.76, sh + h * 0.3); }
@@ -173,8 +158,6 @@
     x.restore();
   }
 
-  // 橡皮章：双线框 + 字。k 为落章进度（0 未落，1 已落定）；落下时从大缩到 1。
-  // sub 是章下面一行小字，默认字号 px × 0.3（只当纹理）；要读的小字给 subPx（≥ 28），框会跟着变高变宽
   function stamp(x, str, cx, cy, o = {}) {
     const { k = 1, px = 88, rot = -0.08, color = css("signal"), sub } = o;
     if (k <= 0) return;
@@ -211,7 +194,6 @@
     x.closePath();
   }
 
-  // Clawd：官方像素造型（../clawd.js 给出象限坐标）。q 为一个象限的宽，高为 2q（终端字符比例）
   function clawd(x, cx, bottom, q, o = {}) {
     const { pose = "default", crouch = 0, body = G.css("signal"), eye = "#0b0a09", alpha = 1, flip = false } = o;
     const { body: B, eyes: EY } = window.Clawd.cells(pose, crouch);
@@ -229,7 +211,6 @@
     return { w, h };
   }
 
-  // Clawd 的对白框：像素字体、硬边框、尖角指向 Clawd
   function bubble(x, str, bx, by, o = {}) {
     const { px = 34, color = css("pink"), bg = css("paper"), k = 1, tail = "left" } = o;
     if (k <= 0) return;
@@ -240,7 +221,6 @@
     const pad = px * 0.55, lh = px * 1.35;
     const bw = tw + pad * 2, bh = lh * lines.length + pad * 1.2;
     const s = lerp(0.6, 1, E.outBack(clamp(k * 1.6)));
-    // tail="right" 时 (bx,by) 是框的右下角，框向左展开
     x.translate(bx, by);
     x.scale(s, s);
     if (tail === "right") x.translate(-bw, 0);
@@ -249,7 +229,6 @@
     x.beginPath();
     x.rect(0, -bh, bw, bh);
     x.fill(); x.stroke();
-    // 尖角
     x.beginPath();
     if (tail === "left") { x.moveTo(18, 0); x.lineTo(4, 22); x.lineTo(44, 0); }
     else { x.moveTo(bw - 18, 0); x.lineTo(bw - 4, 22); x.lineTo(bw - 44, 0); }
@@ -269,8 +248,6 @@
     x.restore();
   }
 
-  // 信封火花：亮核 + 身后的发丝线。trail 为最近经过的点（世界坐标），head 为当前点。
-  // 发光部分画在 emit 图层（相加合成、增益 >1），线画在普通图层
   function spark(emit, x, head, trail, o = {}) {
     const { size = 1, color = css("signal"), lw = 2, t = 0 } = o;
     if (trail && trail.length > 1) {
@@ -291,10 +268,7 @@
     emit.beginPath(); emit.arc(head[0], head[1], r, 0, Math.PI * 2); emit.fill(); emit.restore();
   }
 
-  // ---------- 图版底：按 worldPos() 画的全屏 2D 着色器，各章 new G.Pass(K.PLATE.paper / K.PLATE.ink) ----------
-  // uPlate = 图版范围（世界坐标 x0, y0, x1, y1），网格只铺在里面；uGridA = 网格浓度（0 关掉）
   const PLATE = {
-    // 纸面：纸纹、纤维、零星墨点、图纸网格（40 一小格、200 一大格）
     paper: `
 uniform float uGridA;
 uniform vec4 uPlate;
@@ -315,7 +289,6 @@ void main(){
   col = mix(col, C_PINK, (minor + major) * uGridA * inside);
   fragColor = vec4(col, 1.0);
 }`,
-    // 暗底：墨色底上一层很淡的云纹和纤维，骨白的图纸网格（比纸面更淡，只当纹理）
     ink: `
 uniform float uGridA;
 uniform vec4 uPlate;
@@ -338,26 +311,23 @@ void main(){
 }`,
   };
 
-  // ---------- 四个库的符号（母题 #2，全片一致；第 02 章的管子底下、第 03 章的对照表都用它） ----------
-  // 实时 = 一间屋子；可滞后 = 一墙格子；历史 = 望不到头的档案架；凭据 = 带锁的小抽屉。s 为缩放
   function glyph(x, kind, cx, cy, color, s = 1) {
     x.save(); x.strokeStyle = color; x.lineWidth = 2.2;
     if (s !== 1) { x.translate(cx, cy); x.scale(s, s); x.translate(-cx, -cy); }
-    if (kind === "cred") { // 带锁的小抽屉
+    if (kind === "cred") {
       x.strokeRect(cx - 60, cy - 30, 120, 60); line(x, cx - 22, cy - 2, cx + 22, cy - 2, 3, color);
       x.beginPath(); x.arc(cx, cy + 14, 7, 0, Math.PI * 2); x.stroke();
-    } else if (kind === "d1") { // 望不到头的档案架
+    } else if (kind === "d1") {
       for (let j = 0; j < 4; j++) { const w = 130 - j * 26, y = cy - 30 + j * 20; line(x, cx - w / 2, y, cx + w / 2, y, 2.2 - j * 0.4, color, 1 - j * 0.18); }
       line(x, cx - 65, cy - 30, cx - 26, cy + 30, 1.2, color, 0.5); line(x, cx + 65, cy - 30, cx + 26, cy + 30, 1.2, color, 0.5);
-    } else if (kind === "lag") { // 一墙带时间签的格子
+    } else if (kind === "lag") {
       for (let r = 0; r < 3; r++) for (let c = 0; c < 4; c++) { x.strokeRect(cx - 64 + c * 32, cy - 36 + r * 24, 28, 20); }
-    } else { // 一间屋子
+    } else {
       x.beginPath(); x.moveTo(cx - 50, cy + 30); x.lineTo(cx - 50, cy - 10); x.lineTo(cx, cy - 44); x.lineTo(cx + 50, cy - 10); x.lineTo(cx + 50, cy + 30); x.closePath(); x.stroke();
     }
     x.restore();
   }
 
-  // ---------- 暗底图版上的白卡（详图、清单、对照表）：纸色底 + 细边 + 落影；配合 G.MODE.paper 合成 ----------
   function sheet(x, px, py, w, h, o = {}) {
     const a = o.alpha ?? 1;
     if (a <= 0) return;
@@ -369,7 +339,6 @@ void main(){
     x.restore();
   }
 
-  // 打勾的方框：k 为勾画出来的进度
   function checkbox(x, bx, by, k, o = {}) {
     const { size = 36, color = css("pink"), tick = css("signal"), alpha = 1 } = o;
     rect(x, bx, by, size, size, 2, color, alpha);
@@ -377,7 +346,6 @@ void main(){
     polyline(x, [[bx + 7 * s, by + 20 * s], [bx + 17 * s, by + 31 * s], [bx + 36 * s, by + 5 * s]], k, 5 * s, tick, alpha);
   }
 
-  // 引线标注：锚点一个实心点 → 引线 → 字压在一条底线上；贴边时换到另一侧
   function leader(x, ax, ay, str, dx, dy, o = {}) {
     const a = o.alpha ?? 1;
     if (a <= 0) return;
@@ -385,7 +353,7 @@ void main(){
     const f = o.font || FONT.cjk(30, 600);
     const w = measure(x, str, f);
     const px = parseFloat(/([\d.]+)px/.exec(f)[1]);
-    const right = dx < 0; // 字在锚点左边时右对齐
+    const right = dx < 0;
     const tx = ax + dx, ty = ay + dy;
     x.save(); x.globalAlpha = a; x.fillStyle = col; x.beginPath(); x.arc(ax, ay, o.dot ?? 5, 0, Math.PI * 2); x.fill(); x.restore();
     line(x, ax, ay, tx, ty, 1.4, col, 0.85 * a);
@@ -394,7 +362,6 @@ void main(){
     return w;
   }
 
-  // ---------- 折线路径：按弧长取点、总长、身后一段拖尾 ----------
   function pathAt(pts, d) {
     for (let i = 1; i < pts.length; i++) {
       const L = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
@@ -406,8 +373,6 @@ void main(){
   const pathLen = (pts) => pts.slice(1).reduce((s, p, i) => s + Math.hypot(p[0] - pts[i][0], p[1] - pts[i][1]), 0);
   const trailOn = (pts, d, len = 240, n = 14) => { const out = []; for (let i = n; i >= 1; i--) out.push(pathAt(pts, Math.max(0, d - (len * i) / n))); return out; };
 
-  // ---------- 2D 镜头：关键帧 [小节, [x, y, zoom, rot], 缓动] → 这一帧的镜头，外加后期要的运动模糊 ----------
-  // 运动模糊用 1/60 秒前的镜头推出这一帧画面在屏幕上移动了多少（逻辑像素）
   function camera(CAM, b, BAR) {
     const c = keys(b, CAM), c0 = keys(b - 1 / 60 / BAR, CAM);
     return {

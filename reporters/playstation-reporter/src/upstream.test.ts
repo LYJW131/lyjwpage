@@ -15,7 +15,6 @@ import { PsnUpstreamUnavailable, isUpstreamUnavailable, upstream } from "../dist
 
 afterEach(() => resetPlaystationForTests());
 
-/** 线上真撞见过的三种：Akamai 拒绝页被 psn-api 当 JSON 解析、纯文本 504、自己 fetch 看到的 403 页 */
 const liveFailures = [
   () => JSON.parse("<HTML><HEAD><TITLE>Access Denied</TITLE></HEAD></HTML>"),
   () => JSON.parse("error code: 504"),
@@ -46,7 +45,6 @@ test("upstream() names the call that hit the outage and passes other errors thro
     assert.equal(error.call, "presence");
     return true;
   });
-  // 里层已经贴过名字的保留里层那个（比如续期时撞上的是 auth）
   await assert.rejects(upstream("presence", async () => { throw new PsnUpstreamUnavailable("auth", "x"); }), { call: "auth" });
   const plain = new Error("NPSSO missing");
   await assert.rejects(upstream("presence", async () => { throw plain; }), (error: unknown) => error === plain);
@@ -90,7 +88,6 @@ test("an upstream outage backs off, doubles, and marks the log failing after two
   const warned = t.mock.method(console, "warn", () => {});
   t.mock.method(console, "log", () => {});
   t.mock.method(console, "error", () => {});
-  // 所有 PSN 请求都吃 Akamai 的拒绝页
   t.mock.method(globalThis, "fetch", async () => new Response("<HTML><HEAD><TITLE>Access Denied</TITLE></HEAD></HTML>", { status: 403, headers: { "content-type": "text/html" } }));
   const state = new MemoryStore();
   await seedFreshAuth(state);
@@ -108,13 +105,11 @@ test("an upstream outage backs off, doubles, and marks the log failing after two
   const event = warned.mock.calls.map((call) => JSON.parse(String(call.arguments[0]))).find((row) => row.event === "playstation-upstream-unavailable");
   assert.ok(event && event.backoffMs === backoffMs(1), JSON.stringify(event));
 
-  // 退避期间不碰 PSN；只失败过一轮，日志不标 failing
   const skipped = await runPlaystation(env);
   assert.equal(skipped.status, "skipped");
   assert.match(skipped.detail ?? "", /backoff/);
   assert.equal(skipped.failing, undefined);
 
-  // 退避过去、门也放行（进程内那份清掉，磁盘上的开始时刻也清掉）后又失败一轮
   resetPlaystationForTests();
   await state.put(BACKOFF_UNTIL_KEY, "0");
   await state.delete(FULL_TICK_KEY);
@@ -122,7 +117,6 @@ test("an upstream outage backs off, doubles, and marks the log failing after two
   assert.deepEqual(JSON.parse(state.raw(FAILURE_STREAK_KEY)!).streak, 2);
   assert.ok(Number(state.raw(BACKOFF_UNTIL_KEY)) >= Date.now() + backoffMs(2) - 5_000);
 
-  // 连败两轮之后，退避中的每一响都标出来
   const failing = await runPlaystation(env);
   assert.equal(failing.status, "skipped");
   assert.match(failing.failing ?? "", /连续 2 轮/);

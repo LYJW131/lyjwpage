@@ -1,7 +1,3 @@
-/**
- * 测试用的内存 KV：get（text / json）、put（带 expirationTtl）、delete，和 Workers KV
- * 同一套签名。过期按注入的时钟算，默认真实时间。`puts` 记下每次写入，断言「没变就不写」用。
- */
 export class MemoryKv {
   private rows = new Map<string, { value: string; expiresAt: number | null }>();
   puts: { key: string; value: string; expirationTtl?: number }[] = [];
@@ -35,7 +31,6 @@ export class MemoryKv {
     this.rows.delete(key);
   }
 
-  /** 直接看存着的原文，不经过期判断 */
   raw(key: string): string | undefined {
     return this.rows.get(key)?.value;
   }

@@ -1,7 +1,3 @@
-/**
- * 公网 IP 的 Location / ISP / ASN。先问 ip.sb，失败退 ip-api；结果按 IP 缓存
- * （GEO_TTL_MS），地址没变就不打上游。查的是网卡上的地址，不是「访问某个 what-is-my-ip 看到的出口」。
- */
 import { config } from "./config.js";
 import { failure, recovered } from "./log.js";
 
@@ -35,7 +31,6 @@ async function getJson(url: string): Promise<Record<string, unknown>> {
   return body as Record<string, unknown>;
 }
 
-/** 「AS142616 Misaka Network, Inc.」→ [142616, "Misaka Network, Inc."]。纯函数 */
 export function parseAs(raw: string): [number | null, string | null] {
   const match = AS_LINE.exec(raw.trim());
   if (!match) return [null, null];
@@ -86,7 +81,6 @@ export async function geoFor(ip: string): Promise<Geo> {
       recovered("geo");
     } catch (fallback) {
       failure("geo", fallback);
-      // 两家都挂：同一个 IP 就沿用上次那份，换了 IP 才只剩城市
       if (cached?.ip === ip) return cached.geo;
       found = { country: null, city: config.location || null, isp: null, asn: null, asnOrg: null };
     }

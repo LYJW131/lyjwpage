@@ -1,10 +1,3 @@
-// 第 07 章「节拍器」的配乐，12 小节，章内小节。写法见 ../CONVENTIONS.md「配乐」。
-// 一拍 = 一分钟，三台节拍器各有一个声部：服务器 = 钟摆声（每拍一下，从头到尾不变）；PlayStation = 底鼓（主机醒着每拍，
-// 6:0 进休息响完最后一下，10:0 醒来当拍回来）；编码账号限额 = 玻璃灯音（每 5 拍 → 10 拍 → 睡着 → 9:0 醒 → 11:2 又睡）。
-// BPM 不变，换档靠整支配器的密度：全速 → 半速（限额慢一档，踩镲、琶音跟着减半，底鼓照旧）→ 很慢（只剩钟摆）→ 全速。
-// 信封主题由节拍器的小铃（剧情音 tick）在 10:0 回到全速时唱。
-// 底鼓和灯音的拍位就是 ../ch07.js 的 PS_SEGS / LIM_SEGS：改一边先对另一边，再对 SCRIPT.md。
-// 调性：从第 06 章的 A7sus4 回到 D 小调（i – ♭VI – ♭VII – i），夜里落在 Dmadd9 / B♭maj7#11 上，9 小节 A7 等开机，10:0 回到 Dm9。
 (window.SCORE_PARTS = window.SCORE_PARTS || []).push({
   id: "ch07",
   tone: { bell: "bright", pluckPan: 0.2, snareVerb: 0.14 },
@@ -36,20 +29,17 @@
         kick: "X...X...X...X...", kickKind: "light", duck: 0.4, clock: "x...x...x...x...", clockVol: 1,
         bass: "hold", bassVol: 0.8, pad: 0.9, lp: 1500, padVerb: 0.4 },
     ],
-    // 旋律：[小节, 拍位, 时值(拍), 音, 乐器, 力度, 是否主题]
     melody: [
-      ...[[1, 0, "F5"], [1, 1.5, "D5"], [2, 0, "E5"], [2, 1.5, "G5"]].map(([bar, b, n]) => [bar, b, 1.25, n, "pluck", 0.36, false]), // 有人在看：拨弦轻轻答两句
-      [6, 0, 8, "A4", "bell", 0.34, false], [6, 0, 8, "E5", "bell2", 0.22, false], // 入夜：空五度垫着
+      ...[[1, 0, "F5"], [1, 1.5, "D5"], [2, 0, "E5"], [2, 1.5, "G5"]].map(([bar, b, n]) => [bar, b, 1.25, n, "pluck", 0.36, false]),
+      [6, 0, 8, "A4", "bell", 0.34, false], [6, 0, 8, "E5", "bell2", 0.22, false],
     ],
     story: [
-      // 限额的一轮（LIM_SEGS 的起点：1、6、11、16、26、36、41、46 拍）：玻璃灯音，音高顺着和弦
       ...[[0, 1, "A5"], [1, 2, "D6"], [2, 3, "E6"], [4, 0, "D6"], [6, 2, "A5"], [9, 0, "E6"], [10, 1, "F6"], [11, 2, "E6"]]
         .map(([bar, beat, n]) => ({ bar, beat, kind: "lamp", m: midi(n), i: 1 })),
-      { bar: 7, beat: 3, kind: "lamp", m: midi("D5"), i: 1, late: true }, // 夜里醒一下看人数（0），又睡
-      { bar: 9, beat: 3, kind: "key", v: 0.8, pan: 0.45 }, { bar: 9, beat: 3, kind: "swell" }, // 按下主机电源，吸一口气等 10:0 那一探
-      // 10:0 回到全速：节拍器的小铃唱信封主题（高八度）
+      { bar: 7, beat: 3, kind: "lamp", m: midi("D5"), i: 1, late: true },
+      { bar: 9, beat: 3, kind: "key", v: 0.8, pan: 0.45 }, { bar: 9, beat: 3, kind: "swell" },
       ...[[0, "A5"], [0.75, "D6"], [1.5, "F6"], [2, "E6"]].map(([beat, n], i) => ({ bar: 10, beat, kind: "tick", m: midi(n), i })),
-      { bar: 11, beat: 3, kind: "swell" }, // 冲进服务器那台，12:0 硬切第 08 章
+      { bar: 11, beat: 3, kind: "swell" },
     ],
   }),
 });

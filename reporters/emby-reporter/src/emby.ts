@@ -1,12 +1,6 @@
 import { config } from "./config.js";
 import type { EmbyItemMedia, EmbyPlayState } from "./playback.js";
 
-/**
- * Emby 这一侧：拉数据、挑图、把条目压成站点要的形状。
- *
- * 站点只收「Emby 说了什么」，不收「该怎么显示」—— 标题拼法和跳转链接都在站点
- * 那边做。但图片必须在这里挑：字节是这边下载的，选哪张的逻辑跟着走才不会分家。
- */
 
 const ITEM_FIELDS = [
   "ProductionYear",
@@ -15,15 +9,8 @@ const ITEM_FIELDS = [
   "UserDataPlayCount",
 ].join(",");
 
-/**
- * 只给「正在播放的那一项」多要媒体源和流列表 —— 站点要显示的规格从这里挑。
- *
- * **别加进 ITEM_FIELDS**：续播列表每轮都要拉，而一个条目动辄二十几条字幕流，
- * 列表那条路上带着它们只是让 Emby 每轮多吐几十 KB 没人看的东西。
- */
 const PLAYING_FIELDS = `${ITEM_FIELDS},MediaSources,MediaStreams`;
 
-/** Emby 的 tick 是 100 纳秒，1 毫秒 = 10000 tick */
 export const TICKS_PER_MS = 10_000;
 
 type ImageKind = "Primary" | "Backdrop" | "Thumb";
@@ -61,7 +48,6 @@ export type EmbySession = {
   PlayState?: EmbyPlayState;
 };
 
-/** 站点 ingest 收的条目形状 */
 export type ReportItem = {
   id: string;
   name: string;
@@ -77,7 +63,6 @@ export type ReportItem = {
   backdropKey: string | null;
 };
 
-/** 取一张图需要的全部信息。key 里带着 ImageTag，图换了 key 就换 */
 export type ImageRef = {
   key: string;
   itemId: string;
@@ -89,16 +74,10 @@ export type ImageRef = {
 export type MappedItem = {
   item: ReportItem;
   images: ImageRef[];
-  /** 只有 fetchItem 取回的那一项带：媒体源和流列表，给 playback 挑规格用 */
   media?: EmbyItemMedia;
 };
 
-/**
- * 密钥走 `X-Emby-Token` 请求头，不挂在 query 上：query 会原样写进 Emby 的
- * access log，也写进中间任何一层代理的日志。
- *
- * 取图那条二进制路径也走这个函数，换头之后两条一起变，验的时候两条都要看一眼。
- */
+// Token 放 query 会泄漏到 Emby 和代理的访问日志，取图也必须走请求头。
 async function embyFetch(path: string, accept: "json" | "binary") {
   const response = await fetch(`${config.emby.url}${path}`, {
     headers: { "X-Emby-Token": config.emby.key },
@@ -118,7 +97,6 @@ function imageRef(
   return { key: `${itemId}:${kind}:${tag}:${height}`, itemId, kind, tag, height };
 }
 
-/** 横版图，按 Thumb → 父级 Thumb → Backdrop → 父级 Backdrop 依次退让 */
 function resolveBackdrop(item: EmbyItem): ImageRef | null {
   const height = config.backdropHeight;
   const candidates: Array<ImageRef | null> = [
@@ -130,7 +108,7 @@ function resolveBackdrop(item: EmbyItem): ImageRef | null {
   return candidates.find((ref): ref is ImageRef => ref != null) ?? null;
 }
 
-/** 竖版海报。剧集自身的 Primary 是剧照，所以优先取剧集所属剧的海报 */
+// 剧集的 Primary 是剧照；竖版海报必须优先取所属剧的 Primary。
 function resolvePoster(item: EmbyItem): ImageRef | null {
   const height = config.posterHeight;
   if (item.Type === "Episode") {
@@ -201,10 +179,6 @@ export async function fetchResume(): Promise<MappedItem[]> {
   return (data.Items ?? []).flatMap((raw) => mapItem(raw) ?? []);
 }
 
-/**
- * 单集详情。会话接口给的 NowPlayingItem 字段不全，挑图要的 tag 都不在里面；
- * 媒体源和流列表也在这里一并要来，规格按会话选中的音轨 / 字幕从中挑。
- */
 export async function fetchItem(itemId: string): Promise<MappedItem | null> {
   const params = new URLSearchParams({ Fields: PLAYING_FIELDS });
   const raw = (await embyFetch(
@@ -215,7 +189,6 @@ export async function fetchItem(itemId: string): Promise<MappedItem | null> {
   if (!mapped) return null;
   return {
     ...mapped,
-    // 逐个字段挑，不整个 raw 带走：条目上还有路径之类不该出这台机器的东西
     media: {
       Container: raw.Container,
       Bitrate: raw.Bitrate,
@@ -225,7 +198,6 @@ export async function fetchItem(itemId: string): Promise<MappedItem | null> {
   };
 }
 
-/** 只关心配置里那个用户的会话，别把家里其他人在看什么推出去 */
 export async function fetchSession(): Promise<EmbySession | null> {
   const sessions = (await embyFetch("/emby/Sessions", "json")) as EmbySession[];
   return (
@@ -235,7 +207,6 @@ export async function fetchSession(): Promise<EmbySession | null> {
   );
 }
 
-/** 取原始字节；压缩和 R2 上传由上报器的 r2 模块一次完成。 */
 export async function fetchImage(ref: ImageRef): Promise<Buffer> {
   const params = new URLSearchParams({ tag: ref.tag, maxHeight: String(ref.height) });
   const buffer = (await embyFetch(

@@ -1,26 +1,4 @@
 #!/usr/bin/env node
-/**
- * 文档与注释的漂移检查：`pnpm docs:check`，规范见根 AGENTS.md「文档与注释」。
- * 只查机器判得了的事（引用还在不在、体积、类型标注、时间线写法）；语义对不对交给人和评审。
- * 零依赖，只读；文件清单、忽略规则、子模块都问 git，所以浅克隆、没拉子模块的 CI 里结果和本地一致。
- *
- * 规则（输出里的 [规则]）：
- *   link      本地链接、HTML 的 src / href / srcset 指向的文件存在；`.md#锚点` 的标题还在
- *   path      围栏外行内代码里形如仓库路径的引用存在。远端路径写成 `主机:/绝对路径`，
- *             以 `/` 开头的绝对路径、URL、含 `<>*{}` 的占位符和 glob 都不查
- *   symbol    `path#symbol` 出处戳记：符号仍作为整词出现在该文件里（目标是 .md 时按标题锚点查）
- *   size      根 AGENTS.md ≤ 150 行（不计 next 自动块，含标记行），其余 AGENTS.md ≤ 60 行
- *   pair      非根 AGENTS.md 的同目录有内容恰为 `@AGENTS.md` 的 CLAUDE.md
- *   type      docs/ 下每篇文首（前 6 行）有 `> 类型：reference|runbook|decision|record`；
- *             record 另需「按 <sha> <日期> 核对，快照不维护，不当现状引用」
- *   index     docs/ 下每篇都登记在 docs/README.md，且登记行里的类型与文首一致
- *   timeline  非 record 文档里的日期，以及「MM-DD 起/后/前」「N 月 N 日」这类时间线写法；
- *             「核对于 <日期>」「按 <sha> <日期> 核对」两种核对戳不算
- *   allow     `<!-- allow: 理由 -->` 必须写理由
- *
- * 同一行末尾加 `<!-- allow: 理由 -->` 可放行该行的 link / path / symbol / timeline。
- * 围栏代码块整块不查；行内代码里的日期不查（那是字面值，不是叙述）。
- */
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -31,32 +9,18 @@ const posix = path.posix;
 export const DOC_TYPES = ["reference", "runbook", "decision", "record"];
 export const ROOT_AGENTS_MAX_LINES = 150;
 export const NESTED_AGENTS_MAX_LINES = 60;
-/** next dev 托管的自动块：整块（含两行标记）不计入根 AGENTS.md 的行数 */
 export const NEXT_BLOCK_BEGIN = "<!-- BEGIN:nextjs-agent-rules -->";
 export const NEXT_BLOCK_END = "<!-- END:nextjs-agent-rules -->";
 
-/** 出现在文档里就当文件名核对的扩展名；不在表里的（`.env`、`lyjw.me`）一律不当路径 */
 const PATH_EXTENSIONS = new Set([
   "ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs", "json", "jsonc", "md", "mdx",
   "yml", "yaml", "toml", "swift", "py", "sh", "sql", "css", "html", "plist", "xcconfig",
   "png", "webp", "gif", "svg", "jpg", "jpeg", "mp3", "txt",
 ]);
-/** 长得像文件名的产品名 */
 const NON_FILE_NAMES = new Set(["next.js", "node.js", "hls.js", "vue.js", "three.js", "d3.js"]);
-/** 符号可带连字符（TOML 键、eslint 规则名）；点号分段的按段核对 */
 const SYMBOL_RE = /^[A-Za-z_$][\w$-]*(?:\.[A-Za-z_$][\w$-]*)*(?:\(\))?$/;
 const IMPLICIT_MODULE_EXTENSIONS = ["ts", "tsx", "mts", "mjs", "js", "json"];
 
-/**
- * 检查上下文。CLI 用 `gitContext()` 从 git 取；测试直接给清单。
- * @param {object} o
- * @param {string[]} o.tracked 已跟踪文件（相对仓库根，正斜杠）
- * @param {string[]} [o.submodules] 子模块路径；CI 不拉子模块，引用它里面的文件一律不查
- * @param {(paths: string[]) => Set<string>} [o.ignored] 返回其中被 .gitignore 命中的路径（生成物、本地凭据文件）
- * @param {(rel: string) => string | null} o.readText
- * @param {boolean} [o.shallow] 浅克隆里老提交不在，record 的 sha 只在非浅克隆时核实
- * @param {(sha: string) => boolean} [o.commitExists]
- */
 export function makeContext({ tracked, submodules = [], ignored = () => new Set(), readText, shallow = false, commitExists = () => true }) {
   const files = new Set(tracked);
   const dirs = new Set();
@@ -94,10 +58,8 @@ export function makeContext({ tracked, submodules = [], ignored = () => new Set(
   };
 }
 
-/** 从 git 取文件清单、子模块、忽略规则。 */
 export function gitContext(root) {
   const git = (args, input) => execFileSync("git", args, { cwd: root, encoding: "utf8", input, maxBuffer: 1 << 28, stdio: ["pipe", "pipe", "pipe"] });
-  // 已跟踪 + 还没 add 的新文件（本地提交前就能查到）；干净克隆里两者等价，所以 CI 与本地一致
   const tracked = git(["ls-files", "-z", "--cached", "--others", "--exclude-standard"])
     .split("\0")
     .filter((file) => file && existsSync(path.join(root, file)));
@@ -125,13 +87,12 @@ export function gitContext(root) {
       try {
         for (const hit of checkIgnore(paths)) hits.add(hit);
       } catch (error) {
-        if (error.status === 1) return hits; // 一个都没命中
+        if (error.status === 1) return hits;
         // 有路径落在符号链接后面（pnpm 的 node_modules）时整批被拒：逐个问，问不了的当没命中
         for (const one of paths) {
           try {
             for (const hit of checkIgnore([one])) hits.add(hit);
           } catch {
-            // 没命中或问不了
           }
         }
       }
@@ -140,9 +101,7 @@ export function gitContext(root) {
   });
 }
 
-// ───────────────────────── Markdown 扫描 ─────────────────────────
 
-/** 逐行给出 { n, text, inFence }；围栏（``` 或 ~~~）内的行标 inFence。 */
 export function scanLines(text) {
   const lines = text.split(/\r?\n/);
   const out = [];
@@ -165,7 +124,6 @@ export function scanLines(text) {
   return out;
 }
 
-/** 把行内代码换成等长空格，返回 { spans, rest }：spans 是代码内容，rest 用来找链接和日期。 */
 export function splitInlineCode(line) {
   const spans = [];
   let rest = "";
@@ -201,7 +159,6 @@ export function splitInlineCode(line) {
   return { spans, rest };
 }
 
-/** GitHub 的标题锚点算法：小写，去掉字母数字下划线连字符空格以外的字符，空格换连字符。 */
 export function githubSlug(heading) {
   let plain = heading.replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1");
   let previous;
@@ -217,7 +174,6 @@ export function githubSlug(heading) {
     .replace(/ /g, "-");
 }
 
-/** 一篇 md 里所有可跳转的锚点（标题按 GitHub 规则，重名依次加 -1、-2；另收 id / name 属性）。 */
 export function collectAnchors(text) {
   const anchors = new Set();
   const seen = new Map();
@@ -245,7 +201,6 @@ const TIMELINE_PATTERNS = [
   /20\d{2}\s*年\s*\d{1,2}\s*月/g,
 ];
 
-/** 一行里的时间线写法（核对戳除外）。 */
 export function findTimeline(rest) {
   const hits = [];
   for (const pattern of TIMELINE_PATTERNS) {
@@ -259,7 +214,6 @@ export function findTimeline(rest) {
   return hits;
 }
 
-/** 从 md 文首找 `> 类型：…`，返回 { type, stamp }；没有就 null。 */
 export function parseDocType(text) {
   const lines = text.split(/\r?\n/).slice(0, 6);
   const at = lines.findIndex((line) => /^>\s*类型：/.test(line));
@@ -272,17 +226,12 @@ export function parseDocType(text) {
   return { type, stamp: stamp ? { sha: stamp[1], date: stamp[2] } : null };
 }
 
-// ───────────────────────── 引用解析 ─────────────────────────
 
-/**
- * 反引号里的内容是不是要核对的仓库路径。返回 { ref, symbol, bare, dirRef } 或 null。
- * 宁可漏查也别误报：不含已知扩展名的单个词、含空格或命令符号的片段、绝对路径、远端路径都不算。
- */
 export function parsePathToken(raw, ctx) {
-  let token = raw.trim().replace(/\(\)$/, ""); // `path#Class.method()` 的空括号
+  let token = raw.trim().replace(/\(\)$/, "");
   if (!token || /\s/.test(token)) return null;
   if (/[<>*{}|()=,;$"'\\^!?[\]@…]/.test(token)) return null;
-  if (/^[\w.-]+:[/~]/.test(token)) return null; // URL、file://、host:/abs
+  if (/^[\w.-]+:[/~]/.test(token)) return null;
   if (/^[/~-]/.test(token) || /^(?:\.\/)?node_modules\//.test(token)) return null;
   token = token.replace(/:\d+(?:-\d+)?$/, "");
 
@@ -313,7 +262,6 @@ export function parsePathToken(raw, ctx) {
   return { ref, symbol: stamp, symbolOk: stamp === null || ref.endsWith(".md") || SYMBOL_RE.test(stamp), bare: !ref.includes("/"), dirRef };
 }
 
-/** 从 md 文件 `mdFile` 出发解析 `ref`，返回命中的仓库相对路径；找不到返回 null。 */
 export function resolveRef(ctx, mdFile, ref, { bare = false, dirRef = false } = {}) {
   const mdDir = posix.dirname(mdFile);
   const clean = ref.replace(/^\/+/, "");
@@ -348,12 +296,10 @@ function anchorExists(anchors, fragment) {
   try {
     wanted = decodeURIComponent(fragment);
   } catch {
-    // 不是合法的百分号编码，按原样比
   }
   return anchors.has(wanted.toLowerCase());
 }
 
-// ───────────────────────── 单篇 md ─────────────────────────
 
 const LINK_RE = /!?\[[^\]]*\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)/g;
 const DEFINITION_RE = /^\s{0,3}\[[^\]]+\]:\s*<?(\S+?)>?(?:\s+"[^"]*")?\s*$/;
@@ -373,7 +319,6 @@ function linkTargets(rest) {
   return targets;
 }
 
-/** 检查一篇 md 的内容规则。docType 为 "record" 时不查时间线。 */
 export function checkMarkdown(ctx, file, text, { docType = null } = {}) {
   const issues = [];
   const add = (n, rule, message) => issues.push({ file, line: n, rule, message });
@@ -383,7 +328,7 @@ export function checkMarkdown(ctx, file, text, { docType = null } = {}) {
     return other === null ? null : collectAnchors(other);
   };
 
-  let managed = false; // next dev 托管的自动块不归我们写，也不查
+  let managed = false;
   for (const line of scanLines(text)) {
     if (line.text.trim() === NEXT_BLOCK_BEGIN) managed = true;
     if (managed || line.inFence) {
@@ -445,9 +390,7 @@ export function checkMarkdown(ctx, file, text, { docType = null } = {}) {
   return issues;
 }
 
-// ───────────────────────── 结构规则 ─────────────────────────
 
-/** 根 AGENTS.md 的有效行数：总行数减去 next 自动块（含标记行）。 */
 export function countAgentsLines(text, { root }) {
   const lines = text.replace(/\n$/, "").split("\n");
   if (!root) return lines.length;
@@ -521,7 +464,6 @@ export function checkStructure(ctx, mdFiles) {
   return issues;
 }
 
-// ───────────────────────── 入口 ─────────────────────────
 
 export function isScannedMarkdown(file, ctx) {
   return /\.md$/.test(file) && !/(^|\/)node_modules\//.test(file) && !ctx.inSubmodule(file);

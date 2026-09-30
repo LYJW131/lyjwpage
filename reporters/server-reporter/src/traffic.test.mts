@@ -1,8 +1,3 @@
-/**
- * 流量累计、推送账本这几个纯函数的单测。
- * 采集和推送要么读 /proc、要么打网络，没有值得钉住的判断；这几个函数错了是「流量默默
- * 多算一倍」这种没人看得出来的错，正是要钉住的那类。
- */
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -85,7 +80,6 @@ test("推送账本：RTT 取窗口内中位数，偶数封取中间两封的均�
   buckets = recordPush(buckets, t0 + BUCKET_MS + 1_000, 200);
   assert.equal(countPushes(buckets, t0 + BUCKET_MS).rttMs, 160);
   assert.equal(countPushes([], t0).rttMs, null);
-  // 滑出窗口的那几封不再参与
   assert.equal(countPushes(buckets, t0 + LEDGER_WINDOW_MS + BUCKET_MS).rttMs, 250);
 });
 

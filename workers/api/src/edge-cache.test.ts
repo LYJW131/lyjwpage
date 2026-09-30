@@ -111,7 +111,6 @@ test("命中时恢复原始 Cache-Control，内部头不外露", async () => {
   const origin = async () => new Response("{}", { headers: { "Cache-Control": "public, max-age=3600, s-maxage=3600" } });
   await serveWithEdgeCache({ cache, key, origin, waitUntil: (p) => pending.push(p) });
   await Promise.all(pending);
-  // 模拟 Cloudflare 按区域浏览器 TTL 改写了存着的那份
   const stored = await cache.match(key);
   assert.ok(stored);
   const rewritten = new Headers(stored.headers);

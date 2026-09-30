@@ -1,4 +1,3 @@
-
 import { mirrorKey } from "@/lib/storage";
 import type { LocalNowPlaying } from "@/lib/types";
 
@@ -9,7 +8,6 @@ export type StoredHomePod = {
   receivedAt: number;
 };
 
-/** 读写规则见 lib/storage 的 mirrorKey */
 export const mirror = mirrorKey<StoredHomePod>(
   ["homepod", "nowPlaying"],
   (state) => state.receivedAt,

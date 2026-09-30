@@ -38,10 +38,8 @@ test("workouts reject malformed histories, timestamps, duplicate ids and numeric
 });
 
 test("iPhone ingest exposes workouts through the lag layer and replaces deleted history", async () => {
-  // node --test 把 @/lib/lag-store 解析到站点那份（可注入），api Worker 打包时才换成读 env.LAG 的实现
   const kv = new MemoryKv();
   installLagStoreForTests((key) => readLag(kv, key));
-  // 只走上报入口这一半：训练列表是可滞后层的快照，状态核心那份 Pulse 区间见 api 的 pulse-ingest.test
   const land = async (items: unknown[], at: number) =>
     commitLagIngest(kv, await prepareIngest("iphone", { version: 1, modules: { workouts: { items } } }, at));
   try {

@@ -21,15 +21,6 @@ import type {
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-/**
- * Pulse：最近 24 小时「在做什么」的事实时间线。
- *
- * 载荷里只有原始事实（状态、标题、瓦数、步数），档位、颜色、摘要全在这里现算，
- * 换展示方式不用动存储。没有段的时间就是没有观测（未知），和观测到的空闲不同：
- * 空闲画一条贴底的细线，未知什么都不画，只剩那条很淡的轨道。
- *
- * 五分钟问一次：区间按分钟级变化，24 小时的总览晚几分钟画上无关紧要。
- */
 const REFRESH_MS = 5 * 60_000;
 
 const LANES: ReadonlyArray<{ domain: PulseDomain; label: string }> = [
@@ -42,10 +33,8 @@ const LANES: ReadonlyArray<{ domain: PulseDomain; label: string }> = [
   { domain: "activity", label: "Activity" },
 ];
 
-/** viewBox 的单位。preserveAspectRatio="none" 拉伸填满，笔宽靠 non-scaling-stroke 保住 */
 const LANE_WIDTH = 240;
 const LANE_HEIGHT = 24;
-/** 满格的段从这里画到底；顶上留一点空，泳道之间不糊成一片 */
 const BAND_TOP = 4;
 const IDLE_HEIGHT = 2;
 
@@ -55,19 +44,14 @@ type TraceStyle = "hatched" | "faint";
 type LaneItem = {
   from: number;
   to: number;
-  /** 同一时刻落在几个条目里时，数小的先被悬停选中 */
   rank: number;
   content: ReactNode;
 };
 
 type LaneModel = {
   items: LaneItem[];
-  /** SVG 泳道本体 */
   svg: ReactNode;
-  /**
-   * 叠在 SVG 后面 / 上面的 HTML：不确定区间的斜线、训练标签。SVG 被横向拉伸，
-   * 斜线图案和文字放进去会被拉歪，只能用百分比定位的 div。
-   */
+  // SVG 横向拉伸会扭曲图案和文字，二者须放在 HTML 叠层。
   under?: ReactNode;
   over?: ReactNode;
   summary: { value: ReactNode; detail: ReactNode } | null;
@@ -76,7 +60,6 @@ type LaneModel = {
 
 const time = (at: number) => new Date(at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
 
-/** 「2h 14m」「45m」，不足一分钟算 0m */
 export function pulseDuration(seconds: number): string {
   const minutes = Math.floor(seconds / 60);
   const hours = Math.floor(minutes / 60);
@@ -98,7 +81,6 @@ function Rect({ range, from, to, top, fill, opacity = 1 }: { range: Range; from:
   return <rect x={left} y={top} width={Math.max(0.2, x(range, to) - left)} height={LANE_HEIGHT - top} fill={fill} fillOpacity={opacity} />;
 }
 
-/** 观测到的空闲 / 离线 / 0 瓦：贴底一条细线，要比底下那条轨道明显 */
 function IdleLine({ range, from, to }: { range: Range; from: number; to: number }) {
   return <Rect range={range} from={from} to={to} top={LANE_HEIGHT - IDLE_HEIGHT} fill="currentColor" opacity={0.42} />;
 }
@@ -115,7 +97,6 @@ function Tooltip({ from, to, head, lines }: { from: number; to: number; head: st
 
 const CODING_WORDS = ["No coding", "Coding app", "Agent", "Coding app + agent"] as const;
 const CODING_FILLS = ["", "var(--pulse-human)", "var(--pulse-agent)", "var(--pulse-both)"] as const;
-/** Jev 的模式；键是 Choice 的 value，见 shared/pulse-coding 的 CODING_MODES */
 const MODE_LABELS: Record<string, string> = {
   idle: "Idle", brief: "Brief bursts", interactive: "In coding apps", agent: "Agent work", mixed: "Apps + agents",
 };
@@ -179,7 +160,6 @@ function stateModel(domain: "listening" | "watching" | "gaming", lane: PulseStat
     ...segments.map((row, index): LaneItem => {
       const { from, to } = absolute(range, row);
       return {
-        // 在放的那一段压过不确定区间；暂停、空闲时悬停先给出「别处放过」
         from, to, rank: row.state >= 2 ? 0 : 2,
         content: <Tooltip key={`s${index}`} from={from} to={to} head={words[row.state] ?? "Active"} lines={[
           row.title,
@@ -202,7 +182,6 @@ function stateModel(domain: "listening" | "watching" | "gaming", lane: PulseStat
   const { activeSeconds, titles } = lane.summary;
   return {
     items,
-    // 画的时候首尾相接的同一状态并成一块：逐首画会在每次换曲处留一道发丝缝，换曲在悬停里看
     svg: runs(segments.map((row) => ({ ...absolute(range, row), state: row.state }))).map((run, index) => {
       if (run.state >= 2) return <Rect key={index} range={range} from={run.from} to={run.to} top={BAND_TOP} fill="var(--live)" opacity={0.85} />;
       if (run.state === 1) return <Rect key={index} range={range} from={run.from} to={run.to} top={14} fill="var(--live)" opacity={0.4} />;
@@ -226,7 +205,6 @@ function stateModel(domain: "listening" | "watching" | "gaming", lane: PulseStat
   };
 }
 
-/** 瓦数刻度至少到 20 W：一台手机涓流充电不该画成满格 */
 const POWER_SCALE_MIN_W = 20;
 
 function powerModel(lane: PulsePowerLane, range: Range): LaneModel | null {
@@ -235,8 +213,6 @@ function powerModel(lane: PulsePowerLane, range: Range): LaneModel | null {
   const scale = Math.max(POWER_SCALE_MIN_W, lane.summary.peakW ?? 0);
   const rows = segments.map((row) => ({ ...absolute(range, row), watts: row.watts }));
   const y = (watts: number) => (watts <= 0 ? LANE_HEIGHT - 1 : LANE_HEIGHT - Math.max(1.5, (watts / scale) * (LANE_HEIGHT - BAND_TOP)));
-  // 首尾相接的一串画成一笔阶跃；断开的地方是断流，留白
-  // 0 瓦是观测到的没在充，和别的道的空闲同一条灰线；通电的部分才画曲线
   const chains: (typeof rows)[] = [];
   for (const row of rows) {
     if (row.watts <= 0) continue;
@@ -270,15 +246,10 @@ function powerModel(lane: PulsePowerLane, range: Range): LaneModel | null {
   };
 }
 
-/** 「842」「12.3K」「1.2M」 */
 function compactCount(value: number): string {
   return new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: value < 1000 ? 0 : 1 }).format(value);
 }
 
-/**
- * 速率刻度至少到这么多（tokens / min）：零星几次调用不该画成满格。按平方根画：
- * 大批量的几分钟和平常的量差两三个数量级，线性刻度下平常的量全贴在底上。
- */
 const TOKEN_SCALE_MIN = 10_000;
 
 function tokensModel(lane: PulseTokensLane, range: Range): LaneModel | null {
@@ -291,7 +262,6 @@ function tokensModel(lane: PulseTokensLane, range: Range): LaneModel | null {
   });
   const scale = Math.max(TOKEN_SCALE_MIN, ...rows.map((row) => row.rate));
   const y = (rate: number) => LANE_HEIGHT - Math.max(1.5, Math.sqrt(rate / scale) * (LANE_HEIGHT - BAND_TOP));
-  // 首尾相接的桶画成一笔阶跃；中间没有用量的地方留白（那段是空闲还是未知由 Coding 道说）
   const chains: (typeof rows)[] = [];
   for (const row of rows) {
     const chain = chains.at(-1);
@@ -320,7 +290,6 @@ function tokensModel(lane: PulseTokensLane, range: Range): LaneModel | null {
     ),
     summary: rows.length && peakPerMinute != null
       ? {
-        // 手机上摘要列只有 6rem，「Peak」让给数字；和下一行的 now 并排，读得出这是峰值
         value: <><span className="hidden sm:inline">Peak </span>{compactCount(peakPerMinute)}/min</>,
         detail: currentPerMinute != null && currentPerMinute > 0 ? `now ${compactCount(currentPerMinute)}/min` : `${compactCount(freshTokens)} in 24h`,
       }
@@ -329,7 +298,6 @@ function tokensModel(lane: PulseTokensLane, range: Range): LaneModel | null {
   };
 }
 
-/** 五分钟桶的步数刻度至少到这么多：零星几步不该画成满格 */
 const STEPS_SCALE_MIN = 400;
 
 function stepsModel(lane: PulseStepsLane, range: Range, width: number): LaneModel | null {
@@ -371,13 +339,10 @@ function stepsModel(lane: PulseStepsLane, range: Range, width: number): LaneMode
         style={{ left: percent(range, session.from), width: `max(2px, calc(${percent(range, session.to)} - ${percent(range, session.from)}))` }}
       />
     )),
-    // 训练名从训练开始处写起，可以越过训练本身，一直写到下一次训练或泳道尽头；
-    // 连那也放不下（两次训练挨得太近）才不写，悬停里有
     over: sessions.map((session, index) => {
       const room = ((Math.min(range.to, sessions[index + 1]?.from ?? range.to) - session.from) / Math.max(1, range.to - range.from)) * width;
       if (room < session.activityType.length * 5.5 + 6) return null;
       const left = (session.from - range.from) / Math.max(1, range.to - range.from) * width;
-      // 贴着泳道右端的训练往左让，别被裁掉
       const shift = Math.min(0, width - left - (session.activityType.length * 5.5 + 6));
       return (
         <span
@@ -454,7 +419,6 @@ function LaneView({ label, model, range }: { label: string; model: LaneModel; ra
         }}
       >
         <svg viewBox={`0 0 ${LANE_WIDTH} ${LANE_HEIGHT}`} preserveAspectRatio="none" className="h-6 w-full" aria-hidden>
-          {/* 轨道恒在：空着的地方是未知，也要看得出这里有一条道 */}
           <line x1="0" y1={LANE_HEIGHT - 0.5} x2={LANE_WIDTH} y2={LANE_HEIGHT - 0.5} stroke="currentColor" strokeOpacity="0.12" strokeWidth="1" strokeDasharray="2 3" vectorEffect="non-scaling-stroke" />
           {model.svg}
         </svg>
@@ -477,10 +441,6 @@ function LaneView({ label, model, range }: { label: string; model: LaneModel; ra
   );
 }
 
-/**
- * 开发环境调试：不确定区间两种画法切着看，选择只记在本机。生产构建固定斜线。
- * 走 useSyncExternalStore：服务端和 hydrate 那一遍都是默认值，之后才读本地存储。
- */
 const TRACE_STYLE_KEY = "pulse:trace-style";
 const traceStyleListeners = new Set<() => void>();
 function readTraceStyle(): TraceStyle {
@@ -510,11 +470,7 @@ export function PulseCard({
   const activityRef = useRef<HTMLDivElement>(null);
   const activityWidth = useWidth(activityRef);
 
-  /**
-   * 认得这一道的形状才画。站点和 API Worker 各自部署，两边契约一改中间总有一段
-   * 新页面拿到旧载荷、或旧页面的首屏缓存里是旧形状；认不出就当没数据，
-   * 不能让一张卡片的 TypeError 把整页送进错误边界。
-   */
+  // Worker 与站点独立部署，缓存载荷可能不符合当前形状，必须逐道校验。
   const modelOf = (domain: PulseDomain): LaneModel | null => {
     const lane = lanes && typeof lanes === "object" ? lanes[domain] : undefined;
     if (!lane || typeof lane !== "object") return null;

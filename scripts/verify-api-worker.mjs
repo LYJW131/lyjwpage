@@ -1,9 +1,4 @@
 #!/usr/bin/env node
-/**
- * Isolated ingress → Service Binding → api Worker (Durable Objects SQLite) → Next cache + WebSocket verification.
- * One `wrangler dev` runs three configs like `pnpm dev:worker`: the dev-router (first, owns the port) sends
- * `/api/ingest/*` and `/api/internal/site-deployed` to ingress and everything else to api. Pass --build to build Next against it.
- */
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
@@ -24,7 +19,6 @@ const children = [];
 const logs = [];
 let socket;
 const secret = 'local-token-usage-verification';
-// 本地没有 Access：上报带的 JWT 用这把一次性测试钥匙签，Worker 认 ACCESS_DEV_JWKS 里的公钥
 const access = await createDevAccess();
 const cloudClient = 'cloud-only.access';
 const agentsClient = 'agents-only.access';
@@ -68,11 +62,8 @@ try {
       method: 'POST', headers: { ...await access.headers(clientId), 'content-type': 'application/json', ...headers }, body,
     });
   }
-  // 一次性 P-256 钥匙对：私钥按 .p8 的样子喂给 Worker 签 MusicKit 令牌，公钥留在这里验签
   const musicKitKeys = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
   const musicKitPem = `-----BEGIN PRIVATE KEY-----\n${Buffer.from(await crypto.subtle.exportKey('pkcs8', musicKitKeys.privateKey)).toString('base64')}\n-----END PRIVATE KEY-----`;
-  // 可滞后层与凭据 KV：临时持久化目录里的本地命名空间，不碰真实 KV；两个 Worker 用同一组 id，
-  // 上报入口写的、状态核心的公开端点读得到
   const kv = [
     { binding: 'LAG', id: '00000000000000000000000000000001' },
     { binding: 'CREDENTIALS', id: '00000000000000000000000000000002' },
@@ -87,7 +78,6 @@ try {
       DEV_OVERRIDES: 'true',
       APPLE_MUSIC_PRIVATE_KEY: musicKitPem, APPLE_MUSIC_TEAM_ID: 'ISOLATEDTM', APPLE_MUSIC_KEY_ID: 'ISOLATEDKY',
     },
-    // 和 wrangler.toml 的 [alias] 同一组：Worker 侧实现替掉站点侧只会抛错的桩
     alias: Object.fromEntries(['storage-driver', 'apple-developer-token', 'apple-music-credentials', 'lag-store']
       .map(name => [`@/lib/${name}`, join(root, `workers/api/src/${name}.ts`)])),
     durable_objects: { bindings: [
@@ -101,8 +91,6 @@ try {
     ],
     kv_namespaces: kv,
   };
-  // 上报入口：Access 鉴权用这把一次性测试钥匙，实时那一半经 Service Binding 交给上面的 api；
-  // 不绑采集 Worker（部署通知只广播、不重拉）和 D1（归档跳过）
   const ingress = {
     name: 'isolated-ingress', main: join(root, 'workers/ingress/src/index.ts'),
     compatibility_date: '2026-09-08', compatibility_flags: ['nodejs_compat', 'nodejs_compat_populate_process_env'],
@@ -111,7 +99,6 @@ try {
     r2_buckets: [{ binding: 'IMAGES', bucket_name: 'isolated-images' }],
     kv_namespaces: kv,
   };
-  // 和 pnpm dev:worker 同一个路由 Worker：只有第一个配置拿到端口
   const router = {
     name: 'isolated-router', main: join(root, 'workers/dev-router/src/index.ts'),
     compatibility_date: '2026-09-08',
@@ -196,7 +183,6 @@ try {
   const events = [];
   const onlineSeen = () => events.filter(e => e.type === 'online').map(e => e.payload.online);
   const audience = async () => (await (await fetch(`${worker}/count`)).json());
-  // 后台打开的页面：只算开着，但接上就要单独收到一条当前人数
   const background = new WebSocket(`${worker.replace('http:', 'ws:')}/ws?visible=0`);
   const backgroundSeen = [];
   background.addEventListener('message', e => { if (e.data !== 'pong') backgroundSeen.push(JSON.parse(e.data)); });
@@ -221,7 +207,6 @@ try {
   await eventually(async () => assert.deepEqual(onlineSeen(), [1, 0, 1, 2, 1]));
   assert.deepEqual(await audience(), { ok: true, connections: 1, online: 1 });
   console.log('PASS: one push socket carries both counts; visibility handshake, visible/hidden messages and close all rebroadcast online');
-  // 不给 token 就按上报器那样带 Access JWT；给了就是 Bearer（存储导入用，或故意给错的）
   async function post(base, path, body, token) {
     const auth = token === undefined ? await access.headers() : { authorization: `Bearer ${token}` };
     return fetch(`${base}${path}`, { method: 'POST', headers: { ...auth, 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(15_000) });
@@ -279,7 +264,6 @@ try {
     await eventually(async () => assert.ok(events.some(e => e.type === 'listening-now' && e.payload.music?.title === title)));
   }
   await eventually(async () => assert.ok(notices.some(n => n.tags?.includes('listening-now'))));
-  // 部署通知：上报入口验完 Access，请状态核心往推送房间广播不带数据的 version
   const deployed = await post(worker, '/api/internal/site-deployed', {});
   assert.equal(deployed.status, 200);
   assert.deepEqual(await deployed.json(), { ok: true, delivered: 1 });
@@ -295,7 +279,6 @@ try {
   const response = await post(worker, '/api/ingest/mac', { version: 4, heartbeatAt: Date.now(), presence: 'online', activeModules: ['timezone'], modules: { timezone: { identifier: 'Asia/Singapore', secondsFromGMT: 28800 } } });
   assert.equal(response.status, 202);
   await sleep(300);
-  // 时区卡定高，换时区只换内容：交给首屏定时重建，不失效（见 src/lib/home-layout.ts）
   assert.equal(notices.slice(beforeTimezone).some(n => n.tags?.includes('timezone')), false, 'Timezone content change must not invalidate page');
   const before = notices.length;
   assert.equal((await post(worker, '/api/ingest/mac', { version: 4, heartbeatAt: Date.now(), presence: 'online', activeModules: ['timezone'], modules: {} })).status, 202);
@@ -311,7 +294,6 @@ try {
     .map(async (path) => (await fetch(`${worker}${path}`)).text()));
   assert.equal(publicBodies.some((body) => body.includes('musicUserToken') || body.includes('developerToken')), false);
   console.log('PASS: per-card endpoints, CORS, private storage removed, heartbeat does not invalidate HTML');
-  // Emby 正在播放：设备、播放方式和规格按契约收下、逐字段收敛，不认识的字段（外挂字幕的路径之类）不落库也不广播
   const embyMedia = {
     container: 'mkv', bitrate: 6421965,
     video: { codec: 'hevc', width: 3840, height: 1600, range: 'hdr10', bitDepth: 10 },
@@ -350,7 +332,6 @@ try {
   assert.equal((await post(worker, '/api/ingest/emby', { playing: null })).status, 202);
   await eventually(async () => assert.equal((await (await fetch(`${worker}/api/status/watching/now`)).json()).data.nowPlaying, null));
   console.log('PASS: Emby playback carries device, play method and media spec; junk fields are dropped');
-  // 一起听的 developer token：同源签发、可验签、两个时刻齐全；不走 StateHub，也不被公开 API 那条兜住
   const tokenResponse = await fetch(`${worker}/api/musickit/token`, { headers: { Origin: 'http://localhost:3000' } });
   const tokenBody = await tokenResponse.text();
   assert.equal(tokenResponse.status, 200, tokenBody);

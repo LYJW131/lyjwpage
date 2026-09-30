@@ -52,7 +52,6 @@ final class HubModel {
         case let .failed(reason):
             note = reason
         case .coalesced:
-            // 上一句留着，见 TelemetryHub.Outcome.coalesced
             break
         }
         await refresh()
@@ -63,7 +62,6 @@ struct DashboardView: View {
     @State private var model = HubModel()
     @Environment(\.scenePhase) private var scenePhase
     @State private var showingSettings = false
-    /// 开关放设置里，这里只读，回前台时重新取一次
     @State private var activityEnabled = HubSettings.isEnabled(Modules.activity.id)
 
     @State private var workoutsEnabled = HubSettings.isEnabled(Modules.workouts.id)
@@ -80,7 +78,6 @@ struct DashboardView: View {
                             .font(.footnote.monospacedDigit())
                             .foregroundStyle(.secondary)
                     } else {
-                        // 没授权、或者手表当天还没同步过来，都是这一句
                         Text("读不到今天的活动记录").foregroundStyle(.secondary)
                         if model.needsAuthorization {
                             Button("允许读取健康数据") {
@@ -146,7 +143,6 @@ struct DashboardView: View {
                             .foregroundStyle(.secondary)
                     }
                     LabeledContent("结果") {
-                        // 一次都没报过时不写「成功」—— 那是在替一件没发生的事下结论
                         Text(model.lastPush.at == nil ? "—" : (model.lastPush.error ?? "成功"))
                             .foregroundStyle(model.lastPush.error == nil ? .secondary : Color.red)
                             .multilineTextAlignment(.trailing)
@@ -176,7 +172,6 @@ struct DashboardView: View {
             if model.needsAuthorization {
                 await model.authorize()
             }
-            // 回到前台就顺手报一次：这是唯一能绕开小时级节流的路子
             await model.report(force: false)
         }
         .onChange(of: scenePhase) { _, phase in
@@ -189,7 +184,6 @@ struct DashboardView: View {
             }
         }
         .onChange(of: showingSettings) { _, showing in
-            // 从设置退回来：开关可能变了，读数和下一次上报都要跟着走
             guard !showing else { return }
             activityEnabled = HubSettings.isEnabled(Modules.activity.id)
             workoutsEnabled = HubSettings.isEnabled(Modules.workouts.id)
@@ -202,8 +196,6 @@ struct DashboardView: View {
     }
 }
 
-/// 三环 + 三行读数。这一层**故意是具体的** —— 每个模块的展示形态天差地别，
-/// 让 TelemetryModule 协议再背一个 `dashboardView()` 就过线了
 private struct ActivityRingsRow: View {
     let reading: RingReading
 
@@ -238,7 +230,6 @@ private struct RingRow: View {
     }
 }
 
-/// 三条同心弧，和站点那张卡同一个画法：从 12 点顺时针，超过 100% 画满就停
 private struct RingsView: View {
     let reading: RingReading
 
@@ -270,7 +261,6 @@ private struct RingsView: View {
 }
 
 extension Color {
-    // Apple 那三个颜色，和站点卡片上的一套 —— 「哪个圈是锻炼」全靠它认
     static let moveRing = Color(red: 0.98, green: 0.07, blue: 0.31)
     static let exerciseRing = Color(red: 0.57, green: 0.91, blue: 0.16)
     static let standRing = Color(red: 0.12, green: 0.92, blue: 0.94)

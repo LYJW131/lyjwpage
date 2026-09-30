@@ -3,7 +3,6 @@ import { test } from "node:test";
 import { fetchPageSpeed, mergePageSpeed, parsePageSpeed } from "./pagespeed.ts";
 import type { LighthouseVitals, PageSpeedSample } from "./vercel-deployments-types.ts";
 
-/** 字段名和形状照 runPagespeed 的真实响应，只留用到的那几条审计。 */
 const response = (overrides: Record<string, unknown> = {}) => ({
   captchaResult: "CAPTCHA_NOT_NEEDED",
   lighthouseResult: {
@@ -43,7 +42,6 @@ test("只取性能类别与裁剪过的字段，密钥只出现在查询串里",
     assert.equal(url.searchParams.get("strategy"), "mobile");
     assert.equal(url.searchParams.get("category"), "performance");
     assert.equal(url.searchParams.get("key"), "test-key");
-    // 整份响应带截图，体积很大，裁掉后才是 Worker 真正要解的那点
     assert.match(url.searchParams.get("fields") ?? "", /^captchaResult,lighthouseResult\(/);
     return new Response(JSON.stringify(response()), { headers: { "Content-Type": "application/json" } });
   });
@@ -71,7 +69,6 @@ test("跑测机卡住的那一轮被窗口里其余几轮的中位数压住", ()
   const { payload, history } = mergePageSpeed(previous, at(0, 65, { tbtMs: 1000 }));
   assert.equal(history.length, 4);
   assert.equal(payload.samples, 4);
-  // 96、95、97、65 排序后中间两个是 95 和 96
   assert.equal(payload.desktop.score, 96);
   assert.equal(payload.desktop.tbtMs, 40);
   assert.equal(payload.mobile.score, 86);

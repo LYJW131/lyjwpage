@@ -1,4 +1,3 @@
-/** 测试用的内存 KV：只实现 shared/lag、shared/credentials 用到的那几个方法 */
 export class MemoryKv {
   readonly values = new Map<string, string>();
   writes = 0;

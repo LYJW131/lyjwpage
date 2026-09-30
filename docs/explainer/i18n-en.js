@@ -1,10 +1,7 @@
-// 英文对照表：中文原文（去掉首尾空白）→ 英文，由 i18n.js 查用。
-// 气泡整句对照（\n 是换行，{…} 是代码样式）；歌名、剧名、人名这类来自数据源的内容不翻译，和站点一致。
 window.EXPLAINER_EN_PATTERNS = [
   [/^旧内容 · 已缓存 (\d+) 天$/, "Old copy · cached $1 days"],
 ];
 window.EXPLAINER_EN = {
-  // ---- 页面与播放器 ----
   "lyjw.me 运行原理": "How lyjw.me works",
   "运行原理": "How it works",
   "▶ 选一种配乐，点一下开始": "▶ Pick a soundtrack to start",
@@ -26,7 +23,6 @@ window.EXPLAINER_EN = {
   "配乐": "Soundtrack",
   "中文": "中文",
 
-  // ---- 数据源里的内容（歌名、剧名、人名）：照原样 ----
   "我推的孩子": "我推的孩子",
   "S1:E5 · 恋爱实境秀": "S1:E5 · 恋爱实境秀",
   "夜に駆ける": "夜に駆ける",
@@ -39,7 +35,6 @@ window.EXPLAINER_EN = {
   "\"夜に駆ける\"": "\"夜に駆ける\"",
   "夜に駆ける → アイドル": "夜に駆ける → アイドル",
 
-  // ---- 章节 ----
   "序章": "Intro",
   "采集端": "Collectors",
   "七个上报器，守在数据产生的地方": "Seven reporters, right where the data is born",
@@ -60,7 +55,6 @@ window.EXPLAINER_EN = {
   "回顾": "Recap",
   "一首歌的旅程": "The journey of one song",
 
-  // ---- 00 序章 ----
   "讲讲 lyjw.me 是怎么运转的": "explain how lyjw.me works",
   "嗨！我是 Claude（Opus 5.5），\n带你拆开 {lyjw.me} 看看。": "Hi! I'm Claude (Opus 5.5).\nLet's take {lyjw.me} apart.",
   "这个主页，是怎么运转的？": "How does this homepage work?",
@@ -86,7 +80,6 @@ window.EXPLAINER_EN = {
   "充电卡片只在充电时出现。": "Charging card:\nonly while charging.",
   "链路分三段：采集、中枢、展示。": "Three stages: collect, hub, display.",
 
-  // ---- 01 采集端 ----
   "应用 · 音乐 · 充电 · 编码": "Apps · music · charging · coding",
   "活动圆环 · 训练": "Activity rings · workouts",
   "HomePod 正在播放 · PS5 电源": "HomePod playback · PS5 power",
@@ -150,7 +143,6 @@ window.EXPLAINER_EN = {
   "Mac 信封": "Mac envelope",
   "图标、封面不塞进信封，\n信封里只带一个文件名。": "Icons and covers stay out of the envelope;\nit only carries a file name.",
 
-  // ---- 02 状态中枢 ----
   "上报请求": "Ingest request",
   "① 鉴权": "① Auth",
   "Bearer 密钥 · 恒时比较": "Bearer key · timing-safe",
@@ -195,7 +187,6 @@ window.EXPLAINER_EN = {
   "有变化才广播，\n布局变了才通知 Vercel。": "Broadcast only on change;\ntell Vercel only when the layout changes.",
   "只有在线、离线翻转时，\n才推 {presence}、刷新三个标签。": "Only an online/offline flip\npushes {presence} and 3 tags.",
 
-  // ---- 03 首屏缓存 ----
   "首屏 HTML": "First-paint HTML",
   "24 个读取 · 并行": "24 reads · in parallel",
   "不可用": "Unavailable",
@@ -228,7 +219,6 @@ window.EXPLAINER_EN = {
   "多了一张卡，旧 HTML 里没有，\n等不了 10 分钟。": "A new card isn't in the old HTML,\nand can't wait 10 minutes.",
   "这种小变化不惊动 Vercel，\n交给浏览器自己追。": "Small changes don't bother Vercel;\nthe browser catches up on its own.",
 
-  // ---- 04 实时推送 ----
   "15 秒": "15 s",
   "请求 5 秒超时": "Request times out in 5 s",
   "共用": "Shared",
@@ -263,7 +253,6 @@ window.EXPLAINER_EN = {
   "每份数据都带着时间戳，\n慢回来的旧结果进不来。": "All data carries a timestamp,\nso late, stale results can't get in.",
   "换歌、暂停、拖动时才发锚点，\n中间的进度照着时间推。": "Anchors only on skip, pause or seek;\nprogress in between follows the clock.",
 
-  // ---- 05 大陆访问 ----
   "大陆访客": "CN visitor",
   "阿里云 ESA": "Alibaba Cloud ESA",
   "边缘缓存": "Edge cache",
@@ -283,7 +272,6 @@ window.EXPLAINER_EN = {
   "访客不用等源站：\n过期、出错都先给旧页。": "Visitors never wait on the origin:\nstale or failing, the old page goes first.",
   "发版后先扫旧首页、再预热；\n新版就位，再推 version 提醒刷新。": "On deploy: purge, then warm the homepage;\nonce live, push version to prompt a reload.",
 
-  // ---- 06 图片链路 ----
   "原图": "Original",
   "改了 1 个像素": "1 pixel changed",
   "Vercel 边缘": "Vercel edge",
@@ -298,7 +286,6 @@ window.EXPLAINER_EN = {
   "内容一变，地址就变。": "Change the content, and the address changes.",
   "旧地址永远是那张旧图，\n所以从不用刷新。": "An old address is always the old image,\nso nothing ever needs purging.",
 
-  // ---- 07 自适应调频 ----
   "推送连接 · 含后台": "Push connections · incl. background",
   "同一条 /ws": "Same /ws",
   "可见页面": "Visible pages",
@@ -325,7 +312,6 @@ window.EXPLAINER_EN = {
   "有人一来，下次醒来就开跑。": "Someone's back?\nIt runs on the next wake.",
   "推送房间没事就睡，\n保活的 {ping} 叫不醒它。": "Idle, the push room sleeps;\n{ping}s don't wake it.",
 
-  // ---- 08 站点自检 ----
   "Vercel · 出页面": "Vercel · serves pages",
   "报错 · 性能 · 在线": "Errors · performance · uptime",
   "分钟 cron": "Minute cron",
@@ -343,7 +329,6 @@ window.EXPLAINER_EN = {
   "Worker 用只读令牌取回结果，\n变成卡片上的两行在线状态。": "A read-only token brings\nthem back as two rows.",
   "线上出错时，\n我先来这儿查证据。": "When production breaks,\nI start here for evidence.",
 
-  // ---- 09 回顾 ----
   "按下播放": "Press play",
   "鉴权 · 校验": "Auth · validate",
   "提交 · 交回待办": "Commit · return to-dos",

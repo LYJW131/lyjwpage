@@ -36,7 +36,6 @@ function DialogButton({ children, onClick, disabled }: {
   );
 }
 
-/** 滑块上会改值的键。松开这些才 seek，别的键（Tab / Escape）路过不算 */
 const SEEK_KEYS = new Set([
   "ArrowLeft",
   "ArrowRight",
@@ -51,10 +50,6 @@ const SEEK_KEYS = new Set([
 const SETTLE_DELAY_MS = 110;
 const SUSPEND_AFTER_CHANGE_MS = 400;
 
-/**
- * 保证歌单列表停在整行上：参考 PlayStation 奖杯明细的停滚吸附实现，
- * 不用 CSS scroll-snap（防止打断手势和滚轮自然动量），只在用户停滚 SETTLE_DELAY_MS 后平滑对齐到最近整行。
- */
 function usePlaylistSnap(albumId: string | null | undefined) {
   const node = useRef<HTMLDivElement | null>(null);
   const previous = useRef(albumId);
@@ -101,14 +96,6 @@ function usePlaylistSnap(albumId: string | null | undefined) {
   }, []);
 }
 
-/**
- * 播放器的展开页。
- *
- * 打开时队列已经在装（见 use-web-player 的 openWith），所以曲目列表登录前就
- * 能看。登录前也能放，只是每首 30 秒试听 —— 控件一律显示，试听这件事在说明
- * 和进度行里标出来。出声只从底栏的 Play、中间那颗播放键或点某一首开始 ——
- * 点封面进来不会自动放。
- */
 export function WebPlayerDialog({ player }: { player: WebPlayer }) {
   const titleId = useId();
   const listRef = usePlaylistSnap(player.item?.id);
@@ -127,7 +114,6 @@ export function WebPlayerDialog({ player }: { player: WebPlayer }) {
   const hasQueue = player.queue.length > 0;
   const isPlaying = isItemActive && player.playbackState === PLAYBACK_STATE.playing;
   const playable = item ? queueOptionsFor(item) !== null : false;
-  /** 未授权时放的是 30 秒试听，进度那一行要标出来 */
   const previewing = !player.authorized;
 
   const positionMs = isItemActive ? activePositionMs : 0;
@@ -143,10 +129,7 @@ export function WebPlayerDialog({ player }: { player: WebPlayer }) {
     };
   }, []);
 
-  /**
-   * 提交 seek 并保持乐观显示：
-   * 在底层音频引擎真正跳转并开始回报新位置前，锁定在目标位置，防止放手瞬间旧时间残影把滑块拽回去。
-   */
+  // seek 生效前保留乐观位置，避免旧进度事件把滑块拉回去。
   const commitSeek = useCallback(
     (targetMs: number) => {
       isDraggingRef.current = false;
@@ -179,13 +162,7 @@ export function WebPlayerDialog({ player }: { player: WebPlayer }) {
     [player],
   );
 
-  /**
-   * 进度在这里自己订阅，不进 Provider 的状态：playbackTimeDidChange 每秒一次，
-   * 放进 context 会让页头和整张卡片跟着每秒重渲染。
-   *
-   * 依赖项不含 isDragging，避免拖动开始和结束时频繁注销/重挂载并在首帧触发 onTime 覆盖新位置。
-   * 非当前播放专辑时 positionMs 与 durationMs 自动计算为 0，防止把正在后台播放的另一张专辑进度错画进来。
-   */
+  // 进度订阅不依赖 isDragging，避免重订阅首帧覆盖刚提交的位置。
   useEffect(() => {
     const inst = player.instance;
     if (!inst || !player.isItemActive) {
@@ -199,7 +176,6 @@ export function WebPlayerDialog({ player }: { player: WebPlayer }) {
       const targetMs = seekingTargetMsRef.current;
 
       if (targetMs !== null) {
-        // 正在等待 seek 生效：若底层回报与目标差距大于 1.5 秒，说明仍是跳转前旧时间，坚决不覆盖
         if (Math.abs(currentMs - targetMs) > 1500) {
           return;
         }
@@ -245,12 +221,10 @@ export function WebPlayerDialog({ player }: { player: WebPlayer }) {
 
       <div className="px-4">
         <div className="mt-3 flex items-center gap-3">
-          {/* 有动态封面就放动态的，静态那层和预载的是同一张，见 player-cover */}
           <PlayerCover item={item} />
           <div className="flex min-w-0 flex-1 flex-col justify-center">
             <div className="truncate font-medium">{item?.title}</div>
             <div className="truncate text-sm text-muted-foreground">{item?.artist}</div>
-            {/* 当前曲名那一行没有内容时也占位，免得队列装好那一下整块往下跳 */}
             <div className="min-h-5 truncate text-sm text-foreground">
               {(isItemActive ? player.nowPlaying?.attributes?.name : null) ?? (
                 <span className="invisible select-none" aria-hidden>
@@ -261,7 +235,6 @@ export function WebPlayerDialog({ player }: { player: WebPlayer }) {
           </div>
         </div>
 
-        {/* 正在放那首的同步歌词：仅完整播放时展示，未登录 30 秒试听、没在放、没词都不占位 */}
         {!previewing ? (
           <PlayerLyrics
             instance={player.instance}
@@ -278,7 +251,6 @@ export function WebPlayerDialog({ player }: { player: WebPlayer }) {
           </p>
         ) : (
           <>
-            {/* 未登录也能放：MusicKit 给每首 30 秒试听。控件照常，只把这件事说清楚 */}
             {!player.authorized ? (
               <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
                 Without signing in, each track plays a 30-second preview. Sign in with an active Apple Music subscription for full playback; the site never relays audio or stores credentials.
@@ -302,7 +274,6 @@ export function WebPlayerDialog({ player }: { player: WebPlayer }) {
                   />
                 </div>
 
-                {/* 悬停/拖拽时精致圆点滑块 */}
                 <div
                   className={cn(
                     "pointer-events-none absolute size-2.5 -translate-x-1/2 rounded-full bg-foreground shadow-sm ring-2 ring-surface transition-all duration-150",
@@ -313,7 +284,6 @@ export function WebPlayerDialog({ player }: { player: WebPlayer }) {
                   style={{ left: `${percent}%` }}
                 />
 
-                {/* 原生隐藏 Range Input：全权负责无障碍操作与各端拖拽事件 */}
                 <input
                   type="range"
                   aria-label="Playback progress"
@@ -352,7 +322,6 @@ export function WebPlayerDialog({ player }: { player: WebPlayer }) {
 
               <div className="label-mono mt-1 flex justify-between text-muted-foreground tabular-nums">
                 <span>{formatClock(positionMs)}</span>
-                {/* 试听时总长是 0:30，前面点明，免得以为整首就这么短 */}
                 <span>
                   {previewing ? "Preview · " : null}
                   {formatClock(durationMs)}
@@ -370,7 +339,6 @@ export function WebPlayerDialog({ player }: { player: WebPlayer }) {
               >
                 <SkipBack className="size-4" aria-hidden />
               </button>
-              {/* 还没出声时 toggle 走的是 play：装好的队列从第一首开始 */}
               <button
                 type="button"
                 aria-label={isPlaying ? "Pause" : "Play"}
@@ -395,7 +363,6 @@ export function WebPlayerDialog({ player }: { player: WebPlayer }) {
               </button>
             </div>
 
-            {/* 队列登录前就显示：有缓存或已装载时，打开弹窗前就计算好高度，防止跳动 */}
             {(() => {
               if (!hasQueue && !isStarting) return null;
 
@@ -472,13 +439,11 @@ export function WebPlayerDialog({ player }: { player: WebPlayer }) {
         {!playable ? null : isItemActive ? (
           <DialogButton onClick={player.stop}>Stop</DialogButton>
         ) : (
-          // 点封面只是打开这张卡片，真正出声从这里（或中间那颗播放键）开始
           <DialogButton disabled={isStarting} onClick={player.play}>
             {isStarting ? "Loading..." : "Play"}
           </DialogButton>
         )}
 
-        {/* 登录入口和播放键并排：未登录也能试听，登录是「换成整首」而不是「才能放」 */}
         {playable && !player.authorized ? (
           <>
             <div className="w-px self-stretch bg-line" aria-hidden />
@@ -488,7 +453,6 @@ export function WebPlayerDialog({ player }: { player: WebPlayer }) {
           </>
         ) : null}
 
-        {/* 跳 Apple Music 的入口放在弹窗里；列表和 hero 优先打开播放器，只在播放器不可用时才直接外跳 */}
         {item?.link ? (
           <>
             {playable ? <div className="w-px self-stretch bg-line" aria-hidden /> : null}

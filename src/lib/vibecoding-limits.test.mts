@@ -30,7 +30,6 @@ test("一封只带来的行整行替换，没出现的 id 留着上一次的", (
     first,
     {
       collectedAt: "2026-09-05T12:10:00.000Z",
-      // 这一轮 Claude 取失败了：空 limits 加原因，不把上一轮的窗口留着当新的
       agents: [{ id: "claude", plan: null, limits: [], limitsError: "token expired" }],
     },
     2_000,
@@ -41,10 +40,8 @@ test("一封只带来的行整行替换，没出现的 id 留着上一次的", (
     limitsError: "token expired",
     updatedAt: 2_000,
   });
-  // codex 这封没提，原样保留，包括它自己的收到时刻
   assert.equal(second.agents.codex?.updatedAt, 1_000);
   assert.equal(second.agents.codex?.limitsError, "过期");
-  // 不改动传进来的上一份
   assert.equal(first.agents.claude?.limits.length, 1);
 });
 
@@ -63,7 +60,6 @@ test("按 id 取限额：取到的带上收到时刻，没上报过或这份还�
   const none = { plan: null, limits: [], limitsError: null, limitsAt: null };
   assert.deepEqual(agentLimitsOf(stored, "cursor"), none);
   assert.deepEqual(agentLimitsOf(null, "claude"), none);
-  // 原型链上的名字不是 agent
   assert.deepEqual(agentLimitsOf(stored, "constructor"), none);
 });
 

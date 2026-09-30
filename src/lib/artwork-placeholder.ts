@@ -3,65 +3,18 @@ import sharp from "sharp";
 
 import { appleArtwork } from "@/lib/apple-artwork";
 
-/**
- * 首屏封面的低清占位图。
- *
- * 卡片上那几张封面是 Apple CDN 直连的，HTML 先到、图后到，首帧那几格是空的。
- * 这里在服务端按展示尺寸压一张**很小**的 webp 塞进 HTML，由消费方铺成一张
- * `decoding="sync"` 的垫底 `<Image>`，压在真图下层。
- *
- * **不要改回 `next/image` 的 `placeholder` 属性**：那条路把 data URI 变成 CSS
- * 背景图，而背景图没有 `decoding` 可控 —— 移动端水合期解码会滑过首帧一两拍，
- * 露出底下的 `bg-muted`，见 hero-motion-artwork 的注释。
- * 真图的 `src` 和加载时序一个字节都不改，垫底图只是排在它前面的一层。
- *
- * 分辨率和质量按档分开定（见下面两个常量和 `QUALITY_BY_PX`）：hero 取 3×、
- * 列表行取 2×。列表那档撑得起字节，是因为它顶的时间最长 —— 真图是 lazy。
- */
+// 占位图不能改成 CSS 背景：背景解码时机不可控，会在移动端水合时露出空帧。
 
-/**
- * hero 取 3× 的展示尺寸，覆盖高像素密度屏幕。
- * 即使真图是 eager，慢网下占位也会停留，不能只按 1× 压缩。
- */
 export const HERO_PLACEHOLDER_PX = 240;
 
-/**
- * 列表行取 **2×** 的展示尺寸。
- *
- * 1× 在 2~3 倍屏的手机上等效糊化，真图换上来时反差明显 —— 行的真图是 lazy，
- * 占位要顶很久，糊就藏不住。这一档是全站占位字节的大头，取 2× 是**明确拿字节
- * 换观感**的决定，见下面的质量表。
- */
 export const ROW_PLACEHOLDER_PX = 88;
 
-/**
- * 每档的输出质量，键就是那一档的 px。
- *
- * **别写成按大小比较派生**：列表档的 px 比 hero 还大，按大小比较会把它判进 hero
- * 档，悄没声地降质。显式列表，加档时一眼看得见。
- *
- * 列表档的质量取得高，是因为**这一档的字节几乎不由质量决定**：像素数才是大头。
- * 既然涨质量近乎免费，就别在这儿省 —— 糊正是要修的那个问题。
- */
+// 质量按档显式查表；列表档像素数大于 hero，不能按尺寸大小推导质量。
 const QUALITY_BY_PX: Record<number, number> = {
   [HERO_PLACEHOLDER_PX]: 75,
   [ROW_PLACEHOLDER_PX]: 60,
 };
 
-/**
- * 按模板 URL + 尺寸压一张，结果永久留用。
- *
- * 缓存键是（模板 URL, px）：Apple 目录里同一张封面的模板 URL 是稳定的，
- * 同样的键必然是同一张图，所以 `cacheLife("max")`，全站压一次。
- *
- * 只认 Apple 的 mzstatic 和 blobstore：判主机名而不是找子串。
- * 自建歌单的 blobstore 预签名 URL 也需要首屏占位。保留完整签名取图并作为
- * 缓存键；签名更新时重新压一次，同一 URL 的后续页面复用结果。
- *
- * 失败一律返回 null，调用方那一格就不铺垫底图，等于没做内联时的行为。
- * null 同样会被缓存住：与其他几处内联同一取舍，免得每次页面重新生成都再赌
- * 一次超时。
- */
 async function encodePlaceholder(
   templateUrl: string,
   px: number,
@@ -82,7 +35,6 @@ async function encodePlaceholder(
         !source.hostname.endsWith(".blobstore.apple.com"))
     ) return null;
 
-    // 目录封面直接要展示尺寸；自建歌单没有尺寸模板，保留签名取原图后压缩。
     const url = appleArtwork(templateUrl, px);
     if (!url) return null;
 
@@ -93,7 +45,6 @@ async function encodePlaceholder(
     });
     if (!res.ok) throw new Error(`Apple 封面 HTTP ${res.status}`);
 
-    // 查表而不是当参数传：缓存键因此仍只有 URL 和尺寸两项
     const quality = QUALITY_BY_PX[px] ?? 50;
     const webp = await sharp(new Uint8Array(await res.arrayBuffer()))
       .resize(px, px, { fit: "cover" })
@@ -110,29 +61,13 @@ async function encodePlaceholder(
   }
 }
 
-/**
- * 带形状的 data URI，别退回裸 `string`。
- *
- * 一是它能在类型上挡住「把远端 URL 误传进垫底图」这类接错线；二是万一哪天
- * 又要喂给 `next/image` 的 `placeholder`（那个 prop 只收
- * `'blur' | 'empty' | \`data:image/${string}\``），不必在中间几层加强转。
- */
 export type ArtworkDataUri = `data:image/${string}`;
 
-/** 组件按数据里那个原始模板 URL 查表，不必自己再算一遍 `appleArtwork`。 */
 export type ArtworkPlaceholders = {
-  /** hero 那一格，尺寸见 HERO_PLACEHOLDER_PX */
   hero: Record<string, ArtworkDataUri>;
-  /** 列表行，尺寸见 ROW_PLACEHOLDER_PX */
   rows: Record<string, ArtworkDataUri>;
 };
 
-/**
- * 把一批模板 URL 压成「URL → data URI」的表。
- *
- * 逐个 `encodePlaceholder` 都不会 reject（失败返回 null），所以 `Promise.all`
- * 不会被一张坏图拖垮；压不出来的那张干脆不进表，组件查不到就不铺垫底图。
- */
 async function encodeAll(
   urls: Iterable<string>,
   px: number,
@@ -148,15 +83,7 @@ async function encodeAll(
   return table;
 }
 
-/**
- * 首屏这一份 HTML 要覆盖的封面全集。
- *
- * **别按「移动端能看见几张」裁**：SSR 出的是设备无关的一份 HTML，可见行数靠 CSS
- * 断点决定，所以列表那批把调用方传进来的行全压上。
- *
- * 调用方按同一份服务端快照算出真正会出现的 hero 和列表行，只压首帧实际渲染的
- * 图片。运行时状态切换仍由远端真图接手，不把另一种可能也提前塞进 HTML。
- */
+// SSR 的 HTML 不区分设备，不能按移动端可见行数裁掉桌面首屏所需的占位图。
 export async function artworkPlaceholders(
   rowArtworks: (string | null | undefined)[],
   heroArtwork: string | null | undefined,

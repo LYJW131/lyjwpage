@@ -1,15 +1,3 @@
-# 容器上报器的镜像在这里构建，推到 GHCR；机器上只 `docker compose pull`，不现场 build。
-#
-# 只构建改了的那几个：一个目录（或这个文件）有变化才进 matrix。
-# PR 只 build 不推，验证 Dockerfile 还能跑通；合进 main 才推 `latest` 和 `sha-<短哈希>`。
-# 手动触发（workflow_dispatch）全部镜像都推，用来刷新基础镜像或 CLI 版本。
-#
-# misaka-jp 上的服务（server-reporter、agents-reporter、discord-reporter）推完镜像接着自动换：
-# deploy 这一步用一把只能跑 /opt/lyjwpage/deploy.sh 的密钥 ssh 过去，脚本点名
-# pull、重建那一个、清悬空镜像（见 reporters/misaka-deploy.sh）。密钥、主机指纹和
-# 地址在 `misaka-jp` 这个 environment 里，只有 main 能用。
-# emby-reporter 在内网的 dsm 上，playstation-reporter 在内网的 n100 上，
-# Actions 够不着，按各自 README 手动拉。
 name: Build reporters
 
 on:
@@ -47,7 +35,6 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      # 改了 workflow 本身所有镜像都重跑一遍，确认改动对每个镜像都成立
       - uses: dorny/paths-filter@v4
         id: filter
         if: github.event_name != 'workflow_dispatch'
@@ -77,7 +64,6 @@ jobs:
             CHANGED='["agents-reporter","server-reporter","emby-reporter","playstation-reporter","discord-reporter"]'
           fi
           echo "images=${CHANGED:-[]}" >> "$GITHUB_OUTPUT"
-          # 其中跑在 misaka-jp 上、推完要自动换的那几个
           echo "misaka=$(echo "${CHANGED:-[]}" | jq -c '[.[] | select(. == "server-reporter" or . == "agents-reporter" or . == "discord-reporter")]')" >> "$GITHUB_OUTPUT"
 
   build:
@@ -91,7 +77,6 @@ jobs:
       fail-fast: false
       matrix:
         image: ${{ fromJSON(needs.changes.outputs.images) }}
-    # 同一镜像同一分支连推几次，只留最后一次
     concurrency:
       group: build-${{ matrix.image }}-${{ github.ref }}
       cancel-in-progress: true
@@ -107,7 +92,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # 仓库名里的大写由它转小写：ghcr.io/lyjw131/<镜像>
       - uses: docker/metadata-action@v6
         id: meta
         with:
@@ -117,8 +101,7 @@ jobs:
             type=sha,prefix=sha-
             type=ref,event=pr
 
-      # 只出 amd64：misaka-jp、dsm 和 n100 都是 x86_64，没有 arm64 的消费者。
-      # 缓存用 mode=min：agents-reporter 那层有几个 GB，mode=max 会很快挤满仓库的 Actions 缓存额度。
+      # mode=max 会把 CLI 的大体积中间层写进 Actions 缓存并挤满额度，必须用 mode=min。
       - uses: docker/build-push-action@v7
         with:
           context: reporters/${{ matrix.image }}
@@ -126,20 +109,17 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          # 没声明这个 ARG 的镜像会忽略它；server-reporter 拿它报自己是哪一版
           build-args: GIT_SHA=${{ github.sha }}
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,scope=${{ matrix.image }},mode=min
 
   deploy:
     needs: [changes, build]
-    # 只有合进 main（或在 main 上手动触发）推了 latest 才换；PR 只 build
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && needs.changes.outputs.misaka != '[]'
     runs-on: ubuntu-latest
     environment: misaka-jp
     permissions:
       contents: read
-    # 同一台机器的部署逐个执行，也不和下一次推送抢
     concurrency:
       group: deploy-misaka-jp
       cancel-in-progress: false
@@ -159,7 +139,7 @@ jobs:
           chmod 600 ~/.ssh/deploy
           printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
 
-      # 服务名是 ssh 发过去的「命令」，机器那头的 command= 只把它当 SSH_ORIGINAL_COMMAND 读
+      # 服务名由远端 SSH 强制命令按白名单读取，不能改成任意远程 shell 命令。
       - name: Pull and restart ${{ matrix.service }}
         env:
           HOST: ${{ secrets.MISAKA_HOST }}
@@ -175,7 +155,6 @@ jobs:
           SHA: ${{ github.sha }}
         run: |
           grep -q '^status=running restarts=0 ' deploy.log || { echo "::error::$SERVICE is not running cleanly"; exit 1; }
-          # 只有 server-reporter 的镜像里烧了提交；对上了才算换到这一版
           if [ "$SERVICE" = server-reporter ]; then
             grep -qx "REPORTER_COMMIT=$SHA" deploy.log || { echo "::error::$SERVICE is not running $SHA"; exit 1; }
           fi

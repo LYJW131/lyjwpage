@@ -1,13 +1,4 @@
-/**
- * 53 周热力图的窗口切片。
- *
- * 充电头曲线的游标是最后一个采样点的毫秒时刻，新点只往后追加，所以 `?since=`
- * 是开区间。格子不是这样：最后一天（今天）的数字还会涨，锁在页面上的那天
- * 也得再问一次，游标按闭区间切。
- *
- * `since` 落在窗口里才发尾部；滚出窗口（周已经切走）就整份重发，和充电头
- * 「游标比最旧点还早」同一条规则。
- */
+// 当天数值仍会增加，日历增量游标必须包含当天，而非采用曲线的开区间。
 
 import { addDays } from "./github-chart-compact.ts";
 
@@ -32,18 +23,11 @@ export function utcToday(now = Date.now()): string {
   return new Date(now).toISOString().slice(0, 10);
 }
 
-/**
- * 某个时刻落在某个时区的哪一天。
- *
- * 日合计是采集侧按它自己的日历分的桶，切窗必须用同一份日历 —— 拿 UTC 切，
- * 东八区 00:00 到 08:00 之间「今天」会被算成昨天，当天那格连着已经收到的
- * 数字一起被切掉，而 GitHub 那张图照常画到今天，两张图就错开一列。
- */
+// 日合计与切窗必须用同一时区，否则当地午夜后的数据会被误切成未来。
 export function zonedDay(now: number, timezone: string): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: timezone }).format(now);
 }
 
-/** `timezone` 里 `now` 之后第一次换日的时刻（毫秒，新一天的第一毫秒）。按小时往前探，再二分；夏令时那天也对 */
 export function nextZonedDayStart(now: number, timezone: string): number {
   const today = zonedDay(now, timezone);
   let hi = now + 3_600_000;
@@ -57,15 +41,10 @@ export function nextZonedDayStart(now: number, timezone: string): number {
   return hi;
 }
 
-/** 53 周窗会填到本周六；今天之后的空格不能点、不能走键盘。 */
 export function isHeatmapFuture(date: string, today = utcToday()): boolean {
   return date > today;
 }
 
-/**
- * 下一次增量从哪天问起。53 周窗口常常填到本周六，最后一格还在未来、
- * 数字是 0；今天的格子仍会涨，所以游标取「今天和窗尾较早的那个」。
- */
 export function heatmapRefreshFrom(
   origin: string,
   length: number,
@@ -78,16 +57,10 @@ export function heatmapRefreshFrom(
 }
 
 export type HeatmapSlice = {
-  /** 假 = 整份窗口；真 = 从 fromIndex 接到窗尾 */
   partial: boolean;
   fromIndex: number;
 };
 
-/**
- * 按客户端最后一天切窗口。返回的 fromIndex 含当天。
- *
- * since 缺、写坏、或已经不在窗口里，都按整份处理。
- */
 export function sliceHeatmapWindow(
   origin: string,
   length: number,
@@ -105,12 +78,6 @@ export function heatmapSliceFrom(origin: string, fromIndex: number): string {
   return addDays(origin, fromIndex);
 }
 
-/**
- * 把一段日序列并进本地窗口。
- *
- * 窗口原点往前滚时丢掉已经出窗的前缀；增量接在 `from` 上，长度以服务端
- * 这段尾巴为准。
- */
 export function mergeHeatmapSeries(
   local: readonly number[] | undefined,
   localOrigin: string | undefined,

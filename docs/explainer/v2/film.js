@@ -1,6 +1,3 @@
-// 时间轴与播放器：章节按 plan.js 排队，时钟跟配乐走；导出接口 window.__ready / __seek 供无头抽帧。
-// 地址参数：?export 无头抽帧（不放声）· ?lang=en 英文 · ?t=秒 从这里开始 · ?only=ch02,ch03 只排这几章（预览、试听自己那章）
-//          · ?check 自检模式（kit 记下每一处字的屏幕字号，tools/check.mjs 用）
 (() => {
   const Sc = window.Score;
   const BPM = Sc ? Sc.BPM : 108, BEAT = 60 / BPM, BAR = BEAT * 4;
@@ -9,7 +6,6 @@
   if (EXPORT) document.body.classList.add("export");
   if (params.has("check")) window.__CHECK = { all: [] };
 
-  // ---------- 章节：plan.js 定顺序和小节数；没写的章用占位 ----------
   const only = params.get("only") ? params.get("only").split(",") : null;
   const PLAN = (window.PLAN || []).filter((p) => !only || only.includes(p.id));
   const registered = new Map();
@@ -29,7 +25,6 @@
   const totalBars = bar0, DURATION = totalBars * BAR;
   if (Sc && Sc.build) Sc.build(PLAN);
 
-  // 还没写的章：暗底上写章号、章名和小节:拍，拍子上闪一下，整片照样能从头放到尾
   function placeholder(p) {
     const nn = p.id.slice(2);
     let plate, x;
@@ -67,9 +62,7 @@
       t, lt, ch,
       bar: lt / BAR, beat: lt / BEAT, BAR, BEAT,
       frame: Math.floor(t * 60 + 1e-6),
-      // 章节内的小节:拍 → 章节内秒
       at: (bar, beat = 0) => (bar * 4 + beat) * BEAT,
-      // 某类配乐事件最近一次到现在的衰减脉冲（半衰期 hl 秒）
       hit(name, hl = 0.15) { const e = lastBefore(EV[name], t); return e == null ? 0 : Math.exp(-((t - e) / hl) * Math.LN2); },
       env: (name) => (Sc && Sc.env ? Sc.env(name, t) : 0),
       tr: window.I18N.tr,
@@ -77,7 +70,6 @@
     };
   }
 
-  // ---------- 画布尺寸 ----------
   const wrap = document.getElementById("wrap");
   function fit() {
     const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -94,7 +86,6 @@
     dirty = true;
   }
 
-  // ---------- 渲染 ----------
   let T = 0, dirty = true;
   function render(t) {
     G.t = t;
@@ -106,7 +97,6 @@
     G.post(f.post);
   }
 
-  // ---------- 配乐 ----------
   let ac = null, buffer = null, src = null, playing = false, ctxT0 = 0;
   const outLat = () => (ac ? (ac.outputLatency || 0) + (ac.baseLatency || 0) : 0);
   function clock() { return playing && ac ? ac.currentTime - ctxT0 - outLat() : T; }
@@ -148,7 +138,6 @@
     ui();
   }
 
-  // ---------- 播放器界面 ----------
   const $ = (id) => document.getElementById(id);
   const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
   const scrub = $("scrub"), fill = scrub.querySelector(".fill");
@@ -179,7 +168,6 @@
   });
   window.addEventListener("resize", fit);
 
-  // ---------- 主循环 ----------
   let lastDrawn = -1;
   function loop() {
     const t = now();
@@ -193,7 +181,6 @@
     requestAnimationFrame(loop);
   }
 
-  // ---------- 启动 ----------
   const FONTS = ['500 20px Geist', '600 20px Geist', '700 20px Geist', '400 20px "Geist Mono"', '500 20px "Geist Mono"', '600 20px "Geist Mono"', '700 20px "Geist Mono"', '20px "Geist Pixel"'];
   window.__ready = (async () => {
     I18N.set(params.get("lang") === "en" ? "en" : "zh");
@@ -205,8 +192,6 @@
     ui();
     if (!EXPORT) {
       requestAnimationFrame(loop);
-      // 配乐：优先读预先渲好的 score.mp3（v2/tools/score-mp3.mjs 生成）；长度和现在的章节表对不上、或者没有，就在浏览器里现合成。
-      // 站点版经 window.__assets 取按内容哈希发布的那份（scripts/build-explainer.mjs 注入，缺 score.mp3 时构建失败），本地用原名
       let got = null;
       try {
         const r = await fetch((window.__assets || {})["score.mp3"] || "score.mp3");
@@ -218,7 +203,6 @@
       } catch {}
       if (!got && Sc && Sc.render) { try { got = await Sc.render(); } catch (e) { console.error("配乐合成失败", e); } }
       document.getElementById("load").style.display = "none";
-      // 配乐到之前已经按了播放（静音计时）：记下当前位置，换成有声的时钟接着放
       const wasPlaying = playing, t = now();
       if (wasPlaying) pause();
       buffer = got;
@@ -227,7 +211,6 @@
     }
     return true;
   })();
-  // 导出：同步画出 t 时刻的一帧
   window.__seek = (t) => { T = t; render(t); G.gl.finish(); return true; };
   window.__duration = DURATION;
   window.__chapters = chapters.map((c) => ({ id: c.id, t0: c.t0, t1: c.t1, bars: c.bars, placeholder: !!c.placeholder }));

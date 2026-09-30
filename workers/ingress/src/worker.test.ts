@@ -17,11 +17,6 @@ import { DEV_ACCESS_ISSUER } from "./access-auth";
 import type { Env } from "./env";
 import { DEPLOYMENT_JOBS, handleRequest } from "./worker";
 
-/**
- * 上报入口对外的契约（路由、鉴权、回执）和对内的拆分（状态核心 / 可滞后层 / 归档 / 凭据）。
- * 状态核心、采集 Worker、D1 都是记账的替身，KV 是内存的；Access 用本地测试钥匙签 JWT，
- * 和 scripts/dev-access.mjs 同一套形状。
- */
 
 const AUD = "local-dev";
 const ALL = "all.access";
@@ -72,7 +67,6 @@ function world(setup: Setup = {}) {
   const core: StateCoreRpc = {
     ready: async () => { calls.ready += 1; return setup.ready ?? true; },
     commitIngest: async (command) => {
-      // 命令要跨 Service Binding：结构化复制之后必须一模一样
       assert.deepEqual(structuredClone(command), command);
       calls.commits.push(command);
       return setup.reply ? setup.reply(command) : { ready: true, ok: true, data: { accepted: 1 } };
@@ -263,7 +257,6 @@ test("split: server reports bypass the state core and land in the lag layer, the
   assert.equal((await readLag<{ id: string }>(w.lag, LAG_KEYS.server))?.data.id, "misaka-jp");
   assert.equal((await readLag<{ commit: string }>(w.lag, LAG_KEYS.reporterServer))?.data.commit, "abc1234");
   assert.equal(w.calls.archived.length, 1, "server hours go to D1");
-  // 首报是布局变化：失效通知要 REVALIDATE_SECRET，只能请状态核心代发
   assert.deepEqual(w.calls.revalidated, [[SERVER_TAG]]);
 });
 
@@ -280,7 +273,6 @@ test("split: an iPhone report with accepted workouts and rejected rings writes t
   assert.equal(await readLag(w.lag, LAG_KEYS.activity), null);
   assert.equal(w.calls.archived.length, 1, "the accepted workouts are archived too");
 
-  // 训练本身就坏了：状态核心什么都没收，可滞后层和归档也不写
   const early = world({ reply: () => ({ ready: true, ok: false, error: "Invalid workout identity or activityType" }) });
   assert.equal((await early.send("/api/ingest/iphone", post({ version: 1, modules: { workouts: { items: [workout({ id: "bad" })] } } }))).status, 400);
   assert.equal(early.lag.writes, 0);
@@ -490,7 +482,6 @@ test("OTLP: gzip or plain JSON answers the exporter's empty 200; other encodings
   const invalid = await w.send("/api/ingest/agents/otlp", { body: "{}" });
   assert.equal(invalid.status, 400, "failures keep the ingest error body, only success becomes {}");
   assert.deepEqual(await json(invalid), { ok: false, error: "上报数据无效或处理失败" });
-  // 只有 OTLP 路由解压：别的路由带着 gzip 头也按原文读
   assert.equal((await w.send("/api/ingest/mac", { ...post(mac({})), headers: { "content-encoding": "gzip" } })).status, 202);
 });
 

@@ -4,32 +4,9 @@ import sharp from "sharp";
 import { objectKeyFromAssetUrl } from "@/lib/asset-url";
 import { r2OriginUrl } from "@/lib/r2-assets";
 
-/**
- * 桌面卡图标的展示尺寸 ×2。
- *
- * live-desk-card 里那格最大的尺寸（`size-7`）在 2× 屏上的物理像素数；带窗口标题
- * 时那格缩小，用的还是这一份，缩小不吃亏。改组件尺寸上限时这个数要跟着改。
- */
 const ICON_PX = 56;
 
-/**
- * 按对象键压一次，结果永久留用。
- *
- * 缓存键只有 objectKey：R2 上那份是内容寻址的（`<sha256>.png`），键相同就意味着
- * 字节相同，压出来的 webp 不可能变。所以 `cacheLife("max")` —— 一个应用的图标
- * 全站压一次就够，之后每份首屏 HTML 都白拿。（`use cache` 的键隐含 build ID，
- * 换部署会重压一次，这是它的机制，不是这里的意图。）
- *
- * 不直接 fetch 传进来的那个 URL，而是拿校验过的 objectKey 重新拼：`iconUrl`
- * 是存储里的 objectKey 在读取时经 `publicAssetPath` 拼出来的同源路径
- * （见 telemetry），页面上由边缘代理到 R2；服务端在函数里没有「同源」可言，
- * 这里拿 objectKey 直接拼 R2 原件地址（`r2OriginUrl`），不绕自己的边缘，也
- * 不会因为上游存了个意外的字符串就把服务端 fetch 带去别处。
- *
- * 失败一律返回 null，让调用方回退到远端 `<Image>`，最坏等于没做内联时的行为。
- * null 同样会被缓存住：这是有意的 —— 改成抛出去、在缓存外面接，等于每次页面
- * 重新生成都再赌一次超时。
- */
+// 对象键是内容哈希，字节不变，才允许永久缓存压缩结果。
 async function inlineDesktopIcon(objectKey: string): Promise<string | null> {
   "use cache";
   cacheLife("max");
@@ -46,11 +23,7 @@ async function inlineDesktopIcon(objectKey: string): Promise<string | null> {
     if (!res.ok) throw new Error(`R2 图标 HTTP ${res.status}`);
 
     const webp = await sharp(new Uint8Array(await res.arrayBuffer()))
-      /**
-       * `contain` + 全透明底，对齐组件上那个 `object-contain`：非正方的图标
-       * 补的是透明边不是黑边（sharp 的 background 默认不透明，必须写 alpha:0），
-       * 补完仍是正方形，占位和真正渲染的图逐像素一致。
-       */
+      // sharp 默认背景不透明；contain 的留白必须显式设 alpha:0。
       .resize(ICON_PX, ICON_PX, {
         fit: "contain",
         background: { r: 0, g: 0, b: 0, alpha: 0 },
@@ -68,17 +41,6 @@ async function inlineDesktopIcon(objectKey: string): Promise<string | null> {
   }
 }
 
-/**
- * 首屏那枚前台应用图标，内联成 data URI 焊进 HTML。
- *
- * 页头是页面最先入眼的一行，图标走远端意味着「HTML 先到、图标后到」，顶部空一格。
- * 内联掉首屏这一跳；**运行时不变** —— 挂载之后换应用、推送进来的新图标，浏览器
- * 照旧走 `/img/` 同源路径由边缘取 R2 原件，不进站点的函数。
- *
- * 这层壳子不带 `use cache`：它只做一次正则校验（`objectKeyFromAssetUrl` 只认
- * 内容键的格式），把可缓存的那半交给 `inlineDesktopIcon`，缓存键因此
- * 是干净的 objectKey，而不是带交付域的整条 URL。
- */
 export async function desktopIconDataUri(iconUrl: string | null): Promise<string | null> {
   const objectKey = iconUrl ? objectKeyFromAssetUrl(iconUrl) : null;
   return objectKey ? inlineDesktopIcon(objectKey) : null;

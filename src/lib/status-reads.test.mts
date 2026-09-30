@@ -39,7 +39,6 @@ test("writeGeneration: 推送和取回的响应每落一份都推进这个键的
   assert.equal(writeGeneration(path), start + 1);
   guardPolled(path, { ok: true, data: { items: [1] } });
   assert.equal(writeGeneration(path), start + 2);
-  // 降级信封也是一次写入：缓存里换成了它
   guardPolled(path, { ok: false, error: "Status unavailable" });
   assert.equal(writeGeneration(path), start + 3);
   assert.equal(writeGeneration(other), otherStart);

@@ -13,10 +13,6 @@ export type Receipt = { changed: boolean };
 
 type SiteEnvelope = { ok?: boolean; error?: string; data?: { changed?: unknown } };
 
-/**
- * 把一封原始信封 POST 到 `/api/ingest/playstation`。收敛在上报入口做
- * （`shared/ingest/playstation.ts`），这里不自己 prepare。
- */
 export async function deliver(env: Env, envelope: PlaystationEnvelope): Promise<Receipt> {
   if (envelope.version !== 1) throw new Error("PlayStation 遥测协议 version 必须为 1");
   if (isDryRun(env)) {

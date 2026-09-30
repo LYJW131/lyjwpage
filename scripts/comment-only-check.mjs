@@ -61,20 +61,7 @@ const TS_EXTENSIONS = new Map([
 ]);
 const SWIFT_EXTENSION = ".swift";
 
-// ───────────────────────── 指令性注释的绑定（TS 与 Swift 共用）─────────────────────────
 
-/**
- * 给每条指令性注释记下它挨着什么，返回逐条的描述串，compareContents 按串比较：
- *   位置    语法结构里的位置，由 atOf 按语言给
- *   同行前  同一行里它前面的代码，空串表示它独占行首
- *   同行后  同一行里它后面的代码
- *   下一行  它下一行的代码；整行只有注释记作「«注释»」，空行记作空串，没有下一行记作「无」
- * 代码一律去掉注释、压缩空白。
- * @param {string} source 源码原文
- * @param {{ start: number, end: number, text: string }[]} comments 全部注释，按位置排序、互不重叠
- * @param {(comment: object) => boolean} wanted 这条是不是指令
- * @param {(comment: object) => number} atOf 这条指令的语法位置
- */
 function bindDirectives(source, comments, wanted, atOf) {
   const lineStarts = [0];
   for (let i = 0; i < source.length; i++) if (source[i] === "\n") lineStarts.push(i + 1);
@@ -90,7 +77,6 @@ function bindDirectives(source, comments, wanted, atOf) {
   };
   const lineEnd = (line) => (line + 1 < lineStarts.length ? lineStarts[line + 1] - 1 : source.length);
   const squash = (text) => text.replace(/\s+/g, " ").trim();
-  /** [from, to) 里去掉注释后的代码 */
   const codeIn = (from, to) => {
     let code = "";
     let pos = from;
@@ -116,11 +102,7 @@ function bindDirectives(source, comments, wanted, atOf) {
   });
 }
 
-// ───────────────────────── TS / JS ─────────────────────────
 
-// 对整条注释（原文，不压缩空白）匹配。`[\s/*]*` 吃掉开头的 `/`、`*` 和空白，所以 `//`、`///`、块注释
-// 的 `/*` 与 `/**` 开头一视同仁（TS 自己也认 `/// @ts-ignore`）；带 m 标志的按每一行的开头匹配，
-// 因为编译指示可以出现在块注释的任意一行。
 const TS_DIRECTIVES = [
   /^[\s/*]*<(?:reference|amd-module|amd-dependency)\b/,
   /@ts-(?:ignore|expect-error|nocheck|check)\b/,
@@ -133,7 +115,6 @@ const TS_DIRECTIVES = [
   /^\/\*!/,
   /@(?:license|preserve)\b/,
 ];
-/** 只在 JS 文件里算：JSDoc 里的类型标注会被 checkJs 读到。 */
 const JS_JSDOC_TYPES = /@(type|typedef|param|returns?|template|satisfies|import|callback|this|enum|extends|augments|implements|overload)\b[^*]*\{/;
 
 function isTsDirective(comment, kind) {
@@ -152,7 +133,6 @@ function allTokens(ts, sf) {
   return tokens;
 }
 
-/** 收集文件里所有注释（按位置去重、排序）：{ start, end, text }，[start, end) 是它在源码里的范围。 */
 function collectTsComments(ts, sf) {
   const seen = new Map();
   const text = sf.text;
@@ -166,16 +146,12 @@ function collectTsComments(ts, sf) {
   return [...seen.values()].sort((a, b) => a.start - b.start);
 }
 
-/** JSX 语义上等同于没有的子节点：只含换行的空白文本、只含注释（或空）的花括号表达式。 */
 function isDroppedJsx(ts, node) {
   if (ts.isJsxText(node)) return node.containsOnlyTriviaWhiteSpaces && node.text.includes("\n");
   return ts.isJsxExpression(node) && !node.expression && !node.dotDotDotToken;
 }
 
-/**
- * 按前序排列的语法节点起点，指令性注释拿它算「后面第一个节点的序号」。JSX 里 isDroppedJsx 认定的节点
- * 不数：它们会被 printer 丢掉，别处加一条 JSX 注释不该让后面每条指令的序号都后移。
- */
+// JSX 空节点会被 printer 丢弃，不能让它们改变后续指令的语法位置。
 function nodeStarts(ts, sf) {
   const starts = [];
   const visit = (node) => {
@@ -240,19 +216,7 @@ export function normalizeTs(ts, text, fileName, kind) {
   return { code: body, directives, errors };
 }
 
-// ───────────────────────── Swift ─────────────────────────
 
-/**
- * 去掉 Swift 的行注释和块注释（块注释可嵌套），字符串里的双斜杠不动。
- * 认得 "…"、"""…"""、#"…"#（任意个 #）与字符串插值 \( … )（里面可以再有字符串和括号）。
- *
- * 返回：
- *   code      去掉注释后的全部文本（块注释换成一个空格，行注释只剩换行）
- *   comments  每条注释的原文
- *   spans     与 comments 一一对应：{ start, end } 是它在源码里的范围，at 是它在 code 里的位置
- *   segments  code 切成的片段，kind 为 "string" 的是最外层的整个字符串（含定界符、# 与插值），
- *             其余是 "code"；串起来就是 code
- */
 export function stripSwift(text) {
   let i = 0;
   let out = "";
@@ -278,7 +242,6 @@ export function stripSwift(text) {
     comment(start);
   };
 
-  // i 停在开头的引号上（# 已由调用方吃掉），hashes 是原始字符串的 # 个数，from 是字符串在 out 里的起点（含 #）
   const string = (hashes, from) => {
     stringDepth++;
     const closing = "#".repeat(hashes);
@@ -292,7 +255,7 @@ export function stripSwift(text) {
         i += open.length + closing.length;
         break;
       }
-      if (!multi && text[i] === "\n") break; // 没闭合的单行字符串，到行尾为止
+      if (!multi && text[i] === "\n") break;
       if (text[i] === "\\" && text.startsWith(closing, i + 1)) {
         const after = i + 1 + hashes;
         if (text[after] === "(") {
@@ -371,9 +334,8 @@ export function stripSwift(text) {
   return { code: out, comments, spans, segments };
 }
 
-// 宁滥勿缺：不要求指令在注释开头，`///` 与块注释里的写法也认。
 const SWIFT_DIRECTIVES = /\b(?:swiftlint|swiftformat|sourcery|periphery)\s*:|\bswift-format-ignore\b/;
-/** 字符串片段在压缩空白时的占位；源码里字符串之外不会有 NUL */
+// 字符串之外不会出现 NUL，可安全用作保留原文的占位。
 const STRING_SLOT = "\u0000";
 
 export function normalizeSwift(text, { loose = false } = {}) {
@@ -395,7 +357,6 @@ export function normalizeSwift(text, { loose = false } = {}) {
         .join("\n");
   const shown = flat.split(STRING_SLOT).map((part, k) => part + (strings[k] ?? "")).join("");
 
-  // 指令的语法位置：它前面有多少个非空白字符（字符串按原文数；两边字符串不同时先报「除注释外有改动」）
   const significant = [0];
   for (let k = 0; k < code.length; k++) significant.push(significant[k] + (/\s/.test(code[k]) ? 0 : 1));
   const ranges = comments.map((body, k) => ({ text: body, ...spans[k] }));
@@ -405,9 +366,7 @@ export function normalizeSwift(text, { loose = false } = {}) {
   return { code: shown, key: JSON.stringify([flat, strings]), directives, errors: [] };
 }
 
-// ───────────────────────── 比较 ─────────────────────────
 
-/** 比较一个文件的前后内容，返回 { status, detail? }。 */
 export function compareContents({ ts, file, before, after, loose = false }) {
   if (before === null) return { status: "new" };
   if (after === null) return { status: "deleted" };
@@ -426,7 +385,6 @@ export function compareContents({ ts, file, before, after, loose = false }) {
     return { status: "unsupported" };
   }
   if (b.errors.length > a.errors.length) return { status: "parse-error", detail: b.errors.slice(0, 3).join("\n") };
-  // key 是比较用的严格形式；code 只用来给人看差异（没有 key 的语言两者相同）
   if ((a.key ?? a.code) !== (b.key ?? b.code)) return { status: "code", before: a.code, after: b.code };
   if (JSON.stringify(a.directives) !== JSON.stringify(b.directives)) {
     return { status: "directive", before: a.directives, after: b.directives };
@@ -449,7 +407,6 @@ function unifiedDiff(before, after, context) {
   }
 }
 
-// ───────────────────────── git 与命令行 ─────────────────────────
 
 function git(repo, args, { allowFail = false } = {}) {
   const result = spawnSync("git", args, { cwd: repo, encoding: "utf8", maxBuffer: 1 << 28 });
@@ -466,7 +423,6 @@ function loadTypeScript(repo) {
     try {
       return createRequire(path.join(base, "package.json"))("typescript");
     } catch {
-      // 换下一个位置找
     }
   }
   throw new Error(`在 ${candidates.join("、")} 的 node_modules 里找不到 typescript：先在仓库里 pnpm install，或用 --repo / COMMENT_ONLY_REPO 指到装了它的仓库`);

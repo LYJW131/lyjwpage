@@ -26,7 +26,6 @@ test("偏差超过阈值才重对齐", () => {
 });
 
 test("续播对得上滞后，不当成主人拖进度", () => {
-  // 跟听停在 22s，主人停在 30s，滞后 8s；续播后两边一起走
   assert.equal(isHostSeek(22_000, 8_000, 30_000, 5_000), false);
 });
 
@@ -39,12 +38,9 @@ test("先切到下一首再等主人锚点：超前记成负滞后，不当成�
 });
 
 test("单曲循环绕回开头：按环上距离算，不当成拖进度", () => {
-  // 230s 的歌，本地在 228s，主人的钟绕回 2s：环上只差 4s
   assert.equal(isHostSeek(228_000, 0, 2_000, 5_000, 230_000), false);
   assert.equal(needsResync(228_000, 2_000, 5_000, 230_000), false);
-  // 不循环时同样的数就是拖回开头
   assert.equal(isHostSeek(228_000, 0, 2_000, 5_000), true);
-  // 环上也差得远：那是真拖了
   assert.equal(isHostSeek(228_000, 0, 100_000, 5_000, 230_000), true);
 });
 
@@ -59,10 +55,7 @@ test("换歌时已经在歌中间，对齐", () => {
 });
 
 test("锚点钉在歌尾是切歌残影，拖回歌中间才算重听", () => {
-  // 200s 的歌，主人回到 100s：真回去重听，要拉回来
   assert.equal(hostRewoundIntoTrack(100_000, 200_000, 8_000), true);
-  // 锚点停在最后 5s：是我们预切后留下的残影，别拉
   assert.equal(hostRewoundIntoTrack(195_000, 200_000, 8_000), false);
-  // 总长未知不猜
   assert.equal(hostRewoundIntoTrack(100_000, 0, 8_000), false);
 });

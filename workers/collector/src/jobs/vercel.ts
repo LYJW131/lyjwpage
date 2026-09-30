@@ -8,11 +8,6 @@ import { explain, ok, settings, skipMissing, type Job } from "../job";
 
 const VERCEL_SETTINGS = ["VERCEL_TOKEN", "VERCEL_PROJECT_ID", "VERCEL_TEAM_ID"] as const;
 
-/**
- * Vercel 生产版本与最近几次部署。可滞后层里只放部署本身
- * （`{fetchedAt, production, recent}`）；函数与访问统计、PageSpeed 各是各的键。
- * 每次部署另外 upsert 进 D1 `site_deploys`，只有新增或状态变了的行产生写入。
- */
 export const vercelDeploymentsJob: Job = {
   name: "vercel-deployments",
   everyMinutes: 1,
@@ -30,10 +25,6 @@ export const vercelDeploymentsJob: Job = {
   },
 };
 
-/**
- * 两组各拉各的：哪一组这轮失败，就沿用可滞后层里上一份的那一组（带着它原来的
- * 采集时刻，卡片据此标陈旧）。两组都失败才算这一轮失败、不写。
- */
 export async function refreshVercelMetrics(
   lag: LagStore,
   load: { functions: () => Promise<VercelMetricsPayload["functions"]>; analytics: () => Promise<VercelMetricsPayload["analytics"]> },

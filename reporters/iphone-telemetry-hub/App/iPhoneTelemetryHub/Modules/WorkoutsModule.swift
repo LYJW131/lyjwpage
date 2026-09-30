@@ -1,7 +1,6 @@
 import Foundation
 import HealthKit
 
-/// Full recent-history snapshot: deletions are reflected on the next observer wake.
 final class WorkoutsModule: TelemetryModule {
     let id = "workouts"
     let title = "Recent Workouts"
@@ -108,7 +107,6 @@ struct WorkoutReading: Encodable, Sendable, Identifiable {
         maximumHeartRateBpm = heartRate?.maximumQuantity()?.doubleValue(for: bpm)
         elevationAscendedMeters = (workout.metadata?[HKMetadataKeyElevationAscended] as? HKQuantity)?.doubleValue(for: .meter())
         indoor = (workout.metadata?[HKMetadataKeyIndoorWorkout] as? NSNumber)?.boolValue
-        // Read the distance statistic matching the workout, rather than adding unrelated distances.
         let distance: HKQuantityTypeIdentifier?
         switch workout.workoutActivityType {
         case .walking, .running, .hiking: distance = .distanceWalkingRunning

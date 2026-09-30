@@ -136,7 +136,6 @@ test("agents 信封：被拒的不算带了 —— 一份可收的都没有就�
     { message: "agents 上报没有可收的数据：codingActivity：collectedAt 晚于收到时刻超过 60 秒" },
   );
   assert.throws(() => prepareAgentLimits({ collectedAt: new Date(NOW).toISOString() }, NOW), { message: /至少要带限额或一份 coding 数据/ });
-  // 改名前的 cursorUsage / cursorNow 不再是数据
   assert.throws(
     () => prepareAgentLimits({ cursorNow: { lastActivityAt: new Date(NOW).toISOString(), currentModel: "x" } }, NOW),
     { message: /至少要带限额或一份 coding 数据/ },

@@ -13,11 +13,9 @@ export interface PulseStateSql {
   exec(query: string, ...bindings: SqlValue[]): { toArray(): Record<string, unknown>[] };
 }
 
-/** Jev 只给 Coding 打分，快照里只有 Coding 的原始证据和已有评估。 */
 export type PulseScoreInputs = {
   assessments: string[];
   codingObservations: string[];
-  /** 各来源的 5 分钟 token 桶（`pulse:token-buckets:<来源>`，shared/coding-buckets），没有是 null */
   tokenBuckets: Record<CodingUsageSource, string | null>;
   cursorObservations: string[];
 };
@@ -25,13 +23,11 @@ export type PulseScoreInputs = {
 export type PulseScoreClaim = {
   token: string;
   generation: number;
-  /** DO server time used to freeze the scoring windows and scoredAt for this run. */
   now: number;
   leaseUntil: number;
   inputs: PulseScoreInputs;
 };
 
-/** RPC shape implemented by StateHub and consumed by the ordinary Worker executor. */
 export interface PulseScoreCoordinator {
   claimPulseScore(): Promise<PulseScoreClaim | null>;
   activatePulseScore(token: string, generation: number): Promise<boolean>;
@@ -52,21 +48,10 @@ type PersistentState = {
 };
 
 const STATE_KEY = "pulse-score:state";
-/** 七天的十五分钟窗口是 672 行；上限留到五分钟窗口的量，遗留的五分钟行压缩前也放得下 */
 const MAX_ASSESSMENTS = 2016;
-/**
- * 评估平时只追加这一轮新评的几行；列表里被覆盖的旧行和过期行多过有效行的
- * `COMPACT_GARBAGE_RATIO`、或者总行数超过 `COMPACT_MAX_ROWS`，才整表压缩重写一次。
- * 不每轮整表重写：那样写入量随窗口数成倍放大。
- */
 const COMPACT_GARBAGE_RATIO = 0.5;
 const COMPACT_MAX_ROWS = MAX_ASSESSMENTS * 1.5;
 
-/**
- * 36 jobs / 3 concurrent requests / 10 second request timeout has a 120 second
- * worst-case request budget. The remaining minute covers preparation and RPCs,
- * while keeping a crashed claim bounded.
- */
 export const PULSE_SCORE_LEASE_MS = 180_000;
 
 type StorageExecutor = (commands: StorageCommand[]) => unknown[];
@@ -75,12 +60,7 @@ function defaultState(attemptedAt = 0): PersistentState {
   return { generation: 0, attemptedAt, claim: null };
 }
 
-/**
- * Durable coordination only: claim a snapshot, persist submit eligibility, and
- * merge accepted results. Feature extraction and model I/O stay in the Worker.
- * All mutations are synchronous so no other DO event can replace a claim between
- * eligibility validation and the authoritative SQLite write.
- */
+// 资格校验到 SQLite 写入之间必须同步，避免另一 DO 事件替换当前 claim。
 export class PulseScoreState implements PulseScoreCoordinator {
   private sql: PulseStateSql;
   private execute: StorageExecutor;
@@ -171,7 +151,6 @@ export class PulseScoreState implements PulseScoreCoordinator {
       const ordered = [...merged.values()]
         .sort((a, b) => a.from - b.from)
         .slice(-MAX_ASSESSMENTS);
-      // 追加之后列表会有多少行、其中多少是被覆盖或过期的
       const rows = raw.length + accepted.length;
       const compact = rows - ordered.length > ordered.length * COMPACT_GARBAGE_RATIO || rows > COMPACT_MAX_ROWS;
       const writes: StorageCommand[] = [];

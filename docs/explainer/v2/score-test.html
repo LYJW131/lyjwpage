@@ -28,7 +28,7 @@
 <canvas id="tl" height="560"></canvas>
 <pre id="info"></pre>
 <script src="plan.js"></script>
-<script src="../clawd.js"></script><!-- 和 index.html 一样先于乐谱加载：第 10 章按 Clawd 的帧排跳跃声 -->
+<script src="../clawd.js"></script><!-- Clawd 必须先加载，乐谱按其帧序计算跳跃声。 -->
 <script src="score.js"></script>
 <script src="music/ch00.js" onerror="0"></script>
 <script src="music/ch01.js" onerror="0"></script>
@@ -42,9 +42,9 @@
 <script src="music/ch09.js" onerror="0"></script>
 <script src="music/ch10.js" onerror="0"></script>
 <script>
-// 乐谱测试页：画出小节网格、段落、和弦、各类事件和包络；Render 离线合成，Play 从头播（点时间轴跳到那里）。
-// 默认拼整片（plan.js）；?only=ch02,ch03 只拼这几章，试听自己那一章的配乐用这个。
-// 无头测试用：window.__render() / __wav() / __hash(opts) / __rms(opts)
+
+
+
 (() => {
   const only = new URLSearchParams(location.search).get("only");
   const S = window.Score.build(only ? window.PLAN.filter((p) => only.split(",").includes(p.id)) : window.PLAN), cv = document.getElementById("tl"), cx = cv.getContext("2d");
@@ -60,27 +60,27 @@
     cv.width = w * dpr; cv.height = h * dpr; cx.setTransform(dpr, 0, 0, dpr, 0, 0);
     cx.clearRect(0, 0, w, h);
     cx.font = "11px ui-monospace, monospace"; cx.textBaseline = "middle";
-    // 小节网格
+
     for (let b = 0; b <= S.bars; b++) {
       const x = X(S.at(b), w);
       cx.strokeStyle = css("--grid"); cx.lineWidth = b % 4 ? 0.5 : 1.2; cx.beginPath(); cx.moveTo(x, 0); cx.lineTo(x, h); cx.stroke();
       if (b < S.bars) { cx.fillStyle = css("--dim"); cx.fillText(String(b), x + 2, 8); }
     }
-    // 段落和和弦
+
     for (const s of S.sections) {
       const x0 = X(s.t0, w), x1 = X(s.t1, w);
       cx.fillStyle = S.chapters.findIndex((c) => c.id === s.chapter) % 2 ? "rgba(79,109,143,0.16)" : "rgba(217,119,87,0.12)"; cx.fillRect(x0, 16, x1 - x0, 16);
       cx.fillStyle = css("--ink"); cx.save(); cx.beginPath(); cx.rect(x0, 16, x1 - x0, 16); cx.clip(); cx.fillText(s.id, x0 + 3, 24); cx.restore();
     }
     for (const c of S.chords) { cx.fillStyle = css("--dim"); cx.fillText(c.name, X(c.t, w) + 2, 42); }
-    // 事件
+
     ROWS.forEach((k, i) => {
       const y = 62 + i * 20;
       cx.fillStyle = css("--dim"); cx.fillText(k, 4, y);
       cx.strokeStyle = k === "bell" || k === "stamp" ? css("--orange") : css("--ink"); cx.lineWidth = 1;
       for (const t of S.events[k] || []) { const x = X(t, w); cx.beginPath(); cx.moveTo(x, y - 7); cx.lineTo(x, y + 7); cx.stroke(); }
     });
-    // 包络
+
     ENVS.forEach(([k, col], i) => {
       const y0 = 300 + i * 50;
       cx.fillStyle = css("--dim"); cx.fillText(k, 4, y0 + 20);
@@ -88,7 +88,7 @@
       for (let px = L; px < w - R; px++) { const t = ((px - L) / (w - L - R)) * TOTAL, v = S.env(k, t), y = y0 + 40 - v * 38; px === L ? cx.moveTo(px, y) : cx.lineTo(px, y); }
       cx.stroke();
     });
-    // 播放头
+
     const t = now();
     if (t != null) { const x = X(t, w); cx.strokeStyle = css("--orange"); cx.lineWidth = 2; cx.beginPath(); cx.moveTo(x, 0); cx.lineTo(x, h); cx.stroke(); }
   }
@@ -146,7 +146,7 @@
   window.__wav = () => b64(wavBytes(buf));
   window.__hash = async (opts) => hash(await S.render(opts));
   window.__rms = async (opts) => { const b = await S.render(opts); let pk = 0; for (let c = 0; c < 2; c++) { const d = b.getChannelData(c); for (let i = 0; i < d.length; i++) pk = Math.max(pk, Math.abs(d[i])); } return { rms: rms(b), peak: 20 * Math.log10(pk + 1e-20), lufs: S.loudness(b.getChannelData(0), b.getChannelData(1), b.sampleRate) }; };
-  // 再渲一遍和上一次比：Chrome 给同一母线上重叠的声源求和的顺序不固定，末位浮点会差一点，这里量差多少
+  // Chrome 对重叠声源求和的顺序不固定，重复渲染会有末位浮点误差。
   window.__diff = async (opts) => { const b = await S.render(opts); let m = 0; for (let c = 0; c < 2; c++) { const x = buf.getChannelData(c), y = b.getChannelData(c); for (let i = 0; i < x.length; i++) m = Math.max(m, Math.abs(x[i] - y[i])); } return 20 * Math.log10(m + 1e-30); };
 })();
 </script>

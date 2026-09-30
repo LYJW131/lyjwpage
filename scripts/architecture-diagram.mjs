@@ -1,17 +1,4 @@
 #!/usr/bin/env node
-/**
- * 改完 docs/architecture.json 后一条命令出齐所有产物：
- *   1. archify deliver：showcase 校验并渲染 docs/architecture.html
- *   2. 用查看器自带的 PNG 导出（svg-rasterization）重出 docs/architecture-{light,dark}.png，缩到 viewBox 的 PREVIEW_SCALE 倍
- *   3. archify visual-check：四个桌面视口无溢出，随后清掉它写在 docs/ 里的截图与对照表
- *   4. 汇总成 docs/architecture.receipt.json
- *
- * 前置：本机装有 archify 技能（默认 ~/.claude/skills/archify，可用 ARCHIFY_DIR 覆盖）和 Chrome。
- * 用法：
- *   pnpm docs:architecture                 # 全流程
- *   pnpm docs:architecture -- --validate   # 只校验，不写任何文件（改图时反复跑这个）
- *   pnpm docs:architecture -- --skip-visual  # 不跑 visual-check（receipt 里视口沿用上一份）
- */
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
@@ -27,7 +14,7 @@ const HTML = path.join(DOCS, "architecture.html");
 const RECEIPT = path.join(DOCS, "architecture.receipt.json");
 const ARCHIFY_DIR = process.env.ARCHIFY_DIR ?? path.join(os.homedir(), ".claude/skills/archify");
 const ARCHIFY = path.join(ARCHIFY_DIR, "bin/archify.mjs");
-const PREVIEW_SCALE = 2; // 快照按 viewBox 的 2x 出，查看器原生导出是 3x，缩一档省体积
+const PREVIEW_SCALE = 2;
 const THEMES = ["light", "dark"];
 
 const args = new Set(process.argv.slice(2));

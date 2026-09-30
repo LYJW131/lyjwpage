@@ -87,11 +87,10 @@ test("紧凑信封展开出 date / weekday / label", () => {
 });
 
 test("年度图窗口：今天所在那一周是最后一列，往前一共 53 周，从周日起逐日到今天", () => {
-  const frame = heatmapFrame("2026-09-29"); // 周二
-  assert.equal(frame[0], "2025-09-28"); // 53 周前那个周日
+  const frame = heatmapFrame("2026-09-29");
+  assert.equal(frame[0], "2025-09-28");
   assert.equal(frame.at(-1), "2026-09-29");
   assert.equal(frame.length, (HEATMAP_WEEKS - 1) * 7 + 3);
-  // 周六跨到周日：新的一列开始，最早那一列整列出窗，列数不变
   const sunday = heatmapFrame("2026-10-04");
   assert.equal(sunday[0], "2025-10-05");
   assert.equal(sunday.length, (HEATMAP_WEEKS - 1) * 7 + 1);

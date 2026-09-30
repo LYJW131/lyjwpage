@@ -1,8 +1,3 @@
-/**
- * 全部配置走环境变量 —— 这东西是要塞进一个 docker run 里跑的，
- * 配置文件还得挂卷，不如直接给变量。
- */
-
 function required(name: string): string {
   const value = process.env[name]?.trim();
   if (!value) throw new Error(`缺少环境变量 ${name}`);
@@ -29,9 +24,7 @@ export const config = {
   },
 
   site: {
-    /** 上报端点，形如 https://ingest.homepage.lyjw.llc/api/ingest/emby */
     ingestUrl: required("SITE_INGEST_URL"),
-    /** Cloudflare Access service token（这个来源专用的那一把），Access 在边缘核对，Worker 再验 JWT */
     accessClientId: required("ACCESS_CLIENT_ID"),
     accessClientSecret: required("ACCESS_CLIENT_SECRET"),
   },
@@ -43,64 +36,25 @@ export const config = {
     secretAccessKey: required("R2_SECRET_ACCESS_KEY"),
   },
 
-  /** Emby 的播放通知发到这个端口，见 webhook.ts */
   webhookPort: Math.max(1, Number(process.env.WEBHOOK_PORT) || 8787),
-  /**
-   * webhook 的共享密钥，可选。配了就必须在通知地址里带 `?token=<值>`，对不上 401。
-   *
-   * Emby 那个通知配置项加不了自定义请求头，但地址里可以带 query —— 「加不了头」
-   * 只排除了 header 这一种写法。留空则谁都能发：局域网里任意一台机器 POST 一条
-   * 伪造的 playback.stop 就能把站点上「正在观看」的卡片抹掉，伪造 start 则能把
-   * 会话轮询顶到活跃档。NAS 上通常还跑着别的东西，同网段不一定都可信。
-   */
+  // Emby 通知配置不能加自定义头，因此用 query 携带 token；局域网请求也不能视为可信。
   webhookToken: process.env.WEBHOOK_TOKEN?.trim() ?? "",
 
-  /** 续播列表拉取节奏。它变得慢，不用拉得太密，且只在有变化时才真的推 */
   resumeIntervalMs: ms("RESUME_INTERVAL_MS", 60_000),
   resumeLimit: Math.max(1, Math.min(24, Number(process.env.RESUME_LIMIT) || 8)),
 
-  /**
-   * 会话轮询：在播时按活跃档密集轮询，空闲时基本不轮。
-   *
-   * 开播由 Emby 的 webhook 叫醒，停止时停下，所以空闲那一档不是用来发现播放的，
-   * 只是漏收 webhook 时的兜底 —— 定成分钟级，别在没人看片时空转。
-   */
   sessionActiveIntervalMs: ms("SESSION_ACTIVE_INTERVAL_MS", 2_000),
   sessionIdleIntervalMs: ms("SESSION_IDLE_INTERVAL_MS", 5 * 60_000),
-  /**
-   * 收到 webhook 后至少按活跃档跟这么久。
-   *
-   * 「开始播放」那条常常比 Emby 自己的会话列表还早一步到，头一两轮查不到会话
-   * 很正常；不给这段宽限期的话会立刻退回分钟级，白白错过刚开始的那段。
-   */
+  // Emby 的开播通知可能早于会话列表更新，不能在首轮空查后立刻退回闲档。
   wakeWindowMs: ms("WAKE_WINDOW_MS", 30_000),
 
-  /**
-   * 位置只在偏离站点的推算值这么多时才推。
-   *
-   * 站点是按「上次锚点 + 真实流逝时间」自己推进度条的，正常播放它算得准，
-   * 每轮都推纯属浪费（白白消耗上报请求）。
-   * 只有拖了进度条才会偏出去，这个阈值就是「拖动」的判据。
-   */
   seekToleranceMs: ms("SEEK_TOLERANCE_MS", 1_500),
-  /** 没有拖动也隔一阵重新落一次锚，免得推算误差越积越大 */
   reanchorMs: ms("REANCHOR_MS", 30_000),
 
-  /**
-   * 即使什么都没变，也隔一阵整份重推一次。
-   *
-   * 站点那边的状态可能丢失（存储被清空或重建）。只靠「有变化才推」的话，一段时间
-   * 没看片就会空在那儿等一个永远不来的变化；周期性整推用来补回缺失的状态。
-   * 站点收到后会自己比对内容，没变就不会往浏览器推，所以这条不会变成定时广播。
-   */
+  // 内容不变也要定期重推，否则接收端丢失状态后可能永远等不到下一次变化。
   fullPushIntervalMs: ms("FULL_PUSH_INTERVAL_MS", 10 * 60_000),
 
-  /**
-   * 一次推送前最多取、压缩并直传几张图，限制这一批的工作量；
-   * 剩下的隔一小会儿接着送（见 index.ts 的 scheduleImageFlush）
-   */
   imagesPerPush: Math.max(1, Number(process.env.IMAGES_PER_PUSH) || 4),
-  /** 取图时给 Emby 的 maxHeight，和站点展示位对齐 */
   posterHeight: 600,
   backdropHeight: 400,
 

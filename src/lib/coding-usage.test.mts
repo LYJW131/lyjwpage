@@ -35,7 +35,6 @@ function agent(id: string, extra: Record<string, unknown> = {}) {
 
 const usage = (...agents: unknown[]) => normalizeCodingUsageReport({ agents }, NOW);
 
-/** 断言某份用量报告被拒，并且原因里带着出问题的那一处 */
 function rejectsUsage(input: unknown, pattern: RegExp) {
   assert.throws(() => normalizeCodingUsageReport(input, NOW), { message: pattern });
 }
@@ -75,7 +74,6 @@ test("用量：state error 只换状态 —— 不带 days；带了就拒，ok �
     id: "antigravity", state: "error", collectedAt: NOW - 3_600_000, error: "ccusage 超时", warning: null, sessionCount: null,
   });
   assert.equal("days" in failed.agents[0], false);
-  // 从没成功过：collectedAt 为 null
   assert.equal(usage({ id: "pi", state: "error", collectedAt: null, error: "no logs" }).agents[0].collectedAt, null);
   rejectsUsage({ agents: [agent("pi", { state: "error" })] }, /^agents\[0\]\.days state 为 error 时必须缺省/);
   rejectsUsage({ agents: [agent("pi", { days: undefined })] }, /^agents\[0\]\.days 必须是数组/);
@@ -134,7 +132,6 @@ test("用量：模型最多 64 条、名字不超过 200 字符、不重复、�
   rejectsUsage({ agents: [agent("cursor", { days: [day("2026-09-28", { models: [{ model: "a", tokens: 1 }, { model: "a", tokens: 2 }] })] })] }, /models\[1\]\.model 重复/);
   rejectsUsage({ agents: [agent("cursor", { days: [day("2026-09-28", { models: [{ model: "a", tokens: 101 }] })] })] }, /^agents\[0\]\.days\[0\]\.models 合计超过 totalTokens/);
   rejectsUsage({ agents: [agent("cursor", { days: [day("2026-09-28", { models: undefined })] })] }, /models 必须是数组/);
-  // 占位名原样收下，排名时才按隐藏名单跳过
   const [row] = usage(agent("codex", { days: [day("2026-09-28", { models: [{ model: "", tokens: 5 }, { model: "unknown", tokens: 5 }] })] })).agents;
   assert.deepEqual(row.days?.[0]?.models.map((entry) => entry.model), ["", "unknown"]);
 });
@@ -212,7 +209,6 @@ test("桶：窗口按起点排好；首桶可以被报告范围截断；eventCou
   assert.deepEqual(report.windows.map((window) => window.from), [T0, T0 + 5 * MIN]);
   assert.deepEqual(report.agents, [{ id: "codex", state: "ok" }, { id: "claude", state: "partial" }]);
   assert.equal(report.windows[1]?.agents[0]?.eventCount, null);
-  // 同一窗口里 (agent, null) 和 (agent, 模型) 是两行
   assert.equal(report.windows[0]?.agents.length, 3);
 });
 
@@ -248,7 +244,6 @@ test("桶：计数规则与日行一致，agent 状态只认三种、id 不重�
   assert.throws(() => bucketReport(within([row("codex", null, { eventCount: 1.5 })])), { message: /eventCount 必须是非负安全整数/ });
   assert.throws(() => bucketReport(buckets({ agents: [{ id: "codex", state: "stale" }] })), { message: /^agents\[0\]\.state 必须是 ok、partial 或 unavailable/ });
   assert.throws(() => bucketReport(buckets({ agents: [{ id: "codex", state: "ok" }, { id: "codex", state: "ok" }] })), { message: /^agents\[1\]\.id 重复/ });
-  // 没有声明任何 agent 也合规：这一段什么都不覆盖
   assert.deepEqual(bucketReport(buckets({ agents: [], windows: [] })).windows, []);
 });
 

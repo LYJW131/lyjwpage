@@ -16,7 +16,6 @@ const MIN = 60_000;
 
 test("可滞后层排在下一次预期写入之后几秒", () => {
   const updatedAt = 1_000_000;
-  // 刚写完 10 秒：还要等 9 分 50 秒再加宽限
   assert.equal(nextLagDelay(updatedAt, 10 * MIN, updatedAt + 10_000), 10 * MIN - 10_000 + LAG_GRACE_MS);
 });
 
@@ -26,7 +25,6 @@ test("写入方漏了一轮：从 15 秒起退避，封顶 min(节奏, 5 分钟)
   assert.equal(nextLagDelay(updatedAt, MIN, due), LAG_MIN_RETRY_MS);
   assert.equal(nextLagDelay(updatedAt, MIN, due + 60_000), 30_000);
   assert.equal(nextLagDelay(updatedAt, MIN, due + 10 * MIN), MIN);
-  // 按小时报的圆环一夜没报：封顶间隔一取，不狂刷
   assert.equal(nextLagDelay(updatedAt, 60 * MIN, 60 * MIN * 8), 5 * MIN);
 });
 

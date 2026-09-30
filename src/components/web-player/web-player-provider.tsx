@@ -20,10 +20,6 @@ export function WebPlayerProvider({ children }: { children: ReactNode }) {
   );
 }
 
-/**
- * 获取网页播放器上下文。
- * 没有 Provider 时返回 null（如 error.tsx / not-found.tsx 等独立页面的页头）。
- */
 export function useWebPlayer(): WebPlayer | null {
   return useContext(WebPlayerContext);
 }

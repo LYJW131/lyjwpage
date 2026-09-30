@@ -1,29 +1,15 @@
-# 部署单元。机器上只放这份 compose.yaml 和旁边一份 .env（含密钥，别进仓库），
-# 然后 `docker compose pull && docker compose up -d`。镜像由
-# .github/workflows/build-reporters.yml 在 GitHub 上构建并推到 GHCR，不在 NAS 上 build。
-# 完整步骤见 README。
-#
-# 自成一个 compose project（项目名取自目录名），不要并进别的 compose 文件 ——
-# 同一个 project 里 `up` 会顺带重建兄弟容器。
-
 services:
   emby-reporter:
     image: ghcr.io/lyjw131/emby-reporter:latest
     container_name: emby-reporter
     restart: unless-stopped
     ports:
-      # 只需在局域网里可达，**别映射到公网**。局域网内也不是零门槛之外就没事：
-      # 不配 WEBHOOK_TOKEN 的话，同网段任何一台机器都能发一条伪造的播放事件进来。
-      # 宿主端口走变量是因为它可能被占：nas-host 上 8787 归 homepage-reporter，那边填 8788。
-      # 映射目标必须与 WEBHOOK_PORT 一致，所以容器侧跟着它走：两边对不上就会变成
-      # 「容器监听 8788、映射还指着 8787」，webhook 静默失效。
       - "${WEBHOOK_HOST_PORT:-8787}:${WEBHOOK_PORT:-8787}"
     environment:
       EMBY_URL: ${EMBY_URL}
       EMBY_API_KEY: ${EMBY_API_KEY}
       EMBY_USER_ID: ${EMBY_USER_ID}
       SITE_INGEST_URL: ${SITE_INGEST_URL}
-      # Cloudflare Access service token（lyjwpage-emby）
       ACCESS_CLIENT_ID: ${ACCESS_CLIENT_ID}
       ACCESS_CLIENT_SECRET: ${ACCESS_CLIENT_SECRET}
       R2_ENDPOINT: ${R2_ENDPOINT}
@@ -31,7 +17,6 @@ services:
       R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID}
       R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY}
       WEBHOOK_PORT: ${WEBHOOK_PORT:-}
-      # 配了就要求 Emby 的通知地址带 `?token=<值>`；留空 = 不校验来路
       WEBHOOK_TOKEN: ${WEBHOOK_TOKEN:-}
       RESUME_INTERVAL_MS: ${RESUME_INTERVAL_MS:-}
       RESUME_LIMIT: ${RESUME_LIMIT:-}

@@ -12,16 +12,7 @@ import type { CodingTokenBucketReport } from "@shared/coding-usage";
 import type { CodingUsageSource } from "@shared/coding-usage-sources";
 import type { StorageBatch } from "@shared/storage-client";
 
-/**
- * 5 分钟 token 桶的状态核心那一半（`pulse:token-buckets:<来源>`，TTL 2 天）。合并规则在
- * shared/coding-buckets：Mac、agents 按报告范围替换，云端 OTLP 把正差值加进桶。
- * 只给 Pulse 的 Tokens 道、Jev 和 D1 归档读；不推送、不失效首屏。
- *
- * 每写一份，桶修订号 `pulse:token-buckets:revision` 加一、这一份记下它，两者同一个事务：D1 归档按
- * 修订号挑要重写的那几份（不按收到时刻，理由见 shared/coding-store 的 codingUsageRevisionKey）。
- */
 export type CodingBucketsLanding = {
-  /** 把这封的写入排进调用方的那一批（云端 OTLP 那条路和计数器同一个事务） */
   stage: (batch: StorageBatch) => void;
   commit: () => Promise<unknown>;
   accepted: boolean;
@@ -52,7 +43,6 @@ function write(source: CodingUsageSource, next: StoredCodingBuckets, revision: n
   };
 }
 
-/** Mac、agents 的一封桶报告；采集时刻比存着的旧就不收 */
 export async function prepareCodingBuckets(
   source: CodingUsageSource,
   report: CodingTokenBucketReport,
@@ -63,7 +53,6 @@ export async function prepareCodingBuckets(
   return next ? write(source, next, revision) : IGNORED;
 }
 
-/** 云端 OTLP 这一封的正差值 */
 export async function prepareOtlpBuckets(deltas: readonly CodingBucketDelta[], receivedAt: number): Promise<CodingBucketsLanding> {
   if (!deltas.length) return IGNORED;
   const { stored, revision } = await readBuckets("agents-otlp");

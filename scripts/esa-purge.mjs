@@ -4,20 +4,6 @@ const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 const encode = (value) =>
   encodeURIComponent(value).replace(/[!'()*]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
 
-/**
- * 阿里云 ACS3 签名；query 的键值按规范编码排序。
- * @param {{
- *   endpoint: string,
- *   action: string,
- *   version: string,
- *   query: Record<string, string>,
- *   accessKeyId: string,
- *   accessKeySecret: string,
- *   date?: string,
- *   nonce?: string
- * }} options
- * @returns {{ url: string, headers: Record<string, string> }}
- */
 export function signAliyunRequest(options) {
   const query = Object.keys(options.query)
     .sort()
@@ -65,16 +51,11 @@ const TRANSIENT_NETWORK_CODES = new Set([
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/** 408 / 429 / 5xx 视为可重试；其余 4xx（鉴权、参数）不重试。 */
 function isTransientStatus(status) {
   return status === 408 || status === 429 || status >= 500;
 }
 
-/**
- * Node fetch 把连接失败包成 `TypeError: fetch failed`，具体码在 cause 上。
- * 超时是 TimeoutError / AbortError。HTTP 应答不会走到这里。
- * @param {unknown} error
- */
+// Node fetch 将连接错误码藏在 cause 上；超时另用 TimeoutError / AbortError。
 function isTransientNetworkError(error) {
   if (!error || typeof error !== "object") return false;
   const name = "name" in error ? error.name : "";
@@ -89,7 +70,6 @@ function isTransientNetworkError(error) {
 
 const CAUSE_LOG_KEYS = ["name", "code", "errno", "syscall", "hostname", "address", "port"];
 
-/** 日志里去掉密钥、签名和带 query 的 URL，避免把鉴权材料打进 Actions。 */
 function scrubLogValue(value, secrets = []) {
   let text = String(value);
   for (const secret of secrets) {
@@ -109,7 +89,6 @@ function scrubLogValue(value, secrets = []) {
   );
 }
 
-/** 优先用 AggregateError 里真正带 code / syscall 的那条。 */
 function pickCauseNode(error) {
   const cause = error instanceof Error ? error.cause : undefined;
   if (!cause || typeof cause !== "object") return undefined;
@@ -152,7 +131,6 @@ function logAttemptFailure({ attempt, attempts, willRetry, delayMs, fields, secr
   console.warn(parts.join(" "));
 }
 
-/** 把 undici 藏在 cause 里的码和原文拼进退出摘要，并去掉密钥。 */
 function describeFetchError(error, secrets = []) {
   const message = error instanceof Error ? error.message : String(error);
   const cause = pickCauseNode(error);
@@ -164,10 +142,7 @@ function describeFetchError(error, secrets = []) {
   return scrubLogValue(parts.join(": "), secrets);
 }
 
-/**
- * 单次 PurgeCaches。每次调用重新签名，nonce 和日期必须是新的。
- * @param {{ siteId: string, cacheUrl: string, accessKeyId: string, accessKeySecret: string }} config
- */
+// 每次重试必须重新签名，复用 nonce 或日期会使请求失效。
 async function requestPurge(config) {
   const { url, headers } = signAliyunRequest({
     endpoint: "esa.cn-hangzhou.aliyuncs.com",
@@ -220,23 +195,6 @@ async function requestPurge(config) {
   };
 }
 
-/**
- * 调用 ESA PurgeCaches 刷新首页 cachekey，不影响带哈希的一年静态资源。
- * 只对瞬时网络错误和 408 / 429 / 5xx 重试；默认次数及退避见
- * `PURGE_ATTEMPTS`、`PURGE_BACKOFF_MS`。
- * @param {{
- *   siteId?: string,
- *   cacheUrl?: string,
- *   accessKeyId?: string,
- *   accessKeySecret?: string
- * }} config
- * @param {{
- *   attempts?: number,
- *   backoffMs?: number[],
- *   sleep?: (ms: number) => Promise<void>
- * }} [options]
- * @returns {Promise<{ ok: boolean, taskId?: string, requestId?: string, error?: string }>}
- */
 export async function purgeEsaHomepage(config, options = {}) {
   const { siteId, cacheUrl, accessKeyId, accessKeySecret } = config;
   if (!siteId || !cacheUrl || !accessKeyId || !accessKeySecret) {
@@ -285,12 +243,6 @@ export async function purgeEsaHomepage(config, options = {}) {
   return last;
 }
 
-/**
- * 刷新后打一下目标 URL 触发边缘回源并写入缓存（预热）。
- * @param {string} url
- * @param {{ timeoutMs?: number }} [options]
- * @returns {Promise<{ ok: boolean, status?: number, error?: string }>}
- */
 export async function warmupEsaCache(url, options = {}) {
   const { timeoutMs = 15_000 } = options;
   try {
@@ -303,7 +255,6 @@ export async function warmupEsaCache(url, options = {}) {
       signal: AbortSignal.timeout(timeoutMs),
       redirect: "follow",
     });
-    // 消耗 response body 确保请求完整结束
     await response.text().catch(() => "");
     return {
       ok: response.ok,

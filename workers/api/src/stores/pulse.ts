@@ -30,13 +30,6 @@ function reason(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/**
- * 一条状态道的一次观测。时间线是次要的：失败只打日志，不能让主状态上报 500。
- *
- * 读开着的那段 → 规划 → 有要写的才在同一批里追加关闭区间、改写或删掉开着那段。
- * `facts` 为 null 表示这一刻看不见这条道，开着那段到此为止；`hold` 是这次观测的
- * 有效期与来源说得出的结束时刻，见 planStateObservation。
- */
 export async function recordStateObservation<L extends StateLane>(
   lane: L,
   t: number,
@@ -48,7 +41,6 @@ export async function recordStateObservation<L extends StateLane>(
     const answered = await askStorage((storage) => storage.get(openKey));
     if (!answered.reachable) return;
     const open = parseOpenInterval(lane, answered.value);
-    // 不传有效期就按道和状态的固定值（defaultHoldUntil）；HomePod 这类来源自己给
     const plan = hold === undefined ? planStateObservation(lane, open, t, facts) : planStateObservation(lane, open, t, facts, hold);
     if (!plan) return;
     await tellStorage(async (storage) => {
@@ -59,7 +51,7 @@ export async function recordStateObservation<L extends StateLane>(
         pipe.trim(listKey, -STATE_LANE_CAPS[lane], -1);
         pipe.expire(listKey, PULSE_TTL_MS);
       }
-      // 一直有效的那一段（Emby 明确停播后的空闲）不设过期：七天没开播仍是观测到的空闲，不是未知
+      // 明确停播后的空闲持续到下一次播放，过期会把已知空闲误变成未知。
       if (plan.open) pipe.set(openKey, JSON.stringify(plan.open), plan.open.holdUntil === null ? undefined : { ttlMs: PULSE_TTL_MS });
       else pipe.remove(openKey);
       return pipe.execute();
@@ -69,7 +61,6 @@ export async function recordStateObservation<L extends StateLane>(
   }
 }
 
-/** 充电头的一笔实测瓦数，闸门见 planChargingSample */
 export async function recordChargingSample(t: number, watts: number, device: string | null): Promise<void> {
   try {
     const k = pulseChargingKey();
@@ -86,13 +77,6 @@ export async function recordChargingSample(t: number, watts: number, device: str
   }
 }
 
-/**
- * 用一次 HealthKit 查询结果权威替换范围内的五分钟桶。StateHub 的 ingestTail 会把
- * ingest 串行化，这里的读、合并、改写不会和另一封 iPhone 上报交错。
- *
- * 只从第一处不同的桶往后重写：每次推送通常只动最后一两个桶，整串 remove + append
- * 会让每封 iPhone 上报把整串桶（最多 `ACTIVITY_BUCKET_CAP` 行）重写一遍，DO 的写入行数按套餐计量。
- */
 export async function replacePulseActivity(range: { from: number; to: number }, buckets: ActivityBucket[]): Promise<void> {
   const k = pulseActivityKey();
   const answered = await askStorage(async (storage) => {
@@ -101,7 +85,6 @@ export async function replacePulseActivity(range: { from: number; to: number }, 
   });
   if (!answered.reachable) return;
   const previous = answered.value.rows.map(parseActivityBucket);
-  // 有坏行就整串重写，别让下标对不上
   const clean = previous.every((row) => row !== null);
   const parsed = previous.filter((row): row is ActivityBucket => row !== null);
   const { next, firstChanged, changed } = replaceActivityBuckets(parsed, range, buckets);
@@ -127,7 +110,6 @@ export async function replacePulseActivity(range: { from: number; to: number }, 
   });
 }
 
-/** 训练区间整份替换（HealthKit 里删掉的训练也跟着消失）；内容没变不写 */
 export async function writePulseWorkouts(items: WorkoutInterval[]): Promise<void> {
   const k = pulseWorkoutsKey();
   const value = JSON.stringify({ items });

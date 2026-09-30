@@ -1,4 +1,3 @@
-// 章节交界处 Clawd 的位置是否连续：node crabcheck.mjs <html>
 import { chromium } from "playwright-core";
 const [html] = process.argv.slice(2);
 const b = await chromium.launch({ channel: "chrome", headless: true });

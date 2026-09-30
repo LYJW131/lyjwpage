@@ -1,5 +1,3 @@
-// 本地预览：node serve.mjs <目录> [端口=4817]
-// 支持 Range 请求：拖进度、换配乐后跳回原位置都靠它；只监听本机回环地址
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";

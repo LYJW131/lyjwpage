@@ -1,5 +1,3 @@
-// 混一种风格：node mixstyle.mjs <music.wav> <音效目录 含 sfx.wav duck.wav> <音效增益> <输出前缀> [配乐目标响度 LUFS=-17]
-// 先把配乐校到同一响度（音效音量是按这个响度调的），再乘让位曲线、叠音效、限幅，输出 wav + mp3
 import { spawnSync } from "node:child_process";
 const [music, dir, g = "1", out, target = "-17"] = process.argv.slice(2);
 const lufs = (file) => {

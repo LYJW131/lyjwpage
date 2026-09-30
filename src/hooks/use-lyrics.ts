@@ -4,39 +4,13 @@ import { useEffect, useState } from "react";
 
 import type { LyricLine } from "@/lib/lyrics-ttml";
 
-/**
- * 此刻那首的同步歌词，和 use-motion-artwork 同一个形状：按键存一份模块级缓存，
- * 换歌时不用先清状态 —— 结果连着它属于哪首一起存，渲染时比一下键就知道旧的
- * 不作数。
- *
- * 按 `song=<目录曲目 ID>` 去问：卡片 hero 问的是此刻在播那首，网页播放器问的是
- * 访客自己正在放的那首 —— 后者服务端的快照说不了，所以由浏览器传。
- *
- * 键是目录曲目 ID（卡片传的是闩住的那份，见 listening-card 的 lookupLatch；
- * 播放器传的是 MusicKit 队列条目的 ID）。只在目录说 `hasLyrics` 时才问。
- */
 
 const LYRICS_ENDPOINT = "/api/lyrics";
-/**
- * 响应形状的版本，拼进查询串。路由不看它，它只是浏览器缓存的键的一部分：
- * 带参的响应允许浏览器和 CDN 缓存很久（缓存头见 workers/api/src/routes/lyrics/route.ts），
- * 形状变了而 URL 不变的话，之前来过的访客会一直拿到旧形状。改了 LyricsResult 的形状
- * 就把这个数加一。
- */
+// LyricsResult 形状变更时须升级此键，避免长缓存继续返回旧形状。
 const LYRICS_FORMAT = 4;
 
-/**
- * 「没有」只记一阵，和服务端那条负缓存同一个尺度（lib/lyrics 的 NO_LYRICS_TTL_MS）。
- * 服务端的 404 分不清「这首没词」和「订阅身份那一刻没被认」，所以它只把「没有」
- * 短暂留着；浏览器这边要是把空数组永久记住，一个开着不动的页面就会在凭据恢复之后
- * 仍旧对这首歌只显示艺人名，直到整页刷新。
- */
+// 404 也可能是订阅身份暂不可用，空结果不能永久缓存。
 const EMPTY_TTL_MS = 60 * 60 * 1000;
-/**
- * 接口没答上来（非 2xx、网络断）只挡几秒，和服务端那条失败的负缓存一个尺度
- * （lib/lyrics 的 NEGATIVE_TTL_MS）。这不是「没有歌词」，是「这会儿问不到」，
- * 记得和「没有」一样久等于把上游抖一下放大成整首歌都没词。
- */
 const FAILURE_TTL_MS = 5_000;
 
 export type CachedLyricsData = {
@@ -44,12 +18,9 @@ export type CachedLyricsData = {
   songwriters?: string[];
 };
 
-/** 首屏快照可能落后于实时状态，必须携带歌词所属曲目。 */
 export type LyricsFallback = CachedLyricsData & { songId: string };
 
-/** 有词的一首歌不会变，整个页面生命周期内只问一次 */
 const lyricsCache = new Map<string, CachedLyricsData>();
-/** 问过但没有（或接口失败）的，记到什么时候为止 */
 const emptyUntil = new Map<string, number>();
 const pending = new Map<string, Promise<CachedLyricsData | null>>();
 
@@ -94,7 +65,6 @@ async function fetchLyrics(songId: string): Promise<CachedLyricsData | null> {
         lyricsCache.set(songId, payload);
         return payload;
       }
-      // 服务端明确说了「没有」（可能是没词，也可能是订阅身份那一刻没被认）
       emptyUntil.set(songId, Date.now() + EMPTY_TTL_MS);
       return null;
     } catch {
@@ -115,11 +85,6 @@ export type UseLyricsResult = {
   isLoading: boolean;
 };
 
-/**
- * 有同步歌词就是非空数组；没有（目录说没有、接口失败、还没回来）一律 null，
- * 调用方退回艺人名那一行。同时返回 isLoading，便于宽屏模式在数据加载期间
- * 提前规划双列占位，避免歌词到位后布局跳动。
- */
 export function useLyrics(
   songId: string | null,
   hasLyrics: boolean,
@@ -128,7 +93,6 @@ export function useLyrics(
   const key = songId && hasLyrics ? songId : null;
   const initialSongData = key && initialData?.songId === key ? initialData : null;
 
-  // 首屏若带了当前曲目的歌词数据，直接预热进模块级内存缓存，避免首屏触发额外网络请求
   if (key && initialSongData?.lines.length && !lyricsCache.has(key)) {
     lyricsCache.set(key, initialSongData);
   }
@@ -141,13 +105,7 @@ export function useLyrics(
     return { songId: key, data: initialSongData };
   });
 
-  /**
-   * 负缓存到期要能自己再问一次。
-   *
-   * 同一首一直放着时 `key` 不变，effect 不会重跑，emptyUntil 过了期也没人发现 ——
-   * 失败那一档就白设了：开头一次网络抖动，整首歌都不会再问。到期那一刻拨一下
-   * `attempt`，effect 重跑，cachedLyrics 已经不认那条过期的负缓存，于是重新去问。
-   */
+  // 同曲目 key 不变，负缓存到期须主动重触发 effect 才能恢复请求。
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     if (!key) return;
@@ -167,14 +125,12 @@ export function useLyrics(
     fetchLyrics(key).then((data) => {
       if (!active) return;
       setResolved({ songId: key, data });
-      // 没取到：负缓存刚写下，让 effect 再跑一遍，走上面那个分支把到期的闹钟上好
       if (data === null) setAttempt((n) => n + 1);
     });
 
     return () => {
       active = false;
     };
-    // attempt 只为在负缓存到期那一刻重跑一遍，effect 本身不读它
   }, [key, attempt]);
 
   if (!key) return { lyrics: null, isLoading: false };

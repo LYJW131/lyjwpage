@@ -6,14 +6,9 @@ import { ok, settings, skipMissing, type Job } from "../job";
 
 const CLOUDFLARE_SETTINGS = ["CLOUDFLARE_METRICS_TOKEN", "CLOUDFLARE_ACCOUNT_ID"] as const;
 
-/** 统计窗口滚动 12 小时，按 15 分钟对齐 */
 const WINDOW_ALIGN_MS = 15 * 60_000;
 const WINDOW_MS = 12 * 3_600_000;
 
-/**
- * 本仓库各 Worker 当前部署的版本与提交（站点部署后上报入口还会点名让它立刻重拉）。单个 Worker 查不到（还没部署过的脚本、权限收紧）只让那一格为空；
- * 全都查不到才算失败、不写。结果按名字存，名单再变也不会和旧数据错位。
- */
 export const cloudflareDeploymentsJob: Job = {
   name: "cloudflare-deployments",
   everyMinutes: 2,
@@ -25,8 +20,6 @@ export const cloudflareDeploymentsJob: Job = {
     const { CLOUDFLARE_METRICS_TOKEN: token, CLOUDFLARE_ACCOUNT_ID: account } = config.values;
     const fetchedAt = Date.now();
     const deployments = await fetchWorkerDeployments(account, token);
-    // 逐个 Worker 的失败在里面就吞成了 null；一个都没取到就是令牌或接口整体出了问题，
-    // 这时写进去会把上一份好的整份盖成空
     if (deployments.every((deployment) => deployment == null)) throw new Error("Cloudflare 部署一个都没取到");
     const data: CloudflareDeploymentsPayload = {
       fetchedAt,
@@ -37,7 +30,6 @@ export const cloudflareDeploymentsJob: Job = {
   },
 };
 
-/** 各 Worker 一个滚动窗口（`WINDOW_MS`）的调用、错误与 CPU，节奏和窗口对齐粒度（`WINDOW_ALIGN_MS`）一致 */
 export const cloudflareMetricsJob: Job = {
   name: "cloudflare-metrics",
   everyMinutes: 15,

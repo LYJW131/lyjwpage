@@ -23,17 +23,12 @@ function objectUrl(objectKey: string) {
   return new URL(`${config.r2.endpoint}/${path}`);
 }
 
-/**
- * 上报器一次完成缩放和 WebP 编码，再把最终字节直传 R2。
- * 对象键取最终 WebP 的 SHA-256，因此可以安全使用 immutable 缓存。
- */
 export async function uploadImage(input: Buffer, maxHeight: number): Promise<string> {
   const body = await sharp(input, { animated: false })
     .rotate()
     .resize({ height: maxHeight, withoutEnlargement: true })
     .webp({ quality: 88 })
     .toBuffer();
-  // 对象键和 SigV4 要的 payload hash 是同一个值，别把整份 WebP 哈希两遍
   const payloadHash = sha256(body);
   const objectKey = `${payloadHash}.webp`;
   const url = objectUrl(objectKey);

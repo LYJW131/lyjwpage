@@ -2,10 +2,6 @@ import type { ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
 
-/**
- * 版式骨架：内容居中在容器里，但分隔线横贯整个视口。
- * 这是整套「技术图纸」观感的来源。
- */
 export function Section({
   id,
   label,
@@ -15,10 +11,8 @@ export function Section({
   className,
 }: {
   id?: string;
-  /** 左上角的等宽小字标注，如 FIG_002 */
   label?: string;
   title?: string;
-  /** 标题右侧的补充说明 */
   note?: ReactNode;
   children: ReactNode;
   className?: string;
@@ -26,7 +20,6 @@ export function Section({
   return (
     <section
       id={id}
-      // 锚点跳转时要让开吸顶导航（连边框的高度），再留点余量，否则标题会贴着挡板
       className={cn("scroll-mt-28 px-4 py-8 sm:px-6 sm:py-10", className)}
     >
       {(label || title) && (
@@ -45,7 +38,6 @@ export function Section({
   );
 }
 
-/** section 之间的 45° 斜条纹分隔条 */
 export function StripeDivider() {
   return (
     <div className="screen-line-top screen-line-bottom relative h-8">

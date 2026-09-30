@@ -2,10 +2,6 @@ import { object } from "@/lib/json";
 import { normalizeTrophies } from "@/lib/trophies";
 import { normalizePlaystationPlayedGames, normalizePlaystationPresence } from "@shared/playstation";
 
-/**
- * PlayStation 信封 `{ version: 1, presence?, playedGames?, trophies? }` 的收敛。
- * 缺席表示这次不谈这一项。
- */
 export type PreparedPlaystationReport = {
   source: "playstation";
   receivedAt: number;

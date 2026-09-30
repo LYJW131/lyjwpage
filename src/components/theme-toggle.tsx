@@ -15,7 +15,6 @@ function applyTheme(setTheme: (theme: string) => void, next: string) {
     document.documentElement.dataset.themeChoice = next;
   }
 
-  // View Transition：整页拍两张快照做交叉淡入，比给每个元素上 color transition 便宜得多
   if (
     typeof document !== "undefined" &&
     "startViewTransition" in document &&

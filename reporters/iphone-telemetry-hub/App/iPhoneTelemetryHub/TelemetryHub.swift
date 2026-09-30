@@ -1,6 +1,6 @@
 import Foundation
 
-/// 发往自家 Worker 的请求一律带这个 UA：Cloudflare 的浏览器完整性检查会拦某些默认 UA
+// Cloudflare 浏览器完整性检查可能拦截默认 UA。
 enum HubUserAgent {
     static let value: String = {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "2"
@@ -8,81 +8,42 @@ enum HubUserAgent {
     }()
 }
 
-/**
- 收集各模块 → 拼信封 → POST。整个 App 只有这一条上报链路。
-
- **节奏由系统定，不由我们定。** 唯一的后台唤醒源是各模块自己的（活动圆环那个是
- HealthKit 的观测，按小时节流），所以别指望分钟级 —— 站点那边的圆环卡因此按写入
- 节奏取数（`src/lib/status-views.ts` 的 `STATUS_VIEWS.activity`，排期见
- `src/lib/poll-schedule.ts` 的 `nextLagDelay`），也因此不把「很久没收到」当成掉线
- （窗口 `ACTIVITY_STALE_MS`，见 `src/lib/freshness.ts`）。真要更快只有一条路：把 App
- 切到前台。
-
- **失败了不补发。** 站点那侧是「后到的就是对的」、整份替换，没有顺序闸；这里要是加了
- 后台重试队列（`URLSession` 的 background 那套），一封迟到的旧报文就会把已经涨上去的
- 数按回去。两边是一对，要改一起改。
- */
+// 接收端按到达顺序替换数据；后台重试旧报文会覆盖较新的读数，不能排队补发。
 actor TelemetryHub {
     static let shared = TelemetryHub(modules: Modules.all)
 
     enum Outcome: Sendable {
-        /// 发出去了，带上这封里有几个模块
         case pushed(Int)
-        /// 所有模块的内容都和上次发出去的一样，没必要再发一遍
         case unchanged
-        /// 还没配好、模块全关着、当天还没有数据之类，不是错误
         case skipped(String)
-        /// 被合并窗口挡掉了。单独一种，是因为界面**不该**拿它盖掉上一句 ——
-        /// 「还没填上报地址」比「刚上报过」有用得多，而回前台时这两次调用挨得很近
         case coalesced
         case failed(String)
     }
 
     private let modules: [any TelemetryModule]
     private var started = false
-    /// 模块 id → 上次**成功发出去**的那份字节。变没变就靠它比
     private var lastSent: [String: Data] = [:]
     private var lastAttemptAt: Date?
     private var inFlight: Task<Outcome, Never>?
 
-    /**
-     指纹和真正发出去的字节共用这一个编码器。
-
-     两套配置早晚会飘，飘了之后要么每轮都误判成「变了」白发一遍，要么反过来把
-     真变化吞掉 —— 后者是那种放一整天都发现不了的坏法。`sortedKeys` 是关键：
-     字典的键序默认不稳定，不排的话同一份数据每次编出来都不一样。
-     */
+    // 指纹与报文必须共用排序后的编码；字典键序不稳定会把相同内容误判为变化。
     private let encoder: JSONEncoder = {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         return encoder
     }()
 
-    /// 单次请求的上限。观测回调那条路上，实例随时可能被系统挂起，不能久等
     private static let timeout: TimeInterval = 10
 
-    /**
-     多个模块的唤醒几乎同时响，这个窗口把它们并成一封。
-
-     活动圆环一个模块就观测着好几个 HealthKit 类型（见 `ActivityModule.observedTypes`），
-     少了它一次数据变化会连打好几次站点。
-     */
     private static let coalesce: TimeInterval = 60
 
-    /// 内容没变也隔这么久重发一次，续上站点圆环读数的 `updatedAt`；必须小于站点的
-    /// `ACTIVITY_STALE_MS`（`src/lib/freshness.ts`），否则圈没变的一整夜之后卡片会显示 Unavailable
+    // refresh 必须小于 src/lib/freshness.ts 的 ACTIVITY_STALE_MS，避免不变的读数被判陈旧。
     private static let refresh: TimeInterval = 6 * 60 * 60
 
     init(modules: [any TelemetryModule]) {
         self.modules = modules
     }
 
-    /**
-     让每个模块注册自己的唤醒源。每次启动都要跑一遍（见 AppDelegate 的注释）。
-
-     授权没点头时照样注册：那时模块的 snapshot 拿不到数据，但用户点头之后不用重启
-     App 就能生效。
-     */
     func start() async {
         guard !started else { return }
         started = true
@@ -94,14 +55,7 @@ actor TelemetryHub {
         }
     }
 
-    /**
-     上报一次。
-
-     `force` 只由界面上那个「立刻上报」按钮传 true —— 它要绕开合并窗口和「内容没变」
-     那两道闸，因为人按下按钮时想看到的就是一次真的往返。
-     */
     func report(force: Bool) async -> Outcome {
-        // 已经有一封在飞了就搭它的车，别并发打两次
         if let inFlight {
             return await inFlight.value
         }
@@ -131,12 +85,6 @@ actor TelemetryHub {
         var quiet: [String] = []
         var issues: [String] = []
 
-        /**
-         一个模块取数失败不该连累别的模块。
-
-         整封作废的话，往后加了模块之后，一个偶发的取数错误会把当天所有数据一起
-         挡在门外 —— 而它们本来是各存各的。
-         */
         for module in enabled {
             do {
                 guard let snapshot = try await module.snapshot() else {
@@ -159,7 +107,6 @@ actor TelemetryHub {
             return .skipped(quiet.isEmpty ? "没有模块可发" : "\(quiet.joined(separator: "、"))：还没有可上报的数据")
         }
 
-        // 内容一个字节没变就不发，除非隔得够久了 —— 站点只在「真的变了」时才该被打扰
         let stale = HubSettings.lastPush.at.map { Date().timeIntervalSince($0) >= Self.refresh } ?? true
         if !force && !stale {
             let changed = payloads.keys.filter { encoded[$0] != lastSent[$0] }
@@ -184,7 +131,6 @@ actor TelemetryHub {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(HubUserAgent.value, forHTTPHeaderField: "User-Agent")
-        // Access 在边缘核对这把 service token，放行后 Worker 验它签的 JWT
         request.setValue(destination.clientID, forHTTPHeaderField: "CF-Access-Client-Id")
         request.setValue(destination.secret, forHTTPHeaderField: "CF-Access-Client-Secret")
         request.httpBody = try encoder.encode(envelope)
@@ -201,8 +147,6 @@ actor TelemetryHub {
             throw HubError.badResponse
         }
         guard (200..<300).contains(http.statusCode) else {
-            // 把站点的错误原文带出来：它回的是 {"ok":false,"error":"..."}，
-            // 那句中文比「HTTP 400」有用得多
             throw HubError.rejected(
                 status: http.statusCode,
                 body: String(data: data, encoding: .utf8) ?? ""

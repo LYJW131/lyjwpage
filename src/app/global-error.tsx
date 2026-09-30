@@ -6,11 +6,6 @@ import Link from "next/link";
 
 import "./globals.css";
 
-/**
- * 根 layout 自己炸了才走到这里，它替换掉整个 layout，所以要自带 <html><body>，
- * ThemeProvider 也不在了。深色模式靠一段内联脚本按 next-themes 的存储约定
- * （localStorage 的 theme = light | dark | system）自己判一次。
- */
 const THEME_SCRIPT = `try{var t=localStorage.getItem("theme");if(t==="dark"||((!t||t==="system")&&window.matchMedia("(prefers-color-scheme: dark)").matches)){document.documentElement.classList.add("dark")}}catch(e){}`;
 
 export default function GlobalError({

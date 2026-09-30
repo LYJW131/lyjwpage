@@ -1,15 +1,3 @@
-# 从子模块 reporters/mac-telemetry-hub 构建 Mac 上报器，用 Developer ID 签名、公证、钉上票据，
-# 发到本仓库的 Release，下载下来双击就能开：
-#   https://github.com/LYJW131/lyjwpage/releases/latest/download/Mac-Telemetry-Hub.zip
-#
-# main 上子模块指针一动就发一版（tag `hub-build-<运行号>`），发出来的就是站点此刻对应的那版 Hub。
-# PR 上走到公证为止、不发布，只验证签名链没断。没配签名 secret 时整个 job 跳过。
-# Hub 仓库自己的 CI 只管测试和不签名编译。
-#
-# 需要的仓库 secret：
-#   MAC_CERT_P12       Developer ID Application 证书 + 私钥的 p12，base64
-#   MAC_CERT_PASSWORD  那份 p12 的密码
-#   ASC_KEY_ID / ASC_ISSUER_ID / ASC_KEY_P8   App Store Connect API key，公证用
 name: Release Mac Telemetry Hub
 
 on:
@@ -60,8 +48,7 @@ jobs:
         with:
           submodules: true
 
-      # 照 GitHub 文档「Installing an Apple certificate on macOS runners」：临时钥匙串 + partition list，
-      # 少一步 codesign 就会挂着等一个没人点的授权框
+      # 缺少钥匙串 partition list 时，codesign 会等待 CI 无法点击的授权框。
       - name: Import certificate
         if: steps.gate.outputs.skip != '1'
         env:
@@ -85,8 +72,7 @@ jobs:
         run: |
           Tools/install-ccusage.sh
           Tools/generate-icons.sh
-          # 没有 entitlements，不需要描述文件：手动指定身份，不用 Apple ID 登录。
-          # xcodebuild build 默认给主程序注入调试用的 get-task-allow，公证会拒，得关掉
+          # xcodebuild 会注入导致公证拒绝的 get-task-allow，必须关闭基础 entitlement 注入。
           xcodebuild \
             -project MacTelemetryHub.xcodeproj \
             -scheme MacTelemetryHub \
@@ -131,7 +117,7 @@ jobs:
             exit 1
           fi
           rm -f "$KEY"
-          # 钉上票据改了包，钉完再打一次 zip，发出去的是钉好的那份
+          # 提交公证的 zip 不含 stapler 后写入的票据，发布前必须重新打包。
           xcrun stapler staple "$APP"
           xcrun stapler validate "$APP"
           spctl --assess --type execute -vv "$APP"
@@ -149,7 +135,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # 工作目录在子模块里，不写 --repo 的话 gh 会按子模块的远端发到 Hub 仓库
+          # 当前目录在子模块中；省略 --repo 会误把 Release 发布到子模块远端。
           gh release create "hub-build-$GITHUB_RUN_NUMBER" "$RUNNER_TEMP/$ZIP_NAME" \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --latest \
             --title "Mac Telemetry Hub build $GITHUB_RUN_NUMBER" \

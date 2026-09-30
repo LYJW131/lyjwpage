@@ -1,11 +1,8 @@
-// 引擎：画面完全由时间 t（秒）决定。场景、Clawd、旁白、顶栏、转场、镜头、粒子都在这里调度，
-// 具体章节内容在 scenes-*.js 里登记。导出视频时逐帧调用 window.__seek(t)。
 (() => {
   const { BEAT, BAR } = window.Music;
   const stage = document.getElementById("stage");
   const NS = "http://www.w3.org/2000/svg";
 
-  // ---------- 工具 ----------
   const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
   const seg = (t, a, b) => (b === a ? (t >= b ? 1 : 0) : clamp((t - a) / (b - a)));
   const lerp = (a, b, k) => a + (b - a) * k;
@@ -16,7 +13,6 @@
     io: (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2),
     back: (x) => { const c1 = 1.7, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); },
     sine: (x) => 0.5 - Math.cos(Math.PI * x) / 2,
-    // 落地回弹：盖章、落卡用
     bounce: (x) => { const n = 7.5625, d = 2.75; if (x < 1 / d) return n * x * x; if (x < 2 / d) return n * (x -= 1.5 / d) * x + 0.75; if (x < 2.5 / d) return n * (x -= 2.25 / d) * x + 0.9375; return n * (x -= 2.625 / d) * x + 0.984375; },
   };
   const inout = (t, a, b, fi = 0.3, fo = 0.3) => Math.min(seg(t, a, a + fi), 1 - seg(t, b - fo, b));
@@ -48,13 +44,11 @@
   }
   const setHTML = (e, h) => { if (e.__h !== h) { e.innerHTML = h; e.__h = h; } };
   const setText = (e, h) => { if (e.__t !== h) { e.textContent = h; e.__t = h; } };
-  // 可复现的随机数（粒子、转场格子都用它）
   function rng(seed) {
     let s = seed | 0;
     return () => { s = (s + 0x6d2b79f5) | 0; let x = Math.imul(s ^ (s >>> 15), 1 | s); x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x; return ((x ^ (x >>> 14)) >>> 0) / 4294967296; };
   }
 
-  // 关键帧：frames = [[t, {x,y,o,s,r}, ease?], ...]，t 为场景内时间；返回 (lt) => 应用
   function keys(el, frames, { origin } = {}) {
     if (origin) el.style.transformOrigin = origin;
     const fs = frames.map(([t, p, ez]) => ({ t, p, ez: E[ez || "io"] }));
@@ -77,7 +71,6 @@
       return st;
     };
   }
-  // 常用：在 t0 弹出（缩放 + 淡入），在 t1 淡出
   function pop(el, x, y, t0, t1 = 1e9, { d = 0.35, from = 0.85, dy = 0, origin = "50% 50%" } = {}) {
     el.style.transformOrigin = origin;
     return (lt) => {
@@ -87,8 +80,6 @@
     };
   }
 
-  // ---------- 图层 ----------
-  // world 里的东西跟着镜头推拉、震动（纸面点阵、场景、粒子）；转场、顶栏、Clawd、旁白固定在屏幕上
   const world = L("", stage); world.style.cssText += ";width:1920px;height:1080px;transform-origin:0 0";
   const bg = L("", world); bg.id = "dots";
   const sceneLayer = L("", world); sceneLayer.style.width = "1920px"; sceneLayer.style.height = "1080px";
@@ -103,10 +94,9 @@
   const bubbleLayer = L("", stage);
   const fadeLayer = L("", stage); fadeLayer.style.cssText += ";width:1920px;height:1080px;background:var(--paper)";
 
-  // ---------- 章节与场景 ----------
-  const CHAPTERS = [];   // {n, name, sub, bar, bars, t0, t1}
-  const SCENES = [];     // {chapter, t0, t1, root, render(lt, t)}
-  const BUBBLES = [];    // {a, b, text, place, toks, ...}
+  const CHAPTERS = [];
+  const SCENES = [];
+  const BUBBLES = [];
   const CRAB = { path: [], acts: [], looks: [], hide: [], holds: [] };
 
   function chapter(name, sub, bars) {
@@ -116,7 +106,6 @@
     CHAPTERS.push(c);
     return c;
   }
-  // 场景：a/b 为章节内时间（秒），build(root) 返回 render(lt)
   function scene(ch, a, b, build) {
     const root = L("", sceneLayer);
     root.style.width = "1920px"; root.style.height = "1080px";
@@ -125,30 +114,22 @@
     SCENES.push(s);
     return s;
   }
-  // 旁白：章节内时间 a..b
-  // 英文模式下整句换成译文（i18n.js）；打字时长和说话音效仍按中文原句算，两种语言共用同一条配乐
+  // 两种语言共用配乐，打字时长仍按中文原句计算。
   function say(ch, a, b, text, placeHow = "right") {
     BUBBLES.push({ a: ch.t0 + a, b: ch.t0 + b, text: window.__tr ? window.__tr(text) : text, zh: text, place: placeHow });
   }
-  // Clawd 轨迹：章节内时间 t 时站在 (x=脚底中点, y=地面)
   function at(ch, t, x, y, how, extra = {}) { CRAB.path.push({ t: ch.t0 + t, x, y, how, ...extra }); }
   function act(ch, t, seq) { CRAB.acts.push({ t: ch.t0 + t, seq }); }
-  // 保持某一帧（例如蹲着睡觉 {pose:"default", offset:1}）；走动时不生效
   function hold(ch, a, b, frame) { CRAB.holds.push({ t0: ch.t0 + a, t1: ch.t0 + b, frame }); }
-  // 音效：章节内时间 t 处放一个音效（类型见 music.js 的 buildSfx）
   const CUES = [];
   function sfx(ch, t, type, opts = {}) { CUES.push({ t: ch.t0 + t, type, ...opts }); }
-  // 配乐让位：在 t 之前 pre 秒把配乐压到 depth，t 时（加 hold）回来——「重音前一拍收住」
   const DUCKS = [];
   function duck(ch, t, o = {}) { DUCKS.push({ t: ch.t0 + t, pre: 0.45, depth: 0.2, post: 0.08, hold: 0, ...o }); }
   function look(ch, t, dir) { CRAB.looks.push({ t: ch.t0 + t, dir }); }
-  // 片尾圆形收场（卡通式）：a..b 之间收成一个圆框住 (x, y)，停一下，再合上
   let IRIS = null;
   function iris(ch, a, b, x, y, { hold = 190, holdAt = 0.5, holdTo = 0.82 } = {}) { IRIS = { t0: ch.t0 + a, t1: ch.t0 + b, x, y, hold, holdAt, holdTo }; }
   function hideCrab(ch, a, b) { CRAB.hide.push([ch.t0 + a, ch.t0 + b]); }
 
-  // ---------- 镜头：推近、平移、震动（只作用于 world） ----------
-  // camera(ch, a, b, {x, y, s})：a..b 之间把画面上 (x, y) 这一点移到屏幕中心并放大到 s；传 null 回到全景
   const CAM = [], SHAKES = [];
   const HOME = { x: 960, y: 540, s: 1 };
   function camera(ch, a, b, to, ease = "io") { CAM.push({ ch: ch.n, t0: ch.t0 + a, t1: ch.t0 + b, to: to || HOME, ease }); }
@@ -171,7 +152,6 @@
     }
     return { x: st.x, y: st.y, s: st.s, dx, dy };
   }
-  // 画面坐标 → 屏幕坐标（给固定在屏幕上的东西对准镜头里的物体用）
   function toScreen(x, y, t) { const c = camAt(t); return [960 + (x - c.x) * c.s + c.dx, 540 + (y - c.y) * c.s + c.dy]; }
   function renderCamera(t) {
     const c = camAt(t);
@@ -179,7 +159,6 @@
     world.style.transform = c.s === 1 && !c.dx && !c.dy && c.x === 960 && c.y === 540 ? "" : `translate(${tx.toFixed(2)}px, ${ty.toFixed(2)}px) scale(${c.s.toFixed(4)})`;
   }
 
-  // ---------- 粒子：彩纸、落地烟尘、冲击线、闪星、广播波纹（画在 world 的 canvas 上） ----------
   const BURSTS = [];
   const PALETTE = ["#D97757", "#2E9E4F", "#2F6FD6", "#7458D2", "#C98A12", "#C8453A"];
   function burst(ch, t, x, y, kind = "confetti", o = {}) {
@@ -249,13 +228,11 @@
     fctx.globalAlpha = 1;
   }
 
-  // ---------- 顶栏 ----------
   const hdrLogo = L("hdr-logo", hud, "lyjw.me");
   const hdrSub = L("hdr-sub", hud, "运行原理");
   const prog = L("prog", hud);
   let psegs = [];
   function buildProgress() {
-    // 每段长度按这一章的实际时长分配
     const n = CHAPTERS.length, gap = 10, total = CHAPTERS[n - 1].t1 - CHAPTERS[0].t0, avail = 1446 - gap * (n - 1);
     let x = 0;
     psegs = CHAPTERS.map((c) => {
@@ -285,7 +262,6 @@
     });
   }
 
-  // ---------- 章节标题卡 ----------
   const ttl = L("ch-title", titleLayer);
   const ttlNum = mk("div", "ch-num", ttl), ttlName = mk("div", "ch-name", ttl), ttlSub = mk("div", "ch-sub", ttl);
   function renderTitle(t) {
@@ -299,7 +275,6 @@
     place(ttl, 0, 380 + 30 * (1 - a) - 60 * z, a * (1 - z));
   }
 
-  // ---------- 像素转场（章节交界） ----------
   const CELL = 60, WC = 32, WR = 18;
   const rnd = rng(20260924);
   const cells = [];
@@ -313,19 +288,17 @@
     wctx.fillStyle = "#1F1E1B";
     const d = t - c.t0;
     for (const cell of cells) {
-      // 盖上：k 越小越早盖；揭开：k 越小越早揭
       const covered = d < 0 ? (d + WIPE_HALF) / WIPE_HALF > cell.k : d / WIPE_HALF < cell.k;
       if (covered) wctx.fillRect(cell.c * CELL, cell.r * CELL, CELL, CELL);
     }
   }
 
-  // ---------- Clawd ----------
   const QW = 16, QH = 32;
   const clawd = Clawd.create(QW, QH);
   const crabWrap = L("", crabLayer);
   crabWrap.appendChild(clawd.el);
-  const BOX_CX = 9 * QW, BOX_GY = 5 * QH; // 脚底中点相对盒子左上角
-  const HOP = 0.36; // 一跳：蹲 0.08s → 腾空 0.2s → 落地 0.08s
+  const BOX_CX = 9 * QW, BOX_GY = 5 * QH;
+  const HOP = 0.36;
   function crabPos(t) {
     const P = CRAB.path;
     if (!P.length || t < P[0].t) return { x: -400, y: 900, moving: false, dir: 0 };
@@ -344,11 +317,10 @@
           const k = E.io(seg(t, p.t, q.t));
           return { x: lerp(p.x, q.x, k), y: lerp(p.y, q.y, k), moving: true, dir: Math.sign(q.x - p.x), glide: true, frame: q.frame, sc };
         }
-        // 蹦跳前进：按官方 skip 的节奏，一跳一段
         const n = Math.max(1, Math.round(dur / HOP));
         const hl = dur / n;
         const i2 = Math.min(n - 1, Math.floor((t - p.t) / hl));
-        const ph = (t - p.t - i2 * hl) / hl; // 0..1
+        const ph = (t - p.t - i2 * hl) / hl;
         const k0 = i2 / n, k1 = (i2 + 1) / n;
         let k, lift = 0, frame;
         if (ph < 0.22) { k = k0; frame = { pose: "default", offset: 1 }; }
@@ -363,7 +335,6 @@
     return { x: l.x, y: l.y, moving: false, dir: 0, sc: l.sc || 1 };
   }
   function crabFrame(t, pos) {
-    // 官方动作序列优先
     for (let i = CRAB.acts.length - 1; i >= 0; i--) {
       const a = CRAB.acts[i];
       const seq = Clawd.SEQ[a.seq];
@@ -389,8 +360,6 @@
     return { pos, hidden };
   }
 
-  // ---------- 表情：Clawd 头顶的像素小符号（同一套方块像素） ----------
-  // emote(ch, t, kind, dur)：kind = ! ? heart note drop spark z ok no dots
   const SPR = {
     "!": ["#1F1E1B", [".##.", "####", "####", "####", ".##.", ".##.", "....", ".##.", ".##."]],
     "?": ["#1F1E1B", [".####.", "##..##", "....##", "...##.", "..##..", "..##..", "......", "..##..", "..##.."]],
@@ -416,7 +385,6 @@
     return s;
   }
   const EMOTES = [];
-  // 多粒子的表情：同一符号按间隔连续冒出来
   const MULTI = { z: { every: 0.55, life: 1.5 }, note: { every: 0.5, life: 1.3 }, heart: { every: 0.22, life: 1.1, max: 3 } };
   function emote(ch, t, kind, dur = 1.4, o = {}) {
     const m = MULTI[kind];
@@ -432,7 +400,7 @@
       if (u < 0 || u > end || crab.hidden) { show(e.el, 0); continue; }
       show(e.el, 1);
       const p = crab.pos, sc = p.sc || 1;
-      const hx = p.x + (e.dx ?? 0), hy = p.y - 172 * sc + (e.dy ?? 0); // 头顶上方
+      const hx = p.x + (e.dx ?? 0), hy = p.y - 172 * sc + (e.dy ?? 0);
       e.parts.forEach((s, i) => {
         let x, y, o = 1, k = 1, r = 0;
         if (m) {
@@ -457,7 +425,6 @@
     }
   }
 
-  // ---------- 旁白气泡 ----------
   const bubble = L("", bubbleLayer); bubble.id = "bubble";
   const bShadow = L("pix", bubble); bShadow.id = "bShadow";
   const bOuter = L("pix", bubble); bOuter.id = "bOuter";
@@ -560,7 +527,6 @@
     place(bubble, x, y - 10 * ao, Math.min(seg(t, b.a, b.a + 0.14), 1 - ao), `scale(${(lerp(0.85, 1, ai) * (1 - 0.05 * ao)).toFixed(4)})`);
   }
 
-  // ---------- 每帧 ----------
   let DUR = 0;
   function render(t) {
     place(bg, -((t * 6) % 32), -((t * 3) % 32), seg(t, 0, 0.6));
@@ -590,7 +556,6 @@
     }
   }
 
-  // 从时间轴自动推出来的音效：画面怎么动，声音就怎么落
   function autoCues() {
     const add = (t, type, o = {}) => CUES.push({ t, type, auto: true, ...o });
     const PUNCT = new Set([..."，。、：；！？…—「」（）《》·,.:;!? "]);
@@ -628,9 +593,6 @@
     CUES.sort((x, y) => x.t - y.t);
   }
 
-  // ---------- 画面事件 → 音效（只在导出音频时跑一遍） ----------
-  // 逐帧渲染整部片子，记下卡片弹出、数据包出发/到站、连线开画、印章落下的时刻和横向位置。
-  // 手写的 sfx() 只留语义化的（错误、成功、时钟……），弹出这类跟画面走的交给这里，永远对得上。
   function effOp(el) {
     let o = 1;
     for (let e = el; e && e !== stage; e = e.parentElement) {
@@ -686,18 +648,16 @@
         prevW.set(w, k);
       }
     }
-    // 横向位置决定声像；同一小段时间里连续弹出的按和弦往上走
     const out = [];
     let lastT = -9, n = 0;
     for (const f of found) {
       if (f.type === "arrive" || f.type === "draw") { render(f.t); }
       else render(f.t);
       const r = f.el.getBoundingClientRect();
-      const x = r.width || r.height ? (r.left + r.right) / 2 : 960; // 竖线宽为 0，照样按它的位置定声像
+      const x = r.width || r.height ? (r.left + r.right) / 2 : 960;
       if (f.type === "pop" || f.type === "tag" || f.type === "tick") { n = f.t - lastT < 0.6 ? n + 1 : 0; lastT = f.t; }
       out.push({ t: Math.max(0, f.t - 0.5 / fps), type: f.type === "pkt" ? "send" : f.type, x, n: f.type === "pop" || f.type === "tag" || f.type === "tick" ? n : 0, auto: "vis" });
     }
-    // 同类音效太密就合并（比如一排格子一起亮）
     out.sort((a, b) => a.t - b.t);
     const merged = [];
     for (const c of out) {

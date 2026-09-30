@@ -3,26 +3,8 @@ import { site } from "@/lib/site";
 import { workerUrl } from "@/lib/worker-url";
 import { pastHalfLife } from "@shared/token-lifetime";
 
-/**
- * MusicKit JS 这一侧的全部脏活：把 Apple 那份脚本弄进页面、拿到 developer
- * token、配出一个实例。跟随播放的逻辑不在这里，见 hooks/use-web-player。
- *
- * developer token 由 api Worker 现签（workers/api/src/musickit-token.ts），站点
- * 自己不碰 .p8 —— 和 Mac 上报的那份凭据一样，私钥不进站点的运行时。区别是那份是
- * Mac 上报器推来的**私人凭据**（带 music user token，能读我的收听记录，只留在
- * Worker 的凭据 KV 里），这条是发给**任意访客**的公开令牌，访客拿它去换自己那份
- * 用户令牌。两者敏感度差一个量级，所以不共用一条路径。
- */
 
-/**
- * 签发端点：api Worker 上的 /api/musickit/token，和推送、状态读取同一个源。
- *
- * 只配源，拼接规则见 lib/worker-url。必须写成完整的 `process.env.XXX` 字面量：
- * 浏览器那侧没有 process，这一处是构建时按文本替换掉的，解构或动态取键都替换不到。
- *
- * 没配 NEXT_PUBLIC_BACKEND_URL 就整体停用 —— 「一起听」是附加功能，卡片其余部分
- * 照常，不留写死的兜底地址（那等于把某一份部署的地址塞进所有部署）。
- */
+// 客户端环境变量必须用完整字面量，构建替换不支持解构或动态取键。
 export const MUSICKIT_TOKEN_ENDPOINT = workerUrl(
   process.env.NEXT_PUBLIC_BACKEND_URL,
   "/api/musickit/token",
@@ -30,7 +12,6 @@ export const MUSICKIT_TOKEN_ENDPOINT = workerUrl(
 
 const MUSICKIT_SRC = "https://js-cdn.music.apple.com/musickit/v3/musickit.js";
 
-/** MusicKit 的播放状态枚举，只列用得上的几个。数值是 Apple 定的，别改 */
 export const PLAYBACK_STATE = {
   none: 0,
   loading: 1,
@@ -43,13 +24,11 @@ export const PLAYBACK_STATE = {
   stalled: 9,
 } as const;
 
-/** PlayerRepeatMode：none 不循环，one 单曲循环。数值是 Apple 定的 */
 export const REPEAT_MODE = {
   none: 0,
   one: 1,
 } as const;
 
-/** 主人单曲循环时这边也循环这一首，并关掉 autoplay，免得接下首 */
 export function applyRepeatMode(music: MusicKitInstance, repeatOne: boolean) {
   if ("repeatMode" in music) {
     music.repeatMode = repeatOne ? REPEAT_MODE.one : REPEAT_MODE.none;
@@ -57,48 +36,35 @@ export function applyRepeatMode(music: MusicKitInstance, repeatOne: boolean) {
   if ("autoplayEnabled" in music) music.autoplayEnabled = !repeatOne;
 }
 
-/** 队列条目上用得到的属性。Apple 没发布类型包，按官方文档手写 */
 export type MediaItemAttributes = {
   name?: string;
   artistName?: string;
   albumName?: string;
-  /** 毫秒 */
   durationInMillis?: number;
-  /** 模板 URL，尺寸由取图的一侧填，见 lib/apple-artwork */
   artwork?: { url?: string };
   url?: string;
-  /** 目录说这首有没有歌词。和 NowListeningPayload.hasLyrics 同一个来源，没有就不去问 /api/lyrics */
   hasLyrics?: boolean;
 };
 export type MediaItem = {
   id?: string;
   attributes?: MediaItemAttributes;
-  /** MusicKit 内部标志：是否属于 Apple 自动推荐填充的 Autoplay 曲目 */
   isAutoplay?: boolean;
 };
-/** setQueue 接受的几种形态，只列用到的。startTime 被否决（见下面接口上的注释），别加回来 */
 export type QueueOptions = {
   song?: string;
   album?: string;
   playlist?: string;
   station?: string;
-  /** Apple Music 网页地址，专辑 / 歌单 / 电台都认 */
   url?: string;
-  /** 队列装好就开始放 */
   startPlaying?: boolean;
 };
 
-/** 用到的那部分 MusicKit 实例接口。Apple 没发布类型包，按官方文档手写 */
 export type MusicKitInstance = {
   isAuthorized: boolean;
   storefrontId?: string;
-  /** 见 PLAYBACK_STATE */
   playbackState: number;
-  /** 播放进度，**秒**（站点内部一律毫秒，边界在 use-web-player 里换算） */
   currentPlaybackTime: number;
-  /** 当前曲总长，**秒**，和 currentPlaybackTime 同一个单位 */
   currentPlaybackDuration: number;
-  /** 0–1 */
   volume: number;
   nowPlayingItem: MediaItem | null;
   queue?: {
@@ -106,9 +72,7 @@ export type MusicKitInstance = {
     userAddedItems?: MediaItem[];
     autoplayItems?: MediaItem[];
   };
-  /** 队列里有下一首时让它自己接着播。单曲循环时要关掉，否则会去接下首 */
   autoplayEnabled?: boolean;
-  /** 见 REPEAT_MODE。单曲循环是 one，跟听平时是 none */
   repeatMode?: number;
   api?: {
     music?: (
@@ -118,11 +82,7 @@ export type MusicKitInstance = {
   };
   authorize(): Promise<string>;
   unauthorize(): Promise<void>;
-  /*
-   * 只声明用到的形态。文档上还有 songs / startPlaying / startTime 等旋钮 ——
-   * 对齐进度使用加载后的 seekToTime，不依赖 setQueue 的 startTime，
-   * 别把它标回接口上邀请人用回去。
-   */
+  // 进度对齐只在加载后 seek；不要给 setQueue 暴露不可靠的 startTime。
   setQueue(options: QueueOptions): Promise<unknown>;
   playNext(options: { song?: string }, clear?: boolean): Promise<unknown>;
   playLater(options: { song?: string }): Promise<unknown>;
@@ -141,7 +101,6 @@ type MusicKitGlobal = {
   configure(config: {
     developerToken: string;
     app: { name: string; build: string };
-    /** 授权弹窗和目录返回的语言 */
     storefrontId?: string;
   }): Promise<MusicKitInstance>;
 };
@@ -152,17 +111,6 @@ declare global {
   }
 }
 
-/**
- * 脚本只插一次，结果记在模块作用域里。
- *
- * 手动插而不用 next/script：它的 strategy 说的都是「什么时候自动加载」，
- * 没有「点了才加载」这一档。而 MusicKit JS 是个不小的第三方包，绝大多数
- * 访客根本不会点这个按钮，连空闲期预载都是白花的流量。
- *
- * 存的是 Promise 而不是加载完的标志位：两张卡片（或 React 严格模式下的两次
- * effect）同时要它时，第二个等的是同一次加载，而不是再插一个 script 标签。
- * 失败时把它清掉，让下一次点击能重试 —— 网络抖一下不该让按钮永久失效。
- */
 let scriptPromise: Promise<MusicKitGlobal> | null = null;
 
 function loadMusicKitScript(): Promise<MusicKitGlobal> {
@@ -170,11 +118,7 @@ function loadMusicKitScript(): Promise<MusicKitGlobal> {
   if (scriptPromise) return scriptPromise;
 
   scriptPromise = new Promise<MusicKitGlobal>((resolve, reject) => {
-    /*
-     * 两条路都要接：脚本自己会在挂好 window.MusicKit 之后派发 musickitloaded，
-     * 但如果它在我们挂监听之前就跑完了（缓存命中时真的会），那个事件就错过了。
-     * 所以 onload 里再查一次全局，谁先到算谁。
-     */
+    // 脚本可能在监听挂载前已加载；onload 和 musickitloaded 两路都要检查全局。
     const settle = () => {
       if (!window.MusicKit) return false;
       document.removeEventListener("musickitloaded", onLoaded);
@@ -210,23 +154,14 @@ function loadMusicKitScript(): Promise<MusicKitGlobal> {
 
 export type DeveloperToken = {
   token: string;
-  /** 签发时刻，Unix **秒**，和 JWT 的 iat 同一个值 */
   issuedAt: number;
-  /** 到期时刻，Unix **秒**，和 JWT 的 exp 同一个值 */
   expiresAt: number;
 };
 
-/** 令牌上的两个时刻都是 Unix 秒，比较前先把此刻换算成秒 */
 function nowSeconds(): number {
   return Math.floor(Date.now() / 1000);
 }
 
-/**
- * 令牌在内存里留一份，过了半衰期再去要。
- *
- * Worker 那侧也缓存，但那是**每个 isolate** 各存各的；这里省的是每次开始跟听都
- * 打一次网络。半寿命从令牌的 issuedAt 算，Worker 给的令牌可能已经用掉一段时间。
- */
 let cachedToken: DeveloperToken | null = null;
 
 export async function fetchDeveloperToken(): Promise<DeveloperToken> {
@@ -236,10 +171,6 @@ export async function fetchDeveloperToken(): Promise<DeveloperToken> {
 
   const response = await fetch(MUSICKIT_TOKEN_ENDPOINT, { cache: "no-store" });
   if (!response.ok) {
-    /*
-     * Worker 的报错原文带出来。403 说的是「这个域名不在名单里」，500 说的是
-     * 「哪个变量没配」—— 两者都只有部署的人能修，吞掉就得去翻 Worker 日志。
-     */
     const detail = await response
       .json()
       .then((body: { error?: string }) => body.error)
@@ -249,7 +180,6 @@ export async function fetchDeveloperToken(): Promise<DeveloperToken> {
 
   const token = (await response.json()) as DeveloperToken;
   if (!token.token) throw new Error("Token service returned no token");
-  // 两个时刻缺一个就算不出半衰期，那样这份会被当成永远新鲜或永远过期
   if (!Number.isFinite(token.issuedAt) || !Number.isFinite(token.expiresAt)) {
     throw new Error("Token service returned no issue / expiry time");
   }
@@ -257,26 +187,11 @@ export async function fetchDeveloperToken(): Promise<DeveloperToken> {
   return token;
 }
 
-/**
- * 配好的单例。
- *
- * MusicKit 全局只有一个实例，configure 调第二次会顶掉第一次的配置，所以这里也
- * 用同一个 Promise 兜住并发调用。
- */
+// MusicKit.configure 会覆盖全局实例，必须用同一个 Promise 防止并发重配。
 let instancePromise: Promise<MusicKitInstance> | null = null;
 
 export function getMusicKit(): Promise<MusicKitInstance> {
-  /*
-   * 手上那份过了半衰期就重新配一遍。
-   *
-   * 光在 fetchDeveloperToken 里判是不够的：实例配好之后这个 Promise 一直留着，
-   * 那个函数再也不会被调到，于是页面开着不动时令牌永远不换 —— 一直开到过期，
-   * 跟听就断在那里。清掉重来会走一遍 fetchDeveloperToken，它自己会看出手上那份
-   * 该换了。
-   *
-   * 统一播放器（hooks/use-web-player）手里的实例还在播放或缓冲时直接复用，
-   * 不再来要，见那边的 getOrReuseMusicKit，避免重配打断正在播放的音乐。
-   */
+  // 实例 Promise 会跳过取 token 流程，半衰期校验不能只放在 fetchDeveloperToken 内。
   if (instancePromise && cachedToken && pastHalfLife(cachedToken, nowSeconds())) {
     instancePromise = null;
   }
@@ -289,7 +204,6 @@ export function getMusicKit(): Promise<MusicKitInstance> {
     ]);
     const instance = await MusicKit.configure({
       developerToken: developer.token,
-      // 这两个字段会出现在访客的 Apple ID 授权弹窗里，得是人看得懂的东西
       app: { name: site.name, build: commit?.short ?? "dev" },
     });
     applyRepeatMode(instance, false);

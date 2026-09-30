@@ -1,9 +1,3 @@
-/**
- * PlayStation 在线状态：读 presence.availability，不是 online 布尔。
- *
- * 上游 basicPresence.availability 已见三档，和 PSN 自己的绿 / 黄 / 灰对得上。
- * 缺席或未知时退回 online 布尔，不断言第三种。
- */
 
 import type { PlaystationPresencePayload } from "./types.ts";
 

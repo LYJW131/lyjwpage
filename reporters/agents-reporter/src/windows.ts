@@ -40,7 +40,6 @@ function minutes(node: Record<string, unknown>): number | null {
   return seconds > 0 ? Math.trunc(seconds / 60) : null;
 }
 
-/** 套餐展示名。key / 文案照抄 MacTelemetryHub agentPlanLabel，一个字都不改。 */
 export function agentPlanLabel(agent: string, tier: string): string {
   switch (agent) {
     case "codex":
