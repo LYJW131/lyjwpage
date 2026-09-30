@@ -1,0 +1,5 @@
+# XcodeGen 的生成物。project.yml 才是源，见它开头的注释
+Lyjwpage.xcodeproj/
+# `swift test`（Package.swift）的构建目录
+.build/
+.swiftpm/

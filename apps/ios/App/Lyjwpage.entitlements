@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>com.apple.developer.healthkit</key>
+    <true/>
+    <!--
+      **没有 `com.apple.developer.healthkit.access`。** 那一项是「临床健康记录」
+      （Verifiable Health Records），要 Apple 单独审批才能进描述文件 —— 带着它
+      自动签名会直接失败：「requires approval from Apple to include in a profile」。
+      读活动圆环和步数用不着它，空数组也不是「不要」的意思，是「要，但一项都不选」。
+    -->
+    <!--
+      后台投递要**另一把钥匙**。只有上面那个 healthkit 的话，
+      enableBackgroundDelivery 会直接报授权错误 —— 表现是「前台点一下能上报，
+      放着不管就再也不来」，很难查。
+    -->
+    <key>com.apple.developer.healthkit.background-delivery</key>
+    <true/>
+</dict>
+</plist>

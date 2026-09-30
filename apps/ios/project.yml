@@ -1,0 +1,92 @@
+# XcodeGen 的工程描述。`.xcodeproj` 不入库 —— 它是生成物，几千行 pbxproj 进版本库
+# 只会在每次改文件时制造无意义的冲突。改了源码就跑一次 `xcodegen generate`，
+# 或者直接跑 build-install.sh（它自己会先生成）。
+#
+# 目录与目标的对应：App/ 只进主 App；Widgets/ 只进小组件；Core/（站点模型、取数）主 App 全要、
+# 小组件不要 Live/（推送与排期）；SharedUI/ 两边都要；Tests/ 只进单测。
+name: Lyjwpage
+options:
+  bundleIdPrefix: com.liangyangjunwei
+  deploymentTarget:
+    iOS: "27.0"
+  createIntermediateGroups: true
+  groupSortPosition: none
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    DEVELOPMENT_TEAM: 2VTXNMR2GL
+    MARKETING_VERSION: "3.0.0"
+    CURRENT_PROJECT_VERSION: "8"
+    # 显式 Info.plist，和 MacTelemetryHub 一致：各模块的权限说明和 ATS 例外都要手写
+    GENERATE_INFOPLIST_FILE: NO
+    # 只发 iPhone（iOS 27 起 iPhone App 可调尺寸，在 iPad 上也按 iPhone App 跑）
+    TARGETED_DEVICE_FAMILY: "1"
+    CODE_SIGN_STYLE: Automatic
+
+targets:
+  Lyjwpage:
+    type: application
+    platform: iOS
+    sources:
+      - path: App
+      - path: Core
+      - path: SharedUI
+    dependencies:
+      - target: LyjwpageWidgets
+    settings:
+      base:
+        # **bundle id 不随 App 名字走**：换了的话 HealthKit 授权、钥匙串里的 Access 密钥、
+        # 描述文件都要重来。Debug / Release 共用一个：分开的话开发者账号里要注册两个带
+        # HealthKit 能力的 App ID，手机上还会并排装两个一模一样的图标
+        PRODUCT_BUNDLE_IDENTIFIER: com.liangyangjunwei.iPhoneTelemetryHub
+        PRODUCT_NAME: Lyjwpage
+        INFOPLIST_FILE: App/Info.plist
+        CODE_SIGN_ENTITLEMENTS: App/Lyjwpage.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    scheme:
+      testTargets:
+        - LyjwpageTests
+        - LyjwpageUITests
+
+  LyjwpageWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Widgets
+      - path: Core
+        excludes:
+          - "Live/**"
+      - path: SharedUI
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.liangyangjunwei.iPhoneTelemetryHub.Widgets
+        PRODUCT_NAME: LyjwpageWidgets
+        INFOPLIST_FILE: Widgets/Info.plist
+
+  # 不挂宿主 App：测的是 Core/ 这层纯逻辑，不需要 HealthKit、签名和真机
+  LyjwpageTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Tests
+        excludes:
+          - "Fixtures/**"
+      - path: Core
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.liangyangjunwei.iPhoneTelemetryHub.Tests
+        GENERATE_INFOPLIST_FILE: YES
+
+  LyjwpageUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: UITests
+    dependencies:
+      - target: Lyjwpage
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.liangyangjunwei.iPhoneTelemetryHub.UITests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: Lyjwpage
