@@ -5,40 +5,13 @@ import { execSync } from "node:child_process";
 import { IMAGE_PATH_PREFIX } from "./src/lib/asset-url";
 import { previewWorkerOrigin } from "./scripts/preview-worker-name.mjs";
 
-/**
- * 页面上的图片是 `/img/<sha256>.<ext>` 同源路径，这里把它代理到 R2。
- *
- * 只在边缘发生：外部 rewrite 由 Vercel 的代理层转发，不进 Function、不过 sharp。
- * R2 对象带 `max-age=31536000, immutable`，配合下面 headers 里那条
- * `x-vercel-enable-rewrite-caching`，Vercel CDN 按这份头缓存，每个区域只回 R2 一次。
- * `lyjw131.com` 那边不经这条：ESA 按静态后缀缓存 `/img/*` 并自己回源。
- *
- * source 写死成「64 位十六进制 + 三种后缀」，和 IMAGE_OBJECT_KEY 一致：别放成
- * `:path*`，那等于把整个桶的任意路径都从站点域名代理出去。
- */
+// 不可放宽成任意路径代理，否则整个 R2 桶都会暴露在站点域名下。
 const R2_ORIGIN = process.env.R2_PUBLIC_BASE_URL?.replace(/\/+$/, "") ?? "";
 const IMAGE_REWRITE_SOURCE = `${IMAGE_PATH_PREFIX}/:objectKey([a-f0-9]{64}\\.(?:png|webp|jpe?g))`;
 
-/**
- * 页脚那行构建信息。两个值都必须在**构建期**求值、以字面量内联进产物。
- *
- * 别改成在服务端组件里现算 —— 首页的静态壳不是构建期就冻住的：上报改了布局
- * 就按 tag 失效、另有定时重建，下一个请求在服务端重新生成一遍（见下面
- * cacheComponents 那段）。在模块作用域写 `new Date()`，拿到的是「最后那台
- * 实例的冷启动时刻」，会跟着上报一整天悄悄往前漂，而且页面上看不出来它是错的。
- *
- * 走 `env` 是因为它是 DefinePlugin 式的文本替换：值在构建时焊死，之后无论
- * 冷启动还是重新生成都不会再变。（这个字段的文档标了 legacy，指的是「读配置」
- * 这个用途该用 .env 文件；.env 算不出值，构建期常量还是只能走这里。）
- */
+// 构建时间必须在配置求值时内联；服务端模块求值会把它变成冷启动时间。
 const BUILD_TIME = new Date().toISOString();
 
-/**
- * 生产构建沿用 Vercel 上的 NEXT_PUBLIC_BACKEND_URL。预览构建改连该分支的
- * Worker Preview：`env` 会盖过环境里那份生产地址。main 的预览仍走生产。
- * scripts/build.mjs 会先等 Preview 就绪，把结果放进 PREVIEW_BACKEND_URL；
- * 等不到时是空串，这次构建连生产。
- */
 function resolvePublicBackendUrl(): string | undefined {
   const configured = process.env.NEXT_PUBLIC_BACKEND_URL;
   if (process.env.VERCEL_ENV !== "preview") return configured;
@@ -47,7 +20,6 @@ function resolvePublicBackendUrl(): string | undefined {
   return previewWorkerOrigin(process.env.VERCEL_GIT_COMMIT_REF ?? "") ?? configured;
 }
 
-/** Vercel 自动注入完整 sha；本地开发没有这个变量，回退问 git */
 function resolveCommitSha(): string {
   const fromVercel = process.env.VERCEL_GIT_COMMIT_SHA;
   if (fromVercel) return fromVercel;
@@ -57,7 +29,6 @@ function resolveCommitSha(): string {
       stdio: ["ignore", "pipe", "ignore"],
     }).trim();
   } catch {
-    // 拿不到就留空（浅克隆、tarball 部署），页脚那一段整个不显示
     return "";
   }
 }
@@ -67,51 +38,30 @@ const nextConfig: NextConfig = {
     BUILD_TIME,
     COMMIT_SHA: resolveCommitSha(),
     NEXT_PUBLIC_BACKEND_URL: resolvePublicBackendUrl(),
-    // Sentry 按部署类型分环境（见 lib/sentry）；本地 development 默认不上报
     SENTRY_ENVIRONMENT: process.env.VERCEL_ENV ?? "development",
   },
-  /**
-   * `next dev` 按 `<distDir>/dev/lock` 保证同一目录只跑一个实例。3211 上那份已经
-   * 在跑时（比如要另起一套接本地 Worker 截效果图），给第二套指一个别的目录
-   * 就能并存；只在本地设，Vercel 不配。见 .claude/launch.json 的 `*-alt`。
-   */
+  // Next 按 distDir 加锁；并行本地实例必须使用不同目录。
   distDir: process.env.NEXT_DIST_DIR || ".next",
-  /**
-   * 首屏按卡取数，每张卡一条 `use cache` + `cacheTag`，上报改了布局时按 tag 失效。
-   *
-   * 开了它之后 `dynamic` / `revalidate` / `fetchCache` **以及 `runtime`** 这几个
-   * 段配置一律不能再导出，写了就是构建期报错 —— 官方迁移文档只写了前三个和
-   * `runtime = "edge"`，但 `runtime = "nodejs"`（默认值）照样被拒。全站的渲染
-   * 意图改由 `use cache` 和 `<Suspense>` 表达：取数缓存见 lib/first-screen，
-   * 失效点是 api Worker 调的 app/api/revalidate（lib/status-revalidation 的
-   * expireStatusTags）。站点没有状态路由，浏览器挂载后直接问 Worker。
-   */
+  // Cache Components 会拒绝包括 runtime="nodejs" 在内的旧式段配置。
   cacheComponents: true,
   async rewrites() {
-    // 讲解动画是 public/explainer 下的静态页，/explainer 指到它的 index.html
     const explainer = { source: "/explainer", destination: "/explainer/index.html" };
-    // 没配 R2 源就不挂图片那条：图片 404，页面其余部分照常
     if (!R2_ORIGIN) return [explainer];
     return [explainer, { source: IMAGE_REWRITE_SOURCE, destination: `${R2_ORIGIN}/:objectKey` }];
   },
   async headers() {
     return [
       {
-        // 讲解动画的资源都按内容哈希命名（scripts/build-explainer.mjs），地址即版本，可以缓存一年；入口 index.html 不在这里
         source: "/explainer/a/:path*",
         headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }],
       },
       {
-        // 让 Vercel 遵循 R2 回来的 cache-control 缓存外部 rewrite 的响应。
-        // 2026-04 之后新建的项目默认就开（这个项目是 8 月建的），显式写一次
-        // 是不让图片缓存依赖面板里那个看不见的开关。
+        // 显式启用 rewrite 缓存，避免缓存行为依赖控制台的隐式开关。
         source: `${IMAGE_PATH_PREFIX}/:path*`,
         headers: [{ key: "x-vercel-enable-rewrite-caching", value: "1" }],
       },
       {
-        // 更新提示的真相源（app/api/version）。预渲染响应默认带 s-maxage=31536000，
-        // Vercel 按部署缓存它没问题，但下游（ESA、浏览器）照这个头缓存一年的话，
-        // lyjw131.com 就永远看不到新版本。显式要求每次都回源确认。
+        // 必须覆盖预渲染的长期缓存头，否则下游缓存会一直返回旧版本号。
         source: "/api/version",
         headers: [{ key: "Cache-Control", value: "public, max-age=0, must-revalidate" }],
       },
@@ -123,12 +73,7 @@ const nextConfig: NextConfig = {
         ],
       },
       {
-        // 首页外层缓存策略。控制台缓存规则「首页遵循源站缓存」命中 `/` 后，边缘按
-        // 这份头缓存：5 分钟内直接命中，之后 1 天内先回旧 HTML、后台回源取新 ——
-        // 和 Vercel 那层的 stale-while-revalidate 同一个行为。这条规则删不得：
-        // `/` 没有文件后缀，不被任何规则覆盖时 ESA 直接判 DYNAMIC、每次回源。
-        // 首屏新鲜度不靠这一层：revalidateTag 照常失效 Vercel，浏览器挂载后经
-        // SWR / WebSocket 直接向 Worker 取最新状态，旧壳最多展示几秒。
+        // 首页没有静态后缀，缺少此头时 ESA 会每次回源。
         // 注意别加 must-revalidate：它禁止返回过期缓存，和 SWR 的目标正好相反。
         source: "/",
         headers: [
@@ -137,17 +82,7 @@ const nextConfig: NextConfig = {
       },
     ];
   },
-  /**
-   * 分享卡片那张图要的两份 ttf（见 app/opengraph-image）。
-   *
-   * 追踪本来就认得那两个字面量路径，但它记的是 pnpm 仓库里的真身
-   * （`node_modules/.pnpm/geist@…/node_modules/geist/…`）—— 函数里没有
-   * `node_modules/geist` 那条软链，代码按 `process.cwd()` 拼出来的路径就是
-   * ENOENT。这里按**代码实际读的那个路径**再要一次，让字节以真文件落在那儿。
-   *
-   * 只挂 `/opengraph-image` 一条：那张图 `cacheLife("max")`，30 天后仍会在运行时
-   * 重画一次，字体必须在函数里；首屏不读字体，别让它多背 300KB。
-   */
+  // pnpm 的真实字体路径会被追踪，但运行时没有软链；必须同时打包代码读取的路径。
   outputFileTracingIncludes: {
     "/opengraph-image": [
       "node_modules/geist/dist/fonts/geist-mono/GeistMono-Regular.ttf",
@@ -156,30 +91,7 @@ const nextConfig: NextConfig = {
   },
   allowedDevOrigins: ["test.lyjw.dev", "127.0.0.1"],
   images: {
-    /**
-     * 只有「源图比展示格大、源站又缩不了」才放行优化器。
-     *
-     * 自建歌单封面：Apple blobstore 上的原图（实测 274KB PNG，没有 {w}x{h}），
-     * 页面上那格只有 80px。host 用通配是因为散在 store-030 ~ store-037。
-     *
-     * GitHub 头像：**只作回退**。主路径是构建期把它缩到 128px webp、内联成
-     * data URI 焊进首屏 HTML（见 lib/github-avatar-icon），页面顶部那张脸不该
-     * 等第二趟网络请求。构建时拉不到源图才落到这条上，过优化器缩整图 JPEG。
-     *
-     * PlayStation 头像：psn-rsc 只有 _s(50) / _m(160) / _l(240) / _xl(440) 这一档
-     * 路径后缀，提要里那格 40px、3× 要 120，够得着的最小一档是 160px 的 PNG（52KB），
-     * 直连比过优化器（约 4KB）贵十倍 —— 它是 PSN 三个主机里唯一缩不到位的，所以
-     * 只剩它还在这张名单上。Redis 仍只存上游 URL，不落 R2。
-     *
-     * 封面和奖杯图都不在此列：那两个主机自己认 `?w=&h=`（还会把热起来的尺寸
-     * 转成 AVIF），改走源站现缩 + 直连，见 lib/playstation-image。
-     *
-     * 其余一律不走：R2 已经是压好的最终尺寸且 immutable，mzstatic 自带尺寸
-     * 模板，再转一道是纯浪费。
-     *
-     * pathname 只能写 `/**`：`**` 匹配的是完整路径段，段内通配不成立。
-     * search 省略等于放行任意查询串（预签名必须带 X-Amz-*，头像带 s=）。
-     */
+    // 仅为无法按尺寸取图的源开放优化器；预签名 URL 必须允许查询串。
     remotePatterns: [
       {
         protocol: "https",
@@ -197,31 +109,12 @@ const nextConfig: NextConfig = {
         pathname: "/**",
       },
     ],
-    /**
-     * 本机走 fake-IP 代理时放行图片优化器取「私有 IP」上的源图。
-     *
-     * Clash/Surge（本机是 OpenClash）那类代理在 TUN 模式下把域名解析到 198.18.0.0/15，
-     * 而 Next 16 的 SSRF 防护看到私有 IP 就拒绝取图（实测：hostname resolved to private
-     * IP 198.18.8.12，连问 1.1.1.1 都是这个结果，是网络层劫持不是本机 DNS）。
-     *
-     * `next dev` 一律放开：开发服务器只在本机跑，不开的话封面、头像全是 400。
-     * 生产构建默认关，Vercel 上不要设 —— 那边解析得到真实公网 IP，开了纯属白白
-     * 削弱 SSRF 防护；自建部署又在 fake-IP 网络里时才设 IMAGE_ALLOW_LOCAL_IP=true。
-     */
+    // fake-IP 代理会触发 Next 的 SSRF 拦截；仅开发或明确使用该代理的自建环境放行。
     dangerouslyAllowLocalIP: process.env.NODE_ENV === "development" || process.env.IMAGE_ALLOW_LOCAL_IP === "true",
   },
 };
 
-/**
- * Sentry 的构建期部分：上报隧道、release 注入、source map 上传。
- *
- * tunnelRoute 写死一条固定路径而不是每次构建随机：lyjw131.com 的 ESA 会把首页 HTML
- * 和 JS 缓存到一天（stale-while-revalidate），旧 JS 还会往上一版的路径发。`/relay`
- * 没有文件后缀，ESA 不缓存，POST 原样回源 lyjw.me。
- *
- * source map 只在有 SENTRY_AUTH_TOKEN 时上传，上传完即删，不对外发布；没有令牌
- * （本地、没装 Sentry 的 Vercel 集成）时照常构建，只是 Sentry 里的调用栈是压缩后的。
- */
+// 隧道路径必须稳定：下游缓存里的旧 JS 仍会向上一版路径上报。
 export default withSentryConfig(nextConfig, {
   org: "yangjunwei-liang",
   project: "lyjwpage",

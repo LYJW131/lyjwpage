@@ -4,38 +4,16 @@ import { site } from "@/lib/site";
 import type { GithubRepoContributor, GithubRepoPayload } from "@/lib/types";
 import { LAG_KEYS } from "@shared/lag";
 
-/**
- * 本仓库的贡献统计。名单走 GitHub REST `/stats/contributors`，顶部那三个总数
- * 另走 GraphQL —— 这两件事在 GitHub 那边不是一回事，见下面 fetchRepoTotals。
- *
- * 和贡献日历同一条流程：采集 Worker（`githubRepoJob`）取一轮写进可滞后层（名单和总数
- * 各自降级），`/api/status/github-repo` 只读那一份，浏览器按长间隔轮询；没有推送。
- *
- * token 是采集 Worker 上的 GITHUB_TOKEN（和贡献日历同一把）：名单那半公开仓不带
- * token 也能读，只是匿名限额低；总数那半是 GraphQL，没有 token 就取不到，三个数字
- * 显示「—」。
- */
 
-/**
- * 增删行的累计锚：`oid` 这条提交连同它全部祖先的增删行总和。
- *
- * 这份要能跨部署活着 —— 它替掉的是一次从 HEAD 走到根的全量翻页。锚在就只需
- * 补上「锚之后的那几条」，稳态下一页搞定；锚过期才重新全量走一次。
- */
 const CHURN_ANCHOR_KEY = "github-repo:churn";
 const CHURN_ANCHOR_TTL_MS = 30 * 86_400_000;
 
-/**
- * 整次取数的总预算，含等 202 的时间。名单和总数两路并发跑，各自在这个 deadline 前收手。
- */
 const FETCH_BUDGET_MS = 12_000;
 
-/** 等 202 的轮询间隔：GitHub 的说法是「过一会儿再来」。 */
 const RETRY_INTERVAL_MS = 3_000;
 
 const GITHUB_GRAPHQL = "https://api.github.com/graphql";
 
-/** 一页翻多少条提交，取 GraphQL `history` 每页的上限。 */
 const HISTORY_PAGE = 100;
 
 type ContributorWeek = {
@@ -51,7 +29,6 @@ export type ContributorStat = {
   weeks?: ContributorWeek[];
 };
 
-/** 全仓总数。取不到就是 null，卡片显示「—」，不拿错的数字顶上。 */
 export type RepoTotals = {
   commits: number | null;
   additions: number | null;
@@ -61,14 +38,11 @@ export type RepoTotals = {
 const NO_TOTALS: RepoTotals = { commits: null, additions: null, deletions: null };
 
 type ChurnAnchor = {
-  /** 默认分支上的一条提交 */
   oid: string;
-  /** 它连同全部祖先的增删行累计 */
   additions: number;
   deletions: number;
 };
 
-/** 从 site.repo 抠出 owner/name，抠不出就退回 githubLogin/lyjwpage。 */
 export function repoIdFromUrl(url: string): { owner: string; name: string } {
   const match = /github\.com\/([^/\s]+)\/([^/\s]+?)(?:\.git)?\/?$/.exec(url.trim());
   if (match?.[1] && match?.[2]) return { owner: match[1], name: match[2] };
@@ -78,12 +52,6 @@ export function repoIdFromUrl(url: string): { owner: string; name: string } {
 const numberOrZero = (value: unknown): number =>
   typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
 
-/**
- * 把 `/stats/contributors` 的原始返回汇总成名单。纯函数，不碰网络，方便单测。
- *
- * `totals` 单独传进来，**不是**把名单加起来 —— 见 fetchRepoTotals 的注释：
- * 协作者会被重复计入贡献统计，加起来会比真值大。
- */
 export function summarizeRepoStats(
   raw: ContributorStat[],
   owner: string,
@@ -116,19 +84,12 @@ export function summarizeRepoStats(
   };
 }
 
-/** 公开端点：可滞后层里采集 Worker 写的那份；还没写过就是等采集 */
 export function getGithubRepo(): Promise<LagResult<GithubRepoPayload>> {
   return loadLag<GithubRepoPayload>(LAG_KEYS.githubRepo, "Waiting for the first repository stats");
 }
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
-/**
- * 取数本体，不碰缓存层。名单和总数两路并发，共用一个 deadline 和一个 signal。
- *
- * 名单取不到就抛出去（采集那一轮沿用上一份的名单）；总数取不到
- * 只是三个数字变「—」，不牵连名单 —— 它们是两个接口、两种失败方式。
- */
 export async function fetchRepoStats(
   token: string | null,
   owner: string,
@@ -165,7 +126,6 @@ export async function fetchRepoStats(
   return summarizeRepoStats(listed.value, owner, name, Date.now(), totals);
 }
 
-/** 名单这一路没取到，但同一轮算出来的总数还在，交给采集那一轮拼进上一份。 */
 export class ContributorsUnavailable extends Error {
   // 构造参数属性在 node --experimental-strip-types 下会直接报语法错，写成普通字段
   totals: RepoTotals;
@@ -177,11 +137,6 @@ export class ContributorsUnavailable extends Error {
   }
 }
 
-/**
- * 名单那半：`/stats/contributors`，GitHub 现算时回 202，就每隔 `RETRY_INTERVAL_MS`
- * 再问一次。预算内等不到、或响应不对，都抛出去 —— 没有 commits 列表那种退路：
- * 它拼不出增删行，「+0 / −0」会在缓存里挂到下一轮采集。
- */
 async function fetchContributorStats(
   headers: Record<string, string>,
   signal: AbortSignal,
@@ -279,22 +234,7 @@ const HISTORY_QUERY = `query ($owner: String!, $name: String!, $cursor: String) 
   }
 }`;
 
-/**
- * 顶部那三个总数：默认分支的提交数与全仓增删行。
- *
- * **不能把名单加起来。** `/stats/contributors` 是「贡献」而不是「提交归属」：
- * 一条带 `Co-authored-by` 的提交会整条记在作者名下，也整条记在每位协作者名下，
- * 增删行同样各记一遍，加总会重复计入。
- *
- * 提交数用 GraphQL 的 `history.totalCount`，一次请求就精确。增删行没有现成的
- * 全仓字段：`/stats/code_frequency` 本来正合适，但它在这个仓上长期只回 202、
- * 算不出来，所以只能自己把 history 翻一遍、按提交累计求和 —— 代价是每一页
- * 一次请求，所以结果锚在 HEAD 上存起来，之后每轮只补新增的那几条。锚还在、
- * HEAD 没动，就一次请求都不用翻。
- *
- * 预算内翻不完：提交数照样返回（它只要一次请求），增删行退回锚上那份 ——
- * 顶多旧几条提交，下一轮继续往前推；连锚都没有就是 null，显示「—」。
- */
+// contributors 会把同一提交计入每位协作者；总数必须独立计算，不能按贡献者相加。
 async function fetchRepoTotals(
   token: string | null,
   owner: string,
@@ -331,15 +271,12 @@ async function fetchRepoTotals(
     const history = page?.repository?.defaultBranchRef?.target?.history;
     const nodes = history?.nodes ?? [];
     for (const node of nodes) {
-      // 锚那条连同它的祖先已经在 anchor 的和里了，到此为止。
       if (anchor && node.oid === anchor.oid) {
         return finishChurn(headOid, additions + anchor.additions, deletions + anchor.deletions, commits);
       }
       additions += numberOrZero(node.additions);
       deletions += numberOrZero(node.deletions);
     }
-    // 锚不在这条链上（rebase / force push 把它冲掉了）也不用特判：
-    // 一路翻到根，手里这份和式本身就是完整的。
     if (!history?.pageInfo?.hasNextPage) {
       return finishChurn(headOid, additions, deletions, commits);
     }

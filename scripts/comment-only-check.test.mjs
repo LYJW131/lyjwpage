@@ -13,7 +13,6 @@ import { checkFiles, compareContents, stripSwift } from "./comment-only-check.mj
 const SCRIPT = fileURLToPath(new URL("./comment-only-check.mjs", import.meta.url));
 const status = (file, before, after, options = {}) => compareContents({ ts, file, before, after, ...options }).status;
 
-// 每个用例：[说明, 文件名（只看扩展名）, 基准内容, 改后内容, 期望结论]
 const CASES = [
   ["TS：加、改、删注释，代码不动", "a.ts",
     `export const a = 1; // 旧注释\nfunction f(x: number) {\n  return x + 1;\n}\n`,
@@ -88,7 +87,6 @@ const CASES = [
     `// swiftlint:disable type_name\nstruct A {}\n`,
     "directive"],
 
-  // 字符串字面量逐字比较：里面的空白是内容，不是排版
   ["Swift：字符串里多了一个空格（\"a b\" → \"a  b\"）", "space.swift",
     `let s = "a b"\n`,
     `let s = "a  b" // 多了一个空格\n`,
@@ -134,7 +132,6 @@ const CASES = [
     `export const V = () => <a title="a  b" />;\n`,
     "code"],
 
-  // 指令性注释连同它绑定的位置一起比：`@ts-ignore`、`eslint-disable-next-line` 管的是下面那一行
   ["TS：@ts-ignore 挪到另一条语句前", "ignore-moved.ts",
     `// @ts-ignore\nconst a: number = "x";\nconst b: number = "y";\n`,
     `const a: number = "x";\n// @ts-ignore\nconst b: number = "y";\n`,
@@ -291,7 +288,6 @@ test("已知局限：Swift 正则字面量里的 // 会被当成行注释（文�
   assert.ok(code.includes("let x = 1"));
 });
 
-/** 临时 git 仓库：关掉提交签名，用例里的提交不依赖本机的签名配置 */
 function tempRepo() {
   const dir = mkdtempSync(path.join(os.tmpdir(), "comment-only-test-"));
   const run = (...args) => {
@@ -354,7 +350,6 @@ test("命令行：有除注释外的改动退出码为 1 并点名文件、附�
     assert.equal(fine.status, 0, fine.stderr);
     assert.match(fine.stdout, /共 1 个文件：仅注释 1，没变化 0，需要看 0/);
 
-    // 不给文件：取 diff 里扩展名认识的那些
     const bad = cli();
     assert.equal(bad.status, 1, bad.stderr);
     assert.match(bad.stdout, /除注释外有改动\s+code-changed\.ts/);

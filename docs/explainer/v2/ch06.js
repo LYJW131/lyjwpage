@@ -1,17 +1,6 @@
-// 第 06 章 · 两条线路（交付：图片、大陆访问，FACTS §6）。9 小节，纸面地铁图，全是 2D。
-// 两条线只用两种颜色：lyjw.me 墨色、lyjw131.com 橙色；站是纸色圆点加站名，两条线都通到 Vercel 源站。
-// 本章只讲请求时的分发与缓存；部署那一刻刷新 ESA、通知页面归第 09 章「发布」（它落地时借这张图的几何）。
-// 机位（章内小节）：
-//   0–1 第 05 章拉平的那条线（屏幕 y 540）成了 lyjw.me 线，往后拉出整张图；lyjw131.com 线从源站分出去
-//   1–4 ESA 站：5 分钟的钟走完，过期先给旧页，后台回源（Cache-Control 的 max-age / stale-while-revalidate）
-//   4–7 图片是索书号：借书卡上的 /img/<哈希>.webp（Emby 海报）；lyjw.me 边缘 rewrite 到 R2，ESA 缓存同一路径
-//   7–9 两条线往右延伸，镜头跟着横移，停在空白的纸上交给第 07 章
-// 配乐锚点（music/ch06.js，章内 小节:拍）：0:0 转到 E 多利亚 · 2:2 钟走完 · 3:2 新页回到 ESA · 4:3 图片上路 · 6:0 印章。
-// 改时间先对这张表和 SCRIPT.md。坐标是世界坐标，开场镜头在 (1400, 540)、缩放 1。
 (() => {
   const { css } = G;
   const { E, prog, keys, clamp, lerp, text, FONT, line, polyline, fillRect, stamp, spark, roundRect, pathAt, pathLen, trailOn, mulberry32 } = K;
-  // ---------- 这一章的文字：[中文, English]，场景代码里只写键 ----------
   I18N.add({
     "ch06.title": ["两条线路", "Two lines"],
     "ch06.origin": ["源站", "origin"],
@@ -39,23 +28,20 @@
   const impact = (b, at, hl = 0.09) => (b < at ? 0 : Math.exp((-((b - at) * BARs) / hl) * Math.LN2));
   const win = (b, a0, a1, b0, b1) => prog(b, a0, a1) * (1 - prog(b, b0, b1));
 
-  // ---------- 线路图（世界坐标） ----------
-  const ME_Y = 540, CN_Y = 840, LW = 14; // 两条线的高度和线宽
-  const O = [400, ME_Y]; // Vercel 源站：两条线的起点
+  const ME_Y = 540, CN_Y = 840, LW = 14;
+  const O = [400, ME_Y];
   const ESA = [1400, CN_Y], L = [2400, ME_Y], C = [2400, CN_Y];
   const R2 = [1000, 250], SPUR_X = 1000;
   const ME_PATH = [O, L], CN_PATH = [O, [700, CN_Y], C];
   const CLK = [1620, 1040], CLK_R = 80;
   const CARD = { x: 1580, y: -10, w: 900, h: 450 };
 
-  // 索书号：64 位十六进制（和上报器一样按内容的 sha256 起名，这里用种子随机数代替，不抄真的对象键）
   const hex64 = (seed) => { const r = mulberry32(seed); let s = ""; for (let i = 0; i < 64; i++) s += "0123456789abcdef"[Math.floor(r() * 16)]; return s; };
   const KEY_OLD = hex64(606), KEY_NEW = hex64(6060);
   const callNo = (k) => `/img/${k.slice(0, 10)}…${k.slice(-6)}.webp`;
   const chipNo = (k) => `/img/${k.slice(0, 8)}….webp`;
 
-  // ---------- 机位：[小节, [x, y, zoom, rot], 进入这一段的缓动] ----------
-  const START = [1400, ME_Y, 1, 0]; // 第 05 章最后那条直线在屏幕 y 540：这一帧只有 lyjw.me 那条线横穿画面
+  const START = [1400, ME_Y, 1, 0];
   const OVER = [1230, 560, 0.7, 0];
   const ESAV = [1500, 900, 1, 0], IMGV = [1500, 560, 0.85, 0];
   const END = [6400, 690, 0.85, 0];
@@ -68,12 +54,10 @@
     [3.85, [1506, 902, 1.02, 0], E.lin],
     [4.1, IMGV, E.io],
     [6.85, [1508, 562, 0.866, 0], E.lin],
-    // 交给第 07 章：同一张纸，不切；镜头往右横移，停下时画面上只剩两条横穿的线
     [9.0, END, E.io],
   ];
   const camAt = (b) => keys(b, CAM);
 
-  // ---------- 画 ----------
   function station(x, cx, cy, a, o = {}) {
     if (a <= 0) return;
     const r = o.r ?? 18;
@@ -110,7 +94,6 @@
     K.narration(x, tr(key), px, py, { px: size, maxW, reveal: r, alpha: a, dim: 0.12 });
   }
 
-  // 标题、图例（整张图的机位缩放 0.7：字按 1.6 倍写）；只在这个机位上，之后的机位会把它切在画面边上
   function title(x, b) {
     const a = prog(b, 0.3, 0.7) * (1 - prog(b, 1.32, 1.46));
     if (a <= 0) return;
@@ -125,18 +108,14 @@
     text(x, "lyjw131.com", 14, 436, { font: FONT.mono(46, 500), color: css("signal"), alpha: la });
   }
 
-  // 两条线：lyjw.me 开场就在（从第 05 章那条细线变粗），lyjw131.com 从源站分出去；7:0 起两条都往右延伸，
-  // 线头先伸出画面右沿，之后一直领先镜头右沿一段，横移时画面上始终是两条横穿的线
   function lines(x, b) {
     const cam = camAt(b);
     const reach = b < 7.0 ? L[0] : lerp(L[0], cam[0] + 960 / cam[2] + 250, prog(b, 7.0, 7.5, E.out));
     const lw = lerp(4, LW, prog(b, 0.05, 0.5, E.io));
     line(x, O[0], ME_Y, reach, ME_Y, lw, css("pink"));
-    // 延伸那一段接在两个终点站后面
     const ck = prog(b, 0.3, 0.9, E.io);
     polyline(x, CN_PATH, ck, LW, css("signal"));
     if (reach > C[0]) line(x, C[0], CN_Y, reach, CN_Y, LW, css("signal"));
-    // R2 的支线：lyjw.me 在边缘 rewrite 到 R2
     polyline(x, [[SPUR_X, ME_Y], [SPUR_X, R2[1] + 20]], prog(b, 0.6, 0.85), 6, css("pink"));
   }
 
@@ -158,7 +137,6 @@
     text(x, tr("ch06.images"), R2[0] + 104, R2[1] + 16, { font: FONT.cjk(40, 600), color: css("graphite"), alpha: la(0.82) });
   }
 
-  // 1–4 ESA：5 分钟的钟；走完了先把旧页给访客，同时沿线回源，新页回来再换上
   function esaBeat(x, e, b) {
     const a = win(b, 1.55, 1.7, 3.85, 4.0);
     if (a <= 0) return;
@@ -169,7 +147,6 @@
     x.save(); x.globalAlpha = a;
     x.fillStyle = css("paper"); x.strokeStyle = expired ? css("signal") : css("pink"); x.lineWidth = 4;
     x.beginPath(); x.arc(cx, cy, CLK_R, 0, Math.PI * 2); x.fill(); x.stroke();
-    // 一圈就是 300 秒：每 30 秒一格
     for (let i = 0; i < 10; i++) { const an = -Math.PI / 2 + (i / 10) * Math.PI * 2; line(x, cx + Math.cos(an) * (CLK_R - 14), cy + Math.sin(an) * (CLK_R - 14), cx + Math.cos(an) * (CLK_R - 4), cy + Math.sin(an) * (CLK_R - 4), i % 5 ? 2 : 4, css("pink")); }
     if (fillK > 0) { x.globalAlpha = a * 0.28; x.fillStyle = css("signal"); x.beginPath(); x.moveTo(cx, cy); x.arc(cx, cy, CLK_R - 18, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * fillK); x.closePath(); x.fill(); }
     x.globalAlpha = a;
@@ -180,7 +157,6 @@
     text(x, "max-age=300", cx + 110, cy + 44, { font: FONT.mono(30), color: css("graphite"), alpha: a * prog(b, 1.65, 1.8) });
     text(x, "stale-while-revalidate=86400", cx + 110, cy + 88, { font: FONT.mono(30), color: css("graphite"), alpha: a * prog(b, 1.7, 1.85) });
     text(x, tr("ch06.stale"), cx + 110, cy - 14, { font: FONT.cjk(38, 600), color: css("signal"), reveal: prog(b, 2.5, 2.95), alpha: a, maxW: 720 });
-    // ESA 手上那一份页；过期后照样先给访客（灰），同时回源，新的一份（橙）3:2 回来换上
     const fresh = b >= 3.5;
     pageIcon(x, ESA[0], ESA[1] + 90, fresh ? css("signal") : css("pink"), a * (b > 2.95 && b < 3.45 ? 0.35 : 1));
     if (b >= 2.5 && b < 3.0) {
@@ -189,7 +165,7 @@
       const back = [ESA, [700, CN_Y], O];
       const d = prog(b, 2.5, 2.9, E.in) * pathLen(back);
       x.save(); x.setLineDash([12, 10]);
-      polyline(x, back, prog(b, 2.5, 2.9, E.in), 4, css("pink"), a); // 橙线上画墨色虚线才看得见
+      polyline(x, back, prog(b, 2.5, 2.9, E.in), 4, css("pink"), a);
       x.restore();
       spark(e, null, pathAt(back, d), null, { t: G.t, size: 0.55 });
     }
@@ -199,7 +175,6 @@
     }
   }
 
-  // 4–7 借书卡：索书号就是内容的哈希；同一个路径在 lyjw.me 走边缘 rewrite 到 R2，在 lyjw131.com 由 ESA 缓存
   function imgBeat(x, d, s, e, b) {
     const a = win(b, 4.1, 4.25, 6.85, 7.0);
     if (a <= 0) return;
@@ -211,7 +186,7 @@
     d.shadowColor = "transparent";
     d.strokeStyle = css("pink"); d.lineWidth = 2.4; d.strokeRect(px, py, w, h);
     d.strokeStyle = css("signal"); d.lineWidth = 1.2; d.globalAlpha = a * 0.5;
-    for (let j = 0; j < 4; j++) { d.beginPath(); d.moveTo(px + 24, py + 226 + j * 70); d.lineTo(px + w - 24, py + 226 + j * 70); d.stroke(); } // 借书卡的格线
+    for (let j = 0; j < 4; j++) { d.beginPath(); d.moveTo(px + 24, py + 226 + j * 70); d.lineTo(px + w - 24, py + 226 + j * 70); d.stroke(); }
     d.restore();
     text(d, tr("ch06.card"), px + 36, py + 66, { font: FONT.cjk(46, 600), alpha: a });
     text(d, tr("ch06.poster"), px + w - 36, py + 64, { font: FONT.cjk(38, 600), color: css("graphite"), align: "right", alpha: a });
@@ -226,7 +201,6 @@
     text(d, "max-age=31536000, immutable", px + 36, py + h - 34, { font: FONT.mono(34), color: css("graphite"), alpha: a * prog(b, 4.6, 4.75) });
     stamp(s, "immutable", px + w - 128, py + 250, { k: prog(b, 6.0, 6.12), px: 50, rot: -0.12, sub: tr("ch06.noPurge"), subPx: 36, alpha: a });
     text(d, tr("ch06.apple"), px - 20, 1012, { font: FONT.cjk(34, 600), color: css("graphite"), reveal: prog(b, 6.15, 6.6), alpha: a, maxW: 1000 });
-    // 同一个路径上路：lyjw.me 那头沿线到支线、上 R2；lyjw131.com 那头到 ESA 就停下
     const lab = chipNo(KEY_OLD);
     const kA = prog(b, 4.75, 5.12, E.io), kUp = prog(b, 5.12, 5.3, E.in);
     if (kA > 0 && kA < 1) chip(d, lab, lerp(L[0], SPUR_X + 200, kA), ME_Y - 50, false, 1);
@@ -263,14 +237,12 @@
     esaBeat(x, e, b);
     imgBeat(x, d, s, e, b);
 
-    // ---- 旁白 ----
     nar(d, "ch06.n1a", 650, 1290, prog(b, 1.6, 2.1), win(b, 1.6, 1.7, 3.8, 3.95), 60, 1040);
     nar(d, "ch06.n1b", 650, 1375, prog(b, 2.1, 2.75), win(b, 1.6, 1.7, 3.8, 3.95), 60, 1040);
     nar(d, "ch06.n2a", 460, 1030, prog(b, 4.15, 4.7), win(b, 4.15, 4.25, 6.8, 6.95), 71, 1224);
     nar(d, "ch06.n2b", 460, 1115, prog(b, 4.7, 5.6), win(b, 4.15, 4.25, 6.8, 6.95), 71, 1224);
 
     G.composite(ink.upload(), { mode: G.MODE.ink, seed: 8.3 });
-    // 借书卡是纸上的一张纸（带落影），按纸片模式合成；光晕压在卡片上面
     G.composite(paper.upload(), { mode: G.MODE.paper });
     G.composite(emit.upload(), { mode: G.MODE.add, gain: 1.4 });
     G.composite(stampL.upload(), { mode: G.MODE.stamp, seed: 1.7 });

@@ -4,7 +4,6 @@ import { PsPlusMark } from "@/components/trophies/ps-plus";
 import { plusCatalog } from "@/lib/playstation-entitlements";
 import { cn } from "@/lib/utils";
 
-/** 奖杯标题的 platform 字段，跨世代收成一枚「PS4/5」。 */
 export function consoleLabel(platforms: Array<string | null | undefined>): string | null {
   let ps4 = false;
   let ps5 = false;
@@ -27,7 +26,6 @@ function BoxMark({ children }: { children: ReactNode }) {
   );
 }
 
-/** 官方那种描边小标：平台一枚，Plus 库再跟一枚。自己占一行。 */
 export function PlatformMarks({
   platforms,
   service,
@@ -61,7 +59,6 @@ export function GameFlags({
 }: {
   service: string | null | undefined;
   preOrder?: boolean;
-  /** 跟旁边的正文同一字号，不用等宽小标。 */
   plain?: boolean;
   className?: string;
 }) {

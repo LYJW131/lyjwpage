@@ -21,7 +21,6 @@ test("范围内以新报告为准（包括还在累积的末桶），范围外�
   assert.deepEqual(second.windows.map((window) => [window.from, window.agents[0]?.inputTokens]), [
     [T0, 30],
     [T0 + 5 * M, 20],
-    // T0+10 在新报告范围内、这封没有行：确认是 0
     [T0 + 15 * M, 4],
   ]);
   assert.deepEqual(second.coverage, [{ from: T0, to: T0 + 17 * M }]);

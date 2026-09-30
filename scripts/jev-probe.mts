@@ -1,10 +1,3 @@
-/**
- * 拿代表性窗口打真实 Jev，看 Coding 的判据是不是按我们的意思在答。
- * 用法：node --experimental-strip-types --import ./src/lib/testing/register-alias.mjs scripts/jev-probe.mts
- * key 读 .env.local 的 TYPESAFE_API_KEY。只打印答案，不打印 key。
- *
- * Pulse 只有 Coding 一条道送 Jev，别的道画的是事实时间线。
- */
 import { readFileSync } from "node:fs";
 import { codingQuestions, codingWindowFeatures, type CodingObservation } from "@shared/pulse-coding";
 
@@ -17,7 +10,6 @@ type Answer = { type: string; score?: number; choice?: string; confidence: numbe
 type Answers = Record<string, Answer>;
 const cases: Case[] = [];
 
-/** 每分钟一条观测，整窗同一个样子 */
 function minutes(desktop: CodingObservation["desktop"], agents: CodingObservation["agents"]): CodingObservation[] {
   return Array.from({ length: 5 }, (_, i) => ({ t: T + i * M, available: true, desktop, agents }));
 }

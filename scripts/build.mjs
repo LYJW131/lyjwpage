@@ -1,14 +1,5 @@
 #!/usr/bin/env node
-/**
- * `pnpm build`。Vercel 的分支预览构建先等本分支的 api Worker Preview 能回公开端点，
- * 再跑 `next build`；其余构建直接跑。
- *
- * Workers Builds 和 Vercel 并行，新分支第一次推送时 Vercel 常常先到，预渲染首页按卡
- * 读端点会拿到 404 / 500，整次构建失败。探的是 `/api/status/listening/now`：一条读
- * 状态核心的实时端点，Preview 的空库第一次公开读取还会顺手完成初始化。只改了 api 监视路径以外文件的分支根本
- * 没有 Preview，所以等不到时这次构建连生产，而不是失败。结果经 PREVIEW_BACKEND_URL
- * 交给 next.config.ts：就绪时是 Preview 的源，回退时是空串。
- */
+// Vercel 和 Worker 并行构建会竞态；先等预览后端，未触发预览的分支超时后回退生产读取。
 import { spawnSync } from "node:child_process";
 
 import { previewWorkerOrigin } from "./preview-worker-name.mjs";
@@ -40,7 +31,6 @@ if (origin) {
   console.log(ready ? `[preview] 后端用 ${origin}` : "[preview] 等不到本分支的 Worker Preview，这次构建连生产");
 }
 
-// 讲解动画的静态页（public/explainer）是生成物，先出好再让 next build 收进 public
 const explainer = spawnSync(process.execPath, ["scripts/build-explainer.mjs"], { stdio: "inherit", env });
 if (explainer.status !== 0) process.exit(explainer.status ?? 1);
 

@@ -1,11 +1,9 @@
 import { number, object, text } from "@/lib/json";
 import type { ActivityHistory, ActivityHistoryBucket, ActivityReport } from "@shared/activity";
 
-/** iPhone 信封 `modules.activity` 的收敛：当天圆环读数与 HealthKit 五分钟桶。 */
 
 const DATE_PATTERN = /^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])$/;
 
-/** 非负的必填数。三环的已完成值走它 */
 function amount(value: unknown, field: string): number {
   const parsed = number(value);
   if (parsed == null) throw new Error(`活动上报的 ${field} 必须是数字`);
@@ -13,33 +11,19 @@ function amount(value: unknown, field: string): number {
   return parsed;
 }
 
-/**
- * 目标值必须为正 —— 环的比例是「已完成 / 目标」，0 会让它变成 0/0。
- *
- * 上报器在当天还没有 `HKActivitySummary` 时只发历史，不发送圆环字段，
- * 所以收到 0 说明那边算错了，不该默默存进去。
- */
 function goal(value: unknown, field: string): number {
   const parsed = amount(value, field);
   if (parsed === 0) throw new Error(`活动上报的 ${field} 必须大于 0`);
   return parsed;
 }
 
-/** 选填的计数。上报器没拿到那项授权时整个字段不出现，那不是错误 */
 function optional(value: unknown): number | null {
   if (value == null) return null;
   const parsed = number(value);
   return parsed == null || parsed < 0 ? null : Math.round(parsed);
 }
 
-/**
- * 把上报器的报文收敛成对外契约。
- *
- * 包含当前圆环时，`date` 和 `secondsFromGMT` 都必填，站点不给它们兜底：圆环在**手表所在时区**的
- * 午夜归零，源站的钟在别的大洲上，猜一个只会猜错。上报器那边这两个值是从
- * summary 自己的 `dateComponents` 推的，不是另拿 `Date()` 算的 —— 午夜前后两者
- * 会差一天。
- */
+// 圆环在手表所在时区归零；日期与偏移必须取自同一份 summary，不能用服务器日期补齐。
 export function normalizeActivity(
   input: unknown,
   receivedAt = Date.now(),
@@ -64,8 +48,6 @@ function normalizeCurrent(row: Record<string, unknown>, receivedAt: number): Act
     activity: {
       date,
       secondsFromGMT,
-      // 三环一律取整：手表上显示的就是整数，多带的小数只会让每次上报的字节都不一样，
-      // 而 SWR 靠深比较决定要不要重渲染（见 StatusResponse 的注释）
       moveKcal: Math.round(amount(row.moveKcal, "moveKcal")),
       moveGoalKcal: Math.round(goal(row.moveGoalKcal, "moveGoalKcal")),
       exerciseMinutes: Math.round(amount(row.exerciseMinutes, "exerciseMinutes")),
@@ -82,14 +64,9 @@ function normalizeCurrent(row: Record<string, unknown>, receivedAt: number): Act
 
 const BUCKET_MS = 5 * 60_000;
 const MAX_HISTORY_MS = 25 * 60 * 60_000;
-/** 手机时钟略快时，刚过五分钟边界算出的 `to` 会稍晚于源站收到的时刻；只容忍这点偏差。 */
 const CLOCK_SKEW_MS = 60_000;
 
-/**
- * 历史桶的数值按固定精度量化。HealthKit 每次重新聚合同一个桶，末几位小数都会抖动；
- * 不收敛的话每次上报整窗的桶都被当成「变了」，D1 与 DO 每次重写整整 24 小时。
- * 在入口量化一次，下游（DO 证据、滞后层、D1 `activity_buckets`）拿到的都是同一份值。
- */
+// HealthKit 重聚合会抖动末位小数；量化防止每次上报重写整窗历史。
 function nullableAmount(value: unknown, decimals: number): number | null {
   if (value == null) return null;
   const parsed = number(value);

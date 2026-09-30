@@ -1,5 +1,3 @@
-// 抽帧：node stills.mjs <输出目录> [--lang en] [--scale 1] t1 t2 ...   时间写秒，或写 c02:5.5（第 02 章第 5.5 小节）
-// --scale 0.2 出 375px 宽手机的等效图；--only ch02,ch03 只排这几章（时间轴从第一章算起）；输出文件名 <lang>_c02_5_5.png
 import { chromium } from "../../render/node_modules/playwright-core/index.mjs";
 import fs from "node:fs";
 import path from "node:path";
@@ -19,7 +17,6 @@ const page = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../inde
 const b = await chromium.launch({ channel: "chrome", headless: true, args: ["--use-angle=metal", "--enable-gpu", "--ignore-gpu-blocklist"] });
 const p = await b.newPage({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: scale });
 const errs = [];
-// 还没写的章（chNN.js、music/chNN.js）加载失败是预期的，不报
 const expectedMissing = (m) => /Failed to load resource|ERR_FILE_NOT_FOUND/.test(m.text()) && /\/(music\/)?ch\d\d\.js$/.test(m.location()?.url || "");
 p.on("console", (m) => { if ((m.type() === "error" || m.type() === "warning") && !expectedMissing(m)) errs.push(`${m.type()}: ${m.text()}`); });
 p.on("pageerror", (e) => errs.push("pageerror: " + e.message));

@@ -1,22 +1,7 @@
-// 第 09 章 · 发布（推到 main 之后，各条流水线怎么把新版本送上线，FACTS §9）。16 小节，纸面，全是 2D。
-// 一张纸面图纸，一根主轴贯穿全章，就是屏幕 y 540 那条线：第 08 章的心电图 → git 的 main → Vercel 那条流水线 → 第 06 章的 lyjw.me 线。
-//   0–1.5   接第 08 章：首帧镜头 [960, 540, 1]，main 线横在 y 540，提交的圆点落在第 08 章心电图那几处敲门尖峰上，
-//           这次的提交（HEAD）落在笔尖的位置 (1350, 540)；打字机敲出 git push origin main，1:0 回车
-//   1.5–3.5 拉远：几条流水线从 HEAD 散开（按平台分组：GitHub Actions 在上、Vercel 在主轴、Workers Builds 在下）；
-//           2:0 起每条闸门一个十六分：放行的打勾，没改到监视路径的划一道，这次不跑
-//   3.5–10  镜头下到三张详图：A 检查（CI、CodeQL）、B Worker（api 构建发布，ingress、collector 这次不跑）、
-//           C 上报器（镜像推 GHCR、ssh 换 misaka-jp 的容器；Hub 签名公证发 Release）
-//   10–12.5 回到主轴：Vercel 生产部署成功，落在第 06 章那张两条线路图的源站上（同一套几何，平移 MX）；
-//           deployment_status 触发 GitHub Actions：刷新 ESA 首页并预热 → 两个域名的 /api/version 都答出新版 → 通知上报入口
-//   12.5–15 上报入口 → Service Binding → StateCore.broadcastVersion() → 推送房间广播 version；
-//           页面自己去问 /api/version：前台弹出 UPDATE 卡，后台标签页自己刷新
-//   15–16   拉远看整张图纸，再落回主轴：别的都退掉，最后一帧只剩屏幕 y 540 一条整宽的墨线，交给第 10 章（它的长图版脊线也在 y 540）
-// 配乐锚点在 AT（章内小节），music/ch09.js 按同一组小节落拍；改时间先对这两处和 SCRIPT.md。
 (() => {
   function make() {
     const { css } = G;
     const { E, prog, keys, clamp, lerp, text, FONT, line, polyline, rect, dashed, stamp, spark, roundRect, checkbox, measure, pathAt, pathLen, trailOn } = K;
-    // ---------- 这一章的文字：[中文, English]，场景代码里只写键 ----------
     I18N.add({
       "ch09.title": ["发布", "Release"],
       "ch09.diff": ["这次改到的路径", "Paths changed in this push"],
@@ -26,7 +11,6 @@
       "ch09.skip": ["没改到", "untouched"],
       "ch09.t.hub": ["Hub 发布", "Hub release"],
       "ch09.t.img": ["上报器镜像", "Reporter images"],
-      // 详图 A
       "ch09.pA": ["检查", "Checks"],
       "ch09.pA.sub": ["GitHub Actions · 每次推到 main 都跑", "GitHub Actions · on every push to main"],
       "ch09.a.tc": ["全部工作区", "every workspace"],
@@ -38,14 +22,12 @@
       "ch09.a.cancel": ["同一分支连推几次，只留最后一次", "Rapid pushes to one branch: only the last one runs"],
       "ch09.n2a": ["CI 和 CodeQL 只检查、不发布；", "CI and CodeQL check but never ship;"],
       "ch09.n2b": ["next build 留给 Vercel 去跑。", "next build is left to Vercel."],
-      // 详图 B
       "ch09.pB": ["Worker", "Workers"],
       "ch09.b.ingest": ["改上报校验不会重新发布 api：Durable Object 不重启", "Ingest validation changes skip api: the DO keeps running"],
       "ch09.b.miss": ["没改到：不构建，线上仍是上一版", "Untouched: no build, the live version stays"],
       "ch09.b.deps": ["三个都另盯着根目录的依赖与配置", "All three also watch the root deps and config"],
       "ch09.n3a": ["Worker 各自构建、互不等待：", "Each Worker builds on its own;"],
       "ch09.n3b": ["契约只加不改，新接口先发被调用方。", "APIs only grow; ship the callee first."],
-      // 详图 C
       "ch09.pC": ["上报器", "Reporters"],
       "ch09.c.img": ["容器镜像", "Container images"],
       "ch09.c.ssh": ["受限密钥，只跑部署脚本", "restricted deploy key"],
@@ -57,7 +39,6 @@
       "ch09.c.run": ["hub-build-<运行号>", "hub-build-<run no.>"],
       "ch09.n4a": ["上报器的镜像推到 GHCR；", "Reporter images go to GHCR;"],
       "ch09.n4b": ["Mac 的 Hub 签名、公证后发 Release。", "the Hub is notarized, then released."],
-      // 落地：第 06 章的两条线路
       "ch09.m.esa": ["阿里云 ESA", "Alibaba Cloud ESA"],
       "ch09.m.card": ["GitHub Actions · 部署成功之后", "GitHub Actions · after a green deploy"],
       "ch09.m.r1": ["刷新 ESA 首页并预热", "Purge the ESA home page, then warm it"],
@@ -67,7 +48,6 @@
       "ch09.m.retry": ["失败重试，最长 10 分钟", "retries for up to 10 min"],
       "ch09.n5a": ["部署成功才刷新 ESA 首页；", "ESA is purged only after the deploy;"],
       "ch09.n5b": ["先等两个域名换好，再通知页面。", "pages hear after both are polled."],
-      // 通知到页面
       "ch09.p.room": ["推送房间", "push room"],
       "ch09.p.bare": ["不带数据", "no payload"],
       "ch09.p.fg": ["前台", "Foreground"],
@@ -83,9 +63,8 @@
     let plate, ink, paperL, emit, stampL, top;
     let BARs = (60 / 108) * 4;
     const impact = (b, at, hl = 0.09) => (b < at ? 0 : Math.exp((-((b - at) * BARs) / hl) * Math.LN2));
-    const win = (b, a0, a1, b0, b1) => prog(b, a0, a1) * (1 - prog(b, b0, b1)); // 淡入、停住、淡出
+    const win = (b, a0, a1, b0, b1) => prog(b, a0, a1) * (1 - prog(b, b0, b1));
 
-    // ---------- 时间表（章内小节）：画面和 music/ch09.js 共用 ----------
     const AT = {
       type: 0.25, stroke: 0.0625, enter: 1.0, pull: [1.45, 1.9], fan: [1.5, 1.95], gate0: 2.0, gateStep: 0.0625,
       ci: [4.0, 4.25, 4.5, 4.75], ciLamp: 5.0, cq: [4.375, 4.875], cqLamp: 5.25,
@@ -95,19 +74,16 @@
       notify: 12.0, ingress: 12.5, core: 12.75, ring: 13.0, ask: 13.5, card: 14.0, reload: 14.5,
       full: [15.0, 15.3], dive: [15.5, 15.92], fade: [15.5, 15.85],
     };
-    const SHA_OLD = "5939ef8", SHA_NEW = "c47d2a1"; // 示意用的短哈希，不是仓库里真的提交
+    const SHA_OLD = "5939ef8", SHA_NEW = "c47d2a1";
 
-    // ---------- 主轴与这次的提交（世界坐标） ----------
-    const Y0 = 540; // 主轴：接第 08 章心电图那条线，交给第 10 章长图版的脊线
-    const HEAD = [1350, Y0]; // 第 08 章笔尖的位置
-    const COMMITS = [1250, 1050, 850, 650, 450, 250, 50]; // 第 08 章最后一帧那几处敲门尖峰的横坐标
+    const Y0 = 540;
+    const HEAD = [1350, Y0];
+    const COMMITS = [1250, 1050, 850, 650, 450, 250, 50];
 
-    // ---------- 流水线（扇形，按平台分组） ----------
     const GATE_X = 1720, LAMP_X = 3000, BRACKET_X = 3110;
-    const MX = 4000; // 第 06 章两条线路图整体平移到这里（第 06 章里 O 在 [400, 540]）
+    const MX = 4000;
     const O = [MX + 400, Y0], ESA = [MX + 1400, 840], L = [MX + 2400, Y0], C = [MX + 2400, 840], BEND = [MX + 700, 840];
     const NEXT_BUILD_X = 4060;
-    // gate：这次改到的哪条路径让它放行（null = 每次推到 main 都跑，"" = 没改到）；pips：详图里每一步的时刻；lamp：做完
     const TRACKS = [
       { id: "hub", y: -90, name: "ch09.t.hub", gate: "reporters/mac-telemetry-hub", on: true, pips: AT.hub, lamp: AT.hubLamp },
       { id: "img", y: 60, name: "ch09.t.img", gate: "reporters/server-reporter/…", on: true, pips: AT.img, lamp: AT.imgLamp },
@@ -118,7 +94,6 @@
       { id: "ingress", y: 840, name: "ingress", gate: "", on: false },
       { id: "collector", y: 990, name: "collector", gate: "", on: false },
     ];
-    // 从 HEAD 往右，一段三次贝塞尔弯到自己那一行，再直走到灯；Vercel 那条就是主轴，直走到第 06 章的源站
     function branchPts(y, x1) {
       const pts = [[HEAD[0], Y0], [1440, Y0]];
       if (y !== Y0) for (let i = 1; i <= 18; i++) {
@@ -133,31 +108,27 @@
       tk.len = pathLen(tk.pts);
       tk.dGate = pathLen(branchPts(tk.y, GATE_X));
       tk.tGate = AT.gate0 + i * AT.gateStep;
-      // 详图里的每一步在扇形上是一个小圆点，均匀排在闸门和灯之间
       const n = tk.pips ? tk.pips.length : 0;
       tk.pipX = Array.from({ length: n }, (_, j) => lerp(GATE_X + 260, LAMP_X - 200, n === 1 ? 0.5 : j / (n - 1)));
     }
     const dAtX = (tk, px) => tk.dGate + (px - GATE_X);
 
-    // ---------- 三张详图（主轴下面） ----------
     const PANEL_Y = 1600, PANEL_W = 1900, PANEL_H = 840;
     const PA = { x: 350, y: PANEL_Y, w: PANEL_W, h: PANEL_H }, PB = { x: 2450, y: PANEL_Y, w: PANEL_W, h: PANEL_H }, PC = { x: 4550, y: PANEL_Y, w: PANEL_W, h: PANEL_H };
 
-    // ---------- 落地与通知 ----------
     const CARD = { x: MX + 950, y: -200, w: 1420, h: 500 };
     const CARD_ROW = (j) => CARD.y + 176 + j * 118;
     const ING = { x: MX + 2450, y: 70, w: 400, h: 100 }, CORE = { x: MX + 3250, y: 70, w: 400, h: 100 }, MAST = [MX + 4050, 120];
     const FG = { x: MX + 3700, y: 320, w: 800, h: 320 }, BG = { x: MX + 3700, y: 720, w: 800, h: 260 };
 
-    // ---------- 机位：[小节, [x, y, zoom]]；缩放按对数插值，拉远、推近才匀 ----------
     const CAM0 = [960, 540, 1];
     const FAN = [2250, 540, 0.6];
-    const PZ = 0.94, PCY = 2110; // 详图机位：外框四周留边，旁白排在外框下面
+    const PZ = 0.94, PCY = 2110;
     const CPA = [PA.x + PA.w / 2, PCY, PZ], CPB = [PB.x + PB.w / 2, PCY, PZ], CPC = [PC.x + PC.w / 2, PCY, PZ];
-    const MAP = [MX + 1230, 520, 0.7]; // 第 06 章 OVER 那个机位平移 MX（y 上移 40 给单子让位）
+    const MAP = [MX + 1230, 520, 0.7];
     const PGV = [MX + 3550, 560, 0.8];
     const FULL = [4250, 1110, 0.21];
-    const FIN = [MX + 1400, Y0, 1]; // 最后一帧：屏幕上只有 O → L 那一段主轴，整宽
+    const FIN = [MX + 1400, Y0, 1];
     const drift = (c, dx = 10, k = 1.015) => [c[0] + dx, c[1] + 2, c[2] * k];
     const CAM = [
       [0, CAM0], [AT.pull[0], drift(CAM0, 0), E.lin], [AT.pull[1], FAN, E.io], [3.3, drift(FAN, 10, 1.012), E.lin],
@@ -175,10 +146,8 @@
       }
       return CAM[CAM.length - 1][1].slice();
     }
-    // 某个机位的屏幕坐标换成世界坐标（旁白排在各机位的左下角）
     const at = (c, sx, sy) => [c[0] + (sx - 960) / c[2], c[1] + (sy - 540) / c[2]];
 
-    // ---------- 小件 ----------
     function glow(e, cx, cy, r, a) {
       if (a <= 0) return;
       const g = e.createRadialGradient(cx, cy, 0, cx, cy, r);
@@ -193,15 +162,12 @@
       x.save(); x.globalAlpha = a; x.fillStyle = fill; x.strokeStyle = stroke; x.lineWidth = lw;
       x.beginPath(); x.arc(cx, cy, r, 0, TAU); if (fill) x.fill(); if (lw > 0) x.stroke(); x.restore();
     }
-    // 流水线上的一步：纸色圆点，火花走过之后填成橙色
     function pip(x, cx, cy, r, on, a = 1) { dot(x, cx, cy, r, on > 0 ? css("signal") : css("paper"), on > 0 ? css("signal") : css("pink"), r * 0.32, a); }
-    // 做完的灯（第 02 章三盏灯的画法）：墨线圈，亮了填橙、发光
     function lamp(x, e, cx, cy, r, on, a = 1) {
       if (a <= 0) return;
       dot(x, cx, cy, r, css("paper"), css("pink"), r * 0.13, a);
       if (on > 0) { dot(x, cx, cy, r * 0.78, css("signal"), null, 0, a * on); glow(e, cx, cy, r * 2.6, 0.5 * on * a); }
     }
-    // 闸门：一个方框，放行打勾，没改到划一道（k 是勾或那一道画出来的进度）
     function gate(x, gx, gy, on, k, a, hot = false) {
       x.save(); x.globalAlpha = a; x.fillStyle = css("paper"); x.fillRect(gx - 22, gy - 22, 44, 44); x.restore();
       rect(x, gx - 22, gy - 22, 44, 44, 3, css("pink"), a);
@@ -213,14 +179,12 @@
       x.save(); x.setLineDash(dash); const head = polyline(x, pts, k, w, color, a); x.restore();
       return head;
     }
-    // 火花：纸面上相加的光会把纸照白，亮核另画一个实心的橙点
     function sparkAt(Ly, pts, d, size = 0.8, trail = 200, lw = 3) {
       const head = pathAt(pts, d);
       spark(Ly.e, Ly.x, head, trailOn(pts, d, trail, 16), { t: G.t, size, lw });
       dot(Ly.x, head[0], head[1], 6.5 * size, css("signal"), null, 0);
       return head;
     }
-    // 一段直线流水线：走过的变橙、火花在走、每一步一个圆点，做完亮灯
     function runLine(Ly, b, a, o) {
       const { x, e } = Ly;
       const { y, x0, x1, xs, times, lampT, t0 } = o;
@@ -237,7 +201,6 @@
       const [px, py] = at(c, 110, row ? 1024 : 944);
       K.narration(x, tr(key), px, py, { px: 60 / c[2], maxW: 1040 / c[2], reveal: r, alpha: a, dim: 0.12 });
     }
-    // 一张纸上的纸（带落影），和第 06 章的借书卡、UPDATE 卡一样，按纸片模式合成；sy 是纵向弹出的进度
     function card(d, px, py, w, h, a, sy = 1) {
       if (a <= 0) return;
       d.save(); d.globalAlpha = a; d.translate(px, py); d.scale(1, Math.max(0.001, sy));
@@ -250,7 +213,6 @@
       dot(x, cx, cy, r, css("paper"), css("pink"), 3, a);
       text(x, letter, cx, cy + r * 0.44, { font: FONT.mono(r * 1.25, 700), align: "center", alpha: a });
     }
-    // 详图的外框：圆圈里的字母和扇形上那一组的标记对应
     function panelFrame(x, P, letter, titleKey, sub, a) {
       rect(x, P.x, P.y, P.w, P.h, 2.4, css("pink"), a);
       letterMark(x, P.x + 72, P.y + 74, letter, 34, a);
@@ -261,12 +223,10 @@
     const lbl = (k) => (k.startsWith("ch09.") ? tr(k) : k);
     const fontOf = (k, px, w = 600) => (k.startsWith("ch09.") ? FONT.cjk(px, w) : FONT.mono(px, w === 600 ? 500 : w));
 
-    // ========== 开场：main 线、HEAD、终端、这次改到的路径 ==========
     function history(x, e, b) {
       const inkC = css("pink");
-      line(x, -150, Y0, HEAD[0], Y0, 3, inkC); // 左端收在图版外框里面；开场机位的左沿是 0
+      line(x, -150, Y0, HEAD[0], Y0, 3, inkC);
       for (const cx of COMMITS) dot(x, cx, Y0, 9, css("paper"), inkC, 2.6);
-      // HEAD：这次推上去的提交；1:0 回车那一下亮一圈
       const hit = impact(b, AT.enter, 0.2);
       dot(x, HEAD[0], Y0, 14, css("signal"), null, 0);
       if (hit > 0.02) { dot(x, HEAD[0], Y0, 14 + 30 * (1 - hit), null, css("signal"), 2.4, hit); glow(e, HEAD[0], Y0, 90, 0.6 * hit); }
@@ -274,7 +234,6 @@
     function terminal(x, b, a) {
       if (a <= 0) return;
       const cmd = "git push origin main";
-      // 一个十六分敲两个字，和配乐的打字声同一张表
       const strokes = b < AT.type ? 0 : Math.floor((b - AT.type) / AT.stroke + 1e-6) + 1;
       const shown = "$ " + cmd.slice(0, Math.min(cmd.length, strokes * 2));
       const ta = a * prog(b, 0.12, 0.2);
@@ -303,7 +262,6 @@
       line(x, 110, 262, 110 + 1000 * prog(b, 0.35, 1.0, E.outExpo), 262, 1.4, css("pink"), k);
     }
 
-    // ========== 扇形：每条流水线一行 ==========
     function fan(Ly, b, a) {
       const { x, e } = Ly, inkC = css("pink"), gr = css("graphite");
       if (b < AT.fan[0] || a <= 0) return;
@@ -311,7 +269,6 @@
         const kk = tk.id === "vercel" ? 1 : prog(b, AT.fan[0] + 0.03 * i, AT.fan[1] + 0.03 * i, E.io);
         if (kk <= 0) continue;
         const gk = prog(b, tk.tGate, tk.tGate + 0.05);
-        // 没改到的：闸门之后变虚线，灯是空的
         if (!tk.on && gk > 0) {
           polyline(x, branchPts(tk.y, GATE_X - 22), 1, 4, inkC, a);
           dashed(x, GATE_X + 22, tk.y, LAMP_X - 26, tk.y, 3, gr, [10, 9], 0.8 * a);
@@ -319,14 +276,12 @@
         if (kk < 0.55) continue;
         const la = prog(kk, 0.55, 1) * a;
         gate(x, GATE_X, tk.y, tk.on, gk, la);
-        // 名字和放行的理由写在线上方：放行的写这次改到的路径（橙），每次都跑的写「每次推到 main」，没改到的写灰字
         const nw = text(x, lbl(tk.name), GATE_X + 50, tk.y - 22, { font: fontOf(tk.name, 52, 600), alpha: la });
         if (gk > 0) {
           const why = tk.gate === null ? tr("ch09.always") : tk.on ? tk.gate : tr("ch09.skip");
           text(x, why, GATE_X + 50 + nw + 30, tk.y - 22, { font: tk.gate ? FONT.mono(48, 500) : FONT.cjk(48, 600), color: tk.on ? css("signal") : gr, alpha: la, reveal: prog(b, tk.tGate, tk.tGate + 0.25), maxW: LAMP_X - GATE_X - nw - 140 });
         }
         if (!tk.on) { if (gk > 0) dot(x, LAMP_X, tk.y, 24, css("paper"), gr, 2.4, 0.8 * la); continue; }
-        // 走过的一段变橙，一步一个小圆点，最后亮灯
         const end = tk.id === "vercel" ? tk.len : dAtX(tk, LAMP_X - 26);
         const d = keys(b, [[tk.tGate, tk.dGate], ...tk.pips.map((pt, j) => [pt, dAtX(tk, tk.pipX[j]), E.io]), [tk.lamp, end, E.io]]);
         tk.pipX.forEach((px, j) => pip(x, px, tk.y, 11, prog(b, tk.pips[j], tk.pips[j] + 0.03), la));
@@ -336,7 +291,6 @@
         }
         if (tk.id !== "vercel") lamp(x, e, LAMP_X, tk.y, 26, prog(b, tk.lamp, tk.lamp + 0.05), la);
       }
-      // 平台分组的括线与图号（A、B、C 对应下面三张详图）
       const ga = prog(b, AT.fan[1] - 0.1, AT.fan[1] + 0.15) * a;
       if (ga <= 0) return;
       const brace = (y0, y1) => { line(x, BRACKET_X, y0, BRACKET_X, y1, 2.2, inkC, ga); line(x, BRACKET_X - 16, y0, BRACKET_X, y0, 2.2, inkC, ga); line(x, BRACKET_X - 16, y1, BRACKET_X, y1, 2.2, inkC, ga); };
@@ -348,14 +302,12 @@
       letterMark(x, BRACKET_X + 66, 840, "B", 32, ga);
     }
 
-    // ========== 详图 A：检查 ==========
     const CI_ROWS = [["lint", "ESLint"], ["typecheck", "ch09.a.tc"], ["test", "ch09.a.test"], ["docs:check", "ch09.a.docs"]];
     const CQ_ROWS = [["javascript-typescript", null], ["actions", "ch09.a.act"]];
     function panelA(x, e, b, a) {
       if (a <= 0) return;
       const P = PA, gr = css("graphite");
       panelFrame(x, P, "A", "ch09.pA", tr("ch09.pA.sub"), a);
-      // 左栏 CI，右栏 CodeQL：各自打勾，完了亮灯
       const col = (cx, head, rows, times, lampT, lampX) => {
         text(x, head, cx, P.y + 214, { font: FONT.mono(46, 700), alpha: a });
         lamp(x, e, lampX, P.y + 198, 24, prog(b, lampT, lampT + 0.05), a);
@@ -377,7 +329,6 @@
       text(x, tr("ch09.a.cancel"), P.x + 60, P.y + 772, { font: FONT.cjk(32, 600), color: gr, alpha: a * prog(b, 4.8, 4.95), maxW: P.w - 120 });
     }
 
-    // ========== 详图 B：Worker ==========
     const WROWS = [
       { id: "api", y: 1810, paths: "workers/api/*   shared/*   src/lib/*", on: true },
       { id: "ingress", y: 2090, paths: "workers/ingress/*   shared/*   src/lib/*", on: false, flash: AT.miss[0] },
@@ -387,7 +338,7 @@
       if (a <= 0) return;
       const { x } = Ly, P = PB, gr = css("graphite");
       panelFrame(x, P, "B", "ch09.pB", "Cloudflare Workers Builds", a);
-      const TX0 = P.x + 1010, TX1 = P.x + P.w - 90; // 右半边：这一行的小流水线
+      const TX0 = P.x + 1010, TX1 = P.x + P.w - 90;
       const XS = [TX0 + 320, TX0 + 600];
       text(x, "typecheck", XS[0], P.y + 178, { font: FONT.mono(32, 500), color: gr, align: "center", alpha: a });
       text(x, "wrangler deploy", XS[1], P.y + 178, { font: FONT.mono(32, 500), color: gr, align: "center", alpha: a });
@@ -399,7 +350,6 @@
           text(x, "workers/api/…", TX0 - 30, r.y + 64, { font: FONT.mono(30, 500), color: css("signal"), alpha: a });
           runLine(Ly, b, a, { y: r.y, x0: TX0, x1: TX1, xs: XS, times: AT.api, lampT: AT.apiLamp, t0: 5.5 });
           text(x, "api.homepage.lyjw.llc", TX1 + 28, r.y + 76, { font: FONT.mono(30, 500), align: "right", alpha: a * prog(b, AT.apiLamp, AT.apiLamp + 0.1) });
-          // api 的监视路径排除上报校验：改它不会重新发布 api
           text(x, "− shared/ingest/*", P.x + 60, r.y + 80, { font: FONT.mono(30, 600), color: css("signal"), alpha: a });
           text(x, tr("ch09.b.ingest"), P.x + 60, r.y + 126, { font: FONT.cjk(30, 600), color: gr, alpha: a, maxW: TX0 - P.x - 100 });
         } else {
@@ -413,7 +363,6 @@
       text(x, tr("ch09.b.deps"), P.x + 60, P.y + P.h - 36, { font: FONT.cjk(30, 600), color: gr, alpha: a, maxW: P.w - 120 });
     }
 
-    // ========== 详图 C：上报器 ==========
     const IMG_STEPS = [["buildx", "linux/amd64"], ["GHCR", `latest · sha-${SHA_NEW}`], ["ssh misaka-jp", "ch09.c.ssh"], ["running", "restarts=0"]];
     const HUB_STEPS = ["ch09.c.sign", "ch09.c.notar", "ch09.c.staple"];
     function panelC(Ly, b, a) {
@@ -421,7 +370,6 @@
       const { x, s } = Ly, P = PC, gr = css("graphite");
       panelFrame(x, P, "C", "ch09.pC", "GitHub Actions → GHCR · GitHub Release", a);
       const X0 = P.x + 90, X1 = P.x + P.w - 130, RX = P.x + P.w - 40;
-      // 一行：容器镜像 → GHCR → ssh 换 misaka-jp 上的容器
       const y1 = P.y + 300, xs1 = [P.x + 360, P.x + 730, P.x + 1100, P.x + 1450];
       const w1 = text(x, tr("ch09.c.img"), P.x + 60, P.y + 200, { font: FONT.cjk(42, 600), alpha: a });
       text(x, "reporters/server-reporter/…", P.x + 60 + w1 + 30, P.y + 198, { font: FONT.mono(32, 500), color: css("signal"), alpha: a });
@@ -432,7 +380,6 @@
       gate(x, X0, y1, true, 1, a);
       runLine(Ly, b, a, { y: y1, x0: X0, x1: X1, xs: xs1, times: AT.img, lampT: AT.imgLamp, t0: 7.75 });
       text(x, "misaka-jp", RX, y1 + 78, { font: FONT.mono(32, 600), align: "right", alpha: a });
-      // 内网的两台：ssh 这一步够不着（虚线上一个叉），手动更新
       const la = prog(b, AT.imgLamp, AT.imgLamp + 0.15) * a;
       if (la > 0) {
         const sx = xs1[2], by = y1 + 140;
@@ -445,7 +392,6 @@
         }
         text(x, tr("ch09.c.lan"), sx + 130 + 2 * 128 + 10, by + 11, { font: FONT.cjk(30, 600), color: gr, alpha: la, maxW: RX - (sx + 130 + 2 * 128 + 10) });
       }
-      // 另一行：Mac Telemetry Hub，子模块指针一动就签名、公证、发 Release
       const y2 = P.y + 670, xs2 = [P.x + 430, P.x + 870, P.x + 1310];
       const w2 = text(x, "Mac Telemetry Hub", P.x + 60, P.y + 560, { font: FONT.mono(40, 700), alpha: a });
       const w3 = text(x, "reporters/mac-telemetry-hub", P.x + 60 + w2 + 30, P.y + 558, { font: FONT.mono(32, 500), color: css("signal"), alpha: a });
@@ -458,7 +404,6 @@
       stamp(s, "notarized", xs2[1] + 10, y2 + 96, { k: prog(b, AT.notarized, AT.notarized + 0.12), px: 46, rot: -0.1, alpha: a });
     }
 
-    // ========== 落地：第 06 章的两条线路（同一套几何，平移 MX） ==========
     function station(x, cx, cy, a, o = {}) {
       dot(x, cx, cy, o.r ?? 18, css("paper"), o.hot ? css("signal") : css("pink"), o.lw ?? 6, a);
     }
@@ -470,8 +415,7 @@
       for (let j = 0; j < 3; j++) { x.beginPath(); x.moveTo(-12, -12 + j * 12); x.lineTo(12 - (j === 2 ? 10 : 0), -12 + j * 12); x.stroke(); }
       x.restore();
     }
-    const LW = 14; // 第 06 章的线宽
-    // 主轴：HEAD → O 是 Vercel 那条流水线（扇形里画出来），O → L 是第 06 章的 lyjw.me 线；收尾时都收成一根细墨线
+    const LW = 14;
     function axis(x, b, a, finK) {
       const inkC = css("pink");
       if (b >= AT.fan[0]) polyline(x, [[HEAD[0], Y0], [O[0], Y0]], prog(b, AT.fan[0], AT.fan[1], E.io), lerp(4, 3, finK), inkC);
@@ -482,7 +426,6 @@
     function landing(Ly, b, a) {
       const { x, d, s, e } = Ly, inkC = css("pink"), gr = css("graphite");
       if (a <= 0) return;
-      // next build：Vercel 那条流水线在源站前的最后一站
       pip(x, NEXT_BUILD_X, Y0, 13, prog(b, AT.land - 0.1, AT.land - 0.08), a);
       text(x, "next build", NEXT_BUILD_X, Y0 - 40, { font: FONT.mono(44, 500), align: "center", alpha: a });
       const oHot = prog(b, AT.land, AT.land + 0.05);
@@ -495,7 +438,6 @@
       text(x, tr("ch09.m.esa"), ESA[0] - 34, ESA[1] - 34, { font: FONT.mono(46, 600), align: "right", alpha: a, maxW: 560 });
       text(x, "lyjw.me", L[0] - 40, L[1] + 72, { font: FONT.mono(46, 600), align: "right", alpha: a });
       text(x, "lyjw131.com", C[0] - 40, C[1] + 72, { font: FONT.mono(46, 600), color: css("signal"), align: "right", alpha: a });
-      // ESA 手上的首页：10:2 刷掉旧的，10:3 预热把新的一份从源站取回来
       const oldA = 1 - prog(b, AT.purge + 0.05, AT.purge + 0.2);
       pageIcon(x, ESA[0], ESA[1] + 96, inkC, a * oldA);
       if (b >= AT.purge && oldA > 0) {
@@ -510,16 +452,13 @@
         pageIcon(x, ...pathAt(path, wk * pathLen(path)), css("signal"), a, 0.8);
       }
       if (wk >= 1) pageIcon(x, ESA[0], ESA[1] + 96, css("signal"), a);
-      // 两个域名先后答出新版：终点站打勾
       tick(x, L[0] + 66, L[1] - 14, 64, prog(b, AT.dom[0], AT.dom[0] + 0.1, E.out), a);
       tick(x, C[0] + 66, C[1] - 14, 64, prog(b, AT.dom[1], AT.dom[1] + 0.1, E.out), a);
       glow(e, L[0], L[1], 110, 0.45 * impact(b, AT.dom[0], 0.3) * a);
       glow(e, C[0], C[1], 110, 0.45 * impact(b, AT.dom[1], 0.3) * a);
-      // deployment_status：源站亮了之后，一根虚线把 GitHub Actions 叫起来
       const sy = CARD.y + 250;
       dashPts(x, [[O[0], O[1] - 100], [O[0], sy], [CARD.x, sy]], prog(b, AT.status, AT.status + 0.2, E.io), 2.6, inkC, a);
       text(x, "deployment_status", O[0] + 24, sy - 20, { font: FONT.mono(42, 500), color: gr, alpha: a * prog(b, AT.status + 0.1, AT.status + 0.2), maxW: CARD.x - O[0] - 40 });
-      // GitHub Actions 那张单子：三项依次打勾
       const ca = prog(b, AT.status + 0.1, AT.status + 0.25, E.outBack);
       if (ca <= 0) return;
       card(d, CARD.x, CARD.y, CARD.w, CARD.h, a, ca);
@@ -536,7 +475,6 @@
       });
     }
 
-    // ========== 通知到页面 ==========
     function mast(x, mx, my, a, hot = 0) {
       if (a <= 0) return;
       const inkC = css("pink");
@@ -554,7 +492,6 @@
       roundRect(x, B.x, B.y, B.w, B.h, 10); x.fill(); x.stroke(); x.restore();
       text(x, label, B.x + B.w / 2, B.y + B.h / 2 + 14, { font: FONT.mono(40, 600), color: on > 0 ? css("signal") : css("pink"), align: "center", alpha: a, maxW: B.w - 30 });
     }
-    // 浏览器窗口：标题栏写域名，里面几块卡片；fresh 0..1 从上往下换成新的一版
     function browser(d, W, host, a, dim, fresh) {
       if (a <= 0) return;
       card(d, W.x, W.y, W.w, W.h, a);
@@ -562,7 +499,6 @@
       line(d, W.x, W.y + 56, W.x + W.w, W.y + 56, 1.6, css("pink"), a);
       for (let j = 0; j < 3; j++) dot(d, W.x + 30 + j * 28, W.y + 28, 8, css("paper"), css("pink"), 1.8, a);
       text(d, host, W.x + 128, W.y + 41, { font: FONT.mono(36, 600), alpha: a * (1 - 0.4 * dim) });
-      // 几块卡片（主页的样子，只是示意）
       const ix = W.x + 24, iy = W.y + 80, iw = W.w - 48, ih = W.h - 104;
       for (const [u, v, w, h] of [[0, 0, 0.62, 1], [0.66, 0, 0.34, 0.46], [0.66, 0.54, 0.34, 0.46]]) {
         const cy = iy + v * ih, isNew = fresh > 0 && cy < iy + ih * fresh;
@@ -571,7 +507,6 @@
       }
       if (fresh > 0 && fresh < 1) line(d, W.x + 10, iy + ih * fresh, W.x + W.w - 10, iy + ih * fresh, 3, css("signal"), a);
     }
-    // UPDATE 卡：按站点那张卡的样子画（UPDATE / New version / 旧 → 新 / Reload），纵向弹出
     function updateCard(d, px, py, w, h, k, a) {
       if (k <= 0 || a <= 0) return;
       card(d, px, py, w, h, a, E.outBack(k));
@@ -592,8 +527,6 @@
     function notify(Ly, b, a) {
       const { x, d, e } = Ly, gr = css("graphite");
       if (a <= 0) return;
-      // 通知的路：单子第三项 → 上报入口 → Service Binding → StateCore → 推送房间。
-      // 线跟着火花画出去，上报入口那一串等火花快到了才现（落地机位的右沿还看得到它们）
       const nk = prog(b, AT.notify, AT.ingress - 0.05, E.io);
       polyline(x, NOTIFY, nk, 2.4, css("pink"), a);
       if (nk > 0 && nk < 1) sparkAt(Ly, NOTIFY, nk * pathLen(NOTIFY), 0.8, 220);
@@ -615,7 +548,6 @@
       const va = prog(b, AT.ring, AT.ring + 0.1) * a;
       text(x, "version", MAST[0] + 72, MAST[1] - 40, { font: FONT.mono(44, 600), color: css("signal"), alpha: va });
       text(x, tr("ch09.p.bare"), MAST[0] + 72, MAST[1] + 6, { font: FONT.cjk(36, 600), color: gr, alpha: va, maxW: 330 });
-      // 广播：环从推送房间荡开，扫过两个窗口
       if (b >= AT.ring && b < AT.ring + 1.2) {
         const sec = (b - AT.ring) * BARs;
         for (let j = 0; j < 3; j++) {
@@ -628,7 +560,6 @@
           x.beginPath(); x.arc(MAST[0], MAST[1], rr, 0, TAU); x.stroke(); x.restore();
         }
       }
-      // 两个窗口：前台、后台标签页；各自去问自己那个域名上的 /api/version
       const wa = prog(b, AT.notify - 0.2, AT.notify) * a;
       const fresh = prog(b, AT.reload, AT.reload + 0.3, E.io);
       browser(d, FG, "lyjw.me", wa, 0, 0);
@@ -646,7 +577,6 @@
       text(x, tr("ch09.p.foot2"), BG.x + BG.w, BG.y + BG.h + 110, { font: FONT.cjk(36, 600), color: gr, align: "right", alpha: fa, maxW: 780 });
     }
 
-    // 拉远时才看得到的图版外框
     const PLATE_RECT = [-600, -700, 9000, 2900];
     function plateFrame(x, b, a) {
       const k = prog(b, AT.full[0] + 0.1, AT.full[1] + 0.05, E.out) * a;
@@ -671,10 +601,8 @@
       const tp = top.begin(); top.cam(cam);
       const Ly = { x, d, e, s, tp };
 
-      // 收尾：除了主轴，别的一起退掉；主轴收成一根细墨线
       const keep = 1 - prog(b, AT.fade[0], AT.fade[1]);
       const finK = prog(b, AT.dive[0], AT.dive[1], E.io);
-      // 开场的标题、终端、改动卡拉远时退掉，整张图版现出来时再回来
       const openA = clamp(1 - prog(b, AT.pull[0], AT.pull[0] + 0.3) + prog(b, AT.full[0], AT.full[1])) * keep;
       title(x, b, openA);
       terminal(x, b, openA);
@@ -682,7 +610,6 @@
       axis(x, b, keep, finK);
       history(x, e, b);
       fan(Ly, b, keep);
-      // 详图只在镜头下去之后画（远看时那几张纸在图版下半截）
       const pa = keep * prog(b, 3.2, 3.5);
       panelA(x, e, b, pa);
       panelB(Ly, b, pa);
@@ -691,7 +618,6 @@
       notify(Ly, b, keep);
       plateFrame(x, b, keep);
 
-      // ---- 旁白（各机位左下角）----
       nar(x, "ch09.n1a", FAN, 0, prog(b, 1.95, 2.45), win(b, 1.9, 2.0, 3.25, 3.35));
       nar(x, "ch09.n1b", FAN, 1, prog(b, 2.45, 3.0), win(b, 1.9, 2.0, 3.25, 3.35));
       nar(x, "ch09.n2a", CPA, 0, prog(b, 3.6, 4.1), win(b, 3.55, 3.65, 5.2, 5.3));
@@ -706,7 +632,6 @@
       nar(x, "ch09.n6b", PGV, 1, prog(b, 13.2, 14.1), win(b, 12.55, 12.65, 14.9, 15.0));
 
       G.composite(ink.upload(), { mode: G.MODE.ink, seed: 5.3 });
-      // 改动卡、单子、浏览器窗口是纸上的一张张纸（带落影），按纸片模式合成；灯的光晕压在上面
       G.composite(paperL.upload(), { mode: G.MODE.paper });
       G.composite(emit.upload(), { mode: G.MODE.add, gain: 1.4 });
       G.composite(stampL.upload(), { mode: G.MODE.stamp, seed: 4.1 });

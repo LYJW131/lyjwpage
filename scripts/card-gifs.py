@@ -55,10 +55,10 @@ SITE_URL = os.environ.get("SITE_URL", "http://localhost:3211/")
 WORKER_URL = os.environ.get("DEV_WORKER_URL", "http://localhost:8788").rstrip("/")
 BROWSER_CHANNEL = os.environ.get("PLAYWRIGHT_CHANNEL") or None
 
-SCALE = 2  # 设备像素比；和静态效果图一致
-PAD = 12  # 卡片四周留白（CSS px），够露出 3px 硬阴影
+SCALE = 2
+PAD = 12
 VIEWPORT_H = 2200
-FOCUS_THROTTLE_S = 5.1  # SWR 对 focus 触发的回源节流 5 秒
+FOCUS_THROTTLE_S = 5.1
 
 
 def override(*args: str) -> None:
@@ -73,14 +73,11 @@ def override(*args: str) -> None:
 
 
 def card(label: str) -> str:
-    """按卡片标题栏那个等宽小标签定位整张卡"""
     return f'.paper-card:has(span.label-mono:text-is("{label}"))'
 
 
 class Recorder:
-    """在真实时间里连续截图；画面一变留一帧，帧时刻是 GIF 时间线上的毫秒。
-
-    时间线只在 record / hold 里前进：换夹具、等节流这些真实等待不算。"""
+    # 等待夹具与节流不应进入 GIF 时间线。
 
     def __init__(self, page, clip: dict[str, float]):
         self.page = page
@@ -110,7 +107,6 @@ class Recorder:
         self.t += round(seconds * 1000)
 
     def wait_change(self, timeout: float = 4.0) -> None:
-        """等画面开始变（数据到了、过渡起步），第一张不同的帧落在当前时刻；等待本身不进时间线"""
         began = time.perf_counter()
         while time.perf_counter() - began < timeout:
             frame = self.shot()
@@ -124,10 +120,9 @@ class Recorder:
 
 
 def write_gif(rec: Recorder, out: Path) -> None:
-    """全帧共用一个调色板；调色板从缩小 4 倍的拼图上算，整幅拼图太大。"""
     kept: list[tuple[int, Image.Image]] = []
     for at, frame in rec.frames:
-        # GIF 延时以 10ms 计、浏览器把 ≤10ms 当 100ms 播，相距不到 20ms 的帧只留后一张
+        # 浏览器把 GIF 的短延时钳制为更长间隔，相邻帧必须至少留 20ms。
         if kept and at - kept[-1][0] < 20:
             kept[-1] = (kept[-1][0], Image.open(io.BytesIO(frame)).convert("RGB"))
             continue
@@ -173,7 +168,7 @@ def open_page(browser, theme: str):
     try:
         page.wait_for_load_state("networkidle", timeout=10_000)
     except PlaywrightTimeoutError:
-        pass  # 页面上总有轮询和长连接在跑
+        pass  # 轮询与长连接可能让 networkidle 永不满足。
     if theme == "dark":
         page.wait_for_selector("html.dark")
     page.add_style_tag(content="#dev-toggles, nextjs-portal { display: none !important; }")
@@ -184,7 +179,7 @@ def open_page(browser, theme: str):
 def bring_into_view(page, selector: str) -> None:
     page.locator(selector).first.evaluate('el => el.scrollIntoView({ block: "center", behavior: "instant" })')
     page.wait_for_timeout(800)
-    # 离屏推迟排版的块滚到视口才渲染，再等图片到位
+    # 离屏内容滚入视口后才排版，不能提前判定图片就绪。
     page.evaluate(
         """async () => {
           const imgs = [...document.images].filter((img) => {
@@ -195,8 +190,6 @@ def bring_into_view(page, selector: str) -> None:
         }"""
     )
     page.wait_for_timeout(400)
-    # 上面那步对加载失败也放行；卡片里有坏图就别录，不然 GIF 里留一个破图标（自建歌单封面是
-    # 24 小时预签名地址，本机取图还可能被代理的 fake-IP 挡掉）
     broken = page.locator(selector).first.evaluate(
         "el => [...el.querySelectorAll('img')].filter((img) => img.complete && img.naturalWidth === 0).map((img) => img.alt || img.src)"
     )
@@ -220,7 +213,6 @@ def union(*boxes: dict[str, float]) -> dict[str, float]:
 
 
 def isolate(page, *selectors: str) -> None:
-    """把目标之外的兄弟节点 visibility:hidden（布局不动），留白里才不会露出邻居卡片的边"""
     handles = [page.locator(sel).first.element_handle() for sel in selectors]
     page.evaluate(
         """(targets) => {
@@ -238,7 +230,6 @@ def isolate(page, *selectors: str) -> None:
 
 
 class Nudger:
-    """换夹具后让卡片回源：dispatch focus，按 SWR 的节流间隔等够再触发"""
 
     def __init__(self, page):
         self.page = page
@@ -252,7 +243,6 @@ class Nudger:
 
 
 def variant(base: str | Path, tmp: Path, name: str, edit) -> Path:
-    """从夹具（dev-fixtures 里的文件名，或任意路径）派生一份改过 data 的临时夹具（dev-override 认任意路径）"""
     fixture = json.loads((base if isinstance(base, Path) else FIXTURES / base).read_text())
     edit(fixture["data"])
     path = tmp / f"{name}.json"
@@ -261,7 +251,6 @@ def variant(base: str | Path, tmp: Path, name: str, edit) -> Path:
 
 
 def live_base(path: str, tmp: Path) -> Path:
-    """没有夹具的端点：拿本地 Worker 此刻的响应当基线，新鲜度戳换成令牌免得录到一半过期"""
     with urllib.request.urlopen(f"{WORKER_URL}{path}", timeout=15) as response:
         envelope = json.load(response)
     if not envelope.get("ok"):
@@ -275,7 +264,6 @@ def live_base(path: str, tmp: Path) -> Path:
 
 
 def freeze_now(value, base_ms: int):
-    """把 `$now-…` 令牌换成以 base_ms 为准的绝对毫秒；不带偏移的 `$now` 原样保留（那是新鲜度戳）"""
     if isinstance(value, str) and value.startswith("$now") and len(value) > 4:
         return base_ms + int(value[4:])
     if isinstance(value, list):
@@ -285,14 +273,10 @@ def freeze_now(value, base_ms: int):
     return value
 
 
-# ---- 场景 -------------------------------------------------------------------------------------
 
 def scene_now_listening(browser, theme: str, tmp: Path) -> Recorder:
-    """页面里的播放位置 = positionMs + (Date.now() − observedAt)，observedAt 是注入那一刻减 1 秒。
-    先把页面摆好，再注入 positionMs=6000 的变体并回源，注入后 0.9 秒起录 7.6 秒：正好从
-    第一句收尾（6300ms）录到「二人だけの空が広がる夜に」（8953–15148ms）整句扫完。"""
     sel = card("Recently Played")
-    # 充电头 / 充电宝在场时它只占右边一列；清掉才是独占整行的样子，录完放回去
+    # 充电设备会把播放卡挤成半宽，录制前须腾出整行。
     override("/api/status/charger", "--clear")
     override("/api/status/powerbank", "--clear")
     page = open_page(browser, theme)
@@ -314,9 +298,6 @@ def scene_now_listening(browser, theme: str, tmp: Path) -> Recorder:
 
 
 def scene_swap(sel: str, path: str, base: str, edits: list, prepare=None, before=None, after=None) -> "callable":
-    """换夹具驱动的场景：从 edits[0] 那份开始，依次换到后面几份，各录 1.8 秒的过渡再停 1.2 秒。
-    prepare 先于每份 edit 作用在 data 上，几份变体共有的改动放这里；before / after 在开页前后跑，
-    给需要清掉别的注入才出现的布局用。"""
 
     def scene(browser, theme: str, tmp: Path) -> Recorder:
         if before:
@@ -335,7 +316,7 @@ def scene_swap(sel: str, path: str, base: str, edits: list, prepare=None, before
         isolate(page, sel)
         rec = Recorder(page, clip)
         rec.start()
-        rec.hold(900)  # 先让变化前的读数停一会儿，不然第一帧就在半路上
+        rec.hold(900)
         for file in files[1:]:
             nudge(path, file)
             rec.wait_change()
@@ -357,8 +338,7 @@ HISTORY_BASE_MS = int(time.time() * 1000)
 
 
 def freeze_charger_history(d: dict) -> None:
-    """曲线的历史点冻成绝对时间（整个运行共用一个基准）：`$now-…` 令牌每次注入都按新的当下重算，
-    第二份变体会带着整条平移过的曲线到达，和已累积的点对不上。新鲜度戳（updatedAt 等）照旧用令牌。"""
+    # 偏移令牌会随每次注入整体平移历史；固定时间基线才能与已累积的点对齐。
     d["history"] = [
         {**point, "t": HISTORY_BASE_MS if point["t"] == "$now" else point["t"]}
         for point in freeze_now(d["history"], HISTORY_BASE_MS)
@@ -371,7 +351,6 @@ def edit_charger(total: float, c1: float, c2: float, offset_ms: int):
         for port, power in zip(d["ports"], (c1, c2)):
             port["power"] = power
             port["current"] = round(power / port["voltage"], 2)
-        # 只在末尾接上这一档的新点
         d["history"] = [*d["history"], {"t": d["history"][-1]["t"] + offset_ms, "w": total}]
 
     return edit
@@ -385,7 +364,6 @@ def edit_server(cpu: float, rx: int, tx: int, mem: int):
 
 
 def edit_vibecoding(steps: int):
-    """用量涨 steps 档：合计与第一个有最近一天的 agent（登记表里 Claude 在前）的 Token、成本，会话数"""
 
     def edit(d: dict) -> None:
         tokens, cost = 1_284_913 * steps, 1.27 * steps
@@ -415,7 +393,7 @@ SCENES = {
         "charger-macbook-iphone.json",
         [lambda d: None, edit_charger(98.31, 72.42, 25.89, 20_000), edit_charger(123.64, 96.51, 27.13, 40_000)],
         prepare=freeze_charger_history,
-        # 充电宝在场时充电头是紧凑布局，没有功率曲线；录的时候先把它清掉
+        # 充电宝在场会切换紧凑布局，充电头的功率曲线随之隐藏。
         before=lambda: override("/api/status/powerbank", "--clear"),
         after=lambda: override("/api/status/powerbank", "powerbank-charging.json"),
     ),

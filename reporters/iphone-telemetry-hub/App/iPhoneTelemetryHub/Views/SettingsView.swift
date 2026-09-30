@@ -1,10 +1,5 @@
 import SwiftUI
 
-/**
- 上报地址、Access 凭据、模块开关。
-
- 和 Mac 那个的设置窗口对应；模块开关按 `Modules.all` 现列，加模块不用改这里。
- */
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
 
@@ -20,7 +15,6 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 Section {
-                    // 三项都手填。占位符不写成一个完整 URL —— 那看着就像已经填好了
                     TextField("上报地址", text: $endpoint)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
@@ -78,7 +72,6 @@ struct SettingsView: View {
         }
 
         guard HubSettings.destination() != nil else {
-            // 地址不成立就不关窗：关掉的话人以为存上了，实际每次上报都在跳过
             endpoint = HubSettings.endpoint
             note = "地址要带 https:// 和域名，Client ID 和 Client Secret 都要填"
             return

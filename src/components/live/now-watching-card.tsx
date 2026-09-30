@@ -15,19 +15,9 @@ import { formatClock } from "@/lib/web-player";
 import type { StatusResponse, WatchingItem, WatchingMedia, WatchingPlayMethod } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-/**
- * 「正在播放」的轮询。开始/暂停/继续/停止由 Emby webhook 推来，拖进度条由 NAS 上的
- * 代理补推，这条只兜漏发；和「最近在看」那排瓷砖问的是同一个键，SWR 会去重。
- */
 const NOW_REFRESH_MS = 60_000;
 
-/**
- * 展开 / 收起两态。高度之外把上边距（和上一个网格之间的 12px，即 gap-3）和
- * 抵消阴影内距的负边距也一起动画，收到 0 时整个盒子真的是 0 高，卸载不跳。
- *
- * 动画的这一层自己不带 padding：framer 量 `height: auto` 时会把 padding 算进去，
- * 再往 0 收就停在 padding 那 3px 上，卸载时跳一下。露阴影的内距放在里面一层。
- */
+// motion 的 height:auto 包含 padding；内距须放在内层，否则收起到 0 仍会残留高度。
 const EXPANDED = { height: "auto", opacity: 1, marginTop: 12, marginBottom: -3 };
 const COLLAPSED = { height: 0, opacity: 0, marginTop: 0, marginBottom: 0 };
 
@@ -45,7 +35,6 @@ type NowPlaying = {
 
 type NowWatchingPayload = {
   nowPlaying: NowPlaying | null;
-  /** 播放中那一项的详情，比 webhook 晚到一拍很正常 */
   current: WatchingItem | null;
 };
 
@@ -67,19 +56,6 @@ function HeroWrapper({
   );
 }
 
-/**
- * 正在播的那一集：剧照在左，右边是状态行（在哪放）、标题、副标题和时间、单独一条
- * 进度、规格标签。和「最近在听」的 hero 同一个形状。
- *
- * 进度从锚点按真实时间往前推：`positionMs` 是响应发出时的位置，浏览器以收到这份
- * 数据的那一刻为锚，不用管两台机器的时钟差。秒级计时器留在这个组件里。
- *
- * 首帧没有钟，服务端和 hydrate 那一遍都只画锚点、不往前推，两边算出来的必然一致；
- * 挂载之后才开始走。
- *
- * 看的是 nowPlaying 不是 current：设备和规格跟着会话走，详情没到时标题位先写
- * 「Loading details…」，下一轮代理把详情推来就补上。
- */
 function NowWatchingHero({
   nowPlaying,
   item,
@@ -91,13 +67,6 @@ function NowWatchingHero({
   const device = describeDevice(nowPlaying.client, nowPlaying.deviceName);
   const chips = describeMedia(nowPlaying.media);
 
-  /**
-   * 秒针。锚点跟着这份数据走：SWR 只在内容变了才给新对象，每份新数据在下一次
-   * tick 重新落锚，钟里记的是「哪份数据、第一次 tick 是几点、现在几点」。
-   *
-   * 不在渲染里读 Date.now()，也不在 effect 体里直接 setState —— 都是 lint 拦的。
-   * 代价是第一秒只画锚点、不往前推，之后每秒一格。暂停时不走针，位置钉在锚点上。
-   */
   const [clock, setClock] = useState<{ of: NowPlaying; startedAt: number; now: number } | null>(
     null,
   );
@@ -129,12 +98,6 @@ function NowWatchingHero({
       : (nowPlaying.progress ?? item?.progress ?? 0);
   const image = item?.backdrop ?? item?.poster ?? null;
 
-  /*
-    两列网格：剧照一列、文字一列。窄屏（< 640px）剧照只跨第一行，旁边是状态行 /
-    标题 / 副标题，规格标签、时间和进度条落到第二行、跨两列用整行。设备标签放在
-    状态行（和「最近在听」同款），不挤占下方的媒体规格空间。
-    sm 起剧照跨两行，右边是一整列。
-  */
   return (
     <HeroWrapper
       link={item?.link ?? null}
@@ -214,11 +177,6 @@ function NowWatchingHero({
   );
 }
 
-/**
- * Emby「正在播放」整张卡：只装此刻在播的那一集，放在两个网格之间、不进网格
- * （原因见 app/page.tsx 里它的位置）；没在播就整个不渲染，不留空行。续播列表
- * 另在下面「最近在看」那条分区里。
- */
 export function NowWatchingCard({
   nowFallback,
 }: {
@@ -240,18 +198,12 @@ export function NowWatchingCard({
           animate={EXPANDED}
           exit={reduced ? undefined : COLLAPSED}
           transition={reduced ? STATIC_TRANSITION : LIST_TRANSITION}
-          // 收起动画要 overflow-hidden，而 paper-card 的 3px 硬阴影在右下：这一层向右
-          // 多出 3px、里面一层再用内距包回来，卡片本身仍和邻居同宽、右缘对齐。下方
-          // 那 3px 靠负边距抵消、和上一个网格之间的 12px 上边距，都写在 EXPANDED /
-          // COLLAPSED 里跟着高度一起动画 —— 留在 className 里的话收到 0 时还剩
-          // 这几个像素，卸载那一瞬会跳。
           className="-mr-[3px] overflow-hidden"
         >
           <div className="pb-[3px] pr-[3px]">
             <Card
               id="now-watching"
               label="Now Watching"
-              // 卡头不点灯：在播 / 暂停已经写在里面的状态行上，进度条和秒针也在动
               action="Emby"
               className="scroll-mt-28"
             >

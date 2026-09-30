@@ -100,7 +100,6 @@ export type TrophiesReport = {
   }>;
 };
 
-/** 目录里没有 npCommunicationId 的行取不了明细，进不了这个类型。 */
 export type TitleIndex = Loose<TrophyTitle> & { npCommunicationId: string };
 
 export type TrophyIndexSnapshot = {
@@ -113,7 +112,7 @@ export type TrophyIndexSnapshot = {
 
 export type TrophyTitleReport = TrophiesReport["titles"][number];
 
-/** 上游还给三个点数字段，psn-api（版本以 package.json 锁定的为准）的响应类型里没有；缺席就当 0。 */
+// psn-api 的响应类型漏了上游的点数字段。
 export type TrophySummary = Loose<
   UserTrophyProfileSummaryResponse & {
     trophyPoint: number;
@@ -122,10 +121,9 @@ export type TrophySummary = Loose<
   }
 >;
 
-/** 稀有度只在「已获得」那份里，psn-api 的定义类型没带；两份都读，谁有算谁。 */
+// psn-api 的定义类型漏了已获得响应中的稀有度字段。
 type DefinedTrophy = Loose<TitleThinTrophy & Pick<PsnTrophy, "trophyEarnedRate">>;
 
-/** 反过来，名字 / 说明 / 图标按类型只在定义那份里；上游偶尔多给，给了就当补充。 */
 type EarnedTrophy = Loose<
   UserThinTrophy & Pick<TitleThinTrophy, "trophyName" | "trophyDetail" | "trophyIconUrl">
 >;
@@ -150,7 +148,6 @@ function counts(raw: Loose<TrophyCounts> | undefined): TrophyCounts {
   };
 }
 
-/** 上游给的是字符串百分比；站点按 0–100 硬校验，越界钳回。 */
 function rate(raw: string | number | undefined): number | null {
   if (raw == null) return null;
   if (typeof raw === "string" && !raw.trim()) return null;
@@ -169,10 +166,8 @@ function titleOptions(env: Env, platform: string | undefined) {
 type TitleOptions = ReturnType<typeof titleOptions>;
 
 const TITLE_ID_BATCH = 5;
-/** 每款 2–4 路并行，一次爬两款，免得把奖杯接口打得太密。 */
 const TITLE_CRAWL_CONCURRENCY = 2;
 const PAGE_LIMIT = 100;
-/** 兜底：nextOffset 一直不为空也不能无限打上游。`MAX_PAGES` × `PAGE_LIMIT` 远超单个奖杯组。 */
 const MAX_PAGES = 100;
 
 type PsnPage<Row> = {
@@ -181,11 +176,7 @@ type PsnPage<Row> = {
   totalItemCount: number | undefined;
 };
 
-/**
- * 分页端点统一走这里：取到 nextOffset 消失为止，收尾拿 totalItemCount 对一遍条数。
- * 少一行就抛 —— 被截断的目录和真的变短的目录在指纹上一模一样，一旦写进指纹，
- * 就要等下一次真变化才会自愈。
- */
+// 截断目录会被误认为真实删减并写入指纹，必须在缓存前核对总条数。
 async function collectPages<Row>(
   what: string,
   load: (offset: number) => Promise<PsnPage<Row>>,
@@ -198,7 +189,6 @@ async function collectPages<Row>(
     rows.push(...(body.rows ?? []));
     if (typeof body.totalItemCount === "number") total = body.totalItemCount;
     const next = body.nextOffset;
-    // nextOffset 不前进就是上游在原地打转，停下来交给下面的条数断言。
     if (next == null || next <= offset) break;
     if (total != null && rows.length >= total) break;
     offset = next;
@@ -219,7 +209,6 @@ function fold(
   return by(a, b);
 }
 
-/** 资料头像按尺寸从大到小挑；没有尺寸标记就取最后一张（上游通常从小到大排）。 */
 function profileAvatarUrl(
   avatars: Array<{ size?: string; url?: string }> | undefined,
 ): string | null {
@@ -287,7 +276,6 @@ async function requestTitleLinks(
   }));
 }
 
-/** 媒体应用对不齐奖杯组，对齐前就丢掉，避免整批 titleId 请求被它带挂。 */
 export function playLinkGames(played: PlayedGamesReport): PlayedGame[] {
   const games = played.items.filter(
     (game) => game.titleId && game.category?.endsWith("_media_app") !== true,
@@ -295,10 +283,7 @@ export function playLinkGames(played: PlayedGamesReport): PlayedGame[] {
   return [...new Map(games.map((game) => [game.titleId, game])).values()];
 }
 
-/**
- * 官方把奖杯组 NPWR… 接到游玩列表的 PPSA… / CUSA…。一次最多 5 个 titleId
- * （上游限制）；没同步过奖杯或媒体应用会整批失败，再拆成单条重试。
- */
+// 上游限制每批 TITLE_ID_BATCH 个；未同步奖杯的标题可使整批失败，需拆成单条重试。
 export async function mapPlayByTrophy(
   env: Env,
   auth: AuthSession,
@@ -380,7 +365,6 @@ export function snapshotIndex(titles: TitleIndex[]): TrophyIndexSnapshot[] {
   }));
 }
 
-/** 相对上次交付的目录，哪些标题的进度 / 时间戳 / 杯数变了（含新出现的）。 */
 export function dirtyIndexRows(prev: TrophyIndexSnapshot[], next: TitleIndex[]): TitleIndex[] {
   const prevById = new Map(prev.map((row) => [row.npCommunicationId, row]));
   return next.filter((row) => {
@@ -418,7 +402,6 @@ export function canReuseDefinitions(
   return countsEqual(previous.defined, counts(row.definedTrophies));
 }
 
-/** 用已有 titleIds 反查游玩列表，刷新时长 / Plus，不必再打对齐接口。 */
 export function playByTrophyFromTitles(
   titles: TrophyTitleReport[],
   games: PlayedGame[],
@@ -529,7 +512,6 @@ async function fetchTrophiesEarned(
 ): Promise<{ trophies: EarnedTrophy[]; lastUpdatedDateTime: string | undefined }> {
   let lastUpdatedDateTime: string | undefined;
   const trophies = await collectPages<EarnedTrophy>(`${id} 的已获得奖杯`, async (offset) => {
-    // 这个入口自己检查 {error}，不用再断言一次。
     const page: Loose<UserTrophiesEarnedForTitleResponse> = await withToken(auth, (token) =>
       getUserTrophiesEarnedForTitle({ accessToken: token }, "me", id, "all", {
         ...opts,
@@ -808,7 +790,6 @@ export function profileFromSummary(
   };
 }
 
-/** 打 getProfileFromAccountId。要不要打由调用方按 PROFILE_TTL_MS 决定。 */
 export async function fetchProfileIdentity(
   env: Env,
   auth: AuthSession,
@@ -833,11 +814,6 @@ export async function fetchProfileIdentity(
   };
 }
 
-/**
- * existingProfile 由调用方按 PROFILE_TTL_MS 决定：还新鲜就把
- * onlineId / avatarUrl / plus 传进来，不再打 getProfileFromAccountId；
- * 等级 / 总杯数仍用本轮 summary 覆盖。
- */
 export async function buildTrophiesReport(
   env: Env,
   auth: AuthSession,

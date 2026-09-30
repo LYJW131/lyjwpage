@@ -1,13 +1,8 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
-# dependencies
 node_modules/
-# 讲解动画：站点版由 scripts/build-explainer.mjs 在构建时生成（资源按内容哈希命名），Artifact 发布页由 build-artifact.py 生成，都不进仓库
 /public/explainer/
 docs/explainer/artifact.html
 .pnpm-store/
 .wrangler/
-# api 预览命令临时生成，见 docs/workers-builds.md
 workers/api/wrangler.preview.json
 dist/
 /.pnp
@@ -18,50 +13,34 @@ dist/
 !.yarn/releases
 !.yarn/versions
 
-# testing
 /coverage
 
-# next.js
 /.next/
 /out/
 
-# production
 /build
 
-# misc
 .DS_Store
 *.pem
 
-# debug
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
 .env*
-# 例外：只有占位符，没有真凭据。README 让人 cp 它，不跟踪的话新克隆出来是空的
 !.env.example
 
-# cloudflare wrangler
-# wrangler.toml 入库：里面只有公开配置（域名、来源名单、Apple 的 Team/Key ID），
-# 真正的秘密一律走 `wrangler secret`。CI 按它自动部署，见 .github/workflows/deploy-workers.yml
 .dev.vars*
 !.dev.vars.example
 
-# vercel
 .vercel
 
-# claude code
-# launch.json 入库（dev 端口 3211 那份配置），settings.local.json 是每台机器自己的
 /.claude/settings.local.json
-# 子代理的临时工作树，git add -A 会把它当嵌套仓库带进提交
 /.claude/worktrees/
 
-# typescript
 *.tsbuildinfo
 next-env.d.ts
 
-# Python 字节码（scripts/ 下的截图脚本）
 __pycache__/
 *.pyc

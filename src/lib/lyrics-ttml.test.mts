@@ -3,7 +3,6 @@ import test from "node:test";
 
 import { parseLyricsTtml, parseTtmlClock } from "./lyrics-ttml.ts";
 
-/** 合成的样本：结构照 amp-api 返回的形状，文字是占位符 */
 function ttml(timing: string, body: string, head = "") {
   return (
     `<tt xmlns="http://www.w3.org/ns/ttml" xmlns:itunes="http://music.apple.com/lyric-ttml-internal" ` +
@@ -55,7 +54,6 @@ test("字级：逐字 span 拼回一行，span 之间的空白保留、折叠", 
       startMs: 1_000,
       endMs: 3_000,
       text: "aa bbcc",
-      // 字间的空格挂到前一个字后面，拼起来就是整句
       words: [
         { startMs: 1_000, endMs: 1_500, text: "aa " },
         { startMs: 1_500, endMs: 2_000, text: "bb" },

@@ -46,13 +46,12 @@ import {
 } from "@/lib/web-player";
 
 export type WebPlayerStatus =
-  | "unavailable" // 没配 MUSICKIT_TOKEN_ENDPOINT，功能整体不可用
-  | "idle" // 可用，还没碰过 MusicKit
-  | "starting" // 正在加载 MusicKit / 取令牌 / 等授权弹窗 / 装队列
-  | "ready" // 拿到已授权的实例，队列已经装进去
+  | "unavailable"
+  | "idle"
+  | "starting"
+  | "ready"
   | "error";
 
-/** Listening card 提供给统一播放器的同步锚点。 */
 export type SyncSource = {
   track: LocalNowPlaying | null;
   songId: string | null;
@@ -63,54 +62,33 @@ export type WebPlayer = {
   status: WebPlayerStatus;
   authorized: boolean;
   error: string | null;
-  /** 弹窗正在查看的那张专辑 / 歌单；null 表示没有 */
   item: ListeningItem | null;
-  /** 底层正在播放的那张专辑 / 歌单；null 表示没有在放 */
   activeItem: ListeningItem | null;
-  /** 弹窗查看的专辑是否正是当前正在播放的专辑 */
   isItemActive: boolean;
-  /** 弹窗开着 */
   open: boolean;
-  /** 见 PLAYBACK_STATE */
   playbackState: number;
   nowPlaying: MediaItem | null;
   queue: MediaItem[];
-  /** 已经开始放过（在播、暂停、缓冲都算）。页头缩略播放器按它显示；stop 后为 false */
   active: boolean;
-  /** 配好的实例，弹窗自己订阅进度用；没拿到是 null */
   instance: MusicKitInstance | null;
-  /** 点了某张专辑：装入、打开弹窗，不开播；如果已有正在播放的音乐，不会打断播放 */
   openWith: (item: ListeningItem) => void;
-  /** 只打开 / 关闭弹窗，不动播放 */
   openDialog: () => void;
   closeDialog: () => void;
-  /** 弹窗里的 Sign in：authorize；正在试听的话重装成完整曲目接着放 */
   signIn: () => void;
-  /** 队列没装时装队列开播，装了就是续播。未授权时放的是试听片段 */
   play: () => void;
   pause: () => void;
   toggle: () => void;
   next: () => void;
   previous: () => void;
-  /** 毫秒 */
   seekTo: (ms: number) => Promise<void>;
-  /** 切到队列里第 index 首 */
   playAt: (index: number) => void;
-  /** 停止并清队列；item 保留（弹窗还能再点播放），active 变 false */
   stop: () => void;
-  /** 停止并 unauthorize */
   logout: () => void;
-  /** 注册当前本机播放锚点；不直接控制播放，跟随只在 syncing 时生效。 */
   setSyncSource: (source: SyncSource) => void;
-  /** 切换同步播放列表、进度、暂停和循环模式。 */
   toggleSync: () => void;
-  /** 开启一起听并打开播放器；已经同步时只打开，不中断跟随。 */
   startSync: () => void;
-  /** 当前是否由同步锚点接管播放器。 */
   syncing: boolean;
-  /** 当前锚点是否足以开始同步。 */
   syncAvailable: boolean;
-  /** 同步已开启，但主人暂停或没有可用曲目。 */
   syncWaiting: boolean;
 };
 
@@ -119,10 +97,6 @@ function describe(error: unknown): string {
   return typeof error === "string" ? error : "Unknown error";
 }
 
-/**
- * 拦截用户或代码快速切歌、暂停时触发的正常打断报错，
- * 避免 MusicKit 或浏览器将其作为未捕获异常抛出。
- */
 function isPlayInterrupted(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
   return (
@@ -133,7 +107,6 @@ function isPlayInterrupted(error: unknown) {
   );
 }
 
-/** 包装播放异步调用，安全吸收打断错误 */
 async function mkSafe(run: () => Promise<unknown>) {
   try {
     await run();
@@ -143,7 +116,6 @@ async function mkSafe(run: () => Promise<unknown>) {
   }
 }
 
-/** 实例是否正在播放或缓冲中 */
 function isPlaybackActive(inst: MusicKitInstance): boolean {
   const s = inst.playbackState;
   return (
@@ -206,7 +178,6 @@ function syncItemForSource(source: SyncSource, previous?: ListeningItem | null):
     title: track?.title || previousTrack?.title || "Listen Along",
     artist: track?.artist || previousTrack?.artist || "",
     artwork: track?.artworkUrl ?? previousTrack?.artwork ?? null,
-    // Dialog 的 playable 判定需要一个 URL；真正同步时仍按 songId 装曲目。
     link:
       songId != null
         ? `https://music.apple.com/song/${encodeURIComponent(songId)}`
@@ -228,7 +199,6 @@ function sameSyncItem(a: ListeningItem | null, b: ListeningItem): boolean {
   );
 }
 
-/** 切到目录里的某首歌；已有队列就复用索引，避免无谓地重装整队。 */
 async function changeToSong(
   music: MusicKitInstance, songId: string, cancelled: () => boolean = () => false,
 ): Promise<void> {
@@ -248,7 +218,6 @@ async function changeToSong(
   await mkSafe(() => music.setQueue({ song: songId }));
 }
 
-/** 把同步来源给出的后续队列覆盖到 MusicKit 当前曲后面。 */
 async function syncUpcomingQueue(
   music: MusicKitInstance,
   ids: string[],
@@ -268,8 +237,7 @@ async function syncUpcomingQueue(
     return true;
   }
 
-  // MusicKit 没有公开的 clear-tail API。重放当前 song 会清掉旧尾巴；保存并恢复
-  // 本地位置，避免同步在这一个 await 后被取消时把自由播放重置到歌头。
+  // MusicKit 无公开 clear-tail API；重装当前曲清尾时须恢复位置，避免取消同步后自由播放回到歌头。
   const position = localPositionMs(music);
   const wasLive = isPlaybackLive(music);
   await mkSafe(() => music.stop());
@@ -317,14 +285,12 @@ export function useWebPlayerState(): WebPlayer {
   const activeItemRef = useRef<ListeningItem | null>(null);
   const activeRef = useRef(false);
   const openRef = useRef(false);
-  /** 实例里此刻装着哪张专辑的队列。stop 会把队列清掉，那时归 null，下次要重装 */
   const loadedIdRef = useRef<string | null>(null);
   const syncingRef = useRef(false);
   const syncSourceRef = useRef<SyncSource>(syncSource);
   const syncRevisionRef = useRef(0);
   const syncGenerationRef = useRef(0);
   const syncItemRef = useRef<ListeningItem | null>(null);
-  /** 已请求 / 已就绪的同步曲目，用来区分换歌与同曲进度更新。 */
   const syncReadySongIdRef = useRef<string | null>(null);
   const syncHasFollowedRef = useRef(false);
   const syncAlignedSongIdRef = useRef<string | null>(null);
@@ -351,9 +317,6 @@ export function useWebPlayerState(): WebPlayer {
     active && item && activeItem && item.id === activeItem.id,
   );
 
-  /**
-   * 改播放的操作排成一条排他链，避免并发 play/pause/setQueue 导致 MusicKit 报错。
-   */
   const opChain = useRef(Promise.resolve());
   const runExclusive = useCallback((fn: () => Promise<void>) => {
     const next = opChain.current.then(fn, fn).catch((caught: unknown) => {
@@ -369,10 +332,7 @@ export function useWebPlayerState(): WebPlayer {
     return next;
   }, []);
 
-  /**
-   * 同步请求的代数。来源刷新只递增 revision，用户控制和退出同步递增 generation；
-   * 两个值都要匹配，旧的 await 完成后才不会重新夺回 MusicKit。
-   */
+  // revision 与 generation 都须匹配，避免旧 await 完成后重新夺回用户控制权。
   const syncIsCurrent = useCallback((generation: number, revision: number) => {
     return isSyncEpochCurrent(
       { generation: syncGenerationRef.current, revision: syncRevisionRef.current },
@@ -397,7 +357,6 @@ export function useWebPlayerState(): WebPlayer {
     syncLagMsRef.current = 0;
   }, [clearSyncTimers]);
 
-  /** 让出同步控制但保留当前 MusicKit 队列和播放状态。 */
   const cancelSyncFollow = useCallback(
     (reset = true) => {
       syncGenerationRef.current += 1;
@@ -407,7 +366,6 @@ export function useWebPlayerState(): WebPlayer {
       const inst = instanceRef.current;
       if (inst) {
         if (inst.volume === 0) inst.volume = 1;
-        // 同步模式临时借用了 repeat one；退出后交还给普通播放器的默认模式。
         applyRepeatMode(inst, false);
         inst.autoplayEnabled = false;
         setPlaybackState(inst.playbackState);
@@ -425,7 +383,6 @@ export function useWebPlayerState(): WebPlayer {
     [resetSyncSession],
   );
 
-  /** 让同步虚拟项随着主人换歌更新，但进度刷新不会制造无意义的新对象。 */
   const updateSyncItem = useCallback((source: SyncSource) => {
     const next = syncItemForSource(source, syncItemRef.current);
     syncItemRef.current = next;
@@ -445,7 +402,6 @@ export function useWebPlayerState(): WebPlayer {
     }
   }, []);
 
-  /** listening-card 的唯一来源注册入口。 */
   const setSyncSource = useCallback(
     (next: SyncSource) => {
       const normalized: SyncSource = {
@@ -461,12 +417,7 @@ export function useWebPlayerState(): WebPlayer {
     [updateSyncItem],
   );
 
-  /**
-   * 拿 MusicKit 实例：
-   * getMusicKit() 过了令牌半衰期会重新 configure，那会打断正在放的东西，
-   * 所以只有 instanceRef.current 为空、或它 playbackState 不是 playing / loading / waiting / seeking 时
-   * 才允许再调 getMusicKit()；否则直接复用手上的。
-   */
+  // getMusicKit 可能重新 configure 并打断播放，活动实例必须直接复用。
   const getOrReuseMusicKit = useCallback(async (): Promise<MusicKitInstance> => {
     const existing = instanceRef.current;
     if (existing && isPlaybackActive(existing)) {
@@ -476,34 +427,17 @@ export function useWebPlayerState(): WebPlayer {
     const inst = await getMusicKit();
     instanceRef.current = inst;
     setInstance(inst);
-    /*
-     * 拿到手就对一次授权状态：MusicKit 把用户令牌存在本地，之前在「一起听」
-     * 或上次访问登录过的话，configure 完 isAuthorized 直接是 true —— 事件
-     * authorizationStatusDidChange 只在**变化**时来，初始值得自己读，否则登录
-     * 过的访客打开播放器仍被画成试听。
-     */
+    /* 持久授权恢复不会触发 authorizationStatusDidChange，配置后须读取初始值。 */
     setAuthorized(inst.isAuthorized);
     return inst;
   }, []);
 
-  // 弹窗打开时后台校验/预热 MusicKit 实例，同步最新授权状态并就绪播放器，无需等待用户点击播放
   useEffect(() => {
     if (!open) return;
     void getOrReuseMusicKit().catch(() => {});
   }, [open, getOrReuseMusicKit]);
 
-  /**
-   * 把一张专辑 / 歌单的队列装进实例，**不出声**。调用方负责排他链，这里不再
-   * 套一层 —— 调用方已经在链里，再进一次会等自己，死锁。
-   *
-   * 不带 startPlaying：打开卡片就装队列，是为了让曲目列表马上可见；出声那一下
-   * 留给播放键。未授权的实例也装得出目录队列（只是放不了），所以登录前就能看
-   * 到列表。
-   *
-   * 每次装队列前都把音量和循环模式归位：实例是和「一起听」共用的单例，它预切
-   * 时会把音量压到 0、主人单曲循环时会开 repeat one，交接过来若不清掉，这边
-   * 放出来的就是哑的或者一首歌转圈。
-   */
+  // 已在排他链内，不可再次排队，否则会等待自身而死锁。
   const prepare = useCallback(async (inst: MusicKitInstance, targetItem: ListeningItem) => {
     const options = queueOptionsFor(targetItem);
     if (!options) {
@@ -524,11 +458,9 @@ export function useWebPlayerState(): WebPlayer {
           if (id) await mkSafe(() => inst.playLater({ song: id }));
         }
       }
-      // setQueue 内部切换 PlaybackController 会重新挂载并可能触发 startAutoplay；
-      // 装完队列后显式关掉 autoplayEnabled，触发 stopAutoplay 清除推荐曲目
+      // setQueue 重建 PlaybackController 时可能启动 Autoplay，装完必须显式关闭。
       inst.autoplayEnabled = false;
 
-      // 优先保留 Catalog API 获得的权威专辑曲目；若无则从实例队列中提取非 Autoplay 的真实曲目
       const existingCached = getCachedPlaylist(targetItem.id);
       const items =
         existingCached && existingCached.length > 0
@@ -553,12 +485,7 @@ export function useWebPlayerState(): WebPlayer {
     }
   }, []);
 
-  /**
-   * 停止播放，清除 active 状态（页头的缩略播放器随之消失）。
-   * 弹窗保持当前专辑和曲目列表可见，底栏播放键恢复为 Play，用户可随时重新开播。
-   */
   const stop = useCallback(() => {
-    // Stop 是用户主动控制，先立刻使所有排队中的同步任务失效。
     cancelSyncFollow();
     setActive(false);
     activeRef.current = false;
@@ -574,14 +501,6 @@ export function useWebPlayerState(): WebPlayer {
     });
   }, [cancelSyncFollow, runExclusive]);
 
-  /**
-   * 点了某张专辑：装入、打开弹窗，**不开播**。
-   * 如果当前已经有正在播放的音乐，不会打断正在播放的音频流；
-   * 通过只读 API / 缓存拉取目标专辑曲目，待用户真正点击播放时才切歌开播。
-   *
-   * 若之前已拿过歌单列表有缓存，在打开弹窗前就直接预设好列表，并配合 Dialog
-   * 预先算好像素高度，消除弹窗打开时的高度跳动；无缓存且非当前专辑时清空旧数据。
-   */
   const openWith = useCallback(
     (targetItem: ListeningItem) => {
       setItem(targetItem);
@@ -597,7 +516,6 @@ export function useWebPlayerState(): WebPlayer {
       const isLoaded = loadedIdRef.current === targetItem.id;
       const playable = queueOptionsFor(targetItem) !== null;
 
-      // 若之前拿过歌单有缓存，弹窗打开前直接载入，消除弹窗首帧跳动与骨架屏闪烁
       if (cached && cached.length > 0) {
         setQueue(cached);
         setNowPlaying(
@@ -630,11 +548,9 @@ export function useWebPlayerState(): WebPlayer {
 
       if (!playable) return;
 
-      // 如果已有曲目列表，无需再次请求
       if (cached && cached.length > 0) return;
       if (isLoaded && instanceRef.current?.queue?.items?.length) return;
 
-      // 纯异步拉取曲目，不打断正在播放的音频
       void (async () => {
         try {
           const tracks = await fetchCatalogTracks(targetItem, instanceRef.current);
@@ -652,7 +568,6 @@ export function useWebPlayerState(): WebPlayer {
               setStatus("ready");
             }
           } else {
-            // 若只读 API 未查到曲目，且当前没有正在播放的音乐，回退到 prepare (setQueue)
             if (!activeRef.current) {
               void runExclusive(async () => {
                 if (itemRef.current?.id !== targetItem.id) return;
@@ -693,7 +608,6 @@ export function useWebPlayerState(): WebPlayer {
     openRef.current = false;
   }, []);
 
-  /** 出过声就算 active：页头缩略播放器、底栏的 Stop 都看它 */
   const markActive = useCallback((inst: MusicKitInstance) => {
     setPlaybackState(inst.playbackState);
     setNowPlaying(inst.nowPlayingItem ?? null);
@@ -701,13 +615,6 @@ export function useWebPlayerState(): WebPlayer {
     activeRef.current = true;
   }, []);
 
-  /**
-   * 把 MusicKit 对齐到 listening-card 注册的 host 锚点。
-   *
-   * 这个函数只会从 runExclusive 里改播放器。每次来源刷新带一个 revision，用户
-   * 操作带一个 generation；任意 await 之后都重新检查两者，保证旧的授权、换歌或
-   * seek 完成后不会把控制权抢回去。
-   */
   const syncReconcile = useCallback(
     (generation: number, revision: number): Promise<void> =>
       runExclusive(async () => {
@@ -780,7 +687,6 @@ export function useWebPlayerState(): WebPlayer {
           }
 
           if (track.state !== "playing") {
-            // 暂停来源仍要保持当前曲和后续队列，之后恢复播放可以无缝接上。
             clearSyncTimers();
           }
 
@@ -788,11 +694,7 @@ export function useWebPlayerState(): WebPlayer {
           let local = localSongId(inst);
           const joining = !syncHasFollowedRef.current;
 
-          /*
-           * MusicKit 可能已经沿预排队列自然切到下一首，而 host 的旧锚点晚到。
-           * 只要本地确实在 host 锚点之后、旧锚点靠近歌尾，就保留本地下一首；
-           * host 真拖回歌中间时由 hostRewoundIntoTrack 放行。
-           */
+          /* 本地可能沿预排队列先切歌，不能让晚到的歌尾旧锚点把它拉回上一首。 */
           if (local && local !== hostSongId && !track.repeatOne) {
             const staleTail = shouldKeepNaturalNext({
               queueItems: inst.queue?.items,
@@ -822,7 +724,6 @@ export function useWebPlayerState(): WebPlayer {
 
             if (local !== hostSongId) return;
 
-            // 重复模式下清掉旧尾巴；普通模式下精确覆盖来源传来的顺序（含重复曲）。
             const desiredUpcoming = track.repeatOne
               ? []
               : normalizeSyncUpcomingSongIds(source.upcomingSongIds);
@@ -835,7 +736,7 @@ export function useWebPlayerState(): WebPlayer {
             );
             if (!syncIsCurrent(generation, revision)) return;
             if (queueChanged && track.state !== "playing") {
-              // setQueue 可能把暂停曲重新置为 loading，下面统一 seek 后再 pause。
+              // setQueue 可能把暂停曲改成 loading，须先 seek 再恢复 pause。
               muted = true;
               inst.volume = 0;
             }
@@ -938,16 +839,11 @@ export function useWebPlayerState(): WebPlayer {
     ],
   );
 
-  /** 来源变化只重新排队一轮同步任务；不会创建第二个 MusicKit 实例。 */
   useEffect(() => {
     if (!syncing) return;
     void syncReconcile(syncGenerationRef.current, syncRevisionRef.current);
   }, [syncReconcile, syncSource, syncing]);
 
-  /**
-   * 来源没有新事件时，播放器自己的缓冲仍可能慢慢落后。低频巡检只负责纠偏，
-   * 换歌、暂停和首次加入仍由上面的来源 effect 处理。
-   */
   useEffect(() => {
     if (!syncing || !instance) return;
     const generation = syncGenerationRef.current;
@@ -1040,25 +936,16 @@ export function useWebPlayerState(): WebPlayer {
     }
   }, [cancelSyncFollow, startSync]);
 
-  /** 弹窗里的 Sign in：加载 MusicKit 并 authorize，只登录不开播 */
   const signIn = useCallback(() => {
     void runExclusive(async () => {
       setStatus("starting");
       setError(null);
       try {
         const inst = await getOrReuseMusicKit();
-        /*
-         * 已经授权过就不再弹窗 —— MusicKit 把用户令牌存在本地，「一起听」那边
-         * 登录过的话这里 isAuthorized 直接是 true。访客自己关掉授权弹窗也会走到
-         * catch：不是故障，但也不该假装成功，把原因摆出来让他再点一次。
-         */
         if (!inst.isAuthorized) await inst.authorize();
         setAuthorized(inst.isAuthorized);
         setStatus("ready");
-        /*
-         * 登录前已经在试听：队列里装的是试听预览，授权不会把它们换成整首。
-         * 停掉、按同一张专辑重装、再从头放，这次出来的才是完整曲目。
-         */
+        /* 授权不会把已装载的试听队列升级为整曲，必须重装队列。 */
         const activeCur = activeItemRef.current;
         if (inst.isAuthorized && activeRef.current && activeCur) {
           await inst.stop().catch(() => {});
@@ -1076,14 +963,9 @@ export function useWebPlayerState(): WebPlayer {
     });
   }, [getOrReuseMusicKit, markActive, prepare, runExclusive]);
 
-  /**
-   * 播放键：队列没装时装队列开播，装了就是续播。未授权时放的是试听片段。
-   * 若查看的专辑与当前正在播放的不同，停旧播、装新队并开播。
-   */
   const play = useCallback(() => {
     cancelSyncFollow();
     void runExclusive(async () => {
-      // 关闭浏览中的专辑后，页头播放器必须继续操作 activeItem 对应的实际队列。
       const currentItem =
         !openRef.current && activeItemRef.current ? activeItemRef.current : itemRef.current;
       if (!currentItem) return;
@@ -1166,7 +1048,6 @@ export function useWebPlayerState(): WebPlayer {
     [cancelSyncFollow, runExclusive],
   );
 
-  /** 点队列里某一首：changeToMediaAtIndex 自己会开播，所以这里也要记 active */
   const playAt = useCallback(
     (index: number) => {
       cancelSyncFollow();
@@ -1200,7 +1081,6 @@ export function useWebPlayerState(): WebPlayer {
     [cancelSyncFollow, getOrReuseMusicKit, markActive, prepare, runExclusive],
   );
 
-  /** 停止并 unauthorize */
   const logout = useCallback(() => {
     stop();
     const inst = instanceRef.current;
@@ -1220,10 +1100,7 @@ export function useWebPlayerState(): WebPlayer {
     });
   }, [runExclusive, stop]);
 
-  /**
-   * 监听 MusicKit 实例的各项事件变化。
-   * 注意：不要在这里监听 playbackTimeDidChange，避免每秒触发 Provider 全树重渲染。
-   */
+  // 不在 Provider 订阅 playbackTimeDidChange，避免整棵消费树每秒重渲染。
   useEffect(() => {
     const inst = instance;
     if (!inst) return;
@@ -1240,7 +1117,6 @@ export function useWebPlayerState(): WebPlayer {
       const currentLoadedId = loadedIdRef.current;
       if (!currentLoadedId || currentLoadedId !== itemRef.current?.id) return;
 
-      // 如果已有权威曲目列表（如 Catalog API 返回的专辑完整曲目），绝不让 Autoplay 推荐队列覆盖
       const existing = getCachedPlaylist(currentLoadedId);
       if (currentLoadedId !== "listen-along" && existing && existing.length > 0) return;
 
@@ -1271,7 +1147,6 @@ export function useWebPlayerState(): WebPlayer {
     };
   }, [instance, stop]);
 
-  /** 页面/Hook 卸载时停止播放，避免音频遗留在后台 */
   useEffect(() => {
     return () => {
       syncingRef.current = false;

@@ -7,12 +7,6 @@ import { useEffect, useRef, useState } from "react";
 import { StatusDot } from "@/components/ui/status-dot";
 import { useOnlineCount } from "@/hooks/use-online-count";
 
-/**
- * 页脚右侧的「Online now」。
- *
- * 连接 Cloudflare Workers 的 Durable Objects 实例，
- * 实时同步在线人数。
- */
 export function OnlineCount() {
   const { count, connected } = useOnlineCount();
 
@@ -21,9 +15,7 @@ export function OnlineCount() {
       <StatusDot tone={connected ? "live" : "off"} />
       <span className="flex items-center gap-1">
         Online now
-        {/* SSR 就保留数字位置；不能写 0，那会把“还没连上”伪装成真实人数。 */}
         <span className="inline-grid text-foreground" aria-live="polite">
-          {/* 两层始终在同一个格子里参与尺寸计算，只切 visibility，替换时宽度不变。 */}
           <span
             className={`col-start-1 row-start-1 justify-self-end text-muted-foreground ${count == null ? "" : "invisible"}`}
             aria-hidden
@@ -47,7 +39,6 @@ export function OnlineCount() {
   );
 }
 
-/** 问号：点开说明这个数字是哪来的。点外面或按 Esc 关掉。 */
 function SourceHint({ connected }: { connected: boolean }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLSpanElement>(null);
@@ -81,7 +72,6 @@ function SourceHint({ connected }: { connected: boolean }) {
       </button>
 
       {open && (
-        // 页脚是居中的，浮层跟着触发点居中；w-64 在 375px 的手机上也不会顶到边
         <span className="absolute bottom-full left-1/2 z-50 mb-2 w-64 -translate-x-1/2 rounded-lg border border-line bg-surface p-3">
           <span className="label-mono block text-foreground">Data source</span>
           <span className="mt-2 block text-xs normal-case leading-relaxed text-muted-foreground">

@@ -2,7 +2,6 @@ import { cn } from "@/lib/utils";
 
 const SYMBOL_ID = "ps-plus-mark";
 
-/** 页面只输出一次完整路径，各处的小标通过 <use> 复用。 */
 export function PsPlusSprite() {
   return (
     <svg aria-hidden className="absolute size-0 overflow-hidden">
@@ -37,7 +36,6 @@ export function PsPlusSprite() {
   );
 }
 
-/** PlayStation Plus 会员标。路径来自 PlayStation 官方站内嵌 SVG。 */
 export function PsPlusMark({
   className,
   decorative = false,

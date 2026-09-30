@@ -46,17 +46,12 @@ import type {
 import { TROPHY_TYPES } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-/** 列表跟「最近在看」用同一档兜底间隔；此刻是否在玩的间隔和 watching/now 对齐。 */
 const LIST_REFRESH_MS = 10 * 60_000;
 const NOW_REFRESH_MS = 60_000;
 
 const useIsomorphicLayoutEffect =
   typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
-/**
- * 组条自己在 0 ↔ auto 开合。量的是目标高度：要这一行就按内容全高，
- * 不要就剔掉还在退场的外壳，避免动画半截把外层面板带跑。
- */
 function expandTargetHeight(el: HTMLElement): number {
   const wanted = el.querySelector("[data-trophy-groups-wanted]") != null;
   const wrap = el.querySelector<HTMLElement>("[data-trophy-groups-wrap]");
@@ -66,10 +61,6 @@ function expandTargetHeight(el: HTMLElement): number {
   return wanted ? el.offsetHeight - wrapH + innerH : el.offsetHeight - wrapH;
 }
 
-/**
- * 量展开内容的实际高度。开合走 0 ↔ 这个值；换游戏时内容变高变矮，
- * 也用同一条高度动画，而不是停在 height: auto 上瞬间跳。
- */
 function useOpenHeight(openId: string | null, contentToken: unknown) {
   const ref = useRef<HTMLDivElement>(null);
   const [height, setHeight] = useState(0);
@@ -102,17 +93,10 @@ function useOpenHeight(openId: string | null, contentToken: unknown) {
   return [ref, height] as const;
 }
 
-/** 和「最近在看」同一条规则：比动画本身多留一点再装回滚动吸附 */
 const UNSNAP_MS = LIST_DURATION * 1000 + 80;
 
-/**
- * 三行、按列往右排。列宽按容器等分，视口里仍是整数列，不露下一列一条缝。
- * 减掉的是列间 gap-3（0.75rem）总宽：(列数 - 1) × 0.75rem。
- *
- * 行数、吸附 `3n+1`、裁尾巴必须是同一个数，改一处漏一处最后一列就会缺格。
- */
+// TILE_ROWS、吸附选择器和裁尾规则须一致，否则最后一列会缺格。
 const TILE_ROWS = 3;
-/** 首屏只画四列；完整数据仍先参与合并与排序，已有卡片挂载后不会换位。 */
 const INITIAL_TILE_COUNT = 12;
 
 const TILE_TRACK = cn(
@@ -122,14 +106,12 @@ const TILE_TRACK = cn(
   "lg:auto-cols-[calc((100%-1.5rem)/3)]",
 );
 
-/** 不够一整列的尾巴藏掉，最后一列也是满的三格。不到三款就原样摆。 */
 function fillLastColumn<T>(tiles: T[]): T[] {
   if (tiles.length < TILE_ROWS) return tiles;
   const leftover = tiles.length % TILE_ROWS;
   return leftover === 0 ? tiles : tiles.slice(0, -leftover);
 }
 
-/** 瓷砖左边那格封面的边长，和它 className 上的 h-28 w-28 是同一个数。 */
 const COVER_PX = 112;
 
 function mediaApp(category: string | null | undefined): boolean {
@@ -144,7 +126,6 @@ function playTime(milliseconds: number | null, playCount: number): string {
   return `${Math.max(1, Math.round(milliseconds / 60_000))} min played`;
 }
 
-/** 行内瓷砖的数据形状：列表项直接来，正在玩但不在列表里的现造一份 */
 type Tile = {
   titleId: string;
   titleIds: string[];
@@ -152,15 +133,9 @@ type Tile = {
   imageUrl: string | null;
   subtitle: string;
   live: boolean;
-  /**
-   * 这张是非游戏应用（Netflix、YouTube 之类，上游 category 以 `_media_app` 结尾）。
-   * 只有「正在活动」那张可能是 true —— 最近列表里这类一律不进（见 buildTiles）。
-   * 用来把角标从「正在游玩」换成「正在使用」。
-   */
   mediaApp: boolean;
   service: string | null;
   preOrder: boolean;
-  /** 这张卡对上的主机，跨世代会同时有 PS4 和 PS5。 */
   platforms: string[];
   trophies: TrophyTitleDigest | null;
   playDurationMs: number | null;
@@ -188,10 +163,6 @@ function foldConsoles(a: string[], b: string[]): string[] {
   return ["PS4", "PS5"].filter((name) => found.has(name));
 }
 
-/**
- * 游玩列表按 titleId 对齐奖杯组。同款多 SKU 并成一条时，可能对上多份
- * 奖杯目录（例如 PS4 / PS5），杯子和进度加总，不各摆一遍。
- */
 function digestFor(
   titleIds: string[],
   titles: TrophyTitleDigest[],
@@ -232,7 +203,6 @@ function GameTile({
   eager?: boolean;
   selected: boolean;
   onSelect: () => void;
-  /** 鼠标扫到 / 键盘走到就先取这块瓷砖的奖杯，别等点下去才开始等网络 */
   onPrefetch: () => void;
 }) {
   const trophies = tile.trophies;
@@ -243,10 +213,8 @@ function GameTile({
     <button
       type="button"
       aria-expanded={selected}
-      // 面板只有一个、还只在展开时挂上：没开就别指、也别让别的瓷砖指着它
       aria-controls={selected ? "playstation-trophies" : undefined}
       onClick={onSelect}
-      // pointerenter 在触屏上也会在 pointerdown 前发一次，所以触控同样能抢跑一点
       onPointerEnter={onPrefetch}
       onFocus={onPrefetch}
       className={cn(
@@ -258,7 +226,6 @@ function GameTile({
       <div className="relative h-28 w-28 shrink-0 overflow-hidden border-r border-line bg-muted">
         {tile.imageUrl ? (
           <Image
-            // 尺寸在 PSN 那边就选好，不进图片管道；理由见 playstation-image
             src={playstationImage(tile.imageUrl, COVER_PX * PLAYSTATION_IMAGE_SCALE)!}
             alt={tile.name}
             width={COVER_PX}
@@ -288,7 +255,6 @@ function GameTile({
               {tile.subtitle || "—"}
             </span>
           )}
-          {/* 这行只标预购，Plus 交给下面的平台标，同一张瓷砖不打两遍 */}
           <GameFlags service={null} preOrder={tile.preOrder} plain className="shrink-0" />
         </div>
         <PlatformMarks platforms={tile.platforms} service={tile.service} className="mt-1" />
@@ -326,7 +292,6 @@ function Skeleton() {
   );
 }
 
-/** 两个可缺的数按给定方式合一；缺哪个就用另一个 */
 function fold(
   a: number | null,
   b: number | null,
@@ -337,21 +302,13 @@ function fold(
   return by(a, b);
 }
 
-/**
- * 同名同封面的并成一条。PSN 把同一款游戏的不同 SKU 各记一条 —— 正式版和
- * 试玩、或者别的区服 —— titleId 不同，名字和封面一模一样，对访客来说就是
- * 同一款游戏，没必要在行里挨着摆两遍。时长和次数相加，首末次游玩取两头，
- * 位置留在先出现的那条（上游按最近游玩倒序给，先出现的就是更近的那次）。
- *
- * titleIds 全留着：presence 报回来的可能是其中任何一个，得都认得出来。
- */
+// 合并同款 SKU 时保留全部 titleIds，presence 可能命中其中任意一个。
 type MergedGame = PlaystationGame & { titleIds: string[]; platforms: string[] };
 
 function mergeVariants(games: PlaystationGame[]): MergedGame[] {
   const merged: MergedGame[] = [];
   const byLook = new Map<string, MergedGame>();
   for (const game of games) {
-    // 用换行分隔，游戏名里带不出这个字符，拼不出跨字段的假重复
     const look = `${game.name}\n${game.imageUrl ?? ""}`;
     const prior = byLook.get(look);
     if (!prior) {
@@ -378,7 +335,6 @@ function mergeVariants(games: PlaystationGame[]): MergedGame[] {
   return merged;
 }
 
-/** 正在玩 → 白金 → 预购 → 最近列表原序。白金档按时长从长到短，其余同档用传入时的下标。 */
 function tilePriority(tile: Tile): number {
   if (tile.live) return 0;
   if ((tile.trophies?.earned.platinum ?? 0) > 0) return 1;
@@ -396,7 +352,6 @@ function prioritizeTiles(tiles: Tile[]): Tile[] {
       if (aRank === 1) {
         const aMs = a.tile.playDurationMs;
         const bMs = b.tile.playDurationMs;
-        // 缺时长 ≠ 测得 0（PT0S）。没有时长的垫后。
         if (aMs == null && bMs != null) return 1;
         if (bMs == null && aMs != null) return -1;
         if (aMs != null && bMs != null && aMs !== bMs) return bMs - aMs;
@@ -406,13 +361,6 @@ function prioritizeTiles(tiles: Tile[]): Tile[] {
     .map(({ tile }) => tile);
 }
 
-/**
- * 媒体应用过滤 + 同款合并 + 优先级排序，得到最终要渲染的瓷砖序列。
- *
- * 和「最近在看」的 pinNowWatching 同一个道理：正在玩的那款不一定在最近
- * 列表里（刚开档的新游戏），不在就用 presence 里带的标题和图标现造一张。
- * presence 自己没有 category，用列表里同 titleId 的上游枚举挡媒体应用。
- */
 function buildTiles(
   list: PlaystationPlayingPayload | undefined,
   presence: PlaystationPresencePayload | undefined,
@@ -421,14 +369,7 @@ function buildTiles(
   const games = mergeVariants((list?.items ?? []).filter((game) => !mediaApp(game.category)));
 
   const playing = presence?.playing ?? null;
-  /**
-   * 非游戏应用**照常显示「正在活动」**，只是不进最近列表（上面那行已经滤掉）。
-   *
-   * presence 自己不带 category，只能拿 titleId 去**没过滤的**那份列表里认。
-   * 头一回打开、还没进过最近列表的应用认不出来，会按游戏标「正在游玩」——
-   * 上游 basicPresence 里没有别的信号可用（只有 titleId / title / format /
-   * launchPlatform / iconUrl），这个缺口先认了。
-   */
+  // presence 没有 category；只能从未过滤的历史列表识别媒体应用，首次出现时无法区分。
   const playingIsApp = playing
     ? mediaApp(list?.items.find((game) => game.titleId === playing.titleId)?.category)
     : false;
@@ -438,7 +379,6 @@ function buildTiles(
     titleIds: game.titleIds,
     name: game.name,
     imageUrl: game.imageUrl,
-    // 这条路只走最近列表里的条目，而那份已经把非游戏应用滤掉了
     mediaApp: false,
     subtitle:
       game.preOrder && game.playCount === 0 && game.playDurationMs == null
@@ -454,7 +394,6 @@ function buildTiles(
 
   if (!playing) return prioritizeTiles(games.map((game) => toTile(game, false)));
 
-  // 开的可能是被并进来的那个 SKU，所以按 titleIds 认，不是只认主条目
   const inList = games.find((game) => game.titleIds.includes(playing.titleId));
   const first: Tile = inList
     ? toTile(inList, true)
@@ -463,8 +402,6 @@ function buildTiles(
         titleIds: [playing.titleId],
         name: playing.title,
         imageUrl: playing.iconUrl,
-        // 不在最近列表里（刚开档的新游戏、或任何非游戏应用）就没有时长可给，
-        // 退到平台标识
         subtitle:
           playing.launchPlatform ?? playing.format ?? presence?.platform ?? "PlayStation",
         live: true,
@@ -485,10 +422,8 @@ function buildTiles(
   ]);
 }
 
-/** 首页提要点「最近解锁」时要跳到的那一杯。 */
 export type TrophyJump = {
   npCommunicationId: string;
-  /** 明细里那一行的 key，拼法见 trophyRowKey */
   trophyKey: string;
 };
 
@@ -501,18 +436,9 @@ export function PlaystationRow({
 }: {
   fallback: StatusResponse<PlaystationPlayingPayload>;
   nowFallback: StatusResponse<PlaystationPresencePayload>;
-  /**
-   * 首页摘要里的各标题进度；不含逐个奖杯。
-   * `null` 是「摘要本身没来」，空数组是「摘要来了、一款都没有」——
-   * 后者才允许断言某张瓷砖没有奖杯，所以默认给 null，别让漏传的调用者撞上前者。
-   */
+  // null 表示摘要未知；空数组才允许断言没有奖杯。
   titles?: TrophyTitleDigest[] | null;
-  /**
-   * 待落地的跳转：这里负责把它认到某块瓷砖上 —— 展开、把轨道对过去，
-   * 再把那一行的 key 交给明细去定位。
-   */
   jumpRequest: TrophyJump | null;
-  /** 落地或放弃都喊一声。一次性语义靠这个：同一条再点一次才还能再跳。 */
   onJumpDone: () => void;
 }) {
   useLiveEvents();
@@ -522,15 +448,6 @@ export function PlaystationRow({
   const presence = useStatus<PlaystationPresencePayload>(NOW_PLAYING_PATH, NOW_REFRESH_MS, {
     fallback: nowFallback,
   });
-  /**
-   * 源站原样交出最后那份 presence，断流由这里拿访客钟判，和头像那颗点
-   * （playstation-panel）同一扇窗口。断了就当手上没有 presence：最近在玩的瓷砖
-   * 照旧，只是不再有「正在游玩」那一格 —— 不知道，不是下线。
-   *
-   * 首帧拿首屏信封的 servedAt 当钟：Worker 死了很久时，冻住的那份 presence 首帧就
-   * 不举「正在游玩」，免得挂载后整排瓷砖再重排一次；挂载后按浏览器的钟判出的过期
-   * 要等那次回源回来才认，见 useConfirmedStale。
-   */
   const presenceStale = useConfirmedClockStale(presence.data?.observedAt, PLAYSTATION_STALE_MS, {
     validating: presence.isValidating,
     servedAt: presence.servedAt,
@@ -548,12 +465,7 @@ export function PlaystationRow({
   const clearFocus = useCallback(() => setFocusKey(null), []);
   const openTile = tiles.find((tile) => tile.titleId === openId) ?? null;
 
-  /*
-   * 跳转目标在渲染期就算好：摘要里按 npCommunicationId 换到 titleIds，再拿去和
-   * 瓷砖的 titleIds 求交集。不认瓷砖上那份 digest —— 同款多 SKU 合并时它只留了
-   * 第一份的 npCommunicationId，另一半游戏的解锁就永远对不上。
-   * 结果是个字符串，下面那段落地判断直接读它：瓷砖补齐了才会认出目标。
-   */
+  /* 合并 SKU 后 digest 只保留首个目录，跳转须用摘要映射全部 titleIds。 */
   const jumpDigest = jumpRequest
     ? (titles ?? []).find(
         (title) => title.npCommunicationId === jumpRequest.npCommunicationId,
@@ -563,7 +475,6 @@ export function PlaystationRow({
     ? (tiles.find((tile) => tile.titleIds.some((id) => jumpDigest.titleIds.includes(id)))
         ?.titleId ?? null)
     : null;
-  // 展开哪块瓷砖就只问那块的奖杯：它的 titleIds 直接是端点的切片参数
   const catalog = useTrophyCatalog(openTile?.titleIds ?? null);
   const prefetch = useTrophyPrefetch();
   const [openBodyRef, openHeight] = useOpenHeight(
@@ -571,15 +482,10 @@ export function PlaystationRow({
     catalog.isLoading || catalog.titles || catalog.error,
   );
 
-  /**
-   * 增删瓷砖的动画期间先摘掉滚动吸附，理由和实现照搬「最近在看」：
-   * 吸附容器在头部插卡片时浏览器会钉住原卡、滚动位置整格跳走，
-   * 进离场动画就对不上了。
-   */
+  // 插入瓷砖前须关闭 scroll-snap，否则浏览器会钉住旧卡并跳走整列。
   const ids = tiles.map((tile) => tile.titleId).join("\n");
   const [snappedIds, setSnappedIds] = useState(ids);
   const [reflowing, setReflowing] = useState(false);
-  // 在 render 里改状态，摘吸附和插卡片才是同一次提交
   if (snappedIds !== ids) {
     setSnappedIds(ids);
     setReflowing(true);
@@ -596,34 +502,13 @@ export function PlaystationRow({
     scrollerRef.current?.scrollTo({ left: 0, behavior: reduced ? "auto" : "smooth" });
   }, [liveTitleId, reduced]);
 
-  /*
-   * 展开着的那块瓷砖从列表里没了（并成一条、被过滤掉、或者整批换掉）就收面板。
-   * openTile 本来就是按 openId 现找的，找不到那一刻面板已经在退场了，这里只是
-   * 把 state 跟上 —— 所以放在 render 里判，和上面摘吸附那处同一套，不必为它
-   * 多攒一次提交。
-   */
   if (openId && !openTile) {
     setOpenId(null);
     setFocusKey(null);
   }
 
-  /*
-   * 跳转落地。这段排在上面那条 scrollTo(0) 之后，下面那个只管副作用的 effect
-   * 也跟着排在它后面：同一次提交里两条都要跑时（正在玩的那款恰好也换了）
-   * 以这条为准，用户刚点的东西优先。
-   *
-   * 认不到目标瓷砖就当场放弃，不挂起也不重试：手上这份就是要展示的清单
-   * （不够一列的尾巴已经裁掉），这一趟找不到下一趟也不会多出来。放弃也不提示
-   * —— 点的是「这杯在哪」，没有就是没有（上报屏蔽名单滤掉了，落在被裁的尾巴
-   * 上，或压根不在最近游玩列表里）。
-   *
-   * 状态在渲染期改，滚轨道和销账留给下面那个 effect。每一处 setState 都带着
-   * 「重算一遍就不成立」的条件：React 会当场把这次渲染重来一遍，第二趟只是原样
-   * 再产出一次，不会自己咬自己。
-   */
-  /** 这一趟认到了瓷砖：要把轨道对过去 */
+  /* 跳转的滚动 effect 须排在归零滚动之后，同次提交时用户点选的跳转优先。 */
   let jumpLandedId: string | null = null;
-  /** 这一趟判死了：直接销账 */
   let jumpGaveUp = false;
 
   if (jumpRequest) {
@@ -642,12 +527,10 @@ export function PlaystationRow({
       const tile = track?.querySelector<HTMLElement>(
         `[data-tile="${CSS.escape(jumpLandedId)}"]`,
       );
-      // offsetLeft 相对轨道里那层 relative 的格子，那层的原点就是滚动内容的原点
       if (track && tile) {
         track.scrollTo({ left: tile.offsetLeft, behavior: reduced ? "auto" : "smooth" });
       }
     }
-    // 落地和判死都要销账，销完 jumpRequest 归 null
     if (jumpLandedId || jumpGaveUp) onJumpDone();
   }, [jumpLandedId, jumpGaveUp, onJumpDone, reduced]);
 
@@ -667,11 +550,6 @@ export function PlaystationRow({
 
   return (
     <div>
-      {/*
-        结构和滚动行为照搬「最近在看」：吸附整卡、overscroll-x-contain 挡住
-        触控板横滑到头触发「返回上一页」、阴影落在滚动盒内。
-        奖杯明细落在滚动盒外面，避免被横滑裁掉。
-      */}
       <div
         ref={scrollerRef}
         tabIndex={0}
@@ -688,8 +566,6 @@ export function PlaystationRow({
             {renderedTiles.map((tile, index) => (
               <motion.div
                 key={keys[index]}
-                // 跳转要按 titleId 找到这块瓷砖量它的 offsetLeft；上面那个 key 是
-                // 进离场用的稳定键，不一定等于 titleId
                 data-tile={tile.titleId}
                 layout={!reduced}
                 variants={reduced ? STATIC_VARIANTS : ROW_ITEM_VARIANTS}
@@ -701,14 +577,10 @@ export function PlaystationRow({
               >
                 <GameTile
                   tile={tile}
-                  // 首屏期间只让第一列（TILE_ROWS 张）去拉，其余先标 lazy，
-                  // 避免和封面抢带宽。首屏 load 之后 AppImage 会把剩下的改成
-                  // eager，不再等横滑到跟前。
                   eager={index < 3}
                   selected={tile.titleId === openId}
                   onPrefetch={() => prefetch(tile.titleIds)}
                   onSelect={() => {
-                    // 手切瓷砖就把还挂着的跳转作废：它稍后落地会把用户拽回去
                     onJumpDone();
                     setFocusKey(null);
                     setOpenId((current) => (current === tile.titleId ? null : tile.titleId));
@@ -737,9 +609,7 @@ export function PlaystationRow({
                   titles={catalog.titles}
                   loading={catalog.isLoading}
                   error={catalog.error}
-                  // 摘要来了、里面没这款，才算「没有奖杯」；摘要没来只是不知道
                   knownEmpty={titles != null && openTile.trophies == null}
-                  // 摘要里那份杯数，加载态照它铺行；没有就让它按满屏铺
                   rows={
                     openTile.trophies
                       ? countTrophies(openTile.trophies.defined)

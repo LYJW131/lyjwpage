@@ -29,7 +29,6 @@ export type NowPlaying = {
 export type PresenceReport = {
   observedAt: number;
   online: boolean;
-  /** 上游枚举。已见 availableToPlay / doNotDisturb / unavailable。 */
   availability: string | null;
   platform: string | null;
   lastOnlineAt: number | null;
@@ -39,14 +38,12 @@ export type PresenceReport = {
 export type PlayedGame = {
   titleId: string;
   name: string;
-  /** 上游枚举，如 ps4_game / ps5_native_game / ps5_native_media_app / pspc_game / unknown。 */
   category: string | null;
   playCount: number;
   firstPlayedAt: number | null;
   lastPlayedAt: number | null;
   playDurationMs: number | null;
   imageUrl: string | null;
-  /** 上游枚举，已见 ps_plus / none(purchased) / other。缺席为 null。 */
   service: string | null;
   preOrder: boolean;
 };
@@ -68,7 +65,6 @@ function platformName(raw: string | undefined): string | null {
   return trimmed(raw)?.toUpperCase() ?? null;
 }
 
-/** ISO-8601 时长换成毫秒；累计小时可以超过 24，另兼容规范里的天和周。 */
 export function durationMs(raw: string | undefined): number | null {
   const value = raw?.trim();
   if (!value) return null;
@@ -90,7 +86,6 @@ export function durationMs(raw: string | undefined): number | null {
 
 export async function fetchPresence(env: Env, auth: AuthSession): Promise<PresenceReport> {
   const localized = languageHeader(env);
-  // 这个入口自己检查 {error}，不用再断言一次。
   const raw: Loose<BasicPresenceResponse> = await retryRateLimit(() =>
     withToken(auth, (token) =>
       getBasicPresence(
@@ -125,13 +120,7 @@ export async function fetchPresence(env: Env, auth: AuthSession): Promise<Presen
   };
 }
 
-/**
- * psn-api（版本以 package.json 锁定的为准）的 getUserPlayedGames 不接 headerOverrides，实现也不发语言头，
- * 因而这一个请求继续直打与它相同的端点，保住官方中文游戏名。
- *
- * 默认证件拉全份，给奖杯 titleId 对齐用；只刷新瓷砖时可以 `cap` 在最近窗口。
- * 推给站点的条数由 `playedGamesLimit` 在 tick 里再切。
- */
+// psn-api 的 getUserPlayedGames 不传 headerOverrides；为保留中文游戏名，这一路必须直接带语言头请求。
 const USER_GAMES_BASE_URL = "https://m.np.playstation.com/api/gamelist/v2/users";
 const PLAYED_GAMES_PAGE = 100;
 
@@ -157,7 +146,6 @@ async function requestPlayedGames(
   return (await response.json()) as Loose<UserPlayedGamesResponse>;
 }
 
-/** 站点按非空 / 非负硬校验，一条越界就退整封信；名字缺席回落 titleId，别发空串。 */
 function readPlayedGame(title: Loose<UserPlayedGamesResponse["titles"][number]>): PlayedGame | null {
   const titleId = trimmed(title?.titleId);
   if (!titleId) return null;
@@ -203,10 +191,6 @@ function mergeLibraryTitle(prior: LibraryTitle | undefined, game: Loose<Purchase
   };
 }
 
-/**
- * 购买库（只含 PS4 / PS5）。用来标预购，以及给没开过档的预购补一条。
- * Plus 权益仍以游玩列表的 `service` 为准：买断后可能变成 none_purchased。
- */
 export async function fetchPurchasedLibrary(
   env: Env,
   auth: AuthSession,
@@ -241,7 +225,6 @@ export async function fetchPurchasedLibrary(
   return [...byId.values()];
 }
 
-/** 游玩列表已有 `service` 时不覆盖。购买库只补预购，以及缺席时的 Plus。 */
 export function overlayLibrary(
   played: PlayedGamesReport,
   library: LibraryTitle[],
@@ -311,7 +294,6 @@ export async function fetchPlayedGames(
   return { observedAt: Date.now(), items };
 }
 
-/** 最近窗口的一页盖进全份缓存：正在玩时不必为了时长把整份列表都翻一遍。 */
 export function mergePlayedGames(
   prior: PlayedGamesReport | null,
   next: PlayedGamesReport,

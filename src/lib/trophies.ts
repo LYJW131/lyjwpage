@@ -65,11 +65,7 @@ function nullableText(
   return requiredText(row, field, context);
 }
 
-/**
- * PSN 有几路图还在发 http:// 的地址。页面是 https，混合内容会被浏览器直接拦掉，
- * 而 next/image 的 remotePatterns 也只放行了 https 那一份 —— 所以入库前统一升级。
- * 头像、奖杯组图标、奖杯图标都要过一遍，漏一处就是那一路图全空。
- */
+// PSN 图床会返回 http URL，必须升级为 https 避免混合内容被拦。
 function httpsUrl(value: string | null): string | null {
   return value ? value.replace(/^http:\/\//i, "https://") : null;
 }
@@ -224,7 +220,6 @@ export function normalizeTrophies(value: unknown): TrophiesPayload {
   };
 }
 
-/** observedAt 和游玩时长覆盖都不参与「奖杯内容有没有变」。 */
 export function trophiesContent(payload: TrophiesPayload) {
   return {
     profile: payload.profile,
@@ -263,15 +258,7 @@ function playName(games: PlaystationGame[], trophyName: string): string | null {
   return null;
 }
 
-/**
- * entitlement 也得和库里那份折一次，理由和时长那几项一样：最近列表只覆盖窗口
- * 里的 SKU。`service: null` 是「上游没说」不是「不是 Plus」（见 PlaystationGame
- * 的注释），无条件盖过去会把已知的权益抹掉 —— 缺 SKU 的那一档抹得最狠，整池
- * 都对不上时连一条真话都没有。
- *
- * 池子排在前面：foldService 是 Plus 优先、其余取第一条非空，所以 `ps_plus` 谁
- * 前谁后都一样，剩下的让更新的那份说话，库里那份只填空。
- */
+// null 权益表示上游未提供，不能覆盖已有权益；最近列表也不覆盖所有 SKU。
 function entitlementsFrom(
   title: TrophyTitle,
   games: PlaystationGame[],
@@ -282,11 +269,6 @@ function entitlementsFrom(
   };
 }
 
-/**
- * 奖杯标题的键是 NPWR…，游玩列表是 PPSA…。Worker 已经用官方
- * titleId 对齐过，这里只按 `titleIds` 把多条 SKU 的时长加总。
- * 最近列表只覆盖窗口里的游戏：缺一条 SKU 就沿用库里的数，避免把完整合计裁短。
- */
 function overlayPlayStats(
   titles: TrophyTitle[],
   games: PlaystationGame[],
@@ -346,16 +328,6 @@ export async function getTrophies(): Promise<TrophiesPayload> {
   return { ...payload, titles: overlayPlayStats(payload.titles, played.items) };
 }
 
-/**
- * 只留这几个 titleId 对得上的标题。
- *
- * 展开的那块瓷砖只用得上一两款，而整份目录里每个奖杯都带说明文本和图标地址，
- * 体积很大。所以过滤在读的出口做（路由 overlay），`'use cache'` 里冻
- * 的仍是整份、不按 titleIds 分缓存键 —— 分了就是每块瓷砖各占一份完整目录。
- *
- * 求交集不是相等：一款游戏可能有多个 SKU（PS4 / PS5、试玩），瓷砖是按同名同封面
- * 并过的，一块瓷砖手上就有好几个 titleId。
- */
 export function sliceTrophies(
   payload: TrophiesPayload,
   titleIds: string[],
@@ -368,14 +340,7 @@ export function sliceTrophies(
   };
 }
 
-/**
- * 分子分母同源：两边都从 `titles` 逐金属加总。
- *
- * `profile.earned` 是**账号级**的合计，而 titles 被 Worker 的屏蔽名单
- * （PLAYSTATION_HIDDEN_TITLE_IDS）滤过 —— 拿账号级的分子配滤过的分母，屏蔽名单
- * 一非空百分比就偏高，屏蔽掉的是已通关的游戏时还能越过 100%。等级、点数那些
- * 仍然照旧读 profile：那是账号级的事实，本来就不该跟着屏蔽名单变。
- */
+// 奖杯分子分母必须来自同一过滤后的集合，账号级分子可能让结果超过 100%。
 export function summarizeTrophies(payload: TrophiesPayload): TrophiesSummaryPayload {
   const earned = payload.titles.reduce(
     (sum, title) => addTrophyCounts(sum, title.earned),

@@ -25,22 +25,12 @@ import { isLookupPath, serveLookup } from "./lookup-routes";
 import type { Env } from "./runtime";
 import { site } from "@/lib/site";
 
-/**
- * 状态核心的 HTTP 面：公开读取、WebSocket 推送、人头数和 MusicKit 令牌。
- * 上报不从这里进：外部上报由上报入口（workers/ingress）验完 Access、prepare 好，
- * 经 Service Binding 调 `StateCore.commitIngest`（src/state-core.ts）。
- */
 
 export type { Env };
-// Durable Object 类必须从入口模块导出，wrangler 按名字找
 export { StateHub };
 
 const WS_PATH = "/ws";
 
-/**
- * 「一起听」要的 MusicKit developer token。和公开 API 同源；站点从
- * NEXT_PUBLIC_BACKEND_URL 拼这条路径。
- */
 const MUSICKIT_TOKEN_PATH = "/api/musickit/token";
 
 function jsonResponse(data: unknown, init: ResponseInit = {}): Response {
@@ -68,7 +58,6 @@ function getRoom(env: Env): DurableObjectStub<LivePushRoom> {
   return env.LIVE_PUSH.get(env.LIVE_PUSH.idFromName(ROOM_ID));
 }
 
-/** WebSocket 握手前检查：来源白名单、必须是升级请求。 */
 function rejectSocket(request: Request, env: Env): Response | null {
   if (!isAllowedOrigin(request, env)) {
     return new Response("Forbidden", { status: 403 });
@@ -83,7 +72,6 @@ function reason(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** 限制实际读取字节数，不依赖可能缺失或伪造的 Content-Length。 */
 async function readBoundedBody(stream: ReadableStream<Uint8Array> | null): Promise<string> {
   if (!stream) return "";
   const reader = stream.getReader();
@@ -126,10 +114,6 @@ async function handleImport(request: Request, env: Env): Promise<Response> {
   }
 }
 
-/**
- * 签一份给访客的 MusicKit developer token。来源闸门和 CORS 与 `/ws`
- * 共用 ALLOWED_ORIGINS；签进 JWT 的 origin 声明由 Apple 校验，见 musickit-token.ts。
- */
 async function handleMusicKitToken(request: Request, env: Env, cors: Headers): Promise<Response> {
   if (request.method !== "GET") {
     return jsonResponse({ error: "只接受 GET" }, { status: 405, headers: cors });
@@ -140,43 +124,19 @@ async function handleMusicKitToken(request: Request, env: Env, cors: Headers): P
 
   try {
     const { token, issuedAt, expiresAt } = await issueMusicKitToken(request.headers.get("Origin"), env);
-    // 两个时刻都给出去，站点那侧才算得出半衰期 —— 只给到期时刻的话，它只能拿
-    // 「我什么时候收到的」当起点，而收到的可能已经是一份用掉一半的缓存
+    // 缓存令牌可能已消耗半段寿命，客户端必须用签发时刻而非收到时刻计算续期。
     return jsonResponse({ token, issuedAt, expiresAt }, { headers: cors });
   } catch (error) {
-    /*
-     * 只有自己抛的 ConfigError 原文外带（哪个变量没配，只有部署的人能修）；
-     * 其余异常一律通用文案 —— importKey / 运行时抛出来的 message 内容不由
-     * 我们控制，随手转发等于把内部细节交给任何一个能打到这个端点的人。
-     * 完整原文进 Worker 日志，排障看那边。
-     */
     console.error("[musickit-token] 签发失败：", error);
     const hint = error instanceof ConfigError ? error.hint : "签发失败，详情见 Worker 日志";
     return jsonResponse({ error: hint }, { status: 500, headers: cors });
   }
 }
 
-/** 清扫节奏。一条消失的可见连接最坏在人数里多留 VISIBLE_STALE_MS + 这个值 */
 const SWEEP_INTERVAL_MS = HEARTBEAT_INTERVAL_MS;
 
-/**
- * 全站一个房间，也是全站唯一一条 WebSocket：事件从这里广播，两个人头数也从这里数
- * （口径见 live-census.ts）。连接走休眠版 `ctx.acceptWebSocket()`，心跳由运行时用
- * `setWebSocketAutoResponse` 直接回，实例可以被回收、连接照样挂着。
- * 所以**不能把连接存在实例字段里**，连接列表一律现问 `ctx.getWebSockets()`，
- * 可见性记在各自的 attachment 上；自动回复也**必须登记在构造函数里**，醒来那一次
- * 没有人走接入路径。
- *
- * 只有接入、断开、页面切可见性和清扫闹钟会唤醒实例；可见人数变了才广播 `online`。
- */
+// DO 休眠会销毁实例字段；连接与可见性须从运行时恢复，自动回复须在构造函数登记。
 export class LivePushRoom extends DurableObject<Env> {
-  /**
-   * 本地开发的上游推送中继（见 public-api.ts 的 UPSTREAM_API_URL）：本地没有上报进来，
-   * 房间里永远没事件；配了上游就由这个实例自己去连生产的 /ws，收到什么原样广播给
-   * 本地页面。只在有本地页面连着时保持，最后一个页面走了就断开 —— 它在生产那边
-   * 也算一条连接，别让开发机一直把生产钉在「有人在看」。生产不配这个变量，
-   * 这几个字段永远是空的。
-   */
   private upstream: WebSocket | null = null;
   private upstreamPing: ReturnType<typeof setInterval> | null = null;
 
@@ -191,19 +151,14 @@ export class LivePushRoom extends DurableObject<Env> {
     }
 
     const pair = new WebSocketPair();
-    // 按 0 / 1 取，不绕 Object.values：WebSocketPair 的类型把这两个下标写成了
-    // 具名属性，摊成数组之后 noUncheckedIndexedAccess 会把它们变成可选的
     const client = pair[0];
     const server = pair[1];
 
-    // 可见性跟着握手来，不等第一条消息：否则可见的新访客先收到一个不含自己的人数，
-    // 紧接着又被自己那条 visible 改掉，页脚闪一下
     const now = Date.now();
     const visible = new URL(request.url).searchParams.get("visible") === "1";
     this.ctx.acceptWebSocket(server);
     server.serializeAttachment({ at: now, visible, seenAt: now } satisfies SocketMark);
     this.ctx.waitUntil(this.ensureUpstreamRelay());
-    // 新连接一接上就要拿到此刻的人数（页脚靠这第一条），人数变了就顺带播给所有人
     this.ctx.waitUntil(this.announce(this.census(), server));
 
     return new Response(null, { status: 101, webSocket: client });
@@ -213,7 +168,6 @@ export class LivePushRoom extends DurableObject<Env> {
     const base = process.env.UPSTREAM_API_URL?.trim().replace(/\/+$/, "");
     if (!base || this.upstream) return;
     try {
-      // 生产按 Origin 白名单放行握手，服务端到服务端没有浏览器替我们带，手动写站点的
       const response = await fetch(`${base}/ws`, {
         headers: { Upgrade: "websocket", Origin: site.url },
       });
@@ -224,7 +178,6 @@ export class LivePushRoom extends DurableObject<Env> {
       }
       socket.accept();
       this.upstream = socket;
-      // 生产那边静默过久（CONNECTION_CLOSE_MS）会把连接当僵尸关掉，和浏览器一样定时 ping 报个到
       this.upstreamPing = setInterval(() => {
         try {
           socket.send("ping");
@@ -237,7 +190,6 @@ export class LivePushRoom extends DurableObject<Env> {
       const drop = () => {
         if (this.upstream !== socket) return;
         this.dropUpstreamRelay();
-        // 本地还有页面挂着就重连；没有就等下一个页面接进来再连
         if (this.ctx.getWebSockets().length > 0) {
           setTimeout(() => void this.ensureUpstreamRelay(), 5_000);
         }
@@ -250,19 +202,13 @@ export class LivePushRoom extends DurableObject<Env> {
     }
   }
 
-  /**
-   * 上游事件带着 payload，页面收到会直接写进 SWR 缓存 —— 假数据开着时生产一推，
-   * 夹具就被盖掉了。所以转发前问一下本地：这条事件对应的端点有生效的注入就把
-   * payload 换成注入的那份（页面看到的和它自己去问端点一样），没有就原样转发。
-   */
+  // 推送 payload 会覆盖 SWR 缓存；本地注入必须同时覆盖推送，避免被生产数据冲掉。
   private async relayUpstreamMessage(raw: string): Promise<void> {
     let message: { type?: unknown; payload?: unknown } | null = null;
     try {
       message = JSON.parse(raw) as { type?: unknown; payload?: unknown };
     } catch {
-      // 不是 JSON 的照样转，页面那头自己会忽略
     }
-    // 在线人数是本地房间自己数的，生产那边的人数不转：转了本地页脚会被生产的数盖掉
     if (message?.type === "online") return;
     const path = typeof message?.type === "string" ? pathForEventType(message.type) : null;
     if (path && this.env.DEV_OVERRIDE_READER) {
@@ -299,19 +245,12 @@ export class LivePushRoom extends DurableObject<Env> {
         socket.send(message);
         delivered += 1;
       } catch {
-        // 已经断了但还没收到 close 的，丢掉这一条即可，运行时随后会清理
       }
     }
     return delivered;
   }
 
-  /**
-   * 两个人头数，一趟遍历数完（口径见 live-census.ts）。静默超过 `CONNECTION_CLOSE_MS` 的
-   * 顺路关掉，不额外挂闹钟。
-   *
-   * `leaving`：正在 webSocketClose / webSocketError 里的那条。回调跑的时候它还在
-   * `getWebSockets()` 里，数的时候得自己剔掉。
-   */
+  // close/error 回调期间连接仍在 getWebSockets() 中，计数必须显式排除 leaving。
   private census(leaving?: WebSocket, now = Date.now()): Census<WebSocket> {
     const samples: SocketSample<WebSocket>[] = [];
     for (const socket of this.ctx.getWebSockets()) {
@@ -324,7 +263,6 @@ export class LivePushRoom extends DurableObject<Env> {
     }
     const result = takeCensus(samples, now);
     for (const socket of result.expired) {
-      // 1001 = going away。关不掉（已经断了）就算了，运行时随后会清理
       try {
         socket.close(1001, "静默过久");
       } catch { }
@@ -332,19 +270,13 @@ export class LivePushRoom extends DurableObject<Env> {
     return result;
   }
 
-  /** 两个数一起：`/count` 与 `StateCore.audience()`。只读，不广播 */
   audience(): { connections: number; online: number } {
     const { connections, online } = this.census();
     return { connections, online };
   }
 
-  /**
-   * 上一次播出去的可见人数。实例休眠醒来就回到 null，那一次多播一遍同样的数，无害；
-   * 存进 storage 反而是每次切标签都多一次写。
-   */
   private lastOnline: number | null = null;
 
-  /** 可见人数变了就播给所有连接；没变但有新来的，只告诉它一个 */
   private publishOnline(census: Census<WebSocket>, newcomer?: WebSocket): void {
     const message = JSON.stringify({ type: "online", payload: { online: census.online } } satisfies LiveEvent);
     if (census.online !== this.lastOnline) {
@@ -357,11 +289,7 @@ export class LivePushRoom extends DurableObject<Env> {
     }
   }
 
-  /**
-   * 播人数，有人可见时再排一次清扫：对端没发 close 帧就消失的可见连接，要靠它把
-   * 人数降回来。已经排着就别动 —— 每次都 setAlarm 会把待跑的那次往后推，访客持续
-   * 切标签时清扫被无限推迟。
-   */
+  // 已有闹钟不能反复后推，否则持续切换标签会无限推迟清扫。
   private async announce(census: Census<WebSocket>, newcomer?: WebSocket): Promise<void> {
     this.publishOnline(census, newcomer);
     if (census.online > 0 && (await this.ctx.storage.getAlarm()) === null) {
@@ -369,19 +297,12 @@ export class LivePushRoom extends DurableObject<Env> {
     }
   }
 
-  /**
-   * 清扫。房间里还有人可见就续订，没人可见了不再续、链条自己结束 —— 只剩后台
-   * 标签页挂着时房间不会被闹钟叫醒。
-   * 用闹钟而不是只在 `/count` 被读时惰性清：那个入口的调用方是外部的上报器，
-   * 页脚的人数不能押在别人的 cron 上。
-   */
   async alarm(): Promise<void> {
     const census = this.census();
     this.publishOnline(census);
     if (census.online > 0) await this.ctx.storage.setAlarm(Date.now() + SWEEP_INTERVAL_MS);
   }
 
-  /** 页面切可见性时发 `visible` / `hidden`；"ping" 由运行时自动回，到不了这里 */
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
     const visible = parseVisibility(message);
     if (visible === null) return;
@@ -392,19 +313,17 @@ export class LivePushRoom extends DurableObject<Env> {
   }
 
   async webSocketClose(ws: WebSocket, code: number): Promise<void> {
-    // 1005（没给关闭码）和 1006（没收到 close 帧）都是"保留码"：
-    // 它们描述的是连接怎么断的，不能拿来当自己要发出去的关闭码，传进去会抛
+    // 1005/1006 是接收端保留码，不能传给 close，否则会抛错。
     try {
       ws.close(code === 1005 || code === 1006 ? 1000 : code);
     } catch { }
-    // 最后一个本地页面走了，上游中继也一起断，别在生产那边多占一条连接
     if (this.upstream && this.ctx.getWebSockets().every((socket) => socket === ws)) {
       this.dropUpstreamRelay();
     }
     await this.announce(this.census(ws));
   }
 
-  /** 出错之后运行时不一定再补一次 close，人数在这里也得更新 */
+  // error 后运行时未必再触发 close，必须在这里同步人数。
   async webSocketError(ws: WebSocket): Promise<void> {
     await this.announce(this.census(ws));
   }
@@ -419,15 +338,12 @@ const worker = {
       return handleImport(request, env);
     }
 
-    // 每条返回都带上，不只是成功那条：只有 200 带 CORS 头的话，浏览器侧的调用方
-    // 看到的会是一句 CORS 错误，而不是 401 / 400 这些真正说明问题的状态码
     const cors = getCorsHeaders(request, env);
 
     if (request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: cors });
     }
 
-    // 令牌、歌词、动态封面没有 {ok} 信封，空库也签不出令牌。转给生产，并带上访客的 Origin。
     if (previewWorkerEnabled() && isPreviewProxyPath(url.pathname)) {
       if (request.method !== "GET") return new Response("Method not allowed", { status: 405, headers: cors });
       if (!isAllowedOrigin(request, env)) {
@@ -439,18 +355,15 @@ const worker = {
       return new Response(upstream.body, { status: upstream.status, headers });
     }
 
-    // 排在公开 API 那条之前：它不是状态读取，不进 StateHub
     if (url.pathname === MUSICKIT_TOKEN_PATH) {
       return handleMusicKitToken(request, env, cors);
     }
 
     if (url.pathname.startsWith("/api/")) {
-      // 本地假数据注入（见 public-api.ts）要 PUT / DELETE；只在 .dev.vars 开了 DEV_OVERRIDES 时放行
       const devOverride = process.env.DEV_OVERRIDES?.trim() === "true" && url.pathname.startsWith("/api/dev/");
       if (request.method !== "GET" && !devOverride) return new Response("Method not allowed", { status: 405, headers: cors });
       const origin = request.headers.get("Origin");
       if (origin && !isAllowedOriginValue(origin, getAllowedOrigins(env))) return jsonResponse({ ok: false }, { status: 403, headers: cors });
-      // 歌词、动态封面按参数查，不过公开读屏障，先问本机房的边缘缓存（见 edge-cache.ts）
       const lookup = isLookupPath(url.pathname);
       if (!lookup && !isPublicApiPath(url.pathname)) return new Response("Not found", { status: 404, headers: cors });
       const response = lookup ? await serveLookup(request, env, ctx) : await executePublicRequest(request, env, ctx);
@@ -471,7 +384,6 @@ const worker = {
     }
 
     if (url.pathname === "/") {
-      // 只报存活，不碰 Durable Object：根路径被各种探针和浏览器不停打，人头数走 /count
       return jsonResponse({ ok: true, service: "api" });
     }
 

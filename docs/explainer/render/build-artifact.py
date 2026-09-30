@@ -1,4 +1,3 @@
-# 从 index.html 生成发布版：去掉 doctype/html/head/body 外壳，保留 <title>、<style> 和正文
 import re, sys
 src, dst = sys.argv[1], sys.argv[2]
 s = open(src, encoding="utf-8").read()

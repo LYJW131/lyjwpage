@@ -6,7 +6,6 @@ import type { AgentRow } from "../site.js";
 import { codexWindows, object, rowFromWindows, text } from "../windows.js";
 
 const REFRESH_ENDPOINT = "https://auth.openai.com/oauth/token";
-/** 公开客户端 id，和官方 `codex` CLI / TokenTracker 同一份 */
 const CODEX_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
 const REFRESH_THRESHOLD_MS = 8 * 24 * 60 * 60 * 1000;
 const ACCESS_TOKEN_REFRESH_WINDOW_MS = 5 * 60 * 1000;
@@ -184,14 +183,12 @@ export function normalizeCodexSparkRateWindows(additionalRateLimits: unknown): {
   return { spark_primary_window: session, spark_secondary_window: weekly };
 }
 
-/** 把 wham/usage 响应体规整成 codexWindows 吃的形状。纯函数。 */
 export function normalizeCodexUsage(
   body: unknown,
   planType: string | null = null,
 ): Record<string, unknown> {
   const rec = asRecord(body) ?? {};
   return {
-    // 线上套餐来自 access token 的 JWT claim；fixture 没有 JWT，退到响应体里的 plan_type
     plan_type: planType ?? text(rec.plan_type),
     ...normalizeCodexRateWindows(rec.rate_limit ?? rec),
     ...normalizeCodexSparkRateWindows(rec.additional_rate_limits),

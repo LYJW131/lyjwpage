@@ -1,72 +1,44 @@
 name = "api"
 main = "src/index.ts"
 compatibility_date = "2025-02-14"
-# Node 兼容用于 AsyncLocalStorage、crypto；process.env 为共用读写工具提供配置。
 compatibility_flags = ["nodejs_compat", "nodejs_compat_populate_process_env"]
 workers_dev = true
 
-# API、实时推送与两个人头数（开着 / 可见）使用 api 源。
-# 上报与内部通知由上报入口 Worker（workers/ingress）接收，ingest 域名挂在那边，这里没有上报路由。
 routes = [
   { pattern = "api.homepage.lyjw.llc", custom_domain = true }
 ]
 
-# 上报入口与采集 Worker 经 Service Binding 调 StateCore（见 src/state-core.ts），
-# 这里不用声明：entrypoint 由调用方的 binding 指定。
 
 [vars]
-# 逗号分隔。实时推送、公开 API 的 CORS 和 MusicKit 令牌签发使用此名单。
-# 对令牌它还是第二道限制：名单里写死的域会签进 JWT 的 origin 声明，由 Apple 校验，
-# 令牌被复制到别的站点上也用不了。通配项只参与第一道（Apple 不解析通配符），
-# 匹配到的预览域名和 localhost 只签它自己一个，见 src/musickit-token.ts。
 ALLOWED_ORIGINS = "https://lyjw131.com,https://lyjw.me,https://dev.lyjw.me,https://*.vercel.app"
-# MusicKit 签发用的 Team ID 和 Key ID 不是秘密；.p8 私钥走 secret，见 README。
 APPLE_MUSIC_TEAM_ID = "2VTXNMR2GL"
 APPLE_MUSIC_KEY_ID = "88KBJL3CKU"
-# 令牌有效期（秒）。不填按 7 天，Apple 允许的上限是 15777000（约半年）。
-# 续期不看这个数：过了「签发 → 到期」的中点就换一份新的，改这里不用调别处。
-# MUSICKIT_TOKEN_TTL_SECONDS = "604800"
-# 后端统一负责键前缀；Vercel 只消费公开快照。
-# 图片地址是 `/img/<对象键>` 同源路径（见 src/lib/asset-url.ts），Worker 不配交付域；
-# 回源 R2 的地址只配在站点（Vercel 的 R2_PUBLIC_BASE_URL）和 ESA 上。
 STORAGE_PREFIX = "lyjwpage"
-# 首屏布局变了时回敲这份站点的 /api/revalidate
 SITE_URL = "https://lyjw.me"
-# lyjw131.com 经 ESA 回源 lyjw.me，首页按源站 SWR 头缓存，不走刷新 API。
 APPLE_MUSIC_STOREFRONT = "cn"
-# Sentry 的写入地址（DSN 本身公开，不是秘密）。本地 wrangler.test.toml 不配，本地就不上报。
 SENTRY_DSN = "https://13ba806bda9ae5a9086576b2e3d23cfb@o4511888459890688.ingest.us.sentry.io/4512132602855424"
 
-# Sentry 从这里取 release（Worker 版本 ID），和控制台的部署记录一一对应。
 [version_metadata]
 binding = "CF_VERSION_METADATA"
 
 [alias]
 "@/lib/storage-driver" = "./src/storage-driver.ts"
-# developer token 只在这里签：站点侧同名模块是个只会抛错的桩
 "@/lib/apple-developer-token" = "./src/apple-developer-token.ts"
-# music user token 读凭据 KV：站点侧同名模块同样只会抛错
 "@/lib/apple-music-credentials" = "./src/apple-music-credentials.ts"
 "@/lib/lag-store" = "./src/lag-store.ts"
 
-# LIVE_PUSH 是全站唯一一条 WebSocket（/ws，事件也从它广播），/count 返回开着与可见两个人头数。
 [[durable_objects.bindings]]
 name = "LIVE_PUSH"
 class_name = "LivePushRoom"
 
-# 共享凭据（shared/credentials.ts）：Mac 推来的 Apple Music user token，上报入口写、这里只读
-# （歌词、曲目查询）。和可滞后层分开，公开读取的代码路径只碰 LAG，白名单写错也漏不出这里的东西。
 [[kv_namespaces]]
 binding = "CREDENTIALS"
 id = "c24d1670d97b4649ab5aa4c0944dfbfc"
 
-# 可滞后层（shared/lag.ts）：采集 Worker 与上报入口直接写，这里的公开读取端点只读。
 [[kv_namespaces]]
 binding = "LAG"
 id = "e9c72a9517884aeb95db7386b630a691"
 
-# 长期活动历史归档（docs/state-storage.md）：StateHub 只留 `PULSE_TTL_MS` 那么久，这里长期保留
-# （活动桶按权威范围替换，除此之外不删）。这里只写 pulse 的事实表（cron）；上报的那几张表由上报入口写。
 [[d1_databases]]
 binding = "HISTORY"
 database_name = "lyjwpage-history"
@@ -75,11 +47,6 @@ database_id = "bf3a227f-d12e-428a-8f4e-0f56b97464df"
 [observability]
 enabled = true
 
-# 秘密通过 wrangler secret put 配置：REVALIDATE_SECRET（调站点 /api/revalidate）、
-# APPLE_MUSIC_PRIVATE_KEY（MusicKit 签发用的 .p8 全文）、
-# TYPESAFE_API_KEY（TypeSafe AI 官方 API，给 pulse 打活动分的 Jev 评估模型；不配就不打分，端点照常给泳道）。
-# 外部数据的只读令牌（GitHub、Vercel、Cloudflare、Sentry、PageSpeed）都在采集 Worker 上，这里没有。
-# 每分钟一趟：pulse 归档与评分、Sentry 心跳（api-minute-cron）。外部拉取都在采集 Worker。
 [triggers]
 crons = ["* * * * *"]
 
@@ -88,9 +55,7 @@ name = "STATE"
 class_name = "StateHub"
 
 
-# 将原 ingest 的三个 SQLite 命名空间整体转移，保留对象 ID 与全部数据。
-# OnlineCounterRoom 写进 new_sqlite_classes，只为让 Wrangler 4 在 v2 删除它之前认得出这个类。
-# 这个标签已经在生产生效，上传时不会再次执行。
+# Wrangler 必须先认识 OnlineCounterRoom，后续删除迁移才可生效。
 [[migrations]]
 tag = "v1-transfer-from-ingest"
 new_sqlite_classes = ["OnlineCounterRoom"]
@@ -114,9 +79,7 @@ to = "StateHub"
 tag = "v2-split-online-counter"
 deleted_classes = ["OnlineCounterRoom"]
 
-# 分支 Preview（wrangler preview）。不继承上面的生产绑定。
-# Durable Object 每个 Preview 各有一套空库；代码走 env.STATE / env.LIVE_PUSH，所以绑定要再声明一次。
-# 不挂 cron、生产域名、KV、D1。公开读取靠 UPSTREAM_API_URL 以生产为准。
+# Preview 不继承生产绑定，DO 绑定必须显式重声明。
 [previews.vars]
 PREVIEW_WORKER = "true"
 SENTRY_DSN = "https://13ba806bda9ae5a9086576b2e3d23cfb@o4511888459890688.ingest.us.sentry.io/4512132602855424"

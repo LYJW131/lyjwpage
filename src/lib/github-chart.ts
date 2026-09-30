@@ -6,13 +6,6 @@ import { LAG_KEYS } from "@shared/lag";
 
 const GITHUB_GRAPHQL = "https://api.github.com/graphql";
 
-/**
- * 贡献日历。拉取在采集 Worker（`githubChartJob`），整年一份写进可滞后层；
- * 公开端点只读那一份，`?since=` 的切片在读取这一侧做。令牌只在采集 Worker 上。
- *
- * 信封是 origin + 日序列，和年度 token 同一形状。逐日的 date / weekday / label
- * 浏览器现算；GitHub 的四分位不能在这边重算，所以 scores 跟着走。
- */
 const CALENDAR_QUERY = `query ($login: String!) {
   user(login: $login) {
     contributionsCollection {
@@ -85,7 +78,6 @@ function mapDays(payload: CalendarPayload): GithubChartPayload | null {
   return origin && counts.length ? { origin, counts, scores } : null;
 }
 
-/** 公开端点：可滞后层里的整年日历；还没写过就是等采集 */
 export function getGithubChart(): Promise<LagResult<GithubChartPayload>> {
   return loadLag<GithubChartPayload>(LAG_KEYS.githubChart, "Waiting for the first contribution calendar");
 }
@@ -111,12 +103,6 @@ export function sliceGithubChart(
   };
 }
 
-/**
- * 用 GraphQL 拉过去一年的贡献日历（采集 Worker 调）。
- *
- * Fine-grained 个人令牌看不见组织仓，classic 才能和资料页对上。GitHub 挂了就抛，
- * 采集那一轮不写，可滞后层里上一张好图原样留着。
- */
 export async function fetchGithubChart(token: string): Promise<GithubChartPayload> {
   const response = await fetch(GITHUB_GRAPHQL, {
     method: "POST",
@@ -135,11 +121,6 @@ export async function fetchGithubChart(token: string): Promise<GithubChartPayloa
 
   const body = (await response.json().catch(() => null)) as CalendarPayload | null;
   if (!response.ok || !body || body.errors?.length) {
-    /**
-     * 上游原文只进日志。这条 message 会经 statusEnvelope 原样变成公开 JSON 里的
-     * `error`，而 GitHub 的报错里可能带令牌状态、配额、组织名这类不该出门的东西。
-     * 页面只需要知道「这栏这轮没取到」，详情留给服务端日志。
-     */
     const reason = body?.errors?.map((error) => error.message).filter(Boolean).join("; ");
     console.error("[github-chart]", response.status, reason || "响应不是预期的形状");
     throw new Error("GitHub 贡献日历取数失败");

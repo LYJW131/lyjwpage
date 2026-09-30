@@ -8,16 +8,7 @@ import { CODING_USAGE_SOURCE_NAMES, type CodingUsageSource } from "@shared/codin
 import { buildCodingNowAgents } from "@shared/coding-usage-view";
 import type { StorageBatch } from "@shared/storage-client";
 
-/**
- * 活动事实（各 agent 最近一条用量事件）的状态核心那一半：`coding:activity:<来源>` 整份替换，
- * 拼好整份 `/api/status/coding/now` 推 `coding-now`。
- *
- * 只在浏览器看得出区别时推：比起**上一次推出去的那份**（`coding:now:pushed`），多出一个
- * (agent, 来源)、换了模型、时刻往前走了大半分钟。灯按 5 分钟窗口现算，推送只是让它立刻亮；
- * 各来源一分钟上下一封，时刻差在 60 秒上下抖，门槛留点余量。拿上一封存下的报告比会漏推：
- * 每 30 秒一封、每封只往前走 30 秒，永远跨不过门槛。内容不变的保活（Mac 至少 5 分钟一封）
- * 只续采集时刻，不推。存活的变化走 `presence` 事件，这里不为它推。
- */
+// 推送阈值要和上次已推值比较，逐封比较会让连续小增量永远达不到门槛。
 export type CodingActivities = Partial<Record<CodingUsageSource, StoredCodingActivity>>;
 
 const PUSH_STEP_MS = 45_000;
@@ -54,19 +45,13 @@ function worthPushing(pushed: CodingNowPayload["agents"], next: CodingNowPayload
 }
 
 export type CodingActivityLanding = {
-  /** 把这封的写入排进调用方的那一批（云端 OTLP 那条路和计数器同一个事务） */
   stage: (batch: StorageBatch) => void;
   commit: () => Promise<unknown>;
   event: LiveEvent | null;
-  /** 收下之前存着的那份（Cursor 观测要比时刻有没有往前走） */
   previous: StoredCodingActivity | null;
-  /** 采集时刻比存着的旧（重发、乱序）就不收 */
   accepted: boolean;
 };
 
-/**
- * `liveness` 是 Mac 那封上报刚算出来的存活；别的来源不带，读存着的那份。
- */
 export async function prepareCodingActivity(
   source: CodingUsageSource,
   report: CodingActivityReport,
@@ -93,7 +78,6 @@ export async function prepareCodingActivity(
     : null;
   const stage = (batch: StorageBatch) => {
     batch.set(codingActivityKey(source), JSON.stringify(next));
-    // 推送基准和这封一起落：推了就是这一份，没推就留着上一次推的
     if (push) batch.set(codingPushedNowKey(), JSON.stringify(agents));
   };
   return {

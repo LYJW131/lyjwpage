@@ -1,14 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-/**
- * 站点契约的校验在仓库根的 shared/ 里（shared/coding-usage.ts 与 shared/ingest/agents.ts）。上报器是
- * 独立部署单元，镜像里没有它们，运行时不能 import；但测试在整个仓库里跑（本地和 CI），可以借来核对：
- * 把上报器各条路径产出的载荷，按线上的样子（JSON 往返一遍）喂给站点真正的校验，
- * 抄在 coding-usage.ts 里的类型抄歪了、或者站点的校验规则变了，这里会红。
- *
- * 先挂上 `@/` 别名的钩子，shared 里的文件才 import 得动。
- */
 await import("../../../src/lib/testing/register-alias.mjs");
 const contract = await import("../../../shared/coding-usage.ts");
 const codingModels = await import("../../../shared/coding-models.ts");
@@ -28,7 +20,6 @@ const {
   parseUsagePage,
 } = await import("../dist/cursor-usage.js");
 
-/** 站点收到这一封的时刻 */
 const NOW = Date.parse("2026-09-29T04:12:30Z");
 
 function eventRow(offsetMs: number, model: string, tokens: number | null) {
@@ -47,7 +38,6 @@ function eventRow(offsetMs: number, model: string, tokens: number | null) {
 
 const DAY = 86_400_000;
 
-/** 跨三个站点日的一批事件：有估得到价的、估不到价的（composer-2）、不按 token 计费的 */
 const rows = [
   eventRow(-2 * DAY - 3_600_000, "claude-sonnet-4-5", 1_000),
   eventRow(-DAY, "gpt-5", 2_000),
@@ -63,7 +53,6 @@ const events = parseUsagePage(
   NOW,
 ).events;
 
-/** 快循环那一次取到的页：有正常事件，有缺 token 分列的怪事件，还有一条钟差带来的「未来」事件 */
 const RECENT_FROM = bucketStart(NOW - 15 * 60_000);
 const recentPage = () =>
   parseRecentPage(
@@ -80,7 +69,6 @@ const recentPage = () =>
     NOW + 5 * 60_000,
   );
 
-/** 线上的样子：JSON 往返一遍（undefined 键没了、NaN 变 null） */
 const wire = <T,>(value: T): T => JSON.parse(JSON.stringify(value));
 
 test("codingUsage：全量那一轮和增量那一轮的账本都过站点校验，收下的和发出的一模一样", () => {
@@ -182,10 +170,6 @@ test("校验确实在跑：少一列、桶起点没对齐、用量行带了 erro
   assert.throws(() => contract.normalizeCodingTokenBucketReport(buckets, NOW), /对齐 5 分钟/);
 });
 
-/**
- * 造 count 个不同模型、各一条事件，用量各不相同（第 0 个最多）。事件都早于 NOW，落在同一个站点日、
- * 同一个 5 分钟桶里，所以一天的模型行数、一个窗口的行数都等于 count。
- */
 function crowdedEvents(count: number) {
   const start = bucketStart(NOW - 3_600_000);
   const crowded = Array.from({ length: count }, (_, index) =>

@@ -12,18 +12,10 @@ import type { GithubRepoContributor, GithubRepoPayload } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import type { DeploymentState, VercelDeployment } from "@/lib/vercel-deployments-types";
 
-/** 头像展示尺寸；按它的 2 倍取图（avatarSrc），unoptimized 直连不进优化器。 */
 const AVATAR_PX = 28;
 
-/** 名单只列前几位，不滚动；其余只进总数。和右边的提交列表一样长。 */
 const CONTRIBUTOR_LIMIT = 6;
 
-/**
- * 名单与顶部占比条的配色，按排名取色（#1 恒为蓝）。
- *
- * 固定 hex，不跟主题走：这几个都是在纸面底和深色底上都立得住的中间调。
- * 人比色多时按排名循环，最后一名的色块极小，撞色也看不出来。
- */
 const RANK_COLORS = [
   "#3e70c9",
   "#3d7f50",
@@ -43,7 +35,6 @@ function avatarSrc(url: string): string {
   return url.includes("?") ? `${url}&s=${AVATAR_PX * 2}` : `${url}?s=${AVATAR_PX * 2}`;
 }
 
-/** 提交时间按站点时区显示，服务端和浏览器算出来的一样，和奖杯卡同一套。 */
 const commitTimeFormat = new Intl.DateTimeFormat("en-US", {
   month: "numeric",
   day: "numeric",
@@ -70,14 +61,10 @@ function ContributorRow({
 }) {
   return (
     <div
-      // 和 GitHub Insights → Contributors 同一口径：`Co-authored-by` 的提交
-      // 作者和协作者各记一次，所以这一列加起来会超过顶部的 COMMITS。
       title={`${person.login} · ${person.commits.toLocaleString("en-US")} commits (including Co-authored-by)`}
       className="relative flex min-h-[44px] min-w-0 items-center gap-2 border border-line bg-muted/40 px-3 max-sm:flex-wrap max-sm:gap-y-0 max-sm:py-1"
     >
-      {/* 骑在左边框上，和外框齐平，不被框线包在里面 */}
       <span aria-hidden className="absolute top-[-1px] bottom-[-1px] left-[-1px] w-1" style={{ backgroundColor: color }} />
-      {/* 只有头像加名字链到 GitHub 主页，整行不是点击区；上下撑满行高，数字那一侧不响应 */}
       <a
         href={`https://github.com/${person.login}`}
         target="_blank"
@@ -105,11 +92,6 @@ function ContributorRow({
           {person.login}
         </span>
       </a>
-      {/*
-        窄屏上两段读数占掉大半行，名字被挤得只剩几个字母：读数折到第二行，缩进到
-        名字底下。名字加读数两行的字块比头像高，头像下移居中其中，读数上提贴回
-        名字底。sm 起并回一行。
-      */}
       <span className="flex shrink-0 gap-2 font-mono text-[11px] leading-4 tabular-nums max-sm:-mt-3 max-sm:basis-full max-sm:pl-9">
         <span className="text-muted-foreground">{person.commits.toLocaleString("en-US")} commits</span>
         <span>
@@ -124,7 +106,6 @@ function ContributorRow({
 
 const stateLabels: Record<DeploymentState, string> = { READY: "Deployed", BUILDING: "Building", QUEUED: "Queued", INITIALIZING: "Initializing", ERROR: "Failed", CANCELED: "Canceled", UNKNOWN: "—" };
 
-/** 署名行的头像展示尺寸；同样按 2 倍取图，unoptimized 直连。 */
 const AUTHOR_PX = 16;
 
 function AuthorAvatar({ author }: { author: CommitAuthor }) {
@@ -135,10 +116,6 @@ function AuthorAvatar({ author }: { author: CommitAuthor }) {
   return <span aria-hidden className={cn(className, "flex items-center justify-center text-[9px] text-muted-foreground")}>{author.name.slice(0, 1).toUpperCase()}</span>;
 }
 
-/**
- * GitHub 提交页那一行：叠着的头像 + `A and B committed 13 minutes ago`。
- * 相对时间由「当下」推出，首帧（服务端和 hydrate）先画绝对时刻，挂载后换成相对的，每分钟再刷。
- */
 function CommitByline({ authors, committedAt }: { authors: CommitAuthor[]; committedAt: string | null }) {
   const mountedAt = useMountedAt();
   const [tick, setTick] = useState(0);
@@ -188,7 +165,6 @@ function CommitVerifiedIcon({ className }: { className?: string }) {
   );
 }
 
-/** 一条提交的加高卡：标题 + 署名 + 部署状态，高度正好占左边两行加一条缝。 */
 function CommitCard({ commit, deploy }: {
   commit: GithubRecentCommit;
   deploy: { deployment: VercelDeployment; production: boolean } | undefined;
@@ -224,10 +200,6 @@ function CommitCard({ commit, deploy }: {
   );
 }
 
-/**
- * 左边 6 行名单、右边 3 张提交大卡：一张卡占左边两行加一条缝，
- * 两边总高严格对齐。窄屏自动上下堆叠；宽屏右栏用左边线分隔。
- */
 export function RepoContributions({
   data,
   recentCommits = [],

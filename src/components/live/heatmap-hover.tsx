@@ -35,19 +35,13 @@ export function hoverCapable() {
   return window.matchMedia("(hover: hover)").matches;
 }
 
-/** 扫过格子时不闪浮层；停稳这一下再展开。 */
 const HOVER_DELAY_MS = 120;
 
-/**
- * 悬停短暂停留后临时展开；点一下钉住，再点同一格取消。
- * 钉住时描边仍跟光标，浮层不换格。点格子外、滚动或改窗口尺寸都收起来。
- */
 export function useHeatmapOpen<T extends { date: string }>() {
   const svgRef = useRef<SVGSVGElement>(null);
   const delayRef = useRef<number | null>(null);
   const [hover, setHover] = useState<T | null>(null);
   const [preview, setPreview] = useState<T | null>(null);
-  /** 当前展开的是哪一格。previewCell 要在事件处理里读它，读 state 会慢一拍 */
   const previewRef = useRef<T | null>(null);
   const [pinned, setPinned] = useState<T | null>(null);
   const shown = pinned ?? preview;
@@ -76,17 +70,8 @@ export function useHeatmapOpen<T extends { date: string }>() {
   const previewCell = useCallback(
     (cell: T) => {
       setHover(cell);
-      // 钉住时描边跟着光标走，但浮层不换格
       if (pinned) return;
-      /**
-       * **已经展开在这一格上就什么都不做。**
-       *
-       * 格子上同时挂着 onFocus 和 onClick，而点击时浏览器**先给焦点、后发 click**。
-       * 少了这道闸，点下去的顺序是：onFocus → 收起浮层 + 排 120ms → onClick → 重新展开，
-       * 中间那一段就是肉眼可见的「先隐藏又显示」。指针在格子上停稳过的话必然踩中。
-       *
-       * 顺带也挡住了同一格里的鼠标移动反复重排定时器 —— 那会让浮层迟迟不出现。
-       */
+      // 点击先触发 focus 再触发 click；同格不能先收起，否则浮层会闪一下。
       if (previewRef.current?.date === cell.date) return;
       clearDelay();
       setPreview(null);
@@ -139,7 +124,6 @@ export function useHoverDismiss(
   }, [active, hide, svgRef]);
 }
 
-/** 方向键在格子间怎么走：一列是连续七天，所以上下 ±1 天、左右 ±7 天（同一星期几） */
 const KEY_STEP: Record<string, number> = {
   ArrowUp: -1,
   ArrowDown: 1,
@@ -147,16 +131,6 @@ const KEY_STEP: Record<string, number> = {
   ArrowRight: 7,
 };
 
-/**
- * 两张热力图（GitHub 贡献、年度 token）共用的 SVG 骨架。
- *
- * 格子的 role / aria-label / 方向键漫游只有这一份实现，键盘可达性改一处就够。
- *
- * 焦点用 roving tabindex：整年 365 个格子若各占一个 Tab 站，键盘用户要按
- * 三百多下才能走出图表。只有「当前格」进 Tab 序列，格子之间用方向键移动
- * （Home / End 跳到年头年尾），Enter / Space 等价于点一下（钉住浮层）。
- * 每个格子仍各自带 aria-label，读屏的虚拟光标才能逐格读到数据。
- */
 export function HeatmapGrid({
   svgRef,
   weeks,
@@ -169,7 +143,6 @@ export function HeatmapGrid({
   svgRef: RefObject<SVGSVGElement | null>;
   weeks: GithubChartDay[][];
   hotDate: string | null;
-  /** 整张图的可访问名 */
   label: string;
   onCellPreview: (day: GithubChartDay, target: Element) => void;
   onCellClear: () => void;
@@ -180,7 +153,6 @@ export function HeatmapGrid({
     [weeks],
   );
   const [activeDate, setActiveDate] = useState<string | null>(null);
-  // 数据窗口一换，记住的那天可能已经滚出窗口 —— 落回最后一天（今天）
   const marked = activeDate ? cells.findIndex((cell) => cell.day.date === activeDate) : -1;
   const activeIndex = marked >= 0 ? marked : cells.length - 1;
   const { width, height } = chartSize(weeks.length);
@@ -208,7 +180,6 @@ export function HeatmapGrid({
     if (event.key === "Home") target = 0;
     else if (event.key === "End") target = cells.length - 1;
     else if (step !== undefined) target = index + step;
-    // 方向键 / Home / End 默认会滚页面，接手了就别让它再滚一次
     if (target === null) return;
     event.preventDefault();
     focusAt(target);
@@ -226,7 +197,6 @@ export function HeatmapGrid({
         if (event.pointerType === "mouse" && hoverCapable()) onCellClear();
       }}
     >
-      {/* 月份和星期只是给眼睛的刻度，数据本身在每个格子的 aria-label 里 */}
       {monthLabels(weeks).map((item) => (
         <text
           key={`m-${item.text}-${item.x}`}
@@ -284,9 +254,6 @@ export function HeatmapGrid({
   );
 }
 
-/**
- * 卡片 overflow-hidden 会裁掉格子上的浮层，所以挂到 document.body。
- */
 export function HeatmapTooltip({
   date,
   value,
@@ -314,7 +281,6 @@ export function HeatmapTooltip({
   );
 }
 
-/** Shared body portal and viewport positioning for chart details. */
 export function AnchoredTooltip({ anchor, contentKey, children }: {
   anchor: CellAnchor;
   contentKey: string;
@@ -344,7 +310,6 @@ export function AnchoredTooltip({ anchor, contentKey, children }: {
     const place: "above" | "below" = above >= pad ? "above" : "below";
     const top = place === "above" ? above : anchor.top + anchor.height + gap;
     const diamond = Math.min(Math.max(10, center - left), width - 10);
-    // 位置没动就保住引用，别为一次空跑多渲染一轮
     setPos((prev) =>
       prev &&
       prev.left === left &&

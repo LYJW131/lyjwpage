@@ -1,11 +1,4 @@
-/**
- * 前台应用算不算「在写代码」。Pulse 的 Coding 道把它记进原始观测
- * （`desktop.coding`），三色带和 Jev 都从那里读。
- */
-/**
- * 已知的 coding 应用。id 从 desktop-app-overrides 抄过来，再补上编辑器 / 终端；
- * 不从 .tsx 引用，避免把 React 拖进 Worker 和纯函数测试。
- */
+// 不从 TSX 导入应用表，避免把 React 带进 Worker。
 const CODING_BUNDLE_IDS = new Set([
   "com.todesktop.230313mzl4w4u92",
   "com.mitchellh.ghostty",

@@ -1,9 +1,3 @@
-/**
- * 充电设备负载的类型收敛。纯函数，客户端和 ingest 共用。
- *
- * 上报器 `chargingDevices.devices[]` 和本机 SSE 的 `device` 是同一形状：
- * 公共字段在顶层，设备特有的收在子对象。这里不碰存储。
- */
 
 import { IMAGE_OBJECT_KEY } from "./asset-url.ts";
 import { text } from "./json.ts";
@@ -12,11 +6,8 @@ import type { ChargerPort, ChargerStatus, PowerBankPort, PowerBankStatus } from 
 const CHARGER_PORTS = ["C1", "C2", "C3"] as const;
 const POWER_BANK_PORTS = ["C1", "C2", "A", "B"] as const;
 
-/** Anker Prime 充电头额定总功率 */
 export const CHARGER_MAX_POWER = 160;
-/** 充电头型号。上报器丢了 `model` 时顶栏用这个。 */
 export const CHARGER_MODEL = "A2687";
-/** 充电宝型号。上报器丢了 `model` 时顶栏用这个。 */
 export const POWER_BANK_MODEL = "A110G";
 
 type RawDevicePort = {
@@ -34,7 +25,6 @@ type RawDevicePort = {
 
 export type RawChargingDevice = {
   id?: string;
-  /** "charger" / "powerBank" */
   kind?: string;
   model?: string | null;
   connected?: boolean;
@@ -64,7 +54,6 @@ export type RawChargingDevices = {
 
 export type RawPowerBank = RawChargingDevice;
 
-/** 空串和纯空白都当没有。上报器那边取不到值时给的是 null，不带 "N/A" 之类的占位符 */
 function displayText(value: string | null | undefined): string | null {
   if (value == null) return null;
   const text = String(value).trim();
@@ -79,16 +68,11 @@ function deviceInfo(raw: RawChargingDevice): ChargerStatus["device"] {
   };
 }
 
-/**
- * 顶栏右侧：牌子 + 型号。上报器给的是 SKU（A2687），没有牌子。
- * 已经带 Anker 的字符串不再叠一层。
- */
 export function ankerModelLabel(model: string | null | undefined, fallback: string): string {
   const sku = displayText(model) ?? fallback;
   return /^anker\b/i.test(sku) ? sku : `Anker ${sku}`;
 }
 
-/** 上游给的是秒（带小数），转成 JS 毫秒 */
 function toMillis(updatedAt: number | undefined): number | null {
   if (updatedAt == null || Number.isNaN(Number(updatedAt))) return null;
   const value = Number(updatedAt);
@@ -123,10 +107,6 @@ function normalizePowerBankPort(id: string, port: RawDevicePort = {}): PowerBank
   };
 }
 
-/**
- * 从多设备负载里挑出充电头。用 `kind` 认，不要靠数组顺序。
- * 一台都没有就返回 null，调用方按「这次没带充电头」处理。
- */
 export function pickCharger(raw: RawChargingDevices): RawChargingDevice | null {
   return raw.devices?.find((device) => device.kind === "charger") ?? null;
 }

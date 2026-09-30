@@ -1,4 +1,3 @@
-// 两份 16-bit PCM wav 逐样本比较：整体与分段的差值 RMS
 import fs from "node:fs";
 const load = (p) => { const b = fs.readFileSync(p); let o = 12; while (b.toString("ascii", o, o + 4) !== "data") o += 8 + b.readUInt32LE(o + 4); const n = b.readUInt32LE(o + 4) / 2; return new Int16Array(b.buffer, b.byteOffset + o + 8, n); };
 const [pa, pb] = process.argv.slice(2);

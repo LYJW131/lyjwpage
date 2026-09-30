@@ -4,7 +4,6 @@ import test from "node:test";
 import type { WatchingMedia } from "./types.ts";
 import { describeDevice, describeMedia } from "./watching-media.ts";
 
-/** 实机上那部闪光的哈萨维：1080p H264 SDR，日语 EAC3 5.1，外挂简中字幕 */
 const gundam: WatchingMedia = {
   container: "mkv",
   bitrate: 6421965,

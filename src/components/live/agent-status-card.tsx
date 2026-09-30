@@ -74,7 +74,6 @@ function indicatorText(indicator: AgentIndicator): string {
   }
 }
 
-/** LobeHub 没有 TypeSafe；这是 typesafe.ai 页头的标志，原图 16.487×24，左右补边成方形。 */
 function TypesafeIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -121,10 +120,6 @@ function formatWhen(value: string | null): string | null {
   return incidentAt.format(parsed);
 }
 
-/**
- * 弹窗里有没有比「Operational · No active incidents」更多的东西。
- * 全绿就直接去官方状态页，有事才开弹窗方便快速看。
- */
 function hasDetail(agent: AgentStatusRow): boolean {
   return (
     agent.indicator !== "operational" ||
@@ -138,7 +133,6 @@ function hasDetail(agent: AgentStatusRow): boolean {
 function Detail({ agent, onClose }: { agent: AgentStatusRow; onClose: () => void }) {
   const titleId = useId();
   const label = indicatorLabel(agent.indicator);
-  /** 只列有异常的组件，最多六行。 */
   const troubled = agent.components.filter((component) => component.indicator !== "operational");
   const shown = troubled.slice(0, 6);
   return (
@@ -205,7 +199,6 @@ function Detail({ agent, onClose }: { agent: AgentStatusRow; onClose: () => void
             })}
           </ul>
         ) : (
-          // 没有此刻的检查结果（unavailable）就不能说没有事件
           agent.indicator !== "unmonitored" && agent.indicator !== "unavailable" && (
             <p className="mt-4 text-sm text-muted-foreground">No active incidents.</p>
           )
@@ -224,7 +217,6 @@ function Detail({ agent, onClose }: { agent: AgentStatusRow; onClose: () => void
   );
 }
 
-/** 过期时的一行：只留名字和状态页，灯色、事件、组件都不再作数；详情里说明最后一次检查在什么时候 */
 function unavailableRow(agent: AgentStatusRow, note: string): AgentStatusRow {
   return { ...agent, indicator: "unavailable", components: [], incidents: [], note, stale: false };
 }
@@ -238,13 +230,6 @@ export function AgentStatusCard({
 }) {
   useLiveEvents();
   const { data: fetched, error, servedAt } = useStatus<AgentStatusPayload>(AGENT_STATUS_PATH, { fallback });
-  /**
-   * 采集 Worker 定时检查一轮（STATUS_VIEWS.agentStatus.cadenceMs）；这份超过
-   * AGENT_STATUS_STALE_MS 没更新（采集停了、出不去）就不再拿旧灯色冒充此刻：
-   * 各行照排、行高不变，每行都换成 Unavailable，点过去是官方状态页。右上角仍是
-   * 最后检查的时刻。
-   * 首帧拿首屏信封的 servedAt 当钟：放久了的 HTML 首帧就是 Unavailable，不等挂载再翻。
-   */
   const stale = useStale(fetched?.fetchedAt, AGENT_STATUS_STALE_MS, servedAt);
   const data = fetched && stale
     ? {
@@ -259,10 +244,6 @@ export function AgentStatusCard({
   const checked = data ? checkedAt.format(data.fetchedAt) : null;
   const scrollerRef = useRef<HTMLDivElement>(null);
   const hasColumns = Boolean(data?.agents.length);
-  /**
-   * 没被手动滑过就一直停在第一列：换列数、数据刷新、浏览器恢复滚动位置
-   * 或吸附重算把它挪走时都拉回最左。摸到、滚轮横滑或键盘操作过才算手动。
-   */
   useEffect(() => {
     const scroller = scrollerRef.current;
     if (!scroller) return;
@@ -293,14 +274,6 @@ export function AgentStatusCard({
       scroller.removeEventListener("scroll", home);
     };
   }, [hasColumns]);
-  /**
-   * 三列各三行，按卡片自己的宽度一次露出 3 / 2 / 1 列，放不下的靠 scroll-snap
-   * 左右滑。一列至少要放得下最长的一行（Cloudflare 加 Partial outage）：
-   * 2 列从卡片宽 36rem 起、3 列从 54rem 起（下面的 `@[…]` 断点）。
-   * 列间竖线是每列左侧 1px 间隙里的伪元素，跟着内容一起滑，滑到哪一列边上都不会
-   * 贴着卡片边框；容器本身不上底色，iOS 横向回弹拉出来的只是卡片本色。
-   * 纯 CSS 滑动，不引轮播库。
-   */
   const columns: AgentStatusRow[][] = [];
   for (let start = 0; data && start < data.agents.length; start += ROWS_PER_COLUMN) {
     columns.push(data.agents.slice(start, start + ROWS_PER_COLUMN));
@@ -325,10 +298,6 @@ export function AgentStatusCard({
             >
               {column.map((agent) => {
                 const label = indicatorLabel(agent.indicator);
-                /**
-                 * 只有右边的状态可点，整行不是点击区：有故障的弹详情，正常的去官方状态页。
-                 * 上下用负边距吃满行高，点击区跟整行一样高，版面不动。
-                 */
                 const triggerClass =
                   "-mx-2 -my-3 flex items-center gap-2 px-2 py-3 hover:underline hover:underline-offset-4";
                 const status = (

@@ -12,7 +12,6 @@ import { archiveSiteDeploys } from "./history";
 
 type Statement = { query: string; values: unknown[] };
 
-/** 真实 SQLite 跑 api 的全部迁移：upsert 的冲突与「没变不写」要在引擎里验，不在替身里推断 */
 function historyDb() {
   const sqlite = new DatabaseSync(":memory:");
   const migrations = `${dirname(fileURLToPath(import.meta.url))}/../../api/migrations/`;
@@ -73,11 +72,9 @@ test("site deploys upsert by id, dedupe production against recent, and only rewr
   await archiveSiteDeploys(db, [deployment("dpl_1"), deployment("dpl_1"), building], T0 + 60_000);
   assert.equal(changes(), 2);
 
-  // 同一份列表下一分钟再来一遍：没有写入
   await archiveSiteDeploys(db, [deployment("dpl_1"), building], T0 + 120_000);
   assert.equal(changes(), 2);
 
-  // 构建完成：只改写那一行
   await archiveSiteDeploys(db, [null, deployment("dpl_1"), { ...building, state: "READY", buildDurationMs: 50_000 }], T0 + 180_000);
   assert.equal(changes(), 3);
   assert.deepEqual(all("SELECT id, state, build_duration_ms, target, commit_sha, updated_at FROM site_deploys ORDER BY id"), [

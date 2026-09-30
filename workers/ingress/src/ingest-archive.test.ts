@@ -12,10 +12,8 @@ import type { PreparedIngest } from "@shared/ingest/prepare";
 
 type Statement = { query: string; values: unknown[] };
 
-/** 真实 SQLite 跑全部迁移：upsert 的冲突与 WHERE 条件要在引擎里验，不在替身里推断 */
 function historyDb() {
   const sqlite = new DatabaseSync(":memory:");
-  // 表结构归 api Worker 的迁移管（上报入口只写，不建表）
   const migrations = `${dirname(fileURLToPath(import.meta.url))}/../../api/migrations/`;
   for (const file of readdirSync(migrations).filter((name) => name.endsWith(".sql")).sort()) {
     sqlite.exec(readFileSync(`${migrations}${file}`, "utf8"));
@@ -107,7 +105,6 @@ test("ingest archive: workouts upsert by id and a resend of unchanged rows keeps
 
   await send([workout("a"), workout("b")], T0);
   await send([workout("a", { averageHeartRateBpm: 140 }), workout("b")], T0 + 60_000);
-  // 晚到的旧封不能把修订过的心率改回去
   await send([workout("a")], T0 + 30_000);
 
   assert.deepEqual(
@@ -194,9 +191,7 @@ test("ingest archive: server readings aggregate per UTC hour; retries and late o
 
   await send(server(T0 + 60_000, { cpuUsagePercent: 10, load1: 1 }));
   await send(server(T0 + 180_000, { cpuUsagePercent: 30, load1: 3, traffic: { cycleStart: T0 - 86_400_000, cycleEnd: T0 + 86_400_000, rxBytes: 3_000, txBytes: 900, quotaBytes: null } }));
-  // 上报器重试同一封：observedAt 不变，样本数不加
   await send(server(T0 + 180_000, { cpuUsagePercent: 30, load1: 3 }));
-  // 乱序晚到的早一分钟那封：和重放分不开，不计入，也不覆盖更晚的流量读数
   await send(server(T0 + 120_000, { cpuUsagePercent: 20, load1: 2 }));
   await send(server(T0 + 3_600_000, { cpuUsagePercent: 50 }));
 

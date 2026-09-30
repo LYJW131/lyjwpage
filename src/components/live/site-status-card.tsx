@@ -37,14 +37,12 @@ import { cn } from "@/lib/utils";
 
 const number = new Intl.NumberFormat("en-US");
 const time = new Intl.DateTimeFormat("zh-CN", { timeZone: site.timezone, month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false });
-/** 10ms 以上不留小数：这一行只有 32 个字符的位置，`191.9ms` 那一位小数会把 Vercel 那格顶到两行 */
 const cpu = (ms: number | null | undefined) => ms == null ? "—" : ms < 1 ? `${Math.round(ms * 1000)}µs` : ms < 10 ? `${Number(ms.toFixed(1))}ms` : `${Math.round(ms)}ms`;
 
 function CollectionWindow({ start, end }: { start?: number; end?: number }) {
   if (start == null || end == null) return null;
   const minutes = Math.round((end - start) / 60_000);
   const duration = minutes % 1440 === 0 ? `${minutes / 1440}d` : minutes % 60 === 0 ? `${minutes / 60}h` : `${minutes}m`;
-  // 靠右，和名字那一行的提交哈希对齐成一列
   return <span className="ml-auto whitespace-nowrap" title={`${time.format(start)} — ${time.format(end)} · UTC+8`}>Last {duration}</span>;
 }
 
@@ -59,19 +57,11 @@ function Stat({ label, value, title, prefix }: { label: string; value?: number |
   return (
     <div title={title}>
       <div className="label-mono text-muted-foreground">{label}</div>
-      {/*
-        「+」和数字不能断开；六位数的增删行数在 360 两列、768 四列时都比格子宽，
-        所以窄屏降一档字号，四列要到 lg 才用 4xl。
-      */}
       <div className="mt-2 whitespace-nowrap text-2xl font-medium tracking-tight min-[400px]:text-3xl lg:text-4xl">{value == null ? <FlowDash /> : <>{prefix}<NumberFlow value={value} locales="en-US" /></>}</div>
     </div>
   );
 }
 
-/**
- * 顺序按 Lighthouse 报告。实验室跑不出 INP（要真实用户才测得到），同轮的 TBT 占那一列；
- * 第三行真实访客（Sentry 采样的 p75）在这一列放的才是 INP。
- */
 const vitalRows: { label: string; key: Exclude<keyof LighthouseVitals, "score">; unit: "s" | "ms" | ""; title: string }[] = [
   { label: "LCP", key: "lcpMs", unit: "s", title: "Largest Contentful Paint" },
   { label: "TBT/INP", key: "tbtMs", unit: "ms", title: "Total Blocking Time for lab runs; Interaction to Next Paint for real users" },
@@ -81,25 +71,20 @@ const vitalRows: { label: string; key: Exclude<keyof LighthouseVitals, "score">;
 ];
 function vital(value: number | null | undefined, unit: string) {
   if (value == null) return "—";
-  // CLS 是无量纲小数，Lighthouse 自己也把末尾的零去掉（0.004 / 0）
   return unit === "s" ? `${(value / 1000).toFixed(2)}s` : unit === "ms" ? `${Math.round(value)}ms` : String(Number(value.toFixed(3)));
 }
 
-/** Lighthouse 自己的档位：90 分及格算绿，50 到 89 黄；真实访客的分沿用同一套 */
 const scoreTone = (score: number | null | undefined) =>
   score == null ? "text-muted-foreground" : score >= 90 ? "text-emerald-600 dark:text-emerald-400" : score >= 50 ? "text-amber-600" : "text-red-500";
 
-/** 服务格的一行小字：标签淡、值实，和 Req / CPU 那几段同一种写法 */
 function Fact({ label, value, title, className }: { label: string; value: string; title?: string; className?: string }) {
   return <span className="whitespace-nowrap" title={title}>{label} <span className={cn("text-foreground", className)}>{value}</span></span>;
 }
 
-/** 真实访客那一行，列与上面两行对齐：TBT 那一列换成 INP */
 const fieldValues = (vitals: SentryStatusPayload["vitals"]) => ({
   lcpMs: vitals?.lcpP75Ms, tbtMs: vitals?.inpP75Ms, cls: vitals?.clsP75, fcpMs: vitals?.fcpP75Ms, ttfbMs: vitals?.ttfbP75Ms,
 });
 
-/** 服务格名字那一行的错误数：有错才标红，零就淡着 */
 function ErrorCount({ series, title }: { series: SentryErrorSeries | undefined; title: string }) {
   if (!series) return null;
   return <span title={`${title} · ${number.format(series.count7d)} in 7d · ${number.format(series.unresolved)} unresolved`}
@@ -110,10 +95,8 @@ function ErrorCount({ series, title }: { series: SentryErrorSeries | undefined; 
 
 const rtt = (ms: number | null | undefined) => ms == null ? "—" : ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`;
 
-/** 常驻上报器一格。名字链到仓库里它的目录；太久没收到就在名字旁标 offline */
 function ReporterTile({ name, stat, staleMs, servedAt, title }: {
   name: ReporterName; stat: ReporterStat | null | undefined; staleMs: number;
-  /** 账本那份首屏信封的出站时刻，首帧的钟 */
   servedAt: number | undefined;
   title?: string;
 }) {
@@ -143,19 +126,10 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
   recentCommits: GithubRecentCommit[];
   className?: string;
 }) {
-  // 挂载时按可滞后层的策略：首屏那份过了下一次预期写入才补取（旧 HTML、久藏的标签页）；之后按登记表的节奏在写入后取
   const { data: github, servedAt: githubServedAt } = useStatus<GithubRepoPayload>(GITHUB_REPO_PATH, { fallback: githubFallback });
   const { data: vercel, servedAt: vercelServedAt } = useStatus<VercelDeploymentsPayload>(VERCEL_DEPLOYMENTS_PATH, { fallback: vercelFallback });
   const { data: cloudflare, servedAt: cloudflareServedAt } = useStatus<CloudflareWorkersPayload>(CLOUDFLARE_WORKERS_PATH, { fallback: cloudflareFallback });
   const { data: sentry, servedAt: sentryServedAt } = useStatus<SentryStatusPayload>(SENTRY_PATH, { fallback: sentryFallback });
-  /**
-   * 这些都在可滞后层，由采集 Worker 各按各的节奏写，每块带着自己的采集时刻。
-   * 过了阈值（lib/freshness）那一块就不再拿旧数冒充此刻：数字回到「—」、提交哈希不显示、
-   * 在线条写 Unavailable；版面不动。部署过哪些提交是历史事实，不跟着过期。
-   * 首帧各块拿自己那份首屏信封的 servedAt 当钟：放久了的 HTML 首帧就是 Unavailable，
-   * 不等挂载再翻（见 hooks/use-stale）。
-   */
-  // 名单和总数各自沿用上一份，总数按自己取到的时刻判
   const githubStale = useStale(github ? github.totalsAt ?? github.fetchedAt : undefined, GITHUB_REPO_STALE_MS, githubServedAt);
   const deploymentsStale = useStale(vercel?.fetchedAt, VERCEL_DEPLOYMENTS_STALE_MS, vercelServedAt);
   const functionsStale = useStale(vercel?.metrics?.functions?.fetchedAt, VERCEL_METRICS_STALE_MS, vercelServedAt);
@@ -163,7 +137,6 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
   const pagespeedStale = useStale(vercel?.pagespeed?.fetchedAt, PAGESPEED_STALE_MS, vercelServedAt);
   const workerMetricsStale = useStale(cloudflare?.fetchedAt, CLOUDFLARE_METRICS_STALE_MS, cloudflareServedAt);
   const workerDeploymentsStale = useStale(cloudflare?.deploymentsFetchedAt, CLOUDFLARE_DEPLOYMENTS_STALE_MS, cloudflareServedAt);
-  // Sentry 各块可能沿用上一轮（沿用上限 SENTRY_BLOCK_CARRY_MS 和展示过期 SENTRY_STALE_MS 各判各的），按各块自己取到的时刻算
   const sentryAt = (block: SentryBlock) => sentry ? sentry.blockAt?.[block] ?? sentry.fetchedAt : undefined;
   const uptimeStale = useStale(sentryAt("uptime"), SENTRY_STALE_MS, sentryServedAt);
   const heartbeatStale = useStale(sentryAt("heartbeat"), SENTRY_STALE_MS, sentryServedAt);
@@ -174,11 +147,8 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
   const totals = githubStale ? null : github?.totals;
   const production = deploymentsStale ? null : vercel?.production;
   const siteErrors = errorsStale ? undefined : sentry?.errors?.site, apiErrors = errorsStale ? undefined : sentry?.errors?.worker;
-  // 出口节点那张卡用的同一条键，SWR 只取一份
   const { data: server } = useStatus<ServerPayload>(SERVER_PATH, { fallback: serverFallback });
   const { data: reporters, servedAt: reportersServedAt } = useStatus<ReportersPayload>(REPORTERS_PATH, { fallback: reportersFallback });
-  // 主站量的是 lyjw.me；把域名写在表头，省得和访客当前所在的域名混起来。
-  // 每一格是滚动窗口内各轮实测的中位数，轮数和窗口在表头的提示里。
   const measured = vercel?.pagespeed ? new URL(vercel.pagespeed.url).host : null;
   const pagespeed = pagespeedStale ? null : vercel?.pagespeed;
   const deploymentsBySha = new Map<string, { deployment: VercelDeployment; production: boolean }>();
@@ -187,18 +157,11 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
     if (!sha) continue;
     const prev = deploymentsBySha.get(sha);
     if (!prev || deployment.createdAt > prev.deployment.createdAt) {
-      // 生产版本那一份过期了就不再标 Live：不知道此刻线上是不是它
       deploymentsBySha.set(sha, { deployment, production: !deploymentsStale && vercel?.production?.commit?.sha === sha });
     }
   }
   const contributors = github?.contributors ?? [];
-  /**
-   * 只用来分占比条的宽度，不是全仓提交数。
-   *
-   * 一条「我 + agent」的提交在 GitHub 的贡献口径里作者和协作者各记一次，所以
-   * 这个和会明显大于 totals.commits。占比条要的正是这个口径 —— 谁参与了多少 ——
-   * 顶部那个 COMMITS 才是去重后的真数。
-   */
+  // GitHub 协作者各计一次贡献，参与次数之和不能替代去重提交总数。
   const contributionShare = contributors.reduce((sum, person) => sum + person.commits, 0);
   return <Card id="site-status" label="LYJWPAGE" className={cn("scroll-mt-28", className)} action={
     <div className="flex items-center gap-4">
@@ -225,10 +188,6 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
     </div>
     <RepoContributions data={github} recentCommits={recentCommits} deploymentsBySha={deploymentsBySha} />
     {sentry && <UptimeStrip site={sentry.uptime} api={sentry.heartbeat ?? null} siteStale={uptimeStale} apiStale={heartbeatStale} />}
-    {/*
-      性能表和服务格到 lg 才并排：更窄时并排每格太窄，「Req · CPU · Last 12h」
-      一行放不下会折行，所以这一段和手机一样上下叠。
-    */}
     <div className="grid border-t border-line lg:grid-cols-2">
       <section className="min-w-0 border-b border-line lg:border-b-0" aria-label="Performance">
         <div className="px-4 pt-3 pb-2">
@@ -240,13 +199,11 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
             const score = pagespeed?.[device].score;
             return <div key={device} className="grid h-11 grid-cols-[40px_repeat(6,minmax(0,1fr))] items-center gap-1 text-right text-[10px] tabular-nums lg:grid-cols-[88px_repeat(6,minmax(0,1fr))] lg:text-xs">
               <span className="text-left text-[11px] text-muted-foreground">{device === "desktop" ? "Desktop" : "Mobile"}</span>
-              {/* Lighthouse 自己的档位：90 分及格算绿，50 到 89 黄 */}
               <span className={cn("text-xl font-medium lg:text-2xl", scoreTone(score))}>{score ?? "—"}</span>
               {vitalRows.map(row => <span key={row.key}>{vital(pagespeed?.[device][row.key], row.unit)}</span>)}
             </div>;
           })}
           {sentry?.vitals && (() => {
-            // 行留着、数字换成「—」：真实访客那一块过期了也不让表格少一行
             const vitals = vitalsStale ? null : sentry.vitals;
             const field = fieldValues(vitals), samples = vitals?.samples, score = vitals ? fieldPerformanceScore(vitals) : null;
             return <div className="grid h-11 grid-cols-[40px_repeat(6,minmax(0,1fr))] items-center gap-1 text-right text-[10px] tabular-nums lg:grid-cols-[88px_repeat(6,minmax(0,1fr))] lg:text-xs"
@@ -260,7 +217,6 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
         </div>
       </section>
       <section id="cloudflare-workers" className="min-w-0 scroll-mt-28 lg:border-l lg:border-line" aria-label="Services">
-        {/* 窄屏两列每格太窄，名字截断、数字拆行；单列到 sm 再回两列 */}
         <ul className="grid h-full auto-rows-fr grid-cols-1 gap-px bg-line sm:grid-cols-2">
           <li className="bg-surface px-4 py-2.5">
             <div className="flex items-center gap-1.5 text-[11px] leading-4">
@@ -291,12 +247,6 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
               </div>
             </li>;
           })}
-          {/*
-            常驻上报器，和上面几格同一种写法：名字一行带镜像的提交，小字一行是
-            统计窗口。Push 是这段时间它推成功几封（不叫 Req：上面那几格是收到的
-            请求，这里是往外发的）；RTT 是这些封从发出到读完回执的中位数，看它到
-            Worker 这条链路。次数、RTT 和提交都由上报器自己在报文里带来。
-          */}
           <ReporterTile name="server-reporter" stat={reporters?.reporters["server-reporter"]} staleMs={SERVER_STALE_MS}
             servedAt={reportersServedAt}
             title={server ? `Exit node ${server.id} · ${server.hostname} · up ${formatUptime(server.uptimeSeconds)} · load ${server.load1.toFixed(2)}` : undefined} />

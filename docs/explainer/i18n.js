@@ -1,7 +1,3 @@
-// 中英切换：默认中文；`?lang=en` 或上次的选择（localStorage）进英文。
-// 英文模式下不改场景代码：写进 innerHTML / textContent 的文字按整段查 i18n-en.js 的对照表替换
-// （只换标签之间的文字片段），页面里写死的文字启动时换一遍；气泡由引擎的 say() 整句替换。
-// 查不到的中文片段记进 window.__missing，自检脚本据此找漏译。
 (() => {
   const params = new URLSearchParams(location.search);
   let lang = params.get("lang");
@@ -12,7 +8,7 @@
   window.LANG = lang;
   document.documentElement.lang = lang === "en" ? "en" : "zh-CN";
   const EN = window.EXPLAINER_EN || {};
-  const PATTERNS = window.EXPLAINER_EN_PATTERNS || []; // 带变化数字的句子：[正则, 替换]
+  const PATTERNS = window.EXPLAINER_EN_PATTERNS || [];
   const CJK = /[　-〿㐀-鿿＀-￯]/;
   const missing = (window.__missing = new Set());
   function one(s) {

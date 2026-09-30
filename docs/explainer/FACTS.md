@@ -125,8 +125,8 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 ### 实时那一半怎么交出去（Service Binding）
 
 - `CORE` 是 Service Binding：`workers/ingress/wrangler.toml` 里 `[[services]]` 的 `service = "api"`、`entrypoint = "StateCore"`；入口 `await env.CORE.commitIngest(command)`（`workers/ingress/src/worker.ts#commitIngest`）。
-- Cloudflare 内部调用，不走公网、不带凭据：只有声明了这个 binding 的 Worker 调得到，所以这一跳不再鉴权，鉴权只在入口做一次（`shared/state-core.ts` 文件头；`workers/api/src/state-core.ts#StateCore` 的注释）。
-- 交过去的是 prepare 的产物 `PreparedIngest`，必须能结构化复制；状态核心只 import 它的类型，不 import 校验实现，所以改校验只发布入口（`shared/ingest/prepare.ts` 文件头；`shared/state-core.ts#StateCoreRpc`）。RPC 方法只加不改，api 与调用方分开部署（同文件头）。
+- Cloudflare 内部调用，不走公网、不带凭据：只有声明了这个 binding 的 Worker 调得到，所以这一跳不再鉴权，鉴权只在入口做一次（`workers/api/AGENTS.md`「不变量」；`workers/api/src/state-core.ts#StateCore`）。
+- 交过去的是 prepare 的产物 `PreparedIngest`，必须能结构化复制；状态核心只 import 它的类型，不 import 校验实现，所以改校验只发布入口（`workers/ingress/AGENTS.md`「不变量」；`shared/state-core.ts#StateCoreRpc`）。RPC 方法只加不改，api 与调用方分开部署（`workers/api/AGENTS.md`「不变量」）。
 - `StateCore` 是 RPC 入口（`WorkerEntrypoint`），它把命令交给唯一的状态 DO `StateHub` 按到达顺序提交（§3），回 `CommitReply`：`ready: false` 时入口回 503；`ok: true` 的 `data` 原样放进 202；`ok: false` 回 400（`shared/state-core.ts#CommitReply`）。推送和首屏失效在 StateCore 自己的 waitUntil 里派发，不经入口（§3「效果清单」）。
 
 ### 202 的时机
@@ -198,7 +198,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 这一节和下面的「Pulse 事实时间线」是第 08 章用的，按 main 2489e10 逐条回代码复核过。 <!-- allow: 核对基线戳 -->
 
 - 每轮只做两件事：
-  1. 把 pulse 归档到 D1：StateHub 给出一份有界快照（各路水位之后的新行）→ 按自然键 upsert 写事实表 → 成功后回头确认水位。各路独立，一路读坏、写坏不挡别的路（`workers/api/src/pulse-archive.ts` 文件头注释；`workers/api/src/pulse-archive.ts#ARCHIVE_STREAMS`：三条状态道、在听的曲目痕迹、充电、活动桶、Coding 观测，加上编码用量的账本和 5 分钟 token 桶）。
+  1. 把 pulse 归档到 D1：StateHub 给出一份有界快照（各路水位之后的新行）→ 按自然键 upsert 写事实表 → 成功后回头确认水位。各路独立，一路读坏、写坏不挡别的路（`workers/api/src/pulse-archive.ts#ARCHIVE_STREAMS`：三条状态道、在听的曲目痕迹、充电、活动桶、Coding 观测，加上编码用量的账本和 5 分钟 token 桶）。
   2. PulseScorer 调 Jev（`jev-1.13.0`），**只给 Coding 打分**，一窗是 `shared/pulse-coding.ts#PULSE_SCORE_WINDOW_MS`（三个 5 分钟桶，15 分钟），窗结束两分钟后才打（`workers/api/src/pulse-score.ts#PulseScorer`）：
      - 交给 Jev 的是这一窗的特征：Mac 的前台应用与 agent 观测、容器里 Cursor 账号的活动，外加三个来源的 5 分钟 token 桶（Mac 本机扫描、Cursor 账号历史、Claude Code 云端遥测），按来源、agent、模型相加（同文件 `windowTokenUsage`）。Mac 扫描范围里缺的桶是测到的 0；另两个来源只作正证据，没有行不等于 0。
      - 全零的窗不问 Jev，直接记最低档：整窗都看得见、Mac 本机扫描盖满三个桶、没有任何活动和 token（同文件 `definiteZero`）。Mac 不在、只有 Cursor 看得见且没有活动时也不问，按半置信记最低档（`quietIndependentSource`）。一点观测都没有的窗不打分。

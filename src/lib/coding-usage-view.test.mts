@@ -11,7 +11,6 @@ import {
   type StoredCodingUsageAgent,
 } from "@shared/coding-usage-view";
 
-/** 2026-09-29 12:00 Asia/Shanghai */
 const NOW = Date.parse("2026-09-29T04:00:00Z");
 
 function day(date: string, totalTokens: number, models: Array<[string, number]> = [], extra: Partial<CodingUsageDay> = {}): CodingUsageDay {
@@ -89,7 +88,6 @@ test("有账号级来源就只算它：Mac 报来的 cursor 标 superseded，哪
 });
 
 test("前三模型在完整数据上精确累加，不在每个来源截断过的前三上相加", () => {
-  // 每个来源自己的前三里都没有 d，合起来它是第二
   const { view } = build({
     mac: { claude: ledger("claude", [day("2026-09-28", 100, [["a", 40], ["b", 30], ["c", 20], ["d", 10]])]) },
     "agents-otlp": { claude: ledger("claude", [day("2026-09-28", 100, [["e", 40], ["f", 30], ["g", 20], ["d", 10]])]) },
@@ -107,7 +105,6 @@ test("活跃天数是全部历史、全部 agent 的站点日并集；全 0 的�
     agents: { cursor: ledger("cursor", [day("2023-03-03", 1)]) },
   });
   assert.equal(view.totals?.activeDays, 4);
-  // 最近一个有行的日子是确认过的 0：今天用了 0，不是未知
   assert.deepEqual(view.agents.find((agent) => agent.id === "claude")?.lastDay, {
     date: "2026-09-29", inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, totalTokens: 0,
     apiEquivalentCostUSD: 0, costComplete: true,

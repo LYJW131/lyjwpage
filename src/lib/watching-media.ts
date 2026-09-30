@@ -1,19 +1,6 @@
 import type { WatchingMedia } from "@/lib/types";
 
-/**
- * 「正在播放」那条横幅上的两样东西：在哪放（客户端、设备各一个标签）和放的是
- * 什么规格（一串短标签）。上报器只给 Emby 说的原话 —— 编码名、语言代码、像素尺寸 ——
- * 这里把它们拼成人看的样子。纯函数，卡片和测试共用。
- *
- * 播放方式（直接播放 / 直接串流 / 转码）和字幕不进标签：前者说的是 Emby 怎么送的，
- * 后者太细；信封里照旧带着，只是卡片不画。
- */
 
-/**
- * 客户端名去掉运行模式和登录方式的后缀：Infuse 按播放方式自报 Infuse-Direct /
- * Infuse-Download，网页端经反代登录时是 Emby Web (oauth2)。那些是它们怎么连上
- * Emby 的，不是「在哪放」。
- */
 function clientName(client: string | null): string | null {
   if (!client) return null;
   const cleaned = client
@@ -24,7 +11,6 @@ function clientName(client: string | null): string | null {
   return cleaned || null;
 }
 
-/** 「Infuse · iPad」；两个一样就只留一个，都没有就是 null */
 export function describeDevice(client: string | null, deviceName: string | null): string | null {
   const app = clientName(client);
   const device = deviceName?.trim() || null;
@@ -59,7 +45,6 @@ const AUDIO_CODECS: Record<string, string> = {
 };
 
 const RANGES: Record<NonNullable<NonNullable<WatchingMedia["video"]>["range"]>, string | null> = {
-  // SDR 是常态，不值得占一个标签
   sdr: null,
   hdr: "HDR",
   hdr10: "HDR10",
@@ -104,10 +89,6 @@ function channelLayout(audio: NonNullable<WatchingMedia["audio"]>): string | nul
   }
 }
 
-/**
- * 音轨标签。DTS 一家的 profile（DTS-HD MA / DTS-HD HRA / DTS:X）比编码名信息多，
- * 直接用；带 Atmos 的接在编码名后面；其余 profile（AAC 的 LC 之类）没人关心。
- */
 function audioLabel(audio: NonNullable<WatchingMedia["audio"]>): string | null {
   const codec = audio.codec ? (AUDIO_CODECS[audio.codec] ?? audio.codec.toUpperCase()) : null;
   const profile = audio.profile?.trim() || null;
@@ -127,11 +108,6 @@ function bitrate(bps: number | null): string | null {
   return `${Math.round(bps / 1_000)} kbps`;
 }
 
-/**
- * 规格标签，按「看一眼最想知道的」排：分辨率和视频编码合成一个（「1080p HEVC」，
- * 缺一边就只写另一边），然后动态范围、音轨、码率。没有的那项直接跳过，不占位。
- * 字幕不进标签：信封里照旧带着，卡片不画。
- */
 export function describeMedia(media: WatchingMedia | null): string[] {
   const chips: Array<string | null> = [];
   if (media?.video) {

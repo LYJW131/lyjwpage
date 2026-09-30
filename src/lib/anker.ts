@@ -5,34 +5,13 @@ import { publicAssetPath } from "@/lib/asset-url";
 import { readLiveness, withPresence, type Liveness } from "@/lib/reporter-liveness";
 import type { ChargerPayload, ChargerStatus } from "@/lib/types";
 
-/**
- * Anker Prime 160W (A2687) 遥测。
- *
- * 远端数据只有一条来路：Mac 上报器把 BLE 解出来的充电头放进
- * `chargingDevices` 列表，本站按 `kind` 挑。本机浏览时打开 `/local/charging`
- * 才会直连 `http://127.0.0.1:8787/sse/charger`，见 lib/local-charging。
- */
 
-/**
- * 充电头这一路多久没续上就算断流：默认 `CHARGER_STALE_MS`；上报间隔
- * （`CHARGER_PUSH_INTERVAL_MS`）配得更长时按 3 倍加长，不能短于默认。
- *
- * **也不能短于心跳窗口。** 续 `pushedAt` 的不只是充电头快照 —— 任何一封把
- * charger 列进 activeModules 的信封都会续（纯心跳走 workers/api/src/stores/charger-store
- * 的 prepareHeartbeat）。所以「多久没续上」的下限不是充电头的上报间隔，而是心跳
- * 间隔：安静时段没有新读数可发，唯一在续它的就是那条空心跳。窗口若比心跳间隔短，
- * 心跳但凡晚一点点就越界，卡片会在安静时段闪回「充电器未连接」。上报器整个死掉
- * 那种情况由 Mac 存活（lastSeenAt / heartbeatWindowMs）管，不靠这一条。
- *
- * 两扇窗口都由浏览器拿自己的钟判（lib/freshness 的 liveChargingFeed），源站只给
- * 原样的 connected 和时刻，不在读取时把 connected 打成 false。
- */
+// 断流窗口不得短于心跳窗口；安静时只有空心跳续期，否则正常设备会反复闪断。
 export function chargerStaleAfterMs() {
   const interval = Number(process.env.CHARGER_PUSH_INTERVAL_MS) || 30_000;
   return Math.max(CHARGER_STALE_MS, interval * 3, heartbeatWindowMs());
 }
 
-/** 对象键入库，同源路径到取数出口才拼。 */
 function withCoverIconUrl<T extends { cover: ChargerStatus["cover"] }>(payload: T): T {
   const cover = payload.cover;
   if (!cover) return payload;
@@ -41,15 +20,8 @@ function withCoverIconUrl<T extends { cover: ChargerStatus["cover"] }>(payload: 
   return { ...payload, cover: { ...cover, iconUrl } };
 }
 
-/**
- * 完整快照：带整条历史曲线（`CHARGER_HISTORY_LIMIT` 个点）。增量由调用方再过
- * sliceChargerHistory：客户端每次取只多出一两个点，整份重传的话绝大部分是重复数据。
- *
- * connected 是存储里原样的那份；过期收卡由浏览器判，见 chargerStaleAfterMs。
- */
 export async function getChargerSnapshot(): Promise<ChargerPayload> {
   const stored = await getStored();
-  // 还没收到过任何推送。交给 statusEnvelope 变成降级信封，前端显示提示
   if (!stored) throw new AwaitingReport("尚未收到充电头遥测推送");
 
   const [pushedAt, live] = await Promise.all([lastPushReceivedAt(), readLiveness()]);
@@ -66,18 +38,10 @@ export async function getChargerSnapshot(): Promise<ChargerPayload> {
   );
 }
 
-/**
- * 按客户端游标切历史。`since` 是客户端已有的最新采样点时刻，只回传比它更新的部分。
- * 不重读 Storage，给缓存命中之后的增量路径用。
- */
 export function sliceChargerHistory(payload: ChargerPayload, since?: number): ChargerPayload {
   const all = payload.history;
   const oldest = all[0]?.t;
-  /**
-   * 只有「客户端手上最新的点」不早于「服务端还留着的最旧的点」时，增量才是
-   * 连续的。客户端离开太久的话中间那段已经被裁掉了，拼出来会是断的曲线，
-   * 这种情况只能整份重发。
-   */
+  // 游标早于保留区间时必须回全量，否则丢失的中段会被拼成连续曲线。
   const historyPartial = since != null && oldest != null && since >= oldest;
   return {
     ...payload,
@@ -86,14 +50,6 @@ export function sliceChargerHistory(payload: ChargerPayload, since?: number): Ch
   };
 }
 
-/**
- * 推给浏览器的那一份，全部拿手上现成的东西拼，不读存储：状态是刚收到的，pushedAt
- * 就是收到的时刻，曲线只需要知道服务端那边还有没有点。这样推送不必排在写库后面，
- * 也不必为一个「不带历史点的增量」把整条曲线读回来再丢掉。
- *
- * `historyCount` 为 0 时发的是整份（空的）快照，让客户端把自己那条也清掉 ——
- * 服务端手上什么都没有时，客户端不该继续画一条谁也对不上的曲线。
- */
 export function chargerPushPayload({
   status,
   receivedAt,

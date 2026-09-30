@@ -8,7 +8,6 @@ const eslintConfig = defineConfig([
   {
     files: ["src/**/*.{ts,tsx}", "shared/**/*.ts"],
     rules: {
-      // 站点和共用读取模块不能重新引入 Worker 的写入、发布与采集实现。
       "no-restricted-imports": ["error", {
         patterns: [{
           group: ["@api/*", "**/workers/api/**"],
@@ -24,8 +23,7 @@ const eslintConfig = defineConfig([
     },
   },
   {
-    // 状态核心只 import 上报命令的类型：校验与收敛的实现在上报入口，改它们不该重新发布
-    // 带 Durable Object 的 api Worker（Workers Builds 的监视路径据此排除 shared/ingest，见 docs/workers-builds.md）
+    // 上报校验不能进入状态核心运行依赖，否则会绕过 Workers Builds 的监视路径隔离。
     files: ["workers/api/src/**/*.ts"],
     ignores: ["workers/api/src/**/*.test.ts"],
     rules: {
@@ -38,18 +36,13 @@ const eslintConfig = defineConfig([
       }],
     },
   },
-  // Override default ignores of eslint-config-next.
   globalIgnores([
-    // Default ignores of eslint-config-next:
     ".next/**",
     "out/**",
     "build/**",
     "next-env.d.ts",
-    // 推送代理是独立的 Node 包，跑在 NAS 上，别拿站点的前端规则去量它
     "reporters/**",
-    // 后台 agent 的临时 worktree 挂在这里，里面各有一份 node_modules，不扫
     ".claude/**",
-    // 讲解动画是独立的静态页面和渲染脚本（浏览器全局 + 本机 Chrome），不走站点的前端规则
     "docs/explainer/**",
     "public/explainer/**",
   ]),

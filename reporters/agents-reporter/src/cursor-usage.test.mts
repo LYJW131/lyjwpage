@@ -166,7 +166,6 @@ test("估价别名和长上下文门槛按快照算", () => {
 
 test("快照之后补的 grok-4.7 按 xAI 公开价，档位后缀与 fast 都归到基础型号", () => {
   const at = Date.parse("2026-09-23T12:00:00Z");
-  // 10 万输入 + 10 万缓存读，prompt 正好 20 万，还在基础档：$2 / $6 / $0.5 每百万
   const base = estimateCursorCost("grok-4.7", 100_000, 100_000, 100_000, 0, at);
   assert.ok(base != null && Math.abs(base - (0.2 + 0.6 + 0.05)) < 1e-9);
   for (const model of ["grok-4.7-high", "grok-4.7-xhigh-fast", "grok-4.7-medium-fast"]) {
@@ -175,7 +174,6 @@ test("快照之后补的 grok-4.7 按 xAI 公开价，档位后缀与 fast 都�
       estimateCursorCost("grok-4.7", 1_000, 2_000, 3_000, 0, at),
     );
   }
-  // 超过 20 万 prompt 走长上下文档
   assert.equal(estimateCursorCost("grok-4.7", 250_000, 0, 0, 0, at), 1);
   assert.notEqual(estimateCursorCost("muse-spark-1.3-max", 1_000, 1_000, 0, 0, at), null);
   assert.notEqual(estimateCursorCost("kimi-k3-max", 1_000, 1_000, 0, 0, at), null);
@@ -216,7 +214,6 @@ test("增量那一轮整天替换拉到的两天（不是累加），其余日�
     [["2026-08-01", 5, 0.05], ["2026-09-22", 9, 0.09], ["2026-09-23", 4, 0.04]],
   );
   assert.equal(next.ledger.fullAt, "2026-09-22T12:00:00.000Z");
-  // 拉到了就是 ok：没有 token 数的那部分是提醒，不是失败
   assert.equal(next.usage.state, "ok");
   assert.equal(next.usage.error, null);
   assert.equal(next.usage.warning, "3 historical requests had no token counts");
@@ -263,7 +260,6 @@ test("整份账本发成契约的 agent 行：时刻是毫秒，日行补 reason
         reasoningTokens: 0,
         totalTokens: 6,
         apiEquivalentCostUSD: 0.04,
-        // 费用是否完整按天：这一天有请求没估到价，不牵连别的日子
         costComplete: false,
         models: [{ model: "gpt-5", tokens: 4 }],
       },
@@ -356,11 +352,9 @@ test("这一轮拉失败只换状态：不带 days，collectedAt 是账本里最
 });
 
 test("增量从上海时间昨天 0 点开始拉", () => {
-  // 上海 9/23 00:30 → 从 9/22 00:00（上海）起
   assert.equal(incrementalSince(Date.parse("2026-09-22T16:30:00Z")), Date.parse("2026-09-21T16:00:00Z"));
 });
 
-/** 按 Cursor 接口的形状造一条事件，再走真正的解析（缓存写入在接口里叫 cacheWriteTokens） */
 function eventRow(
   timestampMs: number,
   model: string,
@@ -424,7 +418,6 @@ test("桶只收 [from, to) 里的事件，按桶起点升序，空桶不出", ()
     windows.map((window) => [window.from, window.agents.map((row) => row.model)]),
     [
       [from, ["first"]],
-      // 中间的桶没有事件，不出
       [to - CODING_BUCKET_MS, ["last"]],
     ],
   );
@@ -504,10 +497,6 @@ test("活动取最新一条：时刻相同先到的赢，没有事件就是 null
   assert.equal(cursorActivityReport(T0, { at: T0 + 200_000, model: null }).agents[0]?.lastActivityAt, T0);
 });
 
-/**
- * 造 count 个不同模型、各一条事件，用量各不相同（第 0 个最多、往后递减，排名才确定）。
- * 事件都落在同一个站点日、同一个 5 分钟桶（T0 起每秒一条）。
- */
 function crowdedEvents(count: number, nameOf = (index: number) => `model-${String(index).padStart(3, "0")}`) {
   return parsedEvents(
     Array.from({ length: count }, (_, index) =>
@@ -550,7 +539,6 @@ test("一天模型超过 MAX_DAY_MODELS：用量大的 MAX_DAY_MODELS - 1 个留
     tokens: sumOf(ranked.slice(MAX_DAY_MODELS - 1), ([, tokens]) => tokens),
   });
   assert.equal(sumOf(day?.models ?? [], (row) => row.tokens), day?.totalTokens);
-  // 并出来的一行是好几个小行之和，可能比留名的大：折完要重排，仍是用量降序、同量按名字
   assert.deepEqual(
     day?.models,
     [...(day?.models ?? [])].sort((left, right) => right.tokens - left.tokens || (left.model < right.model ? -1 : 1)),
@@ -558,7 +546,6 @@ test("一天模型超过 MAX_DAY_MODELS：用量大的 MAX_DAY_MODELS - 1 个留
 });
 
 test("真有模型叫 OVERFLOW_MODEL：并进那一行，同一天的行名不重复", () => {
-  // 0 = 用量最大的就叫这个名字（留名的那一行接住其余）；最后一个 = 用量最小的（落在被并的那一段里）
   for (const at of [0, MAX_DAY_MODELS + 5]) {
     const events = crowdedEvents(MAX_DAY_MODELS + 6, (index) => (index === at ? OVERFLOW_MODEL : `model-${index}`));
     const day = aggregateEvents(events, T0).days.find((row) => row.totalTokens > 0);
@@ -597,7 +584,6 @@ test("一个窗口模型超过 MAX_WINDOW_ROWS：用量大的留名，其余并�
   }
   assert.equal(sumOf(crowded?.agents ?? [], (row) => row.eventCount), inCrowded.length);
 
-  // 留名的是 token 最多的 MAX_WINDOW_ROWS - 1 个（最小的两个并进 OVERFLOW_MODEL），行仍按模型名排
   const named = crowded?.agents.filter((row) => row.model !== OVERFLOW_MODEL) ?? [];
   assert.deepEqual(
     named.map((row) => row.model),

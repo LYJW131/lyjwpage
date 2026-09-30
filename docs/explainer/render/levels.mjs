@@ -1,5 +1,3 @@
-// 逐类音效的「压过配乐多少分贝」：node levels.mjs <music.wav> <dir>
-// 每个 cue：音效轨在 [t, t+0.12] 的峰值 vs 让位后配乐在 [t-0.25, t+0.25] 的 RMS
 import fs from "node:fs";
 function readWav(p) {
   const b = fs.readFileSync(p);

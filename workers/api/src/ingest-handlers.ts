@@ -8,13 +8,6 @@ import { commitPreparedTelemetryEnvelope } from "./stores/telemetry";
 import type { CoreCommand } from "@shared/ingest/prepare";
 import { commitPreparedQuestReport } from "./stores/quest";
 
-/**
- * StateHub 阶段：只做依赖权威最新状态的合并、差分与持久化。
- *
- * 命令在上报入口（workers/ingress）或采集 Worker 里 prepare 好（shared/ingest），经
- * `StateCore.commitIngest` 进来；这里只 import 它们的类型，不带任何校验代码。可滞后层
- * 那一半（落地节点、限额、账本、时区、圆环读数、训练列表）由上报入口直接写 KV，不进这里。
- */
 export async function commitPreparedIngest(command: CoreCommand): Promise<unknown> {
   switch (command.source) {
     case "mac": return commitPreparedTelemetryEnvelope(command);

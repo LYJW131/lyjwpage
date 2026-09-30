@@ -22,7 +22,6 @@ test("the developer token comes from the core and is reused until ten minutes be
   assert.equal(await appleDeveloperToken(), "t1");
   assert.equal(issued, 1);
 
-  // 离到期不到 10 分钟：换一份
   t.mock.method(Date, "now", () => expiresAt - 9 * 60_000);
   expiresAt += 60 * 60_000;
   assert.equal(await appleDeveloperToken(), "t2");

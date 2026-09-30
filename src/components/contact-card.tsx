@@ -24,7 +24,6 @@ export function ContactCard({
   chartFallback,
   yearFallback,
 }: {
-  /** 构建期内联好的头像，见 lib/github-avatar-icon；拉不到是 null，回退远端 URL */
   avatarDataUri: string | null;
   chartFallback: StatusResponse<GithubChartPayload>;
   yearFallback: StatusResponse<CodingYearPayload>;
@@ -42,28 +41,14 @@ export function ContactCard({
               rel="noreferrer noopener"
               className="group relative size-14 shrink-0 overflow-hidden rounded-lg border border-line bg-muted lg:size-16"
             >
-              {/*
-                内联和回退共用一个 <Image>，呈现逐像素一致。
-                next/image 看到 `data:` 开头的 src 会自动按 unoptimized 处理、
-                并且不挂 lazy（见 next 的 shared/lib/get-img-props），AGENTS.md
-                「图标与图片」要求的静态图标 unoptimized 由此满足。
-                别再补一个写死的 `unoptimized`：那个 prop 管的是整个 <Image>，
-                会把回退那条远端 URL 也踢出管道，变成直接吐 192px 整图 JPEG。
-                回退要过管道，所以 next.config 的 avatars 那条不能删。
-              */}
+              {/* data URI 自动跳过优化；不要全局加 unoptimized，远端回退仍需缩图。 */}
               <Image
                 src={avatarDataUri ?? site.githubAvatar}
                 alt={`${site.githubLogin}'s GitHub avatar`}
                 fill
                 sizes="(min-width: 1024px) 64px, 56px"
                 className="object-cover transition-transform duration-500 group-hover:scale-[1.04]"
-                /*
-                 * 内联那份必须同步解码：默认的 decoding="async" 允许浏览器先出
-                 * 这一帧、解码完再补画，几 KB 的 data URI 也会因此晚一两帧 ——
-                 * 肉眼就是头像格闪一下灰底。字节都在 HTML 里了，解码是微秒级，
-                 * sync 让它和首帧一起画。回退的远端那条维持 async，网络图没有
-                 * 「和首帧一起画」可言，同步解码只会白阻塞渲染。
-                 */
+                /* 内联图同步解码避免首帧闪空；远端回退保留异步解码。 */
                 decoding={avatarDataUri ? "sync" : "async"}
               />
             </a>
@@ -105,10 +90,6 @@ export function ContactCard({
           </div>
         </div>
 
-        {/*
-          两张图都进 HTML。进页前 layout 里那段脚本按 localStorage 写
-          html[data-heatmap]，CSS 先藏对的那张，水合再慢也不跳。
-        */}
         <div className="heatmap-panel w-full" data-heatmap-panel="tokens">
           <VibeYearChart fallback={yearFallback} className="w-full" />
         </div>

@@ -1,10 +1,3 @@
-/**
- * 分享出去的那张卡片图：1200×630，画的就是站点自己那张纸片。
- *
- * `twitter:image` 不用另开一个 `twitter-image.tsx`：Next 解析 metadata 时会拿
- * openGraph 的图去补 twitter 那几条（见 resolve-metadata 的 postProcessMetadata），
- * 卡片类型也跟着自动变成 summary_large_image。多一个文件只是多一份一模一样的字节。
- */
 
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -19,25 +12,9 @@ export const alt = `${site.name} — live status of devices, music, media and AI
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
-/**
- * 字体从装好的 geist 包里读：不往仓库塞一份 300KB 的副本，也不在构建期联网取字
- * （和 layout 里不用 next/font/google 是同一个理由）。satori 只吃 ttf/otf/woff，
- * 这个包两种都发，挑 ttf 那份。
- *
- * 直接按项目根拼路径，不走 `require.resolve`：Turbopack 在编译期就把它换成自己
- * 图里的 `[project]/...` 虚拟地址，拿去 readFile 读不出文件。
- *
- * 两条路径各写全，不抽一个目录常量出来：产物追踪只认字面量，写成 `join(dir, 名字)`
- * 它就分不清要哪几个，把整个目录二十份字重（近 3MB）全打进函数。追踪确实认得这
- * 两个字面量，但记下来的是 pnpm 仓库里的**真身**（`node_modules/.pnpm/geist@…`）——
- * `node_modules/geist` 那条软链不会在函数里被重建，所以还要在 next.config 的
- * `outputFileTracingIncludes` 里按这里读的路径再要一次，否则线上必然 ENOENT。
- *
- * 读只能发生在函数里，**不能提到模块作用域**：渲染 `/` 时 Next 会 import 这个
- * 模块拿 alt / size / contentType 三个导出去拼 `<meta>`，模块作用域的 await 会
- * 跟着跑一遍，读不到字体就是整个首页渲染失败：ISR 每次重新生成都抛 ENOENT，
- * CDN 只能一直发最后那份成功的 HTML，首屏停在旧状态，而所有状态端点都是新的。
- */
+// Turbopack 会把 require.resolve 改成虚拟路径；追踪也要求完整字面量路径。
+// pnpm 软链不会自动带入函数，须在 next.config 的 outputFileTracingIncludes 保留这两条路径。
+// 不提到模块作用域：Next 读取图片 metadata 时也会导入此模块，字体读取失败会拖垮首页。
 function monoFonts() {
   return Promise.all([
     readFile(join(process.cwd(), "node_modules/geist/dist/fonts/geist-mono/GeistMono-Regular.ttf")),
@@ -45,30 +22,20 @@ function monoFonts() {
   ]);
 }
 
-/**
- * 卡片上一律 Latin 字形：satori 只认这里交给它的字体，而这份包里没有中文。
- * 站名、域名、栏目名本来就都是拉丁字母，中文描述交给 `og:description` 那条 meta，
- * 不画进图里 —— 为了一行小字背一份 CJK 字体不划算。
- */
 const LABELS = "DESKTOP · ACTIVITY · MUSIC · MEDIA · PLAYSTATION · VIBE CODING";
 
-/** 取浅色那套 globals.css 的 token，算成 sRGB：satori 不认 oklch。 */
-const PAPER = "#edebe6"; // --background
-const SURFACE = "#fffdf9"; // --surface
-const INK = "#151411"; // --foreground
-const MUTED = "#605d59"; // --muted-foreground
-const LINE = "rgba(21,20,17,0.24)"; // --line
-const PAPER_SHADOW = "rgba(21,20,17,0.18)"; // --paper-shadow
-const LIVE = "#3ba946"; // --live
+// satori 不支持 oklch。
+const PAPER = "#edebe6";
+const SURFACE = "#fffdf9";
+const INK = "#151411";
+const MUTED = "#605d59";
+const LINE = "rgba(21,20,17,0.24)";
+const PAPER_SHADOW = "rgba(21,20,17,0.18)";
+const LIVE = "#3ba946";
 
-/** 头像的实际像素就是画上去的尺寸，图是 1:1 渲染的，不用再乘倍率。 */
 const AVATAR_PX = 184;
 
-/**
- * 渲染一次就够：这张图里没有一处随请求变的东西，`cacheLife("max")` 让它跟着
- * 部署冻住 —— 不然每个抓预览的爬虫都要重跑一遍 satori。缓存的是字节而不是
- * Response：Response 不进缓存，头像那两路也是这么分的（见 lib/github-avatar-icon）。
- */
+// Response 不可序列化进 use cache，只缓存图片字节。
 async function ogPng(): Promise<Uint8Array> {
   "use cache";
   cacheLife("max");
@@ -90,9 +57,6 @@ async function ogPng(): Promise<Uint8Array> {
           fontFamily: "Geist Mono",
         }}
       >
-        {/* 站点由一张张硬边纸片拼成，分享卡片就画成其中最大的那一张：方角、墨线描边、
-            印刷错位般的硬阴影。线宽和位移按图的倍率各放大一档（站点上是 1px / 3px），
-            1px 的线在缩略图里会整条消失。 */}
         <div
           style={{
             flex: 1,
@@ -126,7 +90,6 @@ async function ogPng(): Promise<Uint8Array> {
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: 44 }}>
-            {/* satori 只认 <img> 和 data URI，next/image 那套在这里没有意义 */}
             <img
               src={`data:image/png;base64,${Buffer.from(avatar).toString("base64")}`}
               alt=""
@@ -145,8 +108,6 @@ async function ogPng(): Promise<Uint8Array> {
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-            {/* 站点里 section 之间那道 45° 斜纹（globals.css 的 stripe-divider），
-                同样按图的倍率把纹距放大一档 */}
             <div
               style={{
                 display: "flex",

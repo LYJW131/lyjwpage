@@ -1,11 +1,3 @@
-// 第 08 章「心电图与地层」的配乐，12 小节，章内小节。写法见 ../CONVENTIONS.md「配乐」。
-// 底鼓就是心跳（lub-dub）。心电图上两种信号各一个声音：Sentry 敲门 = 指节叩门（clockKind: "knock"），落在每拍的后半拍；
-// Worker 报到 = 往上挑的一声低音（剧情音 ping），每 5 拍一次，落在拍上，沉到地下时变远。拍位就是 ../ch08.js 的 KNOCKS / CHECKS，时点是它的 AT。
-// 4–6 结果取回来：5:0 令牌出门（钥匙声），5:2 今天那一格亮（高音灯）。
-// 6–10 沉到地面以下：低通收窄、敲门隔着地层变闷（knockFar），每拍压进一片（翻纸声）；7:0 在听那一层里这首歌亮一下，低音马林巴唱信封主题；
-// 8–10 Coding 一窗一窗交给 Jev：8:1 全零的窗一声闷拨弦（不问 Jev），8:2 起每打一窗一声小铃。
-// 10–12 Clawd 冒出来，升回地面，心跳回到全速；收在 A7sus4，交给第 09 章。
-// 调性：D 小调。本章的新和弦（名字全片唯一）：Dm11 是沉进地层时的挂留，Bbmaj9 是 ♭VI 的九和弦。
 (window.SCORE_PARTS = window.SCORE_PARTS || []).push({
   id: "ch08",
   tone: { bell: "warm", pluckPan: -0.2, snareVerb: 0.16 },
@@ -14,7 +6,6 @@
     Bbmaj9: ["Bb2", "F3", "A3", "C4", "D4"],
   },
   score: ({ withNotes, phrase, midi }) => {
-    // 报到：整 5 分钟那一拍（和 ../ch08.js 的 CHECKS 同一组）；6–10 在地下，听着远
     const checks = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45].map((phi) => ({
       bar: Math.floor(phi / 4), beat: phi % 4, kind: "ping", m: midi("D3"), late: phi >= 24 && phi < 40,
     }));
@@ -45,20 +36,18 @@
           kick: "Xx..Xx..Xx..Xx..", kickKind: "heart", duck: 0.4, clock: "..x...x...x...x.", clockKind: "knock", clockVol: 0.9,
           bass: "light", pad: 0.8, lp: 2200, padVerb: 0.34 },
       ],
-      // 旋律：[小节, 拍位, 时值(拍), 音, 乐器, 力度, 是否主题]
       melody: [
-        ...phrase(7, withNotes(["A3", "D4", "F4", "E4"]), "marimba", 1, true), // 在听那一层里这首歌亮一下：低音马林巴唱主题
+        ...phrase(7, withNotes(["A3", "D4", "F4", "E4"]), "marimba", 1, true),
         ...phrase(7, withNotes(["D3", "F3", "A3", "G3"]), "pluckDark", 0.35),
-        [8, 1, 1.5, "D3", "pluckMute", 0.5, false], // 全零的窗：一声闷拨弦
+        [8, 1, 1.5, "D3", "pluckMute", 0.5, false],
       ],
       story: [
         ...checks,
-        { bar: 5, beat: 0, kind: "key", v: 0.7, pan: 0.3 }, // 令牌出门
-        { bar: 5, beat: 2, kind: "lamp", m: midi("A5"), i: 2 }, // 今天那一格亮
-        // Jev 一窗一窗打分（../ch08.js 的 ORDER，从 AT.sweep0 起每半拍一窗），音高顺着和弦往上走
+        { bar: 5, beat: 0, kind: "key", v: 0.7, pan: 0.3 },
+        { bar: 5, beat: 2, kind: "lamp", m: midi("A5"), i: 2 },
         ...["G5", "A5", "Bb5", "D6", "E6", "G6"].map((n, i) => ({ bar: 8 + Math.floor((2 + i * 0.5) / 4), beat: (2 + i * 0.5) % 4, kind: "tick", m: midi(n), i: i % 3 })),
-        { bar: 10, beat: 1, kind: "accent", what: "flip" }, // Clawd 冒出来
-        { bar: 11, beat: 3, kind: "swell" }, // 升回地面，交给第 09 章
+        { bar: 10, beat: 1, kind: "accent", what: "flip" },
+        { bar: 11, beat: 3, kind: "swell" },
       ],
     };
   },

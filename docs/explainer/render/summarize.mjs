@@ -1,4 +1,3 @@
-// 把 analyze.mjs 的 JSON 压成人能读的摘要：node summarize.mjs <analysis.json> [from] [to]
 import fs from "node:fs";
 const [p, fromArg, toArg] = process.argv.slice(2);
 const d = JSON.parse(fs.readFileSync(p, "utf8"));

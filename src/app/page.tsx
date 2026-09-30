@@ -55,18 +55,6 @@ import {
 import { STATUS_VIEWS } from "@/lib/status-views";
 import type { StatusResponse, TrophiesSummaryPayload } from "@/lib/types";
 
-/**
- * 这几格的版面类：既给卡片，也给它外面的错误边界（兜底占同一格，网格才不塌、
- * 锚点跳转的估高才不失准），所以只写一份。
- *
- * 首屏之外的大块先不排版，见 globals.css 的 defer-offscreen。
- * 估高按 375px 上实测的高度写，锚点跳过去才落得准；`auto` 让它
- * 渲染过一次之后改按真高度算，所以桌面端那份估偏也只差第一帧。
- *
- * 这三张是两列网格里的格子，只在窄屏（单列）开；整宽的那几块
- * 用 defer-offscreen-always，宽窄都开。首屏 load 之后整页揭开，
- * 不再等滚到跟前。
- */
 const SLOT = {
   activity: "defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_350px] md:[contain-intrinsic-size:auto_253px]",
   server: "defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_245px]",
@@ -77,10 +65,6 @@ const SLOT = {
   siteStatus: "mt-3 defer-offscreen-always [contain-intrinsic-size:auto_1440px]",
 } as const;
 
-/**
- * 每张卡读的 SWR 键，给各自的错误边界用：重试前先给这些键备好缓存，见 components/card-boundary。
- * 卡片改了读什么，这里跟着改；漏了只是那张卡重试时没处理那个键，不会崩。
- */
 const READS = {
   contact: [GITHUB_CHART_PATH, CODING_YEAR_PATH],
   nowWatching: [NOW_WATCHING_PATH],
@@ -96,10 +80,6 @@ const READS = {
 } as const;
 
 export default async function Home() {
-  /**
-   * 首屏按卡读取，各卡一条缓存（见 lib/first-screen）：实时卡的端点读状态核心，
-   * 可滞后卡的端点读 KV。并行发出，任何一张都不在请求路径上现拉外部 API。
-   */
   const [
     desktop,
     timezone,
@@ -159,7 +139,6 @@ export default async function Home() {
     githubAvatarDataUri(),
     getRecentCommits(),
   ]);
-  /** 无参的奖杯端点回的是摘要（带 `?titleids=` 才是目录），首屏这格就是那份摘要 */
   const trophies = trophiesEnvelope as StatusResponse<TrophiesSummaryPayload>;
 
   const nowSongId =
@@ -173,15 +152,8 @@ export default async function Home() {
   const nowMusic = nowListening.ok && !nowListening.data.idle ? nowListening.data.music : null;
   const liveHeroArtwork = liveTrack(nowMusic)?.artworkUrl ?? null;
   const heroArtwork = liveHeroArtwork ?? listeningArtworks[0];
-  // 实时曲目当 hero 时，历史列表从第一条开始；否则第一条已经被 hero 占用。
   const rowArtworks = liveHeroArtwork ? listeningArtworks : listeningArtworks.slice(1);
 
-  /**
-   * 内联素材与首屏歌词只能排在第二轮：要压哪几张、要哪首的歌词写在信封里，进不了
-   * 上面那批并行。桌面图标按 objectKey 缓存（lib/desktop-icon-inline）、封面占位按
-   * Apple 模板 URL 缓存（lib/artwork-placeholder）、歌词按曲目缓存（lib/first-screen）；
-   * 命中缓存后这里不产生额外往返。
-   */
   const [desktopIcon, artwork, lyrics] = await Promise.all([
     desktopIconDataUri(desktop.ok ? (desktop.data.desktop?.iconUrl ?? null) : null),
     artworkPlaceholders(rowArtworks, heroArtwork),
@@ -216,11 +188,7 @@ export default async function Home() {
                 </CardBoundary>
               </div>
 
-              {/*
-                「正在播放」放在两个网格之间、不进网格：进网格的话收起时高度能到 0，
-                网格那 12px 的 gap 却要等它卸载才消失，动画末尾会跳一下。它自己的
-                上边距跟着高度一起动画，见 now-watching-card。没在播时整个不渲染。
-              */}
+              {/* 网格 gap 要等卸载才消失，会在收起动画末尾跳动，因此此卡放在网格外。 */}
               <CardBoundary label="Now Watching" silent paths={READS.nowWatching}>
                 <NowWatchingCard nowFallback={nowWatching} />
               </CardBoundary>
@@ -267,7 +235,6 @@ export default async function Home() {
                     className={SLOT.playstation}
                   />
                 </CardBoundary>
-                {/* Pulse 夹在 PlayStation 与 Emby Recently Watched 中间 */}
                 <CardBoundary label="Pulse" className={SLOT.pulse} paths={READS.pulse}>
                   <PulseCard fallback={pulse} className={SLOT.pulse} />
                 </CardBoundary>
@@ -305,7 +272,6 @@ export default async function Home() {
 
       <Footer />
 
-      {/* 开发环境右下角的调试胶囊：Dock 是容器，各组件把自己的开关传送进来；生产不渲染 */}
       <DevToggleDock />
       <DevFakeDataToggle />
     </>

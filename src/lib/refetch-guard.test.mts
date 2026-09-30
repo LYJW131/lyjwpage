@@ -18,9 +18,9 @@ test("账本：被丢弃时还有别的在路上，就等它们都结束再补�
   const first = ledger.begin(KEY);
   const second = ledger.begin(KEY);
   ledger.end(KEY, first);
-  ledger.discarded(KEY); // first 被 second 顶掉
+  ledger.discarded(KEY);
   assert.equal(ledger.settle(KEY), false, "second 还在路上，先别补");
-  ledger.end(KEY, second); // second 失败了，没有接受也没有丢弃
+  ledger.end(KEY, second);
   assert.equal(ledger.settle(KEY), true, "全结束了、账还欠着，补一次");
   assert.equal(ledger.settle(KEY), false, "清过账就不再补");
 });
@@ -38,19 +38,12 @@ test("账本：更晚发出的落地了，之前的丢弃不欠；先落地的�
   const third = ledger.begin(KEY);
   const fourth = ledger.begin(KEY);
   ledger.end(KEY, fourth);
-  ledger.accepted(KEY); // 更晚发出的先落地
+  ledger.accepted(KEY);
   ledger.end(KEY, third);
-  ledger.discarded(KEY); // 老的后到，被丢弃
+  ledger.discarded(KEY);
   assert.equal(ledger.settle(KEY), false, "更新的数据已经在缓存里，不欠");
 });
 
-/**
- * 按 SWR 的丢弃规则做的离散事件模型：谁最后发出，谁是「当前」；成功返回时不是「当前」
- * 就被丢弃（被更晚的顶掉），是当前但和一次推送重叠也被丢弃，否则被接受；失败既不接受
- * 也不丢弃。结果在交给 SWR 之前先出账，宏任务里再看欠不欠补取。数出整个时间窗里发了几条。
- *
- * `policy: "always"` 是被丢弃就立刻再问的做法，用来复现无限接力。
- */
 function simulate(options: {
   initial: number;
   latencyMs: number | ((seq: number) => number);
@@ -90,7 +83,6 @@ function simulate(options: {
 }
 
 test("两个消费者同时补取：从前「被丢就再问」无限接力，记账之后到此为止", () => {
-  // 事故的形状：一个键两个消费者，挂载补取两条并发，往返 450 ms，观察 30 秒
   const before = simulate({ initial: 2, latencyMs: 450, horizonMs: 30_000, policy: "always" });
   const after = simulate({ initial: 2, latencyMs: 450, horizonMs: 30_000, policy: "ledger" });
   assert.ok(before > 100, `从前应当停不下来，实际只发了 ${before} 条`);

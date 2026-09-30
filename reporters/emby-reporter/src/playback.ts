@@ -1,12 +1,4 @@
-/**
- * 从 Emby 的会话和媒体源里挑出「正在放的这一路」：在哪放、怎么放、什么规格。
- *
- * 纯函数，不碰网络。会话说选了哪条音轨 / 字幕，这里就按下标取那一条；站点只收
- * 挑好的那几个字段，不收整份流列表 —— 一个条目动辄二十几条字幕流，而且外挂字幕
- * 流带着 NAS 的 SMB 路径，整份转出去就是把内网路径发到公网上。
- *
- * 字段一律逐个挑，不展开整个流对象，理由同上。
- */
+// 必须逐字段挑选，完整媒体流可能带 NAS/SMB 路径，不能随报文公开。
 
 export type EmbyMediaStream = {
   Type?: string;
@@ -16,9 +8,7 @@ export type EmbyMediaStream = {
   Width?: number;
   Height?: number;
   BitDepth?: number;
-  /** 老字段，只有 SDR / HDR 两档 */
   VideoRange?: string;
-  /** 4.7+ 的细分：None / Hdr10 / Hdr10Plus / DolbyVision / Hlg … */
   ExtendedVideoType?: string;
   Channels?: number;
   ChannelLayout?: string;
@@ -36,7 +26,6 @@ export type EmbyMediaSource = {
   MediaStreams?: EmbyMediaStream[];
 };
 
-/** 会话里的 PlayState。PlayMethod 在没有 NowPlayingItem 的空闲会话上也会残留 */
 export type EmbyPlayState = {
   PositionTicks?: number;
   IsPaused?: boolean;
@@ -46,7 +35,6 @@ export type EmbyPlayState = {
   MediaSourceId?: string;
 };
 
-/** 条目或 NowPlayingItem 上和媒体有关的那几个字段 */
 export type EmbyItemMedia = {
   Container?: string;
   Bitrate?: number;
@@ -54,7 +42,6 @@ export type EmbyItemMedia = {
   MediaSources?: EmbyMediaSource[];
 };
 
-/* ── 站点 ingest 收的形状，和站点 lib/types 的 WatchingMedia 逐字对应 ── */
 
 export type VideoRange = "sdr" | "hdr" | "hdr10" | "hdr10plus" | "dolby-vision" | "hlg";
 
@@ -100,15 +87,11 @@ function count(value: unknown): number | null {
     : null;
 }
 
-/** 小写、去掉分隔符，让 "Hdr10Plus" / "HDR10+" / "hdr10_plus" 落到同一个键 */
 function key(value: unknown): string {
   return (text(value) ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
-/**
- * 播放方式只在真的在播时才算数：空闲会话上 PlayMethod 是上一次播放留下的。
- * 调用方保证传进来的会话带 NowPlayingItem。
- */
+// 空闲会话会残留上次的 PlayMethod；只有存在 NowPlayingItem 时它才有效。
 export function playMethod(state: EmbyPlayState | undefined): PlayMethod | null {
   const method = key(state?.PlayMethod);
   if (method === "directplay" || method === "directstream" || method === "transcode") {
@@ -124,7 +107,6 @@ function videoRange(stream: EmbyMediaStream): VideoRange | null {
     if (extended === "hdr10plus") return "hdr10plus";
     if (extended === "dolbyvision") return "dolby-vision";
     if (extended === "hlg") return "hlg";
-    // HdrVivid 之类：知道是 HDR，具体哪种不认
     return "hdr";
   }
   const range = key(stream.VideoRange);
@@ -139,11 +121,7 @@ type StreamSource = {
   bitrate: number | null;
 };
 
-/**
- * 流列表取谁的：会话上 NowPlayingItem 若带流，那就是正在放的那份；否则按
- * PlayState.MediaSourceId 在条目的媒体源里找 —— 流下标是按媒体源算的，同一集的
- * BD / WEB 两个版本下标各不相同，拿错媒体源就会把音轨标错。
- */
+// 流下标只在所属媒体源内有效；同一集不同版本的音轨下标不能互换。
 function resolveSource(
   playState: EmbyPlayState | undefined,
   nowPlaying: EmbyItemMedia | undefined,
@@ -200,7 +178,6 @@ export function pickMedia(input: {
 
   const video = ofType(source.streams, "Video")[0] ?? null;
 
-  // 会话说了选哪条就用哪条，没说就是默认轨，再没有就第一条
   const audios = ofType(source.streams, "Audio");
   const audio =
     byIndex(audios, input.playState?.AudioStreamIndex) ??
@@ -208,7 +185,6 @@ export function pickMedia(input: {
     audios[0] ??
     null;
 
-  // 字幕只认会话明确选中的那条：没有下标、或 -1，都是没开字幕
   const subtitleIndex = input.playState?.SubtitleStreamIndex;
   const subtitle =
     typeof subtitleIndex === "number" && subtitleIndex >= 0

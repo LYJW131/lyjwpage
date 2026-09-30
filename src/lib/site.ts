@@ -1,32 +1,18 @@
-/** 站点配置。 */
 
 export const site = {
-  /** 用于 header 和 <head> metadata */
   name: "LYJW's Homepage",
-  /** 窄屏页头只留这四个字母 */
   shortName: "LYJW",
   url: "https://lyjw.me",
   description: "A personal homepage with live status of devices, apps, music, media and AI coding.",
-  /** 页脚的 commit 链接拼在它后面 */
   repo: "https://github.com/LYJW131/lyjwpage",
-  /** 控制台与单次部署的链接拼在它后面 */
   vercel: "https://vercel.com/lyjw131s-projects/lyjwpage",
-  /** Cloudflare 控制台的 Workers 列表；账号 ID 不是秘密，Worker 的 wrangler.toml 也写它 */
   cloudflare: "https://dash.cloudflare.com/209f2c881b1c494fec50851c067b3266/workers-and-pages",
-  /** Sentry 组织首页；站点报错、在线监测和 cron 心跳都在这里 */
   sentry: "https://yangjunwei-liang.sentry.io",
   githubLogin: "LYJW131",
-  /** 头像 CDN 按数字 ID 直取，不经登录名跳转；改账号时一起改。 */
   githubId: 153256373,
   github: "https://github.com/LYJW131",
-  /**
-   * 回退用途：卡片上那张头像正常走构建期内联的 data URI（见
-   * lib/github-avatar-icon 的 githubAvatarDataUri），拉不到才用这个 URL
-   * 过 next/image 优化器回源。页签图标又是另一份，见 icon.tsx。
-   */
   githubAvatar: "https://avatars.githubusercontent.com/LYJW131?s=192",
   email: "admin@lyjw.me",
 
-  /** Mac 时区遥测不可用时，时间卡片回退到这个后端默认时区。 */
   timezone: "Asia/Shanghai",
 } as const;

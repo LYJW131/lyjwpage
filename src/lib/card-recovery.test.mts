@@ -56,7 +56,6 @@ test("describeFault：Error 取 message，字符串照用，别的转成字符�
 
 type Envelope = { ok: boolean; data?: string };
 
-/** 一份假的 SWR 缓存：Retry 之后重新挂载时，卡片读缓存、没有才用首屏那份 */
 function fakeCache(initial: Record<string, Envelope | undefined>) {
   const cache = new Map(Object.entries(initial));
   return {
@@ -68,7 +67,6 @@ function fakeCache(initial: Record<string, Envelope | undefined>) {
   };
 }
 
-/** 和 lib/status-reads 的 writeGeneration 同一个约定：推送、取回的响应落进缓存时推进这个键的代次 */
 function fakeGenerations() {
   const counts = new Map<string, number>();
   return {
@@ -77,7 +75,6 @@ function fakeGenerations() {
   };
 }
 
-/** 没有任何更新、卡片一直挂着：不受这两项影响的用例用它 */
 const untouched = { generation: () => 0, cacheData: () => undefined, cancelled: () => false };
 
 function deferred<T>() {
@@ -104,7 +101,6 @@ test("重试前先取一份此刻的数据写进缓存：让卡崩的就是首�
     ...untouched,
   });
   assert.deepEqual([...fetched].sort(), ["/api/status/coding", "/api/status/pulse"]);
-  // 重新挂载读到的是缓存里的新数据，不是首屏那份
   assert.deepEqual(world.cache.get("/api/status/pulse"), { ok: true, data: "fresh /api/status/pulse" });
   assert.deepEqual(world.cache.get("/api/status/coding"), { ok: true, data: "fresh /api/status/coding" });
 });
@@ -205,7 +201,6 @@ test("取数途中这个键已经收到更新（推送、别的卡的轮询）�
     cacheData: (path) => world.cache.get(path),
     cancelled: () => false,
   });
-  // 取数途中，busy 这个键被推送写进了更新的值（推送路径同时推进它的代次）
   const pushed: Envelope = { ok: true, data: "pushed, newer" };
   world.write(busy, pushed);
   generations.bump(busy);
@@ -287,7 +282,6 @@ test("两趟重试碰上同一个键：先落地的那份写了并推进代次�
     primeCardCache([path], {
       isStatusPath: () => true,
       read: () => response,
-      // 真实的写入（lib/status-reads 的 guardPolled）会推进代次
       write: (key, value) => {
         world.write(key, value);
         if (value) generations.bump(key);
@@ -304,7 +298,6 @@ test("两趟重试碰上同一个键：先落地的那份写了并推进代次�
   assert.deepEqual(world.cache.get(path), { ok: true, data: "first response" });
 });
 
-/** 组件里的接线：读原始响应，写之前过 guardPolled，代次取 status-reads 那本账 */
 function wired(world: Map<string, StatusResponse<unknown>>, read: () => Promise<StatusResponse<unknown>>, cancelled = () => false) {
   return {
     isStatusPath: (path: string) => viewKeyByPath(path) !== undefined,
@@ -325,7 +318,6 @@ test("接线：SWR 丢弃旧轮询后缓存没变，Retry 仍写入新取回的�
   const world = new Map<string, StatusResponse<unknown>>([[path, poisoned]]);
   const slow = deferred<StatusResponse<unknown>>();
   const running = primeCardCache([path], wired(world, () => slow.promise));
-  // useStatus 的 guardPolled 已执行，但 SWR 后续认定这次请求过期，未 setCache。
   guardPolled(path, { ok: true, data: "discarded poll" });
   slow.resolve({ ok: true, data: "fresh for retry" });
   await running;
@@ -358,7 +350,6 @@ test("接线（真实的 status-reads）：没有时间戳的 watching/now，Ret
   const world = new Map<string, StatusResponse<unknown>>([[path, { ok: true, data: "poisoned first screen" }]]);
   const slow = deferred<StatusResponse<unknown>>();
   const running = primeCardCache([path], wired(world, () => slow.promise));
-  // 和 hooks/use-live-events 的 dispatch 一样：acceptPush 放行才写缓存
   const pushed: StatusResponse<unknown> = { ok: true, data: "pushed, newer" };
   if (acceptPush(path, pushed)) world.set(path, pushed);
   slow.resolve({ ok: true, data: "slow stale response" });
@@ -371,7 +362,6 @@ test("接线（真实的 status-reads）：同一个键上别的卡的轮询先�
   const world = new Map<string, StatusResponse<unknown>>([[path, { ok: true, data: "poisoned first screen" }]]);
   const slow = deferred<StatusResponse<unknown>>();
   const running = primeCardCache([path], wired(world, () => slow.promise));
-  // hooks/use-status 的取数壳子：响应回来先过 guardPolled，再由 SWR 写进缓存
   const polled: StatusResponse<unknown> = { ok: true, data: "polled by the other card" };
   world.set(path, guardPolled(path, polled));
   slow.resolve({ ok: true, data: "slow response" });

@@ -7,13 +7,7 @@ import {
   type CodingUsageReport,
 } from "@shared/coding-usage";
 
-/**
- * Mac 信封与 `/api/ingest/agents` 共用的三份 coding 模块（契约见 shared/coding-usage）。
- *
- * 坏了**只丢这一个模块**，原因进回执的 `rejected`（上报入口并进 202 的 `data`，并记 warn）。
- * coding 模块是从文件解析出的大块派生数据，最容易撞校验：任一模块坏了就整封 400 的话，
- * 连正在播放、前台应用、存活都会一起卡死，直到上报器换版，不能让它连坐。拒绝仍然是明说的。
- */
+// coding 模块独立拒收，避免日志解析故障阻断同封的播放状态与存活上报。
 
 export const CODING_MODULES = ["codingUsage", "codingActivity", "codingTokenBuckets"] as const;
 export type CodingModuleName = (typeof CODING_MODULES)[number];
@@ -24,13 +18,8 @@ export type CodingModules = {
   codingTokenBuckets?: CodingTokenBucketReport;
 };
 
-/** 回执里的一条拒收：哪个模块、哪条校验没过 */
 export type CodingModuleRejection = { module: CodingModuleName; error: string };
 
-/**
- * 逐个收敛 `raw` 里出现的 coding 模块。出现就要合规：`null` 也算出现（按「必须是对象」拒掉），
- * 缺省才是没带。
- */
 export function prepareCodingModules(
   raw: Record<string, unknown>,
   receivedAt: number,
@@ -55,7 +44,6 @@ export function prepareCodingModules(
   return { modules, rejected };
 }
 
-/** 回执与日志里的一行：`codingUsage：agents[0].days[2].totalTokens 小于四列之和；…` */
 export function describeRejections(rejected: readonly CodingModuleRejection[]): string {
   return rejected.map(({ module, error }) => `${module}：${error}`).join("；");
 }

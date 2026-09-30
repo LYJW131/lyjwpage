@@ -21,7 +21,6 @@ import { commitPreparedAgentsReport } from './stores/agents';
 import { prepareAgentLimits } from '@shared/ingest/agents';
 const T = 1_800_000_000_000;
 type LegacyShape = { from: number; to: number; collectedAt: number; sources: { id: string; state: string }[]; windows: { from: number; to?: number; agents: unknown[] }[] };
-/** 一份按范围报的桶（Mac 本机扫描那种），存成 `pulse:token-buckets:<来源>` 的样子 */
 function storedBuckets(report: LegacyShape): string {
   const shaped = { from: report.from, to: report.to, collectedAt: report.collectedAt, agents: report.sources,
     windows: report.windows.map((window) => ({ from: window.from, agents: window.agents })) } as unknown as CodingTokenBucketReport;
@@ -269,7 +268,6 @@ test("pulse score state: a re-scored window is appended and the later row wins f
 test("pulse score state: once superseded rows outweigh half the live ones the list is compacted", async () => {
   const b = setup();
   const live = Array.from({ length: 10 }, (_, i) => assessment("coding", T - i * PULSE_SCORE_WINDOW_MS, b.now(), `live-${i}`));
-  // 同一批窗口的六份旧评分：被覆盖的行远多于有效行
   const stale = Array.from({ length: 6 }, (_, n) => live.map((row) => JSON.stringify({ ...row, inputHash: `old-${n}` }))).flat();
   await b.storage.append(pulseAssessmentsKey(), ...stale, ...live.map((row) => JSON.stringify(row)));
   await finishWith(b, [assessment("coding", T + PULSE_SCORE_WINDOW_MS, b.now(), "new")]);
@@ -396,7 +394,6 @@ test("a zero window is skipped while another coding window still calls Jev", asy
 
 test("Mac-offline account evidence reaches scoring and the public chart, then disappears after source expiry", async () => {
   const b = setup();
-  // Drive the actual producer commits into the same SQLite store used by the scorer.
   installStorageForTests(b.storage);
   const pending: Promise<unknown>[] = [];
   try {
@@ -464,7 +461,6 @@ test("token evidence from the Cursor account and Claude Code cloud counts only a
     coverage: [], agents: [{ id, state: "partial" }], windows: [{ from: T + 300_000, agents: [row(id, 7, eventCount)] }],
     collectedAt: T + 900_000, receivedAt: T + 900_000,
   });
-  // Mac 把整窗都报成 0，但云端那一路在第二个桶里有 token：不是确定的 0，照问 Jev
   const b = setup();
   await quietCoding(b, T);
   await b.storage.set(codingBucketsKey("mac"), storedBuckets({ from: T, to: T + PULSE_SCORE_WINDOW_MS, collectedAt: T + PULSE_SCORE_WINDOW_MS,
@@ -477,7 +473,6 @@ test("token evidence from the Cursor account and Claude Code cloud counts only a
   assert.deepEqual(token.sources.map((source) => [source.source, source.id, source.state]), [["mac", "codex", "ok"], ["mac", "claude", "ok"], ["agents-otlp", "claude", "partial"]]);
   assert.deepEqual(token.agents.map((agent) => [agent.source, agent.id, agent.inputTokens, agent.eventCount]), [["agents-otlp", "claude", 7, null]]);
 
-  // 没有 Mac 的覆盖，只有 Cursor 账号的桶：证据照样送过去，未知的桶还是未知
   const cursor = setup();
   await cursor.push(T);
   await cursor.storage.set(codingBucketsKey("agents"), extra("agents", "cursor", 3));
