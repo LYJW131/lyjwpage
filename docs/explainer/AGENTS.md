@@ -14,7 +14,8 @@
 - `music.js` 的 `PLAN`（每章小节数）⇄ 场景里各章的 `chapter()`：两边必须一致，否则配乐和画面错位。
 - 改了中文文案，`i18n-en.js` 的英文对照表要跟上：用 `render/harvest.mjs` 查英文模式下没查到译文的片段，应为 0。
 - 只改画面、不改章节小节数时，先用 `render/cuesjson.mjs` 导出音效时间表和上一版比对，没变就不用重渲音效。
-- 站点版由 `scripts/build-explainer.mjs` 在 `pnpm build` 时生成到 `public/explainer/`（不进仓库）：入口 `index.html` 保持原名，`next.config.ts` 把 `/explainer` rewrite 到它，脚本、字体、配乐按内容哈希改名。新增这类资源要让脚本拷得到。
+- 站点版由 `scripts/build-explainer.mjs` 在 `pnpm build` 时从 `v2/` 生成到 `public/explainer/`（不进仓库）：入口 `index.html` 保持原名，`next.config.ts` 把 `/explainer` rewrite 到它；脚本只认 `v2/index.html` 的 `LOAD` 表（保持 JSON 写法），连同内联样式里的相对 `url()` 和 `v2/score.mp3` 按内容哈希改名。新增别的资源要让脚本拷得到：页面上新的相对 `src` / `href` 它会报错，脚本里取的文件要像 `v2/film.js` 取 `v2/score.mp3` 那样经 `window.__assets` 查名字。根上的 `clawd.js`、`fonts/` 也被 v2 引用。
+- `v2/score.mp3` 随仓库提交：改了 `v2/plan.js` 或任何乐谱都要重渲并提交它（`README.md`「站点版」）。构建只查它在不在，时长对不上时线上退回现合成。
 
 ## 环境
 

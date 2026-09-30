@@ -26,27 +26,27 @@
     "ch08.checkin": ["报到", "check-in"],
     "ch08.checkinSub": ["每 5 分钟一次", "every 5 minutes"],
     "ch08.cron": ["分钟 cron", "minute cron"],
-    "ch08.n1a": ["Sentry 每分钟来敲一次门，", "Sentry knocks every minute;"],
-    "ch08.n1b": ["Worker 每 5 分钟去报一次到。", "the Worker checks in every five."],
+    "ch08.n1a": ["外部探测从 Sentry 打进来，", "Sentry probes in from outside;"],
+    "ch08.n1b": ["cron 从 Worker 里主动报出去。", "the Worker's cron reports out."],
     "ch08.foot": ["报到只证明 cron 跑完了。", "A check-in only proves the cron ran."],
     "ch08.collector": ["采集 Worker", "Collector"],
     "ch08.every5": ["每 5 分钟", "every 5 minutes"],
-    "ch08.n2a": ["结果取回来，", "Results come back,"],
-    "ch08.n2b": ["今天那一格亮一下。", "and today's cell lights up."],
+    "ch08.n2a": ["查 Sentry 的是采集 Worker，", "The collector queries Sentry;"],
+    "ch08.n2b": ["页面只读可滞后层，不碰 Sentry。", "pages only read the lag layer."],
     "ch08.archive": ["每分钟压进一薄片", "a thin slice every minute"],
     "ch08.keep": ["长期保存", "kept long-term"],
-    "ch08.older": ["越往左越早，一直留着", "older to the left, never cleared"],
+    "ch08.older": ["越往左越早，一直留着", "older to the left, kept long-term"],
     "ch08.sources": ["Mac · 云端 · Cursor", "Mac · cloud · Cursor"],
-    "ch08.n3a": ["往下是地层：pulse 每分钟进 D1，", "Below lie the strata: pulse goes"],
-    "ch08.n3b": ["长期保存。", "to D1 every minute, kept long-term."],
+    "ch08.n3a": ["分钟 cron 按水位把新行写进 D1，", "Rows past the watermark go to D1;"],
+    "ch08.n3b": ["各路独立，一路坏了不挡别路。", "a failed stream blocks no other."],
     "ch08.jevNote": ["打分（示意）", "scores (illustrative)"],
     "ch08.jevKeep": ["打分只在屋里放 7 天，不进 D1", "scores stay 7 days in the room, not in D1"],
     "ch08.window": ["一窗 = 三个 5 分钟桶", "one window = three 5-min buckets"],
     "ch08.skip": ["不问 Jev，直接最低档", "no Jev: lowest level"],
     "ch08.open": ["还没满", "not closed yet"],
-    "ch08.n4a": ["Coding 每 15 分钟一窗交给 Jev，", "Jev scores coding per 15 minutes;"],
-    "ch08.n4b": ["全是零的窗不用问。", "all-zero windows skip the question."],
-    "ch08.clawd": ["线上出错时，\n我先来这儿查证据。", "When something breaks,\nI come here for evidence first."],
+    "ch08.n4a": ["窗关上两分钟后才交给 Jev，", "Two minutes after a window closes,"],
+    "ch08.n4b": ["输入是前台应用、agent 与 token。", "Jev weighs apps, agents and tokens."],
+    "ch08.clawd": ["线上出错时，\n我先去 Sentry 查证据。", "When something breaks,\nI check Sentry first."],
   });
   const tr = (k) => I18N.tr(k);
   const TAU = Math.PI * 2;
@@ -63,6 +63,8 @@
   for (let k = 0; k <= 50; k++) KNOCKS.push(k + 0.5);
 
   // ---------- 布局（世界坐标；机位 A 时和屏幕一一对应） ----------
+  // 心电图这组几何（Y0、NOW_X、V、UP、DOWN、CHECKS / KNOCKS 的拍位）另有两处跟着它：ch09.js 的 HEAD、COMMITS 落在本章最后一帧的笔尖
+  // 和敲门尖峰的横坐标上（第 09 章 0:0 要和本章最后一帧对上）；ch10.js 第 08 格照抄了一份（回顾时画同一条心电图）。改这里要同步改那两边
   const Y0 = 540; // 心电图基线 = 地面
   const NOW_X = 1350; // 笔尖（此刻）；心电图和地层都是往左越早
   const V = 200; // 心电图：一拍走多少世界 px
@@ -374,7 +376,7 @@
       if (x1 <= x0) return;
       fillRect(x, x0, laneY(i) + LANE_H - 12 - h, x1 - x0, h, color, alpha);
     };
-    const dimOf = (i) => a * (i <= 1 ? 1 : 1 - 0.72 * focus);
+    const dimOf = (i) => a * (i <= 1 ? 1 : 1 - focus);
     // Coding：三色带画成三档浓淡（前台 coding 应用 / agent 在跑 / 两者同时），不照搬站点的颜色
     for (const w of CODING) for (const [t0, t1, v] of w.band) if (v && t1 <= phi) seg(0, t0, Math.min(t1, phi), 12, dimOf(0) * [0, 0.3, 0.55, 0.85][v]);
     // Tokens：三个来源的桶叠起来（Mac、云端、Cursor 三档浓淡），只在桶关上之后画
@@ -431,7 +433,7 @@
     line(x, wx(290), ST_TOP - 70, wx(290), ST_BOT + 20, 1.4 / z, css("bone"), 0.5 * a);
     text(x, "Pulse", wx(40), ST_TOP - 22, { font: FONT.mono(34 / z, 600), color: css("bone"), alpha: a });
     LANES.forEach((name, i) => {
-      const hot = i <= 1 ? 1 : 1 - 0.65 * focus;
+      const hot = i <= 1 ? 1 : 1 - focus;
       text(x, name, wx(40), laneY(i) + LANE_H / 2 + 11 / z, { font: FONT.mono(32 / z, 500), color: i <= 1 && focus > 0.5 ? css("bone") : css("ash"), alpha: a * hot });
     });
   }
@@ -504,7 +506,10 @@
     // 两条注贴着道名那一栏：Tokens 是三个来源的桶；一窗是三个 5 分钟桶
     const lx = cam.x + (310 - 960) / cam.zoom;
     text(x, tr("ch08.sources"), lx, laneY(2) + 30, { font: FONT.cjk(21, 600), color: bone, alpha: a });
-    text(x, tr("ch08.window"), lx, ST_TOP - 16, { font: FONT.cjk(21, 600), color: ash, alpha: a });
+    // Jev 给左边几窗打分时，虚线会穿过这行注：字底下垫一块墨色，线从字后面过
+    const wn = tr("ch08.window"), wf = FONT.cjk(21, 600);
+    fillRect(x, lx - 8, ST_TOP - 42, K.measure(x, wn, wf) + 16, 34, css("ink"), a);
+    text(x, wn, lx, ST_TOP - 16, { font: wf, color: ash, alpha: a });
   }
 
   function title(x, b) {

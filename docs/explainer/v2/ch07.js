@@ -24,7 +24,7 @@
     "ch07.sC": ["入夜 · 没人", "Night · nobody here"],
     "ch07.sD": ["早上 · 有人来了", "Morning · a visitor"],
     "ch07.sE": ["人数问不到", "Head count unreadable"],
-    "ch07.srv": ["服务器 · 不问人数", "Server · never asks"],
+    "ch07.srv": ["服务器 · 不问人数", "Server · no head count"],
     "ch07.lim": ["编码账号限额", "Coding plan limits"],
     "ch07.ps": ["PlayStation", "PlayStation"],
     "ch07.count": ["人数", "Head count"],
@@ -46,14 +46,14 @@
     "ch07.flip1": ["醒着和没醒对调，", "Awake and asleep swap:"],
     "ch07.flip2": ["当场打一轮", "one round, right away"],
     "ch07.backoff": ["（退避没到时一律不放行）", "(unless a backoff is still running)"],
-    "ch07.n1a": ["主机醒着，就勤打 PSN；", "Console awake, PSN ticks fast;"],
-    "ch07.n1b": ["限额看有没有人在看。", "limits follow who's watching."],
-    "ch07.n2a": ["入夜人走光，只有服务器照旧：", "At night only the server keeps time:"],
-    "ch07.n2b": ["问人数，并不比直接报省。", "asking costs as much as reporting."],
-    "ch07.n3a": ["PS5 一开机，", "Power the PS5 on"],
-    "ch07.n3b": ["马上回到快档。", "and the fast tick starts now."],
-    "ch07.n4a": ["人数问不到就当 0：", "No head count? Call it zero:"],
-    "ch07.n4b": ["只会变慢，不会变快。", "slower, never faster."],
+    "ch07.n1a": ["限额每轮都要调厂商接口，", "Each limits round calls vendor APIs;"],
+    "ch07.n1b": ["跑完按当时的人数定下一轮间隔。", "the head count sets the next wait."],
+    "ch07.n2a": ["服务器每分钟照报：快照即心跳，", "Snapshot = heartbeat, each minute;"],
+    "ch07.n2b": ["先问人数反而比直接报更费。", "asking first would cost more."],
+    "ch07.n3a": ["开机后第一探读到 200，", "Power on: the first probe reads 200,"],
+    "ch07.n3b": ["紧跟着问一轮 PSN、寄一封。", "then a PSN round, then an envelope."],
+    "ch07.n4a": ["/count 超时或出错一律当 0：", "/count fails or times out? Zero."],
+    "ch07.n4b": ["故障只会让限额变慢。", "Failures only ever slow it down."],
   });
   const tr = (k) => I18N.tr(k);
   const TAU = Math.PI * 2;
@@ -139,14 +139,15 @@
   const NOTE_Y = 790, NOTE2_Y = 950;
 
   // ---------- 镜头 ----------
-  // 结尾冲进服务器那台：12:0 它摆到右端，摆尖落在屏幕 (1100, 300)，第 08 章心电图第一个尖峰的尖在同一处
+  // 结尾冲进服务器那台：镜头 11.97 到位停住（12:0 那一帧属于第 08 章，键落在 12.0 本章渲不到终点）；
+  // 它 12:0 摆到右端，本章最后一帧摆尖已在屏幕 (1100, 300)，第 08 章心电图第一个尖峰的尖在同一处
   const [TIPX, TIPY] = tipOf(MX.srv, AMP);
   const ZF = 2.4, END = [TIPX + OX - (1100 - 960) / ZF, TIPY + OY - (300 - 540) / ZF, ZF, 0];
   const CAM = [
     [0, [6400, 690, 0.85, 0]],
     [0.95, MAIN, E.io],
     [11.45, [9470, 700, 1.04, 0], E.lin],
-    [12.0, END, E.inExpo],
+    [11.97, END, E.inExpo],
   ];
   const PLATE_RECT = [-600, -300, 11200, 2400];
   // 第 06 章的两条线在这里到终点站
@@ -386,12 +387,12 @@
     // 旁白（左下）
     nar(x, "ch07.n1a", 110, 944, prog(b, 1.0, 1.6), win(b, 1.0, 1.1, 3.8, 3.95));
     nar(x, "ch07.n1b", 110, 1024, prog(b, 1.6, 2.3), win(b, 1.0, 1.1, 3.8, 3.95));
-    nar(x, "ch07.n2a", 110, 944, prog(b, 6.3, 7.0), win(b, 6.3, 6.4, 8.85, 9.0));
-    nar(x, "ch07.n2b", 110, 1024, prog(b, 7.0, 7.8), win(b, 6.3, 6.4, 8.85, 9.0));
-    nar(x, "ch07.n3a", 110, 944, prog(b, 9.05, 9.5), win(b, 9.05, 9.15, 10.85, 11.0));
-    nar(x, "ch07.n3b", 110, 1024, prog(b, 9.5, 10.2), win(b, 9.05, 9.15, 10.85, 11.0));
-    nar(x, "ch07.n4a", 110, 944, prog(b, 11.0, 11.22), win(b, 11.0, 11.05, 11.62, 11.75));
-    nar(x, "ch07.n4b", 110, 1024, prog(b, 11.22, 11.45), win(b, 11.0, 11.05, 11.62, 11.75));
+    nar(x, "ch07.n2a", 150, 944, prog(b, 6.3, 7.0), win(b, 6.3, 6.4, 8.85, 9.0));
+    nar(x, "ch07.n2b", 150, 1024, prog(b, 7.0, 7.8), win(b, 6.3, 6.4, 8.85, 9.0));
+    nar(x, "ch07.n3a", 190, 944, prog(b, 9.05, 9.5), win(b, 9.05, 9.15, 10.85, 11.0));
+    nar(x, "ch07.n3b", 190, 1024, prog(b, 9.5, 10.2), win(b, 9.05, 9.15, 10.85, 11.0));
+    nar(x, "ch07.n4a", 190, 944, prog(b, 11.0, 11.12), win(b, 11.0, 11.05, 11.62, 11.75));
+    nar(x, "ch07.n4b", 190, 1024, prog(b, 11.12, 11.3), win(b, 11.0, 11.05, 11.62, 11.75));
     // Clawd 在限额旁边一起打盹，早上被叫醒就走
     const cIn = prog(b, 6.6, 6.9), cOut = prog(b, 9.05, 9.35);
     if (cIn > 0 && cOut < 1) {
