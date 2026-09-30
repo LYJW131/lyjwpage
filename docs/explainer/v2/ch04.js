@@ -17,24 +17,24 @@
   // ---------- 这一章的文字：[中文, English]，场景代码里只写键 ----------
   I18N.add({
     "ch04.title": ["活字印版", "The type case"],
-    "ch04.n1a": ["访客来了，递出一张印好的页；", "A visitor gets a printed page;"],
-    "ch04.n1b": ["每块印版各自缓存。", "every plate is cached on its own."],
+    "ch04.n1a": ["访客拿到的是缓存好的 HTML，", "Visitors get cached HTML;"],
+    "ch04.n1b": ["请求路径上不现拉任何外部 API。", "no external API sits on that path."],
     "ch04.pages": ["印好的页", "Printed pages"],
     "ch04.visitor": ["访客", "Visitor"],
     "ch04.rt": ["实时", "Realtime"],
     "ch04.lag": ["可滞后", "Lag-tolerant"],
     "ch04.foot": ["'use cache' · stale 300 / revalidate 600 / expire 7 天", "'use cache' · stale 300 / revalidate 600 / expire 7 days"],
-    "ch04.flip": ["在线 → 离线：失效 3 个标签", "Online → offline: 3 tags invalidated"],
+    "ch04.flip": ["在线 → 离线：这几块的标签失效", "Online → offline: tags expire"],
     "ch04.old": ["旧页照发", "The old page still ships"],
     "ch04.new": ["新页 · 后台印", "New page · printing"],
-    "ch04.n2a": ["一个标签失效，只重铸那一块；", "Invalidate a tag: recast one plate;"],
-    "ch04.n2b": ["旧页照发，新页在后台印。", "old pages ship while new ones print."],
-    "ch04.n3a": ["没挂标签的几块，", "The untagged plates"],
-    "ch04.n3b": ["只看 600 秒的定时器。", "just wait out a 600-second timer."],
+    "ch04.n2a": ["失效通知只带标签名，不带数据；", "Only tag names travel, never data;"],
+    "ch04.n2b": ["下一次访问先给旧页，后台重印。", "stale first, rebuilt in the background."],
+    "ch04.n3a": ["标签只为布局变化而发；", "Tags fire only on layout changes;"],
+    "ch04.n3b": ["内容变化等 600 秒定时重建。", "content waits for the 600 s rebuild."],
     "ch04.keep": ["沿用上一份", "keeps the last copy"],
-    "ch04.n4a": ["来源出错，那块印版不动，", "If a source fails, its plate stays,"],
-    "ch04.n4b": ["继续用上一份。", "and the last copy keeps going out."],
-    "ch04.song": ["换歌不重印：交给推送", "A song change isn't recast: the push handles it"],
+    "ch04.n4a": ["回源碰上 5xx 或断网就抛错，", "A 5xx or network error throws,"],
+    "ch04.n4b": ["缓存不被覆盖，照给上一份。", "the last good copy keeps serving."],
+    "ch04.song": ["换歌不重印：交给推送", "Song changes are pushed, not recast"],
   });
   const tr = (k) => I18N.tr(k);
   let plate, ink, emit, paper, stampL, top;
@@ -281,7 +281,7 @@
     text(x, tr("ch04.title"), -1100, 560, { font: FONT.cjk(145, 600), reveal: prog(b, 0.4, 0.95), alpha: a, maxW: 980 });
     line(x, -1100, 620, lerp(-1100, -140, prog(b, 0.45, 1.0, E.outExpo)), 620, 3.5, css("pink"), a);
     text(x, "Vercel · Next.js", -1096, 720, { font: FONT.mono(72), color: css("graphite"), reveal: prog(b, 0.55, 1.05), alpha: a });
-    text(x, "first-screen.ts", -1096, 812, { font: FONT.mono(72), color: css("graphite"), reveal: prog(b, 0.62, 1.1), alpha: a });
+    text(x, "'use cache' · cacheTag", -1096, 812, { font: FONT.mono(72), color: css("graphite"), reveal: prog(b, 0.62, 1.1), alpha: a });
   }
 
   function galleyFrame(x, b) {
@@ -487,14 +487,14 @@
     stamp(s, "503", fx + fw / 2 + 40, fy + fh / 2 + 6, { k: prog(b, 10.0, 10.12), px: 88, rot: -0.1, sub: tr("ch04.keep"), subPx: 38, alpha: 1 - prog(b, 10.9, 11.05) });
 
     // ---- 旁白 ----
-    nar(d, "ch04.n1a", 800, 1120, prog(b, 1.55, 2.15), win(b, 1.55, 1.65, 2.88, 3.0), 80, 1380);
-    nar(d, "ch04.n1b", 800, 1225, prog(b, 2.15, 2.8), win(b, 1.55, 1.65, 2.88, 3.0), 80, 1380);
+    nar(d, "ch04.n1a", 800, 1120, prog(b, 1.55, 1.95), win(b, 1.55, 1.65, 2.88, 3.0), 80, 1380);
+    nar(d, "ch04.n1b", 800, 1225, prog(b, 1.95, 2.4), win(b, 1.55, 1.65, 2.88, 3.0), 80, 1380);
     nar(d, "ch04.n2a", 720, 900, prog(b, 5.2, 5.9), win(b, 5.2, 5.3, 7.72, 7.85), 60, 1060);
     nar(d, "ch04.n2b", 720, 980, prog(b, 5.9, 6.8), win(b, 5.2, 5.3, 7.72, 7.85), 60, 1060);
-    nar(d, "ch04.n3a", 800, 1790, prog(b, 8.15, 8.6), win(b, 8.15, 8.25, 9.35, 9.48), 75, 1300);
-    nar(d, "ch04.n3b", 800, 1885, prog(b, 8.6, 9.25), win(b, 8.15, 8.25, 9.35, 9.48), 75, 1300);
-    nar(d, "ch04.n4a", 800, 1790, prog(b, 9.55, 10.1), win(b, 9.55, 9.65, 10.72, 10.86), 75, 1300);
-    nar(d, "ch04.n4b", 800, 1885, prog(b, 10.1, 10.7), win(b, 9.55, 9.65, 10.72, 10.86), 75, 1300);
+    nar(d, "ch04.n3a", 800, 1790, prog(b, 8.15, 8.45), win(b, 8.15, 8.25, 9.35, 9.48), 75, 1300);
+    nar(d, "ch04.n3b", 800, 1885, prog(b, 8.45, 8.85), win(b, 8.15, 8.25, 9.35, 9.48), 75, 1300);
+    nar(d, "ch04.n4a", 800, 1790, prog(b, 9.55, 9.85), win(b, 9.55, 9.65, 10.72, 10.86), 75, 1300);
+    nar(d, "ch04.n4b", 800, 1885, prog(b, 9.85, 10.3), win(b, 9.55, 9.65, 10.72, 10.86), 75, 1300);
 
     // ---- 11–12：换歌。火花落到「在听」那块上，标签不亮、不夹起；注一句，镜头推进去 ----
     if (b > 10.7) {
@@ -507,7 +507,7 @@
       const na = prog(b, 11.08, 11.2);
       if (na > 0) {
         polyline(d, [[lx + 396, ly + 110], [760, ly + 110], [760, 870], [800, 870]], prog(b, 11.08, 11.3, E.out), 2.2, css("signal"));
-        text(d, tr("ch04.song"), 812, 886, { font: FONT.cjk(48, 600), color: css("signal"), reveal: prog(b, 11.12, 11.55), alpha: na, maxW: 960 });
+        text(d, tr("ch04.song"), 812, 886, { font: FONT.cjk(48, 600), color: css("signal"), reveal: prog(b, 11.1, 11.3), alpha: na, maxW: 960 });
       }
     }
 

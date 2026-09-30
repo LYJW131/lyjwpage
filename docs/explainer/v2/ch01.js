@@ -1,17 +1,19 @@
-// 第 01 章 · 野外观测站（采集端：外部上报器 + 采集 Worker，Claude Code 云端的 OTLP 另算一个入口，FACTS §1）。20 小节，暗底专利图，全是 2D。
-// 一长条暗底图纸，镜头只做横移：每件仪器一个机位，甩 0.22 小节、落在拍上，停住时慢推。
+// 第 01 章 · 野外观测站（采集端：外部上报器 + 采集 Worker，Claude Code 云端的 OTLP 另走一个入口，FACTS §1）。31 小节，暗底专利图，全是 2D。
+// 一长条暗底图纸，镜头只做横移：每件仪器一个机位，前一拍起甩 0.25 小节、落在强拍上，停住时慢推。
+// 每个机位都要留够读图的时间：动作做完后至少停一小节，旁白第二行写完到淡出至少 0.3 小节。
 // 上报器有几个、采集任务有几个只画不说：旁白和标注里不出这两个数（CONVENTIONS「事实」）。
-//   S0 标题与图纸索引（0–1.5）：七个图号，前五个是外部上报器，第 6 号是云端那一小段遥测，第 7 号是表盘
-//   M1 FIG. 1 Mac（1.5–5）：2:0 换歌，白卡逐字敲出信封、modules 只亮 appleMusic；3:1 空信封的呼吸（90 s）；
-//     4:0 切应用、4:1 又切一次重新计时、4:3 量满 400 ms 落定（防抖，ServiceController 的 desktopSettleDelay）
-//   M2 FIG. 1A / 1B（5–8）：窗口标题过 Jev，问题横条同时走、6:0 一起给出概率条（示意，不和出路对应）；
-//     应用图标压成哈希，7:0 落进 R2 的抽屉、7:1 关上，信封里只剩文件名
-//   F2–F6（8–14.5）：iPhone、家里（Home Assistant 的钥匙只开 /homepod；n100 上的容器用 UDP 探测 PS5，10:0 开机后
-//     档位牌从闲档翻到快档，当场拿本机的 PSN 登录态问一轮 Sony，再用自己的钥匙开 /playstation）、NAS、东京的机柜、云端的一小段遥测
-//   CU 编码用量（14.5–16）：三处原始数汇到站点这边合并，合并处伸出一段 Pulse，多一条 Tokens 道
-//   F7 表盘（16–19）：cron 每分钟一响（一拍当一分钟），每根指针一个采集任务，右边白卡是逐分钟的时序图
-//   19–20 甩回 Mac：换歌那封亮起，拖着发丝线往右飞出画面（屏幕 y 540）；第 02 章 0:0 的火花从左边同一高度进场
-// 配乐锚点是下面的 AT，music/ch01.js 的 story 按同一组小节落拍，改时间先对这两处和 SCRIPT.md。
+//   S0 标题与图纸索引（0–2）：七个图号，前五个是外部上报器，第 6 号是云端那一小段遥测，第 7 号是表盘
+//   M1 FIG. 1 Mac（2–7）：先敲出信封的格式；3:0 换歌、modules 只亮 appleMusic、信封寄出；4:2 空信封的呼吸（90 s）；
+//     5:0 切应用、5:1 又切一次重新计时、5:3 量满 400 ms 落定（防抖，ServiceController 的 desktopSettleDelay）
+//   M2 FIG. 1A / 1B（7–11）：窗口标题过 Jev，问题横条同时走、8:0 一起给出概率条（示意，不和出路对应）；
+//     9:0 起应用图标压成哈希，9:2 落进 R2 的抽屉、9:3 关上，信封里只剩对象键
+//   F2–F6（11–24）：iPhone；家里（Home Assistant 的钥匙只开 /homepod；n100 上的容器用 UDP 探测 PS5，15:0 开机后
+//     第一探有回音、档位牌从闲档翻到快档，当场拿本机的 PSN 登录态问一轮 Sony，再用自己的钥匙开 /playstation）；
+//     NAS；东京的机柜（三个容器各用各的钥匙）；云端的一小段遥测
+//   CU 编码用量（24–27）：三处原始数汇到站点这边合并，合并处伸出一段 Pulse，多一条 Tokens 道
+//   F7 表盘（27–30）：cron 每分钟一响（一拍当一分钟），每根指针一个采集任务，右边白卡是逐分钟的时序图
+//   30–31 甩回 Mac：换歌那封亮起，拖着发丝线往右飞出画面（屏幕 y 540）；第 02 章 0:0 的火花从左边同一高度进场
+// 配乐锚点是下面的 AT 和 STOPS（甩镜头的风声对着起甩那一拍），music/ch01.js 的 story 按同一组小节落拍，改时间先对这两处和 SCRIPT.md。
 // 画面只从 AT 取时间，不读配乐的音符表（score.js 加载失败时这一章照样画得出来）。
 // 时间一律写章内小节（b），5.5 即第 5 小节第三拍。镜头 y 恒为 540、缩放约 1，每个机位就是一屏宽的一段图纸。
 (() => {
@@ -20,81 +22,97 @@
   // ---------- 这一章的文字：[中文, English]，场景代码里只写键 ----------
   I18N.add({
     "ch01.title": ["野外观测站", "Field stations"],
-    "ch01.n1a": ["上报器守在数据的源头，", "Reporters sit at the source,"],
-    "ch01.n1b": ["外加每分钟一响的采集 Worker。", "plus a minute-by-minute collector."],
+    "ch01.n1a": ["上报器在数据源头主动推送；", "Reporters push from the source;"],
+    "ch01.n1b": ["第三方接口由采集 Worker 定时拉取。", "a cron Worker polls external APIs."],
     "ch01.reporters": ["上报器", "Reporters"],
-    "ch01.col": ["采集 Worker", "Collector"],
+    "ch01.col": ["采集 Worker", "Collector Worker"],
+    "ch01.extra": ["独立入口", "own endpoint"],
     // FIG. 1 Mac
-    "ch01.f1": ["Mac Telemetry Hub · 菜单栏 App", "Mac Telemetry Hub · a menu bar app"],
+    "ch01.f1": ["Mac Telemetry Hub · 菜单栏 App", "Mac Telemetry Hub · menu bar app"],
     "ch01.env": ["信封", "Envelope"],
-    "ch01.unsent": ["没变的格不寄", "unchanged cells stay home"],
-    "ch01.n2a": ["Mac 只寄变了的那几格；", "The Mac mails only what changed;"],
-    "ch01.n2b": ["没变化，每 90 秒寄个空信封。", "no news: an empty one every 90 s."],
-    "ch01.empty": ["没变化：空信封报平安", "no change: an empty envelope"],
-    "ch01.settle": ["切应用先等 400 ms 落定", "App switches settle for 400 ms first"],
-    "ch01.again": ["又切了：重新计时", "switched again: restart"],
+    "ch01.unsent": ["没变的模块不寄", "unchanged modules stay home"],
+    "ch01.n2a": ["Mac 只寄这一次变了的模块；", "The Mac sends only changed modules;"],
+    "ch01.n2b": ["没变化时，每 90 秒寄一封空信封。", "idle: an empty envelope every 90 s."],
+    "ch01.empty": ["空信封 = 心跳", "empty envelope = heartbeat"],
+    "ch01.settle": ["切应用先等 400 ms 落定", "App switches settle for 400 ms"],
+    "ch01.again": ["落定前又切：重新计时", "switched again: restart"],
+    "ch01.n2c": ["前台应用的切换先防抖：", "App switches are debounced:"],
+    "ch01.n2d": ["连切几次，只报最后停住的那个。", "a burst reports only the final app."],
     // FIG. 1A / 1B
     "ch01.f1a": ["窗口标题 → Jev", "Window title → Jev"],
     "ch01.wt": ["窗口标题（不上画面）", "window title (not shown)"],
     "ch01.judge": ["隐私判断", "privacy check"],
     "ch01.illus": ["概率条为示意", "bars are illustrative"],
-    "ch01.pass": ["放行的才进信封", "only cleared titles go in"],
-    "ch01.owner": ["拿不准：交给主人", "unsure: ask the owner"],
-    "ch01.n3a": ["窗口标题先过 Jev：", "Jev screens window titles first;"],
+    "ch01.pass": ["放行 → 进信封", "cleared → envelope"],
+    "ch01.owner": ["拿不准 → 交给主人", "unsure → the owner"],
+    "ch01.n3a": ["窗口标题先经 Jev 做隐私判断；", "Jev screens window titles first;"],
     "ch01.n3b": ["拿不准的交给主人，放行的才进信封。", "unsure ones go to the owner."],
     "ch01.f1b": ["应用图标 → R2", "App icon → R2"],
     "ch01.byContent": ["sha256(内容)", "sha256(content)"],
-    "ch01.onlyName": ["信封里只写文件名", "the envelope carries only the name"],
-    "ch01.n4a": ["图片按内容起名，直接放进 R2；", "Images are named by their content"],
-    "ch01.n4b": ["信封里只写文件名。", "and go straight to R2."],
+    "ch01.sameKey": ["同一内容，同一个键", "same bytes, same key"],
+    "ch01.n4a": ["图片按内容哈希命名，直传 R2；", "Images go to R2, named by hash;"],
+    "ch01.n4b": ["信封里只带对象键。", "the envelope carries only the key."],
     // FIG. 2–6
     "ch01.f2": ["iPhone Telemetry Hub · HealthKit 唤醒", "iPhone Telemetry Hub · woken by HealthKit"],
     "ch01.rings": ["活动圆环", "Activity rings"],
     "ch01.workouts": ["训练", "Workouts"],
-    "ch01.steps": ["五分钟步数桶", "5-minute step buckets"],
+    "ch01.steps": ["五分钟步数桶", "5-min step buckets"],
+    "ch01.n5a": ["iPhone 由 HealthKit 后台唤醒：", "HealthKit wakes the iPhone app:"],
+    "ch01.n5b": ["圆环按小时报，训练一有新记录就报。", "rings hourly, workouts at once."],
     "ch01.f3": ["家里", "At home"],
     "ch01.f3sub": ["HomePod 经 Home Assistant，PlayStation 由容器上报", "HomePod via Home Assistant; PlayStation via a container"],
     "ch01.playing": ["在放什么", "what's playing"],
     "ch01.haKey": ["Home Assistant 的钥匙", "Home Assistant's key"],
     "ch01.psKey": ["容器自己的钥匙", "the container's own key"],
     "ch01.psnLogin": ["PSN 登录态留在本机，只拿来问 Sony", "PSN login stays local, used only with Sony"],
-    "ch01.probe1": ["探测主机醒没醒，", "probes the console"],
-    "ch01.probe2": ["只定自己的节奏，不上报", "just to pace itself"],
-    "ch01.tierRest": ["没醒 · 闲档", "resting · slow"],
+    "ch01.probe1": ["探测主机醒没醒，", "probe: awake or not?"],
+    "ch01.probe2": ["只定自己的节奏，不上报", "sets pace; never sent"],
+    "ch01.tierRest": ["没醒 · 闲档", "asleep · idle"],
     "ch01.tierAwake": ["醒着 · 快档", "awake · fast"],
+    "ch01.n6a": ["HomePod 由 Home Assistant 代报，", "Home Assistant relays the HomePod;"],
+    "ch01.n6b": ["它那把钥匙只开 /homepod。", "its key opens /homepod only."],
+    "ch01.n7a": ["PlayStation 由 n100 上的容器负责：", "An n100 container covers the PS5:"],
+    "ch01.n7b": ["探测醒没醒，醒了就问 Sony 再上报。", "it probes, asks Sony, then reports."],
     "ch01.f4sub": ["emby-reporter · NAS 上的容器", "emby-reporter · a container on the NAS"],
-    "ch01.poster": ["① 海报先传 R2", "① the poster goes to R2 first"],
-    "ch01.watching": ["② 在看什么", "② what's being watched"],
+    "ch01.poster": ["① 海报先传 R2", "① poster to R2 first"],
+    "ch01.watching": ["② 再报在看什么", "② then what's on"],
+    "ch01.n8a": ["海报先传 R2，再寄在看的信封；", "Posters reach R2 before the report;"],
+    "ch01.n8b": ["入口核对 R2，缺哪张写进回执。", "the receipt lists any still missing."],
     "ch01.f5": ["东京的机柜", "The Tokyo rack"],
     "ch01.srv": ["服务器状态 · 固定每 60 秒", "server status · every 60 s, fixed"],
     "ch01.lim": ["各家编码工具的限额", "each coding tool's limits"],
     "ch01.cur": ["Cursor 账号的用量", "Cursor account usage"],
+    "ch01.quest": ["Quest 在玩什么 · 读 Discord 在线状态", "Quest games · from Discord presence"],
+    "ch01.n9a": ["同一台主机上的几个容器，", "Containers on the same host"],
+    "ch01.n9b": ["各用各的钥匙，各报各的来源。", "each hold their own key and source."],
     "ch01.f6": ["云端的一小段遥测", "A stretch of cloud telemetry"],
     "ch01.cc": ["Claude Code 云端", "Claude Code in the cloud"],
-    "ch01.self": ["Claude Code 自己发，不是我们写的上报器", "Claude Code sends it; not a reporter of ours"],
-    "ch01.extra": ["另算一个入口", "an entry of its own"],
+    "ch01.self": ["Claude Code 自己发，不是我们写的上报器", "sent by Claude Code, not by a reporter of ours"],
+    "ch01.n10a": ["云端的 Claude Code 自己发 OTLP，", "Cloud Claude Code emits OTLP itself;"],
+    "ch01.n10b": ["只收累计值，差值在状态核心里算。", "cumulative only; the core diffs it."],
     // 编码用量
     "ch01.cu": ["编码用量", "Coding usage"],
     "ch01.srcMac": ["Mac 本机", "the Mac itself"],
     "ch01.srcCursor": ["容器里的 Cursor", "Cursor, via the container"],
-    "ch01.merge": ["站点这边合并", "merged on the site side"],
+    "ch01.merge": ["站点这边合并", "merged site-side"],
     "ch01.sum": ["三处相加", "all three summed"],
+    "ch01.tokRate": ["token 处理量 · 5 分钟平均", "tokens processed · 5-min avg"],
     // 站点 Pulse 卡片上的原文（中英一样）
     "ch01.pulse.coding": ["Coding", "Coding"],
     "ch01.pulse.tokens": ["Tokens", "Tokens"],
     "ch01.pulse.listening": ["Listening", "Listening"],
     "ch01.pulse.watching": ["Watching", "Watching"],
     "ch01.pulse.window": ["Last 24 hours", "Last 24 hours"],
-    "ch01.n5a": ["编码用量：三处各报原始数，", "Coding usage: three raw reports;"],
-    "ch01.n5b": ["合并在站点这边做。", "the site does the merging."],
+    "ch01.n11a": ["编码用量：三处各报原始数，", "Coding usage: three raw feeds;"],
+    "ch01.n11b": ["合计与去重都在站点这边算。", "totals and dedup happen site-side."],
     // FIG. 7
-    "ch01.f7": ["采集 Worker", "The collector"],
-    "ch01.f7sub": ["cron 每分钟一响", "cron fires every minute"],
-    "ch01.noGate": ["不走上报入口：直接交给状态核心，或写 LAG", "No ingress: straight to the state core, or to LAG"],
-    "ch01.chart": ["各任务的节奏", "Each job's own beat"],
+    "ch01.f7": ["采集 Worker", "The collector Worker"],
+    "ch01.f7sub": ["cron 每分钟触发", "cron trigger, every minute"],
+    "ch01.noGate": ["不走上报入口：直接交给状态核心，或写 LAG", "Skips ingress: calls the state core, or writes LAG"],
+    "ch01.chart": ["各任务的节奏", "Each job's cadence"],
     "ch01.perMin": ["一格一分钟", "one cell = one minute"],
-    "ch01.n6a": ["采集 Worker 每分钟醒一次，", "The collector wakes every minute;"],
-    "ch01.n6b": ["每个任务按自己的节奏去取。", "each job keeps its own beat."],
+    "ch01.n12a": ["cron 每分钟触发一次采集 Worker，", "A cron trigger fires every minute;"],
+    "ch01.n12b": ["每个任务按自己的周期和偏移去取。", "each job runs on its own period."],
   });
   const tr = (k) => I18N.tr(k);
   const TAU = Math.PI * 2;
@@ -105,23 +123,23 @@
 
   // ---------- 时间表（章内小节）：画面和 music/ch01.js 的 story 共用这一组 ----------
   const AT = {
-    flip: 2.0, lit: 2.5, post: 2.75, park: 3.0, breath: 3.25,
-    sw1: 4.0, sw2: 4.25, settle: 4.75,
-    jev: 5.25, judged: 6.0, cleared: 6.25, owner: 6.5,
-    pixels: 6.5, hash: 6.75, drop: 7.0, shut: 7.25, objKey: 7.0,
-    wake: 8.5, outs: [8.75, 9.0, 9.25],
-    homepod: 9.75, power: 10.0, probe: 10.25, awake: 10.375, psn: [10.4, 10.62], haDoor: 10.5, psDoor: 10.75,
-    poster: 11.25, emby: 11.5,
-    server: 12.25, agents: 12.75,
-    otlp: [13.75, 14.0],
-    raw: [14.5, 14.625, 14.75], merge: 15.0, tokens: 15.1,
-    dial: 16.0, back: 19.0, launch: 19.25,
+    type: 2.1, flip: 3.0, lit: 3.5, post: 3.75, park: 4.0, breath: 4.5,
+    sw1: 5.0, sw2: 5.25, settle: 5.75,
+    jev: 7.25, judged: 8.0, cleared: 8.25, owner: 8.5,
+    pixels: 9.0, hash: 9.25, drop: 9.5, shut: 9.75, objKey: 9.5,
+    wake: 11.25, outs: [11.5, 11.75, 12.0],
+    homepod: 13.5, haDoor: 14.0, probeLine: 14.5, power: 15.0, probe: 15.25, awake: 15.4, psn: [15.5, 15.75], psDoor: 16.0,
+    poster: 17.5, emby: 18.0,
+    server: 19.25, agents: 19.75, quest: 20.25,
+    otlp: [22.5, 22.75],
+    raw: [24.5, 24.625, 24.75], merge: 25.0, tokens: 25.1,
+    dial: 27.0, back: 30.0, launch: 30.25,
   };
 
-  // ---------- 机位：一屏宽一段；每段 [机位, 落定, 起甩] ----------
+  // ---------- 机位：一屏宽一段；每段 [机位, 落定, 起甩]。起甩都在 x:3（下一小节 0:0 落定），配乐的风声对着这一拍 ----------
   const FX = { S0: 960, M1: 2880, M2: 4800, F2: 6720, F3: 8640, F4: 10560, F5: 12480, F6: 14400, CU: 16320, F7: 18240 };
-  const STOPS = [["S0", 0, 1.28], ["M1", 1.5, 4.78], ["M2", 5.0, 7.78], ["F2", 8.0, 9.28], ["F3", 9.5, 10.78], ["F4", 11.0, 11.78],
-    ["F5", 12.0, 13.28], ["F6", 13.5, 14.28], ["CU", 14.5, 15.78], ["F7", 16.0, 18.7], ["M1", 19.0, 20.0]];
+  const STOPS = [["S0", 0, 1.75], ["M1", 2, 6.75], ["M2", 7, 10.75], ["F2", 11, 12.75], ["F3", 13, 16.75], ["F4", 17, 18.75],
+    ["F5", 19, 21.75], ["F6", 22, 23.75], ["CU", 24, 26.75], ["F7", 27, 29.7], ["M1", 30, 31]];
   const CAM = [[0, [FX.S0 - 24, 548, 1.03, 0]]];
   STOPS.forEach(([k, t0, t1], i) => {
     if (i > 0) CAM.push([t0, [FX[k], 540, 1, 0], E.io]);
@@ -140,6 +158,12 @@
   function nar(x, key, px, py, r, a = 1) {
     if (a <= 0) return;
     K.narration(x, tr(key), px, py, { px: 60, maxW: 1040, color: css("bone"), reveal: r, alpha: a });
+  }
+  // 一个机位的一对旁白：第一行 r1 写完、第二行 r2 写完，[in0, in1] 淡入，[out0, out1] 淡出
+  function narPair(x, keyA, keyB, px, r1, r2, io, b) {
+    const a = win(b, io[0], io[1], io[2], io[3]);
+    nar(x, keyA, px, 944, prog(b, r1[0], r1[1]), a);
+    nar(x, keyB, px, 1024, prog(b, r2[0], r2[1]), a);
   }
   function dashPath(x, pts, k, w, color, alpha = 1, dash = [8, 7]) {
     if (k <= 0 || alpha <= 0) return null;
@@ -211,7 +235,7 @@
     for (let j = 0; j < 3; j++) { x.beginPath(); x.moveTo(cx - 14, cy - 12 + j * 12); x.lineTo(cx + 52 - j * 16, cy - 12 + j * 12); x.stroke(); }
     x.restore();
   }
-  // 图号：FIG. n + 名字，下面一行注
+  // 图号：FIG. n + 名字，下面一行注；横线在 y 186，下面的字从 y 214 往下排才不压线
   function figHead(x, x0, num, name, sub, a, o = {}) {
     if (a <= 0) return;
     const head = num ? `FIG. ${num}` : "";
@@ -238,8 +262,9 @@
   }
 
   // ========== S0 标题与图纸索引 ==========
-  // 七个图号的小样：前五个是外部上报器（第 3 号是 Home Assistant 加 n100 上的一台容器，第 5 号是一台机器上的两台容器），
-  // 第 6 号是云端那一小段遥测（虚线：不是我们写的，另算一个入口），第 7 号是采集 Worker 的表盘
+  // 七个图号的小样：前五个是外部上报器（第 3 号是 Home Assistant 加 n100 上的一台容器，第 5 号是东京那台主机上的容器），
+  // 第 6 号是云端那一小段遥测（虚线：不是我们写的，走独立入口），第 7 号是采集 Worker 的表盘。
+  // 第 00 章总览图的采集端照抄前六个小样（ch00.js 的 pict），改造型两边一起改
   const MAP = { x0: 980, dx: 126, y: 560, s: 1.45 };
   function pict(x, i, cx, cy, a) {
     x.save(); x.globalAlpha = a; x.translate(cx, cy); x.scale(MAP.s, MAP.s);
@@ -250,7 +275,7 @@
     else if (i === 1) R(-14, -27, 28, 54, 7);
     else if (i === 2) { R(-36, -16, 34, 32, 6); x.beginPath(); x.arc(-19, 0, 5, 0, TAU); x.stroke(); R(6, -12, 30, 24); for (let j = 0; j < 3; j++) L([[13 + j * 8, -5], [13 + j * 8, 5]]); }
     else if (i === 3) { R(-22, -27, 44, 54); for (let j = 0; j < 3; j++) L([[-12 + j * 12, -18], [-12 + j * 12, 12]]); }
-    else if (i === 4) { R(-30, -12, 26, 24); R(4, -12, 26, 24); }
+    else if (i === 4) { R(-37, -12, 22, 24); R(-11, -12, 22, 24); R(15, -12, 22, 24); } // 东京那台主机上的上报器容器，一个一格，和 FIG. 5 的 C5 对应
     else if (i === 5) { x.setLineDash([5, 4]); x.beginPath(); x.rect(-26, -20, 52, 40); x.stroke(); x.setLineDash([]); L([[-14, 0], [-6, -8], [2, 6], [10, -4]]); }
     else { x.beginPath(); x.arc(0, 0, 26, 0, TAU); x.fill(); x.stroke(); L([[0, -18], [0, 0], [13, 7]]); }
     x.restore();
@@ -260,7 +285,7 @@
     // 硬切进来的第一帧就有章号，标题紧跟着敲出来
     text(x, "01", 110, 196, { font: FONT.pixel(112), color: css("signalD") });
     text(x, tr("ch01.title"), 290, 176, { font: FONT.cjk(58, 600), color: bone, reveal: prog(b, 0.02, 0.6) });
-    text(x, "reporters/ · workers/collector", 292, 226, { font: FONT.mono(28), color: ash, reveal: prog(b, 0.15, 0.75) });
+    text(x, "reporters · collector Worker", 292, 226, { font: FONT.mono(28), color: ash, reveal: prog(b, 0.15, 0.75) });
     line(x, 110, 262, 110 + 990 * prog(b, 0, 0.8, E.outExpo), 262, 1.4, bone, 0.6);
     // 索引：七个图号排成一条，镜头接下来就沿着它往右走
     const xs = (i) => MAP.x0 + i * MAP.dx, y = MAP.y;
@@ -274,15 +299,14 @@
     }
     const brA = prog(b, 0.75, 0.95);
     if (brA > 0) {
-      const bx0 = xs(0) - 52, bx1 = xs(4) + 52, by = y - 78;
+      const bx0 = xs(0) - 52, bx1 = xs(4) + 60, by = y - 78;
       polyline(x, [[bx0, by + 14], [bx0, by], [bx1, by], [bx1, by + 14]], 1, 1.4, bone, 0.7 * brA);
       text(x, tr("ch01.reporters"), (bx0 + bx1) / 2, by - 20, { font: FONT.cjk(32, 600), color: bone, align: "center", alpha: brA });
       text(x, tr("ch01.col"), xs(6), by - 20, { font: FONT.cjk(32, 600), color: bone, align: "center", alpha: brA });
       // 第 6 号的注排在图号下面：上面那一排括线标注的位置被「采集 Worker」占了
       text(x, tr("ch01.extra"), xs(5), y + 134, { font: FONT.cjk(28, 600), color: ash, align: "center", alpha: brA });
     }
-    nar(x, "ch01.n1a", 110, 944, prog(b, 0.3, 0.85), win(b, 0.25, 0.35, 1.3, 1.45));
-    nar(x, "ch01.n1b", 110, 1024, prog(b, 0.85, 1.4), win(b, 0.25, 0.35, 1.3, 1.45));
+    narPair(x, "ch01.n1a", "ch01.n1b", 110, [0.3, 0.8], [0.8, 1.3], [0.25, 0.35, 1.72, 1.82], b);
   }
 
   // ========== M1 FIG. 1 Mac ==========
@@ -334,7 +358,7 @@
     for (const s of [-1, 1]) { x.beginPath(); x.arc(HUB[0], HUB[1], 17, s > 0 ? -0.7 : Math.PI - 0.7, s > 0 ? 0.7 : Math.PI + 0.7); x.stroke(); }
     x.restore();
     if (blink > 0.02) glow(e, HUB[0], HUB[1], 60, 0.7 * blink * ik);
-    // Apple Music 的小窗：2:0 换歌，歌名压扁再弹开
+    // Apple Music 的小窗：3:0 换歌，歌名压扁再弹开
     const wk = prog(k, 0.6, 1);
     box(x, WIN.x, WIN.y, WIN.w, WIN.h, wk, { fill: "ink", lw: 1.8 });
     line(x, WIN.x, WIN.y + 30, WIN.x + WIN.w, WIN.y + 30, 1.2, bone, 0.5 * wk);
@@ -352,7 +376,7 @@
     if (fk > 0.3 && fk < 0.9) glow(e, WIN.x + 380, WIN.y + 110, 150, 0.5 * (1 - Math.abs(fk - 0.6) * 3));
   }
 
-  // 白卡：信封逐字敲出来；modules 那一行是四格，只有 appleMusic 亮
+  // 白卡：先把信封的格式逐字敲出来；换歌那一刻 modules 那一行四格里只有 appleMusic 亮
   function envCard(d, b, a) {
     if (a <= 0) return;
     const { x: px, y: py, w, h } = CARD;
@@ -364,7 +388,7 @@
       [0, "{"], [1, '"version": 4,'], [1, '"presence": "online",'], [1, '"heartbeatAt": 1790640000000,'],
       [1, '"activeModules": [ … ],'], [1, '"modules": {'], null, [1, "}"], [0, "}"],
     ];
-    const t0 = AT.flip + 0.05, step = 0.07;
+    const t0 = AT.type, step = 0.07;
     L.forEach((row, i) => {
       const y = py + 150 + i * 56;
       const r = prog(b, t0 + i * step, t0 + (i + 1) * step);
@@ -394,7 +418,7 @@
   // 没变化：空信封呼吸一次（圆环缩放），标 90 s
   const BREATH = [2140, 772];
   function breath(x, e, b) {
-    const a = win(b, AT.park, AT.park + 0.1, 3.85, 3.97);
+    const a = win(b, AT.park, AT.park + 0.1, 4.85, 4.97);
     if (a <= 0) return;
     const [cx, cy] = BREATH, rk = prog(b, AT.breath, AT.breath + 0.55, E.out);
     envelope(x, cx, cy, 70, css("bone"), { lw: 2.2, fill: css("ink2"), alpha: a });
@@ -412,7 +436,7 @@
   // 切应用：一把平面刻度尺，量满 400 ms 才算落定；落定前再切一次，指针回零重新量
   const RUL = { x0: 2110, x1: 2710, y: 790 };
   function ruler(x, e, b) {
-    const a = win(b, 3.92, 4.02, 4.86, 4.98);
+    const a = win(b, 4.95, 5.05, 6.62, 6.74);
     if (a <= 0) return;
     const bone = css("bone"), ash = css("ash"), { x0, x1, y } = RUL;
     line(x, x0, y, x1, y, 2, bone, a);
@@ -434,25 +458,24 @@
   }
 
   function stationM1(x, e, d, b) {
-    const k = prog(b, 1.32, 1.95, E.io);
-    const headA = prog(b, 1.4, 1.7);
+    const k = prog(b, 1.72, 2.15, E.io);
+    const headA = prog(b, 1.8, 2.05);
     figHead(x, 1990, 1, "Mac", tr("ch01.f1"), headA, { mono: true });
     laptop(x, e, b, k);
-    // 白卡只在第一次停在这里时出现；19:0 甩回来时这里只剩笔记本和那封信
-    const cardA = win(b, AT.flip - 0.04, AT.flip + 0.08, 4.8, 4.95);
-    envCard(d, b, cardA * E.outBack(prog(b, AT.flip - 0.04, AT.flip + 0.1)));
+    // 白卡只在第一次停在这里时出现；30:0 甩回来时这里只剩笔记本和那封信
+    envCard(d, b, win(b, AT.type - 0.05, AT.type, 6.62, 6.72));
     breath(x, e, b);
     ruler(x, e, b);
-    nar(x, "ch01.n2a", 1990, 944, prog(b, 2.0, 2.6), win(b, 1.95, 2.05, 4.8, 4.95));
-    nar(x, "ch01.n2b", 1990, 1024, prog(b, 2.95, 3.6), win(b, 1.95, 2.05, 4.8, 4.95));
+    narPair(x, "ch01.n2a", "ch01.n2b", 1990, [3.05, 3.5], [4.1, 4.6], [2.95, 3.05, 4.85, 4.97], b);
+    narPair(x, "ch01.n2c", "ch01.n2d", 1990, [5.05, 5.45], [5.45, 5.95], [4.97, 5.07, 6.62, 6.74], b);
   }
 
   // ========== M2 FIG. 1A 窗口标题过 Jev · FIG. 1B 图标进 R2 ==========
-  const WT = { x: 3910, y: 214, w: 760, h: 62 };
-  const JV = { x: 3910, y: 316, w: 760, h: 316 };
-  const QROWS = [410, 462, 514, 566];
+  const WT = { x: 3910, y: 238, w: 760, h: 62 };
+  const JV = { x: 3910, y: 336, w: 760, h: 316 };
+  const QROWS = [430, 482, 534, 586];
   const PROB = [0.34, 0.81, 0.22, 0.63]; // 示意值：不标数，也不和出路对应
-  const FORK = [4290, 694], PASS = [4056, 770], OWNER = [4524, 770];
+  const FORK = [4290, 712], PASS = [4056, 788], OWNER = [4524, 788];
   const REDACT = [140, 92, 210, 120];
   function redacted(x, rx, cy, a, s = 1) {
     let u = rx;
@@ -460,15 +483,15 @@
   }
   function stationM2Jev(x, e, b) {
     const bone = css("bone"), ash = css("ash");
-    const a = prog(b, 4.9, 5.1);
+    const a = prog(b, 6.85, 7.05);
     if (a <= 0) return;
     figHead(x, 3910, "1A", tr("ch01.f1a"), null, a, { rule: 760 });
     // 窗口的标题栏：标题本身不上画面，只画成几块遮住的字
     text(x, tr("ch01.wt"), WT.x, WT.y - 12, { font: FONT.cjk(28, 600), color: ash, alpha: a });
     box(x, WT.x, WT.y, WT.w, WT.h, a, { lw: 1.8 });
     redacted(x, WT.x + 30, WT.y + WT.h / 2, a);
-    arrowPath(x, [[WT.x + WT.w / 2, WT.y + WT.h + 4], [WT.x + WT.w / 2, JV.y - 6]], prog(b, 5.05, 5.25), bone, a, 1.6);
-    // Jev：几道问题的横条同时走，6:0 同一刻一起给出概率条（示意）
+    arrowPath(x, [[WT.x + WT.w / 2, WT.y + WT.h + 4], [WT.x + WT.w / 2, JV.y - 6]], prog(b, 7.0, 7.2), bone, a, 1.6);
+    // Jev：几道问题的横条同时走，8:0 同一刻一起给出概率条（示意）
     box(x, JV.x, JV.y, JV.w, JV.h, a, { lw: 2.2 });
     text(x, "Jev", JV.x + 30, JV.y + 52, { font: FONT.mono(34, 600), color: bone, alpha: a });
     text(x, tr("ch01.judge"), JV.x + 110, JV.y + 50, { font: FONT.cjk(28, 600), color: ash, alpha: a });
@@ -518,8 +541,7 @@
       x.restore();
       text(x, tr("ch01.owner"), OWNER[0] - 60, OWNER[1] + 68, { font: FONT.cjk(28, 600), color: ash, alpha: a * clamp(oa) });
     }
-    nar(x, "ch01.n3a", 3910, 944, prog(b, 5.05, 5.5), win(b, 5.0, 5.1, 6.4, 6.5));
-    nar(x, "ch01.n3b", 3910, 1024, prog(b, 5.5, 6.25), win(b, 5.0, 5.1, 6.4, 6.5));
+    narPair(x, "ch01.n3a", "ch01.n3b", 3910, [7.05, 7.5], [7.5, 8.2], [7.0, 7.1, 8.85, 8.97], b);
   }
 
   // 应用图标：一张 10×10 的像素图（圆角方块里一个 >_ ），压成一串哈希
@@ -541,7 +563,7 @@
   const OBJ = { x: 4906, y: 556, w: 384, h: 156 };
   function stationM2Img(x, e, d, b) {
     const bone = css("bone"), ash = css("ash");
-    const a = prog(b, 4.9, 5.1);
+    const a = prog(b, 6.85, 7.05);
     if (a <= 0) return;
     figHead(x, 4920, "1B", tr("ch01.f1b"), null, a, { rule: 770 });
     const ck = prog(b, AT.pixels, AT.hash, E.in);
@@ -566,14 +588,14 @@
       text(x, KEY_SHORT, 0, 0, { font: FONT.mono(34, 600), color: bone, alpha: a * (1 - prog(fall, 0.85, 1)), reveal: hk, perChar: hk < 1 });
       x.restore();
     }
-    // R2：抽屉 6:3 起拉开，7:1 关上
+    // R2：抽屉 9:1 起拉开，9:3 关上
     const openK = keys(b, [[AT.hash, 0], [AT.hash + 0.12, 1, E.out], [AT.shut - 0.04, 1], [AT.shut + 0.02, 0, E.in]]);
     cabinet(x, CAB.x, CAB.y, CAB.w, CAB.h, CAB.cols, CAB.rows, a, { ...SLOT, k: openK, hot: true });
     text(x, "R2", CAB.x, CAB.y - 22, { font: FONT.mono(44, 600), color: bone, alpha: a });
     text(x, "immutable", CAB.x + CAB.w, CAB.y - 24, { font: FONT.mono(28, 500), color: ash, align: "right", alpha: a });
     const shut = impact(b, AT.shut, 0.16);
     if (shut > 0.02) glow(e, sx, sy, 110, 0.8 * shut);
-    // 信封里只剩文件名
+    // 信封里只剩对象键
     const oa = prog(b, AT.objKey - 0.06, AT.objKey + 0.06, E.outBack);
     if (oa > 0) {
       sheet(d, OBJ.x, OBJ.y, OBJ.w, OBJ.h, { alpha: a * clamp(oa), shadow: 18 });
@@ -582,21 +604,20 @@
       text(d, '"iconObjectKey":', OBJ.x + 24, OBJ.y + 102, { font: FONT.mono(28, 500), color: css("pink"), alpha: a * clamp(oa) });
       text(d, `"${KEY_SHORT}"`, OBJ.x + 24, OBJ.y + 138, { font: FONT.mono(28, 500), color: css("signal"), alpha: a * clamp(oa), reveal: prog(b, AT.objKey, AT.objKey + 0.15), perChar: true });
       // 放在抽屉柜底下那一行：英文比柜子左沿长
-      text(x, tr("ch01.onlyName"), OBJ.x, CAB.y + CAB.h + 46, { font: FONT.cjk(28, 600), color: ash, alpha: a * clamp(oa) });
+      text(x, tr("ch01.sameKey"), OBJ.x, CAB.y + CAB.h + 46, { font: FONT.cjk(28, 600), color: ash, alpha: a * clamp(oa) });
     }
-    nar(x, "ch01.n4a", 3910, 944, prog(b, 6.55, 7.1), win(b, 6.5, 6.6, 7.8, 7.95));
-    nar(x, "ch01.n4b", 3910, 1024, prog(b, 7.1, 7.6), win(b, 6.5, 6.6, 7.8, 7.95));
+    narPair(x, "ch01.n4a", "ch01.n4b", 3910, [9.05, 9.5], [9.5, 10.0], [9.0, 9.1, 10.62, 10.74], b);
   }
 
   // ========== F2 iPhone ==========
   const PH = { x: 6100, y: 222, w: 300, h: 610 };
   const OUT2 = [[6700, 348], [6700, 540], [6700, 728]];
   function stationF2(x, e, b) {
-    const bone = css("bone"), ash = css("ash");
-    const a = prog(b, 7.85, 8.05);
+    const bone = css("bone");
+    const a = prog(b, 10.85, 11.05);
     if (a <= 0) return;
     figHead(x, 5830, 2, "iPhone", tr("ch01.f2"), a, { mono: true });
-    const k = prog(b, 7.9, 8.35, E.io);
+    const k = prog(b, 10.9, 11.35, E.io);
     x.save(); x.globalAlpha = a;
     x.strokeStyle = bone; x.lineWidth = 2.6; roundRect(x, PH.x, PH.y, PH.w, PH.h, 46); x.save(); x.fillStyle = css("ink2"); x.globalAlpha = a * k; x.fill(); x.restore(); x.stroke();
     x.restore();
@@ -642,7 +663,8 @@
       }
       text(x, tr(labels[i]), ox + 110, oy + 12, { font: FONT.cjk(34, 600), color: bone, alpha: ia });
     });
-    text(x, "POST /api/ingest/iphone", OUT2[2][0] - 70, 812, { font: FONT.mono(28, 500), color: ash, alpha: a * prog(b, AT.outs[2], AT.outs[2] + 0.15) });
+    text(x, "POST /api/ingest/iphone", OUT2[2][0] - 70, 812, { font: FONT.mono(28, 500), color: css("ash"), alpha: a * prog(b, AT.outs[2], AT.outs[2] + 0.15) });
+    narPair(x, "ch01.n5a", "ch01.n5b", 5830, [11.05, 11.5], [11.5, 12.1], [11.0, 11.1, 12.62, 12.74], b);
   }
 
   // ========== F3 家里：HomePod 经 Home Assistant；n100 上的 playstation-reporter 在局域网里探测 PS5 ==========
@@ -664,11 +686,11 @@
   const KEYP = [9228, 720], PS_DOOR = [9340, 720, "/playstation"];
   function stationF3(x, e, b) {
     const bone = css("bone"), ash = css("ash");
-    const a = prog(b, 9.35, 9.55);
+    const a = prog(b, 12.85, 13.05);
     if (a <= 0) return;
     figHead(x, 7750, 3, tr("ch01.f3"), tr("ch01.f3sub"), a, { rule: 920 });
     // HomePod：正视，网罩一道道横线，顶上一块小屏
-    const dk = prog(b, 9.4, 9.8, E.io);
+    const dk = prog(b, 12.9, 13.3, E.io);
     box(x, HP.x, HP.y, HP.w, HP.h, a * dk, { r: 84, lw: 2.6 });
     x.save(); roundRect(x, HP.x, HP.y, HP.w, HP.h, 84); x.clip(); x.globalAlpha = a * dk * 0.28; x.strokeStyle = bone; x.lineWidth = 1;
     x.beginPath(); for (let y = HP.y + 20; y < HP.y + HP.h - 10; y += 13) { x.moveTo(HP.x, y); x.lineTo(HP.x + HP.w, y); } x.stroke(); x.restore();
@@ -684,8 +706,8 @@
     }
     text(x, "HomePod", HP.x, HP.y + HP.h + 56, { font: FONT.mono(30, 600), color: bone, alpha: a });
     text(x, tr("ch01.playing"), HP.x, HP.y + HP.h + 96, { font: FONT.cjk(28, 600), color: ash, alpha: a });
-    // PS5：正视，中间一条机身，两侧弧形的侧板；10:0 主机开机，机身边上的灯条亮
-    const pk = prog(b, 9.45, 9.85, E.io);
+    // PS5：正视，中间一条机身，两侧弧形的侧板；15:0 主机开机，机身边上的灯条亮
+    const pk = prog(b, 12.95, 13.35, E.io);
     const on = prog(b, AT.power, AT.power + 0.06);
     x.save(); x.globalAlpha = a * pk; x.lineWidth = 2.4; x.strokeStyle = bone; x.fillStyle = css("ink2");
     const cx0 = PS.x + 38, cx1 = PS.x + PS.w - 38;
@@ -698,30 +720,29 @@
     if (on > 0) { line(x, cx0 + 3, PS.y + 30, cx0 + 3, PS.y + PS.h - 30, 3, css("signalD"), a * on); line(x, cx1 - 3, PS.y + 30, cx1 - 3, PS.y + PS.h - 30, 3, css("signalD"), a * on); glow(e, (cx0 + cx1) / 2, PS.y + PS.h / 2, 160, 0.45 * impact(b, AT.power, 0.2)); }
     text(x, "PS5", PS.x, PS.y + PS.h + 50, { font: FONT.mono(30, 600), color: bone, alpha: a });
     // Home Assistant：一个盒子，一路观测线（HomePod）；下面挂它的钥匙，只开 /homepod
-    const hk = prog(b, 9.6, 9.9);
+    const hk = prog(b, 13.1, 13.4);
     box(x, HA.x, HA.y, HA.w, HA.h, a * hk, { r: 12, lw: 2.2 });
     text(x, "Home Assistant", HA.x + HA.w / 2, HA.y + HA.h / 2 + 10, { font: FONT.mono(28, 600), color: bone, align: "center", alpha: a * hk });
     dashPath(x, [[HP.x + HP.w + 70, HP.y + HP.h / 2], [HA.x, HA.y + HA.h / 2]], hk, 1.6, bone, a * 0.7);
-    const kk = prog(b, 10.2, 10.4, E.out);
+    const kk = prog(b, AT.haDoor - 0.25, AT.haDoor - 0.05, E.out);
     if (kk > 0) {
       line(x, KEYC[0], HA.y + HA.h, KEYC[0], KEYC[1] - 31, 1.6, bone, a * kk);
-      keycard(x, KEYC[0], KEYC[1], a * kk, b >= AT.haDoor - 0.05 && b < 11.2);
+      keycard(x, KEYC[0], KEYC[1], a * kk, b >= AT.haDoor - 0.05 && b < AT.haDoor + 0.6);
       door(x, e, b, KEYC, HA_DOOR, AT.haDoor, a);
       text(x, tr("ch01.haKey"), KEYC[0] - 75, KEYC[1] + 84, { font: FONT.cjk(28, 600), color: ash, alpha: a * kk });
     }
-    // n100 上的 playstation-reporter：跟 PS5 在同一个局域网里。每拍一个点从容器飞向 PS5（AT.probe 起），是 UDP 探测；
-    // 线下的档位牌只有两档（醒着 / 没醒），10:0 开机后第一探读到醒着就翻面。间隔不出数（FACTS §1、§7）
-    const nk = prog(b, 9.6, 9.95, E.io);
+    // n100 上的 playstation-reporter：跟 PS5 在同一个局域网里。每拍一个点从容器飞向 PS5，是 UDP 探测：
+    // 主机没醒时点在机身前淡掉，醒了就有一个回音点飞回来。线下的档位牌只有两档（醒着 / 没醒），第一次有回音就翻面。间隔不出数（FACTS §1、§7）
+    const nk = prog(b, 13.1, 13.45, E.io);
     if (nk > 0) {
-      const hot = b >= AT.probe - 0.02 ? 1 : 0;
+      const hot = b >= AT.probeLine - 0.02 ? 1 : 0;
       box(x, N100.x, N100.y, N100.w, N100.h, a * nk, { lw: 2.6 });
       hatch(x, N100.x + 16, N100.y + N100.h - 36, N100.w - 32, 22, a * nk * 0.5, 9);
       text(x, "n100", N100.x + 24, N100.y + 58, { font: FONT.mono(30, 600), color: bone, alpha: a * nk });
       x.save(); x.globalAlpha = a * nk; x.fillStyle = hot ? css("signalD") : css("ash"); x.beginPath(); x.arc(N100.x + N100.w - 28, N100.y + 28, 5, 0, TAU); x.fill(); x.restore();
       container(x, CT3.x, CT3.y, CT3.w, CT3.h, a * nk, hot);
       text(x, "playstation-reporter", CT3.x + CT3.w / 2, CT3.y - 16, { font: FONT.mono(28, 600), color: bone, align: "center", alpha: a * nk });
-      if (hot) glow(e, CT3.x + CT3.w / 2, CT3.y + CT3.h / 2, 110, 0.5 * impact(b, AT.probe, 0.2));
-      const uk = prog(b, 9.95, 10.2, E.out);
+      const uk = prog(b, AT.probeLine - 0.15, AT.probeLine + 0.05, E.out);
       const mid = (PROBE[0][0] + PROBE[1][0]) / 2;
       if (uk > 0) {
         arrowPath(x, PROBE, uk, bone, a * 0.8, 1.6, true);
@@ -733,13 +754,24 @@
         });
         if (up) glow(e, mid, TIER_Y - 10, 80, 0.5 * impact(b, AT.awake, 0.2));
       }
-      if (b >= AT.probe) {
-        const p = ((b - AT.probe) * 4) % 1, px = lerp(PROBE[0][0], PROBE[1][0], E.out(p)), fade = 1 - prog(p, 0.7, 1);
-        x.save(); x.globalAlpha = a * fade; x.fillStyle = css("signalD"); x.beginPath(); x.arc(px, PROBE_Y, 7, 0, TAU); x.fill(); x.restore();
-        glow(e, px, PROBE_Y, 38, 0.5 * fade);
+      if (b >= AT.probeLine) {
+        const n = Math.floor((b - AT.probeLine) * 4), sent = AT.probeLine + n / 4, p = (b - sent) * 4;
+        const answered = sent >= AT.probe - 1e-6;
+        // 去程：从容器飞到 PS5；主机没醒时在机身前淡掉
+        const go = clamp(p / 0.5), px = lerp(PROBE[0][0], PROBE[1][0], E.out(go)), fade = answered ? 1 - prog(go, 0.9, 1) : 1 - prog(go, 0.6, 1);
+        if (fade > 0) {
+          x.save(); x.globalAlpha = a * fade; x.fillStyle = css("signalD"); x.beginPath(); x.arc(px, PROBE_Y, 7, 0, TAU); x.fill(); x.restore();
+          glow(e, px, PROBE_Y, 38, 0.5 * fade);
+        }
+        // 回程：主机醒着，回音点飞回容器
+        if (answered && p > 0.5) {
+          const bk = clamp((p - 0.5) / 0.45), rx = lerp(PROBE[1][0], PROBE[0][0], E.io(bk)), rf = 1 - prog(bk, 0.85, 1);
+          x.save(); x.globalAlpha = a * rf * 0.9; x.strokeStyle = css("signalD"); x.lineWidth = 2; x.beginPath(); x.arc(rx, PROBE_Y, 7, 0, TAU); x.stroke(); x.restore();
+          glow(e, rx, PROBE_Y, 30, 0.35 * rf);
+        }
       }
       // 探测的结果不上报，只定容器自己的节奏：注写在探测线下面，不挨着往站点去的那条路
-      const pa = a * prog(b, AT.probe, AT.probe + 0.1);
+      const pa = a * prog(b, AT.probeLine, AT.probeLine + 0.1);
       text(x, tr("ch01.probe1"), mid, TIER_Y + 50, { font: FONT.cjk(28, 600), color: bone, align: "center", alpha: pa });
       text(x, tr("ch01.probe2"), mid, TIER_Y + 88, { font: FONT.cjk(28, 600), color: bone, align: "center", alpha: pa });
       // Sony 那一头：容器拿留在本机的 PSN 登录态去问。醒着和没醒对调时当场打一轮（cadence.ts#shouldRunTick），
@@ -756,14 +788,16 @@
         glow(e, PSN_X, py, 38, 0.5);
       }
       // 容器自己的钥匙挂在 n100 下面：只开 /playstation；和 Home Assistant 那把各挂各的
-      const pk2 = prog(b, 10.2, 10.4, E.out);
+      const pk2 = prog(b, AT.psDoor - 0.25, AT.psDoor - 0.05, E.out);
       if (pk2 > 0) {
         line(x, KEYP[0], N100.y + N100.h, KEYP[0], KEYP[1] - 31, 1.6, bone, a * pk2);
-        keycard(x, KEYP[0], KEYP[1], a * pk2, b >= AT.psDoor - 0.05 && b < 11.2);
+        keycard(x, KEYP[0], KEYP[1], a * pk2, b >= AT.psDoor - 0.05 && b < AT.psDoor + 0.6);
         door(x, e, b, KEYP, PS_DOOR, AT.psDoor, a);
         text(x, tr("ch01.psKey"), KEYP[0] - 75, KEYP[1] + 84, { font: FONT.cjk(28, 600), color: ash, alpha: a * pk2 });
       }
     }
+    narPair(x, "ch01.n6a", "ch01.n6b", 7750, [13.05, 13.45], [13.45, 13.95], [13.0, 13.1, 14.38, 14.48], b);
+    narPair(x, "ch01.n7a", "ch01.n7b", 7750, [14.55, 15.0], [15.0, 15.7], [14.48, 14.58, 16.62, 16.74], b);
   }
   // 钥匙 → 上报入口的一扇门（第 02 章那面墙上的门）：t 那一刻门亮
   function door(x, e, b, key, [dx, dy, label], t, a) {
@@ -779,10 +813,10 @@
   const R2M = { x: 10680, y: 214, w: 180, h: 132 };
   function stationF4(x, e, b) {
     const bone = css("bone"), ash = css("ash");
-    const a = prog(b, 10.85, 11.05);
+    const a = prog(b, 16.85, 17.05);
     if (a <= 0) return;
     figHead(x, 9670, 4, "NAS", tr("ch01.f4sub"), a, { mono: true });
-    const k = prog(b, 10.9, 11.25, E.io);
+    const k = prog(b, 16.9, 17.25, E.io);
     box(x, NS.x, NS.y, NS.w, NS.h, a * k, { lw: 2.6 });
     for (let i = 0; i < 4; i++) {
       const bx = NS.x + 22 + i * 88, by = NS.y + 36;
@@ -792,7 +826,7 @@
       x.save(); x.globalAlpha = a * k; x.fillStyle = led ? css("signalD") : css("ash"); x.beginPath(); x.arc(bx + 36, by + 22, 5, 0, TAU); x.fill(); x.restore();
     }
     hatch(x, NS.x + 20, NS.y + NS.h - 50, NS.w - 40, 30, a * k * 0.5, 9);
-    container(x, CT4.x, CT4.y, CT4.w, CT4.h, a * k, b >= AT.poster - 0.1 && b < 11.95 ? 1 : 0);
+    container(x, CT4.x, CT4.y, CT4.w, CT4.h, a * k, b >= AT.poster - 0.1 && b < 18.7 ? 1 : 0);
     text(x, "emby-reporter", CT4.x + CT4.w / 2, CT4.y - 16, { font: FONT.mono(28, 600), color: bone, align: "center", alpha: a * k });
     // ① 海报先传 R2
     cabinet(x, R2M.x, R2M.y, R2M.w, R2M.h, 2, 2, a * k);
@@ -814,51 +848,51 @@
       text(x, tr("ch01.watching"), R2M.x, 686, { font: FONT.cjk(30, 600), color: bone, alpha: a * prog(b, AT.emby, AT.emby + 0.08) });
       text(x, "POST /api/ingest/emby", R2M.x, 728, { font: FONT.mono(28, 500), color: ash, alpha: a * prog(b, AT.emby, AT.emby + 0.08) });
     }
+    narPair(x, "ch01.n8a", "ch01.n8b", 9670, [17.05, 17.5], [17.5, 18.1], [17.0, 17.1, 18.62, 18.74], b);
   }
 
-  // ========== F5 东京的机柜：两台容器 ==========
+  // ========== F5 东京的机柜：一台主机上的几个上报器容器，各用各的钥匙 ==========
   const RK = { x: 11820, y: 212, w: 440, h: 640 };
-  const SRVB = { x: 11850, y: 400, w: 380, h: 160 };
-  const C5 = [{ x: 11872, y: 446, w: 162, h: 66 }, { x: 12050, y: 446, w: 162, h: 66 }];
+  const SRVB = { x: 11850, y: 380, w: 380, h: 236 };
+  const C5 = [0, 1, 2].map((i) => ({ x: 11872, y: 398 + i * 70, w: 300, h: 56 }));
+  const TX5 = RK.x + RK.w + 130;
+  // 标注从容器右沿引出：上面一条往上折，中间一条平着走，下面一条往下折，三条引线不交叉
+  const L5 = [
+    { t: AT.server, ty: 262, name: "server-reporter", lines: ["ch01.srv"], ep: "POST /api/ingest/server" },
+    { t: AT.agents, ty: 496, name: "agents-reporter", lines: ["ch01.lim", "ch01.cur"], ep: "POST /api/ingest/agents" },
+    { t: AT.quest, ty: 716, name: "discord-reporter", lines: ["ch01.quest"], ep: "POST /api/ingest/quest" },
+  ];
   function stationF5(x, e, b) {
     const bone = css("bone"), ash = css("ash");
-    const a = prog(b, 11.85, 12.05);
+    const a = prog(b, 18.85, 19.05);
     if (a <= 0) return;
     figHead(x, 11590, 5, tr("ch01.f5"), "misaka-jp", a, { subMono: true });
-    const k = prog(b, 11.9, 12.25, E.io);
+    const k = prog(b, 18.9, 19.25, E.io);
     box(x, RK.x, RK.y, RK.w, RK.h, a * k, { lw: 2.6, fill: "ink" });
     for (const rx of [RK.x + 16, RK.x + RK.w - 16]) {
       line(x, rx, RK.y + 10, rx, RK.y + RK.h - 10, 1.6, bone, a * k);
       for (let y = RK.y + 26; y < RK.y + RK.h - 20; y += 22) { x.save(); x.globalAlpha = a * k * 0.4; x.strokeStyle = bone; x.lineWidth = 1; x.strokeRect(rx - 4, y - 4, 8, 8); x.restore(); }
     }
-    for (const [y0, hh] of [[RK.y + 30, 56], [RK.y + 100, 56], [RK.y + 380, 56], [RK.y + 450, 56], [RK.y + 540, 80]]) {
+    for (const [y0, hh] of [[RK.y + 30, 56], [RK.y + 100, 56], [RK.y + 424, 56], [RK.y + 494, 56], [RK.y + 564, 60]]) {
       box(x, RK.x + 30, y0, RK.w - 60, hh, a * k * 0.8, { lw: 1.4 });
       hatch(x, RK.x + 30, y0, RK.w - 60, hh, a * k * 0.3, 12);
     }
     box(x, SRVB.x, SRVB.y, SRVB.w, SRVB.h, a * k, { lw: 2.2 });
-    text(x, "server", SRVB.x + 16, SRVB.y + SRVB.h - 16, { font: FONT.mono(20, 500), color: ash, alpha: a * k, texture: true });
-    const hot = [impact(b, AT.server, 0.25), impact(b, AT.agents, 0.25)];
-    C5.forEach((c, i) => {
-      const t = i ? AT.agents : AT.server;
-      container(x, c.x, c.y, c.w, c.h, a * k, b >= t - 0.02 ? Math.max(0.35, hot[i]) : 0);
-      if (b >= t) glow(e, c.x + c.w / 2, c.y + c.h / 2, 110, 0.6 * hot[i]);
-    });
-    // 标注：引线到右边
-    const L = [
-      { t: AT.server, ay: C5[0].y, ax: C5[0].x + C5[0].w / 2, ty: 300, name: "server-reporter", lines: ["ch01.srv"], ep: "POST /api/ingest/server" },
-      { t: AT.agents, ay: C5[1].y + C5[1].h, ax: C5[1].x + C5[1].w / 2, ty: 620, name: "agents-reporter", lines: ["ch01.lim", "ch01.cur"], ep: "POST /api/ingest/agents" },
-    ];
-    L.forEach((l) => {
+    L5.forEach((l, i) => {
+      const c = C5[i], hot = impact(b, l.t, 0.25);
+      container(x, c.x, c.y, c.w, c.h, a * k, b >= l.t - 0.02 ? Math.max(0.35, hot) : 0);
+      if (b >= l.t) glow(e, c.x + c.w / 2, c.y + c.h / 2, 110, 0.6 * hot);
       const lk = prog(b, l.t - 0.12, l.t + 0.05, E.out);
       if (lk <= 0) return;
-      const tx = RK.x + RK.w + 130;
-      polyline(x, [[l.ax, l.ay], [l.ax, l.ty], [tx - 20, l.ty]], lk, 1.4, bone, a * 0.85);
-      x.save(); x.globalAlpha = a * lk; x.fillStyle = bone; x.beginPath(); x.arc(l.ax, l.ay, 5, 0, TAU); x.fill(); x.restore();
+      const ay = c.y + c.h / 2, ax = c.x + c.w, vx = RK.x + RK.w + 50;
+      polyline(x, [[ax, ay], [vx, ay], [vx, l.ty], [TX5 - 20, l.ty]], lk, 1.4, bone, a * 0.85);
+      x.save(); x.globalAlpha = a * lk; x.fillStyle = bone; x.beginPath(); x.arc(ax, ay, 5, 0, TAU); x.fill(); x.restore();
       const ta = a * prog(b, l.t, l.t + 0.08);
-      text(x, l.name, tx, l.ty + 10, { font: FONT.mono(32, 600), color: bone, alpha: ta });
-      l.lines.forEach((key, j) => text(x, tr(key), tx, l.ty + 54 + j * 40, { font: FONT.cjk(28, 600), color: bone, alpha: ta }));
-      text(x, l.ep, tx, l.ty + 54 + l.lines.length * 40, { font: FONT.mono(28, 500), color: ash, alpha: ta });
+      text(x, l.name, TX5, l.ty + 10, { font: FONT.mono(32, 600), color: bone, alpha: ta });
+      l.lines.forEach((key, j) => text(x, tr(key), TX5, l.ty + 54 + j * 40, { font: FONT.cjk(28, 600), color: bone, alpha: ta }));
+      text(x, l.ep, TX5, l.ty + 54 + l.lines.length * 40, { font: FONT.mono(28, 500), color: ash, alpha: ta });
     });
+    narPair(x, "ch01.n9a", "ch01.n9b", 11590, [19.05, 19.5], [19.5, 20.1], [19.0, 19.1, 21.62, 21.74], b);
   }
 
   // ========== F6 云端的一小段遥测：Claude Code 自己发 OTLP ==========
@@ -866,10 +900,10 @@
   const WIRE6 = [[CE.x + CE.w, 486], [14660, 486]];
   function stationF6(x, e, b) {
     const bone = css("bone"), ash = css("ash");
-    const a = prog(b, 13.35, 13.55);
+    const a = prog(b, 21.85, 22.05);
     if (a <= 0) return;
     figHead(x, 13510, 6, tr("ch01.f6"), "Claude Code · OTLP", a, { subMono: true });
-    const k = prog(b, 13.4, 13.75, E.io);
+    const k = prog(b, 21.9, 22.25, E.io);
     // 云端环境画成一个虚线框（不画云朵）：里面几条会话在跑
     x.save(); x.globalAlpha = a * k; x.strokeStyle = bone; x.lineWidth = 2; x.setLineDash([12, 9]); x.strokeRect(CE.x, CE.y, CE.w, CE.h); x.restore();
     text(x, tr("ch01.cc"), CE.x + 28, CE.y + 52, { font: FONT.cjk(30, 600), color: bone, alpha: a * k });
@@ -879,13 +913,13 @@
       text(x, "$ claude", CE.x + 50, sy + 40, { font: FONT.pixel(28), color: bone, alpha: a * k });
       const r = mulberry32(40 + i);
       for (let j = 0; j < 2; j++) {
-        const w = 80 + r() * 160, show = prog(b, 13.5 + i * 0.1 + j * 0.12, 13.62 + i * 0.1 + j * 0.12);
+        const w = 80 + r() * 160, show = prog(b, 22.0 + i * 0.1 + j * 0.12, 22.12 + i * 0.1 + j * 0.12);
         fillRect(x, CE.x + 50 + j * 250, sy + 66, w * show, 8, bone, a * k * 0.35);
       }
       if (Math.floor(b * 4) % 2 === 0) fillRect(x, CE.x + 200, sy + 20, 14, 26, bone, a * k * 0.8);
     }
     // 一小段遥测：OTLP 包顺着线往右走
-    const wk = prog(b, 13.55, 13.8, E.out);
+    const wk = prog(b, 22.05, 22.3, E.out);
     polyline(x, WIRE6, wk, 2, bone, a * 0.8);
     AT.otlp.forEach((t) => {
       const pk = prog(b, t - 0.2, t + 0.3, E.io);
@@ -896,14 +930,16 @@
       text(x, "OTLP", px, py + 10, { font: FONT.mono(28, 600), color: css("signalD"), align: "center", alpha: pa });
       glow(e, px, py, 70, 0.45 * pa);
     });
-    const ea = a * prog(b, 13.8, 13.95);
+    const ea = a * prog(b, 22.3, 22.45);
     arrowHead(x, WIRE6[1][0], WIRE6[1][1], 0, bone, ea);
     text(x, "POST /api/ingest/agents/otlp", 14680, 496, { font: FONT.mono(28, 600), color: bone, alpha: ea });
-    text(x, tr("ch01.extra"), 14680, 440, { font: FONT.cjk(34, 600), color: css("signalD"), alpha: a * prog(b, 14.0, 14.1) });
-    text(x, tr("ch01.self"), CE.x + CE.w + 40, CE.y + CE.h - 10, { font: FONT.cjk(30, 600), color: ash, alpha: a * prog(b, 13.9, 14.05) });
+    text(x, tr("ch01.extra"), 14680, 440, { font: FONT.cjk(34, 600), color: css("signalD"), alpha: a * prog(b, 22.55, 22.65) });
+    text(x, tr("ch01.self"), CE.x + CE.w + 40, CE.y + CE.h - 10, { font: FONT.cjk(30, 600), color: ash, alpha: a * prog(b, 22.45, 22.6) });
+    narPair(x, "ch01.n10a", "ch01.n10b", 13510, [22.05, 22.5], [22.5, 23.1], [22.0, 22.1, 23.62, 23.74], b);
   }
 
   // ========== CU 编码用量：三处原始数汇到站点这边合并，Pulse 多一条 Tokens 道 ==========
+  // Tokens 道画的是三处 5 分钟桶相加后的 token 处理量（输入 + 输出 + 缓存写入，按桶平均到每分钟），不是生成速度（FACTS §1）
   const SRC_Y = [330, 470, 610];
   const MERGE = [15960, 470];
   const PC = { x: 16300, y: 214, w: 860, h: 540 };
@@ -914,8 +950,8 @@
     for (let j = 0; j < 3; j++) line(x, cx - 14, cy - 7 + j * 7, cx + 12 - j * 6, cy - 7 + j * 7, 1.2, hot ? css("signalD") : css("bone"), a * 0.8);
   }
   function stationCU(x, e, d, b) {
-    const bone = css("bone"), ash = css("ash");
-    const a = prog(b, 14.35, 14.55);
+    const bone = css("bone");
+    const a = prog(b, 23.85, 24.05);
     if (a <= 0) return;
     figHead(x, 15430, null, tr("ch01.cu"), null, a, { rule: 1720 });
     const srcKeys = ["ch01.srcMac", "ch01.cc", "ch01.srcCursor"];
@@ -923,7 +959,7 @@
       const t = AT.raw[i];
       text(x, tr(srcKeys[i]), 15430, y - 22, { font: FONT.cjk(30, 600), color: bone, alpha: a });
       const pts = srcPath(i);
-      polyline(x, pts, prog(b, 14.35, 14.6, E.out), 1.6, bone, a * 0.6);
+      polyline(x, pts, prog(b, 23.85, 24.1, E.out), 1.6, bone, a * 0.6);
       // 一张原始数的小单子，t 时出发，走到合并处
       const pk = prog(b, t, t + 0.25, E.io);
       if (pk > 0 && pk < 1) { const [px, py] = pathAt(pts, pk * pathLen(pts)); slipIcon(x, px, py, a, true); glow(e, px, py, 60, 0.4); }
@@ -936,23 +972,22 @@
     x.beginPath(); x.arc(MERGE[0], MERGE[1], 30, 0, TAU); x.fill(); x.stroke(); x.restore();
     if (mk > 0) glow(e, MERGE[0], MERGE[1], 140, 0.9 * impact(b, AT.merge, 0.25) + 0.15);
     text(x, tr("ch01.merge"), MERGE[0] - 30, MERGE[1] + 86, { font: FONT.cjk(30, 600), color: bone, alpha: a * prog(b, AT.merge, AT.merge + 0.1) });
-    text(x, "/api/status/coding*", MERGE[0] - 30, MERGE[1] + 128, { font: FONT.mono(28, 500), color: ash, alpha: a * prog(b, AT.merge + 0.05, AT.merge + 0.15) });
-    nar(x, "ch01.n5a", 15430, 944, prog(b, 14.55, 15.0), win(b, 14.5, 14.6, 15.8, 15.95));
-    nar(x, "ch01.n5b", 15430, 1024, prog(b, 15.0, 15.5), win(b, 14.5, 14.6, 15.8, 15.95));
+    narPair(x, "ch01.n11a", "ch01.n11b", 15430, [24.05, 24.5], [25.0, 25.5], [24.0, 24.1, 26.62, 26.74], b);
     // 合并处伸出一段 Pulse（站点首页那张卡的一小截），多一条 Tokens 道
     const pa = prog(b, AT.merge + 0.02, AT.merge + 0.2, E.out);
     arrowPath(x, [[MERGE[0] + 34, MERGE[1]], [PC.x - 6, MERGE[1]]], pa, css("signalD"), a, 2.2);
     if (pa <= 0) return;
-    sheet(d, PC.x, PC.y, PC.w, PC.h, { alpha: a * pa });
-    text(d, "Pulse", PC.x + 36, PC.y + 64, { font: FONT.sans(40, 600), alpha: a * pa });
-    text(d, tr("ch01.pulse.window"), PC.x + PC.w - 36, PC.y + 62, { font: FONT.mono(28, 500), color: css("graphite"), align: "right", alpha: a * pa });
-    line(d, PC.x + 30, PC.y + 90, PC.x + PC.w - 30, PC.y + 90, 1.4, css("pink"), a * pa);
+    const sa = a * prog(b, AT.merge + 0.02, AT.merge + 0.08);
+    sheet(d, PC.x, PC.y, PC.w, PC.h, { alpha: sa });
+    text(d, "Pulse", PC.x + 36, PC.y + 64, { font: FONT.sans(40, 600), alpha: sa });
+    text(d, tr("ch01.pulse.window"), PC.x + PC.w - 36, PC.y + 62, { font: FONT.mono(28, 500), color: css("graphite"), align: "right", alpha: sa });
+    line(d, PC.x + 30, PC.y + 90, PC.x + PC.w - 30, PC.y + 90, 1.4, css("pink"), sa);
     const tx0 = PC.x + 230, tx1 = PC.x + PC.w - 36;
     LANES.forEach(([key, hot], i) => {
       const y = PC.y + 160 + i * 100;
       const col = hot ? css("signal") : css("pink");
-      text(d, tr(key), PC.x + 36, y + 10, { font: FONT.sans(30, 600), color: col, alpha: a * pa });
-      line(d, tx0, y + 20, tx1, y + 20, 1.2, css("pink"), 0.25 * a * pa);
+      text(d, tr(key), PC.x + 36, y + 10, { font: FONT.sans(30, 600), color: col, alpha: sa });
+      line(d, tx0, y + 20, tx1, y + 20, 1.2, css("pink"), 0.25 * sa);
       const r = mulberry32(60 + i);
       if (hot) {
         const tk = prog(b, AT.tokens, AT.tokens + 0.3);
@@ -961,13 +996,13 @@
           const v = r(), busy = (j > 8 && j < 20) || (j > 29 && j < 41);
           const hgt = busy ? 10 + v * 34 : v < 0.2 ? 4 + v * 20 : 0; // 最高 44：上面要留给「三处相加」
           const shown = clamp(tk * n - j);
-          if (hgt > 0 && shown > 0) fillRect(d, tx0 + j * cw + 1, y + 20 - hgt * shown, cw - 3, hgt * shown, css("signal"), a * pa * 0.9);
+          if (hgt > 0 && shown > 0) fillRect(d, tx0 + j * cw + 1, y + 20 - hgt * shown, cw - 3, hgt * shown, css("signal"), sa * 0.9);
         }
-        text(d, "tokens/min", PC.x + 36, y + 46, { font: FONT.mono(28, 500), color: css("graphite"), alpha: a * pa });
-        text(d, tr("ch01.sum"), tx1, y - 34, { font: FONT.cjk(28, 600), color: css("signal"), align: "right", alpha: a * pa * prog(b, AT.tokens + 0.1, AT.tokens + 0.25) });
+        text(d, tr("ch01.tokRate"), tx0, y + 58, { font: FONT.cjk(28, 600), color: css("graphite"), alpha: sa * prog(b, AT.tokens + 0.1, AT.tokens + 0.25) });
+        text(d, tr("ch01.sum"), tx1, y - 34, { font: FONT.cjk(28, 600), color: css("signal"), align: "right", alpha: sa * prog(b, AT.tokens + 0.1, AT.tokens + 0.25) });
       } else {
         let u = tx0 + r() * 60;
-        while (u < tx1 - 40) { const w = 20 + r() * 110; fillRect(d, u, y + 8, Math.min(w, tx1 - u), 12, css("pink"), 0.35 * a * pa); u += w + 30 + r() * 90; }
+        while (u < tx1 - 40) { const w = 20 + r() * 110; fillRect(d, u, y + 8, Math.min(w, tx1 - u), 12, css("pink"), 0.35 * sa); u += w + 30 + r() * 90; }
       }
     });
   }
@@ -996,11 +1031,10 @@
   }
   function stationF7(x, e, d, b) {
     const bone = css("bone"), ash = css("ash");
-    const a = prog(b, 15.85, 16.05);
+    const a = prog(b, 26.85, 27.05);
     if (a <= 0) return;
     figHead(x, 17350, 7, tr("ch01.f7"), tr("ch01.f7sub"), a, { rule: 720 });
-    text(x, "workers/collector", 17350 + measure(x, tr("ch01.f7sub"), FONT.cjk(28, 600)) + 24, 162, { font: FONT.mono(28, 500), color: ash, alpha: a });
-    text(x, tr("ch01.noGate"), 17350, 214, { font: FONT.cjk(28, 600), color: ash, alpha: a * prog(b, 16.5, 16.7), maxW: 840 });
+    text(x, tr("ch01.noGate"), 17350, 214, { font: FONT.cjk(28, 600), color: ash, alpha: a * prog(b, 27.5, 27.7), maxW: 840 });
     const beatF = Math.max(0, (b - AT.dial) * 4);
     const m = b < AT.dial ? -1 : Math.min(MINUTES - 1, minuteAt(b));
     const tickP = b < AT.dial ? 0 : Math.exp(-((beatF % 1) * 60 / 108) / 0.12);
@@ -1035,10 +1069,9 @@
     const bob = [pv[0] + Math.sin(pang) * 70, pv[1] + Math.cos(pang) * 70];
     line(x, pv[0], pv[1], bob[0], bob[1], 2.4, bone, a);
     x.save(); x.globalAlpha = a; x.fillStyle = css("ink2"); x.strokeStyle = bone; x.lineWidth = 2.2; x.beginPath(); x.arc(bob[0], bob[1], 16, 0, TAU); x.fill(); x.stroke(); x.restore();
-    nar(x, "ch01.n6a", 17350, 944, prog(b, 16.3, 16.9), win(b, 16.25, 16.35, 18.62, 18.75));
-    nar(x, "ch01.n6b", 17350, 1024, prog(b, 16.9, 17.6), win(b, 16.25, 16.35, 18.62, 18.75));
+    narPair(x, "ch01.n12a", "ch01.n12b", 17350, [27.3, 27.9], [27.9, 28.6], [27.25, 27.35, 29.62, 29.74], b);
     // 时序图：每行一个任务，每格一分钟，跑了就填上
-    const ca = a * prog(b, 16.05, 16.25, E.out);
+    const ca = a * prog(b, 27.05, 27.13, E.out);
     if (ca <= 0) return;
     sheet(d, TC.x, TC.y, TC.w, TC.h, { alpha: ca });
     text(d, tr("ch01.chart"), TC.x + 34, TC.y + 60, { font: FONT.cjk(36, 600), alpha: ca });
@@ -1059,9 +1092,8 @@
     });
   }
 
-  // ========== 主角那封：2:3 从 Hub 出来停在笔记本旁边；19:0 亮起，19:1 起往右飞出画面 ==========
+  // ========== 主角那封：3:3 从 Hub 出来停在笔记本旁边；30:0 亮起，30:1 起往右飞出画面 ==========
   const OUT = [PARK, [4700, 540]];
-  const OUT_LEN = pathLen(OUT);
   // 去路：一条虚线指向下一章的入口域名（只在甩回来之后出现）
   function guide(x, b) {
     const gA = prog(b, AT.back + 0.02, AT.back + 0.16, E.out);
@@ -1087,11 +1119,12 @@
       return;
     }
     guide(x, b);
-    const dd = keys(b, [[AT.launch, 0], [19.97, OUT_LEN, E.inExpo]]);
+    // 火花在 30.97 前后出右缘（镜头右缘约在世界 x 3840），最后几帧只剩拖尾贴着右边；第 02 章 0:0 的火花在左缘同一高度
+    const dd = keys(b, [[AT.launch, 0], [30.98, 1000, E.inExpo]]);
     const head = pathAt(OUT, dd);
-    const trail = trailOn(OUT, dd, lerp(80, 520, prog(b, AT.launch, 19.8)), 18);
+    const trail = trailOn(OUT, dd, lerp(80, 520, prog(b, AT.launch, 30.8)), 18);
     spark(e, x, head, trail, { t: G.t, size: 1.1, lw: 2.4, color: css("signalD") });
-    envelope(x, head[0], head[1], 44, css("signalD"), { lw: 2, fill: css("ink2"), alpha: 1 - prog(b, 19.5, 19.7) });
+    envelope(x, head[0], head[1], 44, css("signalD"), { lw: 2, fill: css("ink2"), alpha: 1 - prog(b, 30.5, 30.7) });
   }
 
   function render(f) {
@@ -1107,7 +1140,7 @@
     const e = emit.begin(); emit.cam(cam);
     const d = paper.begin(); paper.cam(cam);
 
-    // 只画镜头看得到的那几段（19:0 甩回来的那一下会扫过整条图纸）
+    // 只画镜头看得到的那几段（30:0 甩回来的那一下会扫过整条图纸）
     const half = 960 / cam.zoom + 400;
     const seen = (k) => Math.abs(FX[k] - cam.x) < half + 960;
     datum(x, cam);
@@ -1137,7 +1170,7 @@
   }
 
   window.CHAPTERS.push({
-    id: "ch01", title: "ch.01", bars: 20,
+    id: "ch01", title: "ch.01", bars: 31,
     init() { plate = G.pass(K.PLATE.ink); ink = G.layer("ink"); emit = G.layer("emit", 0.5); paper = G.layer("paper"); },
     render,
   });

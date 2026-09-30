@@ -4,13 +4,11 @@
 
 按这份仓库里的代码核对，文档和代码不一致时以代码为准。动画里出现的每一个端点、数字、谁做什么，都要能在这里找到出处；架构改动时先改这份，再改分镜。
 
-第 3 节（第 03 章用到的部分）和第 2 节的 202 时机，又在 **34eb555** 上逐条回代码复核过：eb429ed..34eb555 之间 `workers/`、`shared/`、`src/` 只有 7d88247 的注释改动，下面引的行号没有偏移。这次复核改了几处口径（纯心跳写几样、切应用和换歌各交回什么、LivePushRoom 的出处），并补了出处。
-
-线上这一版讲解片按 bf6c14b 的代码写成，之后约 50 个提交重构了中枢：上报入口拆成无状态 Worker、可滞后层、采集 Worker、D1 历史、首屏按卡读取、在线判断交给浏览器、在线人数并回推送房间。
+第 3 节里第 03 章用到的部分、第 2 节的 202 时机按 main 34eb555 逐条回代码复核过；其余各节的核对基线写在各节开头。 <!-- allow: 核对基线戳 -->
 
 ## 一句话总览
 
-仍是三段：**采集 → 中枢 → 展示**。中枢由三部分组成：
+仍是三段：**采集 → 中枢 → 展示**。上报器（和 Claude Code 云端的 OTLP）向上报入口 POST；中枢在 Cloudflare Workers 上记状态；展示是 Vercel 上的 Next.js 出首屏，浏览器挂载后直连 Worker 取数、收 WebSocket 推送（`src/lib/backend-url.ts#backendUrl`）。第 00 章旁白「上报器发 POST，Workers 记状态，Vercel 出首屏，浏览器收推送」就是这一句。中枢由三部分组成：
 
 - **ingress**：无状态的上报入口，负责鉴权、校验、分流。
 - **api**：状态核心 `StateCore`（RPC 入口）加上 `StateHub` DO，以及推送房间 `LivePushRoom`。
@@ -18,13 +16,15 @@
 
 数据按层落地：实时层在 DO，可滞后层在 KV `LAG`，长期历史在 D1 `lyjwpage-history`，凭据在 KV `CREDENTIALS`。
 
+片中叫法（画面标签和旁白都照这个）：账房是 `StateHub`，唯一的状态 DO，实时层存在它的 SQLite 里（`workers/api/src/state-hub.ts#StateHub`）；门外「照单去办」的是 `StateCore`，一个 `WorkerEntrypoint`，上报入口和采集 Worker 经 Service Binding 调它，它不是 DO（`workers/api/src/state-core.ts#StateCore`）；推送是另一个单例 DO `LivePushRoom` 上的 `/ws` WebSocket，全站一个房间（`workers/api/src/origin-worker.ts#LivePushRoom`）。上报器 = reporter；上报入口 = ingress Worker；采集 Worker = collector Worker；历史库 = D1；对象存储 = R2。
+
 ## 1 采集端
 
 ### 来源
 
-片中开场按「**七个外部上报器 + 一个采集 Worker**」画（下表前七行就是这七个上报器）；Claude Code 云端遥测（OTLP）不是我们写的上报器，另算一个入口。上报器和采集任务有几个，只按代码画，旁白和标注里不说。其中 n100 上的 playstation-reporter，把 presence、游玩列表和奖杯 POST 到同一个 `/api/ingest/playstation`。入口来源是 `shared/ingest/prepare.ts#INGEST_SOURCES` 那一份（playstation 是其中之一）；OTLP 走 `/api/ingest/agents/otlp`，不在这份清单里。Home Assistant 的 token 只开 homepod（`lyjwpage-home-assistant` 只有 `ingest:homepod`）。容器自己的 Access service token 是 `lyjwpage-playstation`，登记在 `workers/ingress/wrangler.toml#ACCESS_CLIENTS`，权限只有 `ingest:playstation`；`/playstation` 只认这一把。
+下表里除 Claude Code 云端和 collector Worker 两行，每一行都是一个外部上报器；Claude Code 云端遥测（OTLP）不是我们写的上报器，另走一个入口。第 01 章开场的图纸索引按图号画七个小样：前五个图号是外部上报器所在的地方（第 3 号是家里的 Home Assistant 和 n100 上的 playstation-reporter，第 5 号是东京 misaka-jp 上的 server-reporter、agents-reporter、discord-reporter），第 6 号是云端遥测，第 7 号是采集 Worker。上报器和采集任务有几个，只按代码画，旁白和标注里不说。其中 n100 上的 playstation-reporter，把 presence、游玩列表和奖杯 POST 到同一个 `/api/ingest/playstation`。入口来源是 `shared/ingest/prepare.ts#INGEST_SOURCES` 那一份（playstation 是其中之一）；OTLP 走 `/api/ingest/agents/otlp`，不在这份清单里。Home Assistant 的 token 只开 homepod（`lyjwpage-home-assistant` 只有 `ingest:homepod`）。容器自己的 Access service token 是 `lyjwpage-playstation`，登记在 `workers/ingress/wrangler.toml#ACCESS_CLIENTS`，权限只有 `ingest:playstation`；`/playstation` 只认这一把。
 
-第 01 章用到的部分（编码用量、collector 的任务与节奏、PlayStation 上报器、Mac 信封的 90 秒和 400 ms）按 main 2489e10 逐条回代码复核过。 <!-- allow: 核对基线戳 -->
+第 01 章用到的部分（编码用量与 Tokens 道的口径、collector 的任务与节奏、PlayStation 与 Quest 上报器、Mac 信封的 90 秒和 400 ms）按 main 8534275 逐条回代码复核过。 <!-- allow: 核对基线戳 -->
 
 | 来源 | 程序 / 在哪跑 | 入口 · token | 报什么 |
 |---|---|---|---|
@@ -35,6 +35,7 @@
 | Emby | emby-reporter，NAS 上的容器 | `/api/ingest/emby` · `lyjwpage-emby` | 在看什么；海报先传 R2 |
 | 服务器 | server-reporter，东京 misaka-jp 容器 | `/api/ingest/server` · `lyjwpage-server` | 服务器状态，固定每 60 秒一次（`reporters/server-reporter/src/config.ts#intervalMs` 的默认值，容器 `.env` 可覆盖） |
 | 编码账号 | agents-reporter，misaka-jp 容器 | `/api/ingest/agents` · `lyjwpage-agents` | 各家编码工具限额；Cursor 账号的用量日行、最近一次用量事件、5 分钟 token 桶 |
+| Quest | discord-reporter，misaka-jp 容器：Bot 连 Discord Gateway，只取目标用户 `platform=meta_quest` 的 Playing（`reporters/discord-reporter/README.md`） | `/api/ingest/quest` · `lyjwpage-quest` | Quest 在玩什么：`{version:1, presence:{observedAt, discordStatus, playing}}`（`shared/ingest/quest.ts#prepareQuestReport`）。进实时层、推 `quest-now`（`src/lib/status-views.ts#STATUS_VIEWS` 的 `questNow`），首页没有这张卡 |
 | Claude Code 云端 | OTLP JSON（可 gzip），Claude Code 自己发，不是我们写的上报器 | `/api/ingest/agents/otlp` · `lyjwpage-claude-cloud` | 云端 token 与费用的累计值（只收 cumulative）；状态核心按序列做差，落成和另两个来源同形的日行、5 分钟桶、最近一次用量事件（`workers/api/src/stores/claude-cloud.ts`）。三处怎么合并见下文「编码用量」 |
 | collector Worker | Cloudflare，cron 每分钟一响，任务表 `workers/collector/src/registry.ts#JOBS` 里的任务各按自己的节奏 | 不走 ingress | 见下文 |
 
@@ -68,8 +69,8 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 - 三个来源只报自己观测到的原始事实，三种形状一样：日行（来源 × agent × 站点日）、5 分钟 token 桶、最近一次用量事件（契约 `shared/coding-usage.ts`）。来源登记在 `shared/coding-usage-sources.ts#CODING_USAGE_SOURCES`：Mac 本机的会话记录、agents-reporter 里 Cursor 账号的完整历史、Claude Code 云端的 OTLP（状态核心做差后才成形，见上表）。
 - 合计、排名、去重、年度格子都不归来源，在状态核心一处算（`shared/coding-usage-view.ts#buildCodingUsageView`）：同一个 agent 有账号级来源（Cursor 账号）就只用它，本机和云端相加（`shared/coding-usage-sources.ts#resolveCodingUsageSources`）。读出口是 `/api/status/coding`、`/api/status/coding/now`、`/api/status/coding/year`（`src/lib/status-views.ts#STATUS_VIEWS`）。
-- Pulse 多一条 Tokens 道：三个来源的 5 分钟桶全部相加，画每分钟新处理的 token 数，不含缓存读（`src/lib/pulse.ts#tokensLaneView`）。
-- 片中只讲到「三处各报原始数，站点这边合并，Pulse 上多一条 token 速率」，不点存储键和模块名。
+- Pulse 多一条 Tokens 道：三个来源的 5 分钟桶全部相加，画的是 token 处理量（输入 + 输出 + 缓存写入，不含缓存读）在每个 5 分钟桶里的平均值，折成每分钟；它不是模型的生成速度（`src/lib/pulse.ts#tokensLaneView`）。卡上「此刻」那个数取最近 `TOKEN_CURRENT_MS`（10 分钟）内最后一个有用量的桶，不是此刻的精确值，口径问题还没修（同文件 `TOKEN_CURRENT_MS`）。
+- 片中只讲到「三处各报原始数，站点这边合并，Pulse 上多一条 token 处理量（5 分钟平均）」，不点存储键和模块名；不说「生成速度」「每分钟生成」，也不说它是此刻的精确值。
 
 ### collector 的任务
 
@@ -80,18 +81,18 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 ## 2 上报入口（workers/ingress，`ingest.homepage.lyjw.llc`）
 
-第 02 章用到的部分按 main 7fcfacb 逐条回代码复核过。 <!-- allow: 核对基线戳 -->
+第 02 章用到的部分按 main 8534275 逐条回代码复核过。 <!-- allow: 核对基线戳 -->
 
 ### 鉴权
 
-- 走 Cloudflare Access service token，**每个上报方一把钥匙，只开权限表上写着的门**（`workers/ingress/wrangler.toml#ACCESS_CLIENTS`）。钥匙按上报方发：Home Assistant 那一把只开 homepod；`/playstation` 只有 n100 上 playstation-reporter 容器自己的一把，报 presence、游玩列表和奖杯，带 `power` 字段的信封拒收（`shared/ingest/playstation.ts#preparePlaystationReport`）。验钥匙分三步：
+- 走 Cloudflare Access service token，**每个上报方一把钥匙，只开权限表上写着的门**（`workers/ingress/wrangler.toml#ACCESS_CLIENTS`）。钥匙按上报方发：Home Assistant 那一把只开 homepod；`/playstation` 只有 n100 上 playstation-reporter 容器自己的一把，报 presence、游玩列表和奖杯，带 `power` 字段的信封拒收（`shared/ingest/playstation.ts#preparePlaystationReport`）；`/quest` 只认 misaka-jp 上 discord-reporter 的 `lyjwpage-quest`，权限只有 `ingest:quest`。第 02 章的门墙按 `shared/ingest/prepare.ts#INGEST_SOURCES` 一个来源一扇门，外加 `/agents/otlp`；权限表按 `ACCESS_CLIENTS` 一把钥匙一行，只写上报方名，不写 client id。验钥匙分三步：
   1. Access 在边缘先挡一道。
   2. Worker 再验 `Cf-Access-Jwt-Assertion`（RS256，校验 aud / iss / exp；`shared/access-jwt.ts#verifyAccessJwt`）。
   3. 用 `common_name` 查 `ACCESS_CLIENTS` 权限表。
 - 结果码：无 JWT 回 401，越权（例如拿 Emby 的钥匙写 mac）回 403，验不了回 503（`workers/ingress/src/access-auth.ts#authorize`）。
 - 共用 Bearer 密钥已退役（d7f9811）。
 
-### 判定顺序（worker.ts）
+### 判定顺序（`workers/ingress/src/worker.ts#handleIngest`）
 
 | 步骤 | 条件 | 返回 |
 |---|---|---|
@@ -106,7 +107,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 | 9 | `CORE.commitIngest` 返回 `ready:false` | 503 |
 | 9 | `CORE.commitIngest` 拒收 | 400 |
 
-- Emby 海报在 prepare 里 HEAD R2 确认存在，带 5 分钟正缓存（r2-assets.ts:17）。回执里的 `missingImages` 告诉上报器还要补传哪些图。
+- Emby 海报在 prepare 里 HEAD R2 确认存在，带 5 分钟正缓存（r2-assets.ts:17）。回执里的 `missingImages` 告诉上报器还要补传哪些图：状态核心按 prepare 确认过的键算出，随 202 的 `data` 回给上报器（`workers/api/src/stores/emby.ts`、`reporters/emby-reporter/src/site.ts`）。
 
 ### 分流：一封上报按数据层拆成四路
 
@@ -119,10 +120,20 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 - `server` 整封**不经过状态核心**：写 `LAG` 和上报器账本，另把小时汇总归档进 D1（`shared/ingest/prepare.ts#CoreCommand`；`workers/ingress/src/worker.ts#commitIngest`；`workers/ingress/src/ingest-archive.ts#ingestHistoryStatements`）。
 - 四路都按自然键幂等，重发不会重复写。
+- 谁来写：可滞后、归档、凭据三路由入口自己写；只有实时那一半交出去，给状态核心（下一节）。
+
+### 实时那一半怎么交出去（Service Binding）
+
+- `CORE` 是 Service Binding：`workers/ingress/wrangler.toml` 里 `[[services]]` 的 `service = "api"`、`entrypoint = "StateCore"`；入口 `await env.CORE.commitIngest(command)`（`workers/ingress/src/worker.ts#commitIngest`）。
+- Cloudflare 内部调用，不走公网、不带凭据：只有声明了这个 binding 的 Worker 调得到，所以这一跳不再鉴权，鉴权只在入口做一次（`shared/state-core.ts` 文件头；`workers/api/src/state-core.ts#StateCore` 的注释）。
+- 交过去的是 prepare 的产物 `PreparedIngest`，必须能结构化复制；状态核心只 import 它的类型，不 import 校验实现，所以改校验只发布入口（`shared/ingest/prepare.ts` 文件头；`shared/state-core.ts#StateCoreRpc`）。RPC 方法只加不改，api 与调用方分开部署（同文件头）。
+- `StateCore` 是 RPC 入口（`WorkerEntrypoint`），它把命令交给唯一的状态 DO `StateHub` 按到达顺序提交（§3），回 `CommitReply`：`ready: false` 时入口回 503；`ok: true` 的 `data` 原样放进 202；`ok: false` 回 400（`shared/state-core.ts#CommitReply`）。推送和首屏失效在 StateCore 自己的 waitUntil 里派发，不经入口（§3「效果清单」）。
 
 ### 202 的时机
 
-**202 要等三样**，而且是依次等：StateCore 回执 → `LAG` 写完 → 凭据写完 → 回 202。D1 归档在拿到回执后放进 waitUntil，不等（`workers/ingress/src/worker.ts#commitIngest`）。
+**202 要等三样**，而且是依次等：StateCore 回执 → `LAG` 写完 → 凭据写完 → 回 202。D1 归档在拿到回执后、写 LAG 之前交给 waitUntil，不等，失败只记日志；凭据只在 mac 带来 Apple Music user token 时才写（`workers/ingress/src/worker.ts#commitIngest`）。所以 202 的意思是：实时层已在 StateHub 落账，LAG 和凭据已写；D1 归档、推送、首屏失效还在后台，入口不等。
+
+失败时：状态核心没准备好回 503，上报器稍后重发；同步等的那几步（状态核心、LAG、凭据）抛错一律回 400，上报器整封重发；各路按自然键或整份覆盖写，重发不重复（同一函数的注释）。
 
 可滞后层的写入方（ingress、collector）没有 Vercel 密钥。写入时发现布局变了，就调 `CORE.revalidate(tags)` 请状态核心代发（同一函数）。
 
@@ -149,6 +160,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
   1. 先并行向 `LivePushRoom` 广播。
   2. 再把布局标签一次性发给 `POST {SITE}/api/revalidate`，5 秒超时（ingest-effects.ts:106-120；live-platform.ts:19、66-95）。
 - 所以**广播和 202 是并行的**，不是 202 之后才广播。
+- 效果在 StateHub 之外派发：`StateCore.commitIngest` 拿到 StateHub 交回的效果，交给 `dispatchIngestEffects`，后者经 `afterResponse` 放进 `ctx.waitUntil`；网络请求不占 StateHub 的执行时间，串行的提交队列不被推送和失效拖住（`workers/api/src/ingest-effects.ts#dispatchIngestEffects`、`workers/api/src/live-platform.ts#afterResponse`）。第 03 章旁白「网络请求不占 StateHub 的时间」出自这里。
 - 换歌推送前，先查 Apple 目录补封面、链接、songId、有没有歌词（shared/telemetry.ts:176-201）。
 - 各模块交回什么（workers/api/src/stores/telemetry.ts）：
   - **切应用**只交回一条 `desktop` 事件，不失效首屏：页头那一格定宽，换应用只换内容（354-355）。所以片中「切应用」不配「通知 Vercel」。
@@ -163,7 +175,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 ### 推送房间 `LivePushRoom`
 
 - 地址 `/ws`（binding `LIVE_PUSH`，房间 `global`；origin-worker.ts:463）。
-- 事件共 14 种，其中 11 种带数据；`presence`、`version` 不带数据；`online` 带 `{online}`（src/lib/live-events.ts:24-110）。
+- 事件的种类和载荷见 `src/lib/live-events.ts#LiveEvent`（片中不说几种）：`presence`、`version` 不带数据，`online` 带 `{online}`，其余都带数据。
 - 用 Hibernation API：ping/pong 由运行时自动应答，不唤醒 DO（origin-worker.ts:185）。只有接入、断开、切换可见性、清扫闹钟这几件事会唤醒它。
 
 ### 在线人数（f6cda45 起并回推送房间，online-counter Worker 已退役）
@@ -173,7 +185,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
   - `online`：正在看的页面；心跳 30 秒，静默 90 秒不计，清扫 30 秒一次。
 - 页面握手时带 `?visible=1`，切后台只发 `hidden`，不断开连接（origin-worker.ts:202；use-live-events.ts:283）。
 - `/count` 一次返回 `{ok, connections, online}`；RPC 的 `audience()` 返回同样的两个数（live-census.ts；shared/state-core.ts）。
-- 可见人数变了才广播 `online`。
+- 可见人数变了才广播 `online`；页面切后台只发一条 `hidden`，可见性记在各自连接的 attachment 上（`workers/api/src/origin-worker.ts#LivePushRoom` 的注释）。
 
 ### D1 长期历史 `lyjwpage-history`
 
@@ -186,7 +198,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 这一节和下面的「Pulse 事实时间线」是第 08 章用的，按 main 2489e10 逐条回代码复核过。 <!-- allow: 核对基线戳 -->
 
 - 每轮只做两件事：
-  1. 把 pulse 归档到 D1：StateHub 给出一份有界快照 → 写事实表 → 回头确认水位。各路独立，一路坏了不挡别的路（`workers/api/src/pulse-archive.ts#ARCHIVE_STREAMS`：三条状态道、在听的曲目痕迹、充电、活动桶、Coding 观测，加上编码用量的账本和 5 分钟 token 桶）。
+  1. 把 pulse 归档到 D1：StateHub 给出一份有界快照（各路水位之后的新行）→ 按自然键 upsert 写事实表 → 成功后回头确认水位。各路独立，一路读坏、写坏不挡别的路（`workers/api/src/pulse-archive.ts` 文件头注释；`workers/api/src/pulse-archive.ts#ARCHIVE_STREAMS`：三条状态道、在听的曲目痕迹、充电、活动桶、Coding 观测，加上编码用量的账本和 5 分钟 token 桶）。
   2. PulseScorer 调 Jev（`jev-1.13.0`），**只给 Coding 打分**，一窗是 `shared/pulse-coding.ts#PULSE_SCORE_WINDOW_MS`（三个 5 分钟桶，15 分钟），窗结束两分钟后才打（`workers/api/src/pulse-score.ts#PulseScorer`）：
      - 交给 Jev 的是这一窗的特征：Mac 的前台应用与 agent 观测、容器里 Cursor 账号的活动，外加三个来源的 5 分钟 token 桶（Mac 本机扫描、Cursor 账号历史、Claude Code 云端遥测），按来源、agent、模型相加（同文件 `windowTokenUsage`）。Mac 扫描范围里缺的桶是测到的 0；另两个来源只作正证据，没有行不等于 0。
      - 全零的窗不问 Jev，直接记最低档：整窗都看得见、Mac 本机扫描盖满三个桶、没有任何活动和 token（同文件 `definiteZero`）。Mac 不在、只有 Cursor 看得见且没有活动时也不问，按半置信记最低档（`quietIndependentSource`）。一点观测都没有的窗不打分。
@@ -204,7 +216,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 - 时间线只存原始值，档位、颜色、摘要都在展示时现算（`shared/pulse-timeline.ts`）：三条状态道（听、看、玩）是状态区间；充电是实测瓦数样本；活动是 HealthKit 的五分钟步数桶加训练区间。
 - Coding 不进这条时间线：它的三色带（前台是 coding 应用 / 有 agent 在跑 / 两者同时）读的时候从 Mac 的观测和 Cursor 账号的观测现算（`shared/pulse-coding.ts#codingBand`）；Jev 的打分只出现在悬停提示里。
-- Tokens 道：三个来源的 5 分钟 token 桶读的时候相加，画每分钟新处理的 token（输入 + 输出 + 缓存写入，不含缓存读；`src/lib/pulse.ts#tokensLaneView`）。
+- Tokens 道：三个来源的 5 分钟 token 桶读的时候相加，画每个桶的 token 处理量（输入 + 输出 + 缓存写入，不含缓存读）的 5 分钟平均，折成每分钟；不是生成速度，「此刻」那个数的口径见 §1「编码用量」（`src/lib/pulse.ts#tokensLaneView`）。
 - Pulse 卡的道按 `src/components/live/pulse-card.tsx#LANES`，写章时从上到下是 Coding、Tokens、Listening、Watching、Gaming、Charging、Activity（第 08 章的地层照这个顺序一层一层画，旁白不说几条）；卡上画最近 24 小时（`src/lib/limits.ts#PULSE_WINDOW_MS`），屋里留 7 天（`PULSE_TTL_MS`），D1 长期保存。
 
 ## 4 首屏（Vercel 上的 Next.js）
@@ -219,7 +231,11 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 - **每张卡一条 `'use cache'`**，cacheLife 为 stale 300 / revalidate 600 / expire 7 天（`src/lib/first-screen.ts#firstScreen`）。歌词另是 300 / 3600 / 86400（`src/lib/first-screen.ts#firstScreenLyrics`）。
 - 标签：按 7fcfacb 现数 19 个视图挂 `page:` 标签；另有 7 个视图不带标签（GitHub 两份、Vercel、Cloudflare、Sentry、上报器账本、pulse），只靠 600 秒定时重建（`src/lib/status-views.ts#STATUS_VIEWS`）。
 - 一个标签失效，只让那张卡回源；整页在后台重建，旧页照给（`revalidateTag(…, "max")`，status-revalidation.ts:5）。
-- 第 00 章把首屏画成浏览器窗口里的线框：卡片框按 `src/app/page.tsx` 的版面、尺寸取第 04 章 P 表的实测比例；画的那一刻没在充电，充电那一格收起、「最近播放」占满一行（`src/components/live/media-pair.tsx#LiveMediaPair`）。卡上的标注照站点原文（`src/components/live/listening-card.tsx` 的 Recently Played、Now Playing，界面上是大写）。
+- 请求路径上不现拉外部 API：每条缓存只读自己的状态端点（实时读 DO，可滞后读 KV），GitHub、Sentry 这些外部来源只由采集 Worker 定时去取（`src/lib/first-screen.ts#firstScreen` 的注释）。
+- 失效通知只带标签名、不带数据：数据已经落在 Worker 上，下一次读端点自己去拿（`src/app/api/revalidate/route.ts#POST` 的注释）。`revalidateTag(tag, "max")` 只把条目标成过期，下一次有人访问时先给旧的、后台重建（Next.js 文档 revalidateTag 一页，profile 取 "max" 的行为）。
+- 标签只为布局变化而发：首屏版面变了（例如在线 / 离线翻转、充电头接上或拔下、开始或停止放歌）才通知 Vercel；只变内容的交给 cacheLife 的 revalidate 600 秒定时重建（`workers/api/src/live-platform.ts#expireStatusTags` 的注释）。
+- cacheLife 三个值（Next.js 文档 cacheLife 一页）：stale 是浏览器端路由缓存不问服务器就直接用的时长；revalidate 是过了这个时长后，下一个请求先拿旧的、服务端在后台重建；expire 是没人访问时的上限，过了就同步重建。
+- 第 00 章把首屏画成浏览器窗口里的线框：卡片框按 `src/app/page.tsx#Home` 的版面，尺寸取第 04 章 P 表（`docs/explainer/v2/ch04.js#P`）的比例；P 表注明是按 lyjw.me 桌面宽度实测的卡片框乘 0.6，那次实测未核。画的那一刻没在充电：充电那一格收起、「最近播放」占满一行（`src/components/live/media-pair.tsx#LiveMediaPair` 不在充电时加 is-disconnected，`src/app/globals.css` 在桌面宽度下把这时的最近播放左边贴到 0）。卡上的标注照站点原文（`src/components/live/listening-card.tsx` 的 Recently Played、Now Playing）；界面上是大写，因为 `src/components/ui/card.tsx#Card` 的标签用 label-mono，它在 `src/app/globals.css` 里是 text-transform: uppercase。
 
 ### 来源出问题时
 
@@ -234,15 +250,15 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 ### 早开连接
 
 - head 里的内联脚本解析到它时就 `new WebSocket("wss://…/ws?visible=1")` 起手，把收到的消息原样攒下：最多 `EARLY_LIVE_SOCKET_QUEUE_LIMIT` 条（50），没人接手就在 `EARLY_LIVE_SOCKET_WATCHDOG_MS`（15 秒）后自己关（`src/lib/live-socket-boot.ts#earlyLiveSocketScript`）。
-- 这样**不用等整棵树 hydrate 完**才发起连接。hydrate 后由 `useLiveEvents` 接管这条连接，攒下的按到达顺序重放（`src/hooks/use-live-events.ts#adoptEarlySocket`）。房间在连上的那一刻就发一条 `online` 人数，所以托盘里通常至少有这一封。
+- 这样**不用等整棵树 hydrate 完**才发起连接。hydrate 后由 `useLiveEvents` 接管这条连接，攒下的按到达顺序重放（`src/hooks/use-live-events.ts#adoptEarlySocket`）。接管的是同一条 WebSocket，不重新握手：`adoptEarlySocket` 从 `window` 上摘下内联脚本那条连接，卸掉它的 handler 后直接用；只有它还在 CONNECTING 或 OPEN 时才接管，已经断了就关掉，由 `open` 重新建一条。房间在连上的那一刻就发一条 `online` 人数，所以托盘里通常至少有这一封。
 - 代码里不记实测延迟，注释只讲为什么要早开。**片中不标毫秒**，时间轴只画先后；要标得先重测。
 - 重连退避从 1 秒起、每次 ×1.5，封顶 30 秒。重连后所有实时视图立刻补取一次（同文件 `open` 里的 `onReady`）。
 
 ### 推送进卡片
 
-- 带数据的事件按 `src/hooks/use-live-events.ts#FORWARDS` 直接 `mutate(path, data, {revalidate:false})` 写进对应的 SWR 键，卡片当场更新：desktop、listening-now、listening、watching-now、watching、playing-now、playing、trophies、charger、powerbank、coding-now。事件名到端点的对应登记在 `src/lib/status-views.ts#STATUS_VIEWS`。
+- 带数据的事件按 `src/hooks/use-live-events.ts#FORWARDS` 直接 `mutate(path, data, {revalidate:false})` 写进对应的 SWR 键，卡片当场更新：desktop、listening-now、listening、watching-now、watching、playing-now、quest-now、playing、trophies、charger、powerbank、coding-now。事件名到端点的对应登记在 `src/lib/status-views.ts#STATUS_VIEWS`。
 - `online` 只写页脚的人数；`presence`、`version` 不带数据，只让几张卡重取（同文件的 `INVALIDATIONS`；presence 重取的是 Mac 供数的几张，含 coding-now）。
-- 时间戳挡旧：推送先经 `acceptPush` 登记这一代，轮询回来经 `guardPolled` 比，慢回来的旧数据盖不掉新的（`src/lib/status-reads.ts#guardPolled`）。带单调戳的只有 desktop、listening、listening-now、powerbank、trophies（同文件的 `STAMPS`），listening-now 比的是 `receivedAt`。
+- 时间戳挡旧：推送先经 `acceptPush` 登记这一代，轮询回来经 `guardPolled` 比，慢回来的旧数据盖不掉新的（`src/lib/status-reads.ts#guardPolled`）。带单调戳的只有 quest-now、desktop、listening、listening-now、powerbank、trophies（同文件的 `STAMPS`），listening-now 比的是 `receivedAt`。
 
 ### 取数节奏（`src/lib/poll-schedule.ts`）
 
@@ -254,7 +270,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
   - 在听 / 在看 / 在玩「此刻」：60 秒
   - 列表类和奖杯：10 分钟（在听列表空着时 60 秒）
 - 推送连着、且视图登记了 `pushCovers`（listening、watching、watching-now、playing、playing-now、trophies）时，间隔取 `max(cardMs, PUSH_SAFETY_NET_MS)`，也就是不快于 5 分钟的兜底（`src/lib/poll-schedule.ts#realtimeInterval`）：真被放宽的只有 60 秒的「此刻」卡（watching-now、playing-now）和空着的在听列表，10 分钟的列表和奖杯不变。desktop、充电头、充电宝、listening-now、编码没登记 `pushCovers`，照旧按自己的间隔。
-- 可滞后卡不固定轮询，在 `due = updatedAt + cadenceMs + LAG_GRACE_MS`（15 秒）时去取，也就是「下一次预期写入」之后一点；过了 due 还没取到更新的，从 `LAG_MIN_RETRY_MS`（15 秒）起退避，封顶 min(节奏, `LAG_MAX_RETRY_MS`)（`src/lib/poll-schedule.ts#nextLagDelay`）。
+- 可滞后卡不固定轮询，在 `due = updatedAt + cadenceMs + LAG_GRACE_MS`（15 秒）时去取，也就是「下一次预期写入」之后一点；过了 due 还没取到更新的，从 `LAG_MIN_RETRY_MS`（15 秒）起退避，封顶 min(节奏, `LAG_MAX_RETRY_MS`)（5 分钟；`src/lib/poll-schedule.ts#nextLagDelay`）。
 - 节奏登记在 `src/lib/status-views.ts#STATUS_VIEWS` 的 `cadenceMs`。片中到货表举的三行：server 60 秒、github-chart 10 分钟、activity 1 小时；表里的 updatedAt 时刻是示意。
 - 标签页隐藏就暂停。
 
@@ -288,17 +304,11 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 - lyjw131.com 经阿里云 ESA 回源 lyjw.me。
 - 首页的 `Cache-Control: public, max-age=300, stale-while-revalidate=86400, stale-if-error=86400`：5 分钟内直接命中；过期后先给旧页，后台回源。
+- 首屏新鲜度不靠 ESA 这一层：ESA 给的可能是一份旧 HTML，浏览器挂载后经 SWR / WebSocket 直接向 Worker 取最新状态（`next.config.ts` 里首页那条 `Cache-Control` 的注释；浏览器直连 Worker 见 `src/lib/backend-url.ts#backendUrl`）。第 06 章旁白「数据在挂载后直连 Worker 取新」出自这里。
 
 ### 发版
 
-1. Vercel 生产部署成功。
-2. GitHub Actions 调 ESA 刷新首页并预热。
-3. 等两个域名的 `/api/version` 都答出新版：每个域名最多 30 次 × 10 秒。
-4. 带 Access token 调 **ingress** 的 `POST /api/internal/site-deployed`。
-5. ingress 经 RPC 调 `StateCore.broadcastVersion()`，进推送房间，不经 StateHub。同时让 collector 立刻重拉部署列表（`.github/workflows/purge-esa.yml#notify`；`workers/ingress/src/worker.ts#handleSiteDeployed`；`workers/api/src/state-core.ts#broadcastVersion`）。
-6. 页面重问自己域名的 `/api/version`（`max-age=0, must-revalidate`），顶上弹出 UPDATE 卡。
-
-页面另有兜底：每 30 分钟问一次，切回焦点也问一次（`src/hooks/use-app-version.ts#REFRESH_MS`）。
+部署成功之后刷新 ESA、等两个域名换上新版、通知开着的页面，事实只写在 §9「部署成功之后：刷新 ESA、通知页面」，片中由第 09 章「发布」讲；第 06 章只讲请求时的分发与缓存。
 
 ## 7 自适应调频
 
@@ -314,8 +324,9 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
   - `AWAKE_TICK_INTERVAL_MS` 是醒着那一档的间隔，不是两轮之间的下限：对调那一轮不等它（`reporters/playstation-reporter/src/cadence.ts#shouldRunTick`）。门只在每次探测时判，醒着时要等到过线之后的那一探，实际约每分钟一轮。
   - 下游的窗口都锚在闲档：站点判 PS 上报器断没断流用 `src/lib/freshness.ts#PLAYSTATION_STALE_MS`（闲档三轮多一点，只有浏览器判）。Pulse 玩那条道每次观测的有效期是 `shared/pulse-timeline.ts#GAMING_HOLD_MS`（盖过闲档再留投递抖动，`shared/pulse-timeline.ts#stateHoldMs`）：有效期内来了新观测，这一段就接着开，过期还没等到才在最后一次确认处收尾（`shared/pulse-timeline.ts#planStateObservation`）；容器每个完整 tick 都发 presence（`reporters/playstation-reporter/src/tick.ts#tick`），闲档一轮一封就接得上。主机醒着时只会更快，判活的下限由闲档决定。第 08 章不画这两个窗口。
 - agents 的三档是 `reporters/agents-reporter/src/config.ts` 里 `cadence` 的默认值（容器 `.env` 可覆盖，线上值没记进 `docs/ops-facts.md`）。每跑完一轮才按当时的人数定下一次等多久；等的时候每 5 分钟醒来重查一次，人数多了立刻提前跑，人数少了不延后已定的那一次（`reporters/agents-reporter/src/cadence.ts#waitForNextRound`）。闲档 60 分钟 ÷ 5 = 12 次小睡。
-- 服务器上报器固定每分钟推，不问人数：闲时每分钟问一次人数本身就不比直接推省（`reporters/server-reporter/src/config.ts` 的 `intervalMs` 注释）。夜里只有它的心形还在跳。
-- agents 的人数查询失败就当 0，所以只会变慢，不会变快（`reporters/agents-reporter/src/cadence.ts#readAudience`）。PlayStation 不问这个数。
+- 服务器上报器固定每分钟推，不问人数：这份快照本身就是心跳，站点拿 `pushedAt` 判它还活着没有；上报不经过 Vercel，没有函数调用量要省，闲着时先问一次人数比直接推一次还费（`reporters/server-reporter/src/config.ts` 的 `intervalMs` 注释）。夜里只有它的心形还在跳。
+- 限额那一台按人数调频，是因为每一轮都要打各家厂商的限额接口（`reporters/agents-reporter/src/config.ts` 里 `cadence` 的注释「控制打各家限额接口的频率」）。
+- agents 的人数查询读不到、超时、格式不对一律当 0，所以故障只会让它变慢，不会变快（`reporters/agents-reporter/src/cadence.ts#readAudience`）。PlayStation 不问这个数。
 
 ## 8 站点自检
 
@@ -326,9 +337,57 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 - **Sentry 每分钟来敲门**：在线探测 HEAD `/api/version`，只说明 Vercel 还在出页面（`src/components/live/uptime-strip.tsx#UptimeStrip` 的注释）。探测配在 Sentry 侧，记在 `docs/ops-facts.md` 的「Sentry」一节，那一条标的是「核对于 未记录」。
 - **Worker 每 5 分钟去报到**：api 分钟 cron 的整 5 分钟那一轮（见 §3「api 的分钟 cron」）。
 
-Sentry 的结果由 **collector** 的 `sentry-status` 任务每 5 分钟取回（`workers/collector/src/jobs/sentry-status.ts#sentryStatusJob`），写进 `LAG` 的 `sentry:v1` 键，经 `/api/status/sentry` 上 LYJWPAGE 卡：两行，lyjw.me 是每分钟那次敲门、API 是 cron 的报到，各 30 天一天一格（`src/components/live/uptime-strip.tsx#UptimeStrip`、`src/lib/sentry-status.ts#UPTIME_DAYS`）。站点按每天的成功率给格子上色；片中只点亮今天那一格，不出可用率。
+Sentry 的结果由 **collector** 的 `sentry-status` 任务每 5 分钟取回，页面和首屏都不直连 Sentry，只读可滞后层里的这份结果（`workers/collector/src/jobs/sentry-status.ts#sentryStatusJob`），写进 `LAG` 的 `sentry:v1` 键，经 `/api/status/sentry` 上 LYJWPAGE 卡：两行，lyjw.me 是每分钟那次敲门、API 是 cron 的报到，各 30 天一天一格（`src/components/live/uptime-strip.tsx#UptimeStrip`、`src/lib/sentry-status.ts#UPTIME_DAYS`）。站点按每天的成功率给格子上色；片中只点亮今天那一格，不出可用率。
 
 取数带的是 `SENTRY_API_TOKEN`，代码只拿它发 GET 查询（`src/lib/sentry-status.ts#sentryClient`）。令牌的权限范围是 Sentry 侧的配置：`workers/collector/README.md` 写的是组织只读（org:read / project:read / event:read），`docs/ops-facts.md` 没有这一条，**未核**。片中令牌只画成一张卡、标 `GET`，不说「只读」。
+
+## 9 发布（推到 main 之后）
+
+第 09 章「发布」用的部分，按 main 8534275 逐条回代码复核过。 <!-- allow: 核对基线戳 -->
+
+一次 `git push origin main` 同时触发几条流水线：GitHub Actions 的几个工作流、Vercel 的 Git 集成、Cloudflare Workers Builds 的原生 Git 集成（`docs/workers-builds.md` 开头）。它们各自决定跑不跑、各自构建，互不等待。片中举的那次推送改到 `src/components/`、`workers/api/`、`reporters/server-reporter/` 下的文件和 Hub 的子模块指针，是示意，不对应真实提交；画面上的短哈希也是示意。
+
+### 检查：CI 与 CodeQL（只检查、不发布）
+
+- CI：推 main 或 dev、开 PR 都跑，一个 job 依次跑 lint、全部工作区的 typecheck、站点单测、api / ingress / collector 的单测、上报器单测、`scripts` 的测试、`pnpm docs:check`（`.github/workflows/ci.yml#check`）。
+- CI 不跑 `next build`：Vercel 每次推送都会构建，CI 只管 Vercel 覆盖不到的几件事（同文件开头的注释）。同一分支连推几次，只留最后一次（同文件的 `concurrency`，`cancel-in-progress`）。
+- CodeQL：推 main 或 dev、开 PR，外加每周一次定时，扫 `javascript-typescript` 和 `actions` 两类（`.github/workflows/codeql.yml#analyze`）。
+
+### 站点：Vercel
+
+- 生产随 main 自动部署是 Vercel 控制台的配置，记在 `docs/ops-facts.md` 的「Vercel」一节。构建命令 `pnpm build` 跑 `scripts/build.mjs`：先生成讲解片的静态页，再 `next build`。
+- 部署只发生在 Vercel：`lyjw131.com` 经阿里云 ESA 回源 `lyjw.me`（§6「大陆访问」）。
+- 构建不过就没有新部署，域名上仍是上一版：`/api/version` 由此刻接管生产域名的那次部署自己回答（`src/app/api/version/route.ts#GET` 的注释）。
+
+### Worker：Cloudflare Workers Builds
+
+- api、ingress、collector 各连一个 Workers Builds 项目，生产分支 main：构建命令是各自的 typecheck，部署命令是 `wrangler deploy`（`docs/workers-builds.md`「构建配置」）。
+- 各按自己的监视路径决定这次构建不构建（`docs/workers-builds.md`「构建监视路径」）：三个都盯 `shared/*`、`src/lib/*` 和根目录的依赖与配置文件，另各盯自己的 `workers/<名字>/*`；只有 api 排除 `shared/ingest/*`，所以改上报校验不会重新发布带 Durable Object 的 api，页面的 WebSocket 也不断。片中那次推送只改到 api 的目录，ingress、collector 这次不构建，线上仍是上一版。
+- Workers Builds 并行构建、不保证先后，Worker 之间的 RPC 契约只加不改，被调用方先上线（`shared/state-core.ts#StateCoreRpc` 与 `shared/collector.ts#COLLECTOR_JOBS` 所在文件开头的注释；根 `AGENTS.md`「部署流程」）。跨 Worker 的契约切换靠手动按序部署，片中不画。
+- 片中不画：api 的分支 Preview、ingress 与 collector 关掉预览构建的原因、D1 迁移要先手动 apply（都在 `docs/workers-builds.md`）。
+
+### 上报器：GHCR 与 GitHub Release
+
+- 容器上报器：`.github/workflows/build-reporters.yml#changes` 用 paths-filter 挑出改了的目录；`.github/workflows/build-reporters.yml#build` 只出 `linux/amd64`，合进 main 时打 `latest` 和 `sha-<短哈希>` 推到 GHCR，PR 只 build 不推；`.github/workflows/build-reporters.yml#deploy` 只管 misaka-jp 上的服务：用一把只能执行部署脚本的密钥 ssh 过去，点名 pull、只重建那一个、清掉悬空镜像（`reporters/misaka-deploy.sh`），再验 `status=running restarts=0`，server-reporter 另验镜像里烧进的提交就是这一版。
+- dsm（emby-reporter）和 n100（playstation-reporter）在内网，Actions 够不着，按各自 README 手动更新（`.github/workflows/build-reporters.yml` 开头的注释）。dsm 那台现在还是现场 build（`docs/ops-facts.md`「机器与部署位置」），所以片中不说「机器只拉镜像」。
+- Mac Telemetry Hub：`reporters/mac-telemetry-hub` 是子模块，main 上的指针一动，macOS runner 就用 Developer ID 签名、`notarytool` 公证、`stapler` 钉上票据，发成本仓库的 Release `hub-build-<运行号>`（`.github/workflows/release-mac-telemetry-hub.yml#release`）；PR 上只走到公证、不发布；没配签名 secret 时整个 job 跳过。
+
+### 部署成功之后：刷新 ESA、通知页面
+
+- Vercel 的生产部署成功后，GitHub 上的 `deployment_status`（state 为 success、environment 为 Production）触发 `.github/workflows/purge-esa.yml`：
+  1. `.github/workflows/purge-esa.yml#purge`：调 ESA 的 `PurgeCaches` 刷掉 `lyjw131.com` 首页的缓存键，再 GET 一次预热（`scripts/run-esa-purge.mjs`、`scripts/esa-purge.mjs#purgeEsaHomepage`、`scripts/esa-purge.mjs#warmupEsaCache`）。
+  2. `.github/workflows/purge-esa.yml#notify`（等刷新完）：先等 `lyjw.me`、`lyjw131.com` 的 `/api/version` 都答出这次部署的 sha，每个域名最多 30 次、每次隔 10 秒；等不到也照常通知，最坏只是不弹提示。先刷新再通知，是因为反过来的话 lyjw131.com 的访客点刷新拿回的还是旧 HTML（同文件里那段注释）。
+  3. 带 `lyjwpage-github-actions` 那把 Access service token 调上报入口的 `POST /api/internal/site-deployed`，这把只有 `internal:site-deployed` 权限（`workers/ingress/wrangler.toml#ACCESS_CLIENTS`）；失败重试，最长 10 分钟（`--retry-max-time 600`），理由是同一次推送也改了 api 时，Workers Builds 往往比 Vercel 晚上线。
+- 上报入口验过权限，经 Service Binding 调 `StateCore.broadcastVersion()`（`workers/ingress/src/worker.ts#handleSiteDeployed`、`workers/api/src/state-core.ts#broadcastVersion`）：直接交给推送房间、不经 StateHub，LivePushRoom 向所有连着的页面广播 `version`，不带数据（`payload` 为 null）；另在 `waitUntil` 里请 collector 立刻重拉部署列表（`workers/ingress/src/worker.ts#DEPLOYMENT_JOBS`，片中不画）。
+- 页面收到 `version` 只重问自己域名上的 `/api/version`，不信推来的版本号（`src/hooks/use-live-events.ts#INVALIDATIONS`）；这个接口是构建期常量，头是 `max-age=0, must-revalidate`（`next.config.ts` 的 headers），拿它和页面构建时焊进的 sha 比（`src/lib/app-version.ts#resolveVersionStatus`）。
+- 比出来旧了：前台只弹 UPDATE 卡，刷不刷交给人（`src/components/app-version-card.tsx#AppVersionCard`）；后台标签页自己刷新（`src/components/stale-tab-reload.tsx#StaleTabReload`、`src/hooks/use-stale-auto-reload.ts#useStaleAutoReload`），有几道闸：同一个目标版本一轮最多试 `AUTO_RELOAD_MAX_TRIES` 次、两次自动刷新之间冷却 `AUTO_RELOAD_COOLDOWN_MS`、网页播放器在放不刷、sessionStorage 用不了不刷（`src/lib/app-version.ts#autoReloadDecision`）。片中只画「前台弹提示、后台自己刷新」。
+- 收不到通知也有兜底：页面每 30 分钟问一次，切回前台时再问一次（`src/hooks/use-app-version.ts#REFRESH_MS`）。
+
+### 不在这条发布链上（核过，片中不画）
+
+- `.github/workflows/deploy-pages.yml`：`docs/` 有改动时把它发到 GitHub Pages（架构图页），和站点无关。
+- `.github/workflows/preview-api-worker.yml`：PR 关闭时删掉那个分支的 api Worker Preview。
+- `.github/workflows/claude.yml`、`.github/workflows/claude-code-review.yml`：PR 与 issue 上的 Claude Code，不参与发布。
 
 ## 片中不用或待定
 

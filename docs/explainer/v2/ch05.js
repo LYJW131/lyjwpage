@@ -23,25 +23,25 @@
     "ch05.tray": ["托盘", "Tray"],
     "ch05.takeover": ["接过这根线", "takes over the wire"],
     "ch05.replay": ["按顺序重放", "replayed in order"],
-    "ch05.n1a": ["页面还在解析，电报线已经接上；", "The wire is up before parsing ends;"],
-    "ch05.n1b": ["先到的电报放进托盘。", "early telegrams wait in a tray."],
-    "ch05.n2a": ["页面活过来，", "Once the page comes alive,"],
-    "ch05.n2b": ["托盘里的按顺序重放。", "the tray replays in order."],
+    "ch05.n1a": ["head 里的内联脚本先连 /ws，", "A <head> script opens /ws early;"],
+    "ch05.n1b": ["不等 hydrate，消息先排进队列。", "messages queue until hydration."],
+    "ch05.n2a": ["连接还开着就直接接管，不再握手；", "Hydration adopts the same socket;"],
+    "ch05.n2b": ["队列按到达顺序重放。", "the queue replays in arrival order."],
     "ch05.swr": ["浏览器缓存", "browser cache"],
     "ch05.np": ["Now Playing", "Now Playing"], // 站点卡片上的原文
-    "ch05.n3a": ["推送一到，写进缓存，", "A push lands in the cache"],
-    "ch05.n3b": ["卡片当场翻面。", "and the card flips on the spot."],
+    "ch05.n3a": ["推送自带数据，直接写进 SWR，", "The push carries the data itself;"],
+    "ch05.n3b": ["不再回源，卡片当场翻面。", "SWR updates with no refetch."],
     "ch05.poll": ["慢回来的轮询", "a late poll"],
     "ch05.gate": ["时间戳闸门", "timestamp gate"],
-    "ch05.n4a": ["慢回来的旧数据，", "Late, older data"],
-    "ch05.n4b": ["盖不掉新的。", "can't overwrite newer data."],
+    "ch05.n4a": ["闸门比的是数据自带的时间戳，", "The gate compares timestamps,"],
+    "ch05.n4b": ["不是到达顺序：旧的盖不掉新的。", "not arrival order, so stale loses."],
     "ch05.quiet": ["线上没有消息", "nothing on the wire"],
     "ch05.browserClock": ["浏览器的钟", "browser clock"],
     "ch05.macClock": ["Mac 的钟", "Mac clock"],
     "ch05.onlyPlaying": ["只在播放时往前走", "advances only while playing"],
     "ch05.lyrics": ["歌词（占位）", "lyrics (placeholder)"],
-    "ch05.n5a": ["进度条自己往前走：", "The progress bar runs by itself,"],
-    "ch05.n5b": ["浏览器按自己的钟算。", "on the browser's own clock."],
+    "ch05.n5a": ["进度按观测时刻在本地外推，", "Progress is extrapolated locally,"],
+    "ch05.n5b": ["整首歌都不用再发消息。", "so playback costs no messages."],
     "ch05.silent": ["源站什么也没说", "the origin says nothing"],
     "ch05.originClock": ["源站的钟", "Origin clock"],
     "ch05.firstOnly": ["只管首帧", "first frame only"],
@@ -51,16 +51,16 @@
     "ch05.due": ["截止", "due"],
     "ch05.dueAt": ["在线点的截止时间", "the dot's deadline"],
     "ch05.offline": ["Offline", "Offline"], // 站点卡片上的原文
-    "ch05.n6a": ["在线点到时自己熄灭，", "The online dot goes out on time,"],
-    "ch05.n6b": ["不用等源站开口。", "without waiting for the server."],
+    "ch05.n6a": ["源站只给原始时间戳，", "The origin sends only timestamps;"],
+    "ch05.n6b": ["在不在线，由浏览器按截止时刻判。", "the browser decides online/offline."],
     "ch05.stillUp": ["只报一声 hidden，线不断", "one “hidden”, and the wire stays up"],
     "ch05.bg": ["切到后台", "sent to the background"],
     "ch05.onlineNow": ["Online now", "Online now"], // 站点页脚的原文
     "ch05.census": ["数人头", "Headcount"],
     "ch05.rowOpen": ["开着的页面（含后台）", "pages open, background too"],
     "ch05.rowWatch": ["正在看的页面", "pages being watched"],
-    "ch05.n7a": ["同一根线数两种人：", "One wire counts two crowds:"],
-    "ch05.n7b": ["开着的，和正在看的。", "pages open, and pages watched."],
+    "ch05.n7a": ["切后台只发一条 hidden，", "Backgrounding sends one “hidden”;"],
+    "ch05.n7b": ["可见人数变了，房间才广播 online。", "online is broadcast only on change."],
     "ch05.table": ["预期到货表", "Expected deliveries"],
     "ch05.colCard": ["可滞后卡", "Lag-tolerant card"],
     "ch05.colFetch": ["去取", "fetch at"],
@@ -72,8 +72,8 @@
     "ch05.pushNet": ["实时卡的轮询只留兜底", "realtime polls drop to a safety net"],
     "ch05.pushList1": ["在听列表 · 在看", "Listening list · Watching"],
     "ch05.pushList2": ["在玩 · 奖杯", "Playing · Trophies"],
-    "ch05.n8a": ["可滞后的卡，", "Lag-tolerant cards fetch"],
-    "ch05.n8b": ["算好下一次到货再去取。", "when the next delivery is due."],
+    "ch05.n8a": ["可滞后卡不按定时器轮询，", "Lag cards don't poll on a timer;"],
+    "ch05.n8b": ["按上次写入加节奏，算准再取。", "they fetch when a write is due."],
   });
   const tr = (k) => I18N.tr(k);
   const TAU = Math.PI * 2;
@@ -479,8 +479,8 @@
     // 旁白
     nar(x, "ch05.n3a", 2410, 944, prog(b, 5.0, 5.45), win(b, 5.0, 5.1, 6.85, 7.0) * cA);
     nar(x, "ch05.n3b", 2410, 1024, prog(b, 5.45, 5.95), win(b, 5.0, 5.1, 6.85, 7.0) * cA);
-    nar(x, "ch05.n4a", 2410, 944, prog(b, 7.0, 7.4), win(b, 7.0, 7.1, 8.3, 8.45) * cA);
-    nar(x, "ch05.n4b", 2410, 1024, prog(b, 7.5, 8.0), win(b, 7.0, 7.1, 8.3, 8.45) * cA);
+    nar(x, "ch05.n4a", 2410, 944, prog(b, 7.0, 7.3), win(b, 7.0, 7.1, 8.3, 8.45) * cA);
+    nar(x, "ch05.n4b", 2410, 1024, prog(b, 7.3, 7.75), win(b, 7.0, 7.1, 8.3, 8.45) * cA);
   }
 
   // ========== C 进度 ==========
@@ -683,7 +683,7 @@
       const { x: cx, y: cy, w: cw, h: ch } = CEN;
       sheet(d, cx, cy, cw, ch, { alpha: cardA });
       text(d, tr("ch05.census"), cx + 36, cy + 60, { font: FONT.cjk(38, 600), alpha: cardA });
-      text(d, "live-census.ts", cx + cw - 36, cy + 58, { font: FONT.mono(28), color: css("graphite"), align: "right", alpha: cardA });
+      text(d, "/count", cx + cw - 36, cy + 58, { font: FONT.mono(28), color: css("graphite"), align: "right", alpha: cardA });
       line(d, cx + 30, cy + 82, cx + cw - 30, cy + 82, 1.4, css("pink"), cardA);
       const ck = prog(b, AT.count, AT.count + 0.12, E.io);
       [["connections", "ch05.rowOpen"], ["online", "ch05.rowWatch"]].forEach(([key, lab], i) => {
@@ -722,7 +722,7 @@
     const { x: px, y: py, w, h } = TAB, pink = css("pink"), gr = css("graphite");
     sheet(d, px, py, w, h, { alpha: a, shadow: 34 });
     text(d, tr("ch05.table"), px + 40, py + 62, { font: FONT.cjk(42, 600), alpha: a });
-    text(d, "poll-schedule.ts", px + w - 40, py + 60, { font: FONT.mono(28), color: gr, align: "right", alpha: a });
+    text(d, "nextLagDelay", px + w - 40, py + 60, { font: FONT.mono(28), color: gr, align: "right", alpha: a });
     line(d, px + 34, py + 86, px + w - 34, py + 86, 1.4, pink, a);
     const C = [px + 40, px + 400, px + 630, px + 830];
     text(d, tr("ch05.colCard"), C[0], py + 136, { font: FONT.cjk(28, 600), color: gr, alpha: a, maxW: 340 });

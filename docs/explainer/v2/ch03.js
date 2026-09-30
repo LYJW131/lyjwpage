@@ -16,17 +16,17 @@
   I18N.add({
     "ch03.title": ["一间屋子的账房", "A one-room ledger office"],
     "ch03.idNote": ["全站只有这一个实例", "one instance for the whole site"],
-    "ch03.n1a": ["全站只有这一间屋子，", "The whole site has one room like this:"],
-    "ch03.n1b": ["唯一的状态 DO。", "the one and only state DO."],
+    "ch03.n1a": ["StateHub 是唯一的状态 DO，", "StateHub is the single state DO;"],
+    "ch03.n1b": ["实时层全在它的 SQLite 里。", "all realtime state sits in SQLite."],
     "ch03.feed.ingress": ["上报入口", "Ingress"],
-    "ch03.n2a": ["实时上报排成一队，", "Realtime reports wait in one line"],
-    "ch03.n2b": ["一次只记一封。", "and are written one at a time."],
+    "ch03.n2a": ["经 Service Binding 调 StateCore，", "Ingress calls StateCore via binding;"],
+    "ch03.n2b": ["再串进 StateHub，逐封落账。", "StateHub commits them one by one."],
     "ch03.ledger": ["StateHub 账本", "StateHub ledger"],
     "ch03.hbTag": ["mac · 心跳", "mac · heartbeat"],
     "ch03.hbRow": ["存活 + pulse 观测", "liveness + pulse"],
     "ch03.flipRow": ["在线 → 离线", "online → offline"],
-    "ch03.n3a": ["屋子自己不发请求，", "The room never makes a request;"],
-    "ch03.n3b": ["只写一张「要做的事」。", "it writes a to-do slip."],
+    "ch03.n3a": ["StateHub 自己不发网络请求，", "StateHub makes no network calls;"],
+    "ch03.n3b": ["只交回一张效果单：要做的事。", "it hands back a list of effects."],
     "ch03.slip": ["要做的事", "To do"],
     "ch03.fx.empty": ["（空）", "(empty)"],
     "ch03.fx.listen": ["广播 listening-now", "push listening-now"],
@@ -35,24 +35,24 @@
     "ch03.fx.noPush": ["不推送", "no push"],
     "ch03.fx.noTags2": ["不失效首屏", "no invalidation"],
     "ch03.fx.presence": ["广播 presence", "push presence"],
-    "ch03.fx.tags3": ["失效 3 个标签", "invalidate 3 tags"],
-    "ch03.fx.tags3Sub": ["→ Vercel，5 秒超时", "→ Vercel, 5 s timeout"],
-    "ch03.coreNote": ["照单去办", "carries out the slip"],
+    "ch03.fx.flipTags": ["失效页头、在听、充电头", "header, listening, charger"],
+    "ch03.fx.flipTagsSub": ["→ Vercel，5 秒超时", "→ Vercel, 5 s timeout"],
+    "ch03.coreNote": ["RPC 入口 · 照单去办", "RPC entry · runs it"],
     "ch03.pushNote": ["另一个单例 DO", "another single-instance DO"],
     "ch03.pages": ["所有开着的页面", "Every open page"],
     "ch03.back": ["回执 → 入口", "Receipt → ingress"],
     "ch03.backNote1": ["入口接着写 LAG 和凭据，", "Ingress then writes LAG and credentials,"],
     "ch03.backNote2": ["都写完才盖 202", "and only then stamps 202"],
     "ch03.parallel": ["并行", "parallel"],
-    "ch03.n4a": ["门外照单去办：", "Outside, the slip is carried out:"],
-    "ch03.n4b": ["广播和回执同时出发。", "push and receipt leave together."],
-    "ch03.n5a": ["纯心跳也记一行，", "A bare heartbeat still gets a line,"],
-    "ch03.n5b": ["但不推送、不失效。", "but pushes and invalidates nothing."],
+    "ch03.n4a": ["StateCore 用 waitUntil 照单办，", "StateCore runs them in waitUntil:"],
+    "ch03.n4b": ["网络请求不占 StateHub 的时间。", "network I/O never blocks StateHub."],
+    "ch03.n5a": ["心跳只续存活、记 pulse 观测，", "A heartbeat logs liveness and pulse;"],
+    "ch03.n5b": ["效果单为空，下游什么都不做。", "its effect list stays empty."],
     "ch03.clawd": ["记一笔就好，\n别吵醒大家。", "Just jot it down,\ndon't wake anyone."],
-    "ch03.n6a": ["只有在线状态翻转，", "Only an online/offline flip"],
-    "ch03.n6b": ["才广播 presence、失效 3 个标签。", "pushes presence, invalidates 3 tags."],
-    "ch03.n7a": ["实时在屋里，可滞后在墙上，", "Realtime lives in the room, lag on the wall,"],
-    "ch03.n7b": ["历史在架上，凭据在抽屉里。", "history on the shelves, credentials in the drawer."],
+    "ch03.n6a": ["只有上线、下线才广播 presence，", "Presence is pushed only on flips,"],
+    "ch03.n6b": ["并通知 Vercel 让首屏标签过期。", "and Vercel is asked to expire tags."],
+    "ch03.n7a": ["只有实时层放在 DO 里，变了就推送；", "Only the realtime layer lives in a DO and pushes;"],
+    "ch03.n7b": ["其余几层在 KV 和 D1，不推送、按需读取。", "the rest sit in KV and D1 and wait to be read."],
     "ch03.legend": ["四个库", "Four stores"],
     "ch03.lg.rt": ["实时", "Realtime"],
     "ch03.lg.rtP": ["会推送", "pushes"],
@@ -88,9 +88,10 @@
     [12.02, C, E.io],
     [15.5, [1628.5, 957.1, 0.674, 0], E.lin],
     // 交接（和第 02 章结尾同一种做法）：先对准对照表白卡下方的空白（白卡 y 1260–1390 这一段没有字），
-    // 再冲进去，落在满屏的纸上；第 04 章从这张纸往后拉
+    // 再冲进去，落在满屏的纸上；第 04 章从这张纸往后拉。15.97 就到位停住：16:0 那一帧属于第 04 章，键落在 16.0 本章渲不到终点，
+    // 最后几帧会停在缩放 8–10、带着运动模糊，纸纹（世界坐标的函数）和第 04 章首帧对不上
     [15.72, [2497, 1325, 1.1, 0], E.io],
-    [16.0, [2497, 1325, 12, 0], E.inExpo],
+    [15.97, [2497, 1325, 12, 0], E.inExpo],
   ];
   const PLATE_RECT = [-800, -400, 3400, 2000];
 
@@ -210,6 +211,10 @@
     if (k >= 1) polyline(x, [[mx - 14, my - 2 * d], [mx + 2, my + 12 * d - 2 * d], [mx + 12, my - 8 * d]], 1, 1.6, bone, 0.7);
     const la = a * (1 - prog(b, 11.6, 11.85)); // 拉远时这几个字会被画面左边切掉，先收起来
     text(x, tr("ch03.feed.ingress"), 44, 356, { font: FONT.cjk(30, 600), color: ash, alpha: la });
+    // 入口经 Service Binding 调的是 StateCore（RPC 入口），由它把提交串进 StateHub 这条队；不注的话看着像入口直接调 StateHub。
+    // 写在斜线右边、栏杆上方：排队的信封沿斜线走，主角的标签在栏杆那一排上面，都碰不到这两行
+    text(x, "Service Binding", 250, 446, { font: FONT.mono(28, 500), color: ash, alpha: la });
+    text(x, "→ StateCore", 250, 484, { font: FONT.mono(28, 500), color: ash, alpha: la });
     // 栏杆：两排立柱拉绳，只有一条队
     const posts = [280, 360, 440, 510];
     for (const y of [546, 634]) {
@@ -217,7 +222,7 @@
       posts.forEach((px, j) => { if (k > j / posts.length) { x.save(); x.globalAlpha = 0.7; x.fillStyle = bone; x.beginPath(); x.arc(px, y, 4.5, 0, Math.PI * 2); x.fill(); x.restore(); } });
     }
     // 这条队在代码里就是 StateHub 的一条 Promise 链：前一封提交完，下一封才开始
-    text(x, "state-hub.ts · ingestTail", R.x0 + R.t + 22, R.y1 - R.t - 26, { font: FONT.mono(28, 500), color: ash, alpha: prog(b, 2.3, 2.7) * la });
+    text(x, "ingestTail", R.x0 + R.t + 22, R.y1 - R.t - 26, { font: FONT.mono(28, 500), color: ash, alpha: prog(b, 2.3, 2.7) * la });
   }
 
   function heart(x, cx, cy, s, color, alpha = 1) {
@@ -291,7 +296,7 @@
     x.save(); x.translate(px, py); x.rotate(o.rot || 0); x.translate(-px, -py);
     text(x, tr("ch03.slip"), px + 32, py + 58, { font: FONT.cjk(38, 600), alpha: a });
     if (o.empty) text(x, tr("ch03.fx.empty"), px + 32 + K.measure(x, tr("ch03.slip"), FONT.cjk(38, 600)) + 14, py + 58, { font: FONT.cjk(38, 600), color: css("graphite"), alpha: a });
-    text(x, "ingest-effects.ts", px + w - 32, py + 56, { font: FONT.mono(28), color: css("graphite"), align: "right", alpha: a });
+    text(x, "IngestEffect", px + w - 32, py + 56, { font: FONT.mono(28), color: css("graphite"), align: "right", alpha: a });
     line(x, px + 28, py + 78, px + w - 28, py + 78, 1.4, css("pink"), a);
     ["event", "listening", "tags"].forEach((kind, i) => {
       const r = rows[kind] || {};
@@ -312,7 +317,7 @@
   });
   const flipRows = (write, t1, t2) => ({
     event: { s: tr("ch03.fx.presence"), write, tick: t1 },
-    tags: { s: tr("ch03.fx.tags3"), sub: tr("ch03.fx.tags3Sub"), write, tick: t2 },
+    tags: { s: tr("ch03.fx.flipTags"), sub: tr("ch03.fx.flipTagsSub"), write, tick: t2 },
   });
 
   // 引出详图的虚线圈和虚线
@@ -535,18 +540,18 @@
     }
 
     // ---- 旁白（A 机位左下；B 机位门外左下；C 拉远后放大排在左下） ----
-    nar(x, "ch03.n1a", 110, 944, prog(b, 0.6, 1.2), win(b, 0.6, 0.7, 1.95, 2.15));
-    nar(x, "ch03.n1b", 110, 1024, prog(b, 1.2, 1.7), win(b, 0.6, 0.7, 1.95, 2.15));
+    nar(x, "ch03.n1a", 110, 944, prog(b, 0.6, 1.05), win(b, 0.6, 0.7, 1.95, 2.15));
+    nar(x, "ch03.n1b", 110, 1024, prog(b, 1.05, 1.5), win(b, 0.6, 0.7, 1.95, 2.15));
     nar(x, "ch03.n2a", 110, 944, prog(b, 2.2, 2.8), win(b, 2.2, 2.3, 4.8, 5.0));
     nar(x, "ch03.n2b", 110, 1024, prog(b, 2.8, 3.4), win(b, 2.2, 2.3, 4.8, 5.0));
-    nar(x, "ch03.n3a", 110, 944, prog(b, 5.0, 5.4), win(b, 5.0, 5.1, 5.88, 6.04));
-    nar(x, "ch03.n3b", 110, 1024, prog(b, 5.4, 5.85), win(b, 5.0, 5.1, 5.88, 6.04));
+    nar(x, "ch03.n3a", 110, 944, prog(b, 5.0, 5.28), win(b, 5.0, 5.1, 5.9, 6.04));
+    nar(x, "ch03.n3b", 110, 1024, prog(b, 5.28, 5.6), win(b, 5.0, 5.1, 5.9, 6.04));
     nar(x, "ch03.n4a", 1060, 944, prog(b, 6.3, 6.7), win(b, 6.3, 6.4, 7.85, 8.0));
     nar(x, "ch03.n4b", 1060, 1024, prog(b, 6.7, 7.2), win(b, 6.3, 6.4, 7.85, 8.0));
     nar(x, "ch03.n5a", 110, 944, prog(b, 9.0, 9.4), win(b, 9.0, 9.1, 10.35, 10.5));
     nar(x, "ch03.n5b", 110, 1024, prog(b, 9.4, 9.9), win(b, 9.0, 9.1, 10.35, 10.5));
-    nar(x, "ch03.n6a", 110, 944, prog(b, 10.55, 10.9), win(b, 10.55, 10.65, 11.6, 11.75));
-    nar(x, "ch03.n6b", 110, 1024, prog(b, 10.9, 11.4), win(b, 10.55, 10.65, 11.6, 11.75));
+    nar(x, "ch03.n6a", 110, 944, prog(b, 10.55, 10.85), win(b, 10.55, 10.65, 11.6, 11.75));
+    nar(x, "ch03.n6b", 110, 1024, prog(b, 10.85, 11.2), win(b, 10.55, 10.65, 11.6, 11.75));
     if (inC) {
       const na = prog(b, 12.2, 12.3);
       nar(x, "ch03.n7a", 330, 1542, prog(b, 12.3, 12.9), na, 91, 2600);

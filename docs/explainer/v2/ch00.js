@@ -1,12 +1,12 @@
 // 第 00 章 · 这张卡片从哪来（开场，FACTS「一句话总览」）。10 小节，暗底终端 → 纸面主页线框 → 总览图，全是 2D。
 //   0–2 暗底终端：`$ claude` 按十六分一格一个字敲出，回车后欢迎框里 Clawd 按官方入场（skip → jump → look → celebrate），气泡一句。
-//     第 0 帧也是全片最后一帧：第 09 章收尾调这里的 termFrame、传 termState(0)，画出同一帧（只差后期颗粒，颗粒按帧号取随机）
+//     第 0 帧也是全片最后一帧：第 10 章收尾调这里的 termFrame、传 termState(0)，画出同一帧（只差后期颗粒，颗粒按帧号取随机）
 //   2–7.5 2:0 硬切纸面：浏览器窗口里的主页线框（卡片框取第 04 章 P 表的实测比例，没在充电时「最近播放」占满那一行），
 //     镜头推到「正在听」那张卡；4:0 火花顺着那根线落到卡上，歌名压扁再弹开；大字问题，6:0 收小到左上成页眉，旁白 n1
 //   7.5–10 顺着那根线往回拉，拉出总览图：采集端（上报器和云端遥测）→ 中枢（入口 · 状态核心 · 采集 Worker，下面挂四个库）→ 展示；
 //     9:2 起冲进采集端里 Mac 那一格，10:0 硬切第 01 章的暗底
-// 第 09 章复用这里的终端和「正在听」那一段：画法挂在本章登记对象的 share 上（见文件末尾），第 09 章按名字取。
-// 配乐锚点在 AT，music/ch00.js 按同一组小节落拍；画面只从 AT 取时间，不读 f.hit / f.env（第 09 章借用时拍子不一样）。
+// 第 10 章复用这里的终端和「正在听」那一段：画法挂在本章登记对象的 share 上（见文件末尾），第 10 章按名字取。
+// 配乐锚点在 AT，music/ch00.js 按同一组小节落拍；画面只从 AT 取时间，不读 f.hit / f.env（第 10 章借用时拍子不一样）。
 (() => {
   const { css } = G;
   const { E, prog, keys, lerp, text, FONT, line, polyline, fillRect, roundRect, clawd, bubble, spark, glyph, pathAt, trailOn, measure } = K;
@@ -15,16 +15,16 @@
     "ch00.title": ["这张卡片从哪来", "Where does this card come from?"],
     "ch00.clawd": ["带你拆开 lyjw.me 看看。", "Let me open up\nlyjw.me for you."],
     "ch00.q": ["这张卡片，是怎么知道的？", "How does this card know?"],
-    "ch00.n1a": ["跟着一封信走一遍：", "Let's follow one envelope:"],
-    "ch00.n1b": ["Mac 上的一次换歌。", "a song change on the Mac."],
-    "ch00.n2a": ["链路分三段：", "Three stretches:"],
-    "ch00.n2b": ["采集、中枢、展示。", "sources, hub, screen."],
+    "ch00.n1a": ["全片跟踪一封上报信封：", "We trace one report end to end:"],
+    "ch00.n1b": ["Mac 上 Apple Music 换了一首歌。", "a song change on the Mac."],
+    "ch00.n2a": ["上报器发 POST，Workers 记状态，", "Reporters post; Workers hold state;"],
+    "ch00.n2b": ["Vercel 出首屏，浏览器收推送。", "Vercel renders; the browser listens."],
     "ch00.src": ["采集端", "Sources"],
     "ch00.srcSub": ["上报器 · 云端遥测", "reporters · cloud telemetry"],
     "ch00.hub": ["中枢", "Hub"],
     "ch00.scr": ["展示", "Screen"],
     "ch00.scrSub": ["Vercel · 浏览器", "Vercel · browser"],
-    "ch00.ingress": ["入口", "Ingress"],
+    "ch00.ingress": ["上报入口", "Ingress"],
     "ch00.core": ["状态核心", "State core"],
     "ch00.collector": ["采集 Worker", "Collector"],
     "ch00.home": ["家里", "Home"],
@@ -40,7 +40,7 @@
   const BARS = (60 / 108) * 4; // 一小节的秒数（108 BPM）
   const impact = (b, at, hl = 0.09) => (b < at ? 0 : Math.exp((-((b - at) * BARS) / hl) * Math.LN2));
   const win = (b, a0, a1, b0, b1) => prog(b, a0, a1) * (1 - prog(b, b0, b1)); // 淡入、停住、淡出
-  // 图层和着色器每次按名字取（共用池）：第 09 章借用这里的画法时，本章的 init 在 ?only= 下不一定跑过
+  // 图层和着色器每次按名字取（共用池）：第 10 章借用这里的画法时，本章的 init 在 ?only= 下不一定跑过
   const lay = () => ({ x: G.layer("ink"), e: G.layer("emit", 0.5), d: G.layer("paper"), s: G.layer("stamp"), tp: G.layer("top") });
 
   // ---------- 时间表（章内小节）：画面和 music/ch00.js 共用 ----------
@@ -57,7 +57,7 @@
   const TX = TW.x + 52, L1 = TW.y + TW.bar + 80; // 第一行的基线
   const BOX = { x: TW.x + 52, y: L1 + 44, w: 1120, h: 330 }; // Claude Code 的欢迎框
   const CLAWD_Q = 11, CLAWD_X = BOX.x + 190, CLAWD_BASE = BOX.y + BOX.h - 32;
-  const L2 = BOX.y + BOX.h + 96; // 欢迎框下面那一行（Claude Code 的输入行；第 09 章在这里写片尾字卡）
+  const L2 = BOX.y + BOX.h + 96; // 欢迎框下面那一行（Claude Code 的输入行；第 10 章在这里写片尾字卡）
   const CMD = "claude";
   const POST_TERM = { bloom: 0.7, threshold: 0.9, halation: 0.28, grain: 0.05, vignette: 0.42, ca: 0.4 };
   const SEED_TERM = 2.3, GRID_TERM = 0.55;
@@ -88,8 +88,8 @@
       endcard: null, clear: 0,
     };
   }
-  // 画终端。st.endcard = { a, reveal, l1, l2 }：欢迎框下面写两行片尾字卡（第 09 章传进来的字）；
-  // st.clear 0..1：从最底下一行往上一行行清掉（第 09 章收尾用），清完只剩第一行的提示符
+  // 画终端。st.endcard = { a, reveal, l1, l2 }：欢迎框下面写两行片尾字卡（第 10 章传进来的字）；
+  // st.clear 0..1：从最底下一行往上一行行清掉（第 10 章收尾用），清完只剩第一行的提示符
   function terminal(L, st) {
     const { x, e, tp } = L;
     const bone = css("bone"), ash = css("ash");
@@ -125,7 +125,7 @@
       }
       if (st.say > 0) bubble(tp, tr("ch00.clawd"), CLAWD_X - 64, CLAWD_BASE - 146, { px: 36, k: st.say, reveal: st.sayReveal });
     }
-    // 欢迎框下面：Claude Code 的输入行，或第 09 章的片尾字卡
+    // 欢迎框下面：Claude Code 的输入行，或第 10 章的片尾字卡
     const ec = st.endcard;
     if (ec && ec.a > 0 && keep(L2 + 160)) {
       K.narration(x, ec.l1, TX, L2 + 50, { px: 110, color: bone, reveal: ec.reveal, alpha: ec.a, maxW: TW.w - 104 });
@@ -144,7 +144,7 @@
       line(x, TW.x + 2, y, TW.x + TW.w - 2, y, 1.6, css("signalD"), 0.8);
     }
   }
-  // 终端一整帧：图版、图层、合成、后期。第 09 章收尾用同一个函数、同一组 seed 和后期参数，首尾两帧才一样
+  // 终端一整帧：图版、图层、合成、后期。第 10 章收尾用同一个函数、同一组 seed 和后期参数，首尾两帧才一样
   function termFrame(f, st, cam = CAM_TERM, extra = null) {
     const { x: X, e: Em, d: D, tp: T } = lay();
     G.setCam(cam);
@@ -303,7 +303,7 @@
     else if (i === 1) R(-14, -27, 28, 54, 7);
     else if (i === 2) { R(-36, -16, 34, 32, 6); x.beginPath(); x.arc(-19, 0, 5, 0, TAU); x.stroke(); R(6, -12, 30, 24); for (let j = 0; j < 3; j++) Ln([[13 + j * 8, -5], [13 + j * 8, 5]]); }
     else if (i === 3) { R(-22, -27, 44, 54); for (let j = 0; j < 3; j++) Ln([[-12 + j * 12, -18], [-12 + j * 12, 12]]); }
-    else if (i === 4) { R(-30, -12, 26, 24); R(4, -12, 26, 24); }
+    else if (i === 4) { R(-37, -12, 22, 24); R(-11, -12, 22, 24); R(15, -12, 22, 24); } // 东京那台主机上的上报器容器，一个一格，和第 01 章 FIG. 5 对应
     else { x.setLineDash([5, 4]); x.beginPath(); x.rect(-26, -20, 52, 40); x.stroke(); x.setLineDash([]); Ln([[-14, 0], [-6, -8], [2, 6], [10, -4]]); }
     x.restore();
   }
@@ -424,20 +424,20 @@
     const ha = sk * qa;
     if (ha > 0) {
       text(x, "00", 110, 196, { font: FONT.pixel(112), color: css("signal"), alpha: ha });
-      text(x, "lyjw.me · src/app/page.tsx", 292, 226, { font: FONT.mono(28), color: css("graphite"), alpha: ha * prog(b, 6.15, 6.4) });
+      text(x, "lyjw.me · /api/status/listening/now", 292, 226, { font: FONT.mono(28), color: css("graphite"), alpha: ha * prog(b, 6.15, 6.4) });
       line(x, 110, 262, 110 + 990 * prog(b, 6.1, 6.6, E.outExpo), 262, 1.4, css("pink"), ha);
     }
     // 旁白
-    K.narration(x, tr("ch00.n1a"), 110, 944, { reveal: prog(b, 6.1, 6.55), alpha: win(b, 6.05, 6.15, 7.35, 7.5), maxW: 1040 });
-    K.narration(x, tr("ch00.n1b"), 110, 1024, { reveal: prog(b, 6.55, 7.05), alpha: win(b, 6.05, 6.15, 7.35, 7.5), maxW: 1040 });
-    K.narration(x, tr("ch00.n2a"), 110, 944, { reveal: prog(b, 8.1, 8.45), alpha: win(b, 8.05, 8.15, 9.35, 9.5), maxW: 1040 });
-    K.narration(x, tr("ch00.n2b"), 110, 1024, { reveal: prog(b, 8.45, 9.05), alpha: win(b, 8.05, 8.15, 9.35, 9.5), maxW: 1040 });
+    K.narration(x, tr("ch00.n1a"), 110, 944, { reveal: prog(b, 6.1, 6.45), alpha: win(b, 6.05, 6.15, 7.35, 7.5), maxW: 1040 });
+    K.narration(x, tr("ch00.n1b"), 110, 1024, { reveal: prog(b, 6.45, 6.95), alpha: win(b, 6.05, 6.15, 7.35, 7.5), maxW: 1040 });
+    K.narration(x, tr("ch00.n2a"), 110, 944, { reveal: prog(b, 8.1, 8.4), alpha: win(b, 8.05, 8.15, 9.35, 9.5), maxW: 1040 });
+    K.narration(x, tr("ch00.n2b"), 110, 1024, { reveal: prog(b, 8.4, 8.95), alpha: win(b, 8.05, 8.15, 9.35, 9.5), maxW: 1040 });
     const pa = win(b, 8.3, 8.5, 9.35, 9.5);
     if (pa > 0) text(x, "PLATE 00 · OVERVIEW", G.W - 60, 1024, { font: FONT.mono(30, 600), align: "right", alpha: pa });
     x.restore();
   }
 
-  // 「正在听」那一段的一整帧（纸面）。第 09 章 10:0 前后借它画同一个画面：o.hud = false 不画页眉和旁白，
+  // 「正在听」那一段的一整帧（纸面）。第 10 章 10:0 前后借它画同一个画面：o.hud = false 不画页眉和旁白，
   // o.focus 别的卡退淡的程度，o.b0 运动模糊从哪一小节起算（切进来那一帧不算甩镜头），o.extra 在合成前多画一点
   const POST_PAPER = { bloom: 0.55, threshold: 0.95, halation: 0.18, grain: 0.042, vignette: 0.26, ca: 0.35 };
   const SEED_PAPER = 7.1;
@@ -485,7 +485,7 @@
     id: "ch00", title: "ch.00", bars: 10,
     init() { G.pass(K.PLATE.ink); G.pass(K.PLATE.paper); lay(); },
     render,
-    // 第 09 章借用：终端一整帧、第 0 小节的终端状态、「正在听」那一段的一整帧，以及它们的时间表
+    // 第 10 章借用：终端一整帧、第 0 小节的终端状态、「正在听」那一段的一整帧，以及它们的时间表
     share: { termFrame, termState, terminal, paperFrame, AT, TW, L2 },
   });
 })();

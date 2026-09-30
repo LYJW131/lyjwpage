@@ -2,9 +2,9 @@
 
 > 类型：runbook
 
-线上地址 `https://lyjw.me/explainer`。Claude Code 的像素螃蟹 Clawd 讲解这个站点怎么运转：10 章、130 小节（100 BPM，约 5 分 13 秒）。画面、配乐和音效都在浏览器里按同一条时间轴确定地生成，同一个时刻总是同一帧。本文说的都是线上这一版；替换它的新版在 `v2/` 开发，分镜与旁白见 [SCRIPT.md](SCRIPT.md)，写章约定见 [v2/CONVENTIONS.md](v2/CONVENTIONS.md)。
+线上地址 `https://lyjw.me/explainer`，发布的是 `v2/` 这一版：分镜与旁白见 [SCRIPT.md](SCRIPT.md)，写章约定、预览和自检见 [v2/CONVENTIONS.md](v2/CONVENTIONS.md)，怎么发布见下文「站点版」。
 
-页面源就在这个目录。站点版由 `scripts/build-explainer.mjs` 在 `pnpm build` 时生成到 `public/explainer/`（不进仓库）：入口 `index.html` 保持原名，`next.config.ts` 把 `/explainer` rewrite 到它；脚本、字体、配乐按内容哈希改名放进 `a/`，缓存一年。页面里的脚本和配乐经注入的 `window.__assets` 查哈希名，没有这张表（本地、渲染工具、Artifact）时用原名。本地 `pnpm dev` 要看 `/explainer`，先跑一次 `node scripts/build-explainer.mjs`。
+这个目录根上是上一版的页面源，保留作参考和 Artifact 发布，不进站点构建；其中 `clawd.js` 和 `fonts/` 也被 v2 引用，随站点版发布。上一版里 Claude Code 的像素螃蟹 Clawd 讲解这个站点怎么运转：10 章、130 小节（100 BPM，约 5 分 13 秒）。画面、配乐和音效都在浏览器里按同一条时间轴确定地生成，同一个时刻总是同一帧。除「站点版」一节外，本文说的都是上一版。
 
 | 文件 | 内容 |
 | --- | --- |
@@ -17,6 +17,18 @@
 | `render/` | 渲染、混音、抽帧自检、播放器测试 |
 
 四个配乐 `music-{chip,piano,lofi,pluck}.mp3`（128 kbps）随页面入库；发布到 Artifact 用的 `artifact.html` 是生成物，不进仓库。
+
+## 站点版
+
+`scripts/build-explainer.mjs` 在 `pnpm build` 时从 `v2/` 生成 `public/explainer/`（不进仓库）：入口 `index.html` 保持原名，`next.config.ts` 把 `/explainer` rewrite 到它；页面载入的脚本（`v2/index.html` 的 `LOAD` 表）、内联样式引用的字体和配乐 `v2/score.mp3` 按内容哈希改名放进 `a/`，缓存一年。页面和 `v2/film.js` 经注入的 `window.__assets` 查哈希名；本地预览和写章工具没有这张表，用原名。`LOAD` 表里还没写的章不发布，站点上是占位画面。
+
+站点版只用预渲的整片配乐，缺 `v2/score.mp3` 构建直接失败。`v2/plan.js` 的章节表和各章乐谱定稿后渲它，要本机 Chrome、PATH 上带 libmp3lame 的 ffmpeg，以及装好的 `render/` 依赖（见「渲染配乐与音效」）；整片要渲几分钟：
+
+```bash
+node docs/explainer/v2/tools/score-mp3.mjs    # 写出 docs/explainer/v2/score.mp3
+```
+
+它随仓库提交，改了章节表或任何乐谱都要重渲并提交：时长和章节表对不上时，播放器会弃用它、改在浏览器里现合成；乐谱改了而时长没变时，线上放的还是旧配乐。这两种情况构建都查不出来。本地 `pnpm dev` 要看 `/explainer`，先跑一次 `node scripts/build-explainer.mjs`。
 
 ## 中英两版
 
@@ -78,7 +90,7 @@ node $R/phone2.mjs "$H" /tmp/phone.png                 # 375 / 390 手机布局
 
 ## 发布
 
-`render/build-artifact.py` 从 `index.html` 生成 `artifact.html`，去掉 doctype/html/head/body 外壳。发布时把它和这个目录下的脚本、字体、四个 mp3 一起发布为 claude.ai 上的私有 Artifact。站点上的 `/explainer` 随 main 自动部署。
+`render/build-artifact.py` 从 `index.html` 生成 `artifact.html`，去掉 doctype/html/head/body 外壳。发布时把它和这个目录下的脚本、字体、四个 mp3 一起发布为 claude.ai 上的私有 Artifact。站点上的 `/explainer`（v2）随 main 自动部署，见「站点版」。
 
 ```bash
 python3 $R/build-artifact.py docs/explainer/index.html docs/explainer/artifact.html

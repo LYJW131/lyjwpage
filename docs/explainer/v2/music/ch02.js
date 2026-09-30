@@ -1,6 +1,7 @@
-// 第 02 章「门禁与分拣」的配乐，16 小节，章内小节。写法见 ../CONVENTIONS.md「配乐」。
+// 第 02 章「门禁与分拣」的配乐，20 小节，章内小节。写法见 ../CONVENTIONS.md「配乐」。
 // 纸面、公文：打字机当踩镲，印章当军鼓，钥匙、打勾、气动管、指示灯是剧情音；落在属音上，被最后那根管子吸进第 03 章。
-// 调性：D 多利亚（i – IV – i – III – VII），400 那一下借 ♭VI。
+// 调性：D 多利亚（i – IV – i – III – VII），400 那一下借 ♭VI；跨 Worker 那一跳压暗到 Gm9，等回执时钟摆在走。
+// 剧情落点和 ../ch02.js 顶部的时间表 AT 是同一组小节：改一边先对另一边，再对 SCRIPT.md。
 (window.SCORE_PARTS = window.SCORE_PARTS || []).push({
   id: "ch02",
   seed: 108, // 琶音和打字声的力度抖动用这颗种子（和拆分前整片那条随机序列的开头一致）
@@ -9,7 +10,9 @@
     // 每小节的和弦；数组表示小节内换和弦：[和弦, 起拍]
     harm: [
       "Dm9", "G6", "Dm9", "Fmaj7", "C69", "Dm9", "Fmaj7", "C69",
-      "Bbmaj7", "Dm9", "G6", "Bbmaj7", "C69", "Dm9", "Fmaj7", [["A7sus4", 0], ["A7", 2]],
+      "Bbmaj7", "Dm9", "G6", "Bbmaj7",
+      "Gm9", "Dm9", "Bbmaj7", [["C69", 0], ["A7sus4", 2]],
+      "Dm9", "Fmaj7", "C69", [["A7sus4", 0], ["A7", 2]],
     ],
     sections: [
       { from: 0, to: 1, id: "gate-intro", name: "门前：pad 和零星的打字声，拨弦唱出信封主题", energy: 0.2,
@@ -26,15 +29,21 @@
       { from: 8, to: 8, id: "gate-400", name: "400 大章：全场一顿，第三拍再接上", energy: 0.55,
         kick: "........X.x.....", duck: 0.5, snare: "............x...", snareKind: "thud",
         hat: "........o.x.oox.", hatKind: "type", bass: "slam", pad: 0.75, lp: 2400, padVerb: 0.3 },
-      { from: 9, to: 12, id: "gate-sorting", name: "分拣台：四根气动管，律动全开", energy: 0.85,
-        kick: ["X.......X.x.....", "X.......X.x.....", "X.......X.x.....", "X.......X.x...x."], duck: 0.5,
-        snare: ["....X.......X...", "....X.......X...", "....X.......X...", "....X.......X.ox"], snareKind: "thud",
+      { from: 9, to: 11, id: "gate-sorting", name: "分拣台：prepare 出的命令拆成四路，四根气动管，律动全开", energy: 0.85,
+        kick: ["X.......X.x.....", "X.......X.x.....", "X.......X.x...x."], duck: 0.5,
+        snare: ["....X.......X...", "....X.......X...", "....X.......X.ox"], snareKind: "thud",
         hat: "ooxoooxoooxoooxo", hatKind: "type",
         bass: "groove", arp: { p: "332", lo: 69, inst: "pluck", v: 0.55 }, pad: 0.7, lp: 3200, padVerb: 0.22 },
-      { from: 13, to: 14, id: "gate-lamps", name: "三盏灯：鼓让开，灯音拼出主题", energy: 0.6,
-        kick: "X.......X.......", duck: 0.4, snare: "............x...", snareKind: "thud",
+      { from: 12, to: 15, id: "gate-binding", name: "跨 Worker 的一跳：命令穿墙进 StateCore、落进 StateHub，入口在等回执（钟摆），回执原路回来", energy: 0.55,
+        kick: ["X.......x.......", "X.......x.......", "X.......x.......", "X.......X.x....."], kickKind: "light", duck: 0.4,
+        snare: [null, "............x...", null, "............x..."], snareKind: "rim",
+        hat: ["..x...x...x...x.", null, "..x...x...x...x.", "..x...x...x.o.x."], hatKind: "type", hatVol: 0.75,
+        clock: ["........xoooxooo", "xoooxooo........", null, null], clockVol: 0.8,
+        bass: "light", arp: { p: "sparse", lo: 57, inst: "pluckDark", v: 0.4 }, pad: 0.85, lp: 2000, padVerb: 0.34 },
+      { from: 16, to: 18, id: "gate-lamps", name: "三盏灯依次亮、盖 202；D1 那一声晚到；失败时怎么退", energy: 0.6,
+        kick: "X.......X.......", duck: 0.4, snare: ["............x...", "................", "............x..."], snareKind: "thud",
         hat: "..x...x...x...x.", hatKind: "type", hatVol: 0.8, bass: "light", pad: 0.85, lp: 2800, padVerb: 0.3 },
-      { from: 15, to: 15, id: "gate-202", name: "202 大章，然后被吸进实时那根管子", energy: 0.5,
+      { from: 19, to: 19, id: "gate-dive", name: "拉远看整张图纸，冲进状态核心那盏灯：被吸进第 03 章", energy: 0.5,
         bass: "half", pad: 0.85, lp: 2600, padVerb: 0.35 },
     ],
     // 旋律：[小节, 拍位, 时值(拍), 音, 乐器, 力度, 是否主题]
@@ -54,13 +63,20 @@
       { bar: 9, beat: 0, kind: "whoosh", tube: 0 }, { bar: 9, beat: 2, kind: "whoosh", tube: 1 },
       { bar: 10, beat: 0, kind: "whoosh", tube: 2 }, { bar: 10, beat: 2, kind: "whoosh", tube: 3 },
       { bar: 11, beat: 0, kind: "whoosh", tube: "fork" }, // 服务器的信封一分为二
-      // 202 等三盏灯：灯音就是主题的前三个音；D1 那盏晚半拍、在远处，唱主题的最后一个音
-      { bar: 13, beat: 0, kind: "lamp", m: midi("A5"), i: 0 }, { bar: 13, beat: 2, kind: "lamp", m: midi("D6"), i: 1 }, { bar: 14, beat: 0, kind: "lamp", m: midi("F6"), i: 2 },
-      { bar: 14, beat: 3, kind: "lamp", m: midi("E6"), i: 3, late: true },
-      { bar: 15, beat: 0, kind: "stamp", size: "big" }, // 202 大章
-      { bar: 15, beat: 2, kind: "whoosh", tube: "down" }, // 被吸进实时那根管子，落点在下一章 0:0
+      // 跨 Worker：12:2 命令穿过墙上的口（到站那一下落在 StateCore），13:0 进 StateHub 的门，13:1 屋里的灯亮（提交），13:2 回执出门，14:0 回到入口这一侧
+      { bar: 12, beat: 2, kind: "whoosh", tube: 0 },
+      { bar: 13, beat: 0, kind: "key", v: 0.6, pan: 0.3 },
+      { bar: 13, beat: 1, kind: "lamp", m: midi("D5"), i: 2, late: true },
+      { bar: 13, beat: 2, kind: "accent", what: "slip" },
+      { bar: 14, beat: 0, kind: "tick", m: midi("A5"), i: 0 },
+      { bar: 15, beat: 3, kind: "swell" }, // 回执往下落到第一盏灯
+      // 三盏灯就是主题的前三个音；D1 那盏在 202 之后远远地亮，唱主题的最后一个音
+      { bar: 16, beat: 0, kind: "lamp", m: midi("A5"), i: 0 }, { bar: 16, beat: 2, kind: "lamp", m: midi("D6"), i: 1 }, { bar: 17, beat: 0, kind: "lamp", m: midi("F6"), i: 2 },
+      { bar: 17, beat: 2, kind: "stamp", size: "big" }, // 202 大章
+      { bar: 17, beat: 3, kind: "lamp", m: midi("E6"), i: 3, late: true },
+      { bar: 19, beat: 2, kind: "whoosh", tube: "down" }, // 被吸进状态核心那盏灯，落点在下一章 0:0
     ],
-    // 全片母线的低通扫频：15:2 起往下关，下一章 0:0 最闷（380 Hz），0:1 打开（小节可以写到下一章去）
-    sweeps: [{ at: [15, 2], down: [16, 0], up: [16, 1], f: 380 }],
+    // 全片母线的低通扫频：19:2 起往下关，下一章 0:0 最闷（380 Hz），0:1 打开（小节可以写到下一章去）
+    sweeps: [{ at: [19, 2], down: [20, 0], up: [20, 1], f: 380 }],
   }),
 });

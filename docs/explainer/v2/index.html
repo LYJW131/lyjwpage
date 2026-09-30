@@ -2,8 +2,13 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
+<script>
+  // 站点上的地址是 /explainer（没有结尾斜杠，由 next.config 的 rewrite 指到构建出的这份页面），相对路径会按根目录算；
+  // 补一个 base，让脚本、字体、配乐都从 /explainer/ 下取。file:// 和本地预览的 /v2/ 不补
+  if (/^https?:$/.test(location.protocol) && !/\/$|\.html$/.test(location.pathname)) document.write('<base href="' + location.pathname + '/">');
+</script>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>lyjw.me 运行原理 · v2</title>
+<title>lyjw.me 运行原理</title>
 <style>
 @font-face{font-family:"Geist Mono";src:url(../fonts/GeistMono-Regular.woff2) format("woff2");font-weight:400}
 @font-face{font-family:"Geist Mono";src:url(../fonts/GeistMono-Medium.woff2) format("woff2");font-weight:500}
@@ -44,33 +49,27 @@ body.export #wrap{inset:0}
 </div>
 <div id="load">正在合成配乐…</div>
 <!-- 顺序：章节表 → 配乐引擎和各章配乐 → 文字、引擎、组件 → 各章画面 → 时间轴。
-     十章的文件都已列好：还没写的会加载失败（onerror 吞掉），film.js 用占位顶上。章节作者不用改这个文件。 -->
-<script src="plan.js"></script>
-<script src="../clawd.js"></script>
-<script src="score.js" onerror="window.Score=null"></script>
-<script src="music/ch00.js" onerror="0"></script>
-<script src="music/ch01.js" onerror="0"></script>
-<script src="music/ch02.js" onerror="0"></script>
-<script src="music/ch03.js" onerror="0"></script>
-<script src="music/ch04.js" onerror="0"></script>
-<script src="music/ch05.js" onerror="0"></script>
-<script src="music/ch06.js" onerror="0"></script>
-<script src="music/ch07.js" onerror="0"></script>
-<script src="music/ch08.js" onerror="0"></script>
-<script src="music/ch09.js" onerror="0"></script>
-<script src="i18n.js"></script>
-<script src="engine.js"></script>
-<script src="kit.js"></script>
-<script src="ch00.js" onerror="0"></script>
-<script src="ch01.js" onerror="0"></script>
-<script src="ch02.js" onerror="0"></script>
-<script src="ch03.js" onerror="0"></script>
-<script src="ch04.js" onerror="0"></script>
-<script src="ch05.js" onerror="0"></script>
-<script src="ch06.js" onerror="0"></script>
-<script src="ch07.js" onerror="0"></script>
-<script src="ch08.js" onerror="0"></script>
-<script src="ch09.js" onerror="0"></script>
-<script src="film.js"></script>
+     十一章的文件都已列好：还没写的会加载失败（onerror 吞掉），film.js 用占位顶上。章节作者不用改这个文件。 -->
+<script>
+  // 每项 [源相对路径, onerror]。用 document.write 按顺序载入：顶上补的 base 生效之后才解析这些相对路径（直接写 <script src>，预加载扫描器会先按根目录去取）。
+  // 站点版由 scripts/build-explainer.mjs 读这张表（保持 JSON 写法），按内容哈希发布并注入 window.__assets（源相对路径 → 哈希路径）；
+  // 还没写的章不发布，这里见 __assets 里没有就不载入。本地和渲染工具没有 __assets，用原名
+  (() => {
+    const LOAD = [
+      ["plan.js"], ["../clawd.js"], ["score.js", "window.Score=null"],
+      ["music/ch00.js", "0"], ["music/ch01.js", "0"], ["music/ch02.js", "0"], ["music/ch03.js", "0"], ["music/ch04.js", "0"],
+      ["music/ch05.js", "0"], ["music/ch06.js", "0"], ["music/ch07.js", "0"], ["music/ch08.js", "0"], ["music/ch09.js", "0"], ["music/ch10.js", "0"],
+      ["i18n.js"], ["engine.js"], ["kit.js"],
+      ["ch00.js", "0"], ["ch01.js", "0"], ["ch02.js", "0"], ["ch03.js", "0"], ["ch04.js", "0"],
+      ["ch05.js", "0"], ["ch06.js", "0"], ["ch07.js", "0"], ["ch08.js", "0"], ["ch09.js", "0"], ["ch10.js", "0"],
+      ["film.js"]
+    ];
+    const A = window.__assets;
+    for (const [f, onerror] of LOAD) {
+      if (A && !A[f]) continue;
+      document.write('<script src="' + (A ? A[f] : f) + '"' + (onerror ? ' onerror="' + onerror + '"' : "") + '><\/script>');
+    }
+  })();
+</script>
 </body>
 </html>

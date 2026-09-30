@@ -205,10 +205,11 @@
     ui();
     if (!EXPORT) {
       requestAnimationFrame(loop);
-      // 配乐：优先读预先渲好的 score.mp3（v2/tools/score-mp3.mjs 生成，不进仓库）；长度和现在的章节表对不上、或者没有，就在浏览器里现合成
+      // 配乐：优先读预先渲好的 score.mp3（v2/tools/score-mp3.mjs 生成）；长度和现在的章节表对不上、或者没有，就在浏览器里现合成。
+      // 站点版经 window.__assets 取按内容哈希发布的那份（scripts/build-explainer.mjs 注入，缺 score.mp3 时构建失败），本地用原名
       let got = null;
       try {
-        const r = await fetch("score.mp3");
+        const r = await fetch((window.__assets || {})["score.mp3"] || "score.mp3");
         if (r.ok) {
           const buf = await new OfflineAudioContext(2, 48000, 48000).decodeAudioData(await r.arrayBuffer());
           if (!Sc || Math.abs(buf.duration - (Sc.duration + Sc.tail)) < 0.5) got = buf;

@@ -68,7 +68,7 @@
   // 旋律条目：[小节, 拍位, 时值(拍), 音, 乐器, 力度, 是否主题]
   const phrase = (bar, notes, inst, v, theme = false) => notes.map(([b, d, n]) => [bar, b, d, n, inst, v, theme]);
   const KEY_PRE = 0.06; // 钥匙：插进去的沙沙声在拍前，转动那一下「咔」落在拍上
-  const WHOOSH_LEN = { tube: 0.95, fork: 1.25, down: 2 * BEAT };
+  const WHOOSH_LEN = { tube: 0.95, fork: 1.25, down: 2 * BEAT, whip: 0.62 }; // whip：甩镜头的风声，中点最响
   // 交给各章 score() 的工具
   const HELP = { THEME, withNotes, phrase, midi, CHORD, BASS, ARP, BAR, BEAT };
 
@@ -165,7 +165,7 @@
         }
         for (const [b, v] of steps(sec.snare, i)) N.push({ kind: "snare", t: at(bar, b), v, type: sec.snareKind, verb: c.tone.snareVerb });
         for (const [b, v] of steps(sec.hat, i)) N.push({ kind: "hat", t: at(bar, b), v: v * (0.88 + 0.24 * rnd()), type: sec.hatKind, variant: Math.floor(rnd() * 4), vol: sec.hatVol ?? 1 });
-        for (const [b, v, k] of steps(sec.clock, i)) N.push({ kind: "clock", t: at(bar, b), v, type: k % 2 ? "tock" : "tick", vol: sec.clockVol ?? 1 });
+        for (const [b, v, k] of steps(sec.clock, i)) N.push({ kind: "clock", t: at(bar, b), v, type: sec.clockKind || (k % 2 ? "tock" : "tick"), vol: sec.clockVol ?? 1 });
         if (sec.ghost) for (let b = 0; b < 4; b += sec.ghost[0]) N.push({ kind: "ghost", t: at(bar, b), depth: sec.ghost[1], tau: sec.ghost[2] });
         if (sec.bass) {
           const pat = sec.bass === "hold" ? SEGMENTS.filter((s) => s.bar === bar).map((s) => [s.beat, (s.end - s.t) / BEAT, 0, 0.6]) : BASS[sec.bass];
@@ -193,6 +193,7 @@
       if (n.kind === "kick") DIPS.push({ t: n.t, depth: n.duck * n.v, tau: n.type === "lub" ? 0.2 : 0.12 });
       else if (n.kind === "ghost") DIPS.push({ t: n.t, depth: n.depth, tau: n.tau });
       else if (n.kind === "stamp") DIPS.push({ t: n.t, depth: n.size === "big" ? 0.8 : 0.45, tau: n.size === "big" ? 0.35 : 0.2 });
+      else if (n.kind === "gate") DIPS.push({ t: n.t, depth: 0.45, tau: 0.2 });
       else if (n.kind === "boom" || (n.kind === "accent" && n.what === "arrive")) DIPS.push({ t: n.t, depth: 0.45, tau: 0.45 });
     }
     DIPS.sort((a, b) => a.t - b.t);
@@ -279,7 +280,7 @@
         for (const w of B.HITS.whoosh) {
           const len = WHOOSH_LEN[w.type], x = t - w.t;
           if (x < 0 || x > len) continue;
-          const e = w.type === "down" ? Math.pow(x / len, 2.2) : x < 0.07 ? x / 0.07 : Math.exp(-(x - 0.07) / (w.type === "fork" ? 0.4 : 0.26));
+          const e = w.type === "down" ? Math.pow(x / len, 2.2) : w.type === "whip" ? Math.pow(Math.sin(Math.PI * x / len), 2) : x < 0.07 ? x / 0.07 : Math.exp(-(x - 0.07) / (w.type === "fork" ? 0.4 : 0.26));
           m = Math.max(m, e);
         }
         return m;
@@ -584,7 +585,117 @@
       return finish(d, 0.0003);
     });
 
-    const bank = { kick, snare, type, flip, clock, stamp, ding, key, lamp, pluck, bell, whoosh, fork, down, swell, slip, broadcast, flipHit };
+    // ---- 各章专用的音色（新噪声种子从 300 往上取，不和上面的撞） ----
+    // 玻璃读数灯（旋律乐器 glass）：第 01 章仪器的读数灯唱主题。和 lamp 同一族的玻璃 FM，身体换成 1:2 调制、尾巴更长，
+    // 亮起时带一点灯丝的颤（5 Hz），长音撑得住
+    const glass = (m) => get("gl:" + m, () => {
+      const f = hz(m), len = clamp(2.2 * Math.pow(523 / f, 0.3), 1.2, 3), d = arr(len), n = d.length, a = nz(n, 1000 + m, "hp", 6500);
+      for (let i = 0; i < n; i++) {
+        const t = i / sr, w = TAU * f * t;
+        const body = Math.sin(w + (0.9 * Math.exp(-t / 0.25) + 0.15) * Math.sin(2 * w)) * Math.exp(-t / (len / 3.2)) * (1 + 0.05 * Math.sin(TAU * 5.2 * t) * Math.min(1, t / 0.2));
+        d[i] = body + 0.4 * Math.sin(w + 1.6 * Math.exp(-t / 0.03) * Math.sin(3.99 * w)) * Math.exp(-t / 0.12)
+          + 0.1 * Math.sin(2.76 * w) * Math.exp(-t / 0.15) + 0.12 * a[i] * Math.exp(-t / 0.001);
+      }
+      return finish(d, 0.001);
+    });
+    // 低音马林巴（旋律乐器 marimba）：第 08 章地层里唱主题。琴键泛音调在 1 : 4 : 10 附近（马林巴的调法），高次的很快没了；
+    // 共鸣管和琴键差一点点，慢慢拍；软槌落下一声闷的「噗」
+    const marimba = (m) => get("mb:" + m, () => {
+      const f = hz(m), tau = 0.9 * Math.pow(220 / f, 0.4), d = arr(Math.min(2.4, tau * 5)), n = d.length, r = mulberry32(1100 + m);
+      for (const [k, amp, tk] of [[1, 1, tau], [1.003, 0.18, tau * 0.8], [3.93, 0.28, 0.1], [9.2, 0.08, 0.035]]) partial(d, f * k, amp, tk, r() * TAU);
+      const th = nz(n, 1200 + m, "bp", 700, 0.7), pn = Math.min(n, Math.round(0.03 * sr));
+      for (let i = 0; i < pn; i++) d[i] += 0.25 * th[i] * Math.exp(-i / sr / 0.005);
+      return finish(d, 0.002);
+    });
+    // 电键（剧情音 morse）：第 05 章的电报，按下「嘟」一声、松开；起落 4 ms 的斜坡加两头各一下键的轻磕，是电键那点咔哒。len 秒
+    const morse = (m, len) => get("ms:" + m + ":" + len, () => {
+      const f = hz(m), d = arr(len + 0.06), n = d.length, c = nz(n, 301, "bp", 2600, 1.2);
+      for (let i = 0; i < n; i++) {
+        const t = i / sr, g = Math.min(1, t / 0.004) * (t < len ? 1 : Math.max(0, 1 - (t - len) / 0.012));
+        d[i] = g * (Math.sin(TAU * f * t) + 0.12 * Math.sin(TAU * 2 * f * t) + 0.04 * Math.sin(TAU * 3 * f * t))
+          + 0.3 * c[i] * Math.exp(-t / 0.002) + (t >= len ? 0.15 * c[i] * Math.exp(-(t - len) / 0.002) : 0);
+      }
+      return finish(d, 0.0005);
+    });
+    // 闸门弹开（剧情音 gate）：第 05 章旧轮询撞上时间戳闸门。金属闸杆被敲一下（自由杆的泛音比 1 : 2.76 : 5.40 : 8.93），
+    // 立柱闷一声，信封被弹回去是一口往下扫的风
+    const gate = () => get("gate", () => {
+      const d = arr(0.7), n = d.length, r = mulberry32(311), click = nz(n, 312, "bp", 3200, 1.1);
+      const air = sweepBp(nz(n, 313), (t) => 2600 * Math.pow(700 / 2600, Math.min(1, t / 0.4)), 1.4);
+      for (const [k, amp, tk] of [[1, 0.8, 0.12], [2.76, 0.45, 0.07], [5.4, 0.25, 0.04], [8.93, 0.12, 0.025]]) partial(d, 560 * k, amp, tk, r() * TAU);
+      let ph = 0;
+      for (let i = 0; i < n; i++) {
+        const t = i / sr;
+        ph += TAU * (70 + 50 * Math.exp(-t / 0.025)) / sr;
+        d[i] = Math.tanh(1.5 * (d[i] + 1.3 * Math.sin(ph) * Math.exp(-t / 0.13) + 0.35 * click[i] * Math.exp(-t / 0.003)
+          + (t > 0.04 ? 0.6 * air[i] * Math.sin(Math.PI * Math.min(1, (t - 0.04) / 0.5)) : 0))); // 和印章一样压一压峰，身子才厚
+      }
+      return finish(d, 0.0003);
+    });
+    // 熄灯（剧情音 off）：第 05 章在线点到点自己熄灭。和 lamp 同一种玻璃 FM，音高 0.45 秒里滑下一个八度，越滑越弱
+    const off = (m) => get("off:" + m, () => {
+      const f0 = hz(m), d = arr(1), n = d.length, a = nz(n, 321, "hp", 5000);
+      let ph = 0;
+      for (let i = 0; i < n; i++) {
+        const t = i / sr;
+        ph += TAU * f0 * Math.pow(0.5, Math.min(1, t / 0.45)) / sr;
+        d[i] = Math.sin(ph + (1.4 * Math.exp(-t / 0.05) + 0.25) * Math.sin(3.99 * ph)) * Math.exp(-t / 0.3) + 0.15 * a[i] * Math.exp(-t / 0.0012);
+      }
+      return finish(d, 0.0005);
+    });
+    // 甩镜头（whoosh 的 tube: "whip"）：一口风从低扫到高再落回去，中点最响（镜头最快那一刻）；没有气动管的阀门和到站声
+    const whip = () => get("whip", () => {
+      const L = WHOOSH_LEN.whip, d = arr(L), n = d.length, low = nz(n, 332, "lp", 380);
+      const air = sweepBp(nz(n, 331), (t) => 450 + 3200 * Math.pow(Math.sin(Math.PI * Math.min(1, t / L)), 1.5), 1.1);
+      for (let i = 0; i < n; i++) d[i] = (air[i] + 0.35 * low[i]) * Math.pow(Math.sin(Math.PI * Math.min(1, i / sr / L)), 2);
+      return finish(d, 0.001);
+    });
+    // 敲门（section 的 clockKind："knock" / "knockFar"）：指节叩木门，门板几个低的模态加指节一磕；far 是隔着地层听，高频闷掉
+    const knock = (far) => get("kn:" + (far ? 1 : 0), () => {
+      const d = arr(0.2), n = d.length, r = mulberry32(341), tap = nz(n, 342, "bp", 1900, 1.2);
+      for (const [f, amp, tk] of [[185, 1, 0.045], [410, 0.55, 0.026], [760, 0.3, 0.014], [1240, 0.15, 0.008]]) partial(d, f, amp, tk, r() * TAU);
+      for (let i = 0; i < n; i++) d[i] += (far ? 0.25 : 0.8) * tap[i] * Math.exp(-i / sr / 0.003);
+      if (far) biquad(d, "lp", 650);
+      return finish(d, 0.0003);
+    });
+    // 报到（剧情音 ping）：第 08 章 Worker 每 5 分钟往上发的一声。圆的低音起头往上挑三个半音（往外出去），叠一层高八度，小喇叭也听得见；
+    // late 是沉到地层底下听：更短、更闷
+    const ping = (m, late) => get("pg:" + m + ":" + (late ? 1 : 0), () => {
+      const f = hz(m), d = arr(1.2), n = d.length;
+      let ph = 0;
+      for (let i = 0; i < n; i++) {
+        const t = i / sr;
+        ph += TAU * f * Math.pow(2, (-3 / 12) * Math.exp(-t / 0.035)) / sr;
+        d[i] = (Math.sin(ph + (0.8 * Math.exp(-t / 0.08) + 0.1) * Math.sin(ph)) + 0.35 * Math.sin(2 * ph) * Math.exp(-t / 0.25))
+          * Math.exp(-t / (late ? 0.35 : 0.45)) * Math.min(1, t / 0.003);
+      }
+      if (late) biquad(d, "lp", 900);
+      return finish(d, 0.0005);
+    });
+    // 清屏（剧情音 clear）：第 10 章终端自下往上清掉。一口很轻的擦声从低往高扫，一行一下的细小咔哒也跟着往上走
+    const clear = () => get("clr", () => {
+      const d = arr(0.95), n = d.length, r = mulberry32(361), tick = nz(n, 363, "hp", 3000);
+      const air = sweepBp(nz(n, 362), (t) => 350 * Math.pow(12, Math.min(1, t / 0.85)), 1.3);
+      for (let i = 0; i < n; i++) { const t = i / sr; d[i] = 0.7 * air[i] * Math.min(1, t / 0.04) * (t < 0.7 ? 1 : Math.max(0, 1 - (t - 0.7) / 0.25)); }
+      for (let k = 0; k < 16; k++) {
+        const i0 = Math.round((0.02 + k * 0.05) * sr), f = 1800 + 160 * k, amp = 0.25 + 0.2 * r();
+        for (let i = i0; i < n && i < i0 + Math.round(0.02 * sr); i++) { const u = (i - i0) / sr; d[i] += amp * Math.sin(TAU * f * u) * Math.exp(-u / 0.004) + 0.1 * tick[i] * Math.exp(-u / 0.001); }
+      }
+      return finish(d, 0.001);
+    });
+    // Clawd 跳一下（剧情音 hop）：第 10 章庆祝时举手那一帧，一声往上挑的小「啾」，底下带一点蹲下时扬起的土
+    const hop = (m) => get("hop:" + m, () => {
+      const f = hz(m), d = arr(0.35), n = d.length, dust = nz(n, 371, "lp", 1400);
+      let ph = 0;
+      for (let i = 0; i < n; i++) {
+        const t = i / sr;
+        ph += TAU * f * Math.pow(2, (-5 / 12) * Math.max(0, 1 - t / 0.045)) / sr;
+        d[i] = (Math.sin(ph) + 0.18 * Math.sin(2 * ph) + 0.08 * Math.sin(3 * ph)) * Math.exp(-t / 0.1) * Math.min(1, t / 0.003) + 0.12 * dust[i] * Math.exp(-t / 0.02);
+      }
+      return finish(d, 0.0005);
+    });
+
+    const bank = { kick, snare, type, flip, clock, stamp, ding, key, lamp, pluck, bell, whoosh, fork, down, swell, slip, broadcast, flipHit, glass, marimba, morse, gate, off, whip, knock, ping, clear, hop };
     SAMPLE_BANKS.set(sr, bank);
     return bank;
   }
@@ -693,6 +804,8 @@
     }
     const KICK_G = { tight: 0.9, light: 0.65, lub: 0.85, dub: 0.85, boom: 0.6 };
     const LAMP_PAN = [-0.4, 0, 0.4];
+    // 这几件的电平按隔离渲染的 LUFS-M（400 ms 窗）对到同一位置上别的剧情音；knock 频谱偏低，同样响度下比 tick 听着轻，所以高约 3 dB。改音色要重新对
+    const GLASS_G = 0.62, MARIMBA_G = 0.42, KNOCK_G = 0.092, WHIP_G = 0.75, MORSE_G = 0.21, GATE_G = 0.49, OFF_G = 0.19, PING_G = [0.84, 0.25], CLEAR_G = 0.13, HOP_G = 0.24;
     const TUBE_PAN = [-0.7, -0.25, 0.25, 0.7];
 
     for (const n of B.NOTES) {
@@ -707,11 +820,16 @@
           if (n.type === "type") play(S.type(n.variant), t, { g: 0.26 * n.v * n.vol, pan: 0.12 + 0.08 * n.variant, to: bus.drums, verbAmt: 0.05 });
           else play(S.flip(n.variant % 3), t, { g: 0.24 * n.v * n.vol, pan: -0.25, to: bus.drums, verbAmt: 0.15 });
           break;
-        case "clock": play(S.clock(n.type), t, { g: 0.11 * n.v * n.vol, pan: n.type === "tick" ? 0.35 : -0.35, to: bus.drums, verbAmt: 0.08 }); break;
+        case "clock":
+          if (n.type === "knock" || n.type === "knockFar") play(S.knock(n.type === "knockFar"), t, { g: KNOCK_G * n.v * n.vol, pan: 0.2, to: bus.drums, verbAmt: n.type === "knockFar" ? 0.25 : 0.1 });
+          else play(S.clock(n.type), t, { g: 0.11 * n.v * n.vol, pan: n.type === "tick" ? 0.35 : -0.35, to: bus.drums, verbAmt: 0.08 });
+          break;
         case "mel": {
           const to = n.post ? bus.melPost : bus.mel;
           if (n.inst === "bell" || n.inst === "bell2")
             play(S.bell(n.m, n.tone || "bright"), t, { g: 0.36 * n.v, pan: n.inst === "bell" ? 0.1 : -0.25, to, verbAmt: 0.4, delayAmt: n.inst === "bell" ? 0.26 : 0.15 });
+          else if (n.inst === "glass") play(S.glass(n.m), t, { g: GLASS_G * n.v, pan: 0, to, verbAmt: 0.35, delayAmt: 0.22 });
+          else if (n.inst === "marimba") play(S.marimba(n.m), t, { g: MARIMBA_G * n.v, pan: -0.1, to, verbAmt: 0.3, delayAmt: 0.12 });
           else
             play(S.pluck(n.m, n.inst), t, { g: (n.theme ? 0.34 : 0.3) * n.v, pan: n.pan ?? 0, to, verbAmt: n.inst === "pluck" ? 0.22 : 0.28, delayAmt: n.theme ? 0.32 : n.inst === "pluckMute" ? 0.3 : 0.18 });
           break;
@@ -723,6 +841,7 @@
         case "whoosh":
           if (n.tube === "fork") { play(S.fork(0), t, { g: 0.6, panTo: -0.8, panDur: 0.6, verbAmt: 0.25 }); play(S.fork(1), t, { g: 0.6, panTo: 0.8, panDur: 0.6, verbAmt: 0.25 }); }
           else if (n.tube === "down") play(S.down(), t, { g: 0.7, to: bus.fxPost, verbAmt: 0.2 });
+          else if (n.tube === "whip") play(S.whip(), t, { g: WHIP_G * (n.v ?? 1), pan: n.pan ?? 0.5, panTo: n.panTo ?? -0.5, panDur: WHOOSH_LEN.whip, verbAmt: 0.2 });
           else play(S.whoosh(n.tube), t, { g: 0.75, panTo: TUBE_PAN[n.tube], panDur: 0.6, verbAmt: 0.25 });
           break;
         case "accent":
@@ -733,6 +852,12 @@
           break;
         case "swell": play(S.swell(), t, { g: 0.2, verbAmt: 0.3 }); break;
         case "boom": play(S.kick("boom"), t, { g: 0.45 }); break;
+        case "morse": play(S.morse(n.m, Math.round((n.len ?? 0.35) * BEAT * 1000) / 1000), t, { g: MORSE_G * (n.v ?? 1), pan: n.pan ?? 0, verbAmt: 0.12, delayAmt: 0.1 }); break;
+        case "gate": play(S.gate(), t, { g: GATE_G, pan: n.pan ?? 0.1, verbAmt: 0.22 }); break;
+        case "off": play(S.off(n.m), t, { g: OFF_G, pan: n.pan ?? 0.3, verbAmt: 0.5, delayAmt: 0.2 }); break;
+        case "ping": play(S.ping(n.m, n.late), t, { g: n.late ? PING_G[1] : PING_G[0], pan: n.pan ?? 0, verbAmt: n.late ? 0.5 : 0.25, delayAmt: 0.12 }); break;
+        case "clear": play(S.clear(), t, { g: CLEAR_G, verbAmt: 0.3 }); break;
+        case "hop": play(S.hop(n.m), t, { g: HOP_G * (n.v ?? 1), pan: n.pan ?? 0, verbAmt: 0.25, delayAmt: 0.15 }); break;
       }
     }
   }
