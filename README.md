@@ -131,7 +131,7 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/architecture-dark.png">
-  <img src="docs/architecture-light.png" alt="多端采集、Cloudflare 状态中枢与 Next.js 展示端架构" width="100%">
+  <img src="docs/architecture-light.png" alt="多端上报经 Access 进 ingress Worker，拆成 Durable Object 实时层与 KV/D1 可滞后层，采集 Worker 拉外部服务，Next.js 与浏览器从 api Worker 读取" width="100%">
 </picture>
 
 [打开交互式架构图](https://lyjw131.github.io/lyjwpage/)
