@@ -21,6 +21,7 @@
     "songId": "1490256995",
     "upcomingSongIds": [],
     "hasLyrics": true,
+    "motion": null,
     "expiresInMs": null,
     "alternate": null,
     "lastSeenAt": "$now",

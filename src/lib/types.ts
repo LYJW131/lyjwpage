@@ -190,6 +190,12 @@ export type ListeningItem = {
   link: string | null;
   palette: string[];
   durationMs: number | null;
+  motion?: TrackMotion | null;
+};
+
+export type TrackMotion = {
+  videoUrl: string;
+  colors: string[] | null;
 };
 
 export type RecentTrack = {
@@ -259,6 +265,7 @@ export type NowListeningAlternate = {
   songId: string | null;
   upcomingSongIds: string[];
   hasLyrics: boolean;
+  motion: TrackMotion | null;
 };
 
 export type NowListeningPayload = ReporterPresence & {
@@ -270,6 +277,7 @@ export type NowListeningPayload = ReporterPresence & {
   songId: string | null;
   upcomingSongIds: string[];
   hasLyrics: boolean;
+  motion: TrackMotion | null;
   expiresInMs: number | null;
   alternate: NowListeningAlternate | null;
 };

@@ -1,6 +1,6 @@
 import { readAppleMusicCredentials } from "@/lib/apple-music-credentials";
 import { ampFetch, AppleUpstreamError, getWebToken } from "@/lib/apple-web-token";
-import { get, put } from "@/lib/cache";
+import { cached } from "@/lib/apple-cache";
 import { parseLyricsTtml, type LyricLine } from "@/lib/lyrics-ttml";
 
 
@@ -15,9 +15,6 @@ export const NO_LYRICS: LyricsResult = { lines: [] };
 const LYRICS_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 // amp-api 的 404 无法区分无歌词与订阅身份暂不可用，负缓存不能按成功结果长期保存。
 const NO_LYRICS_TTL_MS = 60 * 60 * 1000;
-const NEGATIVE_TTL_MS = 5_000;
-
-const inflight = new Map<string, Promise<LyricsResult>>();
 
 function storefront(): string {
   return (process.env.APPLE_MUSIC_STOREFRONT?.trim() || "cn").toLowerCase();
@@ -29,35 +26,7 @@ export function lyricsCacheKey(songId: string): string {
 
 export async function resolveLyrics(songId: string): Promise<LyricsResult> {
   if (!/^\d{1,20}$/.test(songId)) throw new AppleUpstreamError("songId 不是目录 ID");
-  const id = songId;
-  const cacheKey = lyricsCacheKey(id);
-
-  const [hit, failure] = await Promise.all([
-    get<LyricsResult>(cacheKey),
-    get<{ message: string }>(`neg:${cacheKey}`),
-  ]);
-  if (hit !== undefined) return hit;
-  if (failure) throw new AppleUpstreamError(failure.message);
-
-  const running = inflight.get(cacheKey);
-  if (running) return running;
-
-  const promise = (async () => {
-    try {
-      const result = await loadLyrics(id);
-      await put(cacheKey, result, result.lines.length ? LYRICS_TTL_MS : NO_LYRICS_TTL_MS);
-      return result;
-    } catch (error) {
-      const err = error instanceof Error ? error : new Error(String(error));
-      await put(`neg:${cacheKey}`, { message: err.message }, NEGATIVE_TTL_MS);
-      throw err;
-    } finally {
-      inflight.delete(cacheKey);
-    }
-  })();
-
-  inflight.set(cacheKey, promise);
-  return promise;
+  return cached(lyricsCacheKey(songId), (result: LyricsResult) => (result.lines.length ? LYRICS_TTL_MS : NO_LYRICS_TTL_MS), () => loadLyrics(songId));
 }
 
 async function loadLyrics(songId: string): Promise<LyricsResult> {

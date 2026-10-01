@@ -7,7 +7,8 @@ StateHub 的 SQLite 是实时状态的唯一权威。人读的说明在 `README.
 - 上报器不直连这里：外部上报由 `workers/ingress` 验明身份、校验后，实时那一半经 Service Binding 调 `StateCore.commitIngest`；采集 Worker 同样经 `StateCore` 交数据。这里没有 `/api/ingest/*`。
 - `StateCore` 的 RPC 契约是 `shared/state-core.ts`：只加不改；新增方法先发布本 Worker，再让 `workers/ingress`、`workers/collector` 去调。
 - 从 `shared/ingest/` 只能 `import type`（源：`eslint.config.mjs#no-restricted-imports`）：校验与收敛在上报入口，改校验不该重新发布带 Durable Object 的本 Worker，Workers Builds 监视路径据此排除该目录。命令形状变了（新字段、新模块）要同时改 `src/stores/` 里提交那一半。
-- 提交持久化确认后才返回 202；推送、Apple 目录补充、首屏失效在 `waitUntil` 里做，失败只记日志，不让已落库的上报重发。
+- 提交持久化确认后才返回 202；推送、首屏失效在 `waitUntil` 里做，失败只记日志，不让已落库的上报重发。
+- 上报缺的外部信息（Apple 目录、动态封面、歌词预热）在 `StateCore` 交给 StateHub 之前补全，随状态落库（`src/listening-enrichment.ts`）；StateHub 里不请求网络，读取和推送只读存好的补全。只有 `/api/lyrics`、`/api/motion-artwork` 这两个按需端点允许现查 Apple。Apple 结果缓存在 `APPLE_CACHE` KV（`src/lib/apple-cache.ts`），不进 StateHub。
 - 公开读取只输出明确的公开模型：没有通用 HTTP 数据库端点，凭据不进任何公开响应。可滞后层的端点只读 `LAG` KV，不持有外部令牌、不现拉、不推送，也不过公开读屏障、不唤醒 StateHub（`src/public-execution.ts`）：它的 loader 不许读 DO 存储。
 - DO 算出、读时可滞后的视图走 KV 镜像（`src/lag-mirror.ts`）：待写标记必须和源视图同批提交，`flushLagMirrors` 只能在 `ingestTail` 串行队列里跑；加镜像只改 `MIRRORS`，构造时按 `LAG_MIRROR_SET` 补写一次。
 - 首屏标签只在布局变化时失效（判据在 `src/lib/home-layout.ts`）；读数、标题、进度、纯心跳都不触发，交给首屏快照的定时重建。

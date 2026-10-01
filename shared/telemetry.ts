@@ -1,9 +1,9 @@
 import { requestState } from "@shared/request-state";
-import { resolveTrackLookup } from "@/lib/apple-music";
+import { candidateFrom, type TrackEnrichment } from "@/lib/track-enrichment";
 import {
   type StoredHomePod
 } from "@/lib/homepod-store";
-import { type NowListeningCandidate, type NowListeningSnapshot } from "@/lib/now-listening";
+import { type NowListeningSnapshot } from "@/lib/now-listening";
 import {
   type PlayingQueueTrack
 } from "@/lib/playing-queue";
@@ -28,6 +28,7 @@ export type TelemetryState = {
   desktopIconAssets: Map<string, string>;
   timezone: TimezoneActivity | null;
   music: LocalNowPlaying | null;
+  musicEnrichment: TrackEnrichment | null;
   upcomingTracks: PlayingQueueTrack[];
   activityReceivedAt: number;
   timezoneReceivedAt: number;
@@ -36,7 +37,7 @@ export type TelemetryState = {
 
 function state(): TelemetryState {
   return requestState("telemetry", () => ({ desktop: null, desktopIconAssets: new Map(), timezone: null,
-    music: null, upcomingTracks: [], activityReceivedAt: 0, timezoneReceivedAt: 0, activeModules: new Set<string>() }));
+    music: null, musicEnrichment: null, upcomingTracks: [], activityReceivedAt: 0, timezoneReceivedAt: 0, activeModules: new Set<string>() }));
 }
 export const telemetryState = new Proxy({} as TelemetryState, {
   get(_target, property) { return Reflect.get(state(), property); },
@@ -48,6 +49,7 @@ export type PersistedTelemetry = {
   desktopIconAssets?: [string, string][];
   timezone: TimezoneActivity | null;
   music: LocalNowPlaying | null;
+  musicEnrichment?: TrackEnrichment | null;
   upcomingTracks?: PlayingQueueTrack[];
   activityReceivedAt: number;
   timezoneReceivedAt: number;
@@ -67,6 +69,7 @@ export async function syncTelemetryState() {
     telemetryState.desktopIconAssets = new Map();
     telemetryState.timezone = null;
     telemetryState.music = null;
+    telemetryState.musicEnrichment = null;
     telemetryState.upcomingTracks = [];
     telemetryState.activityReceivedAt = 0;
     telemetryState.timezoneReceivedAt = 0;
@@ -86,6 +89,7 @@ export async function syncTelemetryState() {
   );
   telemetryState.timezone = stored.timezone ?? null;
   telemetryState.music = stored.music ?? null;
+  telemetryState.musicEnrichment = stored.musicEnrichment ?? null;
   telemetryState.upcomingTracks = stored.upcomingTracks ?? [];
   telemetryState.activityReceivedAt = stored.activityReceivedAt ?? 0;
   telemetryState.timezoneReceivedAt = stored.timezoneReceivedAt ?? 0;
@@ -118,62 +122,33 @@ export function desktopPayload(liveness: Liveness): DesktopPayload {
   );
 }
 
-function playableCandidate(music: LocalNowPlaying | null): music is LocalNowPlaying {
-  return Boolean(music && music.state !== "stopped" && music.title);
-}
-
 function macSnapshotInput(mac?: {
   music: LocalNowPlaying | null;
   receivedAt: number;
-  upcomingTracks?: PlayingQueueTrack[];
+  enrichment?: TrackEnrichment | null;
 }) {
   return (
     mac ?? {
       music: telemetryState.music,
       receivedAt: telemetryState.activityReceivedAt,
-      upcomingTracks: telemetryState.upcomingTracks,
+      enrichment: telemetryState.musicEnrichment,
     }
   );
 }
 
-export async function decorateCandidate(
-  music: LocalNowPlaying | null,
-  receivedAt: number,
-  upcomingTracks: PlayingQueueTrack[] = [],
-): Promise<NowListeningCandidate | null> {
-  if (!playableCandidate(music)) return null;
-  const bare: NowListeningCandidate = { music, receivedAt, id: null, link: null, songId: null, upcomingSongIds: [], hasLyrics: false };
-  const [lookup, ...ahead] = await Promise.all([
-    resolveTrackLookup(bare.music),
-    ...upcomingTracks.map((track) => resolveTrackLookup(track)),
-  ]);
-  return {
-    ...bare,
-    music: lookup.artwork ? { ...bare.music, artworkUrl: lookup.artwork } : bare.music,
-    id: lookup.id,
-    link: lookup.link || null,
-    songId: lookup.songId,
-    upcomingSongIds: ahead.flatMap((hit) => (hit.songId ? [hit.songId] : [])),
-    hasLyrics: lookup.hasLyrics,
-  };
-}
-
-export async function snapshotFrom(
+export function snapshotFrom(
   homePodStored: StoredHomePod | null,
   mac?: {
     music: LocalNowPlaying | null;
     receivedAt: number;
-    upcomingTracks?: PlayingQueueTrack[];
+    enrichment?: TrackEnrichment | null;
   },
-): Promise<NowListeningSnapshot> {
+  activeModules: ReadonlySet<string> | readonly string[] = telemetryState.activeModules,
+): NowListeningSnapshot {
   const source = macSnapshotInput(mac);
-  const musicEnabled = telemetryState.activeModules.has("appleMusic");
-  const [macCandidate, homePod] = await Promise.all([
-    musicEnabled
-      ? decorateCandidate(source.music, source.receivedAt, source.upcomingTracks ?? telemetryState.upcomingTracks)
-      : null,
-    homePodStored ? decorateCandidate(homePodStored.music, homePodStored.receivedAt) : null,
-  ]);
+  const musicEnabled = new Set(activeModules).has("appleMusic");
+  const macCandidate = musicEnabled ? candidateFrom(source.music, source.receivedAt, source.enrichment) : null;
+  const homePod = homePodStored ? candidateFrom(homePodStored.music, homePodStored.receivedAt, homePodStored.enrichment) : null;
   return {
     mac: macCandidate,
     homePod,

@@ -34,6 +34,7 @@ function candidate(
     songId: `${title}-song`,
     upcomingSongIds: [],
     hasLyrics: false,
+    motion: null,
   };
 }
 

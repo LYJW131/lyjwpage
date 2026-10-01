@@ -1,5 +1,5 @@
 import { requestState } from "@shared/request-state";
-import { get, put, remove } from "@/lib/cache";
+import { get, put, remove } from "@/lib/apple-cache";
 
 
 let cachedToken: string | null = null;
@@ -16,11 +16,10 @@ export const APPLE_WEB_USER_AGENT =
 export const APPLE_UPSTREAM_TIMEOUT_MS = 10_000;
 
 export class AppleUpstreamError extends Error {
-  constructor(
-    message: string,
-    readonly status: number | null = null,
-  ) {
+  readonly status: number | null;
+  constructor(message: string, status: number | null = null) {
     super(message);
+    this.status = status;
   }
 }
 

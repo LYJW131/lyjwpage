@@ -27,7 +27,6 @@ import { PlayerArtworkPreload } from "@/components/web-player/player-artwork";
 import { useWebPlayer } from "@/components/web-player/web-player-provider";
 import { useLiveEvents } from "@/hooks/use-live-events";
 import { useLyrics, type LyricsFallback } from "@/hooks/use-lyrics";
-import { useMotionArtwork } from "@/hooks/use-motion-artwork";
 import { useMountedAt } from "@/hooks/use-mounted-at";
 import { useLiveNowListening } from "@/hooks/use-stale";
 import { useExpiryRefetch, useStatus } from "@/hooks/use-status";
@@ -50,6 +49,7 @@ import type {
   LocalNowPlaying,
   NowListeningPayload,
   StatusResponse,
+  TrackMotion,
 } from "@/lib/types";
 import { appleArtwork, ARTWORK_SCALE, needsOptimizing } from "@/lib/apple-artwork";
 import type { ArtworkDataUri, ArtworkPlaceholders } from "@/lib/artwork-placeholder";
@@ -472,6 +472,7 @@ type Hero = {
   palette: string[];
   durationMs: number | null;
   track: LocalNowPlaying | null;
+  motion: TrackMotion | null;
 };
 
 export function ListeningCard({
@@ -529,6 +530,7 @@ export function ListeningCard({
     link: string | null;
     upcomingSongIds: string[];
     hasLyrics: boolean;
+    motion: TrackMotion | null;
   } | null>(null);
   if (
     live?.songId &&
@@ -542,6 +544,7 @@ export function ListeningCard({
       link: live.link,
       upcomingSongIds: live.upcomingSongIds,
       hasLyrics: live.hasLyrics,
+      motion: live.motion,
     });
   }
   const latched = trackKey && lookupLatch?.key === trackKey ? lookupLatch : null;
@@ -611,6 +614,7 @@ export function ListeningCard({
           data?.items.find((item) => item.id === live?.id)?.palette ?? [],
         durationMs: null,
         track: localTrack,
+        motion: live?.songId ? live.motion : latched?.motion ?? null,
       }
     : latest
       ? {
@@ -624,6 +628,7 @@ export function ListeningCard({
           palette: latest.palette,
           durationMs: latest.durationMs,
           track: null,
+          motion: latest.motion ?? null,
         }
       : null;
 
@@ -670,7 +675,7 @@ export function ListeningCard({
     return () => clearTimeout(timer);
   }, [reflowing, ids]);
 
-  const { data: motionData } = useMotionArtwork(hero?.link);
+  const motionData = hero?.motion ?? null;
   const motionGradient =
     motionData?.colors && motionData.colors.length >= 2
       ? paletteGradient(motionData.colors)
@@ -725,7 +730,7 @@ export function ListeningCard({
                         hero.artwork ? artworkPlaceholders.hero[hero.artwork] : undefined
                       }
                       title={hero.title}
-                      videoUrl={motionData?.hasMotion ? motionData.videoUrl : null}
+                      videoUrl={motionData?.videoUrl ?? null}
                       reduced={Boolean(reduced)}
                     />
 

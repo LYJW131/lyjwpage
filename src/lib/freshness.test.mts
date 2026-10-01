@@ -98,6 +98,7 @@ function nowListening(partial: Partial<NowListeningPayload> = {}): NowListeningP
     songId: "mac-song",
     upcomingSongIds: ["mac-next"],
     hasLyrics: true,
+    motion: { videoUrl: "https://mvod.itunes.apple.com/mac.m3u8", colors: null },
     expiresInMs: null,
     alternate: null,
     lastSeenAt: T,
@@ -133,6 +134,7 @@ test("正在听：Mac 掉线时换成 HomePod 还在放的那首", () => {
         songId: "pod-song",
         upcomingSongIds: [],
         hasLyrics: false,
+        motion: null,
       },
     }),
     true,
@@ -142,6 +144,7 @@ test("正在听：Mac 掉线时换成 HomePod 还在放的那首", () => {
   assert.equal(next.id, "pod-album");
   assert.equal(next.songId, "pod-song");
   assert.equal(next.hasLyrics, false);
+  assert.equal(next.motion, null, "Mac 那首的动态封面不能留在换上来的 HomePod 曲目上");
   assert.equal(next.alternate, null);
 });
 

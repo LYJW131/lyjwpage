@@ -1,5 +1,5 @@
-import { ampFetch, AppleUpstreamError, getWebToken } from "@/lib/apple-web-token";
-import { get, put } from "@/lib/cache";
+import { ampFetch, getWebToken } from "@/lib/apple-web-token";
+import { cached } from "@/lib/apple-cache";
 import type { AppleMusicParsed } from "@/lib/motion-artwork-url";
 
 
@@ -14,9 +14,6 @@ export const NO_MOTION: MotionResult = { hasMotion: false, videoUrl: null, color
 
 const MOTION_TTL_MS = 24 * 60 * 60 * 1000;
 const NO_MOTION_TTL_MS = 60 * 60 * 1000;
-const NEGATIVE_TTL_MS = 5_000;
-
-const inflight = new Map<string, Promise<MotionResult>>();
 
 export function motionArtworkCacheKey(parsed: AppleMusicParsed): string {
   return parsed.albumId
@@ -25,34 +22,7 @@ export function motionArtworkCacheKey(parsed: AppleMusicParsed): string {
 }
 
 export async function resolveMotionArtwork(parsed: AppleMusicParsed): Promise<MotionResult> {
-  const cacheKey = motionArtworkCacheKey(parsed);
-
-  const [hit, failure] = await Promise.all([
-    get<MotionResult>(cacheKey),
-    get<{ message: string }>(`neg:${cacheKey}`),
-  ]);
-  if (hit !== undefined) return hit;
-  if (failure) throw new AppleUpstreamError(failure.message);
-
-  const running = inflight.get(cacheKey);
-  if (running) return running;
-
-  const promise = (async () => {
-    try {
-      const result = await loadMotionArtwork(parsed);
-      await put(cacheKey, result, result.hasMotion ? MOTION_TTL_MS : NO_MOTION_TTL_MS);
-      return result;
-    } catch (error) {
-      const err = error instanceof Error ? error : new Error(String(error));
-      await put(`neg:${cacheKey}`, { message: err.message }, NEGATIVE_TTL_MS);
-      throw err;
-    } finally {
-      inflight.delete(cacheKey);
-    }
-  })();
-
-  inflight.set(cacheKey, promise);
-  return promise;
+  return cached(motionArtworkCacheKey(parsed), (result: MotionResult) => (result.hasMotion ? MOTION_TTL_MS : NO_MOTION_TTL_MS), () => loadMotionArtwork(parsed));
 }
 
 async function loadMotionArtwork(parsed: AppleMusicParsed): Promise<MotionResult> {

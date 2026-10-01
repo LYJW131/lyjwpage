@@ -40,6 +40,7 @@
 | Workers：`api`（`api.homepage.lyjw.llc`）、`ingress`（`ingest.homepage.lyjw.llc`，域名写在 `workers/ingress/wrangler.toml`，一个域名只写在一份 `wrangler.toml`）、`collector`（无路由、无域名）。构建配置与监视路径见 [Workers 原生 Git 部署](./workers-builds.md) | 核对于 未记录，方式：迁自 `workers/ingress/README.md` 与 `workers/collector/README.md` |
 | Durable Object 命名空间（api）：`StateHub` `08a6c22e048d4a9b915ba869ad40ffee`、`LivePushRoom` `7d366bc728244a71b06ce6cbd8267539`。它们经 transfer migration 保持 ID 与数据不变，不要对这些类另加创建或删除迁移 | 核对于 2026-09-07，方式：迁自 [核验记录](./reporter-endpoints.md) 与 `workers/api/README.md` |
 | KV：`lyjwpage-lag`（binding `LAG`，可滞后层）、`lyjwpage-credentials`（`CREDENTIALS`，Apple Music user token） | 核对于 未记录，方式：迁自 `docs/state-storage.md` |
+| KV：`lyjwpage-apple-cache`（binding `APPLE_CACHE`，只绑 api Worker 生产环境），命名空间 ID 是 `da83c6ece9694300b707cb87c915610c`，放 Apple 接口结果的缓存 | 核对于 2026-10-01，方式：Cloudflare API 创建并列出命名空间 <!-- allow: 核对戳 --> |
 | 采集 Worker 自己的 KV `COLLECTOR_KV`，命名空间 ID 是 `0f9b584f71634776ba3bc081a7aa4498`，不保存 PSN 登录态；collector 没有 `PSN_NPSSO` secret | 核对于 2026-09-29，方式：Cloudflare API 核对 KV 中无 `auth` 键、Worker secret 列表无 PSN 项 |
 | D1 `lyjwpage-history`（binding `HISTORY`）：Workers Builds 不跑迁移，部署带这个绑定的版本之前要先手动 apply，命令见 `workers/api/README.md` | 核对于 未记录，方式：迁自 `docs/state-storage.md` |
 | R2 图片桶：上报器用只写该桶的访问密钥直传，上报入口以 `IMAGES` 绑定只做 HEAD；对外只以 `/img/<objectKey>` 同源路径出现 | 核对于 未记录，方式：迁自 `reporters/emby-reporter/README.md` 与 `workers/ingress/README.md` |
