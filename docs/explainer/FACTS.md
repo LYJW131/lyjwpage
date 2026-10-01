@@ -227,7 +227,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 - `/api/home` 已删除（8977457）。首屏按视图并行调 `firstScreen(key)`，一个视图一次（按 7fcfacb 现数 **26 次**），外加头像和最近提交；第二轮再取图标内联、封面占位和歌词（`src/app/page.tsx#Home`）。一张卡读几个视图就有几条缓存，卡与视图的对应见 `src/app/page.tsx#READS`。
 - 每张卡读自己的 `/api/status/*`：实时卡读 DO，可滞后卡读 `LAG`（`src/lib/first-screen.ts#firstScreen`）。
-- 所有公开读取都先过 `publicBarrier()`（`workers/api/src/public-execution.ts#executePublicRequest`）。
+- 实时层的公开读取先过 `publicBarrier()`；可滞后层只读 KV，不过屏障、不唤醒 DO（`workers/api/src/public-execution.ts#executePublicRequest`）。
 - **每张卡一条 `'use cache'`**，cacheLife 为 stale 300 / revalidate 600 / expire 7 天（`src/lib/first-screen.ts#firstScreen`）。歌词另是 300 / 3600 / 86400（`src/lib/first-screen.ts#firstScreenLyrics`）。
 - 标签：按 7fcfacb 现数 19 个视图挂 `page:` 标签；另有 7 个视图不带标签（GitHub 两份、Vercel、Cloudflare、Sentry、上报器账本、pulse），只靠 600 秒定时重建（`src/lib/status-views.ts#STATUS_VIEWS`）。
 - 一个标签失效，只让那张卡回源；整页在后台重建，旧页照给（`revalidateTag(…, "max")`，status-revalidation.ts:5）。
@@ -402,7 +402,6 @@ Sentry 的结果由 **collector** 的 `sentry-status` 任务每 5 分钟取回�
 - `next.config.ts`：cacheComponents 那段注释还说「首屏那八份数据」，提到的 `lib/home-snapshot` 已不存在。
 - `src/lib/home-layout.ts:6-8`：还说「整页只有一个 'use cache' 条目」。
 - `src/lib/status-views.ts:97`：说 pulse「按分钟轮询」，实际是 5 分钟。
-- `workers/api/README.md:24`：说可滞后层端点「不过屏障」，实际所有公开读取都先等 `publicBarrier()`。
 - `reporters/agents-reporter/README.md:180`：还让人设 `ONLINE_COUNTER_URL`，与第 228 行矛盾。
 - `workers/ingress/README.md`：说「报文坏了也先回 503」，实际不是 JSON 直接回 400。
 - iPhone README：`KNOWN_MODULES` 的路径写成 `workers/api/src/phone-telemetry.ts`，实际在 `shared/ingest/phone.ts:27`。

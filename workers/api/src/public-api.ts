@@ -58,7 +58,7 @@ async function overlayResponse(local: Response, load: () => Promise<unknown>): P
   return Response.json(withServedAt(theirs), { status: 200, headers: local.headers });
 }
 
-const devOverridesEnabled = (): boolean => process.env.DEV_OVERRIDES?.trim() === "true";
+export const devOverridesEnabled = (): boolean => process.env.DEV_OVERRIDES?.trim() === "true";
 
 export function isPublicApiPath(path: string): boolean {
   if (viewKeyByPath(path)) return true;
