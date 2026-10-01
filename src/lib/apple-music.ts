@@ -138,7 +138,8 @@ export async function resolveTrackLookup(track: {
       songId: exact.songId,
       hasLyrics: exact.hasLyrics,
     };
-  } catch {
+  } catch (error) {
+    console.warn("[track-lookup]", track.title, error instanceof Error ? error.message : String(error));
     return { link: searchUrl, artwork: null, id: null, songId: null, hasLyrics: false };
   }
 }
