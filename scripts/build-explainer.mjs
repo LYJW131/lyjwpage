@@ -2,6 +2,7 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { findUnpublishedReference } from "./explainer-html.mjs";
 
 const SRC = "docs/explainer/v2";
 const OUT = "public/explainer";
@@ -39,8 +40,8 @@ for (const rel of new Set([...scripts, ...styled, SCORE])) {
 }
 
 let page = html.replace(CSS_URL, (whole, _quote, rel) => (assets[rel] ? `url(${assets[rel]})` : whole));
-const stray = /\s(?:src|href)="(?![a-z]+:|\/|#)([^"]*)"/i.exec(page.replace(/<script>[\s\S]*?<\/script>/g, ""));
-if (stray) throw new Error(`index.html 引用的 ${stray[1]} 没有发布到 ${ASSETS}/`);
+const stray = findUnpublishedReference(page);
+if (stray !== null) throw new Error(`index.html 引用的 ${stray} 没有发布到 ${ASSETS}/`);
 const charset = '<meta charset="utf-8">\n';
 if (!page.includes(charset)) throw new Error("index.html 缺少 charset meta");
 // 站点图标（Next 的 /icon 路由）只加在站点版：源页面在 file:// 下取不到它，写章工具会当成报错

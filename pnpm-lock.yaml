@@ -84,6 +84,9 @@ importers:
       ioredis:
         specifier: ^6.0.0
         version: 6.0.0
+      parse5:
+        specifier: ^7.3.0
+        version: 7.3.0
       tailwindcss:
         specifier: ^4
         version: 4.3.3
