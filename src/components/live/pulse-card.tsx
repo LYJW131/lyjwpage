@@ -144,6 +144,17 @@ function runs(rows: { from: number; to: number; state: number }[]) {
   return merged;
 }
 
+// 斜纹从每个元素的左缘起算，相接的 trace 分开画会在接缝处错位。
+function spans(rows: { from: number; to: number }[]) {
+  const merged: { from: number; to: number }[] = [];
+  for (const row of [...rows].sort((a, b) => a.from - b.from)) {
+    const last = merged.at(-1);
+    if (last && row.from <= last.to) last.to = Math.max(last.to, row.to);
+    else merged.push({ ...row });
+  }
+  return merged;
+}
+
 const STATE_WORDS: Record<"listening" | "watching" | "gaming", readonly string[]> = {
   listening: ["Idle", "Paused", "Playing"],
   watching: ["Idle", "Paused", "Playing"],
@@ -187,8 +198,7 @@ function stateModel(domain: "listening" | "watching" | "gaming", lane: PulseStat
       if (run.state === 1) return <Rect key={index} range={range} from={run.from} to={run.to} top={14} fill="var(--live)" opacity={0.4} />;
       return <IdleLine key={index} range={range} from={run.from} to={run.to} />;
     }),
-    under: traces.map((row, index) => {
-      const { from, to } = absolute(range, row);
+    under: spans(traces.map((row) => absolute(range, row))).map(({ from, to }, index) => {
       return (
         <span
           key={index}
