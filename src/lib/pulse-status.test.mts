@@ -213,3 +213,27 @@ test("column rows reject a payload from another deploy instead of throwing", () 
   assert.equal(columnRows<StateColumns>(undefined, ["state"]), null);
   assert.deepEqual(columnRows<StateColumns>({ startSec: [], endSec: [], state: [] }, ["state"]), []);
 });
+
+test("iPhone 连续播放时，相邻推断段之间几轮列表没变的空档接上，隔太久或被 Mac 解释的不接", async () => {
+  await withStorage(async (storage) => {
+    const trace = (since: number, t: number, title: string) =>
+      JSON.stringify({ since: NOW - since * M, t: NOW - t * M, title, artist: "Artist", album: null, itemId: title });
+    await storage.append(pulseListeningTracesKey(),
+      trace(60, 58, "A"),
+      trace(56, 54, "B"),
+      trace(50, 48, "C"),
+      trace(40, 38, "D"),
+      trace(28, 26, "E"),
+      trace(24, 22, "F"));
+    await storage.append(pulseLaneKey("listening"),
+      JSON.stringify({ state: "playing", source: "mac", title: "E", artist: "Artist", album: null, trackId: null, from: NOW - 30 * M, to: NOW - 25 * M }));
+    const { listening } = (await getPulseStatus(NOW)).lanes;
+    assert.deepEqual(columnRows(listening.uncertain!, ["title"]), [
+      { startSec: sec(NOW - 60 * M), endSec: sec(NOW - 58 * M), title: "A" },
+      { startSec: sec(NOW - 58 * M), endSec: sec(NOW - 54 * M), title: "B" },
+      { startSec: sec(NOW - 54 * M), endSec: sec(NOW - 48 * M), title: "C" },
+      { startSec: sec(NOW - 40 * M), endSec: sec(NOW - 38 * M), title: "D" },
+      { startSec: sec(NOW - 24 * M), endSec: sec(NOW - 22 * M), title: "F" },
+    ], "2 与 4 分钟的空档接到前一段末尾；10 分钟的空档当作停过；Mac 实线解释掉的那段之后不往实线里接");
+  });
+});

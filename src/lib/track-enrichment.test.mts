@@ -157,3 +157,24 @@ test("确定的结果长存：歌词与动态封面都存 30 天，空歌词短�
   assert.equal(lyricsTtlMs({ lines: [] }), 60 * 60 * 1000);
   assert.equal(motionTtlMs(), 30 * DAY);
 });
+
+test("动态封面：Apple 404 按「没有」缓存 30 天，其他错误不缓存", async (t) => {
+  const { resolveMotionArtwork } = await import("@/lib/motion-artwork");
+  const kv = new TtlKv();
+  kv.values.set("lyjwpage:apple-web-token", JSON.stringify({ token: "web-token", expiresAt: Date.now() + 3_600_000 }));
+  installAppleCacheForTests(kv);
+  t.after(() => installAppleCacheForTests(null));
+  const original = globalThis.fetch;
+  t.after(() => { globalThis.fetch = original; });
+  const reply = (status: number) => { globalThis.fetch = (async () => new Response("{}", { status })) as typeof fetch; };
+
+  reply(404);
+  const missing = parseAppleMusicUrl("https://music.apple.com/us/album/x/404404")!;
+  assert.deepEqual(await withRequestState(() => resolveMotionArtwork(missing)), { hasMotion: false, videoUrl: null, colors: null });
+  assert.equal(kv.ttls.get(`lyjwpage:${motionArtworkCacheKey(missing)}`), 30 * 24 * 60 * 60);
+
+  reply(500);
+  const broken = parseAppleMusicUrl("https://music.apple.com/us/album/x/500500")!;
+  await assert.rejects(withRequestState(() => resolveMotionArtwork(broken)));
+  assert.equal(kv.values.has(`lyjwpage:${motionArtworkCacheKey(broken)}`), false);
+});

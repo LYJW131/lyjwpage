@@ -253,8 +253,9 @@ Mac / agents 的桶只认起点在报告范围里的（跨着范围起点的那�
   - gaming 每次 PSN presence 都记（它本身就是心跳）。
 - **「最近在听」不确定区间** `pulse:v2:listening-traces`：Apple 的列表按最后播放倒序、不给时刻，
   列表变动（只比条目 id 与顺序）只能说明在上一轮成功刷新 `since` 与这一轮 `t` 之间某处放过，
-  记 `{since, t, title, artist, itemId}`（条目是专辑 / 歌单），上限 `LISTENING_TRACE_CAP`。出口如实给出 `(since, t]`；
-  Mac / HomePod 那一路正放着同一张专辑的痕迹已被实测解释，不再重复给。
+  记 `{since, t, title, artist, itemId}`（条目是专辑 / 歌单），上限 `LISTENING_TRACE_CAP`。存的是如实的 `(since, t]`；
+  出口画图时，相邻两段画出来的推断之间不超过 `LISTENING_TRACE_BRIDGE_MS` 就把后一段往前接到前一段末尾（一首歌比刷新间隔长，
+  中间几轮列表不变不代表停过）。Mac / HomePod 那一路正放着同一张专辑的痕迹已被实测解释，不再重复给，也不从它往后接。
 - **Coding 三色带**不另存：读时从 `pulse:coding-observations` 与 `pulse:cursor-observations` 现算，
   切片规则同 Jev 特征（每条 Mac 观测撑到下一条或 3 分钟，`available: false` 不算观测）。
   human 是前台为 coding 应用（`desktop.coding`），agent 是有 agent `active`，或 Cursor 账号最近 5 分钟有活动。
