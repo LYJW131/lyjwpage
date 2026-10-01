@@ -39,12 +39,29 @@ function readOnly(commands: readonly StorageCommand[]): boolean {
 
 // 只合并独立读取；合并写事务会让一个操作的失败回滚相邻操作。
 type PublicStorageHub = {
-  publicRead(commands: StorageCommand[]): Promise<StorageResult[]>;
+  publicRead(commands: StorageCommand[]): Promise<StorageResult[] | null>;
   execute(commands: StorageCommand[]): Promise<unknown[]>;
 };
 
-export function createPublicStorage(hub: PublicStorageHub, renewHub?: () => PublicStorageHub): StorageClient {
+export class StorageNotReady extends Error {
+  constructor() {
+    super("State storage is not initialized");
+    this.name = "StorageNotReady";
+  }
+}
+
+export function createPublicStorage(
+  hub: PublicStorageHub,
+  renewHub?: () => PublicStorageHub,
+  onNotReady?: () => void,
+): StorageClient {
   const renew = renewHub && (() => { hub = renewHub(); });
+  const read = async (commands: StorageCommand[]): Promise<StorageResult[]> => {
+    const values = await retryRead(commands, () => hub.publicRead(commands), renew);
+    if (values) return values;
+    onNotReady?.();
+    throw new StorageNotReady();
+  };
   let pending: PendingRead[] = [];
   let scheduled = false;
   let tail = Promise.resolve();
@@ -71,7 +88,7 @@ export function createPublicStorage(hub: PublicStorageHub, renewHub?: () => Publ
         }
         try {
           const commands = group.flatMap((item) => item.commands);
-          const values: StorageResult[] = await retryRead(commands, () => hub.publicRead(commands), renew);
+          const values = await read(commands);
           let valueOffset = 0;
           for (const item of group) {
             item.resolve(values.slice(valueOffset, valueOffset + item.commands.length));
@@ -90,7 +107,7 @@ export function createPublicStorage(hub: PublicStorageHub, renewHub?: () => Publ
       return new Promise<unknown[]>((resolve, reject) => {
         enqueue(async () => {
           try {
-            const values = readOnly(commands) ? await retryRead(commands, () => hub.publicRead(commands), renew) : await hub.execute(commands);
+            const values = readOnly(commands) ? await read(commands) : await hub.execute(commands);
             resolve(values);
           } catch (error) { reject(error); }
         });

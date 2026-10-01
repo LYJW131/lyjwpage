@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { StorageCommand, StorageResult } from "@shared/storage-contract";
-import { createPublicStorage, retryRead } from "./storage-driver";
+import { createPublicStorage, retryRead, StorageNotReady } from "./storage-driver";
 
 function harness(initial: Record<string, string> = {}) {
   const values = new Map(Object.entries(initial));
@@ -85,4 +85,15 @@ test("retryRead retries a reset read once on a fresh hub, never writes", async (
   assert.equal(value, "ok");
   assert.equal(renewed, 1);
   await assert.rejects(retryRead([{ op: "set", key: "k", value: "1" }], async () => { throw reset; }), reset);
+});
+
+test("public storage 在存储未初始化时抛 StorageNotReady 并通知入口", async () => {
+  let notified = 0;
+  const storage = createPublicStorage(
+    { publicRead: async () => null, execute: async () => [] },
+    undefined,
+    () => { notified += 1; },
+  );
+  await assert.rejects(storage.get("key"), StorageNotReady);
+  assert.equal(notified, 1);
 });

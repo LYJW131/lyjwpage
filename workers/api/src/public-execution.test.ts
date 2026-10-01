@@ -10,7 +10,7 @@ function harness(ready: boolean) {
   const hub = new Proxy({}, {
     get: (_, method: string) => method === "then" ? undefined : async () => {
       calls.push(method);
-      return method === "publicBarrier" ? ready : [];
+      return method === "publicRead" ? (ready ? [] : null) : [];
     },
   });
   const env = {
@@ -45,22 +45,16 @@ test("coding 年度视图从 KV 镜像读出，不调用 StateHub", async (t) =>
   assert.deepEqual(calls, []);
 });
 
-test("实时层端点先过 StateHub 屏障", async () => {
-  const { calls, run } = harness(false);
-  const response = await run("/api/status/desktop");
-  assert.equal(response.status, 503);
-  assert.deepEqual(calls, ["publicBarrier"]);
-});
-
-test("开着假数据注入时可滞后层端点也过屏障", async (t) => {
+test("实时层与开着注入的端点都不再单独调用屏障", async (t) => {
   const previous = process.env.DEV_OVERRIDES;
-  process.env.DEV_OVERRIDES = "true";
   t.after(() => {
     if (previous === undefined) delete process.env.DEV_OVERRIDES;
     else process.env.DEV_OVERRIDES = previous;
   });
-  const { calls, run } = harness(false);
-  const response = await run("/api/status/server");
-  assert.equal(response.status, 503);
-  assert.deepEqual(calls, ["publicBarrier"]);
+  for (const [overrides, path] of [["false", "/api/status/charger"], ["true", "/api/status/server"]] as const) {
+    process.env.DEV_OVERRIDES = overrides;
+    const { calls, run } = harness(true);
+    await run(path);
+    assert.equal(calls.includes("publicBarrier"), false, path);
+  }
 });

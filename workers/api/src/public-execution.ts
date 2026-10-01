@@ -11,18 +11,24 @@ export async function executePublicRequest(
   ctx: Pick<ExecutionContext, "waitUntil">,
 ): Promise<Response> {
   const hub = env.STATE.get(env.STATE.idFromName("global"));
-  // 可滞后层只读 LAG KV，写入方不经 commitIngest 队列，屏障对它没有意义；跳过才不唤醒 StateHub。
-  // 开着假数据注入时每条端点都先查 DO 里的注入，得照常过屏障。
+  // 屏障在 StateHub.publicRead 里随读取一起过；可滞后层只读 LAG KV，不发读取也就不唤醒 StateHub。
   const lagOnly = layerOfPath(new URL(request.url).pathname) === "lag" && !devOverridesEnabled();
-  if (!lagOnly) {
-    await ensurePreviewState(hub);
-    if (!(await hub.publicBarrier())) {
-      return Response.json(
-        { ok: false, error: "状态存储初始化中" },
-        { status: 503, headers: { "Cache-Control": "no-store" } },
-      );
-    }
-  }
-  const storage = createPublicStorage(hub, () => env.STATE.get(env.STATE.idFromName("global")));
-  return withRequestState(() => requestStore.run({ env, ctx, storage }, () => publicResponse(request)));
+  if (!lagOnly) await ensurePreviewState(hub);
+  let notReady = false;
+  const storage = createPublicStorage(
+    hub,
+    () => env.STATE.get(env.STATE.idFromName("global")),
+    () => { notReady = true; },
+  );
+  // 注入查询在信封外读存储，未就绪会直接抛出；loader 里的则被信封吞掉，两条都靠 notReady 判定。
+  const response = await withRequestState(() => requestStore.run({ env, ctx, storage }, () => publicResponse(request)))
+    .catch((error: unknown) => {
+      if (notReady) return null;
+      throw error;
+    });
+  if (response && !notReady) return response;
+  return Response.json(
+    { ok: false, error: "状态存储初始化中" },
+    { status: 503, headers: { "Cache-Control": "no-store" } },
+  );
 }
