@@ -57,6 +57,8 @@
 - **最近在听**：user token 只能来自 Mac 上报器，凭据 KV 里还没有就跳过；developer token 由
   状态核心签（私钥只在 api 上），本 isolate 缓存到离到期 `RENEW_BEFORE_MS`。封面、时长的缓存经 `src/lib/cache`
   存在 `COLLECTOR_KV`（期限见 `apple-recent.ts` 的 `LIBRARY_ARTWORK_TTL_MS`、`DURATION_TTL_MS`），稳定状态下一轮只有拉两份列表出网。
+  节奏分两档：任务每分钟排期，闲时只在整 `IDLE_EVERY_MINUTES` 分钟真去拉；任一份列表变了就记下时刻（`COLLECTOR_KV`），
+  之后 `ACTIVE_HOLD_MS` 内每分钟都拉，连续听歌时每首都能单独落进一段推断。手动 `refresh` 不受闲档限制。
 
 ### Sentry 监控
 
