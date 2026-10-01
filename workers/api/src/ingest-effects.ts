@@ -53,6 +53,11 @@ export async function collectIngestEffects<T>(run: () => Promise<T>): Promise<Co
   });
 }
 
+// 没人在看时推送无人接收，只留首屏失效：它走 Vercel，不经推送房间。
+export function effectsForAudience(effects: IngestEffect[], watched: boolean): IngestEffect[] {
+  return watched ? effects : effects.filter((effect) => effect.kind === "tags");
+}
+
 export function collectSerializableEffects(events: LiveEvent[], tags: readonly string[]): boolean {
   const collector = activeIngestEffectCollector();
   if (!collector) return false;
