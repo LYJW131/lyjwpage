@@ -312,9 +312,8 @@ function overlayPlayStats(
 }
 
 export async function getTrophies(): Promise<TrophiesPayload> {
-  const payload = await getPlaystationTrophies();
+  const [payload, played] = await Promise.all([getPlaystationTrophies(), getPlaystationPlayedGames()]);
   if (!payload) throw new AwaitingReport("尚未收到 PlayStation 奖杯遥测");
-  const played = await getPlaystationPlayedGames();
   if (!played?.items.length) {
     return {
       ...payload,

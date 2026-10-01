@@ -30,8 +30,8 @@ export async function getTimezonePayload(): Promise<TimezonePayload | LagResult<
 }
 
 export async function getNowListeningSnapshot(): Promise<NowListeningSnapshot> {
-  await syncTelemetryState();
-  return snapshotFrom(await getHomePodSnapshot());
+  const [, homePod] = await Promise.all([syncTelemetryState(), getHomePodSnapshot()]);
+  return snapshotFrom(homePod);
 }
 
 export async function getNowListening(): Promise<NowListeningPayload> {
