@@ -84,9 +84,9 @@ export async function readChargerState(): Promise<ChargerState> {
 }
 
 export async function getStored() {
-  const latest = await readLatest();
+  const [latest, read] = await Promise.all([readLatest(), readHistory()]);
   if (!latest) return null;
-  let history = await readHistory();
+  let history = read;
   if (disconnectedHistoryExpired(latest, Date.now()) && history.length) {
     history = [];
   }

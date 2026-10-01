@@ -27,10 +27,8 @@ export function powerBankPushPayload({
 }
 
 export async function getPowerBankSnapshot(): Promise<PowerBankPayload> {
-  const stored = await getStored();
+  const [stored, pushedAt, live] = await Promise.all([getStored(), lastPushReceivedAt(), readLiveness()]);
   if (!stored) throw new AwaitingReport("尚未收到充电宝遥测推送");
-
-  const [pushedAt, live] = await Promise.all([lastPushReceivedAt(), readLiveness()]);
 
   return withPresence({ ...stored.status, pushedAt, staleAfterMs: powerBankStaleAfterMs() }, live);
 }

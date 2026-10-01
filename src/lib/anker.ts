@@ -21,10 +21,8 @@ function withCoverIconUrl<T extends { cover: ChargerStatus["cover"] }>(payload: 
 }
 
 export async function getChargerSnapshot(): Promise<ChargerPayload> {
-  const stored = await getStored();
+  const [stored, pushedAt, live] = await Promise.all([getStored(), lastPushReceivedAt(), readLiveness()]);
   if (!stored) throw new AwaitingReport("尚未收到充电头遥测推送");
-
-  const [pushedAt, live] = await Promise.all([lastPushReceivedAt(), readLiveness()]);
 
   return withPresence(
     withCoverIconUrl({
