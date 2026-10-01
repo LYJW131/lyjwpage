@@ -149,12 +149,11 @@ test("同一曲目这次没查到时沿用已存补全，换了曲目不沿用",
   assert.equal(keepEnrichment(music("Song"), fresh, good), fresh);
 });
 
-test("确定的结果长存：歌词与没有动态封面都存 30 天，有动态封面与空歌词短存", async () => {
+test("确定的结果长存：歌词与动态封面都存 30 天，空歌词短存", async () => {
   const { lyricsTtlMs } = await import("@/lib/lyrics");
   const { motionTtlMs } = await import("@/lib/motion-artwork");
   const DAY = 24 * 60 * 60 * 1000;
   assert.equal(lyricsTtlMs({ lines: [{ text: "x" }] as never }), 30 * DAY);
   assert.equal(lyricsTtlMs({ lines: [] }), 60 * 60 * 1000);
-  assert.equal(motionTtlMs({ hasMotion: false, videoUrl: null, colors: null }), 30 * DAY);
-  assert.equal(motionTtlMs({ hasMotion: true, videoUrl: "https://mvod/x.m3u8", colors: null }), DAY);
+  assert.equal(motionTtlMs(), 30 * DAY);
 });
