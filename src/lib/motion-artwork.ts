@@ -12,8 +12,13 @@ export interface MotionResult {
 
 export const NO_MOTION: MotionResult = { hasMotion: false, videoUrl: null, colors: null };
 
+// 视频地址指向 Apple 视频服务器，未确认是否会轮换，有封面的结果不长存；「专辑没有动态封面」是确定答案。
 const MOTION_TTL_MS = 24 * 60 * 60 * 1000;
-const NO_MOTION_TTL_MS = 60 * 60 * 1000;
+const NO_MOTION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+export function motionTtlMs(result: MotionResult): number {
+  return result.hasMotion ? MOTION_TTL_MS : NO_MOTION_TTL_MS;
+}
 
 export function motionArtworkCacheKey(parsed: AppleMusicParsed): string {
   return parsed.albumId
@@ -22,7 +27,7 @@ export function motionArtworkCacheKey(parsed: AppleMusicParsed): string {
 }
 
 export async function resolveMotionArtwork(parsed: AppleMusicParsed): Promise<MotionResult> {
-  return cached(motionArtworkCacheKey(parsed), (result: MotionResult) => (result.hasMotion ? MOTION_TTL_MS : NO_MOTION_TTL_MS), () => loadMotionArtwork(parsed));
+  return cached(motionArtworkCacheKey(parsed), motionTtlMs, () => loadMotionArtwork(parsed));
 }
 
 async function loadMotionArtwork(parsed: AppleMusicParsed): Promise<MotionResult> {
