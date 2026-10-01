@@ -15,6 +15,7 @@ import {
   type SocketMark,
   type SocketSample,
 } from "./live-census";
+import { AudienceSync } from "./live-audience";
 import { ROOM_ID } from "./live-platform";
 import { ConfigError, issueMusicKitToken } from "./musickit-token";
 import { getAllowedOrigins, getCorsHeaders, isAllowedOrigin, isAllowedOriginValue } from "./origins";
@@ -135,14 +136,22 @@ async function handleMusicKitToken(request: Request, env: Env, cors: Headers): P
 
 const SWEEP_INTERVAL_MS = HEARTBEAT_INTERVAL_MS;
 
+const AUDIENCE_KEY = "audience";
+
 // DO 休眠会销毁实例字段；连接与可见性须从运行时恢复，自动回复须在构造函数登记。
 export class LivePushRoom extends DurableObject<Env> {
   private upstream: WebSocket | null = null;
   private upstreamPing: ReturnType<typeof setInterval> | null = null;
+  private readonly audienceSync: AudienceSync;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
+    this.audienceSync = new AudienceSync({
+      told: () => ctx.storage.get<boolean>(AUDIENCE_KEY),
+      tell: (watched) => env.STATE.get(env.STATE.idFromName("global")).noteAudience(watched),
+      remember: (watched) => ctx.storage.put(AUDIENCE_KEY, watched),
+    });
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -155,9 +164,11 @@ export class LivePushRoom extends DurableObject<Env> {
     const server = pair[1];
 
     const now = Date.now();
-    const visible = new URL(request.url).searchParams.get("visible") === "1";
+    const params = new URL(request.url).searchParams;
+    const visible = params.get("visible") === "1";
+    const relay = params.get("relay") === "1";
     this.ctx.acceptWebSocket(server);
-    server.serializeAttachment({ at: now, visible, seenAt: now } satisfies SocketMark);
+    server.serializeAttachment({ at: now, visible, seenAt: now, relay } satisfies SocketMark);
     this.ctx.waitUntil(this.ensureUpstreamRelay());
     this.ctx.waitUntil(this.announce(this.census(), server));
 
@@ -168,7 +179,8 @@ export class LivePushRoom extends DurableObject<Env> {
     const base = process.env.UPSTREAM_API_URL?.trim().replace(/\/+$/, "");
     if (!base || this.upstream) return;
     try {
-      const response = await fetch(`${base}/ws`, {
+      // 本地页面靠这条中继收生产推送；它不算在线人数，但要让生产的 StateHub 知道有人在看。
+      const response = await fetch(`${base}/ws?relay=1`, {
         headers: { Upgrade: "websocket", Origin: site.url },
       });
       const socket = response.webSocket;
@@ -289,18 +301,29 @@ export class LivePushRoom extends DurableObject<Env> {
     }
   }
 
+  // 通知失败不重试：下一次清点（连接、可见性消息、关闭或清扫闹钟）会再比对一次。
+  private async syncAudience(census: Census<WebSocket>): Promise<void> {
+    try {
+      await this.audienceSync.update(census.watched);
+    } catch (error) {
+      console.warn("[audience]", reason(error));
+    }
+  }
+
   // 已有闹钟不能反复后推，否则持续切换标签会无限推迟清扫。
   private async announce(census: Census<WebSocket>, newcomer?: WebSocket): Promise<void> {
     this.publishOnline(census, newcomer);
     if (census.online > 0 && (await this.ctx.storage.getAlarm()) === null) {
       await this.ctx.storage.setAlarm(Date.now() + SWEEP_INTERVAL_MS);
     }
+    await this.syncAudience(census);
   }
 
   async alarm(): Promise<void> {
     const census = this.census();
     this.publishOnline(census);
     if (census.online > 0) await this.ctx.storage.setAlarm(Date.now() + SWEEP_INTERVAL_MS);
+    await this.syncAudience(census);
   }
 
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
@@ -308,7 +331,7 @@ export class LivePushRoom extends DurableObject<Env> {
     if (visible === null) return;
     const now = Date.now();
     const mark = readMark(ws.deserializeAttachment(), now);
-    ws.serializeAttachment({ at: mark?.at ?? now, visible, seenAt: now } satisfies SocketMark);
+    ws.serializeAttachment({ at: mark?.at ?? now, visible, seenAt: now, relay: mark?.relay ?? false } satisfies SocketMark);
     await this.announce(this.census(undefined, now));
   }
 

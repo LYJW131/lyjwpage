@@ -13,6 +13,7 @@ export type SocketMark = {
   at: number;
   visible: boolean;
   seenAt: number;
+  relay: boolean;
 };
 
 export type SocketSample<T> = {
@@ -24,6 +25,7 @@ export type SocketSample<T> = {
 export type Census<T> = {
   connections: number;
   online: number;
+  watched: boolean;
   expired: T[];
 };
 
@@ -35,23 +37,27 @@ export function readMark(raw: unknown, fallbackAt: number | null = null): Socket
     at,
     visible: value?.visible === true,
     seenAt: typeof value?.seenAt === "number" ? value.seenAt : at,
+    relay: value?.relay === true,
   };
 }
 
 export function takeCensus<T>(samples: Iterable<SocketSample<T>>, now: number): Census<T> {
   let connections = 0;
   let online = 0;
+  let relays = 0;
   const expired: T[] = [];
   for (const { socket, pinged, mark } of samples) {
     // 后台刚恢复时 ping 可能仍是被节流的旧值，可见性消息也必须续活。
     const lastSeen = Math.max(pinged ?? -Infinity, mark?.at ?? -Infinity, mark?.seenAt ?? -Infinity);
     const silentMs = Number.isFinite(lastSeen) ? now - lastSeen : Number.POSITIVE_INFINITY;
-    if (silentMs <= CONNECTION_STALE_MS) connections += 1;
-    else if (silentMs > CONNECTION_CLOSE_MS) expired.push(socket);
+    if (silentMs <= CONNECTION_STALE_MS) {
+      connections += 1;
+      if (mark?.relay) relays += 1;
+    } else if (silentMs > CONNECTION_CLOSE_MS) expired.push(socket);
     // 时钟回退产生的负间隔仍视为存活，避免误删在线访客。
     if (mark?.visible && silentMs <= VISIBLE_STALE_MS) online += 1;
   }
-  return { connections, online, expired };
+  return { connections, online, watched: online + relays > 0, expired };
 }
 
 export function parseVisibility(message: unknown): boolean | null {
