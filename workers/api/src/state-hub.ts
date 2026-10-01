@@ -74,17 +74,14 @@ export class StateHub extends DurableObject<Env> {
     this.ctx.storage.sql.exec("INSERT INTO metadata(key, value) VALUES ('initialized', '1') ON CONFLICT(key) DO UPDATE SET value = '1'");
   }
 
-  async publicBarrier(): Promise<boolean> {
-    if (!this.ready()) return false;
-    await this.ingestTail;
-    return this.ready();
-  }
-
-  publicRead(commands: StorageCommand[]): StorageResult[] {
-    if (!this.ready()) throw new Error("State storage is not initialized");
+  // 读取与初始化、提交可见性屏障同一次 RPC 完成；null 表示存储尚未初始化。
+  async publicRead(commands: StorageCommand[]): Promise<StorageResult[] | null> {
     if (commands.some((command) => command.op !== "get" && command.op !== "fields" && command.op !== "listRange")) {
       throw new Error("publicRead only accepts read commands");
     }
+    if (!this.ready()) return null;
+    await this.ingestTail;
+    if (!this.ready()) return null;
     return this.database.execute(commands) as StorageResult[];
   }
 
