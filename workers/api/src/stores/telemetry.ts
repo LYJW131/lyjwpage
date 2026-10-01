@@ -1,3 +1,4 @@
+import { keepEnrichment, type TrackEnrichment } from "@/lib/track-enrichment";
 import { recordCodingObservation } from "@api/stores/coding-pulse";
 import { isCodingApp } from "@shared/coding-apps";
 import { listeningObservation } from "@shared/pulse-listening";
@@ -41,6 +42,7 @@ type TelemetryPatch = {
   desktopIconAssets?: [string, string][];
   timezone?: TimezoneActivity | null;
   music?: LocalNowPlaying | null;
+  musicEnrichment?: TrackEnrichment | null;
   upcomingTracks?: PlayingQueueTrack[];
 };
 
@@ -55,6 +57,7 @@ async function persistTelemetryState(
       patch.desktopIconAssets ?? [...telemetryState.desktopIconAssets],
     timezone: "timezone" in patch ? (patch.timezone ?? null) : telemetryState.timezone,
     music: "music" in patch ? (patch.music ?? null) : telemetryState.music,
+    musicEnrichment: "music" in patch ? (patch.musicEnrichment ?? null) : telemetryState.musicEnrichment,
     upcomingTracks:
       "upcomingTracks" in patch ? (patch.upcomingTracks ?? []) : telemetryState.upcomingTracks,
     activityReceivedAt:
@@ -70,7 +73,7 @@ async function persistTelemetryState(
   if ("desktop" in patch) fields.push("desktop", "desktopIconAssets", "activityReceivedAt");
   else if ("desktopIconAssets" in patch) fields.push("desktopIconAssets");
   if ("timezone" in patch) fields.push("timezone", "timezoneReceivedAt");
-  if ("music" in patch) fields.push("music", "upcomingTracks", "activityReceivedAt");
+  if ("music" in patch) fields.push("music", "musicEnrichment", "upcomingTracks", "activityReceivedAt");
 
   await mirror.merge(incoming, fields);
 }
@@ -256,19 +259,22 @@ export async function commitPreparedTelemetryEnvelope(command: PreparedTelemetry
 
     if ("appleMusic" in modules) {
       const { music, upcomingTracks } = modules.appleMusic!;
+      const enrichment = keepEnrichment(music, modules.appleMusic!.enrichment, telemetryState.musicEnrichment);
       const wasLive = liveTrack(telemetryState.music) != null;
       telemetryState.music = music;
+      telemetryState.musicEnrichment = enrichment;
       telemetryState.upcomingTracks = upcomingTracks;
       telemetryState.activityReceivedAt = receivedAt;
       patch.music = music;
+      patch.musicEnrichment = enrichment;
       patch.upcomingTracks = upcomingTracks;
       accepted += 1;
-      // 后台目录查询只能使用本次提交快照，重读当前曲目可能串到下一封上报。
+      // 推送只能使用本次提交快照，重读当前曲目可能串到下一封上报。
       telemetryListening.push(
         listeningEffect(liveness, playableHomePod(await homePod), {
           music,
           receivedAt,
-          upcomingTracks,
+          enrichment,
         }),
       );
       if (wasLive !== (liveTrack(music) != null)) telemetryTags.push(NOW_LISTENING_TAG);
@@ -326,13 +332,13 @@ function listeningEffect(
   mac?: {
     music: LocalNowPlaying | null;
     receivedAt: number;
-    upcomingTracks?: PlayingQueueTrack[];
+    enrichment: TrackEnrichment | null;
   },
 ): ListeningEffect {
   const source = mac ?? {
     music: telemetryState.music,
     receivedAt: telemetryState.activityReceivedAt,
-    upcomingTracks: telemetryState.upcomingTracks,
+    enrichment: telemetryState.musicEnrichment,
   };
   return {
     kind: "listening",
@@ -342,7 +348,7 @@ function listeningEffect(
     mac: {
       music: source.music,
       receivedAt: source.receivedAt,
-      upcomingTracks: source.upcomingTracks ?? [],
+      enrichment: source.enrichment,
     },
   };
 }

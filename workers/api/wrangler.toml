@@ -26,6 +26,7 @@ binding = "CF_VERSION_METADATA"
 "@/lib/apple-developer-token" = "./src/apple-developer-token.ts"
 "@/lib/apple-music-credentials" = "./src/apple-music-credentials.ts"
 "@/lib/lag-store" = "./src/lag-store.ts"
+"@/lib/apple-cache-store" = "./src/apple-cache-store.ts"
 
 [[durable_objects.bindings]]
 name = "LIVE_PUSH"
@@ -38,6 +39,10 @@ id = "c24d1670d97b4649ab5aa4c0944dfbfc"
 [[kv_namespaces]]
 binding = "LAG"
 id = "e9c72a9517884aeb95db7386b630a691"
+
+[[kv_namespaces]]
+binding = "APPLE_CACHE"
+id = "da83c6ece9694300b707cb87c915610c"
 
 [[d1_databases]]
 binding = "HISTORY"

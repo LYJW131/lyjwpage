@@ -20,6 +20,7 @@ APPLE_MUSIC_STOREFRONT = "cn"
 "@/lib/storage-driver" = "./src/storage-driver.ts"
 "@/lib/apple-music-credentials" = "./src/apple-music-credentials.ts"
 "@/lib/lag-store" = "./src/lag-store.ts"
+"@/lib/apple-cache-store" = "./src/apple-cache-store.ts"
 
 # 跨本地 Worker 共享 KV 必须使用同一个 id。
 [[kv_namespaces]]
@@ -29,6 +30,10 @@ id = "00000000000000000000000000000002"
 [[kv_namespaces]]
 binding = "LAG"
 id = "00000000000000000000000000000001"
+
+[[kv_namespaces]]
+binding = "APPLE_CACHE"
+id = "00000000000000000000000000000003"
 
 [[durable_objects.bindings]]
 name = "LIVE_PUSH"

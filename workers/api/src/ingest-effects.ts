@@ -2,11 +2,10 @@ import { AsyncLocalStorage } from "node:async_hooks";
 
 import type { LiveEvent } from "@/lib/live-events";
 import { pickNowListening } from "@/lib/now-listening";
-import type { PlayingQueueTrack } from "@/lib/playing-queue";
 import type { Liveness } from "@/lib/reporter-liveness";
 import type { LocalNowPlaying } from "@/lib/types";
 import type { StoredHomePod } from "@shared/homepod-store";
-import { decorateCandidate } from "@shared/telemetry";
+import { candidateFrom, type TrackEnrichment } from "@/lib/track-enrichment";
 
 import { afterResponse, expireStatusTags, publish } from "./live-platform";
 
@@ -18,7 +17,7 @@ export type ListeningEffect = {
   mac?: {
     music: LocalNowPlaying | null;
     receivedAt: number;
-    upcomingTracks: PlayingQueueTrack[];
+    enrichment: TrackEnrichment | null;
   };
 };
 
@@ -70,23 +69,15 @@ export function collectListeningEffect(effect: ListeningEffect): boolean {
   return true;
 }
 
-async function resolveListeningEffect(effect: ListeningEffect): Promise<LiveEvent> {
+function resolveListeningEffect(effect: ListeningEffect): LiveEvent {
   const source = effect.mac;
-  const [mac, homePod] = await Promise.all([
-    source && effect.activeModules.includes("appleMusic")
-      ? decorateCandidate(source.music, source.receivedAt, source.upcomingTracks)
-      : null,
-    effect.homePod
-      ? decorateCandidate(effect.homePod.music, effect.homePod.receivedAt)
-      : null,
-  ]);
+  const mac = source && effect.activeModules.includes("appleMusic")
+    ? candidateFrom(source.music, source.receivedAt, source.enrichment)
+    : null;
+  const homePod = effect.homePod ? candidateFrom(effect.homePod.music, effect.homePod.receivedAt, effect.homePod.enrichment) : null;
   return {
     type: "listening-now",
-    payload: pickNowListening({
-      mac,
-      homePod,
-      macReceivedAt: source?.receivedAt ?? 0,
-    }, effect.liveness),
+    payload: pickNowListening({ mac, homePod, macReceivedAt: source?.receivedAt ?? 0 }, effect.liveness),
   };
 }
 
@@ -95,7 +86,7 @@ export async function dispatchIngestEffect(effect: IngestEffect): Promise<void> 
     await expireStatusTags(effect.tags);
     return;
   }
-  const event = effect.kind === "event" ? effect.event : await resolveListeningEffect(effect);
+  const event = effect.kind === "event" ? effect.event : resolveListeningEffect(effect);
   await publish(event);
 }
 

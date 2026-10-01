@@ -28,6 +28,9 @@
       "@/lib/lag-store": [
         "./src/lag-store.ts"
       ],
+      "@/lib/apple-cache-store": [
+        "./src/apple-cache-store.ts"
+      ],
       "@/*": [
         "../../src/*"
       ],

@@ -68,6 +68,7 @@ try {
     { binding: 'LAG', id: '00000000000000000000000000000001' },
     { binding: 'CREDENTIALS', id: '00000000000000000000000000000002' },
   ];
+  const apiKv = [...kv, { binding: 'APPLE_CACHE', id: '00000000000000000000000000000003' }];
   // Configs live outside the checkout so Wrangler cannot load real .dev.vars or production bindings.
   const api = {
     name: 'isolated-api', main: join(root, 'workers/api/src/index.ts'),
@@ -78,7 +79,7 @@ try {
       DEV_OVERRIDES: 'true',
       APPLE_MUSIC_PRIVATE_KEY: musicKitPem, APPLE_MUSIC_TEAM_ID: 'ISOLATEDTM', APPLE_MUSIC_KEY_ID: 'ISOLATEDKY',
     },
-    alias: Object.fromEntries(['storage-driver', 'apple-developer-token', 'apple-music-credentials', 'lag-store']
+    alias: Object.fromEntries(['storage-driver', 'apple-developer-token', 'apple-music-credentials', 'lag-store', 'apple-cache-store']
       .map(name => [`@/lib/${name}`, join(root, `workers/api/src/${name}.ts`)])),
     durable_objects: { bindings: [
       { name: 'LIVE_PUSH', class_name: 'LivePushRoom' },
@@ -89,7 +90,7 @@ try {
       { tag: 'v1', new_sqlite_classes: ['LivePushRoom'] },
       { tag: 'v3', new_sqlite_classes: ['StateHub'] },
     ],
-    kv_namespaces: kv,
+    kv_namespaces: apiKv,
   };
   const ingress = {
     name: 'isolated-ingress', main: join(root, 'workers/ingress/src/index.ts'),

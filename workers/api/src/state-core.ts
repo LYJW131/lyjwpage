@@ -8,6 +8,7 @@ import type { ListeningItem, RecentTrack } from "@/lib/types";
 
 import { commitRecentlyPlayed, commitRecentTracks } from "./apple-music-recent";
 import { dispatchIngestEffects } from "./ingest-effects";
+import { enrichCommand, enrichRecentlyPlayed } from "./listening-enrichment";
 import { expireStatusTags, ROOM_ID } from "./live-platform";
 import { issueApiDeveloperToken } from "./musickit-token";
 import { requestStore, type Env } from "./runtime";
@@ -20,7 +21,7 @@ export class StateCore extends WorkerEntrypoint<Env> implements StateCoreRpc {
   // 必须先派发效果再处理提交失败：较早模块已落库的变化仍需通知。
   async commitIngest(command: CoreCommand): Promise<CommitReply> {
     return this.scoped(async () => {
-      const result = await this.hub().commitIngest(command);
+      const result = await this.hub().commitIngest(await enrichCommand(command));
       await dispatchIngestEffects(result.effects);
       if (!result.ready) return { ready: false, ok: false };
       if (!result.ok) return { ready: true, ok: false, error: result.error };
@@ -49,7 +50,7 @@ export class StateCore extends WorkerEntrypoint<Env> implements StateCoreRpc {
   }
 
   async commitRecentlyPlayed(items: ListeningItem[]): Promise<{ changed: boolean }> {
-    return this.scoped(() => commitRecentlyPlayed(items));
+    return this.scoped(async () => commitRecentlyPlayed(await enrichRecentlyPlayed(items)));
   }
 
   async commitRecentTracks(tracks: RecentTrack[]): Promise<{ traced: boolean }> {

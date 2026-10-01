@@ -6,7 +6,7 @@ import {
   pickCatalogHit,
   type CatalogSong,
 } from "@/lib/apple-music-lookup";
-import { cached } from "@/lib/cache";
+import { cached } from "@/lib/apple-cache";
 
 
 export type Credentials = {
@@ -73,6 +73,12 @@ export type TrackLookup = {
   hasLyrics: boolean;
 };
 
+// 专辑名必须进 key：同名同艺人但不同专辑是完全不同的链接
+// 缓存形状或匹配策略变化必须换键；旧字符串的 .link 是内建方法，不能当作新对象读取。
+export function trackLookupCacheKey(track: { title: string | null; artist: string | null; album: string | null }): string {
+  return "apple-music:track-lookup:v10:" + [track.title, track.artist, track.album].map(normalizeForMatch).join(":");
+}
+
 export async function resolveTrackLookup(track: {
   title: string | null;
   artist: string | null;
@@ -83,11 +89,7 @@ export async function resolveTrackLookup(track: {
   const terms = catalogSearchTerms(track.title, track.artist, track.album);
   const searchUrl = `https://music.apple.com/search?term=${encodeURIComponent(terms.at(-1) ?? track.title)}`;
 
-  // 专辑名必须进 key：同名同艺人但不同专辑是完全不同的链接
-  // 缓存形状或匹配策略变化必须换键；旧字符串的 .link 是内建方法，不能当作新对象读取。
-  const cacheKey =
-    "apple-music:track-lookup:v10:" +
-    [track.title, track.artist, track.album].map(normalizeForMatch).join(":");
+  const cacheKey = trackLookupCacheKey(track);
 
   try {
     const exact = await cached<TrackLookup>(cacheKey, TRACK_LINK_TTL_MS, async () => {

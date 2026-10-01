@@ -30,6 +30,12 @@ import { prepareIngest as prepareShared, type CoreCommand } from "@shared/ingest
 import { resetStoredImageCacheForTests, type ImageBucket } from "@shared/ingest/r2-assets";
 import type { PreparedTelemetryEnvelope } from "@shared/ingest/telemetry";
 import { commitPreparedIngest } from "./ingest-handlers";
+import { enrichCommand } from "./listening-enrichment";
+import { trackLookupCacheKey } from "@/lib/apple-music";
+import { installAppleCacheForTests } from "../../../src/lib/apple-cache-store";
+import { motionArtworkCacheKey } from "@/lib/motion-artwork";
+import { parseAppleMusicUrl } from "@/lib/motion-artwork-url";
+import { MemoryKv } from "@/lib/testing/memory-kv";
 import { requestStore, type Env } from "./runtime";
 
 const NOW = 1_800_000_000_000;
@@ -694,6 +700,50 @@ test("listening effects retain the track from their own commit", async () => {
     assert.equal(broadcasts, 1);
   } finally {
     globalThis.fetch = originalFetch;
+    resetStorageForTests();
+  }
+});
+
+test("StateCore enrichment is stored with the track and the push reads it without network", async () => {
+  const storage = new FakeStorage();
+  installStorageForTests(storage);
+  const kv = new MemoryKv();
+  installAppleCacheForTests(kv);
+  const env = testEnv();
+  const link = "https://music.apple.com/cn/album/x/1500?i=1501";
+  kv.values.set(`lyjwpage:${trackLookupCacheKey({ title: "First", artist: "Artist", album: null })}`,
+    JSON.stringify({ link, artwork: null, id: "1500", songId: "1501", hasLyrics: false }));
+  kv.values.set(`lyjwpage:${motionArtworkCacheKey(parseAppleMusicUrl(link)!)}`,
+    JSON.stringify({ hasMotion: true, videoUrl: "https://mvod/x.m3u8", colors: null }));
+  const originalFetch = globalThis.fetch;
+  let fetches = 0;
+  globalThis.fetch = (async () => {
+    fetches += 1;
+    throw new Error("network disabled");
+  }) as typeof fetch;
+  try {
+    const prepared = await inRequest(env, () => prepareIngest("mac", envelope({
+      appleMusic: { state: "playing", title: "First", artist: "Artist", observedAt: NOW },
+    }, ["appleMusic"]), NOW));
+    const enriched = await inRequest(env, () => enrichCommand(prepared));
+    const result = await commit(env, enriched);
+    assert.equal(result.ok, true);
+    const stored = await inRequest(env, () => telemetryMirror.get());
+    assert.equal(stored?.musicEnrichment?.songId, "1501");
+    const messages: string[] = [];
+    const dispatchEnv = {
+      ...env,
+      LIVE_PUSH: { idFromName: () => null, get: () => ({ broadcast: async (message: string) => { messages.push(message); } }) },
+    } as unknown as Env;
+    await inRequest(dispatchEnv, () => dispatchIngestEffects(result.effects));
+    const event = JSON.parse(messages[0]!) as { type: string; payload: { songId: string; motion: unknown } };
+    assert.equal(event.type, "listening-now");
+    assert.equal(event.payload.songId, "1501");
+    assert.deepEqual(event.payload.motion, { videoUrl: "https://mvod/x.m3u8", colors: null });
+    assert.equal(fetches, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+    installAppleCacheForTests(null);
     resetStorageForTests();
   }
 });

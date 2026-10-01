@@ -22,7 +22,7 @@
 - 根目录 `src/lib/status-views.ts`：公开状态视图登记表（`path` / `layer` / `tag` / `event`）。路径常量、数据层、Vercel 缓存标签、事件→路径全部由它派生；可滞后层（`layer: "lag"`）不能带推送事件，模块加载时断言。
 - 根目录 `src/lib/status-loaders.ts`：按同一组 key 登记 `endpoint(params)`，单端点由 `src/public-api.ts` 通用分发到对应 loader。`trophies` 无参回摘要（与首屏、推送同形状），带 `?titleids=` 回那几款的完整目录。
 - `src/public-api.ts`、`src/public-execution.ts`：普通 Worker 中的公开 API 入口。已知路由先匹配，状态端点按 loader 表通用分发。StateHub 初始化/提交可见性屏障不单独发 RPC，由每次 `StateHub.publicRead` 随读取一起过：未初始化返回 `null`，入口据此回 503。屏障等待已经进入 `commitIngest()` 队列的提交，不等待仍在普通 Worker 做输入准备或 R2 HEAD 的请求；提交返回 202 后，经过 StateHub 的权威读取可见其持久化结果。可滞后层（`layer: "lag"`）的端点只读 `LAG` KV，写入方也不经 `commitIngest()` 队列，不发读取，也就不过屏障、不唤醒 StateHub（本地开着 `DEV_OVERRIDES` 时要先查 DO 里的注入，那次读取照常过屏障）；下面的按参数查询同样不过。
-- `src/lookup-routes.ts`、`src/edge-cache.ts`：`/api/lyrics`、`/api/motion-artwork` 按参数查询，结果只由参数决定，不过公开读屏障。先查当前机房的 Cache API（`caches.default`），命中不进 StateHub；未命中回源，只有 200 写回，按响应的 `max-age` 过期。条目只在当前机房、跨部署保留、不合并并发未命中，键里带 SQLite 那层的版本段，响应外形变了升 `EDGE_CACHE_VERSION`。存的响应不含 CORS 头，`X-Edge-Cache: hit | miss | bypass` 标识命中。
+- `src/lookup-routes.ts`、`src/edge-cache.ts`：`/api/lyrics`、`/api/motion-artwork` 按参数查询，结果只由参数决定，不过公开读屏障。它们是给网页播放器按任意曲目查的按需端点，也是读取路径上唯一会现查 Apple 的入口；结果缓存在 `APPLE_CACHE` KV。先查当前机房的 Cache API（`caches.default`），命中不进 StateHub；未命中回源，只有 200 写回，按响应的 `max-age` 过期。条目只在当前机房、跨部署保留、不合并并发未命中，键里带 SQLite 那层的版本段，响应外形变了升 `EDGE_CACHE_VERSION`。存的响应不含 CORS 头，`X-Edge-Cache: hit | miss | bypass` 标识命中。
 - `src/storage-driver.ts`：通过 alias 接入 StateHub 的 SQLite 存储驱动；同一公开请求、同一 microtask 的相邻只读批次合并成一次 DO RPC（命令数上限 `shared/storage-contract.ts` 的 `STORAGE_MAX_COMMANDS`），写批次保持原事务顺序。
 - `src/lag-store.ts`：`@/lib/lag-store` 在 Worker 里的实现，读 `LAG` KV（可滞后层，格式见 `shared/lag.ts`）。厂商状态、GitHub、Vercel、Cloudflare、Sentry 这几条端点只读采集 Worker 写的那几条键，Vercel 与 Cloudflare 两条按名字把几条键拼成一份。
 - `src/dev-override-reader.ts`：只在本地绑定的具名入口 `DevOverrideReader`，推送房间转发生产事件前经它查假数据注入。
@@ -169,6 +169,8 @@ Worker 在 SQLite 写入完成后，仅对首屏布局变化在 `waitUntil` 后�
 ESA 首页不走数据上报通知：`lyjw131.com` 以 `lyjw.me` 为源站，边缘按源站 `Cache-Control` 的 SWR 头（根目录 `next.config.ts`）自行缓存与后台取新，控制台缓存规则见 [仓库外事实](../../docs/ops-facts.md)。新版本部署上线时，由 GitHub Actions（`.github/workflows/purge-esa.yml`）刷新首页并预热边缘缓存，等两个域名的 `/api/version` 都答出这次部署的 sha 后，再调上报入口的 `POST /api/internal/site-deployed`；上报入口验过之后调这里的 `StateCore.broadcastVersion()`，向所有连着的页面广播不带数据的 `version` 事件，页面重问 `/api/version` 并弹出更新提示（同时请采集 Worker 重拉部署列表，见上报入口 README）；站点自己的版本轮询因此只作兜底。日常上报不触发刷新。
 
 Vercel 仍采用后台重建，通知成功不代表新 HTML 已生成。ESA 后台回源可能取得 Vercel 仍在重建中的旧 HTML，下一轮刷新时收敛；这条链路不承诺两层缓存同步完成更新。首屏新鲜度不依赖这两层：浏览器挂载后直接向 Worker 取最新状态。
+
+「正在听」的写入时补全在 `src/listening-enrichment.ts`：`StateCore.commitIngest` 对 Mac（带 `appleMusic` 模块时）和 HomePod 的报文先调 `src/lib/track-enrichment.ts#enrichTrack`，查曲目目录（当前这首和队列里的后几首）、动态封面，并把歌词预热进缓存，再把结果放进报文交给 StateHub；Mac 存成遥测字段 `musicEnrichment`，HomePod 存成快照的 `enrichment`。补全有总超时 `ENRICHMENT_TIMEOUT_MS`，失败或超时就存成未补全，同一曲目的下一封上报再补。补全结果带 `trackKey`，读取时对不上当前曲目就按未补全处理。`listening/now` 读取与 `listening-now` 推送都只用存好的补全（`candidateFrom`），不请求 Apple。最近播放首项的动态封面由 `StateCore.commitRecentlyPlayed` 补进该项的 `motion`。
 
 公开 API 为 `/api/status/*`、`/api/lyrics`、`/api/motion-artwork`，没有聚合端点。Vercel 生成或重建首页时按卡读各条端点（`src/lib/first-screen.ts`），浏览器挂载后实时卡各自回源一次、之后各端点按各自周期轮询。服务端凭据不进入任何公开响应，没有通用 HTTP 数据库端点。跨域活动脉搏（pulse）的出口是 `GET /api/status/pulse`，见下面一节。
 

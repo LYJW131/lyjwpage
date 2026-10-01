@@ -116,8 +116,8 @@
   - 换句动作由边界精确定时器驱动，与当前音轨算法一致。
 
 ### 接口缓存与公开查询策略
-- `GET /api/lyrics?song=<ID>`：按曲目 ID 查询，`song` 必填，卡片 hero 与网页播放器都走这条；结果按 URL 进行 `public, s-maxage` 长效缓存（有词与无词的缓存期不同，见 `workers/api/src/routes/lyrics/route.ts`）。
-- 首屏那首的歌词由站点在拿到「此刻在听」之后按曲目读 `/api/lyrics`；`/api/lyrics` 与 `/api/motion-artwork` 只做按键查询，不回答「此刻」，所以不归 `/api/status/*`。
+- `GET /api/lyrics?song=<ID>`：按曲目 ID 查询，`song` 必填，卡片 hero 与网页播放器都走这条（「正在听」那首在写入时已预热进 `APPLE_CACHE`，网页播放器播到别的曲目才现查 Apple）；结果按 URL 进行 `public, s-maxage` 长效缓存（有词与无词的缓存期不同，见 `workers/api/src/routes/lyrics/route.ts`）。
+- 首屏那首的歌词由站点在拿到「此刻在听」之后按曲目读 `/api/lyrics`；`/api/lyrics` 与 `/api/motion-artwork` 只做按键查询，不回答「此刻」，所以不归 `/api/status/*`。卡片主图的动态封面不再查 `/api/motion-artwork`，读 `listening/now` 与最近播放首项里存好的 `motion`；`/api/motion-artwork` 只剩网页播放器在用。
 
 ---
 

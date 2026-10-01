@@ -1,3 +1,4 @@
+import type { TrackEnrichment } from "@/lib/track-enrichment";
 import {
   normalizeChargingDevice,
   normalizePowerBank,
@@ -62,7 +63,7 @@ export type PreparedTelemetryEnvelope = {
     };
     desktop?: PreparedDesktop;
     timezone?: TimezoneActivity | null;
-    appleMusic?: { music: LocalNowPlaying | null; upcomingTracks: PlayingQueueTrack[] };
+    appleMusic?: { music: LocalNowPlaying | null; upcomingTracks: PlayingQueueTrack[]; enrichment?: TrackEnrichment | null };
     appleMusicCredentials?: { musicUserToken: string };
   };
   // 失败须留到对应提交阶段再抛，不能撤销更早模块已承诺的写入。

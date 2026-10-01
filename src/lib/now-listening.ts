@@ -1,6 +1,6 @@
 import { homePodVisibleAt } from "@/lib/homepod-store";
 import { offlineByLiveness, withPresence, type Liveness } from "@/lib/reporter-liveness";
-import type { LocalNowPlaying, NowListeningAlternate, NowListeningPayload } from "@/lib/types";
+import type { LocalNowPlaying, NowListeningAlternate, NowListeningPayload, TrackMotion } from "@/lib/types";
 
 export const MUSIC_PAUSE_GRACE_MS = 10_000;
 
@@ -18,6 +18,7 @@ export type NowListeningCandidate = {
   songId: string | null;
   upcomingSongIds: string[];
   hasLyrics: boolean;
+  motion: TrackMotion | null;
 };
 
 function isPausedFresh(music: LocalNowPlaying, now: number) {
@@ -32,6 +33,7 @@ function alternateOf(candidate: NowListeningCandidate): NowListeningAlternate {
     songId: candidate.songId,
     upcomingSongIds: candidate.upcomingSongIds,
     hasLyrics: candidate.hasLyrics,
+    motion: candidate.motion,
   };
 }
 
@@ -66,6 +68,7 @@ export function pickNowListening(
     songId: chosen?.songId ?? null,
     upcomingSongIds: chosen?.upcomingSongIds ?? [],
     hasLyrics: chosen?.hasLyrics ?? false,
+    motion: chosen?.motion ?? null,
     expiresInMs:
       chosen?.music.state === "paused"
         ? Math.max(0, MUSIC_PAUSE_GRACE_MS - (now - chosen.music.observedAt))

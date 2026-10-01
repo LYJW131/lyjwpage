@@ -155,6 +155,7 @@ export function liveNowListening(payload: NowListeningPayload, macOffline: boole
     songId: next?.songId ?? null,
     upcomingSongIds: next?.upcomingSongIds ?? [],
     hasLyrics: next?.hasLyrics ?? false,
+    motion: next?.motion ?? null,
     expiresInMs: null,
     alternate: null,
   };

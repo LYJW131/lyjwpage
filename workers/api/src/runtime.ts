@@ -13,6 +13,7 @@ export interface Env extends MusicKitTokenEnv {
   HISTORY?: D1Database;
   CREDENTIALS?: KVNamespace;
   LAG?: KVNamespace;
+  APPLE_CACHE?: KVNamespace;
   REVALIDATE_SECRET?: string;
   TYPESAFE_API_KEY?: string;
   STATE_IMPORT_SECRET?: string;
