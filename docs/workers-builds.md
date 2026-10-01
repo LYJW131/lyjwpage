@@ -15,6 +15,10 @@ GitHub Actions 负责 lint、类型检查、单测与 CodeQL；Worker 发布由 
 | `collector` | `/` | `pnpm --dir workers/collector typecheck` | `pnpm --dir workers/collector exec wrangler deploy` |
 
 Workers Builds 在构建命令之前安装依赖。三个都使用根目录 `pnpm-lock.yaml` 与工作区，Wrangler 使用对应包锁定的版本。
+`api` 的 `typecheck` 先运行 `workers/api/scripts/write-build-metadata.mjs`，只把 Workers Builds 提供的 `WORKERS_CI_COMMIT_SHA`
+写进忽略的 `.wrangler` 构建产物；`wrangler.toml` 的 alias 将 `@api/build-metadata` 指向该产物，生产与 Preview 共用。
+直接运行 Wrangler 时由 `[build]` 执行同一脚本；本地测试配置不设此 alias，使用 `workers/api/src/build-metadata.ts` 的空值。
+缺失或无效 SHA 时不推测提交，也会覆盖旧产物；Sentry release 仍取 `CF_VERSION_METADATA.id`。
 三个生产 Worker 均启用构建缓存，生产版本只从 `main` 用 `wrangler deploy` 发布。
 `collector` 的分支预览构建和非生产分支构建都关掉：它的 `CORE` Service Binding 指向生产 `api`，
 预览版一跑就会往生产状态里写；非生产分支的默认命令还会把版本传到生产脚本上。

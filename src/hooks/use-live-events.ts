@@ -2,6 +2,7 @@
 
 import { useEffect, useSyncExternalStore } from "react";
 import { useSWRConfig } from "swr";
+import { logger } from "@sentry/nextjs";
 
 import type { ScopedMutator } from "swr";
 
@@ -9,6 +10,7 @@ import { mergeChargerHistory } from "@/lib/charger-history";
 import type { LiveEvent } from "@/lib/live-events";
 import { acceptPush } from "@/lib/status-reads";
 import { liveSocketUrl } from "@/lib/live-socket";
+import { createLiveConnectionDiagnostics } from "@/lib/live-connection-diagnostics";
 import { EARLY_LIVE_SOCKET_KEY, type EarlyLiveSocket } from "@/lib/live-socket-boot";
 import { APP_VERSION_PATH } from "@/lib/app-version";
 import {
@@ -144,9 +146,19 @@ export function useLiveSocketConnected(): boolean {
 }
 
 const MAX_BACKOFF_MS = 30_000;
+const connectionDiagnostics = createLiveConnectionDiagnostics((level, attributes) => {
+  logger[level]("[live] connection outcome", attributes);
+});
 
 function pageVisible(): boolean {
   return typeof document === "undefined" || document.visibilityState !== "hidden";
+}
+
+function connectionContext() {
+  return {
+    visible: pageVisible(),
+    online: typeof navigator === "undefined" || navigator.onLine,
+  };
 }
 
 function setConnected(value: boolean): void {
@@ -217,6 +229,7 @@ function open(mutate: ScopedMutator): void {
   if (!base || typeof window === "undefined") return;
 
   const early = adoptEarlySocket();
+  connectionDiagnostics.attempt();
   let ws: WebSocket;
   if (early) {
     ws = early.socket;
@@ -225,16 +238,18 @@ function open(mutate: ScopedMutator): void {
     const visible = pageVisible();
     try {
       ws = new WebSocket(`${base}?visible=${visible ? 1 : 0}`);
-    } catch (error) {
-      console.error("[live]", error instanceof Error ? error.message : String(error));
+    } catch {
+      connectionDiagnostics.fail({ cause: "constructor_error" }, connectionContext());
       return;
     }
     reportedVisible = visible;
   }
   socket = ws;
+  let hadError = false;
 
   // 预连 socket 可能早已发过 open，接管后须主动执行就绪逻辑。
   const onReady = () => {
+    connectionDiagnostics.ready(connectionContext());
     retryAttempts = 0;
     const reconnect = everConnected;
     everConnected = true;
@@ -253,15 +268,22 @@ function open(mutate: ScopedMutator): void {
   ws.onmessage = (event) => receive(mutate, event.data);
 
   ws.onerror = () => {
+    hadError = true;
     try {
       ws.close();
     } catch {}
   };
 
-  ws.onclose = () => {
+  ws.onclose = (event) => {
     teardown();
     setConnected(false);
     if (refCount <= 0) return;
+    connectionDiagnostics.fail({
+      cause: "socket_close",
+      closeCode: event.code,
+      wasClean: event.wasClean,
+      hadError,
+    }, connectionContext());
     const delay = Math.min(1_000 * Math.pow(1.5, retryAttempts), MAX_BACKOFF_MS);
     retryAttempts += 1;
     reconnectTimer = setTimeout(() => {
@@ -278,6 +300,7 @@ function open(mutate: ScopedMutator): void {
 }
 
 function close(): void {
+  connectionDiagnostics.stop(connectionContext());
   retryAttempts = 0;
   teardown();
   setConnected(false);
@@ -303,6 +326,7 @@ function handlePageShow(event: PageTransitionEvent): void {
     reportVisibility();
     return;
   }
+  if (socket) connectionDiagnostics.fail({ cause: "resume_closed" }, connectionContext());
   teardown();
   retryAttempts = 0;
   open(activeMutate);

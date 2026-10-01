@@ -491,6 +491,17 @@ GraphQL 的 `scriptName_in` 跟着它），不公开账号内其他 Worker；还
 `vitals`（站点 production 的 7 天 p75 与样本数，站点按 Lighthouse 曲线算出 Users 那行的分）。
 只放计数、比率和时刻，不放 issue 标题、报错内容和调用栈。
 
+排错事件由 `src/sentry.ts` 的既有 Sentry 包装收集；`fetch` 的后台 `announce` 不在 handler 的捕获范围内，单独捕获一次并继续抛出原错误。
+`src/durable-object-diagnostics.ts` 给原异常补充 `do.class`、`do.method` 和已定位的 `do.storage_operation`，不改变重试；
+`LivePushRoom` 的闹钟读取与写入分别标为 `getAlarm` / `setAlarm`。`retryable`、`overloaded`、`remote`
+只收布尔数据属性，缺失表示未知。调用在进入 DO 前失败时只有调用边界，不能据此推断某个存储操作失败。
+`deployment` 上下文保留 Worker 版本 ID；提交 SHA 的注入见 [原生部署配置](../../docs/workers-builds.md)，Sentry release 仍沿用版本 ID。
+
+浏览器 hook 接管后的 `src/lib/live-connection-diagnostics.ts` 在一次连接失败开始时记一条 warn，恢复或主动停止时记一条 info，
+同一次失败里的重试只累计次数。日志包含首次连接 / 重连、实际尝试次数、持续毫秒数、可见 / 联网状态和关闭码，
+不带关闭原因、异常文本、连接标识或消息载荷。恢复仅证明该浏览器重新连通，不证明与某个 Worker 异常一一对应；
+页面退出也可能来不及送达结束日志。
+
 ## 常驻上报器账本
 
 misaka-jp 上的 server-reporter 与 agents-reporter 每封报文顶上带一个 `reporter` 块：镜像提交（Actions 以 `GIT_SHA`
