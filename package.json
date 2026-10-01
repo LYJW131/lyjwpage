@@ -46,6 +46,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.3.0",
     "ioredis": "^6.0.0",
+    "parse5": "^7.3.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   },
