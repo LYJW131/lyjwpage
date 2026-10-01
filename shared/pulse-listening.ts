@@ -49,8 +49,8 @@ export type ListeningTrace = {
 };
 export const LISTENING_TRACE_CAP = 2000;
 
-// 最近播放每轮刷新（apple-recent 的 everyMinutes）只能定位到两次刷新之间；一首歌比刷新间隔长时，
-// 中间会有几轮列表不变。相邻两段之间不超过这个间隔就视为一直在放，后一段往前接到前一段末尾。
+// 最近播放每轮刷新只能定位到两次刷新之间（闲档间隔见 workers/collector 的 apple-recent IDLE_EVERY_MINUTES）；
+// 一首歌比刷新间隔长时，中间会有几轮列表不变。相邻两段之间不超过这个间隔就视为一直在放，后一段往前接到前一段末尾。
 export const LISTENING_TRACE_BRIDGE_MS = 6 * 60 * 1000;
 
 // Apple 播放历史可能延迟同步；保留匹配余量，避免把刚结束的播放误画成别处播放。

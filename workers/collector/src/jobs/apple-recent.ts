@@ -5,10 +5,11 @@ import {
   type Credentials,
 } from "@/lib/apple-music";
 import { readAppleMusicCredentials } from "@/lib/apple-music-credentials";
-import { cached } from "@/lib/cache";
+import { cached, get, put } from "@/lib/cache";
 import type { ListeningItem, RecentTrack } from "@/lib/types";
 
 import { ok, skipMissing, type Job } from "../job";
+import { epochMinute } from "../schedule";
 
 
 // 上游硬限制此数量，增加 limit 会直接返回 400。
@@ -20,6 +21,16 @@ const MAX_TRACK_PAGES = 5;
 // 资料库封面是预签名 URL，缓存期限必须短于签名有效期并留出分发余量。
 const LIBRARY_ARTWORK_TTL_MS = 12 * 60 * 60 * 1000;
 const USER_PLAYLIST_PREFIX = "pl.u-";
+
+// 列表只说明两次刷新之间变过：闲时按 Pulse 的 5 分钟桶拉；列表一变就进活跃档每分钟拉，
+// 一首歌只要放过就能单独落进一段，ACTIVE_HOLD_MS 内没再变化才回闲档。
+export const IDLE_EVERY_MINUTES = 5;
+export const ACTIVE_HOLD_MS = 10 * 60 * 1000;
+const LAST_CHANGE_KEY = "apple-recent:last-change";
+
+export function appleRecentDue(now: number, lastChangeAt: number | undefined): boolean {
+  return epochMinute(now) % IDLE_EVERY_MINUTES === 0 || (lastChangeAt !== undefined && now - lastChangeAt < ACTIVE_HOLD_MS);
+}
 
 type AppleArtwork = {
   url?: string;
@@ -184,13 +195,13 @@ export async function assembleRecentTracks(credentials: Credentials): Promise<Re
   }] : []);
 }
 
-// 列表只说明两次刷新之间变过；周期与 Pulse 的 5 分钟桶对齐，且长于多数单曲，推断段大多首尾相接。
 export const appleRecentJob: Job = {
   name: "apple-recent",
-  everyMinutes: 5,
+  everyMinutes: 1,
   offset: 0,
   maxRuntimeMinutes: 2,
-  async run({ env }) {
+  async run({ env, now, scheduled }) {
+    if (scheduled && !appleRecentDue(now, await get<number>(LAST_CHANGE_KEY))) return { status: "skipped", detail: "idle" };
     const credentials = await readAppleMusicCredentials();
     if (!credentials.ok && credentials.reason === "never-pushed") {
       return skipMissing("apple-recent", ["CREDENTIALS apple-music:v1"]);
@@ -201,6 +212,7 @@ export const appleRecentJob: Job = {
     const { changed } = await env.CORE.commitRecentlyPlayed(items.value);
     if (tracks.status === "rejected") throw tracks.reason;
     const { traced } = await env.CORE.commitRecentTracks(tracks.value);
+    if (changed || traced) await put(LAST_CHANGE_KEY, now, ACTIVE_HOLD_MS);
     return ok([changed && "changed", traced && "traced"].filter(Boolean).join(",") || undefined);
   },
 };
