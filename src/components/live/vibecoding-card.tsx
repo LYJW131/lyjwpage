@@ -1003,7 +1003,7 @@ export function VibeCodingCard({
   className?: string;
 }) {
   useLiveEvents();
-  const { data: usage, servedAt: usageServedAt } = useStatus<CodingUsagePayload>(CODING_PATH, REFRESH_MS, { fallback });
+  const { data: usage, servedAt: usageServedAt } = useStatus<CodingUsagePayload>(CODING_PATH, { fallback });
   const {
     data: now,
     servedAt: nowServedAt,

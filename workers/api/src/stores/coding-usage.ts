@@ -14,6 +14,8 @@ import type { CodingUsageAgent, CodingUsageReport } from "@shared/coding-usage";
 import { CODING_USAGE_SOURCE_NAMES, type CodingUsageSource } from "@shared/coding-usage-sources";
 import { applyCodingUsageStatus, buildCodingUsageView, type StoredCodingUsage, type StoredCodingUsageAgent } from "@shared/coding-usage-view";
 import type { StorageBatch } from "@shared/storage-client";
+import { LAG_KEYS } from "@shared/lag";
+import { markLagPending } from "../lag-mirror";
 
 
 export type CodingUsageLanding = {
@@ -103,7 +105,7 @@ export async function prepareCodingUsage(
   const patched = !usageChanged && previousView ? applyCodingUsageStatus(previousView, source, statusOnly) : null;
   if (patched) {
     return landing((batch) => {
-      batch.patch(codingUsageKey(source), fields).set(codingViewKey(), JSON.stringify(patched));
+      markLagPending(batch.patch(codingUsageKey(source), fields).set(codingViewKey(), JSON.stringify(patched)), LAG_KEYS.codingUsage);
     }, codingLayoutKey(previousView) !== codingLayoutKey(patched) ? [CODING_TAG] : [], changed);
   }
 
@@ -114,5 +116,6 @@ export async function prepareCodingUsage(
     if (changed) batch.patch(codingUsageKey(source), fields);
     if (usageChanged) batch.set(codingUsageRevisionKey(), String(revision));
     batch.set(codingViewKey(), JSON.stringify(view)).set(codingYearKey(), JSON.stringify(year));
+    markLagPending(batch, LAG_KEYS.codingUsage, LAG_KEYS.codingYear);
   }, tags, changed);
 }

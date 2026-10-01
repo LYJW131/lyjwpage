@@ -1,25 +1,16 @@
-import { AwaitingReport } from "@/lib/awaiting-report";
 import { encodeCodingYear } from "@/lib/coding-year";
+import { loadLag, type LagResult } from "@/lib/lag-result";
 import { readLiveness, withPresence } from "@/lib/reporter-liveness";
 import { withStorage } from "@/lib/storage";
 import type { CodingNowPayload, CodingUsagePayload, CodingYearPayload } from "@/lib/types";
-import {
-  codingActivityKey,
-  codingViewKey,
-  codingYearKey,
-  parseStoredActivity,
-  parseStoredView,
-  parseStoredYear,
-} from "@shared/coding-store";
+import { codingActivityKey, parseStoredActivity } from "@shared/coding-store";
 import { CODING_USAGE_SOURCE_NAMES } from "@shared/coding-usage-sources";
-import { buildCodingNowAgents } from "@shared/coding-usage-view";
+import { buildCodingNowAgents, type CodingUsageYearView } from "@shared/coding-usage-view";
+import { LAG_KEYS } from "@shared/lag";
 
 
-export async function getCodingUsage(): Promise<CodingUsagePayload> {
-  const raw = await withStorage((storage) => storage.get(codingViewKey()), null);
-  const view = parseStoredView(raw);
-  if (!view) throw new AwaitingReport("尚未收到 coding 用量");
-  return view;
+export function getCodingUsage(): Promise<LagResult<CodingUsagePayload>> {
+  return loadLag<CodingUsagePayload>(LAG_KEYS.codingUsage, "尚未收到 coding 用量");
 }
 
 export async function getCodingNow(): Promise<CodingNowPayload> {
@@ -35,8 +26,6 @@ export async function getCodingNow(): Promise<CodingNowPayload> {
   return withPresence({ agents: buildCodingNowAgents(activities) }, liveness);
 }
 
-export async function getCodingYear(): Promise<CodingYearPayload> {
-  const year = parseStoredYear(await withStorage((storage) => storage.get(codingYearKey()), null));
-  if (!year) throw new AwaitingReport("尚未收到 coding 用量");
-  return encodeCodingYear(year, Date.now());
+export async function getCodingYear(): Promise<LagResult<CodingYearPayload>> {
+  return (await loadLag<CodingUsageYearView>(LAG_KEYS.codingYear, "尚未收到 coding 用量")).map((year) => encodeCodingYear(year, Date.now()));
 }
