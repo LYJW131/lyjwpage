@@ -194,7 +194,7 @@ function stateModel(domain: "listening" | "watching" | "gaming", lane: PulseStat
           key={index}
           aria-hidden
           className={cn("pulse-trace absolute bottom-0", traceStyle === "hatched" ? "pulse-trace-hatched" : "pulse-trace-faint")}
-          style={{ left: percent(range, from), width: `max(2px, calc(${percent(range, to)} - ${percent(range, from)}))`, top: BAND_TOP }}
+          style={{ left: percent(range, from), width: `max(2px, calc(${percent(range, to)} - ${percent(range, from)}))`, top: `${(BAND_TOP / LANE_HEIGHT) * 100}%` }}
         />
       );
     }),
@@ -290,7 +290,7 @@ function tokensModel(lane: PulseTokensLane, range: Range): LaneModel | null {
     ),
     summary: rows.length && peakPerMinute != null
       ? {
-        value: <><span className="hidden sm:inline">Peak </span>{compactCount(peakPerMinute)}/min</>,
+        value: `Peak ${compactCount(peakPerMinute)}/min`,
         detail: currentPerMinute != null && currentPerMinute > 0 ? `now ${compactCount(currentPerMinute)}/min` : `${compactCount(freshTokens)} in 24h`,
       }
       : null,
@@ -356,7 +356,7 @@ function stepsModel(lane: PulseStepsLane, range: Range, width: number): LaneMode
       );
     }),
     summary: buckets.length || sessions.length
-      ? { value: steps.toLocaleString("en-US"), detail: <>steps{sessions.length > 0 && <span className="hidden sm:inline"> · {sessions.length} {sessions.length === 1 ? "workout" : "workouts"}</span>}</> }
+      ? { value: steps.toLocaleString("en-US"), detail: `steps${sessions.length > 0 ? ` · ${sessions.length} ${sessions.length === 1 ? "workout" : "workouts"}` : ""}` }
       : null,
     aria: "steps per five minutes from HealthKit, with completed workouts",
   };
@@ -418,7 +418,7 @@ function LaneView({ label, model, range }: { label: string; model: LaneModel; ra
           }
         }}
       >
-        <svg viewBox={`0 0 ${LANE_WIDTH} ${LANE_HEIGHT}`} preserveAspectRatio="none" className="h-6 w-full" aria-hidden>
+        <svg viewBox={`0 0 ${LANE_WIDTH} ${LANE_HEIGHT}`} preserveAspectRatio="none" className="h-8 w-full sm:h-6" aria-hidden>
           <line x1="0" y1={LANE_HEIGHT - 0.5} x2={LANE_WIDTH} y2={LANE_HEIGHT - 0.5} stroke="currentColor" strokeOpacity="0.12" strokeWidth="1" strokeDasharray="2 3" vectorEffect="non-scaling-stroke" />
           {model.svg}
         </svg>
@@ -489,14 +489,14 @@ export function PulseCard({
 
   return (
     <Card label="Pulse" action="Last 24 hours" className={cn("h-full", className)}>
-      <div className="flex flex-col gap-2 p-4 lg:p-5">
+      <div className="flex flex-col gap-3 p-4 sm:gap-2 lg:p-5">
         {LANES.map(({ domain, label }) => {
           const model = modelOf(domain);
           const empty = !model || !model.items.length;
           return (
             <div
               key={domain}
-              className="grid grid-cols-[4.5rem_1fr_6rem] items-center gap-x-2 sm:grid-cols-[5.5rem_1fr_8rem] sm:gap-x-3"
+              className="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-1 sm:grid-cols-[5.5rem_1fr_8rem] sm:gap-y-0"
               role="group"
               aria-label={`${label} over the last 24 hours`}
             >
@@ -508,14 +508,14 @@ export function PulseCard({
               >
                 {label}
               </span>
-              <div ref={domain === "activity" ? activityRef : undefined} className="min-w-0">
+              <div ref={domain === "activity" ? activityRef : undefined} className="col-span-2 row-start-2 min-w-0 sm:col-span-1 sm:row-start-auto">
                 {empty ? (
                   <span className="text-xs text-muted-foreground">No data</span>
                 ) : (
                   <LaneView label={label} model={model} range={range} />
                 )}
               </div>
-              <div className="flex min-w-0 flex-col items-end text-right leading-tight">
+              <div className="flex min-w-0 items-baseline justify-end gap-x-1.5 text-right leading-tight sm:flex-col sm:items-end">
                 {model?.summary ? (
                   <>
                     <span className="max-w-full truncate font-mono text-xs font-medium tabular-nums">{model.summary.value}</span>
