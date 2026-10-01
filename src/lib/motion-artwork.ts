@@ -1,4 +1,4 @@
-import { ampFetch, getWebToken } from "@/lib/apple-web-token";
+import { ampFetch, AppleUpstreamError, getWebToken } from "@/lib/apple-web-token";
 import { cached } from "@/lib/apple-cache";
 import type { AppleMusicParsed } from "@/lib/motion-artwork-url";
 
@@ -28,7 +28,17 @@ export async function resolveMotionArtwork(parsed: AppleMusicParsed): Promise<Mo
   return cached(motionArtworkCacheKey(parsed), motionTtlMs, () => loadMotionArtwork(parsed));
 }
 
+// 目录里没有这首或这张专辑（404）是确定答案，按「没有动态封面」缓存；其他错误照旧抛出，不缓存。
 async function loadMotionArtwork(parsed: AppleMusicParsed): Promise<MotionResult> {
+  try {
+    return await lookupMotionArtwork(parsed);
+  } catch (error) {
+    if (error instanceof AppleUpstreamError && error.status === 404) return NO_MOTION;
+    throw error;
+  }
+}
+
+async function lookupMotionArtwork(parsed: AppleMusicParsed): Promise<MotionResult> {
   const token = await getWebToken();
 
   let albumId = parsed.albumId;

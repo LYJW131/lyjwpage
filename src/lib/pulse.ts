@@ -26,7 +26,7 @@ import { CODING_USAGE_SOURCE_NAMES, type CodingUsageSource } from "@shared/codin
 import { latestPulseAssessments, type PulseAssessment } from "@shared/pulse-assessment";
 import { codingBand, parseCodingObservation, type CodingObservation } from "@shared/pulse-coding";
 import { parseCursorObservation, type CursorObservation } from "@shared/pulse-cursor";
-import { LISTENING_TRACE_MATCH_SLACK_MS, parseListeningTrace, type ListeningTrace } from "@shared/pulse-listening";
+import { LISTENING_TRACE_BRIDGE_MS, LISTENING_TRACE_MATCH_SLACK_MS, parseListeningTrace, type ListeningTrace } from "@shared/pulse-listening";
 import {
   activeState,
   chargingSegments,
@@ -115,13 +115,20 @@ export function stateLaneView<L extends StateLane>(lane: L, input: StateLaneInpu
   };
   if (lane === "listening") {
     const music = segments as unknown as (StateLaneFacts["listening"] & { from: number; to: number })[];
+    // 只接在上一段画出来的推断后面；Mac 已解释的那段是实线，接过去会画进实线里。
+    let drawnEnd: number | null = null;
     const uncertain = traces.flatMap((trace) => {
-      const from = Math.max(window.from, trace.since), to = Math.min(window.to, trace.t);
-      if (to <= from) return [];
       const named = trace.title?.toLowerCase();
       const explained = (segment: (typeof music)[number]) => segment.state !== "idle" && segment.title?.toLowerCase() === named
         && segment.from < trace.t && segment.to > trace.since - LISTENING_TRACE_MATCH_SLACK_MS;
-      if (named && music.some(explained)) return [];
+      if (named && music.some(explained)) {
+        drawnEnd = null;
+        return [];
+      }
+      const bridged = drawnEnd !== null && drawnEnd < trace.since && trace.since - drawnEnd <= LISTENING_TRACE_BRIDGE_MS;
+      const from = Math.max(window.from, bridged ? drawnEnd! : trace.since), to = Math.min(window.to, trace.t);
+      drawnEnd = trace.t;
+      if (to <= from) return [];
       const at = span(window, from, to);
       return at.endSec > at.startSec ? [{ ...at, title: trace.title, subtitle: trace.artist }] : [];
     });
