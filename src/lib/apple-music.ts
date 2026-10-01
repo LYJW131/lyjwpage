@@ -61,7 +61,7 @@ export async function appleFetchRaw<T>(url: string, credentials: Credentials): P
   return (await response.json()) as T;
 }
 
-const TRACK_LINK_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const TRACK_LINK_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 // 同一曲目可能在多个专辑中重复收录；截短候选会漏掉正确版本。
 const SEARCH_LIMIT = 25;
 

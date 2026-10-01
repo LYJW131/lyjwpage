@@ -1,4 +1,4 @@
-import { lyricsCacheKey, resolveLyrics, type LyricsResult } from "@/lib/lyrics";
+import { lyricsCacheKey, lyricsTtlMs, resolveLyrics, type LyricsResult } from "@/lib/lyrics";
 import { withStorageScope } from "@/lib/storage";
 
 export type LyricsResponse = LyricsResult & { songId: string | null };
@@ -27,7 +27,7 @@ export async function GET(request: Request) {
     return jsonResponse(
       { songId: requested, ...result },
       200,
-      result.lines.length ? 7 * 86400 : 3600,
+      Math.round(lyricsTtlMs(result) / 1000),
     );
   } catch (error) {
     console.error("[lyrics]", error);

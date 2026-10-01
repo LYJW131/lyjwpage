@@ -12,9 +12,13 @@ export type LyricsResult = {
 
 export const NO_LYRICS: LyricsResult = { lines: [] };
 
-const LYRICS_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const LYRICS_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 // amp-api 的 404 无法区分无歌词与订阅身份暂不可用，负缓存不能按成功结果长期保存。
 const NO_LYRICS_TTL_MS = 60 * 60 * 1000;
+
+export function lyricsTtlMs(result: LyricsResult): number {
+  return result.lines.length ? LYRICS_TTL_MS : NO_LYRICS_TTL_MS;
+}
 
 function storefront(): string {
   return (process.env.APPLE_MUSIC_STOREFRONT?.trim() || "cn").toLowerCase();
@@ -26,7 +30,7 @@ export function lyricsCacheKey(songId: string): string {
 
 export async function resolveLyrics(songId: string): Promise<LyricsResult> {
   if (!/^\d{1,20}$/.test(songId)) throw new AppleUpstreamError("songId 不是目录 ID");
-  return cached(lyricsCacheKey(songId), (result: LyricsResult) => (result.lines.length ? LYRICS_TTL_MS : NO_LYRICS_TTL_MS), () => loadLyrics(songId));
+  return cached(lyricsCacheKey(songId), lyricsTtlMs, () => loadLyrics(songId));
 }
 
 async function loadLyrics(songId: string): Promise<LyricsResult> {
