@@ -11,6 +11,9 @@ import { PulseArchiveState, type ArchiveStream, type PulseArchiveSnapshot } from
 import { PulseScoreState, type PulseScoreClaim } from "./pulse-score-state";
 import type { PulseAssessment } from "@shared/pulse-assessment";
 import { DEV_OVERRIDE_TTL_MS, overrideIndexStorageKey, overrideStorageKey } from "./dev-overrides";
+import { flushLagMirrors, LAG_MIRROR_SET, markAllLagPending } from "./lag-mirror";
+
+const LAG_RETRY_MS = 60_000;
 
 type CommitIngestWire =
   | { ready: false; ok: false; json: "null"; error: null; effects: [] }
@@ -36,6 +39,32 @@ export class StateHub extends DurableObject<Env> {
       sql: ctx.storage.sql,
       execute: (commands) => this.database.execute(commands),
     });
+    void ctx.blockConcurrencyWhile(() => this.seedLagMirrors());
+  }
+
+  // 新增镜像时源视图可能很久不变，须整份补写一次，否则可滞后层端点一直等不到首份数据。
+  private async seedLagMirrors(): Promise<void> {
+    if (!this.ready()) return;
+    const seeded = this.ctx.storage.sql.exec("SELECT value FROM metadata WHERE key = 'lag_mirrors'").toArray()[0]?.value;
+    if (seeded === LAG_MIRROR_SET) return;
+    await markAllLagPending(this.localStorage().batch()).execute();
+    this.ctx.storage.sql.exec(
+      "INSERT INTO metadata(key, value) VALUES ('lag_mirrors', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      LAG_MIRROR_SET,
+    );
+    await this.scheduleAlarm(Date.now());
+  }
+
+  private localStorage(): StorageClient {
+    return new StorageClient(async (commands) => this.database.execute(commands));
+  }
+
+  private async flushLag(): Promise<void> {
+    const failed = await flushLagMirrors(this.localStorage(), this.env.LAG).catch((error: unknown) => {
+      console.warn("[lag-mirror]", error instanceof Error ? error.message : String(error));
+      return true;
+    });
+    if (failed) await this.scheduleAlarm(Date.now() + LAG_RETRY_MS);
   }
 
   ready(): boolean {
@@ -89,7 +118,7 @@ export class StateHub extends DurableObject<Env> {
     const result = this.ingestTail.then(() => withRequestState(() => requestStore.run({
       env: this.env,
       ctx: this.ctx,
-      storage: new StorageClient(async (commands) => this.database.execute(commands)),
+      storage: this.localStorage(),
     }, async () => {
       try {
         const collected = await collectIngestEffects(() => commitPreparedIngest(command));
@@ -98,6 +127,8 @@ export class StateHub extends DurableObject<Env> {
           : { ready: true, ok: false, json: "null", error: collected.error, effects: collected.effects };
         return wire;
       } finally {
+        // 首屏失效在 StateCore 收到回执后才派发，KV 须先于它写好，否则重建会读到旧镜像。
+        await this.flushLag();
         await this.ensureAlarm();
       }
     })));
@@ -151,6 +182,9 @@ export class StateHub extends DurableObject<Env> {
   }
   async alarm(): Promise<void> {
     const removed = this.database.purgeExpired();
+    const flushed = this.ingestTail.then(() => this.flushLag());
+    this.ingestTail = flushed.catch(() => {});
+    await flushed;
     await this.scheduleAlarm(Date.now() + (removed === 1000 ? 1000 : 60 * 60_000));
   }
 }

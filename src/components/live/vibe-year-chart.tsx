@@ -25,7 +25,6 @@ import { CODING_YEAR_PATH } from "@/lib/paths";
 import type { CodingYearPayload, GithubChartDay, StatusResponse } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-const YEAR_REFRESH_MS = 30 * 60_000;
 
 type HoveredCell = {
   date: string;
@@ -114,7 +113,7 @@ export function VibeYearChart({
   fallback: StatusResponse<CodingYearPayload>;
   className?: string;
 }) {
-  const { data } = useStatus<CodingYearPayload>(CODING_YEAR_PATH, YEAR_REFRESH_MS, {
+  const { data } = useStatus<CodingYearPayload>(CODING_YEAR_PATH, {
     fallback,
     revalidateOnMount: false,
     revalidateOnFocus: true,
