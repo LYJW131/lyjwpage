@@ -184,9 +184,10 @@ export async function assembleRecentTracks(credentials: Credentials): Promise<Re
   }] : []);
 }
 
+// 列表只说明两次刷新之间变过；周期与 Pulse 的 5 分钟桶对齐，且长于多数单曲，推断段大多首尾相接。
 export const appleRecentJob: Job = {
   name: "apple-recent",
-  everyMinutes: 2,
+  everyMinutes: 5,
   offset: 0,
   maxRuntimeMinutes: 2,
   async run({ env }) {
