@@ -1,4 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
+import { captureException } from "@sentry/cloudflare";
+import { captureBackgroundFailure, observeDurableObject, type LivePushMethod } from "./durable-object-diagnostics";
 
 import { StateHub } from "./state-hub";
 import { STORAGE_MAX_BYTES } from "@shared/storage-contract";
@@ -146,22 +148,27 @@ export class LivePushRoom extends DurableObject<Env> {
   }
 
   async fetch(request: Request): Promise<Response> {
-    if (request.headers.get("Upgrade") !== "websocket") {
-      return new Response("Expected WebSocket upgrade", { status: 426 });
-    }
+    return observeDurableObject({ class: "LivePushRoom", method: "fetch" }, async () => {
+      if (request.headers.get("Upgrade") !== "websocket") {
+        return new Response("Expected WebSocket upgrade", { status: 426 });
+      }
 
-    const pair = new WebSocketPair();
-    const client = pair[0];
-    const server = pair[1];
+      const pair = new WebSocketPair();
+      const client = pair[0];
+      const server = pair[1];
 
-    const now = Date.now();
-    const visible = new URL(request.url).searchParams.get("visible") === "1";
-    this.ctx.acceptWebSocket(server);
-    server.serializeAttachment({ at: now, visible, seenAt: now } satisfies SocketMark);
-    this.ctx.waitUntil(this.ensureUpstreamRelay());
-    this.ctx.waitUntil(this.announce(this.census(), server));
+      const now = Date.now();
+      const visible = new URL(request.url).searchParams.get("visible") === "1";
+      this.ctx.acceptWebSocket(server);
+      server.serializeAttachment({ at: now, visible, seenAt: now } satisfies SocketMark);
+      this.ctx.waitUntil(this.ensureUpstreamRelay());
+      // Sentry 的 handler 包装不捕获 waitUntil 的拒绝；这里只补后台 announce，仍让原错误冒泡。
+      this.ctx.waitUntil(captureBackgroundFailure(this.announce("fetch", this.census(), server), (error) => {
+        captureException(error, { mechanism: { handled: false, type: "manual.live_push.announce" } });
+      }));
 
-    return new Response(null, { status: 101, webSocket: client });
+      return new Response(null, { status: 101, webSocket: client });
+    });
   }
 
   private async ensureUpstreamRelay(): Promise<void> {
@@ -290,42 +297,50 @@ export class LivePushRoom extends DurableObject<Env> {
   }
 
   // 已有闹钟不能反复后推，否则持续切换标签会无限推迟清扫。
-  private async announce(census: Census<WebSocket>, newcomer?: WebSocket): Promise<void> {
+  private async announce(method: LivePushMethod, census: Census<WebSocket>, newcomer?: WebSocket): Promise<void> {
     this.publishOnline(census, newcomer);
-    if (census.online > 0 && (await this.ctx.storage.getAlarm()) === null) {
-      await this.ctx.storage.setAlarm(Date.now() + SWEEP_INTERVAL_MS);
+    if (census.online > 0 && (await observeDurableObject({ class: "LivePushRoom", method, storage_operation: "getAlarm" }, () => this.ctx.storage.getAlarm())) === null) {
+      await observeDurableObject({ class: "LivePushRoom", method, storage_operation: "setAlarm" }, () => this.ctx.storage.setAlarm(Date.now() + SWEEP_INTERVAL_MS));
     }
   }
 
   async alarm(): Promise<void> {
-    const census = this.census();
-    this.publishOnline(census);
-    if (census.online > 0) await this.ctx.storage.setAlarm(Date.now() + SWEEP_INTERVAL_MS);
+    return observeDurableObject({ class: "LivePushRoom", method: "alarm" }, async () => {
+      const census = this.census();
+      this.publishOnline(census);
+      if (census.online > 0) await observeDurableObject({ class: "LivePushRoom", method: "alarm", storage_operation: "setAlarm" }, () => this.ctx.storage.setAlarm(Date.now() + SWEEP_INTERVAL_MS));
+    });
   }
 
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
-    const visible = parseVisibility(message);
-    if (visible === null) return;
-    const now = Date.now();
-    const mark = readMark(ws.deserializeAttachment(), now);
-    ws.serializeAttachment({ at: mark?.at ?? now, visible, seenAt: now } satisfies SocketMark);
-    await this.announce(this.census(undefined, now));
+    return observeDurableObject({ class: "LivePushRoom", method: "webSocketMessage" }, async () => {
+      const visible = parseVisibility(message);
+      if (visible === null) return;
+      const now = Date.now();
+      const mark = readMark(ws.deserializeAttachment(), now);
+      ws.serializeAttachment({ at: mark?.at ?? now, visible, seenAt: now } satisfies SocketMark);
+      await this.announce("webSocketMessage", this.census(undefined, now));
+    });
   }
 
   async webSocketClose(ws: WebSocket, code: number): Promise<void> {
-    // 1005/1006 是接收端保留码，不能传给 close，否则会抛错。
-    try {
-      ws.close(code === 1005 || code === 1006 ? 1000 : code);
-    } catch { }
-    if (this.upstream && this.ctx.getWebSockets().every((socket) => socket === ws)) {
-      this.dropUpstreamRelay();
-    }
-    await this.announce(this.census(ws));
+    return observeDurableObject({ class: "LivePushRoom", method: "webSocketClose" }, async () => {
+      // 1005/1006 是接收端保留码，不能传给 close，否则会抛错。
+      try {
+        ws.close(code === 1005 || code === 1006 ? 1000 : code);
+      } catch { }
+      if (this.upstream && this.ctx.getWebSockets().every((socket) => socket === ws)) {
+        this.dropUpstreamRelay();
+      }
+      await this.announce("webSocketClose", this.census(ws));
+    });
   }
 
   // error 后运行时未必再触发 close，必须在这里同步人数。
   async webSocketError(ws: WebSocket): Promise<void> {
-    await this.announce(this.census(ws));
+    return observeDurableObject({ class: "LivePushRoom", method: "webSocketError" }, async () => {
+      await this.announce("webSocketError", this.census(ws));
+    });
   }
 }
 
@@ -376,11 +391,11 @@ const worker = {
     if (url.pathname === WS_PATH) {
       const rejected = rejectSocket(request, env);
       if (rejected) return rejected;
-      return getRoom(env).fetch(request);
+      return observeDurableObject({ class: "LivePushRoom", method: "fetch" }, () => getRoom(env).fetch(request));
     }
 
     if (url.pathname === "/count") {
-      return jsonResponse({ ok: true, ...(await getRoom(env).audience()) }, { headers: cors });
+      return jsonResponse({ ok: true, ...(await observeDurableObject({ class: "LivePushRoom", method: "audience" }, () => getRoom(env).audience())) }, { headers: cors });
     }
 
     if (url.pathname === "/") {

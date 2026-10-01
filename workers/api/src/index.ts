@@ -11,8 +11,8 @@ import { CRON_MONITOR_CONFIG, CRON_MONITOR_SLUG, heartbeatDue } from "./cron-hea
 import { sentryOptions } from "./sentry";
 
 // Wrangler 迁移按导出名识别 DO；Sentry 包装不能改变这些名称。
-export const LivePushRoom = Sentry.instrumentDurableObjectWithSentry(sentryOptions, LivePushRoomBase);
-export const StateHub = Sentry.instrumentDurableObjectWithSentry(sentryOptions, StateHubBase);
+export const LivePushRoom = Sentry.instrumentDurableObjectWithSentry((env: Env) => sentryOptions(env, "LivePushRoom"), LivePushRoomBase);
+export const StateHub = Sentry.instrumentDurableObjectWithSentry((env: Env) => sentryOptions(env, "StateHub"), StateHubBase);
 export const StateCore = Sentry.withSentry(sentryOptions, StateCoreBase);
 export const DevOverrideReader = Sentry.withSentry(sentryOptions, DevOverrideReaderBase);
 export type { Env } from "./runtime";

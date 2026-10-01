@@ -8,6 +8,9 @@ routes = [
   { pattern = "api.homepage.lyjw.llc", custom_domain = true }
 ]
 
+[build]
+command = "node scripts/write-build-metadata.mjs"
+watch_dir = ["src", "scripts"]
 
 [vars]
 ALLOWED_ORIGINS = "https://lyjw131.com,https://lyjw.me,https://dev.lyjw.me,https://*.vercel.app"
@@ -22,6 +25,7 @@ SENTRY_DSN = "https://13ba806bda9ae5a9086576b2e3d23cfb@o4511888459890688.ingest.
 binding = "CF_VERSION_METADATA"
 
 [alias]
+"@api/build-metadata" = "./.wrangler/build-metadata.mjs"
 "@/lib/storage-driver" = "./src/storage-driver.ts"
 "@/lib/apple-developer-token" = "./src/apple-developer-token.ts"
 "@/lib/apple-music-credentials" = "./src/apple-music-credentials.ts"
