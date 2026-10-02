@@ -8,24 +8,35 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
-import useSWR, { preload, useSWRConfig } from "swr";
+import useSWR, { useSWRConfig } from "swr";
 
 import Image from "@/components/app-image";
 import { TrophyMetal } from "@/components/trophies/trophy-metal";
-import { fetchStatus } from "@/lib/status-reads";
 import { LIST_TRANSITION, STATIC_TRANSITION } from "@/lib/motion";
-import {
-} from "@/lib/playstation-image";
 import { trophiesTilePath } from "@/lib/paths";
+import { isRestReady, subscribeRestReady } from "@/lib/rest-ready";
 import { site } from "@/lib/site";
+import {
+  TROPHY_VISIBLE_ROWS as VISIBLE_ROWS,
+  fetchCatalog,
+  prefetchCatalogs,
+  trophyIconSrc,
+  warmTrophyIcons,
+} from "@/lib/trophy-catalog";
 import type { StatusResponse, TrophiesPayload, Trophy, TrophyTitle } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const CATALOG_REFRESH_MS = 10 * 60_000;
+const WARM_AHEAD_MARGIN = "100% 0px";
+const WARM_TILE_ATTR = "data-warm-title-ids";
 
-const VISIBLE_ROWS = 5;
+export function warmTileAttributes(titleIds: readonly string[]) {
+  return { [WARM_TILE_ATTR]: titleIds.join(",") };
+}
+
 const MIN_ROW_HEIGHT_PX = 56;
 const SETTLE_DELAY_MS = 110;
 const SUSPEND_AFTER_CHANGE_MS = 500;
@@ -87,21 +98,82 @@ function formatEarnedRate(rate: number): string {
   return `${Number.isInteger(tenths) ? String(tenths) : tenths.toFixed(1)}%`;
 }
 
-function fetchCatalog(path: string): Promise<StatusResponse<TrophiesPayload>> {
-  return fetchStatus<TrophiesPayload>(path);
+function notReady(): boolean {
+  return false;
 }
 
-// SWR preload 记录被 useSWR 消费后会清空，须另查缓存以避免反复悬停重取。
-export function useTrophyPrefetch() {
-  const { cache } = useSWRConfig();
-  return useCallback(
-    (titleIds: string[]) => {
-      const key = trophiesTilePath(titleIds);
-      if (cache.get(key)?.data) return;
-      preload(key, fetchCatalog).catch(() => {});
+// 卡片进入前方一屏且首屏已加载完，就把全部瓷砖的目录并成一次请求预取；
+// 无悬停的触屏设备另按瓷砖可见预热首屏图标，有悬停的设备留到悬停时再热。
+export function useTrophyWarmup(tiles: readonly (readonly string[])[]) {
+  const { cache, mutate } = useSWRConfig();
+  const restReady = useSyncExternalStore(subscribeRestReady, isRestReady, notReady);
+  const [near, setNear] = useState(false);
+  const latestTiles = useRef(tiles);
+  const visible = useRef(new Map<Element, readonly string[]>());
+  const tileObserver = useRef<IntersectionObserver | null>(null);
+  const signature = tiles.map((titleIds) => trophiesTilePath(titleIds)).join("\n");
+
+  useEffect(() => {
+    latestTiles.current = tiles;
+  });
+
+  useEffect(() => {
+    if (!near || !restReady) return;
+    prefetchCatalogs(latestTiles.current, cache, mutate)?.then(() => {
+      for (const titleIds of visible.current.values()) warmTrophyIcons(titleIds, cache);
+    });
+  }, [near, restReady, signature, cache, mutate]);
+
+  const observeSection = useCallback((el: HTMLElement | null) => {
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        setNear(true);
+        observer.disconnect();
+      },
+      { rootMargin: WARM_AHEAD_MARGIN },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  const observeTile = useCallback(
+    (el: HTMLElement | null) => {
+      if (!el || !matchMedia("(hover: none)").matches) return;
+      tileObserver.current ??= new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            if (!entry.isIntersecting) {
+              visible.current.delete(entry.target);
+              continue;
+            }
+            const ids = entry.target.getAttribute(WARM_TILE_ATTR)?.split(",") ?? [];
+            visible.current.set(entry.target, ids);
+            warmTrophyIcons(ids, cache);
+          }
+        },
+        { threshold: 0.5 },
+      );
+      const observer = tileObserver.current;
+      observer.observe(el);
+      return () => {
+        observer.unobserve(el);
+        visible.current.delete(el);
+      };
     },
     [cache],
   );
+
+  const warmTile = useCallback(
+    (titleIds: readonly string[]) => {
+      prefetchCatalogs([titleIds], cache, mutate);
+      warmTrophyIcons(titleIds, cache);
+    },
+    [cache, mutate],
+  );
+
+  return { observeSection, observeTile, warmTile };
 }
 
 // 禁用 keepPreviousData，避免切游戏后暂时展示上一款的奖杯。
@@ -166,7 +238,7 @@ function useRowSnap(topKey: string | undefined) {
   }, []);
 }
 
-function TrophyRow({ trophy }: { trophy: Trophy }) {
+function TrophyRow({ trophy, firstScreen }: { trophy: Trophy; firstScreen: boolean }) {
   const hidden = trophy.hidden && !trophy.earned;
   const locked = !trophy.earned;
   const subtitle =
@@ -193,10 +265,11 @@ function TrophyRow({ trophy }: { trophy: Trophy }) {
         >
           {trophy.iconUrl && !hidden ? (
             <Image
-              src={trophy.iconUrl}
+              src={trophyIconSrc(trophy.iconUrl)}
               alt=""
               fill
               unoptimized
+              fetchPriority={firstScreen ? "high" : "low"}
               className={cn("object-cover", locked && "opacity-55")}
             />
           ) : (
@@ -314,7 +387,7 @@ function GroupStrip({
               {group.iconUrl ? (
                 <div className="relative w-10 shrink-0 self-stretch overflow-hidden border-r border-line bg-muted">
                   <Image
-                    src={group.iconUrl}
+                    src={trophyIconSrc(group.iconUrl)}
                     alt=""
                     fill
                     unoptimized
@@ -495,7 +568,7 @@ export function TrophyExpand({
     <div {...(groups.length ? { "data-trophy-groups-wanted": "" } : {})}>
       <GroupSlot groups={groups} resetKey={trophies[0]?.key} />
       <TrophyViewport listRef={listRef}>
-        {trophies.map((row) => (
+        {trophies.map((row, index) => (
           <div
             key={row.key}
             className={cn(
@@ -503,7 +576,7 @@ export function TrophyExpand({
               row.key === flashKey && (reduced ? "bg-surface-hover" : "animate-trophy-focus"),
             )}
           >
-            <TrophyRow trophy={row.trophy} />
+            <TrophyRow trophy={row.trophy} firstScreen={index < VISIBLE_ROWS} />
           </div>
         ))}
       </TrophyViewport>

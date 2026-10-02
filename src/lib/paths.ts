@@ -27,7 +27,7 @@ export const REPORTERS_PATH = STATUS_VIEWS.reporters.path;
 export const PULSE_PATH = STATUS_VIEWS.pulse.path;
 
 // 同组 titleIds 的顺序变化不应生成新缓存键，必须先排序。
-export function trophiesTilePath(titleIds: string[]): string {
+export function trophiesTilePath(titleIds: readonly string[]): string {
   const ids = [...titleIds].sort().join(",");
   return `${TROPHIES_PATH}?titleids=${encodeURIComponent(ids)}`;
 }
