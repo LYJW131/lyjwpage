@@ -75,7 +75,11 @@ function setup() {
     })) });
   };
   const coordinator = () => new PulseScoreState({ sql, execute, now: () => now, token: () => `claim-${++nextToken}` });
-  const make = () => new PulseScorer({ coordinator: coordinator(), apiKey: "test", fetch: fetcher, log: (e) => errors.push(e) });
+  const make = () => {
+    const state = coordinator();
+    const scorer = new PulseScorer({ coordinator: state, apiKey: "test", fetch: fetcher, log: (e) => errors.push(e) });
+    return { run: async () => scorer.run(await state.claimPulseScore().catch((error: unknown) => (errors.push(error), null))) };
+  };
   const push = (at: number, available = true) => storage.append(codingObservationsKey(), JSON.stringify({ t: at, available,
     desktop: { application: "Zed", coding: true }, agents: [{ id: "codex", model: "model", active: true }] }));
   return { storage, make, coordinator, push, requests, errors, now: () => now,
@@ -85,7 +89,8 @@ test("coding scorer batches dimensions, freezes successful windows, skips unknow
   const b = setup(); const scorer = b.make();
   await scorer.run(); assert.equal(b.requests.length, 0);
   await b.push(T); await b.push(T + 120_000); await b.push(T + 240_000);
-  await scorer.run();
+  await scorer.run(); assert.equal(b.requests.length, 0, "an idle claim holds its lease until it lapses");
+  b.advance(CODING_WINDOW_MS); await scorer.run();
   assert.equal(b.requests.length, 1);
   assert.equal(Object.keys(b.requests[0].questions as object).length, 3);
   const first = await b.storage.listRange(pulseAssessmentsKey(), 0, -1);
@@ -130,7 +135,8 @@ test("coding isolates windows, bounds concurrency and saves successes when anoth
   let active = 0, peak = 0, calls = 0;
   const errors: unknown[] = [];
   b.advance(3 * CODING_WINDOW_MS);
-  const scorer = new PulseScorer({ coordinator: b.coordinator(), apiKey: "test",
+  const state = b.coordinator();
+  const scorer = new PulseScorer({ coordinator: state, apiKey: "test",
     log: (error) => errors.push(error), fetch: async (_url, init) => {
       const request = JSON.parse(String(init?.body));
       assert.equal(request.state.windows.length, 1);
@@ -144,7 +150,7 @@ test("coding isolates windows, bounds concurrency and saves successes when anoth
         w0Mode: { type: "choice", choice: "interactive", confidence: 1, probabilities: { idle: 0, brief: 0, interactive: 1, agent: 0, mixed: 0 } },
       } });
     } });
-  await scorer.run();
+  await scorer.run(await state.claimPulseScore());
   assert.equal(calls, 2); assert.equal(peak, 2); assert.equal(errors.length, 1);
   const rows = (await b.storage.listRange(pulseAssessmentsKey(), 0, -1)).map(parseCodingAssessment);
   assert.equal(rows.length, 1); assert.ok(rows.every((row) => row!.from > T));
@@ -496,4 +502,17 @@ test("a Cursor request billed without tokens (0 tokens, one event) is still acti
   assert.equal(b.requests.length, 1, "Jev judges the window");
   const rows = latestPulseAssessments(await b.storage.listRange(pulseAssessmentsKey(), 0, -1));
   assert.equal(rows[0]?.model, "jev-1.13.0");
+});
+
+test("pulse score state: one attempt per five-minute slot, regardless of trigger jitter", async () => {
+  const b = setup();
+  const state = b.coordinator();
+  const first = await state.claimPulseScore();
+  assert.ok(first);
+  assert.equal(await state.activatePulseScore(first.token, first.generation), true);
+  assert.equal(await state.finishPulseScore(first.token, first.generation, []), true);
+  b.advance(2 * 60_000);
+  assert.equal(await state.claimPulseScore(), null, "same slot");
+  b.advance(2 * 60_000);
+  assert.ok(await state.claimPulseScore(), "next slot opens even though less than five minutes passed");
 });

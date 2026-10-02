@@ -29,7 +29,6 @@ export type PulseScoreClaim = {
 };
 
 export interface PulseScoreCoordinator {
-  claimPulseScore(): Promise<PulseScoreClaim | null>;
   activatePulseScore(token: string, generation: number): Promise<boolean>;
   finishPulseScore(token: string, generation: number, records: PulseAssessment[]): Promise<boolean>;
 };
@@ -83,7 +82,8 @@ export class PulseScoreState implements PulseScoreCoordinator {
     const now = this.now();
     const state = this.load();
     if (state.claim && state.claim.leaseUntil > now) return null;
-    if (now - state.attemptedAt < CODING_WINDOW_MS) return null;
+    // 按时段而非间隔判断：cron 间隔正好一个时段，按间隔比会因触发抖动隔轮才放行。
+    if (Math.floor(now / CODING_WINDOW_MS) === Math.floor(state.attemptedAt / CODING_WINDOW_MS)) return null;
 
     const generation = state.generation + 1;
     const claim: ActiveClaim = {

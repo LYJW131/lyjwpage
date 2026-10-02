@@ -53,7 +53,7 @@ database_id = "bf3a227f-d12e-428a-8f4e-0f56b97464df"
 enabled = true
 
 [triggers]
-crons = ["* * * * *"]
+crons = ["2,7,12,17,22,27,32,37,42,47,52,57 * * * *"]
 
 [[durable_objects.bindings]]
 name = "STATE"

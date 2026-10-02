@@ -66,7 +66,10 @@ function setup(options: { failStream?: ArchiveStream } = {}) {
     },
   };
   const logged: string[] = [];
-  const archive = () => new PulseArchive({ coordinator: state, db, log: (stream, error) => logged.push(`${stream}: ${error instanceof Error ? error.message : String(error)}`) });
+  const archive = () => {
+    const runner = new PulseArchive({ coordinator: state, db, log: (stream, error) => logged.push(`${stream}: ${error instanceof Error ? error.message : String(error)}`) });
+    return { run: async () => runner.run(await state.readPulseArchive()) };
+  };
   return {
     storage, state, archive, logged, db,
     at: (t: number) => { now = t; },

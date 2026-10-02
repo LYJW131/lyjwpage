@@ -15,6 +15,8 @@ import { flushLagMirrors, LAG_MIRROR_SET, markAllLagPending } from "./lag-mirror
 
 const LAG_RETRY_MS = 60_000;
 
+export type PulseTick = { archive: PulseArchiveSnapshot; score: PulseScoreClaim | null };
+
 type CommitIngestWire =
   | { ready: false; ok: false; json: "null"; error: null; effects: [] }
   | { ready: true; ok: true; json: string; error: null; effects: IngestEffect[] }
@@ -146,22 +148,24 @@ export class StateHub extends DurableObject<Env> {
     return result;
   }
 
-  async readPulseArchive(): Promise<PulseArchiveSnapshot> {
-    if (!this.ready() || !historyArchiveEnabled(this.env)) return { now: Date.now(), streams: [] };
+  // 归档与评分各自失败不连累对方，所以分开兜底，各回各的空值。
+  async pulseTick(): Promise<PulseTick> {
+    const idle: PulseTick = { archive: { now: Date.now(), streams: [] }, score: null };
+    if (!this.ready()) return idle;
     await this.ingestTail;
-    return this.pulseArchiveState.readPulseArchive();
+    const archive = historyArchiveEnabled(this.env)
+      ? await this.pulseArchiveState.readPulseArchive().catch((error: unknown) => (console.warn("[pulse-archive]", error), idle.archive))
+      : idle.archive;
+    const score = pulseScoringEnabled(this.env)
+      ? await this.pulseScoreState.claimPulseScore().catch((error: unknown) => (console.warn("[pulse-score]", error), null))
+      : null;
+    return { archive, score };
   }
 
   async confirmPulseArchive(stream: ArchiveStream, at: number, replaceToken?: string): Promise<number> {
     if (!this.ready() || !historyArchiveEnabled(this.env)) return 0;
     await this.ingestTail;
     return this.pulseArchiveState.confirmPulseArchive(stream, at, replaceToken);
-  }
-
-  async claimPulseScore(): Promise<PulseScoreClaim | null> {
-    if (!this.ready() || !pulseScoringEnabled(this.env)) return null;
-    await this.ingestTail;
-    return this.pulseScoreState.claimPulseScore();
   }
 
   async activatePulseScore(token: string, generation: number): Promise<boolean> {

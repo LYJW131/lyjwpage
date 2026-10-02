@@ -6,10 +6,11 @@ import type { CodingTokenBucketRow } from '@shared/coding-usage';
 import { CODING_USAGE_SOURCE_NAMES, type CodingUsageSource } from '@shared/coding-usage-sources';
 import { PULSE_ASSESSMENT_VERSION, latestPulseAssessments, type PulseAssessment, type PulseScoredDomain } from '@shared/pulse-assessment';
 import type { ChoiceQuestion, Coverage, PulseQuestion, ScoreQuestion } from '@shared/pulse-features';
-import type { PulseScoreCoordinator } from './pulse-score-state';
+import type { PulseScoreClaim, PulseScoreCoordinator } from './pulse-score-state';
 
 type Built = { state: unknown; coverage: Coverage[]; questions: Record<string, PulseQuestion>; ids: { intensity: string; continuity: string; mode: string } };
 const PULSE_RULE_MODEL = "rules";
+export const PULSE_SCORE_SETTLE_MS = 120_000;
 const TOKEN_COUNT_KEYS = ["inputTokens", "outputTokens", "cacheReadTokens", "cacheCreationTokens", "reasoningTokens"] as const;
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -110,13 +111,12 @@ function windowTokenUsage(buckets: Record<CodingUsageSource, StoredCodingBuckets
 export class PulseScorer {
   private options: { coordinator: PulseScoreCoordinator; apiKey: string; fetch?: typeof fetch; log?: (error: unknown) => void };
   constructor(options: PulseScorer['options']) { this.options = options; }
-  async run(): Promise<void> {
-    try { await this.tick(); } catch (e) { this.log(e); }
+  async run(claim: PulseScoreClaim | null): Promise<void> {
+    if (!claim) return;
+    try { await this.tick(claim); } catch (e) { this.log(e); }
   }
   private log(e: unknown) { (this.options.log ?? ((e)=>console.error('[pulse-score]',e instanceof Error ? e.message : String(e))))(e); }
-  private async tick() {
-    const claim = await this.options.coordinator.claimPulseScore();
-    if (!claim) return;
+  private async tick(claim: PulseScoreClaim) {
     try {
       const { now, inputs } = claim;
       const cursor = inputs.cursorObservations.map(parseCursorObservation).filter((row) => row !== null).sort((a, b) => a.t - b.t);
@@ -126,7 +126,7 @@ export class PulseScorer {
       const buckets = Object.fromEntries(CODING_USAGE_SOURCE_NAMES.map((source) => [source, parseStoredCodingBuckets(inputs.tokenBuckets?.[source] ?? null)])) as Record<CodingUsageSource, StoredCodingBuckets | null>;
       const domain: PulseScoredDomain = 'coding';
       // 留出扫描与投递余量，避免尚未到齐的用量被评分为静默。
-      const end = Math.floor((now-120_000)/PULSE_SCORE_WINDOW_MS)*PULSE_SCORE_WINDOW_MS;
+      const end = Math.floor((now-PULSE_SCORE_SETTLE_MS)/PULSE_SCORE_WINDOW_MS)*PULSE_SCORE_WINDOW_MS;
       const jobs: {domain: PulseScoredDomain; from: number; coverage: Coverage[]; state: unknown; questions: Record<string, PulseQuestion>; ids: Built['ids']; hash:string}[] = [];
       const ruled: PulseAssessment[] = [];
       for (let from=end-PULSE_SCORE_WINDOW_MS;from>=Math.ceil((now-PULSE_WINDOW_MS)/PULSE_SCORE_WINDOW_MS)*PULSE_SCORE_WINDOW_MS&&jobs.length<36;from-=PULSE_SCORE_WINDOW_MS) {
@@ -153,10 +153,8 @@ export class PulseScorer {
         }
         jobs.push({domain,from,coverage:built.coverage,state:built.state,questions:built.questions,ids:built.ids,hash});
       }
-      if(!jobs.length && !ruled.length) {
-        await this.options.coordinator.finishPulseScore(claim.token, claim.generation, []);
-        return;
-      }
+      // 空转不交还租约：租约短于 cron 间隔，下一轮前自然过期，省一次 StateHub 调用。
+      if(!jobs.length && !ruled.length) return;
       if (!await this.options.coordinator.activatePulseScore(claim.token, claim.generation)) return;
       const records: PulseAssessment[]=[...ruled];
       for(let i=0;i<jobs.length;i+=3){
