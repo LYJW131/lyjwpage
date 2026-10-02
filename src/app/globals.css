@@ -418,7 +418,9 @@ button.paper-card {
 }
 
 html.offscreen-revealed .defer-offscreen,
-html.offscreen-revealed .defer-offscreen-always {
+html.offscreen-revealed .defer-offscreen-always,
+.defer-offscreen[data-offscreen-revealed],
+.defer-offscreen-always[data-offscreen-revealed] {
   content-visibility: visible;
 }
 
