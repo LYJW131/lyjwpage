@@ -168,7 +168,7 @@ test("state lanes keep unknown apart from idle, expose titles only while active,
       { startSec: sec(NOW - 60 * M), endSec: sec(NOW - 58 * M), title: "Satisfied", subtitle: "Hamilton" },
       { startSec: sec(NOW - 50 * M), endSec: sec(NOW - 48 * M), title: "Yoru ni Kakeru", subtitle: "YOASOBI" },
     ], "a song the Mac played during, or just before, the trace is not drawn twice; the same song outside that reach is");
-    assert.deepEqual(listening.summary, { activeSeconds: 40 * 60, titles: 2 });
+    assert.deepEqual(listening.summary, { activeSeconds: 40 * 60, titles: 3 }, "tracks count songs the traces saw, not only the Mac's");
 
     await storage.set(pulseLaneOpenKey("gaming"), JSON.stringify({ state: "online", titleId: null, title: null, from: NOW - 50 * M, seenAt: NOW - 30 * M }));
     const { gaming } = (await getPulseStatus(NOW)).lanes;
