@@ -256,8 +256,11 @@ function powerModel(lane: PulsePowerLane, range: Range): LaneModel | null {
   };
 }
 
+const compactWhole = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 0 });
+const compactTenths = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 });
+
 function compactCount(value: number): string {
-  return new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: value < 1000 ? 0 : 1 }).format(value);
+  return (value < 1000 ? compactWhole : compactTenths).format(value);
 }
 
 const TOKEN_SCALE_MIN = 10_000;

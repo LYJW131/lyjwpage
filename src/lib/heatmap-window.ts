@@ -23,9 +23,16 @@ export function utcToday(now = Date.now()): string {
   return new Date(now).toISOString().slice(0, 10);
 }
 
+const dayFormatters = new Map<string, Intl.DateTimeFormat>();
+
 // 日合计与切窗必须用同一时区，否则当地午夜后的数据会被误切成未来。
 export function zonedDay(now: number, timezone: string): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: timezone }).format(now);
+  let formatter = dayFormatters.get(timezone);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat("en-CA", { timeZone: timezone });
+    dayFormatters.set(timezone, formatter);
+  }
+  return formatter.format(now);
 }
 
 export function nextZonedDayStart(now: number, timezone: string): number {
