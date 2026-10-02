@@ -111,9 +111,10 @@ export function stateLaneView<L extends StateLane>(lane: L, input: StateLaneInpu
     segments: toColumns(rows, ["state", "title", "subtitle"] as const),
     summary: {
       activeSeconds: seconds(active.reduce((sum, segment) => sum + segment.to - segment.from, 0)),
-      titles: new Set(active.map((segment) => segment.title).filter(Boolean)).size,
+      titles: 0,
     },
   };
+  const titles = new Set(active.flatMap((segment) => segment.title ? [segment.title.toLowerCase()] : []));
   if (lane === "listening") {
     const music = segments as unknown as (StateLaneFacts["listening"] & { from: number; to: number })[];
     // 只接在上一段画出来的推断后面；Mac 已解释的那段是实线，接过去会画进实线里。
@@ -134,7 +135,11 @@ export function stateLaneView<L extends StateLane>(lane: L, input: StateLaneInpu
       return at.endSec > at.startSec ? [{ ...at, title: trace.title, subtitle: trace.artist }] : [];
     });
     view.uncertain = toColumns(uncertain, ["title", "subtitle"] as const);
+    for (const trace of traces) {
+      if (trace.title && trace.t > window.from && trace.since < window.to) titles.add(trace.title.toLowerCase());
+    }
   }
+  view.summary.titles = titles.size;
   return view;
 }
 
