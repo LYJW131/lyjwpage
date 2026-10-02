@@ -64,7 +64,6 @@ export type PulseArchiveStreamSnapshot = {
 export type PulseArchiveSnapshot = { now: number; streams: PulseArchiveStreamSnapshot[] };
 
 export interface PulseArchiveCoordinator {
-  readPulseArchive(): Promise<PulseArchiveSnapshot>;
   confirmPulseArchive(stream: ArchiveStream, at: number, replaceToken?: string): Promise<number>;
 }
 
@@ -527,8 +526,7 @@ export class PulseArchive {
     this.log = options.log ?? ((stream, error) => console.warn("[pulse-archive]", stream, reason(error)));
   }
 
-  async run(): Promise<void> {
-    const snapshot = await this.coordinator.readPulseArchive();
+  async run(snapshot: PulseArchiveSnapshot): Promise<void> {
     for (const stream of snapshot.streams) {
       try {
         if (stream.error) throw new Error(stream.error);
