@@ -1,5 +1,5 @@
 import { PULSE_TTL_MS, PULSE_WINDOW_MS } from '@/lib/limits';
-import { CODING_WINDOW_MS, PULSE_SCORE_WINDOW_MS, codingQuestions, codingWindowFeatures, judgment, modeJudgment, parseCodingObservation } from '@shared/pulse-coding';
+import { CODING_WINDOW_MS, PULSE_SCORE_WINDOW_MS, cloudAgentActivity, codingQuestions, codingWindowFeatures, judgment, modeJudgment, parseCodingObservation } from '@shared/pulse-coding';
 import { parseCursorObservation } from '@shared/pulse-cursor';
 import { parseStoredCodingBuckets, type StoredCodingBuckets } from '@shared/coding-buckets';
 import type { CodingTokenBucketRow } from '@shared/coding-usage';
@@ -124,13 +124,14 @@ export class PulseScorer {
       const completed = new Map(existing.map((r)=>[`${r.domain}:${r.from}`,r]));
       const seen = inputs.codingObservations.map(parseCodingObservation).filter((r)=>r!==null).sort((a,b)=>a.t-b.t);
       const buckets = Object.fromEntries(CODING_USAGE_SOURCE_NAMES.map((source) => [source, parseStoredCodingBuckets(inputs.tokenBuckets?.[source] ?? null)])) as Record<CodingUsageSource, StoredCodingBuckets | null>;
+      const cloud = cloudAgentActivity(buckets['agents-otlp']);
       const domain: PulseScoredDomain = 'coding';
       // 留出扫描与投递余量，避免尚未到齐的用量被评分为静默。
       const end = Math.floor((now-PULSE_SCORE_SETTLE_MS)/PULSE_SCORE_WINDOW_MS)*PULSE_SCORE_WINDOW_MS;
       const jobs: {domain: PulseScoredDomain; from: number; coverage: Coverage[]; state: unknown; questions: Record<string, PulseQuestion>; ids: Built['ids']; hash:string}[] = [];
       const ruled: PulseAssessment[] = [];
       for (let from=end-PULSE_SCORE_WINDOW_MS;from>=Math.ceil((now-PULSE_WINDOW_MS)/PULSE_SCORE_WINDOW_MS)*PULSE_SCORE_WINDOW_MS&&jobs.length<36;from-=PULSE_SCORE_WINDOW_MS) {
-        const facts=codingWindowFeatures(seen,from,PULSE_SCORE_WINDOW_MS,cursor);
+        const facts=codingWindowFeatures(seen,from,PULSE_SCORE_WINDOW_MS,cursor,cloud);
         const tokens = windowTokenUsage(buckets, from);
         const built: Built={state:{windows:[{...facts,tokenUsage:tokens}]},coverage:facts.coverage,questions:codingQuestions([facts]) as Record<string, PulseQuestion>,ids:{intensity:'w0Intensity',continuity:'w0Continuity',mode:'w0Mode'}};
         if (!built.coverage.length) continue;
