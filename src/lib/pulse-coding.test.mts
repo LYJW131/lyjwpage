@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { codingWindowFeatures, parseCodingAnswers, parseCodingAssessment, parseCodingObservation, CODING_WINDOW_MS, codingQuestions } from "@shared/pulse-coding";
+import { cloudAgentActivity, codingBand, codingWindowFeatures, parseCodingAnswers, parseCodingAssessment, parseCodingObservation, CODING_WINDOW_MS, codingQuestions } from "@shared/pulse-coding";
+import type { StoredCodingBuckets } from "@shared/coding-buckets";
 import type { CodingObservation } from "@shared/pulse-coding";
 const T = 1_800_000_000_000;
 const observation = (t: number, coding = true, agents = true): CodingObservation => ({ t, available: true,
@@ -77,4 +78,25 @@ test("Cursor survives Mac offline independently, expires on its own cadence and 
   assert.equal(codingWindowFeatures([], T + 65 * 60_000, 900_000, cursor).observedSeconds, 0);
   const failed = [...cursor, { t: T + 60_000, available: false, lastActivityAt: T }];
   assert.equal(codingWindowFeatures([], T, 900_000, failed).observedSeconds, 60);
+});
+
+test("Claude Code cloud usage counts as agent work on the band and in Jev features while the Mac is offline", () => {
+  const row = (outputTokens: number, cacheReadTokens = 0) => ({ id: "claude", model: null, inputTokens: 0, outputTokens, cacheReadTokens,
+    cacheCreationTokens: 0, reasoningTokens: 0, eventCount: null });
+  const store: StoredCodingBuckets = { coverage: [], agents: [{ id: "claude", state: "partial" }], collectedAt: T + 720_000, receivedAt: T + 720_000,
+    windows: [{ from: T, agents: [row(5)] }, { from: T + 300_000, agents: [row(0, 9)] }, { from: T + 600_000, agents: [row(3)] }] };
+  const cloud = cloudAgentActivity(store);
+  assert.deepEqual(cloud, [{ from: T, to: T + 720_000 }], "the current bucket ends at the last receipt");
+  assert.deepEqual(codingBand([], [], { from: T - 300_000, to: T + 900_000 }, cloud), [{ from: T, to: T + 720_000, value: 2 }]);
+  const both = codingBand([observation(T, true, false)], [], { from: T, to: T + 900_000 }, cloud);
+  assert.deepEqual(both.map((segment) => segment.value), [3, 2]);
+  const offline = codingWindowFeatures([], T, 900_000, [], cloud);
+  assert.equal(offline.cloudActiveSeconds, 720);
+  assert.equal(offline.agentActiveSeconds, 720);
+  assert.equal(offline.observedSeconds, 720);
+  assert.deepEqual(offline.agents, [{ id: "claude-cloud", model: null, seconds: 720 }]);
+  const overlap = codingWindowFeatures([observation(T)], T, 900_000, [], cloud);
+  assert.equal(overlap.concurrentAgentSeconds, 180);
+  assert.equal(overlap.agentActiveSeconds, 720);
+  assert.deepEqual(cloudAgentActivity({ ...store, windows: [{ from: T, agents: [row(0)] }] }), []);
 });

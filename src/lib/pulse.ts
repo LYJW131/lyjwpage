@@ -24,7 +24,8 @@ import { codingBucketsKey } from "@shared/coding-store";
 import { CODING_BUCKET_MS } from "@shared/coding-usage";
 import { CODING_USAGE_SOURCE_NAMES, type CodingUsageSource } from "@shared/coding-usage-sources";
 import { latestPulseAssessments, type PulseAssessment } from "@shared/pulse-assessment";
-import { codingBand, parseCodingObservation, type CodingObservation } from "@shared/pulse-coding";
+import { cloudAgentActivity, codingBand, parseCodingObservation, type CodingObservation } from "@shared/pulse-coding";
+import type { Coverage } from "@shared/pulse-features";
 import { parseCursorObservation, type CursorObservation } from "@shared/pulse-cursor";
 import { LISTENING_TRACE_BRIDGE_MS, LISTENING_TRACE_MATCH_SLACK_MS, parseListeningTrace, type ListeningTrace } from "@shared/pulse-listening";
 import {
@@ -137,8 +138,8 @@ export function stateLaneView<L extends StateLane>(lane: L, input: StateLaneInpu
   return view;
 }
 
-export function codingLaneView(observations: CodingObservation[], cursor: CursorObservation[], assessments: PulseAssessment[], window: PulseWindow): PulseCodingLane {
-  const band = codingBand(observations, cursor, window);
+export function codingLaneView(observations: CodingObservation[], cursor: CursorObservation[], assessments: PulseAssessment[], window: PulseWindow, cloudActivity: Coverage[] = []): PulseCodingLane {
+  const band = codingBand(observations, cursor, window, cloudActivity);
   const rows = band.flatMap((segment) => {
     const at = span(window, segment.from, segment.to);
     return at.endSec > at.startSec ? [{ ...at, value: segment.value }] : [];
@@ -302,7 +303,8 @@ export async function getPulseStatus(now: number = Date.now()): Promise<PulsePay
     generatedAt: now,
     window,
     lanes: {
-      coding: codingLaneView(parsed(rows[10], parseCodingObservation), parsed(rows[11], parseCursorObservation), assessments, window),
+      coding: codingLaneView(parsed(rows[10], parseCodingObservation), parsed(rows[11], parseCursorObservation), assessments, window,
+        cloudAgentActivity(tokenBuckets["agents-otlp"] ?? null)),
       tokens: tokensLaneView(tokenBuckets, window),
       listening: stateLaneView("listening", lane("listening", 0), window, parsed(rows[6], parseListeningTrace)),
       watching: stateLaneView("watching", lane("watching", 2), window),
