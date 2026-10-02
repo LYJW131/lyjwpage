@@ -8,7 +8,8 @@ import { GameFlags, PlatformMarks } from "@/components/trophies/game-flags";
 import {
   TrophyExpand,
   useTrophyCatalog,
-  useTrophyPrefetch,
+  useTrophyWarmup,
+  warmTileAttributes,
 } from "@/components/trophies/trophy-details";
 import { TrophyMetal } from "@/components/trophies/trophy-metal";
 import { StatusDot } from "@/components/ui/status-dot";
@@ -197,13 +198,13 @@ function GameTile({
   eager,
   selected,
   onSelect,
-  onPrefetch,
+  onIntent,
 }: {
   tile: Tile;
   eager?: boolean;
   selected: boolean;
   onSelect: () => void;
-  onPrefetch: () => void;
+  onIntent: () => void;
 }) {
   const trophies = tile.trophies;
   const metals = trophies
@@ -215,8 +216,8 @@ function GameTile({
       aria-expanded={selected}
       aria-controls={selected ? "playstation-trophies" : undefined}
       onClick={onSelect}
-      onPointerEnter={onPrefetch}
-      onFocus={onPrefetch}
+      onPointerEnter={onIntent}
+      onFocus={onIntent}
       className={cn(
         "flex h-full w-full cursor-pointer items-center overflow-hidden rounded-md text-left",
         "border bg-surface transition-colors hover:bg-surface-hover",
@@ -476,7 +477,9 @@ export function PlaystationRow({
         ?.titleId ?? null)
     : null;
   const catalog = useTrophyCatalog(openTile?.titleIds ?? null);
-  const prefetch = useTrophyPrefetch();
+  const { observeSection, observeTile, warmTile } = useTrophyWarmup(
+    tiles.map((tile) => tile.titleIds),
+  );
   const [openBodyRef, openHeight] = useOpenHeight(
     openId,
     catalog.isLoading || catalog.titles || catalog.error,
@@ -549,7 +552,7 @@ export function PlaystationRow({
   }
 
   return (
-    <div>
+    <div ref={observeSection}>
       <div
         ref={scrollerRef}
         tabIndex={0}
@@ -566,7 +569,9 @@ export function PlaystationRow({
             {renderedTiles.map((tile, index) => (
               <motion.div
                 key={keys[index]}
+                ref={observeTile}
                 data-tile={tile.titleId}
+                {...warmTileAttributes(tile.titleIds)}
                 layout={!reduced}
                 variants={reduced ? STATIC_VARIANTS : ROW_ITEM_VARIANTS}
                 initial="initial"
@@ -579,7 +584,7 @@ export function PlaystationRow({
                   tile={tile}
                   eager={index < 3}
                   selected={tile.titleId === openId}
-                  onPrefetch={() => prefetch(tile.titleIds)}
+                  onIntent={() => warmTile(tile.titleIds)}
                   onSelect={() => {
                     onJumpDone();
                     setFocusKey(null);

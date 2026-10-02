@@ -20,7 +20,8 @@ import { getServerSnapshot } from "@/lib/server";
 import type { EndpointViewKey, StatusViewKey } from "@/lib/status-views";
 import type { LagResult } from "@/lib/lag-result";
 import { getDesktopPayload, getNowListening, getTimezonePayload } from "@/lib/telemetry";
-import { getTrophies, sliceTrophies, summarizeTrophies } from "@/lib/trophies";
+import { getTrophies, summarizeTrophies } from "@/lib/trophies";
+import { sliceTrophies } from "@/lib/trophy-slice";
 import { getVercelDeployments } from "@/lib/vercel-deployments";
 
 export type StatusLoaderParams = {

@@ -327,18 +327,6 @@ export async function getTrophies(): Promise<TrophiesPayload> {
   return { ...payload, titles: overlayPlayStats(payload.titles, played.items) };
 }
 
-export function sliceTrophies(
-  payload: TrophiesPayload,
-  titleIds: string[],
-): TrophiesPayload {
-  return {
-    ...payload,
-    titles: payload.titles.filter((title) =>
-      title.titleIds.some((id) => titleIds.includes(id)),
-    ),
-  };
-}
-
 // 奖杯分子分母必须来自同一过滤后的集合，账号级分子可能让结果超过 100%。
 export function summarizeTrophies(payload: TrophiesPayload): TrophiesSummaryPayload {
   const earned = payload.titles.reduce(
