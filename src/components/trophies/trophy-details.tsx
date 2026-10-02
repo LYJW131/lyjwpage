@@ -103,7 +103,7 @@ function notReady(): boolean {
 }
 
 // 卡片进入前方一屏且首屏已加载完，就把全部瓷砖的目录并成一次请求预取；
-// 无悬停的触屏设备另按瓷砖可见预热首屏图标，有悬停的设备留到悬停时再热。
+// 首屏图标按瓷砖是否在视口内预热，不依赖悬停（触屏没有悬停信号）。
 export function useTrophyWarmup(tiles: readonly (readonly string[])[]) {
   const { cache, mutate } = useSWRConfig();
   const restReady = useSyncExternalStore(subscribeRestReady, isRestReady, notReady);
@@ -140,7 +140,7 @@ export function useTrophyWarmup(tiles: readonly (readonly string[])[]) {
 
   const observeTile = useCallback(
     (el: HTMLElement | null) => {
-      if (!el || !matchMedia("(hover: none)").matches) return;
+      if (!el) return;
       tileObserver.current ??= new IntersectionObserver(
         (entries) => {
           for (const entry of entries) {
@@ -165,15 +165,7 @@ export function useTrophyWarmup(tiles: readonly (readonly string[])[]) {
     [cache],
   );
 
-  const warmTile = useCallback(
-    (titleIds: readonly string[]) => {
-      prefetchCatalogs([titleIds], cache, mutate);
-      warmTrophyIcons(titleIds, cache);
-    },
-    [cache, mutate],
-  );
-
-  return { observeSection, observeTile, warmTile };
+  return { observeSection, observeTile };
 }
 
 // 禁用 keepPreviousData，避免切游戏后暂时展示上一款的奖杯。

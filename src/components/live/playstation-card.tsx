@@ -198,13 +198,11 @@ function GameTile({
   eager,
   selected,
   onSelect,
-  onIntent,
 }: {
   tile: Tile;
   eager?: boolean;
   selected: boolean;
   onSelect: () => void;
-  onIntent: () => void;
 }) {
   const trophies = tile.trophies;
   const metals = trophies
@@ -216,8 +214,6 @@ function GameTile({
       aria-expanded={selected}
       aria-controls={selected ? "playstation-trophies" : undefined}
       onClick={onSelect}
-      onPointerEnter={onIntent}
-      onFocus={onIntent}
       className={cn(
         "flex h-full w-full cursor-pointer items-center overflow-hidden rounded-md text-left",
         "border bg-surface transition-colors hover:bg-surface-hover",
@@ -477,7 +473,7 @@ export function PlaystationRow({
         ?.titleId ?? null)
     : null;
   const catalog = useTrophyCatalog(openTile?.titleIds ?? null);
-  const { observeSection, observeTile, warmTile } = useTrophyWarmup(
+  const { observeSection, observeTile } = useTrophyWarmup(
     tiles.map((tile) => tile.titleIds),
   );
   const [openBodyRef, openHeight] = useOpenHeight(
@@ -584,7 +580,6 @@ export function PlaystationRow({
                   tile={tile}
                   eager={index < 3}
                   selected={tile.titleId === openId}
-                  onIntent={() => warmTile(tile.titleIds)}
                   onSelect={() => {
                     onJumpDone();
                     setFocusKey(null);
