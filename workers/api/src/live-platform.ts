@@ -1,6 +1,7 @@
 import type { LiveEvent } from "@/lib/live-events";
 
 import { currentContext, requestStore } from "@api/runtime";
+import type { LivePushRoom } from "./origin-worker";
 import type { Env } from "./runtime";
 
 
@@ -51,13 +52,17 @@ async function revalidateVercel(env: Env, tags: readonly string[]): Promise<bool
   }
 }
 
-export const ROOM_ID = "global";
+const ROOM_ID = "global-apac";
+
+// locationHint 只在对象首次创建时生效，已存在的对象不会搬家；要换位置只能换 ROOM_ID。
+export function liveRoom(env: Env): DurableObjectStub<LivePushRoom> {
+  return env.LIVE_PUSH.get(env.LIVE_PUSH.idFromName(ROOM_ID), { locationHint: "apac" });
+}
 
 export async function publish(event: LiveEvent): Promise<void> {
   try {
     const { env } = currentContext();
-    const room = env.LIVE_PUSH.get(env.LIVE_PUSH.idFromName(ROOM_ID));
-    await room.broadcast(JSON.stringify(event));
+    await liveRoom(env).broadcast(JSON.stringify(event));
   } catch (error) {
     console.error("[live]", event.type, error instanceof Error ? error.message : String(error));
   }

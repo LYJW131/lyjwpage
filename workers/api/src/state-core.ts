@@ -9,7 +9,7 @@ import type { ListeningItem, RecentTrack } from "@/lib/types";
 import { commitRecentlyPlayed, commitRecentTracks } from "./apple-music-recent";
 import { dispatchIngestEffects } from "./ingest-effects";
 import { enrichCommand, enrichRecentlyPlayed } from "./listening-enrichment";
-import { expireStatusTags, ROOM_ID } from "./live-platform";
+import { expireStatusTags, liveRoom } from "./live-platform";
 import { issueApiDeveloperToken } from "./musickit-token";
 import { requestStore, type Env } from "./runtime";
 
@@ -66,7 +66,7 @@ export class StateCore extends WorkerEntrypoint<Env> implements StateCoreRpc {
   }
 
   private room() {
-    return this.env.LIVE_PUSH.get(this.env.LIVE_PUSH.idFromName(ROOM_ID));
+    return liveRoom(this.env);
   }
 
   private scoped<T>(run: () => Promise<T>): Promise<T> {

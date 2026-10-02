@@ -16,7 +16,7 @@ import {
   type SocketSample,
 } from "./live-census";
 import { AudienceSync } from "./live-audience";
-import { ROOM_ID } from "./live-platform";
+import { liveRoom } from "./live-platform";
 import { ConfigError, issueMusicKitToken } from "./musickit-token";
 import { getAllowedOrigins, getCorsHeaders, isAllowedOrigin, isAllowedOriginValue } from "./origins";
 import { fetchPreviewUpstream, isPreviewProxyPath, previewWorkerEnabled } from "./preview";
@@ -53,10 +53,6 @@ function bearerToken(request: Request): string | null {
   if (!header) return null;
   const match = header.match(/^Bearer\s+(.+)$/i);
   return match?.[1]?.trim() ?? null;
-}
-
-function getRoom(env: Env): DurableObjectStub<LivePushRoom> {
-  return env.LIVE_PUSH.get(env.LIVE_PUSH.idFromName(ROOM_ID));
 }
 
 function rejectSocket(request: Request, env: Env): Response | null {
@@ -399,11 +395,11 @@ const worker = {
     if (url.pathname === WS_PATH) {
       const rejected = rejectSocket(request, env);
       if (rejected) return rejected;
-      return getRoom(env).fetch(request);
+      return liveRoom(env).fetch(request);
     }
 
     if (url.pathname === "/count") {
-      return jsonResponse({ ok: true, ...(await getRoom(env).audience()) }, { headers: cors });
+      return jsonResponse({ ok: true, ...(await liveRoom(env).audience()) }, { headers: cors });
     }
 
     if (url.pathname === "/") {
