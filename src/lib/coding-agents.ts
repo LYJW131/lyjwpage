@@ -71,8 +71,13 @@ export function codingAgentRows(
     }));
 }
 
-export function liveCodingActivity(activity: readonly CodingActivityEntry[], macDeclaredOffline: boolean): CodingActivityEntry | null {
-  return activity.find((entry) => !(macDeclaredOffline && entry.source === "mac")) ?? null;
+export type CodingActivitySlots = { mac: CodingActivityEntry | null; remote: CodingActivityEntry | null };
+
+export function codingActivitySlots(activity: readonly CodingActivityEntry[], macDeclaredOffline: boolean): CodingActivitySlots {
+  return {
+    mac: macDeclaredOffline ? null : (activity.find((entry) => entry.source === "mac") ?? null),
+    remote: activity.find((entry) => entry.source !== "mac") ?? null,
+  };
 }
 
 export const CODING_ACTIVE_WINDOW_MS = 5 * 60_000;

@@ -3,11 +3,11 @@ import test from "node:test";
 
 import {
   codingAgentBrand,
+  codingActivitySlots,
   codingAgentRows,
   codingDisplayModel,
   codingSourceHealth,
   describeCodingSources,
-  liveCodingActivity,
   type CodingActivityEntry,
 } from "./coding-agents.ts";
 import type { CodingUsageAgentView } from "./types.ts";
@@ -65,15 +65,18 @@ test("行：各来源的活动按时刻降序，不信推来的顺序", () => {
   assert.deepEqual(claude?.activity.map((entry) => entry.source), ["agents-otlp", "mac"]);
 });
 
-test("活动灯：取最新一条；Mac 亲口离线时只作废来自 mac 的时刻，云端和账号照样算", () => {
+test("活动灯：本机与远端各占一格、可同时亮；Mac 亲口离线时只作废来自 mac 的时刻，云端和账号照样算", () => {
   const activity: CodingActivityEntry[] = [
+    { source: "agents-otlp", lastActivityAt: 9_500, model: "claude-sonnet-5" },
     { source: "mac", lastActivityAt: 9_000, model: "claude-opus-5" },
-    { source: "agents-otlp", lastActivityAt: 8_000, model: "claude-sonnet-5" },
+    { source: "agents", lastActivityAt: 8_000, model: null },
   ];
-  assert.equal(liveCodingActivity(activity, false)?.source, "mac");
-  assert.equal(liveCodingActivity(activity, true)?.source, "agents-otlp");
-  assert.equal(liveCodingActivity([activity[0]!], true), null);
-  assert.equal(liveCodingActivity([], false), null);
+  const both = codingActivitySlots(activity, false);
+  assert.equal(both.mac?.source, "mac");
+  assert.equal(both.remote?.source, "agents-otlp");
+  assert.deepEqual(codingActivitySlots(activity, true), { mac: null, remote: activity[0] });
+  assert.deepEqual(codingActivitySlots([activity[1]!], true), { mac: null, remote: null });
+  assert.deepEqual(codingActivitySlots([], false), { mac: null, remote: null });
 });
 
 test("模型名：亮着就是亮着那条的；灭了取最近一条带模型的事件；都没有用视图里的最近主力模型", () => {
