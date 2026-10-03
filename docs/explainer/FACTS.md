@@ -25,7 +25,7 @@
 下表里除 Claude Code 云端和 collector Worker 两行，每一行都是一个外部上报器；Claude Code 云端遥测（OTLP）不是我们写的上报器，另走一个入口。第 01 章开场的图纸索引按图号画七个小样：前五个图号是外部上报器所在的地方（第 3 号是家里的 Home Assistant 和 n100 上的 playstation-reporter，第 5 号是东京 misaka-jp 上的 server-reporter、agents-reporter、discord-reporter），第 6 号是云端遥测，第 7 号是采集 Worker。上报器和采集任务有几个，只按代码画，旁白和标注里不说。其中 n100 上的 playstation-reporter，把 presence、游玩列表和奖杯 POST 到同一个 `/api/ingest/playstation`。入口来源是 `shared/ingest/prepare.ts#INGEST_SOURCES` 那一份（playstation 是其中之一）；OTLP 走 `/api/ingest/agents/otlp`，不在这份清单里。Home Assistant 的 token 只开 homepod（`lyjwpage-home-assistant` 只有 `ingest:homepod`）。容器自己的 Access service token 是 `lyjwpage-playstation`，登记在 `workers/ingress/wrangler.toml#ACCESS_CLIENTS`，权限只有 `ingest:playstation`；`/playstation` 只认这一把。
 
 第 01 章用到的部分（编码用量与 Tokens 道的口径、collector 的任务与节奏、PlayStation 与 Quest 上报器、Mac 信封的 90 秒和 400 ms）按 main 8534275 逐条回代码复核过。 <!-- allow: 核对基线戳 -->
-FIG. 2 的 App 名、400 ms 的出处、apple-recent 的两档和 FIG. 7A「没人上报的播放」按 main a2c6e1c 回代码复核过。 <!-- allow: 核对基线戳 -->
+FIG. 2 的 App 名、400 ms 的出处按 main a2c6e1c 回代码复核过；apple-recent 的两档与活跃档的拉取、FIG. 7A「没人上报的播放」按 cddbb5a 复核过。 <!-- allow: 核对基线戳 -->
 
 | 来源 | 程序 / 在哪跑 | 入口 · token | 报什么 |
 |---|---|---|---|
@@ -82,12 +82,12 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 ### 没人上报的播放（第 01 章 FIG. 7A）
 
-- iPhone 等设备上放的歌没有上报器：lyjwpage iOS App 只报活动与训练（`apps/ios/README.md`）。站点只能从 Apple Music 账号「最近播放的歌」的单曲列表推断（`workers/collector/src/jobs/apple-recent.ts#assembleRecentTracks`）。
-- 拉取：apple-recent 在任务表里每分钟登记，任务里再分两档：闲时每 `IDLE_EVERY_MINUTES`（5）分钟拉一次；专辑列表或单曲列表有变就进活跃档、每分钟拉，`ACTIVE_HOLD_MS`（10 分钟）里没再变才回闲档（同文件 `appleRecentDue`、`appleRecentJob`）。单曲列表连同拿到它的时刻交给 `CORE.commitRecentTracks`。
-- 记痕迹：状态核心拿新列表和上一份比，新播的歌是新列表的前缀，一首记一行 `(since, t]`，带时长（`shared/pulse-listening.ts#playedBetween`、同文件 `listeningTraces`；`workers/api/src/stores/listening-pulse.ts#prepareRecentTracks`）。一首歌开播时就排到列表最前，所以开播落在这两次拉取之间（实测见 `docs/listening-inference-accuracy.md`，record）。
-- 推断：连续播放的一串按时长对齐，每首的窗口减去前面各首的时长后都约束同一个开播，求交取中点，半宽是误差；交集为空就另起一串；一首画到时长用完或下一首开播（`shared/pulse-listening.ts#inferredPlays`）。片中「后一首的窗口减去前一首的时长，和前一首的窗口求交」是它两首时的情形。
-- 展示：Pulse 听歌道画成斜线段，悬停「Played elsewhere (estimated)」带开播误差，图例「Played elsewhere, estimated」（`src/lib/pulse.ts#stateLaneView`、`src/components/live/pulse-card.tsx`）。最后一首还没按时长放完时，`listening/now` 带 `elsewhere`；Mac / HomePod 都没在放时，卡片标 Likely Playing（label-mono，界面上是大写）和虚线框的 iPhone 标识（`shared/pulse-listening.ts#playingElsewhere`、`src/lib/now-listening.ts#pickNowListening`、`src/components/live/listening-card.tsx`）。Mac / HomePod 在放同一首（歌名与艺人都对上）就不算别处播放（`shared/pulse-listening.ts#sameSong`）。
-- 片中不出精度和误差的数；示意里的分钟、歌和时长都是示意，时间在推断开始前定格（一拍一分钟走下去，那首歌在片中已经放完）。暂停、拖进度、单曲循环不在列表里留痕，片中不讲。
+- iPhone、iPad、网页版等别的设备上放的 Apple Music 没有上报器：lyjwpage iOS App 只报活动与训练（`apps/ios/README.md`）。站点只能从 Apple Music 账号「最近播放的歌」的单曲列表推断（`workers/collector/src/jobs/apple-recent.ts#assembleRecentTracks`）。
+- 拉取：apple-recent 在任务表里每分钟登记，任务里再分两档：闲时每 `IDLE_EVERY_MINUTES`（5）分钟拉一次；专辑列表或单曲列表有变就进活跃档，每分钟这一响里接着每 `ACTIVE_POLL_MS`（15 秒）再拉一次单曲列表，`ACTIVE_HOLD_MS`（10 分钟）里没再变才回闲档（同文件 `appleRecentDue`、`followRecentTracks`、`appleRecentJob`）。单曲列表连同拿到它的时刻交给 `CORE.commitRecentTracks`；回执里的 `nextBy`（照推断接着放、下一首最晚上榜的时刻）早于下一次拉时，提前到那一刻拉（`shared/pulse-listening.ts#nextTraceBy`）。片中只画每 15 秒一拉，不画按曲终补拉。
+- 记痕迹：状态核心拿新列表和上一份比，新播的歌是新列表的前缀，一首记一行 `(since, t]`，带时长（`shared/pulse-listening.ts#playedBetween`、同文件 `listeningTraces`；`workers/api/src/stores/listening-pulse.ts#prepareRecentTracks`）。一首歌开播后 `LISTENING_TRACE_LAG_MS`（5.5 秒）排到列表最前，所以开播落在这两次拉取各减去这段滞后之间（上榜的抖动实测见 `docs/listening-inference-accuracy.md`，record；滞后按页面进度对照手机上的实际进度定）。片中说「开播几秒就排到最前」。
+- 推断：连续播放的一串按时长对齐，每首的窗口减去前面各首的时长后都约束同一个开播，放宽一点余量求交取中点；不放宽时交集的半宽是理想误差（`marginMs`）；交集为空就另起一串；一首画到时长用完或下一首开播（`shared/pulse-listening.ts#inferredPlays`）。片中「后一首的窗口减去前一首的时长，和前一首的窗口求交」是它两首时的情形。
+- 展示：Pulse 听歌道画成斜线段，悬停「Played elsewhere (estimated)」带开播误差，图例「Played elsewhere, estimated」（`src/lib/pulse.ts#stateLaneView`、`src/components/live/pulse-card.tsx`）。最后一首还没按时长放完、或放完还不到 `LISTENING_ELSEWHERE_HOLD_MS` 时，`listening/now` 带 `elsewhere`；Mac / HomePod 都没在放时，卡片标 Likely Playing（label-mono，界面上是大写），旁边虚线框里是这一首的理想误差，如「±3s」（`shared/pulse-listening.ts#playingElsewhere`、`src/lib/now-listening.ts#pickNowListening`、`src/components/live/listening-card.tsx#formatMargin`）。Mac / HomePod 在放同一首（歌名与艺人都对上）就不算别处播放（`shared/pulse-listening.ts#sameSong`）。
+- 片中不出实测精度的数；示意里的分钟和开播时刻是示意，歌名和时长是 Apple 目录里的（Aimer 的 Ref:rain、残響散歌），页面卡片上的「±3s」是片中示意窗口算出来的理想误差。第一首的时长要让两次看到新歌都落在整分钟那次拉取上（配乐在 30:1、31:2 两拍有纸滑）。时间在推断开始前定格（一拍一分钟走下去，那首歌在片中已经放完）。暂停、拖进度、单曲循环不在列表里留痕，片中不讲。
 
 ## 2 上报入口（workers/ingress，`ingest.homepage.lyjw.llc`）
 

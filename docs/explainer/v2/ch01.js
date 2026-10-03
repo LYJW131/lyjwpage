@@ -90,11 +90,11 @@
     "ch01.n12a": ["cron 每分钟触发一次采集 Worker，", "A cron trigger fires every minute;"],
     "ch01.n12b": ["每个任务按自己的节奏去取。", "each job keeps its own pace."],
     "ch01.f7a": ["没人上报的播放", "Playback no one reports"],
-    "ch01.f7asub": ["iPhone 上放的歌：从 Apple 最近播放推断", "songs on the iPhone, inferred from Apple's recents"],
+    "ch01.f7asub": ["别的设备上的 Apple Music：从最近播放推断", "Apple Music on other devices, inferred from recents"],
     "ch01.noRep": ["放的歌没人上报", "playback isn't reported"],
     "ch01.apple": ["Apple · 最近播放的歌", "Apple · recently played"],
-    "ch01.active": ["列表一变：每分钟拉", "list changed: poll every minute"],
-    "ch01.newTop": ["↑ 开播就排到最前", "↑ tops the list once it starts"],
+    "ch01.active": ["列表一变：每 15 秒拉", "list changed: poll every 15 s"],
+    "ch01.newTop": ["↑ 开播几秒就排到最前", "↑ tops the list seconds after it starts"],
     "ch01.infer": ["站点这边推断", "Inferred site-side"],
     "ch01.win": ["开播在这一格里", "started within this gap"],
     "ch01.shift": ["减去前一首的时长", "minus the previous song's length"],
@@ -103,9 +103,9 @@
     "ch01.page": ["页面上", "On the page"],
     "ch01.likely": ["LIKELY PLAYING", "LIKELY PLAYING"],
     "ch01.elsewhere": ["Played elsewhere, estimated", "Played elsewhere, estimated"],
-    "ch01.n13a": ["iPhone 上放的歌，没人上报；", "No one reports songs on the iPhone;"],
+    "ch01.n13a": ["别的设备放 Apple Music，没人上报；", "No one reports songs elsewhere;"],
     "ch01.n13b": ["采集 Worker 去拉 Apple 最近播放。", "the collector polls Apple's recents."],
-    "ch01.n14a": ["新歌一开播，就排到列表最前；", "A song tops the list as it starts;"],
+    "ch01.n14a": ["新歌开播几秒，就排到列表最前；", "A song tops the list seconds in;"],
     "ch01.n14b": ["按时长接成一串，推出起止和误差。", "lengths chain them: start ± margin."],
   });
   const tr = (k) => I18N.tr(k);
@@ -1012,8 +1012,10 @@
     });
   }
 
-  // 一拍一分钟，接着表盘走。推断照 shared/pulse-listening.ts#inferredPlays：后一首的窗口减去前一首的时长，
-  // 和前一首的窗口求交，交集中点是开播、半宽是误差。PLAYS 的 start 是真正开播的分钟，seen 是第一次看到它的那一轮。
+  // 一拍一分钟，接着表盘走；列表变过之后每拍里每 POLL_EVERY 分钟拉一次。推断照 shared/pulse-listening.ts#inferredPlays：
+  // 窗口先减去上榜滞后 LAG，后一首的窗口再减去前一首的时长，和前一首的窗口求交，交集中点是开播、半宽是理想误差。
+  // PLAYS 的 start 是真正开播的分钟，seen 是第一次看到它的那次拉取；start + LAG 要落在 seen 前一格里，
+  // 两次看到新歌才踩在 30:1、31:2 两拍上（配乐的纸滑），所以第一首的时长要在 4.75–5.25 分钟之间。
   const IX = FX.F7A - 960;
   const minuteBar = (m) => AT.dial + m / 4;
   const PH7 = { x: IX + 110, y: 290, w: 210, h: 400 };
@@ -1022,13 +1024,16 @@
   const PG = { x: IX + 1010, y: 664, w: 850, h: 174 };
   const POLL_Y = 236;
   const POLL = [[IX - 140, POLL_Y], [AL.x + AL.w / 2, POLL_Y], [AL.x + AL.w / 2, AL.y - 6]];
-  const RECENT0 = ["夜に駆ける", "アイドル", "勇者", "祝福"];
-  const PLAYS = [{ title: "群青", len: 4.13, start: 12.95, seen: 13 }, { title: "怪物", len: 3.42, start: 17.08, seen: 18 }];
-  const W1 = [PLAYS[0].seen - 1, PLAYS[0].seen];
-  const W2 = [PLAYS[1].seen - 1, PLAYS[1].seen];
+  const POLL_EVERY = 0.25, LAG = 5.5 / 60;
+  const ARTIST7 = "Aimer";
+  const RECENT0 = ["カタオモイ", "蝶々結び", "Brave Shine", "春はゆく"];
+  const PLAYS = [{ title: "Ref:rain", len: 4.836, start: 12.86, seen: 13 }, { title: "残響散歌", len: 3.082, start: 17.696, seen: 18 }];
+  const W1 = [PLAYS[0].seen - POLL_EVERY - LAG, PLAYS[0].seen - LAG];
+  const W2 = [PLAYS[1].seen - POLL_EVERY - LAG, PLAYS[1].seen - LAG];
   const W2B = [W2[0] - PLAYS[0].len, W2[1] - PLAYS[0].len];
   const CROSS = [Math.max(W1[0], W2B[0]), Math.min(W1[1], W2B[1])];
   const EST = (CROSS[0] + CROSS[1]) / 2;
+  const MARGIN_S = Math.ceil(((CROSS[1] - CROSS[0]) / 2) * 60);
   const T7 = { seen1: minuteBar(PLAYS[0].seen), seen2: minuteBar(PLAYS[1].seen), shift: 31.75, cross: 32.0, chain: 32.1, page: 32.5, out: 33.7 };
   const FREEZE = 19.5;
   const minuteAt7 = (b) => Math.min((b - AT.dial) * 4, FREEZE);
@@ -1053,7 +1058,7 @@
       withSquash(x, PH7.y + 200, squash(fk), () => {
         cover(x, cx - 60, PH7.y + 86, 120, a * k);
         text(x, p.title, cx, PH7.y + 266, { font: FONT.cjk(40, 600), color: css("signalD"), align: "center", alpha: a });
-        text(x, "YOASOBI", cx, PH7.y + 306, { font: FONT.sans(28, 500), color: ash, align: "center", alpha: a });
+        text(x, ARTIST7, cx, PH7.y + 306, { font: FONT.sans(28, 500), color: ash, align: "center", alpha: a });
       });
       const px0 = PH7.x + 40, px1 = PH7.x + PH7.w - 40, py = PH7.y + 344;
       line(x, px0, py, px1, py, 4, bone, 0.22 * a);
@@ -1071,13 +1076,14 @@
     arrowHead(x, POLL[2][0], POLL[2][1], Math.PI / 2, bone, a * k * 0.8);
     text(x, tr("ch01.col"), IX + 70, POLL_Y - 14, { font: FONT.cjk(28, 600), color: bone, alpha: a * k });
     text(x, tr("ch01.active"), POLL[1][0] + 20, POLL_Y - 14, { font: FONT.cjk(28, 600), color: ash, alpha: a * k, maxW: 520 });
-    for (let m = 12; m <= Math.floor(FREEZE); m++) {
+    for (let q = 12 / POLL_EVERY; q <= FREEZE / POLL_EVERY; q++) {
+      const m = q * POLL_EVERY, tick = Number.isInteger(m);
       const t = minuteBar(m), pk = prog(b, t - 0.14, t);
       if (pk > 0 && pk < 1) {
         const [px, py] = pathAt(POLL, pk * pathLen(POLL));
-        x.save(); x.globalAlpha = a; x.fillStyle = bone; x.beginPath(); x.arc(px, py, 6, 0, TAU); x.fill(); x.restore();
+        x.save(); x.globalAlpha = a; x.fillStyle = bone; x.beginPath(); x.arc(px, py, tick ? 6 : 4, 0, TAU); x.fill(); x.restore();
       }
-      if (b >= t) glow(e, POLL[2][0], POLL[2][1], 40, 0.35 * impact(b, t, 0.08) * a);
+      if (tick && b >= t) glow(e, POLL[2][0], POLL[2][1], 40, 0.35 * impact(b, t, 0.08) * a);
     }
     arrowPath(x, [[PH7.x + PH7.w + 12, PH7.y + 200], [AL.x - 10, PH7.y + 200]], k, bone, a * 0.7, 1.6, true);
   }
@@ -1101,7 +1107,7 @@
       if (hot && hk > 0) fillRect(d, AL.x + 16, y - 38, AL.w - 32, RH - 6, css("signal"), 0.14 * hk * a);
       text(d, String(i + 1), AL.x + 34, y, { font: FONT.mono(28, 500), color: css("graphite"), alpha: a });
       text(d, title, AL.x + 80, y, { font: FONT.cjk(32, 600), color: hot && hk > 0.3 ? css("signal") : css("pink"), alpha: a });
-      text(d, "YOASOBI", AL.x + AL.w - 30, y, { font: FONT.sans(28, 500), color: css("graphite"), align: "right", alpha: a });
+      text(d, ARTIST7, AL.x + AL.w - 30, y, { font: FONT.sans(28, 500), color: css("graphite"), align: "right", alpha: a });
     });
     d.restore();
     if (v > 0) glow(e, AL.x + 140, top - 12, 110, 0.45 * impact(b, tSeen, 0.25) * a);
@@ -1110,12 +1116,12 @@
 
   function bracket7(d, m0, m1, y, a, hot, dashed = false) {
     if (a <= 0) return;
-    const x0 = mx(m0), x1 = mx(m1), h = 36;
+    const x0 = mx(m0), x1 = mx(m1), h = 36, serif = Math.min(9, (x1 - x0) / 3);
     fillRect(d, x0, y - h / 2, x1 - x0, h, css("signal"), (hot ? 0.2 : 0.07) * a);
     const col = hot ? css("signal") : css("graphite");
     d.save(); if (dashed) d.setLineDash([5, 4]);
-    polyline(d, [[x0 + 9, y - h / 2], [x0, y - h / 2], [x0, y + h / 2], [x0 + 9, y + h / 2]], 1, 2.4, col, a);
-    polyline(d, [[x1 - 9, y - h / 2], [x1, y - h / 2], [x1, y + h / 2], [x1 - 9, y + h / 2]], 1, 2.4, col, a);
+    polyline(d, [[x0 + serif, y - h / 2], [x0, y - h / 2], [x0, y + h / 2], [x0 + serif, y + h / 2]], 1, 2.4, col, a);
+    polyline(d, [[x1 - serif, y - h / 2], [x1, y - h / 2], [x1, y + h / 2], [x1 - serif, y + h / 2]], 1, 2.4, col, a);
     d.restore();
   }
 
@@ -1131,7 +1137,10 @@
     for (let m = M0; m <= M1; m++) {
       line(d, mx(m), AXIS_Y - 6, mx(m), AXIS_Y + 6, 1.2, css("pink"), 0.5 * a);
       if (m % 3 === 0) text(d, `:${m}`, mx(m), AXIS_Y + 38, { font: FONT.mono(28, 500), color: gr, align: "center", alpha: a });
-      if (m >= 12 && m <= mb) { d.save(); d.globalAlpha = a; d.fillStyle = css("signal"); d.beginPath(); d.arc(mx(m), AXIS_Y, 5, 0, TAU); d.fill(); d.restore(); }
+    }
+    for (let q = 12 / POLL_EVERY; q * POLL_EVERY <= mb; q++) {
+      const m = q * POLL_EVERY;
+      d.save(); d.globalAlpha = a; d.fillStyle = css("signal"); d.beginPath(); d.arc(mx(m), AXIS_Y, Number.isInteger(m) ? 5 : 3, 0, TAU); d.fill(); d.restore();
     }
     if (mb >= M0 && b < T7.out) line(d, mx(mb), IS.y + 104, mx(mb), AXIS_Y, 1.2, gr, 0.45 * a);
     PLAYS.forEach((p, i) => text(d, p.title, IS.x + 30, ROW[i] + 11, { font: FONT.cjk(32, 600), alpha: a * prog(b, minuteBar(p.seen), minuteBar(p.seen) + 0.1) }));
@@ -1177,8 +1186,8 @@
     d.restore();
     text(d, tr("ch01.likely"), cx0 + 104, cy0 + 28, { font: FONT.mono(28, 600), color: css("signal"), alpha: a });
     text(d, PLAYS[1].title, cx0 + 104, cy0 + 78, { font: FONT.cjk(34, 600), alpha: a });
-    d.save(); d.globalAlpha = a; d.strokeStyle = gr; d.lineWidth = 1.6; d.setLineDash([6, 4]); roundRect(d, cx0 + 184, cy0 + 48, 112, 40, 6); d.stroke(); d.restore();
-    text(d, "iPhone", cx0 + 240, cy0 + 77, { font: FONT.mono(28, 500), color: gr, align: "center", alpha: a });
+    d.save(); d.globalAlpha = a; d.strokeStyle = gr; d.lineWidth = 1.6; d.setLineDash([6, 4]); roundRect(d, cx0 + 254, cy0 + 48, 84, 40, 6); d.stroke(); d.restore();
+    text(d, `±${MARGIN_S}s`, cx0 + 296, cy0 + 77, { font: FONT.mono(28, 500), color: gr, align: "center", alpha: a });
     glow(e, cx0 + 200, cy0 + 20, 120, 0.4 * impact(b, T7.page, 0.3) * a);
     const lx = PG.x + 400, lw = 420, ly = PG.y + 104;
     text(d, tr("ch01.pulse.listening"), lx, PG.y + 92, { font: FONT.sans(28, 600), alpha: a });
