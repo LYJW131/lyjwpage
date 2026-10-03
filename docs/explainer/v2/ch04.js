@@ -30,7 +30,7 @@
 
   const P = [
     { id: "desktop", rt: 1, tag: 1, r: [190, 8, 234, 40], k: "badge" },
-    { id: "coding-year", rt: 1, tag: 1, r: [0, 64, 304, 56], k: "none" },
+    { id: "coding-year", rt: 0, tag: 1, r: [0, 64, 304, 56], k: "none" },
     { id: "github-chart", rt: 0, tag: 0, r: [0, 124, 304, 61], k: "none" },
     { id: "timezone", rt: 0, tag: 1, r: [310, 64, 304, 121], k: "clock" },
     { id: "charger", rt: 1, tag: 1, r: [0, 192, 214, 117], k: "charge" },
@@ -41,7 +41,7 @@
     { id: "workouts", rt: 0, tag: 1, r: [376, 437, 238, 152], k: "bars" },
     { id: "server", rt: 0, tag: 1, r: [0, 596, 614, 152], k: "spark" },
     { id: "agent-status", rt: 0, tag: 1, r: [0, 755, 614, 103], k: "dots" },
-    { id: "coding", rt: 1, tag: 1, r: [0, 865, 614, 258], k: "chart" },
+    { id: "coding", rt: 0, tag: 1, r: [0, 865, 614, 258], k: "chart" },
     { id: "coding-now", rt: 1, tag: 1, r: [0, 1127, 362, 200], k: "list" },
     { id: "limits", rt: 0, tag: 1, r: [366, 1127, 248, 200], k: "meters" },
     { id: "playing-now", rt: 1, tag: 1, r: [0, 1334, 614, 118], k: "hero" },

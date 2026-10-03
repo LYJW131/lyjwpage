@@ -25,11 +25,12 @@
 下表里除 Claude Code 云端和 collector Worker 两行，每一行都是一个外部上报器；Claude Code 云端遥测（OTLP）不是我们写的上报器，另走一个入口。第 01 章开场的图纸索引按图号画七个小样：前五个图号是外部上报器所在的地方（第 3 号是家里的 Home Assistant 和 n100 上的 playstation-reporter，第 5 号是东京 misaka-jp 上的 server-reporter、agents-reporter、discord-reporter），第 6 号是云端遥测，第 7 号是采集 Worker。上报器和采集任务有几个，只按代码画，旁白和标注里不说。其中 n100 上的 playstation-reporter，把 presence、游玩列表和奖杯 POST 到同一个 `/api/ingest/playstation`。入口来源是 `shared/ingest/prepare.ts#INGEST_SOURCES` 那一份（playstation 是其中之一）；OTLP 走 `/api/ingest/agents/otlp`，不在这份清单里。Home Assistant 的 token 只开 homepod（`lyjwpage-home-assistant` 只有 `ingest:homepod`）。容器自己的 Access service token 是 `lyjwpage-playstation`，登记在 `workers/ingress/wrangler.toml#ACCESS_CLIENTS`，权限只有 `ingest:playstation`；`/playstation` 只认这一把。
 
 第 01 章用到的部分（编码用量与 Tokens 道的口径、collector 的任务与节奏、PlayStation 与 Quest 上报器、Mac 信封的 90 秒和 400 ms）按 main 8534275 逐条回代码复核过。 <!-- allow: 核对基线戳 -->
+FIG. 2 的 App 名、400 ms 的出处、apple-recent 的两档和 FIG. 7A「没人上报的播放」按 main a2c6e1c 回代码复核过。 <!-- allow: 核对基线戳 -->
 
 | 来源 | 程序 / 在哪跑 | 入口 · token | 报什么 |
 |---|---|---|---|
 | Mac | Mac Telemetry Hub，菜单栏 App | `/api/ingest/mac` · `lyjwpage-mac` | 前台应用、窗口标题、Apple Music、充电设备、编码用量（本机的日行、最近一次用量事件、5 分钟 token 桶）、时区、Apple Music user token |
-| iPhone | lyjwpage iOS App（动画里仍叫 iPhone Telemetry Hub），HealthKit 唤醒：圆环按小时（`.hourly`；README 说这一条传 `.immediate` 也会被系统钳到 `.hourly`），训练申请 `.immediate`（`apps/ios/App/Hub/Modules/ActivityModule.swift#observe`、`apps/ios/App/Hub/Modules/WorkoutsModule.swift#startObserving`、`apps/ios/README.md` 的「什么时候会上报」） | `/api/ingest/iphone` · `lyjwpage-iphone` | 活动圆环、训练、五分钟步数桶 |
+| iPhone | lyjwpage iOS App，HealthKit 唤醒：圆环按小时（`.hourly`；README 说这一条传 `.immediate` 也会被系统钳到 `.hourly`），训练申请 `.immediate`（`apps/ios/App/Hub/Modules/ActivityModule.swift#observe`、`apps/ios/App/Hub/Modules/WorkoutsModule.swift#startObserving`、`apps/ios/README.md` 的「什么时候会上报」） | `/api/ingest/iphone` · `lyjwpage-iphone` | 活动圆环、训练、五分钟步数桶 |
 | Home Assistant | 家里 | `/api/ingest/homepod` · `lyjwpage-home-assistant` | HomePod 正在播放。不报 PS5 电源 |
 | PlayStation | playstation-reporter，n100 上的容器 | `/api/ingest/playstation` · `lyjwpage-playstation` | presence、游玩列表、奖杯：拿本机的 PSN 登录态问 Sony 取来，用自己的 Access token 寄到站点。不发 `power` |
 | Emby | emby-reporter，NAS 上的容器 | `/api/ingest/emby` · `lyjwpage-emby` | 在看什么；海报先传 R2 |
@@ -53,7 +54,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 - 结构是 `{version:4, presence, heartbeatAt, activeModules, modules:{…}}`，`heartbeatAt` 是 epoch 毫秒；只带变了的模块（`reporters/mac-telemetry-hub/Sources/TelemetryCore/TelemetryEnvelope.swift#TelemetryEnvelope`、`reporters/mac-telemetry-hub/Sources/TelemetryCore/ReportDecision.swift#ReportDecision`、`shared/ingest/telemetry.ts#prepareTelemetryEnvelope`）。
 - 没变化时每 **90 秒**发一个空信封报平安（`reporters/mac-telemetry-hub/Sources/TelemetryCore/ReportDecision.swift#heartbeatInterval`）。
-- 切应用先等 **400 ms** 落定，是防抖：落定前再切一次就重新等（`reporters/mac-telemetry-hub/App/MacTelemetryHub/ServiceController.swift#desktopSettleDelay`）。
+- 切应用默认先等 **400 ms** 落定，是防抖：落定前再切一次就重新等；这个值能在 Hub 的设置页里调（`reporters/mac-telemetry-hub/App/MacTelemetryHub/AppSettings.swift#defaultDesktopSettleDelayMs`、同文件 `desktopSettleDelayRangeMs`）。片中写「默认先等 400 ms」。
 - 窗口标题上报前先过隐私判断，Jev 参与；只有放行的进信封（`reporters/mac-telemetry-hub/App/MacTelemetryHub/WindowTitleJudge.swift#WindowTitleJudge`）。判据不写；第 01 章问题横条的条数是示意，不对应判断的题数。
 
 ### 图片
@@ -74,10 +75,19 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 ### collector 的任务
 
-- 节奏：每个任务登记「每 N 分钟、第 offset 分钟」（各任务的 `everyMinutes` / `offset`），cron 每分钟一响时挑出到期的一起跑（`workers/collector/src/schedule.ts#isDue`）。第 01 章表盘的时序图按这张表从整点起画 12 分钟。
-- 最近在听：每 2 分钟调 `CORE.commitRecentlyPlayed`。用的 user token 是 Mac 推进 `CREDENTIALS` 的那一份，形成一次凭据接力。
+- 节奏：每个任务登记「每 N 分钟、第 offset 分钟」（各任务的 `everyMinutes` / `offset`），cron 每分钟一响时挑出到期的一起跑（`workers/collector/src/schedule.ts#isDue`）。第 01 章表盘的时序图按这张表从整点起画 12 分钟；apple-recent 每分钟登记、任务里再分两档（下一节），表盘让它在 :05 那一轮看到列表变了：:00、:05 各一次，之后每分钟。
+- 最近在听：apple-recent 任务，专辑 / 歌单粒度的列表交给 `CORE.commitRecentlyPlayed`。用的 user token 是 Mac 推进 `CREDENTIALS` 的那一份，形成一次凭据接力。
 - GitHub、Vercel、Cloudflare、Sentry、PageSpeed、厂商状态：直接写 `LAG`；Vercel 部署列表那一轮另把站点部署记录写进 D1（`workers/collector/src/jobs/vercel.ts#vercelDeploymentsJob`、`workers/collector/src/history.ts#archiveSiteDeploys`）。第 01 章表盘的注只说「直接交给状态核心，或写 LAG」，不画 D1。
 - PlayStation 不在这张表里。
+
+### 没人上报的播放（第 01 章 FIG. 7A）
+
+- iPhone 等设备上放的歌没有上报器：lyjwpage iOS App 只报活动与训练（`apps/ios/README.md`）。站点只能从 Apple Music 账号「最近播放的歌」的单曲列表推断（`workers/collector/src/jobs/apple-recent.ts#assembleRecentTracks`）。
+- 拉取：apple-recent 在任务表里每分钟登记，任务里再分两档：闲时每 `IDLE_EVERY_MINUTES`（5）分钟拉一次；专辑列表或单曲列表有变就进活跃档、每分钟拉，`ACTIVE_HOLD_MS`（10 分钟）里没再变才回闲档（同文件 `appleRecentDue`、`appleRecentJob`）。单曲列表连同拿到它的时刻交给 `CORE.commitRecentTracks`。
+- 记痕迹：状态核心拿新列表和上一份比，新播的歌是新列表的前缀，一首记一行 `(since, t]`，带时长（`shared/pulse-listening.ts#playedBetween`、同文件 `listeningTraces`；`workers/api/src/stores/listening-pulse.ts#prepareRecentTracks`）。一首歌开播时就排到列表最前，所以开播落在这两次拉取之间（实测见 `docs/listening-inference-accuracy.md`，record）。
+- 推断：连续播放的一串按时长对齐，每首的窗口减去前面各首的时长后都约束同一个开播，求交取中点，半宽是误差；交集为空就另起一串；一首画到时长用完或下一首开播（`shared/pulse-listening.ts#inferredPlays`）。片中「后一首的窗口减去前一首的时长，和前一首的窗口求交」是它两首时的情形。
+- 展示：Pulse 听歌道画成斜线段，悬停「Played elsewhere (estimated)」带开播误差，图例「Played elsewhere, estimated」（`src/lib/pulse.ts#stateLaneView`、`src/components/live/pulse-card.tsx`）。最后一首还没按时长放完时，`listening/now` 带 `elsewhere`；Mac / HomePod 都没在放时，卡片标 Likely Playing（label-mono，界面上是大写）和虚线框的 iPhone 标识（`shared/pulse-listening.ts#playingElsewhere`、`src/lib/now-listening.ts#pickNowListening`、`src/components/live/listening-card.tsx`）。Mac / HomePod 在放同一首（歌名与艺人都对上）就不算别处播放（`shared/pulse-listening.ts#sameSong`）。
+- 片中不出精度和误差的数；示意里的分钟、歌和时长都是示意，时间在推断开始前定格（一拍一分钟走下去，那首歌在片中已经放完）。暂停、拖进度、单曲循环不在列表里留痕，片中不讲。
 
 ## 2 上报入口（workers/ingress，`ingest.homepage.lyjw.llc`）
 
@@ -148,7 +158,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 ### StateCore 与 StateHub
 
 - `StateCore` 是 WorkerEntrypoint，ingress 和 collector 经 Service Binding `CORE` 调它。这条路不鉴权，因为边界鉴权只在 ingress 做一次（state-core.ts:15-37）。
-- `StateHub` 是 DO（binding `STATE`，`idFromName("global")`），**唯一的状态 DO，全站只有一个实例**（state-core.ts:72-74）。推送房间 `LivePushRoom` 是另一个单例 DO（房间名 `global`，live-platform.ts:98；binding 在 workers/api/wrangler.toml:52-55）。它的命名空间是从旧 ingest Worker 整体迁来的 SQLite 类（wrangler.toml:91-111），但代码不读写 SQL：每条连接的可见性记在各自的 attachment 上（origin-worker.ts:161-172）。
+- `StateHub` 是 DO（binding `STATE`，`idFromName("global")`），**唯一的状态 DO，全站只有一个实例**（state-core.ts:72-74）。推送房间 `LivePushRoom` 是另一个单例 DO（房间名 `global-apac`，首次创建时带 `locationHint: "apac"`，`workers/api/src/live-platform.ts#liveRoom`；binding 在 workers/api/wrangler.toml:52-55）。它的命名空间是从旧 ingest Worker 整体迁来的 SQLite 类（wrangler.toml:91-111），但代码不读写 SQL：每条连接的可见性记在各自的 attachment 上（origin-worker.ts:161-172）。
 - 提交走 `ingestTail`，**排成一条队列逐个提交**（state-hub.ts:91-110）。进这条队的上报都经上报入口的 `CORE.commitIngest`（ingress worker.ts:134），PlayStation 那几封也走这条 HTTP 路。
 - 四张表：`entries` / `fields` / `samples` / `metadata`（shared/sqlite-store.ts:17-23；state-hub.ts:29）。
 - pulse 事实时间线也写在同一个库里，TTL 7 天（`PULSE_TTL_MS`，src/lib/limits.ts:32）。
@@ -160,6 +170,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
   1. 先并行向 `LivePushRoom` 广播。
   2. 再把布局标签一次性发给 `POST {SITE}/api/revalidate`，5 秒超时（ingest-effects.ts:106-120；live-platform.ts:19、66-95）。
 - 所以**广播和 202 是并行的**，不是 202 之后才广播。
+- 没人在看时（推送房间经 `noteAudience` 告诉 StateHub），StateHub 交回的效果只留 `tags`，不广播（`workers/api/src/ingest-effects.ts#effectsForAudience`）。片中画的是有人在看的情形。
 - 效果在 StateHub 之外派发：`StateCore.commitIngest` 拿到 StateHub 交回的效果，交给 `dispatchIngestEffects`，后者经 `afterResponse` 放进 `ctx.waitUntil`；网络请求不占 StateHub 的执行时间，串行的提交队列不被推送和失效拖住（`workers/api/src/ingest-effects.ts#dispatchIngestEffects`、`workers/api/src/live-platform.ts#afterResponse`）。第 03 章旁白「网络请求不占 StateHub 的时间」出自这里。
 - 换歌那封上报在交给 StateHub 之前，由 StateCore 查 Apple 目录补封面、链接、songId、有没有歌词和动态封面，结果随状态落库；推送和读取只用存好的这份（`workers/api/src/listening-enrichment.ts#enrichCommand`、`src/lib/track-enrichment.ts#candidateFrom`）。
 - 各模块交回什么（workers/api/src/stores/telemetry.ts）：
@@ -174,7 +185,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 ### 推送房间 `LivePushRoom`
 
-- 地址 `/ws`（binding `LIVE_PUSH`，房间 `global`；origin-worker.ts:463）。
+- 地址 `/ws`（binding `LIVE_PUSH`，房间 `global-apac`；origin-worker.ts:463）。
 - 事件的种类和载荷见 `src/lib/live-events.ts#LiveEvent`（片中不说几种）：`presence`、`version` 不带数据，`online` 带 `{online}`，其余都带数据。
 - 用 Hibernation API：ping/pong 由运行时自动应答，不唤醒 DO（origin-worker.ts:185）。只有接入、断开、切换可见性、清扫闹钟这几件事会唤醒它。
 
@@ -190,7 +201,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 ### D1 长期历史 `lyjwpage-history`
 
 - 表见 `workers/api/migrations/` 的 `CREATE TABLE`（片中不说几张），其中记归档水位的是 `pulse_archive_state`，冻结不再写、原样保留的旧表是 `pulse_samples`、`coding_token_buckets`、`agent_usage_days`（`workers/api/README.md`）。长期保存、不按时间清理。写入按自然键 upsert（`shared/history-ingest.ts` 的各 `…Statements`），活动桶会按区间删掉重写（`workers/api/src/pulse-archive.ts#DELETE_ACTIVITY_RANGE`），所以不能说「只增不删」。DO 里的 pulse 时间线只留 7 天。
-- 写 D1 的有三方：上报入口（训练、圆环日读数、限额快照、服务器小时汇总）、采集 Worker（站点部署记录，`workers/collector/src/history.ts#archiveSiteDeploys`）、api（分钟 cron 的 pulse 归档，含编码用量的账本和 5 分钟桶；以及收下奖杯信封后的 `workers/api/src/stores/trophy-history.ts#archiveTrophies`）。
+- 写 D1 的有三方：上报入口（训练、圆环日读数、限额快照、服务器小时汇总）、采集 Worker（站点部署记录，`workers/collector/src/history.ts#archiveSiteDeploys`）、api（cron 每 5 分钟一轮的 pulse 归档，含编码用量的账本和 5 分钟桶；以及收下奖杯信封后的 `workers/api/src/stores/trophy-history.ts#archiveTrophies`）。
 - 活动历史桶在入口量化（eb429ed），防止 HealthKit 的浮点抖动让 D1 每次重写整个 24 小时窗口。
 
 ### api 的 cron（`workers/api/src/index.ts#runScheduled`）
@@ -214,7 +225,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 ### Pulse 事实时间线
 
-- 时间线只存原始值，档位、颜色、摘要都在展示时现算（`shared/pulse-timeline.ts`）：三条状态道（听、看、玩）是状态区间；充电是实测瓦数样本；活动是 HealthKit 的五分钟步数桶加训练区间。
+- 时间线只存原始值，档位、颜色、摘要都在展示时现算（`shared/pulse-timeline.ts`）：三条状态道（听、看、玩）是状态区间，听那条另有从 Apple 最近播放推出的别处播放（§1「没人上报的播放」）；充电是实测瓦数样本；活动是 HealthKit 的五分钟步数桶加训练区间。
 - Coding 不进这条时间线：它的三色带（前台是 coding 应用 / 有 agent 在跑 / 两者同时）读的时候从 Mac 的观测和 Cursor 账号的观测现算（`shared/pulse-coding.ts#codingBand`）；Jev 的打分只出现在悬停提示里。
 - Tokens 道：三个来源的 5 分钟 token 桶读的时候相加，画每个桶的 token 处理量（输入 + 输出 + 缓存写入，不含缓存读）的 5 分钟平均，折成每分钟；不是生成速度，「此刻」那个数的口径见 §1「编码用量」（`src/lib/pulse.ts#tokensLaneView`）。
 - Pulse 卡的道按 `src/components/live/pulse-card.tsx#LANES`，写章时从上到下是 Coding、Tokens、Listening、Watching、Gaming、Charging、Activity（第 08 章的地层照这个顺序一层一层画，旁白不说几条）；卡上画最近 24 小时（`src/lib/limits.ts#PULSE_WINDOW_MS`），屋里留 7 天（`PULSE_TTL_MS`），D1 长期保存。
@@ -265,7 +276,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 - 实时卡的间隔由卡片组件自己给（各组件里 `REFRESH_MS` 一类常量）：
   - 充电头、充电宝：30 秒
   - desktop：60 秒
-  - 编码（coding、coding-now）：2 分钟
+  - 编码此刻（coding-now）：2 分钟；编码用量（coding）和年度（coding/year）在可滞后层，按下面的 due 取（`src/lib/status-views.ts#STATUS_VIEWS`）
   - pulse：5 分钟
   - 在听 / 在看 / 在玩「此刻」：60 秒
   - 列表类和奖杯：10 分钟（在听列表空着时 60 秒）
@@ -388,6 +399,7 @@ Sentry 的结果由 **collector** 的 `sentry-status` 任务每 5 分钟取回�
 - `.github/workflows/deploy-pages.yml`：`docs/` 有改动时把它发到 GitHub Pages（架构图页），和站点无关。
 - `.github/workflows/preview-api-worker.yml`：PR 关闭时删掉那个分支的 api Worker Preview。
 - `.github/workflows/claude.yml`、`.github/workflows/claude-code-review.yml`：PR 与 issue 上的 Claude Code，不参与发布。
+- `.github/workflows/architecture-diagram.yml`：只在 PR 改到架构图时校验，和发布无关。
 
 ## 片中不用或待定
 

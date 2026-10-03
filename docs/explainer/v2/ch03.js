@@ -19,7 +19,7 @@
     "ch03.slip": ["要做的事", "To do"],
     "ch03.fx.empty": ["（空）", "(empty)"],
     "ch03.fx.listen": ["广播 listening-now", "push listening-now"],
-    "ch03.fx.listenSub": ["先查 Apple 目录补封面和链接", "after an Apple catalog lookup"],
+    "ch03.fx.listenSub": ["用落账前补好的封面和链接", "cover & link filled before commit"],
     "ch03.fx.noTags": ["换歌不失效；开始或停止放歌才有", "none: only start or stop invalidates"],
     "ch03.fx.noPush": ["不推送", "no push"],
     "ch03.fx.noTags2": ["不失效首屏", "no invalidation"],
@@ -56,7 +56,7 @@
     "ch03.lg.credP": ["不公开", "never public"],
     "ch03.lg.credW": ["KV CREDENTIALS", "KV CREDENTIALS"],
     "ch03.pulse7a": ["pulse 时间线在屋里只放 7 天，", "The pulse timeline stays 7 days in the room,"],
-    "ch03.pulse7b": ["每分钟归档进 D1", "archived to D1 every minute"],
+    "ch03.pulse7b": ["每 5 分钟归档进 D1", "archived to D1 every 5 minutes"],
   });
   const tr = (k) => I18N.tr(k);
   let plate, plan, emit, docs, stampL, top;
