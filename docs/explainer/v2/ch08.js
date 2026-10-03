@@ -9,7 +9,7 @@
     "ch08.knockOnly": ["只说明 Vercel 还在出页面", "proves only that Vercel serves pages"],
     "ch08.checkin": ["报到", "check-in"],
     "ch08.checkinSub": ["每 5 分钟一次", "every 5 minutes"],
-    "ch08.cron": ["分钟 cron", "minute cron"],
+    "ch08.cron": ["cron", "cron"],
     "ch08.n1a": ["外部探测从 Sentry 打进来，", "Sentry probes in from outside;"],
     "ch08.n1b": ["cron 从 Worker 里主动报出去。", "the Worker's cron reports out."],
     "ch08.foot": ["报到只证明 cron 跑完了。", "A check-in only proves the cron ran."],
@@ -17,11 +17,11 @@
     "ch08.every5": ["每 5 分钟", "every 5 minutes"],
     "ch08.n2a": ["查 Sentry 的是采集 Worker，", "The collector queries Sentry;"],
     "ch08.n2b": ["页面只读可滞后层，不碰 Sentry。", "pages only read the lag layer."],
-    "ch08.archive": ["每分钟压进一薄片", "a thin slice every minute"],
+    "ch08.archive": ["每 5 分钟压进一薄片", "a thin slice every 5 minutes"],
     "ch08.keep": ["长期保存", "kept long-term"],
     "ch08.older": ["越往左越早，一直留着", "older to the left, kept long-term"],
     "ch08.sources": ["Mac · 云端 · Cursor", "Mac · cloud · Cursor"],
-    "ch08.n3a": ["分钟 cron 按水位把新行写进 D1，", "Rows past the watermark go to D1;"],
+    "ch08.n3a": ["cron 每 5 分钟按水位写进 D1，", "Rows past the watermark go to D1;"],
     "ch08.n3b": ["各路独立，一路坏了不挡别路。", "a failed stream blocks no other."],
     "ch08.jevNote": ["打分（示意）", "scores (illustrative)"],
     "ch08.jevKeep": ["打分只在屋里放 7 天，不进 D1", "scores stay 7 days in the room, not in D1"],
@@ -364,14 +364,14 @@
       if (x1 > clipL && x0 < clipR) { line(x, x0, laneY(6) + 10, x1, laneY(6) + 10, 2, bone, dimOf(6) * 0.8); line(x, x0, laneY(6) + 4, x0, laneY(6) + 16, 2, bone, dimOf(6) * 0.8); line(x, x1, laneY(6) + 4, x1, laneY(6) + 16, 2, bone, dimOf(6) * 0.8); }
     }
     line(x, NOW_X, ST_TOP, NOW_X, ST_BOT, 2, bone, 0.6 * a);
-    const lastBeat = Math.floor(phi), fk = phi - lastBeat;
+    const fk = phi - Math.floor(phi / 5) * 5;
     const flash = Math.exp(-fk * 6);
     fillRect(x, NOW_X - SC, ST_TOP, SC, ST_BOT - ST_TOP, css("signalD"), 0.55 * flash * a);
     glow(e, NOW_X - 4, (ST_TOP + ST_BOT) / 2, 70, 0.25 * flash * a);
     const drop = [[API.x + 40, API.y + API.h], [API.x + 40, ST_TOP - 20], [NOW_X - 4, ST_TOP - 20], [NOW_X - 4, ST_TOP]];
     const da = a * (1 - focus);
     dashPath(x, drop, 0.35 * da);
-    const dk = (phi + 0.55) % 1;
+    const dk = (phi + 0.55) % 5;
     if (dk < 0.55) dot(x, e, drop, dk / 0.55, da, 5);
   }
   function laneLabels(x, cam, a, focus) {
