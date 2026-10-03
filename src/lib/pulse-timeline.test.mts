@@ -1,7 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { listeningObservation, listeningTrace, parseListeningTrace } from "@shared/pulse-listening";
+import {
+  LISTENING_RUN_SLACK_MS,
+  LISTENING_TRACE_LAG_MS,
+  inferredPlays,
+  listeningObservation,
+  listeningTraces,
+  parseListeningTrace,
+  playedBetween,
+  type ListeningTrace,
+} from "@shared/pulse-listening";
 import {
   GAMING_HOLD_MS,
   PULSE_STATE_HOLD_MS,
@@ -184,14 +193,58 @@ test("listening observation: an offline Mac without a live HomePod is unknown, n
   assert.equal(listeningObservation({ mac: null, macObserved: false, homePod }, offline, T)?.facts.source, "homepod");
 });
 
-const track = (id: string, title = id): RecentTrack => ({ id, title, artist: "YOASOBI", album: "THE BOOK 3" });
+const track = (id: string, title = id, durationMs: number | null = null): RecentTrack => ({ id, title, artist: "YOASOBI", album: "THE BOOK 3", durationMs });
+const ids = (tracks: RecentTrack[] | "stale" | null) => Array.isArray(tracks) ? tracks.map((row) => row.id) : tracks;
+const list = (...names: string[]) => names.map((name) => track(name));
 
-test("recently played traces: need a baseline, compare ids and order only, name the newly added song", () => {
-  assert.equal(listeningTrace(null, { tracks: [track("a")], fetchedAt: T }), null);
-  assert.equal(listeningTrace({ tracks: [track("a")], fetchedAt: T }, { tracks: [{ ...track("a"), album: "renamed" }], fetchedAt: T + M }), null);
-  assert.deepEqual(listeningTrace({ tracks: [track("a")], fetchedAt: T }, { tracks: [track("b", "Yoru ni Kakeru"), track("a")], fetchedAt: T + 2 * M }),
-    { since: T, t: T + 2 * M, title: "Yoru ni Kakeru", artist: "YOASOBI", album: "THE BOOK 3", itemId: "b" });
-  assert.equal(listeningTrace({ tracks: [track("a"), track("b")], fetchedAt: T }, { tracks: [track("b"), track("a")], fetchedAt: T + M })?.itemId, "b", "a replayed song moves to the front");
+test("recently played: the newly played songs are the front of the new list, oldest first; older copies and unexplained lists are not plays", () => {
+  assert.deepEqual(ids(playedBetween(list("a", "b", "c"), list("a", "b", "c"))), []);
+  assert.deepEqual(ids(playedBetween(list("a", "b", "c"), list("x", "a", "b"))), ["x"], "the bottom falls off a capped list");
+  assert.deepEqual(ids(playedBetween(list("a", "b", "c"), list("y", "x", "a"))), ["x", "y"], "two songs in one refresh, in the order they played");
+  assert.deepEqual(ids(playedBetween(list("a", "b", "c"), list("c", "a", "b"))), ["c"], "a replayed song moves to the front");
+  assert.deepEqual(ids(playedBetween(list("a", "b", "c"), list("b", "a", "c"))), ["b"]);
+  assert.deepEqual(ids(playedBetween(list("a", "b", "c"), list("c", "a", "b", "d"))), ["c"], "older songs a longer list brings in at the bottom are not plays");
+  assert.equal(playedBetween(list("b", "a", "c", "d"), list("a", "c", "d", "e")), "stale", "an edge copy from before b was played");
+  assert.equal(playedBetween(list("a", "b", "c"), list("a", "b", "d")), null, "only the bottom changed");
+  assert.equal(playedBetween(list("a", "b"), list("x", "y")), null, "nothing in common");
+});
+
+test("recently played traces: need a baseline, keep a stale copy out of the baseline, carry each song's length", () => {
+  assert.deepEqual(listeningTraces(null, { tracks: list("a"), fetchedAt: T }), { traces: [], keep: true });
+  assert.deepEqual(listeningTraces({ tracks: list("a"), fetchedAt: T }, { tracks: [{ ...track("a"), album: "renamed" }], fetchedAt: T + M }), { traces: [], keep: true });
+  assert.deepEqual(listeningTraces({ tracks: list("a"), fetchedAt: T }, { tracks: [track("c", "Idol", 213_000), track("b", "Yoru ni Kakeru", 261_000), track("a")], fetchedAt: T + 2 * M }), {
+    traces: [
+      { since: T, t: T + 2 * M, title: "Yoru ni Kakeru", artist: "YOASOBI", album: "THE BOOK 3", itemId: "b", durationMs: 261_000 },
+      { since: T, t: T + 2 * M, title: "Idol", artist: "YOASOBI", album: "THE BOOK 3", itemId: "c", durationMs: 213_000 },
+    ],
+    keep: true,
+  });
+  assert.deepEqual(listeningTraces({ tracks: list("b", "a"), fetchedAt: T }, { tracks: list("a"), fetchedAt: T + M }), { traces: [], keep: false });
+  assert.deepEqual(listeningTraces({ tracks: list("a"), fetchedAt: T }, { tracks: list("b", "a"), fetchedAt: T }), { traces: [], keep: false });
   assert.equal(parseListeningTrace(JSON.stringify({ since: T, t: T })), null);
   assert.equal(parseListeningTrace("{"), null);
+  assert.equal(parseListeningTrace(JSON.stringify({ since: T, t: T + M, title: "Idol" }))?.durationMs, null, "a row without a length");
+});
+
+test("inferred plays: a continuous run pins every start with all of its windows; a cut-short song or a pause starts a new run", () => {
+  const S = 1000;
+  const trace = (since: number, t: number, title: string, duration: number | null): ListeningTrace =>
+    ({ since: T + since * S, t: T + t * S, title, artist: "YOASOBI", album: null, itemId: title, durationMs: duration && duration * S });
+  const plays = inferredPlays([
+    trace(0, 60, "A", 200),
+    trace(180, 240, "B", 100),
+    trace(300, 360, "C", 300),
+    trace(360, 420, "D", 250),
+    trace(2000, 2060, "E", null),
+  ]);
+  const lag = LISTENING_TRACE_LAG_MS / S;
+  assert.deepEqual(plays.map((play) => [play.title, (play.from - T) / S, (play.to - T) / S]), [
+    ["A", 20 - lag, 220 - lag],
+    ["B", 220 - lag, 320 - lag],
+    ["C", 320 - lag, 390 - lag],
+    ["D", 390 - lag, 640 - lag],
+    ["E", 2030 - lag, 2060],
+  ], "A–C back to back: their windows put A's start in (0, 40]; D opened while C had time left, so C was cut short; E has no length");
+  assert.equal(plays[0].marginMs, 20 * S + LISTENING_RUN_SLACK_MS, "three windows narrow the start to half of one window");
+  assert.equal(plays[3].marginMs, 30 * S + LISTENING_RUN_SLACK_MS);
 });

@@ -27,7 +27,7 @@ import { latestPulseAssessments, type PulseAssessment } from "@shared/pulse-asse
 import { cloudAgentActivity, codingBand, parseCodingObservation, type CodingObservation } from "@shared/pulse-coding";
 import type { Coverage } from "@shared/pulse-features";
 import { parseCursorObservation, type CursorObservation } from "@shared/pulse-cursor";
-import { LISTENING_TRACE_BRIDGE_MS, LISTENING_TRACE_MATCH_SLACK_MS, parseListeningTrace, type ListeningTrace } from "@shared/pulse-listening";
+import { LISTENING_TRACE_MATCH_SLACK_MS, inferredPlays, parseListeningTrace, type InferredPlay, type ListeningTrace } from "@shared/pulse-listening";
 import {
   activeState,
   chargingSegments,
@@ -116,31 +116,39 @@ export function stateLaneView<L extends StateLane>(lane: L, input: StateLaneInpu
   };
   const titles = new Set(active.flatMap((segment) => segment.title ? [segment.title.toLowerCase()] : []));
   if (lane === "listening") {
-    const music = segments as unknown as (StateLaneFacts["listening"] & { from: number; to: number })[];
-    // 只接在上一段画出来的推断后面；Mac 已解释的那段是实线，接过去会画进实线里。
-    let drawnEnd: number | null = null;
-    const uncertain = traces.flatMap((trace) => {
-      const named = trace.title?.toLowerCase();
-      const explained = (segment: (typeof music)[number]) => segment.state !== "idle" && segment.title?.toLowerCase() === named
-        && segment.from < trace.t && segment.to > trace.since - LISTENING_TRACE_MATCH_SLACK_MS;
-      if (named && music.some(explained)) {
-        drawnEnd = null;
-        return [];
-      }
-      const bridged = drawnEnd !== null && drawnEnd < trace.since && trace.since - drawnEnd <= LISTENING_TRACE_BRIDGE_MS;
-      const from = Math.max(window.from, bridged ? drawnEnd! : trace.since), to = Math.min(window.to, trace.t);
-      drawnEnd = trace.t;
-      if (to <= from) return [];
-      const at = span(window, from, to);
-      return at.endSec > at.startSec ? [{ ...at, title: trace.title, subtitle: trace.artist }] : [];
+    const playing = active as unknown as (StateLaneFacts["listening"] & { from: number; to: number })[];
+    const explained = (play: InferredPlay) => {
+      const named = play.title?.toLowerCase();
+      return !!named && playing.some((segment) => segment.title?.toLowerCase() === named
+        && segment.from < play.to + LISTENING_TRACE_MATCH_SLACK_MS && segment.to > play.from - LISTENING_TRACE_MATCH_SLACK_MS);
+    };
+    const elsewhere = inferredPlays(traces).flatMap((play) => {
+      if (explained(play)) return [];
+      const from = Math.max(window.from, play.from), to = Math.min(window.to, play.to);
+      return to > from ? [{ ...play, from, to }] : [];
     });
-    view.uncertain = toColumns(uncertain, ["title", "subtitle"] as const);
+    const uncertain = elsewhere.flatMap((play) => {
+      const at = span(window, play.from, play.to);
+      return at.endSec > at.startSec ? [{ ...at, title: play.title, subtitle: play.artist, marginSec: seconds(play.marginMs) }] : [];
+    });
+    view.uncertain = toColumns(uncertain, ["title", "subtitle", "marginSec"] as const);
+    view.summary.activeSeconds = seconds(coveredMs([...active, ...elsewhere]));
     for (const trace of traces) {
       if (trace.title && trace.t > window.from && trace.since < window.to) titles.add(trace.title.toLowerCase());
     }
   }
   view.summary.titles = titles.size;
   return view;
+}
+
+function coveredMs(spans: { from: number; to: number }[]): number {
+  let total = 0, reached = -Infinity;
+  for (const { from, to } of [...spans].sort((a, b) => a.from - b.from)) {
+    const start = Math.max(from, reached);
+    if (to > start) total += to - start;
+    reached = Math.max(reached, to);
+  }
+  return total;
 }
 
 export function codingLaneView(observations: CodingObservation[], cursor: CursorObservation[], assessments: PulseAssessment[], window: PulseWindow, cloudActivity: Coverage[] = []): PulseCodingLane {

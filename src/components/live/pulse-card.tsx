@@ -165,6 +165,7 @@ const ACTIVE_WORDS = { listening: "playing", watching: "watching", gaming: "in g
 function stateModel(domain: "listening" | "watching" | "gaming", lane: PulseStateLane, range: Range, traceStyle: TraceStyle): LaneModel | null {
   const segments = columnRows(lane.segments, ["state", "title", "subtitle"]);
   const traces = lane.uncertain ? columnRows(lane.uncertain, ["title", "subtitle"]) : [];
+  const margins = lane.uncertain ? columnRows(lane.uncertain, ["marginSec"]) : null;
   if (!segments || !traces || !lane.summary) return null;
   const words = STATE_WORDS[domain];
   const items: LaneItem[] = [
@@ -180,12 +181,15 @@ function stateModel(domain: "listening" | "watching" | "gaming", lane: PulseStat
     }),
     ...traces.map((row, index): LaneItem => {
       const { from, to } = absolute(range, row);
+      const margin = margins?.[index]?.marginSec;
       return {
         from, to, rank: 1,
-        content: <Tooltip key={`t${index}`} from={from} to={to} head="Played somewhere in this span" lines={[
+        content: <Tooltip key={`t${index}`} from={from} to={to} head="Played elsewhere (estimated)" lines={[
           row.title,
           row.subtitle && <span className="text-muted-foreground">{row.subtitle}</span>,
-          <span key="n" className="text-[10px] text-muted-foreground">From Apple Music&apos;s recently played list, which has no timestamps</span>,
+          <span key="n" className="text-[10px] text-muted-foreground">
+            Estimated from Apple Music&apos;s recently played list and track lengths{typeof margin === "number" ? `, start ±${margin < 90 ? `${margin}s` : pulseDuration(margin)}` : ""}
+          </span>,
         ]} />,
       };
     }),
@@ -548,7 +552,7 @@ export function PulseCard({
           <span className="flex items-center gap-1"><span className="h-2 w-3 border-t border-(--pulse-agent) bg-(--pulse-agent)/30" />Tokens/min (excl. cache reads)</span>
           <span className="flex items-center gap-1">
             <span className={cn("pulse-trace relative inline-block h-2 w-3", traceStyle === "hatched" ? "pulse-trace-hatched" : "pulse-trace-faint")} />
-            Played elsewhere, time unknown
+            Played elsewhere, estimated
           </span>
           <span className="flex items-center gap-1"><span className="h-0.5 w-3 bg-current opacity-45" />Idle</span>
         </div>

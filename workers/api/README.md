@@ -201,9 +201,10 @@ Pulse 卡片首屏按卡读它（`src/lib/first-screen.ts`）、挂载后自己�
     // listening / watching：0 空闲，1 暂停，2 在放；gaming：0 离线，1 在线，2 在游戏里
     "listening": { "kind": "state",
       "segments": { "startSec": [1800], "endSec": [2040], "state": [2], "title": ["群青"], "subtitle": ["YOASOBI"] },
-      // 只有 listening 有：「最近在听」列表变动，只知道落在 (start, end] 之间某处
-      "uncertain": { "startSec": [12000], "endSec": [18600], "title": ["THE BOOK 3"], "subtitle": ["YOASOBI"] },
-      "summary": { "activeSeconds": 240, "titles": 1 } },
+      // 只有 listening 有：别处播放，按「最近播放的歌」列表与时长推出的每首起止；marginSec 是开播时刻的误差半宽
+      "uncertain": { "startSec": [12000, 12261], "endSec": [12261, 12474], "title": ["夜に駆ける", "アイドル"], "subtitle": ["YOASOBI", "YOASOBI"], "marginSec": [14, 14] },
+      // activeSeconds 是在放段与别处播放的并集；titles 按歌名去重，含列表里出现过的歌
+      "summary": { "activeSeconds": 714, "titles": 3 } },
     "watching": { "kind": "state", "segments": { /* 同上，title 片名、subtitle 集数 */ }, "summary": { } },
     "gaming": { "kind": "state", "segments": { /* 同上，title 游戏名 */ }, "summary": { } },
     // 每段一个实测读数；段之间的空当是断流
@@ -252,11 +253,15 @@ Mac / agents 的桶只认起点在报告范围里的（跨着范围起点的那�
     音乐 App 停在暂停就是暂停。Mac 离线（或关了 `appleMusic` 模块）而 HomePod 也没有有效快照时是未知。
   - watching 只在 Emby 推来播放状态时记；详情按 itemId 对上才用，位置更新没带详情时沿用存着的那份。
   - gaming 每次 PSN presence 都记（它本身就是心跳）。
-- **「最近在听」不确定区间** `pulse:v2:listening-traces`：Apple 的列表按最后播放倒序、不给时刻，
-  列表变动（只比条目 id 与顺序）只能说明在上一轮成功刷新 `since` 与这一轮 `t` 之间某处放过，
-  记 `{since, t, title, artist, itemId}`（条目是专辑 / 歌单），上限 `LISTENING_TRACE_CAP`。存的是如实的 `(since, t]`；
-  出口画图时，相邻两段画出来的推断之间不超过 `LISTENING_TRACE_BRIDGE_MS` 就把后一段往前接到前一段末尾（一首歌比刷新间隔长，
-  中间几轮列表不变不代表停过）。Mac / HomePod 那一路正放着同一张专辑的痕迹已被实测解释，不再重复给，也不从它往后接。
+- **别处播放** `pulse:v2:listening-traces`：Apple「最近播放的歌」去重、最新在前，一首歌开播就排到最前
+  （滞后 `shared/pulse-listening.ts#LISTENING_TRACE_LAG_MS`），但不给时刻。两轮刷新之间新播的歌是新列表的前缀
+  （`playedBetween`，只比条目 id 与顺序）：每首记一行 `{since, t, title, artist, album, itemId, durationMs}`，意思是这首在
+  上一轮被接受的刷新 `since` 与这一轮 `t` 之间开播，同一轮多首按播放先后排；上限 `LISTENING_TRACE_CAP`。反过来能解释旧列表的
+  回应是边缘副本给的更旧列表，不记、也不当新基线；两边都解释不了的只换基线不记。
+  出口画图时（`inferredPlays`）连续播放的一串里每首开播 = 第一首开播 + 前面各首时长，各行窗口都约束同一个起点，求交取中点，
+  交集为空就是切歌或停过、另起一串；一首放到时长用完或下一首开播为止，误差半宽进 `marginSec`。没有时长的行在
+  `LISTENING_TRACE_BRIDGE_MS` 内接到下一首开播，否则只画到自己的窗口末尾。Mac / HomePod 在放（暂停不算）同名歌、前后差不过
+  `LISTENING_TRACE_MATCH_SLACK_MS` 的推断已被实测解释，不再重复画。
 - **Coding 三色带**不另存：读时从 `pulse:coding-observations`、`pulse:cursor-observations` 与云端的
   `pulse:token-buckets:agents-otlp` 现算，切片规则同 Jev 特征（每条 Mac 观测撑到下一条或 3 分钟，`available: false` 不算观测）。
   human 是前台为 coding 应用（`desktop.coding`），agent 是有 agent `active`、Cursor 账号最近 5 分钟有活动，
@@ -273,7 +278,7 @@ Mac / agents 的桶只认起点在报告范围里的（跨着范围起点的那�
   写入口自己留一份（训练卡片那份列表在可滞后层 `workouts:v1`），内容没变不写。
 
 本地预览用夹具：`pnpm dev:override /api/status/pulse pulse-busy-day.json`（另有 `pulse-empty`、`pulse-zero-lanes`、
-`pulse-activity-boundary`，以及 `pulse-tokens-idle`：Tokens 道白天有用量、此刻为 0）。卡片右下角开发开关「Traces」切换不确定区间的斜线 / 淡色画法，默认斜线。
+`pulse-activity-boundary`，以及 `pulse-tokens-idle`：Tokens 道白天有用量、此刻为 0）。卡片右下角开发开关「Traces」切换别处播放的斜线 / 淡色画法，默认斜线。
 
 ### Coding 的 Jev 评估
 
@@ -322,7 +327,7 @@ Cursor 使用独立的 `pulse:cursor-observations`：agents 来源的 cursor 活
 
 | 表 | 内容 | 自然键 |
 | --- | --- | --- |
-| `listening_plays` | 每段实测在放（`certain = 1`，来源 mac / homepod，曲名 / 艺人 / 专辑 / 曲目 id）与不确定区间（`certain = 0`，`source = 'recent'`，曲名 / 艺人 / 专辑照列、曲目 id 在 `item_id`；`title` 为空的是专辑粒度的痕迹，专辑 / 歌单名在 `album`） | `(source, started_at)` |
+| `listening_plays` | 每段实测在放（`certain = 1`，来源 mac / homepod，曲名 / 艺人 / 专辑 / 曲目 id）与别处播放的原始窗口（`certain = 0`，`source = 'recent'`，`started_at` / `ended_at` 是开播所在的 `(since, t]`，同一轮多首按播放先后给 `started_at` 加 0、1、2… 毫秒；曲名 / 艺人 / 专辑照列、曲目 id 在 `item_id`；`title` 为空的是专辑粒度的痕迹，专辑 / 歌单名在 `album`） | `(source, started_at)` |
 | `watching_sessions` | 同一条目首尾相接的播放 + 暂停，`playing_seconds` 只算在播 | `(item_id, started_at)` |
 | `game_sessions` | 在游戏里的时段 | `(title_id, started_at)` |
 | `charging_samples` / `charging_sessions` | 过了闸门的瓦数；一次充电的起止、峰值、能量、设备 | `t` / `started_at` |
@@ -346,7 +351,7 @@ Cursor 使用独立的 `pulse:cursor-observations`：agents 来源的 cursor 活
 
 拉取在采集 Worker（`workers/collector` 的 `apple-recent`，节奏见该任务，不看有没有人在看），
 拉回来的专辑粒度列表经 `StateCore.commitRecentlyPlayed` 交给这里差分、落库、推 `listening`；同一轮拉的单曲列表
-经 `StateCore.commitRecentTracks` 与上一轮比较，变动记成 Pulse 听歌道上的不确定区间（`pulse:v2:listening-traces`）。api 自己不拉，WebSocket 连上也不触发。
+（带每首时长）经 `StateCore.commitRecentTracks` 与上一轮比较，新播的歌记成 Pulse 听歌道上的别处播放（`pulse:v2:listening-traces`）。api 自己不拉，WebSocket 连上也不触发。
 Mac 上报的 Apple Music 凭据在凭据 KV（`shared/credentials.ts`），不向外提供凭据端点；状态读取不触发拉取或广播。
 
 ## MusicKit 令牌

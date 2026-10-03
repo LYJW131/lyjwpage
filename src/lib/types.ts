@@ -203,6 +203,7 @@ export type RecentTrack = {
   title: string;
   artist: string;
   album: string | null;
+  durationMs?: number | null;
 };
 
 export type ReporterPresence = {
@@ -591,7 +592,8 @@ export type PulseCodingLane = {
 export type PulseStateLane = {
   kind: "state";
   segments: PulseSpanColumns & { state: number[]; title: (string | null)[]; subtitle: (string | null)[] };
-  uncertain?: PulseSpanColumns & { title: (string | null)[]; subtitle: (string | null)[] };
+  // 只有 listening 有：从 Apple「最近播放的歌」与时长推出的别处播放；marginSec 是开播时刻的误差半宽
+  uncertain?: PulseSpanColumns & { title: (string | null)[]; subtitle: (string | null)[]; marginSec: number[] };
   summary: { activeSeconds: number; titles: number };
 };
 

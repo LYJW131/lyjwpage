@@ -431,8 +431,15 @@ export function archiveStatements(db: PulseArchiveDb, snapshot: PulseArchiveStre
     }
     case "listening-traces": {
       const rows = parsedRows(snapshot.rows, parseListeningTrace).filter((row) => row.t > watermark);
+      // 同一次刷新里新播的几首共用 (since, t]，主键是 (source, started_at)：按播放先后各加 0、1、2… 毫秒。
+      const seen = new Map<string, number>();
       return {
-        statements: rows.map((row) => db.prepare(INSERT_LISTENING_PLAY).bind("recent", row.since, row.t, 0, row.title, row.artist, row.album, null, row.itemId)),
+        statements: rows.map((row) => {
+          const refresh = `${row.since}:${row.t}`;
+          const order = seen.get(refresh) ?? 0;
+          seen.set(refresh, order + 1);
+          return db.prepare(INSERT_LISTENING_PLAY).bind("recent", row.since + order, row.t, 0, row.title, row.artist, row.album, null, row.itemId);
+        }),
         watermark: Math.max(watermark, ...rows.map((row) => row.t)),
       };
     }
