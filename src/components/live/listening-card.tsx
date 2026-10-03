@@ -16,7 +16,7 @@ import {
 
 import Image from "@/components/app-image";
 import { Card } from "@/components/ui/card";
-import { HomePodMiniIcon, IPhoneIcon, MacBookProIcon } from "@/components/ui/device-icons";
+import { HomePodMiniIcon, MacBookProIcon } from "@/components/ui/device-icons";
 import {
   HeroLyrics,
   HeroLyricsSkeleton,
@@ -32,6 +32,7 @@ import { useMountedAt } from "@/hooks/use-mounted-at";
 import { useLiveNowListening } from "@/hooks/use-stale";
 import { useExpiryRefetch, useStatus } from "@/hooks/use-status";
 import { stableKeys } from "@/lib/keys";
+import { LISTENING_ELSEWHERE_HOLD_MS } from "@/lib/limits";
 import { cueAt, NO_CUE } from "@/lib/lyrics-cue";
 import type { LyricLine } from "@/lib/lyrics-ttml";
 import {
@@ -75,6 +76,11 @@ function formatDuration(milliseconds: number) {
   return hours > 0
     ? `${hours}:${String(minutes).padStart(2, "0")}:${seconds}`
     : `${minutes}:${seconds}`;
+}
+
+function formatMargin(milliseconds: number) {
+  const seconds = Math.max(1, Math.ceil(milliseconds / 1000));
+  return seconds < 90 ? `±${seconds}s` : `±${Math.round(seconds / 60)}m`;
 }
 
 function paletteGradient(palette: string[]): string | undefined {
@@ -521,22 +527,22 @@ export function ListeningCard({
   const localTrack = liveTrack(localMusic);
   const localActive = Boolean(localTrack);
 
-  // 推断的别处播放没有上报来续命，按时长放完就撤下，并重新取一次看下一首有没有被看见。
+  // 推断的别处播放没有上报来续命：和源站一样按时长放完再留 LISTENING_ELSEWHERE_HOLD_MS 等下一首被推过来，到点就撤下并重新取一次。
   const mountedAt = useMountedAt();
   const [elsewhereTick, setElsewhereTick] = useState(0);
   const { mutate } = useSWRConfig();
   const inferred = live?.elsewhere ?? null;
-  const inferredEndsAt = inferred ? inferred.startedAt + inferred.durationMs : null;
+  const inferredUntil = inferred ? inferred.startedAt + inferred.durationMs + LISTENING_ELSEWHERE_HOLD_MS : null;
   useEffect(() => {
-    if (inferredEndsAt == null) return;
+    if (inferredUntil == null) return;
     const timer = window.setTimeout(() => {
       setElsewhereTick(Date.now());
       void mutate(NOW_LISTENING_PATH);
-    }, Math.max(250, inferredEndsAt - Date.now() + 250));
+    }, Math.max(250, inferredUntil - Date.now() + 250));
     return () => window.clearTimeout(timer);
-  }, [inferredEndsAt, mutate]);
+  }, [inferredUntil, mutate]);
   const clock = Math.max(elsewhereTick, mountedAt);
-  const elsewhere = !localActive && inferred && clock > 0 && clock < inferredEndsAt! ? inferred : null;
+  const elsewhere = !localActive && inferred && clock > 0 && clock < inferredUntil! ? inferred : null;
 
   // 目录查询失败不代表停播；同一曲目保留解析结果，换曲后禁止沿用。
   const trackKey = localTrack
@@ -797,11 +803,11 @@ export function ListeningCard({
                         </span>
                         {hero.track && hero.estimatedMarginMs != null ? (
                           <span
-                            className="ml-0.5 inline-flex min-w-0 items-center gap-1 rounded-sm border border-dashed border-line px-1.5 py-px text-[10px] leading-4 text-muted-foreground"
-                            title={`Estimated from Apple Music's recently played list and track length, start ±${Math.round(hero.estimatedMarginMs / 1000)}s`}
+                            className="ml-0.5 inline-flex min-w-0 items-center rounded-sm border border-dashed border-line px-1.5 py-px text-[10px] leading-4 tabular-nums text-muted-foreground"
+                            title={`Estimated from Apple Music's recently played list and track lengths; ideal start error ${formatMargin(hero.estimatedMarginMs)}`}
                           >
-                            <IPhoneIcon className="size-3 shrink-0" aria-hidden />
-                            <span className="truncate">iPhone</span>
+                            <span className="sr-only">Estimated, ideal start error </span>
+                            <span className="truncate">{formatMargin(hero.estimatedMarginMs)}</span>
                           </span>
                         ) : hero.track && (
                           <span className="ml-0.5 inline-flex min-w-0 items-center gap-1 rounded-sm border border-line px-1.5 py-px text-[10px] leading-4 text-muted-foreground">

@@ -2,11 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  LISTENING_RUN_SLACK_MS,
+  LISTENING_TRACE_JITTER_MS,
   LISTENING_TRACE_LAG_MS,
   inferredPlays,
   listeningObservation,
   listeningTraces,
+  nextTraceBy,
   parseListeningTrace,
   playedBetween,
   playingElsewhere,
@@ -246,8 +247,31 @@ test("inferred plays: a continuous run pins every start with all of its windows;
     ["D", 390 - lag, 640 - lag],
     ["E", 2030 - lag, 2060],
   ], "A–C back to back: their windows put A's start in (0, 40]; D opened while C had time left, so C was cut short; E has no length");
-  assert.equal(plays[0].marginMs, 20 * S + LISTENING_RUN_SLACK_MS, "three windows narrow the start to half of one window");
-  assert.equal(plays[3].marginMs, 30 * S + LISTENING_RUN_SLACK_MS);
+  assert.equal(plays[0].marginMs, 20 * S, "three windows narrow the start to half of one window");
+  assert.equal(plays[3].marginMs, 30 * S);
+});
+
+test("inferred plays: the start margin is the ideal one, without the slack; windows a jitter pushes apart give half the gap", () => {
+  const S = 1000;
+  const trace = (since: number, t: number, title: string, duration: number): ListeningTrace =>
+    ({ since: T + since * S, t: T + t * S, title, artist: "YOASOBI", album: null, itemId: title, durationMs: duration * S, songId: null, artworkUrl: null });
+  const narrowed = inferredPlays([trace(0, 15, "A", 200), trace(205, 220, "B", 100)]);
+  assert.deepEqual(narrowed.map((play) => play.marginMs), [5 * S, 5 * S], "B's window leaves (5, 15] of A's (0, 15]");
+  const jittered = inferredPlays([trace(0, 15, "A", 200), trace(217, 232, "B", 100)]);
+  assert.deepEqual(jittered.map((play) => play.marginMs), [1 * S, 1 * S], "two seconds apart is within the slack: one run, off by half the gap");
+});
+
+test("next trace: the next song of a continuous run should top the list by the end of this one plus the lag, its margin and the jitter", () => {
+  const S = 1000;
+  const traces: ListeningTrace[] = [
+    { since: T, t: T + 15 * S, title: "A", artist: "YOASOBI", album: null, itemId: "A", durationMs: 200 * S, songId: null, artworkUrl: null },
+  ];
+  const [play] = inferredPlays(traces);
+  const by = play.from + 200 * S + LISTENING_TRACE_LAG_MS + play.marginMs + LISTENING_TRACE_JITTER_MS;
+  assert.equal(nextTraceBy(traces, T + 60 * S), by);
+  assert.equal(nextTraceBy(traces, by), null, "past it the run has stopped or paused");
+  assert.equal(nextTraceBy([{ ...traces[0], durationMs: null }], T + 60 * S), null, "no length, no expectation");
+  assert.equal(nextTraceBy([], T), null);
 });
 
 test("inferred plays: a song cut short inside the same refresh as the next one stays on the timeline, before it", () => {

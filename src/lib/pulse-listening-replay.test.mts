@@ -22,6 +22,15 @@ test("a recorded iPhone session polled once a minute: plays elsewhere name the r
   assert.ok(absoluteQuantile(startErrorsMs, 0.9) <= 25_000, `p90 start error ${absoluteQuantile(startErrorsMs, 0.9)} ms`);
 });
 
+test("polled every 15 seconds, as the collector does while songs keep changing, starts land within a few seconds", () => {
+  const { coverage, startErrorsMs, missed } = replayAtCadence(session, truth, 15_000);
+  assert.equal(missed, 0);
+  assert.ok(Math.min(...coverage) >= 0.96, `worst phase names the right song ${Math.min(...coverage)}`);
+  assert.ok(coverage.reduce((sum, value) => sum + value, 0) / coverage.length >= 0.98);
+  assert.ok(absoluteQuantile(startErrorsMs, 0.5) <= 4_000, `median start error ${absoluteQuantile(startErrorsMs, 0.5)} ms`);
+  assert.ok(absoluteQuantile(startErrorsMs, 0.9) <= 8_000, `p90 start error ${absoluteQuantile(startErrorsMs, 0.9)} ms`);
+});
+
 test("the windows the production collector recorded during the same session line up just as well", () => {
   const range = { from: session.startedAt + session.collector[0][0], to: session.startedAt + session.collector.at(-1)![1] };
   const result = scoreReplay(truth, collectorPlays(session), range);

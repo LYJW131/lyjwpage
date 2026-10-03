@@ -283,11 +283,12 @@ export type NowListeningPayload = ReporterPresence & {
   motion: TrackMotion | null;
   expiresInMs: number | null;
   alternate: NowListeningAlternate | null;
-  // 不上报的设备（iPhone 等）上推断出来正在放的那首；Mac / HomePod 在放同名歌时为 null。可能缺席（Worker 先后上线）。
+  // 没有上报器的 Apple Music 播放（iPhone、iPad、网页版等）推断出来正在放的那首；Mac / HomePod 在放同名歌时为 null。可能缺席（Worker 先后上线）。
   elsewhere?: NowListeningElsewhere | null;
 };
 
-// startedAt 是推断的开播 epoch 毫秒，误差半宽 marginMs；放到 startedAt + durationMs 为止。
+// startedAt 是推断的开播 epoch 毫秒，marginMs 是它的理想误差半宽（连续播放、上榜滞后恒定时）；放到 startedAt + durationMs 为止，
+// 之后再给 LISTENING_ELSEWHERE_HOLD_MS 等下一首被看见。
 export type NowListeningElsewhere = {
   title: string;
   artist: string | null;
@@ -608,7 +609,7 @@ export type PulseCodingLane = {
 export type PulseStateLane = {
   kind: "state";
   segments: PulseSpanColumns & { state: number[]; title: (string | null)[]; subtitle: (string | null)[] };
-  // 只有 listening 有：从 Apple「最近播放的歌」与时长推出的别处播放；marginSec 是开播时刻的误差半宽
+  // 只有 listening 有：从 Apple「最近播放的歌」与时长推出的别处播放；marginSec 是开播时刻的理想误差半宽
   uncertain?: PulseSpanColumns & { title: (string | null)[]; subtitle: (string | null)[]; marginSec: number[] };
   summary: { activeSeconds: number; titles: number };
 };

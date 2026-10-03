@@ -58,7 +58,10 @@
   状态核心签（私钥只在 api 上），本 isolate 缓存到离到期 `RENEW_BEFORE_MS`。封面、时长的缓存经 `src/lib/cache`
   存在 `COLLECTOR_KV`（期限见 `apple-recent.ts` 的 `LIBRARY_ARTWORK_TTL_MS`、`DURATION_TTL_MS`），稳定状态下一轮只有拉两份列表出网。
   节奏分两档：任务每分钟排期，闲时只在整 `IDLE_EVERY_MINUTES` 分钟真去拉；任一份列表变了就记下时刻（`COLLECTOR_KV`），
-  之后 `ACTIVE_HOLD_MS` 内每分钟都拉，连续听歌时每首都能单独落进一段推断。手动 `refresh` 不受闲档限制。
+  之后 `ACTIVE_HOLD_MS` 内每分钟都拉，并在同一响里接着每 `ACTIVE_POLL_MS` 再拉一次单曲列表（专辑列表仍是一响一次），
+  最后一次在本响的 `ACTIVE_FOLLOW_MS` 内开始，不和下一响叠在一起。换歌最多晚一个 `ACTIVE_POLL_MS` 被看见，窗口也窄到这么宽；
+  `commitRecentTracks` 回执里的 `nextBy`（照推断接着放、下一首最晚上榜的时刻）早于下一次拉时，提前到那一刻拉，接着放的下一首一上榜就被看见。
+  接着拉的某一次失败只记一条 warn（`apple-recent-follow`）并停在这一响，持续的故障由下一响的头一次报出来。手动 `refresh` 只拉一次，不受闲档限制。
 
 ### Sentry 监控
 

@@ -1,4 +1,5 @@
 import { homePodTrackEnd, homePodVisibleAt, homePodVisibleUntil } from "@/lib/homepod-store";
+import { LISTENING_ELSEWHERE_HOLD_MS } from "@/lib/limits";
 import { offlineByLiveness, type Liveness } from "@/lib/reporter-liveness";
 import type { LocalNowPlaying, NowListeningElsewhere, RecentTrack } from "@/lib/types";
 import { PULSE_STATE_HOLD_MS, pulseText, type ListeningFacts, type ObservationHold } from "@shared/pulse-timeline";
@@ -54,8 +55,11 @@ export type ListeningTrace = {
 };
 export const LISTENING_TRACE_CAP = 2000;
 
-// 从开播到出现在列表最前的滞后。
-export const LISTENING_TRACE_LAG_MS = 0;
+// 从开播到出现在列表最前的滞后：按上榜时刻推断（不减滞后）时，收敛后的进度比手机上的实际进度稳定慢这么多。
+export const LISTENING_TRACE_LAG_MS = 5_500;
+
+// 上榜时刻在「开播 + LISTENING_TRACE_LAG_MS」前后的抖动。
+export const LISTENING_TRACE_JITTER_MS = 2_500;
 
 // 判定「接着上一首放」的余量：列表更新的抖动加换曲间隙。差得更多就是切歌或停过，另起一串。
 export const LISTENING_RUN_SLACK_MS = 5_000;
@@ -161,16 +165,18 @@ export type InferredPlay = {
 };
 
 // 连续播放时每首的开播 = 这一串第一首的开播 + 前面各首时长之和，每条痕迹的窗口都约束同一个起点；
-// 各窗口求交，交集为空就是切歌或停过，另起一串。起点取交集中点，误差半宽记在 marginMs（不含 LISTENING_TRACE_LAG_MS 本身的误差）。
+// 各窗口放宽 LISTENING_RUN_SLACK_MS 后求交，交集为空就是切歌或停过，另起一串。起点取交集中点。
+// marginMs 是不放宽时各窗口交集的半宽（被抖动错开时是错开量的一半），即连续播放、滞后恰为 LISTENING_TRACE_LAG_MS 时的理想误差。
 // 一首放到时长用完或下一首开播为止，不知道中途暂停或停播。
 export function inferredPlays(traces: ListeningTrace[]): InferredPlay[] {
-  type Run = { lo: number; hi: number; top: number; members: { trace: ListeningTrace; offset: number }[] };
+  type Run = { lo: number; hi: number; top: number; after: number; by: number; members: { trace: ListeningTrace; offset: number }[] };
   const runs: Run[] = [];
   const base = (run: Run) => Math.round((run.lo + Math.min(run.hi, run.top)) / 2);
   for (const trace of traces) {
-    const lo = trace.since - LISTENING_TRACE_LAG_MS - LISTENING_RUN_SLACK_MS;
-    const hi = trace.t - LISTENING_TRACE_LAG_MS + LISTENING_RUN_SLACK_MS;
+    const after = trace.since - LISTENING_TRACE_LAG_MS;
     const seen = trace.t - LISTENING_TRACE_LAG_MS;
+    const lo = after - LISTENING_RUN_SLACK_MS;
+    const hi = seen + LISTENING_RUN_SLACK_MS;
     const run = runs.at(-1);
     const last = run?.members.at(-1);
     if (run && last?.trace.durationMs) {
@@ -180,6 +186,8 @@ export function inferredPlays(traces: ListeningTrace[]): InferredPlay[] {
         run.lo = from;
         run.hi = to;
         run.top = top;
+        run.after = Math.max(run.after, after - offset);
+        run.by = Math.min(run.by, seen - offset);
         run.members.push({ trace, offset });
         continue;
       }
@@ -188,12 +196,12 @@ export function inferredPlays(traces: ListeningTrace[]): InferredPlay[] {
     // 被上一首挤住时在 (上一首开播, 被看见的时刻] 里取中点；照常按 hi 取，同一窗口连切几首会把起点推过 t。
     const previous = run && last ? base(run) + last.offset : -Infinity;
     const floor = Math.min(seen, Math.max(lo, previous));
-    runs.push({ lo: floor, hi, top: floor > lo ? seen : hi, members: [{ trace, offset: 0 }] });
+    runs.push({ lo: floor, hi, top: floor > lo ? seen : hi, after: Math.min(seen, Math.max(after, previous)), by: seen, members: [{ trace, offset: 0 }] });
   }
   const starts = runs.flatMap((run) => run.members.map(({ trace, offset }) => ({
     trace,
     start: Math.min(base(run) + offset, trace.t - LISTENING_TRACE_LAG_MS),
-    marginMs: Math.round((Math.min(run.hi, run.top) - run.lo) / 2),
+    marginMs: Math.round(Math.abs(run.by - run.after) / 2),
   })));
   return starts.map(({ trace, start, marginMs }, index) => {
     const next = starts[index + 1]?.start ?? Infinity;
@@ -213,10 +221,11 @@ export function inferredPlays(traces: ListeningTrace[]): InferredPlay[] {
   });
 }
 
-// 最后推出的那首还没按时长放完，就当它此刻还在放；不知道中途暂停或停播，放完之后到下一首被看见之前是未知。
+// 最后推出的那首还没按时长放完就当它此刻还在放，放完再留 LISTENING_ELSEWHERE_HOLD_MS 等下一首被看见；
+// 不知道中途暂停或停播。
 export function playingElsewhere(traces: ListeningTrace[], now: number): NowListeningElsewhere | null {
   const last = inferredPlays(traces).at(-1);
-  if (!last?.title || !last.durationMs || now < last.from || now >= last.from + last.durationMs) return null;
+  if (!last?.title || !last.durationMs || now < last.from || now >= last.from + last.durationMs + LISTENING_ELSEWHERE_HOLD_MS) return null;
   return {
     title: last.title,
     artist: last.artist,
@@ -227,4 +236,12 @@ export function playingElsewhere(traces: ListeningTrace[], now: number): NowList
     durationMs: last.durationMs,
     marginMs: last.marginMs,
   };
+}
+
+// 照推断接着放，下一首最晚在这一刻排进列表最前；已经过了（停了、暂停了或推断有误）就没有。
+export function nextTraceBy(traces: ListeningTrace[], now: number): number | null {
+  const last = inferredPlays(traces).at(-1);
+  if (!last?.durationMs) return null;
+  const by = last.from + last.durationMs + LISTENING_TRACE_LAG_MS + last.marginMs + LISTENING_TRACE_JITTER_MS;
+  return by > now ? by : null;
 }

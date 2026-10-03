@@ -1,6 +1,6 @@
 import fs from "node:fs";
 
-import { inferredPlays, listeningTraces, type InferredPlay, type ListeningTrace, type RecentTracksSnapshot } from "@shared/pulse-listening";
+import { inferredPlays, LISTENING_TRACE_LAG_MS, listeningTraces, type InferredPlay, type ListeningTrace, type RecentTracksSnapshot } from "@shared/pulse-listening";
 
 // 一段录下来的 iPhone 播放：每 pollEveryMs 拉一次「最近播放的歌」，lists 是出现过的列表（条目 id 换成了 tNN），
 // polls 是 [相对 startedAt 的毫秒, lists 下标]；collector 是同一时段生产采集 Worker 记下的 [since, t, 条目]。
@@ -29,14 +29,14 @@ function snapshot(session: RecordedSession, [at, list]: [number, number]): Recen
   };
 }
 
-// 列表最前那首换了就是新开播，开播取两轮的中点；放到下一首开播或时长用完。
+// 列表最前那首换了就是新开播：上榜取两轮的中点，开播再早 LISTENING_TRACE_LAG_MS；放到下一首开播或时长用完。
 export function recordedTruth(session: RecordedSession): (ReplaySpan & { scored: boolean })[] {
   const starts: { at: number; id: string; scored: boolean }[] = [];
   for (let index = 1; index < session.polls.length; index += 1) {
     const [before, previous] = session.polls[index - 1], [at, list] = session.polls[index];
     const top = session.lists[list][0];
     if (top === session.lists[previous][0]) continue;
-    starts.push({ at: session.startedAt + Math.round((before + at) / 2), id: top, scored: at - before <= TRUTH_WINDOW_MAX_MS });
+    starts.push({ at: session.startedAt + Math.round((before + at) / 2) - LISTENING_TRACE_LAG_MS, id: top, scored: at - before <= TRUTH_WINDOW_MAX_MS });
   }
   return starts.map((start, index) => {
     const next = starts[index + 1]?.at ?? Infinity;

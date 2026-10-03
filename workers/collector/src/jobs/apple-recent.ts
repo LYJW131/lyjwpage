@@ -8,7 +8,7 @@ import { readAppleMusicCredentials } from "@/lib/apple-music-credentials";
 import { cached, get, put } from "@/lib/cache";
 import type { ListeningItem, RecentTrack } from "@/lib/types";
 
-import { ok, skipMissing, type Job } from "../job";
+import { explain, ok, skipMissing, type Job } from "../job";
 import { epochMinute } from "../schedule";
 
 
@@ -22,14 +22,53 @@ const MAX_TRACK_PAGES = 5;
 const LIBRARY_ARTWORK_TTL_MS = 12 * 60 * 60 * 1000;
 const USER_PLAYLIST_PREFIX = "pl.u-";
 
-// 列表只说明两次刷新之间变过：闲时按 Pulse 的 5 分钟桶拉；列表一变就进活跃档每分钟拉，
-// 一首歌只要放过就能单独落进一段，ACTIVE_HOLD_MS 内没再变化才回闲档。
+// 列表只说明两次刷新之间变过：闲时按 Pulse 的 5 分钟桶拉；列表一变就进活跃档，每分钟这一响里接着每 ACTIVE_POLL_MS
+// 再拉一次歌曲列表，换歌最多晚这么久被看见，窗口也窄到这么宽。ACTIVE_HOLD_MS 内没再变化才回闲档。
 export const IDLE_EVERY_MINUTES = 5;
 export const ACTIVE_HOLD_MS = 10 * 60 * 1000;
+export const ACTIVE_POLL_MS = 15_000;
+// 一响里最后一次拉要在这之前开始，不和下一响叠在一起。
+export const ACTIVE_FOLLOW_MS = 55_000;
+// StateCore 回的 nextBy 早于下一次拉就提前到那一刻拉，接着放的下一首一上榜就被看见；离上一次拉至少隔这么久。
+const ANCHOR_MIN_GAP_MS = 3_000;
 const LAST_CHANGE_KEY = "apple-recent:last-change";
 
+function appleRecentActive(now: number, lastChangeAt: number | undefined): boolean {
+  return lastChangeAt !== undefined && now - lastChangeAt < ACTIVE_HOLD_MS;
+}
+
 export function appleRecentDue(now: number, lastChangeAt: number | undefined): boolean {
-  return epochMinute(now) % IDLE_EVERY_MINUTES === 0 || (lastChangeAt !== undefined && now - lastChangeAt < ACTIVE_HOLD_MS);
+  return epochMinute(now) % IDLE_EVERY_MINUTES === 0 || appleRecentActive(now, lastChangeAt);
+}
+
+export function nextPollAt(polledAt: number, nextBy: number | undefined): number {
+  const periodic = polledAt + ACTIVE_POLL_MS;
+  return nextBy !== undefined && nextBy > polledAt ? Math.min(periodic, Math.max(nextBy, polledAt + ANCHOR_MIN_GAP_MS)) : periodic;
+}
+
+type TracksReply = { traced: boolean; nextBy?: number };
+
+// 接着拉的某一次失败就停在这一响：下一响的头一次照常拉，持续的故障由它报出来。
+// Worker 里的时钟只在 I/O 之后前进，醒来时读到的可能还是睡前的时刻；按计划时刻兜底，否则会一次接一次地拉。
+export async function followRecentTracks(
+  io: { poll: () => Promise<TracksReply>; wait: (ms: number) => Promise<void>; clock: () => number },
+  start: { polledAt: number; nextBy?: number; until: number },
+): Promise<{ polls: number; traced: number; error?: string }> {
+  let { polledAt, nextBy } = start;
+  let polls = 0, traced = 0;
+  for (let at = nextPollAt(polledAt, nextBy); at <= start.until; at = nextPollAt(polledAt, nextBy)) {
+    await io.wait(Math.max(0, at - io.clock()));
+    polledAt = Math.max(at, io.clock());
+    try {
+      const reply = await io.poll();
+      polls += 1;
+      nextBy = reply.nextBy;
+      if (reply.traced) traced += 1;
+    } catch (error) {
+      return { polls, traced, error: explain(error) };
+    }
+  }
+  return { polls, traced };
 }
 
 type AppleArtwork = {
@@ -212,12 +251,14 @@ export const appleRecentJob: Job = {
   offset: 0,
   maxRuntimeMinutes: 2,
   async run({ env, now, scheduled }) {
-    if (scheduled && !appleRecentDue(now, await get<number>(LAST_CHANGE_KEY))) return { status: "skipped", detail: "idle" };
+    const lastChangeAt = scheduled ? await get<number>(LAST_CHANGE_KEY) : undefined;
+    if (scheduled && !appleRecentDue(now, lastChangeAt)) return { status: "skipped", detail: "idle" };
     const credentials = await readAppleMusicCredentials();
     if (!credentials.ok && credentials.reason === "never-pushed") {
       return skipMissing("apple-recent", ["CREDENTIALS apple-music:v1"]);
     }
     const resolved = await resolveCredentials();
+    const polledAt = Date.now();
     const [items, tracks] = await Promise.allSettled([
       assemble(resolved),
       assembleRecentTracks(resolved).then((list) => ({ list, observedAt: Date.now() })),
@@ -225,8 +266,23 @@ export const appleRecentJob: Job = {
     if (items.status === "rejected") throw items.reason;
     const { changed } = await env.CORE.commitRecentlyPlayed(items.value);
     if (tracks.status === "rejected") throw tracks.reason;
-    const { traced } = await env.CORE.commitRecentTracks(tracks.value.list, tracks.value.observedAt);
+    const { traced, nextBy } = await env.CORE.commitRecentTracks(tracks.value.list, tracks.value.observedAt);
     if (changed || traced) await put(LAST_CHANGE_KEY, now, ACTIVE_HOLD_MS);
-    return ok([changed && "changed", traced && "traced"].filter(Boolean).join(",") || undefined);
+    const flags = [changed && "changed", traced && "traced"];
+    if (scheduled && (changed || traced || appleRecentActive(now, lastChangeAt))) {
+      const followed = await followRecentTracks({
+        poll: async () => {
+          const list = await assembleRecentTracks(resolved);
+          const reply = await env.CORE.commitRecentTracks(list, Date.now());
+          if (reply.traced) await put(LAST_CHANGE_KEY, Date.now(), ACTIVE_HOLD_MS);
+          return reply;
+        },
+        wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+        clock: Date.now,
+      }, { polledAt, nextBy, until: now + ACTIVE_FOLLOW_MS });
+      if (followed.error) console.warn(JSON.stringify({ event: "apple-recent-follow", polls: followed.polls, error: followed.error }));
+      flags.push(followed.traced > 0 && `followed:${followed.traced}`);
+    }
+    return ok(flags.filter(Boolean).join(",") || undefined);
   },
 };
