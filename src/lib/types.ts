@@ -583,7 +583,7 @@ export type PulseSpanColumns = { startSec: number[]; endSec: number[] };
 
 export type PulseCodingLane = {
   kind: "coding";
-  segments: PulseSpanColumns & { value: number[] };
+  segments: PulseSpanColumns & { value: number[]; agentSources: number[] };
   assessments: PulseSpanColumns & { intensity: number[]; confidence: number[]; mode: (string | null)[] };
   summary: { humanSeconds: number; agentSeconds: number; bothSeconds: number };
 };

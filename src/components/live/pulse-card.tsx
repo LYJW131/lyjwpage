@@ -1,13 +1,17 @@
 "use client";
 
+import CursorIcon from "@lobehub/icons/es/Cursor/components/Mono";
+import { Cloud } from "lucide-react";
 import { type ReactNode, type RefObject, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { AnchoredTooltip, cellAnchor, type CellAnchor, useHoverDismiss } from "./heatmap-hover";
 
 import { DevToggle, DevToggleSlot, isDev } from "@/components/dev-toggles";
 import { Card } from "@/components/ui/card";
+import { MacBookProIcon } from "@/components/ui/device-icons";
 import { useStatus } from "@/hooks/use-status";
 import { PULSE_PATH } from "@/lib/paths";
+import { CODING_AGENT_CLOUD, CODING_AGENT_CURSOR, CODING_AGENT_MAC } from "@shared/pulse-coding";
 import { columnRows } from "@/lib/pulse-columns";
 import type {
   PulseCodingLane,
@@ -101,6 +105,23 @@ const MODE_LABELS: Record<string, string> = {
   idle: "Idle", brief: "Brief bursts", interactive: "In coding apps", agent: "Agent work", mixed: "Apps + agents",
 };
 
+const AGENT_SOURCES = [
+  { bit: CODING_AGENT_MAC, label: "Mac", icon: <MacBookProIcon className="size-3.5" aria-hidden /> },
+  { bit: CODING_AGENT_CLOUD, label: "Cloud", icon: <Cloud className="size-3.5" aria-hidden /> },
+  { bit: CODING_AGENT_CURSOR, label: "Cursor", icon: <CursorIcon size={14} aria-hidden /> },
+] as const;
+
+function AgentSources({ mask }: { mask: number }) {
+  const active = AGENT_SOURCES.filter((source) => mask & source.bit);
+  if (!active.length) return null;
+  return (
+    <span className="flex items-center gap-1">
+      {active.map((source) => <span key={source.label} className="flex shrink-0">{source.icon}</span>)}
+      <span>{active.map((source) => source.label).join(" + ")}</span>
+    </span>
+  );
+}
+
 function codingModel(lane: PulseCodingLane, range: Range): LaneModel | null {
   const segments = columnRows(lane.segments, ["value"]);
   const assessments = columnRows(lane.assessments, ["intensity", "confidence", "mode"]);
@@ -115,6 +136,7 @@ function codingModel(lane: PulseCodingLane, range: Range): LaneModel | null {
       from, to, rank: row.value ? 0 : 1,
       content: (
         <Tooltip key={index} from={from} to={to} head={CODING_WORDS[row.value] ?? "Coding"} lines={[
+          <AgentSources key="a" mask={lane.segments.agentSources?.[index] ?? 0} />,
           assessment && <span key="i">Jev intensity {Math.round(assessment.intensity / 4 * 100)}/100</span>,
           assessment?.mode && <span key="m" className="text-muted-foreground">{MODE_LABELS[assessment.mode] ?? assessment.mode}</span>,
         ]} />

@@ -143,7 +143,10 @@ export function codingWindowFeatures(observations: CodingObservation[], from: nu
 }
 
 export type CodingBandValue = 0 | 1 | 2 | 3;
-export type CodingBandSegment = { from: number; to: number; value: CodingBandValue };
+export const CODING_AGENT_MAC = 1;
+export const CODING_AGENT_CLOUD = 2;
+export const CODING_AGENT_CURSOR = 4;
+export type CodingBandSegment = { from: number; to: number; value: CodingBandValue; agentSources: number };
 
 export function codingBand(observations: CodingObservation[], cursor: CursorObservation[], window: Coverage, cloudActivity: Coverage[] = []): CodingBandSegment[] {
   type Slice = Coverage & { human: boolean; agent: boolean };
@@ -173,10 +176,11 @@ export function codingBand(observations: CodingObservation[], cursor: CursorObse
     const cursorActive = at(account.activeCoverage, activeAt, from, to);
     const cloudActive = at(cloud, cloudAt, from, to);
     if (!slice && !covered && !cloudActive) continue;
-    const value = ((slice?.human ? 1 : 0) + (slice?.agent || cursorActive || cloudActive ? 2 : 0)) as CodingBandValue;
+    const agents = (slice?.agent ? CODING_AGENT_MAC : 0) | (cloudActive ? CODING_AGENT_CLOUD : 0) | (cursorActive ? CODING_AGENT_CURSOR : 0);
+    const value = ((slice?.human ? 1 : 0) + (agents ? 2 : 0)) as CodingBandValue;
     const previous = segments.at(-1);
-    if (previous && previous.to === from && previous.value === value) previous.to = to;
-    else segments.push({ from, to, value });
+    if (previous && previous.to === from && previous.value === value && previous.agentSources === agents) previous.to = to;
+    else segments.push({ from, to, value, agentSources: agents });
   }
   return segments;
 }

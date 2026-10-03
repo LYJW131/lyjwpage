@@ -147,7 +147,7 @@ export function codingLaneView(observations: CodingObservation[], cursor: Cursor
   const band = codingBand(observations, cursor, window, cloudActivity);
   const rows = band.flatMap((segment) => {
     const at = span(window, segment.from, segment.to);
-    return at.endSec > at.startSec ? [{ ...at, value: segment.value }] : [];
+    return at.endSec > at.startSec ? [{ ...at, value: segment.value, agentSources: segment.agentSources }] : [];
   });
   const total = (value: number) => seconds(band.filter((segment) => segment.value === value).reduce((sum, segment) => sum + segment.to - segment.from, 0));
   const scored = assessments.filter((row) => row.domain === "coding" && row.to > window.from && row.from < window.to)
@@ -160,7 +160,7 @@ export function codingLaneView(observations: CodingObservation[], cursor: Cursor
     .filter((row) => row.endSec > row.startSec);
   return {
     kind: "coding",
-    segments: toColumns(rows, ["value"] as const),
+    segments: toColumns(rows, ["value", "agentSources"] as const),
     assessments: toColumns(scored, ["intensity", "confidence", "mode"] as const),
     summary: { humanSeconds: total(1), agentSeconds: total(2), bothSeconds: total(3) },
   };
