@@ -130,8 +130,8 @@ export function stateLaneView<L extends StateLane>(lane: L, input: StateLaneInpu
     });
     view.uncertain = toColumns(uncertain, ["title", "subtitle", "marginSec"] as const);
     view.summary.activeSeconds = seconds(coveredMs([...active, ...elsewhere]));
-    for (const trace of traces) {
-      if (trace.title && trace.t > window.from && trace.since < window.to) titles.add(trace.title.toLowerCase());
+    for (const play of elsewhere) {
+      if (play.title) titles.add(play.title.toLowerCase());
     }
   }
   view.summary.titles = titles.size;
