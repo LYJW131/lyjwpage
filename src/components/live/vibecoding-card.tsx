@@ -23,11 +23,11 @@ import { agentUsageLabel, agentUsageUrl } from "@/lib/agent-usage-url";
 import {
   CODING_ACTIVE_WINDOW_MS,
   CODING_SOURCE_LABELS,
+  codingActivitySlots,
   codingAgentRows,
   codingDisplayModel,
   codingSourceHealth,
   describeCodingSources,
-  liveCodingActivity,
   type CodingActivityEntry,
   type CodingAgentRow,
   type CodingSourceNote,
@@ -63,28 +63,44 @@ type FirstFrameClocks = {
   limits?: number;
 };
 
-function useAgentActive(row: CodingAgentRow, macDeclaredOffline: boolean, clocks: FirstFrameClocks) {
-  const live = liveCodingActivity(row.activity, macDeclaredOffline);
-  const expired = useConfirmedClockStale(live?.lastActivityAt, CODING_ACTIVE_WINDOW_MS, {
+function useSlotLive(entry: CodingActivityEntry | null, clockKnown: boolean, clocks: FirstFrameClocks) {
+  const expired = useConfirmedClockStale(entry?.lastActivityAt, CODING_ACTIVE_WINDOW_MS, {
     validating: clocks.nowValidating,
     servedAt: clocks.now,
   });
-  const mountedAt = useMountedAt();
-  const clockKnown = mountedAt > 0 || clocks.now != null;
-  const active = live != null && clockKnown && !expired;
-  return { active, source: active ? live.source : null, model: codingDisplayModel(row, live, active) };
+  return entry != null && clockKnown && !expired ? entry : null;
 }
 
-function ActiveBadge({ source }: { source: CodingActivityEntry["source"] | null }) {
-  const label = source ? (CODING_SOURCE_LABELS[source] ?? source) : undefined;
+function useAgentActive(row: CodingAgentRow, macDeclaredOffline: boolean, clocks: FirstFrameClocks) {
+  const slots = codingActivitySlots(row.activity, macDeclaredOffline);
+  const mountedAt = useMountedAt();
+  const clockKnown = mountedAt > 0 || clocks.now != null;
+  const mac = useSlotLive(slots.mac, clockKnown, clocks);
+  const remote = useSlotLive(slots.remote, clockKnown, clocks);
+  const sources = [mac, remote].filter((entry) => entry != null);
+  const live = sources.reduce<CodingActivityEntry | null>(
+    (newest, entry) => (newest == null || entry.lastActivityAt > newest.lastActivityAt ? entry : newest),
+    null,
+  );
+  const active = live != null;
+  return { active, sources: sources.map((entry) => entry.source), model: codingDisplayModel(row, live, active) };
+}
+
+function ActiveBadge({ sources }: { sources: CodingActivityEntry["source"][] }) {
+  const labels = sources.map((source) => CODING_SOURCE_LABELS[source] ?? source);
   return (
-    <span className="flex shrink-0 items-center gap-1 text-live" title={label ? `Active on ${label}` : undefined}>
+    <span
+      className="flex shrink-0 items-center gap-1 text-live"
+      title={labels.length ? `Active on ${labels.join(" + ")}` : undefined}
+    >
       <span className="label-mono">Active</span>
-      {source === "mac" ? (
-        <MacBookProIcon className="size-3.5" aria-label={label} />
-      ) : source ? (
-        <Cloud className="size-3.5" aria-label={label} />
-      ) : null}
+      {sources.map((source, index) =>
+        source === "mac" ? (
+          <MacBookProIcon key={source} className="size-3.5" aria-label={labels[index]} />
+        ) : (
+          <Cloud key={source} className="size-3.5" aria-label={labels[index]} />
+        ),
+      )}
     </span>
   );
 }
@@ -734,7 +750,7 @@ function AgentPanel({
   const cacheHitRate = promptTokens
     ? ((lastDay?.cacheReadTokens ?? 0) / promptTokens) * 100
     : 0;
-  const { active, source, model } = useAgentActive(row, macDeclaredOffline, clocks);
+  const { active, sources, model } = useAgentActive(row, macDeclaredOffline, clocks);
   const displayModel = model ? displayModelName(model) : "No model";
   const rows = featuredLimitRows(limitsStale ? { ...row, limits: [], limitsError: LIMITS_SILENT } : row);
   const usageUrl = agentUsageUrl(row.id);
@@ -744,7 +760,7 @@ function AgentPanel({
         <div className="flex items-center gap-2">
           <FeaturedMark row={row} active={active} />
           <span className="text-sm font-medium">{row.label}</span>
-          {active && <ActiveBadge source={source} />}
+          {active && <ActiveBadge sources={sources} />}
         </div>
         <span
           className={cn(
@@ -867,7 +883,7 @@ function CompactAgentRow({
 
   const pace = limit ? limitPace(limit, now) : null;
   const overPace = pace != null && usedPercent != null && usedPercent / 100 > pace;
-  const { active, source } = useAgentActive(row, macDeclaredOffline, clocks);
+  const { active, sources } = useAgentActive(row, macDeclaredOffline, clocks);
   const usageUrl = agentUsageUrl(row.id);
 
   return (
@@ -885,7 +901,7 @@ function CompactAgentRow({
             )}
           </span>
           <span className="truncate text-sm font-medium">{row.label}</span>
-          {active && <ActiveBadge source={source} />}
+          {active && <ActiveBadge sources={sources} />}
         </div>
         <span className="flex h-5 min-w-0 items-baseline gap-2 text-xs text-muted-foreground md:shrink-0">
           {row.plan && (
