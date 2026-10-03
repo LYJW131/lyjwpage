@@ -75,10 +75,10 @@
   推 `coding-now`：和上一次推出去的那份（`coding:now:pushed`）比，多出一个 (agent, 来源)、换了模型、时刻往前走了
   `src/stores/coding-activity.ts#PUSH_STEP_MS` 以上才推，保活不推。灯由浏览器按
   「任一来源最近事件在 `CODING_ACTIVE_WINDOW_MS` 内」现算；Mac 亲口离线时只作废 `mac` 那条（`src/lib/coding-agents.ts`）。
-- **5 分钟桶**：`pulse:token-buckets:<来源>`，TTL 2 天，只给 Pulse 的 Tokens 道、Jev 与归档，不推送。Mac / agents 按报告
+- **5 分钟桶**：`pulse:token-buckets:<来源>`，TTL 2 天，只给 Pulse 的 Tokens 道、Coding 评估与归档，不推送。Mac / agents 按报告
   范围替换（`[from, to)` 内以新报告为准，缺席的桶是 0，范围外不动，报告范围并进覆盖）；跨着报告起点的那一桶只数了
   一截，按 (agent, 模型) 取大的那行，不盖掉旧报告里数全了的桶。合并规则在 `shared/coding-buckets.ts`。
-- **Cursor 账号观测**：agents 来源的 cursor 行另记一笔 `pulse:cursor-observations`（Coding 三色带与 Jev 的独立来源）：
+- **Cursor 账号观测**：agents 来源的 cursor 行另记一笔 `pulse:cursor-observations`（Coding 三色带与 Coding 评估的独立来源）：
   用量历史采集成功就是一次心跳（时刻取采集时刻），只有活动的那封时刻往前走了才记。
 
 读出口在 `src/lib/coding-usage.ts`：`/api/status/coding` 原样给视图，`/api/status/coding/now` 与推送用同一个
@@ -190,7 +190,7 @@ Pulse 卡片首屏按卡读它（`src/lib/first-screen.ts`）、挂载后自己�
     // value：0 两者都没有，1 只有前台 coding 应用，2 只有 agent 在跑，3 两者同时
     "coding": { "kind": "coding",
       "segments": { "startSec": [0, 3600], "endSec": [3600, 7200], "value": [1, 3] },
-      // Jev 的十五分钟评估：强度 0–4、置信度、模式；只在悬停里出现
+      // Clef 的十五分钟评估：强度 0–4、置信度、模式；只在悬停里出现
       "assessments": { "startSec": [0], "endSec": [900], "intensity": [3], "confidence": [0.88], "mode": ["mixed"] },
       "summary": { "humanSeconds": 3600, "agentSeconds": 0, "bothSeconds": 3600 } },
     // 各来源、各 agent、各模型相加后的五分钟桶：fresh = input + output + cache 写入，cache 读单列
@@ -224,7 +224,7 @@ Pulse 卡片首屏按卡读它（`src/lib/first-screen.ts`）、挂载后自己�
 细灰线，未知只剩虚线轨道。
 
 **只有媒体与游戏标题公开**；应用名、模型名、充电设备名不出这个端点，Coding 只给三色带和
-Jev 的强度、模式。token 只以各来源、各 agent、各模型相加后的五分钟桶出现（Tokens 道），不带模型名和来源：
+Clef 的强度、模式。token 只以各来源、各 agent、各模型相加后的五分钟桶出现（Tokens 道），不带模型名和来源：
 Mac / agents 的桶只认起点在报告范围里的（跨着范围起点的那一桶只数了一截），被 24 小时窗口截断的首桶不画，
 末桶截到这一桶里有数的来源里最晚的覆盖终点（云端 OTLP 用最后一封的收到时刻），不足 60 秒不画，只出有用量的桶。
 
@@ -266,11 +266,11 @@ Mac / agents 的桶只认起点在报告范围里的（跨着范围起点的那�
   回放一段录下来的 iPhone 连续播放（`src/lib/testing/recent-tracks-session.json`），按不同拉取间隔打印标对歌名的比例与开播误差，
   口径与当时的数字见 [别处播放推断精度实测](../../docs/listening-inference-accuracy.md)；`src/lib/pulse-listening-replay.test.mts` 守住每分钟一轮的下限。
 - **Coding 三色带**不另存：读时从 `pulse:coding-observations`、`pulse:cursor-observations` 与云端的
-  `pulse:token-buckets:agents-otlp` 现算，切片规则同 Jev 特征（每条 Mac 观测撑到下一条或 3 分钟，`available: false` 不算观测）。
+  `pulse:token-buckets:agents-otlp` 现算，切片规则同 Coding 评估特征（每条 Mac 观测撑到下一条或 3 分钟，`available: false` 不算观测）。
   human 是前台为 coding 应用（`desktop.coding`），agent 是有 agent `active`、Cursor 账号最近 5 分钟有活动，
   或云端 Claude Code 在这个 5 分钟桶里有用量（`shared/pulse-coding.ts#cloudAgentActivity`；云端只有正证据，没有桶的时段是未知，不画 0）。
   Cursor 那一路的覆盖也算「看得见」：Mac 离线而 Cursor 覆盖着且没有活动时画 0（观测到没有 agent 活动），
-  这时前台其实是未知，和 Jev 特征的口径一致。不读档位时代的 `pulse:coding`（它让 agent 压过前台，画不出「两者同时」）。
+  这时前台其实是未知，和 Coding 评估特征的口径一致。不读档位时代的 `pulse:coding`（它让 agent 压过前台，画不出「两者同时」）。
 - **充电瓦数** `pulse:v2:charging` `{t, watts, device?}`，上限 `CHARGING_SAMPLE_CAP`。闸门见 `planChargingSample`：
   跨待机门槛、换设备立刻写；通电时变化够明显才写；其余最多隔 `PULSE_REPEAT_AFTER_MS` 再确认一次。一笔撑到下一笔或
   `CHARGING_HOLD_MS`；最后一笔过期后 `currentPowerW` 为 null。
@@ -283,34 +283,34 @@ Mac / agents 的桶只认起点在报告范围里的（跨着范围起点的那�
 本地预览用夹具：`pnpm dev:override /api/status/pulse pulse-busy-day.json`（另有 `pulse-empty`、`pulse-zero-lanes`、
 `pulse-activity-boundary`，以及 `pulse-tokens-idle`：Tokens 道白天有用量、此刻为 0）。卡片右下角开发开关「Traces」切换别处播放的斜线 / 淡色画法，默认斜线。
 
-### Coding 的 Jev 评估
+### Coding 的 Clef 评估
 
-Jev 只给 Coding 打分：原始观测说得出「前台是不是 coding 应用、agent 在不在跑」，说不出「写得多投入」，
-强度和模式仍问 Jev，只在悬停里出现。别的道画的就是事实本身，不再有模型分、趋势和置信度。
+Clef（Workers AI 上的决策模型，经 `AI` 绑定调用）只给 Coding 打分：原始观测说得出「前台是不是 coding 应用、agent 在不在跑」，说不出「写得多投入」，
+强度和模式仍问模型，只在悬停里出现。别的道画的就是事实本身，不再有模型分、趋势和置信度。
 `PulseScorer` 和 `pulse:assessments` 只剩 `coding`；StateHub 的 metadata 保存评分 claim、generation、lease 和
 最近尝试时刻；普通 Worker 领取固定输入快照（评估、Coding 观测、三个来源的 token 桶、Cursor 观测）、执行模型请求，
 再用 token + generation 提交，过期任务不能覆盖新结果。公开的评估只有区间、强度、置信度与模式；
 概率分布、输入哈希、模型名和评分时刻只留在库里。
 
 cron 落在窗口结束后 `PULSE_SCORE_SETTLE_MS`（`src/pulse-score.ts`，等采集与上报到齐），每个五分钟时段最多一轮尝试；没有可评的窗口时不交还任务，租约 `PULSE_SCORE_LEASE_MS` 短于 cron 间隔，下一轮前自然过期（`src/cron-heartbeat.test.ts` 守着）。有活动，或覆盖不全、缺报、
-未知的窗口，每个十五分钟一份官方 Jev 模型的请求（型号写在 `src/pulse-score.ts`），强度、连续性、模式一起评估。窗口被完整观测且信号
-全是 0 时不请求 Jev，写成确定的最低档（强度 0、连续性 0、置信度 1、mode idle，模型名 `rules`）。每轮最多
+未知的窗口，每个十五分钟一份 Clef 请求（型号写在 `src/pulse-score.ts#clefDecide`），强度、连续性、模式一起评估。窗口被完整观测且信号
+全是 0 时不请求模型，写成确定的最低档（强度 0、连续性 0、置信度 1、mode idle，模型名 `rules`）。每轮最多
 36 份请求、并发最多 3，优先新窗口再补最近 24 小时，稳定时每小时最多 4 次。没有观测不调用，也不写评分。
-没有 `TYPESAFE_API_KEY`、或本地配了 `DEV_OVERRIDES` / `UPSTREAM_API_URL` 时停用。
+没有 `AI` 绑定（`wrangler.test.toml` 不配，本地起的 Worker 都不评分）、或本地配了 `DEV_OVERRIDES` / `UPSTREAM_API_URL` 时停用。
 
-按 Jev 文档（不会数数、不会算时长、不比时间戳），发给它的 state 是代码算好的命名秒数和次数
+决策模型不会数数、不会算时长、不比时间戳，所以发给它的 state 是代码算好的命名秒数和次数
 （`shared/pulse-coding.ts` 的 `codingWindowFeatures`）：`codingAppSeconds`、`agentActiveSeconds`、
 `concurrentAgentSeconds`、`codingAppAndAgentSeconds`、切换次数、最长连续时长、观测覆盖和前几个应用 / agent，
 没有原始区间或时间戳；判据写在 `instructions` / `criteria` 里。
 
 `PULSE_ASSESSMENT_VERSION` 进输入哈希，改问题时升版本让全部窗口重评，不靠哈希碰巧变。
-改判据先跑 `node --experimental-strip-types --import ./src/lib/testing/register-alias.mjs scripts/jev-probe.mts`
-（key 读根目录 `.env.local` 的 `TYPESAFE_API_KEY`）：几个代表性的 Coding 窗口打真实 Jev，每条都写着期望答案，
+改判据先跑 `node --experimental-strip-types --import ./src/lib/testing/register-alias.mjs scripts/clef-probe.mts`
+（读环境变量或根目录 `.env.local` 的 `CLOUDFLARE_ACCOUNT_ID`、`CLOUDFLARE_API_TOKEN`，令牌要有 Workers AI 权限；`CLEF_PROBE_MODEL=clef-flash` 换小模型）：几个代表性的 Coding 窗口打真实 Clef，每条都写着期望答案，
 偏了先改措辞再上线——改判据上线会触发最近 24 小时重评。相同输入哈希不重复调用；晚到 token 改变窗口事实时
 只重评受影响窗口。失败保留旧成功记录，下一轮重试，存储读失败不会清空历史。评估列表追加写，同一窗口以
 最后一行为准，被覆盖的行多过有效行的 `COMPACT_GARBAGE_RATIO` 或总数超过 `COMPACT_MAX_ROWS`（`src/pulse-score-state.ts`）才整表压缩。
 
-token 证据来自三个来源的 5 分钟桶（上一节）。原始桶保持五分钟，不随 Jev 评分改动；评分时聚合窗口内三个桶，
+token 证据来自三个来源的 5 分钟桶（上一节）。原始桶保持五分钟，不随 Clef 评分改动；评分时聚合窗口内三个桶，
 按 (来源, agent, 模型) 相加，每行带 `source`。`observedBucketCount` 只数被 Mac 本机扫描的报告范围完整盖住的桶：
 范围内缺席的桶是零事件，范围外或 Mac 的来源 partial / unavailable 保留 unknown；「确定为零」只认 Mac 的覆盖。
 Cursor 账号与云端 OTLP 的桶只作正证据（没行不代表 0），不按 token 计费的请求记 0 token、1 次事件，照样算活动。
@@ -319,7 +319,7 @@ reasoning 属于 output 子集，eventCount 是去重用量事件数（数不出
 
 不上传提示词、回复正文、项目路径或 session ID。token 是工作活动的证据，不是生产力。
 Mac 同状态每分钟最多保存一次内部观测，变化立即记录；缺报三分钟后中断。
-Cursor 使用独立的 `pulse:cursor-observations`：agents 来源的 cursor 活动往前走了、或成功的 cursor 用量采集都会记录，账本内容没变化也更新观测。重复、乱序的采集时刻不延长有效期，error / warning 不当成零活动。检查覆盖最多保持 `shared/pulse-cursor.ts` 的 `CURSOR_OBSERVATION_HOLD_MS`（略长于账号上报器闲时最长的上报周期）；最近事件只按 5 分钟活动窗口计入，之后仅表示 Cursor 来源可用。Mac 离线不会抹掉这份覆盖，Cursor 过期也不会抹掉 Mac 的覆盖；两者并集去重。仅 Cursor 可用且没有活动或正 token 证据时直接写 0，置信度为 0.5，内部模型标记为 `rules:limited-source`，不调用 Jev；这不等于确定全局没有 Coding。
+Cursor 使用独立的 `pulse:cursor-observations`：agents 来源的 cursor 活动往前走了、或成功的 cursor 用量采集都会记录，账本内容没变化也更新观测。重复、乱序的采集时刻不延长有效期，error / warning 不当成零活动。检查覆盖最多保持 `shared/pulse-cursor.ts` 的 `CURSOR_OBSERVATION_HOLD_MS`（略长于账号上报器闲时最长的上报周期）；最近事件只按 5 分钟活动窗口计入，之后仅表示 Cursor 来源可用。Mac 离线不会抹掉这份覆盖，Cursor 过期也不会抹掉 Mac 的覆盖；两者并集去重。仅 Cursor 可用且没有活动或正 token 证据时直接写 0，置信度为 0.5，内部模型标记为 `rules:limited-source`，不调用模型；这不等于确定全局没有 Coding。
 
 ### 长期归档（D1）
 
@@ -401,7 +401,6 @@ Mac 上报的 Apple Music 凭据在凭据 KV（`shared/credentials.ts`），不�
 ```sh
 pnpm --dir workers/api exec wrangler secret put REVALIDATE_SECRET
 pnpm --dir workers/api exec wrangler secret put APPLE_MUSIC_PRIVATE_KEY < AuthKey_XXXXXXXXXX.p8
-pnpm --dir workers/api exec wrangler secret put TYPESAFE_API_KEY
 ```
 
 外部数据的令牌（GitHub、Vercel、Cloudflare、Sentry、PageSpeed）在采集 Worker 上，见 [采集 Worker README](../collector/README.md)。PSN 登录在 `reporters/playstation-reporter` 的数据卷里。
@@ -430,7 +429,7 @@ dev-router 按路径分发：`/__dev/collector/*` 给采集 Worker 的调试入�
 （`api`、`ingress`、`collector`）互相找到，所以本地 api 的名字也是 `api`。
 `curl localhost:8788/cdn-cgi/local/scheduled` 触发的是 dev-router 的 `scheduled`，它让采集 Worker 跑这一分钟到期的任务；
 api 自己的 cron 本地触发不到（Service Binding 调不了别的 Worker 的 `scheduled`），它本地要做的
-D1 归档、Jev 打分本来也被隔离开关关着。
+D1 归档、Clef 打分本来也被隔离开关关着。
 
 本地用 `wrangler.test.toml`：生产配置里的 `deleted_classes` 迁移在空环境下起不来，测试配置有从头开始的迁移链，且没有生产域名和 cron。
 状态持久化在 `.wrangler/dev-state`（`DEV_WORKER_STATE` 可以另指一个目录），重装或想清库就删它，再跑一次 init。

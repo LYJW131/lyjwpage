@@ -11,11 +11,11 @@ export interface Env extends MusicKitTokenEnv {
   STATE: DurableObjectNamespace<StateHub>;
   DEV_OVERRIDE_READER?: Service<DevOverrideReader>;
   HISTORY?: D1Database;
+  AI?: Ai;
   CREDENTIALS?: KVNamespace;
   LAG?: KVNamespace;
   APPLE_CACHE?: KVNamespace;
   REVALIDATE_SECRET?: string;
-  TYPESAFE_API_KEY?: string;
   STATE_IMPORT_SECRET?: string;
   STORAGE_PREFIX?: string;
   SITE_URL?: string;
@@ -37,7 +37,7 @@ export function historyArchiveEnabled(env: Env): boolean {
 }
 
 export function pulseScoringEnabled(env: Env): boolean {
-  return !!env.TYPESAFE_API_KEY?.trim() && !isolatedFromSharedWrites();
+  return !!env.AI && !isolatedFromSharedWrites();
 }
 
 export type RequestContext = {

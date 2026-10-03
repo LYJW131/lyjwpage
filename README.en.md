@@ -200,7 +200,7 @@ Data in Sentry also comes back to the page: using a read-only token, the collect
 | Styling and interaction | Tailwind CSS 4 · Motion · Number Flow · Geist |
 | Client data | SWR · WebSocket |
 | State and asset storage | Cloudflare Workers · Durable Objects SQLite · KV · D1 · R2 |
-| Activity scoring | TypeSafe System One (Jev) |
+| Activity scoring | Workers AI (Clef) |
 | Native device integration | Swift / SwiftUI · HealthKit · BLE |
 | Hosting and delivery | Vercel · Alibaba Cloud ESA |
 | Error and performance monitoring | Sentry |

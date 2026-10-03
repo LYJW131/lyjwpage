@@ -26,10 +26,10 @@
     "ch08.jevNote": ["打分（示意）", "scores (illustrative)"],
     "ch08.jevKeep": ["打分只在屋里放 7 天，不进 D1", "scores stay 7 days in the room, not in D1"],
     "ch08.window": ["一窗 = 三个 5 分钟桶", "one window = three 5-min buckets"],
-    "ch08.skip": ["不问 Jev，直接最低档", "no Jev: lowest level"],
+    "ch08.skip": ["不问 Clef，直接最低档", "no Clef: lowest level"],
     "ch08.open": ["还没满", "not closed yet"],
-    "ch08.n4a": ["窗关上两分钟后才交给 Jev，", "Two minutes after a window closes,"],
-    "ch08.n4b": ["输入是前台应用、agent 与 token。", "Jev weighs apps, agents and tokens."],
+    "ch08.n4a": ["窗关上两分钟后才交给 Clef，", "Two minutes after a window closes,"],
+    "ch08.n4b": ["输入是前台应用、agent 与 token。", "Clef weighs apps, agents and tokens."],
     "ch08.clawd": ["线上出错时，\n我先去 Sentry 查证据。", "When something breaks,\nI check Sentry first."],
   });
   const tr = (k) => I18N.tr(k);
@@ -63,7 +63,7 @@
   const ST_TOP = 900, LANE_H = 72, ST_X0 = -2200, SC = 10;
   const laneY = (i) => ST_TOP + i * LANE_H;
   const ST_BOT = laneY(LANES.length);
-  const JEV = { x: 1000, y: 812, w: 300, h: 56 };
+  const SCORER = { x: 1000, y: 812, w: 300, h: 56 };
 
   const Z0 = 2.4;
   const FIRST = [NOW_X + (960 - 1100) / Z0, Y0 - 220 + (540 - 300) / Z0, Z0, 0];
@@ -402,10 +402,10 @@
     const bone = css("bone"), ash = css("ash");
     const y0 = laneY(0), y1 = laneY(1);
     const done = CODING.filter((w) => w.from + 15 + 2 <= phi && tx(phi, w.from + 15) > 250);
-    box(x, JEV.x, JEV.y, JEV.w, JEV.h, a);
-    text(x, "Jev", JEV.x + 16, JEV.y + 38, { font: FONT.mono(28, 600), color: bone, alpha: a });
-    text(x, tr("ch08.jevNote"), JEV.x + 70, JEV.y + 36, { font: FONT.cjk(21, 600), color: ash, alpha: a, maxW: JEV.w - 80 });
-    text(x, tr("ch08.jevKeep"), JEV.x, JEV.y - 16, { font: FONT.cjk(21, 600), color: ash, alpha: a, maxW: 540 });
+    box(x, SCORER.x, SCORER.y, SCORER.w, SCORER.h, a);
+    text(x, "Clef", SCORER.x + 16, SCORER.y + 38, { font: FONT.mono(28, 600), color: bone, alpha: a });
+    text(x, tr("ch08.jevNote"), SCORER.x + 90, SCORER.y + 36, { font: FONT.cjk(21, 600), color: ash, alpha: a, maxW: SCORER.w - 100 });
+    text(x, tr("ch08.jevKeep"), SCORER.x, SCORER.y - 16, { font: FONT.cjk(21, 600), color: ash, alpha: a, maxW: 540 });
     for (const w of CODING) {
       const x0 = tx(phi, w.from), x1 = tx(phi, w.from + 15);
       if (x1 < 200 || x0 > NOW_X) continue;
@@ -423,7 +423,7 @@
         const ask = win(b, t0 - 0.02, t0, t0 + 0.1, t0 + 0.16);
         if (ask > 0) {
           const cx = (x0 + x1) / 2;
-          dashPath(x, [[JEV.x + JEV.w / 2, JEV.y + JEV.h], [cx, y0 - 4]], 0.9 * ask, css("signalD"), [5, 5], 2);
+          dashPath(x, [[SCORER.x + SCORER.w / 2, SCORER.y + SCORER.h], [cx, y0 - 4]], 0.9 * ask, css("signalD"), [5, 5], 2);
           glow(e, cx, y0 + 10, 60, 0.5 * ask);
         }
       }

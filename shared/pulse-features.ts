@@ -1,4 +1,4 @@
-// Jev 不可靠地计算时长或比较时间戳，数值特征必须预先在代码里算好。
+// 决策模型不可靠地计算时长或比较时间戳，数值特征必须预先在代码里算好。
 
 export type Coverage = { from: number; to: number };
 

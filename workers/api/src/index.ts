@@ -4,7 +4,7 @@ import originWorker, { LivePushRoom as LivePushRoomBase, StateHub as StateHubBas
 import { previewWorkerEnabled } from "./preview";
 import { historyArchiveEnabled, pulseScoringEnabled, type Env } from "./runtime";
 import { PulseArchive } from "./pulse-archive";
-import { PulseScorer } from "./pulse-score";
+import { PulseScorer, clefDecide } from "./pulse-score";
 import { DevOverrideReader as DevOverrideReaderBase } from "./dev-override-reader";
 import { StateCore as StateCoreBase } from "./state-core";
 import { CRON_MONITOR_CONFIG, CRON_MONITOR_SLUG } from "./cron-heartbeat";
@@ -41,7 +41,7 @@ async function runScheduled(env: Env): Promise<void> {
   await Promise.all([
     archiving && new PulseArchive({ coordinator: hub, db: env.HISTORY! }).run(tick.archive)
       .catch((error: unknown) => console.warn("[pulse-archive]", error)),
-    scoring && new PulseScorer({ coordinator: hub, apiKey: env.TYPESAFE_API_KEY! }).run(tick.score)
+    scoring && new PulseScorer({ coordinator: hub, decide: clefDecide(env.AI!) }).run(tick.score)
       .catch((error: unknown) => console.warn("[pulse-score]", error)),
   ]);
 }

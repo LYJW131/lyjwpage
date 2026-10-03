@@ -254,7 +254,7 @@
 | 1–4 | 同一条线上两种方向相反的信号：线上的 Sentry 每分钟来敲门（HEAD `/api/version`，尖朝下，进 lyjw.me，注「只说明 Vercel 还在出页面」）；线下 workers/api 的 cron 每 5 分钟一轮，每轮去报到（尖朝上，到 Sentry）；Sentry 的框里 lyjw.me、API 两行记录一格一格往里加；2.5 起冷面脚注「* 报到只证明 cron 跑完了。」。旁白 `n1` | 敲门是后半拍一声指节叩木门，报到是整 5 拍一声往上挑的低音（1:1、2:2、3:3） |
 | 4–6 | 往右：采集 Worker 的小钟走到整 5 分钟，5:0 拿令牌去 Sentry 查（卡上标 `GET`），5:1 结果带回来，经可滞后层（KV LAG）上 LYJWPAGE 白卡：lyjw.me、API 两行各 30 天一格，5:2 今天那一格亮（live 绿）；卡上只写 Operational 和 30 days ago / Today，不出可用率。旁白 `n2` | 5:0 令牌一声；5:2 高音灯 |
 | 6–8 | 镜头纵向下沉进地层：一层一层是 Pulse 卡上那几条道（道名一栏贴着画面左边，顺序照 Pulse 卡），墨色深浅交替，里面是原始事实的示意（区间、瓦数、桶）；右沿是此刻，workers/api 的 cron 每 5 拍（和报到同一轮）掉下一片压进右沿（注「每 5 分钟压进一薄片」）；右边 D1 档案架「lyjwpage-history · 长期保存」，底下「← 越往左越早，一直留着」；7:0 Listening 那一层里正在放的这首歌亮一下。旁白 `n3` | 低通收窄，敲门隔着地层变闷，压进一片时一声翻纸（和报到同一拍：6:1、7:2、8:3）；7:0 低音马林巴唱信封主题 |
-| 8–10 | 推近 Coding 那一层（其余几层的数据和道名淡掉）：一窗一格，格里两道细刻线分出三个 5 分钟桶（注「一窗 = 三个 5 分钟桶」），下面 Tokens 那层是三个来源的桶叠在一起（注「Mac · 云端 · Cursor」）；8:1 全零的窗先落到最低档，标「不问 Jev，直接最低档」；8:2 起 Jev（「打分（示意）」）一窗一窗往右打，每半拍一窗（先后和快慢都是示意），打出来的档是窗里的一根横线（高低是示意）；贴着此刻那一窗还没满，不打；Jev 那一格上方注「打分只在屋里放 7 天，不进 D1」（打分记在 StateHub，不归档）。旁白 `n4` | 8:1 一声闷拨弦；8:2 起每打一窗一声小铃 |
+| 8–10 | 推近 Coding 那一层（其余几层的数据和道名淡掉）：一窗一格，格里两道细刻线分出三个 5 分钟桶（注「一窗 = 三个 5 分钟桶」），下面 Tokens 那层是三个来源的桶叠在一起（注「Mac · 云端 · Cursor」）；8:1 全零的窗先落到最低档，标「不问 Clef，直接最低档」；8:2 起 Clef（「打分（示意）」）一窗一窗往右打，每半拍一窗（先后和快慢都是示意），打出来的档是窗里的一根横线（高低是示意）；贴着此刻那一窗还没满，不打；Clef 那一格上方注「打分只在屋里放 7 天，不进 D1」（打分记在 StateHub，不归档）。旁白 `n4` | 8:1 一声闷拨弦；8:2 起每打一窗一声小铃 |
 | 10–12 | Clawd 从地层上沿冒出来说收尾那句（气泡）；11:0 起镜头升回地面，标签、方框、地层一起收掉，停在只剩心电图的一帧 | 10:1 冒出来一声；11:3 吸一口气，收在 A7sus4，交给第 09 章 |
 
 | 键 | 小节 | 中文 | English |
@@ -263,7 +263,7 @@
 | `ch08.foot` | 2.5–4 | 报到只证明 cron 跑完了。 | A check-in only proves the cron ran. |
 | `ch08.n2a` / `n2b` | 4–6 | 查 Sentry 的是采集 Worker，／页面只读可滞后层，不碰 Sentry。 | The collector queries Sentry; / pages only read the lag layer. |
 | `ch08.n3a` / `n3b` | 6–8 | cron 每 5 分钟按水位写进 D1，／各路独立，一路坏了不挡别路。 | Rows past the watermark go to D1; / a failed stream blocks no other. |
-| `ch08.n4a` / `n4b` | 8–10 | 窗关上两分钟后才交给 Jev，／输入是前台应用、agent 与 token。 | Two minutes after a window closes, / Jev weighs apps, agents and tokens. |
+| `ch08.n4a` / `n4b` | 8–10 | 窗关上两分钟后才交给 Clef，／输入是前台应用、agent 与 token。 | Two minutes after a window closes, / Clef weighs apps, agents and tokens. |
 | `ch08.clawd`（气泡） | 10.35–11.45 | 线上出错时，／我先去 Sentry 查证据。 | When something breaks, / I check Sentry first. |
 
 ## 09 发布（16 小节）

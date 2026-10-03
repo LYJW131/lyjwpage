@@ -210,11 +210,11 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 - 每 5 分钟一轮，落在 UTC 每小时第 2、7、…、57 分（`workers/api/src/cron-heartbeat.ts#CRON_SCHEDULE`），先调一次 StateHub 的 `pulseTick` 同时拿到归档快照和评分任务，然后两件事并行：
   1. 把 pulse 归档到 D1：StateHub 给出一份有界快照（各路水位之后的新行）→ 按自然键 upsert 写事实表 → 成功后回头确认水位。各路独立，一路读坏、写坏不挡别的路（`workers/api/src/pulse-archive.ts#ARCHIVE_STREAMS`：三条状态道、在听的曲目痕迹、充电、活动桶、Coding 观测，加上编码用量的账本和 5 分钟 token 桶）。
-  2. PulseScorer 调 Jev（`jev-1.13.0`），**只给 Coding 打分**，一窗是 `shared/pulse-coding.ts#PULSE_SCORE_WINDOW_MS`（三个 5 分钟桶，15 分钟），窗结束两分钟后才打（`workers/api/src/pulse-score.ts#PulseScorer`）：
-     - 交给 Jev 的是这一窗的特征：Mac 的前台应用与 agent 观测、容器里 Cursor 账号的活动，外加三个来源的 5 分钟 token 桶（Mac 本机扫描、Cursor 账号历史、Claude Code 云端遥测），按来源、agent、模型相加（同文件 `windowTokenUsage`）。Mac 扫描范围里缺的桶是测到的 0；另两个来源只作正证据，没有行不等于 0。
-     - 全零的窗不问 Jev，直接记最低档：整窗都看得见、Mac 本机扫描盖满三个桶、没有任何活动和 token（同文件 `definiteZero`）。Mac 不在、只有 Cursor 看得见且没有活动时也不问，按半置信记最低档（`quietIndependentSource`）。一点观测都没有的窗不打分。
+  2. PulseScorer 经 Workers AI 绑定调 Clef（`@cf/cloudflare/clef`，`workers/api/src/pulse-score.ts#clefDecide`），**只给 Coding 打分**，一窗是 `shared/pulse-coding.ts#PULSE_SCORE_WINDOW_MS`（三个 5 分钟桶，15 分钟），窗结束两分钟后才打（`workers/api/src/pulse-score.ts#PulseScorer`）：
+     - 交给 Clef 的是这一窗的特征：Mac 的前台应用与 agent 观测、容器里 Cursor 账号的活动，外加三个来源的 5 分钟 token 桶（Mac 本机扫描、Cursor 账号历史、Claude Code 云端遥测），按来源、agent、模型相加（同文件 `windowTokenUsage`）。Mac 扫描范围里缺的桶是测到的 0；另两个来源只作正证据，没有行不等于 0。
+     - 全零的窗不问 Clef，直接记最低档：整窗都看得见、Mac 本机扫描盖满三个桶、没有任何活动和 token（同文件 `definiteZero`）。Mac 不在、只有 Cursor 看得见且没有活动时也不问，按半置信记最低档（`quietIndependentSource`）。一点观测都没有的窗不打分。
      - 每轮最多 36 个窗，从新到旧，每批并发 3，超时 10 秒。
-     - 打分写回 StateHub 的评估列表，和 pulse 时间线一样只留 `src/lib/limits.ts#PULSE_TTL_MS`（`workers/api/src/pulse-score-state.ts#finishPulseScore`）；归档的各路（`ARCHIVE_STREAMS`）里没有它，**不进 D1**。第 08 章在 Jev 那一格上方注「打分只在屋里放 7 天，不进 D1」。
+     - 打分写回 StateHub 的评估列表，和 pulse 时间线一样只留 `src/lib/limits.ts#PULSE_TTL_MS`（`workers/api/src/pulse-score-state.ts#finishPulseScore`）；归档的各路（`ARCHIVE_STREAMS`）里没有它，**不进 D1**。第 08 章在 Clef 那一格上方注「打分只在屋里放 7 天，不进 D1」。
 - 每一轮都包在 `Sentry.withMonitor` 里，向 `api-minute-cron` 报到（`workers/api/src/cron-heartbeat.ts#CRON_MONITOR_CONFIG`、`src/lib/sentry.ts#CRON_HEARTBEAT_EVERY_MINUTES`）。
 - 两件事都 `.catch` 吞错，所以心跳**只证明 cron 跑完了**，不证明归档或打分成功（`workers/api/src/index.ts#runScheduled`）。
 
@@ -226,7 +226,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 ### Pulse 事实时间线
 
 - 时间线只存原始值，档位、颜色、摘要都在展示时现算（`shared/pulse-timeline.ts`）：三条状态道（听、看、玩）是状态区间，听那条另有从 Apple 最近播放推出的别处播放（§1「没人上报的播放」）；充电是实测瓦数样本；活动是 HealthKit 的五分钟步数桶加训练区间。
-- Coding 不进这条时间线：它的三色带（前台是 coding 应用 / 有 agent 在跑 / 两者同时）读的时候从 Mac 的观测和 Cursor 账号的观测现算（`shared/pulse-coding.ts#codingBand`）；Jev 的打分只出现在悬停提示里。
+- Coding 不进这条时间线：它的三色带（前台是 coding 应用 / 有 agent 在跑 / 两者同时）读的时候从 Mac 的观测和 Cursor 账号的观测现算（`shared/pulse-coding.ts#codingBand`）；Clef 的打分只出现在悬停提示里。
 - Tokens 道：三个来源的 5 分钟 token 桶读的时候相加，画每个桶的 token 处理量（输入 + 输出 + 缓存写入，不含缓存读）的 5 分钟平均，折成每分钟；不是生成速度，「此刻」那个数的口径见 §1「编码用量」（`src/lib/pulse.ts#tokensLaneView`）。
 - Pulse 卡的道按 `src/components/live/pulse-card.tsx#LANES`，写章时从上到下是 Coding、Tokens、Listening、Watching、Gaming、Charging、Activity（第 08 章的地层照这个顺序一层一层画，旁白不说几条）；卡上画最近 24 小时（`src/lib/limits.ts#PULSE_WINDOW_MS`），屋里留 7 天（`PULSE_TTL_MS`），D1 长期保存。
 
