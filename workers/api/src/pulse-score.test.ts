@@ -10,7 +10,7 @@ import { latestPulseAssessments, type PulseAssessment } from "@shared/pulse-asse
 import { SqliteStore, type SqlDatabase } from "@shared/sqlite-store";
 import { StorageClient } from "@shared/storage-client";
 import type { StorageCommand } from "@shared/storage-contract";
-import { PulseScorer } from "./pulse-score.ts";
+import { PulseScorer, type PulseDecide } from "./pulse-score.ts";
 import { PulseScoreState } from "./pulse-score-state.ts";
 import { pulseAssessmentsKey } from "@/lib/pulse-assessments";
 import { resetStorageForTests } from '@/lib/storage';
@@ -60,10 +60,10 @@ function setup() {
   const errors: unknown[] = [];
   let fail = false;
   let nextToken = 0;
-  const fetcher: typeof fetch = async (_input, init) => {
-    const body = JSON.parse(String(init?.body)); requests.push(body);
-    if (fail) return new Response(null, { status: 503 });
-    return Response.json({ model: "jev-1.13.0", answers: Object.fromEntries(Object.entries(body.questions).map(([id, question]) => {
+  const decide: PulseDecide = async (body) => {
+    requests.push(body);
+    if (fail) throw new Error("AI 503");
+    return { model: "clef", answers: Object.fromEntries(Object.entries(body.questions).map(([id, question]) => {
       const q = question as { type: string; criteria: string[] | Record<string, string> };
       if (q.type === "choice") {
         const keys = Object.keys(q.criteria); const pick = keys.includes("mixed") ? "mixed" : keys[keys.length - 1];
@@ -72,12 +72,12 @@ function setup() {
       const levels = q.criteria as string[];
       return [id, { type: "score", score: levels.length - 1, confidence: 1,
         probabilities: Object.fromEntries(levels.map((_, i) => [String(i), i === levels.length - 1 ? 1 : 0])) }];
-    })) });
+    })) };
   };
   const coordinator = () => new PulseScoreState({ sql, execute, now: () => now, token: () => `claim-${++nextToken}` });
   const make = () => {
     const state = coordinator();
-    const scorer = new PulseScorer({ coordinator: state, apiKey: "test", fetch: fetcher, log: (e) => errors.push(e) });
+    const scorer = new PulseScorer({ coordinator: state, decide, log: (e) => errors.push(e) });
     return { run: async () => scorer.run(await state.claimPulseScore().catch((error: unknown) => (errors.push(error), null))) };
   };
   const push = (at: number, available = true) => storage.append(codingObservationsKey(), JSON.stringify({ t: at, available,
@@ -136,19 +136,18 @@ test("coding isolates windows, bounds concurrency and saves successes when anoth
   const errors: unknown[] = [];
   b.advance(3 * CODING_WINDOW_MS);
   const state = b.coordinator();
-  const scorer = new PulseScorer({ coordinator: state, apiKey: "test",
-    log: (error) => errors.push(error), fetch: async (_url, init) => {
-      const request = JSON.parse(String(init?.body));
-      assert.equal(request.state.windows.length, 1);
+  const scorer = new PulseScorer({ coordinator: state,
+    log: (error) => errors.push(error), decide: async (request) => {
+      assert.equal((request.state as { windows: unknown[] }).windows.length, 1);
       assert.equal(Object.keys(request.questions).length, 3);
       active++; peak = Math.max(peak, active); calls++;
       await new Promise((resolve) => setTimeout(resolve, 1)); active--;
-      if (request.state.windows[0].from === T) return new Response(null, { status: 503 });
-      return Response.json({ model: "jev-1.13.0", answers: {
+      if ((request.state as { windows: { from: number }[] }).windows[0].from === T) throw new Error("AI 503");
+      return { model: "clef", answers: {
         w0Intensity: { type: "score", score: 3, confidence: 1, probabilities: { 0: 0, 1: 0, 2: 0, 3: 1, 4: 0 } },
         w0Continuity: { type: "score", score: 3, confidence: 1, probabilities: { 0: 0, 1: 0, 2: 0, 3: 1 } },
         w0Mode: { type: "choice", choice: "interactive", confidence: 1, probabilities: { idle: 0, brief: 0, interactive: 1, agent: 0, mixed: 0 } },
-      } });
+      } };
     } });
   await scorer.run(await state.claimPulseScore());
   assert.equal(calls, 2); assert.equal(peak, 2); assert.equal(errors.length, 1);
@@ -176,7 +175,7 @@ function assessment(domain: "coding", from: number, scoredAt: number, inputHash 
     intensity: { value: 2, confidence: 1, probabilities: { 0: 0, 1: 0, 2: 1, 3: 0, 4: 0 } },
     continuity: { value: 2, confidence: 1, probabilities: { 0: 0, 1: 0, 2: 1, 3: 0 } },
     mode: null,
-    model: "jev-test",
+    model: "clef-test",
     scoredAt,
     inputHash,
   };
@@ -338,7 +337,7 @@ async function quietCoding(b: ReturnType<typeof setup>, from: number) {
   }
 }
 
-test("fully observed zero windows skip Jev and store the lowest certain score", async () => {
+test("fully observed zero windows skip the decision model and store the lowest certain score", async () => {
   const b = setup();
   await quietCoding(b, T);
   await b.storage.set(codingBucketsKey("mac"), storedBuckets({
@@ -369,17 +368,17 @@ test("fully observed zero windows skip Jev and store the lowest certain score", 
   assert.equal((await b.storage.listRange(pulseAssessmentsKey(), 0, -1)).length, 1);
 });
 
-test("missing token evidence still calls Jev for an idle-looking window", async () => {
+test("missing token evidence still calls the decision model for an idle-looking window", async () => {
   const b = setup();
   await quietCoding(b, T);
   await b.make().run();
   assert.equal(b.requests.length, 1);
   const rows = latestPulseAssessments(await b.storage.listRange(pulseAssessmentsKey(), 0, -1));
-  assert.ok(rows.every((row) => row.model === "jev-1.13.0"));
+  assert.ok(rows.every((row) => row.model === "clef"));
   assert.equal((b.requests[0].state as { windows: { tokenUsage: unknown }[] }).windows[0].tokenUsage, null);
 });
 
-test("a zero window is skipped while another coding window still calls Jev", async () => {
+test("a zero window is skipped while another coding window still calls the decision model", async () => {
   const b = setup();
   await quietCoding(b, T);
   const next = T + PULSE_SCORE_WINDOW_MS;
@@ -394,7 +393,7 @@ test("a zero window is skipped while another coding window still calls Jev", asy
   const rows = latestPulseAssessments(await b.storage.listRange(pulseAssessmentsKey(), 0, -1));
   assert.equal(rows.find((row) => row.from === T)?.model, "rules");
   assert.equal(rows.find((row) => row.from === T)?.mode?.value, "idle");
-  assert.equal(rows.find((row) => row.from === next)?.model, "jev-1.13.0");
+  assert.equal(rows.find((row) => row.from === next)?.model, "clef");
   assert.ok((rows.find((row) => row.from === next)?.intensity.value ?? 0) > 0);
 });
 
@@ -499,9 +498,9 @@ test("a Cursor request billed without tokens (0 tokens, one event) is still acti
     collectedAt: T + PULSE_SCORE_WINDOW_MS, receivedAt: T + PULSE_SCORE_WINDOW_MS,
   }));
   await b.make().run();
-  assert.equal(b.requests.length, 1, "Jev judges the window");
+  assert.equal(b.requests.length, 1, "the decision model judges the window");
   const rows = latestPulseAssessments(await b.storage.listRange(pulseAssessmentsKey(), 0, -1));
-  assert.equal(rows[0]?.model, "jev-1.13.0");
+  assert.equal(rows[0]?.model, "clef");
 });
 
 test("pulse score state: one attempt per five-minute slot, regardless of trigger jitter", async () => {

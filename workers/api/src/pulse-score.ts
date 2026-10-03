@@ -10,6 +10,11 @@ import type { PulseScoreClaim, PulseScoreCoordinator } from './pulse-score-state
 
 type Built = { state: unknown; coverage: Coverage[]; questions: Record<string, PulseQuestion>; ids: { intensity: string; continuity: string; mode: string } };
 const PULSE_RULE_MODEL = "rules";
+const CLEF_MODEL = "@cf/cloudflare/clef";
+export type PulseDecide = (input: { state: unknown; questions: Record<string, PulseQuestion> }) => Promise<unknown>;
+export function clefDecide(ai: Ai): PulseDecide {
+  return (input) => ai.run(CLEF_MODEL, { model: "clef", ...input }, { signal: AbortSignal.timeout(10_000) });
+}
 export const PULSE_SCORE_SETTLE_MS = 120_000;
 const TOKEN_COUNT_KEYS = ["inputTokens", "outputTokens", "cacheReadTokens", "cacheCreationTokens", "reasoningTokens"] as const;
 
@@ -109,7 +114,7 @@ function windowTokenUsage(buckets: Record<CodingUsageSource, StoredCodingBuckets
 }
 
 export class PulseScorer {
-  private options: { coordinator: PulseScoreCoordinator; apiKey: string; fetch?: typeof fetch; log?: (error: unknown) => void };
+  private options: { coordinator: PulseScoreCoordinator; decide: PulseDecide; log?: (error: unknown) => void };
   constructor(options: PulseScorer['options']) { this.options = options; }
   async run(claim: PulseScoreClaim | null): Promise<void> {
     if (!claim) return;
@@ -160,15 +165,12 @@ export class PulseScorer {
       const records: PulseAssessment[]=[...ruled];
       for(let i=0;i<jobs.length;i+=3){
         const results=await Promise.allSettled(jobs.slice(i,i+3).map(async(job)=>{
-          const response=await(this.options.fetch??fetch)('https://api.typesafe.ai/v1/systemone',{
-            method:'POST',headers:{Authorization:`Bearer ${this.options.apiKey}`,'Content-Type':'application/json'},
-            body:JSON.stringify({model:'jev-1.13.0',state:job.state,questions:job.questions}),signal:AbortSignal.timeout(10_000)});
-          if(!response.ok)throw Error(`Jev HTTP ${response.status}`);
-          const body=await response.json() as {model:string;answers:Record<string,unknown>};
-          if (typeof body.model !== 'string' || !body.model || !body.answers) throw Error('Invalid Jev response');
+          const body=record(await this.options.decide({state:job.state,questions:job.questions}));
+          if (!body || typeof body.model !== 'string' || !body.model || !record(body.answers)) throw Error('Invalid decision response');
+          const answers=body.answers as Record<string,unknown>;
           return {from:job.from,to:job.from+PULSE_SCORE_WINDOW_MS,coverage:job.coverage,
-            intensity:judgment(body.answers[job.ids.intensity],5,true),continuity:judgment(body.answers[job.ids.continuity],4,true),
-            mode:modeJudgment(body.answers[job.ids.mode],true),
+            intensity:judgment(answers[job.ids.intensity],5,true),continuity:judgment(answers[job.ids.continuity],4,true),
+            mode:modeJudgment(answers[job.ids.mode],true),
             model:body.model,scoredAt:now,domain:job.domain,inputHash:job.hash};
         }));
         for(const result of results)if(result.status==='fulfilled')records.push(result.value);else this.log(result.reason);

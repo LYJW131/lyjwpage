@@ -200,7 +200,7 @@ Sentry 里的数据也回到页面上：采集 Worker 用只读令牌定时取�
 | 样式与交互 | Tailwind CSS 4 · Motion · Number Flow · Geist |
 | 客户端数据 | SWR · WebSocket |
 | 状态与资源存储 | Cloudflare Workers · Durable Objects SQLite · KV · D1 · R2 |
-| 活跃度评分 | TypeSafe System One（Jev） |
+| 活跃度评分 | Workers AI（Clef） |
 | 原生设备接入 | Swift / SwiftUI · HealthKit · BLE |
 | 页面托管与分发 | Vercel · 阿里云 ESA |
 | 报错与性能监控 | Sentry |

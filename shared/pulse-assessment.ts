@@ -3,7 +3,7 @@ export { mergeCoverage } from './pulse-features';
 export const SCORED_DOMAINS = ['coding'] as const;
 export type PulseScoredDomain = (typeof SCORED_DOMAINS)[number];
 // 判据变更必须升版本，确保输入哈希使所有窗口重新评估。
-export const PULSE_ASSESSMENT_VERSION = 6;
+export const PULSE_ASSESSMENT_VERSION = 7;
 export const PULSE_MODES: Record<PulseScoredDomain, readonly string[]> = { coding: CODING_MODES };
 export type PulseMode = { value: string; confidence: number; probabilities: Record<string, number> };
 export type PulseAssessment = Omit<CodingAssessment, 'mode'> & {

@@ -1,8 +1,11 @@
 import { readFileSync } from "node:fs";
 import { codingQuestions, codingWindowFeatures, type CodingObservation } from "@shared/pulse-coding";
 
-const key = process.env.TYPESAFE_API_KEY || readFileSync(".env.local", "utf8").match(/^TYPESAFE_API_KEY=(.+)$/m)?.[1]?.trim();
-if (!key) throw new Error("no TYPESAFE_API_KEY in .env.local");
+const local = (() => { try { return readFileSync(".env.local", "utf8"); } catch { return ""; } })();
+const env = (name: string) => process.env[name] || local.match(new RegExp(`^${name}=(.+)$`, "m"))?.[1]?.trim();
+const account = env("CLOUDFLARE_ACCOUNT_ID"), token = env("CLOUDFLARE_API_TOKEN");
+if (!account || !token) throw new Error("need CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN in env or .env.local");
+const model = process.env.CLEF_PROBE_MODEL === "clef-flash" ? "clef-flash" : "clef";
 const T = 1_800_000_000_000, M = 60_000, WINDOW = 5 * M;
 
 type Case = { name: string; expect: string; state: unknown; questions: Record<string, unknown>; check?: (a: Answers) => boolean };
@@ -33,13 +36,13 @@ add("coding · Mac offline, Cursor active", "intensity > 0 · continuity > 0 · 
   [], [{ t: T, available: true, lastActivityAt: T }],
   (a) => Number(a.intensity.score) >= 2.5 && Number(a.continuity.score) >= 2.5 && a.mode.choice === "agent");
 
-for (const c of cases.filter((c) => !process.env.JEV_PROBE_FILTER || c.name.includes(process.env.JEV_PROBE_FILTER))) {
-  const res = await fetch("https://api.typesafe.ai/v1/systemone", {
-    method: "POST", headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ model: "jev-1.13.0", state: c.state, questions: c.questions }),
+for (const c of cases.filter((c) => !process.env.CLEF_PROBE_FILTER || c.name.includes(process.env.CLEF_PROBE_FILTER))) {
+  const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${account}/ai/run/@cf/cloudflare/${model}`, {
+    method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ model, state: c.state, questions: c.questions }),
   });
   if (!res.ok) { console.log(`✗ ${c.name}: HTTP ${res.status} ${(await res.text()).slice(0, 200)}`); continue; }
-  const body = await res.json() as { answers: Answers };
+  const body = (await res.json() as { result: { answers: Answers } }).result;
   const a: Answers = { intensity: body.answers.w0Intensity, continuity: body.answers.w0Continuity, mode: body.answers.w0Mode };
   if (c.check && !c.check(a)) throw new Error(`Expectation failed: ${c.name}`);
   const fmt = (x: Answer) => `${x.score != null ? x.score.toFixed(2) : x.choice} (c=${x.confidence.toFixed(2)})`;
