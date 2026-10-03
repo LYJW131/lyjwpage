@@ -1,6 +1,7 @@
 import { homePodVisibleAt } from "@/lib/homepod-store";
 import { offlineByLiveness, withPresence, type Liveness } from "@/lib/reporter-liveness";
 import type { LocalNowPlaying, NowListeningAlternate, NowListeningPayload, TrackMotion } from "@/lib/types";
+import { playingElsewhere, sameSong, type ListeningTrace } from "@shared/pulse-listening";
 
 export const MUSIC_PAUSE_GRACE_MS = 10_000;
 
@@ -8,6 +9,7 @@ export type NowListeningSnapshot = {
   mac: NowListeningCandidate | null;
   homePod: NowListeningCandidate | null;
   macReceivedAt: number;
+  traces?: ListeningTrace[];
 };
 
 export type NowListeningCandidate = {
@@ -54,6 +56,9 @@ export function pickNowListening(
     (homePod && isPausedFresh(homePod.music, now) ? homePod : null);
   const alternate =
     chosen && chosen === mac && homePod?.music.state === "playing" ? alternateOf(homePod) : null;
+  const inferred = playingElsewhere(snapshot.traces ?? [], now);
+  const reported = !!inferred && [mac, homePod].some((candidate) =>
+    candidate?.music.state === "playing" && sameSong(candidate.music, inferred));
 
   return withPresence({
     music: chosen?.music ?? null,
@@ -74,5 +79,6 @@ export function pickNowListening(
         ? Math.max(0, MUSIC_PAUSE_GRACE_MS - (now - chosen.music.observedAt))
         : null,
     alternate,
+    elsewhere: reported ? null : inferred,
   }, live);
 }

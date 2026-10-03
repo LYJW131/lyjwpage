@@ -57,7 +57,15 @@ type AppleResource = {
 
 type AppleTrack = {
   id?: string;
-  attributes?: { name?: string; artistName?: string; albumName?: string };
+  type?: string;
+  attributes?: {
+    name?: string;
+    artistName?: string;
+    albumName?: string;
+    durationInMillis?: number;
+    artwork?: { url?: string };
+    playParams?: { catalogId?: string };
+  };
 };
 
 type TrackRelationship = {
@@ -192,6 +200,9 @@ export async function assembleRecentTracks(credentials: Credentials): Promise<Re
     title: track.attributes?.name ?? "",
     artist: track.attributes?.artistName ?? "",
     album: track.attributes?.albumName ?? null,
+    durationMs: Number(track.attributes?.durationInMillis) || null,
+    songId: track.attributes?.playParams?.catalogId ?? (track.type === "songs" ? String(track.id) : null),
+    artworkUrl: track.attributes?.artwork?.url ?? null,
   }] : []);
 }
 
@@ -207,11 +218,14 @@ export const appleRecentJob: Job = {
       return skipMissing("apple-recent", ["CREDENTIALS apple-music:v1"]);
     }
     const resolved = await resolveCredentials();
-    const [items, tracks] = await Promise.allSettled([assemble(resolved), assembleRecentTracks(resolved)]);
+    const [items, tracks] = await Promise.allSettled([
+      assemble(resolved),
+      assembleRecentTracks(resolved).then((list) => ({ list, observedAt: Date.now() })),
+    ]);
     if (items.status === "rejected") throw items.reason;
     const { changed } = await env.CORE.commitRecentlyPlayed(items.value);
     if (tracks.status === "rejected") throw tracks.reason;
-    const { traced } = await env.CORE.commitRecentTracks(tracks.value);
+    const { traced } = await env.CORE.commitRecentTracks(tracks.value.list, tracks.value.observedAt);
     if (changed || traced) await put(LAST_CHANGE_KEY, now, ACTIVE_HOLD_MS);
     return ok([changed && "changed", traced && "traced"].filter(Boolean).join(",") || undefined);
   },

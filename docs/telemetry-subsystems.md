@@ -88,7 +88,7 @@
 ### 数据抓取
 - **采集 Worker 驱动**：`workers/collector` 的 `apple-recent` 任务按自己的节奏请求 Apple 的两个最近播放接口，不看有没有访客在线（见 `workers/api/src/apple-music-recent.ts`）。api 自己不拉，WebSocket 连上也不触发。
   - `/v1/me/recent/played`（专辑 / 歌单 / 电台）：给「最近在听」卡片，经 `StateCore.commitRecentlyPlayed` 交给状态核心差分、落库、推送 `listening`。
-  - `/v1/me/recent/played/tracks`（单曲）：给 Pulse 听歌道的「Played elsewhere」痕迹，经 `StateCore.commitRecentTracks` 与上一轮比较，变了记一段不确定区间，不推送。
+  - `/v1/me/recent/played/tracks`（单曲）：给 Pulse 听歌道的「Played elsewhere」，经 `StateCore.commitRecentTracks` 与上一轮比较，新播的每首（带时长）记一行；不推 Pulse 事件，有新歌时推一次 `listening-now`（`elsewhere`，见下文「设备优先级抢占与暂停宽限期」）。
 - **容器与单曲解算**：Apple 返回的是容器（专辑/歌单/电台），时长通过容器的 `href` 深入查询曲目累计，自建歌单封面单独查；这两类缓存在采集 Worker 的 `COLLECTOR_KV`（期限见 `workers/collector/src/jobs/apple-recent.ts` 的 `DURATION_TTL_MS`、`LIBRARY_ARTWORK_TTL_MS`）。
 
 ### 凭据与安全模型
@@ -255,6 +255,7 @@ payload: >-
 - `/api/status/listening/now` 动态裁决优先级：
   `MacBook 正在播放` > `MacBook 暂停未过宽限期` > `HomePod 正在播放` > `HomePod 暂停未过宽限期`（宽限期 `src/lib/now-listening.ts#MUSIC_PAUSE_GRACE_MS`）。
 - 服务端通过 `observedAt` 动态计算 `expiresInMs` 下发给客户端，由浏览器精确调度下一次查询时间，避免在服务端无状态实例上挂载定时器。
+- 不上报的设备（iPhone 等）另走 `elsewhere`：读时按 Pulse 存的「最近播放的歌」痕迹推出最后一首（`shared/pulse-listening.ts#playingElsewhere`），没按时长放完就给开播时刻与时长；Mac / HomePod 在放同一首（`sameSong`：歌名与艺人）时为 null。采集 Worker 每记下新播的歌就推一次 `listening-now`，其余推送也带着它。卡片只在 Mac / HomePod 都没在放时用它画「Likely Playing」与估算进度，不同步歌词，放到结束时刻就撤下并重取一次。
 
 ---
 
@@ -309,8 +310,9 @@ payload: >-
 - 听、看、玩是状态区间：每条道一个开着的区间加一串已关闭区间（`pulse:v2:<道>`），同一状态只续
   最后确认时刻、每分钟最多写一次，状态或标题变了才换段；超过有效期没有观测就是未知，不是空闲。
   曲名、艺人、专辑、片名、集数、游戏名分字段存。
-- 「最近在听」列表的变动没有时刻，只知道落在两次刷新之间，存成不确定区间
-  （`pulse:v2:listening-traces`），图上用斜线画出来，不当成此刻在放。
+- 「最近播放的歌」没有时刻：一首歌开播就排到最前，所以只知道它在两次刷新之间开播，每首存一行
+  （`pulse:v2:listening-traces`）；出口按时长把连续播放的一串对齐，推出每首的起止，用斜线画出来，
+  算法见 [API Worker](../workers/api/README.md#存储事实时间线)。
 - Coding 的三色带（前台 coding 应用 / agent / 两者同时）读时从原始观测
   （`pulse:coding-observations`、Cursor 账号观测与云端 Claude Code 的 token 桶）现算。Jev 只给 Coding 打十五分钟强度与模式，
   只在悬停里出现；别的道不再有模型分。

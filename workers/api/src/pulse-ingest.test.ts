@@ -298,7 +298,7 @@ test("iPhone activity keeps raw five-minute buckets, rewrites only from the firs
   assert.deepEqual(JSON.parse((await storage.get(pulseWorkoutsKey()))!), { items: [{ startedAt: start, endedAt: start + 1_800_000, activityType: "Fencing" }] });
 }));
 
-test("Recently played song changes become uncertain listening traces; the first list, unchanged polls and the album list do not", withStorage(async (storage) => {
+test("Recently played song changes become listening traces with lengths; the first list, unchanged polls, stale copies and the album list do not", withStorage(async (storage) => {
   const track = (id: string, title: string): RecentTrack => ({ id, title, artist: "YOASOBI", album: "THE BOOK 3" });
   const album = (id: string, title: string) => ({ id, title, artist: "YOASOBI", artwork: null, link: null, palette: [], durationMs: null } as ListeningItem);
   const realNow = Date.now;
@@ -313,10 +313,18 @@ test("Recently played song changes become uncertain listening traces; the first 
     await inRequest(() => commitRecentlyPlayed([album("y", "THE BOOK 2"), album("x", "THE BOOK 3")]));
     assert.deepEqual(await storage.listRange(pulseListeningTracesKey(), 0, -1), []);
     clock = T0 + 240_000;
-    assert.deepEqual(await inRequest(() => commitRecentTracks([track("b", "Yoru ni Kakeru"), track("a", "Idol")])), { traced: true });
+    assert.deepEqual(await inRequest(() => commitRecentTracks([{ ...track("b", "Yoru ni Kakeru"), durationMs: 261_000 }, track("a", "Idol")])), { traced: true });
+    clock = T0 + 300_000;
+    assert.deepEqual(await inRequest(() => commitRecentTracks([track("a", "Idol")])), { traced: false }, "an edge copy from before b");
+    clock = T0 + 360_000;
+    assert.deepEqual(await inRequest(() => commitRecentTracks([track("c", "Idol 2"), track("b", "Yoru ni Kakeru"), track("a", "Idol")], T0 + 350_000)), { traced: true });
+    clock = T0 + 420_000;
+    await inRequest(() => commitRecentTracks([track("d", "Idol 3"), track("c", "Idol 2"), track("b", "Yoru ni Kakeru")], T0 - 3_600_000));
     assert.deepEqual((await storage.listRange(pulseListeningTracesKey(), 0, -1)).map((raw) => JSON.parse(raw)), [
-      { since: T0 + 120_000, t: T0 + 240_000, title: "Yoru ni Kakeru", artist: "YOASOBI", album: "THE BOOK 3", itemId: "b" },
-    ]);
+      { since: T0 + 120_000, t: T0 + 240_000, title: "Yoru ni Kakeru", artist: "YOASOBI", album: "THE BOOK 3", itemId: "b", durationMs: 261_000, songId: null, artworkUrl: null },
+      { since: T0 + 240_000, t: T0 + 350_000, title: "Idol 2", artist: "YOASOBI", album: "THE BOOK 3", itemId: "c", durationMs: null, songId: null, artworkUrl: null },
+      { since: T0 + 350_000, t: T0 + 420_000, title: "Idol 3", artist: "YOASOBI", album: "THE BOOK 3", itemId: "d", durationMs: null, songId: null, artworkUrl: null },
+    ], "the stale copy neither traced nor moved the baseline, so b is not counted again; windows use when the list was fetched unless that time is implausible");
   } finally {
     Date.now = realNow;
   }
