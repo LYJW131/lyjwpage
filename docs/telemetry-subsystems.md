@@ -88,7 +88,7 @@
 ### 数据抓取
 - **采集 Worker 驱动**：`workers/collector` 的 `apple-recent` 任务按自己的节奏请求 Apple 的两个最近播放接口，不看有没有访客在线（见 `workers/api/src/apple-music-recent.ts`）。api 自己不拉，WebSocket 连上也不触发。
   - `/v1/me/recent/played`（专辑 / 歌单 / 电台）：给「最近在听」卡片，经 `StateCore.commitRecentlyPlayed` 交给状态核心差分、落库、推送 `listening`。
-  - `/v1/me/recent/played/tracks`（单曲）：给 Pulse 听歌道的「Played elsewhere」，经 `StateCore.commitRecentTracks` 与上一轮比较，新播的每首（带时长）记一行，不推送。
+  - `/v1/me/recent/played/tracks`（单曲）：给 Pulse 听歌道的「Played elsewhere」，经 `StateCore.commitRecentTracks` 与上一轮比较，新播的每首（带时长）记一行；不推 Pulse 事件，有新歌时推一次 `listening-now`（`elsewhere`，见下文「设备优先级抢占与暂停宽限期」）。
 - **容器与单曲解算**：Apple 返回的是容器（专辑/歌单/电台），时长通过容器的 `href` 深入查询曲目累计，自建歌单封面单独查；这两类缓存在采集 Worker 的 `COLLECTOR_KV`（期限见 `workers/collector/src/jobs/apple-recent.ts` 的 `DURATION_TTL_MS`、`LIBRARY_ARTWORK_TTL_MS`）。
 
 ### 凭据与安全模型
