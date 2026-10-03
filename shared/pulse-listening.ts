@@ -162,7 +162,9 @@ export function inferredPlays(traces: ListeningTrace[]): InferredPlay[] {
         continue;
       }
     }
-    runs.push({ lo, hi, members: [{ trace, offset: 0 }] });
+    // 新一串的开播不早于上一首：同一窗口里被切掉的上一首否则会和它落在同一个中点，长度变成 0。
+    const previous = run && last ? Math.round((run.lo + run.hi) / 2) + last.offset : -Infinity;
+    runs.push({ lo: Math.min(hi, Math.max(lo, previous)), hi, members: [{ trace, offset: 0 }] });
   }
   const starts = runs.flatMap((run) => run.members.map(({ trace, offset }) => ({
     trace,

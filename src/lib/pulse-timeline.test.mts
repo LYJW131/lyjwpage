@@ -248,3 +248,13 @@ test("inferred plays: a continuous run pins every start with all of its windows;
   assert.equal(plays[0].marginMs, 20 * S + LISTENING_RUN_SLACK_MS, "three windows narrow the start to half of one window");
   assert.equal(plays[3].marginMs, 30 * S + LISTENING_RUN_SLACK_MS);
 });
+
+test("inferred plays: a song cut short inside the same refresh as the next one stays on the timeline, before it", () => {
+  const S = 1000;
+  const trace = (title: string, duration: number): ListeningTrace =>
+    ({ since: T, t: T + 60 * S, title, artist: "YOASOBI", album: null, itemId: title, durationMs: duration * S });
+  const [skipped, next] = inferredPlays([trace("A", 240), trace("B", 200)]);
+  assert.ok(skipped.to > skipped.from, "the skipped song keeps a span");
+  assert.equal(skipped.to, next.from);
+  assert.ok(next.from > skipped.from && next.from <= T + 60 * S - LISTENING_TRACE_LAG_MS + LISTENING_RUN_SLACK_MS);
+});
