@@ -32,7 +32,6 @@ export async function getTimezonePayload(): Promise<TimezonePayload | LagResult<
   return entry ? new LagResult(payload, entry.updatedAt) : payload;
 }
 
-// 只要够把最后一串连续播放对齐。
 const ELSEWHERE_TRACES = 40;
 
 export async function readRecentListeningTraces(): Promise<ListeningTrace[]> {

@@ -157,7 +157,8 @@ test("state lanes keep unknown apart from idle, expose titles only while active,
       JSON.stringify({ since: NOW - 121 * M, t: NOW - 119 * M, title: "Helpless", artist: "Hamilton", album: "Hamilton", itemId: "1", durationMs: 4 * M }),
       JSON.stringify({ since: NOW - 88 * M, t: NOW - 86 * M, title: "Helpless", artist: "Hamilton", album: "Hamilton", itemId: "1", durationMs: 4 * M }),
       JSON.stringify({ since: NOW - 60 * M, t: NOW - 58 * M, title: "Satisfied", artist: "Hamilton", album: "Hamilton", itemId: "3", durationMs: 5 * M }),
-      JSON.stringify({ since: NOW - 50 * M, t: NOW - 48 * M, title: "Yoru ni Kakeru", artist: "YOASOBI", album: "THE BOOK", itemId: "2", durationMs: 4 * M }));
+      JSON.stringify({ since: NOW - 50 * M, t: NOW - 48 * M, title: "Yoru ni Kakeru", artist: "YOASOBI", album: "THE BOOK", itemId: "2", durationMs: 4 * M }),
+      JSON.stringify({ since: NOW - 23 * M, t: NOW - 21 * M, title: "Satisfied", artist: "Renée Elise Goldsberry", album: "Live", itemId: "4", durationMs: 5 * M }));
     const { listening } = (await getPulseStatus(NOW)).lanes;
     assert.deepEqual(columnRows(listening.segments, ["state", "title", "subtitle"]), [
       { startSec: sec(NOW - 120 * M), endSec: sec(NOW - 100 * M), state: 2, title: "Helpless", subtitle: "Hamilton" },
@@ -171,8 +172,9 @@ test("state lanes keep unknown apart from idle, expose titles only while active,
       { startSec: sec(NOW - 87 * M - lag), endSec: sec(NOW - 83 * M - lag), title: "Helpless", subtitle: "Hamilton", marginSec: margin },
       { startSec: sec(NOW - 59 * M - lag), endSec: sec(NOW - 54 * M - lag), title: "Satisfied", subtitle: "Hamilton", marginSec: margin },
       { startSec: sec(NOW - 49 * M - lag), endSec: sec(NOW - 45 * M - lag), title: "Yoru ni Kakeru", subtitle: "YOASOBI", marginSec: margin },
-    ], "the song the Mac was playing is not drawn twice; a list change while the Mac sat paused or idle, or long before it played the song, is a play elsewhere");
-    assert.deepEqual(listening.summary, { activeSeconds: 40 * 60 + 13 * 60, titles: 3 }, "time and tracks count the plays elsewhere too");
+      { startSec: sec(NOW - 22 * M - lag), endSec: sec(NOW - 17 * M - lag), title: "Satisfied", subtitle: "Renée Elise Goldsberry", marginSec: margin },
+    ], "the song the Mac was playing is not drawn twice; a list change while the Mac sat paused or idle, long before it played the song, or for another artist's song of the same name, is a play elsewhere");
+    assert.deepEqual(listening.summary, { activeSeconds: 40 * 60 + 15 * 60, titles: 3 }, "time and tracks count the plays elsewhere too");
 
     await storage.set(pulseLaneOpenKey("gaming"), JSON.stringify({ state: "online", titleId: null, title: null, from: NOW - 50 * M, seenAt: NOW - 30 * M }));
     const { gaming } = (await getPulseStatus(NOW)).lanes;

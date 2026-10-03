@@ -27,7 +27,7 @@ import { latestPulseAssessments, type PulseAssessment } from "@shared/pulse-asse
 import { cloudAgentActivity, codingBand, parseCodingObservation, type CodingObservation } from "@shared/pulse-coding";
 import type { Coverage } from "@shared/pulse-features";
 import { parseCursorObservation, type CursorObservation } from "@shared/pulse-cursor";
-import { LISTENING_TRACE_MATCH_SLACK_MS, inferredPlays, parseListeningTrace, type InferredPlay, type ListeningTrace } from "@shared/pulse-listening";
+import { LISTENING_TRACE_MATCH_SLACK_MS, inferredPlays, parseListeningTrace, sameSong, type InferredPlay, type ListeningTrace } from "@shared/pulse-listening";
 import {
   activeState,
   chargingSegments,
@@ -117,11 +117,8 @@ export function stateLaneView<L extends StateLane>(lane: L, input: StateLaneInpu
   const titles = new Set(active.flatMap((segment) => segment.title ? [segment.title.toLowerCase()] : []));
   if (lane === "listening") {
     const playing = active as unknown as (StateLaneFacts["listening"] & { from: number; to: number })[];
-    const explained = (play: InferredPlay) => {
-      const named = play.title?.toLowerCase();
-      return !!named && playing.some((segment) => segment.title?.toLowerCase() === named
-        && segment.from < play.to + LISTENING_TRACE_MATCH_SLACK_MS && segment.to > play.from - LISTENING_TRACE_MATCH_SLACK_MS);
-    };
+    const explained = (play: InferredPlay) => playing.some((segment) => sameSong(segment, play)
+      && segment.from < play.to + LISTENING_TRACE_MATCH_SLACK_MS && segment.to > play.from - LISTENING_TRACE_MATCH_SLACK_MS);
     const elsewhere = inferredPlays(traces).flatMap((play) => {
       if (explained(play)) return [];
       const from = Math.max(window.from, play.from), to = Math.min(window.to, play.to);

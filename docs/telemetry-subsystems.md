@@ -255,7 +255,7 @@ payload: >-
 - `/api/status/listening/now` 动态裁决优先级：
   `MacBook 正在播放` > `MacBook 暂停未过宽限期` > `HomePod 正在播放` > `HomePod 暂停未过宽限期`（宽限期 `src/lib/now-listening.ts#MUSIC_PAUSE_GRACE_MS`）。
 - 服务端通过 `observedAt` 动态计算 `expiresInMs` 下发给客户端，由浏览器精确调度下一次查询时间，避免在服务端无状态实例上挂载定时器。
-- 不上报的设备（iPhone 等）另走 `elsewhere`：读时按 Pulse 存的「最近播放的歌」痕迹推出最后一首（`shared/pulse-listening.ts#playingElsewhere`），没按时长放完就给开播时刻与时长；Mac / HomePod 在放同名歌时为 null。采集 Worker 每记下新播的歌就推一次 `listening-now`，其余推送也带着它。卡片只在 Mac / HomePod 都没在放时用它画「Likely Playing」与估算进度，不同步歌词，放到结束时刻就撤下并重取一次。
+- 不上报的设备（iPhone 等）另走 `elsewhere`：读时按 Pulse 存的「最近播放的歌」痕迹推出最后一首（`shared/pulse-listening.ts#playingElsewhere`），没按时长放完就给开播时刻与时长；Mac / HomePod 在放同一首（`sameSong`：歌名与艺人）时为 null。采集 Worker 每记下新播的歌就推一次 `listening-now`，其余推送也带着它。卡片只在 Mac / HomePod 都没在放时用它画「Likely Playing」与估算进度，不同步歌词，放到结束时刻就撤下并重取一次。
 
 ---
 

@@ -118,4 +118,7 @@ test("没有 Mac / HomePod 在放同一首时，带上推断出的别处播放�
   assert.equal(pickNowListening(snapshot(null), online, NOW + 170_000).elsewhere, null, "the song has run out");
   assert.equal(pickNowListening(snapshot(candidate("apple-music", "playing", "Idol")), online, NOW).elsewhere, null, "the Mac is playing it");
   assert.equal(pickNowListening(snapshot(candidate("apple-music", "paused", "Idol")), online, NOW).elsewhere?.title, "Idol", "a paused Mac explains nothing");
+  const namesake = candidate("apple-music", "playing", "idol");
+  assert.equal(pickNowListening(snapshot({ ...namesake, music: { ...namesake.music, artist: "yoasobi" } }), online, NOW).elsewhere, null, "case aside, same title and artist");
+  assert.equal(pickNowListening(snapshot({ ...namesake, music: { ...namesake.music, artist: "Pinocchio-P" } }), online, NOW).elsewhere?.title, "Idol", "another artist's song of the same name");
 });

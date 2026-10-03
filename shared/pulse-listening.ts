@@ -63,8 +63,16 @@ export const LISTENING_RUN_SLACK_MS = 5_000;
 // 没有时长的行（durationMs 为 null）：下一首在这个间隔内开播就视为一直放到那时，否则只画到自己的窗口末尾。
 export const LISTENING_TRACE_BRIDGE_MS = 6 * 60 * 1000;
 
-// Mac / HomePod 的段起点是收到上报的时刻，可能晚于真实开播；同名歌按这个余量算被它们解释，宁可少画也不重复画。
+// Mac / HomePod 的段起点是收到上报的时刻，可能晚于真实开播；同一首（sameSong）按这个余量算被它们解释，宁可少画也不重复画。
 export const LISTENING_TRACE_MATCH_SLACK_MS = 5 * 60 * 1000;
+
+// Mac / HomePod 的曲目 id 与 Apple 列表的 id 不是同一套，只能比歌名与艺人；任一边缺艺人时只比歌名。
+export function sameSong(a: { title: string | null; artist: string | null }, b: { title: string | null; artist: string | null }): boolean {
+  const title = pulseText(a.title)?.toLowerCase();
+  if (!title || title !== pulseText(b.title)?.toLowerCase()) return false;
+  const artist = pulseText(a.artist)?.toLowerCase(), other = pulseText(b.artist)?.toLowerCase();
+  return !artist || !other || artist === other;
+}
 
 export type RecentTracksSnapshot = { tracks: RecentTrack[]; fetchedAt: number };
 

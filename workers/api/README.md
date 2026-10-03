@@ -260,7 +260,7 @@ Mac / agents 的桶只认起点在报告范围里的（跨着范围起点的那�
   回应是边缘副本给的更旧列表，不记、也不当新基线；两边都解释不了的只换基线不记。
   出口画图时（`inferredPlays`）连续播放的一串里每首开播 = 第一首开播 + 前面各首时长，各行窗口都约束同一个起点，求交取中点，
   交集为空就是切歌或停过、另起一串；一首放到时长用完或下一首开播为止，误差半宽进 `marginSec`。没有时长的行在
-  `LISTENING_TRACE_BRIDGE_MS` 内接到下一首开播，否则只画到自己的窗口末尾。Mac / HomePod 在放（暂停不算）同名歌、前后差不过
+  `LISTENING_TRACE_BRIDGE_MS` 内接到下一首开播，否则只画到自己的窗口末尾。Mac / HomePod 在放（暂停不算）同一首（`sameSong`：歌名与艺人）、前后差不过
   `LISTENING_TRACE_MATCH_SLACK_MS` 的推断已被实测解释，不再重复画。
   改这些常量或算法前后各跑一次 `node --experimental-strip-types --import ./src/lib/testing/register-alias.mjs scripts/listening-replay.mts`：
   回放一段录下来的 iPhone 连续播放（`src/lib/testing/recent-tracks-session.json`），按不同拉取间隔打印标对歌名的比例与开播误差，
