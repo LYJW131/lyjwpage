@@ -20,7 +20,7 @@ export async function commitRecentTracks(tracks: RecentTrack[], observedAt?: num
   return withStorageScope(async () => {
     const { traces, commit } = await prepareRecentTracks(tracks, observedAt);
     await fanout({ writes: traces.length ? [commit(), recordListeningTraces(traces)] : [commit()] });
-    if (traces.length) await fanout({ events: [{ type: "listening-now", payload: await getNowListening() }] });
+    if (traces.length) await fanout({ events: [getNowListening().then((payload) => ({ type: "listening-now" as const, payload }))] });
     return { traced: traces.length > 0 };
   });
 }
