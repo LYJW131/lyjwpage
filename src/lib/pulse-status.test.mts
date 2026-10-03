@@ -19,6 +19,7 @@ import { addBucketDeltas, mergeBucketReport } from "@shared/coding-buckets";
 import { codingBucketsKey } from "@shared/coding-store";
 import type { CodingTokenBucketReport, CodingTokenBucketRow } from "@shared/coding-usage";
 import type { PulseAssessment } from "@shared/pulse-assessment";
+import { LISTENING_RUN_SLACK_MS, LISTENING_TRACE_LAG_MS } from "@shared/pulse-listening";
 
 const NOW = 1_800_000_000_000;
 const FROM = NOW - 24 * 3_600_000;
@@ -36,7 +37,7 @@ test("empty storage is an all-unknown timeline, not an error", async () => {
     const payload = await getPulseStatus(NOW);
     assert.deepEqual(payload.window, { from: FROM, to: NOW });
     assert.deepEqual(payload.lanes.listening.segments, { startSec: [], endSec: [], state: [], title: [], subtitle: [] });
-    assert.deepEqual(payload.lanes.listening.uncertain, { startSec: [], endSec: [], title: [], subtitle: [] });
+    assert.deepEqual(payload.lanes.listening.uncertain, { startSec: [], endSec: [], title: [], subtitle: [], marginSec: [] });
     assert.equal(payload.lanes.charging.currentPowerW, null);
     assert.deepEqual(payload.lanes.coding.summary, { humanSeconds: 0, agentSeconds: 0, bothSeconds: 0 });
     assert.deepEqual(payload.lanes.tokens, {
@@ -144,7 +145,7 @@ test("coding band shows human, agent and both from raw observations; app and mod
   });
 });
 
-test("state lanes keep unknown apart from idle, expose titles only while active, and draw traces the Mac cannot explain", async () => {
+test("state lanes keep unknown apart from idle, expose titles only while active, and draw plays elsewhere the Mac cannot explain", async () => {
   await withStorage(async (storage) => {
     const music = (state: string, title: string | null, album: string | null) => ({ state, source: state === "idle" ? null : "mac", title, artist: title && "Hamilton", album, trackId: null });
     await storage.append(pulseLaneKey("listening"),
@@ -153,10 +154,12 @@ test("state lanes keep unknown apart from idle, expose titles only while active,
       JSON.stringify({ ...music("idle", null, null), from: NOW - 90 * M, to: NOW - 80 * M }));
     await storage.set(pulseLaneOpenKey("listening"), JSON.stringify({ ...music("playing", "Satisfied", "Hamilton"), from: NOW - 20 * M, seenAt: NOW - M }));
     await storage.append(pulseListeningTracesKey(),
-      JSON.stringify({ since: NOW - 115 * M, t: NOW - 113 * M, title: "Helpless", artist: "Hamilton", album: "Hamilton", itemId: "1" }),
-      JSON.stringify({ since: NOW - 88 * M, t: NOW - 86 * M, title: "Helpless", artist: "Hamilton", album: "Hamilton", itemId: "1" }),
-      JSON.stringify({ since: NOW - 60 * M, t: NOW - 58 * M, title: "Satisfied", artist: "Hamilton", album: "Hamilton", itemId: "3" }),
-      JSON.stringify({ since: NOW - 50 * M, t: NOW - 48 * M, title: "Yoru ni Kakeru", artist: "YOASOBI", album: "THE BOOK", itemId: "2" }));
+      JSON.stringify({ since: FROM - 3 * M, t: FROM - M, title: "Wait for It", artist: "Hamilton", album: "Hamilton", itemId: "5", durationMs: 5 * M }),
+      JSON.stringify({ since: NOW - 121 * M, t: NOW - 119 * M, title: "Helpless", artist: "Hamilton", album: "Hamilton", itemId: "1", durationMs: 4 * M }),
+      JSON.stringify({ since: NOW - 88 * M, t: NOW - 86 * M, title: "Helpless", artist: "Hamilton", album: "Hamilton", itemId: "1", durationMs: 4 * M }),
+      JSON.stringify({ since: NOW - 60 * M, t: NOW - 58 * M, title: "Satisfied", artist: "Hamilton", album: "Hamilton", itemId: "3", durationMs: 5 * M }),
+      JSON.stringify({ since: NOW - 50 * M, t: NOW - 48 * M, title: "Yoru ni Kakeru", artist: "YOASOBI", album: "THE BOOK", itemId: "2", durationMs: 4 * M }),
+      JSON.stringify({ since: NOW - 23 * M, t: NOW - 21 * M, title: "Satisfied", artist: "Renée Elise Goldsberry", album: "Live", itemId: "4", durationMs: 5 * M }));
     const { listening } = (await getPulseStatus(NOW)).lanes;
     assert.deepEqual(columnRows(listening.segments, ["state", "title", "subtitle"]), [
       { startSec: sec(NOW - 120 * M), endSec: sec(NOW - 100 * M), state: 2, title: "Helpless", subtitle: "Hamilton" },
@@ -164,11 +167,16 @@ test("state lanes keep unknown apart from idle, expose titles only while active,
       { startSec: sec(NOW - 90 * M), endSec: sec(NOW - 80 * M), state: 0, title: null, subtitle: null },
       { startSec: sec(NOW - 20 * M), endSec: sec(NOW), state: 2, title: "Satisfied", subtitle: "Hamilton" },
     ], "80–20 minutes ago has no segment: unknown");
-    assert.deepEqual(columnRows(listening.uncertain!, ["title", "subtitle"]), [
-      { startSec: sec(NOW - 60 * M), endSec: sec(NOW - 58 * M), title: "Satisfied", subtitle: "Hamilton" },
-      { startSec: sec(NOW - 50 * M), endSec: sec(NOW - 48 * M), title: "Yoru ni Kakeru", subtitle: "YOASOBI" },
-    ], "a song the Mac played during, or just before, the trace is not drawn twice; the same song outside that reach is");
-    assert.deepEqual(listening.summary, { activeSeconds: 40 * 60, titles: 3 }, "tracks count songs the traces saw, not only the Mac's");
+    const lag = LISTENING_TRACE_LAG_MS;
+    const margin = (M + LISTENING_RUN_SLACK_MS) / 1000;
+    assert.deepEqual(columnRows(listening.uncertain!, ["title", "subtitle", "marginSec"]), [
+      { startSec: 0, endSec: sec(FROM + 3 * M - lag), title: "Wait for It", subtitle: "Hamilton", marginSec: margin },
+      { startSec: sec(NOW - 87 * M - lag), endSec: sec(NOW - 83 * M - lag), title: "Helpless", subtitle: "Hamilton", marginSec: margin },
+      { startSec: sec(NOW - 59 * M - lag), endSec: sec(NOW - 54 * M - lag), title: "Satisfied", subtitle: "Hamilton", marginSec: margin },
+      { startSec: sec(NOW - 49 * M - lag), endSec: sec(NOW - 45 * M - lag), title: "Yoru ni Kakeru", subtitle: "YOASOBI", marginSec: margin },
+      { startSec: sec(NOW - 22 * M - lag), endSec: sec(NOW - 17 * M - lag), title: "Satisfied", subtitle: "Renée Elise Goldsberry", marginSec: margin },
+    ], "the song the Mac was playing is not drawn twice; a list change while the Mac sat paused or idle, long before it played the song, or for another artist's song of the same name, is a play elsewhere");
+    assert.deepEqual(listening.summary, { activeSeconds: 40 * 60 + 18 * 60, titles: 4 }, "time and tracks count the plays elsewhere too, including one detected before the window that plays into it");
 
     await storage.set(pulseLaneOpenKey("gaming"), JSON.stringify({ state: "online", titleId: null, title: null, from: NOW - 50 * M, seenAt: NOW - 30 * M }));
     const { gaming } = (await getPulseStatus(NOW)).lanes;
@@ -214,26 +222,28 @@ test("column rows reject a payload from another deploy instead of throwing", () 
   assert.deepEqual(columnRows<StateColumns>({ startSec: [], endSec: [], state: [] }, ["state"]), []);
 });
 
-test("iPhone 连续播放时，相邻推断段之间几轮列表没变的空档接上，隔太久或被 Mac 解释的不接", async () => {
+test("plays elsewhere: a run on the phone is laid out by song lengths, ends where the next song starts, and leaves the Mac's songs alone", async () => {
   await withStorage(async (storage) => {
-    const trace = (since: number, t: number, title: string) =>
-      JSON.stringify({ since: NOW - since * M, t: NOW - t * M, title, artist: "Artist", album: null, itemId: title });
+    const S = 1000;
+    const trace = (since: number, t: number, title: string, durationMs: number | null) =>
+      JSON.stringify({ since: NOW - since * S, t: NOW - t * S, title, artist: "Artist", album: null, itemId: title, durationMs: durationMs && durationMs * S });
     await storage.append(pulseListeningTracesKey(),
-      trace(60, 58, "A"),
-      trace(56, 54, "B"),
-      trace(50, 48, "C"),
-      trace(40, 38, "D"),
-      trace(28, 26, "E"),
-      trace(24, 22, "F"));
+      trace(3600, 3540, "A", 240),
+      trace(3360, 3300, "B", 200),
+      trace(3120, 3060, "C", 300),
+      trace(3060, 3000, "D", 180),
+      trace(1800, 1740, "E", 240),
+      trace(600, 540, "F", null));
     await storage.append(pulseLaneKey("listening"),
-      JSON.stringify({ state: "playing", source: "mac", title: "E", artist: "Artist", album: null, trackId: null, from: NOW - 30 * M, to: NOW - 25 * M }));
+      JSON.stringify({ state: "playing", source: "mac", title: "E", artist: "Artist", album: null, trackId: null, from: NOW - 1790 * S, to: NOW - 1550 * S }));
     const { listening } = (await getPulseStatus(NOW)).lanes;
-    assert.deepEqual(columnRows(listening.uncertain!, ["title"]), [
-      { startSec: sec(NOW - 60 * M), endSec: sec(NOW - 58 * M), title: "A" },
-      { startSec: sec(NOW - 58 * M), endSec: sec(NOW - 54 * M), title: "B" },
-      { startSec: sec(NOW - 54 * M), endSec: sec(NOW - 48 * M), title: "C" },
-      { startSec: sec(NOW - 40 * M), endSec: sec(NOW - 38 * M), title: "D" },
-      { startSec: sec(NOW - 24 * M), endSec: sec(NOW - 22 * M), title: "F" },
-    ], "2 与 4 分钟的空档接到前一段末尾；10 分钟的空档当作停过；Mac 实线解释掉的那段之后不往实线里接");
+    const lag = LISTENING_TRACE_LAG_MS / S;
+    assert.deepEqual(columnRows(listening.uncertain!, ["title"])!.map((row) => [row.title, row.startSec - sec(NOW), row.endSec - sec(NOW)]), [
+      ["A", -3550 - lag, -3310 - lag],
+      ["B", -3310 - lag, -3110 - lag],
+      ["C", -3110 - lag, -3030 - lag],
+      ["D", -3030 - lag, -2850 - lag],
+      ["F", -570 - lag, -540],
+    ], "A–C back to back: their three windows put A's start in (−3570, −3530]; D started while C had time left; the Mac played E; F has no length and stops at its window");
   });
 });

@@ -32,7 +32,7 @@ async function firstWaveKeys(load: () => Promise<unknown>): Promise<Set<string>>
 for (const [name, load, independentReads] of [
   ["charger", getChargerSnapshot, 4],
   ["powerbank", getPowerBankSnapshot, 3],
-  ["listening/now", getNowListening, 3],
+  ["listening/now", getNowListening, 4],
   ["watching", () => getWatching(), 2],
   ["watching/now", getNowWatching, 3],
   ["trophies", getTrophies, 2],

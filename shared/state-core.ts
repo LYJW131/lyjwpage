@@ -18,6 +18,7 @@ export interface StateCoreRpc {
   playstationPower(): Promise<CorePower>;
   appleDeveloperToken(): Promise<{ token: string; expiresAt: number }>;
   commitRecentlyPlayed(items: ListeningItem[]): Promise<{ changed: boolean }>;
-  commitRecentTracks(tracks: RecentTrack[]): Promise<{ traced: boolean }>;
+  // observedAt：采集 Worker 拿到这份列表的 epoch 毫秒；缺省按收到的时刻。
+  commitRecentTracks(tracks: RecentTrack[], observedAt?: number): Promise<{ traced: boolean }>;
   revalidate(tags: string[]): Promise<void>;
 }
