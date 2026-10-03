@@ -57,7 +57,15 @@ type AppleResource = {
 
 type AppleTrack = {
   id?: string;
-  attributes?: { name?: string; artistName?: string; albumName?: string; durationInMillis?: number };
+  type?: string;
+  attributes?: {
+    name?: string;
+    artistName?: string;
+    albumName?: string;
+    durationInMillis?: number;
+    artwork?: { url?: string };
+    playParams?: { catalogId?: string };
+  };
 };
 
 type TrackRelationship = {
@@ -193,6 +201,8 @@ export async function assembleRecentTracks(credentials: Credentials): Promise<Re
     artist: track.attributes?.artistName ?? "",
     album: track.attributes?.albumName ?? null,
     durationMs: Number(track.attributes?.durationInMillis) || null,
+    songId: track.attributes?.playParams?.catalogId ?? (track.type === "songs" ? String(track.id) : null),
+    artworkUrl: track.attributes?.artwork?.url ?? null,
   }] : []);
 }
 

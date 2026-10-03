@@ -2,6 +2,7 @@
 
 import NumberFlow, { NumberFlowGroup } from "@number-flow/react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { useSWRConfig } from "swr";
 import {
   useCallback,
   useEffect,
@@ -15,7 +16,7 @@ import {
 
 import Image from "@/components/app-image";
 import { Card } from "@/components/ui/card";
-import { HomePodMiniIcon, MacBookProIcon } from "@/components/ui/device-icons";
+import { HomePodMiniIcon, IPhoneIcon, MacBookProIcon } from "@/components/ui/device-icons";
 import {
   HeroLyrics,
   HeroLyricsSkeleton,
@@ -473,6 +474,7 @@ type Hero = {
   durationMs: number | null;
   track: LocalNowPlaying | null;
   motion: TrackMotion | null;
+  estimatedMarginMs?: number;
 };
 
 export function ListeningCard({
@@ -518,6 +520,23 @@ export function ListeningCard({
   const localMusic = live?.idle ? null : live?.music ?? null;
   const localTrack = liveTrack(localMusic);
   const localActive = Boolean(localTrack);
+
+  // 推断的别处播放没有上报来续命，按时长放完就撤下，并重新取一次看下一首有没有被看见。
+  const mountedAt = useMountedAt();
+  const [elsewhereTick, setElsewhereTick] = useState(0);
+  const { mutate } = useSWRConfig();
+  const inferred = live?.elsewhere ?? null;
+  const inferredEndsAt = inferred ? inferred.startedAt + inferred.durationMs : null;
+  useEffect(() => {
+    if (inferredEndsAt == null) return;
+    const timer = window.setTimeout(() => {
+      setElsewhereTick(Date.now());
+      void mutate(NOW_LISTENING_PATH);
+    }, Math.max(250, inferredEndsAt - Date.now() + 250));
+    return () => window.clearTimeout(timer);
+  }, [inferredEndsAt, mutate]);
+  const clock = Math.max(elsewhereTick, mountedAt);
+  const elsewhere = !localActive && inferred && clock > 0 && clock < inferredEndsAt! ? inferred : null;
 
   // 目录查询失败不代表停播；同一曲目保留解析结果，换曲后禁止沿用。
   const trackKey = localTrack
@@ -616,6 +635,33 @@ export function ListeningCard({
         track: localTrack,
         motion: live?.songId ? live.motion : latched?.motion ?? null,
       }
+    : elsewhere
+      ? {
+          key: `elsewhere:${elsewhere.songId ?? elsewhere.title}`,
+          artwork: elsewhere.artworkUrl,
+          title: elsewhere.title,
+          subtitle: elsewhere.artist ?? "",
+          link: null,
+          label: "Likely Playing",
+          playing: true,
+          palette: [],
+          durationMs: null,
+          track: {
+            source: "apple-music",
+            state: "playing",
+            title: elsewhere.title,
+            artist: elsewhere.artist,
+            album: elsewhere.album,
+            trackId: null,
+            artworkUrl: elsewhere.artworkUrl,
+            positionMs: 0,
+            durationMs: elsewhere.durationMs,
+            repeatOne: false,
+            observedAt: elsewhere.startedAt,
+          },
+          motion: null,
+          estimatedMarginMs: elsewhere.marginMs,
+        }
     : latest
       ? {
           key: latest.id,
@@ -648,7 +694,7 @@ export function ListeningCard({
   const canOpenHero = Boolean(heroItem && canOpenInPlayer(heroItem));
 
   const rest = dedupeListeningItems(
-    localActive ? (data?.items ?? []) : tail,
+    localActive || elsewhere ? (data?.items ?? []) : tail,
     localActive ? (live?.id ?? null) : null,
   );
   const restKeys = stableKeys(rest.map((item) => item.id));
@@ -749,7 +795,15 @@ export function ListeningCard({
                         >
                           {hero.label}
                         </span>
-                        {hero.track && (
+                        {hero.track && hero.estimatedMarginMs != null ? (
+                          <span
+                            className="ml-0.5 inline-flex min-w-0 items-center gap-1 rounded-sm border border-dashed border-line px-1.5 py-px text-[10px] leading-4 text-muted-foreground"
+                            title={`Estimated from Apple Music's recently played list and track length, start ±${Math.round(hero.estimatedMarginMs / 1000)}s`}
+                          >
+                            <IPhoneIcon className="size-3 shrink-0" aria-hidden />
+                            <span className="truncate">iPhone</span>
+                          </span>
+                        ) : hero.track && (
                           <span className="ml-0.5 inline-flex min-w-0 items-center gap-1 rounded-sm border border-line px-1.5 py-px text-[10px] leading-4 text-muted-foreground">
                             {hero.track.source === "homepod" ? (
                               <HomePodMiniIcon className="size-3 shrink-0" aria-hidden />
@@ -777,7 +831,7 @@ export function ListeningCard({
                           subtitle={hero.subtitle}
                           palette={hero.palette}
                           motionGradient={motionGradient}
-                          lyrics={lyrics}
+                          lyrics={hero.estimatedMarginMs != null ? null : lyrics}
                           sideLyrics={showSideLyrics}
                         />
                       ) : (

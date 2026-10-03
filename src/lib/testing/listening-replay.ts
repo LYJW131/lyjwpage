@@ -66,6 +66,8 @@ export function collectorPlays(session: RecordedSession): InferredPlay[] {
     album: null,
     itemId: id,
     durationMs: session.tracks[id].durationMs,
+    songId: null,
+    artworkUrl: null,
   })));
 }
 
@@ -99,7 +101,6 @@ export function scoreReplay(truth: (ReplaySpan & { scored: boolean })[], plays: 
   return { coverage: total ? correct / total : 0, startErrorsMs, plays: scored.length, matched: startErrorsMs.length };
 }
 
-// 每 cadenceMs 拉一轮的回放：起点分别取 0…N−1 轮，各相位分别打分后合并。
 export function replayAtCadence(session: RecordedSession, truth: (ReplaySpan & { scored: boolean })[], cadenceMs: number) {
   const every = Math.round(cadenceMs / session.pollEveryMs);
   const coverage: number[] = [];

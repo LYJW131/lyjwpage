@@ -214,8 +214,8 @@ test("recently played traces: need a baseline, keep a stale copy out of the base
   assert.deepEqual(listeningTraces({ tracks: list("a"), fetchedAt: T }, { tracks: [{ ...track("a"), album: "renamed" }], fetchedAt: T + M }), { traces: [], keep: true });
   assert.deepEqual(listeningTraces({ tracks: list("a"), fetchedAt: T }, { tracks: [track("c", "Idol", 213_000), track("b", "Yoru ni Kakeru", 261_000), track("a")], fetchedAt: T + 2 * M }), {
     traces: [
-      { since: T, t: T + 2 * M, title: "Yoru ni Kakeru", artist: "YOASOBI", album: "THE BOOK 3", itemId: "b", durationMs: 261_000 },
-      { since: T, t: T + 2 * M, title: "Idol", artist: "YOASOBI", album: "THE BOOK 3", itemId: "c", durationMs: 213_000 },
+      { since: T, t: T + 2 * M, title: "Yoru ni Kakeru", artist: "YOASOBI", album: "THE BOOK 3", itemId: "b", durationMs: 261_000, songId: null, artworkUrl: null },
+      { since: T, t: T + 2 * M, title: "Idol", artist: "YOASOBI", album: "THE BOOK 3", itemId: "c", durationMs: 213_000, songId: null, artworkUrl: null },
     ],
     keep: true,
   });
@@ -229,7 +229,7 @@ test("recently played traces: need a baseline, keep a stale copy out of the base
 test("inferred plays: a continuous run pins every start with all of its windows; a cut-short song or a pause starts a new run", () => {
   const S = 1000;
   const trace = (since: number, t: number, title: string, duration: number | null): ListeningTrace =>
-    ({ since: T + since * S, t: T + t * S, title, artist: "YOASOBI", album: null, itemId: title, durationMs: duration && duration * S });
+    ({ since: T + since * S, t: T + t * S, title, artist: "YOASOBI", album: null, itemId: title, durationMs: duration && duration * S, songId: null, artworkUrl: null });
   const plays = inferredPlays([
     trace(0, 60, "A", 200),
     trace(180, 240, "B", 100),
@@ -252,7 +252,7 @@ test("inferred plays: a continuous run pins every start with all of its windows;
 test("inferred plays: a song cut short inside the same refresh as the next one stays on the timeline, before it", () => {
   const S = 1000;
   const trace = (title: string, duration: number): ListeningTrace =>
-    ({ since: T, t: T + 60 * S, title, artist: "YOASOBI", album: null, itemId: title, durationMs: duration * S });
+    ({ since: T, t: T + 60 * S, title, artist: "YOASOBI", album: null, itemId: title, durationMs: duration * S, songId: null, artworkUrl: null });
   const [skipped, next] = inferredPlays([trace("A", 240), trace("B", 200)]);
   assert.ok(skipped.to > skipped.from, "the skipped song keeps a span");
   assert.equal(skipped.to, next.from);

@@ -354,7 +354,8 @@ Cursor 使用独立的 `pulse:cursor-observations`：agents 来源的 cursor 活
 
 拉取在采集 Worker（`workers/collector` 的 `apple-recent`，节奏见该任务，不看有没有人在看），
 拉回来的专辑粒度列表经 `StateCore.commitRecentlyPlayed` 交给这里差分、落库、推 `listening`；同一轮拉的单曲列表
-（带每首时长）经 `StateCore.commitRecentTracks` 与上一轮比较，新播的歌记成 Pulse 听歌道上的别处播放（`pulse:v2:listening-traces`）。api 自己不拉，WebSocket 连上也不触发。
+（带每首时长、目录 id 与封面）经 `StateCore.commitRecentTracks` 与上一轮比较，新播的歌记成 Pulse 听歌道上的别处播放（`pulse:v2:listening-traces`），
+有新歌就推一次 `listening-now`：`listening/now` 读取与推送都从同一批痕迹推出 `elsewhere`（此刻大概在别处放的那首）。api 自己不拉，WebSocket 连上也不触发。
 Mac 上报的 Apple Music 凭据在凭据 KV（`shared/credentials.ts`），不向外提供凭据端点；状态读取不触发拉取或广播。
 
 ## MusicKit 令牌

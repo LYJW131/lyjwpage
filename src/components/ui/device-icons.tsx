@@ -27,3 +27,13 @@ export function MacBookProIcon(props: SVGProps<SVGSVGElement>) {
     </svg>
   );
 }
+
+export function IPhoneIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" {...props}>
+      <path d="M0 0h24v24H0z" fill="none" />
+      <rect x="6.5" y="2.5" width="11" height="19" rx="2.5" fill="none" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M10.5 5h3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}

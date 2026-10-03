@@ -204,6 +204,8 @@ export type RecentTrack = {
   artist: string;
   album: string | null;
   durationMs?: number | null;
+  songId?: string | null;
+  artworkUrl?: string | null;
 };
 
 export type ReporterPresence = {
@@ -281,6 +283,20 @@ export type NowListeningPayload = ReporterPresence & {
   motion: TrackMotion | null;
   expiresInMs: number | null;
   alternate: NowListeningAlternate | null;
+  // 不上报的设备（iPhone 等）上推断出来正在放的那首；Mac / HomePod 在放同名歌时为 null。可能缺席（Worker 先后上线）。
+  elsewhere?: NowListeningElsewhere | null;
+};
+
+// startedAt 是推断的开播 epoch 毫秒，误差半宽 marginMs；放到 startedAt + durationMs 为止。
+export type NowListeningElsewhere = {
+  title: string;
+  artist: string | null;
+  album: string | null;
+  artworkUrl: string | null;
+  songId: string | null;
+  startedAt: number;
+  durationMs: number;
+  marginMs: number;
 };
 
 export type ChargerPort = {

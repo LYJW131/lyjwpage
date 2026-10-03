@@ -11,7 +11,10 @@ import type {
   TimezoneActivity,
   TimezonePayload
 } from "@/lib/types";
+import { pulseListeningTracesKey } from "@/lib/pulse-keys";
+import { withStorage } from "@/lib/storage";
 import { LAG_KEYS } from "@shared/lag";
+import { parseListeningTrace, type ListeningTrace } from "@shared/pulse-listening";
 import { desktopPayload, snapshotFrom, syncTelemetryState } from "@shared/telemetry";
 
 async function syncForRead(): Promise<Liveness> {
@@ -29,9 +32,20 @@ export async function getTimezonePayload(): Promise<TimezonePayload | LagResult<
   return entry ? new LagResult(payload, entry.updatedAt) : payload;
 }
 
+// 只要够把最后一串连续播放对齐。
+const ELSEWHERE_TRACES = 40;
+
+export async function readRecentListeningTraces(): Promise<ListeningTrace[]> {
+  const rows: unknown[] = await withStorage((storage) => storage.listRange(pulseListeningTracesKey(), -ELSEWHERE_TRACES, -1), []);
+  return rows.flatMap((raw) => {
+    const trace = typeof raw === "string" ? parseListeningTrace(raw) : null;
+    return trace ? [trace] : [];
+  });
+}
+
 export async function getNowListeningSnapshot(): Promise<NowListeningSnapshot> {
-  const [, homePod] = await Promise.all([syncTelemetryState(), getHomePodSnapshot()]);
-  return snapshotFrom(homePod);
+  const [, homePod, traces] = await Promise.all([syncTelemetryState(), getHomePodSnapshot(), readRecentListeningTraces()]);
+  return { ...snapshotFrom(homePod), traces };
 }
 
 export async function getNowListening(): Promise<NowListeningPayload> {

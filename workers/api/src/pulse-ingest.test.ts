@@ -321,9 +321,9 @@ test("Recently played song changes become listening traces with lengths; the fir
     clock = T0 + 420_000;
     await inRequest(() => commitRecentTracks([track("d", "Idol 3"), track("c", "Idol 2"), track("b", "Yoru ni Kakeru")], T0 - 3_600_000));
     assert.deepEqual((await storage.listRange(pulseListeningTracesKey(), 0, -1)).map((raw) => JSON.parse(raw)), [
-      { since: T0 + 120_000, t: T0 + 240_000, title: "Yoru ni Kakeru", artist: "YOASOBI", album: "THE BOOK 3", itemId: "b", durationMs: 261_000 },
-      { since: T0 + 240_000, t: T0 + 350_000, title: "Idol 2", artist: "YOASOBI", album: "THE BOOK 3", itemId: "c", durationMs: null },
-      { since: T0 + 350_000, t: T0 + 420_000, title: "Idol 3", artist: "YOASOBI", album: "THE BOOK 3", itemId: "d", durationMs: null },
+      { since: T0 + 120_000, t: T0 + 240_000, title: "Yoru ni Kakeru", artist: "YOASOBI", album: "THE BOOK 3", itemId: "b", durationMs: 261_000, songId: null, artworkUrl: null },
+      { since: T0 + 240_000, t: T0 + 350_000, title: "Idol 2", artist: "YOASOBI", album: "THE BOOK 3", itemId: "c", durationMs: null, songId: null, artworkUrl: null },
+      { since: T0 + 350_000, t: T0 + 420_000, title: "Idol 3", artist: "YOASOBI", album: "THE BOOK 3", itemId: "d", durationMs: null, songId: null, artworkUrl: null },
     ], "the stale copy neither traced nor moved the baseline, so b is not counted again; windows use when the list was fetched unless that time is implausible");
   } finally {
     Date.now = realNow;

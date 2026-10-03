@@ -1,0 +1,29 @@
+{
+  "ok": true,
+  "data": {
+    "music": null,
+    "receivedAt": "$now",
+    "idle": true,
+    "id": null,
+    "link": null,
+    "songId": null,
+    "upcomingSongIds": [],
+    "hasLyrics": false,
+    "motion": null,
+    "expiresInMs": null,
+    "alternate": null,
+    "elsewhere": {
+      "title": "ジュブナイル",
+      "artist": "ReoNa",
+      "album": "月姫 -A piece of blue glass moon- THEME SONG E.P.",
+      "artworkUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/df/20/f5/df20f534-9b6d-ba62-9a8d-838c436e1455/4547366525489.jpg/{w}x{h}bb.jpg",
+      "songId": "1580904298",
+      "startedAt": "$now-95000",
+      "durationMs": 263322,
+      "marginMs": 9000
+    },
+    "lastSeenAt": "$now",
+    "declaredOffline": false,
+    "heartbeatWindowMs": 3600000
+  }
+}

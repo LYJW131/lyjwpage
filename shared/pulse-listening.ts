@@ -1,6 +1,6 @@
 import { homePodTrackEnd, homePodVisibleAt, homePodVisibleUntil } from "@/lib/homepod-store";
 import { offlineByLiveness, type Liveness } from "@/lib/reporter-liveness";
-import type { LocalNowPlaying, RecentTrack } from "@/lib/types";
+import type { LocalNowPlaying, NowListeningElsewhere, RecentTrack } from "@/lib/types";
 import { PULSE_STATE_HOLD_MS, pulseText, type ListeningFacts, type ObservationHold } from "@shared/pulse-timeline";
 
 export function listeningObservation(
@@ -39,7 +39,8 @@ function playingFacts(music: LocalNowPlaying): ListeningFacts {
 }
 
 // Apple「最近播放的歌」去重、最新在前，一首歌开播就排到最前（滞后 LISTENING_TRACE_LAG_MS），但不给时刻：
-// 开播只能定位在两次刷新之间 (since, t]。同一窗口里新播了几首就有几行，按播放先后排；durationMs 是这首的时长。
+// 开播只能定位在两次刷新之间 (since, t]。同一窗口里新播了几首就有几行，按播放先后排；durationMs 是这首的时长，
+// songId 是目录曲目 id，artworkUrl 是 Apple 的封面模板。
 export type ListeningTrace = {
   since: number;
   t: number;
@@ -48,6 +49,8 @@ export type ListeningTrace = {
   album: string | null;
   itemId: string | null;
   durationMs: number | null;
+  songId: string | null;
+  artworkUrl: string | null;
 };
 export const LISTENING_TRACE_CAP = 2000;
 
@@ -103,6 +106,8 @@ export function listeningTraces(previous: RecentTracksSnapshot | null, next: Rec
       album: pulseText(track.album),
       itemId: pulseText(track.id, 80),
       durationMs: positiveMs(track.durationMs),
+      songId: pulseText(track.songId, 80),
+      artworkUrl: pulseText(track.artworkUrl, 1000),
     })),
     keep: true,
   };
@@ -126,6 +131,8 @@ export function parseListeningTrace(raw: string): ListeningTrace | null {
       album: pulseText(row.album),
       itemId: pulseText(row.itemId, 80),
       durationMs: positiveMs(row.durationMs),
+      songId: pulseText(row.songId, 80),
+      artworkUrl: pulseText(row.artworkUrl, 1000),
     };
   } catch {
     return null;
@@ -138,7 +145,11 @@ export type InferredPlay = {
   marginMs: number;
   title: string | null;
   artist: string | null;
+  album: string | null;
   itemId: string | null;
+  durationMs: number | null;
+  songId: string | null;
+  artworkUrl: string | null;
 };
 
 // 连续播放时每首的开播 = 这一串第一首的开播 + 前面各首时长之和，每条痕迹的窗口都约束同一个起点；
@@ -180,7 +191,27 @@ export function inferredPlays(traces: ListeningTrace[]): InferredPlay[] {
       marginMs,
       title: trace.title,
       artist: trace.artist,
+      album: trace.album,
       itemId: trace.itemId,
+      durationMs: trace.durationMs,
+      songId: trace.songId,
+      artworkUrl: trace.artworkUrl,
     };
   });
+}
+
+// 最后推出的那首还没按时长放完，就当它此刻还在放；不知道中途暂停或停播，放完之后到下一首被看见之前是未知。
+export function playingElsewhere(traces: ListeningTrace[], now: number): NowListeningElsewhere | null {
+  const last = inferredPlays(traces).at(-1);
+  if (!last?.title || !last.durationMs || now < last.from || now >= last.from + last.durationMs) return null;
+  return {
+    title: last.title,
+    artist: last.artist,
+    album: last.album,
+    artworkUrl: last.artworkUrl,
+    songId: last.songId,
+    startedAt: last.from,
+    durationMs: last.durationMs,
+    marginMs: last.marginMs,
+  };
 }
