@@ -175,10 +175,11 @@ export function inferredPlays(traces: ListeningTrace[]): InferredPlay[] {
     const last = run?.members.at(-1);
     if (run && last?.trace.durationMs) {
       const offset = last.offset + last.trace.durationMs;
-      const from = Math.max(run.lo, lo - offset), to = Math.min(run.hi, hi - offset);
-      if (from <= to) {
+      const from = Math.max(run.lo, lo - offset), to = Math.min(run.hi, hi - offset), top = Math.min(run.top, to);
+      if (from <= top) {
         run.lo = from;
         run.hi = to;
+        run.top = top;
         run.members.push({ trace, offset });
         continue;
       }

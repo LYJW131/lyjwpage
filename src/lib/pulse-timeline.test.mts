@@ -272,3 +272,14 @@ test("inferred plays: songs skipped through in one refresh all start, in order, 
   }
   assert.equal(playingElsewhere(traces, seen)?.title, "F", "the list's newest song is playing when it is seen");
 });
+
+test("inferred plays: short songs after a skip-through keep a non-negative start margin", () => {
+  const S = 1000;
+  const trace = (title: string, since: number, t: number, duration: number): ListeningTrace =>
+    ({ since: T + since * S, t: T + t * S, title, artist: "YOASOBI", album: null, itemId: title, durationMs: duration * S, songId: null, artworkUrl: null });
+  const plays = inferredPlays([trace("A", 0, 60, 240), trace("B", 0, 60, 10), trace("C", 60, 90, 10), trace("D", 90, 100, 10)]);
+  for (const play of plays) {
+    assert.ok(play.marginMs >= 0, `${play.title} has margin ${play.marginMs}`);
+    assert.ok(play.to >= play.from);
+  }
+});
