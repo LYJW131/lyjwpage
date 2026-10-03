@@ -262,6 +262,9 @@ Mac / agents 的桶只认起点在报告范围里的（跨着范围起点的那�
   交集为空就是切歌或停过、另起一串；一首放到时长用完或下一首开播为止，误差半宽进 `marginSec`。没有时长的行在
   `LISTENING_TRACE_BRIDGE_MS` 内接到下一首开播，否则只画到自己的窗口末尾。Mac / HomePod 在放（暂停不算）同名歌、前后差不过
   `LISTENING_TRACE_MATCH_SLACK_MS` 的推断已被实测解释，不再重复画。
+  改这些常量或算法前后各跑一次 `node --experimental-strip-types --import ./src/lib/testing/register-alias.mjs scripts/listening-replay.mts`：
+  回放一段录下来的 iPhone 连续播放（`src/lib/testing/recent-tracks-session.json`），按不同拉取间隔打印标对歌名的比例与开播误差，
+  口径与当时的数字见 [别处播放推断精度实测](../../docs/listening-inference-accuracy.md)；`src/lib/pulse-listening-replay.test.mts` 守住每分钟一轮的下限。
 - **Coding 三色带**不另存：读时从 `pulse:coding-observations`、`pulse:cursor-observations` 与云端的
   `pulse:token-buckets:agents-otlp` 现算，切片规则同 Jev 特征（每条 Mac 观测撑到下一条或 3 分钟，`available: false` 不算观测）。
   human 是前台为 coding 应用（`desktop.coding`），agent 是有 agent `active`、Cursor 账号最近 5 分钟有活动，
