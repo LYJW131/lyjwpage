@@ -164,11 +164,13 @@ export type InferredPlay = {
 // 各窗口求交，交集为空就是切歌或停过，另起一串。起点取交集中点，误差半宽记在 marginMs（不含 LISTENING_TRACE_LAG_MS 本身的误差）。
 // 一首放到时长用完或下一首开播为止，不知道中途暂停或停播。
 export function inferredPlays(traces: ListeningTrace[]): InferredPlay[] {
-  type Run = { lo: number; hi: number; members: { trace: ListeningTrace; offset: number }[] };
+  type Run = { lo: number; hi: number; top: number; members: { trace: ListeningTrace; offset: number }[] };
   const runs: Run[] = [];
+  const base = (run: Run) => Math.round((run.lo + Math.min(run.hi, run.top)) / 2);
   for (const trace of traces) {
     const lo = trace.since - LISTENING_TRACE_LAG_MS - LISTENING_RUN_SLACK_MS;
     const hi = trace.t - LISTENING_TRACE_LAG_MS + LISTENING_RUN_SLACK_MS;
+    const seen = trace.t - LISTENING_TRACE_LAG_MS;
     const run = runs.at(-1);
     const last = run?.members.at(-1);
     if (run && last?.trace.durationMs) {
@@ -182,13 +184,15 @@ export function inferredPlays(traces: ListeningTrace[]): InferredPlay[] {
       }
     }
     // 新一串的开播不早于上一首：同一窗口里被切掉的上一首否则会和它落在同一个中点，长度变成 0。
-    const previous = run && last ? Math.round((run.lo + run.hi) / 2) + last.offset : -Infinity;
-    runs.push({ lo: Math.min(hi, Math.max(lo, previous)), hi, members: [{ trace, offset: 0 }] });
+    // 被上一首挤住时在 (上一首开播, 被看见的时刻] 里取中点；照常按 hi 取，同一窗口连切几首会把起点推过 t。
+    const previous = run && last ? base(run) + last.offset : -Infinity;
+    const floor = Math.min(seen, Math.max(lo, previous));
+    runs.push({ lo: floor, hi, top: floor > lo ? seen : hi, members: [{ trace, offset: 0 }] });
   }
   const starts = runs.flatMap((run) => run.members.map(({ trace, offset }) => ({
     trace,
-    start: Math.round((run.lo + run.hi) / 2) + offset,
-    marginMs: Math.round((run.hi - run.lo) / 2),
+    start: Math.min(base(run) + offset, trace.t - LISTENING_TRACE_LAG_MS),
+    marginMs: Math.round((Math.min(run.hi, run.top) - run.lo) / 2),
   })));
   return starts.map(({ trace, start, marginMs }, index) => {
     const next = starts[index + 1]?.start ?? Infinity;

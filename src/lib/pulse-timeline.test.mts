@@ -9,6 +9,7 @@ import {
   listeningTraces,
   parseListeningTrace,
   playedBetween,
+  playingElsewhere,
   type ListeningTrace,
 } from "@shared/pulse-listening";
 import {
@@ -256,5 +257,18 @@ test("inferred plays: a song cut short inside the same refresh as the next one s
   const [skipped, next] = inferredPlays([trace("A", 240), trace("B", 200)]);
   assert.ok(skipped.to > skipped.from, "the skipped song keeps a span");
   assert.equal(skipped.to, next.from);
-  assert.ok(next.from > skipped.from && next.from <= T + 60 * S - LISTENING_TRACE_LAG_MS + LISTENING_RUN_SLACK_MS);
+  assert.ok(next.from > skipped.from && next.from <= T + 60 * S - LISTENING_TRACE_LAG_MS);
+});
+
+test("inferred plays: songs skipped through in one refresh all start, in order, before the list showed them", () => {
+  const S = 1000;
+  const seen = T + 60 * S;
+  const traces = ["A", "B", "C", "D", "E", "F"].map((title): ListeningTrace =>
+    ({ since: T, t: seen, title, artist: "YOASOBI", album: null, itemId: title, durationMs: 240 * S, songId: null, artworkUrl: null }));
+  const plays = inferredPlays(traces);
+  for (const [index, play] of plays.entries()) {
+    assert.ok(play.from <= seen - LISTENING_TRACE_LAG_MS, `${play.title} starts by the time the list showed it`);
+    if (index) assert.ok(play.from > plays[index - 1].from, `${play.title} starts after the song before it`);
+  }
+  assert.equal(playingElsewhere(traces, seen)?.title, "F", "the list's newest song is playing when it is seen");
 });
