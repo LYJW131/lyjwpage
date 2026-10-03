@@ -73,7 +73,7 @@
 | 22–24 | FIG. 6 云端的一小段遥测（虚线框，不画云朵）：Claude Code 云端自己发 OTLP，22:2、22:3 两个包顺着线走到 `/api/ingest/agents/otlp`，标「独立入口」「Claude Code 自己发，不是我们写的上报器」。旁白 `n10` | |
 | 24–27 | 编码用量：Mac 本机、Claude Code 云端、容器里的 Cursor 三根线，24:2 起各送出一张原始数的小单子，25:0 汇到站点这边合并；合并处伸出一小段 Pulse，多一条 Tokens 道，注「token 处理量 · 5 分钟平均」「三处相加」（不说生成速度，不给此刻的数）。旁白 `n11` | 24:2、24:2.5、24:3 三盏灯（A5 D6 F6），25:0 合并补上 E6，拼出主题 |
 | 27–30 | FIG. 7 表盘：采集 Worker，cron 每分钟一响（一拍当一分钟，从整点起走 12 分钟）；每根指针一个任务，到它跑的那一分钟往前弹一格；右边白卡是逐分钟的时序图（指针数和节奏按 `workers/collector/src/registry.ts#JOBS`；apple-recent 每分钟登记、自己分闲 / 活跃两档，表盘让它在 :05 看到列表变了：:00、:05 各一次，之后每分钟）；注「不走上报入口：直接交给状态核心，或写 LAG」。PlayStation 不在这张表盘上。旁白 `n12`；29.7 起往右甩到 FIG. 7A | 钟摆每拍滴答 |
-| 30–34 | FIG. 7A「没人上报的播放」（接着表盘一拍一分钟）：左边一部 iPhone，注「放的歌没人上报」；中间白卡「Apple · 最近播放的歌」（`/v1/me/recent/played/tracks`），采集 Worker 的虚线从左边进来，注「列表一变：每分钟拉」，每拍一个拉取点；右边白卡「站点这边推断」（角标 `inferredPlays`），一条分钟轴。30.24 手机开始放群青，30:1 那一轮看到它排到最前（列表下移一行），右边群青那行亮出窗口 (:12, :13]，注「开播在这一格里」；31.27 手机换成怪物，31:2 那一轮看到它，怪物那行亮出窗口 (:17, :18]；31:3 这个窗口减去群青的时长、挪到群青那行（注「减去前一首的时长」），32:0 两格求交，交集那一窄条亮起，注「两格求交：开播 ± 误差」；32.1 起两首按时长接成一串（注「按时长接成一串」）；32:2 下面翻出「页面上」：LIKELY PLAYING · 怪物、虚线框 iPhone，旁边 Listening 道上两段斜线、图例「Played elsewhere, estimated」。第 19 分钟之后不再拉，时间定格在 19.5 分钟（再走下去怪物就放完了）。旁白 `n13`、`n14` | 钟摆接着表盘每拍一响；30:1、31:2 纸滑（新歌排到最前），31:3 一声叮，32:0 一盏灯，32:2 翻面一记；32 小节一句往下走的闷拨弦（F E D A，信封主题的倒影：这里没有信封） |
+| 30–34 | FIG. 7A「没人上报的播放」（接着表盘一拍一分钟）：左边一部 iPhone（副标题「别的设备上的 Apple Music：从最近播放推断」），注「放的歌没人上报」；中间白卡「Apple · 最近播放的歌」（`/v1/me/recent/played/tracks`），采集 Worker 的虚线从左边进来，注「列表一变：每 15 秒拉」，每拍一个大拉取点、拍间三个小点；右边白卡「站点这边推断」（角标 `inferredPlays`），一条分钟轴，轴上每次拉取一个点。30.215 手机开始放 Ref:rain（Aimer），30:1 那次拉取看到它排到最前（列表下移一行，注「↑ 开播几秒就排到最前」），右边 Ref:rain 那行亮出 15 秒宽的窗口（两次拉取各减去上榜滞后），注「开播在这一格里」；31.424 手机换成残響散歌，31:2 那次拉取看到它，残響散歌那行亮出窗口；31:3 这个窗口减去 Ref:rain 的时长、挪到 Ref:rain 那行（注「减去前一首的时长」），32:0 两格求交，交集那一窄条亮起，注「两格求交：开播 ± 误差」；32.1 起两首按时长接成一串（注「按时长接成一串」）；32:2 下面翻出「页面上」：LIKELY PLAYING · 残響散歌、虚线框「±3s」，旁边 Listening 道上两段斜线、图例「Played elsewhere, estimated」。第 19 分钟之后不再拉，时间定格在 19.5 分钟（再走下去残響散歌就放完了）。旁白 `n13`、`n14` | 钟摆接着表盘每拍一响；30:1、31:2 纸滑（新歌排到最前），31:3 一声叮，32:0 一盏灯，32:2 翻面一记；32 小节一句往下走的闷拨弦（F E D A，信封主题的倒影：这里没有信封） |
 | 34–35 | 33.7 起镜头一路甩回 Mac：34:0 那封换歌的信封亮起，一条虚线指向 `ingest.homepage.lyjw.llc`；34:1 起信封拖着发丝线往右飞出画面（屏幕 y 540，约 34.97 出右缘，最后几帧只剩拖尾贴着右边），第 02 章 0:0 的火花从左边同一高度进场 | 33:2.85 起甩回来的风声（从左往右，最响的一口），34:0 灯亮，34:1 气动管，34:3 吸气；收在 A7sus4 上，给第 02 章 0:0 的主题让路 |
 
 | 键 | 小节 | 中文 | English |
@@ -91,8 +91,8 @@
 | `ch01.n10a` / `n10b` | 22.05–23.74 | 云端的 Claude Code 自己发 OTLP，／只收累计值，差值在状态核心里算。 | Cloud Claude Code emits OTLP itself; / cumulative only; the core diffs it. |
 | `ch01.n11a` / `n11b` | 24.05–26.74 | 编码用量：三处各报原始数，／合计与去重都在站点这边算。 | Coding usage: three raw feeds; / totals and dedup happen site-side. |
 | `ch01.n12a` / `n12b` | 27.3–29.74 | cron 每分钟触发一次采集 Worker，／每个任务按自己的节奏去取。 | A cron trigger fires every minute; / each job keeps its own pace. |
-| `ch01.n13a` / `n13b` | 30.05–32.0 | iPhone 上放的歌，没人上报；／采集 Worker 去拉 Apple 最近播放。 | No one reports songs on the iPhone; / the collector polls Apple's recents. |
-| `ch01.n14a` / `n14b` | 32.05–33.74 | 新歌一开播，就排到列表最前；／按时长接成一串，推出起止和误差。 | A song tops the list as it starts; / lengths chain them: start ± margin. |
+| `ch01.n13a` / `n13b` | 30.05–32.0 | 别的设备放 Apple Music，没人上报；／采集 Worker 去拉 Apple 最近播放。 | No one reports songs elsewhere; / the collector polls Apple's recents. |
+| `ch01.n14a` / `n14b` | 32.05–33.74 | 新歌开播几秒，就排到列表最前；／按时长接成一串，推出起止和误差。 | A song tops the list seconds in; / lengths chain them: start ± margin. |
 
 英文 `n3` 少了「放行的才进信封」：画面上放行那条线进信封，标注「放行 → 进信封 / cleared → envelope」。
 
