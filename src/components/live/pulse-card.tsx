@@ -210,7 +210,7 @@ function stateModel(domain: "listening" | "watching" | "gaming", lane: PulseStat
           row.title,
           row.subtitle && <span className="text-muted-foreground">{row.subtitle}</span>,
           <span key="n" className="text-[10px] text-muted-foreground">
-            Estimated from Apple Music&apos;s recently played list and track lengths{typeof margin === "number" ? `, start ±${margin < 90 ? `${margin}s` : pulseDuration(margin)}` : ""}
+            Estimated from Apple Music&apos;s recently played list and track lengths{typeof margin === "number" ? `, ideal start error ±${margin < 90 ? `${Math.max(1, margin)}s` : pulseDuration(margin)}` : ""}
           </span>,
         ]} />,
       };

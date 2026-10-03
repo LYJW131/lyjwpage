@@ -201,7 +201,7 @@ Pulse 卡片首屏按卡读它（`src/lib/first-screen.ts`）、挂载后自己�
     // listening / watching：0 空闲，1 暂停，2 在放；gaming：0 离线，1 在线，2 在游戏里
     "listening": { "kind": "state",
       "segments": { "startSec": [1800], "endSec": [2040], "state": [2], "title": ["群青"], "subtitle": ["YOASOBI"] },
-      // 只有 listening 有：别处播放，按「最近播放的歌」列表与时长推出的每首起止；marginSec 是开播时刻的误差半宽
+      // 只有 listening 有：别处播放，按「最近播放的歌」列表与时长推出的每首起止；marginSec 是开播时刻的理想误差半宽
       "uncertain": { "startSec": [12000, 12261], "endSec": [12261, 12474], "title": ["夜に駆ける", "アイドル"], "subtitle": ["YOASOBI", "YOASOBI"], "marginSec": [14, 14] },
       // activeSeconds 是在放段与别处播放的并集；titles 按歌名去重，含列表里出现过的歌
       "summary": { "activeSeconds": 714, "titles": 3 } },
@@ -258,13 +258,14 @@ Mac / agents 的桶只认起点在报告范围里的（跨着范围起点的那�
   （`playedBetween`，只比条目 id 与顺序）：每首记一行 `{since, t, title, artist, album, itemId, durationMs}`，意思是这首在
   上一轮被接受的刷新 `since` 与这一轮 `t` 之间开播，同一轮多首按播放先后排；上限 `LISTENING_TRACE_CAP`。反过来能解释旧列表的
   回应是边缘副本给的更旧列表，不记、也不当新基线；两边都解释不了的只换基线不记。
-  出口画图时（`inferredPlays`）连续播放的一串里每首开播 = 第一首开播 + 前面各首时长，各行窗口都约束同一个起点，求交取中点，
-  交集为空就是切歌或停过、另起一串；一首放到时长用完或下一首开播为止，误差半宽进 `marginSec`。没有时长的行在
+  出口画图时（`inferredPlays`）连续播放的一串里每首开播 = 第一首开播 + 前面各首时长，各行窗口都约束同一个起点，放宽
+  `LISTENING_RUN_SLACK_MS` 后求交取中点，交集为空就是切歌或停过、另起一串；一首放到时长用完或下一首开播为止。不放宽时交集的半宽
+  是理想误差（连续播放、滞后恰为 `LISTENING_TRACE_LAG_MS` 时），进 `marginSec`。没有时长的行在
   `LISTENING_TRACE_BRIDGE_MS` 内接到下一首开播，否则只画到自己的窗口末尾。Mac / HomePod 在放（暂停不算）同一首（`sameSong`：歌名与艺人）、前后差不过
   `LISTENING_TRACE_MATCH_SLACK_MS` 的推断已被实测解释，不再重复画。
   改这些常量或算法前后各跑一次 `node --experimental-strip-types --import ./src/lib/testing/register-alias.mjs scripts/listening-replay.mts`：
   回放一段录下来的 iPhone 连续播放（`src/lib/testing/recent-tracks-session.json`），按不同拉取间隔打印标对歌名的比例与开播误差，
-  口径与当时的数字见 [别处播放推断精度实测](../../docs/listening-inference-accuracy.md)；`src/lib/pulse-listening-replay.test.mts` 守住每分钟一轮的下限。
+  口径与当时的数字见 [别处播放推断精度实测](../../docs/listening-inference-accuracy.md)；`src/lib/pulse-listening-replay.test.mts` 守住每分钟一轮与活跃档（`workers/collector` 的 `ACTIVE_POLL_MS`）一轮的下限。
 - **Coding 三色带**不另存：读时从 `pulse:coding-observations`、`pulse:cursor-observations` 与云端的
   `pulse:token-buckets:agents-otlp` 现算，切片规则同 Coding 评估特征（每条 Mac 观测撑到下一条或 3 分钟，`available: false` 不算观测）。
   human 是前台为 coding 应用（`desktop.coding`），agent 是有 agent `active`、Cursor 账号最近 5 分钟有活动，
@@ -355,7 +356,9 @@ Cursor 使用独立的 `pulse:cursor-observations`：agents 来源的 cursor 活
 拉取在采集 Worker（`workers/collector` 的 `apple-recent`，节奏见该任务，不看有没有人在看），
 拉回来的专辑粒度列表经 `StateCore.commitRecentlyPlayed` 交给这里差分、落库、推 `listening`；同一轮拉的单曲列表
 （带每首时长、目录 id 与封面）经 `StateCore.commitRecentTracks` 与上一轮比较，新播的歌记成 Pulse 听歌道上的别处播放（`pulse:v2:listening-traces`），
-有新歌就推一次 `listening-now`：`listening/now` 读取与推送都从同一批痕迹推出 `elsewhere`（此刻大概在别处放的那首）。api 自己不拉，WebSocket 连上也不触发。
+有新歌就推一次 `listening-now`：`listening/now` 读取与推送都从同一批痕迹推出 `elsewhere`（此刻大概在别处放的那首，按时长放完后再留
+`LISTENING_ELSEWHERE_HOLD_MS` 等下一首）。`commitRecentTracks` 的回执带 `nextBy`：照推断接着放，下一首最晚这一刻排进列表最前，
+采集 Worker 据此提前补拉一次（`shared/pulse-listening.ts#nextTraceBy`）。api 自己不拉，WebSocket 连上也不触发。
 Mac 上报的 Apple Music 凭据在凭据 KV（`shared/credentials.ts`），不向外提供凭据端点；状态读取不触发拉取或广播。
 
 ## MusicKit 令牌

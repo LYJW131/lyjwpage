@@ -19,7 +19,7 @@ import { addBucketDeltas, mergeBucketReport } from "@shared/coding-buckets";
 import { codingBucketsKey } from "@shared/coding-store";
 import type { CodingTokenBucketReport, CodingTokenBucketRow } from "@shared/coding-usage";
 import type { PulseAssessment } from "@shared/pulse-assessment";
-import { LISTENING_RUN_SLACK_MS, LISTENING_TRACE_LAG_MS } from "@shared/pulse-listening";
+import { LISTENING_TRACE_LAG_MS } from "@shared/pulse-listening";
 
 const NOW = 1_800_000_000_000;
 const FROM = NOW - 24 * 3_600_000;
@@ -168,7 +168,7 @@ test("state lanes keep unknown apart from idle, expose titles only while active,
       { startSec: sec(NOW - 20 * M), endSec: sec(NOW), state: 2, title: "Satisfied", subtitle: "Hamilton" },
     ], "80–20 minutes ago has no segment: unknown");
     const lag = LISTENING_TRACE_LAG_MS;
-    const margin = (M + LISTENING_RUN_SLACK_MS) / 1000;
+    const margin = M / 1000;
     assert.deepEqual(columnRows(listening.uncertain!, ["title", "subtitle", "marginSec"]), [
       { startSec: 0, endSec: sec(FROM + 3 * M - lag), title: "Wait for It", subtitle: "Hamilton", marginSec: margin },
       { startSec: sec(NOW - 87 * M - lag), endSec: sec(NOW - 83 * M - lag), title: "Helpless", subtitle: "Hamilton", marginSec: margin },
@@ -237,13 +237,13 @@ test("plays elsewhere: a run on the phone is laid out by song lengths, ends wher
     await storage.append(pulseLaneKey("listening"),
       JSON.stringify({ state: "playing", source: "mac", title: "E", artist: "Artist", album: null, trackId: null, from: NOW - 1790 * S, to: NOW - 1550 * S }));
     const { listening } = (await getPulseStatus(NOW)).lanes;
-    const lag = LISTENING_TRACE_LAG_MS / S;
+    const at = (offset: number) => Math.round(offset - LISTENING_TRACE_LAG_MS / S);
     assert.deepEqual(columnRows(listening.uncertain!, ["title"])!.map((row) => [row.title, row.startSec - sec(NOW), row.endSec - sec(NOW)]), [
-      ["A", -3550 - lag, -3310 - lag],
-      ["B", -3310 - lag, -3110 - lag],
-      ["C", -3110 - lag, -3030 - lag],
-      ["D", -3030 - lag, -2850 - lag],
-      ["F", -570 - lag, -540],
+      ["A", at(-3550), at(-3310)],
+      ["B", at(-3310), at(-3110)],
+      ["C", at(-3110), at(-3030)],
+      ["D", at(-3030), at(-2850)],
+      ["F", at(-570), -540],
     ], "A–C back to back: their three windows put A's start in (−3570, −3530]; D started while C had time left; the Mac played E; F has no length and stops at its window");
   });
 });

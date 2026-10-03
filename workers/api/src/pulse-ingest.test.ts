@@ -17,6 +17,7 @@ import { commitRecentlyPlayed, commitRecentTracks } from "@api/apple-music-recen
 import { installStorageForTests, resetStorageForTests } from "@/lib/storage";
 import { FakeStorage } from "@/lib/testing/fake-storage";
 import { withRequestState } from "@shared/request-state";
+import { LISTENING_TRACE_JITTER_MS } from "@shared/pulse-listening";
 import type { StateLane } from "@shared/pulse-timeline";
 import { requestStore, type Env } from "@api/runtime";
 import { commitPreparedEmbyReport } from "@api/stores/emby";
@@ -313,9 +314,11 @@ test("Recently played song changes become listening traces with lengths; the fir
     await inRequest(() => commitRecentlyPlayed([album("y", "THE BOOK 2"), album("x", "THE BOOK 3")]));
     assert.deepEqual(await storage.listRange(pulseListeningTracesKey(), 0, -1), []);
     clock = T0 + 240_000;
-    assert.deepEqual(await inRequest(() => commitRecentTracks([{ ...track("b", "Yoru ni Kakeru"), durationMs: 261_000 }, track("a", "Idol")])), { traced: true });
+    const nextBy = T0 + 180_000 + 261_000 + 60_000 + LISTENING_TRACE_JITTER_MS;
+    assert.deepEqual(await inRequest(() => commitRecentTracks([{ ...track("b", "Yoru ni Kakeru"), durationMs: 261_000 }, track("a", "Idol")])), { traced: true, nextBy },
+      "the next song should top the list by b's start (the window midpoint, before the lag), its length, the lag, half the window and the jitter");
     clock = T0 + 300_000;
-    assert.deepEqual(await inRequest(() => commitRecentTracks([track("a", "Idol")])), { traced: false }, "an edge copy from before b");
+    assert.deepEqual(await inRequest(() => commitRecentTracks([track("a", "Idol")])), { traced: false, nextBy }, "an edge copy from before b");
     clock = T0 + 360_000;
     assert.deepEqual(await inRequest(() => commitRecentTracks([track("c", "Idol 2"), track("b", "Yoru ni Kakeru"), track("a", "Idol")], T0 + 350_000)), { traced: true });
     clock = T0 + 420_000;

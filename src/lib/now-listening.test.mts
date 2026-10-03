@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { heartbeatWindowMs } from "@/lib/freshness";
+import { LISTENING_ELSEWHERE_HOLD_MS } from "@/lib/limits";
 import { pickNowListening, type NowListeningCandidate } from "@/lib/now-listening";
 import type { Liveness } from "@/lib/reporter-liveness";
 import type { LocalNowPlaying } from "@/lib/types";
@@ -104,7 +105,7 @@ test("源站取数那一刻 Mac 已掉线：直接选 HomePod（选择仍在源�
   assert.equal(payload.alternate, null);
 });
 
-test("没有 Mac / HomePod 在放同一首时，带上推断出的别处播放；放完、或被实测解释后就没有", () => {
+test("没有 Mac / HomePod 在放同一首时，带上推断出的别处播放；放完再等一会儿、或被实测解释后就没有", () => {
   const trace = (since: number, t: number, title: string): ListeningTrace => ({
     since, t, title, artist: "YOASOBI", album: "THE BOOK", itemId: title, durationMs: 200_000, songId: `${title}-song`, artworkUrl: null,
   });
@@ -115,7 +116,9 @@ test("没有 Mac / HomePod 在放同一首时，带上推断出的别处播放�
   assert.equal(elsewhere?.songId, "Idol-song");
   assert.equal(elsewhere?.startedAt, NOW - 40_000 - LISTENING_TRACE_LAG_MS);
   assert.equal(elsewhere?.durationMs, 200_000);
-  assert.equal(pickNowListening(snapshot(null), online, NOW + 170_000).elsewhere, null, "the song has run out");
+  const endsAt = NOW - 40_000 - LISTENING_TRACE_LAG_MS + 200_000;
+  assert.equal(pickNowListening(snapshot(null), online, endsAt + LISTENING_ELSEWHERE_HOLD_MS - 1).elsewhere?.title, "Idol", "held a little past its end, waiting for the next song to show up");
+  assert.equal(pickNowListening(snapshot(null), online, endsAt + LISTENING_ELSEWHERE_HOLD_MS).elsewhere, null, "the song has run out");
   assert.equal(pickNowListening(snapshot(candidate("apple-music", "playing", "Idol")), online, NOW).elsewhere, null, "the Mac is playing it");
   assert.equal(pickNowListening(snapshot(candidate("apple-music", "paused", "Idol")), online, NOW).elsewhere?.title, "Idol", "a paused Mac explains nothing");
   const namesake = candidate("apple-music", "playing", "idol");

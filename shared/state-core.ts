@@ -19,6 +19,7 @@ export interface StateCoreRpc {
   appleDeveloperToken(): Promise<{ token: string; expiresAt: number }>;
   commitRecentlyPlayed(items: ListeningItem[]): Promise<{ changed: boolean }>;
   // observedAt：采集 Worker 拿到这份列表的 epoch 毫秒；缺省按收到的时刻。
-  commitRecentTracks(tracks: RecentTrack[], observedAt?: number): Promise<{ traced: boolean }>;
+  // nextBy：照推断接着放，下一首最晚这一刻（epoch 毫秒）排进列表最前；没有还在放的推断时缺省。
+  commitRecentTracks(tracks: RecentTrack[], observedAt?: number): Promise<{ traced: boolean; nextBy?: number }>;
   revalidate(tags: string[]): Promise<void>;
 }

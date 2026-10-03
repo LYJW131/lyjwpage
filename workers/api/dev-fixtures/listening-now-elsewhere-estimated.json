@@ -20,7 +20,7 @@
       "songId": "1580904298",
       "startedAt": "$now-95000",
       "durationMs": 263322,
-      "marginMs": 9000
+      "marginMs": 2600
     },
     "lastSeenAt": "$now",
     "declaredOffline": false,

@@ -53,7 +53,7 @@ export class StateCore extends WorkerEntrypoint<Env> implements StateCoreRpc {
     return this.scoped(async () => commitRecentlyPlayed(await enrichRecentlyPlayed(items)));
   }
 
-  async commitRecentTracks(tracks: RecentTrack[], observedAt?: number): Promise<{ traced: boolean }> {
+  async commitRecentTracks(tracks: RecentTrack[], observedAt?: number): Promise<{ traced: boolean; nextBy?: number }> {
     return this.scoped(() => commitRecentTracks(tracks, observedAt));
   }
 
