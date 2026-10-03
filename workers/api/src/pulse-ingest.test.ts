@@ -103,13 +103,15 @@ test("Mac 心跳续同一段在听，每分钟最多写一次；换曲关上旧�
 }));
 
 test("暂停是事实，不套首页的 10 秒宽限；停掉之后是空闲", withStorage(async (storage) => {
-  await inRequest(() => recordTelemetryEnvelope(envelope(T0, ["appleMusic"], { appleMusic: music("paused", T0) }), T0));
+  await inRequest(() => recordTelemetryEnvelope(envelope(T0, ["appleMusic"], { appleMusic: music("playing", T0) }), T0));
+  const paused = T0 + 60_000;
+  await inRequest(() => recordTelemetryEnvelope(envelope(paused, ["appleMusic"], { appleMusic: music("paused", paused) }), paused));
   const later = T0 + 5 * 60_000;
   await inRequest(() => recordTelemetryEnvelope(envelope(later, ["appleMusic"]), later));
   assert.equal((await open(storage, "listening")).state, "paused", "a paused Music app stays paused");
   const stopped = later + 60_000;
   await inRequest(() => recordTelemetryEnvelope(envelope(stopped, ["appleMusic"], { appleMusic: { ...music("paused", stopped), state: "stopped" } }), stopped));
-  assert.deepEqual((await closed(storage, "listening")).map((row) => [row.state, row.from, row.to]), [["paused", T0, stopped]]);
+  assert.deepEqual((await closed(storage, "listening")).map((row) => [row.state, row.from, row.to]), [["playing", T0, paused], ["paused", paused, stopped]]);
   assert.deepEqual(await open(storage, "listening"), { state: "idle", source: null, title: null, artist: null, album: null, trackId: null, from: stopped, seenAt: stopped, holdUntil: stopped + 10 * 60_000, endsBy: null });
 }));
 
@@ -372,4 +374,9 @@ test("Mac token buckets are stored internally and never enter the coding-now pus
   assert.equal(stored?.windows[0]?.agents[0]?.outputTokens, 20);
   assert.equal(pushed.length, 1);
   assert.equal(pushed.some((event) => event.includes("outputTokens")), false);
+}));
+
+test("没有播放可接的暂停（Mac 上线时 Music 已经停着）记成空闲", withStorage(async (storage) => {
+  await inRequest(() => recordTelemetryEnvelope(envelope(T0, ["appleMusic"], { appleMusic: music("paused", T0) }), T0));
+  assert.equal((await open(storage, "listening")).state, "idle");
 }));

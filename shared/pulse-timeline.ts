@@ -6,6 +6,8 @@ export const PULSE_TITLE_MAX = 200;
 export const PULSE_SEEN_WRITE_MS = 60_000;
 export const PULSE_STATE_HOLD_MS = PULSE_SILENT_AFTER_MS;
 export const GAMING_HOLD_MS = 35 * 60_000;
+// 听歌道上暂停画满这么久就当空闲：开着音乐 App 不放歌会一直停在暂停。只在读取时截断，存的区间不变。
+export const LISTENING_PAUSE_MAX_MS = 10 * 60_000;
 
 export const STATE_LANES = ["listening", "watching", "gaming"] as const;
 export type StateLane = (typeof STATE_LANES)[number];
@@ -133,6 +135,13 @@ export function parseClosedInterval<L extends StateLane>(lane: L, raw: string): 
   }
 }
 
+// 暂停只在接着一段没过期的播放或暂停时才成立；离线后上线、观测空窗之后看到的暂停，没有播放可接，记成空闲。
+function orphanPauseAsIdle<L extends StateLane>(lane: L, open: OpenInterval<StateLaneFacts[L]> | null, t: number, facts: StateLaneFacts[L]): StateLaneFacts[L] {
+  if (lane !== "listening" || facts.state !== "paused") return facts;
+  if (open && open.state !== "idle" && (open.holdUntil === null || t <= open.holdUntil)) return facts;
+  return { state: "idle", source: null, title: null, artist: null, album: null, trackId: null } as StateLaneFacts[L];
+}
+
 export type StateObservationPlan<F> = {
   closed: ClosedInterval<F>[];
   open: OpenInterval<F> | null;
@@ -150,7 +159,7 @@ export function planStateObservation<L extends StateLane>(
   facts: StateLaneFacts[L] | null,
   hold: ObservationHold = { until: facts ? defaultHoldUntil(lane, facts, t) : null },
 ): StateObservationPlan<StateLaneFacts[L]> | null {
-  const next = facts ? pick(lane, facts) : null;
+  const next = facts ? pick(lane, orphanPauseAsIdle(lane, open, t, facts)) : null;
   const holdUntil = hold.until === null ? null : Math.max(t, hold.until);
   const endsBy = hold.endsBy ?? null;
   if (!open) return next ? { closed: [], open: { ...next, from: t, seenAt: t, holdUntil, endsBy } } : null;
@@ -186,8 +195,9 @@ export function stateSegments<L extends StateLane>(
   const segments: StateSegment<StateLaneFacts[L]>[] = [];
   let cursor = window.from;
   for (const row of rows) {
+    const cap = lane === "listening" && row.state === "paused" ? row.from + LISTENING_PAUSE_MAX_MS : Infinity;
     const from = Math.max(row.from, cursor, window.from);
-    const to = Math.min(row.to, window.to);
+    const to = Math.min(row.to, window.to, cap);
     if (to <= from) continue;
     segments.push({ ...row, from, to });
     cursor = to;

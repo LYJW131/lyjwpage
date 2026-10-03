@@ -26,6 +26,7 @@ import {
   planChargingSample,
   planStateObservation,
   replaceActivityBuckets,
+  LISTENING_PAUSE_MAX_MS,
   stateSegments,
   watchingFacts,
   type ListeningFacts,
@@ -306,4 +307,27 @@ test("inferred plays: short songs after a skip-through keep a non-negative start
     assert.ok(play.marginMs >= 0, `${play.title} has margin ${play.marginMs}`);
     assert.ok(play.to >= play.from);
   }
+});
+
+test("state segments: a listening pause is drawn only up to the cap, and playing is never capped", () => {
+  const paused: ListeningFacts = { ...playing, state: "paused" };
+  const window = { from: T - M, to: T + 60 * M };
+  const open = { ...paused, from: T, seenAt: T + 59 * M, holdUntil: T + 69 * M, endsBy: null };
+  assert.deepEqual(stateSegments("listening", [], open, window).map((row) => [row.from - T, row.to - T]), [[0, LISTENING_PAUSE_MAX_MS]]);
+  const closed = [{ ...paused, from: T, to: T + 30 * M }, { ...playing, from: T + 30 * M, to: T + 55 * M }];
+  assert.deepEqual(stateSegments("listening", closed, null, window).map((row) => [row.state, row.to - row.from]),
+    [["paused", LISTENING_PAUSE_MAX_MS], ["playing", 25 * M]]);
+});
+
+test("state observation: a pause with no playing before it is idle, a pause after playing stays a pause", () => {
+  const paused: ListeningFacts = { ...playing, state: "paused" };
+  const idle: ListeningFacts = { state: "idle", source: null, title: null, artist: null, album: null, trackId: null };
+  const cold = planStateObservation("listening", null, T, paused)!.open!;
+  assert.equal(cold.state, "idle", "Mac came online already paused");
+  assert.equal(planStateObservation("listening", cold, T + 30_000, paused), null, "and keeps being idle");
+  const open = planStateObservation("listening", null, T, playing)!.open!;
+  assert.equal(planStateObservation("listening", open, T + M, paused)!.open!.state, "paused");
+  const lapsed = planStateObservation("listening", open, T + 30 * M, paused)!;
+  assert.deepEqual(lapsed.open && lapsed.open.state, "idle", "the hold ran out before this pause was seen");
+  assert.deepEqual(idle.state, "idle");
 });
