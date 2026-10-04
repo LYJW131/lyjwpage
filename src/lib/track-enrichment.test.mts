@@ -149,16 +149,22 @@ test("同一曲目这次没查到时沿用已存补全，换了曲目不沿用",
   assert.equal(keepEnrichment(music("Song"), fresh, good), fresh);
 });
 
-test("确定的结果长存：歌词与动态封面都存 30 天，空歌词短存", async () => {
+test("查到的结果存 30 天，否定结果 7 天，空歌词 1 小时", async () => {
   const { lyricsTtlMs } = await import("@/lib/lyrics");
   const { motionTtlMs } = await import("@/lib/motion-artwork");
+  const { trackLookupTtlMs } = await import("@/lib/apple-music");
   const DAY = 24 * 60 * 60 * 1000;
   assert.equal(lyricsTtlMs({ lines: [{ text: "x" }] as never }), 30 * DAY);
   assert.equal(lyricsTtlMs({ lines: [] }), 60 * 60 * 1000);
-  assert.equal(motionTtlMs(), 30 * DAY);
+  assert.equal(motionTtlMs({ hasMotion: true, videoUrl: "https://mvod/x.m3u8", colors: null }), 30 * DAY);
+  assert.equal(motionTtlMs({ hasMotion: false, videoUrl: null, colors: null }), 7 * DAY);
+  const found = { link: LINK, artwork: null, id: "1", songId: "2", hasLyrics: true };
+  assert.equal(trackLookupTtlMs(found), 30 * DAY);
+  assert.equal(trackLookupTtlMs({ ...found, hasLyrics: false }), 7 * DAY);
+  assert.equal(trackLookupTtlMs({ ...found, link: "" }), 7 * DAY);
 });
 
-test("动态封面：Apple 404 按「没有」缓存 30 天，其他错误不缓存", async (t) => {
+test("动态封面：Apple 404 按「没有」缓存 7 天，其他错误不缓存", async (t) => {
   const { resolveMotionArtwork } = await import("@/lib/motion-artwork");
   const kv = new TtlKv();
   kv.values.set("lyjwpage:apple-web-token", JSON.stringify({ token: "web-token", expiresAt: Date.now() + 3_600_000 }));
@@ -171,7 +177,7 @@ test("动态封面：Apple 404 按「没有」缓存 30 天，其他错误不缓
   reply(404);
   const missing = parseAppleMusicUrl("https://music.apple.com/us/album/x/404404")!;
   assert.deepEqual(await withRequestState(() => resolveMotionArtwork(missing)), { hasMotion: false, videoUrl: null, colors: null });
-  assert.equal(kv.ttls.get(`lyjwpage:${motionArtworkCacheKey(missing)}`), 30 * 24 * 60 * 60);
+  assert.equal(kv.ttls.get(`lyjwpage:${motionArtworkCacheKey(missing)}`), 7 * 24 * 60 * 60);
 
   reply(500);
   const broken = parseAppleMusicUrl("https://music.apple.com/us/album/x/500500")!;
