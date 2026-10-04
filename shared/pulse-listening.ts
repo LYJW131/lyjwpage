@@ -56,6 +56,7 @@ export type ListeningTrace = {
 export const LISTENING_TRACE_CAP = 2000;
 
 // 从开播到出现在列表最前的滞后：按上榜时刻推断（不减滞后）时，收敛后的进度比手机上的实际进度稳定慢这么多。
+// 取 iPhone 的值；Mac 上 Chrome 的网页播放器约 1.7 秒（docs/listening-inference-accuracy.md），列表里分不出设备。
 export const LISTENING_TRACE_LAG_MS = 5_500;
 
 // 上榜时刻在「开播 + LISTENING_TRACE_LAG_MS」前后的抖动。

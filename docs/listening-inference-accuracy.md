@@ -39,6 +39,15 @@
 - 暂停、拖进度、单曲循环不在列表里留痕，一首歌一律按放满算。
 - 只有一个歌单、一台 iPhone、16 首歌，没覆盖手动切歌、随机播放、交叉淡入。
 
+## 网页播放器对照
+
+按 4b630c6f 2026-10-04 核对：Mac 上 Chrome 的 music.apple.com 播放同一歌单（MusicKit JS），页面里每 0.5 秒记 `nowPlayingItem` 与 `currentPlaybackTime`（开播 = 换歌那一刻减去当时进度），每 5 秒带同一对 token 拉 `/v1/me/recent/played/tracks?limit=10`，共 14 首换歌。
+
+- 每次换歌的上榜滞后落在 `[最后一轮没看到时已发出的时刻, 第一轮看到时的回包时刻]` 这个区间里；11 首自然换歌的区间交集是 0.7–2.8 秒，即网页端约 1.7 秒，不同于 iPhone 的 `LISTENING_TRACE_LAG_MS`（5.5 秒）。列表里没有设备标识，同一个常量不能同时对准两端；常量按 iPhone 取，网页端的推断会早约 4 秒。
+- 短播放照样上榜：播 16–26 秒或被切走的歌都出现在列表里，排在随后那首的下面。
+- 浏览器里的 `fetch` 必须带 `cache: "no-store"`：默认会命中 Chrome 缓存（回包约 1 毫秒，不带是约 650 毫秒），列表只在缓存过期的 65 秒整数倍时变化，得出的滞后在 0–65 秒间乱跳，不是 Apple 的行为。
+- 队列放到最后一首会停（`playbackState` 为 10），长时间录制要开随机播放或循环。
+
 ## 复现
 
 `node --experimental-strip-types --import ./src/lib/testing/register-alias.mjs scripts/listening-replay.mts` 打印新算法各间隔与生产窗口的数字。`src/lib/pulse-listening-replay.test.mts` 守住每分钟一轮的下限。
