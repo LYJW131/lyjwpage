@@ -56,7 +56,7 @@
   - **事件负载设计**：
     - 带数据的事件（登记表 `src/lib/status-views.ts` 里带 `event` 的视图）：**一律携带那条端点的整份数据**（充电头不带历史点，由浏览器接上已有曲线），浏览器收到后直接更新 SWR 缓存，避免回源请求打满并发。
     - `presence`：**仅发送失效通知**（payload 为 `null`），浏览器根据本地保存的 `lastSeenAt` 和 `heartbeatWindowMs` 自行判定是否真正超时断流。
-- **兜底轮询**：推送覆盖整份的实时视图（登记表 `pushCovers`）在 WebSocket 连着时只保留兜底轮询（`src/lib/poll-schedule.ts#PUSH_SAFETY_NET_MS`）；断开时回到卡片自己的快间隔，重连后立即回源一次补上漏掉的推送。带心跳判活（`lastSeenAt`）或滚动读数的卡不退，照常轮询。
+- **兜底轮询**：推送覆盖整份的实时视图（登记表 `pushCovers`）在 WebSocket 连着时只保留兜底轮询（`src/lib/poll-schedule.ts#PUSH_SAFETY_NET_MS`）；断开时回到卡片自己的快间隔，重连后前台页面对有推送事件的视图（`src/lib/status-views.ts#isPushedViewPath`）回源一次补上漏掉的推送，后台页面攒到切回前台再补；重连退避带抖动，连接撑过 `STABLE_CONNECTION_MS` 才清零。带心跳判活（`lastSeenAt`）或滚动读数的卡不退，照常轮询。
 
 ---
 

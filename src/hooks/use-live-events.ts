@@ -19,7 +19,7 @@ import {
   POWERBANK_PATH,
   TROPHIES_PATH,
 } from "@/lib/paths";
-import { isRealtimeViewPath, pathByEvent } from "@/lib/status-views";
+import { isPushedViewPath, pathByEvent } from "@/lib/status-views";
 import type { ChargerPayload, StatusResponse } from "@/lib/types";
 import { LIVE_HEARTBEAT_MS } from "@shared/live-heartbeat";
 
@@ -120,7 +120,9 @@ let socket: WebSocket | null = null;
 let refCount = 0;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+let stableTimer: ReturnType<typeof setTimeout> | null = null;
 let retryAttempts = 0;
+let resyncPending = false;
 let activeMutate: ScopedMutator | null = null;
 let reportedVisible: boolean | null = null;
 
@@ -144,9 +146,26 @@ export function useLiveSocketConnected(): boolean {
 }
 
 const MAX_BACKOFF_MS = 30_000;
+// 连上就清零退避会让反复被掐的连接（部署重置、后台节流）永远每秒重连；撑过一个心跳周期才算站稳。
+const STABLE_CONNECTION_MS = LIVE_HEARTBEAT_MS;
+
+function reconnectDelay(attempt: number): number {
+  const base = Math.min(1_000 * Math.pow(1.5, attempt), MAX_BACKOFF_MS);
+  return Math.round(base * (0.75 + Math.random() * 0.5));
+}
 
 function pageVisible(): boolean {
   return typeof document === "undefined" || document.visibilityState !== "hidden";
+}
+
+// 后台页面补取没人看，攒着等回到前台再补；只补有推送事件的视图，pulse、coding 这类没推送的照常轮询。
+function resync(mutate: ScopedMutator): void {
+  if (!pageVisible()) {
+    resyncPending = true;
+    return;
+  }
+  resyncPending = false;
+  void mutate((key) => typeof key === "string" && isPushedViewPath(key));
 }
 
 function setConnected(value: boolean): void {
@@ -162,6 +181,10 @@ function clearTimers(): void {
   if (reconnectTimer) {
     clearTimeout(reconnectTimer);
     reconnectTimer = null;
+  }
+  if (stableTimer) {
+    clearTimeout(stableTimer);
+    stableTimer = null;
   }
 }
 
@@ -235,11 +258,14 @@ function open(mutate: ScopedMutator): void {
 
   // 预连 socket 可能早已发过 open，接管后须主动执行就绪逻辑。
   const onReady = () => {
-    retryAttempts = 0;
+    stableTimer = setTimeout(() => {
+      stableTimer = null;
+      retryAttempts = 0;
+    }, STABLE_CONNECTION_MS);
     const reconnect = everConnected;
     everConnected = true;
     setConnected(true);
-    if (reconnect) void mutate((key) => typeof key === "string" && isRealtimeViewPath(key));
+    if (reconnect) resync(mutate);
     reportVisibility();
     heartbeatTimer = setInterval(() => {
       if (ws.readyState === WebSocket.OPEN) {
@@ -262,7 +288,7 @@ function open(mutate: ScopedMutator): void {
     teardown();
     setConnected(false);
     if (refCount <= 0) return;
-    const delay = Math.min(1_000 * Math.pow(1.5, retryAttempts), MAX_BACKOFF_MS);
+    const delay = reconnectDelay(retryAttempts);
     retryAttempts += 1;
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null;
@@ -279,6 +305,7 @@ function open(mutate: ScopedMutator): void {
 
 function close(): void {
   retryAttempts = 0;
+  resyncPending = false;
   teardown();
   setConnected(false);
 }
@@ -287,6 +314,7 @@ function handleVisibilityChange(): void {
   if (refCount <= 0 || !activeMutate) return;
   if (socket) {
     reportVisibility();
+    if (resyncPending && pageVisible()) resync(activeMutate);
     return;
   }
   if (pageVisible()) {
@@ -301,6 +329,7 @@ function handlePageShow(event: PageTransitionEvent): void {
   if (!event.persisted || refCount <= 0 || !activeMutate) return;
   if (socket && socket.readyState <= WebSocket.OPEN) {
     reportVisibility();
+    if (resyncPending) resync(activeMutate);
     return;
   }
   teardown();

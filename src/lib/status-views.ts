@@ -90,6 +90,10 @@ export function isRealtimeViewPath(path: string): boolean {
   return viewOfPath(path)?.layer === "realtime";
 }
 
+export function isPushedViewPath(path: string): boolean {
+  return viewOfPath(path)?.event !== undefined;
+}
+
 export const STATUS_TAGS: readonly string[] = Object.freeze(
   entries().flatMap(([, view]) => (view.tag ? [view.tag] : [])),
 );

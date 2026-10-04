@@ -156,7 +156,7 @@ So the cached page takes care of the first paint and the client catches up to th
 
 Events like changing songs, switching front apps and plugging devices in are pushed over WebSocket. Most events carry the new data and write it into the SWR cache, so visitors don't each fire the same query after a notification.
 
-Continuous metrics such as power curves and cumulative usage are polled as needed, while playback progress is extrapolated in the browser from time anchors. While the push connection is healthy, realtime cards whose pushes carry the whole payload keep only a safety-net poll (`PUSH_SAFETY_NET_MS` in `src/lib/poll-schedule.ts`); when it drops they go back to the card's own fast interval, with one refetch right after reconnecting. A freshness check on the client stops an older polling result from overwriting newer state it already received.
+Continuous metrics such as power curves and cumulative usage are polled as needed, while playback progress is extrapolated in the browser from time anchors. While the push connection is healthy, realtime cards whose pushes carry the whole payload keep only a safety-net poll (`PUSH_SAFETY_NET_MS` in `src/lib/poll-schedule.ts`); when it drops they go back to the card's own fast interval; after reconnecting, a foreground tab refetches the views that have push events once, while a background tab holds that refetch until it comes back to the foreground. A freshness check on the client stops an older polling result from overwriting newer state it already received.
 
 ### Sources share state while keeping failure boundaries
 
