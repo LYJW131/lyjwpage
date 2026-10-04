@@ -170,7 +170,6 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
   1. 先并行向 `LivePushRoom` 广播。
   2. 再把布局标签一次性发给 `POST {SITE}/api/revalidate`，5 秒超时（ingest-effects.ts:106-120；live-platform.ts:19、66-95）。
 - 所以**广播和 202 是并行的**，不是 202 之后才广播。
-- 没人在看时（推送房间经 `noteAudience` 告诉 StateHub），StateHub 交回的效果只留 `tags`，不广播（`workers/api/src/ingest-effects.ts#effectsForAudience`）。片中画的是有人在看的情形。
 - 效果在 StateHub 之外派发：`StateCore.commitIngest` 拿到 StateHub 交回的效果，交给 `dispatchIngestEffects`，后者经 `afterResponse` 放进 `ctx.waitUntil`；网络请求不占 StateHub 的执行时间，串行的提交队列不被推送和失效拖住（`workers/api/src/ingest-effects.ts#dispatchIngestEffects`、`workers/api/src/live-platform.ts#afterResponse`）。第 03 章旁白「网络请求不占 StateHub 的时间」出自这里。
 - 换歌那封上报在交给 StateHub 之前，由 StateCore 查 Apple 目录补封面、链接、songId、有没有歌词和动态封面，结果随状态落库；推送和读取只用存好的这份（`workers/api/src/listening-enrichment.ts#enrichCommand`、`src/lib/track-enrichment.ts#candidateFrom`）。
 - 各模块交回什么（workers/api/src/stores/telemetry.ts）：

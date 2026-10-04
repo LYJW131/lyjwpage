@@ -38,7 +38,7 @@
 | 方法 | 路径 | 鉴权 | 作用 |
 | --- | --- | --- | --- |
 | `POST` | `ingest.homepage.lyjw.llc/api/ingest/<来源>` | Cloudflare Access service token（每个上报方一把、可授权多个来源，上报入口 Worker 再验 JWT 并按来源限权） | 上报入口校验、拆分；状态核心落库、触发广播与首页缓存失效 |
-| `GET` | `/ws?visible=1\|0` | 来源校验（`ALLOWED_ORIGINS`） | 浏览器直连的实时事件推送长连接，也是在线人数的来源：页面切到后台不断开，只发 `visible` / `hidden`；没有可见页面时上报不产生推送。本地 Worker 的上游中继带 `relay=1`，算有人在看、不算在线人数 |
+| `GET` | `/ws?visible=1\|0` | 来源校验（`ALLOWED_ORIGINS`） | 浏览器直连的实时事件推送长连接，也是在线人数的来源：页面切到后台不断开，只发 `visible` / `hidden` |
 | `GET` | `/count` | 公开 | `{ connections, online }`：开着的页面（含后台）与此刻可见的页面 |
 | `GET` | `/api/status/<模块>` | 公开 | 状态列表或历史数据查询 |
 | `GET` | `/api/status/<模块>/now` | 公开 | 状态即时快照查询 |

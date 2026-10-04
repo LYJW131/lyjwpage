@@ -5,7 +5,7 @@ import { SqliteStore, type StoredEntry } from "@shared/sqlite-store";
 import type { StorageCommand, StorageResult } from "@shared/storage-contract";
 import { commitPreparedIngest } from "./ingest-handlers";
 import type { CoreCommand } from "@shared/ingest/prepare";
-import { collectIngestEffects, effectsForAudience, type IngestEffect } from "./ingest-effects";
+import { collectIngestEffects, type IngestEffect } from "./ingest-effects";
 import { historyArchiveEnabled, pulseScoringEnabled, requestStore, type Env } from "./runtime";
 import { PulseArchiveState, type ArchiveStream, type PulseArchiveSnapshot } from "./pulse-archive";
 import { PulseScoreState, type PulseScoreClaim } from "./pulse-score-state";
@@ -47,18 +47,6 @@ export class StateHub extends DurableObject<Env> {
   }
   async finishImport(): Promise<void> {
     this.ctx.storage.sql.exec("INSERT INTO metadata(key, value) VALUES ('initialized', '1') ON CONFLICT(key) DO UPDATE SET value = '1'");
-  }
-
-  // 缺省按有人在看：推送房间还没报过数、或通知丢了，都宁可多推。
-  private watched(): boolean {
-    return this.ctx.storage.sql.exec("SELECT value FROM metadata WHERE key = 'audience'").toArray()[0]?.value !== "0";
-  }
-
-  noteAudience(watched: boolean): void {
-    this.ctx.storage.sql.exec(
-      "INSERT INTO metadata(key, value) VALUES ('audience', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-      watched ? "1" : "0",
-    );
   }
 
   // 读取与初始化、提交可见性屏障同一次 RPC 完成；null 表示存储尚未初始化。
@@ -106,10 +94,9 @@ export class StateHub extends DurableObject<Env> {
     }, async () => {
       try {
         const collected = await collectIngestEffects(() => commitPreparedIngest(command));
-        const effects = effectsForAudience(collected.effects, this.watched());
         const wire: CommitIngestWire = collected.ok
-          ? { ready: true, ok: true, json: JSON.stringify(collected.value), error: null, effects }
-          : { ready: true, ok: false, json: "null", error: collected.error, effects };
+          ? { ready: true, ok: true, json: JSON.stringify(collected.value), error: null, effects: collected.effects }
+          : { ready: true, ok: false, json: "null", error: collected.error, effects: collected.effects };
         return wire;
       } finally {
         await this.ensureAlarm();

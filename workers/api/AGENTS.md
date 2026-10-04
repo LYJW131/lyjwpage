@@ -7,11 +7,10 @@ StateHub 的 SQLite 是实时状态的唯一权威。人读的说明在 `README.
 - 上报器不直连这里：外部上报由 `workers/ingress` 验明身份、校验后，实时那一半经 Service Binding 调 `StateCore.commitIngest`；采集 Worker 同样经 `StateCore` 交数据。这里没有 `/api/ingest/*`。
 - `StateCore` 的 RPC 契约是 `shared/state-core.ts`：只加不改；新增方法先发布本 Worker，再让 `workers/ingress`、`workers/collector` 去调。
 - 从 `shared/ingest/` 只能 `import type`（源：`eslint.config.mjs#no-restricted-imports`）：校验与收敛在上报入口，改校验不该重新发布带 Durable Object 的本 Worker，Workers Builds 监视路径据此排除该目录。命令形状变了（新字段、新模块）要同时改 `src/stores/` 里提交那一半。
-- `LivePushRoom` 只通过 `src/live-platform.ts#liveRoom` 取：`locationHint` 只在对象首次创建时生效，换位置只能换 `ROOM_ID`（旧对象不会搬家也不会删）；房间只存连接和 `audience` 标记，换名无数据要迁。
+- `LivePushRoom` 只通过 `src/live-platform.ts#liveRoom` 取：`locationHint` 只在对象首次创建时生效，换位置只能换 `ROOM_ID`（旧对象不会搬家也不会删）；房间只存连接，换名无数据要迁。
 - 提交持久化确认后才返回 202；推送、首屏失效在 `waitUntil` 里做，失败只记日志，不让已落库的上报重发。
 - 上报缺的外部信息（Apple 目录、动态封面、歌词预热）在 `StateCore` 交给 StateHub 之前补全，随状态落库（`src/listening-enrichment.ts`）；StateHub 里不请求网络，读取和推送只读存好的补全。只有 `/api/lyrics`、`/api/motion-artwork` 这两个按需端点允许现查 Apple。Apple 结果缓存在 `APPLE_CACHE` KV（`src/lib/apple-cache.ts`），不进 StateHub。
 - 公开读取只输出明确的公开模型：没有通用 HTTP 数据库端点，凭据不进任何公开响应。可滞后层的端点只读 `LAG` KV，不持有外部令牌、不现拉、不推送，也不过公开读屏障、不唤醒 StateHub（`src/public-execution.ts`）：它的 loader 不许读 DO 存储。
-- 没人在看时 StateHub 的 `commitIngest` 只回 `tags` 效果（`effectsForAudience`），状态由推送房间经 `noteAudience` 告知、缺省按有人；首屏失效不受此闸。绕过 `commitIngest` 的推送（`StateCore.broadcastVersion`、采集 Worker 的提交）不看这个状态。
 - 首屏标签只在布局变化时失效（判据在 `src/lib/home-layout.ts`）；读数、标题、进度、纯心跳都不触发，交给首屏快照的定时重建。
 - 新增公开状态视图只在 `src/lib/status-views.ts` 加一行、在 `src/lib/status-loaders.ts` 登记 loader，两张表由 `satisfies` 对齐；可滞后层视图不许带推送事件（模块加载时断言）。
 
