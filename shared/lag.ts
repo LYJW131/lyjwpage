@@ -20,8 +20,6 @@ export const LAG_KEYS = {
   workouts: "workouts:v1",
   reporterServer: "reporter:server-reporter:v1",
   reporterAgents: "reporter:agents-reporter:v1",
-  codingUsage: "coding-usage:v1",
-  codingYear: "coding-year:v1",
 } as const;
 
 export type LagKey = (typeof LAG_KEYS)[keyof typeof LAG_KEYS];
