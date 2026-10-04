@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>lyjw.me 运行原理 · 拆开来看</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@500;700&display=swap">
+<style>
+@font-face{font-family:"Geist Mono";src:url(../fonts/GeistMono-Regular.woff2) format("woff2");font-weight:400}
+@font-face{font-family:"Geist Mono";src:url(../fonts/GeistMono-Medium.woff2) format("woff2");font-weight:500}
+@font-face{font-family:"Geist Mono";src:url(../fonts/GeistMono-SemiBold.woff2) format("woff2");font-weight:600}
+@font-face{font-family:"Geist Mono";src:url(../fonts/GeistMono-Bold.woff2) format("woff2");font-weight:700}
+@font-face{font-family:"Geist";src:url(../fonts/Geist-Medium.woff2) format("woff2");font-weight:500}
+@font-face{font-family:"Geist";src:url(../fonts/Geist-SemiBold.woff2) format("woff2");font-weight:600}
+@font-face{font-family:"Geist";src:url(../fonts/Geist-Bold.woff2) format("woff2");font-weight:700}
+:root{--bg:#0d0c0a;--fg:#ebe8dc;--dim:#8d8980;--accent:#d97757}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font:500 13px "Geist Mono",ui-monospace,monospace;overflow:hidden}
+#wrap{position:fixed;inset:0 0 56px 0;display:flex;align-items:center;justify-content:center}
+#stage{display:block;background:#000}
+#bar{position:fixed;left:0;right:0;bottom:0;height:56px;display:flex;align-items:center;gap:14px;padding:0 16px;border-top:1px solid #2a2824}
+#bar button{background:none;border:1px solid #3a3731;color:var(--fg);font:inherit;height:30px;padding:0 12px;cursor:pointer;min-width:74px}
+#bar button:hover{border-color:var(--fg)}
+#scrub{position:relative;flex:1;height:30px;cursor:pointer}
+#scrub .rail{position:absolute;left:0;right:0;top:14px;height:2px;background:#2f2c27}
+#scrub .fill{position:absolute;left:0;top:14px;height:2px;background:var(--accent)}
+#scrub .mark{position:absolute;top:8px;width:1px;height:14px;background:#5a564e}
+#scrub .lab{position:absolute;top:-2px;font-size:10px;color:var(--dim);transform:translateX(4px);white-space:nowrap}
+#time{min-width:104px;text-align:right;color:var(--dim)}
+body.export #bar{display:none}
+body.export #wrap{inset:0}
+@media (max-width:600px){#bar{gap:8px;padding:0 8px}#time{min-width:0;font-size:11px}#scrub .lab{display:none}}
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="stage"></canvas></div>
+<div id="bar">
+  <button id="play" type="button">播放</button>
+  <div id="scrub"><div class="rail"></div><div class="fill"></div></div>
+  <span id="time">0:00 / 0:00</span>
+</div>
+<script src="engine.js"></script>
+<script src="ch01.js"></script>
+<script src="film.js"></script>
+</body>
+</html>

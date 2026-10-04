@@ -21,6 +21,7 @@
 | [讲解动画 · 分镜与旁白](./explainer/SCRIPT.md) | reference | v2 新片的章节表、每小节画面要点与中英旁白 |
 | [讲解动画 · 写章约定](./explainer/v2/CONVENTIONS.md) | reference | v2 章节作者的契约：章节接口、组件、字号、镜头、自检 |
 | [讲解动画 · 写章任务书](./explainer/v2/CHAPTER-BRIEF.md) | runbook | 并行写章时派单的模板 |
+| [讲解动画 · v3「拆开来看」](./explainer/v3/README.md) | decision | 另一种做法的样章：以首页为布景、一镜到底、机器说英文旁白说中文 |
 | [生产上报端点核验记录](./reporter-endpoints.md) | record | 各上报实例的端点核验与迁移记录 |
 | [DO 执行边界审计](./do-execution-audit.md) | record | 哪些工作进 Durable Object、哪些留在普通 Worker 的审计 |
 | [DO 优化线上效果核验](./do-performance-audit.md) | record | 执行边界调整上线前后的线上指标与本地存储基准 |
