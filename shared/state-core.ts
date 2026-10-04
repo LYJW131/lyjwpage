@@ -4,7 +4,7 @@ import type { CoreCommand } from "@shared/ingest/prepare";
 export type CommitReply =
   | { ready: false; ok: false }
   | { ready: true; ok: true; data: unknown }
-  | { ready: true; ok: false; error: string };
+  | { ready: true; ok: false; error: string; retryable?: true };
 
 export type CoreAudience = { connections: number; online: number };
 

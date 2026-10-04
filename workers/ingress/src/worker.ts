@@ -107,6 +107,7 @@ async function commitIngest(env: Env, ctx: ExecutionContext, source: string, raw
     } else {
       const reply = await env.CORE.commitIngest(command);
       if (!reply.ready) return jsonResponse({ ok: false, error: "状态存储初始化中" }, { status: 503 });
+      if (!reply.ok && reply.retryable) return unavailable(source, reply.error);
       if (!reply.ok) {
         if (!partiallyAccepted(command)) throw new Error(reply.error);
         coreError = reply.error;
@@ -130,9 +131,16 @@ async function commitIngest(env: Env, ctx: ExecutionContext, source: string, raw
     }
     return jsonResponse({ ok: true, data }, { status: 202 });
   } catch (error) {
+    if ((error as { retryable?: unknown } | null)?.retryable === true) return unavailable(source, reason(error));
     console.error("[ingest]", source, reason(error));
     return jsonResponse({ ok: false, error: "上报数据无效或处理失败" }, { status: 400 });
   }
+}
+
+// 4xx 不会被 OTLP exporter 和 Home Assistant 重试，暂时性的故障必须回 503。
+function unavailable(source: string, why: string): Response {
+  console.warn("[ingest] unavailable", source, why);
+  return jsonResponse({ ok: false, error: "状态存储暂时不可用，请重试" }, { status: 503 });
 }
 
 function receiptData(command: PreparedIngest, data: unknown): unknown {

@@ -13,6 +13,11 @@ import { expireStatusTags, liveRoom } from "./live-platform";
 import { issueApiDeveloperToken } from "./musickit-token";
 import { requestStore, type Env } from "./runtime";
 
+function transientFailure(error: unknown): boolean {
+  const flags = error as { retryable?: unknown; overloaded?: unknown } | null;
+  return flags?.retryable === true || flags?.overloaded === true;
+}
+
 export class StateCore extends WorkerEntrypoint<Env> implements StateCoreRpc {
   async ready(): Promise<boolean> {
     return this.hub().ready();
@@ -21,7 +26,15 @@ export class StateCore extends WorkerEntrypoint<Env> implements StateCoreRpc {
   // 必须先派发效果再处理提交失败：较早模块已落库的变化仍需通知。
   async commitIngest(command: CoreCommand): Promise<CommitReply> {
     return this.scoped(async () => {
-      const result = await this.hub().commitIngest(await enrichCommand(command));
+      // DO 重置、过载抛的错带 retryable / overloaded；这些属性过不了上报入口那条 Service Binding，在这里转成回执。
+      const result = await this.hub().commitIngest(await enrichCommand(command)).catch((error: unknown) => {
+        if (!transientFailure(error)) throw error;
+        return error instanceof Error ? error.message : String(error);
+      });
+      if (typeof result === "string") {
+        console.warn("[state-core] commit", command.source, result);
+        return { ready: true, ok: false, error: result, retryable: true };
+      }
       await dispatchIngestEffects(result.effects);
       if (!result.ready) return { ready: false, ok: false };
       if (!result.ok) return { ready: true, ok: false, error: result.error };
