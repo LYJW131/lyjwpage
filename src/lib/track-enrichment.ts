@@ -1,6 +1,5 @@
 import { resolveTrackLookup } from "@/lib/apple-music";
 import { normalizeForMatch } from "@/lib/apple-music-lookup";
-import { resolveLyrics } from "@/lib/lyrics";
 import { resolveMotionArtwork } from "@/lib/motion-artwork";
 import { parseAppleMusicUrl } from "@/lib/motion-artwork-url";
 import type { NowListeningCandidate } from "@/lib/now-listening";
@@ -19,7 +18,14 @@ export type TrackEnrichment = {
   motion: TrackMotion | null;
 };
 
-export const ENRICHMENT_TIMEOUT_MS = 8_000;
+// 每段单独计时：回执路径上最多等「目录 + 动态封面」两段；歌词预热不在这里，由调用方放到回执之后。
+export const ENRICHMENT_TIMEOUT_MS = 2_000;
+
+export type EnrichmentOptions = {
+  timeoutMs?: number;
+  // 超时的那段请求继续跑完，缓存写才落得下；Worker 里由调用方接到 waitUntil。
+  background?: (work: Promise<void>) => void;
+};
 
 type TrackIdentity = Pick<LocalNowPlaying, "title" | "artist" | "album">;
 
@@ -31,22 +37,54 @@ export function playableMusic(music: LocalNowPlaying | null | undefined): music 
   return Boolean(music && music.state !== "stopped" && music.title);
 }
 
-export async function resolveMotion(link: string | null): Promise<TrackMotion | null> {
+async function motionOf(link: string | null): Promise<TrackMotion | null> {
   const parsed = link ? parseAppleMusicUrl(link) : null;
   if (!parsed) return null;
-  const result = await resolveMotionArtwork(parsed).catch(() => null);
-  return result?.hasMotion && result.videoUrl ? { videoUrl: result.videoUrl, colors: result.colors } : null;
+  const result = await resolveMotionArtwork(parsed);
+  return result.hasMotion && result.videoUrl ? { videoUrl: result.videoUrl, colors: result.colors } : null;
 }
 
-async function enrich(music: LocalNowPlaying, upcomingTracks: readonly PlayingQueueTrack[]): Promise<TrackEnrichment> {
-  const [lookup, ...ahead] = await Promise.all([
-    resolveTrackLookup(music),
-    ...upcomingTracks.map((track) => resolveTrackLookup(track)),
+export function resolveMotion(link: string | null): Promise<TrackMotion | null> {
+  return motionOf(link).catch(() => null);
+}
+
+function reason(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+const TIMED_OUT = Symbol("timed-out");
+
+async function segment<T>(label: string, work: Promise<T>, fallback: T, options: EnrichmentOptions): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<typeof TIMED_OUT>((resolve) => {
+    timer = setTimeout(() => resolve(TIMED_OUT), options.timeoutMs ?? ENRICHMENT_TIMEOUT_MS);
+  });
+  try {
+    const result = await Promise.race([work, timeout]);
+    if (result !== TIMED_OUT) return result;
+    console.warn("[enrichment] timeout", label);
+    const settled = work.then(() => undefined, (error: unknown) => console.warn("[enrichment]", label, reason(error)));
+    options.background?.(settled);
+    return fallback;
+  } catch (error) {
+    console.warn("[enrichment]", label, reason(error));
+    return fallback;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function enrich(
+  music: LocalNowPlaying,
+  upcomingTracks: readonly PlayingQueueTrack[],
+  options: EnrichmentOptions,
+): Promise<TrackEnrichment | null> {
+  const [lookup, ahead] = await Promise.all([
+    segment("track", resolveTrackLookup(music), null, options),
+    segment("upcoming", Promise.all(upcomingTracks.map((track) => resolveTrackLookup(track))), [], options),
   ]);
-  const [motion] = await Promise.all([
-    resolveMotion(lookup.songId ? lookup.link : null),
-    lookup.songId && lookup.hasLyrics ? resolveLyrics(lookup.songId).catch(() => null) : null,
-  ]);
+  if (!lookup) return null;
+  const motion = await segment("motion", motionOf(lookup.songId ? lookup.link : null), null, options);
   return {
     trackKey: trackKeyOf(music),
     id: lookup.id,
@@ -59,25 +97,14 @@ async function enrich(music: LocalNowPlaying, upcomingTracks: readonly PlayingQu
   };
 }
 
-// 补全失败或超时不阻止状态落库，存成未补全，等同一曲目的下一封上报再补。
-export async function enrichTrack(
+// 目录那段失败或超时就存成未补全，等同一曲目的下一封上报再补；队列、动态封面那两段失败只丢自己。
+export function enrichTrack(
   music: LocalNowPlaying | null | undefined,
   upcomingTracks: readonly PlayingQueueTrack[] = [],
-  timeoutMs = ENRICHMENT_TIMEOUT_MS,
+  options: EnrichmentOptions = {},
 ): Promise<TrackEnrichment | null> {
-  if (!playableMusic(music)) return null;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      enrich(music, upcomingTracks),
-      new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), timeoutMs); }),
-    ]);
-  } catch (error) {
-    console.warn("[enrichment]", error instanceof Error ? error.message : String(error));
-    return null;
-  } finally {
-    clearTimeout(timer);
-  }
+  if (!playableMusic(music)) return Promise.resolve(null);
+  return enrich(music, upcomingTracks, options);
 }
 
 // 同一曲目这次没查到（失败、超时）时沿用已存的那份，不让一次失败抹掉卡片的链接与封面。

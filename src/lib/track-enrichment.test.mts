@@ -3,7 +3,6 @@ import test from "node:test";
 
 import { trackLookupCacheKey } from "@/lib/apple-music";
 import { installAppleCacheForTests } from "@/lib/apple-cache-store";
-import { lyricsCacheKey } from "@/lib/lyrics";
 import { motionArtworkCacheKey } from "@/lib/motion-artwork";
 import { parseAppleMusicUrl } from "@/lib/motion-artwork-url";
 import { MemoryKv } from "@/lib/testing/memory-kv";
@@ -33,7 +32,6 @@ function seeded(): TtlKv {
   const seed = (k: string, value: unknown) => kv.values.set(`lyjwpage:${k}`, JSON.stringify(value));
   seed(trackLookupCacheKey(music("Song")), { link: LINK, artwork: "https://art/{w}x{h}.jpg", id: "1500", songId: "1501", hasLyrics: true });
   seed(trackLookupCacheKey({ title: "Next", artist: "Artist", album: null }), { link: LINK, artwork: null, id: "1500", songId: "1502", hasLyrics: false });
-  seed(lyricsCacheKey("1501"), { lines: [] });
   seed(motionArtworkCacheKey(parseAppleMusicUrl(LINK)!), { hasMotion: true, videoUrl: "https://mvod/x.m3u8", colors: ["#000", "#fff"] });
   return kv;
 }
@@ -77,6 +75,31 @@ test("查询失败时存成未补全，失败结果不写 KV", async (t) => {
   assert.equal(value?.songId, null);
   assert.equal(value?.motion, null);
   assert.equal(kv.writes, 0);
+});
+
+test("一段超时只丢那一段，超时的请求交给后台跑完并写入缓存", async (t) => {
+  const kv = seeded();
+  kv.values.delete(`lyjwpage:${motionArtworkCacheKey(parseAppleMusicUrl(LINK)!)}`);
+  kv.values.set("lyjwpage:apple-web-token", JSON.stringify({ token: "web-token", expiresAt: Date.now() + 3_600_000 }));
+  installAppleCacheForTests(kv);
+  t.after(() => installAppleCacheForTests(null));
+  const original = globalThis.fetch;
+  t.after(() => { globalThis.fetch = original; });
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => { release = resolve; });
+  globalThis.fetch = (async () => {
+    await held;
+    return new Response("{}", { status: 404 });
+  }) as typeof fetch;
+  const background: Promise<void>[] = [];
+  const value = await withRequestState(() => enrichTrack(music("Song"), [], { timeoutMs: 20, background: (work) => background.push(work) }));
+  assert.equal(value?.songId, "1501");
+  assert.equal(value?.motion, null);
+  assert.equal(background.length, 1);
+  assert.equal(kv.values.has(`lyjwpage:${motionArtworkCacheKey(parseAppleMusicUrl(LINK)!)}`), false);
+  release();
+  await background[0];
+  assert.equal(kv.values.has(`lyjwpage:${motionArtworkCacheKey(parseAppleMusicUrl(LINK)!)}`), true);
 });
 
 test("停止或没有歌名的播放不补全", async () => {

@@ -156,7 +156,7 @@ ESA 首页不走数据上报通知：`lyjw131.com` 以 `lyjw.me` 为源站，边
 
 Vercel 仍采用后台重建，通知成功不代表新 HTML 已生成。ESA 后台回源可能取得 Vercel 仍在重建中的旧 HTML，下一轮刷新时收敛；这条链路不承诺两层缓存同步完成更新。首屏新鲜度不依赖这两层：浏览器挂载后直接向 Worker 取最新状态。
 
-「正在听」的写入时补全在 `src/listening-enrichment.ts`：`StateCore.commitIngest` 对 Mac（带 `appleMusic` 模块时）和 HomePod 的报文先调 `src/lib/track-enrichment.ts#enrichTrack`，查曲目目录（当前这首和队列里的后几首）、动态封面，并把歌词预热进缓存，再把结果放进报文交给 StateHub；Mac 存成遥测字段 `musicEnrichment`，HomePod 存成快照的 `enrichment`。补全有总超时 `ENRICHMENT_TIMEOUT_MS`，失败或超时就存成未补全，同一曲目的下一封上报再补。补全结果带 `trackKey`，读取时对不上当前曲目就按未补全处理。`listening/now` 读取与 `listening-now` 推送都只用存好的补全（`candidateFrom`），不请求 Apple。最近播放首项的动态封面由 `StateCore.commitRecentlyPlayed` 补进该项的 `motion`。
+「正在听」的写入时补全在 `src/listening-enrichment.ts`：`StateCore.commitIngest` 对 Mac（带 `appleMusic` 模块时）和 HomePod 的报文先调 `src/lib/track-enrichment.ts#enrichTrack`，查曲目目录（当前这首和队列里的后几首）、动态封面，再把结果放进报文交给 StateHub；歌词预热放在回执之后（`afterResponse`），不占上报路径；Mac 存成遥测字段 `musicEnrichment`，HomePod 存成快照的 `enrichment`。目录、队列、动态封面三段各自按 `ENRICHMENT_TIMEOUT_MS` 计时：目录那段失败或超时就存成未补全，同一曲目的下一封上报再补；队列和动态封面失败只丢自己；超时的请求在 `waitUntil` 里跑完，缓存写照常落地。补全结果带 `trackKey`，读取时对不上当前曲目就按未补全处理。`listening/now` 读取与 `listening-now` 推送都只用存好的补全（`candidateFrom`），不请求 Apple。最近播放首项的动态封面由 `StateCore.commitRecentlyPlayed` 补进该项的 `motion`。
 
 公开 API 为 `/api/status/*`、`/api/lyrics`、`/api/motion-artwork`，没有聚合端点。Vercel 生成或重建首页时按卡读各条端点（`src/lib/first-screen.ts`），浏览器挂载后实时卡各自回源一次、之后各端点按各自周期轮询。服务端凭据不进入任何公开响应，没有通用 HTTP 数据库端点。跨域活动脉搏（pulse）的出口是 `GET /api/status/pulse`，见下面一节。
 
