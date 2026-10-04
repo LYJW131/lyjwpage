@@ -89,7 +89,7 @@
 - **采集 Worker 驱动**：`workers/collector` 的 `apple-recent` 任务按自己的节奏请求 Apple 的两个最近播放接口，不看有没有访客在线（见 `workers/api/src/apple-music-recent.ts`）。api 自己不拉，WebSocket 连上也不触发。
   - `/v1/me/recent/played`（专辑 / 歌单 / 电台）：给「最近在听」卡片，经 `StateCore.commitRecentlyPlayed` 交给状态核心差分、落库、推送 `listening`。
   - `/v1/me/recent/played/tracks`（单曲）：给 Pulse 听歌道的「Played elsewhere」，经 `StateCore.commitRecentTracks` 与上一轮比较，新播的每首（带时长）记一行；不推 Pulse 事件，有新歌时推一次 `listening-now`（`elsewhere`，见下文「设备优先级抢占与暂停宽限期」）。活跃时采集 Worker 在一分钟里多拉几次单曲列表，并按回执里的 `nextBy`（照推断接着放、下一首最晚上榜的时刻）提前补拉，节奏见 `workers/collector/README.md`。
-- **容器与单曲解算**：Apple 返回的是容器（专辑/歌单/电台），时长通过容器的 `href` 深入查询曲目累计，自建歌单封面单独查；这两类缓存在采集 Worker 的 `COLLECTOR_KV`（期限见 `workers/collector/src/jobs/apple-recent.ts` 的 `DURATION_TTL_MS`、`LIBRARY_ARTWORK_TTL_MS`）。
+- **容器与单曲解算**：Apple 返回的是容器（专辑/歌单/电台），最前那个容器经 `href` 深入查询曲目，累计出时长，按容器顺序的可播曲目随 `commitRecentlyPlayed` 交给状态核心推下一首；自建歌单封面单独查；这两类缓存在采集 Worker 的 `COLLECTOR_KV`（期限见 `workers/collector/src/jobs/apple-recent.ts` 的 `CONTAINER_TTL_MS`、`LIBRARY_ARTWORK_TTL_MS`）。
 
 ### 凭据与安全模型
 - **私钥只在 api Worker**：Apple Music 开发者私钥（`.p8`）是 api Worker 的 secret `APPLE_MUSIC_PRIVATE_KEY`，Mac、站点与代码库都不持有。服务端调 Apple API 用的 Developer Token 由 api 自己签发（`workers/api/src/musickit-token.ts#issueApiDeveloperToken`，过了签发到期的中点重签），采集 Worker 经 `StateCore.appleDeveloperToken()` 取。
@@ -255,7 +255,7 @@ payload: >-
 - `/api/status/listening/now` 动态裁决优先级：
   `MacBook 正在播放` > `MacBook 暂停未过宽限期` > `HomePod 正在播放` > `HomePod 暂停未过宽限期`（宽限期 `src/lib/now-listening.ts#MUSIC_PAUSE_GRACE_MS`）。
 - 服务端通过 `observedAt` 动态计算 `expiresInMs` 下发给客户端，由浏览器精确调度下一次查询时间，避免在服务端无状态实例上挂载定时器。
-- 没有上报器的 Apple Music 播放（iPhone、iPad、网页版等任一客户端）另走 `elsewhere`：读时按 Pulse 存的「最近播放的歌」痕迹推出最后一首（`shared/pulse-listening.ts#playingElsewhere`），按时长还没放完、或放完还不到 `LISTENING_ELSEWHERE_HOLD_MS`（`src/lib/limits.ts`）就给开播时刻、时长与理想误差；Mac / HomePod 在放同一首（`sameSong`：歌名与艺人）时为 null。采集 Worker 每记下新播的歌就推一次 `listening-now`，其余推送也带着它。卡片只在 Mac / HomePod 都没在放时用它画「Likely Playing」、估算进度和虚线框里的理想误差（如 `±3s`），不同步歌词；放完再留 `LISTENING_ELSEWHERE_HOLD_MS` 等下一首被推过来，到点还没有就撤下并重取一次。
+- 没有上报器的 Apple Music 播放（iPhone、iPad、网页版等任一客户端）另走 `elsewhere`：读时按 Pulse 存的「最近播放的歌」痕迹推出最后一首（`shared/pulse-listening.ts#playingElsewhere`），按时长还没放完、或放完还不到 `LISTENING_ELSEWHERE_HOLD_MS`（`src/lib/limits.ts`）就给开播时刻、时长与理想误差；Mac / HomePod 在放同一首（`sameSong`：歌名与艺人）时为 null。采集 Worker 每记下新播的歌就推一次 `listening-now`，其余推送也带着它。卡片只在 Mac / HomePod 都没在放时用它画「Likely Playing」、估算进度和虚线框里的理想误差（如 `±3s`），不同步歌词；放完再留 `LISTENING_ELSEWHERE_HOLD_MS` 等下一首被推过来，到点还没有就撤下并重取一次。`elsewhere.next` 是按循环或容器顺序推出的下一首（规则见 [最近在听](../workers/api/README.md#最近在听)），卡片把它放在歌词的位置：独占整行时在 Hero 右栏，否则在 Hero 下面一行，带 `Loop` / `In Order` 标明依据；推不出来就不显示。
 
 ---
 

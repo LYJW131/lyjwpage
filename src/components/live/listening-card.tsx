@@ -49,6 +49,7 @@ import type {
   ListeningItem,
   ListeningPayload,
   LocalNowPlaying,
+  NowListeningNext,
   NowListeningPayload,
   StatusResponse,
   TrackMotion,
@@ -428,6 +429,53 @@ function useRowSnap(topKey: string | undefined, wide: boolean) {
   }, []);
 }
 
+const NEXT_BASIS = {
+  loop: { label: "Loop", hint: "Guessed from the last few songs repeating in the same order" },
+  order: { label: "In Order", hint: "Guessed from where it is in the playlist or album" },
+} as const;
+
+function NextBadge({ basis }: { basis: NowListeningNext["basis"] }) {
+  return (
+    <span
+      className="inline-flex shrink-0 items-center rounded-sm border border-dashed border-line px-1.5 py-px text-[10px] leading-4 text-muted-foreground"
+      title={NEXT_BASIS[basis].hint}
+    >
+      {NEXT_BASIS[basis].label}
+    </span>
+  );
+}
+
+function UpNext({ next, inline = false }: { next: NowListeningNext; inline?: boolean }) {
+  if (inline) {
+    return (
+      <div className="flex min-w-0 items-center gap-2 text-sm">
+        <span className="label-mono shrink-0 text-muted-foreground">Up Next</span>
+        <span className="min-w-0 flex-1 truncate" title={next.artist ? `${next.title} · ${next.artist}` : next.title}>
+          <span className="font-medium">{next.title}</span>
+          {next.artist && <span className="text-muted-foreground"> · {next.artist}</span>}
+        </span>
+        <NextBadge basis={next.basis} />
+      </div>
+    );
+  }
+  return (
+    <div className="flex h-20 min-w-0 flex-col justify-center">
+      <div className="flex min-h-5 items-center gap-1.5">
+        <span className="label-mono text-muted-foreground">Up Next</span>
+        <NextBadge basis={next.basis} />
+      </div>
+      <div className="mt-1 truncate font-medium leading-snug" title={next.title}>
+        {next.title}
+      </div>
+      {next.artist && (
+        <div className="mt-px truncate text-sm text-muted-foreground" title={next.artist}>
+          {next.artist}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function HeroWrapper({
   link,
   wideLyrics = false,
@@ -591,6 +639,9 @@ export function ListeningCard({
       localActive &&
       (Boolean(lyrics && lyrics.length > 0) || (lyricsLoading && resolvedHasLyrics)),
   );
+
+  const upNext = !localActive ? elsewhere?.next ?? null : null;
+  const showSideNext = Boolean(wide && upNext);
 
   const isResolvingTrack = localActive && resolvedSongId == null;
   const showMobileLyrics = Boolean(
@@ -768,14 +819,14 @@ export function ListeningCard({
               >
                 <HeroWrapper
                   link={hero.track ? null : hero.link}
-                  wideLyrics={showSideLyrics}
+                  wideLyrics={showSideLyrics || showSideNext}
                   onOpen={
                     canOpenHero && heroItem
                       ? () => openInPlayer(heroItem)
                       : undefined
                   }
                 >
-                  <div className={cn("flex min-w-0 flex-1 gap-3", showSideLyrics && "md:pr-5")}>
+                  <div className={cn("flex min-w-0 flex-1 gap-3", (showSideLyrics || showSideNext) && "md:pr-5")}>
                     <HeroMotionArtwork
                       artwork={hero.artwork}
                       placeholder={
@@ -863,6 +914,12 @@ export function ListeningCard({
                     </div>
                   </div>
 
+                  {showSideNext && upNext && (
+                    <div className="hidden min-w-0 border-l border-line pl-5 md:flex md:flex-col md:justify-center overflow-hidden">
+                      <UpNext next={upNext} />
+                    </div>
+                  )}
+
                   {showSideLyrics && (
                     <div className="hidden min-w-0 border-l border-line pl-5 md:flex md:flex-col md:justify-center overflow-hidden">
                       {lyrics ? (
@@ -907,6 +964,26 @@ export function ListeningCard({
                 ) : (
                   <HeroLyricsSkeleton />
                 )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence initial={false}>
+          {upNext && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={
+                reduced
+                  ? { duration: 0 }
+                  : { duration: 0.25, ease: "easeInOut" }
+              }
+              className={cn("overflow-hidden", showSideNext && "md:hidden")}
+            >
+              <div className="mt-3 min-w-0 border-t border-line/60 pt-2.5">
+                <UpNext next={upNext} inline />
               </div>
             </motion.div>
           )}

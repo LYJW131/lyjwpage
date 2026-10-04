@@ -1,6 +1,7 @@
 import fs from "node:fs";
 
-import { inferredPlays, LISTENING_TRACE_LAG_MS, listeningTraces, type InferredPlay, type ListeningTrace, type RecentTracksSnapshot } from "@shared/pulse-listening";
+import type { PlayingContainer } from "@/lib/types";
+import { inferredPlays, LISTENING_TRACE_LAG_MS, listeningTraces, predictedNext, type InferredPlay, type ListeningTrace, type RecentTracksSnapshot } from "@shared/pulse-listening";
 
 // 一段录下来的 iPhone 播放：每 pollEveryMs 拉一次「最近播放的歌」，lists 是出现过的列表（条目 id 换成了 tNN），
 // polls 是 [相对 startedAt 的毫秒, lists 下标]；collector 是同一时段生产采集 Worker 记下的 [since, t, 条目]。
@@ -120,4 +121,46 @@ export function replayAtCadence(session: RecordedSession, truth: (ReplaySpan & {
 export function absoluteQuantile(values: number[], q: number): number {
   const sorted = values.map(Math.abs).sort((a, b) => a - b);
   return sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))] ?? NaN;
+}
+
+// 录的是一个歌单从头顺序放、没有手动切歌，容器就按每轮都拉时推出的开播顺序排（停拉那段放过的歌也在里面）。
+export function recordedContainer(session: RecordedSession): PlayingContainer {
+  const order = [...new Set(replayedPlays(session, 1, 0).map((play) => play.itemId))];
+  return {
+    id: "recorded",
+    tracks: order.flatMap((id) => id ? [{ id, songId: null, title: session.tracks[id].title, artist: session.tracks[id].artist }] : []),
+  };
+}
+
+// 每轮拉到新歌时，拿推出的最后一首去问下一首，再和每轮都拉时推出的顺序里它之后的那首比（基准漏掉了停拉那段的歌）；
+// 每首只在它第一次被看见的那轮算一次。
+export function replayNextAtCadence(session: RecordedSession, container: PlayingContainer | null, cadenceMs: number) {
+  const every = Math.round(cadenceMs / session.pollEveryMs);
+  const truth = replayedPlays(session, 1, 0);
+  let right = 0, wrong = 0, silent = 0;
+  for (let phase = 0; phase < every; phase += 1) {
+    const traces: ListeningTrace[] = [];
+    let base: RecentTracksSnapshot | null = null;
+    for (const [index, poll] of session.polls.entries()) {
+      if (index % every !== phase) continue;
+      const next = snapshot(session, poll);
+      const { traces: found, keep } = listeningTraces(base, next);
+      if (keep) base = next;
+      if (!found.length) continue;
+      traces.push(...found);
+      const plays = inferredPlays(traces);
+      const current = plays.at(-1)!;
+      const at = truth
+        .map((play, order) => ({ play, order }))
+        .filter(({ play }) => play.title === current.title)
+        .sort((a, b) => Math.abs(a.play.from - current.from) - Math.abs(b.play.from - current.from))[0];
+      const expected = at ? truth[at.order + 1]?.title : undefined;
+      if (!expected) continue;
+      const guess = predictedNext(plays, container);
+      if (!guess) silent += 1;
+      else if (guess.title === expected) right += 1;
+      else wrong += 1;
+    }
+  }
+  return { right, wrong, silent };
 }

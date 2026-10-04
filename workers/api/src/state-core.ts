@@ -4,7 +4,7 @@ import type { CoreCommand } from "@shared/ingest/prepare";
 import type { CommitReply, CoreAudience, CorePower, StateCoreRpc } from "@shared/state-core";
 import type { LiveEvent } from "@/lib/live-events";
 import { getPlaystationPower } from "@/lib/playstation-store";
-import type { ListeningItem, RecentTrack } from "@/lib/types";
+import type { ListeningItem, PlayingContainer, RecentTrack } from "@/lib/types";
 
 import { commitRecentlyPlayed, commitRecentTracks } from "./apple-music-recent";
 import { dispatchIngestEffects } from "./ingest-effects";
@@ -49,8 +49,8 @@ export class StateCore extends WorkerEntrypoint<Env> implements StateCoreRpc {
     return { token: issued.token, expiresAt: issued.expiresAt * 1000 };
   }
 
-  async commitRecentlyPlayed(items: ListeningItem[]): Promise<{ changed: boolean }> {
-    return this.scoped(async () => commitRecentlyPlayed(await enrichRecentlyPlayed(items)));
+  async commitRecentlyPlayed(items: ListeningItem[], container?: PlayingContainer | null): Promise<{ changed: boolean }> {
+    return this.scoped(async () => commitRecentlyPlayed(await enrichRecentlyPlayed(items), container));
   }
 
   async commitRecentTracks(tracks: RecentTrack[], observedAt?: number): Promise<{ traced: boolean; nextBy?: number }> {

@@ -24,7 +24,7 @@
 
 | 任务 | 去向 | 需要 |
 | --- | --- | --- |
-| `apple-recent` | `CORE.commitRecentlyPlayed(items)`；`CORE.commitRecentTracks(tracks)` | 凭据 KV 里的 user token；developer token 经 `CORE` 取 |
+| `apple-recent` | `CORE.commitRecentlyPlayed(items, container)`；`CORE.commitRecentTracks(tracks)` | 凭据 KV 里的 user token；developer token 经 `CORE` 取 |
 | `provider-status` | `LAG agent-status:v1`；灯色变了才 `CORE.revalidate(["agent-status"])` | 无 |
 | `pagespeed` | `LAG pagespeed:v1`（滚动中位数） | `PAGESPEED_API_KEY` |
 | `github-chart` | `LAG github-chart:v1` | `GITHUB_TOKEN` |
@@ -56,7 +56,7 @@
   密钥只进查询参数，日志里只有状态码。任一端失败这一轮就空过，可滞后层沿用上一份。
 - **最近在听**：user token 只能来自 Mac 上报器，凭据 KV 里还没有就跳过；developer token 由
   状态核心签（私钥只在 api 上），本 isolate 缓存到离到期 `RENEW_BEFORE_MS`。封面、时长的缓存经 `src/lib/cache`
-  存在 `COLLECTOR_KV`（期限见 `apple-recent.ts` 的 `LIBRARY_ARTWORK_TTL_MS`、`DURATION_TTL_MS`），稳定状态下一轮只有拉两份列表出网。
+  存在 `COLLECTOR_KV`（期限见 `apple-recent.ts` 的 `LIBRARY_ARTWORK_TTL_MS`、`CONTAINER_TTL_MS`），稳定状态下一轮只有拉两份列表出网。
   节奏分两档：任务每分钟排期，闲时只在整 `IDLE_EVERY_MINUTES` 分钟真去拉；任一份列表变了就记下时刻（`COLLECTOR_KV`），
   之后 `ACTIVE_HOLD_MS` 内每分钟都拉，并在同一响里接着每 `ACTIVE_POLL_MS` 再拉一次单曲列表（专辑列表仍是一响一次），
   最后一次在本响的 `ACTIVE_FOLLOW_MS` 内开始，不和下一响叠在一起。换歌最多晚一个 `ACTIVE_POLL_MS` 被看见，窗口也窄到这么宽；
@@ -85,7 +85,7 @@
 
 | 键 | 内容 |
 | --- | --- |
-| `lyjwpage:cache:*` | `src/lib/cache` 的键：Apple 封面 `apple-music:library-art:v1:*`、时长 `apple-music:duration:v1:*`、GitHub 增删行的锚 `github-repo:churn`、PageSpeed 样本窗口 `pagespeed:history:v1:*` |
+| `lyjwpage:cache:*` | `src/lib/cache` 的键：Apple 封面 `apple-music:library-art:v1:*`、容器曲目与时长 `apple-music:container-tracks:v1:*`、GitHub 增删行的锚 `github-repo:churn`、PageSpeed 样本窗口 `pagespeed:history:v1:*` |
 
 `src/lib/cache` 在这里背后是 KV（`src/storage-driver.ts`）：TTL 最短 60 秒（5 秒的负缓存会活满一分钟），
 `ifAbsent` 是先读后写、不是原子的，也不是锁（同一任务可能被 cron 与 `Collector.refresh` 同时触发，别拿它当互斥），KV 的读还有最长 60 秒的边缘缓存 ——

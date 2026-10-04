@@ -14,7 +14,8 @@ import type {
 import { pulseListeningTracesKey } from "@/lib/pulse-keys";
 import { withStorage } from "@/lib/storage";
 import { LAG_KEYS } from "@shared/lag";
-import { parseListeningTrace, type ListeningTrace } from "@shared/pulse-listening";
+import { playingContainer } from "@shared/apple-music-store";
+import { NEXT_LOOP_MAX, parseListeningTrace, type ListeningTrace } from "@shared/pulse-listening";
 import { desktopPayload, snapshotFrom, syncTelemetryState } from "@shared/telemetry";
 
 async function syncForRead(): Promise<Liveness> {
@@ -32,7 +33,7 @@ export async function getTimezonePayload(): Promise<TimezonePayload | LagResult<
   return entry ? new LagResult(payload, entry.updatedAt) : payload;
 }
 
-const ELSEWHERE_TRACES = 40;
+const ELSEWHERE_TRACES = Math.max(40, 2 * NEXT_LOOP_MAX);
 
 export async function readRecentListeningTraces(): Promise<ListeningTrace[]> {
   const rows: unknown[] = await withStorage((storage) => storage.listRange(pulseListeningTracesKey(), -ELSEWHERE_TRACES, -1), []);
@@ -43,8 +44,13 @@ export async function readRecentListeningTraces(): Promise<ListeningTrace[]> {
 }
 
 export async function getNowListeningSnapshot(): Promise<NowListeningSnapshot> {
-  const [, homePod, traces] = await Promise.all([syncTelemetryState(), getHomePodSnapshot(), readRecentListeningTraces()]);
-  return { ...snapshotFrom(homePod), traces };
+  const [, homePod, traces, playing] = await Promise.all([
+    syncTelemetryState(),
+    getHomePodSnapshot(),
+    readRecentListeningTraces(),
+    playingContainer.get(),
+  ]);
+  return { ...snapshotFrom(homePod), traces, container: playing?.container ?? null };
 }
 
 export async function getNowListening(): Promise<NowListeningPayload> {

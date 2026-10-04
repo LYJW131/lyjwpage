@@ -1,7 +1,7 @@
 import { homePodTrackEnd, homePodVisibleAt, homePodVisibleUntil } from "@/lib/homepod-store";
 import { LISTENING_ELSEWHERE_HOLD_MS } from "@/lib/limits";
 import { offlineByLiveness, type Liveness } from "@/lib/reporter-liveness";
-import type { LocalNowPlaying, NowListeningElsewhere, RecentTrack } from "@/lib/types";
+import type { LocalNowPlaying, NowListeningElsewhere, NowListeningNext, PlayingContainer, RecentTrack } from "@/lib/types";
 import { PULSE_STATE_HOLD_MS, pulseText, type ListeningFacts, type ObservationHold } from "@shared/pulse-timeline";
 
 export function listeningObservation(
@@ -223,8 +223,9 @@ export function inferredPlays(traces: ListeningTrace[]): InferredPlay[] {
 
 // 最后推出的那首还没按时长放完就当它此刻还在放，放完再留 LISTENING_ELSEWHERE_HOLD_MS 等下一首被看见；
 // 不知道中途暂停或停播。
-export function playingElsewhere(traces: ListeningTrace[], now: number): NowListeningElsewhere | null {
-  const last = inferredPlays(traces).at(-1);
+export function playingElsewhere(traces: ListeningTrace[], now: number, container: PlayingContainer | null = null): NowListeningElsewhere | null {
+  const plays = inferredPlays(traces);
+  const last = plays.at(-1);
   if (!last?.title || !last.durationMs || now < last.from || now >= last.from + last.durationMs + LISTENING_ELSEWHERE_HOLD_MS) return null;
   return {
     title: last.title,
@@ -235,7 +236,63 @@ export function playingElsewhere(traces: ListeningTrace[], now: number): NowList
     startedAt: last.from,
     durationMs: last.durationMs,
     marginMs: last.marginMs,
+    next: predictedNext(plays, container),
   };
+}
+
+// 相邻两首之间停得比这久就算另一段，下一首的规则只看最后这一段。
+export const LISTENING_SESSION_GAP_MS = 10 * 60 * 1000;
+
+// 顺序规则要连着这么多首（含正在放的）对上容器里相邻的歌：随机播放时偶然连对一步的机会约是 1 / (曲数 - 1)。
+export const NEXT_IN_ORDER_MIN_RUN = 3;
+
+// 循环规则最长认这么多首一轮；要看到完整重复一轮，读取的痕迹至少得有两倍。
+export const NEXT_LOOP_MAX = 12;
+
+type Song = { id: string | null; songId: string | null; title: string | null; artist: string | null };
+
+function sameTrack(a: Song, b: Song): boolean {
+  return (!!a.songId && a.songId === b.songId) || (!!a.id && a.id === b.id) || sameSong(a, b);
+}
+
+function lastSession(plays: InferredPlay[]): Song[] {
+  let start = plays.length - 1;
+  while (start > 0 && plays[start].from - plays[start - 1].to <= LISTENING_SESSION_GAP_MS) start -= 1;
+  return plays.slice(Math.max(0, start)).map((play) => ({ id: play.itemId, songId: play.songId, title: play.title, artist: play.artist }));
+}
+
+// 循环优先：手动凑的几首若恰好在歌单里相邻，顺序规则会猜成这几首之后的那首。
+export function predictedNext(plays: InferredPlay[], container: PlayingContainer | null): NowListeningNext | null {
+  const session = lastSession(plays);
+  const next = nextInLoop(session) ?? nextInOrder(session, container);
+  const title = pulseText(next?.song.title);
+  return next && title ? { title, artist: pulseText(next.song.artist), songId: pulseText(next.song.songId, 80), basis: next.basis } : null;
+}
+
+function nextInLoop(session: Song[]): { song: Song; basis: "loop" } | null {
+  const n = session.length;
+  for (let length = 2; length <= NEXT_LOOP_MAX && 2 * length <= n; length += 1) {
+    let repeated = true;
+    for (let back = 0; back < length && repeated; back += 1) repeated = sameTrack(session[n - 1 - back], session[n - 1 - back - length]);
+    if (repeated) return { song: session[n - length], basis: "loop" };
+  }
+  return null;
+}
+
+// 正在放的歌在容器里可能出现不止一次：取往前连对最长的那处，两处一样长又指向不同的下一首就不猜。放到最后一首不猜（不知道是否整单循环）。
+function nextInOrder(session: Song[], container: PlayingContainer | null): { song: Song; basis: "order" } | null {
+  const tracks = container?.tracks ?? [];
+  let best: { run: number; song: Song } | null = null;
+  let tied = false;
+  for (let index = 0; index + 1 < tracks.length; index += 1) {
+    let run = 0;
+    while (run < session.length && run <= index && sameTrack(session[session.length - 1 - run], tracks[index - run])) run += 1;
+    if (run < NEXT_IN_ORDER_MIN_RUN || (best && run < best.run)) continue;
+    const song = tracks[index + 1];
+    if (best && run === best.run) tied ||= !sameTrack(best.song, song);
+    else { best = { run, song }; tied = false; }
+  }
+  return best && !tied ? { song: best.song, basis: "order" } : null;
 }
 
 // 照推断接着放，下一首最晚在这一刻排进列表最前；已经过了（停了、暂停了或推断有误）就没有。
