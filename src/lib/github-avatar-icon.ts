@@ -1,4 +1,6 @@
 import { cacheLife } from "next/cache";
+
+import { FIRST_SCREEN_LIFE } from "@/lib/first-screen";
 import sharp from "sharp";
 
 import { site } from "@/lib/site";
@@ -40,7 +42,7 @@ async function githubAvatarSource(buildId: string): Promise<Uint8Array | null> {
       console.error("[github-avatar]", error instanceof Error ? error.message : String(error), url.pathname);
     }
   }
-  cacheLife("minutes");
+  cacheLife(FIRST_SCREEN_LIFE);
   return null;
 }
 
@@ -64,7 +66,7 @@ export async function githubAvatarDataUri(): Promise<string | null> {
       "[github-avatar] 内联失败，回退远端",
       error instanceof Error ? error.message : String(error),
     );
-    cacheLife("minutes");
+    cacheLife(FIRST_SCREEN_LIFE);
     return null;
   }
 }

@@ -44,6 +44,9 @@ const nextConfig: NextConfig = {
   distDir: process.env.NEXT_DIST_DIR || ".next",
   // Cache Components 会拒绝包括 runtime="nodejs" 在内的旧式段配置。
   cacheComponents: true,
+  // Next 默认把 Chrome-Lighthouse 列为「只认整页 HTML 的 bot」，PPR 路由对它绕过静态壳整页动态渲染；
+  // PageSpeed 每小时跑一轮，就把首页重渲一轮。站点元数据全是静态的，没有需要阻塞输出的 bot，用一个永不匹配的哨兵关掉。
+  htmlLimitedBots: /lyjwpage-no-html-limited-bot/,
   async rewrites() {
     const explainer = { source: "/explainer", destination: "/explainer/index.html" };
     if (!R2_ORIGIN) return [explainer];

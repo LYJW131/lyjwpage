@@ -1,6 +1,7 @@
 import { cacheLife } from "next/cache";
 
 import { type CommitAuthor, authorFromTrailer, mergeAuthors, parseCoAuthors } from "@/lib/commit-authors";
+import { FIRST_SCREEN_LIFE } from "@/lib/first-screen";
 import { repoIdFromUrl } from "@/lib/github-repo";
 import { site } from "@/lib/site";
 
@@ -85,7 +86,7 @@ export async function getRecentCommits(): Promise<GithubRecentCommit[]> {
     const body = (await response.json().catch(() => null)) as CommitListItem[] | null;
     if (!response.ok || !Array.isArray(body)) {
       console.error("[github-commits]", response.status, "最近提交响应不是预期的形状");
-      cacheLife("minutes");
+      cacheLife(FIRST_SCREEN_LIFE);
       return [];
     }
     // REST 只关联主作者；GraphQL authors 包含 GitHub 识别的协作者及其真实头像。
@@ -94,12 +95,13 @@ export async function getRecentCommits(): Promise<GithubRecentCommit[]> {
       try {
         const shas = body.map(item => item.sha).filter((sha): sha is string => !!sha && /^[a-f0-9]{40}$/i.test(sha));
         const fields = shas.map((sha, i) => `c${i}: object(oid: "${sha}") { ... on Commit { authors(first: 100) { nodes { name avatarUrl user { login } } } } }`).join("\n");
+        // GraphQL 的失败也是 200 加 errors，不能让 fetch 缓存把它存下来。
         const response = await fetch("https://api.github.com/graphql", {
-          method: "POST", headers, cache: "force-cache", signal: AbortSignal.timeout(8_000),
+          method: "POST", headers, cache: "no-store", signal: AbortSignal.timeout(8_000),
           body: JSON.stringify({ query: `query { repository(owner: ${JSON.stringify(owner)}, name: ${JSON.stringify(name)}) { ${fields} } }` }),
         });
-        const result = await response.json() as { data?: { repository?: Record<string, { authors?: { nodes?: { name: string; avatarUrl: string; user: { login: string } | null }[] } }> } };
-        if (!response.ok || !result.data?.repository) throw new Error("GitHub authors unavailable");
+        const result = await response.json() as { data?: { repository?: Record<string, { authors?: { nodes?: { name: string; avatarUrl: string; user: { login: string } | null }[] } }> }; errors?: unknown[] };
+        if (!response.ok || result.errors?.length || !result.data?.repository) throw new Error("GitHub authors unavailable");
         shas.forEach((sha, i) => {
           const nodes = result.data?.repository?.[`c${i}`]?.authors?.nodes;
           if (nodes?.length) githubAuthors.set(sha, nodes.map(author => ({
@@ -128,18 +130,18 @@ export async function getRecentCommits(): Promise<GithubRecentCommit[]> {
       ];
     });
     if (commits.length === 0) {
-      cacheLife("minutes");
+      cacheLife(FIRST_SCREEN_LIFE);
       return commits;
     }
     if (commits.every(commit => githubAuthors.has(commit.sha))) cacheLife("max");
-    else cacheLife("minutes");
+    else cacheLife(FIRST_SCREEN_LIFE);
     return commits;
   } catch (error) {
     console.error(
       "[github-commits]",
       error instanceof Error ? error.message : String(error),
     );
-    cacheLife("minutes");
+    cacheLife(FIRST_SCREEN_LIFE);
     return [];
   }
 }
