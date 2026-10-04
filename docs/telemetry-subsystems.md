@@ -177,9 +177,9 @@ coding agent 的 token 用量有三个来源。来源只报自己观测到的原
 - 同一 agent 有账号级来源时只算它，其余来源的同 agent 账本标 `superseded`、不相加；只有设备级 / 环境级来源时相加（claude 的本机与云端，前提是云端遥测变量只配在云端）。规则在 `shared/coding-usage-sources.ts#resolveCodingUsageSources`。
 - 日子或会话数变了才重算视图与年度（`shared/coding-usage-view.ts#buildCodingUsageView`）：合计、全部历史的前三模型、各 agent 最近一个有行的站点日、各来源状态，以及年度视图每天的合计与前几名模型；只有状态变了就在存着的视图上换状态，不重扫日行。Mac、agents 采集时刻比存着的旧的账本不收；云端 OTLP 的账本由状态核心按提交顺序做差攒出，不走这道淘汰，也只收 cumulative 时序。存储键与归档见 [coding agent 的 token 用量](../workers/api/README.md#coding-agent-的-token-用量)。
 - 三条读出口都在实时层（`src/lib/coding-usage.ts`）：
-  - `/api/status/coding`：视图原样给，读 KV 镜像（可滞后层），不推送，按 `STATUS_VIEWS.coding.cadenceMs` 轮询。
+  - `/api/status/coding`：视图原样给，不推送，卡片自己轮询。
   - `/api/status/coding/now`：各 agent 各来源最近一条事件，带 Mac 的存活；变了推 `coding-now`，带整份。
-  - `/api/status/coding/year`：按站点今天切出 53 周（`src/lib/coding-year.ts#encodeCodingYear`），任一来源有日行就出图；读 KV 镜像（可滞后层），不推送、没有首屏失效，按 `STATUS_VIEWS.codingYear.cadenceMs` 轮询、切回标签页时再取；首屏那份的 `updatedAt` 已超过轮询间隔时挂载补取一次（`src/lib/poll-schedule.ts#lagOverdue`）。
+  - `/api/status/coding/year`：按站点今天切出 53 周（`src/lib/coding-year.ts#encodeCodingYear`），任一来源有日行就出图；不推送、没有首屏失效，年度图自己长间隔轮询、切回标签页时再取；首屏那份放得比轮询间隔还久时挂载补取一次（`src/lib/poll-schedule.ts#fallbackOutlived`）。
 
 ### 卡片怎么判
 - 展示名、品牌图标、占哪种行（全量面板、紧凑行、只进合计与年度不单独占行）只在站点登记表 `src/lib/coding-agents.ts#CODING_AGENTS`；来源只报 agent id，登记表里没有的 id 用 id 当名字、占一行紧凑行。

@@ -83,22 +83,8 @@
 
 读出口在 `src/lib/coding-usage.ts`：`/api/status/coding` 原样给视图，`/api/status/coding/now` 与推送用同一个
 `buildCodingNowAgents` 拼、外加 Mac 存活，`/api/status/coding/year` 按站点今天切出 53 周（371 天）并编码成
-`days/models/mix`（`src/lib/coding-year.ts` 的 `encodeCodingYear`）。`coding` 与 `coding/year` 归可滞后层：读 KV 里的镜像
-（`coding-usage:v1`、`coding-year:v1`），不唤醒 StateHub；`coding/now` 归实时层、读 DO 并推送。镜像由 StateHub 写，见下面「DO 视图的 KV 镜像」。
+`days/models/mix`（`src/lib/coding-year.ts` 的 `encodeCodingYear`）。三条都归实时层，只有 `coding/now` 推送。
 展示名、图标、哪几个 agent 画全量面板由站点登记表 `src/lib/coding-agents.ts` 定，来源只报 id。
-
-### DO 视图的 KV 镜像
-
-必须由 DO 串行算出、但读时可以滞后的视图，算好后镜像进 `LAG`，公开端点只读镜像。登记表是
-`src/lag-mirror.ts#MIRRORS`（DO 存储键 → `LAG_KEYS` 键 + 解析函数）。
-
-- 提交源视图的同一批写里设待写标记（`markLagPending`），标记和视图一起落库或一起回滚。
-- `StateHub.commitIngest` 在同一条串行队列里、回执返回前调 `flushLagMirrors`：按标记把视图整份写进 KV，写成才清标记。
-  首屏失效由 StateCore 拿到回执后派发，所以 KV 先于重建写好。
-- KV 写失败（含同键每秒一次的写入上限）只记 warn，不让上报失败；标记留着，挂 `LAG_RETRY_MS` 后的闹钟，`alarm()`
-  排进同一条队列再补写。
-- 镜像集合（`LAG_MIRROR_SET`）和 metadata 里记的不同时，StateHub 构造时把全部镜像标成待写并立刻挂闹钟，新增镜像
-  不必等源视图下一次变化。Preview 不绑 `LAG`，不写镜像，读不到时由上游补。
 
 本地预览用夹具（`dev-fixtures/coding-*.json`）：`/api/status/coding` 有 `coding-multi-source`（三个来源都在）、
 `coding-mac-only`、`coding-no-mac`（只有 Cursor 账号与云端）、`coding-claude-cloud-today`（Mac 一整天没报、Claude 今天只有云端）、

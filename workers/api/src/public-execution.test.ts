@@ -33,18 +33,6 @@ test("可滞后层端点只读 KV，不调用 StateHub", async (t) => {
   assert.deepEqual(calls, []);
 });
 
-test("coding 年度视图从 KV 镜像读出，不调用 StateHub", async (t) => {
-  installLagStoreForTests(async (key) =>
-    key === LAG_KEYS.codingYear ? { updatedAt: 7, data: { updatedAt: 7, days: {} } } : null,
-  );
-  t.after(() => installLagStoreForTests(null));
-  const { calls, run } = harness(false);
-  const body = (await (await run("/api/status/coding/year")).json()) as { ok: boolean; updatedAt: number };
-  assert.equal(body.ok, true);
-  assert.equal(body.updatedAt, 7);
-  assert.deepEqual(calls, []);
-});
-
 test("实时层与开着注入的端点都不再单独调用屏障", async (t) => {
   const previous = process.env.DEV_OVERRIDES;
   t.after(() => {
