@@ -97,7 +97,7 @@ test("缓存读出错时照常回源", async () => {
 });
 
 test("键里的字符都经过编码，落在保留前缀下", () => {
-  const request = edgeCacheRequest("https://api.example", "motion-artwork:v1:cn:album:1:https%3A%2F%2Fmusic.apple.com%2F?x=1");
+  const request = edgeCacheRequest("https://api.example", "motion-artwork:v2:cn:album:1:https%3A%2F%2Fmusic.apple.com%2F?x=1");
   const url = new URL(request.url);
   assert.equal(url.origin, "https://api.example");
   assert.ok(url.pathname.startsWith("/__edge-cache/v2/"));

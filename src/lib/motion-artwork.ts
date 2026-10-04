@@ -13,15 +13,17 @@ export interface MotionResult {
 export const NO_MOTION: MotionResult = { hasMotion: false, videoUrl: null, colors: null };
 
 const MOTION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+// 专辑发行后动态封面常常晚几天才补上，「没有」不是定论，不能和查到的结果一样长存。
+const NO_MOTION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
-export function motionTtlMs(): number {
-  return MOTION_TTL_MS;
+export function motionTtlMs(result: MotionResult): number {
+  return result.hasMotion ? MOTION_TTL_MS : NO_MOTION_TTL_MS;
 }
 
 export function motionArtworkCacheKey(parsed: AppleMusicParsed): string {
   return parsed.albumId
-    ? `motion-artwork:v1:${parsed.storefront}:album:${parsed.albumId}`
-    : `motion-artwork:v1:${parsed.storefront}:song:${parsed.songId}`;
+    ? `motion-artwork:v2:${parsed.storefront}:album:${parsed.albumId}`
+    : `motion-artwork:v2:${parsed.storefront}:song:${parsed.songId}`;
 }
 
 export async function resolveMotionArtwork(parsed: AppleMusicParsed): Promise<MotionResult> {

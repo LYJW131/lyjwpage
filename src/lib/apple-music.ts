@@ -62,6 +62,8 @@ export async function appleFetchRaw<T>(url: string, credentials: Credentials): P
 }
 
 const TRACK_LINK_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+// 新歌发行当天目录常搜不到、歌词也常晚几天才上，「没查到」「没歌词」不是定论，短存。
+const TRACK_MISS_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 // 同一曲目可能在多个专辑中重复收录；截短候选会漏掉正确版本。
 const SEARCH_LIMIT = 25;
 
@@ -75,8 +77,12 @@ export type TrackLookup = {
 
 // 专辑名必须进 key：同名同艺人但不同专辑是完全不同的链接
 // 缓存形状或匹配策略变化必须换键；旧字符串的 .link 是内建方法，不能当作新对象读取。
+export function trackLookupTtlMs(lookup: TrackLookup): number {
+  return lookup.link && lookup.hasLyrics ? TRACK_LINK_TTL_MS : TRACK_MISS_TTL_MS;
+}
+
 export function trackLookupCacheKey(track: { title: string | null; artist: string | null; album: string | null }): string {
-  return "apple-music:track-lookup:v10:" + [track.title, track.artist, track.album].map(normalizeForMatch).join(":");
+  return "apple-music:track-lookup:v11:" + [track.title, track.artist, track.album].map(normalizeForMatch).join(":");
 }
 
 export async function resolveTrackLookup(track: {
@@ -92,7 +98,7 @@ export async function resolveTrackLookup(track: {
   const cacheKey = trackLookupCacheKey(track);
 
   try {
-    const exact = await cached<TrackLookup>(cacheKey, TRACK_LINK_TTL_MS, async () => {
+    const exact = await cached<TrackLookup>(cacheKey, trackLookupTtlMs, async () => {
       const credentials = await resolveCredentials();
       const storefront = appleStorefront();
       let hit: CatalogSong | undefined;
