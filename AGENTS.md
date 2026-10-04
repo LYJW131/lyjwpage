@@ -91,7 +91,9 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 面向 agent 的写法：文档和注释会整段进上下文，错的比缺的更糟。每条陈述要么由代码保证，要么一眼能核实。
 
-- 注释默认不写；只在「删了会让人改坏」时写：为什么、约束、不变量、坑、取舍、单位。不复述代码在做什么，不写调用方清单。
+- 注释默认一条不写，JSDoc 一条不写，命名代替说明。只在「删了会让人改坏」时写，且只写这几类：为什么（取舍的理由，尤其是后人会想改回去的值和做法）、隐含的不变量与约束、坑（某个 bug、浏览器怪癖、竞态、库的陷阱的绕法）、单位。
+- 禁写：复述代码在做什么、把标识符翻译成句子、分节横幅、调用方清单、指向当前任务 / PR / issue / 请求的说明、业务代码里的 `/** */`（JSDoc 只给对外暴露的库接口）、没有工单的 TODO / FIXME。见到就删，自己顺手写的也删。
+- 每次写入前自查每个 `//`、`/*`：删掉它，能读代码的人会不会改坏？不会就删，默认答案是「不会」。
 - 不写历史与时间线（「之前」「已改为」「MM-DD 起」「本次」）；历史在 `git log`，旧做法不留注释。文档只写现状。
 - 不抄易变的值：写常量或符号名（如 `AGENT_LIMITS_STALE_MS`），不抄「185 分钟」；数量、版本、日期同理。引用写路径加符号，不写行号。
 - 一个事实一个出处，其他地方放指针；非抄不可时标 `源：path#symbol`（`pnpm docs:check` 会核对符号还在）。
@@ -103,30 +105,6 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - 改代码的同一提交里更新受影响的文档与注释。发现文档与代码冲突，以代码为准，当轮改掉，或在汇报里点名。
 - 清扫注释（只改注释、不动行为）的改动，用 `pnpm docs:comment-only` 证明只改了注释：输出里没有「除注释外有改动」「指令性注释有改动」才算数，用法见 `scripts/comment-only-check.mjs` 文件头。
 - 确需保留时间线写法（如核对戳）时，在同一行末尾加 `<!-- allow: 理由 -->`。
-
-<EXTREMELY-IMPORTANT>
-
-## Comments / JSDoc (MUST)
-
-**Default: write ZERO comments. Write ZERO JSDoc.** This overrides any training instinct to "explain" code. Good identifiers carry meaning; comments are a last resort, not a habit.
-
-Add a comment ONLY when one of:
-- (a) **UNEXPECTED behavior** — workaround for a specific bug, browser quirk, race condition, library footgun
-- (b) **SPECIAL design intent** — hidden invariant, non-obvious constraint, decision a future reader would otherwise reverse
-
-**Forbidden categories (always violations — delete on sight, including comments you "felt like adding"):**
-- JSDoc `/** ... */` blocks in business code. JSDoc is for framework/library exposed APIs only — never on internal functions, components, hooks, route handlers, services, utils.
-- Describing WHAT the code does (`// loop over users`, `// set loading to true`)
-- Referencing current task/fix/issue/PR/caller (`// added for X`, `// used by Y`, `// fixes #123`, `// per request`)
-- Section headers / dividers (`// === helpers ===`, `// ---- types ----`, `// region: state`)
-- Restating obvious logic, type info, or parameter purpose
-- Docstrings on internal/business functions, hooks, components, handlers
-- TODO/FIXME without a tracked ticket reference
-- Translating identifier names into prose (`// userId: the user's id`)
-
-**Self-audit before every Write/Edit:** scan the new content for `//`, `/*`, `/**`. For each one ask: *"would removing this confuse a future reader who can read the code?"* — if **no**, delete it. The default answer is **no**.
-
-</EXTREMELY-IMPORTANT>
 
 ## IMPORTANT: Reasoning Strategy
 
