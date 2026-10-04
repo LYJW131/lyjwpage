@@ -20,7 +20,13 @@
       "songId": "1580904298",
       "startedAt": "$now-95000",
       "durationMs": 263322,
-      "marginMs": 2600
+      "marginMs": 2600,
+      "next": {
+        "title": "生命線",
+        "artist": "ReoNa",
+        "songId": "1580904300",
+        "basis": "order"
+      }
     },
     "lastSeenAt": "$now",
     "declaredOffline": false,

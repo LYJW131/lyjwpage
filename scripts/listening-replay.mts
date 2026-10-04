@@ -2,8 +2,10 @@ import {
   absoluteQuantile,
   collectorPlays,
   loadRecordedSession,
+  recordedContainer,
   recordedTruth,
   replayAtCadence,
+  replayNextAtCadence,
   scoreReplay,
 } from "@/lib/testing/listening-replay";
 
@@ -22,3 +24,9 @@ for (const cadenceMs of [15_000, 30_000, 60_000, 300_000]) {
 const range = { from: session.startedAt + session.collector[0][0], to: session.startedAt + session.collector.at(-1)![1] };
 const production = scoreReplay(truth, collectorPlays(session), range);
 console.log(`production collector windows: named right ${percent(production.coverage)}, start error median ${seconds(absoluteQuantile(production.startErrorsMs, 0.5))} / p90 ${seconds(absoluteQuantile(production.startErrorsMs, 0.9))}, missed ${production.plays - production.matched}`);
+console.log("next song, playlist in order | poll every | right / wrong / silent");
+const container = recordedContainer(session);
+for (const cadenceMs of [15_000, 60_000, 300_000]) {
+  const { right, wrong, silent } = replayNextAtCadence(session, container, cadenceMs);
+  console.log(`${seconds(cadenceMs).padStart(10)} | ${right} / ${wrong} / ${silent}`);
+}

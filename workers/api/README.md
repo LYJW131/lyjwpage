@@ -359,6 +359,17 @@ Cursor 使用独立的 `pulse:cursor-observations`：agents 来源的 cursor 活
 有新歌就推一次 `listening-now`：`listening/now` 读取与推送都从同一批痕迹推出 `elsewhere`（此刻大概在别处放的那首，按时长放完后再留
 `LISTENING_ELSEWHERE_HOLD_MS` 等下一首）。`commitRecentTracks` 的回执带 `nextBy`：照推断接着放，下一首最晚这一刻排进列表最前，
 采集 Worker 据此提前补拉一次（`shared/pulse-listening.ts#nextTraceBy`）。api 自己不拉，WebSocket 连上也不触发。
+
+`commitRecentlyPlayed` 的第二个参数是专辑粒度列表最前那个歌单 / 专辑里可播的歌（按容器里的顺序，电台为 null，缺省不动存着的那份），
+变了才写 `apple-music:playing-container:v1` 并推一次 `listening-now`。`elsewhere.next` 是照规则推出的下一首（`shared/pulse-listening.ts#predictedNext`），
+只看最后一段连续播放（相邻两首停得不超过 `LISTENING_SESSION_GAP_MS`）：
+
+- `loop`：最近几首按同样顺序完整重复过一轮（一轮 2 到 `NEXT_LOOP_MAX` 首），下一首照上一轮。手动凑几首循环就是这种。
+- `order`：连着 `NEXT_IN_ORDER_MIN_RUN` 首（含正在放的）对上容器里相邻的歌，下一首是容器里的后一首；放到最后一首不猜，不知道是否整单循环。
+
+两条都成立时用 `loop`。随机播放、刚开始放、换了容器而列表还没跟上时为 null，卡片就不显示 Up Next。
+单曲循环看不出来：列表去重，同一首重放不会再排一次。Apple 不给别的设备上的队列、随机或循环开关，手动插进 Up Next 的歌只能等它放过一轮。
+`scripts/listening-replay.mts` 末尾按录下来的那段歌单顺序播放回放下一首的猜中、猜错与不猜次数，`src/lib/listening-next.test.mts` 守住猜错为零。
 Mac 上报的 Apple Music 凭据在凭据 KV（`shared/credentials.ts`），不向外提供凭据端点；状态读取不触发拉取或广播。
 
 ## MusicKit 令牌

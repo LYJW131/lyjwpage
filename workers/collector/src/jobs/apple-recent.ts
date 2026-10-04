@@ -6,7 +6,7 @@ import {
 } from "@/lib/apple-music";
 import { readAppleMusicCredentials } from "@/lib/apple-music-credentials";
 import { cached, get, put } from "@/lib/cache";
-import type { ListeningItem, RecentTrack } from "@/lib/types";
+import type { ListeningItem, PlayingContainer, RecentTrack } from "@/lib/types";
 
 import { explain, ok, skipMissing, type Job } from "../job";
 import { epochMinute } from "../schedule";
@@ -16,8 +16,9 @@ import { epochMinute } from "../schedule";
 const RECENT_LIMIT = 10;
 const RECENT_TRACKS_LIMIT = 10;
 const RECENT_TRACK_TYPES = "songs,library-songs";
-const DURATION_TTL_MS = 24 * 60 * 60 * 1000;
+const CONTAINER_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_TRACK_PAGES = 5;
+const PLAYABLE_TRACK_TYPES = new Set(["songs", "library-songs"]);
 // 资料库封面是预签名 URL，缓存期限必须短于签名有效期并留出分发余量。
 const LIBRARY_ARTWORK_TTL_MS = 12 * 60 * 60 * 1000;
 const USER_PLAYLIST_PREFIX = "pl.u-";
@@ -107,13 +108,13 @@ type AppleTrack = {
   };
 };
 
-type TrackRelationship = {
-  data?: Array<{ attributes?: { durationInMillis?: number } }>;
+type TrackPage = {
+  data?: AppleTrack[];
   next?: string;
 };
 
 type ContainerDetail = {
-  relationships?: { tracks?: TrackRelationship };
+  relationships?: { tracks?: TrackPage };
 };
 
 type CatalogPlaylistWithLibrary = {
@@ -160,33 +161,41 @@ async function libraryPlaylistCover(id: string, credentials: Credentials): Promi
   }
 }
 
-async function containerDuration(
+// 第一页随容器一起取（include=tracks），后续页是 tracks 关系的 next，响应直接是曲目列表。
+// 时长按全部条目相加（含 MV），曲目顺序只留可播的歌。
+async function containerTracks(
   resource: AppleResource,
   credentials: Credentials,
-): Promise<number> {
+): Promise<{ durationMs: number; tracks: RecentTrack[] }> {
   const href = resource.href;
   const id = resource.id;
-  if (!href || !id) return 0;
+  if (!href || !id) return { durationMs: 0, tracks: [] };
 
-  return cached(`apple-music:duration:v1:${id}`, DURATION_TTL_MS, async () => {
-    let total = 0;
-    let url: string | undefined = `${href}?include=tracks`;
-
-    for (let page = 0; page < MAX_TRACK_PAGES && url; page += 1) {
-      const detail: ContainerDetail[] = await appleFetchList<ContainerDetail>(
-        url.startsWith("http") ? url : `https://api.music.apple.com${url}`,
-        credentials,
-      );
-
-      const tracks: TrackRelationship | undefined = detail[0]?.relationships?.tracks;
-      for (const track of tracks?.data ?? []) {
-        total += Number(track.attributes?.durationInMillis) || 0;
-      }
-      url = tracks?.next;
+  return cached(`apple-music:container-tracks:v1:${id}`, CONTAINER_TTL_MS, async () => {
+    const [detail] = await appleFetchList<ContainerDetail>(`https://api.music.apple.com${href}?include=tracks`, credentials);
+    let page = detail?.relationships?.tracks;
+    const rows: AppleTrack[] = [...(page?.data ?? [])];
+    for (let fetched = 1; fetched < MAX_TRACK_PAGES && page?.next; fetched += 1) {
+      page = await appleFetchRaw<TrackPage>(`https://api.music.apple.com${page.next}`, credentials);
+      rows.push(...(page?.data ?? []));
     }
-
-    return total;
+    return {
+      durationMs: rows.reduce((total, row) => total + (Number(row.attributes?.durationInMillis) || 0), 0),
+      tracks: rows.flatMap((row) => PLAYABLE_TRACK_TYPES.has(row.type ?? "") ? recentTrack(row) : []),
+    };
   });
+}
+
+function recentTrack(track: AppleTrack): RecentTrack[] {
+  return track.id ? [{
+    id: String(track.id),
+    title: track.attributes?.name ?? "",
+    artist: track.attributes?.artistName ?? "",
+    album: track.attributes?.albumName ?? null,
+    durationMs: Number(track.attributes?.durationInMillis) || null,
+    songId: track.attributes?.playParams?.catalogId ?? (track.type === "songs" ? String(track.id) : null),
+    artworkUrl: track.attributes?.artwork?.url ?? null,
+  }] : [];
 }
 
 async function normalize(
@@ -210,7 +219,8 @@ async function normalize(
   };
 }
 
-export async function assemble(credentials: Credentials): Promise<ListeningItem[]> {
+// 取曲目失败时 container 缺省，状态核心保留上一份；null 只表示最前那个资源没有可播的歌（电台）。
+export async function assemble(credentials: Credentials): Promise<{ items: ListeningItem[]; container?: PlayingContainer | null }> {
   const resources = await appleFetchList<AppleResource>(
     `https://api.music.apple.com/v1/me/recent/played?limit=${RECENT_LIMIT}`,
     credentials,
@@ -221,12 +231,17 @@ export async function assemble(credentials: Credentials): Promise<ListeningItem[
   );
 
   const top = resources[0];
-  if (top && items[0]) {
-    const durationMs = await containerDuration(top, credentials).catch(() => 0);
-    if (durationMs > 0) items[0] = { ...items[0], durationMs };
-  }
-
-  return items;
+  if (!top || !items[0]) return { items, container: null };
+  const found = await containerTracks(top, credentials).catch(() => null);
+  if (!found) return { items };
+  const { durationMs, tracks } = found;
+  if (durationMs > 0) items[0] = { ...items[0], durationMs };
+  return {
+    items,
+    container: tracks.length
+      ? { id: items[0].id, tracks: tracks.map(({ id, songId, title, artist }) => ({ id, songId: songId ?? null, title, artist })) }
+      : null,
+  };
 }
 
 export async function assembleRecentTracks(credentials: Credentials): Promise<RecentTrack[]> {
@@ -234,15 +249,7 @@ export async function assembleRecentTracks(credentials: Credentials): Promise<Re
     `https://api.music.apple.com/v1/me/recent/played/tracks?types=${RECENT_TRACK_TYPES}&limit=${RECENT_TRACKS_LIMIT}`,
     credentials,
   );
-  return tracks.slice(0, RECENT_TRACKS_LIMIT).flatMap((track) => track.id ? [{
-    id: String(track.id),
-    title: track.attributes?.name ?? "",
-    artist: track.attributes?.artistName ?? "",
-    album: track.attributes?.albumName ?? null,
-    durationMs: Number(track.attributes?.durationInMillis) || null,
-    songId: track.attributes?.playParams?.catalogId ?? (track.type === "songs" ? String(track.id) : null),
-    artworkUrl: track.attributes?.artwork?.url ?? null,
-  }] : []);
+  return tracks.slice(0, RECENT_TRACKS_LIMIT).flatMap(recentTrack);
 }
 
 export const appleRecentJob: Job = {
@@ -264,7 +271,7 @@ export const appleRecentJob: Job = {
       assembleRecentTracks(resolved).then((list) => ({ list, observedAt: Date.now() })),
     ]);
     if (items.status === "rejected") throw items.reason;
-    const { changed } = await env.CORE.commitRecentlyPlayed(items.value);
+    const { changed } = await env.CORE.commitRecentlyPlayed(items.value.items, items.value.container);
     if (tracks.status === "rejected") throw tracks.reason;
     const { traced, nextBy } = await env.CORE.commitRecentTracks(tracks.value.list, tracks.value.observedAt);
     if (changed || traced) await put(LAST_CHANGE_KEY, now, ACTIVE_HOLD_MS);

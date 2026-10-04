@@ -208,6 +208,14 @@ export type RecentTrack = {
   artworkUrl?: string | null;
 };
 
+// Apple「最近播放」最前那个歌单 / 专辑里可播的歌，按容器里的顺序。id 是资源 id（同 ListeningItem.id）。
+export type PlayingContainer = {
+  id: string;
+  tracks: PlayingContainerTrack[];
+};
+
+export type PlayingContainerTrack = Pick<RecentTrack, "id" | "title" | "artist"> & { songId: string | null };
+
 export type ReporterPresence = {
   lastSeenAt: number;
   declaredOffline: boolean;
@@ -298,6 +306,16 @@ export type NowListeningElsewhere = {
   startedAt: number;
   durationMs: number;
   marginMs: number;
+  // 照规则推出的下一首；随机播放或证据不够时为 null。可能缺席（Worker 先后上线）。
+  next?: NowListeningNext | null;
+};
+
+// basis：loop 是最近几首按同样顺序完整重复过一轮，order 是正按所在歌单 / 专辑的顺序往下放。
+export type NowListeningNext = {
+  title: string;
+  artist: string | null;
+  songId: string | null;
+  basis: "loop" | "order";
 };
 
 export type ChargerPort = {
