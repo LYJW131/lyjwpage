@@ -67,12 +67,23 @@
     return ks[ks.length - 1][1].slice();
   }
 
-  const canvas = document.getElementById("stage");
-  const ctx = canvas.getContext("2d", { alpha: false });
+  const canvas = document.getElementById("hud");
+  const hud = canvas.getContext("2d");
+  let ctx = hud;
   const G = { W, H, C, FONT, E, prog, win, keys, lerp, clamp01, rgba, canvas, ctx, S: 1, cam: { x: W / 2, y: H / 2, z: 1 } };
 
+  G.use = (c) => { ctx = c || hud; G.ctx = ctx; };
   G.resize = (cw, ch) => { canvas.width = cw; canvas.height = ch; G.S = cw / W; };
-  G.begin = () => { ctx.setTransform(G.S, 0, 0, G.S, 0, 0); ctx.fillStyle = C.bg; ctx.fillRect(0, 0, W, H); };
+  G.begin = () => { G.use(hud); ctx.setTransform(G.S, 0, 0, G.S, 0, 0); ctx.clearRect(0, 0, W, H); };
+  G.painter = (w, h, scale = 2) => {
+    const c = document.createElement("canvas");
+    c.width = Math.round(w * scale); c.height = Math.round(h * scale);
+    const cx = c.getContext("2d");
+    return {
+      canvas: c, w, h,
+      paint(fn) { G.use(cx); cx.setTransform(scale, 0, 0, scale, 0, 0); const saved = G.cam; G.cam = { x: w / 2, y: h / 2, z: 1 }; fn(cx); G.cam = saved; G.use(hud); },
+    };
+  };
   G.world = (fn) => {
     ctx.save();
     ctx.translate(W / 2, H / 2); ctx.scale(G.cam.z, G.cam.z); ctx.translate(-G.cam.x, -G.cam.y);

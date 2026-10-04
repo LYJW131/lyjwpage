@@ -1,3 +1,4 @@
+import { S } from "./scene.js";
 (() => {
   const BPM = 96, BAR = (60 / BPM) * 4;
   const params = new URLSearchParams(location.search);
@@ -19,9 +20,9 @@
       cw = r.width; ch = (cw * 9) / 16;
       if (ch > r.height) { ch = r.height; cw = (ch * 16) / 9; }
     }
-    G.canvas.style.width = `${Math.round(cw)}px`;
-    G.canvas.style.height = `${Math.round(ch)}px`;
+    for (const el of [G.canvas, S.renderer.domElement]) { el.style.width = `${Math.round(cw)}px`; el.style.height = `${Math.round(ch)}px`; }
     G.resize(Math.round(cw * dpr), Math.round(ch * dpr));
+    S.resize(Math.round(cw), Math.round(ch), dpr);
     dirty = true;
   }
 
@@ -78,12 +79,13 @@
     await Promise.all(FONTS.map((f) => document.fonts.load(f, "中文Ag").catch(() => {})));
     await document.fonts.ready;
     fit();
+    for (const c of chapters) if (c.init) await c.init();
     if (params.has("t")) T = Math.max(0, Math.min(DURATION - 1e-3, +params.get("t")));
     ui();
     if (!EXPORT) requestAnimationFrame(loop);
     else render(T);
     return true;
   })();
-  window.__seek = (t) => { T = t; render(t); return true; };
+  window.__seek = (t) => { T = t; render(t); S.renderer.getContext().finish(); return true; };
   window.__duration = DURATION;
 })();

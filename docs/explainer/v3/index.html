@@ -18,7 +18,9 @@
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font:500 13px "Geist Mono",ui-monospace,monospace;overflow:hidden}
 #wrap{position:fixed;inset:0 0 56px 0;display:flex;align-items:center;justify-content:center}
-#stage{display:block;background:#000}
+#stage,#hud{display:block;background:transparent}
+#hud{position:fixed;left:50%;top:calc(50% - 28px);transform:translate(-50%,-50%);pointer-events:none}
+body.export #hud{left:0;top:0;transform:none}
 #bar{position:fixed;left:0;right:0;bottom:0;height:56px;display:flex;align-items:center;gap:14px;padding:0 16px;border-top:1px solid #2a2824}
 #bar button{background:none;border:1px solid #3a3731;color:var(--fg);font:inherit;height:30px;padding:0 12px;cursor:pointer;min-width:74px}
 #bar button:hover{border-color:var(--fg)}
@@ -34,14 +36,15 @@ body.export #wrap{inset:0}
 </style>
 </head>
 <body>
-<div id="wrap"><canvas id="stage"></canvas></div>
+<div id="wrap"><canvas id="stage"></canvas><canvas id="hud"></canvas></div>
 <div id="bar">
   <button id="play" type="button">播放</button>
   <div id="scrub"><div class="rail"></div><div class="fill"></div></div>
   <span id="time">0:00 / 0:00</span>
 </div>
+<script type="importmap">{"imports":{"three":"./vendor/three/build/three.module.min.js","three/addons/":"./vendor/three/examples/jsm/"}}</script>
 <script src="engine.js"></script>
-<script src="ch01.js"></script>
-<script src="film.js"></script>
+<script type="module" src="ch01.js"></script>
+<script type="module" src="film.js"></script>
 </body>
 </html>
