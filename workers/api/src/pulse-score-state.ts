@@ -1,11 +1,11 @@
 import { codingObservationsKey, cursorObservationsKey } from "@/lib/coding-pulse";
 import { pulseAssessmentsKey, pulseAssessmentAttemptKey } from "@/lib/pulse-assessments";
-import { PULSE_TTL_MS } from "@/lib/limits";
+import { PULSE_TTL_MS, PULSE_WINDOW_MS } from "@/lib/limits";
 import { codingBucketsKey } from "@shared/coding-store";
 import { CODING_USAGE_SOURCE_NAMES, type CodingUsageSource } from "@shared/coding-usage-sources";
 import { CODING_WINDOW_MS } from "@shared/pulse-coding";
 import { latestPulseAssessments, parsePulseAssessment, type PulseAssessment } from "@shared/pulse-assessment";
-import type { StorageCommand } from "@shared/storage-contract";
+import { LIST_SINCE_MAX_LIMIT, type StorageCommand } from "@shared/storage-contract";
 
 type SqlValue = string | number | null;
 
@@ -96,8 +96,8 @@ export class PulseScoreState implements PulseScoreCoordinator {
     try {
       const results = this.execute([
         { op: "listRange", key: pulseAssessmentsKey(), start: 0, stop: -1 },
-        { op: "listRange", key: codingObservationsKey(), start: 0, stop: -1 },
-        { op: "listRange", key: cursorObservationsKey(), start: 0, stop: -1 },
+        { op: "listSince", key: codingObservationsKey(), field: "t", since: now - PULSE_WINDOW_MS, limit: LIST_SINCE_MAX_LIMIT },
+        { op: "listSince", key: cursorObservationsKey(), field: "t", since: now - PULSE_WINDOW_MS, limit: LIST_SINCE_MAX_LIMIT },
         ...CODING_USAGE_SOURCE_NAMES.map((source): StorageCommand => ({ op: "get", key: codingBucketsKey(source) })),
       ]);
       return {

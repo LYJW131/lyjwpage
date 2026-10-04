@@ -44,6 +44,17 @@ export class FakeStorage extends StorageClient {
         list.push(...command.values);
         return list.length;
       }
+      case "listSince": {
+        const list = entry?.value as string[] ?? [];
+        const rows: string[] = [];
+        for (let index = list.length - 1; index >= 0 && rows.length < command.limit; index -= 1) {
+          rows.push(list[index]!);
+          let at: unknown;
+          try { at = (JSON.parse(list[index]!) as Record<string, unknown>)[command.field]; } catch { at = null; }
+          if (typeof at !== "number" || at <= command.since) break;
+        }
+        return rows.reverse();
+      }
       case "listRange": case "trim": {
         const list = entry?.value as string[] ?? [];
         const from = command.start < 0 ? Math.max(list.length + command.start, 0) : command.start;

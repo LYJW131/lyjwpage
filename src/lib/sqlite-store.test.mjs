@@ -93,12 +93,15 @@ test("SQLite：首尾列表范围按逻辑位置处理断洞与越界", () => {
   db.close();
 });
 
-test("SQLite：尾部裁剪保留逻辑末尾并清理空列表条目", () => {
+test("SQLite：尾部裁剪按序号跨度保留末尾并清理空列表条目", () => {
   const { store, db } = database();
   store.execute([{ op: "append", key: "history", values: ["1", "2", "3", "4", "5", "6"] }]);
-  db.exec("DELETE FROM samples WHERE key = 'history' AND seq IN (2, 5)");
+  store.execute([{ op: "trim", key: "history", start: -4, stop: -1 }]);
+  assert.deepEqual(store.execute([{ op: "listRange", key: "history", start: 0, stop: -1 }]), [["3", "4", "5", "6"]]);
+  db.exec("DELETE FROM samples WHERE key = 'history' AND seq = 5");
   store.execute([{ op: "trim", key: "history", start: -2, stop: -1 }]);
-  assert.deepEqual(store.execute([{ op: "listRange", key: "history", start: 0, stop: -1 }]), [["4", "6"]]);
+  assert.deepEqual(store.execute([{ op: "listRange", key: "history", start: 0, stop: -1 }]), [["6"]], "a hole counts toward the span, not the kept rows");
+  assert.deepEqual(store.execute([{ op: "append", key: "history", values: ["7"] }]), [7], "append answers the last sequence number");
 
   store.execute([{ op: "append", key: "short", values: ["a", "b"] }]);
   store.execute([{ op: "trim", key: "short", start: -5, stop: -1 }]);
@@ -107,6 +110,26 @@ test("SQLite：尾部裁剪保留逻辑末尾并清理空列表条目", () => {
   db.exec("INSERT INTO entries(key, kind) VALUES ('empty', 'list')");
   store.execute([{ op: "trim", key: "empty", start: -5, stop: -1 }]);
   assert.equal(db.prepare("SELECT key FROM entries WHERE key = 'empty'").get(), undefined);
+  db.close();
+});
+
+test("SQLite：按时间边界从新往旧读，带上边界前那一行，条数封顶", () => {
+  const { store, db } = database();
+  const rows = Array.from({ length: 1000 }, (_, i) => JSON.stringify({ t: (i + 1) * 10 }));
+  store.execute([{ op: "append", key: "samples", values: rows }]);
+  const [tail] = store.execute([{ op: "listSince", key: "samples", field: "t", since: 9_955, limit: 500 }]);
+  assert.deepEqual(tail.map((raw) => JSON.parse(raw).t), [9_950, 9_960, 9_970, 9_980, 9_990, 10_000]);
+  const [capped] = store.execute([{ op: "listSince", key: "samples", field: "t", since: 0, limit: 3 }]);
+  assert.deepEqual(capped.map((raw) => JSON.parse(raw).t), [9_980, 9_990, 10_000]);
+  const [all] = store.execute([{ op: "listSince", key: "samples", field: "t", since: -1, limit: 10_000 }]);
+  assert.equal(all.length, 1000);
+  store.execute([{ op: "append", key: "mixed", values: ["not json", JSON.stringify({ t: 5 }), JSON.stringify({ t: 6 })] }]);
+  assert.deepEqual(store.execute([
+    { op: "listSince", key: "mixed", field: "t", since: 0, limit: 10 },
+    { op: "listSince", key: "missing", field: "t", since: 0, limit: 10 },
+  ]), [["not json", '{"t":5}', '{"t":6}'], []]);
+  assert.throws(() => parseCommands([{ op: "listSince", key: "k", field: "t.x", since: 0, limit: 10 }]), /Invalid field/);
+  assert.throws(() => parseCommands([{ op: "listSince", key: "k", field: "t", since: 0, limit: 0 }]), /Invalid limit/);
   db.close();
 });
 

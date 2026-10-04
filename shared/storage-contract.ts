@@ -4,6 +4,7 @@ export type StorageCommand =
   | { op: "set"; key: string; value: string; options?: WriteOptions }
   | { op: "append"; key: string; values: string[] }
   | { op: "listRange" | "trim"; key: string; start: number; stop: number }
+  | { op: "listSince"; key: string; field: string; since: number; limit: number }
   | { op: "expire"; key: string; ttlMs: number }
   | { op: "patch"; key: string; fields: Record<string, string> };
 
@@ -11,6 +12,8 @@ export type StorageResult = string | boolean | number | null | string[] | Record
 
 export const STORAGE_MAX_BYTES = 4 * 1024 * 1024;
 export const STORAGE_MAX_COMMANDS = 128;
+export const LIST_SINCE_MAX_LIMIT = 10_000;
+const JSON_FIELD = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 export function parseCommands(value: unknown): StorageCommand[] {
   if (!Array.isArray(value) || value.length === 0 || value.length > STORAGE_MAX_COMMANDS) {
@@ -35,6 +38,11 @@ export function parseCommands(value: unknown): StorageCommand[] {
         break;
       case "listRange": case "trim":
         if (!Number.isSafeInteger(row.start) || !Number.isSafeInteger(row.stop)) throw new Error("Invalid range");
+        break;
+      case "listSince":
+        if (typeof row.field !== "string" || !JSON_FIELD.test(row.field)) throw new Error("Invalid field");
+        if (!Number.isSafeInteger(row.since)) throw new Error("Invalid range");
+        if (!Number.isSafeInteger(row.limit) || row.limit <= 0 || row.limit > LIST_SINCE_MAX_LIMIT) throw new Error("Invalid limit");
         break;
       case "expire": validTtl(row.ttlMs); break;
       case "patch":

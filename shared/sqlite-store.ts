@@ -78,13 +78,13 @@ export class SqliteStore {
         if (!this.requireKind(key, "hash")) return {};
         return Object.fromEntries(this.sql.exec("SELECT field, value FROM fields WHERE key = ?", key).toArray().map((row) => [String(row.field), String(row.value)]));
       }
+      // 返回末尾序号而不是条数：列表只从头裁掉，序号连续，两者相等；数条数要扫整条列表。
       case "append": {
         this.requireKind(key, "list");
-        if (!command.values.length) return this.count(key);
         this.sql.exec("INSERT OR IGNORE INTO entries(key, kind) VALUES (?, 'list')", key);
         let seq = Number(this.sql.exec("SELECT COALESCE(MAX(seq), 0) AS n FROM samples WHERE key = ?", key).toArray()[0]?.n ?? 0);
         for (const value of command.values) this.sql.exec("INSERT INTO samples(key, seq, value) VALUES (?, ?, ?)", key, ++seq, value);
-        return this.count(key);
+        return seq;
       }
       case "listRange": {
         if (!this.requireKind(key, "list")) return [];
@@ -110,21 +110,40 @@ export class SqliteStore {
         const [offset, limit] = this.range(this.count(key), command.start, command.stop);
         return this.sql.exec("SELECT value FROM samples WHERE key = ? ORDER BY seq LIMIT ? OFFSET ?", key, limit, offset).toArray().map((row) => String(row.value));
       }
+      // 从新往旧按主键分页，读到第一条 field <= since 的行（连它一起带上，跨边界的区间和保持量靠它）就停。
+      case "listSince": {
+        if (!this.requireKind(key, "list")) return [];
+        const path = `$.${command.field}`;
+        const rows: string[] = [];
+        let before: number | null = null;
+        let page = 256;
+        while (rows.length < command.limit) {
+          const chunk = before === null
+            ? this.sql.exec("SELECT seq, value, CASE WHEN json_valid(value) THEN json_extract(value, ?) END AS at FROM samples WHERE key = ? ORDER BY seq DESC LIMIT ?", path, key, Math.min(page, command.limit - rows.length))
+            : this.sql.exec("SELECT seq, value, CASE WHEN json_valid(value) THEN json_extract(value, ?) END AS at FROM samples WHERE key = ? AND seq < ? ORDER BY seq DESC LIMIT ?", path, key, before, Math.min(page, command.limit - rows.length));
+          const batch: Row[] = chunk.toArray();
+          if (!batch.length) break;
+          let stop = false;
+          for (const row of batch) {
+            rows.push(String(row.value));
+            if (typeof row.at !== "number" || row.at <= command.since) { stop = true; break; }
+          }
+          if (stop) break;
+          before = Number(batch[batch.length - 1]!.seq);
+          page *= 4;
+        }
+        return rows.reverse();
+      }
+      // 尾部裁剪按序号跨度：列表只从头裁掉，序号连续，跨度等于条数；按条数定边界要走 OFFSET 扫一遍。
       case "trim": {
         if (!this.requireKind(key, "list")) return true;
         if (command.start < 0 && command.stop === -1) {
-          const keep = -command.start;
-          const boundary = this.sql.exec(
-            "SELECT seq FROM samples WHERE key = ? ORDER BY seq DESC LIMIT 1 OFFSET ?",
-            key,
-            keep - 1,
-          ).toArray()[0];
-          if (boundary) {
-            this.sql.exec("DELETE FROM samples WHERE key = ? AND seq < ?", key, Number(boundary.seq));
+          const last = this.sql.exec("SELECT MAX(seq) AS n FROM samples WHERE key = ?", key).toArray()[0]?.n;
+          if (last === null || last === undefined) {
+            this.remove(key);
             return true;
           }
-          const first = this.sql.exec("SELECT seq FROM samples WHERE key = ? LIMIT 1", key).toArray()[0];
-          if (!first) this.remove(key);
+          this.sql.exec("DELETE FROM samples WHERE key = ? AND seq <= ?", key, Number(last) + command.start);
           return true;
         }
         const [offset, limit] = this.range(this.count(key), command.start, command.stop);

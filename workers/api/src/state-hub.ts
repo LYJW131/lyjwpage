@@ -12,6 +12,8 @@ import { PulseScoreState, type PulseScoreClaim } from "./pulse-score-state";
 import type { PulseAssessment } from "@shared/pulse-assessment";
 import { DEV_OVERRIDE_TTL_MS, overrideIndexStorageKey, overrideStorageKey } from "./dev-overrides";
 
+const READ_OPS: ReadonlySet<StorageCommand["op"]> = new Set(["get", "fields", "listRange", "listSince"]);
+
 export type PulseTick = { archive: PulseArchiveSnapshot; score: PulseScoreClaim | null };
 
 type CommitIngestWire =
@@ -51,7 +53,7 @@ export class StateHub extends DurableObject<Env> {
 
   // 读取与初始化、提交可见性屏障同一次 RPC 完成；null 表示存储尚未初始化。
   async publicRead(commands: StorageCommand[]): Promise<StorageResult[] | null> {
-    if (commands.some((command) => command.op !== "get" && command.op !== "fields" && command.op !== "listRange")) {
+    if (commands.some((command) => !READ_OPS.has(command.op))) {
       throw new Error("publicRead only accepts read commands");
     }
     if (!this.ready()) return null;
@@ -79,7 +81,7 @@ export class StateHub extends DurableObject<Env> {
 
   async execute(commands: StorageCommand[]): Promise<unknown[]> {
     const result = this.database.execute(commands);
-    if (commands.some((command) => command.op !== "get" && command.op !== "fields" && command.op !== "listRange")) {
+    if (commands.some((command) => !READ_OPS.has(command.op))) {
       await this.ensureAlarm();
     }
     return result;

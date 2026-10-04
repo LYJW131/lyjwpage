@@ -250,7 +250,8 @@ const UPSERT_CHARGING_SESSION = `INSERT INTO charging_sessions(started_at, ended
     OR charging_sessions.energy_wh IS NOT excluded.energy_wh OR charging_sessions.device IS NOT excluded.device`;
 const CLAIM_ACTIVITY_REVISION = `INSERT INTO pulse_archive_state(domain, revision) VALUES ('activity_buckets', ?)
   ON CONFLICT(domain) DO UPDATE SET revision = MAX(revision, excluded.revision)`;
-const DELETE_ACTIVITY_RANGE = `DELETE FROM activity_buckets WHERE started_at < ? AND ended_at > ?
+// started_at 是主键：下界让删除只走范围前一天起的索引段，不扫整表历史。
+const DELETE_ACTIVITY_RANGE = `DELETE FROM activity_buckets WHERE started_at >= ? AND started_at < ? AND ended_at > ?
   AND started_at NOT IN (SELECT json_extract(value, '$.from') FROM json_each(?))
   AND (SELECT revision FROM pulse_archive_state WHERE domain = 'activity_buckets') = ?`;
 const REPLACE_ACTIVITY = `INSERT INTO activity_buckets(started_at, ended_at, steps, move_kcal, exercise_minutes)
@@ -485,7 +486,7 @@ export function archiveStatements(db: PulseArchiveDb, snapshot: PulseArchiveStre
       return {
         statements: [
           db.prepare(CLAIM_ACTIVITY_REVISION).bind(snapshot.revision),
-          db.prepare(DELETE_ACTIVITY_RANGE).bind(range.to, range.from, json, snapshot.revision),
+          db.prepare(DELETE_ACTIVITY_RANGE).bind(range.from - DAY_MS, range.to, range.from, json, snapshot.revision),
           db.prepare(REPLACE_ACTIVITY).bind(json, snapshot.revision),
         ],
         watermark: Math.max(watermark, ...buckets.map((bucket) => bucket.to)),

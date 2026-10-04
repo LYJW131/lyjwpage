@@ -57,6 +57,7 @@ export function pulseWindowAt(now: number): PulseWindow {
   return { from: now - PULSE_WINDOW_MS, to: now };
 }
 
+// 只读窗口内的行加紧挨窗口前的那一行（跨边界的区间、保持量靠它）；条数只是上限，别处播放的推断要看到开播在窗口前的那串。
 const TAIL = {
   listening: 1500,
   watching: 500,
@@ -67,6 +68,7 @@ const TAIL = {
   coding: 5000,
   cursor: 2000,
 } as const;
+const TRACE_LOOKBACK_MS = 2 * 60 * 60 * 1000;
 
 function span(window: PulseWindow, from: number, to: number) {
   return { startSec: Math.round((from - window.from) / 1000), endSec: Math.round((to - window.from) / 1000) };
@@ -281,18 +283,18 @@ export async function getPulseStatus(now: number = Date.now()): Promise<PulsePay
   const window = pulseWindowAt(now);
   const empty: unknown[] = [];
   const rows = await withStorage(async (storage) => storage.batch()
-    .listRange(pulseLaneKey("listening"), -TAIL.listening, -1)
+    .listSince(pulseLaneKey("listening"), "to", window.from, TAIL.listening)
     .get(pulseLaneOpenKey("listening"))
-    .listRange(pulseLaneKey("watching"), -TAIL.watching, -1)
+    .listSince(pulseLaneKey("watching"), "to", window.from, TAIL.watching)
     .get(pulseLaneOpenKey("watching"))
-    .listRange(pulseLaneKey("gaming"), -TAIL.gaming, -1)
+    .listSince(pulseLaneKey("gaming"), "to", window.from, TAIL.gaming)
     .get(pulseLaneOpenKey("gaming"))
-    .listRange(pulseListeningTracesKey(), -TAIL.traces, -1)
-    .listRange(pulseChargingKey(), -TAIL.charging, -1)
-    .listRange(pulseActivityKey(), -TAIL.activity, -1)
+    .listSince(pulseListeningTracesKey(), "t", window.from - TRACE_LOOKBACK_MS, TAIL.traces)
+    .listSince(pulseChargingKey(), "t", window.from, TAIL.charging)
+    .listSince(pulseActivityKey(), "to", window.from, TAIL.activity)
     .get(pulseWorkoutsKey())
-    .listRange(codingObservationsKey(), -TAIL.coding, -1)
-    .listRange(cursorObservationsKey(), -TAIL.cursor, -1)
+    .listSince(codingObservationsKey(), "t", window.from, TAIL.coding)
+    .listSince(cursorObservationsKey(), "t", window.from, TAIL.cursor)
     .listRange(pulseAssessmentsKey(), 0, -1)
     .get(codingBucketsKey("mac"))
     .get(codingBucketsKey("agents"))

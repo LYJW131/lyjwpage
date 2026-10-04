@@ -12,7 +12,7 @@ function harness(initial: Record<string, string> = {}) {
       case "set": values.set(command.key, command.value); return true;
       case "remove": return values.delete(command.key) ? 1 : 0;
       case "fields": return {};
-      case "listRange": return [];
+      case "listRange": case "listSince": return [];
       case "patch": return Object.keys(command.fields).length;
       case "append": return command.values.length;
       case "trim": return true;
