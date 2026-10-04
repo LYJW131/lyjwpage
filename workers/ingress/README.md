@@ -43,7 +43,8 @@
 | 415 | `{ ok: false, error: "不支持的压缩：<编码>" }` | 只在 OTLP 路由：`Content-Encoding` 不是 `identity` / `gzip` |
 | 400 | `{ ok: false, error: "无法读取上报数据" }` | 读不出请求体（含解压失败、解压后超过 `STORAGE_MAX_BYTES`） |
 | 503 | `{ ok: false, error: "状态存储初始化中" }` | 状态核心还没初始化；报文是 JSON 但校验不过时也先回这个（不是 JSON 直接 400） |
-| 400 | `{ ok: false, error: "上报数据无效或处理失败" }` | 报文不是 JSON、校验不过、状态核心拒收或调不通、写 KV 失败 |
+| 503 | `{ ok: false, error: "状态存储暂时不可用，请重试" }` | 状态核心的 Durable Object 正在重置（发布新版本）、过载或连接断开（回执带 `retryable`，或 RPC 抛出带 `retryable` 的错）；归档与 KV 都不写，上报器整封重发 |
+| 400 | `{ ok: false, error: "上报数据无效或处理失败" }` | 报文不是 JSON、校验不过、状态核心拒收、写 KV 失败 |
 
 `mac` 与 `agents` 的 202 `data` 另带入口自己判下的两件事，两个键总在，空数组就是没有：
 
@@ -79,7 +80,7 @@ prepare 之后，一封上报按数据层拆开（`src/worker.ts` 的 `commitIng
    布局变了才失效首屏 —— 失效要 `REVALIDATE_SECRET`，只在状态核心上，所以请它代发（`StateCore.revalidate`）。
 4. **Apple Music user token**（Mac 的 `appleMusicCredentials` 模块）写凭据 KV `CREDENTIALS`，写完才回 202。
 
-状态核心拒收时后三步都不做，回 400。唯一的例外是 iPhone：训练收下、圆环被拒（prepare 记下 `failure.stage = beforeActivity`，
+状态核心拒收时后三步都不做，回 400；它暂时不可用（Durable Object 重置、过载、连接断开）同样三步都不做，回 503 让上报器整封重发。唯一的例外是 iPhone：训练收下、圆环被拒（prepare 记下 `failure.stage = beforeActivity`，
 状态核心已经落了训练区间）时，可滞后层和归档照同样的口径写训练列表，再回 400，上报器整封重发。
 
 校验不过时才问一次状态核心 `ready()`：未初始化回 503 的优先级高于校验 400；

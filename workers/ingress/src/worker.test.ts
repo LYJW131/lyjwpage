@@ -236,6 +236,16 @@ test("receipts: 202 carries the state core's data; readiness and validation keep
 
   const broken = world({ reply: () => { throw new Error("RPC reset"); } });
   assert.equal((await broken.send("/api/ingest/homepod", post({ state: "playing", title: "x" }))).status, 400);
+
+  const transient = world({ reply: () => ({ ready: true, ok: false, error: "Durable Object reset because its code was updated.", retryable: true }) });
+  const retryLater = await transient.send("/api/ingest/homepod", post({ state: "playing", title: "x" }));
+  assert.equal(retryLater.status, 503, "a transient state core failure must not look like a bad report");
+  assert.deepEqual(await json(retryLater), { ok: false, error: "状态存储暂时不可用，请重试" });
+  assert.equal(transient.lag.writes, 0);
+  assert.equal(transient.calls.archived.length, 0);
+
+  const severed = world({ reply: () => { throw Object.assign(new Error("Network connection lost."), { retryable: true }); } });
+  assert.equal((await severed.send("/api/ingest/homepod", post({ state: "playing", title: "x" }))).status, 503);
 });
 
 test("bodies are bounded by the bytes actually read", async () => {
