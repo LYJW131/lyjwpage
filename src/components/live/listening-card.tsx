@@ -49,6 +49,7 @@ import type {
   ListeningItem,
   ListeningPayload,
   LocalNowPlaying,
+  NowListeningElsewhere,
   NowListeningNext,
   NowListeningPayload,
   StatusResponse,
@@ -434,10 +435,10 @@ const NEXT_BASIS = {
   order: { label: "In Order", hint: "Guessed from where it is in the playlist or album" },
 } as const;
 
-function NextBadge({ basis }: { basis: NowListeningNext["basis"] }) {
+function NextBadge({ basis, className }: { basis: NowListeningNext["basis"]; className?: string }) {
   return (
     <span
-      className="inline-flex shrink-0 items-center rounded-sm border border-dashed border-line px-1.5 py-px text-[10px] leading-4 text-muted-foreground"
+      className={cn("inline-flex shrink-0 items-center rounded-sm border border-dashed border-line px-1.5 py-px text-[10px] leading-4 text-muted-foreground", className)}
       title={NEXT_BASIS[basis].hint}
     >
       {NEXT_BASIS[basis].label}
@@ -529,6 +530,7 @@ type Hero = {
   track: LocalNowPlaying | null;
   motion: TrackMotion | null;
   estimatedMarginMs?: number;
+  predictedBasis?: NowListeningNext["basis"];
 };
 
 export function ListeningCard({
@@ -580,7 +582,9 @@ export function ListeningCard({
   const [elsewhereTick, setElsewhereTick] = useState(0);
   const { mutate } = useSWRConfig();
   const inferred = live?.elsewhere ?? null;
-  const inferredUntil = inferred ? inferred.startedAt + inferred.durationMs + LISTENING_ELSEWHERE_HOLD_MS : null;
+  const inferredEnd = inferred ? inferred.startedAt + inferred.durationMs : null;
+  const inferredUntil = inferredEnd == null ? null : inferredEnd + LISTENING_ELSEWHERE_HOLD_MS;
+  const handoffAt = inferred?.next?.durationMs ? inferredEnd : null;
   useEffect(() => {
     if (inferredUntil == null) return;
     const timer = window.setTimeout(() => {
@@ -589,8 +593,29 @@ export function ListeningCard({
     }, Math.max(250, inferredUntil - Date.now() + 250));
     return () => window.clearTimeout(timer);
   }, [inferredUntil, mutate]);
+  useEffect(() => {
+    if (handoffAt == null) return;
+    const timer = window.setTimeout(() => setElsewhereTick(Date.now()), Math.max(0, handoffAt - Date.now() + 50));
+    return () => window.clearTimeout(timer);
+  }, [handoffAt]);
   const clock = Math.max(elsewhereTick, mountedAt);
-  const elsewhere = !localActive && inferred && clock > 0 && clock < inferredUntil! ? inferred : null;
+  const shownElsewhere = !localActive && inferred && clock > 0 && clock < inferredUntil! ? inferred : null;
+  // 放完到下一首被看见之间先换成猜的那首；key 与确认后的同一首一致，确认时 Hero 不重播入场动画。
+  const predicted = shownElsewhere?.next?.durationMs && clock >= inferredEnd! ? shownElsewhere.next : null;
+  const elsewhere: (NowListeningElsewhere & { basis?: NowListeningNext["basis"] }) | null = shownElsewhere && predicted
+    ? {
+        title: predicted.title,
+        artist: predicted.artist,
+        album: null,
+        artworkUrl: predicted.artworkUrl,
+        songId: predicted.songId,
+        startedAt: inferredEnd!,
+        durationMs: predicted.durationMs!,
+        marginMs: shownElsewhere.marginMs,
+        next: null,
+        basis: predicted.basis,
+      }
+    : shownElsewhere;
 
   // 目录查询失败不代表停播；同一曲目保留解析结果，换曲后禁止沿用。
   const trackKey = localTrack
@@ -718,6 +743,7 @@ export function ListeningCard({
           },
           motion: null,
           estimatedMarginMs: elsewhere.marginMs,
+          predictedBasis: elsewhere.basis,
         }
     : latest
       ? {
@@ -852,7 +878,9 @@ export function ListeningCard({
                         >
                           {hero.label}
                         </span>
-                        {hero.track && hero.estimatedMarginMs != null ? (
+                        {hero.track && hero.predictedBasis ? (
+                          <NextBadge basis={hero.predictedBasis} className="ml-0.5" />
+                        ) : hero.track && hero.estimatedMarginMs != null ? (
                           <span
                             className="ml-0.5 inline-flex min-w-0 items-center rounded-sm border border-dashed border-line px-1.5 py-px text-[10px] leading-4 tabular-nums text-muted-foreground"
                             title={`Estimated from Apple Music's recently played list and track lengths; ideal start error ${formatMargin(hero.estimatedMarginMs)}`}

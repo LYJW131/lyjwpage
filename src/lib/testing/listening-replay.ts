@@ -128,7 +128,7 @@ export function recordedContainer(session: RecordedSession): PlayingContainer {
   const order = [...new Set(replayedPlays(session, 1, 0).map((play) => play.itemId))];
   return {
     id: "recorded",
-    tracks: order.flatMap((id) => id ? [{ id, songId: null, title: session.tracks[id].title, artist: session.tracks[id].artist }] : []),
+    tracks: order.flatMap((id) => id ? [{ id, songId: null, title: session.tracks[id].title, artist: session.tracks[id].artist, durationMs: session.tracks[id].durationMs, artworkUrl: null }] : []),
   };
 }
 

@@ -360,7 +360,7 @@ Cursor 使用独立的 `pulse:cursor-observations`：agents 来源的 cursor 活
 `LISTENING_ELSEWHERE_HOLD_MS` 等下一首）。`commitRecentTracks` 的回执带 `nextBy`：照推断接着放，下一首最晚这一刻排进列表最前，
 采集 Worker 据此提前补拉一次（`shared/pulse-listening.ts#nextTraceBy`）。api 自己不拉，WebSocket 连上也不触发。
 
-`commitRecentlyPlayed` 的第二个参数是专辑粒度列表最前那个歌单 / 专辑里可播的歌（按容器里的顺序，电台为 null，缺省不动存着的那份），
+`commitRecentlyPlayed` 的第二个参数是专辑粒度列表最前那个歌单 / 专辑里可播的歌（按容器里的顺序，带时长与封面；电台为 null，缺省不动存着的那份），
 变了才写 `apple-music:playing-container:v1` 并推一次 `listening-now`。`elsewhere.next` 是照规则推出的下一首（`shared/pulse-listening.ts#predictedNext`），
 只看最后一段连续播放（相邻两首停得不超过 `LISTENING_SESSION_GAP_MS`）：
 

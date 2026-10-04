@@ -26,7 +26,7 @@ function played(titles: string[], { from = T, gapAfter = -1, gapMs = 0 } = {}): 
 }
 
 function playlist(...titles: string[]): PlayingContainer {
-  return { id: "pl.u-1", tracks: titles.map((title) => ({ id: `cat.${title}`, songId: title, title, artist: "YOASOBI" })) };
+  return { id: "pl.u-1", tracks: titles.map((title) => ({ id: `cat.${title}`, songId: title, title, artist: "YOASOBI", durationMs: SONG_MS, artworkUrl: `art/${title}/{w}x{h}bb.jpg` })) };
 }
 
 const next = (traces: ListeningTrace[], container: PlayingContainer | null = null) => predictedNext(inferredPlays(traces), container);
@@ -35,7 +35,7 @@ test("in order: guesses the following track only after enough songs in a row lin
   const list = playlist("A", "B", "C", "D", "E");
   assert.equal(NEXT_IN_ORDER_MIN_RUN, 3);
   assert.equal(next(played(["A", "B"]), list), null, "two in a row is too easy to hit while shuffling");
-  assert.deepEqual(next(played(["A", "B", "C"]), list), { title: "D", artist: "YOASOBI", songId: "D", basis: "order" });
+  assert.deepEqual(next(played(["A", "B", "C"]), list), { title: "D", artist: "YOASOBI", songId: "D", artworkUrl: "art/D/{w}x{h}bb.jpg", durationMs: SONG_MS, basis: "order" });
   assert.equal(next(played(["X", "B", "C", "D"]), list)?.title, "E", "an earlier song from elsewhere does not break the run that follows");
 });
 
@@ -46,9 +46,9 @@ test("in order: no guess on the last track, on a shuffled run, or without a trac
 });
 
 test("in order: songs match by catalog id, by item id, or by title and artist", () => {
-  const byTitle: PlayingContainer = { id: "p.1", tracks: ["A", "B", "C", "D"].map((title) => ({ id: `i.lib-${title}`, songId: null, title, artist: "yoasobi" })) };
+  const byTitle: PlayingContainer = { id: "p.1", tracks: ["A", "B", "C", "D"].map((title) => ({ id: `i.lib-${title}`, songId: null, title, artist: "yoasobi", durationMs: null, artworkUrl: null })) };
   assert.equal(next(played(["A", "B", "C"]), byTitle)?.title, "D");
-  const byItem: PlayingContainer = { id: "p.2", tracks: ["A", "B", "C", "D"].map((title) => ({ id: `i.${title}`, songId: null, title: `${title} (Live)`, artist: "YOASOBI" })) };
+  const byItem: PlayingContainer = { id: "p.2", tracks: ["A", "B", "C", "D"].map((title) => ({ id: `i.${title}`, songId: null, title: `${title} (Live)`, artist: "YOASOBI", durationMs: null, artworkUrl: null })) };
   assert.equal(next(played(["A", "B", "C"]), byItem)?.title, "D (Live)");
 });
 
@@ -60,7 +60,7 @@ test("in order: a song listed twice picks the place with the longest run, and gi
 
 test("loop: a hand-picked set is guessed once it has repeated in full, and wins over the playlist order", () => {
   assert.equal(next(played(["A", "B", "C", "A", "B"])), null, "not a full repeat yet");
-  assert.deepEqual(next(played(["A", "B", "C", "A", "B", "C"])), { title: "A", artist: "YOASOBI", songId: "A", basis: "loop" });
+  assert.deepEqual(next(played(["A", "B", "C", "A", "B", "C"])), { title: "A", artist: "YOASOBI", songId: "A", artworkUrl: null, durationMs: SONG_MS, basis: "loop" });
   assert.equal(next(played(["X", "Y", "A", "B", "A", "B"]))?.title, "A", "two songs back and forth");
   assert.equal(next(played(["A", "B", "C", "A", "B", "C"]), playlist("A", "B", "C", "D"))?.basis, "loop");
 });
