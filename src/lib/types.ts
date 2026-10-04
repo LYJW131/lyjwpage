@@ -214,7 +214,11 @@ export type PlayingContainer = {
   tracks: PlayingContainerTrack[];
 };
 
-export type PlayingContainerTrack = Pick<RecentTrack, "id" | "title" | "artist"> & { songId: string | null };
+export type PlayingContainerTrack = Pick<RecentTrack, "id" | "title" | "artist"> & {
+  songId: string | null;
+  durationMs: number | null;
+  artworkUrl: string | null;
+};
 
 export type ReporterPresence = {
   lastSeenAt: number;
@@ -315,6 +319,8 @@ export type NowListeningNext = {
   title: string;
   artist: string | null;
   songId: string | null;
+  artworkUrl: string | null;
+  durationMs: number | null;
   basis: "loop" | "order";
 };
 

@@ -16,11 +16,12 @@ import { epochMinute } from "../schedule";
 const RECENT_LIMIT = 10;
 const RECENT_TRACKS_LIMIT = 10;
 const RECENT_TRACK_TYPES = "songs,library-songs";
-const CONTAINER_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_TRACK_PAGES = 5;
 const PLAYABLE_TRACK_TYPES = new Set(["songs", "library-songs"]);
 // 资料库封面是预签名 URL，缓存期限必须短于签名有效期并留出分发余量。
 const LIBRARY_ARTWORK_TTL_MS = 12 * 60 * 60 * 1000;
+// 资料库歌单的曲目封面同样是预签名 URL。
+const CONTAINER_TTL_MS = LIBRARY_ARTWORK_TTL_MS;
 const USER_PLAYLIST_PREFIX = "pl.u-";
 
 // 列表只说明两次刷新之间变过：闲时按 Pulse 的 5 分钟桶拉；列表一变就进活跃档，每分钟这一响里接着每 ACTIVE_POLL_MS
@@ -171,7 +172,7 @@ async function containerTracks(
   const id = resource.id;
   if (!href || !id) return { durationMs: 0, tracks: [] };
 
-  return cached(`apple-music:container-tracks:v1:${id}`, CONTAINER_TTL_MS, async () => {
+  return cached(`apple-music:container-tracks:v2:${id}`, CONTAINER_TTL_MS, async () => {
     const [detail] = await appleFetchList<ContainerDetail>(`https://api.music.apple.com${href}?include=tracks`, credentials);
     let page = detail?.relationships?.tracks;
     const rows: AppleTrack[] = [...(page?.data ?? [])];
@@ -239,7 +240,7 @@ export async function assemble(credentials: Credentials): Promise<{ items: Liste
   return {
     items,
     container: tracks.length
-      ? { id: items[0].id, tracks: tracks.map(({ id, songId, title, artist }) => ({ id, songId: songId ?? null, title, artist })) }
+      ? { id: items[0].id, tracks: tracks.map(({ id, songId, title, artist, durationMs, artworkUrl }) => ({ id, songId: songId ?? null, title, artist, durationMs: durationMs ?? null, artworkUrl: artworkUrl ?? null })) }
       : null,
   };
 }

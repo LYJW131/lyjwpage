@@ -249,7 +249,7 @@ export const NEXT_IN_ORDER_MIN_RUN = 3;
 // 循环规则最长认这么多首一轮；要看到完整重复一轮，读取的痕迹至少得有两倍。
 export const NEXT_LOOP_MAX = 12;
 
-type Song = { id: string | null; songId: string | null; title: string | null; artist: string | null };
+type Song = { id: string | null; songId: string | null; title: string | null; artist: string | null; durationMs: number | null; artworkUrl: string | null };
 
 function sameTrack(a: Song, b: Song): boolean {
   return (!!a.songId && a.songId === b.songId) || (!!a.id && a.id === b.id) || sameSong(a, b);
@@ -258,7 +258,7 @@ function sameTrack(a: Song, b: Song): boolean {
 function lastSession(plays: InferredPlay[]): Song[] {
   let start = plays.length - 1;
   while (start > 0 && plays[start].from - plays[start - 1].to <= LISTENING_SESSION_GAP_MS) start -= 1;
-  return plays.slice(Math.max(0, start)).map((play) => ({ id: play.itemId, songId: play.songId, title: play.title, artist: play.artist }));
+  return plays.slice(Math.max(0, start)).map((play) => ({ id: play.itemId, songId: play.songId, title: play.title, artist: play.artist, durationMs: play.durationMs, artworkUrl: play.artworkUrl }));
 }
 
 // 循环优先：手动凑的几首若恰好在歌单里相邻，顺序规则会猜成这几首之后的那首。
@@ -266,7 +266,9 @@ export function predictedNext(plays: InferredPlay[], container: PlayingContainer
   const session = lastSession(plays);
   const next = nextInLoop(session) ?? nextInOrder(session, container);
   const title = pulseText(next?.song.title);
-  return next && title ? { title, artist: pulseText(next.song.artist), songId: pulseText(next.song.songId, 80), basis: next.basis } : null;
+  if (!next || !title) return null;
+  const { song, basis } = next;
+  return { title, artist: pulseText(song.artist), songId: pulseText(song.songId, 80), artworkUrl: pulseText(song.artworkUrl, 1000), durationMs: positiveMs(song.durationMs), basis };
 }
 
 function nextInLoop(session: Song[]): { song: Song; basis: "loop" } | null {
