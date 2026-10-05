@@ -250,7 +250,9 @@ const UPSERT_CHARGING_SESSION = `INSERT INTO charging_sessions(started_at, ended
     OR charging_sessions.energy_wh IS NOT excluded.energy_wh OR charging_sessions.device IS NOT excluded.device`;
 const CLAIM_ACTIVITY_REVISION = `INSERT INTO pulse_archive_state(domain, revision) VALUES ('activity_buckets', ?)
   ON CONFLICT(domain) DO UPDATE SET revision = MAX(revision, excluded.revision)`;
-const DELETE_ACTIVITY_RANGE = `DELETE FROM activity_buckets WHERE started_at < ? AND ended_at > ?
+// 下界让删除走 started_at 主键的区间扫描；归档只收不超过它的桶，保证与范围重叠的行都落在下界之内。
+const ACTIVITY_BUCKET_MAX_MS = 24 * 60 * 60 * 1000;
+const DELETE_ACTIVITY_RANGE = `DELETE FROM activity_buckets WHERE started_at < ? AND started_at >= ? AND ended_at > ?
   AND started_at NOT IN (SELECT json_extract(value, '$.from') FROM json_each(?))
   AND (SELECT revision FROM pulse_archive_state WHERE domain = 'activity_buckets') = ?`;
 const REPLACE_ACTIVITY = `INSERT INTO activity_buckets(started_at, ended_at, steps, move_kcal, exercise_minutes)
@@ -480,12 +482,12 @@ export function archiveStatements(db: PulseArchiveDb, snapshot: PulseArchiveStre
     case "activity": {
       if (!snapshot.replaceRange || !snapshot.replaceToken) return { statements: [], watermark };
       const range = snapshot.replaceRange;
-      const buckets = parsedRows(snapshot.rows, parseActivityBucket).filter((bucket: ActivityBucket) => bucket.from < range.to && bucket.to > range.from);
+      const buckets = parsedRows(snapshot.rows, parseActivityBucket).filter((bucket: ActivityBucket) => bucket.from < range.to && bucket.to > range.from && bucket.to - bucket.from <= ACTIVITY_BUCKET_MAX_MS);
       const json = JSON.stringify(buckets);
       return {
         statements: [
           db.prepare(CLAIM_ACTIVITY_REVISION).bind(snapshot.revision),
-          db.prepare(DELETE_ACTIVITY_RANGE).bind(range.to, range.from, json, snapshot.revision),
+          db.prepare(DELETE_ACTIVITY_RANGE).bind(range.to, range.from - ACTIVITY_BUCKET_MAX_MS, range.from, json, snapshot.revision),
           db.prepare(REPLACE_ACTIVITY).bind(json, snapshot.revision),
         ],
         watermark: Math.max(watermark, ...buckets.map((bucket) => bucket.to)),

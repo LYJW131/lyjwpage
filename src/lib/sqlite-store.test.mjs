@@ -96,9 +96,8 @@ test("SQLite：首尾列表范围按逻辑位置处理断洞与越界", () => {
 test("SQLite：尾部裁剪保留逻辑末尾并清理空列表条目", () => {
   const { store, db } = database();
   store.execute([{ op: "append", key: "history", values: ["1", "2", "3", "4", "5", "6"] }]);
-  db.exec("DELETE FROM samples WHERE key = 'history' AND seq IN (2, 5)");
   store.execute([{ op: "trim", key: "history", start: -2, stop: -1 }]);
-  assert.deepEqual(store.execute([{ op: "listRange", key: "history", start: 0, stop: -1 }]), [["4", "6"]]);
+  assert.deepEqual(store.execute([{ op: "listRange", key: "history", start: 0, stop: -1 }]), [["5", "6"]]);
 
   store.execute([{ op: "append", key: "short", values: ["a", "b"] }]);
   store.execute([{ op: "trim", key: "short", start: -5, stop: -1 }]);
@@ -107,6 +106,66 @@ test("SQLite：尾部裁剪保留逻辑末尾并清理空列表条目", () => {
   db.exec("INSERT INTO entries(key, kind) VALUES ('empty', 'list')");
   store.execute([{ op: "trim", key: "empty", start: -5, stop: -1 }]);
   assert.equal(db.prepare("SELECT key FROM entries WHERE key = 'empty'").get(), undefined);
+  db.close();
+});
+
+test("SQLite：随机 append / trim / remove / import 之后 seq 连续且保留条数正确", () => {
+  const { store, db } = database();
+  let seed = 12345;
+  const random = n => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) % n;
+  const model = new Map();
+  const keys = ["a", "b", "c"];
+  let counter = 0;
+  const fresh = n => Array.from({ length: n }, () => String(counter++));
+  const check = () => {
+    for (const key of keys) {
+      const rows = db.prepare("SELECT seq FROM samples WHERE key = ? ORDER BY seq").all(key).map(row => row.seq);
+      const expected = model.get(key) ?? [];
+      assert.equal(rows.length, expected.length);
+      for (let i = 1; i < rows.length; i++) assert.equal(rows[i], rows[i - 1] + 1);
+      assert.deepEqual(store.execute([{ op: "listRange", key, start: 0, stop: -1 }])[0], expected);
+    }
+  };
+  for (let step = 0; step < 400; step++) {
+    const key = keys[random(keys.length)];
+    const current = model.get(key) ?? [];
+    switch (random(6)) {
+      case 0: case 1: {
+        const values = fresh(random(6));
+        assert.deepEqual(store.execute([{ op: "append", key, values }]), [values.length]);
+        if (values.length) model.set(key, [...current, ...values]);
+        break;
+      }
+      case 2: {
+        const keep = 1 + random(8);
+        store.execute([{ op: "trim", key, start: -keep, stop: -1 }]);
+        if (current.length) model.set(key, current.slice(-keep));
+        break;
+      }
+      case 5: {
+        const start = random(4), stop = start + random(5);
+        store.execute([{ op: "trim", key, start, stop }]);
+        if (current.length) {
+          const kept = current.slice(start, stop + 1);
+          if (kept.length) model.set(key, kept); else model.delete(key);
+        }
+        break;
+      }
+      case 3:
+        store.execute([{ op: "remove", key }]);
+        model.delete(key);
+        break;
+      default: {
+        const values = fresh(1 + random(4));
+        const imported = store.importMissing([{ key, kind: "list", value: values, expiresAt: null }]);
+        if (!current.length) {
+          assert.equal(imported, 1);
+          model.set(key, values);
+        }
+      }
+    }
+    check();
+  }
   db.close();
 });
 
