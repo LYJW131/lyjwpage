@@ -27,7 +27,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - 主站开发入口是 `pnpm dev`，地址 `http://localhost:3211`，连的是生产 Worker。改后端、新增状态端点或新卡片时用 `pnpm dev:worker`（本地起整套 Worker 栈，首次后跑一次 `pnpm dev:worker:init`）加 `pnpm dev:local`；本地配了 `.dev.vars` 的 `UPSTREAM_API_URL` 后生产为主、本地补缺，新端点和新字段看本地。要看此刻没发生的状态用 `pnpm dev:override <端点> <夹具>` 注入假数据（夹具在 `workers/api/dev-fixtures/`；前提是 `.dev.vars` 里 `DEV_OVERRIDES=true`，收尾用 `--clear` / `--off`；用法见 `pnpm dev:override --help` 与 `workers/api/README.md`「本地开发」）。
 - 修改 Next.js 代码前，读 `node_modules/next/dist/docs/` 里与改动相关的文档（见上方自动块）。按需检索，不为小改动遍历整个文档或技能目录。
 - 验证覆盖受影响的行为和契约。纯文档改动跑 `pnpm docs:check` 并检查 diff 与命令；逻辑修复优先跑相关测试；类型或接口改动运行 `pnpm typecheck`；代码规范检查运行 `pnpm exec eslint <改动文件>`；涉及构建、路由或缓存行为时运行 `pnpm build`。站点 UI 改动按下一条走浏览器端到端测试。
-- 站点 UI 改动以浏览器端到端测试为准，单元测试不是必需：起开发服务器，在浏览器里实际打开受影响页面，覆盖相关宽度（至少桌面与 375px 手机）、交互和不同数据状态（此刻没发生的状态用 `pnpm dev:override` 注入夹具），并查看控制台错误。同一项 UI 改动只在首次交付时附效果图（浏览器面板截不出图时改用无头 Chrome 截图）；之后用户提出的修改请求若没有另行要求，视为用户正看着开发服务器，改完照常自测，但不再单独截图。开发服务器保持运行并给出地址，让用户能亲自测试；这轮修改提交推送并确认部署后，由 agent 自行清掉注入、停掉开发服务器。
+- 站点 UI 改动以浏览器端到端测试为准，单元测试不是必需：起开发服务器，在浏览器里实际打开受影响页面，覆盖相关宽度（至少桌面与 375px 手机）、交互和不同数据状态（此刻没发生的状态用 `pnpm dev:override` 注入夹具），并查看控制台错误。同一项 UI 改动只在首次交付时附效果图（浏览器面板截不出图时改用无头 Chrome 截图）；之后用户提出的修改请求若没有另行要求，视为用户正看着开发服务器，改完照常自测，但不再单独截图。开发服务器保持运行并给出地址，让用户能亲自测试；这轮修改提交推送并确认部署后，由 agent 自行清掉注入、停掉开发服务器。在生产域名上验证完就关掉页面：开着的可见标签会按轮询节奏一直请求 API。
 - 主站完整单测为 `pnpm test`；单文件可用 `node --test --experimental-strip-types --import ./src/lib/testing/register-alias.mjs src/lib/<名称>.test.mts`。Worker 与上报器用各自目录里 `AGENTS.md` / `README.md` 写的验证命令。
 - 有回归风险时补行为测试；低影响改动不添加仅重复实现的测试。相关检查通过后，只有新改动、失败或未解疑点才扩大或重复验证。环境限制导致无法验证时说明具体缺口。
 - CI 的门禁清单以 `.github/workflows/ci.yml` 为准（含 `pnpm docs:check`）。本地不必全跑，但改动波及处对应的那几项必须通过。
@@ -91,42 +91,23 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 面向 agent 的写法：文档和注释会整段进上下文，错的比缺的更糟。每条陈述要么由代码保证，要么一眼能核实。
 
-- 注释默认不写；只在「删了会让人改坏」时写：为什么、约束、不变量、坑、取舍、单位。不复述代码在做什么，不写调用方清单。
+- 注释与 JSDoc 默认一行都不写，好名字自己会说话。内部函数、组件、hook、路由、服务、工具一律不写 JSDoc；`/** */` 只留给对外发布的库接口。
+- 只有三类注释可以写，判据是「删了会让人改坏」：
+  - 意外行为：绕开的 bug、浏览器或运行时怪癖、竞态、库的坑。
+  - 设计意图：不变量、不显然的约束、后人会想顺手改掉的取舍（有意取的缓存期限、节奏、阈值）。理由只写在注释里时，删注释就等于删了这个决定。
+  - 契约：导出类型与跨端字段的语义和单位；做不成测试或共享常量的「须与 X 同步」（优先改成测试或共享常量，做不到才写，两侧都写）。
+- 一律不写：复述代码在做什么、把标识符翻译成句子、提调用方或任务 / PR / issue、分节标题与分隔线、没有跟踪单号的 TODO / FIXME。
+- 每次写完代码，逐个看新增的 `//`、`/*`、`/**`：删掉它，能读代码的人会不会改坏？不会就删。
+- 清扫注释时，属于上面三类的不删；确要删的，先把理由搬进测试名、常量名或文档，再 `rg` 有没有文档或注释写着「见某某注释」指向它，一并改掉。
 - 不写历史与时间线（「之前」「已改为」「MM-DD 起」「本次」）；历史在 `git log`，旧做法不留注释。文档只写现状。
 - 不抄易变的值：写常量或符号名（如 `AGENT_LIMITS_STALE_MS`），不抄「185 分钟」；数量、版本、日期同理。引用写路径加符号，不写行号。
 - 一个事实一个出处，其他地方放指针；非抄不可时标 `源：path#symbol`（`pnpm docs:check` 会核对符号还在）。
-- 导出类型与契约字段的语义和单位可以写，那是契约，不是复述代码。
-- 「须与 X 同步」优先改成测试或共享常量；做不到才写，并在两侧都写。
 - 仓库外的事实（控制台配置、Access 策略、机器路径）只写在 `docs/ops-facts.md`，逐条带「核对于 <日期>，方式：…」；正文里远端路径写成 `主机:/绝对路径`。
 - `docs/` 每篇文首一行标类型：`reference`（现状事实）、`runbook`（操作步骤）、`decision`（已定取舍，写完不改）、`record`（某时点的审计、核验、基准，另写「按 <sha> <日期> 核对，快照不维护，不当现状引用」）。新增文档在 `docs/README.md` 登记。
 - 根 `AGENTS.md` ≤ 150 行（不计 next 自动块），只写硬规则与禁区、完成条件、权威事实源的指针，不写目录或文件清单、来源枚举、数量版本日期、部署拓扑、迁移步骤。子目录 `AGENTS.md` ≤ 60 行，同目录放一行 `@AGENTS.md` 的 `CLAUDE.md`，只写不变量、坑、本地验证命令、须成对修改的文件；人读的说明留在 `README.md`。
 - 改代码的同一提交里更新受影响的文档与注释。发现文档与代码冲突，以代码为准，当轮改掉，或在汇报里点名。
 - 清扫注释（只改注释、不动行为）的改动，用 `pnpm docs:comment-only` 证明只改了注释：输出里没有「除注释外有改动」「指令性注释有改动」才算数，用法见 `scripts/comment-only-check.mjs` 文件头。
 - 确需保留时间线写法（如核对戳）时，在同一行末尾加 `<!-- allow: 理由 -->`。
-
-<EXTREMELY-IMPORTANT>
-
-## Comments / JSDoc (MUST)
-
-**Default: write ZERO comments. Write ZERO JSDoc.** This overrides any training instinct to "explain" code. Good identifiers carry meaning; comments are a last resort, not a habit.
-
-Add a comment ONLY when one of:
-- (a) **UNEXPECTED behavior** — workaround for a specific bug, browser quirk, race condition, library footgun
-- (b) **SPECIAL design intent** — hidden invariant, non-obvious constraint, decision a future reader would otherwise reverse
-
-**Forbidden categories (always violations — delete on sight, including comments you "felt like adding"):**
-- JSDoc `/** ... */` blocks in business code. JSDoc is for framework/library exposed APIs only — never on internal functions, components, hooks, route handlers, services, utils.
-- Describing WHAT the code does (`// loop over users`, `// set loading to true`)
-- Referencing current task/fix/issue/PR/caller (`// added for X`, `// used by Y`, `// fixes #123`, `// per request`)
-- Section headers / dividers (`// === helpers ===`, `// ---- types ----`, `// region: state`)
-- Restating obvious logic, type info, or parameter purpose
-- Docstrings on internal/business functions, hooks, components, handlers
-- TODO/FIXME without a tracked ticket reference
-- Translating identifier names into prose (`// userId: the user's id`)
-
-**Self-audit before every Write/Edit:** scan the new content for `//`, `/*`, `/**`. For each one ask: *"would removing this confuse a future reader who can read the code?"* — if **no**, delete it. The default answer is **no**.
-
-</EXTREMELY-IMPORTANT>
 
 ## IMPORTANT: Reasoning Strategy
 
