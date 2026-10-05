@@ -137,7 +137,7 @@ export function recordedContainer(session: RecordedSession): PlayingContainer {
 export function replayNextAtCadence(session: RecordedSession, container: PlayingContainer | null, cadenceMs: number) {
   const every = Math.round(cadenceMs / session.pollEveryMs);
   const truth = replayedPlays(session, 1, 0);
-  let right = 0, wrong = 0, silent = 0;
+  let right = 0, wrong = 0, silent = 0, thenWrong = 0;
   for (let phase = 0; phase < every; phase += 1) {
     const traces: ListeningTrace[] = [];
     let base: RecentTracksSnapshot | null = null;
@@ -160,7 +160,9 @@ export function replayNextAtCadence(session: RecordedSession, container: Playing
       if (!guess) silent += 1;
       else if (guess.title === expected) right += 1;
       else wrong += 1;
+      const after = truth[at.order + 2]?.title;
+      if (guess?.then && after && guess.then.title !== after) thenWrong += 1;
     }
   }
-  return { right, wrong, silent };
+  return { right, wrong, silent, thenWrong };
 }

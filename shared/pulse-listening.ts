@@ -263,13 +263,22 @@ function lastSession(plays: InferredPlay[]): Song[] {
 }
 
 // 循环优先：手动凑的几首若恰好在歌单里相邻，顺序规则会猜成这几首之后的那首。
+// then 是把猜的下一首当作已放后再猜一步：放完切到猜的那首时，再下一首不必等最近播放上榜。
 export function predictedNext(plays: InferredPlay[], container: PlayingContainer | null): NowListeningNext | null {
   const session = lastSession(plays);
+  const next = guessAfter(session, container);
+  if (!next) return null;
+  const then = guessAfter([...session, next.song], container);
+  return { ...nextOf(next), then: then ? nextOf(then) : null };
+}
+
+function guessAfter(session: Song[], container: PlayingContainer | null): { song: Song; basis: NowListeningNext["basis"] } | null {
   const next = nextInLoop(session) ?? nextInOrder(session, container);
-  const title = pulseText(next?.song.title);
-  if (!next || !title) return null;
-  const { song, basis } = next;
-  return { title, artist: pulseText(song.artist), songId: pulseText(song.songId, 80), artworkUrl: pulseText(song.artworkUrl, 1000), durationMs: positiveMs(song.durationMs), basis };
+  return next && pulseText(next.song.title) ? next : null;
+}
+
+function nextOf({ song, basis }: { song: Song; basis: NowListeningNext["basis"] }): NowListeningNext {
+  return { title: pulseText(song.title)!, artist: pulseText(song.artist), songId: pulseText(song.songId, 80), artworkUrl: pulseText(song.artworkUrl, 1000), durationMs: positiveMs(song.durationMs), basis };
 }
 
 function nextInLoop(session: Song[]): { song: Song; basis: "loop" } | null {

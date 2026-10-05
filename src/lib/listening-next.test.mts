@@ -35,12 +35,16 @@ test("in order: guesses the following track only after enough songs in a row lin
   const list = playlist("A", "B", "C", "D", "E");
   assert.equal(NEXT_IN_ORDER_MIN_RUN, 3);
   assert.equal(next(played(["A", "B"]), list), null, "two in a row is too easy to hit while shuffling");
-  assert.deepEqual(next(played(["A", "B", "C"]), list), { title: "D", artist: "YOASOBI", songId: "D", artworkUrl: "art/D/{w}x{h}bb.jpg", durationMs: SONG_MS, basis: "order" });
+  assert.deepEqual(next(played(["A", "B", "C"]), list), {
+    title: "D", artist: "YOASOBI", songId: "D", artworkUrl: "art/D/{w}x{h}bb.jpg", durationMs: SONG_MS, basis: "order",
+    then: { title: "E", artist: "YOASOBI", songId: "E", artworkUrl: "art/E/{w}x{h}bb.jpg", durationMs: SONG_MS, basis: "order" },
+  });
   assert.equal(next(played(["X", "B", "C", "D"]), list)?.title, "E", "an earlier song from elsewhere does not break the run that follows");
 });
 
 test("in order: no guess on the last track, on a shuffled run, or without a track list", () => {
   assert.equal(next(played(["C", "D", "E"]), playlist("A", "B", "C", "D", "E")), null, "repeat all or stop is unknown");
+  assert.equal(next(played(["B", "C", "D"]), playlist("A", "B", "C", "D", "E"))?.then, null, "nor one further past the end");
   assert.equal(next(played(["E", "B", "D"]), playlist("A", "B", "C", "D", "E")), null);
   assert.equal(next(played(["A", "B", "C"]), null), null);
 });
@@ -60,7 +64,10 @@ test("in order: a song listed twice picks the place with the longest run, and gi
 
 test("loop: a hand-picked set is guessed once it has repeated in full, and wins over the playlist order", () => {
   assert.equal(next(played(["A", "B", "C", "A", "B"])), null, "not a full repeat yet");
-  assert.deepEqual(next(played(["A", "B", "C", "A", "B", "C"])), { title: "A", artist: "YOASOBI", songId: "A", artworkUrl: null, durationMs: SONG_MS, basis: "loop" });
+  assert.deepEqual(next(played(["A", "B", "C", "A", "B", "C"])), {
+    title: "A", artist: "YOASOBI", songId: "A", artworkUrl: null, durationMs: SONG_MS, basis: "loop",
+    then: { title: "B", artist: "YOASOBI", songId: "B", artworkUrl: null, durationMs: SONG_MS, basis: "loop" },
+  });
   assert.equal(next(played(["X", "Y", "A", "B", "A", "B"]))?.title, "A", "two songs back and forth");
   assert.equal(next(played(["A", "B", "C", "A", "B", "C"]), playlist("A", "B", "C", "D"))?.basis, "loop");
 });
@@ -77,15 +84,17 @@ test("the song likely playing elsewhere carries the guess", () => {
   const elsewhere = playingElsewhere(traces, T + 2 * SONG_MS + 30 * S, playlist("A", "B", "C", "D"));
   assert.equal(elsewhere?.title, "C");
   assert.equal(elsewhere?.next?.title, "D");
+  assert.equal(elsewhere?.next?.then, null, "D is the last track");
   assert.equal(playingElsewhere(traces, T + 2 * SONG_MS + 30 * S)?.next, null);
 });
 
-test("a recorded iPhone session playing a playlist in order: the next song is never guessed wrong", () => {
+test("a recorded iPhone session playing a playlist in order: the next song and the one after are never guessed wrong", () => {
   const session = loadRecordedSession();
   const container = recordedContainer(session);
   for (const cadenceMs of [15_000, 60_000, 300_000]) {
-    const { right, wrong, silent } = replayNextAtCadence(session, container, cadenceMs);
+    const { right, wrong, silent, thenWrong } = replayNextAtCadence(session, container, cadenceMs);
     assert.equal(wrong, 0, `polled every ${cadenceMs} ms`);
+    assert.equal(thenWrong, 0, `the one after, polled every ${cadenceMs} ms`);
     assert.ok(right > silent, `polled every ${cadenceMs} ms: right ${right}, silent ${silent}`);
   }
 });
