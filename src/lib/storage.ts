@@ -29,6 +29,7 @@ export function mirrorKey<T>(parts: string[], stampOf: (value: T) => number, { t
   const k = key(...parts);
   const state = () => cell<T>(k);
   return {
+    key: k,
     async put(value: T): Promise<void> {
       const persisted = await tellStorage((storage) => storage.set(k, JSON.stringify(value), ttlMs ? { ttlMs } : undefined));
       state().memory = value;
