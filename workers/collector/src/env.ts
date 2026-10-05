@@ -16,6 +16,7 @@ export interface Env {
   VERCEL_TEAM_ID?: string;
 
   GITHUB_TOKEN?: string;
+  GITHUB_DISPATCH_TOKEN?: string;
   VERCEL_TOKEN?: string;
   CLOUDFLARE_METRICS_TOKEN?: string;
   SENTRY_API_TOKEN?: string;
