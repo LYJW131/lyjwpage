@@ -142,11 +142,25 @@ test("同一曲目这次没查到时沿用已存补全，换了曲目不沿用",
     hasLyrics: true, upcomingSongIds: [], motion: null,
   };
   const failed = { ...good, link: "https://music.apple.com/search?term=Song", songId: null, id: null, hasLyrics: false };
-  assert.equal(keepEnrichment(music("Song"), failed, good), good);
-  assert.equal(keepEnrichment(music("Song"), null, good), good);
-  assert.equal(keepEnrichment(music("Other"), null, good), null);
+  assert.deepEqual(keepEnrichment(music("Song"), failed, good, true), good);
+  assert.equal(keepEnrichment(music("Song"), null, good, true), good);
+  assert.equal(keepEnrichment(music("Other"), null, good, true), null);
   const fresh = { ...good, songId: "9" };
-  assert.equal(keepEnrichment(music("Song"), fresh, good), fresh);
+  assert.equal(keepEnrichment(music("Song"), fresh, good, true), fresh);
+});
+
+test("沿用已存补全时队列 ID 跟着本次上报的队列走", async () => {
+  const { keepEnrichment } = await import("@/lib/track-enrichment");
+  const good = {
+    trackKey: trackKeyOf(music("Song")), id: "1500", link: LINK, songId: "1501", artwork: null,
+    hasLyrics: true, upcomingSongIds: ["old-1", "old-2"], motion: null,
+  };
+  const failed = { ...good, songId: null, id: null, upcomingSongIds: ["new-1"] };
+  assert.deepEqual(keepEnrichment(music("Song"), failed, good, false), { ...good, upcomingSongIds: ["new-1"] });
+  assert.deepEqual(keepEnrichment(music("Song"), failed, good, true), good);
+  const partial = { ...good, upcomingSongIds: ["old-1"] };
+  assert.deepEqual(keepEnrichment(music("Song"), partial, good, true), good);
+  assert.equal(keepEnrichment(music("Song"), partial, good, false), partial);
 });
 
 test("查到的结果存 30 天，否定结果 7 天，空歌词 1 小时", async () => {
@@ -228,6 +242,8 @@ test("队列里某首查询卡住只丢那一首", async (t) => {
   assert.equal(outcome?.enrichment.songId, "1501");
   assert.deepEqual(outcome?.enrichment.upcomingSongIds, ["1502"]);
   assert.equal(outcome?.catalogKnown, true);
+  assert.equal(outcome?.motionKnown, true);
+  assert.equal(outcome?.upcomingKnown, false);
 });
 
 test("目录查询超时打 warn（带曲目与阶段），存成未补全并标成未知", async (t) => {
@@ -253,6 +269,7 @@ test("目录里确定没有的曲目不算未知，不触发重查", async (t) =
   const { enrichTrackOutcome } = await import("@/lib/track-enrichment");
   const { value } = await withoutNetwork(() => enrichTrackOutcome(music("Missing")));
   assert.equal(value?.catalogKnown, true);
+  assert.equal(value?.upcomingKnown, true);
   assert.equal(value?.motionKnown, true);
 });
 
@@ -264,18 +281,26 @@ test("超长歌名的目录缓存键不超过 KV 键长", () => {
   assert.notEqual(long, trackLookupCacheKey(music("长".repeat(401))));
 });
 
-test("补写只在比已存的多出目录或动态封面时生效", async () => {
-  const { improvesEnrichment } = await import("@/lib/track-enrichment");
+test("补写按块合并：只在多出目录、动态封面或队列歌曲时生效", async () => {
+  const { mergeEnrichment } = await import("@/lib/track-enrichment");
   const found = {
     trackKey: trackKeyOf(music("Song")), id: "1500", link: LINK, songId: "1501", artwork: null,
     hasLyrics: true, upcomingSongIds: [], motion: null,
   };
   const missing = { ...found, songId: null, id: null };
   const withMotion = { ...found, motion: { videoUrl: "https://mvod/x.m3u8", colors: null } };
-  assert.equal(improvesEnrichment(found, missing), true);
-  assert.equal(improvesEnrichment(found, null), true);
-  assert.equal(improvesEnrichment(missing, null), false);
-  assert.equal(improvesEnrichment(found, found), false);
-  assert.equal(improvesEnrichment(withMotion, found), true);
-  assert.equal(improvesEnrichment(found, withMotion), false);
+  assert.deepEqual(mergeEnrichment(missing, found, true), found);
+  assert.deepEqual(mergeEnrichment(null, found, true), found);
+  assert.equal(mergeEnrichment(null, missing, true), null);
+  assert.equal(mergeEnrichment(found, found, true), null);
+  assert.deepEqual(mergeEnrichment(found, withMotion, true), withMotion);
+  assert.equal(mergeEnrichment(withMotion, found, true), null);
+
+  const queued = { ...found, upcomingSongIds: ["1502", "1503"] };
+  assert.deepEqual(mergeEnrichment(found, queued, true), queued);
+  assert.equal(mergeEnrichment(found, queued, false), null);
+  assert.equal(mergeEnrichment(queued, { ...found, upcomingSongIds: ["1502"] }, true), null);
+  const stale = { ...withMotion, upcomingSongIds: ["old"] };
+  assert.deepEqual(mergeEnrichment({ ...found, upcomingSongIds: ["new"] }, stale, false), { ...withMotion, upcomingSongIds: ["new"] });
+  assert.deepEqual(mergeEnrichment(null, stale, false), { ...stale, upcomingSongIds: [] });
 });

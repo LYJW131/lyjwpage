@@ -38,6 +38,10 @@ export function trackKeyOf(track: TrackIdentity): string {
   return [track.title, track.artist, track.album].map(normalizeForMatch).join("|");
 }
 
+export function upcomingKeyOf(tracks: readonly PlayingQueueTrack[]): string {
+  return JSON.stringify(tracks.map(trackKeyOf));
+}
+
 export function playableMusic(music: LocalNowPlaying | null | undefined): music is LocalNowPlaying {
   return Boolean(music && music.state !== "stopped" && music.title);
 }
@@ -74,6 +78,7 @@ export async function resolveMotion(link: string | null, title: string | null, t
 export type EnrichmentOutcome = {
   enrichment: TrackEnrichment;
   catalogKnown: boolean;
+  upcomingKnown: boolean;
   motionKnown: boolean;
 };
 
@@ -100,11 +105,12 @@ async function enrich(
       motion: motion ?? null,
     },
     catalogKnown: found !== undefined,
+    upcomingKnown: ahead.every((hit) => hit !== undefined),
     motionKnown: motion !== undefined,
   };
 }
 
-// 任何一段失败或超时都不阻止状态落库：没查到的部分存成未补全，由回执后的重试补写（catalogKnown / motionKnown）。
+// 任何一段失败或超时都不阻止状态落库：没查到的部分存成未补全，由回执后的重试补写（catalogKnown / upcomingKnown / motionKnown）。
 export async function enrichTrackOutcome(
   music: LocalNowPlaying | null | undefined,
   upcomingTracks: readonly PlayingQueueTrack[] = [],
@@ -127,21 +133,40 @@ export async function prewarmLyrics(enrichment: TrackEnrichment | null, title: s
   if (songId) await stage("lyrics", title, LYRICS_PREWARM_TIMEOUT_MS, () => resolveLyrics(songId));
 }
 
-// 补写只在比已存的那份多出东西时才生效：之前没查到目录，或同一首之前缺动态封面。
-export function improvesEnrichment(next: TrackEnrichment, stored: TrackEnrichment | null | undefined): boolean {
-  if (!next.songId) return false;
-  if (!stored?.songId || stored.trackKey !== next.trackKey) return true;
-  return stored.songId === next.songId && !stored.motion && Boolean(next.motion);
+// upcomingSongIds 属于算它时的那份队列，同一首歌期间队列可以变：queueMatches 为假（不是同一份队列）时不动已存的队列 ID。
+export function mergeEnrichment(
+  stored: TrackEnrichment | null | undefined,
+  next: TrackEnrichment,
+  queueMatches: boolean,
+): TrackEnrichment | null {
+  const same = stored?.trackKey === next.trackKey ? stored : null;
+  if (!same) return next.songId ? { ...next, upcomingSongIds: queueMatches ? next.upcomingSongIds : [] } : null;
+  const catalog = next.songId && !same.songId ? next : same;
+  const motion = catalog === same && same.songId === next.songId && !same.motion && next.motion ? next.motion : catalog.motion;
+  const upcomingSongIds = queueMatches && next.upcomingSongIds.length > same.upcomingSongIds.length
+    ? next.upcomingSongIds
+    : same.upcomingSongIds;
+  if (catalog === same && motion === same.motion && upcomingSongIds === same.upcomingSongIds) return null;
+  return { ...catalog, motion, upcomingSongIds };
 }
 
-// 同一曲目这次没查到（失败、超时）时沿用已存的那份，不让一次失败抹掉卡片的链接与封面。
+// 同一曲目这次目录没查到（失败、超时）时沿用已存的目录与动态封面，不让一次失败抹掉卡片的链接与封面；
+// 队列 ID 跟本次上报的队列走，只有队列没变且已存的查出更多时才沿用。
 export function keepEnrichment(
   music: LocalNowPlaying | null | undefined,
   next: TrackEnrichment | null | undefined,
   previous: TrackEnrichment | null | undefined,
+  queueMatches: boolean,
 ): TrackEnrichment | null {
-  if (next?.songId || !playableMusic(music)) return next ?? null;
-  return previous?.songId && previous.trackKey === trackKeyOf(music) ? previous : next ?? null;
+  if (!playableMusic(music)) return next ?? null;
+  const same = previous?.trackKey === trackKeyOf(music) ? previous : null;
+  if (!next) return same?.songId ? same : null;
+  if (!same) return next;
+  const catalog = next.songId || !same.songId ? next : same;
+  const upcomingSongIds = queueMatches && same.upcomingSongIds.length > next.upcomingSongIds.length
+    ? same.upcomingSongIds
+    : next.upcomingSongIds;
+  return catalog === next && upcomingSongIds === next.upcomingSongIds ? next : { ...catalog, upcomingSongIds };
 }
 
 export function candidateFrom(

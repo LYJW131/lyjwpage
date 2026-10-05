@@ -1,4 +1,4 @@
-import { improvesEnrichment, keepEnrichment, playableMusic, trackKeyOf, type TrackEnrichment } from "@/lib/track-enrichment";
+import { keepEnrichment, mergeEnrichment, playableMusic, trackKeyOf, upcomingKeyOf, type TrackEnrichment } from "@/lib/track-enrichment";
 import { recordCodingObservation } from "@api/stores/coding-pulse";
 import { isCodingApp } from "@shared/coding-apps";
 import { listeningObservation } from "@shared/pulse-listening";
@@ -259,7 +259,8 @@ export async function commitPreparedTelemetryEnvelope(command: PreparedTelemetry
 
     if ("appleMusic" in modules) {
       const { music, upcomingTracks } = modules.appleMusic!;
-      const enrichment = keepEnrichment(music, modules.appleMusic!.enrichment, telemetryState.musicEnrichment);
+      const sameQueue = upcomingKeyOf(telemetryState.upcomingTracks) === upcomingKeyOf(upcomingTracks);
+      const enrichment = keepEnrichment(music, modules.appleMusic!.enrichment, telemetryState.musicEnrichment, sameQueue);
       const wasLive = liveTrack(telemetryState.music) != null;
       telemetryState.music = music;
       telemetryState.musicEnrichment = enrichment;
@@ -405,11 +406,12 @@ async function recordChargingPulse(receivedAt: number, status: ChargerStatus): P
 }
 
 // 补写只改 musicEnrichment 一个字段，不动接收时间：它不是一封新上报。
-export async function patchMacEnrichment(enrichment: TrackEnrichment): Promise<boolean> {
+export async function patchMacEnrichment(enrichment: TrackEnrichment, upcomingKey: string): Promise<boolean> {
   const stored = await mirror.get();
   if (!stored || !playableMusic(stored.music) || trackKeyOf(stored.music) !== enrichment.trackKey) return false;
-  if (!improvesEnrichment(enrichment, stored.musicEnrichment)) return false;
-  await mirror.merge({ ...stored, musicEnrichment: enrichment }, ["musicEnrichment"]);
+  const merged = mergeEnrichment(stored.musicEnrichment, enrichment, upcomingKeyOf(stored.upcomingTracks ?? []) === upcomingKey);
+  if (!merged) return false;
+  await mirror.merge({ ...stored, musicEnrichment: merged }, ["musicEnrichment"]);
   await fanout({ listening: [patchedListeningEffect(getHomePodSnapshot())] });
   return true;
 }

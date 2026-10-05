@@ -8,7 +8,7 @@ import { parseAppleMusicUrl } from "@/lib/motion-artwork-url";
 import { installStorageForTests, resetStorageForTests } from "@/lib/storage";
 import { FakeStorage } from "@/lib/testing/fake-storage";
 import { MemoryKv } from "@/lib/testing/memory-kv";
-import { trackKeyOf } from "@/lib/track-enrichment";
+import { trackKeyOf, upcomingKeyOf } from "@/lib/track-enrichment";
 import type { ListeningItem } from "@/lib/types";
 import { mirror as recentMirror } from "@shared/apple-music-store";
 import { mirror as homePodMirror } from "@shared/homepod-store";
@@ -31,15 +31,23 @@ function inRequest<T>(run: () => Promise<T>): Promise<T> {
   return requestStore.run({ env, ctx: { waitUntil: () => {} } as unknown as ExecutionContext }, () => withRequestState(run));
 }
 
-function macEnvelope(title: string, at: number) {
+function macEnvelope(title: string, at: number, upcoming: string[]) {
+  const queue = upcoming.length
+    ? { index: 0, tracks: [title, ...upcoming].map((name) => ({ title: name, artist: "Artist", album: null })) }
+    : undefined;
   return {
     version: 4, presence: "online", heartbeatAt: at, activeModules: ["appleMusic"],
-    modules: { appleMusic: { state: "playing", title, artist: "Artist", observedAt: at } },
+    modules: { appleMusic: { state: "playing", title, artist: "Artist", observedAt: at, queue } },
   };
 }
 
-async function prepareMac(title: string, at: number): Promise<CoreCommand> {
-  return inRequest(() => prepareIngest("mac", macEnvelope(title, at), at, { head: async () => ({}) }) as Promise<CoreCommand>);
+async function prepareMac(title: string, at: number, upcoming: string[] = []): Promise<CoreCommand> {
+  return inRequest(() => prepareIngest("mac", macEnvelope(title, at, upcoming), at, { head: async () => ({}) }) as Promise<CoreCommand>);
+}
+
+function seedUpcoming(kv: MemoryKv, title: string, songId: string) {
+  kv.values.set(`lyjwpage:${trackLookupCacheKey({ title, artist: "Artist", album: null })}`,
+    JSON.stringify({ link: LINK, artwork: null, id: "1500", songId, hasLyrics: false }));
 }
 
 async function retried(followUp: EnrichmentFollowUp): Promise<EnrichmentPatch | null> {
@@ -114,6 +122,50 @@ test("补丁到达前曲目已换：丢弃，不写不推", async (t) => {
   assert.equal(stored?.musicEnrichment?.songId, null);
 });
 
+test("同一首歌期间队列已更新：迟到的补丁补上目录，不带回旧队列的歌曲 ID", async (t) => {
+  const kv = isolated(t);
+  const { command, followUp } = await inRequest(async () => enrichCommand(await prepareMac("First", NOW, ["Old Next"])));
+  await inRequest(() => collectIngestEffects(() => commitPreparedIngest(command)));
+  seedUpcoming(kv, "New Next", "2002");
+  const { command: requeued } = await inRequest(async () => enrichCommand(await prepareMac("First", NOW + 1_000, ["New Next"])));
+  await inRequest(() => collectIngestEffects(() => commitPreparedIngest(requeued)));
+  assert.deepEqual((await inRequest(() => telemetryMirror.get()))?.musicEnrichment?.upcomingSongIds, ["2002"]);
+
+  seedFirst(kv);
+  seedUpcoming(kv, "Old Next", "1001");
+  const patch = await retried(followUp!);
+  assert.deepEqual(patch?.enrichment.upcomingSongIds, ["1001"]);
+  const applied = await inRequest(() => collectIngestEffects(() => applyEnrichmentPatch(patch!)));
+  assert.equal(applied.ok && applied.value, true);
+  const stored = await inRequest(() => telemetryMirror.get());
+  assert.deepEqual(stored?.upcomingTracks?.map((track) => track.title), ["New Next"]);
+  assert.equal(stored?.musicEnrichment?.songId, "1501");
+  assert.deepEqual(stored?.musicEnrichment?.motion, { videoUrl: "https://mvod/x.m3u8", colors: null });
+  assert.deepEqual(stored?.musicEnrichment?.upcomingSongIds, ["2002"]);
+});
+
+test("只有队列查询失败：回执后重查，补丁只补队列歌曲 ID", async (t) => {
+  const kv = isolated(t);
+  seedFirst(kv);
+  const { command, followUp } = await inRequest(async () => enrichCommand(await prepareMac("First", NOW, ["Next"])));
+  assert.deepEqual(
+    [followUp?.outcome.catalogKnown, followUp?.outcome.motionKnown, followUp?.outcome.upcomingKnown],
+    [true, true, false],
+  );
+  await inRequest(() => collectIngestEffects(() => commitPreparedIngest(command)));
+  const before = await inRequest(() => telemetryMirror.get());
+  assert.deepEqual(before?.musicEnrichment?.upcomingSongIds, []);
+
+  seedUpcoming(kv, "Next", "1502");
+  const patch = await retried(followUp!);
+  assert.deepEqual(patch?.enrichment.upcomingSongIds, ["1502"]);
+  const applied = await inRequest(() => collectIngestEffects(() => applyEnrichmentPatch(patch!)));
+  assert.deepEqual([applied.ok && applied.value, applied.effects.map((effect) => effect.kind)], [true, ["listening"]]);
+  const after = await inRequest(() => telemetryMirror.get());
+  assert.deepEqual(after?.musicEnrichment, { ...before?.musicEnrichment, upcomingSongIds: ["1502"] });
+  assert.equal(after?.activityReceivedAt, before?.activityReceivedAt);
+});
+
 test("HomePod 补丁同样按 trackKey 校验", async (t) => {
   isolated(t);
   const music = { source: "homepod" as const, state: "playing" as const, title: "First", artist: "Artist", album: null,
@@ -123,11 +175,11 @@ test("HomePod 补丁同样按 trackKey 校验", async (t) => {
     trackKey: trackKeyOf(music), id: "1500", link: LINK, songId: "1501", artwork: null,
     hasLyrics: false, upcomingSongIds: [], motion: null,
   };
-  const stale: EnrichmentPatch = { target: "homepod", enrichment: { ...enrichment, trackKey: trackKeyOf({ ...music, title: "Other" }) } };
+  const stale: EnrichmentPatch = { target: "homepod", enrichment: { ...enrichment, trackKey: trackKeyOf({ ...music, title: "Other" }) }, upcomingKey: upcomingKeyOf([]) };
   const dropped = await inRequest(() => collectIngestEffects(() => applyEnrichmentPatch(stale)));
   assert.deepEqual([dropped.ok && dropped.value, dropped.effects.length], [false, 0]);
   assert.equal((await inRequest(() => homePodMirror.get()))?.enrichment, null);
-  const applied = await inRequest(() => collectIngestEffects(() => applyEnrichmentPatch({ target: "homepod", enrichment })));
+  const applied = await inRequest(() => collectIngestEffects(() => applyEnrichmentPatch({ target: "homepod", enrichment, upcomingKey: upcomingKeyOf([]) })));
   assert.deepEqual([applied.ok && applied.value, applied.effects.map((effect) => effect.kind)], [true, ["listening"]]);
   const stored = await inRequest(() => homePodMirror.get());
   assert.equal(stored?.enrichment?.songId, "1501");
