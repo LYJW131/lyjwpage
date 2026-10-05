@@ -7,6 +7,7 @@ import {
   type CatalogSong,
 } from "@/lib/apple-music-lookup";
 import { cached } from "@/lib/apple-cache";
+import { createHash } from "node:crypto";
 
 
 export type Credentials = {
@@ -81,71 +82,68 @@ export function trackLookupTtlMs(lookup: TrackLookup): number {
   return lookup.link && lookup.hasLyrics ? TRACK_LINK_TTL_MS : TRACK_MISS_TTL_MS;
 }
 
+// KV 键上限 512 字节（还要加存储前缀）；超长的歌名换成摘要，否则写不进 KV、每次都重查。
+const TRACK_LOOKUP_IDENTITY_MAX_BYTES = 320;
+
 export function trackLookupCacheKey(track: { title: string | null; artist: string | null; album: string | null }): string {
-  return "apple-music:track-lookup:v11:" + [track.title, track.artist, track.album].map(normalizeForMatch).join(":");
+  const identity = [track.title, track.artist, track.album].map(normalizeForMatch).join(":");
+  const fitted = new TextEncoder().encode(identity).length <= TRACK_LOOKUP_IDENTITY_MAX_BYTES
+    ? identity
+    : `sha256=${createHash("sha256").update(identity).digest("hex")}`;
+  return "apple-music:track-lookup:v11:" + fitted;
 }
 
-export async function resolveTrackLookup(track: {
-  title: string | null;
-  artist: string | null;
-  album: string | null;
-}): Promise<TrackLookup> {
+type TrackIdentity = { title: string | null; artist: string | null; album: string | null };
+
+export function trackLookupFallback(track: TrackIdentity): TrackLookup {
   if (!track.title) return { link: "", artwork: null, id: null, songId: null, hasLyrics: false };
-
   const terms = catalogSearchTerms(track.title, track.artist, track.album);
-  const searchUrl = `https://music.apple.com/search?term=${encodeURIComponent(terms.at(-1) ?? track.title)}`;
+  const link = `https://music.apple.com/search?term=${encodeURIComponent(terms.at(-1) ?? track.title)}`;
+  return { link, artwork: null, id: null, songId: null, hasLyrics: false };
+}
 
-  const cacheKey = trackLookupCacheKey(track);
+// 查询失败时抛出，与「查过、目录里没有」区分开：后者会缓存，前者值得重试。
+export async function lookupTrack(track: TrackIdentity): Promise<TrackLookup> {
+  if (!track.title) return trackLookupFallback(track);
+  const terms = catalogSearchTerms(track.title, track.artist, track.album);
+  const exact = await cached<TrackLookup>(trackLookupCacheKey(track), trackLookupTtlMs, async () => {
+    const credentials = await resolveCredentials();
+    const storefront = appleStorefront();
+    let hit: CatalogSong | undefined;
 
-  try {
-    const exact = await cached<TrackLookup>(cacheKey, trackLookupTtlMs, async () => {
-      const credentials = await resolveCredentials();
-      const storefront = appleStorefront();
-      let hit: CatalogSong | undefined;
+    for (const term of terms) {
+      const url =
+        `https://api.music.apple.com/v1/catalog/${storefront}/search` +
+        `?term=${encodeURIComponent(term)}&types=songs&limit=${SEARCH_LIMIT}&relate=albums`;
+      const json = await appleFetchRaw<{
+        results?: { songs?: { data?: CatalogSong[] } };
+      }>(url, credentials);
+      hit = pickCatalogHit(json.results?.songs?.data ?? [], {
+        title: track.title!,
+        artist: track.artist,
+        album: track.album,
+      });
+      if (hit) break;
+    }
 
-      for (const term of terms) {
-        const url =
-          `https://api.music.apple.com/v1/catalog/${storefront}/search` +
-          `?term=${encodeURIComponent(term)}&types=songs&limit=${SEARCH_LIMIT}&relate=albums`;
-        const json = await appleFetchRaw<{
-          results?: { songs?: { data?: CatalogSong[] } };
-        }>(url, credentials);
-        hit = pickCatalogHit(json.results?.songs?.data ?? [], {
-          title: track.title!,
-          artist: track.artist,
-          album: track.album,
-        });
-        if (hit) break;
-      }
+    let albumId = hit?.relationships?.albums?.data?.[0]?.id ?? null;
+    if (hit?.id && !albumId) {
+      const detail = await appleFetchRaw<{ data?: CatalogSong[] }>(
+        `https://api.music.apple.com/v1/catalog/${storefront}/songs/${hit.id}?relate=albums`,
+        credentials,
+      );
+      albumId = detail.data?.[0]?.relationships?.albums?.data?.[0]?.id ?? null;
+    }
 
-      let albumId = hit?.relationships?.albums?.data?.[0]?.id ?? null;
-      if (hit?.id && !albumId) {
-        const detail = await appleFetchRaw<{ data?: CatalogSong[] }>(
-          `https://api.music.apple.com/v1/catalog/${storefront}/songs/${hit.id}?relate=albums`,
-          credentials,
-        );
-        albumId = detail.data?.[0]?.relationships?.albums?.data?.[0]?.id ?? null;
-      }
-
-      // link 存空串而不是 null：cached 用 undefined 判未命中，空串才能把
-      // 「搜过了但没匹配上」这个结论也缓存住，不然每次都会重搜一遍
-      return {
-        link: hit?.attributes?.url ?? "",
-        artwork: hit?.attributes?.artwork?.url ?? null,
-        id: albumId,
-        songId: hit?.id ?? null,
-        hasLyrics: hit?.attributes?.hasLyrics === true,
-      };
-    });
+    // link 存空串而不是 null：cached 用 undefined 判未命中，空串才能把
+    // 「搜过了但没匹配上」这个结论也缓存住，不然每次都会重搜一遍
     return {
-      link: exact.link || searchUrl,
-      artwork: exact.artwork,
-      id: exact.id,
-      songId: exact.songId,
-      hasLyrics: exact.hasLyrics,
+      link: hit?.attributes?.url ?? "",
+      artwork: hit?.attributes?.artwork?.url ?? null,
+      id: albumId,
+      songId: hit?.id ?? null,
+      hasLyrics: hit?.attributes?.hasLyrics === true,
     };
-  } catch (error) {
-    console.warn("[track-lookup]", track.title, error instanceof Error ? error.message : String(error));
-    return { link: searchUrl, artwork: null, id: null, songId: null, hasLyrics: false };
-  }
+  });
+  return exact.link ? exact : { ...exact, link: trackLookupFallback(track).link };
 }

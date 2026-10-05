@@ -1,23 +1,73 @@
-import type { ListeningItem } from "@/lib/types";
-import { enrichTrack, resolveMotion } from "@/lib/track-enrichment";
+import type { ListeningItem, LocalNowPlaying } from "@/lib/types";
+import type { PlayingQueueTrack } from "@/lib/playing-queue";
+import {
+  enrichTrackOutcome,
+  improvesEnrichment,
+  prewarmLyrics,
+  resolveMotion,
+  RETRY_BUDGET,
+  type EnrichmentOutcome,
+  type TrackEnrichment,
+} from "@/lib/track-enrichment";
 import type { CoreCommand } from "@shared/ingest/prepare";
 
+export type EnrichmentTarget = "mac" | "homepod";
+export type EnrichmentPatch = { target: EnrichmentTarget; enrichment: TrackEnrichment };
+
+export type EnrichmentFollowUp = {
+  target: EnrichmentTarget;
+  music: LocalNowPlaying;
+  upcomingTracks: PlayingQueueTrack[];
+  outcome: EnrichmentOutcome;
+};
+
+export type EnrichedCommand = { command: CoreCommand; followUp: EnrichmentFollowUp | null };
+
 // 在 StateCore（DO 外）请求 Apple：补全完再交给 StateHub 落库，网络耗时不占提交队列。
-export async function enrichCommand(command: CoreCommand): Promise<CoreCommand> {
+export async function enrichCommand(command: CoreCommand): Promise<EnrichedCommand> {
   if (command.source === "homepod") {
-    return { ...command, stored: { ...command.stored, enrichment: await enrichTrack(command.stored.music) } };
+    const music = command.stored.music;
+    const outcome = await enrichTrackOutcome(music);
+    return {
+      command: { ...command, stored: { ...command.stored, enrichment: outcome?.enrichment ?? null } },
+      followUp: outcome ? { target: "homepod", music, upcomingTracks: [], outcome } : null,
+    };
   }
   if (command.source === "mac" && command.modules.appleMusic) {
     const appleMusic = command.modules.appleMusic;
-    const enrichment = await enrichTrack(appleMusic.music, appleMusic.upcomingTracks);
-    return { ...command, modules: { ...command.modules, appleMusic: { ...appleMusic, enrichment } } };
+    const outcome = await enrichTrackOutcome(appleMusic.music, appleMusic.upcomingTracks);
+    return {
+      command: { ...command, modules: { ...command.modules, appleMusic: { ...appleMusic, enrichment: outcome?.enrichment ?? null } } },
+      followUp: outcome && appleMusic.music
+        ? { target: "mac", music: appleMusic.music, upcomingTracks: appleMusic.upcomingTracks, outcome }
+        : null,
+    };
   }
-  return command;
+  return { command, followUp: null };
 }
 
-// 首项是没在播放时的主图，只给它补动态封面。
+// 回执之后跑：歌词预热；写入时有段没查出结果就整份重查一次，比写入时那份多查到东西才交给 commit 补写。
+// 必须在新的请求状态里调用：apple-cache 按请求记住失败，同一请求里重试会直接拿到上次的错误。
+export async function followUpEnrichment(
+  followUp: EnrichmentFollowUp,
+  commit: (patch: EnrichmentPatch) => Promise<void>,
+): Promise<void> {
+  const { target, music, upcomingTracks, outcome } = followUp;
+  if (outcome.catalogKnown && outcome.motionKnown) {
+    await prewarmLyrics(outcome.enrichment, music.title);
+    return;
+  }
+  const retried = (await enrichTrackOutcome(music, upcomingTracks, RETRY_BUDGET))?.enrichment ?? null;
+  const improved = retried && improvesEnrichment(retried, outcome.enrichment) ? retried : null;
+  await Promise.all([
+    prewarmLyrics(retried ?? outcome.enrichment, music.title),
+    improved ? commit({ target, enrichment: improved }) : null,
+  ]);
+}
+
+// 首项是没在播放时的主图，只给它补动态封面；查不出结果时 motion 留 undefined，由提交侧沿用已存的那份。
 export async function enrichRecentlyPlayed(items: ListeningItem[]): Promise<ListeningItem[]> {
   const [first, ...rest] = items;
   if (!first) return items;
-  return [{ ...first, motion: await resolveMotion(first.link) }, ...rest];
+  return [{ ...first, motion: await resolveMotion(first.link, first.title) }, ...rest];
 }

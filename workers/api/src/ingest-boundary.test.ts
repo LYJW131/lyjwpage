@@ -725,7 +725,7 @@ test("StateCore enrichment is stored with the track and the push reads it withou
     const prepared = await inRequest(env, () => prepareIngest("mac", envelope({
       appleMusic: { state: "playing", title: "First", artist: "Artist", observedAt: NOW },
     }, ["appleMusic"]), NOW));
-    const enriched = await inRequest(env, () => enrichCommand(prepared));
+    const { command: enriched } = await inRequest(env, () => enrichCommand(prepared));
     const result = await commit(env, enriched);
     assert.equal(result.ok, true);
     const stored = await inRequest(env, () => telemetryMirror.get());
