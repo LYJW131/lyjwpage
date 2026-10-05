@@ -14,6 +14,7 @@ import {
 import { createPortal } from "react-dom";
 
 import {
+  CELL,
   LEFT,
   STEP,
   TOP,
@@ -99,7 +100,17 @@ export function useHeatmapOpen<T extends { date: string }>() {
     [clearDelay],
   );
 
-  return { svgRef, shown, hotDate, pinned, previewCell, clearPreview, togglePin };
+  const pinCell = useCallback(
+    (cell: T) => {
+      clearDelay();
+      setHover(cell);
+      setPreview(cell);
+      setPinned(cell);
+    },
+    [clearDelay],
+  );
+
+  return { svgRef, shown, hotDate, pinned, previewCell, clearPreview, togglePin, pinCell };
 }
 
 export function useHoverDismiss(
@@ -131,6 +142,13 @@ const KEY_STEP: Record<string, number> = {
   ArrowRight: 7,
 };
 
+// 触屏点按之后浏览器还会补发 focus 与 click，落在手指下那一格而非吸附到的格子，需在此窗口内忽略。
+const TOUCH_GHOST_MS = 800;
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
 export function HeatmapGrid({
   svgRef,
   weeks,
@@ -139,6 +157,7 @@ export function HeatmapGrid({
   onCellPreview,
   onCellClear,
   onCellToggle,
+  onCellPin,
 }: {
   svgRef: RefObject<SVGSVGElement | null>;
   weeks: GithubChartDay[][];
@@ -147,6 +166,7 @@ export function HeatmapGrid({
   onCellPreview: (day: GithubChartDay, target: Element) => void;
   onCellClear: () => void;
   onCellToggle: (day: GithubChartDay, target: Element) => void;
+  onCellPin: (day: GithubChartDay, target: Element) => void;
 }) {
   const cells = useMemo(
     () => weeks.flatMap((week, weekIndex) => week.map((day) => ({ day, weekIndex }))),
@@ -156,6 +176,41 @@ export function HeatmapGrid({
   const marked = activeDate ? cells.findIndex((cell) => cell.day.date === activeDate) : -1;
   const activeIndex = marked >= 0 ? marked : cells.length - 1;
   const { width, height } = chartSize(weeks.length);
+  const scrubRef = useRef<{ pointerId: number; date: string | null } | null>(null);
+  const touchAtRef = useRef(0);
+
+  const touchGhost = (event: { timeStamp: number }) =>
+    event.timeStamp - touchAtRef.current < TOUCH_GHOST_MS;
+
+  const nearestCell = (clientX: number, clientY: number) => {
+    const svg = svgRef.current;
+    if (!svg || weeks.length === 0) return -1;
+    const box = svg.getBoundingClientRect();
+    if (box.width <= 0) return -1;
+    const scale = width / box.width;
+    const gutter = (STEP - CELL) / 2;
+    const x = (clientX - box.left) * scale;
+    const y = (clientY - box.top) * scale;
+    const weekIndex = clamp(Math.floor((x - LEFT + gutter) / STEP), 0, weeks.length - 1);
+    const weekday = clamp(Math.floor((y - TOP + gutter) / STEP), 0, 6);
+    const week = weeks[weekIndex] ?? [];
+    let best: GithubChartDay | null = null;
+    for (const day of week) {
+      if (!best || Math.abs(day.weekday - weekday) < Math.abs(best.weekday - weekday)) best = day;
+    }
+    return best ? cells.findIndex((cell) => cell.day.date === best.date) : -1;
+  };
+
+  const scrubTo = (clientX: number, clientY: number) => {
+    const scrub = scrubRef.current;
+    const index = nearestCell(clientX, clientY);
+    const day = cells[index]?.day;
+    const target = svgRef.current?.querySelectorAll("rect[data-score]").item(index);
+    if (!scrub || !day || !target || scrub.date === day.date) return;
+    scrub.date = day.date;
+    setActiveDate(day.date);
+    onCellPin(day, target);
+  };
 
   const focusAt = (index: number) => {
     const cell = cells[Math.min(Math.max(index, 0), cells.length - 1)];
@@ -196,6 +251,26 @@ export function HeatmapGrid({
       onPointerLeave={(event) => {
         if (event.pointerType === "mouse" && hoverCapable()) onCellClear();
       }}
+      onPointerDown={(event) => {
+        if (event.pointerType === "mouse") return;
+        touchAtRef.current = event.timeStamp;
+        scrubRef.current = { pointerId: event.pointerId, date: null };
+        event.currentTarget.setPointerCapture(event.pointerId);
+      }}
+      onPointerMove={(event) => {
+        if (scrubRef.current?.pointerId !== event.pointerId) return;
+        touchAtRef.current = event.timeStamp;
+        scrubTo(event.clientX, event.clientY);
+      }}
+      onPointerUp={(event) => {
+        if (scrubRef.current?.pointerId !== event.pointerId) return;
+        touchAtRef.current = event.timeStamp;
+        scrubTo(event.clientX, event.clientY);
+        scrubRef.current = null;
+      }}
+      onPointerCancel={() => {
+        scrubRef.current = null;
+      }}
     >
       {monthLabels(weeks).map((item) => (
         <text
@@ -232,6 +307,7 @@ export function HeatmapGrid({
           aria-label={day.label}
           tabIndex={index === activeIndex ? 0 : -1}
           onFocus={(event) => {
+            if (touchGhost(event)) return;
             onCellPreview(day, event.currentTarget);
           }}
           onBlur={() => {
@@ -246,6 +322,7 @@ export function HeatmapGrid({
             }
           }}
           onClick={(event) => {
+            if (touchGhost(event)) return;
             onCellToggle(day, event.currentTarget);
           }}
         />

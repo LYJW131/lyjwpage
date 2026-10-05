@@ -594,10 +594,12 @@ html.offscreen-revealed .defer-offscreen-always,
   opacity: 1;
 }
 
+/* 竖划留给页面滚动；横向起手的拖动交给热力图逐格选日，之后可任意方向移动。 */
 .github-chart svg {
   display: block;
   width: 100%;
   height: auto;
+  touch-action: pan-y;
 }
 
 .github-chart {
