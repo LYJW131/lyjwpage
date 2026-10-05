@@ -2,6 +2,7 @@ import { cacheLife } from "next/cache";
 
 import { type CommitAuthor, authorFromTrailer, mergeAuthors, parseCoAuthors } from "@/lib/commit-authors";
 import { repoIdFromUrl } from "@/lib/github-repo";
+import { FIRST_SCREEN_CACHE_LIFE } from "@/lib/first-screen";
 import { site } from "@/lib/site";
 
 
@@ -85,7 +86,7 @@ export async function getRecentCommits(): Promise<GithubRecentCommit[]> {
     const body = (await response.json().catch(() => null)) as CommitListItem[] | null;
     if (!response.ok || !Array.isArray(body)) {
       console.error("[github-commits]", response.status, "最近提交响应不是预期的形状");
-      cacheLife("minutes");
+      cacheLife(FIRST_SCREEN_CACHE_LIFE);
       return [];
     }
     // REST 只关联主作者；GraphQL authors 包含 GitHub 识别的协作者及其真实头像。
@@ -128,18 +129,18 @@ export async function getRecentCommits(): Promise<GithubRecentCommit[]> {
       ];
     });
     if (commits.length === 0) {
-      cacheLife("minutes");
+      cacheLife(FIRST_SCREEN_CACHE_LIFE);
       return commits;
     }
     if (commits.every(commit => githubAuthors.has(commit.sha))) cacheLife("max");
-    else cacheLife("minutes");
+    else cacheLife(FIRST_SCREEN_CACHE_LIFE);
     return commits;
   } catch (error) {
     console.error(
       "[github-commits]",
       error instanceof Error ? error.message : String(error),
     );
-    cacheLife("minutes");
+    cacheLife(FIRST_SCREEN_CACHE_LIFE);
     return [];
   }
 }

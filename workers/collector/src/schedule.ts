@@ -1,4 +1,6 @@
+import type { Env } from "./env";
 import type { Job } from "./job";
+import type { MonitorRunner } from "./registry";
 
 
 export function epochMinute(time: number): number {
@@ -45,4 +47,11 @@ export function monitorConfig(job: Pick<Job, "everyMinutes" | "offset" | "maxRun
     failureIssueThreshold: 2,
     recoveryThreshold: 1,
   } as const;
+}
+
+// 失败仍要走 MonitorFailure 分支开 issue，所以关着时换成直接执行的直通，而不是不传 monitor。
+const passthroughMonitor: MonitorRunner = (_slug, run) => run();
+
+export function cronMonitor(env: Pick<Env, "SENTRY_CRON_CHECKINS">, withMonitor: MonitorRunner): MonitorRunner {
+  return env.SENTRY_CRON_CHECKINS?.trim() === "true" ? withMonitor : passthroughMonitor;
 }

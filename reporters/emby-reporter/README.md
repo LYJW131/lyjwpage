@@ -58,7 +58,7 @@
 | `SESSION_IDLE_INTERVAL_MS` | | 默认 `300000`，漏收 webhook 时的兜底 |
 | `WAKE_WINDOW_MS` | | 默认 `30000`，收到事件后至少按活跃档跟这么久 |
 | `SEEK_TOLERANCE_MS` | | 默认 `1500`，判定「拖了进度条」的阈值 |
-| `REANCHOR_MS` | | 默认 `30000`，没拖动也隔这么久重新落一次锚 |
+| `REANCHOR_MS` | | 默认 `300000`，没拖动也隔这么久重新落一次锚 |
 | `FULL_PUSH_INTERVAL_MS` | | 默认 `600000`，没变化也兜底整推的间隔 |
 | `IMAGES_PER_PUSH` | | 默认 `4`，一次推送最多捎几张图 |
 | `REQUEST_TIMEOUT_MS` | | 默认 `10000`，问 Emby 和传 R2 用 |

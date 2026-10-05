@@ -6,7 +6,7 @@ import { COLLECTOR_JOBS } from "@shared/collector";
 import type { Env } from "./env";
 import type { Job } from "./job";
 import { JOBS, dueJobs, runJob, runNamed, runScheduled, type MonitorRunner } from "./registry";
-import { checkinCrontab, checkinDue, checkinEveryMinutes, isDue, monitorConfig, monitorSlug } from "./schedule";
+import { checkinCrontab, cronMonitor, checkinDue, checkinEveryMinutes, isDue, monitorConfig, monitorSlug } from "./schedule";
 
 const at = (iso: string) => Date.parse(iso);
 
@@ -167,4 +167,12 @@ test("a head-start job gets going before the rest, which wait for it or the head
 test("named runs report unknown jobs without throwing and dedupe names", async () => {
   const results = await runNamed(env, ["nope", "nope"]);
   assert.deepEqual(results, [{ job: "nope", status: "error", detail: "unknown job", ms: 0 }]);
+});
+
+test("cron check-ins stay off unless SENTRY_CRON_CHECKINS is true", async () => {
+  const config = monitorConfig({ everyMinutes: 5, offset: 2, maxRuntimeMinutes: 2 });
+  const real = (async (_slug: string, run: () => Promise<string>) => `real:${await run()}`) as unknown as MonitorRunner;
+  assert.equal(await cronMonitor({}, real)("collector-x", async () => "ran", config), "ran");
+  assert.equal(await cronMonitor({ SENTRY_CRON_CHECKINS: "false" }, real)("collector-x", async () => "ran", config), "ran");
+  assert.equal(await cronMonitor({ SENTRY_CRON_CHECKINS: "true" }, real)("collector-x", async () => "ran", config), "real:ran");
 });

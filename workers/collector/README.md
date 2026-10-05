@@ -35,7 +35,7 @@
 | `cloudflare-metrics` | `LAG cloudflare-metrics:v1` | `CLOUDFLARE_METRICS_TOKEN` |
 | `sentry-status` | `LAG sentry:v1`（没取到的块沿用上一份） | `SENTRY_API_TOKEN` |
 
-每个任务有一条 Sentry cron 监控 `collector-<任务>`，报到节奏由 `src/schedule.ts` 的 `checkinCrontab` 按 `everyMinutes` / `offset` 算出，见下文「Sentry 监控」。
+每个任务可有一条 Sentry cron 监控 `collector-<任务>`（默认不报到，由 `SENTRY_CRON_CHECKINS=true` 开启），报到节奏由 `src/schedule.ts` 的 `checkinCrontab` 按 `everyMinutes` / `offset` 算出，见下文「Sentry 监控」。
 
 几条取数口径：
 
@@ -65,15 +65,15 @@
 
 ### Sentry 监控
 
-每个任务一条 cron 监控，slug `collector-<任务>`，设置随报到同步（`src/schedule.ts`）：
+`SENTRY_CRON_CHECKINS` 为 `true` 时每个任务一条 cron 监控，slug `collector-<任务>`，设置随报到同步（`src/schedule.ts`）：
 连续两次 error 或漏报开 issue，一次恢复就关，时区 UTC。周期不短于 `MIN_CHECKIN_MINUTES` 的每轮都报到；
 更短的只在「既是它的一轮、又是 `MIN_CHECKIN_MINUTES` 的倍数分钟」那几轮报（`checkinEveryMinutes`），否则那一格它根本不跑，
 会被记成漏报。报到的开始、结束各是一次请求，分钟级的任务每轮都报太费。
 
 手动触发（`Collector.refresh`、本地调试入口）不报到。
 
-**名额**：组织的 cron 监控名额只有一个（见 [仓库外事实](../../docs/ops-facts.md)），给了 api 的 `api-minute-cron`；这些 `collector-<任务>` 监控是报到时自动建出来的，
-超出名额所以都是停用状态，报到被 Sentry 丢弃。加了名额之后在 Sentry 的 Crons 页启用即可，代码不用动。
+**名额**：组织的 cron 监控名额只有一个（见 [仓库外事实](../../docs/ops-facts.md)），给了 api 的 `api-minute-cron`；`collector-<任务>` 监控超出名额只能停用，报到会被 Sentry 丢弃，
+所以 `SENTRY_CRON_CHECKINS` 默认关（`src/schedule.ts#cronMonitor`），关着时不发报到，失败照常开 issue。加了名额后在 `wrangler.toml` 的 `[vars]` 设 `SENTRY_CRON_CHECKINS = "true"` 并在 Sentry 的 Crons 页启用。
 另一路：任务真失败（已知的外部故障除外）会直接开一个 Sentry issue，
 按任务分组（fingerprint `collector-job` + 任务名，tag `collector.job`），同一任务在一个 isolate 里最多隔 `REPORT_EVERY_MS` 报一次
 （`src/sentry.ts` 的 `reportJobFailure`）。
