@@ -1,6 +1,6 @@
 import { mirror } from "@shared/homepod-store";
 import { liveTrack } from "@/lib/home-layout";
-import { improvesEnrichment, keepEnrichment, playableMusic, trackKeyOf, type TrackEnrichment } from "@/lib/track-enrichment";
+import { keepEnrichment, mergeEnrichment, playableMusic, trackKeyOf, type TrackEnrichment } from "@/lib/track-enrichment";
 import { NOW_LISTENING_TAG } from "@/lib/live-events";
 import { fanout } from "@api/fanout";
 import { homePodListening, patchedListeningEffect } from "@api/stores/telemetry";
@@ -8,7 +8,7 @@ import type { PreparedHomePodEvent } from "@shared/ingest/homepod";
 
 export async function commitPreparedHomePodEvent({ stored: incoming }: PreparedHomePodEvent) {
   const previous = await mirror.get();
-  const stored = { ...incoming, enrichment: keepEnrichment(incoming.music, incoming.enrichment, previous?.enrichment) };
+  const stored = { ...incoming, enrichment: keepEnrichment(incoming.music, incoming.enrichment, previous?.enrichment, true) };
   const layoutChanged = (liveTrack(previous?.music) != null) !== (liveTrack(stored.music) != null);
   const listening = homePodListening(stored);
   await fanout({
@@ -22,8 +22,9 @@ export async function commitPreparedHomePodEvent({ stored: incoming }: PreparedH
 export async function patchHomePodEnrichment(enrichment: TrackEnrichment): Promise<boolean> {
   const stored = await mirror.get();
   if (!stored || !playableMusic(stored.music) || trackKeyOf(stored.music) !== enrichment.trackKey) return false;
-  if (!improvesEnrichment(enrichment, stored.enrichment)) return false;
-  const patched = { ...stored, enrichment };
+  const merged = mergeEnrichment(stored.enrichment, enrichment, true);
+  if (!merged) return false;
+  const patched = { ...stored, enrichment: merged };
   await mirror.put(patched);
   await fanout({ listening: [patchedListeningEffect(patched)] });
   return true;

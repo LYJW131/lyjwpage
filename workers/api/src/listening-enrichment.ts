@@ -2,17 +2,19 @@ import type { ListeningItem, LocalNowPlaying } from "@/lib/types";
 import type { PlayingQueueTrack } from "@/lib/playing-queue";
 import {
   enrichTrackOutcome,
-  improvesEnrichment,
+  mergeEnrichment,
   prewarmLyrics,
   resolveMotion,
   RETRY_BUDGET,
   type EnrichmentOutcome,
   type TrackEnrichment,
+  upcomingKeyOf,
 } from "@/lib/track-enrichment";
 import type { CoreCommand } from "@shared/ingest/prepare";
 
 export type EnrichmentTarget = "mac" | "homepod";
-export type EnrichmentPatch = { target: EnrichmentTarget; enrichment: TrackEnrichment };
+// upcomingKey 是 enrichment.upcomingSongIds 所查的那份队列（upcomingKeyOf），写回时与已存的队列比对。
+export type EnrichmentPatch = { target: EnrichmentTarget; enrichment: TrackEnrichment; upcomingKey: string };
 
 export type EnrichmentFollowUp = {
   target: EnrichmentTarget;
@@ -53,15 +55,15 @@ export async function followUpEnrichment(
   commit: (patch: EnrichmentPatch) => Promise<void>,
 ): Promise<void> {
   const { target, music, upcomingTracks, outcome } = followUp;
-  if (outcome.catalogKnown && outcome.motionKnown) {
+  if (outcome.catalogKnown && outcome.upcomingKnown && outcome.motionKnown) {
     await prewarmLyrics(outcome.enrichment, music.title);
     return;
   }
   const retried = (await enrichTrackOutcome(music, upcomingTracks, RETRY_BUDGET))?.enrichment ?? null;
-  const improved = retried && improvesEnrichment(retried, outcome.enrichment) ? retried : null;
+  const merged = retried && mergeEnrichment(outcome.enrichment, retried, true);
   await Promise.all([
-    prewarmLyrics(retried ?? outcome.enrichment, music.title),
-    improved ? commit({ target, enrichment: improved }) : null,
+    prewarmLyrics(merged || outcome.enrichment, music.title),
+    merged ? commit({ target, enrichment: retried, upcomingKey: upcomingKeyOf(upcomingTracks) }) : null,
   ]);
 }
 
