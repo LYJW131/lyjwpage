@@ -80,11 +80,11 @@ export class SqliteStore {
       }
       case "append": {
         this.requireKind(key, "list");
-        if (!command.values.length) return this.count(key);
+        if (!command.values.length) return 0;
         this.sql.exec("INSERT OR IGNORE INTO entries(key, kind) VALUES (?, 'list')", key);
         let seq = Number(this.sql.exec("SELECT COALESCE(MAX(seq), 0) AS n FROM samples WHERE key = ?", key).toArray()[0]?.n ?? 0);
         for (const value of command.values) this.sql.exec("INSERT INTO samples(key, seq, value) VALUES (?, ?, ?)", key, ++seq, value);
-        return this.count(key);
+        return command.values.length;
       }
       case "listRange": {
         if (!this.requireKind(key, "list")) return [];
@@ -113,18 +113,10 @@ export class SqliteStore {
       case "trim": {
         if (!this.requireKind(key, "list")) return true;
         if (command.start < 0 && command.stop === -1) {
-          const keep = -command.start;
-          const boundary = this.sql.exec(
-            "SELECT seq FROM samples WHERE key = ? ORDER BY seq DESC LIMIT 1 OFFSET ?",
-            key,
-            keep - 1,
-          ).toArray()[0];
-          if (boundary) {
-            this.sql.exec("DELETE FROM samples WHERE key = ? AND seq < ?", key, Number(boundary.seq));
-            return true;
-          }
-          const first = this.sql.exec("SELECT seq FROM samples WHERE key = ? LIMIT 1", key).toArray()[0];
-          if (!first) this.remove(key);
+          // 同一 key 的 seq 连续（append 接在 MAX 后，裁剪只留连续段），按 MAX(seq) 定界即可，不必数行。
+          const newest = this.sql.exec("SELECT MAX(seq) AS n FROM samples WHERE key = ?", key).toArray()[0]?.n;
+          if (newest === null || newest === undefined) this.remove(key);
+          else this.sql.exec("DELETE FROM samples WHERE key = ? AND seq <= ?", key, Number(newest) + command.start);
           return true;
         }
         const [offset, limit] = this.range(this.count(key), command.start, command.stop);

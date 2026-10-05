@@ -74,6 +74,7 @@ function setup(options: { failStream?: ArchiveStream } = {}) {
     storage, state, archive, logged, db,
     at: (t: number) => { now = t; },
     all: (query: string) => d1.prepare(query).all().map((row) => ({ ...row })) as Record<string, unknown>[],
+    exec: (query: string) => d1.exec(query),
     changes: () => changes,
     watermark: (stream: ArchiveStream) => (hub.prepare("SELECT value FROM metadata WHERE key = ?").get(`pulse-archive:v2:${stream}`) as { value?: string } | undefined)?.value ?? null,
     async write(run: () => Promise<unknown>) {
@@ -180,6 +181,19 @@ test("pulse archive: authoritative activity replacement writes only changed rows
     { started_at: T0 + 10 * M, steps: null },
   ], "HealthKit's revision deletes the vanished bucket and leaves missing steps unknown");
   assert.equal(b.changes() - before, 3, "only the revision claim, the deleted and the new bucket are written");
+});
+
+test("pulse archive: activity replacement only deletes within the lower bound and archives no oversized bucket", async () => {
+  const b = setup();
+  const range = { from: T0, to: T0 + 60 * M };
+  b.exec(`INSERT INTO activity_buckets(started_at, ended_at, steps) VALUES (${T0 - 3 * 24 * 60 * M}, ${T0 - 3 * 24 * 60 * M + 5 * M}, 1), (${T0 - 3 * M}, ${T0 + 2 * M}, 2)`);
+  const bucket = (from: number, to: number, steps: number) => ({ from, to, steps, moveKcal: null, exerciseMinutes: null });
+  await b.write(() => replacePulseActivity(range, [bucket(T0, T0 + 5 * M, 300), bucket(T0 + 10 * M, T0 + 10 * M + 25 * 60 * M, 7)]));
+  await b.archive().run();
+  assert.deepEqual(b.all("SELECT started_at, steps FROM activity_buckets ORDER BY started_at"), [
+    { started_at: T0 - 3 * 24 * 60 * M, steps: 1 },
+    { started_at: T0, steps: 300 },
+  ]);
 });
 
 test("pulse archive: an older activity snapshot finishing late cannot undo a newer replacement", async () => {
