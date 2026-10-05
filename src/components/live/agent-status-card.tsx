@@ -120,16 +120,6 @@ function formatWhen(value: string | null): string | null {
   return incidentAt.format(parsed);
 }
 
-function hasDetail(agent: AgentStatusRow): boolean {
-  return (
-    agent.indicator !== "operational" ||
-    agent.stale ||
-    agent.note !== null ||
-    agent.incidents.length > 0 ||
-    agent.components.some((component) => component.indicator !== "operational")
-  );
-}
-
 function Detail({ agent, onClose }: { agent: AgentStatusRow; onClose: () => void }) {
   const titleId = useId();
   const label = indicatorLabel(agent.indicator);
@@ -314,26 +304,14 @@ export function AgentStatusCard({
                     <span className="min-w-0 flex-1 truncate text-sm font-medium">{agent.name}</span>
                     <span className="flex shrink-0 items-center gap-2">
                       {agent.stale && <span className="text-xs text-muted-foreground">cached</span>}
-                      {hasDetail(agent) ? (
-                        <button
-                          type="button"
-                          onClick={() => setOpenId(agent.id)}
-                          aria-label={`${agent.name}: ${label}, show details`}
-                          className={triggerClass}
-                        >
-                          {status}
-                        </button>
-                      ) : (
-                        <a
-                          href={agent.statusUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          aria-label={`${agent.name}: ${label}, open status page`}
-                          className={triggerClass}
-                        >
-                          {status}
-                        </a>
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => setOpenId(agent.id)}
+                        aria-label={`${agent.name}: ${label}, show details`}
+                        className={triggerClass}
+                      >
+                        {status}
+                      </button>
                     </span>
                   </li>
                 );
