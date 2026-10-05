@@ -58,7 +58,7 @@
 | --- | --- |
 | GitHub App `LYJW131`（slug `lyjw131`，App ID `5201294`，Client ID 写在 `.github/workflows/avatar-sync.yml`），机器人账号 `lyjw131[bot]`（用户 ID `338272049`）；权限只有 Contents 读写与 Metadata 只读，Webhook 关闭，只装在 `LYJW131/lyjwpage`。`avatar-sync.yml`（由 collector 的 `avatar-watch` 任务触发）用它经 GraphQL `createCommitOnBranch` 往 main 提交 `.github/github-avatar.sha256`，触发 Vercel 重建以重新抓取构建期缓存的头像 | 核对于 2026-10-05，方式：本机会话在浏览器创建后用 `gh api` 只读核对 |
 | 凭据放的位置（不记值）：仓库 Actions secret `AVATAR_APP_PRIVATE_KEY`（App 私钥）；仓库 Actions variable `AVATAR_APP_ID` 存了 App ID，工作流没有使用 | 核对于 2026-10-05，方式：同上 |
-| collector 的 `avatar-watch` 用 fine-grained PAT `lyjwpage collector avatar-watch`（只授权 `LYJW131/lyjwpage`；Actions 读写、Contents 只读、Metadata 只读），存为 collector 的 secret `GITHUB_DISPATCH_TOKEN`，2027-10-06 到期；到期后任务每轮失败，Sentry `collector-worker` 按 tag `collector.job` 开 issue | 核对于 2026-10-05，方式：本机会话在浏览器生成后用 `wrangler secret list` 只核对名称 |
+| collector 的 `avatar-watch` 用 fine-grained PAT `lyjwpage collector avatar-watch`（只授权 `LYJW131/lyjwpage`；Actions 读写、Contents 只读、Metadata 只读），存为 collector 的 secret `GITHUB_DISPATCH_TOKEN`，2027-10-06 到期；到期后任务每轮失败，Sentry `collector-worker` 按 tag `collector.job` 开 issue | 核对于 2026-10-05，方式：本机会话在浏览器生成后用 `wrangler secret list` 只核对名称 | <!-- allow: 令牌到期日是现状事实，不是时间线 -->
 | `main` 没有分支保护和 ruleset，App 可以直接提交 | 核对于 2026-10-05，方式：`gh api` 查 `rulesets` 为空、`branches/main/protection` 返回 404 |
 
 ## 机器与部署位置
