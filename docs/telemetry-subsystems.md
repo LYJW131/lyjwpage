@@ -38,7 +38,7 @@
 | 方法 | 路径 | 鉴权 | 作用 |
 | --- | --- | --- | --- |
 | `POST` | `ingest.homepage.lyjw.llc/api/ingest/<来源>` | Cloudflare Access service token（每个上报方一把、可授权多个来源，上报入口 Worker 再验 JWT 并按来源限权） | 上报入口校验、拆分；状态核心落库、触发广播与首页缓存失效 |
-| `GET` | `/ws?visible=1\|0` | 来源校验（`ALLOWED_ORIGINS`） | 浏览器直连的实时事件推送长连接，也是在线人数的来源：页面切到后台不断开，只发 `visible` / `hidden`；没有可见页面时上报不产生推送。本地 Worker 的上游中继带 `relay=1`，算有人在看、不算在线人数 |
+| `GET` | `/ws?visible=1\|0` | 来源校验（`ALLOWED_ORIGINS`） | 浏览器直连的实时事件推送长连接，也是在线人数的来源：页面切到后台不断开，只发 `visible` / `hidden` |
 | `GET` | `/count` | 公开 | `{ connections, online }`：开着的页面（含后台）与此刻可见的页面 |
 | `GET` | `/api/status/<模块>` | 公开 | 状态列表或历史数据查询 |
 | `GET` | `/api/status/<模块>/now` | 公开 | 状态即时快照查询 |
@@ -56,7 +56,7 @@
   - **事件负载设计**：
     - 带数据的事件（登记表 `src/lib/status-views.ts` 里带 `event` 的视图）：**一律携带那条端点的整份数据**（充电头不带历史点，由浏览器接上已有曲线），浏览器收到后直接更新 SWR 缓存，避免回源请求打满并发。
     - `presence`：**仅发送失效通知**（payload 为 `null`），浏览器根据本地保存的 `lastSeenAt` 和 `heartbeatWindowMs` 自行判定是否真正超时断流。
-- **兜底轮询**：推送覆盖整份的实时视图（登记表 `pushCovers`）在 WebSocket 连着时只保留兜底轮询（`src/lib/poll-schedule.ts#PUSH_SAFETY_NET_MS`）；断开时回到卡片自己的快间隔，重连后立即回源一次补上漏掉的推送。带心跳判活（`lastSeenAt`）或滚动读数的卡不退，照常轮询。
+- **兜底轮询**：推送覆盖整份的实时视图（登记表 `pushCovers`）在 WebSocket 连着时只保留兜底轮询（`src/lib/poll-schedule.ts#PUSH_SAFETY_NET_MS`）；断开时回到卡片自己的快间隔。重连后回源一次带推送事件的视图（登记表 `event`），补上断线期间漏掉的推送；页面在后台时只记下待补，回到前台再取。重连退避与稳定判据见 `src/lib/live-reconnect.ts`。带心跳判活（`lastSeenAt`）或滚动读数的卡不退，照常轮询。
 
 ---
 

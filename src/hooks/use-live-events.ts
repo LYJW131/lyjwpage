@@ -19,9 +19,10 @@ import {
   POWERBANK_PATH,
   TROPHIES_PATH,
 } from "@/lib/paths";
-import { isRealtimeViewPath, pathByEvent } from "@/lib/status-views";
+import { isPushedViewPath, pathByEvent } from "@/lib/status-views";
 import type { ChargerPayload, StatusResponse } from "@/lib/types";
 import { LIVE_HEARTBEAT_MS } from "@shared/live-heartbeat";
+import { attemptsAfterClose, catchUpOnOpen, catchUpOnVisible, reconnectDelay } from "@/lib/live-reconnect";
 
 const FORWARDS: ReadonlyArray<{
   event: LiveEvent["type"];
@@ -104,6 +105,10 @@ function dispatch(mutate: ScopedMutator, message: Incoming): void {
   }
 }
 
+function refetchPushedViews(mutate: ScopedMutator): void {
+  void mutate((key) => typeof key === "string" && isPushedViewPath(key));
+}
+
 function receive(mutate: ScopedMutator, raw: unknown): void {
   if (typeof raw !== "string" || raw === "pong") return;
   let message: Incoming;
@@ -121,6 +126,8 @@ let refCount = 0;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let retryAttempts = 0;
+let openedAt: number | null = null;
+let pendingCatchUp = false;
 let activeMutate: ScopedMutator | null = null;
 let reportedVisible: boolean | null = null;
 
@@ -142,8 +149,6 @@ function subscribeConnection(listener: () => void) {
 export function useLiveSocketConnected(): boolean {
   return useSyncExternalStore(subscribeConnection, () => connected, () => false);
 }
-
-const MAX_BACKOFF_MS = 30_000;
 
 function pageVisible(): boolean {
   return typeof document === "undefined" || document.visibilityState !== "hidden";
@@ -235,11 +240,13 @@ function open(mutate: ScopedMutator): void {
 
   // 预连 socket 可能早已发过 open，接管后须主动执行就绪逻辑。
   const onReady = () => {
-    retryAttempts = 0;
+    openedAt = Date.now();
     const reconnect = everConnected;
     everConnected = true;
     setConnected(true);
-    if (reconnect) void mutate((key) => typeof key === "string" && isRealtimeViewPath(key));
+    const catchUp = catchUpOnOpen({ reconnect, visible: pageVisible(), pending: pendingCatchUp });
+    pendingCatchUp = catchUp.pending;
+    if (catchUp.refetch) refetchPushedViews(mutate);
     reportVisibility();
     heartbeatTimer = setInterval(() => {
       if (ws.readyState === WebSocket.OPEN) {
@@ -261,8 +268,10 @@ function open(mutate: ScopedMutator): void {
   ws.onclose = () => {
     teardown();
     setConnected(false);
+    retryAttempts = attemptsAfterClose(retryAttempts, openedAt, Date.now());
+    openedAt = null;
     if (refCount <= 0) return;
-    const delay = Math.min(1_000 * Math.pow(1.5, retryAttempts), MAX_BACKOFF_MS);
+    const delay = reconnectDelay(retryAttempts, Math.random());
     retryAttempts += 1;
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null;
@@ -279,14 +288,27 @@ function open(mutate: ScopedMutator): void {
 
 function close(): void {
   retryAttempts = 0;
+  openedAt = null;
+  pendingCatchUp = false;
   teardown();
   setConnected(false);
+}
+
+function catchUpIfPending(mutate: ScopedMutator): void {
+  const catchUp = catchUpOnVisible({
+    pending: pendingCatchUp,
+    visible: pageVisible(),
+    socketOpen: socket?.readyState === WebSocket.OPEN,
+  });
+  pendingCatchUp = catchUp.pending;
+  if (catchUp.refetch) refetchPushedViews(mutate);
 }
 
 function handleVisibilityChange(): void {
   if (refCount <= 0 || !activeMutate) return;
   if (socket) {
     reportVisibility();
+    catchUpIfPending(activeMutate);
     return;
   }
   if (pageVisible()) {
@@ -301,6 +323,7 @@ function handlePageShow(event: PageTransitionEvent): void {
   if (!event.persisted || refCount <= 0 || !activeMutate) return;
   if (socket && socket.readyState <= WebSocket.OPEN) {
     reportVisibility();
+    catchUpIfPending(activeMutate);
     return;
   }
   teardown();
@@ -314,7 +337,8 @@ export function useLiveEvents() {
     activeMutate = mutate;
     refCount += 1;
     if (refCount === 1 && typeof document !== "undefined") {
-      document.addEventListener("visibilitychange", handleVisibilityChange);
+      // 捕获阶段先于 SWR 挂在 document 上的聚焦回源：补取先发出，SWR 带去重的那次会复用同一请求。
+      window.addEventListener("visibilitychange", handleVisibilityChange, true);
       window.addEventListener("pageshow", handlePageShow);
     }
     open(mutate);
@@ -324,7 +348,7 @@ export function useLiveEvents() {
         refCount = 0;
         close();
         if (typeof document !== "undefined") {
-          document.removeEventListener("visibilitychange", handleVisibilityChange);
+          window.removeEventListener("visibilitychange", handleVisibilityChange, true);
           window.removeEventListener("pageshow", handlePageShow);
         }
         activeMutate = null;

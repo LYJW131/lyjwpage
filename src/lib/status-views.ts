@@ -86,8 +86,8 @@ export function pushCoversPath(path: string): boolean {
   return viewOfPath(path)?.pushCovers === true;
 }
 
-export function isRealtimeViewPath(path: string): boolean {
-  return viewOfPath(path)?.layer === "realtime";
+export function isPushedViewPath(path: string): boolean {
+  return viewOfPath(path)?.event !== undefined;
 }
 
 export const STATUS_TAGS: readonly string[] = Object.freeze(
