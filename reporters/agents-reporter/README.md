@@ -24,8 +24,7 @@ Cursor 的用量历史在云端，Mac 合盖时云端线程还在跑，所以这
 4. POST 到站点
 
 每轮收尾读 `SITE_URL/count`：`online`（有页面**可见**）大于 0 走快档；否则
-`connections`（有页面**开着**，含后台标签页）大于 0 走中档，否则走闲档。与
-PlayStation 上报器采用同款人数分档，分档见 `src/cadence.ts#nextDelay`，调的是打各家限额接口的频率。
+`connections`（有页面**开着**，含后台标签页）大于 0 走中档，否则走闲档。分档见 `src/cadence.ts#nextDelay`，调的是打各家限额接口的频率。PlayStation 上报器不读人数，按局域网探测到的主机状态调频。
 计数超时、非成功响应、格式错误一律当 0（某个字段不合法只降它自己），不触发上报失败重试。
 未配 `SITE_URL` 时使用 `src/config.ts#config.cadence.idleIntervalMs`。
 

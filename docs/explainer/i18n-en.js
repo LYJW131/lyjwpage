@@ -314,7 +314,7 @@ window.EXPLAINER_EN = {
 
   "Vercel · 出页面": "Vercel · serves pages",
   "报错 · 性能 · 在线": "Errors · performance · uptime",
-  "分钟 cron": "Minute cron",
+  "定时归档与评分": "Scheduled archive & scoring",
   "在线探测 · 每分钟": "Uptime check · every minute",
   "cron 心跳 · 每 5 分钟": "Cron heartbeat · every 5 min",
   "KV 读模型": "KV read model",
