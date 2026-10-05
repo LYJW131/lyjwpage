@@ -319,4 +319,4 @@ payload: >-
 - Tokens 道画三个来源的 5 分钟 token 桶相加后的速率（不含 cache read），不带模型名和来源；
   取桶规则见 `src/lib/pulse.ts#tokensLaneView`。
 - 充电存实测瓦数，身体活动存 HealthKit 五分钟桶的原始计数与已完成训练的区间。
-- 这些事实由状态核心按水位每分钟归档到 D1 的事实表（迁移 `0007_history_pulse.sql`）。
+- 这些事实由 API 定时任务按归档水位写入 D1 的事实表（迁移 `0007_history_pulse.sql`；周期见 `workers/api/src/cron-heartbeat.ts#CRON_SCHEDULE`）。

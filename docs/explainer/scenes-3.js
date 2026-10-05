@@ -589,7 +589,7 @@
     const wl = wireLayer(root);
     const site = card(root, { x: 90, y: 240, w: 300, tint: "green", icon: "globe", title: "lyjw.me", sub: "Vercel · 出页面" });
     const sentry = card(root, { x: 770, y: 240, w: 380, tint: "purple", title: `<span class="s8-mk">${SENTRY_MARK}</span><span>Sentry</span>`, sub: "报错 · 性能 · 在线" });
-    const worker = card(root, { x: 1470, y: 240, w: 360, tint: "orange", icon: "cloud", title: "API Worker", mono: true, sub: "分钟 cron",
+    const worker = card(root, { x: 1470, y: 240, w: 360, tint: "orange", icon: "cloud", title: "API Worker", mono: true, sub: "定时归档与评分",
       lines: [`<div class="s8-chain"><b>cron</b><i>→</i><b>DO</b></div>`] });
     worker.querySelector(".hd").style.fontSize = "24px";
     const chain = [...worker.querySelectorAll(".s8-chain b")];

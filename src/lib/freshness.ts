@@ -1,6 +1,5 @@
 import type { NowListeningPayload } from "@/lib/types";
 
-
 // 降频前先扩大并部署心跳窗口，避免旧页面把仍存活的上报器判离线。
 export const HEARTBEAT_WINDOW_MS = 300_000;
 
@@ -9,14 +8,19 @@ export function heartbeatWindowMs() {
   return Number.isFinite(configured) && configured > 0 ? configured : HEARTBEAT_WINDOW_MS;
 }
 
+// 窗口覆盖 agents-reporter 最慢闲档（IDLE_INTERVAL_MS）的三轮及缓存余量；调长 IDLE_INTERVAL_MS 前，先放宽并部署此窗口。
 export const AGENT_LIMITS_STALE_MS = 185 * 60_000;
 
+// 判活窗口锚定 playstation-reporter 的 IDLE_TICK_INTERVAL_MS，覆盖多轮闲档，并留出兜底轮询余量（心跳只落库不广播，浏览器要等下一次轮询才看到新 observedAt）；闲档降频前先放宽并部署此窗口。
 export const PLAYSTATION_STALE_MS = 95 * 60_000;
 
+// 覆盖 server-reporter 多轮上报及 KV 可见延迟，避免漏报即闪断；调长其 INTERVAL_MS 前先放宽并部署此窗口。
 export const SERVER_STALE_MS = 10 * 60_000;
 
+// 下列采集窗口须覆盖对应 collector Job 的多轮 everyMinutes 及 KV 可见延迟；采集降频前先核对并部署窗口，同时调整 STATUS_VIEWS 的 cadenceMs。
 export const AGENT_STATUS_STALE_MS = 10 * 60_000;
 export const GITHUB_CHART_STALE_MS = 6 * 3_600_000;
+// GitHub 统计生成中会返回 202，可能跨越多轮采集，不能按一轮未更新即判故障。
 export const GITHUB_REPO_STALE_MS = 3 * 3_600_000;
 export const VERCEL_DEPLOYMENTS_STALE_MS = 10 * 60_000;
 export const VERCEL_METRICS_STALE_MS = 3_600_000;

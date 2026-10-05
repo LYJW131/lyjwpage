@@ -14,6 +14,7 @@ export type WatchingItem = {
 
 export type WatchingMedia = {
   container: string | null;
+  // bit/s。video / audio 描述选中的源媒体，转码时也不是转出来的规格。
   bitrate: number | null;
   video: {
     codec: string | null;
@@ -100,6 +101,7 @@ export type TrophyProfile = {
   trophyPoint: number;
   levelBasePoint: number;
   levelNextPoint: number;
+  // 当前等级内的百分比进度，0–100。
   levelProgress: number;
   earned: TrophyCounts;
 };
@@ -122,11 +124,14 @@ export type Trophy = {
   hidden: boolean;
   groupId: string;
   earned: boolean;
+  // epoch 毫秒；未解锁为 null。
   earnedAt: number | null;
+  // 全球持有率，0–100。
   earnedRate: number | null;
 };
 
 export type TrophyTitle = {
+  // 奖杯 API 的键，不是游玩列表的 titleId（PPSA…）；titleIds 是对齐到这张奖杯表的游戏 SKU，同一奖杯组可对应多个，不能互换或假定一对一。
   npCommunicationId: string;
   name: string;
   localizedName: string | null;
@@ -189,6 +194,7 @@ export type ListeningItem = {
   artwork: string | null;
   link: string | null;
   palette: string[];
+  // 条目是专辑、歌单或电台这类容器，不是单曲；durationMs 是容器内曲目总时长，只为列表首项计算（算它要再查一次上游，页面也只显示首项）。
   durationMs: number | null;
   motion?: TrackMotion | null;
 };
@@ -220,14 +226,19 @@ export type PlayingContainerTrack = Pick<RecentTrack, "id" | "title" | "artist">
   artworkUrl: string | null;
 };
 
+// 「此刻在不在线」由浏览器拿自己的钟算，源站只给这三个事实；首屏缓存会冻住服务端的结论。
 export type ReporterPresence = {
+  // 源站收到上报时的 epoch 毫秒，不是设备的 observedAt。
   lastSeenAt: number;
+  // 上报器亲口声明的离线，只在优雅离开时为真，不等心跳窗口。
   declaredOffline: boolean;
+  // 以载荷携带的值为准，浏览器不再读本地常量。
   heartbeatWindowMs: number;
 };
 
 export type ListeningPayload = {
   items: ListeningItem[];
+  // 源站最近一次拉到这份列表的 epoch 毫秒，用来拒绝晚到的旧响应，不是过期判据：几分钟前的「最近在听」不算错，不该变灰。
   fetchedAt: number;
 };
 
@@ -287,12 +298,15 @@ export type NowListeningPayload = ReporterPresence & {
   music: LocalNowPlaying | null;
   receivedAt: number | null;
   idle: boolean;
+  // 与 ListeningPayload.items[].id 对应的专辑 / 歌单资源 ID，不是单曲。
   id: string | null;
   link: string | null;
+  // 目录里单曲本身的 ID，供「一起听」用 MusicKit 点播；匹配不到可播放的目录曲目时为 null。
   songId: string | null;
   upcomingSongIds: string[];
   hasLyrics: boolean;
   motion: TrackMotion | null;
+  // 源站算出的暂停宽限剩余毫秒，到期应重取；null 表示没有这类定时失效。客户端不要拿设备的 observedAt 自行重算。
   expiresInMs: number | null;
   alternate: NowListeningAlternate | null;
   // 没有上报器的 Apple Music 播放（iPhone、iPad、网页版等）推断出来正在放的那首；Mac / HomePod 在放同名歌时为 null。可能缺席（Worker 先后上线）。
@@ -327,6 +341,7 @@ export type NowListeningNext = {
 export type ChargerPort = {
   id: string;
   active: boolean;
+  // 分别为 W / V / A；端口不输出时为 null。
   power: number | null;
   voltage: number | null;
   current: number | null;
@@ -336,6 +351,7 @@ export type ChargerPort = {
 };
 
 export type ChargerSample = {
+  // epoch 毫秒；w 为瓦。
   t: number;
   w: number;
 };
@@ -361,6 +377,7 @@ export type ChargerStatus = {
 
 export type ChargerPayload = ChargerStatus & {
   history: ChargerSample[];
+  // true：history 只是 ?since= 之后的增量，空数组也不得清空已有序列；false：完整快照，应替换。客户端首次请求或游标落后于服务端保留区间时得到完整快照。
   historyPartial: boolean;
   pushedAt: number;
   staleAfterMs: number;
@@ -388,8 +405,10 @@ export type CodingUsageTotals = {
   outputTokens: number;
   cacheReadTokens: number;
   cacheCreationTokens: number;
+  // reasoningTokens 已包含在 outputTokens 中；totalTokens 可含来源没分列的量，不应由各列相加覆盖。
   reasoningTokens: number;
   totalTokens: number;
+  // 按公开 API 价格估算，不是订阅账单；costComplete 只表示有用量的日子是否都估全了价。
   apiEquivalentCostUSD: number;
   costComplete: boolean;
   activeDays: number;
@@ -440,10 +459,12 @@ export type CodingNowPayload = {
 
 export type CodingYearPayload = {
   origin: string;
+  // days[i] 是 origin 起第 i 天的合计；mix 稀疏，每行 [日偏移, models 下标, token 数, …]，空日不出现。
   days: number[];
   models: string[];
   mix: number[][];
   updatedAt: number;
+  // 源站按站点时区算的今天（YYYY-MM-DD），热力图用它切掉窗尾的未来格；不能拿 updatedAt 代替，用量停一天会让今天那格跟着消失。
   todayAtSource: string;
 };
 
@@ -458,7 +479,9 @@ export type GithubChartDay = {
 export type GithubChartPayload = {
   origin: string;
   counts: number[];
+  // GitHub 自己给的四分位档，不按本地计数重新分档。
   scores: Array<0 | 1 | 2 | 3 | 4>;
+  // true 时 counts / scores 只覆盖 from 起的尾段；origin 仍是整窗原点。缺省或 false 是整窗。
   countsPartial?: boolean;
   from?: string;
 };
@@ -484,6 +507,9 @@ export type GithubRepoPayload = {
   contributors: GithubRepoContributor[];
 };
 
+// updatedAt 只在可滞后层出现，是写入方最后一次成功取到数据的 epoch 毫秒，浏览器按各卡阈值据此判过时。
+// servedAt 是源站交出信封的 epoch 毫秒，只为首帧：首屏缓存冻住后没有访客钟，按时间判过期的卡片拿它当钟。
+// 信封不带逐次变化的时间戳，否则每次响应字节都不同，SWR 深比较失效、卡片每轮重渲染；客户端进 SWR 前必须剥掉 servedAt（lib/status-reads 的 withoutServedAt）。
 export type StatusResponse<T> =
   | { ok: true; data: T; updatedAt?: number; servedAt?: number }
   | { ok: false; error: string };
@@ -545,6 +571,7 @@ export type ActivityRings = {
 };
 
 export type ActivityStatus = ActivityRings & {
+  // 来源按其本地日历产生的 YYYY-MM-DD，secondsFromGMT 是随报的 UTC 偏移秒数；是否仍属当天由取数出口算成 currentAtSource，不能拿访客日期比较。
   date: string;
   secondsFromGMT: number;
   steps: number | null;
@@ -558,6 +585,7 @@ export type ActivityPayload = ActivityStatus & {
 };
 
 export type ServerTraffic = {
+  // epoch 毫秒，周期按 UTC 账单日划分；rxBytes / txBytes 是跨重启累积的周期用量，不是 networkRxBytes / networkTxBytes（开机以来的网卡计数）的换算。
   cycleStart: number;
   cycleEnd: number;
   rxBytes: number;
@@ -603,6 +631,7 @@ export type ServerPayload = ServerStatus & {
 export type Workout = {
   id: string;
   activityType: string;
+  // startedAt / endedAt 为 epoch 毫秒；durationSeconds 是有效训练时长，可能小于起止之差，不能据两端重算覆盖。
   startedAt: number;
   endedAt: number;
   secondsFromGMT: number;

@@ -45,7 +45,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 # 排查线上错误
 
 - 线上报错、页面异常、Worker 或 cron 失败，先用 Sentry MCP 查证据，再读代码：用 `search_issues` / `search_events` 找报错和 warn / error 日志，用 `get_sentry_resource` 看调用栈、面包屑和出错录像，拿到 release 和堆栈再对源码定位。不凭猜测改代码，也不借浏览器登录态调 Sentry 接口；MCP 不可用时告诉用户，而不是绕开。
-- 组织 `yangjunwei-liang`，区域 `https://us.sentry.io`，排查线上问题默认只看环境 `production`（另有 `preview` / `development`）。项目 `lyjwpage` 收浏览器和 Vercel 函数，release 是提交 SHA；`api-worker` 收 api Worker（含 Durable Object 与分钟 cron）和上报入口 `ingress`（事件带 tag `worker:ingress`，查上报的鉴权、校验与拆分按它过滤）；`collector-worker` 收采集 Worker（全部定时拉取，任务失败看 tag `collector.job`）；两个 Worker 项目的 release 是 Cloudflare 版本 ID。cron 监控与在线探测的配置见 `docs/ops-facts.md`。
+- 组织 `yangjunwei-liang`，区域 `https://us.sentry.io`，排查线上问题默认只看环境 `production`（另有 `preview` / `development`）。项目 `lyjwpage` 收浏览器和 Vercel 函数，release 是提交 SHA；`api-worker` 收 api Worker（含 Durable Object 与 API 定时任务，周期见 `workers/api/src/cron-heartbeat.ts#CRON_SCHEDULE`）和上报入口 `ingress`（事件带 tag `worker:ingress`，查上报的鉴权、校验与拆分按它过滤）；`collector-worker` 收采集 Worker（全部定时拉取，任务失败看 tag `collector.job`）；两个 Worker 项目的 release 是 Cloudflare 版本 ID。cron 监控与在线探测的配置见 `docs/ops-facts.md`。
 - `reporters/` 下的上报器没接 Sentry，查所在机器的容器日志。
 - Sentry 里只读不写是默认。把 issue 标为 resolved / ignored、改负责人这类写操作，在修复部署并从生产验证后再做，并在汇报里说明；删除数据、改告警规则、项目或集成设置，先问用户。
 
