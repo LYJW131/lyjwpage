@@ -212,6 +212,42 @@ export async function fetchCatalogTracks(
   return [];
 }
 
+type CatalogSong = {
+  attributes?: {
+    albumName?: string;
+    artistName?: string;
+    url?: string;
+    artwork?: { url?: string };
+  };
+  relationships?: { albums?: { data?: { id?: string }[] } };
+};
+
+export async function fetchCatalogSongAlbum(
+  songId: string,
+  storefront = "cn",
+): Promise<ListeningItem | null> {
+  const token = await fetchDeveloperToken();
+  const res = await fetch(
+    `https://api.music.apple.com/v1/catalog/${storefront}/songs/${encodeURIComponent(songId)}`,
+    { headers: { Authorization: `Bearer ${token.token}` } },
+  );
+  if (!res.ok) throw new Error(`Apple Music returned ${res.status}`);
+  const body = (await res.json()) as { data?: CatalogSong[] };
+  const song = body.data?.[0];
+  const albumId = song?.relationships?.albums?.data?.[0]?.id;
+  const link = song?.attributes?.url;
+  if (!albumId || !link) return null;
+  return {
+    id: albumId,
+    title: song.attributes?.albumName ?? "",
+    artist: song.attributes?.artistName ?? "",
+    artwork: song.attributes?.artwork?.url ?? null,
+    link,
+    palette: [],
+    durationMs: null,
+  };
+}
+
 export function formatClock(milliseconds: number): string {
   if (Number.isNaN(milliseconds) || milliseconds <= 0) {
     return "0:00";

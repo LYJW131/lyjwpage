@@ -2,7 +2,7 @@
 
 import NumberFlow, { NumberFlowGroup } from "@number-flow/react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { useSWRConfig } from "swr";
+import useSWR, { useSWRConfig } from "swr";
 import {
   useCallback,
   useEffect,
@@ -58,7 +58,7 @@ import type {
 import { appleArtwork, ARTWORK_SCALE, needsOptimizing } from "@/lib/apple-artwork";
 import type { ArtworkDataUri, ArtworkPlaceholders } from "@/lib/artwork-placeholder";
 import { liveTrack } from "@/lib/home-layout";
-import { queueOptionsFor } from "@/lib/web-player";
+import { fetchCatalogSongAlbum, queueOptionsFor } from "@/lib/web-player";
 import { cn } from "@/lib/utils";
 
 const REFRESH_MS = 10 * 60_000;
@@ -762,7 +762,15 @@ export function ListeningCard({
       : null;
 
   const heroResourceId = live?.id ?? latched?.id ?? null;
-  const heroItem: ListeningItem | null | undefined = hero?.track
+  // 推断播放只有单曲 ID，所属专辑要另查目录才能像本机在播一样打开。
+  const elsewhereSongId =
+    !localActive && player && player.status !== "unavailable" ? elsewhere?.songId ?? null : null;
+  const { data: elsewhereAlbum } = useSWR(
+    elsewhereSongId ? ["catalog-song-album", elsewhereSongId] : null,
+    ([, songId]) => fetchCatalogSongAlbum(songId),
+    { revalidateIfStale: false, revalidateOnFocus: false, revalidateOnReconnect: false, shouldRetryOnError: false },
+  );
+  const heroItem: ListeningItem | null | undefined = localActive && hero?.track
     ? data?.items.find((item) => item.id === heroResourceId) ??
       (heroResourceId && hero.link ? {
         id: heroResourceId,
@@ -773,7 +781,11 @@ export function ListeningCard({
         palette: hero.palette,
         durationMs: null,
       } : null)
-    : latest;
+    : elsewhere
+      ? elsewhereAlbum
+        ? data?.items.find((item) => item.id === elsewhereAlbum.id) ?? elsewhereAlbum
+        : null
+      : latest;
   const canOpenHero = Boolean(heroItem && canOpenInPlayer(heroItem));
 
   const rest = dedupeListeningItems(
