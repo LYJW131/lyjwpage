@@ -7,7 +7,7 @@
 
 ## 代码职责
 
-- `src/index.ts`：默认 Worker 入口与 cron（每 `CRON_HEARTBEAT_EVERY_MINUTES` 分钟一轮，时刻表 `src/cron-heartbeat.ts#CRON_SCHEDULE`；pulse 归档与评分）；`src/origin-worker.ts` 负责 WebSocket 接入、人头数、公开 HTTP 和存储导入。
+- `src/index.ts`：默认 Worker 入口与 cron（每 `CRON_HEARTBEAT_EVERY_MINUTES` 分钟一轮，时刻表 `src/cron-heartbeat.ts#CRON_SCHEDULE`；pulse 归档与评分，每几轮顺带做一次断流检测，见下文「断流告警」）；`src/origin-worker.ts` 负责 WebSocket 接入、人头数、公开 HTTP 和存储导入。
 - `src/state-core.ts`：对内的 RPC 入口 `StateCore`（契约 `shared/state-core.ts`），上报入口和采集 Worker 经 Service Binding 调：
   `ready()`、`commitIngest(command)`（prepare 好的上报进 StateHub，效果在这里派发）、`broadcastVersion()`、`audience()`、
   `playstationPower()`、`appleDeveloperToken()`、`commitRecentlyPlayed()`、`revalidate()`。
@@ -383,6 +383,46 @@ Mac 上报的 Apple Music 凭据在凭据 KV（`shared/credentials.ts`），不�
 有效期 `MUSICKIT_TOKEN_TTL_SECONDS` 不填按 `DEFAULT_TTL_SECONDS`，上限 `MAX_TTL_SECONDS`（Apple 允许的最长期限）；不取上限是因为令牌一旦被复制走，
 域名限制之外就只剩有效期这一道闸。
 
+## 断流告警
+
+cron 心跳与 `HEAD /api/version` 在线探测都不经过数据链路，上报器断了它们照样绿。断流检测补这一块，代码在 `src/freshness-watch.ts`。
+
+**节奏**：cron 每 `FRESHNESS_CHECK_EVERY_ROUNDS` 轮查一次（按 `scheduledTime` 取轮次，不存计数）。最短阈值是 `QUEST_STALE_MS`，值得告警的断流按小时计，检测晚几轮换来成倍少的读量。
+只在归档或评分开着时跑（与它们同一道隔离闸：preview、`DEV_OVERRIDES`、`UPSTREAM_API_URL` 都不跑），本地空库不会报断流。
+
+**来源**：只覆盖按固定节奏上报、断了就是坏了的来源；按事件才上报的（iPhone 活动与训练、HomePod、时区）不算。阈值一律复用站点卡片判过期的那个常量，告警与卡片同一口径。
+
+| 来源（`freshness.source`） | 读哪里 | 时刻字段 | 阈值 |
+| --- | --- | --- | --- |
+| `quest` | StateHub `questMirror` | `observedAt` | `shared/quest.ts#QUEST_STALE_MS`，判法就是 `questNow` 的 `available` |
+| `playstation` | StateHub `presenceMirror` | `observedAt` | `src/lib/freshness.ts#PLAYSTATION_STALE_MS` |
+| `emby` | StateHub `resumeMirror`（续播列表，上报器至少每 `FULL_PUSH_INTERVAL_MS` 整推一次） | `at` | `shared/emby-store.ts#RESUME_STALE_MS` |
+| `server` | LAG `server:v1` | `updatedAt` | `SERVER_STALE_MS` |
+| `agents-reporter` | LAG `reporter:agents-reporter:v1`（每封都写，与站点状态卡那一格同源） | `updatedAt` | `AGENT_LIMITS_STALE_MS` |
+| 采集 Worker 写的各条键 | LAG，见 `src/freshness-watch.ts#LAG_FEEDS` | `updatedAt` | 上文「外部数据卡片」那张表的卡片阈值 |
+
+同一上报器只看一条：`reporter:server-reporter:v1` 与 `server:v1`、`limits:v1` 与 agents 账本都来自同一个上报器，两条都看会一次断流报两遍。
+StateHub 的三条用一次 `publicRead` 批量读，键取各 mirror 的 `key`（`src/lib/storage.ts#mirrorKey`），不另抄键名。读不到的来源（没写过、DO 未初始化、读失败）这一轮不下结论、沿用上次状态，读故障不会被报成断流或恢复。
+
+**只在翻转时报**：翻转状态是 LAG KV 里的一条 `freshness-watch:v1`（`{ updatedAt, data: { <来源>: "fresh" | "stale" } }`），只在有来源翻转时整份写一次；没有记录的来源按新鲜算，所以首次部署时已经断着的来源会报一次。先写状态再发事件，写失败这一轮不发、下一轮重判。
+
+**事件格式**：每次翻转一条 Sentry 消息，进 `api-worker` 项目：
+
+| 字段 | 断流 | 恢复 |
+| --- | --- | --- |
+| 消息 | `Feed stale: <来源>` | `Feed recovered: <来源>` |
+| level | `warning` | `info` |
+| tag | `freshness.source=<来源>`、`freshness.state=stale` | 同左，`freshness.state=recovered` |
+| fingerprint | `["freshness", <来源>, "stale"]` | `["freshness", <来源>, "recovered"]` |
+| extra | `lastSeenAt`（ISO）、`ageMinutes`、`thresholdMinutes` | 同左 |
+
+每个来源的断流、恢复各归成一个 issue，告警规则按 tag 过滤，配在 Sentry 控制台（仓库外）。
+
+### cron 失败口径
+
+- StateHub 整个调不通（`pulseTick` 抛错）：这一轮抛给 `Sentry.withMonitor`，按失败报到，`withSentry` 同时记一条异常。监控 `failureIssueThreshold` 见 `src/cron-heartbeat.ts#CRON_MONITOR_CONFIG`。
+- 子步骤失败（归档、评分、断流检测）：只打 `console.warn` 并记一条 `warning` 级异常（tag `cron.step=pulse-archive | pulse-score | freshness-watch`），这一轮照常报 ok。取舍：站点「API」在线行读的就是这个监控，子步骤坏了 API 本身仍在服务，不该让在线行闪；子步骤的故障靠事件看。StateHub 内部 `pulseTick` 里读归档快照、领评分任务各自兜底，只记 warn，不算 StateHub 调不通。
+
 ## 配置与部署
 
 生产发布走 Cloudflare Workers Builds 原生 Git 集成，推送 `main` 且本 Worker 或共享代码变化时触发。构建命令、监视路径与验收流程见 [原生部署配置](../../docs/workers-builds.md)。
@@ -391,7 +431,7 @@ Mac 上报的 Apple Music 凭据在凭据 KV（`shared/credentials.ts`），不�
 `APPLE_MUSIC_STOREFRONT`、`ALLOWED_ORIGINS`、`APPLE_MUSIC_TEAM_ID`、
 `APPLE_MUSIC_KEY_ID`（响应里的图片地址是 `/img/<对象键>` 同源路径，Worker 不配交付域，
 回源 R2 由站点的 rewrite 和 ESA 负责，见根 README「图片」；上报器直传图片那个桶的 HEAD 在上报入口），
-以及 `LIVE_PUSH` 与 `STATE` 两个 Durable Object 绑定（迁移只追加新 tag，不改旧的）。`LAG`、`CREDENTIALS` 两个 KV 绑定见 `shared/lag.ts`、`shared/credentials.ts`，这里只读；`HISTORY` 是长期归档用的 D1 库 `lyjwpage-history`（这里写 Pulse 事实表，收下奖杯信封后写 `trophies`；上报的那几张表由上报入口写，站点部署由采集 Worker 写，见上文「长期归档（D1）」），
+以及 `LIVE_PUSH` 与 `STATE` 两个 Durable Object 绑定（迁移只追加新 tag，不改旧的）。`LAG`、`CREDENTIALS` 两个 KV 绑定见 `shared/lag.ts`、`shared/credentials.ts`，这里只读（唯一例外是 cron 写断流检测的翻转状态 `freshness-watch:v1`，见「断流告警」）；`HISTORY` 是长期归档用的 D1 库 `lyjwpage-history`（这里写 Pulse 事实表，收下奖杯信封后写 `trophies`；上报的那几张表由上报入口写，站点部署由采集 Worker 写，见上文「长期归档（D1）」），
 几乎只增不删（活动桶按权威范围替换）、无公开读路径，建表只在 `migrations/` 里，部署带这个绑定的版本**之前**先手动应用一次
 （`pnpm --dir workers/api exec wrangler d1 migrations apply lyjwpage-history --remote`，Workers Builds 不跑迁移），
 边界与回滚见 [Worker 数据后端与首屏缓存](../../docs/state-storage.md)。

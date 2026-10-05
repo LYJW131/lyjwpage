@@ -3,6 +3,9 @@ import type { WatchingItem, WatchingMedia, WatchingPlayMethod } from "@/lib/type
 
 export const TTL_MS = 6 * 60 * 60 * 1000;
 
+// 上报器按 FULL_PUSH_INTERVAL_MS（reporters/emby-reporter/src/config.ts）兜底整推续播列表；阈值取它的三倍，容忍连丢两次。
+export const RESUME_STALE_MS = 30 * 60_000;
+
 // 列表不随播放事件重推；不能套用会话 TTL，否则长期无播放会清空列表。
 export const LIBRARY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
