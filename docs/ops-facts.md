@@ -52,6 +52,14 @@
 | 组织的 cron 监控名额只有一个，给了 `api-minute-cron`；采集 Worker 每个任务的 `collector-<任务>` 监控随报到自动建出，因名额不足是停用状态，报到被丢弃，所以任务失败要看 `collector-worker` 项目里 tag `collector.job` 的 issue | 核对于 未记录，方式：迁自 `workers/collector/README.md` |
 | 在线探测每分钟 HEAD `https://lyjw.me/api/version`，配在 Sentry 侧；站点卡片的「在线状态」读它 | 核对于 未记录，方式：迁自根 `README.md` |
 
+## GitHub
+
+| 事实 | 核对 |
+| --- | --- |
+| GitHub App `LYJW131`（slug `lyjw131`，App ID `5201294`，Client ID 写在 `.github/workflows/avatar-sync.yml`），机器人账号 `lyjw131[bot]`（用户 ID `338272049`）；权限只有 Contents 读写与 Metadata 只读，Webhook 关闭，只装在 `LYJW131/lyjwpage`。`avatar-sync.yml` 用它经 GraphQL `createCommitOnBranch` 往 main 提交 `.github/github-avatar.sha256`，触发 Vercel 重建以重新抓取构建期缓存的头像 | 核对于 2026-10-05，方式：本机会话在浏览器创建后用 `gh api` 只读核对 |
+| 凭据放的位置（不记值）：仓库 Actions secret `AVATAR_APP_PRIVATE_KEY`（App 私钥）；仓库 Actions variable `AVATAR_APP_ID` 存了 App ID，工作流没有使用 | 核对于 2026-10-05，方式：同上 |
+| `main` 没有分支保护和 ruleset，App 可以直接提交 | 核对于 2026-10-05，方式：`gh api` 查 `rulesets` 为空、`branches/main/protection` 返回 404 |
+
 ## 机器与部署位置
 
 | 事实 | 核对 |
