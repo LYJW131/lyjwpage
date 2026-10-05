@@ -245,66 +245,6 @@ try {
     assert.equal((await fetch(`${worker}${path}`, { method: 'POST', headers: { ...questHeaders, 'content-type': 'application/json' }, body: '{}' })).status, 403);
   }
   console.log('PASS: Quest dedicated Access permission → DO state → current endpoint and change-only WebSocket events; heartbeats and old reports do not broadcast');
-  const ws = query => new WebSocket(`${worker.replace('http:', 'ws:')}/ws?${query}`);
-  const questEvents = () => events.filter(e => e.type === 'quest-now').length;
-  const lurkerSeen = [];
-  const lurker = ws('visible=0');
-  lurker.addEventListener('message', e => { if (e.data !== 'pong') lurkerSeen.push(JSON.parse(e.data)); });
-  await once(lurker, 'open');
-  // 房间告诉 StateHub 是异步的，没有可轮询的信号；本地 RPC 是毫秒级，留足余量
-  const settle = () => sleep(500);
-  let questStep = 3000;
-  const toggleQuest = async () => {
-    const playing = (questStep / 1000) % 2 === 1 ? questGame : null;
-    const receipt = await sendQuest(questReport(questAt + questStep, playing));
-    questStep += 1000;
-    assert.equal(receipt.status, 202);
-    assert.equal((await receipt.json()).data.changed, true);
-    assert.equal((await (await fetch(`${worker}/api/status/quest/now`)).json()).data.playing?.name ?? null, playing?.name ?? null);
-  };
-  const expectSilent = async label => {
-    const before = { quest: questEvents(), lurker: lurkerSeen.length };
-    await toggleQuest();
-    await settle();
-    assert.equal(questEvents(), before.quest, `${label}: no push when nobody is watching`);
-    assert.deepEqual(lurkerSeen.slice(before.lurker), [], `${label}: hidden tabs get nothing either`);
-  };
-  const expectPushed = async () => {
-    const before = questEvents();
-    await toggleQuest();
-    await eventually(async () => assert.equal(questEvents(), before + 1));
-  };
-  socket.send('hidden');
-  await eventually(async () => assert.deepEqual(await audience(), { ok: true, connections: 2, online: 0 }));
-  await settle();
-  await expectSilent('visible → hidden');
-  const unwatchedNotices = notices.length;
-  assert.equal((await post(worker, '/api/ingest/homepod', { entityId: 'media_player.isolated', state: 'playing', title: 'isolated-unwatched', positionMs: 0, durationMs: 3600000, observedAt: Date.now() })).status, 202);
-  await eventually(async () => assert.ok(notices.slice(unwatchedNotices).some(n => n.tags?.includes('listening-now')), 'first-screen invalidation still goes out'));
-  assert.equal(events.some(e => e.type === 'listening-now' && e.payload.music?.title === 'isolated-unwatched'), false);
-  const viewer = ws('visible=1');
-  await once(viewer, 'open');
-  await eventually(async () => assert.equal((await audience()).online, 1));
-  await settle();
-  await expectPushed();
-  viewer.close();
-  await eventually(async () => assert.equal((await audience()).online, 0));
-  await settle();
-  await expectSilent('last viewer closed');
-  const relay = ws('relay=1');
-  await once(relay, 'open');
-  await settle();
-  assert.equal((await audience()).online, 0, 'a local relay is not a visitor');
-  await expectPushed();
-  relay.close();
-  await settle();
-  await expectSilent('relay closed');
-  socket.send('visible');
-  await eventually(async () => assert.equal((await audience()).online, 1));
-  await settle();
-  await expectPushed();
-  lurker.close();
-  console.log('PASS: StateHub returns push events only while someone is watching; hidden → visible, new / closed connections and the local relay all flip it, and first-screen invalidation is never gated');
   const invalidEnvelope = await post(worker, '/api/ingest/mac', {});
   assert.equal(invalidEnvelope.status, 400);
   assert.deepEqual(await invalidEnvelope.json(), { ok: false, error: '上报数据无效或处理失败' });

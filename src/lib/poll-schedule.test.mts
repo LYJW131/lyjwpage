@@ -10,7 +10,7 @@ import {
   nextLagDelay,
   realtimeInterval,
 } from "@/lib/poll-schedule";
-import { STATUS_VIEWS, cadenceOfPath, isRealtimeViewPath, pushCoversPath } from "@/lib/status-views";
+import { STATUS_VIEWS, cadenceOfPath, isPushedViewPath, pushCoversPath } from "@/lib/status-views";
 
 const MIN = 60_000;
 
@@ -55,8 +55,8 @@ test("登记表：节奏按路径取，带心跳的实时卡不退成兜底", ()
   assert.equal(pushCoversPath(STATUS_VIEWS.desktop.path), false);
   assert.equal(pushCoversPath(STATUS_VIEWS.nowListening.path), false);
   assert.equal(pushCoversPath(STATUS_VIEWS.charger.path), false);
-  assert.equal(isRealtimeViewPath(`${STATUS_VIEWS.trophies.path}?titleids=a`), true);
-  assert.equal(isRealtimeViewPath(STATUS_VIEWS.server.path), false);
+  assert.equal(isPushedViewPath(`${STATUS_VIEWS.trophies.path}?titleids=a`), true);
+  assert.equal(isPushedViewPath(STATUS_VIEWS.server.path), false);
 });
 
 test("关了挂载回源的实时视图：首屏那份放得比一个轮询间隔久才在挂载时补取", () => {

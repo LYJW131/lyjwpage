@@ -170,7 +170,6 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
   1. 先并行向 `LivePushRoom` 广播。
   2. 再把布局标签一次性发给 `POST {SITE}/api/revalidate`，5 秒超时（ingest-effects.ts:106-120；live-platform.ts:19、66-95）。
 - 所以**广播和 202 是并行的**，不是 202 之后才广播。
-- 没人在看时（推送房间经 `noteAudience` 告诉 StateHub），StateHub 交回的效果只留 `tags`，不广播（`workers/api/src/ingest-effects.ts#effectsForAudience`）。片中画的是有人在看的情形。
 - 效果在 StateHub 之外派发：`StateCore.commitIngest` 拿到 StateHub 交回的效果，交给 `dispatchIngestEffects`，后者经 `afterResponse` 放进 `ctx.waitUntil`；网络请求不占 StateHub 的执行时间，串行的提交队列不被推送和失效拖住（`workers/api/src/ingest-effects.ts#dispatchIngestEffects`、`workers/api/src/live-platform.ts#afterResponse`）。第 03 章旁白「网络请求不占 StateHub 的时间」出自这里。
 - 换歌那封上报在交给 StateHub 之前，由 StateCore 查 Apple 目录补封面、链接、songId、有没有歌词和动态封面，结果随状态落库；推送和读取只用存好的这份（`workers/api/src/listening-enrichment.ts#enrichCommand`、`src/lib/track-enrichment.ts#candidateFrom`）。
 - 各模块交回什么（workers/api/src/stores/telemetry.ts）：
@@ -263,7 +262,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 - head 里的内联脚本解析到它时就 `new WebSocket("wss://…/ws?visible=1")` 起手，把收到的消息原样攒下：最多 `EARLY_LIVE_SOCKET_QUEUE_LIMIT` 条（50），没人接手就在 `EARLY_LIVE_SOCKET_WATCHDOG_MS`（15 秒）后自己关（`src/lib/live-socket-boot.ts#earlyLiveSocketScript`）。
 - 这样**不用等整棵树 hydrate 完**才发起连接。hydrate 后由 `useLiveEvents` 接管这条连接，攒下的按到达顺序重放（`src/hooks/use-live-events.ts#adoptEarlySocket`）。接管的是同一条 WebSocket，不重新握手：`adoptEarlySocket` 从 `window` 上摘下内联脚本那条连接，卸掉它的 handler 后直接用；只有它还在 CONNECTING 或 OPEN 时才接管，已经断了就关掉，由 `open` 重新建一条。房间在连上的那一刻就发一条 `online` 人数，所以托盘里通常至少有这一封。
 - 代码里不记实测延迟，注释只讲为什么要早开。**片中不标毫秒**，时间轴只画先后；要标得先重测。
-- 重连退避从 1 秒起、每次 ×1.5，封顶 30 秒。重连后所有实时视图立刻补取一次（同文件 `open` 里的 `onReady`）。
+- 重连退避从 1 秒起、每次 ×1.5，封顶 30 秒，每轮在上半截随机抖动；连接撑过 `STABLE_CONNECTION_MS` 才清零（`src/lib/live-reconnect.ts`）。重连后带推送事件的视图补取一次；页面在后台时只记待补，回到前台再取（同文件 `open` 里的 `onReady` 与 `catchUpIfPending`）。
 
 ### 推送进卡片
 
