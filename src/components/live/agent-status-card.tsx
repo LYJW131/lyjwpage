@@ -9,7 +9,7 @@ import GrokIcon from "@lobehub/icons/es/Grok/components/Mono";
 import OpenAIIcon from "@lobehub/icons/es/OpenAI/components/Mono";
 import VercelIcon from "@lobehub/icons/es/Vercel/components/Mono";
 import { ExternalLink, X } from "lucide-react";
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 import { Card } from "@/components/ui/card";
 import { Modal } from "@/components/ui/modal";
@@ -217,6 +217,36 @@ function Detail({ agent, onClose }: { agent: AgentStatusRow; onClose: () => void
   );
 }
 
+function StatusTrigger({
+  agent,
+  onOpen,
+  className,
+  children,
+}: {
+  agent: AgentStatusRow;
+  onOpen: (id: AgentStatusRow["id"]) => void;
+  className: string;
+  children: ReactNode;
+}) {
+  const label = `${agent.name}: ${indicatorLabel(agent.indicator)}${agent.stale ? " (cached)" : ""}`;
+  return hasDetail(agent) ? (
+    <button type="button" onClick={() => onOpen(agent.id)} aria-label={`${label}, show details`} title={label} className={className}>
+      {children}
+    </button>
+  ) : (
+    <a
+      href={agent.statusUrl}
+      target="_blank"
+      rel="noreferrer"
+      aria-label={`${label}, open status page`}
+      title={label}
+      className={className}
+    >
+      {children}
+    </a>
+  );
+}
+
 function unavailableRow(agent: AgentStatusRow, note: string): AgentStatusRow {
   return { ...agent, indicator: "unavailable", components: [], incidents: [], note, stale: false };
 }
@@ -287,59 +317,61 @@ export function AgentStatusCard({
       action={checked ? <span title={`${checked} UTC+8`}>{checked}</span> : undefined}
     >
       {data ? (
-        <div
-          ref={scrollerRef}
-          className="@container flex snap-x snap-mandatory gap-px overflow-x-auto overscroll-x-contain scrollbar-none [&::-webkit-scrollbar]:hidden"
-        >
-          {columns.map((column) => (
-            <ul
-              key={column[0]?.id ?? "column"}
-              className="relative w-full shrink-0 snap-start divide-y divide-line not-first:before:absolute not-first:before:inset-y-0 not-first:before:-left-px not-first:before:w-px not-first:before:bg-line @[36rem]:w-[calc((100%-1px)/2)] @[54rem]:w-[calc((100%-2px)/3)]"
-            >
-              {column.map((agent) => {
-                const label = indicatorLabel(agent.indicator);
-                const triggerClass =
-                  "-mx-2 -my-3 flex items-center gap-2 px-2 py-3 hover:underline hover:underline-offset-4";
-                const status = (
-                  <>
-                    <span className={cn("size-1.5 rounded-full", indicatorDot(agent.indicator))} aria-hidden />
-                    <span className={cn("text-sm", indicatorText(agent.indicator))}>{label}</span>
-                  </>
-                );
-                return (
-                  <li key={agent.id} className="flex w-full items-center gap-3 px-4 py-3 @[36rem]:px-3">
+        <div className="@container">
+          <div className="grid grid-cols-3 gap-px bg-line @[36rem]:hidden">
+            {data.agents.map((agent) => (
+              <StatusTrigger
+                key={agent.id}
+                agent={agent}
+                onOpen={setOpenId}
+                className="flex items-center justify-center gap-2 bg-surface py-4 hover:bg-surface-hover"
+              >
+                <span className="shrink-0" aria-hidden>
+                  <Brand id={agent.id} />
+                </span>
+                <span
+                  className={cn("size-2 rounded-full", indicatorDot(agent.indicator), agent.stale && "opacity-50")}
+                  aria-hidden
+                />
+              </StatusTrigger>
+            ))}
+            {Array.from({ length: (ROWS_PER_COLUMN - (data.agents.length % ROWS_PER_COLUMN)) % ROWS_PER_COLUMN }, (_, index) => (
+              <span key={index} className="bg-surface" aria-hidden />
+            ))}
+          </div>
+          <div
+            ref={scrollerRef}
+            className="hidden snap-x snap-mandatory gap-px overflow-x-auto overscroll-x-contain scrollbar-none @[36rem]:flex [&::-webkit-scrollbar]:hidden"
+          >
+            {columns.map((column) => (
+              <ul
+                key={column[0]?.id ?? "column"}
+                className="relative w-[calc((100%-1px)/2)] shrink-0 snap-start divide-y divide-line not-first:before:absolute not-first:before:inset-y-0 not-first:before:-left-px not-first:before:w-px not-first:before:bg-line @[54rem]:w-[calc((100%-2px)/3)]"
+              >
+                {column.map((agent) => (
+                  <li key={agent.id} className="flex w-full items-center gap-3 px-3 py-3">
                     <span className="shrink-0" aria-hidden>
                       <Brand id={agent.id} />
                     </span>
                     <span className="min-w-0 flex-1 truncate text-sm font-medium">{agent.name}</span>
                     <span className="flex shrink-0 items-center gap-2">
                       {agent.stale && <span className="text-xs text-muted-foreground">cached</span>}
-                      {hasDetail(agent) ? (
-                        <button
-                          type="button"
-                          onClick={() => setOpenId(agent.id)}
-                          aria-label={`${agent.name}: ${label}, show details`}
-                          className={triggerClass}
-                        >
-                          {status}
-                        </button>
-                      ) : (
-                        <a
-                          href={agent.statusUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          aria-label={`${agent.name}: ${label}, open status page`}
-                          className={triggerClass}
-                        >
-                          {status}
-                        </a>
-                      )}
+                      <StatusTrigger
+                        agent={agent}
+                        onOpen={setOpenId}
+                        className="-mx-2 -my-3 flex items-center gap-2 px-2 py-3 hover:underline hover:underline-offset-4"
+                      >
+                        <span className={cn("size-1.5 rounded-full", indicatorDot(agent.indicator))} aria-hidden />
+                        <span className={cn("text-sm", indicatorText(agent.indicator))}>
+                          {indicatorLabel(agent.indicator)}
+                        </span>
+                      </StatusTrigger>
                     </span>
                   </li>
-                );
-              })}
-            </ul>
-          ))}
+                ))}
+              </ul>
+            ))}
+          </div>
         </div>
       ) : (
         <p className="px-4 py-5 text-sm text-muted-foreground md:px-5">
