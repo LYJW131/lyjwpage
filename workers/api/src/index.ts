@@ -10,6 +10,7 @@ import { StateCore as StateCoreBase } from "./state-core";
 import { CRON_MONITOR_CONFIG, CRON_MONITOR_SLUG } from "./cron-heartbeat";
 import { freshnessCheckDue, watchFreshness, type FreshnessEvent } from "./freshness-watch";
 import { sentryOptions } from "./sentry";
+import type { PulseTick } from "./state-hub";
 
 // Wrangler 迁移按导出名识别 DO；Sentry 包装不能改变这些名称。
 export const LivePushRoom = Sentry.instrumentDurableObjectWithSentry(sentryOptions, LivePushRoomBase);
@@ -46,12 +47,32 @@ async function runScheduled(env: Env, scheduledTime: number): Promise<void> {
   ]);
   if (ticked.status === "rejected") throw ticked.reason;
   const tick = ticked.value;
+  console.info("[cron-shape]", JSON.stringify(tickShape(tick)));
   await Promise.all([
     archiving && new PulseArchive({ coordinator: hub, db: env.HISTORY! }).run(tick.archive)
       .catch((error: unknown) => stepFailed("pulse-archive", error)),
     scoring && new PulseScorer({ coordinator: hub, decide: clefDecide(env.AI!) }).run(tick.score)
       .catch((error: unknown) => stepFailed("pulse-score", error)),
   ]);
+}
+
+// Worker 时钟在同步计算中不走，测不出分步 CPU；只记每轮输入的条数与字节，cron CPU 再异常时用来区分输入变大和运行时本身。
+function tickShape({ archive, score }: PulseTick) {
+  const sized = (rows: readonly (string | null)[] = []) => [rows.length, rows.reduce((sum, row) => sum + (row?.length ?? 0), 0)];
+  return {
+    archive: Object.fromEntries(archive.streams.map((stream) => [stream.stream, {
+      rows: sized(stream.rows),
+      ...(stream.extra && { extra: sized(stream.extra) }),
+      ...(stream.coding && { coding: sized(Object.values(stream.coding).flat()) }),
+      ...(stream.error && { error: true }),
+    }])),
+    score: score && {
+      assessments: sized(score.inputs.assessments),
+      codingObservations: sized(score.inputs.codingObservations),
+      cursorObservations: sized(score.inputs.cursorObservations),
+      tokenBuckets: sized(Object.values(score.inputs.tokenBuckets)),
+    },
+  };
 }
 
 function stepFailed(step: string, error: unknown): void {
