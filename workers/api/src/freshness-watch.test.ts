@@ -80,6 +80,17 @@ test("StateHub 读不到时不下结论，不把读故障报成恢复", async ()
   assert.equal(notReady.puts + broken.puts, 0);
 });
 
+test("一个 KV 键读失败只跳过它，其他来源照常判断", async () => {
+  const lag = fakeLag(server(SERVER_STALE_MS + 60_000));
+  const get = lag.get.bind(lag);
+  lag.get = async (key: string) => {
+    if (key === LAG_KEYS.githubChart) throw new Error("kv down");
+    return get(key);
+  };
+  const events = await run(lag);
+  assert.deepEqual(events.map(({ source, state }) => [source, state]), [["server", "stale"]]);
+});
+
 test("每 FRESHNESS_CHECK_EVERY_ROUNDS 轮查一次", () => {
   const round = CRON_HEARTBEAT_EVERY_MINUTES * 60_000;
   const due = Array.from({ length: FRESHNESS_CHECK_EVERY_ROUNDS * 2 }, (_, index) => freshnessCheckDue(index * round + 2 * 60_000));

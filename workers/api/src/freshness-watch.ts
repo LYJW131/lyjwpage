@@ -100,7 +100,10 @@ async function readHubStamps(deps: FreshnessWatchDeps): Promise<Map<string, Stam
 }
 
 async function readLagStamps(deps: FreshnessWatchDeps): Promise<Map<string, Stamp>> {
-  const entries = await Promise.all(LAG_FEEDS.map((feed) => readLag(deps.lag, feed.key)));
+  const entries = await Promise.all(LAG_FEEDS.map((feed) => readLag(deps.lag, feed.key).catch((error: unknown) => {
+    console.warn("[freshness-watch]", feed.source, error);
+    return null;
+  })));
   const stamps = new Map<string, Stamp>();
   LAG_FEEDS.forEach((feed, index) => {
     const stamp = byAge(entries[index]?.updatedAt, feed.thresholdMs, deps.now);
