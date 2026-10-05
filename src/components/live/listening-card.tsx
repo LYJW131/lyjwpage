@@ -612,7 +612,7 @@ export function ListeningCard({
         startedAt: inferredEnd!,
         durationMs: predicted.durationMs!,
         marginMs: shownElsewhere.marginMs,
-        next: null,
+        next: predicted.then ?? null,
         basis: predicted.basis,
       }
     : shownElsewhere;

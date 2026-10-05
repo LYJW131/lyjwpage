@@ -5,6 +5,7 @@ import { pickNowListening } from "@/lib/now-listening";
 import { readRecentListeningTraces } from "@/lib/telemetry";
 import type { Liveness } from "@/lib/reporter-liveness";
 import type { LocalNowPlaying } from "@/lib/types";
+import { playingContainer } from "@shared/apple-music-store";
 import type { StoredHomePod } from "@shared/homepod-store";
 import { candidateFrom, type TrackEnrichment } from "@/lib/track-enrichment";
 
@@ -76,9 +77,10 @@ async function resolveListeningEffect(effect: ListeningEffect): Promise<LiveEven
     ? candidateFrom(source.music, source.receivedAt, source.enrichment)
     : null;
   const homePod = effect.homePod ? candidateFrom(effect.homePod.music, effect.homePod.receivedAt, effect.homePod.enrichment) : null;
+  const [traces, playing] = await Promise.all([readRecentListeningTraces(), playingContainer.get()]);
   return {
     type: "listening-now",
-    payload: pickNowListening({ mac, homePod, macReceivedAt: source?.receivedAt ?? 0, traces: await readRecentListeningTraces() }, effect.liveness),
+    payload: pickNowListening({ mac, homePod, macReceivedAt: source?.receivedAt ?? 0, traces, container: playing?.container ?? null }, effect.liveness),
   };
 }
 

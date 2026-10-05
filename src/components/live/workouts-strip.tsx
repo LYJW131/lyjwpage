@@ -1,7 +1,10 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { Bike, Dumbbell, Swords, Footprints } from "lucide-react";
+import {
+  Accessibility, Activity, Bike, Dumbbell, Footprints, HandFist, Kayak, Mountain, MountainSnow, PersonStanding, Sailboat, Swords, Volleyball, Waves,
+  type LucideIcon,
+} from "lucide-react";
 import { useStatus } from "@/hooks/use-status";
 import { STATUS_VIEWS } from "@/lib/status-views";
 import { workoutMetrics } from "@/lib/workout-display";
@@ -13,8 +16,23 @@ function stamp(workout: Workout) {
   });
 }
 
+// 键是 iOS WorkoutsModule 上报的英文训练类型名；没有专门图标的落到 Activity，不冒充力量训练。
+const WORKOUT_ICONS: Record<string, LucideIcon> = {
+  Walking: Footprints, Running: Footprints, Hiking: Mountain,
+  "Wheelchair Walk Pace": Accessibility, "Wheelchair Run Pace": Accessibility,
+  Cycling: Bike, "Hand Cycling": Bike,
+  Swimming: Waves, Surfing: Waves, "Water Fitness": Waves, "Water Polo": Waves, "Water Sports": Waves,
+  Rowing: Kayak, "Paddle Sports": Kayak, Sailing: Sailboat,
+  "Downhill Skiing": MountainSnow, "Cross-Country Skiing": MountainSnow, Snowboarding: MountainSnow, "Snow Sports": MountainSnow,
+  Fencing: Swords,
+  Boxing: HandFist, Kickboxing: HandFist, "Martial Arts": HandFist, Wrestling: HandFist,
+  "Strength Training": Dumbbell, "Functional Strength": Dumbbell, "Core Training": Dumbbell, "Cross Training": Dumbbell,
+  Yoga: PersonStanding, Pilates: PersonStanding, "Mind and Body": PersonStanding, "Tai Chi": PersonStanding, Flexibility: PersonStanding,
+  Volleyball,
+};
+
 function WorkoutTile({ workout }: { workout: Workout }) {
-  const Icon = workout.activityType === "Fencing" ? Swords : workout.activityType === "Cycling" ? Bike : workout.activityType === "Skating" ? Footprints : Dumbbell;
+  const Icon = Object.hasOwn(WORKOUT_ICONS, workout.activityType) ? WORKOUT_ICONS[workout.activityType] : Activity;
   const details = [
     workout.activeEnergyKcal == null ? null : `Active energy: ${Math.floor(workout.activeEnergyKcal)} kcal`,
     workout.elevationAscendedMeters == null ? null : `Elevation gain: ${workout.elevationAscendedMeters.toLocaleString("en-US", { maximumFractionDigits: 1 })} m`,

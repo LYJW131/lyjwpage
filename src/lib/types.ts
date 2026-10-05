@@ -336,6 +336,8 @@ export type NowListeningNext = {
   artworkUrl: string | null;
   durationMs: number | null;
   basis: "loop" | "order";
+  // 当这首已放完再往下猜的一首，只给一层（then 里不再带 then）；猜不出时为 null。可能缺席（Worker 先后上线）。
+  then?: NowListeningNext | null;
 };
 
 export type ChargerPort = {
