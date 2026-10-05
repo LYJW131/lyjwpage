@@ -1,6 +1,7 @@
 import { cacheLife } from "next/cache";
 import sharp from "sharp";
 
+import { FIRST_SCREEN_CACHE_LIFE } from "@/lib/first-screen";
 import { site } from "@/lib/site";
 
 const SOURCE_PX = 512;
@@ -40,7 +41,7 @@ async function githubAvatarSource(buildId: string): Promise<Uint8Array | null> {
       console.error("[github-avatar]", error instanceof Error ? error.message : String(error), url.pathname);
     }
   }
-  cacheLife("minutes");
+  cacheLife(FIRST_SCREEN_CACHE_LIFE);
   return null;
 }
 
@@ -64,7 +65,7 @@ export async function githubAvatarDataUri(): Promise<string | null> {
       "[github-avatar] 内联失败，回退远端",
       error instanceof Error ? error.message : String(error),
     );
-    cacheLife("minutes");
+    cacheLife(FIRST_SCREEN_CACHE_LIFE);
     return null;
   }
 }
@@ -85,7 +86,7 @@ export async function githubAvatarPng(px: number): Promise<Uint8Array> {
       error instanceof Error ? error.message : String(error),
     );
     // 深色方块只是占位，别让它冻到下次部署 —— 下一轮再试一次。
-    cacheLife("minutes");
+    cacheLife(FIRST_SCREEN_CACHE_LIFE);
     const fallback = await sharp({
       create: { width: px, height: px, channels: 3, background: "#1a1a1a" },
     })

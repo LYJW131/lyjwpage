@@ -49,7 +49,7 @@ export const config = {
   wakeWindowMs: ms("WAKE_WINDOW_MS", 30_000),
 
   seekToleranceMs: ms("SEEK_TOLERANCE_MS", 1_500),
-  reanchorMs: ms("REANCHOR_MS", 30_000),
+  reanchorMs: ms("REANCHOR_MS", 300_000),
 
   // 内容不变也要定期重推，否则接收端丢失状态后可能永远等不到下一次变化。
   fullPushIntervalMs: ms("FULL_PUSH_INTERVAL_MS", 10 * 60_000),

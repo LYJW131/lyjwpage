@@ -7,7 +7,7 @@ import { ok, skipMissing, type Job } from "../job";
 export const sentryStatusJob: Job = {
   name: "sentry-status",
   everyMinutes: 5,
-  offset: 0,
+  offset: 2,
   maxRuntimeMinutes: 2,
   async run({ env }) {
     const token = env.SENTRY_API_TOKEN?.trim();

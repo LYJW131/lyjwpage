@@ -5,6 +5,7 @@ import type { CollectorJobOutcome, CollectorRpc } from "@shared/collector";
 import type { Env } from "./env";
 import { runNamed, runScheduled } from "./registry";
 import { bindEnv } from "./runtime";
+import { cronMonitor } from "./schedule";
 import { reportJobFailure, sentryOptions } from "./sentry";
 
 export type { Env } from "./env";
@@ -21,7 +22,7 @@ const notFound = () => Response.json({ ok: false, error: "Not Found" }, { status
 
 const collector = {
   async scheduled(controller: ScheduledController, env: Env): Promise<void> {
-    await runScheduled(bindEnv(env), controller.scheduledTime, { monitor: Sentry.withMonitor, report: reportJobFailure });
+    await runScheduled(bindEnv(env), controller.scheduledTime, { monitor: cronMonitor(env, Sentry.withMonitor), report: reportJobFailure });
   },
 
   async fetch(request: Request, env: Env): Promise<Response> {

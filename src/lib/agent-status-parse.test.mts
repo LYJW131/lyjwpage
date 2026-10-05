@@ -566,7 +566,26 @@ test("一家失败时留着上一轮，其它家照常更新", async () => {
   assert.equal(row(second, "claude").stale, false);
   assert.equal(second.fetchedAt, 2_000);
   assert.equal(agentStatusFingerprint(first) === agentStatusFingerprint({ ...first, fetchedAt: 9_000 }), true);
-  assert.notEqual(agentStatusFingerprint(first), agentStatusFingerprint(second));
+  assert.equal(agentStatusFingerprint(first), agentStatusFingerprint(second));
+});
+
+test("首屏指纹只认 id 与灯色，标题、描述、组件变化不算", async () => {
+  const first = await collectAgentStatus(null, pages(), 1_000);
+  const retitled: AgentStatusPayload = {
+    ...first,
+    agents: first.agents.map((agent) => ({
+      ...agent,
+      note: "changed note",
+      components: [],
+      incidents: [{ id: "x", title: "new title", status: "investigating", url: "", updatedAt: null, body: "new body" }],
+    })),
+  };
+  assert.equal(agentStatusFingerprint(first), agentStatusFingerprint(retitled));
+  const flipped: AgentStatusPayload = {
+    ...first,
+    agents: first.agents.map((agent) => (agent.id === "claude" ? { ...agent, indicator: "major_outage" as const } : agent)),
+  };
+  assert.notEqual(agentStatusFingerprint(first), agentStatusFingerprint(flipped));
 });
 
 test("HTML 实体只解一层，双重编码不会再被解开", () => {

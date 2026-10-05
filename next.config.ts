@@ -44,6 +44,8 @@ const nextConfig: NextConfig = {
   distDir: process.env.NEXT_DIST_DIR || ".next",
   // Cache Components 会拒绝包括 runtime="nodejs" 在内的旧式段配置。
   cacheComponents: true,
+  // 默认名单含 Lighthouse，命中会让首页绕过 ISR 整页动态渲染；哨兵正则永不匹配。
+  htmlLimitedBots: /^\b\B$/,
   async rewrites() {
     const explainer = { source: "/explainer", destination: "/explainer/index.html" };
     if (!R2_ORIGIN) return [explainer];

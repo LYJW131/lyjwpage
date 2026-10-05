@@ -23,5 +23,6 @@ export interface Env {
 
   SENTRY_DSN?: string;
   SENTRY_ENVIRONMENT?: string;
+  SENTRY_CRON_CHECKINS?: string;
   CF_VERSION_METADATA?: WorkerVersionMetadata;
 }

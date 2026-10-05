@@ -10,11 +10,13 @@ import type { StatusResponse } from "@/lib/types";
 
 const FETCH_TIMEOUT_MS = 20_000;
 
+export const FIRST_SCREEN_CACHE_LIFE = { stale: 300, revalidate: 600, expire: 7 * 86400 } as const;
+
 export type FirstScreen<K extends StatusViewKey> = StatusResponse<EndpointPayloadOf<K>>;
 
 export async function firstScreen<K extends StatusViewKey>(key: K): Promise<FirstScreen<K>> {
   "use cache";
-  cacheLife({ stale: 300, revalidate: 600, expire: 7 * 86400 });
+  cacheLife(FIRST_SCREEN_CACHE_LIFE);
   const view: StatusView = STATUS_VIEWS[key];
   if (view.tag) cacheTag(`page:${view.tag}`);
   const response = await fetch(backendUrl(view.path), {

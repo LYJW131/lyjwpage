@@ -11,7 +11,7 @@
 - 新增 `StateCore` 方法先发布 `workers/api`，再发布本 Worker；契约只加不改（`shared/state-core.ts`、`shared/collector.ts`）。
 - D1 表结构归 `workers/api/migrations`：新表先在 api 那边 `pnpm --dir workers/api exec wrangler d1 migrations apply lyjwpage-history --remote`，再发布本 Worker。奖杯表由 api 写（`workers/api/src/stores/trophy-history.ts#archiveTrophies`），这里只写 `site_deploys`。
 - `src/lib/cache` 在这里背后是 KV（`src/storage-driver.ts`）：TTL 最短 60 秒，`ifAbsent` 先读后写、不是原子的，KV 读还有最长 60 秒的边缘缓存，两分钟以内要读回的东西不走它；列表、哈希操作直接抛错。
-- 手动触发（`Collector.refresh`、本地调试入口）不向 Sentry 报到；cron 监控名额不够，`collector-<任务>` 监控是停用的，任务真失败靠 `src/sentry.ts#reportJobFailure` 开 issue（tag `collector.job`）。
+- 手动触发（`Collector.refresh`、本地调试入口）不向 Sentry 报到；cron 监控名额不够，`collector-<任务>` 报到默认关（`SENTRY_CRON_CHECKINS`），任务真失败靠 `src/sentry.ts#reportJobFailure` 开 issue（tag `collector.job`）。
 
 ## 须成对修改
 

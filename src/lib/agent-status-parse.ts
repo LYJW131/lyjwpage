@@ -756,5 +756,5 @@ export async function collectAgentStatus(
 
 export function agentStatusFingerprint(payload: AgentStatusPayload | null): string {
   if (!payload) return "";
-  return JSON.stringify(payload.agents);
+  return JSON.stringify(payload.agents.map((agent) => [agent.id, agent.indicator]));
 }
