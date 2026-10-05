@@ -318,25 +318,27 @@ export function AgentStatusCard({
     >
       {data ? (
         <div className="@container">
-          <div className="grid grid-cols-3 gap-px bg-line @[36rem]:hidden">
+          <div className="grid grid-cols-3 gap-1.5 p-3 @[36rem]:hidden">
             {data.agents.map((agent) => (
               <StatusTrigger
                 key={agent.id}
                 agent={agent}
                 onOpen={setOpenId}
-                className="flex items-center justify-center gap-2 bg-surface py-4 hover:bg-surface-hover"
+                className="group relative flex min-w-0 flex-col items-center gap-1.5 border border-line bg-muted/40 px-1 pt-3 pb-2"
               >
+                <span
+                  aria-hidden
+                  className={cn(
+                    "absolute top-[-1px] bottom-[-1px] left-[-1px] w-1",
+                    indicatorDot(agent.indicator),
+                    agent.stale && "opacity-50",
+                  )}
+                />
                 <span className="shrink-0" aria-hidden>
                   <Brand id={agent.id} />
                 </span>
-                <span
-                  className={cn("size-2 rounded-full", indicatorDot(agent.indicator), agent.stale && "opacity-50")}
-                  aria-hidden
-                />
+                <span className="max-w-full truncate text-xs font-medium group-hover:underline">{agent.name}</span>
               </StatusTrigger>
-            ))}
-            {Array.from({ length: (ROWS_PER_COLUMN - (data.agents.length % ROWS_PER_COLUMN)) % ROWS_PER_COLUMN }, (_, index) => (
-              <span key={index} className="bg-surface" aria-hidden />
             ))}
           </div>
           <div
