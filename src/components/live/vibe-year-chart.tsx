@@ -123,7 +123,7 @@ export function VibeYearChart({
   if (data?.days.length && data !== lastDrawn) setLastDrawn(data);
   const snapshot = data?.days.length ? data : lastDrawn;
   const today = useSiteDay();
-  const { svgRef, shown, hotDate, previewCell, clearPreview, togglePin } =
+  const { svgRef, shown, hotDate, previewCell, clearPreview, togglePin, pinCell } =
     useHeatmapOpen<HoveredCell>();
 
   const weeks = useMemo(() => {
@@ -162,6 +162,7 @@ export function VibeYearChart({
         onCellPreview={(day, target) => previewCell(cellOf(day, target))}
         onCellClear={clearPreview}
         onCellToggle={(day, target) => togglePin(cellOf(day, target))}
+        onCellPin={(day, target) => pinCell(cellOf(day, target))}
       />
       {shown && (
         <HeatmapTooltip
