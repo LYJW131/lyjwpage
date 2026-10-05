@@ -8,7 +8,7 @@ import type { ListeningItem, PlayingContainer, RecentTrack } from "@/lib/types";
 
 import { commitRecentlyPlayed, commitRecentTracks } from "./apple-music-recent";
 import { dispatchIngestEffects } from "./ingest-effects";
-import { enrichCommand, enrichRecentlyPlayed } from "./listening-enrichment";
+import { enrichCommand, enrichRecentlyPlayed, followUpEnrichment, type EnrichmentFollowUp } from "./listening-enrichment";
 import { expireStatusTags, liveRoom } from "./live-platform";
 import { issueApiDeveloperToken } from "./musickit-token";
 import { requestStore, type Env } from "./runtime";
@@ -27,7 +27,8 @@ export class StateCore extends WorkerEntrypoint<Env> implements StateCoreRpc {
   async commitIngest(command: CoreCommand): Promise<CommitReply> {
     return this.scoped(async () => {
       // DO 重置、过载抛的错带 retryable / overloaded；这些属性过不了上报入口那条 Service Binding，在这里转成回执。
-      const result = await this.hub().commitIngest(await enrichCommand(command)).catch((error: unknown) => {
+      const { command: enriched, followUp } = await enrichCommand(command);
+      const result = await this.hub().commitIngest(enriched).catch((error: unknown) => {
         if (!transientFailure(error)) throw error;
         return error instanceof Error ? error.message : String(error);
       });
@@ -38,6 +39,7 @@ export class StateCore extends WorkerEntrypoint<Env> implements StateCoreRpc {
       await dispatchIngestEffects(result.effects);
       if (!result.ready) return { ready: false, ok: false };
       if (!result.ok) return { ready: true, ok: false, error: result.error };
+      if (followUp) this.ctx.waitUntil(this.followUp(followUp));
       return { ready: true, ok: true, data: JSON.parse(result.json) as unknown };
     });
   }
@@ -72,6 +74,15 @@ export class StateCore extends WorkerEntrypoint<Env> implements StateCoreRpc {
 
   async revalidate(tags: string[]): Promise<void> {
     await this.scoped(() => expireStatusTags([...new Set(tags)]));
+  }
+
+  private followUp(followUp: EnrichmentFollowUp): Promise<void> {
+    return this.scoped(() => followUpEnrichment(followUp, async (patch) => {
+      const { effects } = await this.hub().commitEnrichmentPatch(patch);
+      await dispatchIngestEffects(effects);
+    })).catch((error: unknown) => {
+      console.warn("[enrichment] follow-up", followUp.target, followUp.music.title, error instanceof Error ? error.message : String(error));
+    });
   }
 
   private hub() {

@@ -1,4 +1,4 @@
-import { keepEnrichment, type TrackEnrichment } from "@/lib/track-enrichment";
+import { improvesEnrichment, keepEnrichment, playableMusic, trackKeyOf, type TrackEnrichment } from "@/lib/track-enrichment";
 import { recordCodingObservation } from "@api/stores/coding-pulse";
 import { isCodingApp } from "@shared/coding-apps";
 import { listeningObservation } from "@shared/pulse-listening";
@@ -402,6 +402,22 @@ async function recordCodingPulse(
 async function recordChargingPulse(receivedAt: number, status: ChargerStatus): Promise<void> {
   const device = status.cover?.name ?? status.ports.find((port) => port.active)?.device ?? null;
   await recordChargingSample(receivedAt, status.connected ? status.totalPower : 0, device);
+}
+
+// 补写只改 musicEnrichment 一个字段，不动接收时间：它不是一封新上报。
+export async function patchMacEnrichment(enrichment: TrackEnrichment): Promise<boolean> {
+  const stored = await mirror.get();
+  if (!stored || !playableMusic(stored.music) || trackKeyOf(stored.music) !== enrichment.trackKey) return false;
+  if (!improvesEnrichment(enrichment, stored.musicEnrichment)) return false;
+  await mirror.merge({ ...stored, musicEnrichment: enrichment }, ["musicEnrichment"]);
+  await fanout({ listening: [patchedListeningEffect(getHomePodSnapshot())] });
+  return true;
+}
+
+// 必须在补写落库之后调用：这里会从存储重新同步遥测工作副本。
+export async function patchedListeningEffect(homePod: Promise<StoredHomePod | null> | StoredHomePod | null): Promise<ListeningEffect> {
+  const [, liveness, pod] = await Promise.all([syncTelemetryState(), readLiveness(), homePod]);
+  return listeningEffect(liveness, playableHomePod(pod));
 }
 
 export function homePodListening(stored: StoredHomePod): {

@@ -4,6 +4,8 @@ import { StorageClient } from "@shared/storage-client";
 import { SqliteStore, type StoredEntry } from "@shared/sqlite-store";
 import type { StorageCommand, StorageResult } from "@shared/storage-contract";
 import { commitPreparedIngest } from "./ingest-handlers";
+import { applyEnrichmentPatch } from "./enrichment-patch";
+import type { EnrichmentPatch } from "./listening-enrichment";
 import type { CoreCommand } from "@shared/ingest/prepare";
 import { collectIngestEffects, type IngestEffect } from "./ingest-effects";
 import { historyArchiveEnabled, pulseScoringEnabled, requestStore, type Env } from "./runtime";
@@ -99,6 +101,26 @@ export class StateHub extends DurableObject<Env> {
           ? { ready: true, ok: true, json: JSON.stringify(collected.value), error: null, effects: collected.effects }
           : { ready: true, ok: false, json: "null", error: collected.error, effects: collected.effects };
         return wire;
+      } finally {
+        await this.ensureAlarm();
+      }
+    })));
+    this.ingestTail = result.catch(() => {});
+    return result;
+  }
+
+  // 与上报共用 ingestTail 串行：补写必须排在它所补的那封上报之后，且不能和后来换曲目的那封交错。
+  commitEnrichmentPatch(patch: EnrichmentPatch): Promise<{ applied: boolean; effects: IngestEffect[] }> {
+    if (!this.ready()) return Promise.resolve({ applied: false, effects: [] });
+    const result = this.ingestTail.then(() => withRequestState(() => requestStore.run({
+      env: this.env,
+      ctx: this.ctx,
+      storage: new StorageClient(async (commands) => this.database.execute(commands)),
+    }, async () => {
+      try {
+        const collected = await collectIngestEffects(() => applyEnrichmentPatch(patch));
+        if (!collected.ok) console.warn("[enrichment] patch", patch.target, collected.error);
+        return { applied: collected.ok && collected.value, effects: collected.effects };
       } finally {
         await this.ensureAlarm();
       }

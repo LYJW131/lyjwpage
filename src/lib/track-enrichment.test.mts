@@ -184,3 +184,98 @@ test("动态封面：Apple 404 按「没有」缓存 7 天，其他错误不缓�
   await assert.rejects(withRequestState(() => resolveMotionArtwork(broken)));
   assert.equal(kv.values.has(`lyjwpage:${motionArtworkCacheKey(broken)}`), false);
 });
+
+function captureWarnings(t: { after: (fn: () => void) => void }): unknown[][] {
+  const warnings: unknown[][] = [];
+  const original = console.warn;
+  console.warn = (...args: unknown[]) => { warnings.push(args); };
+  t.after(() => { console.warn = original; });
+  return warnings;
+}
+
+test("动态封面卡住不拖住目录结果，超时打 warn 并标成未知", async (t) => {
+  const kv = seeded();
+  kv.values.delete(`lyjwpage:${motionArtworkCacheKey(parseAppleMusicUrl(LINK)!)}`);
+  installAppleCacheForTests(kv);
+  t.after(() => installAppleCacheForTests(null));
+  const warnings = captureWarnings(t);
+  const original = globalThis.fetch;
+  globalThis.fetch = (() => new Promise<Response>(() => {})) as typeof fetch;
+  t.after(() => { globalThis.fetch = original; });
+  const { enrichTrackOutcome } = await import("@/lib/track-enrichment");
+  const started = Date.now();
+  const outcome = await withRequestState(() => enrichTrackOutcome(music("Song"), [], { catalogMs: 2_000, upcomingMs: 2_000, motionMs: 30 }));
+  assert.ok(Date.now() - started < 1_000);
+  assert.equal(outcome?.enrichment.songId, "1501");
+  assert.equal(outcome?.enrichment.link, LINK);
+  assert.equal(outcome?.enrichment.motion, null);
+  assert.equal(outcome?.catalogKnown, true);
+  assert.equal(outcome?.motionKnown, false);
+  assert.ok(warnings.some((args) => args[0] === "[enrichment]" && args[1] === "motion" && args[2] === "timed out" && args.includes("Song")));
+});
+
+test("队列里某首查询卡住只丢那一首", async (t) => {
+  const kv = seeded();
+  const stuck = trackLookupCacheKey({ title: "Stuck", artist: "Artist", album: null });
+  const get = kv.get.bind(kv);
+  kv.get = (key: string) => (key === `lyjwpage:${stuck}` ? new Promise<string | null>(() => {}) : get(key));
+  installAppleCacheForTests(kv);
+  t.after(() => installAppleCacheForTests(null));
+  captureWarnings(t);
+  const { enrichTrackOutcome } = await import("@/lib/track-enrichment");
+  const upcoming = [{ title: "Stuck", artist: "Artist", album: null }, { title: "Next", artist: "Artist", album: null }];
+  const outcome = await withRequestState(() => enrichTrackOutcome(music("Song"), upcoming, { catalogMs: 2_000, upcomingMs: 30, motionMs: 2_000 }));
+  assert.equal(outcome?.enrichment.songId, "1501");
+  assert.deepEqual(outcome?.enrichment.upcomingSongIds, ["1502"]);
+  assert.equal(outcome?.catalogKnown, true);
+});
+
+test("目录查询超时打 warn（带曲目与阶段），存成未补全并标成未知", async (t) => {
+  const kv = new TtlKv();
+  kv.get = () => new Promise<string | null>(() => {});
+  installAppleCacheForTests(kv);
+  t.after(() => installAppleCacheForTests(null));
+  const warnings = captureWarnings(t);
+  const { enrichTrackOutcome } = await import("@/lib/track-enrichment");
+  const outcome = await withRequestState(() => enrichTrackOutcome(music("Slow Song"), [], { catalogMs: 30, upcomingMs: 30, motionMs: 30 }));
+  assert.equal(outcome?.enrichment.songId, null);
+  assert.match(outcome?.enrichment.link ?? "", /music\.apple\.com\/search/);
+  assert.equal(outcome?.catalogKnown, false);
+  assert.deepEqual(warnings.find((args) => args[1] === "catalog")?.slice(0, 4), ["[enrichment]", "catalog", "timed out", "30ms"]);
+  assert.ok(warnings.some((args) => args[1] === "catalog" && args.includes("Slow Song")));
+});
+
+test("目录里确定没有的曲目不算未知，不触发重查", async (t) => {
+  const kv = new TtlKv();
+  kv.values.set(`lyjwpage:${trackLookupCacheKey(music("Missing"))}`, JSON.stringify({ link: "", artwork: null, id: null, songId: null, hasLyrics: false }));
+  installAppleCacheForTests(kv);
+  t.after(() => installAppleCacheForTests(null));
+  const { enrichTrackOutcome } = await import("@/lib/track-enrichment");
+  const { value } = await withoutNetwork(() => enrichTrackOutcome(music("Missing")));
+  assert.equal(value?.catalogKnown, true);
+  assert.equal(value?.motionKnown, true);
+});
+
+test("超长歌名的目录缓存键不超过 KV 键长", () => {
+  const short = trackLookupCacheKey(music("Song"));
+  assert.equal(short, "apple-music:track-lookup:v11:song:artist:album");
+  const long = trackLookupCacheKey(music("长".repeat(400)));
+  assert.ok(new TextEncoder().encode(`lyjwpage:${long}`).length < 512);
+  assert.notEqual(long, trackLookupCacheKey(music("长".repeat(401))));
+});
+
+test("补写只在比已存的多出目录或动态封面时生效", async () => {
+  const { improvesEnrichment } = await import("@/lib/track-enrichment");
+  const found = {
+    trackKey: trackKeyOf(music("Song")), id: "1500", link: LINK, songId: "1501", artwork: null,
+    hasLyrics: true, upcomingSongIds: [], motion: null,
+  };
+  const missing = { ...found, songId: null, id: null };
+  const withMotion = { ...found, motion: { videoUrl: "https://mvod/x.m3u8", colors: null } };
+  assert.equal(improvesEnrichment(found, missing), true);
+  assert.equal(improvesEnrichment(found, null), true);
+  assert.equal(improvesEnrichment(missing, null), false);
+  assert.equal(improvesEnrichment(found, found), false);
+  assert.equal(improvesEnrichment(withMotion, found), true);
+  assert.equal(improvesEnrichment(found, withMotion), false);
+});
