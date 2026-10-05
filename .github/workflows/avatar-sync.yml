@@ -1,6 +1,5 @@
 name: Sync GitHub Avatar
 
-# 由 collector Worker 的 avatar-watch 任务在头像变化时触发（workflow_dispatch），没有定时触发。
 on:
   workflow_dispatch:
 
