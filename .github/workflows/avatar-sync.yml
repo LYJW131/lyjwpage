@@ -71,7 +71,9 @@ jobs:
               variables: { input: {
                 branch: { repositoryNameWithOwner: $repo, branchName: "main" },
                 expectedHeadOid: $head,
-                message: { headline: "chore(site): GitHub 头像已更新，触发重建", body: ("头像 sha256：" + $hash) },
+                message: { headline: "chore(site): GitHub 头像已更新，触发重建", body: ("头像 sha256：" + $hash
+                  + "\n\nCo-authored-by: LYJW131 <153256373+LYJW131@users.noreply.github.com>"
+                  + "\nCo-authored-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>") },
                 fileChanges: { additions: [{ path: $path, contents: $contents }] }
               } }
             }' > "$RUNNER_TEMP/commit.json"
