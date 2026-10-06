@@ -1,0 +1,83 @@
+name: Sync GitHub Avatar
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: avatar-sync
+  cancel-in-progress: false
+
+env:
+  MARKER: .github/github-avatar.sha256
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+          sparse-checkout: |
+            .github/github-avatar.sha256
+            src/lib/site.ts
+          sparse-checkout-cone-mode: false
+
+      # 须与 workers/collector/src/jobs/avatar-watch.ts 同步：头像地址、标记文件路径和哈希算法要一致。
+      - name: Hash current avatar
+        id: avatar
+        run: |
+          id=$(sed -nE 's/^ *githubId: ([0-9]+),$/\1/p' src/lib/site.ts)
+          [ -n "$id" ] || { echo "::error::githubId not found in src/lib/site.ts"; exit 1; }
+          meta=$(curl -sS --retry 3 --max-time 20 -o "$RUNNER_TEMP/avatar" -w '%{http_code} %{content_type}' \
+            "https://avatars.githubusercontent.com/u/$id?s=512")
+          case "$meta" in
+            "200 image/"*) ;;
+            *) echo "::error::Unexpected avatar response: $meta"; exit 1 ;;
+          esac
+          hash=$(sha256sum "$RUNNER_TEMP/avatar" | cut -d' ' -f1)
+          echo "hash=$hash" >> "$GITHUB_OUTPUT"
+          if [ "$hash" = "$(tr -d '[:space:]' < "$MARKER")" ]; then
+            echo "Avatar unchanged ($hash)"
+          else
+            echo "Avatar changed: $hash"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/create-github-app-token@v3
+        if: steps.avatar.outputs.changed == 'true'
+        id: app
+        with:
+          client-id: Iv23liSmKTDKh0bxIfzB
+          private-key: ${{ secrets.AVATAR_APP_PRIVATE_KEY }}
+          permission-contents: write
+
+      # 只有经 API 生成的提交才由 GitHub 签名为 lyjw131[bot]；在 runner 上 git push 的提交没有签名。
+      - name: Commit new hash to main
+        if: steps.avatar.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          HASH: ${{ steps.avatar.outputs.hash }}
+        run: |
+          contents=$(printf '%s\n' "$HASH" | base64 -w0)
+          for attempt in 1 2 3; do
+            head=$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)
+            jq -n --arg repo "$GITHUB_REPOSITORY" --arg head "$head" --arg path "$MARKER" \
+              --arg contents "$contents" --arg hash "$HASH" '{
+              query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { url } } }",
+              variables: { input: {
+                branch: { repositoryNameWithOwner: $repo, branchName: "main" },
+                expectedHeadOid: $head,
+                message: { headline: "chore(site): GitHub 头像已更新，触发重建", body: ("头像 sha256：" + $hash) },
+                fileChanges: { additions: [{ path: $path, contents: $contents }] }
+              } }
+            }' > "$RUNNER_TEMP/commit.json"
+            if gh api graphql --input "$RUNNER_TEMP/commit.json" --jq .data.createCommitOnBranch.commit.url; then
+              exit 0
+            fi
+            sleep $((attempt * 5))
+          done
+          exit 1

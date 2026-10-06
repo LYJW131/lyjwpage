@@ -34,6 +34,7 @@
 | `cloudflare-deployments` | `LAG cloudflare-deployments:v1`（按 Worker 名存） | `CLOUDFLARE_METRICS_TOKEN` |
 | `cloudflare-metrics` | `LAG cloudflare-metrics:v1` | `CLOUDFLARE_METRICS_TOKEN` |
 | `sentry-status` | `LAG sentry:v1`（没取到的块沿用上一份） | `SENTRY_API_TOKEN` |
+| `avatar-watch` | 不写状态：GitHub 头像的 sha256 与 main 上 `.github/github-avatar.sha256` 不一致时触发 `.github/workflows/avatar-sync.yml`，由它提交新哈希、触发站点重建；同一哈希在 `REDISPATCH_AFTER_MS` 内只触发一次 | `GITHUB_DISPATCH_TOKEN` |
 
 每个任务可有一条 Sentry cron 监控 `collector-<任务>`（默认不报到，由 `SENTRY_CRON_CHECKINS=true` 开启），报到节奏由 `src/schedule.ts` 的 `checkinCrontab` 按 `everyMinutes` / `offset` 算出，见下文「Sentry 监控」。
 
@@ -85,7 +86,7 @@
 
 | 键 | 内容 |
 | --- | --- |
-| `lyjwpage:cache:*` | `src/lib/cache` 的键：Apple 封面 `apple-music:library-art:v1:*`、容器曲目与时长 `apple-music:container-tracks:v1:*`、GitHub 增删行的锚 `github-repo:churn`、PageSpeed 样本窗口 `pagespeed:history:v1:*` |
+| `lyjwpage:cache:*` | `src/lib/cache` 的键：Apple 封面 `apple-music:library-art:v1:*`、容器曲目与时长 `apple-music:container-tracks:v1:*`、GitHub 增删行的锚 `github-repo:churn`、PageSpeed 样本窗口 `pagespeed:history:v1:*`、已触发过的头像哈希 `avatar-watch:dispatched:v1` |
 
 `src/lib/cache` 在这里背后是 KV（`src/storage-driver.ts`）：TTL 最短 60 秒（5 秒的负缓存会活满一分钟），
 `ifAbsent` 是先读后写、不是原子的，也不是锁（同一任务可能被 cron 与 `Collector.refresh` 同时触发，别拿它当互斥），KV 的读还有最长 60 秒的边缘缓存 ——
@@ -98,6 +99,7 @@
 | Secret | 用途 |
 | --- | --- |
 | `GITHUB_TOKEN` | classic PAT：贡献日历（GraphQL）、仓库统计 |
+| `GITHUB_DISPATCH_TOKEN` | fine-grained PAT，只授权 `LYJW131/lyjwpage`：Actions 读写（触发 `avatar-sync.yml`）、Contents 只读（读标记文件） |
 | `VERCEL_TOKEN` | 团队范围：部署列表、函数与访问统计（只读用） |
 | `CLOUDFLARE_METRICS_TOKEN` | 账号分析、Workers 脚本与构建读取 |
 | `SENTRY_API_TOKEN` | Sentry 组织只读：`org:read` / `project:read` / `event:read` |
