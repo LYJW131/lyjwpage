@@ -70,8 +70,8 @@ export async function watchAvatar(deps: AvatarWatchDeps): Promise<JobResult> {
 
 export const avatarWatchJob: Job = {
   name: "avatar-watch",
-  everyMinutes: 15,
-  offset: 6,
+  everyMinutes: 5,
+  offset: 1,
   maxRuntimeMinutes: 1,
   async run({ env }) {
     const token = env.GITHUB_DISPATCH_TOKEN?.trim();
