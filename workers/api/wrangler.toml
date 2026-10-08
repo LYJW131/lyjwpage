@@ -1,7 +1,7 @@
 name = "api"
 main = "src/index.ts"
 compatibility_date = "2026-09-08"
-compatibility_flags = ["nodejs_compat", "nodejs_compat_populate_process_env"]
+compatibility_flags = ["nodejs_compat", "nodejs_compat_populate_process_env", "enable_request_signal"]
 workers_dev = true
 
 routes = [

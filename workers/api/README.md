@@ -363,13 +363,16 @@ Mac 上报的 Apple Music 凭据在凭据 KV（`shared/credentials.ts`），不�
 
 `POST /api/chat`（`src/chat/handler.ts`）收浏览器的对话历史与 Turnstile token，契约在 `shared/god-chat.ts`：请求体、NDJSON 事件、上下文与输出上限都在那一份，站点卡片 `src/components/god-chat.tsx` 读同一份。
 
-- 一条消息的路径：Turnstile 校验（`TURNSTILE_SECRET_KEY`）→ Clef 选档（`src/chat/router.ts`，经 `AI` 绑定调 `@cf/cloudflare/clef`，四选一：三档模型或 refuse；Clef 不可用时落到 `ROUTER_FALLBACK`）→ 一次 `ChatQuota.consume` 同时扣访客总量与档位额度，该档满了就往下逐档降级（`shared/god-chat-tiers.ts#downgradeChain`）→ 调 Anthropic（`ANTHROPIC_API_KEY`）。refuse 不调模型，只占访客总量，直接回一句关门话。
+- 一条消息的路径：请求体按读到的字节数截停（`src/chat/guard.ts#readJsonBody`）→ Turnstile 校验（`TURNSTILE_SECRET_KEY`；除了 success，还核对 action 是 `shared/god-chat.ts#GOD_CHAT_TURNSTILE_ACTION`、hostname 落在 `ALLOWED_ORIGINS` 里，见 `turnstilePassed`）→ `ChatQuota.admitVisitor` 扣访客总量，超额的访客到此为止、不再触发路由 → Clef 选档（`src/chat/router.ts`，经 `AI` 绑定调 `@cf/cloudflare/clef`，四选一：三档模型或 refuse；Clef 不可用时落到 `ROUTER_FALLBACK`）→ `ChatQuota.admitTier` 扣档位额度，该档满了就往下逐档降级（`shared/god-chat-tiers.ts#downgradeChain`）→ 调 Anthropic（`ANTHROPIC_API_KEY`）。refuse 不调模型，只占访客总量，直接回一句关门话。
 - 三档与人设：Fable 是神、Opus 是先知、Haiku 是杂鱼，型号与展示名在 `shared/god-chat-tiers.ts#GOD_CHAT_TIER_INFO`。提示词在 `src/chat/handler.ts`：`BASE_PROMPT` 讲清 Clef 怎么选档、额度用完怎么降级，`PERSONA` 告诉每档自己是哪个模型、什么身份；被降级时另在末尾加一条 system 消息说明替谁作答（`downgradeNote`），不动缓存前缀。
-- 额度数值在 `shared/god-chat-tiers.ts#GOD_CHAT_QUOTA`（窗口、访客总量、每档访客与全站），计数在 Durable Object `ChatQuota`（`src/chat/quota.ts`，全站一个实例 `global`，SQLite 存窗口内的命中，每次调用先删窗口外的再数再记）。`/api/chat/usage` 读同一份。没有 `CHAT_QUOTA` 绑定时对话端点回 503，不放行。真正的花费上限在 Anthropic Console 给这把 key 所在 workspace 设。
+- 额度数值在 `shared/god-chat-tiers.ts#GOD_CHAT_QUOTA`（窗口、访客总量、每档访客与全站），计数在 Durable Object `ChatQuota`（`src/chat/quota.ts`，全站一个实例 `global`，SQLite 存窗口内的命中，每次调用先删窗口外的再数再记）。`/api/chat/usage` 读同一份，`resetInMs` 倒数到这位访客看到的数下一次会变的时刻（自己最早的命中过期，或某档全站已满时它最早的命中过期）。没有 `CHAT_QUOTA` 绑定时对话端点回 503，不放行。真正的花费上限是 Anthropic Console 里这把 key 所在 workspace 的月度上限（见 `docs/ops-facts.md`）。
 - 对 Anthropic 的请求不从 Worker 当地机房直接发：Anthropic 拒绝来自不支持地区（如香港）的请求，回 403 `Request not allowed`，而 Worker 跟着访客落在亚洲机房。SDK 的 `fetch` 换成转给 Durable Object `AnthropicEgress`（`src/chat/egress.ts`），它以 `locationHint: "wnam"` 建在北美，只转发 `api.anthropic.com`。本地没有这层绑定时直接发。
-- 模型能用两种工具：`get_site_status` 经 `executePublicRequest` 读本 Worker 的公开状态视图（和浏览器看到的同一份公开模型，不出网）；`web_search` 是服务端工具，Haiku 用基础版，其余用带动态过滤的版本（原因写在 `src/chat/site-status.ts#webSearchTool`）。
+- 访客点停止或断开时要当场停止计费：Worker 开了 `enable_request_signal`，入站请求的 `signal` 一 abort 就停下工具循环，SDK 的 fetch 信号带进 `AnthropicEgress`，那边再经带信号的管道掐断对 Anthropic 的连接（原样直通响应体时取消要拖十来秒才传到上游，期间照样生成计费）。
+- 模型由 Anthropic 的拒答兜底（`fallbacks: "default"`，Haiku 没有）换掉时，NDJSON 多一行 `served`，卡片标出实际作答的模型；下一轮的 trace 带 `fallback`。
+- 模型能用两种工具：`get_site_status` 经 `executePublicRequest` 读本 Worker 的公开状态视图（和浏览器看到的同一份公开模型，不出网），一条回复里所有调用合计有视图数上限、读过的不再读（`src/chat/site-status.ts#claimViews`）；`web_search` 是服务端工具，Haiku 用基础版，其余用带动态过滤的版本（原因写在 `src/chat/site-status.ts#webSearchTool`），每轮请求的 `max_uses` 是这条回复还剩的次数，用完就不再带这个工具。
+- 浏览器只回传文字和 trace（哪一档答的、读过哪些视图、搜了几次、是否兜底代答），Worker 据此在每条旧回复前插一条 system 说明（`src/chat/history.ts`）。trace 由访客提交，所以只收枚举与计数，视图名还要是登记过的键，搜索词不回传。
 - 思考强度与回复上限按档位定（`shared/god-chat-tiers.ts#GOD_CHAT_TIER_INFO` 的 `effort`、`maxTokens`），访客没有手动调高的命令。省钱靠 system 与末尾各一个缓存断点；缓存按模型分开，换档不会互相命中。
-- 本地：`workers/api/.dev.vars` 配 `ANTHROPIC_API_KEY` 与 `TURNSTILE_SECRET_KEY`（可用 Cloudflare 官方测试密钥）；只在配了 `UPSTREAM_API_URL` 的本地与预览里认两个调试开关：`CHAT_RATE_LIMIT=off` 关限额（`ChatQuota` 照样记账，`/usage` 仍看得到用量，只是不拦），`CHAT_FORCE_TIER=<档位|refuse>` 跳过 Clef。本地 `AI` 绑定总是连远程，需要 wrangler 已登录。预览不复制 Secret，所以预览上这个端点回 503。
+- 本地：`workers/api/.dev.vars` 配 `ANTHROPIC_API_KEY` 与 `TURNSTILE_SECRET_KEY`（可用 Cloudflare 官方测试密钥）；只在配了 `UPSTREAM_API_URL` 的本地与预览里认 localhost 签出的 token 和测试密钥的结果，生产不认，所以 `pnpm dev`（本地页面连生产 Worker）里对话会验人失败，调对话用 `pnpm dev:worker` 加 `pnpm dev:local`。同样只在这两处认两个调试开关：`CHAT_RATE_LIMIT=off` 关限额（`ChatQuota` 照样记账，`/usage` 仍看得到用量，只是不拦），`CHAT_FORCE_TIER=<档位|refuse>` 跳过 Clef。本地 `AI` 绑定总是连远程，需要 wrangler 已登录。预览不复制 Secret，所以预览上这个端点回 503。
 
 ## MusicKit 令牌
 

@@ -11,7 +11,11 @@ const EGRESS_HINT: DurableObjectLocationHint = "wnam";
 export class AnthropicEgress extends DurableObject<Env> {
   async fetch(request: Request): Promise<Response> {
     if (new URL(request.url).hostname !== ANTHROPIC_HOST) return new Response("Forbidden", { status: 403 });
-    return fetch(request);
+    // 调用方取消（访客停止或断开）时 request.signal 会 abort（要 enable_request_signal）。响应体原样直通时，
+    // 取消要拖十来秒才传到上游，期间模型照样生成计费；经带信号的管道转一手，abort 当场掐断对 Anthropic 的连接。
+    const upstream = await fetch(request, { signal: request.signal });
+    if (!upstream.body) return upstream;
+    return new Response(upstream.body.pipeThrough(new TransformStream(), { signal: request.signal }), upstream);
   }
 }
 
@@ -19,6 +23,5 @@ export function anthropicFetch(env: Env): typeof fetch | undefined {
   const namespace = env.ANTHROPIC_EGRESS;
   if (!namespace) return undefined;
   const stub = namespace.get(namespace.idFromName(EGRESS_NAME), { locationHint: EGRESS_HINT });
-  // 终止信号不跟进 DO；访客中断时靠响应流的取消一路传回去。
-  return (input, init) => stub.fetch(new Request(input, { ...init, signal: undefined }));
+  return (input, init) => stub.fetch(new Request(input, init));
 }
