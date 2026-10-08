@@ -29,6 +29,7 @@
 | **游戏** | PlayStation 在线状态、游戏记录与奖杯进度，展开游戏卡片查看成就明细。 |
 | **Pulse** | 编码、听、看、玩、充电、身体活动最近 24 小时的事实时间线：编码分前台应用 / agent / 两者同时，另有一条 token 速率，听看玩按在放、暂停、空闲画出并带曲目与片名，充电画瓦数，活动画步数与训练；悬停任一时段可看当时的状态与标题。 |
 | **站点自身** | 网站版本、GitHub 仓库统计与最近提交（含签名状态）；站点与 API 两行 30 天在线状态，PageSpeed 实验室指标的滚动中位数与真实访客的性能分；Vercel 部署、Cloudflare Workers 的调用统计与 12 小时报错数，以及落地节点上两个常驻上报器的推送次数、往返延迟和线上版本。 |
+| **与神对话** | 首页对话卡片：Clef 按问题难度把每条消息派给 Haiku（杂鱼）、Opus（先知）或 Fable（神，降临时有特效），或直接拒绝；模型可读取站点各卡片的实时数据、联网搜索并附来源，`/new` 清空对话，回复渲染 Markdown；发送前过 Cloudflare Turnstile 人机验证，并按访客限流、限定上下文与输出长度。 |
 
 界面以灰阶、细线边界和卡片布局为基础，用等宽数字稳定动态指标的排版。颜色与动效主要服务于媒体内容、状态变化和交互反馈。
 
@@ -201,6 +202,7 @@ Sentry 里的数据也回到页面上：采集 Worker 用只读令牌定时取�
 | 客户端数据 | SWR · WebSocket |
 | 状态与资源存储 | Cloudflare Workers · Durable Objects SQLite · KV · D1 · R2 |
 | 活跃度评分 | Workers AI（Clef） |
+| 首页对话 | Anthropic Claude（Clef 选档）、Cloudflare Turnstile |
 | 原生设备接入 | Swift / SwiftUI · HealthKit · BLE |
 | 页面托管与分发 | Vercel · 阿里云 ESA |
 | 报错与性能监控 | Sentry |

@@ -7,6 +7,7 @@ import { StaleTabReload } from "@/components/stale-tab-reload";
 import { ContactCard } from "@/components/contact-card";
 import { DevFakeDataToggle } from "@/components/dev-fake-data-toggle";
 import { DevToggleDock } from "@/components/dev-toggles";
+import { GodChat } from "@/components/god-chat";
 import { WorkoutsStrip } from "@/components/live/workouts-strip";
 import { ActivityCard } from "@/components/live/activity-card";
 import { SiteStatusCard } from "@/components/live/site-status-card";
@@ -61,6 +62,7 @@ const SLOT = {
   agentStatus: "defer-offscreen-always [contain-intrinsic-size:auto_172px]",
   vibeCoding: "defer-offscreen [contain-intrinsic-size:auto_1372px]",
   playstation: "defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_643px]",
+  godChat: "md:col-span-2",
   pulse: "defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_575px] sm:[contain-intrinsic-size:auto_276px]",
   siteStatus: "mt-3 defer-offscreen-always [contain-intrinsic-size:auto_1440px]",
 } as const;
@@ -237,6 +239,9 @@ export default async function Home() {
                 </CardBoundary>
                 <CardBoundary label="Pulse" className={SLOT.pulse} paths={READS.pulse}>
                   <PulseCard fallback={pulse} className={SLOT.pulse} />
+                </CardBoundary>
+                <CardBoundary label="Talk to God" className={SLOT.godChat}>
+                  <GodChat className={SLOT.godChat} />
                 </CardBoundary>
               </div>
 

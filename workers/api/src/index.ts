@@ -7,6 +7,7 @@ import { PulseArchive } from "./pulse-archive";
 import { PulseScorer, clefDecide } from "./pulse-score";
 import { DevOverrideReader as DevOverrideReaderBase } from "./dev-override-reader";
 import { StateCore as StateCoreBase } from "./state-core";
+import { ChatQuota as ChatQuotaBase } from "./chat/quota";
 import { CRON_MONITOR_CONFIG, CRON_MONITOR_SLUG } from "./cron-heartbeat";
 import { freshnessCheckDue, watchFreshness, type FreshnessEvent } from "./freshness-watch";
 import { sentryOptions } from "./sentry";
@@ -15,6 +16,7 @@ import type { PulseTick } from "./state-hub";
 // Wrangler 迁移按导出名识别 DO；Sentry 包装不能改变这些名称。
 export const LivePushRoom = Sentry.instrumentDurableObjectWithSentry(sentryOptions, LivePushRoomBase);
 export const StateHub = Sentry.instrumentDurableObjectWithSentry(sentryOptions, StateHubBase);
+export const ChatQuota = Sentry.instrumentDurableObjectWithSentry(sentryOptions, ChatQuotaBase);
 export const StateCore = Sentry.withSentry(sentryOptions, StateCoreBase);
 export const DevOverrideReader = Sentry.withSentry(sentryOptions, DevOverrideReaderBase);
 export type { Env } from "./runtime";

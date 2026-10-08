@@ -62,6 +62,10 @@ crons = ["2,7,12,17,22,27,32,37,42,47,52,57 * * * *"]
 name = "STATE"
 class_name = "StateHub"
 
+[[durable_objects.bindings]]
+name = "CHAT_QUOTA"
+class_name = "ChatQuota"
+
 
 # Wrangler 必须先认识 OnlineCounterRoom，后续删除迁移才可生效。
 [[migrations]]
@@ -87,6 +91,10 @@ to = "StateHub"
 tag = "v2-split-online-counter"
 deleted_classes = ["OnlineCounterRoom"]
 
+[[migrations]]
+tag = "v3-chat-quota"
+new_sqlite_classes = ["ChatQuota"]
+
 # Preview 不继承生产绑定，DO 绑定必须显式重声明。
 [previews.vars]
 PREVIEW_WORKER = "true"
@@ -103,3 +111,7 @@ class_name = "LivePushRoom"
 [[previews.durable_objects.bindings]]
 name = "STATE"
 class_name = "StateHub"
+
+[[previews.durable_objects.bindings]]
+name = "CHAT_QUOTA"
+class_name = "ChatQuota"

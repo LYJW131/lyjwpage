@@ -1,3 +1,4 @@
+import type { ChatQuota } from "./chat/quota";
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { StorageClient } from "@shared/storage-client";
 import type { LivePushRoom } from "./origin-worker";
@@ -23,6 +24,9 @@ export interface Env extends MusicKitTokenEnv {
   SENTRY_DSN?: string;
   SENTRY_ENVIRONMENT?: string;
   CF_VERSION_METADATA?: WorkerVersionMetadata;
+  ANTHROPIC_API_KEY?: string;
+  TURNSTILE_SECRET_KEY?: string;
+  CHAT_QUOTA?: DurableObjectNamespace<ChatQuota>;
 }
 
 // 本地夹具与上游覆盖值不能进入共享归档或覆盖生产评分。
