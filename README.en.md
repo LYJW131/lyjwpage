@@ -29,6 +29,7 @@ It is both my personal homepage and a personal telemetry system that keeps evolv
 | **Games** | PlayStation online status, game history and trophy progress; expand a game card for per-trophy details. |
 | **Pulse** | A factual 24-hour timeline for coding, listening, watching, playing, charging and physical activity: coding split into coding app / agent / both plus a token-rate lane, listening, watching and playing drawn as playing, paused or idle with the track or title, watts for charging, steps and workouts for activity. Hover any segment to see its state and title. |
 | **The site itself** | Site version, GitHub repository stats and recent commits (with signature status); 30-day uptime rows for the site and the API, rolling medians of PageSpeed lab scores and a real-visitor performance score; request stats and 12-hour error counts for Vercel and Cloudflare Workers, plus push counts, round-trip latency and live versions of the two resident reporters on the exit node. |
+| **Talk to God** | A chat card where Clef routes each message by difficulty to Haiku (small fry), Opus (prophet) or Fable (God, with a descent effect), or refuses it; the model can read the live data behind every card and search the web with cited sources; `/new` starts over, with Markdown replies; each message passes Cloudflare Turnstile, and requests are rate-limited per visitor with capped context and output length. |
 
 The interface is built on grayscale, hairline borders and cards, with tabular figures keeping live metrics steady. Color and motion mostly serve media, state changes and interaction feedback.
 
@@ -201,6 +202,7 @@ Data in Sentry also comes back to the page: using a read-only token, the collect
 | Client data | SWR · WebSocket |
 | State and asset storage | Cloudflare Workers · Durable Objects SQLite · KV · D1 · R2 |
 | Activity scoring | Workers AI (Clef) |
+| Homepage chat | Anthropic Claude (routed by Clef), Cloudflare Turnstile |
 | Native device integration | Swift / SwiftUI · HealthKit · BLE |
 | Hosting and delivery | Vercel · Alibaba Cloud ESA |
 | Error and performance monitoring | Sentry |

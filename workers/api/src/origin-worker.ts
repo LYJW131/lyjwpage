@@ -22,6 +22,8 @@ import { fetchPreviewUpstream, isPreviewProxyPath, previewWorkerEnabled } from "
 import { isPublicApiPath, pathForEventType } from "./public-api";
 import { executePublicRequest } from "./public-execution";
 import { isLookupPath, serveLookup } from "./lookup-routes";
+import { clientIp, handleChat, quotaStub } from "./chat/handler";
+import { GOD_CHAT_PATH, GOD_CHAT_USAGE_PATH } from "@shared/god-chat";
 import type { Env } from "./runtime";
 import { site } from "@/lib/site";
 
@@ -353,6 +355,23 @@ const worker = {
 
     if (url.pathname === MUSICKIT_TOKEN_PATH) {
       return handleMusicKitToken(request, env, cors);
+    }
+
+    if (url.pathname === GOD_CHAT_USAGE_PATH) {
+      if (request.method !== "GET") return new Response("Method not allowed", { status: 405, headers: cors });
+      if (!isAllowedOrigin(request, env)) return jsonResponse({ error: "Forbidden" }, { status: 403, headers: cors });
+      const quota = quotaStub(env);
+      if (!quota) return jsonResponse({ error: "The oracle is offline." }, { status: 503, headers: cors });
+      return jsonResponse(await quota.usage(clientIp(request)), { headers: cors });
+    }
+
+    if (url.pathname === GOD_CHAT_PATH) {
+      if (!isAllowedOrigin(request, env)) return jsonResponse({ error: "Forbidden" }, { status: 403, headers: cors });
+      const readStatus = (path: string) => executePublicRequest(new Request(new URL(path, url)), env, ctx);
+      const response = await handleChat(request, env, readStatus);
+      const headers = new Headers(response.headers);
+      cors.forEach((value, name) => headers.set(name, value));
+      return new Response(response.body, { status: response.status, headers });
     }
 
     if (url.pathname.startsWith("/api/")) {

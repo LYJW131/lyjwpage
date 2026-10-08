@@ -34,6 +34,8 @@
 | GET | `/ws?visible=1\|0` | 浏览器接收事件推送的 WebSocket，页面开着就一直挂着；切可见性时发 `visible` / `hidden`；使用 `ALLOWED_ORIGINS` 校验来源 |
 | GET | `/count` | `{ ok, connections, online }`：开着的页面数（判中档）与此刻可见的页面数（判快档） |
 | GET | `/api/musickit/token` | `{ token, issuedAt, expiresAt }`：给「一起听」的 MusicKit developer token，同一份来源白名单；见下文 |
+| POST | `/api/chat` | 首页对话卡片：Clef 选档后流式回 NDJSON；见下文「首页对话」 |
+| GET | `/api/chat/usage` | 当前访客在本窗口里的对话额度，卡片 `/usage` 命令读它；只读不扣额度 |
 | GET | `/` | 一行存活；不碰 Durable Object，根路径被探针不停打 |
 
 上报端点（`/api/ingest/<来源>`、`/api/ingest/agents/otlp`、`/api/internal/site-deployed`）、鉴权和回执契约都在
@@ -357,6 +359,17 @@ Cursor 使用独立的 `pulse:cursor-observations`：agents 来源的 cursor 活
 `scripts/listening-replay.mts` 末尾按录下来的那段歌单顺序播放回放下一首的猜中、猜错与不猜次数，`src/lib/listening-next.test.mts` 守住猜错为零。
 Mac 上报的 Apple Music 凭据在凭据 KV（`shared/credentials.ts`），不向外提供凭据端点；状态读取不触发拉取或广播。
 
+## 首页对话
+
+`POST /api/chat`（`src/chat/handler.ts`）收浏览器的对话历史与 Turnstile token，契约在 `shared/god-chat.ts`：请求体、NDJSON 事件、上下文与输出上限都在那一份，站点卡片 `src/components/god-chat.tsx` 读同一份。
+
+- 一条消息的路径：Turnstile 校验（`TURNSTILE_SECRET_KEY`）→ Clef 选档（`src/chat/router.ts`，经 `AI` 绑定调 `@cf/cloudflare/clef`，四选一：三档模型或 refuse；Clef 不可用时落到 `ROUTER_FALLBACK`）→ 一次 `ChatQuota.consume` 同时扣访客总量与档位额度，该档满了就往下逐档降级（`shared/god-chat-tiers.ts#downgradeChain`）→ 调 Anthropic（`ANTHROPIC_API_KEY`）。refuse 不调模型，只占访客总量，直接回一句关门话。
+- 三档与人设：Fable 是神、Opus 是先知、Haiku 是杂鱼，型号与展示名在 `shared/god-chat-tiers.ts#GOD_CHAT_TIER_INFO`。提示词在 `src/chat/handler.ts`：`BASE_PROMPT` 讲清 Clef 怎么选档、额度用完怎么降级，`PERSONA` 告诉每档自己是哪个模型、什么身份；被降级时另在末尾加一条 system 消息说明替谁作答（`downgradeNote`），不动缓存前缀。
+- 额度数值在 `shared/god-chat-tiers.ts#GOD_CHAT_QUOTA`（窗口、访客总量、每档访客与全站），计数在 Durable Object `ChatQuota`（`src/chat/quota.ts`，全站一个实例 `global`，SQLite 存窗口内的命中，每次调用先删窗口外的再数再记）。`/api/chat/usage` 读同一份。没有 `CHAT_QUOTA` 绑定时对话端点回 503，不放行。真正的花费上限在 Anthropic Console 给这把 key 所在 workspace 设。
+- 模型能用两种工具：`get_site_status` 经 `executePublicRequest` 读本 Worker 的公开状态视图（和浏览器看到的同一份公开模型，不出网）；`web_search` 是服务端工具，Haiku 用基础版，其余用带动态过滤的版本（原因写在 `src/chat/site-status.ts#webSearchTool`）。
+- 思考强度与回复上限按档位定（`shared/god-chat-tiers.ts#GOD_CHAT_TIER_INFO` 的 `effort`、`maxTokens`），访客没有手动调高的命令。省钱靠 system 与末尾各一个缓存断点；缓存按模型分开，换档不会互相命中。
+- 本地：`workers/api/.dev.vars` 配 `ANTHROPIC_API_KEY` 与 `TURNSTILE_SECRET_KEY`（可用 Cloudflare 官方测试密钥）；只在配了 `UPSTREAM_API_URL` 的本地与预览里认两个调试开关：`CHAT_RATE_LIMIT=off` 关限额（`ChatQuota` 照样记账，`/usage` 仍看得到用量，只是不拦），`CHAT_FORCE_TIER=<档位|refuse>` 跳过 Clef。本地 `AI` 绑定总是连远程，需要 wrangler 已登录。预览不复制 Secret，所以预览上这个端点回 503。
+
 ## MusicKit 令牌
 
 访客用自己的 Apple Music 订阅跟听之前，先得有一份 developer token 才能把 MusicKit JS 配起来。
@@ -440,6 +453,8 @@ StateHub 的三条用一次 `publicRead` 批量读，键取各 mirror 的 `key`�
 ```sh
 pnpm --dir workers/api exec wrangler secret put REVALIDATE_SECRET
 pnpm --dir workers/api exec wrangler secret put APPLE_MUSIC_PRIVATE_KEY < AuthKey_XXXXXXXXXX.p8
+pnpm --dir workers/api exec wrangler secret put ANTHROPIC_API_KEY
+pnpm --dir workers/api exec wrangler secret put TURNSTILE_SECRET_KEY
 ```
 
 外部数据的令牌（GitHub、Vercel、Cloudflare、Sentry、PageSpeed）在采集 Worker 上，见 [采集 Worker README](../collector/README.md)。PSN 登录在 `reporters/playstation-reporter` 的数据卷里。
@@ -501,7 +516,7 @@ SQLite 初始化、迁移与权限见 [后端架构](../../docs/state-storage.md
 
 ## Durable Object 迁移
 
-生产服务是 `api`（域名见 `wrangler.toml`）。迁移只追加新 tag、不改旧的；`v1-transfer-from-ingest` 把旧 Worker 的 SQLite 命名空间整体转移（ID 与数据不变），不要对这些类另加创建或删除迁移，见 [AGENTS.md](./AGENTS.md)。
+生产服务是 `api`（域名见 `wrangler.toml`）。迁移只追加新 tag、不改旧的；`v3-chat-quota` 新建首页对话的计数类 `ChatQuota`；`v1-transfer-from-ingest` 把旧 Worker 的 SQLite 命名空间整体转移（ID 与数据不变），不要对这些类另加创建或删除迁移，见 [AGENTS.md](./AGENTS.md)。
 
 ## 外部数据卡片（可滞后层）
 

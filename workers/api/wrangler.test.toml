@@ -41,10 +41,16 @@ class_name = "LivePushRoom"
 [[durable_objects.bindings]]
 name = "STATE"
 class_name = "StateHub"
+[[durable_objects.bindings]]
+name = "CHAT_QUOTA"
+class_name = "ChatQuota"
 
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["LivePushRoom", "OnlineCounterRoom", "StateHub"]
+
+[ai]
+binding = "AI"
 
 [observability]
 enabled = true
@@ -52,3 +58,7 @@ enabled = true
 [[migrations]]
 tag = "v2-split-online-counter"
 deleted_classes = ["OnlineCounterRoom"]
+
+[[migrations]]
+tag = "v3-chat-quota"
+new_sqlite_classes = ["ChatQuota"]
