@@ -66,6 +66,10 @@ class_name = "StateHub"
 name = "CHAT_QUOTA"
 class_name = "ChatQuota"
 
+[[durable_objects.bindings]]
+name = "ANTHROPIC_EGRESS"
+class_name = "AnthropicEgress"
+
 
 # Wrangler 必须先认识 OnlineCounterRoom，后续删除迁移才可生效。
 [[migrations]]
@@ -95,6 +99,10 @@ deleted_classes = ["OnlineCounterRoom"]
 tag = "v3-chat-quota"
 new_sqlite_classes = ["ChatQuota"]
 
+[[migrations]]
+tag = "v4-anthropic-egress"
+new_sqlite_classes = ["AnthropicEgress"]
+
 # Preview 不继承生产绑定，DO 绑定必须显式重声明。
 [previews.vars]
 PREVIEW_WORKER = "true"
@@ -115,3 +123,7 @@ class_name = "StateHub"
 [[previews.durable_objects.bindings]]
 name = "CHAT_QUOTA"
 class_name = "ChatQuota"
+
+[[previews.durable_objects.bindings]]
+name = "ANTHROPIC_EGRESS"
+class_name = "AnthropicEgress"

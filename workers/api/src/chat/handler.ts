@@ -11,6 +11,7 @@ import {
 import { GOD_CHAT_TIER_INFO, isGodChatTier, type GodChatTier } from "@shared/god-chat-tiers";
 
 import type { Env } from "../runtime";
+import { anthropicFetch } from "./egress";
 import { toModelMessages } from "./history";
 import { routeWithClef, type RouteDecision } from "./router";
 import { SITE_STATUS_TOOL, parseSiteStatusInput, runSiteStatusTool, webSearchTool, type ReadStatus } from "./site-status";
@@ -129,7 +130,7 @@ export async function handleChat(request: Request, env: Env, readStatus: ReadSta
 
   const tier = admitted.tier;
 
-  const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
+  const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, fetch: anthropicFetch(env) });
   const abort = new AbortController();
   const body = new ReadableStream<Uint8Array>({
     async start(controller) {

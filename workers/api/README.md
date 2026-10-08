@@ -366,6 +366,7 @@ Mac 上报的 Apple Music 凭据在凭据 KV（`shared/credentials.ts`），不�
 - 一条消息的路径：Turnstile 校验（`TURNSTILE_SECRET_KEY`）→ Clef 选档（`src/chat/router.ts`，经 `AI` 绑定调 `@cf/cloudflare/clef`，四选一：三档模型或 refuse；Clef 不可用时落到 `ROUTER_FALLBACK`）→ 一次 `ChatQuota.consume` 同时扣访客总量与档位额度，该档满了就往下逐档降级（`shared/god-chat-tiers.ts#downgradeChain`）→ 调 Anthropic（`ANTHROPIC_API_KEY`）。refuse 不调模型，只占访客总量，直接回一句关门话。
 - 三档与人设：Fable 是神、Opus 是先知、Haiku 是杂鱼，型号与展示名在 `shared/god-chat-tiers.ts#GOD_CHAT_TIER_INFO`。提示词在 `src/chat/handler.ts`：`BASE_PROMPT` 讲清 Clef 怎么选档、额度用完怎么降级，`PERSONA` 告诉每档自己是哪个模型、什么身份；被降级时另在末尾加一条 system 消息说明替谁作答（`downgradeNote`），不动缓存前缀。
 - 额度数值在 `shared/god-chat-tiers.ts#GOD_CHAT_QUOTA`（窗口、访客总量、每档访客与全站），计数在 Durable Object `ChatQuota`（`src/chat/quota.ts`，全站一个实例 `global`，SQLite 存窗口内的命中，每次调用先删窗口外的再数再记）。`/api/chat/usage` 读同一份。没有 `CHAT_QUOTA` 绑定时对话端点回 503，不放行。真正的花费上限在 Anthropic Console 给这把 key 所在 workspace 设。
+- 对 Anthropic 的请求不从 Worker 当地机房直接发：Anthropic 拒绝来自不支持地区（如香港）的请求，回 403 `Request not allowed`，而 Worker 跟着访客落在亚洲机房。SDK 的 `fetch` 换成转给 Durable Object `AnthropicEgress`（`src/chat/egress.ts`），它以 `locationHint: "wnam"` 建在北美，只转发 `api.anthropic.com`。本地没有这层绑定时直接发。
 - 模型能用两种工具：`get_site_status` 经 `executePublicRequest` 读本 Worker 的公开状态视图（和浏览器看到的同一份公开模型，不出网）；`web_search` 是服务端工具，Haiku 用基础版，其余用带动态过滤的版本（原因写在 `src/chat/site-status.ts#webSearchTool`）。
 - 思考强度与回复上限按档位定（`shared/god-chat-tiers.ts#GOD_CHAT_TIER_INFO` 的 `effort`、`maxTokens`），访客没有手动调高的命令。省钱靠 system 与末尾各一个缓存断点；缓存按模型分开，换档不会互相命中。
 - 本地：`workers/api/.dev.vars` 配 `ANTHROPIC_API_KEY` 与 `TURNSTILE_SECRET_KEY`（可用 Cloudflare 官方测试密钥）；只在配了 `UPSTREAM_API_URL` 的本地与预览里认两个调试开关：`CHAT_RATE_LIMIT=off` 关限额（`ChatQuota` 照样记账，`/usage` 仍看得到用量，只是不拦），`CHAT_FORCE_TIER=<档位|refuse>` 跳过 Clef。本地 `AI` 绑定总是连远程，需要 wrangler 已登录。预览不复制 Secret，所以预览上这个端点回 503。
@@ -516,7 +517,7 @@ SQLite 初始化、迁移与权限见 [后端架构](../../docs/state-storage.md
 
 ## Durable Object 迁移
 
-生产服务是 `api`（域名见 `wrangler.toml`）。迁移只追加新 tag、不改旧的；`v3-chat-quota` 新建首页对话的计数类 `ChatQuota`；`v1-transfer-from-ingest` 把旧 Worker 的 SQLite 命名空间整体转移（ID 与数据不变），不要对这些类另加创建或删除迁移，见 [AGENTS.md](./AGENTS.md)。
+生产服务是 `api`（域名见 `wrangler.toml`）。迁移只追加新 tag、不改旧的；`v3-chat-quota` 新建首页对话的计数类 `ChatQuota`，`v4-anthropic-egress` 新建出站转发类 `AnthropicEgress`；`v1-transfer-from-ingest` 把旧 Worker 的 SQLite 命名空间整体转移（ID 与数据不变），不要对这些类另加创建或删除迁移，见 [AGENTS.md](./AGENTS.md)。
 
 ## 外部数据卡片（可滞后层）
 

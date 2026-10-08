@@ -44,6 +44,9 @@ class_name = "StateHub"
 [[durable_objects.bindings]]
 name = "CHAT_QUOTA"
 class_name = "ChatQuota"
+[[durable_objects.bindings]]
+name = "ANTHROPIC_EGRESS"
+class_name = "AnthropicEgress"
 
 [[migrations]]
 tag = "v1"
@@ -62,3 +65,7 @@ deleted_classes = ["OnlineCounterRoom"]
 [[migrations]]
 tag = "v3-chat-quota"
 new_sqlite_classes = ["ChatQuota"]
+
+[[migrations]]
+tag = "v4-anthropic-egress"
+new_sqlite_classes = ["AnthropicEgress"]
