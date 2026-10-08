@@ -45,6 +45,7 @@
 | D1 `lyjwpage-history`（binding `HISTORY`）：Workers Builds 不跑迁移，部署带这个绑定的版本之前要先手动 apply，命令见 `workers/api/README.md` | 核对于 未记录，方式：迁自 `docs/state-storage.md` |
 | R2 图片桶：上报器用只写该桶的访问密钥直传，上报入口以 `IMAGES` 绑定只做 HEAD；对外只以 `/img/<objectKey>` 同源路径出现 | 核对于 未记录，方式：迁自 `reporters/emby-reporter/README.md` 与 `workers/ingress/README.md` |
 | Turnstile 组件「lyjwpage chat」（managed 模式，域名 `lyjw.me`、`lyjw131.com`、`localhost`），挡首页对话卡片发往 api Worker 的 `POST /api/chat`；site key 进站点环境变量 `NEXT_PUBLIC_TURNSTILE_SITE_KEY`（构建期内联），secret 是 api Worker 的 Secret `TURNSTILE_SECRET_KEY` | 核对于 2026-10-08，方式：Cloudflare API `challenges/widgets` 创建并列出 <!-- allow: 核对戳 --> |
+| 首页对话的 Anthropic 用量独占 Console 工作空间 `lyjwpage-chat`（`wrkspc_01XtFZvJDphpQ4LT6X1fVQXF`），工作空间月花费上限 US$60；api Worker 的 Secret `ANTHROPIC_API_KEY` 是该空间里不过期的 key `lyjwpage-chat-prod` | 核对于 2026-10-09，方式：Claude Console 工作空间 Spend limits 页与 API keys 页 <!-- allow: 核对戳 --> |
 
 ## Sentry
 
