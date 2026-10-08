@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import * as Sentry from "@sentry/cloudflare";
 
 import {
   GOD_CHAT_LIMITS,
@@ -140,6 +141,7 @@ export async function handleChat(request: Request, env: Env, readStatus: ReadSta
       } catch (error) {
         if (!abort.signal.aborted) {
           console.error("[god-chat] stream failed", error);
+          Sentry.captureException(error, { tags: { "god-chat.tier": tier } });
           emit({ type: "text", text: "\n\n[The connection to the heavens was lost.]" });
         }
       } finally {
