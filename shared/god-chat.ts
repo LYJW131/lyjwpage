@@ -2,6 +2,8 @@ import { isGodChatTier, type GodChatRoute, type GodChatTier } from "./god-chat-t
 
 export const GOD_CHAT_PATH = "/api/chat";
 export const GOD_CHAT_USAGE_PATH = "/api/chat/usage";
+// 卡片渲染 Turnstile 时带上，Worker 校验 siteverify 回来的 action 与之相同。
+export const GOD_CHAT_TURNSTILE_ACTION = "god-chat";
 
 // 公开端点直接花 API 额度：这几项上限共同限定单次请求的最大花费，放宽前先算账。
 export const GOD_CHAT_LIMITS = {
@@ -13,16 +15,19 @@ export const GOD_CHAT_LIMITS = {
   maxWebSearches: 2,
 } as const;
 
-// 浏览器只回传文字，工具调用的原始结果不回传；trace 记下那条回复由哪一档作答、查过哪些视图、搜过什么，
-// Worker 据此告诉模型「上一轮确实调用过工具」，否则它会以为自己当时是在编。
-export type GodChatTrace = { tier?: GodChatTier; views?: string[]; searches?: string[] };
+// 浏览器只回传文字，工具调用的原始结果不回传；trace 记下那条回复由哪一档作答、查过哪些视图、搜了几次、
+// 是否由拒答兜底的模型代答，Worker 据此告诉模型「上一轮确实调用过工具」，否则它会以为自己当时是在编。
+// trace 由浏览器提交、会进 system 消息，所以只收枚举与计数，不收任何自由文本（搜索词不回传）。
+export type GodChatTrace = { tier?: GodChatTier; views?: string[]; searches?: number; fallback?: true };
 export type GodChatMessage = { role: "user" | "assistant"; content: string; trace?: GodChatTrace };
 
 export type GodChatSource = { url: string; title: string };
 
 // 响应体是 NDJSON，每行一个事件；首行总是 route（refuse 时 tier 为 null），views 是 get_site_status 读取的视图键。
+// served 只在 Anthropic 的拒答兜底换了模型时出现，model 是实际作答的模型 id。
 export type GodChatEvent =
   | { type: "route"; route: GodChatRoute; tier: GodChatTier | null; downgradedFrom?: GodChatTier }
+  | { type: "served"; model: string }
   | { type: "text"; text: string }
   | { type: "tool"; views: string[] }
   | { type: "search"; query: string }
@@ -51,11 +56,12 @@ function parseTrace(value: unknown): GodChatTrace | undefined {
   if (!value || typeof value !== "object") return undefined;
   const raw = value as Record<string, unknown>;
   const views = shortStrings(raw.views, 12, 40).filter((v) => /^[A-Za-z]+$/.test(v));
-  const searches = shortStrings(raw.searches, 4, 200);
+  const searches = Number.isInteger(raw.searches) ? Math.min(raw.searches as number, GOD_CHAT_LIMITS.maxWebSearches) : 0;
   const trace: GodChatTrace = {
     ...(isGodChatTier(raw.tier) && { tier: raw.tier }),
     ...(views.length && { views }),
-    ...(searches.length && { searches }),
+    ...(searches > 0 && { searches }),
+    ...(raw.fallback === true && { fallback: true as const }),
   };
   return Object.keys(trace).length ? trace : undefined;
 }

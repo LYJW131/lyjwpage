@@ -13,13 +13,21 @@ import { workerUrl } from "@/lib/worker-url";
 import {
   GOD_CHAT_LIMITS,
   GOD_CHAT_PATH,
+  GOD_CHAT_TURNSTILE_ACTION,
   GOD_CHAT_USAGE_PATH,
   type GodChatEvent,
   type GodChatMessage,
   type GodChatSource,
   fitHistory,
 } from "@shared/god-chat";
-import { GOD_CHAT_TIERS, GOD_CHAT_TIER_INFO, type GodChatCount, type GodChatTier, type GodChatUsage } from "@shared/god-chat-tiers";
+import {
+  GOD_CHAT_TIERS,
+  GOD_CHAT_TIER_INFO,
+  modelLabel,
+  type GodChatCount,
+  type GodChatTier,
+  type GodChatUsage,
+} from "@shared/god-chat-tiers";
 
 type Turnstile = {
   render: (el: HTMLElement, options: Record<string, unknown>) => string;
@@ -36,6 +44,7 @@ declare global {
 type Reply = {
   tier?: GodChatTier | null;
   downgradedFrom?: GodChatTier;
+  servedBy?: string;
   lookups?: string[];
   searches?: string[];
   sources?: GodChatSource[];
@@ -82,6 +91,7 @@ export function GodChat({ className }: { className?: string }) {
     if (!scriptReady || !SITE_KEY || !el || !window.turnstile || widgetId.current) return;
     widgetId.current = window.turnstile.render(el, {
       sitekey: SITE_KEY,
+      action: GOD_CHAT_TURNSTILE_ACTION,
       appearance: "interaction-only",
       theme: "auto",
       language: "en",
@@ -114,12 +124,13 @@ export function GodChat({ className }: { className?: string }) {
     // 界面上的气泡保留档位与查询记录；发给 Worker 的历史另行裁剪、改写成 trace，不能回写界面。
     const shown: Bubble[] = [...messages, { role: "user", content }];
     const history: GodChatMessage[] = fitHistory(
-      shown.map(({ role, content, tier, lookups, searches }): GodChatMessage => {
+      shown.map(({ role, content, tier, servedBy, lookups, searches }): GodChatMessage => {
         if (role !== "assistant") return { role, content };
         const trace = {
           ...(tier && { tier }),
           ...(lookups?.length && { views: lookups }),
-          ...(searches?.length && { searches }),
+          ...(searches?.length && { searches: searches.length }),
+          ...(servedBy && { fallback: true as const }),
         };
         return Object.keys(trace).length ? { role, content, trace } : { role, content };
       }),
@@ -168,7 +179,8 @@ export function GodChat({ className }: { className?: string }) {
           else if (event.type === "route") {
             meta = { ...meta, tier: event.tier, downgradedFrom: event.downgradedFrom };
             if (event.tier === "fable" && sessionRef.current === session) summon();
-          } else if (event.type === "tool") {
+          } else if (event.type === "served") meta = { ...meta, servedBy: event.model };
+          else if (event.type === "tool") {
             const seen = meta.lookups ?? [];
             meta = { ...meta, lookups: [...seen, ...event.views.filter((view) => !seen.includes(view))] };
           } else if (event.type === "search") meta = { ...meta, searches: [...(meta.searches ?? []), event.query] };
@@ -492,11 +504,16 @@ function RankLabel({ reply }: { reply: Reply }) {
   return (
     <div className="mb-1.5">
       <div className={cn("label-mono text-[10px]", RANK_TONE[reply.tier])}>
-        {persona} · {label}
+        {persona} · {reply.servedBy ? modelLabel(reply.servedBy) : label}
       </div>
       {reply.downgradedFrom && (
         <div className="label-mono text-[10px] text-muted-foreground">
           {GOD_CHAT_TIER_INFO[reply.downgradedFrom].persona} is resting; the {persona} answers instead
+        </div>
+      )}
+      {reply.servedBy && (
+        <div className="label-mono text-[10px] text-muted-foreground">
+          {label} declined; {modelLabel(reply.servedBy)} stood in
         </div>
       )}
     </div>
@@ -512,11 +529,12 @@ function RouteStatus({ last, streaming }: { last?: Bubble; streaming: boolean })
     <span>
       <span className="hidden sm:inline">Clef → </span>
       <span className={RANK_TONE[last.tier]}>
-        {persona} · {label}
+        {persona} · {last.servedBy ? modelLabel(last.servedBy) : label}
       </span>
       {last.downgradedFrom && (
         <span className="hidden sm:inline"> ({GOD_CHAT_TIER_INFO[last.downgradedFrom].persona} resting)</span>
       )}
+      {last.servedBy && <span className="hidden sm:inline"> ({label} declined)</span>}
     </span>
   );
 }

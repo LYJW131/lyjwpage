@@ -10,8 +10,6 @@ import {
 
 import type { Env } from "../runtime";
 
-export type QuotaDecision = { ok: true; tier: GodChatTier | null } | { ok: false; reason: "visitor" | "busy" };
-
 const visitorKey = (ip: string) => `v:${ip}`;
 const tierVisitorKey = (tier: GodChatTier, ip: string) => `t:${tier}:${ip}`;
 const tierAllKey = (tier: GodChatTier) => `a:${tier}`;
@@ -37,14 +35,22 @@ export class ChatQuota extends DurableObject<Env> {
     this.ctx.storage.sql.exec("INSERT INTO hits (key, at) VALUES (?, ?)", key, now);
   }
 
-  // wanted 为 null 表示 Clef 判了拒绝：只占访客总量。enforce 为 false 时只记账不拦（本地调试开关）。
-  consume(ip: string, wanted: GodChatTier | null, enforce = true): QuotaDecision {
+  // 两步分开调：访客总量在 Clef 之前扣，超额的访客不再触发路由；档位等 Clef 选完再扣。enforce 为 false 时只记账不拦（本地调试开关）。
+  admitVisitor(ip: string, enforce = true): boolean {
     const now = Date.now();
     return this.ctx.storage.transactionSync(() => {
       this.prune(now);
-      if (enforce && this.count(visitorKey(ip)) >= GOD_CHAT_QUOTA.visitor) return { ok: false, reason: "visitor" } as const;
+      if (enforce && this.count(visitorKey(ip)) >= GOD_CHAT_QUOTA.visitor) return false;
       this.hit(visitorKey(ip), now);
-      if (!wanted) return { ok: true, tier: null } as const;
+      return true;
+    });
+  }
+
+  // 返回实际作答的档位；从 wanted 往下逐档都满时返回 null。
+  admitTier(ip: string, wanted: GodChatTier, enforce = true): GodChatTier | null {
+    const now = Date.now();
+    return this.ctx.storage.transactionSync(() => {
+      this.prune(now);
       for (const tier of downgradeChain(wanted)) {
         const limits = GOD_CHAT_QUOTA.tiers[tier];
         const free =
@@ -53,19 +59,29 @@ export class ChatQuota extends DurableObject<Env> {
         if (!free) continue;
         this.hit(tierAllKey(tier), now);
         this.hit(tierVisitorKey(tier, ip), now);
-        return { ok: true, tier } as const;
+        return tier;
       }
-      return { ok: false, reason: "busy" } as const;
+      return null;
     });
   }
 
+  private oldest(where: string, ...bindings: string[]): number | null {
+    return this.ctx.storage.sql.exec(`SELECT MIN(at) AS at FROM hits WHERE ${where}`, ...bindings).one().at as number | null;
+  }
+
+  // 倒计时到下一次「这位访客看到的数会变」：自己最早的一条命中过期，或某档全站已满时它最早的一条过期。
+  // 全站没满的档不算进来，否则站上一忙，面板就几乎每秒重取一次。
   usage(ip: string): GodChatUsage {
     const now = Date.now();
     return this.ctx.storage.transactionSync(() => {
       this.prune(now);
-      const oldest = this.ctx.storage.sql
-        .exec("SELECT MIN(at) AS at FROM hits WHERE key = ? OR key LIKE ?", visitorKey(ip), `t:%:${ip}`)
-        .one().at as number | null;
+      const expiries = [
+        this.oldest("key = ? OR key LIKE ?", visitorKey(ip), `t:%:${ip}`),
+        ...GOD_CHAT_TIERS.filter((tier) => this.count(tierAllKey(tier)) >= GOD_CHAT_QUOTA.tiers[tier].everyone).map((tier) =>
+          this.oldest("key = ?", tierAllKey(tier)),
+        ),
+      ].filter((at): at is number => at != null);
+      const oldest = expiries.length ? Math.min(...expiries) : null;
       const tiers = Object.fromEntries(
         GOD_CHAT_TIERS.map((tier) => [
           tier,

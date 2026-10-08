@@ -1,7 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk";
 
-import { GOD_CHAT_LIMITS } from "@shared/god-chat";
-
 import { STATUS_VIEWS, type StatusViewKey } from "@/lib/status-views";
 
 export type ReadStatus = (path: string) => Promise<Response>;
@@ -38,8 +36,10 @@ const VIEW_NOTES = {
 
 const VIEW_KEYS = Object.keys(VIEW_NOTES) as StatusViewKey[];
 
-// 单次工具结果进上下文就是输入 token 花费；超长的视图截断而不是整段塞进去。
+// 工具结果进上下文就是输入 token 花费：超长的视图截断而不是整段塞进去；一条回复里所有调用（含同一轮并行的几次）
+// 合计最多读 MAX_VIEWS_PER_REPLY 个视图，读过的不再读，否则并行多调几次就能把输入撑大好几倍。
 const MAX_VIEWS_PER_CALL = 4;
+const MAX_VIEWS_PER_REPLY = 8;
 const MAX_CHARS_PER_VIEW = 8_000;
 
 export const SITE_STATUS_TOOL: Anthropic.Beta.BetaTool = {
@@ -65,13 +65,34 @@ export const SITE_STATUS_TOOL: Anthropic.Beta.BetaTool = {
   strict: true,
 };
 
+export function isStatusViewKey(value: unknown): value is StatusViewKey {
+  return VIEW_KEYS.includes(value as StatusViewKey);
+}
+
 export function parseSiteStatusInput(input: unknown): StatusViewKey[] {
   const views = (input as { views?: unknown })?.views;
   if (!Array.isArray(views)) return [];
-  return [...new Set(views.filter((v): v is StatusViewKey => VIEW_KEYS.includes(v as StatusViewKey)))].slice(
-    0,
-    MAX_VIEWS_PER_CALL,
-  );
+  return [...new Set(views.filter(isStatusViewKey))].slice(0, MAX_VIEWS_PER_CALL);
+}
+
+// 同步调用：同一轮的几次调用按顺序先分好额度再并行去读，谁读到哪些视图是确定的。
+export function claimViews(requested: StatusViewKey[], read: Set<StatusViewKey>) {
+  const views: StatusViewKey[] = [];
+  const repeated: StatusViewKey[] = [];
+  const overBudget: StatusViewKey[] = [];
+  for (const key of requested) {
+    if (read.has(key)) repeated.push(key);
+    else if (read.size >= MAX_VIEWS_PER_REPLY) overBudget.push(key);
+    else {
+      read.add(key);
+      views.push(key);
+    }
+  }
+  const notes = [
+    repeated.length && `Already read earlier in this reply, reuse those results: ${repeated.join(", ")}.`,
+    overBudget.length && `Not read, this reply may read at most ${MAX_VIEWS_PER_REPLY} views: ${overBudget.join(", ")}.`,
+  ].filter((note): note is string => Boolean(note));
+  return { views, notes };
 }
 
 async function readView(read: ReadStatus, key: StatusViewKey): Promise<string> {
@@ -92,9 +113,9 @@ export async function runSiteStatusTool(read: ReadStatus, views: StatusViewKey[]
 }
 
 // Haiku 5.5 用带动态过滤的版本时，首次调用常把参数包进 {"params": …} 被判 invalid_tool_input，白耗一次 max_uses；
-// 所以只有 Fable 用新版，其余模型用基础版。
-export function webSearchTool(model: string): Anthropic.Beta.BetaToolUnion {
+// 所以只有 Fable 用新版，其余模型用基础版。max_uses 只管单次请求，调用方传这条回复还剩的次数（API 不收 0，剩 0 就别带这个工具）。
+export function webSearchTool(model: string, maxUses: number): Anthropic.Beta.BetaToolUnion {
   return model.startsWith("claude-fable-")
-    ? { type: "web_search_20260318", name: "web_search", max_uses: GOD_CHAT_LIMITS.maxWebSearches }
-    : { type: "web_search_20250305", name: "web_search", max_uses: GOD_CHAT_LIMITS.maxWebSearches };
+    ? { type: "web_search_20260318", name: "web_search", max_uses: maxUses }
+    : { type: "web_search_20250305", name: "web_search", max_uses: maxUses };
 }

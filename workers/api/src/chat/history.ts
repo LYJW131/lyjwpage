@@ -3,11 +3,16 @@ import type Anthropic from "@anthropic-ai/sdk";
 import type { GodChatMessage, GodChatTrace } from "@shared/god-chat";
 import { GOD_CHAT_TIER_INFO } from "@shared/god-chat-tiers";
 
-function traceNote({ tier, views, searches }: GodChatTrace): string {
-  const who = tier ? `the ${GOD_CHAT_TIER_INFO[tier].persona} (${GOD_CHAT_TIER_INFO[tier].label})` : "an earlier rank";
+import { isStatusViewKey } from "./site-status";
+
+// trace 是浏览器交来的，说明只用枚举（档位、登记过的视图键）和计数拼，访客塞不进任何文字。
+function traceNote({ tier, views, searches, fallback }: GodChatTrace): string {
+  const rank = tier ? `the ${GOD_CHAT_TIER_INFO[tier].persona} (${GOD_CHAT_TIER_INFO[tier].label})` : "an earlier rank";
+  const who = fallback ? `another Claude model standing in for ${rank}, which declined it` : rank;
+  const known = views?.filter(isStatusViewKey) ?? [];
   const used = [
-    views?.length && `called get_site_status for ${views.join(", ")}`,
-    searches?.length && `ran web_search for ${searches.map((q) => JSON.stringify(q)).join(", ")}`,
+    known.length && `called get_site_status for ${known.join(", ")}`,
+    searches && `ran ${searches} web search${searches > 1 ? "es" : ""}`,
   ].filter(Boolean);
   return `The next assistant reply was written by ${who}. ${used.length ? `Before writing it, it ${used.join(" and ")}, so facts it states about those come from real tool results (they may be stale now).` : "It used no tools."}`;
 }

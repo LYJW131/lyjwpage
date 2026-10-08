@@ -10,11 +10,22 @@ import {
 } from "@shared/god-chat";
 import { GOD_CHAT_TIER_INFO, isGodChatTier, type GodChatTier } from "@shared/god-chat-tiers";
 
+import type { StatusViewKey } from "@/lib/status-views";
+
+import { getAllowedOrigins } from "../origins";
 import type { Env } from "../runtime";
 import { anthropicFetch } from "./egress";
+import { readJsonBody, turnstilePassed, verifyTurnstile } from "./guard";
 import { toModelMessages } from "./history";
 import { routeWithClef, type RouteDecision } from "./router";
-import { SITE_STATUS_TOOL, parseSiteStatusInput, runSiteStatusTool, webSearchTool, type ReadStatus } from "./site-status";
+import {
+  SITE_STATUS_TOOL,
+  claimViews,
+  parseSiteStatusInput,
+  runSiteStatusTool,
+  webSearchTool,
+  type ReadStatus,
+} from "./site-status";
 
 const MAX_BODY_BYTES = 64 * 1024;
 
@@ -41,10 +52,13 @@ function downgradeNote(wanted: GodChatTier, tier: GodChatTier): string {
 
 const REFUSAL = "The temple gates stay closed for this one. Ask something else.";
 
-// 只在本地与预览生效：两处都配了 UPSTREAM_API_URL，生产没有。
+// 本地与预览都配了 UPSTREAM_API_URL，生产没有；调试开关和放宽的验人规则只在这两处生效。
+function isDevWorker(): boolean {
+  return Boolean(process.env.UPSTREAM_API_URL?.trim());
+}
+
 function devSwitch(name: "CHAT_RATE_LIMIT" | "CHAT_FORCE_TIER"): string | undefined {
-  if (!process.env.UPSTREAM_API_URL?.trim()) return undefined;
-  return process.env[name]?.trim() || undefined;
+  return isDevWorker() ? process.env[name]?.trim() || undefined : undefined;
 }
 
 export function quotaStub(env: Env) {
@@ -55,49 +69,29 @@ export function clientIp(request: Request): string {
   return request.headers.get("CF-Connecting-IP") ?? "unknown";
 }
 
-async function verifyTurnstile(secret: string, token: string, ip: string): Promise<boolean> {
-  const body = new URLSearchParams({ secret, response: token, remoteip: ip });
-  try {
-    const res = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
-      method: "POST",
-      body,
-      signal: AbortSignal.timeout(8_000),
-    });
-    return ((await res.json()) as { success?: boolean }).success === true;
-  } catch {
-    return false;
-  }
-}
-
 function fail(status: number, error: string, headers?: HeadersInit): Response {
   return Response.json({ error }, { status, headers: { "Cache-Control": "no-store", ...headers } });
-}
-
-async function readBody(request: Request): Promise<unknown> {
-  const length = Number(request.headers.get("Content-Length") ?? 0);
-  if (length > MAX_BODY_BYTES) return null;
-  const text = await request.text();
-  if (text.length > MAX_BODY_BYTES) return null;
-  try {
-    return JSON.parse(text);
-  } catch {
-    return null;
-  }
 }
 
 export async function handleChat(request: Request, env: Env, readStatus: ReadStatus): Promise<Response> {
   if (request.method !== "POST") return fail(405, "Method not allowed.");
   if (!env.ANTHROPIC_API_KEY || !env.TURNSTILE_SECRET_KEY) return fail(503, "The oracle is offline.");
 
-  const parsed = parseGodChatRequest(await readBody(request));
+  const parsed = parseGodChatRequest(await readJsonBody(request, MAX_BODY_BYTES));
   if (!parsed) return fail(400, "Invalid message.");
 
   const ip = clientIp(request);
   // 额度缺绑定按超额处理：计数失效时宁可拒绝也不放行。
   const quota = quotaStub(env);
   if (!quota) return fail(503, "The oracle is offline.");
-  if (!(await verifyTurnstile(env.TURNSTILE_SECRET_KEY, parsed.turnstileToken, ip))) {
+  const verdict = await verifyTurnstile(env.TURNSTILE_SECRET_KEY, parsed.turnstileToken, ip);
+  if (!turnstilePassed(verdict, getAllowedOrigins(env), isDevWorker())) {
     return fail(403, "Human verification failed. Please try again.");
+  }
+  // 验过人才计数，计数在 Clef 之前：超额的访客不再触发付费的路由调用。
+  const enforce = devSwitch("CHAT_RATE_LIMIT") !== "off";
+  if (!(await quota.admitVisitor(ip, enforce))) {
+    return fail(429, "Too many prayers. Please wait a moment.", { "Retry-After": "60" });
   }
 
   const forced = devSwitch("CHAT_FORCE_TIER");
@@ -113,25 +107,21 @@ export async function handleChat(request: Request, env: Env, readStatus: ReadSta
     "Cache-Control": "no-store",
   };
 
-  const wanted = decision.route === "refuse" ? null : decision.route;
-  const admitted = await quota.consume(ip, wanted, devSwitch("CHAT_RATE_LIMIT") !== "off");
-  if (!admitted.ok) {
-    return admitted.reason === "visitor"
-      ? fail(429, "Too many prayers. Please wait a moment.", { "Retry-After": "60" })
-      : fail(429, "All the heavens are busy. Try again in a minute.", { "Retry-After": "60" });
-  }
-
-  if (!wanted || !admitted.tier) {
+  if (decision.route === "refuse") {
     return new Response(
       new Blob([line({ type: "route", route: "refuse", tier: null }), line({ type: "text", text: REFUSAL })]).stream(),
       { headers },
     );
   }
 
-  const tier = admitted.tier;
+  const wanted = decision.route;
+  const tier = await quota.admitTier(ip, wanted, enforce);
+  if (!tier) return fail(429, "All the heavens are busy. Try again in a minute.", { "Retry-After": "60" });
 
   const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, fetch: anthropicFetch(env) });
   const abort = new AbortController();
+  // 访客点停止或断开时请求被取消（要 enable_request_signal）：停下工具循环，并经 SDK 的 fetch 信号掐断上游，不再生成计费。
+  request.signal.addEventListener("abort", () => abort.abort(), { once: true });
   const body = new ReadableStream<Uint8Array>({
     async start(controller) {
       const emit = (event: GodChatEvent) => controller.enqueue(line(event));
@@ -146,7 +136,8 @@ export async function handleChat(request: Request, env: Env, readStatus: ReadSta
           emit({ type: "text", text: "\n\n[The connection to the heavens was lost.]" });
         }
       } finally {
-        controller.close();
+        // 访客中断时这条流已被取消，再 close 会抛错。
+        if (!abort.signal.aborted) controller.close();
       }
     },
     cancel() {
@@ -182,6 +173,14 @@ async function converse({
   const messages = toModelMessages(history);
   if (note) messages.push({ role: "system", content: note });
   const sources = new Map<string, GodChatSource>();
+  const viewsRead = new Set<StatusViewKey>();
+  // 只把拒答兜底换上来的模型报给浏览器；同一型号带日期后缀的 id 也算本档自己。
+  const announced = new Set<string>();
+  const serve = (served: string) => {
+    if (served === model || served.startsWith(`${model}-`) || announced.has(served)) return;
+    announced.add(served);
+    emit({ type: "served", model: served });
+  };
   const shownSearches = new Set<string>();
   const showSearch = (id: string, input: unknown) => {
     const query = (input as { query?: unknown } | null)?.query;
@@ -193,10 +192,11 @@ async function converse({
 
   for (let round = 0; ; round++) {
     const lastRound = round >= GOD_CHAT_LIMITS.maxToolRounds;
+    const searchesLeft = GOD_CHAT_LIMITS.maxWebSearches - searches;
     const tools = lastRound
       ? []
-      : searches < GOD_CHAT_LIMITS.maxWebSearches
-        ? [SITE_STATUS_TOOL, webSearchTool(model)]
+      : searchesLeft > 0
+        ? [SITE_STATUS_TOOL, webSearchTool(model, searchesLeft)]
         : [SITE_STATUS_TOOL];
     const stream = client.beta.messages.stream(
       {
@@ -216,9 +216,11 @@ async function converse({
     );
     const searchInputs = new Map<number, { id: string; json: string }>();
     for await (const event of stream) {
-      if (event.type === "content_block_start") {
+      if (event.type === "message_start") serve(event.message.model);
+      else if (event.type === "content_block_start") {
         const block = event.content_block;
-        if (block.type === "server_tool_use" && block.name === "web_search") {
+        if (block.type === "fallback") serve(block.to.model);
+        else if (block.type === "server_tool_use" && block.name === "web_search") {
           searchInputs.set(event.index, { id: block.id, json: "" });
         }
       } else if (event.type === "content_block_delta") {
@@ -234,6 +236,7 @@ async function converse({
       }
     }
     const final = await stream.finalMessage();
+    serve(final.model);
     searches += final.usage.server_tool_use?.web_search_requests ?? 0;
     for (const block of final.content) {
       if (block.type === "server_tool_use" && block.name === "web_search") showSearch(block.id, block.input);
@@ -249,9 +252,14 @@ async function converse({
       emit({ type: "text", text: "\n\n[The heavens decline to answer this one.]" });
       break;
     }
-    if (final.stop_reason === "pause_turn" && !lastRound) {
-      messages.push({ role: "assistant", content: final.content });
-      continue;
+    // 续跑暂停的回合得带着搜索工具才能接上：搜索次数已用完、或下一轮就是不带工具的收尾轮时不再续，答到哪算哪。
+    if (final.stop_reason === "pause_turn") {
+      if (round + 1 < GOD_CHAT_LIMITS.maxToolRounds && searches < GOD_CHAT_LIMITS.maxWebSearches) {
+        messages.push({ role: "assistant", content: final.content });
+        continue;
+      }
+      emit({ type: "text", text: " …" });
+      break;
     }
     const calls = final.content.filter((block) => block.type === "tool_use");
     if (final.stop_reason !== "tool_use" || !calls.length) {
@@ -261,12 +269,13 @@ async function converse({
     messages.push({ role: "assistant", content: final.content });
     const results = await Promise.all(
       calls.map(async (call) => {
-        const views = parseSiteStatusInput(call.input);
-        emit({ type: "tool", views });
+        const { views, notes } = claimViews(parseSiteStatusInput(call.input), viewsRead);
+        if (views.length) emit({ type: "tool", views });
+        const read = views.length ? await runSiteStatusTool(readStatus, views) : "";
         return {
           type: "tool_result" as const,
           tool_use_id: call.id,
-          content: views.length ? await runSiteStatusTool(readStatus, views) : "No valid views requested.",
+          content: [read, ...notes].filter(Boolean).join("\n\n") || "No valid views requested.",
           is_error: !views.length,
         };
       }),

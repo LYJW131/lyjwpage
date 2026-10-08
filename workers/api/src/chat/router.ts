@@ -23,12 +23,13 @@ export type RouteDecision = { route: GodChatRoute; source: "clef" | "fallback" |
 
 const clip = (text: string, max: number) => (text.length > max ? `${text.slice(0, max)}…` : text);
 
+// 最新一条整条给 Clef（长度已被 GOD_CHAT_LIMITS.maxMessageChars 卡住）：长消息常把真正的问题或注入放在末尾。
 export function routerInput(messages: GodChatMessage[]) {
   const latest = messages[messages.length - 1];
   return {
     model: "clef",
     state: {
-      latestMessage: clip(latest.content, 1500),
+      latestMessage: latest.content,
       earlierMessages: messages.slice(-5, -1).map((m) => ({ role: m.role, content: clip(m.content, 300) })),
     },
     questions: { route: { type: "choice", instructions: ROUTE_INSTRUCTIONS, criteria: ROUTE_CRITERIA } },
