@@ -220,14 +220,17 @@ test("长文档先给目录与开头，按章节读到下一个同级标题为�
     "storage body",
     "x".repeat(20_000),
   ].join("\n");
-  const whole = sliceDoc(doc);
+  const whole = sliceDoc(doc).text;
   assert.match(whole, /^Outline:\n- Title\n  - Push\n    - Detail\n  - Storage\n/);
   assert.doesNotMatch(whole.split("Opening:")[0], /not a heading/);
   assert.ok(whole.length < doc.length);
   const push = sliceDoc(doc, "push");
-  assert.match(push, /^## Push\npush body\n```bash\n# not a heading\n```\n### Detail\ndetail body$/);
-  assert.match(sliceDoc(doc, "nothing like it"), /^No heading matches "nothing like it"\.\n\nOutline:/);
-  assert.equal(sliceDoc("# Short\nbody"), "# Short\nbody");
+  assert.equal(push.heading, "Push");
+  assert.match(push.text, /^## Push\npush body\n```bash\n# not a heading\n```\n### Detail\ndetail body$/);
+  const miss = sliceDoc(doc, "nothing like it");
+  assert.equal(miss.heading, undefined);
+  assert.match(miss.text, /^No heading matches "nothing like it"\.\n\nOutline:/);
+  assert.deepEqual(sliceDoc("# Short\nbody"), { text: "# Short\nbody" });
 });
 
 test("文档读取失败不抛错，回给模型的结果带来源链接", async () => {
@@ -237,9 +240,9 @@ test("文档读取失败不抛错，回给模型的结果带来源链接", async
     return new Response("# Hub\nhello");
   }, { doc: "macHub" });
   assert.deepEqual(urls, ["https://raw.githubusercontent.com/LYJW131/MacTelemetryHub/main/README.md"]);
-  assert.match(ok, /^Source: https:\/\/github\.com\/LYJW131\/MacTelemetryHub\/blob\/main\/README\.md\n\n# Hub\nhello$/);
-  assert.match(await readProjectDoc(async () => new Response("", { status: 404 }), { doc: "overview" }), /HTTP 404/);
-  assert.match(await readProjectDoc(async () => { throw new Error("down"); }, { doc: "overview" }), /unavailable/);
+  assert.match(ok.text, /^Source: https:\/\/github\.com\/LYJW131\/MacTelemetryHub\/blob\/main\/README\.md\n\n# Hub\nhello$/);
+  assert.match((await readProjectDoc(async () => new Response("", { status: 404 }), { doc: "overview" })).text, /HTTP 404/);
+  assert.match((await readProjectDoc(async () => { throw new Error("down"); }, { doc: "overview" })).text, /unavailable/);
 });
 
 test("回复读过的项目文档随 trace 带回，只认白名单键", () => {

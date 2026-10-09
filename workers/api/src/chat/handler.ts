@@ -312,14 +312,15 @@ async function converse({
           if (!request) return result("Unknown doc.", true);
           const claim = claimDoc(request, docsRead);
           if (!claim.read) return result(claim.note ?? "Not read.", true);
+          const { text, heading } = await readProjectDoc(fetchProjectDoc, request);
           emit({
             type: "doc",
             doc: request.doc,
             path: projectDocPath(request.doc),
             url: projectDocUrl(request.doc, "blob"),
-            ...(request.section && { section: request.section }),
+            ...(heading && { section: heading }),
           });
-          return result(await readProjectDoc(fetchProjectDoc, request), false);
+          return result(text, false);
         }
         if (call.name !== SITE_STATUS_TOOL.name) return result("Unknown tool.", true);
         const { views, notes } = claimViews(parseSiteStatusInput(call.input), viewsRead);
