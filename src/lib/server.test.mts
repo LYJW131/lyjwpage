@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { publicServer } from "@shared/server";
+
 import { normalizeServer } from "./server-parse.ts";
 
 function report(partial: Record<string, unknown> = {}) {
@@ -44,10 +46,11 @@ function report(partial: Record<string, unknown> = {}) {
   };
 }
 
-test("合法报文收成对外契约，百分比和速率按约定取整", () => {
+test("合法报文收成上报契约，百分比和速率按约定取整；公开投影不带 publicIp", () => {
   const status = normalizeServer(report());
   assert.equal(status.id, "misaka-jp");
   assert.equal(status.publicIp, "103.170.233.241");
+  assert.ok(!("publicIp" in publicServer(status)));
   assert.equal(status.asn, 142616);
   assert.equal(status.cpuUsagePercent, 12.3);
   assert.equal(status.load15, 0.1);

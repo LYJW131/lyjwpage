@@ -1,6 +1,6 @@
 import { CHARGER_HISTORY_LIMIT } from "@/lib/limits";
 import { tellStorage, withStorage } from "@/lib/storage";
-import type { ChargerSample, ChargerStatus } from "@/lib/types";
+import type { ChargerSample, ReportedChargerStatus } from "@/lib/types";
 import { type ChargerLanding, type ChargerState, DISCONNECTED_HISTORY_AFTER_MS, K_HISTORY, K_LAST_PUSH, K_LATEST, type Stored, disconnectedHistoryExpired, fallback } from "@shared/charger-store";
 
 
@@ -14,7 +14,7 @@ type HistoryPlan =
   | { kind: "append"; sample: ChargerSample; reset: boolean };
 
 // 端口 active 不能从功率推断：插线但未取电时仍是开启状态。
-function structuralKey(status: ChargerStatus) {
+function structuralKey(status: ReportedChargerStatus) {
   return JSON.stringify([
     status.connected,
     status.totalPower > 1,
@@ -28,7 +28,7 @@ function structuralKey(status: ChargerStatus) {
 
 function planHistory(
   previous: Stored | null,
-  status: ChargerStatus,
+  status: ReportedChargerStatus,
   receivedAt: number,
   stored: ChargerSample[],
   resetAfterDisconnect: boolean,
@@ -59,7 +59,7 @@ function planHistory(
 }
 
 export function prepareStatus(
-  status: ChargerStatus,
+  status: ReportedChargerStatus,
   receivedAt: number,
   { previous, history }: ChargerState,
 ): ChargerLanding {

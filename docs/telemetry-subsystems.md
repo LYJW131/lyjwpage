@@ -144,6 +144,7 @@
 ```text
 Anker 硬件 (BLE) ──> Mac Telemetry Hub ──> POST /api/ingest/mac ──> 上报入口 ──> 状态核心 SQLite
 ```
+- 设备序列号（`device.serialNumber`）随上报存进状态核心，只用来判断结构变化（`workers/api/src/stores/charger-store.ts`、`powerbank-store.ts` 的 `structuralKey`）；状态接口和推送都经 `shared/charging-devices.ts` 的投影出去，不带序列号。
 
 ### 本地高速 SSE 切换
 - 当在内网 Mac 访问 `/local/charging` 时，会在浏览器 `localStorage` 写入标记并跳转首页。
@@ -273,6 +274,7 @@ payload: >-
 
 ### 节点监控
 - `reporters/server-reporter` 部署于云端 Linux 节点（TypeScript / Node，和 agents-reporter 同一套结构），采集 `/proc/stat` 与 `/proc/net/dev`，上报 CPU、内存及网络吞吐，节奏固定（`INTERVAL_MS`，见它的 README「节奏」）；前端在下一次预期上报后几秒去取。
+- 上报必带网卡上的公网 IP（`publicIp`，入口校验它是 IPv4），但它不公开：上报入口写可滞后层、状态接口读出时都经 `shared/server.ts#publicServer` 只留公开字段，KV 里存量带的也读不出去。
 
 ### 按人数调频（agents-reporter）
 为节省外部 API 配额，`agents-reporter` 按在线人数分三档（`server-reporter` 固定每分钟一推、不参与调频，理由见它的 README「节奏」）：

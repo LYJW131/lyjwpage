@@ -2,10 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { SERVER_STALE_MS } from "@/lib/freshness";
+import { installLagStoreForTests } from "@/lib/lag-store";
+import { getServerSnapshot } from "@/lib/server";
 import { STATUS_VIEWS } from "@/lib/status-views";
 import { MemoryKv } from "@/lib/testing/memory-kv";
 import type { AgentLimitsPayload } from "@/lib/vibecoding-limits";
-import { LAG_KEYS, readLag } from "@shared/lag";
+import { LAG_KEYS, readLag, writeLag } from "@shared/lag";
 
 import { prepareIngest } from "@shared/ingest/prepare";
 import { commitLagIngest } from "./lag-ingest";
@@ -182,4 +184,23 @@ test("训练心率只进历史归档：写进可滞后层的列表不带心率�
   assert.ok(!("averageHeartRateBpm" in item) && !("maximumHeartRateBpm" in item));
   const stored = { ...item, averageHeartRateBpm: 109.4, maximumHeartRateBpm: 152 } as unknown as Workout;
   assert.deepEqual(Object.keys(publicWorkout(stored)).filter((key) => key.includes("HeartRate")), []);
+});
+
+test("落地节点的 publicIp 只是上报契约：写进可滞后层的不带它，存量里带的读出时也挑掉", async () => {
+  const kv = new MemoryKv();
+  await land(kv, "server", server(), NOW);
+  const written = (await readLag<Record<string, unknown>>(kv, LAG_KEYS.server))?.data ?? {};
+  assert.equal(written.hostname, "misaka-jp");
+  assert.ok(!("publicIp" in written));
+
+  await writeLag(kv, LAG_KEYS.server, { ...written, publicIp: "203.0.113.7" }, NOW);
+  installLagStoreForTests((key) => readLag(kv, key));
+  try {
+    const { data } = await getServerSnapshot();
+    assert.equal(data.hostname, "misaka-jp");
+    assert.equal(data.pushedAt, NOW);
+    assert.ok(!("publicIp" in data));
+  } finally {
+    installLagStoreForTests(null);
+  }
 });

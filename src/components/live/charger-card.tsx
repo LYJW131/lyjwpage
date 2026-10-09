@@ -97,8 +97,8 @@ export function ChargerCard({
       label="Charger"
       tone={dot}
       action={
-        data?.device.serialNumber ? (
-          <span title={`Firmware ${data.device.firmwareVersion ?? "unknown"}`}>
+        data?.device.firmwareVersion ? (
+          <span title={`Firmware ${data.device.firmwareVersion}`}>
             {ankerModelLabel(data.device.model, CHARGER_MODEL)}
           </span>
         ) : (
