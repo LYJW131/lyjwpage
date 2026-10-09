@@ -1,6 +1,6 @@
 import type { StatusViewKey } from "@/lib/status-views";
 
-import { isGodChatTier, type GodChatRoute, type GodChatTier } from "./god-chat-tiers";
+import { isGodChatTier, type GodChatEffort, type GodChatRoute, type GodChatTier } from "./god-chat-tiers";
 
 export const GOD_CHAT_PATH = "/api/chat";
 export const GOD_CHAT_USAGE_PATH = "/api/chat/usage";
@@ -38,6 +38,8 @@ export function isGodChatCard(value: unknown): value is GodChatCard {
 // docs 是 read_project_doc 的文档键，issue 表示那条回复起草过 issue，cards 是那条回复给访客画过的卡片。
 export type GodChatTrace = {
   tier?: GodChatTier;
+  // 每轮原样重放消息级 effort，切换强度不能重写已缓存的历史前缀。
+  effort?: GodChatEffort;
   views?: string[];
   docs?: string[];
   searches?: number;
@@ -93,12 +95,14 @@ const shortStrings = (value: unknown, max: number, len: number): string[] =>
 export function normalizeTrace(value: unknown): GodChatTrace | undefined {
   if (!value || typeof value !== "object") return undefined;
   const raw = value as Record<string, unknown>;
+  const effort = raw.effort === "low" || raw.effort === "medium" || raw.effort === "high" ? raw.effort : undefined;
   const views = shortStrings(raw.views, 12, 40).filter((v) => /^[A-Za-z]+$/.test(v));
   const docs = shortStrings(raw.docs, 8, 40).filter((v) => /^[A-Za-z]+$/.test(v));
   const searches = Number.isInteger(raw.searches) ? Math.min(raw.searches as number, GOD_CHAT_LIMITS.maxWebSearches) : 0;
   const cards = Array.isArray(raw.cards) ? [...new Set(raw.cards.filter(isGodChatCard))] : [];
   const trace: GodChatTrace = {
     ...(isGodChatTier(raw.tier) && { tier: raw.tier }),
+    ...(effort && { effort }),
     ...(views.length && { views }),
     ...(docs.length && { docs }),
     ...(searches > 0 && { searches }),

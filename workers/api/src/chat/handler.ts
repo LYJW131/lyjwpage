@@ -204,9 +204,10 @@ async function converse({
   // Haiku 不支持服务端拒答兜底参数，其余两档都开。
   const fallback = tier !== "haiku";
   const betas: Anthropic.Beta.AnthropicBeta[] = [
+    "mid-conversation-output-config-2026-07-01",
     ...(fallback ? (["server-side-fallback-2026-07-01"] as const) : []),
   ];
-  const messages = toModelMessages(history);
+  const messages = toModelMessages(history, effort);
   if (note) messages.push({ role: "system", content: note });
   const sources = new Map<string, GodChatSource>();
   const ledger = newLedger();
@@ -254,7 +255,6 @@ async function converse({
         ],
         // 三档默认不返回思考内容，模型想的时候卡片只能空等；summarized 只多给一份摘要文字，计费不变。
         thinking: { type: "adaptive", display: "summarized" },
-        output_config: { effort },
         cache_control: { type: "ephemeral" },
         betas,
         ...(fallback ? { fallbacks: "default" as const } : {}),
@@ -391,6 +391,7 @@ async function converse({
   if (sources.size) emit({ type: "sources", sources: [...sources.values()].slice(0, 6) });
   const trace = normalizeTrace({
     tier,
+    effort,
     views: [...ledger.views],
     docs: [...docKeys],
     searches,
