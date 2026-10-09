@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import { githubChartWeeks } from "./github-chart-history.ts";
 
-const payload = { origin: "2025-09-28", counts: Array.from({ length: 367 }, (_, i) => i % 5), scores: Array.from({ length: 367 }, () => 1 as const) };
+const payload = { origin: "2025-09-28", counts: Array.from({ length: 367 }, (_, i) => i % 5) };
 
 test("贡献图画到浏览器的今天：跨过零点、数据还没到的今天画成 0 的一格", () => {
   const drawn = githubChartWeeks(payload).flat();
