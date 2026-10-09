@@ -11,12 +11,12 @@ import { allowedBuildPath, parseBuildPlan, parseBuildUpload } from "./build/vali
 import { githubAppJwt, GithubBuildApi, assertMainAncestor, createBuildPullRequest, reconcileBuild } from "./build/github.ts";
 import { verifyGithubWebhook, applyGithubWebhook } from "./build/webhook.ts";
 import { consumePlan, issuePlan } from "./build/plan.ts";
-import { handleBuild, handleBuildProgress, handleBuildSession, handleBuildStatus, handleBuildUpload, handleGithubWebhook } from "./build/handlers.ts";
 
 registerHooks({ resolve(specifier, context, nextResolve) {
   if (specifier !== "cloudflare:workers") return nextResolve(specifier, context);
   return { url: "data:text/javascript,export class DurableObject{constructor(ctx,env){this.ctx=ctx;this.env=env}}", shortCircuit: true };
 } });
+const { handleBuild, handleBuildProgress, handleBuildSession, handleBuildStatus, handleBuildUpload, handleGithubWebhook } = await import("./build/handlers.ts");
 const { BuildCoordinator } = await import("./build/coordinator.ts");
 const plan: BuildPlan = { title: "Improve the page", spec: "Improve the public layout.", acceptance: ["Mobile layout fits."], paths: ["src/card.tsx"] };
 const sha = "a".repeat(40);

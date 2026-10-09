@@ -1,4 +1,5 @@
 import { BUILD_PROGRESS_PATH, BUILD_RECONCILE_MS, BUILD_SESSION_TTL_MS, BUILD_STATUS_TTL_MS, BUILD_TIMEOUT_MS, BUILD_TOKEN_MAX_CHARS, BUILD_UPLOAD_LIMITS, BUILD_UPLOAD_PATH, branchForRun, newRunId, type BuildFireResult, type BuildSession } from "@shared/build-routine";
+import { anthropicFetch } from "../chat/egress";
 import { readJsonBody } from "../chat/guard";
 import type { Env } from "../runtime";
 import type { StoredRun } from "./coordinator";
@@ -63,8 +64,9 @@ export async function handleBuild(request: Request, env: Env, fetcher: typeof fe
     reserved = true;
     const statusToken = await signBuildToken<StatusPayload>({ kind: "status", runId, expiresAt: createdAt + BUILD_STATUS_TTL_MS }, env.BUILD_SESSION_SECRET);
     const origin = new URL(request.url).origin;
+    const routineFetcher = anthropicFetch(env) ?? fetcher;
     dispatched = true;
-    const response = await fetcher(env.ROUTINE_FIRE_URL, {
+    const response = await routineFetcher(env.ROUTINE_FIRE_URL, {
       method: "POST", headers: { Authorization: `Bearer ${env.ROUTINE_FIRE_TOKEN}`, "anthropic-version": "2023-06-01", "Content-Type": "application/json" },
       body: JSON.stringify({ text: JSON.stringify({ runId, plan: plan.plan, coauthor, baseSha, uploadToken, uploadUrl: `${origin}${BUILD_UPLOAD_PATH}?runId=${runId}`, progressUrl: `${origin}${BUILD_PROGRESS_PATH}?runId=${runId}` }) }),
       signal: AbortSignal.timeout(20_000),

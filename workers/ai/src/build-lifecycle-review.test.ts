@@ -7,7 +7,6 @@ import { BUILD_REPO, BUILD_TIMEOUT_MS, branchForRun, type BuildFireResult, type 
 import type { Env } from "./runtime.ts";
 import type { StoredRun } from "./build/coordinator.ts";
 import { BuildPullRequestRejectedError, createBuildPullRequest, GithubBuildApi, reconcileBuild } from "./build/github.ts";
-import { handleBuild, handleBuildStatus, handleBuildUpload, handleGithubWebhook } from "./build/handlers.ts";
 import { issuePlan } from "./build/plan.ts";
 import { hashToken, signBuildToken } from "./build/token.ts";
 
@@ -15,6 +14,7 @@ registerHooks({ resolve(specifier, context, nextResolve) {
   if (specifier !== "cloudflare:workers") return nextResolve(specifier, context);
   return { url: "data:text/javascript,export class DurableObject{constructor(ctx,env){this.ctx=ctx;this.env=env}}", shortCircuit: true };
 } });
+const { handleBuild, handleBuildStatus, handleBuildUpload, handleGithubWebhook } = await import("./build/handlers.ts");
 const { BuildCoordinator } = await import("./build/coordinator.ts");
 const plan: BuildPlan = { title: "Improve the card", spec: "Improve the public card.", acceptance: ["The card is readable."], paths: ["src/components/card.tsx"] };
 const baseSha = "a".repeat(40);
@@ -105,6 +105,56 @@ test("main lookup failure leaves the signed plan and build quota available for r
   assert.equal(fixture.calls.some((call) => call.path === "/fire"), false);
   assert.equal((await handleBuild(post("/api/build", { session, planToken: proposal.token }), env, githubFixture().fetcher)).status, 202);
 });
+
+for (const useEgress of [true, false]) {
+  test(`build fire ${useEgress ? "uses Anthropic egress without routing GitHub through it" : "uses the injected fetcher when Anthropic egress is absent"}`, async (t) => {
+    const { env, instance, db } = coordinator();
+    t.after(() => db.close());
+    env.ROUTINE_FIRE_URL = "https://api.anthropic.com/v1/claude_code/routines/fixture/fire";
+    const egressRequests: Request[] = [];
+    if (useEgress) {
+      env.ANTHROPIC_EGRESS = {
+        idFromName: (name: string) => name,
+        get: () => ({ fetch: async (request: Request) => {
+          egressRequests.push(request);
+          return Response.json({ claude_code_session_url: "https://fixture.invalid/session" });
+        } }),
+      } as unknown as Env["ANTHROPIC_EGRESS"];
+    }
+    const directRequests: Request[] = [];
+    const github = githubFixture();
+    const fetcher: typeof fetch = async (input, init) => {
+      const request = new Request(input, init);
+      directRequests.push(request);
+      if (request.url === env.ROUTINE_FIRE_URL) return Response.json({ claude_code_session_url: "https://fixture.invalid/session" });
+      return github.fetcher(input, init);
+    };
+    const abort = new AbortController();
+    t.mock.method(AbortSignal, "timeout", () => abort.signal);
+    const proposal = await issuePlan(env, plan);
+    const session = await signBuildToken({ kind: "session", account: "visitor", userId: 1, name: "Visitor", expiresAt: Date.now() + 60_000 }, env.BUILD_SESSION_SECRET!);
+    const response = await handleBuild(post("/api/build", { session, planToken: proposal.token }), env, fetcher);
+    assert.equal(response.status, 202);
+    const result = await response.json() as BuildFireResult;
+    assert.equal(instance.readRun(result.runId)?.state.phase, "triggered");
+    assert.equal(instance.readRun(result.runId)?.state.reason, undefined);
+    assert.deepEqual(egressRequests.map((request) => request.url), useEgress ? [env.ROUTINE_FIRE_URL] : []);
+    assert.deepEqual(directRequests.map((request) => new URL(request.url).hostname), ["api.github.com", "api.github.com", "api.github.com", ...(useEgress ? [] : ["api.anthropic.com"])]);
+    assert.ok(github.calls.some((call) => call.path.endsWith("/git/ref/heads/main")));
+    const fire = useEgress ? egressRequests[0] : directRequests.at(-1)!;
+    assert.equal(fire.url, env.ROUTINE_FIRE_URL);
+    assert.equal(fire.method, "POST");
+    assert.equal(fire.headers.get("Authorization"), `Bearer ${env.ROUTINE_FIRE_TOKEN}`);
+    assert.equal(fire.headers.get("anthropic-version"), "2023-06-01");
+    assert.equal(fire.headers.get("Content-Type"), "application/json");
+    const payload = JSON.parse((await fire.json() as { text: string }).text);
+    assert.deepEqual(payload.plan, plan);
+    assert.equal(payload.runId, result.runId);
+    assert.equal(payload.baseSha, baseSha);
+    abort.abort();
+    assert.equal(fire.signal.aborted, true);
+  });
+}
 
 test("publishing opens a regular PR, removes supplied coauthors and neutralizes body mentions", async () => {
   const run = await stored();

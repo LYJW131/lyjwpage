@@ -21,6 +21,8 @@ Clef 将站点改动请求路由给 Opus；Opus 先判断是否值得做，只�
 
 Worker 用 App 的只读安装令牌读取 main 的当前提交作为 `baseSha`，再将它与 runId、一次性上传令牌绑定并原子占用计划与额度，成功后经 `/fire` 把计划、co-author、baseSha、上传地址和令牌交给 routine。DO 只保存上传令牌的哈希，令牌绑定单个 run。routine 不推送仓库。
 
+`/fire` 出站使用 `workers/ai/src/chat/egress.ts#anthropicFetch`，GitHub 请求使用独立的原始 fetcher；没有出口绑定时 `/fire` 回退到该 fetcher（默认全局 `fetch`）。
+
 上传 JSON 的类型为 `BuildUpload`：`baseSha`、提交说明 `message`、`files`（每项为 `path`、完整文件内容的 base64 字符串 `content`、Git 文件 `mode`）和 `deletions`（完整相对路径）。不发送 patch、不打包目录、不传符号链接或子模块。改名表示为删除旧路径、上传新路径。
 
 Worker 先原子占用上传令牌，再执行请求体、文件数、单文件/总字节、路径和 mode 检查；校验失败也不能重用令牌。边界均取 `BUILD_UPLOAD_LIMITS`；超过请求字节限制时边读边停止，不先缓冲任意大小正文。上传的 baseSha 必须与该 run 一致，且由 GitHub API 验证仍在 main 的历史中。
