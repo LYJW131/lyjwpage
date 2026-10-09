@@ -25,7 +25,7 @@
 
 - 比较迁移前后的 ChatQuota 命名空间身份，确认转移而非新建；在已有对话中继续一轮，历史验签不丢失。实时访问会改变额度，不能简单要求两次读数逐字相等。
 - 用真实 MCP 客户端经站点 `/mcp` 连接，列工具并读取公开状态。核对工具所见与公开状态 API 一致，状态仍由 api 管理。
-- 检查聊天首个 NDJSON 事件、后续正文、工具卡片、`/api/chat/usage`、Turnstile 与额度拒绝。GitHub issue 写入仍由访客确认，不能把自动验收变成实际发帖。
+- 检查聊天首个 NDJSON 事件、后续正文、工具卡片、`/api/chat/usage`、Turnstile 与额度拒绝。从亚洲访问发一轮对话，确认不报 Anthropic 的 403 `Request not allowed`：`AnthropicEgress` 靠首次创建时的北美 `locationHint` 绕开地区限制，Cloudflare 没写明转移是否保留对象位置。GitHub issue 写入仍由访客确认，不能把自动验收变成实际发帖。
 - 验证原有上报、状态读取和 WebSocket；确认 AI 日志可按 `worker:ai` 查询，错误事件不包含对话正文、OAuth code 或请求头。
 - 核对相应 Git 提交的 Builds 状态，并确认 AI 专属实现变更只触发 ai 的生产发布。共享路径或锁文件变更仍可触发多个 Worker。
 - 更新 `docs/ops-facts.md` 的 Worker、Secret 归属与构建核对记录。上述远端核验完成前，不能把本地通过报告成生产迁移完成。
