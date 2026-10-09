@@ -50,25 +50,18 @@ function modelStream(model: string, tool: boolean): Response {
 
 test("三个模型的 SDK 请求都启用消息级 effort，工具续跑继承强度并在签名 trace 中记录", async (t) => {
   const original = globalThis.fetch;
-  const originalUpstream = process.env.UPSTREAM_API_URL;
-  const originalTier = process.env.CHAT_FORCE_TIER;
   globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
-  process.env.UPSTREAM_API_URL = "https://api.test";
   t.after(() => {
     globalThis.fetch = original;
-    if (originalUpstream === undefined) delete process.env.UPSTREAM_API_URL;
-    else process.env.UPSTREAM_API_URL = originalUpstream;
-    if (originalTier === undefined) delete process.env.CHAT_FORCE_TIER;
-    else process.env.CHAT_FORCE_TIER = originalTier;
   });
   for (const tier of GOD_CHAT_TIERS) {
     await t.test(tier, async () => {
       const requests: { body: Anthropic.Beta.MessageCreateParamsStreaming; headers: Headers }[] = [];
       const effort: GodChatEffort = tier === "haiku" ? "medium" : GOD_CHAT_TIER_INFO[tier].effort;
-      process.env.CHAT_FORCE_TIER = tier === "haiku" ? "haiku-medium" : tier;
       const env: Env = {
-        LIVE_PUSH: {} as Env["LIVE_PUSH"],
-        STATE: {} as Env["STATE"],
+        PUBLIC_STATUS: { readStatus: async () => new Response("unused") },
+        AI_DEV: "true",
+        CHAT_FORCE_TIER: tier === "haiku" ? "haiku-medium" : tier,
         ANTHROPIC_API_KEY: "test-key",
         TURNSTILE_SECRET_KEY: "test-key",
         CHAT_HISTORY_SECRET: "test-seal",
@@ -111,5 +104,40 @@ test("三个模型的 SDK 请求都启用消息级 effort，工具续跑继承�
       assert.ok(seal?.type === "seal");
       assert.equal(seal.trace?.effort, effort);
     });
+  }
+});
+
+test("关闭限流和强制模型只有显式 AI 开发或预览开关才生效", async (t) => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
+  t.after(() => { globalThis.fetch = original; });
+
+  for (const flags of [{}, { AI_DEV: "false", PREVIEW_WORKER: "false" }, { AI_DEV: "true" }, { PREVIEW_WORKER: "true" }]) {
+    const dev = flags.AI_DEV === "true" || flags.PREVIEW_WORKER === "true";
+    const enforced: boolean[] = [];
+    const tiers: string[] = [];
+    const response = await handleChat(new Request("https://ai.test/api/chat", {
+      method: "POST", body: JSON.stringify({ turnstileToken: "test-token", messages: [{ role: "user", content: "hello" }] }),
+    }), {
+      ...flags,
+      PUBLIC_STATUS: { readStatus: async () => new Response("unused") },
+      ANTHROPIC_API_KEY: "test-key",
+      TURNSTILE_SECRET_KEY: "test-key",
+      CHAT_HISTORY_SECRET: "test-seal",
+      ALLOWED_ORIGINS: "https://lyjw.me",
+      CHAT_RATE_LIMIT: "off",
+      CHAT_FORCE_TIER: "fable",
+      CHAT_QUOTA: binding<ChatQuota>({
+        admitVisitor: async (_ip, enforce) => { enforced.push(enforce ?? true); return "ok"; },
+        admitTier: async (_ip, tier) => { tiers.push(tier); return null; },
+      }),
+    }, {
+      readStatus: async () => new Response("unused"),
+      readDoc: async () => new Response("unused"),
+    });
+    assert.equal(response.status, 429);
+    await response.text();
+    assert.deepEqual(enforced, [!dev]);
+    assert.deepEqual(tiers, dev ? ["fable"] : ["haiku"]);
   }
 });

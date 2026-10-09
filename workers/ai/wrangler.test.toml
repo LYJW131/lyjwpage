@@ -1,0 +1,48 @@
+name = "ai"
+main = "src/index.ts"
+compatibility_date = "2026-10-09"
+compatibility_flags = ["nodejs_compat", "nodejs_compat_populate_process_env", "enable_request_signal"]
+workers_dev = false
+
+[vars]
+AI_DEV = "true"
+SENTRY_ENVIRONMENT = "development"
+ALLOWED_ORIGINS = "https://*.vercel.app"
+
+[ai]
+binding = "AI"
+
+[[services]]
+binding = "PUBLIC_STATUS"
+service = "api"
+entrypoint = "PublicStatus"
+
+[[durable_objects.bindings]]
+name = "CHAT_QUOTA"
+class_name = "ChatQuota"
+
+[[durable_objects.bindings]]
+name = "ANTHROPIC_EGRESS"
+class_name = "AnthropicEgress"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["ChatQuota", "AnthropicEgress"]
+
+[[ratelimits]]
+name = "CHAT_USAGE_LIMIT"
+namespace_id = "13101"
+simple = { limit = 30, period = 10 }
+
+[[ratelimits]]
+name = "GITHUB_ISSUE_LIMIT"
+namespace_id = "13102"
+simple = { limit = 5, period = 60 }
+
+[[ratelimits]]
+name = "MCP_LIMIT"
+namespace_id = "13103"
+simple = { limit = 60, period = 60 }
+
+[observability]
+enabled = true

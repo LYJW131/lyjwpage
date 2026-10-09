@@ -1,9 +1,8 @@
+export { GOD_CHAT_PATH, GOD_CHAT_USAGE_PATH } from "./ai-paths";
 import type { StatusViewKey } from "@/lib/status-views";
 
 import { isGodChatTier, type GodChatEffort, type GodChatRoute, type GodChatTier } from "./god-chat-tiers";
 
-export const GOD_CHAT_PATH = "/api/chat";
-export const GOD_CHAT_USAGE_PATH = "/api/chat/usage";
 // 卡片渲染 Turnstile 时带上，Worker 校验 siteverify 回来的 action 与之相同。
 export const GOD_CHAT_TURNSTILE_ACTION = "god-chat";
 

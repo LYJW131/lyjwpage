@@ -40,6 +40,8 @@ jobs:
 
       - run: pnpm --filter @lyjwpage/api test
 
+      - run: pnpm --filter @lyjwpage/ai test
+
       - run: pnpm --filter @lyjwpage/ingress test
 
       - run: pnpm --filter @lyjwpage/collector test

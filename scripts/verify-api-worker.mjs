@@ -31,6 +31,7 @@ Object.assign(access.vars.ACCESS_CLIENTS, {
   [questClient]: ['ingest:quest'],
 });
 const verifyBuild = process.argv.includes('--build');
+const verifyMcpClient = process.argv.includes('--mcp-client');
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function port() {
   const server = createServer(); server.listen(0, '127.0.0.1'); await once(server, 'listening');
@@ -72,7 +73,7 @@ try {
   // Configs live outside the checkout so Wrangler cannot load real .dev.vars or production bindings.
   const api = {
     name: 'isolated-api', main: join(root, 'workers/api/src/index.ts'),
-    compatibility_date: '2025-02-14', compatibility_flags: ['nodejs_compat', 'nodejs_compat_populate_process_env'],
+    compatibility_date: '2025-02-14', compatibility_flags: ['nodejs_compat', 'nodejs_compat_populate_process_env', 'enable_request_signal'],
     vars: {
       NEXT_PUBLIC_BACKEND_URL: worker, STORAGE_PREFIX: 'isolated-verify', STATE_IMPORT_SECRET: `${secret}-import`, REVALIDATE_SECRET: `${secret}-revalidate`,
       SITE_URL: site, ALLOWED_ORIGINS: '',
@@ -85,12 +86,40 @@ try {
       { name: 'LIVE_PUSH', class_name: 'LivePushRoom' },
       { name: 'STATE', class_name: 'StateHub' },
     ] },
-    services: [{ binding: 'DEV_OVERRIDE_READER', service: 'isolated-api', entrypoint: 'DevOverrideReader' }],
+    services: [
+      { binding: 'DEV_OVERRIDE_READER', service: 'isolated-api', entrypoint: 'DevOverrideReader' },
+      { binding: 'AI_SERVICE', service: 'isolated-ai' },
+    ],
     migrations: [
       { tag: 'v1', new_sqlite_classes: ['LivePushRoom'] },
       { tag: 'v3', new_sqlite_classes: ['StateHub'] },
     ],
     kv_namespaces: apiKv,
+  };
+  const ai = {
+    name: 'isolated-ai', main: join(root, 'workers/ai/src/index.ts'),
+    compatibility_date: '2026-09-08', compatibility_flags: ['nodejs_compat', 'nodejs_compat_populate_process_env', 'enable_request_signal'],
+    vars: { ALLOWED_ORIGINS: 'https://lyjw.me' },
+    services: [{ binding: 'PUBLIC_STATUS', service: 'isolated-api', entrypoint: 'PublicStatus' }],
+    durable_objects: { bindings: [
+      { name: 'CHAT_QUOTA', class_name: 'ChatQuota' },
+      { name: 'ANTHROPIC_EGRESS', class_name: 'AnthropicEgress' },
+    ] },
+    migrations: [{ tag: 'v1', new_sqlite_classes: ['ChatQuota', 'AnthropicEgress'] }],
+  };
+  const streamGateway = {
+    ...api,
+    name: 'isolated-stream-gateway',
+    services: [{ binding: 'AI_SERVICE', service: 'isolated-ai-fixture' }],
+  };
+  const aiFixture = {
+    name: 'isolated-ai-fixture', main: join(root, 'scripts/fixtures/ai-gateway.mjs'),
+    compatibility_date: '2026-09-08', compatibility_flags: ['enable_request_signal'],
+    services: [
+      { binding: 'PUBLIC_STATUS', service: 'isolated-api', entrypoint: 'PublicStatus' },
+      { binding: 'GATEWAY', service: 'isolated-stream-gateway' },
+      { binding: 'FIXTURE', service: 'isolated-ai-fixture' },
+    ],
   };
   const ingress = {
     name: 'isolated-ingress', main: join(root, 'workers/ingress/src/index.ts'),
@@ -100,16 +129,22 @@ try {
     r2_buckets: [{ binding: 'IMAGES', bucket_name: 'isolated-images' }],
     kv_namespaces: kv,
   };
+  const routerMain = join(temporary, 'router.mjs');
+  await writeFile(routerMain, `import router from ${JSON.stringify(join(root, 'workers/dev-router/src/index.ts'))};
+export default { fetch(request, env) {
+  return new URL(request.url).pathname.startsWith('/__verify/') ? env.VERIFY.fetch(request) : router.fetch(request, env);
+} };`);
   const router = {
-    name: 'isolated-router', main: join(root, 'workers/dev-router/src/index.ts'),
+    name: 'isolated-router', main: routerMain,
     compatibility_date: '2026-09-08',
     services: [
       { binding: 'API', service: 'isolated-api' },
       { binding: 'INGRESS', service: 'isolated-ingress' },
+      { binding: 'VERIFY', service: 'isolated-ai-fixture', entrypoint: 'Verification' },
     ],
   };
   const configPaths = [];
-  for (const [name, config] of Object.entries({ router, api, ingress })) {
+  for (const [name, config] of Object.entries({ router, api, ingress, ai, streamGateway, aiFixture })) {
     const path = join(temporary, `${name}.wrangler.json`);
     await writeFile(path, JSON.stringify(config));
     configPaths.push(path);
@@ -123,7 +158,7 @@ try {
   });
   mockSite.listen(sitePort, '127.0.0.1');
   children.push({ kill: () => mockSite.close(), exitCode: 0 });
-  await eventually(async () => assert.equal((await fetch(`${worker}/count`)).status, 200));
+  await eventually(async () => assert.equal((await fetch(`${worker}/count`, { signal: AbortSignal.timeout(1000) })).status, 200));
   // 路由 Worker 先起来时，后面两个可能还没注册好；等上报入口也答得上话
   await eventually(async () => assert.deepEqual(await (await fetch(`${worker}/api/ingest/mac`)).json(), { ok: false, error: '只接受 POST' }));
   assert.deepEqual(await (await fetch(`${worker}/count`)).json(), { ok: true, connections: 0, online: 0 });
@@ -133,8 +168,92 @@ try {
   assert.equal((await post(worker, '/api/ingest/iphone', {})).status, 503);
   assert.equal((await fetch(`${worker}/api/status/listening/now`)).status, 503);
   assert.equal((await fetch(`${worker}/api/status/not-a-route`)).status, 404);
+  assert.equal((await fetch(`${worker}/__verify/public-status?path=${encodeURIComponent('/api/status/listening/now')}`)).status, 503);
   assert.equal((await post(worker, '/api/internal/storage/import', { entries: [], finalize: true }, `${secret}-import`)).status, 200);
   console.log('PASS: known public routes preserve the initialization barrier; unknown routes stay in the Worker');
+
+  const aiHeaders = { Origin: 'https://lyjw.me', 'Content-Type': 'application/json', 'CF-Connecting-IP': '192.0.2.10' };
+  async function mcp(method, params = {}) {
+    const response = await fetch(`${worker}/mcp`, {
+      method: 'POST', headers: aiHeaders,
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    assert.equal(response.status, 200, await response.clone().text());
+    assert.equal(response.headers.get('access-control-allow-origin'), aiHeaders.Origin);
+    return response.json();
+  }
+  const initialized = await mcp('initialize', { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'isolated-verification', version: '1' } });
+  assert.equal(initialized.result.protocolVersion, '2025-03-26');
+  assert.deepEqual(initialized.result.capabilities, { tools: {} });
+  const tools = (await mcp('tools/list')).result.tools;
+  assert.deepEqual(tools.map(tool => tool.name).sort(), ['get_site_status', 'read_project_doc']);
+  assert.ok(tools.every(tool => tool.annotations.readOnlyHint));
+  for (const path of ['/api/chat', '/api/github/issue']) {
+    const response = await fetch(`${worker}${path}`, { method: 'POST', headers: aiHeaders, body: '{}' });
+    assert.equal(response.status, 503, path);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+    assert.equal(response.headers.get('access-control-allow-origin'), aiHeaders.Origin);
+    assert.equal(typeof (await response.json()).error, 'string');
+    assert.equal((await fetch(`${worker}${path}`, { headers: aiHeaders })).status, 405);
+  }
+  const usageResponse = await fetch(`${worker}/api/chat/usage`, { headers: aiHeaders });
+  assert.equal(usageResponse.status, 200);
+  assert.equal(usageResponse.headers.get('access-control-allow-origin'), aiHeaders.Origin);
+  const usage = await usageResponse.json();
+  assert.equal(usage.visitor.used, 0);
+  assert.equal(usage.resetInMs, 0);
+  assert.ok(Object.values(usage.tiers).every(tier => tier.visitor.used === 0 && tier.everyone.used === 0));
+  assert.equal((await fetch(`${worker}/api/chat/usage`, { method: 'POST', headers: aiHeaders })).status, 405);
+  for (const path of ['/mcp', '/api/chat', '/api/chat/usage', '/api/github/issue']) {
+    const response = await fetch(`${worker}${path}`, {
+      method: path === '/api/chat/usage' ? 'GET' : 'POST', headers: { ...aiHeaders, Origin: 'https://untrusted.invalid' },
+    });
+    assert.equal(response.status, 403, path);
+    assert.equal(response.headers.get('access-control-allow-origin'), null);
+    const preflight = await fetch(`${worker}${path}`, { method: 'OPTIONS', headers: aiHeaders });
+    assert.equal(preflight.status, 204, path);
+    assert.equal(preflight.headers.get('access-control-allow-origin'), aiHeaders.Origin);
+    if (path === '/mcp') assert.match(preflight.headers.get('access-control-allow-headers'), /MCP-Protocol-Version/);
+  }
+  for (const path of ['/api/internal/storage', '/api/internal/storage/import', '/api/musickit/token', '/api/chat', '/api/status/not-a-route', '/api/status/listening/now?private=1', 'https://lyjw.me/api/status/listening/now']) {
+    assert.equal((await fetch(`${worker}/__verify/public-status?path=${encodeURIComponent(path)}`)).status, 404, path);
+  }
+  const invalidViews = await mcp('tools/call', { name: 'get_site_status', arguments: { views: ['/api/internal/storage', 'not-a-view'] } });
+  assert.equal(invalidViews.result.isError, true);
+  console.log('PASS: API → AI Service Binding preserves MCP, quota DO reads, offline chat/issue errors and CORS; PublicStatus rejects private and arbitrary paths');
+
+  const upstreamError = await fetch(`${worker}/__verify/chat?mode=error`, { method: 'POST' });
+  assert.equal(upstreamError.status, 429);
+  assert.equal(upstreamError.headers.get('retry-after'), '17');
+  assert.equal(upstreamError.headers.get('cache-control'), 'no-store');
+  assert.equal(upstreamError.headers.get('x-ai-fixture'), 'error');
+  assert.deepEqual(await upstreamError.json(), { error: 'fixture quota exhausted' });
+  const streamHeaders = { Origin: 'https://lyjw.me', 'CF-Connecting-IP': '192.0.2.11', 'MCP-Protocol-Version': '2025-03-26' };
+  const streamResponse = await fetch(`${worker}/__verify/chat`, { method: 'POST', headers: streamHeaders, body: 'forwarded request body', signal: AbortSignal.timeout(10_000) });
+  assert.equal(streamResponse.status, 200);
+  assert.match(streamResponse.headers.get('content-type'), /^application\/x-ndjson/);
+  assert.equal(streamResponse.headers.get('cache-control'), 'no-store');
+  assert.equal(streamResponse.headers.get('x-observed-origin'), streamHeaders.Origin);
+  assert.equal(streamResponse.headers.get('x-observed-client-ip'), streamHeaders['CF-Connecting-IP']);
+  assert.equal(streamResponse.headers.get('x-observed-mcp-protocol'), streamHeaders['MCP-Protocol-Version']);
+  const reader = streamResponse.body.getReader();
+  const first = await reader.read();
+  assert.equal(new TextDecoder().decode(first.value), '{"type":"route","route":"haiku","tier":"haiku"}\n', 'the first NDJSON event must arrive before the delayed text');
+  let rest = '';
+  for (;;) {
+    const next = await reader.read();
+    if (next.done) break;
+    rest += new TextDecoder().decode(next.value);
+  }
+  assert.deepEqual(JSON.parse(rest), { type: 'text', text: 'forwarded request body' });
+  const cancellationId = crypto.randomUUID();
+  assert.equal((await fetch(`${worker}/__verify/cancel?direct&id=direct-${cancellationId}`, { signal: AbortSignal.timeout(10_000) })).status, 204);
+  assert.equal((await fetch(`${worker}/__verify/cancel?id=${cancellationId}`, { signal: AbortSignal.timeout(10_000) })).status, 204);
+  const cancellations = await (await fetch(`${worker}/__verify/cancellations`)).json();
+  assert.ok(cancellations.includes(`direct-${cancellationId}`), 'the direct Service Binding must observe request cancellation');
+  assert.ok(cancellations.includes(cancellationId), 'request cancellation must cross the API gateway');
+  console.log('PASS: the real API gateway forwards NDJSON without buffering, preserves upstream error status/headers/body and propagates request cancellation');
 
   for (const client of [agentsClient, macClient, 'unregistered.access']) {
     assert.equal((await otlp(emptyMetrics, {}, client)).status, 403, `${client} cannot submit cloud usage`);
@@ -264,6 +383,12 @@ try {
     await eventually(async () => assert.equal(await nowPlaying(), title));
     await eventually(async () => assert.ok(events.some(e => e.type === 'listening-now' && e.payload.music?.title === title)));
   }
+  const statusTool = await mcp('tools/call', { name: 'get_site_status', arguments: { views: ['nowListening'] } });
+  assert.equal(statusTool.result.isError, false);
+  const statusText = statusTool.result.content[0].text;
+  assert.equal(JSON.parse(statusText.split('## nowListening\n')[1]).data.music.title, 'isolated-second');
+  assert.equal(/musicUserToken|developerToken/.test(statusText), false);
+  console.log('PASS: MCP → AI → PublicStatus RPC reads the latest ingest from StateHub using the public status model');
   await eventually(async () => assert.ok(notices.some(n => n.tags?.includes('listening-now'))));
   const deployed = await post(worker, '/api/internal/site-deployed', {});
   assert.equal(deployed.status, 200);
@@ -366,11 +491,43 @@ try {
   await eventually(async () => assert.equal(await nowPlaying(), 'isolated-second'));
   assert.equal((await (await fetch(`${worker}/api/status/timezone`)).json()).ok, true);
   console.log('PASS: restart preserves initialized state and snapshots');
+  if (verifyMcpClient) {
+    async function inspect(method, args = []) {
+      const output = [];
+      const inspector = start('npx', [
+        '--yes', '@modelcontextprotocol/inspector@2.10.1', '--cli', `${worker}/mcp`,
+        '--transport', 'http', '--protocol-era', 'legacy', '--method', method,
+        '--format', 'json', '--quiet', '--stored-auth-only', ...args,
+      ], {
+        MCP_STORAGE_DIR: temporary,
+        MCP_INSPECTOR_OAUTH_STATE_PATH: join(temporary, 'inspector-oauth.json'),
+        MCP_INSPECTOR_SECRET_STORE: 'memory',
+      });
+      inspector.stdout.on('data', data => output.push(data.toString()));
+      const logStart = logs.length;
+      const [code] = await once(inspector, 'exit');
+      await writeFile(join(temporary, `inspector-${method.replace('/', '-')}.log`), logs.slice(logStart).join(''));
+      assert.equal(code, 0, `Inspector ${method}: ${logs.slice(logStart).join('')}`);
+      return JSON.parse(output.join('')).result;
+    }
+    const initialized = await inspect('initialize');
+    assert.equal(initialized.serverInfo.name, 'lyjwpage');
+    assert.ok(initialized.capabilities.tools);
+    const listed = await inspect('tools/list', ['--strict']);
+    assert.ok(listed.tools.some(tool => tool.name === 'get_site_status'));
+    const called = await inspect('tools/call', ['--tool-name', 'get_site_status', '--tool-arg', 'views=["timezone"]']);
+    assert.equal(called.isError, false);
+    assert.match(called.content[0].text, /Asia\/Singapore/);
+    console.log(`PASS: MCP Inspector initialize (${initialized.protocolVersion}), strict tools/list and get_site_status(timezone)`);
+  }
   if (verifyBuild) {
+    const logStart = logs.length;
     const build = start('pnpm', ['build'], {
       NEXT_PUBLIC_BACKEND_URL: worker,
+      SENTRY_AUTH_TOKEN: '',
     });
     const [buildExit] = await once(build, 'exit');
+    await writeFile(join(temporary, 'next-build.log'), logs.slice(logStart).join(''));
     assert.equal(buildExit, 0, logs.join('').slice(-12000));
     console.log('PASS: Next production build completes against the initialized isolated Worker');
   }

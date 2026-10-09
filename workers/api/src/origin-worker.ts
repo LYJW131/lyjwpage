@@ -17,19 +17,12 @@ import {
 } from "./live-census";
 import { liveRoom } from "./live-platform";
 import { ConfigError, issueMusicKitToken } from "./musickit-token";
-import { getAllowedOrigins, getCorsHeaders, isAllowedOrigin, isAllowedOriginValue } from "./origins";
+import { getAllowedOrigins, getCorsHeaders, isAllowedOrigin, isAllowedOriginValue } from "@shared/http-origins";
 import { fetchPreviewUpstream, isPreviewProxyPath, previewWorkerEnabled } from "./preview";
 import { isPublicApiPath, pathForEventType } from "./public-api";
 import { executePublicRequest } from "./public-execution";
 import { isLookupPath, serveLookup } from "./lookup-routes";
-import { clientIp, handleChat, quotaStub } from "./chat/handler";
-import { handleGithubIssue } from "./github-issue";
-import { handleMcp } from "./mcp";
-import { fetchProjectDoc } from "./tools/project-docs";
-import type { ToolIO } from "./tools/registry";
-import { GOD_CHAT_PATH, GOD_CHAT_USAGE_PATH } from "@shared/god-chat";
-import { GITHUB_ISSUE_PATH } from "@shared/github-issue";
-import { MCP_PATH } from "@shared/mcp";
+import { AI_HTTP_PATHS } from "@shared/ai-paths";
 import type { Env } from "./runtime";
 import { site } from "@/lib/site";
 
@@ -343,8 +336,9 @@ const worker = {
     }
 
     const cors = getCorsHeaders(request, env);
-    if (url.pathname === MCP_PATH) {
-      cors.set("Access-Control-Allow-Headers", "Content-Type, Accept, Authorization, MCP-Protocol-Version, Mcp-Method, Mcp-Name");
+    if (AI_HTTP_PATHS.has(url.pathname)) {
+      if (!env.AI_SERVICE) return jsonResponse({ error: "The oracle is offline." }, { status: 503, headers: cors });
+      return env.AI_SERVICE.fetch(request);
     }
 
     if (request.method === "OPTIONS") {
@@ -364,52 +358,6 @@ const worker = {
 
     if (url.pathname === MUSICKIT_TOKEN_PATH) {
       return handleMusicKitToken(request, env, cors);
-    }
-
-    if (url.pathname === GOD_CHAT_USAGE_PATH) {
-      if (request.method !== "GET") return new Response("Method not allowed", { status: 405, headers: cors });
-      if (!isAllowedOrigin(request, env)) return jsonResponse({ error: "Forbidden" }, { status: 403, headers: cors });
-      const quota = quotaStub(env);
-      if (!quota) return jsonResponse({ error: "The oracle is offline." }, { status: 503, headers: cors });
-      // 不验人，每次都进全站共用的 ChatQuota 跑一个事务；按 IP 限流，刷这个端点拖不慢别人的对话。
-      const ip = clientIp(request);
-      if (env.CHAT_USAGE_LIMIT && !(await env.CHAT_USAGE_LIMIT.limit({ key: ip })).success) {
-        return jsonResponse({ error: "Too many usage checks." }, { status: 429, headers: { ...Object.fromEntries(cors), "Retry-After": "10" } });
-      }
-      return jsonResponse(await quota.usage(ip), { headers: cors });
-    }
-
-    const tools: ToolIO = {
-      readStatus: (path) => executePublicRequest(new Request(new URL(path, url)), env, ctx),
-      readDoc: fetchProjectDoc,
-    };
-
-    if (url.pathname === MCP_PATH) {
-      const origin = request.headers.get("Origin");
-      if (origin && !isAllowedOriginValue(origin, getAllowedOrigins(env))) return jsonResponse({ error: "Forbidden" }, { status: 403, headers: cors });
-      if (env.MCP_LIMIT && !(await env.MCP_LIMIT.limit({ key: clientIp(request) })).success) {
-        return jsonResponse({ error: "Too many requests." }, { status: 429, headers: { ...Object.fromEntries(cors), "Retry-After": "60" } });
-      }
-      const response = await handleMcp(request, tools, env.CF_VERSION_METADATA?.id ?? "dev");
-      const headers = new Headers(response.headers);
-      cors.forEach((value, name) => headers.set(name, value));
-      return new Response(response.body, { status: response.status, headers });
-    }
-
-    if (url.pathname === GOD_CHAT_PATH) {
-      if (!isAllowedOrigin(request, env)) return jsonResponse({ error: "Forbidden" }, { status: 403, headers: cors });
-      const response = await handleChat(request, env, tools);
-      const headers = new Headers(response.headers);
-      cors.forEach((value, name) => headers.set(name, value));
-      return new Response(response.body, { status: response.status, headers });
-    }
-
-    if (url.pathname === GITHUB_ISSUE_PATH) {
-      if (!isAllowedOrigin(request, env)) return jsonResponse({ error: "Forbidden" }, { status: 403, headers: cors });
-      const response = await handleGithubIssue(request, env, clientIp(request));
-      const headers = new Headers(response.headers);
-      cors.forEach((value, name) => headers.set(name, value));
-      return new Response(response.body, { status: response.status, headers });
     }
 
     if (url.pathname.startsWith("/api/")) {

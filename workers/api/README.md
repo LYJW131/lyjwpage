@@ -17,7 +17,7 @@
 - `src/ingest-effects.ts`、`src/fanout.ts`：StateHub 提交时只收集可序列化效果；持久化确认后由 `StateCore.commitIngest` 在 `waitUntil` 里补充外部数据、广播并通知首屏 stale。
 - `src/apple-music-recent.ts`：收下采集 Worker 拉回的最近在听，差分、写入和广播。
 - `src/musickit-token.ts`：给「一起听」签 MusicKit developer token（ES256 JWT），按 origin 声明缓存、过半衰期重签；同一把私钥也签服务端用的 developer token（`issueApiDeveloperToken`，经 `StateCore.appleDeveloperToken()` 给采集 Worker）。
-- `src/origins.ts`：`ALLOWED_ORIGINS` 的解析、通配匹配和 CORS 头，`/ws`、公开 API 和令牌签发共用。
+- 根目录 `shared/http-origins.ts`：`ALLOWED_ORIGINS` 的解析、通配匹配和 CORS 头，`/ws`、公开 API 和令牌签发共用。
 - 根目录 `shared/`：读写共用的 SQLite 键、类型和状态计算；根目录 `src/lib/` 提供读取与通用工具。
 - 根目录 `src/lib/status-views.ts`：公开状态视图登记表（`path` / `layer` / `tag` / `event`）。路径常量、数据层、Vercel 缓存标签、事件→路径全部由它派生；可滞后层（`layer: "lag"`）不能带推送事件，模块加载时断言。
 - 根目录 `src/lib/status-loaders.ts`：按同一组 key 登记 `endpoint(params)`，单端点由 `src/public-api.ts` 通用分发到对应 loader。`trophies` 无参回摘要（与首屏、推送同形状），带 `?titleids=` 回那几款的完整目录。
@@ -27,7 +27,7 @@
 - `src/lag-store.ts`：`@/lib/lag-store` 在 Worker 里的实现，读 `LAG` KV（可滞后层，格式见 `shared/lag.ts`）。厂商状态、GitHub、Vercel、Cloudflare、Sentry 这几条端点只读采集 Worker 写的那几条键，Vercel 与 Cloudflare 两条按名字把几条键拼成一份。
 - `src/public-status.ts`：具名入口 `PublicStatus`，只接受公开状态登记表中的精确路径，复用浏览器的公开模型；不提供凭据、写入或按参数查询。契约在 `shared/public-status.ts`。
 - `src/dev-override-reader.ts`：只在本地绑定的具名入口 `DevOverrideReader`，推送房间转发生产事件前经它查假数据注入。
-- `src/tools/`：站点工具（`get_site_status`、`read_project_doc`）的定义与执行，登记表 `src/tools/registry.ts#SITE_TOOLS`；`/mcp`（`src/mcp.ts`）和首页对话共用这一份，见下文「MCP」。
+- `src/origin-worker.ts` 的 AI 路由：经 `AI_SERVICE` 转发至 [AI Worker](../ai/README.md)，范围由根目录 `shared/ai-paths.ts#AI_HTTP_PATHS` 限定。
 
 ## 端点
 
@@ -36,9 +36,10 @@
 | GET | `/ws?visible=1\|0` | 浏览器接收事件推送的 WebSocket，页面开着就一直挂着；切可见性时发 `visible` / `hidden`；使用 `ALLOWED_ORIGINS` 校验来源 |
 | GET | `/count` | `{ ok, connections, online }`：开着的页面数（判中档）与此刻可见的页面数（判快档） |
 | GET | `/api/musickit/token` | `{ token, issuedAt, expiresAt }`：给「一起听」的 MusicKit developer token，同一份来源白名单；见下文 |
-| POST | `/api/chat` | 首页对话卡片：Clef 选档后流式回 NDJSON；见下文「首页对话」 |
-| POST | `/mcp` | 公开 MCP 端点（Streamable HTTP，无鉴权），给外部 AI 读站点数据；按 IP 过限流绑定 `MCP_LIMIT`；见下文「MCP」 |
-| GET | `/api/chat/usage` | 当前访客在本窗口里的对话额度，卡片 `/usage` 命令读它；只读不扣额度，按 IP 过限流绑定 `CHAT_USAGE_LIMIT`，拦下时回 429 |
+| POST | `/api/chat` | 经 `AI_SERVICE` 转发首页对话，见 [AI Worker](../ai/README.md#首页对话) |
+| POST | `/mcp` | 经 `AI_SERVICE` 转发公开 MCP，见 [AI Worker](../ai/README.md#mcp) |
+| GET | `/api/chat/usage` | 经 `AI_SERVICE` 转发对话配额查询 |
+| POST | `/api/github/issue` | 经 `AI_SERVICE` 转发访客确认的 issue 提交 |
 | GET | `/` | 一行存活；不碰 Durable Object，根路径被探针不停打 |
 
 上报端点（`/api/ingest/<来源>`、`/api/ingest/agents/otlp`、`/api/internal/site-deployed`）、鉴权和回执契约都在
@@ -362,32 +363,13 @@ Cursor 使用独立的 `pulse:cursor-observations`：agents 来源的 cursor 活
 `scripts/listening-replay.mts` 末尾按录下来的那段歌单顺序播放回放下一首的猜中、猜错与不猜次数，`src/lib/listening-next.test.mts` 守住猜错为零。
 Mac 上报的 Apple Music 凭据在凭据 KV（`shared/credentials.ts`），不向外提供凭据端点；状态读取不触发拉取或广播。
 
-## 首页对话
+## AI 路由与公开状态 RPC
 
-`POST /api/chat`（`src/chat/handler.ts`）收浏览器的对话历史与 Turnstile token，契约在 `shared/god-chat.ts`：请求体、NDJSON 事件、上下文与输出上限都在那一份，站点卡片 `src/components/god-chat.tsx` 读同一份。
+首页对话、配额查询、GitHub issue 提交与 MCP 的路径登记在 `shared/ai-paths.ts#AI_HTTP_PATHS`。`src/origin-worker.ts` 经 `AI_SERVICE.fetch(request)` 把请求和响应流交给 [AI Worker](../ai/README.md)，不在 api 执行聊天模型调用、对话配额或 MCP 协议；缺少绑定时回 503。预检与来源校验也由 AI Worker 处理，`CF-Connecting-IP` 随原请求保留。
 
-- 一条消息的路径：请求体按读到的字节数截停（`src/chat/guard.ts#readJsonBody`）→ Turnstile 校验（`TURNSTILE_SECRET_KEY`；除了 success，还核对 action 是 `shared/god-chat.ts#GOD_CHAT_TURNSTILE_ACTION`、hostname 落在 `ALLOWED_ORIGINS` 里，见 `turnstilePassed`）→ `ChatQuota.admitVisitor` 在路由前过三道：访客总量、全站路由次数（`shared/god-chat-tiers.ts#GOD_CHAT_ROUTE_LIMIT`，各档全站名额之和）、这位访客此刻至少有一档访客与全站都有空位；访客自己超额回「Too many prayers」，全站忙回「All the heavens are busy」，都是 429，到此为止、不再触发付费的路由 → Clef 选档（`src/chat/router.ts`，经 `AI` 绑定调 `@cf/cloudflare/clef`，选项在 `CLEF_CHOICES`：Haiku 按思考强度拆成 low / medium 两项，加 Opus、Fable 与 refuse；Clef 不可用时落到 `ROUTER_FALLBACK`）→ `ChatQuota.admitTier` 扣档位额度，该档满了就往下逐档降级（`shared/god-chat-tiers.ts#downgradeChain`）→ 调 Anthropic（`ANTHROPIC_API_KEY`）。refuse 不调模型，只占访客总量与一次全站路由，直接回一句关门话。
-- 三档与人设：Fable 是神、Opus 是先知、Haiku 是杂鱼，型号与展示名在 `shared/god-chat-tiers.ts#GOD_CHAT_TIER_INFO`。提示词在 `src/chat/handler.ts`：`BASE_PROMPT` 讲清 Clef 怎么选档、额度用完怎么降级，`PERSONA` 告诉每档自己是哪个模型、什么身份；被降级时另在末尾加一条 system 消息说明替谁作答（`downgradeNote`），不动缓存前缀。
-- 额度数值在 `shared/god-chat-tiers.ts#GOD_CHAT_QUOTA`（窗口、访客总量、每档访客与全站），计数在 Durable Object `ChatQuota`（`src/chat/quota.ts`，全站一个实例 `global`，SQLite 存窗口内的命中，每次调用先删窗口外的再数再记）。`/api/chat/usage` 读同一份；它不验人，每次都要进这个全站共用的对象跑一个事务，所以先过 Rate Limiting 绑定 `CHAT_USAGE_LIMIT` 按 IP 限流；这类绑定在生产实测拦不住单 IP 的持续请求，只是尽力而为（见 `docs/ops-facts.md`）。`resetInMs` 倒数到这位访客看到的数下一次会变的时刻（自己最早的命中过期，或某档全站、全站路由次数已满时它最早的命中过期）；路由次数不单列在用量里。没有 `CHAT_QUOTA` 绑定时对话端点回 503，不放行。真正的花费上限是 Anthropic Console 里这把 key 所在 workspace 的月度上限（见 `docs/ops-facts.md`）。
-- 对 Anthropic 的请求不从 Worker 当地机房直接发：Anthropic 拒绝来自不支持地区（如香港）的请求，回 403 `Request not allowed`，而 Worker 跟着访客落在亚洲机房。SDK 的 `fetch` 换成转给 Durable Object `AnthropicEgress`（`src/chat/egress.ts`），它以 `locationHint: "wnam"` 建在北美，只转发 `api.anthropic.com`。本地没有这层绑定时直接发。
-- 中断：Worker 开了 `enable_request_signal`，入站请求的 `signal` 一 abort 就停下工具循环，SDK 的 fetch 信号带进 `AnthropicEgress`，那边再经带信号的管道掐断对 Anthropic 的连接（原样直通响应体时取消要拖十来秒才传到上游）。但线上 Cloudflare 在流式响应途中不把访客断开传给 Worker（见 `docs/ops-facts.md`），这套接线只在本地 workerd 起作用：生产里访客点停止后模型照样生成到这条回复结束，多花的不超过这一条回复剩下的部分（各档 `maxTokens`，兜底拒答时最多再溢出一次 `max_tokens`，且受额度约束）。
-- `draft_github_issue`（`src/chat/issue-draft.ts`）只起草：NDJSON 发一行 `issue`，卡片打开可编辑的表单，模型自己提交不了。访客点提交时在弹窗里走 GitHub App `LYJW131` 的用户授权，带 PKCE（S256）：卡片每次提交现生成 code verifier，只放在这次提交的内存里，授权 URL 只带它的 SHA-256。回调页 `src/app/github-callback/page.tsx` 与卡片同源，读完参数先把 code 从地址栏抹掉，只把 code 经 postMessage 交回同源窗口；卡片把 code、`codeVerifier` 和改过的标题正文 POST 到 `/api/github/issue`（`src/github-issue.ts`），verifier 不合 RFC 7636 的直接 400。Worker 用 `GITHUB_APP_CLIENT_SECRET` 加 verifier 换出访客的 token，单拿到 code 换不出来；以访客身份在 `shared/github-issue.ts#GITHUB_ISSUE_REPO` 开 issue，随即撤销 token，不存。这个端点按 IP 过 Rate Limiting 绑定 `GITHUB_ISSUE_LIMIT`。访客没有推送权限时 GitHub 会丢掉标签，所以来源靠正文末尾的固定一行标记。
-- `show_card`（`src/chat/show-card.ts`）在回复里画一张实时卡片：模型只选卡片名，卡片名与每张卡片背后的状态视图登记在 `shared/god-chat.ts#GOD_CHAT_CARD_VIEWS`，模型给不了任何文字、图片或链接。NDJSON 发一行 `card`，站点 `src/components/chat-card.tsx` 按登记的视图读公开状态自己画，画在收到这一行时正文已到的位置；它和首页卡片共用 SWR 缓存键，推送写进同一份缓存、卡片跟着变，自己不轮询。工具结果把同一组视图的数据回给模型（走 `get_site_status` 的执行与这条回复的账本，读过的不再读），模型据此用一两句话作答、不复述卡片内容。同一条回复里同一张卡片只画一次。
-- 请求带 `thinking.display: "summarized"`：模型思考时流出 `thinking` 事件（思考摘要），卡片在正文出来前显示，正文开始后折叠；摘要不进对话历史。
-- 模型由 Anthropic 的拒答兜底（`fallbacks: "default"`，Haiku 没有）换掉时，NDJSON 末尾多一行 `served`，卡片标出实际作答的模型；下一轮的 trace 带 `fallback`。兜底按单次请求生效、兜底模型自己也可能拒，所以只按给出最终答案的那一轮、且它没被拒时才报。
-- 读取类工具有三种。前两种是和 `/mcp` 共用的站点工具（`src/tools/registry.ts#SITE_TOOLS`），对话把整条回复的调用记在同一本账本（`newLedger`）上：`get_site_status` 经 `executePublicRequest` 读本 Worker 的公开状态视图（和浏览器看到的同一份公开模型，不出网），一条回复里所有调用合计有视图数上限、读过的不再读（`src/tools/site-status.ts#claimViews`）；`read_project_doc` 读本项目的设计文档（`src/tools/project-docs.ts`），只认 `PROJECT_DOCS` 白名单里的文档键，运行时从公开仓库 main 分支的 raw.githubusercontent.com 取并在边缘缓存，所以改文档不用重发 Worker、新增文档才要加一行；长文档先回目录和开头，模型再按章节读，一条回复的读取次数有上限（`claimDoc`，上限说明经 `replyCap` 只附给对话）。`web_search` 是服务端工具，Haiku 用基础版，其余用带动态过滤的版本（原因写在 `src/chat/web-search.ts#webSearchTool`），每轮请求的 `max_uses` 是这条回复还剩的次数，用完就不再带这个工具。
-- 历史由浏览器提交，Worker 给每一问一答盖章（`src/chat/seal.ts`，HMAC 密钥是 Secret `CHAT_HISTORY_SECRET`，缺了对话端点回 503）：回复正常结束时 NDJSON 末尾发一行 `seal`，带章和 trace（哪一档答的、实际 effort、读过哪些视图与文档、搜了几次、是否兜底代答、起草过 issue、画过哪些卡片），浏览器原样带回。章签的是「访客消息 + 回复 + trace」整对，进 Clef 与模型之前先验章，没有章或对不上的一对整对丢掉：Clef 拒掉的、模型拒答的、半路中断的、浏览器伪造或改过的都进不了上下文。验过章的 trace 拼成一条说明附在那条回复之前的访客消息里（`src/chat/history.ts`），模型因此知道那条回复当时查过什么；说明只用枚举与计数拼，不带自由文本。
-- 回复上限按档位定（`shared/god-chat-tiers.ts#GOD_CHAT_TIER_INFO` 的 `maxTokens`）；思考强度在选中 Haiku 时由 Clef 一并选出，其余情况（Opus、Fable、降级、强制档位、Clef 不可用）取同一处的 `effort` 默认值。访客没有手动调高的命令。`maxTokens` 是一条回复所有轮次（工具循环、暂停续跑）合计的输出上限，每轮请求只给剩下的部分；每轮按计费量扣（`src/chat/billing.ts#billedOutputTokens`）。同一请求内本档中途拒答后兜底模型还能再用满一次 `max_tokens`，这部分溢出有意接受。三个模型都用 [Claude 官方的消息级 effort](https://platform.claude.com/docs/en/build-with-claude/effort#per-message-effort-beta)：启用 `mid-conversation-output-config-2026-07-01` beta，保持 adaptive thinking，不设置请求顶层的 effort；`src/chat/history.ts#toModelMessages` 在强度变化的访客消息前插入空 `system` 消息及 `output_config.effort`，工具续跑继承该强度。实际 effort 随已签名的 trace 回传，后续按原位置重放，切换当前强度不重写历史前缀。省钱靠 system 与末尾各一个缓存断点；缓存按模型分开，换档不会互相命中，历史裁剪和工具定义变化仍会影响命中。
-- 本地：`workers/api/.dev.vars` 配 `ANTHROPIC_API_KEY` 与 `TURNSTILE_SECRET_KEY`（可用 Cloudflare 官方测试密钥）；只在配了 `UPSTREAM_API_URL` 的本地与预览里认 localhost 签出的 token 和测试密钥的结果，生产不认，所以 `pnpm dev`（本地页面连生产 Worker）里对话会验人失败，调对话用 `pnpm dev:worker` 加 `pnpm dev:local`。同样只在这两处认两个调试开关：`CHAT_RATE_LIMIT=off` 关限额（`ChatQuota` 照样记账，`/usage` 仍看得到用量，只是不拦），`CHAT_FORCE_TIER=<档位|CLEF_CHOICES 的键>` 跳过 Clef（如 `haiku-medium`）。本地 `AI` 绑定总是连远程，需要 wrangler 已登录。预览不复制 Secret，所以预览上这个端点回 503。
+AI Worker 通过具名入口 `PublicStatus` 读取本站公开状态，契约是 `shared/public-status.ts#PublicStatusRpc` 的 `readStatus(path: string): Promise<Response>`。`src/public-status.ts#readPublicStatus` 只接受 `src/lib/status-views.ts#STATUS_VIEWS` 中的精确路径，复用 `executePublicRequest` 返回浏览器使用的公开模型；查询参数、任意 URL、凭据和写入不在这个接口中。不能为工具方便而把 `StateCore` 或通用存储接口交给 AI Worker。
 
-## MCP
-
-`POST /mcp`（`src/mcp.ts`）是给外部 AI 用的公开 MCP 端点，不要鉴权。对外地址是 `https://lyjw.me/mcp`：站点在 `next.config.ts` 里用 307 跳到本 Worker（307 保留 POST 与请求体，MCP 客户端会跟），不用 rewrite，否则 Worker 只看得到 Vercel 的出口 IP，按 IP 限流就成了所有人共用一个桶。
-
-- 工具就是 `src/tools/registry.ts#SITE_TOOLS`，和首页对话同一份定义与执行。这里只放只读、只读公开模型的工具：`draft_github_issue`（要访客在卡片里确认）、`show_card`（只对对话卡片有意义）和 `web_search`（Anthropic 服务端工具）只在对话里。每次调用各开一本账本，单次调用的视图数与截断长度和对话相同，跨调用不累计。
-- 协议：无状态，只回 JSON，不发会话 ID，不开 SSE（GET、DELETE 回 405），JSON-RPC 批量请求回 400。两代客户端都收：`_meta` 里带版本的新协议（`MODERN_VERSIONS`）逐个请求核对 `MCP-Protocol-Version`、`Mcp-Method`、`Mcp-Name` 头与正文一致，`server/discover`、`tools/list` 带缓存提示（`CACHE_HINTS`，缺了 Claude Code 整张工具表都不认）；旧协议（`LEGACY_VERSIONS`）先 `initialize` 握手。
-- 限流与来源：按 `CF-Connecting-IP` 过 Rate Limiting 绑定 `MCP_LIMIT`，拦下时回 429 带 `Retry-After`；和 `CHAT_USAGE_LIMIT` 一样只是尽力而为（见 `docs/ops-facts.md`）。带 `Origin` 的请求按 `ALLOWED_ORIGINS` 校验（与 `/api/*` 同口径），不在名单里回 403；服务端和桌面端的 MCP 客户端不带 `Origin`，不受影响。
-- 验证：`src/mcp.test.ts` 覆盖两代握手与报错，但客户端会按自己的 schema 严格校验结果，单测验不出这类不兼容；改了协议处理，起 `pnpm dev:worker` 后用真实客户端各连一次：`claude -p --strict-mcp-config --mcp-config '{"mcpServers":{"lyjw":{"type":"http","url":"http://localhost:8788/mcp"}}}' "…"` 走新协议，`npx @modelcontextprotocol/inspector --cli http://localhost:8788/mcp --transport http --method tools/list` 走旧协议握手。
+Pulse 的 Coding 评估仍由本 Worker 的 `src/pulse-score.ts#PulseScorer` 和 cron 执行，评分租约与结果仍属于 StateHub，见上文「Coding 的 Clef 评估」。
 
 ## MusicKit 令牌
 
@@ -472,9 +454,9 @@ StateHub 的三条用一次 `publicRead` 批量读，键取各 mirror 的 `key`�
 ```sh
 pnpm --dir workers/api exec wrangler secret put REVALIDATE_SECRET
 pnpm --dir workers/api exec wrangler secret put APPLE_MUSIC_PRIVATE_KEY < AuthKey_XXXXXXXXXX.p8
-pnpm --dir workers/api exec wrangler secret put ANTHROPIC_API_KEY
-pnpm --dir workers/api exec wrangler secret put TURNSTILE_SECRET_KEY
 ```
+
+AI 模型、验人、对话签名与 issue 提交凭据见 [AI Worker](../ai/README.md#配置与部署)，不配在本 Worker 的生产配置中。
 
 外部数据的令牌（GitHub、Vercel、Cloudflare、Sentry、PageSpeed）在采集 Worker 上，见 [采集 Worker README](../collector/README.md)。PSN 登录在 `reporters/playstation-reporter` 的数据卷里。
 
@@ -487,19 +469,21 @@ pnpm --dir workers/api exec wrangler secret put TURNSTILE_SECRET_KEY
 
 ## 本地开发
 
+以下命令从仓库根目录执行，AI 聊天凭据另按 [AI Worker 本地开发](../ai/README.md#本地开发) 配置。
+
 ```sh
-cp .dev.vars.example .dev.vars      # STATE_IMPORT_SECRET 本地随便填；外部数据的令牌放 workers/collector/.dev.vars
+cp workers/api/.dev.vars.example workers/api/.dev.vars
 pnpm dev:worker                     # 仓库根目录执行；http://localhost:8788
 pnpm dev:worker:init                # 只需一次，初始化空的 StateHub
 pnpm dev:local                      # 站点指向本地 Worker
 ```
 
-`pnpm dev:worker` 是一个 `wrangler dev` 进程、四份配置：`workers/dev-router/wrangler.toml`（第一个，拿端口）、
-本目录的 `wrangler.test.toml`、`workers/ingress/wrangler.test.toml` 和 `workers/collector/wrangler.test.toml`。多配置下只有第一个 Worker 有端口，
+`pnpm dev:worker` 是一个 `wrangler dev` 进程，配置入口在根目录 `package.json`：`workers/dev-router/wrangler.toml`（第一个，拿端口）、
+本目录的 `wrangler.test.toml`、`workers/ai/wrangler.test.toml`、`workers/ingress/wrangler.test.toml` 和 `workers/collector/wrangler.test.toml`。多配置下只有第一个 Worker 有端口，
 dev-router 按路径分发：`/__dev/collector/*` 给采集 Worker 的调试入口（见它的 README），
-`/api/ingest/*` 与 `/api/internal/site-deployed` 给上报入口，其余一切（含 `/ws`、`/api/internal/storage/import`）给 api。四个 Worker 共用 `--persist-to`，
+`/api/ingest/*` 与 `/api/internal/site-deployed` 给上报入口，其余一切（含 `/ws`、`/api/internal/storage/import`）给 api；AI 路由由 api 经 `AI_SERVICE` 交给 ai。各 Worker 共用 `--persist-to`，
 `LAG`、`CREDENTIALS` 两个本地 KV 用同一个 id，一边写的另一边读得到；Service Binding 按生产名字
-（`api`、`ingress`、`collector`）互相找到，所以本地 api 的名字也是 `api`。
+（`api`、`ai`、`ingress`、`collector`）互相找到，所以本地 api 的名字也是 `api`。
 `curl localhost:8788/cdn-cgi/local/scheduled` 触发的是 dev-router 的 `scheduled`，它让采集 Worker 跑这一分钟到期的任务；
 api 自己的 cron 本地触发不到（Service Binding 调不了别的 Worker 的 `scheduled`），它本地要做的
 D1 归档、Clef 打分本来也被隔离开关关着。
@@ -510,7 +494,7 @@ D1 归档、Clef 打分本来也被隔离开关关着。
 本地是空库。`.dev.vars` 里的 `UPSTREAM_API_URL` 让 `publicResponse` 按端点整份兜底（`src/public-api.ts#overlayResponse`）：生产回 `ok:true` 的端点整份用生产的，
 生产没有的端点、或生产也 `ok:false` 的才用本地的（只读、不上报）。不按字段合并：给已有端点加的新字段，本地算出来也会被生产那份整份盖掉，
 要看就用下面的 `pnpm dev:override` 把本地那份注入到该端点。生产的 wrangler.toml 不配它。
-分支预览是同一套兜底的线上版：`wrangler preview` 在生产脚本 `api` 上按分支开一份隔离的 Preview，Vercel 预览改连它。见 [Workers 构建](../../docs/workers-builds.md)。
+分支预览使用 `src/preview-entry.ts` 组合 api 与 AI，在同一隔离 Preview 内连接公开状态读取与 AI 转发，不连接生产 Service Binding。以 api 或 ai 为 parent 时运行同一实现，Vercel 选择与当前提交 SHA 匹配的 Preview；Secret 只配到实际使用的 parent 的具体 Preview。配置与解析步骤统一见 [Workers 构建](../../docs/workers-builds.md)。
 要测上报链路，把这个变量注释掉让本地只看自己，然后往 `http://localhost:8788/api/ingest/<来源>` 推（dev-router 转给上报入口）。本地没有 Access：
 先 `node scripts/dev-access.mjs init` 生成测试钥匙、把它打印的 `ACCESS_DEV_JWKS` 填进 `workers/ingress/.dev.vars`（上报入口那份，不是本目录的），
 推的时候带 `node scripts/dev-access.mjs header` 打出的 `Cf-Access-Jwt-Assertion` 头（10 分钟有效），见 [上报入口 README](../ingress/README.md#本地开发)。
@@ -536,7 +520,7 @@ SQLite 初始化、迁移与权限见 [后端架构](../../docs/state-storage.md
 
 ## Durable Object 迁移
 
-生产服务是 `api`（域名见 `wrangler.toml`）。迁移只追加新 tag、不改旧的；`v3-chat-quota` 新建首页对话的计数类 `ChatQuota`，`v4-anthropic-egress` 新建出站转发类 `AnthropicEgress`；`v1-transfer-from-ingest` 把旧 Worker 的 SQLite 命名空间整体转移（ID 与数据不变），不要对这些类另加创建或删除迁移，见 [AGENTS.md](./AGENTS.md)。
+迁移只追加新 tag、不改旧的，`wrangler.toml` 的既有迁移链必须保留；`v1-transfer-from-ingest` 保留状态核心命名空间的对象 ID 与数据。本 Worker 持有 `StateHub`、`LivePushRoom`，AI 的 `ChatQuota`、`AnthropicEgress` 由 AI Worker 的 transfer 配置接管，不能通过删除类或创建空命名空间代替。跨 Worker 发布顺序见 [AI Worker 迁移 runbook](../../docs/ai-worker-migration.md)。
 
 ## 外部数据卡片（可滞后层）
 

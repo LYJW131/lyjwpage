@@ -9,7 +9,7 @@ Worker 是唯一数据后端。上报、状态 API、WebSocket、在线人数均
 - `StateHub` 使用 SQLite Durable Object，`entries`、`fields`、`samples` 分别保存快照、字段和历史。SQLite 是实时层的唯一权威，DO 重启不丢数据。
 - 上报先在上报入口 Worker 完成鉴权、独立校验、归一化和 R2 HEAD（`shared/ingest/`），命令经 Service Binding 交给状态核心的 `StateCore.commitIngest`，再由 StateHub 按对象队列串行合并权威状态；提交后状态核心的普通 Worker 部分才广播和通知。每次请求有独立工作副本，存储批次由同步事务提交，返回 202 前已确认写入。状态核心只 `import type` 命令的类型，改校验只重新发布上报入口，不动 Durable Object。
 - TTL 读取时检查，闹钟每小时分批回收过期项；导入保留原始绝对过期时间，重试不覆盖目标已有值。
-- `/api/status/*`、`/api/lyrics`、`/api/motion-artwork` 在普通 Worker 取数，只输出明确的公开模型。实时层端点按请求合并相邻只读批次，每批一次 `StateHub.publicRead`，在同一次调用里过初始化屏障、等待已经进入 `commitIngest()` 队列的提交；仍在上报入口准备输入的上报尚未进入该边界。可滞后层端点只读 `LAG` KV、不过屏障，和未知路径一样不进入 DO。没有 HTTP 通用数据库读写端点，服务端凭据不进入 Vercel、HTML 或状态响应。公开 MCP 端点 `/mcp` 与首页对话的站点工具（`workers/api/src/tools/registry.ts#SITE_TOOLS`）只经 `executePublicRequest` 读同一批 `/api/status/*` 视图，不另开读取路径。
+- `/api/status/*`、`/api/lyrics`、`/api/motion-artwork` 在普通 Worker 取数，只输出明确的公开模型。实时层端点按请求合并相邻只读批次，每批一次 `StateHub.publicRead`，在同一次调用里过初始化屏障、等待已经进入 `commitIngest()` 队列的提交；仍在上报入口准备输入的上报尚未进入该边界。可滞后层端点只读 `LAG` KV、不过屏障，和未知路径一样不进入 DO。没有 HTTP 通用数据库读写端点，服务端凭据不进入 Vercel、HTML 或状态响应。公开 MCP 端点 `/mcp` 与首页对话的站点工具（`workers/ai/src/tools/registry.ts#SITE_TOOLS`）经 Service Binding 调 `PublicStatus.readStatus`，由 api 的 `executePublicRequest` 读同一批 `/api/status/*` 视图；AI Worker 不绑定状态存储。
 - 上报缺的外部信息在写入时补全，读取路径只读存好的结果：Mac 与 HomePod 的「正在听」由 `StateCore.commitIngest` 在交给 StateHub 之前查 Apple（目录、动态封面，顺带预热歌词），补全结果和播放状态同一次提交落库；最近播放首项的动态封面由 `StateCore.commitRecentlyPlayed` 补。补全在 DO 外请求网络，不占提交队列。唯一例外是给网页播放器按任意曲目查的 `/api/lyrics`、`/api/motion-artwork`（卡片与首屏的歌词也走 `/api/lyrics`，多数命中写入时预热的缓存），没命中时会现查 Apple。
 - Apple 接口结果的缓存在 KV `lyjwpage-apple-cache`（binding `APPLE_CACHE`，`src/lib/apple-cache.ts`），不在 StateHub：它们不是状态，不需要串行和事务。KV 过期时间不短于 60 秒，所以查询失败只记在本次请求的内存里，不写 KV。
 - `/api/ingest/*` 只在上报入口，使用 Cloudflare Access service token，每个上报方一把，权限按来源限定（登记表 `workers/ingress/wrangler.toml#ACCESS_CLIENTS`，验证在 `workers/ingress/src/access-auth.ts`）。`/api/internal/storage/import` 使用独立 `STATE_IMPORT_SECRET`（初始化空库、导入数据用），不授予 Vercel。
@@ -80,7 +80,7 @@ Worker 写入完成后，只有首屏布局变化才 POST `/api/revalidate`（�
 
 ## 配置
 
-Vercel 参照根 `.env.example`，仅公开后端源、缓存通知鉴权和 R2 公开源（`/img/*` rewrite 的目的地与首屏图标内联的来源；Worker 不配交付域）。Worker 参照各自的 `.dev.vars.example` 与 wrangler.toml；外部数据的令牌（GitHub 等）是采集 Worker 的 Secret，Apple Music 凭据来自 Mac 上报。`UPSTREAM_API_URL` 出现在本地 `.dev.vars` 和 `wrangler.toml` 的 `[previews.vars]`：以生产为主、本地或 Preview 按端点整份补缺（规则见 `workers/api/README.md`「本地开发」），生产版本不设它。`NEXT_PUBLIC_BACKEND_URL` 构建期写入前端，状态、推送与在线人数同源。Vercel 预览构建先等该分支的影子 Worker 就绪（等待上限 `scripts/build.mjs#WAIT_MS`），就绪就把后端源改成它，等不到这次构建回退连生产；生产构建仍用面板里的值。改值需要重新部署。
+Vercel 参照根 `.env.example`，仅公开后端源、缓存通知鉴权和 R2 公开源（`/img/*` rewrite 的目的地与首屏图标内联的来源；Worker 不配交付域）。Worker 参照各自的 `.dev.vars.example` 与 wrangler.toml；外部数据的令牌（GitHub 等）是采集 Worker 的 Secret，Apple Music 凭据来自 Mac 上报。`UPSTREAM_API_URL` 出现在本地 `.dev.vars` 和 `wrangler.toml` 的 `[previews.vars]`：以生产为主、本地或 Preview 按端点整份补缺（规则见 `workers/api/README.md`「本地开发」），生产版本不设它。`NEXT_PUBLIC_BACKEND_URL` 构建期写入前端，状态、推送与在线人数同源。Vercel 预览构建先等该分支当前提交的 api 或 ai 组合 Preview 就绪（等待上限 `scripts/build.mjs#WAIT_MS`），就绪就把后端源改成它，等不到这次构建回退连生产；生产构建仍用面板里的值。改值需要重新部署。
 
 Vercel 可选配一份 `GITHUB_TOKEN`，只给构建期读公开仓的首页「最近提交」列表用（`use cache` + `cacheLife("max")`，随每次部署取一次）。不配也能匿名读，配上只是避开匿名限额；它不参与状态端点，浏览器和 HTML 拿不到。「本仓库」卡的贡献统计和贡献日历一样由采集 Worker 取数、写进可滞后层，经 `/api/status/github-repo` 提供。贡献者名单走 REST `/stats/contributors`（匿名也能读），顶部 COMMITS / ADDITIONS / DELETIONS 三个总数走 GraphQL，必须有采集 Worker 上的 `GITHUB_TOKEN`，没有就显示「—」；这三个数不能由名单加总得出，因为 `Co-authored-by` 的提交在贡献口径下会按人各记一遍。增删行要翻整条提交历史，结果以 `github-repo:churn` 锚在当前 HEAD 上，存在采集 Worker 的 KV 里，之后每轮只补新增的那几条。同一个任务还顺带取默认分支最新的几次提交（`src/lib/github-repo.ts#RECENT_COMMIT_LIMIT`）写进 `recentCommits`，取不到就沿用上一份；首页的「最近提交」列表不读它，它是给首页对话与 `/mcp` 的 `get_site_status` 看的。
 
@@ -90,7 +90,7 @@ Vercel 可选配一份 `GITHUB_TOKEN`，只给构建期读公开仓的首页「�
 
 验证命令与部署流程见根 [`AGENTS.md`](../AGENTS.md)「项目入口与验证」「部署流程」。后端相关的几点：
 
-1. `node scripts/verify-api-worker.mjs` 以 dev-router、上报入口和 api 三份配置启动隔离 SQLite 和模拟缓存通知服务器，上报经上报入口、Service Binding 进 api，验证鉴权、CORS、直接查询、WebSocket、部署通知、心跳无失效、并发合并及重启持久化；`--build` 还会拿它当后端跑一遍生产构建。
+1. `node scripts/verify-api-worker.mjs` 以隔离的路由、上报入口、api 与 ai 配置启动 SQLite 和模拟缓存通知服务器，上报经上报入口、Service Binding 进 api，验证鉴权、CORS、直接查询、WebSocket、部署通知、心跳无失效、并发合并及重启持久化，并覆盖 MCP 的只读 RPC、对话流式转发与错误透传；`--build` 还会拿它当后端跑一遍生产构建。
 2. `NEXT_PUBLIC_BACKEND_URL=<测试 Worker 源> pnpm build`；在小号仓库和小号 Vercel 验证静态首页、缓存后台刷新以及浏览器网络路径。
 3. 测试 Worker 用 `wrangler.test.toml`，独立对象命名空间，无生产域名或 cron。
 4. 测试通过后才合并主分支；生产采用 Git 自动部署，不手动发布 Vercel。缓存通知改动还需核验 ESA 刷新任务与域名响应。

@@ -6,6 +6,10 @@ compatibility_flags = ["nodejs_compat", "nodejs_compat_populate_process_env", "e
 workers_dev = true
 
 [[services]]
+binding = "AI_SERVICE"
+service = "ai"
+
+[[services]]
 binding = "DEV_OVERRIDE_READER"
 service = "api"
 entrypoint = "DevOverrideReader"
@@ -41,13 +45,6 @@ class_name = "LivePushRoom"
 [[durable_objects.bindings]]
 name = "STATE"
 class_name = "StateHub"
-[[durable_objects.bindings]]
-name = "CHAT_QUOTA"
-class_name = "ChatQuota"
-[[durable_objects.bindings]]
-name = "ANTHROPIC_EGRESS"
-class_name = "AnthropicEgress"
-
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["LivePushRoom", "OnlineCounterRoom", "StateHub"]
@@ -61,26 +58,3 @@ enabled = true
 [[migrations]]
 tag = "v2-split-online-counter"
 deleted_classes = ["OnlineCounterRoom"]
-
-[[migrations]]
-tag = "v3-chat-quota"
-new_sqlite_classes = ["ChatQuota"]
-
-[[migrations]]
-tag = "v4-anthropic-egress"
-new_sqlite_classes = ["AnthropicEgress"]
-
-[[ratelimits]]
-name = "CHAT_USAGE_LIMIT"
-namespace_id = "13101"
-simple = { limit = 30, period = 10 }
-
-[[ratelimits]]
-name = "GITHUB_ISSUE_LIMIT"
-namespace_id = "13102"
-simple = { limit = 5, period = 60 }
-
-[[ratelimits]]
-name = "MCP_LIMIT"
-namespace_id = "13103"
-simple = { limit = 60, period = 60 }

@@ -13,11 +13,13 @@ StateHub 的 SQLite 是实时状态的唯一权威。人读的说明在 `README.
 - 公开读取只输出明确的公开模型：没有通用 HTTP 数据库端点，凭据不进任何公开响应。可滞后层的端点只读 `LAG` KV，不持有外部令牌、不现拉、不推送，也不过公开读屏障、不唤醒 StateHub（`src/public-execution.ts`）：它的 loader 不许读 DO 存储。
 - 首屏标签只在布局变化时失效（判据在 `src/lib/home-layout.ts`）；读数、标题、进度、纯心跳都不触发，交给首屏快照的定时重建。
 - 新增公开状态视图只在 `src/lib/status-views.ts` 加一行、在 `src/lib/status-loaders.ts` 登记 loader，两张表由 `satisfies` 对齐；可滞后层视图不许带推送事件（模块加载时断言）。
-- `src/tools/registry.ts#SITE_TOOLS` 同时是无鉴权 `/mcp` 和首页对话的工具：只放只读、只读公开模型的工具；要访客确认的、只对对话界面有意义的、Anthropic 服务端工具留在 `src/chat/`。
+- `PublicStatus` 只接受 `src/lib/status-views.ts#STATUS_VIEWS` 中的精确路径，契约为 `shared/public-status.ts`；不开放参数查询、凭据、写入或通用存储接口。AI 只能经这个入口读公开状态。
+- `shared/ai-paths.ts#AI_HTTP_PATHS` 中的 HTTP 请求经 `AI_SERVICE` 原样转发给 AI Worker；不要在 api 重建聊天、配额或 MCP 逻辑。Pulse 的 Coding 评估与租约仍属于本 Worker 和 StateHub。
 
 ## 迁移与部署
 
 - Durable Object 迁移只追加新 tag、不改旧的；`v1-transfer-from-ingest` 把旧 Worker 的 SQLite 命名空间整体转移（ID 与数据不变），不要对这些类另加创建或删除迁移。
+- AI 对象迁移必须保留 api 的既有迁移链，由 AI Worker transfer 接管命名空间；顺序按 `docs/ai-worker-migration.md`。分支预览走组合入口，不连接生产 Service Binding，配置只在 `docs/workers-builds.md` 维护。
 - D1 表结构只在 `migrations/` 里建。Workers Builds 不跑迁移：部署带 `HISTORY` 绑定的版本之前，先 `pnpm --dir workers/api exec wrangler d1 migrations apply lyjwpage-history --remote`；采集 Worker、上报入口要写的新表也先在这里 apply。
 - 生产的 `wrangler.toml` 不配 `UPSTREAM_API_URL`（只在本地 `.dev.vars` 与 `[previews.vars]` 里出现）。本地用 `wrangler.test.toml`：生产配置里的 `deleted_classes` 迁移在空环境起不来，测试配置有从头开始的迁移链。
 - 监视路径不放宽，否则无关的 `main` 提交也会重新发布生产版本；`dev-fixtures/` 在监视路径里，改夹具会触发一次同码重建。
@@ -30,7 +32,7 @@ StateHub 的 SQLite 是实时状态的唯一权威。人读的说明在 `README.
 
 ## 本地开发与验证
 
-- `pnpm dev:worker`（仓库根）用一个 `wrangler dev` 进程起 dev-router、api、ingress、collector 四个 Worker；本地 api 的名字必须是 `api`，Service Binding 按生产名字互相找。`pnpm dev:worker:init` 只需一次，状态在 `.wrangler/dev-state`，想清库就删它再 init。
+- `pnpm dev:worker`（仓库根）用一个 `wrangler dev` 进程起 dev-router、api、ai、ingress、collector；本地名字须与 Service Binding 对齐。`pnpm dev:worker:init` 只需一次，状态在 `.wrangler/dev-state`，想清库就删它再 init。
 - 本地是空库：`.dev.vars` 配 `UPSTREAM_API_URL` 后按端点整份兜底：生产 `ok:true` 的端点整份用生产的，已有端点的新字段本地看不到，要用 `pnpm dev:override` 注入（见 `README.md`「本地开发」）；测上报链路要把它注释掉。`DEV_OVERRIDES=true` 才开假数据注入端点，夹具里的时间戳用 `"$now"` 令牌（用法见 `pnpm dev:override --help`）。
 - 验证：`pnpm --dir workers/api typecheck`、`pnpm --dir workers/api test`、`node scripts/verify-api-worker.mjs --build`（隔离链路，不碰生产绑定和凭据）。
-- 改了 `src/mcp.ts` 的协议处理，单测之外要用真实客户端连一次本地（命令见 `README.md`「MCP」）：客户端按自己的 schema 严格校验结果，不合就整张工具表不认。
+- AI 转发链路的协议与真实 MCP 客户端验证见 `workers/ai/README.md`「MCP」，不能只验证 api 返回了 HTTP 200。

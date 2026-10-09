@@ -1,6 +1,8 @@
 
 export const PREVIEW_WORKERS_SUBDOMAIN = "lyjw.workers.dev";
 export const PREVIEW_WORKER_SCRIPT = "api";
+export const PREVIEW_WORKER_SCRIPTS = ["api", "ai"];
+export const PREVIEW_REVISION_PATH = "/api/preview/revision";
 const MAX_LABEL = 63;
 
 function slug(branch) {
@@ -28,9 +30,10 @@ export function previewWorkerName(branch) {
   return `${trimmed}-${hash}`;
 }
 
-export function previewWorkerOrigin(branch) {
+export function previewWorkerOrigin(branch, workerName = PREVIEW_WORKER_SCRIPT) {
+  if (!PREVIEW_WORKER_SCRIPTS.includes(workerName)) throw new Error(`Unknown Preview Worker: ${workerName}`);
   const name = previewWorkerName(branch);
   return name
-    ? `https://${name}-${PREVIEW_WORKER_SCRIPT}.${PREVIEW_WORKERS_SUBDOMAIN}`
+    ? `https://${name}-${workerName}.${PREVIEW_WORKERS_SUBDOMAIN}`
     : null;
 }
