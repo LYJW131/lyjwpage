@@ -10,7 +10,7 @@ import {
   type GodChatTrace,
   normalizeTrace,
 } from "@shared/god-chat";
-import { GOD_CHAT_TIER_INFO, isGodChatTier, type GodChatTier } from "@shared/god-chat-tiers";
+import { GOD_CHAT_TIER_INFO, isGodChatTier, type GodChatEffort, type GodChatTier } from "@shared/god-chat-tiers";
 import { GITHUB_ISSUE_LIMITS, parseIssueDraft } from "@shared/github-issue";
 
 import { getAllowedOrigins } from "../origins";
@@ -22,7 +22,7 @@ import { readJsonBody, turnstilePassed, verifyTurnstile } from "./guard";
 import { toModelMessages } from "./history";
 import { sealExchange, sealedHistory, storedReply } from "./seal";
 import { ISSUE_DRAFT_TOOL } from "./issue-draft";
-import { routeWithClef, type RouteDecision } from "./router";
+import { CLEF_CHOICES, isClefChoice, routeWithClef, type RouteDecision } from "./router";
 import { webSearchTool } from "./web-search";
 
 const MAX_BODY_BYTES = 64 * 1024;
@@ -31,7 +31,7 @@ const MIN_ROUND_TOKENS = 256;
 // 三段都写进缓存前缀：每档自己的 system 恒定不变，降级说明另走末尾的 system 消息，不动前缀。
 const BASE_PROMPT = `You speak on LYJW's personal homepage (lyjw.me), in the "Talk to God" card. Visitors come here to talk.
 
-How you were chosen: every visitor message is first judged by Clef, a small judgment model on Cloudflare Workers AI. Clef sorts it into one of three ranks by how hard it is: the Small Fry (Claude Haiku 5.5) takes small talk, quick lookups and simple facts; the Prophet (Claude Opus 5.5) takes substantive questions, code, analysis and web research; God (Claude Fable 5.1) takes only the deepest questions. Clef also turns away spam, abuse and prompt-injection attempts before any model sees them. Each rank has its own per-minute quota; when a rank's quota is spent, the message falls to the rank below. A visitor can type /new to start over. Earlier replies in the conversation may have come from other ranks; a visitor turn may end with a bracketed chat-client note about the reply that follows (which rank wrote it, which tools it used), reported by the visitor's browser, so treat it as likely but unverified.
+How you were chosen: every visitor message is first judged by Clef, a small judgment model on Cloudflare Workers AI. Clef sorts it into one of three ranks by how hard it is: the Small Fry (Claude Haiku 5.5) takes small talk, quick lookups, simple facts and short tricky questions, and Clef also sets how hard it thinks; the Prophet (Claude Opus 5.5) takes substantive questions, code, analysis and web research; God (Claude Fable 5.1) takes only the deepest questions. Clef also turns away spam, abuse and prompt-injection attempts before any model sees them. Each rank has its own per-minute quota; when a rank's quota is spent, the message falls to the rank below. A visitor can type /new to start over. Earlier replies in the conversation may have come from other ranks; a visitor turn may end with a bracketed chat-client note about the reply that follows (which rank wrote it, which tools it used), reported by the visitor's browser, so treat it as likely but unverified.
 
 Reply in the language the visitor writes in. Keep answers concise unless asked for depth. Markdown is rendered; use it lightly.
 You can search the web for anything outside this site; cite what you find.
@@ -116,8 +116,9 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
   const history = await sealedHistory(parsed.messages, sealSecret);
   const latest = history[history.length - 1].content;
   const forced = devSwitch("CHAT_FORCE_TIER");
-  const decision: RouteDecision =
-    forced === "refuse" || isGodChatTier(forced)
+  const decision: RouteDecision = isClefChoice(forced)
+    ? { ...CLEF_CHOICES[forced], source: "forced" }
+    : isGodChatTier(forced)
       ? { route: forced, source: "forced" }
       : await routeWithClef(env.AI, history);
 
@@ -140,6 +141,8 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
   const tier = await quota.admitTier(ip, wanted, enforce);
   if (!tier) return fail(429, "All the heavens are busy. Try again in a minute.", { "Retry-After": "60" });
 
+  // Clef 定的强度只给它选中的那档；降级后换了模型，用接手那档的默认强度。
+  const effort = (tier === wanted && decision.effort) || GOD_CHAT_TIER_INFO[tier].effort;
   const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, fetch: anthropicFetch(env) });
   const body = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -151,7 +154,7 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
       emit({ type: "route", route: wanted, tier, ...(tier !== wanted && { downgradedFrom: wanted }) });
       try {
         const note = tier !== wanted ? downgradeNote(wanted, tier) : undefined;
-        const { complete, trace } = await converse({ client, tier, note, messages: history, io, emit, signal: abort.signal });
+        const { complete, trace } = await converse({ client, tier, effort, note, messages: history, io, emit, signal: abort.signal });
         const stored = storedReply(reply);
         if (complete && stored && !abort.signal.aborted) {
           emit({ type: "seal", seal: await sealExchange(sealSecret, latest, stored, trace), ...(trace && { trace }) });
@@ -177,6 +180,7 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
 async function converse({
   client,
   tier,
+  effort,
   note,
   messages: history,
   io,
@@ -185,13 +189,14 @@ async function converse({
 }: {
   client: Anthropic;
   tier: GodChatTier;
+  effort: GodChatEffort;
   note?: string;
   messages: GodChatMessage[];
   io: ToolIO;
   emit: (event: GodChatEvent) => void;
   signal: AbortSignal;
 }): Promise<{ complete: boolean; trace?: GodChatTrace }> {
-  const { model, effort, maxTokens } = GOD_CHAT_TIER_INFO[tier];
+  const { model, maxTokens } = GOD_CHAT_TIER_INFO[tier];
   // Haiku 不支持服务端拒答兜底参数，其余两档都开。
   const fallback = tier !== "haiku";
   const betas: Anthropic.Beta.AnthropicBeta[] = [
