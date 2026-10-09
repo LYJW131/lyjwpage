@@ -130,6 +130,38 @@ export async function createBuildPullRequest(api: GithubBuildApi, run: StoredRun
 
 type GithubCheck = { name: string; status: string; conclusion: string | null; html_url?: string; details_url?: string; completed_at?: string; started_at?: string; app?: { slug: string } };
 type GithubStatus = { context: string; state: string; target_url?: string; updated_at: string };
+
+function vercelDeploymentName(name: string): boolean {
+  return /^Vercel(?: [-–] [a-z0-9][a-z0-9._-]*)?$/i.test(name);
+}
+
+function checkKind(check: GithubCheck): "ci" | "preview" | "auxiliary" {
+  if (check.app?.slug === "vercel") {
+    if (check.name === "Vercel Preview Comments") return "auxiliary";
+    if (vercelDeploymentName(check.name)) return "preview";
+  }
+  if (check.app?.slug === "cloudflare-workers-and-pages" && /^Workers Builds: \S/.test(check.name)) return "preview";
+  return "ci";
+}
+
+function isPreviewStatus(status: GithubStatus): boolean {
+  if (!vercelDeploymentName(status.context)) return false;
+  try {
+    const url = new URL(status.target_url ?? "");
+    return url.protocol === "https:" && url.hostname === "vercel.com";
+  } catch { return false; }
+}
+
+function checkState(check: GithubCheck): string {
+  return check.status !== "completed" ? "pending" : check.conclusion ?? "unknown";
+}
+
+function aggregateState(states: string[]): string {
+  if (states.some((state) => ["failure", "error", "timed_out", "cancelled", "action_required", "startup_failure"].includes(state))) return "failure";
+  if (states.some((state) => ["pending", "queued", "in_progress"].includes(state))) return "pending";
+  return states.length && states.every((state) => ["success", "neutral", "skipped"].includes(state)) ? "success" : "unknown";
+}
+
 async function allCheckRuns(api: GithubBuildApi, sha: string): Promise<GithubCheck[]> {
   const checks: GithubCheck[] = [];
   for (let page = 1; page <= 10; page += 1) {
@@ -171,16 +203,17 @@ export async function reconcileBuild(api: GithubBuildApi, run: BuildRun): Promis
   const [checkResult, statusResult, commentsResult] = responses;
   const checks = checkResult.status === "fulfilled" ? checkResult.value : [];
   const status = statusResult.status === "fulfilled" ? statusResult.value : null;
-  const ciChecks = checks.filter((check) => !/vercel/i.test(`${check.name} ${check.app?.slug}`));
-  const ciStatuses = status?.statuses.filter((item) => !/vercel/i.test(item.context)) ?? [];
+  const ciChecks = checks.filter((check) => checkKind(check) === "ci");
+  const ciStatuses = status?.statuses.filter((item) => !isPreviewStatus(item)) ?? [];
   if (checkResult.status === "fulfilled" && statusResult.status === "fulfilled" && statusResult.value.total_count <= statusResult.value.statuses.length) {
-    const states = [...ciChecks.map((check) => check.status !== "completed" ? "pending" : check.conclusion ?? "unknown"), ...ciStatuses.map((item) => item.state)];
-    result.ci = { state: !states.length ? "unknown" : states.some((state) => ["failure", "error", "timed_out", "cancelled", "action_required", "startup_failure"].includes(state)) ? "failure" : states.some((state) => ["pending", "queued", "in_progress"].includes(state)) ? "pending" : states.every((state) => ["success", "neutral", "skipped"].includes(state)) ? "success" : "unknown", updatedAt: Date.now() };
+    result.ci = { state: aggregateState([...ciChecks.map(checkState), ...ciStatuses.map((item) => item.state)]), updatedAt: Date.now() };
+    const previews = [
+      ...statusResult.value.statuses.filter(isPreviewStatus).map((item) => ({ state: item.state, url: item.target_url })),
+      ...checks.filter((check) => checkKind(check) === "preview").map((check) => ({ state: checkState(check), url: check.details_url ?? check.html_url })),
+    ];
+    const state = aggregateState(previews.map((preview) => preview.state));
+    result.preview = { state, url: previews.find((preview) => aggregateState([preview.state]) === state)?.url, updatedAt: Date.now() };
   }
-  const previewCheck = checks.find((check) => /vercel/i.test(`${check.name} ${check.app?.slug}`));
-  const previewStatus = status?.statuses.find((item) => /vercel/i.test(item.context));
-  if (previewCheck) result.preview = { state: previewCheck.conclusion ?? previewCheck.status, url: previewCheck.details_url ?? previewCheck.html_url, updatedAt: Date.now() };
-  else if (previewStatus) result.preview = { state: previewStatus.state, url: previewStatus.target_url, updatedAt: Date.now() };
   if (commentsResult.status === "fulfilled") {
     const comment = commentsResult.value;
     if (comment) result.review = { state: comment.body.slice(0, 600), url: comment.html_url, updatedAt: Date.now() };
