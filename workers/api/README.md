@@ -37,7 +37,8 @@
 | GET | `/api/musickit/token` | `{ token, issuedAt, expiresAt }`：给「一起听」的 MusicKit developer token，同一份来源白名单；见下文 |
 | POST | `/api/chat` | 首页对话卡片：Clef 选档后流式回 NDJSON；见下文「首页对话」 |
 | POST | `/mcp` | 公开 MCP 端点（Streamable HTTP，无鉴权），给外部 AI 读站点数据；按 IP 过限流绑定 `MCP_LIMIT`；见下文「MCP」 |
-| POST | `/api/build` | `/build` 页面触发 Claude Code routine 改站开 PR，回 `{ runId, branch, sessionUrl }`；没配 `ROUTINE_FIRE_URL` / `ROUTINE_FIRE_TOKEN` 时 404，令牌只设在分支预览上；见 [docs/build-routine.md](../../docs/build-routine.md) |
+| POST | `/api/build/session` | `/build` 页面连 GitHub：拿 App 用户授权的 `code` 换出身份、立即撤销访客令牌，回签好的会话 `{ session, login, name, expiresAt }` |
+| POST | `/api/build` | `/build` 页面带会话触发 Claude Code routine 改站，回 `{ runId, branch, sessionUrl }`；没有有效会话回 401。两个端点都要 `ROUTINE_FIRE_URL`、`ROUTINE_FIRE_TOKEN`、`BUILD_SESSION_SECRET`、`GITHUB_APP_CLIENT_SECRET` 齐全，缺一样回 404，这些只设在分支预览上；见 [docs/build-routine.md](../../docs/build-routine.md) |
 | GET | `/api/chat/usage` | 当前访客在本窗口里的对话额度，卡片 `/usage` 命令读它；只读不扣额度，按 IP 过限流绑定 `CHAT_USAGE_LIMIT`，拦下时回 429 |
 | GET | `/` | 一行存活；不碰 Durable Object，根路径被探针不停打 |
 

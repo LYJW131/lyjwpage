@@ -36,6 +36,7 @@ export interface Env extends MusicKitTokenEnv {
   MCP_LIMIT?: RateLimit;
   ROUTINE_FIRE_URL?: string;
   ROUTINE_FIRE_TOKEN?: string;
+  BUILD_SESSION_SECRET?: string;
 }
 
 // 本地夹具与上游覆盖值不能进入共享归档或覆盖生产评分。

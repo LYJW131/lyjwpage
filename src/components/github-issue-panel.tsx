@@ -3,51 +3,18 @@
 import { useState } from "react";
 
 import { workerUrl } from "@/lib/worker-url";
+import { signInWithGithub } from "@/lib/github-sign-in";
 import {
-  GITHUB_APP_CLIENT_ID,
-  GITHUB_CALLBACK_PATH,
   GITHUB_ISSUE_LIMITS,
   GITHUB_ISSUE_PATH,
   GITHUB_ISSUE_REPO,
-  GITHUB_SIGN_IN_MESSAGE,
   type GithubIssueDraft,
   type GithubIssueResult,
 } from "@shared/github-issue";
 
 const ISSUE_URL = workerUrl(process.env.NEXT_PUBLIC_BACKEND_URL, GITHUB_ISSUE_PATH);
-const CANCELLED = "GitHub sign-in was cancelled.";
 
 type Status = { kind: "idle" } | { kind: "working" } | { kind: "error"; message: string } | ({ kind: "done" } & GithubIssueResult);
-
-// window.open 必须在点击的同一个调用栈里同步发出，否则会被当成弹窗广告拦掉；所以它先于任何 await。
-function signInWithGithub(): Promise<string> {
-  const state = crypto.randomUUID();
-  const url = new URL("https://github.com/login/oauth/authorize");
-  url.searchParams.set("client_id", GITHUB_APP_CLIENT_ID);
-  url.searchParams.set("redirect_uri", `${location.origin}${GITHUB_CALLBACK_PATH}`);
-  url.searchParams.set("state", state);
-  const popup = window.open(url, "github-sign-in", "popup,width=520,height=720");
-  if (!popup) return Promise.reject(new Error("Allow pop-ups for this site to sign in with GitHub."));
-  return new Promise((resolve, reject) => {
-    const done = () => {
-      window.removeEventListener("message", onMessage);
-      clearInterval(timer);
-    };
-    const onMessage = (event: MessageEvent) => {
-      const data = event.data as { type?: unknown; state?: unknown; code?: unknown } | null;
-      if (event.origin !== location.origin || data?.type !== GITHUB_SIGN_IN_MESSAGE || data.state !== state) return;
-      done();
-      if (typeof data.code === "string" && data.code) resolve(data.code);
-      else reject(new Error(CANCELLED));
-    };
-    const timer = setInterval(() => {
-      if (!popup.closed) return;
-      done();
-      reject(new Error(CANCELLED));
-    }, 500);
-    window.addEventListener("message", onMessage);
-  });
-}
 
 export function IssuePanel({ draft, onClose }: { draft: GithubIssueDraft; onClose: () => void }) {
   const [title, setTitle] = useState(draft.title);

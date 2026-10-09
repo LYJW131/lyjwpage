@@ -1,45 +1,18 @@
 import {
-  GITHUB_APP_CLIENT_ID,
   GITHUB_ISSUE_REPO,
   parseGithubIssueRequest,
   type GithubIssueResult,
 } from "@shared/github-issue";
 
 import { readJsonBody } from "./chat/guard";
+import { exchangeCode, GITHUB_API, GITHUB_API_HEADERS, revoke } from "./github-oauth";
 import type { Env } from "./runtime";
 
 const MAX_BODY_BYTES = 32 * 1024;
 const FOOTER = "\n\n---\n_Filed from the [homepage chat](https://lyjw.me)._";
-const GITHUB_API = "https://api.github.com";
-const API_HEADERS = {
-  Accept: "application/vnd.github+json",
-  "X-GitHub-Api-Version": "2022-11-28",
-  "User-Agent": "lyjwpage-api",
-};
 
 function fail(status: number, error: string): Response {
   return Response.json({ error }, { status, headers: { "Cache-Control": "no-store" } });
-}
-
-async function exchangeCode(code: string, secret: string): Promise<string | null> {
-  const res = await fetch("https://github.com/login/oauth/access_token", {
-    method: "POST",
-    headers: { Accept: "application/json", "Content-Type": "application/json", "User-Agent": API_HEADERS["User-Agent"] },
-    body: JSON.stringify({ client_id: GITHUB_APP_CLIENT_ID, client_secret: secret, code }),
-  });
-  const data = (await res.json().catch(() => null)) as { access_token?: string; error?: string } | null;
-  if (!data?.access_token) console.warn("[github-issue] code exchange failed", res.status, data?.error);
-  return data?.access_token ?? null;
-}
-
-// 访客的 token 只用来开这一条 issue，用完就撤销：Worker 不存它，也不留着备用。
-async function revoke(token: string, secret: string): Promise<void> {
-  const res = await fetch(`${GITHUB_API}/applications/${GITHUB_APP_CLIENT_ID}/token`, {
-    method: "DELETE",
-    headers: { ...API_HEADERS, Authorization: `Basic ${btoa(`${GITHUB_APP_CLIENT_ID}:${secret}`)}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ access_token: token }),
-  }).catch(() => null);
-  if (!res || res.status !== 204) console.warn("[github-issue] token revoke failed", res?.status);
 }
 
 export async function handleGithubIssue(request: Request, env: Env, ip: string): Promise<Response> {
@@ -57,7 +30,7 @@ export async function handleGithubIssue(request: Request, env: Env, ip: string):
   try {
     const res = await fetch(`${GITHUB_API}/repos/${GITHUB_ISSUE_REPO}/issues`, {
       method: "POST",
-      headers: { ...API_HEADERS, Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      headers: { ...GITHUB_API_HEADERS, Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify({ title: parsed.title, body: `${parsed.body}${FOOTER}`.trim() }),
     });
     const data = (await res.json().catch(() => null)) as { html_url?: string; number?: number; message?: string } | null;

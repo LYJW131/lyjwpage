@@ -1,5 +1,7 @@
 import { clipReply, normalizeTrace, type GodChatMessage, type GodChatTrace } from "@shared/god-chat";
 
+import { fromBase64Url, toBase64Url } from "../base64url";
+
 // 章只按 Worker 解析过的形态签：浏览器回传前先裁一遍，Worker 收到后去首尾空白再裁一遍，这里照同样的顺序算。
 export function storedReply(raw: string): string {
   return clipReply(clipReply(raw).trim());
@@ -20,17 +22,6 @@ function hmacKey(secret: string): Promise<CryptoKey> {
 
 function payload(user: string, assistant: string, trace: GodChatTrace | undefined): Uint8Array {
   return encoder.encode(JSON.stringify(["god-chat-seal-v1", user, assistant, normalizeTrace(trace) ?? null]));
-}
-
-const toBase64Url = (bytes: ArrayBuffer) =>
-  btoa(String.fromCharCode(...new Uint8Array(bytes))).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
-
-function fromBase64Url(value: string): Uint8Array | null {
-  try {
-    return Uint8Array.from(atob(value.replaceAll("-", "+").replaceAll("_", "/")), (c) => c.charCodeAt(0));
-  } catch {
-    return null;
-  }
 }
 
 // 一问一答整对签：访客那句是 Clef 放行过的，回复与 trace 是本 Worker 产出的；拼不出别的对话里的章。

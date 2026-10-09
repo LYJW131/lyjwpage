@@ -60,9 +60,9 @@
 
 | 事实 | 核对 |
 | --- | --- |
-| GitHub App `LYJW131`（slug `lyjw131`，App ID `5201294`，Client ID 写在 `.github/workflows/avatar-sync.yml`），机器人账号 `lyjw131[bot]`（用户 ID `338272049`）；权限为 Contents 读写、Issues 读写、Pull requests 读写与 Metadata 只读，Webhook 关闭，只装在 `LYJW131/lyjwpage`；App 设为公开，因为私有 App 只有所有者能做用户授权，别的账号打开授权链接是 404。用户授权的回调地址登记了 `https://lyjw.me/github-callback`、`https://lyjw131.com/github-callback`、`http://localhost:3211/github-callback`（严格匹配），供首页对话让访客以自己的身份提 issue。`avatar-sync.yml`（由 collector 的 `avatar-watch` 任务触发）用它经 GraphQL `createCommitOnBranch` 往 main 提交 `.github/github-avatar.sha256`，触发 Vercel 重建以重新抓取构建期缓存的头像；`.github/workflows/build-pr.yml` 也用它，在 `claude/build-*` 分支推上来时以 `lyjw131[bot]` 开 PR | 核对于 2026-10-09，方式：GitHub App 设置页（General、Permissions、Advanced）与安装页 <!-- allow: 核对戳 --> |
+| GitHub App `LYJW131`（slug `lyjw131`，App ID `5201294`，Client ID 写在 `.github/workflows/avatar-sync.yml`），机器人账号 `lyjw131[bot]`（用户 ID `338272049`）；权限为 Contents 读写、Issues 读写、Pull requests 读写与 Metadata 只读，Webhook 关闭，只装在 `LYJW131/lyjwpage`；App 设为公开，因为私有 App 只有所有者能做用户授权，别的账号打开授权链接是 404。用户授权的回调地址登记了 `https://lyjw.me/github-callback`、`https://lyjw131.com/github-callback`、`http://localhost:3211/github-callback`，以及 `/build` 所在分支预览的别名 `https://lyjwpage-git-claude-claude-code-agent-d8eedb-lyjw131s-projects.vercel.app/github-callback`（严格匹配、不开通配），供首页对话让访客以自己的身份提 issue、供 `/build` 连 GitHub。`avatar-sync.yml`（由 collector 的 `avatar-watch` 任务触发）用它经 GraphQL `createCommitOnBranch` 往 main 提交 `.github/github-avatar.sha256`，触发 Vercel 重建以重新抓取构建期缓存的头像；`.github/workflows/build-pr.yml` 也用它，在 `claude/build-*` 分支推上来时以 `lyjw131[bot]` 开 PR | 核对于 2026-10-09，方式：GitHub App 设置页（General、Permissions、Advanced）与安装页 <!-- allow: 核对戳 --> |
 | 凭据放的位置（不记值）：仓库 Actions secret `AVATAR_APP_PRIVATE_KEY`（App 私钥，`avatar-sync.yml` 与 `build-pr.yml` 共用）；仓库 Actions variable `AVATAR_APP_ID` 存了 App ID，工作流没有使用 | 核对于 2026-10-05，方式：同上 |
-| 同一 App 的 Client Secret（只有一把）在 api Worker 的 Secret `GITHUB_APP_CLIENT_SECRET`，本机另存于 `workers/api/.dev.vars`；轮换时两处一起换 | 核对于 2026-10-09，方式：GitHub App 设置页 Credentials 与 `wrangler secret list` <!-- allow: 核对戳 --> |
+| 同一 App 的 Client Secret（只有一把）在 api Worker 的 Secret `GITHUB_APP_CLIENT_SECRET`，同名 Secret 也设在分支预览 `claude-claude-code-agent-sdk-6fc50c` 上（`/build` 换登录 code 用）；本机副本在 worktree `site-chat-integration-abca95` 与 `claude-code-agent-sdk-6fc50c` 的 `workers/api/.dev.vars`，主检出那份没有；轮换时线上两处与本机副本一起换 | 核对于 2026-10-09，方式：GitHub App 设置页 Credentials、`wrangler secret list` / `wrangler preview secret list` 只核对名称，本机 `.dev.vars` 只看键名 <!-- allow: 核对戳 --> |
 | collector 的 `avatar-watch` 用 fine-grained PAT `lyjwpage collector avatar-watch`（只授权 `LYJW131/lyjwpage`；Actions 读写、Contents 只读、Metadata 只读），存为 collector 的 secret `GITHUB_DISPATCH_TOKEN`，2027-10-06 到期；到期后任务每轮失败，Sentry `collector-worker` 按 tag `collector.job` 开 issue | 核对于 2026-10-05，方式：本机会话在浏览器生成后用 `wrangler secret list` 只核对名称 | <!-- allow: 令牌到期日是现状事实，不是时间线 -->
 | `main` 没有分支保护和 ruleset，App 可以直接提交 | 核对于 2026-10-05，方式：`gh api` 查 `rulesets` 为空、`branches/main/protection` 返回 404 |
 
@@ -71,7 +71,7 @@
 | 事实 | 核对 |
 | --- | --- |
 | claude.ai 账号下的 routine `lyjwpage /build`（`trig_014sUCU54BW4Bd39UmcWjLK6`）只有 API 触发器，模型 `claude-opus-5-5`，仓库 `LYJW131/lyjwpage`，云端环境 `lyjwpage-build`（`env_014uCQ1YF1gu2qTf1K5vJKqR`，Trusted 网络，无环境变量与 setup script，只给它用），不挂连接器，Auto-fix 关闭；`/build` 页面经 api Worker 触发它，见 [build-routine.md](./build-routine.md) | 核对于 2026-10-09，方式：本机会话在 Chrome 里新建后用 RemoteTrigger `get` 核对 <!-- allow: 核对戳 --> |
-| 它的 API 令牌（不记值）是 api Worker 分支预览 `claude-claude-code-agent-sdk-6fc50c` 的 Secret `ROUTINE_FIRE_TOKEN`，本机另存于该 worktree 的 `workers/api/.dev.vars`；轮换在 routine 的 API 触发器弹窗点 Regenerate，两处一起换 | 核对于 2026-10-09，方式：令牌经剪贴板写入，未显示；`wrangler preview secret list` 只核对名称 <!-- allow: 核对戳 --> |
+| 它的 API 令牌（不记值）是 api Worker 分支预览 `claude-claude-code-agent-sdk-6fc50c` 的 Secret `ROUTINE_FIRE_TOKEN`，本机另存于该 worktree 的 `workers/api/.dev.vars`；轮换在 routine 的 API 触发器弹窗点 Regenerate，两处一起换。同一个预览上的 `BUILD_SESSION_SECRET` 只用来签 `/build` 的 GitHub 会话，随机生成、同样另存于该 `.dev.vars`；换掉它只会让已连接的会话失效 | 核对于 2026-10-09，方式：令牌经剪贴板写入，未显示；`wrangler preview secret list` 只核对名称 <!-- allow: 核对戳 --> |
 
 ## 机器与部署位置
 
