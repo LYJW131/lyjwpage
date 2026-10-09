@@ -2,7 +2,7 @@ import { BUILD_PROGRESS_PATH, BUILD_RECONCILE_MS, BUILD_SESSION_TTL_MS, BUILD_ST
 import { readJsonBody } from "../chat/guard";
 import type { Env } from "../runtime";
 import type { StoredRun } from "./coordinator";
-import { BuildBlockedError, validateBuildBase, createBuildPullRequest, currentMain, GithubBuildApi, installationApi, reconcileBuild } from "./github";
+import { BuildBlockedError, BuildPullRequestRejectedError, validateBuildBase, createBuildPullRequest, currentMain, GithubBuildApi, installationApi, reconcileBuild } from "./github";
 import { exchangeCode, revoke } from "./github-oauth";
 import { readPlan } from "./plan";
 import { readBoundedJson } from "./http";
@@ -53,14 +53,14 @@ export async function handleBuild(request: Request, env: Env, fetcher: typeof fe
   let reserved = false;
   let dispatched = false;
   try {
+    if (await coordinator.isPlanUsed(plan.id)) return fail(409, "This plan has already been used.");
+    const baseSha = await currentMain(await installationApi(env, fetcher, true));
     const coauthor = `${session.name || session.account} <${session.userId}+${session.account}@users.noreply.github.com>`;
-    const run: StoredRun = { state: { runId, branch, phase: "triggered", createdAt, updatedAt: createdAt }, plan: plan.plan, account: session.account, accountId: session.userId, coauthor, baseSha: "", uploadHash: await hashToken(uploadToken), uploadUsed: false, uploadExpiresAt: createdAt + BUILD_TIMEOUT_MS };
+    const run: StoredRun = { state: { runId, branch, phase: "triggered", createdAt, updatedAt: createdAt }, plan: plan.plan, account: session.account, accountId: session.userId, coauthor, baseSha, uploadHash: await hashToken(uploadToken), uploadUsed: false, uploadExpiresAt: createdAt + BUILD_TIMEOUT_MS };
     const admission = await coordinator.reserveRun(run, plan.id, plan.expiresAt);
     if (admission === "used") return fail(409, "This plan has already been used.");
     if (admission !== "ok") return fail(429, admission === "account" ? "This GitHub account has reached its hourly build limit." : "The site's hourly build limit has been reached.");
     reserved = true;
-    const baseSha = await currentMain(new GithubBuildApi(undefined, fetcher));
-    if (!await coordinator.assignBase(runId, baseSha)) throw new Error("Build base assignment failed.");
     const statusToken = await signBuildToken<StatusPayload>({ kind: "status", runId, expiresAt: createdAt + BUILD_STATUS_TTL_MS }, env.BUILD_SESSION_SECRET);
     const origin = new URL(request.url).origin;
     dispatched = true;
@@ -75,7 +75,7 @@ export async function handleBuild(request: Request, env: Env, fetcher: typeof fe
     return Response.json({ runId, branch, statusToken } satisfies BuildFireResult, { status: 202, headers: noStore });
   } catch {
     if (reserved) {
-      await coordinator.updateRun(runId, dispatched ? { reason: "Build dispatch was not confirmed; the routine result is unknown." } : { phase: "failed", reason: "The base commit could not be read; the routine was not started." });
+      await coordinator.updateRun(runId, dispatched ? { reason: "Build dispatch was not confirmed; the routine result is unknown." } : { phase: "failed", reason: "The build could not be prepared; the routine was not started." });
       const statusToken = await signBuildToken<StatusPayload>({ kind: "status", runId, expiresAt: createdAt + BUILD_STATUS_TTL_MS }, env.BUILD_SESSION_SECRET);
       return Response.json({ runId, branch, statusToken } satisfies BuildFireResult, { status: 202, headers: noStore });
     }
@@ -94,7 +94,7 @@ export async function handleBuildStatus(request: Request, env: Env, fetcher: typ
   const coordinator = env.BUILD_COORDINATOR.getByName("global");
   const run = await coordinator.readRun(runId);
   if (!run) return fail(404, "Build not found.");
-  if (run.state.pr && (!run.state.reconciledAt || Date.now() - run.state.reconciledAt >= BUILD_RECONCILE_MS) && await coordinator.claimReconcile(runId)) {
+  if (run.state.pr && !["merged", "closed"].includes(run.state.phase) && (!run.state.reconciledAt || Date.now() - run.state.reconciledAt >= BUILD_RECONCILE_MS) && await coordinator.claimReconcile(runId)) {
     try {
       const patch = await reconcileBuild(await installationApi(env, fetcher, true), run.state);
       const state = await coordinator.updateRun(runId, patch, run.state.pr.headSha);
@@ -115,7 +115,7 @@ export async function handleBuildUpload(request: Request, env: Env, fetcher: typ
   if (!run) return fail(401, "Upload authorization was used or expired.");
   let upload;
   try {
-    upload = parseBuildUpload(await readJsonBody(request, BUILD_UPLOAD_LIMITS.requestBytes));
+    upload = parseBuildUpload(await readJsonBody(request, BUILD_UPLOAD_LIMITS.requestBytes), run.plan.paths);
     if (upload.baseSha !== run.baseSha) throw new Error("The upload does not match the assigned base commit.");
   } catch (error) {
     const reason = error instanceof Error ? error.message : "Invalid upload.";
@@ -131,7 +131,7 @@ export async function handleBuildUpload(request: Request, env: Env, fetcher: typ
     return Response.json(state, { status: 201, headers: noStore });
   } catch (error) {
     const blocked = error instanceof BuildBlockedError;
-    const reason = blocked ? (error as Error).message : "GitHub did not confirm pull request creation; the result is unknown.";
+    const reason = blocked || error instanceof BuildPullRequestRejectedError ? (error as Error).message : "GitHub did not confirm pull request creation; the result is unknown.";
     await coordinator.updateRun(runId, { phase: blocked ? "blocked" : "failed", reason });
     return fail(blocked ? 400 : 502, reason);
   }
@@ -173,6 +173,10 @@ export async function handleGithubWebhook(request: Request, env: Env): Promise<R
   if (!delivery || !/^[\w-]{1,100}$/.test(delivery)) return fail(400, "Invalid delivery identifier.");
   let payload;
   try { payload = JSON.parse(new TextDecoder().decode(body)); } catch { return fail(400, "Invalid webhook body."); }
-  if (await env.BUILD_COORDINATOR.getByName("global").claimDelivery(delivery)) await applyGithubWebhook(env, request.headers.get("X-GitHub-Event") ?? "", payload);
+  const coordinator = env.BUILD_COORDINATOR.getByName("global");
+  if (!await coordinator.hasDelivery(delivery)) {
+    await applyGithubWebhook(env, request.headers.get("X-GitHub-Event") ?? "", payload);
+    await coordinator.completeDelivery(delivery);
+  }
   return Response.json({ accepted: true }, { headers: noStore });
 }

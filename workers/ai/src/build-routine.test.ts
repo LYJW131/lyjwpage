@@ -18,7 +18,7 @@ registerHooks({ resolve(specifier, context, nextResolve) {
   return { url: "data:text/javascript,export class DurableObject{constructor(ctx,env){this.ctx=ctx;this.env=env}}", shortCircuit: true };
 } });
 const { BuildCoordinator } = await import("./build/coordinator.ts");
-const plan: BuildPlan = { title: "Improve the page", spec: "Improve the public layout.", acceptance: ["Mobile layout fits."], paths: ["src/components/card.tsx"] };
+const plan: BuildPlan = { title: "Improve the page", spec: "Improve the public layout.", acceptance: ["Mobile layout fits."], paths: ["src/card.tsx"] };
 const sha = "a".repeat(40);
 const treeSha = "b".repeat(40);
 const headSha = "c".repeat(40);
@@ -52,13 +52,13 @@ function post(path: string, body: unknown, token?: string) {
 for (const path of [".github/workflows/ci.yml", ".claude/settings.json", "AGENTS.md", "src/AGENTS.md", "CLAUDE.md", "docs/CLAUDE.md", "package.json", "src/package.json", "workers/ai/package.json", "pnpm-lock.yaml", "src/pnpm-lock.yaml", "pnpm-workspace.yaml", ".npmrc", "src/.npmrc", "scripts/foo.test.ts", "workers/ai/scripts/foo.test.ts", "workers/ai/wrangler.toml", "workers/ai/src/wrangler.test.toml", "next.config.ts", "src/next.config.mjs", "vercel.json", "docs/vercel.json", "reporters/foo.test.ts", ".gitmodules", "src/.gitmodules", "src/../package.json", "/src/a.ts", "src//a.ts", "src\\a.ts", "src/%2e%2e/package.json", "src/.git/config"]) {
   test(`upload path denies ${path}`, () => {
     assert.equal(allowedBuildPath(path), false);
-    assert.throws(() => parseBuildUpload({ ...upload, files: [{ ...upload.files[0], path }] }));
-    assert.throws(() => parseBuildUpload({ ...upload, files: [], deletions: [path] }));
+    assert.throws(() => parseBuildUpload({ ...upload, files: [{ ...upload.files[0], path }] }, [path]));
+    assert.throws(() => parseBuildUpload({ ...upload, files: [], deletions: [path] }, [path]));
   });
 }
 
 test("allowed paths cover source, docs, assets, worker source and tests", () => {
-  for (const path of ["src/app/[slug]/page.tsx", "public/photo.png", "docs/design.md", "shared/types.ts", "workers/ai/src/tools/a.ts", "tests/route.test.ts"]) assert.equal(allowedBuildPath(path), true);
+  for (const path of ["src/app/[slug]/page.tsx", "public/photo.png", "docs/design.md", "shared/types.ts", "workers/ai/src/tools/a.ts", "src/tests/route.test.ts"]) assert.equal(allowedBuildPath(path), true);
 });
 
 test("plans validate all fields and protected paths in prose", () => {
@@ -67,14 +67,14 @@ test("plans validate all fields and protected paths in prose", () => {
 });
 
 test("upload blocks special modes, duplicate paths, malformed encoding and byte limits", () => {
-  for (const mode of ["120000", "160000", "040000"]) assert.throws(() => parseBuildUpload({ ...upload, files: [{ ...upload.files[0], mode }] }));
-  assert.throws(() => parseBuildUpload({ ...upload, files: [{ ...upload.files[0], content: "%%%" }] }));
-  assert.throws(() => parseBuildUpload({ ...upload, deletions: [upload.files[0].path] }));
-  assert.throws(() => parseBuildUpload({ ...upload, files: Array.from({ length: 81 }, (_, index) => ({ ...upload.files[0], path: `src/${index}.ts` })) }));
+  for (const mode of ["120000", "160000", "040000"]) assert.throws(() => parseBuildUpload({ ...upload, files: [{ ...upload.files[0], mode }] }, plan.paths));
+  assert.throws(() => parseBuildUpload({ ...upload, files: [{ ...upload.files[0], content: "%%%" }] }, plan.paths));
+  assert.throws(() => parseBuildUpload({ ...upload, deletions: [upload.files[0].path] }, plan.paths));
+  assert.throws(() => parseBuildUpload({ ...upload, files: Array.from({ length: 81 }, (_, index) => ({ ...upload.files[0], path: `src/${index}.ts` })) }, ["src/"]));
   const content = Buffer.alloc(BUILD_UPLOAD_LIMITS.fileBytes + 1).toString("base64");
-  assert.throws(() => parseBuildUpload({ ...upload, files: [{ ...upload.files[0], content }] }));
+  assert.throws(() => parseBuildUpload({ ...upload, files: [{ ...upload.files[0], content }] }, plan.paths));
   const large = Buffer.alloc(BUILD_UPLOAD_LIMITS.fileBytes).toString("base64");
-  assert.throws(() => parseBuildUpload({ ...upload, files: Array.from({ length: 5 }, (_, index) => ({ ...upload.files[0], path: `src/${index}.ts`, content: large })) }));
+  assert.throws(() => parseBuildUpload({ ...upload, files: Array.from({ length: 5 }, (_, index) => ({ ...upload.files[0], path: `src/${index}.ts`, content: large })) }, ["src/"]));
 });
 
 test("signed capabilities enforce integrity, purpose and expiry", async () => {
@@ -189,14 +189,14 @@ function githubFixture(extra: (path: string, body: Record<string, unknown> | nul
   return { fetcher, calls };
 }
 
-test("GitHub publishing retains the base tree and binds parent, branch, draft PR and verified coauthor", async () => {
+test("GitHub publishing retains the base tree and binds parent, branch, ready PR and verified coauthor", async () => {
   const { fetcher, calls } = githubFixture();
   const result = await createBuildPullRequest(new GithubBuildApi("fixture", fetcher), await stored(), upload);
   assert.equal(result.number, 12);
   assert.equal(calls.find((call) => call.path.endsWith("/git/trees"))?.body?.base_tree, treeSha);
   assert.deepEqual(calls.find((call) => call.path.endsWith("/git/commits"))?.body?.parents, [sha]);
   assert.match(String(calls.find((call) => call.path.endsWith("/git/commits"))?.body?.message), /Co-authored-by: Visitor <1\+visitor@users.noreply.github.com>/);
-  assert.equal(calls.find((call) => call.path.endsWith("/pulls"))?.body?.draft, true);
+  assert.equal(calls.find((call) => call.path.endsWith("/pulls"))?.body?.draft, false);
   assert.equal(calls.find((call) => call.path.endsWith("/pulls"))?.body?.base, "main");
 });
 
@@ -254,7 +254,7 @@ test("webhooks verify exact bytes, reject invalid signatures and deduplicate del
   assert.equal((await handleGithubWebhook(request(), env)).status, 200);
   assert.equal(instance.readRun(runId)?.state.pr?.number, 12);
   assert.equal((await handleGithubWebhook(request(), env)).status, 200);
-  assert.equal(instance.claimDelivery("delivery-1"), false);
+  assert.equal(instance.hasDelivery("delivery-1"), true);
   await applyGithubWebhook(env, "pull_request", { ...payload, pull_request: { ...payload.pull_request, number: 99, head: { ...payload.pull_request.head, repo: { full_name: "attacker/fork" } } } });
   assert.equal(instance.readRun(runId)?.state.pr?.number, 12);
 });

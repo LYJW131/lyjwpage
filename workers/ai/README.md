@@ -53,7 +53,7 @@
 - 历史由浏览器提交，Worker 给每一问一答盖章（`src/chat/seal.ts`，HMAC 密钥是 Secret `CHAT_HISTORY_SECRET`，缺了对话端点回 503）：回复正常结束时 NDJSON 末尾发一行 `seal`，带章和 trace（哪一档答的、实际 effort、读过哪些视图与文档、搜了几次、是否兜底代答、是否进入设计、是否生成计划、画过哪些卡片），浏览器原样带回。章签的是「访客消息 + 回复 + trace + 计划 token」整对；设计会话与构建状态另用带用途的 HMAC token 验证，进 Clef 与模型之前先验章，没有章或对不上的一对整对丢掉：Clef 拒掉的、模型拒答的、半路中断的、浏览器伪造或改过的都进不了上下文。验过章的 trace 拼成一条说明附在那条回复之前的访客消息里（`src/chat/history.ts`），模型因此知道那条回复当时查过什么；说明只用枚举与计数拼，不带自由文本。
 - 回复上限按档位定（`shared/god-chat-tiers.ts#GOD_CHAT_TIER_INFO` 的 `maxTokens`）；思考强度在选中 Haiku 时由 Clef 一并选出，其余情况（Opus、Fable、降级、强制档位、Clef 不可用）取同一处的 `effort` 默认值。访客没有手动调高的命令。`maxTokens` 是一条回复所有轮次（工具循环、暂停续跑）合计的输出上限，每轮请求只给剩下的部分；每轮按计费量扣（`src/chat/billing.ts#billedOutputTokens`）。同一请求内本档中途拒答后兜底模型还能再用满一次 `max_tokens`，这部分溢出有意接受。各档都用 [Claude 官方的消息级 effort](https://platform.claude.com/docs/en/build-with-claude/effort#per-message-effort-beta)，请求参数以 `src/chat/handler.ts#converse` 为准：保持 adaptive thinking，不设置请求顶层的 effort；`src/chat/history.ts#toModelMessages` 在强度变化的访客消息前插入空 `system` 消息及 `output_config.effort`，工具续跑继承该强度。实际 effort 随已签名的 trace 回传，后续按原位置重放，切换当前强度不重写历史前缀。省钱靠 system 与末尾各一个缓存断点；缓存按模型分开，换档不会互相命中，历史裁剪和工具定义变化仍会影响命中。
 
-浏览器以 `src/lib/chat-archive.ts` 保存有限量的多个本地会话，保留历史签章、设计/计划 token 与构建 runId；`/clear` 新开会话，列表可恢复、单条删除或全部清空。localStorage 不可用时只保留内存状态。
+浏览器以 `src/lib/chat-archive.ts` 保存有限量的多个本地会话，保留历史签章、设计/计划 token 与构建 runId；`/clear` 新开会话，列表可恢复、单条删除或确认后全部清空。流式分片只更新内存，回复结束或中断时再持久化。设计会话到期或轮数耗尽时清除设计令牌并退回普通对话。localStorage 不可用时只保留内存状态。
 
 ## MCP
 

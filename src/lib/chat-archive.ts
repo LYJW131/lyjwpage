@@ -6,8 +6,17 @@ import type { GithubIssueResult } from "@shared/github-issue";
 export const CHAT_ARCHIVE_KEY = "lyjw.chat.v1";
 export const CHAT_ARCHIVE_LIMITS = { sessions: 20, bytes: 2 * 1024 * 1024 } as const;
 export type ChatDesign = { token: string; expiresAt: number; remaining: number };
+export function activeChatDesign(design: ChatDesign | undefined, now = Date.now()): ChatDesign | undefined {
+  return design && design.expiresAt > now && design.remaining > 0 ? design : undefined;
+}
+
+export function designSessionEnded(code: unknown): boolean {
+  return code === "design_session_expired" || code === "design_session_exhausted";
+}
+
 export type ChatProposal = BuildProposal & { issue?: GithubIssueResult; build?: BuildFireResult; run?: BuildRun };
 export type ChatBubble = GodChatMessage & {
+  id?: string;
   tier?: GodChatTier | null;
   downgradedFrom?: GodChatTier;
   servedBy?: string;
@@ -30,6 +39,12 @@ export type ChatSession = {
 export type ChatArchive = { version: 1; activeId: string; sessions: ChatSession[] };
 export const EMPTY_CHAT_ARCHIVE: ChatArchive = { version: 1, activeId: "", sessions: [] };
 type ArchiveStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
+
+export function chatReplyMessages(messages: ChatBubble[], user: ChatBubble & { id: string }, reply?: ChatBubble): ChatBubble[] {
+  const turnIndex = messages.findIndex((message) => message.id === user.id);
+  const history = turnIndex < 0 ? messages : messages.slice(0, turnIndex);
+  return reply ? [...history, user, reply] : history;
+}
 
 const byteLength = (value: string) => new TextEncoder().encode(value).byteLength;
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object";
@@ -57,7 +72,7 @@ function validBubble(value: unknown): value is ChatBubble {
   if (["lookups", "searches"].some((key) => value[key] !== undefined && !strings(value[key]))) return false;
   if (value.docs !== undefined && (!Array.isArray(value.docs) || !value.docs.every((doc) => object(doc) && typeof doc.path === "string" && typeof doc.url === "string" && optionalString(doc.section)))) return false;
   if (value.sources !== undefined && (!Array.isArray(value.sources) || !value.sources.every((source) => object(source) && typeof source.url === "string" && typeof source.title === "string"))) return false;
-  return ["thinking", "seal", "planToken", "servedBy"].every((key) => optionalString(value[key])) && (value.tier === undefined || value.tier === null || ["haiku", "opus", "fable"].includes(String(value.tier))) && (value.downgradedFrom === undefined || ["haiku", "opus", "fable"].includes(String(value.downgradedFrom)));
+  return ["id", "thinking", "seal", "planToken", "servedBy"].every((key) => optionalString(value[key])) && (value.tier === undefined || value.tier === null || ["haiku", "opus", "fable"].includes(String(value.tier))) && (value.downgradedFrom === undefined || ["haiku", "opus", "fable"].includes(String(value.downgradedFrom)));
 }
 
 export function readChatArchive(raw: string | null): ChatArchive {
@@ -111,9 +126,9 @@ export function createChatArchiveStore(storage: () => ArchiveStorage | null, new
     }
     return archive;
   };
-  const save = (next: ChatArchive) => {
-    archive = boundChatArchive(next);
-    if (!memoryOnly) {
+  const save = (next: ChatArchive, persist = true) => {
+    archive = persist ? boundChatArchive(next) : next;
+    if (persist && !memoryOnly) {
       try { storage()?.setItem(CHAT_ARCHIVE_KEY, JSON.stringify(archive)); }
       catch { memoryOnly = true; }
     }
@@ -143,7 +158,7 @@ export function createChatArchiveStore(storage: () => ArchiveStorage | null, new
       listeners.forEach((listener) => listener());
     },
     start,
-    update(id: string, changes: Partial<Pick<ChatSession, "messages" | "design">>) {
+    update(id: string, changes: Partial<Pick<ChatSession, "messages" | "design">>, { persist = true }: { persist?: boolean } = {}) {
       const current = snapshot();
       save({ ...current, sessions: current.sessions.map((session) => {
         if (session.id !== id) return session;
@@ -151,7 +166,7 @@ export function createChatArchiveStore(storage: () => ArchiveStorage | null, new
         const first = updated.messages.find((message) => message.role === "user");
         updated.title = first?.content.slice(0, 64) || "New conversation";
         return updated;
-      }) });
+      }) }, persist);
     },
     select(id: string) {
       const current = snapshot();
