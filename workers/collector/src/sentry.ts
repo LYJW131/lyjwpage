@@ -1,5 +1,10 @@
 import * as Sentry from "@sentry/cloudflare";
-import { consoleLoggingIntegration, type CloudflareOptions } from "@sentry/cloudflare";
+import {
+  consoleLoggingIntegration,
+  httpServerIntegration,
+  requestDataIntegration,
+  type CloudflareOptions,
+} from "@sentry/cloudflare";
 
 import type { Env } from "./env";
 
@@ -9,7 +14,12 @@ export function sentryOptions(env: Env): CloudflareOptions {
     environment: env.SENTRY_ENVIRONMENT?.trim() || "production",
     tracesSampleRate: 0.01,
     enableLogs: true,
-    integrations: [consoleLoggingIntegration({ levels: ["warn", "error"] })],
+    // 关掉正文与请求头采集，原因见 workers/api/src/sentry.ts#sentryOptions。
+    integrations: [
+      consoleLoggingIntegration({ levels: ["warn", "error"] }),
+      httpServerIntegration({ maxRequestBodySize: "none" }),
+      requestDataIntegration({ include: { cookies: false, data: false, headers: false } }),
+    ],
     sendDefaultPii: false,
   };
 }

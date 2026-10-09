@@ -32,8 +32,8 @@ export function downgradeChain(tier: GodChatTier): GodChatTier[] {
   return GOD_CHAT_TIERS.slice(0, GOD_CHAT_TIERS.indexOf(tier) + 1).reverse();
 }
 
-// 额度是公开端点花钱的闸：窗口内访客总量在调 Clef 之前扣，管路由被刷；每档再分访客与全站两道，在 Clef 选完档之后扣。
-// 计数在 api Worker 的 ChatQuota Durable Object 里，/usage 读的是同一份。
+// 额度是公开端点花钱的闸：调 Clef 之前先过访客总量、全站路由次数与「至少一档还有空位」三道，管路由被刷；
+// 每档再分访客与全站两道，在 Clef 选完档之后扣。计数在 api Worker 的 ChatQuota Durable Object 里，/usage 读的是同一份（路由次数不单列）。
 export const GOD_CHAT_QUOTA = {
   windowMs: 60_000,
   visitor: 10,
@@ -43,6 +43,10 @@ export const GOD_CHAT_QUOTA = {
     fable: { visitor: 1, everyone: 6 },
   },
 } as const satisfies { windowMs: number; visitor: number; tiers: Record<GodChatTier, { visitor: number; everyone: number }> };
+
+// 全站每窗口最多路由这么多条：路由完的消息总要占某一档的全站名额，超过各档全站名额之和的那些排不上任何一档，
+// 不必再付费调 Clef。拒答不占档位名额，却也算进这里，站上被刷时可能挡掉本来排得上的消息，接受。
+export const GOD_CHAT_ROUTE_LIMIT = GOD_CHAT_TIERS.reduce((sum, tier) => sum + GOD_CHAT_QUOTA.tiers[tier].everyone, 0);
 
 export type GodChatCount = { used: number; limit: number };
 export type GodChatUsage = {

@@ -283,13 +283,19 @@ test("回复读过的项目文档随 trace 带回，只认白名单键", () => {
   assert.doesNotMatch(note, /Ignore/);
 });
 
-test("issue 草稿：标题必填并去空白，超长的标题或正文整条拒绝；提交请求还要带合法的 code", () => {
+test("issue 草稿：标题必填并去空白，超长的标题或正文整条拒绝；提交请求还要带合法的 code 与 PKCE verifier", () => {
   assert.deepEqual(parseIssueDraft({ title: "  Card overflows  ", body: " steps " }), { title: "Card overflows", body: "steps" });
   assert.equal(parseIssueDraft({ title: " ", body: "x" }), null);
   assert.equal(parseIssueDraft({ title: "x".repeat(GITHUB_ISSUE_LIMITS.titleChars + 1), body: "" }), null);
   assert.equal(parseIssueDraft({ title: "t", body: "x".repeat(GITHUB_ISSUE_LIMITS.bodyChars + 1) }), null);
-  assert.deepEqual(parseGithubIssueRequest({ title: "t", body: "b", code: "abc123" }), { title: "t", body: "b", code: "abc123" });
-  assert.equal(parseGithubIssueRequest({ title: "t", body: "b", code: "a b" }), null);
+  const codeVerifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
+  assert.deepEqual(parseGithubIssueRequest({ title: "t", body: "b", code: "abc123", codeVerifier }), { title: "t", body: "b", code: "abc123", codeVerifier });
+  assert.equal(parseGithubIssueRequest({ title: "t", body: "b", code: "a b", codeVerifier }), null);
+  assert.equal(parseGithubIssueRequest({ title: "t", body: "b", code: "abc123" }), null);
+  assert.equal(parseGithubIssueRequest({ title: "t", body: "b", code: "abc123", codeVerifier: codeVerifier.slice(1) }), null);
+  assert.equal(parseGithubIssueRequest({ title: "t", body: "b", code: "abc123", codeVerifier: "x".repeat(129) }), null);
+  assert.equal(parseGithubIssueRequest({ title: "t", body: "b", code: "abc123", codeVerifier: `${codeVerifier.slice(1)}+` }), null);
+  assert.ok(parseGithubIssueRequest({ title: "t", body: "b", code: "abc123", codeVerifier: "a.~_-".repeat(25).slice(0, 128) }));
 });
 
 test("起草过 issue 的回复随 trace 带回，下一轮模型知道是自己起草的", () => {
@@ -303,22 +309,29 @@ test("起草过 issue 的回复随 trace 带回，下一轮模型知道是自己
   assert.match(note, /drafted a GitHub issue for the visitor to review and submit/);
 });
 
-test("提 issue：输入不合法不去换 token；换到 token 后建失败也照样撤销", async () => {
+test("提 issue：输入或 PKCE verifier 不合法不去换 token；verifier 原样转给 GitHub；换到 token 后建失败也照样撤销", async () => {
   const calls: string[] = [];
+  const exchanges: unknown[] = [];
   const original = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     calls.push(`${init?.method ?? "GET"} ${url}`);
-    if (url.includes("/login/oauth/access_token")) return Response.json({ access_token: "ghu_test" });
+    if (url.includes("/login/oauth/access_token")) {
+      exchanges.push(JSON.parse(String(init?.body)));
+      return Response.json({ access_token: "ghu_test" });
+    }
     if (url.endsWith("/issues")) return Response.json({ message: "Issues are disabled" }, { status: 410 });
     return new Response(null, { status: 204 });
   }) as typeof fetch;
   try {
     const env = { GITHUB_APP_CLIENT_SECRET: "s" } as Env;
+    const codeVerifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
     const post = (body: unknown) => new Request("https://api.test/api/github/issue", { method: "POST", body: JSON.stringify(body) });
-    assert.equal((await handleGithubIssue(post({ title: "", body: "", code: "c" }), env, "1.1.1.1")).status, 400);
+    assert.equal((await handleGithubIssue(post({ title: "", body: "", code: "c", codeVerifier }), env, "1.1.1.1")).status, 400);
+    assert.equal((await handleGithubIssue(post({ title: "Bug", body: "b", code: "c" }), env, "1.1.1.1")).status, 400);
+    assert.equal((await handleGithubIssue(post({ title: "Bug", body: "b", code: "c", codeVerifier: "short" }), env, "1.1.1.1")).status, 400);
     assert.equal(calls.length, 0);
-    const res = await handleGithubIssue(post({ title: "Bug", body: "b", code: "c" }), env, "1.1.1.1");
+    const res = await handleGithubIssue(post({ title: "Bug", body: "b", code: "c", codeVerifier }), env, "1.1.1.1");
     assert.equal(res.status, 502);
     assert.match(((await res.json()) as { error: string }).error, /Issues are disabled/);
     assert.deepEqual(calls.map((c) => c.split(" ")[0] + " " + new URL(c.split(" ")[1]).pathname), [
@@ -326,6 +339,7 @@ test("提 issue：输入不合法不去换 token；换到 token 后建失败也�
       "POST /repos/LYJW131/lyjwpage/issues",
       "DELETE /applications/Iv23liSmKTDKh0bxIfzB/token",
     ]);
+    assert.deepEqual(exchanges, [{ client_id: "Iv23liSmKTDKh0bxIfzB", client_secret: "s", code: "c", code_verifier: codeVerifier }]);
   } finally {
     globalThis.fetch = original;
   }

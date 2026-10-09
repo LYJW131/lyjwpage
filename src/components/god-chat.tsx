@@ -381,7 +381,9 @@ export function GodChat({ className }: { className?: string }) {
   const expanded = messages.length > 0;
 
   return (
+    // 卡片里的气泡、回复、思考摘要、来源与 issue 草稿都是访客对话原文，出错录像要把整张卡的文字遮掉。
     <Card
+      data-sentry-mask
       label="Talk to God"
       action={<RouteStatus last={messages[messages.length - 1]} streaming={streaming} />}
       className={cn(
@@ -402,8 +404,10 @@ export function GodChat({ className }: { className?: string }) {
           onError={() => verificationFailed(VERIFY_UNAVAILABLE, "unavailable")}
         />
       )}
+      {/* 遮罩只遮文字，链接的 href 照样进录像（rrweb 对 href、src 不走属性遮罩），模型能把对话拼进链接：消息列表整块不录。 */}
       <div
         ref={scrollRef}
+        data-sentry-block
         onScroll={(event) => {
           const el = event.currentTarget;
           stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;

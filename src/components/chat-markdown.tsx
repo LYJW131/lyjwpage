@@ -1,12 +1,30 @@
+import { createContext, useContext } from "react";
 import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+const LINK_CLASS = "underline underline-offset-2 hover:opacity-80";
+
+const InsideLink = createContext(false);
+
+function ImageLink({ src, alt }: { src?: unknown; alt?: string }) {
+  const insideLink = useContext(InsideLink);
+  if (insideLink) return <>{alt || "image"}</>;
+  if (typeof src !== "string" || !src) return <>{alt}</>;
+  return (
+    <a href={src} target="_blank" rel="noreferrer noopener" className={LINK_CLASS}>
+      {alt || "image"}
+    </a>
+  );
+}
+
 const COMPONENTS: Components = {
   a: ({ href, children }) => (
-    <a href={href} target="_blank" rel="noreferrer noopener" className="underline underline-offset-2 hover:opacity-80">
-      {children}
+    <a href={href} target="_blank" rel="noreferrer noopener" className={LINK_CLASS}>
+      <InsideLink.Provider value>{children}</InsideLink.Provider>
     </a>
   ),
+  // 回复和思考摘要里的图片只给链接不加载：模型（或经联网搜索读到的注入文本）能把对话内容拼进图片 URL，浏览器渲染即发请求，无需点击就外带出去。
+  img: ({ src, alt }) => <ImageLink src={src} alt={alt} />,
   pre: ({ children }) => (
     <pre
       className="scrollbar-none my-2 overflow-x-auto rounded-md border border-line bg-surface p-3 text-xs leading-relaxed [&::-webkit-scrollbar]:hidden [&_code]:block [&_code]:bg-transparent [&_code]:p-0"
