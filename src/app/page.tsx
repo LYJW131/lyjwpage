@@ -1,4 +1,5 @@
 import { Footer } from "@/components/footer";
+import { FooterCopyright } from "@/components/footer-copyright";
 import { Header } from "@/components/header";
 import { WebPlayerProvider } from "@/components/web-player/web-player-provider";
 import { AppVersionCard } from "@/components/app-version-card";
@@ -82,6 +83,9 @@ const READS = {
   siteStatus: [GITHUB_REPO_PATH, VERCEL_DEPLOYMENTS_PATH, CLOUDFLARE_WORKERS_PATH, SENTRY_PATH, SERVER_PATH, REPORTERS_PATH],
   emby: [WATCHING_PATH, NOW_WATCHING_PATH],
 } as const;
+
+// cacheComponents 预渲染不允许服务端 new Date()，首屏年份取构建时间。
+const BUILD_YEAR = Number(process.env.BUILD_TIME?.slice(0, 4)) || undefined;
 
 export default async function Home() {
   const [
@@ -283,6 +287,9 @@ export default async function Home() {
       </WebPlayerProvider>
 
       <Footer />
+      <div className="label-mono mx-auto -mt-6 mb-6 flex w-[calc(100%-2rem)] max-w-5xl justify-center px-4 pb-4 text-muted-foreground">
+        <FooterCopyright initialYear={BUILD_YEAR} />
+      </div>
 
       <DevToggleDock />
       <DevFakeDataToggle />
