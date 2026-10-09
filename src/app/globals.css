@@ -633,6 +633,11 @@ html.offscreen-revealed .defer-offscreen-always,
   --heatmap-high: #1e4fbc;
 }
 
+.dark .github-chart {
+  --heatmap-low: #1e4fbc;
+  --heatmap-high: #72b0ff;
+}
+
 .github-chart svg rect[data-score] {
   width: 10px;
   height: 10px;
