@@ -25,6 +25,7 @@
 - `src/lookup-routes.ts`、`src/edge-cache.ts`：`/api/lyrics`、`/api/motion-artwork` 按参数查询，结果只由参数决定，不过公开读屏障。它们是给网页播放器按任意曲目查的按需端点，也是读取路径上唯一会现查 Apple 的入口；结果缓存在 `APPLE_CACHE` KV。先查当前机房的 Cache API（`caches.default`），命中不进 StateHub；未命中回源，只有 200 写回，按响应的 `max-age` 过期。条目只在当前机房、跨部署保留、不合并并发未命中，键里带 SQLite 那层的版本段，响应外形变了升 `EDGE_CACHE_VERSION`。存的响应不含 CORS 头，`X-Edge-Cache: hit | miss | bypass` 标识命中。
 - `src/storage-driver.ts`：通过 alias 接入 StateHub 的 SQLite 存储驱动；同一公开请求、同一 microtask 的相邻只读批次合并成一次 DO RPC（命令数上限 `shared/storage-contract.ts` 的 `STORAGE_MAX_COMMANDS`），写批次保持原事务顺序。
 - `src/lag-store.ts`：`@/lib/lag-store` 在 Worker 里的实现，读 `LAG` KV（可滞后层，格式见 `shared/lag.ts`）。厂商状态、GitHub、Vercel、Cloudflare、Sentry 这几条端点只读采集 Worker 写的那几条键，Vercel 与 Cloudflare 两条按名字把几条键拼成一份。
+- `src/public-status.ts`：具名入口 `PublicStatus`，只接受公开状态登记表中的精确路径，复用浏览器的公开模型；不提供凭据、写入或按参数查询。契约在 `shared/public-status.ts`。
 - `src/dev-override-reader.ts`：只在本地绑定的具名入口 `DevOverrideReader`，推送房间转发生产事件前经它查假数据注入。
 - `src/tools/`：站点工具（`get_site_status`、`read_project_doc`）的定义与执行，登记表 `src/tools/registry.ts#SITE_TOOLS`；`/mcp`（`src/mcp.ts`）和首页对话共用这一份，见下文「MCP」。
 
