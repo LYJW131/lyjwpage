@@ -5,6 +5,8 @@ import {
   addDays,
   chartSize,
   expandGithubDays,
+  heatmapScores,
+  HEATMAP_LEVELS,
   formatContributionLabel,
   groupWeeks,
   monthLabels,
@@ -75,15 +77,28 @@ test("hover 文案和资料页同一句", () => {
 });
 
 test("紧凑信封展开出 date / weekday / label", () => {
-  const days = expandGithubDays("2025-08-17", [0, 64], [0, 3]);
+  const days = expandGithubDays("2025-08-17", [0, 64]);
   assert.equal(days.length, 2);
   assert.equal(days[0]?.date, "2025-08-17");
   assert.equal(days[0]?.weekday, 0);
   assert.equal(days[0]?.label, "No contributions on August 17th.");
   assert.equal(days[1]?.date, addDays("2025-08-17", 1));
   assert.equal(days[1]?.count, 64);
-  assert.equal(days[1]?.score, 3);
-  assert.equal(JSON.stringify({ origin: "2025-08-17", counts: [0, 64], scores: [0, 3] }).includes("contributions on"), false);
+  assert.equal(days[1]?.score, HEATMAP_LEVELS);
+  assert.equal(JSON.stringify({ origin: "2025-08-17", counts: [0, 64] }).includes("contributions on"), false);
+});
+
+test("非零天按分位分成 HEATMAP_LEVELS 档：空格是 0、最大值顶格、同值同档、越多越深、并列的最小值仍是最浅档", () => {
+  const counts = [0, ...Array.from({ length: 16 }, (_, index) => index + 1), 16];
+  const scores = heatmapScores(counts);
+  assert.equal(scores[0], 0);
+  assert.equal(scores[1], 1);
+  assert.equal(scores.at(-1), HEATMAP_LEVELS);
+  assert.equal(scores.at(-2), scores.at(-1));
+  assert.equal(new Set(scores.slice(1)).size, HEATMAP_LEVELS);
+  for (let index = 2; index < counts.length; index += 1) assert.ok(scores[index]! >= scores[index - 1]!);
+  assert.deepEqual(heatmapScores([0, 0]), [0, 0]);
+  assert.deepEqual(heatmapScores([1, 1, 1, 1, 1, 1, 3]), [1, 1, 1, 1, 1, 1, HEATMAP_LEVELS]);
 });
 
 test("年度图窗口：今天所在那一周是最后一列，往前一共 53 周，从周日起逐日到今天", () => {

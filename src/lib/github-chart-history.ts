@@ -14,7 +14,6 @@ export function seedGithubChart(payload: GithubChartPayload): void {
   snapshot = {
     origin: payload.origin,
     counts: payload.counts.slice(),
-    scores: payload.scores.slice(),
   };
 }
 
@@ -23,8 +22,7 @@ export function mergeGithubChart(payload: GithubChartPayload): GithubChartPayloa
     snapshot = {
       origin: payload.origin,
       counts: payload.counts.slice(),
-      scores: payload.scores.slice(),
-    };
+      };
     return snapshot;
   }
 
@@ -34,22 +32,12 @@ export function mergeGithubChart(payload: GithubChartPayload): GithubChartPayloa
     values: payload.counts,
     partial: true,
   });
-  const scores = mergeHeatmapSeries(snapshot.scores, snapshot.origin, {
-    origin: payload.origin,
-    from: payload.from,
-    values: payload.scores,
-    partial: true,
-  });
-  snapshot = {
-    origin: counts.origin,
-    counts: counts.values,
-    scores: scores.values as GithubChartPayload["scores"],
-  };
+  snapshot = { origin: counts.origin, counts: counts.values };
   return snapshot;
 }
 
 export function githubChartWeeks(payload: GithubChartPayload, today: string | null = null): GithubChartDay[][] {
-  const days = expandGithubDays(payload.origin, payload.counts, payload.scores);
+  const days = expandGithubDays(payload.origin, payload.counts);
   const last = days.at(-1)?.date;
   const through = today && (!last || today > last) ? today : last;
   if (!through) return [];

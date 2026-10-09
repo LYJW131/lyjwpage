@@ -11,14 +11,13 @@ import {
 } from "@/components/live/heatmap-hover";
 import { useSiteDay } from "@/hooks/use-site-day";
 import { useStatus } from "@/hooks/use-status";
-import { groupWeeks, heatmapFrame, weekdayOf } from "@/lib/github-chart-compact";
+import { groupWeeks, heatmapFrame, heatmapScores, weekdayOf } from "@/lib/github-chart-compact";
 import {
   YEAR_MIX_SHOW,
   compactTokens,
   expandYearDays,
   formatTokenLabel,
   indexYearMix,
-  tokenScores,
   type YearModelShare,
 } from "@/lib/coding-year";
 import { CODING_YEAR_PATH } from "@/lib/paths";
@@ -35,7 +34,7 @@ type HoveredCell = {
 };
 
 function toWeeks(origin: string, days: number[], through: string): GithubChartDay[][] {
-  const scores = tokenScores(days);
+  const scores = heatmapScores(days);
   const byDate = new Map(expandYearDays(origin, days).map((day, index) => [day.date, { tokens: day.tokens, score: scores[index] ?? 0 }]));
   return groupWeeks(
     heatmapFrame(through).map((date) => {

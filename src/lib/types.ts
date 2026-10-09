@@ -480,16 +480,15 @@ export type GithubChartDay = {
   date: string;
   weekday: number;
   count: number;
-  score: 0 | 1 | 2 | 3 | 4;
+  // 0 是无数据；1..HEATMAP_LEVELS 按非零天的分位分档。
+  score: number;
   label: string;
 };
 
 export type GithubChartPayload = {
   origin: string;
   counts: number[];
-  // GitHub 自己给的四分位档，不按本地计数重新分档。
-  scores: Array<0 | 1 | 2 | 3 | 4>;
-  // true 时 counts / scores 只覆盖 from 起的尾段；origin 仍是整窗原点。缺省或 false 是整窗。
+  // true 时 counts 只覆盖 from 起的尾段；origin 仍是整窗原点。缺省或 false 是整窗。
   countsPartial?: boolean;
   from?: string;
 };

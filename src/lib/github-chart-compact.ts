@@ -5,7 +5,8 @@ export const CELL = 10;
 export const STEP = 12;
 export const LEFT = 27;
 export const TOP = 20;
-export const FILLS = ["#EEEEEE", "#72b0ff", "#5896ff", "#2563eb", "#1e4fbc"] as const;
+// 须与 globals.css 里 .github-chart 的 data-score 档位数同步。
+export const HEATMAP_LEVELS = 8;
 export const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 export const DAY_LABEL_Y = [28, 40, 52, 64, 77, 89, 101] as const;
 export const VISIBLE_WEEKDAYS = new Set([1, 3, 5]);
@@ -158,16 +159,31 @@ export function formatContributionLabel(date: string, count: number): string {
   return `${count} contributions on ${when}.`;
 }
 
-export function expandGithubDays(
-  origin: string,
-  counts: readonly number[],
-  scores: readonly number[],
-): GithubChartDay[] {
+export function heatmapScores(counts: readonly number[]): number[] {
+  const positive = counts.filter((value) => value > 0).sort((left, right) => left - right);
+  if (positive.length === 0) return counts.map(() => 0);
+  const max = positive.at(-1) ?? 0;
+  return counts.map((value) => {
+    if (value <= 0) return 0;
+    if (value >= max) return HEATMAP_LEVELS;
+    // 按严格小于它的天数定档：大量并列的最小值（如 1 个 commit）也落在最浅一档。
+    let below = 0;
+    let high = positive.length;
+    while (below < high) {
+      const mid = (below + high) >> 1;
+      if ((positive[mid] ?? 0) < value) below = mid + 1;
+      else high = mid;
+    }
+    return 1 + Math.floor((below / positive.length) * HEATMAP_LEVELS);
+  });
+}
+
+export function expandGithubDays(origin: string, counts: readonly number[]): GithubChartDay[] {
   if (!origin || counts.length === 0) return [];
+  const scores = heatmapScores(counts);
   return counts.map((count, index) => {
     const date = addDays(origin, index);
-    const raw = scores[index];
-    const score = raw === 1 || raw === 2 || raw === 3 || raw === 4 ? raw : 0;
+    const score = scores[index] ?? 0;
     return {
       date,
       weekday: weekdayOf(date),

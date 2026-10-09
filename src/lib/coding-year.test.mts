@@ -11,7 +11,6 @@ import {
   expandYearDays,
   formatTokenLabel,
   indexYearMix,
-  tokenScores,
 } from "./coding-year.ts";
 
 const ORIGIN = "2025-08-17";
@@ -73,18 +72,6 @@ test("年度编码：今天由出口按钟现算，用量停了也不跟着少�
   const stopped = { updatedAt: Date.parse("2026-08-30T04:15:00+08:00"), days: {} };
   assert.equal(encodeCodingYear(stopped, Date.parse("2026-08-31T09:00:00+08:00")).todayAtSource, "2026-08-31");
   assert.equal(encodeCodingYear(stopped, Date.parse("2026-08-31T00:30:00+08:00")).todayAtSource, "2026-08-31");
-});
-
-test("非零天按四分位打档，空格永远是 0", () => {
-  const counts = Array.from({ length: YEAR_DAYS }, () => 0);
-  counts[0] = 1;
-  counts[1] = 10;
-  counts[2] = 20;
-  counts[3] = 40;
-  const scores = tokenScores(counts);
-  assert.equal(scores[4], 0);
-  assert.ok((scores[0] ?? 0) >= 1);
-  assert.equal(scores[3], 4);
 });
 
 test("hover 文案带 compact token", () => {
