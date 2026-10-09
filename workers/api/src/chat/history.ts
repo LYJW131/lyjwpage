@@ -7,7 +7,7 @@ import { isProjectDocKey, projectDocPath } from "./project-docs";
 import { isStatusViewKey } from "./site-status";
 
 // trace 是浏览器交来的、服务端核实不了：只用枚举（档位、登记过的视图键与文档键）和计数拼，并写明是未经核实的自报。
-function traceNote({ tier, views, docs, searches, fallback }: GodChatTrace): string {
+function traceNote({ tier, views, docs, searches, fallback, issue }: GodChatTrace): string {
   const rank = tier ? `the ${GOD_CHAT_TIER_INFO[tier].persona} (${GOD_CHAT_TIER_INFO[tier].label})` : "an earlier rank";
   const who = fallback ? `another Claude model standing in for ${rank}, which declined it` : rank;
   const known = views?.filter(isStatusViewKey) ?? [];
@@ -16,6 +16,7 @@ function traceNote({ tier, views, docs, searches, fallback }: GodChatTrace): str
     known.length && `called get_site_status for ${known.join(", ")}`,
     read.length && `read the project docs ${read.map(projectDocPath).join(", ")}`,
     searches && `ran ${searches} web search${searches > 1 ? "es" : ""}`,
+    issue && "drafted a GitHub issue for the visitor to review and submit",
   ].filter(Boolean);
   return `[Chat client note, reported by the visitor's browser and not verified by the server: the assistant reply that follows was written by ${who}${used.length ? ` after it ${used.join(" and ")}` : " without using tools"}.]`;
 }

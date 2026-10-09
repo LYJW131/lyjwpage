@@ -74,3 +74,8 @@ new_sqlite_classes = ["AnthropicEgress"]
 name = "CHAT_USAGE_LIMIT"
 namespace_id = "13101"
 simple = { limit = 30, period = 10 }
+
+[[ratelimits]]
+name = "GITHUB_ISSUE_LIMIT"
+namespace_id = "13102"
+simple = { limit = 5, period = 60 }
