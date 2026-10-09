@@ -209,6 +209,7 @@ async function converse({
   };
   let searches = 0;
   let wroteText = false;
+  let wroteThinking = false;
 
   for (let round = 0; ; round++) {
     if (round > 0 && outputLeft < MIN_ROUND_TOKENS) {
@@ -229,6 +230,8 @@ async function converse({
         system: [
           { type: "text", text: `${BASE_PROMPT}\n${PERSONA[tier]}`, cache_control: { type: "ephemeral" } },
         ],
+        // 三档默认不返回思考内容，模型想的时候卡片只能空等；summarized 只多给一份摘要文字，计费不变。
+        thinking: { type: "adaptive", display: "summarized" },
         output_config: { effort },
         cache_control: { type: "ephemeral" },
         betas,
@@ -242,6 +245,7 @@ async function converse({
     let fallbackModel: string | undefined;
     // 每轮请求的文字各自成段：上一轮说完「我查一下」、调完工具再接着说时补一个空行，免得两句粘在一起。
     let roundText = false;
+    let roundThinking = false;
     for await (const event of stream) {
       if (event.type === "message_start" && !ownModel(event.message.model)) fallbackModel = event.message.model;
       else if (event.type === "content_block_start") {
@@ -255,6 +259,10 @@ async function converse({
           if (!roundText && wroteText) emit({ type: "text", text: "\n\n" });
           roundText = wroteText = true;
           emit({ type: "text", text: event.delta.text });
+        } else if (event.delta.type === "thinking_delta" && event.delta.thinking) {
+          if (!roundThinking && wroteThinking) emit({ type: "thinking", text: "\n\n" });
+          roundThinking = wroteThinking = true;
+          emit({ type: "thinking", text: event.delta.thinking });
         }
         else if (event.delta.type === "input_json_delta" && searchInputs.has(event.index)) {
           searchInputs.get(event.index)!.json += event.delta.partial_json;
