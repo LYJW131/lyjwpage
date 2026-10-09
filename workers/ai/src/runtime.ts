@@ -1,5 +1,6 @@
 import type { PublicStatusRpc } from "@shared/public-status";
 
+import type { BuildCoordinator } from "./build/coordinator";
 import type { AnthropicEgress } from "./chat/egress";
 import type { ChatQuota } from "./chat/quota";
 
@@ -18,6 +19,13 @@ export interface Env {
   CHAT_USAGE_LIMIT?: RateLimit;
   GITHUB_APP_CLIENT_SECRET?: string;
   GITHUB_ISSUE_LIMIT?: RateLimit;
+  BUILD_COORDINATOR?: DurableObjectNamespace<BuildCoordinator>;
+  BUILD_SESSION_SECRET?: string;
+  GITHUB_APP_PRIVATE_KEY?: string;
+  GITHUB_WEBHOOK_SECRET?: string;
+  ROUTINE_FIRE_URL?: string;
+  ROUTINE_FIRE_TOKEN?: string;
+  BUILD_REQUEST_LIMIT?: RateLimit;
   MCP_LIMIT?: RateLimit;
   AI_DEV?: string;
   PREVIEW_WORKER?: string;

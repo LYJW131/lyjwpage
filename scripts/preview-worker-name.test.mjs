@@ -50,6 +50,7 @@ test("Preview 配置挂在生产 wrangler.toml 里，不带生产域名、cron�
   assert.match(previews, /name = "LIVE_PUSH"/);
   assert.match(previews, /name = "CHAT_QUOTA"/);
   assert.match(previews, /name = "ANTHROPIC_EGRESS"/);
+  assert.match(previews, /name = "BUILD_COORDINATOR"/);
   assert.equal(previews.includes("services"), false);
   assert.equal(previews.includes("[triggers]"), false);
   assert.equal(previews.includes("custom_domain"), false);

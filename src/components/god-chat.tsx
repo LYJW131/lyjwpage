@@ -1,15 +1,16 @@
 "use client";
 
 import Script from "next/script";
-import { Fragment, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { ArrowUp, Square } from "lucide-react";
+import { Fragment, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
+import { ArrowUp, History, Plus, Square, Trash2 } from "lucide-react";
 
 import { ChatCard } from "@/components/chat-card";
 import { ChatMarkdown } from "@/components/chat-markdown";
 import { FableDescent, type Descent } from "@/components/fable-descent";
-import { IssuePanel } from "@/components/github-issue-panel";
+import { BuildPlanCard } from "@/components/build-plan-card";
 import { Card } from "@/components/ui/card";
 import { stableMarkdown } from "@/lib/streaming-markdown";
+import { activeChatDesign, chatArchive, chatReplyMessages, designSessionEnded, subscribeChatArchive, type ChatArchive, type ChatBubble, type ChatDesign, type ChatSession } from "@/lib/chat-archive";
 import { cn } from "@/lib/utils";
 import { workerUrl } from "@/lib/worker-url";
 import {
@@ -20,8 +21,6 @@ import {
   type GodChatCard,
   type GodChatEvent,
   type GodChatMessage,
-  type GodChatSource,
-  type GodChatTrace,
   fitHistory,
 } from "@shared/god-chat";
 import {
@@ -32,7 +31,6 @@ import {
   type GodChatTier,
   type GodChatUsage,
 } from "@shared/god-chat-tiers";
-import type { GithubIssueDraft } from "@shared/github-issue";
 
 type Turnstile = {
   render: (el: HTMLElement, options: Record<string, unknown>) => string;
@@ -46,24 +44,11 @@ declare global {
   }
 }
 
-type DocRead = { doc: string; path: string; url: string; section?: string };
 // at 是收到卡片时这条回复已有的正文长度，卡片画在那个位置。
 type ShownCard = { card: GodChatCard; at: number };
-type Reply = {
-  tier?: GodChatTier | null;
-  downgradedFrom?: GodChatTier;
-  servedBy?: string;
-  thinking?: string;
-  issued?: boolean;
-  seal?: string;
-  trace?: GodChatTrace;
-  lookups?: string[];
-  docs?: DocRead[];
-  searches?: string[];
-  sources?: GodChatSource[];
-  cards?: ShownCard[];
-};
-type Bubble = GodChatMessage & Reply;
+type Reply = Omit<ChatBubble, "role" | "content">;
+type Bubble = ChatBubble;
+const EMPTY_MESSAGES: Bubble[] = [];
 
 const CHAT_URL = workerUrl(process.env.NEXT_PUBLIC_BACKEND_URL, GOD_CHAT_PATH);
 const OFFLINE = "The oracle is offline.";
@@ -75,7 +60,6 @@ const VERIFY_UNAVAILABLE = "Human verification couldn't load. Check your connect
 const COMMANDS = [
   { name: "/clear", aliases: ["/new"], description: "Start a new conversation with empty context" },
   { name: "/usage", aliases: [], description: "Show your quota in the current window" },
-  { name: "/issue", aliases: [], description: "Draft a GitHub issue for this site" },
 ] as const;
 
 type Command = (typeof COMMANDS)[number];
@@ -83,16 +67,23 @@ const commandNames = (c: Command): readonly string[] => [c.name, ...c.aliases];
 const USAGE_URL = workerUrl(process.env.NEXT_PUBLIC_BACKEND_URL, GOD_CHAT_USAGE_PATH);
 const USAGE_RETRY_MS = 5_000;
 const EDGE_GAP_PX = 12;
-// 每个示例各演示一种本事：读实时数据、读项目文档、联网搜索、深问题（Clef 可能请神，神每分钟额度有限，满了会降级）。
 const SUGGESTIONS = [
   "What's LYJW listening to?",
   "How does this site get its live data?",
   "What's new in AI this week?",
-  "Is free will an illusion?",
+  "Help me improve this site",
 ];
 
 export function GodChat({ className }: { className?: string }) {
-  const [messages, setMessages] = useState<Bubble[]>([]);
+  const archive = useSyncExternalStore(subscribeChatArchive, chatArchive.getSnapshot, chatArchive.getServerSnapshot);
+  const session = archive.sessions.find((entry) => entry.id === archive.activeId);
+  return <Conversation key={session?.id ?? "empty"} className={className} archive={archive} session={session} />;
+}
+
+function Conversation({ className, archive, session: conversation }: { className?: string; archive: ChatArchive; session?: ChatSession }) {
+  const messages = conversation?.messages ?? EMPTY_MESSAGES;
+  const setMessages = (next: Bubble[], persist = true) => { if (conversation) chatArchive.update(conversation.id, { messages: next }, { persist }); };
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -101,7 +92,6 @@ export function GodChat({ className }: { className?: string }) {
   const [token, setToken] = useState<string | null>(null);
   const [armed, setArmed] = useState(false);
   const [descent, setDescent] = useState<Descent | null>(null);
-  const [issue, setIssue] = useState<(GithubIssueDraft & { key: number }) | null>(null);
   const [headerHeight, setHeaderHeight] = useState(0);
   const anchorRef = useRef<HTMLDivElement>(null);
   const [scriptReady, setScriptReady] = useState(false);
@@ -115,6 +105,19 @@ export function GodChat({ className }: { className?: string }) {
   const loadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sessionRef = useRef(0);
   const sendRef = useRef<(text: string, token: string) => void>(() => {});
+  const conversationId = conversation?.id;
+  const design = conversation?.design;
+
+  useEffect(() => {
+    if (!conversationId || !design) return;
+    const expire = () => {
+      const current = chatArchive.getSnapshot().sessions.find((entry) => entry.id === conversationId);
+      if (current?.design?.token === design.token && !activeChatDesign(current.design)) chatArchive.update(conversationId, { design: undefined });
+    };
+    if (!activeChatDesign(design)) { expire(); return; }
+    const timer = setTimeout(expire, Math.max(0, design.expiresAt - Date.now()) + 20);
+    return () => clearTimeout(timer);
+  }, [conversationId, design]);
 
   useEffect(() => {
     const el = widgetRef.current;
@@ -150,6 +153,7 @@ export function GodChat({ className }: { className?: string }) {
   useEffect(
     () => () => {
       if (loadTimerRef.current) clearTimeout(loadTimerRef.current);
+      abortRef.current?.abort();
     },
     [],
   );
@@ -182,20 +186,26 @@ export function GodChat({ className }: { className?: string }) {
     const content = text.trim();
     if (!content) return;
     // 界面上的气泡保留档位与查询记录；发给 Worker 的历史另行裁剪，只原样带回 Worker 下发的 trace 与章，不能回写界面。
-    const shown: Bubble[] = [...messages, { role: "user", content }];
+    const user: Bubble & { id: string } = { id: crypto.randomUUID(), role: "user", content };
+    const shown: Bubble[] = [...messages, user];
     const history: GodChatMessage[] = fitHistory(
       shown
         .filter(({ content }) => content.trim())
-        .map(({ role, content, trace, seal }): GodChatMessage =>
-          role === "assistant" ? { role, content, ...(trace && { trace }), ...(seal && { seal }) } : { role, content },
+        .map(({ role, content, trace, seal, planToken }): GodChatMessage =>
+          role === "assistant" ? { role, content, ...(trace && { trace }), ...(seal && { seal }), ...(planToken && { planToken }) } : { role, content },
         ),
     );
     let reply = "";
     let meta: Reply = {};
     const session = sessionRef.current;
     const bubble = (): Bubble => ({ role: "assistant", content: reply, ...meta });
+    const replyMessages = (next?: Bubble) => chatReplyMessages(
+      conversation ? chatArchive.getSnapshot().sessions.find((entry) => entry.id === conversation.id)?.messages ?? messages : messages,
+      user,
+      next,
+    );
     const show = () => {
-      if (sessionRef.current === session) setMessages([...shown, bubble()]);
+      if (sessionRef.current === session) setMessages(replyMessages(bubble()), false);
     };
     stickRef.current = true;
     if (!messages.length) reveal();
@@ -211,14 +221,20 @@ export function GodChat({ className }: { className?: string }) {
     abortRef.current = controller;
     try {
       if (!CHAT_URL) throw new Error(OFFLINE);
+      const designToken = activeChatDesign(conversation?.design)?.token;
+      if (conversation?.design && !designToken) chatArchive.update(conversation.id, { design: undefined }, { persist: false });
       const res = await fetch(CHAT_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: history, turnstileToken: usedToken }),
+        body: JSON.stringify({ messages: history, turnstileToken: usedToken, ...(designToken && { designToken }) }),
         signal: controller.signal,
       });
       if (!res.ok || !res.body) {
-        const data = (await res.json().catch(() => null)) as { error?: string } | null;
+        const data = (await res.json().catch(() => null)) as { error?: string; code?: string } | null;
+        if (conversation && designSessionEnded(data?.code)) {
+          chatArchive.update(conversation.id, { design: undefined }, { persist: false });
+          throw new Error("Design session ended. Send your message again to continue in ordinary chat.");
+        }
         throw new Error(data?.error ?? OFFLINE);
       }
       const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
@@ -246,12 +262,13 @@ export function GodChat({ className }: { className?: string }) {
             meta = { ...meta, docs: [...(meta.docs ?? []), { doc, path, url, section }] };
           } else if (event.type === "search") meta = { ...meta, searches: [...(meta.searches ?? []), event.query] };
           else if (event.type === "sources") meta = { ...meta, sources: event.sources };
-          else if (event.type === "seal") meta = { ...meta, seal: event.seal, trace: event.trace };
+          else if (event.type === "seal") meta = { ...meta, seal: event.seal, trace: event.trace, planToken: event.planToken };
           else if (event.type === "card") {
             meta = { ...meta, cards: [...(meta.cards ?? []), { card: event.card, at: reply.length }] };
-          } else if (event.type === "issue") {
-            meta = { ...meta, issued: true };
-            if (sessionRef.current === session) setIssue({ title: event.title, body: event.body, key: Date.now() });
+          } else if (event.type === "design" && conversation) {
+            chatArchive.update(conversation.id, { design: activeChatDesign({ token: event.token, expiresAt: event.expiresAt, remaining: event.remaining }) }, { persist: false });
+          } else if (event.type === "plan") {
+            meta = { ...meta, proposals: [...(meta.proposals ?? []), { plan: event.plan, token: event.token, expiresAt: event.expiresAt }] };
           }
         }
         show();
@@ -260,8 +277,8 @@ export function GodChat({ className }: { className?: string }) {
       if (!controller.signal.aborted) setError(err instanceof Error && err.message !== "Failed to fetch" ? err.message : OFFLINE);
     } finally {
       if (sessionRef.current === session) {
-        const kept = reply || meta.cards?.length;
-        setMessages(kept ? [...shown, bubble()] : shown.slice(0, -1));
+        const kept = reply || meta.cards?.length || meta.proposals?.length;
+        setMessages(replyMessages(kept ? bubble() : undefined));
         if (!kept) setDraft((current) => current || content);
       }
       setStreaming(false);
@@ -282,10 +299,6 @@ export function GodChat({ className }: { className?: string }) {
   function runCommand(name: string) {
     setDraft("");
     setSelected(0);
-    if (name === "/issue") {
-      setIssue({ title: "", body: "", key: Date.now() });
-      return;
-    }
     if (name === "/usage") {
       void showUsage();
       return;
@@ -294,9 +307,8 @@ export function GodChat({ className }: { className?: string }) {
       sessionRef.current += 1;
       abortRef.current?.abort();
       pendingRef.current = null;
-      setMessages([]);
-      setIssue(null);
       setError(null);
+      chatArchive.start();
     }
   }
 
@@ -381,11 +393,11 @@ export function GodChat({ className }: { className?: string }) {
   const expanded = messages.length > 0;
 
   return (
-    // 卡片里的气泡、回复、思考摘要、来源与 issue 草稿都是访客对话原文，出错录像要把整张卡的文字遮掉。
+    // 对话、设计与构建计划包含访客原文，Replay 需要遮住整张卡片。
     <Card
       data-sentry-mask
       label="Talk to God"
-      action={<RouteStatus last={messages[messages.length - 1]} streaming={streaming} />}
+      action={conversation?.design ? <span>Design · Opus</span> : <RouteStatus last={messages[messages.length - 1]} streaming={streaming} />}
       className={cn(
         "transition-[height,box-shadow] duration-700 ease-out motion-reduce:transition-none",
         expanded ? "h-[calc(100dvh-var(--chat-inset))]" : "h-[25rem] sm:h-[22rem]",
@@ -396,6 +408,11 @@ export function GodChat({ className }: { className?: string }) {
     >
       <div ref={anchorRef} className="pointer-events-none absolute inset-0" aria-hidden />
       <FableDescent descent={descent} />
+      <div className="flex items-center justify-between gap-2 border-b border-line px-3 py-2 text-xs text-muted-foreground">
+        <button type="button" onClick={() => setHistoryOpen(!historyOpen)} aria-expanded={historyOpen} className="flex min-w-0 items-center gap-1.5 hover:text-foreground"><History className="size-3.5 shrink-0" /><span className="truncate">Conversations{archive.sessions.length > 0 ? ` (${archive.sessions.length})` : ""}</span></button>
+        <button type="button" onClick={() => runCommand("/clear")} className="flex shrink-0 items-center gap-1 hover:text-foreground"><Plus className="size-3.5" />New</button>
+      </div>
+      {historyOpen && <SessionList archive={archive} />}
       {armed && (
         <Script
           src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"
@@ -442,7 +459,7 @@ export function GodChat({ className }: { className?: string }) {
                   className={cn(
                     "min-w-0 rounded-lg px-3 py-2 text-sm leading-relaxed [overflow-wrap:anywhere]",
                     message.role === "user" ? "max-w-[85%]" : "max-w-full sm:max-w-[85%]",
-                    message.cards?.length && "w-full",
+                    (message.cards?.length || message.proposals?.length) && "w-full",
                     message.role === "user"
                       ? "whitespace-pre-wrap bg-foreground text-background"
                       : message.tier === "fable"
@@ -481,9 +498,6 @@ export function GodChat({ className }: { className?: string }) {
                       {read.section && <> › {read.section}</>}
                     </div>
                   ))}
-                  {message.issued && (
-                    <div className="label-mono mb-1.5 text-[10px] text-muted-foreground">Drafted a GitHub issue below</div>
-                  )}
                   {message.searches?.map((query, i) => (
                     <div key={i} className="label-mono mb-1.5 text-[10px] text-muted-foreground">
                       Searched “{query}”
@@ -494,6 +508,13 @@ export function GodChat({ className }: { className?: string }) {
                   ) : (
                     message.content
                   )}
+                  {message.proposals?.map((proposal, proposalIndex) => (
+                    <BuildPlanCard key={proposal.token} proposal={proposal} inactive={live} onChange={(updated) => {
+                      if (!conversation) return;
+                      const current = chatArchive.getSnapshot().sessions.find((entry) => entry.id === conversation.id);
+                      if (current) chatArchive.update(current.id, { messages: current.messages.map((entry, messageIndex) => messageIndex === index ? { ...entry, proposals: entry.proposals?.map((item, itemIndex) => itemIndex === proposalIndex ? updated : item) } : entry) });
+                    }} />
+                  ))}
                   {message.sources?.length ? (
                     <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 border-t border-line pt-2 text-[11px]">
                       {message.sources.map((source) => (
@@ -519,7 +540,7 @@ export function GodChat({ className }: { className?: string }) {
       <div className="border-t border-line p-3">
         {error && <p className="mb-2 text-xs text-red-500">{error}</p>}
         {usage && <UsagePanel usage={usage} onClose={() => setUsage(null)} onReset={() => void showUsage(true)} />}
-        {issue && <IssuePanel key={issue.key} draft={issue} onClose={() => setIssue(null)} />}
+        {conversation?.design && <DesignStatus design={conversation.design} />}
         <div ref={widgetRef} />
         <form
           className="relative flex items-end gap-2"
@@ -627,6 +648,36 @@ export function GodChat({ className }: { className?: string }) {
       </div>
     </Card>
   );
+}
+
+function SessionList({ archive }: { archive: ChatArchive }) {
+  function remove(id: string) {
+    chatArchive.remove(id);
+    if (!chatArchive.getSnapshot().sessions.length) chatArchive.start();
+  }
+  return (
+    <div data-sentry-block className="border-b border-line bg-muted px-3 py-2">
+      <div className="mb-2 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+        <span>Saved in this browser</span>
+        <button type="button" onClick={() => { if (window.confirm("Clear all conversations saved in this browser? This cannot be undone.")) { chatArchive.clear(); chatArchive.start(); } }} className="hover:text-red-500">Clear all conversations</button>
+      </div>
+      <ul className="scrollbar-none max-h-36 snap-y snap-mandatory overflow-y-auto [&::-webkit-scrollbar]:hidden">
+        {archive.sessions.map((session) => (
+          <li key={session.id} className="flex h-11 snap-start items-center gap-2">
+            <button type="button" aria-current={session.id === archive.activeId ? "true" : undefined} onClick={() => chatArchive.select(session.id)} className={cn("flex min-w-0 flex-1 items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-xs", session.id === archive.activeId ? "bg-surface text-foreground" : "text-muted-foreground hover:bg-surface-hover")}>
+              <span className="truncate">{session.title}</span>
+              <time className="shrink-0 text-[10px]" dateTime={new Date(session.updatedAt).toISOString()}>{new Date(session.updatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</time>
+            </button>
+            <button type="button" aria-label={`Delete conversation: ${session.title}`} onClick={() => remove(session.id)} className="p-2 text-muted-foreground hover:text-red-500"><Trash2 className="size-3.5" /></button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function DesignStatus({ design }: { design: ChatDesign }) {
+  return <p className="mb-2 text-[11px] text-muted-foreground">Design with Opus · {design.remaining.toLocaleString("en-US")} turns left</p>;
 }
 
 function ReplyBody({ content, cards = [], live }: { content: string; cards?: ShownCard[]; live: boolean }) {

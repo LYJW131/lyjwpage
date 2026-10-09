@@ -3,7 +3,6 @@ import test from "node:test";
 
 import { GOD_CHAT_CARD_VIEWS, GOD_CHAT_CARDS, GOD_CHAT_LIMITS, GOD_CHAT_TURNSTILE_ACTION, fitHistory, parseGodChatRequest, type GodChatMessage } from "@shared/god-chat";
 import { GOD_CHAT_TIERS, GOD_CHAT_TIER_INFO, downgradeChain, modelLabel } from "@shared/god-chat-tiers";
-import { GITHUB_ISSUE_LIMITS, parseGithubIssueRequest, parseIssueDraft } from "@shared/github-issue";
 import { readJsonBody, turnstilePassed } from "./chat/guard.ts";
 import { toModelMessages } from "./chat/history.ts";
 import { parseRouterAnswer, routerInput } from "./chat/router.ts";
@@ -13,8 +12,6 @@ import { parseShowCardInput, runShowCard, SHOW_CARD_TOOL } from "./chat/show-car
 import { newLedger, type ToolIO } from "./tools/registry.ts";
 import { claimViews, isStatusViewKey, parseSiteStatusInput } from "./tools/site-status.ts";
 import { webSearchTool } from "./chat/web-search.ts";
-import { handleGithubIssue } from "./github-issue.ts";
-import type { Env } from "./runtime.ts";
 
 const user = (content: string) => ({ role: "user" as const, content });
 const assistant = (content: string) => ({ role: "assistant" as const, content });
@@ -286,68 +283,6 @@ test("回复读过的项目文档随 trace 带回，只认白名单键", () => {
   assert.doesNotMatch(note, /Ignore/);
 });
 
-test("issue 草稿：标题必填并去空白，超长的标题或正文整条拒绝；提交请求还要带合法的 code 与 PKCE verifier", () => {
-  assert.deepEqual(parseIssueDraft({ title: "  Card overflows  ", body: " steps " }), { title: "Card overflows", body: "steps" });
-  assert.equal(parseIssueDraft({ title: " ", body: "x" }), null);
-  assert.equal(parseIssueDraft({ title: "x".repeat(GITHUB_ISSUE_LIMITS.titleChars + 1), body: "" }), null);
-  assert.equal(parseIssueDraft({ title: "t", body: "x".repeat(GITHUB_ISSUE_LIMITS.bodyChars + 1) }), null);
-  const codeVerifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
-  assert.deepEqual(parseGithubIssueRequest({ title: "t", body: "b", code: "abc123", codeVerifier }), { title: "t", body: "b", code: "abc123", codeVerifier });
-  assert.equal(parseGithubIssueRequest({ title: "t", body: "b", code: "a b", codeVerifier }), null);
-  assert.equal(parseGithubIssueRequest({ title: "t", body: "b", code: "abc123" }), null);
-  assert.equal(parseGithubIssueRequest({ title: "t", body: "b", code: "abc123", codeVerifier: codeVerifier.slice(1) }), null);
-  assert.equal(parseGithubIssueRequest({ title: "t", body: "b", code: "abc123", codeVerifier: "x".repeat(129) }), null);
-  assert.equal(parseGithubIssueRequest({ title: "t", body: "b", code: "abc123", codeVerifier: `${codeVerifier.slice(1)}+` }), null);
-  assert.ok(parseGithubIssueRequest({ title: "t", body: "b", code: "abc123", codeVerifier: "a.~_-".repeat(25).slice(0, 128) }));
-});
-
-test("起草过 issue 的回复随 trace 带回，下一轮模型知道是自己起草的", () => {
-  const parsed = parseGodChatRequest({
-    turnstileToken: "t",
-    messages: [user("bug"), { role: "assistant", content: "drafted", trace: { tier: "haiku", issue: true } }, user("thanks")],
-  });
-  assert.ok(parsed);
-  assert.deepEqual(parsed.messages[1].trace, { tier: "haiku", issue: true });
-  const note = (toModelMessages(parsed.messages, "medium")[0].content as { text: string }[])[1].text;
-  assert.match(note, /drafted a GitHub issue for the visitor to review and submit/);
-});
-
-test("提 issue：输入或 PKCE verifier 不合法不去换 token；verifier 原样转给 GitHub；换到 token 后建失败也照样撤销", async () => {
-  const calls: string[] = [];
-  const exchanges: unknown[] = [];
-  const original = globalThis.fetch;
-  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = String(input);
-    calls.push(`${init?.method ?? "GET"} ${url}`);
-    if (url.includes("/login/oauth/access_token")) {
-      exchanges.push(JSON.parse(String(init?.body)));
-      return Response.json({ access_token: "ghu_test" });
-    }
-    if (url.endsWith("/issues")) return Response.json({ message: "Issues are disabled" }, { status: 410 });
-    return new Response(null, { status: 204 });
-  }) as typeof fetch;
-  try {
-    const env = { GITHUB_APP_CLIENT_SECRET: "s" } as Env;
-    const codeVerifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
-    const post = (body: unknown) => new Request("https://api.test/api/github/issue", { method: "POST", body: JSON.stringify(body) });
-    assert.equal((await handleGithubIssue(post({ title: "", body: "", code: "c", codeVerifier }), env, "1.1.1.1")).status, 400);
-    assert.equal((await handleGithubIssue(post({ title: "Bug", body: "b", code: "c" }), env, "1.1.1.1")).status, 400);
-    assert.equal((await handleGithubIssue(post({ title: "Bug", body: "b", code: "c", codeVerifier: "short" }), env, "1.1.1.1")).status, 400);
-    assert.equal(calls.length, 0);
-    const res = await handleGithubIssue(post({ title: "Bug", body: "b", code: "c", codeVerifier }), env, "1.1.1.1");
-    assert.equal(res.status, 502);
-    assert.match(((await res.json()) as { error: string }).error, /Issues are disabled/);
-    assert.deepEqual(calls.map((c) => c.split(" ")[0] + " " + new URL(c.split(" ")[1]).pathname), [
-      "POST /login/oauth/access_token",
-      "POST /repos/LYJW131/lyjwpage/issues",
-      "DELETE /applications/Iv23liSmKTDKh0bxIfzB/token",
-    ]);
-    assert.deepEqual(exchanges, [{ client_id: "Iv23liSmKTDKh0bxIfzB", client_secret: "s", code: "c", code_verifier: codeVerifier }]);
-  } finally {
-    globalThis.fetch = original;
-  }
-});
-
 test("历史验章：只留盖过章且内容、trace、所答问题都没动过的一问一答，最后一条新消息照留", async () => {
   const secret = "test-secret";
   const trace = { tier: "haiku" as const, views: ["nowListening"] };
@@ -476,4 +411,21 @@ test("画过卡片的回复随 trace 带回，只认登记过的卡片名；卡�
   const note = (toModelMessages(parsed.messages, "medium")[0].content as { text: string }[])[1].text;
   assert.match(note, /called get_site_status for coding and showed the visitor live music card with show_card\.\]$/);
   assert.doesNotMatch(note, /ignore/i);
+});
+
+test("设计状态只接受签名令牌形态，历史计划独立封顶并保留最近完整问答", () => {
+  const token = `${"a".repeat(35_000)}.signature`;
+  const messages: GodChatMessage[] = [
+    user("old"), { ...assistant("old plan"), planToken: token },
+    user("new"), { ...assistant("new plan"), planToken: token },
+    user("revise"),
+  ];
+  const parsed = parseGodChatRequest({ turnstileToken: "t", designToken: "payload.signature", messages });
+  assert.ok(parsed);
+  assert.equal(parsed.designToken, "payload.signature");
+  assert.deepEqual(parsed.messages, messages.slice(2));
+  for (const designToken of ["", "unsigned", 123, "p.s.s", `${"p".repeat(2048)}.s`]) {
+    assert.equal(parseGodChatRequest({ turnstileToken: "t", designToken, messages: [user("q")] }), null);
+  }
+  assert.equal(parseRouterAnswer({ answers: { route: { choice: "design" } } }), "design");
 });

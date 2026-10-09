@@ -123,6 +123,10 @@ class_name = "ChatQuota"
 name = "ANTHROPIC_EGRESS"
 class_name = "AnthropicEgress"
 
+[[previews.durable_objects.bindings]]
+name = "BUILD_COORDINATOR"
+class_name = "BuildCoordinator"
+
 [previews.ai]
 binding = "AI"
 
@@ -140,3 +144,8 @@ simple = { limit = 5, period = 60 }
 name = "MCP_LIMIT"
 namespace_id = "13103"
 simple = { limit = 60, period = 60 }
+
+[[previews.ratelimits]]
+name = "BUILD_REQUEST_LIMIT"
+namespace_id = "13104"
+simple = { limit = 30, period = 60 }
