@@ -1,7 +1,7 @@
 "use client";
 
 import Script from "next/script";
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState, type CSSProperties } from "react";
 import { ArrowUp, Square } from "lucide-react";
 
 import { ChatMarkdown } from "@/components/chat-markdown";
@@ -41,11 +41,13 @@ declare global {
   }
 }
 
+type DocRead = { doc: string; path: string; url: string; section?: string };
 type Reply = {
   tier?: GodChatTier | null;
   downgradedFrom?: GodChatTier;
   servedBy?: string;
   lookups?: string[];
+  docs?: DocRead[];
   searches?: string[];
   sources?: GodChatSource[];
 };
@@ -67,7 +69,14 @@ type Command = (typeof COMMANDS)[number];
 const commandNames = (c: Command): readonly string[] => [c.name, ...c.aliases];
 const USAGE_URL = workerUrl(process.env.NEXT_PUBLIC_BACKEND_URL, GOD_CHAT_USAGE_PATH);
 const USAGE_RETRY_MS = 5_000;
-const SUGGESTIONS = ["What is LYJW listening to?", "What has LYJW been coding lately?", "Is the site healthy?"];
+const EDGE_GAP_PX = 12;
+// 每个示例各演示一种本事：读实时数据、读项目文档、联网搜索、深问题（Clef 可能请神，神每分钟额度有限，满了会降级）。
+const SUGGESTIONS = [
+  "What's LYJW listening to?",
+  "How does this site get its live data?",
+  "What's new in AI this week?",
+  "Is free will an illusion?",
+];
 
 export function GodChat({ className }: { className?: string }) {
   const [messages, setMessages] = useState<Bubble[]>([]);
@@ -79,6 +88,7 @@ export function GodChat({ className }: { className?: string }) {
   const [token, setToken] = useState<string | null>(null);
   const [armed, setArmed] = useState(false);
   const [descent, setDescent] = useState<Descent | null>(null);
+  const [headerHeight, setHeaderHeight] = useState(0);
   const anchorRef = useRef<HTMLDivElement>(null);
   const [scriptReady, setScriptReady] = useState(false);
   const widgetRef = useRef<HTMLDivElement>(null);
@@ -146,17 +156,26 @@ export function GodChat({ className }: { className?: string }) {
     if (el && stickRef.current) el.scrollTop = el.scrollHeight;
   }, [messages]);
 
+  useEffect(() => {
+    const header = document.querySelector<HTMLElement>("header.sticky");
+    if (!header) return;
+    const observer = new ResizeObserver(() => setHeaderHeight(header.offsetHeight));
+    observer.observe(header);
+    return () => observer.disconnect();
+  }, []);
+
   async function send(text: string, usedToken: string) {
     const content = text.trim();
     if (!content) return;
     // 界面上的气泡保留档位与查询记录；发给 Worker 的历史另行裁剪、改写成 trace，不能回写界面。
     const shown: Bubble[] = [...messages, { role: "user", content }];
     const history: GodChatMessage[] = fitHistory(
-      shown.map(({ role, content, tier, servedBy, lookups, searches }): GodChatMessage => {
+      shown.map(({ role, content, tier, servedBy, lookups, docs, searches }): GodChatMessage => {
         if (role !== "assistant") return { role, content };
         const trace = {
           ...(tier && { tier }),
           ...(lookups?.length && { views: lookups }),
+          ...(docs?.length && { docs: [...new Set(docs.map((read) => read.doc))] }),
           ...(searches?.length && { searches: searches.length }),
           ...(servedBy && { fallback: true as const }),
         };
@@ -171,6 +190,7 @@ export function GodChat({ className }: { className?: string }) {
       if (sessionRef.current === session) setMessages([...shown, bubble()]);
     };
     stickRef.current = true;
+    if (!messages.length) reveal();
     show();
     setDraft("");
     setError(null);
@@ -211,8 +231,11 @@ export function GodChat({ className }: { className?: string }) {
           else if (event.type === "tool") {
             const seen = meta.lookups ?? [];
             meta = { ...meta, lookups: [...seen, ...event.views.filter((view) => !seen.includes(view))] };
+          } else if (event.type === "doc") {
+            const { doc, path, url, section } = event;
+            meta = { ...meta, docs: [...(meta.docs ?? []), { doc, path, url, section }] };
           } else if (event.type === "search") meta = { ...meta, searches: [...(meta.searches ?? []), event.query] };
-          else meta = { ...meta, sources: event.sources };
+          else if (event.type === "sources") meta = { ...meta, sources: event.sources };
         }
         show();
       }
@@ -313,6 +336,15 @@ export function GodChat({ className }: { className?: string }) {
     }, VERIFY_LOAD_TIMEOUT_MS);
   }
 
+  // 卡片从紧凑高度长到视口高度时顶边不动、往下长；把顶边滚到吸顶页头下面，长完正好占满可见区域，上下各留 EDGE_GAP_PX。
+  function reveal() {
+    const anchor = anchorRef.current;
+    if (!anchor) return;
+    const top = anchor.getBoundingClientRect().top + window.scrollY - headerHeight - EDGE_GAP_PX;
+    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    window.scrollTo({ top, behavior: still ? "auto" : "smooth" });
+  }
+
   function summon() {
     const rect = anchorRef.current?.getBoundingClientRect();
     if (!rect) return;
@@ -323,17 +355,19 @@ export function GodChat({ className }: { className?: string }) {
 
   const waiting = armed && !token && !streaming && !error;
   const godSpeaking = streaming && messages[messages.length - 1]?.tier === "fable";
+  const expanded = messages.length > 0;
 
   return (
     <Card
       label="Talk to God"
-      tone={streaming ? "live" : "idle"}
       action={<RouteStatus last={messages[messages.length - 1]} streaming={streaming} />}
       className={cn(
-        "h-[30rem] transition-shadow duration-700",
+        "transition-[height,box-shadow] duration-700 ease-out motion-reduce:transition-none",
+        expanded ? "h-[calc(100dvh-var(--chat-inset))]" : "h-[25rem] sm:h-[22rem]",
         godSpeaking && "god-halo",
         className,
       )}
+      style={{ "--chat-inset": `${headerHeight + 2 * EDGE_GAP_PX}px` } as CSSProperties}
     >
       <div ref={anchorRef} className="pointer-events-none absolute inset-0" aria-hidden />
       <FableDescent descent={descent} />
@@ -354,9 +388,9 @@ export function GodChat({ className }: { className?: string }) {
         className="scrollbar-none flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 [&::-webkit-scrollbar]:hidden"
       >
         {messages.length === 0 ? (
-          <div className="m-auto flex max-w-md flex-col items-center gap-4 py-6 text-center">
+          <div className="m-auto flex max-w-md flex-col items-center gap-3 py-2 text-center">
             <p className="text-sm leading-relaxed text-muted-foreground">
-              Ask anything. The oracle can see what LYJW is up to.
+              Ask anything. The oracle sees what LYJW is up to, knows how this site is built, and can search the web.
             </p>
             <div className="flex flex-wrap justify-center gap-2">
               {SUGGESTIONS.map((suggestion) => (
@@ -393,6 +427,20 @@ export function GodChat({ className }: { className?: string }) {
                       Looked at {message.lookups.join(", ")}
                     </div>
                   ) : null}
+                  {message.docs?.map((read, i) => (
+                    <div key={i} className="label-mono mb-1.5 text-[10px] text-muted-foreground">
+                      Read{" "}
+                      <a
+                        href={read.url}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        className="underline underline-offset-2 hover:text-foreground"
+                      >
+                        {read.path}
+                      </a>
+                      {read.section && <> › {read.section}</>}
+                    </div>
+                  ))}
                   {message.searches?.map((query, i) => (
                     <div key={i} className="label-mono mb-1.5 text-[10px] text-muted-foreground">
                       Searched “{query}”

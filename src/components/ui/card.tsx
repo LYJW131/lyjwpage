@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 import { StatusDot, type DotTone } from "@/components/ui/status-dot";
 import { cn } from "@/lib/utils";
@@ -10,6 +10,7 @@ export function Card({
   action,
   children,
   className,
+  style,
 }: {
   id?: string;
   label?: string;
@@ -17,10 +18,12 @@ export function Card({
   action?: ReactNode;
   children: ReactNode;
   className?: string;
+  style?: CSSProperties;
 }) {
   return (
     <div
       id={id}
+      style={style}
       className={cn(
         "paper-card relative flex flex-col overflow-hidden rounded-lg border border-line-strong bg-surface",
         className,

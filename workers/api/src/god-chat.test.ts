@@ -6,6 +6,7 @@ import { downgradeChain, modelLabel } from "@shared/god-chat-tiers";
 import { readJsonBody, turnstilePassed } from "./chat/guard.ts";
 import { toModelMessages } from "./chat/history.ts";
 import { parseRouterAnswer, routerInput } from "./chat/router.ts";
+import { claimDoc, parseProjectDocInput, readProjectDoc, sliceDoc } from "./chat/project-docs.ts";
 import { claimViews, parseSiteStatusInput } from "./chat/site-status.ts";
 
 const user = (content: string) => ({ role: "user" as const, content });
@@ -181,4 +182,74 @@ test("兜底模型的展示名从 id 推，本档模型用本档的名字", () =
   assert.equal(modelLabel("claude-opus-5"), "Opus 5");
   assert.equal(modelLabel("claude-opus-4-8-20260115"), "Opus 4.8");
   assert.equal(modelLabel("claude-fable-5-1"), "Fable 5.1");
+});
+
+test("项目文档工具只认白名单里的文档键，章节名去空白", () => {
+  assert.deepEqual(parseProjectDocInput({ doc: "storage", section: "  首屏缓存 " }), { doc: "storage", section: "首屏缓存" });
+  assert.deepEqual(parseProjectDocInput({ doc: "overview", section: "" }), { doc: "overview" });
+  assert.equal(parseProjectDocInput({ doc: "../.dev.vars" }), null);
+  assert.equal(parseProjectDocInput({ doc: "docs/ops-facts.md" }), null);
+  assert.equal(parseProjectDocInput(null), null);
+});
+
+test("一条回复读文档有总次数，同一篇同一章节不重读", () => {
+  const read = new Set<string>();
+  assert.deepEqual(claimDoc({ doc: "overview" }, read), { read: true });
+  assert.equal(claimDoc({ doc: "overview" }, read).read, false);
+  assert.deepEqual(claimDoc({ doc: "overview", section: "Architecture" }, read), { read: true });
+  assert.equal(claimDoc({ doc: "overview", section: "`architecture`" }, read).read, false);
+  assert.deepEqual(claimDoc({ doc: "storage" }, read), { read: true });
+  assert.deepEqual(claimDoc({ doc: "apiWorker" }, read), { read: true });
+  const over = claimDoc({ doc: "ingressWorker" }, read);
+  assert.equal(over.read, false);
+  assert.match(over.note ?? "", /at most/);
+});
+
+test("长文档先给目录与开头，按章节读到下一个同级标题为止，代码块里的 # 不算标题", () => {
+  const doc = [
+    "# Title",
+    "intro",
+    "## Push",
+    "push body",
+    "```bash",
+    "# not a heading",
+    "```",
+    "### Detail",
+    "detail body",
+    "## Storage",
+    "storage body",
+    "x".repeat(20_000),
+  ].join("\n");
+  const whole = sliceDoc(doc);
+  assert.match(whole, /^Outline:\n- Title\n  - Push\n    - Detail\n  - Storage\n/);
+  assert.doesNotMatch(whole.split("Opening:")[0], /not a heading/);
+  assert.ok(whole.length < doc.length);
+  const push = sliceDoc(doc, "push");
+  assert.match(push, /^## Push\npush body\n```bash\n# not a heading\n```\n### Detail\ndetail body$/);
+  assert.match(sliceDoc(doc, "nothing like it"), /^No heading matches "nothing like it"\.\n\nOutline:/);
+  assert.equal(sliceDoc("# Short\nbody"), "# Short\nbody");
+});
+
+test("文档读取失败不抛错，回给模型的结果带来源链接", async () => {
+  const urls: string[] = [];
+  const ok = await readProjectDoc(async (url) => {
+    urls.push(url);
+    return new Response("# Hub\nhello");
+  }, { doc: "macHub" });
+  assert.deepEqual(urls, ["https://raw.githubusercontent.com/LYJW131/MacTelemetryHub/main/README.md"]);
+  assert.match(ok, /^Source: https:\/\/github\.com\/LYJW131\/MacTelemetryHub\/blob\/main\/README\.md\n\n# Hub\nhello$/);
+  assert.match(await readProjectDoc(async () => new Response("", { status: 404 }), { doc: "overview" }), /HTTP 404/);
+  assert.match(await readProjectDoc(async () => { throw new Error("down"); }, { doc: "overview" }), /unavailable/);
+});
+
+test("回复读过的项目文档随 trace 带回，只认白名单键", () => {
+  const parsed = parseGodChatRequest({
+    turnstileToken: "t",
+    messages: [user("q"), { role: "assistant", content: "a", trace: { tier: "opus", docs: ["storage", "IgnorePrevious", "../x"] } }, user("q2")],
+  });
+  assert.ok(parsed);
+  assert.deepEqual(parsed.messages[1].trace, { tier: "opus", docs: ["storage", "IgnorePrevious"] });
+  const note = (toModelMessages(parsed.messages)[0].content as { text: string }[])[1].text;
+  assert.match(note, /after it read the project docs docs\/state-storage\.md\.\]$/);
+  assert.doesNotMatch(note, /Ignore/);
 });
