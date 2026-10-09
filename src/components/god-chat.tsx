@@ -55,6 +55,9 @@ const CHAT_URL = workerUrl(process.env.NEXT_PUBLIC_BACKEND_URL, GOD_CHAT_PATH);
 const OFFLINE = "The oracle is offline.";
 
 const SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? "";
+// 排着队的消息等组件渲染出来的最长时间；组件出来之后（可能在等访客点验证）交给 Turnstile 自己的超时回调。
+const VERIFY_LOAD_TIMEOUT_MS = 15_000;
+const VERIFY_UNAVAILABLE = "Human verification couldn't load. Check your connection or ad blocker, then reload the page.";
 const COMMANDS = [
   { name: "/clear", aliases: ["/new"], description: "Start a new conversation with empty context" },
   { name: "/usage", aliases: [], description: "Show your quota in the current window" },
@@ -84,6 +87,8 @@ export function GodChat({ className }: { className?: string }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickRef = useRef(true);
   const pendingRef = useRef<string | null>(null);
+  const verifyStateRef = useRef<"ok" | "failed" | "unavailable">("ok");
+  const loadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sessionRef = useRef(0);
   const sendRef = useRef<(text: string, token: string) => void>(() => {});
 
@@ -106,13 +111,35 @@ export function GodChat({ className }: { className?: string }) {
         }
       },
       "expired-callback": () => setToken(null),
-      "error-callback": () => setToken(null),
+      "error-callback": () => {
+        setToken(null);
+        verificationFailed("Human verification failed. Send again to retry.", "failed");
+      },
+      "timeout-callback": () => verificationFailed("Human verification timed out. Send again to retry.", "failed"),
     });
     return () => {
       if (widgetId.current) window.turnstile?.remove(widgetId.current);
       widgetId.current = null;
     };
   }, [scriptReady]);
+
+  useEffect(
+    () => () => {
+      if (loadTimerRef.current) clearTimeout(loadTimerRef.current);
+    },
+    [],
+  );
+
+  // 验人起不来（脚本被拦或加载失败、组件出错、超时）时，排队的消息退回输入框并报错，不能一直卡在「验证中」。
+  function verificationFailed(message: string, state: "failed" | "unavailable") {
+    verifyStateRef.current = state;
+    if (loadTimerRef.current) clearTimeout(loadTimerRef.current);
+    loadTimerRef.current = null;
+    const pending = pendingRef.current;
+    pendingRef.current = null;
+    if (pending) setDraft((current) => current || pending);
+    setError(message);
+  }
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -266,13 +293,24 @@ export function GodChat({ className }: { className?: string }) {
   function ask(text: string) {
     if (!text.trim() || streaming) return;
     setUsage(null);
+    if (!SITE_KEY || verifyStateRef.current === "unavailable") {
+      setError(SITE_KEY ? VERIFY_UNAVAILABLE : OFFLINE);
+      return;
+    }
     if (token) {
       void send(text, token);
       return;
     }
+    if (verifyStateRef.current === "failed" && widgetId.current) window.turnstile?.reset(widgetId.current);
+    verifyStateRef.current = "ok";
+    setError(null);
     pendingRef.current = text;
     setDraft(text);
     setArmed(true);
+    if (loadTimerRef.current) clearTimeout(loadTimerRef.current);
+    loadTimerRef.current = setTimeout(() => {
+      if (pendingRef.current && !widgetId.current) verificationFailed(VERIFY_UNAVAILABLE, "unavailable");
+    }, VERIFY_LOAD_TIMEOUT_MS);
   }
 
   function summon() {
@@ -283,7 +321,7 @@ export function GodChat({ className }: { className?: string }) {
     setTimeout(() => setDescent((current) => (current?.key === key ? null : current)), 4_800);
   }
 
-  const waiting = armed && !token && !streaming;
+  const waiting = armed && !token && !streaming && !error;
   const godSpeaking = streaming && messages[messages.length - 1]?.tier === "fable";
 
   return (
@@ -304,6 +342,7 @@ export function GodChat({ className }: { className?: string }) {
           src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"
           strategy="afterInteractive"
           onReady={() => setScriptReady(true)}
+          onError={() => verificationFailed(VERIFY_UNAVAILABLE, "unavailable")}
         />
       )}
       <div
