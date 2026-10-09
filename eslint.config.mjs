@@ -36,7 +36,7 @@ const eslintConfig = defineConfig([
           allowTypeImports: true,
           message: "状态核心只收 prepare 好的命令：从 shared/ingest 只能 import type，校验放在上报入口。",
         }, {
-          group: ["**/ai/src/**", "@shared/god-chat", "@shared/god-chat-tiers", "@shared/github-issue", "@shared/mcp"],
+          group: ["**/ai/src/**", "@shared/god-chat", "@shared/god-chat-tiers", "@shared/github-issue", "@shared/build-routine", "@shared/mcp"],
           message: "状态核心不打包 AI 实现或对话契约；HTTP 转发只依赖 shared/ai-paths，预览组合入口除外。",
         }],
       }],
@@ -56,6 +56,7 @@ const eslintConfig = defineConfig([
   },
   globalIgnores([
     ".next/**",
+    "**/.wrangler/**",
     "out/**",
     "build/**",
     "next-env.d.ts",

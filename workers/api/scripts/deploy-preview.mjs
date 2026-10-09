@@ -15,7 +15,7 @@ const PREVIEW_BASELINE = { tag: "v2-split-online-counter", new_sqlite_classes: [
 function previewMigrations(migrations) {
   const cut = migrations.findIndex((migration) => migration.tag === PREVIEW_BASELINE.tag);
   if (cut === -1) throw new Error(`wrangler.toml 里找不到迁移 ${PREVIEW_BASELINE.tag}`);
-  return [PREVIEW_BASELINE, ...migrations.slice(cut + 1)];
+  return [PREVIEW_BASELINE, ...migrations.slice(cut + 1), { tag: "v5-build-coordinator", new_sqlite_classes: ["BuildCoordinator"] }];
 }
 
 const apiDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");

@@ -33,7 +33,7 @@ export function downgradeChain(tier: GodChatTier): GodChatTier[] {
 }
 
 // 额度是公开端点花钱的闸：调 Clef 之前先过访客总量、全站路由次数与「至少一档还有空位」三道，管路由被刷；
-// 每档再分访客与全站两道，在 Clef 选完档之后扣。计数在 api Worker 的 ChatQuota Durable Object 里，/usage 读的是同一份（路由次数不单列）。
+// 每档再分访客与全站两道，在 Clef 选完档之后扣。计数在 ai Worker 的 ChatQuota Durable Object 里，/usage 读的是同一份（路由次数不单列）。
 export const GOD_CHAT_QUOTA = {
   windowMs: 60_000,
   visitor: 10,

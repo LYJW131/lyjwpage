@@ -1,0 +1,178 @@
+import { BUILD_PROGRESS_PATH, BUILD_RECONCILE_MS, BUILD_SESSION_TTL_MS, BUILD_STATUS_TTL_MS, BUILD_TIMEOUT_MS, BUILD_TOKEN_MAX_CHARS, BUILD_UPLOAD_LIMITS, BUILD_UPLOAD_PATH, branchForRun, newRunId, type BuildFireResult, type BuildSession } from "@shared/build-routine";
+import { readJsonBody } from "../chat/guard";
+import type { Env } from "../runtime";
+import type { StoredRun } from "./coordinator";
+import { BuildBlockedError, validateBuildBase, createBuildPullRequest, currentMain, GithubBuildApi, installationApi, reconcileBuild } from "./github";
+import { exchangeCode, revoke } from "./github-oauth";
+import { readPlan } from "./plan";
+import { readBoundedJson } from "./http";
+import { hashToken, signBuildToken, verifyBuildToken } from "./token";
+import { parseBuildUpload } from "./validation";
+import { applyGithubWebhook, verifyGithubWebhook } from "./webhook";
+
+type SessionPayload = { kind: "session"; account: string; userId: number; name: string | null; expiresAt: number };
+type StatusPayload = { kind: "status"; runId: string; expiresAt: number };
+const noStore = { "Cache-Control": "no-store" };
+const fail = (status: number, error: string) => Response.json({ error }, { status, headers: noStore });
+const object = (value: unknown): Record<string, unknown> | null => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+const bearer = (request: Request) => /^Bearer ([A-Za-z0-9_-]{32,128})$/.exec(request.headers.get("Authorization") ?? "")?.[1] ?? null;
+const validRunId = (id: string | null): id is string => !!id && /^[a-f0-9]{32}$/.test(id);
+
+export async function handleBuildSession(request: Request, env: Env, fetcher: typeof fetch = fetch): Promise<Response> {
+  if (request.method !== "POST") return fail(405, "Method not allowed.");
+  if (!env.GITHUB_APP_CLIENT_SECRET || !env.BUILD_SESSION_SECRET || !env.BUILD_COORDINATOR) return fail(503, "GitHub build sign-in is unavailable.");
+  const data = object(await readJsonBody(request, 4096));
+  if (!data || typeof data.code !== "string" || !/^[\w.-]{1,512}$/.test(data.code) || typeof data.codeVerifier !== "string" || !/^[A-Za-z0-9._~-]{43,128}$/.test(data.codeVerifier)) return fail(400, "Invalid GitHub sign-in request.");
+  let token: string | null = null;
+  try {
+    token = await exchangeCode(data.code, data.codeVerifier, env.GITHUB_APP_CLIENT_SECRET, fetcher);
+    if (!token) return fail(401, "GitHub sign-in did not complete.");
+    const user = await new GithubBuildApi(token, fetcher).request<{ id: number; login: string; name: string | null }>("/user");
+    if (!Number.isSafeInteger(user.id) || !/^[A-Za-z0-9-]{1,39}$/.test(user.login)) return fail(502, "GitHub identity could not be verified.");
+    const expiresAt = Date.now() + BUILD_SESSION_TTL_MS;
+    const name = typeof user.name === "string" ? user.name.replace(/[\r\n<>]/g, " ").trim().slice(0, 100) : null;
+    const session = await signBuildToken<SessionPayload>({ kind: "session", account: user.login, userId: user.id, name, expiresAt }, env.BUILD_SESSION_SECRET);
+    return Response.json({ session, login: user.login, name, expiresAt } satisfies BuildSession, { headers: noStore });
+  } catch { return fail(502, "GitHub sign-in is temporarily unavailable."); }
+  finally { if (token) await revoke(token, env.GITHUB_APP_CLIENT_SECRET, fetcher); }
+}
+
+export async function handleBuild(request: Request, env: Env, fetcher: typeof fetch = fetch): Promise<Response> {
+  if (request.method !== "POST") return fail(405, "Method not allowed.");
+  if (!env.BUILD_SESSION_SECRET || !env.BUILD_COORDINATOR || !env.ROUTINE_FIRE_URL || !env.ROUTINE_FIRE_TOKEN || !env.GITHUB_APP_PRIVATE_KEY) return fail(503, "Builds are unavailable right now.");
+  const data = object(await readJsonBody(request, BUILD_TOKEN_MAX_CHARS + 5000));
+  if (!data || typeof data.session !== "string" || typeof data.planToken !== "string") return fail(400, "A signed plan and GitHub sign-in are required.");
+  const session = await verifyBuildToken<SessionPayload>(data.session, env.BUILD_SESSION_SECRET, "session");
+  const plan = await readPlan(env, data.planToken);
+  if (!session || !plan) return fail(401, "The plan or GitHub sign-in has expired.");
+  const coordinator = env.BUILD_COORDINATOR.getByName("global");
+  const runId = newRunId();
+  const createdAt = Date.now();
+  const uploadToken = newRunId() + newRunId();
+  const branch = branchForRun(runId);
+  let reserved = false;
+  let dispatched = false;
+  try {
+    const coauthor = `${session.name || session.account} <${session.userId}+${session.account}@users.noreply.github.com>`;
+    const run: StoredRun = { state: { runId, branch, phase: "triggered", createdAt, updatedAt: createdAt }, plan: plan.plan, account: session.account, accountId: session.userId, coauthor, baseSha: "", uploadHash: await hashToken(uploadToken), uploadUsed: false, uploadExpiresAt: createdAt + BUILD_TIMEOUT_MS };
+    const admission = await coordinator.reserveRun(run, plan.id, plan.expiresAt);
+    if (admission === "used") return fail(409, "This plan has already been used.");
+    if (admission !== "ok") return fail(429, admission === "account" ? "This GitHub account has reached its hourly build limit." : "The site's hourly build limit has been reached.");
+    reserved = true;
+    const baseSha = await currentMain(new GithubBuildApi(undefined, fetcher));
+    if (!await coordinator.assignBase(runId, baseSha)) throw new Error("Build base assignment failed.");
+    const statusToken = await signBuildToken<StatusPayload>({ kind: "status", runId, expiresAt: createdAt + BUILD_STATUS_TTL_MS }, env.BUILD_SESSION_SECRET);
+    const origin = new URL(request.url).origin;
+    dispatched = true;
+    const response = await fetcher(env.ROUTINE_FIRE_URL, {
+      method: "POST", headers: { Authorization: `Bearer ${env.ROUTINE_FIRE_TOKEN}`, "anthropic-version": "2023-06-01", "Content-Type": "application/json" },
+      body: JSON.stringify({ text: JSON.stringify({ runId, plan: plan.plan, coauthor, baseSha, uploadToken, uploadUrl: `${origin}${BUILD_UPLOAD_PATH}?runId=${runId}`, progressUrl: `${origin}${BUILD_PROGRESS_PATH}?runId=${runId}` }) }),
+      signal: AbortSignal.timeout(20_000),
+    });
+    const confirmation = await readBoundedJson(response, 16_384);
+    if (!response.ok) await coordinator.updateRun(runId, { phase: "failed", reason: "The routine rejected the build request." });
+    else if (typeof object(confirmation)?.claude_code_session_url !== "string") await coordinator.updateRun(runId, { reason: "The routine did not confirm the build request; its result is unknown." });
+    return Response.json({ runId, branch, statusToken } satisfies BuildFireResult, { status: 202, headers: noStore });
+  } catch {
+    if (reserved) {
+      await coordinator.updateRun(runId, dispatched ? { reason: "Build dispatch was not confirmed; the routine result is unknown." } : { phase: "failed", reason: "The base commit could not be read; the routine was not started." });
+      const statusToken = await signBuildToken<StatusPayload>({ kind: "status", runId, expiresAt: createdAt + BUILD_STATUS_TTL_MS }, env.BUILD_SESSION_SECRET);
+      return Response.json({ runId, branch, statusToken } satisfies BuildFireResult, { status: 202, headers: noStore });
+    }
+    return fail(502, "The build could not be started.");
+  }
+}
+
+export async function handleBuildStatus(request: Request, env: Env, fetcher: typeof fetch = fetch): Promise<Response> {
+  if (request.method !== "GET") return fail(405, "Method not allowed.");
+  if (!env.BUILD_SESSION_SECRET || !env.BUILD_COORDINATOR) return fail(503, "Build status is unavailable.");
+  const url = new URL(request.url);
+  const runId = url.searchParams.get("runId");
+  const token = /^Bearer ([A-Za-z0-9_.-]+)$/.exec(request.headers.get("Authorization") ?? "")?.[1];
+  const signature = token ? await verifyBuildToken<StatusPayload>(token, env.BUILD_SESSION_SECRET, "status") : null;
+  if (!validRunId(runId) || signature?.runId !== runId) return fail(401, "The build status link is invalid or expired.");
+  const coordinator = env.BUILD_COORDINATOR.getByName("global");
+  const run = await coordinator.readRun(runId);
+  if (!run) return fail(404, "Build not found.");
+  if (run.state.pr && (!run.state.reconciledAt || Date.now() - run.state.reconciledAt >= BUILD_RECONCILE_MS) && await coordinator.claimReconcile(runId)) {
+    try {
+      const patch = await reconcileBuild(await installationApi(env, fetcher, true), run.state);
+      const state = await coordinator.updateRun(runId, patch, run.state.pr.headSha);
+      return Response.json(state, { headers: noStore });
+    } catch { /* Preserve the last observed facts when GitHub is unreachable. */ }
+  }
+  return Response.json(run.state, { headers: noStore });
+}
+
+export async function handleBuildUpload(request: Request, env: Env, fetcher: typeof fetch = fetch): Promise<Response> {
+  if (request.method !== "POST") return fail(405, "Method not allowed.");
+  if (!env.BUILD_COORDINATOR || !env.GITHUB_APP_PRIVATE_KEY) return fail(503, "Build uploads are unavailable.");
+  const runId = new URL(request.url).searchParams.get("runId");
+  const token = bearer(request);
+  if (!validRunId(runId) || !token) return fail(401, "Invalid upload authorization.");
+  const coordinator = env.BUILD_COORDINATOR.getByName("global");
+  const run = await coordinator.claimUpload(runId, await hashToken(token));
+  if (!run) return fail(401, "Upload authorization was used or expired.");
+  let upload;
+  try {
+    upload = parseBuildUpload(await readJsonBody(request, BUILD_UPLOAD_LIMITS.requestBytes));
+    if (upload.baseSha !== run.baseSha) throw new Error("The upload does not match the assigned base commit.");
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : "Invalid upload.";
+    await coordinator.updateRun(runId, { phase: "blocked", reason });
+    return fail(400, reason);
+  }
+  try {
+    const api = await installationApi(env, fetcher);
+    const baseTree = await validateBuildBase(api, run, upload);
+    await coordinator.updateRun(runId, { phase: "validated" });
+    const pr = await createBuildPullRequest(api, run, upload, baseTree);
+    const state = await coordinator.updateRun(runId, { phase: "pr_open", pr });
+    return Response.json(state, { status: 201, headers: noStore });
+  } catch (error) {
+    const blocked = error instanceof BuildBlockedError;
+    const reason = blocked ? (error as Error).message : "GitHub did not confirm pull request creation; the result is unknown.";
+    await coordinator.updateRun(runId, { phase: blocked ? "blocked" : "failed", reason });
+    return fail(blocked ? 400 : 502, reason);
+  }
+}
+
+export async function handleBuildProgress(request: Request, env: Env): Promise<Response> {
+  if (request.method !== "POST") return fail(405, "Method not allowed.");
+  if (!env.BUILD_COORDINATOR) return fail(503, "Build progress is unavailable.");
+  const runId = new URL(request.url).searchParams.get("runId");
+  const token = bearer(request);
+  if (!validRunId(runId) || !token) return fail(401, "Invalid progress authorization.");
+  const data = object(await readJsonBody(request, 1024));
+  if (!data || typeof data.message !== "string" || !data.message.trim() || data.message.length > 200) return fail(400, "Invalid progress message.");
+  const accepted = await env.BUILD_COORDINATOR.getByName("global").progress(runId, await hashToken(token), data.message.trim());
+  return accepted ? Response.json({ accepted: true }, { headers: noStore }) : fail(401, "Progress authorization was used or expired.");
+}
+
+export async function handleGithubWebhook(request: Request, env: Env): Promise<Response> {
+  if (request.method !== "POST") return fail(405, "Method not allowed.");
+  if (!env.GITHUB_WEBHOOK_SECRET || !env.BUILD_COORDINATOR) return fail(503, "GitHub webhooks are unavailable.");
+  const reader = request.body?.getReader();
+  if (!reader) return fail(400, "Invalid webhook body.");
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      size += chunk.value.byteLength;
+      if (size > 1024 * 1024) { await reader.cancel(); return fail(413, "Webhook body is too large."); }
+      chunks.push(chunk.value);
+    }
+  } finally { reader.releaseLock(); }
+  const body = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) { body.set(chunk, offset); offset += chunk.length; }
+  if (!await verifyGithubWebhook(body, request.headers.get("X-Hub-Signature-256"), env.GITHUB_WEBHOOK_SECRET)) return fail(401, "Invalid webhook signature.");
+  const delivery = request.headers.get("X-GitHub-Delivery");
+  if (!delivery || !/^[\w-]{1,100}$/.test(delivery)) return fail(400, "Invalid delivery identifier.");
+  let payload;
+  try { payload = JSON.parse(new TextDecoder().decode(body)); } catch { return fail(400, "Invalid webhook body."); }
+  if (await env.BUILD_COORDINATOR.getByName("global").claimDelivery(delivery)) await applyGithubWebhook(env, request.headers.get("X-GitHub-Event") ?? "", payload);
+  return Response.json({ accepted: true }, { headers: noStore });
+}
