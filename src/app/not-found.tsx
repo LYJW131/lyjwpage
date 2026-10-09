@@ -35,7 +35,7 @@ export default function NotFound() {
                   href="/"
                   className="paper-card inline-flex h-8 items-center justify-center rounded-md border border-line-strong bg-surface px-4 text-xs font-medium text-foreground transition-colors hover:bg-surface-hover"
                 >
-                  Back to home
+                  Go home
                 </Link>
               </div>
             </div>
