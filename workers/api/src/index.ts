@@ -7,6 +7,7 @@ import { PulseArchive } from "./pulse-archive";
 import { PulseScorer, clefDecide } from "./pulse-score";
 import { DevOverrideReader as DevOverrideReaderBase } from "./dev-override-reader";
 import { StateCore as StateCoreBase } from "./state-core";
+import { PublicStatus as PublicStatusBase } from "./public-status";
 import { ChatQuota as ChatQuotaBase } from "./chat/quota";
 import { AnthropicEgress as AnthropicEgressBase } from "./chat/egress";
 import { CRON_MONITOR_CONFIG, CRON_MONITOR_SLUG } from "./cron-heartbeat";
@@ -20,6 +21,7 @@ export const StateHub = Sentry.instrumentDurableObjectWithSentry(sentryOptions, 
 export const ChatQuota = Sentry.instrumentDurableObjectWithSentry(sentryOptions, ChatQuotaBase);
 export const AnthropicEgress = Sentry.instrumentDurableObjectWithSentry(sentryOptions, AnthropicEgressBase);
 export const StateCore = Sentry.withSentry(sentryOptions, StateCoreBase);
+export const PublicStatus = Sentry.withSentry(sentryOptions, PublicStatusBase);
 export const DevOverrideReader = Sentry.withSentry(sentryOptions, DevOverrideReaderBase);
 export type { Env } from "./runtime";
 
