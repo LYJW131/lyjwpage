@@ -15,22 +15,24 @@ export const GOD_CHAT_LIMITS = {
   maxWebSearches: 2,
 } as const;
 
-// 浏览器只回传文字，工具调用的原始结果不回传；trace 记下那条回复由哪一档作答、查过哪些视图、搜了几次、
+// 浏览器只回传文字，工具调用的原始结果不回传；trace 记下那条回复由哪一档作答、查过哪些视图与项目文档、搜了几次、
 // 是否由拒答兜底的模型代答。Worker 据此告诉模型那条回复当时用过工具，否则它会以为自己当时是在编。
 // trace 由浏览器提交、服务端核实不了，所以只当访客自报的说明，附在那条回复之前的访客消息里、标明未经核实，
-// 也只收枚举与计数，不收任何自由文本（搜索词不回传）。
-export type GodChatTrace = { tier?: GodChatTier; views?: string[]; searches?: number; fallback?: true };
+// 也只收枚举与计数，不收任何自由文本（搜索词、文档章节名不回传）。docs 是 read_project_doc 的文档键。
+export type GodChatTrace = { tier?: GodChatTier; views?: string[]; docs?: string[]; searches?: number; fallback?: true };
 export type GodChatMessage = { role: "user" | "assistant"; content: string; trace?: GodChatTrace };
 
 export type GodChatSource = { url: string; title: string };
 
 // 响应体是 NDJSON，每行一个事件；首行总是 route（refuse 时 tier 为 null），views 是 get_site_status 读取的视图键。
+// doc 是 read_project_doc 的一次读取：doc 为文档键，path 为仓库内路径（别的仓库带 owner/repo 前缀），url 为 GitHub 页面，section 为请求的章节。
 // served 只在给出最终答案的那一轮由 Anthropic 的拒答兜底模型答成（没被拒）时出现，回复末尾一次，model 是那个模型的 id。
 export type GodChatEvent =
   | { type: "route"; route: GodChatRoute; tier: GodChatTier | null; downgradedFrom?: GodChatTier }
   | { type: "served"; model: string }
   | { type: "text"; text: string }
   | { type: "tool"; views: string[] }
+  | { type: "doc"; doc: string; path: string; url: string; section?: string }
   | { type: "search"; query: string }
   | { type: "sources"; sources: GodChatSource[] };
 
@@ -57,10 +59,12 @@ function parseTrace(value: unknown): GodChatTrace | undefined {
   if (!value || typeof value !== "object") return undefined;
   const raw = value as Record<string, unknown>;
   const views = shortStrings(raw.views, 12, 40).filter((v) => /^[A-Za-z]+$/.test(v));
+  const docs = shortStrings(raw.docs, 8, 40).filter((v) => /^[A-Za-z]+$/.test(v));
   const searches = Number.isInteger(raw.searches) ? Math.min(raw.searches as number, GOD_CHAT_LIMITS.maxWebSearches) : 0;
   const trace: GodChatTrace = {
     ...(isGodChatTier(raw.tier) && { tier: raw.tier }),
     ...(views.length && { views }),
+    ...(docs.length && { docs }),
     ...(searches > 0 && { searches }),
     ...(raw.fallback === true && { fallback: true as const }),
   };

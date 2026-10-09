@@ -3,15 +3,18 @@ import type Anthropic from "@anthropic-ai/sdk";
 import type { GodChatMessage, GodChatTrace } from "@shared/god-chat";
 import { GOD_CHAT_TIER_INFO } from "@shared/god-chat-tiers";
 
+import { isProjectDocKey, projectDocPath } from "./project-docs";
 import { isStatusViewKey } from "./site-status";
 
-// trace 是浏览器交来的、服务端核实不了：只用枚举（档位、登记过的视图键）和计数拼，并写明是未经核实的自报。
-function traceNote({ tier, views, searches, fallback }: GodChatTrace): string {
+// trace 是浏览器交来的、服务端核实不了：只用枚举（档位、登记过的视图键与文档键）和计数拼，并写明是未经核实的自报。
+function traceNote({ tier, views, docs, searches, fallback }: GodChatTrace): string {
   const rank = tier ? `the ${GOD_CHAT_TIER_INFO[tier].persona} (${GOD_CHAT_TIER_INFO[tier].label})` : "an earlier rank";
   const who = fallback ? `another Claude model standing in for ${rank}, which declined it` : rank;
   const known = views?.filter(isStatusViewKey) ?? [];
+  const read = docs?.filter(isProjectDocKey) ?? [];
   const used = [
     known.length && `called get_site_status for ${known.join(", ")}`,
+    read.length && `read the project docs ${read.map(projectDocPath).join(", ")}`,
     searches && `ran ${searches} web search${searches > 1 ? "es" : ""}`,
   ].filter(Boolean);
   return `[Chat client note, reported by the visitor's browser and not verified by the server: the assistant reply that follows was written by ${who}${used.length ? ` after it ${used.join(" and ")}` : " without using tools"}.]`;
