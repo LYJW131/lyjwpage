@@ -36,7 +36,7 @@ api 和 ai 的 Builds 都调用同一个预览脚本，各自发布到自己的 
 
 预览绑定由 api 配置的 `[previews]` 段提供，状态与聊天 DO 都是隔离空库，不挂生产域名、cron、KV 或 D1，也不复制 Secret。状态只读允许经 `UPSTREAM_API_URL` 按端点整份补缺，生产有 `ok:true` 的端点仍整份取生产；写入和存储导入被隔离，上报入口不参加预览。测已有端点的新字段仍需本地注入夹具。
 
-Vercel 和 Worker 构建并行。`scripts/build.mjs` 在预览构建里等待本分支 api、ai 两个候选地址，`scripts/preview-backend.mjs#findMatchingPreview` 只接受 revision 与 `VERCEL_GIT_COMMIT_SHA` 一致且状态读取就绪的候选。等待上限见 `WAIT_MS`；没有匹配时这次构建用生产，不能误用旧提交的 Preview。结果通过 `PREVIEW_BACKEND_URL` 传给 Next 配置。
+Vercel 和 Worker 构建并行。`scripts/build.mjs` 在预览构建里等待本分支 api、ai 两个候选地址，`scripts/preview-backend.mjs#findMatchingPreview` 只接受 revision 与 `VERCEL_GIT_COMMIT_SHA` 一致且状态读取就绪的候选；两份都是本提交时固定选 api（ai 先就绪也再等 api 一小段，见 `PREFERRED_GRACE_MS`），只改了 AI 代码的分支只有 ai 那份。等待上限见 `WAIT_MS`；没有匹配时这次构建用生产，不能误用旧提交的 Preview。结果通过 `PREVIEW_BACKEND_URL` 传给 Next 配置。
 
 AI 端点需要的 Secret 只设在实际使用的 parent 的本分支 Preview；例如 api parent：
 
@@ -44,7 +44,7 @@ AI 端点需要的 Secret 只设在实际使用的 parent 的本分支 Preview�
 pnpm --dir workers/api exec wrangler preview secret put CHAT_HISTORY_SECRET --name <预览名> --worker-name api
 ```
 
-ai parent 使用 `--worker-name ai`，其他所需变量见 `workers/ai/.dev.vars.example`。值从标准输入输入，不复制生产凭据；缺少密钥的聊天端点返回 503，MCP 公开状态工具仍可验证。两个候选都存在时，要验证付费对话，直接使用已配置 Secret 的候选，或分别配置两份隔离密钥。
+ai parent 使用 `--worker-name ai`，其他所需变量见 `workers/ai/.dev.vars.example`。值从标准输入输入，不复制生产凭据；缺少密钥的聊天端点返回 503，MCP 公开状态工具仍可验证。分支要试付费对话时把 Secret 设在 api parent 上：两份候选都在时 Vercel 预览选它；只改 AI 代码的分支没有 api 那份，Secret 设在 ai parent。
 
 PR 关闭时 `.github/workflows/preview-api-worker.yml` 检出默认分支，用那里的 `workers/api/scripts/delete-preview.mjs` 清理两个 parent 的分支 Preview，不执行 PR 里的代码。仓库 Secret `CLOUDFLARE_API_TOKEN` 需要能管理两个 Worker 的 Preview；不存在的候选跳过，未配置令牌时不执行。分支删除只清理 Preview，不改生产 Worker。
 

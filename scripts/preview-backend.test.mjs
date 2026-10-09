@@ -20,15 +20,23 @@ test("AI-only 分支使用同一提交的 ai Preview，跳过 api 的旧版本",
   assert.equal(calls.includes(`${origins[1]}/api/status/listening/now`), true);
 });
 
-test("两个候选同时检查，不等待失联的 Preview 才使用可用版本", async () => {
+test("两个候选同时检查，失联的 api 只多等一小段就用 ai", async () => {
   const calls = [];
   const found = await findMatchingPreview(origins, "sha", async (url) => {
     calls.push(url);
     if (url.startsWith(origins[0])) return new Promise(() => {});
     return Response.json(url.endsWith(PREVIEW_REVISION_PATH) ? { commitSha: "sha" } : { ok: true });
-  });
+  }, 20);
   assert.equal(found, origins[1]);
   assert.deepEqual(calls.slice(0, 2), origins.map((origin) => `${origin}${PREVIEW_REVISION_PATH}`));
+});
+
+test("两个候选都是本提交时固定选 api，即使 ai 先就绪", async () => {
+  const found = await findMatchingPreview(origins, "sha", async (url) => {
+    if (url.startsWith(origins[0])) await new Promise((resolve) => setTimeout(resolve, 30));
+    return Response.json(url.endsWith(PREVIEW_REVISION_PATH) ? { commitSha: "sha" } : { ok: true });
+  }, 1_000);
+  assert.equal(found, origins[0]);
 });
 
 test("未提供提交或只有旧版本时不采用分支地址", async () => {
