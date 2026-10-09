@@ -26,7 +26,7 @@ const VIEW_NOTES = {
   questNow: "Meta Quest current status",
   trophies: "PlayStation trophy profile and recent trophy progress",
   githubChart: "GitHub contribution chart",
-  githubRepo: "This site's GitHub repo stats and recent commits",
+  githubRepo: "This site's GitHub repo: totals, contributors and the latest commit titles (refreshed periodically, may lag by up to half an hour)",
   cloudflareWorkers: "Cloudflare Workers request and error stats for this site",
   vercelDeployments: "Recent Vercel deployments of this site",
   sentry: "Error counts from Sentry for this site",

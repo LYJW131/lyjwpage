@@ -1,6 +1,6 @@
 import { cacheLife } from "next/cache";
 
-import { type CommitAuthor, authorFromTrailer, mergeAuthors, parseCoAuthors } from "@/lib/commit-authors";
+import { type CommitAuthor, type CommitListItem, commitTitle, mergeAuthors, parseCoAuthors, primaryAuthor } from "@/lib/commit-authors";
 import { repoIdFromUrl } from "@/lib/github-repo";
 import { FIRST_SCREEN_CACHE_LIFE } from "@/lib/first-screen";
 import { site } from "@/lib/site";
@@ -17,48 +17,6 @@ export type GithubRecentCommit = {
 };
 
 const RECENT_LIMIT = 3;
-
-type CommitListItem = {
-  sha?: string;
-  html_url?: string;
-  commit?: {
-    message?: string;
-    author?: { name?: string; email?: string; date?: string } | null;
-    verification?: {
-      verified?: boolean;
-      reason?: string | null;
-    } | null;
-  };
-  author?: { login?: string; avatar_url?: string } | null;
-};
-
-function primaryAuthor(item: CommitListItem): CommitAuthor | null {
-  const login = item.author?.login?.trim();
-  const avatarUrl = item.author?.avatar_url?.trim() || null;
-
-  if (login) {
-    return {
-      name: login,
-      login,
-      avatarUrl,
-      agent: login === "cursoragent" ? "cursor" : null,
-    };
-  }
-
-  const email = item.commit?.author?.email?.trim() || "";
-  const name = item.commit?.author?.name?.trim() || "";
-  if (email) {
-    const candidate = authorFromTrailer(name, email);
-    if (candidate.login || candidate.name || candidate.agent) return candidate;
-  }
-
-  return name ? { name, login: null, avatarUrl: null, agent: null } : null;
-}
-
-function firstLine(message: string): string {
-  const line = message.split(/\r?\n/, 1)[0]?.trim() ?? "";
-  return line || "(untitled)";
-}
 
 export async function getRecentCommits(): Promise<GithubRecentCommit[]> {
   "use cache";
@@ -120,7 +78,7 @@ export async function getRecentCommits(): Promise<GithubRecentCommit[]> {
         {
           sha,
           shortSha: sha.slice(0, 7),
-          title: firstLine(message),
+          title: commitTitle(message),
           url: item.html_url?.trim() || `${site.repo}/commit/${sha}`,
           authors: githubAuthors.get(sha) ?? mergeAuthors(primaryAuthor(item), parseCoAuthors(message)),
           committedAt: item.commit?.author?.date ?? null,

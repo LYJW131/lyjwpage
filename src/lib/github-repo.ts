@@ -1,7 +1,8 @@
 import { get, put } from "@/lib/cache";
 import { loadLag, type LagResult } from "@/lib/lag-result";
 import { site } from "@/lib/site";
-import type { GithubRepoContributor, GithubRepoPayload } from "@/lib/types";
+import { type CommitListItem, commitTitle, mergeAuthors, parseCoAuthors, primaryAuthor } from "@/lib/commit-authors";
+import type { GithubRepoCommit, GithubRepoContributor, GithubRepoPayload } from "@/lib/types";
 import { LAG_KEYS } from "@shared/lag";
 
 
@@ -86,6 +87,30 @@ export function summarizeRepoStats(
 
 export function getGithubRepo(): Promise<LagResult<GithubRepoPayload>> {
   return loadLag<GithubRepoPayload>(LAG_KEYS.githubRepo, "Waiting for the first repository stats");
+}
+
+export const RECENT_COMMIT_LIMIT = 10;
+
+export function repoCommitsFrom(items: CommitListItem[]): GithubRepoCommit[] {
+  return items.flatMap((item) => {
+    const sha = item.sha?.trim();
+    if (!sha) return [];
+    const message = item.commit?.message ?? "";
+    const authors = mergeAuthors(primaryAuthor(item), parseCoAuthors(message)).map((author) => author.login ?? author.name);
+    return [{ sha: sha.slice(0, 7), title: commitTitle(message), authors: [...new Set(authors)], committedAt: item.commit?.author?.date ?? null }];
+  });
+}
+
+export async function fetchRecentCommits(token: string, owner: string, name: string, budgetMs: number): Promise<GithubRepoCommit[]> {
+  const url = new URL(`https://api.github.com/repos/${owner}/${name}/commits`);
+  url.searchParams.set("per_page", String(RECENT_COMMIT_LIMIT));
+  const response = await fetch(url, {
+    headers: { Accept: "application/vnd.github+json", "User-Agent": "lyjwpage", Authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(budgetMs),
+  });
+  const body = (await response.json().catch(() => null)) as CommitListItem[] | null;
+  if (!response.ok || !Array.isArray(body)) throw new Error(`GitHub 最近提交 HTTP ${response.status}`);
+  return repoCommitsFrom(body);
 }
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));

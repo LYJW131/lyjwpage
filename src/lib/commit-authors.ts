@@ -62,3 +62,45 @@ export function joinAuthorNames(names: string[]): string {
   if (names.length === 2) return `${names[0]} and ${names[1]}`;
   return `${names.slice(0, -1).join(", ")}, and ${names.at(-1)}`;
 }
+
+export type CommitListItem = {
+  sha?: string;
+  html_url?: string;
+  commit?: {
+    message?: string;
+    author?: { name?: string; email?: string; date?: string } | null;
+    verification?: {
+      verified?: boolean;
+      reason?: string | null;
+    } | null;
+  };
+  author?: { login?: string; avatar_url?: string } | null;
+};
+
+export function primaryAuthor(item: CommitListItem): CommitAuthor | null {
+  const login = item.author?.login?.trim();
+  const avatarUrl = item.author?.avatar_url?.trim() || null;
+
+  if (login) {
+    return {
+      name: login,
+      login,
+      avatarUrl,
+      agent: login === "cursoragent" ? "cursor" : null,
+    };
+  }
+
+  const email = item.commit?.author?.email?.trim() || "";
+  const name = item.commit?.author?.name?.trim() || "";
+  if (email) {
+    const candidate = authorFromTrailer(name, email);
+    if (candidate.login || candidate.name || candidate.agent) return candidate;
+  }
+
+  return name ? { name, login: null, avatarUrl: null, agent: null } : null;
+}
+
+export function commitTitle(message: string): string {
+  const line = message.split(/\r?\n/, 1)[0]?.trim() ?? "";
+  return line || "(untitled)";
+}
