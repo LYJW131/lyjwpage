@@ -28,6 +28,7 @@ import {
 } from "./site-status";
 
 const MAX_BODY_BYTES = 64 * 1024;
+const MIN_ROUND_TOKENS = 256;
 
 // 三段都写进缓存前缀：每档自己的 system 恒定不变，降级说明另走末尾的 system 消息，不动前缀。
 const BASE_PROMPT = `You speak on LYJW's personal homepage (lyjw.me), in the "Talk to God" card. Visitors come here to talk.
@@ -80,6 +81,14 @@ export async function handleChat(request: Request, env: Env, readStatus: ReadSta
   const parsed = parseGodChatRequest(await readJsonBody(request, MAX_BODY_BYTES));
   if (!parsed) return fail(400, "Invalid message.");
 
+  // 请求被取消时（要 enable_request_signal）停下来：在验人与路由之前就挂上，这两步期间断开的也能接住；之后每进一步付费调用前
+  // 先看一眼。工具循环与上游请求经 SDK 的 fetch 信号一并掐断。线上流式途中收不到访客断开（docs/ops-facts.md），
+  // 这条只在运行时真的报了取消时起作用。
+  const abort = new AbortController();
+  if (request.signal.aborted) abort.abort();
+  else request.signal.addEventListener("abort", () => abort.abort(), { once: true });
+  const gone = () => fail(499, "Request canceled.");
+
   const ip = clientIp(request);
   // 额度缺绑定按超额处理：计数失效时宁可拒绝也不放行。
   const quota = quotaStub(env);
@@ -88,6 +97,7 @@ export async function handleChat(request: Request, env: Env, readStatus: ReadSta
   if (!turnstilePassed(verdict, getAllowedOrigins(env), isDevWorker())) {
     return fail(403, "Human verification failed. Please try again.");
   }
+  if (abort.signal.aborted) return gone();
   // 验过人才计数，计数在 Clef 之前：超额的访客不再触发付费的路由调用。
   const enforce = devSwitch("CHAT_RATE_LIMIT") !== "off";
   if (!(await quota.admitVisitor(ip, enforce))) {
@@ -114,15 +124,12 @@ export async function handleChat(request: Request, env: Env, readStatus: ReadSta
     );
   }
 
+  if (abort.signal.aborted) return gone();
   const wanted = decision.route;
   const tier = await quota.admitTier(ip, wanted, enforce);
   if (!tier) return fail(429, "All the heavens are busy. Try again in a minute.", { "Retry-After": "60" });
 
   const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, fetch: anthropicFetch(env) });
-  const abort = new AbortController();
-  // 请求被取消时（要 enable_request_signal）停下工具循环，并经 SDK 的 fetch 信号掐断上游。线上流式途中收不到访客断开
-  // （docs/ops-facts.md），这条只在运行时真的报了取消时起作用。
-  request.signal.addEventListener("abort", () => abort.abort(), { once: true });
   const body = new ReadableStream<Uint8Array>({
     async start(controller) {
       const emit = (event: GodChatEvent) => controller.enqueue(line(event));
@@ -175,15 +182,13 @@ async function converse({
   if (note) messages.push({ role: "system", content: note });
   const sources = new Map<string, GodChatSource>();
   const viewsRead = new Set<StatusViewKey>();
-  // 拒答兜底换上来的模型只有在这一轮最终没被拒时才算代答成功（兜底模型自己也可能拒），所以等 finalMessage 再报；
-  // 同一型号带日期后缀的 id 也算本档自己。
+  // 拒答兜底按单次请求生效：中间某轮被换了模型，下一轮可能又回到本档。整条回复只按给出最终答案的那一轮记，
+  // 且那一轮没被拒（兜底模型自己也可能拒）才算代答，回复结束时报一次。同一型号带日期后缀的 id 也算本档自己。
   const ownModel = (id: string) => id === model || id.startsWith(`${model}-`);
-  const announced = new Set<string>();
-  const serve = (served: string) => {
-    if (announced.has(served)) return;
-    announced.add(served);
-    emit({ type: "served", model: served });
-  };
+  let servedBy: string | undefined;
+  // max_tokens 只管单次请求；工具循环每轮都给满会让一条回复花掉几倍上限，所以整条回复合计不超过本档 maxTokens，
+  // 剩下的不够 MIN_ROUND_TOKENS 就不再续。
+  let outputLeft = maxTokens;
   const shownSearches = new Set<string>();
   const showSearch = (id: string, input: unknown) => {
     const query = (input as { query?: unknown } | null)?.query;
@@ -195,6 +200,10 @@ async function converse({
   let wroteText = false;
 
   for (let round = 0; ; round++) {
+    if (round > 0 && outputLeft < MIN_ROUND_TOKENS) {
+      emit({ type: "text", text: " …" });
+      break;
+    }
     const lastRound = round >= GOD_CHAT_LIMITS.maxToolRounds;
     const searchesLeft = GOD_CHAT_LIMITS.maxWebSearches - searches;
     const tools = lastRound
@@ -205,7 +214,7 @@ async function converse({
     const stream = client.beta.messages.stream(
       {
         model,
-        max_tokens: maxTokens,
+        max_tokens: outputLeft,
         system: [
           { type: "text", text: `${BASE_PROMPT}\n${PERSONA[tier]}`, cache_control: { type: "ephemeral" } },
         ],
@@ -247,7 +256,8 @@ async function converse({
       }
     }
     const final = await stream.finalMessage();
-    if (fallbackModel && final.stop_reason !== "refusal") serve(fallbackModel);
+    servedBy = final.stop_reason !== "refusal" ? fallbackModel : undefined;
+    outputLeft -= final.usage.output_tokens;
     searches += final.usage.server_tool_use?.web_search_requests ?? 0;
     for (const block of final.content) {
       if (block.type === "server_tool_use" && block.name === "web_search") showSearch(block.id, block.input);
@@ -293,5 +303,6 @@ async function converse({
     );
     messages.push({ role: "user", content: results });
   }
+  if (servedBy) emit({ type: "served", model: servedBy });
   if (sources.size) emit({ type: "sources", sources: [...sources.values()].slice(0, 6) });
 }
