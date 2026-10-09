@@ -1,6 +1,6 @@
-import type Anthropic from "@anthropic-ai/sdk";
-
 import { site } from "@/lib/site";
+
+import type { SiteTool } from "./registry";
 
 export type ReadDoc = (url: string) => Promise<Response>;
 
@@ -56,27 +56,6 @@ export function projectDocUrl(key: ProjectDocKey, kind: "blob" | "raw"): string 
 
 export const fetchProjectDoc: ReadDoc = (url) =>
   fetch(url, { cf: { cacheTtl: DOC_CACHE_SECONDS, cacheEverything: true } });
-
-export const PROJECT_DOCS_TOOL: Anthropic.Beta.BetaTool = {
-  name: "read_project_doc",
-  description: [
-    "Read the design docs of this site's open-source code (GitHub, main branch). Most are written in Chinese.",
-    "A short doc comes back whole. A long one comes back as its outline of headings plus the opening; call again with section set to a heading to read that part.",
-    `Each reply may read at most ${MAX_DOC_READS_PER_REPLY} docs or sections, so pick the most relevant one first.`,
-    "Docs:",
-    ...DOC_KEYS.map((key) => `- ${key} (${projectDocPath(key)}): ${PROJECT_DOCS[key].note}`),
-  ].join("\n"),
-  input_schema: {
-    type: "object",
-    properties: {
-      doc: { type: "string", enum: DOC_KEYS, description: "Which doc to read" },
-      section: { type: "string", description: "A heading from the doc's outline; omit to get the whole doc or its outline" },
-    },
-    required: ["doc"],
-    additionalProperties: false,
-  },
-  strict: true,
-};
 
 export type ProjectDocRequest = { doc: ProjectDocKey; section?: string };
 
@@ -138,7 +117,7 @@ export function sliceDoc(markdown: string, section?: string): { text: string; he
 }
 
 // 文档多是中文，模型读完常跟着文档的语言回答；提醒放在每次读到的正文前面，比放在工具说明里管用。
-const LANGUAGE_NOTE = "Answer in the language of the visitor's latest message, not the doc's; translate what you use.";
+const LANGUAGE_NOTE = "Answer in the language of the user's latest message, not the doc's; translate what you use.";
 
 export async function readProjectDoc(
   read: ReadDoc,
@@ -154,3 +133,33 @@ export async function readProjectDoc(
     return { ok: false, text: `${header}\n\n${JSON.stringify({ error: "unavailable" })}` };
   }
 }
+
+export const PROJECT_DOC_TOOL: SiteTool = {
+  name: "read_project_doc",
+  title: "Read the site's design docs",
+  description: [
+    "Read the design docs of this site's open-source code (GitHub, main branch). Most are written in Chinese.",
+    "A short doc comes back whole. A long one comes back as its outline of headings plus the opening; call again with section set to a heading to read that part.",
+    "Docs:",
+    ...DOC_KEYS.map((key) => `- ${key} (${projectDocPath(key)}): ${PROJECT_DOCS[key].note}`),
+  ].join("\n"),
+  replyCap: `Each reply may read at most ${MAX_DOC_READS_PER_REPLY} docs or sections, so pick the most relevant one first.`,
+  inputSchema: {
+    type: "object",
+    properties: {
+      doc: { type: "string", enum: DOC_KEYS, description: "Which doc to read" },
+      section: { type: "string", description: "A heading from the doc's outline; omit to get the whole doc or its outline" },
+    },
+    required: ["doc"],
+    additionalProperties: false,
+  },
+  // 额度在第一个 await 之前占好（claimDoc 的前提）。
+  async run(input, { readDoc }, ledger) {
+    const request = parseProjectDocInput(input);
+    if (!request) return { text: "Unknown doc; the valid docs are listed in the tool description.", isError: true };
+    const claim = claimDoc(request, ledger.docs);
+    if (!claim.read) return { text: claim.note ?? "Not read.", isError: true };
+    const { ok, text, heading } = await readProjectDoc(readDoc, request);
+    return { text, isError: !ok, ...(ok && { doc: { key: request.doc, ...(heading && { heading }) } }) };
+  },
+};

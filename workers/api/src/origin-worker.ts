@@ -24,8 +24,12 @@ import { executePublicRequest } from "./public-execution";
 import { isLookupPath, serveLookup } from "./lookup-routes";
 import { clientIp, handleChat, quotaStub } from "./chat/handler";
 import { handleGithubIssue } from "./github-issue";
+import { handleMcp } from "./mcp";
+import { fetchProjectDoc } from "./tools/project-docs";
+import type { ToolIO } from "./tools/registry";
 import { GOD_CHAT_PATH, GOD_CHAT_USAGE_PATH } from "@shared/god-chat";
 import { GITHUB_ISSUE_PATH } from "@shared/github-issue";
+import { MCP_PATH } from "@shared/mcp";
 import type { Env } from "./runtime";
 import { site } from "@/lib/site";
 
@@ -339,6 +343,9 @@ const worker = {
     }
 
     const cors = getCorsHeaders(request, env);
+    if (url.pathname === MCP_PATH) {
+      cors.set("Access-Control-Allow-Headers", "Content-Type, Accept, Authorization, MCP-Protocol-Version, Mcp-Method, Mcp-Name");
+    }
 
     if (request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: cors });
@@ -372,10 +379,26 @@ const worker = {
       return jsonResponse(await quota.usage(ip), { headers: cors });
     }
 
+    const tools: ToolIO = {
+      readStatus: (path) => executePublicRequest(new Request(new URL(path, url)), env, ctx),
+      readDoc: fetchProjectDoc,
+    };
+
+    if (url.pathname === MCP_PATH) {
+      const origin = request.headers.get("Origin");
+      if (origin && !isAllowedOriginValue(origin, getAllowedOrigins(env))) return jsonResponse({ error: "Forbidden" }, { status: 403, headers: cors });
+      if (env.MCP_LIMIT && !(await env.MCP_LIMIT.limit({ key: clientIp(request) })).success) {
+        return jsonResponse({ error: "Too many requests." }, { status: 429, headers: { ...Object.fromEntries(cors), "Retry-After": "60" } });
+      }
+      const response = await handleMcp(request, tools, env.CF_VERSION_METADATA?.id ?? "dev");
+      const headers = new Headers(response.headers);
+      cors.forEach((value, name) => headers.set(name, value));
+      return new Response(response.body, { status: response.status, headers });
+    }
+
     if (url.pathname === GOD_CHAT_PATH) {
       if (!isAllowedOrigin(request, env)) return jsonResponse({ error: "Forbidden" }, { status: 403, headers: cors });
-      const readStatus = (path: string) => executePublicRequest(new Request(new URL(path, url)), env, ctx);
-      const response = await handleChat(request, env, readStatus);
+      const response = await handleChat(request, env, tools);
       const headers = new Headers(response.headers);
       cors.forEach((value, name) => headers.set(name, value));
       return new Response(response.body, { status: response.status, headers });

@@ -3,8 +3,8 @@ import type Anthropic from "@anthropic-ai/sdk";
 import type { GodChatMessage, GodChatTrace } from "@shared/god-chat";
 import { GOD_CHAT_TIER_INFO } from "@shared/god-chat-tiers";
 
-import { isProjectDocKey, projectDocPath } from "./project-docs";
-import { isStatusViewKey } from "./site-status";
+import { isProjectDocKey, projectDocPath } from "../tools/project-docs";
+import { isStatusViewKey } from "../tools/site-status";
 
 // trace 随整对历史验过章（src/chat/seal.ts），仍只用枚举（档位、登记过的视图键与文档键）和计数拼，不放任何自由文本。
 function traceNote({ tier, views, docs, searches, fallback, issue }: GodChatTrace): string {

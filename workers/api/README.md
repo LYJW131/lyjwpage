@@ -26,6 +26,7 @@
 - `src/storage-driver.ts`：通过 alias 接入 StateHub 的 SQLite 存储驱动；同一公开请求、同一 microtask 的相邻只读批次合并成一次 DO RPC（命令数上限 `shared/storage-contract.ts` 的 `STORAGE_MAX_COMMANDS`），写批次保持原事务顺序。
 - `src/lag-store.ts`：`@/lib/lag-store` 在 Worker 里的实现，读 `LAG` KV（可滞后层，格式见 `shared/lag.ts`）。厂商状态、GitHub、Vercel、Cloudflare、Sentry 这几条端点只读采集 Worker 写的那几条键，Vercel 与 Cloudflare 两条按名字把几条键拼成一份。
 - `src/dev-override-reader.ts`：只在本地绑定的具名入口 `DevOverrideReader`，推送房间转发生产事件前经它查假数据注入。
+- `src/tools/`：站点工具（`get_site_status`、`read_project_doc`）的定义与执行，登记表 `src/tools/registry.ts#SITE_TOOLS`；`/mcp`（`src/mcp.ts`）和首页对话共用这一份，见下文「MCP」。
 
 ## 端点
 
@@ -35,6 +36,7 @@
 | GET | `/count` | `{ ok, connections, online }`：开着的页面数（判中档）与此刻可见的页面数（判快档） |
 | GET | `/api/musickit/token` | `{ token, issuedAt, expiresAt }`：给「一起听」的 MusicKit developer token，同一份来源白名单；见下文 |
 | POST | `/api/chat` | 首页对话卡片：Clef 选档后流式回 NDJSON；见下文「首页对话」 |
+| POST | `/mcp` | 公开 MCP 端点（Streamable HTTP，无鉴权），给外部 AI 读站点数据；按 IP 限流（绑定 `MCP_LIMIT`）；见下文「MCP」 |
 | GET | `/api/chat/usage` | 当前访客在本窗口里的对话额度，卡片 `/usage` 命令读它；只读不扣额度，按 IP 限流（绑定 `CHAT_USAGE_LIMIT`），超了回 429 |
 | GET | `/` | 一行存活；不碰 Durable Object，根路径被探针不停打 |
 
@@ -371,10 +373,19 @@ Mac 上报的 Apple Music 凭据在凭据 KV（`shared/credentials.ts`），不�
 - 第四个工具 `draft_github_issue`（`src/chat/issue-draft.ts`）只起草：NDJSON 发一行 `issue`，卡片打开可编辑的表单，模型自己提交不了。访客点提交时在弹窗里走 GitHub App `LYJW131` 的用户授权，回调页 `src/app/github-callback/page.tsx` 与卡片同源，只把 code 经 postMessage 交回同源窗口；卡片把 code 和改过的标题正文 POST 到 `/api/github/issue`（`src/github-issue.ts`），Worker 用 `GITHUB_APP_CLIENT_SECRET` 换出访客的 token，以访客身份在 `shared/github-issue.ts#GITHUB_ISSUE_REPO` 开 issue，随即撤销 token，不存。这个端点按 IP 过 Rate Limiting 绑定 `GITHUB_ISSUE_LIMIT`。访客没有推送权限时 GitHub 会丢掉标签，所以来源靠正文末尾的固定一行标记。
 - 请求带 `thinking.display: "summarized"`：模型思考时流出 `thinking` 事件（思考摘要），卡片在正文出来前显示，正文开始后折叠；摘要不进对话历史。
 - 模型由 Anthropic 的拒答兜底（`fallbacks: "default"`，Haiku 没有）换掉时，NDJSON 末尾多一行 `served`，卡片标出实际作答的模型；下一轮的 trace 带 `fallback`。兜底按单次请求生效、兜底模型自己也可能拒，所以只按给出最终答案的那一轮、且它没被拒时才报。
-- 模型能用三种工具：`get_site_status` 经 `executePublicRequest` 读本 Worker 的公开状态视图（和浏览器看到的同一份公开模型，不出网），一条回复里所有调用合计有视图数上限、读过的不再读（`src/chat/site-status.ts#claimViews`）；`read_project_doc` 读本项目的设计文档（`src/chat/project-docs.ts`），只认 `PROJECT_DOCS` 白名单里的文档键，运行时从公开仓库 main 分支的 raw.githubusercontent.com 取并在边缘缓存，所以改文档不用重发 Worker、新增文档才要加一行；长文档先回目录和开头，模型再按章节读，一条回复的读取次数有上限（`claimDoc`）；`web_search` 是服务端工具，Haiku 用基础版，其余用带动态过滤的版本（原因写在 `src/chat/site-status.ts#webSearchTool`），每轮请求的 `max_uses` 是这条回复还剩的次数，用完就不再带这个工具。
+- 模型能用三种工具。前两种是和 `/mcp` 共用的站点工具（`src/tools/registry.ts#SITE_TOOLS`），对话把整条回复的调用记在同一本账本（`newLedger`）上：`get_site_status` 经 `executePublicRequest` 读本 Worker 的公开状态视图（和浏览器看到的同一份公开模型，不出网），一条回复里所有调用合计有视图数上限、读过的不再读（`src/tools/site-status.ts#claimViews`）；`read_project_doc` 读本项目的设计文档（`src/tools/project-docs.ts`），只认 `PROJECT_DOCS` 白名单里的文档键，运行时从公开仓库 main 分支的 raw.githubusercontent.com 取并在边缘缓存，所以改文档不用重发 Worker、新增文档才要加一行；长文档先回目录和开头，模型再按章节读，一条回复的读取次数有上限（`claimDoc`，上限说明经 `replyCap` 只附给对话）。`web_search` 是服务端工具，Haiku 用基础版，其余用带动态过滤的版本（原因写在 `src/chat/web-search.ts#webSearchTool`），每轮请求的 `max_uses` 是这条回复还剩的次数，用完就不再带这个工具。
 - 历史由浏览器提交，Worker 给每一问一答盖章（`src/chat/seal.ts`，HMAC 密钥是 Secret `CHAT_HISTORY_SECRET`，缺了对话端点回 503）：回复正常结束时 NDJSON 末尾发一行 `seal`，带章和 trace（哪一档答的、读过哪些视图与文档、搜了几次、是否兜底代答、起草过 issue），浏览器原样带回。章签的是「访客消息 + 回复 + trace」整对，进 Clef 与模型之前先验章，没有章或对不上的一对整对丢掉：Clef 拒掉的、模型拒答的、半路中断的、浏览器伪造或改过的都进不了上下文。验过章的 trace 拼成一条说明附在那条回复之前的访客消息里（`src/chat/history.ts`），模型因此知道那条回复当时查过什么；说明只用枚举与计数拼，不带自由文本。
 - 思考强度与回复上限按档位定（`shared/god-chat-tiers.ts#GOD_CHAT_TIER_INFO` 的 `effort`、`maxTokens`），访客没有手动调高的命令。`maxTokens` 是一条回复所有轮次（工具循环、暂停续跑）合计的输出上限，每轮请求只给剩下的部分。省钱靠 system 与末尾各一个缓存断点；缓存按模型分开，换档不会互相命中。
 - 本地：`workers/api/.dev.vars` 配 `ANTHROPIC_API_KEY` 与 `TURNSTILE_SECRET_KEY`（可用 Cloudflare 官方测试密钥）；只在配了 `UPSTREAM_API_URL` 的本地与预览里认 localhost 签出的 token 和测试密钥的结果，生产不认，所以 `pnpm dev`（本地页面连生产 Worker）里对话会验人失败，调对话用 `pnpm dev:worker` 加 `pnpm dev:local`。同样只在这两处认两个调试开关：`CHAT_RATE_LIMIT=off` 关限额（`ChatQuota` 照样记账，`/usage` 仍看得到用量，只是不拦），`CHAT_FORCE_TIER=<档位|refuse>` 跳过 Clef。本地 `AI` 绑定总是连远程，需要 wrangler 已登录。预览不复制 Secret，所以预览上这个端点回 503。
+
+## MCP
+
+`POST /mcp`（`src/mcp.ts`）是给外部 AI 用的公开 MCP 端点，不要鉴权。对外地址是 `https://lyjw.me/mcp`：站点在 `next.config.ts` 里用 307 跳到本 Worker（307 保留 POST 与请求体，MCP 客户端会跟），不用 rewrite，否则 Worker 只看得到 Vercel 的出口 IP，按 IP 限流就成了所有人共用一个桶。
+
+- 工具就是 `src/tools/registry.ts#SITE_TOOLS`，和首页对话同一份定义与执行。这里只放只读、只读公开模型的工具：`draft_github_issue`（要访客在卡片里确认）和 `web_search`（Anthropic 服务端工具）只在对话里。每次调用各开一本账本，单次调用的视图数与截断长度和对话相同，跨调用不累计。
+- 协议：无状态，只回 JSON，不发会话 ID，不开 SSE（GET、DELETE 回 405），JSON-RPC 批量请求回 400。两代客户端都收：`_meta` 里带版本的新协议（`MODERN_VERSIONS`）逐个请求核对 `MCP-Protocol-Version`、`Mcp-Method`、`Mcp-Name` 头与正文一致，`server/discover`、`tools/list` 带缓存提示（`CACHE_HINTS`，缺了 Claude Code 整张工具表都不认）；旧协议（`LEGACY_VERSIONS`）先 `initialize` 握手。
+- 限流与来源：按 `CF-Connecting-IP` 过 Rate Limiting 绑定 `MCP_LIMIT`，超了回 429 带 `Retry-After`。带 `Origin` 的请求按 `ALLOWED_ORIGINS` 校验（与 `/api/*` 同口径），不在名单里回 403；服务端和桌面端的 MCP 客户端不带 `Origin`，不受影响。
+- 验证：`src/mcp.test.ts` 覆盖两代握手与报错，但客户端会按自己的 schema 严格校验结果，单测验不出这类不兼容；改了协议处理，起 `pnpm dev:worker` 后用真实客户端各连一次：`claude -p --strict-mcp-config --mcp-config '{"mcpServers":{"lyjw":{"type":"http","url":"http://localhost:8788/mcp"}}}' "…"` 走新协议，`npx @modelcontextprotocol/inspector --cli http://localhost:8788/mcp --transport http --method tools/list` 走旧协议握手。
 
 ## MusicKit 令牌
 
