@@ -69,3 +69,8 @@ new_sqlite_classes = ["ChatQuota"]
 [[migrations]]
 tag = "v4-anthropic-egress"
 new_sqlite_classes = ["AnthropicEgress"]
+
+[[ratelimits]]
+name = "CHAT_USAGE_LIMIT"
+namespace_id = "13101"
+simple = { limit = 30, period = 10 }

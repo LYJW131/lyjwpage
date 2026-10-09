@@ -70,6 +70,11 @@ class_name = "ChatQuota"
 name = "ANTHROPIC_EGRESS"
 class_name = "AnthropicEgress"
 
+# /api/chat/usage 按 IP 限流；namespace_id 在整个 Cloudflare 账号里唯一，别的 Worker 不要复用。
+[[ratelimits]]
+name = "CHAT_USAGE_LIMIT"
+namespace_id = "13101"
+simple = { limit = 30, period = 10 }
 
 # Wrangler 必须先认识 OnlineCounterRoom，后续删除迁移才可生效。
 [[migrations]]
@@ -103,7 +108,7 @@ new_sqlite_classes = ["ChatQuota"]
 tag = "v4-anthropic-egress"
 new_sqlite_classes = ["AnthropicEgress"]
 
-# Preview 不继承生产绑定，DO 绑定必须显式重声明。
+# Preview 不继承生产绑定，要用的绑定（DO、AI、限流）都得在下面重声明。
 [previews.vars]
 PREVIEW_WORKER = "true"
 SENTRY_DSN = "https://13ba806bda9ae5a9086576b2e3d23cfb@o4511888459890688.ingest.us.sentry.io/4512132602855424"
@@ -127,3 +132,11 @@ class_name = "ChatQuota"
 [[previews.durable_objects.bindings]]
 name = "ANTHROPIC_EGRESS"
 class_name = "AnthropicEgress"
+
+[previews.ai]
+binding = "AI"
+
+[[previews.ratelimits]]
+name = "CHAT_USAGE_LIMIT"
+namespace_id = "13101"
+simple = { limit = 30, period = 10 }

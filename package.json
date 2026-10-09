@@ -41,7 +41,6 @@
     "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {
-    "@anthropic-ai/sdk": "^0.132.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
