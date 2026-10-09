@@ -36,8 +36,8 @@
 | GET | `/count` | `{ ok, connections, online }`：开着的页面数（判中档）与此刻可见的页面数（判快档） |
 | GET | `/api/musickit/token` | `{ token, issuedAt, expiresAt }`：给「一起听」的 MusicKit developer token，同一份来源白名单；见下文 |
 | POST | `/api/chat` | 首页对话卡片：Clef 选档后流式回 NDJSON；见下文「首页对话」 |
-| POST | `/mcp` | 公开 MCP 端点（Streamable HTTP，无鉴权），给外部 AI 读站点数据；按 IP 限流（绑定 `MCP_LIMIT`）；见下文「MCP」 |
-| GET | `/api/chat/usage` | 当前访客在本窗口里的对话额度，卡片 `/usage` 命令读它；只读不扣额度，按 IP 限流（绑定 `CHAT_USAGE_LIMIT`），超了回 429 |
+| POST | `/mcp` | 公开 MCP 端点（Streamable HTTP，无鉴权），给外部 AI 读站点数据；按 IP 过限流绑定 `MCP_LIMIT`；见下文「MCP」 |
+| GET | `/api/chat/usage` | 当前访客在本窗口里的对话额度，卡片 `/usage` 命令读它；只读不扣额度，按 IP 过限流绑定 `CHAT_USAGE_LIMIT`，拦下时回 429 |
 | GET | `/` | 一行存活；不碰 Durable Object，根路径被探针不停打 |
 
 上报端点（`/api/ingest/<来源>`、`/api/ingest/agents/otlp`、`/api/internal/site-deployed`）、鉴权和回执契约都在
@@ -367,7 +367,7 @@ Mac 上报的 Apple Music 凭据在凭据 KV（`shared/credentials.ts`），不�
 
 - 一条消息的路径：请求体按读到的字节数截停（`src/chat/guard.ts#readJsonBody`）→ Turnstile 校验（`TURNSTILE_SECRET_KEY`；除了 success，还核对 action 是 `shared/god-chat.ts#GOD_CHAT_TURNSTILE_ACTION`、hostname 落在 `ALLOWED_ORIGINS` 里，见 `turnstilePassed`）→ `ChatQuota.admitVisitor` 扣访客总量，超额的访客到此为止、不再触发路由 → Clef 选档（`src/chat/router.ts`，经 `AI` 绑定调 `@cf/cloudflare/clef`，四选一：三档模型或 refuse；Clef 不可用时落到 `ROUTER_FALLBACK`）→ `ChatQuota.admitTier` 扣档位额度，该档满了就往下逐档降级（`shared/god-chat-tiers.ts#downgradeChain`）→ 调 Anthropic（`ANTHROPIC_API_KEY`）。refuse 不调模型，只占访客总量，直接回一句关门话。
 - 三档与人设：Fable 是神、Opus 是先知、Haiku 是杂鱼，型号与展示名在 `shared/god-chat-tiers.ts#GOD_CHAT_TIER_INFO`。提示词在 `src/chat/handler.ts`：`BASE_PROMPT` 讲清 Clef 怎么选档、额度用完怎么降级，`PERSONA` 告诉每档自己是哪个模型、什么身份；被降级时另在末尾加一条 system 消息说明替谁作答（`downgradeNote`），不动缓存前缀。
-- 额度数值在 `shared/god-chat-tiers.ts#GOD_CHAT_QUOTA`（窗口、访客总量、每档访客与全站），计数在 Durable Object `ChatQuota`（`src/chat/quota.ts`，全站一个实例 `global`，SQLite 存窗口内的命中，每次调用先删窗口外的再数再记）。`/api/chat/usage` 读同一份；它不验人，每次都要进这个全站共用的对象跑一个事务，所以先过 Rate Limiting 绑定 `CHAT_USAGE_LIMIT` 按 IP 限流。`resetInMs` 倒数到这位访客看到的数下一次会变的时刻（自己最早的命中过期，或某档全站已满时它最早的命中过期）。没有 `CHAT_QUOTA` 绑定时对话端点回 503，不放行。真正的花费上限是 Anthropic Console 里这把 key 所在 workspace 的月度上限（见 `docs/ops-facts.md`）。
+- 额度数值在 `shared/god-chat-tiers.ts#GOD_CHAT_QUOTA`（窗口、访客总量、每档访客与全站），计数在 Durable Object `ChatQuota`（`src/chat/quota.ts`，全站一个实例 `global`，SQLite 存窗口内的命中，每次调用先删窗口外的再数再记）。`/api/chat/usage` 读同一份；它不验人，每次都要进这个全站共用的对象跑一个事务，所以先过 Rate Limiting 绑定 `CHAT_USAGE_LIMIT` 按 IP 限流；这类绑定在生产实测拦不住单 IP 的持续请求，只是尽力而为（见 `docs/ops-facts.md`）。`resetInMs` 倒数到这位访客看到的数下一次会变的时刻（自己最早的命中过期，或某档全站已满时它最早的命中过期）。没有 `CHAT_QUOTA` 绑定时对话端点回 503，不放行。真正的花费上限是 Anthropic Console 里这把 key 所在 workspace 的月度上限（见 `docs/ops-facts.md`）。
 - 对 Anthropic 的请求不从 Worker 当地机房直接发：Anthropic 拒绝来自不支持地区（如香港）的请求，回 403 `Request not allowed`，而 Worker 跟着访客落在亚洲机房。SDK 的 `fetch` 换成转给 Durable Object `AnthropicEgress`（`src/chat/egress.ts`），它以 `locationHint: "wnam"` 建在北美，只转发 `api.anthropic.com`。本地没有这层绑定时直接发。
 - 中断：Worker 开了 `enable_request_signal`，入站请求的 `signal` 一 abort 就停下工具循环，SDK 的 fetch 信号带进 `AnthropicEgress`，那边再经带信号的管道掐断对 Anthropic 的连接（原样直通响应体时取消要拖十来秒才传到上游）。但线上 Cloudflare 在流式响应途中不把访客断开传给 Worker（见 `docs/ops-facts.md`），这套接线只在本地 workerd 起作用：生产里访客点停止后模型照样生成到这条回复结束，多花的不超过这一条回复剩下的部分（各档 `maxTokens`，且受额度约束）。
 - 第四个工具 `draft_github_issue`（`src/chat/issue-draft.ts`）只起草：NDJSON 发一行 `issue`，卡片打开可编辑的表单，模型自己提交不了。访客点提交时在弹窗里走 GitHub App `LYJW131` 的用户授权，回调页 `src/app/github-callback/page.tsx` 与卡片同源，只把 code 经 postMessage 交回同源窗口；卡片把 code 和改过的标题正文 POST 到 `/api/github/issue`（`src/github-issue.ts`），Worker 用 `GITHUB_APP_CLIENT_SECRET` 换出访客的 token，以访客身份在 `shared/github-issue.ts#GITHUB_ISSUE_REPO` 开 issue，随即撤销 token，不存。这个端点按 IP 过 Rate Limiting 绑定 `GITHUB_ISSUE_LIMIT`。访客没有推送权限时 GitHub 会丢掉标签，所以来源靠正文末尾的固定一行标记。
@@ -384,7 +384,7 @@ Mac 上报的 Apple Music 凭据在凭据 KV（`shared/credentials.ts`），不�
 
 - 工具就是 `src/tools/registry.ts#SITE_TOOLS`，和首页对话同一份定义与执行。这里只放只读、只读公开模型的工具：`draft_github_issue`（要访客在卡片里确认）和 `web_search`（Anthropic 服务端工具）只在对话里。每次调用各开一本账本，单次调用的视图数与截断长度和对话相同，跨调用不累计。
 - 协议：无状态，只回 JSON，不发会话 ID，不开 SSE（GET、DELETE 回 405），JSON-RPC 批量请求回 400。两代客户端都收：`_meta` 里带版本的新协议（`MODERN_VERSIONS`）逐个请求核对 `MCP-Protocol-Version`、`Mcp-Method`、`Mcp-Name` 头与正文一致，`server/discover`、`tools/list` 带缓存提示（`CACHE_HINTS`，缺了 Claude Code 整张工具表都不认）；旧协议（`LEGACY_VERSIONS`）先 `initialize` 握手。
-- 限流与来源：按 `CF-Connecting-IP` 过 Rate Limiting 绑定 `MCP_LIMIT`，超了回 429 带 `Retry-After`。带 `Origin` 的请求按 `ALLOWED_ORIGINS` 校验（与 `/api/*` 同口径），不在名单里回 403；服务端和桌面端的 MCP 客户端不带 `Origin`，不受影响。
+- 限流与来源：按 `CF-Connecting-IP` 过 Rate Limiting 绑定 `MCP_LIMIT`，拦下时回 429 带 `Retry-After`；和 `CHAT_USAGE_LIMIT` 一样只是尽力而为（见 `docs/ops-facts.md`）。带 `Origin` 的请求按 `ALLOWED_ORIGINS` 校验（与 `/api/*` 同口径），不在名单里回 403；服务端和桌面端的 MCP 客户端不带 `Origin`，不受影响。
 - 验证：`src/mcp.test.ts` 覆盖两代握手与报错，但客户端会按自己的 schema 严格校验结果，单测验不出这类不兼容；改了协议处理，起 `pnpm dev:worker` 后用真实客户端各连一次：`claude -p --strict-mcp-config --mcp-config '{"mcpServers":{"lyjw":{"type":"http","url":"http://localhost:8788/mcp"}}}' "…"` 走新协议，`npx @modelcontextprotocol/inspector --cli http://localhost:8788/mcp --transport http --method tools/list` 走旧协议握手。
 
 ## MusicKit 令牌
