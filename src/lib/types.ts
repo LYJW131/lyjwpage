@@ -480,16 +480,15 @@ export type GithubChartDay = {
   date: string;
   weekday: number;
   count: number;
-  score: 0 | 1 | 2 | 3 | 4;
+  // 0 是无数据；1..HEATMAP_LEVELS 按非零天的分位分档。
+  score: number;
   label: string;
 };
 
 export type GithubChartPayload = {
   origin: string;
   counts: number[];
-  // GitHub 自己给的四分位档，不按本地计数重新分档。
-  scores: Array<0 | 1 | 2 | 3 | 4>;
-  // true 时 counts / scores 只覆盖 from 起的尾段；origin 仍是整窗原点。缺省或 false 是整窗。
+  // true 时 counts 只覆盖 from 起的尾段；origin 仍是整窗原点。缺省或 false 是整窗。
   countsPartial?: boolean;
   from?: string;
 };
@@ -513,6 +512,16 @@ export type GithubRepoPayload = {
     contributors: number;
   };
   contributors: GithubRepoContributor[];
+  // 默认分支最新的几次提交，新的在前；采集方取不到时沿用上一份，旧数据里可能缺席。首页的提交列表另由构建期取，不读这里。
+  recentCommits?: GithubRepoCommit[];
+};
+
+// authors 是 GitHub 登录名（没有关联账号时用署名），含 Co-authored-by 里的协作者；committedAt 是 ISO 时间串。
+export type GithubRepoCommit = {
+  sha: string;
+  title: string;
+  authors: string[];
+  committedAt: string | null;
 };
 
 // updatedAt 只在可滞后层出现，是写入方最后一次成功取到数据的 epoch 毫秒，浏览器按各卡阈值据此判过时。

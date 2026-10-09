@@ -1,9 +1,10 @@
 "use client";
 
 import Script from "next/script";
-import { Fragment, useEffect, useRef, useState, type CSSProperties } from "react";
+import { Fragment, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { ArrowUp, Square } from "lucide-react";
 
+import { ChatCard } from "@/components/chat-card";
 import { ChatMarkdown } from "@/components/chat-markdown";
 import { FableDescent, type Descent } from "@/components/fable-descent";
 import { IssuePanel } from "@/components/github-issue-panel";
@@ -16,6 +17,7 @@ import {
   GOD_CHAT_PATH,
   GOD_CHAT_TURNSTILE_ACTION,
   GOD_CHAT_USAGE_PATH,
+  type GodChatCard,
   type GodChatEvent,
   type GodChatMessage,
   type GodChatSource,
@@ -45,6 +47,8 @@ declare global {
 }
 
 type DocRead = { doc: string; path: string; url: string; section?: string };
+// at 是收到卡片时这条回复已有的正文长度，卡片画在那个位置。
+type ShownCard = { card: GodChatCard; at: number };
 type Reply = {
   tier?: GodChatTier | null;
   downgradedFrom?: GodChatTier;
@@ -57,6 +61,7 @@ type Reply = {
   docs?: DocRead[];
   searches?: string[];
   sources?: GodChatSource[];
+  cards?: ShownCard[];
 };
 type Bubble = GodChatMessage & Reply;
 
@@ -179,9 +184,11 @@ export function GodChat({ className }: { className?: string }) {
     // 界面上的气泡保留档位与查询记录；发给 Worker 的历史另行裁剪，只原样带回 Worker 下发的 trace 与章，不能回写界面。
     const shown: Bubble[] = [...messages, { role: "user", content }];
     const history: GodChatMessage[] = fitHistory(
-      shown.map(({ role, content, trace, seal }): GodChatMessage =>
-        role === "assistant" ? { role, content, ...(trace && { trace }), ...(seal && { seal }) } : { role, content },
-      ),
+      shown
+        .filter(({ content }) => content.trim())
+        .map(({ role, content, trace, seal }): GodChatMessage =>
+          role === "assistant" ? { role, content, ...(trace && { trace }), ...(seal && { seal }) } : { role, content },
+        ),
     );
     let reply = "";
     let meta: Reply = {};
@@ -240,7 +247,9 @@ export function GodChat({ className }: { className?: string }) {
           } else if (event.type === "search") meta = { ...meta, searches: [...(meta.searches ?? []), event.query] };
           else if (event.type === "sources") meta = { ...meta, sources: event.sources };
           else if (event.type === "seal") meta = { ...meta, seal: event.seal, trace: event.trace };
-          else if (event.type === "issue") {
+          else if (event.type === "card") {
+            meta = { ...meta, cards: [...(meta.cards ?? []), { card: event.card, at: reply.length }] };
+          } else if (event.type === "issue") {
             meta = { ...meta, issued: true };
             if (sessionRef.current === session) setIssue({ title: event.title, body: event.body, key: Date.now() });
           }
@@ -251,8 +260,9 @@ export function GodChat({ className }: { className?: string }) {
       if (!controller.signal.aborted) setError(err instanceof Error && err.message !== "Failed to fetch" ? err.message : OFFLINE);
     } finally {
       if (sessionRef.current === session) {
-        setMessages(reply ? [...shown, bubble()] : shown.slice(0, -1));
-        if (!reply) setDraft((current) => current || content);
+        const kept = reply || meta.cards?.length;
+        setMessages(kept ? [...shown, bubble()] : shown.slice(0, -1));
+        if (!kept) setDraft((current) => current || content);
       }
       setStreaming(false);
       abortRef.current = null;
@@ -428,6 +438,7 @@ export function GodChat({ className }: { className?: string }) {
                   className={cn(
                     "min-w-0 rounded-lg px-3 py-2 text-sm leading-relaxed [overflow-wrap:anywhere]",
                     message.role === "user" ? "max-w-[85%]" : "max-w-full sm:max-w-[85%]",
+                    message.cards?.length && "w-full",
                     message.role === "user"
                       ? "whitespace-pre-wrap bg-foreground text-background"
                       : message.tier === "fable"
@@ -474,10 +485,8 @@ export function GodChat({ className }: { className?: string }) {
                       Searched “{query}”
                     </div>
                   ))}
-                  {!message.content ? (
-                    <span className="animate-pulse text-muted-foreground">…</span>
-                  ) : message.role === "assistant" ? (
-                    <ChatMarkdown>{live ? stableMarkdown(message.content) : message.content}</ChatMarkdown>
+                  {message.role === "assistant" ? (
+                    <ReplyBody content={message.content} cards={message.cards} live={live} />
                   ) : (
                     message.content
                   )}
@@ -614,6 +623,21 @@ export function GodChat({ className }: { className?: string }) {
       </div>
     </Card>
   );
+}
+
+function ReplyBody({ content, cards = [], live }: { content: string; cards?: ShownCard[]; live: boolean }) {
+  const parts: ReactNode[] = [];
+  let from = 0;
+  for (const { card, at } of cards) {
+    const text = content.slice(from, at);
+    if (text.trim()) parts.push(<ChatMarkdown key={`text-${from}`}>{text}</ChatMarkdown>);
+    parts.push(<ChatCard key={card} card={card} />);
+    from = at;
+  }
+  const rest = content.slice(from);
+  if (rest.trim()) parts.push(<ChatMarkdown key={`text-${from}`}>{live ? stableMarkdown(rest) : rest}</ChatMarkdown>);
+  if (live && !rest.trim()) parts.push(<span key="typing" className="animate-pulse text-muted-foreground">…</span>);
+  return <div className="space-y-2">{parts}</div>;
 }
 
 const RANK_TONE: Record<GodChatTier, string> = {

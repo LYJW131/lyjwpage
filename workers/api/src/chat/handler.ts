@@ -4,6 +4,7 @@ import * as Sentry from "@sentry/cloudflare";
 import {
   GOD_CHAT_LIMITS,
   parseGodChatRequest,
+  type GodChatCard,
   type GodChatEvent,
   type GodChatMessage,
   type GodChatSource,
@@ -23,6 +24,7 @@ import { toModelMessages } from "./history";
 import { sealExchange, sealedHistory, storedReply } from "./seal";
 import { ISSUE_DRAFT_TOOL } from "./issue-draft";
 import { CLEF_CHOICES, isClefChoice, routeWithClef, type RouteDecision } from "./router";
+import { parseShowCardInput, runShowCard, SHOW_CARD_TOOL } from "./show-card";
 import { webSearchTool } from "./web-search";
 
 const MAX_BODY_BYTES = 64 * 1024;
@@ -36,6 +38,7 @@ How you were chosen: every visitor message is first judged by Clef, a small judg
 Reply in the language the visitor writes in. Keep answers concise unless asked for depth. Markdown is rendered; use it lightly.
 You can search the web for anything outside this site; cite what you find.
 You can see what LYJW is doing through the get_site_status tool: music, video, games, coding agents, devices, workouts, servers and this site's own health. When a visitor asks about LYJW or the site, look it up instead of guessing, then answer naturally; never dump raw JSON. Don't claim the site shows or publishes anything you haven't looked up: the tool's view list is a menu, not a record of what is public.
+For music, watching, gaming or fitness, use show_card instead: it puts a live card in your reply and returns the same data, so add a sentence or two rather than listing what the card shows.
 This site is open source, and the read_project_doc tool reads its design docs. When a visitor asks how the site works, why it is built a certain way, or how a card gets its data, read the relevant doc first, answer from it in the visitor's language, and link the doc's source URL.
 When a visitor reports a bug in this site, suggests a feature, or wants to open an issue, offer to draft one with draft_github_issue; they review, edit and submit it under their own GitHub account.
 Refer to LYJW by name or as "they"; in Chinese write "LYJW" or "TA", never 他 or 她.`;
@@ -208,6 +211,7 @@ async function converse({
   const ledger = newLedger();
   const docKeys = new Set<string>();
   let issueDrafted = false;
+  const cards = new Set<GodChatCard>();
   let refused = false;
   // 拒答兜底按单次请求生效：中间某轮被换了模型，下一轮可能又回到本档。整条回复只按给出最终答案的那一轮记，
   // 且那一轮没被拒（兜底模型自己也可能拒）才算代答，回复结束时报一次。同一型号带日期后缀的 id 也算本档自己。
@@ -237,8 +241,8 @@ async function converse({
     const tools = lastRound
       ? []
       : searchesLeft > 0
-        ? [...SITE_TOOL_DEFS, ISSUE_DRAFT_TOOL, webSearchTool(model, searchesLeft)]
-        : [...SITE_TOOL_DEFS, ISSUE_DRAFT_TOOL];
+        ? [...SITE_TOOL_DEFS, SHOW_CARD_TOOL, ISSUE_DRAFT_TOOL, webSearchTool(model, searchesLeft)]
+        : [...SITE_TOOL_DEFS, SHOW_CARD_TOOL, ISSUE_DRAFT_TOOL];
     const stream = client.beta.messages.stream(
       {
         model,
@@ -342,6 +346,14 @@ async function converse({
           emit({ type: "issue", ...draft });
           return result("The draft is now in an editable form below the conversation, just above the message box. Nothing is filed until the visitor submits it with their GitHub account. Mention this once; don't repeat what you already said.", false);
         }
+        if (call.name === SHOW_CARD_TOOL.name) {
+          const card = parseShowCardInput(call.input);
+          if (!card) return result("Unknown card; the valid cards are listed in the tool description.", true);
+          if (cards.has(card)) return result(`The ${card} card is already in this reply.`, true);
+          cards.add(card);
+          emit({ type: "card", card });
+          return result(await runShowCard(card, io, ledger), false);
+        }
         const tool = SITE_TOOLS.find((candidate) => candidate.name === call.name);
         if (!tool) return result("Unknown tool.", true);
         const { text, isError, views, doc } = await tool.run(call.input, io, ledger);
@@ -370,6 +382,7 @@ async function converse({
     searches,
     fallback: Boolean(servedBy),
     issue: issueDrafted,
+    cards: [...cards],
   });
   return { complete: !refused, trace };
 }

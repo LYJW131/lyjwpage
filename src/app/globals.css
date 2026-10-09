@@ -629,10 +629,13 @@ html.offscreen-revealed .defer-offscreen-always,
 }
 
 .github-chart {
-  --heatmap-score-1: #72b0ff;
-  --heatmap-score-2: #5896ff;
-  --heatmap-score-3: #2563eb;
-  --heatmap-score-4: #1e4fbc;
+  --heatmap-low: #72b0ff;
+  --heatmap-high: #1e4fbc;
+}
+
+.dark .github-chart {
+  --heatmap-low: #1e4fbc;
+  --heatmap-high: #72b0ff;
 }
 
 .github-chart svg rect[data-score] {
@@ -640,34 +643,43 @@ html.offscreen-revealed .defer-offscreen-always,
   height: 10px;
 }
 
+/* 档位数须与 github-chart-compact.ts#HEATMAP_LEVELS 同步。 */
 .github-chart svg [data-score="0"] {
   fill: var(--muted);
 }
 .github-chart svg [data-score="1"] {
-  fill: var(--heatmap-score-1);
+  fill: color-mix(in oklch, var(--heatmap-high) 0%, var(--heatmap-low));
 }
 .github-chart svg [data-score="2"] {
-  fill: var(--heatmap-score-2);
+  fill: color-mix(in oklch, var(--heatmap-high) 14%, var(--heatmap-low));
 }
 .github-chart svg [data-score="3"] {
-  fill: var(--heatmap-score-3);
+  fill: color-mix(in oklch, var(--heatmap-high) 29%, var(--heatmap-low));
 }
 .github-chart svg [data-score="4"] {
-  fill: var(--heatmap-score-4);
+  fill: color-mix(in oklch, var(--heatmap-high) 43%, var(--heatmap-low));
+}
+.github-chart svg [data-score="5"] {
+  fill: color-mix(in oklch, var(--heatmap-high) 57%, var(--heatmap-low));
+}
+.github-chart svg [data-score="6"] {
+  fill: color-mix(in oklch, var(--heatmap-high) 71%, var(--heatmap-low));
+}
+.github-chart svg [data-score="7"] {
+  fill: color-mix(in oklch, var(--heatmap-high) 86%, var(--heatmap-low));
+}
+.github-chart svg [data-score="8"] {
+  fill: color-mix(in oklch, var(--heatmap-high) 100%, var(--heatmap-low));
 }
 
 .vibe-year-chart {
-  --heatmap-score-1: oklch(0.84 0.09 145);
-  --heatmap-score-2: oklch(0.74 0.14 145);
-  --heatmap-score-3: oklch(0.65 0.17 145);
-  --heatmap-score-4: oklch(0.50 0.14 145);
+  --heatmap-low: oklch(0.84 0.09 145);
+  --heatmap-high: oklch(0.50 0.14 145);
 }
 
 .dark .vibe-year-chart {
-  --heatmap-score-1: oklch(0.38 0.08 148);
-  --heatmap-score-2: oklch(0.50 0.12 148);
-  --heatmap-score-3: oklch(0.64 0.14 148);
-  --heatmap-score-4: oklch(0.76 0.16 148);
+  --heatmap-low: oklch(0.38 0.08 148);
+  --heatmap-high: oklch(0.76 0.16 148);
 }
 
 .github-chart svg rect[data-hot] {

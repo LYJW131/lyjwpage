@@ -78,28 +78,6 @@ export function compactTokens(tokens: number): string {
   return `${value >= 10 ? value.toFixed(0) : value.toFixed(1).replace(/\.0$/, "")}M`;
 }
 
-export function tokenScores(counts: number[]): Array<0 | 1 | 2 | 3 | 4> {
-  const positive = counts.filter((value) => value > 0).sort((left, right) => left - right);
-  if (positive.length === 0) return counts.map(() => 0);
-  const at = (percentile: number) => {
-    const index = Math.min(
-      positive.length - 1,
-      Math.max(0, Math.ceil(percentile * positive.length) - 1),
-    );
-    return positive[index] ?? 0;
-  };
-  const q1 = at(0.25);
-  const q2 = at(0.5);
-  const q3 = at(0.75);
-  return counts.map((value) => {
-    if (value <= 0) return 0;
-    if (value <= q1) return 1;
-    if (value <= q2) return 2;
-    if (value <= q3) return 3;
-    return 4;
-  });
-}
-
 export function expandYearDays(origin: string, days: number[]) {
   return days.map((tokens, index) => {
     const date = addDays(origin, index);

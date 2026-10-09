@@ -15,23 +15,12 @@ const CALENDAR_QUERY = `query ($login: String!) {
             date
             weekday
             contributionCount
-            contributionLevel
           }
         }
       }
     }
   }
 }`;
-
-const LEVEL_SCORE = {
-  NONE: 0,
-  FIRST_QUARTILE: 1,
-  SECOND_QUARTILE: 2,
-  THIRD_QUARTILE: 3,
-  FOURTH_QUARTILE: 4,
-} as const;
-
-type ContributionLevel = keyof typeof LEVEL_SCORE;
 
 type CalendarPayload = {
   data?: {
@@ -43,7 +32,6 @@ type CalendarPayload = {
               date?: string;
               weekday?: number;
               contributionCount?: number;
-              contributionLevel?: string;
             }>;
           }>;
         };
@@ -53,29 +41,20 @@ type CalendarPayload = {
   errors?: Array<{ message?: string }>;
 };
 
-function scoreOf(level: string | undefined): GithubChartPayload["scores"][number] | null {
-  if (!level || !(level in LEVEL_SCORE)) return null;
-  return LEVEL_SCORE[level as ContributionLevel];
-}
-
 function mapDays(payload: CalendarPayload): GithubChartPayload | null {
   const weeks = payload.data?.user?.contributionsCollection?.contributionCalendar?.weeks;
   if (!weeks?.length) return null;
 
   const counts: number[] = [];
-  const scores: GithubChartPayload["scores"] = [];
   let origin = "";
   for (const week of weeks) {
     for (const day of week.contributionDays ?? []) {
       if (!day.date || typeof day.weekday !== "number") return null;
-      const score = scoreOf(day.contributionLevel);
-      if (score == null) return null;
       if (!origin) origin = day.date;
       counts.push(Number(day.contributionCount) || 0);
-      scores.push(score);
     }
   }
-  return origin && counts.length ? { origin, counts, scores } : null;
+  return origin && counts.length ? { origin, counts } : null;
 }
 
 export function getGithubChart(): Promise<LagResult<GithubChartPayload>> {
@@ -92,12 +71,11 @@ export function sliceGithubChart(
     since,
   );
   if (!partial) {
-    return { origin: payload.origin, counts: payload.counts, scores: payload.scores };
+    return { origin: payload.origin, counts: payload.counts };
   }
   return {
     origin: payload.origin,
     counts: payload.counts.slice(fromIndex),
-    scores: payload.scores.slice(fromIndex),
     countsPartial: true,
     from: heatmapSliceFrom(payload.origin, fromIndex),
   };

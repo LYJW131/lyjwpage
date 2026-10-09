@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  repoCommitsFrom,
   repoIdFromUrl,
   summarizeRepoStats,
   type ContributorStat,
@@ -87,4 +88,21 @@ test("从 site.repo 抠出 owner/name", () => {
     owner: "LYJW131",
     name: "lyjwpage",
   });
+});
+
+test("最近提交只留短 sha、首行标题和去重的作者，协作者从 Co-authored-by 里补", () => {
+  const commits = repoCommitsFrom([
+    {
+      sha: "fe67087f0123456789abcdef0123456789abcdef",
+      commit: {
+        message: "feat(chat): 首页对话能画卡片\n\n正文\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+        author: { name: "LYJW131", email: "x@example.com", date: "2026-10-09T10:00:00Z" },
+      },
+      author: { login: "LYJW131" },
+    },
+    { commit: { message: "no sha" } },
+  ]);
+  assert.deepEqual(commits, [
+    { sha: "fe67087", title: "feat(chat): 首页对话能画卡片", authors: ["LYJW131", "claude"], committedAt: "2026-10-09T10:00:00Z" },
+  ]);
 });
