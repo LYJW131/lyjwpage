@@ -1,6 +1,6 @@
 
 import { number, object, text } from "./json.ts";
-import type { ServerStatus, ServerTraffic } from "./types.ts";
+import type { ReportedServerStatus, ServerTraffic } from "./types.ts";
 
 function requiredText(row: Record<string, unknown>, field: string): string {
   const value = text(row[field]);
@@ -80,7 +80,7 @@ function requiredIp(row: Record<string, unknown>): string {
   return value;
 }
 
-export function normalizeServer(input: unknown): ServerStatus {
+export function normalizeServer(input: unknown): ReportedServerStatus {
   const row = object(input);
   if (!row) throw new Error("服务器上报必须是 JSON 对象");
   if (row.version !== 1) throw new Error("服务器上报的 version 必须为 1");

@@ -6,7 +6,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { siteDay, type HistoryDb } from "@shared/history-ingest";
-import type { ReportedWorkout, ServerStatus } from "@/lib/types";
+import type { ReportedServerStatus, ReportedWorkout } from "@/lib/types";
 import { archiveIngest } from "./ingest-archive";
 import type { PreparedIngest } from "@shared/ingest/prepare";
 
@@ -64,7 +64,7 @@ function workout(id: string, overrides: Partial<ReportedWorkout> = {}): Reported
   };
 }
 
-function server(observedAt: number, overrides: Partial<ServerStatus> = {}): ServerStatus {
+function server(observedAt: number, overrides: Partial<ReportedServerStatus> = {}): ReportedServerStatus {
   return {
     id: "misaka-jp",
     hostname: "misaka-jp",
@@ -186,7 +186,7 @@ test("ingest archive: limit snapshots keep the last reading per site day and ski
 
 test("ingest archive: server readings aggregate per UTC hour; retries and late older readings are not added", async () => {
   const world = historyDb();
-  const send = (status: ServerStatus) =>
+  const send = (status: ReportedServerStatus) =>
     archiveIngest(world.db, { source: "server", receivedAt: status.observedAt + 500, status } as PreparedIngest);
 
   await send(server(T0 + 60_000, { cpuUsagePercent: 10, load1: 1 }));
@@ -205,7 +205,7 @@ test("ingest archive: server readings aggregate per UTC hour; retries and late o
 
 test("ingest archive: replaying an older server reading after a newer one (A, B, A) does not add it again", async () => {
   const world = historyDb();
-  const send = (status: ServerStatus) =>
+  const send = (status: ReportedServerStatus) =>
     archiveIngest(world.db, { source: "server", receivedAt: status.observedAt + 500, status } as PreparedIngest);
   const a = server(T0 + 60_000, { cpuUsagePercent: 10, load1: 1 });
   const b = server(T0 + 120_000, { cpuUsagePercent: 30, load1: 3 });

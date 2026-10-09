@@ -12,6 +12,7 @@ import {
   normalizePowerBank,
   type RawChargingDevice,
 } from "./charging-device.ts";
+import { publicChargerStatus, publicPowerBankStatus } from "@shared/charging-devices";
 import { object } from "./json.ts";
 import { LIVE_INTERVAL_MS, LIVE_WINDOW_MS } from "./limits.ts";
 import type {
@@ -70,7 +71,7 @@ function chargerFromEvent(event: Record<string, unknown>): ChargerPayload {
   const now = Date.now();
   const bleConnected = event.connected === true;
   const device = parseDevice(event.device);
-  const status = device ? normalizeChargingDevice(device) : emptyChargerStatus(bleConnected);
+  const status = device ? publicChargerStatus(normalizeChargingDevice(device)) : emptyChargerStatus(bleConnected);
   const connected = bleConnected && status.connected;
   const cover = status.cover
     ? { ...status.cover, iconUrl: localCoverIconUrl(status.cover.iconObjectKey) }
@@ -92,7 +93,7 @@ function powerBankFromEvent(event: Record<string, unknown>): PowerBankPayload {
   const now = Date.now();
   const bleConnected = event.connected === true;
   const device = parseDevice(event.device);
-  const status = device ? normalizePowerBank(device) : emptyPowerBankStatus(bleConnected);
+  const status = device ? publicPowerBankStatus(normalizePowerBank(device)) : emptyPowerBankStatus(bleConnected);
   return {
     ...status,
     connected: bleConnected && status.connected,

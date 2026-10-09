@@ -3,7 +3,8 @@ import { getStored, lastPushReceivedAt } from "@/lib/charger-store";
 import { CHARGER_STALE_MS, heartbeatWindowMs } from "@/lib/freshness";
 import { publicAssetPath } from "@/lib/asset-url";
 import { readLiveness, withPresence, type Liveness } from "@/lib/reporter-liveness";
-import type { ChargerPayload, ChargerStatus } from "@/lib/types";
+import type { ChargerPayload, ChargerStatus, ReportedChargerStatus } from "@/lib/types";
+import { publicChargerStatus } from "@shared/charging-devices";
 
 
 // 断流窗口不得短于心跳窗口；安静时只有空心跳续期，否则正常设备会反复闪断。
@@ -26,7 +27,7 @@ export async function getChargerSnapshot(): Promise<ChargerPayload> {
 
   return withPresence(
     withCoverIconUrl({
-      ...stored.status,
+      ...publicChargerStatus(stored.status),
       history: stored.history,
       historyPartial: false,
       pushedAt,
@@ -54,14 +55,14 @@ export function chargerPushPayload({
   historyCount,
   liveness,
 }: {
-  status: ChargerStatus;
+  status: ReportedChargerStatus;
   receivedAt: number;
   historyCount: number;
   liveness: Liveness;
 }): ChargerPayload {
   return withPresence(
     withCoverIconUrl({
-      ...status,
+      ...publicChargerStatus(status),
       history: [],
       historyPartial: historyCount > 0,
       pushedAt: receivedAt,

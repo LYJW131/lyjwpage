@@ -15,9 +15,9 @@ import {
 import { IMAGE_OBJECT_KEY } from "@/lib/asset-url";
 import { HIDDEN_DESKTOP_BUNDLE_ID } from "@/lib/types";
 import type {
-  ChargerStatus,
   LocalNowPlaying,
-  PowerBankStatus,
+  ReportedChargerStatus,
+  ReportedPowerBankStatus,
   TimezoneActivity,
 } from "@/lib/types";
 import type { StoredDesktopActivity } from "@shared/telemetry";
@@ -57,8 +57,8 @@ export type PreparedTelemetryEnvelope = {
   rejected: CodingModuleRejection[];
   modules: CodingModules & {
     chargingDevices?: {
-      charger: ChargerStatus | null;
-      powerBank: PowerBankStatus | null;
+      charger: ReportedChargerStatus | null;
+      powerBank: ReportedPowerBankStatus | null;
       failureAfterCharger?: string;
     };
     desktop?: PreparedDesktop;

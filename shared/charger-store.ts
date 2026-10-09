@@ -1,5 +1,5 @@
 import { key } from "@/lib/storage";
-import type { ChargerSample, ChargerStatus } from "@/lib/types";
+import type { ChargerSample, ReportedChargerStatus } from "@/lib/types";
 
 export const DISCONNECTED_HISTORY_AFTER_MS = 30 * 60 * 1000;
 
@@ -11,7 +11,7 @@ export const K_LAST_PUSH = key("charger", "lastPush");
 
 // 未持久化的内存值可能是唯一副本，SQLite 的空值不能把它当作已删除。
 export const fallback = {
-  latest: null as ChargerStatus | null,
+  latest: null as ReportedChargerStatus | null,
   receivedAt: 0,
   disconnectedAt: 0,
   lastPushAt: 0,
@@ -20,7 +20,7 @@ export const fallback = {
 };
 
 export type Stored = {
-  status: ChargerStatus;
+  status: ReportedChargerStatus;
   receivedAt: number;
   disconnectedAt?: number | null;
 };

@@ -358,16 +358,20 @@ export type ChargerSample = {
   w: number;
 };
 
+export type ChargingDeviceInfo = {
+  firmwareVersion: string | null;
+  model: string | null;
+};
+
+// serialNumber 只在上报与状态核心内部用（结构变化判据）；公开出口经 shared/charging-devices.ts 的投影剥掉。
+export type ReportedChargingDeviceInfo = ChargingDeviceInfo & { serialNumber: string | null };
+
 export type ChargerStatus = {
   connected: boolean;
   totalPower: number;
   maxPower: number;
   ports: ChargerPort[];
-  device: {
-    serialNumber: string | null;
-    firmwareVersion: string | null;
-    model: string | null;
-  };
+  device: ChargingDeviceInfo;
   cover: {
     name: string;
     iconHash: string | null;
@@ -376,6 +380,8 @@ export type ChargerStatus = {
   } | null;
   updatedAt: number | null;
 };
+
+export type ReportedChargerStatus = Omit<ChargerStatus, "device"> & { device: ReportedChargingDeviceInfo };
 
 export type ChargerPayload = ChargerStatus & {
   history: ChargerSample[];
@@ -541,13 +547,11 @@ export type PowerBankStatus = {
   outputPower: number;
   temperatures: number[];
   ports: PowerBankPort[];
-  device: {
-    serialNumber: string | null;
-    firmwareVersion: string | null;
-    model: string | null;
-  };
+  device: ChargingDeviceInfo;
   updatedAt: number | null;
 };
+
+export type ReportedPowerBankStatus = Omit<PowerBankStatus, "device"> & { device: ReportedChargingDeviceInfo };
 
 export type PowerBankPayload = PowerBankStatus & {
   pushedAt: number;
@@ -598,7 +602,6 @@ export type ServerTraffic = {
 export type ServerStatus = {
   id: string;
   hostname: string;
-  publicIp: string;
   country: string | null;
   city: string | null;
   isp: string | null;
@@ -625,6 +628,9 @@ export type ServerStatus = {
   uptimeSeconds: number;
   observedAt: number;
 };
+
+// publicIp 是上报契约（server-parse 要求 IPv4），公开出口经 shared/server.ts#publicServer 剥掉。
+export type ReportedServerStatus = ServerStatus & { publicIp: string };
 
 export type ServerPayload = ServerStatus & {
   pushedAt: number;
