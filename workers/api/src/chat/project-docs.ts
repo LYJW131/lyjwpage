@@ -140,14 +140,17 @@ export function sliceDoc(markdown: string, section?: string): { text: string; he
 // 文档多是中文，模型读完常跟着文档的语言回答；提醒放在每次读到的正文前面，比放在工具说明里管用。
 const LANGUAGE_NOTE = "Answer in the language of the visitor's latest message, not the doc's; translate what you use.";
 
-export async function readProjectDoc(read: ReadDoc, request: ProjectDocRequest): Promise<{ text: string; heading?: string }> {
+export async function readProjectDoc(
+  read: ReadDoc,
+  request: ProjectDocRequest,
+): Promise<{ ok: boolean; text: string; heading?: string }> {
   const header = `Source: ${projectDocUrl(request.doc, "blob")}`;
   try {
     const response = await read(projectDocUrl(request.doc, "raw"));
-    if (!response.ok) return { text: `${header}\n\n${JSON.stringify({ error: `HTTP ${response.status}` })}` };
+    if (!response.ok) return { ok: false, text: `${header}\n\n${JSON.stringify({ error: `HTTP ${response.status}` })}` };
     const { text, heading } = sliceDoc(await response.text(), request.section);
-    return { text: `${header}\n${LANGUAGE_NOTE}\n\n${text}`, heading };
+    return { ok: true, text: `${header}\n${LANGUAGE_NOTE}\n\n${text}`, heading };
   } catch {
-    return { text: `${header}\n\n${JSON.stringify({ error: "unavailable" })}` };
+    return { ok: false, text: `${header}\n\n${JSON.stringify({ error: "unavailable" })}` };
   }
 }
