@@ -30,8 +30,6 @@ struct Workout: Decodable, Sendable, Equatable, Identifiable {
     let durationSeconds: Double
     let distanceMeters: Double?
     let activeEnergyKcal: Double?
-    let averageHeartRateBpm: Double?
-    let maximumHeartRateBpm: Double?
     let elevationAscendedMeters: Double?
     let indoor: Bool?
 }

@@ -124,12 +124,6 @@ struct WorkoutTile: View {
             }
             .font(.caption.weight(.medium))
             .monospacedDigit()
-            if let bpm = workout.averageHeartRateBpm {
-                Label("\(Format.integer(bpm)) bpm", systemImage: "heart.fill")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .symbolRenderingMode(.multicolor)
-            }
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)

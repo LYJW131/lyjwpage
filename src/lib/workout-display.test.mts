@@ -7,16 +7,15 @@ const fencing: Workout = {
   id: "demo", activityType: "Fencing", startedAt: 1, endedAt: 1419001,
   secondsFromGMT: 28800, durationSeconds: 1419.033,
   distanceMeters: null, activeEnergyKcal: 202.535,
-  averageHeartRateBpm: 150.8574, maximumHeartRateBpm: 170,
   elevationAscendedMeters: null, indoor: false,
 };
 
-test("fencing and skating show duration and active energy without heart rate", () => {
+test("fencing and skating show duration and active energy", () => {
   assert.deepEqual(workoutMetrics(fencing), [
     { label: "Duration", value: "23:39" },
     { label: "Active energy", value: "202 kcal" },
   ]);
-  assert.equal(workoutMetrics({ ...fencing, activityType: "Skating", averageHeartRateBpm: null }).length, 2);
+  assert.equal(workoutMetrics({ ...fencing, activityType: "Skating" }).length, 2);
   assert.equal(workoutDuration(6441.922), "1:47:21");
 });
 

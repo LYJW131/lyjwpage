@@ -1,6 +1,6 @@
 import type { ActivityReport } from "@shared/activity";
 import type { ParsedAgentLimits } from "@/lib/agent-limits-parse";
-import type { ServerStatus, WorkoutsPayload } from "@/lib/types";
+import type { ReportedWorkouts, ServerStatus } from "@/lib/types";
 
 export interface HistoryStatement {
   bind(...values: unknown[]): HistoryStatement;
@@ -32,7 +32,7 @@ const UPSERT_WORKOUT = `INSERT INTO workouts(id, activity_type, started_at, ende
     received_at = excluded.received_at
   WHERE excluded.received_at >= workouts.received_at`;
 
-export function workoutStatements(db: HistoryDb, payload: WorkoutsPayload): HistoryStatement[] {
+export function workoutStatements(db: HistoryDb, payload: ReportedWorkouts): HistoryStatement[] {
   return payload.items.map((item) => db.prepare(UPSERT_WORKOUT).bind(
     item.id,
     item.activityType,

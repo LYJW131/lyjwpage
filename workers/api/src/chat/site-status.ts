@@ -8,7 +8,7 @@ const VIEW_NOTES = {
   desktop: "Foreground app on LYJW's Mac right now (app name, window title if public)",
   timezone: "LYJW's current timezone (where LYJW physically is)",
   activity: "Apple Watch activity rings today (move, exercise, stand)",
-  workouts: "Recent workouts with duration, energy, heart rate",
+  workouts: "Recent workouts: type, start time, duration, distance, active energy",
   server: "Exit-node server: uptime, CPU, memory, network, monthly traffic",
   charger: "Anker charger ports: devices charging, power, protocol",
   powerBank: "Anker power bank: battery %, charging, ports",
