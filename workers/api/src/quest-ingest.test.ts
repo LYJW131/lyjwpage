@@ -56,6 +56,7 @@ test("Quest current state distinguishes no data, known idle and stale activity",
   assert.equal(questNow(null, NOW).available, false);
   const presence = { observedAt: NOW, receivedAt: NOW, discordStatus: "online" as const, playing: null };
   assert.equal(questNow(presence, NOW).available, true);
-  assert.deepEqual(questNow(presence, NOW + QUEST_STALE_MS), { ...presence, available: false, discordStatus: null });
+  assert.deepEqual(questNow(presence, NOW + QUEST_STALE_MS), { observedAt: NOW, receivedAt: NOW, playing: null, available: false });
+  assert.equal("discordStatus" in questNow(presence, NOW), false, "Discord 账号的在线状态不对外");
   assert.equal(questNow({ ...presence, observedAt: NOW - QUEST_STALE_MS }, NOW).available, false);
 });
