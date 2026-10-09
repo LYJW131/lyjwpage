@@ -59,12 +59,12 @@ export class ChatQuota extends DurableObject<Env> {
     });
   }
 
-  // 返回实际作答的档位；从 wanted 往下逐档都满时返回 null。
-  admitTier(ip: string, wanted: GodChatTier, enforce = true): GodChatTier | null {
+  // 设计候选必须由 Opus 判断，禁用降级时不能消耗 Haiku 名额。
+  admitTier(ip: string, wanted: GodChatTier, enforce = true, allowDowngrade = true): GodChatTier | null {
     const now = Date.now();
     return this.ctx.storage.transactionSync(() => {
       this.prune(now);
-      for (const tier of downgradeChain(wanted)) {
+      for (const tier of allowDowngrade ? downgradeChain(wanted) : [wanted]) {
         const limits = GOD_CHAT_QUOTA.tiers[tier];
         const free =
           !enforce ||

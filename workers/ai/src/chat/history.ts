@@ -7,7 +7,7 @@ import { isProjectDocKey, projectDocPath } from "../tools/project-docs";
 import { isStatusViewKey } from "../tools/site-status";
 
 // trace 随整对历史验过章（src/chat/seal.ts），仍只用枚举（档位、登记过的视图键与文档键）和计数拼，不放任何自由文本。
-function traceNote({ tier, views, docs, searches, fallback, issue, cards }: GodChatTrace): string {
+function traceNote({ tier, views, docs, searches, fallback, design, plan, cards }: GodChatTrace): string {
   const rank = tier ? `the ${GOD_CHAT_TIER_INFO[tier].persona} (${GOD_CHAT_TIER_INFO[tier].label})` : "an earlier rank";
   const who = fallback ? `another Claude model standing in for ${rank}, which declined it` : rank;
   const shown = cards?.filter(isGodChatCard) ?? [];
@@ -18,7 +18,8 @@ function traceNote({ tier, views, docs, searches, fallback, issue, cards }: GodC
     known.length && `called get_site_status for ${known.join(", ")}`,
     read.length && `read the project docs ${read.map(projectDocPath).join(", ")}`,
     searches && `ran ${searches} web search${searches > 1 ? "es" : ""}`,
-    issue && "drafted a GitHub issue for the visitor to review and submit",
+    design && "worked with the visitor in a design session",
+    plan && "proposed a site change for the visitor to review",
     shown.length && `showed the visitor live ${shown.join(", ")} card${shown.length > 1 ? "s" : ""} with show_card`,
   ].filter(Boolean);
   return `[Chat server note: the assistant reply that follows was written by ${who}${used.length ? ` after it ${used.join(" and ")}` : " without using tools"}.]`;

@@ -25,9 +25,17 @@ class_name = "ChatQuota"
 name = "ANTHROPIC_EGRESS"
 class_name = "AnthropicEgress"
 
+[[durable_objects.bindings]]
+name = "BUILD_COORDINATOR"
+class_name = "BuildCoordinator"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["ChatQuota", "AnthropicEgress"]
+
+[[migrations]]
+tag = "v2-build-coordinator"
+new_sqlite_classes = ["BuildCoordinator"]
 
 [[ratelimits]]
 name = "CHAT_USAGE_LIMIT"
@@ -43,6 +51,11 @@ simple = { limit = 5, period = 60 }
 name = "MCP_LIMIT"
 namespace_id = "13103"
 simple = { limit = 60, period = 60 }
+
+[[ratelimits]]
+name = "BUILD_REQUEST_LIMIT"
+namespace_id = "13104"
+simple = { limit = 30, period = 60 }
 
 [observability]
 enabled = true
