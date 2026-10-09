@@ -33,7 +33,7 @@ It is both my personal homepage and a personal telemetry system that keeps evolv
 
 The interface is built on grayscale, hairline borders and cards, with tabular figures keeping live metrics steady. Color and motion mostly serve media, state changes and interaction feedback.
 
-The same data is open to AI agents: `https://lyjw.me/mcp` is a public MCP endpoint (Streamable HTTP, no auth, rate-limited per IP). Add it to any MCP client to read the live data behind every card and this project's design docs; the Talk to God card uses the very same tools.
+The same data is open to AI agents: `https://lyjw.me/mcp` is a public MCP endpoint (Streamable HTTP, no auth). Add it to any MCP client to read the live data behind every card and this project's design docs; the Talk to God card uses the very same tools.
 
 ## Screenshots
 
