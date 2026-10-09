@@ -44,7 +44,7 @@ Preview 的地址与预览名的算法在 `scripts/preview-worker-name.mjs`（`p
 
 Vercel 与 Workers Builds 并行，新分支第一次推送时 Vercel 常常先到。`pnpm build`（`scripts/build.mjs`）在 Vercel 预览构建里先轮询本分支 Preview 的 `/api/status/listening/now`，最多等 `scripts/build.mjs#WAIT_MS`：就绪就连它；等不到（Preview 还没发出来，或这个分支从没触发过 Preview 构建）这次构建连生产，页面和浏览器都用生产 API，下一次推送再重新判断。结果经 `PREVIEW_BACKEND_URL` 交给 `next.config.ts`，配置文件里不做网络等待。
 
-PR 关闭时 `.github/workflows/preview-api-worker.yml` 经 `workers/api/scripts/delete-preview.mjs` 执行 `wrangler preview delete`。仓库 Secret `CLOUDFLARE_API_TOKEN` 需要能管理这个 Worker 的 Preview。没配令牌时工作流跳过。
+PR 关闭时 `.github/workflows/preview-api-worker.yml` 检出默认分支，用那里的 `workers/api/scripts/delete-preview.mjs` 执行 `wrangler preview delete`，不跑 PR 里的代码。仓库 Secret `CLOUDFLARE_API_TOKEN` 需要能管理这个 Worker 的 Preview。没配令牌时工作流跳过。
 
 改过已有端点、而生产仍返回 `ok: true` 的计算，预览页看到的还是生产结果。写入路径不会在 Preview 的空库里发生，因为没有上报进来。
 
