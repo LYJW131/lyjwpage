@@ -120,7 +120,8 @@ export async function handleChat(request: Request, env: Env, readStatus: ReadSta
 
   const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, fetch: anthropicFetch(env) });
   const abort = new AbortController();
-  // 访客点停止或断开时请求被取消（要 enable_request_signal）：停下工具循环，并经 SDK 的 fetch 信号掐断上游，不再生成计费。
+  // 请求被取消时（要 enable_request_signal）停下工具循环，并经 SDK 的 fetch 信号掐断上游。线上流式途中收不到访客断开
+  // （docs/ops-facts.md），这条只在运行时真的报了取消时起作用。
   request.signal.addEventListener("abort", () => abort.abort(), { once: true });
   const body = new ReadableStream<Uint8Array>({
     async start(controller) {
