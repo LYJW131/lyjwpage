@@ -10,7 +10,7 @@ import { FableDescent, type Descent } from "@/components/fable-descent";
 import { BuildPlanCard } from "@/components/build-plan-card";
 import { Card } from "@/components/ui/card";
 import { stableMarkdown } from "@/lib/streaming-markdown";
-import { chatArchive, subscribeChatArchive, type ChatArchive, type ChatBubble, type ChatDesign, type ChatSession } from "@/lib/chat-archive";
+import { activeChatDesign, chatArchive, chatReplyMessages, designSessionEnded, subscribeChatArchive, type ChatArchive, type ChatBubble, type ChatDesign, type ChatSession } from "@/lib/chat-archive";
 import { cn } from "@/lib/utils";
 import { workerUrl } from "@/lib/worker-url";
 import {
@@ -82,7 +82,7 @@ export function GodChat({ className }: { className?: string }) {
 
 function Conversation({ className, archive, session: conversation }: { className?: string; archive: ChatArchive; session?: ChatSession }) {
   const messages = conversation?.messages ?? EMPTY_MESSAGES;
-  const setMessages = (next: Bubble[]) => { if (conversation) chatArchive.update(conversation.id, { messages: next }); };
+  const setMessages = (next: Bubble[], persist = true) => { if (conversation) chatArchive.update(conversation.id, { messages: next }, { persist }); };
   const [historyOpen, setHistoryOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [streaming, setStreaming] = useState(false);
@@ -105,6 +105,19 @@ function Conversation({ className, archive, session: conversation }: { className
   const loadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sessionRef = useRef(0);
   const sendRef = useRef<(text: string, token: string) => void>(() => {});
+  const conversationId = conversation?.id;
+  const design = conversation?.design;
+
+  useEffect(() => {
+    if (!conversationId || !design) return;
+    const expire = () => {
+      const current = chatArchive.getSnapshot().sessions.find((entry) => entry.id === conversationId);
+      if (current?.design?.token === design.token && !activeChatDesign(current.design)) chatArchive.update(conversationId, { design: undefined });
+    };
+    if (!activeChatDesign(design)) { expire(); return; }
+    const timer = setTimeout(expire, Math.max(0, design.expiresAt - Date.now()) + 20);
+    return () => clearTimeout(timer);
+  }, [conversationId, design]);
 
   useEffect(() => {
     const el = widgetRef.current;
@@ -173,7 +186,8 @@ function Conversation({ className, archive, session: conversation }: { className
     const content = text.trim();
     if (!content) return;
     // 界面上的气泡保留档位与查询记录；发给 Worker 的历史另行裁剪，只原样带回 Worker 下发的 trace 与章，不能回写界面。
-    const shown: Bubble[] = [...messages, { role: "user", content }];
+    const user: Bubble & { id: string } = { id: crypto.randomUUID(), role: "user", content };
+    const shown: Bubble[] = [...messages, user];
     const history: GodChatMessage[] = fitHistory(
       shown
         .filter(({ content }) => content.trim())
@@ -185,8 +199,13 @@ function Conversation({ className, archive, session: conversation }: { className
     let meta: Reply = {};
     const session = sessionRef.current;
     const bubble = (): Bubble => ({ role: "assistant", content: reply, ...meta });
+    const replyMessages = (next?: Bubble) => chatReplyMessages(
+      conversation ? chatArchive.getSnapshot().sessions.find((entry) => entry.id === conversation.id)?.messages ?? messages : messages,
+      user,
+      next,
+    );
     const show = () => {
-      if (sessionRef.current === session) setMessages([...shown, bubble()]);
+      if (sessionRef.current === session) setMessages(replyMessages(bubble()), false);
     };
     stickRef.current = true;
     if (!messages.length) reveal();
@@ -202,14 +221,20 @@ function Conversation({ className, archive, session: conversation }: { className
     abortRef.current = controller;
     try {
       if (!CHAT_URL) throw new Error(OFFLINE);
+      const designToken = activeChatDesign(conversation?.design)?.token;
+      if (conversation?.design && !designToken) chatArchive.update(conversation.id, { design: undefined }, { persist: false });
       const res = await fetch(CHAT_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: history, turnstileToken: usedToken, ...(conversation?.design && { designToken: conversation.design.token }) }),
+        body: JSON.stringify({ messages: history, turnstileToken: usedToken, ...(designToken && { designToken }) }),
         signal: controller.signal,
       });
       if (!res.ok || !res.body) {
-        const data = (await res.json().catch(() => null)) as { error?: string } | null;
+        const data = (await res.json().catch(() => null)) as { error?: string; code?: string } | null;
+        if (conversation && designSessionEnded(data?.code)) {
+          chatArchive.update(conversation.id, { design: undefined }, { persist: false });
+          throw new Error("Design session ended. Send your message again to continue in ordinary chat.");
+        }
         throw new Error(data?.error ?? OFFLINE);
       }
       const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
@@ -241,7 +266,7 @@ function Conversation({ className, archive, session: conversation }: { className
           else if (event.type === "card") {
             meta = { ...meta, cards: [...(meta.cards ?? []), { card: event.card, at: reply.length }] };
           } else if (event.type === "design" && conversation) {
-            chatArchive.update(conversation.id, { design: { token: event.token, expiresAt: event.expiresAt, remaining: event.remaining } });
+            chatArchive.update(conversation.id, { design: activeChatDesign({ token: event.token, expiresAt: event.expiresAt, remaining: event.remaining }) }, { persist: false });
           } else if (event.type === "plan") {
             meta = { ...meta, proposals: [...(meta.proposals ?? []), { plan: event.plan, token: event.token, expiresAt: event.expiresAt }] };
           }
@@ -253,7 +278,7 @@ function Conversation({ className, archive, session: conversation }: { className
     } finally {
       if (sessionRef.current === session) {
         const kept = reply || meta.cards?.length || meta.proposals?.length;
-        setMessages(kept ? [...shown, bubble()] : shown.slice(0, -1));
+        setMessages(replyMessages(kept ? bubble() : undefined));
         if (!kept) setDraft((current) => current || content);
       }
       setStreaming(false);
@@ -515,7 +540,7 @@ function Conversation({ className, archive, session: conversation }: { className
       <div className="border-t border-line p-3">
         {error && <p className="mb-2 text-xs text-red-500">{error}</p>}
         {usage && <UsagePanel usage={usage} onClose={() => setUsage(null)} onReset={() => void showUsage(true)} />}
-        {conversation?.design && <DesignStatus design={conversation.design} onRestart={() => runCommand("/clear")} />}
+        {conversation?.design && <DesignStatus design={conversation.design} />}
         <div ref={widgetRef} />
         <form
           className="relative flex items-end gap-2"
@@ -634,7 +659,7 @@ function SessionList({ archive }: { archive: ChatArchive }) {
     <div data-sentry-block className="border-b border-line bg-muted px-3 py-2">
       <div className="mb-2 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
         <span>Saved in this browser</span>
-        <button type="button" onClick={() => { chatArchive.clear(); chatArchive.start(); }} className="hover:text-red-500">Clear all conversations</button>
+        <button type="button" onClick={() => { if (window.confirm("Clear all conversations saved in this browser? This cannot be undone.")) { chatArchive.clear(); chatArchive.start(); } }} className="hover:text-red-500">Clear all conversations</button>
       </div>
       <ul className="scrollbar-none max-h-36 snap-y snap-mandatory overflow-y-auto [&::-webkit-scrollbar]:hidden">
         {archive.sessions.map((session) => (
@@ -651,14 +676,8 @@ function SessionList({ archive }: { archive: ChatArchive }) {
   );
 }
 
-function DesignStatus({ design, onRestart }: { design: ChatDesign; onRestart: () => void }) {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = setTimeout(() => setNow(Date.now()), Math.max(0, design.expiresAt - Date.now()) + 20);
-    return () => clearTimeout(timer);
-  }, [design.expiresAt]);
-  const ended = now >= design.expiresAt || design.remaining <= 0;
-  return <p className="mb-2 text-[11px] text-muted-foreground">{ended ? <>Design session ended. <button type="button" onClick={onRestart} className="underline underline-offset-2">Start a new conversation</button></> : <>Design with Opus · {design.remaining.toLocaleString("en-US")} turns left</>}</p>;
+function DesignStatus({ design }: { design: ChatDesign }) {
+  return <p className="mb-2 text-[11px] text-muted-foreground">Design with Opus · {design.remaining.toLocaleString("en-US")} turns left</p>;
 }
 
 function ReplyBody({ content, cards = [], live }: { content: string; cards?: ShownCard[]; live: boolean }) {

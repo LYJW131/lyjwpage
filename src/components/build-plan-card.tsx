@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { ChatMarkdown } from "@/components/chat-markdown";
 import { IssuePanel } from "@/components/github-issue-panel";
+import { createBuildStatusPoller, isBuildTerminal } from "@/lib/build-status-polling";
 import type { ChatProposal } from "@/lib/chat-archive";
 import { signInWithGithub } from "@/lib/github-sign-in";
 import { workerUrl } from "@/lib/worker-url";
@@ -12,7 +13,6 @@ import { BUILD_PATH, BUILD_SESSION_PATH, BUILD_STATUS_PATH, type BuildFireResult
 const BUILD_URL = workerUrl(process.env.NEXT_PUBLIC_BACKEND_URL, BUILD_PATH);
 const SESSION_URL = workerUrl(process.env.NEXT_PUBLIC_BACKEND_URL, BUILD_SESSION_PATH);
 const STATUS_URL = workerUrl(process.env.NEXT_PUBLIC_BACKEND_URL, BUILD_STATUS_PATH);
-const POLL_MS = 10_000;
 let githubSession: BuildSession | null = null;
 
 const phaseLabels: Record<BuildPhase, string> = {
@@ -104,41 +104,34 @@ function BuildStatusCard({ build, savedRun, onRun }: { build: BuildFireResult; s
   const ref = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
   const onRunRef = useRef(onRun);
+  const terminal = isBuildTerminal(savedRun?.phase);
   useEffect(() => { onRunRef.current = onRun; });
 
   useEffect(() => {
     const element = ref.current;
-    if (!element || !STATUS_URL) return;
+    if (!element || !STATUS_URL || terminal) return;
     let visible = false;
-    let request: AbortController | null = null;
-    let timer: ReturnType<typeof setInterval> | null = null;
-    async function poll() {
-      if (!visible || document.visibilityState !== "visible" || request) return;
-      const controller = new AbortController();
-      request = controller;
-      try {
+    const polling = createBuildStatusPoller({
+      load: async (signal) => {
         const url = new URL(STATUS_URL!);
         url.searchParams.set("runId", build.runId);
-        const response = await fetch(url, { headers: { Authorization: `Bearer ${build.statusToken}` }, signal: controller.signal, cache: "no-store", referrerPolicy: "no-referrer" });
+        const response = await fetch(url, { headers: { Authorization: `Bearer ${build.statusToken}` }, signal, cache: "no-store", referrerPolicy: "no-referrer" });
         const run = await response.json() as BuildRun & { error?: string };
         if (!response.ok || !run.phase) throw new Error(run.error ?? "Build status is unknown.");
+        return run;
+      },
+      onRun: (run) => {
         onRunRef.current(run);
         setError(null);
-      } catch (err) {
-        if (!controller.signal.aborted) setError(err instanceof Error && err.message !== "Failed to fetch" ? err.message : "Couldn't refresh the build. Showing the last known status.");
-      } finally { request = null; }
-    }
-    const refresh = () => {
-      if (timer) clearInterval(timer);
-      timer = null;
-      if (visible && document.visibilityState === "visible") { void poll(); timer = setInterval(() => void poll(), POLL_MS); }
-      else request?.abort();
-    };
+      },
+      onError: (err) => setError(err instanceof Error && err.message !== "Failed to fetch" ? err.message : "Couldn't refresh the build. Showing the last known status."),
+    });
+    const refresh = () => { void polling.setVisible(visible && document.visibilityState === "visible"); };
     const observer = new IntersectionObserver(([entry]) => { visible = entry.isIntersecting; refresh(); });
     observer.observe(element);
     document.addEventListener("visibilitychange", refresh);
-    return () => { observer.disconnect(); document.removeEventListener("visibilitychange", refresh); if (timer) clearInterval(timer); request?.abort(); };
-  }, [build.runId, build.statusToken]);
+    return () => { observer.disconnect(); document.removeEventListener("visibilitychange", refresh); polling.stop(); };
+  }, [build.runId, build.statusToken, terminal]);
 
   return (
     <div ref={ref} className="space-y-2 border-t border-line pt-3 text-xs" aria-label="Build status" aria-live="polite">
@@ -151,7 +144,7 @@ function BuildStatusCard({ build, savedRun, onRun }: { build: BuildFireResult; s
         <dt>Preview</dt><dd><Signal signal={savedRun?.preview} /></dd>
         <dt>Claude review</dt><dd><Signal signal={savedRun?.review} /></dd>
       </dl>
-      <p className="text-[10px] text-muted-foreground">Claude review is advisory. Status refreshes while this card is visible.</p>
+      <p className="text-[10px] text-muted-foreground">Claude review is advisory. {terminal ? "This build has finished; automatic refresh is off." : "Status refreshes while this card is visible."}</p>
       <details className="text-[10px] text-muted-foreground"><summary className="cursor-pointer">Build details</summary><p className="mt-1 break-all font-mono">{build.runId}</p></details>
       {error && <p role="status" className="text-red-500">{error}</p>}
     </div>

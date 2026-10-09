@@ -44,7 +44,7 @@ export class BuildFixture extends DurableObject {
     const url = new URL(request.url);
     const path = url.pathname;
     const body = request.method === 'GET' ? null : await request.json().catch(() => null);
-    const recordedBody = path.startsWith(`${repo}/git/`) || path === `${repo}/pulls` ? body : null;
+    const recordedBody = path.startsWith(`${repo}/git/`) || path === `${repo}/pulls` || path === '/app/installations/7/access_tokens' ? body : null;
     this.ctx.storage.sql.exec('INSERT INTO fixture_calls VALUES (?, ?, ?)', request.method, `${url.host}${path}`, recordedBody ? JSON.stringify(recordedBody) : null);
     const scenario = this.get('scenario', {});
     if (url.host === 'fixture.invalid' && path === '/fire') {
@@ -56,7 +56,10 @@ export class BuildFixture extends DurableObject {
     if (url.host !== 'api.github.com') throw new Error(`Blocked unexpected fixture host: ${url.host}`);
     if (path === '/user') return json({ id: scenario.accountId ?? 131, login: scenario.account ?? 'fixture-visitor', name: 'Fixture Visitor' });
     if (/^\/applications\/[^/]+\/token$/.test(path) && request.method === 'DELETE') return new Response(null, { status: 204 });
-    if (path === `${repo}/git/ref/heads/main`) return json({ object: { sha: baseSha } });
+    if (path === `${repo}/git/ref/heads/main`) {
+      if (request.headers.get('Authorization') !== 'Bearer fixture-readonly-token') throw new Error('Main must use a read-only installation token');
+      return scenario.mainUnavailable ? json({ message: 'Fixture GitHub unavailable' }, 503) : json({ object: { sha: baseSha } });
+    }
     if (path === `${repo}/installation`) {
       const token = request.headers.get('Authorization')?.slice(7) ?? '';
       const [header, payload, signature] = token.split('.');
@@ -67,7 +70,7 @@ export class BuildFixture extends DurableObject {
       this.put('jwtVerified', true);
       return json({ id: 7, permissions: { checks: 'read', statuses: 'read' } });
     }
-    if (path === '/app/installations/7/access_tokens') return json({ token: 'fixture-installation-token' });
+    if (path === '/app/installations/7/access_tokens') return json({ token: body.permissions.contents === 'read' ? 'fixture-readonly-token' : 'fixture-installation-token' });
     if (path === `${repo}/compare/${baseSha}...main`) return json({ status: scenario.ancestor === false ? 'diverged' : 'ahead', merge_base_commit: { sha: scenario.ancestor === false ? 'f'.repeat(40) : baseSha } });
     if (path === `${repo}/git/commits/${baseSha}`) return json({ tree: { sha: baseTree } });
     if (path === `${repo}/git/trees/${baseTree}`) return json({ truncated: false, tree: [{ path: 'src', type: 'tree', mode: '040000' }, { path: 'src/components', type: 'tree', mode: '040000' }] });
@@ -90,7 +93,7 @@ export class BuildFixture extends DurableObject {
   }
 }
 
-const rpcMethods = new Set(['createDesign', 'admitDesign', 'claimPlan', 'reserveRun', 'assignBase', 'readRun', 'claimUpload', 'progress', 'updateRun', 'findRun', 'claimReconcile', 'claimDelivery']);
+const rpcMethods = new Set(['createDesign', 'admitDesign', 'claimPlan', 'isPlanUsed', 'reserveRun', 'readRun', 'claimUpload', 'progress', 'updateRun', 'findRun', 'claimReconcile', 'hasDelivery', 'completeDelivery']);
 
 const fixtureWorker = {
   async fetch(request, env) {

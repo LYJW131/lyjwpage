@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { CHAT_ARCHIVE_KEY, CHAT_ARCHIVE_LIMITS, boundChatArchive, createChatArchiveStore, readChatArchive, type ChatBubble } from "./chat-archive.ts";
+import { CHAT_ARCHIVE_KEY, CHAT_ARCHIVE_LIMITS, activeChatDesign, boundChatArchive, chatReplyMessages, createChatArchiveStore, designSessionEnded, readChatArchive, type ChatBubble } from "./chat-archive.ts";
 
 function storage() {
   const values = new Map<string, string>();
@@ -112,4 +112,66 @@ test("corrupt, unsupported, or oversized storage does not crash restoration", ()
   for (const raw of ["bad JSON", '{"version":2}', "x".repeat(CHAT_ARCHIVE_LIMITS.bytes + 1), '{"version":1,"sessions":[{"id":"bad"}]}']) {
     assert.deepEqual(readChatArchive(raw).sessions, []);
   }
+});
+
+test("streaming publishes each fragment without serializing or writing until the reply finishes", () => {
+  const data = storage();
+  let writes = 0;
+  let encoded = 0;
+  let updates = 0;
+  const store = createChatArchiveStore(() => ({ ...data, setItem: (key, value) => { writes++; data.setItem(key, value); } }), () => "stream", () => 123);
+  const id = store.getSnapshot().activeId;
+  store.subscribe(() => { updates++; });
+  const tracked: ChatBubble = { role: "assistant", content: "", toJSON: () => { encoded++; return { role: "assistant", content: tracked.content }; } } as ChatBubble;
+  for (let chunk = 0; chunk < 100; chunk++) {
+    tracked.content += "x";
+    store.update(id, { messages: [messages[0], tracked] }, { persist: false });
+  }
+  assert.equal(store.getSnapshot().sessions[0].messages[1].content.length, 100);
+  assert.equal(updates, 100);
+  assert.equal(writes, 0);
+  assert.equal(encoded, 0);
+  store.update(id, { messages: [messages[0], tracked] });
+  assert.equal(writes, 1);
+  assert.ok(encoded > 0);
+  assert.equal(createChatArchiveStore(() => data).getSnapshot().sessions[0].messages[1].content, "x".repeat(100));
+});
+
+test("expired and exhausted design sessions omit tokens while ordinary rate limits preserve a valid design", () => {
+  const design = { token: "signed-design", expiresAt: 1000, remaining: 1 };
+  assert.equal(activeChatDesign(design, 999)?.token, design.token);
+  assert.equal(activeChatDesign(design, 1000), undefined);
+  assert.equal(activeChatDesign({ ...design, remaining: 0 }, 999), undefined);
+  assert.equal(activeChatDesign(undefined, 999), undefined);
+  for (const code of ["design_session_expired", "design_session_exhausted"]) assert.equal(designSessionEnded(code), true);
+  for (const code of [undefined, "Too many prayers", 429, "site_limit"]) assert.equal(designSessionEnded(code), false);
+});
+
+test("streaming keeps one current turn and fresh build status after a concurrent save trims old history", () => {
+  const data = storage();
+  const store = createChatArchiveStore(() => data, () => "stream", () => 123);
+  const id = store.getSnapshot().activeId;
+  const current = () => store.getSnapshot().sessions[0].messages;
+  store.update(id, { messages: [
+    { role: "user", content: "Old question" },
+    { role: "assistant", content: "x".repeat(CHAT_ARCHIVE_LIMITS.bytes - 5000) },
+    ...messages,
+  ] });
+  assert.equal(current().length, 4);
+  const user: ChatBubble & { id: string } = { id: "current-turn", role: "user", content: "New question" };
+  const partial: ChatBubble = { role: "assistant", content: "x".repeat(6000) };
+  store.update(id, { messages: chatReplyMessages(current(), user, partial) }, { persist: false });
+  store.update(id, { messages: current().map((message) => message.proposals ? {
+    ...message,
+    proposals: message.proposals.map((proposal) => ({ ...proposal, run: { ...proposal.run!, phase: "merged" as const } })),
+  } : message) });
+  assert.deepEqual(current().map((message) => message.content), [messages[0].content, messages[1].content, user.content, partial.content]);
+  store.reload();
+  store.update(id, { messages: chatReplyMessages(current(), user, { ...partial, content: "Complete reply" }) }, { persist: false });
+  assert.equal(current().length, 4);
+  assert.equal(current().filter((message) => message.id === user.id).length, 1);
+  assert.equal(current()[1].proposals?.[0].run?.phase, "merged");
+  assert.equal(current().at(-1)?.content, "Complete reply");
+  store.update(id, { messages: chatReplyMessages(current(), user) });
+  assert.deepEqual(current().map((message) => message.content), messages.map((message) => message.content));
 });

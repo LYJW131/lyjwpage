@@ -77,14 +77,8 @@ export class BuildCoordinator extends DurableObject<Env> {
     });
   }
 
-  assignBase(runId: string, baseSha: string): boolean {
-    return this.ctx.storage.transactionSync(() => {
-      const run = this.get<StoredRun>(`run:${runId}`);
-      if (!run || run.baseSha || !/^[a-f0-9]{40}$/.test(baseSha)) return false;
-      run.baseSha = baseSha;
-      this.put(`run:${runId}`, run, run.state.createdAt + BUILD_STATUS_TTL_MS);
-      return true;
-    });
+  isPlanUsed(id: string): boolean {
+    return !!this.get(`plan:${id}`);
   }
 
   readRun(runId: string): StoredRun | null {
@@ -171,18 +165,20 @@ export class BuildCoordinator extends DurableObject<Env> {
   claimReconcile(runId: string): boolean {
     return this.ctx.storage.transactionSync(() => {
       const run = this.readRun(runId);
-      if (!run || !run.state.pr || this.get(`reconcile:${runId}`)) return false;
+      if (!run || !run.state.pr || ["merged", "closed"].includes(run.state.phase) || this.get(`reconcile:${runId}`)) return false;
       this.put(`reconcile:${runId}`, true, Date.now() + BUILD_RECONCILE_MS);
       return true;
     });
   }
 
-  claimDelivery(id: string): boolean {
-    return this.ctx.storage.transactionSync(() => {
+  hasDelivery(id: string): boolean {
+    return !!this.get(`delivery:${id}`);
+  }
+
+  completeDelivery(id: string): void {
+    this.ctx.storage.transactionSync(() => {
       this.prune();
-      if (this.get(`delivery:${id}`)) return false;
       this.put(`delivery:${id}`, true, Date.now() + BUILD_STATUS_TTL_MS);
-      return true;
     });
   }
 }

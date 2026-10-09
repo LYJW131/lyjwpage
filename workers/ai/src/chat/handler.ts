@@ -78,8 +78,8 @@ export function clientIp(request: Request): string {
   return request.headers.get("CF-Connecting-IP") ?? "unknown";
 }
 
-function fail(status: number, error: string, headers?: HeadersInit): Response {
-  return Response.json({ error }, { status, headers: { "Cache-Control": "no-store", ...headers } });
+function fail(status: number, error: string, headers?: HeadersInit, code?: string): Response {
+  return Response.json({ error, ...(code && { code }) }, { status, headers: { "Cache-Control": "no-store", ...headers } });
 }
 
 export async function handleChat(request: Request, env: Env, io: ToolIO): Promise<Response> {
@@ -112,7 +112,7 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
   let design: GodChatDesign | undefined;
   if (parsed.designToken) {
     const admitted = await admitDesign(env, parsed.designToken);
-    if ("error" in admitted) return fail(admitted.status, admitted.error);
+    if ("error" in admitted) return fail(admitted.status, admitted.error, undefined, admitted.code);
     design = admitted.session;
   } else {
     const admission = await quota.admitVisitor(ip, enforce);

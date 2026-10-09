@@ -1,13 +1,22 @@
 import { BUILD_PLAN_LIMITS, BUILD_UPLOAD_LIMITS, type BuildPlan, type BuildUpload } from "@shared/build-routine";
 
+const PROTECTED_PATH_SEGMENTS = new Set([
+  ".git", ".github", ".claude", "agents.md", "agents.override.md", "claude.md", "claude.local.md", "gemini.md",
+  ".cursor", ".cursorrules", ".codex", ".agents", ".gemini", ".vscode", ".devcontainer", ".husky", ".idea",
+  "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", ".npmrc", "scripts", ".gitmodules", "vercel.json",
+]);
+
+function protectedPathSegment(segment: string): boolean {
+  const lower = segment.toLowerCase();
+  return PROTECTED_PATH_SEGMENTS.has(lower) || lower.startsWith(".windsurf") || /^wrangler.*\.toml$/.test(lower) || /^next\.config\./.test(lower);
+}
+
 export function allowedBuildPath(path: string): boolean {
   if (!path || path.length > 240 || !/^[A-Za-z0-9_@().\[\] /-]+$/.test(path) || path.trim() !== path) return false;
   const segments = path.split("/");
   if (segments.some((part) => !part || part === "." || part === "..")) return false;
-  if (segments.some((part) => [".git", ".github", ".claude", "AGENTS.md", "CLAUDE.md", "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", ".npmrc", "scripts", ".gitmodules", "vercel.json"].includes(part))) return false;
-  if (segments.some((part) => /^wrangler.*\.toml$/i.test(part) || /^next\.config\./i.test(part))) return false;
-  if (path.startsWith("reporters/")) return false;
-  return /^(?:src|public|docs|shared)\//.test(path) || /^workers\/[^/]+\/src\//.test(path) || /\.(?:test|spec)\.[cm]?[jt]sx?$/.test(path);
+  if (segments.some(protectedPathSegment)) return false;
+  return /^(?:src|public|docs|shared)\//.test(path) || /^workers\/[^/]+\/src\//.test(path);
 }
 
 export function parseBuildPlan(value: unknown): BuildPlan | null {
@@ -19,12 +28,21 @@ export function parseBuildPlan(value: unknown): BuildPlan | null {
   if (!acceptance.length || acceptance.length > BUILD_PLAN_LIMITS.acceptanceItems || acceptance.some((item) => typeof item !== "string" || !item.trim() || item.length > BUILD_PLAN_LIMITS.acceptanceChars)) return null;
   if (!paths.length || paths.length > BUILD_PLAN_LIMITS.paths || paths.some((path) => typeof path !== "string" || !allowedBuildPath(path.replace(/\/$/, "/_")))) return null;
   const text = `${cleanTitle}\n${spec}\n${acceptance.join("\n")}`;
-  const mentionedPaths = text.match(/(?:\.[\w-]+|[\w-]+)(?:\/[\w.@()[\]-]+)+|(?:AGENTS|CLAUDE)\.md|package\.json|pnpm-(?:lock\.yaml|workspace\.yaml)|\.npmrc|wrangler[^\s`]*\.toml|next\.config\.[\w]+|vercel\.json|\.gitmodules/g) ?? [];
-  if (mentionedPaths.some((path) => /(?:^|\/)(?:\.github|\.claude|scripts|reporters)(?:\/|$)/.test(path) || /(?:^|\/)(?:AGENTS\.md|CLAUDE\.md|package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.npmrc|wrangler.*\.toml|next\.config\.[^/]+|vercel\.json|\.gitmodules)$/.test(path))) return null;
+  const mentionedPaths = text.match(/(?:\.[\w-]+|[\w-]+)(?:\/[\w.@()[\]-]+)+|(?:agents(?:\.override)?|claude(?:\.local)?|gemini)\.md|package\.json|pnpm-(?:lock\.yaml|workspace\.yaml)|\.npmrc|wrangler[^\s`]*\.toml|next\.config\.[\w]+|vercel\.json|\.gitmodules|\.(?:github|claude|cursor(?:rules)?|codex|agents|gemini|vscode|windsurf[\w.-]*|devcontainer|husky|idea)/gi) ?? [];
+  if (mentionedPaths.some((path) => path.split("/").some((segment) => protectedPathSegment(segment) || segment.toLowerCase() === "reporters"))) return null;
   return { title: cleanTitle, spec: spec.trim(), acceptance: acceptance.map((item) => (item as string).trim()), paths: [...new Set(paths as string[])] };
 }
 
-export function parseBuildUpload(value: unknown): BuildUpload {
+function withinBuildPlan(path: string, planPaths: readonly string[]): boolean {
+  const directory = path.slice(0, path.lastIndexOf("/"));
+  const testFile = /\.(?:test|spec)\.[cm]?[jt]sx?$/i.test(path);
+  return planPaths.some((planned) => {
+    if (planned.endsWith("/")) return path.startsWith(planned);
+    return path === planned || testFile && directory === planned.slice(0, planned.lastIndexOf("/"));
+  });
+}
+
+export function parseBuildUpload(value: unknown, planPaths: readonly string[]): BuildUpload {
   if (!value || typeof value !== "object") throw new Error("Invalid upload payload.");
   const { baseSha, message, files, deletions } = value as Record<string, unknown>;
   if (typeof baseSha !== "string" || !/^[a-f0-9]{40}$/.test(baseSha)) throw new Error("Invalid base commit.");
@@ -34,6 +52,7 @@ export function parseBuildUpload(value: unknown): BuildUpload {
   let total = 0;
   const checkPath = (path: unknown): string => {
     if (typeof path !== "string" || !allowedBuildPath(path)) throw new Error("A changed path is outside the allowed scope.");
+    if (!withinBuildPlan(path, planPaths)) throw new Error(`Changed path "${path}" is outside the approved plan paths.`);
     if (paths.has(path)) throw new Error("Duplicate changed path.");
     paths.add(path);
     return path;

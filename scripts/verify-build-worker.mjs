@@ -146,12 +146,22 @@ try {
   const proposalResponse = await post('/__fixture/plan', plan);
   assert.equal(proposalResponse.status, 200);
   const proposal = await proposalResponse.json();
+  await post('/__fixture/configure', { mainUnavailable: true });
+  for (let n = 0; n <= BUILD_QUOTA.fire.account; n += 1) {
+    assert.equal((await post('/api/build', { session, planToken: proposal.token })).status, 502);
+  }
+  assert.equal((await inspect()).fires.length, 0);
+  await post('/__fixture/configure', { mainUnavailable: false });
   const fires = await Promise.all(Array.from({ length: 8 }, () => post('/api/build', { session, planToken: proposal.token })));
   assert.equal(fires.filter((response) => response.status === 202).length, 1);
   assert.equal(fires.filter((response) => response.status === 409).length, 7);
   const build = await fires.find((response) => response.status === 202).json();
   const fixture = await inspect();
   assert.equal(fixture.fires.length, 1);
+  const installationCalls = fixture.calls.filter((call) => call.path.endsWith('/access_tokens'));
+  assert.ok(installationCalls.length > BUILD_QUOTA.fire.account);
+  assert.ok(installationCalls.every((call) => Object.values(call.body.permissions).every((permission) => permission === 'read')));
+  console.log('PASS: main uses a read-only App installation token and repeated read failures do not consume the plan or build quota');
   const fired = fixture.fires[0];
   assert.equal(fired.runId, build.runId);
   assert.equal(fired.baseSha, baseSha);
@@ -171,7 +181,7 @@ try {
   const writes = afterUpload.calls.filter((call) => call.method === 'POST' && call.path.startsWith('api.github.com/repos/'));
   assert.equal(writes.length, 5);
   assert.equal(writes.find((call) => call.path.endsWith('/git/refs')).body.ref, `refs/heads/${build.branch}`);
-  assert.equal(writes.find((call) => call.path.endsWith('/pulls')).body.draft, true);
+  assert.equal(writes.find((call) => call.path.endsWith('/pulls')).body.draft, false);
   assert.match(writes.find((call) => call.path.endsWith('/git/commits')).body.message, /Co-authored-by: Fixture Visitor/);
   const status = await (await getStatus()).json();
   assert.equal(status.phase, 'pr_open');
@@ -209,7 +219,11 @@ try {
   assert.equal((await rpc('global', 'readRun', build.runId)).state.phase, 'merged');
   assert.equal((await webhook('pull_request', { pull_request: { ...prPayload, updated_at: new Date(Date.now() + 4000).toISOString() } }, 'late-open')).status, 200);
   assert.equal((await rpc('global', 'readRun', build.runId)).state.phase, 'merged');
-  console.log('PASS: signed webhooks deduplicate deliveries and reject stale-head status/reconciliation updates');
+  assert.equal(await rpc('global', 'hasDelivery', 'merged'), true);
+  const githubCalls = (await inspect()).calls.length;
+  assert.equal((await (await getStatus()).json()).phase, 'merged');
+  assert.equal((await inspect()).calls.length, githubCalls);
+  console.log('PASS: signed webhooks deduplicate deliveries, reject stale-head updates and merged status does not reconcile');
 
   for (const [scenario, changedUpload, errorPattern] of [
     [{ ancestor: true }, { ...upload, files: [{ ...upload.files[0], path: 'src/package.json' }] }, /protected|allowed|blocked/i],
@@ -235,6 +249,7 @@ try {
   await ready();
   assert.equal((await rpc('global', 'readRun', build.runId)).state.pr.headSha, newHead);
   assert.equal((await rpc('global', 'readRun', build.runId)).state.phase, 'merged');
+  assert.equal(await rpc('global', 'hasDelivery', 'merged'), true);
   assert.equal((await rpc('upload-race', 'readRun', uploadRun.state.runId)).uploadUsed, true);
   assert.equal(await rpc('plan-race', 'claimPlan', 'same-plan', expiresAt), false);
   assert.equal((await rpc('design-quota', 'admitDesign', designId)).status, 'exhausted');

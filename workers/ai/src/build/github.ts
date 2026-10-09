@@ -25,6 +25,11 @@ export async function githubAppJwt(privateKey: string, now = Date.now()): Promis
   return `${head}.${body}.${base64url(new Uint8Array(signature))}`;
 }
 
+class GithubRequestError extends Error {
+  status: number;
+  constructor(status: number) { super(`GitHub request failed (${status}).`); this.status = status; }
+}
+
 export class GithubBuildApi {
   private token: string | undefined;
   private fetcher: typeof fetch;
@@ -34,7 +39,8 @@ export class GithubBuildApi {
       method, headers: { ...GITHUB_API_HEADERS, ...(this.token && { Authorization: `Bearer ${this.token}` }), ...(body !== undefined && { "Content-Type": "application/json" }) },
       ...(body !== undefined && { body: JSON.stringify(body) }), signal: AbortSignal.timeout(20_000),
     });
-    if (!response.ok) throw new Error(`GitHub request failed (${response.status}).`);
+    if (!response.ok) throw new GithubRequestError(response.status);
+    if (response.status === 204) return undefined as T;
     const data = await readBoundedJson(response, 8 * 1024 * 1024);
     if (data === null) throw new Error("GitHub returned an invalid or oversized response.");
     return data as T;
@@ -59,6 +65,7 @@ export async function currentMain(api: GithubBuildApi): Promise<string> {
 }
 
 export class BuildBlockedError extends Error {}
+export class BuildPullRequestRejectedError extends Error {}
 
 export async function assertMainAncestor(api: GithubBuildApi, baseSha: string): Promise<void> {
   const comparison = await api.repo<{ status: string; merge_base_commit?: { sha: string } }>(`/compare/${baseSha}...main`);
@@ -100,13 +107,23 @@ export async function createBuildPullRequest(api: GithubBuildApi, run: StoredRun
   for (const path of upload.deletions) entries.push({ path, mode: "100644", type: "blob", sha: null });
   const tree = await api.repo<{ sha: string }>("/git/trees", "POST", { base_tree: baseTree, tree: entries });
   if (!validSha(tree.sha)) throw new Error("GitHub tree confirmation is unavailable.");
-  const commit = await api.repo<{ sha: string }>("/git/commits", "POST", { message: `${upload.message}\n\nCo-authored-by: ${run.coauthor}`, tree: tree.sha, parents: [upload.baseSha] });
+  const message = upload.message.split(/\r\n?|\n/).filter((line) => !/^\s*co-authored-by\s*:/i.test(line)).join("\n").trim() || run.plan.title;
+  const commit = await api.repo<{ sha: string }>("/git/commits", "POST", { message: `${message}\n\nCo-authored-by: ${run.coauthor}`, tree: tree.sha, parents: [upload.baseSha] });
   if (!validSha(commit.sha)) throw new Error("GitHub commit confirmation is unavailable.");
   await api.repo("/git/refs", "POST", { ref: `refs/heads/${run.state.branch}`, sha: commit.sha });
-  const pr = await api.repo<{ number: number; html_url: string; head: { sha: string } }>("/pulls", "POST", {
-    title: run.plan.title, head: run.state.branch, base: "main", draft: true,
-    body: `${buildIssueBody(run.plan)}\n\n---\nRequested by @${run.account}.\n\nCo-authored-by: ${run.coauthor}\n\nBuild run: \`${run.state.runId}\`. Claude review is advisory; it does not authorize merging.`,
-  });
+  let pr: { number: number; html_url: string; head: { sha: string } };
+  try {
+    pr = await api.repo("/pulls", "POST", {
+      title: run.plan.title, head: run.state.branch, base: "main", draft: false,
+      // GitHub can still turn a backslash-escaped @ into a mention.
+      body: `${buildIssueBody(run.plan)}\n\n---\nRequested by @${run.account}.\n\nCo-authored-by: ${run.coauthor}\n\nBuild run: \`${run.state.runId}\`. Claude review is advisory; it does not authorize merging.`.replaceAll("@", "@\u200b"),
+    });
+  } catch (error) {
+    if (!(error instanceof GithubRequestError) || error.status < 400 || error.status >= 500 || error.status === 408) throw error;
+    try { await api.repo(`/git/refs/heads/${run.state.branch}`, "DELETE"); }
+    catch { throw new BuildPullRequestRejectedError("GitHub rejected pull request creation; the build branch could not be removed."); }
+    throw new BuildPullRequestRejectedError("GitHub rejected pull request creation; the build branch was removed.");
+  }
   if (!Number.isSafeInteger(pr.number) || pr.number < 1 || pr.html_url !== `https://github.com/${BUILD_REPO}/pull/${pr.number}` || !validSha(pr.head?.sha)) throw new Error("GitHub pull request confirmation is unavailable.");
   return { number: pr.number, url: pr.html_url, headSha: pr.head.sha };
 }
@@ -139,9 +156,13 @@ async function latestReview(api: GithubBuildApi, number: number): Promise<Review
 }
 
 export async function reconcileBuild(api: GithubBuildApi, run: BuildRun): Promise<Partial<BuildRun>> {
-  if (!run.pr) return {};
+  if (!run.pr || ["merged", "closed"].includes(run.phase)) return {};
   const pr = await api.repo<{ state: string; merged: boolean; head: { sha: string }; html_url: string; number: number; updated_at: string }>(`/pulls/${run.pr.number}`);
-  const result: Partial<BuildRun> = { phase: pr.merged ? "merged" : pr.state === "closed" ? "closed" : "pr_open", pr: { number: pr.number, url: pr.html_url, headSha: pr.head.sha }, reconciledAt: Date.now(), githubUpdatedAt: Date.parse(pr.updated_at) || undefined, ci: { state: "unknown", updatedAt: Date.now() }, preview: { state: "unknown", updatedAt: Date.now() }, review: { state: "unknown", updatedAt: Date.now() } };
+  const result: Partial<BuildRun> = { phase: pr.merged ? "merged" : pr.state === "closed" ? "closed" : "pr_open", pr: { number: pr.number, url: pr.html_url, headSha: pr.head.sha }, reconciledAt: Date.now(), githubUpdatedAt: Date.parse(pr.updated_at) || undefined };
+  if (result.phase === "merged" || result.phase === "closed") return result;
+  result.ci = { state: "unknown", updatedAt: Date.now() };
+  result.preview = { state: "unknown", updatedAt: Date.now() };
+  result.review = { state: "unknown", updatedAt: Date.now() };
   const responses = await Promise.allSettled([
     allCheckRuns(api, pr.head.sha),
     api.repo<{ state: string; statuses: GithubStatus[]; total_count: number }>(`/commits/${pr.head.sha}/status?per_page=100`),

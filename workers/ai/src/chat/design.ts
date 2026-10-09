@@ -8,7 +8,7 @@ import { readPlan } from "../build/plan";
 import type { Env } from "../runtime";
 
 type DesignToken = { kind: "design"; id: string; expiresAt: number };
-export type DesignAdmission = { session: GodChatDesign } | { error: string; status: number };
+export type DesignAdmission = { session: GodChatDesign } | { error: string; status: number; code?: "design_session_expired" | "design_session_exhausted" };
 
 export function designAvailable(env: Env): boolean {
   return Boolean(env.BUILD_SESSION_SECRET && env.BUILD_COORDINATOR);
@@ -28,11 +28,12 @@ export async function startDesign(env: Env): Promise<DesignAdmission> {
 export async function admitDesign(env: Env, token: string): Promise<DesignAdmission> {
   if (!env.BUILD_SESSION_SECRET || !env.BUILD_COORDINATOR) return { status: 503, error: "Design sessions are unavailable." };
   const payload = await verifyBuildToken<DesignToken>(token, env.BUILD_SESSION_SECRET, "design");
-  if (!payload || typeof payload.id !== "string" || !/^[a-f0-9-]{36}$/.test(payload.id)) return { status: 400, error: "This design session is invalid or expired. Start a new conversation." };
+  if (!payload || typeof payload.id !== "string" || !/^[a-f0-9-]{36}$/.test(payload.id)) return { status: 400, code: "design_session_expired", error: "This design session is invalid or expired. Continue in ordinary chat." };
   const admitted = await env.BUILD_COORDINATOR.getByName("global").admitDesign(payload.id);
   if (admitted.status !== "ok") return {
     status: admitted.status === "expired" ? 400 : 429,
-    error: admitted.status === "expired" ? "This design session has expired. Start a new conversation." : "This design session has used all its turns. Start a new conversation.",
+    code: admitted.status === "expired" ? "design_session_expired" : "design_session_exhausted",
+    error: admitted.status === "expired" ? "This design session has expired. Continue in ordinary chat." : "This design session has used all its turns. Continue in ordinary chat.",
   };
   return { session: { token, expiresAt: payload.expiresAt, remaining: admitted.remaining } };
 }

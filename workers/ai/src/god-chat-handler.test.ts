@@ -270,10 +270,18 @@ test("有效设计会话跳过 Clef 与普通档位额度，每轮先扣专属�
   assert.deepEqual(counters, { visitor: 0, tier: 0, clef: 0, created: 0, admitted: 1 });
   assert.equal(requests.length, 1);
   for (const invalid of [`${token.slice(0, -2)}xx`, await signBuildToken({ kind: "design", id, expiresAt: Date.now() - 1 }, env.BUILD_SESSION_SECRET!), await signBuildToken({ kind: "plan", id, expiresAt: Date.now() + 10000 }, env.BUILD_SESSION_SECRET!)]) {
-    assert.equal((await handleChat(chatRequest(invalid), env, toolIO)).status, 400);
+    const rejected = await handleChat(chatRequest(invalid), env, toolIO);
+    assert.equal(rejected.status, 400);
+    assert.equal((await rejected.json() as { code: string }).code, "design_session_expired");
   }
+  sessions.delete(id);
+  const expired = await handleChat(chatRequest(token), env, toolIO);
+  assert.equal(expired.status, 400);
+  assert.equal((await expired.json() as { code: string }).code, "design_session_expired");
   sessions.set(id, BUILD_DESIGN_LIMITS.maxTurns);
-  assert.equal((await handleChat(chatRequest(token), env, toolIO)).status, 429);
+  const exhausted = await handleChat(chatRequest(token), env, toolIO);
+  assert.equal(exhausted.status, 429);
+  assert.equal((await exhausted.json() as { code: string }).code, "design_session_exhausted");
   assert.equal(requests.length, 1);
   assert.equal(counters.visitor + counters.tier + counters.clef, 0);
 });

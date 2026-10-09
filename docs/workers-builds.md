@@ -30,7 +30,7 @@ api 和 ai 的 Builds 都调用同一个预览脚本，各自发布到自己的 
 `deploy-preview.mjs` 读取 api 的 `wrangler.toml`，生成临时 `workers/api/wrangler.preview.json`，执行 `wrangler preview` 后删除。它明确设置：
 
 - `main` 为组合入口，parent 名为命令的 `--worker-name`；普通与预览的 `services` 都清空，不连生产 Service Binding。
-- 空库迁移从 `PREVIEW_BASELINE` 开始，再创建聊天与构建 DO；不重放生产的命名空间转移。
+- 空库迁移由 `scripts/preview-migrations.mjs#previewMigrations` 折叠生产转移；Preview 专属迁移按 `PREVIEW_MIGRATIONS` 声明的位置插入，后续 api 迁移追加在已发布 tag 之后。
 - `global_fetch_strictly_public`：让 `UPSTREAM_API_URL` 能访问同账号的生产自定义域，避免绕过 Worker 后返回 522。
 - `PREVIEW_COMMIT_SHA` 为 Builds 当前提交；组合入口仅在 `PREVIEW_WORKER=true` 时工作，并提供 `PREVIEW_REVISION_PATH` 供构建校验。
 
