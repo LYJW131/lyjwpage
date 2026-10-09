@@ -17,6 +17,7 @@ import { PlaystationBlock } from "@/components/live/playstation-block";
 import { PulseCard } from "@/components/live/pulse-card";
 import { TimezoneCard } from "@/components/live/timezone-card";
 import { NowWatchingCard } from "@/components/live/now-watching-card";
+import { QuestNowCard } from "@/components/live/quest-now-card";
 import { AgentStatusCard } from "@/components/live/agent-status-card";
 import { VibeCodingCard } from "@/components/live/vibecoding-card";
 import { WatchingRow } from "@/components/live/watching-card";
@@ -70,6 +71,7 @@ const SLOT = {
 const READS = {
   contact: [GITHUB_CHART_PATH, CODING_YEAR_PATH],
   nowWatching: [NOW_WATCHING_PATH],
+  questNow: [STATUS_VIEWS.questNow.path],
   media: [CHARGER_PATH, POWERBANK_PATH, LISTENING_PATH, NOW_LISTENING_PATH],
   activity: [ACTIVITY_PATH, STATUS_VIEWS.workouts.path],
   server: [SERVER_PATH],
@@ -101,6 +103,7 @@ export default async function Home() {
     nowWatching,
     playing,
     playingNow,
+    questNow,
     trophiesEnvelope,
     githubChart,
     githubRepo,
@@ -130,6 +133,7 @@ export default async function Home() {
     firstScreen("nowWatching"),
     firstScreen("playing"),
     firstScreen("playingNow"),
+    firstScreen("questNow"),
     firstScreen("trophies"),
     firstScreen("githubChart"),
     firstScreen("githubRepo"),
@@ -193,6 +197,9 @@ export default async function Home() {
               {/* 网格 gap 要等卸载才消失，会在收起动画末尾跳动，因此此卡放在网格外。 */}
               <CardBoundary label="Now Watching" silent paths={READS.nowWatching}>
                 <NowWatchingCard nowFallback={nowWatching} />
+              </CardBoundary>
+              <CardBoundary label="Now Playing" silent paths={READS.questNow}>
+                <QuestNowCard nowFallback={questNow} />
               </CardBoundary>
 
               <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">

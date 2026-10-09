@@ -65,7 +65,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 | 跨来源字段 | 同一概念必须同名、同单位，单位写进字段名 | Mac / HomePod 的 `LocalNowPlaying` 共用 `positionMs`、`durationMs`、`repeatOne`、`observedAt`；`observedAt` 为 epoch 毫秒，秒转毫秒在上报侧完成 |
 | 图片键 | R2 内容地址使用 `objectKey`，来源侧键用明确名称 | `posterKey`、`backdropKey`、`iconHash`，避免含义不明的 `key` |
 
-设计契约：同一类数据可以有多个来源。来源只上报自己观测到的原始事实；合并、去重、排名等派生量在站点侧一处计算。消费者不关心数据来自哪个上报器，新增来源只加生产者和入口校验，不改消费者。例：coding agent 的 token 用量来自 Mac、Claude Code 云端和容器里的 Cursor；gaming 泳道将来会同时有 PlayStation 与 Quest。
+设计契约：同一类数据可以有多个来源。来源只上报自己观测到的原始事实；合并、去重、排名等派生量在站点侧一处计算。消费者不关心数据来自哪个上报器，新增来源只加生产者和入口校验，不改消费者。例：coding agent 的 token 用量来自 Mac、Claude Code 云端和容器里的 Cursor；gaming 泳道同时有 PlayStation 与 Quest。
 
 ## 变更完成条件
 
