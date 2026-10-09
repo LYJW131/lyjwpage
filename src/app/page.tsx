@@ -1,6 +1,7 @@
 import { Footer } from "@/components/footer";
 import { Header } from "@/components/header";
 import { WebPlayerProvider } from "@/components/web-player/web-player-provider";
+import { BackToTop } from "@/components/back-to-top";
 import { AppVersionCard } from "@/components/app-version-card";
 import { CardBoundary } from "@/components/card-boundary";
 import { StaleTabReload } from "@/components/stale-tab-reload";
@@ -168,6 +169,7 @@ export default async function Home() {
 
   return (
     <>
+      <span id="top" tabIndex={-1} className="absolute top-0 outline-none" />
       <WebPlayerProvider>
         <Header desktop={desktop} desktopIconDataUri={desktopIcon} />
 
@@ -276,6 +278,10 @@ export default async function Home() {
                 <CardBoundary label="Emby" paths={READS.emby}>
                   <WatchingRow fallback={watching} nowFallback={nowWatching} />
                 </CardBoundary>
+              </div>
+
+              <div className="mt-3 flex justify-center">
+                <BackToTop />
               </div>
             </Section>
           </div>
