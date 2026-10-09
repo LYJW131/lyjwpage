@@ -240,7 +240,7 @@ test("文档读取失败不抛错，回给模型的结果带来源链接", async
     return new Response("# Hub\nhello");
   }, { doc: "macHub" });
   assert.deepEqual(urls, ["https://raw.githubusercontent.com/LYJW131/MacTelemetryHub/main/README.md"]);
-  assert.match(ok.text, /^Source: https:\/\/github\.com\/LYJW131\/MacTelemetryHub\/blob\/main\/README\.md\n\n# Hub\nhello$/);
+  assert.match(ok.text, /^Source: https:\/\/github\.com\/LYJW131\/MacTelemetryHub\/blob\/main\/README\.md\nAnswer in the language of the visitor's latest message[^\n]*\n\n# Hub\nhello$/);
   assert.match((await readProjectDoc(async () => new Response("", { status: 404 }), { doc: "overview" })).text, /HTTP 404/);
   assert.match((await readProjectDoc(async () => { throw new Error("down"); }, { doc: "overview" })).text, /unavailable/);
 });
