@@ -1,7 +1,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 
 import { GOD_CHAT_CARD_VIEWS, isGodChatCard, type GodChatMessage, type GodChatTrace } from "@shared/god-chat";
-import { GOD_CHAT_TIER_INFO } from "@shared/god-chat-tiers";
+import { GOD_CHAT_TIER_INFO, type GodChatEffort } from "@shared/god-chat-tiers";
 
 import { isProjectDocKey, projectDocPath } from "../tools/project-docs";
 import { isStatusViewKey } from "../tools/site-status";
@@ -25,11 +25,21 @@ function traceNote({ tier, views, docs, searches, fallback, issue, cards }: GodC
 }
 
 // 按 trace 确定性生成，同一段历史每次前缀逐字节相同，缓存才命中。
-export function toModelMessages(history: GodChatMessage[]): Anthropic.Beta.BetaMessageParam[] {
-  return history.map((m, i): Anthropic.Beta.BetaMessageParam => {
+export function toModelMessages(history: GodChatMessage[], effort: GodChatEffort): Anthropic.Beta.BetaMessageParam[] {
+  const messages: Anthropic.Beta.BetaMessageParam[] = [];
+  let activeEffort: GodChatEffort | undefined;
+  for (const [i, m] of history.entries()) {
     const trace = history[i + 1]?.role === "assistant" ? history[i + 1].trace : undefined;
-    return m.role === "user" && trace
+    if (m.role === "user") {
+      const turnEffort = i === history.length - 1 ? effort : trace?.effort;
+      if (turnEffort && turnEffort !== activeEffort) {
+        messages.push({ role: "system", content: [], output_config: { effort: turnEffort } });
+        activeEffort = turnEffort;
+      }
+    }
+    messages.push(m.role === "user" && trace
       ? { role: "user", content: [{ type: "text", text: m.content }, { type: "text", text: traceNote(trace) }] }
-      : { role: m.role, content: m.content };
-  });
+      : { role: m.role, content: m.content });
+  }
+  return messages;
 }

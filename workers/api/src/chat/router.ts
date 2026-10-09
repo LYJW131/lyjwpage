@@ -5,12 +5,11 @@ const CLEF_MODEL = "@cf/cloudflare/clef";
 const CLEF_TIMEOUT_MS = 5_000;
 export const ROUTER_FALLBACK: GodChatTier = "haiku";
 
-// Clef 的选项把 Haiku 按思考强度再拆三档：简单问题少想、省等待，稍难的让它多想而不必升到 Opus。Opus、Fable 不拆，
+// Clef 的选项把 Haiku 按思考强度再拆两档：简单问题少想、省等待，稍难的让它多想而不必升到 Opus。Opus、Fable 不拆，
 // 强度取 GOD_CHAT_TIER_INFO 的默认值（成本与等待的取舍写在那里）。
 export const CLEF_CHOICES = {
   "haiku-low": { route: "haiku", effort: "low" },
   "haiku-medium": { route: "haiku", effort: "medium" },
-  "haiku-high": { route: "haiku", effort: "high" },
   opus: { route: "opus" },
   fable: { route: "fable" },
   refuse: { route: "refuse" },
@@ -27,8 +26,6 @@ export const ROUTE_CRITERIA: Record<ClefChoice, string> = {
     "Trivial messages that need no thought: greetings, thanks, small talk, jokes, or a one-line lookup of what LYJW or the site is doing right now.",
   "haiku-medium":
     "Simple questions a small model answers well with a little thought: everyday facts, short definitions, brief explanations, or a quick summary of LYJW's projects or site status.",
-  "haiku-high":
-    "Short but slightly tricky questions where a small model must think carefully to get it right: a small logic or arithmetic puzzle, explaining a short code snippet or error message, a brief how-to with a few steps, or a quick fact check that may need a web search.",
   opus: "A substantive request: real explanation, multi-step reasoning, writing code, careful analysis, comparisons, or researching something on the web and synthesizing it.",
   fable:
     "Genuinely hard or open-ended thinking: deep philosophy, research-grade questions, intricate math or proofs, or long careful writing where quality matters most.",
