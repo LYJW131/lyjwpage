@@ -7,6 +7,8 @@ import {
   type GodChatEvent,
   type GodChatMessage,
   type GodChatSource,
+  type GodChatTrace,
+  normalizeTrace,
 } from "@shared/god-chat";
 import { GOD_CHAT_TIER_INFO, isGodChatTier, type GodChatTier } from "@shared/god-chat-tiers";
 import { GITHUB_ISSUE_LIMITS, parseIssueDraft } from "@shared/github-issue";
@@ -18,6 +20,7 @@ import type { Env } from "../runtime";
 import { anthropicFetch } from "./egress";
 import { readJsonBody, turnstilePassed, verifyTurnstile } from "./guard";
 import { toModelMessages } from "./history";
+import { sealExchange, sealedHistory, storedReply } from "./seal";
 import { ISSUE_DRAFT_TOOL } from "./issue-draft";
 import {
   PROJECT_DOCS_TOOL,
@@ -90,7 +93,8 @@ function fail(status: number, error: string, headers?: HeadersInit): Response {
 
 export async function handleChat(request: Request, env: Env, readStatus: ReadStatus): Promise<Response> {
   if (request.method !== "POST") return fail(405, "Method not allowed.");
-  if (!env.ANTHROPIC_API_KEY || !env.TURNSTILE_SECRET_KEY) return fail(503, "The oracle is offline.");
+  const sealSecret = env.CHAT_HISTORY_SECRET;
+  if (!env.ANTHROPIC_API_KEY || !env.TURNSTILE_SECRET_KEY || !sealSecret) return fail(503, "The oracle is offline.");
 
   const parsed = parseGodChatRequest(await readJsonBody(request, MAX_BODY_BYTES));
   if (!parsed) return fail(400, "Invalid message.");
@@ -118,11 +122,13 @@ export async function handleChat(request: Request, env: Env, readStatus: ReadSta
     return fail(429, "Too many prayers. Please wait a moment.", { "Retry-After": "60" });
   }
 
+  const history = await sealedHistory(parsed.messages, sealSecret);
+  const latest = history[history.length - 1].content;
   const forced = devSwitch("CHAT_FORCE_TIER");
   const decision: RouteDecision =
     forced === "refuse" || isGodChatTier(forced)
       ? { route: forced, source: "forced" }
-      : await routeWithClef(env.AI, parsed.messages);
+      : await routeWithClef(env.AI, history);
 
   const encoder = new TextEncoder();
   const line = (event: GodChatEvent) => encoder.encode(`${JSON.stringify(event)}\n`);
@@ -146,11 +152,19 @@ export async function handleChat(request: Request, env: Env, readStatus: ReadSta
   const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, fetch: anthropicFetch(env) });
   const body = new ReadableStream<Uint8Array>({
     async start(controller) {
-      const emit = (event: GodChatEvent) => controller.enqueue(line(event));
+      let reply = "";
+      const emit = (event: GodChatEvent) => {
+        if (event.type === "text") reply += event.text;
+        controller.enqueue(line(event));
+      };
       emit({ type: "route", route: wanted, tier, ...(tier !== wanted && { downgradedFrom: wanted }) });
       try {
         const note = tier !== wanted ? downgradeNote(wanted, tier) : undefined;
-        await converse({ client, tier, note, messages: parsed.messages, readStatus, emit, signal: abort.signal });
+        const { complete, trace } = await converse({ client, tier, note, messages: history, readStatus, emit, signal: abort.signal });
+        const stored = storedReply(reply);
+        if (complete && stored && !abort.signal.aborted) {
+          emit({ type: "seal", seal: await sealExchange(sealSecret, latest, stored, trace), ...(trace && { trace }) });
+        }
       } catch (error) {
         if (!abort.signal.aborted) {
           console.error("[god-chat] stream failed", error);
@@ -185,7 +199,7 @@ async function converse({
   readStatus: ReadStatus;
   emit: (event: GodChatEvent) => void;
   signal: AbortSignal;
-}): Promise<void> {
+}): Promise<{ complete: boolean; trace?: GodChatTrace }> {
   const { model, effort, maxTokens } = GOD_CHAT_TIER_INFO[tier];
   // Haiku 不支持服务端拒答兜底参数，其余两档都开。
   const fallback = tier !== "haiku";
@@ -197,7 +211,9 @@ async function converse({
   const sources = new Map<string, GodChatSource>();
   const viewsRead = new Set<StatusViewKey>();
   const docsRead = new Set<string>();
+  const docKeys = new Set<string>();
   let issueDrafted = false;
+  let refused = false;
   // 拒答兜底按单次请求生效：中间某轮被换了模型，下一轮可能又回到本档。整条回复只按给出最终答案的那一轮记，
   // 且那一轮没被拒（兜底模型自己也可能拒）才算代答，回复结束时报一次。同一型号带日期后缀的 id 也算本档自己。
   const ownModel = (id: string) => id === model || id.startsWith(`${model}-`);
@@ -295,6 +311,7 @@ async function converse({
     console.info("[god-chat] usage", JSON.stringify({ tier, round, ...final.usage, iterations: undefined }));
     if (final.stop_reason === "refusal") {
       emit({ type: "text", text: "\n\n[The heavens decline to answer this one.]" });
+      refused = true;
       break;
     }
     // 续跑暂停的回合得带着搜索工具才能接上：搜索次数已用完、或下一轮就是不带工具的收尾轮时不再续，答到哪算哪。
@@ -337,6 +354,7 @@ async function converse({
           if (!claim.read) return result(claim.note ?? "Not read.", true);
           const { ok, text, heading } = await readProjectDoc(fetchProjectDoc, request);
           if (ok) {
+            docKeys.add(request.doc);
             emit({
               type: "doc",
               doc: request.doc,
@@ -358,4 +376,13 @@ async function converse({
   }
   if (servedBy) emit({ type: "served", model: servedBy });
   if (sources.size) emit({ type: "sources", sources: [...sources.values()].slice(0, 6) });
+  const trace = normalizeTrace({
+    tier,
+    views: [...viewsRead],
+    docs: [...docKeys],
+    searches,
+    fallback: Boolean(servedBy),
+    issue: issueDrafted,
+  });
+  return { complete: !refused, trace };
 }

@@ -19,6 +19,7 @@ import {
   type GodChatEvent,
   type GodChatMessage,
   type GodChatSource,
+  type GodChatTrace,
   fitHistory,
 } from "@shared/god-chat";
 import {
@@ -50,6 +51,8 @@ type Reply = {
   servedBy?: string;
   thinking?: string;
   issued?: boolean;
+  seal?: string;
+  trace?: GodChatTrace;
   lookups?: string[];
   docs?: DocRead[];
   searches?: string[];
@@ -173,21 +176,12 @@ export function GodChat({ className }: { className?: string }) {
   async function send(text: string, usedToken: string) {
     const content = text.trim();
     if (!content) return;
-    // 界面上的气泡保留档位与查询记录；发给 Worker 的历史另行裁剪、改写成 trace，不能回写界面。
+    // 界面上的气泡保留档位与查询记录；发给 Worker 的历史另行裁剪，只原样带回 Worker 下发的 trace 与章，不能回写界面。
     const shown: Bubble[] = [...messages, { role: "user", content }];
     const history: GodChatMessage[] = fitHistory(
-      shown.map(({ role, content, tier, servedBy, lookups, docs, searches, issued }): GodChatMessage => {
-        if (role !== "assistant") return { role, content };
-        const trace = {
-          ...(tier && { tier }),
-          ...(lookups?.length && { views: lookups }),
-          ...(docs?.length && { docs: [...new Set(docs.map((read) => read.doc))] }),
-          ...(searches?.length && { searches: searches.length }),
-          ...(servedBy && { fallback: true as const }),
-          ...(issued && { issue: true as const }),
-        };
-        return Object.keys(trace).length ? { role, content, trace } : { role, content };
-      }),
+      shown.map(({ role, content, trace, seal }): GodChatMessage =>
+        role === "assistant" ? { role, content, ...(trace && { trace }), ...(seal && { seal }) } : { role, content },
+      ),
     );
     let reply = "";
     let meta: Reply = {};
@@ -245,6 +239,7 @@ export function GodChat({ className }: { className?: string }) {
             meta = { ...meta, docs: [...(meta.docs ?? []), { doc, path, url, section }] };
           } else if (event.type === "search") meta = { ...meta, searches: [...(meta.searches ?? []), event.query] };
           else if (event.type === "sources") meta = { ...meta, sources: event.sources };
+          else if (event.type === "seal") meta = { ...meta, seal: event.seal, trace: event.trace };
           else if (event.type === "issue") {
             meta = { ...meta, issued: true };
             if (sessionRef.current === session) setIssue({ title: event.title, body: event.body, key: Date.now() });
