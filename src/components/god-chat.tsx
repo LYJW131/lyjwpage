@@ -6,6 +6,7 @@ import { ArrowUp, Square } from "lucide-react";
 
 import { ChatMarkdown } from "@/components/chat-markdown";
 import { FableDescent, type Descent } from "@/components/fable-descent";
+import { IssuePanel } from "@/components/github-issue-panel";
 import { Card } from "@/components/ui/card";
 import { stableMarkdown } from "@/lib/streaming-markdown";
 import { cn } from "@/lib/utils";
@@ -28,6 +29,7 @@ import {
   type GodChatTier,
   type GodChatUsage,
 } from "@shared/god-chat-tiers";
+import type { GithubIssueDraft } from "@shared/github-issue";
 
 type Turnstile = {
   render: (el: HTMLElement, options: Record<string, unknown>) => string;
@@ -47,6 +49,7 @@ type Reply = {
   downgradedFrom?: GodChatTier;
   servedBy?: string;
   thinking?: string;
+  issued?: boolean;
   lookups?: string[];
   docs?: DocRead[];
   searches?: string[];
@@ -64,6 +67,7 @@ const VERIFY_UNAVAILABLE = "Human verification couldn't load. Check your connect
 const COMMANDS = [
   { name: "/clear", aliases: ["/new"], description: "Start a new conversation with empty context" },
   { name: "/usage", aliases: [], description: "Show your quota in the current window" },
+  { name: "/issue", aliases: [], description: "Draft a GitHub issue for this site" },
 ] as const;
 
 type Command = (typeof COMMANDS)[number];
@@ -89,6 +93,7 @@ export function GodChat({ className }: { className?: string }) {
   const [token, setToken] = useState<string | null>(null);
   const [armed, setArmed] = useState(false);
   const [descent, setDescent] = useState<Descent | null>(null);
+  const [issue, setIssue] = useState<(GithubIssueDraft & { key: number }) | null>(null);
   const [headerHeight, setHeaderHeight] = useState(0);
   const anchorRef = useRef<HTMLDivElement>(null);
   const [scriptReady, setScriptReady] = useState(false);
@@ -171,7 +176,7 @@ export function GodChat({ className }: { className?: string }) {
     // 界面上的气泡保留档位与查询记录；发给 Worker 的历史另行裁剪、改写成 trace，不能回写界面。
     const shown: Bubble[] = [...messages, { role: "user", content }];
     const history: GodChatMessage[] = fitHistory(
-      shown.map(({ role, content, tier, servedBy, lookups, docs, searches }): GodChatMessage => {
+      shown.map(({ role, content, tier, servedBy, lookups, docs, searches, issued }): GodChatMessage => {
         if (role !== "assistant") return { role, content };
         const trace = {
           ...(tier && { tier }),
@@ -179,6 +184,7 @@ export function GodChat({ className }: { className?: string }) {
           ...(docs?.length && { docs: [...new Set(docs.map((read) => read.doc))] }),
           ...(searches?.length && { searches: searches.length }),
           ...(servedBy && { fallback: true as const }),
+          ...(issued && { issue: true as const }),
         };
         return Object.keys(trace).length ? { role, content, trace } : { role, content };
       }),
@@ -239,6 +245,10 @@ export function GodChat({ className }: { className?: string }) {
             meta = { ...meta, docs: [...(meta.docs ?? []), { doc, path, url, section }] };
           } else if (event.type === "search") meta = { ...meta, searches: [...(meta.searches ?? []), event.query] };
           else if (event.type === "sources") meta = { ...meta, sources: event.sources };
+          else if (event.type === "issue") {
+            meta = { ...meta, issued: true };
+            if (sessionRef.current === session) setIssue({ title: event.title, body: event.body, key: Date.now() });
+          }
         }
         show();
       }
@@ -267,6 +277,10 @@ export function GodChat({ className }: { className?: string }) {
   function runCommand(name: string) {
     setDraft("");
     setSelected(0);
+    if (name === "/issue") {
+      setIssue({ title: "", body: "", key: Date.now() });
+      return;
+    }
     if (name === "/usage") {
       void showUsage();
       return;
@@ -276,6 +290,7 @@ export function GodChat({ className }: { className?: string }) {
       abortRef.current?.abort();
       pendingRef.current = null;
       setMessages([]);
+      setIssue(null);
       setError(null);
     }
   }
@@ -456,6 +471,9 @@ export function GodChat({ className }: { className?: string }) {
                       {read.section && <> › {read.section}</>}
                     </div>
                   ))}
+                  {message.issued && (
+                    <div className="label-mono mb-1.5 text-[10px] text-muted-foreground">Drafted a GitHub issue below</div>
+                  )}
                   {message.searches?.map((query, i) => (
                     <div key={i} className="label-mono mb-1.5 text-[10px] text-muted-foreground">
                       Searched “{query}”
@@ -493,6 +511,7 @@ export function GodChat({ className }: { className?: string }) {
       <div className="border-t border-line p-3">
         {error && <p className="mb-2 text-xs text-red-500">{error}</p>}
         {usage && <UsagePanel usage={usage} onClose={() => setUsage(null)} onReset={() => void showUsage(true)} />}
+        {issue && <IssuePanel key={issue.key} draft={issue} onClose={() => setIssue(null)} />}
         <div ref={widgetRef} />
         <form
           className="relative flex items-end gap-2"

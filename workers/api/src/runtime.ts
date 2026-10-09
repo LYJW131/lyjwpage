@@ -30,6 +30,8 @@ export interface Env extends MusicKitTokenEnv {
   CHAT_QUOTA?: DurableObjectNamespace<ChatQuota>;
   ANTHROPIC_EGRESS?: DurableObjectNamespace<AnthropicEgress>;
   CHAT_USAGE_LIMIT?: RateLimit;
+  GITHUB_APP_CLIENT_SECRET?: string;
+  GITHUB_ISSUE_LIMIT?: RateLimit;
 }
 
 // 本地夹具与上游覆盖值不能进入共享归档或覆盖生产评分。

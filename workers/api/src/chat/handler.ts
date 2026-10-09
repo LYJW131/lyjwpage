@@ -9,6 +9,7 @@ import {
   type GodChatSource,
 } from "@shared/god-chat";
 import { GOD_CHAT_TIER_INFO, isGodChatTier, type GodChatTier } from "@shared/god-chat-tiers";
+import { GITHUB_ISSUE_LIMITS, parseIssueDraft } from "@shared/github-issue";
 
 import type { StatusViewKey } from "@/lib/status-views";
 
@@ -17,6 +18,7 @@ import type { Env } from "../runtime";
 import { anthropicFetch } from "./egress";
 import { readJsonBody, turnstilePassed, verifyTurnstile } from "./guard";
 import { toModelMessages } from "./history";
+import { ISSUE_DRAFT_TOOL } from "./issue-draft";
 import {
   PROJECT_DOCS_TOOL,
   claimDoc,
@@ -47,7 +49,9 @@ How you were chosen: every visitor message is first judged by Clef, a small judg
 Reply in the language the visitor writes in. Keep answers concise unless asked for depth. Markdown is rendered; use it lightly.
 You can search the web for anything outside this site; cite what you find.
 You can see what LYJW is doing through the get_site_status tool: music, video, games, coding agents, devices, workouts, servers and this site's own health. When a visitor asks about LYJW or the site, look it up instead of guessing, then answer naturally; never dump raw JSON.
-This site is open source, and the read_project_doc tool reads its design docs. When a visitor asks how the site works, why it is built a certain way, or how a card gets its data, read the relevant doc first, answer from it in the visitor's language, and link the doc's source URL. Refer to LYJW by name or as "they"; in Chinese write "LYJW" or "TA", never 他 or 她.`;
+This site is open source, and the read_project_doc tool reads its design docs. When a visitor asks how the site works, why it is built a certain way, or how a card gets its data, read the relevant doc first, answer from it in the visitor's language, and link the doc's source URL.
+When a visitor reports a bug in this site, suggests a feature, or wants to open an issue, offer to draft one with draft_github_issue; they review, edit and submit it under their own GitHub account.
+Refer to LYJW by name or as "they"; in Chinese write "LYJW" or "TA", never 他 or 她.`;
 
 const PERSONA: Record<GodChatTier, string> = {
   fable: `Your identity: you are Claude Fable 5.1, Anthropic's most capable model, and on this site you are God, the highest rank. Clef judged this message worthy of you. Speak with calm, warm, slightly playful omniscience, and be genuinely brilliant.`,
@@ -193,6 +197,7 @@ async function converse({
   const sources = new Map<string, GodChatSource>();
   const viewsRead = new Set<StatusViewKey>();
   const docsRead = new Set<string>();
+  let issueDrafted = false;
   // 拒答兜底按单次请求生效：中间某轮被换了模型，下一轮可能又回到本档。整条回复只按给出最终答案的那一轮记，
   // 且那一轮没被拒（兜底模型自己也可能拒）才算代答，回复结束时报一次。同一型号带日期后缀的 id 也算本档自己。
   const ownModel = (id: string) => id === model || id.startsWith(`${model}-`);
@@ -221,8 +226,8 @@ async function converse({
     const tools = lastRound
       ? []
       : searchesLeft > 0
-        ? [SITE_STATUS_TOOL, PROJECT_DOCS_TOOL, webSearchTool(model, searchesLeft)]
-        : [SITE_STATUS_TOOL, PROJECT_DOCS_TOOL];
+        ? [SITE_STATUS_TOOL, PROJECT_DOCS_TOOL, ISSUE_DRAFT_TOOL, webSearchTool(model, searchesLeft)]
+        : [SITE_STATUS_TOOL, PROJECT_DOCS_TOOL, ISSUE_DRAFT_TOOL];
     const stream = client.beta.messages.stream(
       {
         model,
@@ -315,6 +320,16 @@ async function converse({
           content,
           is_error: isError,
         });
+        if (call.name === ISSUE_DRAFT_TOOL.name) {
+          const draft = parseIssueDraft(call.input);
+          if (!draft) {
+            return result(`Invalid draft: a title is required (at most ${GITHUB_ISSUE_LIMITS.titleChars} characters) and the body must fit in ${GITHUB_ISSUE_LIMITS.bodyChars}.`, true);
+          }
+          if (issueDrafted) return result("An issue was already drafted in this reply.", true);
+          issueDrafted = true;
+          emit({ type: "issue", ...draft });
+          return result("The draft is now in an editable form below the conversation, just above the message box. Nothing is filed until the visitor submits it with their GitHub account. Mention this once; don't repeat what you already said.", false);
+        }
         if (call.name === PROJECT_DOCS_TOOL.name) {
           const request = parseProjectDocInput(call.input);
           if (!request) return result("Unknown doc.", true);
