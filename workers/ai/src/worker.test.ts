@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { registerHooks } from "node:module";
 import test from "node:test";
 
+import { AI_HTTP_PATHS } from "@shared/ai-paths";
+
 import type { Env } from "./runtime.ts";
 
 registerHooks({
@@ -24,15 +26,15 @@ function request(path: string, method = "GET", origin?: string): Request {
 }
 
 test("AI Worker 不公开状态、存储、推送和未知路由，包括预检请求", async () => {
-  for (const path of ["/", "/api/status/timezone", "/api/internal/storage/import", "/ws", "/api/build", "/api/chat/other"]) {
+  for (const path of ["/", "/api/status/timezone", "/api/internal/storage/import", "/ws", "/api/build/other", "/api/chat/other"]) {
     for (const method of ["GET", "POST", "OPTIONS"]) {
       assert.equal((await worker.fetch(request(path, method), env())).status, 404, `${method} ${path}`);
     }
   }
 });
 
-test("四条 AI 路由保留 CORS 预检，MCP 保留协议请求头", async () => {
-  for (const path of ["/api/chat", "/api/chat/usage", "/api/github/issue", "/mcp"]) {
+test("登记的 AI 路由保留 CORS 预检，MCP 保留协议请求头", async () => {
+  for (const path of AI_HTTP_PATHS) {
     const response = await worker.fetch(request(path, "OPTIONS", "https://lyjw.me"), env());
     assert.equal(response.status, 204);
     assert.equal(response.headers.get("Access-Control-Allow-Origin"), "https://lyjw.me");
@@ -41,7 +43,7 @@ test("四条 AI 路由保留 CORS 预检，MCP 保留协议请求头", async () 
 });
 
 test("网页 AI 路由拒绝未授权来源，MCP 同样拒绝携带陌生 Origin 的请求", async () => {
-  for (const path of ["/api/chat", "/api/chat/usage", "/api/github/issue", "/mcp"]) {
+  for (const path of ["/api/chat", "/api/chat/usage", "/api/github/issue", "/api/build", "/api/build/session", "/api/build/status", "/mcp"]) {
     const response = await worker.fetch(request(path, path === "/api/chat/usage" ? "GET" : "POST", "https://elsewhere.test"), env());
     assert.equal(response.status, 403);
     assert.equal(response.headers.get("Access-Control-Allow-Origin"), null);
@@ -89,4 +91,25 @@ test("Sentry 默认标为 production，只有显式预览开关或环境设置�
   assert.equal(sentryOptions(env({ PREVIEW_WORKER: "true" })).environment, "preview");
   assert.equal(sentryOptions(env({ SENTRY_ENVIRONMENT: "development" })).environment, "development");
   assert.equal(sentryOptions(env()).sendDefaultPii, false);
+});
+
+
+test("routine 与 webhook 无 Origin 也交给各自鉴权，缺配置时关闭", async () => {
+  for (const path of ["/api/build/upload", "/api/build/progress", "/api/build/webhook"]) {
+    const response = await worker.fetch(request(path, "POST"), env());
+    assert.equal(response.status, 503, path);
+    assert.equal(response.headers.get("Cache-Control"), "no-store");
+    assert.equal((await worker.fetch(request(path), env())).status, 405);
+  }
+});
+
+test("构建状态、授权与触发在进入 DO 前受入口限流", async () => {
+  const keys: string[] = [];
+  const limited = env({ BUILD_REQUEST_LIMIT: { limit: async ({ key }) => { keys.push(key); return { success: false }; } } });
+  for (const path of ["/api/build", "/api/build/session", "/api/build/status"]) {
+    const response = await worker.fetch(new Request(`https://ai.test${path}`, { method: path.endsWith("status") ? "GET" : "POST", headers: { Origin: "https://lyjw.me", "CF-Connecting-IP": "192.0.2.1" } }), limited);
+    assert.equal(response.status, 429);
+    assert.equal(response.headers.get("Retry-After"), "60");
+  }
+  assert.deepEqual(keys, ["192.0.2.1", "192.0.2.1", "192.0.2.1"]);
 });

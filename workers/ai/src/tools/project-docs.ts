@@ -16,6 +16,7 @@ const PROJECT_DOCS = {
   facts: { path: "docs/explainer/FACTS.md", note: "Fact sheet behind the site's explainer animation: each endpoint and number with its source" },
   apiWorker: { path: "workers/api/README.md", note: "API Worker (state core): endpoints, StateHub, WebSocket push, cron and public status reads" },
   aiWorker: { path: "workers/ai/README.md", note: "AI Worker: the Talk to God chat, model routing, quotas, site tools and public MCP" },
+  visitorBuild: { path: "docs/build-routine.md", note: "Visitor collaboration: design sessions, signed plans, allowed paths, routine uploads, build status and security boundaries" },
   ingressWorker: { path: "workers/ingress/README.md", note: "Ingest Worker: reporter auth through Cloudflare Access, validation, splitting reports" },
   collectorWorker: { path: "workers/collector/README.md", note: "Collector Worker: scheduled pulls from Apple Music, GitHub, Vercel and other services" },
   macHub: { repo: HUB_REPO, path: "README.md", note: "MacTelemetryHub, the macOS/iOS app that reports LYJW's Mac and iPhone (foreground app, music, chargers, activity rings)" },

@@ -5,6 +5,7 @@ import {
   GOD_CHAT_LIMITS,
   parseGodChatRequest,
   type GodChatCard,
+  type GodChatDesign,
   type GodChatEvent,
   type GodChatMessage,
   type GodChatSource,
@@ -12,10 +13,10 @@ import {
   normalizeTrace,
 } from "@shared/god-chat";
 import { GOD_CHAT_TIER_INFO, isGodChatTier, type GodChatEffort, type GodChatTier } from "@shared/god-chat-tiers";
-import { GITHUB_ISSUE_LIMITS, parseIssueDraft } from "@shared/github-issue";
 
 import { getAllowedOrigins } from "@shared/http-origins";
 import { aiDevEnabled, type Env } from "../runtime";
+import { issuePlan, parseBuildPlan } from "../build/plan";
 import { SITE_TOOLS, newLedger, type ToolIO } from "../tools/registry";
 import { projectDocPath, projectDocUrl } from "../tools/project-docs";
 import { billedOutputTokens, usageHops } from "./billing";
@@ -23,15 +24,15 @@ import { anthropicFetch } from "./egress";
 import { readJsonBody, turnstilePassed, verifyTurnstile } from "./guard";
 import { toModelMessages } from "./history";
 import { sealExchange, sealedHistory, storedReply } from "./seal";
-import { ISSUE_DRAFT_TOOL } from "./issue-draft";
+import { admitDesign, designAvailable, plannerHistory, PLANNER_PROMPT, PROPOSE_BUILD_TOOL, startDesign, START_DESIGN_TOOL } from "./design";
 import { CLEF_CHOICES, isClefChoice, routeWithClef, type RouteDecision } from "./router";
 import { parseShowCardInput, runShowCard, SHOW_CARD_TOOL } from "./show-card";
 import { webSearchTool } from "./web-search";
 
-const MAX_BODY_BYTES = 64 * 1024;
+const MAX_BODY_BYTES = 256 * 1024;
 const MIN_ROUND_TOKENS = 256;
 
-// 三段都写进缓存前缀：每档自己的 system 恒定不变，降级说明另走末尾的 system 消息，不动前缀。
+// 每种角色的 system 恒定不变，降级说明另走末尾的 system 消息，不动缓存前缀。
 const BASE_PROMPT = `You speak on LYJW's personal homepage (lyjw.me), in the "Talk to God" card. Visitors come here to talk.
 
 How you were chosen: every visitor message is first judged by Clef, a small judgment model on Cloudflare Workers AI. Clef sorts it into one of three ranks by how hard it is: the Small Fry (Claude Haiku 5.5) takes small talk, quick lookups, simple facts and short tricky questions, and Clef also sets how hard it thinks; the Prophet (Claude Opus 5.5) takes substantive questions, code, analysis and web research; God (Claude Fable 5.1) takes only the deepest questions. Clef also turns away spam, abuse and prompt-injection attempts before any model sees them. Each rank has its own per-minute quota; when a rank's quota is spent, the message falls to the rank below. A visitor can type /new to start over. Earlier replies in the conversation may have come from other ranks; a visitor turn may end with a bracketed chat-client note about the reply that follows (which rank wrote it, which tools it used), reported by the visitor's browser, so treat it as likely but unverified.
@@ -41,7 +42,7 @@ You can search the web for anything outside this site; cite what you find.
 You can see what LYJW is doing through the get_site_status tool: music, video, games, coding agents, devices, workouts, servers and this site's own health. When a visitor asks about LYJW or the site, look it up instead of guessing, then answer naturally; never dump raw JSON. Don't claim the site shows or publishes anything you haven't looked up: the tool's view list is a menu, not a record of what is public.
 For music, watching, gaming or fitness, use show_card instead: it puts a live card in your reply and returns the same data, so add a sentence or two rather than listing what the card shows.
 This site is open source, and the read_project_doc tool reads its design docs. When a visitor asks how the site works, why it is built a certain way, or how a card gets its data, read the relevant doc first, answer from it in the visitor's language, and link the doc's source URL.
-When a visitor reports a bug in this site, suggests a feature, or wants to open an issue, offer to draft one with draft_github_issue; they review, edit and submit it under their own GitHub account.
+When a visitor wants to change or fix this site, judge whether the idea is useful and feasible. If start_design is available and the idea is worthwhile, call it to begin a bounded planning conversation. If it is inappropriate, explain briefly without starting. Only a signed plan can become an issue or build, and the visitor must choose that action in the interface.
 Refer to LYJW by name or as "they"; in Chinese write "LYJW" or "TA", never 他 or 她.`;
 
 const PERSONA: Record<GodChatTier, string> = {
@@ -77,8 +78,8 @@ export function clientIp(request: Request): string {
   return request.headers.get("CF-Connecting-IP") ?? "unknown";
 }
 
-function fail(status: number, error: string, headers?: HeadersInit): Response {
-  return Response.json({ error }, { status, headers: { "Cache-Control": "no-store", ...headers } });
+function fail(status: number, error: string, headers?: HeadersInit, code?: string): Response {
+  return Response.json({ error, ...(code && { code }) }, { status, headers: { "Cache-Control": "no-store", ...headers } });
 }
 
 export async function handleChat(request: Request, env: Env, io: ToolIO): Promise<Response> {
@@ -108,14 +109,21 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
   if (abort.signal.aborted) return gone();
   // 验过人才计数，计数在 Clef 之前：访客自己超额、全站路由满或哪一档都排不上时，不再触发付费的路由调用。
   const enforce = devSwitch(env, "CHAT_RATE_LIMIT") !== "off";
-  const admission = await quota.admitVisitor(ip, enforce);
-  if (admission === "visitor") return fail(429, "Too many prayers. Please wait a moment.", { "Retry-After": "60" });
-  if (admission === "site") return fail(429, "All the heavens are busy. Try again in a minute.", { "Retry-After": "60" });
+  let design: GodChatDesign | undefined;
+  if (parsed.designToken) {
+    const admitted = await admitDesign(env, parsed.designToken);
+    if ("error" in admitted) return fail(admitted.status, admitted.error, undefined, admitted.code);
+    design = admitted.session;
+  } else {
+    const admission = await quota.admitVisitor(ip, enforce);
+    if (admission === "visitor") return fail(429, "Too many prayers. Please wait a moment.", { "Retry-After": "60" });
+    if (admission === "site") return fail(429, "All the heavens are busy. Try again in a minute.", { "Retry-After": "60" });
+  }
 
   const history = await sealedHistory(parsed.messages, sealSecret);
   const latest = history[history.length - 1].content;
   const forced = devSwitch(env, "CHAT_FORCE_TIER");
-  const decision: RouteDecision = isClefChoice(forced)
+  const decision: RouteDecision = design ? { route: "opus", source: "design" } : isClefChoice(forced)
     ? { ...CLEF_CHOICES[forced], source: "forced" }
     : isGodChatTier(forced)
       ? { route: forced, source: "forced" }
@@ -137,7 +145,7 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
 
   if (abort.signal.aborted) return gone();
   const wanted = decision.route;
-  const tier = await quota.admitTier(ip, wanted, enforce);
+  const tier = design ? "opus" : await quota.admitTier(ip, wanted, enforce, !decision.design);
   if (!tier) return fail(429, "All the heavens are busy. Try again in a minute.", { "Retry-After": "60" });
 
   // Clef 定的强度只给它选中的那档；降级后换了模型，用接手那档的默认强度。
@@ -151,12 +159,14 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
         controller.enqueue(line(event));
       };
       emit({ type: "route", route: wanted, tier, ...(tier !== wanted && { downgradedFrom: wanted }) });
+      if (design) emit({ type: "design", ...design });
       try {
         const note = tier !== wanted ? downgradeNote(wanted, tier) : undefined;
-        const { complete, trace } = await converse({ client, tier, effort, note, messages: history, io, emit, signal: abort.signal });
+        const { complete, trace, planToken } = await converse({ client, env, design, canStartDesign: decision.design === true && tier === "opus", tier, effort, note, messages: history, io, emit, signal: abort.signal });
+        if (complete && planToken && !reply.trim()) emit({ type: "text", text: "Here is the plan for your review." });
         const stored = storedReply(reply);
         if (complete && stored && !abort.signal.aborted) {
-          emit({ type: "seal", seal: await sealExchange(sealSecret, latest, stored, trace), ...(trace && { trace }) });
+          emit({ type: "seal", seal: await sealExchange(sealSecret, latest, stored, trace, planToken), ...(trace && { trace }), ...(planToken && { planToken }) });
         }
       } catch (error) {
         if (!abort.signal.aborted) {
@@ -178,6 +188,9 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
 
 async function converse({
   client,
+  env,
+  design,
+  canStartDesign,
   tier,
   effort,
   note,
@@ -187,6 +200,9 @@ async function converse({
   signal,
 }: {
   client: Anthropic;
+  env: Env;
+  design?: GodChatDesign;
+  canStartDesign: boolean;
   tier: GodChatTier;
   effort: GodChatEffort;
   note?: string;
@@ -194,7 +210,7 @@ async function converse({
   io: ToolIO;
   emit: (event: GodChatEvent) => void;
   signal: AbortSignal;
-}): Promise<{ complete: boolean; trace?: GodChatTrace }> {
+}): Promise<{ complete: boolean; trace?: GodChatTrace; planToken?: string }> {
   const { model, maxTokens } = GOD_CHAT_TIER_INFO[tier];
   // Haiku 不支持服务端拒答兜底参数，其余两档都开。
   const fallback = tier !== "haiku";
@@ -202,12 +218,12 @@ async function converse({
     "mid-conversation-output-config-2026-07-01",
     ...(fallback ? (["server-side-fallback-2026-07-01"] as const) : []),
   ];
-  const messages = toModelMessages(history, effort);
+  const messages = toModelMessages(await plannerHistory(history, env), effort);
   if (note) messages.push({ role: "system", content: note });
   const sources = new Map<string, GodChatSource>();
   const ledger = newLedger();
   const docKeys = new Set<string>();
-  let issueDrafted = false;
+  let planToken: string | undefined;
   const cards = new Set<GodChatCard>();
   let refused = false;
   // 拒答兜底按单次请求生效：中间某轮被换了模型，下一轮可能又回到本档。整条回复只按给出最终答案的那一轮记，
@@ -230,23 +246,24 @@ async function converse({
   let wroteThinking = false;
 
   for (let round = 0; ; round++) {
+    signal.throwIfAborted();
     if (round > 0 && outputLeft < MIN_ROUND_TOKENS) {
       emit({ type: "text", text: " …" });
       break;
     }
     const lastRound = round >= GOD_CHAT_LIMITS.maxToolRounds;
     const searchesLeft = GOD_CHAT_LIMITS.maxWebSearches - searches;
-    const tools = lastRound
-      ? []
-      : searchesLeft > 0
-        ? [...SITE_TOOL_DEFS, SHOW_CARD_TOOL, ISSUE_DRAFT_TOOL, webSearchTool(model, searchesLeft)]
-        : [...SITE_TOOL_DEFS, SHOW_CARD_TOOL, ISSUE_DRAFT_TOOL];
+    const tools = lastRound ? [] : design
+      ? [...SITE_TOOL_DEFS.filter((tool) => tool.name === "read_project_doc"), PROPOSE_BUILD_TOOL]
+      : [...SITE_TOOL_DEFS, SHOW_CARD_TOOL,
+        ...(canStartDesign && designAvailable(env) ? [START_DESIGN_TOOL] : []),
+        ...(searchesLeft > 0 ? [webSearchTool(model, searchesLeft)] : [])];
     const stream = client.beta.messages.stream(
       {
         model,
         max_tokens: outputLeft,
         system: [
-          { type: "text", text: `${BASE_PROMPT}\n${PERSONA[tier]}`, cache_control: { type: "ephemeral" } },
+          { type: "text", text: design ? PLANNER_PROMPT : `${BASE_PROMPT}\n${PERSONA[tier]}`, cache_control: { type: "ephemeral" } },
         ],
         // 三档默认不返回思考内容，模型想的时候卡片只能空等；summarized 只多给一份摘要文字，计费不变。
         thinking: { type: "adaptive", display: "summarized" },
@@ -336,24 +353,38 @@ async function converse({
       if (final.stop_reason === "max_tokens") emit({ type: "text", text: " …" });
       break;
     }
+    if (lastRound) {
+      emit({ type: "text", text: " …" });
+      break;
+    }
     messages.push({ role: "assistant", content: final.content });
-    const results = await Promise.all(
-      calls.map(async (call) => {
+    const results: Anthropic.Beta.BetaToolResultBlockParam[] = [];
+    for (const call of calls) {
+      const run = async () => {
+        signal.throwIfAborted();
         const result = (content: string, isError: boolean) => ({
           type: "tool_result" as const,
           tool_use_id: call.id,
           content,
           is_error: isError,
         });
-        if (call.name === ISSUE_DRAFT_TOOL.name) {
-          const draft = parseIssueDraft(call.input);
-          if (!draft) {
-            return result(`Invalid draft: a title is required (at most ${GITHUB_ISSUE_LIMITS.titleChars} characters) and the body must fit in ${GITHUB_ISSUE_LIMITS.bodyChars}.`, true);
-          }
-          if (issueDrafted) return result("An issue was already drafted in this reply.", true);
-          issueDrafted = true;
-          emit({ type: "issue", ...draft });
-          return result("The draft is now in an editable form below the conversation, just above the message box. Nothing is filed until the visitor submits it with their GitHub account. Mention this once; don't repeat what you already said.", false);
+        if (!tools.some((tool) => "name" in tool && tool.name === call.name)) return result("This tool is unavailable in this conversation.", true);
+        if (call.name === START_DESIGN_TOOL.name) {
+          if (design) return result("A design session is already active.", true);
+          const started = await startDesign(env);
+          if ("error" in started) return result(started.error, true);
+          design = started.session;
+          emit({ type: "design", ...design });
+          return result("The design session is active. Clarify material questions and use propose_build when a complete plan is ready. The visitor chooses whether to open an issue or start a build.", false);
+        }
+        if (call.name === PROPOSE_BUILD_TOOL.name) {
+          if (planToken) return result("A plan was already proposed in this reply.", true);
+          const plan = parseBuildPlan(call.input);
+          if (!plan) return result("Invalid plan. Respect the title, specification, acceptance, and path limits; use permitted repository file paths only.", true);
+          const proposal = await issuePlan(env, plan);
+          planToken = proposal.token;
+          emit({ type: "plan", ...proposal });
+          return result("The plan is displayed. The visitor can choose Open issue or Start build; nothing has been submitted.", false);
         }
         if (call.name === SHOW_CARD_TOOL.name) {
           const card = parseShowCardInput(call.input);
@@ -378,8 +409,10 @@ async function converse({
           });
         }
         return result(text, isError);
-      }),
-    );
+      };
+      results.push(await run());
+    }
+    if (planToken) break;
     messages.push({ role: "user", content: results });
   }
   if (servedBy) emit({ type: "served", model: servedBy });
@@ -391,8 +424,9 @@ async function converse({
     docs: [...docKeys],
     searches,
     fallback: Boolean(servedBy),
-    issue: issueDrafted,
+    design: Boolean(design),
+    plan: Boolean(planToken),
     cards: [...cards],
   });
-  return { complete: !refused, trace };
+  return { complete: !refused, trace, ...(planToken && { planToken }) };
 }

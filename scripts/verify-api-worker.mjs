@@ -104,8 +104,9 @@ try {
     durable_objects: { bindings: [
       { name: 'CHAT_QUOTA', class_name: 'ChatQuota' },
       { name: 'ANTHROPIC_EGRESS', class_name: 'AnthropicEgress' },
+      { name: 'BUILD_COORDINATOR', class_name: 'BuildCoordinator' },
     ] },
-    migrations: [{ tag: 'v1', new_sqlite_classes: ['ChatQuota', 'AnthropicEgress'] }],
+    migrations: [{ tag: 'v1', new_sqlite_classes: ['ChatQuota', 'AnthropicEgress', 'BuildCoordinator'] }],
   };
   const streamGateway = {
     ...api,
@@ -189,7 +190,7 @@ export default { fetch(request, env) {
   const tools = (await mcp('tools/list')).result.tools;
   assert.deepEqual(tools.map(tool => tool.name).sort(), ['get_site_status', 'read_project_doc']);
   assert.ok(tools.every(tool => tool.annotations.readOnlyHint));
-  for (const path of ['/api/chat', '/api/github/issue']) {
+  for (const path of ['/api/chat', '/api/github/issue', '/api/build', '/api/build/session', '/api/build/upload', '/api/build/webhook']) {
     const response = await fetch(`${worker}${path}`, { method: 'POST', headers: aiHeaders, body: '{}' });
     assert.equal(response.status, 503, path);
     assert.equal(response.headers.get('cache-control'), 'no-store');
@@ -205,9 +206,9 @@ export default { fetch(request, env) {
   assert.equal(usage.resetInMs, 0);
   assert.ok(Object.values(usage.tiers).every(tier => tier.visitor.used === 0 && tier.everyone.used === 0));
   assert.equal((await fetch(`${worker}/api/chat/usage`, { method: 'POST', headers: aiHeaders })).status, 405);
-  for (const path of ['/mcp', '/api/chat', '/api/chat/usage', '/api/github/issue']) {
+  for (const path of ['/mcp', '/api/chat', '/api/chat/usage', '/api/github/issue', '/api/build', '/api/build/session', '/api/build/status']) {
     const response = await fetch(`${worker}${path}`, {
-      method: path === '/api/chat/usage' ? 'GET' : 'POST', headers: { ...aiHeaders, Origin: 'https://untrusted.invalid' },
+      method: ['/api/chat/usage', '/api/build/status'].includes(path) ? 'GET' : 'POST', headers: { ...aiHeaders, Origin: 'https://untrusted.invalid' },
     });
     assert.equal(response.status, 403, path);
     assert.equal(response.headers.get('access-control-allow-origin'), null);

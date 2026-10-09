@@ -148,3 +148,13 @@ test("enforce 为 false 时满了也放行，照样记账", () => {
   assert.equal(hits("r:all"), GOD_CHAT_ROUTE_LIMIT + 1);
   assert.equal(hits("v:6.6.6.6"), 1);
 });
+
+test("设计候选请求需要 Opus：该档用满不占用较低档的额度", () => {
+  const { chat, hits } = quota();
+  for (let i = 0; i < GOD_CHAT_QUOTA.tiers.opus.visitor; i++) assert.equal(chat.admitTier("designer", "opus"), "opus");
+  const before = hits();
+  assert.equal(chat.admitTier("designer", "opus", true, false), null);
+  assert.equal(hits(), before);
+  assert.equal(hits("t:haiku:designer"), 0);
+  assert.equal(chat.admitTier("designer", "opus"), "haiku");
+});

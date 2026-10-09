@@ -9,14 +9,7 @@ import { parseArgs } from "node:util";
 import { experimental_readRawConfig } from "wrangler";
 
 import { PREVIEW_WORKER_SCRIPTS, previewWorkerName, previewWorkerOrigin } from "../../../scripts/preview-worker-name.mjs";
-
-const PREVIEW_BASELINE = { tag: "v2-split-online-counter", new_sqlite_classes: ["LivePushRoom", "StateHub"] };
-
-function previewMigrations(migrations) {
-  const cut = migrations.findIndex((migration) => migration.tag === PREVIEW_BASELINE.tag);
-  if (cut === -1) throw new Error(`wrangler.toml 里找不到迁移 ${PREVIEW_BASELINE.tag}`);
-  return [PREVIEW_BASELINE, ...migrations.slice(cut + 1)];
-}
+import { previewMigrations } from "../../../scripts/preview-migrations.mjs";
 
 const apiDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const { values } = parseArgs({ options: { "worker-name": { type: "string", default: "api" } } });

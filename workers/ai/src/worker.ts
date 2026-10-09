@@ -1,16 +1,33 @@
-import { GITHUB_ISSUE_PATH } from "@shared/github-issue";
+import {
+  AI_HTTP_PATHS,
+  BUILD_PATH,
+  BUILD_SESSION_PATH,
+  BUILD_STATUS_PATH,
+  BUILD_UPLOAD_PATH,
+  BUILD_PROGRESS_PATH,
+  BUILD_WEBHOOK_PATH,
+} from "@shared/ai-paths";
 import { GOD_CHAT_PATH, GOD_CHAT_USAGE_PATH } from "@shared/god-chat";
 import { getAllowedOrigins, getCorsHeaders, isAllowedOrigin, isAllowedOriginValue } from "@shared/http-origins";
 import { MCP_PATH } from "@shared/mcp";
 
 import { clientIp, handleChat, quotaStub } from "./chat/handler";
+import { handleBuild, handleBuildSession, handleBuildStatus, handleBuildUpload, handleBuildProgress, handleGithubWebhook } from "./build/handlers";
 import { handleGithubIssue } from "./github-issue";
 import { handleMcp } from "./mcp";
 import type { Env } from "./runtime";
 import { fetchProjectDoc } from "./tools/project-docs";
 import type { ToolIO } from "./tools/registry";
 
-const PATHS = new Set([GOD_CHAT_PATH, GOD_CHAT_USAGE_PATH, GITHUB_ISSUE_PATH, MCP_PATH]);
+const BUILD_HANDLERS = new Map([
+  [BUILD_PATH, handleBuild],
+  [BUILD_SESSION_PATH, handleBuildSession],
+  [BUILD_STATUS_PATH, handleBuildStatus],
+  [BUILD_UPLOAD_PATH, handleBuildUpload],
+  [BUILD_PROGRESS_PATH, handleBuildProgress],
+  [BUILD_WEBHOOK_PATH, handleGithubWebhook],
+]);
+const SERVER_BUILD_PATHS = new Set([BUILD_UPLOAD_PATH, BUILD_PROGRESS_PATH, BUILD_WEBHOOK_PATH]);
 
 function jsonResponse(data: unknown, init: ResponseInit = {}): Response {
   const headers = new Headers(init.headers);
@@ -22,13 +39,27 @@ function jsonResponse(data: unknown, init: ResponseInit = {}): Response {
 const worker = {
   async fetch(request: Request, env: Env): Promise<Response> {
     const { pathname } = new URL(request.url);
-    if (!PATHS.has(pathname)) return new Response("Not found", { status: 404 });
+    if (!AI_HTTP_PATHS.has(pathname)) return new Response("Not found", { status: 404 });
 
     const cors = getCorsHeaders(request, env);
     if (pathname === MCP_PATH) {
       cors.set("Access-Control-Allow-Headers", "Content-Type, Accept, Authorization, MCP-Protocol-Version, Mcp-Method, Mcp-Name");
     }
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
+
+    const buildHandler = BUILD_HANDLERS.get(pathname);
+    if (buildHandler) {
+      if (!SERVER_BUILD_PATHS.has(pathname) && !isAllowedOrigin(request, env)) {
+        return jsonResponse({ error: "Forbidden" }, { status: 403, headers: cors });
+      }
+      if (pathname !== BUILD_WEBHOOK_PATH && env.BUILD_REQUEST_LIMIT && !(await env.BUILD_REQUEST_LIMIT.limit({ key: clientIp(request) })).success) {
+        return jsonResponse({ error: "Too many build requests." }, { status: 429, headers: { ...Object.fromEntries(cors), "Retry-After": "60" } });
+      }
+      const response = await buildHandler(request, env);
+      const headers = new Headers(response.headers);
+      cors.forEach((value, name) => headers.set(name, value));
+      return new Response(response.body, { status: response.status, headers });
+    }
 
     if (pathname === GOD_CHAT_USAGE_PATH) {
       if (request.method !== "GET") return new Response("Method not allowed", { status: 405, headers: cors });
