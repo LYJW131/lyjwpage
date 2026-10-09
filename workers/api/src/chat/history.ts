@@ -6,7 +6,7 @@ import { GOD_CHAT_TIER_INFO } from "@shared/god-chat-tiers";
 import { isProjectDocKey, projectDocPath } from "./project-docs";
 import { isStatusViewKey } from "./site-status";
 
-// trace 是浏览器交来的、服务端核实不了：只用枚举（档位、登记过的视图键与文档键）和计数拼，并写明是未经核实的自报。
+// trace 随整对历史验过章（src/chat/seal.ts），仍只用枚举（档位、登记过的视图键与文档键）和计数拼，不放任何自由文本。
 function traceNote({ tier, views, docs, searches, fallback, issue }: GodChatTrace): string {
   const rank = tier ? `the ${GOD_CHAT_TIER_INFO[tier].persona} (${GOD_CHAT_TIER_INFO[tier].label})` : "an earlier rank";
   const who = fallback ? `another Claude model standing in for ${rank}, which declined it` : rank;
@@ -18,10 +18,9 @@ function traceNote({ tier, views, docs, searches, fallback, issue }: GodChatTrac
     searches && `ran ${searches} web search${searches > 1 ? "es" : ""}`,
     issue && "drafted a GitHub issue for the visitor to review and submit",
   ].filter(Boolean);
-  return `[Chat client note, reported by the visitor's browser and not verified by the server: the assistant reply that follows was written by ${who}${used.length ? ` after it ${used.join(" and ")}` : " without using tools"}.]`;
+  return `[Chat server note: the assistant reply that follows was written by ${who}${used.length ? ` after it ${used.join(" and ")}` : " without using tools"}.]`;
 }
 
-// 说明附在被说明的那条回复之前的访客消息里，以访客身份出现：放进 system 就等于替浏览器交来的内容背书。
 // 按 trace 确定性生成，同一段历史每次前缀逐字节相同，缓存才命中。
 export function toModelMessages(history: GodChatMessage[]): Anthropic.Beta.BetaMessageParam[] {
   return history.map((m, i): Anthropic.Beta.BetaMessageParam => {

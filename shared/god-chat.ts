@@ -17,10 +17,11 @@ export const GOD_CHAT_LIMITS = {
 
 // 浏览器只回传文字，工具调用的原始结果不回传；trace 记下那条回复由哪一档作答、查过哪些视图与项目文档、搜了几次、
 // 是否由拒答兜底的模型代答。Worker 据此告诉模型那条回复当时用过工具，否则它会以为自己当时是在编。
-// trace 由浏览器提交、服务端核实不了，所以只当访客自报的说明，附在那条回复之前的访客消息里、标明未经核实，
-// 也只收枚举与计数，不收任何自由文本（搜索词、文档章节名不回传）。docs 是 read_project_doc 的文档键，issue 表示那条回复起草过 issue。
+// trace 由 Worker 在回复结束时随 seal 事件下发，浏览器原样带回；只收枚举与计数，不收任何自由文本（搜索词、文档章节名不回传）。
+// docs 是 read_project_doc 的文档键，issue 表示那条回复起草过 issue。
 export type GodChatTrace = { tier?: GodChatTier; views?: string[]; docs?: string[]; searches?: number; fallback?: true; issue?: true };
-export type GodChatMessage = { role: "user" | "assistant"; content: string; trace?: GodChatTrace };
+// seal 是 Worker 给「访客消息 + 这条回复 + trace」整对盖的章，只在助手消息上；历史里章对不上的一问一答整对丢掉。
+export type GodChatMessage = { role: "user" | "assistant"; content: string; trace?: GodChatTrace; seal?: string };
 
 export type GodChatSource = { url: string; title: string };
 
@@ -38,18 +39,21 @@ export type GodChatEvent =
   | { type: "tool"; views: string[] }
   | { type: "doc"; doc: string; path: string; url: string; section?: string }
   | { type: "search"; query: string }
-  | { type: "sources"; sources: GodChatSource[] };
+  | { type: "sources"; sources: GodChatSource[] }
+  | { type: "seal"; seal: string; trace?: GodChatTrace };
 
 export type GodChatRequest = { messages: GodChatMessage[]; turnstileToken: string };
 
 // 访客自己的话超长就拒；模型的旧回复只截断，超出总量从最早的消息丢起，长回答不能让后续对话发不出去。
 // 浏览器发送前先过一遍，Worker 收到后再过一遍。
+export function clipReply(content: string): string {
+  return content.length > GOD_CHAT_LIMITS.maxReplyChars ? `${content.slice(0, GOD_CHAT_LIMITS.maxReplyChars)}…` : content;
+}
+
 export function fitHistory(messages: GodChatMessage[]): GodChatMessage[] {
-  const clipped = messages.slice(-GOD_CHAT_LIMITS.maxMessages).map((m) =>
-    m.role === "assistant" && m.content.length > GOD_CHAT_LIMITS.maxReplyChars
-      ? { ...m, content: `${m.content.slice(0, GOD_CHAT_LIMITS.maxReplyChars)}…` }
-      : m,
-  );
+  const clipped = messages
+    .slice(-GOD_CHAT_LIMITS.maxMessages)
+    .map((m) => (m.role === "assistant" ? { ...m, content: clipReply(m.content) } : m));
   let total = clipped.reduce((sum, m) => sum + m.content.length, 0);
   while (clipped.length > 1 && total > GOD_CHAT_LIMITS.maxTotalChars) total -= clipped.shift()!.content.length;
   while (clipped.length && clipped[0].role !== "user") clipped.shift();
@@ -59,7 +63,7 @@ export function fitHistory(messages: GodChatMessage[]): GodChatMessage[] {
 const shortStrings = (value: unknown, max: number, len: number): string[] =>
   Array.isArray(value) ? value.filter((v): v is string => typeof v === "string" && v.length > 0 && v.length <= len).slice(0, max) : [];
 
-function parseTrace(value: unknown): GodChatTrace | undefined {
+export function normalizeTrace(value: unknown): GodChatTrace | undefined {
   if (!value || typeof value !== "object") return undefined;
   const raw = value as Record<string, unknown>;
   const views = shortStrings(raw.views, 12, 40).filter((v) => /^[A-Za-z]+$/.test(v));
@@ -85,13 +89,14 @@ export function parseGodChatRequest(body: unknown): GodChatRequest | null {
   const parsed: GodChatMessage[] = [];
   for (const message of messages.slice(-GOD_CHAT_LIMITS.maxMessages)) {
     if (!message || typeof message !== "object") return null;
-    const { role, content, trace } = message as Record<string, unknown>;
+    const { role, content, trace, seal } = message as Record<string, unknown>;
     if ((role !== "user" && role !== "assistant") || typeof content !== "string") return null;
     const text = content.trim();
     if (!text) return null;
     if (role === "user" && text.length > GOD_CHAT_LIMITS.maxMessageChars) return null;
-    const cleanTrace = role === "assistant" ? parseTrace(trace) : undefined;
-    parsed.push(cleanTrace ? { role, content: text, trace: cleanTrace } : { role, content: text });
+    const cleanTrace = role === "assistant" ? normalizeTrace(trace) : undefined;
+    const cleanSeal = role === "assistant" && typeof seal === "string" && /^[\w-]{20,100}$/.test(seal) ? seal : undefined;
+    parsed.push({ role, content: text, ...(cleanTrace && { trace: cleanTrace }), ...(cleanSeal && { seal: cleanSeal }) });
   }
   const fitted = fitHistory(parsed);
   if (!fitted.length || fitted[fitted.length - 1].role !== "user") return null;
