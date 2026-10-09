@@ -1,7 +1,7 @@
 "use client";
 
 import NumberFlow from "@number-flow/react";
-import type { ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 
 import { Card } from "@/components/ui/card";
 import { useStale } from "@/hooks/use-stale";
@@ -28,9 +28,9 @@ const STROKE = 10.7;
 
 const GLYPH_STROKE = 0.74;
 
-type RingValue = { id: RingId; label: string; unit: string; radius: number; value: number; goal: number };
+export type RingValue = { id: RingId; label: string; unit: string; radius: number; value: number; goal: number };
 
-function ringValues(data: ActivityPayload | undefined, current: boolean): RingValue[] {
+export function ringValues(data: ActivityPayload | undefined, current: boolean): RingValue[] {
   return RINGS.map((ring) => ({
     ...ring,
     value: !current
@@ -63,7 +63,9 @@ const CAP_SHADOW: ReadonlyArray<[number, number]> = [
 
 const CAP_SHADOW_REACH = CAP_SHADOW[CAP_SHADOW.length - 1][0];
 
-function Rings({ rings, className }: { rings: RingValue[]; className?: string }) {
+// 圆环也画在首页对话的卡片里，同页会有两份：渐变与遮罩的 id 按实例区分，不然 url(#…) 都指向第一份。
+export function Rings({ rings, className }: { rings: RingValue[]; className?: string }) {
+  const uid = useId();
   return (
     <svg
       viewBox="0 0 100 100"
@@ -75,7 +77,7 @@ function Rings({ rings, className }: { rings: RingValue[]; className?: string })
     >
       <defs>
         {RINGS.map((ring) => (
-          <mask key={`${ring.id}-band`} id={`activity-${ring.id}-band`}>
+          <mask key={`${ring.id}-band`} id={`${uid}-${ring.id}-band`}>
             <circle
               cx="50"
               cy="50"
@@ -89,7 +91,7 @@ function Rings({ rings, className }: { rings: RingValue[]; className?: string })
         {RINGS.map((ring) => (
           <linearGradient
             key={ring.id}
-            id={`activity-${ring.id}-arc`}
+            id={`${uid}-${ring.id}-arc`}
             x1="0"
             y1="1"
             x2="1"
@@ -127,7 +129,7 @@ function Rings({ rings, className }: { rings: RingValue[]; className?: string })
               cy="50"
               r={ring.radius}
               fill="none"
-              stroke={`url(#activity-${ring.id}-arc)`}
+              stroke={`url(#${uid}-${ring.id}-arc)`}
               strokeWidth={STROKE}
               strokeLinecap="round"
               strokeDasharray={circumference}
@@ -138,9 +140,9 @@ function Rings({ rings, className }: { rings: RingValue[]; className?: string })
             />
             {overflow > 0 && (
               <>
-                <g mask={`url(#activity-${ring.id}-band)`}>
+                <g mask={`url(#${uid}-${ring.id}-band)`}>
                   <radialGradient
-                    id={`activity-${ring.id}-cap-shadow`}
+                    id={`${uid}-${ring.id}-cap-shadow`}
                     gradientUnits="userSpaceOnUse"
                     cx={capX}
                     cy={capY}
@@ -159,7 +161,7 @@ function Rings({ rings, className }: { rings: RingValue[]; className?: string })
                     cx={capX}
                     cy={capY}
                     r={STROKE / 2 + CAP_SHADOW_REACH}
-                    fill={`url(#activity-${ring.id}-cap-shadow)`}
+                    fill={`url(#${uid}-${ring.id}-cap-shadow)`}
                   />
                 </g>
                 <circle
@@ -167,7 +169,7 @@ function Rings({ rings, className }: { rings: RingValue[]; className?: string })
                   cy="50"
                   r={ring.radius}
                   fill="none"
-                  stroke={`url(#activity-${ring.id}-arc)`}
+                  stroke={`url(#${uid}-${ring.id}-arc)`}
                   strokeWidth={STROKE}
                   strokeLinecap="round"
                   strokeDasharray={circumference}

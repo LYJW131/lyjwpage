@@ -115,11 +115,11 @@ function fillLastColumn<T>(tiles: T[]): T[] {
 
 const COVER_PX = 112;
 
-function mediaApp(category: string | null | undefined): boolean {
+export function mediaApp(category: string | null | undefined): boolean {
   return category?.endsWith("_media_app") === true;
 }
 
-function playTime(milliseconds: number | null, playCount: number): string {
+export function playTime(milliseconds: number | null, playCount: number): string {
   if (milliseconds == null) return `${playCount} ${playCount === 1 ? "play" : "plays"}`;
   const hours = milliseconds / 3_600_000;
   if (hours >= 10) return `${Math.round(hours)} hrs played`;
@@ -300,9 +300,9 @@ function fold(
 }
 
 // 合并同款 SKU 时保留全部 titleIds，presence 可能命中其中任意一个。
-type MergedGame = PlaystationGame & { titleIds: string[]; platforms: string[] };
+export type MergedGame = PlaystationGame & { titleIds: string[]; platforms: string[] };
 
-function mergeVariants(games: PlaystationGame[]): MergedGame[] {
+export function mergeVariants(games: PlaystationGame[]): MergedGame[] {
   const merged: MergedGame[] = [];
   const byLook = new Map<string, MergedGame>();
   for (const game of games) {
