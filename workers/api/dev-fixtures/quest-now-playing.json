@@ -1,0 +1,18 @@
+{
+  "ok": true,
+  "data": {
+    "available": true,
+    "observedAt": "$now",
+    "receivedAt": "$now",
+    "playing": {
+      "name": "Beat Saber",
+      "platform": "meta_quest",
+      "details": "Solo · Expert+",
+      "state": "Camellia - GHOST",
+      "startedAt": "$now-1380000",
+      "applicationId": null,
+      "parentApplicationId": null,
+      "largeImageUrl": null
+    }
+  }
+}

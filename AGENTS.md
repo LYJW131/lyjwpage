@@ -18,6 +18,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 # 禁区
 
 - 不手跑 `wrangler deploy`：非交互部署会直接接管挂在别的 Worker 上的自定义域名，Worker 默认只走 Workers Builds。唯一例外是跨 Worker 的契约切换：按被调用方 → 调用方的顺序手动部署，再推 main 让 Workers Builds 同码重建（见「部署流程」）。
+- 不在 Vercel 上写后端：调第三方 API、持有密钥、写状态的逻辑一律进 `workers/api`，站点的 Next 只渲染页面、缓存和处理图片，不为功能新增 Route Handler 或 Server Action（现有的 `src/app/api/` 只服务 Vercel 自身的缓存失效与版本号）。分支上试新后端走 api Worker 的分支预览，Secret 也设在预览上，见 `docs/workers-builds.md`「分支预览」。
 - 不提交 `.env.local`、`.dev.vars` 这类本地凭据文件。
 - 不删除、不手改本文件顶部 `next dev` 托管的自动块（`BEGIN:nextjs-agent-rules` 到 `END:nextjs-agent-rules`）。
 
@@ -65,7 +66,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 | 跨来源字段 | 同一概念必须同名、同单位，单位写进字段名 | Mac / HomePod 的 `LocalNowPlaying` 共用 `positionMs`、`durationMs`、`repeatOne`、`observedAt`；`observedAt` 为 epoch 毫秒，秒转毫秒在上报侧完成 |
 | 图片键 | R2 内容地址使用 `objectKey`，来源侧键用明确名称 | `posterKey`、`backdropKey`、`iconHash`，避免含义不明的 `key` |
 
-设计契约：同一类数据可以有多个来源。来源只上报自己观测到的原始事实；合并、去重、排名等派生量在站点侧一处计算。消费者不关心数据来自哪个上报器，新增来源只加生产者和入口校验，不改消费者。例：coding agent 的 token 用量来自 Mac、Claude Code 云端和容器里的 Cursor；gaming 泳道将来会同时有 PlayStation 与 Quest。
+设计契约：同一类数据可以有多个来源。来源只上报自己观测到的原始事实；合并、去重、排名等派生量在站点侧一处计算。消费者不关心数据来自哪个上报器，新增来源只加生产者和入口校验，不改消费者。例：coding agent 的 token 用量来自 Mac、Claude Code 云端和容器里的 Cursor；gaming 泳道同时有 PlayStation 与 Quest。
 
 ## 变更完成条件
 

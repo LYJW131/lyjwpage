@@ -8,7 +8,8 @@ import { fanout, type PendingEvent } from "@api/fanout";
 import { historyArchiveEnabled, requestStore } from "@api/runtime";
 import { recordStateObservation } from "@api/stores/pulse";
 import { archiveTrophies } from "@api/stores/trophy-history";
-import { gamingFacts } from "@shared/pulse-timeline";
+import { gamingFacts, questGamingFacts } from "@shared/pulse-timeline";
+import { questMirror, questNow } from "@shared/quest";
 import { setPlaystationPlayedGames, setPlaystationPresence, setPlaystationTrophies } from "@api/stores/playstation-store";
 import type { PreparedPlaystationReport } from "@shared/ingest/playstation";
 
@@ -56,7 +57,10 @@ export async function commitPreparedPlaystationReport(prepared: PreparedPlaystat
 
   if (incomingPresence) {
     writes.push(setPlaystationPresence(incomingPresence));
-    writes.push(recordStateObservation("gaming", receivedAt, gamingFacts(incomingPresence)));
+    // Quest 正在玩时游戏道归 Quest：PS 这一封的「在线」不能把那段截断。
+    const quest = await questMirror.get();
+    const questPlaying = quest ? questNow(quest, receivedAt).playing : null;
+    writes.push(recordStateObservation("gaming", receivedAt, questPlaying ? questGamingFacts(questPlaying) : gamingFacts(incomingPresence)));
     if (presenceChanged || !previousPresence) {
       events.push({ type: "playing-now", payload: incomingPresence });
     }

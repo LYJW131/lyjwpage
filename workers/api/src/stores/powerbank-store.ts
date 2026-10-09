@@ -1,11 +1,11 @@
 import { tellStorage } from "@/lib/storage";
-import type { PowerBankStatus } from "@/lib/types";
+import type { ReportedPowerBankStatus } from "@/lib/types";
 import { fallback, K_LAST_PUSH, K_LATEST, type Stored } from "@shared/powerbank-store";
 
 
 const TTL_MS = 24 * 60 * 60 * 1000;
 
-function structuralKey(status: PowerBankStatus) {
+function structuralKey(status: ReportedPowerBankStatus) {
   return JSON.stringify([
     status.connected,
     status.charging,
@@ -18,7 +18,7 @@ function structuralKey(status: PowerBankStatus) {
 }
 
 export function prepareStatus(
-  status: PowerBankStatus,
+  status: ReportedPowerBankStatus,
   receivedAt: number,
   previous: Stored | null,
 ): { structuralChanged: boolean; commit: () => Promise<void> } {

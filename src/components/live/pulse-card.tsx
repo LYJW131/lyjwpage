@@ -237,7 +237,7 @@ function stateModel(domain: "listening" | "watching" | "gaming", lane: PulseStat
     summary: segments.length || traces.length
       ? { value: pulseDuration(activeSeconds), detail: domain === "listening" && titles ? `${titles.toLocaleString("en-US")} ${titles === 1 ? "track" : "tracks"}` : ACTIVE_WORDS[domain] }
       : null,
-    aria: domain === "gaming" ? "PlayStation status: offline, online or in a game" : `${domain} status: idle, paused or playing`,
+    aria: domain === "gaming" ? "Game status on PlayStation or Meta Quest: offline, online or in a game" : `${domain} status: idle, paused or playing`,
   };
 }
 

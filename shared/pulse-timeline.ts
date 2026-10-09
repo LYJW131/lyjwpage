@@ -226,6 +226,11 @@ export function gamingFacts(presence: { online: boolean; playing: { titleId: str
   return { state: presence.online ? "online" : "offline", titleId: null, title: null };
 }
 
+// Quest 的游戏没有 PlayStation 那样的 titleId，用 Discord 的应用 ID（没有就用游戏名）加前缀，免得和 PS 的 ID 撞上。
+export function questGamingFacts(playing: { name: string; applicationId: string | null }): GamingFacts {
+  return { state: "in-game", titleId: pulseText(`quest:${playing.applicationId ?? playing.name}`, 80), title: pulseText(playing.name) };
+}
+
 export function activeState(lane: StateLane): string {
   return lane === "gaming" ? "in-game" : "playing";
 }

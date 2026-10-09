@@ -29,6 +29,8 @@ import type { ListeningItem, RecentTrack } from "@/lib/types";
 import { prepareAgentLimits } from "@shared/ingest/agents";
 import { prepareEmbyReport } from "@shared/ingest/emby";
 import { preparePlaystationReport } from "@shared/ingest/playstation";
+import { prepareQuestReport } from "@shared/ingest/quest";
+import { commitPreparedQuestReport } from "@api/stores/quest";
 import { prepareTelemetryEnvelope } from "@shared/ingest/telemetry";
 
 const recordTelemetryEnvelope = (input: unknown, at: number) => commitPreparedTelemetryEnvelope(prepareTelemetryEnvelope(input, at));
@@ -262,6 +264,26 @@ test("PSN 在线状态：进游戏、换游戏、下线各是一段", withStorag
     ["in-game", "Pragmata", game, off],
   ]);
   assert.equal((await open(storage, "gaming")).state, "offline");
+}));
+
+test("游戏道合并 PlayStation 与 Quest：Quest 在玩时 PS 的在线截不断它，停玩后交还 PS", withStorage(async (storage) => {
+  const ps = (at: number) => recordPlaystationReport({ version: 1, presence: { observedAt: at, online: true, availability: null, platform: "PS5", lastOnlineAt: null, playing: null } }, at);
+  const quest = (at: number, playing: unknown) => commitPreparedQuestReport(prepareQuestReport({ version: 1, presence: { observedAt: at, discordStatus: "online", playing } }, at));
+  const beatSaber = { name: "Beat Saber", platform: "meta_quest", applicationId: "123", startedAt: null };
+  await inRequest(() => ps(T0));
+  const start = T0 + 10 * 60_000;
+  await inRequest(() => quest(start, beatSaber));
+  await inRequest(() => ps(start + 2 * 60_000));
+  assert.deepEqual(await open(storage, "gaming"), { ...(await open(storage, "gaming")), state: "in-game", titleId: "quest:123", title: "Beat Saber", from: start });
+  const stop = start + 30 * 60_000;
+  await inRequest(() => quest(stop, null));
+  assert.deepEqual((await closed(storage, "gaming")).map((row) => [row.state, row.titleId, row.title, row.from, row.to]), [
+    ["online", null, null, T0, start],
+    ["in-game", "quest:123", "Beat Saber", start, stop],
+  ]);
+  assert.equal((await open(storage, "gaming")).state, "online");
+  await inRequest(() => quest(stop + 60_000, null));
+  assert.equal((await closed(storage, "gaming")).length, 2, "Quest 一直没在玩时不写游戏道");
 }));
 
 test("iPhone activity keeps raw five-minute buckets, rewrites only from the first change, and stores workout intervals", withStorage(async (storage) => {

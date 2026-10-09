@@ -43,7 +43,6 @@ struct TimezonePayload: Decodable, Sendable, Equatable {
 }
 
 struct DeviceInfo: Decodable, Sendable, Equatable {
-    let serialNumber: String?
     let firmwareVersion: String?
     let model: String?
 }

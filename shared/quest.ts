@@ -20,10 +20,8 @@ export type QuestPresence = {
   playing: QuestPlaying | null;
 };
 
-export type QuestNow = Omit<QuestPresence, "discordStatus"> & {
-  available: boolean;
-  discordStatus: QuestPresence["discordStatus"] | null;
-};
+// discordStatus 只在上报与存储里：它是 Discord 账号的在线状态，不是 Quest 本身，公开的 QuestNow 不带。
+export type QuestNow = Omit<QuestPresence, "discordStatus"> & { available: boolean };
 
 export const questMirror = mirrorKey<QuestPresence>(["quest", "presence"], (value) => value.observedAt);
 
@@ -33,7 +31,6 @@ export function questNow(presence: QuestPresence | null, now = Date.now()): Ques
     available,
     observedAt: presence?.observedAt ?? 0,
     receivedAt: presence?.receivedAt ?? 0,
-    discordStatus: available ? presence.discordStatus : null,
     playing: available ? presence.playing : null,
   };
 }

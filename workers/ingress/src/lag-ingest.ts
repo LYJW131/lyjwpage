@@ -6,6 +6,7 @@ import { REPORTER_BY_SOURCE, type ReporterBlock, type ReporterStat } from "@/lib
 import type { ActivityStatus, ServerPayload, TimezoneActivity, Workout } from "@/lib/types";
 import { agentLimitsLayoutKey, mergeAgentLimits, type AgentLimitsPayload } from "@/lib/vibecoding-limits";
 import { LAG_KEYS, readLag, writeLag, type LagStore } from "@shared/lag";
+import { publicServer } from "@shared/server";
 import { publicWorkout } from "@shared/workouts";
 import type { PreparedIngest } from "@shared/ingest/prepare";
 
@@ -14,11 +15,7 @@ export async function commitLagIngest(kv: LagStore, command: PreparedIngest): Pr
   switch (command.source) {
     case "server": {
       const previous = await readLag<ServerPayload>(kv, LAG_KEYS.server);
-      const next: ServerPayload = {
-        ...command.status,
-        traffic: command.status.traffic ?? null,
-        pushedAt: command.receivedAt,
-      };
+      const next: ServerPayload = { ...publicServer(command.status), pushedAt: command.receivedAt };
       await Promise.all([
         writeLag(kv, LAG_KEYS.server, next, command.receivedAt),
         writeLedger(kv, "server", command.reporter, command.receivedAt),

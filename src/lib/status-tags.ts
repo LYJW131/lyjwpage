@@ -17,5 +17,6 @@ export const NOW_WATCHING_TAG = STATUS_VIEWS.nowWatching.tag;
 export const PLAYING_TAG = STATUS_VIEWS.playing.tag;
 export const NOW_PLAYING_TAG = STATUS_VIEWS.playingNow.tag;
 export const TROPHIES_TAG = STATUS_VIEWS.trophies.tag;
+export const QUEST_NOW_TAG = STATUS_VIEWS.questNow.tag;
 
 export { STATUS_TAGS } from "@/lib/status-views";

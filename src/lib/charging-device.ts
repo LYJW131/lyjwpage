@@ -1,7 +1,15 @@
 
 import { IMAGE_OBJECT_KEY } from "./asset-url.ts";
 import { text } from "./json.ts";
-import type { ChargerPort, ChargerStatus, PowerBankPort, PowerBankStatus } from "./types";
+import type {
+  ChargerPort,
+  ChargerStatus,
+  PowerBankPort,
+  PowerBankStatus,
+  ReportedChargerStatus,
+  ReportedChargingDeviceInfo,
+  ReportedPowerBankStatus,
+} from "./types";
 
 const CHARGER_PORTS = ["C1", "C2", "C3"] as const;
 const POWER_BANK_PORTS = ["C1", "C2", "A", "B"] as const;
@@ -60,7 +68,7 @@ function displayText(value: string | null | undefined): string | null {
   return text || null;
 }
 
-function deviceInfo(raw: RawChargingDevice): ChargerStatus["device"] {
+function deviceInfo(raw: RawChargingDevice): ReportedChargingDeviceInfo {
   return {
     serialNumber: displayText(raw.id),
     firmwareVersion: displayText(raw.firmware),
@@ -118,7 +126,7 @@ export function pickPowerBank(devices: unknown): RawPowerBank | null {
   return (list as RawPowerBank[]).find((device) => device?.kind === "powerBank") ?? null;
 }
 
-export function normalizeChargingDevice(raw: RawChargingDevice): ChargerStatus {
+export function normalizeChargingDevice(raw: RawChargingDevice): ReportedChargerStatus {
   const byName = new Map(
     (raw.ports ?? []).map((port) => [String(port.name ?? "").toUpperCase(), port]),
   );
@@ -130,7 +138,7 @@ export function normalizeChargingDevice(raw: RawChargingDevice): ChargerStatus {
     device: deviceInfo(raw),
     cover: readCover(raw.cover),
     updatedAt: toMillis(raw.updatedAt),
-  } satisfies ChargerStatus;
+  } satisfies ReportedChargerStatus;
 }
 
 const HASH = /^[a-f0-9]{64}$/;
@@ -157,7 +165,7 @@ export function readCover(raw: unknown): ChargerStatus["cover"] {
   return { name, iconHash, iconObjectKey, iconUrl: null };
 }
 
-export function normalizePowerBank(raw: RawPowerBank): PowerBankStatus {
+export function normalizePowerBank(raw: RawPowerBank): ReportedPowerBankStatus {
   const byName = new Map(
     (raw.ports ?? []).map((port) => [String(port.name ?? "").toUpperCase().trim(), port]),
   );
@@ -177,7 +185,7 @@ export function normalizePowerBank(raw: RawPowerBank): PowerBankStatus {
     ports: POWER_BANK_PORTS.map((id) => normalizePowerBankPort(id, byName.get(id))),
     device: deviceInfo(raw),
     updatedAt: toMillis(raw.updatedAt),
-  } satisfies PowerBankStatus;
+  } satisfies ReportedPowerBankStatus;
 }
 
 export function emptyChargerStatus(connected: boolean): ChargerStatus {
@@ -186,7 +194,7 @@ export function emptyChargerStatus(connected: boolean): ChargerStatus {
     totalPower: 0,
     maxPower: CHARGER_MAX_POWER,
     ports: CHARGER_PORTS.map((id) => normalizeChargerPort(id)),
-    device: { serialNumber: null, firmwareVersion: null, model: null },
+    device: { firmwareVersion: null, model: null },
     cover: null,
     updatedAt: null,
   };
@@ -204,7 +212,7 @@ export function emptyPowerBankStatus(connected: boolean): PowerBankStatus {
     outputPower: 0,
     temperatures: [],
     ports: POWER_BANK_PORTS.map((id) => normalizePowerBankPort(id)),
-    device: { serialNumber: null, firmwareVersion: null, model: null },
+    device: { firmwareVersion: null, model: null },
     updatedAt: null,
   };
 }
