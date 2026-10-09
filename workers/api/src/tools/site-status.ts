@@ -1,6 +1,6 @@
-import type Anthropic from "@anthropic-ai/sdk";
-
 import { STATUS_VIEWS, type StatusViewKey } from "@/lib/status-views";
+
+import type { SiteTool } from "./registry";
 
 export type ReadStatus = (path: string) => Promise<Response>;
 
@@ -42,37 +42,21 @@ const MAX_VIEWS_PER_CALL = 4;
 const MAX_VIEWS_PER_REPLY = 8;
 const MAX_CHARS_PER_VIEW = 8_000;
 
-export const SITE_STATUS_TOOL: Anthropic.Beta.BetaTool = {
-  name: "get_site_status",
-  description: [
-    "Read live data from LYJW's homepage (the same JSON the site's cards show).",
-    "Timestamps are epoch milliseconds; the result includes the current time for comparison.",
-    "Views:",
-    ...VIEW_KEYS.map((key) => `- ${key}: ${VIEW_NOTES[key]}`),
-  ].join("\n"),
-  input_schema: {
-    type: "object",
-    properties: {
-      views: {
-        type: "array",
-        items: { type: "string", enum: VIEW_KEYS },
-        description: `Which views to read (at most ${MAX_VIEWS_PER_CALL})`,
-      },
-    },
-    required: ["views"],
-    additionalProperties: false,
-  },
-  strict: true,
-};
-
 export function isStatusViewKey(value: unknown): value is StatusViewKey {
   return VIEW_KEYS.includes(value as StatusViewKey);
 }
 
-export function parseSiteStatusInput(input: unknown): StatusViewKey[] {
-  const views = (input as { views?: unknown })?.views;
-  if (!Array.isArray(views)) return [];
-  return [...new Set(views.filter(isStatusViewKey))].slice(0, MAX_VIEWS_PER_CALL);
+export function parseSiteStatusInput(input: unknown): { views: StatusViewKey[]; notes: string[] } {
+  const raw = (input as { views?: unknown } | null)?.views;
+  const asked = Array.isArray(raw) ? [...new Set(raw)] : [];
+  const known = asked.filter(isStatusViewKey);
+  const unknown = asked.length - known.length;
+  const later = known.slice(MAX_VIEWS_PER_CALL);
+  const notes = [
+    unknown && `Ignored ${unknown} unknown view name${unknown > 1 ? "s" : ""}; the valid views are listed in the tool description.`,
+    later.length && `At most ${MAX_VIEWS_PER_CALL} views per call; call again for: ${later.join(", ")}.`,
+  ].filter((note): note is string => Boolean(note));
+  return { views: known.slice(0, MAX_VIEWS_PER_CALL), notes };
 }
 
 // 同步调用：同一轮的几次调用按顺序先分好额度再并行去读，谁读到哪些视图是确定的。
@@ -112,10 +96,33 @@ export async function runSiteStatusTool(read: ReadStatus, views: StatusViewKey[]
   return [`now: ${now} (${clock} Asia/Shanghai)`, ...results].join("\n\n");
 }
 
-// Haiku 5.5 用带动态过滤的版本时，首次调用常把参数包进 {"params": …} 被判 invalid_tool_input，白耗一次 max_uses；
-// Opus 5.5、Fable 5.1 实测没有这个毛病，所以只有 Haiku 用基础版。max_uses 只管单次请求，调用方传这条回复还剩的次数（API 不收 0，剩 0 就别带这个工具）。
-export function webSearchTool(model: string, maxUses: number): Anthropic.Beta.BetaToolUnion {
-  return model.startsWith("claude-haiku-")
-    ? { type: "web_search_20250305", name: "web_search", max_uses: maxUses }
-    : { type: "web_search_20260318", name: "web_search", max_uses: maxUses };
-}
+export const SITE_STATUS_TOOL: SiteTool = {
+  name: "get_site_status",
+  title: "Read LYJW's live status",
+  description: [
+    "Read live data from LYJW's homepage (the same JSON the site's cards show).",
+    "Timestamps are epoch milliseconds; the result includes the current time for comparison.",
+    "Views:",
+    ...VIEW_KEYS.map((key) => `- ${key}: ${VIEW_NOTES[key]}`),
+  ].join("\n"),
+  inputSchema: {
+    type: "object",
+    properties: {
+      views: {
+        type: "array",
+        items: { type: "string", enum: VIEW_KEYS },
+        description: `Which views to read (at most ${MAX_VIEWS_PER_CALL})`,
+      },
+    },
+    required: ["views"],
+    additionalProperties: false,
+  },
+  // 额度在第一个 await 之前占好（claimViews 的前提）。
+  async run(input, { readStatus }, ledger) {
+    const parsed = parseSiteStatusInput(input);
+    const { views, notes } = claimViews(parsed.views, ledger.views);
+    const read = views.length ? await runSiteStatusTool(readStatus, views) : "";
+    const text = [read, ...parsed.notes, ...notes].filter(Boolean).join("\n\n") || "No valid views requested.";
+    return { text, isError: !views.length, ...(views.length && { views }) };
+  },
+};

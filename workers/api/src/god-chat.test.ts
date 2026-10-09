@@ -7,9 +7,10 @@ import { GITHUB_ISSUE_LIMITS, parseGithubIssueRequest, parseIssueDraft } from "@
 import { readJsonBody, turnstilePassed } from "./chat/guard.ts";
 import { toModelMessages } from "./chat/history.ts";
 import { parseRouterAnswer, routerInput } from "./chat/router.ts";
-import { claimDoc, parseProjectDocInput, readProjectDoc, sliceDoc } from "./chat/project-docs.ts";
+import { claimDoc, parseProjectDocInput, readProjectDoc, sliceDoc } from "./tools/project-docs.ts";
 import { sealExchange, sealedHistory, storedReply } from "./chat/seal.ts";
-import { claimViews, parseSiteStatusInput, webSearchTool } from "./chat/site-status.ts";
+import { claimViews, parseSiteStatusInput } from "./tools/site-status.ts";
+import { webSearchTool } from "./chat/web-search.ts";
 import { handleGithubIssue } from "./github-issue.ts";
 import type { Env } from "./runtime.ts";
 
@@ -57,9 +58,13 @@ test("请求里多带的字段一律丢掉", () => {
 });
 
 test("站点数据工具只认登记过的视图，去重并封顶", () => {
-  assert.deepEqual(parseSiteStatusInput({ views: ["nowListening", "bogus", "nowListening", "coding"] }), ["nowListening", "coding"]);
-  assert.deepEqual(parseSiteStatusInput({ views: "desktop" }), []);
-  assert.equal(parseSiteStatusInput({ views: ["desktop", "server", "charger", "pulse", "coding", "limits"] }).length, 4);
+  const mixed = parseSiteStatusInput({ views: ["nowListening", "bogus", "nowListening", "coding"] });
+  assert.deepEqual(mixed.views, ["nowListening", "coding"]);
+  assert.match(mixed.notes.join(" "), /Ignored 1 unknown view name;/);
+  assert.deepEqual(parseSiteStatusInput({ views: "desktop" }).views, []);
+  const many = parseSiteStatusInput({ views: ["desktop", "server", "charger", "pulse", "coding", "limits"] });
+  assert.deepEqual(many.views, ["desktop", "server", "charger", "pulse"]);
+  assert.match(many.notes.join(" "), /call again for: coding, limits\./);
 });
 
 test("Clef 路由：只接受已知档位或 refuse，输入只带最近几条上下文", () => {
@@ -252,7 +257,7 @@ test("文档读取失败不抛错、标成失败，回给模型的结果带来�
   }, { doc: "macHub" });
   assert.deepEqual(urls, ["https://raw.githubusercontent.com/LYJW131/MacTelemetryHub/main/README.md"]);
   assert.equal(read.ok, true);
-  assert.match(read.text, /^Source: https:\/\/github\.com\/LYJW131\/MacTelemetryHub\/blob\/main\/README\.md\nAnswer in the language of the visitor's latest message[^\n]*\n\n# Hub\nhello$/);
+  assert.match(read.text, /^Source: https:\/\/github\.com\/LYJW131\/MacTelemetryHub\/blob\/main\/README\.md\nAnswer in the language of the user's latest message[^\n]*\n\n# Hub\nhello$/);
   const missing = await readProjectDoc(async () => new Response("", { status: 404 }), { doc: "overview" });
   assert.equal(missing.ok, false);
   assert.match(missing.text, /^Source: https:\/\/github\.com\/.+\n\n.*HTTP 404/);

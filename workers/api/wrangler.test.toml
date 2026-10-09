@@ -79,3 +79,8 @@ simple = { limit = 30, period = 10 }
 name = "GITHUB_ISSUE_LIMIT"
 namespace_id = "13102"
 simple = { limit = 5, period = 60 }
+
+[[ratelimits]]
+name = "MCP_LIMIT"
+namespace_id = "13103"
+simple = { limit = 60, period = 60 }

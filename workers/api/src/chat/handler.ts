@@ -13,33 +13,17 @@ import {
 import { GOD_CHAT_TIER_INFO, isGodChatTier, type GodChatTier } from "@shared/god-chat-tiers";
 import { GITHUB_ISSUE_LIMITS, parseIssueDraft } from "@shared/github-issue";
 
-import type { StatusViewKey } from "@/lib/status-views";
-
 import { getAllowedOrigins } from "../origins";
 import type { Env } from "../runtime";
+import { SITE_TOOLS, newLedger, type ToolIO } from "../tools/registry";
+import { projectDocPath, projectDocUrl } from "../tools/project-docs";
 import { anthropicFetch } from "./egress";
 import { readJsonBody, turnstilePassed, verifyTurnstile } from "./guard";
 import { toModelMessages } from "./history";
 import { sealExchange, sealedHistory, storedReply } from "./seal";
 import { ISSUE_DRAFT_TOOL } from "./issue-draft";
-import {
-  PROJECT_DOCS_TOOL,
-  claimDoc,
-  fetchProjectDoc,
-  parseProjectDocInput,
-  projectDocPath,
-  projectDocUrl,
-  readProjectDoc,
-} from "./project-docs";
 import { routeWithClef, type RouteDecision } from "./router";
-import {
-  SITE_STATUS_TOOL,
-  claimViews,
-  parseSiteStatusInput,
-  runSiteStatusTool,
-  webSearchTool,
-  type ReadStatus,
-} from "./site-status";
+import { webSearchTool } from "./web-search";
 
 const MAX_BODY_BYTES = 64 * 1024;
 const MIN_ROUND_TOKENS = 256;
@@ -70,6 +54,13 @@ function downgradeNote(wanted: GodChatTier, tier: GodChatTier): string {
 
 const REFUSAL = "The temple gates stay closed for this one. Ask something else.";
 
+const SITE_TOOL_DEFS: Anthropic.Beta.BetaTool[] = SITE_TOOLS.map(({ name, description, replyCap, inputSchema }) => ({
+  name,
+  description: replyCap ? `${description}\n${replyCap}` : description,
+  input_schema: inputSchema,
+  strict: true,
+}));
+
 // 本地与预览都配了 UPSTREAM_API_URL，生产没有；调试开关和放宽的验人规则只在这两处生效。
 function isDevWorker(): boolean {
   return Boolean(process.env.UPSTREAM_API_URL?.trim());
@@ -91,7 +82,7 @@ function fail(status: number, error: string, headers?: HeadersInit): Response {
   return Response.json({ error }, { status, headers: { "Cache-Control": "no-store", ...headers } });
 }
 
-export async function handleChat(request: Request, env: Env, readStatus: ReadStatus): Promise<Response> {
+export async function handleChat(request: Request, env: Env, io: ToolIO): Promise<Response> {
   if (request.method !== "POST") return fail(405, "Method not allowed.");
   const sealSecret = env.CHAT_HISTORY_SECRET;
   if (!env.ANTHROPIC_API_KEY || !env.TURNSTILE_SECRET_KEY || !sealSecret) return fail(503, "The oracle is offline.");
@@ -160,7 +151,7 @@ export async function handleChat(request: Request, env: Env, readStatus: ReadSta
       emit({ type: "route", route: wanted, tier, ...(tier !== wanted && { downgradedFrom: wanted }) });
       try {
         const note = tier !== wanted ? downgradeNote(wanted, tier) : undefined;
-        const { complete, trace } = await converse({ client, tier, note, messages: history, readStatus, emit, signal: abort.signal });
+        const { complete, trace } = await converse({ client, tier, note, messages: history, io, emit, signal: abort.signal });
         const stored = storedReply(reply);
         if (complete && stored && !abort.signal.aborted) {
           emit({ type: "seal", seal: await sealExchange(sealSecret, latest, stored, trace), ...(trace && { trace }) });
@@ -188,7 +179,7 @@ async function converse({
   tier,
   note,
   messages: history,
-  readStatus,
+  io,
   emit,
   signal,
 }: {
@@ -196,7 +187,7 @@ async function converse({
   tier: GodChatTier;
   note?: string;
   messages: GodChatMessage[];
-  readStatus: ReadStatus;
+  io: ToolIO;
   emit: (event: GodChatEvent) => void;
   signal: AbortSignal;
 }): Promise<{ complete: boolean; trace?: GodChatTrace }> {
@@ -209,8 +200,7 @@ async function converse({
   const messages = toModelMessages(history);
   if (note) messages.push({ role: "system", content: note });
   const sources = new Map<string, GodChatSource>();
-  const viewsRead = new Set<StatusViewKey>();
-  const docsRead = new Set<string>();
+  const ledger = newLedger();
   const docKeys = new Set<string>();
   let issueDrafted = false;
   let refused = false;
@@ -242,8 +232,8 @@ async function converse({
     const tools = lastRound
       ? []
       : searchesLeft > 0
-        ? [SITE_STATUS_TOOL, PROJECT_DOCS_TOOL, ISSUE_DRAFT_TOOL, webSearchTool(model, searchesLeft)]
-        : [SITE_STATUS_TOOL, PROJECT_DOCS_TOOL, ISSUE_DRAFT_TOOL];
+        ? [...SITE_TOOL_DEFS, ISSUE_DRAFT_TOOL, webSearchTool(model, searchesLeft)]
+        : [...SITE_TOOL_DEFS, ISSUE_DRAFT_TOOL];
     const stream = client.beta.messages.stream(
       {
         model,
@@ -347,29 +337,21 @@ async function converse({
           emit({ type: "issue", ...draft });
           return result("The draft is now in an editable form below the conversation, just above the message box. Nothing is filed until the visitor submits it with their GitHub account. Mention this once; don't repeat what you already said.", false);
         }
-        if (call.name === PROJECT_DOCS_TOOL.name) {
-          const request = parseProjectDocInput(call.input);
-          if (!request) return result("Unknown doc.", true);
-          const claim = claimDoc(request, docsRead);
-          if (!claim.read) return result(claim.note ?? "Not read.", true);
-          const { ok, text, heading } = await readProjectDoc(fetchProjectDoc, request);
-          if (ok) {
-            docKeys.add(request.doc);
-            emit({
-              type: "doc",
-              doc: request.doc,
-              path: projectDocPath(request.doc),
-              url: projectDocUrl(request.doc, "blob"),
-              ...(heading && { section: heading }),
-            });
-          }
-          return result(text, !ok);
+        const tool = SITE_TOOLS.find((candidate) => candidate.name === call.name);
+        if (!tool) return result("Unknown tool.", true);
+        const { text, isError, views, doc } = await tool.run(call.input, io, ledger);
+        if (views) emit({ type: "tool", views });
+        if (doc) {
+          docKeys.add(doc.key);
+          emit({
+            type: "doc",
+            doc: doc.key,
+            path: projectDocPath(doc.key),
+            url: projectDocUrl(doc.key, "blob"),
+            ...(doc.heading && { section: doc.heading }),
+          });
         }
-        if (call.name !== SITE_STATUS_TOOL.name) return result("Unknown tool.", true);
-        const { views, notes } = claimViews(parseSiteStatusInput(call.input), viewsRead);
-        if (views.length) emit({ type: "tool", views });
-        const read = views.length ? await runSiteStatusTool(readStatus, views) : "";
-        return result([read, ...notes].filter(Boolean).join("\n\n") || "No valid views requested.", !views.length);
+        return result(text, isError);
       }),
     );
     messages.push({ role: "user", content: results });
@@ -378,7 +360,7 @@ async function converse({
   if (sources.size) emit({ type: "sources", sources: [...sources.values()].slice(0, 6) });
   const trace = normalizeTrace({
     tier,
-    views: [...viewsRead],
+    views: [...ledger.views],
     docs: [...docKeys],
     searches,
     fallback: Boolean(servedBy),

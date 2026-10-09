@@ -3,6 +3,7 @@ import { withSentryConfig } from "@sentry/nextjs/config";
 import { execSync } from "node:child_process";
 
 import { IMAGE_PATH_PREFIX } from "./src/lib/asset-url";
+import { MCP_PATH } from "./shared/mcp";
 import { previewWorkerOrigin } from "./scripts/preview-worker-name.mjs";
 
 // 不可放宽成任意路径代理，否则整个 R2 桶都会暴露在站点域名下。
@@ -46,6 +47,11 @@ const nextConfig: NextConfig = {
   cacheComponents: true,
   // 默认名单含 Lighthouse，命中会让首页绕过 ISR 整页动态渲染；哨兵正则永不匹配。
   htmlLimitedBots: /^\b\B$/,
+  // 307 保留 POST 与请求体；不用 rewrite：经 Vercel 代理后 Worker 只看得到 Vercel 出口 IP，按 IP 限流会让所有人共用一个桶。
+  async redirects() {
+    const backend = resolvePublicBackendUrl()?.replace(/\/+$/, "");
+    return backend ? [{ source: MCP_PATH, destination: `${backend}${MCP_PATH}`, permanent: false }] : [];
+  },
   async rewrites() {
     const explainer = { source: "/explainer", destination: "/explainer/index.html" };
     if (!R2_ORIGIN) return [explainer];
