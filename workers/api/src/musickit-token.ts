@@ -1,5 +1,5 @@
 // 测试的 Node 导入钩子只解析别名，不能改为无扩展名的相对导入。
-import { getAllowedOrigins, type OriginEnv } from "@api/origins";
+import { getAllowedOrigins, type OriginEnv } from "@shared/http-origins";
 import { pastHalfLife } from "@shared/token-lifetime";
 
 export { pastHalfLife } from "@shared/token-lifetime";

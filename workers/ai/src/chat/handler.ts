@@ -14,8 +14,8 @@ import {
 import { GOD_CHAT_TIER_INFO, isGodChatTier, type GodChatEffort, type GodChatTier } from "@shared/god-chat-tiers";
 import { GITHUB_ISSUE_LIMITS, parseIssueDraft } from "@shared/github-issue";
 
-import { getAllowedOrigins } from "../origins";
-import type { Env } from "../runtime";
+import { getAllowedOrigins } from "@shared/http-origins";
+import { aiDevEnabled, type Env } from "../runtime";
 import { SITE_TOOLS, newLedger, type ToolIO } from "../tools/registry";
 import { projectDocPath, projectDocUrl } from "../tools/project-docs";
 import { billedOutputTokens, usageHops } from "./billing";
@@ -65,13 +65,8 @@ const SITE_TOOL_DEFS: Anthropic.Beta.BetaTool[] = SITE_TOOLS.map(({ name, descri
   strict: true,
 }));
 
-// 本地与预览都配了 UPSTREAM_API_URL，生产没有；调试开关和放宽的验人规则只在这两处生效。
-function isDevWorker(): boolean {
-  return Boolean(process.env.UPSTREAM_API_URL?.trim());
-}
-
-function devSwitch(name: "CHAT_RATE_LIMIT" | "CHAT_FORCE_TIER"): string | undefined {
-  return isDevWorker() ? process.env[name]?.trim() || undefined : undefined;
+function devSwitch(env: Env, name: "CHAT_RATE_LIMIT" | "CHAT_FORCE_TIER"): string | undefined {
+  return aiDevEnabled(env) ? env[name]?.trim() || undefined : undefined;
 }
 
 export function quotaStub(env: Env) {
@@ -107,19 +102,19 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
   const quota = quotaStub(env);
   if (!quota) return fail(503, "The oracle is offline.");
   const verdict = await verifyTurnstile(env.TURNSTILE_SECRET_KEY, parsed.turnstileToken, ip);
-  if (!turnstilePassed(verdict, getAllowedOrigins(env), isDevWorker())) {
+  if (!turnstilePassed(verdict, getAllowedOrigins(env), aiDevEnabled(env))) {
     return fail(403, "Human verification failed. Please try again.");
   }
   if (abort.signal.aborted) return gone();
   // 验过人才计数，计数在 Clef 之前：访客自己超额、全站路由满或哪一档都排不上时，不再触发付费的路由调用。
-  const enforce = devSwitch("CHAT_RATE_LIMIT") !== "off";
+  const enforce = devSwitch(env, "CHAT_RATE_LIMIT") !== "off";
   const admission = await quota.admitVisitor(ip, enforce);
   if (admission === "visitor") return fail(429, "Too many prayers. Please wait a moment.", { "Retry-After": "60" });
   if (admission === "site") return fail(429, "All the heavens are busy. Try again in a minute.", { "Retry-After": "60" });
 
   const history = await sealedHistory(parsed.messages, sealSecret);
   const latest = history[history.length - 1].content;
-  const forced = devSwitch("CHAT_FORCE_TIER");
+  const forced = devSwitch(env, "CHAT_FORCE_TIER");
   const decision: RouteDecision = isClefChoice(forced)
     ? { ...CLEF_CHOICES[forced], source: "forced" }
     : isGodChatTier(forced)

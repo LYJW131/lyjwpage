@@ -1,4 +1,4 @@
-name: Delete preview API worker
+name: Delete preview workers
 
 on:
   pull_request:
@@ -18,7 +18,7 @@ jobs:
         run: |
           if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
             echo "skip=1" >> "$GITHUB_OUTPUT"
-            echo "未配置 CLOUDFLARE_API_TOKEN，留下影子 Worker"
+            echo "未配置 CLOUDFLARE_API_TOKEN，留下 Worker Previews"
           else
             echo "skip=0" >> "$GITHUB_OUTPUT"
           fi
@@ -38,7 +38,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
         if: steps.token.outputs.skip == '0'
 
-      - name: Delete the branch preview worker
+      - name: Delete the branch worker previews
         if: steps.token.outputs.skip == '0'
         env:
           PREVIEW_BRANCH: ${{ github.head_ref }}
