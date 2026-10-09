@@ -23,11 +23,13 @@ import { isPublicApiPath, pathForEventType } from "./public-api";
 import { executePublicRequest } from "./public-execution";
 import { isLookupPath, serveLookup } from "./lookup-routes";
 import { clientIp, handleChat, quotaStub } from "./chat/handler";
+import { handleBuildFire } from "./build-routine";
 import { handleGithubIssue } from "./github-issue";
 import { handleMcp } from "./mcp";
 import { fetchProjectDoc } from "./tools/project-docs";
 import type { ToolIO } from "./tools/registry";
 import { GOD_CHAT_PATH, GOD_CHAT_USAGE_PATH } from "@shared/god-chat";
+import { BUILD_PATH } from "@shared/build-routine";
 import { GITHUB_ISSUE_PATH } from "@shared/github-issue";
 import { MCP_PATH } from "@shared/mcp";
 import type { Env } from "./runtime";
@@ -407,6 +409,14 @@ const worker = {
     if (url.pathname === GITHUB_ISSUE_PATH) {
       if (!isAllowedOrigin(request, env)) return jsonResponse({ error: "Forbidden" }, { status: 403, headers: cors });
       const response = await handleGithubIssue(request, env, clientIp(request));
+      const headers = new Headers(response.headers);
+      cors.forEach((value, name) => headers.set(name, value));
+      return new Response(response.body, { status: response.status, headers });
+    }
+
+    if (url.pathname === BUILD_PATH) {
+      if (!isAllowedOrigin(request, env)) return jsonResponse({ error: "Forbidden" }, { status: 403, headers: cors });
+      const response = await handleBuildFire(request, env);
       const headers = new Headers(response.headers);
       cors.forEach((value, name) => headers.set(name, value));
       return new Response(response.body, { status: response.status, headers });

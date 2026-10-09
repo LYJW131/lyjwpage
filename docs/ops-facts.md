@@ -66,6 +66,13 @@
 | collector 的 `avatar-watch` 用 fine-grained PAT `lyjwpage collector avatar-watch`（只授权 `LYJW131/lyjwpage`；Actions 读写、Contents 只读、Metadata 只读），存为 collector 的 secret `GITHUB_DISPATCH_TOKEN`，2027-10-06 到期；到期后任务每轮失败，Sentry `collector-worker` 按 tag `collector.job` 开 issue | 核对于 2026-10-05，方式：本机会话在浏览器生成后用 `wrangler secret list` 只核对名称 | <!-- allow: 令牌到期日是现状事实，不是时间线 -->
 | `main` 没有分支保护和 ruleset，App 可以直接提交 | 核对于 2026-10-05，方式：`gh api` 查 `rulesets` 为空、`branches/main/protection` 返回 404 |
 
+## Claude Code
+
+| 事实 | 核对 |
+| --- | --- |
+| claude.ai 账号下的 routine `lyjwpage /build`（`trig_014sUCU54BW4Bd39UmcWjLK6`）只有 API 触发器，仓库 `LYJW131/lyjwpage`，云端环境 `lyjwpage-build`（`env_014uCQ1YF1gu2qTf1K5vJKqR`，Trusted 网络，无环境变量与 setup script，只给它用），不挂连接器，Auto-fix 关闭；`/build` 页面经 api Worker 触发它，见 [build-routine.md](./build-routine.md) | 核对于 2026-10-09，方式：本机会话在 Chrome 里新建后用 RemoteTrigger `get` 核对 <!-- allow: 核对戳 --> |
+| 它的 API 令牌（不记值）是 api Worker 分支预览 `claude-claude-code-agent-sdk-6fc50c` 的 Secret `ROUTINE_FIRE_TOKEN`，本机另存于该 worktree 的 `workers/api/.dev.vars`；轮换在 routine 的 API 触发器弹窗点 Regenerate，两处一起换 | 核对于 2026-10-09，方式：令牌经剪贴板写入，未显示；`wrangler preview secret list` 只核对名称 <!-- allow: 核对戳 --> |
+
 ## 机器与部署位置
 
 | 事实 | 核对 |

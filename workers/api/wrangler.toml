@@ -126,6 +126,7 @@ UPSTREAM_API_URL = "https://api.homepage.lyjw.llc"
 STORAGE_PREFIX = "lyjwpage-preview"
 ALLOWED_ORIGINS = "https://*.vercel.app"
 APPLE_MUSIC_STOREFRONT = "cn"
+ROUTINE_FIRE_URL = "https://api.anthropic.com/v1/claude_code/routines/trig_014sUCU54BW4Bd39UmcWjLK6/fire"
 
 [[previews.durable_objects.bindings]]
 name = "LIVE_PUSH"

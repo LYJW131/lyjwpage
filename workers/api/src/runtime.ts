@@ -34,6 +34,8 @@ export interface Env extends MusicKitTokenEnv {
   GITHUB_APP_CLIENT_SECRET?: string;
   GITHUB_ISSUE_LIMIT?: RateLimit;
   MCP_LIMIT?: RateLimit;
+  ROUTINE_FIRE_URL?: string;
+  ROUTINE_FIRE_TOKEN?: string;
 }
 
 // 本地夹具与上游覆盖值不能进入共享归档或覆盖生产评分。

@@ -12,3 +12,7 @@ ALLOWED_ORIGINS=http://localhost:3211
 APPLE_MUSIC_STOREFRONT=cn
 HEARTBEAT_WINDOW_MS=300000
 CHARGER_PUSH_INTERVAL_MS=30000
+
+# 可选。/build 触发的 Claude Code routine（API 触发器的 URL 与令牌）；线上只设在分支预览，见 docs/build-routine.md。
+ROUTINE_FIRE_URL=
+ROUTINE_FIRE_TOKEN=
