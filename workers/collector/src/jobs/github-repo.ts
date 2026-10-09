@@ -1,11 +1,12 @@
 import { LAG_KEYS, readLag, writeLag } from "@shared/lag";
-import { ContributorsUnavailable, fetchRepoStats, repoIdFromUrl, type RepoTotals } from "@/lib/github-repo";
+import { ContributorsUnavailable, fetchRecentCommits, fetchRepoStats, repoIdFromUrl, type RepoTotals } from "@/lib/github-repo";
 import { site } from "@/lib/site";
 import type { GithubRepoPayload } from "@/lib/types";
 
 import { ok, skipMissing, type Job } from "../job";
 
 const FETCH_BUDGET_MS = 60_000;
+const COMMITS_BUDGET_MS = 10_000;
 
 const hasTotals = (totals: RepoTotals) => totals.commits != null;
 
@@ -39,6 +40,10 @@ export const githubRepoJob: Job = {
     if (!token) return skipMissing("github-repo", ["GITHUB_TOKEN"]);
     const { owner, name } = repoIdFromUrl(site.repo);
     const previous = (await readLag<GithubRepoPayload>(env.LAG, LAG_KEYS.githubRepo))?.data ?? null;
+    const commits = fetchRecentCommits(token, owner, name, COMMITS_BUDGET_MS).catch((error: unknown) => {
+      console.warn("[github-repo]", error instanceof Error ? error.message : String(error), "；最近提交沿用上一份");
+      return previous?.recentCommits;
+    });
     let fresh: Parameters<typeof mergeRepoStats>[0];
     try {
       fresh = { ok: true, data: await fetchRepoStats(token, owner, name, FETCH_BUDGET_MS) };
@@ -49,7 +54,8 @@ export const githubRepoJob: Job = {
     }
     const merged = mergeRepoStats(fresh, previous);
     if (!merged) throw new Error("GitHub 仓库统计这轮没有可写的结果（名单没取到，也没有上一份可沿用）");
-    await writeLag(env.LAG, LAG_KEYS.githubRepo, merged);
+    const recentCommits = await commits;
+    await writeLag(env.LAG, LAG_KEYS.githubRepo, recentCommits ? { ...merged, recentCommits } : merged);
     return ok(fresh.ok ? undefined : "contributors carried over");
   },
 };
