@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { Footer } from "@/components/footer";
 import { HomeLink } from "@/components/home-link";
+import { NotFoundQuip } from "@/components/not-found-quip";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Card } from "@/components/ui/card";
 
@@ -24,9 +25,7 @@ export default function NotFound() {
         <div className="mx-auto w-[calc(100%-2rem)] max-w-md">
           <Card label="NOT FOUND" tone="off">
             <div className="flex flex-col items-center p-6 text-center sm:p-8">
-              <div className="label-mono text-3xl font-bold tracking-widest text-foreground sm:text-4xl">
-                404
-              </div>
+              <NotFoundQuip />
               <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
                 The page you requested doesn’t exist or has been removed.
               </p>
