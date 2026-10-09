@@ -8,6 +8,7 @@ import { createServer as httpServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 import { createRequire } from 'node:module';
+import { createHash, createHmac } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
 import { stripVTControlCharacters } from 'node:util';
 import { createDevAccess } from './dev-access.mjs';
@@ -32,6 +33,12 @@ Object.assign(access.vars.ACCESS_CLIENTS, {
 });
 const verifyBuild = process.argv.includes('--build');
 const verifyMcpClient = process.argv.includes('--mcp-client');
+const verifyMcpEvents = process.argv.includes('--mcp-events');
+const eventToken = 'isolated-mcp-events-primary-token-00000001';
+const otherEventToken = 'isolated-mcp-events-secondary-token-00000002';
+const callbackHost = 'mcp-events.example.com';
+const eventSecret = `whsec_${Buffer.alloc(32, 1).toString('base64')}`;
+const rotatedEventSecret = `whsec_${Buffer.alloc(32, 2).toString('base64')}`;
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function port() {
   const server = createServer(); server.listen(0, '127.0.0.1'); await once(server, 'listening');
@@ -104,9 +111,23 @@ try {
     durable_objects: { bindings: [
       { name: 'CHAT_QUOTA', class_name: 'ChatQuota' },
       { name: 'ANTHROPIC_EGRESS', class_name: 'AnthropicEgress' },
+      { name: 'MCP_EVENTS', class_name: 'McpEventHub' },
     ] },
-    migrations: [{ tag: 'v1', new_sqlite_classes: ['ChatQuota', 'AnthropicEgress'] }],
+    migrations: [{ tag: 'v1', new_sqlite_classes: ['ChatQuota', 'AnthropicEgress', 'McpEventHub'] }],
   };
+  if (verifyMcpEvents) {
+    const eventsMain = join(temporary, 'ai-events.mjs');
+    await writeFile(eventsMain, `export { default, ChatQuota, AnthropicEgress } from ${JSON.stringify(join(root, 'workers/ai/src/index.ts'))};
+export { McpEventHub, McpEventTestReceiver, EventVerification } from ${JSON.stringify(join(root, 'scripts/fixtures/mcp-events.mjs'))};`);
+    ai.main = eventsMain;
+    ai.vars.MCP_EVENT_CLIENTS = JSON.stringify([
+      { principal: 'isolated_primary', tokenSha256: createHash('sha256').update(eventToken).digest('hex') },
+      { principal: 'isolated_secondary', tokenSha256: createHash('sha256').update(otherEventToken).digest('hex') },
+    ]);
+    ai.vars.MCP_EVENT_CALLBACK_HOSTS = callbackHost;
+    ai.durable_objects.bindings.push({ name: 'MCP_EVENT_TEST_RECEIVER', class_name: 'McpEventTestReceiver' });
+    ai.migrations[0].new_sqlite_classes.push('McpEventTestReceiver');
+  }
   const streamGateway = {
     ...api,
     name: 'isolated-stream-gateway',
@@ -132,6 +153,7 @@ try {
   const routerMain = join(temporary, 'router.mjs');
   await writeFile(routerMain, `import router from ${JSON.stringify(join(root, 'workers/dev-router/src/index.ts'))};
 export default { fetch(request, env) {
+  if (env.VERIFY_EVENTS && new URL(request.url).pathname.startsWith('/__verify/mcp-events/')) return env.VERIFY_EVENTS.fetch(request);
   return new URL(request.url).pathname.startsWith('/__verify/') ? env.VERIFY.fetch(request) : router.fetch(request, env);
 } };`);
   const router = {
@@ -141,6 +163,7 @@ export default { fetch(request, env) {
       { binding: 'API', service: 'isolated-api' },
       { binding: 'INGRESS', service: 'isolated-ingress' },
       { binding: 'VERIFY', service: 'isolated-ai-fixture', entrypoint: 'Verification' },
+      ...(verifyMcpEvents ? [{ binding: 'VERIFY_EVENTS', service: 'isolated-ai', entrypoint: 'EventVerification' }] : []),
     ],
   };
   const configPaths = [];
@@ -150,7 +173,7 @@ export default { fetch(request, env) {
     configPaths.push(path);
   }
   const startWorkers = () => start(process.execPath, [require.resolve('wrangler'), 'dev', ...configPaths.flatMap(path => ['-c', path]), '--port', String(workerPort), '--persist-to', join(temporary, 'state')]);
-  const workerChild = startWorkers();
+  let workerChild = startWorkers();
   const notices = [];
   const mockSite = httpServer((request, response) => {
     let body = ''; request.on('data', chunk => body += chunk);
@@ -183,12 +206,41 @@ export default { fetch(request, env) {
     assert.equal(response.headers.get('access-control-allow-origin'), aiHeaders.Origin);
     return response.json();
   }
+  async function modernMcp(method, params = {}, token, status = 200) {
+    const version = '2026-07-28';
+    const response = await fetch(`${worker}/mcp`, {
+      method: 'POST',
+      headers: {
+        ...aiHeaders, 'MCP-Protocol-Version': version, 'Mcp-Method': method,
+        ...(params.name ? { 'Mcp-Name': params.name } : {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 2, method, params: {
+        ...params, _meta: { 'io.modelcontextprotocol/protocolVersion': version, 'io.modelcontextprotocol/clientCapabilities': {} },
+      } }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    assert.equal(response.status, status, await response.clone().text());
+    assert.equal(response.headers.get('access-control-allow-origin'), aiHeaders.Origin);
+    const body = await response.json();
+    if (body.result) assert.equal(body.result.resultType, 'complete');
+    return body;
+  }
   const initialized = await mcp('initialize', { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'isolated-verification', version: '1' } });
   assert.equal(initialized.result.protocolVersion, '2025-03-26');
   assert.deepEqual(initialized.result.capabilities, { tools: {} });
   const tools = (await mcp('tools/list')).result.tools;
   assert.deepEqual(tools.map(tool => tool.name).sort(), ['get_site_status', 'read_project_doc']);
   assert.ok(tools.every(tool => tool.annotations.readOnlyHint));
+  const discovered = (await modernMcp('server/discover')).result;
+  assert.deepEqual(discovered.capabilities, { tools: {} });
+  assert.equal(discovered.cacheScope, 'private');
+  assert.equal(discovered.ttlMs, 0);
+  assert.equal((await modernMcp('events/list', {}, undefined, 401)).error.code, -32012);
+  assert.equal((await modernMcp('events/list', {}, 'invalid-token-long-enough-for-auth-0000', 401)).error.code, -32012);
+  assert.equal((await mcp('events/list')).error.code, -32601);
+  if (!verifyMcpEvents) assert.equal((await modernMcp('events/list', {}, eventToken, 401)).error.code, -32012);
+  console.log(`PASS: modern discovery hides Events from anonymous clients; invalid-auth and legacy Events requests fail closed${verifyMcpEvents ? '' : '; Events remain disabled without configuration'}`);
   for (const path of ['/api/chat', '/api/github/issue']) {
     const response = await fetch(`${worker}${path}`, { method: 'POST', headers: aiHeaders, body: '{}' });
     assert.equal(response.status, 503, path);
@@ -487,16 +539,143 @@ export default { fetch(request, env) {
   const exited = once(workerChild, 'exit');
   workerChild.kill('SIGTERM');
   await exited;
-  startWorkers();
+  workerChild = startWorkers();
   await eventually(async () => assert.equal(await nowPlaying(), 'isolated-second'));
   assert.equal((await (await fetch(`${worker}/api/status/timezone`)).json()).ok, true);
   console.log('PASS: restart preserves initialized state and snapshots');
+  if (verifyMcpEvents) {
+    const callback = path => `https://${callbackHost}${path}`;
+    const parameters = (path, extra = {}) => ({ name: 'watching-now', delivery: { mode: 'webhook', url: callback(path), secret: eventSecret }, ...extra });
+    async function fixture(operation, body) {
+      const response = await fetch(`${worker}/__verify/mcp-events/${operation}`, body === undefined ? {} : {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      });
+      assert.equal(response.status, 200, await response.clone().text());
+      return response.json();
+    }
+    const advance = milliseconds => fixture('advance', { milliseconds });
+    const records = () => fixture('records');
+    const deliveries = async path => (await records()).filter(record => new URL(record.url).pathname === path && JSON.parse(record.body).type !== 'verification');
+    async function subscribe(params, token = eventToken) {
+      const reply = await modernMcp('events/subscribe', params, token);
+      assert.equal(reply.error, undefined, JSON.stringify(reply));
+      assert.equal(reply.result.cursor, null);
+      assert.equal(reply.result.truncated, false);
+      assert.ok(Number.isFinite(Date.parse(reply.result.refreshBefore)));
+      return reply.result;
+    }
+    async function unsubscribe(params, token = eventToken) {
+      const reply = await modernMcp('events/unsubscribe', {
+        name: params.name, ...(params.arguments ? { arguments: params.arguments } : {}),
+        delivery: { mode: 'webhook', url: params.delivery.url },
+      }, token);
+      assert.equal(reply.error, undefined, JSON.stringify(reply));
+    }
+    function verifySignature(record, secret) {
+      const id = record.headers['webhook-id'];
+      const timestamp = record.headers['webhook-timestamp'];
+      assert.ok(id);
+      assert.match(timestamp, /^\d+$/);
+      const expected = createHmac('sha256', Buffer.from(secret.slice(6), 'base64')).update(`${id}.${timestamp}.${record.body}`).digest('base64');
+      assert.ok(record.headers['webhook-signature'].split(' ').includes(`v1,${expected}`));
+      assert.match(record.headers['x-mcp-subscription-id'], /^sub_/);
+    }
+    const authenticated = (await modernMcp('server/discover', {}, eventToken)).result;
+    assert.deepEqual(authenticated.capabilities, { tools: {}, events: {} });
+    const catalog = (await modernMcp('events/list', {}, eventToken)).result;
+    assert.deepEqual(catalog.events.map(event => event.name), ['watching-now']);
+    assert.deepEqual(catalog.events[0].delivery, ['webhook']);
+    assert.equal(catalog.cacheScope, 'private');
+    assert.equal((await modernMcp('events/list', { cursor: 'unknown' }, eventToken)).error.code, -32602);
+    for (const url of ['http://mcp-events.example.com/hook', 'https://127.0.0.1/hook', 'https://unlisted.example.com/hook']) {
+      const rejected = await modernMcp('events/subscribe', { ...parameters('/events'), delivery: { mode: 'webhook', url, secret: eventSecret } }, eventToken);
+      assert.equal(rejected.error.code, -32602, url);
+    }
+    assert.equal((await records()).length, 0, 'invalid callbacks must not reach the receiver');
+    assert.equal((await modernMcp('events/subscribe', parameters('/events', { cursor: 'unsupported' }), eventToken)).error.code, -32014);
+    await fixture('configure', { path: '/challenge-failure', badChallenge: true });
+    assert.equal((await modernMcp('events/subscribe', parameters('/challenge-failure'), eventToken)).error.code, -32015);
+    await fixture('configure', { path: '/events', statuses: [503, 204] });
+    const original = await subscribe(parameters('/events'));
+    assert.equal((await subscribe(parameters('/events'))).id, original.id);
+    const secondary = await subscribe(parameters('/events'), otherEventToken);
+    assert.notEqual(secondary.id, original.id);
+    await unsubscribe(parameters('/events'), otherEventToken);
+    await unsubscribe(parameters('/events'), otherEventToken);
+    await subscribe(parameters('/paused', { arguments: { change: 'paused' } }));
+    await subscribe(parameters('/expired', { ttlMs: 1000 }));
+    await advance(0);
+    assert.equal((await deliveries('/events')).length, 0, 'subscription baseline must not replay current state');
+    const playing = {
+      itemId: 'mcp-event-episode', paused: false, positionTicks: 1, runTimeTicks: 14_400_000_000,
+      deviceName: 'private-device-marker', client: 'private-client-marker',
+      item: { id: 'mcp-event-episode', name: 'MCP Event Episode', type: 'Movie', year: 2026 },
+    };
+    assert.equal((await post(worker, '/api/ingest/emby', { playing })).status, 202);
+    await advance(60_001);
+    const first = (await deliveries('/events'))[0];
+    assert.ok(first, 'StateCore playback must reach the Events outbox through PublicStatus');
+    assert.equal(first.status, 503);
+    const firstBody = JSON.parse(first.body);
+    assert.equal(firstBody.name, 'watching-now');
+    assert.equal(firstBody.data.change, 'started');
+    assert.equal(firstBody.data.itemId, playing.itemId);
+    assert.equal(firstBody.eventId, first.headers['webhook-id']);
+    assert.equal(firstBody.cursor, null);
+    assert.equal(first.body.includes('private-'), false);
+    verifySignature(first, eventSecret);
+    assert.equal((await deliveries('/paused')).length, 0);
+    assert.equal((await deliveries('/expired')).length, 0);
+    const stopped = once(workerChild, 'exit');
+    workerChild.kill('SIGTERM');
+    await stopped;
+    workerChild = startWorkers();
+    await eventually(async () => assert.equal((await (await fetch(`${worker}/api/status/watching/now`)).json()).data.nowPlaying.itemId, playing.itemId));
+    await advance(15_001);
+    const attempts = await deliveries('/events');
+    assert.equal(attempts.length, 2);
+    assert.equal(attempts[1].body, first.body);
+    assert.equal(attempts[1].headers['webhook-id'], first.headers['webhook-id']);
+    assert.notEqual(attempts[1].headers['webhook-timestamp'], first.headers['webhook-timestamp']);
+    verifySignature(attempts[1], eventSecret);
+    assert.equal((await post(worker, '/api/ingest/emby', { playing: { ...playing, positionTicks: 900_000_000 } })).status, 202);
+    await advance(60_001);
+    assert.equal((await deliveries('/events')).length, 2, 'progress updates must not wake subscribers');
+    const rotated = await subscribe({ ...parameters('/events'), delivery: { mode: 'webhook', url: callback('/events'), secret: rotatedEventSecret } });
+    assert.equal(rotated.id, original.id);
+    assert.ok(Date.parse(rotated.refreshBefore) > Date.parse(original.refreshBefore));
+    assert.equal((await post(worker, '/api/ingest/emby', { playing: { ...playing, paused: true } })).status, 202);
+    await advance(60_001);
+    const paused = (await deliveries('/events')).at(-1);
+    assert.equal(JSON.parse(paused.body).data.change, 'paused');
+    assert.ok(JSON.parse(paused.body).data.sequence > firstBody.data.sequence);
+    verifySignature(paused, rotatedEventSecret);
+    verifySignature(paused, eventSecret);
+    assert.equal((await deliveries('/paused')).length, 1);
+    assert.equal((await deliveries('/expired')).length, 0, 'expired subscription must remain inactive after restart');
+    assert.equal((await deliveries('/challenge-failure')).length, 0, 'failed verification must never activate a subscription');
+    for (const record of await records()) {
+      if (JSON.parse(record.body).type === 'verification') {
+        const key = record.headers['webhook-signature'].includes(`v1,${createHmac('sha256', Buffer.from(rotatedEventSecret.slice(6), 'base64')).update(`${record.headers['webhook-id']}.${record.headers['webhook-timestamp']}.${record.body}`).digest('base64')}`)
+          ? rotatedEventSecret : eventSecret;
+        verifySignature(record, key);
+      }
+    }
+    await unsubscribe(parameters('/events'));
+    await unsubscribe(parameters('/events'));
+    await unsubscribe(parameters('/paused', { arguments: { change: 'paused' } }));
+    const deliveredCount = (await records()).length;
+    assert.equal((await post(worker, '/api/ingest/emby', { playing: null })).status, 202);
+    await advance(60_001);
+    assert.equal((await records()).length, deliveredCount, 'cancellation must stop deliveries');
+    console.log('PASS: raw modern Events discovery, signed challenge, principal isolation, StateCore → PublicStatus → durable outbox → webhook, restart/retry deduplication, progress suppression, filtering, rotation, renewal, expiry and cancellation');
+  }
   if (verifyMcpClient) {
-    async function inspect(method, args = []) {
+    async function inspect(era, method, args = []) {
       const output = [];
       const inspector = start('npx', [
         '--yes', '@modelcontextprotocol/inspector@2.10.1', '--cli', `${worker}/mcp`,
-        '--transport', 'http', '--protocol-era', 'legacy', '--method', method,
+        '--transport', 'http', '--protocol-era', era, '--method', method,
         '--format', 'json', '--quiet', '--stored-auth-only', ...args,
       ], {
         MCP_STORAGE_DIR: temporary,
@@ -506,19 +685,22 @@ export default { fetch(request, env) {
       inspector.stdout.on('data', data => output.push(data.toString()));
       const logStart = logs.length;
       const [code] = await once(inspector, 'exit');
-      await writeFile(join(temporary, `inspector-${method.replace('/', '-')}.log`), logs.slice(logStart).join(''));
-      assert.equal(code, 0, `Inspector ${method}: ${logs.slice(logStart).join('')}`);
+      await writeFile(join(temporary, `inspector-${era}-${method.replace('/', '-')}.log`), logs.slice(logStart).join(''));
+      assert.equal(code, 0, `Inspector ${era} ${method}: ${logs.slice(logStart).join('')}`);
       return JSON.parse(output.join('')).result;
     }
-    const initialized = await inspect('initialize');
-    assert.equal(initialized.serverInfo.name, 'lyjwpage');
-    assert.ok(initialized.capabilities.tools);
-    const listed = await inspect('tools/list', ['--strict']);
-    assert.ok(listed.tools.some(tool => tool.name === 'get_site_status'));
-    const called = await inspect('tools/call', ['--tool-name', 'get_site_status', '--tool-arg', 'views=["timezone"]']);
-    assert.equal(called.isError, false);
-    assert.match(called.content[0].text, /Asia\/Singapore/);
-    console.log(`PASS: MCP Inspector initialize (${initialized.protocolVersion}), strict tools/list and get_site_status(timezone)`);
+    for (const era of ['modern', 'legacy']) {
+      const initialized = await inspect(era, 'initialize');
+      assert.equal(initialized.serverInfo.name, 'lyjwpage');
+      assert.deepEqual(initialized.capabilities, { tools: {} });
+      if (era === 'modern') assert.equal(initialized.protocolVersion, '2026-07-28');
+      const listed = await inspect(era, 'tools/list', ['--strict']);
+      assert.ok(listed.tools.some(tool => tool.name === 'get_site_status'));
+      const called = await inspect(era, 'tools/call', ['--tool-name', 'get_site_status', '--tool-arg', 'views=["timezone"]']);
+      assert.equal(called.isError, false);
+      assert.match(called.content[0].text, /Asia\/Singapore/);
+      console.log(`PASS: MCP Inspector ${era} negotiation (${initialized.protocolVersion}), strict tools/list and get_site_status(timezone)`);
+    }
   }
   if (verifyBuild) {
     const logStart = logs.length;

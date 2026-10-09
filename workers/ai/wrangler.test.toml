@@ -46,3 +46,11 @@ simple = { limit = 60, period = 60 }
 
 [observability]
 enabled = true
+
+[[durable_objects.bindings]]
+name = "MCP_EVENTS"
+class_name = "McpEventHub"
+
+[[migrations]]
+tag = "v2-mcp-events"
+new_sqlite_classes = ["McpEventHub"]

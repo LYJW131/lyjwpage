@@ -132,7 +132,7 @@ test("新协议：server/discover 带版本列表、resultType 与 serverInfo", 
   assert.deepEqual(body?.result?.capabilities, { tools: {} });
   assert.equal(body?.result?._meta?.["io.modelcontextprotocol/serverInfo"].version, "test");
   assert.ok((body?.result?.ttlMs ?? -1) >= 0);
-  assert.equal(body?.result?.cacheScope, "public");
+  assert.equal(body?.result?.cacheScope, "private");
 });
 
 test("新协议：tools/list 必须带 ttlMs 与 cacheScope，否则客户端整张表都不认", async () => {

@@ -1,6 +1,8 @@
 import { site } from "@/lib/site";
 
 import { readJsonBody } from "./chat/guard";
+import { EVENT_DEFINITIONS } from "./mcp-event-catalog";
+import type { EventRpcReply } from "./mcp-event-errors";
 import { SITE_TOOLS, newLedger, type ToolIO } from "./tools/registry";
 
 // 新协议每个请求在 _meta 里自带版本、没有 initialize；旧协议先握手。两代都收，都不发会话 ID。
@@ -41,6 +43,12 @@ const TOOLS = SITE_TOOLS.map(({ name, title, description, inputSchema }) => ({
   inputSchema,
   annotations: { title, readOnlyHint: true, openWorldHint: false },
 }));
+
+export type McpEventAccess = {
+  principal: string;
+  subscribe(principal: string, params: Record<string, unknown>): Promise<EventRpcReply>;
+  unsubscribe(principal: string, params: Record<string, unknown>): Promise<EventRpcReply>;
+};
 
 type Id = string | number;
 type Params = Record<string, unknown>;
@@ -115,7 +123,7 @@ async function callTool(params: Params, io: ToolIO) {
   return { content: [{ type: "text", text }], isError };
 }
 
-async function dispatch(era: Era, method: string, params: Params, io: ToolIO, serverInfo: object) {
+async function dispatch(era: Era, method: string, params: Params, io: ToolIO, serverInfo: object, events?: McpEventAccess | null) {
   switch (method) {
     case "initialize": {
       const requested = params.protocolVersion;
@@ -128,7 +136,28 @@ async function dispatch(era: Era, method: string, params: Params, io: ToolIO, se
     }
     case "server/discover":
       if (era !== "modern") break;
-      return { supportedVersions: SUPPORTED_VERSIONS, capabilities: { tools: {} }, instructions: INSTRUCTIONS, ...CACHE_HINTS };
+      return {
+        supportedVersions: SUPPORTED_VERSIONS,
+        capabilities: { tools: {}, ...(events && { events: {} }) },
+        instructions: INSTRUCTIONS,
+        ttlMs: 0,
+        cacheScope: "private",
+      };
+    case "events/list":
+    case "events/subscribe":
+    case "events/unsubscribe": {
+      if (era !== "modern") break;
+      if (!events) throw new RpcError(-32012, "Authenticated event access required", 401);
+      if (method === "events/list") {
+        if (Object.keys(params).some((key) => key !== "cursor" && key !== "_meta") || (params.cursor !== undefined && params.cursor !== null)) {
+          throw new RpcError(INVALID_PARAMS, "Invalid event catalog parameters", 200);
+        }
+        return { events: EVENT_DEFINITIONS, ttlMs: 0, cacheScope: "private" };
+      }
+      const reply = await events[method === "events/subscribe" ? "subscribe" : "unsubscribe"](events.principal, params);
+      if ("error" in reply) throw new RpcError(reply.error.code, reply.error.message, 200, reply.error.data);
+      return reply.result;
+    }
     case "ping":
       return {};
     case "tools/list":
@@ -139,9 +168,9 @@ async function dispatch(era: Era, method: string, params: Params, io: ToolIO, se
   throw new RpcError(METHOD_NOT_FOUND, `Method not found: ${method}`, era === "modern" ? 404 : 200);
 }
 
-export async function handleMcp(request: Request, io: ToolIO, version: string): Promise<Response> {
+export async function handleMcp(request: Request, io: ToolIO, version: string, events?: McpEventAccess | null): Promise<Response> {
   if (request.method !== "POST") {
-    return new Response("MCP endpoint (Streamable HTTP). Send JSON-RPC with POST; no auth needed.\n", {
+    return new Response("MCP endpoint (Streamable HTTP). Send JSON-RPC with POST. Public tools; authenticated events.\n", {
       status: 405,
       headers: { Allow: "POST", "Content-Type": "text/plain; charset=utf-8" },
     });
@@ -163,7 +192,7 @@ export async function handleMcp(request: Request, io: ToolIO, version: string): 
   const serverInfo = { name: "lyjwpage", title: site.name, version, websiteUrl: site.url };
   try {
     const era = eraOf(request, method, params);
-    const result = await dispatch(era, method, params, io, serverInfo);
+    const result = await dispatch(era, method, params, io, serverInfo, events);
     return rpcResponse(200, {
       jsonrpc: "2.0",
       id,

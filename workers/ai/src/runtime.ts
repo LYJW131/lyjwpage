@@ -2,8 +2,11 @@ import type { PublicStatusRpc } from "@shared/public-status";
 
 import type { AnthropicEgress } from "./chat/egress";
 import type { ChatQuota } from "./chat/quota";
+import type { McpEventHub } from "./mcp-event-hub";
+import type { McpEventAuthEnv } from "./mcp-event-auth";
 
-export interface Env {
+export interface Env extends McpEventAuthEnv {
+  MCP_EVENTS?: DurableObjectNamespace<McpEventHub>;
   PUBLIC_STATUS: PublicStatusRpc;
   AI?: Ai;
   ALLOWED_ORIGINS?: string;

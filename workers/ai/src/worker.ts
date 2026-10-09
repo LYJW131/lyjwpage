@@ -6,6 +6,7 @@ import { MCP_PATH } from "@shared/mcp";
 import { clientIp, handleChat, quotaStub } from "./chat/handler";
 import { handleGithubIssue } from "./github-issue";
 import { handleMcp } from "./mcp";
+import { authenticateEventPrincipal } from "./mcp-event-auth";
 import type { Env } from "./runtime";
 import { fetchProjectDoc } from "./tools/project-docs";
 import type { ToolIO } from "./tools/registry";
@@ -54,7 +55,13 @@ const worker = {
       if (env.MCP_LIMIT && !(await env.MCP_LIMIT.limit({ key: clientIp(request) })).success) {
         return jsonResponse({ error: "Too many requests." }, { status: 429, headers: { ...Object.fromEntries(cors), "Retry-After": "60" } });
       }
-      response = await handleMcp(request, tools, env.CF_VERSION_METADATA?.id ?? "dev");
+      const principal = env.MCP_EVENTS ? await authenticateEventPrincipal(request, env) : null;
+      const events = principal && env.MCP_EVENTS ? env.MCP_EVENTS.get(env.MCP_EVENTS.idFromName("mcp-events-v1")) : null;
+      response = await handleMcp(request, tools, env.CF_VERSION_METADATA?.id ?? "dev", events && principal ? {
+        principal,
+        subscribe: (owner, params) => events.subscribe(owner, params),
+        unsubscribe: (owner, params) => events.unsubscribe(owner, params),
+      } : null);
     } else {
       if (!isAllowedOrigin(request, env)) return jsonResponse({ error: "Forbidden" }, { status: 403, headers: cors });
       response = pathname === GOD_CHAT_PATH
