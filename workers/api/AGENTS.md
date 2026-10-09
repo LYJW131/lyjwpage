@@ -13,7 +13,7 @@ StateHub 的 SQLite 是实时状态的唯一权威。人读的说明在 `README.
 - 公开读取只输出明确的公开模型：没有通用 HTTP 数据库端点，凭据不进任何公开响应。可滞后层的端点只读 `LAG` KV，不持有外部令牌、不现拉、不推送，也不过公开读屏障、不唤醒 StateHub（`src/public-execution.ts`）：它的 loader 不许读 DO 存储。
 - 首屏标签只在布局变化时失效（判据在 `src/lib/home-layout.ts`）；读数、标题、进度、纯心跳都不触发，交给首屏快照的定时重建。
 - 新增公开状态视图只在 `src/lib/status-views.ts` 加一行、在 `src/lib/status-loaders.ts` 登记 loader，两张表由 `satisfies` 对齐；可滞后层视图不许带推送事件（模块加载时断言）。
-- `src/tools/registry.ts#SITE_TOOLS` 同时是无鉴权 `/mcp` 和首页对话的工具：只放只读、只读公开模型的工具；要访客确认的、Anthropic 服务端工具留在 `src/chat/`。
+- `src/tools/registry.ts#SITE_TOOLS` 同时是无鉴权 `/mcp` 和首页对话的工具：只放只读、只读公开模型的工具；要访客确认的、只对对话界面有意义的、Anthropic 服务端工具留在 `src/chat/`。
 
 ## 迁移与部署
 
