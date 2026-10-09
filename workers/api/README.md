@@ -612,4 +612,4 @@ misaka-jp 上的 server-reporter 与 agents-reporter 每封报文顶上带一个
 
 ## Quest 实时游戏状态
 
-`/api/status/quest/now` 从 StateHub SQLite 读取最新 Quest 快照。`available` 区分可信空闲与断流，陈旧窗口由 `shared/quest.ts#QUEST_STALE_MS` 定义；过期保留观测时刻，`playing` 与 `discordStatus` 返回空值。内容变化或断流后的恢复发送 `quest-now`，普通心跳仅更新存储；按 `observedAt` 拒绝旧值与重复报告。该视图不进入首页首屏，也不触发首屏标签失效。上报入口与信封见 [Ingress](../ingress/README.md#quest-实时游戏状态)。
+`/api/status/quest/now` 从 StateHub SQLite 读取最新 Quest 快照。`available` 区分可信空闲与断流，陈旧窗口由 `shared/quest.ts#QUEST_STALE_MS` 定义；过期保留观测时刻，`playing` 与 `discordStatus` 返回空值。内容变化或断流后的恢复发送 `quest-now`，普通心跳仅更新存储；按 `observedAt` 拒绝旧值与重复报告。首页的 Now Playing 卡读这个视图，「在玩」有无切换时失效首屏标签 `quest-now`。游戏道（Pulse 的 `gaming`）由 PlayStation 与 Quest 合并写入（`src/stores/quest.ts`、`src/stores/playstation.ts`）：Quest 在玩时记 Quest 的游戏（`shared/pulse-timeline.ts#questGamingFacts`，`titleId` 带 `quest:` 前缀），这期间 PS 的上报不改写游戏道；Quest 从在玩变为不在玩时交还 PS 的状态，PS 也已过期就记离线；其余时候游戏道只由 PS 写。上报入口与信封见 [Ingress](../ingress/README.md#quest-实时游戏状态)。

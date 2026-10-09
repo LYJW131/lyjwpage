@@ -36,7 +36,8 @@ test("Quest commit persists heartbeats, ignores old reports and only pushes stat
     const first = await commit(report(), NOW);
     assert.equal(first.ok, true);
     assert.equal(first.effects.filter((x) => x.kind === "event").length, 1);
-    assert.equal(first.effects.some((x) => x.kind === "tags"), false);
+    const tagsOf = (result: typeof first) => result.effects.flatMap((x) => (x.kind === "tags" ? x.tags : []));
+    assert.deepEqual(tagsOf(first), ["quest-now"], "开始玩：首页的卡片要出现");
     const heartbeat = await commit(report(NOW + 60_000), NOW + 60_000);
     assert.equal(heartbeat.effects.length, 0);
     assert.equal((await questMirror.get())?.observedAt, NOW + 60_000);
@@ -44,6 +45,7 @@ test("Quest commit persists heartbeats, ignores old reports and only pushes stat
     assert.equal((await questMirror.get())?.playing?.name, "Beat Saber");
     const stopped = await commit(report(NOW + 80_000, null), NOW + 80_000);
     assert.equal(stopped.effects.filter((x) => x.kind === "event").length, 1);
+    assert.deepEqual(tagsOf(stopped), ["quest-now"], "停玩：首页的卡片要收起");
     assert.equal((await questMirror.get())?.playing, null);
     const recovered = await commit(report(NOW + 80_000 + QUEST_STALE_MS), NOW + 80_000 + QUEST_STALE_MS);
     assert.equal(recovered.effects.filter((x) => x.kind === "event").length, 1);

@@ -30,7 +30,7 @@ export const STATUS_VIEWS = {
   nowWatching: { path: "/api/status/watching/now", layer: "realtime", tag: "watching-now", event: "watching-now", pushCovers: true },
   playing: { path: "/api/status/playing", layer: "realtime", tag: "playing", event: "playing", pushCovers: true },
   playingNow: { path: "/api/status/playing/now", layer: "realtime", tag: "playing-now", event: "playing-now", pushCovers: true },
-  questNow: { path: "/api/status/quest/now", layer: "realtime", event: "quest-now" },
+  questNow: { path: "/api/status/quest/now", layer: "realtime", tag: "quest-now", event: "quest-now" },
   trophies: { path: "/api/status/trophies", layer: "realtime", tag: "trophies", event: "trophies", pushCovers: true },
   githubChart: { path: "/api/status/github-chart", layer: "lag", cadenceMs: 10 * 60_000 },
   githubRepo: { path: "/api/status/github-repo", layer: "lag", cadenceMs: 30 * 60_000 },
