@@ -16,7 +16,7 @@ function fail(status: number, error: string): Response {
 }
 
 // 令牌只设在分支预览上：生产 Worker 没有它，这个端点在生产上就当不存在。
-export async function handleBuildFire(request: Request, env: Env): Promise<Response> {
+export async function handleBuildFire(request: Request, env: Env, send: typeof fetch): Promise<Response> {
   const fireUrl = env.ROUTINE_FIRE_URL;
   const token = env.ROUTINE_FIRE_TOKEN;
   if (!fireUrl || !token) return fail(404, "Not found.");
@@ -29,7 +29,7 @@ export async function handleBuildFire(request: Request, env: Env): Promise<Respo
   }
 
   const runId = newRunId();
-  const res = await fetch(fireUrl, {
+  const res = await send(fireUrl, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,

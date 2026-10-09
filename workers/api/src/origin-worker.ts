@@ -24,6 +24,7 @@ import { executePublicRequest } from "./public-execution";
 import { isLookupPath, serveLookup } from "./lookup-routes";
 import { clientIp, handleChat, quotaStub } from "./chat/handler";
 import { handleBuildFire } from "./build-routine";
+import { anthropicFetch } from "./chat/egress";
 import { handleGithubIssue } from "./github-issue";
 import { handleMcp } from "./mcp";
 import { fetchProjectDoc } from "./tools/project-docs";
@@ -416,7 +417,7 @@ const worker = {
 
     if (url.pathname === BUILD_PATH) {
       if (!isAllowedOrigin(request, env)) return jsonResponse({ error: "Forbidden" }, { status: 403, headers: cors });
-      const response = await handleBuildFire(request, env);
+      const response = await handleBuildFire(request, env, anthropicFetch(env) ?? fetch);
       const headers = new Headers(response.headers);
       cors.forEach((value, name) => headers.set(name, value));
       return new Response(response.body, { status: response.status, headers });

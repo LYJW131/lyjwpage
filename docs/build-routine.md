@@ -10,7 +10,7 @@
      └──浏览器直接读 GitHub 公开 API，按分支名认回 claude/build-* 的 PR ◀── 推分支、开 PR ──┘
 ```
 
-- 触发端是 api Worker 的 `POST /api/build`（`workers/api/src/build-routine.ts`），契约在 `shared/build-routine.ts`。`ROUTINE_FIRE_URL` 是 `wrangler.toml` 的 `[previews.vars]`，`ROUTINE_FIRE_TOKEN` 只设在本分支的 Worker 预览上；生产 Worker 两样都没有，端点回 404，页面在生产部署上也直接 404。
+- 触发端是 api Worker 的 `POST /api/build`（`workers/api/src/build-routine.ts`），契约在 `shared/build-routine.ts`。`ROUTINE_FIRE_URL` 是 `wrangler.toml` 的 `[previews.vars]`，`ROUTINE_FIRE_TOKEN` 只设在本分支的 Worker 预览上；生产 Worker 两样都没有，端点回 404，页面在生产部署上也直接 404。`/fire` 和首页对话一样经北美的 `ANTHROPIC_EGRESS` 对象发出：Worker 在亚洲机房直连会被 Anthropic 以 403 `Request not allowed` 拒绝（原因见 `workers/api/src/chat/egress.ts`）。
 - 页面在 Vercel 预览上（有 SSO 保护）；它连的 Worker 预览是公开的 `*.workers.dev`，接口只查 `Origin` 是否在 `ALLOWED_ORIGINS` 里，`Origin` 可以伪造，所以知道地址的人能触发。收紧时要加闸。
 - 花的是 claude.ai 订阅额度，不是 API 计费；PR 与提交署名是连接 GitHub 的那个账号。
 - `/fire` 只回会话链接，令牌没有读权限，所以页面看不到会话进度：进度点「Session」去 claude.ai 看，结果以 PR 为准。页面靠分支名认 PR，分支前缀与 `shared/build-routine.ts` 同步。
