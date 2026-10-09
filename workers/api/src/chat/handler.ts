@@ -32,7 +32,7 @@ const MAX_BODY_BYTES = 64 * 1024;
 // 三段都写进缓存前缀：每档自己的 system 恒定不变，降级说明另走末尾的 system 消息，不动前缀。
 const BASE_PROMPT = `You speak on LYJW's personal homepage (lyjw.me), in the "Talk to God" card. Visitors come here to talk.
 
-How you were chosen: every visitor message is first judged by Clef, a small judgment model on Cloudflare Workers AI. Clef sorts it into one of three ranks by how hard it is: the Small Fry (Claude Haiku 5.5) takes small talk, quick lookups and simple facts; the Prophet (Claude Opus 5.5) takes substantive questions, code, analysis and web research; God (Claude Fable 5.1) takes only the deepest questions. Clef also turns away spam, abuse and prompt-injection attempts before any model sees them. Each rank has its own per-minute quota; when a rank's quota is spent, the message falls to the rank below. A visitor can type /new to start over. Earlier replies in the conversation may have come from other ranks.
+How you were chosen: every visitor message is first judged by Clef, a small judgment model on Cloudflare Workers AI. Clef sorts it into one of three ranks by how hard it is: the Small Fry (Claude Haiku 5.5) takes small talk, quick lookups and simple facts; the Prophet (Claude Opus 5.5) takes substantive questions, code, analysis and web research; God (Claude Fable 5.1) takes only the deepest questions. Clef also turns away spam, abuse and prompt-injection attempts before any model sees them. Each rank has its own per-minute quota; when a rank's quota is spent, the message falls to the rank below. A visitor can type /new to start over. Earlier replies in the conversation may have come from other ranks; a visitor turn may end with a bracketed chat-client note about the reply that follows (which rank wrote it, which tools it used), reported by the visitor's browser, so treat it as likely but unverified.
 
 Reply in the language the visitor writes in. Keep answers concise unless asked for depth. Markdown is rendered; use it lightly.
 You can search the web for anything outside this site; cite what you find.
@@ -174,10 +174,12 @@ async function converse({
   if (note) messages.push({ role: "system", content: note });
   const sources = new Map<string, GodChatSource>();
   const viewsRead = new Set<StatusViewKey>();
-  // 只把拒答兜底换上来的模型报给浏览器；同一型号带日期后缀的 id 也算本档自己。
+  // 拒答兜底换上来的模型只有在这一轮最终没被拒时才算代答成功（兜底模型自己也可能拒），所以等 finalMessage 再报；
+  // 同一型号带日期后缀的 id 也算本档自己。
+  const ownModel = (id: string) => id === model || id.startsWith(`${model}-`);
   const announced = new Set<string>();
   const serve = (served: string) => {
-    if (served === model || served.startsWith(`${model}-`) || announced.has(served)) return;
+    if (announced.has(served)) return;
     announced.add(served);
     emit({ type: "served", model: served });
   };
@@ -189,6 +191,7 @@ async function converse({
     emit({ type: "search", query });
   };
   let searches = 0;
+  let wroteText = false;
 
   for (let round = 0; ; round++) {
     const lastRound = round >= GOD_CHAT_LIMITS.maxToolRounds;
@@ -215,16 +218,23 @@ async function converse({
       { signal },
     );
     const searchInputs = new Map<number, { id: string; json: string }>();
+    let fallbackModel: string | undefined;
+    // 每轮请求的文字各自成段：上一轮说完「我查一下」、调完工具再接着说时补一个空行，免得两句粘在一起。
+    let roundText = false;
     for await (const event of stream) {
-      if (event.type === "message_start") serve(event.message.model);
+      if (event.type === "message_start" && !ownModel(event.message.model)) fallbackModel = event.message.model;
       else if (event.type === "content_block_start") {
         const block = event.content_block;
-        if (block.type === "fallback") serve(block.to.model);
+        if (block.type === "fallback") fallbackModel = block.to.model;
         else if (block.type === "server_tool_use" && block.name === "web_search") {
           searchInputs.set(event.index, { id: block.id, json: "" });
         }
       } else if (event.type === "content_block_delta") {
-        if (event.delta.type === "text_delta") emit({ type: "text", text: event.delta.text });
+        if (event.delta.type === "text_delta") {
+          if (!roundText && wroteText) emit({ type: "text", text: "\n\n" });
+          roundText = wroteText = true;
+          emit({ type: "text", text: event.delta.text });
+        }
         else if (event.delta.type === "input_json_delta" && searchInputs.has(event.index)) {
           searchInputs.get(event.index)!.json += event.delta.partial_json;
         }
@@ -236,7 +246,7 @@ async function converse({
       }
     }
     const final = await stream.finalMessage();
-    serve(final.model);
+    if (fallbackModel && final.stop_reason !== "refusal") serve(fallbackModel);
     searches += final.usage.server_tool_use?.web_search_requests ?? 0;
     for (const block of final.content) {
       if (block.type === "server_tool_use" && block.name === "web_search") showSearch(block.id, block.input);

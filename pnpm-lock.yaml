@@ -69,9 +69,6 @@ importers:
         specifier: ^3.6.0
         version: 3.6.0
     devDependencies:
-      '@anthropic-ai/sdk':
-        specifier: ^0.132.1
-        version: 0.132.1(zod@4.4.3)
       '@tailwindcss/postcss':
         specifier: ^4
         version: 4.3.3
@@ -9304,7 +9301,7 @@ snapshots:
 
   jest-worker@27.5.1:
     dependencies:
-      '@types/node': 24.13.3
+      '@types/node': 20.19.43
       merge-stream: 2.0.0
       supports-color: 8.1.1
 

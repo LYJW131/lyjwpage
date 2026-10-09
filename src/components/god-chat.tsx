@@ -63,6 +63,7 @@ const COMMANDS = [
 type Command = (typeof COMMANDS)[number];
 const commandNames = (c: Command): readonly string[] => [c.name, ...c.aliases];
 const USAGE_URL = workerUrl(process.env.NEXT_PUBLIC_BACKEND_URL, GOD_CHAT_USAGE_PATH);
+const USAGE_RETRY_MS = 5_000;
 const SUGGESTIONS = ["What is LYJW listening to?", "What has LYJW been coding lately?", "Is the site healthy?"];
 
 export function GodChat({ className }: { className?: string }) {
@@ -232,12 +233,22 @@ export function GodChat({ className }: { className?: string }) {
     try {
       if (!USAGE_URL) throw new Error(OFFLINE);
       const res = await fetch(USAGE_URL, { cache: "no-store" });
+      if (res.status === 429 && quiet) {
+        // 倒计时到点的自动刷新被限流时，面板上的数先留着，过几秒再取一次。
+        setUsage((current) =>
+          current && current !== "loading"
+            ? { ...current, resetInMs: USAGE_RETRY_MS, resetAt: Date.now() + USAGE_RETRY_MS }
+            : current,
+        );
+        return;
+      }
+      if (res.status === 429) throw new Error("Too many usage checks. Try again in a few seconds.");
       if (!res.ok) throw new Error(OFFLINE);
       const data = (await res.json()) as GodChatUsage;
       setUsage((current) => (current === null && quiet ? null : { ...data, resetAt: Date.now() + data.resetInMs }));
-    } catch {
+    } catch (err) {
       setUsage(null);
-      setError(OFFLINE);
+      setError(err instanceof Error && err.message !== "Failed to fetch" ? err.message : OFFLINE);
     }
   }
 

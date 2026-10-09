@@ -45,6 +45,7 @@ export function stableMarkdown(text: string): string {
   const blockLines = block.split("\n").filter((line) => line.trim());
   if (blockLines.length && blockLines.every((line) => line.trimStart().startsWith("|"))) return head.trimEnd();
 
-  const tail = block.slice(0, inlineCut(block)).replace(/[*`~_#|>[\]]+$/, "");
+  // 已经配对的标记原样保留（末尾的反引号、星号可能正是收尾符）；最后一行只有块级起始标记、还没正文时整行先压着。
+  const tail = block.slice(0, inlineCut(block)).replace(/(^|\n)[ \t]*(#{1,6}|>|[-*+]|\d+[.)]|\||`{1,2}|~{1,2})[ \t]*$/, "$1");
   return (head + tail).trimEnd();
 }

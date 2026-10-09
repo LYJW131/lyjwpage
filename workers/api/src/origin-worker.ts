@@ -362,7 +362,12 @@ const worker = {
       if (!isAllowedOrigin(request, env)) return jsonResponse({ error: "Forbidden" }, { status: 403, headers: cors });
       const quota = quotaStub(env);
       if (!quota) return jsonResponse({ error: "The oracle is offline." }, { status: 503, headers: cors });
-      return jsonResponse(await quota.usage(clientIp(request)), { headers: cors });
+      // 不验人，每次都进全站共用的 ChatQuota 跑一个事务；按 IP 限流，刷这个端点拖不慢别人的对话。
+      const ip = clientIp(request);
+      if (env.CHAT_USAGE_LIMIT && !(await env.CHAT_USAGE_LIMIT.limit({ key: ip })).success) {
+        return jsonResponse({ error: "Too many usage checks." }, { status: 429, headers: { ...Object.fromEntries(cors), "Retry-After": "10" } });
+      }
+      return jsonResponse(await quota.usage(ip), { headers: cors });
     }
 
     if (url.pathname === GOD_CHAT_PATH) {
