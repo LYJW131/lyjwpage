@@ -1,6 +1,6 @@
 name = "ai"
 main = "src/index.ts"
-compatibility_date = "2026-10-10"
+compatibility_date = "2026-10-09"
 compatibility_flags = ["nodejs_compat", "nodejs_compat_populate_process_env", "enable_request_signal"]
 workers_dev = false
 
