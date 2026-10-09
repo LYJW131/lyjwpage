@@ -9,6 +9,8 @@ import { LAG_KEYS, readLag } from "@shared/lag";
 
 import { prepareIngest } from "@shared/ingest/prepare";
 import { commitLagIngest } from "./lag-ingest";
+import { publicWorkout } from "@shared/workouts";
+import type { Workout } from "@/lib/types";
 
 const NOW = 1_800_000_000_000;
 
@@ -159,4 +161,25 @@ test("iPhone：训练收下、圆环被拒的那封，可滞后层只写训练�
   await commitLagIngest(kv, command);
   assert.equal((await readLag<{ items: { activityType: string }[] }>(kv, LAG_KEYS.workouts))?.data.items[0]?.activityType, "Running");
   assert.equal(kv.values.has(LAG_KEYS.activity), false, "被拒的圆环不进可滞后层");
+});
+
+test("训练心率只进历史归档：写进可滞后层的列表不带心率，存量里带的读出时也挑掉", async () => {
+  const kv = new MemoryKv();
+  const workout = {
+    id: "22222222-2222-4222-8222-222222222222",
+    activityType: "Walking",
+    startedAt: NOW - 3_600_000,
+    endedAt: NOW - 1_800_000,
+    durationSeconds: 1_500,
+    secondsFromGMT: 28_800,
+    averageHeartRateBpm: 109.4,
+    maximumHeartRateBpm: 152,
+  };
+  const command = await prepareIngest("iphone", { version: 1, modules: { workouts: { items: [workout] } } }, NOW);
+  await commitLagIngest(kv, command);
+  const [item] = (await readLag<{ items: Record<string, unknown>[] }>(kv, LAG_KEYS.workouts))?.data.items ?? [];
+  assert.equal(item?.activityType, "Walking");
+  assert.ok(!("averageHeartRateBpm" in item) && !("maximumHeartRateBpm" in item));
+  const stored = { ...item, averageHeartRateBpm: 109.4, maximumHeartRateBpm: 152 } as unknown as Workout;
+  assert.deepEqual(Object.keys(publicWorkout(stored)).filter((key) => key.includes("HeartRate")), []);
 });

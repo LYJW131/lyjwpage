@@ -6,7 +6,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { siteDay, type HistoryDb } from "@shared/history-ingest";
-import type { ServerStatus, Workout } from "@/lib/types";
+import type { ReportedWorkout, ServerStatus } from "@/lib/types";
 import { archiveIngest } from "./ingest-archive";
 import type { PreparedIngest } from "@shared/ingest/prepare";
 
@@ -46,7 +46,7 @@ function historyDb() {
 
 const T0 = Date.UTC(2026, 8, 28, 3, 0, 0);
 
-function workout(id: string, overrides: Partial<Workout> = {}): Workout {
+function workout(id: string, overrides: Partial<ReportedWorkout> = {}): ReportedWorkout {
   return {
     id,
     activityType: "Fencing",
@@ -100,7 +100,7 @@ function server(observedAt: number, overrides: Partial<ServerStatus> = {}): Serv
 
 test("ingest archive: workouts upsert by id and a resend of unchanged rows keeps the newest copy", async () => {
   const world = historyDb();
-  const send = (items: Workout[], pushedAt: number) =>
+  const send = (items: ReportedWorkout[], pushedAt: number) =>
     archiveIngest(world.db, { source: "iphone", receivedAt: pushedAt, ignored: [], workouts: { items, pushedAt } } as PreparedIngest);
 
   await send([workout("a"), workout("b")], T0);

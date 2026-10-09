@@ -12,8 +12,6 @@
         "durationSeconds": 1419.033,
         "distanceMeters": null,
         "activeEnergyKcal": 202.535,
-        "averageHeartRateBpm": 150.857,
-        "maximumHeartRateBpm": 170.0,
         "elevationAscendedMeters": null,
         "indoor": false
       },
@@ -26,8 +24,6 @@
         "durationSeconds": 6441.922,
         "distanceMeters": null,
         "activeEnergyKcal": 404.188,
-        "averageHeartRateBpm": 88.298,
-        "maximumHeartRateBpm": 147.0,
         "elevationAscendedMeters": null,
         "indoor": false
       },
@@ -40,8 +36,6 @@
         "durationSeconds": 927.54,
         "distanceMeters": null,
         "activeEnergyKcal": 132.268,
-        "averageHeartRateBpm": 144.021,
-        "maximumHeartRateBpm": 164.0,
         "elevationAscendedMeters": null,
         "indoor": false
       },
@@ -54,8 +48,6 @@
         "durationSeconds": 1161.099,
         "distanceMeters": null,
         "activeEnergyKcal": 161.884,
-        "averageHeartRateBpm": 150.477,
-        "maximumHeartRateBpm": 181.0,
         "elevationAscendedMeters": null,
         "indoor": false
       },
@@ -68,8 +60,6 @@
         "durationSeconds": 2274.955,
         "distanceMeters": 8834.72,
         "activeEnergyKcal": 135.934,
-        "averageHeartRateBpm": 154.036,
-        "maximumHeartRateBpm": 176.0,
         "elevationAscendedMeters": 16.3,
         "indoor": false
       },
@@ -82,8 +72,6 @@
         "durationSeconds": 5909.533,
         "distanceMeters": null,
         "activeEnergyKcal": 849.316,
-        "averageHeartRateBpm": 155.015,
-        "maximumHeartRateBpm": 192.0,
         "elevationAscendedMeters": null,
         "indoor": true
       },
@@ -96,8 +84,6 @@
         "durationSeconds": 1635.4,
         "distanceMeters": null,
         "activeEnergyKcal": 230.421,
-        "averageHeartRateBpm": 150.13,
-        "maximumHeartRateBpm": 180.0,
         "elevationAscendedMeters": null,
         "indoor": false
       },
@@ -110,8 +96,6 @@
         "durationSeconds": 2126.794,
         "distanceMeters": null,
         "activeEnergyKcal": 271.95,
-        "averageHeartRateBpm": 140.18,
-        "maximumHeartRateBpm": 173.0,
         "elevationAscendedMeters": null,
         "indoor": false
       },
@@ -124,8 +108,6 @@
         "durationSeconds": 1380.947,
         "distanceMeters": 4412.33,
         "activeEnergyKcal": 77.469,
-        "averageHeartRateBpm": 151.549,
-        "maximumHeartRateBpm": 172.0,
         "elevationAscendedMeters": 17.49,
         "indoor": false
       },
@@ -138,8 +120,6 @@
         "durationSeconds": 904.575,
         "distanceMeters": 3719.56,
         "activeEnergyKcal": 47.889,
-        "averageHeartRateBpm": 140.177,
-        "maximumHeartRateBpm": 165.0,
         "elevationAscendedMeters": null,
         "indoor": false
       }

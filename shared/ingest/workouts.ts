@@ -1,5 +1,5 @@
 import { object } from "@/lib/json";
-import type { Workout, WorkoutsPayload } from "@/lib/types";
+import type { ReportedWorkout, ReportedWorkouts } from "@/lib/types";
 import { WORKOUT_LIMIT } from "@shared/workouts";
 
 
@@ -10,13 +10,13 @@ function amount(value: unknown, field: string): number {
   return value;
 }
 
-export function normalizeWorkouts(input: unknown, receivedAt = Date.now()): WorkoutsPayload {
+export function normalizeWorkouts(input: unknown, receivedAt = Date.now()): ReportedWorkouts {
   const row = object(input);
   if (!row || !Array.isArray(row.items) || row.items.length > WORKOUT_LIMIT) {
     throw new Error(`workouts.items must contain at most ${WORKOUT_LIMIT} workouts`);
   }
   const ids = new Set<string>();
-  const items = row.items.map((input): Workout => {
+  const items = row.items.map((input): ReportedWorkout => {
     const item = object(input);
     if (!item || typeof item.id !== "string" || !/^[0-9a-f-]{36}$/i.test(item.id) ||
       typeof item.activityType !== "string" || !/^[A-Za-z][A-Za-z -]{0,63}$/.test(item.activityType)) {

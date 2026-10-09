@@ -6,6 +6,7 @@ import { REPORTER_BY_SOURCE, type ReporterBlock, type ReporterStat } from "@/lib
 import type { ActivityStatus, ServerPayload, TimezoneActivity, Workout } from "@/lib/types";
 import { agentLimitsLayoutKey, mergeAgentLimits, type AgentLimitsPayload } from "@/lib/vibecoding-limits";
 import { LAG_KEYS, readLag, writeLag, type LagStore } from "@shared/lag";
+import { publicWorkout } from "@shared/workouts";
 import type { PreparedIngest } from "@shared/ingest/prepare";
 
 // KV 读改写不互斥且最终一致；只允许后续上报可修正的展示快照走此路径。
@@ -58,7 +59,7 @@ export async function commitLagIngest(kv: LagStore, command: PreparedIngest): Pr
       }
       if (command.workouts) {
         const previous = await readLag<{ items: Workout[] }>(kv, LAG_KEYS.workouts);
-        const next = { items: command.workouts.items };
+        const next = { items: command.workouts.items.map(publicWorkout) };
         writes.push(writeLag(kv, LAG_KEYS.workouts, next, command.receivedAt));
         if (workoutsLayoutKey(previous?.data ?? null) !== workoutsLayoutKey(next)) tags.push(STATUS_VIEWS.workouts.tag);
       }

@@ -1,5 +1,5 @@
 import { object } from "@/lib/json";
-import type { WorkoutsPayload } from "@/lib/types";
+import type { ReportedWorkouts } from "@/lib/types";
 import type { ActivityReport } from "@shared/activity";
 
 import { normalizeActivity } from "./activity";
@@ -18,7 +18,7 @@ export type PreparedPhoneEnvelope = {
   source: "iphone";
   receivedAt: number;
   ignored: string[];
-  workouts?: WorkoutsPayload;
+  workouts?: ReportedWorkouts;
   activity?: ActivityReport;
   failure?: { stage: "beforeWorkouts" | "beforeActivity"; message: string };
 };

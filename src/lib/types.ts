@@ -640,8 +640,6 @@ export type Workout = {
   durationSeconds: number;
   distanceMeters: number | null;
   activeEnergyKcal: number | null;
-  averageHeartRateBpm: number | null;
-  maximumHeartRateBpm: number | null;
   elevationAscendedMeters: number | null;
   indoor: boolean | null;
 };
@@ -650,6 +648,10 @@ export type WorkoutsPayload = {
   items: Workout[];
   pushedAt: number;
 };
+
+// iPhone 上报的训练另带心率摘要：只进历史归档，公开列表与状态接口不带（shared/workouts.ts#publicWorkout）。
+export type ReportedWorkout = Workout & { averageHeartRateBpm: number | null; maximumHeartRateBpm: number | null };
+export type ReportedWorkouts = { items: ReportedWorkout[]; pushedAt: number };
 
 // 线上各列等长，时间为相对 window.from 的整秒；区间空缺是未知，不代表空闲。
 export type PulseSpanColumns = { startSec: number[]; endSec: number[] };
