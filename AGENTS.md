@@ -18,7 +18,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 # 禁区
 
 - 不手跑 `wrangler deploy`：非交互部署会直接接管挂在别的 Worker 上的自定义域名，Worker 默认只走 Workers Builds。唯一例外是跨 Worker 的契约切换：按被调用方 → 调用方的顺序手动部署，再推 main 让 Workers Builds 同码重建（见「部署流程」）。
-- 不在 Vercel 上写后端：调第三方 API、持有密钥、写状态的逻辑一律进 `workers/api`，站点的 Next 只渲染页面、缓存和处理图片，不为功能新增 Route Handler 或 Server Action（现有的 `src/app/api/` 只服务 Vercel 自身的缓存失效与版本号）。分支上试新后端走 api Worker 的分支预览，Secret 也设在预览上，见 `docs/workers-builds.md`「分支预览」。
+- 不在 Vercel 上写后端：调第三方 API、持有密钥、写状态的逻辑一律进 Worker；状态与数据查询归 `workers/api`，模型调用与工具编排归 `workers/ai`，站点的 Next 只渲染页面、缓存和处理图片，不为功能新增 Route Handler 或 Server Action（现有的 `src/app/api/` 只服务 Vercel 自身的缓存失效与版本号）。分支上试新后端走 Worker 分支预览，Secret 也设在对应预览上，见 `docs/workers-builds.md`「分支预览」。
 - 不提交 `.env.local`、`.dev.vars` 这类本地凭据文件。
 - 不删除、不手改本文件顶部 `next dev` 托管的自动块（`BEGIN:nextjs-agent-rules` 到 `END:nextjs-agent-rules`）。
 
@@ -38,7 +38,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - 站点生产部署默认走 Git：完成必要验证后提交改动，执行 `git push origin main`，由已有集成自动部署 Vercel。用户要求部署站点时，包含完成这次提交与推送，无需再逐步确认。
 - 域名与缓存链路（`lyjw.me` 在 Vercel，`lyjw131.com` 经阿里云 ESA 回源）见 `docs/ops-facts.md`。API Worker 对展示变化只通知 Vercel 标签失效，ESA 首页按源站的 SWR 头自行更新；新版本部署成功后的 ESA 首页刷新与 `version` 事件通知由 `.github/workflows/purge-esa.yml` 负责，契约见 `workers/ingress/README.md`。
 - 除非用户明确要求手工部署，不运行 `vercel deploy`、`vercel --prod`、`vercel promote` 等手工发布命令；自动部署失败时先检查并修复现有流程。
-- `workers/api`、`workers/ingress`、`workers/collector` 走 Cloudflare Workers Builds 原生 Git 集成，配置与监视路径见 `docs/workers-builds.md`。不在 GitHub Actions 里加 Worker 发布任务；修改共享依赖或移动文件时同步核对监视路径。Worker 之间的契约（`shared/state-core.ts`、`shared/collector.ts`）只加不改，被调用方先发布（Workers Builds 并行构建，保证顺序靠「禁区」里的手动部署例外）。
+- `workers/api`、`workers/ai`、`workers/ingress`、`workers/collector` 走 Cloudflare Workers Builds 原生 Git 集成，配置与监视路径见 `docs/workers-builds.md`。不在 GitHub Actions 里加 Worker 发布任务；修改共享依赖或移动文件时同步核对监视路径。Worker 之间的契约（`shared/state-core.ts`、`shared/public-status.ts`、`shared/collector.ts`）只加不改，被调用方先发布（Workers Builds 并行构建，保证顺序靠「禁区」里的手动部署例外）。
 - 推送成功不等于部署完成：检查该次提交在 Vercel 的部署状态，并从已绑定的生产域名验证本次受影响的行为或配置。
 - 上报器与其他独立部署单元按各自 README 发布：misaka-jp 上的 `server-reporter`、`agents-reporter` 合进 main 后由 `.github/workflows/build-reporters.yml` 自动换镜像，dsm 上的 `emby-reporter`、n100 上的 `playstation-reporter` 手动。若依赖站点的新契约或更长陈旧窗口，先确认 Vercel 站点及 Worker 契约已生效，再切换上报器，最后验证真实上报与站点读取。
 - `reporters/mac-telemetry-hub` 是 git submodule，指向 `LYJW131/MacTelemetryHub`，不会自动跟随远端。Hub 仓库推送后，站点仓库的子模块指针要挪到同一提交，否则站点里的上报器源码停在旧版本；指针推到 main 即触发 Hub 的签名与公证 Release（`.github/workflows/release-mac-telemetry-hub.yml`）。跨两个仓库的同一件事（如新契约两边同时改）把指针挪动并进站点那次提交，一次提交说完整件事；站点本身没改动时才单独提 `chore(reporters): 更新 mac-telemetry-hub，<改了什么>`。Hub 本机安装走它自己的 `reporters/mac-telemetry-hub/build-release.sh`，与指针更新是两件事。
@@ -46,7 +46,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 # 排查线上错误
 
 - 线上报错、页面异常、Worker 或 cron 失败，先用 Sentry MCP 查证据，再读代码：用 `search_issues` / `search_events` 找报错和 warn / error 日志，用 `get_sentry_resource` 看调用栈、面包屑和出错录像，拿到 release 和堆栈再对源码定位。不凭猜测改代码，也不借浏览器登录态调 Sentry 接口；MCP 不可用时告诉用户，而不是绕开。
-- 组织 `yangjunwei-liang`，区域 `https://us.sentry.io`，排查线上问题默认只看环境 `production`（另有 `preview` / `development`）。项目 `lyjwpage` 收浏览器和 Vercel 函数，release 是提交 SHA；`api-worker` 收 api Worker（含 Durable Object 与 API 定时任务，周期见 `workers/api/src/cron-heartbeat.ts#CRON_SCHEDULE`）和上报入口 `ingress`（事件带 tag `worker:ingress`，查上报的鉴权、校验与拆分按它过滤）；`collector-worker` 收采集 Worker（全部定时拉取，任务失败看 tag `collector.job`）；两个 Worker 项目的 release 是 Cloudflare 版本 ID。cron 监控与在线探测的配置见 `docs/ops-facts.md`。
+- 组织 `yangjunwei-liang`，区域 `https://us.sentry.io`，排查线上问题默认只看环境 `production`（另有 `preview` / `development`）。项目 `lyjwpage` 收浏览器和 Vercel 函数，release 是提交 SHA；`api-worker` 收 api Worker（含 Durable Object 与 API 定时任务，周期见 `workers/api/src/cron-heartbeat.ts#CRON_SCHEDULE`）、上报入口 `ingress`（tag `worker:ingress`）和 AI Worker（tag `worker:ai`）；`collector-worker` 收采集 Worker（全部定时拉取，任务失败看 tag `collector.job`）；两个 Worker 项目的 release 是 Cloudflare 版本 ID。cron 监控与在线探测的配置见 `docs/ops-facts.md`。
 - `reporters/` 下的上报器没接 Sentry，查所在机器的容器日志。
 - Sentry 里只读不写是默认。把 issue 标为 resolved / ignored、改负责人这类写操作，在修复部署并从生产验证后再做，并在汇报里说明；删除数据、改告警规则、项目或集成设置，先问用户。
 

@@ -1,6 +1,6 @@
 import { GOD_CHAT_TURNSTILE_ACTION } from "@shared/god-chat";
 
-import { originMatches } from "../origins";
+import { originMatches } from "@shared/http-origins";
 
 // 按读到的字节数截停：缺 Content-Length 的分块请求体也不会先整个读进内存再判断。
 export async function readJsonBody(request: Request, maxBytes: number): Promise<unknown> {

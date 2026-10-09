@@ -1,0 +1,60 @@
+name = "ai"
+main = "src/index.ts"
+compatibility_date = "2026-10-09"
+compatibility_flags = ["nodejs_compat", "nodejs_compat_populate_process_env", "enable_request_signal"]
+workers_dev = false
+preview_urls = true
+
+[vars]
+ALLOWED_ORIGINS = "https://lyjw131.com,https://lyjw.me,https://dev.lyjw.me,https://*.vercel.app"
+SENTRY_DSN = "https://13ba806bda9ae5a9086576b2e3d23cfb@o4511888459890688.ingest.us.sentry.io/4512132602855424"
+
+[version_metadata]
+binding = "CF_VERSION_METADATA"
+
+[ai]
+binding = "AI"
+
+[[services]]
+binding = "PUBLIC_STATUS"
+service = "api"
+entrypoint = "PublicStatus"
+
+[[durable_objects.bindings]]
+name = "CHAT_QUOTA"
+class_name = "ChatQuota"
+
+[[durable_objects.bindings]]
+name = "ANTHROPIC_EGRESS"
+class_name = "AnthropicEgress"
+
+[[migrations]]
+tag = "v1-transfer-from-api"
+
+[[migrations.transferred_classes]]
+from = "ChatQuota"
+from_script = "api"
+to = "ChatQuota"
+
+[[migrations.transferred_classes]]
+from = "AnthropicEgress"
+from_script = "api"
+to = "AnthropicEgress"
+
+[[ratelimits]]
+name = "CHAT_USAGE_LIMIT"
+namespace_id = "13101"
+simple = { limit = 30, period = 10 }
+
+[[ratelimits]]
+name = "GITHUB_ISSUE_LIMIT"
+namespace_id = "13102"
+simple = { limit = 5, period = 60 }
+
+[[ratelimits]]
+name = "MCP_LIMIT"
+namespace_id = "13103"
+simple = { limit = 60, period = 60 }
+
+[observability]
+enabled = true

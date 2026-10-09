@@ -24,6 +24,10 @@ binding = "CF_VERSION_METADATA"
 [ai]
 binding = "AI"
 
+[[services]]
+binding = "AI_SERVICE"
+service = "ai"
+
 [alias]
 "@/lib/storage-driver" = "./src/storage-driver.ts"
 "@/lib/apple-developer-token" = "./src/apple-developer-token.ts"
@@ -61,30 +65,6 @@ crons = ["2,7,12,17,22,27,32,37,42,47,52,57 * * * *"]
 [[durable_objects.bindings]]
 name = "STATE"
 class_name = "StateHub"
-
-[[durable_objects.bindings]]
-name = "CHAT_QUOTA"
-class_name = "ChatQuota"
-
-[[durable_objects.bindings]]
-name = "ANTHROPIC_EGRESS"
-class_name = "AnthropicEgress"
-
-# /api/chat/usage 按 IP 限流；namespace_id 在整个 Cloudflare 账号里唯一，别的 Worker 不要复用。
-[[ratelimits]]
-name = "CHAT_USAGE_LIMIT"
-namespace_id = "13101"
-simple = { limit = 30, period = 10 }
-# /api/github/issue 按 IP 限流，GitHub 自己也会拦刷屏。
-[[ratelimits]]
-name = "GITHUB_ISSUE_LIMIT"
-namespace_id = "13102"
-simple = { limit = 5, period = 60 }
-# /mcp 不验人，按 IP 限流。
-[[ratelimits]]
-name = "MCP_LIMIT"
-namespace_id = "13103"
-simple = { limit = 60, period = 60 }
 
 # Wrangler 必须先认识 OnlineCounterRoom，后续删除迁移才可生效。
 [[migrations]]

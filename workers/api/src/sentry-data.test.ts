@@ -3,7 +3,9 @@ import test from "node:test";
 
 import * as Sentry from "@sentry/cloudflare";
 
-import type { Env } from "./runtime.ts";
+import { sentryOptions as aiSentryOptions } from "../../ai/src/sentry.ts";
+import { sentryOptions as collectorSentryOptions } from "../../collector/src/sentry.ts";
+import { sentryOptions as ingressSentryOptions } from "../../ingress/src/sentry.ts";
 import { sentryOptions } from "./sentry.ts";
 
 const CHAT = "PLANTED-CHAT-TEXT";
@@ -13,7 +15,7 @@ const API_KEY = "sk-ant-planted-000";
 type Envelope = [Record<string, unknown>, [{ type: string }, unknown][]];
 type Payload = { request?: { url?: string; method?: string; data?: unknown; headers?: unknown } };
 
-function harness(options: (env: Env) => Sentry.CloudflareOptions) {
+function harness<Env>(options: (env: Env) => Sentry.CloudflareOptions) {
   const envelopes: Envelope[] = [];
   const transport = () => ({
     send: async (envelope: Envelope) => {
@@ -48,7 +50,7 @@ function harness(options: (env: Env) => Sentry.CloudflareOptions) {
   return { send, items, raw: () => JSON.stringify(envelopes) };
 }
 
-async function exercise(options: (env: Env) => Sentry.CloudflareOptions) {
+async function exercise<Env>(options: (env: Env) => Sentry.CloudflareOptions) {
   const run = harness(options);
   await run.send("/api/chat", { messages: [{ role: "user", content: CHAT }], turnstileToken: "t" });
   await run.send("/api/github/issue", { title: "t", body: "b", code: CODE });
@@ -57,22 +59,29 @@ async function exercise(options: (env: Env) => Sentry.CloudflareOptions) {
   return run;
 }
 
-test("Worker 的 Sentry 事件不带请求正文与请求头，错误和 transaction 都只留 url 与 method", async () => {
-  const run = await exercise(sentryOptions);
-  const items = run.items();
-  const types = new Set(items.map((item) => item.type));
-  assert.ok(types.has("event") && types.has("transaction"), `expected errors and transactions, got ${[...types]}`);
-  for (const { type, payload } of items.filter((item) => item.type === "event" || item.type === "transaction")) {
-    assert.ok(payload.request?.url && payload.request?.method, `${type} keeps url and method`);
-    assert.equal(payload.request.data, undefined, `${type} carries no body`);
-    assert.equal(payload.request.headers, undefined, `${type} carries no headers`);
-  }
-  const raw = run.raw();
-  for (const planted of [CHAT, CODE, API_KEY]) assert.ok(!raw.includes(planted), `${planted} leaked`);
-});
+for (const { name, run: exerciseWorker } of [
+  { name: "api", run: () => exercise(sentryOptions) },
+  { name: "ai", run: () => exercise(aiSentryOptions) },
+  { name: "ingress", run: () => exercise(ingressSentryOptions) },
+  { name: "collector", run: () => exercise(collectorSentryOptions) },
+]) {
+  test(`${name} 的 Sentry 事件不带请求正文与请求头，错误和 transaction 都只留 url 与 method`, async () => {
+    const run = await exerciseWorker();
+    const items = run.items();
+    const types = new Set(items.map((item) => item.type));
+    assert.ok(types.has("event") && types.has("transaction"), `expected errors and transactions, got ${[...types]}`);
+    for (const { type, payload } of items.filter((item) => item.type === "event" || item.type === "transaction")) {
+      assert.ok(payload.request?.url && payload.request?.method, `${type} keeps url and method`);
+      assert.equal(payload.request.data, undefined, `${type} carries no body`);
+      assert.equal(payload.request.headers, undefined, `${type} carries no headers`);
+    }
+    const raw = run.raw();
+    for (const planted of [CHAT, CODE, API_KEY]) assert.ok(!raw.includes(planted), `${planted} leaked`);
+  });
+}
 
 test("对照：SDK 默认集成会把正文和 x-api-key 原样写进事件，上面的覆盖不能删", async () => {
-  const run = await exercise((env) => ({ ...sentryOptions(env), integrations: [] }));
+  const run = await exercise((env: Parameters<typeof sentryOptions>[0]) => ({ ...sentryOptions(env), integrations: [] }));
   const raw = run.raw();
   for (const planted of [CHAT, CODE, API_KEY]) assert.ok(raw.includes(planted), `${planted} expected in default capture`);
 });
