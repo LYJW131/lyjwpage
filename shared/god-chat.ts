@@ -16,15 +16,16 @@ export const GOD_CHAT_LIMITS = {
 } as const;
 
 // 浏览器只回传文字，工具调用的原始结果不回传；trace 记下那条回复由哪一档作答、查过哪些视图、搜了几次、
-// 是否由拒答兜底的模型代答，Worker 据此告诉模型「上一轮确实调用过工具」，否则它会以为自己当时是在编。
-// trace 由浏览器提交、会进 system 消息，所以只收枚举与计数，不收任何自由文本（搜索词不回传）。
+// 是否由拒答兜底的模型代答。Worker 据此告诉模型那条回复当时用过工具，否则它会以为自己当时是在编。
+// trace 由浏览器提交、服务端核实不了，所以只当访客自报的说明，附在那条回复之前的访客消息里、标明未经核实，
+// 也只收枚举与计数，不收任何自由文本（搜索词不回传）。
 export type GodChatTrace = { tier?: GodChatTier; views?: string[]; searches?: number; fallback?: true };
 export type GodChatMessage = { role: "user" | "assistant"; content: string; trace?: GodChatTrace };
 
 export type GodChatSource = { url: string; title: string };
 
 // 响应体是 NDJSON，每行一个事件；首行总是 route（refuse 时 tier 为 null），views 是 get_site_status 读取的视图键。
-// served 只在 Anthropic 的拒答兜底换了模型时出现，model 是实际作答的模型 id。
+// served 只在 Anthropic 的拒答兜底换了模型、且这一轮最终没被拒时出现，model 是实际作答的模型 id。
 export type GodChatEvent =
   | { type: "route"; route: GodChatRoute; tier: GodChatTier | null; downgradedFrom?: GodChatTier }
   | { type: "served"; model: string }
