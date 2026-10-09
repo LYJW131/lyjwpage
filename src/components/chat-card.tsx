@@ -157,7 +157,7 @@ function Hero({
 
 function Strip({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="border-t border-line pt-2">
+    <div className="border-t border-line pt-2 [header+&]:border-t-0">
       <div className="label-mono px-3 text-[10px] text-muted-foreground">{label}</div>
       <ul className="scrollbar-none flex snap-x snap-mandatory scroll-px-3 gap-3 overflow-x-auto px-3 pb-3 pt-2 [&::-webkit-scrollbar]:hidden">
         {children}
@@ -238,9 +238,7 @@ function MusicCard() {
         meta={`~${clock(position)} / ${clock(elsewhere.durationMs)}`}
       />
     );
-  } else if (live) {
-    hero = <Placeholder failed={false}>Nothing playing right now.</Placeholder>;
-  } else {
+  } else if (!live) {
     hero = <Placeholder failed={now.failed} />;
   }
 
@@ -279,9 +277,7 @@ function WatchingCard() {
           href={current?.link}
           progress={playing.positionMs != null && playing.durationMs ? (playing.positionMs / playing.durationMs) * 100 : (playing.progress ?? current?.progress ?? null)}
         />
-      ) : now.data ? (
-        <Placeholder failed={false}>Nothing playing right now.</Placeholder>
-      ) : (
+      ) : now.data ? null : (
         <Placeholder failed={now.failed} />
       )}
       {items.length > 0 && (
@@ -298,7 +294,6 @@ function WatchingCard() {
 function GamingCard() {
   const presence = useCardView<PlaystationPresencePayload>("playingNow");
   const recent = useCardView<PlaystationPlayingPayload>("playing");
-  const tick = useNow(60_000);
   const status = presence.data;
   const games = mergeVariants((recent.data?.items ?? []).filter((game) => !mediaApp(game.category))).slice(0, RECENT_LIMIT);
   const playingGame = status?.playing ? games.find((game) => game.titleIds.includes(status.playing!.titleId)) : undefined;
@@ -314,17 +309,7 @@ function GamingCard() {
         subtitle={playingGame ? playTime(playingGame.playDurationMs, playingGame.playCount) : null}
       />
     );
-  } else if (status) {
-    hero = (
-      <Hero
-        image={null}
-        tone={status.online ? "live" : "off"}
-        status={status.online ? `Online · ${status.platform ?? "PlayStation"}` : "Offline"}
-        title="Not in a game"
-        meta={!status.online && status.lastOnlineAt ? `Last online: ${formatRelativeTime(status.lastOnlineAt, tick)}` : null}
-      />
-    );
-  } else {
+  } else if (!status) {
     hero = <Placeholder failed={presence.failed} />;
   }
 
