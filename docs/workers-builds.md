@@ -46,7 +46,7 @@ pnpm --dir workers/api exec wrangler preview secret put CHAT_HISTORY_SECRET --na
 
 ai parent 使用 `--worker-name ai`，其他所需变量见 `workers/ai/.dev.vars.example`。值从标准输入输入，不复制生产凭据；缺少密钥的聊天端点返回 503，MCP 公开状态工具仍可验证。两个候选都存在时，要验证付费对话，直接使用已配置 Secret 的候选，或分别配置两份隔离密钥。
 
-PR 关闭时 `.github/workflows/preview-api-worker.yml` 调 `delete-preview.mjs` 清理两个 parent 的分支 Preview；不存在的候选跳过，未配置清理令牌时不执行。分支删除只清理 Preview，不改生产 Worker。
+PR 关闭时 `.github/workflows/preview-api-worker.yml` 检出默认分支，用那里的 `workers/api/scripts/delete-preview.mjs` 清理两个 parent 的分支 Preview，不执行 PR 里的代码。仓库 Secret `CLOUDFLARE_API_TOKEN` 需要能管理两个 Worker 的 Preview；不存在的候选跳过，未配置令牌时不执行。分支删除只清理 Preview，不改生产 Worker。
 
 ## 构建监视路径
 
